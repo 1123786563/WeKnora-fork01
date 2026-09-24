@@ -84,7 +84,14 @@ function MaterialViewPane({ view }: { view: MaterialView }) {
   }
   if (view.kind === 'diff') {
     if (view.preview.state === 'unsupported') return <Text>该变更文件{view.preview.reason === 'size' ? '过大' : '类型不支持'}内联展示，请下载后查看。</Text>;
-    if (view.malformed) return <Text>无法解析为标准 diff，以下为原始内容：</Text>;
+    if (view.malformed) {
+      return (
+        <View>
+          <Text>无法解析为标准 diff，以下为原始内容：</Text>
+          {view.raw !== undefined && <Text>{view.raw}</Text>}
+        </View>
+      );
+    }
     return (
       <View>
         {view.hunks.map((hunk) => (

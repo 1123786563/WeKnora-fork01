@@ -71,9 +71,14 @@ test('material error codes map to user copy, never raw internals', async () => {
 });
 
 test('dispose closes the handle exactly once', async () => {
-  const controller = createMaterialsController(fakeHandle(), { runId: 'run-1' });
+  const handle = fakeHandle();
+  let closes = 0;
+  const countingHandle: TaskMaterialHandle = { ...handle, close() { closes += 1; } };
+  const controller = createMaterialsController(countingHandle, { runId: 'run-1' });
   await controller.load();
+  assert.equal(closes, 0, 'close must not fire before dispose');
   controller.dispose();
   controller.dispose(); // 幂等
+  assert.equal(closes, 1, 'double dispose must close the handle exactly once');
   assert.equal(controller.state().loading, false);
 });

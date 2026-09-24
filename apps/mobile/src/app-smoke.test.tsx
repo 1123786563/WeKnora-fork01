@@ -850,3 +850,28 @@ test('the materials screen and route consume the Task Material interface only', 
   const screen = await import('./screens/MaterialsScreen.tsx');
   assert.equal(typeof screen.MaterialsScreen, 'function');
 });
+
+test('the malformed diff pane falls back to the raw text behind its notice', async () => {
+  const { MaterialsScreen } = await import('./screens/MaterialsScreen.tsx');
+  hooks().__reset();
+  const view: import('@weknora/mobile-core').MaterialView = {
+    kind: 'diff',
+    entry: { materialId: 'msg-1:1', index: 1, kind: 'diff', name: 'changes.diff', mime: 'text/x-diff', size: 30, version: 'bbbbbbbbbbbbbbbb', sourceRun: 'run-1' },
+    preview: { state: 'supported' },
+    hunks: [],
+    malformed: true,
+    raw: 'not a parseable unified diff\n',
+  };
+  const element = render(MaterialsScreen, {
+    index: undefined, view, loading: false,
+    onOpenMaterial: () => {}, onOpenTerminal: () => {}, onOpenEvidence: () => {},
+    onDownload: () => {}, onShare: () => {}, onRefresh: () => {}, onBack: () => {},
+  });
+  // react stub 的 createElement 不执行子组件：对 MaterialViewPane 元素二次渲染（与 RuntimeSurface 测试同模式）。
+  const paneElement = descendants(element).find(({ type }) => typeof type === 'function' && (type as { name?: string }).name === 'MaterialViewPane');
+  assert.ok(paneElement, 'the diff view mounts the material view pane');
+  const pane = render(paneElement.type as (props: unknown) => unknown, paneElement.props);
+  const texts = descendants(pane).filter(({ type }) => type === 'Text').flatMap(({ props }) => props.children).flatMap((part) => (typeof part === 'string' ? [part] : []));
+  assert.equal(texts.some((text) => text.includes('无法解析为标准 diff')), true, 'the malformed notice renders');
+  assert.equal(texts.some((text) => text.includes('not a parseable unified diff')), true, 'the raw text must render behind the notice (module contract: raw is always set for diff views)');
+});
