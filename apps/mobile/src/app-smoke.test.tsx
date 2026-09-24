@@ -546,6 +546,23 @@ test('TasksScreen drives search, filters, archive and pagination through the mod
   assert.equal(emptyText.includes('No tasks yet'), true, 'empty is an empty state, never a silent success');
 });
 
+test('the /tasks root shell renders a sign-in gate instead of a blank page when unauthorized (B3 recheck)', async () => {
+  const route = await import('./app/tasks.tsx');
+  assert.equal(typeof route.default, 'function', 'src/app/tasks.tsx must default-export the /tasks route');
+  const { MobileTasks } = await import('./composition.ts');
+  const { TasksScreen } = await import('./screens/TasksScreen.tsx');
+  hooks().__reset();
+  // tasks.tsx 无条件委托 MobileTasks（app/tasks.tsx:6-11），桩环境 Runtime 初始面为
+  // deployment-login（mobile-runtime.ts:108）：下方渲染结果即 /tasks 未授权态的真实产物。
+  const element = render(MobileTasks, {});
+  const texts = descendants(element)
+    .filter(({ type }) => type === 'Text')
+    .flatMap(({ props: p }) => p.children)
+    .flatMap((part) => (typeof part === 'string' ? [part] : []));
+  assert.equal(texts.includes('请先登录并激活空间，再查看任务列表。'), true, 'unauthorized /tasks must state the sign-in gate, not render a blank shell');
+  assert.equal(descendants(element).some(({ type }) => type === TasksScreen), false, 'the tasks list stays unreachable without an authorized surface');
+});
+
 test('the task detail route and screen consume the task office interface with evidence collapsed by default', async () => {
   const route = await import('./app/tasks/detail.tsx');
   assert.equal(typeof route.default, 'function', 'src/app/tasks/detail.tsx must default-export the detail route');

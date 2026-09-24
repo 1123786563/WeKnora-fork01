@@ -1,4 +1,5 @@
 import { createElement, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { Text, View } from 'react-native';
 import { createWeKnoraClient } from '@weknora/api-client';
 import { createMobileRuntimeRemote } from '@weknora/api-client/mobile/runtime';
 import { createMobileResourceRemote } from '@weknora/api-client/mobile/resources';
@@ -235,11 +236,14 @@ export async function registerActiveDeviceIfPossible(
   }
 }
 
-/** /tasks 应用根：授权面才渲染列表屏，其余面回到 Runtime 裁决的 Surface。 */
+/** /tasks 应用根：授权面才渲染列表屏；其余面给出与其余路由同口径的登录 gate
+ * （B3 复验发现 1：此前 return null 使 /tasks 未授权态只剩布局层空白）。 */
 export function MobileTasks({ onOpenTask, onOpenLegacy }: { onOpenTask?: (taskId: string, runId: string) => void; onOpenLegacy?: () => void } = {}) {
   const activeRuntime = runtime();
   const snapshot = useSyncExternalStore(activeRuntime.subscribe, activeRuntime.snapshot, activeRuntime.snapshot);
-  if (snapshot.surface !== 'authorized' || !snapshot.deployment || !snapshot.identity?.userId) return null;
+  if (snapshot.surface !== 'authorized' || !snapshot.deployment || !snapshot.identity?.userId) {
+    return createElement(View, null, createElement(Text, null, '请先登录并激活空间，再查看任务列表。'));
+  }
   return createElement(TasksScreen, {
     key: deploymentScopeKey(snapshot.deployment.origin, snapshot.identity.activeTenantId ?? ''),
     taskOffice: taskOfficeFor(activeRuntime, snapshot.deployment.origin, snapshot.identity.activeTenantId ?? ''),
