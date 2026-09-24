@@ -21,6 +21,36 @@ func (s *BudgetStore) EnsureTaskBudget(ctx context.Context, tenantID uint64, run
 		Create(&TaskBudgetRow{TenantID: tenantID, RunID: runID, LimitMicro: int64(limit), Deadline: deadline.UTC(), Version: 1}).Error
 }
 
+// RenewTaskBudgetDeadline monotonically renews the owner Task deadline through
+// either the owner row or a child Run mapping. Admission of a later durable Run
+// is the caller's authorization boundary. This operation never changes the
+// budget limit, spent amount, or held amount.
+func (s *BudgetStore) RenewTaskBudgetDeadline(ctx context.Context, tenantID uint64, runID string, deadline time.Time) error {
+	if tenantID == 0 || runID == "" || deadline.IsZero() {
+		return ErrInvalidBudgetRequest
+	}
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var row TaskBudgetRow
+		if err := tx.Where("tenant_id = ? AND run_id = ?", tenantID, runID).Take(&row).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrTaskBudgetMissing
+			}
+			return err
+		}
+		ownerRun := row.RunID
+		if row.RootRunID != "" {
+			ownerRun = row.RootRunID
+		}
+		result := tx.Model(&TaskBudgetRow{}).
+			Where("tenant_id = ? AND run_id = ? AND deadline < ?", tenantID, ownerRun, deadline.UTC()).
+			Updates(map[string]any{"deadline": deadline.UTC(), "version": gorm.Expr("version + 1")})
+		if result.Error != nil {
+			return result.Error
+		}
+		return nil
+	})
+}
+
 // AttachChildRun records that childRun charges the budget owned by
 // parentRun. The child row carries a zero limit and only points at the
 // parent's row: a delegated child counts against its parent's budget

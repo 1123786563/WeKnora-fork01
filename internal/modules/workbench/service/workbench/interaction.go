@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/approval"
 	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
 	workbench "github.com/Tencent/WeKnora/internal/modules/workbench"
@@ -344,14 +345,9 @@ func (p *GormCancelPort) Cancel(ctx context.Context, tenantID uint64, ownerID, r
 	if p == nil || p.db == nil {
 		return ErrCapabilityUnavailable
 	}
-	updated := p.db.WithContext(ctx).Table("agent_runs").Where("tenant_id = ? AND owner_id = ? AND run_id = ? AND revision = ? AND status IN ('queued','running','waiting_user','reconciling','recovering')", tenantID, ownerID, runID, expectedRevision).Updates(map[string]any{"status": "canceled", "revision": gorm.Expr("revision + 1"), "updated_at": gorm.Expr("CURRENT_TIMESTAMP")})
-	if updated.Error != nil {
-		return updated.Error
-	}
-	if updated.RowsAffected != 1 {
-		return agentruntime.ErrConflict
-	}
-	return nil
+	return repository.NewAgentRunStore(p.db).CancelRunOwnedAtRevision(
+		ctx, tenantID, ownerID, runID, expectedRevision, "workbench_cancel_requested",
+	)
 }
 
 // GormSteerPort resolves the run owner and assistant message from the durable

@@ -15,7 +15,8 @@
 //   - BYOK involvement is stated plainly (the space's own credentials bear
 //     those model calls); nothing anywhere renders an amount — money comes
 //     only from the commercial view.
-import { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
+import type { CraftRunView } from '@weknora/contracts';
 import {
   asOfLabel, fundingNote, usageLabel, usageRows,
   type UsageView, type UsageCallRow,
@@ -163,6 +164,28 @@ export interface CraftUsagePanelProps {
   sessionId: string;
   client: CraftUsageClient;
   strings?: CraftUsageStrings;
+}
+
+export interface CraftBudgetPauseNoticeProps {
+  pause: NonNullable<CraftRunView['budget_pause']>;
+  /** Projected by the server's current Task owner/billing-admin check. */
+  canExtend: boolean;
+  onRequestExtension?: (runId: string) => void;
+}
+
+/** Budget state is actionable without disclosing Credits, balances or keys. */
+export function CraftBudgetPauseNotice({ pause, canExtend, onRequestExtension }: CraftBudgetPauseNoticeProps) {
+  return (
+    <aside role="status" data-testid="craft-budget-pause">
+      <strong>预算已用尽，运行已暂停</strong>
+      <p>{canExtend ? '申请增加预算后可安全恢复运行。' : '联系 Task Owner 或账单管理员处理预算后恢复运行。'}</p>
+      {canExtend ? (
+        <button type="button" onClick={() => onRequestExtension?.(pause.run_id)} disabled={!onRequestExtension}>
+          申请增加预算
+        </button>
+      ) : null}
+    </aside>
+  );
 }
 
 export function CraftUsagePanel({ sessionId, client, strings = CRAFT_USAGE_STRINGS_ZH }: CraftUsagePanelProps) {

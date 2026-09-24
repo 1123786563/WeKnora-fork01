@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"time"
 
+	reporun "github.com/Tencent/WeKnora/internal/application/repository"
+	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/modules/commercial"
 	repocommercial "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
 	commercialsvc "github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial"
@@ -120,6 +122,38 @@ type CraftBudgetCallRow struct {
 
 func (CraftBudgetCallRow) TableName() string { return "craft_budget_calls" }
 
+// CraftChargeStartJournalRow is the durable authorization to begin one
+// chargeable external activity. Its identity and reservation are created in
+// the same committed transaction; unresolved rows must never be replayed.
+type CraftChargeStartJournalRow struct {
+	TenantID       uint64    `gorm:"column:tenant_id;primaryKey;autoIncrement:false"`
+	RunID          string    `gorm:"column:run_id;primaryKey"`
+	ActivityKey    string    `gorm:"column:activity_key;primaryKey"`
+	GrantID        string    `gorm:"column:grant_id;not null"`
+	CallID         string    `gorm:"column:call_id;not null"`
+	ReservationKey string    `gorm:"column:reservation_key;not null;uniqueIndex:uq_craft_charge_start_reservation"`
+	State          string    `gorm:"column:state;not null"`
+	Protocol       *string   `gorm:"column:protocol"`
+	RunRevision    int64     `gorm:"column:run_revision;not null"`
+	CreatedAt      time.Time `gorm:"column:created_at;not null"`
+	UpdatedAt      time.Time `gorm:"column:updated_at;not null"`
+}
+
+func (CraftChargeStartJournalRow) TableName() string { return "craft_charge_start_journal" }
+
+type craftChargeStartPreparationStatus uint8
+
+const (
+	craftChargeStartNotPrepared craftChargeStartPreparationStatus = iota
+	craftChargeStartPrepared
+)
+
+type craftChargeStartPreparation struct {
+	status  craftChargeStartPreparationStatus
+	journal CraftChargeStartJournalRow
+	denial  error
+}
+
 // CraftCallBinding names the identity facets a logical call binds beyond the
 // grant: the (possibly empty) delegation, the model and the server-resolved
 // funding source. Any change of any facet is a different logical call with
@@ -128,6 +162,312 @@ type CraftCallBinding struct {
 	DelegationID string
 	ModelID      string
 	Funding      string
+}
+
+// CraftChargeStartOutcome is the typed result of beginning an external
+// provider action. Unknown outcomes retain the G4 hold and require
+// reconciliation before replay.
+type CraftChargeStartOutcome uint8
+
+const craftDockerSendProtocol = "docker_coordinator"
+
+const (
+	CraftChargeStartDefinitelyNotStarted CraftChargeStartOutcome = iota + 1
+	CraftChargeStartStarted
+	CraftChargeStartUnknown
+)
+
+const (
+	craftChargeStartTimeout        = 30 * time.Second
+	craftChargeStartResolveTimeout = 5 * time.Second
+)
+
+// BeginBinding commits the one-shot G4 hold and journal intent, then returns
+// an opaque attempt. Call Resolve only after the complete external response
+// has been observed; leaving an attempt unresolved is fail-closed.
+func (s *CraftBudgetService) BeginBinding(ctx context.Context, grantID, activityID string, b CraftCallBinding) (CraftChargeStartAttempt, error) {
+	if err := b.validate(); err != nil {
+		return nil, err
+	}
+	if activityID == "" || len(activityID) > 256 {
+		return nil, craft.ErrInvalidInput
+	}
+	row, err := s.loadGrant(ctx, grantID)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.fastRefuse(row); err != nil {
+		return nil, err
+	}
+	preparation, err := s.prepareCraftChargeStart(ctx, row, activityID, b)
+	if err != nil {
+		return nil, err
+	}
+	if preparation.status != craftChargeStartPrepared {
+		if preparation.denial != nil {
+			return nil, preparation.denial
+		}
+		return nil, fmt.Errorf("%w: charge start preparation did not commit an intent and hold", craft.ErrConflict)
+	}
+	if err := ctx.Err(); err != nil {
+		if resolveErr := s.resolveCraftChargeStart(context.Background(), preparation.journal, CraftChargeStartDefinitelyNotStarted); resolveErr != nil {
+			return nil, errors.Join(err, resolveErr)
+		}
+		return nil, err
+	}
+	initiationCtx, cancel := context.WithTimeout(ctx, craftChargeStartTimeout)
+	return &craftChargeStartAttempt{service: s, journal: preparation.journal, ctx: initiationCtx, cancel: cancel}, nil
+}
+
+func (s *CraftBudgetService) resolveCraftChargeStart(ctx context.Context, journal CraftChargeStartJournalRow, outcome CraftChargeStartOutcome) error {
+	state := map[CraftChargeStartOutcome]string{
+		CraftChargeStartStarted: "started", CraftChargeStartUnknown: "unknown",
+		CraftChargeStartDefinitelyNotStarted: "definitely_unstarted",
+	}[outcome]
+	if state == "" {
+		return craft.ErrInvalidInput
+	}
+	result := s.db.WithContext(ctx).Model(&CraftChargeStartJournalRow{}).
+		Where("tenant_id = ? AND run_id = ? AND activity_key = ? AND state = ? AND protocol IS NULL AND provider IS NULL AND container_id IS NULL AND exec_id IS NULL AND send_claimed_at IS NULL", journal.TenantID, journal.RunID, journal.ActivityKey, "intent").
+		Updates(map[string]any{"state": state, "updated_at": s.now()})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		return fmt.Errorf("%w: charge start intent outcome changed concurrently", craft.ErrConflict)
+	}
+	return nil
+}
+
+// CraftChargeStartAttempt is an opaque, durable one-shot charge start. Its
+// initiation context bounds only the wait for response headers; the owner
+// resolves the journal after the complete external response has been observed.
+type CraftChargeStartAttempt interface {
+	InitiationContext() context.Context
+	CancelInitiation()
+	Resolve(context.Context, CraftChargeStartOutcome) error
+}
+
+type craftChargeStartAttempt struct {
+	service *CraftBudgetService
+	journal CraftChargeStartJournalRow
+	ctx     context.Context
+	cancel  context.CancelFunc
+}
+
+func (a *craftChargeStartAttempt) InitiationContext() context.Context { return a.ctx }
+func (a *craftChargeStartAttempt) CancelInitiation()                  { a.cancel() }
+
+func (a *craftChargeStartAttempt) Resolve(ctx context.Context, outcome CraftChargeStartOutcome) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	resolveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), craftChargeStartResolveTimeout)
+	defer cancel()
+	return a.service.resolveCraftChargeStart(resolveCtx, a.journal, outcome)
+}
+
+// StartBinding is the durable Run-fenced path for chargeable model/sandbox
+// starts. The callback must cover only bounded transport initiation, never the
+// full provider operation. Existing gateway/sandbox paths must be migrated to
+// this method before F3 can be considered closed.
+func (s *CraftBudgetService) StartBinding(ctx context.Context, grantID, activityID string, b CraftCallBinding,
+	start func(context.Context) (CraftChargeStartOutcome, error),
+) (CraftChargeStartOutcome, error) {
+	if err := b.validate(); err != nil {
+		return 0, err
+	}
+	if activityID == "" || len(activityID) > 256 || start == nil {
+		return 0, craft.ErrInvalidInput
+	}
+	row, err := s.loadGrant(ctx, grantID)
+	if err != nil {
+		return 0, err
+	}
+	if err := s.fastRefuse(row); err != nil {
+		return 0, err
+	}
+	preparation, err := s.prepareCraftChargeStart(ctx, row, activityID, b)
+	if err != nil {
+		return 0, err
+	}
+	if preparation.status != craftChargeStartPrepared {
+		if preparation.denial != nil {
+			return CraftChargeStartDefinitelyNotStarted, preparation.denial
+		}
+		return CraftChargeStartUnknown, fmt.Errorf("%w: charge start preparation did not commit an intent and hold", craft.ErrConflict)
+	}
+	journal := preparation.journal
+	if err := ctx.Err(); err != nil {
+		if resolveErr := s.resolveCraftChargeStart(context.Background(), journal, CraftChargeStartDefinitelyNotStarted); resolveErr != nil {
+			return CraftChargeStartUnknown, resolveErr
+		}
+		return CraftChargeStartDefinitelyNotStarted, err
+	}
+	// The authorization and G4 hold are committed before calling external
+	// code. A bounded context limits cooperative transports; a callback that
+	// ignores cancellation cannot keep a SQL transaction or Run lock open.
+	boundedCtx, cancel := context.WithTimeout(ctx, craftChargeStartTimeout)
+	defer cancel()
+	outcome, startErr := start(boundedCtx)
+	if boundedCtx.Err() != nil && outcome != CraftChargeStartDefinitelyNotStarted {
+		outcome = CraftChargeStartUnknown
+		if startErr == nil {
+			startErr = boundedCtx.Err()
+		}
+	}
+	if outcome != CraftChargeStartStarted && outcome != CraftChargeStartDefinitelyNotStarted && outcome != CraftChargeStartUnknown {
+		outcome = CraftChargeStartUnknown
+	}
+	if startErr != nil && outcome != CraftChargeStartDefinitelyNotStarted {
+		outcome = CraftChargeStartUnknown
+	}
+	if resolveErr := s.resolveCraftChargeStart(ctx, journal, outcome); resolveErr != nil {
+		return outcome, resolveErr
+	}
+	return outcome, startErr
+}
+
+func (s *CraftBudgetService) prepareCraftChargeStart(ctx context.Context, row CraftBudgetGrantRow, activityID string, b CraftCallBinding) (craftChargeStartPreparation, error) {
+	return s.prepareCraftChargeStartWithProtocol(ctx, row, activityID, b, nil)
+}
+
+func (s *CraftBudgetService) prepareCraftDockerChargeStart(ctx context.Context, row CraftBudgetGrantRow, activityID string, b CraftCallBinding) (craftChargeStartPreparation, error) {
+	protocol := craftDockerSendProtocol
+	return s.prepareCraftChargeStartWithProtocol(ctx, row, activityID, b, &protocol)
+}
+
+func (s *CraftBudgetService) prepareCraftChargeStartWithProtocol(ctx context.Context, row CraftBudgetGrantRow, activityID string, b CraftCallBinding, protocol *string) (craftChargeStartPreparation, error) {
+	callKey := CraftCallKey("activity/" + activityID)
+	var preparation craftChargeStartPreparation
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		run, err := lockCraftRun(tx, ctx, row)
+		if err != nil {
+			return err
+		}
+		if err := chargeableCraftRun(run); err != nil {
+			return err
+		}
+		var mapping repocommercial.TaskBudgetRow
+		if err := tx.Where("tenant_id = ? AND run_id = ?", row.TenantID, row.RunID).Take(&mapping).Error; err != nil {
+			return err
+		}
+		if run.SessionID == "" || mapping.RootRunID != run.SessionID {
+			return craft.ErrForbidden
+		}
+		var previous CraftChargeStartJournalRow
+		if err := tx.Where("tenant_id = ? AND run_id = ? AND activity_key = ?", row.TenantID, row.RunID, activityID).Take(&previous).Error; err == nil {
+			return fmt.Errorf("%w: activity start already attempted; reconcile before retry", craft.ErrConflict)
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		var used int64
+		if err := tx.Model(&CraftBudgetCallRow{}).Where("tenant_id = ? AND grant_id = ? AND call_seq >= 0", row.TenantID, row.GrantID).Count(&used).Error; err != nil {
+			return err
+		}
+		if used >= int64(row.MaxCalls) {
+			if err := s.pauseCraftRunInTx(ctx, tx, row); err != nil {
+				return err
+			}
+			preparation.denial = craft.ErrGrantExhausted
+			return nil
+		}
+		var seq int64
+		if err := tx.Model(&CraftBudgetCallRow{}).Where("tenant_id = ? AND run_id = ? AND delegation_id = ? AND model_id = ? AND funding = ?", row.TenantID, row.RunID, b.DelegationID, b.ModelID, b.Funding).Select("COALESCE(MAX(call_seq),0)").Scan(&seq).Error; err != nil {
+			return err
+		}
+		seq++
+		callID := "activity/" + activityID
+		call := CraftBudgetCallRow{TenantID: row.TenantID, CallKey: callKey, GrantID: row.GrantID, RunID: row.RunID,
+			DelegationID: b.DelegationID, ModelID: b.ModelID, Funding: b.Funding, CallSeq: seq, CallID: callID, CreatedAt: s.now()}
+		if err := tx.Create(&call).Error; err != nil {
+			return err
+		}
+		reservation, err := s.budget.ReserveInTx(ctx, tx, commercial.BudgetRequest{TenantID: row.TenantID, RunID: row.RunID, Key: callKey, Upper: s.policy.CallUpper, Deadline: row.Deadline})
+		if err != nil {
+			if mapped := s.mapReserveDenial(err); mapped != nil {
+				if e := tx.Where("tenant_id = ? AND call_key = ?", row.TenantID, callKey).Delete(&CraftBudgetCallRow{}).Error; e != nil {
+					return e
+				}
+				if e := s.pauseCraftRunInTx(ctx, tx, row); e != nil {
+					return e
+				}
+				preparation.denial = mapped
+				return nil
+			}
+			return err
+		}
+		_ = reservation
+		if err := s.budget.MarkReservationDispatchedInTx(ctx, tx, row.TenantID, callKey); err != nil {
+			return err
+		}
+		now := s.now()
+		journal := CraftChargeStartJournalRow{TenantID: row.TenantID, RunID: row.RunID, ActivityKey: activityID,
+			GrantID: row.GrantID, CallID: callID, ReservationKey: callKey, State: "intent", Protocol: protocol,
+			RunRevision: run.Revision, CreatedAt: now, UpdatedAt: now}
+		if err := tx.Create(&journal).Error; err != nil {
+			return err
+		}
+		preparation.journal = journal
+		preparation.status = craftChargeStartPrepared
+		return nil
+	})
+	if err != nil {
+		return craftChargeStartPreparation{}, err
+	}
+	return preparation, nil
+}
+
+// PauseRunForBudget orders a durable budget pause against StartBinding using
+// the same agent_runs write lock.
+func (s *CraftBudgetService) PauseRunForBudget(ctx context.Context, grantID string) error {
+	row, err := s.loadGrant(ctx, grantID)
+	if err != nil {
+		return err
+	}
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if _, err := lockCraftRun(tx, ctx, row); err != nil {
+			return err
+		}
+		return s.pauseCraftRunInTx(ctx, tx, row)
+	})
+}
+
+func (s *CraftBudgetService) pauseCraftRunInTx(ctx context.Context, tx *gorm.DB, grant CraftBudgetGrantRow) error {
+	return s.runs.PauseForCraftBudgetInTx(ctx, tx,
+		agentruntime.RunKey{TenantID: grant.TenantID, RunID: grant.RunID}, craftBudgetWaitReason)
+}
+
+type lockedCraftRun struct {
+	SessionID, Status, WaitReason string
+	Revision                      int64
+}
+
+func lockCraftRun(tx *gorm.DB, ctx context.Context, grant CraftBudgetGrantRow) (lockedCraftRun, error) {
+	// A no-op UPDATE acquires the row write lock on PostgreSQL and SQLite's
+	// database write reservation before reading the state used by the fence.
+	lock := tx.WithContext(ctx).Table("agent_runs").Where("tenant_id = ? AND run_id = ?", grant.TenantID, grant.RunID).
+		UpdateColumn("revision", gorm.Expr("revision"))
+	if lock.Error != nil {
+		return lockedCraftRun{}, lock.Error
+	}
+	if lock.RowsAffected != 1 {
+		return lockedCraftRun{}, craft.ErrNotFound
+	}
+	var run lockedCraftRun
+	err := tx.WithContext(ctx).Table("agent_runs").Select("session_id, status, wait_reason, revision").
+		Where("tenant_id = ? AND run_id = ?", grant.TenantID, grant.RunID).Take(&run).Error
+	return run, err
+}
+
+func chargeableCraftRun(run lockedCraftRun) error {
+	if run.Status == "waiting_user" && run.WaitReason == craftBudgetWaitReason {
+		return craft.ErrBudgetDenied
+	}
+	if run.Status != "queued" && run.Status != "running" && run.Status != "recovering" {
+		return craft.ErrConflict
+	}
+	return nil
 }
 
 func (b CraftCallBinding) validate() error {
@@ -150,6 +490,7 @@ const craftCallSeqAttempts = 16
 // test fakes must never be wired into a charging deployment.
 type CraftBudgetService struct {
 	db        *gorm.DB
+	runs      *reporun.AgentRunStore
 	budget    *repocommercial.BudgetStore
 	reconcile *commercialsvc.BudgetService
 	policy    CraftBudgetPolicy
@@ -177,6 +518,7 @@ func NewCraftBudgetService(db *gorm.DB, store *repocommercial.BudgetStore, polic
 	}
 	return &CraftBudgetService{
 		db:        db,
+		runs:      reporun.NewAgentRunStore(db),
 		budget:    store,
 		reconcile: reconcile,
 		policy:    policy,
@@ -215,7 +557,7 @@ func (s *CraftBudgetService) loadGrant(ctx context.Context, grantID string) (Cra
 func (s *CraftBudgetService) snapshot(ctx context.Context, row CraftBudgetGrantRow) craft.BudgetGrant {
 	var used int64
 	_ = s.db.WithContext(ctx).Model(&CraftBudgetCallRow{}).
-		Where("tenant_id = ? AND grant_id = ?", row.TenantID, row.GrantID).Count(&used).Error
+		Where("tenant_id = ? AND grant_id = ? AND call_seq >= 0", row.TenantID, row.GrantID).Count(&used).Error
 	return craft.BudgetGrant{
 		ID:        row.GrantID,
 		Deadline:  row.Deadline,
@@ -236,7 +578,26 @@ func (s *CraftBudgetService) snapshot(ctx context.Context, row CraftBudgetGrantR
 // therefore blocks on the FIRST call, not at admission).
 func (s *CraftBudgetService) Admit(ctx context.Context, scope craft.Scope, runID string) (craft.BudgetGrant, error) {
 	if scope.TenantID == 0 || runID == "" {
-		return craft.BudgetGrant{}, fmt.Errorf("%w: admission needs a tenant scope and a run id", craft.ErrInvalidInput)
+		return craft.BudgetGrant{}, fmt.Errorf("%w: admission needs a tenant and run id", craft.ErrInvalidInput)
+	}
+	// The gateway's credential request carries only a Run ID. Resolve its
+	// Task/Session from the durable, tenant-scoped Run instead of accepting a
+	// client-supplied Session ID or creating a budget keyed to the Run.
+	var run struct{ SessionID string }
+	runErr := s.db.WithContext(ctx).Table("agent_runs").Select("session_id").
+		Where("tenant_id = ? AND run_id = ?", scope.TenantID, runID).Take(&run).Error
+	if runErr == nil {
+		if scope.SessionID != "" && scope.SessionID != run.SessionID {
+			return craft.BudgetGrant{}, craft.ErrForbidden
+		}
+		scope.SessionID = run.SessionID
+	} else if errors.Is(runErr, gorm.ErrRecordNotFound) {
+		return craft.BudgetGrant{}, craft.ErrNotFound
+	} else {
+		return craft.BudgetGrant{}, runErr
+	}
+	if scope.SessionID == "" || scope.SessionID == runID {
+		return craft.BudgetGrant{}, fmt.Errorf("%w: durable Task identity unavailable", craft.ErrInvalidInput)
 	}
 	var row CraftBudgetGrantRow
 	err := s.db.WithContext(ctx).Where("tenant_id = ? AND run_id = ?", scope.TenantID, runID).First(&row).Error
@@ -262,9 +623,17 @@ func (s *CraftBudgetService) Admit(ctx context.Context, scope craft.Scope, runID
 	} else if err != nil {
 		return craft.BudgetGrant{}, err
 	}
-	// Register (idempotently) the commercial task budget of this run. A
-	// pre-existing commercial row is authoritative and never mutated here.
-	if err := s.budget.EnsureTaskBudget(ctx, row.TenantID, row.RunID, s.policy.TaskLimit, row.Deadline); err != nil {
+	// The Task is the Session. Its commercial owner row is registered once;
+	// every Run is a zero-limit child mapping to that same Task Budget.
+	if err := s.budget.EnsureTaskBudget(ctx, row.TenantID, scope.SessionID, s.policy.TaskLimit, row.Deadline); err != nil {
+		return s.snapshot(ctx, row), err
+	}
+	// A newly admitted durable Run is an authorized continuation of the same
+	// Task. Renew only the root deadline; G4 preserves limit and counters.
+	if err := s.budget.RenewTaskBudgetDeadline(ctx, row.TenantID, scope.SessionID, row.Deadline); err != nil {
+		return s.snapshot(ctx, row), err
+	}
+	if err := s.budget.AttachChildRun(ctx, row.TenantID, row.RunID, scope.SessionID); err != nil {
 		return s.snapshot(ctx, row), err
 	}
 	return s.snapshot(ctx, row), nil
@@ -284,6 +653,9 @@ func (s *CraftBudgetService) AuthorizeBinding(ctx context.Context, grantID strin
 	}
 	if ferr := s.fastRefuse(row); ferr != nil {
 		return "", ferr
+	}
+	if err := s.requireRunChargeable(ctx, row); err != nil {
+		return "", err
 	}
 	for attempt := 0; attempt < craftCallSeqAttempts; attempt++ {
 		var seq int64
@@ -313,10 +685,10 @@ func (s *CraftBudgetService) AuthorizeBinding(ctx context.Context, grantID strin
 			continue
 		}
 		if err := s.enforceCallCap(ctx, row, call); err != nil {
-			return "", err
+			return "", s.pauseOnDenial(ctx, row, err)
 		}
 		if err := s.authorizeReservedCall(ctx, row, call, true); err != nil {
-			return "", err
+			return "", s.pauseOnDenial(ctx, row, err)
 		}
 		return callID, nil
 	}
@@ -338,6 +710,9 @@ func (s *CraftBudgetService) AuthorizeCall(ctx context.Context, grantID, callID 
 	if ferr := s.fastRefuse(row); ferr != nil {
 		return ferr
 	}
+	if err := s.requireRunChargeable(ctx, row); err != nil {
+		return err
+	}
 	callKey := CraftCallKey(callID)
 	var call CraftBudgetCallRow
 	err = s.db.WithContext(ctx).Where("tenant_id = ? AND call_key = ?", row.TenantID, callKey).First(&call).Error
@@ -356,14 +731,27 @@ func (s *CraftBudgetService) AuthorizeCall(ctx context.Context, grantID, callID 
 			return err
 		}
 		if err := s.enforceCallCap(ctx, row, call); err != nil {
-			return err
+			return s.pauseOnDenial(ctx, row, err)
 		}
 	} else if err != nil {
 		return err
+	} else if call.CallSeq < 0 {
+		return fmt.Errorf("%w: call id is reserved for an extension marker", craft.ErrConflict)
 	} else if call.GrantID != row.GrantID {
 		return fmt.Errorf("%w: call %s belongs to another grant", craft.ErrForbidden, callID)
 	}
-	return s.authorizeReservedCall(ctx, row, call, fresh)
+	return s.pauseOnDenial(ctx, row, s.authorizeReservedCall(ctx, row, call, fresh))
+}
+
+// AuthorizeSandbox reserves a server-configured activity upper before one
+// sandbox action. The event identity must come from the durable lifecycle
+// event, so retrying its admission cannot create a second Task hold. The
+// sandbox executor must call this before the external action, not after it.
+func (s *CraftBudgetService) AuthorizeSandbox(ctx context.Context, grantID, activityID string) error {
+	if activityID == "" || len(activityID) > 256 {
+		return fmt.Errorf("%w: invalid sandbox activity identity", craft.ErrInvalidInput)
+	}
+	return s.AuthorizeCall(ctx, grantID, "sandbox/"+activityID)
 }
 
 // reserveCall holds the commercial budget of one call WITHOUT dispatching it.
@@ -503,7 +891,7 @@ func (s *CraftBudgetService) fastRefuse(row CraftBudgetGrantRow) error {
 func (s *CraftBudgetService) enforceCallCap(ctx context.Context, row CraftBudgetGrantRow, call CraftBudgetCallRow) error {
 	var used int64
 	if err := s.db.WithContext(ctx).Model(&CraftBudgetCallRow{}).
-		Where("tenant_id = ? AND grant_id = ?", row.TenantID, row.GrantID).Count(&used).Error; err != nil {
+		Where("tenant_id = ? AND grant_id = ? AND call_seq >= 0", row.TenantID, row.GrantID).Count(&used).Error; err != nil {
 		return err
 	}
 	if int(used) <= row.MaxCalls {
@@ -608,32 +996,72 @@ func (s *CraftBudgetService) Extend(ctx context.Context, grantID, key string, ex
 	if ferr := s.fastRefuse(row); ferr != nil {
 		return ferr
 	}
-	// Whole-operation idempotency per key: when the commercial extension key
-	// already applied, neither fence moves again. ExtendTaskLimit alone cannot
-	// distinguish "applied now" from "idempotent replay", so the recorded key
-	// is checked explicitly before raising the craft cap.
-	var applied repocommercial.TaskBudgetExtensionRow
-	err = s.db.WithContext(ctx).
-		Where("tenant_id = ? AND run_id = ? AND key = ?", row.TenantID, row.RunID, key).
-		First(&applied).Error
-	if err == nil {
-		return nil // this key already raised both fences exactly once
-	}
-	if !errors.Is(err, gorm.ErrRecordNotFound) {
-		return err
-	}
 	if err := s.budget.ExtendTaskLimit(ctx, row.TenantID, row.RunID, key, extraCredits); err != nil {
 		if mapped := s.mapReserveDenial(err); mapped != nil {
 			return mapped
 		}
 		return err
 	}
-	return s.db.WithContext(ctx).Model(&CraftBudgetGrantRow{}).
-		Where("grant_id = ? AND allowed = ?", grantID, true).
-		Updates(map[string]any{
-			"max_calls":  gorm.Expr("max_calls + ?", extraCalls),
-			"updated_at": s.now(),
-		}).Error
+	var applied repocommercial.TaskBudgetExtensionRow
+	if err := s.db.WithContext(ctx).Where("tenant_id = ? AND run_id = ? AND key = ?", row.TenantID, row.RunID, key).Take(&applied).Error; err != nil {
+		return err
+	}
+	if commercial.Credits(applied.ExtraMicro) != extraCredits {
+		return fmt.Errorf("%w: extension key reused with different credits", craft.ErrConflict)
+	}
+	return s.applyCraftCallExtension(ctx, row, key, extraCalls)
+}
+
+// applyCraftCallExtension records the extension key and increments the logical
+// call cap in one transaction. Negative CallSeq values are durable extension
+// markers in the existing call table and are excluded from call counts. G4
+// commits first, so a replay can repair this transaction after process loss.
+func (s *CraftBudgetService) applyCraftCallExtension(ctx context.Context, grant CraftBudgetGrantRow, key string, extraCalls int) error {
+	callID := fmt.Sprintf("extension/%d/%s/%s", grant.TenantID, grant.RunID, key)
+	callKey := CraftCallKey(callID)
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var applied CraftBudgetCallRow
+		err := tx.Where("tenant_id = ? AND call_key = ?", grant.TenantID, callKey).Take(&applied).Error
+		if err == nil {
+			if applied.GrantID != grant.GrantID || applied.CallSeq != -int64(extraCalls) {
+				return fmt.Errorf("%w: extension key reused with different call cap", craft.ErrConflict)
+			}
+			return nil
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		marker := CraftBudgetCallRow{
+			TenantID: grant.TenantID, CallKey: callKey, GrantID: grant.GrantID,
+			RunID: grant.RunID, ModelID: "__craft_budget_extension__",
+			Funding: commercial.FundingPlatform, CallSeq: -int64(extraCalls), CallID: callID,
+			CreatedAt: s.now(),
+		}
+		if err := tx.Create(&marker).Error; err != nil {
+			return err
+		}
+		result := tx.Model(&CraftBudgetGrantRow{}).
+			Where("tenant_id = ? AND grant_id = ?", grant.TenantID, grant.GrantID).
+			Updates(map[string]any{"max_calls": gorm.Expr("max_calls + ?", extraCalls), "updated_at": s.now()})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return craft.ErrNotFound
+		}
+		return nil
+	})
+	if err == nil {
+		return nil
+	}
+	// Concurrent same-key callers may race after the initial read. Resolve a
+	// unique-index winner after rollback; do not apply the cap a second time.
+	var applied CraftBudgetCallRow
+	readErr := s.db.WithContext(ctx).Where("tenant_id = ? AND call_key = ?", grant.TenantID, callKey).Take(&applied).Error
+	if readErr == nil && applied.GrantID == grant.GrantID && applied.CallSeq == -int64(extraCalls) {
+		return nil
+	}
+	return err
 }
 
 // GrantSnapshot returns the live port projection of one grant (identity,
@@ -645,4 +1073,168 @@ func (s *CraftBudgetService) GrantSnapshot(ctx context.Context, grantID string) 
 		return craft.BudgetGrant{}, err
 	}
 	return s.snapshot(ctx, row), nil
+}
+
+const craftBudgetWaitReason = "budget_exhausted"
+
+// requireRunChargeable prevents a separately extended grant from bypassing a
+// paused Run. A durable Run and its Session-rooted G4 mapping are mandatory
+// because they provide the pause and recovery authority.
+func (s *CraftBudgetService) requireRunChargeable(ctx context.Context, grant CraftBudgetGrantRow) error {
+	var run struct{ SessionID, Status, WaitReason string }
+	err := s.db.WithContext(ctx).Table("agent_runs").Select("session_id, status, wait_reason").
+		Where("tenant_id = ? AND run_id = ?", grant.TenantID, grant.RunID).Take(&run).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return craft.ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	var mapping repocommercial.TaskBudgetRow
+	if err := s.db.WithContext(ctx).Where("tenant_id = ? AND run_id = ?", grant.TenantID, grant.RunID).Take(&mapping).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return craft.ErrNotFound
+		}
+		return err
+	}
+	if run.SessionID == "" || mapping.RootRunID != run.SessionID {
+		return craft.ErrForbidden
+	}
+	if run.Status == "waiting_user" && run.WaitReason == craftBudgetWaitReason {
+		return craft.ErrBudgetDenied
+	}
+	if run.Status != "queued" && run.Status != "running" && run.Status != "recovering" {
+		return fmt.Errorf("%w: run is not chargeable", craft.ErrConflict)
+	}
+	return nil
+}
+
+// pauseOnDenial persists the budget decision before returning the refusal to
+// the forwarder. No already dispatched activity is rolled back here.
+func (s *CraftBudgetService) pauseOnDenial(ctx context.Context, grant CraftBudgetGrantRow, denial error) error {
+	if denial == nil || !(errors.Is(denial, craft.ErrBudgetDenied) || errors.Is(denial, craft.ErrGrantExhausted)) {
+		return denial
+	}
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if _, err := lockCraftRun(tx, ctx, grant); err != nil {
+			return err
+		}
+		return s.pauseCraftRunInTx(ctx, tx, grant)
+	})
+	if err != nil {
+		return err
+	}
+	return denial
+}
+
+// BudgetPause reads the frozen T00 fact from durable state. Limit and Used
+// are logical call counts, never Credits, account balance, or a secret.
+func (s *CraftBudgetService) BudgetPause(ctx context.Context, scope craft.Scope, runID string) (craft.BudgetPause, error) {
+	if scope.TenantID == 0 || scope.SessionID == "" || scope.UserID == "" || runID == "" {
+		return craft.BudgetPause{}, craft.ErrInvalidInput
+	}
+	if err := s.authorizeBudgetActor(ctx, scope); err != nil {
+		return craft.BudgetPause{}, err
+	}
+	var grant CraftBudgetGrantRow
+	if err := s.db.WithContext(ctx).Where("tenant_id = ? AND run_id = ?", scope.TenantID, runID).Take(&grant).Error; err != nil {
+		return craft.BudgetPause{}, craft.ErrNotFound
+	}
+	var run struct{ Status, WaitReason string }
+	err := s.db.WithContext(ctx).Table("agent_runs").Select("status, wait_reason").
+		Where("tenant_id = ? AND session_id = ? AND run_id = ?", scope.TenantID, scope.SessionID, runID).Take(&run).Error
+	if err != nil || run.Status != "waiting_user" || run.WaitReason != craftBudgetWaitReason {
+		return craft.BudgetPause{}, craft.ErrNotFound
+	}
+	grantView := s.snapshot(ctx, grant)
+	return craft.BudgetPause{RunID: runID, Reason: "exhausted", Limit: int64(grantView.MaxCalls), Used: int64(grantView.UsedCalls)}, nil
+}
+
+// authorizeBudgetActor is deliberately checked against current server rows,
+// not the caller's role claim. The Task owner or an active tenant billing
+// admin/owner may extend; ordinary collaborators never can.
+func (s *CraftBudgetService) authorizeBudgetActor(ctx context.Context, scope craft.Scope) error {
+	var session struct{ UserID string }
+	err := s.db.WithContext(ctx).Table("sessions").Select("user_id").
+		Where("tenant_id = ? AND id = ?", scope.TenantID, scope.SessionID).Take(&session).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return craft.ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if session.UserID == scope.UserID {
+		return nil
+	}
+	var member struct{ Role, Status string }
+	err = s.db.WithContext(ctx).Table("tenant_members").Select("role, status").
+		Where("tenant_id = ? AND user_id = ?", scope.TenantID, scope.UserID).Take(&member).Error
+	if err == nil && member.Status == "active" && (member.Role == "admin" || member.Role == "owner") {
+		return nil
+	}
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
+	return craft.ErrForbidden
+}
+
+// ExtendAndResume raises a paused Run's grant and requests recovery only
+// after every dispatched effect is reconciled. Unknown outcomes keep the Run
+// parked, preventing a resumed worker from replaying an uncertain call.
+func (s *CraftBudgetService) ExtendAndResume(ctx context.Context, scope craft.Scope, runID, key string, extraCalls int, extraCredits commercial.Credits) error {
+	if err := s.authorizeBudgetActor(ctx, scope); err != nil {
+		return err
+	}
+	var grant CraftBudgetGrantRow
+	if err := s.db.WithContext(ctx).Where("tenant_id = ? AND run_id = ?", scope.TenantID, runID).Take(&grant).Error; err != nil {
+		return craft.ErrNotFound
+	}
+	if _, err := s.BudgetPause(ctx, scope, runID); err != nil {
+		return err
+	}
+	if err := s.Extend(ctx, grant.GrantID, key, extraCalls, extraCredits); err != nil {
+		return err
+	}
+	if err := s.Reconcile(ctx, grant.GrantID); err != nil {
+		return err
+	}
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		run, err := lockCraftRun(tx, ctx, grant)
+		if err != nil {
+			return err
+		}
+		if run.SessionID != scope.SessionID || run.Status != "waiting_user" || run.WaitReason != craftBudgetWaitReason {
+			return craft.ErrConflict
+		}
+		result := tx.Table("agent_runs").Where(
+			"tenant_id = ? AND session_id = ? AND run_id = ? AND status = ? AND wait_reason = ?",
+			scope.TenantID, scope.SessionID, runID, "waiting_user", craftBudgetWaitReason).
+			Updates(map[string]any{"status": "recovering", "wait_reason": "", "revision": gorm.Expr("revision + 1"), "updated_at": s.now()})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return craft.ErrConflict
+		}
+		return nil
+	})
+}
+
+// validateDockerSendRun applies the server-owned Run fence to each receipt
+// transition. The journal's original revision is immutable; a changed Run
+// epoch can never authorize a provider send.
+func (s *CraftBudgetService) validateDockerSendRun(ctx context.Context, grant CraftBudgetGrantRow, journal CraftChargeStartJournalRow) error {
+	if grant.TenantID != journal.TenantID || grant.RunID != journal.RunID || grant.GrantID != journal.GrantID || journal.State != "intent" {
+		return fmt.Errorf("%w: Docker operation does not match its prepared grant epoch", craft.ErrConflict)
+	}
+	var run lockedCraftRun
+	err := s.db.WithContext(ctx).Table("agent_runs").Select("session_id, status, wait_reason, revision").
+		Where("tenant_id = ? AND run_id = ?", journal.TenantID, journal.RunID).Take(&run).Error
+	if err != nil {
+		return err
+	}
+	if run.Revision != journal.RunRevision {
+		return fmt.Errorf("%w: Docker operation Run revision changed", craft.ErrConflict)
+	}
+	return chargeableCraftRun(run)
 }

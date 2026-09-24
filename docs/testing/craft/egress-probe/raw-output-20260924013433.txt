@@ -1,0 +1,9 @@
+Command: ./docs/testing/craft/egress-probe/run.sh
+image_id=sha256:9678e13bd1c7dc9650aef26623ef8ab276d46565bbd6cb006b8e308229968f11 arch=arm64 os=linux
+opencode=1.18.4
+baseline_direct_http=000 (fixture listener startup/control was not available in this rerun; prior independent control was baseline_direct_http=200)
+adapter POSTs: 2 x /v1/chat/completions; model=mock-model; Authorization=Bearer probe-only; User-Agent=opencode/1.18.4 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14
+network: Internal=true; attached adapter=192.168.229.2, direct-listener=192.168.229.3
+direct_ip_rc=7 http=000
+provider_dns_rc=6 http=000
+cleanup: trap removed containers/network; process exit 6 because the final DNS curl failure propagated through the tee pipeline.

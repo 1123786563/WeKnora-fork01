@@ -1,0 +1,16 @@
+{
+  "cleanup-evidence.jsonl": "f2d1517eac427f27c07975bad05346c3b7b30f4cb5bddf1c535a06aff3b5b538",
+  "logs/boundary-smoke-absence-craft-e0-20260924T021355Z-33150-direct-evidence.stderr.txt": "3524c2a3d2a4537428ee0f04340f9494fb590b56be3d4ba1152aa99dd7eb81d3",
+  "logs/boundary-smoke-absence-craft-e0-20260924T021355Z-33150-direct-evidence.stdout.txt": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+  "logs/boundary-smoke-absence-craft-e0-20260924T021355Z-33150-external.stderr.txt": "74b4bba335cff50b7cb3f433d928aa21f6e6e230539681d8b8139d9185092169",
+  "logs/boundary-smoke-absence-craft-e0-20260924T021355Z-33150-external.stdout.txt": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+  "logs/boundary-smoke-cleanup-craft-e0-20260924T021355Z-33150-direct-evidence.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "logs/boundary-smoke-cleanup-craft-e0-20260924T021355Z-33150-direct-evidence.stdout.txt": "9d528d20189cf0af3c2536351644e16478198561a06d09866907154f4b1103f7",
+  "logs/boundary-smoke-cleanup-craft-e0-20260924T021355Z-33150-external.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "logs/boundary-smoke-cleanup-craft-e0-20260924T021355Z-33150-external.stdout.txt": "060d249007e02ade1c88440866d666b608a1c5517a0e994b5cbe7b77afa7db52",
+  "logs/boundary-smoke-image-inspect.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "logs/boundary-smoke-image-inspect.stdout.txt": "5754a10a0caa82ffa0def44ec2d51b14b19a889b55c821be32e17be52fb2a6c2",
+  "logs/boundary-smoke-volume-init-direct_evidence.stderr.txt": "4ca4fb572b7d094f41f61dc332adc47d3982dd530f5ba06a3fca9c5b82cb52f5",
+  "logs/boundary-smoke-volume-init-direct_evidence.stdout.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "manifest.json": "278f75228549fd35cabf3196cfd7aa36abf8d82af096a9cb4984a9e63c833553"
+}

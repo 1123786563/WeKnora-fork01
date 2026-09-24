@@ -1,0 +1,56 @@
+[
+    {
+        "Name": "t19vf-20260924-private",
+        "Id": "87fb1c56bfacd1853e8ecbccc90934b4a17fd3c3946ee2d8d3daf718ae81f0c1",
+        "Created": "2026-09-24T11:12:25.492346916+08:00",
+        "Scope": "local",
+        "Driver": "bridge",
+        "EnableIPv4": true,
+        "EnableIPv6": false,
+        "IPAM": {
+            "Driver": "default",
+            "Options": {},
+            "Config": [
+                {
+                    "Subnet": "192.168.229.0/24",
+                    "Gateway": "192.168.229.1"
+                }
+            ]
+        },
+        "Internal": true,
+        "Attachable": false,
+        "Ingress": false,
+        "ConfigFrom": {
+            "Network": ""
+        },
+        "ConfigOnly": false,
+        "Options": {},
+        "Labels": {},
+        "Containers": {
+            "b09309a82683553a453f28fa092b7e790a52d870c8142ae9669f6c35fb449b79": {
+                "Name": "t19vf-20260924-adapter",
+                "EndpointID": "45ba5af9a19309695e4183f1544c60c695a62d209a6e69f7d000dde0c9f7509a",
+                "MacAddress": "da:15:b4:a8:b6:34",
+                "IPv4Address": "192.168.229.2/24",
+                "IPv6Address": ""
+            },
+            "bd242b3f00db5ebdb3f70a98b2b42ef72110f4c268bb7e6a7e9ee1c1e368a74e": {
+                "Name": "t19vf-20260924-client",
+                "EndpointID": "81e8350b3fc0c28789023b24102459450e659b5caed683e5646a13d9e044cd65",
+                "MacAddress": "8a:91:31:15:1d:d9",
+                "IPv4Address": "192.168.229.3/24",
+                "IPv6Address": ""
+            }
+        },
+        "Status": {
+            "IPAM": {
+                "Subnets": {
+                    "192.168.229.0/24": {
+                        "IPsInUse": 5,
+                        "DynamicIPsAvailable": 251
+                    }
+                }
+            }
+        }
+    }
+]

@@ -1,0 +1,3 @@
+image_id=sha256:9678e13bd1c7dc9650aef26623ef8ab276d46565bbd6cb006b8e308229968f11 arch=arm64 os=linux
+1.18.4
+baseline_direct_http=000

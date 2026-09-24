@@ -1,0 +1,176 @@
+{
+  "artifact_dir": "/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/docs/testing/craft/egress-probe/e0-fix2/boundary-smoke-craft-e0-20260924T021355Z-33150",
+  "blockers": [
+    "one-phase recorder smoke only; fixed E0 matrix and pinned OpenCode provenance were not run",
+    "RuntimeError: command failed (boundary-smoke-volume-init-direct_evidence): rc=1 timed_out=False: Traceback (most recent call last):\n  File \"<string>\", line 1, in <module>\nPermissionError: [Errno 1] Operation not permitted: '/evidence'\n"
+  ],
+  "cases": {},
+  "cleanup_absent": true,
+  "cleanup_evidence_file": "cleanup-evidence.jsonl",
+  "cleanup_inventory": [],
+  "commands": [
+    {
+      "argv": [
+        "docker",
+        "image",
+        "inspect",
+        "sha256:9678e13bd1c7dc9650aef26623ef8ab276d46565bbd6cb006b8e308229968f11"
+      ],
+      "elapsed_s": 1.387,
+      "exit_code": 0,
+      "stderr": "",
+      "stderr_file": "logs/boundary-smoke-image-inspect.stderr.txt",
+      "stdout": "[\n    {\n        \"Id\": \"sha256:9678e13bd1c7dc9650aef26623ef8ab276d46565bbd6cb006b8e308229968f11\",\n        \"RepoTags\": [\n            \"weknora-craft-runtime:1.18.4\"\n        ],\n        \"RepoDigests\": [\n            \"weknora-craft-runtime@sha256:9678e13bd1c7dc9650aef26623ef8ab276d46565bbd6cb006b8e308229968f11\"\n        ],\n        \"Comment\": \"buildkit.dockerfile.v0\",\n        \"Created\": \"2026-09-24T01:23:03.457319518+08:00\",\n        \"Config\": {\n            \"User\": \"10001:10001\",\n            \"ExposedPorts\": {\n                \"4096/tcp\": {}\n            },\n            \"Env\": [\n                \"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\",\n                \"HOME=/home/craft\",\n                \"XDG_CONFIG_HOME=/home/craft/.config\",\n                \"XDG_DATA_HOME=/home/craft/.local/share\"\n            ],\n            \"Entrypoint\": [\n                \"/usr/local/bin/opencode\"\n            ],\n            \"Cmd\": [\n                \"serve\",\n                \"--hostname\",\n                \"0.0.0.0\",\n                \"--port\",\n                \"4096\"\n            ],\n            \"Volumes\": {\n                \"/home/craft/.config/opencode\": {},\n                \"/home/craft/.local/share/opencode\": {}\n            },\n            \"WorkingDir\": \"/workspace/output\",\n            \"ArgsEscaped\": true\n        },\n        \"Architecture\": \"arm64\",\n        \"Os\": \"linux\",\n        \"Size\": 415783393,\n        \"RootFS\": {\n            \"Type\": \"layers\",\n            \"Layers\": [\n                \"sha256:055ab12bd547e17a0630037f06a186cf405e3f61bb03a614562ca8f5ab52a8be\",\n                \"sha256:459f6e7cb9c93b806e821f4e51c5171763b9abfa140db439ffb60d2343e83f8c\",\n                \"sha256:3958e37a59793bc966e21d6c0eb76b039c5c678246a1956db5d379e29a2cc7bc\",\n                \"sha256:dd9e7e82a4f78c9ed0184d2ca8814f087a6974df6396289bd4872aa303ca11f7\",\n                \"sha256:3346287ab291da7508b9fc2b98ab75cd4dc3796404ee22184d139e57779c1682\",\n                \"sha256:feb28742857c64ffa9174608bbd851625605a263e3a980c71d4313e6f8d56c28\",\n                \"sha256:618ebd3e70fd81c0d86b87d96baa4e45c60f37b9c8b43d73169f1789722644af\",\n                \"sha256:7f9516e42e350729fd2aad9cb3a3423dec11196ce5621b107a42efb47c978ba0\",\n                \"sha256:f161e184786c5f3c8e503b3b1284f574510dd5968283af753595fe871756d744\",\n                \"sha256:5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef\",\n                \"sha256:3c9b4afde135050f500fa1aa22a968624726ba19f755a282db54b0b9cdda222d\",\n                \"sha256:5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef\",\n                \"sha256:5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef\"\n            ]\n        },\n        \"Metadata\": {\n            \"LastTagTime\": \"2026-09-23T17:23:14.977443808Z\"\n        },\n        \"Descriptor\": {\n            \"mediaType\": \"application/vnd.oci.image.index.v1+json\",\n            \"digest\": \"sha256:9678e13bd1c7dc9650aef26623ef8ab276d46565bbd6cb006b8e308229968f11\",\n            \"size\": 856\n        },\n        \"Identity\": {\n            \"Pull\": [\n                {\n                    \"Repository\": \"docker.io/library/weknora-craft-runtime\"\n                }\n            ],\n            \"Build\": [\n                {\n                    \"Ref\": \"6xy2t8j0zg42eob77fqja8ey8\",\n                    \"CreatedAt\": \"2026-09-24T01:23:18.86837348+08:00\"\n                }\n            ]\n        }\n    }\n]\n",
+      "stdout_file": "logs/boundary-smoke-image-inspect.stdout.txt",
+      "timed_out": false
+    },
+    {
+      "argv": [
+        "docker",
+        "network",
+        "create",
+        "--internal",
+        "craft-e0-20260924T021355Z-33150-external"
+      ],
+      "elapsed_s": 0.203,
+      "exit_code": 0,
+      "stderr": "",
+      "stdout": "2bbac65c9fadf807415e793feaa85a70916073cb18fbe650d6cb816d93f2247e\n",
+      "timed_out": false
+    },
+    {
+      "argv": [
+        "docker",
+        "volume",
+        "create",
+        "craft-e0-20260924T021355Z-33150-direct-evidence"
+      ],
+      "elapsed_s": 0.069,
+      "exit_code": 0,
+      "stderr": "",
+      "stdout": "craft-e0-20260924T021355Z-33150-direct-evidence\n",
+      "timed_out": false
+    },
+    {
+      "argv": [
+        "docker",
+        "run",
+        "--rm",
+        "--network",
+        "none",
+        "--user",
+        "0:0",
+        "--cap-drop",
+        "ALL",
+        "--cap-add",
+        "CHOWN",
+        "--mount",
+        "type=volume,source=craft-e0-20260924T021355Z-33150-direct-evidence,target=/evidence",
+        "--entrypoint",
+        "python3",
+        "sha256:9678e13bd1c7dc9650aef26623ef8ab276d46565bbd6cb006b8e308229968f11",
+        "-c",
+        "import os; os.chown('/evidence',10001,10001); os.chmod('/evidence',0o700)"
+      ],
+      "elapsed_s": 1.124,
+      "exit_code": 1,
+      "stderr": "Traceback (most recent call last):\n  File \"<string>\", line 1, in <module>\nPermissionError: [Errno 1] Operation not permitted: '/evidence'\n",
+      "stderr_file": "logs/boundary-smoke-volume-init-direct_evidence.stderr.txt",
+      "stdout": "",
+      "stdout_file": "logs/boundary-smoke-volume-init-direct_evidence.stdout.txt",
+      "timed_out": false
+    },
+    {
+      "argv": [
+        "docker",
+        "volume",
+        "rm",
+        "craft-e0-20260924T021355Z-33150-direct-evidence"
+      ],
+      "elapsed_s": 0.05,
+      "exit_code": 0,
+      "stderr": "",
+      "stderr_file": "logs/boundary-smoke-cleanup-craft-e0-20260924T021355Z-33150-direct-evidence.stderr.txt",
+      "stdout": "craft-e0-20260924T021355Z-33150-direct-evidence\n",
+      "stdout_file": "logs/boundary-smoke-cleanup-craft-e0-20260924T021355Z-33150-direct-evidence.stdout.txt",
+      "timed_out": false
+    },
+    {
+      "argv": [
+        "docker",
+        "volume",
+        "inspect",
+        "craft-e0-20260924T021355Z-33150-direct-evidence"
+      ],
+      "elapsed_s": 0.048,
+      "exit_code": 1,
+      "stderr": "Error response from daemon: get craft-e0-20260924T021355Z-33150-direct-evidence: no such volume\n",
+      "stderr_file": "logs/boundary-smoke-absence-craft-e0-20260924T021355Z-33150-direct-evidence.stderr.txt",
+      "stdout": "[]\n",
+      "stdout_file": "logs/boundary-smoke-absence-craft-e0-20260924T021355Z-33150-direct-evidence.stdout.txt",
+      "timed_out": false
+    },
+    {
+      "argv": [
+        "docker",
+        "network",
+        "rm",
+        "craft-e0-20260924T021355Z-33150-external"
+      ],
+      "elapsed_s": 0.112,
+      "exit_code": 0,
+      "stderr": "",
+      "stderr_file": "logs/boundary-smoke-cleanup-craft-e0-20260924T021355Z-33150-external.stderr.txt",
+      "stdout": "craft-e0-20260924T021355Z-33150-external\n",
+      "stdout_file": "logs/boundary-smoke-cleanup-craft-e0-20260924T021355Z-33150-external.stdout.txt",
+      "timed_out": false
+    },
+    {
+      "argv": [
+        "docker",
+        "network",
+        "inspect",
+        "craft-e0-20260924T021355Z-33150-external"
+      ],
+      "elapsed_s": 0.043,
+      "exit_code": 1,
+      "stderr": "Error response from daemon: network craft-e0-20260924T021355Z-33150-external not found\n",
+      "stderr_file": "logs/boundary-smoke-absence-craft-e0-20260924T021355Z-33150-external.stderr.txt",
+      "stdout": "[]\n",
+      "stdout_file": "logs/boundary-smoke-absence-craft-e0-20260924T021355Z-33150-external.stdout.txt",
+      "timed_out": false
+    }
+  ],
+  "evidence_type": "runner-boundary-smoke",
+  "finished_utc": "2026-09-24T02:13:58Z",
+  "host_commands_file": "host-commands.jsonl",
+  "image": {
+    "binary_sha256": "3557e87db8c7db70e8ebd42157df1246554120896b115c462b760ff248cf751e",
+    "id": "sha256:9678e13bd1c7dc9650aef26623ef8ab276d46565bbd6cb006b8e308229968f11",
+    "platform": "linux/arm64",
+    "version": "1.18.4"
+  },
+  "inspect_evidence_file": "snapshots/boundary-source-mount-inspects.json",
+  "ledgers": {},
+  "names": {
+    "adapter": "craft-e0-20260924T021355Z-33150-adapter",
+    "adapter_evidence": "craft-e0-20260924T021355Z-33150-adapter-evidence",
+    "client": "craft-e0-20260924T021355Z-33150-client",
+    "direct": "craft-e0-20260924T021355Z-33150-direct",
+    "direct_evidence": "craft-e0-20260924T021355Z-33150-direct-evidence",
+    "external": "craft-e0-20260924T021355Z-33150-external",
+    "helper": "craft-e0-20260924T021355Z-33150-helper",
+    "private": "craft-e0-20260924T021355Z-33150-private"
+  },
+  "phase_commands_file": "phase-commands.jsonl",
+  "raw_evidence_sha256": {
+    "cleanup-evidence.jsonl": "f2d1517eac427f27c07975bad05346c3b7b30f4cb5bddf1c535a06aff3b5b538"
+  },
+  "run_id": "craft-e0-20260924T021355Z-33150",
+  "schema": "craft-e0-v2",
+  "source_boundary_smoke": "BLOCKED",
+  "source_streams": {},
+  "started_utc": "2026-09-24T02:13:55Z",
+  "synthetic": false,
+  "verdict": "BLOCKED"
+}

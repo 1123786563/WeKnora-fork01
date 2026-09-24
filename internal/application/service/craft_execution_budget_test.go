@@ -20,6 +20,7 @@ func TestCraftExecutionBudgetDeniedIssuesNoModelCalls(t *testing.T) {
 	ctx := context.Background()
 
 	// An unfunded tenant admits the run but denies every call authorization.
+	seedCraftBudgetRun(t, db, 9, "run-budget-1", "s")
 	g, err := svc.Admit(ctx, craft.Scope{TenantID: 9, UserID: "u", SessionID: "s"}, "run-budget-1")
 	require.NoError(t, err)
 	require.True(t, g.Allowed)

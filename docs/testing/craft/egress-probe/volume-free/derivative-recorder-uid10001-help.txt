@@ -1,0 +1,10 @@
+usage: craft_source_recorder.py [-h] --role {adapter,direct} --run-id RUN_ID
+                                --evidence-dir EVIDENCE_DIR --control-socket
+                                CONTROL_SOCKET
+
+options:
+  -h, --help            show this help message and exit
+  --role {adapter,direct}
+  --run-id RUN_ID
+  --evidence-dir EVIDENCE_DIR
+  --control-socket CONTROL_SOCKET

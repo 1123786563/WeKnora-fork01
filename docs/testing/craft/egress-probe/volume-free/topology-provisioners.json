@@ -1,0 +1,852 @@
+{
+  "adapter": {
+    "absence": {
+      "argv": [
+        "docker",
+        "inspect",
+        "t19vf-fix1-adapter-provisioner"
+      ],
+      "elapsed_s": 0.037736,
+      "exit_code": 1,
+      "stderr": "error: no such object: t19vf-fix1-adapter-provisioner\n",
+      "stdout": "[]\n",
+      "timed_out": false
+    },
+    "create": {
+      "argv": [
+        "docker",
+        "create",
+        "--name",
+        "t19vf-fix1-adapter-provisioner",
+        "--network",
+        "none",
+        "--cap-drop",
+        "ALL",
+        "--cap-add",
+        "CHOWN",
+        "--user",
+        "0:0",
+        "--mount",
+        "type=volume,src=t19vf-fix1-adapter-ledger,dst=/ledger",
+        "--entrypoint",
+        "/usr/bin/chown",
+        "sha256:87d2f57937114373d64c804a4a7fc44c0f0c1e70e340b88b14da83215e4f4615",
+        "10001:10001",
+        "/ledger"
+      ],
+      "elapsed_s": 0.268645,
+      "exit_code": 0,
+      "stderr": "",
+      "stdout": "7049ab123e110e0ecf2ebed5b2aff98b7454f3b46b7742c11318ad22089f4353\n",
+      "timed_out": false
+    },
+    "image": "sha256:87d2f57937114373d64c804a4a7fc44c0f0c1e70e340b88b14da83215e4f4615",
+    "inspect": {
+      "AppArmorProfile": "",
+      "Args": [
+        "10001:10001",
+        "/ledger"
+      ],
+      "Config": {
+        "AttachStderr": true,
+        "AttachStdin": false,
+        "AttachStdout": true,
+        "Cmd": [
+          "10001:10001",
+          "/ledger"
+        ],
+        "Domainname": "",
+        "Entrypoint": [
+          "/usr/bin/chown"
+        ],
+        "Env": [
+          "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+          "HOME=/home/craft",
+          "XDG_CONFIG_HOME=/home/craft/.config",
+          "XDG_DATA_HOME=/home/craft/.local/share"
+        ],
+        "ExposedPorts": {
+          "4096/tcp": {}
+        },
+        "Hostname": "7049ab123e11",
+        "Image": "sha256:87d2f57937114373d64c804a4a7fc44c0f0c1e70e340b88b14da83215e4f4615",
+        "Labels": {},
+        "OpenStdin": false,
+        "StdinOnce": false,
+        "Tty": false,
+        "User": "0:0",
+        "Volumes": null,
+        "WorkingDir": "/workspace/output"
+      },
+      "Created": "2026-09-24T03:27:36.412060655Z",
+      "Driver": "overlayfs",
+      "ExecIDs": null,
+      "HostConfig": {
+        "AutoRemove": false,
+        "Binds": null,
+        "BlkioDeviceReadBps": [],
+        "BlkioDeviceReadIOps": [],
+        "BlkioDeviceWriteBps": [],
+        "BlkioDeviceWriteIOps": [],
+        "BlkioWeight": 0,
+        "BlkioWeightDevice": [],
+        "CapAdd": [
+          "CAP_CHOWN"
+        ],
+        "CapDrop": [
+          "ALL"
+        ],
+        "Cgroup": "",
+        "CgroupParent": "",
+        "CgroupnsMode": "private",
+        "ConsoleSize": [
+          0,
+          0
+        ],
+        "ContainerIDFile": "",
+        "CpuCount": 0,
+        "CpuPercent": 0,
+        "CpuPeriod": 0,
+        "CpuQuota": 0,
+        "CpuRealtimePeriod": 0,
+        "CpuRealtimeRuntime": 0,
+        "CpuShares": 0,
+        "CpusetCpus": "",
+        "CpusetMems": "",
+        "DeviceCgroupRules": null,
+        "DeviceRequests": null,
+        "Devices": [],
+        "Dns": null,
+        "DnsOptions": [],
+        "DnsSearch": [],
+        "ExtraHosts": null,
+        "GroupAdd": null,
+        "IOMaximumBandwidth": 0,
+        "IOMaximumIOps": 0,
+        "IpcMode": "private",
+        "Isolation": "",
+        "Links": null,
+        "LogConfig": {
+          "Config": {
+            "max-file": "5",
+            "max-size": "20m"
+          },
+          "Type": "json-file"
+        },
+        "MaskedPaths": [
+          "/proc/acpi",
+          "/proc/asound",
+          "/proc/interrupts",
+          "/proc/kcore",
+          "/proc/keys",
+          "/proc/latency_stats",
+          "/proc/sched_debug",
+          "/proc/scsi",
+          "/proc/timer_list",
+          "/proc/timer_stats",
+          "/sys/devices/virtual/powercap",
+          "/sys/firmware"
+        ],
+        "Memory": 0,
+        "MemoryReservation": 0,
+        "MemorySwap": 0,
+        "MemorySwappiness": null,
+        "Mounts": [
+          {
+            "Source": "t19vf-fix1-adapter-ledger",
+            "Target": "/ledger",
+            "Type": "volume"
+          }
+        ],
+        "NanoCpus": 0,
+        "NetworkMode": "none",
+        "OomKillDisable": null,
+        "OomScoreAdj": 0,
+        "PidMode": "",
+        "PidsLimit": null,
+        "PortBindings": {},
+        "Privileged": false,
+        "PublishAllPorts": false,
+        "ReadonlyPaths": [
+          "/proc/bus",
+          "/proc/fs",
+          "/proc/irq",
+          "/proc/sys",
+          "/proc/sysrq-trigger"
+        ],
+        "ReadonlyRootfs": false,
+        "RestartPolicy": {
+          "MaximumRetryCount": 0,
+          "Name": "no"
+        },
+        "Runtime": "runc",
+        "SecurityOpt": null,
+        "ShmSize": 2089811968,
+        "UTSMode": "",
+        "Ulimits": [],
+        "UsernsMode": "",
+        "VolumeDriver": "",
+        "VolumesFrom": null
+      },
+      "HostnamePath": "/var/lib/docker/containers/7049ab123e110e0ecf2ebed5b2aff98b7454f3b46b7742c11318ad22089f4353/hostname",
+      "HostsPath": "/var/lib/docker/containers/7049ab123e110e0ecf2ebed5b2aff98b7454f3b46b7742c11318ad22089f4353/hosts",
+      "Id": "7049ab123e110e0ecf2ebed5b2aff98b7454f3b46b7742c11318ad22089f4353",
+      "Image": "sha256:87d2f57937114373d64c804a4a7fc44c0f0c1e70e340b88b14da83215e4f4615",
+      "ImageManifestDescriptor": {
+        "digest": "sha256:e47f8158632f4f0caf58460b35f42be731b7c0eba28c3af369fe9002d72f6766",
+        "mediaType": "application/vnd.oci.image.manifest.v1+json",
+        "platform": {
+          "architecture": "arm64",
+          "os": "linux"
+        },
+        "size": 859
+      },
+      "LogPath": "/var/lib/docker/containers/7049ab123e110e0ecf2ebed5b2aff98b7454f3b46b7742c11318ad22089f4353/7049ab123e110e0ecf2ebed5b2aff98b7454f3b46b7742c11318ad22089f4353-json.log",
+      "MountLabel": "",
+      "Mounts": [
+        {
+          "Destination": "/ledger",
+          "Driver": "local",
+          "Mode": "z",
+          "Name": "t19vf-fix1-adapter-ledger",
+          "Propagation": "",
+          "RW": true,
+          "Source": "/var/lib/docker/volumes/t19vf-fix1-adapter-ledger/_data",
+          "Type": "volume"
+        }
+      ],
+      "Name": "/t19vf-fix1-adapter-provisioner",
+      "NetworkSettings": {
+        "Networks": {
+          "none": {
+            "Aliases": null,
+            "DNSNames": null,
+            "DriverOpts": null,
+            "EndpointID": "",
+            "Gateway": "",
+            "GlobalIPv6Address": "",
+            "GlobalIPv6PrefixLen": 0,
+            "GwPriority": 0,
+            "IPAMConfig": null,
+            "IPAddress": "",
+            "IPPrefixLen": 0,
+            "IPv6Gateway": "",
+            "Links": null,
+            "MacAddress": "",
+            "NetworkID": "a049bb0468f954ed3b14c07b475b20c0aaf4ecf41b32ca4d2e507b55c571cbdb"
+          }
+        },
+        "Ports": {},
+        "SandboxID": "",
+        "SandboxKey": ""
+      },
+      "Path": "/usr/bin/chown",
+      "Platform": "linux",
+      "ProcessLabel": "",
+      "ResolvConfPath": "/var/lib/docker/containers/7049ab123e110e0ecf2ebed5b2aff98b7454f3b46b7742c11318ad22089f4353/resolv.conf",
+      "RestartCount": 0,
+      "State": {
+        "Dead": false,
+        "Error": "",
+        "ExitCode": 0,
+        "FinishedAt": "2026-09-24T03:27:36.832528071Z",
+        "OOMKilled": false,
+        "Paused": false,
+        "Pid": 0,
+        "Restarting": false,
+        "Running": false,
+        "StartedAt": "2026-09-24T03:27:36.723834225Z",
+        "Status": "exited"
+      },
+      "Storage": {
+        "RootFS": {
+          "Snapshot": {
+            "Name": "overlayfs"
+          }
+        }
+      }
+    },
+    "inspect_argv": [
+      "docker",
+      "inspect",
+      "t19vf-fix1-adapter-provisioner"
+    ],
+    "inspect_exit_code": 0,
+    "name": "t19vf-fix1-adapter-provisioner",
+    "participant_absence": {
+      "argv": [
+        "docker",
+        "inspect",
+        "t19vf-fix1-adapter"
+      ],
+      "elapsed_s": 0.0414,
+      "exit_code": 1,
+      "stderr": "error: no such object: t19vf-fix1-adapter\n",
+      "stdout": "[]\n",
+      "timed_out": false
+    },
+    "participant_create": {
+      "argv": [
+        "docker",
+        "create",
+        "--name",
+        "t19vf-fix1-adapter",
+        "--network",
+        "none",
+        "--cap-drop",
+        "ALL",
+        "--security-opt",
+        "no-new-privileges",
+        "--user",
+        "10001:10001",
+        "--mount",
+        "type=volume,src=t19vf-fix1-adapter-ledger,dst=/ledger",
+        "--entrypoint",
+        "sleep",
+        "sha256:87d2f57937114373d64c804a4a7fc44c0f0c1e70e340b88b14da83215e4f4615",
+        "infinity"
+      ],
+      "elapsed_s": 0.231664,
+      "exit_code": 0,
+      "stderr": "",
+      "stdout": "2bb2c3f2e6b60a5aee9fd88417004f50c74222533bcb45a470b90e7ef761e316\n",
+      "timed_out": false
+    },
+    "participant_inspect": {
+      "argv": [
+        "docker",
+        "inspect",
+        "t19vf-fix1-adapter"
+      ],
+      "exit_code": 0,
+      "file": "topology-fix1-adapter-inspect.json",
+      "timed_out": false
+    },
+    "participant_remove": {
+      "argv": [
+        "docker",
+        "rm",
+        "-f",
+        "-v",
+        "t19vf-fix1-adapter"
+      ],
+      "elapsed_s": 0.132306,
+      "exit_code": 0,
+      "stderr": "",
+      "stdout": "t19vf-fix1-adapter\n",
+      "timed_out": false
+    },
+    "participant_start": {
+      "argv": [
+        "docker",
+        "start",
+        "t19vf-fix1-adapter"
+      ],
+      "elapsed_s": 0.243531,
+      "exit_code": 0,
+      "stderr": "",
+      "stdout": "t19vf-fix1-adapter\n",
+      "timed_out": false
+    },
+    "remove": {
+      "argv": [
+        "docker",
+        "rm",
+        "t19vf-fix1-adapter-provisioner"
+      ],
+      "elapsed_s": 0.100541,
+      "exit_code": 0,
+      "stderr": "",
+      "stdout": "t19vf-fix1-adapter-provisioner\n",
+      "timed_out": false
+    },
+    "start": {
+      "argv": [
+        "docker",
+        "start",
+        "--attach",
+        "t19vf-fix1-adapter-provisioner"
+      ],
+      "elapsed_s": 0.241911,
+      "exit_code": 0,
+      "stderr": "",
+      "stdout": "",
+      "timed_out": false
+    },
+    "volume": "t19vf-fix1-adapter-ledger",
+    "volume_absence": {
+      "argv": [
+        "docker",
+        "volume",
+        "inspect",
+        "t19vf-fix1-adapter-ledger"
+      ],
+      "elapsed_s": 0.027052,
+      "exit_code": 1,
+      "stderr": "Error response from daemon: get t19vf-fix1-adapter-ledger: no such volume\n",
+      "stdout": "[]\n",
+      "timed_out": false
+    },
+    "volume_create": {
+      "argv": [
+        "docker",
+        "volume",
+        "create",
+        "t19vf-fix1-adapter-ledger"
+      ],
+      "elapsed_s": 0.031992,
+      "exit_code": 0,
+      "stderr": "",
+      "stdout": "t19vf-fix1-adapter-ledger\n",
+      "timed_out": false
+    },
+    "volume_inspect": {
+      "CreatedAt": "2026-09-24T11:27:36+08:00",
+      "Driver": "local",
+      "Labels": null,
+      "Mountpoint": "/var/lib/docker/volumes/t19vf-fix1-adapter-ledger/_data",
+      "Name": "t19vf-fix1-adapter-ledger",
+      "Options": null,
+      "Scope": "local"
+    },
+    "volume_remove": {
+      "argv": [
+        "docker",
+        "volume",
+        "rm",
+        "t19vf-fix1-adapter-ledger"
+      ],
+      "elapsed_s": 0.036577,
+      "exit_code": 0,
+      "stderr": "",
+      "stdout": "t19vf-fix1-adapter-ledger\n",
+      "timed_out": false
+    },
+    "writer_check": "10001:10001 /ledger/uid-check\n"
+  },
+  "direct": {
+    "absence": {
+      "argv": [
+        "docker",
+        "inspect",
+        "t19vf-fix1-direct-provisioner"
+      ],
+      "elapsed_s": 0.064792,
+      "exit_code": 1,
+      "stderr": "error: no such object: t19vf-fix1-direct-provisioner\n",
+      "stdout": "[]\n",
+      "timed_out": false
+    },
+    "create": {
+      "argv": [
+        "docker",
+        "create",
+        "--name",
+        "t19vf-fix1-direct-provisioner",
+        "--network",
+        "none",
+        "--cap-drop",
+        "ALL",
+        "--cap-add",
+        "CHOWN",
+        "--user",
+        "0:0",
+        "--mount",
+        "type=volume,src=t19vf-fix1-direct-ledger,dst=/ledger",
+        "--entrypoint",
+        "/usr/bin/chown",
+        "sha256:87d2f57937114373d64c804a4a7fc44c0f0c1e70e340b88b14da83215e4f4615",
+        "10001:10001",
+        "/ledger"
+      ],
+      "elapsed_s": 0.928049,
+      "exit_code": 0,
+      "stderr": "",
+      "stdout": "a1e24b34abd59ab5ad004e2a0ee4bacd2e05bc87f07f3ae0595bb7be483db870\n",
+      "timed_out": false
+    },
+    "image": "sha256:87d2f57937114373d64c804a4a7fc44c0f0c1e70e340b88b14da83215e4f4615",
+    "inspect": {
+      "AppArmorProfile": "",
+      "Args": [
+        "10001:10001",
+        "/ledger"
+      ],
+      "Config": {
+        "AttachStderr": true,
+        "AttachStdin": false,
+        "AttachStdout": true,
+        "Cmd": [
+          "10001:10001",
+          "/ledger"
+        ],
+        "Domainname": "",
+        "Entrypoint": [
+          "/usr/bin/chown"
+        ],
+        "Env": [
+          "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+          "HOME=/home/craft",
+          "XDG_CONFIG_HOME=/home/craft/.config",
+          "XDG_DATA_HOME=/home/craft/.local/share"
+        ],
+        "ExposedPorts": {
+          "4096/tcp": {}
+        },
+        "Hostname": "a1e24b34abd5",
+        "Image": "sha256:87d2f57937114373d64c804a4a7fc44c0f0c1e70e340b88b14da83215e4f4615",
+        "Labels": {},
+        "OpenStdin": false,
+        "StdinOnce": false,
+        "Tty": false,
+        "User": "0:0",
+        "Volumes": null,
+        "WorkingDir": "/workspace/output"
+      },
+      "Created": "2026-09-24T03:27:31.694349147Z",
+      "Driver": "overlayfs",
+      "ExecIDs": null,
+      "HostConfig": {
+        "AutoRemove": false,
+        "Binds": null,
+        "BlkioDeviceReadBps": [],
+        "BlkioDeviceReadIOps": [],
+        "BlkioDeviceWriteBps": [],
+        "BlkioDeviceWriteIOps": [],
+        "BlkioWeight": 0,
+        "BlkioWeightDevice": [],
+        "CapAdd": [
+          "CAP_CHOWN"
+        ],
+        "CapDrop": [
+          "ALL"
+        ],
+        "Cgroup": "",
+        "CgroupParent": "",
+        "CgroupnsMode": "private",
+        "ConsoleSize": [
+          0,
+          0
+        ],
+        "ContainerIDFile": "",
+        "CpuCount": 0,
+        "CpuPercent": 0,
+        "CpuPeriod": 0,
+        "CpuQuota": 0,
+        "CpuRealtimePeriod": 0,
+        "CpuRealtimeRuntime": 0,
+        "CpuShares": 0,
+        "CpusetCpus": "",
+        "CpusetMems": "",
+        "DeviceCgroupRules": null,
+        "DeviceRequests": null,
+        "Devices": [],
+        "Dns": null,
+        "DnsOptions": [],
+        "DnsSearch": [],
+        "ExtraHosts": null,
+        "GroupAdd": null,
+        "IOMaximumBandwidth": 0,
+        "IOMaximumIOps": 0,
+        "IpcMode": "private",
+        "Isolation": "",
+        "Links": null,
+        "LogConfig": {
+          "Config": {
+            "max-file": "5",
+            "max-size": "20m"
+          },
+          "Type": "json-file"
+        },
+        "MaskedPaths": [
+          "/proc/acpi",
+          "/proc/asound",
+          "/proc/interrupts",
+          "/proc/kcore",
+          "/proc/keys",
+          "/proc/latency_stats",
+          "/proc/sched_debug",
+          "/proc/scsi",
+          "/proc/timer_list",
+          "/proc/timer_stats",
+          "/sys/devices/virtual/powercap",
+          "/sys/firmware"
+        ],
+        "Memory": 0,
+        "MemoryReservation": 0,
+        "MemorySwap": 0,
+        "MemorySwappiness": null,
+        "Mounts": [
+          {
+            "Source": "t19vf-fix1-direct-ledger",
+            "Target": "/ledger",
+            "Type": "volume"
+          }
+        ],
+        "NanoCpus": 0,
+        "NetworkMode": "none",
+        "OomKillDisable": null,
+        "OomScoreAdj": 0,
+        "PidMode": "",
+        "PidsLimit": null,
+        "PortBindings": {},
+        "Privileged": false,
+        "PublishAllPorts": false,
+        "ReadonlyPaths": [
+          "/proc/bus",
+          "/proc/fs",
+          "/proc/irq",
+          "/proc/sys",
+          "/proc/sysrq-trigger"
+        ],
+        "ReadonlyRootfs": false,
+        "RestartPolicy": {
+          "MaximumRetryCount": 0,
+          "Name": "no"
+        },
+        "Runtime": "runc",
+        "SecurityOpt": null,
+        "ShmSize": 2089811968,
+        "UTSMode": "",
+        "Ulimits": [],
+        "UsernsMode": "",
+        "VolumeDriver": "",
+        "VolumesFrom": null
+      },
+      "HostnamePath": "/var/lib/docker/containers/a1e24b34abd59ab5ad004e2a0ee4bacd2e05bc87f07f3ae0595bb7be483db870/hostname",
+      "HostsPath": "/var/lib/docker/containers/a1e24b34abd59ab5ad004e2a0ee4bacd2e05bc87f07f3ae0595bb7be483db870/hosts",
+      "Id": "a1e24b34abd59ab5ad004e2a0ee4bacd2e05bc87f07f3ae0595bb7be483db870",
+      "Image": "sha256:87d2f57937114373d64c804a4a7fc44c0f0c1e70e340b88b14da83215e4f4615",
+      "ImageManifestDescriptor": {
+        "digest": "sha256:e47f8158632f4f0caf58460b35f42be731b7c0eba28c3af369fe9002d72f6766",
+        "mediaType": "application/vnd.oci.image.manifest.v1+json",
+        "platform": {
+          "architecture": "arm64",
+          "os": "linux"
+        },
+        "size": 859
+      },
+      "LogPath": "/var/lib/docker/containers/a1e24b34abd59ab5ad004e2a0ee4bacd2e05bc87f07f3ae0595bb7be483db870/a1e24b34abd59ab5ad004e2a0ee4bacd2e05bc87f07f3ae0595bb7be483db870-json.log",
+      "MountLabel": "",
+      "Mounts": [
+        {
+          "Destination": "/ledger",
+          "Driver": "local",
+          "Mode": "z",
+          "Name": "t19vf-fix1-direct-ledger",
+          "Propagation": "",
+          "RW": true,
+          "Source": "/var/lib/docker/volumes/t19vf-fix1-direct-ledger/_data",
+          "Type": "volume"
+        }
+      ],
+      "Name": "/t19vf-fix1-direct-provisioner",
+      "NetworkSettings": {
+        "Networks": {
+          "none": {
+            "Aliases": null,
+            "DNSNames": null,
+            "DriverOpts": null,
+            "EndpointID": "",
+            "Gateway": "",
+            "GlobalIPv6Address": "",
+            "GlobalIPv6PrefixLen": 0,
+            "GwPriority": 0,
+            "IPAMConfig": null,
+            "IPAddress": "",
+            "IPPrefixLen": 0,
+            "IPv6Gateway": "",
+            "Links": null,
+            "MacAddress": "",
+            "NetworkID": "a049bb0468f954ed3b14c07b475b20c0aaf4ecf41b32ca4d2e507b55c571cbdb"
+          }
+        },
+        "Ports": {},
+        "SandboxID": "",
+        "SandboxKey": ""
+      },
+      "Path": "/usr/bin/chown",
+      "Platform": "linux",
+      "ProcessLabel": "",
+      "ResolvConfPath": "/var/lib/docker/containers/a1e24b34abd59ab5ad004e2a0ee4bacd2e05bc87f07f3ae0595bb7be483db870/resolv.conf",
+      "RestartCount": 0,
+      "State": {
+        "Dead": false,
+        "Error": "",
+        "ExitCode": 0,
+        "FinishedAt": "2026-09-24T03:27:33.587877014Z",
+        "OOMKilled": false,
+        "Paused": false,
+        "Pid": 0,
+        "Restarting": false,
+        "Running": false,
+        "StartedAt": "2026-09-24T03:27:32.984005577Z",
+        "Status": "exited"
+      },
+      "Storage": {
+        "RootFS": {
+          "Snapshot": {
+            "Name": "overlayfs"
+          }
+        }
+      }
+    },
+    "inspect_argv": [
+      "docker",
+      "inspect",
+      "t19vf-fix1-direct-provisioner"
+    ],
+    "inspect_exit_code": 0,
+    "name": "t19vf-fix1-direct-provisioner",
+    "participant_absence": {
+      "argv": [
+        "docker",
+        "inspect",
+        "t19vf-fix1-direct"
+      ],
+      "elapsed_s": 0.033345,
+      "exit_code": 1,
+      "stderr": "error: no such object: t19vf-fix1-direct\n",
+      "stdout": "[]\n",
+      "timed_out": false
+    },
+    "participant_create": {
+      "argv": [
+        "docker",
+        "create",
+        "--name",
+        "t19vf-fix1-direct",
+        "--network",
+        "none",
+        "--cap-drop",
+        "ALL",
+        "--security-opt",
+        "no-new-privileges",
+        "--user",
+        "10001:10001",
+        "--mount",
+        "type=volume,src=t19vf-fix1-direct-ledger,dst=/ledger",
+        "--entrypoint",
+        "sleep",
+        "sha256:87d2f57937114373d64c804a4a7fc44c0f0c1e70e340b88b14da83215e4f4615",
+        "infinity"
+      ],
+      "elapsed_s": 0.134328,
+      "exit_code": 0,
+      "stderr": "",
+      "stdout": "c30d0e40f17938ef6e2af5c9c7debf8346deecaf476f15195b6774623b42465b\n",
+      "timed_out": false
+    },
+    "participant_inspect": {
+      "argv": [
+        "docker",
+        "inspect",
+        "t19vf-fix1-direct"
+      ],
+      "exit_code": 0,
+      "file": "topology-fix1-direct-inspect.json",
+      "timed_out": false
+    },
+    "participant_remove": {
+      "argv": [
+        "docker",
+        "rm",
+        "-f",
+        "-v",
+        "t19vf-fix1-direct"
+      ],
+      "elapsed_s": 0.133989,
+      "exit_code": 0,
+      "stderr": "",
+      "stdout": "t19vf-fix1-direct\n",
+      "timed_out": false
+    },
+    "participant_start": {
+      "argv": [
+        "docker",
+        "start",
+        "t19vf-fix1-direct"
+      ],
+      "elapsed_s": 0.487423,
+      "exit_code": 0,
+      "stderr": "",
+      "stdout": "t19vf-fix1-direct\n",
+      "timed_out": false
+    },
+    "remove": {
+      "argv": [
+        "docker",
+        "rm",
+        "t19vf-fix1-direct-provisioner"
+      ],
+      "elapsed_s": 1.62661,
+      "exit_code": 0,
+      "stderr": "",
+      "stdout": "t19vf-fix1-direct-provisioner\n",
+      "timed_out": false
+    },
+    "start": {
+      "argv": [
+        "docker",
+        "start",
+        "--attach",
+        "t19vf-fix1-direct-provisioner"
+      ],
+      "elapsed_s": 1.095439,
+      "exit_code": 0,
+      "stderr": "",
+      "stdout": "",
+      "timed_out": false
+    },
+    "volume": "t19vf-fix1-direct-ledger",
+    "volume_absence": {
+      "argv": [
+        "docker",
+        "volume",
+        "inspect",
+        "t19vf-fix1-direct-ledger"
+      ],
+      "elapsed_s": 0.02551,
+      "exit_code": 1,
+      "stderr": "Error response from daemon: get t19vf-fix1-direct-ledger: no such volume\n",
+      "stdout": "[]\n",
+      "timed_out": false
+    },
+    "volume_create": {
+      "argv": [
+        "docker",
+        "volume",
+        "create",
+        "t19vf-fix1-direct-ledger"
+      ],
+      "elapsed_s": 0.177198,
+      "exit_code": 0,
+      "stderr": "",
+      "stdout": "t19vf-fix1-direct-ledger\n",
+      "timed_out": false
+    },
+    "volume_inspect": {
+      "CreatedAt": "2026-09-24T11:27:31+08:00",
+      "Driver": "local",
+      "Labels": null,
+      "Mountpoint": "/var/lib/docker/volumes/t19vf-fix1-direct-ledger/_data",
+      "Name": "t19vf-fix1-direct-ledger",
+      "Options": null,
+      "Scope": "local"
+    },
+    "volume_remove": {
+      "argv": [
+        "docker",
+        "volume",
+        "rm",
+        "t19vf-fix1-direct-ledger"
+      ],
+      "elapsed_s": 0.035768,
+      "exit_code": 0,
+      "stderr": "",
+      "stdout": "t19vf-fix1-direct-ledger\n",
+      "timed_out": false
+    },
+    "writer_check": "10001:10001 /ledger/uid-check\n"
+  }
+}

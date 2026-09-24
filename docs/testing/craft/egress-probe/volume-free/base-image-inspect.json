@@ -1,0 +1,83 @@
+[
+    {
+        "Id": "sha256:9678e13bd1c7dc9650aef26623ef8ab276d46565bbd6cb006b8e308229968f11",
+        "RepoTags": [
+            "weknora-craft-runtime:1.18.4"
+        ],
+        "RepoDigests": [
+            "weknora-craft-runtime@sha256:9678e13bd1c7dc9650aef26623ef8ab276d46565bbd6cb006b8e308229968f11"
+        ],
+        "Comment": "buildkit.dockerfile.v0",
+        "Created": "2026-09-24T01:23:03.457319518+08:00",
+        "Config": {
+            "User": "10001:10001",
+            "ExposedPorts": {
+                "4096/tcp": {}
+            },
+            "Env": [
+                "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                "HOME=/home/craft",
+                "XDG_CONFIG_HOME=/home/craft/.config",
+                "XDG_DATA_HOME=/home/craft/.local/share"
+            ],
+            "Entrypoint": [
+                "/usr/local/bin/opencode"
+            ],
+            "Cmd": [
+                "serve",
+                "--hostname",
+                "0.0.0.0",
+                "--port",
+                "4096"
+            ],
+            "Volumes": {
+                "/home/craft/.config/opencode": {},
+                "/home/craft/.local/share/opencode": {}
+            },
+            "WorkingDir": "/workspace/output",
+            "ArgsEscaped": true
+        },
+        "Architecture": "arm64",
+        "Os": "linux",
+        "Size": 415783393,
+        "RootFS": {
+            "Type": "layers",
+            "Layers": [
+                "sha256:055ab12bd547e17a0630037f06a186cf405e3f61bb03a614562ca8f5ab52a8be",
+                "sha256:459f6e7cb9c93b806e821f4e51c5171763b9abfa140db439ffb60d2343e83f8c",
+                "sha256:3958e37a59793bc966e21d6c0eb76b039c5c678246a1956db5d379e29a2cc7bc",
+                "sha256:dd9e7e82a4f78c9ed0184d2ca8814f087a6974df6396289bd4872aa303ca11f7",
+                "sha256:3346287ab291da7508b9fc2b98ab75cd4dc3796404ee22184d139e57779c1682",
+                "sha256:feb28742857c64ffa9174608bbd851625605a263e3a980c71d4313e6f8d56c28",
+                "sha256:618ebd3e70fd81c0d86b87d96baa4e45c60f37b9c8b43d73169f1789722644af",
+                "sha256:7f9516e42e350729fd2aad9cb3a3423dec11196ce5621b107a42efb47c978ba0",
+                "sha256:f161e184786c5f3c8e503b3b1284f574510dd5968283af753595fe871756d744",
+                "sha256:5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef",
+                "sha256:3c9b4afde135050f500fa1aa22a968624726ba19f755a282db54b0b9cdda222d",
+                "sha256:5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef",
+                "sha256:5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef"
+            ]
+        },
+        "Metadata": {
+            "LastTagTime": "2026-09-23T17:23:14.977443808Z"
+        },
+        "Descriptor": {
+            "mediaType": "application/vnd.oci.image.index.v1+json",
+            "digest": "sha256:9678e13bd1c7dc9650aef26623ef8ab276d46565bbd6cb006b8e308229968f11",
+            "size": 856
+        },
+        "Identity": {
+            "Pull": [
+                {
+                    "Repository": "docker.io/library/weknora-craft-runtime"
+                }
+            ],
+            "Build": [
+                {
+                    "Ref": "6xy2t8j0zg42eob77fqja8ey8",
+                    "CreatedAt": "2026-09-24T01:23:18.86837348+08:00"
+                }
+            ]
+        }
+    }
+]

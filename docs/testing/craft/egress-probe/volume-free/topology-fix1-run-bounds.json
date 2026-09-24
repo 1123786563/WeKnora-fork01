@@ -1,0 +1,8 @@
+{
+  "container_network_mode": "none",
+  "created_networks": [],
+  "docker_cli_timeout_s": 15,
+  "overall_deadline_s": 100,
+  "operation_record": "topology-provisioners.json",
+  "result": "all operations completed before per-command and overall deadlines"
+}

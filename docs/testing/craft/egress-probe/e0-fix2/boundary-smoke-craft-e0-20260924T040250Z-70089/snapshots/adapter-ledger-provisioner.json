@@ -1,0 +1,310 @@
+{
+  "cleanup": {
+    "already_absent": false,
+    "inspect": {
+      "argv": [
+        "docker",
+        "inspect",
+        "craft-e0-20260924T040250Z-70089-adapter-provisioner"
+      ],
+      "elapsed_s": 0.12,
+      "exit_code": 1,
+      "stderr": "error: no such object: craft-e0-20260924T040250Z-70089-adapter-provisioner\n",
+      "stderr_file": "logs/cleanup-inspect-container-craft-e0-20260924T040250Z-70089-adapter-provisioner.stderr.txt",
+      "stdout": "[]\n",
+      "stdout_file": "logs/cleanup-inspect-container-craft-e0-20260924T040250Z-70089-adapter-provisioner.stdout.txt",
+      "timed_out": false
+    },
+    "inspect_absent": true,
+    "kind": "container",
+    "ok": true,
+    "remove": {
+      "argv": [
+        "docker",
+        "rm",
+        "-f",
+        "-v",
+        "craft-e0-20260924T040250Z-70089-adapter-provisioner"
+      ],
+      "elapsed_s": 0.152,
+      "exit_code": 0,
+      "stderr": "",
+      "stderr_file": "logs/cleanup-remove-container-craft-e0-20260924T040250Z-70089-adapter-provisioner.stderr.txt",
+      "stdout": "craft-e0-20260924T040250Z-70089-adapter-provisioner\n",
+      "stdout_file": "logs/cleanup-remove-container-craft-e0-20260924T040250Z-70089-adapter-provisioner.stdout.txt",
+      "timed_out": false
+    },
+    "removed": true,
+    "resource": "craft-e0-20260924T040250Z-70089-adapter-provisioner"
+  },
+  "create": {
+    "argv": [
+      "docker",
+      "create",
+      "--name",
+      "craft-e0-20260924T040250Z-70089-adapter-provisioner",
+      "--network",
+      "none",
+      "--cap-drop",
+      "ALL",
+      "--cap-add",
+      "CHOWN",
+      "--user",
+      "0:0",
+      "--mount",
+      "type=volume,src=craft-e0-20260924T040250Z-70089-adapter-ledger,dst=/ledger",
+      "--entrypoint",
+      "/usr/bin/chown",
+      "sha256:87d2f57937114373d64c804a4a7fc44c0f0c1e70e340b88b14da83215e4f4615",
+      "10001:10001",
+      "/ledger"
+    ],
+    "elapsed_s": 1.338,
+    "exit_code": 0,
+    "stderr": "",
+    "stdout": "943de75f1c209b2daf4968c336d7de5389a01f180c0c9a3e10aa0338f2c526c6\n",
+    "timed_out": false
+  },
+  "inspect": {
+    "AppArmorProfile": "",
+    "Args": [
+      "10001:10001",
+      "/ledger"
+    ],
+    "Config": {
+      "AttachStderr": true,
+      "AttachStdin": false,
+      "AttachStdout": true,
+      "Cmd": [
+        "10001:10001",
+        "/ledger"
+      ],
+      "Domainname": "",
+      "Entrypoint": [
+        "/usr/bin/chown"
+      ],
+      "Env": [
+        "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        "HOME=/home/craft",
+        "XDG_CONFIG_HOME=/home/craft/.config",
+        "XDG_DATA_HOME=/home/craft/.local/share"
+      ],
+      "ExposedPorts": {
+        "4096/tcp": {}
+      },
+      "Hostname": "943de75f1c20",
+      "Image": "sha256:87d2f57937114373d64c804a4a7fc44c0f0c1e70e340b88b14da83215e4f4615",
+      "Labels": {},
+      "OpenStdin": false,
+      "StdinOnce": false,
+      "Tty": false,
+      "User": "0:0",
+      "Volumes": null,
+      "WorkingDir": "/workspace/output"
+    },
+    "Created": "2026-09-24T04:03:26.666448231Z",
+    "Driver": "overlayfs",
+    "ExecIDs": null,
+    "HostConfig": {
+      "AutoRemove": false,
+      "Binds": null,
+      "BlkioDeviceReadBps": [],
+      "BlkioDeviceReadIOps": [],
+      "BlkioDeviceWriteBps": [],
+      "BlkioDeviceWriteIOps": [],
+      "BlkioWeight": 0,
+      "BlkioWeightDevice": [],
+      "CapAdd": [
+        "CAP_CHOWN"
+      ],
+      "CapDrop": [
+        "ALL"
+      ],
+      "Cgroup": "",
+      "CgroupParent": "",
+      "CgroupnsMode": "private",
+      "ConsoleSize": [
+        0,
+        0
+      ],
+      "ContainerIDFile": "",
+      "CpuCount": 0,
+      "CpuPercent": 0,
+      "CpuPeriod": 0,
+      "CpuQuota": 0,
+      "CpuRealtimePeriod": 0,
+      "CpuRealtimeRuntime": 0,
+      "CpuShares": 0,
+      "CpusetCpus": "",
+      "CpusetMems": "",
+      "DeviceCgroupRules": null,
+      "DeviceRequests": null,
+      "Devices": [],
+      "Dns": null,
+      "DnsOptions": [],
+      "DnsSearch": [],
+      "ExtraHosts": null,
+      "GroupAdd": null,
+      "IOMaximumBandwidth": 0,
+      "IOMaximumIOps": 0,
+      "IpcMode": "private",
+      "Isolation": "",
+      "Links": null,
+      "LogConfig": {
+        "Config": {
+          "max-file": "5",
+          "max-size": "20m"
+        },
+        "Type": "json-file"
+      },
+      "MaskedPaths": [
+        "/proc/acpi",
+        "/proc/asound",
+        "/proc/interrupts",
+        "/proc/kcore",
+        "/proc/keys",
+        "/proc/latency_stats",
+        "/proc/sched_debug",
+        "/proc/scsi",
+        "/proc/timer_list",
+        "/proc/timer_stats",
+        "/sys/devices/virtual/powercap",
+        "/sys/firmware"
+      ],
+      "Memory": 0,
+      "MemoryReservation": 0,
+      "MemorySwap": 0,
+      "MemorySwappiness": null,
+      "Mounts": [
+        {
+          "Source": "craft-e0-20260924T040250Z-70089-adapter-ledger",
+          "Target": "/ledger",
+          "Type": "volume"
+        }
+      ],
+      "NanoCpus": 0,
+      "NetworkMode": "none",
+      "OomKillDisable": null,
+      "OomScoreAdj": 0,
+      "PidMode": "",
+      "PidsLimit": null,
+      "PortBindings": {},
+      "Privileged": false,
+      "PublishAllPorts": false,
+      "ReadonlyPaths": [
+        "/proc/bus",
+        "/proc/fs",
+        "/proc/irq",
+        "/proc/sys",
+        "/proc/sysrq-trigger"
+      ],
+      "ReadonlyRootfs": false,
+      "RestartPolicy": {
+        "MaximumRetryCount": 0,
+        "Name": "no"
+      },
+      "Runtime": "runc",
+      "SecurityOpt": null,
+      "ShmSize": 2089811968,
+      "UTSMode": "",
+      "Ulimits": [],
+      "UsernsMode": "",
+      "VolumeDriver": "",
+      "VolumesFrom": null
+    },
+    "HostnamePath": "/var/lib/docker/containers/943de75f1c209b2daf4968c336d7de5389a01f180c0c9a3e10aa0338f2c526c6/hostname",
+    "HostsPath": "/var/lib/docker/containers/943de75f1c209b2daf4968c336d7de5389a01f180c0c9a3e10aa0338f2c526c6/hosts",
+    "Id": "943de75f1c209b2daf4968c336d7de5389a01f180c0c9a3e10aa0338f2c526c6",
+    "Image": "sha256:87d2f57937114373d64c804a4a7fc44c0f0c1e70e340b88b14da83215e4f4615",
+    "ImageManifestDescriptor": {
+      "digest": "sha256:e47f8158632f4f0caf58460b35f42be731b7c0eba28c3af369fe9002d72f6766",
+      "mediaType": "application/vnd.oci.image.manifest.v1+json",
+      "platform": {
+        "architecture": "arm64",
+        "os": "linux"
+      },
+      "size": 859
+    },
+    "LogPath": "/var/lib/docker/containers/943de75f1c209b2daf4968c336d7de5389a01f180c0c9a3e10aa0338f2c526c6/943de75f1c209b2daf4968c336d7de5389a01f180c0c9a3e10aa0338f2c526c6-json.log",
+    "MountLabel": "",
+    "Mounts": [
+      {
+        "Destination": "/ledger",
+        "Driver": "local",
+        "Mode": "z",
+        "Name": "craft-e0-20260924T040250Z-70089-adapter-ledger",
+        "Propagation": "",
+        "RW": true,
+        "Source": "/var/lib/docker/volumes/craft-e0-20260924T040250Z-70089-adapter-ledger/_data",
+        "Type": "volume"
+      }
+    ],
+    "Name": "/craft-e0-20260924T040250Z-70089-adapter-provisioner",
+    "NetworkSettings": {
+      "Networks": {
+        "none": {
+          "Aliases": null,
+          "DNSNames": null,
+          "DriverOpts": null,
+          "EndpointID": "",
+          "Gateway": "",
+          "GlobalIPv6Address": "",
+          "GlobalIPv6PrefixLen": 0,
+          "GwPriority": 0,
+          "IPAMConfig": null,
+          "IPAddress": "",
+          "IPPrefixLen": 0,
+          "IPv6Gateway": "",
+          "Links": null,
+          "MacAddress": "",
+          "NetworkID": "a049bb0468f954ed3b14c07b475b20c0aaf4ecf41b32ca4d2e507b55c571cbdb"
+        }
+      },
+      "Ports": {},
+      "SandboxID": "",
+      "SandboxKey": ""
+    },
+    "Path": "/usr/bin/chown",
+    "Platform": "linux",
+    "ProcessLabel": "",
+    "ResolvConfPath": "/var/lib/docker/containers/943de75f1c209b2daf4968c336d7de5389a01f180c0c9a3e10aa0338f2c526c6/resolv.conf",
+    "RestartCount": 0,
+    "State": {
+      "Dead": false,
+      "Error": "",
+      "ExitCode": 0,
+      "FinishedAt": "2026-09-24T04:03:27.784804425Z",
+      "OOMKilled": false,
+      "Paused": false,
+      "Pid": 0,
+      "Restarting": false,
+      "Running": false,
+      "StartedAt": "2026-09-24T04:03:27.460697378Z",
+      "Status": "exited"
+    },
+    "Storage": {
+      "RootFS": {
+        "Snapshot": {
+          "Name": "overlayfs"
+        }
+      }
+    }
+  },
+  "source": "adapter",
+  "start": {
+    "argv": [
+      "docker",
+      "start",
+      "--attach",
+      "craft-e0-20260924T040250Z-70089-adapter-provisioner"
+    ],
+    "elapsed_s": 0.818,
+    "exit_code": 0,
+    "stderr": "",
+    "stderr_file": "logs/adapter-ledger-provision-start.stderr.txt",
+    "stdout": "",
+    "stdout_file": "logs/adapter-ledger-provision-start.stdout.txt",
+    "timed_out": false
+  },
+  "volume": "craft-e0-20260924T040250Z-70089-adapter-ledger"
+}

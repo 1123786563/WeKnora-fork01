@@ -1,0 +1,293 @@
+[
+  {
+    "AppArmorProfile": "",
+    "Args": [
+      "/probe/server_v2.py",
+      "--role",
+      "direct",
+      "--run-id",
+      "craft-e0-20260923T191218Z-38159"
+    ],
+    "Config": {
+      "AttachStderr": false,
+      "AttachStdin": false,
+      "AttachStdout": false,
+      "Cmd": [
+        "/probe/server_v2.py",
+        "--role",
+        "direct",
+        "--run-id",
+        "craft-e0-20260923T191218Z-38159"
+      ],
+      "Domainname": "",
+      "Entrypoint": [
+        "python3"
+      ],
+      "Env": [
+        "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        "HOME=/home/craft",
+        "XDG_CONFIG_HOME=/home/craft/.config",
+        "XDG_DATA_HOME=/home/craft/.local/share"
+      ],
+      "ExposedPorts": {
+        "4096/tcp": {},
+        "8083/tcp": {}
+      },
+      "Hostname": "8262cc0fdafc",
+      "Image": "sha256:9678e13bd1c7dc9650aef26623ef8ab276d46565bbd6cb006b8e308229968f11",
+      "Labels": {},
+      "OpenStdin": false,
+      "StdinOnce": false,
+      "Tty": false,
+      "User": "10001:10001",
+      "Volumes": {
+        "/home/craft/.config/opencode": {},
+        "/home/craft/.local/share/opencode": {}
+      },
+      "WorkingDir": "/workspace/output"
+    },
+    "Created": "2026-09-23T19:12:19.942256318Z",
+    "Driver": "overlayfs",
+    "ExecIDs": null,
+    "HostConfig": {
+      "AutoRemove": false,
+      "Binds": [
+        "/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/docs/testing/craft/egress-probe:/probe:ro",
+        "/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/docs/testing/craft/egress-probe/e0-fix2/craft-e0-20260923T191218Z-38159/state:/state",
+        "/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/docs/testing/craft/egress-probe/e0-fix2/craft-e0-20260923T191218Z-38159/ledgers:/ledger"
+      ],
+      "BlkioDeviceReadBps": [],
+      "BlkioDeviceReadIOps": [],
+      "BlkioDeviceWriteBps": [],
+      "BlkioDeviceWriteIOps": [],
+      "BlkioWeight": 0,
+      "BlkioWeightDevice": [],
+      "CapAdd": null,
+      "CapDrop": [
+        "ALL"
+      ],
+      "Cgroup": "",
+      "CgroupParent": "",
+      "CgroupnsMode": "private",
+      "ConsoleSize": [
+        0,
+        0
+      ],
+      "ContainerIDFile": "",
+      "CpuCount": 0,
+      "CpuPercent": 0,
+      "CpuPeriod": 0,
+      "CpuQuota": 0,
+      "CpuRealtimePeriod": 0,
+      "CpuRealtimeRuntime": 0,
+      "CpuShares": 0,
+      "CpusetCpus": "",
+      "CpusetMems": "",
+      "DeviceCgroupRules": null,
+      "DeviceRequests": null,
+      "Devices": [],
+      "Dns": null,
+      "DnsOptions": [],
+      "DnsSearch": [],
+      "ExtraHosts": null,
+      "GroupAdd": null,
+      "IOMaximumBandwidth": 0,
+      "IOMaximumIOps": 0,
+      "IpcMode": "private",
+      "Isolation": "",
+      "Links": null,
+      "LogConfig": {
+        "Config": {
+          "max-file": "5",
+          "max-size": "20m"
+        },
+        "Type": "json-file"
+      },
+      "MaskedPaths": [
+        "/proc/acpi",
+        "/proc/asound",
+        "/proc/interrupts",
+        "/proc/kcore",
+        "/proc/keys",
+        "/proc/latency_stats",
+        "/proc/sched_debug",
+        "/proc/scsi",
+        "/proc/timer_list",
+        "/proc/timer_stats",
+        "/sys/devices/virtual/powercap",
+        "/sys/firmware"
+      ],
+      "Memory": 0,
+      "MemoryReservation": 0,
+      "MemorySwap": 0,
+      "MemorySwappiness": null,
+      "NanoCpus": 0,
+      "NetworkMode": "craft-e0-20260923T191218Z-38159-external",
+      "OomKillDisable": null,
+      "OomScoreAdj": 0,
+      "PidMode": "",
+      "PidsLimit": null,
+      "PortBindings": {
+        "8083/tcp": [
+          {
+            "HostIp": "0.0.0.0",
+            "HostPort": ""
+          }
+        ]
+      },
+      "Privileged": false,
+      "PublishAllPorts": false,
+      "ReadonlyPaths": [
+        "/proc/bus",
+        "/proc/fs",
+        "/proc/irq",
+        "/proc/sys",
+        "/proc/sysrq-trigger"
+      ],
+      "ReadonlyRootfs": false,
+      "RestartPolicy": {
+        "MaximumRetryCount": 0,
+        "Name": "no"
+      },
+      "Runtime": "runc",
+      "SecurityOpt": [
+        "no-new-privileges"
+      ],
+      "ShmSize": 2089811968,
+      "UTSMode": "",
+      "Ulimits": [],
+      "UsernsMode": "",
+      "VolumeDriver": "",
+      "VolumesFrom": null
+    },
+    "HostnamePath": "/var/lib/docker/containers/8262cc0fdafcd1f19a7f91d5bc2a3feceb9bb41a586250351ae5163c910cac60/hostname",
+    "HostsPath": "/var/lib/docker/containers/8262cc0fdafcd1f19a7f91d5bc2a3feceb9bb41a586250351ae5163c910cac60/hosts",
+    "Id": "8262cc0fdafcd1f19a7f91d5bc2a3feceb9bb41a586250351ae5163c910cac60",
+    "Image": "sha256:9678e13bd1c7dc9650aef26623ef8ab276d46565bbd6cb006b8e308229968f11",
+    "ImageManifestDescriptor": {
+      "digest": "sha256:bfd53feacedbf059783644c32a23d6a301e5d55bf0f58a5fb71b39ea93502d40",
+      "mediaType": "application/vnd.oci.image.manifest.v1+json",
+      "platform": {
+        "architecture": "arm64",
+        "os": "linux"
+      },
+      "size": 2761
+    },
+    "LogPath": "/var/lib/docker/containers/8262cc0fdafcd1f19a7f91d5bc2a3feceb9bb41a586250351ae5163c910cac60/8262cc0fdafcd1f19a7f91d5bc2a3feceb9bb41a586250351ae5163c910cac60-json.log",
+    "MountLabel": "",
+    "Mounts": [
+      {
+        "Destination": "/home/craft/.local/share/opencode",
+        "Driver": "local",
+        "Mode": "",
+        "Name": "289ce60689d00661a82f1b050e69549c7ed97dc3a5a5aa54c5296cf5ccbc265e",
+        "Propagation": "",
+        "RW": true,
+        "Source": "/var/lib/docker/volumes/289ce60689d00661a82f1b050e69549c7ed97dc3a5a5aa54c5296cf5ccbc265e/_data",
+        "Type": "volume"
+      },
+      {
+        "Destination": "/probe",
+        "Mode": "ro",
+        "Propagation": "rprivate",
+        "RW": false,
+        "Source": "/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/docs/testing/craft/egress-probe",
+        "Type": "bind"
+      },
+      {
+        "Destination": "/state",
+        "Mode": "",
+        "Propagation": "rprivate",
+        "RW": true,
+        "Source": "/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/docs/testing/craft/egress-probe/e0-fix2/craft-e0-20260923T191218Z-38159/state",
+        "Type": "bind"
+      },
+      {
+        "Destination": "/ledger",
+        "Mode": "",
+        "Propagation": "rprivate",
+        "RW": true,
+        "Source": "/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/docs/testing/craft/egress-probe/e0-fix2/craft-e0-20260923T191218Z-38159/ledgers",
+        "Type": "bind"
+      },
+      {
+        "Destination": "/home/craft/.config/opencode",
+        "Driver": "local",
+        "Mode": "",
+        "Name": "f1e2ccdf57891344de451de6415ef30f958c14b686b6beb62f4a356ad110e0fa",
+        "Propagation": "",
+        "RW": true,
+        "Source": "/var/lib/docker/volumes/f1e2ccdf57891344de451de6415ef30f958c14b686b6beb62f4a356ad110e0fa/_data",
+        "Type": "volume"
+      }
+    ],
+    "Name": "/craft-e0-20260923T191218Z-38159-direct",
+    "NetworkSettings": {
+      "Networks": {
+        "craft-e0-20260923T191218Z-38159-external": {
+          "Aliases": [
+            "mock-gateway",
+            "mock-provider",
+            "mock-proxy"
+          ],
+          "DNSNames": [
+            "craft-e0-20260923T191218Z-38159-direct",
+            "mock-gateway",
+            "mock-provider",
+            "mock-proxy",
+            "8262cc0fdafc"
+          ],
+          "DriverOpts": null,
+          "EndpointID": "2204631ed1e512117e0d9f7c429a713dff7ae816b0c193b3f58d1c49273436a9",
+          "Gateway": "192.168.239.1",
+          "GlobalIPv6Address": "",
+          "GlobalIPv6PrefixLen": 0,
+          "GwPriority": 0,
+          "IPAMConfig": null,
+          "IPAddress": "192.168.239.2",
+          "IPPrefixLen": 24,
+          "IPv6Gateway": "",
+          "Links": null,
+          "MacAddress": "ca:05:cd:f2:29:9a",
+          "NetworkID": "6ed194c80f3be53a883dbfaff6e2e63e3fbb08605b74eb894df3b1455948c450"
+        }
+      },
+      "Ports": {
+        "4096/tcp": null,
+        "8083/tcp": [
+          {
+            "HostIp": "0.0.0.0",
+            "HostPort": "32772"
+          }
+        ]
+      },
+      "SandboxID": "f409e22bd03017eff9497c234490b1e733f20101e2cbfbcd8d4294cf3d3b74cb",
+      "SandboxKey": "/var/run/docker/netns/f409e22bd030"
+    },
+    "Path": "python3",
+    "Platform": "linux",
+    "ProcessLabel": "",
+    "ResolvConfPath": "/var/lib/docker/containers/8262cc0fdafcd1f19a7f91d5bc2a3feceb9bb41a586250351ae5163c910cac60/resolv.conf",
+    "RestartCount": 0,
+    "State": {
+      "Dead": false,
+      "Error": "",
+      "ExitCode": 0,
+      "FinishedAt": "0001-01-01T00:00:00Z",
+      "OOMKilled": false,
+      "Paused": false,
+      "Pid": 2477804,
+      "Restarting": false,
+      "Running": true,
+      "StartedAt": "2026-09-23T19:12:20.025972992Z",
+      "Status": "running"
+    },
+    "Storage": {
+      "RootFS": {
+        "Snapshot": {
+          "Name": "overlayfs"
+        }
+      }
+    }
+  }
+]

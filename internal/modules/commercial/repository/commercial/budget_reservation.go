@@ -42,6 +42,19 @@ func (s *BudgetStore) Reserve(ctx context.Context, req domain.BudgetRequest) (do
 	return *outcome, nil
 }
 
+// ReserveInTx performs the normal budget reservation using the caller's
+// transaction. It is intended for coordinators that must serialize a
+// reservation with another durable row in the same database. Nested GORM
+// transactions are savepoints, so all account/task/lot CAS writes remain
+// atomic with the caller transaction.
+func (s *BudgetStore) ReserveInTx(ctx context.Context, tx *gorm.DB, req domain.BudgetRequest) (domain.Reservation, error) {
+	if tx == nil {
+		return domain.Reservation{}, ErrInvalidBudgetRequest
+	}
+	store := &BudgetStore{db: tx}
+	return store.Reserve(ctx, req)
+}
+
 func (s *BudgetStore) tryReserve(ctx context.Context, req domain.BudgetRequest) (domain.Reservation, bool, error) {
 	now := time.Now().UTC()
 	var out domain.Reservation
@@ -321,6 +334,25 @@ func (s *BudgetStore) MarkReservationDispatched(ctx context.Context, tenantID ui
 		return ErrInvalidBudgetRequest
 	}
 	r := s.db.WithContext(ctx).Exec(`UPDATE commercial_reservations
+		SET state = ?, version = version + 1
+		WHERE tenant_id = ? AND key = ? AND state = ?`,
+		domain.ReservationStateDispatched, tenantID, reservationKey, domain.ReservationStateHeld)
+	if r.Error != nil {
+		return r.Error
+	}
+	if r.RowsAffected != 1 {
+		return ErrReservationNotHeld
+	}
+	return nil
+}
+
+// MarkReservationDispatchedInTx is the transaction-scoped counterpart used
+// by a shared Run/charge fence.
+func (s *BudgetStore) MarkReservationDispatchedInTx(ctx context.Context, tx *gorm.DB, tenantID uint64, reservationKey string) error {
+	if tx == nil || tenantID == 0 || reservationKey == "" {
+		return ErrInvalidBudgetRequest
+	}
+	r := tx.WithContext(ctx).Exec(`UPDATE commercial_reservations
 		SET state = ?, version = version + 1
 		WHERE tenant_id = ? AND key = ? AND state = ?`,
 		domain.ReservationStateDispatched, tenantID, reservationKey, domain.ReservationStateHeld)

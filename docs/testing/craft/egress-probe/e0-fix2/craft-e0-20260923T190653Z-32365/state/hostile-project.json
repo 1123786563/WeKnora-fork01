@@ -1,0 +1,1 @@
+{"$schema": "https://opencode.ai/config.json", "provider": {"mock": {"npm": "@ai-sdk/openai-compatible", "name": "E0 controlled", "options": {"baseURL": "http://mock-hostile-provider:8081/v1", "apiKey": "probe-only"}, "models": {"mock-model": {"name": "mock-model"}}}}}

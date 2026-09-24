@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/application/service"
+	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/modules/craft"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/gin-gonic/gin"
@@ -54,7 +55,8 @@ const (
 	// craftCredentialMinSecret is the smallest accepted signing key.
 	craftCredentialMinSecret = 16
 	// craftMaxForwardBody bounds one forwarded model request.
-	craftMaxForwardBody = 8 << 20
+	craftMaxForwardBody     = 8 << 20
+	craftUsageRecordTimeout = 3 * time.Second
 )
 
 var (
@@ -83,12 +85,11 @@ type CraftPhysicalCallRecorder interface {
 	RecordPhysicalCall(ctx context.Context, in service.PhysicalCall) (craft.UsageFact, error)
 }
 
-// CraftCallAuthorizer is the durable call-identity capability the gateway
-// requires on top of craft.BudgetPort: AuthorizeBinding allocates the NEXT
-// per-binding call identity (monotonic across restarts, O01 DeriveCallID) and
-// atomically reserves its budget. service.CraftBudgetService implements it.
-type CraftCallAuthorizer interface {
-	AuthorizeBinding(ctx context.Context, grantID string, binding service.CraftCallBinding) (string, error)
+// CraftChargeStarter coordinates the committed intent and G4 hold before
+// beginning a physical model request. Existing or unresolved activity keys
+// must be rejected without invoking start again.
+type CraftChargeStarter interface {
+	BeginBinding(ctx context.Context, grantID, activityID string, binding service.CraftCallBinding) (service.CraftChargeStartAttempt, error)
 }
 
 // CraftGrantRevoker durably cancels a grant (cancellation path). Optional at
@@ -97,12 +98,13 @@ type CraftGrantRevoker interface {
 	RevokeGrant(ctx context.Context, grantID string) error
 }
 
-// CraftModelGatewayConfig wires the gateway. Budget, Recorder and Upstream
-// are mandatory: a gateway without any of them must not exist, and Budget
-// must additionally carry the durable identity capability.
+// CraftModelGatewayConfig wires the gateway. Budget, Starter, Recorder and
+// Upstream are mandatory: no model forward may exist without a durable
+// committed-start coordinator.
 type CraftModelGatewayConfig struct {
 	Secret         []byte
 	Budget         craft.BudgetPort
+	Starter        CraftChargeStarter
 	Recorder       CraftPhysicalCallRecorder
 	Upstream       CraftUpstreamResolver
 	GatewayBaseURL string
@@ -114,27 +116,26 @@ type CraftModelGatewayConfig struct {
 
 // CraftModelGateway is the controlled model entry of Craft executions.
 type CraftModelGateway struct {
-	secret   []byte
-	budget   craft.BudgetPort
-	author   CraftCallAuthorizer
-	revoker  CraftGrantRevoker
-	recorder CraftPhysicalCallRecorder
-	upstream CraftUpstreamResolver
-	baseURL  string
-	now      func() time.Time
-	forward  func(req *http.Request) (*http.Response, error)
-	maxTTL   time.Duration
-	timeout  time.Duration
+	secret             []byte
+	budget             craft.BudgetPort
+	starter            CraftChargeStarter
+	revoker            CraftGrantRevoker
+	recorder           CraftPhysicalCallRecorder
+	upstream           CraftUpstreamResolver
+	baseURL            string
+	now                func() time.Time
+	forward            func(req *http.Request) (*http.Response, error)
+	maxTTL             time.Duration
+	timeout            time.Duration
+	usageRecordTimeout time.Duration
 
 	mu      sync.Mutex
 	revoked map[string]struct{} // revoked credential JTIs (short TTL bound)
 }
 
 // NewCraftModelGateway validates the wiring fail-closed: a signing secret, a
-// budget port WITH the durable call-identity capability, a usage recorder and
-// a server-configured upstream resolver are all mandatory. A nil port or an
-// AllowAll-shaped fake cannot pass construction — the real charging assembly
-// passes the durable service.CraftBudgetService.
+// budget port, a durable charge-start coordinator, a usage recorder and a
+// server-configured upstream resolver are all mandatory.
 func NewCraftModelGateway(cfg CraftModelGatewayConfig) (*CraftModelGateway, error) {
 	if len(cfg.Secret) < craftCredentialMinSecret {
 		return nil, fmt.Errorf("%w: signing secret of at least %d bytes is required", ErrCraftGatewayConfig, craftCredentialMinSecret)
@@ -142,9 +143,8 @@ func NewCraftModelGateway(cfg CraftModelGatewayConfig) (*CraftModelGateway, erro
 	if cfg.Budget == nil {
 		return nil, fmt.Errorf("%w: a craft.BudgetPort is required", ErrCraftGatewayConfig)
 	}
-	author, ok := cfg.Budget.(CraftCallAuthorizer)
-	if !ok {
-		return nil, fmt.Errorf("%w: the budget port must provide durable call identities (AuthorizeBinding)", ErrCraftGatewayConfig)
+	if cfg.Starter == nil {
+		return nil, fmt.Errorf("%w: a durable charge-start coordinator is required", ErrCraftGatewayConfig)
 	}
 	if cfg.Recorder == nil {
 		return nil, fmt.Errorf("%w: a physical-call recorder is required", ErrCraftGatewayConfig)
@@ -169,17 +169,18 @@ func NewCraftModelGateway(cfg CraftModelGatewayConfig) (*CraftModelGateway, erro
 		timeout = 5 * time.Minute
 	}
 	gw := &CraftModelGateway{
-		secret:   append([]byte(nil), cfg.Secret...),
-		budget:   cfg.Budget,
-		author:   author,
-		recorder: cfg.Recorder,
-		upstream: cfg.Upstream,
-		baseURL:  cfg.GatewayBaseURL,
-		now:      now,
-		forward:  forward,
-		maxTTL:   maxTTL,
-		timeout:  timeout,
-		revoked:  map[string]struct{}{},
+		secret:             append([]byte(nil), cfg.Secret...),
+		budget:             cfg.Budget,
+		starter:            cfg.Starter,
+		recorder:           cfg.Recorder,
+		upstream:           cfg.Upstream,
+		baseURL:            cfg.GatewayBaseURL,
+		now:                now,
+		forward:            forward,
+		maxTTL:             maxTTL,
+		timeout:            timeout,
+		usageRecordTimeout: craftUsageRecordTimeout,
+		revoked:            map[string]struct{}{},
 	}
 	if revoker, ok := cfg.Budget.(CraftGrantRevoker); ok {
 		gw.revoker = revoker
@@ -426,10 +427,13 @@ var craftForbiddenBodyFields = []string{
 	"api_key", "apiKey", "api_key_alias", "credential", "authorization",
 }
 
+const craftModelActivityHeader = "X-Craft-Activity-ID"
+
 // Forward POST /craft/model-gateway/v1/chat/completions — the OC runtime's
 // model entry. Order of gates: credential -> binding/model/upstream fields ->
-// budget authorization -> server upstream resolution -> forward -> record.
-// A budget denial is a hard, visible stop; recording happens even for broken
+// stable activity identity and server upstream resolution -> committed charge
+// start -> bounded Do initiation -> response/body and usage outside SQL. A
+// budget denial is a hard, visible stop; recording happens even for broken
 // responses (nil usage = unknown observation, per the O01 ledger contract).
 func (g *CraftModelGateway) Forward(c *gin.Context) {
 	payload, ok := g.credentialFromRequest(c)
@@ -469,13 +473,12 @@ func (g *CraftModelGateway) Forward(c *gin.Context) {
 		return
 	}
 
-	callID, err := g.author.AuthorizeBinding(c.Request.Context(), payload.GrantID, service.CraftCallBinding{
-		DelegationID: payload.DelegationID, ModelID: model, Funding: payload.Funding,
-	})
+	activityID, err := craftModelActivityKey(payload, c.GetHeader(craftModelActivityHeader))
 	if err != nil {
-		g.failBudget(c, err, false)
+		appFail(c, http.StatusBadRequest, "ACTIVITY_ID_REQUIRED", "a stable X-Craft-Activity-ID is required for each model activity")
 		return
 	}
+	callID := "activity/" + activityID
 	attemptID := craft.DeriveAttemptID(callID, 1)
 
 	target, err := g.upstream(c.Request.Context(), model)
@@ -488,26 +491,82 @@ func (g *CraftModelGateway) Forward(c *gin.Context) {
 
 	forwardBody, _ := json.Marshal(body)
 	endpoint := strings.TrimSuffix(target.BaseURL, "/") + target.Path
-	req, err := http.NewRequestWithContext(c.Request.Context(), http.MethodPost, endpoint, bytes.NewReader(forwardBody))
+	// StartBinding bounds transport initiation. A separate bounded context
+	// derived from the inbound request owns the response body through close.
+	responseCtx, cancelResponse := context.WithTimeout(c.Request.Context(), g.timeout)
+	defer cancelResponse()
+	req, err := http.NewRequestWithContext(responseCtx, http.MethodPost, endpoint, bytes.NewReader(forwardBody))
 	if err != nil {
 		appFail(c, http.StatusInternalServerError, "FORWARD_FAILED", err.Error())
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+target.APIKey)
-	ctx, cancel := context.WithTimeout(c.Request.Context(), g.timeout)
-	defer cancel()
-	resp, err := g.forward(req.WithContext(ctx))
+	attempt, err := g.starter.BeginBinding(c.Request.Context(), payload.GrantID, activityID,
+		service.CraftCallBinding{DelegationID: payload.DelegationID, ModelID: model, Funding: payload.Funding})
 	if err != nil {
-		g.recordCall(c, payload, callID, attemptID, model, nil)
-		appFail(c, http.StatusBadGateway, "UPSTREAM_ERROR", err.Error())
+		if errors.Is(err, craft.ErrConflict) {
+			appFail(c, http.StatusConflict, "ACTIVITY_UNRESOLVED", "this model activity was already attempted; reconcile before retry")
+			return
+		}
+		g.failBudget(c, err, false)
 		return
 	}
-	defer func() { _ = resp.Body.Close() }()
-	respBody, err := io.ReadAll(io.LimitReader(resp.Body, craftMaxForwardBody))
-	if err != nil {
+	defer attempt.CancelInitiation()
+	resp, forwardErr, attempted, initiationExpired, cancelRequest := g.forwardWithinInitiation(attempt, req)
+	if cancelRequest != nil {
+		defer cancelRequest()
+	}
+	if !attempted {
+		resolveErr := attempt.Resolve(c.Request.Context(), service.CraftChargeStartDefinitelyNotStarted)
+		if resolveErr != nil {
+			appFail(c, http.StatusBadGateway, "ACTIVITY_UNRESOLVED", resolveErr.Error())
+			return
+		}
+		appFail(c, http.StatusBadGateway, "UPSTREAM_ERROR", forwardErr.Error())
+		return
+	}
+	if initiationExpired {
+		closeGatewayResponse(resp)
 		g.recordCall(c, payload, callID, attemptID, model, nil)
-		appFail(c, http.StatusBadGateway, "UPSTREAM_ERROR", err.Error())
+		resolveErr := attempt.Resolve(c.Request.Context(), service.CraftChargeStartUnknown)
+		appFail(c, http.StatusBadGateway, "ACTIVITY_UNRESOLVED", errors.Join(forwardErr, resolveErr).Error())
+		return
+	}
+	if forwardErr != nil || resp == nil {
+		closeGatewayResponse(resp)
+		g.recordCall(c, payload, callID, attemptID, model, nil)
+		if forwardErr == nil {
+			forwardErr = errors.New("model transport returned no response")
+		}
+		resolveErr := attempt.Resolve(c.Request.Context(), service.CraftChargeStartUnknown)
+		appFail(c, http.StatusBadGateway, "UPSTREAM_ERROR", errors.Join(forwardErr, resolveErr).Error())
+		return
+	}
+	if resp.Body == nil {
+		g.recordCall(c, payload, callID, attemptID, model, nil)
+		resolveErr := attempt.Resolve(c.Request.Context(), service.CraftChargeStartUnknown)
+		appFail(c, http.StatusBadGateway, "ACTIVITY_UNRESOLVED", errors.Join(errors.New("upstream response body is missing"), resolveErr).Error())
+		return
+	}
+	respBody, readErr := io.ReadAll(io.LimitReader(resp.Body, craftMaxForwardBody+1))
+	closeErr := resp.Body.Close()
+	if readErr != nil || len(respBody) == 0 || len(respBody) > craftMaxForwardBody || closeErr != nil {
+		g.recordCall(c, payload, callID, attemptID, model, nil)
+		failure := errors.Join(readErr, closeErr)
+		if len(respBody) == 0 && readErr == nil {
+			failure = errors.Join(failure, errors.New("upstream response body is empty"))
+		}
+		if len(respBody) > craftMaxForwardBody {
+			failure = errors.Join(failure, errors.New("upstream response body exceeds maximum size"))
+		}
+		resolveErr := attempt.Resolve(c.Request.Context(), service.CraftChargeStartUnknown)
+		appFail(c, http.StatusBadGateway, "ACTIVITY_UNRESOLVED", errors.Join(failure, resolveErr).Error())
+		return
+	}
+	if err := attempt.Resolve(c.Request.Context(), service.CraftChargeStartStarted); err != nil {
+		g.recordCall(c, payload, callID, attemptID, model, nil)
+		appFail(c, http.StatusBadGateway, "ACTIVITY_UNRESOLVED", err.Error())
 		return
 	}
 	g.recordCall(c, payload, callID, attemptID, model, craftParseUsage(respBody))
@@ -515,6 +574,66 @@ func (g *CraftModelGateway) Forward(c *gin.Context) {
 		c.Header("Content-Type", ct)
 	}
 	c.Data(resp.StatusCode, "application/json", respBody)
+}
+
+// forwardWithinInitiation cancels a blocked Do when the coordinator's start
+// context expires. Once Do returns headers, that deadline no longer cancels
+// the request context; the whole-response context owns the body through Close.
+func (g *CraftModelGateway) forwardWithinInitiation(attempt service.CraftChargeStartAttempt, req *http.Request) (*http.Response, error, bool, bool, context.CancelFunc) {
+	startCtx := attempt.InitiationContext()
+	if err := startCtx.Err(); err != nil {
+		return nil, err, false, false, nil
+	}
+	requestCtx, cancelRequest := context.WithCancel(req.Context())
+	var mu sync.Mutex
+	responseHeadersReturned := false
+	stopDeadline := context.AfterFunc(startCtx, func() {
+		mu.Lock()
+		defer mu.Unlock()
+		if !responseHeadersReturned {
+			cancelRequest()
+		}
+	})
+	resp, err := g.forward(req.WithContext(requestCtx))
+	mu.Lock()
+	responseHeadersReturned = true
+	initiationExpired := startCtx.Err() != nil
+	mu.Unlock()
+	stopDeadline()
+	attempt.CancelInitiation()
+	if initiationExpired {
+		cancelRequest()
+		if err == nil {
+			err = context.DeadlineExceeded
+		}
+		return resp, err, true, true, cancelRequest
+	}
+	return resp, err, true, false, cancelRequest
+}
+
+func closeGatewayResponse(resp *http.Response) {
+	if resp != nil && resp.Body != nil {
+		_ = resp.Body.Close()
+	}
+}
+
+// craftModelActivityKey binds the runtime-supplied stable request identity to
+// the authenticated run/grant scope. Binding facets stay out of the activity
+// key so reusing one ID with a different model/delegation/funding conflicts
+// in the durable coordinator. The raw key is not persisted in the journal.
+func craftModelActivityKey(payload craftCredentialPayload, requestActivityID string) (string, error) {
+	if requestActivityID == "" || len(requestActivityID) > 128 || strings.TrimSpace(requestActivityID) != requestActivityID {
+		return "", craft.ErrInvalidInput
+	}
+	for _, char := range requestActivityID {
+		if !(char >= 'a' && char <= 'z' || char >= 'A' && char <= 'Z' || char >= '0' && char <= '9' || strings.ContainsRune("._:-", char)) {
+			return "", craft.ErrInvalidInput
+		}
+	}
+	identity := fmt.Sprintf("%d\x00%s\x00%s\x00%s", payload.TenantID,
+		payload.RunID, payload.GrantID, requestActivityID)
+	digest := sha256.Sum256([]byte(identity))
+	return "model-" + hex.EncodeToString(digest[:]), nil
 }
 
 // ListModels GET /craft/model-gateway/v1/models — a credential-scoped READ.
@@ -534,10 +653,17 @@ func (g *CraftModelGateway) ListModels(c *gin.Context) {
 }
 
 // recordCall appends the physical attempt to the O01 usage ledger. nil usage
-// records an unknown observation (no fabricated numbers); a recording error
-// is logged into the response but never swallowed silently.
+// records an unknown observation (no fabricated numbers). Persistence uses a
+// bounded context detached from request cancellation so a client disconnect
+// cannot suppress the durable fact after provider traffic has started.
 func (g *CraftModelGateway) recordCall(c *gin.Context, payload craftCredentialPayload, callID, attemptID, model string, usage *craft.UsageTotals) {
-	_, err := g.recorder.RecordPhysicalCall(c.Request.Context(), service.PhysicalCall{
+	timeout := g.usageRecordTimeout
+	if timeout <= 0 {
+		timeout = craftUsageRecordTimeout
+	}
+	recordCtx, cancel := context.WithTimeout(context.WithoutCancel(c.Request.Context()), timeout)
+	defer cancel()
+	_, err := g.recorder.RecordPhysicalCall(recordCtx, service.PhysicalCall{
 		TenantID:     payload.TenantID,
 		RunID:        payload.RunID,
 		DelegationID: payload.DelegationID,
@@ -549,8 +675,14 @@ func (g *CraftModelGateway) recordCall(c *gin.Context, payload craftCredentialPa
 		Usage:        usage,
 	})
 	if err != nil {
-		// The ledger is the billing ground truth: surface the failure rather
-		// than letting an unrecorded charge pass silently.
+		// The response header is supplemental because a canceled caller may
+		// never observe it. Emit durable identities for operator reconciliation.
+		logger.ErrorWithFields(c.Request.Context(), err, logger.Fields{
+			"event":      "craft_model_gateway_usage_record_failed",
+			"run_id":     payload.RunID,
+			"call_id":    callID,
+			"attempt_id": attemptID,
+		})
 		c.Header("X-Craft-Usage-Record-Error", err.Error())
 	}
 }

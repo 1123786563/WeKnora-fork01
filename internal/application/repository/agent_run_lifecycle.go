@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"encoding/json"
+	"errors"
 
 	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
 	"gorm.io/gorm"
@@ -15,30 +16,82 @@ func (s *AgentRunStore) CancelRun(ctx context.Context, key agentruntime.RunKey, 
 		return agentruntime.ErrConflict
 	}
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var run agentRunRow
-		if err := runScope(tx, key).Take(&run).Error; err != nil {
-			if err == gorm.ErrRecordNotFound {
-				return agentruntime.ErrNotFound
+		return s.cancelRunTx(tx, key, reason)
+	})
+}
+
+func (s *AgentRunStore) cancelRunTx(tx *gorm.DB, key agentruntime.RunKey, reason string) error {
+	if err := lockRunTransitionRow(tx, key); err != nil {
+		if errors.Is(err, agentruntime.ErrNotFound) {
+			return agentruntime.ErrNotFound
+		}
+		return err
+	}
+	var run agentRunRow
+	if err := runScope(tx, key).Take(&run).Error; err != nil {
+		return err
+	}
+	if err := rejectUnresolvedCraftRunViewEffects(tx, key); err != nil {
+		return err
+	}
+	if run.Status == "canceled" {
+		return nil
+	}
+	if run.Status == "succeeded" || run.Status == "failed" {
+		return agentruntime.ErrConflict
+	}
+	unresolved, err := hasUnresolvedCraftChargeStart(tx, key)
+	if err != nil {
+		return err
+	}
+	if unresolved {
+		if run.Status == "reconciling" && run.WaitReason == craftChargeStartPendingWaitReason {
+			var cancelRequests int64
+			if err := tx.Table("agent_run_events").Where(
+				"tenant_id = ? AND run_id = ? AND event_type = ?", key.TenantID, key.RunID, "craft_charge_cancel_requested",
+			).Count(&cancelRequests).Error; err != nil {
+				return err
 			}
+			if cancelRequests != 0 {
+				return nil
+			}
+		}
+		if err := requestCraftChargeCancel(tx, key, reason); err != nil {
 			return err
 		}
-		if run.Status == "canceled" {
-			return nil
+		payload, _ := json.Marshal(map[string]string{"reason": reason})
+		return appendRunEventLocked(tx, agentruntime.Fence{RunKey: key}, "cancellation_requested", string(payload))
+	}
+	if err := runScope(tx, key).Updates(map[string]any{"status": "canceled", "wait_reason": reason, "lease_owner": "", "lease_until": nil, "revision": gorm.Expr("revision+1"), "updated_at": gorm.Expr("CURRENT_TIMESTAMP")}).Error; err != nil {
+		return err
+	}
+	payloadBytes, err := json.Marshal(map[string]string{"reason": reason})
+	if err != nil {
+		return err
+	}
+	if err := appendRunEventLocked(tx, agentruntime.Fence{RunKey: key}, "cancellation_requested", string(payloadBytes)); err != nil {
+		return err
+	}
+	return tx.Table("sessions").Where("tenant_id=? AND id=? AND active_agent_run_id=?", key.TenantID, run.SessionID, key.RunID).Update("active_agent_run_id", nil).Error
+}
+
+// CancelRunOwnedAtRevision applies the Workbench's authenticated revision
+// fence through the same journal-aware cancellation transition as RunStore.
+func (s *AgentRunStore) CancelRunOwnedAtRevision(ctx context.Context, tenantID uint64, ownerID, runID string, revision int64, reason string) error {
+	if tenantID == 0 || ownerID == "" || runID == "" || revision < 0 {
+		return agentruntime.ErrConflict
+	}
+	key := agentruntime.RunKey{TenantID: tenantID, RunID: runID}
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		locked := runScope(tx, key).Where("owner_id = ? AND revision = ? AND status IN ('queued','running','waiting_user','reconciling','recovering')", ownerID, revision).
+			UpdateColumn("revision", gorm.Expr("revision"))
+		if locked.Error != nil {
+			return locked.Error
 		}
-		if run.Status == "succeeded" || run.Status == "failed" {
+		if locked.RowsAffected != 1 {
 			return agentruntime.ErrConflict
 		}
-		if err := runScope(tx, key).Updates(map[string]any{"status": "canceled", "wait_reason": reason, "lease_owner": "", "lease_until": nil, "revision": gorm.Expr("revision+1"), "updated_at": gorm.Expr("CURRENT_TIMESTAMP")}).Error; err != nil {
-			return err
-		}
-		payloadBytes, err := json.Marshal(map[string]string{"reason": reason})
-		if err != nil {
-			return err
-		}
-		if err := appendRunEventLocked(tx, agentruntime.Fence{RunKey: key}, "cancellation_requested", string(payloadBytes)); err != nil {
-			return err
-		}
-		return tx.Table("sessions").Where("tenant_id=? AND id=? AND active_agent_run_id=?", key.TenantID, run.SessionID, key.RunID).Update("active_agent_run_id", nil).Error
+		return s.cancelRunTx(tx, key, reason)
 	})
 }
 
@@ -65,17 +118,17 @@ func (s *AgentRunStore) DeleteSessionRuns(ctx context.Context, tenantID uint64, 
 			return err
 		}
 		for _, id := range ids {
-			if err := tx.Table("agent_runs").Where("tenant_id=? AND run_id=?", tenantID, id).
-				Updates(map[string]any{"status": "canceled", "wait_reason": "session_deleted", "lease_owner": "", "lease_until": nil, "revision": gorm.Expr("revision+1")}).Error; err != nil {
+			if err := s.cancelRunTx(tx, agentruntime.RunKey{TenantID: tenantID, RunID: id}, "session_deleted"); err != nil {
 				return err
 			}
-			payload, err := json.Marshal(map[string]string{"reason": "session_deleted"})
-			if err != nil {
-				return err
-			}
-			if err := appendRunEventLocked(tx, agentruntime.Fence{RunKey: agentruntime.RunKey{TenantID: tenantID, RunID: id}}, "cancellation_requested", string(payload)); err != nil {
-				return err
-			}
+		}
+		var pending int64
+		if err := tx.Table("agent_runs").Where("tenant_id = ? AND session_id = ? AND status = 'reconciling' AND wait_reason = ?",
+			tenantID, sessionID, craftChargeStartPendingWaitReason).Count(&pending).Error; err != nil {
+			return err
+		}
+		if pending != 0 {
+			return nil
 		}
 		return tx.Table("sessions").Where("tenant_id=? AND id=?", tenantID, sessionID).Update("active_agent_run_id", nil).Error
 	})

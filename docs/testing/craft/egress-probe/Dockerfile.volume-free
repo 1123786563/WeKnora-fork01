@@ -1,0 +1,16 @@
+# Derive a volume-free test image from the exact reviewed OpenCode image.
+# Copying the merged root filesystem through scratch preserves bytes but drops
+# inherited Docker image metadata, including the two declared XDG VOLUMEs.
+FROM docker.io/library/weknora-craft-runtime@sha256:9678e13bd1c7dc9650aef26623ef8ab276d46565bbd6cb006b8e308229968f11 AS pinned
+FROM scratch
+COPY --from=pinned / /
+COPY --chmod=0444 server_v2.py /usr/local/bin/craft_source_recorder.py
+ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+    HOME=/home/craft \
+    XDG_CONFIG_HOME=/home/craft/.config \
+    XDG_DATA_HOME=/home/craft/.local/share
+EXPOSE 4096/tcp
+WORKDIR /workspace/output
+USER 10001:10001
+ENTRYPOINT ["/usr/local/bin/opencode"]
+CMD ["serve", "--hostname", "0.0.0.0", "--port", "4096"]

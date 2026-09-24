@@ -1,0 +1,11 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "mock": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Disposable mock adapter",
+      "options": {"baseURL": "http://mock-adapter:8080/v1", "apiKey": "probe-only"},
+      "models": {"mock-model": {"name": "Disposable mock model"}}
+    }
+  }
+}
