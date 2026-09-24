@@ -28,6 +28,11 @@ func TestValidateNameRejectsSeparatorsAndPrivateUse(t *testing.T) {
 	require.Error(t, err, "private-use (Co) must be rejected from names")
 	require.ErrorContains(t, err, "private-use",
 		"the rejection message must name the actual character class")
+	// OCR 一轮 F4：消息必须同样命名 Zl/Zp 类别——validateName 注释承诺
+	// "names every rejected class"，对 U+2028 场景不成立。
+	err = validateName("tools[0].name", "bad\u2028name", maxToolNameLen)
+	require.ErrorContains(t, err, "separator",
+		"the rejection message must name the Zl/Zp class it actually hit")
 }
 
 func validManifest() *types.PluginManifest {
@@ -118,6 +123,21 @@ func TestValidateManifestBoundsURLErrorEcho(t *testing.T) {
 	require.Error(t, err)
 	require.Less(t, len(err.Error()), 1024, "url.Parse failure must not echo the full endpoint")
 	require.NotContains(t, err.Error(), strings.Repeat("x", 100))
+}
+
+// TestValidateManifestBoundsParseReasonEcho (OCR round-1 F3): the inner
+// url.Parse reason is NOT a fixed-size message family — parseHost's
+// `invalid port %q after host` embeds everything after the last colon of the
+// authority (review measured a 900KB error via this path). The unwrapped
+// uerr.Err must pass through echoQuoted like every other untrusted echo.
+func TestValidateManifestBoundsParseReasonEcho(t *testing.T) {
+	m := validManifest()
+	m.Transport.Endpoint = "http://h:" + strings.Repeat("a", 9000)
+	err := ValidateManifest(m)
+	require.Error(t, err)
+	require.Less(t, len(err.Error()), 1024,
+		"the parse reason must be bounded even when it embeds the hostile port")
+	require.NotContains(t, err.Error(), strings.Repeat("a", 100))
 }
 
 // TestValidateManifestAcceptsMultilineDescription: newlines/tabs are legal in

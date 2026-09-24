@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -44,6 +45,14 @@ const defaultPluginPreviewTTL = 15 * time.Minute
 // TTL-bound review artifacts; anything beyond a day defeats the bound.
 const maxPluginPreviewTTL = 24 * time.Hour
 
+// minPluginPreviewTTL floors a valid PLUGIN_PREVIEW_TTL override (OCR round-1
+// F1): a TTL smaller than the CreatePreview round trip (e.g. "1ms") makes the
+// just-written row fall to the same request's DeleteExpiredPreviews sweep
+// while the response still returns the PreviewID — confirm would then hit
+// zero rows forever. Symmetric with the cap: misconfiguration degrades to the
+// spec'd bound in BOTH directions.
+const minPluginPreviewTTL = time.Minute
+
 // maxPluginURLRunes aligns with plugin_previews.manifest_url /
 // endpoint_url varchar(512) — in runes, the unit PostgreSQL varchar counts.
 // Inputs longer than the column must be rejected as client-input problems
@@ -60,6 +69,35 @@ func validatePluginURLLength(where, rawURL string) error {
 	return nil
 }
 
+// validateManifestURLInput is the deterministic input pre-check a manifest
+// URL must pass BEFORE the SSRF verdict and any fetch (OCR round-1 F7/F6):
+//
+//   - url.Parse failure → fixed message, never the *url.Error text: it embeds
+//     the full URL verbatim, so a malformed URL that also carries userinfo
+//     would leak the credentials into the admin-visible 400 body (review
+//     measured exactly that) — bypassing fetcher.go's no-echo discipline
+//     (OCR T01-R3-F2) which only guards the WELL-FORMED userinfo case.
+//   - userinfo (u.User != nil) → silent rejection with a fixed message, same
+//     hygiene as fetcher.go's step 1.
+//   - non-http(s) scheme (including empty, e.g. a bare "example.com/x"):
+//     ValidateURLForSSRF would auto-prepend https:// and pass, but the fetch
+//     layer uses the ORIGINAL URL and fails deterministically ("unsupported
+//     protocol scheme") — surfacing as a retryable 503 instead of the
+//     documented @Failure 400. Reject up front.
+func validateManifestURLInput(rawURL string) error {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("%w: URL is malformed (no details echoed)", ErrManifestURLRejected)
+	}
+	if u.User != nil {
+		return fmt.Errorf("%w: URL must not embed userinfo credentials", ErrManifestURLRejected)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Errorf("%w: URL scheme must be http or https, got %q", ErrManifestURLRejected, u.Scheme)
+	}
+	return nil
+}
+
 func pluginPreviewTTL() time.Duration {
 	raw := strings.TrimSpace(os.Getenv("PLUGIN_PREVIEW_TTL"))
 	if raw == "" {
@@ -68,6 +106,9 @@ func pluginPreviewTTL() time.Duration {
 	d, err := time.ParseDuration(raw)
 	if err != nil || d <= 0 {
 		return defaultPluginPreviewTTL
+	}
+	if d < minPluginPreviewTTL {
+		return minPluginPreviewTTL
 	}
 	if d > maxPluginPreviewTTL {
 		return maxPluginPreviewTTL
@@ -110,6 +151,13 @@ func (s *pluginService) PreviewFromManifest(
 	// input problem and must not cost a fetch round trip (nor surface later
 	// as a column-overflow 500).
 	if err := validatePluginURLLength("plugin manifest URL", manifestURL); err != nil {
+		return nil, err
+	}
+	// Deterministic input pre-check (OCR round-1 F7/F6): malformed URLs,
+	// userinfo credentials and schemeless hosts are 4xx input errors — the
+	// SSRF layer auto-normalizes scheme (masking the last case as a fetch
+	// fault) and its parse-failure text would echo credentials.
+	if err := validateManifestURLInput(manifestURL); err != nil {
 		return nil, err
 	}
 	// Classify the SSRF rejection here (FetchAndVerify re-validates the same

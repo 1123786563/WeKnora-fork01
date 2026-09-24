@@ -143,15 +143,16 @@ func ValidateManifest(m *types.PluginManifest) error {
 		// original URL (remote-controlled, up to ~maxManifestBytes), which
 		// would bypass this file's bounded-echo discipline on its way into
 		// the admin-facing 400 response (OCR T01-R4-F3). Strip the wrapper
-		// and echo the endpoint truncated instead; the inner reason is the
-		// parser's fixed-size message family (worst case embeds a ~3-char
-		// escape fragment).
+		// and echo the endpoint truncated instead. The inner reason is NOT a
+		// fixed-size message family (OCR round-1 F3, review-measured 900KB):
+		// parseHost's `invalid port %q after host` embeds everything after
+		// the authority's last colon — bound it with echoQuoted too.
 		reason := err
 		var uerr *url.Error
 		if errors.As(err, &uerr) {
 			reason = uerr.Err
 		}
-		return fmt.Errorf("invalid transport endpoint %s: %v", echoQuoted(m.Transport.Endpoint), reason)
+		return fmt.Errorf("invalid transport endpoint %s: %s", echoQuoted(m.Transport.Endpoint), echoQuoted(reason.Error()))
 	}
 	if endpoint.Scheme != "http" && endpoint.Scheme != "https" {
 		return fmt.Errorf("transport endpoint scheme must be http or https, got %s", echoQuoted(endpoint.Scheme))
@@ -221,7 +222,7 @@ func validateName(where, name string, maxRunes int) error {
 	for _, r := range name {
 		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) || unicode.Is(unicode.Co, r) ||
 			unicode.Is(unicode.Zl, r) || unicode.Is(unicode.Zp, r) {
-			return fmt.Errorf("%s must not contain control, format or private-use characters (U+%04X)", where, r)
+			return fmt.Errorf("%s must not contain control, format, private-use or line/paragraph separator characters (U+%04X)", where, r)
 		}
 	}
 	return nil
