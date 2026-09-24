@@ -45,3 +45,29 @@ test('career upload sends a browser multipart body and lists source versions', a
  assert.equal(Object.keys(calls[0]?.headers ?? {}).some((key) => key.toLowerCase() === 'content-type'), false)
  assert.equal(calls[1]?.url, 'https://example.test/api/v1/career/sources')
 })
+
+test('opportunity client encodes import, receipt recovery, and fixed evidence IDs', async () => {
+ const calls: Array<{ method: string; path: string; body?: unknown }> = []
+ const receipt = { kind: 'opportunity_imported', requestId: 'request /1', opportunityId: 'opportunity/1', observationId: 'observation-1', snapshotId: 'snapshot ?1', status: 'needs_review', acquiredAt: '2026-09-24T01:02:03Z' }
+ const evidence = { opportunityId: 'opportunity/1', observationId: 'observation-1', snapshotId: 'snapshot ?1', rawText: 'JD text', rawSha256: 'a'.repeat(64), extracted: { title: { state: 'unknown' }, company: { state: 'unknown' }, location: { state: 'unknown' }, batch: { state: 'unknown' }, requirements: { state: 'unknown' } }, source: { kind: 'manual_paste' }, acquiredAt: receipt.acquiredAt, status: 'needs_review' }
+ const api = createCareerApi(async (input) => {
+  calls.push({ method: input.method, path: input.path, ...(input.body !== undefined ? { body: input.body } : {}) })
+  return input.path.endsWith('/import') || input.path.includes('/receipt?') ? receipt : evidence
+ })
+ const input = { requestId: 'request /1', rawText: 'JD text', sourceLabel: 'Board & more', sourceReference: 'listing/1' }
+ await api.importOpportunity(input)
+ await api.opportunityReceipt(input.requestId)
+ await api.opportunityEvidence(receipt.opportunityId, receipt.snapshotId)
+ assert.deepEqual(calls, [
+  { method: 'POST', path: '/api/v1/career/opportunities/import', body: input },
+  { method: 'GET', path: '/api/v1/career/opportunities/receipt?requestId=request%20%2F1' },
+  { method: 'GET', path: '/api/v1/career/opportunities/opportunity%2F1?snapshotId=snapshot%20%3F1' },
+ ])
+})
+
+test('opportunity client refuses blank request and evidence identifiers', async () => {
+ const api = createCareerApi(async () => { throw new Error('must not send invalid request') })
+ await assert.rejects(api.importOpportunity({ requestId: ' ', rawText: 'JD' }), /requestId/)
+ await assert.rejects(api.opportunityReceipt(' '), /requestId/)
+ await assert.rejects(api.opportunityEvidence('id', ' '), /IDs/)
+})

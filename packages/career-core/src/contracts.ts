@@ -70,3 +70,36 @@ export function decodeCareerSources(value: unknown): CareerDocumentSource[] {
  if (!isRecord(value) || !Array.isArray(value.sources)) throw new TypeError('invalid career sources')
  return value.sources.map(decodeCareerSource)
 }
+
+export type OpportunityStatus = 'stored' | 'needs_review'
+export type OpportunityExtractedValue = { state: 'known'; value: string } | { state: 'unknown' }
+export type OpportunityFields = { title: OpportunityExtractedValue; company: OpportunityExtractedValue; location: OpportunityExtractedValue; batch: OpportunityExtractedValue; requirements: OpportunityExtractedValue }
+export type OpportunitySource = { kind: string; label?: string; referenceId?: string }
+export type OpportunityImportInput = { requestId: string; rawText: string; sourceLabel?: string; sourceReference?: string }
+export type OpportunityReceipt = { kind: 'opportunity_imported'; requestId: string; opportunityId: string; observationId: string; snapshotId: string; status: OpportunityStatus; acquiredAt: string }
+export type OpportunityEvidence = { opportunityId: string; observationId: string; snapshotId: string; rawText: string; rawSha256: string; extracted: OpportunityFields; source: OpportunitySource; acquiredAt: string; status: OpportunityStatus }
+
+const opportunityStatuses: OpportunityStatus[] = ['stored', 'needs_review']
+function validIdentifier(value: unknown): value is string { return typeof value === 'string' && value.trim().length > 0 }
+function validTimestamp(value: unknown): value is string { return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(value) && Number.isFinite(Date.parse(value)) }
+function decodeOpportunityValue(value: unknown): OpportunityExtractedValue {
+ if (!isRecord(value)) throw new TypeError('invalid opportunity extracted value')
+ if (value.state === 'unknown' && value.value === undefined) return { state: 'unknown' }
+ if (value.state === 'known' && typeof value.value === 'string' && value.value.trim().length > 0) return { state: 'known', value: value.value }
+ throw new TypeError('invalid opportunity extracted value state')
+}
+export function decodeOpportunityReceipt(value: unknown): OpportunityReceipt {
+ if (!isRecord(value) || value.kind !== 'opportunity_imported' || !validIdentifier(value.requestId) || !validIdentifier(value.opportunityId) || !validIdentifier(value.observationId) || !validIdentifier(value.snapshotId) || !opportunityStatuses.includes(value.status as OpportunityStatus) || !validTimestamp(value.acquiredAt)) throw new TypeError('invalid opportunity receipt')
+ return { kind: 'opportunity_imported', requestId: value.requestId, opportunityId: value.opportunityId, observationId: value.observationId, snapshotId: value.snapshotId, status: value.status as OpportunityStatus, acquiredAt: value.acquiredAt }
+}
+export function decodeOpportunityEvidence(value: unknown): OpportunityEvidence {
+ if (!isRecord(value) || !validIdentifier(value.opportunityId) || !validIdentifier(value.observationId) || !validIdentifier(value.snapshotId) || typeof value.rawText !== 'string' || typeof value.rawSha256 !== 'string' || !/^[a-f0-9]{64}$/.test(value.rawSha256) || !isRecord(value.extracted) || !isRecord(value.source) || !validIdentifier(value.source.kind) || (value.source.label !== undefined && typeof value.source.label !== 'string') || (value.source.referenceId !== undefined && typeof value.source.referenceId !== 'string') || !validTimestamp(value.acquiredAt) || !opportunityStatuses.includes(value.status as OpportunityStatus)) throw new TypeError('invalid opportunity evidence')
+ const extracted: OpportunityFields = {
+  title: decodeOpportunityValue(value.extracted.title),
+  company: decodeOpportunityValue(value.extracted.company),
+  location: decodeOpportunityValue(value.extracted.location),
+  batch: decodeOpportunityValue(value.extracted.batch),
+  requirements: decodeOpportunityValue(value.extracted.requirements),
+ }
+ return { opportunityId: value.opportunityId, observationId: value.observationId, snapshotId: value.snapshotId, rawText: value.rawText, rawSha256: value.rawSha256, extracted, source: { kind: value.source.kind, ...(value.source.label !== undefined ? { label: value.source.label } : {}), ...(value.source.referenceId !== undefined ? { referenceId: value.source.referenceId } : {}) }, acquiredAt: value.acquiredAt, status: value.status as OpportunityStatus }
+}
