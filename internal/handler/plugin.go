@@ -423,6 +423,101 @@ func myConnectionResponseDTO(result *types.PluginMyConnection) *dto.PluginMyConn
 	}
 }
 
+// PreviewUpgrade godoc
+// @Summary      预览插件候选版本差异
+// @Description  重抓安装行长期清单来源并核验当前声明的候选版本，返回与已接受版本相比的五维差异（新增/移除/schema/scope+读写+授权面/端点）与候选指纹；完全只读，不切换已接受版本、不改变任何安装状态
+// @Tags         插件
+// @Produce      json
+// @Param        id   path  string  true  "安装 ID"
+// @Success      200  {object}  map[string]interface{}  "差异预览结果"
+// @Failure      400  {object}  errors.AppError         "候选核验失败（清单非法或声明不符）"
+// @Failure      404  {object}  errors.AppError         "安装不存在"
+// @Failure      500  {object}  errors.AppError         "查询失败"
+// @Failure      503  {object}  errors.AppError         "候选清单抓取失败（不可达）"
+// @Security     Bearer
+// @Router       /plugins/installations/{id}/upgrade-preview [post]
+func (h *PluginHandler) PreviewUpgrade(c *gin.Context) {
+	ctx := c.Request.Context()
+	tenantID := c.GetUint64(types.TenantIDContextKey.String())
+	if tenantID == 0 {
+		logger.Error(ctx, "Tenant ID is empty")
+		c.Error(errors.NewBadRequestError("Workspace ID cannot be empty"))
+		return
+	}
+	resp, err := h.pluginService.PreviewUpgrade(ctx, tenantID, c.Param("id"))
+	if err != nil {
+		mapPluginInstallationError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    upgradePreviewResponseDTO(resp),
+	})
+}
+
+// upgradePreviewResponseDTO maps the types-layer upgrade preview onto the
+// HTTP DTO (the service contract stays in the types layer; this handler owns
+// the wire shape). Snapshot scopes are copied, never aliased, and stay [] —
+// one wire shape end to end (跨任务转交 T01-R1-F1 convention).
+func upgradePreviewResponseDTO(result *types.PluginUpgradePreviewResult) *dto.PluginUpgradePreviewResponse {
+	if result == nil {
+		return nil
+	}
+	return &dto.PluginUpgradePreviewResponse{
+		Diff:                 versionDiffDTO(result.Diff),
+		CandidateFingerprint: result.CandidateFingerprint,
+		CandidateToolsDigest: result.CandidateToolsDigest,
+	}
+}
+
+func versionDiffDTO(diff types.PluginVersionDiff) dto.PluginVersionDiffDTO {
+	added := make([]dto.PluginToolSnapshotDTO, 0, len(diff.AddedTools))
+	for _, tool := range diff.AddedTools {
+		added = append(added, toolSnapshotDTO(tool))
+	}
+	removed := make([]dto.PluginToolSnapshotDTO, 0, len(diff.RemovedTools))
+	for _, tool := range diff.RemovedTools {
+		removed = append(removed, toolSnapshotDTO(tool))
+	}
+	changed := make([]dto.PluginToolChangeDTO, 0, len(diff.ChangedTools))
+	for _, change := range diff.ChangedTools {
+		changed = append(changed, dto.PluginToolChangeDTO{
+			Name:                  change.Name,
+			SchemaChanged:         change.SchemaChanged,
+			ScopeChanged:          change.ScopeChanged,
+			ReadWriteClassChanged: change.ReadWriteClassChanged,
+			PersonalAuthChanged:   change.PersonalAuthChanged,
+			Current:               toolSnapshotDTO(change.Current),
+			Candidate:             toolSnapshotDTO(change.Candidate),
+		})
+	}
+	return dto.PluginVersionDiffDTO{
+		PluginID:          diff.PluginID,
+		CurrentVersion:    diff.CurrentVersion,
+		CandidateVersion:  diff.CandidateVersion,
+		IsDowngrade:       diff.IsDowngrade,
+		EndpointChanged:   diff.EndpointChanged,
+		CurrentEndpoint:   diff.CurrentEndpoint,
+		CandidateEndpoint: diff.CandidateEndpoint,
+		AddedTools:        added,
+		RemovedTools:      removed,
+		ChangedTools:      changed,
+	}
+}
+
+func toolSnapshotDTO(tool types.PluginToolSnapshot) dto.PluginToolSnapshotDTO {
+	scopes := make([]string, len(tool.Scopes))
+	copy(scopes, tool.Scopes)
+	return dto.PluginToolSnapshotDTO{
+		Name:                 tool.Name,
+		Description:          tool.Description,
+		InputSchemaDigest:    tool.InputSchemaDigest,
+		ReadOnly:             tool.ReadOnly,
+		RequiresPersonalAuth: tool.RequiresPersonalAuth,
+		Scopes:               scopes,
+	}
+}
+
 // mapPluginConnectionError maps the connection view's service failures onto
 // HTTP verdicts: a foreign/absent installation is a flat 404 (no existence
 // leak); a missing principal context is 401; token-store faults are 5xx with

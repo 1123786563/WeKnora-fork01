@@ -771,3 +771,68 @@ func (s *pluginService) GetMyConnectionStatus(
 	}
 	return conn, nil
 }
+
+// PreviewUpgrade re-fetches the installation's LONG-LIVED manifest source and
+// returns the five-dimension diff between the ACCEPTED snapshot and the
+// candidate the manifest currently declares (T14). The re-fetch source is
+// installation.ManifestURL by design (总索引「安装后远端真相的统一口径」):
+// the upgrade's object is "the candidate version the manifest currently
+// declares", and the consumed, TTL-bound preview row is never a reusable
+// source. The whole flow is READ-ONLY — no installation field, no materialized
+// service row, no policy row and no preview row is written on ANY path,
+// including failures: the old version's availability is guaranteed precisely
+// by writing nothing (plan 07 Global Constraints). Downgrade candidates still
+// preview (accepting an older version is an admin decision); the diff flags
+// them via IsDowngrade (semver three-segment numeric comparison).
+func (s *pluginService) PreviewUpgrade(
+	ctx context.Context,
+	tenantID uint64,
+	installationID string,
+) (*types.PluginUpgradePreviewResult, error) {
+	// Step 1: installation within this tenant (absent/foreign → one verdict).
+	inst, err := s.pluginRepo.GetInstallation(ctx, tenantID, installationID)
+	if err != nil {
+		logger.GetLogger(ctx).Errorf("failed to load plugin installation: %v", err)
+		return nil, ErrInstallationPersistFailed
+	}
+	if inst == nil {
+		return nil, ErrInstallationNotFound
+	}
+
+	// Step 2: re-fetch and verify the candidate from the long-lived manifest
+	// source. Error faces mirror ConfirmInstallation's classification: fetch
+	// faults keep the 503 sentinel chain (the wrapper text names the
+	// candidate as unreachable for the admin surface), OAuth-protected keeps
+	// its own marker, and every other verification failure (invalid manifest,
+	// declaration/live disagreement) is a deterministic 4xx rejection via
+	// ErrPluginVerifyFailed — the T01 verification path is reused, never
+	// bypassed (plan 07 Review Focus).
+	result, err := plugins.FetchAndVerify(ctx, inst.ManifestURL, s.lister)
+	if err != nil {
+		if errors.Is(err, plugins.ErrManifestFetchFailed) {
+			return nil, fmt.Errorf("candidate plugin unreachable: %w", err)
+		}
+		if plugins.IsOAuthProtected(err) {
+			return nil, err
+		}
+		return nil, fmt.Errorf("%w: %v", ErrPluginVerifyFailed, err)
+	}
+
+	// Step 3: diff the ACCEPTED snapshot against the freshly verified
+	// candidate snapshot, then stamp the identity/version pair the pure
+	// function cannot know. No write happens anywhere — steps 1-3 are reads.
+	diff := plugins.DiffSnapshots(
+		inst.ToolsSnapshot, result.Snapshot,
+		inst.EndpointURL, result.Manifest.Transport.Endpoint,
+	)
+	diff.PluginID = inst.PluginID
+	diff.CurrentVersion = inst.AcceptedVersion
+	diff.CandidateVersion = result.Manifest.Version
+	diff.IsDowngrade = plugins.ComparePluginVersions(result.Manifest.Version, inst.AcceptedVersion) < 0
+
+	return &types.PluginUpgradePreviewResult{
+		Diff:                 *diff,
+		CandidateFingerprint: result.IdentityFingerprint,
+		CandidateToolsDigest: result.ToolsDigest,
+	}, nil
+}

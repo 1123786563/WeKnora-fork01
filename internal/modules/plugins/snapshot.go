@@ -2,6 +2,8 @@ package plugins
 
 import (
 	"fmt"
+	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/Tencent/WeKnora/internal/types"
@@ -66,6 +68,11 @@ func BuildVerifiedSnapshot(manifest *types.PluginManifest, live []*types.MCPTool
 	// One duplicated live name is ONE contradiction — report it once, not
 	// (N-1) times (OCR T01-R3-F3).
 	reportedDuplicate := make(map[string]bool)
+	// An unvetted name served N times is likewise ONE discrepancy: dedupe by
+	// the name even though the per-position message text differs (the where
+	// prefix carries the index) — the "reported once" contract at the top of
+	// this function covers unvetted names too (OCR round-1 R12 F04).
+	reportedUnvetted := make(map[string]bool)
 	for i, tool := range live {
 		if tool == nil {
 			continue
@@ -74,7 +81,10 @@ func BuildVerifiedSnapshot(manifest *types.PluginManifest, live []*types.MCPTool
 		// name itself): everything that reaches an error message below has
 		// passed the same hygiene the manifest validator enforces.
 		if err := validateName(fmt.Sprintf("live tools[%d].name", i), tool.Name, maxToolNameLen); err != nil {
-			problems = append(problems, err.Error())
+			if !reportedUnvetted[tool.Name] {
+				reportedUnvetted[tool.Name] = true
+				problems = append(problems, err.Error())
+			}
 			unvettedName[i] = true
 			continue
 		}
@@ -188,4 +198,162 @@ func BuildVerifiedSnapshot(manifest *types.PluginManifest, live []*types.MCPTool
 		return nil, "", fmt.Errorf("manifest and live endpoint disagree: %s", strings.Join(problems, "; "))
 	}
 	return snapshot, SnapshotDigest(snapshot), nil
+}
+
+// DiffSnapshots computes the five-dimension capability diff between the
+// ACCEPTED tool snapshot and a CANDIDATE snapshot (T14): added tools, removed
+// tools, per-tool changes (schema digest / scope set / read-write class /
+// personal-auth requirement — four independent flags on one change row), and
+// the execution endpoint. It is a PURE function over untrusted-but-verified
+// data: no network, no clock, no persistence — PreviewUpgrade composes it
+// with the re-fetch, which is why the wire never sees an unverified candidate.
+//
+// Semantics:
+//   - identity key is the tool NAME (snapshot names passed BuildVerifiedSnapshot's
+//     hygiene, so they are stable identifiers);
+//   - scope comparison is SET equality (order-insensitive): the manifest
+//     validator rejects duplicates, so a pure set comparison is exact;
+//   - description-only differences are NOT changes — free text sits outside
+//     the five review dimensions;
+//   - output rows are sorted by tool name for deterministic serialization
+//     (idempotent previews return byte-identical diffs);
+//   - snapshot slices are defensively copied (scopes included) — the diff is
+//     tenant-facing review material and must not alias the caller's rows
+//     (跨任务转交 T01-R1-F1 convention; empty scope lists stay [], never nil);
+//   - version fields (PluginID/CurrentVersion/CandidateVersion/IsDowngrade)
+//     stay zeroed — versions are not inputs here; PreviewUpgrade fills them
+//     from the installation row and the candidate manifest.
+func DiffSnapshots(current, candidate []types.PluginToolSnapshot, currentEndpoint, candidateEndpoint string) *types.PluginVersionDiff {
+	currentByName := make(map[string]types.PluginToolSnapshot, len(current))
+	for _, tool := range current {
+		currentByName[tool.Name] = tool
+	}
+	candidateByName := make(map[string]types.PluginToolSnapshot, len(candidate))
+	for _, tool := range candidate {
+		candidateByName[tool.Name] = tool
+	}
+
+	added := make([]types.PluginToolSnapshot, 0, len(candidate))
+	removed := make([]types.PluginToolSnapshot, 0, len(current))
+	changed := make([]types.PluginToolChange, 0, len(current))
+	// Single pass over the candidate side (added + changed), then the current
+	// side for removed — each name visits exactly once per side.
+	for name, cand := range candidateByName {
+		cur, ok := currentByName[name]
+		if !ok {
+			added = append(added, cloneSnapshot(cand))
+			continue
+		}
+		change := types.PluginToolChange{
+			Name:      name,
+			Current:   cloneSnapshot(cur),
+			Candidate: cloneSnapshot(cand),
+		}
+		change.SchemaChanged = cur.InputSchemaDigest != cand.InputSchemaDigest
+		change.ScopeChanged = !sameScopeSet(cur.Scopes, cand.Scopes)
+		change.ReadWriteClassChanged = cur.ReadOnly != cand.ReadOnly
+		change.PersonalAuthChanged = cur.RequiresPersonalAuth != cand.RequiresPersonalAuth
+		if change.SchemaChanged || change.ScopeChanged || change.ReadWriteClassChanged || change.PersonalAuthChanged {
+			changed = append(changed, change)
+		}
+	}
+	for name := range currentByName {
+		if _, ok := candidateByName[name]; !ok {
+			removed = append(removed, cloneSnapshot(currentByName[name]))
+		}
+	}
+	sortSnapshotDiff(added, removed, changed)
+
+	return &types.PluginVersionDiff{
+		EndpointChanged:   currentEndpoint != candidateEndpoint,
+		CurrentEndpoint:   currentEndpoint,
+		CandidateEndpoint: candidateEndpoint,
+		AddedTools:        added,
+		RemovedTools:      removed,
+		ChangedTools:      changed,
+	}
+}
+
+// cloneSnapshot deep-copies one snapshot (scopes included) and normalizes an
+// absent scope list to [] — one wire shape end to end.
+func cloneSnapshot(tool types.PluginToolSnapshot) types.PluginToolSnapshot {
+	cp := tool
+	cp.Scopes = make([]string, len(tool.Scopes))
+	copy(cp.Scopes, tool.Scopes)
+	return cp
+}
+
+// sameScopeSet reports set equality of two scope lists (order-insensitive;
+// duplicates are impossible past validateScopes, so multiset semantics are
+// unnecessary).
+func sameScopeSet(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	seen := make(map[string]int, len(a))
+	for _, s := range a {
+		seen[s]++
+	}
+	for _, s := range b {
+		seen[s]--
+		if seen[s] < 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// sortSnapshotDiff orders every diff row by tool name for deterministic
+// output (map iteration order must never leak into the admin review surface
+// or an idempotency assertion).
+func sortSnapshotDiff(added, removed []types.PluginToolSnapshot, changed []types.PluginToolChange) {
+	sort.Slice(added, func(i, j int) bool { return added[i].Name < added[j].Name })
+	sort.Slice(removed, func(i, j int) bool { return removed[i].Name < removed[j].Name })
+	sort.Slice(changed, func(i, j int) bool { return changed[i].Name < changed[j].Name })
+}
+
+// ComparePluginVersions compares two weknora.plugin/1 version strings
+// (MAJOR.MINOR.PATCH) by three-segment numeric value: -1 when a < b, 0 when
+// equal, 1 when a > b (T14's IsDowngrade basis). Versions reaching the plugin
+// domain already passed pluginVersionPattern (no leading zeros, each
+// component at most 9 digits — ValidateManifest on the manifest side, the
+// installation row's copy of a validated manifest on the accepted side), so
+// unparsable input is a defensive path only and compares as equal (0): a
+// verdict of "not a downgrade" on malformed input keeps the flag
+// conservative, and no error surface is invented for an unreachable case.
+func ComparePluginVersions(a, b string) int {
+	aMajor, aMinor, aPatch, aOK := parseVersionTriple(a)
+	bMajor, bMinor, bPatch, bOK := parseVersionTriple(b)
+	if !aOK || !bOK {
+		return 0
+	}
+	for _, pair := range [][2]uint64{
+		{aMajor, bMajor}, {aMinor, bMinor}, {aPatch, bPatch},
+	} {
+		if pair[0] < pair[1] {
+			return -1
+		}
+		if pair[0] > pair[1] {
+			return 1
+		}
+	}
+	return 0
+}
+
+// parseVersionTriple splits an MAJOR.MINOR.PATCH string into its numeric
+// triple. ok is false for any non-conforming input.
+func parseVersionTriple(v string) (major, minor, patch uint64, ok bool) {
+	parts := strings.Split(v, ".")
+	if len(parts) != 3 {
+		return 0, 0, 0, false
+	}
+	nums := make([]uint64, 3)
+	for i, part := range parts {
+		n, err := strconv.ParseUint(part, 10, 64)
+		if err != nil {
+			return 0, 0, 0, false
+		}
+		nums[i] = n
+	}
+	return nums[0], nums[1], nums[2], true
 }

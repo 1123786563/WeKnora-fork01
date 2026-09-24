@@ -29,6 +29,11 @@ func RegisterPluginRoutes(r *gin.RouterGroup, pluginHandler *handler.PluginHandl
 		pluginRoutes.POST("/installations", g.Admin(), pluginHandler.ConfirmInstallation)
 		pluginRoutes.POST("/installations/:id/disable", g.Admin(), pluginHandler.DisableInstallation)
 		pluginRoutes.POST("/installations/:id/enable", g.Admin(), pluginHandler.EnableInstallation)
+		// Upgrade preview (T14): read-only re-fetch of the long-lived
+		// manifest source + five-dimension diff against the ACCEPTED
+		// version. Admin-only governance like confirm — it makes WeKnora
+		// fetch an untrusted URL (same default-deny for API keys).
+		pluginRoutes.POST("/installations/:id/upgrade-preview", g.Admin(), pluginHandler.PreviewUpgrade)
 		// Ops-only self-heal channel (rulings.md R4): removes a failed
 		// confirm's leftover rows. NOT a user-facing feature — the
 		// user-visible governance endpoint stays "disable" and the web UI

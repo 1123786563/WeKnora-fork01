@@ -121,4 +121,16 @@ type PluginService interface {
 	// endpoint paths mapped onto that service_id. A foreign tenant's
 	// installation ID is "not found". The result carries no token material.
 	GetMyConnectionStatus(ctx context.Context, tenantID uint64, installationID string, principal types.Principal) (*types.PluginMyConnection, error)
+
+	// PreviewUpgrade re-fetches the LONG-LIVED manifest source
+	// (installation.ManifestURL — the preview row is TTL-bound, consumed and
+	// never reusable), verifies the candidate it currently declares, and
+	// returns the five-dimension diff against the installation's ACCEPTED
+	// snapshot (T14). It is READ-ONLY: no installation field, no materialized
+	// service row, no policy row, no preview consumption — the accepted
+	// version's availability is guaranteed precisely by writing nothing. A
+	// candidate version not above the accepted one still previews (downgrade
+	// is an admin decision) but the diff carries IsDowngrade=true. A foreign
+	// tenant's installation ID is "not found".
+	PreviewUpgrade(ctx context.Context, tenantID uint64, installationID string) (*types.PluginUpgradePreviewResult, error)
 }

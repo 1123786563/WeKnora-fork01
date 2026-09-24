@@ -108,3 +108,55 @@ type PluginMyConnection struct {
 	RevokePath           string   `json:"revoke_path"`
 	RequiresAuthTools    []string `json:"requires_auth_tools"`
 }
+
+// PluginToolSnapshotDTO is one tool row inside an upgrade-preview diff
+// (added/removed lists). The input schema itself is never included — only its
+// verified digest, same hygiene as every other plugin review surface.
+type PluginToolSnapshotDTO struct {
+	Name                 string   `json:"name"`
+	Description          string   `json:"description"`
+	InputSchemaDigest    string   `json:"input_schema_digest"`
+	ReadOnly             bool     `json:"read_only"`
+	RequiresPersonalAuth bool     `json:"requires_personal_auth"`
+	Scopes               []string `json:"scopes"`
+}
+
+// PluginToolChangeDTO is one changed tool inside an upgrade-preview diff: the
+// four change flags are independent badges (schema/scope/读写分类/授权面) the
+// UI renders separately, plus the before/after snapshot rows for drill-down.
+type PluginToolChangeDTO struct {
+	Name                  string                `json:"name"`
+	SchemaChanged         bool                  `json:"schema_changed"`
+	ScopeChanged          bool                  `json:"scope_changed"`
+	ReadWriteClassChanged bool                  `json:"read_write_class_changed"`
+	PersonalAuthChanged   bool                  `json:"personal_auth_changed"`
+	Current               PluginToolSnapshotDTO `json:"current"`
+	Candidate             PluginToolSnapshotDTO `json:"candidate"`
+}
+
+// PluginVersionDiffDTO is the five-dimension diff of an upgrade preview:
+// version pair (with downgrade flag), endpoint pair, added/removed/changed
+// tool rows.
+type PluginVersionDiffDTO struct {
+	PluginID          string                  `json:"plugin_id"`
+	CurrentVersion    string                  `json:"current_version"`
+	CandidateVersion  string                  `json:"candidate_version"`
+	IsDowngrade       bool                    `json:"is_downgrade"`
+	EndpointChanged   bool                    `json:"endpoint_changed"`
+	CurrentEndpoint   string                  `json:"current_endpoint"`
+	CandidateEndpoint string                  `json:"candidate_endpoint"`
+	AddedTools        []PluginToolSnapshotDTO `json:"added_tools"`
+	RemovedTools      []PluginToolSnapshotDTO `json:"removed_tools"`
+	ChangedTools      []PluginToolChangeDTO   `json:"changed_tools"`
+}
+
+// PluginUpgradePreviewResponse is the payload of POST
+// /plugins/installations/:id/upgrade-preview: the diff the admin reviews plus
+// the candidate's verified identity fingerprint and tools digest (what the
+// tenant WOULD accept). No credentials ever appear here — by construction
+// this type has none.
+type PluginUpgradePreviewResponse struct {
+	Diff                 PluginVersionDiffDTO `json:"diff"`
+	CandidateFingerprint string               `json:"candidate_fingerprint"`
+	CandidateToolsDigest string               `json:"candidate_tools_digest"`
+}

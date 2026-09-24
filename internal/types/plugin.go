@@ -274,6 +274,56 @@ const (
 	PluginConnectionUnauthorized = "unauthorized"
 )
 
+// PluginToolChange is one tool present in BOTH the accepted snapshot and the
+// candidate snapshot whose capability face moved between them (T14). The four
+// change flags are independent dimensions of the same diff row — schema
+// (input_schema_digest), scope set, read/write classification, personal-auth
+// requirement — so the admin review surface can badge each reason separately.
+// A tool whose description alone changed is NOT a change row: description is
+// free text outside the five review dimensions.
+type PluginToolChange struct {
+	Name                  string             `json:"name"`
+	SchemaChanged         bool               `json:"schema_changed"`
+	ScopeChanged          bool               `json:"scope_changed"`
+	ReadWriteClassChanged bool               `json:"read_write_class_changed"`
+	PersonalAuthChanged   bool               `json:"personal_auth_changed"`
+	Current               PluginToolSnapshot `json:"current"`
+	Candidate             PluginToolSnapshot `json:"candidate"`
+}
+
+// PluginVersionDiff is the five-dimension capability diff between an
+// installation's ACCEPTED version and a CANDIDATE version the manifest
+// currently declares (T14): added tools, removed tools, per-tool changes
+// (schema / scope / read-write / personal-auth flags carried on
+// PluginToolChange), and the execution endpoint. Downgrades are allowed
+// previews too (accepting an older version is an admin decision) but are
+// flagged via IsDowngrade; the flag is filled by the service layer from the
+// version pair — DiffSnapshots itself never sees versions.
+type PluginVersionDiff struct {
+	PluginID          string               `json:"plugin_id"`
+	CurrentVersion    string               `json:"current_version"`
+	CandidateVersion  string               `json:"candidate_version"`
+	IsDowngrade       bool                 `json:"is_downgrade"`
+	EndpointChanged   bool                 `json:"endpoint_changed"`
+	CurrentEndpoint   string               `json:"current_endpoint"`
+	CandidateEndpoint string               `json:"candidate_endpoint"`
+	AddedTools        []PluginToolSnapshot `json:"added_tools"`
+	RemovedTools      []PluginToolSnapshot `json:"removed_tools"`
+	ChangedTools      []PluginToolChange   `json:"changed_tools"`
+}
+
+// PluginUpgradePreviewResult is the types-layer upgrade-preview payload: the
+// version diff plus the candidate's verified identity fingerprint and tools
+// digest (what the tenant WOULD accept — the accept-upgrade slice (T16)
+// re-checks them). Carrying them here lets the admin compare the preview
+// against drift state without a second fetch. No credentials appear here —
+// by construction this type has none.
+type PluginUpgradePreviewResult struct {
+	Diff                 PluginVersionDiff `json:"diff"`
+	CandidateFingerprint string            `json:"candidate_fingerprint"`
+	CandidateToolsDigest string            `json:"candidate_tools_digest"`
+}
+
 // PluginMyConnection is ONE member's personal connection view of ONE
 // installation (GET /plugins/installations/:id/connections/me): identity,
 // the materialized service binding, the three-state OAuth verdict and the
