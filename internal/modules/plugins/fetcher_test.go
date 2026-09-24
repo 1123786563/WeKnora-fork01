@@ -385,6 +385,28 @@ func TestFetchAndVerifyClassifiesNon2xxByFamily(t *testing.T) {
 		_, err := FetchAndVerify(context.Background(), base+"/manifest.json", lister)
 		require.ErrorIs(t, err, ErrManifestFetchFailed, "upstream 5xx is inside the sentinel's contract")
 	})
+	t.Run("429 throttling keeps the server-side sentinel", func(t *testing.T) {
+		// 429 is a TRANSIENT load condition (often with Retry-After): once
+		// the window passes, retrying CAN succeed — it is a server-side
+		// state, not the admin's wrong input (OCR T01-OCR3-F1).
+		base := newControlledPluginHost(t,
+			func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Retry-After", "30")
+				http.Error(w, "slow down", http.StatusTooManyRequests)
+			},
+			func(http.ResponseWriter, *http.Request) {},
+		)
+		_, err := FetchAndVerify(context.Background(), base+"/manifest.json", lister)
+		require.ErrorIs(t, err, ErrManifestFetchFailed, "throttling is transient — it must reach the 503+retry branch, not 400")
+	})
+	t.Run("408 request timeout keeps the server-side sentinel", func(t *testing.T) {
+		base := newControlledPluginHost(t,
+			func(w http.ResponseWriter, _ *http.Request) { http.Error(w, "timeout", http.StatusRequestTimeout) },
+			func(http.ResponseWriter, *http.Request) {},
+		)
+		_, err := FetchAndVerify(context.Background(), base+"/manifest.json", lister)
+		require.ErrorIs(t, err, ErrManifestFetchFailed, "408 is transient — it must reach the 503+retry branch, not 400")
+	})
 }
 
 // TestBuildVerifiedSnapshotRejectsDuplicateLiveTool (OCR T01-R2-6): a live

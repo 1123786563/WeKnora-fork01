@@ -25,13 +25,14 @@ import (
 var ErrOAuthProtectedEndpoint = errors.New("plugin endpoint requires OAuth authorization")
 
 // ErrManifestFetchFailed marks manifest download faults that are SERVER-side
-// network problems (DNS failure, egress timeout, proxy errors, upstream 5xx)
-// rather than deterministic rejections of the admin's input — the handler maps
-// it onto 5xx without echoing the transport detail (which can carry internal
-// proxy addresses when HTTP(S)_PROXY is configured) (跨任务转交 T01-R2-F2).
-// 4xx status answers (404/401/410/429...) are deliberately NOT sentinelled:
-// they are the admin's wrong URL or an auth-gated manifest, and retrying can
-// never succeed (OCR T01-OCR2-F7).
+// network problems (DNS failure, egress timeout, proxy errors, upstream 5xx,
+// transient throttling/timeout answers 429/408) rather than deterministic
+// rejections of the admin's input — the handler maps it onto 5xx without
+// echoing the transport detail (which can carry internal proxy addresses
+// when HTTP(S)_PROXY is configured) (跨任务转交 T01-R2-F2).
+// Deterministic 4xx answers (404 wrong path / 401 auth-gated / 410 gone)
+// are deliberately NOT sentinelled: retrying can never succeed
+// (OCR T01-OCR2-F7, boundary refined by OCR T01-OCR3-F1).
 var ErrManifestFetchFailed = errors.New("manifest fetch failed")
 
 // IsOAuthProtected reports whether err (or anything it wraps) carries the
@@ -190,13 +191,19 @@ func fetchLimited(ctx context.Context, manifestURL string) ([]byte, error) {
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		if resp.StatusCode >= http.StatusInternalServerError {
+		if resp.StatusCode >= http.StatusInternalServerError ||
+			resp.StatusCode == http.StatusTooManyRequests ||
+			resp.StatusCode == http.StatusRequestTimeout {
 			// Upstream 5xx IS a server-side fault — inside the sentinel's
-			// contract (handler → 503 + "retry later").
+			// contract (handler → 503 + "retry later"). So are the two
+			// TRANSIENT 4xx answers: 429 throttling (the window passes,
+			// often signalled via Retry-After) and 408 request timeout —
+			// retrying CAN succeed, they are load conditions on the
+			// server, not the admin's wrong input (OCR T01-OCR3-F1).
 			return nil, fmt.Errorf("%w: unexpected status %d", ErrManifestFetchFailed, resp.StatusCode)
 		}
-		// A 4xx answer (wrong path → 404, auth-gated manifest → 401, gone
-		// → 410, throttled → 429) is a DETERMINISTIC rejection of the
+		// A deterministic 4xx answer (wrong path → 404, auth-gated
+		// manifest → 401, gone → 410) is a DETERMINISTIC rejection of the
 		// admin's input: retrying can never succeed, so it must NOT wear
 		// the server-side-fault sentinel — a plain error (bounded, no
 		// untrusted echo: the status is an int) falls through to the
