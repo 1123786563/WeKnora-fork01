@@ -1,6 +1,6 @@
 # T09/#149 链接导入与不完整来源回退研究
 
-研究日期：2026-09-24（Asia/Shanghai）  
+研究日期：2026-09-24（Asia/Shanghai）
 范围：只读检查 Issue #149、批准求职 Spec、ADR、T08 Opportunity 契约和现有 URL fetch seam。未修改生产代码、需求或远程 Issue。
 
 ## 已核实事实
@@ -48,4 +48,3 @@
 - `internal/modules/career/opportunity.go`, `internal/modules/career/handler.go`, `internal/router/routes_career.go`
 - `internal/infrastructure/web_fetch/fetcher.go` and `fetcher_test.go`
 - `internal/modules/conversation/chat_pipeline/web_fetch.go`
-
