@@ -109,6 +109,39 @@ func TestWorkbenchStopThenRestartHTTPIntegration(t *testing.T) {
 	require.Equal(t, restartAck.Data.NextRunID, replayAck.Data.NextRunID)
 }
 
+// 审查修复轮 1：AC3 的 revision-CAS 拒绝路径需要 HTTP 层直接证据（brief Produces
+// 节承诺 queue_next 语义含 revision 409）。与裁决 A 不冲突：cancel 的重复停止是
+// 幂等重放（202），而 queue_next 的 revision 栅栏（command_queue_next.go:88-91）
+// 无幂等短路——过期视图不得在未观测的事实之上准入重启。
+func TestWorkbenchQueueNextStaleRevisionIsAConflict(t *testing.T) {
+	r, _, db := newCommandRestartRouter(t)
+	start := postCommand(r, "/api/v1/workbench/executions", `{"session_id":"s1","agent_id":"a1","target_id":"platform","request_id":"t37-r4","text":"goal","budget_upper":100}`)
+	require.Equal(t, http.StatusAccepted, start.Code)
+	var admitted struct {
+		Data struct {
+			RunID string `json:"run_id"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(start.Body.Bytes(), &admitted))
+	runID := admitted.Data.RunID
+
+	stop := postCommand(r, "/api/v1/workbench/executions/"+runID+"/commands", `{"action":"cancel","expected_revision":0}`)
+	require.Equal(t, http.StatusAccepted, stop.Code)
+
+	// 实读终态 revision，再以过期视图（revision-1）+ 新 pending id 请求重启：
+	// 新 pending id 排除幂等命中解释，409 只能来自 revision 栅栏本身。
+	var revision int64
+	require.NoError(t, db.Raw(`SELECT revision FROM agent_runs WHERE run_id = ?`, runID).Scan(&revision).Error)
+	require.Greater(t, revision, int64(0), "cancel must advance the revision before this fence is exercisable")
+	stale := postCommand(r, "/api/v1/workbench/executions/"+runID+"/commands", `{"action":"queue_next","text":"restart from a stale view","expected_revision":`+strconv.FormatInt(revision-1, 10)+`,"external_pending_id":"t37-q-stale"}`)
+	require.Equal(t, http.StatusConflict, stale.Code)
+
+	// 拒绝必须零准入：会话内除父 Run 外不得出现任何后续 Run。
+	var runs int64
+	require.NoError(t, db.Raw(`SELECT COUNT(*) FROM agent_runs WHERE session_id = 's1'`).Scan(&runs).Error)
+	require.EqualValues(t, 1, runs, "a stale-revision restart must not admit anything")
+}
+
 func TestWorkbenchCancelHTTPWritesEventReleasesSlot(t *testing.T) {
 	r, _, db := newCommandRestartRouter(t)
 	start := postCommand(r, "/api/v1/workbench/executions", `{"session_id":"s1","agent_id":"a1","target_id":"platform","request_id":"t37-r2","text":"goal","budget_upper":100}`)
