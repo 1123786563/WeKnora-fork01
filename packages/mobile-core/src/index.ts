@@ -77,3 +77,6 @@ export type {
   EvidenceCitation, MaterialActResult, MaterialEntry, MaterialEntryKind, MaterialEvent, MaterialIndex,
   MaterialIntent, MaterialRef, MaterialView, PreviewVerdict, TaskMaterial, TaskMaterialHandle, TerminalLine,
 } from './material/types.ts';
+export { createOfflineGate, OfflineGateError, OFFLINE_ACTION_BLOCKED } from './offline/offline-gate.ts';
+export type { NetworkStatusPort, OfflineActionKind, OfflineGate } from './offline/offline-gate.ts';
+export { guardInteractionBackend, guardLegacyTaskBackend, guardTaskBackend } from './offline/guarded-ports.ts';
