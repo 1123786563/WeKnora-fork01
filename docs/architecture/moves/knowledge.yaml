@@ -76,10 +76,6 @@ alias_obligations:
   - old_import_path: internal/searchutil
     passb_task: B-knowledge
 legacy_files:
-  - path: internal/application/repository/chunk.go
-    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
-    navigation_label: Chunk (application/repository)
-    passb_task: B-knowledge
   - path: internal/application/repository/kbshare.go
     reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
     navigation_label: Kbshare (application/repository)
