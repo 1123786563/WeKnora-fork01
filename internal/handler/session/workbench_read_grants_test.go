@@ -91,3 +91,41 @@ func TestGetWorkbenchSnapshotFallsBackToGrantedReader(t *testing.T) {
 	hErr.GetWorkbenchSnapshot(c)
 	require.Equal(t, http.StatusInternalServerError, recorder.Code)
 }
+
+// grantedGinKeysContext injects identity ONLY through gin keys (c.Set), the
+// fallback surface the auth middleware writes in lockstep with the request
+// context. The request context stays background so these cases pin the
+// gin-keys resolution path the request-context tests cannot reach.
+func grantedGinKeysContext(t *testing.T, userID string) (*gin.Context, *httptest.ResponseRecorder) {
+	t.Helper()
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Set(types.TenantIDContextKey.String(), uint64(1))
+	c.Set(types.UserIDContextKey.String(), userID)
+	c.Request = httptest.NewRequest(http.MethodGet, "/workbench/executions/r1/snapshot", nil)
+	c.Params = gin.Params{{Key: "run_id", Value: "r1"}}
+	return c, recorder
+}
+
+func TestWorkbenchReadResolvesIdentityFromGinKeys(t *testing.T) {
+	run := agentruntime.Run{Key: agentruntime.RunKey{TenantID: 1, RunID: "r1"}, SessionID: "s1", UserID: "u1"}
+
+	// resolveOwnedRun serves an owner whose identity lives only in gin keys.
+	ownedOK := &fakeOwnedRunReader{run: run}
+	c, recorder := grantedGinKeysContext(t, "u1")
+	resolved, ok := resolveOwnedRun(c, ownedOK)
+	require.True(t, ok)
+	require.Equal(t, "r1", resolved.Key.RunID)
+
+	// The granted fallback also resolves its reader through gin keys only.
+	ownedMiss := &fakeOwnedRunReader{err: agentruntime.ErrNotFound}
+	h := NewWorkbenchReadHandler(ownedMiss, grantedSnapshots{}).WithGrantedRuns(&fakeGrantedRunReader{run: run})
+	c, recorder = grantedGinKeysContext(t, "member-2")
+	h.GetWorkbenchSnapshot(c)
+	require.Equal(t, http.StatusOK, recorder.Code)
+
+	// Missing identity on both surfaces stays a 401 on every surface.
+	c, recorder = grantedGinKeysContext(t, "")
+	h.GetWorkbenchSnapshot(c)
+	require.Equal(t, http.StatusUnauthorized, recorder.Code)
+}

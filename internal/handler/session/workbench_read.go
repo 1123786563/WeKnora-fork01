@@ -133,35 +133,63 @@ func (h *WorkbenchReadHandler) owned(c *gin.Context) (agentruntime.RunKey, bool)
 	return run.Key, ok
 }
 
+// workbenchCaller resolves the authenticated tenant and actor for the
+// workbench ownership predicates: the request context first, then the gin
+// keys the auth middleware writes in lockstep (middleware/auth_context.go).
+// One shared helper keeps every predicate reading identity the same way so
+// the two surfaces can never drift apart.
+func workbenchCaller(c *gin.Context) (uint64, string) {
+	tenantID, ok := types.TenantIDFromContext(c.Request.Context())
+	if !ok || tenantID == 0 {
+		if value, exists := c.Get(types.TenantIDContextKey.String()); exists {
+			tenantID, _ = value.(uint64)
+		}
+	}
+	userID, ok := types.UserIDFromContext(c.Request.Context())
+	if !ok || userID == "" {
+		if value, exists := c.Get(types.UserIDContextKey.String()); exists {
+			userID, _ = value.(string)
+		}
+	}
+	return tenantID, userID
+}
+
+// strictOwnedRun resolves the strict owner predicate through GetOwnedRun so
+// tenant/owner scoping is enforced by the durable store, not by URL trust.
+// It writes the 500 for storage errors itself (handled=true) and reports
+// miss=true for a plain ErrNotFound WITHOUT touching the response, so each
+// caller decides whether to answer 404 immediately or fall through to a
+// granted reader.
+func strictOwnedRun(
+	c *gin.Context, runs OwnedRunReader, tenantID uint64, ownerID, runID string,
+) (run agentruntime.Run, miss, handled bool) {
+	run, err := runs.GetOwnedRun(c.Request.Context(), tenantID, ownerID, runID)
+	if errors.Is(err, agentruntime.ErrNotFound) {
+		return agentruntime.Run{}, true, false
+	}
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"success": false, "error": err.Error()})
+		return agentruntime.Run{}, false, true
+	}
+	return run, false, false
+}
+
 // resolveOwnedRun is the shared ownership predicate for workbench read
 // surfaces. It re-reads the run through GetOwnedRun so tenant/owner scoping
 // is enforced by the durable store, not by URL trust. The full run is
 // returned because artifact surfaces additionally need the session binding.
 func resolveOwnedRun(c *gin.Context, runs OwnedRunReader) (agentruntime.Run, bool) {
-	tenantID, ok := types.TenantIDFromContext(c.Request.Context())
-	if !ok || tenantID == 0 {
-		if value, exists := c.Get(types.TenantIDContextKey.String()); exists {
-			tenantID, ok = value.(uint64)
-		}
-	}
-	ownerID, ownerOK := types.UserIDFromContext(c.Request.Context())
-	if !ownerOK || ownerID == "" {
-		if value, exists := c.Get(types.UserIDContextKey.String()); exists {
-			ownerID, ownerOK = value.(string)
-		}
-	}
-	if !ok || !ownerOK || tenantID == 0 || ownerID == "" || runs == nil {
+	tenantID, ownerID := workbenchCaller(c)
+	if tenantID == 0 || ownerID == "" || runs == nil {
 		c.AbortWithStatus(http.StatusUnauthorized)
 		return agentruntime.Run{}, false
 	}
-	runID := strings.TrimSpace(c.Param("run_id"))
-	run, err := runs.GetOwnedRun(c.Request.Context(), tenantID, ownerID, runID)
-	if errors.Is(err, agentruntime.ErrNotFound) {
-		c.AbortWithStatus(http.StatusNotFound)
+	run, miss, handled := strictOwnedRun(c, runs, tenantID, ownerID, strings.TrimSpace(c.Param("run_id")))
+	if handled {
 		return agentruntime.Run{}, false
 	}
-	if err != nil {
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"success": false, "error": err.Error()})
+	if miss {
+		c.AbortWithStatus(http.StatusNotFound)
 		return agentruntime.Run{}, false
 	}
 	return run, true
@@ -176,29 +204,17 @@ func resolveOwnedRun(c *gin.Context, runs OwnedRunReader) (agentruntime.Run, boo
 // status header on AbortWithStatus — an owner-miss 404 written before the
 // fallback could never be overridden by the grantee's 200 (or a 500).
 func (h *WorkbenchReadHandler) resolveReadableRun(c *gin.Context) (agentruntime.Run, bool) {
-	tenantID, okT := types.TenantIDFromContext(c.Request.Context())
-	if !okT || tenantID == 0 {
-		if value, exists := c.Get(types.TenantIDContextKey.String()); exists {
-			tenantID, _ = value.(uint64)
-		}
-	}
-	readerID, okU := types.UserIDFromContext(c.Request.Context())
-	if !okU || readerID == "" {
-		if value, exists := c.Get(types.UserIDContextKey.String()); exists {
-			readerID, _ = value.(string)
-		}
-	}
+	tenantID, readerID := workbenchCaller(c)
 	if tenantID == 0 || readerID == "" || h.runs == nil {
 		c.AbortWithStatus(http.StatusUnauthorized)
 		return agentruntime.Run{}, false
 	}
 	runID := strings.TrimSpace(c.Param("run_id"))
-	run, err := h.runs.GetOwnedRun(c.Request.Context(), tenantID, readerID, runID)
-	if err != nil && !errors.Is(err, agentruntime.ErrNotFound) {
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"success": false, "error": err.Error()})
+	run, miss, handled := strictOwnedRun(c, h.runs, tenantID, readerID, runID)
+	if handled {
 		return agentruntime.Run{}, false
 	}
-	if err == nil {
+	if !miss {
 		return run, true
 	}
 	// The strict owner predicate missed. Engage the task-grant fallback only
