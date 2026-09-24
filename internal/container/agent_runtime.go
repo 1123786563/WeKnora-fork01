@@ -36,13 +36,24 @@ func newAgentRuntime(
 	dispatch *repository.ExecutionDispatchStore,
 	provider workbenchservice.RemoteProvider,
 	usage *workbenchservice.RemoteUsageService,
+	craftCapture *CraftRunCaptureRunner,
 ) (*AgentRuntime, error) {
 	executor := func(ctx context.Context, fence agentruntime.Fence) error {
 		run := service.RegisteredGraphExecutor()
 		if run == nil {
 			return errors.New("tRPC graph executor provider is not registered")
 		}
-		return run(ctx, fence)
+		err := run(ctx, fence)
+		// R4 Task3: once the graph returned, the Run transitioned terminal and
+		// released its writer slot. Drain the durable craft capture outbox for
+		// the workspace generations sealed by this run; the periodic recovery
+		// scan retries anything stranded by a crash between the terminal
+		// commit and this point. Best-effort: a capture failure must never
+		// fail an already-terminal run.
+		if craftCapture != nil {
+			craftCapture.AfterTerminal(context.WithoutCancel(ctx), fence)
+		}
+		return err
 	}
 	var r *AgentRuntime
 	var err error
@@ -81,6 +92,9 @@ func newAgentRuntime(
 	} else {
 		r.SetRecoveryHook(sandboxHook)
 	}
+	// R4 Task3: the post-terminal craft draft-capture coordinator rides with
+	// the runtime so its recovery scan starts and stops with the worker.
+	r.craftCapture = craftCapture
 	return r, nil
 }
 
@@ -180,9 +194,10 @@ func resolveExecutionRecovery(
 
 // AgentRuntime owns the durable worker lifecycle independently from HTTP.
 type AgentRuntime struct {
-	Runs   *service.AgentRunService
-	Worker *service.AgentRunWorker
-	once   sync.Once
+	Runs        *service.AgentRunService
+	Worker      *service.AgentRunWorker
+	craftCapture *CraftRunCaptureRunner
+	once        sync.Once
 }
 
 // SetRecoveryHook wires sandbox reconciliation into the worker before it
@@ -328,6 +343,12 @@ func (r *AgentRuntime) Start(ctx context.Context) error {
 			_ = fmt.Errorf("agent worker stopped: %w", err)
 		}
 	}()
+	// The craft capture recovery scan lives with the worker lifecycle: it
+	// drains durable receipts stranded by workers that died between the
+	// terminal commit and the immediate post-terminal drain.
+	if r.craftCapture != nil {
+		r.craftCapture.Start(ctx)
+	}
 	return nil
 }
 

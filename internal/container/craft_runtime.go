@@ -129,7 +129,12 @@ func newCraftRuntimeExecutor(
 		evidence = previews.EvidenceSource()
 	}
 	source := &localCraftArtifactSource{workDir: workDir, outputDir: outputDir}
-	artifacts := service.NewCraftArtifactService(source, files, versions, evidence,
+	// The candidate store backs the R4 Task3 Run-bound collection: successful
+	// delegations stage a private candidate and the post-terminal capture
+	// seals the draft; the legacy session-wide publication route keeps its
+	// own source unchanged.
+	artifacts := service.NewCraftArtifactServiceWithCandidates(source, files, versions,
+		repository.NewCraftCandidateStore(db), evidence,
 		service.CraftArtifactConfig{Kind: craft.KindWeb, OutputDir: outputDir})
 	// C02: an interaction.pending event first lands durably (interaction row
 	// + waiting_user park) before it is projected to the run stream, so the
@@ -253,13 +258,37 @@ func (e *localCraftRuntime) Execute(ctx context.Context, task craft.Task) (craft
 	if result.Status != "succeeded" {
 		return result, nil
 	}
-	// R4 Task2a has a Run-bound output source but the later candidate and
-	// post-terminal draft-capture seam is not yet assembled. Do not publish via
-	// the legacy session-wide collector: that source follows a shared pointer
-	// and would make a newly collected version current before T15's promotion
-	// gate. Keep the execution result fail-closed until Task2b wires the
-	// candidate path and terminal/quiescence writer.
-	return craft.Result{}, unresolvedCraftRunView("RunView artifact candidate collection is not assembled", nil)
+	// R4 Task3: the successful delegation's output is staged as a private,
+	// immutable Run-bound candidate — never a published Version and never the
+	// legacy session-wide shared pointer. The durable draft capture itself
+	// runs post-terminal through the quiescent capture coordinator
+	// (CraftRunCaptureRunner), which seals and advances the draft head only
+	// after the Run is terminal and no writer remains. A staging failure is
+	// recorded and preserves the previous state; the post-terminal capture
+	// recollects from the sealed generation output.
+	if err := e.stageRunViewCandidate(ctx, task, material); err != nil {
+		logger.Warnf(ctx, "[CraftRuntime] Run-bound candidate staging failed for run %s: %v (post-terminal capture will recollect from the sealed generation output)",
+			task.Fence.RunID, err)
+	}
+	return result, nil
+}
+
+// stageRunViewCandidate collects the delegation's output through the
+// verified Run-bound source into the private candidate store. It can never
+// publish a Version or change the workspace default.
+func (e *localCraftRuntime) stageRunViewCandidate(ctx context.Context, task craft.Task, material CraftRunViewMaterialHandle) error {
+	if e.artifacts == nil {
+		return unresolvedCraftRunView("Run-bound candidate artifact service is not assembled", nil)
+	}
+	source, err := newRunBoundCraftArtifactSource(ctx, e, task, material, craftLocalOutputDir)
+	if err != nil {
+		return err
+	}
+	kind := e.sessionKind(ctx, task)
+	if _, err := e.artifacts.CollectCandidate(ctx, task, kind, source, material.generation); err != nil {
+		return err
+	}
+	return nil
 }
 
 // verifyRunViewKnowledgeRoot constrains the complete read-only bind source to
@@ -1570,6 +1599,12 @@ func newRunBoundCraftArtifactSource(ctx context.Context, runtime *localCraftRunt
 	}
 	return source, nil
 }
+
+// CraftArtifactRunID and CraftArtifactGeneration expose the server-derived
+// Run/generation identity this source is bound to, satisfying the per-Run
+// collection contract without any caller-supplied identity.
+func (s *runBoundCraftArtifactSource) CraftArtifactRunID() string      { return s.task.Fence.RunID }
+func (s *runBoundCraftArtifactSource) CraftArtifactGeneration() string { return s.material.generation }
 
 func (s *runBoundCraftArtifactSource) verifyBinding(ctx context.Context) error {
 	if s == nil || s.runtime == nil || s.runtime.db == nil || s.material.provider == nil ||

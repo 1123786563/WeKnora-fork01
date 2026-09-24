@@ -491,6 +491,10 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// material source. Missing deployment pins leave Provider/ResolveMaterial
 	// nil and preserve the unavailable behavior.
 	must(container.Provide(provideCraftRunViewProductionAssembly))
+	// R4 Task3: the post-terminal draft-capture coordinator. It stays inert
+	// (receipts remain pending, admission stays fenced) unless the RunView
+	// production assembly is complete.
+	must(container.Provide(newCraftRunCaptureRunner))
 	// T08 Task ACL is one persistent service instance shared through its
 	// concrete API and the narrow craft.TaskAccessChecker port. Feature
 	// registration is owned by the router assembly that receives this registry.

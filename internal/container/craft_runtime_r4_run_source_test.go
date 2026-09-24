@@ -350,7 +350,13 @@ func (*r4Task2aSucceededExecutor) Observe(context.Context, craft.Task) (craft.Ob
 }
 func (*r4Task2aSucceededExecutor) Abort(context.Context, craft.Task) error { return nil }
 
-func TestCraftRunViewR4ExecuteDoesNotPublishThroughLegacySessionCollector(t *testing.T) {
+// TestCraftRunViewExecuteSucceedsWithoutLegacySessionPublication pins the R4
+// Task3 behavior: a successful delegation completes (the delegation result is
+// no longer fail-closed) and nothing is ever published through the legacy
+// session-wide collector. Candidate staging is best-effort — this fixture
+// deliberately lacks the candidate store, so staging is only logged and the
+// successful result stands.
+func TestCraftRunViewExecuteSucceedsWithoutLegacySessionPublication(t *testing.T) {
 	f := newR4SeedExecuteFixture(t, nil, 3, nil, false)
 	require.NoError(t, f.db.Exec(`CREATE TABLE craft_versions (id TEXT PRIMARY KEY)`).Error)
 	inner := &r4Task2aSucceededExecutor{outputRoot: f.material.output}
@@ -360,11 +366,11 @@ func TestCraftRunViewR4ExecuteDoesNotPublishThroughLegacySessionCollector(t *tes
 		f.files, repository.NewCraftVersionStore(f.db), nil,
 		service.CraftArtifactConfig{Kind: craft.KindWeb, OutputDir: craftLocalOutputDir},
 	)
-	_, err := f.runtime.Execute(context.Background(), f.task)
-	require.ErrorIs(t, err, ErrCraftRunViewRuntimeUnresolved)
-	require.Contains(t, err.Error(), "candidate collection is not assembled")
+	result, err := f.runtime.Execute(context.Background(), f.task)
+	require.NoError(t, err, "a successful delegation must complete after the R4 Task3 wiring")
+	require.Equal(t, "succeeded", result.Status)
 	require.Equal(t, 1, inner.calls)
 	var versions int64
 	require.NoError(t, f.db.Table("craft_versions").Count(&versions).Error)
-	require.Zero(t, versions, "Task2a must not publish a Version through the legacy session-wide collector")
+	require.Zero(t, versions, "RunView execution must never publish a Version through the legacy session-wide collector")
 }
