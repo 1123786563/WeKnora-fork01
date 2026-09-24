@@ -30,6 +30,9 @@ var (
 	ErrEvaluationNotFound = errors.New("career evaluation not found")
 	graduationOnlyPattern = regexp.MustCompile(`仅限[[:space:]]*([0-9]{4})[[:space:]]*届`)
 	graduationYearPattern = regexp.MustCompile(`^([0-9]{4})(?:届|年)?$`)
+	jdYearPattern         = regexp.MustCompile(`[0-9]{4}`)
+	jdGraduationLexemes   = regexp.MustCompile(`届|毕业|应届`)
+	jdQualificationTerms  = regexp.MustCompile(`或|或者|亦可|也可|可报|不限|非|不|未|除外|除非|接受|允许`)
 )
 
 type EvaluateInput struct {
@@ -278,7 +281,7 @@ func evaluateGraduationRule(job EvaluationSnapshotEvidence, revision uint64, fac
 		return rule, EvaluationUnknown
 	}
 	spanStart, spanEnd := matches[0][0], matches[0][1]
-	if !isIsolatedGraduationBlock(job.RawText, spanStart, spanEnd) {
+	if !isExclusiveGraduationJD(job.RawText, spanStart, spanEnd) {
 		rule.ReasonCode = "graduation_requirement_ambiguous_or_qualified"
 		return rule, EvaluationUnknown
 	}
@@ -364,7 +367,11 @@ func onlyPunctuationAndSpace(value string) bool {
 	return true
 }
 
-func isIsolatedGraduationBlock(raw string, start, end int) bool {
+// isExclusiveGraduationJD recognizes one complete positive graduation line and
+// only fully labeled, non-graduation skill/project fields elsewhere. Every line
+// is inspected: unlabeled continuations and fields containing year, batch, or
+// qualification language leave the result unknown.
+func isExclusiveGraduationJD(raw string, start, end int) bool {
 	lines := splitEvaluationLines(raw)
 	candidateLine := -1
 	for i := range lines {
@@ -377,29 +384,20 @@ func isIsolatedGraduationBlock(raw string, start, end int) bool {
 		return false
 	}
 
-	// A nearby graduation phrase or continuation can qualify the candidate even
-	// when it is on another physical line. Only a clearly labeled skills/project
-	// section is accepted as a boundary; any other non-empty neighboring line is
-	// conservatively treated as part of an unparsed requirement block.
-	for i := candidateLine - 1; i >= 0; i-- {
-		line := strings.TrimSpace(raw[lines[i].start:lines[i].end])
-		if line == "" || onlyPunctuationAndSpace(line) {
+	// Do not stop at a soft field: later lines can still qualify or negate the
+	// apparent restriction. The recognized soft grammar is deliberately narrow.
+	for i := range lines {
+		if i == candidateLine {
 			continue
 		}
-		if isEvaluationSoftSection(line) {
-			break
-		}
-		return false
-	}
-	for i := candidateLine + 1; i < len(lines); i++ {
 		line := strings.TrimSpace(raw[lines[i].start:lines[i].end])
-		if line == "" || onlyPunctuationAndSpace(line) {
+		if line == "" {
 			continue
 		}
-		if isEvaluationSoftSection(line) {
-			break
+		field, ok := evaluationSoftFieldValue(line)
+		if !ok || jdYearPattern.MatchString(field) || jdGraduationLexemes.MatchString(field) || jdQualificationTerms.MatchString(field) {
+			return false
 		}
-		return false
 	}
 	return true
 }
@@ -424,13 +422,13 @@ func splitEvaluationLines(raw string) []evaluationLine {
 	return lines
 }
 
-func isEvaluationSoftSection(line string) bool {
-	for _, prefix := range []string{"技能：", "技能:", "技能要求：", "技能要求:", "项目：", "项目:", "项目经验：", "项目经验:"} {
+func evaluationSoftFieldValue(line string) (string, bool) {
+	for _, prefix := range []string{"技能：", "技能:", "项目：", "项目:"} {
 		if strings.HasPrefix(line, prefix) && len(strings.TrimSpace(strings.TrimPrefix(line, prefix))) > 0 {
-			return true
+			return strings.TrimSpace(strings.TrimPrefix(line, prefix)), true
 		}
 	}
-	return false
+	return "", false
 }
 
 func evaluationJobEvidence(job EvaluationSnapshotEvidence, start, end int) *EvaluationJobEvidence {

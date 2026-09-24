@@ -33,7 +33,9 @@ func TestEvaluateOpportunityHardOutcomesArePinnedToEvidence(t *testing.T) {
 		{name: "alternative batch is unknown", jd: "仅限2027届或2026届", year: "2026", want: EvaluationUnknown},
 		{name: "negated graduation rule is unknown", jd: "并非仅限2027届", year: "2026", want: EvaluationUnknown},
 		{name: "unparsed same-line condition is unknown", jd: "仅限2027届，要求本科及以上", year: "2026", want: EvaluationUnknown},
-		{name: "standalone condition line remains conclusive", jd: "仅限2027届\n技能要求：Go", year: "2026", want: EvaluationIneligible, citation: true},
+		{name: "standalone condition with skill field remains conclusive", jd: "仅限2027届\n技能：Go", year: "2026", want: EvaluationIneligible, citation: true},
+		{name: "standalone condition with project field remains conclusive", jd: "仅限2027届\n项目：X", year: "2026", want: EvaluationIneligible, citation: true},
+		{name: "standalone condition with skill and project fields remains conclusive", jd: "技能：Go\n仅限2027届\n项目：X", year: "2026", want: EvaluationIneligible, citation: true},
 		{name: "wrapped alternative on following line is unknown", jd: "仅限2027届\n或2026届", year: "2026", want: EvaluationUnknown},
 		{name: "wrapped alternative before candidate is unknown", jd: "2026届或\n仅限2027届", year: "2026", want: EvaluationUnknown},
 		{name: "second graduation option on following line is unknown", jd: "仅限2027届\n2026届亦可", year: "2026", want: EvaluationUnknown},
@@ -43,6 +45,17 @@ func TestEvaluateOpportunityHardOutcomesArePinnedToEvidence(t *testing.T) {
 		{name: "CRLF wrapped alternative is unknown", jd: "仅限2027届\r\n或2026届", year: "2026", want: EvaluationUnknown},
 		{name: "CRLF prior alternative is unknown", jd: "2026届或\r\n仅限2027届", year: "2026", want: EvaluationUnknown},
 		{name: "labeled skill section preserves standalone mismatch", jd: "仅限2027届\r\n技能：Go", year: "2026", want: EvaluationIneligible, citation: true},
+		{name: "later unlabeled graduation alternative makes result unknown", jd: "仅限2027届\n技能：Go\n2026届亦可", year: "2026", want: EvaluationUnknown},
+		{name: "embedded alternative in skill field makes result unknown", jd: "仅限2027届\n技能：Go，2026届亦可", year: "2026", want: EvaluationUnknown},
+		{name: "CRLF later graduation alternative makes result unknown", jd: "仅限2027届\r\n技能：Go\r\n2026届亦可", year: "2026", want: EvaluationUnknown},
+		{name: "CRLF embedded alternative in skill field makes result unknown", jd: "仅限2027届\r\n技能：Go，2026届亦可", year: "2026", want: EvaluationUnknown},
+		{name: "labeled note with year makes result unknown", jd: "仅限2027届\n备注：2026届可报", year: "2026", want: EvaluationUnknown},
+		{name: "project field with graduation lexeme makes result unknown", jd: "仅限2027届\n项目：2026届亦可", year: "2026", want: EvaluationUnknown},
+		{name: "skill field with unrestricted batch wording makes result unknown", jd: "仅限2027届\n技能：不限届别", year: "2026", want: EvaluationUnknown},
+		{name: "alternative language in soft field makes result unknown", jd: "仅限2027届\n技能：Go或Java", year: "2026", want: EvaluationUnknown},
+		{name: "negation language in soft field makes result unknown", jd: "仅限2027届\n项目：非应届限制", year: "2026", want: EvaluationUnknown},
+		{name: "publication year in allowed field makes result unknown", jd: "仅限2027届\n项目：2024年论文", year: "2026", want: EvaluationUnknown},
+		{name: "unrecognized continuation makes result unknown", jd: "仅限2027届\n要求应届毕业生", year: "2026", want: EvaluationUnknown},
 		{name: "missing graduation condition is unknown", jd: "要求熟悉 Go 并具备项目经验", year: "2026", want: EvaluationUnknown},
 		{name: "bare batch is not treated as an explicit rule", jd: "2027届", year: "2027", want: EvaluationUnknown},
 	} {
@@ -199,7 +212,7 @@ func TestEvaluationUsesOnlyConfirmedSoftEvidenceAndKeepsItSeparate(t *testing.T)
 	require.NoError(t, err)
 	_, err = o.Confirm(ctx, "preference.location", "Hangzhou", "confirm-location", 4, Source{Kind: "manual"})
 	require.NoError(t, err)
-	job, err := o.ImportJD(ctx, ImportJDInput{RequestID: "job", RawText: "仅限2027届\n技能要求：熟悉Python，Compiler项目优先，意向地点Hangzhou"})
+	job, err := o.ImportJD(ctx, ImportJDInput{RequestID: "job", RawText: "仅限2027届\n技能：熟悉Python，Compiler项目优先，意向地点Hangzhou"})
 	require.NoError(t, err)
 	result, err := o.EvaluateOpportunity(ctx, EvaluateInput{RequestID: "eval-soft", OpportunityID: job.OpportunityID, SnapshotID: job.SnapshotID})
 	require.NoError(t, err)
