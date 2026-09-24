@@ -1,4 +1,18 @@
-import { leaseActive } from '../runtime/scope-lease.ts';
+import {
+  createInMemorySubmissionStore,
+  createSubmissionCoordinator,
+  evaluateSubmitReadiness,
+  inputDigest,
+  toStartInput,
+  SubmissionConflictError,
+  type NewTaskDraft,
+  type SubmissionEntry,
+  type SubmissionScope,
+  type SubmissionStore,
+  type SubmissionTransport,
+  type TaskAttachmentRef,
+} from '@weknora/domain/mobile';
+import { leaseActive, leaseScopeOf } from '../runtime/scope-lease.ts';
 import type { ScopeLease } from '../runtime/types.ts';
 import { createInMemoryTaskProjectionStore } from './in-memory-task-detail.ts';
 import { createTaskDetail } from './task-detail.ts';
@@ -90,11 +104,57 @@ export interface TaskBackendListInput {
   limit?: number;
 }
 
+/** T06 Start wire 输入：七字段冻结（与 api-client StartExecutionInput / domain MobileStartInput 逐字一致）。 */
+export interface TaskBackendStartInput {
+  request_id: string;
+  session_id: string;
+  agent_id: string;
+  target_id: string;
+  workspace_ref: string;
+  text: string;
+  budget_upper: number;
+}
+
+export interface TaskBackendStartAck {
+  run_id: string;
+  request_id: string;
+  status: string;
+}
+
+export interface TaskBackendLookup {
+  state: 'pending' | 'dispatching' | 'admitted' | 'rejected' | 'unknown';
+  run_id?: string;
+  reason?: string;
+}
+
+/** 一次用户目标的完整形态：附件/知识只参与就绪裁决与草稿，绝不进入 Start body。 */
+export interface TaskOfficeGoal {
+  text: string;
+  agentId: string;
+  budgetUpper: number;
+  knowledgeIds?: string[];
+  attachments?: TaskAttachmentRef[];
+}
+
+/** module-seams §5.2：start(goal) 持久化意图并返回 TaskStartReceipt。 */
+export interface TaskStartReceipt {
+  requestId: string;
+  phase: SubmissionEntry['phase'];
+  runId?: string;
+  dispatched: boolean;
+}
+
 export interface TaskBackendPort {
   overview(): Promise<TaskBackendOverview>;
   list(input: TaskBackendListInput): Promise<TaskBackendPage>;
   archive(taskId: string): Promise<void>;
   restore(taskId: string): Promise<void>;
+  /** T06：一个初始目标创建 Task 前的目标会话（taskId = sessionId，ADR-0004）。 */
+  createSession(input: { title: string }): Promise<{ sessionId: string }>;
+  /** T06：持久幂等 Start（POST /api/v1/workbench/executions；七字段 wire）。 */
+  start(input: TaskBackendStartInput): Promise<TaskBackendStartAck>;
+  /** T06：request 对账（GET /api/v1/workbench/executions/requests/:request_id）。 */
+  lookup(requestId: string): Promise<TaskBackendLookup>;
 }
 
 export interface TaskOfficePorts {
@@ -104,6 +164,14 @@ export interface TaskOfficePorts {
   detail?: TaskDetailBackendPort;
   /** 持久化投影存储（App 重启恢复）；缺省为 office 内共享的 in-memory store。 */
   store?: TaskProjectionStore;
+  /** T06 进程内提交存储（domain SubmissionStore 的同步契约：save 失败必须同步抛出且不发送）；
+   *  缺省 office 内 in-memory。不得注入异步实现——耐久层是下面的 intentLog。 */
+  submissionStore?: SubmissionStore;
+  /** T06 耐久意图日志：office 在 Start POST 前 await save；重入/重启恢复时 load/listScope
+   *  复用原 sessionId 与 goal。缺省 office 内 in-memory（进程内）——持久化是组合根的显式决策。 */
+  intentLog?: SubmissionIntentLog;
+  /** T06：一次用户意图的新 request_id 生成器；缺省 crypto.randomUUID（平台无实现时必须显式注入）。 */
+  newRequestId?: () => string;
 }
 
 export interface TaskOffice {
@@ -113,6 +181,37 @@ export interface TaskOffice {
   archive(taskId: string): Promise<void>;
   restore(taskId: string): Promise<void>;
   open(input: { taskId: string; runId: string }): TaskHandle;
+  start(goal: TaskOfficeGoal, options?: { requestId?: string }): Promise<TaskStartReceipt>;
+  reconcilePending(): Promise<TaskStartReceipt[]>;
+}
+
+/** T06 耐久意图记录：重启后用原 session 与原 goal 重建 digest 一致的 Start 输入。 */
+export interface SubmissionIntentRecord {
+  requestId: string;
+  sessionId: string;
+  goal: TaskOfficeGoal;
+  scope: SubmissionScope;
+  persistedAt: string;
+}
+
+/** 耐久意图日志（office await；RN SecureStore 等异步持久层的忠实契约）。 */
+export interface SubmissionIntentLog {
+  save(record: SubmissionIntentRecord): Promise<void>;
+  load(requestId: string): Promise<SubmissionIntentRecord | undefined>;
+  listScope(scope: SubmissionScope): Promise<SubmissionIntentRecord[]>;
+  /** bound/rejected 后清理；不实现则记录留存（reconcile 幂等无害，仅列表增长）。 */
+  remove?(requestId: string): Promise<void>;
+}
+
+export function createInMemoryIntentLog(): SubmissionIntentLog {
+  const records = new Map<string, SubmissionIntentRecord>();
+  const sameScope = (a: SubmissionScope, b: SubmissionScope): boolean => a.origin === b.origin && a.tenantID === b.tenantID && a.userID === b.userID;
+  return {
+    async save(record) { records.set(record.requestId, record); },
+    async load(requestId) { return records.get(requestId); },
+    async listScope(scope) { return [...records.values()].filter((record) => sameScope(record.scope, scope)); },
+    async remove(requestId) { records.delete(requestId); },
+  };
 }
 
 const searchMaxLen = 200;
@@ -144,6 +243,51 @@ export function createTaskOffice(ports: TaskOfficePorts): TaskOffice {
   let listEpoch = 0;
   let accumulated: listAccumulation | undefined;
   const defaultDetailStore = createInMemoryTaskProjectionStore();
+  const submissionStore = ports.submissionStore ?? createInMemorySubmissionStore();
+  const intentLog = ports.intentLog ?? createInMemoryIntentLog();
+  const submissionTransport: SubmissionTransport = {
+    start: (input) => ports.backend.start(input),
+    lookup: async (requestId) => {
+      try {
+        return await ports.backend.lookup(requestId);
+      } catch (error) {
+        if (error instanceof TaskOfficeError) throw error;
+        throw new TaskOfficeError('TASK_OFFICE_BACKEND', { cause: error });
+      }
+    },
+  };
+  const submissions = createSubmissionCoordinator(submissionStore, submissionTransport);
+  const submissionScopeOf = (lease: ScopeLease): SubmissionScope => {
+    const scope = leaseScopeOf(lease);
+    if (!scope) throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED');
+    return { origin: scope.deploymentOrigin, tenantID: scope.tenantId, userID: scope.userId };
+  };
+  const receiptOf = (entry: SubmissionEntry, dispatched: boolean): TaskStartReceipt => ({
+    requestId: entry.request_id,
+    phase: entry.phase,
+    ...(entry.run_id === undefined ? {} : { runId: entry.run_id }),
+    dispatched,
+  });
+  const nextRequestId = (): string => {
+    if (ports.newRequestId) return ports.newRequestId();
+    if (typeof globalThis.crypto?.randomUUID === 'function') return globalThis.crypto.randomUUID();
+    throw new TaskOfficeError('TASK_OFFICE_INVALID_INPUT', { cause: new Error('newRequestId port is required on platforms without crypto.randomUUID') });
+  };
+  const goalDraftOf = (goal: TaskOfficeGoal): NewTaskDraft => ({
+    text: goal.text,
+    agentId: goal.agentId,
+    budgetUpper: goal.budgetUpper,
+    attachments: goal.attachments ?? [],
+    knowledgeIds: goal.knowledgeIds ?? [],
+  });
+  // 意图一致性比较键：覆盖影响意图的字段（text/agentId/budgetUpper/knowledgeIds 排序）。
+  // attachments 的 readiness 是状态不是意图（scanning→ready 不构成「换意图」），不进比较键。
+  const goalKeyOf = (goal: TaskOfficeGoal): string => JSON.stringify({
+    agentId: goal.agentId,
+    budgetUpper: goal.budgetUpper,
+    knowledgeIds: [...(goal.knowledgeIds ?? [])].sort(),
+    text: goal.text,
+  });
 
   const requireLease = (): ScopeLease => {
     const lease = ports.lease();
@@ -234,6 +378,67 @@ export function createTaskOffice(ports: TaskOfficePorts): TaskOffice {
       if (taskId === '' || runId === '') throw new TaskOfficeError('TASK_OFFICE_INVALID_INPUT');
       if (ports.detail === undefined) throw new TaskOfficeError('TASK_OFFICE_DETAIL_UNAVAILABLE');
       return createTaskDetail({ taskId, runId }, { backend: ports.detail, store: ports.store ?? defaultDetailStore, lease: ports.lease });
+    },
+    async start(startGoal: TaskOfficeGoal, options: { requestId?: string } = {}): Promise<TaskStartReceipt> {
+      const lease = requireLease();
+      const scope = submissionScopeOf(lease);
+      const draft = goalDraftOf(startGoal);
+      const readiness = evaluateSubmitReadiness(draft);
+      if (!readiness.ready) {
+        if (readiness.reason === 'attachments_not_ready') throw new TaskOfficeError('TASK_OFFICE_ATTACHMENTS_NOT_READY');
+        throw new TaskOfficeError('TASK_OFFICE_INVALID_INPUT');
+      }
+      const requestId = options.requestId ?? nextRequestId();
+      const record = await intentLog.load(requestId);
+      let sessionId: string;
+      if (record === undefined) {
+        // 新意图：目标会话是前置网络调用（无 Task/预算副作用，与 miniprogram AgentPage 同序），
+        // 随后在 Start POST 之前耐久落盘意图记录——intentLog 写失败（磁盘满等）上抛且零 Start 派发。
+        const session = await callBackend(() => ports.backend.createSession({ title: startGoal.text.trim().slice(0, 60) }));
+        if (!leaseActive(lease)) throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED');
+        sessionId = session.sessionId;
+        await intentLog.save({ requestId, sessionId, goal: startGoal, scope, persistedAt: new Date().toISOString() });
+      } else {
+        // 重入/重启恢复：绝不新建 session——inputDigest 覆盖 session_id（submission.ts:65-74），
+        // 换 session 会伪造成新意图并撞 digest 冲突。借旧 ID 发新意图零网络拒绝。
+        if (record.scope.origin !== scope.origin || record.scope.tenantID !== scope.tenantID || record.scope.userID !== scope.userID) {
+          throw new TaskOfficeError('TASK_OFFICE_SUBMISSION_CONFLICT', { cause: new Error(`intent ${requestId} belongs to a different scope`) });
+        }
+        if (goalKeyOf(record.goal) !== goalKeyOf(startGoal)) {
+          throw new TaskOfficeError('TASK_OFFICE_SUBMISSION_CONFLICT', { cause: new Error(`intent ${requestId} was persisted with a different goal`) });
+        }
+        sessionId = record.sessionId;
+      }
+      const input = toStartInput(draft, { requestID: requestId, sessionId, targetId: 'platform', workspaceRef: '' });
+      try {
+        const outcome = await submissions.resume(input, scope);
+        if (!leaseActive(lease)) throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED');
+        if (outcome.entry.phase === 'bound') await intentLog.remove?.(requestId);
+        return receiptOf(outcome.entry, outcome.dispatched);
+      } catch (error) {
+        if (error instanceof TaskOfficeError) throw error;
+        if (error instanceof SubmissionConflictError) throw new TaskOfficeError('TASK_OFFICE_SUBMISSION_CONFLICT', { cause: error });
+        throw error;
+      }
+    },
+    async reconcilePending(): Promise<TaskStartReceipt[]> {
+      const lease = requireLease();
+      const scope = submissionScopeOf(lease);
+      const records = await intentLog.listScope(scope);
+      const receipts: TaskStartReceipt[] = [];
+      for (const record of records) {
+        // 重启恢复：进程内 store 为空时按意图记录预建 awaiting_reconciliation entry
+        // （digest 与原提交一致——同一 sessionId + 同一 goal），再走 lookup 对账。
+        if (submissionStore.load(record.requestId) === undefined) {
+          const input = toStartInput(goalDraftOf(record.goal), { requestID: record.requestId, sessionId: record.sessionId, targetId: 'platform', workspaceRef: '' });
+          submissionStore.save({ request_id: record.requestId, input_digest: inputDigest(input), scope, phase: 'awaiting_reconciliation', updated_at: new Date().toISOString() });
+        }
+        const entry = await submissions.reconcile(record.requestId, scope);
+        if (entry.phase === 'bound') await intentLog.remove?.(record.requestId);
+        receipts.push(receiptOf(entry, false));
+      }
+      if (!leaseActive(lease)) throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED');
+      return receipts;
     },
   };
 }
