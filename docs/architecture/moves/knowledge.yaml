@@ -144,6 +144,10 @@ legacy_files:
     reason: trapped in horizontal service package internal/application/service (Pass B file split)
     navigation_label: Kbshare (application/service)
     passb_task: B-knowledge
+  - path: internal/application/service/kbretrieval_passb_compat.go
+    reason: host compatibility aliases after semantic capability/policy/scope services moved into module (Pass B)
+    navigation_label: Knowledge retrieval host compat (application/service)
+    passb_task: B-knowledge
   - path: internal/application/service/knowledge.go
     reason: trapped in horizontal service package internal/application/service (Pass B file split)
     navigation_label: Knowledge (application/service)
@@ -283,18 +287,6 @@ legacy_files:
   - path: internal/application/service/semantic_model.go
     reason: trapped in horizontal service package internal/application/service (Pass B file split)
     navigation_label: Semantic model (application/service)
-    passb_task: B-knowledge
-  - path: internal/application/service/semantic_model_capability.go
-    reason: trapped in horizontal service package internal/application/service (Pass B file split)
-    navigation_label: Semantic model capability (application/service)
-    passb_task: B-knowledge
-  - path: internal/application/service/semantic_model_policy.go
-    reason: trapped in horizontal service package internal/application/service (Pass B file split)
-    navigation_label: Semantic model policy (application/service)
-    passb_task: B-knowledge
-  - path: internal/application/service/semantic_scope.go
-    reason: trapped in horizontal service package internal/application/service (Pass B file split)
-    navigation_label: Semantic scope (application/service)
     passb_task: B-knowledge
   - path: internal/application/service/slug_fuzzy.go
     reason: trapped in horizontal service package internal/application/service (Pass B file split)

@@ -28,6 +28,7 @@
 | `internal/application/service/image_multimodal.go` | Image multimodal (application/service) | `B-knowledge` |
 | `internal/application/service/kb_activity.go` | Kb activity (application/service) | `B-knowledge` |
 | `internal/application/service/kbshare.go` | Kbshare (application/service) | `B-knowledge` |
+| `internal/application/service/kbretrieval_passb_compat.go` | Knowledge retrieval host compat (application/service) | `B-knowledge`（K2.3 新增 compat） |
 | `internal/application/service/knowledge.go` | Knowledge (application/service) | `B-knowledge` |
 | `internal/application/service/knowledge_auto_tag.go` | Knowledge auto tag (application/service) | `B-knowledge` |
 | `internal/application/service/knowledge_clone_move.go` | Knowledge clone move (application/service) | `B-knowledge` |
@@ -63,9 +64,9 @@
 | `internal/application/service/ocr_sanitizer.go` | Ocr sanitizer (application/service) | `B-knowledge` |
 | `internal/application/service/parser_url_security.go` | Parser url security (application/service) | `B-knowledge` |
 | `internal/application/service/semantic_model.go` | Semantic model (application/service) | `B-knowledge` |
-| `internal/application/service/semantic_model_capability.go` | Semantic model capability (application/service) | `B-knowledge` |
-| `internal/application/service/semantic_model_policy.go` | Semantic model policy (application/service) | `B-knowledge` |
-| `internal/application/service/semantic_scope.go` | Semantic scope (application/service) | `B-knowledge` |
+| `internal/application/service/semantic_model_capability.go` | Semantic model capability (application/service) | `B-knowledge` — **已迁移**（K2.3 → `retrieval/app/`） |
+| `internal/application/service/semantic_model_policy.go` | Semantic model policy (application/service) | `B-knowledge` — **已迁移**（K2.3 → `retrieval/app/`） |
+| `internal/application/service/semantic_scope.go` | Semantic scope (application/service) | `B-knowledge` — **已迁移**（K2.3 → `retrieval/app/`） |
 | `internal/application/service/slug_fuzzy.go` | Slug fuzzy (application/service) | `B-knowledge` |
 | `internal/application/service/tag.go` | Tag (application/service) | `B-knowledge` |
 | `internal/application/service/tag_access.go` | Tag access (application/service) | `B-knowledge` |

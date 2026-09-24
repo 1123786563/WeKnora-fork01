@@ -1,4 +1,4 @@
-package service
+package app
 
 import (
 	"context"
@@ -12,6 +12,7 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/config"
+	kbrepo "github.com/Tencent/WeKnora/internal/modules/knowledge/retrieval/app/repository"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/golang-jwt/jwt/v5"
@@ -28,45 +29,9 @@ var (
 // semanticScopeGuard preserves lightweight service construction in tools/tests.
 // Production container decorators install the mandatory durable invalidator
 // before exposing any ACL writer, independently of semantic.enabled.
-type semanticScopeGuard struct {
-	semanticInvalidator interfaces.SemanticScopeInvalidator
-}
-
-func (s *semanticScopeGuard) SetSemanticScopeInvalidator(i interfaces.SemanticScopeInvalidator) {
-	s.semanticInvalidator = i
-}
-func (s *semanticScopeGuard) invalidateSemanticKB(ctx context.Context, tenant uint64, kb string) error {
-	if s.semanticInvalidator == nil {
-		return nil
-	}
-	return s.semanticInvalidator.InvalidateKB(ctx, tenant, kb)
-}
-
-func (s *semanticScopeGuard) invalidateSemanticTenant(ctx context.Context, tenant uint64) error {
-	if s.semanticInvalidator == nil {
-		return nil
-	}
-	return s.semanticInvalidator.InvalidateTenant(ctx, tenant)
-}
-
-func (s *semanticScopeGuard) invalidateSemanticUser(ctx context.Context, user string) error {
-	if s.semanticInvalidator == nil {
-		return nil
-	}
-	return s.semanticInvalidator.InvalidateUser(ctx, user)
-}
-func (s *semanticScopeGuard) invalidateSemanticOrganization(ctx context.Context, org string) error {
-	if s.semanticInvalidator == nil {
-		return nil
-	}
-	return s.semanticInvalidator.InvalidateOrganization(ctx, org)
-}
-func (s *semanticScopeGuard) invalidateSemanticTransfer(ctx context.Context, source, target *types.KnowledgeBase) error {
-	if s.semanticInvalidator == nil || source.ID == target.ID && source.TenantID == target.TenantID {
-		return nil
-	}
-	return s.semanticInvalidator.InvalidateTransfer(ctx, types.SemanticScopeKey{TenantID: source.TenantID, KBID: source.ID}, types.SemanticScopeKey{TenantID: target.TenantID, KBID: target.ID})
-}
+// Pass B 双轨（b2-k-retrieval / K2.3）：本包 guard 定义见 semantic_scope_guard.go；
+// 宿主留守嵌入方（internal/application/service）经宿主 compat 同形定义继续编译，
+// ib2 与 identity 同形 seam 一并收口（docs/plans/passb/22-knowledge-retrieval.md §5.4）。
 
 // SemanticScopeSnapshot is the Go-authoritative allowlist consumed by A02.
 // Revisions are maxima, not an instruction to expose an unpublished generation.
@@ -101,18 +66,21 @@ type semanticScopeClaims struct {
 }
 
 type SemanticScopeService struct {
-	cfg       *config.SemanticServiceConfig
-	control   *repository.SemanticControlRepository
-	members   interfaces.TenantMemberRepository
-	kbs       interfaces.KnowledgeBaseRepository
-	knowledge interfaces.KnowledgeRepository
-	shares    interfaces.KBShareService
+	cfg     *config.SemanticServiceConfig
+	control *kbrepo.SemanticControlRepository
+	members interfaces.TenantMemberRepository
+	kbs     interfaces.KnowledgeBaseRepository
+	// Knowledge / Shares 为 R1 导出面（b2-k-retrieval / K2.3）：留宿主白盒测试
+	// semantic_scope_test.go:61/:84 原以未导出字段直达，搬迁后跨包不可达，按
+	// 22-knowledge-retrieval.md §5.1 导出改名机制处理（字段无序列化面，语义零变化）。
+	Knowledge interfaces.KnowledgeRepository
+	Shares    interfaces.KBShareService
 	users     interfaces.UserRepository
 	tenants   interfaces.TenantRepository
 }
 
-func NewSemanticScopeService(cfg *config.Config, control *repository.SemanticControlRepository, members interfaces.TenantMemberRepository, kbs interfaces.KnowledgeBaseRepository, knowledge interfaces.KnowledgeRepository, shares interfaces.KBShareService, users interfaces.UserRepository, tenants interfaces.TenantRepository) *SemanticScopeService {
-	return &SemanticScopeService{cfg: cfg.Semantic, control: control, members: members, kbs: kbs, knowledge: knowledge, shares: shares, users: users, tenants: tenants}
+func NewSemanticScopeService(cfg *config.Config, control *kbrepo.SemanticControlRepository, members interfaces.TenantMemberRepository, kbs interfaces.KnowledgeBaseRepository, knowledge interfaces.KnowledgeRepository, shares interfaces.KBShareService, users interfaces.UserRepository, tenants interfaces.TenantRepository) *SemanticScopeService {
+	return &SemanticScopeService{cfg: cfg.Semantic, control: control, members: members, kbs: kbs, Knowledge: knowledge, Shares: shares, users: users, tenants: tenants}
 }
 func (s *SemanticScopeService) ready() bool {
 	return s.cfg != nil && s.cfg.Enabled && s.cfg.HasValidScopeSigningKey() && strings.TrimSpace(s.cfg.Audience) != ""
@@ -246,7 +214,7 @@ func (s *SemanticScopeService) snapshot(ctx context.Context, c semanticScopeClai
 	}
 	var shareRole types.OrgMemberRole
 	if kb.TenantID != c.RequesterTenantID {
-		role, shared, err := s.shares.CheckTenantKBPermission(ctx, kb.ID, c.RequesterTenantID, member.Role)
+		role, shared, err := s.Shares.CheckTenantKBPermission(ctx, kb.ID, c.RequesterTenantID, member.Role)
 		if err != nil {
 			return result, ErrSemanticScopeUnavailable
 		}
@@ -259,7 +227,7 @@ func (s *SemanticScopeService) snapshot(ctx context.Context, c semanticScopeClai
 	if err != nil {
 		return result, ErrSemanticScopeUnavailable
 	}
-	docs, err := s.knowledge.ListKnowledgeByKnowledgeBaseID(ctx, kb.TenantID, kb.ID)
+	docs, err := s.Knowledge.ListKnowledgeByKnowledgeBaseID(ctx, kb.TenantID, kb.ID)
 	if err != nil {
 		return result, ErrSemanticScopeUnavailable
 	}

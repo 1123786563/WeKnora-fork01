@@ -1,4 +1,4 @@
-package service
+package app
 
 import (
 	"context"
@@ -6,8 +6,8 @@ import (
 	"math"
 	"testing"
 
-	"github.com/Tencent/WeKnora/internal/application/repository"
 	domain "github.com/Tencent/WeKnora/internal/modules/commercial"
+	repository "github.com/Tencent/WeKnora/internal/modules/knowledge/retrieval/app/repository"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/stretchr/testify/require"
 )
