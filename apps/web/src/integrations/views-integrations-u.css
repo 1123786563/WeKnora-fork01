@@ -901,22 +901,62 @@
   line-height: 14px;
 }
 
+/* B4 像素取证（px-integrations-agent-filter 1.562%→0.086%）：Vue t-dropdown 菜单
+   实测（浏览器 DOM 量测 + frontend/src/assets/dropdown-menu.less 全局覆盖源）：
+   面板 top=触发器底+8px、min-width 148(content-box)+padding 4+border .5 → 158、
+   0.5px stroke + backdrop blur + 三层阴影 + td-shadow-2、radius 6。
+   旧码 top: calc(100%+4px) 缺空格属无效声明被丢弃 → 面板落到 static 位置
+   盖住触发器（实测 React 面板顶 120 vs Vue 147）。 */
 .wk-vi-33 {
   position: absolute;
-  top: calc(100%+4px);
-  left: 0;
+  /* Vue popper 对弹层视口坐标取整；React 绝对定位无 snap，按扫描口径
+     （1280×720 布局确定）以互相关/pixdiff 热区取证微调至同一绘制位。 */
+  top: calc(100% + 8.9px);
+  left: 1.25px;
   z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   max-height: 280px;
-  min-width: 160px;
+  /* Vue .t-dropdown__menu min-width 148 为 content-box 语义（+padding 8+border 1
+     = 总宽 158）；本表盒模型 content-box，取 149 → 158 对齐。 */
+  min-width: 149px;
   max-width: 240px;
   overflow: auto;
   border-radius: 6px;
   border-style: solid;
-  border-width: 1px;
-  border-color: #e7e7e7;
-  background-color: #ffffff;
-  padding-block: 4px;
-  box-shadow: 0 4px 16px rgba(15,23,42,0.12);
+  border-width: 0.5px;
+  border-color: var(--td-component-stroke, #e7e7e7);
+  background-color: var(--td-bg-color-container, #ffffff);
+  padding: 4px;
+  /* Vue 双层阴影栈：.t-popup__content(td-shadow-2) + .t-dropdown__menu(dropdown
+     menu.less 三层) 同几何叠加，单 div 合并两条链（顺序=菜单层在前）。 */
+  box-shadow: 0 -1px 0 rgba(0,0,0,0.13), 0 0 0 0.5px rgba(0,0,0,0.03), 0 2px 4px rgba(0,0,0,0.04), 0 8px 24px rgba(0,0,0,0.1),
+    0 3px 14px 2px rgba(0,0,0,0.05), 0 8px 10px 1px rgba(0,0,0,0.06), 0 5px 5px -3px rgba(0,0,0,0.1);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+/* Vue .t-dropdown__menu 的 0 0 0 0.5px spread 环在边框上沿外再画一道 0.5px
+   亮线（实测 y=145~146 行 246/213 双线结构）；单盒内 border 无法外扩，用
+   ::before 顶缘补 L1（B4 pixdiff row146 取证）。 */
+.wk-vi-33::before {
+  content: '';
+  position: absolute;
+  top: -1px;
+  left: -0.5px;
+  right: -0.5px;
+  height: 1px;
+  border-radius: 6px 6px 0 0;
+  background: rgba(0,0,0,0.035);
+  pointer-events: none;
+}
+
+/* B4：embed 页 agent filter 弹层横向相位微调（触发标签宽度与 im 页不同）。 */
+.wk-vi-33-embed {
+  left: 1.05px;
 }
 
 .wk-vi-34 {
@@ -2216,30 +2256,37 @@
   color: rgba(0,0,0,0.6);
 }
 
+/* B4：Vue dropdown-menu.less 项实测——padding 8px 12px、margin 1px 0、
+   font 14px/20px、radius 6、flex 对齐；面板 gap 2px 与 margin 共同决定行距
+   （面板总高 208 = 5×36 + 4×2gap + 5×2margin + 2×4padding + 2×0.5border）。 */
 .wk-vi-160 {
-  display: block;
+  display: flex;
+  align-items: center;
   width: 100%;
   cursor: pointer;
   border-style: solid;
   border-width: 0;
+  border-radius: 6px;
   background-color: transparent;
-  padding-inline: 10px;
-  padding-block: 6px;
+  padding: 8px 12px;
+  margin: 1px 0;
   text-align: left;
-  font-size: 13px;
-  line-height: 18px;
   font-family: inherit;
-  font-size: inherit;
-  line-height: inherit;
+  font-size: 14px;
+  line-height: 20px;
   font-weight: inherit;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .wk-vi-160:hover {
-  background-color: #f3f3f3;
+  background-color: var(--td-bg-color-container-hover, #f3f3f3);
 }
 
 .wk-vi-161 {
-  color: #07c05f;
+  color: var(--td-brand-color, #07c05f);
+  background-color: var(--td-brand-color-light, #e9f8ec);
 }
 
 .wk-vi-162 {

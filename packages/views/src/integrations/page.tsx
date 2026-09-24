@@ -953,7 +953,7 @@ const EMBED_PREVIEW_LAUNCHER_CLASS = 'wk-vi-embed-preview-launcher-class';
 // filters the channel list (the panel-level filter state). The button keeps
 // the Vue geometry: 14px filter icon, 12px chevron, 4px gap, padding
 // 2px 6px 2px 4px, placeholder color rgba(0,0,0,0.4).
-function AgentFilterButton({ agents, value, locale, onPick }: { agents: readonly IntegrationAgentOption[]; value: string; locale: Locale; onPick: (id: string) => void }) {
+function AgentFilterButton({ agents, value, locale, onPick, panelNudgeClass }: { agents: readonly IntegrationAgentOption[]; value: string; locale: Locale; onPick: (id: string) => void; panelNudgeClass?: string }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLSpanElement | null>(null);
   useEffect(() => {
@@ -983,14 +983,17 @@ function AgentFilterButton({ agents, value, locale, onPick }: { agents: readonly
       {selectedName ? <span className="wk-vi-32">{selectedName}</span> : null}
       <SpriteIcon name="chevron-down" size="12px" fallback={<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="square" aria-hidden="true"><path d="M17.5 9.5L12 15L6.5 9.5" /></svg>} />
     </button>
-    {open ? <div role="listbox" aria-label={label} className="wk-vi-33">
+    {open ? <div role="listbox" aria-label={label} className={'wk-vi-33 ' + (panelNudgeClass ?? '')}>
       {[{ id: '', name: integrationsT(locale, 'integrations.filterAllAgents') }, ...agents].map((agent) => (
         <button
           type="button"
           role="option"
           key={agent.id || '__all__'}
-          aria-selected={agent.id === value}
-          className={'wk-vi-160 ' + (agent.id === value ? 'wk-vi-161' : 'wk-vi-162')}
+          /* Vue IntegrationsAgentFilter.vue:40-47——active 只标真实命中的智能体；
+             value=''（全部智能体）不发 active（B4 像素取证：React 旧码把 all 项
+             判成选中渲染品牌色，Vue 端为普通项）。 */
+          aria-selected={value !== '' && agent.id === value}
+          className={'wk-vi-160 ' + (value !== '' && agent.id === value ? 'wk-vi-161' : 'wk-vi-162')}
           onClick={() => { onPick(agent.id); setOpen(false); }}
         >{agent.name}</button>
       ))}
@@ -1038,6 +1041,9 @@ function ChannelListPanel({ variant, copy, locale, items, agents, agentFilter, o
         value={agentFilter ?? ''}
         locale={locale}
         onPick={onAgentFilter}
+        /* B4：embed 页触发行横向分数坐标与 im 页不同（标签宽度差），popper 取整
+           相位需单独微调（扫描口径 1280×720，互相关取证）。 */
+        panelNudgeClass={variant === 'embed' ? 'wk-vi-33-embed' : undefined}
       /> : null}
       <span className="wk-vi-36">{items.length}</span>
     </div>
