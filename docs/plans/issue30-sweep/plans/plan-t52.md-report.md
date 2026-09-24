@@ -113,3 +113,156 @@ ok  	github.com/Tencent/WeKnora/internal/modules/codedelivery	0.452s
 ## 7. 提交
 
 见提交记录：`feat(codedelivery): baseline materialization + delivery prepare ...`（本报告写作时随 commit 落盘）。
+
+---
+
+# Task 6 实施报告：Go——交付编排 B（DispatchDelivery、部分完成与 unknown 收敛）
+
+> T22 / Issue #52 实施计划第 6/11 个任务。工作目录：`.worktrees/issue30-sweep-t52`（分支 `codex/issue30-t52`）。
+> 日期：2026-09-25 · 提交：`25b32789e`（7 files changed, 638 insertions, 18 deletions）
+
+## 1. 实现内容
+
+### 1.1 新建 `internal/modules/codedelivery/dispatcher.go`
+
+- `DispatcherDeps`：Connections / Creds（CredentialResolver）/ Guard（A02Guard）/ GitHub（GitHubClientFactory）/ Workspace / Store / ActionRows / Runs——按计划冻结签名。
+- `DeliveryDispatcher` 同时实现 A03 `ActionDispatcher`（`Dispatch`）与 `UnknownResolver`（`QueryProvider`），是唯一出站边界（令牌在此解析、GitHub 调用在此发出、回执在此落账；无任何 merge 路径）。
+- `Dispatch`：前置闸门（快照精确解析 → A02 复验 → 凭据解析 → 交付行查找）失败一律 `ErrDispatchNotStarted`（可证未起网，允许落 failed）；GitHub 确定性响应=确定性结果；传输错误=`ErrGitHubTransport`（不可观测→上层落 unknown）。
+- `deliver` 推送半程：Repository/BranchProtected → `RefuseProtectedTarget`（AC1 双保险，派发前复验默认分支/远端 protected）→ 工作区逐文件读内容（令牌永不进沙箱）→ CreateBlob → CommitTree → CreateTree（删除项 SHA=""=null wire sha，与 Task 2 权威形态一致）→ CreateCommit(parent=基线) → RecordReceipts(commit_sha) → EnsureBranch → 状态 CAS → `pushed`。
+- `deliver` PR 半程：DraftPullRequest（head 复用不重建）→ CurrentLogin（实际远端身份）→ RecordReceipts → 状态 CAS → `delivered`。确定性 PR 失败且行已 `pushed` 时返回成功 + partial 回执（部分完成落账，不算失败）；否则 `ErrDispatchNotStarted`。
+- `RecoverPullRequest`：仅 `pushed` 行可恢复（否则 `ErrDeliveryState`）；从 `ActionRows.FindAction` 重建批准快照（同一批准），A02 复验后只走 PR 半程——结构上不可能重发 blobs/tree/commit/ref。
+- `QueryProvider`：只读远端事实——task head 的开放 draft PR 存在→`delivered`（回执落账）；否则 `BranchHead` 存在→`pushed`（commit sha 落账）；两者皆无→`ErrDispatchUnknown`。绝不重发任何写。
+
+### 1.2 `service.go` 追加（最小修改）
+
+- `CodeDeliveryDeps` 增 `Dispatcher *DeliveryDispatcher` 字段（nil 保持 prepare-only 装配可用，pushed 恢复在未接线时 fail closed）。
+- `DispatchInput` / `ErrDeliveryState` / `DispatchDelivery`（owner 谓词先行；`prepared`→CAS `dispatched` 后 `Actions.Execute` 消费批准；`ErrDispatchUnknown`→CAS `unknown` 并返回视图；Execute 失败但行已 `pushed`→按部分完成返回；其余失败→CAS `failed` 并返回错误；`pushed`→`RecoverPullRequest`；其余状态→`ErrDeliveryState`）/ `ResolveDeliveryUnknown`（owner 谓词 + `Actions.ResolveUnknown`）/ `viewAfter`。
+- `GetDelivery` 无需改动：Task 5 已实现（`service.go:251`，签名冻结），Task 6 直接复用。
+
+### 1.3 端口补 `BranchHead`（Task 2 共享文件三处小改）
+
+- `github.go`：`GitHubClient` 接口加 `BranchHead(ctx, branch) (string, bool, error)`（`EnsureBranch` 之前）。
+- `github_client.go`：实现走 `GET /repos/{o}/{r}/git/ref/heads/{b}`（与真实 GitHub `GET /git/ref/{ref}` 同形），404→`(sha,false,nil)`，其余错误透传。
+- `github_wire_test.go` 模拟器：加 `GET /git/ref/heads/<branch>` 分支（无 ref 时 404）；加 `blackoutAfterRef` 字段；`blackoutAfterRefCreate()` 语义改为「下一次成功的 POST /git/refs 之后所有后续请求 hijack 断连」（在 ref 写成功路径上置位 `blackout`）——精确模拟「推送已完成、PR 创建中途网络不可观测」。
+
+### 1.4 夹具改造（`service_prepare_test.go`，计划指定 3 处小改）
+
+1. `deliveryFixture` 加 `dispatcher *DeliveryDispatcher` 字段。
+2. `newDeliveryFixture` 去掉变参 `dispatcher ...appconnectorsvc.ActionDispatcher`，改为 dispatcher 内部单实例构造：`store` 先声明，`NewDeliveryDispatcher`、`NewActionService(actionStore, guard, nil, dispatcher, dispatcher)` 与 `NewCodeDeliveryService` 共享同一 db/emulator/connections/workspace/store/actionStore 实例——绝无两套底层件。Task 5 调用点（`newDeliveryFixture(t, nil)` / `(t, func(root string){…})`）不传变参，删除后全部照常编译。
+3. `dispatchFixture` 落在 `service_dispatch_test.go`，退化为直通别名。
+
+## 2. TDD 证据
+
+### RED（实现前）
+
+命令：`go test ./internal/modules/codedelivery/ -run 'TestDispatch|TestPartialPush|TestUnknownOutcome|TestTampered' -count=1`
+
+实际输出（节选，完整为编译失败）：
+
+```
+# github.com/Tencent/WeKnora/internal/modules/codedelivery [github.com/Tencent/WeKnora/internal/modules/codedelivery.test]
+internal/modules/codedelivery/service_dispatch_test.go:34:39: undefined: DispatchInput
+internal/modules/codedelivery/service_dispatch_test.go:49:21: f.svc.DispatchDelivery undefined (type *CodeDeliveryService has no field or method DispatchDelivery)
+internal/modules/codedelivery/service_dispatch_test.go:177:14: f.dispatcher undefined (type *deliveryFixture has no field or method dispatcher)
+...
+FAIL	github.com/Tencent/WeKnora/internal/modules/codedelivery [build failed]
+```
+
+失败原因与计划 Step 2 预期完全一致：`DispatchDelivery`/`DispatchInput`/`NewDeliveryDispatcher`/`f.dispatcher` 未定义。
+
+### GREEN（实现后）
+
+计划 Step 4 原命令：
+
+```
+$ go test ./internal/modules/codedelivery/ -count=1
+ok  	github.com/Tencent/WeKnora/internal/modules/codedelivery	1.460s
+```
+
+扩展到 store 子包（`-v` 摘要，全部实跑）：
+
+```
+$ go test ./internal/modules/codedelivery/... -count=1 -v
+--- PASS: TestTaskBranchOfAndValidation (0.00s)
+--- PASS: TestRefuseProtectedTarget (0.00s)
+--- PASS: TestParseRepoRefAndWorkspaceRoot (0.00s)
+--- PASS: TestParseRepoRefRefusesDotDotSegments (0.00s)
+--- PASS: TestGitBlobSHAMatchesRealGit (0.04s)
+--- PASS: TestDiffAgainstBaseline (0.00s)
+--- PASS: TestParseDeliveryMaterialExactFields (0.00s)
+--- SKIP: TestGitHubClientAgainstRealGitHub (0.00s)   ← blocked-env：缺 WEKNORA_GITHUB_TEST_TOKEN/REPO，按计划 skip 不伪造
+--- PASS: TestGitHubClientWireChainCreatesBranchAndDraftPR (0.01s)
+--- PASS: TestGitHubClientCreateTreeDeleteEntryUsesEmptySHA (0.00s)
+--- PASS: TestGitHubClientClassifiesDefiniteVsUnobservable (0.00s)
+--- PASS: TestDispatchDeliversAndRecordsTraceableReceipts (0.05s)
+--- PASS: TestDispatchNeverWritesProtectedBranchOrMerges (0.03s)
+--- PASS: TestPartialPushPRFailureRecoversWithoutRepush (0.03s)
+--- PASS: TestDispatchRefusesSecondDeliveryPreparedWithDifferentFiles (0.04s)
+--- PASS: TestDispatchWithoutApprovalConsumesNothing (0.03s)
+--- PASS: TestTamperedSnapshotNeverReachesGitHub (0.02s)
+--- PASS: TestUnknownOutcomeResolvesFromRemoteFacts (0.03s)
+--- PASS: TestDispatchFailsClosedWhenConnectionUnusable (0.02s)
+--- PASS: TestMaterializeBaselineWritesFixedTreeIntoWorkspace (0.02s)
+--- PASS: TestMaterializeBaselineRejectsNonOwnerAndForeignConnection (0.01s)
+--- PASS: TestPrepareDeliveryAnchorsApprovalAndDiff (0.01s)
+--- PASS: TestPrepareDeliveryRefusesProtectedBranchWithZeroRemoteWrites (0.01s)
+--- PASS: TestPrepareDeliveryAlwaysAwaitsApprovalEvenWithWritePreAuthorization (0.02s)
+--- PASS: TestLocalWorkspaceSourceRefusesTraversal (0.00s)
+--- PASS: TestStoreStateConstantsMirrorDeliveryState (0.00s)
+PASS
+ok  	github.com/Tencent/WeKnora/internal/modules/codedelivery	2.211s
+--- PASS: TestCodeDeliveriesMigrationSQLMatchesModel (0.01s)
+--- PASS: TestDeliveryStoreLifecycleAndCAS (0.01s)
+PASS
+ok  	github.com/Tencent/WeKnora/internal/modules/codedelivery/repository/codedelivery	0.629s
+```
+
+Task 6 新增 8 个测试全绿；Task 1–5 既有测试无回归；blocked-env 真实 GitHub 测试按计划 skip。
+
+## 3. 自检附加检查（本任务实跑）
+
+| 检查 | 命令 | 结果 |
+|---|---|---|
+| 静态检查 | `go vet ./internal/modules/codedelivery/...` | 通过（无输出） |
+| 编译 | `go build ./internal/modules/codedelivery/... ./internal/modules/appconnector/...` | BUILD OK |
+| 格式 | `gofmt -l internal/modules/codedelivery/` | 标出 3 个**前序任务既有文件**（delivery_test.go / repository/codedelivery/migration_align_test.go / store_test.go；`git status` 证实不在本任务 diff 内）；本任务新建/修改的 7 个文件均通过 gofmt |
+
+## 4. 与计划稿的偏差（1 处，测试字面量笔误修正）
+
+`TestDispatchDeliversAndRecordsTraceableReceipts` 中计划硬编码字面量 `"b0000000000000000000000000000000000000000"`（41 字符）比夹具基线 sha 多一个 0——夹具/`prepareInput()`/模拟器 seed 的基线均为 `"b"+strings.Repeat("0", 39)`（40 字符 40-hex），首次 GREEN 实跑暴露该不等：
+
+```
+Error: Not equal:
+    expected: "b0000000000000000000000000000000000000000" (41 chars)
+    actual  : "b000000000000000000000000000000000000000" (40 chars)
+```
+
+修正为 `"b"+strings.Repeat("0", 39)`（与夹具同源表达式，附注释说明）。这是计划测试代码的笔误而非实现缺陷；语义不变（断言默认分支 main 仍指向基线提交、纹丝不动）。
+
+## 5. 计划关键断言的验证方式（全部来自上述实跑）
+
+- **部分完成恢复绝不重推**：`TestPartialPushPRFailureRecoversWithoutRepush` 用模拟器调用计数断言 recovery 前后 `POST /git/blobs|trees|commits|refs`、`PATCH /git/refs` 全部相等、仅 `POST /pulls` +1。
+- **unknown 以远端事实收敛**：`TestUnknownOutcomeResolvesFromRemoteFacts` 走 blackoutAfterRefCreate→`unknown` 落账（delivery state 与 action_state 双断言）→liftBlackout→Resolve→`pushed`→PR-only 恢复→`delivered`。
+- **AC1 零 merge/零保护分支写**：`TestDispatchNeverWritesProtectedBranchOrMerges` + 全部派发测试尾部 `require.Empty(f.github.Violations())`（模拟器对 merge 尝试与越权 ref 写记违规）。
+- **审批锚点不可变**：`TestDispatchRefusesSecondDeliveryPreparedWithDifferentFiles`——内容变更必须新 Prepare 新 digest，旧 digest 批准被拒，未获自身 digest 批准的派发拒绝且零 GitHub 写调用。
+- **篡改快照零远端触达**：`TestTamperedSnapshotNeverReachesGitHub`——`ErrDispatchNotStarted` 且零 blob 调用。
+- **A02 fail closed**：`TestDispatchFailsClosedWhenConnectionUnusable`——成员资格撤销后动作不消费、零远端调用。
+- **AC2 全链路追溯**：`TestDispatchDeliversAndRecordsTraceableReceipts`——commit_sha/PR 回执/remote_login/approver/digest 全部落账并可从 Run 读回。
+
+## 6. 文件清单（7 个，全部在计划授权范围内）
+
+- Create：`internal/modules/codedelivery/dispatcher.go`
+- Create：`internal/modules/codedelivery/service_dispatch_test.go`
+- Modify：`internal/modules/codedelivery/service.go`（Deps 加 Dispatcher 字段 + 追加派发面）
+- Modify：`internal/modules/codedelivery/service_prepare_test.go`（夹具单实例改造）
+- Modify：`internal/modules/codedelivery/github.go`（接口加 BranchHead）
+- Modify：`internal/modules/codedelivery/github_client.go`（BranchHead 实现）
+- Modify：`internal/modules/codedelivery/github_wire_test.go`（模拟器 ref-read 分支 + blackoutAfterRef 语义）
+
+## 7. 遗留与关注点
+
+- blocked-env：真实 GitHub 端到端（`TestGitHubClientAgainstRealGitHub`）本地缺 env，按计划 skip，未伪造；具备 env 的运行自动产出真实证据。
+- 预存在失败（非本计划引入，计划差异记录第 5 条）：全量迁移轨道因 migrations/sqlite 000112 撞号不可用；本计划沿用自包含 sqlite 夹具（AutoMigrate）策略，未触碰迁移与全量迁移测试轨道。
+- 3 个前序任务文件的 gofmt 标记系既有状态，未处置（超本任务授权）。
+- 未运行（超本任务授权范围，留 Task 7/11）：workbench HTTP 面测试、移动端测试、`pnpm` 侧任何检查。
+
