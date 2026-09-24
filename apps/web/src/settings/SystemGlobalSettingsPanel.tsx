@@ -1,11 +1,14 @@
 import type { SystemAdminUser, SystemSetting, WeKnoraClient } from '@weknora/api-client';
-import { Button as TButton, Checkbox as TCheckbox, Dialog as TDialog, Input as TInput, Switch as TSwitch } from 'tdesign-react';
+import { Button as TButton, Switch as TSwitch } from 'tdesign-react';
 // T12c：SystemSettings.vue 控制域平移——t-tabs/t-select/t-switch/
 // t-input-number/t-tag-input/t-button/t-tag/t-loading + t-icon sprite
 // glyph；样式平移至 settings.td.css §17（.system-settings scoped 块）。
-import { Button, Input, InputNumber, Loading, Select, Switch, Tag, TagInput, Tabs } from 'tdesign-react';
+// B4：创建用户/重置密码/优先级 hint 换 t-popup 同构（Vue CreateUserDialog.vue /
+// ResetPasswordDialog.vue / SystemSettings.vue:38-52——锚定 popover，非居中 dialog）。
+import { Button, Checkbox, Input, InputNumber, Loading, Popup, Select, Switch, Tag, TagInput, Tabs, Form } from 'tdesign-react';
 import { Icon as TIcon } from 'tdesign-icons-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import { formatMessage } from '@weknora/i18n';
 import { useSettingsLocale } from './PortedSectionsPanel.tsx';
 import { PASSWORD_SPECIAL_CHARS } from '../auth/validation.ts';
@@ -67,32 +70,30 @@ function ConfirmInline({ state, cancelLabel }: { state: ConfirmState; cancelLabe
  * t-tag-input 同构：break-line wrap、clearable、t-tag 芯片随库走）。 */
 
 /** Vue t-popup hover hint (SystemSettings.vue:38-52) — info-circle trigger
- * whose bottom-start popover carries the priority tiers.（弹层为 React 保留
- * 实现；触发按钮图标已换 t-icon sprite glyph。） */
+ * whose bottom-start popover carries the priority tiers.（B4：React 保留实现
+ * 的 in-tree 手写弹层已删，换 tdesign Popup + Vue hint-popover DOM 同构；
+ * Vue placement="bottom-start"→react bottom-left，台账 #15。） */
 function PriorityHint({ locale }: { locale: ReturnType<typeof useSettingsLocale> }) {
   const t = (key: string) => formatMessage(locale, key);
-  const [open, setOpen] = useState(false);
-  return <span className="wk-settings-hint-anchor">
-    <button
-      type="button"
-      className="hint-trigger"
-      aria-label={t('system.globalSettings.priorityHint.disclosure')}
-      onMouseEnter={() => setOpen(true)}
-      onMouseLeave={() => setOpen(false)}
-      onFocus={() => setOpen(true)}
-      onBlur={() => setOpen(false)}
-    >
+  return <Popup
+    placement="bottom-left"
+    trigger="hover"
+    overlayInnerStyle={{ maxWidth: '420px' }}
+    content={(
+      <div className="hint-popover" data-testid="system-priority-popover">
+        <p className="hint-popover__title">{t('system.globalSettings.priorityHint.disclosure')}</p>
+        <ul className="hint-popover__list">
+          <li>{t('system.globalSettings.priorityHint.tier1')}</li>
+          <li>{t('system.globalSettings.priorityHint.tier2')}</li>
+          <li>{t('system.globalSettings.priorityHint.tier3')}</li>
+        </ul>
+      </div>
+    )}
+  >
+    <button type="button" className="hint-trigger" aria-label={t('system.globalSettings.priorityHint.disclosure')}>
       <TIcon name="info-circle" size="16px" />
     </button>
-    {open ? <div className="wk-system-global-hint-popover" role="tooltip">
-      <p>{t('system.globalSettings.priorityHint.disclosure')}</p>
-      <ul>
-        <li>{t('system.globalSettings.priorityHint.tier1')}</li>
-        <li>{t('system.globalSettings.priorityHint.tier2')}</li>
-        <li>{t('system.globalSettings.priorityHint.tier3')}</li>
-      </ul>
-    </div> : null}
-  </span>;
+  </Popup>;
 }
 
 export function SystemGlobalSettingsPanel({ client, initialSettings }: { client: WeKnoraClient; initialSettings: SystemSetting[] }) {
@@ -430,7 +431,9 @@ export function SystemGlobalSettingsPanel({ client, initialSettings }: { client:
                 <p className="desc">{t('system.globalSettings.passwordReset.description')}</p>
               </div>
               <div className="setting-control">
-                <TButton theme="danger" variant="text" className="password-reset-trigger" icon={<TIcon name="lock-on" />} onClick={() => setResetPasswordVisible(true)}>{t('system.globalSettings.passwordReset.action')}</TButton>
+                <ResetPasswordPopup client={client} visible={resetPasswordVisible} onVisibleChange={setResetPasswordVisible} onAnnounced={(text) => { setMessage(text); setMessageTone('success'); }} onFailed={(text) => { setMessage(text); setMessageTone('error'); }}>
+                  <TButton theme="danger" variant="text" className="password-reset-trigger" icon={<TIcon name="lock-on" />}>{t('system.globalSettings.passwordReset.action')}</TButton>
+                </ResetPasswordPopup>
               </div>
             </div>
             <div className="setting-row setting-row--create-user">
@@ -442,7 +445,9 @@ export function SystemGlobalSettingsPanel({ client, initialSettings }: { client:
                 <p className="desc">{t('system.globalSettings.createUser.description')}</p>
               </div>
               <div className="setting-control">
-                <TButton theme="primary" variant="text" className="create-user-trigger" icon={<TIcon name="user-add" />} onClick={() => setCreateUserVisible(true)}>{t('system.globalSettings.createUser.action')}</TButton>
+                <CreateUserPopup client={client} visible={createUserVisible} onVisibleChange={setCreateUserVisible} onAnnounced={(text) => { setMessage(text); setMessageTone('success'); setAnnouncement(text); }} onFailed={(text) => { setMessage(text); setMessageTone('error'); setAnnouncement(text); }}>
+                  <TButton theme="primary" variant="text" className="create-user-trigger" icon={<TIcon name="user-add" />}>{t('system.globalSettings.createUser.action')}</TButton>
+                </CreateUserPopup>
               </div>
             </div>
           </> : null}
@@ -487,8 +492,6 @@ export function SystemGlobalSettingsPanel({ client, initialSettings }: { client:
         </div>
       </section>
     </>}
-    <ResetPasswordDialog client={client} open={resetPasswordVisible} onClose={() => setResetPasswordVisible(false)} onAnnounced={(text) => { setMessage(text); setMessageTone('success'); }} onFailed={(text) => { setMessage(text); setMessageTone('error'); }} />
-    <CreateUserDialog client={client} open={createUserVisible} onClose={() => setCreateUserVisible(false)} onAnnounced={(text) => { setMessage(text); setMessageTone('success'); }} onFailed={(text) => { setMessage(text); setMessageTone('error'); }} />
     <div className="wk-visually-hidden" role="status" aria-live="polite">{announcement}</div>
   </div>;
 }
@@ -509,20 +512,24 @@ function passwordErrors(password: string, complexEnabled: boolean, locale: Retur
   return errors;
 }
 
-function ResetPasswordDialog({ client, open, onClose, onAnnounced, onFailed }: { client: WeKnoraClient; open: boolean; onClose: () => void; onAnnounced: (text: string) => void; onFailed: (text: string) => void }) {
+/** Vue ResetPasswordDialog.vue 逐节点平移（B4）：t-popup 锚定 popover，
+ * default slot 包触发按钮；可见性由父组件持有。校验错误行为 React 保留
+ * 实现（Vue t-form rules 内联错误，提交失败态不在扫描口径内）。 */
+function ResetPasswordPopup({ client, visible, onVisibleChange, onAnnounced, onFailed, children }: {
+  client: WeKnoraClient; visible: boolean; onVisibleChange: (next: boolean) => void; onAnnounced: (text: string) => void; onFailed: (text: string) => void; children: ReactNode;
+}) {
   const locale = useSettingsLocale();
   const t = (key: string, values?: Record<string, string | number>) => formatMessage(locale, key, values);
-  const [email, setEmail] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
+  const [form, setForm] = useState({ email: '', newPassword: '', confirmPassword: '' });
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
   const [complexEnabled, setComplexEnabled] = useState(false);
+  const { email, newPassword, confirmPassword } = form;
   useEffect(() => {
-    if (!open) return;
-    setEmail(''); setNewPassword(''); setConfirmPassword(''); setErrors([]);
+    if (!visible) return;
+    setForm({ email: '', newPassword: '', confirmPassword: '' }); setErrors([]);
     void client.auth.registrationConfig().then((config) => setComplexEnabled(Boolean(config?.complexPasswordEnabled))).catch(() => setComplexEnabled(false));
-  }, [open]);
+  }, [visible]);
   const submit = async () => {
     if (submitting) return;
     const problems: string[] = [];
@@ -536,53 +543,74 @@ function ResetPasswordDialog({ client, open, onClose, onAnnounced, onFailed }: {
     setSubmitting(true);
     try {
       await client.administration.admins.resetPassword({ email: email.trim(), new_password: newPassword });
-      const success = t('system.globalSettings.passwordReset.success');
-      onAnnounced(success);
-      onClose();
+      onAnnounced(t('system.globalSettings.passwordReset.success'));
+      onVisibleChange(false);
     } catch (error) {
       onFailed(error instanceof Error && error.message ? error.message : t('system.globalSettings.passwordReset.failed'));
     } finally { setSubmitting(false); }
   };
-  return <TDialog footer={false} visible={open} header={t('system.globalSettings.passwordReset.dialogTitle')} onClose={() => { if (!submitting) onClose(); }} dialogClassName="wk-reset-password-dialog">
-    <p className="wk-dialog-warning">{t('system.globalSettings.passwordReset.warning')}</p>
-    <div className="wk-dialog-form">
-      <label className="wk-dialog-field">{t('system.globalSettings.passwordReset.emailLabel')}
-        <TInput value={email} disabled={submitting} placeholder={t('system.globalSettings.passwordReset.emailPlaceholder')} onChange={(value) => setEmail(String(value))} />
-      </label>
-      <label className="wk-dialog-field">{t('system.globalSettings.passwordReset.newPasswordLabel')}
-        <TInput type="password" value={newPassword} disabled={submitting} placeholder={t('system.globalSettings.passwordReset.newPasswordPlaceholder')} onChange={(value) => setNewPassword(String(value))} />
-      </label>
-      <label className="wk-dialog-field">{t('system.globalSettings.passwordReset.confirmPasswordLabel')}
-        <TInput type="password" value={confirmPassword} disabled={submitting} placeholder={t('system.globalSettings.passwordReset.confirmPasswordPlaceholder')} onChange={(value) => setConfirmPassword(String(value))} onKeydown={(_, context) => { if (context.e.key === 'Enter') void submit(); }} />
-      </label>
-      {errors.length > 0 ? <div role="alert" className="wk-dialog-errors">{errors.map((error) => <span key={error}>{error}</span>)}</div> : null}
-      <div className="wk-dialog-actions">
-        <TButton type="button" disabled={submitting} onClick={onClose}>{t('system.globalSettings.confirm.cancelBtn')}</TButton>
-        <TButton type="button" className="wk-reset-password-submit" disabled={submitting} onClick={() => void submit()}>{t('system.globalSettings.passwordReset.confirmBtn')}</TButton>
+  return <Popup
+    visible={visible}
+    trigger="click"
+    placement="left-top"
+    destroyOnClose
+    overlayClassName="system-admin-action-popup-overlay"
+    onVisibleChange={(next) => { if (!next && submitting) return; onVisibleChange(next); }}
+    content={(
+      <div className="system-admin-action-popup-inner" onClick={(event) => event.stopPropagation()}>
+        <div className="system-admin-action-popup-title">{t('system.globalSettings.passwordReset.dialogTitle')}</div>
+        <p className="system-admin-action-popup-hint">{t('system.globalSettings.passwordReset.warning')}</p>
+        <Form
+          labelAlign="top"
+          className="system-admin-action-popup-form"
+          initialData={form}
+          onValuesChange={(_, allValues) => setForm((current) => ({ ...current, ...(allValues as Partial<typeof current>) }))}
+        >
+          <Form.FormItem label={t('system.globalSettings.passwordReset.emailLabel')} name="email" requiredMark>
+            <Input type="text" clearable autocomplete="off" disabled={submitting} placeholder={t('system.globalSettings.passwordReset.emailPlaceholder')} />
+          </Form.FormItem>
+          <Form.FormItem label={t('system.globalSettings.passwordReset.newPasswordLabel')} name="newPassword" requiredMark>
+            <Input type="password" autocomplete="new-password" disabled={submitting} placeholder={t('system.globalSettings.passwordReset.newPasswordPlaceholder')} prefixIcon={<TIcon name="lock-on" />} />
+          </Form.FormItem>
+          <Form.FormItem label={t('system.globalSettings.passwordReset.confirmPasswordLabel')} name="confirmPassword" requiredMark>
+            <Input type="password" autocomplete="new-password" disabled={submitting} placeholder={t('system.globalSettings.passwordReset.confirmPasswordPlaceholder')} prefixIcon={<TIcon name="lock-on" />} onEnter={() => void submit()} />
+          </Form.FormItem>
+        </Form>
+        {errors.length > 0 ? <div role="alert" className="wk-popup-errors">{errors.map((error) => <span key={error}>{error}</span>)}</div> : null}
+        <div className="system-admin-action-popup-footer">
+          <Button type="button" variant="outline" disabled={submitting} onClick={() => onVisibleChange(false)}>{t('system.globalSettings.confirm.cancelBtn')}</Button>
+          <Button type="button" theme="danger" loading={submitting} onClick={() => void submit()}>{t('system.globalSettings.passwordReset.confirmBtn')}</Button>
+        </div>
       </div>
-    </div>
-  </TDialog>;
+    )}
+  >
+    <span className="system-admin-action-popup-anchor">{children}</span>
+  </Popup>;
 }
 
 interface CreatedReveal { username: string; email: string; generatedPassword: string }
 
-function CreateUserDialog({ client, open, onClose, onAnnounced, onFailed }: { client: WeKnoraClient; open: boolean; onClose: () => void; onAnnounced: (text: string) => void; onFailed: (text: string) => void }) {
+/** Vue CreateUserDialog.vue 逐节点平移（B4）：t-popup 锚定 popover（username/
+ * email/自动生成开关），服务端签发一次性密码时切换 reveal 视图且未确认前
+ * 禁止关闭（locked → destroyOnClose=false + onVisibleChange 拦截）。校验
+ * 错误行为 React 保留实现（Vue t-form rules 内联错误，提交失败态不在
+ * 扫描口径内）。 */
+function CreateUserPopup({ client, visible, onVisibleChange, onAnnounced, onFailed, children }: {
+  client: WeKnoraClient; visible: boolean; onVisibleChange: (next: boolean) => void; onAnnounced: (text: string) => void; onFailed: (text: string) => void; children: ReactNode;
+}) {
   const locale = useSettingsLocale();
   const t = (key: string, values?: Record<string, string | number>) => formatMessage(locale, key, values);
-  const [username, setUsername] = useState('');
-  const [email, setEmail] = useState('');
-  const [autoGenerate, setAutoGenerate] = useState(true);
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
+  const [form, setForm] = useState({ username: '', email: '', autoGenerate: true, newPassword: '', confirmPassword: '' });
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
   const [reveal, setReveal] = useState<CreatedReveal | null>(null);
   const [complexEnabled, setComplexEnabled] = useState(false);
+  const { username, email, autoGenerate, newPassword, confirmPassword } = form;
   useEffect(() => {
-    if (!open) return;
-    setUsername(''); setEmail(''); setAutoGenerate(true); setNewPassword(''); setConfirmPassword(''); setErrors([]); setReveal(null);
+    if (!visible) return;
+    setForm({ username: '', email: '', autoGenerate: true, newPassword: '', confirmPassword: '' }); setErrors([]); setReveal(null);
     void client.auth.registrationConfig().then((config) => setComplexEnabled(Boolean(config?.complexPasswordEnabled))).catch(() => setComplexEnabled(false));
-  }, [open]);
+  }, [visible]);
   const locked = submitting || reveal !== null;
   const submit = async () => {
     if (submitting) return;
@@ -609,7 +637,7 @@ function CreateUserDialog({ client, open, onClose, onAnnounced, onFailed }: { cl
         setReveal({ username: username.trim(), email: email.trim(), generatedPassword: result.generatedPassword });
       } else {
         onAnnounced(t('system.globalSettings.createUser.success'));
-        onClose();
+        onVisibleChange(false);
       }
     } catch (error) {
       onFailed(error instanceof Error && error.message ? error.message : t('system.globalSettings.createUser.failed'));
@@ -620,42 +648,70 @@ function CreateUserDialog({ client, open, onClose, onAnnounced, onFailed }: { cl
     const text = `${reveal.username} / ${reveal.email} / ${reveal.generatedPassword}`;
     try { await navigator.clipboard?.writeText(text); onAnnounced(t('system.globalSettings.createUser.generated.copySuccess')); } catch { /* clipboard is best-effort */ }
   };
-  return <TDialog footer={false} visible={open} header={reveal ? t('system.globalSettings.createUser.generated.successTitle') : t('system.globalSettings.createUser.dialogTitle')} onClose={() => { if (!locked) onClose(); }} dialogClassName="wk-create-user-dialog">
-    <p className="wk-dialog-warning">{reveal ? t('system.globalSettings.createUser.generated.successBody') : t('system.globalSettings.createUser.warning')}</p>
-    {reveal ? <>
-      <dl className="wk-create-user-reveal">
-        <div className="wk-create-user-reveal-row"><dt>{t('system.globalSettings.createUser.generated.usernameLabel')}</dt><dd>{reveal.username}</dd></div>
-        <div className="wk-create-user-reveal-row"><dt>{t('system.globalSettings.createUser.generated.emailLabel')}</dt><dd>{reveal.email}</dd></div>
-        <div className="wk-create-user-reveal-row"><dt>{t('system.globalSettings.createUser.generated.passwordLabel')}</dt><dd className="is-mono">{reveal.generatedPassword}</dd></div>
-      </dl>
-      <div className="wk-dialog-actions wk-dialog-actions--reveal">
-        <TButton type="button" onClick={() => void copyDetails()}>{t('system.globalSettings.createUser.generated.copyBtn')}</TButton>
-        <TButton type="button" className="wk-create-user-acknowledge" onClick={() => { setReveal(null); onClose(); }}>{t('system.globalSettings.createUser.generated.acknowledgeBtn')}</TButton>
+  return <Popup
+    visible={visible}
+    trigger="click"
+    placement="left-top"
+    destroyOnClose={!locked}
+    overlayClassName="system-admin-action-popup-overlay"
+    onVisibleChange={(next) => { if (!next && locked) return; onVisibleChange(next); }}
+    content={(
+      <div className="system-admin-action-popup-inner" onClick={(event) => event.stopPropagation()}>
+        <div className="system-admin-action-popup-title">{reveal ? t('system.globalSettings.createUser.generated.successTitle') : t('system.globalSettings.createUser.dialogTitle')}</div>
+        <p className="system-admin-action-popup-hint">{reveal ? t('system.globalSettings.createUser.generated.successBody') : t('system.globalSettings.createUser.warning')}</p>
+        {reveal ? <>
+          <div className="create-user-reveal">
+            <div className="create-user-reveal-item">
+              <span className="create-user-reveal-label">{t('system.globalSettings.createUser.generated.usernameLabel')}</span>
+              <span className="create-user-reveal-value">{reveal.username}</span>
+            </div>
+            <div className="create-user-reveal-item">
+              <span className="create-user-reveal-label">{t('system.globalSettings.createUser.generated.emailLabel')}</span>
+              <span className="create-user-reveal-value">{reveal.email}</span>
+            </div>
+            <div className="create-user-reveal-item">
+              <span className="create-user-reveal-label">{t('system.globalSettings.createUser.generated.passwordLabel')}</span>
+              <pre className="create-user-reveal-value create-user-reveal-value--mono">{reveal.generatedPassword}</pre>
+            </div>
+          </div>
+          <div className="system-admin-action-popup-footer">
+            <Button type="button" theme="primary" variant="outline" onClick={() => void copyDetails()}>{t('system.globalSettings.createUser.generated.copyBtn')}</Button>
+            <Button type="button" theme="primary" onClick={() => { setReveal(null); onVisibleChange(false); }}>{t('system.globalSettings.createUser.generated.acknowledgeBtn')}</Button>
+          </div>
+        </> : <>
+          <Form
+            labelAlign="top"
+            className="system-admin-action-popup-form"
+            initialData={form}
+            onValuesChange={(_, allValues) => setForm((current) => ({ ...current, ...(allValues as Partial<typeof current>) }))}
+          >
+            <Form.FormItem label={t('system.globalSettings.createUser.usernameLabel')} name="username" requiredMark>
+              <Input type="text" clearable autocomplete="off" disabled={submitting} placeholder={t('system.globalSettings.createUser.usernamePlaceholder')} />
+            </Form.FormItem>
+            <Form.FormItem label={t('system.globalSettings.createUser.emailLabel')} name="email" requiredMark>
+              <Input type="text" clearable autocomplete="off" disabled={submitting} placeholder={t('system.globalSettings.createUser.emailPlaceholder')} />
+            </Form.FormItem>
+            <Form.FormItem name="autoGenerate">
+              <Checkbox disabled={submitting}>{t('system.globalSettings.createUser.autoGenerateLabel')}</Checkbox>
+            </Form.FormItem>
+            {!autoGenerate ? <>
+              <Form.FormItem label={t('system.globalSettings.createUser.newPasswordLabel')} name="newPassword" requiredMark>
+                <Input type="password" autocomplete="new-password" disabled={submitting} placeholder={t('system.globalSettings.createUser.newPasswordPlaceholder')} prefixIcon={<TIcon name="lock-on" />} />
+              </Form.FormItem>
+              <Form.FormItem label={t('system.globalSettings.createUser.confirmPasswordLabel')} name="confirmPassword" requiredMark>
+                <Input type="password" autocomplete="new-password" disabled={submitting} placeholder={t('system.globalSettings.createUser.confirmPasswordPlaceholder')} prefixIcon={<TIcon name="lock-on" />} onEnter={() => void submit()} />
+              </Form.FormItem>
+            </> : null}
+          </Form>
+          {errors.length > 0 ? <div role="alert" className="wk-popup-errors">{errors.map((error) => <span key={error}>{error}</span>)}</div> : null}
+          <div className="system-admin-action-popup-footer">
+            <Button type="button" variant="outline" disabled={submitting} onClick={() => onVisibleChange(false)}>{t('system.globalSettings.confirm.cancelBtn')}</Button>
+            <Button type="button" theme="primary" loading={submitting} onClick={() => void submit()}>{t('system.globalSettings.createUser.confirmBtn')}</Button>
+          </div>
+        </>}
       </div>
-    </> : <div className="wk-dialog-form">
-      <label className="wk-dialog-field">{t('system.globalSettings.createUser.usernameLabel')}
-        <TInput value={username} disabled={submitting} placeholder={t('system.globalSettings.createUser.usernamePlaceholder')} onChange={(value) => setUsername(String(value))} />
-      </label>
-      <label className="wk-dialog-field">{t('system.globalSettings.createUser.emailLabel')}
-        <TInput value={email} disabled={submitting} placeholder={t('system.globalSettings.createUser.emailPlaceholder')} onChange={(value) => setEmail(String(value))} />
-      </label>
-      <label className="wk-dialog-check">
-        <TCheckbox checked={autoGenerate} disabled={submitting} onChange={(value) => setAutoGenerate(Boolean(value))} />
-        {t('system.globalSettings.createUser.autoGenerateLabel')}
-      </label>
-      {!autoGenerate ? <>
-        <label className="wk-dialog-field">{t('system.globalSettings.createUser.newPasswordLabel')}
-          <TInput type="password" value={newPassword} disabled={submitting} placeholder={t('system.globalSettings.createUser.newPasswordPlaceholder')} onChange={(value) => setNewPassword(String(value))} />
-        </label>
-        <label className="wk-dialog-field">{t('system.globalSettings.createUser.confirmPasswordLabel')}
-          <TInput type="password" value={confirmPassword} disabled={submitting} placeholder={t('system.globalSettings.createUser.confirmPasswordPlaceholder')} onChange={(value) => setConfirmPassword(String(value))} onKeydown={(_, context) => { if (context.e.key === 'Enter') void submit(); }} />
-        </label>
-      </> : null}
-      {errors.length > 0 ? <div role="alert" className="wk-dialog-errors">{errors.map((error) => <span key={error}>{error}</span>)}</div> : null}
-      <div className="wk-dialog-actions">
-        <TButton type="button" disabled={submitting} onClick={onClose}>{t('system.globalSettings.confirm.cancelBtn')}</TButton>
-        <TButton type="button" className="wk-create-user-submit" disabled={submitting} onClick={() => void submit()}>{t('system.globalSettings.createUser.confirmBtn')}</TButton>
-      </div>
-    </div>}
-  </TDialog>;
+    )}
+  >
+    <span className="system-admin-action-popup-anchor">{children}</span>
+  </Popup>;
 }

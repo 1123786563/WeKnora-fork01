@@ -4756,6 +4756,155 @@
   background: var(--td-error-color-focus);
 }
 
+/* —— B4：system-admin-action-popup 弹层（Vue systemAdminDialog.less 原样平移，
+   服务 body portal 弹层 DOM（§2.5 不加前缀）；CreateUserDialog.vue /
+   ResetPasswordDialog.vue 锚定 popover 同构。 —— */
+.system-admin-action-popup-overlay {
+  z-index: 3050 !important;
+}
+
+.system-admin-action-popup-overlay .t-popup__content {
+  padding: 14px 16px !important;
+  min-width: 300px;
+  max-width: min(360px, calc(100vw - 24px));
+  max-height: min(480px, calc(100vh - 96px));
+  overflow-y: auto;
+  border-radius: 12px !important;
+  background: var(--td-bg-color-container) !important;
+  border: 0.5px solid var(--td-component-stroke) !important;
+  box-shadow:
+    0 0 0 0.5px rgba(0, 0, 0, 0.03),
+    0 2px 4px rgba(0, 0, 0, 0.04),
+    0 8px 24px rgba(0, 0, 0, 0.1) !important;
+  backdrop-filter: blur(20px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
+}
+
+:root[theme-mode='dark'] .system-admin-action-popup-overlay .t-popup__content {
+  background: rgba(36, 36, 36, 0.92) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  box-shadow:
+    0 0 0 0.5px rgba(255, 255, 255, 0.05),
+    0 2px 4px rgba(0, 0, 0, 0.12),
+    0 8px 32px rgba(0, 0, 0, 0.28) !important;
+}
+
+.system-admin-action-popup-anchor {
+  display: inline-flex;
+  max-width: 100%;
+}
+
+.system-admin-action-popup-inner {
+  max-width: 100%;
+}
+
+.system-admin-action-popup-title {
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--td-text-color-primary);
+}
+
+.system-admin-action-popup-hint {
+  margin: 0 0 12px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--td-text-color-secondary);
+}
+
+.system-admin-action-popup-form .t-form__item {
+  margin-bottom: 14px;
+}
+
+.system-admin-action-popup-form .t-form__item:last-child {
+  margin-bottom: 4px;
+}
+
+.system-admin-action-popup-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+/* Vue CreateUserDialog.vue <style> 块 .create-user-reveal（unscoped，portal 层）。 */
+.create-user-reveal {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 2px 0 0;
+  border: 1px solid var(--td-component-stroke);
+  border-radius: 8px;
+  background: var(--td-bg-color-page);
+  overflow: hidden;
+}
+
+.create-user-reveal-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--td-component-stroke);
+}
+
+.create-user-reveal-item:last-child {
+  border-bottom: none;
+}
+
+.create-user-reveal-label {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--td-text-color-secondary);
+}
+
+.create-user-reveal-value {
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--td-text-color-primary);
+  word-break: break-all;
+}
+
+.create-user-reveal-value--mono {
+  margin: 0;
+  font-family: var(--td-font-family-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: 12px;
+  line-height: 18px;
+  white-space: pre-wrap;
+  user-select: all;
+}
+
+/* React 保留实现的提交错误块（Vue 走 t-form rules 内联错误，稳态不可见）。 */
+.wk-popup-errors {
+  display: grid;
+  gap: 2px;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--td-error-color);
+}
+
+/* Vue SystemSettings.vue scoped .hint-popover（priority 弹层）——与 env/sandbox
+   域同名类不同源（gap 8px、无 340px 上限），经 :has(.hint-popover__list) 限定
+   到本页弹层（__list 仅 SystemSettings.vue 有），避免同名类互相污染。 */
+.hint-popover:has(> .hint-popover__list) {
+  gap: 8px;
+  max-width: none;
+}
+
+.hint-popover__list {
+  margin: 0;
+  padding: 0 0 0 18px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--td-text-color-secondary);
+  list-style: disc;
+}
+
+.hint-popover__list li + li {
+  margin-top: 4px;
+}
+
 @media (max-width: 860px) {
   .system-settings .settings-section-intro {
     align-items: flex-start;
@@ -5979,4 +6128,5 @@
    flex 参与布局，不能删——平移为语义类；relative inline-flex×1
    （SystemGlobalSettingsPanel hint 外包 span）为 popup 定位锚，同平移。 */
 .wk-settings-context-contents { display: contents; }
-.wk-settings-hint-anchor { position: relative; display: inline-flex; }
+/* B4：.wk-settings-hint-anchor（priority hint in-tree 定位锚）随弹层换 tdesign
+   Popup 已删，不再有消费者。 */

@@ -1001,27 +1001,9 @@ html:not(.wk-kbd-nav) .wk-settings-drawer-root :focus-visible { outline: none; }
 .wk-settings-drawer-root .wk-system-global-confirm-btn { margin-right: 8px; cursor: pointer; border: 1px solid #b26a08; border-radius: 4px; background: #b26a08; padding: 5px 12px; color: #fff; }
 .wk-settings-drawer-root .wk-system-global-confirm.is-danger .wk-system-global-confirm-btn { border-color: #b23b34; background: #b23b34; }
 .wk-settings-drawer-root .wk-system-global-confirm-cancel { cursor: pointer; border: 1px solid rgba(120, 135, 155, 0.35); border-radius: 4px; background: transparent; padding: 5px 12px; }
-.wk-settings-drawer-root .wk-system-global-hint-popover { position: absolute; left: 0; top: 100%; z-index: 20; margin-top: 4px; width: max-content; max-width: 420px; border: 1px solid var(--color-line-soft, #edf0f5); border-radius: 8px; background: var(--color-surface, #fff); padding: 12px 16px; box-shadow: 0 6px 30px rgba(0, 0, 0, 0.12); }
-.wk-settings-drawer-root .wk-system-global-hint-popover p { margin: 0 0 8px; font-size: 13px; font-weight: 600; color: var(--color-ink, #172033); }
-.wk-settings-drawer-root .wk-system-global-hint-popover ul { margin: 0; padding-left: 18px; list-style: disc; font-size: 12px; line-height: 1.6; color: var(--color-muted, #66758b); }
-.wk-settings-drawer-root .wk-system-global-hint-popover ul li + li { margin-top: 4px; }
-
-/* 高危对话框（portal）。 */
-.wk-dialog-warning { margin: 4px 0 12px; font-size: 13px; line-height: normal; color: var(--color-muted, #66758b); }
-.wk-dialog-form { display: grid; gap: 12px; }
-.wk-dialog-field { display: grid; gap: 4px; font-size: 13px; font-weight: 500; color: var(--color-ink, #172033); }
-.wk-dialog-check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--color-ink, #172033); }
-.wk-dialog-errors { display: grid; gap: 2px; font-size: 12px; color: var(--color-danger, #b42318); }
-.wk-dialog-actions { display: flex; margin-top: 4px; justify-content: flex-end; gap: 8px; }
-.wk-dialog-actions--reveal { margin-top: 12px; }
-.wk-reset-password-submit.t-button { background-color: var(--color-danger, #b42318) !important; border-color: var(--color-danger, #b42318) !important; color: #fff !important; }
-.wk-create-user-submit.t-button,
-.wk-create-user-acknowledge.t-button { background-color: var(--color-accent, #07c05f) !important; border-color: var(--color-accent, #07c05f) !important; color: #fff !important; }
-.wk-create-user-reveal { display: grid; gap: 8px; border: 1px solid var(--color-line-soft, #edf0f5); border-radius: 8px; background: var(--color-surface-alt, #f2f4f8); padding: 12px; font-size: 13px; }
-.wk-create-user-reveal-row { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 12px; }
-.wk-create-user-reveal-row dt { font-weight: 500; color: var(--color-muted, #66758b); }
-.wk-create-user-reveal-row dd { margin: 0; word-break: break-all; }
-.wk-create-user-reveal-row dd.is-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+/* B4：wk-system-global-hint-popover / wk-dialog-* / wk-create-user-* / wk-reset-password-submit
+   随创建用户/重置密码/优先级 hint 换 t_popup 同构弹层已删（styles 见 settings.td.css
+   system-admin-action-popup 段；wk-create-user-dialog 系样式消费方已清零）。 */
 
 /* ==== S6 Tailwind 收编：ConfigSettingsPanel（retrieval/parser 配置表单） ====
  * 前任判例 #2 的 wk-settings-editor 同型表单——加作用域复用；其余为

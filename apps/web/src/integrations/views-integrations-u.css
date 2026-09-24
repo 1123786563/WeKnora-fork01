@@ -330,7 +330,9 @@
   z-index: 1200;
   display: flex;
   justify-content: flex-end;
-  background-color: rgba(0,0,0,.5);
+  /* B4：对齐 Vue t-drawer__mask（tdesign 默认 rgba(0,0,0,.6)；旧栈 0.5 使
+     遮罩下整页亮度差 ~20%）。 */
+  background-color: rgba(0,0,0,.6);
   animation: wk-integration-drawer-fade-in .18s ease-out;
 }
 

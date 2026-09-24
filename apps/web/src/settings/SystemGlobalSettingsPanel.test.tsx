@@ -241,10 +241,11 @@ test('the reset-password dialog validates and calls resetPassword with the trimm
   const calls = { promote: [], revoke: [], resetPassword: [] as Array<unknown>, createUser: [], update: [] as Array<[string, unknown]>, reset: [], bulk: 0 };
   const container = await mountPanel(makeClient({ settings: fullSettings(), calls }), fullSettings());
   await clickButton(container, '重置密码');
-  // The Dialog portals to body; re-query after every interaction because a
-  // re-render can replace the portal subtree (stale refs read empty text).
-  const activeDialog = () => document.querySelector('.t-dialog');
-  assert.ok(activeDialog(), 'the reset-password dialog opened');
+  // B4：高危两行换 Vue CreateUserDialog/ResetPasswordDialog 同构的 t-popup
+  // 锚定弹层（portal 到 body，destroyOnClose）。重查询防 re-render 旧引用。
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 400)); });
+  const activeDialog = () => document.querySelector('.system-admin-action-popup-inner');
+  assert.ok(activeDialog(), 'the reset-password popup opened');
   assert.ok((activeDialog()?.textContent ?? '').includes('重置其他用户的密码'), 'the Vue dialog title renders');
   assert.ok((activeDialog()?.textContent ?? '').includes('这是高风险操作。请核对用户邮箱'), 'the Vue warning renders');
 
@@ -266,8 +267,9 @@ test('creating a user with a generated password shows the one-time reveal view',
   const calls = { promote: [], revoke: [], resetPassword: [], createUser: [] as Array<unknown>, update: [] as Array<[string, unknown]>, reset: [], bulk: 0 };
   const container = await mountPanel(makeClient({ settings: fullSettings(), calls }), fullSettings());
   await clickButton(container, '创建用户');
-  const activeDialog = () => document.querySelector('.t-dialog');
-  assert.ok(activeDialog(), 'the create-user dialog opened');
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 400)); });
+  const activeDialog = () => document.querySelector('.system-admin-action-popup-inner');
+  assert.ok(activeDialog(), 'the create-user popup opened');
   assert.ok((activeDialog()?.textContent ?? '').includes('创建新用户'), 'the Vue dialog title renders');
   const inputs = () => Array.from((activeDialog()?.querySelectorAll<HTMLInputElement>('input')) ?? []);
   await act(async () => { setInputValue(inputs()[0]!, 'parity-new'); });
@@ -280,7 +282,8 @@ test('creating a user with a generated password shows the one-time reveal view',
   assert.ok(revealText.includes('Gen-Passw0rd'), 'the one-time password is revealed');
   assert.ok(revealText.includes('我已保存密码'), 'the acknowledge button renders');
   await clickButton(activeDialog()!, '我已保存密码');
-  assert.equal(document.querySelector('[role="dialog"]'), null, 'acknowledging closes the locked dialog');
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 400)); });
+  assert.equal(document.querySelector('.system-admin-action-popup-inner'), null, 'acknowledging closes the locked popup');
 });
 
 test('high-risk registration mode requires confirmation before the PUT lands', async () => {

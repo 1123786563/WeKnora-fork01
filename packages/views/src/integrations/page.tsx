@@ -815,6 +815,126 @@ const INTEGRATION_DRAWER_CLASS_STEPS = INTEGRATION_DRAWER_CLASS + ' ' + IM_STEP_
 // rule; the class name remains as a test/DOM hook on every consumer).
 const INTEGRATION_DRAWER_CLOSE_CLASS = 'wk-integration-drawer-close wk-vi-integration-drawer-close-class';
 
+// —— B4：抽屉族 t_drawer 同构层（chat/message-face.tsx t-button 同构判例口径）——
+// 本包不带 tdesign-react 依赖（package.json 由并行流共享）；宿主 app 全局加载
+// tdesign.css（apps/web styles.css:2），此处按 tdesign-vue-next 1.20.7 +
+// SettingDrawer.vue 的实测 DOM 输出 t-* 类名（Vue 端唯一事实源），获得与 Vue
+// 端一致的 chrome/控件视觉。样式补块（setting-drawer__* / im-* / form-* /
+// api-key-dialog*，Vue scoped 块平移）见 views-integrations-u.css。
+type PlatformLogoRenderer = (platform: string) => string;
+let platformLogoRenderer: PlatformLogoRenderer | null = null;
+/** apps/web 侧注入平台 logo 映射（frontend/src/assets/img/im/* 同源资产）。 */
+export function setIntegrationPlatformLogoRenderer(renderer: PlatformLogoRenderer | null): void { platformLogoRenderer = renderer; }
+
+/** tdesign t-fake-arrow（t-select 右侧箭头，drawer/select DOM 内联版）。 */
+function FakeArrow() {
+  return <svg className="t-fake-arrow t-select__right-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path d="M3.75 5.7998L7.99274 10.0425L12.2361 5.79921" stroke="black" strokeOpacity="0.9" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>;
+}
+
+/** tdesign Button 类族（td.tsx Button 同款输出；footer/分组头按钮共用）。 */
+function TButtonLike({ variant = 'outline', theme = 'default', size, disabled, onClick, children, type = 'button' }: {
+  variant?: 'base' | 'outline' | 'text'; theme?: 'default' | 'primary' | 'danger'; size?: 'small'; disabled?: boolean; onClick?: () => void; children?: React.ReactNode; type?: 'button' | 'submit';
+}) {
+  return <button type={type} disabled={disabled} onClick={onClick}
+    className={['t-button', `t-button--variant-${variant}`, `t-button--theme-${theme}`, 't-button--shape-rectangle', size === 'small' ? 't-size-s' : '', disabled ? 't-is-disabled' : ''].filter(Boolean).join(' ')}>
+    <span className="t-button__text">{children}</span>
+  </button>;
+}
+
+/** t-select 关闭态（Vue t-select__wrap>t-select-input>t-input__wrap>t-input 实测 DOM）。 */
+function TSelectLike({ value, placeholder, prefixLogo, prefixAlt, className }: { value: string; placeholder?: string; prefixLogo?: string; prefixAlt?: string; className?: string }) {
+  const empty = value === '';
+  return <div className={'t-select__wrap' + (className ? ' ' + className : '')}>
+    <div className={'t-select-input' + (empty ? ' t-select-input--empty' : '') + ' t-select'}>
+      <div className="t-input__wrap">
+        <div className={'t-input' + (prefixLogo ? ' t-is-readonly t-input--prefix t-input--suffix' : ' t-input--suffix')}>
+          {prefixLogo ? <span className="t-input__prefix t-input__prefix-icon"><img src={prefixLogo} alt={prefixAlt} className="im-platform-select-prefix" /></span> : null}
+          <input className="t-input__inner" type="text" readOnly placeholder={placeholder} value={value} />
+          <span className="t-input__suffix t-input__suffix-icon"><FakeArrow /></span>
+        </div>
+      </div>
+    </div>
+  </div>;
+}
+
+/** t-input（t-input__wrap>t-input>t-input__inner 实测 DOM）。 */
+function TInputLike({ value, placeholder, onChange, onFocus, onEnter }: { value: string; placeholder?: string; onChange: (next: string) => void; onFocus?: () => void; onEnter?: () => void }) {
+  return <div className="t-input__wrap">
+    <div className="t-input">
+      <input className="t-input__inner" type="text" placeholder={placeholder} value={value} autoComplete="off"
+        onFocus={onFocus}
+        onChange={(event) => onChange(event.target.value)}
+        onKeyDown={(event) => { if (onEnter && event.key === 'Enter') onEnter(); }} />
+    </div>
+  </div>;
+}
+
+/** t-radio-button 组（Vue mode-radio t-radio-group__outline 实测 DOM）。 */
+function TRadioGroupLike({ value, options, onPick, className }: { value: string; options: Array<{ value: string; label: string }>; onPick: (next: string) => void; className?: string }) {
+  return <div className={'t-radio-group t-size-m t-radio-group__outline' + (className ? ' ' + className : '')} role="radiogroup">
+    {options.map((option) => (
+      <label key={option.value} className={'t-radio-button' + (option.value === value ? ' t-is-checked' : '')} tabIndex={0}>
+        <input type="radio" className="t-radio-button__former" checked={option.value === value} tabIndex={-1} value={option.value} autoComplete="off" onChange={() => onPick(option.value)} />
+        <span className="t-radio-button__input"></span>
+        <span className="t-radio-button__label">{option.label}</span>
+      </label>
+    ))}
+  </div>;
+}
+
+/** t-checkbox（Vue t-checkbox 实测 DOM）。 */
+function TCheckboxLike({ checked, onChange, children }: { checked: boolean; onChange: (next: boolean) => void; children?: React.ReactNode }) {
+  return <label className={'t-checkbox' + (checked ? ' t-is-checked' : '')} tabIndex={0}>
+    <input type="checkbox" className="t-checkbox__former" tabIndex={-1} checked={checked} autoComplete="off" onChange={(event) => onChange(event.target.checked)} />
+    <span className="t-checkbox__input"></span>
+    <span className="t-checkbox__label">{children}</span>
+  </label>;
+}
+
+/** t-icon（sprite <use>，message-face 同款）。 */
+function TIconLike({ name, size = '16px' }: { name: string; size?: string }) {
+  return <svg className={'t-icon t-icon-' + name} viewBox="0 0 24 24" width={size} height={size} fill="none" aria-hidden="true"><use href={'#t-icon-' + name} /></svg>;
+}
+
+/**
+ * Vue SettingDrawer.vue 同构输出：t-drawer(attach body / z-index 2500 / 右滑
+ * 560px) + 自定义 header（icon 块 + title + subtitle）+ narrow-scrollbar body
+ * + footer（footer-left / footer-right）。Vue 端不渲染关闭钮（closeBtn 关），
+ * 遮罩点击关闭由 closeOnOverlayClick 控制（im/embed 开、api-key 关）。
+ */
+function SettingDrawerChrome({ className, width = '560px', headerIcon, title, subtitle, closeOnOverlayClick = true, onClose, footerLeft, footerRight, bodyChildren }: {
+  className?: string; width?: string; headerIcon?: React.ReactNode; title: string; subtitle?: string; closeOnOverlayClick?: boolean; onClose: () => void; footerLeft?: React.ReactNode; footerRight?: React.ReactNode; bodyChildren: React.ReactNode;
+}) {
+  return <div className={'t-drawer t-drawer--right t-drawer--open setting-drawer wk-integration-drawer ' + (className ?? '')} role="dialog" aria-modal="true" aria-label={title} style={{ zIndex: 2500 }}>
+    <div className="t-drawer__mask" onClick={closeOnOverlayClick ? onClose : undefined} />
+    <div className="t-drawer__content-wrapper t-drawer__content-wrapper--right" style={{ width }}>
+      <div className="t-drawer__header">
+        <div className="setting-drawer__header-block">
+          <div className="setting-drawer__header">
+            <div className="setting-drawer__header-icon">{headerIcon}</div>
+            <div className="setting-drawer__header-text">
+              <div className="setting-drawer__title">{title}</div>
+              {subtitle ? <div className="setting-drawer__subtitle">{subtitle}</div> : null}
+            </div>
+            <div className="setting-drawer__header-actions" />
+          </div>
+        </div>
+      </div>
+      <div className="t-drawer__body narrow-scrollbar">
+        <div className="setting-drawer__body">{bodyChildren}</div>
+      </div>
+      <div className="t-drawer__footer">
+        <div className="setting-drawer__footer">
+          <div className="setting-drawer__footer-left">{footerLeft}</div>
+          <div className="setting-drawer__footer-right">{footerRight}</div>
+        </div>
+      </div>
+    </div>
+  </div>;
+}
+
 // Tailwind port of the former .wk-embed-preview-device / .wk-embed-preview-widget
 // rules in apps/web styles.css (Vue EmbedChannelPreview.vue device-frame parity;
 // the route-shell modal in apps/web EmbedPreviewModal.tsx carries the same
