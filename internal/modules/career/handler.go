@@ -82,7 +82,7 @@ func writeError(c *gin.Context, e error) {
 	case errors.Is(e, ErrInvalidRequest):
 		status = 400
 		code = "invalid_request"
-	case errors.Is(e, ErrReceiptNotFound), errors.Is(e, ErrProposalNotFound), errors.Is(e, ErrSourceNotFound), errors.Is(e, ErrOpportunityNotFound):
+	case errors.Is(e, ErrReceiptNotFound), errors.Is(e, ErrProposalNotFound), errors.Is(e, ErrSourceNotFound), errors.Is(e, ErrOpportunityNotFound), errors.Is(e, ErrEvaluationNotFound):
 		status = 404
 		code = "not_found"
 	case errors.Is(e, ErrProposalResolved):

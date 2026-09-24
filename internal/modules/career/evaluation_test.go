@@ -365,6 +365,9 @@ func TestEvaluationHTTPContractAndOwnerScope(t *testing.T) {
 	read := request("GET", "/api/v1/career/evaluations/"+receipt.EvaluationID, "", "owner", 155)
 	require.Equal(t, 200, read.Code, read.Body.String())
 	require.Contains(t, read.Body.String(), job.SnapshotID)
+	missing := request("GET", "/api/v1/career/evaluations/missing-evaluation", "", "owner", 155)
+	require.Equal(t, 404, missing.Code, missing.Body.String())
+	require.Contains(t, missing.Body.String(), `"code":"not_found"`)
 	require.Equal(t, 403, request("GET", "/api/v1/career/evaluations/"+receipt.EvaluationID, "", "intruder", 155).Code)
 	require.Equal(t, 200, request("GET", "/api/v1/career/evaluations/receipt?requestId=http-eval", "", "owner", 155).Code)
 }
