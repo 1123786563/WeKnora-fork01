@@ -3,6 +3,7 @@ package plugins_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/Tencent/WeKnora/internal/application/service"
 	"github.com/Tencent/WeKnora/internal/types"
@@ -63,6 +64,66 @@ func TestGetInstallationRejectsForeignTenant(t *testing.T) {
 			require.False(t, *tool.Enabled)
 		}
 	}
+}
+
+// TestUninstallInstallationHealsEmptyServiceIDAnchor（T07-OCR1-F5）：
+// ConfirmInstallation 在 CreateMCPService 成功后、UpdateInstallationServiceID
+// 持久化绑定之前中断（进程崩溃，或绑定更新失败且补偿级联同样失败保留安装行）
+// 时，安装行 service_id 为空而物化服务行已在。卸载必须按
+// mcp_services.plugin_installation_id 反查孤儿并入级联——否则删掉锚行后留下
+// Enabled=true 的孤儿服务：运行时守卫查不到安装行按非插件服务处理（未接受
+// 工具目录继续暴露），且孤儿占用 (tenant_id, name='plugin:<plugin_id>')
+// 唯一索引阻断重装。
+func TestUninstallInstallationHealsEmptyServiceIDAnchor(t *testing.T) {
+	s := newInstallTestStack(t, 7)
+	resp, err := s.confirm(t, 7, s.previewID)
+	require.NoError(t, err)
+	require.Len(t, s.mcpRepo.services, 1)
+	orphanServiceID := s.mcpRepo.services[0].ID
+
+	// 模拟中断窗口：绑定从未落库——安装行 service_id 为空，物化服务行
+	// （含 plugin_installation_id 回引）已存在。
+	for _, inst := range s.pluginRepo.installations {
+		if inst.ID == resp.InstallationID {
+			inst.ServiceID = ""
+		}
+	}
+
+	require.NoError(t, s.svc.UninstallInstallation(context.Background(), 7, resp.InstallationID))
+
+	// 锚行与孤儿服务一并清理，不滞留 Enabled=true 的死行。
+	require.Empty(t, s.pluginRepo.installations)
+	require.Empty(t, s.mcpRepo.services)
+	require.Empty(t, s.approvalRepo.rows)
+	require.Equal(t, []string{orphanServiceID}, s.pluginRepo.hardDeletedSvc)
+	require.Equal(t, []string{orphanServiceID}, *s.closedClients,
+		"healed cascade must still close the manager's cached client for the orphan service")
+
+	// 唯一槽已释放：同插件可重新安装（孤儿不再阻断）。
+	newPreview, err := s.svc.PreviewFromManifest(context.Background(), 7, "admin-1", s.pluginRepo.previews[0].ManifestURL)
+	require.NoError(t, err)
+	reinstalled, err := s.confirm(t, 7, newPreview.PreviewID)
+	require.NoError(t, err)
+	require.NotEqual(t, resp.InstallationID, reinstalled.InstallationID)
+}
+
+// TestConfirmInstallationVanishedPreviewReadsExpired（T07-OCR1 low）：
+// MarkPreviewConsumed 零行命中后重读发现预览行已消失（DeleteExpiredPreviews
+// 惰性清理只删已过期行）→ 判决必须是「已过期」，不得误报「已消费」——
+// 与 reclassifyPreviewMiss 自身 R12 F17 契约 "row vanished reads as
+// expired" 对齐。
+func TestConfirmInstallationVanishedPreviewReadsExpired(t *testing.T) {
+	s := newInstallTestStack(t, 7)
+	// Step 3（重复安装判定）时模拟惰性清理把（已过期的）预览行删走：
+	// Step 7 MarkPreviewConsumed 零行命中 → reclassify 重读为行消失。
+	s.pluginRepo.onTenantPlugin = func() {
+		for _, p := range s.pluginRepo.previews {
+			p.ExpiresAt = time.Now().Add(-time.Minute)
+		}
+		s.pluginRepo.previews = nil
+	}
+	_, err := s.confirm(t, 7, s.previewID)
+	require.ErrorIs(t, err, service.ErrPreviewExpired)
 }
 
 // TestManualMCPServiceUnaffectedByInstallations（T07/B9 守护）：预置一行

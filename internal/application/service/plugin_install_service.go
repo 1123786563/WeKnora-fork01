@@ -280,10 +280,16 @@ func (s *pluginService) ConfirmInstallation(
 func (s *pluginService) reclassifyPreviewMiss(ctx context.Context, tenantID uint64, previewID string) error {
 	preview, err := s.pluginRepo.GetPreview(ctx, tenantID, previewID)
 	if err != nil {
+		// 重读故障是服务端瞬时故障——按 R12 F01 原则以 5xx 哨兵呈现，
+		// 不得误读为确定性 400「已消费」判决（T07-OCR1 low）。
 		logger.GetLogger(ctx).Errorf("failed to re-read plugin preview: %v", err)
-		return ErrPreviewAlreadyConsumed
+		return ErrInstallationPersistFailed
 	}
-	if preview != nil && preview.ConsumedAt == nil {
+	// 行消失只可能来自 DeleteExpiredPreviews 的惰性清理（只删
+	// expires_at <= now 的行，即必然已过期）——「已过期」才是准确判决，
+	// 不得误报为已消费（T07-OCR1 low：对齐 R12 F17 契约 "row vanished
+	// reads as expired"）。
+	if preview == nil || preview.ConsumedAt == nil {
 		return ErrPreviewExpired
 	}
 	return ErrPreviewAlreadyConsumed
@@ -484,6 +490,26 @@ func (s *pluginService) UninstallInstallation(
 	if inst == nil {
 		return ErrInstallationNotFound
 	}
+	if inst.ServiceID == "" {
+		// T07-OCR1-F5 自愈锚兜底：confirm 在 CreateMCPService 之后、
+		// UpdateInstallationServiceID 持久化绑定之前中断（进程崩溃，或
+		// 绑定更新失败且补偿级联同样失败而保留安装行）时，安装行
+		// service_id 为空而物化服务行已在。按
+		// mcp_services.plugin_installation_id 反查孤儿并入级联——否则卸载
+		// 会删掉锚行、留下 Enabled=true 的孤儿服务（运行时守卫查不到
+		// 安装行会按非插件服务处理，未接受工具目录继续暴露，且孤儿占用
+		// (tenant_id, name='plugin:<plugin_id>') 唯一索引阻断重装）。
+		// 反查故障 fail-closed：保留锚行供重试自愈。
+		resolved, resolveErr := s.serviceIDByInstallation(ctx, tenantID, installationID)
+		if resolveErr != nil {
+			logger.GetLogger(ctx).Errorf("failed to resolve orphan materialized service for installation %s: %v", installationID, resolveErr)
+			return ErrInstallationPersistFailed
+		}
+		if resolved != "" {
+			logger.GetLogger(ctx).Infof("uninstall healing empty service_id anchor: installation %s resolves to orphan service %s", installationID, resolved)
+			inst.ServiceID = resolved
+		}
+	}
 	if inst.ServiceID != "" {
 		if err := s.pluginRepo.HardDeleteServiceCascade(ctx, tenantID, inst.ServiceID); err != nil {
 			logger.GetLogger(ctx).Errorf("failed to cascade-delete materialized service: %v", err)
@@ -498,6 +524,28 @@ func (s *pluginService) UninstallInstallation(
 		return ErrInstallationPersistFailed
 	}
 	return nil
+}
+
+// serviceIDByInstallation resolves the materialized service bound to an
+// installation through the mcp_services.plugin_installation_id back-reference
+// — the self-heal lookup for the interrupted-confirm window where the
+// installation row's service_id never landed (T07-OCR1-F5). Scopes to the
+// tenant via the repository's tenant-scoped List.
+func (s *pluginService) serviceIDByInstallation(
+	ctx context.Context,
+	tenantID uint64,
+	installationID string,
+) (string, error) {
+	services, err := s.mcpServiceRepo.List(ctx, tenantID)
+	if err != nil {
+		return "", err
+	}
+	for _, svc := range services {
+		if svc.PluginInstallationID != nil && *svc.PluginInstallationID == installationID {
+			return svc.ID, nil
+		}
+	}
+	return "", nil
 }
 
 // ListInstallations returns the member-facing summaries of the tenant's
