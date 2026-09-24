@@ -180,3 +180,50 @@ test('a malformed SSE frame fails the stream as a transport error, not a bare Sy
     /TASK_STREAM_MALFORMED_FRAME/,
   );
 });
+
+test('task office remote creates the goal session, starts the durable run and reconciles by request id', async () => {
+  const requests: Array<{ method: string; path: string; body?: unknown }> = [];
+  const request = async (input: ClientRequest) => {
+    requests.push({ method: input.method, path: input.path, body: input.body });
+    if (input.method === 'POST' && input.path === '/api/v1/sessions') {
+      return { success: true, data: { id: 'session-77', title: '整理本周反馈并生成周报', is_pinned: false } };
+    }
+    if (input.method === 'POST' && input.path === '/api/v1/workbench/executions') {
+      return { success: true, data: { run_id: 'run-77', request_id: (input.body as { request_id: string }).request_id, status: 'queued' } };
+    }
+    if (input.method === 'GET' && input.path === '/api/v1/workbench/executions/requests/req-77') {
+      return { success: true, data: { state: 'admitted', run_id: 'run-77' } };
+    }
+    throw new Error(`unexpected ${input.method} ${input.path}`);
+  };
+  const remote = createTaskOfficeRemote({ origin: 'https://weknora.example.test', request });
+
+  const session = await remote.createSession({ title: '整理本周反馈并生成周报' });
+  assert.equal(session.sessionId, 'session-77');
+
+  const ack = await remote.start({ request_id: 'req-77', session_id: 'session-77', agent_id: 'agent-1', target_id: 'platform', workspace_ref: '', text: '整理本周反馈并生成周报', budget_upper: 200 });
+  assert.deepEqual(ack, { run_id: 'run-77', request_id: 'req-77', status: 'queued' });
+
+  const lookup = await remote.lookup('req-77');
+  assert.deepEqual(lookup, { state: 'admitted', run_id: 'run-77' });
+
+  assert.deepEqual(requests, [
+    { method: 'POST', path: '/api/v1/sessions', body: { title: '整理本周反馈并生成周报' } },
+    { method: 'POST', path: '/api/v1/workbench/executions', body: { request_id: 'req-77', session_id: 'session-77', agent_id: 'agent-1', target_id: 'platform', workspace_ref: '', text: '整理本周反馈并生成周报', budget_upper: 200 } },
+    { method: 'GET', path: '/api/v1/workbench/executions/requests/req-77', body: undefined },
+  ]);
+});
+
+test('task office remote start validates the frozen seven fields before any request', async () => {
+  let calls = 0;
+  const remote = createTaskOfficeRemote({ origin: 'https://weknora.example.test', request: async () => { calls += 1; return {}; } });
+  await assert.rejects(
+    remote.start({ request_id: '', session_id: 's', agent_id: 'a', target_id: 'platform', workspace_ref: '', text: 't', budget_upper: 1 }),
+    /request_id/,
+  );
+  await assert.rejects(
+    remote.start({ request_id: 'r', session_id: 's', agent_id: 'a', target_id: 'platform', workspace_ref: '', text: 't', budget_upper: -1 }),
+    /budget_upper/,
+  );
+  assert.equal(calls, 0, 'validation must reject before any HTTP traffic');
+});

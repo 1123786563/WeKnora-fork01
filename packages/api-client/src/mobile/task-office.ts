@@ -1,8 +1,10 @@
 import { parseExecutionEvent } from '@weknora/contracts';
 import { createServerSentEventParser } from '../chat/stream.ts';
+import { createChatSessionsApi } from '../chat/sessions.ts';
 import { createExecutionsApi, executionEventsRequest } from './executions.ts';
 import { createOverviewApi } from './overview.ts';
 import type { ClientRequest } from '../client.ts';
+import type { RequestLookup, StartAck, StartExecutionInput } from './executions.ts';
 
 type Request = (input: ClientRequest) => Promise<unknown>;
 
@@ -57,6 +59,7 @@ export function createTaskOfficeRemote(options: TaskOfficeRemoteOptions) {
   const request = options.request;
   const overviewApi = createOverviewApi(request);
   const executionsApi = createExecutionsApi(request);
+  const sessionsApi = createChatSessionsApi(request);
 
   const runFromSummary = (summary: { run_id: string; session_id: string; title?: string; run_status: string; attention?: 'none' | 'required'; updated_at: string }): RemoteTaskRun => ({
     runId: summary.run_id,
@@ -99,6 +102,16 @@ export function createTaskOfficeRemote(options: TaskOfficeRemoteOptions) {
         items: page.items.map(runFromItem),
         ...(page.next_cursor === undefined ? {} : { nextCursor: page.next_cursor }),
       };
+    },
+    async createSession(input: { title: string }): Promise<{ sessionId: string }> {
+      const session = await sessionsApi.create({ title: input.title });
+      return { sessionId: session.id };
+    },
+    async start(input: StartExecutionInput): Promise<StartAck> {
+      return executionsApi.start(input);
+    },
+    async lookup(requestId: string): Promise<RequestLookup> {
+      return executionsApi.lookup(requestId);
     },
     async archive(taskId: string): Promise<void> {
       unwrap(await request({ method: 'POST', path: `/api/v1/workbench/tasks/${encodeURIComponent(taskId)}/archive` }));
