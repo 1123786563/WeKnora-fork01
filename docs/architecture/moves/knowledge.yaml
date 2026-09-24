@@ -132,10 +132,6 @@ legacy_files:
     reason: trapped in horizontal service package internal/application/service (Pass B file split)
     navigation_label: Image multimodal (application/service)
     passb_task: B-knowledge
-  - path: internal/application/service/kb_activity.go
-    reason: trapped in horizontal service package internal/application/service (Pass B file split)
-    navigation_label: Kb activity (application/service)
-    passb_task: B-knowledge
   - path: internal/application/service/kbshare.go
     reason: trapped in horizontal service package internal/application/service (Pass B file split)
     navigation_label: Kbshare (application/service)

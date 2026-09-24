@@ -26,7 +26,7 @@
 | `internal/application/service/faq_clone_sync.go` | Faq clone sync (application/service) | `B-knowledge` |
 | `internal/application/service/graph.go` | Graph (application/service) | `B-knowledge` — **已迁移**（K2.4 → `retrieval/app/`） |
 | `internal/application/service/image_multimodal.go` | Image multimodal (application/service) | `B-knowledge` |
-| `internal/application/service/kb_activity.go` | Kb activity (application/service) | `B-knowledge` |
+| `internal/application/service/kb_activity.go` | Kb activity (application/service) | `B-knowledge` — **已迁移**（K2.5 → `retrieval/app/`） |
 | `internal/application/service/kbshare.go` | Kbshare (application/service) | `B-knowledge` |
 | `internal/application/service/kbretrieval_passb_compat.go` | Knowledge retrieval host compat (application/service) | `B-knowledge`（K2.3 新增 compat） |
 | `internal/application/service/knowledge.go` | Knowledge (application/service) | `B-knowledge` |

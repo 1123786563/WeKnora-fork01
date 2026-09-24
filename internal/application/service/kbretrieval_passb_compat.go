@@ -142,6 +142,51 @@ func resolveDeadSlug(
 	return kbretrieval.ResolveDeadSlug(deadSlug, displayText, liveSlugs, titleToSlug)
 }
 
+// --- K2.5 追加（22-knowledge-retrieval.md §5.1 活动族 + §7.3 KB 活动审计流差分锚点）：
+// kb_activity.go 已物理迁移至 internal/modules/knowledge/retrieval/app。以下一行委托
+// 保持留守宿主调用方（datasource_service.go 17+4 处、knowledge_faq*.go、
+// knowledge_create/clone_move/delete/process/replace.go、knowledgebase.go、kbshare.go、
+// tag.go、wiki_ingest_batch.go、handler/wiki_page.go:401、kb_activity_test.go 等）
+// 零改动编译；ib2 集成屏障直连后随本文件一并删除。---
+
+func withKBActivityTask(ctx context.Context, taskID, trigger string) context.Context {
+	return kbretrieval.WithKBActivityTask(ctx, taskID, trigger)
+}
+
+func kbActivityTrigger(ctx context.Context) string {
+	return kbretrieval.KBActivityTrigger(ctx)
+}
+
+func kbActivityAppendSampleTitles(details map[string]any, titles ...string) {
+	kbretrieval.KBActivityAppendSampleTitles(details, titles...)
+}
+
+func withKBActivitySuppressed(ctx context.Context) context.Context {
+	return kbretrieval.WithKBActivitySuppressed(ctx)
+}
+
+func recordKBActivity(
+	ctx context.Context,
+	audit interfaces.AuditLogService,
+	tenantID uint64,
+	kbID string,
+	action types.AuditAction,
+	targetType string,
+	targetID string,
+	outcome types.AuditOutcome,
+	details map[string]any,
+) {
+	kbretrieval.RecordKBActivity(ctx, audit, tenantID, kbID, action, targetType, targetID, outcome, details)
+}
+
+// RecordWikiContentActivity 已导出符号留 var 别名（b1「2 var」先例；
+// 消费方 wiki_ingest_batch.go、handler/wiki_page.go:401 零改动）。
+var RecordWikiContentActivity = kbretrieval.RecordWikiContentActivity
+
+// auditScopeKnowledgeBase 原未导出常量，宿主特征化测试 kb_activity_test.go:130
+// 锚定 ScopeType；经落位包导出 AuditScopeKnowledgeBase 别名保单一事实源。
+const auditScopeKnowledgeBase = kbretrieval.AuditScopeKnowledgeBase
+
 // writableFAQKnowledgeBase 方法再归置（§5.2 行 3 / Ruling 2026-09-25-DEFERRED-FILE-SPLIT）：
 // 原定义于 knowledgebase_access.go:38-51，接收者类型 knowledgeService 定义于
 // knowledge.go（K4 留守），方法文本随 K2.4 迁出后落此，方法体一行不改。
