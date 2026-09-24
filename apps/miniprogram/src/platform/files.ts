@@ -14,6 +14,21 @@ async function downloadErrorCode(filePath:string):Promise<string|undefined>{
   return typeof parsed.code==='string'?parsed.code:undefined;
  }catch{return undefined}
 }
+// D3（task-6-live-validation）：downloadFile 落下的临时文件（http://tmp/…）在真实
+// DevTools 运行时 unlink/unlinkSync 一律 permission denied，文件残留而 UI 承诺“临时
+// 打开后立即清理”。运行时临时目录不归应用管理；应用可写可删的只有 USER_DATA_PATH。
+// 因此受保护产物先复制成私有副本再打开，副本在打开结束后立即删除——UI 的清理承诺
+// 对“我们创建的文件”真实成立。
+function toUserCopyPath(name:string):string{
+ const safe=name.replace(/[^A-Za-z0-9._-]+/g,'-').replace(/^[-.]+/,'')||'artifact';
+ return `${Taro.env.USER_DATA_PATH}/wk-open-${safe}-${Date.now().toString(36)}${Math.random().toString(36).slice(2,8)}`;
+}
+function copyFile(fs:ReturnType<typeof Taro.getFileSystemManager>,srcPath:string,destPath:string):Promise<void>{
+ return new Promise((resolve,reject)=>fs.copyFile({srcPath,destPath,success:()=>resolve(),fail:e=>reject(Object.assign(new Error('本机文件准备失败'),{cause:e}))}));
+}
+function unlinkFile(fs:ReturnType<typeof Taro.getFileSystemManager>,filePath:string):Promise<void>{
+ return new Promise((resolve,reject)=>fs.unlink({filePath,success:()=>resolve(),fail:e=>reject(Object.assign(new Error(`临时副本清理失败：${filePath}`),{cause:e}))}));
+}
 export async function chooseDocument():Promise<NativeFileSource>{
  const result=await Taro.chooseMessageFile({count:1,type:'file'});const f=result.tempFiles[0];if(!f)throw new Error('未选择文件');
  if(f.size>MAX_BYTES)throw new Error('客户端单文件上限为 20 MiB');
@@ -23,14 +38,15 @@ export async function openProtectedDocument(path:string,name:string,showMenu=fal
  if(!path.startsWith('/api/v1/')||path.includes('://')||path.includes('..'))throw new Error('不可信下载路径');
  const extension=name.split('.').pop()?.toLowerCase();if(!extension||!['pdf','doc','docx','xls','xlsx','ppt','pptx'].includes(extension))throw new Error('此格式请使用授权 Web 工作台查看');
  const credential=auth.credential();if(credential.kind!=='bearer')throw new Error('AUTH_REQUIRED');
- const stamp=expectedScope??auth.scope.capture();if(!auth.scope.isCurrent(stamp))throw new Error('SCOPE_CHANGED');const controller=auth.scope.controller();let filePath='';
+ const stamp=expectedScope??auth.scope.capture();if(!auth.scope.isCurrent(stamp))throw new Error('SCOPE_CHANGED');const controller=auth.scope.controller();
+ const fs=Taro.getFileSystemManager();
+ let userCopy='';let failure:{failed:boolean;error:unknown}={failed:false,error:undefined};
  try{
-  filePath=await new Promise<string>((resolve,reject)=>{
+  const tempFilePath=await new Promise<string>((resolve,reject)=>{
     const task=Taro.downloadFile({url:apiOrigin+path,header:{Authorization:`Bearer ${credential.accessToken}`},timeout:60000,
     success:r=>{
      // Completed HTTP responses can still materialize an error body locally. Own it before
-     // validating status so the finally block removes it just like a successful download.
-     filePath=r.tempFilePath;
+     // validating status so the failure path reads its error code like a success path would.
      if(r.statusCode!==200){
       void downloadErrorCode(r.tempFilePath).then(responseCode=>{
        const code=r.statusCode===401
@@ -46,8 +62,19 @@ export async function openProtectedDocument(path:string,name:string,showMenu=fal
    task.onProgressUpdate(p=>{if(p.totalBytesWritten>MAX_BYTES)task.abort()});
   });
   if(!auth.scope.isCurrent(stamp))throw new Error('SCOPE_CHANGED');
-  const info=await Taro.getFileInfo({filePath}) as {size:number};if(info.size>MAX_BYTES)throw new Error('文件超出本端查看上限');
+  const info=await Taro.getFileInfo({filePath:tempFilePath}) as {size:number};if(info.size>MAX_BYTES)throw new Error('文件超出本端查看上限');
   if(!auth.scope.isCurrent(stamp))throw new Error('SCOPE_CHANGED');
-  await Taro.openDocument({filePath,showMenu});
- }finally{auth.scope.release(controller);if(filePath){try{Taro.getFileSystemManager().unlinkSync(filePath)}catch{/* temporary file may already be removed */}}}
+  userCopy=toUserCopyPath(name);
+  await copyFile(fs,tempFilePath,userCopy);
+  await Taro.openDocument({filePath:userCopy,showMenu});
+ }catch(e){failure={failed:true,error:e}}
+ finally{
+  auth.scope.release(controller);
+  if(userCopy){
+   // 清理失败不静默：UI 承诺立即清理，违背承诺必须可见；已有业务失败时保留原始错误。
+   try{await unlinkFile(fs,userCopy)}
+   catch(cleanupError){if(!failure.failed)failure={failed:true,error:cleanupError}}
+  }
+ }
+ if(failure.failed)throw failure.error;
 }

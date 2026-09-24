@@ -166,14 +166,20 @@ test('assembly: Task artifacts are listed by owned run and receive a fresh signe
   assert.equal(first, '/api/v1/workbench/artifacts/download?signature=grant-1');
   assert.equal(second, '/api/v1/workbench/artifacts/download?signature=grant-2');
   assert.equal(grants, 2, 'a short-lived URL is minted per user action and never cached');
-  stub.use(call => call.options.success({ statusCode: 200, tempFilePath: '/tmp/report.pdf' }));
+  stub.use(call => {
+    stub.state.fileContents.set('/tmp/report.pdf', 'PDF-CONTENT');
+    call.options.success({ statusCode: 200, tempFilePath: '/tmp/report.pdf' });
+  });
   const files = await import('../src/platform/files.ts');
   await files.openProtectedDocument(second, items[0].name, true);
   const download = stub.lastCall('downloadFile');
   assert.equal(download.options.url, `${ORIGIN}${second}`);
   assert.equal(authorization(download), 'Bearer t1');
-  assert.deepEqual(stub.state.openedDocuments, [{ filePath: '/tmp/report.pdf', showMenu: true }]);
-  assert.deepEqual(stub.state.removedFiles, ['/tmp/report.pdf'], 'the temporary local copy is deleted after viewing');
+  assert.equal(stub.state.copies.length, 1, '下载后必须先复制成 USER_DATA_PATH 私有副本');
+  assert.equal(stub.state.copies[0].srcPath, '/tmp/report.pdf');
+  assert.ok(stub.state.copies[0].destPath.startsWith('wxfile://usr/'));
+  assert.deepEqual(stub.state.openedDocuments, [{ filePath: stub.state.copies[0].destPath, showMenu: true }]);
+  assert.deepEqual(stub.state.removedFiles, [stub.state.copies[0].destPath], 'the private copy is deleted after viewing');
 });
 
 test('assembly: Task artifact listing and grant failures preserve permission and expiry statuses', async () => {
@@ -185,13 +191,16 @@ test('assembly: Task artifact listing and grant failures preserve permission and
   await assert.rejects(workbench.taskArtifactDownloadPath('run-1', { index: 0, name: 'report.pdf', mime: 'application/pdf', size: 12 }), error => error.status === 410);
 });
 
-test('assembly: protected DOCX opens with the user menu and removes its local temporary copy', async () => {
+test('assembly: protected DOCX opens with the user menu and removes its private copy', async () => {
   await freshLogin();
-  stub.use(call => stub.succeed(call, { tempFilePath: '/tmp/resume.docx' }));
+  stub.use(call => {
+    stub.state.fileContents.set('/tmp/resume.docx', 'DOCX-CONTENT');
+    stub.succeed(call, { tempFilePath: '/tmp/resume.docx' });
+  });
   const files = await import('../src/platform/files.ts');
   await files.openProtectedDocument('/api/v1/workbench/artifacts/download?signature=docx', 'resume.docx', true);
-  assert.deepEqual(stub.state.openedDocuments, [{ filePath: '/tmp/resume.docx', showMenu: true }]);
-  assert.deepEqual(stub.state.removedFiles, ['/tmp/resume.docx']);
+  assert.deepEqual(stub.state.openedDocuments, [{ filePath: stub.state.copies[0].destPath, showMenu: true }]);
+  assert.deepEqual(stub.state.removedFiles, [stub.state.copies[0].destPath]);
 });
 
 test('assembly: signed download 401 is a fresh-grant expiry and a second tap succeeds', async () => {
@@ -210,6 +219,7 @@ test('assembly: signed download 401 is a fresh-grant expiry and a second tap suc
       stub.state.fileContents.set('/tmp/expired.json', expiredBody);
       stub.succeed(call, { statusCode: 401, tempFilePath: '/tmp/expired.json' });
     } else {
+      stub.state.fileContents.set('/tmp/report.pdf', 'PDF-CONTENT');
       stub.succeed(call, { tempFilePath: '/tmp/report.pdf' });
     }
   });
@@ -228,18 +238,20 @@ test('assembly: signed download 401 is a fresh-grant expiry and a second tap suc
   await files.openProtectedDocument(secondGrant, file.name);
   assert.equal(grants, 2, 'retry obtains a new grant instead of reusing the expired URL');
   assert.equal(downloads, 2);
-  assert.deepEqual(stub.state.removedFiles, ['/tmp/expired.json', '/tmp/report.pdf']);
+  assert.equal(stub.state.copies.length, 1, '只有成功的下载才创建私有副本');
+  assert.deepEqual(stub.state.removedFiles, [stub.state.copies[0].destPath]);
   assert.deepEqual(stub.state.fileReads, [{ filePath: '/tmp/expired.json', encoding: 'utf8', position: 0, length: Buffer.byteLength(expiredBody) }]);
   assert.equal(stub.state.openedDocuments.length, 1);
 });
 
-test('assembly: revoked download is denied and its non-200 temporary body is removed', async () => {
+test('assembly: revoked download is denied without creating any app-managed file', async () => {
   await freshLogin();
   stub.use(call => stub.succeed(call, { statusCode: 403, tempFilePath: '/tmp/denied.json' }));
   const files = await import('../src/platform/files.ts');
   await assert.rejects(files.openProtectedDocument('/api/v1/workbench/artifacts/download?signature=revoked', 'report.pdf'), error => error.status === 403);
   assert.equal(stub.state.openedDocuments.length, 0);
-  assert.deepEqual(stub.state.removedFiles, ['/tmp/denied.json']);
+  assert.deepEqual(stub.state.copies, []);
+  assert.deepEqual(stub.state.removedFiles, [], '运行时临时错误体不由应用管理（DevTools 对 tmp 路径 deny unlink）');
 });
 
 test('assembly: invalid signed-download 401 is an authorization failure rather than an expiry retry', async () => {
@@ -259,11 +271,12 @@ test('assembly: invalid signed-download 401 is an authorization failure rather t
     return true;
   });
   assert.equal(stub.state.openedDocuments.length, 0);
-  assert.deepEqual(stub.state.removedFiles, ['/tmp/invalid-grant.json']);
+  assert.deepEqual(stub.state.copies, []);
+  assert.deepEqual(stub.state.removedFiles, []);
   assert.deepEqual(stub.state.fileReads, [{ filePath: '/tmp/invalid-grant.json', encoding: 'utf8', position: 0, length: Buffer.byteLength(invalidBody) }]);
 });
 
-test('assembly: unknown signed-download 401 body defaults to denial and still removes its temp file', async () => {
+test('assembly: unknown signed-download 401 body defaults to denial without app-managed files', async () => {
   await freshLogin();
   const unknownBody = JSON.stringify({ success: false, code: 'different_auth_failure', detail: 'x'.repeat(5000) });
   stub.use(call => {
@@ -277,11 +290,11 @@ test('assembly: unknown signed-download 401 body defaults to denial and still re
     assert.doesNotMatch(errorMessage(error), /再次点击|重新获取/);
     return true;
   });
-  assert.deepEqual(stub.state.removedFiles, ['/tmp/unknown-grant.json']);
+  assert.deepEqual(stub.state.removedFiles, []);
   assert.deepEqual(stub.state.fileReads, [{ filePath: '/tmp/unknown-grant.json', encoding: 'utf8', position: 0, length: 4096 }]);
 });
 
-test('assembly: a scope switch during transfer prevents opening and removes the late file', async () => {
+test('assembly: a scope switch during transfer prevents opening and any private copy', async () => {
   await freshLogin();
   stub.use(() => {});
   const files = await import('../src/platform/files.ts');
@@ -292,7 +305,8 @@ test('assembly: a scope switch during transfer prevents opening and removes the 
   stub.succeed(download, { tempFilePath: '/tmp/old-scope.pdf' });
   await assert.rejects(pending, /SCOPE_CHANGED/);
   assert.equal(stub.state.openedDocuments.length, 0);
-  assert.deepEqual(stub.state.removedFiles, ['/tmp/old-scope.pdf']);
+  assert.deepEqual(stub.state.copies, [], 'scope 失效后不得创建任何私有副本');
+  assert.deepEqual(stub.state.removedFiles, []);
 });
 
 test('assembly: scope change while obtaining a grant prevents an old-scope download', async () => {
@@ -306,32 +320,37 @@ test('assembly: scope change while obtaining a grant prevents an old-scope downl
   assert.equal(stub.state.calls.some(call => call.kind === 'downloadFile'), false);
 });
 
-test('assembly: oversized files remove the downloaded copy without opening it', async () => {
+test('assembly: oversized files are rejected before any private copy exists', async () => {
   await freshLogin();
   stub.use(call => stub.succeed(call, { tempFilePath: '/tmp/candidate.pdf' }));
   const files = await import('../src/platform/files.ts');
   stub.state.fileInfoSize = 20 * 1024 * 1024 + 1;
   await assert.rejects(files.openProtectedDocument('/api/v1/workbench/artifacts/download?signature=large', 'large.pdf'), /上限/);
-  assert.deepEqual(stub.state.removedFiles, ['/tmp/candidate.pdf']);
+  assert.deepEqual(stub.state.copies, []);
+  assert.deepEqual(stub.state.removedFiles, []);
   assert.equal(stub.state.openedDocuments.length, 0);
 });
 
-test('assembly: native viewer failure removes the downloaded copy', async () => {
+test('assembly: native viewer failure removes the private copy', async () => {
   await freshLogin();
-  stub.use(call => stub.succeed(call, { tempFilePath: '/tmp/viewer-failure.pdf' }));
+  stub.use(call => {
+    stub.state.fileContents.set('/tmp/viewer-failure.pdf', 'PDF-CONTENT');
+    stub.succeed(call, { tempFilePath: '/tmp/viewer-failure.pdf' });
+  });
   stub.state.openDocumentError = new Error('native viewer failed');
   const files = await import('../src/platform/files.ts');
   await assert.rejects(files.openProtectedDocument('/api/v1/workbench/artifacts/download?signature=native-failure', 'report.pdf'), /native viewer failed/);
-  assert.deepEqual(stub.state.removedFiles, ['/tmp/viewer-failure.pdf']);
+  assert.deepEqual(stub.state.removedFiles, [stub.state.copies[0].destPath]);
 });
 
-test('assembly: file-info failure still removes the downloaded copy', async () => {
+test('assembly: file-info failure happens before any private copy exists', async () => {
   await freshLogin();
   stub.use(call => stub.succeed(call, { tempFilePath: '/tmp/file-info-failure.pdf' }));
   stub.state.fileInfoError = new Error('file info failed');
   const files = await import('../src/platform/files.ts');
   await assert.rejects(files.openProtectedDocument('/api/v1/workbench/artifacts/download?signature=file-info', 'report.pdf'), /file info failed/);
-  assert.deepEqual(stub.state.removedFiles, ['/tmp/file-info-failure.pdf']);
+  assert.deepEqual(stub.state.copies, []);
+  assert.deepEqual(stub.state.removedFiles, []);
 });
 
 test('assembly: startTask unknown after a lost response resubmits the SAME request id (D5)', async () => {

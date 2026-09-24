@@ -7,13 +7,22 @@ const state = {
   calls: [],
   openedDocuments: [],
   removedFiles: [],
+  copies: [],
   fileContents: new Map(),
   fileReads: [],
   fileInfoSize: 128,
   fileInfoError: null,
   openDocumentError: null,
+  unlinkError: null,
   handler: null,
 };
+
+// 微信开发者工具实测（task-6-live-validation D3）：downloadFile 落下的运行时临时文件
+// （http://tmp/…、wxfile://tmp…、真机 /tmp/…）unlink/unlinkSync 一律 permission denied，
+// 只有 USER_DATA_PATH 下的文件可写可删——替身必须复现该平台契约，防止单测再次掩盖 D3。
+function isRuntimeTempPath(p) {
+  return typeof p === 'string' && (p.startsWith('http://tmp/') || p.startsWith('wxfile://tmp') || p.startsWith('/tmp/') || p.startsWith('tmp/'));
+}
 
 function makeTask(call) {
   const listeners = { headers: new Set(), chunk: new Set(), progress: new Set() };
@@ -69,9 +78,30 @@ const Taro = {
         const bytes = Buffer.from(content, 'utf8').subarray(position, length === undefined ? undefined : position + length);
         return encoding === 'utf8' ? bytes.toString('utf8') : bytes.buffer;
       },
-      unlinkSync(path) { state.removedFiles.push(path); state.fileContents.delete(path); },
+      unlinkSync(path) {
+        if (isRuntimeTempPath(path)) {
+          throw Object.assign(new Error(`unlinkSync:fail permission denied, open ${path}`), { errMsg: `unlinkSync:fail permission denied, open ${path}` });
+        }
+        state.removedFiles.push(path); state.fileContents.delete(path);
+      },
+      unlink({ filePath, success, fail }) {
+        queueMicrotask(() => {
+          if (isRuntimeTempPath(filePath)) { fail?.({ errMsg: `unlink:fail permission denied, open ${filePath}` }); return; }
+          if (state.unlinkError) { fail?.(state.unlinkError); return; }
+          state.removedFiles.push(filePath); state.fileContents.delete(filePath); success?.({});
+        });
+      },
+      copyFile({ srcPath, destPath, success, fail }) {
+        queueMicrotask(() => {
+          state.copies.push({ srcPath, destPath });
+          if (!state.fileContents.has(srcPath)) { fail?.({ errMsg: `copyFile:fail no such file or directory, open ${srcPath}` }); return; }
+          state.fileContents.set(destPath, state.fileContents.get(srcPath));
+          success?.({});
+        });
+      },
     };
   },
+  env: { USER_DATA_PATH: 'wxfile://usr' },
   getStorageSync(key) { return state.storage.has(key) ? state.storage.get(key) : ''; },
   setStorageSync(key, value) { state.storage.set(key, value); },
   removeStorageSync(key) { state.storage.delete(key); },
@@ -84,11 +114,13 @@ function reset() {
   state.calls.length = 0;
   state.openedDocuments.length = 0;
   state.removedFiles.length = 0;
+  state.copies.length = 0;
   state.fileContents.clear();
   state.fileReads.length = 0;
   state.fileInfoSize = 128;
   state.fileInfoError = null;
   state.openDocumentError = null;
+  state.unlinkError = null;
   state.handler = null;
 }
 function lastCall(kind) {
