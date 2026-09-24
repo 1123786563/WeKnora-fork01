@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Button as TButton, Drawer as TDrawer } from 'tdesign-react';
+import { Icon as TIcon } from 'tdesign-icons-react';
 import { formatMessage } from '@weknora/i18n';
 import { readInitialLocale } from './PortedSectionsPanel.tsx';
 
@@ -23,10 +24,14 @@ interface SettingDrawerProps {
   title: string;
   /** Vue `description` prop：无 #subtitle 槽时的副标题。 */
   description?: string;
+  /** Vue `icon` prop：TDesign 图标名，header 徽章内 t-icon（无 #headerIcon 槽时的默认）。 */
+  icon?: string;
   /** Vue #headerIcon 槽内容（monogram 徽章等）。 */
   headerIcon?: ReactNode;
   /** Vue #subtitle 槽内容（覆盖 description）。 */
   subtitle?: ReactNode;
+  /** Vue #header-extra 槽：header 行下方的整宽区（skills 步骤条 / mcp steps）。 */
+  headerExtra?: ReactNode;
   /** 初始宽度（无记忆偏好时）。任意 CSS 长度字符串。 */
   width?: string;
   /** 左缘可见拖宽手柄。 */
@@ -61,7 +66,7 @@ function blurActiveElementBeforeClose() {
 
 export function SettingDrawer(props: SettingDrawerProps) {
   const {
-    visible, title, description = '', headerIcon, subtitle,
+    visible, title, description = '', icon = '', headerIcon, subtitle, headerExtra,
     width = '560px', resizable = true, minWidth = 480, maxWidth = 1200, storageKey = '',
     confirmLoading = false, confirmDisabled = false, confirmText = '', cancelText = '',
     hideFooter = false, zIndex = 2500, drawerClass, footerLeft,
@@ -157,13 +162,14 @@ export function SettingDrawer(props: SettingDrawerProps) {
 
   const headerNode = <div className="setting-drawer__header-block">
     <div className="setting-drawer__header">
-      {headerIcon ? <div className="setting-drawer__header-icon">{headerIcon}</div> : null}
+      {headerIcon || icon ? <div className="setting-drawer__header-icon">{headerIcon ?? <TIcon name={icon} />}</div> : null}
       <div className="setting-drawer__header-text">
         <div className="setting-drawer__title">{title}</div>
         {subtitle || description ? <div className="setting-drawer__subtitle">{subtitle ?? description}</div> : null}
       </div>
       <div className="setting-drawer__header-actions" />
     </div>
+    {headerExtra ? <div className="setting-drawer__header-extra">{headerExtra}</div> : null}
   </div>;
 
   const footerNode = <div className="setting-drawer__footer">
