@@ -232,3 +232,87 @@ func TestDisallowedPushEndpointHostRejectsNonPublicTargets(t *testing.T) {
 		require.NoError(t, DisallowedPushEndpointHost(endpoint), "must allow %s", endpoint)
 	}
 }
+
+// memProviderHealth 是 NotificationProviderHealth 的内存替身，用于复现 worker
+// 「paused 且 !Configured() 静默跳过」的闸门行为。
+type memProviderHealth struct {
+	paused       bool
+	pauseCalls   int
+	recoverCalls int
+}
+
+func (h *memProviderHealth) IsPaused(context.Context, string) (bool, error) { return h.paused, nil }
+
+func (h *memProviderHealth) Pause(context.Context, string, string) error {
+	h.pauseCalls++
+	h.paused = true
+	return nil
+}
+
+func (h *memProviderHealth) Recover(context.Context, string) error {
+	h.recoverCalls++
+	h.paused = false
+	return nil
+}
+
+// spyConfiguredRoute 模拟凭据已装配、可用的企业 APNs/FCM 通道：记录 Send 调用，
+// 并以显式 Configured() 参与 AppRouting 聚合判定。
+type spyConfiguredRoute struct {
+	calls      int
+	configured bool
+}
+
+func (s *spyConfiguredRoute) Send(context.Context, repository.NotificationDelivery) error {
+	s.calls++
+	return nil
+}
+
+func (s *spyConfiguredRoute) Configured() bool { return s.configured }
+
+// TestAppRoutingConfiguredKeepsLiveRouteAliveAcrossDisabledPause 复现修复轮 1 审查
+// 场景：混合部署（official=disabled + 企业 APNs/FCM 已配置）下，official intent 的
+// mobile_notification_provider_disabled 触发全局 pause（workerKey=mobile）后，
+// AppRouting.Configured() 只看 fallback 会让 worker 在「paused 且 !Configured()」
+// 闸门（notification_delivery.go:439-442）静默跳过所有 claim，活着的 enterprise
+// route 被永久饿死。Configured() 必须对 routes 做 OR：任一活通道都值得从 pause 恢复。
+func TestAppRoutingConfiguredKeepsLiveRouteAliveAcrossDisabledPause(t *testing.T) {
+	db := openMobilePushPolicyDB(t)
+	ctx := context.Background()
+	store := repository.NewNotificationStore(db)
+	health := &memProviderHealth{}
+	require.NoError(t, store.Enqueue(ctx, repository.NotificationIntent{
+		TenantID: 1, EventID: "1:r1:9", OwnerID: "u1", DeviceID: "d-ent", Environment: "dev",
+		AppID: "enterprise:acme", Kind: "completed", RunID: "r1", ExpiresAt: time.Now().Add(time.Hour),
+	}))
+	require.NoError(t, db.Exec(`INSERT INTO mobile_devices (tenant_id, owner_id, device_id, environment, app_id, platform, token_ciphertext, token_hash) VALUES (1, 'u1', 'd-ent', 'dev', 'enterprise:acme', 'ios', 'cipher', 'hash')`).Error)
+
+	enterprise := &spyConfiguredRoute{configured: true}
+	routing := NewAppRoutingNotificationProvider(
+		NewDisabledNotificationProvider(),
+		map[string]NotificationProvider{"enterprise:acme": enterprise},
+	)
+	require.True(t, routing.Configured(), "a live enterprise route makes the aggregate configured even with a disabled fallback")
+
+	worker := NewNotificationDeliveryWorkerWithHealth(store, routing, "mixed-worker", nil, health, "mobile")
+	// 第一轮：official 通道已被显式禁用的部署以全局 pause 开始（deployment policy）。
+	require.NoError(t, health.Pause(ctx, "mobile", "mobile_notification_provider_disabled"))
+	require.NoError(t, worker.RunOnce(ctx, 10))
+	require.GreaterOrEqual(t, health.recoverCalls, 1, "a live route must lift the durable pause instead of starving")
+	require.Equal(t, 1, enterprise.calls, "the configured enterprise lane must still deliver after the fallback triggered the global pause")
+	var row struct{ State string }
+	require.NoError(t, db.Table("mobile_notification_intents").Select("state").Take(&row).Error)
+	require.Equal(t, "sent", row.State, "the enterprise intent is delivered, not dropped")
+}
+
+// TestAppRoutingConfiguredRequiresAnyLiveChannel 保持纯禁用部署的既有语义：
+// fallback 与全部 route 都未配置时，聚合 Configured() 必须仍为 false，
+// 「paused 且未配置 → 不空转」的 durable 跳过不被破坏。
+func TestAppRoutingConfiguredRequiresAnyLiveChannel(t *testing.T) {
+	allDisabled := NewAppRoutingNotificationProvider(
+		NewDisabledNotificationProvider(),
+		map[string]NotificationProvider{"enterprise:acme": &spyConfiguredRoute{configured: false}},
+	)
+	require.False(t, allDisabled.Configured(), "no live channel means the aggregate stays unconfigured")
+	require.False(t, NewAppRoutingNotificationProvider(nil, nil).Configured(), "nil fallback without routes stays unconfigured")
+}
+

@@ -753,12 +753,34 @@ func (p *AppRoutingNotificationProvider) SendReceipt(ctx context.Context, d repo
 	return pushnotification.PushReceipt{}, err
 }
 
+// Configured reports whether the aggregate has at least one deliverable lane.
+// It is an OR over the fallback and every registered route: the durable worker
+// treats "paused && !Configured()" as a skip-everything gate before the claim,
+// so an aggregate that only mirrored the fallback would let one disabled lane
+// (for example the official lane under MOBILE_NOTIFICATION_PROVIDER=disabled)
+// starve a live enterprise APNs/FCM route forever. A single lane's failures
+// still pause the shared worker key (pre-existing design); this only keeps the
+// recovery gate honest about lanes that are alive.
 func (p *AppRoutingNotificationProvider) Configured() bool {
-	if p == nil || p.fallback == nil {
+	if p == nil {
 		return false
 	}
-	if configured, ok := p.fallback.(NotificationProviderConfiguration); ok {
-		return configured.Configured()
+	configured := func(provider NotificationProvider) bool {
+		if provider == nil {
+			return false
+		}
+		if configured, ok := provider.(NotificationProviderConfiguration); ok {
+			return configured.Configured()
+		}
+		return true
 	}
-	return true
+	if configured(p.fallback) {
+		return true
+	}
+	for _, route := range p.routes {
+		if configured(route) {
+			return true
+		}
+	}
+	return false
 }
