@@ -68,3 +68,79 @@ test('checkout renders frozen quote line items and submits a purchase', async ()
   assert.match(payLink?.textContent ?? '', /前往支付|支付/);
   await act(async () => { root?.unmount(); });
 });
+
+// R1-V01：purchase.order 缺席（后端故障/未配置的闭合应答）时，页面不得发起
+// 空 ID 的 getOrder 请求，而应渲染闭合 reason 的失败文案。
+test('purchase without an order shows the closed failure message and never queries an empty order id', async () => {
+  const getOrderCalls: string[] = [];
+  const client = {
+    commercial: {
+      quote: async () => quote,
+      purchase: async () => ({ state: 'absent', reason: 'unreachable' }),
+      getOrder: async (id: string) => { getOrderCalls.push(id); return order; },
+    },
+  };
+  const { CheckoutPage } = await import('./CheckoutPage.tsx');
+  const { createScopeController } = await import('@weknora/domain/scope');
+  const scopeController = createScopeController({ origin: '', userId: 'user-1', tenantId: '41' });
+  let root: Root | undefined;
+  await act(async () => {
+    root = createRoot(document.body.appendChild(document.createElement('div')));
+    root.render(React.createElement(CheckoutPage, { client: client as never, scopeController, orderId: '' }));
+  });
+  await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+  assert.deepEqual(getOrderCalls, [], 'no getOrder may be issued when the purchase carries no order');
+  assert.match(document.body.textContent ?? '', /支付平台暂时不可达/);
+  assert.match(document.body.textContent ?? '', /重试/);
+  await act(async () => { root?.unmount(); });
+});
+
+// R1-V12：已支付的订单不再显示「待付款（权益未开通）」标签（付款后回访/轮询
+// 更新后不得误导重复支付）。
+test('a paid order no longer shows the awaiting-payment label', async () => {
+  const paidOrder = { ...order, payment: 'paid' as const };
+  const client = {
+    commercial: {
+      quote: async () => quote,
+      purchase: async () => ({ state: 'awaiting_payment', order: paidOrder, plan_key: 'pro', plan_version: 1, amount_fen: '9900', currency: 'CNY' }),
+      getOrder: async () => paidOrder,
+    },
+  };
+  const { CheckoutPage } = await import('./CheckoutPage.tsx');
+  const { createScopeController } = await import('@weknora/domain/scope');
+  const scopeController = createScopeController({ origin: '', userId: 'user-1', tenantId: '51' });
+  let root: Root | undefined;
+  await act(async () => {
+    root = createRoot(document.body.appendChild(document.createElement('div')));
+    root.render(React.createElement(CheckoutPage, { client: client as never, scopeController, orderId: '' }));
+  });
+  await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+  const text = document.body.textContent ?? '';
+  assert.doesNotMatch(text, /待付款（权益未开通）/, 'paid order must not show the awaiting-payment label');
+  assert.match(text, /已付款，权益处理中/);
+  await act(async () => { root?.unmount(); });
+});
+
+// R1-V13：危险 scheme 的 checkout_url 一律不渲染为链接。
+test('a javascript-scheme checkout_url is never rendered as a link', async () => {
+  const evilOrder = { ...order, checkout_url: 'javascript:alert(1)' };
+  const client = {
+    commercial: {
+      quote: async () => quote,
+      purchase: async () => ({ state: 'awaiting_payment', order: evilOrder, plan_key: 'pro', plan_version: 1, amount_fen: '9900', currency: 'CNY' }),
+      getOrder: async () => evilOrder,
+    },
+  };
+  const { CheckoutPage } = await import('./CheckoutPage.tsx');
+  const { createScopeController } = await import('@weknora/domain/scope');
+  const scopeController = createScopeController({ origin: '', userId: 'user-1', tenantId: '61' });
+  let root: Root | undefined;
+  await act(async () => {
+    root = createRoot(document.body.appendChild(document.createElement('div')));
+    root.render(React.createElement(CheckoutPage, { client: client as never, scopeController, orderId: '' }));
+  });
+  await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+  assert.equal(document.querySelector('a[href="javascript:alert(1)"]'), null, 'dangerous scheme must not render');
+  assert.equal(document.querySelector('a'), null, 'no payment link at all for an unsafe checkout_url');
+  await act(async () => { root?.unmount(); });
+});

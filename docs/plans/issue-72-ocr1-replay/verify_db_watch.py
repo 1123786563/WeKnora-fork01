@@ -12,8 +12,11 @@ no db-watch-verify-*.tsv under runs/ — that directory is a git-ignored
 runtime artifact, so a fresh clone has none until db_watch.sh is replayed).
 
 ocr-1 replay copy: the fixed script, executed against the
-docs/plans/issue-72-ocr1-replay/ evidence directory (t02-decline.json
-boundary) and the runs/ observer TSV of the replay.
+docs/plans/issue-72-ocr1-replay/ evidence directory. Data source is
+ARCHIVED-FIRST: this directory's own verify-db-watch-samples.tsv (recorded
+with the ocr-1 replay) is the primary input; the runs/ observer TSV is only
+a fallback when no archive exists (R1-V23: the previous note here wrongly
+claimed a runs/-TSV source and carried an "(ocr-2)" copy marker).
 """
 import glob
 import json
@@ -23,8 +26,8 @@ from pathlib import Path
 
 EVID = Path(__file__).resolve().parent
 RUNS = Path(__file__).resolve().parents[3] / "deploy/lago-lab/payment-activation/runs"
-# Prefer THIS evidence directory's archived copy (ocr-2): replayed observer
-# TSVs land in the repo-level runs/ dir and db_watch.sh writes a fresh
+# Prefer THIS evidence directory's archived copy: replayed observer TSVs
+# land in the repo-level runs/ dir and db_watch.sh writes a fresh
 # timestamped file per invocation, so "newest TSV under runs/" can silently
 # pair a foreign run's samples with this directory's decline boundary (and
 # the pick was never printed). Fall back to the newest runs/ TSV only when
@@ -62,8 +65,16 @@ def midrun(ln):
 
 
 def max_succeeded():
+    # (R1-V10) The exactly-once invariant must hold INSIDE the commercial
+    # window: the payments sample is a whole-DB aggregate (db_watch.sh
+    # groups payments by status only — no run key), so the only isolation
+    # available here is the mid-run boundary. Tail samples (decline
+    # endgame + teardown deletions) never inject a foreign succeeded count
+    # into this assertion.
     best = 0
     for ln in lines:
+        if not midrun(ln):
+            continue
         m = re.search(r"payments\[([^\]]*)\]", ln)
         if not m:
             continue
@@ -92,6 +103,19 @@ sub_b = rows_for("-sub-b")
 sub_c = rows_for("-sub-c")
 sub_a = rows_for("-sub-a")
 
+# (R1-V10) The rows_for() assertions are run-keyed by run_prefix, but the
+# payments aggregate is not keyable at all. On the runs/ FALLBACK the TSV
+# may be a different (or multi-) run's observer output, so the
+# max_succeeded()==1 exactly-once invariant is simply not decidable from it:
+# degrade loudly to MISSING-EVIDENCE instead of risking a false CHECK.
+if archived.exists() and path != str(archived):
+    print("DB-WATCH: WARNING runs/-fallback TSV in use — payments are a "
+          "whole-DB aggregate and cannot be keyed to this run, so the "
+          "exactly-once max_succeeded assertion is not decidable")
+    sys.exit(2)
+
+midrun_lines = sum(1 for ln in lines if midrun(ln))
+
 # sub-b reached active (1) in the commercial window and never regressed there
 seen_active = False
 sub_b_regress = False
@@ -108,7 +132,10 @@ ok_states_a = len(sub_a) > 0 and set(sub_a) <= {4}
 sub_c_seen = len(sub_c) > 0
 sub_c_no_active = 1 not in sub_c           # declined charge never activates
 
-print(f"samples: {len(lines)} (mid-run before {boundary}Z)  max_succeeded_payments: {max_succeeded()}")
+# (R1-V22) The count matches its label: mid-run samples are printed first,
+# the total in parentheses — the old label showed len(lines) (all rows,
+# including the post-boundary tail) against a mid-run label.
+print(f"samples: {midrun_lines}/{len(lines)} mid-run before {boundary}Z  max_succeeded_payments: {max_succeeded()}")
 print(f"sub-a states: {sorted(set(sub_a))} (all incomplete=4: {ok_states_a})")
 print(f"sub-b states: {sorted(set(sub_b))} reached_active: {seen_active} regressed: {sub_b_regress}")
 print(f"sub-c states: {sorted(set(sub_c))} seen: {sub_c_seen} never_active: {sub_c_no_active}")

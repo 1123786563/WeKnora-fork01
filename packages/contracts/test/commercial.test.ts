@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { parseCommercialSummary, parseCommercialUsageList, parseOrderView, parsePurchaseView, parseQuoteView, parseRefundView } from '../src/commercial.ts';
+import { isSafeCheckoutUrl, parseCommercialSummary, parseCommercialUsageList, parseOrderView, parsePurchaseView, parseQuoteView, parseRefundView } from '../src/commercial.ts';
 
 const order = { id: 'o1', payment: 'paid', fulfillment: 'pending', amount_fen: '100', currency: 'CNY' };
 
@@ -315,4 +315,36 @@ test('parseQuoteView passes through frozen line items', () => {
     line_items: [{ kind: 'subscription_fee', name: 'Pro', amount_fen: '9900' }] });
   assert.equal(q.line_items?.[0]?.kind, 'subscription_fee');
   assert.equal(q.features?.advanced_models, true);
+});
+
+// R1-V13：checkout_url 源自外部支付渠道响应，一路透传到渲染层。危险 scheme
+// （javascript:/data: 等）在解析层即被丢弃——订单本身仍有效，但不会以链接
+// 形式进入前端；安全 scheme（http/https 与已知渠道深链）原样保留。
+test('parseOrderView keeps a safe checkout_url and drops a dangerous one', () => {
+  for (const url of [
+    'https://pay.example/qr',
+    'http://pay.example/qr',
+    'weixin://wxpay/bizpayurl?pr=issue81flow',
+    'alipayqr://platformapi/startapp?appId=20000067',
+    'alipays://platformapi/startapp?appId=20000067',
+  ]) {
+    const view = parseOrderView({ ...order, checkout_url: url });
+    assert.equal(view.checkout_url, url, url);
+  }
+  for (const url of ['javascript:alert(1)', 'data:text/html,<script>', 'vbscript:x', 'file:///etc/passwd', 'unknown://x']) {
+    const view = parseOrderView({ ...order, checkout_url: url }) as Record<string, unknown>;
+    assert.equal(view.checkout_url, undefined, url);
+  }
+  // 缺失/空值保持合法（订单无支付入口是正常分支）。
+  assert.equal((parseOrderView(order) as Record<string, unknown>).checkout_url, undefined);
+});
+
+test('isSafeCheckoutUrl whitelists http/https and known channel deep links only', () => {
+  assert.equal(isSafeCheckoutUrl('https://api.mch.weixin.qq.com'), true);
+  assert.equal(isSafeCheckoutUrl('weixin://wxpay/bizpayurl?pr=x'), true);
+  assert.equal(isSafeCheckoutUrl('alipayqr://platformapi/startapp'), true);
+  assert.equal(isSafeCheckoutUrl('javascript:alert(1)'), false);
+  assert.equal(isSafeCheckoutUrl('data:text/html,x'), false);
+  assert.equal(isSafeCheckoutUrl('weixin://evil/notwxpay'), false);
+  assert.equal(isSafeCheckoutUrl(''), false);
 });

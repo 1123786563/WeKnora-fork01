@@ -433,3 +433,167 @@ OCR2-01 的 run_id 前缀收紧兜底）→ `lab.sh up`（v1.53.0 全 healthy）
 ## 提交
 
 - 提交 message 前缀：`issue-72(ocr-3):`
+
+---
+
+# Issue #72 — Issue #81 OCR 第 1 轮修复记录（ocr-81-1）
+
+- 日期：2026-09-24
+- worktree：`.worktrees/issue72-lago`（分支 `codex/issue-72-lago`）
+- 修复基线：`11fb134ae`（issue-72: ocr issue-81 round 1）
+- 修复人：修复员（dynamic workflow subagent）
+- 范围：Issue #81 增量 OCR 有效 findings R1-V01 … R1-V23（23 项），23 项全部修复，0 项 deferred。
+
+## 总则
+
+- 每个行为级修复补了回归测试，全部在修复版代码上通过（命令与结果见「测试与重放证据」）。
+- 安全约束核对（本批涉及面）：出站请求仅 http/https 且先校验 host（R1-V08/V09 强化了该口径：
+  渠道出站统一接 `secutils.ValidateURLForSSRF` + `SSRF_WHITELIST(_EXTRA)` 豁免、provider 客户端
+  每一跳重定向复检、inet_aton 简写形态按 RFC 1123 TLD 规则拒绝）；新增 SQL 均为参数绑定
+  （`CurrentPurchaseOrder`、测试插入语句）；本轮未引入任何凭据字面量（测试用 `testAPIKey`
+  既有 secret-for-test 常量与显式 `127.0.0.1` 白名单豁免，非凭据）。
+
+## 逐条处置
+
+### R1-V01（high）purchase.order 缺席时空 ID getOrder 回退 — 已修复
+- `CheckoutPage.tsx:83` 不再 `purchase.order ?? getOrder('')`；缺单时按闭合 state/reason 渲染
+  `purchaseErrorMessage`（新增导出函数，reason 闭合令牌 → 中文文案），不再发起必然 404 的
+  `/orders/` 请求。回归：`CheckoutPage.test.tsx`（缺单 → getOrder 调用数 0 + 失败文案）。
+
+### R1-V02（high）PurchaseStatus 取随机 rows[0] — 已修复
+- 仓储新增 `CurrentPurchaseOrder`（`repository/commercial/order.go`）：`kind='purchase'` 且
+  金额/币种与权威冻结面一致（全参数绑定），pending 优先、其余按确定性 id 升序；absent 购买
+  不挂接任何订单。回归：`TestPurchaseStatusAttachesOnlyTheCurrentPurchaseOrder`（干扰行：
+  旧金额购买单、upgrade 单、同金额已付单 + absent 租户）。
+
+### R1-V03（high）active/canceled 放行新开渠道订单 — 已修复
+- 第 8 步仅当 `p.State==awaiting_payment` 才 `CreateOrder`（哨兵 `ErrPurchaseNotAwaiting` →
+  handler 409）；既有订单重放与竞态胜者回读保持放行（付款后 POST 重演返回已付订单）。
+  回归：`TestPurchaseRefusesNewChannelOrderWhenNotAwaiting`（激活后新报价拒开新单、恰好
+  1 订单/1 渠道请求、同 quote 重放返回原订单）。
+
+### R1-V04（medium）故障期 POST 201+absent — 已修复
+- 三条同根因路径（platform==nil、账户 ensure pending、SubmitCommand/ReadSnapshot 失败）统一
+  改答哨兵 `ErrPurchaseUnavailable`（多重 %w 携带域哨兵）；handler 映射 503 + 闭合 reason
+  （`PurchaseUnavailableReason`）；GET `PurchaseStatus` 保持状态视图。回归：
+  `TestPurchasePlatformFailureAnswersUnavailable`、`TestPurchaseNilPlatformAnswersUnavailable`、
+  `TestPurchaseHandlerAnswersUnavailableOnPlatformFailure`。
+
+### R1-V05（medium）既有客户绑定覆写显示名 — 已修复
+- `customerProviderBound` 改为返回 (exists, bound)；已存在但未绑定的客户改走
+  `PUT /api/v1/customers/{external_id}` 仅更新 billing_configuration，绝不 POST 覆写 name。
+  测试 stub 增加 PUT 分支（只合并 billing_configuration）。回归：
+  `TestLagoBindingUpdateOnExistingCustomerKeepsDisplayName`。
+
+### R1-V06（medium）占位前缀绑定空转 20s PM 轮询 — 已修复
+- `deriveProviderCustomerID` 返回来源；placeholder 来源跳过 `waitForPaymentMethodSync`
+  （让 gated create 以其自身 422 no_default_payment_method 快速失败）。回归：
+  `TestLagoPlaceholderBindingSkipsPaymentMethodSyncWait`（stub 置 PM 永不导入，提交仍即时成功）。
+
+### R1-V07（medium）attach 脱离调用方截止链 — 已修复
+- `providerAttachDefaultPaymentMethod` 签名接收 ctx，`WithTimeout(ctx, outboundProviderTimeout)`
+  取调用方截止与自身超时较短者；调用点（`providerCreateCustomer`）传入 ctx。
+
+### R1-V08（medium）出站校验两处绕过 — 已修复
+- 新增 `providerOutboundClient`：`CheckRedirect` 对每个跳转目标复跑 `validateOutboundHost`
+  （且上限 10 跳）；`validateOutboundHost` 对 ParseIP 失败的 host 增加 `isPlausibleHostname`
+  形状校验（RFC 1123：标签字符集 + 顶级标签必须字母开头），`127.1`/`2130706433`/`0x7f000001`/
+  `0177.0.0.1`/`3232235521` 全部拒绝。回归：`TestValidateOutboundHost` 扩充 +
+  `TestProviderOutboundClientRejectsInternalRedirect`。
+
+### R1-V09（medium）微信渠道出站无 SSRF 校验 — 已修复
+- `WechatProvider.do`（apiBase）与 `AlipayProvider.call`（gateway）每次出站前接
+  `secutils.ValidateURLForSSRF`（fail-closed ErrNotConfigured）；两个渠道 client 的
+  `CheckRedirect` 逐跳复检；环回 stub 流程现依赖显式 `SSRF_WHITELIST(_EXTRA)=127.0.0.1`
+  豁免。`wechat_pay_stub.py` docstring 记录该豁免与重放要求。回归：
+  `TestWechatDoRejectsInternalEgressWithoutWhitelist`、`TestWechatDoAllowsWhitelistedLoopbackStub`；
+  alipay 网关 fixture 统一走白名单豁免（其 4 个既有出站测试照常通过）。
+
+### R1-V10（medium）max_succeeded 与 rows_for 隔离级别不一致 — 已修复（四副本）
+- 四份 `verify_db_watch.py`（evidence-74 + ocr1/2/3）的 `max_succeeded()` 补上 midrun 边界
+  过滤；走 runs/ 回退 TSV 时对不可按 run 键控的 payments 全局聚合显式告警并 exit 2
+  （MISSING-EVIDENCE）。回归：四副本重放（归档主路径）全部 PASS（见证据）。
+
+### R1-V11（medium）延迟复检窗口与漂移时间尺度不匹配 — 已修复
+- `RunContext` 新增独立旋钮 `duplicates_settle_delay`（默认 120s，分钟级）；
+  deferred re-check 的 `time.sleep` 改用该旋钮；`run_lab.py` 新增
+  `--duplicates-settle-delay`（默认 120.0）并透传。稳定性窗口参数不再被复用。
+  回归：`run_lab.py --help` 显示新旋钮；`py_compile` 通过。
+
+### R1-V12（medium）待付款标签无条件渲染 — 已修复
+- `CheckoutPage.tsx` 待付款标签仅当 `order.payment==='pending'` 渲染；已支付显示
+  `orderMessage` 的已付文案。回归：`a paid order no longer shows the awaiting-payment label`。
+
+### R1-V13（medium）checkout_url 无 scheme 校验 — 已修复（双层）
+- `packages/contracts` 新增 `isSafeCheckoutUrl`（http/https + `weixin://wxpay/` +
+  `alipayqr/alipays://platformapi/` 白名单）并导出；`parseOrderView` 对不安全 checkout_url
+  直接丢弃该字段（订单仍有效）；CheckoutPage 渲染层再校验一次（第二道防线）。
+  回归：contracts `commercial.test.ts` 两组 + CheckoutPage javascript: 渲染用例。
+
+### R1-V14（medium）Purchase handler 缺 CheckoutError→202 — 已修复
+- 镜像 POST /orders：`err==nil && view.Order.CheckoutError!=""` → 202（携带 checkout_error）。
+  回归：`TestPurchaseHandlerAnswersAcceptedWhenCheckoutFailed`。
+
+### R1-V15（low）BillingPage effect 不重置 purchase — 已修复
+- effect 开头补 `setPurchase(null)`，租户切换/Reload 不再短暂显示上一租户的待付款行。
+
+### R1-V16（low）闭合令牌被包成新 error 再匹配 — 已修复
+- `purchase.go` 账户未链接分支不再 `platformReason(errors.New(acct.Reason))`；token 经
+  `platformSentinel`（platformReason 的逆映射）进 ErrPurchaseUnavailable 链原样透传
+  （与本条 fixHint"直接透传"等效且兼容 R1-V04 的 503 语义）。
+
+### R1-V17（low）actor/display name 硬编码 — 已修复
+- Purchase handler：actor 取 `commercialUserID(c)`；`Purchase` 服务签名增加 displayName，
+  handler 以 `tenantDisplayName(tenantID)` 传入（purchase.go:125 的 "space" 消除）。
+  回归：`TestPurchaseHandlerCarriesRealActorAndDisplayName`（fake 客户记录面断言
+  DisplayName == "WeKnora Space 50"；actor 断言受 fake 记录面所限，以 handler 调用点
+  代码为准——`fake.Commands()` 仅记录 publish 类命令，ensure_customer 命令无观察面）。
+
+### R1-V18（low）定义反序列化失败误报 legacy-snapshot — 已修复
+- `ensureNoCharges` 反序列化失败改答新哨兵 `ErrPurchasePlanInvalid` → handler 500
+  （数据问题，非"请重新报价"）。回归：`TestPurchaseCorruptPlanDefinitionIsNotALegacyQuote`
+  （发布不可变触发器下以插入损坏行+报价快照指向构造，断言不落入 ErrQuoteLegacySnapshot）。
+
+### R1-V19（low）嵌套 <p> 无效 HTML — 已修复
+- 去掉包裹 Status 的外层 <p>（R1-V12 重构时一并消除）。
+
+### R1-V20（low）attach 两处外呼 5xx 折叠为 InvalidResponse — 已修复
+- `providerAttachDefaultPaymentMethod` 两次外呼先判 `status>=500 → ErrPlatformUnreachable`，
+  其余非 2xx/解析失败才归 ErrPlatformInvalidResponse（与 providerCreateCustomer 分类一致）。
+
+### R1-V21（low）Purchase handler 缺 ErrQuoteAlreadyUsed→409 — 已修复
+- switch 补 `repocommercial.ErrQuoteAlreadyUsed → 409 "quote already used"`，与 /orders 对齐。
+  回归：`TestPurchaseHandlerAnswersConflictOnQuoteAlreadyUsed`。
+
+### R1-V22（low）诊断行样本计数与标签语义不符 — 已修复（四副本）
+- 打印改为 `samples: <midrun>/<total> mid-run before <boundary>Z`；evidence-74 重放输出
+  `221/272`，与评审者 awk 实测一致。
+
+### R1-V23（low）回放脚本来源/副本描述失实 — 已修复（三处）
+- ocr1 `verify_db_watch.py`：删除 "(ocr-2)" 复制残留，docstring 如实描述归档优先、
+  runs/ 仅为回退；ocr2/ocr3 `verify_ac_assertions.py`：删除 "unmodified" 不实声明，
+  docstring 逐条列明相对上一副本新增的 `# ocr-2:`/`# ocr-3:` 断言标注及所在行。
+
+## 测试与重放证据（全部在本轮实际执行）
+
+| 检查 | 命令 | 结果 |
+|---|---|---|
+| commercial 全部 Go 包 | `go test ./internal/modules/commercial/... -count=1` | 7 包全 ok |
+| handler 全部测试 | `go test ./internal/handler/ -count=1` | ok |
+| payment 全部测试 | `go test ./internal/modules/commercial/payment/ -count=1` | ok |
+| 全仓编译 | `go build ./internal/...` | 通过 |
+| contracts 测试 | `npx tsx --test packages/contracts/test/commercial.test.ts` | 20/20 pass |
+| web 全量测试 | `pnpm --filter @weknora/web test` | 2297 tests / 2259 pass / 38 fail；38 个失败与基线 `git stash` 前后对比**完全同集合**（knowledge 域预存测试间干扰，diff 为空），commercial 相关 0 失败 |
+| web typecheck | `pnpm run typecheck:web` | commercial/contracts 相关错误 0；其余为预存（mermaid.ts/DevMarkdownPage/PlatformShell） |
+| DB-WATCH 重放 ×4 | `python3 docs/plans/<dir>/verify_db_watch.py` | evidence-74/ocr1/ocr2/ocr3 全部 `DB-WATCH: PASS`（exit 0），221/272、478/516、176/197、268/326 mid-run，max_succeeded=1 |
+| AC 断言重放 ×3 | `python3 docs/plans/<dir>/verify_ac_assertions.py` | ocr1/ocr2/ocr3 全部 ALL PASS（exit 0） |
+| 微信 stub 重放 | `python3 wechat_pay_stub.py` + 对 127.0.0.1:8291 真实 POST/GET | code_url 与 NOTPAY 查询响应正常（8291 端口已有 flow 遗留 stub 实例存活并正确应答） |
+
+**全链路真实流程（Lago+Stripe+浏览器）未重放**：8091 后端为旧构建进程（属其他会话，不可
+重启）、`WEKNORA_COMMERCIAL_STRIPE_API_KEY` 已不在环境；全链路行为等价性由 service/handler/
+adapter 三层 Go 回归测试 + 前端 jsdom 渲染测试覆盖，`wechat_pay_stub.py` docstring 已记录
+重放全链路所需的 `SSRF_WHITELIST_EXTRA=127.0.0.1` 新前置条件。
+
+## 提交
+
+- 提交 message 前缀：`issue-72(ocr-81-1):`

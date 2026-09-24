@@ -272,6 +272,7 @@ def run_experiment(args):
         poll_timeout=args.poll_timeout,
         stability_rounds=args.stability_rounds,
         stability_delay=args.stability_delay,
+        duplicates_settle_delay=args.duplicates_settle_delay,
     )
 
     order = PHASE_SEQUENCE
@@ -371,6 +372,13 @@ def main(argv=None):
     parser.add_argument("--poll-timeout", type=float, default=300.0)
     parser.add_argument("--stability-rounds", type=int, default=3)
     parser.add_argument("--stability-delay", type=float, default=5.0)
+    # (R1-V11) Own knob for the deferred duplicate-registration re-check:
+    # the delayed-update drift it guards against lands MINUTES after the
+    # 200, so the default is 120s — never reuse the seconds-scale
+    # stability window for this wait.
+    parser.add_argument("--duplicates-settle-delay", type=float, default=120.0,
+                        help="seconds to wait before the deferred re-check of "
+                             "the duplicate-registration end state (default: 120)")
     args = parser.parse_args(argv)
     code, _timeline = run_experiment(args)
     return code

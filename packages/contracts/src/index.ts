@@ -170,7 +170,7 @@ export interface KnowledgeDocumentListResponse {
 }
 
 export type { OrderView, CommercialSummary, CommercialSubscription, CommercialUsageRow, QuoteView, QuoteInput, CreateOrderInput, RefundInput, RefundView, PurchaseLineItemView, PurchaseView } from './commercial.ts';
-export { parseOrderView, parseCommercialSummary, parseCommercialUsageList, parseQuoteView, parseRefundView, parsePurchaseView } from './commercial.ts';
+export { parseOrderView, parseCommercialSummary, parseCommercialUsageList, parseQuoteView, parseRefundView, parsePurchaseView, isSafeCheckoutUrl } from './commercial.ts';
 export type { ConnectionView, InstallationView, SyncBindingView, SyncStatusView, ConnectionState, InstallationState, ConnectionKind, SyncPauseReason, CreateInstallationInput, UpgradeInstallationInput, CreateConnectionInput } from './appconnector.ts';
 export { parseConnectionView, parseInstallationView, parseSyncStatusView } from './appconnector.ts';
 export type { ActionView, ActionState, ActionDetail, ActionRisk, PrepareActionInput, ApproveActionInput, ExtendTaskBudgetInput, TaskBudgetExtensionResult } from './appconnector.ts';

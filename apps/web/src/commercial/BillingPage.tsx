@@ -70,6 +70,9 @@ export function BillingPage({ client, scopeController }: BillingPageProps) {
     let active = true;
     setState({ status: 'error', message: 'Loading…' });
     setUsageState({ status: 'error', message: 'Loading…' });
+    // R1-V15：切换租户/重载时同步清掉上一租户的购买状态，避免 summary 先到、
+    // purchaseStatus 后到期间套餐行短暂显示错误租户的「待付款」。
+    setPurchase(null);
     void loadCommercialSummary(client.commercial, scope.signal).then((next) => {
       if (active && scopeController.isCurrent(scope.scope)) setState(next);
     });

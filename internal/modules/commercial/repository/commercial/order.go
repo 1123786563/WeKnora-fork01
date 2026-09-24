@@ -218,6 +218,36 @@ func (s *OrderStore) ListOrdersByTenant(ctx context.Context, tenantID uint64) ([
 	return rows, nil
 }
 
+// CurrentPurchaseOrder returns the order row that belongs to the CURRENT
+// purchase (#81): purchase-kind orders at the held purchase's frozen price
+// face (amount+currency), an unfinished (pending) checkout preferred, ties
+// broken by the deterministic id order. Order ids are "ord_"+random hex, so
+// ListOrdersByTenant's `id DESC` is NOT a recency order — a caller must
+// never project its rows[0] as the current purchase (it may be any
+// historical purchase or an upgrade order). All bounds are parameter-bound;
+// no matching order reports ErrOrderNotFound.
+func (s *OrderStore) CurrentPurchaseOrder(ctx context.Context, tenantID uint64, amountFen int64, currency string) (OrderRow, error) {
+	if tenantID == 0 {
+		return OrderRow{}, ErrOrderNotFound
+	}
+	var rows []OrderRow
+	if err := s.db.WithContext(ctx).
+		Where("tenant_id = ? AND kind = ? AND amount_fen = ? AND currency = ?",
+			tenantID, domain.OrderKindPurchase, amountFen, currency).
+		Order("id ASC").Find(&rows).Error; err != nil {
+		return OrderRow{}, err
+	}
+	for _, row := range rows {
+		if row.State == domain.OrderStatePending {
+			return row, nil
+		}
+	}
+	if len(rows) > 0 {
+		return rows[0], nil
+	}
+	return OrderRow{}, ErrOrderNotFound
+}
+
 // FirstPendingAttempt returns the oldest still-pending attempt of an order —
 // the identifier payment recovery re-queries the channel with. An order with
 // no pending attempt reports ErrPaymentAttemptNotFound.

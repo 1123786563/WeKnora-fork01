@@ -14,6 +14,17 @@ Endpoints implemented (only what the adapter calls):
 Loopback only (binds 127.0.0.1). No real payment semantics: the stub never
 marks orders paid, so product states stay in the awaiting-payment window
 that Issue #81's user flow requires.
+
+Egress note (R1-V09): since the channel egress is validated by the shared
+SSRF policy (secutils.ValidateURLForSSRF in WechatProvider.do), pointing
+WEKNORA_WECHAT_API_BASE_URL at this 127.0.0.1 stub now REQUIRES an explicit,
+auditable server-side exemption, e.g.
+
+    SSRF_WHITELIST_EXTRA=127.0.0.1
+
+Replaying the #81 evidence flow against this stub must export that variable
+before starting the WeKnora backend; without it the purchase answers 503
+payment_provider_unconfigured (the SSRF gate refusing the loopback base).
 """
 import json
 import secrets

@@ -34,7 +34,23 @@ export function parseOrderView(value:unknown):OrderView {
  if(typeof v.id!=='string'||typeof v.amount_fen!=='string'||!/^\d+$/.test(v.amount_fen)||
     v.currency!=='CNY'||!['pending','paid','closed'].includes(String(v.payment))||
     !['pending','processing','fulfilled','attention'].includes(String(v.fulfillment))) throw new Error('invalid order');
+ // R1-V13：checkout_url 源自外部支付渠道响应，一路透传到渲染层。危险 scheme
+ // （javascript:/data: 等）不能进入前端——不安全的值在此被丢弃（订单本身仍
+ // 有效），渲染层还会用 isSafeCheckoutUrl 做第二道防线。
+ if(v.checkout_url!==undefined&&v.checkout_url!==null&&v.checkout_url!==''&&
+    !isSafeCheckoutUrl(String(v.checkout_url))) {
+  const out={...v}; delete out.checkout_url;
+  return out as unknown as OrderView;
+ }
  return v as unknown as OrderView;
+}
+
+// R1-V13：checkout_url 的渲染白名单——http/https 与已知渠道深链
+// （微信 Native code_url 的 weixin://wxpay/、支付宝的 alipayqr/alipays）。
+// 其余一律不安全（XSS/钓鱼跳转入口）。
+export function isSafeCheckoutUrl(href:string):boolean {
+ const SAFE = /^(https?:\/\/|weixin:\/\/wxpay\/|alipayqr:\/\/platformapi\/|alipays:\/\/platformapi\/)/i;
+ return SAFE.test(href);
 }
 
 function digitString(value: unknown, field: string, label: string): string {

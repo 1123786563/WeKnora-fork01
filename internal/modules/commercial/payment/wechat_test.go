@@ -12,12 +12,48 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/modules/commercial"
+	secutils "github.com/Tencent/WeKnora/internal/utils"
 )
+
+// (R1-V09) 渠道出站必须经过共享 SSRF 校验：环回/私有/保留地址一律拒绝
+// （fail-closed ErrNotConfigured），除非运维显式配置 SSRF_WHITELIST(_EXTRA)
+// 豁免——flow-evidence-81 的本环回 stub 流程即依赖该可审计豁免。
+func TestWechatDoRejectsInternalEgressWithoutWhitelist(t *testing.T) {
+	secutils.ResetSSRFWhitelistForTest()
+	t.Cleanup(secutils.ResetSSRFWhitelistForTest)
+	p := newWechatProvider(WechatConfig{AppID: "wx-test-app", MchID: "1900000001",
+		APIBaseURL: "http://127.0.0.1:8291"}, nil, nil)
+	err := p.do(context.Background(), http.MethodPost, "/v3/pay/transactions/native", []byte("{}"), nil)
+	if !errors.Is(err, ErrNotConfigured) || !strings.Contains(err.Error(), "SSRF") {
+		t.Fatalf("loopback egress must fail closed with the SSRF gate, got %v", err)
+	}
+}
+
+func TestWechatDoAllowsWhitelistedLoopbackStub(t *testing.T) {
+	t.Setenv("SSRF_WHITELIST", "127.0.0.1")
+	secutils.ResetSSRFWhitelistForTest()
+	t.Cleanup(secutils.ResetSSRFWhitelistForTest)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"code_url":"weixin://wxpay/bizpayurl?pr=x"}`))
+	}))
+	t.Cleanup(srv.Close)
+	p := newWechatProvider(WechatConfig{AppID: "wx-test-app", MchID: "1900000001",
+		APIBaseURL: srv.URL}, nil, nil)
+	err := p.do(context.Background(), http.MethodPost, "/v3/pay/transactions/native", []byte("{}"), nil)
+	// 白名单豁免后必须通过 SSRF 门（此后失败只能发生在签名授权环节——测试
+	// provider 无商户密钥材料），证明豁免通道可用。
+	if err != nil && strings.Contains(err.Error(), "SSRF") {
+		t.Fatalf("whitelisted loopback must pass the SSRF gate, got %v", err)
+	}
+}
 
 func TestWechatRejectsChangedCallbackBody(t *testing.T) {
 	key, err := rsa.GenerateKey(rand.Reader, 2048)

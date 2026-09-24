@@ -77,6 +77,7 @@ class RunContext:
                  stripe_base_url="https://api.stripe.com",
                  poll_interval=2.0, poll_timeout=180.0,
                  stability_rounds=3, stability_delay=3.0,
+                 duplicates_settle_delay=120.0,
                  request_timeout=30.0):
         self.run_id = run_id or str(uuid.uuid4())
         self.prefix = prefix or f"weknora-t02-{self.run_id}"
@@ -94,6 +95,13 @@ class RunContext:
         self.poll_timeout = poll_timeout
         self.stability_rounds = stability_rounds
         self.stability_delay = stability_delay
+        # (R1-V11) The deferred re-check owns its own, MINUTE-scale knob: the
+        # delayed-update drift it guards against (a 200-answered duplicate
+        # registration terminating the subscription minutes later) happens
+        # on a far larger time scale than the 3x3s/3x5s stability window,
+        # which only smooths poll flakiness. Borrowing that window made the
+        # guard a no-op in default runs.
+        self.duplicates_settle_delay = duplicates_settle_delay
         self.state = {}
         self._notes = []
         self._graphql_organization_id = None
@@ -1037,7 +1045,11 @@ def phase_duplicates(ctx):
         # exactly one succeeded payment, no new invoice).
         deferred = {"checked": False, "ok": None}
         if probes_harmless and state_intact:
-            time.sleep(ctx.stability_rounds * ctx.stability_delay)
+            # (R1-V11) The settle delay is its own minute-scale knob
+            # (ctx.duplicates_settle_delay, default 120s) — never the
+            # seconds-scale stability window, which cannot observe a
+            # drift that lands minutes after the 200.
+            time.sleep(ctx.duplicates_settle_delay)
             _, sub_body3 = _subscription_show(ctx, sub_ext, "active")
             sub3 = (sub_body3 or {}).get("subscription", {}) if isinstance(sub_body3, dict) else {}
             _, invoices3 = _invoices_for(ctx, customer["external_id"])

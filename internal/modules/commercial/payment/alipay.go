@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/modules/commercial"
+	secutils "github.com/Tencent/WeKnora/internal/utils"
 )
 
 // ProviderAlipay names the Alipay channel on PaymentFact.Provider.
@@ -194,8 +195,18 @@ func NewAlipayProvider(cfg AlipayConfig) (*AlipayProvider, error) {
 	return &AlipayProvider{
 		cfg:          cfg,
 		alipayPubKey: pub,
-		client:       &http.Client{Timeout: cfg.timeout()},
-		now:          time.Now,
+		// (R1-V09) Redirects are never followed blindly: every hop's target
+		// is re-validated against the same SSRF policy.
+		client: &http.Client{
+			Timeout: cfg.timeout(),
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				if err := secutils.ValidateURLForSSRF(req.URL.String()); err != nil {
+					return fmt.Errorf("alipay redirect target failed SSRF validation: %w", err)
+				}
+				return nil
+			},
+		},
+		now: time.Now,
 	}, nil
 }
 
@@ -540,8 +551,15 @@ func mapAlipayRefundStatus(status string) AttemptState {
 
 // call sends one signed gateway request (ALI-01 common params) and verifies
 // the response envelope signature over the ORIGINAL inner JSON bytes with
-// the configured Alipay public key before unmarshalling it.
+// the configured Alipay public key before unmarshalling it. (R1-V09) The
+// egress is validated against the shared SSRF policy before every request:
+// the configured gateway must be http/https and must not point at
+// localhost/loopback/private/reserved addresses unless explicitly exempted
+// server-side via SSRF_WHITELIST(_EXTRA).
 func (p *AlipayProvider) call(ctx context.Context, method string, biz interface{}, out interface{}) error {
+	if err := secutils.ValidateURLForSSRF(p.cfg.gateway()); err != nil {
+		return fmt.Errorf("%w: gateway url failed SSRF validation: %v", ErrNotConfigured, err)
+	}
 	bizJSON, err := json.Marshal(biz)
 	if err != nil {
 		return err

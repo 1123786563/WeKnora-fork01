@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/modules/commercial"
+	secutils "github.com/Tencent/WeKnora/internal/utils"
 )
 
 func TestAlipayAmountIsExactFen(t *testing.T) {
@@ -235,8 +236,13 @@ func TestAlipaySyncReturnNeverConfirms(t *testing.T) {
 
 // alipayGatewayFixture stands up an offline gateway that answers signed
 // envelopes with the test "Alipay" key and records the last request form.
+// (R1-V09) The loopback gateway rides the SSRF_WHITELIST exemption — the
+// same auditable mechanism production uses.
 func alipayGatewayFixture(t *testing.T, respond func(r *http.Request) (string, error)) (*AlipayProvider, *url.Values, *httptest.Server) {
 	t.Helper()
+	t.Setenv("SSRF_WHITELIST", "127.0.0.1")
+	secutils.ResetSSRFWhitelistForTest()
+	t.Cleanup(secutils.ResetSSRFWhitelistForTest)
 	_, alipayKey, cfg := alipayNotifyFixture(t)
 	lastForm := &url.Values{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

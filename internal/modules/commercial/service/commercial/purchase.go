@@ -35,6 +35,24 @@ var (
 	// ErrPurchasePlanCharges: the plan version carries usage charges, which
 	// the first-period line-item equivalence slice does not cover yet (D2).
 	ErrPurchasePlanCharges = errors.New("purchase_plan_charges")
+	// ErrPurchaseNotAwaiting (R1-V03): the authority already holds the
+	// purchase in a NON-awaiting state (active/canceled) while the caller
+	// submitted a fresh quote — a new channel order must NOT be opened for it
+	// (an active plan would be charged a second time with no gating invoice;
+	// a canceled subscription's gating invoice can never be settled). The
+	// existing-order replay path stays open: a POST replay after payment
+	// still returns the paid order verbatim.
+	ErrPurchaseNotAwaiting = errors.New("purchase_not_awaiting_payment")
+	// ErrPurchaseUnavailable (R1-V04): the platform seam could not answer
+	// (unconfigured seam, failed ensure, failed submit or failed snapshot
+	// read) — the POST creates NOTHING and answers 503 with the closed
+	// reason token, never a 201 with a fabricated-absent view. GET
+	// PurchaseStatus keeps the state-view posture.
+	ErrPurchaseUnavailable = errors.New("purchase_unavailable")
+	// ErrPurchasePlanInvalid (R1-V18): the frozen plan-version definition is
+	// corrupt and does not deserialize — a data problem, never a
+	// "quote predates the freeze" re-quote signal.
+	ErrPurchasePlanInvalid = errors.New("purchase_plan_invalid")
 )
 
 // PurchaseView is the Billing API projection of one purchase. State is the
@@ -76,14 +94,19 @@ func NewPurchaseService(db *gorm.DB, accounts *BillingAccountService, plans *Pla
 }
 
 // Purchase runs the gated purchase algorithm. Caller-visible errors are the
-// closed purchase sentinels (and the repository quote guards); platform
-// failures are STATES (pending view + closed Reason, the #78 posture).
-func (s *PurchaseService) Purchase(ctx context.Context, tenantID uint64, quoteID, providerName, actor string) (PurchaseView, error) {
+// closed purchase sentinels (and the repository quote guards); a platform
+// failure during the POST surfaces ErrPurchaseUnavailable (503 + closed
+// reason on the wire) — the POST never answers success for a purchase it
+// did not create. Only the GET status endpoint keeps the state-view
+// posture (pendingView).
+func (s *PurchaseService) Purchase(ctx context.Context, tenantID uint64, quoteID, providerName, actor, displayName string) (PurchaseView, error) {
 	if tenantID == 0 || quoteID == "" {
 		return PurchaseView{}, repocommercial.ErrInvalidQuoteRow
 	}
 	if s.platform == nil {
-		return PurchaseView{State: domain.PurchaseStateAbsent, Reason: "unconfigured"}, nil
+		// R1-V04: a blocked seam is a failure for the POST surface (503 +
+		// closed reason), not a fabricated-absent success.
+		return PurchaseView{}, fmt.Errorf("%w: %w", ErrPurchaseUnavailable, domain.ErrPlatformUnconfigured)
 	}
 
 	// 1. The frozen quote (tenant-guarded read).
@@ -122,12 +145,15 @@ func (s *PurchaseService) Purchase(ctx context.Context, tenantID uint64, quoteID
 	}
 	// 5. The lazy billing-account ensure (#78); only a linked account may
 	// purchase.
-	acct, err := s.accounts.EnsureBillingAccount(ctx, tenantID, "space", actor)
+	acct, err := s.accounts.EnsureBillingAccount(ctx, tenantID, displayName, actor)
 	if err != nil {
 		return PurchaseView{}, err
 	}
 	if acct.State != BillingAccountLinked {
-		return PurchaseView{State: domain.PurchaseStateAbsent, Reason: platformReason(errors.New(acct.Reason))}, nil
+		// R1-V04/R1-V16: an unlinked account is a failed ensure — the POST
+		// answers the unavailable sentinel carrying the account's own closed
+		// token (never re-matched as a new error), never a 201 absent view.
+		return PurchaseView{}, fmt.Errorf("%w: %w", ErrPurchaseUnavailable, platformSentinel(acct.Reason))
 	}
 
 	// 6. The payment-gated subscription create (identity-idempotent at the
@@ -157,7 +183,9 @@ func (s *PurchaseService) Purchase(ctx context.Context, tenantID uint64, quoteID
 				return PurchaseView{}, ErrPurchasePlanConflict
 			}
 		}
-		return s.pendingView(err), nil
+		// R1-V04: a submit failure leaves nothing created — the POST answers
+		// the unavailable sentinel (503 + closed reason), never a 201 view.
+		return PurchaseView{}, fmt.Errorf("%w: %w", ErrPurchaseUnavailable, err)
 	}
 
 	// 7. The match gate (AC2): the authoritative purchase face must equal
@@ -167,7 +195,8 @@ func (s *PurchaseService) Purchase(ctx context.Context, tenantID uint64, quoteID
 		Kind: domain.SnapshotKindPurchase, TenantID: tenantID,
 	})
 	if err != nil {
-		return s.pendingView(err), nil
+		// R1-V04: same posture as the submit failure — nothing was created.
+		return PurchaseView{}, fmt.Errorf("%w: %w", ErrPurchaseUnavailable, err)
 	}
 	p := psnap.Purchase
 	if p == nil || p.State == domain.PurchaseStateAbsent ||
@@ -180,12 +209,19 @@ func (s *PurchaseService) Purchase(ctx context.Context, tenantID uint64, quoteID
 
 	// 8. The order replay-or-create (AC4): an existing order for this quote
 	// returns verbatim; otherwise ONE atomic CreateOrder; a concurrent
-	// consumption race re-reads the winner.
+	// consumption race re-reads the winner. (R1-V03) A NEW channel order is
+	// opened only while the held purchase is still awaiting payment — an
+	// active plan must not be charged twice and a canceled subscription's
+	// gating invoice can never be settled; the replay paths stay open so a
+	// POST replay after payment still answers the paid order verbatim.
 	if existing, err := s.orders.orders.GetOrderByQuote(ctx, tenantID, quoteID); err == nil {
 		ov := orderViewFromRow(existing)
 		return s.purchaseView(p, snap, pub, &ov), nil
 	} else if !errors.Is(err, repocommercial.ErrOrderNotFound) {
 		return PurchaseView{}, err
+	}
+	if p.State != domain.PurchaseStateAwaitingPayment {
+		return PurchaseView{}, fmt.Errorf("%w: %s", ErrPurchaseNotAwaiting, p.State)
 	}
 	ov, err := s.orders.CreateOrder(ctx, tenantID, quoteID, providerName)
 	if errors.Is(err, repocommercial.ErrQuoteAlreadyUsed) {
@@ -229,9 +265,18 @@ func (s *PurchaseService) PurchaseStatus(ctx context.Context, tenantID uint64) (
 		out.PlanKey = pub.PlanKey
 		out.PlanVersion = pub.Version
 	}
-	if rows, err := s.orders.orders.ListOrdersByTenant(ctx, tenantID); err == nil && len(rows) > 0 {
-		ov := orderViewFromRow(rows[0])
-		out.Order = &ov
+	// (R1-V02) Only an order that BELONGS to the current purchase is
+	// projected: purchase-kind at the held purchase's frozen price face.
+	// ListOrdersByTenant's `id DESC` is a random lexicographic order (order
+	// ids are "ord_"+random hex) and a tenant may hold upgrade orders and
+	// historical purchases — taking its rows[0] projected an arbitrary old
+	// order as the current purchase state. An absent purchase attaches no
+	// order at all.
+	if p.State != domain.PurchaseStateAbsent {
+		if row, err := s.orders.orders.CurrentPurchaseOrder(ctx, tenantID, p.AmountFen, p.Currency); err == nil {
+			ov := orderViewFromRow(row)
+			out.Order = &ov
+		}
 	}
 	return out, nil
 }
@@ -245,7 +290,12 @@ func (s *PurchaseService) ensureNoCharges(ctx context.Context, planKey string, v
 	}
 	var def domain.PlanVersion
 	if err := json.Unmarshal([]byte(view.DefinitionJSON), &def); err != nil {
-		return ErrQuoteLegacySnapshot
+		// (R1-V18) A definition that does not deserialize is a data problem
+		// (it was written by domain.PlanVersion at publish time) — it has
+		// nothing to do with a quote predating the freeze, so it must not
+		// tell the caller to re-quote (the same corruption would fail every
+		// fresh quote identically).
+		return ErrPurchasePlanInvalid
 	}
 	if len(def.Charges) > 0 {
 		return ErrPurchasePlanCharges
@@ -267,9 +317,36 @@ func (s *PurchaseService) purchaseView(p *domain.PurchaseSnapshot, snap quoteSna
 
 // pendingView maps a platform failure onto the closed posture: the
 // purchase is NOT confirmable, the reason is the closed token — never a
-// fabricated state (the #78 outage posture).
+// fabricated state (the #78 outage posture). GET PurchaseStatus keeps this
+// state view; the POST surface answers ErrPurchaseUnavailable instead.
 func (s *PurchaseService) pendingView(err error) PurchaseView {
 	return PurchaseView{State: domain.PurchaseStateAbsent, Reason: platformReason(err)}
+}
+
+// platformSentinel re-opens a closed reason token onto its domain sentinel —
+// the exact inverse of platformReason — so a failure that crossed the
+// billing-account boundary keeps its token through the purchase-unavailable
+// error chain. Unknown tokens map to ErrPlatformUnsupported (the closed
+// "unsupported" posture).
+func platformSentinel(reason string) error {
+	switch reason {
+	case "unconfigured":
+		return domain.ErrPlatformUnconfigured
+	case "unreachable":
+		return domain.ErrPlatformUnreachable
+	case "invalid_response":
+		return domain.ErrPlatformInvalidResponse
+	default:
+		return domain.ErrPlatformUnsupported
+	}
+}
+
+// PurchaseUnavailableReason extracts the closed reason token
+// (unconfigured|unreachable|invalid_response|unsupported) from an
+// ErrPurchaseUnavailable chain — the only failure vocabulary the wire may
+// carry.
+func PurchaseUnavailableReason(err error) string {
+	return platformReason(err)
 }
 
 // orderViewFromRow projects a stored order row (the OrderService keeps this

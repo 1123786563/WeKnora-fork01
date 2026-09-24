@@ -8,9 +8,11 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	commercial "github.com/Tencent/WeKnora/internal/modules/commercial"
 )
@@ -55,7 +57,12 @@ type purchaseStub struct {
 	subBodies  []map[string]any // every subscription POST body
 	createNext []int            // scripted statuses; empty means 200
 	planAmount map[string]int64 // plan_code -> amount_cents (the authority's plan truth the index echoes)
-	mux        *http.ServeMux   // assembled by newPurchaseStub
+	// pmAlwaysEmpty models an authority whose payment-method import NEVER
+	// lands (the placeholder-prefix reality on a real Lago): the PM list
+	// answers 200 with an empty array forever, so a waitForPaymentMethodSync
+	// call would poll until its budget is exhausted.
+	pmAlwaysEmpty bool
+	mux           *http.ServeMux // assembled by newPurchaseStub
 }
 
 func newPurchaseStub() *purchaseStub {
@@ -73,9 +80,14 @@ func newPurchaseStub() *purchaseStub {
 		if pm, cut := strings.CutSuffix(ext, "/payment_methods"); cut && r.Method == http.MethodGet {
 			s.mu.Lock()
 			_, held := s.customer[pm]
+			alwaysEmpty := s.pmAlwaysEmpty
 			s.mu.Unlock()
 			if !held {
 				respond(w, r, &s.requests, &s.mu, http.StatusNotFound, `{"payment_methods":[]}`, nil)
+				return
+			}
+			if alwaysEmpty {
+				respond(w, r, &s.requests, &s.mu, http.StatusOK, `{"payment_methods":[]}`, nil)
 				return
 			}
 			respond(w, r, &s.requests, &s.mu, http.StatusOK, `{"payment_methods":[{"id":"pm_stub_1","type":"card"}]}`, nil)
@@ -122,6 +134,30 @@ func newPurchaseStub() *purchaseStub {
 			s.customer[id] = body
 			s.mu.Unlock()
 			b, _ := json.Marshal(map[string]any{"customer": body})
+			respond(w, r, &s.requests, &s.mu, http.StatusOK, string(b), blob)
+		case r.Method == http.MethodPut && ext != "": // PUT /api/v1/customers/{id} — update-only semantics: merge billing_configuration, NEVER touch any other field (an absent customer is still a 404).
+			var parsed struct {
+				Customer map[string]any `json:"customer"`
+			}
+			_ = json.Unmarshal(blob, &parsed)
+			body := parsed.Customer
+			if body == nil {
+				respond(w, r, &s.requests, &s.mu, http.StatusUnprocessableEntity, "{}", blob)
+				return
+			}
+			s.mu.Lock()
+			existing, ok := s.customer[ext]
+			if ok {
+				if bc, has := body["billing_configuration"]; has {
+					existing["billing_configuration"] = bc
+				}
+			}
+			s.mu.Unlock()
+			if !ok {
+				respond(w, r, &s.requests, &s.mu, http.StatusNotFound, "{}", blob)
+				return
+			}
+			b, _ := json.Marshal(map[string]any{"customer": existing})
 			respond(w, r, &s.requests, &s.mu, http.StatusOK, string(b), blob)
 		default:
 			http.NotFound(w, r)
@@ -232,6 +268,21 @@ func (s *purchaseStub) countCustomerPosts() int {
 	n := 0
 	for _, req := range s.requests {
 		if req.Method == http.MethodPost && req.Path == "/api/v1/customers" {
+			n++
+		}
+	}
+	return n
+}
+
+// countCustomerPuts counts single-customer PUTs — the update-only binding
+// write for an EXISTING customer (R1-V05: the name-preserving path).
+func (s *purchaseStub) countCustomerPuts() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n := 0
+	for _, req := range s.requests {
+		if req.Method == http.MethodPut && strings.HasPrefix(req.Path, "/api/v1/customers/") &&
+			!strings.HasSuffix(req.Path, "/payment_methods") {
 			n++
 		}
 	}
@@ -363,6 +414,65 @@ func TestLagoCreatePurchaseFailsClosedWithoutBindingSource(t *testing.T) {
 	}
 }
 
+// TestLagoBindingUpdateOnExistingCustomerKeepsDisplayName (R1-V05): the
+// customer already exists (onboarding created it with the REAL display
+// name) but carries no provider binding — the binding write must be the
+// update-only PUT (billing_configuration only) and must never overwrite
+// the display name with the bare external id.
+func TestLagoBindingUpdateOnExistingCustomerKeepsDisplayName(t *testing.T) {
+	stub := newPurchaseStub()
+	ext := commercial.ExternalCustomerID(27)
+	stub.mu.Lock()
+	stub.customer[ext] = map[string]any{"external_id": ext, "name": "真实空间名"}
+	stub.mu.Unlock()
+	srv := stub.server(t)
+	a := purchaseAdapterWithPrefix(t, srv)
+	if _, err := a.SubmitCommand(context.Background(), purchaseCmd(27, "weknora-pro-v1", 9900)); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	stub.mu.Lock()
+	cust := stub.customer[ext]
+	stub.mu.Unlock()
+	if cust["name"] != "真实空间名" {
+		t.Fatalf("existing customer's display name must be preserved, got %v", cust["name"])
+	}
+	bc, _ := cust["billing_configuration"].(map[string]any)
+	if bc == nil || bc["provider_customer_id"] != "cus-dev-"+ext {
+		t.Fatalf("binding must still land: %+v", bc)
+	}
+	if n := stub.countCustomerPosts(); n != 0 {
+		t.Fatalf("existing customer must be bound via PUT, not a collection POST, posts=%d", n)
+	}
+	if n := stub.countCustomerPuts(); n != 1 {
+		t.Fatalf("exactly one update-only PUT expected, puts=%d", n)
+	}
+}
+
+// TestLagoPlaceholderBindingSkipsPaymentMethodSyncWait (R1-V06): with a
+// placeholder-prefix provider customer id no provider-side customer
+// exists, so the payment-method import can never land. The binding step
+// must NOT poll (the old code burned the whole pmSyncWait on every
+// purchase and then misclassified the stall as transient unreachable);
+// the import-less stack fails fast at the gated create instead.
+func TestLagoPlaceholderBindingSkipsPaymentMethodSyncWait(t *testing.T) {
+	stub := newPurchaseStub()
+	stub.mu.Lock()
+	stub.pmAlwaysEmpty = true // the import never lands
+	stub.mu.Unlock()
+	srv := stub.server(t)
+	a := purchaseAdapterWithPrefix(t, srv)
+	oldWait, oldTick := pmSyncWait, pmSyncTick
+	pmSyncWait, pmSyncTick = 700*time.Millisecond, 50*time.Millisecond
+	t.Cleanup(func() { pmSyncWait, pmSyncTick = oldWait, oldTick })
+	start := time.Now()
+	if _, err := a.SubmitCommand(context.Background(), purchaseCmd(28, "weknora-pro-v1", 9900)); err != nil {
+		t.Fatalf("placeholder binding must skip the PM sync wait entirely, got %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > 3*time.Second {
+		t.Fatalf("binding must not poll the PM list for a placeholder id, took %s", elapsed)
+	}
+}
+
 func TestValidateOutboundHost(t *testing.T) {
 	for _, ok := range []string{"https://api.stripe.com", "http://api.stripe.com/v1"} {
 		if err := validateOutboundHost(ok); err != nil {
@@ -373,10 +483,41 @@ func TestValidateOutboundHost(t *testing.T) {
 		"https://localhost", "https://127.0.0.1", "https://127.1.2.3", "https://[::1]",
 		"https://10.0.0.5", "https://172.16.0.1", "https://192.168.1.4", "https://169.254.1.1",
 		"ftp://api.stripe.com", "https://0.0.0.0",
+		// (R1-V08) inet_aton shorthand loopback/private shapes that
+		// net.ParseIP does not recognize as literals but resolvers may
+		// still answer at dial time — refused on shape (no letters).
+		"https://127.1", "https://2130706433", "https://0x7f000001",
+		"https://0177.0.0.1", "https://3232235521",
 	} {
 		if err := validateOutboundHost(bad); err == nil {
 			t.Errorf("%s must be rejected", bad)
 		}
+	}
+}
+
+// TestProviderOutboundClientRejectsInternalRedirect (R1-V08): a hostile or
+// compromised endpoint cannot 302 the egress onto internal infrastructure —
+// every redirect hop is re-validated against the same host policy and a
+// link-local/loopback Location aborts the request instead of being
+// followed, while a public hop passes.
+func TestProviderOutboundClientRejectsInternalRedirect(t *testing.T) {
+	client := providerOutboundClient()
+	for _, hop := range []string{
+		"http://169.254.169.254/latest/meta-data/",
+		"http://127.0.0.1:48889/api/v1/customers",
+		"https://10.1.2.3/internal",
+	} {
+		u, err := url.Parse(hop)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := client.CheckRedirect(&http.Request{URL: u}, nil); err == nil {
+			t.Errorf("redirect hop %s must be refused", hop)
+		}
+	}
+	public, _ := url.Parse("https://api.stripe.com/v1/customers")
+	if err := client.CheckRedirect(&http.Request{URL: public}, nil); err != nil {
+		t.Fatalf("a public redirect hop must be allowed: %v", err)
 	}
 }
 

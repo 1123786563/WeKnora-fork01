@@ -7,8 +7,10 @@ stays API-invisible (v1.53.0 INVISIBLE_STATUS `open`), AC1 is asserted from
 `status == pass` + subscription incomplete + entitlements 404 held across
 the window (plan: `phases.py` invoice-invisible branch, Task 2 Step 4 note).
 
-ocr-2 replay copy: unmodified assertion script, executed against the
-docs/plans/issue-72-ocr2-replay/ evidence directory.
+ocr-2 replay copy, executed against the docs/plans/issue-72-ocr2-replay/
+evidence directory. Relative to the ocr-1 copy (86 lines) this copy adds
+two ocr-2-specific assertion annotations: "# ocr-2:" at lines 74 and 84
+(R1-V23: the previous note here wrongly claimed "unmodified").
 """
 import json
 import sys

@@ -435,8 +435,19 @@ func (h *CommercialHandler) Purchase(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "quote_id and provider are required"})
 		return
 	}
-	view, err := h.purchases.Purchase(c.Request.Context(), tenantID, req.QuoteID, req.Provider, "billing-admin")
+	// The actor is the real authenticated caller (R1-V17): the synthetic
+	// "billing-admin" made purchase and ensure audit trails unattributable.
+	// The ensure display name comes from the tenant record like the other
+	// production call sites.
+	actor := commercialUserID(c)
+	view, err := h.purchases.Purchase(c.Request.Context(), tenantID, req.QuoteID, req.Provider,
+		actor, h.tenantDisplayName(tenantID))
 	switch {
+	case err == nil && view.Order != nil && view.Order.CheckoutError != "":
+		// (R1-V14) The order is durably pending but the channel call failed:
+		// mirror POST /orders and answer 202 — the client recovers through
+		// GET /commercial/orders/:id instead of reading a clean creation.
+		c.JSON(http.StatusAccepted, gin.H{"success": true, "data": purchaseWire(view)})
 	case err == nil:
 		c.JSON(http.StatusCreated, gin.H{"success": true, "data": purchaseWire(view)})
 	case errors.Is(err, commercialsvc.ErrInvoiceQuoteMismatch):
@@ -447,16 +458,34 @@ func (h *CommercialHandler) Purchase(c *gin.Context) {
 		c.JSON(http.StatusConflict, gin.H{"error": "subscription changed since the quote was cut; please re-quote"})
 	case errors.Is(err, commercialsvc.ErrPurchasePlanConflict):
 		c.JSON(http.StatusConflict, gin.H{"error": "purchase_plan_conflict"})
+	case errors.Is(err, commercialsvc.ErrPurchaseNotAwaiting):
+		// (R1-V03) The held purchase is active/canceled — no new channel
+		// order may be opened for it.
+		c.JSON(http.StatusConflict, gin.H{"error": commercialsvc.ErrPurchaseNotAwaiting.Error()})
 	case errors.Is(err, commercialsvc.ErrQuoteLegacySnapshot):
 		c.JSON(http.StatusConflict, gin.H{"error": "quote predates the purchase freeze; please re-quote"})
+	case errors.Is(err, commercialsvc.ErrPurchasePlanInvalid):
+		// (R1-V18) Corrupt plan definition: a server-side data problem,
+		// never a re-quote signal.
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "purchase plan definition is invalid"})
 	case errors.Is(err, commercialsvc.ErrPurchasePlanCharges):
 		c.JSON(http.StatusConflict, gin.H{"error": "this plan version is not purchasable yet; please re-quote later"})
+	case errors.Is(err, commercialsvc.ErrPurchaseUnavailable):
+		// (R1-V04) Platform failure: 503 with the CLOSED reason token —
+		// never a fabricated success and never raw error text.
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"error":  "purchase temporarily unavailable",
+			"reason": commercialsvc.PurchaseUnavailableReason(err),
+		})
 	case errors.Is(err, commercialsvc.ErrPaymentProviderUnconfigured):
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
 	case errors.Is(err, commercialsvc.ErrQuoteTenantMismatch):
 		c.JSON(http.StatusNotFound, gin.H{"error": "quote not found for this tenant"})
 	case errors.Is(err, repocommercial.ErrPlanNotFound):
 		c.JSON(http.StatusNotFound, gin.H{"error": "no published plan version for this quote"})
+	case errors.Is(err, repocommercial.ErrQuoteAlreadyUsed):
+		// (R1-V21) Same race outcome as POST /orders: 409, not a generic 400.
+		c.JSON(http.StatusConflict, gin.H{"error": "quote already used"})
 	default:
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	}

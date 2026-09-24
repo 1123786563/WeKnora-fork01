@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/modules/commercial"
+	secutils "github.com/Tencent/WeKnora/internal/utils"
 )
 
 // ProviderWechat names the WeChat Pay channel on PaymentFact.Provider.
@@ -180,8 +181,20 @@ func newWechatProvider(cfg WechatConfig, platformKeys map[string]*rsa.PublicKey,
 		cfg:          cfg,
 		platformKeys: platformKeys,
 		apiv3Key:     apiv3Key,
-		client:       &http.Client{Timeout: cfg.timeout()},
-		now:          time.Now,
+		// (R1-V09) Redirects are never followed blindly: every hop's target
+		// is re-validated against the same SSRF policy, so a hostile
+		// endpoint cannot 302 the channel egress onto internal
+		// infrastructure.
+		client: &http.Client{
+			Timeout: cfg.timeout(),
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				if err := secutils.ValidateURLForSSRF(req.URL.String()); err != nil {
+					return fmt.Errorf("wechat redirect target failed SSRF validation: %w", err)
+				}
+				return nil
+			},
+		},
+		now: time.Now,
 	}
 }
 
@@ -511,8 +524,16 @@ func isTimeoutErr(err error) bool {
 
 // do sends one signed APIv3 request. The Authorization header is signed
 // with the merchant private key resolved from its configured path; a
-// missing reference fails closed with ErrNotConfigured.
+// missing reference fails closed with ErrNotConfigured. (R1-V09) The egress
+// is validated against the shared SSRF policy before EVERY request: the
+// configured API base must be http/https and must not point at
+// localhost/loopback/private/reserved addresses unless explicitly exempted
+// server-side via SSRF_WHITELIST(_EXTRA) — the flow-evidence stub loopback
+// setup relies on exactly that auditable exemption.
 func (p *WechatProvider) do(ctx context.Context, method, path string, body []byte, out interface{}) error {
+	if err := secutils.ValidateURLForSSRF(p.cfg.apiBase()); err != nil {
+		return fmt.Errorf("%w: api base url failed SSRF validation: %v", ErrNotConfigured, err)
+	}
 	auth, err := p.authorization(method, path, body)
 	if err != nil {
 		return err

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
-import type { OrderView, QuoteView } from '@weknora/contracts';
+import type { OrderView, PurchaseView, QuoteView } from '@weknora/contracts';
+import { isSafeCheckoutUrl } from '@weknora/contracts';
 import { createScopeController } from '@weknora/domain/scope';
 import { scopedKey } from '@weknora/domain';
 import { Button, Card, Status } from '@weknora/ui';
@@ -35,6 +36,21 @@ const FEATURE_LABELS: Record<string, string> = {
 
 function isTerminal(order: OrderView): boolean {
   return order.fulfillment === 'fulfilled' || order.payment === 'closed';
+}
+
+// R1-V01：purchase 缺单/不可确认时的闭合失败文案（reason 是后端闭合令牌，
+// state 是闭合产品状态；页面词汇稳定，不含平台词汇——spec L210）。
+export function purchaseErrorMessage(purchase: PurchaseView): string {
+  switch (purchase.reason) {
+    case 'unconfigured': return '支付渠道未配置，购买暂不可用';
+    case 'unreachable': return '支付平台暂时不可达，请稍后重试';
+    case 'invalid_response': return '支付平台返回异常，请稍后重试';
+    case 'unsupported': return '当前环境暂不支持购买';
+    default:
+      return purchase.state === 'canceled'
+        ? '该购买已取消，请重新发起购买'
+        : '购买未能创建，请稍后重试';
+  }
 }
 
 interface CheckoutPageProps {
@@ -79,8 +95,14 @@ export function CheckoutPage({ client, scopeController, orderId }: CheckoutPageP
           { quote_id: quoteRef.current.id, provider: 'wechat' },
           currentScope.signal,
         );
+        // R1-V01：purchase.order 缺席时不再发起空 ID 的 getOrder 请求（那必然
+        // 产生 /orders/ 的 404/路由错配，且丢失闭合 reason）。按闭合
+        // state/reason 渲染失败文案；正常路径后端必带 order。
+        if (!purchase.order) {
+          throw new Error(purchaseErrorMessage(purchase));
+        }
         // From here on this page only re-queries the same order id; it never creates another order.
-        const order = purchase.order ?? (await client.commercial.getOrder('', currentScope.signal));
+        const order = purchase.order;
         orderIdRef.current = order.id;
         if (active && scopeController.isCurrent(currentScope.scope)) {
           setState({ status: 'ready', order, quote: quoteRef.current });
@@ -148,12 +170,13 @@ export function CheckoutPage({ client, scopeController, orderId }: CheckoutPageP
             <section aria-live="polite">
               <h2>{spaceName} 的订单</h2>
               <p>{orderMessage(state.order)}</p>
-              {/* AC3：购买成功后产品状态为「待付款」，付费权益未开通。 */}
-              <p>
-                <Status>待付款（权益未开通）</Status>
-              </p>
-              {/* 渠道支付入口（审查 F2）：渠道请求创建后展示跳转链接，用户由此完成支付。 */}
-              {state.order.checkout_url ? (
+              {/* AC3：购买成功后产品状态为「待付款」，付费权益未开通——仅当订单
+                  仍在待付款时显示（R1-V12：已支付/终态不再误导重复支付）。
+                  R1-V19：Status 本身渲染 <p>，不再嵌套外层段落。 */}
+              {state.order.payment === 'pending' ? <Status>待付款（权益未开通）</Status> : null}
+              {/* 渠道支付入口（审查 F2）：渠道请求创建后展示跳转链接，用户由此完成支付。
+                  R1-V13：渲染前经 scheme 白名单校验，危险 scheme 一律不渲染。 */}
+              {state.order.checkout_url && isSafeCheckoutUrl(state.order.checkout_url) ? (
                 <p>
                   <a href={state.order.checkout_url} target="_blank" rel="noreferrer">前往支付</a>
                 </p>
