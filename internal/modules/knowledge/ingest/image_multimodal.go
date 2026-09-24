@@ -43,7 +43,7 @@ const (
 		"1. Ignore headers, footers, and page numbers.\n" +
 		"2. Preserve the original document's paragraph and hierarchical structure as much as possible.\n" +
 		"3. If there are tables, use Markdown table syntax to represent them.\n" +
-		"4. If there are mathematical formulas, use LaTeX format wrapped with $ or $$.\n" +
+		"4. If there are mathematical formulas, use LaTeX format wrapped in $ or $$.\n" +
 		"5. Output ONLY the extracted text content. Do NOT include any HTML tags, reasoning, or unrelated comments.\n" +
 		"6. If there is absolutely no recognizable text content in the image, reply ONLY with: No text content.\n" +
 		"</instructions>"
@@ -712,7 +712,7 @@ func (s *ImageMultimodalService) checkAndFinalizeAllImages(ctx context.Context, 
 		// (it transitions parse_status processing → completed under a row
 		// guard), so a duplicate triggered by a sibling image is harmless.
 		// The alternative — silently returning — is what produced the
-		// "permanently stuck" reports we're fixing here.
+		// "permanently stuck" reports we are fixing here.
 		logger.Warnf(ctx,
 			"[ImageMultimodal] Decrement failed for %s (%v); fallback-enqueueing post-process",
 			payload.KnowledgeID, err)
