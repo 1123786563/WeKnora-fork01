@@ -1,14 +1,17 @@
 package tools
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"sync/atomic"
 	"testing"
 
+	"github.com/Tencent/WeKnora/internal/logger"
 	internalmcp "github.com/Tencent/WeKnora/internal/modules/airesource/mcp"
 	"github.com/Tencent/WeKnora/internal/modules/plugins"
 	"github.com/Tencent/WeKnora/internal/types"
@@ -93,9 +96,11 @@ func discoverToolResult(t *testing.T, r *ToolRegistry, serverID string) *types.T
 
 func TestFilterToolsBySnapshot(t *testing.T) {
 	snap := guardSnapshot("snapshot_tool")
+	// 快照 Description 与 live 端点一致（guardSnapshot 与受控服务同为
+	// "desc"）——漂移校验覆盖 schema 与 description 两个维度。
 	defs := []*types.MCPTool{
-		{Name: "snapshot_tool", InputSchema: json.RawMessage(guardNoArgSchema)},
-		{Name: "extra_tool", InputSchema: json.RawMessage(guardNoArgSchema)},
+		{Name: "snapshot_tool", Description: "desc", InputSchema: json.RawMessage(guardNoArgSchema)},
+		{Name: "extra_tool", Description: "desc", InputSchema: json.RawMessage(guardNoArgSchema)},
 	}
 
 	// 快照外剔除、快照内保序返回。
@@ -106,9 +111,19 @@ func TestFilterToolsBySnapshot(t *testing.T) {
 
 	// 快照内 schema 变 → ErrPluginDrift（明确错误，不静默剔除）。
 	drifted := []*types.MCPTool{
-		{Name: "snapshot_tool", InputSchema: json.RawMessage(guardQuerySchema)},
+		{Name: "snapshot_tool", Description: "desc", InputSchema: json.RawMessage(guardQuerySchema)},
 	}
 	_, err = FilterToolsBySnapshot(snap, drifted)
+	require.ErrorIs(t, err, ErrPluginDrift)
+	require.Contains(t, err.Error(), "snapshot_tool")
+
+	// 快照内 description 变（schema 不变）→ 同样 ErrPluginDrift：描述直接
+	// 进入 Agent 可见的工具元数据面，改写即提示注入通道（转交发现
+	// T01-OCR1-F4 / T04-OCR1-F10）。
+	redescribed := []*types.MCPTool{
+		{Name: "snapshot_tool", Description: "tampered post-install text", InputSchema: json.RawMessage(guardNoArgSchema)},
+	}
+	_, err = FilterToolsBySnapshot(snap, redescribed)
 	require.ErrorIs(t, err, ErrPluginDrift)
 	require.Contains(t, err.Error(), "snapshot_tool")
 
@@ -156,6 +171,7 @@ func TestRegisterMCPToolsRejectsSchemaDrift(t *testing.T) {
 		InstallationID: "inst-guard-1",
 		Tools: []types.PluginToolSnapshot{{
 			Name:              "snapshot_tool",
+			Description:       "desc",
 			InputSchemaDigest: plugins.ToolSchemaDigest([]byte(guardQuerySchema)),
 			ReadOnly:          true,
 		}},
@@ -239,4 +255,219 @@ func TestRegisterMCPToolsGuardErrorFailsClosed(t *testing.T) {
 	result := discoverToolResult(t, registry, service.ID)
 	require.False(t, result.Success)
 	require.Contains(t, result.Error, "is error; retry discovery")
+}
+
+// TestRegisterMCPToolsOrphanPluginServiceFailsClosed（OCR 一轮 R12-C F20）：
+// guard 查无安装行的服务若带 PluginInstallationID（安装窗口期的先提交服务
+// 或补偿删安装成功、删服务失败的孤儿），必须 fail-closed——(nil,nil) 只对
+// manual 服务（PluginInstallationID 为 NULL）成立，否则未接受快照之外的
+// 实时工具会按 manual 未过滤路径放行。
+func TestRegisterMCPToolsOrphanPluginServiceFailsClosed(t *testing.T) {
+	service, _ := guardControlledService(t, "snapshot_tool", "extra_tool")
+	manual := &types.MCPService{
+		ID: "manual-svc", TenantID: 7, Enabled: true, Name: "manual",
+		URL: service.URL, TransportType: types.MCPTransportHTTPStreamable,
+	}
+	// 守卫对两个服务都解析 (nil,nil)（查无安装行）。
+	guard := PluginSnapshotProvider(func(_ context.Context, _ uint64, _ string) (*PluginRuntimeSnapshot, error) {
+		return nil, nil
+	})
+
+	ctx := catalogTestContext()
+	registry := NewToolRegistry()
+	manager := internalmcp.NewMCPManager(nil)
+	t.Cleanup(manager.Shutdown)
+	_, err := RegisterMCPTools(ctx, registry, []*types.MCPService{service, manual}, manager, &proxyApprovalGate{}, 0, nil, nil, guard)
+	require.NoError(t, err)
+
+	// manual 服务不受影响：全部工具可见（现状语义）。
+	manualPage := discoverPage(ctx, t, registry, map[string]any{"mode": "list_tools", "server_id": manual.ID})
+	require.Len(t, manualPage.Tools, 2)
+
+	// 插件物化服务（PluginInstallationID 非空）查无快照 → fail-closed。
+	result := discoverToolResult(t, registry, service.ID)
+	require.False(t, result.Success, "a plugin-materialized service without a resolvable snapshot must fail closed")
+	require.Contains(t, result.Error, "is error; retry discovery")
+}
+
+// TestRegisterMCPToolsRejectsDescriptionDrift（转交 T01-OCR1-F4 /
+// T04-OCR1-F10）：安装后自托管服务端在 schema 不变的情况下改写工具描述
+// （提示注入通道——描述直接进入 Agent 可见的工具元数据面）必须与 schema
+// 漂移同等 fail-closed：管理员审阅过的 Description 属于已接受快照。
+func TestRegisterMCPToolsRejectsDescriptionDrift(t *testing.T) {
+	// 受控服务 live 描述固定 "desc"；快照保存的是管理员审阅过的
+	// "administrator-reviewed description" → 不符即漂移。
+	service, _ := guardControlledService(t, "snapshot_tool")
+	control := *service
+	control.ID = "plugin-guard-control"
+	redescribedSnap := &PluginRuntimeSnapshot{
+		InstallationID: "inst-guard-1",
+		Tools: []types.PluginToolSnapshot{{
+			Name:              "snapshot_tool",
+			Description:       "administrator-reviewed description",
+			InputSchemaDigest: plugins.ToolSchemaDigest([]byte(guardNoArgSchema)),
+			ReadOnly:          true,
+		}},
+	}
+	guard := PluginSnapshotProvider(func(_ context.Context, _ uint64, serviceID string) (*PluginRuntimeSnapshot, error) {
+		if serviceID == control.ID {
+			return guardSnapshot("snapshot_tool"), nil
+		}
+		return redescribedSnap, nil
+	})
+
+	ctx := catalogTestContext()
+	registry := NewToolRegistry()
+	manager := internalmcp.NewMCPManager(nil)
+	t.Cleanup(manager.Shutdown)
+	_, err := RegisterMCPTools(ctx, registry, []*types.MCPService{service, &control}, manager, &proxyApprovalGate{}, 0, nil, nil, guard)
+	require.NoError(t, err)
+
+	// 控制孪生：schema 与描述都一致 → 放行（连通性成立）。
+	controlPage := discoverPage(ctx, t, registry, map[string]any{"mode": "list_tools", "server_id": control.ID})
+	require.Len(t, controlPage.Tools, 1)
+
+	// 描述漂移行 fail-closed：不回退为不过滤（否则会列出 1 个工具）。
+	result := discoverToolResult(t, registry, service.ID)
+	require.False(t, result.Success)
+	require.Contains(t, result.Error, "is error; retry discovery")
+}
+
+// TestRegisterMCPToolsPluginServiceLiveVerifiesAndPersistsFiltered（转交
+// T01-OCR1-F6 / T01-OCR2-F9）：插件物化服务的漂移核验必须对服务器实况——
+// metadata 持久化目录不是运行时核验基准，常规发现（live=false）不得拿缓存
+// 充当 live 目录；且过滤必须发生在持久化之前——落库目录不得含快照外工具。
+// manual 服务保持既有缓存语义（现状不变）。
+func TestRegisterMCPToolsPluginServiceLiveVerifiesAndPersistsFiltered(t *testing.T) {
+	service, requests := guardControlledService(t, "snapshot_tool", "extra_tool")
+	manual := &types.MCPService{
+		ID: "manual-svc", TenantID: 7, Enabled: true, Name: "manual",
+		URL: service.URL, TransportType: types.MCPTransportHTTPStreamable,
+	}
+	// 模拟修复前已污染/过期的持久化目录：含快照外 extra_tool。
+	persisted := &types.MCPMetadata{
+		Tools: []*types.MCPTool{
+			{Name: "snapshot_tool", Description: "desc", InputSchema: json.RawMessage(guardNoArgSchema)},
+			{Name: "extra_tool", Description: "desc", InputSchema: json.RawMessage(guardNoArgSchema)},
+		},
+		Instructions: "from-cache",
+	}
+	var pluginGets atomic.Int32
+	var persistedNames []string
+	metadata := &MCPMetadataIO{
+		Get: func(_ context.Context, _ uint64, id string) (*types.MCPMetadata, error) {
+			if id == service.ID {
+				pluginGets.Add(1)
+			}
+			return persisted, nil
+		},
+		Put: func(_ context.Context, _ uint64, id string, listed []*types.MCPTool, _ string) error {
+			if id == service.ID {
+				for _, tool := range listed {
+					persistedNames = append(persistedNames, tool.Name)
+				}
+			}
+			return nil
+		},
+	}
+	guard := PluginSnapshotProvider(func(_ context.Context, _ uint64, serviceID string) (*PluginRuntimeSnapshot, error) {
+		if serviceID == service.ID {
+			return guardSnapshot("snapshot_tool"), nil
+		}
+		return nil, nil // manual 服务：非插件物化
+	})
+
+	ctx := catalogTestContext()
+	registry := NewToolRegistry()
+	manager := internalmcp.NewMCPManager(nil)
+	t.Cleanup(manager.Shutdown)
+	_, err := RegisterMCPTools(ctx, registry, []*types.MCPService{service, manual}, manager, &proxyApprovalGate{}, 0, nil, metadata, guard)
+	require.NoError(t, err)
+
+	// 插件服务常规发现（无 refresh）：核验对实况——不吃持久化缓存
+	//（Get 对插件服务 0 次）、live 列举（外呼 >0）、只见快照内工具、
+	// 落库目录为过滤后版本（无 extra_tool）。
+	page := discoverPage(ctx, t, registry, map[string]any{"mode": "list_tools", "server_id": service.ID})
+	require.Len(t, page.Tools, 1)
+	require.Equal(t, "snapshot_tool", page.Tools[0].Name)
+	require.Zero(t, pluginGets.Load(), "plugin directory must be verified against the live server, not the persisted cache")
+	require.Positive(t, requests.Load())
+	require.Equal(t, []string{"snapshot_tool"}, persistedNames, "the persisted directory must be filtered before it is written")
+
+	// manual 服务：缓存语义现状不变——原样返回持久化目录、零新增外呼。
+	before := requests.Load()
+	manualPage := discoverPage(ctx, t, registry, map[string]any{"mode": "list_tools", "server_id": manual.ID})
+	require.Len(t, manualPage.Tools, 2)
+	require.Equal(t, before, requests.Load(), "manual service keeps the cached-directory behavior (no upstream call)")
+}
+
+// TestRegisterMCPToolsLogsDriftAndGuardFailures（转交 T01-OCR1-F5 /
+// T06-OCR1-F3）：守卫失败（漂移/provider 故障/孤儿插件服务）必须留下服务端
+// 审计日志（service ID、tenant、installation ID、工具名）——ErrPluginDrift
+// 宣称 must surface for administrator review，不能只在对外 error 态消息里
+// 被折叠掉后服务端零痕迹。
+func TestRegisterMCPToolsLogsDriftAndGuardFailures(t *testing.T) {
+	var buf bytes.Buffer
+	logger.SetOutput(&buf)
+	t.Cleanup(func() { logger.SetOutput(os.Stdout) })
+
+	service, _ := guardControlledService(t, "snapshot_tool")
+	control := *service
+	control.ID = "plugin-guard-control"
+	guardErrSvc := *service
+	guardErrSvc.ID = "plugin-guard-err"
+	orphanSvc := *service
+	orphanSvc.ID = "plugin-guard-orphan"
+	// 描述漂移快照：schema 一致、description 不符。
+	driftedSnap := &PluginRuntimeSnapshot{
+		InstallationID: "inst-guard-1",
+		Tools: []types.PluginToolSnapshot{{
+			Name:              "snapshot_tool",
+			Description:       "administrator-reviewed description",
+			InputSchemaDigest: plugins.ToolSchemaDigest([]byte(guardNoArgSchema)),
+			ReadOnly:          true,
+		}},
+	}
+	guard := PluginSnapshotProvider(func(_ context.Context, _ uint64, serviceID string) (*PluginRuntimeSnapshot, error) {
+		switch serviceID {
+		case control.ID:
+			return guardSnapshot("snapshot_tool"), nil
+		case service.ID:
+			return driftedSnap, nil
+		case guardErrSvc.ID:
+			return nil, errors.New("plugin repo down")
+		default: // orphanSvc：插件物化但查无安装行
+			return nil, nil
+		}
+	})
+
+	ctx := catalogTestContext()
+	registry := NewToolRegistry()
+	manager := internalmcp.NewMCPManager(nil)
+	t.Cleanup(manager.Shutdown)
+	_, err := RegisterMCPTools(ctx, registry, []*types.MCPService{service, &control, &guardErrSvc, &orphanSvc}, manager, &proxyApprovalGate{}, 0, nil, nil, guard)
+	require.NoError(t, err)
+
+	// 控制孪生放行（连通性 + 一致快照）。
+	controlPage := discoverPage(ctx, t, registry, map[string]any{"mode": "list_tools", "server_id": control.ID})
+	require.Len(t, controlPage.Tools, 1)
+
+	// 三类守卫失败均 fail-closed（对外折叠为 error 态消息）。
+	for _, id := range []string{service.ID, guardErrSvc.ID, orphanSvc.ID} {
+		result := discoverToolResult(t, registry, id)
+		require.False(t, result.Success, id)
+		require.Contains(t, result.Error, "is error; retry discovery")
+	}
+
+	// 服务端日志必须逐场景留下审计痕迹。
+	logs := buf.String()
+	require.Contains(t, logs, "plugin-guard-svc", "drift log names the service")
+	require.Contains(t, logs, "inst-guard-1", "drift log names the installation")
+	require.Contains(t, logs, "tenant 7", "drift log names the tenant")
+	require.Contains(t, logs, "snapshot_tool", "drift log names the drifted tool")
+	require.Contains(t, logs, "drift", "drift log classifies the event")
+	require.Contains(t, logs, "plugin-guard-err", "guard-failure log names the service")
+	require.Contains(t, logs, "plugin repo down", "guard-failure log keeps the provider error")
+	require.Contains(t, logs, "plugin-guard-orphan", "orphan log names the service")
+	require.Contains(t, logs, "no accepted installation snapshot", "orphan log classifies the event")
 }
