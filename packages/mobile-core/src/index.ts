@@ -29,3 +29,9 @@ export type {
 export type { TaskLifecycleState, TaskTimelineEntry, TaskTimelineKind, TaskTimelineSourceEvent } from './task-office/task-timeline.ts';
 export { isTerminalRunStatus, mergeEventHistory, projectTimeline, taskLifecycleOf, terminalRunStatusOf, timelineKindLabel } from './task-office/task-timeline.ts';
 export type { ScenarioTaskDetailHandlers, ScriptedTaskStream } from './task-office/in-memory-task-detail.ts';
+export { legacyTaskGates, LEGACY_TASK_NEW_RUN_REASON, createScenarioLegacyTaskBackend } from './task-office/legacy-tasks.ts';
+export type {
+  LegacyBackendTask, LegacyFollowUpInput, LegacyMessage, LegacyTaskBackendPage, LegacyTaskBackendPort,
+  LegacyTaskCapability, LegacyTaskCard, LegacyTaskGates, LegacyTaskIntent, LegacyTaskListPage,
+  ScenarioLegacyTaskBackend, ScenarioLegacyTaskBackendHandlers,
+} from './task-office/legacy-tasks.ts';
