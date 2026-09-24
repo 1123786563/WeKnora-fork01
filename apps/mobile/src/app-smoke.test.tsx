@@ -853,6 +853,58 @@ test('the universal New entry renders the recommended lead agent, budget control
   assert.equal(buttons.includes('Keep draft'), true);
 });
 
+test('the universal New entry caps goal text at the source so one intent record stays inside the SecureStore envelope', async () => {
+  const { NewTaskScreen, GOAL_TEXT_MAX_LENGTH } = await import('./screens/NewTaskScreen.tsx');
+  hooks().__reset();
+  assert.equal(GOAL_TEXT_MAX_LENGTH, 500, 'R1 裁决第三层：maxLength=500（主控裁决的工程默认值）');
+  const baseState = {
+    draft: { text: '', agentId: null, budgetUpper: 0, attachments: [] as never[], knowledgeIds: [] as string[] },
+    agents: [],
+    knowledge: [],
+    recommendation: { agent: null, basis: 'none' },
+    readiness: { ready: false, reason: 'text_required' as const, blockingAttachments: [] },
+    loading: false,
+    submitting: false,
+    inFlight: undefined,
+  };
+  const props = {
+    onUpdate: () => {},
+    onSetAttachments: () => {},
+    onToggleKnowledge: () => {},
+    onSubmit: () => {},
+    onCancel: () => {},
+    onRefreshAgents: () => {},
+  };
+  const goalInputOf = (tree: unknown) => descendants(tree).find(({ type, props: input }) => type === 'TextInput' && input.placeholder === '今天想完成什么？');
+
+  // 500 字（达上限）：maxLength 生效 + 超长提示出现
+  const capped = render(NewTaskScreen, { state: { ...baseState, draft: { ...baseState.draft, text: '目'.repeat(500) } }, ...props });
+  const goalInput = goalInputOf(capped);
+  assert.ok(goalInput, 'the goal TextInput renders');
+  assert.equal((goalInput!.props as { maxLength?: number }).maxLength, 500, 'the goal TextInput enforces maxLength=500 at the source (R1 layer 3)');
+  const cappedText = descendants(capped).filter(({ type }) => type === 'Text').flatMap(({ props }) => props.children).join(' ');
+  assert.equal(cappedText.includes('目标文本已达 500 字上限'), true, 'the over-limit hint is visible at the cap');
+
+  // 499 字：提示不出现（不打扰未触界的输入）
+  const under = render(NewTaskScreen, { state: { ...baseState, draft: { ...baseState.draft, text: '目'.repeat(499) } }, ...props });
+  const underText = descendants(under).filter(({ type }) => type === 'Text').flatMap(({ props }) => props.children).join(' ');
+  assert.equal(underText.includes('目标文本已达'), false, 'the hint stays hidden below the cap');
+
+  // 字节预算交叉验证：最坏情形（500 个中文字 × 3B UTF-8 + UUID 形态 requestId/sessionId
+  // + scope 固定开销）的单条意图记录序列化后仍在 Android SecureStore ~2048B 信封内——
+  // 修复前无上限时 560+ 中文字即超限，intent log 的 setItemAsync 抛错使提交永久失败。
+  const { randomUUID } = await import('node:crypto');
+  const worstCaseRecord = {
+    requestId: randomUUID(),
+    sessionId: randomUUID(),
+    goal: { text: '目'.repeat(GOAL_TEXT_MAX_LENGTH), agentId: 'a-general', budgetUpper: 200 },
+    scope: { origin: 'https://weknora.example.test', tenantID: 'tenant-1', userID: 'user-1' },
+    persistedAt: '2026-09-24T00:00:00Z',
+  };
+  const serializedBytes = new TextEncoder().encode(JSON.stringify([worstCaseRecord])).length;
+  assert.ok(serializedBytes <= 2048, `worst-case single intent record must fit the Android SecureStore ~2048B envelope but was ${serializedBytes} bytes`);
+});
+
 test('the /new route reaches the Task Office through the composition root, never the wire directly', async () => {
   const { readFileSync } = await import('node:fs');
   const source = readFileSync(resolve(workspaceRoot, 'apps/mobile/src/app/new.tsx'), 'utf8');

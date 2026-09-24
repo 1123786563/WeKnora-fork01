@@ -2,6 +2,16 @@ import { Button, Text, TextInput, View } from 'react-native';
 import type { NewTaskDraft, TaskAttachmentRef } from '@weknora/domain/mobile';
 import type { NewTaskViewState } from '../new-task-view.ts';
 
+/**
+ * 目标文本的源头长度上限（R1 裁决第三层，主控裁决 2026-09-24，数值为工程默认）：
+ * Android SecureStore 单值约 2048 字节，最坏情形（500 个中文字 × 3B UTF-8 +
+ * UUID 形态 requestId/sessionId 与 scope 固定开销）单条意图记录序列化约
+ * 1.8KB，仍在信封内；无上限时约 560+ 中文字即超限，intent log 的
+ * setItemAsync 抛错会让提交永久失败（见 adapters/intent-log.ts 的 1536B
+ * 预算注释：单条超限在源头拦截，不在存储层截断——截断破坏 goalKeyOf digest）。
+ */
+export const GOAL_TEXT_MAX_LENGTH = 500;
+
 export interface NewTaskScreenProps {
   state: NewTaskViewState;
   onUpdate(patch: Partial<Omit<NewTaskDraft, 'attachments' | 'knowledgeIds'>>): void;
@@ -26,7 +36,8 @@ export function NewTaskScreen({ state, onUpdate, onSetAttachments, onToggleKnowl
         />
       ))}
       <Button title="Refresh agents" onPress={() => { void onRefreshAgents(); }} />
-      <TextInput value={state.draft.text} onChangeText={(text) => { onUpdate({ text }); }} placeholder="今天想完成什么？" multiline />
+      <TextInput value={state.draft.text} onChangeText={(text) => { onUpdate({ text }); }} placeholder="今天想完成什么？" multiline maxLength={GOAL_TEXT_MAX_LENGTH} />
+      {state.draft.text.length >= GOAL_TEXT_MAX_LENGTH && <Text>{`目标文本已达 ${GOAL_TEXT_MAX_LENGTH} 字上限，超出部分不会保存`}</Text>}
       <TextInput
         value={state.draft.budgetUpper === 0 ? '' : String(state.draft.budgetUpper)}
         onChangeText={(text) => { onUpdate({ budgetUpper: /^\d+$/.test(text) ? Number(text) : 0 }); }}
