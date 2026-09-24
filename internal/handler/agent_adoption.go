@@ -72,6 +72,22 @@ type adoptionResponse struct {
 	Variants          []adoptionVariantResponse `json:"variants"`
 }
 
+type availableAgentCapability struct {
+	State  string `json:"state"`
+	Reason string `json:"reason"`
+}
+
+type availableAgentResponse struct {
+	AgentID     string                   `json:"agent_id"`
+	VariantID   string                   `json:"variant_id"`
+	AdoptionID  string                   `json:"adoption_id"`
+	ReleaseID   string                   `json:"release_id"`
+	Name        string                   `json:"name"`
+	Description string                   `json:"description"`
+	IsBuiltin   bool                     `json:"is_builtin"`
+	Capability  availableAgentCapability `json:"capability"`
+}
+
 func adoptionVariantDTO(view interfaces.AdoptionVariantView) adoptionVariantResponse {
 	return adoptionVariantResponse{
 		ID: view.ID, AdoptionID: view.AdoptionID, ReleaseID: view.ReleaseID,
@@ -203,4 +219,32 @@ func (h *AgentAdoptionHandler) TestVariant(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": adoptionVariantDTO(view)})
+}
+
+func (h *AgentAdoptionHandler) PublishVariant(c *gin.Context) {
+	actorID, _ := types.UserIDFromContext(c.Request.Context())
+	result, err := h.adoptions.PublishVariant(c.Request.Context(), sandboxConfigTenantID(c), actorID, c.Param("id"))
+	if err != nil {
+		_ = c.Error(adoptionClientError(err))
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"variant": adoptionVariantDTO(result.Variant)}})
+}
+
+func (h *AgentAdoptionHandler) ListAvailableAgents(c *gin.Context) {
+	views, err := h.adoptions.ListAvailableAgents(c.Request.Context(), sandboxConfigTenantID(c))
+	if err != nil {
+		_ = c.Error(adoptionClientError(err))
+		return
+	}
+	data := make([]availableAgentResponse, 0, len(views))
+	for _, view := range views {
+		data = append(data, availableAgentResponse{
+			AgentID: view.AgentID, VariantID: view.VariantID, AdoptionID: view.AdoptionID,
+			ReleaseID: view.ReleaseID, Name: view.Name, Description: view.Description,
+			IsBuiltin: view.IsBuiltin,
+			Capability: availableAgentCapability{State: view.Capability.State, Reason: view.Capability.Reason},
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": data})
 }

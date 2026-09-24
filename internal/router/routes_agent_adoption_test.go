@@ -302,3 +302,207 @@ func TestTenantAgentVariantCapabilityMappingAndTestGate(t *testing.T) {
 		"agent adoption variant state conflict: state is \"tested\"; complete capability mapping first",
 	)
 }
+
+func TestTenantAgentAdoptionPublishesIndependentVariantsIntoMobileAvailableAgents(t *testing.T) {
+	r, _, db := newAgentAdoptionTestApp(t)
+	listingID, releaseID := publishAdoptionRelease(t, r)
+	adopted := adoptionCall(r, 1, http.MethodPost, "/api/v1/marketplace/tenant/adoptions", "admin", "admin", map[string]any{"listing_id": listingID})
+	require.Equal(t, http.StatusCreated, adopted.Code, adopted.Body.String())
+	var adoptionBody struct {
+		Data struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(adopted.Body.Bytes(), &adoptionBody))
+
+	// AC2 over HTTP (publish gate): an un-mapped variant refuses publication
+	// with the missing capabilities named.
+	draft := adoptionCall(r, 1, http.MethodPost, "/api/v1/marketplace/tenant/adoptions/"+adoptionBody.Data.ID+"/variants", "admin", "admin", map[string]any{"name": "Draft Gate Probe"})
+	require.Equal(t, http.StatusCreated, draft.Code, draft.Body.String())
+	var draftBody struct {
+		Data struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(draft.Body.Bytes(), &draftBody))
+	draftPublish := adoptionCall(r, 1, http.MethodPost, "/api/v1/marketplace/tenant/variants/"+draftBody.Data.ID+"/publish", "admin", "admin", nil)
+	require.Equal(t, http.StatusConflict, draftPublish.Code, draftPublish.Body.String())
+	require.Contains(t, draftPublish.Body.String(), "missing required capabilities: knowledge, model")
+
+	mapAndTest := func(name, model, kb string) string {
+		variant := adoptionCall(r, 1, http.MethodPost, "/api/v1/marketplace/tenant/adoptions/"+adoptionBody.Data.ID+"/variants", "admin", "admin", map[string]any{"name": name})
+		require.Equal(t, http.StatusCreated, variant.Code, variant.Body.String())
+		var variantBody struct {
+			Data struct {
+				ID string `json:"id"`
+			} `json:"data"`
+		}
+		require.NoError(t, json.Unmarshal(variant.Body.Bytes(), &variantBody))
+		mapping := adoptionCall(r, 1, http.MethodPut, "/api/v1/marketplace/tenant/variants/"+variantBody.Data.ID+"/capability-mapping", "admin", "admin", map[string]any{"mappings": []map[string]any{
+			{"capability": "model", "model_id": model},
+			{"capability": "knowledge", "knowledge_base_ids": []string{kb}},
+		}})
+		require.Equal(t, http.StatusOK, mapping.Code, mapping.Body.String())
+		tested := adoptionCall(r, 1, http.MethodPost, "/api/v1/marketplace/tenant/variants/"+variantBody.Data.ID+"/test", "admin", "admin", nil)
+		require.Equal(t, http.StatusOK, tested.Code, tested.Body.String())
+		return variantBody.Data.ID
+	}
+
+	salesID := mapAndTest("Sales Assistant", "gpt-x", "kb-sales")
+	legalID := mapAndTest("Legal Assistant", "gpt-legal", "kb-legal")
+
+	// Nothing is published yet: the mobile agent projection carries no
+	// variant agents and the read model is empty (the "not runnable" side
+	// of the shelf gate — the agents simply do not exist as runnable).
+	agentsBefore := adoptionCall(r, 1, http.MethodGet, "/api/v1/agents", "viewer", "viewer", nil)
+	require.Equal(t, http.StatusOK, agentsBefore.Code, agentsBefore.Body.String())
+	require.NotContains(t, agentsBefore.Body.String(), "Sales Assistant")
+	require.NotContains(t, agentsBefore.Body.String(), "Legal Assistant")
+	availableBefore := adoptionCall(r, 1, http.MethodGet, "/api/v1/marketplace/tenant/available-agents", "viewer", "viewer", nil)
+	require.Equal(t, http.StatusOK, availableBefore.Code, availableBefore.Body.String())
+	var availableBeforeBody struct {
+		Data []struct {
+			AgentID string `json:"agent_id"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(availableBefore.Body.Bytes(), &availableBeforeBody))
+	require.Empty(t, availableBeforeBody.Data)
+
+	publish := func(variantID string) (localAgentID, localVersionID string) {
+		published := adoptionCall(r, 1, http.MethodPost, "/api/v1/marketplace/tenant/variants/"+variantID+"/publish", "admin", "admin", nil)
+		require.Equal(t, http.StatusOK, published.Code, published.Body.String())
+		var publishBody struct {
+			Data struct {
+				Variant struct {
+					ID                  string `json:"id"`
+					State               string `json:"state"`
+					LocalAgentID        string `json:"local_agent_id"`
+					LocalAgentVersionID string `json:"local_agent_version_id"`
+				} `json:"variant"`
+			} `json:"data"`
+		}
+		require.NoError(t, json.Unmarshal(published.Body.Bytes(), &publishBody))
+		require.Equal(t, "published", publishBody.Data.Variant.State)
+		require.NotEmpty(t, publishBody.Data.Variant.LocalAgentID)
+		require.NotEmpty(t, publishBody.Data.Variant.LocalAgentVersionID)
+		return publishBody.Data.Variant.LocalAgentID, publishBody.Data.Variant.LocalAgentVersionID
+	}
+	salesAgentID, salesVersionID := publish(salesID)
+	legalAgentID, legalVersionID := publish(legalID)
+	require.NotEqual(t, salesAgentID, legalAgentID)
+
+	// AC3 (mobile entry): the REAL GET /api/v1/agents — the endpoint the #33
+	// mobile Resource Shelf consumes — now carries both published local
+	// agents with the wire fields the api-client maps.
+	agentsAfter := adoptionCall(r, 1, http.MethodGet, "/api/v1/agents", "viewer", "viewer", nil)
+	require.Equal(t, http.StatusOK, agentsAfter.Code, agentsAfter.Body.String())
+	type mobileAgentRow struct {
+		ID          string `json:"id"`
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		IsBuiltin   bool   `json:"is_builtin"`
+		Config      struct {
+			KnowledgeBases []string `json:"knowledge_bases"`
+			ModelID        string   `json:"model_id"`
+			SystemPrompt   string   `json:"system_prompt"`
+		} `json:"config"`
+	}
+	var agentsList struct {
+		Data []mobileAgentRow `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(agentsAfter.Body.Bytes(), &agentsList))
+	byID := map[string]struct{}{}
+	var salesRow, legalRow *mobileAgentRow
+	for i := range agentsList.Data {
+		byID[agentsList.Data[i].ID] = struct{}{}
+		switch agentsList.Data[i].ID {
+		case salesAgentID:
+			salesRow = &agentsList.Data[i]
+		case legalAgentID:
+			legalRow = &agentsList.Data[i]
+		}
+	}
+	require.Contains(t, byID, salesAgentID)
+	require.Contains(t, byID, legalAgentID)
+	// AC1 (independence): the two variants' local agents carry different
+	// local mappings from one shared adoption.
+	require.NotNil(t, salesRow)
+	require.NotNil(t, legalRow)
+	require.Equal(t, "Sales Assistant", salesRow.Name)
+	require.Equal(t, "Legal Assistant", legalRow.Name)
+	require.Equal(t, []string{"kb-sales"}, salesRow.Config.KnowledgeBases)
+	require.Equal(t, "gpt-x", salesRow.Config.ModelID)
+	require.Equal(t, []string{"kb-legal"}, legalRow.Config.KnowledgeBases)
+	require.Equal(t, "gpt-legal", legalRow.Config.ModelID)
+	require.Equal(t, "Be useful.", salesRow.Config.SystemPrompt, "portable payload behavior reaches the local agent")
+	require.False(t, salesRow.IsBuiltin)
+
+	// The published local Agent Version is real and readable (#58 endpoint).
+	frozenVersion := adoptionCall(r, 1, http.MethodGet, "/api/v1/agents/"+salesAgentID+"/versions/"+salesVersionID, "viewer", "viewer", nil)
+	require.Equal(t, http.StatusOK, frozenVersion.Code, frozenVersion.Body.String())
+	require.Contains(t, frozenVersion.Body.String(), salesVersionID)
+	_ = legalVersionID
+
+	// Domain read model: two available agents with full lineage.
+	available := adoptionCall(r, 1, http.MethodGet, "/api/v1/marketplace/tenant/available-agents", "viewer", "viewer", nil)
+	require.Equal(t, http.StatusOK, available.Code, available.Body.String())
+	var availableBody struct {
+		Data []struct {
+			AgentID    string `json:"agent_id"`
+			VariantID  string `json:"variant_id"`
+			AdoptionID string `json:"adoption_id"`
+			ReleaseID  string `json:"release_id"`
+			Name       string `json:"name"`
+			Capability struct {
+				State  string `json:"state"`
+				Reason string `json:"reason"`
+			} `json:"capability"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(available.Body.Bytes(), &availableBody))
+	require.Len(t, availableBody.Data, 2)
+	require.Equal(t, salesAgentID, availableBody.Data[0].AgentID)
+	require.Equal(t, adoptionBody.Data.ID, availableBody.Data[0].AdoptionID)
+	require.Equal(t, releaseID, availableBody.Data[0].ReleaseID)
+	require.Equal(t, "supported", availableBody.Data[0].Capability.State)
+
+	// Governance view: one adoption, two published variants.
+	listed := adoptionCall(r, 1, http.MethodGet, "/api/v1/marketplace/tenant/adoptions", "admin", "admin", nil)
+	require.Equal(t, http.StatusOK, listed.Code, listed.Body.String())
+	require.Contains(t, listed.Body.String(), `"state":"published"`)
+
+	// Review Focus 2: re-publishing refuses and does not duplicate the agent.
+	rePublish := adoptionCall(r, 1, http.MethodPost, "/api/v1/marketplace/tenant/variants/"+salesID+"/publish", "admin", "admin", nil)
+	require.Equal(t, http.StatusConflict, rePublish.Code, rePublish.Body.String())
+	var count int64
+	require.NoError(t, db.Model(&types.CustomAgent{}).Where("tenant_id = ? AND name IN ?", 1, []string{"Sales Assistant", "Legal Assistant"}).Count(&count).Error)
+	require.Equal(t, int64(2), count, "a refused re-publish must not create another local agent")
+
+	// Review Focus 4: a tampered release bundle refuses publication (500,
+	// fail closed) before any local agent is instantiated.
+	tamperedID := mapAndTest("Compliance Assistant", "gpt-c", "kb-c")
+	require.NoError(t, db.Model(&types.AgentReleaseEntity{}).Where("tenant_id = ? AND id = ?", 1, releaseID).Update("bundle", []byte(`{"payload":"tampered"}`)).Error)
+	tamperedPublish := adoptionCall(r, 1, http.MethodPost, "/api/v1/marketplace/tenant/variants/"+tamperedID+"/publish", "admin", "admin", nil)
+	require.Equal(t, http.StatusInternalServerError, tamperedPublish.Code, tamperedPublish.Body.String())
+	require.NoError(t, db.Model(&types.CustomAgent{}).Where("tenant_id = ? AND name = ?", 1, "Compliance Assistant").Count(&count).Error)
+	require.Equal(t, int64(0), count, "a tampered release must not instantiate a local agent")
+
+	// Review Focus 5: soft-deleting a published local agent removes it from
+	// the read model immediately.
+	require.NoError(t, db.Delete(&types.CustomAgent{}, "tenant_id = ? AND id = ?", 1, legalAgentID).Error)
+	afterDelete := adoptionCall(r, 1, http.MethodGet, "/api/v1/marketplace/tenant/available-agents", "viewer", "viewer", nil)
+	require.Equal(t, http.StatusOK, afterDelete.Code)
+	require.NotContains(t, afterDelete.Body.String(), legalAgentID)
+
+	viewerPublish := adoptionCall(r, 1, http.MethodPost, "/api/v1/marketplace/tenant/variants/"+salesID+"/publish", "viewer", "viewer", nil)
+	require.Equal(t, http.StatusForbidden, viewerPublish.Code)
+	crossTenantAvailable := adoptionCall(r, 2, http.MethodGet, "/api/v1/marketplace/tenant/available-agents", "viewer", "viewer", nil)
+	require.Equal(t, http.StatusOK, crossTenantAvailable.Code)
+	var crossTenantAvailableBody struct {
+		Data []struct {
+			AgentID string `json:"agent_id"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(crossTenantAvailable.Body.Bytes(), &crossTenantAvailableBody))
+	require.Empty(t, crossTenantAvailableBody.Data, "another tenant never sees tenant-1 availability")
+}
