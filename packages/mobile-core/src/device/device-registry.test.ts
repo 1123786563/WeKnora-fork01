@@ -146,3 +146,62 @@ test('a late register completing after lease revocation is rejected, never resol
     (error: unknown) => error instanceof DeviceError && error.code === 'DEVICE_SCOPE_CHANGED',
   );
 });
+
+test('revoke maps a 409 revision conflict to DEVICE_CONFLICT (symmetry with register)', async () => {
+  const leaseRef: { lease?: ScopeLease } = { lease: leased().lease };
+  const { scenario, registry } = registryWith(leaseRef);
+  await registry.register({ deviceId: 'device-1', token: 'push-token-a', platform: 'ios' });
+  // revision 不匹配（本地视图落后于服务端）：服务端 ErrMobileDeviceRevision → 409。
+  await assert.rejects(
+    registry.revoke({ deviceId: 'device-1', revision: 42 }),
+    (error: unknown) => error instanceof DeviceError && error.code === 'DEVICE_CONFLICT',
+    'B3-F5：revoke 的 409 必须映射 DEVICE_CONFLICT（与 register 的冲突路径对称）',
+  );
+  assert.equal(scenario.snapshot().active.length, 1, '冲突的撤销不生效');
+});
+
+test('a register response with a dirty revision fails closed as DEVICE_BACKEND', async () => {
+  const leaseRef: { lease?: ScopeLease } = { lease: leased().lease };
+  const scenario = createScenarioDeviceRemote();
+  const dirty = {
+    remote: {
+      ...scenario.remote,
+      register: scenario.remote.register.bind(scenario.remote),
+    },
+  };
+  // 覆写 register 返回脏 revision（非安全整数）——服务端序列化缺陷时不得产生幻影 revision。
+  const dirtyRemote = {
+    ...dirty.remote,
+    register: async (input: Parameters<typeof scenario.remote.register>[0]) => {
+      const record = await scenario.remote.register(input);
+      return { ...record, revision: 1.5 };
+    },
+  };
+  const registry = createDeviceRegistry({ remote: dirtyRemote, lease: () => leaseRef.lease });
+  await assert.rejects(
+    registry.register({ deviceId: 'device-1', token: 'push-token-a', platform: 'ios' }),
+    (error: unknown) => error instanceof DeviceError && error.code === 'DEVICE_BACKEND',
+    'B3-F6：脏 revision 响应 fail-closed，不产生幻影 revision',
+  );
+});
+
+test('a register success completing after lease revocation still fails closed (F50)', async () => {
+  const { revocable, lease } = leased();
+  const leaseRef: { lease?: ScopeLease } = { lease };
+  const scenario = createScenarioDeviceRemote();
+  const slowBind = {
+    remote: {
+      ...scenario.remote,
+      register: async (input: Parameters<typeof scenario.remote.register>[0]) => {
+        revocable.revoke(); // bind 即将成功返回——但 scope 已撤销
+        return scenario.remote.register(input);
+      },
+    },
+  };
+  const registry = createDeviceRegistry({ remote: slowBind.remote, lease: () => leaseRef.lease });
+  await assert.rejects(
+    registry.register({ deviceId: 'd', token: 't', platform: 'ios' }),
+    (error: unknown) => error instanceof DeviceError && error.code === 'DEVICE_SCOPE_CHANGED',
+    'B3-F50：迟到成功不越 scope 原样返回',
+  );
+});

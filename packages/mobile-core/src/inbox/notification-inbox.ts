@@ -90,6 +90,9 @@ export function createNotificationInbox(ports: NotificationInboxPorts): Notifica
   let seen = new Set<string>();
   let duplicates: string[] = [];
   let cursor: string | undefined;
+  // 本地已读投影（B3-F1）：markRead 成功即记录；GET 快照只携带服务端视角，
+  // merge 时已读行强制 read:true——在途旧快照迟到 settle 不再回退已读状态。
+  const markedRead = new Set<string>();
   const requireLease = (): ScopeLease => {
     const lease = ports.lease();
     if (lease === undefined || !leaseActive(lease)) throw new InboxError('INBOX_SCOPE_CHANGED');
@@ -124,13 +127,13 @@ export function createNotificationInbox(ports: NotificationInboxPorts): Notifica
         continue;
       }
       seen.add(item.notificationId);
-      items.push({ ...item });
+      items.push({ ...item, ...(markedRead.has(item.notificationId) ? { read: true } : {}) }); // B3-F1：已读是本地投影事实
     }
-    cursor = page.nextCursor;
+    cursor = page.nextCursor === '' ? undefined : page.nextCursor; // B3-F2：空串游标归一
     return publish({
       items,
       unreadCount: page.unreadCount,
-      ...(page.nextCursor === undefined ? {} : { nextCursor: page.nextCursor }),
+      ...(cursor === undefined ? {} : { nextCursor: cursor }),
       duplicateNotificationIds: [...duplicates],
     });
   };
@@ -153,6 +156,7 @@ export function createNotificationInbox(ports: NotificationInboxPorts): Notifica
       const lease = requireLease();
       await callRemote(() => ports.remote.markRead(trimmed));
       if (!leaseActive(lease)) throw new InboxError('INBOX_SCOPE_CHANGED');
+      markedRead.add(trimmed); // 服务端已确认的已读事实（B3-F1）
       if (view !== undefined) {
         const wasUnread = view.items.some((item) => item.notificationId === trimmed && !item.read);
         const items = view.items.map((item) => (item.notificationId === trimmed && !item.read ? { ...item, read: true } : item));

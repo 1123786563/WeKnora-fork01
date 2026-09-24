@@ -79,6 +79,15 @@ export function createDeviceRegistry(ports: DevicePorts): DeviceRegistry {
     if (lease === undefined || !leaseActive(lease)) throw new DeviceError('DEVICE_SCOPE_CHANGED');
     return lease;
   };
+  const assertSoundRecord = (record: DeviceRegistrationRecord): DeviceRegistrationRecord => {
+    // 服务端响应的 revision/scope_generation 必须是正安全整数（B3-F6）：
+    // 序列化缺陷（1.5/NaN/字符串数字）时 fail-closed，不产生幻影 revision。
+    if (!Number.isSafeInteger(record.revision) || record.revision <= 0
+      || !Number.isSafeInteger(record.scopeGeneration) || record.scopeGeneration < 0) {
+      throw new DeviceError('DEVICE_BACKEND', { cause: new Error('device register response carries a non-integer revision or scope generation') });
+    }
+    return record;
+  };
   const attemptRegister = async (
     lease: ScopeLease,
     deviceId: string,
@@ -87,7 +96,9 @@ export function createDeviceRegistry(ports: DevicePorts): DeviceRegistry {
   ): Promise<DeviceRegistrationRecord> => {
     const intent = await ports.remote.issueIntent(deviceId);
     if (!leaseActive(lease)) throw new DeviceError('DEVICE_SCOPE_CHANGED');
-    return ports.remote.register({ deviceId, token, platform, registrationIntent: intent.registrationIntent });
+    const record = assertSoundRecord(await ports.remote.register({ deviceId, token, platform, registrationIntent: intent.registrationIntent }));
+    if (!leaseActive(lease)) throw new DeviceError('DEVICE_SCOPE_CHANGED'); // 迟到成功不越 scope 原样返回（B3-F50）
+    return record;
   };
   return {
     register(input) {
@@ -128,6 +139,7 @@ export function createDeviceRegistry(ports: DevicePorts): DeviceRegistry {
           await ports.remote.revoke({ deviceId, ...(input.revision === undefined ? {} : { revision: input.revision }) });
         } catch (error) {
           if (error instanceof DeviceError) throw error;
+          if (wireStatus(error) === 409) throw new DeviceError('DEVICE_CONFLICT', { cause: error }); // B3-F5：与 register 的冲突路径对称
           if (wireStatus(error) === 404) throw new DeviceError('DEVICE_NOT_FOUND', { cause: error });
           throw new DeviceError('DEVICE_BACKEND', { cause: error });
         }

@@ -168,3 +168,31 @@ test('remote failures surface as INBOX_BACKEND without leaking raw errors', asyn
     (error: unknown) => error instanceof InboxError && error.code === 'INBOX_BACKEND' && !String((error as Error).message).includes('SECRET'),
   );
 });
+
+test('an in-flight page snapshot does not roll back a read projection', async () => {
+  const leaseRef: { lease?: ScopeLease } = { lease: leased().lease };
+  let releaseFirst: (() => void) | undefined;
+  const remote: InboxRemote = {
+    inbox: () => new Promise((resolve) => { releaseFirst = () => resolve({ items: [{ notificationId: 'n-1', kind: 'attention', title: '需要处理', read: false }], unreadCount: 1 }); }),
+    markRead: async () => {},
+  };
+  const inbox = createNotificationInbox({ remote, lease: () => leaseRef.lease });
+  const pending = inbox.page();      // 在途读（慢）
+  await new Promise((resolve) => setImmediate(resolve));
+  await inbox.markRead('n-1');       // 已读先行落地
+  releaseFirst?.();                  // 旧快照迟到 settle（B3-F1 前提）
+  const view = await pending;
+  assert.equal(view.items[0]!.read, true, 'B3-F1：在途旧快照不得把已读行回退为未读');
+});
+
+test('an empty-string next cursor is normalized to undefined (end of list)', async () => {
+  const leaseRef: { lease?: ScopeLease } = { lease: leased().lease };
+  const remote: InboxRemote = {
+    inbox: async () => ({ items: [], unreadCount: 0, nextCursor: '' }), // 服务端空串游标
+    markRead: async () => {},
+  };
+  const inbox = createNotificationInbox({ remote, lease: () => leaseRef.lease });
+  const view = await inbox.page();
+  assert.equal(view.nextCursor, undefined, 'B3-F2：空串游标归一为 undefined——末页信号不被空串污染');
+  await assert.rejects(inbox.more(), (error: unknown) => error instanceof InboxError && error.code === 'INBOX_NO_ACTIVE_QUERY');
+});
