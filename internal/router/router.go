@@ -136,6 +136,10 @@ type RouterParams struct {
 	AppConnectionHandler   *handler.AppConnectionHandler
 	AppSyncHandler         *handler.AppSyncHandler
 	AppActionHandler       *handler.AppActionHandler
+	// T18 (#48): the Notion publish closed loop (plan formation through
+	// receipt) — its own handler so the frozen action lifecycle handlers
+	// stay untouched.
+	AppNotionPublishHandler *handler.AppNotionPublishHandler
 }
 
 // NewRouter 创建新的路由
@@ -423,6 +427,7 @@ func NewRouter(params RouterParams) *gin.Engine {
 			params.AppConnectionHandler,
 			params.AppSyncHandler,
 			params.AppActionHandler)
+		RegisterAppNotionPublishRoutes(v1, params.AppNotionPublishHandler)
 		RegisterChunkerDebugRoutes(v1, rbacGuards)
 
 		// Fail fast if any declared API-key policy points at a route

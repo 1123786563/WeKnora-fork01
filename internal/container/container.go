@@ -996,6 +996,10 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Invoke(func(h *handler.AppActionHandler, s *appconnectorsvc.OCConnectionService) {
 		h.SetOCConnectionService(s)
 	}))
+	// T18 (#48): the Notion publish closed loop — dedicated ActionService
+	// (bridge dispatcher + resolver), publish service and HTTP handler.
+	// The frozen OC-armed action service above is untouched.
+	must(container.Provide(newNotionPublishHandler))
 	must(container.Invoke(startOCRecoveryRunner))
 	// A02 app OAuth registrations for the first-batch providers. Client
 	// registrations come from env (WEKNORA_APP_OAUTH_<APP>_CLIENT_ID / _SECRET);
