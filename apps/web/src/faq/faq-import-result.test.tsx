@@ -146,6 +146,7 @@ function fakeClient(options: { progressData?: Record<string, unknown>; onPut?: (
         },
       },
       auth: { me: async () => ({ user: { id: 'u1', roles: [], memberships: [] }, membership: { role: 'owner' }, can_access_all_tenants: false }) },
+      identity: { organizations: { knowledgeBaseShares: { listShared: async () => [] } } },
       request: async (input: { method: string; path: string; body?: unknown }) => {
         calls.push({ ...input });
         if (input.method === 'PUT') { options.onPut?.(input.path, input.body); return { success: true }; }
