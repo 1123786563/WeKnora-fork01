@@ -69,27 +69,31 @@
 | px-kb-wiki-tab-wiki-treeview | 2.764 | 0.00 | 树形视图/目录行/reader 头部平移（选择器多匹配假设证伪：双端单匹配同位） |
 | px-kb-wiki-tab-wiki-overview | 3.201 | 0.00 | 索引概览 reader 头部平移 |
 
-### 批 3：设置域（18 项）
-| id | 基线 | 备注 |
-|---|---|---|
-| px-userprofile-change-password | 2.949 | popover+confirm |
-| px-mymemory-usage-hint | 0 | ✅ |
-| px-models-model-card | 62.438 | Vue t-drawer vs React wk-model-editor |
-| px-models-card-more | 0.764 | A9（React lost 待补测） |
-| px-parser-engine-builtin | 65.353 | 代表入口；10 卡同款 |
-| px-storage-backend-card | 21.599 | |
-| px-storage-card-more | 1.14 | react 未命中 warning |
-| px-vectorstore-add-db | 10.629 | B4 |
-| px-vectorstore-pg-card | 78.729 | B5 |
-| px-sandbox-what-is-hint | 0 | ✅ |
-| px-envvars-sandbox-key-hint | 1.837 | |
-| px-skills-add | 56.966 | A8 |
-| px-mcp-add-service | 54.278 | |
-| px-websearch-provider-card | 14.26 | |
-| px-websearch-card-more | 0.775 | react 未命中 warning |
-| px-platform-api-keys-create | 62.964 | |
-| px-members-rbac-hint | 10.919 | A7 |
-| px-ollama-redetect | 2.496 | A11 低置信 |
+### 批 3：设置域（18 项）——B3 串行流收敛（截至 9f274c977；run auto-scan/2026-09-24T12-48-10 回归）
+| id | 基线 | 终值 | 状态 |
+|---|---|---|---|
+| px-userprofile-change-password | 2.949 | 2.949 | ⚠️ 静态底差转交（判例 #27）：popconfirm 双端同构 (566,228,320×132)，弹层内仅 5px AA；2.949% 与 settings-userprofile 静态基线同值，全部来自分区静态底差 |
+| px-mymemory-usage-hint | 0 | 0 | ✅ |
+| px-models-model-card | 62.438 | 62.44 | ⬜ 未收敛：React wk-model-editor（dae977404 居中 dialog）vs Vue ModelEditorDialog（SettingDrawer 右抽屉 + model-editor-drawer 家族）；换壳+类名复刻待续 |
+| px-models-card-more | 0.764 | 0.003 | ✅ §13d dropdown 全局块带零（AA 残差） |
+| px-parser-engine-builtin | 65.353 | 0.002 | ✅ 已收敛（cae2d3269，单字形 AA 残差） |
+| px-storage-backend-card | 21.599 | 0.002 | ✅ 已收敛（35ccd539c；AA 残差） |
+| px-storage-card-more | 1.14 | 0 | ✅ 已收敛（35ccd539c，触发器已命中） |
+| px-vectorstore-add-db | 10.629 | 0.121 | ✅ 已收敛（35ccd539c；focus 边框相位残差，复扫 0.002-0.121 波动） |
+| px-vectorstore-pg-card | 78.729 | 0 | ✅ 已收敛（35ccd539c；env 卡可点守卫根因） |
+| px-sandbox-what-is-hint | 0 | 0 | ✅ |
+| px-envvars-sandbox-key-hint | 1.837 | 0.011-1.837 | ⚠️ hint popover 本体同构；波动值来自 settings-envvars 静态底差相位（12-31-57 轮 0.011%、12-48-10 轮 1.837%——静态底色轮换项，交互弹层零差） |
+| px-skills-add | 56.966 | 0 | ✅ 已收敛（9f274c977；mouseAway 指针工件判例 #26） |
+| px-mcp-add-service | 54.278 | 54.278 | ⬜ 未收敛：React wks-modal 自制居中壳（McpSettingsPanel:990）vs Vue McpServiceDialog（SettingDrawer + mcp-drawer--{transport} + #header-extra mcp-steps + footer-left 上一步 + width 680/min560/max920/storageKey mcp-config-v2）；添加卡类名 mcp-add-card→service-card--add；根因已锁待续 |
+| px-websearch-provider-card | 14.26 | 0.002 | ✅ 已收敛（35ccd539c；AA 残差） |
+| px-websearch-card-more | 0.775 | 0 | ✅ 已收敛（35ccd539c，触发器已命中） |
+| px-platform-api-keys-create | 62.964 | 62.964 | ⬜ 未收敛：React pak-drawer 自制壳 + 简化勾选表单（PlatformApiKeysPanel:112）vs Vue SettingDrawer（api-key-create-drawer 家族 + 平台控制面/空间能力分组 + 全选行）；根因已锁待续 |
+| px-members-rbac-hint | 10.919 | 10.919 | ⚠️ 静态底差转交（判例 #27）：role-hint popover 双端同构 (620,118,360×120) 内 0px；10.919% 与 settings-members 静态基线同值 |
+| px-ollama-redetect | 2.496 | 2.197-2.496 | ⚠️ 静态底差转交（判例 #27）：弹层内 3px AA；差异与 settings-ollama 静态基线同源（轮间 2.197↔2.496 为静态底差相位波动） |
+
+批 3 小结：18 项中 11 项 0/AA 残差（含 parser 续作）、3 项静态底差转交（弹层同构实证）、
+4 项基线即零；剩 3 项（models/mcp/api-keys）为居中壳/自制壳 vs SettingDrawer 右抽屉的
+结构差，根因均已代码级锁定（见上行），移交后续批次。
 
 ### 批 4：系统/集成/免登录（10 项）
 | id | 基线 | 备注 |

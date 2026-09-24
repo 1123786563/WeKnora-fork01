@@ -284,7 +284,7 @@ const ALL_PAGES = [
   { id: 'px-envvars-sandbox-key-hint', path: '/platform/settings?section=envvars', settle: 2000,
     actions: [{ clickAria: ['沙箱密钥说明'], clickCss: ['.hint-trigger'] }] },
   // skills 添加技能（A8：Vue drawer vs React dialog+drawer）
-  { id: 'px-skills-add', path: '/platform/settings?section=skills', settle: 2000,
+  { id: 'px-skills-add', path: '/platform/settings?section=skills', settle: 2000, mouseAway: true,
     actions: [{ clickText: ['添加技能'] }] },
   // mcp 添加服务 drawer（双端一致）
   { id: 'px-mcp-add-service', path: '/platform/settings?section=mcp', settle: 2000,

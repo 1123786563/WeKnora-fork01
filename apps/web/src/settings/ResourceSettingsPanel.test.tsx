@@ -164,21 +164,24 @@ function findButton(root: ParentNode, text: string): HTMLElement {
 }
 
 function findLabelledControl(root: ParentNode, label: string): HTMLInputElement | HTMLSelectElement {
+  // SettingDrawer 同构解剖（Vue .form-item）：label 与控件为兄弟节点。
   const labelEl = Array.from(root.querySelectorAll('label')).find((entry) => entry.textContent?.replace('*', '').trim() === label || entry.textContent?.includes(label));
   assert.ok(labelEl, `expected a field labelled "${label}"`);
-  const control = labelEl.querySelector('input, select');
-  assert.ok(control, `expected an input under label "${label}"`);
+  const control = labelEl.parentElement?.querySelector('input, select');
+  assert.ok(control, `expected an input next to label "${label}"`);
   return control as HTMLInputElement | HTMLSelectElement;
 }
 
 /* S6：tdesign Select 无原生 select（弹层 portal 到 body，台账 #8），经触发器
-   点击 + li.t-select-option 文本点击驱动。 */
+   点击 + li.t-select-option 文本点击驱动。触发器与 label 同为 .form-item 子节点
+   （SettingDrawer 解剖）；label 不再包裹 select，点击需落在内部 .t-input 上
+   （旧解剖靠 label 转发 click 给内部 input 开弹层）。 */
 async function chooseSelectOption(root: ParentNode, label: string, optionText: string) {
   const labelEl = Array.from(root.querySelectorAll('label')).find((entry) => entry.textContent?.replace('*', '').trim() === label || entry.textContent?.includes(label));
   assert.ok(labelEl, `expected a field labelled "${label}"`);
-  const trigger = labelEl.querySelector('.t-select__wrap');
-  assert.ok(trigger, `expected a tdesign select under label "${label}"`);
-  await act(async () => trigger.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })));
+  const trigger = labelEl.parentElement?.querySelector('.t-select__wrap .t-input');
+  assert.ok(trigger, `expected a tdesign select next to label "${label}"`);
+  await act(async () => trigger.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true })));
   const option = Array.from(document.body.querySelectorAll('.t-select-option'))
     .find((node) => (node.textContent ?? '').trim() === optionText);
   assert.ok(option, `expected the ${optionText} option in the select popup`);
@@ -218,10 +221,10 @@ test('vectorstore add drawer renders the Vue structured form, not a JSON textare
   assert.match(drawer.textContent!, /连接信息/);
   assert.match(drawer.textContent!, /引擎类型/);
   // S6：tdesign Select 关闭态只显示已选 label（原生 select 会把全部 option 渲染
-  // 进 DOM），选项断言改开弹层。
+  // 进 DOM），选项断言改开弹层（触发器与 label 同为 .form-item 子节点）。
   await act(async () => {
     const label = Array.from(drawer.querySelectorAll('label')).find((entry) => (entry.textContent ?? '').includes('引擎类型'))!;
-    label.querySelector('.t-select__wrap')?.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    label.parentElement?.querySelector('.t-select__wrap .t-input')?.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }));
   });
   assert.ok(Array.from(document.body.querySelectorAll('.t-select-option')).some((node) => (node.textContent ?? '').includes('Elasticsearch')));
   assert.match(drawer.textContent!, /addr/);
@@ -230,17 +233,17 @@ test('vectorstore add drawer renders the Vue structured form, not a JSON textare
   assert.match(drawer.textContent!, /高级设置/);
   // Test connection lives in the drawer footer with the save/cancel pair.
   assert.match(drawer.textContent!, /测试连接/);
-  // R490 C3 (M3-N1) — footer order mirrors Vue SettingDrawer (L45-61):
-  // footer-left 测试连接, right pair 取消 → 保存; the create submit reads
-  // common.save (Vue never overrides confirmText in the engine drawers).
-  // The drawer TITLE still reuses the panel add label (Vue addStore).
+  // R490 C3 (M3-N1) — footer order mirrors Vue SettingDrawer: footer-left
+  // 测试连接 + right pair 取消 → 保存；SettingDrawer 同构后按钮在抽屉 footer
+  // 槽（.setting-drawer__footer），不在 body form 内。
   // S6：disabled 的 tdesign Button 渲染 div.t-button（台账 #7），经类查询。
-  const footerButtons = Array.from(drawer.querySelectorAll('.t-button'))
-    .filter((button) => button.closest('form'))
+  const footerButtons = Array.from(drawer.querySelectorAll('.setting-drawer__footer .t-button'))
     .map((button) => (button.textContent ?? '').trim())
     .filter((text) => ['测试连接', '取消', '保存'].includes(text));
   assert.deepEqual(footerButtons, ['测试连接', '取消', '保存'], 'footer reads 测试连接/取消/保存 in the Vue SettingDrawer order');
-  assert.equal(drawer.querySelector('form button[type="submit"]')?.textContent, '保存', 'create submit is 保存, not the panel add label');
+  assert.deepEqual(
+    Array.from(drawer.querySelectorAll('.setting-drawer__footer-right .t-button')).map((b) => (b.textContent ?? '').trim()),
+    ['取消', '保存'], 'the right pair reads 取消 → 保存 and create confirm is 保存, not the panel add label');
   // The legacy bare form is gone.
   assert.doesNotMatch(drawer.textContent!, /安全配置 JSON/);
   assert.equal(drawer.querySelector('textarea'), null);
@@ -466,9 +469,10 @@ test('websearch edit drawer locks the provider and never posts the api_key', asy
 
   await act(async () => { findButton(container, 'Prod Brave').click(); });
   const drawer = document.body.querySelector('.t-drawer')!;
-  // S6：tdesign Select disabled 态走 t-is-disabled 类（台账 #7 同口径）。
+  // S6：tdesign Select disabled 态走 t-is-disabled 类（台账 #7 同口径）；
+  // SettingDrawer 解剖下 select 与 label 为兄弟节点。
   const providerLabel = Array.from(drawer.querySelectorAll('label')).find((entry) => (entry.textContent ?? '').includes('引擎类型'))!;
-  assert.ok(providerLabel.querySelector('.t-is-disabled'), 'the provider select stays locked in edit mode');
+  assert.ok(providerLabel.parentElement?.querySelector('.t-is-disabled'), 'the provider select stays locked in edit mode');
 
   // Editing without retyping the key posts no api_key anywhere.
   await submitForm(drawer);
@@ -584,19 +588,17 @@ test('websearch edit drawer with an unconfigured credential opens editing via �
 
 test('resource drawers render the per-engine brand badge in the header', async () => {
   // Websearch: the monogram initial comes from the type display name (Vue
-  // providerInitial looks providerTypes up by id) and tint from the
-  // websearch brand table (zhipu → #2563EB, WebSearchSettings.vue L1200;
-  // jsdom normalizes the hex to rgb() in serialized inline styles).
+  // providerInitial looks providerTypes up by id → 智谱搜索 → 智). SettingDrawer
+  // 同构后 per-engine 配色不再走内联样式，而是抽屉家族类 websearch-drawer--zhipu
+  // + unscoped CSS（settings.td.css §13c，Vue unscoped 块平移）。
   const web = makeSectionClient('websearch', { types: [{ id: 'zhipu', name: '智谱搜索', requires_api_key: true }] });
   const webContainer = await mountPanel(web.client as never, 'websearch');
   await act(async () => { findButton(webContainer, '添加搜索引擎').click(); });
   let drawer = document.body.querySelector('.t-drawer')!;
-  // S6：tdesign Drawer header 容器为 .t-drawer__header（原 Sheet 的 header/h2
-  // 不复存在），徽章+标题由自定义 header prop 渲染。
-  const webHeader = drawer.querySelector('.t-drawer__header')!;
+  assert.match(drawer.className, /websearch-drawer--zhipu/, 'drawer carries the per-provider CSS class for header-icon tinting');
+  const webHeader = drawer.querySelector('.setting-drawer__header')!;
   assert.match(webHeader.textContent!, /智/);
-  assert.match(webHeader.innerHTML, /37, 99, 235/);
-  const badgeIndex = webHeader.innerHTML.indexOf('智');
+  const badgeIndex = webHeader.textContent!.indexOf('智');
   const titleIndex = webHeader.textContent!.indexOf('添加');
   assert.ok(badgeIndex > -1 && titleIndex > -1, 'badge and title render in the header');
 
@@ -606,13 +608,13 @@ test('resource drawers render the per-engine brand badge in the header', async (
   mountedRoot = undefined;
 
   // Vectorstore: initial comes from the raw engine_type (Vue engineInitial)
-  // and tint from the vectorstore brand table (elasticsearch → #D97706 →
-  // jsdom-normalized rgb(217, 119, 6)).
+  // and tint from the vectorstore drawer family class (elasticsearch →
+  // vectorstore-drawer--elasticsearch, VectorStoreSettings.vue unscoped 块).
   const vector = makeSectionClient('vectorstore', { types: vectorTypes });
   const vectorContainer = await mountPanel(vector.client as never, 'vectorstore');
   await act(async () => { findButton(vectorContainer, '添加数据库').click(); });
   drawer = document.body.querySelector('.t-drawer')!;
-  const vectorHeader = drawer.querySelector('.t-drawer__header')!;
+  assert.match(drawer.className, /vectorstore-drawer--elasticsearch/);
+  const vectorHeader = drawer.querySelector('.setting-drawer__header')!;
   assert.match(vectorHeader.textContent!, /E/);
-  assert.match(vectorHeader.innerHTML, /217, 119, 6/);
 });

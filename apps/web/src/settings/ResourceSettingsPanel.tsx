@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
 import type { Locale } from '@weknora/i18n';
-import { Button as TButton, Drawer as TDrawer, Dropdown as TDropdown, Input as TInput, Select as TSelect, Switch as TSwitch, Tag as TTag } from 'tdesign-react';
+import { Button as TButton, Dropdown as TDropdown, Input as TInput, Select as TSelect, Switch as TSwitch, Tag as TTag } from 'tdesign-react';
 import { WkStatus as Status } from '../shared/wk-legacy.tsx';
 import { Icon as TIcon } from 'tdesign-icons-react';
+import { SettingDrawer } from './SettingDrawer.tsx';
 import { roleAtLeast, type SettingsRole } from '@weknora/views/settings/registry';
 import { settingsResourceRows, settingsSectionHeading } from './surface.ts';
 import { providerLogo } from './providerLogos.ts';
@@ -91,24 +92,29 @@ function monoLogoMask(url: string): CSSProperties {
   };
 }
 
-/** Brand badge for the drawer header — the Vue SettingDrawer #headerIcon
- *  slot: same logo/mono/monogram ladder as the list cards at the header's
- *  32px size, tinted by the per-provider brand table. */
-function drawerHeaderBadge(section: ResourceSection, id: string, initial: string): ReactNode {
+/** Vue #headerIcon 槽 — 原始 logo/mono/monogram 三级阶梯（无徽章包装）：
+ *  32px .setting-drawer__header-icon 容器与 unscoped per-engine 配色
+ *  （settings.td.css §13c）承载视觉。VectorStoreSettings.vue:121-133 /
+ *  StorageBackendSettings.vue:95-107 / WebSearchSettings.vue:103-115。 */
+function drawerHeaderIcon(section: ResourceSection, id: string, initial: string): ReactNode {
   const logo = providerLogo(section, id);
-  const brand = PROVIDER_BRAND[section][id.toLowerCase()] ?? { bg: 'rgba(0, 82, 217, 0.1)', color: '#0052D9' };
-  /* S6 Tailwind 收编：徽章 utilities → settings-wrapper.css .resource-drawer-header__badge。 */
   if (logo?.mode === 'color') {
-    return <div className="resource-drawer-header__badge resource-drawer-header__badge--color" aria-hidden="true">
-      <img src={logo.url} alt="" />
-    </div>;
+    return <img src={logo.url} alt={id} className="header-icon__img" />;
   }
   if (logo?.mode === 'mono') {
-    return <div className="resource-drawer-header__badge" style={{ backgroundColor: brand.bg, color: brand.color }} role="img" aria-label={id}>
-      <span style={monoLogoMask(logo.url)} aria-hidden="true" />
-    </div>;
+    return <span className="header-icon__mono" style={{ '--logo-url': `url("${logo.url}")` } as CSSProperties} />;
   }
-  return <div className="resource-drawer-header__badge resource-drawer-header__badge--text" style={{ backgroundColor: brand.bg, color: brand.color }}>{initial || '?'}</div>;
+  return <span className="header-icon__text">{initial || '?'}</span>;
+}
+
+/** Vue 抽屉 :class 透传（per-engine unscoped 配色锚点）：
+ *  StorageBackendSettings.vue:90 / VectorStoreSettings.vue:428-432 /
+ *  WebSearchSettings.vue:428-432。 */
+function drawerFamilyClass(section: ResourceSection, type: string): string {
+  const id = type.trim().toLowerCase();
+  if (section === 'storage') return `storage-backend-drawer storage-backend-drawer--${id || 'local'}`;
+  const family = section === 'vectorstore' ? 'vectorstore-drawer' : 'websearch-drawer';
+  return id ? `${family} ${family}--${id}` : family;
 }
 
 // Per-provider brand colors (Vue .backend-card--<id>/.store-card--<id> badge
@@ -182,23 +188,20 @@ function apiFor(client: WeKnoraClient, section: ResourceSection): ResourceApi {
 // SettingDrawer forms (label-align top, red * for required fields).
 // ---------------------------------------------------------------------------
 
+// Drawer form atoms — Vue SettingDrawer 抽屉表单解剖（label-align top、
+// required 星号前置；StorageBackendSettings.vue:115-121 / VectorStoreSettings.vue
+// 同款约定）：label 与控件为兄弟节点，desc 走 .form-desc（--warn 红字）。
 function FormItem({ label, required, children, desc, warn }: { label: ReactNode; required?: boolean; children: ReactNode; desc?: ReactNode; warn?: boolean }) {
-  return <div className="rs-form-item">
-    <label>
-      {required ? <span className="rs-required-star">*</span> : null}{label}
-      {children}
-    </label>
-    {desc ? <p className={'rs-form-desc' + (warn ? ' is-warn' : '')}>{desc}</p> : null}
+  return <div className="form-item">
+    <label className={'form-label' + (required ? ' required' : '')}>{label}</label>
+    {children}
+    {desc ? <p className={'form-desc' + (warn ? ' form-desc--warn' : '')}>{desc}</p> : null}
   </div>;
 }
 
-function SectionTitle({ children }: { children: ReactNode }) {
-  return <h4 className="rs-section-title">{children}</h4>;
-}
-
 function DrawerSection({ title, children }: { title: ReactNode; children: ReactNode }) {
-  return <section className="rs-drawer-section">
-    <SectionTitle>{title}</SectionTitle>
+  return <section className="setting-drawer__section">
+    <h4 className="setting-drawer__section-title">{title}</h4>
     {children}
   </section>;
 }
@@ -220,17 +223,26 @@ function setBagValue(setter: React.Dispatch<React.SetStateAction<Record<string, 
 // mirrors VectorStoreSettings.vue L243-343 (boolean → switch + TLS warning,
 // sensitive → password, number → number input, enum → select, string → input).
 function VectorSchemaField({ field, value, label, onChange, tlsWarning }: { field: VectorFieldSchema; value: unknown; label: string; onChange: (value: unknown) => void; tlsWarning?: string }) {
+  // Vue VectorStoreSettings.vue:246-283：boolean → .vision-toggle 包 switch +
+  // 条件 form-desc--warn 红字兄弟节点；敏感 string → password + lock-on
+  // prefix；number → type=number + .number-input（去原生 spinner）。
   if (field.type === 'boolean') {
-    return <FormItem label={label} required={field.required} desc={field.name === 'insecure_skip_verify' && value === true ? tlsWarning : undefined} warn>
-      <TSwitch value={value === true} onChange={(checked) => onChange(Boolean(checked))} />
-    </FormItem>;
+    return <div className="form-item">
+      <label className={'form-label' + (field.required ? ' required' : '')}>{label}</label>
+      <div className="vision-toggle">
+        <TSwitch value={value === true} onChange={(checked) => onChange(Boolean(checked))} />
+      </div>
+      {field.name === 'insecure_skip_verify' && value === true ? <p className="form-desc form-desc--warn">{tlsWarning}</p> : null}
+    </div>;
   }
   if (field.type === 'number') {
     const raw = value == null || value === '' ? '' : String(value);
     return <FormItem label={label} required={field.required}>
       <TInput
+        type="number"
+        className="number-input"
         value={raw}
-        placeholder={field.default != null ? String(field.default) : ''}
+        placeholder={field.default != null ? String(field.default) : ' '}
         onChange={(value) => {
           const text = String(value).trim();
           if (!text) { onChange(undefined); return; }
@@ -245,11 +257,22 @@ function VectorSchemaField({ field, value, label, onChange, tlsWarning }: { fiel
       <TSelect value={typeof value === 'string' ? value : ''} options={field.enum.map((option) => ({ value: option, label: option }))} onChange={(value) => onChange(String(value))} />
     </FormItem>;
   }
+  if (field.sensitive) {
+    return <FormItem label={label} required={field.required}>
+      <TInput
+        type="password"
+        value={typeof value === 'string' ? value : ''}
+        placeholder="********"
+        maxlength={128}
+        prefixIcon={<TIcon name="lock-on" />}
+        onChange={(value) => onChange(String(value))}
+      />
+    </FormItem>;
+  }
   return <FormItem label={label} required={field.required}>
     <TInput
-      type={field.sensitive ? 'password' : 'text'}
       value={typeof value === 'string' ? value : ''}
-      placeholder={field.sensitive ? '********' : (field.default?.toString() || '')}
+      placeholder={field.default?.toString() || ''}
       maxlength={128}
       onChange={(value) => onChange(String(value))}
     />
@@ -261,6 +284,8 @@ export function ResourceSettingsPanel({ client, section, initialValue, role = 'o
   const locale = readInitialLocale();
   const t = settingsT(locale);
   const copy = RESOURCE_COPY[locale];
+  // Vue authStore.hasRole('admin')：三域卡可点/菜单/add 卡的统一守卫。
+  const isAdmin = roleAtLeast(role as SettingsRole, 'admin');
   // Per-section i18n keys ported from the Vue settings editors.
   const keys = section === 'storage' ? {
     add: 'settings.storageBackend.createTitle', edit: 'settings.storageBackend.editTitle',
@@ -567,6 +592,19 @@ export function ResourceSettingsPanel({ client, section, initialValue, role = 'o
     catch (reason) { setError(reason instanceof Error ? reason.message : copy.setDefaultFailed); setBusy(false); }
   }
 
+  // Vue storage 卡菜单「测试连接」（handleMenuAction 'test' → testSaved）：
+  // 用存储配置测，成功/失败走面板内 notice/error 行（StorageBackendSettings.vue:315）。
+  async function testSavedCard(id: string) {
+    if (!id) return;
+    setBusy(true); setError(null); setNotice(null);
+    try {
+      const result = await api.testById(id);
+      if (!result.success) throw new Error(result.error || t(keys.testFailed));
+      setNotice(result.message || t(keys.testSuccess));
+    } catch (reason) { setError(reason instanceof Error ? reason.message : t(keys.testFailed)); }
+    finally { setBusy(false); }
+  }
+
   // Vue CredentialResource actions (frontend/src/components/credentials/
   // CredentialResource.vue). Every commit is an explicit call to the
   // /credentials subresource — never piggybacked on the main drawer save.
@@ -656,29 +694,32 @@ export function ResourceSettingsPanel({ client, section, initialValue, role = 'o
   const vectorDrawerBody = editingId ? (
     <>
       <DrawerSection title={t('vectorStoreSettings.basicSection')}>
-        <p className="rs-notice">{t('vectorStoreSettings.immutableNotice')}</p>
+        <div className="inline-alert inline-alert--info">
+          <TIcon name="info-circle-filled" className="inline-alert__icon" />
+          <span className="inline-alert__text">{t('vectorStoreSettings.immutableNotice')}</span>
+        </div>
         <FormItem label={t('vectorStoreSettings.nameLabel')} required>
           <TInput value={name} placeholder={t('vectorStoreSettings.namePlaceholder')} onChange={(value) => setName(String(value))} />
         </FormItem>
-        <div className="rs-readonly-list">
-          <div className="rs-readonly-row">
-            <span className="rs-readonly-key">{t('vectorStoreSettings.engineTypeLabel')}</span>
-            <span className="rs-readonly-value">{selectedVectorType?.display_name || type}</span>
+        <div className="readonly-fields">
+          <div className="readonly-row">
+            <span className="readonly-label">{t('vectorStoreSettings.engineTypeLabel')}</span>
+            <span className="readonly-value">{selectedVectorType?.display_name || type}</span>
           </div>
           {(selectedVectorType?.connection_fields ?? []).map((field) => {
             const value = connectionConfig[field.name];
             if (!field.sensitive && (value == null || value === '')) return null;
-            return <div key={field.name} className="rs-readonly-row">
-              <span className="rs-readonly-key">{vectorStoreFieldLabel(t, field.name)}</span>
-              <span className="rs-readonly-value">{field.sensitive ? '********' : String(value)}</span>
+            return <div key={field.name} className="readonly-row">
+              <span className="readonly-label">{vectorStoreFieldLabel(t, field.name)}</span>
+              <span className="readonly-value">{field.sensitive ? '********' : String(value)}</span>
             </div>;
           })}
           {(selectedVectorType?.index_fields ?? []).map((field) => {
             const value = indexConfig[field.name];
             if (value == null || value === '') return null;
-            return <div key={field.name} className="rs-readonly-row">
-              <span className="rs-readonly-key">{vectorStoreFieldLabel(t, field.name)}</span>
-              <span className="rs-readonly-value">{String(value)}</span>
+            return <div key={field.name} className="readonly-row">
+              <span className="readonly-label">{vectorStoreFieldLabel(t, field.name)}</span>
+              <span className="readonly-value">{String(value)}</span>
             </div>;
           })}
         </div>
@@ -707,8 +748,9 @@ export function ResourceSettingsPanel({ client, section, initialValue, role = 'o
         ))}
       </DrawerSection> : null}
       {vectorIndexFields.length > 0 ? <DrawerSection title={t('vectorStoreSettings.advancedIndexConfig')}>
-        <button type="button" className="rs-advanced-toggle" onClick={() => setShowAdvanced(!showAdvanced)}>
-          {showAdvanced ? copy.collapse : copy.expand}
+        <button type="button" className="advanced-toggle" onClick={() => setShowAdvanced(!showAdvanced)}>
+          <TIcon name={showAdvanced ? 'chevron-down' : 'chevron-right'} />
+          <span>{showAdvanced ? copy.collapse : copy.expand}</span>
         </button>
         {showAdvanced ? vectorIndexFields.map((field) => (
           <VectorSchemaField
@@ -731,62 +773,74 @@ export function ResourceSettingsPanel({ client, section, initialValue, role = 'o
     <>
       <DrawerSection title={t('settings.storageBackend.basicSection')}>
         <FormItem label={t('settings.storageBackend.nameLabel')} required>
-          <TInput value={name} placeholder={t('settings.storageBackend.namePlaceholder')} onChange={(value) => setName(String(value))} />
+          <TInput value={name} clearable placeholder={t('settings.storageBackend.namePlaceholder')} onChange={(value) => setName(String(value))} />
         </FormItem>
         <FormItem label={t('settings.storageBackend.providerLabel')} required>
           <TSelect value={type} disabled={storageDisabled} options={storageProviders.map((provider) => ({ value: provider, label: provider.toUpperCase() }))} onChange={(value) => onTypeChange(String(value))} />
         </FormItem>
         {type === 'minio' ? <FormItem label={t('settings.storageBackend.modeLabel')}>
-          <div className="rs-mode-seg">
-            <button type="button" disabled={storageDisabled} className={'rs-mode-seg__btn' + (storageConfig.mode !== 'docker' ? ' is-active' : '')} onClick={() => setStorageConfig({ ...storageConfig, mode: 'remote' })}>{t('settings.storageBackend.modeRemote')}</button>
-            <button type="button" disabled={storageDisabled} className={'rs-mode-seg__btn' + (storageConfig.mode === 'docker' ? ' is-active' : '')} onClick={() => setStorageConfig({ ...storageConfig, mode: 'docker' })}>{t('settings.storageBackend.modeEnv')}</button>
+          <div className="source-options" role="radiogroup">
+            <button type="button" disabled={storageDisabled} className={'source-option' + (storageConfig.mode !== 'docker' ? ' is-active' : '')} onClick={() => setStorageConfig({ ...storageConfig, mode: 'remote' })}>
+              <TIcon name="cloud" className="source-option__icon" />
+              <span className="source-option__label">{t('settings.storageBackend.modeRemote')}</span>
+            </button>
+            <button type="button" disabled={storageDisabled} className={'source-option' + (storageConfig.mode === 'docker' ? ' is-active' : '')} onClick={() => setStorageConfig({ ...storageConfig, mode: 'docker' })}>
+              <TIcon name="server" className="source-option__icon" />
+              <span className="source-option__label">{t('settings.storageBackend.modeEnv')}</span>
+            </button>
           </div>
         </FormItem> : null}
       </DrawerSection>
       <DrawerSection title={t('settings.storageBackend.connectionSection')}>
+        {/* Vue storage 连接字段全家 clearable + 凭据双字段 lock-on prefix
+            （StorageBackendSettings.vue:159-193）。 */}
         {needsEndpoint ? <FormItem label="Endpoint" required>
-          <TInput value={storageConfig.endpoint} disabled={storageDisabled} placeholder={type === 'minio' ? 'storage.example.com:9000' : 'https://storage.example.com'} onChange={(value) => setStorageConfig({ ...storageConfig, endpoint: String(value) })} />
+          <TInput value={storageConfig.endpoint} disabled={storageDisabled} clearable placeholder={type === 'minio' ? 'storage.example.com:9000' : 'https://storage.example.com'} onChange={(value) => setStorageConfig({ ...storageConfig, endpoint: String(value) })} />
         </FormItem> : null}
         {needsRegion ? <FormItem label="Region" required>
-          <TInput value={storageConfig.region} disabled={storageDisabled} onChange={(value) => setStorageConfig({ ...storageConfig, region: String(value) })} />
+          <TInput value={storageConfig.region} disabled={storageDisabled} clearable onChange={(value) => setStorageConfig({ ...storageConfig, region: String(value) })} />
         </FormItem> : null}
         {needsCredentials ? <>
+          {/* Vue 凭据双字段编辑态可改（密钥轮换入口，无 :disabled——
+              StorageBackendSettings.vue:164-178），仅 endpoint/region/bucket/
+              appid/path_prefix 编辑态锁定。 */}
           <FormItem label="Access Key / Secret ID" required>
-            <TInput value={storageConfig.access_key_id} disabled={storageDisabled} placeholder="***" onChange={(value) => setStorageConfig({ ...storageConfig, access_key_id: String(value) })} />
+            <TInput value={storageConfig.access_key_id} clearable placeholder="***" prefixIcon={<TIcon name="lock-on" />} onChange={(value) => setStorageConfig({ ...storageConfig, access_key_id: String(value) })} />
           </FormItem>
           <FormItem label="Secret Key" required>
-            <TInput type="password" value={storageConfig.secret_access_key} disabled={storageDisabled} placeholder="***" onChange={(value) => setStorageConfig({ ...storageConfig, secret_access_key: String(value) })} />
+            <TInput type="password" value={storageConfig.secret_access_key} clearable placeholder="***" prefixIcon={<TIcon name="lock-on" />} onChange={(value) => setStorageConfig({ ...storageConfig, secret_access_key: String(value) })} />
           </FormItem>
         </> : null}
         {type !== 'local' ? <FormItem label="Bucket" required>
-          <TInput value={storageConfig.bucket_name} disabled={storageDisabled} onChange={(value) => setStorageConfig({ ...storageConfig, bucket_name: String(value) })} />
+          <TInput value={storageConfig.bucket_name} disabled={storageDisabled} clearable onChange={(value) => setStorageConfig({ ...storageConfig, bucket_name: String(value) })} />
         </FormItem> : null}
         {type === 'cos' ? <FormItem label="App ID">
-          <TInput value={storageConfig.app_id || ''} disabled={storageDisabled} placeholder={t('settings.storageBackend.optionalPlaceholder')} onChange={(value) => setStorageConfig({ ...storageConfig, app_id: String(value) })} />
+          <TInput value={storageConfig.app_id || ''} disabled={storageDisabled} clearable placeholder={t('settings.storageBackend.optionalPlaceholder')} onChange={(value) => setStorageConfig({ ...storageConfig, app_id: String(value) })} />
         </FormItem> : null}
       </DrawerSection>
       <DrawerSection title={t('settings.storageBackend.advancedSection')}>
         <FormItem label={t('settings.storageBackend.pathPrefixLabel')}>
-          <TInput value={storageConfig.path_prefix} disabled={storageDisabled} placeholder="weknora/" onChange={(value) => setStorageConfig({ ...storageConfig, path_prefix: String(value) })} />
+          <TInput value={storageConfig.path_prefix} disabled={storageDisabled} clearable placeholder="weknora/" onChange={(value) => setStorageConfig({ ...storageConfig, path_prefix: String(value) })} />
         </FormItem>
-        {type === 'minio' ? <div className="rs-switch-row">
+        {/* Vue switch 行包一层 .form-item（StorageBackendSettings.vue:203-220）。 */}
+        {type === 'minio' ? <div className="form-item"><div className="vision-toggle">
           <TSwitch value={storageConfig.use_ssl} onChange={(checked) => setStorageConfig({ ...storageConfig, use_ssl: Boolean(checked) })} />
-          <span>{t('settings.storageBackend.useSslDesc')}</span>
-        </div> : null}
-        {type === 's3' ? <div className="rs-switch-row">
+          <span className="form-desc form-desc--inline">{t('settings.storageBackend.useSslDesc')}</span>
+        </div></div> : null}
+        {type === 's3' ? <div className="form-item"><div className="vision-toggle">
           <TSwitch value={storageConfig.force_path_style === true} onChange={(checked) => setStorageConfig({ ...storageConfig, force_path_style: Boolean(checked) })} />
-          <span>{t('settings.storageBackend.forcePathStyleDesc')}</span>
-        </div> : null}
-        {type === 'oss' ? <div className="rs-switch-row">
+          <span className="form-desc form-desc--inline">{t('settings.storageBackend.forcePathStyleDesc')}</span>
+        </div></div> : null}
+        {type === 'oss' ? <div className="form-item"><div className="vision-toggle">
           <TSwitch value={storageConfig.use_temp_bucket === true} onChange={(checked) => setStorageConfig({ ...storageConfig, use_temp_bucket: Boolean(checked) })} />
-          <span>{t('settings.storageBackend.useTempBucketDesc')}</span>
-        </div> : null}
+          <span className="form-desc form-desc--inline">{t('settings.storageBackend.useTempBucketDesc')}</span>
+        </div></div> : null}
         {['cos', 'tos'].includes(type) || (type === 'oss' && storageConfig.use_temp_bucket) ? <>
           <FormItem label={t('settings.storageBackend.tempBucketLabel')}>
-            <TInput value={storageConfig.temp_bucket_name || ''} placeholder={t('settings.storageBackend.tempBucketPlaceholder')} onChange={(value) => setStorageConfig({ ...storageConfig, temp_bucket_name: String(value) })} />
+            <TInput value={storageConfig.temp_bucket_name || ''} clearable placeholder={t('settings.storageBackend.tempBucketPlaceholder')} onChange={(value) => setStorageConfig({ ...storageConfig, temp_bucket_name: String(value) })} />
           </FormItem>
           <FormItem label={t('settings.storageBackend.tempRegionLabel')}>
-            <TInput value={storageConfig.temp_region || ''} placeholder={t('settings.storageBackend.tempRegionPlaceholder')} onChange={(value) => setStorageConfig({ ...storageConfig, temp_region: String(value) })} />
+            <TInput value={storageConfig.temp_region || ''} clearable placeholder={t('settings.storageBackend.tempRegionPlaceholder')} onChange={(value) => setStorageConfig({ ...storageConfig, temp_region: String(value) })} />
           </FormItem>
         </> : null}
       </DrawerSection>
@@ -796,10 +850,8 @@ export function ResourceSettingsPanel({ client, section, initialValue, role = 'o
   const webCredentialFields = selectedWebType?.requires_api_key || selectedWebType?.supports_optional_api_key || selectedWebType?.requires_engine_id || selectedWebType?.requires_base_url || (selectedWebType?.config_fields?.length ?? 0) > 0;
   const webDrawerBody = (
     <>
-      {selectedWebType ? <p className="rs-provider-head">
-        <span>{selectedWebType.name}</span>
-        {selectedWebType.docs_url ? <a href={selectedWebType.docs_url} target="_blank" rel="noopener noreferrer">{t('webSearchSettings.viewDocs')}</a> : null}
-      </p> : null}
+      {/* Vue WebSearchSettings 的 provider 名 + 查看文档外链在 SettingDrawer
+          #subtitle 槽（L121-132），不是 body 头段——见 drawerSubtitleNode。 */}
       <DrawerSection title={t('webSearchSettings.basicSection')}>
         <FormItem label={t('webSearchSettings.providerTypeLabel')} required>
           <TSelect value={type} disabled={Boolean(editingId)} options={webTypes.map((entry) => ({ value: entry.id, label: entry.name }))} onChange={(value) => onTypeChange(String(value))} />
@@ -818,50 +870,60 @@ export function ResourceSettingsPanel({ client, section, initialValue, role = 'o
         {selectedWebType?.requires_api_key || selectedWebType?.supports_optional_api_key ? (
           <FormItem label={selectedWebType?.supports_optional_api_key && !selectedWebType?.requires_api_key ? t('webSearchSettings.apiKeyOptionalLabel') : t('webSearchSettings.apiKeyLabel')} required={selectedWebType?.requires_api_key}>
             {editingId ? (
-              // Edit mode — Vue CredentialResource: the api_key is a per-field
-              // credential card committed straight to PUT/DELETE /credentials,
-              // decoupled from this form's submit.
+              // Edit mode — Vue CredentialResource（frontend/src/components/
+              // credentials/CredentialResource.vue）：api_key 是独立 /credentials
+              // 子资源，configured/unconfigured/editing 三态卡 + 两步移除内联
+              // 确认，提交走显式 PUT/DELETE，不搭主表单 save。类名与 Vue 逐字
+              // 同构（credential-faux-input 家族），data-kind 为测试锚。
               credentialStep === 'editing' ? (
-                <div className="rs-credential-edit">
+                <div className="credential-edit" data-kind="editing">
                   <TInput
                     type="password"
                     value={credentialDraft}
                     placeholder={t('dataSource.credential.inputPlaceholder')}
+                    prefixIcon={<TIcon name="lock-on" />}
                     onChange={(value) => setCredentialDraft(String(value))}
                     onKeydown={(_, context) => { if (context.e.key === 'Enter') { context.e.preventDefault(); void saveCredential(); } }}
                   />
-                  <div className="rs-credential-edit-actions">
-                    <TButton type="button" variant="text" size="small" disabled={credentialBusy !== null} onClick={cancelCredentialEdit}>{t('common.cancel')}</TButton>
-                    <TButton type="button" theme="primary" size="small" loading={credentialBusy === 'save'} disabled={!credentialDraft} onClick={() => void saveCredential()}>{t('common.save')}</TButton>
+                  <div className="credential-edit-actions">
+                    <TButton size="small" variant="text" disabled={credentialBusy !== null} onClick={cancelCredentialEdit}>{t('common.cancel')}</TButton>
+                    <TButton size="small" theme="primary" loading={credentialBusy === 'save'} disabled={!credentialDraft} onClick={() => void saveCredential()}>{t('common.save')}</TButton>
                   </div>
                 </div>
               ) : credentialConfigured ? (
                 credentialStep === 'confirm-remove' ? (
-                  <div data-kind="confirm-remove" className="rs-credential-card rs-credential-card--danger">
-                    <span className="rs-credential-card__icon" aria-hidden="true">⚠</span>
-                    <span className="rs-credential-card__prompt">{t('dataSource.credential.confirmRemovePrompt')}</span>
-                    <div className="rs-credential-card__actions">
-                      <TButton type="button" variant="text" size="small" disabled={credentialBusy !== null} onClick={() => setCredentialStep('idle')}>{t('common.cancel')}</TButton>
-                      <span className="rs-credential-card__divider" />
-                      <TButton type="button" theme="danger" size="small" loading={credentialBusy === 'remove'} onClick={() => void removeCredential()}>{t('dataSource.credential.confirmRemove')}</TButton>
+                  <div data-kind="confirm-remove" className="credential-faux-input is-confirm-remove">
+                    <TIcon name="error-circle-filled" className="status-icon warn" />
+                    <span className="credential-faux-text danger">{t('dataSource.credential.confirmRemovePrompt')}</span>
+                    <div className="credential-actions">
+                      <TButton size="small" variant="text" disabled={credentialBusy !== null} onClick={() => setCredentialStep('idle')}>{t('common.cancel')}</TButton>
+                      <span className="action-divider" />
+                      <TButton size="small" variant="text" theme="danger" loading={credentialBusy === 'remove'} onClick={() => void removeCredential()}>{t('dataSource.credential.confirmRemove')}</TButton>
                     </div>
                   </div>
                 ) : (
-                  <div data-kind="configured" className="rs-credential-card" title={t('dataSource.credential.configured')}>
-                    <span className="rs-credential-card__icon rs-credential-card__icon--ok" aria-hidden="true">✓</span>
-                    <span className="rs-credential-card__text">{t('dataSource.credential.configured')}</span>
-                    <div className="rs-credential-card__actions">
-                      <TButton type="button" variant="text" size="small" onClick={enterCredentialEdit}>{t('dataSource.credential.update')}</TButton>
-                      <span className="rs-credential-card__divider" />
-                      <TButton type="button" theme="danger" size="small" onClick={() => setCredentialStep('confirm-remove')}>{t('dataSource.credential.remove')}</TButton>
+                  <div data-kind="configured" className="credential-faux-input" title={t('dataSource.credential.configured')}>
+                    <TIcon name="check-circle-filled" className="status-icon success" />
+                    <span className="credential-faux-text">{t('dataSource.credential.configured')}</span>
+                    <div className="credential-actions">
+                      <TButton size="small" variant="text" onClick={enterCredentialEdit}>{t('dataSource.credential.update')}</TButton>
+                      <span className="action-divider" />
+                      <TButton size="small" variant="text" theme="danger" onClick={() => setCredentialStep('confirm-remove')}>{t('dataSource.credential.remove')}</TButton>
                     </div>
                   </div>
                 )
               ) : (
-                <div data-kind="unconfigured" className={'rs-credential-card' + (credentialFlashRemoved ? ' is-flash' : '')}>
-                  {credentialFlashRemoved ? <span className="rs-credential-card__icon rs-credential-card__icon--flash" aria-hidden="true">✓</span> : null}
-                  <span className={'rs-credential-card__text' + (credentialFlashRemoved ? ' is-flash' : '')}>{credentialFlashRemoved ? t('dataSource.credential.removedToast') : t('dataSource.credential.unconfigured')}</span>
-                  {credentialFlashRemoved ? null : <TButton type="button" variant="text" size="small" className="rs-credential-card__configure" onClick={enterCredentialEdit}>{t('dataSource.credential.configure')}</TButton>}
+                <div data-kind="unconfigured" className={'credential-faux-input is-empty' + (credentialFlashRemoved ? ' is-just-removed' : '')} onClick={credentialFlashRemoved ? undefined : enterCredentialEdit}>
+                  {credentialFlashRemoved ? <>
+                    <TIcon name="check-circle-filled" className="status-icon success" />
+                    <span className="credential-faux-text">{t('dataSource.credential.removedToast')}</span>
+                  </> : <>
+                    <TIcon name="lock-on" className="status-icon muted" />
+                    <span className="credential-faux-text muted">{t('dataSource.credential.unconfigured')}</span>
+                    <div className="credential-actions">
+                      <TButton size="small" variant="text" theme="primary" onClick={(event) => { event.stopPropagation(); enterCredentialEdit(); }}>{t('dataSource.credential.configure')}</TButton>
+                    </div>
+                  </>}
                 </div>
               )
             ) : (
@@ -881,15 +943,17 @@ export function ResourceSettingsPanel({ client, section, initialValue, role = 'o
         ))}
       </DrawerSection> : null}
       <DrawerSection title={t('webSearchSettings.optionsSection')}>
-        {selectedWebType?.supports_proxy ? <FormItem label={t('webSearchSettings.proxyUrlLabel')} desc={t('webSearchSettings.proxyUrlHelp')}>
+        {selectedWebType?.supports_proxy ? <FormItem label={t('webSearchSettings.proxyUrlLabel')}>
           <TInput value={proxyUrl} placeholder={t('webSearchSettings.proxyUrlPlaceholder')} onChange={(value) => setProxyUrl(String(value))} />
+          <p className="form-desc">{t('webSearchSettings.proxyUrlHelp')}</p>
         </FormItem> : null}
-        <FormItem label={t('webSearchSettings.setAsDefault')}>
-          <div className="rs-switch-row">
+        <div className="form-item">
+          <label className="form-label">{t('webSearchSettings.setAsDefault')}</label>
+          <div className="vision-toggle">
             <TSwitch value={isDefault} onChange={(checked) => setIsDefault(Boolean(checked))} />
-            <span>{t('webSearchSettings.setAsDefaultDesc')}</span>
+            <span className="form-desc form-desc--inline">{t('webSearchSettings.setAsDefaultDesc')}</span>
           </div>
-        </FormItem>
+        </div>
       </DrawerSection>
     </>
   );
@@ -915,13 +979,30 @@ export function ResourceSettingsPanel({ client, section, initialValue, role = 'o
         const meta = resourceMeta(row);
         const logo = providerLogo(section, provider);
         const brand = PROVIDER_BRAND[section][provider.toLowerCase()] ?? { bg: 'rgba(0, 82, 217, 0.1)', color: '#0052D9' };
+        // Vue 卡片可点守卫：admin 且（storage/vectorstore）非 env 来源
+        // （StorageBackendSettings.vue:299 canEdit / VectorStoreSettings.vue:619
+        // isStoreCardClickable / WebSearchSettings.vue:672）。env 卡不可点、
+        // 无 role/tabindex —— 点击不打开编辑抽屉（React 曾无条件可点，行为分歧）。
+        const envSourced = row.source === 'env';
+        const clickable = isAdmin && (section === 'websearch' || !envSourced);
+        // Vue 每节卡片家族类：backend-card--{provider} / store-card--{engine} /
+        // provider-card--{id} + --clickable 修饰（storage:22-25 / vector:28-34 /
+        // websearch:19-25）——扫描触发器与 unscoped 徽章配色锚点。
+        const familyClass = section === 'storage'
+          ? `backend-card--${provider || 'local'}`
+          : section === 'vectorstore'
+            ? `store-card store-card--${provider || 'unknown'}`
+            : `provider-card provider-card--${provider || 'unknown'}`;
         return <article
           key={id || index}
-          role="button"
-          tabIndex={0}
-          className={'backend-card rs-card' + (section === 'vectorstore' && row.source === 'env' ? ' is-env' : '') + (section === 'storage' ? ' is-storage' : ' is-list')}
-          onClick={() => edit(row)}
-          onKeyDown={(event) => { if (event.key === 'Enter') edit(row); }}
+          role={clickable ? 'button' : undefined}
+          tabIndex={clickable ? 0 : undefined}
+          className={'backend-card rs-card ' + familyClass
+            + (section === 'vectorstore' && envSourced ? ' is-env store-card--env' : '')
+            + (clickable ? ' backend-card--clickable store-card--clickable provider-card--clickable' : '')
+            + (section === 'storage' ? ' is-storage' : ' is-list')}
+          onClick={clickable ? () => edit(row) : undefined}
+          onKeyDown={clickable ? (event) => { if (event.key === 'Enter') edit(row); } : undefined}
         >
           {logo ? (
             <div className="backend-card__badge rs-card__badge rs-card__badge--frame" style={{ backgroundColor: brand.bg, color: brand.color }} aria-label={provider}>
@@ -942,8 +1023,8 @@ export function ResourceSettingsPanel({ client, section, initialValue, role = 'o
               {/* Vue StorageBackendSettings.vue:48 t-tag theme=primary variant=light size=small（直译，playbook §1 #13 tone 换算）。 */}
               {isDefault ? <TTag theme="primary" variant="light" size="small" className="rs-card__tag">{copy.defaultLabel}</TTag> : null}
               {/* Vue websearch 卡 header 尾部对 admin 常驻 provider-card__actions
-                 （t-dropdown ellipsis，编辑/删除；WebSearchSettings.vue:46-61）。 */}
-              {section === 'websearch' && roleAtLeast(role as SettingsRole, 'admin') ? <span className="rs-card__more" onClick={(event) => event.stopPropagation()}>
+                 （t-dropdown ellipsis，编辑/删除；WebSearchSettings.vue:44-62）。 */}
+              {section === 'websearch' && isAdmin ? <div className="provider-card__actions" onClick={(event) => event.stopPropagation()}>
                 <TDropdown
                   options={[
                     { content: t('common.edit'), value: 'edit' },
@@ -957,13 +1038,34 @@ export function ResourceSettingsPanel({ client, section, initialValue, role = 'o
                     else if (value === 'delete') void remove(rowId(row));
                   }}
                 >
-                  <TButton variant="text" shape="square" size="small" style={{ color: 'var(--td-text-color-placeholder, rgba(0, 0, 0, 0.4))', opacity: 0 }} icon={<TIcon name="ellipsis" />} />
+                  <TButton variant="text" shape="square" size="small" className="provider-card__more" icon={<TIcon name="ellipsis" />} />
                 </TDropdown>
-              </span> : null}
+              </div> : null}
               {/* Vue 每张 storage 卡尾部都有 opacity:0 的 24px 操作按钮
-                 （.backend-card__action-btn，hover 才显形）——不可见但参与布局：
-                  把 header 撑到 24px 高、默认徽标右侧留出 24+6px。 */}
-              {section === 'storage' ? <span className="rs-card__action-spacer" aria-hidden="true" /> : null}
+                  （.backend-card__action-btn，hover 才显形）挂三点菜单
+                  （测试连接/设为默认/编辑/删除，StorageBackendSettings.vue:45-56
+                  getBackendOptions:305-312）——不可见但参与布局。 */}
+              {section === 'storage' ? <div className="backend-card__actions" onClick={(event) => event.stopPropagation()}>
+                <TDropdown
+                  options={[
+                    { content: t('settings.storageBackend.testConnection'), value: 'test' },
+                    ...(isAdmin && id !== defaultId ? [{ content: t('settings.storageBackend.setDefault'), value: 'default' }] : []),
+                    ...(clickable ? [{ content: t('settings.storageBackend.edit'), value: 'edit' }] : []),
+                    ...(isAdmin && !envSourced && !row.legacy_alias ? [{ content: t('settings.storageBackend.delete'), value: 'delete', theme: 'error' as never }] : []),
+                  ]}
+                  placement="bottom-right"
+                  trigger="click"
+                  onClick={(data) => {
+                    const value = String(data?.value ?? '');
+                    if (value === 'test') void testSavedCard(id);
+                    else if (value === 'default') void setDefault(id);
+                    else if (value === 'edit') edit(row);
+                    else if (value === 'delete') void remove(id);
+                  }}
+                >
+                  <TButton variant="text" shape="square" size="small" className="backend-card__action-btn" icon={<TIcon name="ellipsis" />} />
+                </TDropdown>
+              </div> : null}
             </div>
             <p className={'backend-card__subtitle rs-card__subtitle' + (section === 'storage' ? ' is-storage' : '')}>
               {/* Vue storage 版 type 无加粗（vectorstore .store-card__type 才是 500），
@@ -974,49 +1076,62 @@ export function ResourceSettingsPanel({ client, section, initialValue, role = 'o
           </div>
         </article>;
       })}
-      <button
+      {/* Vue 三个 add 卡均 admin-only（StorageBackendSettings.vue / VectorStoreSettings.vue:94）。 */}
+      {isAdmin ? <button
         type="button"
         className={'backend-card backend-card--add rs-card-add' + (section === 'storage' ? ' is-storage' : ' is-list')}
         onClick={openCreate}
       >
         <span className="rs-card-add__icon" aria-hidden="true"><TIcon name="add" /></span>
         <span className="rs-card-add__label">{t(keys.add)}</span>
-      </button>
+      </button> : null}
     </div>
     {/* Vue WebSearchSettings L13: the empty-state hint only renders for
         non-admin viewers; admins get the bare grid, no desc line. */}
     {rows.length === 0 && !(section === 'websearch' && (role === 'owner' || role === 'admin')) ? <Status>{t(keys.empty)}</Status> : null}
-    {/* Drawer header brand badge — Vue renders #headerIcon for every section:
-        vectorstore v-if="form.engine_type", storage always, websearch
-        v-if="selectedProviderType". The websearch initial comes from the type
-        display name (Vue providerInitial), the other two from the raw id. */}
-    <TDrawer footer={false}
+    {/* Vue 三个资源抽屉均走 SettingDrawer（StorageBackendSettings.vue:87-243 /
+        VectorStoreSettings.vue:109-348 / WebSearchSettings.vue:90-307）：
+        自定义 header（#headerIcon 徽章 + 标题 + #subtitle 副标题）+ footer-left
+        测试连接 + 取消/保存 默认按钮对。设为默认/删除入口在卡片三点菜单（卡片域）。 */}
+    <SettingDrawer
       visible={drawerOpen}
-      header={type
-        ? <span className="resource-drawer-header">{drawerHeaderBadge(section, type, section === 'websearch' ? (providerTypes.find((entry) => entry.id === type)?.name || type).trim().charAt(0).toUpperCase() : providerInitial(type))}{editingId ? t(keys.edit) : t(keys.add)}</span>
-        : (editingId ? t(keys.edit) : t(keys.add))}
-      onClose={closeDrawer}
-      size="460px"
-      placement="right"
+      title={editingId ? t(keys.edit) : t(keys.add)}
+      drawerClass={drawerFamilyClass(section, type)}
+      confirmLoading={busy}
+      headerIcon={section === 'storage'
+        ? drawerHeaderIcon(section, type, providerInitial(type))
+        : section === 'vectorstore'
+          /* Vue engineInitial：raw engine_type 首字母（VectorStoreSettings.vue:511）。 */
+          ? (type ? drawerHeaderIcon(section, type, providerInitial(type)) : undefined)
+          /* Vue providerInitial 查 providerTypes display name（WebSearchSettings.vue:464-467），
+             如 zhipu → 智谱搜索 → 「智」，不是 id 的「Z」。 */
+          : (selectedWebType ? drawerHeaderIcon(section, type, providerInitial(providerTypeLabel(type))) : undefined)}
+      subtitle={section === 'storage'
+        ? <span>{t(editingId ? 'settings.storageBackend.editSubtitle' : 'settings.storageBackend.createSubtitle')}</span>
+        : section === 'vectorstore'
+          ? (selectedVectorType ? <span>{selectedVectorType.display_name || type}</span> : undefined)
+          : (selectedWebType ? <>
+            <span>{selectedWebType.name}</span>
+            {selectedWebType.docs_url ? <a href={selectedWebType.docs_url} target="_blank" rel="noopener noreferrer" className="doc-link doc-link--inline">
+              {t('webSearchSettings.viewDocs')}
+              <TIcon name="link" className="link-icon" />
+            </a> : null}
+          </> : undefined)}
+      footerLeft={section !== 'websearch' || selectedWebType ? <TButton variant="outline" loading={testing} disabled={!canTestConnection} onClick={() => void testConnection()}
+        icon={!testing && lastTestOk === true ? <TIcon name="check-circle-filled" className="status-icon available" />
+          : !testing && lastTestOk === false ? <TIcon name="close-circle-filled" className="status-icon unavailable" /> : undefined}
+      >
+        {testing ? t(section === 'vectorstore' ? 'vectorStoreSettings.testing' : section === 'websearch' ? 'webSearchSettings.testing' : keys.test) : t(keys.test)}
+      </TButton> : undefined}
+      onConfirm={() => void save(new Event('submit') as unknown as React.FormEvent<HTMLFormElement>)}
+      onCancel={closeDrawer}
+      onVisibleChange={(visible) => { if (!visible) closeDrawer(); }}
     >
       {error ? <Status tone="error">{error}</Status> : null}
       {notice ? <Status tone="success">{notice}</Status> : null}
-      <form className="rs-drawer-form" onSubmit={(event) => void save(event)}>
+      <form className={section === 'vectorstore' ? 'store-form' : section === 'websearch' ? 'provider-form' : ''} onSubmit={(event) => void save(event)}>
         {section === 'vectorstore' ? vectorDrawerBody : section === 'storage' ? storageDrawerBody : webDrawerBody}
-        <div className="wk-list-actions rs-drawer-actions">
-          <TButton type="button" loading={testing} disabled={!canTestConnection || busy} onClick={() => void testConnection()}>{testing ? t('vectorStoreSettings.testing') : t(keys.test)}</TButton>
-          {editingId && api.setDefault && section === 'storage' ? <TButton type="button" disabled={!editingId || busy} onClick={() => void setDefault(editingId)}>{t(keys.setDefault)}</TButton> : null}
-          {editingId ? <TButton type="button" disabled={busy} onClick={() => void remove(editingId)}>{t('common.delete')}</TButton> : null}
-          <span className="rs-actions-spacer" />
-          {/* R490 C3 (R489 M3-N1) — mirror the Vue SettingDrawer footer
-              (SettingDrawer.vue L45-61): footer-left 测试连接, then the
-              right pair in 取消 → 保存 order; none of the three Vue engine
-              drawers override confirmText, so create AND edit both read
-              common.save (was t(keys.add), e.g. 添加数据库, on create). */}
-          <TButton type="button" disabled={busy} onClick={closeDrawer}>{t('common.cancel')}</TButton>
-          <TButton type="submit" loading={busy}>{t('common.save')}</TButton>
-        </div>
       </form>
-    </TDrawer>
+    </SettingDrawer>
   </div>;
 }
