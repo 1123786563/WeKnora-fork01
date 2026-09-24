@@ -15,6 +15,15 @@ import (
 	secutils "github.com/Tencent/WeKnora/internal/utils"
 )
 
+// ErrPluginManagedService rejects generic MCP-management writes against a
+// plugin-materialized service row (PluginInstallationID != nil, 跨任务转交
+// T04-OCR1-F6): those rows are governed exclusively by the plugin install
+// APIs. A generic PUT could rewrite the verified endpoint/auth/enabled
+// baseline, and a generic DELETE would orphan the installation row and park
+// the (tenant_id, name) unique slot on a soft-deleted row, wedging re-install.
+var ErrPluginManagedService = errors.New(
+	"MCP service is plugin-managed and can only be modified through the plugin installation APIs")
+
 // mcpServiceService implements MCPServiceService interface
 type mcpServiceService struct {
 	mcpServiceRepo interfaces.MCPServiceRepository
@@ -136,6 +145,13 @@ func (s *mcpServiceService) UpdateMCPService(
 	// Builtin MCP services cannot be updated
 	if existing.IsBuiltin {
 		return fmt.Errorf("builtin MCP services cannot be updated")
+	}
+
+	// Plugin-materialized rows are governed by the plugin install APIs only
+	// (跨任务转交 T04-OCR1-F6): a generic PUT could rewrite the verified
+	// endpoint/auth/enabled baseline the admin actually accepted.
+	if existing.PluginInstallationID != nil {
+		return ErrPluginManagedService
 	}
 
 	// Determine the final transport type after merge
@@ -340,6 +356,15 @@ func (s *mcpServiceService) DeleteMCPService(ctx context.Context, tenantID uint6
 		return fmt.Errorf("builtin MCP services cannot be deleted")
 	}
 
+	// Plugin-materialized rows are governed by the plugin install APIs only
+	// (跨任务转交 T04-OCR1-F6): a generic delete would orphan the
+	// installation row and park the (tenant_id, name) unique slot on a
+	// soft-deleted row, wedging re-install (the uninstall flow hard-cascades
+	// instead).
+	if existing.PluginInstallationID != nil {
+		return ErrPluginManagedService
+	}
+
 	// Close client connection
 	s.mcpManager.CloseClient(id)
 
@@ -505,6 +530,13 @@ func (s *mcpServiceService) UpdateMCPCredentials(
 	}
 	if existing.IsBuiltin {
 		return nil, fmt.Errorf("builtin MCP services cannot have credentials modified")
+	}
+	// Plugin-materialized rows carry no service-level credentials by
+	// construction (materialization only sets AuthType/Scopes from the
+	// verified baseline); injecting one via the generic path would override
+	// the member-OAuth flow (跨任务转交 T04-OCR1-F6).
+	if existing.PluginInstallationID != nil {
+		return nil, ErrPluginManagedService
 	}
 
 	if existing.AuthConfig == nil {

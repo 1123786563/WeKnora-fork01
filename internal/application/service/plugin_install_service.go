@@ -190,12 +190,19 @@ func (s *pluginService) ConfirmInstallation(
 		URL:                  &endpoint,
 		PluginInstallationID: &installation.ID,
 	}
-	if result.Manifest.Auth != nil && result.Manifest.Auth.PersonalOAuth {
-		materialized.AuthConfig = &types.MCPAuthConfig{
-			AuthType: types.MCPAuthOAuth,
-			Scopes:   result.Manifest.Auth.Scopes,
-		}
-	}
+	// The materialized AuthConfig is derived from the VERIFIED baseline
+	// (the preview's tool-level declarations), never from the fresh
+	// manifest's auth block (跨任务转交 T01-OCR1-F3): manifest-level
+	// auth.personal_oauth / auth.scopes enter neither ToolsDigest nor
+	// IdentityFingerprint, so the remote can flip or escalate them inside
+	// the preview TTL window with an unchanged tool directory — the
+	// confirm guard would still pass. Trusting the fresh value would let a
+	// plugin author silently widen members' personal OAuth scope after the
+	// admin's review; spec line 49: a manifest's auth declaration alone is
+	// never execution authorization. The tool-level declarations ARE
+	// digest-covered, so the baseline below is exactly what the admin
+	// reviewed.
+	materialized.AuthConfig = oauthConfigFromVerifiedBaseline(preview.ToolsSnapshot)
 	if err := s.mcpServiceService.CreateMCPService(ctx, materialized); err != nil {
 		logger.GetLogger(ctx).Errorf("failed to materialize MCP service for plugin %s: %v", preview.PluginID, err)
 		return nil, s.compensateInstallation(ctx, tenantID, installation.ID, "", ErrInstallationMaterializeFailed)
@@ -251,6 +258,36 @@ func (s *pluginService) reclassifyPreviewMiss(ctx context.Context, tenantID uint
 		return ErrPreviewExpired
 	}
 	return ErrPreviewAlreadyConsumed
+}
+
+// oauthConfigFromVerifiedBaseline derives the materialized service's OAuth
+// config from the preview's verified tool-level declarations (跨任务转交
+// T01-OCR1-F3): oauth is configured only when at least one reviewed tool
+// requires personal auth, and the scopes are the union (first-seen order) of
+// the reviewed tools' scope lists. With no tool-level requirement the result
+// is nil — a fresh manifest auth flip is not a reviewed requirement.
+func oauthConfigFromVerifiedBaseline(snapshot []types.PluginToolSnapshot) *types.MCPAuthConfig {
+	requiresOAuth := false
+	var scopes []string
+	seen := map[string]bool{}
+	for _, tool := range snapshot {
+		if tool.RequiresPersonalAuth {
+			requiresOAuth = true
+		}
+		for _, s := range tool.Scopes {
+			if !seen[s] {
+				seen[s] = true
+				scopes = append(scopes, s)
+			}
+		}
+	}
+	if !requiresOAuth {
+		return nil
+	}
+	return &types.MCPAuthConfig{
+		AuthType: types.MCPAuthOAuth,
+		Scopes:   scopes,
+	}
 }
 
 // compensateInstallation rolls a failed confirm back to zero: hard-cascade

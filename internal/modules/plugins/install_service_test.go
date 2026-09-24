@@ -110,6 +110,7 @@ func (r *fakeInstallMCPServiceRepo) Update(_ context.Context, svc *types.MCPServ
 		if existing.TenantID == svc.TenantID && existing.ID == svc.ID {
 			existing.Enabled = svc.Enabled
 			existing.Name = svc.Name
+			existing.Description = svc.Description
 			return nil
 		}
 	}
@@ -422,6 +423,15 @@ func (r *installPreviewRepo) HardDeleteServiceCascade(ctx context.Context, tenan
 }
 
 func newInstallTestStack(t *testing.T, tenantID uint64) *installTestStack {
+	return newInstallTestStackCustom(t, tenantID, nil)
+}
+
+// newInstallTestStackCustom 在 marshal 前允许测试定制基线清单（auth 基线
+// 变体场景）；customize 为 nil 时与 newInstallTestStack 完全一致。
+func newInstallTestStackCustom(
+	t *testing.T, tenantID uint64,
+	customize func(*types.PluginManifest),
+) *installTestStack {
 	t.Helper()
 	t.Cleanup(utils.SnapshotSSRFWhitelistForTest())
 	utils.SetSSRFWhitelistFromRaw("127.0.0.1")
@@ -445,6 +455,9 @@ func newInstallTestStack(t *testing.T, tenantID uint64) *installTestStack {
 				InputSchemaDigest: plugins.ToolSchemaDigest([]byte(installWriteSchema)),
 			},
 		},
+	}
+	if customize != nil {
+		customize(m)
 	}
 	manifestJSON, err := json.Marshal(m)
 	require.NoError(t, err)
@@ -811,4 +824,111 @@ func TestUninstallInstallationReleasesUniqueSlot(t *testing.T) {
 	reinstalled, err := s.confirm(t, 7, newPreview.PreviewID)
 	require.NoError(t, err)
 	require.NotEqual(t, resp.InstallationID, reinstalled.InstallationID)
+}
+
+// TestConfirmInstallationAuthConfigFromVerifiedBaseline（跨任务转交
+// T01-OCR1-F3）：manifest 级 auth（personal_oauth / auth.scopes）不进
+// ToolsDigest 也不进 IdentityFingerprint——远端可在预览 TTL 窗口内翻转它
+// 而工具目录不变、确认守卫照常通过。物化 AuthConfig 因此绝不能采信 fresh
+// 重抓值，只能从 preview（管理员审阅过的基线）的工具级声明推导：
+// scopes 扩大攻击在确认面零生效。
+func TestConfirmInstallationAuthConfigFromVerifiedBaseline(t *testing.T) {
+	// 场景 1：远端在预览后把 auth.scopes 从 [read:jira] 扩为
+	// [read:jira, write:jira, admin:jira]（工具声明与目录完全不变 →
+	// digest/fingerprint 复核通过）——物化 scopes 仍必须是基线工具级
+	// 声明的并集 [read:jira]。
+	s := newInstallTestStack(t, 7)
+	escalated := *s.manifest // 浅拷贝：Tools 不动
+	escalated.Auth = &types.PluginAuth{
+		PersonalOAuth: true,
+		Scopes:        []string{"read:jira", "write:jira", "admin:jira"},
+	}
+	escalatedJSON, err := json.Marshal(escalated)
+	require.NoError(t, err)
+	s.replaceManifest(escalatedJSON)
+
+	resp, err := s.confirm(t, 7, s.previewID)
+	require.NoError(t, err, "guard passes: the tool directory is unchanged")
+	require.NotEmpty(t, resp.InstallationID)
+	require.Len(t, s.mcpRepo.services, 1)
+	mat := s.mcpRepo.services[0]
+	require.NotNil(t, mat.AuthConfig, "tool-level baseline declares personal OAuth")
+	require.Equal(t, types.MCPAuthOAuth, mat.AuthConfig.AuthType)
+	require.Equal(t, []string{"read:jira"}, mat.AuthConfig.Scopes,
+		"materialized scopes must come from the verified baseline, never the fresh manifest auth block")
+
+	// 场景 2：基线无任何工具级个人授权需求（requires_personal_auth 全
+	// false、auth.personal_oauth=false）——远端在预览后翻转
+	// personal_oauth=true 并夹带 admin scopes。物化 AuthConfig 必须为
+	// nil：fresh 的 manifest 级翻转不构成已审阅的授权需求（spec 49 行：
+	// 清单中的权限声明不能单独构成执行授权）。
+	s2 := newInstallTestStackCustom(t, 7, func(m *types.PluginManifest) {
+		m.Auth = &types.PluginAuth{PersonalOAuth: false}
+		for i := range m.Tools {
+			m.Tools[i].RequiresPersonalAuth = false
+			m.Tools[i].Scopes = nil
+		}
+	})
+	flipped := *s2.manifest
+	flipped.Auth = &types.PluginAuth{PersonalOAuth: true, Scopes: []string{"admin:everything"}}
+	flippedJSON, err := json.Marshal(flipped)
+	require.NoError(t, err)
+	s2.replaceManifest(flippedJSON)
+
+	resp2, err := s2.confirm(t, 7, s2.previewID)
+	require.NoError(t, err, "guard passes: the tool directory is unchanged")
+	require.NotEmpty(t, resp2.InstallationID)
+	require.Len(t, s2.mcpRepo.services, 1)
+	require.Nil(t, s2.mcpRepo.services[0].AuthConfig,
+		"no verified tool-level auth requirement → no materialized OAuth config, fresh flip ignored")
+}
+
+// TestGenericMCPAPIRejectsPluginManagedServices（跨任务转交 T04-OCR1-F6）：
+// 插件物化的 mcp_services 行必须由插件安装 API 独占治理——通用 MCP 管理
+// 面（PUT /mcp-services/:id、DELETE、PUT /:id/credentials）对其改写可绕过
+// 已核验端点基线（改 URL/auth/enabled）、DELETE 会留下孤儿安装行叠加软删
+// 重名使重装卡死。三处写面一律哨兵拒绝；手工服务（plugin_installation_id
+// NULL）行为不变。
+func TestGenericMCPAPIRejectsPluginManagedServices(t *testing.T) {
+	s := newInstallTestStack(t, 7)
+	_, err := s.confirm(t, 7, s.previewID)
+	require.NoError(t, err)
+	require.Len(t, s.mcpRepo.services, 1)
+	managed := s.mcpRepo.services[0]
+	require.NotNil(t, managed.PluginInstallationID)
+
+	// PUT /mcp-services/:id → 拒绝，行不变。
+	edited := *managed
+	edited.Description = "tampered via generic API"
+	err = s.mcpSvcService.UpdateMCPService(context.Background(), &edited, map[string]bool{"description": true})
+	require.ErrorIs(t, err, service.ErrPluginManagedService)
+	require.Equal(t, "Jira 本周待办", s.mcpRepo.services[0].Description,
+		"plugin-managed service row must stay untouched")
+
+	// DELETE /mcp-services/:id → 拒绝，行仍在。
+	err = s.mcpSvcService.DeleteMCPService(context.Background(), 7, managed.ID)
+	require.ErrorIs(t, err, service.ErrPluginManagedService)
+	require.Len(t, s.mcpRepo.services, 1, "plugin-managed service must not be deletable via the generic API")
+
+	// PUT /mcp-services/:id/credentials → 拒绝，AuthConfig 未被注入凭证。
+	apiKey := "injected-via-generic-api"
+	_, err = s.mcpSvcService.UpdateMCPCredentials(context.Background(), 7, managed.ID, &apiKey, nil)
+	require.ErrorIs(t, err, service.ErrPluginManagedService)
+	require.Empty(t, s.mcpRepo.services[0].AuthConfig.APIKey)
+
+	// 手工服务（plugin_installation_id NULL）同 API 行为不变：description
+	// 更新照常成功（挑无 config 变化的字段，避免触碰 nil manager 的
+	// CloseClient 路径）。
+	manual := &types.MCPService{
+		ID: "svc-manual", TenantID: 7, Name: "manual-svc", Enabled: true,
+		TransportType: types.MCPTransportSSE, Description: "before",
+	}
+	require.NoError(t, s.mcpRepo.Create(context.Background(), manual))
+	editedManual := *manual
+	editedManual.Description = "after"
+	require.NoError(t, s.mcpSvcService.UpdateMCPService(
+		context.Background(), &editedManual, map[string]bool{"description": true}))
+	stored, err := s.mcpRepo.GetByID(context.Background(), 7, "svc-manual")
+	require.NoError(t, err)
+	require.Equal(t, "after", stored.Description)
 }
