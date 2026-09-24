@@ -1,0 +1,327 @@
+package workbench
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"runtime"
+	"testing"
+	"time"
+
+	"github.com/Tencent/WeKnora/internal/application/repository"
+	appdatabase "github.com/Tencent/WeKnora/internal/database"
+	"github.com/Tencent/WeKnora/internal/types/interfaces"
+	"github.com/stretchr/testify/require"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+)
+
+func openApplicationTaskDB(t *testing.T) *gorm.DB {
+	t.Helper()
+	_, testFile, _, ok := runtime.Caller(0)
+	require.True(t, ok)
+	repoRoot, err := filepath.Abs(filepath.Join(filepath.Dir(testFile), "..", "..", "..", "..", ".."))
+	require.NoError(t, err)
+	previousDir, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(repoRoot))
+	t.Cleanup(func() { _ = os.Chdir(previousDir) })
+
+	dbPath := filepath.Join(t.TempDir(), "application-task.db")
+	require.NoError(t, appdatabase.RunMigrationsWithOptions(
+		"sqlite3://unused",
+		appdatabase.MigrationOptions{SQLiteDBPath: dbPath},
+	))
+	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
+	require.NoError(t, err)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	return db
+}
+
+func applicationTaskIntent() interfaces.CareerApplicationTaskIntent {
+	return interfaces.CareerApplicationTaskIntent{
+		ApplicationID: "0cd7ee38-03e5-45bf-a070-6a8675da7db3",
+		RequestID:     "career-create-application",
+		Title:         "\n  Backend   Engineer  Application \n",
+	}
+}
+
+func requireApplicationProjection(t *testing.T, db *gorm.DB, link interfaces.CareerApplicationTaskLink) {
+	t.Helper()
+	ctx := context.Background()
+
+	var session struct {
+		ID               string
+		TenantID         uint64
+		UserID           string
+		Title            string
+		EngineType       string
+		ActiveAgentRunID *string
+	}
+	require.NoError(t, db.WithContext(ctx).Table("sessions").
+		Where("tenant_id = ? AND user_id = ?", uint64(701), "owner-1").
+		Take(&session).Error)
+	require.Equal(t, link.TaskID, session.ID)
+	require.Equal(t, uint64(701), session.TenantID)
+	require.Equal(t, "owner-1", session.UserID)
+	require.Equal(t, "Backend Engineer Application", session.Title)
+	require.Equal(t, "builtin", session.EngineType)
+	require.Nil(t, session.ActiveAgentRunID)
+
+	var run struct {
+		TenantID           uint64
+		RunID              string
+		SessionID          string
+		OwnerID            string
+		RequestID          string
+		AssistantMessageID string
+		RequestHash        string
+		EngineType         string
+		Driver             string
+		TargetID           string
+		BudgetRef          string
+		Status             string
+		WaitReason         string
+		Snapshot           string
+		GraphVersion       string
+		SchemaVersion      int
+		LeaseOwner         string
+		Epoch              int64
+		Revision           int64
+		TokenBudget        int64
+		Deadline           time.Time
+	}
+	require.NoError(t, db.WithContext(ctx).Table("agent_runs").
+		Where("tenant_id = ? AND owner_id = ?", uint64(701), "owner-1").
+		Take(&run).Error)
+	require.Equal(t, link.RunID, run.RunID)
+	require.Equal(t, link.TaskID, run.SessionID)
+	require.Equal(t, "career-create-application", run.RequestID)
+	require.Empty(t, run.AssistantMessageID)
+	require.Len(t, run.RequestHash, 64)
+	require.Equal(t, "trpc", run.EngineType)
+	require.Equal(t, "platform", run.Driver)
+	require.Equal(t, "career_application", run.TargetID)
+	require.Empty(t, run.BudgetRef)
+	require.Equal(t, "waiting_user", run.Status)
+	require.Equal(t, "career_application_linking", run.WaitReason)
+	require.Equal(t, "1", run.GraphVersion)
+	require.Equal(t, 1, run.SchemaVersion)
+	require.Empty(t, run.LeaseOwner)
+	require.Zero(t, run.Epoch)
+	require.Equal(t, int64(1), run.Revision)
+	require.Zero(t, run.TokenBudget)
+	require.WithinDuration(t, time.Now().Add(time.Hour), run.Deadline, time.Minute)
+
+	var snapshot map[string]any
+	require.NoError(t, json.Unmarshal([]byte(run.Snapshot), &snapshot))
+	require.Equal(t, applicationTaskIntent().ApplicationID, snapshot["application_id"])
+	require.Equal(t, applicationTaskIntent().RequestID, snapshot["request_id"])
+	require.Equal(t, "Backend Engineer Application", snapshot["title"])
+
+	for table, expected := range map[string]int{
+		"sessions":                    1,
+		"agent_runs":                  1,
+		"messages":                    0,
+		"workbench_requests":          0,
+		"workbench_application_tasks": 1,
+	} {
+		var count int64
+		require.NoError(t, db.WithContext(ctx).Table(table).Count(&count).Error)
+		require.Equal(t, int64(expected), count, table)
+	}
+
+	var mapping struct {
+		TenantID        uint64
+		OwnerID         string
+		Origin          string
+		OriginRequestID string
+		ApplicationID   string
+		TaskID          string
+		RunID           string
+		Title           string
+	}
+	require.NoError(t, db.WithContext(ctx).Table("workbench_application_tasks").
+		Where("tenant_id = ? AND owner_id = ?", uint64(701), "owner-1").
+		Take(&mapping).Error)
+	require.Equal(t, uint64(701), mapping.TenantID)
+	require.Equal(t, "owner-1", mapping.OwnerID)
+	require.Equal(t, "career_application", mapping.Origin)
+	require.Equal(t, applicationTaskIntent().RequestID, mapping.OriginRequestID)
+	require.Equal(t, applicationTaskIntent().ApplicationID, mapping.ApplicationID)
+	require.Equal(t, link.TaskID, mapping.TaskID)
+	require.Equal(t, link.RunID, mapping.RunID)
+	require.Equal(t, "Backend Engineer Application", mapping.Title)
+}
+
+func TestEnsureCareerApplicationTaskCreatesOwnedVisibleProjection(t *testing.T) {
+	db := openApplicationTaskDB(t)
+	coordinator := NewApplicationTaskCoordinator(db)
+
+	link, err := coordinator.EnsureCareerApplicationTask(
+		context.Background(), 701, "owner-1", applicationTaskIntent(),
+	)
+	require.NoError(t, err)
+	require.NotEmpty(t, link.TaskID)
+	require.NotEmpty(t, link.RunID)
+	requireApplicationProjection(t, db, link)
+
+	page, err := repository.NewWorkbenchListStore(db).ListOwnedExecutions(
+		context.Background(), 701, "owner-1", repository.WorkbenchExecutionFilter{Status: "waiting_user"},
+	)
+	require.NoError(t, err)
+	require.Len(t, page.Items, 1)
+	require.Equal(t, link.RunID, page.Items[0].RunID)
+	require.Equal(t, link.TaskID, page.Items[0].SessionID)
+	require.Equal(t, "Backend Engineer Application", page.Items[0].Title)
+	require.Equal(t, "career_application_linking", page.Items[0].WaitReason)
+	require.Equal(t, "required", page.Items[0].Attention)
+}
+
+func TestEnsureCareerApplicationTaskReplayReturnsSameTaskAndRun(t *testing.T) {
+	db := openApplicationTaskDB(t)
+	coordinator := NewApplicationTaskCoordinator(db)
+	ctx := context.Background()
+
+	first, err := coordinator.EnsureCareerApplicationTask(ctx, 701, "owner-1", applicationTaskIntent())
+	require.NoError(t, err)
+	replayIntent := applicationTaskIntent()
+	replayIntent.Title = " Backend   Engineer Application "
+	second, err := coordinator.EnsureCareerApplicationTask(ctx, 701, "owner-1", replayIntent)
+	require.NoError(t, err)
+	require.Equal(t, first, second)
+
+	var sessions, runs, mappings int64
+	require.NoError(t, db.Table("sessions").Count(&sessions).Error)
+	require.NoError(t, db.Table("agent_runs").Count(&runs).Error)
+	require.NoError(t, db.Table("workbench_application_tasks").Count(&mappings).Error)
+	require.Equal(t, int64(1), sessions)
+	require.Equal(t, int64(1), runs)
+	require.Equal(t, int64(1), mappings)
+}
+
+func TestEnsureCareerApplicationTaskChangedIntentConflicts(t *testing.T) {
+	db := openApplicationTaskDB(t)
+	coordinator := NewApplicationTaskCoordinator(db)
+	ctx := context.Background()
+
+	first, err := coordinator.EnsureCareerApplicationTask(ctx, 701, "owner-1", applicationTaskIntent())
+	require.NoError(t, err)
+
+	changedApplication := applicationTaskIntent()
+	changedApplication.ApplicationID = "9e0af5ee-6ff2-45ab-b653-16eae47dcd8b"
+	_, err = coordinator.EnsureCareerApplicationTask(ctx, 701, "owner-1", changedApplication)
+	require.ErrorIs(t, err, ErrApplicationTaskConflict)
+
+	changedTitle := applicationTaskIntent()
+	changedTitle.Title = "Staff Backend Engineer Application"
+	_, err = coordinator.EnsureCareerApplicationTask(ctx, 701, "owner-1", changedTitle)
+	require.ErrorIs(t, err, ErrApplicationTaskConflict)
+
+	differentRequest := applicationTaskIntent()
+	differentRequest.RequestID = "career-create-application-2"
+	_, err = coordinator.EnsureCareerApplicationTask(ctx, 701, "owner-1", differentRequest)
+	require.ErrorIs(t, err, ErrApplicationTaskConflict)
+
+	requireApplicationProjection(t, db, first)
+}
+
+func TestFindCareerApplicationTaskIsTenantAndOwnerScoped(t *testing.T) {
+	db := openApplicationTaskDB(t)
+	coordinator := NewApplicationTaskCoordinator(db)
+	ctx := context.Background()
+
+	created, err := coordinator.EnsureCareerApplicationTask(ctx, 701, "owner-1", applicationTaskIntent())
+	require.NoError(t, err)
+	found, err := coordinator.FindCareerApplicationTask(ctx, 701, "owner-1", "career-create-application")
+	require.NoError(t, err)
+	require.Equal(t, created, found)
+
+	_, err = coordinator.FindCareerApplicationTask(ctx, 702, "owner-1", "career-create-application")
+	require.ErrorIs(t, err, ErrApplicationTaskNotFound)
+	_, err = coordinator.FindCareerApplicationTask(ctx, 701, "owner-2", "career-create-application")
+	require.ErrorIs(t, err, ErrApplicationTaskNotFound)
+}
+
+func TestApplicationTaskProjectionIsListReadableArchivableAndRestorable(t *testing.T) {
+	db := openApplicationTaskDB(t)
+	coordinator := NewApplicationTaskCoordinator(db)
+	lists := repository.NewWorkbenchListStore(db)
+	states := repository.NewWorkbenchTaskStateStore(db)
+	ctx := context.Background()
+
+	link, err := coordinator.EnsureCareerApplicationTask(ctx, 701, "owner-1", applicationTaskIntent())
+	require.NoError(t, err)
+	archivedAt := time.Date(2026, 9, 24, 10, 0, 0, 0, time.UTC)
+	require.NoError(t, states.SetTaskArchived(ctx, 701, "owner-1", link.TaskID, true, archivedAt))
+
+	active, err := lists.ListOwnedExecutions(ctx, 701, "owner-1", repository.WorkbenchExecutionFilter{})
+	require.NoError(t, err)
+	require.Empty(t, active.Items)
+	archived, err := lists.ListOwnedExecutions(ctx, 701, "owner-1", repository.WorkbenchExecutionFilter{ArchivedOnly: true})
+	require.NoError(t, err)
+	require.Len(t, archived.Items, 1)
+	require.Equal(t, link.RunID, archived.Items[0].RunID)
+	require.Equal(t, archivedAt.UTC().Format(time.RFC3339Nano), archived.Items[0].ArchivedAt)
+
+	require.NoError(t, states.SetTaskArchived(ctx, 701, "owner-1", link.TaskID, false, archivedAt.Add(time.Minute)))
+	restored, err := lists.ListOwnedExecutions(ctx, 701, "owner-1", repository.WorkbenchExecutionFilter{})
+	require.NoError(t, err)
+	require.Len(t, restored.Items, 1)
+	require.Equal(t, link.RunID, restored.Items[0].RunID)
+}
+
+func TestApplicationTaskMigrationUpAndDownShapes(t *testing.T) {
+	db := openApplicationTaskDB(t)
+
+	var columns []string
+	require.NoError(t, db.Raw(
+		"SELECT name FROM pragma_table_info('workbench_application_tasks') ORDER BY cid",
+	).Scan(&columns).Error)
+	require.Equal(t, []string{
+		"tenant_id", "owner_id", "origin", "origin_request_id", "application_id",
+		"task_id", "run_id", "title", "created_at", "updated_at",
+	}, columns)
+
+	type indexDefinition struct {
+		Name string
+		SQL  string
+	}
+	var indexes []indexDefinition
+	require.NoError(t, db.Table("sqlite_master").
+		Select("name, sql").
+		Where("type = ? AND name IN ?", "index", []string{
+			"uq_workbench_application_tasks_request",
+			"uq_workbench_application_tasks_application",
+		}).
+		Find(&indexes).Error)
+	require.Len(t, indexes, 2)
+	for _, index := range indexes {
+		require.Contains(t, index.SQL, "CREATE UNIQUE INDEX")
+	}
+
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	require.NoError(t, execMigrationFile(sqlDB, "migrations/sqlite/000117_workbench_application_tasks.down.sql"))
+	var count int
+	require.NoError(t, sqlDB.QueryRow(
+		"SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'workbench_application_tasks'",
+	).Scan(&count))
+	require.Zero(t, count)
+}
+
+func execMigrationFile(db *sql.DB, path string) error {
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read %s: %w", path, err)
+	}
+	if _, err := db.Exec(string(contents)); err != nil {
+		return fmt.Errorf("exec %s: %w", path, err)
+	}
+	return nil
+}
