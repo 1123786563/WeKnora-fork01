@@ -180,7 +180,6 @@ export interface ChatComposerProps {
   modelContext?: string;
   /** True when the model has no explicit context window (Vue model-selector-ctx is-default). */
   modelContextIsDefault?: boolean;
-  modelOptions?: readonly { id: string; name: string }[];
   selectedModelId?: string;
   onModelChange?(modelId: string): void;
   /** Vue control-right swaps send for stop while a reply is running (isReplying: dispatched through stream end, incl. the pre-stream window). */
@@ -243,7 +242,7 @@ export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraft
   const attachTipTimer = useRef<number | null>(null);
   const [activeMentionIndex, setActiveMentionIndex] = useState(0);
   const [agentPanelOpen, setAgentPanelOpen] = useState(false);
-  const agentChipRef = useRef<HTMLButtonElement>(null);
+  const agentChipRef = useRef<HTMLDivElement>(null);
   function submitDraft(): void {
     if (!draft.trim()) return;
     onSubmit({ ...createChatSubmission(draft), ...(selectedModelId ? { modelId: selectedModelId } : {}) });
@@ -435,21 +434,25 @@ export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraft
             const chipLabel = currentAgent?.name ?? t.quickAnswer;
             const panelOpen = agentPanelOpen && typeof document !== 'undefined' && agentChipRef.current;
             return <>
-              <button
-                type="button"
+              {/* Vue .control-btn.agent-mode-btn 是 div（无 tabindex/焦点）——点击不
+                  落焦点，shell 不触发 :focus-within 品牌色描边。React 保持 div 同构
+                  （button 会让 composer 外框出现 Vue 没有的绿边，px-chat-agent-selector
+                  实证）。 */}
+              <div
                 ref={agentChipRef}
                 id="wk-chat-agent"
+                role="button"
                 aria-label={t.selectAgent}
                 aria-haspopup="dialog"
                 aria-expanded={agentPanelOpen}
-                disabled={disabled}
-                onClick={() => setAgentPanelOpen((open) => !open)}
+                aria-disabled={disabled || undefined}
+                onClick={() => { if (!disabled) setAgentPanelOpen((open) => !open); }}
                 className="wk-chat-agent-chip wk-vc-composer-15"
               >
                 {/* Vue .agent-mode-text: margin 0 4px, on top of the control-btn flex gap 4 */}
                 <span className="wk-vc-composer-16">{chipLabel}</span>
                 <svg className="wk-vc-composer-17" width="10" height="10" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><path d="M2.5 4.5L6 8L9.5 4.5H2.5Z" /></svg>
-              </button>
+              </div>
               {panelOpen && agentChipRef.current ? <AgentSelectorPanel
                 copy={t}
                 currentAgentId={selectedAgentId ?? ''}
@@ -589,6 +592,15 @@ export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraft
               {modelContext ? <span className={modelContextIsDefault ? 'wk-chat-model-ctx is-default wk-vc-composer-38' : 'wk-chat-model-ctx wk-vc-composer-39'}>{modelContext}</span> : null}
               <svg className="wk-chat-chip-arrow wk-vc-composer-30" width="10" height="10" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><path d="M2.5 4.5L6 8L9.5 4.5H2.5Z" /></svg>
             </button>}
+            {modelPanelOpen && modelTriggerRef.current && onModelChange ? <ModelSelectorPanel
+              copy={t}
+              options={modelOptions}
+              selectedModelId={selectedModelId}
+              anchorRect={modelTriggerRef.current.getBoundingClientRect()}
+              onSelect={(modelId) => { setModelPanelOpen(false); onModelChange(modelId); }}
+              onAddModel={() => { setModelPanelOpen(false); onModelAdd?.(); }}
+              onClose={() => setModelPanelOpen(false)}
+            /> : null}
           </div>
         </div>
         <div className="wk-chat-control-right wk-vc-composer-32">

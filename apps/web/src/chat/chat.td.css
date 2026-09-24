@@ -1634,6 +1634,253 @@
   border-top-left-radius: 100%;
   box-shadow: var(--td-shadow-inset-left, inset 0.5px 0 0 0 #dcdcdc), var(--td-shadow-inset-bottom, inset 0 -0.5px 0 0 #dcdcdc);
 }
+
+/* ===== §14 AgentSelector.vue（composer 智能体下拉；Vue Teleport body →
+   views 包 in-tree fixed 同几何，类名/样式值 scoped 原样平移） ===== */
+.agent-selector-overlay,
+.agent-selector-overlay *,
+.agent-selector-overlay *::before,
+.agent-selector-overlay *::after {
+  box-sizing: border-box;
+}
+
+.agent-selector-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: transparent;
+  touch-action: none;
+}
+
+.agent-selector-dropdown {
+  position: fixed;
+  background: var(--td-bg-color-container);
+  border: .5px solid var(--td-component-border);
+  border-radius: 8px;
+  box-shadow: var(--td-shadow-2);
+  display: flex;
+  flex-direction: column;
+  z-index: 10001;
+  margin: 0;
+  transform-origin: top left;
+  animation: agentSelectorFadeIn 0.15s ease-out;
+}
+
+@keyframes agentSelectorFadeIn {
+  from { opacity: 0; transform: scale(0.98); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.agent-selector-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 36px;
+  padding: 8px 12px;
+  border-bottom: .5px solid var(--td-component-stroke);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--td-text-color-secondary);
+}
+
+.agent-selector-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 5px;
+  color: var(--td-brand-color);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  text-decoration: none;
+  flex-shrink: 0;
+  /* Vue 端是 router-link <a>（无 UA button 默认）；React button 复位到同基线 */
+  border: 0;
+  background: transparent;
+  font-family: inherit;
+}
+
+.agent-selector-add:hover {
+  background: var(--td-bg-color-secondarycontainer);
+}
+
+.agent-selector-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 6px 4px 8px;
+}
+
+.agent-group:not(:last-child) {
+  margin-bottom: 4px;
+  padding-bottom: 4px;
+  border-bottom: .5px solid var(--td-component-stroke);
+}
+
+.agent-group-title {
+  font-size: 11px;
+  color: var(--td-text-color-placeholder);
+  padding: 8px 12px 4px;
+  font-weight: 600;
+  line-height: 16px;
+}
+
+.agent-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  margin: 0 4px;
+  padding: 6px 8px;
+  cursor: pointer;
+  transition: background 0.12s;
+  border-radius: 5px;
+  /* Vue 端是 div（Teleport body，继承 body 14px 字号；宽度自动填满）。
+     React in-tree 在 .chat(20px) 内——显式对齐 Vue 继承链的 14px 基准。 */
+  border: 0;
+  background: transparent;
+  text-align: left;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: inherit;
+}
+
+.agent-option:hover,
+.agent-option.selected {
+  background: var(--td-bg-color-secondarycontainer);
+}
+
+.agent-option.empty {
+  color: var(--td-text-color-placeholder);
+  cursor: default;
+  text-align: center;
+  padding: 16px 8px;
+  min-height: auto;
+}
+
+.agent-option.empty:hover {
+  background: transparent;
+}
+
+.agent-option-name {
+  font-size: 12px;
+  color: var(--td-text-color-primary);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 22px;
+}
+
+.shared-tag {
+  font-size: 10px;
+  color: var(--td-text-color-placeholder);
+  flex-shrink: 0;
+  line-height: 22px;
+}
+
+.agent-option-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+}
+
+.not-ready-icon {
+  flex-shrink: 0;
+  color: var(--td-warning-color, #ed7b2f);
+  cursor: default;
+  display: block;
+  line-height: 1;
+}
+
+.builtin-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.agent-selector-overlay .builtin-icon .t-icon {
+  display: block;
+  line-height: 1;
+}
+
+.builtin-icon.normal {
+  background: var(--td-brand-color-light);
+  color: var(--td-brand-color-active);
+}
+
+.builtin-icon.agent {
+  background: rgba(124, 77, 255, 0.1);
+  color: var(--td-brand-color);
+}
+
+.builtin-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  flex-shrink: 0;
+  font-size: 14px;
+  line-height: 1;
+  background: var(--td-bg-color-secondarycontainer, #f5f5f5);
+  overflow: hidden;
+}
+
+/* AgentAvatar.vue（small 变体，与 agents.td.css §2 同源；chat 页独立加载） */
+.agent-avatar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  flex-shrink: 0;
+  box-shadow: var(--td-shadow-2);
+  overflow: hidden;
+}
+
+.agent-avatar.agent-avatar-small {
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  box-shadow: none;
+}
+
+.agent-avatar.agent-avatar-small .agent-avatar-letter {
+  font-size: 11px;
+}
+
+.agent-avatar.agent-avatar-small .agent-sparkles {
+  display: none;
+}
+
+.agent-avatar-letter {
+  position: relative;
+  z-index: 1;
+  color: var(--td-text-color-anti);
+  font-size: 14px;
+  font-weight: 600;
+  font-family: var(--app-font-family);
+}
 /* ===== §16 SandboxSidePanel.vue + ChatArtifactsPanel.vue（px-chat-sandbox）
    Vue 三 tab 侧面板（fixed 右缘 420 可拖宽）+ 产物 tab 内容，scoped 原样平移。 ===== */
 .chat-sandbox-panel {

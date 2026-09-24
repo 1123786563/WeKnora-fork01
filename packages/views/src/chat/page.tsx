@@ -41,6 +41,8 @@ export interface ChatAgentOption {
   disabled?: boolean;
   description?: string;
   is_builtin?: boolean;
+  /** Vue CustomAgent.avatar —— 下拉 builtin-avatar emoji 分支。 */
+  avatar?: string;
   config?: Record<string, unknown>;
 }
 

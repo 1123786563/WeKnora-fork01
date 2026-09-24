@@ -1899,6 +1899,8 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
       disabled: disabledAgentIds.includes(agent.id),
       description: typeof agent.description === 'string' ? agent.description : undefined,
       is_builtin: agent.is_builtin,
+      // Vue AgentSelector builtin-avatar 分支（v-else-if="agent.avatar"）：emoji 头像
+      avatar: typeof agent.avatar === 'string' && agent.avatar ? agent.avatar : undefined,
       config: agent.config,
     }))}
     selectedAgentId={selectedAgentId}
