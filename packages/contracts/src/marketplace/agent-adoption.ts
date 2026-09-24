@@ -38,8 +38,8 @@ export interface AvailableAgent {
   [key: string]: unknown;
 }
 
-const VARIANT_STATES = ['draft', 'mapped', 'tested', 'published'];
-const CAPABILITY_STATES = ['supported', 'unavailable', 'forbidden'];
+const VARIANT_STATES = ['draft', 'mapped', 'tested', 'published'] as const;
+const CAPABILITY_STATES = ['supported', 'unavailable', 'forbidden'] as const;
 
 function object(value: unknown, path: string): Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new ContractError(path, 'expected an object');
