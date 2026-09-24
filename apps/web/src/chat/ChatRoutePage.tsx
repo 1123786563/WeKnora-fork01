@@ -1950,8 +1950,10 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
         operationFailed={copy.operationFailed}
       />
     ) : undefined}
-    sandboxToggleSlot={(
-      <SandboxHeaderToggle copy={copy} label={copy.openSandboxPanel} onOpen={() => void openTerminal()} />
+    sandboxToggleSlot={(open) => (
+      /* px-chat-sandbox：Vue sandboxPanel.open() 是即时状态翻转，无异步
+         provision（供给发生在终端 tab 激活时）——open 回调直接开面板。 */
+      <SandboxHeaderToggle copy={copy} label={copy.openSandboxPanel} onOpen={open} />
     )}
     starterQuestions={starterQuestions}
     onForkMessage={forkAtMessage}
@@ -2014,6 +2016,8 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     onCitationClick={openCitation}
     onArtifactDownload={downloadArtifact}
     onArtifactPreview={previewArtifact}
+    onArtifactDownloadPanel={(item) => { void downloadArtifact(item.messageId, item.index); }}
+    onArtifactPreviewPanel={(item) => { void previewArtifact(item.messageId, item.index); }}
     terminal={selectedSessionId ? terminal : undefined}
     onOpenTerminal={selectedSessionId ? openTerminal : undefined}
     onTerminalInput={selectedSessionId ? terminalInput : undefined}

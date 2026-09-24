@@ -88,6 +88,8 @@ export interface MessageListProps {
    */
   scrollContainerRef?: { current: HTMLDivElement | null };
   onScrolledUpChange?(scrolledUp: boolean): void;
+  /** Vue index.vue minimapTargetId：问答目录跳转目标 user 行 1.2s 闪烁类。 */
+  minimapTargetId?: string;
 }
 
 export function messageArtifactItems(message: Record<string, unknown>): ChatArtifact[] {
@@ -222,7 +224,7 @@ export function shouldRenderAssistantMessage(message: ChatMessage): boolean {
   return false;
 }
 
-export function MessageList({ copy, messages, pending, onRetry, loadingOlder = false, hasMore = false, onLoadOlder, suggestions, onSuggestionClick, onRefreshSuggestions, onDismissSuggestions, onCitationClick, onBookmark, onRateMessage, onRemoveRating, ratingOf, onForkMessage, canForkMessage, onArtifactDownload, onArtifactPreview, sessionId = null, typingIndicator = false, onToggleReferences, referencesOpen = false, scrollContainerRef, onScrolledUpChange }: MessageListProps) {
+export function MessageList({ copy, messages, pending, onRetry, loadingOlder = false, hasMore = false, onLoadOlder, suggestions, onSuggestionClick, onRefreshSuggestions, onDismissSuggestions, onCitationClick, onBookmark, onRateMessage, onRemoveRating, ratingOf, onForkMessage, canForkMessage, onArtifactDownload, onArtifactPreview, sessionId = null, typingIndicator = false, onToggleReferences, referencesOpen = false, scrollContainerRef, onScrolledUpChange, minimapTargetId = '' }: MessageListProps) {
   const t = copy ?? resolveChatCopy(resolveChatLocale());
   const localContainerRef = useRef<HTMLDivElement>(null);
   const containerRef = scrollContainerRef ?? localContainerRef;
@@ -390,7 +392,11 @@ export function MessageList({ copy, messages, pending, onRetry, loadingOlder = f
         <div className={'msg-item-wrapper' + (steerForked ? ' is-steer-prefix' : '')}>
           {showSeparator ? <ConversationTimestamp copy={t} value={message.created_at} /> : null}
           {message.role === 'user' ? (
-            <div className="message-row wk-chat-message-row wk-chat-message-row--user" data-message-id={message.id || undefined}>
+            <div
+              className={'message-row wk-chat-message-row wk-chat-message-row--user'
+                + (message.id && message.id === minimapTargetId ? ' is-minimap-target' : '')}
+              data-message-id={message.id || undefined}
+            >
               {/* steer retry/remove：宿主 steer 回调（onSteerRetry/onSteerRemove）经
                   ChatRoutePage 作用于队列 chip；消息行内的失败重试/移除入口当前无
                   host 接线（占位 no-op），Vue usermsg steer-failure 面保留结构。 */}
