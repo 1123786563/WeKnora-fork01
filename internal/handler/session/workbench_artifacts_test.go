@@ -110,6 +110,25 @@ func TestListWorkbenchArtifactsProjectsMessageBoundRefs(t *testing.T) {
 	require.Equal(t, "msg-1:0", first.Version) // 无 ContentHash 时以 (message, index) 绑定地址为版本身份
 }
 
+func TestListWorkbenchArtifactsDeclaresTerminalAvailabilityFromWiring(t *testing.T) {
+	refs := &artifactRefReaderStub{refs: artifactRefs()}
+	runs := artifactRunStub()
+
+	// 未接线 TerminalLogReader 的装配：terminal.available 必须如实为 false（B3-F76）。
+	h := NewWorkbenchArtifactHandler(runs, refs)
+	c, rec := artifactContext()
+	h.ListWorkbenchArtifacts(c)
+	require.Equal(t, http.StatusOK, c.Writer.Status())
+	require.Contains(t, rec.Body.String(), `"terminal":{"available":false}`, "未接线时能力位必须如实为 false")
+
+	// 接线后：available 为 true（与 terminal-log 端点的 501 判定同源）。
+	h2 := NewWorkbenchArtifactHandler(runs, refs).WithTerminalLog(&terminalReaderStub{})
+	c2, rec2 := artifactContext()
+	h2.ListWorkbenchArtifacts(c2)
+	require.Equal(t, http.StatusOK, c2.Writer.Status())
+	require.Contains(t, rec2.Body.String(), `"terminal":{"available":true}`)
+}
+
 func TestListWorkbenchArtifactsScopesByOwner(t *testing.T) {
 	refs := artifactRefReaderStub{refs: artifactRefs()}
 	h := NewWorkbenchArtifactHandler(artifactRunStub(), &refs)
@@ -149,7 +168,10 @@ func TestListWorkbenchArtifactsDerivesVersionFromDigest(t *testing.T) {
 
 func TestListWorkbenchArtifactsDeclaresTerminalAvailability(t *testing.T) {
 	refs := artifactRefReaderStub{refs: artifactRefs()}
-	h := NewWorkbenchArtifactHandler(artifactRunStub(), &refs)
+	// The production container wires the read-side snapshot repository as the
+	// terminal reader; the flag now mirrors the wiring instead of hardcoding
+	// true, so this assembly-level case asserts the wired shape (B3-F76).
+	h := NewWorkbenchArtifactHandler(artifactRunStub(), &refs).WithTerminalLog(&terminalReaderStub{})
 	c, rec := artifactContext()
 	h.ListWorkbenchArtifacts(c)
 	require.Equal(t, http.StatusOK, c.Writer.Status())
@@ -161,7 +183,7 @@ func TestListWorkbenchArtifactsDeclaresTerminalAvailability(t *testing.T) {
 		} `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
-	require.True(t, body.Data.Terminal.Available, "this server version mounts the terminal-log endpoint; older deployments omit the flag")
+	require.True(t, body.Data.Terminal.Available, "a wired terminal reader declares availability")
 }
 
 // ─── signed url ──────────────────────────────────────────────────────────────

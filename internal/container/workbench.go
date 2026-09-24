@@ -30,12 +30,16 @@ func NewWorkbenchReadHandler(
 // NewWorkbenchArtifactHandler wires the artifact list + signed-link surfaces
 // to the same owned-run store as the read handler. The signing secret is read
 // from the environment per request; deployments without the key get an
-// honest 501 instead of links signed with a default secret.
+// honest 501 instead of links signed with a default secret. The read-side
+// snapshot repository doubles as the terminal-log reader, so the terminal
+// availability flag is sourced from the same wiring the terminal-log
+// endpoint's 501 check uses (B3-F76).
 func NewWorkbenchArtifactHandler(
 	runs *repository.AgentRunStore,
 	messages interfaces.MessageService,
+	snapshots *repository.AgentRunSnapshotRepository,
 ) *session.WorkbenchArtifactHandler {
-	return session.NewWorkbenchArtifactHandler(runs, messages)
+	return session.NewWorkbenchArtifactHandler(runs, messages).WithTerminalLog(snapshots)
 }
 
 // NewWorkbenchListHandler wires the mobile workbench list to the ownership-

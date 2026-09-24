@@ -143,3 +143,33 @@ func TestGetWorkbenchTerminalLogIsOwnerScopedAndFailsClosed(t *testing.T) {
 	require.Equal(t, http.StatusNotImplemented, c2.Writer.Status())
 	require.Contains(t, rec2.Body.String(), "terminal_log_unavailable")
 }
+
+// terminalGrantedRunReaderStub satisfies GrantedRunReader: the task-grant
+// fallback resolves the run for the given reader.
+type terminalGrantedRunReaderStub struct {
+	run agentruntime.Run
+}
+
+func (s *terminalGrantedRunReaderStub) GetRunForGrantedReader(_ context.Context, _ uint64, readerID, runID string) (agentruntime.Run, error) {
+	if readerID == "viewer-1" && runID == "run-1" {
+		return s.run, nil
+	}
+	return agentruntime.Run{}, agentruntime.ErrNotFound
+}
+
+func TestGetWorkbenchTerminalLogAdmitsGrantedReaders(t *testing.T) {
+	reader := &terminalReaderStub{terminal: terminalEvents()}
+	h := NewWorkbenchReadHandler(artifactRunStub(), reader).WithGrantedRuns(
+		&terminalGrantedRunReaderStub{run: agentruntime.Run{
+			Key:       agentruntime.RunKey{TenantID: 1, RunID: "run-1"},
+			SessionID: "sess-1",
+		}})
+
+	// 调用方是被授权 viewer（owner 谓词 miss 后经 task-grant 回退命中）。
+	c, _ := terminalLogContext("")
+	viewerCtx := context.WithValue(c.Request.Context(), types.UserIDContextKey, "viewer-1")
+	c.Request = c.Request.WithContext(viewerCtx)
+	h.GetWorkbenchTerminalLog(c)
+	require.Equal(t, http.StatusOK, c.Writer.Status(), "被授权 viewer 经 task-grant 回退必须能读 terminal-log（B3-F63）")
+	require.Equal(t, 1, reader.calls)
+}

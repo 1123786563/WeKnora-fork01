@@ -27,6 +27,7 @@ type ArtifactRefReader interface {
 type WorkbenchArtifactHandler struct {
 	runs       OwnedRunReader
 	refs       ArtifactRefReader
+	terminal   TerminalLogReader // nil = this assembly provides no read-only terminal (B3-F76)
 	signingKey func() ([]byte, error)
 	ttl        time.Duration
 }
@@ -38,6 +39,14 @@ func NewWorkbenchArtifactHandler(runs OwnedRunReader, refs ArtifactRefReader) *W
 		signingKey: workbench.ArtifactSigningKeyFromEnv,
 		ttl:        workbench.MaxArtifactGrantTTL,
 	}
+}
+
+// WithTerminalLog attaches the read-side terminal reader. The availability
+// flag in ListWorkbenchArtifacts mirrors the actual wiring: nil keeps it
+// false so clients never see a terminal entry that would 501 on use.
+func (h *WorkbenchArtifactHandler) WithTerminalLog(reader TerminalLogReader) *WorkbenchArtifactHandler {
+	h.terminal = reader
+	return h
 }
 
 // workbenchArtifactItem is the wire shape of one list entry. It mirrors what
@@ -126,8 +135,9 @@ func (h *WorkbenchArtifactHandler) ListWorkbenchArtifacts(c *gin.Context) {
 		items = append(items, artifactListItemFromRef(run.Key.RunID, position, ref))
 	}
 	// terminal declares whether this server mounts the read-only terminal
-	// log endpoint; older deployments omit the flag and clients degrade.
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"items": items, "terminal": gin.H{"available": true}}})
+	// log endpoint; the flag mirrors the actual wiring (nil terminal reader
+	// = false), so clients degrade instead of hitting a guaranteed 501.
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"items": items, "terminal": gin.H{"available": h.terminal != nil}}})
 }
 
 // CreateWorkbenchArtifactSignedURL godoc

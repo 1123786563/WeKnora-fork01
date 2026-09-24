@@ -51,7 +51,11 @@ type workbenchTerminalLine struct {
 // @Security     Bearer
 // @Router       /workbench/executions/{run_id}/terminal-log [get]
 func (h *WorkbenchReadHandler) GetWorkbenchTerminalLog(c *gin.Context) {
-	run, ok := resolveOwnedRun(c, h.runs)
+	// Read-only surface: the same readable-run predicate as snapshot/execution
+	// — strict owner first, task-grant fallback when wired. The snapshot already
+	// exposes full tool.terminal payloads, so owner-only here had no secrecy
+	// value, only a capability gap for granted Viewers/Collaborators (B3-F63).
+	run, ok := h.resolveReadableRun(c)
 	if !ok {
 		return
 	}
