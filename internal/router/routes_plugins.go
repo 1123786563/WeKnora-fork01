@@ -29,6 +29,10 @@ func RegisterPluginRoutes(r *gin.RouterGroup, pluginHandler *handler.PluginHandl
 		pluginRoutes.POST("/installations", g.Admin(), pluginHandler.ConfirmInstallation)
 		pluginRoutes.POST("/installations/:id/disable", g.Admin(), pluginHandler.DisableInstallation)
 		pluginRoutes.POST("/installations/:id/enable", g.Admin(), pluginHandler.EnableInstallation)
+		// Ops-only self-heal channel (rulings.md R4): removes a failed
+		// confirm's leftover rows. NOT a user-facing feature — the
+		// user-visible governance endpoint stays "disable" and the web UI
+		// must never surface a delete/uninstall entry.
 		pluginRoutes.DELETE("/installations/:id", g.Admin(), pluginHandler.UninstallInstallation)
 		pluginRoutes.GET("/installations", g.Viewer(), pluginHandler.ListInstallations)
 		pluginRoutes.GET("/installations/:id", g.Viewer(), pluginHandler.GetInstallation)

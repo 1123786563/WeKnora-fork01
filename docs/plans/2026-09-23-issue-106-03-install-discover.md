@@ -295,3 +295,19 @@ Expected: 全部通过。
 git add packages/api-client/src/plugins.ts packages/api-client/src/plugins.test.ts packages/views/src/integrations/registry.ts apps/web/src/settings/ apps/web/src/integrations/
 git commit -m "feat(plugins): 安装确认/插件管理面板与成员发现页 [T08]"
 ```
+
+#### 范围变更记录：运维卸载 API（T06 评审修复轮，2026-09-24）
+
+T06 轮（R12 F06b 补偿自愈修复，提交 b84be952c）在 API 层新增了
+`DELETE /api/v1/plugins/installations/:id`（Admin）卸载端点——硬级联删除物化
+服务、逐工具策略行与安装行，释放 `(tenant, plugin)` 唯一槽，作为**补偿事务
+失败残留的运维自愈通道**。这与上文 Step 3 的「本版不提供插件卸载/删除」表述
+存在张力，经评审升级、主 Agent 裁决（rulings.md R4）后定案：
+
+- **保留端点、不回退**：Spec 无禁止条款；移除将使补偿失败残留回到手工 SQL
+  清库（R12 F06b 所解决的运维死锁回归）。
+- **定位收窄**：端点仅存在于 API 层，运维用途、非用户功能；**前端（本任务
+  T08 与 T12/T20 文档）仍严格按 Step 3 口径执行——不出现任何「删除插件/
+  卸载」入口或文案**，用户可见的治理终点仍是「停用」。
+- 判断错误的代价：若最终不认可，revert b84be952c 中该端点部分即可单独摘除
+  （与同轮 F3/F6 修复无耦合）。
