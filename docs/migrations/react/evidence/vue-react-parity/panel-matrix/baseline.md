@@ -15,17 +15,17 @@
 | 触发器未命中（warning） | 5 项（见下） |
 | 静态页回归（存量，非本批引入） | settings-general 5.439%、settings-integration-api 4.284%（根因见文末） |
 
-## 批 1（全局壳+对话 12 项）收敛状态（截至 96162ac2a）
+## 批 1（全局壳+对话 12 项）收敛状态（截至 69acbada9：12/12 全收敛，chat 4 工单见 auto-scan/2026-09-24T14-57-58）
 
 | 项 | 基线 | 终值 | 状态 |
 |---|---|---|---|
 | px-shell-user-menu | 0 | 0 | ✅ 直接零 |
 | px-shell-session-more | 1.166 | 1.166 | ⚠️ 豁免 #24（SP13 React-only「分享」菜单项） |
-| px-chat-sandbox | 15.765 | 15.765 | ⬜ 待收敛（根因 A） |
-| px-chat-addtokb | 假零(未命中) | 75.387 | ⬜ 待收敛（根因 B） |
+| px-chat-sandbox | 15.765 | **0.00** | ✅ 已收敛（f71293b8f） |
+| px-chat-addtokb | 假零(未命中) | **0.00** | ✅ 已收敛（1d3c0c4c1；真值 75.387→0） |
 | px-chat-reqinfo | 3.114 | **0.00** | ✅ 已收敛（96162ac2a） |
-| px-chat-agent-selector | 2.472 | 2.472 | ⬜ 待收敛（根因 C） |
-| px-chat-model-selector | 1.64 | 1.64 | ⬜ 待收敛（根因 D） |
+| px-chat-agent-selector | 2.472 | **0.00** | ✅ 已收敛（11205900e） |
+| px-chat-model-selector | 1.64 | **0.00** | ✅ 已收敛（69acbada9） |
 | px-chat-attach-tooltip | 0.342 | 0.001 | ⚠️ 残差豁免 #25（8px 图标 AA 相位） |
 | ix-chat-header-menu / ix-chat-mention | 0 / 0 | 0 / 0 | ✅ 复用核对通过 |
 | ix-kb-list-create | 8.04(瞬态) | 0 | ✅ 复跑 0%（基线 run 与并行单页扫描重叠所致瞬态） |
