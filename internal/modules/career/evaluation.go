@@ -295,7 +295,7 @@ func evaluateGraduationRule(job EvaluationSnapshotEvidence, revision uint64, fac
 	}
 	malformed := false
 	for _, f := range facts {
-		if f.Key != "graduation_year" && f.Key != "education.graduation_year" {
+		if !isGraduationFactKey(f.Key) {
 			continue
 		}
 		year, ok := normalizeGraduationYear(f.Value)
@@ -308,7 +308,7 @@ func evaluateGraduationRule(job EvaluationSnapshotEvidence, revision uint64, fac
 			year int
 		}{fact: f, year: year})
 	}
-	if malformed || len(candidates) > 1 && candidates[0].year != candidates[1].year {
+	if malformed {
 		rule.ReasonCode = "graduation_fact_ambiguous"
 		return rule, EvaluationUnknown
 	}
@@ -317,12 +317,13 @@ func evaluateGraduationRule(job EvaluationSnapshotEvidence, revision uint64, fac
 		return rule, EvaluationUnknown
 	}
 	selected := candidates[0]
-	if len(candidates) > 1 {
-		for _, candidate := range candidates {
-			if candidate.fact.Key == "education.graduation_year" {
-				selected = candidate
-				break
-			}
+	for _, candidate := range candidates[1:] {
+		if candidate.year != selected.year {
+			rule.ReasonCode = "graduation_fact_ambiguous"
+			return rule, EvaluationUnknown
+		}
+		if graduationFactPriority(candidate.fact.Key) < graduationFactPriority(selected.fact.Key) {
+			selected = candidate
 		}
 	}
 	rule.ProfileEvidence = evaluationFact(selected.fact, revision)
@@ -334,6 +335,30 @@ func evaluateGraduationRule(job EvaluationSnapshotEvidence, revision uint64, fac
 	rule.Outcome = EvaluationEligible
 	rule.ReasonCode = "graduation_year_matches"
 	return rule, EvaluationEligible
+}
+
+func isGraduationFactKey(key string) bool {
+	switch key {
+	case "education.graduation_year", "graduation_year", "毕业时间", "education.graduation_date":
+		return true
+	default:
+		return false
+	}
+}
+
+func graduationFactPriority(key string) int {
+	switch key {
+	case "education.graduation_year":
+		return 0
+	case "graduation_year":
+		return 1
+	case "毕业时间":
+		return 2
+	case "education.graduation_date":
+		return 3
+	default:
+		return 4
+	}
 }
 
 func normalizeGraduationYear(value string) (int, bool) {

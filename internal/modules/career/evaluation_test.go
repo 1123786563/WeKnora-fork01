@@ -150,6 +150,71 @@ func TestEvaluationUnknownForUnconfirmedMalformedAndContradictoryGraduationFacts
 	})
 }
 
+func TestEvaluateOpportunityRecognizesConfirmedCareerFormGraduationAliases(t *testing.T) {
+	t.Run("career form key cites original confirmed fact", func(t *testing.T) {
+		o, ctx := newOpportunityOffice(t, "owner", 161)
+		act, err := o.Act(ctx, "confirm", "", "毕业时间", "2026", "confirm-ui-year", 0, Source{Kind: "manual"})
+		require.NoError(t, err)
+		job, err := o.ImportJD(ctx, ImportJDInput{RequestID: "job", RawText: "仅限2027届"})
+		require.NoError(t, err)
+		receipt, err := o.EvaluateOpportunity(ctx, EvaluateInput{RequestID: "eval", OpportunityID: job.OpportunityID, SnapshotID: job.SnapshotID})
+		require.NoError(t, err)
+		require.Equal(t, EvaluationIneligible, receipt.Status)
+		read := mustEvaluation(t, o, ctx, receipt.EvaluationID)
+		require.Equal(t, "毕业时间", read.Hard.Rules[0].ProfileEvidence.FactKey)
+		require.Equal(t, act.Revision, read.Hard.Rules[0].ProfileEvidence.FactRevision)
+		require.Equal(t, "2026", read.Hard.Rules[0].ProfileEvidence.Value)
+	})
+
+	for _, tc := range []struct {
+		name, key, value, want string
+	}{
+		{name: "resume date alias is normalized", key: "education.graduation_date", value: "2026-06-30", want: EvaluationIneligible},
+		{name: "resume date alias can match", key: "education.graduation_date", value: "2027-06-30", want: EvaluationEligible},
+		{name: "malformed recognized alias is unknown", key: "毕业时间", value: "预计2026", want: EvaluationUnknown},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			o, ctx := newOpportunityOffice(t, "owner", 162)
+			_, err := o.Confirm(ctx, tc.key, tc.value, "confirm", 0, Source{Kind: "manual"})
+			require.NoError(t, err)
+			job, err := o.ImportJD(ctx, ImportJDInput{RequestID: "job", RawText: "仅限2027届"})
+			require.NoError(t, err)
+			receipt, err := o.EvaluateOpportunity(ctx, EvaluateInput{RequestID: "eval", OpportunityID: job.OpportunityID, SnapshotID: job.SnapshotID})
+			require.NoError(t, err)
+			require.Equal(t, tc.want, receipt.Status)
+		})
+	}
+
+	t.Run("all aliases are checked and equal aliases select deterministically", func(t *testing.T) {
+		o, ctx := newOpportunityOffice(t, "owner", 163)
+		_, err := o.Confirm(ctx, "毕业时间", "2026", "confirm-ui", 0, Source{Kind: "manual"})
+		require.NoError(t, err)
+		_, err = o.Confirm(ctx, "education.graduation_date", "2026-05-01", "confirm-date", 1, Source{Kind: "manual"})
+		require.NoError(t, err)
+		_, err = o.Confirm(ctx, "education.graduation_year", "2026", "confirm-year", 2, Source{Kind: "manual"})
+		require.NoError(t, err)
+		job, err := o.ImportJD(ctx, ImportJDInput{RequestID: "job", RawText: "仅限2027届"})
+		require.NoError(t, err)
+		receipt, err := o.EvaluateOpportunity(ctx, EvaluateInput{RequestID: "eval", OpportunityID: job.OpportunityID, SnapshotID: job.SnapshotID})
+		require.NoError(t, err)
+		require.Equal(t, EvaluationIneligible, receipt.Status)
+		require.Equal(t, "education.graduation_year", mustEvaluation(t, o, ctx, receipt.EvaluationID).Hard.Rules[0].ProfileEvidence.FactKey)
+	})
+
+	t.Run("third contradictory alias makes result unknown", func(t *testing.T) {
+		o, ctx := newOpportunityOffice(t, "owner", 164)
+		for i, fact := range []struct{ key, value string }{{"graduation_year", "2027"}, {"education.graduation_year", "2027"}, {"毕业时间", "2026"}} {
+			_, err := o.Confirm(ctx, fact.key, fact.value, "confirm-"+fact.key, uint64(i), Source{Kind: "manual"})
+			require.NoError(t, err)
+		}
+		job, err := o.ImportJD(ctx, ImportJDInput{RequestID: "job", RawText: "仅限2027届"})
+		require.NoError(t, err)
+		receipt, err := o.EvaluateOpportunity(ctx, EvaluateInput{RequestID: "eval", OpportunityID: job.OpportunityID, SnapshotID: job.SnapshotID})
+		require.NoError(t, err)
+		require.Equal(t, EvaluationUnknown, receipt.Status)
+	})
+}
+
 func TestEvaluationReplayKeepsOriginalProfileVersionAndNewEvaluationIsImmutable(t *testing.T) {
 	o, ctx := newOpportunityOffice(t, "owner", 151)
 	_, err := o.Confirm(ctx, "graduation_year", "2026", "confirm-old", 0, Source{Kind: "manual"})
