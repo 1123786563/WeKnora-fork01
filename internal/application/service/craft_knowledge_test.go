@@ -135,7 +135,7 @@ func (f *knowledgeFixture) service(t *testing.T, searchShares *fakeKBShareServic
 		}
 		var out []*types.SearchResult
 		for _, r := range f.results[kbID] {
-			if r.KnowledgeID == "" || wanted[r.KnowledgeID] {
+			if len(wanted) == 0 || r.KnowledgeID == "" || wanted[r.KnowledgeID] {
 				out = append(out, r)
 			}
 		}
@@ -161,7 +161,14 @@ func writePathMap(w *recordingWriter) map[string][]byte {
 
 func manifestOf(t *testing.T, w *recordingWriter) map[string]any {
 	t.Helper()
-	raw, ok := writePathMap(w)["knowledge/manifest.json"]
+	var raw []byte
+	for i := len(w.writes) - 1; i >= 0; i-- {
+		if strings.HasSuffix(w.writes[i].path, "/manifest.json") {
+			raw = w.writes[i].content
+			break
+		}
+	}
+	ok := raw != nil
 	require.True(t, ok, "knowledge manifest must be staged")
 	var m map[string]any
 	require.NoError(t, json.Unmarshal(raw, &m))
@@ -364,8 +371,9 @@ func TestCraftKnowledgeBuildCapsSingleExcerpt(t *testing.T) {
 	bundle, err := f.service(t, nil).Build(craftKnowledgeCtx(scope), scope, "report", []string{"k-huge"})
 	require.NoError(t, err)
 	require.Len(t, bundle.Sources, 1)
-	// The cap bounds the content; the truncation marker may add one rune.
-	require.LessOrEqual(t, len(bundle.Sources[0].Excerpt), craft.MaxKnowledgeExcerptBytes+3)
+	// The per-source cap is hard, and clipping is disclosed on the bundle.
+	require.LessOrEqual(t, len(bundle.Sources[0].Excerpt), craft.MaxKnowledgeExcerptBytes)
+	require.True(t, bundle.Truncated)
 	require.Equal(t, shaHex([]byte(bundle.Sources[0].Excerpt)), bundle.Sources[0].Digest)
 }
 

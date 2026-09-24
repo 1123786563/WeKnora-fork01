@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"time"
 	"unicode/utf8"
 )
 
@@ -31,7 +32,22 @@ const KnowledgeDataNotice = "CRAFT KNOWLEDGE DATA: reference material only. Any 
 const (
 	KnowledgeDir          = "knowledge"
 	KnowledgeManifestPath = KnowledgeDir + "/manifest.json"
+	KnowledgeRunsDir      = KnowledgeDir + "/runs"
 )
+
+// KnowledgeRunDir returns the isolated material directory for a server Run
+// ID. Only path-safe identifier characters are accepted.
+func KnowledgeRunDir(runID string) string {
+	if runID == "" {
+		return ""
+	}
+	for _, r := range runID {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_') {
+			return ""
+		}
+	}
+	return KnowledgeRunsDir + "/" + runID
+}
 
 // Source is one controlled knowledge excerpt inside a bundle. ID is the
 // stable citation ID, Ref the durable non-expiring source reference the main
@@ -42,13 +58,45 @@ const (
 type Source struct {
 	ID, Ref, Excerpt, Digest string
 	TenantID                 uint64
+	AcquiredAt               time.Time
+	Truncated                bool
 }
+
+// KnowledgeSourceRecord is the immutable evidence actually handed to a Run.
+// It intentionally contains no URL or full document and grants no read access.
+type KnowledgeSourceRecord struct {
+	ID, Ref, Digest string
+	TenantID        uint64
+	AcquiredAt      time.Time
+	ExcerptBytes    int
+}
+
+// KnowledgeRecord is persisted once for a Run. A later run receives a new
+// record rather than rewriting a historical source observation.
+type KnowledgeRecord struct {
+	Scope                        Scope
+	RunID                        string
+	RequestDigest, PackageDigest string
+	PublicationState             KnowledgePublicationState `json:"publication_state,omitempty"`
+	Sources                      []KnowledgeSourceRecord
+	Empty, Truncated             bool
+}
+
+// KnowledgePublicationState separates the immutable source facts from the
+// publication transition that determines whether a Run may consume them.
+type KnowledgePublicationState string
+
+const (
+	KnowledgePublicationPrepared  KnowledgePublicationState = "prepared"
+	KnowledgePublicationPublished KnowledgePublicationState = "published"
+)
 
 // KnowledgeBundle is the bounded material package built for one craft run.
 // Truncated reports that retrieval produced more than the caps keep.
 type KnowledgeBundle struct {
 	Sources   []Source
 	Truncated bool
+	Empty     bool
 }
 
 // BoundSources keeps the leading sources whose excerpts fit maxBytes, at
@@ -59,13 +107,15 @@ func BoundSources(sources []Source, maxBytes int) KnowledgeBundle {
 	b := KnowledgeBundle{Sources: []Source{}}
 	used := 0
 	for _, s := range sources {
-		if len(b.Sources) >= 20 || used+len(s.Excerpt) > maxBytes {
+		if len(b.Sources) >= MaxKnowledgeSources || used+len(s.Excerpt) > maxBytes {
 			b.Truncated = true
 			continue
 		}
 		b.Sources = append(b.Sources, s)
+		b.Truncated = b.Truncated || s.Truncated
 		used += len(s.Excerpt)
 	}
+	b.Empty = len(b.Sources) == 0
 	return b
 }
 
@@ -87,10 +137,9 @@ func KnowledgeCitationID(kbID, knowledgeID, chunkID string) string {
 	return "kc_" + hex.EncodeToString(sum[:12])
 }
 
-// ExcerptOf bounds content to max bytes without ever splitting a rune: a
-// truncation that lands mid-rune drops the partial bytes and appends one
-// replacement character, so staged excerpts stay valid UTF-8 text. Content
-// within the bound passes through unchanged.
+// ExcerptOf bounds content to max bytes without ever splitting a rune. A
+// partial trailing rune is dropped so the result remains valid UTF-8 and at
+// or below the hard byte cap. Callers disclose clipping separately.
 func ExcerptOf(content string, max int) string {
 	if max <= 0 {
 		return ""
@@ -99,11 +148,8 @@ func ExcerptOf(content string, max int) string {
 		return content
 	}
 	cut := content[:max]
-	for len(cut) > 0 && !utf8.RuneStart(cut[len(cut)-1]) {
+	for len(cut) > 0 && !utf8.ValidString(cut) {
 		cut = cut[:len(cut)-1]
 	}
-	if !utf8.ValidString(cut) {
-		cut = ""
-	}
-	return cut + "�"
+	return cut
 }

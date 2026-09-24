@@ -75,10 +75,11 @@ func TestCraftSourceGuardDocumentContentCannotWidenPermissions(t *testing.T) {
 	// own words may say anything; saying is not executing.)
 	var probe map[string]any
 	require.NoError(t, json.Unmarshal(bundleBytes, &probe))
-	require.ElementsMatch(t, []string{"Sources", "Truncated"}, keysOf(probe))
+	require.ElementsMatch(t, []string{"Sources", "Truncated", "Empty"}, keysOf(probe))
+	require.Equal(t, false, probe["Empty"], "a nonempty bounded source bundle reports Empty=false")
 	require.NotEmpty(t, probe["Sources"])
 	for _, source := range probe["Sources"].([]any) {
-		require.ElementsMatch(t, []string{"ID", "Ref", "Excerpt", "Digest", "TenantID"},
+		require.ElementsMatch(t, []string{"ID", "Ref", "Excerpt", "Digest", "TenantID", "AcquiredAt", "Truncated"},
 			keysOf(source.(map[string]any)), "a staged source is pure provenance data")
 	}
 }

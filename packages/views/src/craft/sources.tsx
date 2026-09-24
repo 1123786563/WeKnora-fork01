@@ -25,6 +25,13 @@ export interface CraftSourceRow {
   excerptBytes: number;
   /** Owning library tenant (differs from the caller's tenant for shared libraries). */
   tenantId: number;
+  /** Observation time of the material actually handed to this Run. */
+  acquiredAt?: string;
+}
+
+export interface CraftKnowledgeBaseChoice {
+  id: string;
+  name: string;
 }
 
 export interface CraftSourcesProps {
@@ -40,6 +47,10 @@ export interface CraftSourcesProps {
    * only the citable placeholder — no cached excerpt, no title replay.
    */
   revokedCitationIds?: readonly string[];
+  /** Server-projected libraries available to this viewer for a new Run. */
+  knowledgeBases?: readonly CraftKnowledgeBaseChoice[];
+  selectedKnowledgeBaseIds?: readonly string[];
+  onSelectionChange?(ids: string[]): void;
   /**
    * Opens one source by its durable ref. The assembly resolves it through
    * the existing resource permission chain on every click; it must never
@@ -61,6 +72,8 @@ interface SourceLabels {
   shared: string;
   revoked: string;
   revokedTitle: string;
+  acquired: string;
+  select: string;
 }
 
 function sourceLabels(locale: CraftLocale): SourceLabels {
@@ -78,6 +91,8 @@ function sourceLabels(locale: CraftLocale): SourceLabels {
       shared: '共享库',
       revoked: '已撤权',
       revokedTitle: '该来源的共享授权已被撤回，引用占位保留，原文不可再打开。',
+      acquired: '获取时间',
+      select: '选择知识库',
     };
   }
   return {
@@ -93,6 +108,8 @@ function sourceLabels(locale: CraftLocale): SourceLabels {
     shared: 'Shared library',
     revoked: 'Revoked',
     revokedTitle: 'The backing share was revoked; the citation placeholder stays, the excerpt cannot reopen.',
+    acquired: 'Acquired',
+    select: 'Select knowledge bases',
   };
 }
 
@@ -103,6 +120,23 @@ export function CraftSources(props: CraftSourcesProps) {
   return (
     <section className="wk-craft-panel-body" data-testid="craft-sources" aria-label={labels.heading}>
       <h3>{labels.heading}</h3>
+      {props.knowledgeBases ? (
+        <fieldset aria-label={labels.select}>
+          <legend>{labels.select}</legend>
+          {props.knowledgeBases.map((base) => (
+            <label key={base.id}>
+              <input type="checkbox" checked={props.selectedKnowledgeBaseIds?.includes(base.id) ?? false}
+                disabled={!props.onSelectionChange}
+                onChange={(event) => {
+                  const selected = new Set(props.selectedKnowledgeBaseIds ?? []);
+                  if (event.target.checked) selected.add(base.id); else selected.delete(base.id);
+                  props.onSelectionChange?.([...selected]);
+                }} />
+              {base.name}
+            </label>
+          ))}
+        </fieldset>
+      ) : null}
       {props.sources.length === 0 ? (
         <p className="wk-craft-muted" data-testid="craft-sources-empty">{labels.empty}</p>
       ) : (
@@ -113,6 +147,7 @@ export function CraftSources(props: CraftSourcesProps) {
               <th scope="col">{labels.digest}</th>
               <th scope="col">{labels.excerptBytes}</th>
               <th scope="col">{labels.tenant}</th>
+              <th scope="col">{labels.acquired}</th>
               <th scope="col">{base.craftOpen}</th>
             </tr>
           </thead>
@@ -130,6 +165,7 @@ export function CraftSources(props: CraftSourcesProps) {
                   <td>
                     {source.tenantId}
                   </td>
+                  <td>{revoked ? '—' : source.acquiredAt ? <time dateTime={source.acquiredAt}>{source.acquiredAt}</time> : '—'}</td>
                   <td>
                     {revoked ? (
                       <Button type="button" disabled title={labels.revokedTitle}>{labels.revoked}</Button>
