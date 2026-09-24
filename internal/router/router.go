@@ -59,6 +59,7 @@ type RouterParams struct {
 	WorkbenchLegacyListHandler *session.WorkbenchLegacyListHandler `optional:"true"`
 	WorkbenchStartHandler      *session.WorkbenchStartHandler      `optional:"true"`
 	WorkbenchCommandHandler    *session.WorkbenchCommandHandler    `optional:"true"`
+	WorkbenchDeliveryHandler   *session.WorkbenchDeliveryHandler   `optional:"true"`
 	// NativeArchiveHandler is absent until an approved archive store and scope
 	// resolver are assembled.  The router then fails closed (no archive route)
 	// rather than mounting a reader without an authority boundary.
@@ -377,6 +378,7 @@ func NewRouter(params RouterParams) *gin.Engine {
 		RegisterWorkbenchLegacyTaskRoutes(v1, params.WorkbenchLegacyListHandler, rbacGuards)
 		RegisterWorkbenchInboxRoutes(v1, params.WorkbenchInboxHandler, rbacGuards)
 		RegisterWorkbenchCommandRoutes(v1, params.WorkbenchCommandHandler, rbacGuards)
+		RegisterWorkbenchDeliveryRoutes(v1, params.WorkbenchDeliveryHandler, rbacGuards)
 		RegisterMobileVoiceRoutes(v1, params.MobileVoiceHandler, rbacGuards)
 		RegisterMobileDeviceRoutes(v1, params.MobileDeviceHandler, rbacGuards)
 		RegisterChatRoutes(v1, params.SessionHandler, rbacGuards)

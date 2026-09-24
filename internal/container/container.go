@@ -272,6 +272,9 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(NewWorkbenchArtifactHandler))
 	must(container.Provide(repository.NewWorkbenchListStore))
 	must(container.Provide(NewWorkbenchListHandler))
+	// T22 (#52): code delivery — dedicated A03 instance + workbench handler.
+	must(container.Provide(newCodeDeliveryService))
+	must(container.Provide(NewWorkbenchDeliveryHandler))
 	must(container.Provide(NewWorkbenchLegacyListHandler))
 	must(container.Provide(NewWorkbenchAdmissionCoordinator))
 	must(container.Provide(NewWorkbenchStartHandler))

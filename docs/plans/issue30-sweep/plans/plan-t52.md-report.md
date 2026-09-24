@@ -266,3 +266,87 @@ Error: Not equal:
 - 3 个前序任务文件的 gofmt 标记系既有状态，未处置（超本任务授权）。
 - 未运行（超本任务授权范围，留 Task 7/11）：workbench HTTP 面测试、移动端测试、`pnpm` 侧任何检查。
 
+
+---
+
+# Task 7 实施报告：workbench HTTP 面与容器接线（T22 #52 task 7）
+
+## 1. 实现内容
+
+严格 TDD（RED→GREEN），实现 Task 7 全部交付：
+
+1. **`internal/handler/session/workbench_delivery.go`（Create）**：`DeliveryService` 接口（5 方法，与计划冻结签名逐字一致）+ `WorkbenchDeliveryHandler` 五个端点方法：
+   - `MaterializeBaseline`：POST `:run_id/baseline`（owner-only，201）
+   - `PrepareDelivery`：POST `:run_id/delivery`（owner-only，201，branch 可选 TrimSpace）
+   - `GetDelivery`：GET `:run_id/delivery`（owner + granted 读）
+   - `DispatchDelivery`：POST `:run_id/delivery/:delivery_id/dispatch`（owner-only）
+   - `ResolveDeliveryUnknown`：POST `:run_id/delivery/:delivery_id/resolve`（owner-only）
+   - `writeDeliveryError` 固定错误码表：403 forbidden / 409 protected_branch / 409 state_conflict / 404 not_found / 502 provider_refused（`*GitHubAPIError`）/ 502 provider_unreachable（`ErrGitHubTransport`）/ 500 兜底——上游文本与凭据邻接字符串不越线。
+2. **`internal/handler/session/workbench_delivery_test.go`（Create）**：3 个 gin 直调测试（沿用 `workbench_terminal_log_test.go` 范式），stub 注入 `OwnedRunReader`/`GrantedRunReader`/`DeliveryService`。
+3. **`internal/router/routes_workbench.go`（Modify，文件尾 +18 行）**：`RegisterWorkbenchDeliveryRoutes`——读组挂 `Viewer()+workbenchReadGate`，写组挂 `Viewer()`（与 terminal-log/source-events 同款边界）。
+4. **`internal/router/router.go`（Modify，+2 行）**：`RouterParams` 加 `WorkbenchDeliveryHandler`（`optional:"true"`）+ `RegisterWorkbenchCommandRoutes` 调用行后加注册行。
+5. **`internal/container/code_delivery.go`（Create）**：`sandboxWorkspaceSource` 适配器（租户 resolver 优先于进程默认；仅 `*sandbox.SessionBoundManager` 可服务，其余 fail closed `ErrWorkspaceUnavailable`；租户从请求 ctx 取，缺租户 fail closed）+ `newCodeDeliveryService` dig provider（专用 `DeliveryDispatcher` + 专用 `NewActionService(actionStore, guard, nil, dispatcher, dispatcher)`，全局 OC 管线不动）+ `NewWorkbenchDeliveryHandler`（runs/granted 同为 `*AgentRunStore`）。
+6. **`internal/container/container.go`（Modify，+3 行）**：`NewWorkbenchListHandler` Provide 行后加 `newCodeDeliveryService` + `NewWorkbenchDeliveryHandler` 两个 Provide。
+
+## 2. TDD 证据
+
+**RED**（`go test ./internal/handler/session/ -run 'TestDelivery' -count=1`，实现前）：
+
+```
+internal/handler/session/workbench_delivery_test.go:94:7: undefined: NewWorkbenchDeliveryHandler
+internal/handler/session/workbench_delivery_test.go:130:7: undefined: NewWorkbenchDeliveryHandler
+internal/handler/session/workbench_delivery_test.go:159:7: undefined: NewWorkbenchDeliveryHandler
+FAIL    github.com/Tencent/WeKnora/internal/handler/session [build failed]
+```
+
+失败原因符合预期：`NewWorkbenchDeliveryHandler` 未定义（编译错误）。
+
+**GREEN**（计划 Step 4 指定验证命令，实现后实跑）：
+
+```
+$ go test ./internal/handler/session/ -run 'TestDelivery' -count=1 && go build ./... && go test ./internal/modules/codedelivery/ -count=1
+ok      github.com/Tencent/WeKnora/internal/handler/session     4.950s
+# github.com/Tencent/WeKnora/cmd/server
+ld: warning: ignoring duplicate libraries: '-lc++'
+# github.com/Tencent/WeKnora/cmd/desktop
+ld: warning: ignoring duplicate libraries: '-lc++'
+ok      github.com/Tencent/WeKnora/internal/modules/codedelivery        4.447s
+```
+
+`TestDelivery` 三个测试逐个 `-v` 确认（同轮实跑）：
+
+```
+--- PASS: TestDeliveryPrepareOwnerOnly (0.00s)
+--- PASS: TestDeliveryReadOpenToGrantedViewer (0.00s)
+--- PASS: TestDeliveryDispatchOwnerOnlyAndBaselineMaterializes (0.00s)
+```
+
+`ld: warning: ignoring duplicate libraries` 为预存在链接器噪音（本任务之前即有），非测试失败。
+
+## 3. 额外自检证据（计划未要求、本任务实跑）
+
+- **gin 路由挂载无通配符冲突**（临时自检测试，实跑后已删除不提交）：将既有 `RegisterWorkbenchRoutes`/`RegisterWorkbenchCommandRoutes` 与新增 `RegisterWorkbenchDeliveryRoutes` 挂同一 `*gin.Engine`，注册无 panic；`GET /api/v1/workbench/executions/run-1/delivery`、`POST …/baseline`、`POST …/delivery/dlv-1/dispatch` 均命中 401（无身份请求被 auth 边界拦截=路由已挂载），路由表无 404 miss。
+- **router 包既有测试无回归**：`go test ./internal/router/ -run 'Workbench|ApiKey|Rbac' -count=1` → `ok 3.414s`。
+- **gofmt**：`gofmt -l` 对全部 6 个触碰文件零输出（合规）。
+
+## 4. 与计划稿的偏差（3 处，均为机械修正/语义对齐，无行为改变）
+
+1. **测试 stub 错误值**：计划稿 stub 返回 `errors.New("run_not_found")`；但计划 Consumes 明确要求复用包级 `resolveOwnedRun`，其 `strictOwnedRun`（`workbench_read.go:163-175`）只把 `agentruntime.ErrNotFound` 归类为 scope miss（→404），其余 error 记存储故障（→500）。计划稿的 handler（调 `resolveOwnedRun`）与测试 stub（返回普通 error）互斥：GREEN 首轮实跑 u2 dispatch 得 500 而非断言的 404。修正：stub 改返回 `runtime.ErrNotFound`（附注释），handler 与全部行为断言（201/404/200/404）逐字保持计划原样。
+2. **`caller` 取法**：计划稿 `caller` 用 `c.Value(types.TenantIDContextKey)`；实现改用同包既定 `workbenchCaller(c)` helper（request context 优先、gin keys 兜底）——计划括号注释自述「与 `resolveOwnedRun` 相同的取法」，而 `resolveOwnedRun` 的取法就是 `workbenchCaller`（`workbench_read.go:141-155`），语义一致且与包内其他谓词零漂移。
+3. **容器 `source()` 类型修正**：计划稿让 `source()` 直接把 `*sandbox.SessionBoundManager` 当 `codedelivery.WorkspaceFileSource` 返回，编译不过（方法签名不同构：`[]sandbox.RemoteDirEntry` vs `[]codedelivery.WorkspaceDirEntry`、`[]sandbox.SessionWorkspaceFile` vs `[]codedelivery.WorkspaceFileWrite`）。改为 `manager()` 返回具体 `*SessionBoundManager`，三个端口方法内做映射；fail closed 语义与计划完全一致。
+
+## 5. 文件清单（6 个，全部在计划授权范围内）
+
+- Create：`internal/handler/session/workbench_delivery.go`
+- Create：`internal/handler/session/workbench_delivery_test.go`
+- Create：`internal/container/code_delivery.go`
+- Modify：`internal/router/routes_workbench.go`（文件尾追加）
+- Modify：`internal/router/router.go`（params 字段 + 注册行）
+- Modify：`internal/container/container.go`（2 个 Provide + 1 行注释）
+
+## 6. 遗留与关注点
+
+- `resolveReadable` 按计划稿实现（owner 读失败→granted 兜底→404）：与包内 `resolveReadableRun` 相比，把「真实存储故障」也收敛为 404 而非 500。计划稿如此（且其测试如此锚定），生产 wiring 下 runs/granted 同为 `*AgentRunStore`，故障面一致；如需 500 语义需改 `strictOwnedRun` 路径并同步改计划测试 stub——超出本任务授权，如实记录不擅改。
+- `newCodeDeliveryService` 按计划稿返回 `(*CodeDeliveryService, error)`，实现体恒返回 nil error（dig 支持 error 返回，形状保留给未来装配失败路径）。
+- 容器装配的运行时验证由 `go build ./...`（dig provider 签名编译正确性）+ 路由挂载自检覆盖；完整 `BuildContainer` Invoke 需要 DB/Redis 等真实依赖，不在本地无环境可跑范围（计划 Step 4 即以 `go build ./...` 为容器接线的验证面）。
+- blocked-env：真实 GitHub 端到端依赖 env（`WEKNORA_GITHUB_TEST_TOKEN/_REPO`），本地缺 env，前序 Task 2 已按计划 skip，本任务未触碰该面，无伪造。
