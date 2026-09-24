@@ -104,7 +104,7 @@ func TestRuntimeReportPromptsDoNotPrescribeSkillSpecificValues(t *testing.T) {
 		"SKILL.md": []byte("Summarize supplied text. No external commands are required."),
 	}
 	prompts := map[string]string{
-		"install": buildInstallPrompt(installSkillDir, fx.bundle, nil),
+		"install": buildInstallPrompt(installSkillDir, fx.bundle, nil, fx.svc.adapters),
 		"repair": buildRepairPrompt(installSkillDir, &skillVerificationError{
 			Language: "runtime prerequisites", Problems: []string{"Missing install-report.json"},
 		}),

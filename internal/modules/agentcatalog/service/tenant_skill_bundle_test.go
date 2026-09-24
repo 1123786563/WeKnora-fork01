@@ -169,7 +169,7 @@ func zipBundleExceedingDeclaredTotal(t *testing.T) []byte {
 	w := zip.NewWriter(&buf)
 	payload, checksum := deflatedRepeatedBytes(t, int64(maxSkillBundleFileBytes))
 
-	for i := 0; i < maxSkillBundleTotalBytes/maxSkillBundleFileBytes+1; i++ {
+	for i := 0; i < MaxSkillBundleTotalBytes/maxSkillBundleFileBytes+1; i++ {
 		header := &zip.FileHeader{
 			Name:               fmt.Sprintf("scripts/chunk-%d.bin", i),
 			Method:             zip.Deflate,

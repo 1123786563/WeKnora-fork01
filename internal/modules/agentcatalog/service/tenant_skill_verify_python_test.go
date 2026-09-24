@@ -146,7 +146,19 @@ func TestSkillPythonVerifier(t *testing.T) {
 		},
 		optional: []string{"examples/demo.py", "tests/conftest.py"},
 		wantNote: "auxiliary file; this does not fail the install",
+	}, {
+		// validateSkillEntryName only bans control characters, so a bundle key
+		// carrying a literal backslash is legal and must reach the checker as
+		// that literal name (the pre-migration os.path.join behaviour). The
+		// checker resolves it as one segment; it must not be re-interpreted as
+		// a directory separator (OCR b2-ac-skills-ocr-1, 修复选项 (a)).
+		name: "a bundle key with a literal backslash",
+		files: map[string]string{
+			`scripts\run.py`: "x = 1\n",
+		},
+		wantProblem: "",
 	}}
+
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -240,6 +252,35 @@ func TestSkillPythonVerifierReportsAnUnreadableScript(t *testing.T) {
 	require.Contains(t, stderr, "cannot be read by the skill execution user")
 	require.Equal(t, 1, verifierExitCode(t, err),
 		"a file the execution user cannot read is not something installing a package fixes")
+}
+
+// Defense in depth (OCR b2-ac-skills-ocr-1 修复选项 (a) 保留项)：the Go side
+// refuses traversal before a path reaches this argv, and the checker keeps the
+// invariant locally — a ".." segment is refused outright, and an absolute path
+// is re-anchored inside the skill root (where it then does not exist) instead
+// of escaping the root the way a bare os.path.join would have allowed.
+func TestSkillPythonVerifierRefusesTraversalArgv(t *testing.T) {
+	root := writeSkillTree(t, map[string]string{"scripts/run.py": "x = 1\n"})
+
+	t.Run("a .. segment is refused outright", func(t *testing.T) {
+		for _, hostile := range []string{"../outside.py", "scripts/../../outside.py"} {
+			_, stderr, err := runSkillPythonVerifier(t, root, []string{hostile}, nil)
+
+			require.Error(t, err, "argv %q", hostile)
+			require.Contains(t, stderr, "escapes the skill directory", "argv %q", hostile)
+			require.Equal(t, 1, verifierExitCode(t, err), "argv %q", hostile)
+		}
+	})
+
+	t.Run("an absolute path is re-anchored inside the skill root", func(t *testing.T) {
+		_, stderr, err := runSkillPythonVerifier(t, root, []string{"/etc/passwd"}, nil)
+
+		require.Error(t, err)
+		require.Contains(t, stderr, "cannot be read by the skill execution user")
+		require.Contains(t, stderr, filepath.Join(root, "etc", "passwd"),
+			"the absolute argv must resolve inside the skill root, not at the host path")
+		require.Equal(t, 1, verifierExitCode(t, err))
+	})
 }
 
 // The contract this checker now keeps: an import shape is never a verdict.

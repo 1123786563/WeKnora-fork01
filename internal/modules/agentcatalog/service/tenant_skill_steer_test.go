@@ -22,7 +22,7 @@ func newGuidanceFixture(t *testing.T) (*installFixture, *installSteerSink) {
 	require.NoError(t, err)
 	row.InstallSessionID, row.InstallMessageID = "sess-1", "msg-1"
 	require.NoError(t, fx.skillRepo.UpdateSkill(context.Background(), row))
-	tr := newInstallTranscript(context.Background(), nil, fx.svc.streams, fx.svc.messages, "sess-1", "msg-1", nil)
+	tr := newInstallTranscript(context.Background(), nil, fx.svc.streams, fx.svc.messages, "sess-1", "msg-1", nil, testHostAdapters().transcriptSanitizer())
 	sink := &installSteerSink{service: fx.svc, transcript: tr}
 	require.NoError(t, fx.svc.streams.SetLiveRun(context.Background(), installSteerSession("sess-1"), "msg-1", ""))
 	return fx, sink

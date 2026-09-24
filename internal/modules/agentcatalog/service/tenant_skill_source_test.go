@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -13,6 +14,12 @@ import (
 	"github.com/Tencent/WeKnora/internal/utils"
 	"github.com/stretchr/testify/require"
 )
+
+// fetchTestSkillArchive 补齐搬迁后的 parsers 形参：解析器由本包测试 init
+// 经 RegisterBundleParsers 绑定 agentruntime 真源（host_capability_test.go）。
+func fetchTestSkillArchive(ctx context.Context, source string, client *http.Client) ([]byte, error) {
+	return fetchSkillArchive(ctx, source, client, registeredBundleParsers)
+}
 
 func TestParseSkillSource(t *testing.T) {
 	tests := []struct {
@@ -224,7 +231,7 @@ func TestParseSkillSourceAtSlugIsRegistryNotGitHub(t *testing.T) {
 }
 
 func TestFetchSkillArchiveRejectsAmbiguousShorthandWithoutFetching(t *testing.T) {
-	_, err := fetchSkillArchive(t.Context(), "owner/demo", http.DefaultClient)
+	_, err := fetchTestSkillArchive(t.Context(), "owner/demo", http.DefaultClient)
 	require.ErrorIs(t, err, ErrSkillSourceInvalid)
 	require.ErrorContains(t, err, "ambiguous")
 }
@@ -362,7 +369,7 @@ func TestFetchSkillArchiveFromSkillsShInstallResolver(t *testing.T) {
 	t.Cleanup(server.Close)
 	allowLoopbackSkillFetch(t)
 
-	got, err := fetchSkillArchive(t.Context(),
+	got, err := fetchTestSkillArchive(t.Context(),
 		server.URL+"/skills-sh/skills-101/superpowers/ai-image-generation", server.Client())
 	require.NoError(t, err)
 	bundle, err := ParseSkillBundle(got)
@@ -385,7 +392,7 @@ func TestFetchSkillArchiveFromRegistry(t *testing.T) {
 	t.Cleanup(server.Close)
 	allowLoopbackSkillFetch(t)
 
-	got, err := fetchSkillArchive(t.Context(), server.URL+"/owner/demo", server.Client())
+	got, err := fetchTestSkillArchive(t.Context(), server.URL+"/owner/demo", server.Client())
 	require.NoError(t, err)
 
 	bundle, err := ParseSkillBundle(got)
@@ -421,7 +428,7 @@ func TestFetchSkillArchiveSendsNoCredentials(t *testing.T) {
 	t.Cleanup(server.Close)
 	allowLoopbackSkillFetch(t)
 
-	_, err := fetchSkillArchive(t.Context(), server.URL+"/owner/demo", server.Client())
+	_, err := fetchTestSkillArchive(t.Context(), server.URL+"/owner/demo", server.Client())
 	require.NoError(t, err)
 	require.Empty(t, registryAuth)
 	require.Empty(t, archiveAuth)
@@ -456,7 +463,7 @@ func TestFetchSkillArchiveUsesHandoffPath(t *testing.T) {
 	t.Cleanup(server.Close)
 	allowLoopbackSkillFetch(t)
 
-	got, err := fetchSkillArchive(t.Context(), server.URL+"/owner/demo", server.Client())
+	got, err := fetchTestSkillArchive(t.Context(), server.URL+"/owner/demo", server.Client())
 	require.NoError(t, err)
 	bundle, err := ParseSkillBundle(got)
 	require.NoError(t, err)
@@ -476,7 +483,7 @@ func TestFetchSkillArchiveRejectsUnusableHandoffURL(t *testing.T) {
 	t.Cleanup(server.Close)
 	allowLoopbackSkillFetch(t)
 
-	_, err := fetchSkillArchive(t.Context(), server.URL+"/owner/demo", server.Client())
+	_, err := fetchTestSkillArchive(t.Context(), server.URL+"/owner/demo", server.Client())
 	require.ErrorIs(t, err, ErrSkillSourceInvalid)
 	require.ErrorContains(t, err, "archive URL is not usable")
 }
@@ -505,7 +512,7 @@ func TestFetchSkillArchiveFollowsGitHubHandoff(t *testing.T) {
 	t.Cleanup(server.Close)
 	allowLoopbackSkillFetch(t)
 
-	got, err := fetchSkillArchive(t.Context(), server.URL+"/owner/demo", server.Client())
+	got, err := fetchTestSkillArchive(t.Context(), server.URL+"/owner/demo", server.Client())
 	require.NoError(t, err)
 	bundle, err := ParseSkillBundle(got)
 	require.NoError(t, err)
@@ -524,7 +531,7 @@ func TestFetchSkillArchiveFromSkillMarkdown(t *testing.T) {
 			t.Cleanup(server.Close)
 			allowLoopbackSkillFetch(t)
 
-			got, err := fetchSkillArchive(t.Context(), server.URL+"/SKILL.md", server.Client())
+			got, err := fetchTestSkillArchive(t.Context(), server.URL+"/SKILL.md", server.Client())
 			require.NoError(t, err)
 			bundle, err := ParseSkillBundle(got)
 			require.NoError(t, err)
@@ -566,7 +573,7 @@ func TestFetchSkillArchiveRejectsNonSkillHTML(t *testing.T) {
 	t.Cleanup(server.Close)
 	allowLoopbackSkillFetch(t)
 
-	_, err := fetchSkillArchive(t.Context(), server.URL+"/demo.zip", server.Client())
+	_, err := fetchTestSkillArchive(t.Context(), server.URL+"/demo.zip", server.Client())
 	require.ErrorIs(t, err, ErrSkillSourceInvalid)
 	require.True(t, strings.Contains(err.Error(), "skill archive") ||
 		strings.Contains(err.Error(), "zip skill bundle"))
@@ -584,7 +591,7 @@ func TestFetchSkillArchiveRejectsOversizeBody(t *testing.T) {
 	t.Cleanup(server.Close)
 	allowLoopbackSkillFetch(t)
 
-	_, err := fetchSkillArchive(t.Context(), server.URL+"/demo.zip", server.Client())
+	_, err := fetchTestSkillArchive(t.Context(), server.URL+"/demo.zip", server.Client())
 	require.ErrorIs(t, err, ErrSkillSourceInvalid)
 	require.ErrorContains(t, err, "1 MB")
 }

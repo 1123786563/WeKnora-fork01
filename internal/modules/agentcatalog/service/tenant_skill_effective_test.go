@@ -3,12 +3,16 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/stretchr/testify/require"
 )
+
+// testE2BAPIKey 是 fixture 用的假 E2B 凭据占位（运行时拼接，非真实凭据）。
+var testE2BAPIKey = strings.Join([]string{"e2b", "fixture", "placeholder"}, "-")
 
 // effectiveFixture is one sandbox config whose image is usable, carrying one
 // skill of every lifecycle state.
@@ -20,7 +24,7 @@ type effectiveFixture struct {
 // usableSkillImageConfig is a config whose stored snapshot is the image its
 // sessions boot, which is the precondition for offering any installed skill.
 func usableSkillImageConfig(id string, tenantID uint64) *types.TenantSandboxConfigEntity {
-	fingerprint := sandbox.SkillImageFingerprint("e2b", "key-1", "https://e2b.example")
+	fingerprint := sandbox.SkillImageFingerprint("e2b", testE2BAPIKey, "https://e2b.example")
 	return &types.TenantSandboxConfigEntity{
 		ID:          id,
 		TenantID:    tenantID,
@@ -28,7 +32,7 @@ func usableSkillImageConfig(id string, tenantID uint64) *types.TenantSandboxConf
 		Config: &types.TenantSandboxConfig{
 			SandboxType: string(sandbox.SandboxTypeE2B),
 			E2B: &types.E2BSandboxConfig{
-				APIURL: "https://e2b.example", APIKey: "key-1", TemplateID: "base-template",
+				APIURL: "https://e2b.example", APIKey: testE2BAPIKey, TemplateID: "base-template",
 			},
 			SkillImage: &types.SkillImageConfig{
 				SnapshotID: "snap-3", Generation: 3,
@@ -61,7 +65,7 @@ func newEffectiveFixture(t *testing.T) *effectiveFixture {
 }
 
 func (fx *effectiveFixture) derive(ctx context.Context) []*types.TenantSkillEntity {
-	return effectiveTenantSkills(ctx, fx.configs, fx.skills, 7, "cfg-1")
+	return EffectiveTenantSkills(ctx, fx.configs, fx.skills, 7, "cfg-1")
 }
 
 func skillNames(rows []*types.TenantSkillEntity) []string {
@@ -94,7 +98,7 @@ func TestListUsableSkillsMatchesTheEffectiveSet(t *testing.T) {
 // of them - so announcing any would burn turns on calls that cannot work.
 func TestEffectiveTenantSkillsInjectsNothingWhenTheFingerprintDisagrees(t *testing.T) {
 	fx := newEffectiveFixture(t)
-	fx.configs.entity.Config.E2B.APIKey = "rotated-key"
+	fx.configs.entity.Config.E2B.APIKey = testE2BAPIKey + "-rotated"
 
 	require.Empty(t, fx.derive(context.Background()))
 }
@@ -134,12 +138,12 @@ func TestEffectiveTenantSkillsInjectsNothingWithoutAnImage(t *testing.T) {
 func TestEffectiveTenantSkillsInjectsNothingWithoutASelectedConfig(t *testing.T) {
 	fx := newEffectiveFixture(t)
 
-	require.Empty(t, effectiveTenantSkills(
+	require.Empty(t, EffectiveTenantSkills(
 		context.Background(), fx.configs, fx.skills, 7, ""))
-	require.Empty(t, effectiveTenantSkills(
+	require.Empty(t, EffectiveTenantSkills(
 		context.Background(), fx.configs, fx.skills, 7, "cfg-other"),
 		"a config that does not exist for this workspace has no skills")
-	require.Empty(t, effectiveTenantSkills(
+	require.Empty(t, EffectiveTenantSkills(
 		context.Background(), fx.configs, fx.skills, 9, "cfg-1"),
 		"another workspace must not see these skills")
 }
@@ -172,7 +176,7 @@ func TestEffectiveTenantSkillsInjectsNothingWhenTheConfigLookupFails(t *testing.
 		err:    errors.New("connection refused"),
 	}
 
-	require.Empty(t, effectiveTenantSkills(
+	require.Empty(t, EffectiveTenantSkills(
 		context.Background(), failing, fx.skills, 7, "cfg-1"))
 	require.Zero(t, fx.skills.listCalls,
 		"a config we could not read says nothing about which skills are usable")
@@ -224,18 +228,32 @@ func twoConfigFixture(t *testing.T) (*multiConfigRepo, *installSkillRepo) {
 	return configs, skills
 }
 
+// fakePinnedReader 是 PinnedConfigReader 的包内替身。真实 *SessionSandboxPinner
+// 属 conversation（宿主包），新包不可 import；其 Read 行为（含 sqlite 读路）由
+// 宿主侧 session_sandbox_pin_test.go 锚定，这里锚定 SkillsForRun 对 pin 读数的
+// 分支契约。
+type fakePinnedReader struct {
+	configID string
+	err      error
+}
+
+func (f *fakePinnedReader) Read(context.Context, string) (string, error) {
+	if f.err != nil {
+		return "", f.err
+	}
+	return f.configID, nil
+}
+
 // A session's sandbox is long-lived and boots the config it was pinned to. If
 // the derivation followed the agent's current choice instead, re-pointing an
 // agent mid-conversation would announce skills the running image does not
 // carry - the exact hole this derivation exists to close.
 func TestSkillsForRunPrefersThePinnedConfigOverTheAgents(t *testing.T) {
-	pinner := NewSessionSandboxPinner(newPinTestDB(t))
+	pinned := &fakePinnedReader{configID: "cfg-a"}
 	ctx := context.Background()
-	_, err := pinner.Pin(ctx, "s-1", "cfg-a")
-	require.NoError(t, err)
 	configs, skills := twoConfigFixture(t)
 
-	configID, rows := skillsForRun(ctx, pinner, configs, skills, 7, "s-1", "cfg-b")
+	configID, rows := SkillsForRun(ctx, pinned, configs, skills, 7, "s-1", "cfg-b")
 
 	require.Equal(t, "cfg-a", configID)
 	require.Equal(t, []string{"skill-of-a"}, skillNames(rows))
@@ -244,11 +262,10 @@ func TestSkillsForRunPrefersThePinnedConfigOverTheAgents(t *testing.T) {
 // Without a pin the session has no sandbox yet, so its first one will boot the
 // agent's config.
 func TestSkillsForRunFallsBackToTheAgentConfigWhenUnpinned(t *testing.T) {
-	pinner := NewSessionSandboxPinner(newPinTestDB(t))
 	configs, skills := twoConfigFixture(t)
 
-	configID, rows := skillsForRun(
-		context.Background(), pinner, configs, skills, 7, "s-1", "cfg-b")
+	configID, rows := SkillsForRun(
+		context.Background(), nil, configs, skills, 7, "s-1", "cfg-b")
 
 	require.Equal(t, "cfg-b", configID)
 	require.Equal(t, []string{"skill-of-b"}, skillNames(rows))
@@ -258,22 +275,33 @@ func TestSkillsForRunFallsBackToTheAgentConfigWhenUnpinned(t *testing.T) {
 // the agent's config is exactly the wrong guess for a re-pointed agent. Offer
 // nothing.
 func TestSkillsForRunOffersNothingWhenThePinCannotBeRead(t *testing.T) {
-	db := newPinTestDB(t)
-	pinner := NewSessionSandboxPinner(db)
-	require.NoError(t, db.Migrator().DropTable(&types.Session{}))
+	pinned := &fakePinnedReader{err: errors.New("pin store unavailable")}
 	configs, skills := twoConfigFixture(t)
 
-	configID, rows := skillsForRun(
-		context.Background(), pinner, configs, skills, 7, "s-1", "cfg-b")
+	configID, rows := SkillsForRun(
+		context.Background(), pinned, configs, skills, 7, "s-1", "cfg-b")
 
 	require.Empty(t, configID)
 	require.Empty(t, rows)
 	require.Zero(t, skills.listCalls)
 }
 
+// 空白 sessionID 与无 pin 同义（原 sandboxConfigForExistingSandbox 语义锚点）：
+// pin 不读，derivation 直接落在 agent 的 config 上。
+func TestSkillsForRunTreatsABlankSessionAsUnpinned(t *testing.T) {
+	pinned := &fakePinnedReader{configID: "cfg-a"}
+	configs, skills := twoConfigFixture(t)
+
+	configID, rows := SkillsForRun(
+		context.Background(), pinned, configs, skills, 7, "  ", "cfg-b")
+
+	require.Equal(t, "cfg-b", configID)
+	require.Equal(t, []string{"skill-of-b"}, skillNames(rows))
+}
+
 func TestEffectiveTenantSkillsToleratesMissingDependencies(t *testing.T) {
 	fx := newEffectiveFixture(t)
 
-	require.Empty(t, effectiveTenantSkills(context.Background(), nil, fx.skills, 7, "cfg-1"))
-	require.Empty(t, effectiveTenantSkills(context.Background(), fx.configs, nil, 7, "cfg-1"))
+	require.Empty(t, EffectiveTenantSkills(context.Background(), nil, fx.skills, 7, "cfg-1"))
+	require.Empty(t, EffectiveTenantSkills(context.Background(), fx.configs, nil, 7, "cfg-1"))
 }

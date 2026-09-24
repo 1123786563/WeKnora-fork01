@@ -93,6 +93,25 @@ def note_instead_of_problem(message, repairable=False):
     add_note("%s (auxiliary file; this does not fail the install)" % message)
 
 
+def skill_script_path(relative):
+    """Absolute path of one skill-relative source, refused if it escapes root.
+
+    The Go side refuses traversal before a path reaches this argv; this keeps
+    the invariant locally instead of trusting the caller. A backslash is a
+    literal filename character here (exactly what os.path.join would have
+    received before this helper existed): only "/" separates segments, so a
+    bundle key like `scripts\\run.py` resolves to the one file of that literal
+    name, matching the pre-migration join behaviour.
+    """
+    parts = [part for part in relative.split("/") if part not in ("", ".")]
+    if not parts or any(part == ".." for part in parts):
+        return None
+    script = os.path.normpath(os.path.join(root, *parts))
+    if os.path.commonpath([root, script]) != root:
+        return None
+    return script
+
+
 def distribution_name(raw):
     """The distribution a requirement line names, or '' if it cannot be read.
 
@@ -138,13 +157,13 @@ def marker_applies(marker):
         return None
 
 
-def load_pyproject(path):
+def load_pyproject(manifest_path):
     try:
         import tomllib
     except ImportError:
         return None
     try:
-        with open(path, "rb") as handle:
+        with open(manifest_path, "rb") as handle:
             return tomllib.load(handle)
     except Exception:
         return None
@@ -225,7 +244,10 @@ def check_declared_requirements():
 
 for relative in all_scripts:
     report = note_instead_of_problem if relative in optional_set else add_problem
-    script = os.path.join(root, relative)
+    script = skill_script_path(relative)
+    if script is None:
+        report("%s escapes the skill directory" % relative)
+        continue
     try:
         with open(script, "rb") as source:
             code = source.read()
