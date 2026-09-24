@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 import { router } from 'expo-router';
-import type { InboxItem, InboxView, NotificationInbox } from '@weknora/mobile-core';
+import type { InboxItem, InboxView, MobileRuntime, NotificationInbox } from '@weknora/mobile-core';
 import { activeMobileRuntime, notificationInboxFor, openNotificationFromInbox } from '../composition.ts';
 import { InboxScreen } from '../screens/InboxScreen.tsx';
 
@@ -17,8 +17,8 @@ function errorMessage(error: unknown): string {
 }
 
 /** /inbox 挂载生命周期宿主：subscribe 持续接收投影，page() 首次加载与手动刷新共用（与 /resources 同一模式）。 */
-export function InboxRouteLifecycle({ inbox }: { inbox: NotificationInbox }) {
-  const activeRuntime = activeMobileRuntime();
+export function InboxRouteLifecycle({ inbox, runtime }: { inbox: NotificationInbox; runtime?: Pick<MobileRuntime, 'snapshot'> }) {
+  const activeRuntime = runtime ?? activeMobileRuntime();
   const [state, setState] = useState<InboxRouteState>({ loading: true });
   useEffect(() => {
     let alive = true;
@@ -62,7 +62,11 @@ export function InboxRouteLifecycle({ inbox }: { inbox: NotificationInbox }) {
             ? '请先登录并激活空间，再打开该任务。'
             : undefined,
       }));
-    })();
+    })().catch((failure: unknown) => {
+      // 导航已发生：markRead 失败（INBOX_BACKEND / INBOX_SCOPE_CHANGED）只降级为可见提示，
+      // 绝不让 rejection 逃逸成 unhandled rejection（poor error handling 审查项）。
+      setState((current) => ({ ...current, notice: `通知已打开，但已读状态同步失败：${errorMessage(failure)}` }));
+    });
   };
   return (
     <InboxScreen

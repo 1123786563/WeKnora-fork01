@@ -904,3 +904,77 @@ test('the home surface keeps a reachable inbox entry point and the inbox screen 
   (row!.props.onPress as () => void)();
   assert.deepEqual(opened, ['n-1'], 'tapping a row hands the item to the composition-owned navigation seam');
 });
+
+test('tapping a notification whose markRead fails degrades to a visible notice instead of an unhandled rejection', async () => {
+  const { InboxRouteLifecycle } = await import('./app/inbox.tsx');
+  const { InboxScreen } = await import('./screens/InboxScreen.tsx');
+  hooks().__reset();
+  const view: import('@weknora/mobile-core').InboxView = {
+    items: [
+      { notificationId: 'n-1', kind: 'attention', title: '需要你处理', body: '', createdAt: '2026-09-24T01:00:00Z', read: false, deepLink: 'weknora://tasks/detail?taskId=t-1&runId=r-1' },
+    ],
+    unreadCount: 1,
+    duplicateNotificationIds: [],
+  };
+  const inbox = {
+    subscribe(listener: (next: import('@weknora/mobile-core').InboxView) => void) { listener(view); return () => {}; },
+    page: async () => view,
+    more: async () => view,
+    applyHint: async () => view,
+    resolveTarget: () => ({ kind: 'task-detail' as const, taskId: 't-1', runId: 'r-1' }),
+    markRead: async () => { throw new Error('INBOX_BACKEND'); },
+  };
+  const runtime = { snapshot: () => ({ surface: 'authorized' as const }) };
+
+  const unhandled: unknown[] = [];
+  const recordUnhandled = (reason: unknown) => { unhandled.push(reason); };
+  process.on('unhandledRejection', recordUnhandled);
+  try {
+    render(InboxRouteLifecycle, { inbox, runtime });
+    hooks().__mount();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const withRows = render(InboxRouteLifecycle, { inbox, runtime });
+    const screenWithRows = descendants(withRows).find(({ type }) => type === InboxScreen);
+    assert.ok(screenWithRows, 'the route renders the inbox screen');
+    const screenTree = render(InboxScreen, screenWithRows!.props);
+    const row = descendants(screenTree).find(({ type, props }) => type === 'Button' && String(props.title).includes('需要你处理'));
+    assert.ok(row, 'the notification row renders once the projection arrives');
+    (row!.props.onPress as () => void)();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.deepEqual(unhandled, [], 'a failing markRead must never escape the tap handler as an unhandled rejection');
+    const after = render(InboxRouteLifecycle, { inbox, runtime });
+    const screenElement = descendants(after).find(({ type }) => type === InboxScreen);
+    assert.ok(screenElement, 'the route keeps rendering the inbox screen after the failure');
+    assert.match(
+      String((screenElement!.props as { notice?: string }).notice ?? ''),
+      /已读状态同步失败.*INBOX_BACKEND/,
+      'the markRead failure is surfaced as a visible notice carrying the error code',
+    );
+    hooks().__unmount();
+  } finally {
+    process.off('unhandledRejection', recordUnhandled);
+  }
+});
+
+test('the inbox screen surfaces refresh failures in place when a projection is already on screen', async () => {
+  const { InboxScreen } = await import('./screens/InboxScreen.tsx');
+  hooks().__reset();
+  const screen = render(InboxScreen, {
+    view: {
+      items: [
+        { notificationId: 'n-1', kind: 'attention', title: '需要你处理', body: '', createdAt: '2026-09-24T01:00:00Z', read: false, deepLink: 'weknora://tasks/detail?taskId=t-1&runId=r-1' },
+      ],
+      unreadCount: 1,
+      duplicateNotificationIds: [],
+    },
+    loading: false,
+    error: 'INBOX_SCOPE_CHANGED',
+    onRefresh: () => {},
+    onOpenNotification: () => {},
+  });
+  const json = JSON.stringify(screen);
+  assert.ok(json.includes('INBOX_SCOPE_CHANGED'), 'a refresh/load-more failure must be visible in place when a view already exists');
+  assert.ok(json.includes('需要你处理'), 'the already-loaded rows stay on screen instead of being replaced');
+  assert.ok(!json.includes('无法读取行动通知'), 'a screen with a projection must not fall back to the empty-view error branch');
+});

@@ -30,6 +30,8 @@ export function InboxScreen({ view, loading, error, notice, onRefresh, onLoadMor
     <ScrollView>
       <Text>{`未读 ${view?.unreadCount ?? 0}`}</Text>
       {notice !== undefined && <Text>{notice}</Text>}
+      {/* 已有视图时刷新/加载更多失败不再静默：保留列表，就地渲染错误文案（唯一整屏错误分支在上方 view===undefined 早退）。 */}
+      {error !== undefined && <Text>{error}</Text>}
       {loading && <Text>正在同步…</Text>}
       {(view?.items ?? []).map((item) => (
         <Button
