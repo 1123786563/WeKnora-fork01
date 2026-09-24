@@ -43,6 +43,7 @@
   - 各阶段全部 completed：threatModel / findingDiscovery（241）/ validation / pathAnalysis（29114 函数、37802 调用边）/ reporting；依赖扫描 completed（1135 包，离线 advisory 命中 12 包 / 67 条）。
   - 诚实边界：coverage 自评 `completeness: partial`、runStatus `inconclusive`——唯一缺口为声明的"调用图部分不完整（动态派发/超分析规模）"，是静态分析固有边界，**不是**中途失败。与提交时 `scanner_enobufs`（扫描器错误、无任何结论）性质不同。
 - 表述约束（延续原登记口径）：本扫描结果是"完成并封印的静态深度扫描、B3 范围零发现"，**不**宣称"项目级完整安全审计通过"；241 条范围外发现的处置不在本轮 minor 修复范围。
+- 后记（如实登记）：本轮最终提交 `aa51eeeaf` 时，Mimosa 预提交钩子**再次**报 `scanner_enobufs` 并按兼容策略放行——即该提交本身仍未通过钩子侧完整扫描（钩子侧扫描器资源性失败，与 MCP 深度扫描为不同执行路径）；上述已封印深度扫描（提交前完成、覆盖 B3 全部代码变更，范围外发现未处置）是当前对该提交安全状态的最好证据，仍不构成"项目级完整安全审计通过"。
 
 ## 定向测试（B3 mobile 全套 TS 测试）
 
