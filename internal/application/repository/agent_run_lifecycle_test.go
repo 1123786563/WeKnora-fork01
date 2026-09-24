@@ -82,6 +82,34 @@ func TestTerminalCancellationEnqueuesCaptureAndFencesNextRun(t *testing.T) {
 
 type CraftRunCaptureRowForTest struct{ State, Generation string }
 
+// TestTerminalRunWithoutBoundRunViewDoesNotFenceNextRun pins the R4 fence
+// obligation semantics: only a terminal Run with a bound RunView owns a
+// repairable draft capture. A terminal Run whose RunView never bound (no
+// container output exists, the enqueue trigger cannot create a receipt) must
+// not permanently block later Runs of the same Workspace — that is the #120
+// "continue with other material" journey after a runtime-less or failed
+// materialization.
+func TestTerminalRunWithoutBoundRunViewDoesNotFenceNextRun(t *testing.T) {
+	db := openRunTestDB(t)
+	ctx := context.Background()
+	registerCraftSessionForCaptureTest(t, db)
+	workspace := putCraftWorkspace(t, NewCraftStore(db))
+	store := NewAgentRunStore(db)
+	key := agentruntime.RunKey{TenantID: 1, RunID: "capture-unbound-run"}
+	in := agentRunAdmissionForCaptureTest(key.RunID, workspace.ID)
+	in.RequestID, in.AssistantMessageID, in.RequestHash = "capture-unbound-request", "capture-unbound-assistant", "capture-unbound-hash"
+	_, err := store.Admit(ctx, in)
+	require.NoError(t, err)
+	// The Run terminates without any RunView allocation or binding.
+	require.NoError(t, store.CancelRun(ctx, key, "stop"))
+	var receipts int64
+	require.NoError(t, db.Table("craft_run_captures").Where("tenant_id=? AND run_id=?", 1, key.RunID).Count(&receipts).Error)
+	require.Zero(t, receipts, "a Run without a bound RunView enqueues no capture receipt")
+	next := agentRunAdmissionForCaptureTest("capture-next-after-unbound")
+	_, err = store.Admit(ctx, next)
+	require.NoError(t, err, "a terminal Run without a bound RunView carries no capture obligation")
+}
+
 func agentRunAdmissionForCaptureTest(runID string, workspaceIDs ...string) agentruntime.Admission {
 	_ = workspaceIDs // the repository, not the fixture caller, derives the Workspace seed
 	snapshot, err := json.Marshal(map[string]any{"version": 1, "craft_input_manifest": []craft.Input{}})
