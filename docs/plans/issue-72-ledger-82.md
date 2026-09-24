@@ -33,5 +33,22 @@
 ## 遗留与风险
 
 - Task 1 probe 若 P2 证伪：升级 spec/ADR owner，不实施替代猜测路径（升级路径已写入 Task 1）。
-- 真实流程验证依赖外部可用性：Stripe TEST 出站（#81 曾遇间歇不可达）、支付宝沙箱凭据；两者均已在计划中给出 blocked-env 的诚实降级与证据标注方式。
+- 真实流程验证依赖外部可用性：Stripe TEST 出站（#81 曾遇间歇不可达）、支付宝沙箱凭据；两者均已在计划中给出 blocked-env 的诚实降级与证据标注方式。**AC4 残余（第 1 轮审查补充披露）**：支付宝沙箱凭据可用性未经本会话证实；凭据缺席时签名 notify 替身只证明"渠道验签→履约"链，不构成真实沙箱付款证据——failures 记 `ac4-sandbox-credentials-unavailable`，本票结论只能是「其余 AC 达成 + AC4 带残余」，不得写 AC4 达成。
 - 并行批次：`internal/handler/session/craft_test.go`、`packages/career-core/` 等主 checkout 未跟踪改动与本票无关，计划已声明不触碰；#84/#85（order.go/commercial.ts 热点）在 DAG 上排后于本票，无并行写冲突。
+
+## 审查记录
+
+### 第 1 轮（2026-09-24，计划审查员）——8 条全部采纳并修订
+
+| # | 发现（severity） | 复核（本 worktree 实测） | 修订 |
+|---|---|---|---|
+| 1 | Task 8 契约测试位置错误：`src/commercial.test.ts` 不存在且 test:shared 不收集（high） | `ls packages/contracts/src/*.test.ts` 仅 analytics/query-history/usage 三个孤儿；commercial.test.ts 在 `packages/contracts/test/`；root package.json:13 glob 确认不含 src | Task 8/Files 改为 `packages/contracts/test/commercial.test.ts` 追加，并明示勿模仿孤儿文件（防假绿） |
+| 2 | Task 7 构造语义与现行 `gateway==nil → ErrFulfillmentGatewayMissing`（fulfillment.go:148-150）冲突，DI 装配未写明（medium） | sed 实测 :148-150 与 container.go:943 Provide 无显式实参 | Produces 写明四种组合的校验语义（nil+purchase 放行、fulfillEvent 非 purchase 分支 nil-gateway 防护）；container 装配改为注册 `NewPurchaseFulfiller` Provide + dig 自动注入；RED 形态改为编译错/ErrFulfillmentGatewayMissing 双形态 |
+| 3 | Task 5 stub 订阅端点用路径段，实际身份读是 `/api/v1/subscriptions?external_id=...`（lago.go:650-656），happy path 必败于 404（medium） | sed 实测 lago.go:650-668 查询串形式 + 非 2xx 映射 invalid_response | stub 改注册裸路径并在 handler 内答 `{"subscriptions":[...]}`，calls 断言补查询串形状，注释写明原因 |
+| 4 | `TestPurchaseFulfillCrashReplayConverges` 被矩阵/Review Focus 引用但无 Task 定义；`TestSyncReturnCannotConfirmPurchase` 无任何 Run 命令能执行（medium） | grep Task 7 测试清单确认缺定义；Run 命令只覆盖 service 包 | Task 7 补两个测试的定义代码与 Files（alipay_test.go）；Step 2/4 拆分为 service 包与 payment 包两条命令 |
+| 5 | `paid_awaiting_activation` 落点三处矛盾（D3=seam 包 / Produces 注释=service 包 / Files 只列 service）（medium） | 复核三处原文确认矛盾 | 定版唯一落点：`internal/modules/commercial/purchase_command.go`（PurchaseState* 区之后，注明 coordinator-composed，readPurchaseSnapshot 永不产出）；D3/Produces/Files 三处同步 |
+| 6 | AC4 沙箱凭据可用性未证实，降级路径下 AC4 严格意义上未闭环（low） | `~/.zcode/issue72-stripe.env` 存在（审查实测），ALIPAY_* 无凭据证据 | 验证方案第 3 步+通过判据+矩阵 AC4 行+Task 10 Step 1 四处加残余披露：failures 记 `ac4-sandbox-credentials-unavailable`，结论只能写「AC4 带残余」 |
+| 7 | Task 6 骨架出现三个不存在的名字（newContractLagoStub/s.config/s.purchaseCount），既有/新建边界未标注（low） | 实测 contract_test.go:561-566 既有腿用 `newPurchaseStub()`+`purchaseAdapterWithPrefix(t, stub.server(t))`+`stub.countSubscriptionPosts` | Lago 入口改用既有名逐字同款，注释列明既有名（含行号）与新建名（runSettlementContract + purchaseStub 新扩展的 payments/payment_methods/invoices 分支） |
+| 8 | 证据锚点错位：order_test.go:91 非 ConfirmPayment 先例；F3/F4/F6 仓库内不可复核；lab.sh 无 LAGO_FRONT_PORT（low） | 实测 order_test.go:85-97（是 TestOrderPipelineQuoteOrderRecover 段）；ConfirmPayment 先例在 fulfillment_test.go:140/234（grep 实证）；`grep 591ae900 deploy/` 仅 wallet-semantics 注释；`grep LAGO_FRONT_PORT` exit 1 | Task 7 注释改引 fulfillment_test.go:140/234 与 repository/commercial/order_test.go:97；F3/F4/F6 加「⚠️ 仓库内不可复核（本地无 lago-api clone），运行时兜底=Task 1 probe」标注；Task 1 改为「新增 LAGO_FRONT_PORT 变量（原 lab.sh 无此变量）」 |
+
+修订后自检：占位符扫描 `grep 'TBD|TODO|待补|类似 Task'` 零命中；763 行；三个落点/文件名/测试引用与仓库实况一一核对。
