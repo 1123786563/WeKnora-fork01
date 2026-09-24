@@ -264,3 +264,16 @@ test('scenario: resolveTaskForRun derives taskId from the authoritative run row 
   const resolved = await office.resolveTaskForRun('run-1');
   assert.deepEqual(resolved, { taskId: 's-1', runId: 'run-1' });
 });
+
+import { readFileSync } from 'node:fs';
+test('replace-dont-layer: execution/home pages reference the deep modules, never the deleted workbench controller', () => {
+  const executionPages = readFileSync(new URL('../src/features/execution/pages.tsx', import.meta.url), 'utf8');
+  const homePages = readFileSync(new URL('../src/features/home/pages.tsx', import.meta.url), 'utf8');
+  for (const source of [executionPages, homePages]) {
+    assert.equal(source.includes('services/workbench'), false);
+    assert.equal(source.includes('core/execution'), false);
+  }
+  assert.ok(executionPages.includes('requireTaskOffice'));
+  assert.ok(executionPages.includes('openActiveMaterial'));
+  assert.ok(homePages.includes('requireTaskOffice') || homePages.includes('activeResourceShelf'));
+});
