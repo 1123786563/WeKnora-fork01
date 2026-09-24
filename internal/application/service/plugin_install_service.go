@@ -324,9 +324,12 @@ func oauthConfigFromVerifiedBaseline(snapshot []types.PluginToolSnapshot) *types
 // context.WithoutCancel with its own timeout (R12 F14): the original
 // request ctx may already be cancelled (client disconnect mid-confirm) —
 // reusing it would fail BOTH compensation writes and strand the unique
-// slot with no self-heal. Compensation is still best-effort — its own
-// failures are logged, the ORIGINAL cause is what the caller sees, and
-// the uninstall endpoint (R12 F06b) is the operator's self-heal entry.
+// slot with no self-heal. If the cascade delete itself fails, the
+// installation row is KEPT as the self-heal anchor (T06-OCR2-F1): the
+// sweep rolled back atomically, and dropping the row would strand the
+// service row with no reachable cleanup — the uninstall endpoint is the
+// operator's recovery path instead. Compensation failures are logged, the
+// ORIGINAL cause is what the caller sees.
 func (s *pluginService) compensateInstallation(
 	ctx context.Context,
 	tenantID uint64,
@@ -337,14 +340,22 @@ func (s *pluginService) compensateInstallation(
 	defer cancel()
 	if serviceID != "" {
 		if err := s.pluginRepo.HardDeleteServiceCascade(compCtx, tenantID, serviceID); err != nil {
+			// Cascade failed → the sweep rolled back atomically (T06-OCR2-F1)
+			// and the installation row is the ONLY self-heal anchor left:
+			// the uninstall endpoint needs it (GetInstallation nil → not
+			// found). Deleting it here would strand the materialized
+			// service row forever with no reachable cleanup — keep the row,
+			// surface the original cause; the operator uninstalls once the
+			// sweep fault clears.
 			logger.GetLogger(ctx).Errorf(
-				"plugin installation compensation: failed to cascade-delete materialized service %s: %v", serviceID, err)
-		} else {
-			// The rows are gone — drop the manager's cached client too
-			// (T06-OCR1-F7): a live SSE connection holding member tokens
-			// must not outlive the service it pointed at.
-			s.closeServiceClient(compCtx, serviceID)
+				"plugin installation compensation: cascade-delete of materialized service %s failed (%v); KEEPING installation %s as the self-heal anchor",
+				serviceID, err, installationID)
+			return cause
 		}
+		// The rows are gone — drop the manager's cached client too
+		// (T06-OCR1-F7): a live SSE connection holding member tokens
+		// must not outlive the service it pointed at.
+		s.closeServiceClient(compCtx, serviceID)
 	}
 	if err := s.pluginRepo.DeleteInstallation(compCtx, tenantID, installationID); err != nil {
 		logger.GetLogger(ctx).Errorf(

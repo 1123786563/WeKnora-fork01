@@ -316,6 +316,9 @@ type installPreviewRepo struct {
 	updateStateErr error
 	onTenantPlugin func()
 	hardDeletedSvc []string
+	// hardDeleteErr 注入级联删除失败（T06-OCR2-F1）：补偿在级联失败时
+	// 必须保留安装行（uninstall 自愈入口需要它存在）。
+	hardDeleteErr error
 }
 
 func (r *installPreviewRepo) CreatePreview(_ context.Context, p *types.PluginPreview) error {
@@ -404,6 +407,9 @@ func (r *installPreviewRepo) HardDeleteServiceCascade(ctx context.Context, tenan
 		if err := ctx.Err(); err != nil {
 			return err
 		}
+	}
+	if r.hardDeleteErr != nil {
+		return r.hardDeleteErr
 	}
 	r.hardDeletedSvc = append(r.hardDeletedSvc, serviceID)
 	if r.mcpRepo != nil {
@@ -765,6 +771,28 @@ func TestConfirmInstallationPolicyWriteFailureHardCascades(t *testing.T) {
 	resp, err := s.confirm(t, 7, s.previewID)
 	require.NoError(t, err)
 	require.NotEmpty(t, resp.InstallationID)
+}
+
+// TestConfirmInstallationCompensationKeepsRowWhenCascadeFails（T06-OCR2-F1）：
+// 补偿的级联删除失败时不得继续删除安装行——uninstall 自愈入口需要安装行
+// 存在（GetInstallation 为 nil 即 not found），先删安装行会把「物化服务行
+// 滞留」变成唯一手工 SQL 可解的死局。级联失败时唯一正确的动作是保留
+// 安装行（自愈锚点）并返回原始错误。
+func TestConfirmInstallationCompensationKeepsRowWhenCascadeFails(t *testing.T) {
+	s := newInstallTestStack(t, 7)
+	s.approvalRepo.upsertErr = errors.New("approval store down")    // 触发补偿（Step 6 失败）
+	s.pluginRepo.hardDeleteErr = errors.New("cascade sweep failed") // 补偿级联失败
+
+	_, err := s.confirm(t, 7, s.previewID)
+	require.Error(t, err)
+	require.Len(t, s.pluginRepo.installations, 1,
+		"compensation must KEEP the installation row when the cascade delete fails — it is the self-heal anchor")
+
+	// 故障恢复后 uninstall 可达：级联恢复 → 卸载清干净 → 唯一槽释放。
+	s.pluginRepo.hardDeleteErr = nil
+	inst := s.pluginRepo.installations[0]
+	require.NoError(t, s.svc.UninstallInstallation(context.Background(), 7, inst.ID))
+	require.Empty(t, s.pluginRepo.installations)
 }
 
 // TestConfirmInstallationExpiredAcrossTTLDistinguished（OCR 一轮 R12-B

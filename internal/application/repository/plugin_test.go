@@ -270,3 +270,49 @@ func TestHardDeleteServiceCascadeCleansOAuthRows(t *testing.T) {
 	require.EqualValues(t, 1, count(&types.MCPOAuthToken{}, "service_id = ?", "svc-manual"))
 	require.EqualValues(t, 1, count(&types.MCPOAuthClient{}, "service_id = ?", "svc-manual"))
 }
+
+// TestHardDeleteServiceCascadeRollsBackOnMidSweepFailure（T06-OCR2-F1）：
+// 级联是 4~5 条独立 DELETE——任一中途失败必须整体回滚，否则敏感凭据清扫
+// 半途而废且部分完成状态无法重放（补偿路径随后删安装行会滞留 service 行
+// 成孤儿）。用 BEFORE DELETE 触发器让 mcp_oauth_clients（第 3 条 DELETE）
+// 报错，断言已执行的 approvals/tokens 删除被回滚、service 行仍在。
+func TestHardDeleteServiceCascadeRollsBackOnMidSweepFailure(t *testing.T) {
+	ctx := context.Background()
+	db := newPluginPreviewTestDB(t)
+	require.NoError(t, db.AutoMigrate(
+		&types.MCPService{}, &types.MCPToolApproval{},
+		&types.MCPOAuthToken{}, &types.MCPOAuthClient{},
+	))
+	repo := NewPluginRepository(db)
+
+	svc := &types.MCPService{ID: "svc-x", TenantID: 7, Name: "svc", TransportType: "http"}
+	require.NoError(t, db.Create(svc).Error)
+	require.NoError(t, db.Create(&types.MCPToolApproval{
+		ID: "appr-x", TenantID: 7, ServiceID: "svc-x", ToolName: "tool-a",
+	}).Error)
+	require.NoError(t, db.Create(&types.MCPOAuthToken{
+		ID: "tok-x", TenantID: 7, UserID: "user-x", ServiceID: "svc-x",
+		PrincipalType: "user", PrincipalID: "user-x", AccessToken: "tok",
+	}).Error)
+	require.NoError(t, db.Create(&types.MCPOAuthClient{
+		ID: "cli-x", TenantID: 7, ServiceID: "svc-x", ClientID: "cid-x",
+	}).Error)
+
+	// 第 3 条 DELETE（mcp_oauth_clients）注入确定性失败。
+	require.NoError(t, db.Exec(
+		"CREATE TRIGGER fail_clients_delete BEFORE DELETE ON mcp_oauth_clients BEGIN SELECT RAISE(ABORT, 'boom: clients sweep failed'); END",
+	).Error)
+
+	err := repo.HardDeleteServiceCascade(ctx, 7, "svc-x")
+	require.ErrorContains(t, err, "boom: clients sweep failed")
+
+	// 整体回滚：先前执行的 approvals/tokens 删除必须被撤销，service 行
+	// 仍在（清扫要么全部完成要么全部不动——重试可完整重放）。
+	var n int64
+	require.NoError(t, db.Model(&types.MCPToolApproval{}).Where("service_id = ?", "svc-x").Count(&n).Error)
+	require.EqualValues(t, 1, n, "approval delete must roll back with the failed sweep")
+	require.NoError(t, db.Model(&types.MCPOAuthToken{}).Where("service_id = ?", "svc-x").Count(&n).Error)
+	require.EqualValues(t, 1, n, "token delete must roll back with the failed sweep")
+	require.NoError(t, db.Model(&types.MCPService{}).Where("id = ?", "svc-x").Count(&n).Error)
+	require.EqualValues(t, 1, n, "service row must survive the failed sweep")
+}

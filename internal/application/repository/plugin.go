@@ -238,29 +238,36 @@ func (r *pluginRepository) HardDeleteServiceCascade(ctx context.Context, tenantI
 	// at rest) and dynamic-client registrations would otherwise strand on a
 	// dead service forever. Production SQLite DSNs never enable
 	// foreign_keys, so these explicit deletes are the only cleanup there is.
-	deleteDerived := func(model any) error {
-		return r.db.WithContext(ctx).
-			Where("tenant_id = ? AND service_id = ?", tenantID, serviceID).
-			Delete(model).Error
-	}
-	if err := deleteDerived(&types.MCPToolApproval{}); err != nil {
-		return err
-	}
-	if err := deleteDerived(&types.MCPOAuthToken{}); err != nil {
-		return err
-	}
-	if err := deleteDerived(&types.MCPOAuthClient{}); err != nil {
-		return err
-	}
-	if r.db.Dialector.Name() == "postgres" {
-		// mcp_metadata is a PostgreSQL-only table — the SQLite migration
-		// stream never creates it, so the delete is dialect-gated.
-		if err := deleteDerived(&types.MCPMetadata{}); err != nil {
+	// The whole sweep runs in ONE transaction (T06-OCR2-F1): 4~5
+	// independent DELETEs must land all-or-nothing — a mid-sweep failure
+	// with partial deletes stranded an un-replayable half-clean state (and
+	// the compensation path would then drop the installation row, leaving
+	// an orphan service row with no self-heal anchor). This is a
+	// single-repo-method transaction, not the cross-service WithTx the plan
+	// ruled out; db.Transaction here is the repository-layer convention.
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		deleteDerived := func(model any) error {
+			return tx.Where("tenant_id = ? AND service_id = ?", tenantID, serviceID).
+				Delete(model).Error
+		}
+		if err := deleteDerived(&types.MCPToolApproval{}); err != nil {
 			return err
 		}
-	}
-	return r.db.WithContext(ctx).
-		Unscoped().
-		Where("tenant_id = ? AND id = ?", tenantID, serviceID).
-		Delete(&types.MCPService{}).Error
+		if err := deleteDerived(&types.MCPOAuthToken{}); err != nil {
+			return err
+		}
+		if err := deleteDerived(&types.MCPOAuthClient{}); err != nil {
+			return err
+		}
+		if r.db.Dialector.Name() == "postgres" {
+			// mcp_metadata is a PostgreSQL-only table — the SQLite migration
+			// stream never creates it, so the delete is dialect-gated.
+			if err := deleteDerived(&types.MCPMetadata{}); err != nil {
+				return err
+			}
+		}
+		return tx.Unscoped().
+			Where("tenant_id = ? AND id = ?", tenantID, serviceID).
+			Delete(&types.MCPService{}).Error
+	})
 }
