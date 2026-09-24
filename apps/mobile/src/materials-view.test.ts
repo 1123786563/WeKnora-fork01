@@ -95,3 +95,32 @@ test('MATERIAL_ERROR_COPY covers every MaterialErrorCode (exhaustiveness)', () =
     assert.ok(MATERIAL_ERROR_COPY[code] !== undefined, `缺少 ${code} 文案（B3-F55 穷尽性）`);
   }
 });
+
+test('a slower stale open does not overwrite a newer state (generation token)', async () => {
+  // 受控 handle：mat-slow 的 open 挂起直至显式释放；mat-fast 立即返回。
+  const releases = new Map<string, () => void>();
+  const handle: TaskMaterialHandle = {
+    async index() { return { runId: 'run-1', materials: [], terminal: { available: false } }; },
+    async open(ref) {
+      if (ref.kind !== 'artifact') throw new Error('unused');
+      if (ref.materialId === 'mat-slow') {
+        await new Promise<void>((resolve) => { releases.set('mat-slow', resolve); });
+      }
+      const entry = { materialId: ref.materialId, index: 0, kind: 'artifact' as const, name: ref.materialId, mime: 'text/plain', size: 3, version: 'v1', sourceRun: 'run-1' };
+      return { kind: 'artifact' as const, entry, preview: { state: 'supported' as const }, text: ref.materialId };
+    },
+    async act() { throw new Error('unused'); },
+    subscribe() { return () => {}; },
+    close() {},
+  };
+  const controller = createMaterialsController(handle, { runId: 'run-1' });
+  const slowOpen = controller.openMaterial('mat-slow'); // A 先发（挂起）
+  await controller.openMaterial('mat-fast');            // B 后发先回
+  const afterFast = controller.state().view;
+  assert.equal(afterFast?.kind === 'artifact' && afterFast.entry.materialId, 'mat-fast');
+  releases.get('mat-slow')?.();                          // A 迟到
+  await slowOpen.catch(() => undefined);
+  const afterSlow = controller.state().view;
+  assert.equal(afterSlow?.kind === 'artifact' && afterSlow.entry.materialId, 'mat-fast', 'B3-F54：晚到的旧响应不得覆盖新状态');
+  controller.dispose();
+});

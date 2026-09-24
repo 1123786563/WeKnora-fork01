@@ -46,17 +46,20 @@ export interface MaterialsController {
 export function createMaterialsController(handle: TaskMaterialHandle, input: { runId: string }): MaterialsController {
   let state: MaterialsViewState = { loading: false };
   let disposed = false;
+  let generation = 0; // 代次令牌（B3-F54）：慢 A 后到不覆盖快 B 的新状态
   const listeners = new Set<(state: MaterialsViewState) => void>();
   const publish = (next: MaterialsViewState): void => {
     state = next;
     for (const listener of [...listeners]) listener(state);
   };
   const run = async (action: () => Promise<MaterialsViewState>): Promise<void> => {
+    const ticket = ++generation;
     publish({ ...state, loading: true, error: undefined });
     try {
-      if (!disposed) publish(await action());
+      const next = await action();
+      if (!disposed && ticket === generation) publish(next); // 陈旧完成丢弃
     } catch (failure) {
-      if (!disposed) publish({ ...state, loading: false, error: messageOf(failure) });
+      if (!disposed && ticket === generation) publish({ ...state, loading: false, error: messageOf(failure) });
     }
   };
   const applyGrant = (result: MaterialActResult): MaterialsViewState => {
@@ -88,6 +91,7 @@ export function createMaterialsController(handle: TaskMaterialHandle, input: { r
     dispose() {
       if (disposed) return;
       disposed = true;
+      generation += 1; // 在途完成一律作废（B3-F54）
       listeners.clear();
       handle.close('controller-disposed');
     },

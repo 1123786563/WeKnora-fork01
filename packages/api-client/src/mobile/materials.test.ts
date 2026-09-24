@@ -49,6 +49,21 @@ test('material remote posts signed-url with the numeric index and maps the grant
   assert.equal(grant.artifact.version, 'msg-1:1');
 });
 
+test('terminalLog reports undefined when the cursor did not advance (end of log)', async () => {
+  const remote = createMobileMaterialRemote({
+    origin: 'https://weknora.example.test',
+    request: async () => ({
+      success: true,
+      data: { lines: [{ seq: 5, occurred_at: '2026-09-24T00:00:01Z', stream: 'stdout', text: 'ls' }], next_cursor: 5 },
+    }),
+  });
+  // after=5 末页：游标未推进 → undefined（mobile-core 以 undefined 判末页，B3-F52）。
+  const page = await remote.terminalLog({ runId: 'run-1', after: 5, limit: 200 });
+  assert.equal(page.nextCursor, undefined, 'B3-F52：末页（游标未推进）必须转译为 undefined');
+  const page2 = await remote.terminalLog({ runId: 'run-1', after: 0, limit: 200 }); // after=0 → next=5 推进
+  assert.equal(page2.nextCursor, 5);
+});
+
 test('material remote pages the terminal log with after/limit query facets', async () => {
   const requests: ClientRequest[] = [];
   const remote = createMobileMaterialRemote({

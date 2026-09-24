@@ -17,7 +17,8 @@ export interface MaterialRemoteArtifact {
 export interface MaterialRemoteList { runId: string; artifacts: MaterialRemoteArtifact[]; terminalAvailable: boolean }
 export interface MaterialRemoteGrant { url: string; expiresAt: string; artifact: MaterialRemoteArtifact }
 export interface MaterialRemoteTerminalLine { seq: number; occurredAt: string; stream: 'stdout' | 'stderr'; text: string }
-export interface MaterialRemoteTerminalPage { lines: MaterialRemoteTerminalLine[]; nextCursor: number }
+/** 末页语义（B3-F52/F36）：nextCursor 省略 = 末页（Go 端恒发数字，转译责任在本适配器）。 */
+export interface MaterialRemoteTerminalPage { lines: MaterialRemoteTerminalLine[]; nextCursor?: number }
 export interface MaterialRemoteEvent { seq: number; type: string; occurredAt: string; payload: Record<string, unknown> }
 
 /** 与 mobile-core MaterialBackendPort 结构逐字一致（结构可赋值由 apps/mobile typecheck 证明）。 */
@@ -96,7 +97,11 @@ export function createMobileMaterialRemote(options: MaterialRemoteOptions): Mate
           const stream = r.stream === 'stderr' ? 'stderr' : 'stdout';
           return { seq: typeof r.seq === 'number' ? r.seq : Number(r.seq ?? 0), occurredAt: String(r.occurred_at ?? ''), stream, text: String(r.text ?? '') };
         }),
-        nextCursor: typeof data.next_cursor === 'number' ? data.next_cursor : Number(data.next_cursor ?? 0),
+        // 末页语义（B3-F52，对齐 Go 端 workbench_terminal_log 的「游标未推进仍发数字」）：
+        // next <= after 即末页 → 省略键（undefined），mobile-core 据此判无下一页。
+        ...((typeof data.next_cursor === 'number' ? data.next_cursor : Number(data.next_cursor ?? after)) > after
+          ? { nextCursor: typeof data.next_cursor === 'number' ? data.next_cursor : Number(data.next_cursor ?? after) }
+          : {}),
       };
     },
     async events(runId) {

@@ -43,7 +43,8 @@ export interface MaterialBackendTerminalLine {
 
 export interface MaterialBackendTerminalPage {
   lines: MaterialBackendTerminalLine[];
-  nextCursor: number;
+  /** 省略 = 末页（游标未推进）。Go 端恒发数字，适配器负责末页转译（B3-F36 合同对齐）。 */
+  nextCursor?: number;
 }
 
 export interface MaterialBackendEvent {
