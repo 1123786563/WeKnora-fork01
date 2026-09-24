@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/modules/commercial"
 	repocommercial "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
 	commercialsvc "github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial"
@@ -91,9 +92,23 @@ func (h *CommercialHandler) ExtendTaskBudget(c *gin.Context) {
 		}
 		return
 	}
+	// T09 (#39): an AUTHORIZED raise also resumes the runs this budget parked
+	// — the durable same-Run continuation. The requeue runs on EVERY success,
+	// idempotent replays included: the guarded predicate makes the replay a
+	// no-op unless a run stranded parked (healing a lost first requeue)
+	// without ever raising the limit twice. A refused caller never reaches
+	// here, so a collaborator can never resume anything.
+	resumed := int64(0)
+	if root, found, rerr := h.taskBudgetRoot(c.Request.Context(), tenantID, runID); rerr == nil && found {
+		if n, qerr := repository.NewAgentRunStore(h.db).
+			RequeueBudgetPausedRuns(c.Request.Context(), tenantID, root); qerr == nil {
+			resumed = n
+		}
+	}
 	appOK(c, http.StatusOK, gin.H{
 		"task_id":            runID,
 		"additional_credits": *input.AdditionalCredits,
+		"resumed_runs":       resumed,
 	})
 }
 
