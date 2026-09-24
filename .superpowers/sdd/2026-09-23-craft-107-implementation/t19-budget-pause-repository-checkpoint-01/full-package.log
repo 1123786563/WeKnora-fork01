@@ -1,0 +1,292 @@
+--- FAIL: TestWorkbenchOwnedRunIsTenantScoped (0.57s)
+    agent_run_driver_test.go:122: 
+        	Error Trace:	/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/agent_run_driver_test.go:122
+        	Error:      	Received unexpected error:
+        	            	agent runtime conflict
+        	Test:       	TestWorkbenchOwnedRunIsTenantScoped
+--- FAIL: TestCancelRunReleasesSlotAndDeleteFences (0.55s)
+    agent_run_lifecycle_test.go:37: 
+        	Error Trace:	/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/agent_run_lifecycle_test.go:37
+        	Error:      	Not equal: 
+        	            	expected: 2
+        	            	actual  : 1
+        	Test:       	TestCancelRunReleasesSlotAndDeleteFences
+        	Messages:   	session deletion appends a durable cancellation event
+--- FAIL: TestArtifactVersionCrossTenantIsolation (2.25s)
+    artifact_version_test.go:261: 
+        	Error Trace:	/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/artifact_version_test.go:261
+        	Error:      	Received unexpected error:
+        	            	agent runtime conflict
+        	Test:       	TestArtifactVersionCrossTenantIsolation
+
+2026/09/23 22:58:31 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/craft_knowledge_records.go:58 [35;1mUNIQUE constraint failed: craft_knowledge_records.tenant_id, craft_knowledge_records.session_id, craft_knowledge_records.run_id
+[0m[33m[0.014ms] [34;1m[rows:0][0m INSERT INTO `craft_knowledge_records` (`tenant_id`,`session_id`,`run_id`,`record_json`,`digest`,`acquired_at`) VALUES (1,"session-a","run-a","{""Scope"":{""TenantID"":1,""UserID"":""owner"",""SessionID"":""session-a""},""RunID"":""run-a"",""RequestDigest"":""request-digest"",""PackageDigest"":""package-digest"",""publication_state"":""prepared"",""Sources"":[{""ID"":""kc-a"",""Ref"":""craftkb://kb/kb-a/knowledge/k-a/chunk/c-a"",""Digest"":""abcdef"",""TenantID"":1,""AcquiredAt"":""2026-09-23T01:02:03Z"",""ExcerptBytes"":12}],""Empty"":false,""Truncated"":false}","635eb0ebd20bd3fff95ec52a2788c2fd9610142fd48dea51307d26aa2e8980c9","2026-09-23 01:02:03")
+
+2026/09/23 22:58:31 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/craft_knowledge_records.go:58 [35;1mUNIQUE constraint failed: craft_knowledge_records.tenant_id, craft_knowledge_records.session_id, craft_knowledge_records.run_id
+[0m[33m[0.012ms] [34;1m[rows:0][0m INSERT INTO `craft_knowledge_records` (`tenant_id`,`session_id`,`run_id`,`record_json`,`digest`,`acquired_at`) VALUES (1,"session-a","run-a","{""Scope"":{""TenantID"":1,""UserID"":""owner"",""SessionID"":""session-a""},""RunID"":""run-a"",""RequestDigest"":""request-digest"",""PackageDigest"":""package-digest"",""publication_state"":""prepared"",""Sources"":[{""ID"":""kc-a"",""Ref"":""craftkb://kb/kb-a/knowledge/k-a/chunk/c-a"",""Digest"":""changed"",""TenantID"":1,""AcquiredAt"":""2026-09-23T01:02:03Z"",""ExcerptBytes"":12}],""Empty"":false,""Truncated"":false}","69572ebb6b2499f0d19c6c2a80841784f9cca6faa5c86859538aaeeecd5239bf","2026-09-23 01:02:03")
+
+2026/09/23 22:58:31 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/craft_knowledge_records.go:58 [35;1mUNIQUE constraint failed: craft_knowledge_records.tenant_id, craft_knowledge_records.session_id, craft_knowledge_records.run_id
+[0m[33m[0.012ms] [34;1m[rows:0][0m INSERT INTO `craft_knowledge_records` (`tenant_id`,`session_id`,`run_id`,`record_json`,`digest`,`acquired_at`) VALUES (1,"session-a","run-a","{""Scope"":{""TenantID"":1,""UserID"":""owner"",""SessionID"":""session-a""},""RunID"":""run-a"",""RequestDigest"":""changed-request"",""PackageDigest"":""package-digest"",""publication_state"":""prepared"",""Sources"":[{""ID"":""kc-a"",""Ref"":""craftkb://kb/kb-a/knowledge/k-a/chunk/c-a"",""Digest"":""abcdef"",""TenantID"":1,""AcquiredAt"":""2026-09-23T01:02:03Z"",""ExcerptBytes"":12}],""Empty"":false,""Truncated"":false}","0d6841978d47d6346015d1cd21b3e502cc44a6b93d9be9e4478916445b0d9e78","2026-09-23 01:02:03")
+
+2026/09/23 22:58:31 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/craft_knowledge_records.go:58 [35;1mUNIQUE constraint failed: craft_knowledge_records.tenant_id, craft_knowledge_records.session_id, craft_knowledge_records.run_id
+[0m[33m[0.073ms] [34;1m[rows:0][0m INSERT INTO `craft_knowledge_records` (`tenant_id`,`session_id`,`run_id`,`record_json`,`digest`,`acquired_at`) VALUES (1,"session-a","run-a","{""Scope"":{""TenantID"":1,""UserID"":""owner"",""SessionID"":""session-a""},""RunID"":""run-a"",""RequestDigest"":""request-digest"",""PackageDigest"":""changed-package"",""publication_state"":""prepared"",""Sources"":[{""ID"":""kc-a"",""Ref"":""craftkb://kb/kb-a/knowledge/k-a/chunk/c-a"",""Digest"":""abcdef"",""TenantID"":1,""AcquiredAt"":""2026-09-23T01:02:03Z"",""ExcerptBytes"":12}],""Empty"":false,""Truncated"":false}","1e9fc5d821589658ded7bf8aae0bad4f5e41fcfaaffae41d32be89e8cf1d2f5d","2026-09-23 01:02:03")
+
+2026/09/23 22:58:31 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/craft_knowledge_records.go:138 [35;1mrecord not found
+[0m[33m[0.008ms] [34;1m[rows:0][0m SELECT * FROM `craft_knowledge_records` WHERE tenant_id = 2 AND session_id = "session-a" AND run_id = "run-a" LIMIT 1
+
+2026/09/23 22:58:31 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/craft_knowledge_records.go:138 [35;1mrecord not found
+[0m[33m[0.009ms] [34;1m[rows:0][0m SELECT * FROM `craft_knowledge_records` WHERE tenant_id = 1 AND session_id = "session-b" AND run_id = "run-a" LIMIT 1
+
+2026/09/23 22:58:34 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/craft_run_view.go:73 [35;1mrecord not found
+[0m[33m[0.007ms] [34;1m[rows:0][0m SELECT owner_id, session_id FROM `agent_runs` WHERE tenant_id = 2 AND run_id = "run-view-retry" LIMIT 1
+
+2026/09/23 22:58:34 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/craft_run_view.go:73 [35;1mrecord not found
+[0m[33m[0.009ms] [34;1m[rows:0][0m SELECT owner_id, session_id FROM `agent_runs` WHERE tenant_id = 2 AND run_id = "run-view-retry" LIMIT 1
+json
+json
+
+2026/09/23 22:58:52 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/datasource_repo.go:55 [35;1mrecord not found
+[0m[33m[0.010ms] [34;1m[rows:0][0m SELECT * FROM `data_sources` WHERE id = "ds-delete-target" AND deleted_at IS NULL AND `data_sources`.`deleted_at` IS NULL ORDER BY `data_sources`.`id` LIMIT 1
+
+2026/09/23 22:59:01 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/execution_target.go:180 [35;1mrecord not found
+[0m[33m[0.009ms] [34;1m[rows:0][0m SELECT * FROM `execution_targets` WHERE tenant_id = 1 AND owner_id = "u2" AND id = "t1" AND state = "active" ORDER BY `execution_targets`.`id` LIMIT 1
+
+2026/09/23 22:59:01 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/execution_target.go:180 [35;1mrecord not found
+[0m[33m[0.009ms] [34;1m[rows:0][0m SELECT * FROM `execution_targets` WHERE tenant_id = 2 AND owner_id = "u1" AND id = "t1" AND state = "active" ORDER BY `execution_targets`.`id` LIMIT 1
+
+2026/09/23 22:59:01 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/execution_target.go:159 [35;1mUNIQUE constraint failed: execution_targets.runtime_id, execution_targets.external_target_id
+[0m[33m[0.014ms] [34;1m[rows:0][0m INSERT INTO `execution_targets` (`tenant_id`,`id`,`owner_id`,`kind`,`state`,`credential_version`,`runtime_id`,`external_target_id`,`usage_binding_json`,`root_ref`,`revoked_at`) VALUES (1,"t2","u1","managed_node","active",1,"r1","x1","{""source"":"""",""funding"":"""",""service"":"""",""price_version"":"""",""revision"":0,""status"":"""",""dimensions"":null}","root",NULL)
+
+2026/09/23 22:59:01 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/execution_target.go:180 [35;1mrecord not found
+[0m[33m[0.007ms] [34;1m[rows:0][0m SELECT * FROM `execution_targets` WHERE tenant_id = 1 AND owner_id = "u1" AND id = "t1" AND state = "active" ORDER BY `execution_targets`.`id` LIMIT 1
+
+2026/09/23 22:59:01 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/execution_target.go:206 [35;1mrecord not found
+[0m[33m[0.008ms] [34;1m[rows:0][0m SELECT * FROM `execution_targets` WHERE tenant_id = 1 AND owner_id = "u1" AND id = "node-1" AND state = "active" ORDER BY `execution_targets`.`id` LIMIT 1
+
+2026/09/23 22:59:01 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/execution_target.go:57 [35;1mrecord not found
+[0m[33m[0.009ms] [34;1m[rows:0][0m SELECT * FROM `execution_registrations` WHERE tenant_id = 1 AND owner_id = "u1" AND registration_id = "legacy-divergent" AND runtime_id = "runtime-legacy" AND external_target_id = "external-legacy" AND credential_version = 1 AND state = "active" ORDER BY `execution_registrations`.`registration_id` LIMIT 1
+
+2026/09/23 22:59:01 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/execution_target.go:274 [35;1mrecord not found
+[0m[33m[0.011ms] [34;1m[rows:0][0m SELECT w.tenant_id, w.id, w.target_id, w.root_ref FROM execution_workspaces AS w JOIN execution_targets AS t ON t.tenant_id = w.tenant_id AND t.id = w.target_id WHERE w.tenant_id = 1 AND w.id = "w1" AND t.owner_id = "u2" AND t.state = "active" ORDER BY `w`.`id` LIMIT 1
+
+2026/09/23 22:59:01 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/execution_target.go:101 [35;1mrecord not found
+[0m[33m[0.011ms] [34;1m[rows:0][0m SELECT * FROM `execution_target_identities` WHERE tenant_id = 1 AND owner_id = "u1" AND runtime_id = "r1" AND external_target_id = "x1" AND credential_version = 2 AND state = "active" ORDER BY `execution_target_identities`.`tenant_id` LIMIT 1
+
+2026/09/23 22:59:01 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/execution_target.go:101 [35;1mrecord not found
+[0m[33m[0.011ms] [34;1m[rows:0][0m SELECT * FROM `execution_target_identities` WHERE tenant_id = 1 AND owner_id = "u1" AND runtime_id = "r1" AND external_target_id = "x1" AND credential_version = 2 AND state = "active" ORDER BY `execution_target_identities`.`tenant_id` LIMIT 1
+
+2026/09/23 22:59:01 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/execution_target.go:169 [35;1mrecord not found
+[0m[33m[0.015ms] [34;1m[rows:0][0m SELECT * FROM `execution_target_identities` WHERE tenant_id = 1 AND owner_id = "u1" AND runtime_id = "r1" AND external_target_id = "x1" AND credential_version = 1 AND state = "active" ORDER BY `execution_target_identities`.`tenant_id` LIMIT 1
+
+2026/09/23 22:59:01 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/execution_target.go:169 [35;1mrecord not found
+[0m[33m[0.020ms] [34;1m[rows:0][0m SELECT * FROM `execution_target_identities` WHERE tenant_id = 1 AND owner_id = "u1" AND runtime_id = "r1" AND external_target_id = "x1" AND credential_version = 1 AND state = "active" ORDER BY `execution_target_identities`.`tenant_id` LIMIT 1
+
+2026/09/23 22:59:01 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/expert_install.go:81 [35;1mrecord not found
+[0m[33m[0.008ms] [34;1m[rows:0][0m SELECT * FROM `expert_installs` WHERE (tenant_id = 7 AND slug = "ghost") AND `expert_installs`.`deleted_at` IS NULL ORDER BY `expert_installs`.`id` LIMIT 1
+
+2026/09/23 22:59:01 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/expert_install.go:81 [35;1mrecord not found
+[0m[33m[0.007ms] [34;1m[rows:0][0m SELECT * FROM `expert_installs` WHERE (tenant_id = 8 AND slug = "pdf-tools") AND `expert_installs`.`deleted_at` IS NULL ORDER BY `expert_installs`.`id` LIMIT 1
+
+2026/09/23 22:59:01 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/expert_install.go:81 [35;1mrecord not found
+[0m[33m[0.007ms] [34;1m[rows:0][0m SELECT * FROM `expert_installs` WHERE (tenant_id = 7 AND slug = "pdf-tools") AND `expert_installs`.`deleted_at` IS NULL ORDER BY `expert_installs`.`id` LIMIT 1
+
+2026/09/23 22:59:02 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/knowledge.go:831 [35;1mrecord not found
+[0m[33m[0.063ms] [34;1m[rows:0][0m SELECT * FROM `knowledges` WHERE (tenant_id = 51 AND knowledge_base_id = "3cf1277f-94ff-40f8-b24b-7172da8882b6" AND deleted_at IS NULL) AND (metadata->>'datasource_id' = "3b3b1043-5f0d-4f76-816f-972bc618753b" AND metadata->>'external_id' = "file:gone") AND `knowledges`.`deleted_at` IS NULL ORDER BY `knowledges`.`id` LIMIT 1
+
+2026/09/23 22:59:02 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/knowledge.go:394 [35;1mrecord not found
+[0m[33m[0.068ms] [34;1m[rows:0][0m SELECT * FROM `knowledges` WHERE (tenant_id = 1 AND knowledge_base_id = "f668eb0e-86da-4414-9bd0-90dd5643b4fa" AND parse_status NOT IN ("failed","deleting")) AND (type = "file" AND file_hash = "same-content-hash") AND LOWER(file_type) = "txt" AND `knowledges`.`deleted_at` IS NULL ORDER BY `knowledges`.`id` LIMIT 1
+
+2026/09/23 22:59:02 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/knowledge.go:394 [35;1mrecord not found
+[0m[33m[0.055ms] [34;1m[rows:0][0m SELECT * FROM `knowledges` WHERE (tenant_id = 1 AND knowledge_base_id = "kb-1" AND parse_status NOT IN ("failed","deleting")) AND (type = "file" AND file_hash = "hash-1") AND LOWER(file_type) = "md" AND `knowledges`.`deleted_at` IS NULL ORDER BY `knowledges`.`id` LIMIT 1
+
+2026/09/23 22:59:02 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/knowledge.go:414 [35;1mrecord not found
+[0m[33m[0.030ms] [34;1m[rows:0][0m SELECT * FROM `knowledges` WHERE (tenant_id = 1 AND knowledge_base_id = "kb-1" AND parse_status NOT IN ("failed","deleting")) AND (type = "file" AND file_name = "doc.md" AND file_size = 10) AND `knowledges`.`deleted_at` IS NULL ORDER BY `knowledges`.`id` LIMIT 1
+
+2026/09/23 22:59:02 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/knowledge.go:394 [35;1mrecord not found
+[0m[33m[0.154ms] [34;1m[rows:0][0m SELECT * FROM `knowledges` WHERE (tenant_id = 1 AND knowledge_base_id = "kb-1" AND parse_status NOT IN ("failed","deleting")) AND (type = "file" AND file_hash = "hash-1") AND LOWER(file_type) = "md" AND `knowledges`.`deleted_at` IS NULL ORDER BY `knowledges`.`id` LIMIT 1
+
+2026/09/23 22:59:02 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/knowledge.go:414 [35;1mrecord not found
+[0m[33m[0.033ms] [34;1m[rows:0][0m SELECT * FROM `knowledges` WHERE (tenant_id = 1 AND knowledge_base_id = "kb-1" AND parse_status NOT IN ("failed","deleting")) AND (type = "file" AND file_name = "doc.md" AND file_size = 10) AND `knowledges`.`deleted_at` IS NULL ORDER BY `knowledges`.`id` LIMIT 1
+
+2026/09/23 22:59:02 [32m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/knowledge.go:352
+[0m[33m[0.060ms] [34;1m[rows:1][0m SELECT * FROM `knowledges` WHERE (tenant_id = 1 AND id IN ("bbc5fb4a-a0c7-44d9-ae90-0dddf9ea9a94","0efe1bf0-cd16-4b22-87f8-92add126f6fb")) AND `knowledges`.`deleted_at` IS NULL
+
+2026/09/23 22:59:02 [32m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/knowledge.go:352
+[0m[33m[0.019ms] [34;1m[rows:1][0m SELECT * FROM `knowledges` WHERE (tenant_id = 1 AND id IN ("bbc5fb4a-a0c7-44d9-ae90-0dddf9ea9a94")) AND `knowledges`.`deleted_at` IS NULL
+
+2026/09/23 22:59:02 [32m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/knowledge.go:352
+[0m[33m[0.012ms] [34;1m[rows:0][0m SELECT * FROM `knowledges` WHERE (tenant_id = 1 AND id IN ("bbc5fb4a-a0c7-44d9-ae90-0dddf9ea9a94")) AND `knowledges`.`deleted_at` IS NULL
+
+2026/09/23 22:59:02 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/mcp_metadata.go:20 [35;1mrecord not found
+[0m[33m[0.007ms] [34;1m[rows:0][0m SELECT * FROM `mcp_metadata` WHERE tenant_id = 2 AND service_id = "svc" AND principal = "user:a" ORDER BY `mcp_metadata`.`tenant_id` LIMIT 1
+
+2026/09/23 22:59:02 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/mcp_metadata.go:20 [35;1mrecord not found
+[0m[33m[0.007ms] [34;1m[rows:0][0m SELECT * FROM `mcp_metadata` WHERE tenant_id = 1 AND service_id = "svc" AND principal = "user:b" ORDER BY `mcp_metadata`.`tenant_id` LIMIT 1
+
+2026/09/23 22:59:02 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/mcp_metadata.go:20 [35;1mrecord not found
+[0m[33m[0.013ms] [34;1m[rows:0][0m SELECT * FROM `mcp_metadata` WHERE tenant_id = 1 AND service_id = "another" AND principal = "user:a" ORDER BY `mcp_metadata`.`tenant_id` LIMIT 1
+
+2026/09/23 22:59:02 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/mcp_tool_approval_repository.go:62 [35;1mrecord not found
+[0m[33m[0.028ms] [34;1m[rows:0][0m SELECT `enabled` FROM `mcp_tool_approvals` WHERE tenant_id = 1 AND service_id = "svc" AND tool_name = "tool" ORDER BY `mcp_tool_approvals`.`id` LIMIT 1
+
+2026/09/23 22:59:02 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/mcp_tool_approval_repository.go:45 [35;1mrecord not found
+[0m[33m[0.010ms] [34;1m[rows:0][0m SELECT `require_approval` FROM `mcp_tool_approvals` WHERE tenant_id = 1 AND service_id = "svc" AND tool_name = "tool" ORDER BY `mcp_tool_approvals`.`id` LIMIT 1
+
+2026/09/23 22:59:03 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/mobile_device.go:161 [35;1mrecord not found
+[0m[33m[0.062ms] [34;1m[rows:0][0m SELECT * FROM `mobile_devices` WHERE (environment = "dev" AND owner_id = "u1" AND device_id = "d") AND tenant_id = 1 LIMIT 1 
+
+2026/09/23 22:59:03 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/mobile_device.go:265 [35;1mrecord not found
+[0m[33m[0.021ms] [34;1m[rows:0][0m SELECT * FROM `mobile_devices` WHERE (environment = "dev" AND owner_id = "other" AND device_id = "d") AND tenant_id = 1 LIMIT 1 
+
+2026/09/23 22:59:03 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/mobile_device.go:161 [35;1mrecord not found
+[0m[33m[0.048ms] [34;1m[rows:0][0m SELECT * FROM `mobile_devices` WHERE (environment = "dev" AND owner_id = "same-user" AND device_id = "d1") AND tenant_id = 1 LIMIT 1 
+
+2026/09/23 22:59:03 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/mobile_device.go:161 [35;1mrecord not found
+[0m[33m[0.022ms] [34;1m[rows:0][0m SELECT * FROM `mobile_devices` WHERE (environment = "dev" AND owner_id = "same-user" AND device_id = "d2") AND tenant_id = 2 LIMIT 1 
+
+2026/09/23 22:59:03 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/mobile_device.go:161 [35;1mrecord not found
+[0m[33m[0.062ms] [34;1m[rows:0][0m SELECT * FROM `mobile_devices` WHERE (environment = "dev" AND owner_id = "u1" AND device_id = "d1") AND tenant_id = 1 LIMIT 1 
+
+2026/09/23 22:59:03 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/mobile_device.go:161 [35;1mrecord not found
+[0m[33m[0.021ms] [34;1m[rows:0][0m SELECT * FROM `mobile_devices` WHERE (environment = "dev" AND owner_id = "u2" AND device_id = "d2") AND tenant_id = 2 LIMIT 1 
+
+2026/09/23 22:59:03 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/mobile_device.go:161 [35;1mrecord not found
+[0m[33m[0.044ms] [34;1m[rows:0][0m SELECT * FROM `mobile_devices` WHERE (environment = "dev" AND owner_id = "u1" AND device_id = "d") AND tenant_id = 1 LIMIT 1 
+
+2026/09/23 22:59:03 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/mobile_device.go:161 [35;1mrecord not found
+[0m[33m[0.059ms] [34;1m[rows:0][0m SELECT * FROM `mobile_devices` WHERE (environment = "dev" AND owner_id = "u1" AND device_id = "d1") AND tenant_id = 1 LIMIT 1 
+
+2026/09/23 22:59:03 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/mobile_device.go:161 [35;1mrecord not found
+[0m[33m[0.023ms] [34;1m[rows:0][0m SELECT * FROM `mobile_devices` WHERE (environment = "dev" AND owner_id = "u1" AND device_id = "d2") AND tenant_id = 1 LIMIT 1 
+
+2026/09/23 22:59:03 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/mobile_device.go:161 [35;1mrecord not found
+[0m[33m[0.045ms] [34;1m[rows:0][0m SELECT * FROM `mobile_devices` WHERE (environment = "dev" AND owner_id = "u1" AND device_id = "d") AND tenant_id = 1 LIMIT 1 
+
+2026/09/23 22:59:03 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/mobile_device.go:161 [35;1mrecord not found
+[0m[33m[0.050ms] [34;1m[rows:0][0m SELECT * FROM `mobile_devices` WHERE (environment = "dev" AND owner_id = "u1" AND device_id = "d") AND tenant_id = 1 LIMIT 1 
+
+2026/09/23 22:59:03 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/mobile_device.go:161 [35;1mrecord not found
+[0m[33m[0.043ms] [34;1m[rows:0][0m SELECT * FROM `mobile_devices` WHERE (environment = "dev" AND owner_id = "u1" AND device_id = "d") AND tenant_id = 1 LIMIT 1 
+
+2026/09/23 22:59:03 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/mobile_device.go:161 [35;1mrecord not found
+[0m[33m[0.045ms] [34;1m[rows:0][0m SELECT * FROM `mobile_devices` WHERE (environment = "dev" AND owner_id = "u1" AND device_id = "d") AND tenant_id = 1 LIMIT 1 
+
+2026/09/23 22:59:03 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/mobile_device.go:161 [35;1mrecord not found
+[0m[33m[0.039ms] [34;1m[rows:0][0m SELECT * FROM `mobile_devices` WHERE (environment = "dev" AND owner_id = "u1" AND device_id = "d") AND tenant_id = 1 LIMIT 1 
+
+2026/09/23 22:59:03 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/mobile_device.go:161 [35;1mrecord not found
+[0m[33m[0.031ms] [34;1m[rows:0][0m SELECT * FROM `mobile_devices` WHERE (environment = "dev" AND owner_id = "u1" AND device_id = "d") AND tenant_id = 1 LIMIT 1 
+
+2026/09/23 22:59:03 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/mobile_device.go:161 [35;1mrecord not found
+[0m[33m[0.055ms] [34;1m[rows:0][0m SELECT * FROM `mobile_devices` WHERE (environment = "dev" AND owner_id = "u1" AND device_id = "d") AND tenant_id = 1 LIMIT 1 
+
+2026/09/23 22:59:03 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/mobile_device.go:310 [35;1mrecord not found
+[0m[33m[0.014ms] [34;1m[rows:0][0m SELECT * FROM `mobile_devices` WHERE (environment = "dev" AND owner_id = "u1" AND device_id = "d") AND tenant_id = 2 AND revoked_at IS NULL LIMIT 1
+
+2026/09/23 22:59:03 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/mobile_device.go:161 [35;1mrecord not found
+[0m[33m[0.046ms] [34;1m[rows:0][0m SELECT * FROM `mobile_devices` WHERE (environment = "dev" AND owner_id = "u" AND device_id = "d") AND tenant_id = 2 LIMIT 1 
+
+2026/09/23 22:59:03 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/mobile_device.go:161 [35;1mrecord not found
+[0m[33m[0.022ms] [34;1m[rows:0][0m SELECT * FROM `mobile_devices` WHERE (environment = "dev" AND owner_id = "u" AND device_id = "d") AND tenant_id = 1 LIMIT 1 
+
+2026/09/23 22:59:03 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/mobile_device.go:243 [35;1mdatabase is locked
+[0m[33m[0.013ms] [34;1m[rows:0][0m INSERT INTO `mobile_devices` (`tenant_id`,`owner_id`,`device_id`,`environment`,`space_id`,`platform`,`token_ciphertext`,`token_hash`,`revision`,`scope_generation`,`revoked_at`,`last_seen_at`,`created_at`,`updated_at`) VALUES (1,"u","d","dev","","ios","enc:same","0967115f2813a3541eaef77de9d9d5773f1c0c04314b0bbfe4ff3b3b1c55b5d5",1,1,NULL,NULL,"2026-09-23 14:59:03.68","2026-09-23 14:59:03.68")
+
+2026/09/23 22:59:03 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/mobile_device.go:161 [35;1mrecord not found
+[0m[33m[0.067ms] [34;1m[rows:0][0m SELECT * FROM `mobile_devices` WHERE (environment = "dev" AND owner_id = "u" AND device_id = "d") AND tenant_id = 1 LIMIT 1 
+
+2026/09/23 22:59:47 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/published_expert.go:101 [35;1mrecord not found
+[0m[33m[0.008ms] [34;1m[rows:0][0m SELECT * FROM `published_experts` WHERE (tenant_id = 9 AND id = "ea5677d7-8cd5-4584-bc78-338d72c2850e") AND `published_experts`.`deleted_at` IS NULL ORDER BY `published_experts`.`id` LIMIT 1
+
+2026/09/23 22:59:47 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/published_expert.go:101 [35;1mrecord not found
+[0m[33m[0.008ms] [34;1m[rows:0][0m SELECT * FROM `published_experts` WHERE (tenant_id = 7 AND id = "13b6579c-6331-4710-8e74-6bb0c8ffae2a") AND `published_experts`.`deleted_at` IS NULL ORDER BY `published_experts`.`id` LIMIT 1
+
+2026/09/23 22:59:47 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/published_expert.go:85 [35;1mrecord not found
+[0m[33m[0.009ms] [34;1m[rows:0][0m SELECT * FROM `published_experts` WHERE (tenant_id = 7 AND agent_id = "agent-a") AND `published_experts`.`deleted_at` IS NULL ORDER BY `published_experts`.`id` LIMIT 1
+
+2026/09/23 22:59:47 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/published_skill.go:81 [35;1mrecord not found
+[0m[33m[0.007ms] [34;1m[rows:0][0m SELECT * FROM `published_skills` WHERE (tenant_id = 9 AND catalog_id = "cat-a") AND `published_skills`.`deleted_at` IS NULL ORDER BY `published_skills`.`id` LIMIT 1
+
+2026/09/23 22:59:47 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/published_skill.go:81 [35;1mrecord not found
+[0m[33m[0.007ms] [34;1m[rows:0][0m SELECT * FROM `published_skills` WHERE (tenant_id = 7 AND catalog_id = "cat-b") AND `published_skills`.`deleted_at` IS NULL ORDER BY `published_skills`.`id` LIMIT 1
+
+2026/09/23 22:59:47 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/published_skill.go:81 [35;1mrecord not found
+[0m[33m[0.007ms] [34;1m[rows:0][0m SELECT * FROM `published_skills` WHERE (tenant_id = 7 AND catalog_id = "cat-a") AND `published_skills`.`deleted_at` IS NULL ORDER BY `published_skills`.`id` LIMIT 1
+
+2026/09/23 23:00:00 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/session.go:91 [35;1mrecord not found
+[0m[33m[0.050ms] [34;1m[rows:0][0m SELECT * FROM `sessions` WHERE (tenant_id = 1 AND share_token = "tok-mint-1") AND `sessions`.`deleted_at` IS NULL ORDER BY `sessions`.`id` LIMIT 1
+
+2026/09/23 23:00:00 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/session.go:91 [35;1mrecord not found
+[0m[33m[0.032ms] [34;1m[rows:0][0m SELECT * FROM `sessions` WHERE (tenant_id = 1 AND share_token = "tok-mint-2") AND `sessions`.`deleted_at` IS NULL ORDER BY `sessions`.`id` LIMIT 1
+
+2026/09/23 23:00:00 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/session.go:91 [35;1mrecord not found
+[0m[33m[0.028ms] [34;1m[rows:0][0m SELECT * FROM `sessions` WHERE (tenant_id = 2 AND share_token = "tok-x") AND `sessions`.`deleted_at` IS NULL ORDER BY `sessions`.`id` LIMIT 1
+
+2026/09/23 23:00:00 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/session.go:91 [35;1mrecord not found
+[0m[33m[0.018ms] [34;1m[rows:0][0m SELECT * FROM `sessions` WHERE (tenant_id = 1 AND share_token = "tok-unknown") AND `sessions`.`deleted_at` IS NULL ORDER BY `sessions`.`id` LIMIT 1
+
+2026/09/23 23:00:00 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/session.go:91 [35;1mrecord not found
+[0m[33m[0.022ms] [34;1m[rows:0][0m SELECT * FROM `sessions` WHERE (tenant_id = 1 AND share_token = "tok-live") AND `sessions`.`deleted_at` IS NULL ORDER BY `sessions`.`id` LIMIT 1
+
+2026/09/23 23:00:00 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/session.go:112 [35;1mUNIQUE constraint failed: sessions.share_token
+[0m[33m[0.053ms] [34;1m[rows:0][0m UPDATE `sessions` SET `share_token`="tok-clash",`updated_at`="2026-09-23 23:00:00.696" WHERE (tenant_id = 1 AND id = "4545a015-b4e3-4afd-910f-caca5ec777cf") AND `sessions`.`deleted_at` IS NULL
+
+2026/09/23 23:00:00 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/session.go:54 [35;1mrecord not found
+[0m[33m[0.021ms] [34;1m[rows:0][0m SELECT * FROM `sessions` WHERE (tenant_id = 1 AND id = "983f1dab-9729-4529-a618-0db0d401bb32") AND ((user_id = "bob" OR user_id IS NULL OR user_id = '')) AND `sessions`.`deleted_at` IS NULL ORDER BY `sessions`.`id` LIMIT 1
+
+2026/09/23 23:00:00 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/task_queue.go:151 [35;1mno such table: task_pending_ops
+[0m[33m[0.032ms] [34;1m[rows:0][0m INSERT INTO `task_pending_ops` (`tenant_id`,`task_type`,`scope`,`scope_id`,`op`,`dedup_key`,`fail_count`,`enqueued_at`,`claimed_at`,`payload`) VALUES (1,"wiki:ingest","knowledge_base","kb-1","ingest","knowledge-1",0,"0000-00-00 00:00:00",NULL,"{}") RETURNING `id`,`payload`
+
+2026/09/23 23:00:00 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/task_queue.go:128 [35;1mrecord not found
+[0m[33m[0.067ms] [34;1m[rows:0][0m SELECT `id` FROM `knowledge_bases` WHERE (id = "kb-1" AND tenant_id = 1) AND `knowledge_bases`.`deleted_at` IS NULL LIMIT 1
+
+2026/09/23 23:00:00 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/task_queue.go:81 [35;1mrecord not found
+[0m[33m[0.007ms] [34;1m[rows:0][0m SELECT `id` FROM `knowledge_bases` WHERE (id = "kb-deleted" AND tenant_id = 1) AND `knowledge_bases`.`deleted_at` IS NULL LIMIT 1
+
+2026/09/23 23:00:00 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/task_queue.go:81 [35;1mrecord not found
+[0m[33m[0.007ms] [34;1m[rows:0][0m SELECT `id` FROM `knowledge_bases` WHERE (id = "kb-missing" AND tenant_id = 1) AND `knowledge_bases`.`deleted_at` IS NULL LIMIT 1
+
+2026/09/23 23:00:00 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/task_queue.go:81 [35;1mrecord not found
+[0m[33m[0.006ms] [34;1m[rows:0][0m SELECT `id` FROM `knowledge_bases` WHERE (id = "kb-active" AND tenant_id = 2) AND `knowledge_bases`.`deleted_at` IS NULL LIMIT 1
+
+2026/09/23 23:00:00 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/tenant_sandbox_config.go:55 [35;1mrecord not found
+[0m[33m[0.013ms] [34;1m[rows:0][0m SELECT * FROM `tenant_sandbox_configs` WHERE (tenant_id = 1 AND id = "cfg-b") AND `tenant_sandbox_configs`.`deleted_at` IS NULL ORDER BY `tenant_sandbox_configs`.`id` LIMIT 1
+
+2026/09/23 23:00:00 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/tenant_sandbox_config.go:44 [35;1mUNIQUE constraint failed: tenant_sandbox_configs.tenant_id, tenant_sandbox_configs.name
+[0m[33m[0.017ms] [34;1m[rows:0][0m INSERT INTO `tenant_sandbox_configs` (`id`,`tenant_id`,`name`,`description`,`sandbox_type`,`config`,`cordoned_at`,`created_at`,`updated_at`,`deleted_at`) VALUES ("cfg-2",1,"prod","","e2b","{""sandbox_type"":""e2b""}",NULL,"2026-09-23 23:00:00.714","2026-09-23 23:00:00.714",NULL)
+
+2026/09/23 23:00:00 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/tenant_sandbox_config.go:55 [35;1mrecord not found
+[0m[33m[0.009ms] [34;1m[rows:0][0m SELECT * FROM `tenant_sandbox_configs` WHERE (tenant_id = 1 AND id = "cfg-a") AND `tenant_sandbox_configs`.`deleted_at` IS NULL ORDER BY `tenant_sandbox_configs`.`id` LIMIT 1
+
+2026/09/23 23:00:00 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/tenant_skill.go:118 [35;1mrecord not found
+[0m[33m[0.054ms] [34;1m[rows:0][0m SELECT * FROM `tenant_skills` WHERE (tenant_id = 7 AND sandbox_config_id = "cfg-1" AND id = "sk-b") AND `tenant_skills`.`deleted_at` IS NULL ORDER BY `tenant_skills`.`id` LIMIT 1
+
+2026/09/23 23:00:00 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/tenant_skill.go:409 [35;1mUNIQUE constraint failed: tenant_skill_catalog.tenant_id, tenant_skill_catalog.name
+[0m[33m[0.027ms] [34;1m[rows:0][0m INSERT INTO `tenant_skill_catalog` (`id`,`tenant_id`,`name`,`version`,`description`,`instructions`,`bundle_ref`,`bundle_sha256`,`created_at`,`updated_at`,`deleted_at`) VALUES ("cat-b",7,"pdf","","","","","","2026-09-23 23:00:00.746","2026-09-23 23:00:00.746",NULL)
+
+2026/09/23 23:00:01 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/wiki_page.go:671 [35;1mrecord not found
+[0m[33m[0.010ms] [34;1m[rows:0][0m SELECT * FROM `wiki_folders` WHERE (knowledge_base_id = "kb-f" AND parent_id = "f-ai" AND name = "Nope") AND `wiki_folders`.`deleted_at` IS NULL ORDER BY `wiki_folders`.`id` LIMIT 1
+
+2026/09/23 23:00:01 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/wiki_page.go:656 [35;1mrecord not found
+[0m[33m[0.008ms] [34;1m[rows:0][0m SELECT * FROM `wiki_folders` WHERE (knowledge_base_id = "kb-f" AND id = "f-people") AND `wiki_folders`.`deleted_at` IS NULL ORDER BY `wiki_folders`.`id` LIMIT 1
+
+2026/09/23 23:00:01 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/wiki_page.go:217 [35;1mrecord not found
+[0m[33m[0.008ms] [34;1m[rows:0][0m SELECT * FROM `wiki_page_revisions` WHERE knowledge_base_id = "kb-prune" AND page_id = "bf48a22b-578a-4a55-a0d6-3f98478dceac" AND version = 3 ORDER BY `wiki_page_revisions`.`id` LIMIT 1
+
+2026/09/23 23:00:01 [31;1m/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/wiki_page.go:217 [35;1mrecord not found
+[0m[33m[0.009ms] [34;1m[rows:0][0m SELECT * FROM `wiki_page_revisions` WHERE knowledge_base_id = "kb-prune" AND page_id = "bf48a22b-578a-4a55-a0d6-3f98478dceac" AND version = 1 ORDER BY `wiki_page_revisions`.`id` LIMIT 1
+--- FAIL: TestWorkbenchHTTPOwnershipUsesRealStoreAndProjection (0.42s)
+    workbench_http_integration_test.go:65: 
+        	Error Trace:	/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/workbench_http_integration_test.go:65
+        	Error:      	Received unexpected error:
+        	            	agent runtime conflict
+        	Test:       	TestWorkbenchHTTPOwnershipUsesRealStoreAndProjection
+--- FAIL: TestWorkbenchHTTPSourceEventToSnapshotAndSSEUsesRealRepository (0.40s)
+    workbench_http_integration_test.go:90: 
+        	Error Trace:	/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/workbench_http_integration_test.go:90
+        	Error:      	Received unexpected error:
+        	            	agent runtime conflict
+        	Test:       	TestWorkbenchHTTPSourceEventToSnapshotAndSSEUsesRealRepository
+FAIL
+FAIL	github.com/Tencent/WeKnora/internal/application/repository	175.794s
+FAIL

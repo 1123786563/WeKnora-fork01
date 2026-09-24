@@ -1,0 +1,332 @@
+--- a/internal/application/service/craft_budget.go
++++ b/internal/application/service/craft_budget.go
+@@ -120,6 +120,24 @@
+ 
+ func (CraftBudgetCallRow) TableName() string { return "craft_budget_calls" }
+ 
++// CraftChargeStartJournalRow is the durable authorization to begin one
++// chargeable external activity. Its identity and reservation are created in
++// the same committed transaction; unresolved rows must never be replayed.
++type CraftChargeStartJournalRow struct {
++	TenantID       uint64    `gorm:"column:tenant_id;primaryKey;autoIncrement:false"`
++	RunID          string    `gorm:"column:run_id;primaryKey"`
++	ActivityKey    string    `gorm:"column:activity_key;primaryKey"`
++	GrantID        string    `gorm:"column:grant_id;not null"`
++	CallID         string    `gorm:"column:call_id;not null"`
++	ReservationKey string    `gorm:"column:reservation_key;not null;uniqueIndex:uq_craft_charge_start_reservation"`
++	State          string    `gorm:"column:state;not null"`
++	RunRevision    int64     `gorm:"column:run_revision;not null"`
++	CreatedAt      time.Time `gorm:"column:created_at;not null"`
++	UpdatedAt      time.Time `gorm:"column:updated_at;not null"`
++}
++
++func (CraftChargeStartJournalRow) TableName() string { return "craft_charge_start_journal" }
++
+ // CraftCallBinding names the identity facets a logical call binds beyond the
+ // grant: the (possibly empty) delegation, the model and the server-resolved
+ // funding source. Any change of any facet is a different logical call with
+@@ -163,7 +181,8 @@
+ 	if err := s.fastRefuse(row); err != nil {
+ 		return 0, err
+ 	}
+-	var outcome CraftChargeStartOutcome
++	callKey := CraftCallKey("activity/" + activityID)
++	var journal CraftChargeStartJournalRow
+ 	var startErr error
+ 	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+ 		run, err := lockCraftRun(tx, ctx, row)
+@@ -180,10 +199,8 @@
+ 		if run.SessionID == "" || mapping.RootRunID != run.SessionID {
+ 			return craft.ErrForbidden
+ 		}
+-		callID := "activity/" + activityID
+-		callKey := CraftCallKey(callID)
+-		var previous CraftBudgetCallRow
+-		if err := tx.Where("tenant_id = ? AND call_key = ?", row.TenantID, callKey).Take(&previous).Error; err == nil {
++		var previous CraftChargeStartJournalRow
++		if err := tx.Where("tenant_id = ? AND run_id = ? AND activity_key = ?", row.TenantID, row.RunID, activityID).Take(&previous).Error; err == nil {
+ 			return fmt.Errorf("%w: activity start already attempted; reconcile before retry", craft.ErrConflict)
+ 		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+ 			return err
+@@ -204,6 +221,7 @@
+ 			return err
+ 		}
+ 		seq++
++		callID := "activity/" + activityID
+ 		call := CraftBudgetCallRow{TenantID: row.TenantID, CallKey: callKey, GrantID: row.GrantID, RunID: row.RunID,
+ 			DelegationID: b.DelegationID, ModelID: b.ModelID, Funding: b.Funding, CallSeq: seq, CallID: callID, CreatedAt: s.now()}
+ 		if err := tx.Create(&call).Error; err != nil {
+@@ -227,28 +245,60 @@
+ 		if err := s.budget.MarkReservationDispatchedInTx(ctx, tx, row.TenantID, callKey); err != nil {
+ 			return err
+ 		}
+-		boundedCtx, cancel := context.WithTimeout(ctx, craftChargeStartTimeout)
+-		defer cancel()
+-		outcome, startErr = start(boundedCtx)
+-		if outcome != CraftChargeStartStarted && outcome != CraftChargeStartDefinitelyNotStarted && outcome != CraftChargeStartUnknown {
+-			outcome = CraftChargeStartUnknown
+-		}
+-		// Dispatch is committed conservatively for every callback result. In
+-		// particular, a crash/timeout cannot release a potentially sent action.
+-		return nil
++		now := s.now()
++		journal = CraftChargeStartJournalRow{TenantID: row.TenantID, RunID: row.RunID, ActivityKey: activityID,
++			GrantID: row.GrantID, CallID: callID, ReservationKey: callKey, State: "intent",
++			RunRevision: run.Revision, CreatedAt: now, UpdatedAt: now}
++		return tx.Create(&journal).Error
+ 	})
+ 	if err != nil {
+-		return outcome, err
++		return 0, err
+ 	}
+-	if startErr != nil {
+-		return outcome, startErr
+-	}
+-	if outcome == CraftChargeStartDefinitelyNotStarted {
+-		// The dispatched state is deliberately retained until the durable
+-		// start journal can represent definite pre-send failure safely.
+-		return outcome, nil
++	if err := ctx.Err(); err != nil {
++		result := s.db.WithContext(context.Background()).Model(&CraftChargeStartJournalRow{}).
++			Where("tenant_id = ? AND run_id = ? AND activity_key = ? AND state = ?", journal.TenantID, journal.RunID, journal.ActivityKey, "intent").
++			Updates(map[string]any{"state": "definitely_unstarted", "updated_at": s.now()})
++		if result.Error != nil {
++			return CraftChargeStartUnknown, result.Error
++		}
++		if result.RowsAffected != 1 {
++			return CraftChargeStartUnknown, fmt.Errorf("%w: charge start intent outcome changed concurrently", craft.ErrConflict)
++		}
++		return CraftChargeStartDefinitelyNotStarted, err
+ 	}
+-	return outcome, nil
++	// The authorization and G4 hold are committed before calling external
++	// code. A bounded context limits cooperative transports; a callback that
++	// ignores cancellation cannot keep a SQL transaction or Run lock open.
++	boundedCtx, cancel := context.WithTimeout(ctx, craftChargeStartTimeout)
++	defer cancel()
++	outcome, startErr := start(boundedCtx)
++	if boundedCtx.Err() != nil && outcome != CraftChargeStartDefinitelyNotStarted {
++		outcome = CraftChargeStartUnknown
++		if startErr == nil {
++			startErr = boundedCtx.Err()
++		}
++	}
++	if outcome != CraftChargeStartStarted && outcome != CraftChargeStartDefinitelyNotStarted && outcome != CraftChargeStartUnknown {
++		outcome = CraftChargeStartUnknown
++	}
++	if startErr != nil && outcome != CraftChargeStartDefinitelyNotStarted {
++		outcome = CraftChargeStartUnknown
++	}
++	state := map[CraftChargeStartOutcome]string{
++		CraftChargeStartStarted: "started", CraftChargeStartUnknown: "unknown",
++		CraftChargeStartDefinitelyNotStarted: "definitely_unstarted",
++	}[outcome]
++	now := s.now()
++	result := s.db.WithContext(ctx).Model(&CraftChargeStartJournalRow{}).
++		Where("tenant_id = ? AND run_id = ? AND activity_key = ? AND state = ?", journal.TenantID, journal.RunID, journal.ActivityKey, "intent").
++		Updates(map[string]any{"state": state, "updated_at": now})
++	if result.Error != nil {
++		return outcome, result.Error
++	}
++	if result.RowsAffected != 1 {
++		return CraftChargeStartUnknown, fmt.Errorf("%w: charge start intent outcome changed concurrently", craft.ErrConflict)
++	}
++	return outcome, startErr
+ }
+ 
+ // PauseRunForBudget orders a durable budget pause against StartBinding using
+@@ -266,7 +316,10 @@
+ 	})
+ }
+ 
+-type lockedCraftRun struct{ SessionID, Status, WaitReason string }
++type lockedCraftRun struct {
++	SessionID, Status, WaitReason string
++	Revision                      int64
++}
+ 
+ func lockCraftRun(tx *gorm.DB, ctx context.Context, grant CraftBudgetGrantRow) (lockedCraftRun, error) {
+ 	// A no-op UPDATE acquires the row write lock on PostgreSQL and SQLite's
+@@ -280,7 +333,7 @@
+ 		return lockedCraftRun{}, craft.ErrNotFound
+ 	}
+ 	var run lockedCraftRun
+-	err := tx.WithContext(ctx).Table("agent_runs").Select("session_id, status, wait_reason").
++	err := tx.WithContext(ctx).Table("agent_runs").Select("session_id, status, wait_reason, revision").
+ 		Where("tenant_id = ? AND run_id = ?", grant.TenantID, grant.RunID).Take(&run).Error
+ 	return run, err
+ }
+--- a/internal/application/service/craft_budget_t19_test.go
++++ b/internal/application/service/craft_budget_t19_test.go
+@@ -288,30 +288,40 @@
+ 			})
+ 		chargeDone <- err
+ 	}()
+-	<-startEntered // B holds the durable Run fence inside the bounded start callback.
++	<-startEntered // B is in transport initiation after committing its intent and hold.
++	var journal CraftChargeStartJournalRow
++	require.NoError(t, db.Where("tenant_id = ? AND run_id = ? AND activity_key = ?", 99, "run-fence-b", "activity-b").Take(&journal).Error)
++	require.Equal(t, "intent", journal.State, "the callback may run only after intent commit")
++	reservations := craftReservations(t, db, 99)
++	require.Len(t, reservations, 1)
++	require.Equal(t, commercial.ReservationStateDispatched, reservations[0].State)
+ 
+ 	pauseDone := make(chan error, 1)
+ 	go func() { pauseDone <- workerA.PauseRunForBudget(context.Background(), grant.ID) }()
+ 	select {
+ 	case err := <-pauseDone:
+-		t.Fatalf("pause committed while B's start callback held the fence: %v", err)
+-	case <-time.After(100 * time.Millisecond):
++		require.NoError(t, err, "pause may record after the committed start intent while transport is in flight")
++	case <-time.After(5 * time.Second):
++		t.Fatal("pause blocked on a callback that must be outside SQL")
+ 	}
+ 	var before struct{ Status, WaitReason string }
+ 	require.NoError(t, db.Table("agent_runs").Select("status, wait_reason").
+ 		Where("tenant_id = ? AND run_id = ?", 99, "run-fence-b").Take(&before).Error)
+-	require.Equal(t, "running", before.Status)
++	require.Equal(t, "waiting_user", before.Status)
++	require.Equal(t, craftBudgetWaitReason, before.WaitReason)
++	reservations = craftReservations(t, db, 99)
++	require.Len(t, reservations, 1, "pause does not release an unresolved start hold")
++	require.Equal(t, commercial.ReservationStateDispatched, reservations[0].State)
+ 
+ 	close(finishStart)
+ 	require.NoError(t, <-chargeDone)
+-	require.NoError(t, <-pauseDone)
+ 	var after struct{ Status, WaitReason string }
+ 	require.NoError(t, db.Table("agent_runs").Select("status, wait_reason").
+ 		Where("tenant_id = ? AND run_id = ?", 99, "run-fence-b").Take(&after).Error)
+ 	require.Equal(t, "waiting_user", after.Status)
+ 	require.Equal(t, craftBudgetWaitReason, after.WaitReason)
+ 	require.Equal(t, int64(1), craftGrantCalls(t, db, 99, grant.ID))
+-	reservations := craftReservations(t, db, 99)
++	reservations = craftReservations(t, db, 99)
+ 	require.Len(t, reservations, 1)
+ 	require.Equal(t, commercial.ReservationStateDispatched, reservations[0].State)
+ 	_, err = workerB.StartBinding(context.Background(), grant.ID, "activity-b", CraftCallBinding{ModelID: "lead", Funding: commercial.FundingPlatform},
+--- /dev/null
++++ b/internal/application/service/craft_budget_start_test.go
+@@ -0,0 +1,122 @@
++package service
++
++import (
++	"context"
++	"errors"
++	"sync"
++	"testing"
++	"time"
++
++	"github.com/Tencent/WeKnora/internal/modules/commercial"
++	repocommercial "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
++	"github.com/Tencent/WeKnora/internal/modules/craft"
++	"github.com/stretchr/testify/require"
++)
++
++func TestCraftChargeStartCommitsIntentAndHoldBeforeCallbackAndReplayDoesNotSend(t *testing.T) {
++	db := openCraftBudgetTestDB(t)
++	svc, err := NewCraftBudgetService(db, nil, craftBudgetPolicy())
++	require.NoError(t, err)
++	seedCraftFundedTenant(t, db, 100, 10000)
++	seedCraftBudgetRun(t, db, 100, "run-journal", "task-journal")
++	grant, err := svc.Admit(context.Background(), craft.Scope{TenantID: 100, UserID: "owner", SessionID: "task-journal"}, "run-journal")
++	require.NoError(t, err)
++
++	starts := 0
++	outcome, err := svc.StartBinding(context.Background(), grant.ID, "activity-stable", CraftCallBinding{ModelID: "lead", Funding: commercial.FundingPlatform},
++		func(context.Context) (CraftChargeStartOutcome, error) {
++			starts++
++			var journal CraftChargeStartJournalRow
++			require.NoError(t, db.Where("tenant_id = ? AND run_id = ? AND activity_key = ?", 100, "run-journal", "activity-stable").Take(&journal).Error)
++			require.Equal(t, "intent", journal.State, "intent must be committed before external initiation")
++			var reservation repocommercial.ReservationRow
++			require.NoError(t, db.Where("tenant_id = ? AND key = ?", 100, CraftCallKey("activity/activity-stable")).Take(&reservation).Error)
++			require.Equal(t, commercial.ReservationStateDispatched, reservation.State, "G4 hold must be dispatched before external initiation")
++			return CraftChargeStartUnknown, errors.New("response lost after possible send")
++		})
++	require.Error(t, err)
++	require.Equal(t, CraftChargeStartUnknown, outcome)
++	require.Equal(t, 1, starts)
++
++	var journal CraftChargeStartJournalRow
++	require.NoError(t, db.Where("tenant_id = ? AND run_id = ? AND activity_key = ?", 100, "run-journal", "activity-stable").Take(&journal).Error)
++	require.Equal(t, "unknown", journal.State, "possible send with lost response remains unresolved")
++	require.Len(t, craftReservations(t, db, 100), 1, "unknown outcome retains its G4 hold")
++
++	_, err = svc.StartBinding(context.Background(), grant.ID, "activity-stable", CraftCallBinding{ModelID: "lead", Funding: commercial.FundingPlatform},
++		func(context.Context) (CraftChargeStartOutcome, error) {
++			starts++
++			return CraftChargeStartStarted, nil
++		})
++	require.ErrorIs(t, err, craft.ErrConflict)
++	require.Equal(t, 1, starts, "same-key replay never invokes external start again")
++}
++
++func TestCraftChargeStartResultWriteFailureLeavesIntentAndHold(t *testing.T) {
++	db := openCraftBudgetTestDB(t)
++	svc, err := NewCraftBudgetService(db, nil, craftBudgetPolicy())
++	require.NoError(t, err)
++	seedCraftFundedTenant(t, db, 101, 10000)
++	seedCraftBudgetRun(t, db, 101, "run-result-write", "task-result-write")
++	grant, err := svc.Admit(context.Background(), craft.Scope{TenantID: 101, UserID: "owner", SessionID: "task-result-write"}, "run-result-write")
++	require.NoError(t, err)
++
++	_, err = svc.StartBinding(context.Background(), grant.ID, "activity-write-failure", CraftCallBinding{ModelID: "lead", Funding: commercial.FundingPlatform},
++		func(context.Context) (CraftChargeStartOutcome, error) {
++			// Model an accepted external operation followed by a DB failure while
++			// recording its result. The committed intent must remain recoverable.
++			require.NoError(t, db.Exec("CREATE TRIGGER fail_craft_journal_result BEFORE UPDATE OF state ON craft_charge_start_journal BEGIN SELECT RAISE(ABORT, 'injected outcome write failure'); END").Error)
++			return CraftChargeStartStarted, nil
++		})
++	require.Error(t, err)
++	var journal CraftChargeStartJournalRow
++	require.NoError(t, db.Where("tenant_id = ? AND run_id = ? AND activity_key = ?", 101, "run-result-write", "activity-write-failure").Take(&journal).Error)
++	require.Equal(t, "intent", journal.State)
++	require.Len(t, craftReservations(t, db, 101), 1)
++}
++
++func TestCraftChargeStartCallbackOutsideTransactionAllowsPauseAndCancellationRemainsUnknown(t *testing.T) {
++	db := openCraftBudgetTestDB(t)
++	if pool, err := db.DB(); err == nil {
++		pool.SetMaxOpenConns(4)
++	}
++	svc, err := NewCraftBudgetService(db, nil, craftBudgetPolicy())
++	require.NoError(t, err)
++	seedCraftFundedTenant(t, db, 102, 10000)
++	seedCraftBudgetRun(t, db, 102, "run-cancel", "task-cancel")
++	grant, err := svc.Admit(context.Background(), craft.Scope{TenantID: 102, UserID: "owner", SessionID: "task-cancel"}, "run-cancel")
++	require.NoError(t, err)
++
++	ctx, cancel := context.WithCancel(context.Background())
++	entered, release := make(chan struct{}), make(chan struct{})
++	var once sync.Once
++	type startResult struct {
++		outcome CraftChargeStartOutcome
++		err     error
++	}
++	done := make(chan startResult, 1)
++	go func() {
++		outcome, err := svc.StartBinding(ctx, grant.ID, "activity-cancel", CraftCallBinding{ModelID: "lead", Funding: commercial.FundingPlatform},
++			func(context.Context) (CraftChargeStartOutcome, error) {
++				once.Do(func() { close(entered) })
++				<-release // ignores transport cancellation
++				return CraftChargeStartStarted, nil
++			})
++		done <- startResult{outcome: outcome, err: err}
++	}()
++	<-entered
++	cancel()
++	require.NoError(t, svc.PauseRunForBudget(context.Background(), grant.ID), "callback cannot retain a SQL Run lock")
++	close(release)
++	select {
++	case got := <-done:
++		require.Error(t, got.err, "cancellation after possible send must remain unresolved")
++		require.Equal(t, CraftChargeStartUnknown, got.outcome)
++	case <-time.After(5 * time.Second):
++		t.Fatal("start coordinator remained blocked after callback release")
++	}
++	var journal CraftChargeStartJournalRow
++	require.NoError(t, db.Where("tenant_id = ? AND run_id = ? AND activity_key = ?", 102, "run-cancel", "activity-cancel").Take(&journal).Error)
++	require.Equal(t, "intent", journal.State, "canceled result persistence stays recoverable as intent")
++	require.Len(t, craftReservations(t, db, 102), 1)
++}

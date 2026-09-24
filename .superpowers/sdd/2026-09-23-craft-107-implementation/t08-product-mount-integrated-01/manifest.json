@@ -1,0 +1,37 @@
+{
+  "captured_at_utc": "2026-09-23T12:13:15.957367+00:00",
+  "source_head": "b18de6dd601df7cb155ffd44a86023f835cad1fc",
+  "integration_head": "a5e9195acd6500c085c85d60c852148e7bbbbf34",
+  "files": [
+    {
+      "path": "apps/web/src/features/craft/routes.tsx",
+      "sha256": "253bf70c9aa289bcd3581a7c4a1d8bc3b1b386f032bbdb32935ceeddd17101f1",
+      "bytes": 36119
+    },
+    {
+      "path": "apps/web/src/features/craft/routes.access.test.tsx",
+      "sha256": "8f36e38d29c3242fdb619991a58d701af206caba4f3ecfb4b9fb58ded523c7d7",
+      "bytes": 11646
+    },
+    {
+      "path": "packages/api-client/src/craft/index.ts",
+      "sha256": "1fc8c923243251754042e860913f880fca7c723f8e1c491d940cd87524c071d6",
+      "bytes": 11654
+    },
+    {
+      "path": "packages/api-client/src/craft/index.test.ts",
+      "sha256": "5cf472801cc8f7be395edea438a12358b2f66a260f28b1ff1641a1d9304c0e26",
+      "bytes": 8178
+    },
+    {
+      "path": "packages/api-client/src/index.ts",
+      "sha256": "cc3fb8dab8b3992cd992c9e32c773f6b255c2fcc1f38339053188f0ed6e8efa6",
+      "bytes": 11877
+    },
+    {
+      "path": "packages/views/package.json",
+      "sha256": "2b40ce80ca88b105796d8e7cae3809a0d207c42d04435cab7ba301473ea7e02f",
+      "bytes": 2160
+    }
+  ]
+}

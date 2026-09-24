@@ -1,0 +1,327 @@
+--- before/internal/application/service/craft_budget.go
++++ after/internal/application/service/craft_budget.go
+@@ -8,6 +8,8 @@
+ 	"fmt"
+ 	"time"
+ 
++	reporun "github.com/Tencent/WeKnora/internal/application/repository"
++	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
+ 	"github.com/Tencent/WeKnora/internal/modules/commercial"
+ 	repocommercial "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
+ 	commercialsvc "github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial"
+@@ -222,7 +224,7 @@
+ 			return err
+ 		}
+ 		if used >= int64(row.MaxCalls) {
+-			if err := pauseCraftRunTx(tx, row, s.now()); err != nil {
++			if err := s.pauseCraftRunInTx(ctx, tx, row); err != nil {
+ 				return err
+ 			}
+ 			preparation.denial = craft.ErrGrantExhausted
+@@ -245,7 +247,7 @@
+ 				if e := tx.Where("tenant_id = ? AND call_key = ?", row.TenantID, callKey).Delete(&CraftBudgetCallRow{}).Error; e != nil {
+ 					return e
+ 				}
+-				if e := pauseCraftRunTx(tx, row, s.now()); e != nil {
++				if e := s.pauseCraftRunInTx(ctx, tx, row); e != nil {
+ 					return e
+ 				}
+ 				preparation.denial = mapped
+@@ -336,8 +338,13 @@
+ 		if _, err := lockCraftRun(tx, ctx, row); err != nil {
+ 			return err
+ 		}
+-		return pauseCraftRunTx(tx, row, s.now())
++		return s.pauseCraftRunInTx(ctx, tx, row)
+ 	})
++}
++
++func (s *CraftBudgetService) pauseCraftRunInTx(ctx context.Context, tx *gorm.DB, grant CraftBudgetGrantRow) error {
++	return s.runs.PauseForCraftBudgetInTx(ctx, tx,
++		agentruntime.RunKey{TenantID: grant.TenantID, RunID: grant.RunID}, craftBudgetWaitReason)
+ }
+ 
+ type lockedCraftRun struct {
+@@ -372,20 +379,6 @@
+ 	return nil
+ }
+ 
+-func pauseCraftRunTx(tx *gorm.DB, grant CraftBudgetGrantRow, now time.Time) error {
+-	result := tx.Table("agent_runs").Where("tenant_id = ? AND run_id = ? AND status IN ?", grant.TenantID, grant.RunID,
+-		[]string{"queued", "running", "recovering"}).
+-		Updates(map[string]any{"status": "waiting_user", "wait_reason": craftBudgetWaitReason,
+-			"lease_owner": "", "lease_until": nil, "revision": gorm.Expr("revision + 1"), "updated_at": now})
+-	if result.Error != nil {
+-		return result.Error
+-	}
+-	if result.RowsAffected != 1 {
+-		return craft.ErrConflict
+-	}
+-	return nil
+-}
+-
+ func (b CraftCallBinding) validate() error {
+ 	if b.ModelID == "" {
+ 		return fmt.Errorf("%w: call binding without model", craft.ErrInvalidInput)
+@@ -406,6 +399,7 @@
+ // test fakes must never be wired into a charging deployment.
+ type CraftBudgetService struct {
+ 	db        *gorm.DB
++	runs      *reporun.AgentRunStore
+ 	budget    *repocommercial.BudgetStore
+ 	reconcile *commercialsvc.BudgetService
+ 	policy    CraftBudgetPolicy
+@@ -433,6 +427,7 @@
+ 	}
+ 	return &CraftBudgetService{
+ 		db:        db,
++		runs:      reporun.NewAgentRunStore(db),
+ 		budget:    store,
+ 		reconcile: reconcile,
+ 		policy:    policy,
+@@ -1033,7 +1028,7 @@
+ 		if _, err := lockCraftRun(tx, ctx, grant); err != nil {
+ 			return err
+ 		}
+-		return pauseCraftRunTx(tx, grant, s.now())
++		return s.pauseCraftRunInTx(ctx, tx, grant)
+ 	})
+ 	if err != nil {
+ 		return err
+--- before/internal/application/service/craft_budget_t19_test.go
++++ after/internal/application/service/craft_budget_t19_test.go
+@@ -2,10 +2,13 @@
+ 
+ import (
+ 	"context"
++	"fmt"
+ 	"sync"
+ 	"testing"
+ 	"time"
+ 
++	repository "github.com/Tencent/WeKnora/internal/application/repository"
++	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
+ 	"github.com/Tencent/WeKnora/internal/modules/commercial"
+ 	repocommercial "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
+ 	"github.com/Tencent/WeKnora/internal/modules/craft"
+@@ -307,14 +310,24 @@
+ 	var before struct{ Status, WaitReason string }
+ 	require.NoError(t, db.Table("agent_runs").Select("status, wait_reason").
+ 		Where("tenant_id = ? AND run_id = ?", 99, "run-fence-b").Take(&before).Error)
+-	require.Equal(t, "waiting_user", before.Status)
+-	require.Equal(t, craftBudgetWaitReason, before.WaitReason)
++	require.Equal(t, "reconciling", before.Status, "the start is unresolved while the callback is still in flight")
++	require.Equal(t, "craft_charge_start_pending", before.WaitReason)
+ 	reservations = craftReservations(t, db, 99)
+ 	require.Len(t, reservations, 1, "pause does not release an unresolved start hold")
+ 	require.Equal(t, commercial.ReservationStateDispatched, reservations[0].State)
+ 
+ 	close(finishStart)
+ 	require.NoError(t, <-chargeDone)
++	var pending struct{ Status, WaitReason string }
++	require.NoError(t, db.Table("agent_runs").Select("status, wait_reason").
++		Where("tenant_id = ? AND run_id = ?", 99, "run-fence-b").Take(&pending).Error)
++	require.Equal(t, "reconciling", pending.Status, "recording a started outcome does not itself confirm the budget pause")
++	runs := repository.NewAgentRunStore(db)
++	keys, err := runs.Scan(context.Background(), 20)
++	require.NoError(t, err)
++	require.Contains(t, keys, agentruntime.RunKey{TenantID: 99, RunID: "run-fence-b"})
++	_, err = runs.Claim(context.Background(), agentruntime.RunKey{TenantID: 99, RunID: "run-fence-b"}, "pause-reconciler", time.Minute)
++	require.ErrorIs(t, err, agentruntime.ErrLeaseLost, "reconciliation confirms the pause without a new execution claim")
+ 	var after struct{ Status, WaitReason string }
+ 	require.NoError(t, db.Table("agent_runs").Select("status, wait_reason").
+ 		Where("tenant_id = ? AND run_id = ?", 99, "run-fence-b").Take(&after).Error)
+@@ -332,3 +345,193 @@
+ 	require.ErrorIs(t, err, craft.ErrBudgetDenied)
+ 	require.Equal(t, 1, starts, "same-key retry after pause never starts a second external action")
+ }
++
++func seedUnresolvedBudgetPause(t *testing.T, db *gorm.DB, svc *CraftBudgetService, grant CraftBudgetGrantRow, state, activity string) string {
++	t.Helper()
++	ctx := context.Background()
++	reservationKey := CraftCallKey("pending/" + activity)
++	_, err := svc.budget.Reserve(ctx, commercial.BudgetRequest{
++		TenantID: grant.TenantID, RunID: grant.RunID, Key: reservationKey,
++		Upper: svc.policy.CallUpper, Deadline: grant.Deadline,
++	})
++	require.NoError(t, err)
++	require.NoError(t, svc.budget.MarkReservationDispatched(ctx, grant.TenantID, reservationKey))
++	now := time.Now().UTC()
++	require.NoError(t, db.Create(&CraftChargeStartJournalRow{
++		TenantID: grant.TenantID, RunID: grant.RunID, ActivityKey: activity,
++		GrantID: grant.GrantID, CallID: "call/" + activity, ReservationKey: reservationKey,
++		State: state, RunRevision: 0, CreatedAt: now, UpdatedAt: now,
++	}).Error)
++	return reservationKey
++}
++
++func TestCraftBudgetPauseWritersFenceIntentAndUnknown(t *testing.T) {
++	paths := []string{"start max calls", "start reservation denial", "pause run", "pause on denial"}
++	states := []string{"intent", "unknown"}
++	for pathIndex, path := range paths {
++		for stateIndex, state := range states {
++			t.Run(path+"/"+state, func(t *testing.T) {
++				tenant := uint64(140 + pathIndex*2 + stateIndex)
++				policy := craftBudgetPolicy()
++				funds := int64(10000)
++				if path == "start max calls" {
++					policy.MaxCalls = 1
++				}
++				if path == "start reservation denial" {
++					funds = int64(policy.CallUpper) + int64(policy.CallUpper)/2
++				}
++				db := openCraftBudgetTestDB(t)
++				svc, err := NewCraftBudgetService(db, nil, policy)
++				require.NoError(t, err)
++				seedCraftFundedTenant(t, db, tenant, funds)
++				runID, sessionID := fmt.Sprintf("run-budget-pause-%d", tenant), fmt.Sprintf("task-budget-pause-%d", tenant)
++				seedCraftBudgetRun(t, db, tenant, runID, sessionID)
++				grant, err := svc.Admit(context.Background(), craft.Scope{TenantID: tenant, UserID: "owner", SessionID: sessionID}, runID)
++				require.NoError(t, err)
++				grantRow, err := svc.loadGrant(context.Background(), grant.ID)
++				require.NoError(t, err)
++				require.NoError(t, db.Table("sessions").Where("tenant_id = ? AND id = ?", tenant, sessionID).
++					Update("active_agent_run_id", runID).Error)
++				require.NoError(t, db.Table("agent_runs").Where("tenant_id = ? AND run_id = ?", tenant, runID).
++					Updates(map[string]any{"lease_owner": "budget-worker", "lease_until": time.Now().UTC().Add(time.Minute)}).Error)
++				reservationKey := seedUnresolvedBudgetPause(t, db, svc, grantRow, state, "existing-start")
++				if path == "start max calls" {
++					require.NoError(t, db.Create(&CraftBudgetCallRow{TenantID: tenant, CallKey: CraftCallKey("prior-call"), GrantID: grant.ID,
++						RunID: runID, ModelID: "prior", Funding: commercial.FundingPlatform, CallSeq: 1, CallID: "prior-call", CreatedAt: time.Now().UTC()}).Error)
++				}
++
++				var gotErr error
++				starts := 0
++				switch path {
++				case "start max calls", "start reservation denial":
++					_, gotErr = svc.StartBinding(context.Background(), grant.ID, "denied-start", CraftCallBinding{ModelID: "next", Funding: commercial.FundingPlatform},
++						func(context.Context) (CraftChargeStartOutcome, error) {
++							starts++
++							return CraftChargeStartStarted, nil
++						})
++				case "pause run":
++					gotErr = svc.PauseRunForBudget(context.Background(), grant.ID)
++				case "pause on denial":
++					gotErr = svc.pauseOnDenial(context.Background(), grantRow, craft.ErrBudgetDenied)
++				}
++				if path == "start max calls" {
++					require.ErrorIs(t, gotErr, craft.ErrGrantExhausted)
++				} else if path == "start reservation denial" || path == "pause on denial" {
++					require.ErrorIs(t, gotErr, craft.ErrBudgetDenied)
++				} else {
++					require.NoError(t, gotErr)
++				}
++				require.Zero(t, starts, "budget denial cannot invoke the external start callback")
++				var run struct{ Status, WaitReason, LeaseOwner string }
++				require.NoError(t, db.Table("agent_runs").Select("status, wait_reason, lease_owner").Where("tenant_id = ? AND run_id = ?", tenant, runID).Take(&run).Error)
++				require.Equal(t, "reconciling", run.Status, "pause is pending while the external-start journal is unresolved")
++				require.Equal(t, "craft_charge_start_pending", run.WaitReason)
++				require.Equal(t, "budget-worker", run.LeaseOwner, "an unresolved start retains its Run lease")
++				var activeRunID *string
++				require.NoError(t, db.Table("sessions").Select("active_agent_run_id").Where("tenant_id = ? AND id = ?", tenant, sessionID).Scan(&activeRunID).Error)
++				require.NotNil(t, activeRunID)
++				require.Equal(t, runID, *activeRunID, "pending pause retains its active session slot")
++				var pauseEvents int64
++				require.NoError(t, db.Table("agent_run_events").Where("tenant_id = ? AND run_id = ? AND event_type = ?", tenant, runID, "craft_charge_pause_requested").Count(&pauseEvents).Error)
++				require.EqualValues(t, 1, pauseEvents, "the committed pause request must be durable before returning")
++				var journal CraftChargeStartJournalRow
++				require.NoError(t, db.Where("tenant_id = ? AND run_id = ? AND activity_key = ?", tenant, runID, "existing-start").Take(&journal).Error)
++				require.Equal(t, state, journal.State)
++				var reservations []repocommercial.ReservationRow
++				require.NoError(t, db.Where("tenant_id = ?", tenant).Find(&reservations).Error)
++				require.Len(t, reservations, 1, "budget pause must retain the pre-existing G4 hold")
++				require.Equal(t, reservationKey, reservations[0].Key)
++				require.Equal(t, commercial.ReservationStateDispatched, reservations[0].State)
++				runs := repository.NewAgentRunStore(db)
++				keys, err := runs.Scan(context.Background(), 20)
++				require.NoError(t, err)
++				require.NotContains(t, keys, agentruntime.RunKey{TenantID: tenant, RunID: runID})
++				_, err = runs.Claim(context.Background(), agentruntime.RunKey{TenantID: tenant, RunID: runID}, "pause-reconciler", time.Minute)
++				require.ErrorIs(t, err, agentruntime.ErrLeaseLost)
++
++				require.NoError(t, db.Model(&CraftChargeStartJournalRow{}).Where("tenant_id = ? AND run_id = ? AND activity_key = ?", tenant, runID, "existing-start").Update("state", "started").Error)
++				keys, err = runs.Scan(context.Background(), 20)
++				require.NoError(t, err)
++				require.Contains(t, keys, agentruntime.RunKey{TenantID: tenant, RunID: runID})
++				_, err = runs.Claim(context.Background(), agentruntime.RunKey{TenantID: tenant, RunID: runID}, "pause-reconciler", time.Minute)
++				require.ErrorIs(t, err, agentruntime.ErrLeaseLost, "reconciliation finalizes the pause without starting another worker")
++				require.NoError(t, db.Table("agent_runs").Select("status, wait_reason, lease_owner").Where("tenant_id = ? AND run_id = ?", tenant, runID).Take(&run).Error)
++				require.Equal(t, "waiting_user", run.Status)
++				require.Equal(t, craftBudgetWaitReason, run.WaitReason)
++				require.Empty(t, run.LeaseOwner)
++				require.NoError(t, db.Table("sessions").Select("active_agent_run_id").Where("tenant_id = ? AND id = ?", tenant, sessionID).Scan(&activeRunID).Error)
++				require.NotNil(t, activeRunID)
++				require.Equal(t, runID, *activeRunID, "confirmed budget wait continues to own its session slot")
++				var afterReservations int64
++				require.NoError(t, db.Model(&repocommercial.ReservationRow{}).Where("tenant_id = ? AND key = ? AND state = ?", tenant, reservationKey, commercial.ReservationStateDispatched).Count(&afterReservations).Error)
++				require.EqualValues(t, 1, afterReservations, "resolving the pause does not release an unresolved provider hold")
++			})
++		}
++	}
++}
++
++func TestCraftBudgetPauseDoesNotDowngradePendingCancellation(t *testing.T) {
++	db := openCraftBudgetTestDB(t)
++	svc, err := NewCraftBudgetService(db, nil, craftBudgetPolicy())
++	require.NoError(t, err)
++	seedCraftFundedTenant(t, db, 160, 10000)
++	seedCraftBudgetRun(t, db, 160, "run-pause-after-cancel", "task-pause-after-cancel")
++	grant, err := svc.Admit(context.Background(), craft.Scope{TenantID: 160, UserID: "owner", SessionID: "task-pause-after-cancel"}, "run-pause-after-cancel")
++	require.NoError(t, err)
++	grantRow, err := svc.loadGrant(context.Background(), grant.ID)
++	require.NoError(t, err)
++	seedUnresolvedBudgetPause(t, db, svc, grantRow, "unknown", "cancel-first")
++	runs := repository.NewAgentRunStore(db)
++	key := agentruntime.RunKey{TenantID: 160, RunID: "run-pause-after-cancel"}
++	require.NoError(t, runs.CancelRun(context.Background(), key, "member_stop"))
++
++	err = svc.PauseRunForBudget(context.Background(), grant.ID)
++	require.ErrorIs(t, err, agentruntime.ErrConflict, "later budget pause cannot replace pending cancellation")
++	var run struct{ Status, WaitReason string }
++	require.NoError(t, db.Table("agent_runs").Select("status, wait_reason").Where("tenant_id = ? AND run_id = ?", key.TenantID, key.RunID).Take(&run).Error)
++	require.Equal(t, "reconciling", run.Status)
++	require.Equal(t, "craft_charge_start_pending", run.WaitReason)
++	var cancels, pauses int64
++	require.NoError(t, db.Table("agent_run_events").Where("tenant_id = ? AND run_id = ? AND event_type = ?", key.TenantID, key.RunID, "craft_charge_cancel_requested").Count(&cancels).Error)
++	require.NoError(t, db.Table("agent_run_events").Where("tenant_id = ? AND run_id = ? AND event_type = ?", key.TenantID, key.RunID, "craft_charge_pause_requested").Count(&pauses).Error)
++	require.EqualValues(t, 1, cancels)
++	require.Zero(t, pauses)
++}
++
++func TestCraftBudgetStartDenialReturnsRepositoryFailureInsteadOfDenial(t *testing.T) {
++	db := openCraftBudgetTestDB(t)
++	policy := craftBudgetPolicy()
++	policy.MaxCalls = 1
++	svc, err := NewCraftBudgetService(db, nil, policy)
++	require.NoError(t, err)
++	seedCraftFundedTenant(t, db, 161, 10000)
++	seedCraftBudgetRun(t, db, 161, "run-pause-event-failure", "task-pause-event-failure")
++	grant, err := svc.Admit(context.Background(), craft.Scope{TenantID: 161, UserID: "owner", SessionID: "task-pause-event-failure"}, "run-pause-event-failure")
++	require.NoError(t, err)
++	grantRow, err := svc.loadGrant(context.Background(), grant.ID)
++	require.NoError(t, err)
++	reservationKey := seedUnresolvedBudgetPause(t, db, svc, grantRow, "unknown", "existing-start")
++	require.NoError(t, db.Create(&CraftBudgetCallRow{TenantID: 161, CallKey: CraftCallKey("prior-call"), GrantID: grant.ID,
++		RunID: grantRow.RunID, ModelID: "prior", Funding: commercial.FundingPlatform, CallSeq: 1, CallID: "prior-call", CreatedAt: time.Now().UTC()}).Error)
++	require.NoError(t, db.Exec(`CREATE TRIGGER reject_service_budget_pause BEFORE INSERT ON agent_run_events
++		WHEN NEW.event_type = 'craft_charge_pause_requested'
++		BEGIN SELECT RAISE(ABORT, 'reject service pause event'); END`).Error)
++	starts := 0
++	_, err = svc.StartBinding(context.Background(), grant.ID, "denied-start", CraftCallBinding{ModelID: "next", Funding: commercial.FundingPlatform},
++		func(context.Context) (CraftChargeStartOutcome, error) {
++			starts++
++			return CraftChargeStartStarted, nil
++		})
++	require.Error(t, err)
++	require.NotErrorIs(t, err, craft.ErrGrantExhausted, "a failed durable pause must not be presented as a committed budget denial")
++	require.Zero(t, starts)
++	var run struct{ Status string }
++	require.NoError(t, db.Table("agent_runs").Select("status").Where("tenant_id = ? AND run_id = ?", 161, grantRow.RunID).Take(&run).Error)
++	require.Equal(t, "running", run.Status, "failed event append rolls back the status transition")
++	var pauses int64
++	require.NoError(t, db.Table("agent_run_events").Where("tenant_id = ? AND run_id = ? AND event_type = ?", 161, grantRow.RunID, "craft_charge_pause_requested").Count(&pauses).Error)
++	require.Zero(t, pauses)
++	var hold repocommercial.ReservationRow
++	require.NoError(t, db.Where("tenant_id = ? AND key = ?", 161, reservationKey).Take(&hold).Error)
++	require.Equal(t, commercial.ReservationStateDispatched, hold.State)
++}

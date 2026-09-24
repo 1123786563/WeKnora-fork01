@@ -1,0 +1,17 @@
+{
+  "captured_at_utc": "2026-09-23T12:29:17.986593+00:00",
+  "head": "a5e9195acd6500c085c85d60c852148e7bbbbf34",
+  "files": [
+    {
+      "path": "internal/modules/agentruntime/agent/opencode/client.go",
+      "sha256": "828eb192fab0612fb0eb904dec45acc3c6cd9108da9b65a378b1781f5aa7b05f",
+      "bytes": 10711
+    },
+    {
+      "path": "internal/modules/agentruntime/agent/opencode/client_test.go",
+      "sha256": "babef85a94b21167950200b309fc61f02e0d1fa85a4dad0d5a9be04fd29df61c",
+      "bytes": 32219
+    }
+  ],
+  "owned_diff_sha256": "f5a826d1a021088bc9be745aa6f1c989e60cb0d438321e19d7d280ed45c4107d"
+}

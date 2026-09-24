@@ -1,0 +1,269 @@
+--- before/internal/application/repository/agent_run.go
++++ after/internal/application/repository/agent_run.go
+@@ -551,7 +551,7 @@
+ func requestCraftChargePause(tx *gorm.DB, key agentruntime.RunKey, reason string) error {
+ 	updated := runScope(tx, key).Where("status IN ('running','recovering','queued')").Updates(map[string]any{
+ 		"status": "reconciling", "wait_reason": craftChargeStartPendingWaitReason,
+-		"lease_owner": "", "lease_until": nil, "revision": gorm.Expr("revision + 1"), "updated_at": gorm.Expr("CURRENT_TIMESTAMP"),
++		"revision": gorm.Expr("revision + 1"), "updated_at": gorm.Expr("CURRENT_TIMESTAMP"),
+ 	})
+ 	if updated.Error != nil {
+ 		return updated.Error
+@@ -564,6 +564,85 @@
+ 		return err
+ 	}
+ 	return appendRunEventLocked(tx, agentruntime.Fence{RunKey: key}, "craft_charge_pause_requested", string(payload))
++}
++
++// transitionCraftBudgetPauseTx applies the journal-aware waiting transition in
++// the caller's transaction. A non-nil fence scopes the write to SetStatus's
++// active worker; budget callers instead hold and validate the Run row lock.
++func (s *AgentRunStore) transitionCraftBudgetPauseTx(tx *gorm.DB, key agentruntime.RunKey, reason string, fence *agentruntime.Fence) error {
++	var run agentRunRow
++	if err := runScope(tx, key).Take(&run).Error; err != nil {
++		if errors.Is(err, gorm.ErrRecordNotFound) {
++			return agentruntime.ErrNotFound
++		}
++		return err
++	}
++
++	if run.Status == "reconciling" && run.WaitReason == craftChargeStartPendingWaitReason {
++		var cancelRequests int64
++		if err := tx.Table("agent_run_events").Where("tenant_id = ? AND run_id = ? AND event_type = ?",
++			key.TenantID, key.RunID, "craft_charge_cancel_requested").Count(&cancelRequests).Error; err != nil {
++			return err
++		}
++		if cancelRequests > 0 {
++			return agentruntime.ErrConflict
++		}
++		var pauseRequests int64
++		if err := tx.Table("agent_run_events").Where("tenant_id = ? AND run_id = ? AND event_type = ?",
++			key.TenantID, key.RunID, "craft_charge_pause_requested").Count(&pauseRequests).Error; err != nil {
++			return err
++		}
++		if pauseRequests > 0 {
++			return nil // replay of an already committed pause request
++		}
++		return agentruntime.ErrConflict
++	}
++	if run.Status == "waiting_user" {
++		if run.WaitReason == reason {
++			return nil
++		}
++		return agentruntime.ErrConflict
++	}
++	if run.Status != "queued" && run.Status != "running" && run.Status != "recovering" {
++		return agentruntime.ErrConflict
++	}
++
++	unresolved, err := hasUnresolvedCraftChargeStart(tx, key)
++	if err != nil {
++		return err
++	}
++	if unresolved {
++		return requestCraftChargePause(tx, key, reason)
++	}
++
++	scope := runScope(tx, key)
++	if fence != nil {
++		scope = s.fenced(tx, *fence)
++	}
++	updated := scope.Where("status IN ('queued','running','recovering')").Updates(map[string]any{
++		"status": "waiting_user", "wait_reason": reason, "lease_owner": "", "lease_until": nil,
++		"revision": gorm.Expr("revision + 1"), "updated_at": gorm.Expr("CURRENT_TIMESTAMP"),
++	})
++	if updated.Error != nil {
++		return updated.Error
++	}
++	if updated.RowsAffected != 1 {
++		if fence != nil {
++			return agentruntime.ErrLeaseLost
++		}
++		return agentruntime.ErrConflict
++	}
++	return nil
++}
++
++// PauseForCraftBudgetInTx records a budget pause inside the caller's existing
++// locked Run transaction. It never opens a transaction or releases the active
++// session slot; unresolved charge starts remain reconciling until resolved.
++func (s *AgentRunStore) PauseForCraftBudgetInTx(ctx context.Context, tx *gorm.DB, key agentruntime.RunKey, reason string) error {
++	if tx == nil || key.TenantID == 0 || key.RunID == "" || reason == "" {
++		return agentruntime.ErrConflict
++	}
++	return s.transitionCraftBudgetPauseTx(tx.WithContext(ctx), key, reason, nil)
+ }
+ 
+ func requestCraftChargeCancel(tx *gorm.DB, key agentruntime.RunKey, reason string) error {
+@@ -614,7 +693,8 @@
+ 		status = "canceled"
+ 	}
+ 	updated := runScope(tx, key).Where("status = 'reconciling' AND wait_reason = ?", craftChargeStartPendingWaitReason).
+-		Updates(map[string]any{"status": status, "wait_reason": request.Reason, "revision": gorm.Expr("revision + 1"), "updated_at": gorm.Expr("CURRENT_TIMESTAMP")})
++		Updates(map[string]any{"status": status, "wait_reason": request.Reason, "lease_owner": "", "lease_until": nil,
++			"revision": gorm.Expr("revision + 1"), "updated_at": gorm.Expr("CURRENT_TIMESTAMP")})
+ 	if updated.Error != nil {
+ 		return false, updated.Error
+ 	}
+@@ -840,12 +920,8 @@
+ 		if locked.RowsAffected != 1 {
+ 			return agentruntime.ErrLeaseLost
+ 		}
+-		unresolved, err := hasUnresolvedCraftChargeStart(tx, fence.RunKey)
+-		if err != nil {
+-			return err
+-		}
+-		if status == "waiting_user" && unresolved {
+-			return requestCraftChargePause(tx, fence.RunKey, reason)
++		if status == "waiting_user" {
++			return s.transitionCraftBudgetPauseTx(tx, fence.RunKey, reason, &fence)
+ 		}
+ 		result := s.fenced(tx, fence).Updates(map[string]any{
+ 			"status": status, "wait_reason": reason, "lease_owner": "", "lease_until": nil,
+--- before/internal/application/repository/agent_run_craft_charge_test.go
++++ after/internal/application/repository/agent_run_craft_charge_test.go
+@@ -83,6 +83,7 @@
+ 	require.NoError(t, db.Where("tenant_id = ? AND run_id = ?", 1, in.Key.RunID).Take(&run).Error)
+ 	require.Equal(t, "reconciling", run.Status)
+ 	require.Equal(t, craftChargeStartPendingWaitReason, run.WaitReason)
++	require.Equal(t, "worker", run.LeaseOwner, "an unresolved start retains its execution lease")
+ 	var active *string
+ 	require.NoError(t, db.Table("sessions").Select("active_agent_run_id").Where("tenant_id = ? AND id = ?", 1, in.SessionID).Scan(&active).Error)
+ 	require.NotNil(t, active, "pending pause retains the active Run slot")
+@@ -97,6 +98,7 @@
+ 	require.NoError(t, db.Where("tenant_id = ? AND run_id = ?", 1, in.Key.RunID).Take(&run).Error)
+ 	require.Equal(t, "waiting_user", run.Status)
+ 	require.Equal(t, "budget_exhausted", run.WaitReason)
++	require.Empty(t, run.LeaseOwner, "the lease is released only after the start outcome resolves")
+ 	require.NoError(t, db.Table("sessions").Select("active_agent_run_id").Where("tenant_id = ? AND id = ?", 1, in.SessionID).Scan(&active).Error)
+ 	require.NotNil(t, active)
+ }
+@@ -241,3 +243,128 @@
+ 	require.NoError(t, db.Table("craft_charge_start_journal").Select("state").Where("tenant_id = ? AND run_id = ?", 1, in.Key.RunID).Take(&journal).Error)
+ 	require.Equal(t, "intent", journal.State, "session deletion preserves unresolved journal evidence")
+ }
++
++func TestPauseForCraftBudgetInTxDefersIntentAndUnknownStarts(t *testing.T) {
++	for _, state := range []string{"intent", "unknown"} {
++		t.Run(state, func(t *testing.T) {
++			db := openRunTestDB(t)
++			store := NewAgentRunStore(db)
++			in := testAdmission()
++			in.Key.RunID = "budget-pause-" + state
++			_, err := store.Admit(context.Background(), in)
++			require.NoError(t, err)
++			_, err = store.Claim(context.Background(), in.Key, "budget-worker", time.Minute)
++			require.NoError(t, err)
++			insertUnresolvedCraftStart(t, db, in.Key, "budget-"+state)
++			if state == "unknown" {
++				require.NoError(t, db.Table("craft_charge_start_journal").Where("tenant_id = ? AND run_id = ?", in.Key.TenantID, in.Key.RunID).Update("state", state).Error)
++			}
++
++			err = db.WithContext(context.Background()).Transaction(func(tx *gorm.DB) error {
++				return store.PauseForCraftBudgetInTx(context.Background(), tx, in.Key, "budget_exhausted")
++			})
++			require.NoError(t, err)
++			var run agentRunRow
++			require.NoError(t, db.Where("tenant_id = ? AND run_id = ?", in.Key.TenantID, in.Key.RunID).Take(&run).Error)
++			require.Equal(t, "reconciling", run.Status)
++			require.Equal(t, craftChargeStartPendingWaitReason, run.WaitReason)
++			require.Equal(t, "budget-worker", run.LeaseOwner, "the worker lease remains held until the start outcome resolves")
++			var eventCount int64
++			require.NoError(t, db.Table("agent_run_events").Where("tenant_id = ? AND run_id = ? AND event_type = ?", in.Key.TenantID, in.Key.RunID, "craft_charge_pause_requested").Count(&eventCount).Error)
++			require.EqualValues(t, 1, eventCount)
++			keys, err := store.Scan(context.Background(), 20)
++			require.NoError(t, err)
++			require.NotContains(t, keys, in.Key, "unresolved charge holds are not schedulable")
++			_, err = store.Claim(context.Background(), in.Key, "budget-recovery", time.Minute)
++			require.ErrorIs(t, err, agentruntime.ErrLeaseLost)
++		})
++	}
++}
++
++func TestPauseForCraftBudgetInTxIsIdempotentAndCancelWins(t *testing.T) {
++	db := openRunTestDB(t)
++	store := NewAgentRunStore(db)
++	in := testAdmission()
++	in.Key.RunID = "budget-pause-idempotent"
++	_, err := store.Admit(context.Background(), in)
++	require.NoError(t, err)
++	_, err = store.Claim(context.Background(), in.Key, "budget-worker", time.Minute)
++	require.NoError(t, err)
++	insertUnresolvedCraftStart(t, db, in.Key, "budget-idempotent")
++
++	pause := func(reason string) error {
++		return db.WithContext(context.Background()).Transaction(func(tx *gorm.DB) error {
++			return store.PauseForCraftBudgetInTx(context.Background(), tx, in.Key, reason)
++		})
++	}
++	require.NoError(t, pause("budget_exhausted"))
++	var before agentRunRow
++	require.NoError(t, db.Where("tenant_id = ? AND run_id = ?", in.Key.TenantID, in.Key.RunID).Take(&before).Error)
++	require.NoError(t, pause("budget_exhausted"))
++	var after agentRunRow
++	require.NoError(t, db.Where("tenant_id = ? AND run_id = ?", in.Key.TenantID, in.Key.RunID).Take(&after).Error)
++	require.Equal(t, before.Revision, after.Revision, "replaying a budget pause must not advance Run revision")
++	var eventCount int64
++	require.NoError(t, db.Table("agent_run_events").Where("tenant_id = ? AND run_id = ? AND event_type = ?", in.Key.TenantID, in.Key.RunID, "craft_charge_pause_requested").Count(&eventCount).Error)
++	require.EqualValues(t, 1, eventCount)
++
++	require.NoError(t, store.CancelRun(context.Background(), in.Key, "member_stop"))
++	err = pause("budget_exhausted")
++	require.ErrorIs(t, err, agentruntime.ErrConflict, "budget pause cannot downgrade a pending cancellation")
++	var cancelCount int64
++	require.NoError(t, db.Table("agent_run_events").Where("tenant_id = ? AND run_id = ? AND event_type = ?", in.Key.TenantID, in.Key.RunID, "craft_charge_cancel_requested").Count(&cancelCount).Error)
++	require.EqualValues(t, 1, cancelCount)
++}
++
++func TestPauseForCraftBudgetInTxTransitionsResolvedOrMissingJournal(t *testing.T) {
++	for _, journalState := range []string{"absent", "started", "definitely_unstarted"} {
++		t.Run(journalState, func(t *testing.T) {
++			db := openRunTestDB(t)
++			store := NewAgentRunStore(db)
++			in := testAdmission()
++			in.Key.RunID = "budget-resolved-" + journalState
++			_, err := store.Admit(context.Background(), in)
++			require.NoError(t, err)
++			_, err = store.Claim(context.Background(), in.Key, "budget-worker", time.Minute)
++			require.NoError(t, err)
++			if journalState != "absent" {
++				insertUnresolvedCraftStart(t, db, in.Key, "resolved-"+journalState)
++				require.NoError(t, db.Table("craft_charge_start_journal").Where("tenant_id = ? AND run_id = ?", in.Key.TenantID, in.Key.RunID).Update("state", journalState).Error)
++			}
++			err = db.WithContext(context.Background()).Transaction(func(tx *gorm.DB) error {
++				return store.PauseForCraftBudgetInTx(context.Background(), tx, in.Key, "budget_exhausted")
++			})
++			require.NoError(t, err)
++			var run agentRunRow
++			require.NoError(t, db.Where("tenant_id = ? AND run_id = ?", in.Key.TenantID, in.Key.RunID).Take(&run).Error)
++			require.Equal(t, "waiting_user", run.Status)
++			require.Equal(t, "budget_exhausted", run.WaitReason)
++			require.Empty(t, run.LeaseOwner)
++		})
++	}
++}
++
++func TestPauseForCraftBudgetInTxRollsBackWhenPauseEventCannotBeWritten(t *testing.T) {
++	db := openRunTestDB(t)
++	store := NewAgentRunStore(db)
++	in := testAdmission()
++	in.Key.RunID = "budget-pause-event-failure"
++	_, err := store.Admit(context.Background(), in)
++	require.NoError(t, err)
++	_, err = store.Claim(context.Background(), in.Key, "budget-worker", time.Minute)
++	require.NoError(t, err)
++	insertUnresolvedCraftStart(t, db, in.Key, "budget-event-failure")
++	require.NoError(t, db.Exec(`CREATE TRIGGER reject_budget_pause BEFORE INSERT ON agent_run_events
++		WHEN NEW.event_type = 'craft_charge_pause_requested'
++		BEGIN SELECT RAISE(ABORT, 'reject budget pause event'); END`).Error)
++
++	err = db.WithContext(context.Background()).Transaction(func(tx *gorm.DB) error {
++		return store.PauseForCraftBudgetInTx(context.Background(), tx, in.Key, "budget_exhausted")
++	})
++	require.Error(t, err)
++	var run agentRunRow
++	require.NoError(t, db.Where("tenant_id = ? AND run_id = ?", in.Key.TenantID, in.Key.RunID).Take(&run).Error)
++	require.Equal(t, "running", run.Status)
++	require.Equal(t, "budget-worker", run.LeaseOwner)
++	require.EqualValues(t, 1, run.Revision)
++}

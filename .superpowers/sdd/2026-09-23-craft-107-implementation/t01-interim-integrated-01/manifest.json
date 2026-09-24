@@ -1,0 +1,68 @@
+{
+  "captured_at_utc": "2026-09-23T12:15:18.545063+00:00",
+  "source_head": "0c17125fe002f02838841f5133e4f6b9d476fec8",
+  "integration_head": "a5e9195acd6500c085c85d60c852148e7bbbbf34",
+  "review_status": "T01 pending R1/R3 and vertical integration",
+  "files": [
+    {
+      "path": "internal/application/service/craft_inputs.go",
+      "sha256": "351bcdbc9d0a3a650b5ea38a2ecc9dfeaee427356020ea3027c4caa5d2165432",
+      "bytes": 16989
+    },
+    {
+      "path": "internal/application/service/craft_session.go",
+      "sha256": "82d4b922825f054dafb5c3f712fba5e888de42a143870ea53d92548c542ba3bb",
+      "bytes": 38220
+    },
+    {
+      "path": "internal/application/service/craft_t01_test.go",
+      "sha256": "6e3670a15fb43e80d77a1d91d1cad5e87b9deb158d10279d12c297bdaf39af6c",
+      "bytes": 14381
+    },
+    {
+      "path": "internal/handler/session/craft_input_round.go",
+      "sha256": "93a6178f266fd4f60f797ace290b085c188dbd0d97d17cae3849dceb23c4ba7b",
+      "bytes": 3569
+    },
+    {
+      "path": "internal/handler/session/craft_input_round_test.go",
+      "sha256": "c859de5b485ab6eb23bc354326c9021de128bf1c5d9cf1a81795a49ac024813a",
+      "bytes": 2529
+    },
+    {
+      "path": "packages/views/src/craft/files.tsx",
+      "sha256": "a43633b0e4289dde64b8e8efd69f0cca8cd2f47b3a31616c9325ff9aa7d86c1c",
+      "bytes": 7243
+    },
+    {
+      "path": "packages/views/src/craft/files.input.test.tsx",
+      "sha256": "3448edd4671275e750a5c3e5807d9e1051a53390eed33f36f64a49d653b12314",
+      "bytes": 1338
+    },
+    {
+      "path": "internal/application/service/agent_run_graph.go",
+      "sha256": "5484f78cc4db54e387835391f0789b30927a7f58fd23980cdb425705e8cab3a8",
+      "bytes": 26397
+    },
+    {
+      "path": "internal/application/service/agent_run_graph_test.go",
+      "sha256": "c213d2a8fbc8a0d8116c171e11f62a2fa1a0f818a5f9009692ce0631b5623340",
+      "bytes": 18601
+    },
+    {
+      "path": "internal/application/service/craft_session_test.go",
+      "sha256": "d8507d8fa244625622573173a3b1a7dccb5a298a0c67c25aa9a4dc43db69feb0",
+      "bytes": 23480
+    },
+    {
+      "path": "internal/container/craft_runtime.go",
+      "sha256": "a24213ce1a6a288dd58ab04f647dfdd66f52e490c4b17edbaab7d083856a8c46",
+      "bytes": 38527
+    },
+    {
+      "path": "internal/container/craft_runtime_test.go",
+      "sha256": "90d5ba55d1b0fb49cf1b444d29e2e95c693c33ef3ea8a8cfe252e441406def7f",
+      "bytes": 13289
+    }
+  ]
+}

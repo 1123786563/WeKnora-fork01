@@ -1,0 +1,12 @@
+ed033c9a66fa29893d7fb81345237cdbc7a745442b646aeb57f2ae4ae06dcea1  .superpowers/sdd/2026-09-23-craft-107-implementation/t19-start-denial-fix-checkpoint-01/internal/application/service/craft_budget.go
+2f719e64697d9e583924ca17e0591a262fb9f4241869ea70d1234b2c128e2f99  .superpowers/sdd/2026-09-23-craft-107-implementation/t19-start-denial-fix-checkpoint-01/internal/application/service/craft_budget_t19_test.go
+02faea72b26b066e959f8b40672706d42d7c30f7780f636fb887543c0f12b67a  .superpowers/sdd/2026-09-23-craft-107-implementation/t19-start-denial-fix-checkpoint-01/internal/application/service/craft_budget_start_test.go
+2cd15e9f7221268a44e92b0c82a7c73797be73334e99580e374900e84d35b57c  .superpowers/sdd/2026-09-23-craft-107-implementation/t19-start-denial-fix-checkpoint-01/internal/modules/commercial/repository/commercial/budget_reservation.go
+817e9ef4758d2196e848492dc0a71096f3abcd9228aeefeea2bfc717cfcdf730  .superpowers/sdd/2026-09-23-craft-107-implementation/t19-start-denial-fix-checkpoint-01/denial-fix.patch
+51095b30b782b9d43012e1ba598e4f88cac6b04c521ccf40941b38e9ad09784c  .superpowers/sdd/2026-09-23-craft-107-implementation/t19-start-denial-fix-checkpoint-01/before/internal/application/service/craft_budget.go
+2f719e64697d9e583924ca17e0591a262fb9f4241869ea70d1234b2c128e2f99  .superpowers/sdd/2026-09-23-craft-107-implementation/t19-start-denial-fix-checkpoint-01/before/internal/application/service/craft_budget_t19_test.go
+032cccc6b5ac250c0f781d0ffef7957e9e4c954bed125ba1d31bd7cd530b2e02  .superpowers/sdd/2026-09-23-craft-107-implementation/t19-start-denial-fix-checkpoint-01/before/internal/application/service/craft_budget_start_test.go
+2cd15e9f7221268a44e92b0c82a7c73797be73334e99580e374900e84d35b57c  .superpowers/sdd/2026-09-23-craft-107-implementation/t19-start-denial-fix-checkpoint-01/before/internal/modules/commercial/repository/commercial/budget_reservation.go
+3b36e873c309bc714274f373efae622e6c884fca79193cd77b682de7d0e8c805  .superpowers/sdd/2026-09-23-craft-107-implementation/t19-start-denial-fix-checkpoint-01/status.txt
+04712b1aad297b522df93b8178918cba198609ce46c0ae233bb0f847db6ef827  .superpowers/sdd/2026-09-23-craft-107-implementation/t19-start-denial-fix-checkpoint-01/full-service.log
+c0bc5dbc6bb3e7e8ab831877ce87571ad3671f11995b7b0e061c212fcd4ee5e8  .superpowers/sdd/2026-09-23-craft-107-implementation/t19-start-denial-fix-checkpoint-01/head.txt

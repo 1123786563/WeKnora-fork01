@@ -1,0 +1,614 @@
+#0 building with "orbstack" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 13.41kB 0.0s done
+#1 DONE 0.1s
+
+#2 [internal] load metadata for docker.io/library/debian:bookworm-slim
+#2 DONE 0.7s
+
+#3 [internal] load .dockerignore
+#3 transferring context:
+#3 transferring context: 2B done
+#3 DONE 0.4s
+
+#4 [internal] load build context
+#4 DONE 0.0s
+
+#5 [opencode-fetch 1/3] FROM docker.io/library/debian:bookworm-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251
+#5 resolve docker.io/library/debian:bookworm-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251 0.1s done
+#5 DONE 0.1s
+
+#5 [opencode-fetch 1/3] FROM docker.io/library/debian:bookworm-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251
+#5 CACHED
+
+#4 [internal] load build context
+#4 transferring context: 41B done
+#4 DONE 0.1s
+
+#6 [opencode-fetch 2/3] RUN set -eux;     printf '%s\n' 'Acquire::Retries "3";' > /etc/apt/apt.conf.d/80-retries;     sed -i 's|deb.debian.org|ftp.cn.debian.org|g' /etc/apt/sources.list.d/debian.sources;     apt-get update;     apt-get install -y --no-install-recommends ca-certificates;     apt-get update;     apt-get install -y --no-install-recommends curl;     rm -rf /var/lib/apt/lists/*
+#6 1.070 + printf %s\n Acquire::Retries "3";
+#6 1.070 + sed -i s|deb.debian.org|ftp.cn.debian.org|g /etc/apt/sources.list.d/debian.sources
+#6 1.101 + apt-get update
+#6 2.559 Get:1 http://ftp.cn.debian.org/debian bookworm InRelease [151 kB]
+#6 4.040 Get:2 http://ftp.cn.debian.org/debian bookworm-updates InRelease [55.4 kB]
+#6 5.322 Get:3 http://ftp.cn.debian.org/debian-security bookworm-security InRelease [34.8 kB]
+#6 6.557 Get:4 http://ftp.cn.debian.org/debian bookworm/main arm64 Packages [8689 kB]
+#6 ...
+
+#7 [runtime  2/13] RUN set -eux;     printf '%s\n' 'Acquire::Retries "3";' > /etc/apt/apt.conf.d/80-retries;     sed -i 's|deb.debian.org|ftp.cn.debian.org|g' /etc/apt/sources.list.d/debian.sources;     apt-get update;     apt-get install -y --no-install-recommends ca-certificates;     rm -rf /var/lib/apt/lists/*
+#7 1.073 + printf %s\n Acquire::Retries "3";
+#7 1.073 + sed -i s|deb.debian.org|ftp.cn.debian.org|g /etc/apt/sources.list.d/debian.sources
+#7 1.101 + apt-get update
+#7 2.531 Get:1 http://ftp.cn.debian.org/debian bookworm InRelease [151 kB]
+#7 4.040 Get:2 http://ftp.cn.debian.org/debian bookworm-updates InRelease [55.4 kB]
+#7 5.329 Get:3 http://ftp.cn.debian.org/debian-security bookworm-security InRelease [34.8 kB]
+#7 6.569 Get:4 http://ftp.cn.debian.org/debian bookworm/main arm64 Packages [8689 kB]
+#7 ...
+
+#6 [opencode-fetch 2/3] RUN set -eux;     printf '%s\n' 'Acquire::Retries "3";' > /etc/apt/apt.conf.d/80-retries;     sed -i 's|deb.debian.org|ftp.cn.debian.org|g' /etc/apt/sources.list.d/debian.sources;     apt-get update;     apt-get install -y --no-install-recommends ca-certificates;     apt-get update;     apt-get install -y --no-install-recommends curl;     rm -rf /var/lib/apt/lists/*
+#6 20.68 Get:5 http://ftp.cn.debian.org/debian bookworm-updates/main arm64 Packages [6936 B]
+#6 21.71 Get:6 http://ftp.cn.debian.org/debian-security bookworm-security/main arm64 Packages [339 kB]
+#6 22.77 Fetched 9277 kB in 21s (437 kB/s)
+#6 22.77 Reading package lists...
+#6 24.82 + apt-get install -y --no-install-recommends ca-certificates
+#6 24.88 Reading package lists...
+#6 26.72 Building dependency tree...
+#6 27.58 Reading state information...
+#6 28.81 The following additional packages will be installed:
+#6 28.81   libssl3 openssl
+#6 29.02 The following NEW packages will be installed:
+#6 29.02   ca-certificates libssl3 openssl
+#6 ...
+
+#7 [runtime  2/13] RUN set -eux;     printf '%s\n' 'Acquire::Retries "3";' > /etc/apt/apt.conf.d/80-retries;     sed -i 's|deb.debian.org|ftp.cn.debian.org|g' /etc/apt/sources.list.d/debian.sources;     apt-get update;     apt-get install -y --no-install-recommends ca-certificates;     rm -rf /var/lib/apt/lists/*
+#7 21.87 Get:5 http://ftp.cn.debian.org/debian bookworm-updates/main arm64 Packages [6936 B]
+#7 22.81 Get:6 http://ftp.cn.debian.org/debian-security bookworm-security/main arm64 Packages [339 kB]
+#7 23.72 Fetched 9277 kB in 22s (418 kB/s)
+#7 23.72 Reading package lists...
+#7 26.05 + apt-get install -y --no-install-recommends ca-certificates
+#7 26.10 Reading package lists...
+#7 28.24 Building dependency tree...
+#7 29.02 Reading state information...
+#7 29.75 The following additional packages will be installed:
+#7 29.75   libssl3 openssl
+#7 29.91 The following NEW packages will be installed:
+#7 29.92   ca-certificates libssl3 openssl
+#7 ...
+
+#6 [opencode-fetch 2/3] RUN set -eux;     printf '%s\n' 'Acquire::Retries "3";' > /etc/apt/apt.conf.d/80-retries;     sed -i 's|deb.debian.org|ftp.cn.debian.org|g' /etc/apt/sources.list.d/debian.sources;     apt-get update;     apt-get install -y --no-install-recommends ca-certificates;     apt-get update;     apt-get install -y --no-install-recommends curl;     rm -rf /var/lib/apt/lists/*
+#6 30.14 0 upgraded, 3 newly installed, 0 to remove and 1 not upgraded.
+#6 30.14 Need to get 3391 kB of archives.
+#6 30.14 After this operation, 8934 kB of additional disk space will be used.
+#6 30.14 Get:1 http://ftp.cn.debian.org/debian bookworm/main arm64 libssl3 arm64 3.0.20-1~deb12u2 [1824 kB]
+#6 33.38 Get:2 http://ftp.cn.debian.org/debian bookworm/main arm64 openssl arm64 3.0.20-1~deb12u2 [1405 kB]
+#6 36.52 Get:3 http://ftp.cn.debian.org/debian-security bookworm-security/main arm64 ca-certificates all 20250419~deb12u1 [162 kB]
+#6 37.48 debconf: delaying package configuration, since apt-utils is not installed
+#6 37.58 Fetched 3391 kB in 8s (425 kB/s)
+#6 37.74 Selecting previously unselected package libssl3:arm64.
+#6 37.74 (Reading database ... (Reading database ... 5%(Reading database ... 10%(Reading database ... 15%(Reading database ... 20%(Reading database ... 25%(Reading database ... 30%(Reading database ... 35%(Reading database ... 40%(Reading database ... 45%(Reading database ... 50%(Reading database ... 55%(Reading database ... 60%(Reading database ... 65%(Reading database ... 70%(Reading database ... 75%(Reading database ... 80%(Reading database ... 85%(Reading database ... 90%(Reading database ... 95%(Reading database ... 100%(Reading database ... 6090 files and directories currently installed.)
+#6 37.88 Preparing to unpack .../libssl3_3.0.20-1~deb12u2_arm64.deb ...
+#6 38.26 Unpacking libssl3:arm64 (3.0.20-1~deb12u2) ...
+#6 38.87 Selecting previously unselected package openssl.
+#6 38.88 Preparing to unpack .../openssl_3.0.20-1~deb12u2_arm64.deb ...
+#6 38.89 Unpacking openssl (3.0.20-1~deb12u2) ...
+#6 39.27 Selecting previously unselected package ca-certificates.
+#6 39.27 Preparing to unpack .../ca-certificates_20250419~deb12u1_all.deb ...
+#6 39.30 Unpacking ca-certificates (20250419~deb12u1) ...
+#6 39.78 Setting up libssl3:arm64 (3.0.20-1~deb12u2) ...
+#6 39.83 Setting up openssl (3.0.20-1~deb12u2) ...
+#6 39.90 Setting up ca-certificates (20250419~deb12u1) ...
+#6 ...
+
+#7 [runtime  2/13] RUN set -eux;     printf '%s\n' 'Acquire::Retries "3";' > /etc/apt/apt.conf.d/80-retries;     sed -i 's|deb.debian.org|ftp.cn.debian.org|g' /etc/apt/sources.list.d/debian.sources;     apt-get update;     apt-get install -y --no-install-recommends ca-certificates;     rm -rf /var/lib/apt/lists/*
+#7 31.01 0 upgraded, 3 newly installed, 0 to remove and 1 not upgraded.
+#7 31.01 Need to get 3391 kB of archives.
+#7 31.01 After this operation, 8934 kB of additional disk space will be used.
+#7 31.01 Get:1 http://ftp.cn.debian.org/debian bookworm/main arm64 libssl3 arm64 3.0.20-1~deb12u2 [1824 kB]
+#7 34.43 Get:2 http://ftp.cn.debian.org/debian bookworm/main arm64 openssl arm64 3.0.20-1~deb12u2 [1405 kB]
+#7 36.77 Get:3 http://ftp.cn.debian.org/debian-security bookworm-security/main arm64 ca-certificates all 20250419~deb12u1 [162 kB]
+#7 37.76 debconf: delaying package configuration, since apt-utils is not installed
+#7 37.86 Fetched 3391 kB in 7s (462 kB/s)
+#7 38.05 Selecting previously unselected package libssl3:arm64.
+#7 38.05 (Reading database ... (Reading database ... 5%(Reading database ... 10%(Reading database ... 15%(Reading database ... 20%(Reading database ... 25%(Reading database ... 30%(Reading database ... 35%(Reading database ... 40%(Reading database ... 45%(Reading database ... 50%(Reading database ... 55%(Reading database ... 60%(Reading database ... 65%(Reading database ... 70%(Reading database ... 75%(Reading database ... 80%(Reading database ... 85%(Reading database ... 90%(Reading database ... 95%(Reading database ... 100%(Reading database ... 6090 files and directories currently installed.)
+#7 38.11 Preparing to unpack .../libssl3_3.0.20-1~deb12u2_arm64.deb ...
+#7 38.26 Unpacking libssl3:arm64 (3.0.20-1~deb12u2) ...
+#7 38.88 Selecting previously unselected package openssl.
+#7 38.88 Preparing to unpack .../openssl_3.0.20-1~deb12u2_arm64.deb ...
+#7 38.89 Unpacking openssl (3.0.20-1~deb12u2) ...
+#7 39.33 Selecting previously unselected package ca-certificates.
+#7 39.33 Preparing to unpack .../ca-certificates_20250419~deb12u1_all.deb ...
+#7 39.35 Unpacking ca-certificates (20250419~deb12u1) ...
+#7 39.79 Setting up libssl3:arm64 (3.0.20-1~deb12u2) ...
+#7 39.84 Setting up openssl (3.0.20-1~deb12u2) ...
+#7 39.90 Setting up ca-certificates (20250419~deb12u1) ...
+#7 40.07 debconf: unable to initialize frontend: Dialog
+#7 40.07 debconf: (TERM is not set, so the dialog frontend is not usable.)
+#7 40.07 debconf: falling back to frontend: Readline
+#7 ...
+
+#6 [opencode-fetch 2/3] RUN set -eux;     printf '%s\n' 'Acquire::Retries "3";' > /etc/apt/apt.conf.d/80-retries;     sed -i 's|deb.debian.org|ftp.cn.debian.org|g' /etc/apt/sources.list.d/debian.sources;     apt-get update;     apt-get install -y --no-install-recommends ca-certificates;     apt-get update;     apt-get install -y --no-install-recommends curl;     rm -rf /var/lib/apt/lists/*
+#6 40.06 debconf: unable to initialize frontend: Dialog
+#6 40.06 debconf: (TERM is not set, so the dialog frontend is not usable.)
+#6 40.06 debconf: falling back to frontend: Readline
+#6 40.07 debconf: unable to initialize frontend: Readline
+#6 40.07 debconf: (Can't locate Term/ReadLine.pm in @INC (you may need to install the Term::ReadLine module) (@INC contains: /etc/perl /usr/local/lib/aarch64-linux-gnu/perl/5.36.0 /usr/local/share/perl/5.36.0 /usr/lib/aarch64-linux-gnu/perl5/5.36 /usr/share/perl5 /usr/lib/aarch64-linux-gnu/perl-base /usr/lib/aarch64-linux-gnu/perl/5.36 /usr/share/perl/5.36 /usr/local/lib/site_perl) at /usr/share/perl5/Debconf/FrontEnd/Readline.pm line 7.)
+#6 40.07 debconf: falling back to frontend: Teletype
+#6 41.26 Updating certificates in /etc/ssl/certs...
+#6 43.01 150 added, 0 removed; done.
+#6 43.14 Processing triggers for libc-bin (2.36-9+deb12u14) ...
+#6 43.29 Processing triggers for ca-certificates (20250419~deb12u1) ...
+#6 43.32 Updating certificates in /etc/ssl/certs...
+#6 44.23 0 added, 0 removed; done.
+#6 44.23 Running hooks in /etc/ca-certificates/update.d...
+#6 44.23 done.
+#6 44.28 + apt-get update
+#6 ...
+
+#7 [runtime  2/13] RUN set -eux;     printf '%s\n' 'Acquire::Retries "3";' > /etc/apt/apt.conf.d/80-retries;     sed -i 's|deb.debian.org|ftp.cn.debian.org|g' /etc/apt/sources.list.d/debian.sources;     apt-get update;     apt-get install -y --no-install-recommends ca-certificates;     rm -rf /var/lib/apt/lists/*
+#7 40.07 debconf: unable to initialize frontend: Readline
+#7 40.07 debconf: (Can't locate Term/ReadLine.pm in @INC (you may need to install the Term::ReadLine module) (@INC contains: /etc/perl /usr/local/lib/aarch64-linux-gnu/perl/5.36.0 /usr/local/share/perl/5.36.0 /usr/lib/aarch64-linux-gnu/perl5/5.36 /usr/share/perl5 /usr/lib/aarch64-linux-gnu/perl-base /usr/lib/aarch64-linux-gnu/perl/5.36 /usr/share/perl/5.36 /usr/local/lib/site_perl) at /usr/share/perl5/Debconf/FrontEnd/Readline.pm line 7.)
+#7 40.07 debconf: falling back to frontend: Teletype
+#7 41.27 Updating certificates in /etc/ssl/certs...
+#7 43.01 150 added, 0 removed; done.
+#7 43.15 Processing triggers for libc-bin (2.36-9+deb12u14) ...
+#7 43.29 Processing triggers for ca-certificates (20250419~deb12u1) ...
+#7 43.31 Updating certificates in /etc/ssl/certs...
+#7 44.28 0 added, 0 removed; done.
+#7 44.28 Running hooks in /etc/ca-certificates/update.d...
+#7 44.28 done.
+#7 44.33 + rm -rf /var/lib/apt/lists/auxfiles /var/lib/apt/lists/ftp.cn.debian.org_debian-security_dists_bookworm-security_InRelease /var/lib/apt/lists/ftp.cn.debian.org_debian-security_dists_bookworm-security_main_binary-arm64_Packages.lz4 /var/lib/apt/lists/ftp.cn.debian.org_debian_dists_bookworm-updates_InRelease /var/lib/apt/lists/ftp.cn.debian.org_debian_dists_bookworm-updates_main_binary-arm64_Packages.lz4 /var/lib/apt/lists/ftp.cn.debian.org_debian_dists_bookworm_InRelease /var/lib/apt/lists/ftp.cn.debian.org_debian_dists_bookworm_main_binary-arm64_Packages.lz4 /var/lib/apt/lists/lock /var/lib/apt/lists/partial
+#7 DONE 44.7s
+
+#8 [runtime  3/13] RUN groupadd --system --gid 10001 craft  && useradd --system --uid 10001 --gid craft --home-dir /home/craft --shell /usr/sbin/nologin craft
+#8 0.529 useradd warning: craft's uid 10001 is greater than SYS_UID_MAX 999
+#8 DONE 0.6s
+
+#6 [opencode-fetch 2/3] RUN set -eux;     printf '%s\n' 'Acquire::Retries "3";' > /etc/apt/apt.conf.d/80-retries;     sed -i 's|deb.debian.org|ftp.cn.debian.org|g' /etc/apt/sources.list.d/debian.sources;     apt-get update;     apt-get install -y --no-install-recommends ca-certificates;     apt-get update;     apt-get install -y --no-install-recommends curl;     rm -rf /var/lib/apt/lists/*
+#6 45.35 Hit:1 http://ftp.cn.debian.org/debian bookworm InRelease
+#6 ...
+
+#9 [runtime  4/13] RUN install -d -o root -g root -m 0755 /workspace  && install -d -o root -g root -m 0555 /workspace/inputs  && install -d -o craft -g craft -m 0755 /workspace/output  && install -d -o craft -g craft -m 0755 /home/craft/.local/share/opencode  && install -d -o craft -g craft -m 0755 /home/craft/.config/opencode  && install -d -o root -g root -m 0755 /etc/craft  && chown -R craft:craft /home/craft  && chmod 0755 /home/craft
+#9 DONE 0.3s
+
+#10 [runtime  5/13] RUN apt-get update  && apt-get install -y --no-install-recommends       python3       python3-openpyxl       libreoffice-calc-nogui       fonts-noto-cjk  && rm -rf /var/lib/apt/lists/*  && python3 -c 'import openpyxl,sys;print("openpyxl",openpyxl.__version__,"on",sys.version.split()[0])'  && soffice --version
+#10 1.216 Get:1 http://ftp.cn.debian.org/debian bookworm InRelease [151 kB]
+#10 2.786 Get:2 http://ftp.cn.debian.org/debian bookworm-updates InRelease [55.4 kB]
+#10 4.095 Get:3 http://ftp.cn.debian.org/debian-security bookworm-security InRelease [34.8 kB]
+#10 5.257 Get:4 http://ftp.cn.debian.org/debian bookworm/main arm64 Packages [8689 kB]
+#10 ...
+
+#6 [opencode-fetch 2/3] RUN set -eux;     printf '%s\n' 'Acquire::Retries "3";' > /etc/apt/apt.conf.d/80-retries;     sed -i 's|deb.debian.org|ftp.cn.debian.org|g' /etc/apt/sources.list.d/debian.sources;     apt-get update;     apt-get install -y --no-install-recommends ca-certificates;     apt-get update;     apt-get install -y --no-install-recommends curl;     rm -rf /var/lib/apt/lists/*
+#6 46.33 Hit:2 http://ftp.cn.debian.org/debian bookworm-updates InRelease
+#6 47.27 Hit:3 http://ftp.cn.debian.org/debian-security bookworm-security InRelease
+#6 47.32 Reading package lists...
+#6 47.92 + apt-get install -y --no-install-recommends curl
+#6 47.93 Reading package lists...
+#6 48.58 Building dependency tree...
+#6 48.82 Reading state information...
+#6 49.19 The following additional packages will be installed:
+#6 49.19   libbrotli1 libcurl4 libgssapi-krb5-2 libk5crypto3 libkeyutils1 libkrb5-3
+#6 49.19   libkrb5support0 libldap-2.5-0 libnghttp2-14 libpsl5 librtmp1 libsasl2-2
+#6 49.19   libsasl2-modules-db libssh2-1
+#6 49.19 Suggested packages:
+#6 49.19   krb5-doc krb5-user
+#6 49.19 Recommended packages:
+#6 49.19   krb5-locales libldap-common publicsuffix libsasl2-modules
+#6 49.35 The following NEW packages will be installed:
+#6 49.35   curl libbrotli1 libcurl4 libgssapi-krb5-2 libk5crypto3 libkeyutils1
+#6 49.35   libkrb5-3 libkrb5support0 libldap-2.5-0 libnghttp2-14 libpsl5 librtmp1
+#6 49.35   libsasl2-2 libsasl2-modules-db libssh2-1
+#6 50.38 0 upgraded, 15 newly installed, 0 to remove and 1 not upgraded.
+#6 50.38 Need to get 2113 kB of archives.
+#6 50.38 After this operation, 6189 kB of additional disk space will be used.
+#6 50.38 Get:1 http://ftp.cn.debian.org/debian bookworm/main arm64 libbrotli1 arm64 1.0.9-2+b6 [269 kB]
+#6 52.35 Get:2 http://ftp.cn.debian.org/debian bookworm/main arm64 libkrb5support0 arm64 1.20.1-2+deb12u5 [32.6 kB]
+#6 56.33 Get:3 http://ftp.cn.debian.org/debian bookworm/main arm64 libk5crypto3 arm64 1.20.1-2+deb12u5 [79.9 kB]
+#6 58.67 Get:4 http://ftp.cn.debian.org/debian bookworm/main arm64 libkeyutils1 arm64 1.6.3-2 [8844 B]
+#6 ...
+
+#10 [runtime  5/13] RUN apt-get update  && apt-get install -y --no-install-recommends       python3       python3-openpyxl       libreoffice-calc-nogui       fonts-noto-cjk  && rm -rf /var/lib/apt/lists/*  && python3 -c 'import openpyxl,sys;print("openpyxl",openpyxl.__version__,"on",sys.version.split()[0])'  && soffice --version
+#10 13.78 Get:5 http://ftp.cn.debian.org/debian bookworm-updates/main arm64 Packages [6936 B]
+#10 14.72 Get:6 http://ftp.cn.debian.org/debian-security bookworm-security/main arm64 Packages [339 kB]
+#10 15.51 Fetched 9277 kB in 15s (607 kB/s)
+#10 15.51 Reading package lists...
+#10 15.94 Reading package lists...
+#10 16.57 Building dependency tree...
+#10 16.76 Reading state information...
+#10 17.11 The following additional packages will be installed:
+#10 17.11   coinor-libcbc3 coinor-libcgl1 coinor-libclp1 coinor-libcoinmp1v5
+#10 17.11   coinor-libcoinutils3v5 coinor-libosi1v5 dirmngr fontconfig fontconfig-config
+#10 17.11   fonts-dejavu-core fonts-opensymbol gnupg gnupg-l10n gnupg-utils gpg
+#10 17.11   gpg-agent gpg-wks-client gpg-wks-server gpgconf gpgsm libabsl20220623
+#10 17.11   libassuan0 libblas3 libboost-filesystem1.74.0 libboost-iostreams1.74.0
+#10 17.11   libboost-locale1.74.0 libboost-thread1.74.0 libbrotli1 libbsd0 libcairo2
+#10 17.11   libclucene-contribs1v5 libclucene-core1v5 libcolamd2 libcurl3-gnutls
+#10 17.11   libdconf1 libdeflate0 libeot0 libetonyek-0.1-1 libexpat1 libexttextcat-2.0-0
+#10 17.11   libexttextcat-data libfontconfig1 libfreetype6 libgfortran5 libglib2.0-0
+#10 17.11   libgpgme11 libgpgmepp6 libgraphite2-3 libgssapi-krb5-2 libharfbuzz-icu0
+#10 17.11   libharfbuzz0b libhunspell-1.7-0 libhyphen0 libicu72 libjbig0 libjpeg62-turbo
+#10 17.11   libk5crypto3 libkeyutils1 libkrb5-3 libkrb5support0 libksba8
+#10 17.11   liblangtag-common liblangtag1 liblapack3 liblcms2-2 libldap-2.5-0 liblerc4
+#10 17.11   libltdl7 libmhash2 libmwaw-0.3-3 libmythes-1.2-0 libncursesw6 libnghttp2-14
+#10 17.11   libnpth0 libnsl2 libnspr4 libnss3 libnumbertext-1.0-0 libnumbertext-data
+#10 17.11   libodfgen-0.1-1 libopenjp2-7 liborcus-0.17-0 liborcus-parser-0.17-0
+#10 17.11   libpixman-1-0 libpng16-16 libpoppler126 libpsl5 libpython3-stdlib
+#10 17.11   libpython3.11-minimal libpython3.11-stdlib libraptor2-0 librasqal3 librdf0
+#10 17.11   libreadline8 libreoffice-base-core libreoffice-common libreoffice-core-nogui
+#10 17.11   libreoffice-style-colibre librevenge-0.0-0 librtmp1 libsasl2-2
+#10 17.11   libsasl2-modules-db libsqlite3-0 libssh2-1 libstaroffice-0.0-0
+#10 17.11   libsuitesparseconfig5 libtiff6 libtirpc-common libtirpc3 libuno-cppu3
+#10 17.11   libuno-cppuhelpergcc3-3 libuno-purpenvhelpergcc3-3 libuno-sal3
+#10 17.11   libuno-salhelpergcc3-3 libwebp7 libwps-0.4-4 libx11-6 libx11-data libxau6
+#10 17.11   libxcb-render0 libxcb-shm0 libxcb1 libxdmcp6 libxext6 libxml2 libxmlsec1
+#10 17.11   libxmlsec1-nss libxrender1 libxslt1.1 libyajl2 lp-solve media-types
+#10 17.11   pinentry-curses python3-et-xmlfile python3-jdcal python3-lxml
+#10 17.12   python3-minimal python3.11 python3.11-minimal readline-common sensible-utils
+#10 17.12   ucf uno-libs-private ure
+#10 17.12 Suggested packages:
+#10 17.12   dbus-user-session libpam-systemd pinentry-gnome3 tor fonts-noto-cjk-extra
+#10 17.12   parcimonie xloadimage scdaemon low-memory-monitor krb5-doc krb5-user
+#10 17.12   liblcms2-utils raptor2-utils rasqal-utils librdf-storage-mysql
+#10 17.12   librdf-storage-postgresql librdf-storage-sqlite librdf-storage-virtuoso
+#10 17.12   redland-utils libreoffice-base pinentry-doc python3-doc python3-tk
+#10 17.12   python3-venv python-lxml-doc python3.11-venv python3.11-doc binutils
+#10 17.12   binfmt-support readline-doc
+#10 17.12 Recommended packages:
+#10 17.12   libglib2.0-data shared-mime-info xdg-user-dirs hunspell-en-us
+#10 17.12   | hunspell-dictionary | myspell-dictionary krb5-locales libldap-common
+#10 17.12   libgpm2 poppler-data publicsuffix fonts-liberation2
+#10 17.12   | ttf-mscorefonts-installer apparmor xdg-utils python3-uno libpaper-utils
+#10 17.12   libsasl2-modules python3-bs4 python3-html5lib python3-pytest python3-pil
+#10 18.38 The following NEW packages will be installed:
+#10 18.38   coinor-libcbc3 coinor-libcgl1 coinor-libclp1 coinor-libcoinmp1v5
+#10 18.38   coinor-libcoinutils3v5 coinor-libosi1v5 dirmngr fontconfig fontconfig-config
+#10 18.38   fonts-dejavu-core fonts-noto-cjk fonts-opensymbol gnupg gnupg-l10n
+#10 18.38   gnupg-utils gpg gpg-agent gpg-wks-client gpg-wks-server gpgconf gpgsm
+#10 18.38   libabsl20220623 libassuan0 libblas3 libboost-filesystem1.74.0
+#10 18.38   libboost-iostreams1.74.0 libboost-locale1.74.0 libboost-thread1.74.0
+#10 18.38   libbrotli1 libbsd0 libcairo2 libclucene-contribs1v5 libclucene-core1v5
+#10 18.38   libcolamd2 libcurl3-gnutls libdconf1 libdeflate0 libeot0 libetonyek-0.1-1
+#10 18.38   libexpat1 libexttextcat-2.0-0 libexttextcat-data libfontconfig1 libfreetype6
+#10 18.38   libgfortran5 libglib2.0-0 libgpgme11 libgpgmepp6 libgraphite2-3
+#10 18.38   libgssapi-krb5-2 libharfbuzz-icu0 libharfbuzz0b libhunspell-1.7-0 libhyphen0
+#10 18.38   libicu72 libjbig0 libjpeg62-turbo libk5crypto3 libkeyutils1 libkrb5-3
+#10 18.38   libkrb5support0 libksba8 liblangtag-common liblangtag1 liblapack3 liblcms2-2
+#10 18.38   libldap-2.5-0 liblerc4 libltdl7 libmhash2 libmwaw-0.3-3 libmythes-1.2-0
+#10 18.38   libncursesw6 libnghttp2-14 libnpth0 libnsl2 libnspr4 libnss3
+#10 18.38   libnumbertext-1.0-0 libnumbertext-data libodfgen-0.1-1 libopenjp2-7
+#10 18.38   liborcus-0.17-0 liborcus-parser-0.17-0 libpixman-1-0 libpng16-16
+#10 18.38   libpoppler126 libpsl5 libpython3-stdlib libpython3.11-minimal
+#10 18.38   libpython3.11-stdlib libraptor2-0 librasqal3 librdf0 libreadline8
+#10 18.38   libreoffice-base-core libreoffice-calc-nogui libreoffice-common
+#10 18.38   libreoffice-core-nogui libreoffice-style-colibre librevenge-0.0-0 librtmp1
+#10 18.38   libsasl2-2 libsasl2-modules-db libsqlite3-0 libssh2-1 libstaroffice-0.0-0
+#10 18.38   libsuitesparseconfig5 libtiff6 libtirpc-common libtirpc3 libuno-cppu3
+#10 18.38   libuno-cppuhelpergcc3-3 libuno-purpenvhelpergcc3-3 libuno-sal3
+#10 18.38   libuno-salhelpergcc3-3 libwebp7 libwps-0.4-4 libx11-6 libx11-data libxau6
+#10 18.38   libxcb-render0 libxcb-shm0 libxcb1 libxdmcp6 libxext6 libxml2 libxmlsec1
+#10 18.38   libxmlsec1-nss libxrender1 libxslt1.1 libyajl2 lp-solve media-types
+#10 18.38   pinentry-curses python3 python3-et-xmlfile python3-jdcal python3-lxml
+#10 18.38   python3-minimal python3-openpyxl python3.11 python3.11-minimal
+#10 18.38   readline-common sensible-utils ucf uno-libs-private ure
+#10 19.46 0 upgraded, 148 newly installed, 0 to remove and 1 not upgraded.
+#10 19.46 Need to get 180 MB of archives.
+#10 19.46 After this operation, 501 MB of additional disk space will be used.
+#10 19.46 Get:1 http://ftp.cn.debian.org/debian bookworm/main arm64 libpython3.11-minimal arm64 3.11.2-6+deb12u8 [811 kB]
+#10 ...
+
+#6 [opencode-fetch 2/3] RUN set -eux;     printf '%s\n' 'Acquire::Retries "3";' > /etc/apt/apt.conf.d/80-retries;     sed -i 's|deb.debian.org|ftp.cn.debian.org|g' /etc/apt/sources.list.d/debian.sources;     apt-get update;     apt-get install -y --no-install-recommends ca-certificates;     apt-get update;     apt-get install -y --no-install-recommends curl;     rm -rf /var/lib/apt/lists/*
+#6 59.67 Get:5 http://ftp.cn.debian.org/debian bookworm/main arm64 libkrb5-3 arm64 1.20.1-2+deb12u5 [316 kB]
+#6 61.35 Get:6 http://ftp.cn.debian.org/debian bookworm/main arm64 libgssapi-krb5-2 arm64 1.20.1-2+deb12u5 [124 kB]
+#6 62.87 Get:7 http://ftp.cn.debian.org/debian bookworm/main arm64 libsasl2-modules-db arm64 2.1.28+dfsg-10 [20.8 kB]
+#6 64.33 Get:8 http://ftp.cn.debian.org/debian bookworm/main arm64 libsasl2-2 arm64 2.1.28+dfsg-10 [58.0 kB]
+#6 65.88 Get:9 http://ftp.cn.debian.org/debian bookworm/main arm64 libldap-2.5-0 arm64 2.5.13+dfsg-5 [171 kB]
+#6 ...
+
+#10 [runtime  5/13] RUN apt-get update  && apt-get install -y --no-install-recommends       python3       python3-openpyxl       libreoffice-calc-nogui       fonts-noto-cjk  && rm -rf /var/lib/apt/lists/*  && python3 -c 'import openpyxl,sys;print("openpyxl",openpyxl.__version__,"on",sys.version.split()[0])'  && soffice --version
+#10 26.66 Get:2 http://ftp.cn.debian.org/debian-security bookworm-security/main arm64 libexpat1 arm64 2.5.0-1+deb12u3 [87.9 kB]
+#10 33.15 Get:3 http://ftp.cn.debian.org/debian bookworm/main arm64 python3.11-minimal arm64 3.11.2-6+deb12u8 [1861 kB]
+#10 ...
+
+#6 [opencode-fetch 2/3] RUN set -eux;     printf '%s\n' 'Acquire::Retries "3";' > /etc/apt/apt.conf.d/80-retries;     sed -i 's|deb.debian.org|ftp.cn.debian.org|g' /etc/apt/sources.list.d/debian.sources;     apt-get update;     apt-get install -y --no-install-recommends ca-certificates;     apt-get update;     apt-get install -y --no-install-recommends curl;     rm -rf /var/lib/apt/lists/*
+#6 72.41 Get:10 http://ftp.cn.debian.org/debian bookworm/main arm64 libnghttp2-14 arm64 1.52.0-1+deb12u3 [69.0 kB]
+#6 78.82 Get:11 http://ftp.cn.debian.org/debian bookworm/main arm64 libpsl5 arm64 0.21.2-1 [58.6 kB]
+#6 85.20 Get:12 http://ftp.cn.debian.org/debian bookworm/main arm64 librtmp1 arm64 2.4+20151223.gitfa8646d.1-2+b2 [59.4 kB]
+#6 ...
+
+#10 [runtime  5/13] RUN apt-get update  && apt-get install -y --no-install-recommends       python3       python3-openpyxl       libreoffice-calc-nogui       fonts-noto-cjk  && rm -rf /var/lib/apt/lists/*  && python3 -c 'import openpyxl,sys;print("openpyxl",openpyxl.__version__,"on",sys.version.split()[0])'  && soffice --version
+#10 40.75 Get:4 http://ftp.cn.debian.org/debian bookworm/main arm64 python3-minimal arm64 3.11.2-1+b1 [26.3 kB]
+#10 ...
+
+#6 [opencode-fetch 2/3] RUN set -eux;     printf '%s\n' 'Acquire::Retries "3";' > /etc/apt/apt.conf.d/80-retries;     sed -i 's|deb.debian.org|ftp.cn.debian.org|g' /etc/apt/sources.list.d/debian.sources;     apt-get update;     apt-get install -y --no-install-recommends ca-certificates;     apt-get update;     apt-get install -y --no-install-recommends curl;     rm -rf /var/lib/apt/lists/*
+#6 91.61 Get:13 http://ftp.cn.debian.org/debian-security bookworm-security/main arm64 libssh2-1 arm64 1.10.0-3+deb12u1 [169 kB]
+#6 98.17 Get:14 http://ftp.cn.debian.org/debian bookworm/main arm64 libcurl4 arm64 7.88.1-10+deb12u15 [367 kB]
+#6 ...
+
+#10 [runtime  5/13] RUN apt-get update  && apt-get install -y --no-install-recommends       python3       python3-openpyxl       libreoffice-calc-nogui       fonts-noto-cjk  && rm -rf /var/lib/apt/lists/*  && python3 -c 'import openpyxl,sys;print("openpyxl",openpyxl.__version__,"on",sys.version.split()[0])'  && soffice --version
+#10 46.95 Get:5 http://ftp.cn.debian.org/debian bookworm/main arm64 media-types all 10.0.0 [26.1 kB]
+#10 53.13 Get:6 http://ftp.cn.debian.org/debian bookworm/main arm64 libncursesw6 arm64 6.4-4 [122 kB]
+#10 ...
+
+#6 [opencode-fetch 2/3] RUN set -eux;     printf '%s\n' 'Acquire::Retries "3";' > /etc/apt/apt.conf.d/80-retries;     sed -i 's|deb.debian.org|ftp.cn.debian.org|g' /etc/apt/sources.list.d/debian.sources;     apt-get update;     apt-get install -y --no-install-recommends ca-certificates;     apt-get update;     apt-get install -y --no-install-recommends curl;     rm -rf /var/lib/apt/lists/*
+#6 105.0 Get:15 http://ftp.cn.debian.org/debian bookworm/main arm64 curl arm64 7.88.1-10+deb12u15 [310 kB]
+#6 106.0 debconf: delaying package configuration, since apt-utils is not installed
+#6 106.0 Fetched 2113 kB in 56s (37.5 kB/s)
+#6 106.0 Selecting previously unselected package libbrotli1:arm64.
+#6 106.0 (Reading database ... (Reading database ... 5%(Reading database ... 10%(Reading database ... 15%(Reading database ... 20%(Reading database ... 25%(Reading database ... 30%(Reading database ... 35%(Reading database ... 40%(Reading database ... 45%(Reading database ... 50%(Reading database ... 55%(Reading database ... 60%(Reading database ... 65%(Reading database ... 70%(Reading database ... 75%(Reading database ... 80%(Reading database ... 85%(Reading database ... 90%(Reading database ... 95%(Reading database ... 100%(Reading database ... 6587 files and directories currently installed.)
+#6 106.1 Preparing to unpack .../00-libbrotli1_1.0.9-2+b6_arm64.deb ...
+#6 106.1 Unpacking libbrotli1:arm64 (1.0.9-2+b6) ...
+#6 106.2 Selecting previously unselected package libkrb5support0:arm64.
+#6 106.2 Preparing to unpack .../01-libkrb5support0_1.20.1-2+deb12u5_arm64.deb ...
+#6 106.3 Unpacking libkrb5support0:arm64 (1.20.1-2+deb12u5) ...
+#6 106.4 Selecting previously unselected package libk5crypto3:arm64.
+#6 106.4 Preparing to unpack .../02-libk5crypto3_1.20.1-2+deb12u5_arm64.deb ...
+#6 106.4 Unpacking libk5crypto3:arm64 (1.20.1-2+deb12u5) ...
+#6 106.5 Selecting previously unselected package libkeyutils1:arm64.
+#6 106.5 Preparing to unpack .../03-libkeyutils1_1.6.3-2_arm64.deb ...
+#6 106.5 Unpacking libkeyutils1:arm64 (1.6.3-2) ...
+#6 106.5 Selecting previously unselected package libkrb5-3:arm64.
+#6 106.5 Preparing to unpack .../04-libkrb5-3_1.20.1-2+deb12u5_arm64.deb ...
+#6 106.5 Unpacking libkrb5-3:arm64 (1.20.1-2+deb12u5) ...
+#6 106.6 Selecting previously unselected package libgssapi-krb5-2:arm64.
+#6 106.6 Preparing to unpack .../05-libgssapi-krb5-2_1.20.1-2+deb12u5_arm64.deb ...
+#6 106.6 Unpacking libgssapi-krb5-2:arm64 (1.20.1-2+deb12u5) ...
+#6 106.7 Selecting previously unselected package libsasl2-modules-db:arm64.
+#6 106.7 Preparing to unpack .../06-libsasl2-modules-db_2.1.28+dfsg-10_arm64.deb ...
+#6 106.7 Unpacking libsasl2-modules-db:arm64 (2.1.28+dfsg-10) ...
+#6 106.8 Selecting previously unselected package libsasl2-2:arm64.
+#6 106.8 Preparing to unpack .../07-libsasl2-2_2.1.28+dfsg-10_arm64.deb ...
+#6 106.8 Unpacking libsasl2-2:arm64 (2.1.28+dfsg-10) ...
+#6 106.9 Selecting previously unselected package libldap-2.5-0:arm64.
+#6 106.9 Preparing to unpack .../08-libldap-2.5-0_2.5.13+dfsg-5_arm64.deb ...
+#6 106.9 Unpacking libldap-2.5-0:arm64 (2.5.13+dfsg-5) ...
+#6 107.0 Selecting previously unselected package libnghttp2-14:arm64.
+#6 107.0 Preparing to unpack .../09-libnghttp2-14_1.52.0-1+deb12u3_arm64.deb ...
+#6 107.0 Unpacking libnghttp2-14:arm64 (1.52.0-1+deb12u3) ...
+#6 107.2 Selecting previously unselected package libpsl5:arm64.
+#6 107.2 Preparing to unpack .../10-libpsl5_0.21.2-1_arm64.deb ...
+#6 107.2 Unpacking libpsl5:arm64 (0.21.2-1) ...
+#6 107.2 Selecting previously unselected package librtmp1:arm64.
+#6 107.2 Preparing to unpack .../11-librtmp1_2.4+20151223.gitfa8646d.1-2+b2_arm64.deb ...
+#6 107.2 Unpacking librtmp1:arm64 (2.4+20151223.gitfa8646d.1-2+b2) ...
+#6 107.3 Selecting previously unselected package libssh2-1:arm64.
+#6 107.3 Preparing to unpack .../12-libssh2-1_1.10.0-3+deb12u1_arm64.deb ...
+#6 107.3 Unpacking libssh2-1:arm64 (1.10.0-3+deb12u1) ...
+#6 107.4 Selecting previously unselected package libcurl4:arm64.
+#6 107.4 Preparing to unpack .../13-libcurl4_7.88.1-10+deb12u15_arm64.deb ...
+#6 107.4 Unpacking libcurl4:arm64 (7.88.1-10+deb12u15) ...
+#6 107.5 Selecting previously unselected package curl.
+#6 107.5 Preparing to unpack .../14-curl_7.88.1-10+deb12u15_arm64.deb ...
+#6 107.5 Unpacking curl (7.88.1-10+deb12u15) ...
+#6 107.6 Setting up libkeyutils1:arm64 (1.6.3-2) ...
+#6 107.6 Setting up libpsl5:arm64 (0.21.2-1) ...
+#6 107.6 Setting up libbrotli1:arm64 (1.0.9-2+b6) ...
+#6 107.6 Setting up libnghttp2-14:arm64 (1.52.0-1+deb12u3) ...
+#6 107.7 Setting up libkrb5support0:arm64 (1.20.1-2+deb12u5) ...
+#6 107.7 Setting up libsasl2-modules-db:arm64 (2.1.28+dfsg-10) ...
+#6 107.7 Setting up librtmp1:arm64 (2.4+20151223.gitfa8646d.1-2+b2) ...
+#6 107.7 Setting up libk5crypto3:arm64 (1.20.1-2+deb12u5) ...
+#6 107.7 Setting up libsasl2-2:arm64 (2.1.28+dfsg-10) ...
+#6 107.7 Setting up libssh2-1:arm64 (1.10.0-3+deb12u1) ...
+#6 107.8 Setting up libkrb5-3:arm64 (1.20.1-2+deb12u5) ...
+#6 107.8 Setting up libldap-2.5-0:arm64 (2.5.13+dfsg-5) ...
+#6 107.8 Setting up libgssapi-krb5-2:arm64 (1.20.1-2+deb12u5) ...
+#6 107.8 Setting up libcurl4:arm64 (7.88.1-10+deb12u15) ...
+#6 107.8 Setting up curl (7.88.1-10+deb12u15) ...
+#6 107.8 Processing triggers for libc-bin (2.36-9+deb12u14) ...
+#6 107.9 + rm -rf /var/lib/apt/lists/auxfiles /var/lib/apt/lists/ftp.cn.debian.org_debian-security_dists_bookworm-security_InRelease /var/lib/apt/lists/ftp.cn.debian.org_debian-security_dists_bookworm-security_main_binary-arm64_Packages.lz4 /var/lib/apt/lists/ftp.cn.debian.org_debian_dists_bookworm-updates_InRelease /var/lib/apt/lists/ftp.cn.debian.org_debian_dists_bookworm-updates_main_binary-arm64_Packages.lz4 /var/lib/apt/lists/ftp.cn.debian.org_debian_dists_bookworm_InRelease /var/lib/apt/lists/ftp.cn.debian.org_debian_dists_bookworm_main_binary-arm64_Packages.lz4 /var/lib/apt/lists/lock /var/lib/apt/lists/partial
+#6 DONE 108.1s
+
+#10 [runtime  5/13] RUN apt-get update  && apt-get install -y --no-install-recommends       python3       python3-openpyxl       libreoffice-calc-nogui       fonts-noto-cjk  && rm -rf /var/lib/apt/lists/*  && python3 -c 'import openpyxl,sys;print("openpyxl",openpyxl.__version__,"on",sys.version.split()[0])'  && soffice --version
+#10 59.61 Get:7 http://ftp.cn.debian.org/debian bookworm/main arm64 libkrb5support0 arm64 1.20.1-2+deb12u5 [32.6 kB]
+#10 ...
+
+#11 [opencode-fetch 3/3] RUN set -eux;     case "arm64" in       amd64) arch=x64; digest="6ce6570e7db9a40e7bd3304ebdfff607920bde8cafd2eb5587bd7a26f89ba0b5";;       arm64) arch=arm64; digest="3557e87db8c7db70e8ebd42157df1246554120896b115c462b760ff248cf751e";;       *) echo "unsupported TARGETARCH arm64" >&2; exit 1;;     esac;     install -d /tmp/unpack;     curl -fsSL --http1.1 --retry 5 --retry-all-errors --retry-delay 3       -o /tmp/opencode.tar.gz       "https://github.com/anomalyco/opencode/releases/download/v1.18.4/opencode-linux-${arch}.tar.gz";     tar -xzf /tmp/opencode.tar.gz -C /tmp/unpack;     test -f /tmp/unpack/opencode;     echo "${digest}  /tmp/unpack/opencode" | sha256sum -c -;     install -m 0755 /tmp/unpack/opencode /usr/local/bin/opencode;     rm -rf /tmp/unpack /tmp/opencode.tar.gz;     install -d /tmp/oc-probe;     HOME=/tmp/oc-probe /usr/local/bin/opencode --version | grep -Fx "1.18.4"
+#11 0.343 + arch=arm64
+#11 0.343 + digest=3557e87db8c7db70e8ebd42157df1246554120896b115c462b760ff248cf751e
+#11 0.343 + install -d /tmp/unpack
+#11 0.346 + curl -fsSL --http1.1 --retry 5 --retry-all-errors --retry-delay 3 -o /tmp/opencode.tar.gz https://github.com/anomalyco/opencode/releases/download/v1.18.4/opencode-linux-arm64.tar.gz
+#11 ...
+
+#10 [runtime  5/13] RUN apt-get update  && apt-get install -y --no-install-recommends       python3       python3-openpyxl       libreoffice-calc-nogui       fonts-noto-cjk  && rm -rf /var/lib/apt/lists/*  && python3 -c 'import openpyxl,sys;print("openpyxl",openpyxl.__version__,"on",sys.version.split()[0])'  && soffice --version
+#10 65.82 Get:8 http://ftp.cn.debian.org/debian bookworm/main arm64 libk5crypto3 arm64 1.20.1-2+deb12u5 [79.9 kB]
+#10 72.20 Get:9 http://ftp.cn.debian.org/debian bookworm/main arm64 libkeyutils1 arm64 1.6.3-2 [8844 B]
+#10 79.64 Get:10 http://ftp.cn.debian.org/debian bookworm/main arm64 libkrb5-3 arm64 1.20.1-2+deb12u5 [316 kB]
+#10 89.64 Get:11 http://ftp.cn.debian.org/debian bookworm/main arm64 libgssapi-krb5-2 arm64 1.20.1-2+deb12u5 [124 kB]
+#10 97.64 Get:12 http://ftp.cn.debian.org/debian bookworm/main arm64 libtirpc-common all 1.3.3+ds-1 [14.0 kB]
+#10 99.64 Get:13 http://ftp.cn.debian.org/debian bookworm/main arm64 libtirpc3 arm64 1.3.3+ds-1 [80.9 kB]
+#10 102.6 Get:14 http://ftp.cn.debian.org/debian bookworm/main arm64 libnsl2 arm64 1.3.0-2 [36.9 kB]
+#10 104.7 Get:15 http://ftp.cn.debian.org/debian bookworm/main arm64 readline-common all 8.2-1.3 [69.0 kB]
+#10 107.6 Get:16 http://ftp.cn.debian.org/debian bookworm/main arm64 libreadline8 arm64 8.2-1.3 [155 kB]
+#10 111.7 Get:17 http://ftp.cn.debian.org/debian bookworm/main arm64 libsqlite3-0 arm64 3.40.1-2+deb12u2 [786 kB]
+#10 117.7 Get:18 http://ftp.cn.debian.org/debian bookworm/main arm64 libpython3.11-stdlib arm64 3.11.2-6+deb12u8 [1750 kB]
+#10 128.6 Get:19 http://ftp.cn.debian.org/debian bookworm/main arm64 python3.11 arm64 3.11.2-6+deb12u8 [574 kB]
+#10 ...
+
+#11 [opencode-fetch 3/3] RUN set -eux;     case "arm64" in       amd64) arch=x64; digest="6ce6570e7db9a40e7bd3304ebdfff607920bde8cafd2eb5587bd7a26f89ba0b5";;       arm64) arch=arm64; digest="3557e87db8c7db70e8ebd42157df1246554120896b115c462b760ff248cf751e";;       *) echo "unsupported TARGETARCH arm64" >&2; exit 1;;     esac;     install -d /tmp/unpack;     curl -fsSL --http1.1 --retry 5 --retry-all-errors --retry-delay 3       -o /tmp/opencode.tar.gz       "https://github.com/anomalyco/opencode/releases/download/v1.18.4/opencode-linux-${arch}.tar.gz";     tar -xzf /tmp/opencode.tar.gz -C /tmp/unpack;     test -f /tmp/unpack/opencode;     echo "${digest}  /tmp/unpack/opencode" | sha256sum -c -;     install -m 0755 /tmp/unpack/opencode /usr/local/bin/opencode;     rm -rf /tmp/unpack /tmp/opencode.tar.gz;     install -d /tmp/oc-probe;     HOME=/tmp/oc-probe /usr/local/bin/opencode --version | grep -Fx "1.18.4"
+#11 66.38 + tar -xzf /tmp/opencode.tar.gz -C /tmp/unpack
+#11 67.32 + test -f /tmp/unpack/opencode
+#11 67.32 + echo 3557e87db8c7db70e8ebd42157df1246554120896b115c462b760ff248cf751e  /tmp/unpack/opencode
+#11 67.32 + sha256sum -c -
+#11 67.68 /tmp/unpack/opencode: OK
+#11 67.68 + install -m 0755 /tmp/unpack/opencode /usr/local/bin/opencode
+#11 67.68 + rm -rf /tmp/unpack /tmp/opencode.tar.gz
+#11 67.69 + install -d /tmp/oc-probe
+#11 67.69 + HOME=/tmp/oc-probe /usr/local/bin/opencode --version
+#11 67.69 + grep -Fx 1.18.4
+#11 68.09 1.18.4
+#11 DONE 68.3s
+
+#10 [runtime  5/13] RUN apt-get update  && apt-get install -y --no-install-recommends       python3       python3-openpyxl       libreoffice-calc-nogui       fonts-noto-cjk  && rm -rf /var/lib/apt/lists/*  && python3 -c 'import openpyxl,sys;print("openpyxl",openpyxl.__version__,"on",sys.version.split()[0])'  && soffice --version
+#10 130.8 Get:20 http://ftp.cn.debian.org/debian bookworm/main arm64 libpython3-stdlib arm64 3.11.2-1+b1 [9296 B]
+#10 131.8 Get:21 http://ftp.cn.debian.org/debian bookworm/main arm64 python3 arm64 3.11.2-1+b1 [26.3 kB]
+#10 132.9 Get:22 http://ftp.cn.debian.org/debian bookworm/main arm64 sensible-utils all 0.0.17+nmu1 [19.0 kB]
+#10 134.1 Get:23 http://ftp.cn.debian.org/debian bookworm/main arm64 ucf all 3.0043+nmu1+deb12u1 [55.3 kB]
+#10 135.5 Get:24 http://ftp.cn.debian.org/debian bookworm/main arm64 libblas3 arm64 3.11.0-2 [91.4 kB]
+#10 137.0 Get:25 http://ftp.cn.debian.org/debian bookworm/main arm64 libgfortran5 arm64 12.2.0-14+deb12u1 [340 kB]
+#10 140.8 Err:26 http://ftp.cn.debian.org/debian bookworm/main arm64 liblapack3 arm64 3.11.0-2
+#10 140.8   502  Bad Gateway [IP: 198.18.0.120 80]
+#10 141.9 Get:27 http://ftp.cn.debian.org/debian bookworm/main arm64 coinor-libcoinutils3v5 arm64 2.11.4+repack1-2 [377 kB]
+#10 143.6 Get:28 http://ftp.cn.debian.org/debian bookworm/main arm64 coinor-libosi1v5 arm64 0.108.6+repack1-2 [229 kB]
+#10 145.3 Get:29 http://ftp.cn.debian.org/debian bookworm/main arm64 coinor-libclp1 arm64 1.17.6-3 [701 kB]
+#10 147.2 Get:30 http://ftp.cn.debian.org/debian bookworm/main arm64 coinor-libcgl1 arm64 0.60.3+repack1-4 [335 kB]
+#10 148.9 Get:31 http://ftp.cn.debian.org/debian bookworm/main arm64 coinor-libcbc3 arm64 2.10.8+ds1-1 [608 kB]
+#10 150.8 Get:32 http://ftp.cn.debian.org/debian bookworm/main arm64 coinor-libcoinmp1v5 arm64 1.8.3-3 [29.4 kB]
+#10 152.0 Get:33 http://ftp.cn.debian.org/debian bookworm/main arm64 libassuan0 arm64 2.5.5-5 [45.9 kB]
+#10 153.4 Get:34 http://ftp.cn.debian.org/debian bookworm/main arm64 gpgconf arm64 2.2.40-1.1+deb12u2 [557 kB]
+#10 155.2 Get:35 http://ftp.cn.debian.org/debian bookworm/main arm64 libksba8 arm64 1.6.3-2 [119 kB]
+#10 156.7 Get:36 http://ftp.cn.debian.org/debian bookworm/main arm64 libsasl2-modules-db arm64 2.1.28+dfsg-10 [20.8 kB]
+#10 157.8 Get:37 http://ftp.cn.debian.org/debian bookworm/main arm64 libsasl2-2 arm64 2.1.28+dfsg-10 [58.0 kB]
+#10 159.2 Get:38 http://ftp.cn.debian.org/debian bookworm/main arm64 libldap-2.5-0 arm64 2.5.13+dfsg-5 [171 kB]
+#10 160.7 Get:39 http://ftp.cn.debian.org/debian bookworm/main arm64 libnpth0 arm64 1.6-3 [18.6 kB]
+#10 161.9 Get:40 http://ftp.cn.debian.org/debian bookworm/main arm64 dirmngr arm64 2.2.40-1.1+deb12u2 [769 kB]
+#10 163.8 Get:41 http://ftp.cn.debian.org/debian bookworm/main arm64 libbrotli1 arm64 1.0.9-2+b6 [269 kB]
+#10 165.5 Get:42 http://ftp.cn.debian.org/debian bookworm/main arm64 libpng16-16 arm64 1.6.39-2+deb12u5 [270 kB]
+#10 169.3 Ign:43 http://ftp.cn.debian.org/debian bookworm/main arm64 libfreetype6 arm64 2.12.1+dfsg-5+deb12u4
+#10 172.4 Err:44 http://ftp.cn.debian.org/debian bookworm/main arm64 fonts-dejavu-core all 2.37-6
+#10 172.4   502  Bad Gateway [IP: 198.18.0.120 80]
+#10 173.4 Get:45 http://ftp.cn.debian.org/debian bookworm/main arm64 fontconfig-config arm64 2.14.1-4 [315 kB]
+#10 175.1 Get:46 http://ftp.cn.debian.org/debian bookworm/main arm64 libfontconfig1 arm64 2.14.1-4 [381 kB]
+#10 177.0 Get:47 http://ftp.cn.debian.org/debian bookworm/main arm64 fontconfig arm64 2.14.1-4 [449 kB]
+#10 178.7 Get:48 http://ftp.cn.debian.org/debian bookworm/main arm64 fonts-noto-cjk all 1:20220127+repack1-1 [56.5 MB]
+#10 228.7 Get:49 http://ftp.cn.debian.org/debian bookworm/main arm64 fonts-opensymbol all 4:102.12+LibO7.4.7-1+deb12u14 [115 kB]
+#10 230.1 Get:50 http://ftp.cn.debian.org/debian bookworm/main arm64 gnupg-l10n all 2.2.40-1.1+deb12u2 [1093 kB]
+#10 232.1 Get:51 http://ftp.cn.debian.org/debian bookworm/main arm64 gnupg-utils arm64 2.2.40-1.1+deb12u2 [879 kB]
+#10 234.1 Get:52 http://ftp.cn.debian.org/debian bookworm/main arm64 gpg arm64 2.2.40-1.1+deb12u2 [902 kB]
+#10 236.2 Get:53 http://ftp.cn.debian.org/debian bookworm/main arm64 pinentry-curses arm64 1.2.1-1 [75.2 kB]
+#10 237.8 Get:54 http://ftp.cn.debian.org/debian bookworm/main arm64 gpg-agent arm64 2.2.40-1.1+deb12u2 [673 kB]
+#10 239.8 Get:55 http://ftp.cn.debian.org/debian bookworm/main arm64 gpg-wks-client arm64 2.2.40-1.1+deb12u2 [533 kB]
+#10 241.7 Get:56 http://ftp.cn.debian.org/debian bookworm/main arm64 gpg-wks-server arm64 2.2.40-1.1+deb12u2 [525 kB]
+#10 243.6 Get:57 http://ftp.cn.debian.org/debian bookworm/main arm64 gpgsm arm64 2.2.40-1.1+deb12u2 [650 kB]
+#10 245.6 Get:58 http://ftp.cn.debian.org/debian bookworm/main arm64 gnupg all 2.2.40-1.1+deb12u2 [846 kB]
+#10 247.6 Get:59 http://ftp.cn.debian.org/debian bookworm/main arm64 libabsl20220623 arm64 20220623.1-1+deb12u2 [363 kB]
+#10 249.3 Get:60 http://ftp.cn.debian.org/debian bookworm/main arm64 libboost-filesystem1.74.0 arm64 1.74.0+ds1-21 [254 kB]
+#10 251.0 Get:61 http://ftp.cn.debian.org/debian bookworm/main arm64 libboost-iostreams1.74.0 arm64 1.74.0+ds1-21 [238 kB]
+#10 252.6 Get:62 http://ftp.cn.debian.org/debian bookworm/main arm64 libboost-thread1.74.0 arm64 1.74.0+ds1-21 [253 kB]
+#10 254.3 Get:63 http://ftp.cn.debian.org/debian bookworm/main arm64 libicu72 arm64 72.1-3+deb12u1 [9202 kB]
+#10 263.0 Get:64 http://ftp.cn.debian.org/debian bookworm/main arm64 libboost-locale1.74.0 arm64 1.74.0+ds1-21 [420 kB]
+#10 264.7 Get:65 http://ftp.cn.debian.org/debian bookworm/main arm64 libbsd0 arm64 0.11.7-2 [115 kB]
+#10 266.2 Get:66 http://ftp.cn.debian.org/debian bookworm/main arm64 libpixman-1-0 arm64 0.42.2-1 [470 kB]
+#10 268.0 Get:67 http://ftp.cn.debian.org/debian bookworm/main arm64 libxau6 arm64 1:1.0.9-1 [19.7 kB]
+#10 269.2 Get:68 http://ftp.cn.debian.org/debian bookworm/main arm64 libxdmcp6 arm64 1:1.1.2-3 [25.4 kB]
+#10 270.3 Get:69 http://ftp.cn.debian.org/debian bookworm/main arm64 libxcb1 arm64 1.15-1 [143 kB]
+#10 271.9 Get:70 http://ftp.cn.debian.org/debian bookworm/main arm64 libx11-data all 2:1.8.4-2+deb12u2 [292 kB]
+#10 273.6 Get:71 http://ftp.cn.debian.org/debian bookworm/main arm64 libx11-6 arm64 2:1.8.4-2+deb12u2 [735 kB]
+#10 275.6 Get:72 http://ftp.cn.debian.org/debian bookworm/main arm64 libxcb-render0 arm64 1.15-1 [115 kB]
+#10 277.1 Get:73 http://ftp.cn.debian.org/debian bookworm/main arm64 libxcb-shm0 arm64 1.15-1 [106 kB]
+#10 278.7 Get:74 http://ftp.cn.debian.org/debian bookworm/main arm64 libxext6 arm64 2:1.3.4-1+b1 [51.7 kB]
+#10 280.0 Get:75 http://ftp.cn.debian.org/debian bookworm/main arm64 libxrender1 arm64 1:0.9.10-1.1 [32.0 kB]
+#10 281.3 Get:76 http://ftp.cn.debian.org/debian bookworm/main arm64 libcairo2 arm64 1.16.0-7 [527 kB]
+#10 283.2 Get:77 http://ftp.cn.debian.org/debian bookworm/main arm64 libclucene-core1v5 arm64 2.3.3.4+dfsg-1.1 [434 kB]
+#10 285.0 Get:78 http://ftp.cn.debian.org/debian bookworm/main arm64 libclucene-contribs1v5 arm64 2.3.3.4+dfsg-1.1 [80.0 kB]
+#10 286.4 Get:79 http://ftp.cn.debian.org/debian bookworm/main arm64 libsuitesparseconfig5 arm64 1:5.12.0+dfsg-2 [23.8 kB]
+#10 287.6 Get:80 http://ftp.cn.debian.org/debian bookworm/main arm64 libcolamd2 arm64 1:5.12.0+dfsg-2 [31.8 kB]
+#10 288.8 Get:81 http://ftp.cn.debian.org/debian bookworm/main arm64 libnghttp2-14 arm64 1.52.0-1+deb12u3 [69.0 kB]
+#10 290.1 Get:82 http://ftp.cn.debian.org/debian bookworm/main arm64 libpsl5 arm64 0.21.2-1 [58.6 kB]
+#10 291.4 Get:83 http://ftp.cn.debian.org/debian bookworm/main arm64 librtmp1 arm64 2.4+20151223.gitfa8646d.1-2+b2 [59.4 kB]
+#10 292.7 Get:84 http://ftp.cn.debian.org/debian-security bookworm-security/main arm64 libssh2-1 arm64 1.10.0-3+deb12u1 [169 kB]
+#10 294.4 Get:85 http://ftp.cn.debian.org/debian bookworm/main arm64 libcurl3-gnutls arm64 7.88.1-10+deb12u15 [362 kB]
+#10 296.2 Get:86 http://ftp.cn.debian.org/debian bookworm/main arm64 libglib2.0-0 arm64 2.74.6-2+deb12u9 [1316 kB]
+#10 298.7 Get:87 http://ftp.cn.debian.org/debian bookworm/main arm64 libdconf1 arm64 0.40.0-4 [39.2 kB]
+#10 299.8 Get:88 http://ftp.cn.debian.org/debian bookworm/main arm64 libdeflate0 arm64 1.14-1 [54.3 kB]
+#10 301.1 Get:89 http://ftp.cn.debian.org/debian bookworm/main arm64 libeot0 arm64 0.01-5+b1 [26.3 kB]
+#10 302.3 Get:90 http://ftp.cn.debian.org/debian bookworm/main arm64 libxml2 arm64 2.9.14+dfsg-1.3~deb12u6 [620 kB]
+#10 304.2 Get:91 http://ftp.cn.debian.org/debian bookworm/main arm64 liblangtag-common all 0.6.4-2 [191 kB]
+#10 305.8 Get:92 http://ftp.cn.debian.org/debian bookworm/main arm64 liblangtag1 arm64 0.6.4-2 [48.6 kB]
+#10 307.1 Get:93 http://ftp.cn.debian.org/debian bookworm/main arm64 librevenge-0.0-0 arm64 0.0.5-3 [264 kB]
+#10 308.8 Get:94 http://ftp.cn.debian.org/debian bookworm/main arm64 libetonyek-0.1-1 arm64 0.1.10-3+b1 [1198 kB]
+#10 310.8 Get:95 http://ftp.cn.debian.org/debian bookworm/main arm64 libexttextcat-data all 3.4.5-1 [164 kB]
+#10 312.5 Get:96 http://ftp.cn.debian.org/debian bookworm/main arm64 libexttextcat-2.0-0 arm64 3.4.5-1 [14.8 kB]
+#10 313.6 Get:97 http://ftp.cn.debian.org/debian bookworm/main arm64 libgpgme11 arm64 1.18.0-3+b1 [286 kB]
+#10 315.3 Get:98 http://ftp.cn.debian.org/debian bookworm/main arm64 libgpgmepp6 arm64 1.18.0-3+b1 [283 kB]
+#10 317.0 Get:99 http://ftp.cn.debian.org/debian bookworm/main arm64 libgraphite2-3 arm64 1.3.14-1+deb12u1 [68.7 kB]
+#10 318.6 Get:100 http://ftp.cn.debian.org/debian bookworm/main arm64 libharfbuzz0b arm64 6.0.0+dfsg-3 [1914 kB]
+#10 320.8 Get:101 http://ftp.cn.debian.org/debian bookworm/main arm64 libharfbuzz-icu0 arm64 6.0.0+dfsg-3 [1557 kB]
+#10 323.0 Get:102 http://ftp.cn.debian.org/debian bookworm/main arm64 libhunspell-1.7-0 arm64 1.7.1-1 [178 kB]
+#10 324.6 Get:103 http://ftp.cn.debian.org/debian bookworm/main arm64 libhyphen0 arm64 2.8.8-7 [31.6 kB]
+#10 325.8 Get:104 http://ftp.cn.debian.org/debian bookworm/main arm64 libjbig0 arm64 2.1-6.1 [30.0 kB]
+#10 327.0 Get:105 http://ftp.cn.debian.org/debian bookworm/main arm64 libjpeg62-turbo arm64 1:2.1.5-2 [171 kB]
+#10 328.7 Get:106 http://ftp.cn.debian.org/debian bookworm/main arm64 liblcms2-2 arm64 2.14-2+deb12u1 [144 kB]
+#10 330.3 Get:107 http://ftp.cn.debian.org/debian bookworm/main arm64 liblerc4 arm64 4.0.0+ds-2 [138 kB]
+#10 331.9 Get:108 http://ftp.cn.debian.org/debian bookworm/main arm64 libltdl7 arm64 2.4.7-7~deb12u1 [392 kB]
+#10 333.7 Get:109 http://ftp.cn.debian.org/debian bookworm/main arm64 libmhash2 arm64 0.9.9.9-9 [99.9 kB]
+#10 335.2 Get:110 http://ftp.cn.debian.org/debian bookworm/main arm64 libmwaw-0.3-3 arm64 0.3.21-1 [2357 kB]
+#10 337.7 Get:111 http://ftp.cn.debian.org/debian bookworm/main arm64 libmythes-1.2-0 arm64 2:1.2.5-1 [11.0 kB]
+#10 338.7 Get:112 http://ftp.cn.debian.org/debian bookworm/main arm64 libnspr4 arm64 2:4.35-1 [105 kB]
+#10 340.2 Get:113 http://ftp.cn.debian.org/debian-security bookworm-security/main arm64 libnss3 arm64 2:3.87.1-1+deb12u4 [1216 kB]
+#10 342.4 Get:114 http://ftp.cn.debian.org/debian bookworm/main arm64 libnumbertext-data all 1.0.11-1 [70.2 kB]
+#10 343.6 Get:115 http://ftp.cn.debian.org/debian bookworm/main arm64 libnumbertext-1.0-0 arm64 1.0.11-1 [97.4 kB]
+#10 345.1 Get:116 http://ftp.cn.debian.org/debian bookworm/main arm64 libodfgen-0.1-1 arm64 0.1.8-2 [271 kB]
+#10 347.5 Get:117 http://ftp.cn.debian.org/debian bookworm/main arm64 libopenjp2-7 arm64 2.5.0-2+deb12u3 [176 kB]
+#10 349.0 Get:118 http://ftp.cn.debian.org/debian bookworm/main arm64 liborcus-parser-0.17-0 arm64 0.17.2-2+b2 [102 kB]
+#10 350.6 Get:119 http://ftp.cn.debian.org/debian bookworm/main arm64 liborcus-0.17-0 arm64 0.17.2-2+b2 [341 kB]
+#10 352.3 Get:120 http://ftp.cn.debian.org/debian bookworm/main arm64 libwebp7 arm64 1.2.4-0.2+deb12u1 [260 kB]
+#10 354.0 Get:121 http://ftp.cn.debian.org/debian bookworm/main arm64 libtiff6 arm64 4.5.0-6+deb12u4 [301 kB]
+#10 357.9 Err:122 http://ftp.cn.debian.org/debian-security bookworm-security/main arm64 libpoppler126 arm64 22.12.0-2+deb12u3
+#10 357.9   502  Bad Gateway [IP: 198.18.0.120 80]
+#10 359.0 Get:123 http://ftp.cn.debian.org/debian bookworm/main arm64 libxslt1.1 arm64 1.1.35-1+deb12u4 [221 kB]
+#10 360.5 Get:124 http://ftp.cn.debian.org/debian bookworm/main arm64 libyajl2 arm64 2.1.0-3+deb12u2 [21.8 kB]
+#10 361.6 Get:125 http://ftp.cn.debian.org/debian bookworm/main arm64 libraptor2-0 arm64 2.0.15-4+deb12u1 [146 kB]
+#10 363.2 Get:126 http://ftp.cn.debian.org/debian bookworm/main arm64 librasqal3 arm64 0.9.33-2 [177 kB]
+#10 364.7 Get:127 http://ftp.cn.debian.org/debian bookworm/main arm64 librdf0 arm64 1.0.17-3 [97.8 kB]
+#10 366.2 Get:128 http://ftp.cn.debian.org/debian bookworm/main arm64 libreoffice-style-colibre all 4:7.4.7-1+deb12u14 [7173 kB]
+#10 373.0 Get:129 http://ftp.cn.debian.org/debian bookworm/main arm64 libuno-sal3 arm64 4:7.4.7-1+deb12u14 [185 kB]
+#10 374.7 Get:130 http://ftp.cn.debian.org/debian bookworm/main arm64 libuno-salhelpergcc3-3 arm64 4:7.4.7-1+deb12u14 [38.5 kB]
+#10 375.9 Get:131 http://ftp.cn.debian.org/debian bookworm/main arm64 libuno-cppu3 arm64 4:7.4.7-1+deb12u14 [94.4 kB]
+#10 377.3 Get:132 http://ftp.cn.debian.org/debian bookworm/main arm64 uno-libs-private arm64 4:7.4.7-1+deb12u14 [200 kB]
+#10 379.0 Get:133 http://ftp.cn.debian.org/debian bookworm/main arm64 libuno-cppuhelpergcc3-3 arm64 4:7.4.7-1+deb12u14 [257 kB]
+#10 380.6 Get:134 http://ftp.cn.debian.org/debian bookworm/main arm64 libuno-purpenvhelpergcc3-3 arm64 4:7.4.7-1+deb12u14 [37.7 kB]
+#10 381.9 Get:135 http://ftp.cn.debian.org/debian bookworm/main arm64 ure arm64 4:7.4.7-1+deb12u14 [1127 kB]
+#10 386.1 Err:136 http://ftp.cn.debian.org/debian bookworm/main arm64 libreoffice-common all 4:7.4.7-1+deb12u14
+#10 386.1   502  Bad Gateway [IP: 198.18.0.120 80]
+#10 387.1 Get:137 http://ftp.cn.debian.org/debian bookworm/main arm64 libxmlsec1 arm64 1.2.37-2 [125 kB]
+#10 388.6 Get:138 http://ftp.cn.debian.org/debian bookworm/main arm64 libxmlsec1-nss arm64 1.2.37-2 [54.0 kB]
+#10 390.6 Get:139 http://ftp.cn.debian.org/debian bookworm/main arm64 libreoffice-core-nogui arm64 4:7.4.7-1+deb12u14 [25.3 MB]
+#10 411.9 Get:140 http://ftp.cn.debian.org/debian bookworm/main arm64 libreoffice-base-core arm64 4:7.4.7-1+deb12u14 [687 kB]
+#10 413.9 Get:141 http://ftp.cn.debian.org/debian bookworm/main arm64 lp-solve arm64 5.5.2.5-2 [268 kB]
+#10 415.6 Get:142 http://ftp.cn.debian.org/debian bookworm/main arm64 libstaroffice-0.0-0 arm64 0.0.7-1 [654 kB]
+#10 417.5 Get:143 http://ftp.cn.debian.org/debian bookworm/main arm64 libwps-0.4-4 arm64 0.4.13-1 [796 kB]
+#10 419.7 Get:144 http://ftp.cn.debian.org/debian bookworm/main arm64 libreoffice-calc-nogui arm64 4:7.4.7-1+deb12u14 [6087 kB]
+#10 425.8 Get:145 http://ftp.cn.debian.org/debian bookworm/main arm64 python3-et-xmlfile all 1.0.1-2.1 [9180 B]
+#10 428.9 Err:146 http://ftp.cn.debian.org/debian bookworm/main arm64 python3-jdcal all 1.0-1.3
+#10 428.9   502  Bad Gateway [IP: 198.18.0.120 80]
+#10 430.0 Get:147 http://ftp.cn.debian.org/debian bookworm/main arm64 python3-lxml arm64 4.9.2-1+b1 [1074 kB]
+#10 434.1 Err:148 http://ftp.cn.debian.org/debian bookworm/main arm64 python3-openpyxl all 3.0.9-1
+#10 434.1   502  Bad Gateway [IP: 198.18.0.120 80]
+#10 435.2 Get:43 http://ftp.cn.debian.org/debian bookworm/main arm64 libfreetype6 arm64 2.12.1+dfsg-5+deb12u4 [368 kB]
+#10 436.0 E: Failed to fetch http://ftp.cn.debian.org/debian/pool/main/l/lapack/liblapack3_3.11.0-2_arm64.deb  502  Bad Gateway [IP: 198.18.0.120 80]
+#10 436.0 E: Failed to fetch http://ftp.cn.debian.org/debian/pool/main/f/fonts-dejavu/fonts-dejavu-core_2.37-6_all.deb  502  Bad Gateway [IP: 198.18.0.120 80]
+#10 436.0 E: Failed to fetch http://ftp.cn.debian.org/debian-security/pool/updates/main/p/poppler/libpoppler126_22.12.0-2%2bdeb12u3_arm64.deb  502  Bad Gateway [IP: 198.18.0.120 80]
+#10 436.0 E: Failed to fetch http://ftp.cn.debian.org/debian/pool/main/libr/libreoffice/libreoffice-common_7.4.7-1%2bdeb12u14_all.deb  502  Bad Gateway [IP: 198.18.0.120 80]
+#10 436.0 E: Failed to fetch http://ftp.cn.debian.org/debian/pool/main/j/jdcal/python3-jdcal_1.0-1.3_all.deb  502  Bad Gateway [IP: 198.18.0.120 80]
+#10 436.0 E: Failed to fetch http://ftp.cn.debian.org/debian/pool/main/o/openpyxl/python3-openpyxl_3.0.9-1_all.deb  502  Bad Gateway [IP: 198.18.0.120 80]
+#10 436.0 E: Unable to fetch some archives, maybe run apt-get update or try with --fix-missing?
+#10 436.0 Fetched 150 MB in 6min 58s (360 kB/s)
+#10 ERROR: process "/bin/sh -c apt-get update  && apt-get install -y --no-install-recommends       python3       python3-openpyxl       libreoffice-calc-nogui       fonts-noto-cjk  && rm -rf /var/lib/apt/lists/*  && python3 -c 'import openpyxl,sys;print(\"openpyxl\",openpyxl.__version__,\"on\",sys.version.split()[0])'  && soffice --version" did not complete successfully: exit code: 100
+------
+ > [runtime  5/13] RUN apt-get update  && apt-get install -y --no-install-recommends       python3       python3-openpyxl       libreoffice-calc-nogui       fonts-noto-cjk  && rm -rf /var/lib/apt/lists/*  && python3 -c 'import openpyxl,sys;print("openpyxl",openpyxl.__version__,"on",sys.version.split()[0])'  && soffice --version:
+434.1   502  Bad Gateway [IP: 198.18.0.120 80]
+435.2 Get:43 http://ftp.cn.debian.org/debian bookworm/main arm64 libfreetype6 arm64 2.12.1+dfsg-5+deb12u4 [368 kB]
+436.0 E: Failed to fetch http://ftp.cn.debian.org/debian/pool/main/l/lapack/liblapack3_3.11.0-2_arm64.deb  502  Bad Gateway [IP: 198.18.0.120 80]
+436.0 E: Failed to fetch http://ftp.cn.debian.org/debian/pool/main/f/fonts-dejavu/fonts-dejavu-core_2.37-6_all.deb  502  Bad Gateway [IP: 198.18.0.120 80]
+436.0 E: Failed to fetch http://ftp.cn.debian.org/debian-security/pool/updates/main/p/poppler/libpoppler126_22.12.0-2%2bdeb12u3_arm64.deb  502  Bad Gateway [IP: 198.18.0.120 80]
+436.0 E: Failed to fetch http://ftp.cn.debian.org/debian/pool/main/libr/libreoffice/libreoffice-common_7.4.7-1%2bdeb12u14_all.deb  502  Bad Gateway [IP: 198.18.0.120 80]
+436.0 E: Failed to fetch http://ftp.cn.debian.org/debian/pool/main/j/jdcal/python3-jdcal_1.0-1.3_all.deb  502  Bad Gateway [IP: 198.18.0.120 80]
+436.0 E: Failed to fetch http://ftp.cn.debian.org/debian/pool/main/o/openpyxl/python3-openpyxl_3.0.9-1_all.deb  502  Bad Gateway [IP: 198.18.0.120 80]
+436.0 E: Unable to fetch some archives, maybe run apt-get update or try with --fix-missing?
+436.0 Fetched 150 MB in 6min 58s (360 kB/s)
+------
+Dockerfile:112
+--------------------
+ 111 |     # loudly if openpyxl or soffice do not run.
+ 112 | >>> RUN apt-get update \
+ 113 | >>>  && apt-get install -y --no-install-recommends \
+ 114 | >>>       python3 \
+ 115 | >>>       python3-openpyxl \
+ 116 | >>>       libreoffice-calc-nogui \
+ 117 | >>>       fonts-noto-cjk \
+ 118 | >>>  && rm -rf /var/lib/apt/lists/* \
+ 119 | >>>  && python3 -c 'import openpyxl,sys;print("openpyxl",openpyxl.__version__,"on",sys.version.split()[0])' \
+ 120 | >>>  && soffice --version
+ 121 |     
+--------------------
+ERROR: failed to build: failed to solve: process "/bin/sh -c apt-get update  && apt-get install -y --no-install-recommends       python3       python3-openpyxl       libreoffice-calc-nogui       fonts-noto-cjk  && rm -rf /var/lib/apt/lists/*  && python3 -c 'import openpyxl,sys;print(\"openpyxl\",openpyxl.__version__,\"on\",sys.version.split()[0])'  && soffice --version" did not complete successfully: exit code: 100

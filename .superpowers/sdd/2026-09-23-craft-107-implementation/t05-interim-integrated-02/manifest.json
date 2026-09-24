@@ -1,0 +1,59 @@
+{
+  "captured_at_utc": "2026-09-23T12:26:34.000718+00:00",
+  "source_head": "aa3fdff9b7eefc843b725906a89a45672bc6be60",
+  "integration_head": "a5e9195acd6500c085c85d60c852148e7bbbbf34",
+  "review_status": "T05 scoped service fix4 pass; overall pending publisher/isolation/dispatch",
+  "files": [
+    {
+      "path": "internal/application/repository/craft_knowledge_records.go",
+      "sha256": "2841995bb6fc7190bea97582b4c54583755d8ff573da9ff6472366efa8ea4338",
+      "bytes": 6650
+    },
+    {
+      "path": "internal/application/repository/craft_knowledge_records_test.go",
+      "sha256": "18a2cb843e674d7c7b799089ab6672c6f84fd98bf8b7d3464e8ee61a40392cea",
+      "bytes": 4602
+    },
+    {
+      "path": "internal/application/service/craft_knowledge.go",
+      "sha256": "3951a6e8d5a606943112824c57c5646ee464822759684e2ea68bba661fc16561",
+      "bytes": 36907
+    },
+    {
+      "path": "internal/application/service/craft_knowledge_t05_test.go",
+      "sha256": "c54a477fa45ed448512d8dcc69021c256a2ce6d7806bdba8191a0ef2af505536",
+      "bytes": 27776
+    },
+    {
+      "path": "internal/application/service/craft_knowledge_test.go",
+      "sha256": "4571e12acb187ade874f58f9dd4422fca0e182cea3063c5f02468692baf86c56",
+      "bytes": 21160
+    },
+    {
+      "path": "internal/handler/session/craft_knowledge_feature.go",
+      "sha256": "c6343e2f6ef85fb440e851bc1f15a2823f09ac781d04737b307e12e620163d54",
+      "bytes": 2913
+    },
+    {
+      "path": "internal/handler/session/craft_knowledge_feature_test.go",
+      "sha256": "bca92b43279f19cf073bafbe533504012da497caa51f5f800d2a03b1fd441edc",
+      "bytes": 6093
+    },
+    {
+      "path": "internal/modules/craft/knowledge.go",
+      "sha256": "217a469542d567a5262f3406d08b9035710dadaa4f7c251236c81d282db290f3",
+      "bytes": 5878
+    },
+    {
+      "path": "packages/views/src/craft/sources.test.tsx",
+      "sha256": "abb78b180e6e5fb17cb8e20fa7ff1f5a4f83776d6cb042b5630391b08bfec74b",
+      "bytes": 2052
+    },
+    {
+      "path": "packages/views/src/craft/sources.tsx",
+      "sha256": "b535d732be630cb448358e8eeaf00f97c8e2771e34255cc6fe40532ae9471fa5",
+      "bytes": 7491
+    }
+  ],
+  "integration_note": "added reviewed fixture from T05 fix2 commit; exact integration test now passes"
+}

@@ -1,0 +1,274 @@
+diff --git a/.superpowers/sdd/2026-09-23-craft-107-implementation/t08-actor-admission-checkpoint-01/before/internal/modules/agentruntime/agent/runtime/contracts.go b/internal/modules/agentruntime/agent/runtime/contracts.go
+index 7e08f649a..132137c95 100644
+--- a/.superpowers/sdd/2026-09-23-craft-107-implementation/t08-actor-admission-checkpoint-01/before/internal/modules/agentruntime/agent/runtime/contracts.go
++++ b/internal/modules/agentruntime/agent/runtime/contracts.go
+@@ -115,6 +115,7 @@ type Run struct {
+ 	Key                RunKey
+ 	SessionID          string
+ 	UserID             string
++	ActorUserID        string
+ 	RequestID          string
+ 	AssistantMessageID string
+ 	Driver             string
+@@ -148,7 +149,10 @@ type Admission struct {
+ 	UsageStatus            string
+ 	UsageDimensions        map[string]int64
+ 	UserID                 string
+-	RequestID              string
++	// ActorUserID is the immutable authenticated human who admitted this Run.
++	// UserID remains the owning user and storage scope for the Task Session.
++	ActorUserID string
++	RequestID   string
+ 	// UserMessageID optionally reuses the handler-persisted user message row
+ 	// instead of creating a second one; empty generates a fresh id.
+ 	UserMessageID      string
+diff --git a/.superpowers/sdd/2026-09-23-craft-107-implementation/t08-actor-admission-checkpoint-01/before/internal/application/repository/agent_run.go b/internal/application/repository/agent_run.go
+index f4aa02854..92eade6a0 100644
+--- a/.superpowers/sdd/2026-09-23-craft-107-implementation/t08-actor-admission-checkpoint-01/before/internal/application/repository/agent_run.go
++++ b/internal/application/repository/agent_run.go
+@@ -39,18 +39,18 @@ func (s *AgentRunStore) DB() *gorm.DB {
+ }
+ 
+ type agentRunRow struct {
+-	TenantID                                                              uint64
+-	RunID, SessionID, OwnerID, RequestID, AssistantMessageID, RequestHash string
+-	EngineType, Driver, TargetID, BudgetRef, Status, WaitReason           string
+-	Snapshot                                                              string
+-	GraphVersion, SDKVersion                                              string
+-	SchemaVersion                                                         int
+-	LeaseOwner                                                            string
+-	LeaseUntil                                                            *time.Time
+-	Epoch, Revision                                                       int64
+-	MaxRounds, MaxToolCalls                                               int
+-	TokenBudget                                                           int64
+-	Deadline, CreatedAt, UpdatedAt                                        time.Time
++	TenantID                                                                           uint64
++	RunID, SessionID, OwnerID, ActorUserID, RequestID, AssistantMessageID, RequestHash string
++	EngineType, Driver, TargetID, BudgetRef, Status, WaitReason                        string
++	Snapshot                                                                           string
++	GraphVersion, SDKVersion                                                           string
++	SchemaVersion                                                                      int
++	LeaseOwner                                                                         string
++	LeaseUntil                                                                         *time.Time
++	Epoch, Revision                                                                    int64
++	MaxRounds, MaxToolCalls                                                            int
++	TokenBudget                                                                        int64
++	Deadline, CreatedAt, UpdatedAt                                                     time.Time
+ }
+ 
+ func (agentRunRow) TableName() string { return "agent_runs" }
+@@ -58,7 +58,7 @@ func (agentRunRow) TableName() string { return "agent_runs" }
+ func (r agentRunRow) view() agentruntime.Run {
+ 	run := agentruntime.Run{
+ 		Key:       agentruntime.RunKey{TenantID: r.TenantID, RunID: r.RunID},
+-		SessionID: r.SessionID, UserID: r.OwnerID, RequestID: r.RequestID,
++		SessionID: r.SessionID, UserID: r.OwnerID, ActorUserID: r.ActorUserID, RequestID: r.RequestID,
+ 		AssistantMessageID: r.AssistantMessageID, Driver: r.Driver,
+ 		TargetID: r.TargetID, BudgetRef: r.BudgetRef, Status: r.Status,
+ 		WaitReason: r.WaitReason, Owner: r.LeaseOwner, Revision: r.Revision,
+@@ -234,6 +234,21 @@ func (s *AgentRunStore) rejectUnfencedCraftAdmission(tx *gorm.DB, in agentruntim
+ 	return nil
+ }
+ 
++func craftSessionExists(tx *gorm.DB, tenantID uint64, sessionID string) (bool, error) {
++	var marker int
++	err := tx.Table("craft_sessions").Select("1").Where(
++		"tenant_id = ? AND session_id = ?", tenantID, sessionID,
++	).Limit(1).Scan(&marker).Error
++	return marker == 1, err
++}
++
++func actorBelongsToTenant(tx *gorm.DB, tenantID uint64, actorUserID string) (bool, error) {
++	var marker int
++	err := tx.Table("users").Select("1").Where("tenant_id = ? AND id = ? AND is_active = ? AND deleted_at IS NULL", tenantID, actorUserID, true).
++		Limit(1).Scan(&marker).Error
++	return marker == 1, err
++}
++
+ // Admit atomically reserves a session, creates both business messages and
+ // persists the immutable request snapshot. Request retries are scoped to the
+ // authenticated tenant and owner; session validation precedes idempotency reads.
+@@ -293,6 +308,25 @@ func (s *AgentRunStore) Admit(ctx context.Context, in agentruntime.Admission) (a
+ 		if in.Driver == "platform" && session.EngineType != "trpc" {
+ 			return agentruntime.ErrConflict
+ 		}
++		isCraft, err := craftSessionExists(tx, in.Key.TenantID, in.SessionID)
++		if err != nil {
++			return err
++		}
++		if in.ActorUserID == "" {
++			if isCraft {
++				return agentruntime.ErrConflict
++			}
++			// Preserve the established generic Run principal where callers have
++			// no separate Task actor. Craft admissions never infer this identity.
++			in.ActorUserID = in.UserID
++		}
++		actorExists, err := actorBelongsToTenant(tx, in.Key.TenantID, in.ActorUserID)
++		if err != nil {
++			return err
++		}
++		if !actorExists {
++			return agentruntime.ErrConflict
++		}
+ 		inputClaims, claimErr := s.lockInputAdmissionClaims(tx, in)
+ 		if claimErr != nil {
+ 			return claimErr
+@@ -305,6 +339,13 @@ func (s *AgentRunStore) Admit(ctx context.Context, in agentruntime.Admission) (a
+ 				existing.Driver != in.Driver || existing.TargetID != in.TargetID || existing.BudgetRef != in.BudgetRef {
+ 				return agentruntime.ErrConflict
+ 			}
++			existingActor := existing.ActorUserID
++			if existingActor == "" && !isCraft {
++				existingActor = existing.OwnerID
++			}
++			if existingActor != in.ActorUserID {
++				return agentruntime.ErrConflict
++			}
+ 			if len(inputClaims) != 0 {
+ 				if existing.RunID != in.Key.RunID {
+ 					return agentruntime.ErrConflict
+@@ -344,7 +385,7 @@ func (s *AgentRunStore) Admit(ctx context.Context, in agentruntime.Admission) (a
+ 		}
+ 		row := agentRunRow{
+ 			TenantID: in.Key.TenantID, RunID: in.Key.RunID,
+-			SessionID: in.SessionID, OwnerID: in.UserID, RequestID: in.RequestID,
++			SessionID: in.SessionID, OwnerID: in.UserID, ActorUserID: in.ActorUserID, RequestID: in.RequestID,
+ 			AssistantMessageID: in.AssistantMessageID, RequestHash: in.RequestHash,
+ 			Driver: in.Driver, TargetID: in.TargetID, BudgetRef: in.BudgetRef,
+ 			Status: "queued", Snapshot: string(in.Snapshot),
+diff --git a/.superpowers/sdd/2026-09-23-craft-107-implementation/t08-actor-admission-checkpoint-01/before/internal/application/repository/agent_run_test.go b/internal/application/repository/agent_run_test.go
+index 0bb845b3a..6751a9c1a 100644
+--- a/.superpowers/sdd/2026-09-23-craft-107-implementation/t08-actor-admission-checkpoint-01/before/internal/application/repository/agent_run_test.go
++++ b/internal/application/repository/agent_run_test.go
+@@ -255,6 +255,7 @@ func TestAgentRunAdmissionCannotOmitActiveCraftInputClaim(t *testing.T) {
+ 	// The ordinary API caller does not have authority to omit a live Craft
+ 	// fence and admit another Run through the same Craft session.
+ 	unfenced := testAdmission()
++	unfenced.ActorUserID = "u1"
+ 	_, err := NewAgentRunStore(db).Admit(context.Background(), unfenced)
+ 	require.ErrorIs(t, err, agentruntime.ErrConflict)
+ 	require.NoError(t, db.Exec(`INSERT INTO craft_session_requests
+@@ -264,6 +265,7 @@ func TestAgentRunAdmissionCannotOmitActiveCraftInputClaim(t *testing.T) {
+ 		"second-active-token", "claimed", now.Add(time.Minute), now).Error)
+ 	partial := testAdmission()
+ 	partial.Key.RunID = "active-craft-run"
++	partial.ActorUserID = "u1"
+ 	partial.InputClaims = []agentruntime.InputAdmissionClaim{{
+ 		DecisionKey: "active-decision", RunID: "active-craft-run", Token: "active-token",
+ 	}}
+diff --git a/internal/application/repository/agent_run_actor_test.go b/internal/application/repository/agent_run_actor_test.go
+new file mode 100644
+index 000000000..7965f4d86
+--- /dev/null
++++ b/internal/application/repository/agent_run_actor_test.go
+@@ -0,0 +1,109 @@
++package repository
++
++import (
++	"context"
++	"encoding/json"
++	"testing"
++	"time"
++
++	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
++	"github.com/stretchr/testify/require"
++)
++
++func TestCraftRunAdmissionStoresOwnerAndAuthenticatedActorSeparately(t *testing.T) {
++	db := openRunTestDB(t)
++	require.NoError(t, db.Exec(`INSERT INTO users (id, username, email, password_hash, tenant_id) VALUES (?, ?, ?, ?, ?)`,
++		"collaborator", "collaborator", "collaborator@example.test", "x", 1).Error)
++	require.NoError(t, db.Exec(`INSERT INTO craft_sessions (session_id, tenant_id, kind) VALUES ('s1', 1, 'web')`).Error)
++
++	in := testAdmission()
++	in.Key.RunID = "craft-actor-run"
++	in.ActorUserID = "collaborator"
++	store := NewAgentRunStore(db)
++	run, err := store.Admit(context.Background(), in)
++	require.NoError(t, err)
++	require.Equal(t, "u1", run.UserID, "Run.UserID remains the storage owner")
++	require.Equal(t, "collaborator", run.ActorUserID, "actor identity is durable and distinct")
++
++	var row struct{ OwnerID, ActorUserID string }
++	require.NoError(t, db.Table("agent_runs").Select("owner_id, actor_user_id").Where("tenant_id = ? AND run_id = ?", 1, in.Key.RunID).Take(&row).Error)
++	require.Equal(t, "u1", row.OwnerID)
++	require.Equal(t, "collaborator", row.ActorUserID)
++	loaded, err := store.Get(context.Background(), in.Key)
++	require.NoError(t, err)
++	require.Equal(t, "u1", loaded.UserID)
++	require.Equal(t, "collaborator", loaded.ActorUserID, "worker recovery can restore the persisted actor")
++
++	replay, err := store.Admit(context.Background(), in)
++	require.NoError(t, err)
++	require.Equal(t, run.Key, replay.Key)
++	require.Equal(t, run.ActorUserID, replay.ActorUserID)
++}
++
++func TestCraftRunAdmissionRejectsCrossActorReplayAndCrossTenantActor(t *testing.T) {
++	db := openRunTestDB(t)
++	require.NoError(t, db.Exec(`INSERT INTO tenants (id, name, business) VALUES (2, 'tenant-2', 'test')`).Error)
++	require.NoError(t, db.Exec(`INSERT INTO users (id, username, email, password_hash, tenant_id) VALUES
++		('collaborator', 'collaborator', 'collaborator@example.test', 'x', 1),
++		('other-tenant-user', 'other', 'other@example.test', 'x', 2)`).Error)
++	require.NoError(t, db.Exec(`INSERT INTO craft_sessions (session_id, tenant_id, kind) VALUES ('s1', 1, 'web')`).Error)
++
++	in := testAdmission()
++	in.Key.RunID = "craft-actor-replay"
++	in.ActorUserID = "collaborator"
++	store := NewAgentRunStore(db)
++	_, err := store.Admit(context.Background(), in)
++	require.NoError(t, err)
++
++	otherActor := in
++	otherActor.ActorUserID = "u1"
++	otherActor.Key.RunID = "craft-actor-replay-owner"
++	_, err = store.Admit(context.Background(), otherActor)
++	require.ErrorIs(t, err, agentruntime.ErrConflict, "same owner/request/body cannot replay another actor's Run")
++
++	spoof := in
++	spoof.ActorUserID = "other-tenant-user"
++	spoof.RequestID = "cross-tenant-actor"
++	spoof.RequestHash = "cross-tenant-actor-hash"
++	spoof.Key.RunID = "cross-tenant-actor-run"
++	_, err = store.Admit(context.Background(), spoof)
++	require.ErrorIs(t, err, agentruntime.ErrConflict, "actor must belong to the admission tenant")
++}
++
++func TestCraftRunAdmissionFailsClosedWithoutActorAndForLegacyReplay(t *testing.T) {
++	db := openRunTestDB(t)
++	require.NoError(t, db.Exec(`INSERT INTO craft_sessions (session_id, tenant_id, kind) VALUES ('s1', 1, 'web')`).Error)
++	store := NewAgentRunStore(db)
++	in := testAdmission()
++	in.Key.RunID = "craft-actor-missing"
++	_, err := store.Admit(context.Background(), in)
++	require.ErrorIs(t, err, agentruntime.ErrConflict, "new Craft rows cannot infer actor from storage owner")
++
++	require.NoError(t, db.Exec(`INSERT INTO users (id, username, email, password_hash, tenant_id) VALUES (?, ?, ?, ?, ?)`,
++		"collaborator", "collaborator", "collaborator@example.test", "x", 1).Error)
++	in.ActorUserID = "collaborator"
++	in.Key.RunID = "craft-actor-legacy"
++	run, err := store.Admit(context.Background(), in)
++	require.NoError(t, err)
++	require.Equal(t, "collaborator", run.ActorUserID)
++	require.NoError(t, db.Table("agent_runs").Where("tenant_id = ? AND run_id = ?", 1, in.Key.RunID).
++		Update("actor_user_id", nil).Error)
++	legacy, err := store.Get(context.Background(), in.Key)
++	require.NoError(t, err)
++	require.Empty(t, legacy.ActorUserID, "legacy actor absence remains explicit for worker fail-closed handling")
++
++	_, err = store.Admit(context.Background(), in)
++	require.ErrorIs(t, err, agentruntime.ErrConflict, "legacy Craft rows with unknown actor cannot be replayed as the owner or guessed actor")
++}
++
++func TestGenericRunAdmissionDefaultsActorToOwnerForCompatibility(t *testing.T) {
++	db := openRunTestDB(t)
++	in := testAdmission()
++	in.ActorUserID = ""
++	in.Deadline = time.Now().Add(time.Hour)
++	run, err := NewAgentRunStore(db).Admit(context.Background(), in)
++	require.NoError(t, err)
++	require.Equal(t, in.UserID, run.UserID)
++	require.Equal(t, in.UserID, run.ActorUserID)
++	require.True(t, json.Valid(run.Snapshot))
++}

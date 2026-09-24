@@ -1,0 +1,31 @@
+ M docs/plans/2026-09-23-craft-107-ledger.md
+ M internal/container/container.go
+?? docs/plans/2026-09-23-craft-107-t01-frontend-validation.md
+?? docs/plans/2026-09-23-craft-107-t01-review.md
+?? docs/plans/2026-09-23-craft-107-t05-fix1-backend-validation.md
+?? docs/plans/2026-09-23-craft-107-t05-fix1-review.md
+?? docs/plans/2026-09-23-craft-107-t05-material-boundary-design.md
+?? docs/plans/2026-09-23-craft-107-t05-review.md
+?? docs/plans/2026-09-23-craft-107-t08-central-a-plan.md
+?? docs/plans/2026-09-23-craft-107-t08-central-a-report.md
+?? docs/plans/2026-09-23-craft-107-t08-fix1-backend-validation.md
+?? docs/plans/2026-09-23-craft-107-t08-fix1-review.md
+?? docs/plans/2026-09-23-craft-107-t08-frontend-validation.md
+?? docs/plans/2026-09-23-craft-107-t08-membership-migration-brief.md
+?? docs/plans/2026-09-23-craft-107-t08-membership-migration-report.md
+?? docs/plans/2026-09-23-craft-107-t08-membership-migration-review.md
+?? docs/plans/2026-09-23-craft-107-t08-rejoin-analysis.md
+?? docs/plans/2026-09-23-craft-107-t08-review.md
+?? docs/plans/2026-09-23-craft-107-t14-fix1-review.md
+?? docs/plans/2026-09-23-craft-107-t14-navigation-architecture.md
+?? docs/plans/2026-09-23-craft-107-t14-review.md
+?? docs/plans/2026-09-23-craft-107-t19-review.md
+?? internal/application/service/craft_access.go
+?? internal/application/service/craft_access_test.go
+?? internal/container/craft_access_wiring.go
+?? internal/container/craft_access_wiring_test.go
+?? internal/handler/session/craft_access.go
+?? internal/handler/session/craft_access_test.go
+?? internal/modules/craft/access.go
+?? packages/views/src/craft/access.test.tsx
+?? packages/views/src/craft/access.tsx

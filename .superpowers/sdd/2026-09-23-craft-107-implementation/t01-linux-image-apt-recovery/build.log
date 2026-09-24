@@ -1,0 +1,159 @@
+#0 building with "orbstack" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 13.36kB 0.0s done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for docker.io/library/debian:bookworm-slim
+#2 DONE 0.3s
+
+#3 [internal] load .dockerignore
+#3 transferring context: 2B done
+#3 DONE 0.0s
+
+#4 [opencode-fetch 1/3] FROM docker.io/library/debian:bookworm-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251
+#4 resolve docker.io/library/debian:bookworm-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251 0.0s done
+#4 CACHED
+
+#5 [internal] load build context
+#5 transferring context: 41B done
+#5 DONE 0.0s
+
+#6 [opencode-fetch 2/3] RUN set -eux;     sed -i 's|http://deb.debian.org/|https://deb.debian.org/|g' /etc/apt/sources.list.d/debian.sources;     printf '%s\n' 'Acquire::Retries "3";' > /etc/apt/apt.conf.d/80-retries;     apt-get update;     apt-get install -y --no-install-recommends ca-certificates curl;     rm -rf /var/lib/apt/lists/*
+#6 0.427 + sed -i s|http://deb.debian.org/|https://deb.debian.org/|g /etc/apt/sources.list.d/debian.sources
+#6 0.463 + printf %s\n Acquire::Retries "3";
+#6 0.463 + apt-get update
+#6 1.450 Ign:1 https://deb.debian.org/debian bookworm InRelease
+#6 2.101 Ign:2 https://deb.debian.org/debian bookworm-updates InRelease
+#6 2.805 Ign:3 https://deb.debian.org/debian-security bookworm-security InRelease
+#6 3.448 Ign:1 https://deb.debian.org/debian bookworm InRelease
+#6 4.084 Ign:2 https://deb.debian.org/debian bookworm-updates InRelease
+#6 4.744 Ign:3 https://deb.debian.org/debian-security bookworm-security InRelease
+#6 6.176 Ign:1 https://deb.debian.org/debian bookworm InRelease
+#6 6.819 Ign:2 https://deb.debian.org/debian bookworm-updates InRelease
+#6 7.521 Ign:3 https://deb.debian.org/debian-security bookworm-security InRelease
+#6 ...
+
+#7 [runtime  2/13] RUN set -eux;     sed -i 's|http://deb.debian.org/|https://deb.debian.org/|g' /etc/apt/sources.list.d/debian.sources;     printf '%s\n' 'Acquire::Retries "3";' > /etc/apt/apt.conf.d/80-retries;     apt-get update;     apt-get install -y --no-install-recommends ca-certificates;     rm -rf /var/lib/apt/lists/*
+#7 0.425 + sed -i s|http://deb.debian.org/|https://deb.debian.org/|g /etc/apt/sources.list.d/debian.sources
+#7 0.465 + printf %s\n Acquire::Retries "3";
+#7 0.465 + apt-get update
+#7 1.444 Ign:1 https://deb.debian.org/debian bookworm InRelease
+#7 2.099 Ign:2 https://deb.debian.org/debian bookworm-updates InRelease
+#7 2.806 Ign:3 https://deb.debian.org/debian-security bookworm-security InRelease
+#7 3.455 Ign:1 https://deb.debian.org/debian bookworm InRelease
+#7 4.105 Ign:2 https://deb.debian.org/debian bookworm-updates InRelease
+#7 4.764 Ign:3 https://deb.debian.org/debian-security bookworm-security InRelease
+#7 6.168 Ign:1 https://deb.debian.org/debian bookworm InRelease
+#7 6.813 Ign:2 https://deb.debian.org/debian bookworm-updates InRelease
+#7 7.519 Ign:3 https://deb.debian.org/debian-security bookworm-security InRelease
+#7 10.88 Err:1 https://deb.debian.org/debian bookworm InRelease
+#7 10.88   Certificate verification failed: The certificate is NOT trusted. The certificate issuer is unknown.  Could not handshake: Error in the certificate verification. [IP: 198.18.0.119 443]
+#7 ...
+
+#6 [opencode-fetch 2/3] RUN set -eux;     sed -i 's|http://deb.debian.org/|https://deb.debian.org/|g' /etc/apt/sources.list.d/debian.sources;     printf '%s\n' 'Acquire::Retries "3";' > /etc/apt/apt.conf.d/80-retries;     apt-get update;     apt-get install -y --no-install-recommends ca-certificates curl;     rm -rf /var/lib/apt/lists/*
+#6 10.89 Err:1 https://deb.debian.org/debian bookworm InRelease
+#6 10.89   Certificate verification failed: The certificate is NOT trusted. The certificate issuer is unknown.  Could not handshake: Error in the certificate verification. [IP: 198.18.0.119 443]
+#6 11.55 Err:2 https://deb.debian.org/debian bookworm-updates InRelease
+#6 11.55   Certificate verification failed: The certificate is NOT trusted. The certificate issuer is unknown.  Could not handshake: Error in the certificate verification. [IP: 198.18.0.119 443]
+#6 12.25 Err:3 https://deb.debian.org/debian-security bookworm-security InRelease
+#6 12.25   Certificate verification failed: The certificate is NOT trusted. The certificate issuer is unknown.  Could not handshake: Error in the certificate verification. [IP: 198.18.0.119 443]
+#6 12.27 Reading package lists...
+#6 12.29 W: https://deb.debian.org/debian/dists/bookworm/InRelease: No system certificates available. Try installing ca-certificates.
+#6 12.29 W: https://deb.debian.org/debian/dists/bookworm-updates/InRelease: No system certificates available. Try installing ca-certificates.
+#6 12.29 W: https://deb.debian.org/debian-security/dists/bookworm-security/InRelease: No system certificates available. Try installing ca-certificates.
+#6 12.29 W: https://deb.debian.org/debian/dists/bookworm/InRelease: No system certificates available. Try installing ca-certificates.
+#6 12.29 W: https://deb.debian.org/debian/dists/bookworm-updates/InRelease: No system certificates available. Try installing ca-certificates.
+#6 12.29 W: https://deb.debian.org/debian-security/dists/bookworm-security/InRelease: No system certificates available. Try installing ca-certificates.
+#6 12.29 W: https://deb.debian.org/debian/dists/bookworm/InRelease: No system certificates available. Try installing ca-certificates.
+#6 12.29 W: https://deb.debian.org/debian/dists/bookworm-updates/InRelease: No system certificates available. Try installing ca-certificates.
+#6 12.29 W: https://deb.debian.org/debian-security/dists/bookworm-security/InRelease: No system certificates available. Try installing ca-certificates.
+#6 12.29 W: https://deb.debian.org/debian/dists/bookworm/InRelease: No system certificates available. Try installing ca-certificates.
+#6 12.29 W: https://deb.debian.org/debian/dists/bookworm-updates/InRelease: No system certificates available. Try installing ca-certificates.
+#6 12.29 W: https://deb.debian.org/debian-security/dists/bookworm-security/InRelease: No system certificates available. Try installing ca-certificates.
+#6 12.29 W: Failed to fetch https://deb.debian.org/debian/dists/bookworm/InRelease  Certificate verification failed: The certificate is NOT trusted. The certificate issuer is unknown.  Could not handshake: Error in the certificate verification. [IP: 198.18.0.119 443]
+#6 12.29 W: Failed to fetch https://deb.debian.org/debian/dists/bookworm-updates/InRelease  Certificate verification failed: The certificate is NOT trusted. The certificate issuer is unknown.  Could not handshake: Error in the certificate verification. [IP: 198.18.0.119 443]
+#6 12.29 W: Failed to fetch https://deb.debian.org/debian-security/dists/bookworm-security/InRelease  Certificate verification failed: The certificate is NOT trusted. The certificate issuer is unknown.  Could not handshake: Error in the certificate verification. [IP: 198.18.0.119 443]
+#6 12.29 W: Some index files failed to download. They have been ignored, or old ones used instead.
+#6 12.29 + apt-get install -y --no-install-recommends ca-certificates curl
+#6 12.32 Reading package lists...
+#6 12.35 Building dependency tree...
+#6 12.35 Reading state information...E: Package 'ca-certificates' has no installation candidate
+#6 12.35 E: Unable to locate package curl
+#6 12.35 
+#6 12.35 Package ca-certificates is not available, but is referred to by another package.
+#6 12.35 This may mean that the package is missing, has been obsoleted, or
+#6 12.35 is only available from another source
+#6 12.35 
+#6 ERROR: process "/bin/sh -c set -eux;     sed -i 's|http://deb.debian.org/|https://deb.debian.org/|g' /etc/apt/sources.list.d/debian.sources;     printf '%s\\n' 'Acquire::Retries \"3\";' > /etc/apt/apt.conf.d/80-retries;     apt-get update;     apt-get install -y --no-install-recommends ca-certificates curl;     rm -rf /var/lib/apt/lists/*" did not complete successfully: exit code: 100
+
+#7 [runtime  2/13] RUN set -eux;     sed -i 's|http://deb.debian.org/|https://deb.debian.org/|g' /etc/apt/sources.list.d/debian.sources;     printf '%s\n' 'Acquire::Retries "3";' > /etc/apt/apt.conf.d/80-retries;     apt-get update;     apt-get install -y --no-install-recommends ca-certificates;     rm -rf /var/lib/apt/lists/*
+#7 11.54 Err:2 https://deb.debian.org/debian bookworm-updates InRelease
+#7 11.54   Certificate verification failed: The certificate is NOT trusted. The certificate issuer is unknown.  Could not handshake: Error in the certificate verification. [IP: 198.18.0.119 443]
+#7 12.25 Err:3 https://deb.debian.org/debian-security bookworm-security InRelease
+#7 12.25   Certificate verification failed: The certificate is NOT trusted. The certificate issuer is unknown.  Could not handshake: Error in the certificate verification. [IP: 198.18.0.119 443]
+#7 12.27 Reading package lists...
+#7 12.29 W: https://deb.debian.org/debian/dists/bookworm/InRelease: No system certificates available. Try installing ca-certificates.
+#7 12.29 W: https://deb.debian.org/debian/dists/bookworm-updates/InRelease: No system certificates available. Try installing ca-certificates.
+#7 12.29 W: https://deb.debian.org/debian-security/dists/bookworm-security/InRelease: No system certificates available. Try installing ca-certificates.
+#7 12.29 W: https://deb.debian.org/debian/dists/bookworm/InRelease: No system certificates available. Try installing ca-certificates.
+#7 12.29 W: https://deb.debian.org/debian/dists/bookworm-updates/InRelease: No system certificates available. Try installing ca-certificates.
+#7 12.29 W: https://deb.debian.org/debian-security/dists/bookworm-security/InRelease: No system certificates available. Try installing ca-certificates.
+#7 12.29 W: https://deb.debian.org/debian/dists/bookworm/InRelease: No system certificates available. Try installing ca-certificates.
+#7 12.29 W: https://deb.debian.org/debian/dists/bookworm-updates/InRelease: No system certificates available. Try installing ca-certificates.
+#7 12.29 W: https://deb.debian.org/debian-security/dists/bookworm-security/InRelease: No system certificates available. Try installing ca-certificates.
+#7 12.29 W: https://deb.debian.org/debian/dists/bookworm/InRelease: No system certificates available. Try installing ca-certificates.
+#7 12.29 W: https://deb.debian.org/debian/dists/bookworm-updates/InRelease: No system certificates available. Try installing ca-certificates.
+#7 12.29 W: https://deb.debian.org/debian-security/dists/bookworm-security/InRelease: No system certificates available. Try installing ca-certificates.
+#7 12.29 W: Failed to fetch https://deb.debian.org/debian/dists/bookworm/InRelease  Certificate verification failed: The certificate is NOT trusted. The certificate issuer is unknown.  Could not handshake: Error in the certificate verification. [IP: 198.18.0.119 443]
+#7 12.29 W: Failed to fetch https://deb.debian.org/debian/dists/bookworm-updates/InRelease  Certificate verification failed: The certificate is NOT trusted. The certificate issuer is unknown.  Could not handshake: Error in the certificate verification. [IP: 198.18.0.119 443]
+#7 12.29 W: Failed to fetch https://deb.debian.org/debian-security/dists/bookworm-security/InRelease  Certificate verification failed: The certificate is NOT trusted. The certificate issuer is unknown.  Could not handshake: Error in the certificate verification. [IP: 198.18.0.119 443]
+#7 12.29 W: Some index files failed to download. They have been ignored, or old ones used instead.
+#7 12.29 + apt-get install -y --no-install-recommends ca-certificates
+#7 12.31 Reading package lists...
+#7 12.34 Building dependency tree...
+#7 12.35 E: Package 'ca-certificates' has no installation candidate
+#7 12.35 Reading state information...
+#7 12.35 Package ca-certificates is not available, but is referred to by another package.
+#7 12.35 This may mean that the package is missing, has been obsoleted, or
+#7 12.35 is only available from another source
+#7 12.35 
+#7 ERROR: process "/bin/sh -c set -eux;     sed -i 's|http://deb.debian.org/|https://deb.debian.org/|g' /etc/apt/sources.list.d/debian.sources;     printf '%s\\n' 'Acquire::Retries \"3\";' > /etc/apt/apt.conf.d/80-retries;     apt-get update;     apt-get install -y --no-install-recommends ca-certificates;     rm -rf /var/lib/apt/lists/*" did not complete successfully: exit code: 100
+------
+ > [runtime  2/13] RUN set -eux;     sed -i 's|http://deb.debian.org/|https://deb.debian.org/|g' /etc/apt/sources.list.d/debian.sources;     printf '%s\n' 'Acquire::Retries "3";' > /etc/apt/apt.conf.d/80-retries;     apt-get update;     apt-get install -y --no-install-recommends ca-certificates;     rm -rf /var/lib/apt/lists/*:
+12.29 W: Some index files failed to download. They have been ignored, or old ones used instead.
+12.29 + apt-get install -y --no-install-recommends ca-certificates
+12.31 Reading package lists...
+12.34 Building dependency tree...
+12.35 E: Package 'ca-certificates' has no installation candidate
+12.35 Reading state information...
+12.35 Package ca-certificates is not available, but is referred to by another package.
+12.35 This may mean that the package is missing, has been obsoleted, or
+12.35 is only available from another source
+12.35 
+------
+------
+ > [opencode-fetch 2/3] RUN set -eux;     sed -i 's|http://deb.debian.org/|https://deb.debian.org/|g' /etc/apt/sources.list.d/debian.sources;     printf '%s\n' 'Acquire::Retries "3";' > /etc/apt/apt.conf.d/80-retries;     apt-get update;     apt-get install -y --no-install-recommends ca-certificates curl;     rm -rf /var/lib/apt/lists/*:
+12.25 Err:3 https://deb.debian.org/debian-security bookworm-security InRelease
+12.25   Certificate verification failed: The certificate is NOT trusted. The certificate issuer is unknown.  Could not handshake: Error in the certificate verification. [IP: 198.18.0.119 443]
+
+12.35 Reading state information...E: Package 'ca-certificates' has no installation candidate
+12.35 E: Unable to locate package curl
+12.35 
+12.35 Package ca-certificates is not available, but is referred to by another package.
+12.35 This may mean that the package is missing, has been obsoleted, or
+12.35 is only available from another source
+12.35 
+------
+Dockerfile:45
+--------------------
+  44 |     
+  45 | >>> RUN set -eux; \
+  46 | >>>     sed -i 's|http://deb.debian.org/|https://deb.debian.org/|g' /etc/apt/sources.list.d/debian.sources; \
+  47 | >>>     printf '%s\n' 'Acquire::Retries "3";' > /etc/apt/apt.conf.d/80-retries; \
+  48 | >>>     apt-get update; \
+  49 | >>>     apt-get install -y --no-install-recommends ca-certificates curl; \
+  50 | >>>     rm -rf /var/lib/apt/lists/*
+  51 |     RUN set -eux; \
+--------------------
+ERROR: failed to build: failed to solve: process "/bin/sh -c set -eux;     sed -i 's|http://deb.debian.org/|https://deb.debian.org/|g' /etc/apt/sources.list.d/debian.sources;     printf '%s\\n' 'Acquire::Retries \"3\";' > /etc/apt/apt.conf.d/80-retries;     apt-get update;     apt-get install -y --no-install-recommends ca-certificates curl;     rm -rf /var/lib/apt/lists/*" did not complete successfully: exit code: 100

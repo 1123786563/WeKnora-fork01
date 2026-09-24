@@ -1,0 +1,16 @@
+{
+  "files": [
+    {
+      "path": "packages/api-client/src/craft/index.ts",
+      "sha256": "ea59788611574d56e6e1637700812d14901de1324457653fead6fc1bf152802e"
+    },
+    {
+      "path": "packages/api-client/src/craft/index.test.ts",
+      "sha256": "00be8f493a1c3ee8fd19f424af1a1706cdb81b9df364ebc4b253a1f562ed9783"
+    },
+    {
+      "path": "packages/api-client/src/index.ts",
+      "sha256": "7f5439a1b865a7fadb38e12567c80374d5ac64dded95e9b4968d0b4d1395878a"
+    }
+  ]
+}

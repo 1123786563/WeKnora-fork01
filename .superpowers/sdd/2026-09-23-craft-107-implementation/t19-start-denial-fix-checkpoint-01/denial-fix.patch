@@ -1,0 +1,187 @@
+--- a/internal/application/service/craft_budget.go
++++ b/internal/application/service/craft_budget.go
+@@ -138,6 +138,19 @@
+ 
+ func (CraftChargeStartJournalRow) TableName() string { return "craft_charge_start_journal" }
+ 
++type craftChargeStartPreparationStatus uint8
++
++const (
++	craftChargeStartNotPrepared craftChargeStartPreparationStatus = iota
++	craftChargeStartPrepared
++)
++
++type craftChargeStartPreparation struct {
++	status  craftChargeStartPreparationStatus
++	journal CraftChargeStartJournalRow
++	denial  error
++}
++
+ // CraftCallBinding names the identity facets a logical call binds beyond the
+ // grant: the (possibly empty) delegation, the model and the server-resolved
+ // funding source. Any change of any facet is a different logical call with
+@@ -182,8 +195,7 @@
+ 		return 0, err
+ 	}
+ 	callKey := CraftCallKey("activity/" + activityID)
+-	var journal CraftChargeStartJournalRow
+-	var startErr error
++	var preparation craftChargeStartPreparation
+ 	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+ 		run, err := lockCraftRun(tx, ctx, row)
+ 		if err != nil {
+@@ -213,7 +225,7 @@
+ 			if err := pauseCraftRunTx(tx, row, s.now()); err != nil {
+ 				return err
+ 			}
+-			startErr = craft.ErrGrantExhausted
++			preparation.denial = craft.ErrGrantExhausted
+ 			return nil
+ 		}
+ 		var seq int64
+@@ -236,7 +248,7 @@
+ 				if e := pauseCraftRunTx(tx, row, s.now()); e != nil {
+ 					return e
+ 				}
+-				startErr = mapped
++				preparation.denial = mapped
+ 				return nil
+ 			}
+ 			return err
+@@ -246,14 +258,26 @@
+ 			return err
+ 		}
+ 		now := s.now()
+-		journal = CraftChargeStartJournalRow{TenantID: row.TenantID, RunID: row.RunID, ActivityKey: activityID,
++		journal := CraftChargeStartJournalRow{TenantID: row.TenantID, RunID: row.RunID, ActivityKey: activityID,
+ 			GrantID: row.GrantID, CallID: callID, ReservationKey: callKey, State: "intent",
+ 			RunRevision: run.Revision, CreatedAt: now, UpdatedAt: now}
+-		return tx.Create(&journal).Error
++		if err := tx.Create(&journal).Error; err != nil {
++			return err
++		}
++		preparation.journal = journal
++		preparation.status = craftChargeStartPrepared
++		return nil
+ 	})
+ 	if err != nil {
+ 		return 0, err
++	}
++	if preparation.status != craftChargeStartPrepared {
++		if preparation.denial != nil {
++			return CraftChargeStartDefinitelyNotStarted, preparation.denial
++		}
++		return CraftChargeStartUnknown, fmt.Errorf("%w: charge start preparation did not commit an intent and hold", craft.ErrConflict)
+ 	}
++	journal := preparation.journal
+ 	if err := ctx.Err(); err != nil {
+ 		result := s.db.WithContext(context.Background()).Model(&CraftChargeStartJournalRow{}).
+ 			Where("tenant_id = ? AND run_id = ? AND activity_key = ? AND state = ?", journal.TenantID, journal.RunID, journal.ActivityKey, "intent").
+--- a/internal/application/service/craft_budget_start_test.go
++++ b/internal/application/service/craft_budget_start_test.go
+@@ -11,6 +11,7 @@
+ 	repocommercial "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
+ 	"github.com/Tencent/WeKnora/internal/modules/craft"
+ 	"github.com/stretchr/testify/require"
++	"gorm.io/gorm"
+ )
+ 
+ func TestCraftChargeStartCommitsIntentAndHoldBeforeCallbackAndReplayDoesNotSend(t *testing.T) {
+@@ -120,3 +121,97 @@
+ 	require.Equal(t, "intent", journal.State, "canceled result persistence stays recoverable as intent")
+ 	require.Len(t, craftReservations(t, db, 102), 1)
+ }
++
++func TestCraftChargeStartDeniedPrepareNeverInvokesCallback(t *testing.T) {
++	tests := []struct {
++		name      string
++		tenant    uint64
++		maxCalls  int
++		funds     int64
++		wantError error
++	}{
++		{name: "max calls", tenant: 103, maxCalls: 1, funds: 10000, wantError: craft.ErrGrantExhausted},
++		{name: "G4 reserve denied", tenant: 104, maxCalls: 5, funds: 100, wantError: craft.ErrBudgetDenied},
++	}
++	for _, tc := range tests {
++		t.Run(tc.name, func(t *testing.T) {
++			db := openCraftBudgetTestDB(t)
++			policy := craftBudgetPolicy()
++			policy.MaxCalls = tc.maxCalls
++			svc, err := NewCraftBudgetService(db, nil, policy)
++			require.NoError(t, err)
++			seedCraftFundedTenant(t, db, tc.tenant, tc.funds)
++			runID, taskID := "run-denied-"+tc.name, "task-denied-"+tc.name
++			seedCraftBudgetRun(t, db, tc.tenant, runID, taskID)
++			grant, err := svc.Admit(context.Background(), craft.Scope{TenantID: tc.tenant, UserID: "owner", SessionID: taskID}, runID)
++			require.NoError(t, err)
++			if tc.name == "max calls" {
++				_, err = svc.AuthorizeBinding(context.Background(), grant.ID, CraftCallBinding{ModelID: "prior", Funding: commercial.FundingPlatform})
++				require.NoError(t, err)
++			}
++
++			starts := 0
++			_, err = svc.StartBinding(context.Background(), grant.ID, "activity-denied", CraftCallBinding{ModelID: "lead", Funding: commercial.FundingPlatform},
++				func(context.Context) (CraftChargeStartOutcome, error) {
++					starts++
++					return CraftChargeStartStarted, nil
++				})
++			require.ErrorIs(t, err, tc.wantError)
++			require.Zero(t, starts, "a denied prepare must never authorize transport initiation")
++			var journal CraftChargeStartJournalRow
++			require.ErrorIs(t, db.Where("tenant_id = ? AND run_id = ? AND activity_key = ?", tc.tenant, runID, "activity-denied").Take(&journal).Error, gorm.ErrRecordNotFound)
++			var run struct{ Status, WaitReason string }
++			require.NoError(t, db.Table("agent_runs").Select("status, wait_reason").Where("tenant_id = ? AND run_id = ?", tc.tenant, runID).Take(&run).Error)
++			require.Equal(t, "waiting_user", run.Status)
++			require.Equal(t, craftBudgetWaitReason, run.WaitReason)
++			if tc.name == "G4 reserve denied" {
++				require.Empty(t, craftReservations(t, db, tc.tenant), "denied reservation and partial hold must roll back")
++			}
++		})
++	}
++}
++
++func TestCraftChargeStartPrepareWriteFailureNeverInvokesCallback(t *testing.T) {
++	db := openCraftBudgetTestDB(t)
++	svc, err := NewCraftBudgetService(db, nil, craftBudgetPolicy())
++	require.NoError(t, err)
++	seedCraftFundedTenant(t, db, 105, 10000)
++	seedCraftBudgetRun(t, db, 105, "run-prepare-failure", "task-prepare-failure")
++	grant, err := svc.Admit(context.Background(), craft.Scope{TenantID: 105, UserID: "owner", SessionID: "task-prepare-failure"}, "run-prepare-failure")
++	require.NoError(t, err)
++	require.NoError(t, db.Exec("CREATE TRIGGER fail_craft_journal_prepare BEFORE INSERT ON craft_charge_start_journal BEGIN SELECT RAISE(ABORT, 'injected prepare write failure'); END").Error)
++	starts := 0
++	_, err = svc.StartBinding(context.Background(), grant.ID, "activity-prepare-failure", CraftCallBinding{ModelID: "lead", Funding: commercial.FundingPlatform},
++		func(context.Context) (CraftChargeStartOutcome, error) {
++			starts++
++			return CraftChargeStartStarted, nil
++		})
++	require.Error(t, err)
++	require.Zero(t, starts, "a failed prepare/commit must not authorize transport initiation")
++	require.Empty(t, craftReservations(t, db, 105), "prepare transaction failure rolls back its G4 hold")
++	require.Equal(t, int64(0), craftGrantCalls(t, db, 105, grant.ID), "prepare transaction failure rolls back call intent")
++}
++
++func TestCraftChargeStartCommitFailureNeverInvokesCallback(t *testing.T) {
++	db := openCraftBudgetTestDB(t)
++	svc, err := NewCraftBudgetService(db, nil, craftBudgetPolicy())
++	require.NoError(t, err)
++	seedCraftFundedTenant(t, db, 106, 10000)
++	seedCraftBudgetRun(t, db, 106, "run-commit-failure", "task-commit-failure")
++	grant, err := svc.Admit(context.Background(), craft.Scope{TenantID: 106, UserID: "owner", SessionID: "task-commit-failure"}, "run-commit-failure")
++	require.NoError(t, err)
++	require.NoError(t, db.Exec("CREATE TABLE craft_commit_guard_parent (id INTEGER PRIMARY KEY)").Error)
++	require.NoError(t, db.Exec("CREATE TABLE craft_commit_guard_child (parent_id INTEGER, FOREIGN KEY(parent_id) REFERENCES craft_commit_guard_parent(id) DEFERRABLE INITIALLY DEFERRED)").Error)
++	require.NoError(t, db.Exec("CREATE TRIGGER fail_craft_start_commit AFTER INSERT ON craft_charge_start_journal BEGIN INSERT INTO craft_commit_guard_child(parent_id) VALUES (999); END").Error)
++
++	starts := 0
++	_, err = svc.StartBinding(context.Background(), grant.ID, "activity-commit-failure", CraftCallBinding{ModelID: "lead", Funding: commercial.FundingPlatform},
++		func(context.Context) (CraftChargeStartOutcome, error) {
++			starts++
++			return CraftChargeStartStarted, nil
++		})
++	require.Error(t, err, "deferred foreign-key violation must fail transaction commit")
++	require.Zero(t, starts, "a failed transaction commit cannot authorize transport initiation")
++	require.Empty(t, craftReservations(t, db, 106), "failed commit rolls back the G4 hold")
++	require.Equal(t, int64(0), craftGrantCalls(t, db, 106, grant.ID), "failed commit rolls back the call intent")
++}

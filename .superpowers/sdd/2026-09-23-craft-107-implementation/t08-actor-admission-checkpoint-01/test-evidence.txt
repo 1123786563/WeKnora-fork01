@@ -1,0 +1,24 @@
+RED command:
+  go test ./internal/application/repository -run '^TestCraftRunAdmissionStoresOwnerAndAuthenticatedActorSeparately$' -count=1
+Result before adding ActorUserID to the runtime contracts:
+  FAIL (compile): Admission.ActorUserID and Run.ActorUserID undefined.
+
+GREEN command:
+  go test ./internal/application/repository -run 'TestAgentRunAdmission|TestCraftRunAdmission|TestGenericRunAdmission' -count=1
+Captured result:
+  ok github.com/Tencent/WeKnora/internal/application/repository 12.200s
+
+GREEN command:
+  go test ./internal/modules/agentruntime/agent/runtime -count=1
+Captured result:
+  ok github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime 0.807s
+
+Diff check:
+  git diff --check -- internal/modules/agentruntime/agent/runtime/contracts.go internal/application/repository/agent_run.go internal/application/repository/agent_run_test.go internal/application/repository/agent_run_actor_test.go
+  PASS (no output)
+
+Migration hash verification:
+  sha256sum migrations/versioned/000194_craft_run_actor.up.sql migrations/versioned/000194_craft_run_actor.down.sql migrations/sqlite/000115_craft_run_actor.up.sql migrations/sqlite/000115_craft_run_actor.down.sql
+  PASS; values match `migration.sha256` and the independent migration review.
+
+PostgreSQL repository tests were skipped by the test helper because TRPC_TEST_POSTGRES_DSN is unset. PostgreSQL 17.9 up/down/reapply evidence for the unchanged SQL is recorded in docs/plans/2026-09-23-craft-107-t08-actor-migration-report.md.

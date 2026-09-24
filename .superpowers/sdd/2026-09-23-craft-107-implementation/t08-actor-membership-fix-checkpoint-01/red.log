@@ -1,0 +1,29 @@
+--- FAIL: TestAdmissionUsesActiveMembershipInsteadOfHomeTenant (0.79s)
+    agent_run_actor_test.go:27: 
+        	Error Trace:	/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/agent_run_actor_test.go:27
+        	Error:      	Received unexpected error:
+        	            	agent runtime conflict
+        	Test:       	TestAdmissionUsesActiveMembershipInsteadOfHomeTenant
+        	Messages:   	an active invited member can start a Craft Run outside their home tenant
+--- FAIL: TestCraftRunAdmissionRejectsInactiveActorMembershipAndUser (3.45s)
+    --- FAIL: TestCraftRunAdmissionRejectsInactiveActorMembershipAndUser/suspended_membership (0.65s)
+        agent_run_actor_test.go:90: 
+            	Error Trace:	/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/agent_run_actor_test.go:90
+            	Error:      	Expected error with "agent runtime conflict" in chain but got nil.
+            	Test:       	TestCraftRunAdmissionRejectsInactiveActorMembershipAndUser/suspended_membership
+            	Messages:   	home tenant alone is not proof of current membership
+    --- FAIL: TestCraftRunAdmissionRejectsInactiveActorMembershipAndUser/removed_membership (0.66s)
+        agent_run_actor_test.go:90: 
+            	Error Trace:	/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/agent_run_actor_test.go:90
+            	Error:      	Expected error with "agent runtime conflict" in chain but got nil.
+            	Test:       	TestCraftRunAdmissionRejectsInactiveActorMembershipAndUser/removed_membership
+            	Messages:   	home tenant alone is not proof of current membership
+    --- FAIL: TestCraftRunAdmissionRejectsInactiveActorMembershipAndUser/missing_membership (0.74s)
+        agent_run_actor_test.go:90: 
+            	Error Trace:	/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/internal/application/repository/agent_run_actor_test.go:90
+            	Error:      	Expected error with "agent runtime conflict" in chain but got nil.
+            	Test:       	TestCraftRunAdmissionRejectsInactiveActorMembershipAndUser/missing_membership
+            	Messages:   	home tenant alone is not proof of current membership
+FAIL
+FAIL	github.com/Tencent/WeKnora/internal/application/repository	5.166s
+FAIL

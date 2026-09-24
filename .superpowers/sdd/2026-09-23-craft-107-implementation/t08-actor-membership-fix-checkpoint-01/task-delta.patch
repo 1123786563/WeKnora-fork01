@@ -1,0 +1,138 @@
+--- before/internal/application/repository/agent_run.go
++++ after/internal/application/repository/agent_run.go
+@@ -244,7 +244,10 @@
+ 
+ func actorBelongsToTenant(tx *gorm.DB, tenantID uint64, actorUserID string) (bool, error) {
+ 	var marker int
+-	err := tx.Table("users").Select("1").Where("tenant_id = ? AND id = ? AND is_active = ? AND deleted_at IS NULL", tenantID, actorUserID, true).
++	err := tx.Table("tenant_members AS tm").Select("1").
++		Joins("JOIN users AS u ON u.id = tm.user_id").
++		Where("tm.tenant_id = ? AND tm.user_id = ? AND tm.status = ? AND tm.deleted_at IS NULL AND u.is_active = ? AND u.deleted_at IS NULL",
++			tenantID, actorUserID, "active", true).
+ 		Limit(1).Scan(&marker).Error
+ 	return marker == 1, err
+ }
+--- before/internal/application/repository/agent_run_actor_test.go
++++ after/internal/application/repository/agent_run_actor_test.go
+@@ -10,10 +10,93 @@
+ 	"github.com/stretchr/testify/require"
+ )
+ 
++func TestAdmissionUsesActiveMembershipInsteadOfHomeTenant(t *testing.T) {
++	db := openRunTestDB(t)
++	require.NoError(t, db.Exec(`INSERT INTO tenants (id, name, business) VALUES (2, 'tenant-2', 'test')`).Error)
++	require.NoError(t, db.Exec(`INSERT INTO users (id, username, email, password_hash, tenant_id) VALUES (?, ?, ?, ?, ?)`,
++		"cross-home-actor", "cross-home", "cross-home@example.test", "x", 2).Error)
++	require.NoError(t, db.Exec(`INSERT INTO tenant_members (tenant_id, user_id, role, status) VALUES
++		(1, 'cross-home-actor', 'contributor', 'active'), (2, 'cross-home-actor', 'admin', 'active')`).Error)
++	require.NoError(t, db.Exec(`INSERT INTO craft_sessions (session_id, tenant_id, kind) VALUES ('s1', 1, 'web')`).Error)
++
++	craftAdmission := testAdmission()
++	craftAdmission.Key.RunID = "craft-cross-home-actor"
++	craftAdmission.ActorUserID = "cross-home-actor"
++	store := NewAgentRunStore(db)
++	run, err := store.Admit(context.Background(), craftAdmission)
++	require.NoError(t, err, "an active invited member can start a Craft Run outside their home tenant")
++	require.Equal(t, "u1", run.UserID)
++	require.Equal(t, "cross-home-actor", run.ActorUserID)
++
++	genericAdmission := testAdmission()
++	genericAdmission.Key.RunID = "generic-cross-home-actor"
++	genericAdmission.SessionID = "s2"
++	genericAdmission.RequestID = "cross-home-generic-request"
++	genericAdmission.RequestHash = "cross-home-generic-hash"
++	genericAdmission.AssistantMessageID = "cross-home-generic-assistant"
++	genericAdmission.ActorUserID = "cross-home-actor"
++	generic, err := store.Admit(context.Background(), genericAdmission)
++	require.NoError(t, err, "generic Run compatibility also honors active tenant membership")
++	require.Equal(t, "u1", generic.UserID)
++	require.Equal(t, "cross-home-actor", generic.ActorUserID)
++}
++
++func TestCraftRunAdmissionRejectsInactiveActorMembershipAndUser(t *testing.T) {
++	tests := []struct {
++		name          string
++		memberStatus  string
++		memberDeleted bool
++		memberPresent bool
++		userActive    bool
++		userDeleted   bool
++	}{
++		{name: "suspended membership", memberStatus: "suspended", memberPresent: true, userActive: true},
++		{name: "removed membership", memberStatus: "active", memberDeleted: true, memberPresent: true, userActive: true},
++		{name: "missing membership", memberPresent: false, userActive: true},
++		{name: "inactive user", memberStatus: "active", memberPresent: true, userActive: false},
++		{name: "deleted user", memberStatus: "active", memberPresent: true, userActive: true, userDeleted: true},
++	}
++	for _, tc := range tests {
++		t.Run(tc.name, func(t *testing.T) {
++			db := openRunTestDB(t)
++			require.NoError(t, db.Exec(`INSERT INTO tenants (id, name, business) VALUES (2, 'tenant-2', 'test')`).Error)
++			require.NoError(t, db.Exec(`INSERT INTO users (id, username, email, password_hash, tenant_id) VALUES (?, ?, ?, ?, ?)`,
++				"tenant-2-owner", "tenant-2-owner", "tenant-2-owner@example.test", "x", 2).Error)
++			var deletedAt any
++			if tc.userDeleted {
++				deletedAt = time.Now().UTC()
++			}
++			require.NoError(t, db.Exec(`INSERT INTO users (id, username, email, password_hash, tenant_id, is_active, deleted_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
++				"tenant-2-actor", "tenant-2-actor", "tenant-2-actor@example.test", "x", 2, tc.userActive, deletedAt).Error)
++			if tc.memberPresent {
++				var memberDeleted any
++				if tc.memberDeleted {
++					memberDeleted = time.Now().UTC()
++				}
++				require.NoError(t, db.Exec(`INSERT INTO tenant_members (tenant_id, user_id, role, status, deleted_at) VALUES (2, 'tenant-2-actor', 'contributor', ?, ?)`,
++					tc.memberStatus, memberDeleted).Error)
++			}
++			require.NoError(t, db.Exec(`INSERT INTO sessions (id, tenant_id, title, user_id, engine_type) VALUES ('s-tenant-2', 2, 'tenant-2-session', 'tenant-2-owner', 'trpc')`).Error)
++			require.NoError(t, db.Exec(`INSERT INTO craft_sessions (session_id, tenant_id, kind) VALUES ('s-tenant-2', 2, 'web')`).Error)
++
++			in := testAdmission()
++			in.Key = agentruntime.RunKey{TenantID: 2, RunID: "inactive-actor-" + tc.name}
++			in.SessionID = "s-tenant-2"
++			in.UserID = "tenant-2-owner"
++			in.ActorUserID = "tenant-2-actor"
++			in.RequestID = "request-" + tc.name
++			in.AssistantMessageID = "assistant-" + tc.name
++			_, err := NewAgentRunStore(db).Admit(context.Background(), in)
++			require.ErrorIs(t, err, agentruntime.ErrConflict, "home tenant alone is not proof of current membership")
++		})
++	}
++}
++
+ func TestCraftRunAdmissionStoresOwnerAndAuthenticatedActorSeparately(t *testing.T) {
+ 	db := openRunTestDB(t)
+ 	require.NoError(t, db.Exec(`INSERT INTO users (id, username, email, password_hash, tenant_id) VALUES (?, ?, ?, ?, ?)`,
+ 		"collaborator", "collaborator", "collaborator@example.test", "x", 1).Error)
++	require.NoError(t, db.Exec(`INSERT INTO tenant_members (tenant_id, user_id, role, status) VALUES (1, 'collaborator', 'contributor', 'active')`).Error)
+ 	require.NoError(t, db.Exec(`INSERT INTO craft_sessions (session_id, tenant_id, kind) VALUES ('s1', 1, 'web')`).Error)
+ 
+ 	in := testAdmission()
+@@ -46,6 +129,7 @@
+ 	require.NoError(t, db.Exec(`INSERT INTO users (id, username, email, password_hash, tenant_id) VALUES
+ 		('collaborator', 'collaborator', 'collaborator@example.test', 'x', 1),
+ 		('other-tenant-user', 'other', 'other@example.test', 'x', 2)`).Error)
++	require.NoError(t, db.Exec(`INSERT INTO tenant_members (tenant_id, user_id, role, status) VALUES (1, 'collaborator', 'contributor', 'active'), (2, 'other-tenant-user', 'contributor', 'active')`).Error)
+ 	require.NoError(t, db.Exec(`INSERT INTO craft_sessions (session_id, tenant_id, kind) VALUES ('s1', 1, 'web')`).Error)
+ 
+ 	in := testAdmission()
+@@ -81,6 +165,7 @@
+ 
+ 	require.NoError(t, db.Exec(`INSERT INTO users (id, username, email, password_hash, tenant_id) VALUES (?, ?, ?, ?, ?)`,
+ 		"collaborator", "collaborator", "collaborator@example.test", "x", 1).Error)
++	require.NoError(t, db.Exec(`INSERT INTO tenant_members (tenant_id, user_id, role, status) VALUES (1, 'collaborator', 'contributor', 'active')`).Error)
+ 	in.ActorUserID = "collaborator"
+ 	in.Key.RunID = "craft-actor-legacy"
+ 	run, err := store.Admit(context.Background(), in)
+--- before/internal/application/repository/agent_run_test.go
++++ after/internal/application/repository/agent_run_test.go
+@@ -68,6 +68,9 @@
+ 	require.NoError(t, db.Exec(
+ 		`INSERT INTO users (id, username, email, password_hash, tenant_id)
+ 		 VALUES ('u1', 'u1', 'u1@example.test', 'x', 1)`,
++	).Error)
++	require.NoError(t, db.Exec(
++		`INSERT INTO tenant_members (tenant_id, user_id, role, status) VALUES (1, 'u1', 'admin', 'active')`,
+ 	).Error)
+ 	require.NoError(t, db.Exec(
+ 		`INSERT INTO sessions (id, tenant_id, title, user_id, engine_type) VALUES

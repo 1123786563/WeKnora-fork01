@@ -1,0 +1,20 @@
+{
+  "task": "T01 Task 1 \u2014 Debian HTTPS and bounded apt retries",
+  "worktree": "/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01",
+  "head": "a5e9195acd6500c085c85d60c852148e7bbbbf34",
+  "owned_files": [
+    "docker/craft/Dockerfile",
+    "docs/plans/2026-09-24-craft-107-t01-linux-image-apt-recovery-report.md",
+    ".superpowers/sdd/2026-09-23-craft-107-implementation/t01-linux-image-apt-recovery/build.log"
+  ],
+  "dockerfile_sha256_before": "1dee856c10a4616ea7c40ec65d51b2f54745c9ffe947898cbb76988ea516bce7",
+  "dockerfile_sha256_after": "5511b8c3bdc7f65bea9663804d9adbd9a4e7e7dec7f95a6c20af9d7831b64393",
+  "build_log": ".superpowers/sdd/2026-09-23-craft-107-implementation/t01-linux-image-apt-recovery/build.log",
+  "build_log_sha256": "0a2f951b89a263e861156303d34ff3135468a395ed22a94cc14bbc93b0134cc2",
+  "build_command": "timeout 1200 docker build --platform linux/arm64 --progress=plain -t weknora-craft-runtime:1.18.4 -f docker/craft/Dockerfile docker/craft",
+  "build_result": "failed; Docker BuildKit process exit code 1 (apt-get install returned 100)",
+  "image_digest": null,
+  "opencode_in_image_version": null,
+  "opencode_in_image_sha256": null,
+  "diff_check": "git diff --check -- docker/craft/Dockerfile: passed"
+}

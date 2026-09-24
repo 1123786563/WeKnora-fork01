@@ -1,0 +1,125 @@
+--- .superpowers/sdd/2026-09-23-craft-107-implementation/t19-pending-cancel-fix-checkpoint-01/before/internal/application/repository/agent_run.go	2026-09-23 22:12:35
++++ internal/application/repository/agent_run.go	2026-09-23 22:09:30
+@@ -523,7 +523,7 @@
+ }
+ 
+ func requestCraftChargeCancel(tx *gorm.DB, key agentruntime.RunKey, reason string) error {
+-	updated := runScope(tx, key).Where("status IN ('running','recovering','queued','waiting_user')").Updates(map[string]any{
++	updated := runScope(tx, key).Where("status IN ('running','recovering','queued','waiting_user') OR (status = 'reconciling' AND wait_reason = ?)", craftChargeStartPendingWaitReason).Updates(map[string]any{
+ 		"status": "reconciling", "wait_reason": craftChargeStartPendingWaitReason,
+ 		"lease_owner": "", "lease_until": nil, "revision": gorm.Expr("revision + 1"), "updated_at": gorm.Expr("CURRENT_TIMESTAMP"),
+ 	})
+@@ -556,7 +556,9 @@
+ 	}
+ 	var event agentRunEventRow
+ 	if err := tx.Where("tenant_id = ? AND run_id = ? AND event_type IN ?", key.TenantID, key.RunID,
+-		[]string{"craft_charge_pause_requested", "craft_charge_cancel_requested"}).Order("seq DESC").Take(&event).Error; err != nil {
++		[]string{"craft_charge_pause_requested", "craft_charge_cancel_requested"}).
++		Order("CASE WHEN event_type = 'craft_charge_cancel_requested' THEN 0 ELSE 1 END ASC").
++		Order("seq DESC").Take(&event).Error; err != nil {
+ 		return false, err
+ 	}
+ 	var request struct{ Reason string }
+--- .superpowers/sdd/2026-09-23-craft-107-implementation/t19-pending-cancel-fix-checkpoint-01/before/internal/application/repository/agent_run_lifecycle.go	2026-09-23 22:12:35
++++ internal/application/repository/agent_run_lifecycle.go	2026-09-23 22:09:40
+@@ -43,7 +43,15 @@
+ 	}
+ 	if unresolved {
+ 		if run.Status == "reconciling" && run.WaitReason == craftChargeStartPendingWaitReason {
+-			return nil
++			var cancelRequests int64
++			if err := tx.Table("agent_run_events").Where(
++				"tenant_id = ? AND run_id = ? AND event_type = ?", key.TenantID, key.RunID, "craft_charge_cancel_requested",
++			).Count(&cancelRequests).Error; err != nil {
++				return err
++			}
++			if cancelRequests != 0 {
++				return nil
++			}
+ 		}
+ 		if err := requestCraftChargeCancel(tx, key, reason); err != nil {
+ 			return err
+--- .superpowers/sdd/2026-09-23-craft-107-implementation/t19-pending-cancel-fix-checkpoint-01/before/internal/application/repository/agent_run_craft_charge_test.go	2026-09-23 22:12:35
++++ internal/application/repository/agent_run_craft_charge_test.go	2026-09-23 22:11:41
+@@ -101,6 +101,81 @@
+ 	require.NotNil(t, active)
+ }
+ 
++func TestCraftChargePendingPauseThenCancelWinsAndRepeatsIdempotently(t *testing.T) {
++	db := openRunTestDB(t)
++	store := NewAgentRunStore(db)
++	in := testAdmission()
++	in.Key.RunID = "charge-pause-then-cancel"
++	_, err := store.Admit(context.Background(), in)
++	require.NoError(t, err)
++	fence, err := store.Claim(context.Background(), in.Key, "worker-pause-cancel", time.Minute)
++	require.NoError(t, err)
++	insertUnresolvedCraftStart(t, db, in.Key, "pause-then-cancel")
++	require.NoError(t, store.SetStatus(context.Background(), fence, "waiting_user", "budget_exhausted"))
++
++	var run agentRunRow
++	require.NoError(t, db.Where("tenant_id = ? AND run_id = ?", 1, in.Key.RunID).Take(&run).Error)
++	pausedRevision := run.Revision
++	require.Equal(t, "reconciling", run.Status)
++	require.ErrorIs(t, store.CancelRunOwnedAtRevision(context.Background(), 1, "other-user", in.Key.RunID, pausedRevision, "member_stop"), agentruntime.ErrConflict)
++	require.ErrorIs(t, store.CancelRunOwnedAtRevision(context.Background(), 1, "u1", in.Key.RunID, pausedRevision-1, "member_stop"), agentruntime.ErrConflict)
++	require.NoError(t, store.CancelRunOwnedAtRevision(context.Background(), 1, "u1", in.Key.RunID, pausedRevision, "member_stop"))
++	require.NoError(t, store.CancelRun(context.Background(), in.Key, "member_stop"), "repeated cancel is idempotent")
++	require.NoError(t, db.Where("tenant_id = ? AND run_id = ?", 1, in.Key.RunID).Take(&run).Error)
++	require.Equal(t, pausedRevision+1, run.Revision, "duplicate cancel must not advance revision again")
++	var cancelRequests int64
++	require.NoError(t, db.Table("agent_run_events").Where("tenant_id = ? AND run_id = ? AND event_type = ?", 1, in.Key.RunID, "craft_charge_cancel_requested").Count(&cancelRequests).Error)
++	require.EqualValues(t, 1, cancelRequests)
++
++	require.NoError(t, db.Table("craft_charge_start_journal").Where("tenant_id = ? AND run_id = ?", 1, in.Key.RunID).
++		Update("state", "started").Error)
++	keys, err := store.Scan(context.Background(), 10)
++	require.NoError(t, err)
++	require.Contains(t, keys, in.Key)
++	_, err = store.Claim(context.Background(), in.Key, "worker-recovery", time.Minute)
++	require.ErrorIs(t, err, agentruntime.ErrLeaseLost)
++	require.NoError(t, db.Where("tenant_id = ? AND run_id = ?", 1, in.Key.RunID).Take(&run).Error)
++	require.Equal(t, "canceled", run.Status, "later cancel must win over an earlier pending pause")
++	require.Equal(t, "member_stop", run.WaitReason)
++	var active *string
++	require.NoError(t, db.Table("sessions").Select("active_agent_run_id").Where("tenant_id = ? AND id = ?", 1, in.SessionID).Scan(&active).Error)
++	require.Nil(t, active)
++	var journal struct{ State string }
++	require.NoError(t, db.Table("craft_charge_start_journal").Select("state").Where("tenant_id = ? AND run_id = ?", 1, in.Key.RunID).Take(&journal).Error)
++	require.Equal(t, "started", journal.State, "final cancellation retains resolved charge-start evidence")
++}
++
++func TestCraftChargeCancelCannotBeDowngradedByStalePause(t *testing.T) {
++	db := openRunTestDB(t)
++	store := NewAgentRunStore(db)
++	in := testAdmission()
++	in.Key.RunID = "charge-cancel-then-pause"
++	_, err := store.Admit(context.Background(), in)
++	require.NoError(t, err)
++	fence, err := store.Claim(context.Background(), in.Key, "worker-cancel-pause", time.Minute)
++	require.NoError(t, err)
++	insertUnresolvedCraftStart(t, db, in.Key, "cancel-then-pause")
++	require.NoError(t, store.CancelRun(context.Background(), in.Key, "member_stop"))
++	require.ErrorIs(t, store.SetStatus(context.Background(), fence, "waiting_user", "late_budget_pause"), agentruntime.ErrLeaseLost)
++	var run agentRunRow
++	require.NoError(t, db.Where("tenant_id = ? AND run_id = ?", 1, in.Key.RunID).Take(&run).Error)
++	require.Equal(t, "reconciling", run.Status)
++	require.Equal(t, craftChargeStartPendingWaitReason, run.WaitReason)
++	var lastSeq int64
++	require.NoError(t, db.Table("agent_run_events").Select("COALESCE(MAX(seq), 0)").Where("tenant_id = ? AND run_id = ?", 1, in.Key.RunID).Scan(&lastSeq).Error)
++	require.NoError(t, db.Create(&agentRunEventRow{
++		TenantID: 1, RunID: in.Key.RunID, Seq: lastSeq + 1,
++		EventType: "craft_charge_pause_requested", Payload: `{"reason":"late_budget_pause"}`,
++	}).Error, "even a later stale pause event cannot downgrade a recorded cancellation")
++	require.NoError(t, db.Table("craft_charge_start_journal").Where("tenant_id = ? AND run_id = ?", 1, in.Key.RunID).
++		Update("state", "definitely_unstarted").Error)
++	_, err = store.Claim(context.Background(), in.Key, "worker-recovery", time.Minute)
++	require.ErrorIs(t, err, agentruntime.ErrLeaseLost)
++	require.NoError(t, db.Where("tenant_id = ? AND run_id = ?", 1, in.Key.RunID).Take(&run).Error)
++	require.Equal(t, "canceled", run.Status)
++	require.Equal(t, "member_stop", run.WaitReason)
++}
++
+ func TestCraftChargeFinalizeRetainsUnresolvedStartAndDefersCancel(t *testing.T) {
+ 	db := openRunTestDB(t)
+ 	store := NewAgentRunStore(db)

@@ -1,0 +1,13 @@
+{
+  "source_head": "b18de6dd601df7cb155ffd44a86023f835cad1fc",
+  "files": [
+    {
+      "path": "apps/web/src/features/craft/routes.tsx",
+      "sha256": "7dcb395567f7c72912f2bf2bad599b7006b2f35df19eb267d0eea9a0ca58539c"
+    },
+    {
+      "path": "apps/web/src/features/craft/routes.access.test.tsx",
+      "sha256": "4bd3b227f516354dbb04aa50e212d60838e7828262cc2c0f5e920257eabd22b2"
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "captured_at_utc": "2026-09-23T12:04:13.689945+00:00",
+  "head": "a5e9195acd6500c085c85d60c852148e7bbbbf34",
+  "files": [
+    {
+      "path": "migrations/versioned/000190_craft_input_admission_fence.up.sql",
+      "sha256": "7ded4b7d201936ab211dc934416efde9295967354df5ca4d0cc3c6601af3634f",
+      "bytes": 413
+    },
+    {
+      "path": "migrations/versioned/000190_craft_input_admission_fence.down.sql",
+      "sha256": "dff4ada13df499b2f6fcafbdf57f91b31f316c22b428c0d1e72f9061af556ec7",
+      "bytes": 258
+    },
+    {
+      "path": "migrations/sqlite/000111_craft_input_admission_fence.up.sql",
+      "sha256": "d59894a3b9b318a9f182f0b23eb69d689547599c21ead5249d4cdcb1f961fc18",
+      "bytes": 396
+    },
+    {
+      "path": "migrations/sqlite/000111_craft_input_admission_fence.down.sql",
+      "sha256": "dff4ada13df499b2f6fcafbdf57f91b31f316c22b428c0d1e72f9061af556ec7",
+      "bytes": 258
+    }
+  ],
+  "status": " M docs/plans/2026-09-23-craft-107-ledger.md\n M internal/router/router.go\n M internal/router/routes_chat.go\n M internal/router/routes_craft_features_test.go\n M packages/views/src/craft/access.test.tsx\n M packages/views/src/craft/access.tsx\n?? docs/plans/2026-09-23-craft-107-t01-admission-migration-plan.md\n?? docs/plans/2026-09-23-craft-107-t01-admission-migration-report.md\n?? docs/plans/2026-09-23-craft-107-t01-fix1-review.md\n?? docs/plans/2026-09-23-craft-107-t01-fix2-review.md\n?? docs/plans/2026-09-23-craft-107-t05-fix2-review.md\n?? docs/plans/2026-09-23-craft-107-t08-central-a-fix1-checkpoint.json\n?? docs/plans/2026-09-23-craft-107-t08-central-a-fix1-report.md\n?? docs/plans/2026-09-23-craft-107-t08-central-a-fix1-review-package.patch\n?? docs/plans/2026-09-23-craft-107-t08-central-a-fix1-review.md\n?? docs/plans/2026-09-23-craft-107-t08-central-b-design.md\n?? docs/plans/2026-09-23-craft-107-t08-ui-fix-review.md\n?? docs/plans/2026-09-23-craft-107-t14-render-boundary-review.md\n?? docs/plans/2026-09-23-craft-107-t19-fix2-review.md\n"
+}
