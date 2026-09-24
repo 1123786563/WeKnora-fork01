@@ -25,4 +25,8 @@ func RegisterCareerRoutes(r *gin.RouterGroup, h *career.Handler) {
 	g.POST("/evaluations", h.EvaluateOpportunity)
 	g.GET("/evaluations/receipt", h.EvaluationReceipt)
 	g.GET("/evaluations/:evaluationId", h.Evaluation)
+	g.POST("/applications", h.CreateApplication)
+	g.GET("/applications/receipt", h.ApplicationReceipt)
+	g.GET("/applications/:applicationId", h.GetApplication)
+	g.POST("/applications/link/reconcile", h.ReconcileApplicationLink)
 }

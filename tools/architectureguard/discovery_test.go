@@ -183,14 +183,15 @@ func TestFuncDeclNamesRecursive(t *testing.T) {
 // 文档表记 89；全仓仅 GET 222 vs 文档 221 一处之差，其余方法全部吻合）。
 // worker 23+23 两侧一致；hooks 58。 ----
 // 历史 647 条路由基线 = 既有 644 条 + T08 Opportunity 3；历史快照见
-// docs/architecture/moves/README.md。当前 652 条 = 既有 650 条 + T09 Source Import 2。
-// 日期说明见 docs/architecture/moves/README.md。
+// docs/architecture/moves/README.md。当前 656 条 = 既有 652 条 + T09 Source
+// Import 2 + T14 Career Application 4（POST/GET applications ×3 + link
+// reconcile）。日期说明见 docs/architecture/moves/README.md。
 
 const (
-	wantRouteLiteral  = 583
+	wantRouteLiteral  = 587
 	wantRouteAPIKey   = 69
 	wantRouteHandle   = 0
-	wantRouteTotal    = 652
+	wantRouteTotal    = 656
 	wantWorkersPerMix = 23
 	wantHooks         = 58
 )

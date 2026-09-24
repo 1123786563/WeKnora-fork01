@@ -28,11 +28,15 @@ type Handler struct {
 	}
 }
 
-func NewHandler(db *gorm.DB, members interfaces.TenantMemberService, files interfaces.FileService, catalog interfaces.ResourceCatalog, reader interfaces.DocumentReader) (*Handler, error) {
+// NewHandler wires the Career HTTP surface. The linker is the Workbench
+// boundary for durable application tasks; Career never imports Workbench
+// repositories directly.
+func NewHandler(db *gorm.DB, members interfaces.TenantMemberService, files interfaces.FileService, catalog interfaces.ResourceCatalog, reader interfaces.DocumentReader, linker interfaces.CareerApplicationTaskLinker) (*Handler, error) {
 	o, e := NewOffice(db)
 	if e != nil {
 		return nil, e
 	}
+	o.SetApplicationTaskLinker(linker)
 	return &Handler{office: o, members: members, upload: NewUploadAdapter(files, catalog, reader)}, nil
 }
 func validateOwnerOnlyCareerTenant(userID string, tenantID uint64, members []*types.TenantMember) error {
@@ -82,12 +86,18 @@ func writeError(c *gin.Context, e error) {
 	case errors.Is(e, ErrInvalidRequest):
 		status = 400
 		code = "invalid_request"
-	case errors.Is(e, ErrReceiptNotFound), errors.Is(e, ErrProposalNotFound), errors.Is(e, ErrSourceNotFound), errors.Is(e, ErrOpportunityNotFound), errors.Is(e, ErrEvaluationNotFound):
+	case errors.Is(e, ErrReceiptNotFound), errors.Is(e, ErrProposalNotFound), errors.Is(e, ErrSourceNotFound), errors.Is(e, ErrOpportunityNotFound), errors.Is(e, ErrEvaluationNotFound), errors.Is(e, ErrApplicationNotFound):
 		status = 404
 		code = "not_found"
 	case errors.Is(e, ErrProposalResolved):
 		status = 409
 		code = "proposal_resolved"
+	case errors.Is(e, ErrApplicationConflict):
+		status = 409
+		code = "application_conflict"
+	case errors.Is(e, ErrApplicationHardIneligible):
+		status = 409
+		code = "hard_ineligible_requires_continue"
 	case errors.Is(e, ErrOutcomeUnknown):
 		status = 504
 		code = "outcome_unknown"
@@ -369,6 +379,96 @@ func (h *Handler) EvaluationReceipt(c *gin.Context) {
 		return
 	}
 	receipt, err := h.office.FindEvaluationReceipt(ctx, c.Query("requestId"))
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, receipt)
+}
+
+// CreateApplication pins application evidence and links one durable Workbench
+// task per job and batch. The Career intent row is durable before any
+// external call, so an unknown outcome stays recoverable through reconcile.
+func (h *Handler) CreateApplication(c *gin.Context) {
+	ctx, ok := h.scope(c, false)
+	if !ok {
+		return
+	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 16*1024)
+	decoder := json.NewDecoder(c.Request.Body)
+	decoder.DisallowUnknownFields()
+	var input CreateApplicationInput
+	if err := decoder.Decode(&input); err != nil {
+		var maxBytesError *http.MaxBytesError
+		if errors.As(err, &maxBytesError) {
+			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": gin.H{"code": "request_too_large", "message": "application request is too large"}})
+			return
+		}
+		writeError(c, ErrInvalidRequest)
+		return
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		writeError(c, ErrInvalidRequest)
+		return
+	}
+	receipt, err := h.office.CreateApplication(ctx, input)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, receipt)
+}
+
+func (h *Handler) ApplicationReceipt(c *gin.Context) {
+	ctx, ok := h.scope(c, false)
+	if !ok {
+		return
+	}
+	receipt, err := h.office.FindApplicationReceipt(ctx, c.Query("requestId"))
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, receipt)
+}
+
+func (h *Handler) GetApplication(c *gin.Context) {
+	ctx, ok := h.scope(c, false)
+	if !ok {
+		return
+	}
+	receipt, err := h.office.Application(ctx, c.Param("applicationId"))
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, receipt)
+}
+
+// ReconcileApplicationLink resolves an undecided application link with the
+// original request ID; it never changes the pinned intent.
+func (h *Handler) ReconcileApplicationLink(c *gin.Context) {
+	ctx, ok := h.scope(c, false)
+	if !ok {
+		return
+	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 16*1024)
+	decoder := json.NewDecoder(c.Request.Body)
+	decoder.DisallowUnknownFields()
+	var req struct {
+		RequestID string `json:"requestId"`
+	}
+	if err := decoder.Decode(&req); err != nil {
+		writeError(c, ErrInvalidRequest)
+		return
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		writeError(c, ErrInvalidRequest)
+		return
+	}
+	receipt, err := h.office.ReconcileApplicationLink(ctx, req.RequestID)
 	if err != nil {
 		writeError(c, err)
 		return

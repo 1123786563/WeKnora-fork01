@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -120,4 +122,58 @@ func TestCareerHTTPRechecksTenantMembershipOnEveryRequest(t *testing.T) {
 	require.Equal(t, 403, request().Code)
 	members.members = nil
 	require.Equal(t, 403, request().Code)
+}
+
+func TestCareerApplicationHandlerMapsLinkOutcomes(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	office, err := NewOffice(db)
+	require.NoError(t, err)
+	scope := Scope{UserID: "u1", TenantID: 7}
+	base := context.WithValue(context.Background(), types.UserIDContextKey, scope.UserID)
+	base = context.WithValue(base, types.TenantIDContextKey, scope.TenantID)
+	ctx := WithScope(base, scope)
+	require.NoError(t, office.ClaimSpace(ctx))
+
+	seed := seedApplicationEvaluation(t, office, ctx, "仅限2027届。", "2026", "handler")
+	linker := &fakeCareerApplicationLinker{}
+	office.SetApplicationTaskLinker(linker)
+	h := &Handler{office: office, members: &memberListStub{members: []*types.TenantMember{{UserID: "u1", TenantID: 7, Role: types.TenantRoleOwner}}}}
+
+	postApplication := func(body string) (int, string) {
+		gin.SetMode(gin.TestMode)
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/career/applications", strings.NewReader(body)).WithContext(base)
+		h.CreateApplication(c)
+		return rec.Code, rec.Body.String()
+	}
+	receiptRequest := func(requestID string) (int, string) {
+		gin.SetMode(gin.TestMode)
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/career/applications/receipt?requestId="+url.QueryEscape(requestID), nil).WithContext(base)
+		h.ApplicationReceipt(c)
+		return rec.Code, rec.Body.String()
+	}
+
+	// A hard-ineligible evaluation without explicit continuation maps to 409.
+	body, _ := json.Marshal(applicationInput(seed, "handler-1", "batch-a"))
+	status, payload := postApplication(string(body))
+	require.Equal(t, 409, status)
+	require.Contains(t, payload, "hard_ineligible_requires_continue")
+
+	// An unknown linker outcome maps to 504 with the original request id.
+	unknownSeed := seedApplicationEvaluation(t, office, ctx, "仅限2029届。", "2029", "handler-unknown")
+	linker.ensureErr = context.Canceled
+	unknownBody, _ := json.Marshal(applicationInput(unknownSeed, "handler-2", "batch-b"))
+	status, payload = postApplication(string(unknownBody))
+	require.Equal(t, 504, status)
+	require.Contains(t, payload, "outcome_unknown")
+	require.Contains(t, payload, `"requestId":"handler-2"`)
+
+	// A receipt for an unknown request maps to 404.
+	status, payload = receiptRequest("handler-missing")
+	require.Equal(t, 404, status)
+	require.Contains(t, payload, "not_found")
 }

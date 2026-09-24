@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Tencent/WeKnora/internal/modules/career"
@@ -18,7 +19,7 @@ func TestCareerMigrationCreatesPersonalEvidenceSchema(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "career-migration.db")
 	require.NoError(t, RunMigrationsWithOptions("sqlite3://unused", MigrationOptions{SQLiteDBPath: path}))
 	db := openSQLiteDB(t, path)
-	for _, table := range []string{"career_spaces", "career_profiles", "career_facts", "career_fact_versions", "career_proposals", "career_changes", "career_receipts", "career_source_revisions", "career_opportunities", "career_opportunity_observations", "career_opportunity_snapshots", "career_opportunity_receipts", "career_evaluations"} {
+	for _, table := range []string{"career_spaces", "career_profiles", "career_facts", "career_fact_versions", "career_proposals", "career_changes", "career_receipts", "career_source_revisions", "career_opportunities", "career_opportunity_observations", "career_opportunity_snapshots", "career_opportunity_receipts", "career_evaluations", "career_applications"} {
 		require.Truef(t, sqliteTableExists(t, db, table), "career migration must create %s", table)
 	}
 	for _, column := range []string{"id", "tenant_id", "user_id", "revision", "file_name", "mime_type", "size", "digest", "request_id", "intent_hash", "expected_revision", "claim_token", "lease_until", "resource_ref", "status", "error_category", "error_message", "extracted_text", "missing_categories", "review_flags", "created_at", "completed_at"} {
@@ -32,6 +33,7 @@ func TestCareerMigrationCreatesPersonalEvidenceSchema(t *testing.T) {
 		"career_opportunity_snapshots":    {"id", "tenant_id", "user_id", "opportunity_id", "observation_id", "raw_text", "raw_sha256", "extracted", "status", "acquired_at", "created_at"},
 		"career_opportunity_receipts":     {"tenant_id", "user_id", "request_id", "fingerprint", "body", "created_at"},
 		"career_evaluations":              {"id", "tenant_id", "user_id", "request_id", "fingerprint", "intent", "opportunity_id", "snapshot_id", "profile_revision", "receipt_body", "evaluation_body", "created_at"},
+		"career_applications":             {"id", "tenant_id", "user_id", "request_id", "fingerprint", "opportunity_id", "snapshot_id", "evaluation_id", "profile_revision", "evidence_body", "batch_identity", "continue_despite_hard_failure", "evaluation_status", "qualified", "warning_body", "link_state", "task_id", "run_id", "receipt_body", "created_at", "updated_at"},
 	} {
 		for _, column := range columns {
 			var count int
@@ -215,6 +217,53 @@ func TestCareerEvaluationSQLiteMigrationUpDownUp(t *testing.T) {
 		require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM pragma_table_info('career_evaluations') WHERE name = ?", column).Scan(&count))
 		require.Equalf(t, 1, count, "career_evaluations must include %s", column)
 	}
+}
+
+func TestCareerApplicationSQLiteMigrationUpDownUp(t *testing.T) {
+	root := sqliteRepoRoot(t)
+	chdirAndRestore(t, root)
+	for _, tree := range []string{
+		"migrations/versioned/000197_career_applications.up.sql",
+		"migrations/versioned/000197_career_applications.down.sql",
+		"migrations/sqlite/000118_career_applications.up.sql",
+		"migrations/sqlite/000118_career_applications.down.sql",
+	} {
+		require.FileExistsf(t, filepath.Join(root, tree), "paired migration files must exist: %s", tree)
+	}
+	path := filepath.Join(t.TempDir(), "career-application-up-down.db")
+	require.NoError(t, RunMigrationsWithOptions("sqlite3://unused", MigrationOptions{SQLiteDBPath: path}))
+	db := openSQLiteDB(t, path)
+	version, _ := sqliteMigrationState(t, db)
+	require.Equal(t, 119, version)
+	require.True(t, sqliteTableExists(t, db, "career_applications"))
+
+	insertApplication := func(id, requestID, opportunityID, batch string) error {
+		_, err := db.Exec(`INSERT INTO career_applications
+			(id,tenant_id,user_id,request_id,fingerprint,opportunity_id,snapshot_id,evaluation_id,
+			 profile_revision,evidence_body,batch_identity,continue_despite_hard_failure,evaluation_status,
+			 qualified,warning_body,link_state,receipt_body,created_at,updated_at)
+			VALUES (?,42,'app-owner',?,?,?, 'snap-1','eval-1', 1,'{}',?,0,'eligible', 1,'','linking','{}',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)`,
+			id, requestID, strings.Repeat("f", 64), opportunityID, batch)
+		return err
+	}
+	require.NoError(t, insertApplication("app-1", "req-1", "opp-1", "batch-a"))
+	require.Error(t, insertApplication("app-2", "req-1", "opp-1", "batch-b"), "request uniqueness must reject a duplicate (tenant,user,request)")
+	require.Error(t, insertApplication("app-3", "req-2", "opp-1", "batch-a"), "job/batch uniqueness must reject a second application for the same job and batch")
+	require.NoError(t, insertApplication("app-4", "req-3", "opp-1", "batch-b"))
+
+	m, err := newSQLiteMigrator("file://"+filepath.Join(root, "migrations/sqlite"), path, "", true)
+	require.NoError(t, err)
+	t.Cleanup(func() { _, _ = m.Close() })
+	require.NoError(t, m.Migrate(117))
+	require.False(t, sqliteTableExists(t, db, "career_applications"))
+	for _, table := range []string{"career_evaluations", "career_opportunities", "career_opportunity_snapshots"} {
+		require.Truef(t, sqliteTableExists(t, db, table), "application down migration must preserve %s", table)
+	}
+	require.NoError(t, m.Up())
+	require.True(t, sqliteTableExists(t, db, "career_applications"))
+	var count int
+	require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM career_applications").Scan(&count))
+	require.Zero(t, count, "re-applying up must restore an empty table")
 }
 
 func TestCareerOfficeRejectsMalformedVersionedSQLiteSchema(t *testing.T) {

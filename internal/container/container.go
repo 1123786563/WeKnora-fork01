@@ -707,6 +707,12 @@ func BuildContainer(container *dig.Container) *dig.Container {
 
 	// HTTP handlers layer
 	logger.Debugf(ctx, "[Container] Registering HTTP handlers...")
+	// Career applications link to durable Workbench tasks strictly through
+	// the interfaces.CareerApplicationTaskLinker seam.
+	must(container.Provide(workbenchservice.NewApplicationTaskCoordinator))
+	must(container.Provide(func(coordinator *workbenchservice.ApplicationTaskCoordinator) interfaces.CareerApplicationTaskLinker {
+		return coordinator
+	}))
 	must(container.Provide(career.NewHandler))
 	must(container.Provide(handler.NewTenantHandler))
 	must(container.Provide(handler.NewTenantMemberHandler))

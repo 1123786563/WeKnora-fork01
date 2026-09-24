@@ -19,9 +19,12 @@ import (
 
 const careerApplicationTaskOrigin = "career_application"
 
+// The typed outcomes of the linker contract live in the interfaces package so
+// Career can classify definite rejections without importing Workbench. The
+// aliases keep the in-package sentinels (and their messages) stable.
 var (
-	ErrApplicationTaskNotFound = errors.New("career application task not found")
-	ErrApplicationTaskConflict = errors.New("career application task conflict")
+	ErrApplicationTaskNotFound = interfaces.ErrCareerApplicationTaskNotFound
+	ErrApplicationTaskConflict = interfaces.ErrCareerApplicationTaskConflict
 )
 
 var _ interfaces.CareerApplicationTaskLinker = (*ApplicationTaskCoordinator)(nil)

@@ -1,0 +1,526 @@
+package career
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"path/filepath"
+	"sync"
+	"testing"
+
+	"github.com/Tencent/WeKnora/internal/types/interfaces"
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/require"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+)
+
+type applicationSeed struct {
+	OpportunityID string
+	SnapshotID    string
+	EvaluationID  string
+	Revision      uint64
+}
+
+func newApplicationOffice(t *testing.T, user string, tenant uint64) (*Office, *gorm.DB, context.Context) {
+	t.Helper()
+	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "career-application.db")), &gorm.Config{})
+	require.NoError(t, err)
+	office, err := NewOffice(db)
+	require.NoError(t, err)
+	ctx := WithScope(context.Background(), Scope{UserID: user, TenantID: tenant})
+	require.NoError(t, office.ClaimSpace(ctx))
+	return office, db, ctx
+}
+
+func seedApplicationEvaluation(t *testing.T, o *Office, ctx context.Context, jd, year, seedID string) applicationSeed {
+	t.Helper()
+	if year != "" {
+		view, err := o.Open(ctx)
+		require.NoError(t, err)
+		_, err = o.Confirm(ctx, "education.graduation_year", year, seedID+"-year", view.Revision, Source{Kind: "manual"})
+		require.NoError(t, err)
+	}
+	view, err := o.Open(ctx)
+	require.NoError(t, err)
+	job, err := o.ImportJD(ctx, ImportJDInput{RequestID: seedID + "-job", RawText: jd})
+	require.NoError(t, err)
+	evaluation, err := o.EvaluateOpportunity(ctx, EvaluateInput{
+		RequestID:     seedID + "-eval",
+		OpportunityID: job.OpportunityID,
+		SnapshotID:    job.SnapshotID,
+	})
+	require.NoError(t, err)
+	return applicationSeed{
+		OpportunityID: job.OpportunityID,
+		SnapshotID:    job.SnapshotID,
+		EvaluationID:  evaluation.EvaluationID,
+		Revision:      view.Revision,
+	}
+}
+
+func applicationInput(seed applicationSeed, requestID, batch string) CreateApplicationInput {
+	return CreateApplicationInput{
+		RequestID:        requestID,
+		OpportunityID:    seed.OpportunityID,
+		SnapshotID:       seed.SnapshotID,
+		EvaluationID:     seed.EvaluationID,
+		BatchIdentity:    batch,
+		ExpectedRevision: seed.Revision,
+	}
+}
+
+// fakeCareerApplicationLinker records every call and returns configurable
+// Ensure/Find results so the Office workflow can be driven through unknown,
+// rejection, and success paths.
+type fakeCareerApplicationLinker struct {
+	mutex         sync.Mutex
+	ensureCalls   int
+	findCalls     int
+	ensureErr     error
+	findErr       error
+	findLink      interfaces.CareerApplicationTaskLink
+	lastIntent    interfaces.CareerApplicationTaskIntent
+	ensureScopes  []ensureScope
+	findArguments []findArgument
+	taskSequence  int
+}
+
+type ensureScope struct {
+	tenantID uint64
+	ownerID  string
+}
+
+type findArgument struct {
+	tenantID  uint64
+	ownerID   string
+	requestID string
+}
+
+func (f *fakeCareerApplicationLinker) EnsureCareerApplicationTask(
+	_ context.Context, tenantID uint64, ownerID string, intent interfaces.CareerApplicationTaskIntent,
+) (interfaces.CareerApplicationTaskLink, error) {
+	f.mutex.Lock()
+	defer f.mutex.Unlock()
+	f.ensureCalls++
+	f.lastIntent = intent
+	f.ensureScopes = append(f.ensureScopes, ensureScope{tenantID: tenantID, ownerID: ownerID})
+	if f.ensureErr != nil {
+		return interfaces.CareerApplicationTaskLink{}, f.ensureErr
+	}
+	f.taskSequence++
+	return interfaces.CareerApplicationTaskLink{
+		TaskID: fmt.Sprintf("task-%d", f.taskSequence),
+		RunID:  fmt.Sprintf("run-%d", f.taskSequence),
+	}, nil
+}
+
+func (f *fakeCareerApplicationLinker) FindCareerApplicationTask(
+	_ context.Context, tenantID uint64, ownerID string, requestID string,
+) (interfaces.CareerApplicationTaskLink, error) {
+	f.mutex.Lock()
+	defer f.mutex.Unlock()
+	f.findCalls++
+	f.findArguments = append(f.findArguments, findArgument{tenantID: tenantID, ownerID: ownerID, requestID: requestID})
+	if f.findErr != nil {
+		return interfaces.CareerApplicationTaskLink{}, f.findErr
+	}
+	if f.findLink.TaskID != "" {
+		return f.findLink, nil
+	}
+	return interfaces.CareerApplicationTaskLink{TaskID: "task-found", RunID: "run-found"}, nil
+}
+
+func (f *fakeCareerApplicationLinker) calls() (int, int) {
+	f.mutex.Lock()
+	defer f.mutex.Unlock()
+	return f.ensureCalls, f.findCalls
+}
+
+type storedApplicationRow struct {
+	ID                         string
+	RequestID                  string
+	Fingerprint                string
+	OpportunityID              string
+	SnapshotID                 string
+	EvaluationID               string
+	ProfileRevision            uint64
+	BatchIdentity              string
+	EvidenceBody               string
+	ContinueDespiteHardFailure bool
+	EvaluationStatus           string
+	Qualified                  bool
+	WarningBody                string
+	LinkState                  string
+	TaskID                     string
+	RunID                      string
+	ReceiptBody                string
+}
+
+func readApplicationRows(t *testing.T, db *gorm.DB) []storedApplicationRow {
+	t.Helper()
+	var rows []storedApplicationRow
+	require.NoError(t, db.Table("career_applications").
+		Order("created_at ASC, id ASC").
+		Find(&rows).Error)
+	return rows
+}
+
+func TestCreateApplicationPinsEvidenceAndLinksTask(t *testing.T) {
+	o, db, ctx := newApplicationOffice(t, "owner-1", 1701)
+	seed := seedApplicationEvaluation(t, o, ctx, "仅限2027届。", "2027", "pins")
+	linker := &fakeCareerApplicationLinker{}
+	o.SetApplicationTaskLinker(linker)
+
+	input := applicationInput(seed, "pins-1", "batch-2027-a")
+	receipt, err := o.CreateApplication(ctx, input)
+	require.NoError(t, err)
+	parsed, err := uuid.Parse(receipt.ApplicationID)
+	require.NoError(t, err, "application id must be a UUID")
+	require.Equal(t, parsed.String(), receipt.ApplicationID)
+	require.Equal(t, "pins-1", receipt.RequestID)
+	require.Equal(t, "ready", receipt.LinkState)
+	require.Equal(t, seed.OpportunityID, receipt.PinnedEvidence.OpportunityID)
+	require.Equal(t, seed.SnapshotID, receipt.PinnedEvidence.SnapshotID)
+	require.Equal(t, seed.EvaluationID, receipt.PinnedEvidence.EvaluationID)
+	require.Equal(t, seed.Revision, receipt.PinnedEvidence.ProfileRevision)
+	require.Equal(t, EvaluationEligible, receipt.PinnedEvidence.EvaluationStatus)
+	require.Equal(t, "batch-2027-a", receipt.PinnedEvidence.BatchIdentity)
+	require.True(t, receipt.Qualified)
+	require.Nil(t, receipt.Warning)
+	require.NotEmpty(t, receipt.TaskID)
+	require.NotEmpty(t, receipt.RunID)
+
+	ensureCalls, findCalls := linker.calls()
+	require.Equal(t, 1, ensureCalls)
+	require.Zero(t, findCalls)
+	require.Equal(t, "pins-1", linker.lastIntent.RequestID)
+	require.Equal(t, receipt.ApplicationID, linker.lastIntent.ApplicationID)
+	require.Equal(t, "Career application "+seed.OpportunityID, linker.lastIntent.Title)
+	require.Equal(t, ensureScope{tenantID: 1701, ownerID: "owner-1"}, linker.ensureScopes[0])
+
+	rows := readApplicationRows(t, db)
+	require.Len(t, rows, 1)
+	require.Equal(t, receipt.ApplicationID, rows[0].ID)
+	require.Equal(t, "pins-1", rows[0].RequestID)
+	require.Len(t, rows[0].Fingerprint, 64)
+	require.Equal(t, seed.EvaluationID, rows[0].EvaluationID)
+	require.Equal(t, seed.Revision, rows[0].ProfileRevision)
+	require.Equal(t, "batch-2027-a", rows[0].BatchIdentity)
+	require.Equal(t, EvaluationEligible, rows[0].EvaluationStatus)
+	require.True(t, rows[0].Qualified)
+	require.Empty(t, rows[0].WarningBody)
+	require.Equal(t, "ready", rows[0].LinkState)
+	require.Equal(t, receipt.TaskID, rows[0].TaskID)
+	require.Equal(t, receipt.RunID, rows[0].RunID)
+	require.NotEmpty(t, rows[0].EvidenceBody)
+	require.Contains(t, rows[0].ReceiptBody, `"linkState":"ready"`)
+
+	encoded, err := json.Marshal(receipt)
+	require.NoError(t, err)
+	payload := string(encoded)
+	require.Contains(t, payload, `"requestId":"pins-1"`)
+	require.Contains(t, payload, `"applicationId":"`+receipt.ApplicationID+`"`)
+	require.Contains(t, payload, `"linkState":"ready"`)
+	require.Contains(t, payload, `"taskId":"`+receipt.TaskID+`"`)
+	require.Contains(t, payload, `"qualified":true`)
+	require.Contains(t, payload, `"pinnedEvidence":{`)
+
+	stored, err := o.Application(ctx, receipt.ApplicationID)
+	require.NoError(t, err)
+	require.Equal(t, receipt, stored)
+}
+
+func TestCreateApplicationHardFailureRequiresExplicitContinue(t *testing.T) {
+	o, db, ctx := newApplicationOffice(t, "owner-1", 1702)
+	seed := seedApplicationEvaluation(t, o, ctx, "仅限2027届。", "2026", "hard")
+	linker := &fakeCareerApplicationLinker{}
+	o.SetApplicationTaskLinker(linker)
+
+	input := applicationInput(seed, "hard-1", "batch-2027-a")
+	_, err := o.CreateApplication(ctx, input)
+	require.ErrorIs(t, err, ErrApplicationHardIneligible)
+	require.Empty(t, readApplicationRows(t, db))
+	ensureCalls, _ := linker.calls()
+	require.Zero(t, ensureCalls)
+
+	continued := input
+	continued.RequestID = "hard-2"
+	continued.ContinueDespiteHardFailure = true
+	receipt, err := o.CreateApplication(ctx, continued)
+	require.NoError(t, err)
+	require.False(t, receipt.Qualified)
+	require.NotNil(t, receipt.Warning)
+	require.Equal(t, "graduation_year", receipt.Warning["hardRuleId"])
+	require.Equal(t, "graduation_year_mismatch", receipt.Warning["reasonCode"])
+	require.Equal(t, seed.EvaluationID, receipt.Warning["evaluationId"])
+	require.Equal(t, EvaluationIneligible, receipt.PinnedEvidence.EvaluationStatus)
+
+	rows := readApplicationRows(t, db)
+	require.Len(t, rows, 1)
+	require.False(t, rows[0].Qualified)
+	require.Equal(t, EvaluationIneligible, rows[0].EvaluationStatus)
+	require.True(t, rows[0].ContinueDespiteHardFailure)
+	require.Contains(t, rows[0].WarningBody, "graduation_year_mismatch")
+	require.Equal(t, "ready", rows[0].LinkState)
+
+	// The persisted hard warning and non-qualified metric are immutable:
+	// an exact replay returns the identical receipt.
+	replayed, err := o.CreateApplication(ctx, continued)
+	require.NoError(t, err)
+	require.Equal(t, receipt, replayed)
+	require.Len(t, readApplicationRows(t, db), 1)
+	ensureCalls, _ = linker.calls()
+	require.Equal(t, 1, ensureCalls)
+}
+
+func TestCreateApplicationExactReplayReturnsOriginalReceipt(t *testing.T) {
+	o, db, ctx := newApplicationOffice(t, "owner-1", 1703)
+	seed := seedApplicationEvaluation(t, o, ctx, "仅限2027届。", "2027", "replay")
+	linker := &fakeCareerApplicationLinker{}
+	o.SetApplicationTaskLinker(linker)
+
+	input := applicationInput(seed, "replay-1", "batch-2027-a")
+	first, err := o.CreateApplication(ctx, input)
+	require.NoError(t, err)
+
+	// The profile moves forward after the original create; an exact replay
+	// still returns the stored receipt without new side effects.
+	view, err := o.Open(ctx)
+	require.NoError(t, err)
+	_, err = o.Confirm(ctx, "skill.go", "Go", "replay-2", view.Revision, Source{Kind: "manual"})
+	require.NoError(t, err)
+
+	second, err := o.CreateApplication(ctx, input)
+	require.NoError(t, err)
+	require.Equal(t, first, second)
+	require.Equal(t, seed.Revision, second.PinnedEvidence.ProfileRevision)
+
+	ensureCalls, _ := linker.calls()
+	require.Equal(t, 1, ensureCalls, "exact replay must not call the linker again")
+	require.Len(t, readApplicationRows(t, db), 1)
+
+	receipt, err := o.FindApplicationReceipt(ctx, "replay-1")
+	require.NoError(t, err)
+	require.Equal(t, first, receipt)
+}
+
+func TestCreateApplicationSameRequestChangedIntentConflicts(t *testing.T) {
+	o, db, ctx := newApplicationOffice(t, "owner-1", 1704)
+	seed := seedApplicationEvaluation(t, o, ctx, "仅限2027届。", "2027", "intent")
+	linker := &fakeCareerApplicationLinker{}
+	o.SetApplicationTaskLinker(linker)
+
+	first, err := o.CreateApplication(ctx, applicationInput(seed, "intent-1", "batch-2027-a"))
+	require.NoError(t, err)
+	require.Equal(t, "ready", first.LinkState)
+
+	changed := applicationInput(seed, "intent-1", "batch-2027-b")
+	_, err = o.CreateApplication(ctx, changed)
+	require.ErrorIs(t, err, ErrIdempotencyConflict)
+
+	rows := readApplicationRows(t, db)
+	require.Len(t, rows, 1)
+	require.Equal(t, "batch-2027-a", rows[0].BatchIdentity)
+	ensureCalls, _ := linker.calls()
+	require.Equal(t, 1, ensureCalls)
+}
+
+func TestCreateApplicationSameJobAndBatchHasOneApplicationAndTask(t *testing.T) {
+	o, db, ctx := newApplicationOffice(t, "owner-1", 1705)
+	seed := seedApplicationEvaluation(t, o, ctx, "仅限2027届。", "2027", "unique")
+	linker := &fakeCareerApplicationLinker{}
+	o.SetApplicationTaskLinker(linker)
+
+	first, err := o.CreateApplication(ctx, applicationInput(seed, "unique-1", "batch-2027-a"))
+	require.NoError(t, err)
+
+	_, err = o.CreateApplication(ctx, applicationInput(seed, "unique-2", "batch-2027-a"))
+	require.ErrorIs(t, err, ErrApplicationConflict)
+
+	rows := readApplicationRows(t, db)
+	require.Len(t, rows, 1)
+	require.Equal(t, first.ApplicationID, rows[0].ID)
+	ensureCalls, _ := linker.calls()
+	require.Equal(t, 1, ensureCalls, "a losing second request must never reach the linker")
+}
+
+func TestCreateApplicationDistinctBatchesCreateDistinctTasks(t *testing.T) {
+	o, db, ctx := newApplicationOffice(t, "owner-1", 1706)
+	seed := seedApplicationEvaluation(t, o, ctx, "仅限2027届。", "2027", "batch")
+	linker := &fakeCareerApplicationLinker{}
+	o.SetApplicationTaskLinker(linker)
+
+	first, err := o.CreateApplication(ctx, applicationInput(seed, "batch-1", "batch-2027-a"))
+	require.NoError(t, err)
+	second, err := o.CreateApplication(ctx, applicationInput(seed, "batch-2", "batch-2026-b"))
+	require.NoError(t, err)
+
+	require.NotEqual(t, first.ApplicationID, second.ApplicationID)
+	require.NotEqual(t, first.TaskID, second.TaskID)
+	require.Equal(t, first.RunID, "run-1")
+	require.Equal(t, second.RunID, "run-2")
+
+	rows := readApplicationRows(t, db)
+	require.Len(t, rows, 2)
+	require.Equal(t, "ready", rows[0].LinkState)
+	require.Equal(t, "ready", rows[1].LinkState)
+	ensureCalls, _ := linker.calls()
+	require.Equal(t, 2, ensureCalls)
+}
+
+func TestCreateApplicationLinkerUnknownLeavesLinkingAndReconciles(t *testing.T) {
+	o, db, ctx := newApplicationOffice(t, "owner-1", 1707)
+	seed := seedApplicationEvaluation(t, o, ctx, "仅限2027届。", "2027", "unknown")
+	linker := &fakeCareerApplicationLinker{ensureErr: context.Canceled}
+	o.SetApplicationTaskLinker(linker)
+
+	input := applicationInput(seed, "unknown-1", "batch-2027-a")
+	receipt, err := o.CreateApplication(ctx, input)
+	require.Error(t, err)
+	require.Empty(t, receipt.ApplicationID)
+	var unknown *OutcomeUnknownError
+	require.ErrorAs(t, err, &unknown)
+	require.Equal(t, "unknown-1", unknown.RequestID)
+	require.ErrorIs(t, err, ErrOutcomeUnknown)
+
+	rows := readApplicationRows(t, db)
+	require.Len(t, rows, 1)
+	applicationID := rows[0].ID
+	require.Equal(t, "linking", rows[0].LinkState)
+	require.Empty(t, rows[0].TaskID)
+	require.Equal(t, "unknown-1", rows[0].RequestID)
+
+	// Reconciliation reuses the original request id and the same row.
+	linker.ensureErr = nil
+	reconciled, err := o.ReconcileApplicationLink(ctx, "unknown-1")
+	require.NoError(t, err)
+	require.Equal(t, applicationID, reconciled.ApplicationID)
+	require.Equal(t, "ready", reconciled.LinkState)
+	require.Equal(t, "task-found", reconciled.TaskID)
+	require.Equal(t, seed.OpportunityID, reconciled.PinnedEvidence.OpportunityID)
+	require.Equal(t, "batch-2027-a", reconciled.PinnedEvidence.BatchIdentity)
+
+	require.Len(t, linker.findArguments, 1)
+	require.Equal(t, findArgument{tenantID: 1707, ownerID: "owner-1", requestID: "unknown-1"}, linker.findArguments[0])
+	ensureCalls, _ := linker.calls()
+	require.Equal(t, 1, ensureCalls, "reconcile must consult Find, never mint a new request")
+
+	rows = readApplicationRows(t, db)
+	require.Len(t, rows, 1)
+	require.Equal(t, applicationID, rows[0].ID)
+	require.Equal(t, "ready", rows[0].LinkState)
+	require.Equal(t, "task-found", rows[0].TaskID)
+
+	stored, err := o.Application(ctx, applicationID)
+	require.NoError(t, err)
+	require.Equal(t, reconciled, stored)
+}
+
+func TestCreateApplicationCareerLinkUpdateFailureReconcilesSameTask(t *testing.T) {
+	o, db, ctx := newApplicationOffice(t, "owner-1", 1708)
+	seed := seedApplicationEvaluation(t, o, ctx, "仅限2027届。", "2027", "update")
+	linker := &fakeCareerApplicationLinker{}
+	o.SetApplicationTaskLinker(linker)
+
+	// The Workbench projection exists, but Career's own ready update fails:
+	// the application must stay linking and later reconcile to the SAME task.
+	o.failApplicationReadyUpdate = func() error { return errors.New("career update failed") }
+	input := applicationInput(seed, "update-1", "batch-2027-a")
+	_, err := o.CreateApplication(ctx, input)
+	require.ErrorIs(t, err, ErrOutcomeUnknown)
+
+	rows := readApplicationRows(t, db)
+	require.Len(t, rows, 1)
+	applicationID := rows[0].ID
+	require.Equal(t, "linking", rows[0].LinkState)
+	ensureCalls, _ := linker.calls()
+	require.Equal(t, 1, ensureCalls)
+
+	o.failApplicationReadyUpdate = nil
+	linker.findLink = interfaces.CareerApplicationTaskLink{TaskID: "task-1", RunID: "run-1"}
+	reconciled, err := o.ReconcileApplicationLink(ctx, "update-1")
+	require.NoError(t, err)
+	require.Equal(t, applicationID, reconciled.ApplicationID)
+	require.Equal(t, "ready", reconciled.LinkState)
+	require.Equal(t, "task-1", reconciled.TaskID)
+	require.Equal(t, "run-1", reconciled.RunID)
+
+	rows = readApplicationRows(t, db)
+	require.Len(t, rows, 1)
+	require.Equal(t, applicationID, rows[0].ID)
+	require.Equal(t, "task-1", rows[0].TaskID)
+}
+
+func TestApplicationScopeRejectsOtherTenantAndOwner(t *testing.T) {
+	o, db, ctx := newApplicationOffice(t, "owner-a", 1709)
+	seed := seedApplicationEvaluation(t, o, ctx, "仅限2027届。", "2027", "scope")
+	linker := &fakeCareerApplicationLinker{}
+	o.SetApplicationTaskLinker(linker)
+
+	receipt, err := o.CreateApplication(ctx, applicationInput(seed, "scope-1", "batch-2027-a"))
+	require.NoError(t, err)
+
+	sameTenantOtherOwner := WithScope(context.Background(), Scope{UserID: "owner-b", TenantID: 1709})
+	// A career workspace admits one owner per tenant, so a second owner is
+	// rejected at the scope gate before any application data is touched.
+	for name, probe := range map[string]func() error{
+		"application by id":  func() error { _, e := o.Application(sameTenantOtherOwner, receipt.ApplicationID); return e },
+		"receipt by request": func() error { _, e := o.FindApplicationReceipt(sameTenantOtherOwner, "scope-1"); return e },
+		"link reconcile":     func() error { _, e := o.ReconcileApplicationLink(sameTenantOtherOwner, "scope-1"); return e },
+		"create application": func() error {
+			_, e := o.CreateApplication(sameTenantOtherOwner, applicationInput(seed, "scope-2", "batch-2027-a"))
+			return e
+		},
+	} {
+		require.ErrorIs(t, probe(), ErrUnauthorized, name)
+	}
+
+	// The personal workspace is also unique per owner, so the cross-tenant
+	// probe needs its own owner: an owned scope that simply holds no rows of
+	// the first owner's applications.
+	otherTenant := WithScope(context.Background(), Scope{UserID: "owner-z", TenantID: 1710})
+	require.NoError(t, o.ClaimSpace(otherTenant))
+	_, err = o.Application(otherTenant, receipt.ApplicationID)
+	require.ErrorIs(t, err, ErrApplicationNotFound)
+	_, err = o.FindApplicationReceipt(otherTenant, "scope-1")
+	require.ErrorIs(t, err, ErrApplicationNotFound)
+	_, err = o.ReconcileApplicationLink(otherTenant, "scope-1")
+	require.ErrorIs(t, err, ErrApplicationNotFound)
+
+	// Foreign evidence references cannot be pinned into another scope either.
+	_, err = o.CreateApplication(otherTenant, applicationInput(seed, "scope-3", "batch-2027-a"))
+	require.ErrorIs(t, err, ErrOpportunityNotFound)
+
+	require.Len(t, readApplicationRows(t, db), 1)
+	ensureCalls, findCalls := linker.calls()
+	require.Equal(t, 1, ensureCalls)
+	require.Zero(t, findCalls)
+}
+
+func TestApplicationRevisionConflictDoesNotCreateSideEffects(t *testing.T) {
+	o, db, ctx := newApplicationOffice(t, "owner-1", 1711)
+	seed := seedApplicationEvaluation(t, o, ctx, "仅限2027届。", "2027", "revision")
+	linker := &fakeCareerApplicationLinker{}
+	o.SetApplicationTaskLinker(linker)
+
+	input := applicationInput(seed, "revision-1", "batch-2027-a")
+	input.ExpectedRevision = seed.Revision + 5
+	_, err := o.CreateApplication(ctx, input)
+	var conflict *RevisionConflictError
+	require.ErrorAs(t, err, &conflict)
+	require.Equal(t, seed.Revision, conflict.CurrentRevision)
+
+	require.Empty(t, readApplicationRows(t, db))
+	ensureCalls, _ := linker.calls()
+	require.Zero(t, ensureCalls)
+
+	var evaluations, snapshots, observations int64
+	require.NoError(t, db.Table("career_evaluations").Count(&evaluations).Error)
+	require.NoError(t, db.Table("career_opportunity_snapshots").Count(&snapshots).Error)
+	require.NoError(t, db.Table("career_opportunity_observations").Count(&observations).Error)
+	require.Equal(t, int64(1), evaluations)
+	require.Equal(t, int64(1), snapshots)
+	require.Equal(t, int64(1), observations)
+}

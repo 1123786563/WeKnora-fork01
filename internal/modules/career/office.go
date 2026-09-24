@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/google/uuid"
 	sqlite3 "github.com/mattn/go-sqlite3"
 	"gorm.io/gorm"
@@ -228,6 +229,9 @@ func (sourceRevision) TableName() string              { return "career_source_re
 type Office struct {
 	db                   *gorm.DB
 	opportunityExtractor opportunityExtractor
+	// linker is the only channel to durable Workbench application tasks.
+	// Career never imports Workbench repositories or writes their tables.
+	linker interfaces.CareerApplicationTaskLinker
 	// Source policy owns URL source trust; production starts with an empty
 	// allowlist. The transport is a narrow HTTP-only adapter and must never be
 	// invoked for unapproved sources.
@@ -241,13 +245,14 @@ type Office struct {
 	afterOpportunityCommit       func() error
 	afterEvaluationCommit        func() error
 	afterEvaluationReceiptMiss   func()
+	failApplicationReadyUpdate   func() error
 }
 
 func NewOffice(db *gorm.DB) (*Office, error) {
 	if db == nil {
 		return nil, errors.New("career database required")
 	}
-	models := []any{&profile{}, &space{}, &fact{}, &factVersion{}, &proposal{}, &change{}, &receipt{}, &sourceRevision{}, &opportunity{}, &opportunityObservation{}, &opportunitySnapshot{}, &opportunityReceipt{}, &evaluationRecord{}}
+	models := []any{&profile{}, &space{}, &fact{}, &factVersion{}, &proposal{}, &change{}, &receipt{}, &sourceRevision{}, &opportunity{}, &opportunityObservation{}, &opportunitySnapshot{}, &opportunityReceipt{}, &evaluationRecord{}, &applicationRecord{}}
 	if db.Dialector.Name() == "sqlite" {
 		present := 0
 		for _, model := range models {
@@ -298,6 +303,7 @@ func validateSQLiteCareerSchema(db *gorm.DB) error {
 		"career_opportunity_snapshots":    {"id", "tenant_id", "user_id", "opportunity_id", "observation_id", "raw_text", "raw_sha256", "extracted", "status", "acquired_at", "created_at"},
 		"career_opportunity_receipts":     {"tenant_id", "user_id", "request_id", "fingerprint", "body", "created_at"},
 		"career_evaluations":              {"id", "tenant_id", "user_id", "request_id", "fingerprint", "intent", "opportunity_id", "snapshot_id", "profile_revision", "receipt_body", "evaluation_body", "created_at"},
+		"career_applications":             {"id", "tenant_id", "user_id", "request_id", "fingerprint", "opportunity_id", "snapshot_id", "evaluation_id", "profile_revision", "evidence_body", "batch_identity", "continue_despite_hard_failure", "evaluation_status", "qualified", "warning_body", "link_state", "task_id", "run_id", "receipt_body", "created_at", "updated_at"},
 	}
 	for table, columns := range requiredColumns {
 		for _, column := range columns {
@@ -313,10 +319,16 @@ func validateSQLiteCareerSchema(db *gorm.DB) error {
 		"career_source_revisions":     {"tenant_id", "user_id", "revision"},
 		"career_opportunity_receipts": {"tenant_id", "user_id", "request_id"},
 		"career_evaluations":          {"tenant_id", "user_id", "request_id"},
+		"career_applications":         {"tenant_id", "user_id", "request_id"},
 	} {
 		if err := requireSQLiteUniqueConstraint(db, table, columns); err != nil {
 			return fmt.Errorf("incomplete Career SQLite schema: %w; apply database migrations before startup", err)
 		}
+	}
+	// One job and batch admits exactly one application; this second uniqueness
+	// needs its own check because the map above allows one entry per table.
+	if err := requireSQLiteUniqueConstraint(db, "career_applications", []string{"tenant_id", "user_id", "opportunity_id", "batch_identity"}); err != nil {
+		return fmt.Errorf("incomplete Career SQLite schema: %w; apply database migrations before startup", err)
 	}
 	return nil
 }
