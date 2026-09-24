@@ -182,14 +182,15 @@ func TestFuncDeclNamesRecursive(t *testing.T) {
 // routes_knowledge.go 少数 1 个 GET（该文件在 f4acb2154 基线修正时即为 90 处调用，
 // 文档表记 89；全仓仅 GET 222 vs 文档 221 一处之差，其余方法全部吻合）。
 // worker 23+23 两侧一致；hooks 58。 ----
-// 当前 644 条路由基线 = F0 历史快照 633 + Task archive 2 + T04 Artifact 2 + Career 7；
+// 当前 647 条路由基线 = 既有 644 条 + T08 Opportunity 3；历史快照见
+// docs/architecture/moves/README.md。
 // 日期说明见 docs/architecture/moves/README.md。
 
 const (
-	wantRouteLiteral  = 575
+	wantRouteLiteral  = 578
 	wantRouteAPIKey   = 69
 	wantRouteHandle   = 0
-	wantRouteTotal    = 644
+	wantRouteTotal    = 647
 	wantWorkersPerMix = 23
 	wantHooks         = 58
 )

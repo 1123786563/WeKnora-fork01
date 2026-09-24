@@ -134,6 +134,6 @@ F0 的 16 份 manifest 与 633 条路由是原始历史快照，保持其原始�
 拥有，Workbench 不声明 Career 资产。Workbench 的三个 Task 状态文件仍列为
 `B-workbench` 的 Pass B legacy obligations。
 
-当前 architectureguard 基线为 644 条路由：F0 锁定的 633 条，加上基线后集成的 2 条
-Task archive 路由、2 条 T04 Artifact 路由和 7 条 Career 路由。代码发现计数为
-575 literal、69 apiKeyRoute、0 handle；Worker（Redis/Lite）仍为 23/23，hooks 仍为 58。
+当前 architectureguard 基线为 647 条路由：此前记录的 644 条，加上 T08 Opportunity 的
+3 条路由（POST import、GET receipt、GET opportunity evidence）。代码发现计数为
+578 literal、69 apiKeyRoute、0 handle；Worker（Redis/Lite）仍为 23/23，hooks 仍为 58。
