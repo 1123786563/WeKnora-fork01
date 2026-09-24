@@ -6,14 +6,17 @@ package handler
 // （Review Focus #1：角色门禁先于幂等与 requeue）。
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
+	weknoralogger "github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -150,4 +153,26 @@ func limitAfter(t *testing.T, db *gorm.DB) int64 {
 	require.NoError(t, db.Table("commercial_task_budgets").Select("limit_micro").
 		Where("tenant_id = ? AND run_id = ?", 7, "r1").Scan(&limit).Error)
 	return limit
+}
+
+// TestExtendTaskBudgetLogsWhenRequeueFails 锁定审查修复后的取舍契约（T09 #39
+// fix round 1）：requeue 持久失败时扩额本身已提交——响应仍是 200、
+// resumed_runs 如实报 0、绝不 500——但失败必须留下日志证据，不得静默消失。
+// 注入方式：DROP agent_runs 表。svc.Extend 只触碰 extensions/accounts/task
+// budgets，不查 agent_runs，因此只有 requeue 失败；taskBudgetRoot 查
+// commercial_task_budgets 仍成功。owner 角色跳过 owner 查找（那一步会查
+// agent_runs），保证错误恰好落在 requeue 吞错点。
+func TestExtendTaskBudgetLogsWhenRequeueFails(t *testing.T) {
+	db := newBudgetResumeDB(t)
+	require.NoError(t, db.Exec(`DROP TABLE agent_runs`).Error)
+
+	var buf bytes.Buffer
+	weknoralogger.SetOutput(&buf)
+	t.Cleanup(func() { weknoralogger.SetOutput(os.Stderr) })
+
+	code, data, body := postBudgetExtendResume(t, db, "owner", "u1", "r1", "k-requeue-fail")
+	require.Equal(t, http.StatusOK, code, "extend itself already committed: %s", body)
+	require.EqualValues(t, 0, data["resumed_runs"], "swallowed requeue failure reports zero honestly")
+	require.Contains(t, buf.String(), "requeue failed",
+		"a swallowed requeue failure must stay observable in logs")
 }

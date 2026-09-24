@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
+	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/modules/commercial"
 	repocommercial "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
 	commercialsvc "github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial"
@@ -103,7 +104,17 @@ func (h *CommercialHandler) ExtendTaskBudget(c *gin.Context) {
 		if n, qerr := repository.NewAgentRunStore(h.db).
 			RequeueBudgetPausedRuns(c.Request.Context(), tenantID, root); qerr == nil {
 			resumed = n
+		} else {
+			// T09 (#39) fix round 1: the extension already committed (200
+			// below), so the swallowed requeue failure must stay OBSERVABLE —
+			// a stranded park must not vanish silently. GET /budget's
+			// paused_run_ids remains the operator-facing fallback.
+			logger.Warnf(c.Request.Context(),
+				"budget extension requeue failed: tenant=%d root=%s err=%v", tenantID, root, qerr)
 		}
+	} else if rerr != nil {
+		logger.Warnf(c.Request.Context(),
+			"budget extension root lookup failed: tenant=%d run=%s err=%v", tenantID, runID, rerr)
 	}
 	appOK(c, http.StatusOK, gin.H{
 		"task_id":            runID,
