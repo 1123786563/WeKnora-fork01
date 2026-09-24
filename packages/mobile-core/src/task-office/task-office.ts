@@ -308,6 +308,10 @@ export function createTaskOffice(ports: TaskOfficePorts): TaskOffice {
     knowledgeIds: [...(goal.knowledgeIds ?? [])].sort(),
     text: goal.text,
   });
+  // bound 后 intentLog 记录即被 remove；同进程内重放一个已 bound 的 requestId 时，
+  // 用这里记住的 goalKey 区分「同一意图的幂等重放」与「换意图复用已 bound 的 ID」（后者仍 CONFLICT）。
+  // remove 不清除本表——它只服务重放判定，不承载恢复语义（恢复走 reconcilePending）。
+  const replayGoalKeys = new Map<string, string>();
   const attention = createAttentionDecider({
     interactions: () => ports.interactions,
     lease: ports.lease,
@@ -473,12 +477,32 @@ export function createTaskOffice(ports: TaskOfficePorts): TaskOffice {
       const record = await intentLog.load(requestId);
       let sessionId: string;
       if (record === undefined) {
+        // 记录缺失时先查进程内权威（B3-F78）：bound 后 intentLog.remove 已执行，
+        // 同 requestId 重放不得 createSession 换 session（新 session_id 进 digest 会
+        // 伪造成新意图并撞 CONFLICT，requestId 永久毒化）。store 的 bound entry 是凭据。
+        const settled = submissionStore.load(requestId);
+        const sameScope = settled !== undefined
+          && settled.scope.origin === scope.origin && settled.scope.tenantID === scope.tenantID && settled.scope.userID === scope.userID;
+        if (sameScope && settled!.phase === 'bound' && settled!.run_id !== undefined) {
+          // 同一意图（goalKey 一致或跨重启无记忆）的幂等重放：零网络返回原 bound 回执；
+          // 换意图复用已 bound 的 ID 仍是对冲突的诚实回答。
+          const rememberedGoalKey = replayGoalKeys.get(requestId);
+          if (rememberedGoalKey !== undefined && rememberedGoalKey !== goalKeyOf(startGoal)) {
+            throw new TaskOfficeError('TASK_OFFICE_SUBMISSION_CONFLICT', { cause: new Error(`intent ${requestId} was already bound to a different goal`) });
+          }
+          return receiptOf(settled!, false); // 幂等重放：零网络返回原 bound 回执
+        }
+        if (sameScope) {
+          // 记录缺失且非 bound：sessionId 只能从 intentLog 重建，绝不能换 session（D5）。
+          throw new TaskOfficeError('TASK_OFFICE_SUBMISSION_CONFLICT', { cause: new Error(`intent ${requestId} has no durable session record for replay`) });
+        }
         // 新意图：目标会话是前置网络调用（无 Task/预算副作用，与 miniprogram AgentPage 同序），
         // 随后在 Start POST 之前耐久落盘意图记录——intentLog 写失败（磁盘满等）上抛且零 Start 派发。
         const session = await callBackend(() => ports.backend.createSession({ title: startGoal.text.trim().slice(0, 60) }));
         if (!leaseActive(lease)) throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED');
         sessionId = session.sessionId;
         await intentLog.save({ requestId, sessionId, goal: startGoal, scope, persistedAt: new Date().toISOString() });
+        replayGoalKeys.set(requestId, goalKeyOf(startGoal));
       } else {
         // 重入/重启恢复：绝不新建 session——inputDigest 覆盖 session_id（submission.ts:65-74），
         // 换 session 会伪造成新意图并撞 digest 冲突。借旧 ID 发新意图零网络拒绝。
@@ -489,12 +513,24 @@ export function createTaskOffice(ports: TaskOfficePorts): TaskOffice {
           throw new TaskOfficeError('TASK_OFFICE_SUBMISSION_CONFLICT', { cause: new Error(`intent ${requestId} was persisted with a different goal`) });
         }
         sessionId = record.sessionId;
+        replayGoalKeys.set(requestId, goalKeyOf(record.goal));
       }
+      // targetId 'platform' 与 workspaceRef '' 是移动 Start wire 的固定业务语义
+      // （平台级目标、无工作区限定——与 miniprogram 先例一致），非可配置参数（B3-F68）。
       const input = toStartInput(draft, { requestID: requestId, sessionId, targetId: 'platform', workspaceRef: '' });
       try {
         const outcome = await submissions.resume(input, scope);
         if (!leaseActive(lease)) throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED');
-        if (outcome.entry.phase === 'bound') await intentLog.remove?.(requestId);
+        if (outcome.entry.phase === 'bound') {
+          // 端口契约：记录留存幂等无害——remove 失败不把已 bound 的成功伪装成失败（B3-F64）。
+          try { await intentLog.remove?.(requestId); } catch { /* best-effort：记录留存无害 */ }
+          // 创建了新任务：与 followUp/archive 同规则作废在途读与累积缓存（B3-F79）。
+          listEpoch += 1;
+          homeEpoch += 1;
+          legacyListEpoch += 1;
+          accumulated = undefined;
+          legacyAccumulated = undefined;
+        }
         return receiptOf(outcome.entry, outcome.dispatched);
       } catch (error) {
         if (error instanceof TaskOfficeError) throw error;
@@ -508,15 +544,22 @@ export function createTaskOffice(ports: TaskOfficePorts): TaskOffice {
       const records = await intentLog.listScope(scope);
       const receipts: TaskStartReceipt[] = [];
       for (const record of records) {
-        // 重启恢复：进程内 store 为空时按意图记录预建 awaiting_reconciliation entry
-        // （digest 与原提交一致——同一 sessionId + 同一 goal），再走 lookup 对账。
-        if (submissionStore.load(record.requestId) === undefined) {
-          const input = toStartInput(goalDraftOf(record.goal), { requestID: record.requestId, sessionId: record.sessionId, targetId: 'platform', workspaceRef: '' });
-          submissionStore.save({ request_id: record.requestId, input_digest: inputDigest(input), scope, phase: 'awaiting_reconciliation', updated_at: new Date().toISOString() });
-        }
-        const entry = await submissions.reconcile(record.requestId, scope);
-        if (entry.phase === 'bound') await intentLog.remove?.(record.requestId);
-        receipts.push(receiptOf(entry, false));
+        // 恢复是部分成功语义（B3-F65）：单条毒记录（lookup 5xx 等）只跳过该条，
+        // 不得中断整批并丢弃已收集的回执。
+        try {
+          // 重启恢复：进程内 store 为空时按意图记录预建 awaiting_reconciliation entry
+          // （digest 与原提交一致——同一 sessionId + 同一 goal），再走 lookup 对账。
+          if (submissionStore.load(record.requestId) === undefined) {
+            // targetId 'platform' 与 workspaceRef ''：移动 Start wire 的固定业务语义（B3-F68）。
+            const input = toStartInput(goalDraftOf(record.goal), { requestID: record.requestId, sessionId: record.sessionId, targetId: 'platform', workspaceRef: '' });
+            submissionStore.save({ request_id: record.requestId, input_digest: inputDigest(input), scope, phase: 'awaiting_reconciliation', updated_at: new Date().toISOString() });
+          }
+          const entry = await submissions.reconcile(record.requestId, scope);
+          if (entry.phase === 'bound') {
+            try { await intentLog.remove?.(record.requestId); } catch { /* best-effort（B3-F64） */ }
+          }
+          receipts.push(receiptOf(entry, false));
+        } catch { /* 毒记录：跳过并继续 */ }
       }
       if (!leaseActive(lease)) throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED');
       return receipts;

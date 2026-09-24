@@ -216,3 +216,75 @@ test('after a restart, retrying with the same request id reuses the original ses
   assert.equal(posts[0]!.session_id, 'session-scenario-1', 'the original session id is restored from the intent log');
   assert.equal((await sharedLog.listScope(scope)).length, 0, 'the intent record is cleaned up once bound');
 });
+
+test('replaying a bound intent after its log record was removed returns the bound receipt with zero network', async () => {
+  const posts: string[] = [];
+  const sessions: string[] = [];
+  const { office } = startOffice({
+    createSession: async () => { sessions.push('created'); return { sessionId: 'session-original' }; },
+    start: async (input) => { posts.push(input.request_id); return { run_id: 'run-original', request_id: input.request_id, status: 'queued' }; },
+    lookup: async () => ({ state: 'admitted', run_id: 'run-original' }),
+  }, { ids: ['req-1'] });
+  const first = await office.start(goal);
+  assert.equal(first.phase, 'bound');
+  // in-memory intentLog 的 remove 已在 bound 后执行——此刻记录缺失（B3-F78 前提）。
+  const second = await office.start(goal, { requestId: 'req-1' });
+  assert.equal(second.phase, 'bound');
+  assert.equal(second.runId, 'run-original');
+  assert.equal(second.dispatched, false);
+  assert.equal(posts.length, 1, '幂等重放零新 POST');
+  assert.equal(sessions.length, 1, '幂等重放零 createSession——绝不换 session');
+});
+
+test('a failing intentLog remove after a bound start no longer masquerades as failure', async () => {
+  const log = createInMemoryIntentLog();
+  const originalRemove = log.remove!;
+  let failNextRemove = true;
+  log.remove = async (requestId: string) => {
+    if (failNextRemove) { failNextRemove = false; throw new Error('secure store busy'); }
+    return originalRemove(requestId);
+  };
+  const { office } = startOffice({}, { log });
+  const receipt = await office.start(goal); // B3-F64：remove 抛错不得把 bound 成功伪装成失败
+  assert.equal(receipt.phase, 'bound');
+  assert.equal(receipt.runId, 'run-scenario-1');
+});
+
+test('a bound start invalidates in-flight reads and the accumulated list cache', async () => {
+  let releaseFirst!: (page: { items: [] }) => void;
+  let calls = 0;
+  const { office } = startOffice({
+    list: async () => {
+      calls += 1;
+      if (calls === 1) return new Promise((resolve) => { releaseFirst = resolve; }); // 首次：在途慢读
+      return { items: [] };
+    },
+  });
+  const pending = office.tasks({}); // 在途读先发出（慢网络）
+  const first = await office.start(goal); // bound 发生在在途读 settle 之前
+  assert.equal(first.phase, 'bound');
+  releaseFirst({ items: [] }); // 迟到的旧响应落地——epoch 已失配，必须被作废
+  await assert.rejects(pending, (error: unknown) => error instanceof TaskOfficeError && error.code === 'TASK_OFFICE_SUPERSEDED',
+    'B3-F79（对照 followUp）：bound 后在途 tasks() 必须被作废');
+  // 累积缓存也被作废：moreTasks 无活跃查询（而非以旧快照继续翻页）
+  await assert.rejects(office.moreTasks(), (error: unknown) => error instanceof TaskOfficeError && error.code === 'TASK_OFFICE_NO_ACTIVE_QUERY',
+    'B3-F79：bound 后累积列表缓存必须作废');
+  const page = await office.tasks({}); // 下次 tasks() 重新查询（新查询正常返回）
+  assert.ok(Array.isArray(page.items));
+  assert.equal(calls, 2, '重新查询真的再次访问了后端');
+});
+
+test('reconcilePending skips a poisoned record and keeps the rest of the batch', async () => {
+  const log = createInMemoryIntentLog();
+  await log.save({ requestId: 'req-poison', sessionId: 's-x', goal, scope, persistedAt: '2026-09-24T00:00:00Z' });
+  await log.save({ requestId: 'req-good', sessionId: 's-y', goal, scope, persistedAt: '2026-09-24T00:00:01Z' });
+  const { office } = startOffice({
+    lookup: async (requestId: string) => {
+      if (requestId === 'req-poison') throw new Error('backend 500 for this record');
+      return { state: 'unknown' };
+    },
+  }, { log });
+  const receipts = await office.reconcilePending(); // B3-F65：毒记录不得让整批恢复 reject
+  assert.ok(receipts.some((receipt) => receipt.requestId === 'req-good'));
+  assert.ok(!receipts.some((receipt) => receipt.requestId === 'req-poison'), '毒记录被跳过，不出现在回执中');
+});
