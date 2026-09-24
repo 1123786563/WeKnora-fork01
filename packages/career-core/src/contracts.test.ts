@@ -61,9 +61,10 @@ test('opportunity evidence decoder preserves explicit unknown fields and inert r
 })
 
 const factEvidence = { factKey: 'education.graduation_year', value: '2026', revision: 4, factRevision: 3, source: { kind: 'manual' }, confirmation: { userId: 'owner-1', confirmedAt: '2026-09-24T01:02:03Z' }, confirmedAt: '2026-09-24T01:02:03Z' }
+const skillFactEvidence = { ...factEvidence, factKey: 'skill.programming', value: 'TypeScript' }
 const jobEvidence = { snapshotId: 'snapshot-1', observationId: 'observation-1', acquiredAt: '2026-09-24T01:02:03Z', rawSha256: 'a'.repeat(64), spanStart: 0, spanEnd: 13, quotedText: '仅限2027届' }
 const evaluationReceipt = { kind: 'evaluation_created', requestId: 'eval-1', evaluationId: 'evaluation-1', opportunityId: 'opportunity-1', snapshotId: 'snapshot-1', profileRevision: 4, status: 'ineligible' }
-const evaluation = { ...evaluationReceipt, createdAt: '2026-09-24T01:02:03Z', rulesetVersion: 'career-qualification-v1', snapshot: { opportunityId: 'opportunity-1', observationId: 'observation-1', snapshotId: 'snapshot-1', rawText: '仅限2027届 TypeScript', rawSha256: 'a'.repeat(64), source: { kind: 'manual_paste' }, acquiredAt: '2026-09-24T01:02:03Z' }, hard: { overall: 'ineligible', rules: [{ ruleId: 'graduation_year', criterion: 'graduation year', outcome: 'ineligible', reasonCode: 'graduation_year_mismatch', jobEvidence, profileEvidence: factEvidence }] }, soft: { matches: [{ kind: 'skill', value: 'TypeScript', jobEvidence: { ...jobEvidence, quotedText: 'TypeScript', spanStart: 14, spanEnd: 24 }, profileEvidence: { ...factEvidence, factKey: 'skill.programming', value: 'TypeScript' } }] }, facts: [factEvidence] }
+const evaluation = { ...evaluationReceipt, createdAt: '2026-09-24T01:02:03Z', rulesetVersion: 'career-qualification-v1', snapshot: { opportunityId: 'opportunity-1', observationId: 'observation-1', snapshotId: 'snapshot-1', rawText: '仅限2027届 TypeScript', rawSha256: 'a'.repeat(64), source: { kind: 'manual_paste' }, acquiredAt: '2026-09-24T01:02:03Z' }, hard: { overall: 'ineligible', rules: [{ ruleId: 'graduation_year', criterion: 'graduation year', outcome: 'ineligible', reasonCode: 'graduation_year_mismatch', jobEvidence, profileEvidence: factEvidence }] }, soft: { matches: [{ kind: 'skill', value: 'TypeScript', jobEvidence: { ...jobEvidence, quotedText: 'TypeScript', spanStart: 14, spanEnd: 24 }, profileEvidence: skillFactEvidence }] }, facts: [factEvidence, skillFactEvidence] }
 
 test('evaluation contract accepts all hard statuses and retains fixed refs and provenance', () => {
  for (const status of ['eligible', 'ineligible', 'unknown']) assert.equal(decodeEvaluationReceipt({ ...evaluationReceipt, status }).status, status)
@@ -83,4 +84,24 @@ test('evaluation decoders reject missing provenance, unknown enums, probability 
  assert.throws(() => decodeEvaluation({ ...evaluation, facts: [{ ...factEvidence, factRevision: undefined }] }))
  assert.throws(() => decodeEvaluation({ ...evaluation, hard: { overall: 'eligible', rules: [{ ...evaluation.hard.rules[0], jobEvidence: { ...jobEvidence, spanEnd: 3 } }] } }))
  assert.throws(() => decodeEvaluation({ ...evaluation, soft: { matches: [{ ...evaluation.soft.matches[0], profileEvidence: { ...factEvidence, confirmation: undefined } }] } }))
+})
+
+test('evaluation decoder rejects empty or aggregate-inconsistent hard conclusions', () => {
+ assert.throws(() => decodeEvaluation({ ...evaluation, hard: { overall: 'eligible', rules: [] }, status: 'eligible' }))
+ assert.throws(() => decodeEvaluation({ ...evaluation, hard: { overall: 'eligible', rules: [{ ...evaluation.hard.rules[0], outcome: 'unknown' }] }, status: 'eligible' }))
+ assert.throws(() => decodeEvaluation({ ...evaluation, hard: { overall: 'eligible', rules: [{ ...evaluation.hard.rules[0], outcome: 'ineligible' }] }, status: 'eligible' }))
+ const eligibleRule = { ...evaluation.hard.rules[0]!, outcome: 'eligible' as const }
+ const unknownRule = { ...eligibleRule, ruleId: 'unsupported_requirement', outcome: 'unknown' as const, jobEvidence: undefined, profileEvidence: undefined }
+ const mixed = { ...evaluation, status: 'unknown', hard: { overall: 'unknown', rules: [eligibleRule, unknownRule] }, soft: { matches: [] }, facts: [factEvidence] }
+ assert.equal(decodeEvaluation(mixed).hard.overall, 'unknown')
+ assert.throws(() => decodeEvaluation({ ...mixed, status: 'eligible', hard: { overall: 'eligible', rules: mixed.hard.rules } }))
+})
+
+test('evaluation decoder requires both citations for conclusive rules and pins profile citations to facts', () => {
+ const rule = evaluation.hard.rules[0]!
+ assert.throws(() => decodeEvaluation({ ...evaluation, hard: { overall: 'ineligible', rules: [{ ...rule, jobEvidence: undefined }] } }))
+ assert.throws(() => decodeEvaluation({ ...evaluation, hard: { overall: 'ineligible', rules: [{ ...rule, profileEvidence: undefined }] } }))
+ assert.throws(() => decodeEvaluation({ ...evaluation, facts: [] }))
+ const unknown = { ...evaluation, status: 'unknown', hard: { overall: 'unknown', rules: [{ ...rule, outcome: 'unknown', jobEvidence: undefined, profileEvidence: undefined }] }, soft: { matches: [] }, facts: [] }
+ assert.equal(decodeEvaluation(unknown).hard.overall, 'unknown')
 })

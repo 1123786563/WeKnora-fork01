@@ -133,6 +133,9 @@ function validEvaluationFact(value: unknown): value is EvaluationFactEvidence {
 function validEvaluationJob(value: unknown): value is EvaluationJobEvidence {
  return isRecord(value) && onlyKeys(value, ['snapshotId', 'observationId', 'acquiredAt', 'rawSha256', 'spanStart', 'spanEnd', 'quotedText']) && validIdentifier(value.snapshotId) && validIdentifier(value.observationId) && validTimestamp(value.acquiredAt) && typeof value.rawSha256 === 'string' && /^[a-f0-9]{64}$/.test(value.rawSha256) && Number.isSafeInteger(value.spanStart) && Number(value.spanStart) >= 0 && Number.isSafeInteger(value.spanEnd) && Number(value.spanEnd) > Number(value.spanStart) && typeof value.quotedText === 'string' && value.quotedText.length > 0
 }
+function sameEvaluationFact(left: EvaluationFactEvidence, right: EvaluationFactEvidence): boolean {
+ return left.factKey === right.factKey && left.value === right.value && left.revision === right.revision && left.factRevision === right.factRevision && left.confirmedAt === right.confirmedAt && left.source.kind === right.source.kind && left.source.label === right.source.label && left.source.referenceId === right.source.referenceId && left.confirmation.userId === right.confirmation.userId && left.confirmation.confirmedAt === right.confirmation.confirmedAt
+}
 function validEvaluationReceipt(value: unknown): value is Evaluation & EvaluationReceipt {
  return isRecord(value) && onlyKeys(value, ['kind', 'requestId', 'evaluationId', 'opportunityId', 'snapshotId', 'profileRevision', 'status', 'createdAt', 'rulesetVersion', 'snapshot', 'hard', 'soft', 'facts']) && value.kind === 'evaluation_created' && validIdentifier(value.requestId) && validIdentifier(value.evaluationId) && validIdentifier(value.opportunityId) && validIdentifier(value.snapshotId) && Number.isSafeInteger(value.profileRevision) && Number(value.profileRevision) >= 0 && evaluationStatuses.includes(value.status as EvaluationStatus)
 }
@@ -150,6 +153,17 @@ export function decodeEvaluation(value: unknown): Evaluation {
  }
  const validRule = (rule: unknown): rule is EvaluationHardRule => isRecord(rule) && onlyKeys(rule, ['ruleId', 'criterion', 'outcome', 'reasonCode', 'jobEvidence', 'profileEvidence']) && validIdentifier(rule.ruleId) && typeof rule.criterion === 'string' && evaluationStatuses.includes(rule.outcome as EvaluationStatus) && validIdentifier(rule.reasonCode) && (rule.jobEvidence === undefined || validEvidence(rule.jobEvidence)) && (rule.profileEvidence === undefined || (validEvaluationFact(rule.profileEvidence) && rule.profileEvidence.revision === value.profileRevision))
  const validMatch = (match: unknown): match is EvaluationSoftMatch => isRecord(match) && onlyKeys(match, ['kind', 'value', 'jobEvidence', 'profileEvidence']) && ['skill', 'project', 'intent'].includes(String(match.kind)) && typeof match.value === 'string' && validEvidence(match.jobEvidence) && validEvaluationFact(match.profileEvidence) && match.profileEvidence.revision === value.profileRevision
- if (!value.hard.rules.every(validRule) || !value.soft.matches.every(validMatch) || !value.facts.every((fact) => fact.revision === value.profileRevision)) throw new TypeError('invalid career evaluation evidence')
+ if (!value.hard.rules.length || !value.hard.rules.every(validRule) || !value.soft.matches.every(validMatch) || !value.facts.every((fact) => fact.revision === value.profileRevision)) throw new TypeError('invalid career evaluation evidence')
+ const citesPinnedFact = (fact: EvaluationFactEvidence | undefined): boolean => fact === undefined || value.facts.some((pinned) => sameEvaluationFact(fact, pinned))
+ for (const rule of value.hard.rules as unknown as EvaluationHardRule[]) {
+  if ((rule.outcome === 'eligible' || rule.outcome === 'ineligible') && (!rule.jobEvidence || !rule.profileEvidence)) throw new TypeError('conclusive career evaluation rule requires both evidence citations')
+  if (!citesPinnedFact(rule.profileEvidence)) throw new TypeError('career evaluation rule cites a fact outside the pinned manifest')
+ }
+ for (const match of value.soft.matches as unknown as EvaluationSoftMatch[]) {
+  if (!citesPinnedFact(match.profileEvidence)) throw new TypeError('career evaluation match cites a fact outside the pinned manifest')
+ }
+ const precedence: Record<EvaluationStatus, number> = { eligible: 0, unknown: 1, ineligible: 2 }
+ const derivedOverall = (value.hard.rules as unknown as EvaluationHardRule[]).reduce<EvaluationStatus>((overall, rule) => precedence[rule.outcome] > precedence[overall] ? rule.outcome : overall, 'eligible')
+ if (derivedOverall !== value.hard.overall) throw new TypeError('career evaluation overall status does not match its hard rules')
  return value as unknown as Evaluation
 }
