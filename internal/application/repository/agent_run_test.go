@@ -460,10 +460,30 @@ func TestAgentRunReopenAndMigrations(t *testing.T) {
 	if db.Name() == "postgres" {
 		dir, version, suffix = "versioned", "000093", "agent_runs"
 	}
+	// The fully migrated schema carries cross-table triggers that reference
+	// agent_runs (e.g. 000124's craft_docker_output_scope_validate). SQLite
+	// re-parses those triggers on the next schema-reload statement after the
+	// replay drops agent_runs, so replaying this one older migration below the
+	// newer chain is only possible with the dependent trigger set aside. This
+	// mirrors no golang-migrate operation; the trigger is restored verbatim
+	// after the replay so the 000014 reopen/index contract stays verified.
+	var dependentTriggers []struct{ Name, SQL string }
+	if db.Name() == "sqlite" {
+		require.NoError(t, db.Raw(`SELECT name, sql FROM sqlite_schema
+			WHERE type = 'trigger' AND name IN (
+				SELECT name FROM sqlite_schema WHERE type = 'trigger' AND sql LIKE '%agent_runs%'
+			)`).Scan(&dependentTriggers).Error)
+		for _, trigger := range dependentTriggers {
+			require.NoError(t, db.Exec("DROP TRIGGER IF EXISTS " + trigger.Name).Error)
+		}
+	}
 	for _, direction := range []string{"down", "up"} {
 		script, e := os.ReadFile(filepath.Join(root, "migrations", dir, version+"_"+suffix+"."+direction+".sql"))
 		require.NoError(t, e)
 		require.NoError(t, db.Exec(string(script)).Error)
+	}
+	for _, trigger := range dependentTriggers {
+		require.NoError(t, db.Exec(trigger.SQL).Error)
 	}
 	var engine string
 	require.NoError(t, db.Table("sessions").Where("id = 's1'").Pluck("engine_type", &engine).Error)

@@ -246,6 +246,20 @@ func TestCraftDockerSendClaimMigrationUpDownUp(t *testing.T) {
 	// The regular test DB is already at tip. Exercise just the owned migration
 	// against its real table shape, retaining unrelated journal rows.
 	key, _ := craftDockerSendFixture(t, db, "docker-migration-row", "activity")
+	// The tip schema's later docker triggers (000124/000125) reference
+	// craft_charge_start_journal.send_claimed_at, which the 000117 down replay
+	// drops; SQLite re-parses dependent triggers on the next schema-reload
+	// statement and fails the replay. They only guard the docker output and
+	// normal-input operation tables, which this disposable per-test database
+	// never touches again, so they are set aside for the replay and not
+	// restored.
+	for _, dependentTrigger := range []string{
+		"craft_docker_output_scope_validate",
+		"craft_docker_normal_input_scope_validate",
+		"craft_docker_normal_input_receipt_validate",
+	} {
+		require.NoError(t, db.Exec("DROP TRIGGER IF EXISTS "+dependentTrigger).Error)
+	}
 	for _, direction := range []string{"down", "up"} {
 		contents, err := os.ReadFile(filepath.Join(root, "migrations/sqlite/000117_craft_docker_exec_send_claim."+direction+".sql"))
 		require.NoError(t, err)
@@ -306,6 +320,18 @@ func TestCraftDockerSendProtocolMigrationPreservesLegacyRows(t *testing.T) {
 		// Simulate a journal row created before the protocol column existed.
 		require.NoError(t, db.Table("craft_charge_start_journal").Where(
 			"tenant_id = ? AND run_id = ? AND activity_key = ?", key.TenantID, key.RunID, key.ActivityKey).Update("protocol", nil).Error)
+		// The tip schema's later docker triggers (000124/000125) depend on
+		// journal columns the 000118/000197 down replay drops, and SQLite
+		// re-parses dependent triggers on the next schema-reload statement.
+		// They only guard the docker output and normal-input operation tables,
+		// which this disposable per-test database never touches again, so they
+		// are set aside for the replay and not restored. PostgreSQL keeps the
+		// triggers because its DDL does not re-parse trigger bodies.
+		if db.Name() == "sqlite" {
+			require.NoError(t, db.Exec("DROP TRIGGER IF EXISTS craft_docker_output_scope_validate").Error)
+			require.NoError(t, db.Exec("DROP TRIGGER IF EXISTS craft_docker_normal_input_scope_validate").Error)
+			require.NoError(t, db.Exec("DROP TRIGGER IF EXISTS craft_docker_normal_input_receipt_validate").Error)
+		}
 		for _, direction := range []string{"down", "up"} {
 			migration, err := os.ReadFile(filepath.Join(root, "migrations", map[string]string{"sqlite": "sqlite", "postgres": "versioned"}[db.Name()], map[string]string{"sqlite": "000118", "postgres": "000197"}[db.Name()]+"_craft_docker_send_protocol."+direction+".sql"))
 			require.NoError(t, err)

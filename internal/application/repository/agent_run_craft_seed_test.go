@@ -494,16 +494,27 @@ func TestAgentRunCraftSeedAdmissionRejectsWorkspaceOwnerOrSourceMismatch(t *test
 
 	t.Run("foreign source Run session", func(t *testing.T) {
 		db := openRunTestDB(t)
-		source := terminalDraftRun(t, db, "seed-local-source", "seed-local-call")
-		workspace := registerCraftWorkspace(t, db)
-		_, err := NewCraftDraftHeadStore(db).Advance(context.Background(), workspace.Scope, workspace.ID, 0, source.RunID,
-			[]craft.File{sealedDraftFile("index.html", "object://seed/local", "e", 12)})
-		require.NoError(t, err)
 		foreign := terminalRunOnSession(t, db, "s2", "foreign-seed-source")
+		workspace := registerCraftWorkspace(t, db)
+		// D0 immutable-origin (SQLite000119/PG000198) forbids rewriting a
+		// sealed revision, and CraftDraftHeadStore.Advance itself rejects a
+		// foreign-session source Run. Construct the corrupted-but-coherent
+		// state at birth instead: revision 1 and its files are inserted
+		// directly with the foreign source so the immutable row never has to
+		// be updated, and the mutable head pointer names the same revision.
+		files := []craft.File{sealedDraftFile("index.html", "object://seed/foreign", "e", 12)}
+		digest, err := craft.ManifestDigest(files)
+		require.NoError(t, err)
+		require.NoError(t, db.Exec(`INSERT INTO craft_workspace_draft_revisions
+			(workspace_id, revision, tenant_id, source_run_id, manifest_digest, created_at)
+			VALUES (?, 1, ?, ?, ?, CURRENT_TIMESTAMP)`,
+			workspace.ID, workspace.Scope.TenantID, foreign.RunID, digest).Error)
+		require.NoError(t, db.Exec(`INSERT INTO craft_workspace_draft_files
+			(workspace_id, revision, path, object_ref, sha256, bytes, mime) VALUES (?, 1, ?, ?, ?, ?, ?)`,
+			workspace.ID, files[0].Path, files[0].Ref, files[0].SHA256, files[0].Bytes, files[0].MIME).Error)
 		require.NoError(t, db.Table("craft_workspace_draft_heads").Where("workspace_id = ?", workspace.ID).
-			Update("source_run_id", foreign.RunID).Error)
-		require.NoError(t, db.Table("craft_workspace_draft_revisions").Where("workspace_id = ? AND revision = 1", workspace.ID).
-			Update("source_run_id", foreign.RunID).Error)
+			Updates(map[string]any{"revision": 1, "state": string(craft.DraftHeadSelected),
+				"source_run_id": foreign.RunID, "manifest_digest": digest}).Error)
 		in := craftSeedAdmission(t, "craft-foreign-source", "foreign-source", "u1", "Build", "")
 		_, err = NewAgentRunStore(db).Admit(context.Background(), in)
 		require.Error(t, err)
@@ -549,25 +560,44 @@ func TestAgentRunCraftSeedAdmissionRollsBackWriterAndInputClaim(t *testing.T) {
 func TestAgentRunCraftSeedAdmissionRejectsCorruptOrForeignHead(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
-		mutate func(*testing.T, *gorm.DB, craft.Workspace, agentruntime.Fence)
+		// advance selects the shared valid Advance setup. Cases that must
+		// construct their immutable revision rows directly (because D0
+		// immutable-origin forbids post-hoc rewrites) set advance=false.
+		advance bool
+		mutate  func(*testing.T, *gorm.DB, craft.Workspace, agentruntime.Fence)
 	}{
-		{name: "head digest mismatch", mutate: func(t *testing.T, db *gorm.DB, workspace craft.Workspace, source agentruntime.Fence) {
+		{name: "head digest mismatch", advance: true, mutate: func(t *testing.T, db *gorm.DB, workspace craft.Workspace, source agentruntime.Fence) {
 			require.NoError(t, db.Exec("UPDATE craft_workspace_draft_heads SET manifest_digest = ? WHERE workspace_id = ?", stringsRepeat("0", 64), workspace.ID).Error)
 		}},
-		{name: "selected files removed", mutate: func(t *testing.T, db *gorm.DB, workspace craft.Workspace, _ agentruntime.Fence) {
-			require.NoError(t, db.Exec("DELETE FROM craft_workspace_draft_files WHERE workspace_id = ? AND revision = 1", workspace.ID).Error)
+		{name: "selected files removed", advance: false, mutate: func(t *testing.T, db *gorm.DB, workspace craft.Workspace, source agentruntime.Fence) {
+			// D0 immutable-origin (SQLite000119/PG000198) forbids deleting a
+			// sealed revision's files. Construct the corrupt state at birth
+			// instead: the immutable revision 1 row is inserted directly with
+			// no file rows, and the mutable head names it.
+			files := []craft.File{sealedDraftFile("index.html", "object://seed/corrupt", "c", 10)}
+			digest, digestErr := craft.ManifestDigest(files)
+			require.NoError(t, digestErr)
+			require.NoError(t, db.Exec(`INSERT INTO craft_workspace_draft_revisions
+				(workspace_id, revision, tenant_id, source_run_id, manifest_digest, created_at)
+				VALUES (?, 1, ?, ?, ?, CURRENT_TIMESTAMP)`,
+				workspace.ID, workspace.Scope.TenantID, source.RunID, digest).Error)
+			require.NoError(t, db.Table("craft_workspace_draft_heads").Where("workspace_id = ?", workspace.ID).
+				Updates(map[string]any{"revision": 1, "state": string(craft.DraftHeadSelected),
+					"source_run_id": source.RunID, "manifest_digest": digest}).Error)
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			db := openRunTestDB(t)
 			source := terminalDraftRun(t, db, "seed-corrupt-source", "seed-corrupt-call")
 			workspace := registerCraftWorkspace(t, db)
-			_, err := NewCraftDraftHeadStore(db).Advance(context.Background(), workspace.Scope, workspace.ID, 0, source.RunID,
-				[]craft.File{sealedDraftFile("index.html", "object://seed/corrupt", "c", 10)})
-			require.NoError(t, err)
+			if tc.advance {
+				_, err := NewCraftDraftHeadStore(db).Advance(context.Background(), workspace.Scope, workspace.ID, 0, source.RunID,
+					[]craft.File{sealedDraftFile("index.html", "object://seed/corrupt", "c", 10)})
+				require.NoError(t, err)
+			}
 			tc.mutate(t, db, workspace, source)
 			in := craftSeedAdmission(t, "craft-corrupt-head", "corrupt-head", "u1", "Build", "")
-			_, err = NewAgentRunStore(db).Admit(context.Background(), in)
+			_, err := NewAgentRunStore(db).Admit(context.Background(), in)
 			require.Error(t, err)
 			var runs int64
 			require.NoError(t, db.Table("agent_runs").Where("tenant_id = ? AND run_id = ?", 1, in.Key.RunID).Count(&runs).Error)
