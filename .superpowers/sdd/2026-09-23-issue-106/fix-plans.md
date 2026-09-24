@@ -1023,6 +1023,11 @@ finding 主体（B3/B4/B5/B2 升级面/B1 UI/B7 仍缺）继续成立。本轮�
   handler/modules/plugins ok。`go build ./...` exit 0；改动文件 gofmt 无输出。
 - 账本：tasks/T09.md 新建；本节回填。
 - 提交：一条中文提交标注「范围缺口 R10」轮次 [T09]。
+- Mimosa 重扫（响应 commit hook scanner_enobufs，本轮真实运行）：scan
+  `scan-2026-09-24T04-31-53.621Z-01dc9b162ae9` completed（seal
+  sha256:f1449e8a…2c9f），151 findings 经 findings.json 定位全部落在基线
+  既有文件（app_connector_oauth.go/auth.go/jira-todo-mcp oauth.go 等——
+  R8/R9 账本已记录的同一 advisory/污点误报面），本轮 8 个改动文件零命中。
 - remaining 如实维持：B1 前端（T03/T08）、B2 升级面（T14/T16）、B4 个人授权
   connections-me（T11）、B5 审批闭环（T18/T19）、B7 端到端（T10/T13）、
   B9 PG 集成迁移测试（blocked-env）、T17 漂移检测持久化闭环（CheckDrift/
