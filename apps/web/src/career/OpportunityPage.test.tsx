@@ -329,6 +329,90 @@ test('rapid repeated evaluation clicks issue only one request while pending', as
  assert.equal(requests.length, 1)
 })
 
+test('a late evaluation for JD A cannot appear beneath a new JD B or release B in flight', async () => {
+ let resolveA!: (value: EvaluationReceipt) => void
+ let resolveB!: (value: EvaluationReceipt) => void
+ const requests: Array<{ requestId: string; opportunityId: string; snapshotId: string }> = []
+ const receiptB = { ...receipt, opportunityId: 'opp-b', snapshotId: 'snapshot-b', observationId: 'observation-b' }
+ const container = await mountImport({
+  importOpportunity: async (input: { requestId: string; rawText: string }) => ({ ...(input.rawText === 'JD A' ? receipt : receiptB), requestId: input.requestId }),
+  evaluateOpportunity: async (input: typeof requests[number]) => {
+   requests.push(input)
+   return new Promise<EvaluationReceipt>((resolve) => { if (input.opportunityId === receipt.opportunityId) resolveA = resolve; else resolveB = resolve })
+  },
+ }).then((x) => x.container)
+ const textarea = container.querySelector<HTMLTextAreaElement>('[aria-label="职位描述"]')!
+ await act(async () => { setInput(textarea, 'JD A') })
+ await act(async () => { byLabel(container, 'button', '保存 JD').click(); await settle() })
+ await act(async () => { byLabel(container, 'button', '评估此 JD').click() })
+ await act(async () => { byLabel(container, 'button', '开始新草稿').click(); setInput(textarea, 'JD B') })
+ await act(async () => { byLabel(container, 'button', '保存 JD').click(); await settle() })
+ await act(async () => { byLabel(container, 'button', '评估此 JD').click() })
+ assert.deepEqual(requests.map(({ opportunityId, snapshotId }) => [opportunityId, snapshotId]), [[receipt.opportunityId, receipt.snapshotId], [receiptB.opportunityId, receiptB.snapshotId]])
+ assert.notEqual(requests[0]?.requestId, requests[1]?.requestId)
+ await act(async () => { resolveA({ ...evaluation, requestId: requests[0]!.requestId, evaluationId: 'evaluation-a' }); await settle() })
+ assert.equal(byLabel(container, 'button', '正在评估…').textContent, '正在评估…')
+ assert.equal(container.querySelector('a[href="/platform/career/evaluations/evaluation-a"]'), null)
+ assert.doesNotMatch(container.textContent ?? '', /资格判断：不符合|评估已保存/)
+ await act(async () => { resolveB({ ...evaluation, requestId: requests[1]!.requestId, evaluationId: 'evaluation-b', opportunityId: receiptB.opportunityId, snapshotId: receiptB.snapshotId, status: 'eligible' }); await settle() })
+ assert.ok(container.querySelector('a[href="/platform/career/evaluations/evaluation-b"]'))
+ assert.equal(container.querySelector('a[href="/platform/career/evaluations/evaluation-a"]'), null)
+ assert.match(container.textContent ?? '', /资格判断：符合已识别条件/)
+ assert.equal(textarea.value, 'JD B')
+})
+
+test('a late A receipt lookup cannot restore A evaluation after starting JD B', async () => {
+ let resolveA!: (value: EvaluationReceipt) => void
+ const receiptB = { ...receipt, opportunityId: 'opp-b', snapshotId: 'snapshot-b', observationId: 'observation-b' }
+ const requests: string[] = []
+ const lookupIds: string[] = []
+ const container = await mountImport({
+  importOpportunity: async (input: { requestId: string; rawText: string }) => ({ ...(input.rawText === 'JD A' ? receipt : receiptB), requestId: input.requestId }),
+  evaluateOpportunity: async (input: { requestId: string }) => { requests.push(input.requestId); throw new ApiError({ code: 'TIMEOUT', message: 'Request timed out' }) },
+  evaluationReceipt: async (requestId: string) => { lookupIds.push(requestId); return new Promise<EvaluationReceipt>((resolve) => { resolveA = resolve }) },
+ }).then((x) => x.container)
+ const textarea = container.querySelector<HTMLTextAreaElement>('[aria-label="职位描述"]')!
+ await act(async () => { setInput(textarea, 'JD A') })
+ await act(async () => { byLabel(container, 'button', '保存 JD').click(); await settle() })
+ await act(async () => { byLabel(container, 'button', '评估此 JD').click(); await settle() })
+ await act(async () => { byLabel(container, 'button', '查询评估回执').click() })
+ assert.deepEqual(lookupIds, [requests[0]])
+ await act(async () => { byLabel(container, 'button', '开始新草稿').click(); setInput(textarea, 'JD B') })
+ await act(async () => { byLabel(container, 'button', '保存 JD').click(); await settle() })
+ await act(async () => { resolveA({ ...evaluation, requestId: requests[0]!, evaluationId: 'evaluation-a' }); await settle() })
+ assert.equal(container.querySelector('a[href="/platform/career/evaluations/evaluation-a"]'), null)
+ assert.doesNotMatch(container.textContent ?? '', /资格判断：不符合|评估已保存/)
+ assert.equal(textarea.value, 'JD B')
+ assert.equal(byLabel(container, 'button', '评估此 JD').textContent, '评估此 JD')
+})
+
+test('a late unknown A evaluation leaves JD B ready for a fresh evaluation', async () => {
+ let rejectA!: (cause: Error) => void
+ const receiptB = { ...receipt, opportunityId: 'opp-b', snapshotId: 'snapshot-b', observationId: 'observation-b' }
+ const requests: Array<{ requestId: string; opportunityId: string; snapshotId: string }> = []
+ const container = await mountImport({
+  importOpportunity: async (input: { requestId: string; rawText: string }) => ({ ...(input.rawText === 'JD A' ? receipt : receiptB), requestId: input.requestId }),
+  evaluateOpportunity: async (input: typeof requests[number]) => {
+   requests.push(input)
+   if (input.opportunityId === receipt.opportunityId) return new Promise<EvaluationReceipt>((_resolve, reject) => { rejectA = reject })
+   return { ...evaluation, requestId: input.requestId, evaluationId: 'evaluation-b', opportunityId: receiptB.opportunityId, snapshotId: receiptB.snapshotId, status: 'eligible' }
+  },
+ }).then((x) => x.container)
+ const textarea = container.querySelector<HTMLTextAreaElement>('[aria-label="职位描述"]')!
+ await act(async () => { setInput(textarea, 'JD A') })
+ await act(async () => { byLabel(container, 'button', '保存 JD').click(); await settle() })
+ await act(async () => { byLabel(container, 'button', '评估此 JD').click() })
+ await act(async () => { byLabel(container, 'button', '开始新草稿').click(); setInput(textarea, 'JD B') })
+ await act(async () => { byLabel(container, 'button', '保存 JD').click(); await settle() })
+ await act(async () => { rejectA(new ApiError({ code: 'TIMEOUT', message: 'Request timed out' })); await settle() })
+ assert.doesNotMatch(container.textContent ?? '', /无法确认评估是否已保存|使用原请求编号重试/)
+ await act(async () => { byLabel(container, 'button', '评估此 JD').click(); await settle() })
+ assert.deepEqual(requests.map(({ opportunityId, snapshotId }) => [opportunityId, snapshotId]), [[receipt.opportunityId, receipt.snapshotId], [receiptB.opportunityId, receiptB.snapshotId]])
+ assert.notEqual(requests[0]?.requestId, requests[1]?.requestId)
+ assert.ok(container.querySelector('a[href="/platform/career/evaluations/evaluation-b"]'))
+ assert.equal(textarea.value, 'JD B')
+})
+
 test('transient conversation evaluation timeout reconciles receipt then retries the same request ID', async () => {
  const postIds: string[] = []
  const lookupIds: string[] = []
@@ -414,10 +498,8 @@ test('a late evaluation response after scope change cannot restore cleared conve
  await act(async () => { byLabel(container, 'button', '保存 JD').click(); await settle() })
  await act(async () => { byLabel(container, 'button', '评估此 JD').click(); await settle() })
  await act(async () => { byLabel(container, 'button', '重新评估当前档案').click() })
- scope.switchScope('https://weknora.test', 'u2', 't2')
- await act(async () => { await settle() })
- resolveLate({ ...evaluation, requestId: 'late-evaluation-request', evaluationId: 'evaluation-late' })
- await act(async () => { await settle() })
+ await act(async () => { scope.switchScope('https://weknora.test', 'u2', 't2'); await settle() })
+ await act(async () => { resolveLate({ ...evaluation, requestId: 'late-evaluation-request', evaluationId: 'evaluation-late' }); await settle() })
  assert.equal(container.querySelector<HTMLTextAreaElement>('[aria-label="职位描述"]')?.value, '')
  assert.doesNotMatch(container.textContent ?? '', /private earlier JD|查看已保存的 JD 证据|查看评估结果|资格判断：/)
  assert.equal(container.querySelector('a[href*="snapshotId="]'), null)

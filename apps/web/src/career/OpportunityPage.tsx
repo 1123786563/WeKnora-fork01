@@ -42,9 +42,15 @@ export function OpportunityImportPanel({ client, scopeController }: { client: We
  const [evaluationReceipt, setEvaluationReceipt] = useState<EvaluationReceipt>()
  const [evaluationReceipts, setEvaluationReceipts] = useState<EvaluationReceipt[]>([])
  const [evaluationMessage, setEvaluationMessage] = useState('')
- const evaluationInFlight = useRef(false)
+ const draftGeneration = useRef(0)
+ const currentReceipt = useRef<OpportunityReceipt | undefined>(undefined)
+ const evaluationInFlight = useRef<object | undefined>(undefined)
+
+ const evaluationIsCurrent = (generation: number, fixedReceipt: OpportunityReceipt): boolean =>
+  draftGeneration.current === generation && currentReceipt.current?.opportunityId === fixedReceipt.opportunityId && currentReceipt.current?.snapshotId === fixedReceipt.snapshotId
 
  const clearPrivate = useCallback((notice: string, nextState: 'forbidden' | 'scope-changed' = 'forbidden') => {
+  draftGeneration.current += 1; currentReceipt.current = undefined; evaluationInFlight.current = undefined
   setDraft(''); setSourceLabel(''); setSourceReference(''); setAttempt(undefined); setReceipt(undefined); setState(nextState); setMessage(notice)
   setEvaluationReceipt(undefined); setEvaluationReceipts([]); setEvaluationRequestId(''); setEvaluationState('idle'); setEvaluationMessage('')
  }, [])
@@ -57,6 +63,7 @@ export function OpportunityImportPanel({ client, scopeController }: { client: We
 
  const acceptReceipt = (next: OpportunityReceipt, expected: Attempt): void => {
   if (!sameReceipt(next, expected)) throw new TypeError('服务返回的请求编号与本次导入不匹配')
+  currentReceipt.current = next
   setReceipt(next); setState('saved'); setMessage('')
  }
  const importAttempt = async (currentAttempt: Attempt): Promise<void> => {
@@ -107,42 +114,50 @@ export function OpportunityImportPanel({ client, scopeController }: { client: We
   if (state === 'error') { setAttempt(undefined); setReceipt(undefined); setState('idle'); setMessage('') }
  }
  const beginNewDraft = (): void => {
+  draftGeneration.current += 1; currentReceipt.current = undefined; evaluationInFlight.current = undefined
   setDraft(''); setSourceLabel(''); setSourceReference(''); setAttempt(undefined); setReceipt(undefined); setState('idle'); setMessage(''); setEvaluationReceipt(undefined); setEvaluationReceipts([]); setEvaluationRequestId(''); setEvaluationState('idle'); setEvaluationMessage('')
  }
  const runEvaluation = async (requestId: string): Promise<void> => {
   if (!receipt || evaluationInFlight.current) return
-  evaluationInFlight.current = true
+  const fixedReceipt = receipt
+  const generation = draftGeneration.current
+  const flight = {}
+  evaluationInFlight.current = flight
   const requestScope = scopeController.current()
   setEvaluationRequestId(requestId); setEvaluationState('busy'); setEvaluationMessage('正在按此职位快照和当前已确认档案评估…')
   try {
-   const next = await client.career.evaluateOpportunity({ requestId, opportunityId: receipt.opportunityId, snapshotId: receipt.snapshotId }, requestScope.signal)
-   if (!scopeController.isCurrent(requestScope.scope)) return
-   if (next.requestId !== requestId || next.opportunityId !== receipt.opportunityId || next.snapshotId !== receipt.snapshotId) throw new TypeError('评估回执与固定职位快照不匹配')
-   setEvaluationReceipt(next); setEvaluationReceipts((previous) => [...previous.filter((item) => item.evaluationId !== next.evaluationId), next]); setEvaluationState('saved'); setEvaluationMessage('评估已保存，可随时重新打开此固定版本。')
+   const next = await client.career.evaluateOpportunity({ requestId, opportunityId: fixedReceipt.opportunityId, snapshotId: fixedReceipt.snapshotId }, requestScope.signal)
+   if (!scopeController.isCurrent(requestScope.scope) || !evaluationIsCurrent(generation, fixedReceipt)) return
+   if (next.requestId !== requestId || next.opportunityId !== fixedReceipt.opportunityId || next.snapshotId !== fixedReceipt.snapshotId) throw new TypeError('评估回执与固定职位快照不匹配')
+   setEvaluationReceipt(next); setEvaluationReceipts((previous) => evaluationIsCurrent(generation, fixedReceipt) ? [...previous.filter((item) => item.evaluationId !== next.evaluationId), next] : previous); setEvaluationState('saved'); setEvaluationMessage('评估已保存，可随时重新打开此固定版本。')
   } catch (cause) {
-   if (!scopeController.isCurrent(requestScope.scope)) return
+   if (!scopeController.isCurrent(requestScope.scope) || !evaluationIsCurrent(generation, fixedReceipt)) return
    const parsed = errorDetails(cause)
    if (parsed.code === 'forbidden') { clearPrivate('当前空间不可访问此评估。'); return }
    else if (isUncertainWrite(cause)) { setEvaluationState('unknown'); setEvaluationMessage('暂时无法确认评估是否已保存。请先查询原请求回执，再决定是否使用同一编号重试。') }
    else { setEvaluationState('error'); setEvaluationMessage('评估未完成。请检查档案和职位快照后重试。') }
-  } finally { evaluationInFlight.current = false }
+  } finally { if (evaluationInFlight.current === flight) evaluationInFlight.current = undefined }
  }
  const lookupEvaluationReceipt = async (): Promise<void> => {
   if (!evaluationRequestId || !receipt || evaluationInFlight.current) return
-  evaluationInFlight.current = true
+  const fixedReceipt = receipt
+  const requestId = evaluationRequestId
+  const generation = draftGeneration.current
+  const flight = {}
+  evaluationInFlight.current = flight
   const requestScope = scopeController.current()
   setEvaluationState('busy'); setEvaluationMessage('正在查询原评估回执…')
   try {
-   const next = await client.career.evaluationReceipt(evaluationRequestId, requestScope.signal)
-   if (!scopeController.isCurrent(requestScope.scope)) return
-   if (next.requestId !== evaluationRequestId || next.opportunityId !== receipt.opportunityId || next.snapshotId !== receipt.snapshotId) throw new TypeError('评估回执与固定职位快照不匹配')
-   setEvaluationReceipt(next); setEvaluationReceipts((previous) => [...previous.filter((item) => item.evaluationId !== next.evaluationId), next]); setEvaluationState('saved'); setEvaluationMessage('评估已保存，可随时重新打开此固定版本。')
+   const next = await client.career.evaluationReceipt(requestId, requestScope.signal)
+   if (!scopeController.isCurrent(requestScope.scope) || !evaluationIsCurrent(generation, fixedReceipt)) return
+   if (next.requestId !== requestId || next.opportunityId !== fixedReceipt.opportunityId || next.snapshotId !== fixedReceipt.snapshotId) throw new TypeError('评估回执与固定职位快照不匹配')
+   setEvaluationReceipt(next); setEvaluationReceipts((previous) => evaluationIsCurrent(generation, fixedReceipt) ? [...previous.filter((item) => item.evaluationId !== next.evaluationId), next] : previous); setEvaluationState('saved'); setEvaluationMessage('评估已保存，可随时重新打开此固定版本。')
   } catch (cause) {
-   if (!scopeController.isCurrent(requestScope.scope)) return
+   if (!scopeController.isCurrent(requestScope.scope) || !evaluationIsCurrent(generation, fixedReceipt)) return
    const parsed = errorDetails(cause)
    if (parsed.code === 'forbidden') { clearPrivate('当前空间不可访问此评估。'); return }
    else { setEvaluationState('unknown'); setEvaluationMessage(parsed.code === 'not_found' ? '尚未找到评估回执。可使用原请求编号重试。' : '评估回执暂时无法读取。原请求编号已保留。') }
-  } finally { evaluationInFlight.current = false }
+  } finally { if (evaluationInFlight.current === flight) evaluationInFlight.current = undefined }
  }
  const locked = state === 'busy' || state === 'unknown' || state === 'saved'
  return <section className="wk-opportunity-import" aria-labelledby="wk-opportunity-import-title">
