@@ -147,3 +147,26 @@ func NewWorkbenchTaskGrantsHandler(
 func NewWorkbenchLegacyListHandler(db *gorm.DB) *session.WorkbenchLegacyListHandler {
 	return session.NewWorkbenchLegacyListHandler(repository.NewWorkbenchLegacyListStore(db))
 }
+
+// NewTaskComplianceStore wires the T13 compliance store onto the shared DB
+// handle (dig provider; the concrete *gorm.DB keeps dig's type graph simple).
+func NewTaskComplianceStore(db *gorm.DB) *repository.TaskComplianceStore {
+	return repository.NewTaskComplianceStore(db)
+}
+
+// NewTaskComplianceService wires the compliance service onto the store and
+// the real audit trail. The audit service is REQUIRED — the compliance flow
+// fails closed without it (Task 3).
+func NewTaskComplianceService(
+	store *repository.TaskComplianceStore,
+	audit interfaces.AuditLogService,
+) *service.TaskComplianceService {
+	return service.NewTaskComplianceService(store, audit)
+}
+
+// NewWorkbenchTaskComplianceHandler wires the T13 compliance lanes to the
+// service built above. Tenant/role always come from the authenticated
+// context.
+func NewWorkbenchTaskComplianceHandler(compliance *service.TaskComplianceService) *session.WorkbenchTaskComplianceHandler {
+	return session.NewWorkbenchTaskComplianceHandler(compliance)
+}

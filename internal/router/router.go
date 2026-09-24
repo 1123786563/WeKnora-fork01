@@ -62,51 +62,52 @@ type RouterParams struct {
 	// NativeArchiveHandler is absent until an approved archive store and scope
 	// resolver are assembled.  The router then fails closed (no archive route)
 	// rather than mounting a reader without an authority boundary.
-	NativeArchiveHandler         *session.NativeArchiveHandler         `optional:"true"`
-	WorkbenchArtifactHandler     *session.WorkbenchArtifactHandler     `optional:"true"`
-	WorkbenchOverviewHandler     *session.WorkbenchOverviewHandler     `optional:"true"`
-	WorkbenchTaskStateHandler    *session.WorkbenchTaskStateHandler    `optional:"true"`
-	WorkbenchTaskGrantsHandler   *session.WorkbenchTaskGrantsHandler   `optional:"true"`
-	WorkbenchInboxHandler        *session.WorkbenchInboxHandler        `optional:"true"`
-	ExecutionTargetHandler       *handler.ExecutionTargetHandler       `optional:"true"`
-	ExecutionRegistrationHandler *handler.ExecutionRegistrationHandler `optional:"true"`
-	MobileVoiceHandler           *handler.MobileVoiceHandler           `optional:"true"`
-	MobileDeviceHandler          *handler.MobileDeviceHandler          `optional:"true"`
-	MessageHandler               *handler.MessageHandler
-	FeedbackHandler              *handler.FeedbackHandler
-	AnalyticsHandler             *handler.AnalyticsHandler
-	UsageHandler                 *handler.UsageHandler
-	MessageSuggestionHandler     *handler.MessageSuggestionHandler
-	ModelHandler                 *handler.ModelHandler
-	ModelCredentialsHandler      *handler.ModelCredentialsHandler
-	SandboxConfigHandler         *handler.SandboxConfigHandler
-	SandboxSkillHandler          *handler.SandboxSkillHandler
-	MeEnvVarHandler              *handler.MeEnvVarHandler
-	EvaluationHandler            *handler.EvaluationHandler
-	AuthHandler                  *handler.AuthHandler
-	InitializationHandler        *handler.InitializationHandler
-	SystemHandler                *handler.SystemHandler
-	MCPServiceHandler            *handler.MCPServiceHandler
-	MCPCredentialsHandler        *handler.MCPCredentialsHandler
-	MCPOAuthHandler              *handler.MCPOAuthHandler
-	WebSearchHandler             *handler.WebSearchHandler
-	WebSearchProviderHandler     *handler.WebSearchProviderHandler
-	WebSearchCredentialsHandler  *handler.WebSearchProviderCredentialsHandler
-	VectorStoreHandler           *handler.VectorStoreHandler
-	StorageBackendHandler        *handler.StorageBackendHandler
-	StorageBackendResolver       interfaces.StorageBackendResolver
-	ResourceCatalog              interfaces.ResourceCatalog
-	FAQHandler                   *handler.FAQHandler
-	TagHandler                   *handler.TagHandler
-	CustomAgentHandler           *handler.CustomAgentHandler
-	AgentVersionHandler          *handler.AgentVersionHandler
-	AgentMarketplaceHandler      *handler.AgentMarketplaceHandler
-	AgentAdoptionHandler         *handler.AgentAdoptionHandler
-	PersonaHandler               *handler.PersonaHandler
-	ExpertHandler                *handler.ExpertHandler
-	SubagentHandler              *handler.SubagentHandler
-	UserFavoriteHandler          *handler.UserResourceFavoriteHandler
-	SkillHandler                 *handler.SkillHandler
+	NativeArchiveHandler           *session.NativeArchiveHandler           `optional:"true"`
+	WorkbenchArtifactHandler       *session.WorkbenchArtifactHandler       `optional:"true"`
+	WorkbenchOverviewHandler       *session.WorkbenchOverviewHandler       `optional:"true"`
+	WorkbenchTaskStateHandler      *session.WorkbenchTaskStateHandler      `optional:"true"`
+	WorkbenchTaskGrantsHandler     *session.WorkbenchTaskGrantsHandler     `optional:"true"`
+	WorkbenchTaskComplianceHandler *session.WorkbenchTaskComplianceHandler `optional:"true"`
+	WorkbenchInboxHandler          *session.WorkbenchInboxHandler          `optional:"true"`
+	ExecutionTargetHandler         *handler.ExecutionTargetHandler         `optional:"true"`
+	ExecutionRegistrationHandler   *handler.ExecutionRegistrationHandler   `optional:"true"`
+	MobileVoiceHandler             *handler.MobileVoiceHandler             `optional:"true"`
+	MobileDeviceHandler            *handler.MobileDeviceHandler            `optional:"true"`
+	MessageHandler                 *handler.MessageHandler
+	FeedbackHandler                *handler.FeedbackHandler
+	AnalyticsHandler               *handler.AnalyticsHandler
+	UsageHandler                   *handler.UsageHandler
+	MessageSuggestionHandler       *handler.MessageSuggestionHandler
+	ModelHandler                   *handler.ModelHandler
+	ModelCredentialsHandler        *handler.ModelCredentialsHandler
+	SandboxConfigHandler           *handler.SandboxConfigHandler
+	SandboxSkillHandler            *handler.SandboxSkillHandler
+	MeEnvVarHandler                *handler.MeEnvVarHandler
+	EvaluationHandler              *handler.EvaluationHandler
+	AuthHandler                    *handler.AuthHandler
+	InitializationHandler          *handler.InitializationHandler
+	SystemHandler                  *handler.SystemHandler
+	MCPServiceHandler              *handler.MCPServiceHandler
+	MCPCredentialsHandler          *handler.MCPCredentialsHandler
+	MCPOAuthHandler                *handler.MCPOAuthHandler
+	WebSearchHandler               *handler.WebSearchHandler
+	WebSearchProviderHandler       *handler.WebSearchProviderHandler
+	WebSearchCredentialsHandler    *handler.WebSearchProviderCredentialsHandler
+	VectorStoreHandler             *handler.VectorStoreHandler
+	StorageBackendHandler          *handler.StorageBackendHandler
+	StorageBackendResolver         interfaces.StorageBackendResolver
+	ResourceCatalog                interfaces.ResourceCatalog
+	FAQHandler                     *handler.FAQHandler
+	TagHandler                     *handler.TagHandler
+	CustomAgentHandler             *handler.CustomAgentHandler
+	AgentVersionHandler            *handler.AgentVersionHandler
+	AgentMarketplaceHandler        *handler.AgentMarketplaceHandler
+	AgentAdoptionHandler           *handler.AgentAdoptionHandler
+	PersonaHandler                 *handler.PersonaHandler
+	ExpertHandler                  *handler.ExpertHandler
+	SubagentHandler                *handler.SubagentHandler
+	UserFavoriteHandler            *handler.UserResourceFavoriteHandler
+	SkillHandler                   *handler.SkillHandler
 	// SkillMarketHandler serves the M4 SkillHub market routes (search /
 	// rankings / install, skillset index / install).
 	SkillMarketHandler *handler.SkillMarketHandler
@@ -374,6 +375,7 @@ func NewRouter(params RouterParams) *gin.Engine {
 		RegisterWorkbenchOverviewRoutes(v1, params.WorkbenchOverviewHandler, rbacGuards)
 		RegisterWorkbenchTaskStateRoutes(v1, params.WorkbenchTaskStateHandler, rbacGuards)
 		RegisterWorkbenchTaskGrantRoutes(v1, params.WorkbenchTaskGrantsHandler, rbacGuards)
+		RegisterWorkbenchTaskComplianceRoutes(v1, params.WorkbenchTaskComplianceHandler, rbacGuards)
 		RegisterWorkbenchLegacyTaskRoutes(v1, params.WorkbenchLegacyListHandler, rbacGuards)
 		RegisterWorkbenchInboxRoutes(v1, params.WorkbenchInboxHandler, rbacGuards)
 		RegisterWorkbenchCommandRoutes(v1, params.WorkbenchCommandHandler, rbacGuards)
