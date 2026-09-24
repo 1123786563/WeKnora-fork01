@@ -31,7 +31,7 @@ function counters() {
     lookup: async (requestId: string) => { log.push(`lookup:${requestId}`); return { state: 'unknown' as const }; },
   };
   const interactions: InteractionBackendPort = {
-    inbox: async () => { log.push('inbox'); return { items: [] }; },
+    inbox: async () => { log.push('inbox'); return []; },
     decide: async (input: { item: InboxItem; decisionId: string; action: InteractionActionValue }) => {
       log.push(`decide:${input.decisionId}`);
       return { ...record, decisionId: input.decisionId, action: input.action };
@@ -72,7 +72,7 @@ test('offline decide is refused as approval before dispatch; inbox reads pass', 
   const { log, interactions } = counters();
   const guarded = guardInteractionBackend(interactions, createOfflineGate(offline));
   const view = await guarded.inbox({ limit: 10 });
-  assert.deepEqual(view.items, []);
+  assert.deepEqual(view, []);
   await assert.rejects(
     guarded.decide({ item, decisionId: 'dec-1', action: 'approve' }),
     (error: unknown) => error instanceof OfflineGateError && error.action === 'approval',
