@@ -47,6 +47,8 @@ export function createDictationCaptureFrom(expoAudio: ExpoAudioLike): DictationC
       } finally {
         instance.release?.();
       }
+      // uri 指向的临时文件在 stop() 返回后仍须存活：模块要用它发起 multipart 上载；
+      // 上传完成后的文件删除依赖平台回收（本适配器不显式 unlink），真机实际删除验收属 #69/#70。
       const uri = instance.uri;
       if (typeof uri !== 'string' || uri === '') return undefined;
       return { uri, mimeType: 'audio/mp4', fileName: 'dictation.m4a' };
@@ -60,7 +62,11 @@ export function createDictationCaptureFrom(expoAudio: ExpoAudioLike): DictationC
       } catch {
         /* 已经停止的录音机：吞掉，路径仍是丢弃 */
       }
-      instance.release?.(); // 原始音频默认删除（CONTEXT.md:339）：释放即弃临时文件
+      // CONTEXT.md:339「原始音频默认在实时处理后删除」的客户端侧：内存引用由模块 dropIntent
+      // 即刻释放，此处 release 释放录音机对象。注意 release 不保证即时删除 uri 指向的临时
+      // 文件（显式 unlink 需引入 expo-file-system 原生依赖，超出 #56 计划声明范围）——
+      // 平台回收与真机实际删除的最终验收属 #69/#70（spec：「real-device acceptance separately」）。
+      instance.release?.();
     },
   };
 }

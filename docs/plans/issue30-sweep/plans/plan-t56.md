@@ -4,9 +4,9 @@
 
 **Goal:** 移动端 New 目标输入支持「录音 → 服务端转写 → 可编辑转写草稿 → 用户确认后并入目标文本」，并使「取消录音不取消 Task、转写须确认后才进入提交面、拒权/取消/迟到转写不破坏手打文字」全部在最高稳定 Interface（mobile-core Dictation 模块 + 真实 wire 的 api-client 适配器 + 真实 Runtime 授权通道）上可验证。
 
-**Architecture:** 服务端转写代理已完整存在且零改动（`internal/handler/mobile_voice.go:445` `TranscribeAudio`，路由 `POST /api/v1/mobile/voice/transcriptions`，`internal/router/routes_workbench.go:188-191` + `internal/router/router.go:380` 挂在 `/api/v1` 下；幂等 request_id 重放、预算 hold、结算、16MiB/120s 上限全部齐备，19 个既有 Go 测试本计划作者已实跑全 PASS）。本计划纯客户端：`packages/mobile-core/src/voice/` 新建 **Dictation 深模块**（module-seams §8.1「Voice Room 拥有……转写草稿」的听写子面；状态机 idle→recording→transcribing→review→idle/denied/failed，代次守卫丢弃迟到转写，失败后同 requestId 重试对齐服务端幂等重放）；`packages/api-client` 新增 `createMobileVoiceTranscriptionRemote`（multipart FormData 体经 `MobileRuntime.authorizedRequest` 原样透传——`packages/api-client/src/transport/json.ts:136` 对 FormData body 直传，已核实）；apps/mobile 在 NewTaskScreen 挂听写 UI、组合根按 deployment scope 记忆化装配、原生捕获 Adapter 惰性 require `expo-audio` fail closed（真机验收属 #69/#70，麦克风属 spec 定义的 true external——Port + scripted Adapter）。转写确认文字经 `applyConfirmedDictation` **追加**（不覆盖）进目标草稿；提交仍只走 #36 既有 Submit 通道——模块绝无提交能力（AC2 的结构性保障）。
+**Architecture:** 服务端转写代理已完整存在且零改动（`internal/handler/mobile_voice.go:445` `TranscribeAudio`，路由 `POST /api/v1/mobile/voice/transcriptions`，`internal/router/routes_workbench.go:188-191` + `internal/router/router.go:380` 挂在 `/api/v1` 下；幂等 request_id 重放、预算 hold、结算、16MiB/120s 上限全部齐备，18 个既有 Go 测试本计划作者已实跑全 PASS——最终审查 t56 勘误：实跑 `-v` 顶层测试函数计数为 18，初稿「19」为元数据笔误，不影响任何行为或结论）。本计划纯客户端：`packages/mobile-core/src/voice/` 新建 **Dictation 深模块**（module-seams §8.1「Voice Room 拥有……转写草稿」的听写子面；状态机 idle→recording→transcribing→review→idle/denied/failed，代次守卫丢弃迟到转写，失败后同 requestId 重试对齐服务端幂等重放）；`packages/api-client` 新增 `createMobileVoiceTranscriptionRemote`（multipart FormData 体经 `MobileRuntime.authorizedRequest` 原样透传——`packages/api-client/src/transport/json.ts:136` 对 FormData body 直传，已核实）；apps/mobile 在 NewTaskScreen 挂听写 UI、组合根按 deployment scope 记忆化装配、原生捕获 Adapter 惰性 require `expo-audio` fail closed（真机验收属 #69/#70，麦克风属 spec 定义的 true external——Port + scripted Adapter）。转写确认文字经 `applyConfirmedDictation` **追加**（不覆盖）进目标草稿；提交仍只走 #36 既有 Submit 通道——模块绝无提交能力（AC2 的结构性保障）。
 
-**Tech Stack:** TypeScript（`packages/mobile-core`、`packages/api-client`、`apps/mobile` Expo RN 55）、node:test + tsx（TS 测试运行器，与 `task-office.test.ts` 一致）。**Go 零改动**（服务端面以既有 19 个测试复跑为证据）。所有测试命令在 worktree 根（`.worktrees/issue30-sweep`）执行；前置 `pnpm install` 已就绪。本计划作者已实跑以下基线（2026-09-24，当前 HEAD `fb5f6653a`）：`go test ./internal/handler/ -run 'TestVoice|TestTranscription|TestPriceVersion' -count=1` → **ok**（19 个测试函数：`TestVoiceSessionHappyPathTokenNeverLogged` 等，见 `internal/handler/mobile_voice_test.go:313-957`）；`pnpm exec tsx --test apps/mobile/src/new-task-view.test.ts apps/mobile/src/new-task-drafts.test.ts` → **0 fail**；`pnpm exec tsx --test packages/mobile-core/src/device/device-registry.test.ts packages/api-client/src/mobile/devices.test.ts` → **0 fail**；`pnpm --filter @weknora/mobile typecheck` → **通过（无输出）**；`pnpm exec tsx --test apps/mobile/src/app-smoke.test.tsx` → **54 pass / 0 fail**；`pnpm --filter @weknora/mobile test` → **149 pass / 0 fail / 5 skip**（skip 为既有 opt-in 集成用例）。Node `v26.7.0`（全局 `FormData`/`Blob` 可用，已用 node 一行脚本核实 bytes 形态 append 返回 Blob、uri 对象形态在 Node 会字符串化——故 uri 形态只在 RN 运行时有效，Node 测试只验证 bytes 形态）。
+**Tech Stack:** TypeScript（`packages/mobile-core`、`packages/api-client`、`apps/mobile` Expo RN 55）、node:test + tsx（TS 测试运行器，与 `task-office.test.ts` 一致）。**Go 零改动**（服务端面以既有 18 个测试复跑为证据）。所有测试命令在 worktree 根（`.worktrees/issue30-sweep`）执行；前置 `pnpm install` 已就绪。本计划作者已实跑以下基线（2026-09-24，当前 HEAD `fb5f6653a`）：`go test ./internal/handler/ -run 'TestVoice|TestTranscription|TestPriceVersion' -count=1` → **ok**（18 个测试函数：`TestVoiceSessionHappyPathTokenNeverLogged` 等，见 `internal/handler/mobile_voice_test.go:313-957`）；`pnpm exec tsx --test apps/mobile/src/new-task-view.test.ts apps/mobile/src/new-task-drafts.test.ts` → **0 fail**；`pnpm exec tsx --test packages/mobile-core/src/device/device-registry.test.ts packages/api-client/src/mobile/devices.test.ts` → **0 fail**；`pnpm --filter @weknora/mobile typecheck` → **通过（无输出）**；`pnpm exec tsx --test apps/mobile/src/app-smoke.test.tsx` → **54 pass / 0 fail**；`pnpm --filter @weknora/mobile test` → **149 pass / 0 fail / 5 skip**（skip 为既有 opt-in 集成用例）。Node `v26.7.0`（全局 `FormData`/`Blob` 可用，已用 node 一行脚本核实 bytes 形态 append 返回 Blob、uri 对象形态在 Node 会字符串化——故 uri 形态只在 RN 运行时有效，Node 测试只验证 bytes 形态）。
 
 **Spec:**
 - 需求 Issue：`docs/plans/issue30-sweep/issues/issue-56.md`（验收标准原文见「Global Constraints」末尾；Blocked by #36 已在当前 HEAD 合并）
@@ -29,7 +29,7 @@
 - 「Each command that can have an unknown outcome uses a durable idempotency identity. Network failure triggers lookup or reconciliation, not silent replay.」（同上）——转写失败后的重试**复用同一 requestId**（服务端 `mobile_voice.go:465-487` 从结果行幂等重放，绝不重复计费）；重试是显式用户动作，不是静默自动重发。
 - 「Voice Room 拥有实时语音 session、microphone permission、音频状态、转写草稿和断线结束语义。它不拥有 Task 权限、审批或时间线；确认后的文字通过 TaskHandle.act 提交。」（mobile-module-seams.md §8.1）——听写子面遵守同一所有权：Dictation 模块拥有录音生命周期与转写草稿，不碰 Task 权限/提交（#56 的确认文字经目标草稿进入 Task Office 的 start 通道；`TaskHandle.act` 输入面属 #37，当前 HEAD 未实现）。
 - 「禁止：Screen 直接导入 packages/contracts 或 packages/api-client；Screen 自己维护 request_id、cursor、revision、scope generation；每个 Screen 建独立 query cache 或 token refresh」（mobile-module-seams.md §10）——NewTaskScreen 只见 `DictationState` + 回调；requestId 由模块经注入的 `newRequestId` 铸造；`createMobileVoiceTranscriptionRemote` 只出现在组合根。
-- 「语音交互记录（Voice Interaction Record）：实时语音交互中经成员确认的文字输入和 Agent 文字答复……原始音频默认在实时处理后删除」（CONTEXT.md:339）——模块内存中的音频在转写派发成功/取消/丢弃时即刻释放（`dropIntent`），原生临时文件由捕获 Adapter 在 stop/cancel 后 `release`；模块不留原始音频缓存。
+- 「语音交互记录（Voice Interaction Record）：实时语音交互中经成员确认的文字输入和 Agent 文字答复……原始音频默认在实时处理后删除」（CONTEXT.md:339）——模块内存中的音频在转写派发成功/取消/丢弃时即刻释放（`dropIntent`），原生临时文件由捕获 Adapter 在 stop/cancel 后 `release`（release 释放录音机对象，不保证即时删盘——真机实际删除验收属 #69/#70，最终审查 t56 已在 Adapter 内如实注释）；模块不留原始音频缓存。
 - 服务端 URL/凭据约束（会话注入）：转写走 `MobileRuntime.authorizedRequest`（origin 已由 `requireDeploymentOrigin` 强校验为无凭据 HTTPS）；集成冒烟复用 `disallowedDeploymentHost` 主机防线（拒 localhost/环回/私网/保留地址）；凭据只从 `WEKNORA_MOBILE_TEST_*` 环境变量读取，源码与测试不写可用凭据字面量。本计划 **Go/SQL 零改动**（参数绑定约束自动满足）。
 - 工作流约束：严格 RED→GREEN→REFACTOR（每个任务先写失败测试、实跑确认失败、最小实现、通过、提交）；实现不与已批准 Spec 冲突，冲突时升级而非静默重设计。
 - 上限对齐（数值为工程默认，与服务端常量逐字对齐）：单次转写音频 ≤ `16 << 20` 字节（`mobile_voice.go:51` `voiceMaxAudioBytes`）；录音时长上限 120 秒（`mobile_voice.go:49` `voiceTranscribeMaxSeconds` 预算窗）；确认并入后的目标文本 ≤ 500 字（`apps/mobile/src/screens/NewTaskScreen.tsx:14` `GOAL_TEXT_MAX_LENGTH`，R1 裁决第三层）。
@@ -42,13 +42,13 @@
 
 What to build 原文：「新建和 Task 输入支持录音转写为可编辑草稿；拒权、取消和迟到转写不破坏文字输入。」
 
-**验收标准 3 的本地可验证性说明（blocked-env 声明）：** 真实端到端（生产 JSON transport + Runtime 授权通道 + 具体 Remote Adapter + Dictation 模块 + 真实控制器 + 真后端 `POST /api/v1/mobile/voice/transcriptions`）沿用 T01–T06 已合并的 opt-in 真实 HTTP 模式，需要「一个真实 WeKnora Deployment（HTTPS 公网 origin）+ 一个测试账号 + 服务端已配置 voice admission 价格版本与真实转写 provider」（`WEKNORA_MOBILE_TEST_DEPLOYMENT_URL/EMAIL/PASSWORD` 环境变量）。本地无此环境时 Task 5 的真实 HTTP 用例以 `t.skip` 跳过（**不得伪造通过**）；部署未配置语音计价时服务端如实返回 503 `voice_charging_unconfigured`，证据记 `charging-unconfigured`（合法结论，不是失败）。本地替代证据：Dictation 模块 Interface 场景测试（Task 1，真实模块编排 + scripted Adapter，覆盖 AC1/AC2 与拒权/迟到/竞态全部分支）+ api-client wire 契约测试（真实 FormData 构造，Task 2）+ 屏渲染/接线测试与源级守卫（Task 3/4）+ 服务端既有 19 个 Go 测试复跑（幂等/预算/结算的服务端证据，本计划作者已实跑 PASS）。真机麦克风权限/录音属 #69/#70 真机验收门槛（spec：「real-device acceptance separately」），本地以 scripted 捕获 Adapter 为证据，不伪造真机结论。
+**验收标准 3 的本地可验证性说明（blocked-env 声明）：** 真实端到端（生产 JSON transport + Runtime 授权通道 + 具体 Remote Adapter + Dictation 模块 + 真实控制器 + 真后端 `POST /api/v1/mobile/voice/transcriptions`）沿用 T01–T06 已合并的 opt-in 真实 HTTP 模式，需要「一个真实 WeKnora Deployment（HTTPS 公网 origin）+ 一个测试账号 + 服务端已配置 voice admission 价格版本与真实转写 provider」（`WEKNORA_MOBILE_TEST_DEPLOYMENT_URL/EMAIL/PASSWORD` 环境变量）。本地无此环境时 Task 5 的真实 HTTP 用例以 `t.skip` 跳过（**不得伪造通过**）；部署未配置语音计价时服务端如实返回 503 `voice_charging_unconfigured`，证据记 `charging-unconfigured`（合法结论，不是失败）。本地替代证据：Dictation 模块 Interface 场景测试（Task 1，真实模块编排 + scripted Adapter，覆盖 AC1/AC2 与拒权/迟到/竞态全部分支）+ api-client wire 契约测试（真实 FormData 构造，Task 2）+ 屏渲染/接线测试与源级守卫（Task 3/4）+ 服务端既有 18 个 Go 测试复跑（幂等/预算/结算的服务端证据，本计划作者已实跑 PASS）。真机麦克风权限/录音属 #69/#70 真机验收门槛（spec：「real-device acceptance separately」），本地以 scripted 捕获 Adapter 为证据，不伪造真机结论。
 
 **与调查结论的差异记录（以代码现状为准）：**
 
 1. 调查缺口第 5 条「前置 #36（通用目标输入与耐久 Task 创建）未实现」**已过时**：#36 已在当前 HEAD 合并——亲眼核实 `apps/mobile/src/app/new.tsx`（/new 路由 + NewTaskRouteLifecycle）、`apps/mobile/src/new-task-view.ts`（createNewTaskController，AC2 保留语义宿主）、`apps/mobile/src/screens/NewTaskScreen.tsx`、`apps/mobile/src/new-task-drafts.ts`（Scoped Vault 加密草稿）、`apps/mobile/src/task-start-integration-smoke.ts` 均存在。本计划直接挂接其产出（`controller.update` / `GOAL_TEXT_MAX_LENGTH` / `createNativeRequestId`）。
 2. 调查称服务端证据为 `mobile_voice.go:445` `TranscribeAudio` —— 亲眼核实行号正确；补充调查未记录的 wire 事实：路由挂在 `/api/v1`（`router.go:380` 传 `v1`（`router.go:296` `v1 := r.Group("/api/v1")`）→ `routes_workbench.go:184-192`），完整路径 `POST /api/v1/mobile/voice/transcriptions`；multipart 字段为 `request_id`、`voice_session_id?`、`locale?` + 文件 part 名 **`audio`**（`mobile_voice.go:450-452,488`）；响应信封 `{success:true,data:{text,audio_seconds,settled}}`（`mobile_voice.go:601`）；错误信封 `{success:false,error:"voice_charging_unconfigured"}` 503 / `"transcribe_failed"` 502。api-client 的 `ApiError.code` 对该错误体为 `HTTP_<status>`（`errors.ts:58-60`——`error` 字符串只进 message），故 503→`VOICE_CHARGING_UNCONFIGURED` 的语义翻译在 Task 2 的 Remote 内完成。
-3. 调查称「11 个 Voice 测试本次实跑全 PASS」——本计划作者本次实跑 `-run 'TestVoice|TestTranscription|TestPriceVersion'` 命中 **19 个测试函数**全 PASS（`mobile_voice_test.go:313-957`）。数量差异不影响结论。
+3. 调查称「11 个 Voice 测试本次实跑全 PASS」——本计划作者本次实跑 `-run 'TestVoice|TestTranscription|TestPriceVersion'` 命中 **18 个测试函数**全 PASS（`mobile_voice_test.go:313-957`；最终审查 t56 勘误：实跑 `go test -v` 顶层 `=== RUN` 计数 18、`grep -cE '^func (TestVoice|TestTranscription|TestPriceVersion)' internal/handler/mobile_voice_test.go` = 18，初稿「19」为元数据笔误，计划基线 HEAD `fb5f6653a` 当时即为 18）。数量差异不影响结论。
 4. 调查缺口 1–4 条（无录音/转写/草稿 UI、无取消语义、无确认流、无 Interface 测试覆盖）经当前 HEAD 核实**全部属实**：`apps/mobile/src/adapters/` 无 dictation 文件、`packages/mobile-core/src/` 无 voice/ 目录、composition.ts 无 voice 接线、app-smoke 无听写测试。
 5. 真机依赖新增：`expo-audio` 不在 `apps/mobile/package.json`——真机构建前置 `cd apps/mobile && npx expo install expo-audio`（与 #41 的 `expo-notifications` 前置同型）。Node 测试链不依赖它（Adapter 构造时 require 失败 → 返回 undefined，fail closed）。
 
@@ -728,7 +728,7 @@ git commit -m "feat(issue30-sweep): mobile-core dictation module (T26 #56 task 1
 - Consumes: `requireDeploymentOrigin(origin: string)`（`packages/api-client/src/mobile/deployment-origin.ts`，devices.ts:2 同源）；`ClientRequest`（`packages/api-client/src/client.ts:38-47`——`multipartFields`/`nativeFile` 通道存在但文件 part 名硬编码 `'file'`，与服务端 `audio` part 名不符，故本适配器自建 FormData 作为 `body` 直传——`client.ts:196` body 原样透传，`transport/json.ts:136` FormData instanceof 直传 fetch，已核实）；授权通道 `(input: ClientRequest) => Promise<unknown>`（由组合根以 `(input) => runtime.authorizedRequest(input)` 提供，composition.ts:162 同型先例）。
 - Produces（Task 4 组合根与 Task 5 集成冒烟依赖）:
   - `createMobileVoiceTranscriptionRemote(options: { origin: string; request: Request }): MobileVoiceTranscriptionRemote`
-  - `interface MobileVoiceTranscriptionRemote { transcribe(input: { requestId: string; audio: MobileVoiceAudio; voiceSessionId?: string }): Promise<{ text: string; audioSeconds?: number; settled?: boolean; replay?: boolean }> }`
+  - `interface MobileVoiceTranscriptionRemote { transcribe(input: { requestId: string; audio: MobileVoiceAudio; voiceSessionId?: string }): Promise<{ text: string; audioSeconds?: number; settled?: boolean }> }`（最终审查 t56：移除服务端永不下发的 `replay` 占位——结果面与 `mobile_voice.go:601` 信封 {text,audio_seconds,settled} 逐字对齐，未知信封字段不透传）
   - `interface MobileVoiceAudio { uri?: string; bytes?: Uint8Array; mimeType: string; fileName?: string }`（与 mobile-core `DictationAudio` 结构逐字一致；结构可赋值由 Task 3 的类型证明测试落实）
   - 错误契约：HTTP 503 → `{ code: 'VOICE_CHARGING_UNCONFIGURED' }`；任何其它 HTTP 失败 → `{ code: 'VOICE_TRANSCRIBE_FAILED' }`（模块经 `failureCode` 透出）；信封畸形 → 普通 Error。
   - package.json exports 新子路径 `"./mobile/voice": "./src/mobile/voice.ts"`。
@@ -771,7 +771,7 @@ test('an optional voice_session_id rides the form; a blank one stays absent', as
   const seen: ClientRequest[] = [];
   const remote = createMobileVoiceTranscriptionRemote({
     origin: ORIGIN,
-    request: async (input) => { seen.push(input); return { success: true, data: { text: 'x', replay: true } }; },
+    request: async (input) => { seen.push(input); return { success: true, data: { text: 'x', settled: true } }; },
   });
   await remote.transcribe({ requestId: 'req-1', audio: { ...WAV }, voiceSessionId: 'vs_1' });
   assert.equal((seen[0]!.body as FormData).get('voice_session_id'), 'vs_1');
@@ -871,7 +871,6 @@ export interface MobileVoiceTranscriptionResult {
   text: string;
   audioSeconds?: number;
   settled?: boolean;
-  replay?: boolean;
 }
 
 export interface MobileVoiceTranscriptionRemote {
@@ -933,13 +932,12 @@ export function createMobileVoiceTranscriptionRemote(options: MobileVoiceRemoteO
       if (record.success !== true || typeof record.data !== 'object' || record.data === null) {
         throw new Error('voice transcription response.success must be true with data');
       }
-      const data = record.data as { text?: unknown; audio_seconds?: unknown; settled?: unknown; replay?: unknown };
+      const data = record.data as { text?: unknown; audio_seconds?: unknown; settled?: unknown };
       if (typeof data.text !== 'string') throw new Error('voice transcription data.text must be a string');
       return {
         text: data.text,
         ...(typeof data.audio_seconds === 'number' ? { audioSeconds: data.audio_seconds } : {}),
         ...(data.settled === true ? { settled: true } : {}),
-        ...(data.replay === true ? { replay: true } : {}),
       };
     },
   };

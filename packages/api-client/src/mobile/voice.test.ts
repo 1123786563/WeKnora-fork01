@@ -31,7 +31,7 @@ test('an optional voice_session_id rides the form; a blank one stays absent', as
   const seen: ClientRequest[] = [];
   const remote = createMobileVoiceTranscriptionRemote({
     origin: ORIGIN,
-    request: async (input) => { seen.push(input); return { success: true, data: { text: 'x', replay: true } }; },
+    request: async (input) => { seen.push(input); return { success: true, data: { text: 'x', settled: true } }; },
   });
   await remote.transcribe({ requestId: 'req-1', audio: { ...WAV }, voiceSessionId: 'vs_1' });
   assert.equal((seen[0]!.body as FormData).get('voice_session_id'), 'vs_1');
@@ -87,4 +87,17 @@ test('the origin must be a validated credential-free HTTPS origin', async () => 
     () => createMobileVoiceTranscriptionRemote({ origin: 'http://insecure.example', request: async () => undefined }),
     /origin/i,
   );
+});
+
+test('the result surface is exactly the server envelope fields (unknown fields never pass through)', async () => {
+  // 服务端成功信封只有 {text, audio_seconds, settled}（mobile_voice.go:601）；最终审查 t56
+  // 移除了永不为 true 的前向兼容死字段 replay——即使信封出现未知/遗留字段，客户端结果面
+  // 也不得透传（结构可赋值面与 mobile-core DictationTranscriptionResult 保持最小）。
+  const remote = createMobileVoiceTranscriptionRemote({
+    origin: ORIGIN,
+    request: async () => ({ success: true, data: { text: '信封外字段不透传', replay: true } }),
+  });
+  const result = await remote.transcribe({ requestId: 'req-1', audio: { ...WAV } });
+  assert.deepEqual(result, { text: '信封外字段不透传' });
+  assert.equal('replay' in result, false, '遗留占位字段 replay 绝不出现在结果面');
 });

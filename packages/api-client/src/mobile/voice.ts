@@ -25,11 +25,15 @@ export interface MobileVoiceTranscriptionInput {
   voiceSessionId?: string;
 }
 
+/**
+ * 结果面与服务端成功信封逐字对齐：{text, audio_seconds, settled}
+ * （internal/handler/mobile_voice.go:601）。不留前向兼容占位字段——
+ * 未知信封字段一律不透传（最终审查 t56：移除永不为 true 的死字段 replay）。
+ */
 export interface MobileVoiceTranscriptionResult {
   text: string;
   audioSeconds?: number;
   settled?: boolean;
-  replay?: boolean;
 }
 
 export interface MobileVoiceTranscriptionRemote {
@@ -91,13 +95,12 @@ export function createMobileVoiceTranscriptionRemote(options: MobileVoiceRemoteO
       if (record.success !== true || typeof record.data !== 'object' || record.data === null) {
         throw new Error('voice transcription response must be a success envelope: success must be true with data');
       }
-      const data = record.data as { text?: unknown; audio_seconds?: unknown; settled?: unknown; replay?: unknown };
+      const data = record.data as { text?: unknown; audio_seconds?: unknown; settled?: unknown };
       if (typeof data.text !== 'string') throw new Error('voice transcription data.text must be a string');
       return {
         text: data.text,
         ...(typeof data.audio_seconds === 'number' ? { audioSeconds: data.audio_seconds } : {}),
         ...(data.settled === true ? { settled: true } : {}),
-        ...(data.replay === true ? { replay: true } : {}),
       };
     },
   };
