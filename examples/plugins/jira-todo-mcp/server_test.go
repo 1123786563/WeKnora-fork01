@@ -433,6 +433,40 @@ func TestJiraErrorsSurfaceWithoutFabrication(t *testing.T) {
 		require.Nil(t, result, "an error path must not fabricate an empty successful result")
 		require.ErrorContains(t, err, "timeout")
 	})
+
+	// jira-client-timeout（T05-OCR1-F2 核验回归钉子）：页级超时路径——
+	// jiraHTTPClient 的 http.Client.Timeout（生产为 30s cfg.Timeout）先于
+	// 整体 ctx deadline 触发。go1.26 的 net/http 把 Client.Timeout 错误包成
+	// *http.timeoutError，其 Is(err) 明确等值 context.DeadlineExceeded
+	//（transport.go：timeoutError 注释 "wraps context.DeadlineExceeded"），
+	// 因此 jira.go 的 errors.Is 分支对两条超时触发顺序都成立、都带 timeout
+	// 措辞浮出。本子测试把共享 client 换成同款 SSRF-safe 构造、150ms
+	// Timeout（maxToolCallTimeout 保持默认 60s——页级必然先触发），钉住该
+	// 语义：若未来 Go 版本漂移破坏此行为，这里会先红。
+	t.Run("jira-client-timeout", func(t *testing.T) {
+		oldClient := jiraHTTPClient
+		cfg := utils.DefaultSSRFSafeHTTPClientConfig()
+		cfg.Timeout = 150 * time.Millisecond
+		jiraHTTPClient = utils.NewSSRFSafeHTTPClient(cfg)
+		t.Cleanup(func() { jiraHTTPClient = oldClient })
+		base, _ := newTestService(t, func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/rest/api/3/myself":
+				_ = json.NewEncoder(w).Encode(map[string]any{"emailAddress": email, "displayName": "Member"})
+			case "/rest/api/3/search/jql":
+				time.Sleep(400 * time.Millisecond) // 慢于页级 Client.Timeout
+				_ = json.NewEncoder(w).Encode(map[string]any{"issues": []map[string]any{}})
+			default:
+				t.Errorf("unexpected jira path: %s", r.URL.Path)
+				w.WriteHeader(http.StatusNotFound)
+			}
+		})
+		accessToken, _ := testOAuthFlow(t, base, redirectURI, email, apiToken)
+		result, err := callToolWithToken(t, base, accessToken)
+		require.Error(t, err, "a page-level Jira timeout must surface as an error, not an empty success list")
+		require.Nil(t, result, "an error path must not fabricate an empty successful result")
+		require.ErrorContains(t, err, "timeout")
+	})
 }
 
 // TestEmptyWeekIsEmptySuccess 空结果是合法成功：fake Jira 返回
