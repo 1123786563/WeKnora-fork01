@@ -31,3 +31,7 @@ export { isTerminalRunStatus, mergeEventHistory, projectTimeline, taskLifecycleO
 export type { ScenarioTaskDetailHandlers, ScriptedTaskStream } from './task-office/in-memory-task-detail.ts';
 export { parseNotificationDeepLink } from './inbox/deep-link.ts';
 export type { DeepLinkTarget, TaskDetailDeepLinkTarget } from './inbox/deep-link.ts';
+export { createDeviceRegistry, DeviceError } from './device/device-registry.ts';
+export type { DeviceErrorCode, DevicePlatform, DevicePorts, DeviceRegistrationRecord, DeviceRegistry, DeviceRemote } from './device/device-registry.ts';
+export { createScenarioDeviceRemote } from './device/in-memory-device-remote.ts';
+export type { ScenarioDeviceRemote, ScenarioDeviceSnapshot } from './device/in-memory-device-remote.ts';
