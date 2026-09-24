@@ -25,14 +25,17 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/modules/craft"
+	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
+	"github.com/moby/moby/client"
 )
 
 // maxCraftPreviewGrants bounds the in-memory grant tables. Live grants are
@@ -55,6 +58,98 @@ type CraftPreviewConfig struct {
 	TTL time.Duration
 	// Now overrides the clock in tests.
 	Now func() time.Time
+	// AccessChecker supplies current Task membership at issuance and each read.
+	// An unwired deployment refuses preview grants.
+	AccessChecker craft.TaskAccessChecker
+	// NetworkChecker verifies the bound Task sandbox's effective network policy.
+	// Nil fails closed; the default Docker bridge is never accepted.
+	NetworkChecker CraftPreviewNetworkChecker
+	// BrowserNavigationProtected is an explicit deployment gate. A page served
+	// to an end-user browser can navigate that browser to arbitrary hosts; CSP
+	// fetch directives and iframe sandbox flags do not prevent that request.
+	// Keep false until preview runs behind a browser/network boundary that does.
+	BrowserNavigationProtected bool
+}
+
+type CraftPreviewNetworkChecker interface {
+	CheckPreviewNoEgress(context.Context, craft.Scope) error
+}
+
+// CraftPreviewDockerNetworkChecker reads the *bound* sandbox config, not a
+// caller-selected config. It accepts only Docker's network_mode=none. A stale
+// binding, missing config, provider switch, or store error refuses preview.
+type CraftPreviewDockerNetworkChecker struct {
+	Bindings sandbox.SessionSandboxBindingStore
+	Loader   sandbox.TenantSandboxConfigLoader
+	Global   *sandbox.Config
+	// Inspector must query the bound container's live HostConfig.NetworkMode on
+	// the resolved Docker daemon. A stored config can change after creation.
+	Inspector CraftPreviewContainerNetworkInspector
+}
+
+type CraftPreviewContainerNetworkInspector interface {
+	NetworkMode(context.Context, *sandbox.Config, string) (string, error)
+}
+
+// CraftPreviewLocalDockerInspector verifies the live container on a local
+// Docker daemon. Remote daemon endpoints are refused until a guarded TLS
+// inspector is wired; a stored policy value alone cannot attest an old
+// container that was created while the config still used bridge.
+type CraftPreviewLocalDockerInspector struct{}
+
+func (CraftPreviewLocalDockerInspector) NetworkMode(ctx context.Context, config *sandbox.Config, sandboxID string) (string, error) {
+	if config == nil || sandboxID == "" {
+		return "", fmt.Errorf("%w: Docker preview inspect needs config and container", craft.ErrUnsupported)
+	}
+	host := strings.TrimSpace(config.DockerHost)
+	if host == "" {
+		host = sandbox.DetectLocalDockerHost()
+	}
+	if !strings.HasPrefix(host, "unix://") {
+		return "", fmt.Errorf("%w: remote Docker preview inspection is not configured", craft.ErrUnsupported)
+	}
+	api, err := client.New(client.WithHost(host))
+	if err != nil {
+		return "", err
+	}
+	defer api.Close()
+	inspected, err := api.ContainerInspect(ctx, sandboxID, client.ContainerInspectOptions{})
+	if err != nil {
+		return "", err
+	}
+	if inspected.Container.HostConfig == nil || inspected.Container.State == nil || !inspected.Container.State.Running {
+		return "", fmt.Errorf("%w: Docker preview container is not running", craft.ErrUnsupported)
+	}
+	return string(inspected.Container.HostConfig.NetworkMode), nil
+}
+
+func (n CraftPreviewDockerNetworkChecker) CheckPreviewNoEgress(ctx context.Context, scope craft.Scope) error {
+	if n.Bindings == nil || n.Loader == nil || n.Global == nil || n.Inspector == nil || scope.TenantID == 0 || scope.SessionID == "" {
+		return fmt.Errorf("%w: preview network policy is unavailable", craft.ErrUnsupported)
+	}
+	binding, err := n.Bindings.Get(ctx, sandbox.SessionSandboxKey{TenantID: scope.TenantID, SessionID: scope.SessionID})
+	if err != nil || binding == nil || binding.StaleAt != nil || binding.Provider != sandbox.SandboxTypeDocker || binding.ConfigID == "" {
+		return fmt.Errorf("%w: no current Docker sandbox binding: %v", craft.ErrUnsupported, err)
+	}
+	config := n.Global
+	if binding.ConfigID != types.SandboxConfigIDGlobalDefault {
+		selected, loadErr := n.Loader.Load(ctx, scope.TenantID, binding.ConfigID)
+		if loadErr != nil || !selected.Found || selected.Cordoned || selected.Config == nil {
+			return fmt.Errorf("%w: bound sandbox config is unavailable: %v", craft.ErrUnsupported, loadErr)
+		}
+		config, err = sandbox.ResolveEffectiveConfig(selected.Config, n.Global)
+		if err != nil {
+			return fmt.Errorf("%w: resolve bound sandbox config: %v", craft.ErrUnsupported, err)
+		}
+	}
+	if config.Type != sandbox.SandboxTypeDocker || !strings.EqualFold(strings.TrimSpace(config.DockerNetworkMode), "none") {
+		return fmt.Errorf("%w: bound preview sandbox must use Docker network_mode=none", craft.ErrUnsupported)
+	}
+	actual, err := n.Inspector.NetworkMode(ctx, config, binding.SandboxID)
+	if err != nil || !strings.EqualFold(strings.TrimSpace(actual), "none") {
+		return fmt.Errorf("%w: bound Docker container is not running with network_mode=none: %v", craft.ErrUnsupported, err)
+	}
+	return nil
 }
 
 func (c CraftPreviewConfig) withDefaults() CraftPreviewConfig {
@@ -72,6 +167,7 @@ func (c CraftPreviewConfig) withDefaults() CraftPreviewConfig {
 type craftPreviewGrant struct {
 	scope     craft.Scope
 	versionID string
+	files     map[string]struct{}
 	expiresAt time.Time
 }
 
@@ -121,7 +217,17 @@ func NewCraftPreviewService(
 // deployments keep the feature off: issuance answers ErrUnsupported and the
 // isolated-origin endpoint 404s.
 func (s *CraftPreviewService) Enabled() bool {
-	return s != nil && strings.TrimSpace(s.config.PreviewOrigin) != ""
+	return s != nil && craft.PreviewOriginAllowed(s.config.AppOrigin, s.config.PreviewOrigin)
+}
+
+// AcceptsPreviewHost prevents the auth-free /p route mounted on the shared
+// router from redeeming a ticket on the main product host.
+func (s *CraftPreviewService) AcceptsPreviewHost(host string) bool {
+	if !s.Enabled() {
+		return false
+	}
+	u, err := url.Parse(s.config.PreviewOrigin)
+	return err == nil && strings.EqualFold(host, u.Host)
 }
 
 // Issue mints one redemption ticket for a published version after the full
@@ -133,11 +239,20 @@ func (s *CraftPreviewService) Issue(ctx context.Context, scope craft.Scope, vers
 	if !s.Enabled() {
 		return craft.PreviewTicket{}, fmt.Errorf("%w: preview origin is not configured", craft.ErrUnsupported)
 	}
+	if !s.config.BrowserNavigationProtected {
+		return craft.PreviewTicket{}, fmt.Errorf("%w: preview disabled until browser navigation egress is isolated", craft.ErrUnsupported)
+	}
 	if scope.TenantID == 0 || scope.UserID == "" || scope.SessionID == "" {
 		return craft.PreviewTicket{}, fmt.Errorf("%w: preview issuance requires a complete scope", craft.ErrInvalidInput)
 	}
 	if !craft.IsVersionID(versionID) {
 		return craft.PreviewTicket{}, fmt.Errorf("%w: version id %q", craft.ErrInvalidInput, versionID)
+	}
+	if err := craft.RequireTaskAccess(ctx, s.config.AccessChecker, scope, craft.TaskPreview); err != nil {
+		return craft.PreviewTicket{}, err
+	}
+	if err := s.requireNoEgress(ctx, scope); err != nil {
+		return craft.PreviewTicket{}, err
 	}
 	version, err := s.versions.Get(ctx, scope, versionID)
 	if err != nil {
@@ -151,6 +266,13 @@ func (s *CraftPreviewService) Issue(ctx context.Context, scope craft.Scope, vers
 	if !ok {
 		return craft.PreviewTicket{}, fmt.Errorf("%w: kind %q has no entry file", craft.ErrUnsupported, version.Kind)
 	}
+	allowedFiles := make(map[string]struct{}, len(version.Files))
+	for _, file := range version.Files {
+		allowedFiles[file.Path] = struct{}{}
+	}
+	if _, ok := allowedFiles[entry]; !ok {
+		return craft.PreviewTicket{}, fmt.Errorf("%w: entry is absent from version manifest", craft.ErrNotFound)
+	}
 
 	token, digest, err := craft.NewPreviewToken()
 	if err != nil {
@@ -158,7 +280,7 @@ func (s *CraftPreviewService) Issue(ctx context.Context, scope craft.Scope, vers
 	}
 	now := s.config.Now()
 	expiresAt := now.Add(s.config.TTL)
-	if err := s.putTicket(digest, craftPreviewGrant{scope: scope, versionID: version.ID, expiresAt: expiresAt}); err != nil {
+	if err := s.putTicket(digest, craftPreviewGrant{scope: scope, versionID: version.ID, files: allowedFiles, expiresAt: expiresAt}); err != nil {
 		return craft.PreviewTicket{}, err
 	}
 	base := strings.TrimSuffix(s.config.PreviewOrigin, "/")
@@ -190,6 +312,9 @@ func (s *CraftPreviewService) Open(ctx context.Context, token, requestPath strin
 	if !s.Enabled() {
 		return PreviewOpen{}, fmt.Errorf("%w: preview origin is not configured", craft.ErrUnsupported)
 	}
+	if !s.config.BrowserNavigationProtected {
+		return PreviewOpen{}, fmt.Errorf("%w: browser navigation egress is not isolated", craft.ErrUnsupported)
+	}
 	rel, err := craft.ValidatePreviewRequestPath(requestPath)
 	if err != nil {
 		return PreviewOpen{}, err
@@ -207,12 +332,18 @@ func (s *CraftPreviewService) Open(ctx context.Context, token, requestPath strin
 		if s.config.Now().After(grant.expiresAt) {
 			return PreviewOpen{}, fmt.Errorf("%w: preview ticket expired, re-authorize on the main origin", craft.ErrForbidden)
 		}
+		if err := craft.RequireTaskAccess(ctx, s.config.AccessChecker, grant.scope, craft.TaskPreview); err != nil {
+			return PreviewOpen{}, err
+		}
+		if err := s.requireNoEgress(ctx, grant.scope); err != nil {
+			return PreviewOpen{}, err
+		}
 		capToken, capDigest, err := craft.NewPreviewToken()
 		if err != nil {
 			return PreviewOpen{}, err
 		}
 		expiresAt := s.config.Now().Add(s.config.TTL)
-		if err := s.putCapability(capDigest, craftPreviewGrant{scope: grant.scope, versionID: grant.versionID, expiresAt: expiresAt}); err != nil {
+		if err := s.putCapability(capDigest, craftPreviewGrant{scope: grant.scope, versionID: grant.versionID, files: grant.files, expiresAt: expiresAt}); err != nil {
 			return PreviewOpen{}, err
 		}
 		return PreviewOpen{Redirect: "/" + craft.PreviewPathSegment + "/" + capToken + "/" + rel}, nil
@@ -260,6 +391,15 @@ func (s *CraftPreviewService) lookup(ctx context.Context, digest, rel string) (c
 	if !ok {
 		return craft.File{}, craft.Scope{}, craftPreviewGrant{}, fmt.Errorf("%w: no preview capability", craft.ErrNotFound)
 	}
+	if err := craft.RequireTaskAccess(ctx, s.config.AccessChecker, grant.scope, craft.TaskPreview); err != nil {
+		return craft.File{}, craft.Scope{}, craftPreviewGrant{}, err
+	}
+	if err := s.requireNoEgress(ctx, grant.scope); err != nil {
+		return craft.File{}, craft.Scope{}, craftPreviewGrant{}, err
+	}
+	if _, ok := grant.files[rel]; !ok {
+		return craft.File{}, craft.Scope{}, craftPreviewGrant{}, fmt.Errorf("%w: file is outside preview capability", craft.ErrNotFound)
+	}
 	version, err := s.versions.Get(ctx, grant.scope, grant.versionID)
 	if err != nil {
 		return craft.File{}, craft.Scope{}, craftPreviewGrant{}, err
@@ -271,6 +411,13 @@ func (s *CraftPreviewService) lookup(ctx context.Context, digest, rel string) (c
 	}
 	return craft.File{}, craft.Scope{}, craftPreviewGrant{},
 		fmt.Errorf("%w: %q is not part of version %s", craft.ErrNotFound, rel, grant.versionID)
+}
+
+func (s *CraftPreviewService) requireNoEgress(ctx context.Context, scope craft.Scope) error {
+	if s.config.NetworkChecker == nil {
+		return fmt.Errorf("%w: preview network checker is not assembled", craft.ErrUnsupported)
+	}
+	return s.config.NetworkChecker.CheckPreviewNoEgress(ctx, scope)
 }
 
 // openReader streams one resolved file through the tenant's file service,

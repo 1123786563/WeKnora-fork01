@@ -115,7 +115,7 @@ func (h *CraftPreviewHandler) IssueCraftPreview(c *gin.Context) {
 // manifest file of its bound version with the full preview header set.
 func (h *CraftPreviewHandler) CraftPreviewFile(c *gin.Context) {
 	ctx := c.Request.Context()
-	if h == nil || h.previews == nil || !h.previews.Enabled() {
+	if h == nil || h.previews == nil || !h.previews.AcceptsPreviewHost(c.Request.Host) {
 		c.Status(http.StatusNotFound)
 		return
 	}
