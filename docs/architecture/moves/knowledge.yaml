@@ -124,10 +124,6 @@ legacy_files:
     reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
     navigation_label: Wiki page (application/repository)
     passb_task: B-knowledge
-  - path: internal/application/service/extract.go
-    reason: trapped in horizontal service package internal/application/service (Pass B file split)
-    navigation_label: Extract (application/service)
-    passb_task: B-knowledge
   - path: internal/application/service/faq_clone_sync.go
     reason: trapped in horizontal service package internal/application/service (Pass B file split)
     navigation_label: Faq clone sync (application/service)
