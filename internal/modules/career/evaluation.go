@@ -148,6 +148,9 @@ func (o *Office) EvaluateOpportunity(ctx context.Context, input EvaluateInput) (
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			return err
 		}
+		if o.afterEvaluationReceiptMiss != nil {
+			o.afterEvaluationReceiptMiss()
+		}
 
 		var head profile
 		err = tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id=? AND user_id=?", scope.TenantID, scope.UserID).First(&head).Error
@@ -212,7 +215,9 @@ func (o *Office) EvaluateOpportunity(ctx context.Context, input EvaluateInput) (
 	if !persistenceMayHaveCommitted && ctx.Err() == nil {
 		return EvaluationReceipt{}, err
 	}
-	if replay, found, lookupErr := o.reconcileEvaluation(ctx, scope, input.RequestID, fingerprint); lookupErr == nil && found {
+	if replay, found, lookupErr := o.reconcileEvaluation(ctx, scope, input.RequestID, fingerprint); errors.Is(lookupErr, ErrIdempotencyConflict) {
+		return EvaluationReceipt{}, ErrIdempotencyConflict
+	} else if lookupErr == nil && found {
 		return replay, nil
 	}
 	return EvaluationReceipt{}, &OutcomeUnknownError{RequestID: input.RequestID}
@@ -263,24 +268,21 @@ func evaluateSnapshot(input EvaluateInput, snapshot opportunitySnapshot, observa
 }
 
 func evaluateGraduationRule(job EvaluationSnapshotEvidence, revision uint64, facts []Fact) (EvaluationHardRule, string) {
-	quoted := job.RawText
-	start, end := 0, len(job.RawText)
 	matches := graduationOnlyPattern.FindAllStringSubmatchIndex(job.RawText, -1)
-	jobEvidence := &EvaluationJobEvidence{SnapshotID: job.SnapshotID, ObservationID: job.ObservationID, AcquiredAt: job.AcquiredAt, RawSHA256: job.RawSHA256, SpanStart: start, SpanEnd: end, QuotedText: quoted}
-	if len(matches) == 1 {
-		start, end = matches[0][0], matches[0][1]
-		jobEvidence.SpanStart, jobEvidence.SpanEnd = start, end
-		jobEvidence.QuotedText = job.RawText[start:end]
-	}
-	rule := EvaluationHardRule{RuleID: "graduation_year", Criterion: "graduation year", Outcome: EvaluationUnknown, ReasonCode: "requirement_unrecognized", JobEvidence: jobEvidence}
-	if len(matches) != 1 {
-		if len(matches) > 1 {
-			rule.ReasonCode = "ambiguous_graduation_requirement"
-		} else {
-			rule.ReasonCode = "graduation_requirement_missing_or_unsupported"
-		}
+	rule := EvaluationHardRule{RuleID: "graduation_year", Criterion: "graduation year", Outcome: EvaluationUnknown, ReasonCode: "graduation_requirement_missing_or_unsupported"}
+	if len(matches) == 0 {
 		return rule, EvaluationUnknown
 	}
+	if len(matches) != 1 {
+		rule.ReasonCode = "ambiguous_graduation_requirement"
+		return rule, EvaluationUnknown
+	}
+	spanStart, spanEnd := matches[0][0], matches[0][1]
+	if !isIsolatedGraduationClause(job.RawText, spanStart, spanEnd) {
+		rule.ReasonCode = "graduation_requirement_ambiguous_or_qualified"
+		return rule, EvaluationUnknown
+	}
+	rule.JobEvidence = evaluationJobEvidence(job, spanStart, spanEnd)
 	targetYear, _ := strconv.Atoi(job.RawText[matches[0][2]:matches[0][3]])
 	if targetYear < 1900 || targetYear > 2200 {
 		rule.ReasonCode = "graduation_requirement_invalid"
@@ -362,6 +364,21 @@ func onlyPunctuationAndSpace(value string) bool {
 	return true
 }
 
+func isIsolatedGraduationClause(raw string, start, end int) bool {
+	lineStart := strings.LastIndex(raw[:start], "\n") + 1
+	lineEnd := len(raw)
+	if nextLine := strings.IndexByte(raw[end:], '\n'); nextLine >= 0 {
+		lineEnd = end + nextLine
+	}
+	before := strings.TrimSpace(raw[lineStart:start])
+	after := strings.TrimSpace(raw[end:lineEnd])
+	return onlyPunctuationAndSpace(before + after)
+}
+
+func evaluationJobEvidence(job EvaluationSnapshotEvidence, start, end int) *EvaluationJobEvidence {
+	return &EvaluationJobEvidence{SnapshotID: job.SnapshotID, ObservationID: job.ObservationID, AcquiredAt: job.AcquiredAt, RawSHA256: job.RawSHA256, SpanStart: start, SpanEnd: end, QuotedText: job.RawText[start:end]}
+}
+
 func evaluationFact(fact Fact, profileRevision uint64) *EvaluationFactEvidence {
 	return &EvaluationFactEvidence{FactKey: fact.Key, Value: fact.Value, Revision: profileRevision, FactRevision: fact.Revision, Source: fact.Source, Confirmation: fact.Confirmation, ConfirmedAt: fact.ConfirmedAt}
 }
@@ -382,15 +399,44 @@ func softEvidence(job EvaluationSnapshotEvidence, revision uint64, facts []Fact)
 		if kind == "" || value == "" {
 			continue
 		}
-		start := strings.Index(job.RawText, value)
-		if start < 0 {
+		start, end, found := findSoftEvidenceSpan(job.RawText, value)
+		if !found {
 			continue
 		}
-		end := start + len(value)
-		jobEvidence := EvaluationJobEvidence{SnapshotID: job.SnapshotID, ObservationID: job.ObservationID, AcquiredAt: job.AcquiredAt, RawSHA256: job.RawSHA256, SpanStart: start, SpanEnd: end, QuotedText: job.RawText[start:end]}
+		jobEvidence := *evaluationJobEvidence(job, start, end)
 		result.Matches = append(result.Matches, EvaluationSoftMatch{Kind: kind, Value: value, JobEvidence: jobEvidence, ProfileEvidence: *evaluationFact(fact, revision)})
 	}
 	return result
+}
+
+func findSoftEvidenceSpan(raw, value string) (int, int, bool) {
+	shortLatin := len(value) > 0 && len(value) <= 4
+	for i := 0; shortLatin && i < len(value); i++ {
+		if !((value[i] >= 'a' && value[i] <= 'z') || (value[i] >= 'A' && value[i] <= 'Z')) {
+			shortLatin = false
+		}
+	}
+	for offset := 0; offset <= len(raw)-len(value); {
+		relative := strings.Index(raw[offset:], value)
+		if relative < 0 {
+			return 0, 0, false
+		}
+		start := offset + relative
+		end := start + len(value)
+		if !shortLatin || (hasASCIITokenBoundary(raw, start, end)) {
+			return start, end, true
+		}
+		offset = start + 1
+	}
+	return 0, 0, false
+}
+
+func hasASCIITokenBoundary(raw string, start, end int) bool {
+	return (start == 0 || !isASCIIWordByte(raw[start-1])) && (end == len(raw) || !isASCIIWordByte(raw[end]))
+}
+
+func isASCIIWordByte(value byte) bool {
+	return value == '_' || value >= '0' && value <= '9' || value >= 'a' && value <= 'z' || value >= 'A' && value <= 'Z'
 }
 
 func (o *Office) Evaluation(ctx context.Context, evaluationID string) (Evaluation, error) {

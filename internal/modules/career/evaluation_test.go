@@ -3,28 +3,38 @@ package career
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 )
 
 func TestEvaluateOpportunityHardOutcomesArePinnedToEvidence(t *testing.T) {
 	for _, tc := range []struct {
 		name, jd, year, want string
+		citation             bool
 	}{
-		{name: "2026 graduate fails 2027 only", jd: "仅限2027届", year: "2026", want: EvaluationIneligible},
-		{name: "graduation year with 届 suffix is normalized", jd: "仅限2027届", year: "2026届", want: EvaluationIneligible},
-		{name: "graduation date is normalized", jd: "仅限2027届", year: "2026-06-30", want: EvaluationIneligible},
-		{name: "2027 graduate matches sole recognized rule", jd: "仅限2027届。", year: "2027", want: EvaluationEligible},
+		{name: "2026 graduate fails isolated 2027 only", jd: "仅限2027届", year: "2026", want: EvaluationIneligible, citation: true},
+		{name: "graduation year with 届 suffix is normalized", jd: "仅限2027届", year: "2026届", want: EvaluationIneligible, citation: true},
+		{name: "graduation date is normalized", jd: "仅限2027届", year: "2026-06-30", want: EvaluationIneligible, citation: true},
+		{name: "2027 graduate matches sole recognized rule", jd: "仅限2027届。", year: "2027", want: EvaluationEligible, citation: true},
 		{name: "additional symbol is not ignored as punctuation", jd: "仅限2027届✅", year: "2027", want: EvaluationUnknown},
-		{name: "missing graduation year is unknown", jd: "仅限2027届", want: EvaluationUnknown},
-		{name: "conflicting batch is unknown", jd: "仅限2027届或2028届", year: "2027", want: EvaluationUnknown},
-		{name: "unparsed requirement remains unknown", jd: "仅限2027届，要求本科及以上", year: "2027", want: EvaluationUnknown},
-		{name: "explicit ineligible wins over unparsed requirement", jd: "仅限2027届，要求本科及以上", year: "2026", want: EvaluationIneligible},
+		{name: "missing confirmed graduation year is unknown", jd: "仅限2027届", want: EvaluationUnknown, citation: true},
+		{name: "alternative batch is unknown", jd: "仅限2027届或2026届", year: "2026", want: EvaluationUnknown},
+		{name: "negated graduation rule is unknown", jd: "并非仅限2027届", year: "2026", want: EvaluationUnknown},
+		{name: "unparsed same-line condition is unknown", jd: "仅限2027届，要求本科及以上", year: "2026", want: EvaluationUnknown},
+		{name: "standalone condition line remains conclusive", jd: "仅限2027届\n技能要求：Go", year: "2026", want: EvaluationIneligible, citation: true},
+		{name: "missing graduation condition is unknown", jd: "要求熟悉 Go 并具备项目经验", year: "2026", want: EvaluationUnknown},
 		{name: "bare batch is not treated as an explicit rule", jd: "2027届", year: "2027", want: EvaluationUnknown},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -46,9 +56,13 @@ func TestEvaluateOpportunityHardOutcomesArePinnedToEvidence(t *testing.T) {
 			require.Equal(t, job.OpportunityID, read.Snapshot.OpportunityID)
 			require.Equal(t, got.ProfileRevision, read.ProfileRevision)
 			require.Equal(t, "graduation_year", read.Hard.Rules[0].RuleID)
-			require.NotNil(t, read.Hard.Rules[0].JobEvidence)
-			evidence := read.Hard.Rules[0].JobEvidence
-			require.Equal(t, tc.jd[evidence.SpanStart:evidence.SpanEnd], evidence.QuotedText)
+			if tc.citation {
+				require.NotNil(t, read.Hard.Rules[0].JobEvidence)
+				evidence := read.Hard.Rules[0].JobEvidence
+				require.Equal(t, tc.jd[evidence.SpanStart:evidence.SpanEnd], evidence.QuotedText)
+			} else {
+				require.Nil(t, read.Hard.Rules[0].JobEvidence)
+			}
 			if tc.year != "" && tc.want != EvaluationUnknown {
 				require.NotNil(t, read.Hard.Rules[0].ProfileEvidence)
 				require.Equal(t, tc.year, read.Hard.Rules[0].ProfileEvidence.Value)
@@ -174,7 +188,7 @@ func TestEvaluationUsesOnlyConfirmedSoftEvidenceAndKeepsItSeparate(t *testing.T)
 	require.NoError(t, err)
 	_, err = o.Confirm(ctx, "preference.location", "Hangzhou", "confirm-location", 4, Source{Kind: "manual"})
 	require.NoError(t, err)
-	job, err := o.ImportJD(ctx, ImportJDInput{RequestID: "job", RawText: "仅限2027届，熟悉Python，Compiler项目优先，意向地点Hangzhou"})
+	job, err := o.ImportJD(ctx, ImportJDInput{RequestID: "job", RawText: "仅限2027届\n熟悉Python，Compiler项目优先，意向地点Hangzhou"})
 	require.NoError(t, err)
 	result, err := o.EvaluateOpportunity(ctx, EvaluateInput{RequestID: "eval-soft", OpportunityID: job.OpportunityID, SnapshotID: job.SnapshotID})
 	require.NoError(t, err)
@@ -191,6 +205,97 @@ func TestEvaluationUsesOnlyConfirmedSoftEvidenceAndKeepsItSeparate(t *testing.T)
 	require.NoError(t, err)
 	require.NotContains(t, string(encoded), `"skill.go"`)
 	require.Contains(t, string(encoded), `"kind":"project"`)
+}
+
+func TestEvaluationShortLatinSoftMatchRequiresASCIIWordBoundary(t *testing.T) {
+	for _, tc := range []struct {
+		name, jd string
+		matched  bool
+		quote    string
+	}{
+		{name: "embedded token is not a match", jd: "Google provides cloud tools"},
+		{name: "standalone token is cited", jd: "Go developer", matched: true, quote: "Go"},
+		{name: "token before non-ascii language suffix is cited", jd: "Google, Go语言开发", matched: true, quote: "Go"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			o, ctx := newOpportunityOffice(t, "owner", 160)
+			_, err := o.Confirm(ctx, "skill.go", "Go", "confirm-go", 0, Source{Kind: "manual"})
+			require.NoError(t, err)
+			job, err := o.ImportJD(ctx, ImportJDInput{RequestID: "job", RawText: tc.jd})
+			require.NoError(t, err)
+			receipt, err := o.EvaluateOpportunity(ctx, EvaluateInput{RequestID: "eval", OpportunityID: job.OpportunityID, SnapshotID: job.SnapshotID})
+			require.NoError(t, err)
+			got := mustEvaluation(t, o, ctx, receipt.EvaluationID)
+			if !tc.matched {
+				require.Empty(t, got.Soft.Matches)
+				return
+			}
+			require.Len(t, got.Soft.Matches, 1)
+			match := got.Soft.Matches[0]
+			require.Equal(t, "skill", match.Kind)
+			require.Equal(t, tc.quote, match.JobEvidence.QuotedText)
+			require.Equal(t, tc.jd[match.JobEvidence.SpanStart:match.JobEvidence.SpanEnd], match.JobEvidence.QuotedText)
+			require.Equal(t, uint64(1), match.ProfileEvidence.FactRevision)
+			require.Equal(t, Source{Kind: "manual"}, match.ProfileEvidence.Source)
+		})
+	}
+}
+
+func TestConcurrentChangedEvaluationIntentReturnsHTTPConflict(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "evaluation-intent-race.db")
+	db, err := gorm.Open(sqlite.Open("file:"+dbPath+"?_journal_mode=WAL&_busy_timeout=5000"), &gorm.Config{})
+	require.NoError(t, err)
+	o, err := NewOffice(db)
+	require.NoError(t, err)
+	ctx := WithScope(context.Background(), Scope{UserID: "owner", TenantID: 161})
+	require.NoError(t, o.ClaimSpace(ctx))
+	firstJob, err := o.ImportJD(ctx, ImportJDInput{RequestID: "job-one", RawText: "仅限2027届"})
+	require.NoError(t, err)
+	secondJob, err := o.ImportJD(ctx, ImportJDInput{RequestID: "job-two", RawText: "仅限2028届"})
+	require.NoError(t, err)
+	owner := &types.TenantMember{UserID: "owner", TenantID: 161, Role: types.TenantRoleOwner}
+	h := &Handler{office: o, members: &memberListStub{members: []*types.TenantMember{owner}}}
+
+	missed := make(chan struct{})
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	releaseBarrier := func() { releaseOnce.Do(func() { close(release) }) }
+	defer releaseBarrier()
+	var misses atomic.Int32
+	o.afterEvaluationReceiptMiss = func() {
+		if misses.Add(1) == 1 {
+			close(missed)
+			<-release
+		}
+	}
+
+	request := func(job OpportunityReceipt) *httptest.ResponseRecorder {
+		recorder := httptest.NewRecorder()
+		base := context.WithValue(context.Background(), types.UserIDContextKey, "owner")
+		base = context.WithValue(base, types.TenantIDContextKey, uint64(161))
+		c, _ := gin.CreateTestContext(recorder)
+		c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/career/evaluations", strings.NewReader(`{"requestId":"same-id","opportunityId":"`+job.OpportunityID+`","snapshotId":"`+job.SnapshotID+`"}`)).WithContext(base)
+		h.EvaluateOpportunity(c)
+		return recorder
+	}
+	started := make(chan *httptest.ResponseRecorder, 1)
+	go func() { started <- request(secondJob) }()
+	select {
+	case <-missed:
+	case <-time.After(2 * time.Second):
+		releaseBarrier()
+		t.Fatal("second evaluation did not reach the deterministic receipt-miss barrier")
+	}
+	committed := request(firstJob)
+	require.Equal(t, http.StatusOK, committed.Code, committed.Body.String())
+	releaseBarrier()
+	select {
+	case raced := <-started:
+		require.Equal(t, http.StatusConflict, raced.Code, raced.Body.String())
+		require.Contains(t, raced.Body.String(), `"code":"idempotency_conflict"`)
+	case <-time.After(2 * time.Second):
+		t.Fatal("racing evaluation did not finish")
+	}
 }
 
 func TestEvaluationHTTPContractAndOwnerScope(t *testing.T) {

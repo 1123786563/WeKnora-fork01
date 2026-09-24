@@ -235,6 +235,7 @@ type Office struct {
 	beforeOpportunityTransaction func()
 	afterOpportunityCommit       func() error
 	afterEvaluationCommit        func() error
+	afterEvaluationReceiptMiss   func()
 }
 
 func NewOffice(db *gorm.DB) (*Office, error) {
