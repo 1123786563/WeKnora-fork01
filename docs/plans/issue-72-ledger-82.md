@@ -80,3 +80,32 @@
 | 5 | 【low·核实通过】头部执行状态注记与仓库事实一致；Task 2/3/4 落地与 Produces 契约逐条吻合；lago_settlement.go 不存在与升级纪律一致；行号抽查（container.go:943、order.go、fulfillment.go、purchase_test.go、contract_test.go 等）全部命中；ledger 基线勘误属实 | 审查员实测 + 本会话 `go build ./...` exit 0、`go test ./internal/modules/commercial/... -count=1` 全绿（7 包，含 commercialplatform 70.2s） | 无需改动；作为本轮基线可信度记录在案 |
 
 第 2 轮修订后自检：占位符扫描零命中；冻结标记覆盖 Task 5-10 全部标题与验证方案第 5-8 步；追踪矩阵 ⛔ 行与头部声明第 2 条口径一致（AC1/AC3/AC4/GC-3 受阻、AC2 渠道面 ✅）；未发明任何替代激活路径。本计划待修订版计划替换 D2/Task 5-10 后方可解冻执行。
+
+## 2026-09-25 实施收尾（实施员-82 会话）
+
+### 实施摘要
+
+- **基线**：baseSha=`64362a52992907cf6acb32b726b76b533b508cd6`（本会话开工时 HEAD；其上 Task 2/3/4 已由前序会话提交，Task 1 证据暂存未提交）。
+- **Task 1 收尾入库**（ca04d7da7）：前序会话产出但滞留暂存区的 14 个 `deploy/lago-lab/payment-trigger/` 文件 + `git add -f` 强制跟踪 `docs/migrations/lago/t10-payment-trigger/`（`migrations/` 在根 .gitignore:96 全局忽略，t02 等同款先例均为强制跟踪）。**安全修复**：暂存区原含 `lab.env`（内含本 lab 生成的可用密钥：POSTGRES_PASSWORD、SECRET_KEY_BASE、LAGO_ENCRYPTION_*、RSA 私钥、ORG_API_KEY、ORG 密码，文件首行自声明 "local secrets, never commit"）——按 `deploy/lago-lab/payment-activation/` 既有惯例（其子目录 .gitignore 排除 lab.env、只跟踪 lab.env.example）处置：`git rm --cached` 出暂存、新建 `payment-trigger/.gitignore`（lab.env/runs/__pycache__/*.pyc）、新建占位符 `lab.env.example`（COMPOSE_PROJECT=weknora-lago-82、端口 48895/48896、余为 `<generated>` 占位）。泄漏扫描：evidence/ 与 t10 文档对该 lab 密钥三值 grep 零命中。
+- **AC2 渠道面 pin 测试落地**（098de74aa，Task 7 唯一解冻项，头部注记第 4 条）：`internal/modules/commercial/payment/alipay_test.go` 追加 `TestSyncReturnCannotConfirmPurchase`——相对既有 `TestAlipaySyncReturnNeverConfirms`（:229-235，只断言 err!=nil）的增量价值恰为一条：`errors.Is(err, ErrAlipaySyncReturn)` 哨兵 pin（防未来实现退化为泛化错误，调用方无法区分「同步返回不可信」与「渠道故障」）。构造复用包内既有 `alipayNotifyFixture(t)`（:59）与既有字面量查询串，无凭据字面量（RSA 测试密钥为运行时自生成）。
+- **冻结纪律维持**：Task 5-10 其余全部未执行、未发明替代激活路径（t10 DECISION.md verdict 为准）；`lago_settlement.go` 不存在状态未变；AC1/AC3/AC4/GC-3 阻断结论不变（失败记录 `d2-falsified-t10-p2-fail`）。
+
+### 测试命令与结果（全部本会话实跑）
+
+| 命令 | 结果 |
+|---|---|
+| `go test ./internal/modules/commercial/payment/ -count=1 -run TestSyncReturnCannotConfirmPurchase -v`（写前，RED） | `testing: warning: no tests to run` + PASS（Go 对未写测试的实际形态是 no-tests-to-run，非计划 Step 2 所称编译错——测试函数无引用时不会产生编译错；如实记录） |
+| `go test ./internal/modules/commercial/payment/ -count=1 -run 'TestSyncReturnCannotConfirmPurchase\|TestAlipaySyncReturnNeverConfirms' -v`（写后，GREEN） | 两测均 PASS（payment 包 0.982s） |
+| `cd deploy/lago-lab/payment-trigger && python3 -m unittest test_phases -v` | Ran 21 tests, OK |
+| `go test ./internal/modules/commercial/... -count=1` | 7 包全 ok（commercial 0.403s / commercialplatform 70.554s / openmeter 0.913s / payment 15.458s / repository 0.663s / service 2.836s / usage 0.400s） |
+| `go run ./tools/architectureguard` | OK（0 violations；literal=566 apiKeyRoute=69 total=635 hooks=59——与 #81 前置同步后的基线一致） |
+| `make verify-module-moves` | OK（16 manifests verified） |
+| 红线 grep `sk_te`（ledger/t10 目录/commercial 源码） | 仅命中凭据纪律说明文字（phases.py:242、t10 README.md:7/:32）与 pyc/.mimosa 工具产物（均被 gitignore 覆盖、未入库） |
+| 红线 grep `force.*active\|status.*active.*UPDATE`（非 _test） | 仅命中 purchase_settlement_command.go:29 的约束说明注释，无本地强制 active 写路径 |
+| evidence 密钥泄漏扫描（lab 三密钥值 grep evidence/ + t10 docs） | 零命中（仅 lab.env 自身，已出暂存） |
+
+### Ruling（追加）
+
+1. **lab.env 永不入库**（依据：文件首行自声明 + 安全约束「源码/示例/测试不得写入可用凭据字面量」+ payment-activation 先例；错误代价：若提交，本地 lab 生成密钥永久泄漏于 git 历史，且违反本票 Global Constraint 7/8 的凭据纪律——即使该密钥是一次性隔离 lab 栈的，纪律不因「看起来无害」破例）。
+2. **AC2 pin 的形态**：只 pin 既有渠道语义（`alipay.go:341-343` 恒返 `ErrAlipaySyncReturn`），不改任何生产代码——它是回归防线不是功能实现；错误代价：未来若有人把哨兵改成泛化 error，该测试立即红灯，防止同步返回页被误用为确认通道（issue AC2）。
+3. **本票终态结论（诚实账面）**：#82 四条正式 AC 中仅 AC2 渠道面 ✅（本会话补齐哨兵 pin）；AC1/AC3/AC4/GC-3 仍 ⛔，激活链待 spec/ADR owner 完成 T02 §5 重议并产出修订版计划（替换 D2 与 Task 5-10）后方可续做。已交付全集＝Task 2-4（66ab920cc/1cf072701/782e316da）+ Task 1 probe 证据与 lab（ca04d7da7）+ AC2 pin（098de74aa）。
