@@ -6,7 +6,7 @@
 - **对应 GitHub Issue**：https://github.com/1123786563/WeKnora-fork01/issues/82（OPEN，Blocked by #74/#81——两者已在集成分支落地，#74 证据晋升 t02，#81 交付 gated create/PurchaseService/InvoiceFees 接口面）
 - **编写者**：计划员-82（dynamic workflow），2026-09-24
 - **worktree / 分支**：`/Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue72-n82`（`codex/issue-72-lago-82`）
-- **集成基线**：`7a665bb577`（`issue-72: ocr issue-81 round 2`，工作区干净，`git log` 实测顶部提交）
+- **集成基线**：任务简报（2026-09-25 重入会话）称集成分支 tip 为 `900041bb05`；实测本分支基于 `7a665bb577`（`issue-72: ocr issue-81 round 2`，其提交时点 2026-09-24 21:59 即当时集成分支 tip）。`git merge-base --is-ancestor` 实测：`7a665bb57` 是 `900041bb05` 的祖先，即本分支落后集成 tip 4 个提交（#81 OCR 修复线），而非基于其后的分叉。勘误详情见下方「集成基线（2026-09-25 勘误）」节。
 
 ## 本会话核验过的执行基线（全部实跑/实读）
 
@@ -52,3 +52,17 @@
 | 8 | 证据锚点错位：order_test.go:91 非 ConfirmPayment 先例；F3/F4/F6 仓库内不可复核；lab.sh 无 LAGO_FRONT_PORT（low） | 实测 order_test.go:85-97（是 TestOrderPipelineQuoteOrderRecover 段）；ConfirmPayment 先例在 fulfillment_test.go:140/234（grep 实证）；`grep 591ae900 deploy/` 仅 wallet-semantics 注释；`grep LAGO_FRONT_PORT` exit 1 | Task 7 注释改引 fulfillment_test.go:140/234 与 repository/commercial/order_test.go:97；F3/F4/F6 加「⚠️ 仓库内不可复核（本地无 lago-api clone），运行时兜底=Task 1 probe」标注；Task 1 改为「新增 LAGO_FRONT_PORT 变量（原 lab.sh 无此变量）」 |
 
 修订后自检：占位符扫描 `grep 'TBD|TODO|待补|类似 Task'` 零命中；763 行；三个落点/文件名/测试引用与仓库实况一一核对。
+
+## 集成基线（2026-09-25 勘误）
+
+- 任务简报声明本 worktree「基于集成分支 `900041bb05`」，实测不符：`git merge-base --is-ancestor 900041bb05 HEAD` → 否；`git merge-base HEAD 900041bb05` → `7a665bb57`；`git merge-base --is-ancestor 7a665bb57 900041bb05` → 是。结论：本分支基于集成分支的**祖先** `7a665bb57`（建 worktree 时的 tip），集成分支其后追加 4 个提交：`759f386e1`（ocr ledger #81 backfill）、`d27a451cb`（ocr round 1 重做）、`fc8448308`（ocr-81-1 增量 R1-08/15/24/35）、`900041bb0`（ocr round 2）。
+- 该 4 提交的树差异（`git diff --stat 7a665bb57 900041bb05`：18 files，+931/−1084）触及本计划消费/修改的文件：`commercialplatform/lago.go`（R1-24 新增 `deriveProviderCustomer`/`syncPaymentMethods` 测试缝）、`lago_purchase.go`（`ensureProviderBinding` 在 `cfg.StripePmToken==""` 时跳过 pm 轮询、ctx 取消错误链改为 `ctx.Err()`）、`service/commercial/order.go` + `repository/commercial/order.go`（R1-35 `OrderRow.CheckoutURL` 持久化 + `SetCheckoutURL`）、`purchase.go`（`orderViewFromRow` 回带 CheckoutURL）、`lago_purchase_test.go`（+114）。
+- **对计划的影响**：本计划行号锚点按本 worktree（7a665bb57 线）核实仍然成立；重入集成 rebase 到 900041bb05 线后，Task 5 实现需适配两点——① pm 同步轮询应经 `a.syncPaymentMethods` 缝（R1-24）而非直调 `waitForPaymentMethodSync`；② 结算 pm 切换路径不得依赖「StripePmToken=="" 时跳过轮询」的既有语义被误用。本计划不预先改写 Task 5 步骤（升级条款下 Task 5 本就处于停止态），适配点记录于此备查。
+
+## 2026-09-25 重入复核（计划员-82 第二次会话）
+
+- **重入现状**：本计划已在首次会话（2026-09-24）完成编写、提交（c17e7e7b9）与第 1 轮审查修订（8a940608a）；随后进入执行——Task 2/3/4 已落地（66ab920cc seam settle 命令、1cf072701 fake 确定性结算、782e316da finalized 行项目读），Task 1 lab 代码与证据已产出（工作区暂存未提交 + `docs/migrations/lago/t10-payment-trigger/` 已含 DECISION.md/README/evidence）。`lago_settlement.go` 不存在（Task 5 未实施）。
+- **重大执行事实（Task 1 probe 结论）**：probe 在 pinned 栈实跑，**P1 FAIL（F5 被证伪：挂死窗口 `GET /payments` 返回 `payments: []`，付款行仅 authority DB 可见）+ P2d FAIL（F3 收窄：gating invoice 隐藏窗口 `retry_payment` → 404 `invoice_not_found`）**——D2 结算触发链被证伪，**Task 1 升级路径已触发**（t10 DECISION.md verdict「UP升级路径触发（P2 FAIL）」）。按计划纪律：Task 5+ 实现面停止，凭 t10 证据由 spec/ADR owner 重议 T02 §5 选项；不实施替代猜测路径。计划文件顶部已加「执行状态注记（2026-09-25）」如实记录。**本票当前结论：其余可交付面（Task 2-4 + t10 证据）已成，AC5 的「受支持通道」机制在 pinned Community 上缺受支持触发器，需上游裁决后才能续做 Task 5-10。**
+- **本次实跑核验**（全部本会话执行）：`go build ./...` → exit 0；`go test ./internal/modules/commercial/... -count=1` → 全部 ok（commercial 0.058s / commercialplatform 70.227s / payment 7.303s / repository 0.247s / service 0.919s 等 7 包）；`cd deploy/lago-lab/payment-trigger && python3 -m unittest test_phases -v` → Ran 21 tests, OK。
+- **工作区注意**：暂存区有 Task 1 的 `deploy/lago-lab/payment-trigger/` 14 个文件（属执行流产物，非本计划提交范围）；本次提交仅含 `docs/plans/` 两文件（pathspec commit，不触碰他人暂存状态）。
+- **计划文件自检（本次复核后）**：占位符扫描零命中；执行状态注记为 additive，未改动任何 Task/接口/追踪矩阵条目；Task 2-4 的 Produces 签名与已落地代码一致（`purchase_settlement_command.go` 存在，提交信息与 Task 2/3/4 标题逐字对应）。

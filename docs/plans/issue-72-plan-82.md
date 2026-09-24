@@ -10,6 +10,11 @@
 
 **Spec:** `docs/specs/2026-09-20-lago-billing-migration-design.md`（"Quotes, payments, and fulfillment" L122-127、"Public product states" L169-171、"Behavior and contract matrix" #5 L218 / #20 L233）；决策依据 `docs/migrations/lago/t02-payment-activation/DECISION.md`（§3 provider 轨道实测、§4 渠道阻断、§5 裁决记录）、`docs/migrations/lago/t09-quote-invoice/DECISION.md`（§3 强制条件③ InvoiceFees 接口）、`docs/plans/issue-72-user-rulings.md` R-1/R-3、ADR-0012、ADR-0014。
 
+> **执行状态注记（2026-09-25 复核，不改动以下任何设计条目）**
+> - **Task 1 probe 已在 pinned 栈运行并触发本计划写明的升级路径**：P1 FAIL（F5 被证伪——挂死窗口内 `GET /payments` 对该客户返回空数组，付款行仅落 authority DB 不可见）且 P2d FAIL（F3 收窄——gating invoice 隐藏窗口内 `retry_payment` 返回 404 `invoice_not_found`）；即 D2 结算触发链在 pinned v1.53.0 上被证伪。逐链实测见 `docs/migrations/lago/t10-payment-trigger/DECISION.md`（verdict：升级路径触发）。按 Task 1 升级条款：**Task 5+ 的实现面改动停止**，凭 t10 证据回到 spec/ADR owner 重议 T02 §5 选项；**不得实施替代猜测路径**。
+> - 不依赖 P2 结论的 Task 2（seam additive）、Task 3（fake 语义）、Task 4（InvoiceFees finalized 读）已按本计划落地（提交 66ab920cc/1cf072701/782e316da）；`lago_settlement.go` 不存在（Task 5 未实施，与升级纪律一致）。
+> - 集成基线勘误见 Ledger「集成基线（2026-09-25 勘误）」：本分支基于 7a665bb57（其时点即集成分支 tip），集成分支此后推进至 900041bb05（+4 个 #81 OCR 修复提交）；重入集成前需 rebase 并适配 lago.go 的 R1-24 测试缝与 `StripePmToken==""` 跳过轮询语义。
+
 ---
 
 ## Global Constraints（批准需求原文 + 安全约束，每个 Task 隐含遵守）
