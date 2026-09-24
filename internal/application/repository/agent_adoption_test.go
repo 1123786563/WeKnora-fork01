@@ -250,7 +250,11 @@ func openAdoptionVariantDB(t *testing.T) *gorm.DB {
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared&_busy_timeout=5000"),
 		&gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&types.AgentAdoptionVariantEntity{}, &types.AgentVariantCapabilityMappingEntity{}))
+	require.NoError(t, db.AutoMigrate(&types.AgentAdoptionEntity{}, &types.AgentAdoptionVariantEntity{}, &types.AgentVariantCapabilityMappingEntity{}))
+	// AutoMigrate 不创建 uq_agent_adoptions_scope（实体无 uniqueIndex tag）；
+	// 显式补建使 adoptListingTx 的 OnConflict 竞态分支由真实唯一索引驱动，
+	// 与迁移 000113/000114 的生产 DDL 一致。
+	require.NoError(t, db.Exec("CREATE UNIQUE INDEX IF NOT EXISTS uq_agent_adoptions_scope ON agent_adoptions(tenant_id, listing_id)").Error)
 	t.Cleanup(func() { conn, _ := db.DB(); _ = conn.Close() })
 	return db
 }
@@ -272,4 +276,52 @@ func TestReplaceCapabilityMappingsRefusesToDowngradeConcurrentState(t *testing.T
 	require.NoError(t, err)
 	require.NotNil(t, after)
 	require.Equal(t, "published", after.State, "published 状态必须保持")
+}
+
+func TestAgentAdoptionRepositoryResolvesIntroducedListingAndRelease(t *testing.T) {
+	db := openAdoptionVariantDB(t)
+	require.NoError(t, db.AutoMigrate(&types.AgentMarketplaceListingEntity{}, &types.AgentReleaseEntity{}, &types.TenantIntroducedReleaseEntity{}))
+	repo := NewAgentAdoptionRepository(db)
+	ctx := context.Background()
+	bundle := []byte(`{"payload":{"system_prompt":"portable"}}`)
+
+	// 引入台账：tenant 2 引入了 public listing 的一个 release
+	require.NoError(t, db.Create(&types.TenantIntroducedReleaseEntity{
+		ID: "introduced-r1", TenantID: 2, PublicListingID: "pub-listing-1", PublicReleaseID: "pub-release-1",
+		DisplayName: "Public helper", Summary: "s", SemanticVersion: "1.0.0", BundleDigest: "d1",
+		ManifestJSON: `{"capability_requirements":["knowledge"]}`, DependencyLockJSON: `{"dependencies":[]}`,
+		Bundle: bundle, IntroducedBy: "admin-2",
+	}).Error)
+
+	listing, err := repo.GetMarketplaceListing(ctx, 2, "pub-listing-1")
+	require.NoError(t, err)
+	require.NotNil(t, listing, "引入台账应合成为可采用的 listing")
+	require.Equal(t, "listed", listing.State)
+	require.NotNil(t, listing.CurrentReleaseID)
+	require.Equal(t, "introduced-r1", *listing.CurrentReleaseID)
+
+	release, err := repo.GetRelease(ctx, 2, "introduced-r1")
+	require.NoError(t, err)
+	require.NotNil(t, release, "引入台账应合成为可读的 release")
+	require.Equal(t, "pub-listing-1", release.ListingID)
+	require.Equal(t, bundle, release.Bundle)
+	require.Equal(t, `{"capability_requirements":["knowledge"]}`, release.ManifestJSON)
+
+	// 本地真实行优先：同 id 存在本地 release 时不得走回退
+	require.NoError(t, db.Create(&types.AgentReleaseEntity{
+		ID: "introduced-r1", TenantID: 2, ListingID: "local-listing", SubmissionID: "s1",
+		AgentVersionID: "v1", SourceAgentID: "a1", ReleaseNumber: 1, SemanticVersion: "9.9.9",
+		BundleDigest: "d1", ManifestJSON: "{}", DependencyLockJSON: "{}", Bundle: []byte("local"),
+	}).Error)
+	local, err := repo.GetRelease(ctx, 2, "introduced-r1")
+	require.NoError(t, err)
+	require.Equal(t, "local-listing", local.ListingID)
+
+	// 租户隔离：tenant 1 看不到 tenant 2 的引入
+	other, err := repo.GetMarketplaceListing(ctx, 1, "pub-listing-1")
+	require.NoError(t, err)
+	require.Nil(t, other)
+	otherRelease, err := repo.GetRelease(ctx, 1, "introduced-r1")
+	require.NoError(t, err)
+	require.Nil(t, otherRelease)
 }

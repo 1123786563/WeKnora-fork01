@@ -65,10 +65,19 @@ func NewAgentAdoptionRepository(db *gorm.DB) AgentAdoptionRepository {
 // reconciles the accepted pointer, so both callers get an idempotent result
 // instead of a unique-index error.
 func (r *agentAdoptionRepository) AdoptListing(ctx context.Context, adoption *types.AgentAdoptionEntity) (*types.AgentAdoptionEntity, bool, error) {
+	return adoptListingTx(r.db.WithContext(ctx), adoption)
+}
+
+// adoptListingTx is the transaction-bound adopt upsert, shared with the
+// public-marketplace IntroduceRelease transaction (T30 #60). Semantics are
+// identical to the pre-refactor AdoptListing: an existing (tenant,
+// listing) row reconciles its accepted pointer; a first insert races on
+// uq_agent_adoptions_scope and converges to the winner.
+func adoptListingTx(tx *gorm.DB, adoption *types.AgentAdoptionEntity) (*types.AgentAdoptionEntity, bool, error) {
 	var existing types.AgentAdoptionEntity
-	err := r.db.WithContext(ctx).Where("tenant_id = ? AND listing_id = ?", adoption.TenantID, adoption.ListingID).First(&existing).Error
+	err := tx.Where("tenant_id = ? AND listing_id = ?", adoption.TenantID, adoption.ListingID).First(&existing).Error
 	if err == nil {
-		return r.reconcileAdoption(ctx, &existing, adoption.AcceptedReleaseID)
+		return reconcileAdoptionTx(tx, &existing, adoption.AcceptedReleaseID)
 	}
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, false, err
@@ -80,7 +89,7 @@ func (r *agentAdoptionRepository) AdoptListing(ctx context.Context, adoption *ty
 	if created.State == "" {
 		created.State = "active"
 	}
-	inserted := r.db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(&created)
+	inserted := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&created)
 	if inserted.Error != nil {
 		return nil, false, inserted.Error
 	}
@@ -90,22 +99,22 @@ func (r *agentAdoptionRepository) AdoptListing(ctx context.Context, adoption *ty
 	// Lost the race to uq_agent_adoptions_scope: re-read the winner's row
 	// and reconcile, exactly like a sequential re-adopt.
 	var winner types.AgentAdoptionEntity
-	if err := r.db.WithContext(ctx).Where("tenant_id = ? AND listing_id = ?", adoption.TenantID, adoption.ListingID).First(&winner).Error; err != nil {
+	if err := tx.Where("tenant_id = ? AND listing_id = ?", adoption.TenantID, adoption.ListingID).First(&winner).Error; err != nil {
 		return nil, false, err
 	}
-	return r.reconcileAdoption(ctx, &winner, adoption.AcceptedReleaseID)
+	return reconcileAdoptionTx(tx, &winner, adoption.AcceptedReleaseID)
 }
 
 // reconcileAdoption is the shared existing-row path: an Adoption accepted at
 // the same Release returns as-is; a different Release advances the accepted
 // pointer (last write wins, matching sequential adopt semantics).
-func (r *agentAdoptionRepository) reconcileAdoption(ctx context.Context, existing *types.AgentAdoptionEntity, acceptedReleaseID string) (*types.AgentAdoptionEntity, bool, error) {
+func reconcileAdoptionTx(tx *gorm.DB, existing *types.AgentAdoptionEntity, acceptedReleaseID string) (*types.AgentAdoptionEntity, bool, error) {
 	if existing.AcceptedReleaseID == acceptedReleaseID {
 		return existing, false, nil
 	}
 	existing.AcceptedReleaseID = acceptedReleaseID
 	existing.UpdatedAt = time.Now().UTC()
-	if err := r.db.WithContext(ctx).Model(&types.AgentAdoptionEntity{}).
+	if err := tx.Model(&types.AgentAdoptionEntity{}).
 		Where("tenant_id = ? AND id = ?", existing.TenantID, existing.ID).
 		Updates(map[string]any{"accepted_release_id": existing.AcceptedReleaseID, "updated_at": existing.UpdatedAt}).Error; err != nil {
 		return nil, false, err
@@ -312,7 +321,7 @@ func (r *agentAdoptionRepository) GetMarketplaceListing(ctx context.Context, ten
 	var row types.AgentMarketplaceListingEntity
 	err := r.db.WithContext(ctx).Where("tenant_id = ? AND id = ?", tenantID, strings.TrimSpace(listingID)).First(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, nil
+		return introducedListing(r.db.WithContext(ctx), tenantID, listingID)
 	}
 	if err != nil {
 		return nil, err
@@ -320,14 +329,59 @@ func (r *agentAdoptionRepository) GetMarketplaceListing(ctx context.Context, ten
 	return &row, nil
 }
 
-func (r *agentAdoptionRepository) GetRelease(ctx context.Context, tenantID uint64, releaseID string) (*types.AgentReleaseEntity, error) {
-	var row types.AgentReleaseEntity
-	err := r.db.WithContext(ctx).Where("tenant_id = ? AND id = ?", tenantID, strings.TrimSpace(releaseID)).First(&row).Error
+// introducedListing synthesizes the adoptable Listing view of a public
+// listing this tenant introduced (T30 #60): local rows win, the fallback
+// resolves the LATEST introduced release of that public listing as the
+// current release. Tenant-scoped like every other read.
+func introducedListing(tx *gorm.DB, tenantID uint64, listingID string) (*types.AgentMarketplaceListingEntity, error) {
+	var latest types.TenantIntroducedReleaseEntity
+	err := tx.Where("tenant_id = ? AND public_listing_id = ?", tenantID, strings.TrimSpace(listingID)).
+		Order("introduced_at DESC, id DESC").First(&latest).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
+	current := latest.ID
+	return &types.AgentMarketplaceListingEntity{
+		ID: latest.PublicListingID, TenantID: tenantID, SourceAgentID: latest.PublicListingID,
+		DisplayName: latest.DisplayName, Summary: latest.Summary, State: "listed",
+		CurrentReleaseID: &current,
+	}, nil
+}
+
+func (r *agentAdoptionRepository) GetRelease(ctx context.Context, tenantID uint64, releaseID string) (*types.AgentReleaseEntity, error) {
+	var row types.AgentReleaseEntity
+	err := r.db.WithContext(ctx).Where("tenant_id = ? AND id = ?", tenantID, strings.TrimSpace(releaseID)).First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return introducedRelease(r.db.WithContext(ctx), tenantID, releaseID)
+	}
+	if err != nil {
+		return nil, err
+	}
 	return &row, nil
+}
+
+// introducedRelease synthesizes the Release view of one introduced public
+// release: the #59 chain (CreateVariant gating, manifest reads, publish
+// digest verification and payload decode) consumes it unchanged. The
+// synthesized row deliberately keeps the portable content ONLY — there is
+// no local submission/agent-version lineage, which is exactly the point of
+// the introduction ledger.
+func introducedRelease(tx *gorm.DB, tenantID uint64, releaseID string) (*types.AgentReleaseEntity, error) {
+	var row types.TenantIntroducedReleaseEntity
+	err := tx.Where("tenant_id = ? AND id = ?", tenantID, strings.TrimSpace(releaseID)).First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &types.AgentReleaseEntity{
+		ID: row.ID, TenantID: tenantID, ListingID: row.PublicListingID,
+		SemanticVersion: row.SemanticVersion, BundleDigest: row.BundleDigest,
+		ManifestJSON: row.ManifestJSON, DependencyLockJSON: row.DependencyLockJSON,
+		Bundle: row.Bundle, PublishedBy: row.IntroducedBy, CreatedAt: row.IntroducedAt,
+	}, nil
 }
