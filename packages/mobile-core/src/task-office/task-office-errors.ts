@@ -14,7 +14,8 @@ export type TaskOfficeErrorCode =
   | 'TASK_OFFICE_INVALID_INPUT'
   | 'TASK_OFFICE_BACKEND'
   | 'TASK_OFFICE_DETAIL_UNAVAILABLE'
-  | 'TASK_OFFICE_DETAIL_CLOSED';
+  | 'TASK_OFFICE_DETAIL_CLOSED'
+  | 'TASK_OFFICE_INTERACTIONS_UNAVAILABLE';
 
 export class TaskOfficeError extends Error {
   constructor(readonly code: TaskOfficeErrorCode, options?: { cause?: unknown }) {

@@ -19,6 +19,11 @@ export type {
   TaskBackendPort, TaskBackendRun, TaskCard, TaskListPage, TaskOffice, TaskOfficeErrorCode, TaskOfficePorts,
   TaskOfficeQuery, TaskStatusFilter,
 } from './task-office/task-office.ts';
+export { createAttentionDecider, interactionActionAllowed, INTERACTION_ACTIONS } from './task-office/attention-inbox.ts';
+export type {
+  AttentionDecisionInput, AttentionDecisionReceipt, AttentionDeciderDeps, InboxItem, InboxView,
+  InteractionActionValue, InteractionBackendPort, InteractionKindValue, ResolvedDecisionRecord,
+} from './task-office/attention-inbox.ts';
 export type { ScenarioTaskBackend, ScenarioTaskBackendHandlers } from './task-office/in-memory-task-backend.ts';
 export { createScriptedTaskStream, createScenarioTaskDetailBackend, createInMemoryTaskProjectionStore } from './task-office/in-memory-task-detail.ts';
 export { createTaskDetail, TASK_DETAIL_HISTORY_LIMIT } from './task-office/task-detail.ts';

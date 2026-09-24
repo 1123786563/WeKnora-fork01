@@ -1,5 +1,7 @@
 import { leaseActive } from '../runtime/scope-lease.ts';
 import type { ScopeLease } from '../runtime/types.ts';
+import { createAttentionDecider } from './attention-inbox.ts';
+import type { AttentionDecisionInput, AttentionDecisionReceipt, InboxView, InteractionBackendPort } from './attention-inbox.ts';
 import { createInMemoryTaskProjectionStore } from './in-memory-task-detail.ts';
 import { createTaskDetail } from './task-detail.ts';
 import type { TaskDetailBackendPort, TaskHandle, TaskProjectionStore } from './task-detail.ts';
@@ -104,6 +106,8 @@ export interface TaskOfficePorts {
   detail?: TaskDetailBackendPort;
   /** 持久化投影存储（App 重启恢复）；缺省为 office 内共享的 in-memory store。 */
   store?: TaskProjectionStore;
+  /** T08: 类型化交互端口（Attention Inbox 读 + 决定）。缺失时 inbox()/decide() fail closed。 */
+  interactions?: InteractionBackendPort;
 }
 
 export interface TaskOffice {
@@ -112,6 +116,10 @@ export interface TaskOffice {
   moreTasks(): Promise<TaskListPage>;
   archive(taskId: string): Promise<void>;
   restore(taskId: string): Promise<void>;
+  /** T08: 收件箱读——本人全部待处理交互（跨 run、含决定上下文）。 */
+  inbox(): Promise<InboxView>;
+  /** T08: 类型化决定——冻结 decision_id 幂等重放；receipt 如实区分 recorded / delivery-unknown / superseded / gone。 */
+  decide(input: AttentionDecisionInput): Promise<AttentionDecisionReceipt>;
   open(input: { taskId: string; runId: string }): TaskHandle;
 }
 
@@ -144,6 +152,17 @@ export function createTaskOffice(ports: TaskOfficePorts): TaskOffice {
   let listEpoch = 0;
   let accumulated: listAccumulation | undefined;
   const defaultDetailStore = createInMemoryTaskProjectionStore();
+  const attention = createAttentionDecider({
+    interactions: () => ports.interactions,
+    lease: ports.lease,
+    // 决定终态失效一切在途聚合读（与 archive/restore 的 R1-F19 同语义）：
+    // 迟到的 home()/inbox() 不得把已决定行回填为 pending。
+    onDecided: () => {
+      homeEpoch += 1;
+      listEpoch += 1;
+      accumulated = undefined;
+    },
+  });
 
   const requireLease = (): ScopeLease => {
     const lease = ports.lease();
@@ -227,6 +246,12 @@ export function createTaskOffice(ports: TaskOfficePorts): TaskOffice {
     },
     restore(taskId: string): Promise<void> {
       return mutate(taskId, (id) => ports.backend.restore(id));
+    },
+    inbox(): Promise<InboxView> {
+      return attention.inbox();
+    },
+    decide(input: AttentionDecisionInput): Promise<AttentionDecisionReceipt> {
+      return attention.decide(input);
     },
     open(taskOpen: { taskId: string; runId: string }): TaskHandle {
       const taskId = taskOpen.taskId.trim();
