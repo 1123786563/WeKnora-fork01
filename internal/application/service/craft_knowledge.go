@@ -303,53 +303,6 @@ func (s *CraftKnowledgeService) buildForRun(ctx context.Context, scope craft.Sco
 	return bundle, nil
 }
 
-// AuthorizeSourceOpen returns only a recorded stable ref after fresh Task and
-// underlying knowledge checks. A caller must resolve the ref through the
-// existing source service; this method never follows a model-provided URL.
-func (s *CraftKnowledgeService) AuthorizeSourceOpen(ctx context.Context, scope craft.Scope, runID, citationID string) (string, error) {
-	if s == nil || s.records == nil || s.access == nil {
-		return "", craft.ErrForbidden
-	}
-	if err := craft.RequireTaskAccess(ctx, s.taskAccess, scope, craft.TaskOpenSource); err != nil {
-		return "", err
-	}
-	caller := types.CallerFromContext(ctx)
-	if caller.TenantID != scope.TenantID || caller.UserID != scope.UserID {
-		return "", craft.ErrForbidden
-	}
-	record, err := s.records.Load(ctx, scope, runID)
-	if err != nil {
-		return "", err
-	}
-	if record.Scope.TenantID != scope.TenantID || record.Scope.SessionID != scope.SessionID || record.RunID != runID {
-		return "", craft.ErrForbidden
-	}
-	if record.PublicationState != craft.KnowledgePublicationPublished {
-		return "", craft.ErrConflict
-	}
-	for _, source := range record.Sources {
-		if source.ID != citationID {
-			continue
-		}
-		knowledgeID := craftKnowledgeIDOfRef(source.Ref)
-		kbID := craftKnowledgeBaseOfRef(source.Ref)
-		if knowledgeID == "" || kbID == "" {
-			return "", craft.ErrNotFound
-		}
-		rows, err := s.access(ctx, scope.TenantID, []string{knowledgeID})
-		if err != nil {
-			return "", err
-		}
-		for _, row := range rows {
-			if row != nil && row.ID == knowledgeID && row.KnowledgeBaseID == kbID && row.TenantID == source.TenantID {
-				return source.Ref, nil
-			}
-		}
-		return "", craft.ErrForbidden
-	}
-	return "", craft.ErrNotFound
-}
-
 // Sources projects a historical Run's facts only to a current Task reader.
 // Historical facts remain immutable; opening the underlying document has a
 // separate fresh authorization step.
