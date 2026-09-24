@@ -379,7 +379,7 @@
    "execution_mode": "serial",
    "status": "done",
    "base_sha": "b1a3d6dd8",
-   "head_sha": "17a77e8d32ab1bf6bb14a258feee61c98bb8b3de",
+   "head_sha": "e586552d1f730a8a91816a50e06627d17fd6f732",
    "review_status": "approved",
    "evidence_paths": [
     "docs/architecture/passb/b0-evidence.md",
@@ -841,13 +841,17 @@
     "K1-K3 共享类型/端口分配表（K1-K3 并行的前提，framework:129）"
    ],
    "execution_mode": "serial",
-   "status": "in_progress",
+   "status": "pending",
    "base_sha": "8c45a88153d0b20088252dbb29d2fb3815b253c2",
    "head_sha": null,
    "ocr_covered": [
     {
      "base": "59b13c61a727038aa9acc019967434d66da6bb14",
      "head": "614409798fbdb05805504e7733154ec3a1ade960"
+    },
+    {
+     "base": "e4e7a1d8a8ee128cacdfecea64efb469bbe1192c",
+     "head": "03a44bfbb659e9ae4de155fd5792ba67ab2c7350"
     }
    ],
    "review_status": "pending",
@@ -859,15 +863,12 @@
    "task_ids": [
     "K0.1",
     "K0.2",
-    "K0.3",
-    "K5.1",
-    "K5.2",
-    "K5.3"
+    "K0.3"
    ],
    "task_status": {
     "K0.1": "done",
     "K0.2": "done",
-    "K0.3": "pending",
+    "K0.3": "done",
     "K5.1": "pending",
     "K5.2": "pending",
     "K5.3": "pending"
@@ -887,7 +888,7 @@
      "verify-module-moves"
     ]
    ],
-   "notes": "K1-K3 仅在 K0 分配共享 Chunk/KnowledgeBase/Tag/semantic 类型后方可并行（framework:129）。知识 84 legacy 文件 = K1 9 + K2 29 + K3 18 + K4 28（framework:117-119）。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。"
+   "notes": "K1-K3 仅在 K0 分配共享 Chunk/KnowledgeBase/Tag/semantic 类型后方可并行（framework:129）。知识 84 legacy 文件 = K1 9 + K2 29 + K3 18 + K4 28（framework:117-119）。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：Error: 任务 K5.1 重拆重试仍失败：任务 K5.1 BLOCKED：K5.1 前置不满足：K1-K4 四节点全部 pending 未派发（DAG 双副本实测 status=pending/base_sha=None/task_ids=[]；无实施分支、无子计划 21/22/23/24、无 Brief/报告、集成分支零 K1-K4 合并、门面 module.go 仍为零逻辑骨架）。计划 §8 K5.1 派发前置注记明文本组任务在前置未满足时不可派发、不可重试，正确响应为 BLOCKED 上报；本轮为第二次误派（先例 reports/b2-k0.md §7），K0 冻结产出（K0.1-K0.3，至 90530cac2）不变待评审。解除条件：K1-K4 派发完成并合并后 K5.1 方可重试；b2-k0 done 后 22 个传递依赖节点恢复。"
   },
   {
    "id": "b2-k-ingest",
@@ -943,7 +944,7 @@
      "verify-module-moves"
     ]
    ],
-   "notes": "审校 F1 修正：kb_activity.go 不在 K1 brief 9 文件清单（knowledge-ingest.md:8-16），归 K2 retrieval（knowledge-retrieval.md:11）——kb_activity 4 函数的导出义务在本 DAG 移至 b2-k-retrieval，withKnowledgeCleanup 归 b2-k-process。本节点义务：image_multimodal.go（buildVLMCaptionPrompt）与 ocr_sanitizer.go:29（sanitizeOCRText）搬出宿主包时为 conversation 调用方导出端口/留 shim，跨 owner 调用点修改走 Integration Brief，集成工程师执行（本会话 grep 实证）。knowledge deletion/indexing 属高风险差分面（framework:40）。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。"
+   "notes": "审校 F1 修正：kb_activity.go 不在 K1 brief 9 文件清单（knowledge-ingest.md:8-16），归 K2 retrieval（knowledge-retrieval.md:11）——kb_activity 4 函数的导出义务在本 DAG 移至 b2-k-retrieval，withKnowledgeCleanup 归 b2-k-process。本节点义务：image_multimodal.go（buildVLMCaptionPrompt）与 ocr_sanitizer.go:29（sanitizeOCRText）搬出宿主包时为 conversation 调用方导出端口/留 shim，跨 owner 调用点修改走 Integration Brief，集成工程师执行（本会话 grep 实证）。knowledge deletion/indexing 属高风险差分面（framework:40）。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。"
   },
   {
    "id": "b2-k-retrieval",
@@ -1000,7 +1001,7 @@
      "verify-module-moves"
     ]
    ],
-   "notes": "审校 F1 修正：kb_activity.go（knowledge.yaml:155）按 K2 brief 归本节点（knowledge-retrieval.md:11 service 19 文件清单）——kb_activity 4 函数为本节点导出义务（消费方 datasource，见 b2-datasource CORR-2）。conversation→knowledge 11 调用点中归 K2 文件的：kbReadPermissions（knowledgebase_access.go:14）；escapeLikeKeyword 定义于 repository/knowledge.go:22（knowledge.yaml:87，无 K brief 枚举——B0.2 必须显式分配归属，见 b0 notes）。搬出时为宿主包 conversation/datasource/agentcatalog 调用方导出端口/留 shim，禁复制实现。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。"
+   "notes": "审校 F1 修正：kb_activity.go（knowledge.yaml:155）按 K2 brief 归本节点（knowledge-retrieval.md:11 service 19 文件清单）——kb_activity 4 函数为本节点导出义务（消费方 datasource，见 b2-datasource CORR-2）。conversation→knowledge 11 调用点中归 K2 文件的：kbReadPermissions（knowledgebase_access.go:14）；escapeLikeKeyword 定义于 repository/knowledge.go:22（knowledge.yaml:87，无 K brief 枚举——B0.2 必须显式分配归属，见 b0 notes）。搬出时为宿主包 conversation/datasource/agentcatalog 调用方导出端口/留 shim，禁复制实现。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。"
   },
   {
    "id": "b2-k-wikifaq",
@@ -1057,7 +1058,7 @@
      "verify-module-moves"
     ]
    ],
-   "notes": "wiki_fixer_scope.go 在 handler/session 定义于 conversation 属主 *Handler 上的方法——与 b1-execution 同型断链风险，按 B0.3+IB1 裁定处理。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。"
+   "notes": "wiki_fixer_scope.go 在 handler/session 定义于 conversation 属主 *Handler 上的方法——与 b1-execution 同型断链风险，按 B0.3+IB1 裁定处理。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。"
   },
   {
    "id": "b2-k-process",
@@ -1115,7 +1116,7 @@
      "verify-module-moves"
     ]
    ],
-   "notes": "K4 在 ingest/retrieval 契约稳定后串行执行（framework:118-119）；worker 注册行禁改（与 conversation-queryhistory.md:39-42 义务 3 同律，本会话验证）。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。"
+   "notes": "K4 在 ingest/retrieval 契约稳定后串行执行（framework:118-119）；worker 注册行禁改（与 conversation-queryhistory.md:39-42 义务 3 同律，本会话验证）。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。"
   },
   {
    "id": "b2-k-integration",
@@ -1151,7 +1152,11 @@
     "docs/architecture/passb/briefs/b2-k-integration.md"
    ],
    "role": "work",
-   "task_ids": [],
+   "task_ids": [
+    "K5.1",
+    "K5.2",
+    "K5.3"
+   ],
    "gates": [
     [
      "sh",
@@ -1175,7 +1180,7 @@
      "verify-module-moves"
     ]
    ],
-   "notes": "CORR-1：骨架修正——depends_on 由 [b2-k-process] 改为 [b2-k-process, b2-k-wikifaq]，K5 是 K1-K4 全量汇聚，漏 wikifaq 会丢 18 文件、wiki_fixer_scope.go 与对应别名。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。"
+   "notes": "CORR-1：骨架修正——depends_on 由 [b2-k-process] 改为 [b2-k-process, b2-k-wikifaq]，K5 是 K1-K4 全量汇聚，漏 wikifaq 会丢 18 文件、wiki_fixer_scope.go 与对应别名。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。"
   },
   {
    "id": "b2-ac-definition",
@@ -1202,16 +1207,36 @@
     "docs/architecture/evidence/passb/b2-ac-definition.md"
    ],
    "execution_mode": "parallel",
-   "status": "in_progress",
+   "status": "done",
    "base_sha": "8c45a88153d0b20088252dbb29d2fb3815b253c2",
-   "head_sha": null,
+   "head_sha": "938087598a5a1808c7a37f3ae6777481ecf6796c",
    "ocr_covered": [
     {
      "base": "02e7be617c041bbf796b7f0acff0a4fbb6402a38",
      "head": "9f330903b0cb3025e98ec68f196a5b34e1b512e1"
+    },
+    {
+     "base": "9f330903b0cb3025e98ec68f196a5b34e1b512e1",
+     "head": "57ef2990e9534e6a4f3c46220cf469eb02b96b62"
+    },
+    {
+     "base": "57ef2990e9534e6a4f3c46220cf469eb02b96b62",
+     "head": "bd9e0f8e920b7ef9d7ccb5a13409ba7faefbab72"
+    },
+    {
+     "base": "bd9e0f8e920b7ef9d7ccb5a13409ba7faefbab72",
+     "head": "5d543c49d72dad91bf89d1b20fdaf7ba6d78cc41"
+    },
+    {
+     "base": "5d543c49d72dad91bf89d1b20fdaf7ba6d78cc41",
+     "head": "938087598a5a1808c7a37f3ae6777481ecf6796c"
+    },
+    {
+     "base": "e586552d1f730a8a91816a50e06627d17fd6f732",
+     "head": "938087598a5a1808c7a37f3ae6777481ecf6796c"
     }
    ],
-   "review_status": "pending",
+   "review_status": "approved",
    "evidence_paths": [
     "docs/architecture/evidence/passb/b2-ac-definition.md",
     "docs/plans/passb/reports/b2-ac-definition.md",
@@ -1227,10 +1252,10 @@
    ],
    "task_status": {
     "T1": "done",
-    "T2": "pending",
-    "T3": "pending",
-    "T4": "pending",
-    "T5": "pending"
+    "T2": "done",
+    "T3": "done",
+    "T4": "done",
+    "T5": "done"
    },
    "gates": [
     [
@@ -1251,7 +1276,7 @@
      "verify-module-moves"
     ]
    ],
-   "notes": "与 25b 并行前提：共享 immutable-version 契约冻结（framework:139）。断链面（完整清单见 package_private_couplings，本会话 grep 实证定义文件）：agentcatalog 属主文件调用 conversation 属主未导出函数 7 符号 10 调用点（session_*.go 系，conversation B3 才搬）——本节点先搬必断链，须 B0.3/IB1 裁定：conversation 属主函数提前导出（跨 owner 写，走 Integration Brief）或该批调用方文件推迟搬迁；agentcatalog→commercial 3 符号改为消费 IB1 已导出 model_usage 绑定族。反向义务：agentRequiresRerankModel（agentcatalog 属主）被 conversation/agentruntime 消费——本节点先搬须导出。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。"
+   "notes": "与 25b 并行前提：共享 immutable-version 契约冻结（framework:139）。断链面（完整清单见 package_private_couplings，本会话 grep 实证定义文件）：agentcatalog 属主文件调用 conversation 属主未导出函数 7 符号 10 调用点（session_*.go 系，conversation B3 才搬）——本节点先搬必断链，须 B0.3/IB1 裁定：conversation 属主函数提前导出（跨 owner 写，走 Integration Brief）或该批调用方文件推迟搬迁；agentcatalog→commercial 3 符号改为消费 IB1 已导出 model_usage 绑定族。反向义务：agentRequiresRerankModel（agentcatalog 属主）被 conversation/agentruntime 消费——本节点先搬须导出。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 OCR 节点级实质审查（2026-09-24 03:52 生成，6 selected items，调度口径 confirmed=2 / rejected=0）：(1) internal/modules/agentcatalog/handler/user_resource_favorite.go:84-87 [documentation·low]——swagger 定义名漂移：AddFavoriteRequest 已随迁模块包但本 commit 未再生成 docs/，已提交 docs/docs.go、swagger.json、swagger.yaml 仍以 internal_handler.AddFavoriteRequest 引用；静态字符串产物不影响编译与运行时 swagger UI 自洽，但下次 swag 再生成时定义名切换存在源码-文档不一致窗口；报告自陈 T3 零逻辑变更约束本轮不宜改动，建议登记 IB2 清理 shim 时（或文档再生成轮次）统一刷新。(2) 同文件 :74-76 [security·low]——兜底分支将底层 err.Error() 直传 NewInternalServerError 返回客户端，可能外泄 GORM/SQL 存储层细节（表名/约束名/驱动错误原文），与文件头哨兵注释意图相悖（Add/Remove 同型 :112/:140）；属随迁既有行为，T3 零逻辑变更约束本轮保持原样不阻塞，建议登记 IB2 删 shim 时统一加固（响应改固定文案如 internal error，原始 err 仅经 ErrorWithFields 落日志）。处置：confirmed>0 → review_status pending → changes_requested（沿 07:09/08:32/10:49/13:51/01:04/03:54 先例）；两条均系报告自陈『登记 IB2 而非本轮修复』的低危项——是否按报告建议豁免本轮修复（改为 IB2 登记）、或要求本轮修复，待协调者裁定；修复分支落点与节点重开方式同待裁定（节点 T3 尚 pending、分支 HEAD bd9e0f8e9 无修复提交）。报告路径 .superpowers/sdd/passb/b2-ac-definition/ocr-r1.txt（03:52 版，覆盖 00:14 skip 版）。 OCR low findings 处理结论（2026-09-24 04:00 登记为 IB2 期执行工单——03:57 条目两条 confirmed 的处置落定：调度方确认两条 finding 且均裁定本轮按 T3 零逻辑约束保持原样、IB2 期执行；passb-b2-ac-definition HEAD bd9e0f8e9 尚无对应修复提交，管家实读与 grep 确认 problem 属实）：\n(1) f1-swagger-definition-drift（low，file=internal/modules/agentcatalog/handler/user_resource_favorite.go）——problem 确认：AddFavoriteRequest 已随迁模块包（worktree bd9e0f8e9，定义在 user_resource_favorite.go:84-87，包 handler @ internal/modules/agentcatalog/handler），但本 commit 未再生成 docs：worktree 内 docs/docs.go:16472/:23635、docs/swagger.json:16465/:23628、docs/swagger.yam[l 截断]。验收标准（acceptance，指令于『引用自』处截断）：IB2 删除 shim 或文档再生成轮次中运行 swag init（或项目等效再生成命令）刷新 docs/docs.go、docs/swagger.json、docs/swagger.yaml：定义名与 internal/modules/agentcatalog/handler 包一致；grep -r internal_handler.AddFavoriteRequest docs/ 零命中；/user/favorites 相关 path 与 definition 引用自[洽]（截断处按语义补全）。\n(2) f2-internal-error-echo（low，同文件）——problem 确认（随迁既有行为，本轮按 T3 零逻辑约束保持原样、非阻塞，判断正确）：泄漏链闭合实证：user_resource_favorite.go:74-75 兜底分支将 err.Error() 传入 NewInternalServerError，同型分支在 :112（AddFavorite）与 :140（RemoveFavorite）；internal/errors/errors.go:144-152 将 message 存入 AppError.Message；internal/[后续链路截断]。验收标准（acceptance，指令于『NewInternalServerError(err』处截断）：IB2 删除 shim 时统一加固：三处兜底分支响应改为固定文案（如 apperrors.NewInternalServerError(\"internal error\")），原始 err 仅经 logger.ErrorWithFields 落日志；测试断言：mock service 返回非哨兵错误（如含驱动原文的 err）时，HTTP 响应体 message 为固定文案且不含底层错误原文，日志仍记录原始 err；grep NewInternalServerError(err.Error()) 类调用[预期归零]（截断处按语义补全）。\n管家现状核实（本会话在 passb-b2-ac-definition@bd9e0f8e9）：:74-75/:112/:140 三处兜底分支 grep 全部命中在案；docs 三产物 internal_handler.AddFavoriteRequest 各 2 处在案；工单未落分支。 OCR 节点级全量复扫（2026-09-24 05:28 生成，14 selected items 全量，调度口径 confirmed=1 / rejected=0）：internal/modules/agentcatalog/repository/agent_share.go:27-33 [bug·low]——Create 为 check-then-act 模式：Count(&count) 错误被忽略（查询失败时仍继续插入），且并发创建同一 (agent_id, source_tenant_id, organization_id) 共享存在竞态窗口。报告核实登记：预存在逻辑、随搬迁逐字节保留、非本节点引入的回归；PostgreSQL 方向 migrations/versioned/000012_organizations.up.sql:125 有部分唯一索引 idx_agent_shares_agent_org WHERE deleted_at IS NULL 兜底并发重复插入；但 sqlite 初始化迁移 migrations/sqlite/000000_init.up.sql:673-676 仅有普通索引、无唯一约束，sqlite 路径并发下可能落重复行；受零逻辑变更约束不应修改，建议 IB2 删 shim/收敛轮次一并评估（① Count 错误检查补齐 ② sqlite init 唯一索引与 versioned 迁移对齐）。处置：confirmed>0 时 review_status 目标值 changes_requested 已在位（03:57 实质审查 confirmed=2 所置），无字节级改动；finding 系预存在逻辑（非本节点回归）且报告自陈 IB2 期评估——与 04:00 两条 low 同型处置口径，义务承接方 IB2；修复分支落点与节点重开方式待协调者裁定（节点五任务已全 done、分支 HEAD 938087598 无修复提交）。报告路径 .superpowers/sdd/passb/b2-ac-definition/ocr-r1.txt（05:28 版，覆盖 05:14 skip 版）。 OCR low finding 修复工单登记（2026-09-24 05:34——passb-b2-ac-definition HEAD 938087598 尚无对应修复提交，工单未落分支；管家 grep Brief 实证工单陈述属实）：\nid=f3-agent-share-create-race（severity low，file=internal/modules/agentcatalog/repository/agent_share.go）——\nproblem：核实成立（预存在逻辑非本节点回归，建议 IB2 期执行）。Create（:28-38）为 check-then-act：:30-33 链式 Count(&count) 返回值被丢弃（查询失败仍继续插入），:34 依 count 判重，:37 无条件插入——并发创建同一 (agent_id, source_tenant_id, organization_id) 存在竞态窗口。全链证据（调度方本会话实跑，worktree 938087598）：① 逐字节核实：git show 8c45[…截断]。\n验收标准（acceptance，指令于『先按 conventi』处截断，完整原文以调度方为准）：本节点保持零代码改动（模块文件与 BASE 逐字节一致的 1:1 验收不被破坏）。执行义务：① 将本项补登记进 docs/architecture/passb/briefs/b2-ac-definition.md 的 IB2 台账/执行单（当前 Brief 未含此项，grep 实证）；② IB2 期为 internal/modules/agentcatalog/repository/agent_share.go Create 补 Count 错误检查——先按 conventi[ons §…截断]。\n管家现状核实（本会话在 passb-b2-ac-definition@938087598）：agent_share.go:28-38 check-then-act 结构实读在案（:30-33 Count 链式调用丢弃返回值、:34 判重、:37 插入）——problem 属实；Brief grep 实证：既有 agent_share.go 条目（S1 shim 清单/②.1 台账 #3/②.2 反向义务 #12）均非本项登记，f3 的 check-then-act 竞态项在 Brief 中不存在——acceptance ① 补登记义务成立待执行。"
   },
   {
    "id": "b2-ac-skills",
@@ -1277,16 +1302,40 @@
     "docs/architecture/evidence/passb/b2-ac-skills.md"
    ],
    "execution_mode": "parallel",
-   "status": "in_progress",
+   "status": "done",
    "base_sha": "8c45a88153d0b20088252dbb29d2fb3815b253c2",
-   "head_sha": null,
+   "head_sha": "5ed64d324df7b0e83c73c1aaeb12d8d46273b850",
    "ocr_covered": [
     {
      "base": "8592f2aacbe49e43583bf433e045b98cefd44c6f",
      "head": "406ed1c6a97403be2a71690cd966f558b9848b92"
+    },
+    {
+     "base": "406ed1c6a97403be2a71690cd966f558b9848b92",
+     "head": "97b037ccf726548df0d2a4cf9d6e5a4f46848946"
+    },
+    {
+     "base": "190484452eb9c67de0e6cded8399fe6962f7b5a6",
+     "head": "7c76e7cf1e6b99b73bce7cf529f55934b3e706de"
+    },
+    {
+     "base": "97b037ccf726548df0d2a4cf9d6e5a4f46848946",
+     "head": "7c76e7cf1e6b99b73bce7cf529f55934b3e706de"
+    },
+    {
+     "base": "7c76e7cf1e6b99b73bce7cf529f55934b3e706de",
+     "head": "4f8ff1de070d509dd5a69a989f55eed1e7138418"
+    },
+    {
+     "base": "4f8ff1de070d509dd5a69a989f55eed1e7138418",
+     "head": "5ed64d324df7b0e83c73c1aaeb12d8d46273b850"
+    },
+    {
+     "base": "e586552d1f730a8a91816a50e06627d17fd6f732",
+     "head": "5ed64d324df7b0e83c73c1aaeb12d8d46273b850"
     }
    ],
-   "review_status": "pending",
+   "review_status": "approved",
    "evidence_paths": [
     "docs/architecture/evidence/passb/b2-ac-skills.md",
     "docs/plans/passb/reports/b2-ac-skills.md",
@@ -1302,10 +1351,10 @@
    ],
    "task_status": {
     "25b.1": "done",
-    "25b.2": "pending",
-    "25b.3": "pending",
-    "25b.4": "pending",
-    "25b.5": "pending"
+    "25b.2": "done",
+    "25b.3": "done",
+    "25b.4": "done",
+    "25b.5": "done"
    },
    "gates": [
     [
@@ -1326,7 +1375,7 @@
      "verify-module-moves"
     ]
    ],
-   "notes": "tenant_skill_reaper.go（matchSnapshotByName/skillSnapshotNamePrefix/snapshotsNotFromOtherConfig/validateUserEnvName 定义处，本会话 grep 实证）若归本面：b1-execution 遗留的 4 条 execution→agentcatalog 断链在此导出化收口。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。"
+   "notes": "tenant_skill_reaper.go（matchSnapshotByName/skillSnapshotNamePrefix/snapshotsNotFromOtherConfig/validateUserEnvName 定义处，本会话 grep 实证）若归本面：b1-execution 遗留的 4 条 execution→agentcatalog 断链在此导出化收口。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 25b.3 修复第 1/5 轮完成（2026-09-24 05:35 登记；仍有 blocking: false——修复后无阻塞项）。任务产出：BASE 97b037ccf → HEAD 190484452（8 提交：bded9ec9b 40 文件 service 层原子搬迁 rename 94-100% / 0f554a269 宿主孤儿测试垫片 / 8978183b3 8 条 import 豁免登记 / 3a7395d37 manifest 占位残差+contracts 路径同步 / 52d0b349c T3 差分证据 / 2be8b6b49 注释清理 / e8e2f1341 contracts.yaml 越权回滚 / 190484452 evidence §5.4 改记）。审查 findings 修复（报告 §9，调度口径第 1/5 轮、报告自陈第二轮——轮次计数口径差异如实登记）：critical finding（contracts.yaml 在 3a7395d37 被越权修改 8 条路径同步+1 行挪动，违反任务声明文件边界，§8(e) 回写归 IB2）判定成立 → 整体回滚至 BASE 原文（git checkout 97b037ccf -- contracts.yaml，diff=0 行，commit e8e2f1341）+ evidence §5.4 改记（190484452）；回滚后重跑门禁与测试全绿（build/两 make/模块两包/宿主 service/handler Skill/router/router Skill/parity 全 0）。仍有 blocking=false：DAG 本节点四 gates（build/agentcatalog tests/check-backend-architecture/verify-module-moves）全绿不受影响；make check-passb-readiness 回滚后红（10 条诊断=7 consumer-unrecorded+3 consumer-vanished）系计划 §8(e) 分给 IB2 的 contracts 回写义务（10 条收口清单已登记），非本节点 gate。三项治理裁定立条（报告 §5/§10 Ledger 管家义务）：Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY（8 条精确路径豁免独立 commit 登记+ledger 8 行+计数断言修正；基线 exceptions 105→113 按 §8 登记，check-passb-readiness 实测 113）；Ruling 2026-09-24-TEST-SUPPORT-SHIM（唯一宿主测试垫片文件，5 孤儿符号最小定义；remove_at: IB2/25c 先到者最迟 B5）；Ruling 2026-09-23-LEGACY-ROW-OWNERSHIP（04:00 b2-appconnector 条目已立条）。25b.3 task_status 维持 pending（修复轮完成≠task done，收口待调度方指令）。流程偏差如实登记（报告 §7）：两次 Bash python3 内联改写 .go 文件绕过 Write/Edit 扫描通道（机械等价替换经 gofmt/vet/全量测试验证），此后已回到 Edit 通道；Mimosa scanner_enobufs 沿例。 OCR 节点级全量复扫（2026-09-24 05:50 生成，39 selected items 全量，调度口径 confirmed=1 / rejected=0）：internal/modules/agentcatalog/service/tenant_skill_verify.py:102-103 [bug·medium]——skill_script_path 将反斜杠归一为 \"/\" 引入纯搬迁之外的行为差：Go 侧 bundle 键校验明确允许反斜杠（tenant_skill_bundle.go 的 validateSkillEntryName 只拒控制字符、inspectSkillZipPath 的 path.Clean 在 Linux 不处理反斜杠，packSkillTar 与 verifySkillTree 均按字面名处理），因此文件名字面含反斜杠的合法 bundle（如 PowerShell Compress-Archive 产出的 scripts\\run.py 条目）可完整通过上传、解包与树检查，旧实现 os.path.join(root, relative) 字面 join 也能打开它们；新实现归一后去找 root/scripts/run.py，必然 OSError → entry 被记为不可修复 problem（exit 1）→ 安装被拒且误导性报 \"cannot be read by the skill execution user\"——违背本轮\"纯搬迁等价\"约束，且该新分支在 tenant_skill_verify_python_test.go 中零覆盖、escape 分支同样无测试。建议与 Go 侧口径对齐：仅按 os.sep(\"/\")分割、保留反斜杠为字面字符（仍保留 \"..\" 段拒绝与绝对路径重锚定防御），或 Go 侧统一拒绝反斜杠键并补齐两侧测试（报告附建议 diff）。处置：confirmed>0 → review_status pending → changes_requested（沿 07:09/08:32/10:49/13:51/01:04/03:54/03:57 先例）——B2 阶段首个 medium 级 finding；finding 落 b2-ac-skills owned_files 范围（internal/modules/agentcatalog/**），系 25b.3 搬迁引入（随迁 embed 脚本 tenant_skill_verify.py 的新分支），修复分支落点与修复轮启动方式待协调者裁定（节点 25b.3 尚 pending、分支 HEAD 190484452 无修复提交）。报告路径 .superpowers/sdd/passb/b2-ac-skills/ocr-r1.txt（05:50 版，覆盖 02:44 skip 版）。 25b.5 修复第 1/5 轮完成（2026-09-24 08:10 登记；仍有 blocking: false——修复轮遗留无，两条 findings 均闭环）。任务产出：BASE 4f8ff1de0 → HEAD 5ed64d324（2 提交：3df7b97c7 T5 主提交——差分证据 evidence §2 搬迁等价逐包表+reaper 逐例+引写语义登记、Brief b2-ac-skills.md 新建七部分（残差全删清单 20 生产+2 测试装置/六组调用点切换表/container 四行接线/routes_agent 切换/contracts 回写+check-passb-readiness 10 条 IB2 收口清单/DAG 回写确认/例外台账口径）、节点报告核对清单 9 项全勾；5ed64d324 修复轮 R1/R2——72→73 文件时点化修正）。节点 gates 四条全绿（build/模块三包/check-backend-architecture 633/23+23/58/16/verify-module-moves 16 manifests）；双跑差分成立（T1 基线 vs T5 终态逐命令一致，reaper 面 28=27+1 逐例 1:1 零 FAIL——含 evidence §1 命令 #8 引写语义勘误：单引号反斜杠竖线为 no-op，基线日志实为纯竖线 OR 语义，已探针实证并登记 evidence §2.2）；白名单差集核对通过（73 文件逐类=20 生产搬迁+20 随迁测试 R 命中+节点产出 6+治理裁定登记 6，第三类未登记文件为零——随迁测试计划计数 19 vs 实际 20 系 framework:29 义务覆盖的多迁，evidence §6 登记）。修复轮 findings R1（critical：白名单差集非空却被判空——实测 73 files 比报告枚举 72 多 1）与 R2（important：报告命令输出不可复现——终态 73/11137+/9372- vs 报告 72/11000+/9372-）已修复：根因系 T5 会话在 docs 提交前（HEAD=4f8ff1de0）实测 72 文件写入报告、提交 Brief 后未更新——第 73 文件即 T5 主提交新建的 Brief（计划 §1 白名单第 7 项节点自身产出），白名单差集结论仍为空、非未授权混入；修复=报告时点化三值修正+枚举修正（5ed64d324）+复测一致。流程偏差如实登记：T5 提交时 Mimosa scanner_enobufs 沿例（纯文档改动零 .go/.yaml 生产文件）。25b.5 task_status 维持 pending（修复轮完成≠task done，收口待调度方指令）。遗留 5 条转录（报告 §4）：check-passb-readiness 红项归 IB2（10 条收口清单在 evidence §5.4 与 Brief (e)）；review_status 流转归协调者（代码已由 7c76e7cf1 修复）；Mimosa 沿例；随迁测试计数 19 vs 20 登记；引写语义勘误登记。 OCR 节点级全量复扫（2026-09-24 08:37 生成，45 selected items 全量，调度口径 confirmed=2 / rejected=0）：(1) internal/modules/agentcatalog/service/tenant_skill_install.go:940-942 [documentation·low]——installerModelID 注释声称 \"the model value itself is fetched once, right where openInstallerRun needs it\"，但已配置模型路径上 GetChatModel 实际被调用两次（installerModelID 内部验证可用性一次 + openInstallerRun 按返回 modelID 取值一次）；旧 resolveInstallerModel 在该路径只解析一次；GetChatModel 每次调用重读模型行并经 chat.NewChat 构造新实例（internal/application/service/model.go:591-629），双重解析带来不必要的重复构造，且两次调用之间模型被删除/停用会让本可成功的安装失败（失败走 failSkill 正常补偿非数据损坏故定 low）；建议至少修正注释如实描述\"验证一次 + 取值一次\"语义（报告附建议 diff）。(2) internal/application/service/tenant_skill_service.go:63 [maintainability·low]——残差 newKeyedMutex 通过 *acatsvc.NewKeyedMutex() 解引用拷贝内含 sync.Mutex 与 map 的结构体值；当前源值系新建即弃无运行期后果，但系 go vet copylocks 反模式（CI 对该包跑 go vet 即报），IB2 收口或后续改动若复用/仿照会放大为真实锁拷贝问题；建议改为嵌入指针消除拷贝且 lock 提升方法行为不变（报告附建议 diff）。处置：confirmed>0 时 review_status 目标值 changes_requested 已在位（05:56 全量复扫 confirmed=1 所置），无字段级改动；两条均系 low（注释失实 + 残差反模式），finding 系 25b.3 搬迁产出面（(1) 在模块侧 (2) 在宿主残差），修复分支落点与修复方式待协调者裁定（节点五任务全 done、分支 HEAD 5ed64d324 无修复提交）。报告路径 .superpowers/sdd/passb/b2-ac-skills/ocr-r1.txt（08:37 版，覆盖 08:18 skip 版）。 OCR low findings 处理结论（2026-09-24 08:47 登记为修复工单 ×2——passb-b2-ac-skills HEAD 5ed64d324 尚无对应修复提交，管家实读四代码区确认 problem 属实）：\n工单 1：tenant_skill_install.go:940-942（severity low，file=internal/modules/agentcatalog/service/tenant_skill_install.go:938-942）——problem：注释声称 configured 模型路径上 model value \"fetched once, right where openInstallerRun needs it\"，与实际不符：installerModelID 内部（:951）为验证可用性调用 GetChatModel 一次，openInstallerRun（:857）又按返回的 modelID 调用一次取值。已核实 GetChatModel（internal/application/service/model.g[o 截断]。管家实读核实：:942 注释\"fetched once\"失实 + :951 GetChatModel 验证调用 + :857 openInstallerRun GetChatModel 取值调用均在案——problem 属实。验收标准（acceptance，指令于 internal/modules/agentcatalog/s 处截断）：修改 :938-942 注释：如实描述 chat.Chat 仅在 openInstallerRun 构造、installerModelID 先探测 configured 模型可用性、故该路径解析模型两次（probe + fetch）。纯注释改动，零代码行为变化；go build ./... 绿；internal/modules/agentcatalog/s[ervice 测试全绿——截断处按惯例补全]。\n工单 2：tenant_skill_service.go:63（severity low，同路径宿主残差文件）——problem：newKeyedMutex 经 *acatsvc.NewKeyedMutex() 解引用拷贝了含 sync.Mutex 与 map 的结构体（新包定义 internal/modules/agentcatalog/service/tenant_skill_service.go:221-224：mu sync.Mutex + m map[string]chan struct{}）。finding 实质成立（语义锁值拷贝反模式 + 仿照放大风险），但其中一条论据经实验证伪需修正[——证伪的具体论据内容指令截断未见，待协调者补充]。管家实读核实：:63 解引用拷贝在案——problem 属实。验收标准（acceptance，指令于 skill_mar 处截断）：internal/application/service/tenant_skill_service.go:59-63：keyedMutex 改为嵌入 *acatsvc.KeyedMutex（type keyedMutex struct { *acatsvc.KeyedMutex }），newKeyedMutex 返回 &keyedMutex{KeyedMutex: acatsvc.NewKeyedMutex()}，不再解引用；lock 提升方法与全部消费点（skill_mar[ket 等——截断处按语义补全，含行为不变验证]。"
   },
   {
    "id": "b2-ac-market",
@@ -1351,17 +1400,23 @@
     "docs/architecture/evidence/passb/b2-ac-market.md"
    ],
    "execution_mode": "serial",
-   "status": "pending",
+   "status": "in_progress",
    "base_sha": null,
    "head_sha": null,
-   "review_status": "pending",
+   "review_status": "changes_requested",
    "evidence_paths": [
     "docs/architecture/evidence/passb/b2-ac-market.md",
     "docs/plans/passb/reports/b2-ac-market.md",
     "docs/plans/passb/reviews/b2-ac-market.md"
    ],
    "role": "work",
-   "task_ids": [],
+   "task_ids": [
+    "25c.1",
+    "25c.2",
+    "25c.3",
+    "25c.4",
+    "25c.5"
+   ],
    "gates": [
     [
      "sh",
@@ -1381,7 +1436,24 @@
      "verify-module-moves"
     ]
    ],
-   "notes": "25c 消费 25a/25b 的 release/install 门面，故串行于两者之后（framework:139）。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。"
+   "notes": "25c 消费 25a/25b 的 release/install 门面，故串行于两者之后（framework:139）。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 T1 SDD 审查通过（2026-09-24 10:40 登记；沿 09:53 计划审校先例衔接；指令称 T1，DAG task_ids 取 25c.1——两种编号并存，映射留痕）。**前置事件：Ruling 2026-09-24-WAVE-DEP-BASELINE 立条**（裁定全文见分支 evidence §0 与 T1-report §0）——派发起点 dfcec6067 不满足计划前置（25a/25b 未在任何可达 commit 中、FACADES-MISSING），协调者裁定选 A：本节点分支按序基线对齐 merge 25a（938087598 → ad53c2185，零冲突）+ 25b（5ed64d324 → c0ddf768a，唯一冲突为 execution-ledger.md 纯追加型条目，两侧全保留机械解决）；**性质界定：基线对齐合并非集成合并**（不触碰 codex/passb-integration、不豁免 IB2 职责——IB2 仍按 25a→25b→25c 正式合并+装配切换+全量回归+例外收口）；适用于 Pass B 全部波内依赖节点（b2-k-process/b2-k-integration/b3-r-engine/b3-r-protocol/b3-r-integration/b3-conv-session/b3-channels 等），后续直接引用免升级；对齐后基线 c0ddf768a = T2-T5 的 PASSB_BASE_SHA。**双轨台账事实留痕**：实施者按裁定 §6 指令在分支侧 execution-ledger.md 直接追加 12 行台账条目（随 e056eb807 落分支）——与 integration 侧台账（本文件，Ledger 管家维护）双轨并存，合并时汇入；两轨内容分工：分支侧记裁定与对齐执行、integration 侧记调度状态流转。T1 产出：dfcec6067..HEAD 4 提交（对齐 merge ×2 + e4753ae49 基线表征 3 文档零生产代码 + e056eb807 台账登记）；前置门经空白容忍等价链通过（计划字面链因 gofmt 对齐多空格物理无法匹配单空格模式——属计划命令字面过严非门面缺失，两跑留痕 evidence §1）；节点门禁全绿（build/四段特征化测试/router/模块三包/两 make，39 用例基线预跑全 PASS 与计划 §5 预期一致）；模块三包 ok 系 25a/25b 随迁测试经对齐带入（符合裁定预期）。task_status 25c.1 维持 pending（SDD 通过≠task done，收口待调度方指令）。 OCR 节点级全量复扫（2026-09-24 11:00 生成，59 selected items 全量=对齐后节点全量 diff 含 25a/25b 已审内容，裁定 §4 明示接受重复审计；调度口径 confirmed=1 / rejected=1；报告实测 2 findings——confirmed 与 rejected 的逐条对应未点名，留痕待协调者补充）：(1) internal/handler/skill_catalog.go:6-7 [documentation·low]——过渡占位注释与 package handler 子句之间无空行，被 Go 解析为整个 internal/handler 包（200+ 文件）的 package comment（godoc 展示该\"Pass B 25b 过渡占位残差\"为包级文档，包内无 doc.go）；其余三个 shim（skill_handler.go/subagent.go/user_resource_favorite.go）过渡注释位于 import 之后不受影响；建议注释块与 package 子句间加空行退化普通注释（报告附建议 diff）。(2) internal/application/service/tenant_skill_service.go:63 [maintainability·low]——keyedMutex 包装 *acatsvc.NewKeyedMutex() 解引用值拷贝含 sync.Mutex 结构体（copylocks 反模式，潜伏至未来 go vet ./... CI 才爆发）；建议改指针嵌入（报告附建议 diff）。**跨节点同源说明**：finding (2) 与 b2-ac-skills 节点 08:45/08:47 条目系同一文件同一行（该残差文件属两波内节点共同 diff 范围）——b2-ac-skills 侧已有工单在案（嵌入指针修复方案），本节点侧不重复开单，修复归属裁定归协调者（建议随 b2-ac-skills 工单或 IB2 统一执行）。处置：confirmed=1>0 → review_status pending → changes_requested（沿 07:09/08:32/10:49/13:51/01:04/03:54/03:57/05:56/08:45 先例）。rejected=1 未点名留痕：合理推测为 (2)（跨节点重复、b2-ac-skills 侧已开单），但未获调度方确认，不填——修复清单划定前建议协调者点名。管家实读核实：skill_catalog.go:1-8 注释紧贴 package 子句无空行在案——finding (1) 属实 ✓。报告路径 .superpowers/sdd/passb/b2-ac-market/ocr-r1.txt（11:00 版）。LLM retry 摘要：91 请求中 3 次 429 限流后重试成功。 误报裁定登记（2026-09-24 11:18，沿 10:54 b0 先例——依据须可查；本条目闭合 11:13 条目\"rejected=1 未点名\"待办）：id=ocr-r1-f2-keyedmutex-copylocks 判定**误报，无需修复**。理由全文（调度方实测，本管家复验一致）：核心断言被实证证伪——finding 声称 go vet copylocks 会报 \"literal copies lock value\" 并潜伏到未来 CI go vet ./... 爆发；实测（go1.26.3 darwin/arm64，与 CI 同版本系）：① 真实包 go vet ./internal/application/service/ → exit 0 无输出；② 显式 go vet -copylocks=true → exit 0；③ 跨包最小复现（/tmp/vetrepro 精确复刻值嵌入 keyedMutex + 复合字面量字段 = *跨包构造() 含键名与无键两种形态）→ exit 0；④ 同模块相邻形态确实被报（w.KeyedMutex = *p 报 assignment copies lock value、return *p 报 return copies lock value）——证明 copylocks 分析器在运行，仅对复合字面量初始化形态在此工具链下不报。CI 侧核查：.github/workflows/app.yml:120 从仓库根跑 go vet（GO_VERSION=\"1.26\"，app.yml:64）覆盖 internal/application/service 但同工具链不会爆发；cli.yml:48 的 go vet ./... 因 defaults.working-directory: cli（cli.yml:19）仅覆盖 cli 子模块与该包无关。finding 次要事实均属实（go test 默认 vet 子集不含 copylocks；运行期安全——拷贝源是刚构造零值 mutex；消费方持指针调 .lock），但其唯一可行动缺陷主张（vet 违规潜伏）为假；指针嵌入建议属可选加固非缺陷修复，且落在 remove_at: ib2 过渡残差上，改动违背残差最小变更纪律。**口径明确化**：11:13 条目\"rejected=1 未点名\"现闭合——rejected 1 = f2-keyedmutex-copylocks（误报）；confirmed 1 = f1（skill_catalog.go:6-7 占位注释 package comment 问题）——f1 为本节点剩余修复义务（单行空行），review_status=changes_requested 维持。管家复验（本会话实跑）：go version = go1.26.3 darwin/arm64 ✓；① exit 0 ✓；② exit 0 ✓；app.yml:120 / cli.yml:48-49 / cli.yml:19 坐标在案 ✓——裁定依据全部可查成立。 OCR confirmed finding（f1）修复工单登记（2026-09-24 11:19——passb-b2-ac-market HEAD e056eb807 尚无对应修复提交，工单未落分支）：\nid=ocr-r1-f1-skill-catalog-package-comment（severity low，file=internal/handler/skill_catalog.go）——\nproblem：已实读核实（调度方与管家 11:13 前实读一致）：该 7 行 shim 的注释块（:1-6）与 package handler（:7）之间无空行，Go 会将其解析为包级文档注释。行为实证：用零依赖最小模块（/tmp/minidoc）复刻该文件结构后 go doc . 确实把「Pass B 25b 过渡占位残差」拼接进包文档展示。其余三个 shim（skill_handler.go/subagent.go/user_resource_favorite.go）实读均为 package 在首行、过渡注释在[import 之后不受影响——指令截断]。\n验收标准（acceptance，指令于『并入 IB2 删除该』处截断，完整原文以调度方为准）：在注释块末行 remove_at: ib2。（:6）与 package handler（:7）之间插入一个空行，使注释退化为普通文件注释（go/parser 不再将其计入包文档）；修复后 go vet ./internal/handler/ 与 go build ./... 均 exit 0。**注意（路由约束）**：该文件为 25b 残差、在本节点计划 §2.4 禁改清单内（经基线对齐合并 c0ddf768a 进入分支），修复须路由至 25b 属主或并入 IB2 删除该[shim 时一并处理]。\n管家补充核实：该文件属 25b.4 搬迁产出残差（skill_catalog.go 8 端点方法经宿主 skill_handler.go SkillHandler 别名整体可达），f1 与 b2-ac-skills 侧无直接关联（25b.4 节点已 done，其 OCR 区间为 [7c76e7cf1→4f8ff1de0] 不含本文件——本文件系 25b.4 之前已存在的残差）。",
+   "task_status": {
+    "25c.1": "done",
+    "25c.2": "done",
+    "25c.3": "pending",
+    "25c.4": "pending",
+    "25c.5": "pending"
+   },
+   "ocr_covered": [
+    {
+     "base": "dfcec606760b85d1d3d9d0c2e1db015771fefa59",
+     "head": "e056eb807cb79dbcfc9c35dd92a91f2542701181"
+    },
+    {
+     "base": "e056eb807cb79dbcfc9c35dd92a91f2542701181",
+     "head": "4b4171e099549d3c9fcecd0b93623ee4e5cbcfbd"
+    }
+   ]
   },
   {
    "id": "b2-datasource",
@@ -1438,7 +1510,7 @@
      "verify-module-moves"
     ]
    ],
-   "notes": "CORR-2：骨架修正——由 [ib1] 增加 b2-k-integration 前置。datasource→knowledge 5 符号 24 调用点同宿主包未导出调用（调用方 datasource_service.go 归属 datasource.yaml:59；定义方审校 F1 修正后分两处：kb_activity 4 函数在 kb_activity.go=K2 retrieval（knowledge-retrieval.md:11）、withKnowledgeCleanup 在 knowledge_delete_plan.go:22=K4 process（knowledge-process.md:12），本会话 grep 双向实证）——依赖 b2-k-integration 同时覆盖 K2 与 K4，边不变。若 IB1 裁定共享 shim/提前导出，可回写本 DAG 降级为并行（基线变更流程）。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。"
+   "notes": "CORR-2：骨架修正——由 [ib1] 增加 b2-k-integration 前置。datasource→knowledge 5 符号 24 调用点同宿主包未导出调用（调用方 datasource_service.go 归属 datasource.yaml:59；定义方审校 F1 修正后分两处：kb_activity 4 函数在 kb_activity.go=K2 retrieval（knowledge-retrieval.md:11）、withKnowledgeCleanup 在 knowledge_delete_plan.go:22=K4 process（knowledge-process.md:12），本会话 grep 双向实证）——依赖 b2-k-integration 同时覆盖 K2 与 K4，边不变。若 IB1 裁定共享 shim/提前导出，可回写本 DAG 降级为并行（基线变更流程）。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。"
   },
   {
    "id": "b2-appconnector",
@@ -1464,16 +1536,32 @@
     "docs/architecture/evidence/passb/b2-appconnector.md"
    ],
    "execution_mode": "parallel",
-   "status": "in_progress",
+   "status": "done",
    "base_sha": "8c45a88153d0b20088252dbb29d2fb3815b253c2",
-   "head_sha": null,
+   "head_sha": "6e8c84860b38f0125ac729be5ad1283fc1d13bf9",
    "ocr_covered": [
     {
      "base": "ced88ecb17ed560a02a15464500a4b2fa8e2d508",
      "head": "67ac22c964cecfc810578f1ee8d1289b78e7e083"
+    },
+    {
+     "base": "33f8c3ea3370ba6856acac875bb35abd46e1e223",
+     "head": "33f8c3ea3370ba6856acac875bb35abd46e1e223"
+    },
+    {
+     "base": "33f8c3ea3370ba6856acac875bb35abd46e1e223",
+     "head": "9003b687c9f50d09fcab07c0954be7e12efb50ce"
+    },
+    {
+     "base": "9003b687c9f50d09fcab07c0954be7e12efb50ce",
+     "head": "6e8c84860b38f0125ac729be5ad1283fc1d13bf9"
+    },
+    {
+     "base": "e586552d1f730a8a91816a50e06627d17fd6f732",
+     "head": "6e8c84860b38f0125ac729be5ad1283fc1d13bf9"
     }
    ],
-   "review_status": "pending",
+   "review_status": "approved",
    "evidence_paths": [
     "docs/architecture/evidence/passb/b2-appconnector.md",
     "docs/plans/passb/reports/b2-appconnector.md",
@@ -1488,9 +1576,9 @@
    ],
    "task_status": {
     "B2-AC.1": "done",
-    "B2-AC.2": "pending",
-    "B2-AC.3": "pending",
-    "B2-AC.4": "pending"
+    "B2-AC.2": "done",
+    "B2-AC.3": "done",
+    "B2-AC.4": "done"
    },
    "gates": [
     [
@@ -1511,7 +1599,7 @@
      "verify-module-moves"
     ]
    ],
-   "notes": "可与 Knowledge/AgentCatalog 并行（framework:146）。测试夹具随迁：appconnector 测试→commercial(7)/agentruntime(2) 引用（架构事实），host 文件搬走时夹具同步改写。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。"
+   "notes": "可与 Knowledge/AgentCatalog 并行（framework:146）。测试夹具随迁：appconnector 测试→commercial(7)/agentruntime(2) 引用（架构事实），host 文件搬走时夹具同步改写。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 OCR 节点级全量复扫（2026-09-24 03:49 生成，11 selected items 全量，调度口径 confirmed=1 / rejected=0）：tools/internal/modules/appconnector/handler/handler_helpers.go:13 [maintainability·low]——哨兵副本 ErrMissingTenantScope 与宿主 internal/handler/commercial.go:34 同名同消息但身份不同（两个 error 实例）；报告已验证当前全仓无任何 errors.Is/errors.As 身份比较（所有用法均为 .Error() 消息渲染），故无现行缺陷；但现有注释仅强调『消息逐字一致保证响应字节等价』，未警示反面——任何跨包身份比较（如宿主侧对模块路径返回错误做 errors.Is(err, handler.ErrMissingTenantScope)）将静默返回 false，可致 403 拒绝路径错误被误分类，12-commercial 搬迁（哨兵原件也将移动）期间尤其现实；建议在副本注释补显式警示（报告附建议 diff），防 IB2 收口前误用。处置：confirmed>0 → review_status pending → changes_requested（沿 10:49/01:04 先例）；finding 落 b2-appconnector owned_files 范围（internal/modules/appconnector/**），修复分支落点与节点重开方式待协调者裁定（节点四任务已全 done、分支 HEAD 6e8c84860 无修复提交）。报告路径 .superpowers/sdd/passb/b2-appconnector/ocr-r1.txt（03:49 版，覆盖 03:34 skip 版）。 OCR low finding 修复工单（2026-09-24 03:56 登记——passb-b2-appconnector HEAD 6e8c84860 尚无对应修复提交，管家实读两文件与全仓 grep 确认 problem 属实）：id=ocr-r1-handler_helpers-13-sentinel-identity-warning（severity low，file=.worktrees/passb-b2-appconnector/internal/modules/appconnector/handler/handler_helpers.go）——problem：哨兵副本注释缺少身份比较警示（属实，无现行缺陷，纯注释修复）。逐项核实：(1) 模块副本 handler_helpers.go:13 与宿主原件 internal/handler/commercial.go:34 均为 errors.New(\"missing_tenant_scope\")，同名同消息但为两个不同 error value（实读两文件确认）；(2) 实跑全仓 grep errors.Is/errors.As 对 ErrMissingTenantScope 身份比较零命中（exit 1，无现行缺陷）。验收标准（acceptance，调度指令文本于『IB2 收口（do』处截断、以调度方原文为准）：(1) handler_helpers.go 中 var ErrMissingTenantScope 声明行上方注释显式补三句警示：本副本与宿主哨兵（现 internal/handler/commercial.go:34，未来 12-commercial 模块副本）是不同的 error VALUE，消息一致仅为保证 403 MISSING_TENANT_SCOPE 响应字节等价；跨包对两个哨兵做 errors.Is/errors.As 将静默返回 false；IB2 收口（do[ consolidat...]，截断处按报告建议 diff 补全——合并副本为单一实现前不得引入身份比较）。"
   },
   {
    "id": "ib2",
@@ -1584,7 +1672,7 @@
      "golangci-lint run --new-from-rev=\"$PASSB_BASE_SHA\" ./..."
     ]
    ],
-   "notes": "集成顺序与删除纪律按 framework:152；只删 IB2 属主例外。R0 前置检查（30 计划）：engine/protocol 所有权按 freeze:193-196 复核后方可派发 b3-r-*。计数奇偶三方一致（F5）。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。"
+   "notes": "集成顺序与删除纪律按 framework:152；只删 IB2 属主例外。R0 前置检查（30 计划）：engine/protocol 所有权按 freeze:193-196 复核后方可派发 b3-r-*。计数奇偶三方一致（F5）。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。"
   },
   {
    "id": "b3-r-memory",
@@ -1642,7 +1730,7 @@
      "verify-module-moves"
     ]
    ],
-   "notes": "与 R2 并行（framework:165）。agentruntime→airesource 引用（审校 F6 双口径，本会话实测）：import/例外口径 32 对、包限定符口径 203 处——须改走 ib1 冻结门面，禁止保留/新增例外（framework:38）。另按 package_private_couplings：agentruntime→identity forUpdateClause（R 面消费 identity 属主未导出，identity B1 已搬，须消费其 IB1 导出端口）。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。"
+   "notes": "与 R2 并行（framework:165）。agentruntime→airesource 引用（审校 F6 双口径，本会话实测）：import/例外口径 32 对、包限定符口径 203 处——须改走 ib1 冻结门面，禁止保留/新增例外（framework:38）。另按 package_private_couplings：agentruntime→identity forUpdateClause（R 面消费 identity 属主未导出，identity B1 已搬，须消费其 IB1 导出端口）。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。"
   },
   {
    "id": "b3-r-tools",
@@ -1699,7 +1787,7 @@
      "verify-module-moves"
     ]
    ],
-   "notes": "runtime 属主文件搬出 repository 宿主包时，为 B4-craft 消费者导出 runScope 等端口或留 shim（craft 属主文件当时仍在宿主包，会断链）。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。"
+   "notes": "runtime 属主文件搬出 repository 宿主包时，为 B4-craft 消费者导出 runScope 等端口或留 shim（craft 属主文件当时仍在宿主包，会断链）。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。"
   },
   {
    "id": "b3-r-engine",
@@ -1760,7 +1848,7 @@
      "verify-module-moves"
     ]
    ],
-   "notes": "跨 owner 断链风险（行号/文件经审校 F5 修正，本会话复验）：(1) 调用 conversation 属主 helpers.go:471 searchResultFromMap，调用点仅 agent_stream_handler.go:431；(2) 调用 workbench 属主 artifact_download.go:442 artifactHandle 与 artifact_reference.go:56 rewriteArtifactReferences（workbench B4 才搬）；(3) agent_run.go 等自身为 conversation 属主 *Handler 方法文件。均须裁定后搬迁；Agent Run recovery 属高风险差分面（framework:40）。完整耦合清单见 top-level package_private_couplings。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。"
+   "notes": "跨 owner 断链风险（行号/文件经审校 F5 修正，本会话复验）：(1) 调用 conversation 属主 helpers.go:471 searchResultFromMap，调用点仅 agent_stream_handler.go:431；(2) 调用 workbench 属主 artifact_download.go:442 artifactHandle 与 artifact_reference.go:56 rewriteArtifactReferences（workbench B4 才搬）；(3) agent_run.go 等自身为 conversation 属主 *Handler 方法文件。均须裁定后搬迁；Agent Run recovery 属高风险差分面（framework:40）。完整耦合清单见 top-level package_private_couplings。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。"
   },
   {
    "id": "b3-r-protocol",
@@ -1816,7 +1904,7 @@
      "verify-module-moves"
     ]
    ],
-   "notes": "审校 F4 修正：internal/handler/session/native_archive.go 定义独立的 NativeArchiveHandler struct（:16）、NewNativeArchiveHandler 构造（:23）及其方法（:27/45/58），并非共享 conversation 属主 *Handler（handler.go:24）上的方法文件——搬迁不涉及 Handler 拆分，实际风险低于早先描述。engine/protocol 所有权以 B0.3 Step 2 精确清单为准，不得出现『先合并者得』类歧义表述（freeze:187）。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。"
+   "notes": "审校 F4 修正：internal/handler/session/native_archive.go 定义独立的 NativeArchiveHandler struct（:16）、NewNativeArchiveHandler 构造（:23）及其方法（:27/45/58），并非共享 conversation 属主 *Handler（handler.go:24）上的方法文件——搬迁不涉及 Handler 拆分，实际风险低于早先描述。engine/protocol 所有权以 B0.3 Step 2 精确清单为准，不得出现『先合并者得』类歧义表述（freeze:187）。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。"
   },
   {
    "id": "b3-r-integration",
@@ -1876,7 +1964,7 @@
      "verify-module-moves"
     ]
    ],
-   "notes": "恢复竞态属 IB3 差分必测项（framework:192）；13 条 Agent Runtime lint 已知债在本程序内清偿（framework:21）。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。"
+   "notes": "恢复竞态属 IB3 差分必测项（framework:192）；13 条 Agent Runtime lint 已知债在本程序内清偿（framework:21）。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。"
   },
   {
    "id": "b3-conv-queryhistory",
@@ -1935,7 +2023,7 @@
      "verify-module-moves"
     ]
    ],
-   "notes": "试点复用裁定（对试点 sdd-bm-t10，任务书原文收录）：【选择性采纳——文件级移植，禁止直接 merge/cherry-pick】。依据：(1) 完整性：sdd-bm-t10（= backend-mod-wave01 + ceb2a8b3d；祖先链本会话 git merge-base --is-ancestor 实证 sdd-bm-t5⊆backend-mod-wave01⊆sdd-bm-t10）含 T4-T10 全量 queryhistory 纵向切片，本会话在 .worktrees/bm-t10 实跑 go build ./... exit=0、go test ./internal/modules/conversation/... ./internal/application/repository/ ./internal/handler/session/ ./internal/router/ 全 ok，与台账记录一致（progress.md:133）。(2) 拓扑断裂：三分支同源于 20d2350dc（Pass A 之前），main 已前进 153 提交含 Pass A 16 模块重构；git merge-tree 实测 main×sdd-bm-t10 冲突 10 文件（backend-baseline.md/backend-modules.yaml/bootstrap×3/architectureguard×4 为 add/add 双侧独立新建、container.go 为 content），main×backend-mod-wave01 冲突 9 文件（无 container.go）；t10 共改 61 文件，其中 50 个（queryhistory 子树+router 文件+legacy repo 改动+differential tests）与 main 分叉后改动零交集、可干净落地。(3) 治理资产已被取代：试点 T1/T2 的 guard/baseline/manifest 被 main 的 Pass A 演进版取代（guard check.go 266→1371 行、函数集完全不同；bootstrap 同名异构：试点为 gin 耦合 interface RouteModule/WorkerRegistry，main 为防重登记 struct WorkerRegistry+RouteSink）——冲突 9 文件取 main 侧，试点版仅按特性回收。(4) 契约冲突：brief（docs/architecture/passb/conversation-queryhistory.md:39-42）义务 3 禁改 router/task.go:326、sync_task.go:165 注册行，试点 T10 却改写了注册（RegisterSyncHandlers 返回 error、SyncTaskParams.QueryHistory 换模块参数，diff 实证），35a 须单列 router 装配评审吸收试点改法或回退为只动参数类型路径。(5) 门面不匹配：main conversation/module.go 冻结 NewModule/RegisterRoutes/RegisterWorkers/Start/Stop 门面（与 35b 会话面共享，module.go 文件注释实证），试点为嵌套 queryhistory/module.go 门面（无 Start/Stop、依赖试点版 bootstrap.WorkerRegistry 接口）→ 移植后需适配并由 coordinator 裁定嵌套/折叠方案。(6) T11（legacy 删除）未执行、试点 t10 双栈并存（legacy provider 惰性保留，progress.md:134）——删除恰为 b3 核心义务（横向包纪律），试点计划 T11 文本（wave0-wave1.md:890-902）直接作蓝本。另注：任务书称 main@29c1e5635，实际 HEAD 为 b1a3d6dd8（多 2 个纯前端 parity 提交，不触及试点 61 文件），全部实验按 b1a3d6dd8 执行。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。"
+   "notes": "试点复用裁定（对试点 sdd-bm-t10，任务书原文收录）：【选择性采纳——文件级移植，禁止直接 merge/cherry-pick】。依据：(1) 完整性：sdd-bm-t10（= backend-mod-wave01 + ceb2a8b3d；祖先链本会话 git merge-base --is-ancestor 实证 sdd-bm-t5⊆backend-mod-wave01⊆sdd-bm-t10）含 T4-T10 全量 queryhistory 纵向切片，本会话在 .worktrees/bm-t10 实跑 go build ./... exit=0、go test ./internal/modules/conversation/... ./internal/application/repository/ ./internal/handler/session/ ./internal/router/ 全 ok，与台账记录一致（progress.md:133）。(2) 拓扑断裂：三分支同源于 20d2350dc（Pass A 之前），main 已前进 153 提交含 Pass A 16 模块重构；git merge-tree 实测 main×sdd-bm-t10 冲突 10 文件（backend-baseline.md/backend-modules.yaml/bootstrap×3/architectureguard×4 为 add/add 双侧独立新建、container.go 为 content），main×backend-mod-wave01 冲突 9 文件（无 container.go）；t10 共改 61 文件，其中 50 个（queryhistory 子树+router 文件+legacy repo 改动+differential tests）与 main 分叉后改动零交集、可干净落地。(3) 治理资产已被取代：试点 T1/T2 的 guard/baseline/manifest 被 main 的 Pass A 演进版取代（guard check.go 266→1371 行、函数集完全不同；bootstrap 同名异构：试点为 gin 耦合 interface RouteModule/WorkerRegistry，main 为防重登记 struct WorkerRegistry+RouteSink）——冲突 9 文件取 main 侧，试点版仅按特性回收。(4) 契约冲突：brief（docs/architecture/passb/conversation-queryhistory.md:39-42）义务 3 禁改 router/task.go:326、sync_task.go:165 注册行，试点 T10 却改写了注册（RegisterSyncHandlers 返回 error、SyncTaskParams.QueryHistory 换模块参数，diff 实证），35a 须单列 router 装配评审吸收试点改法或回退为只动参数类型路径。(5) 门面不匹配：main conversation/module.go 冻结 NewModule/RegisterRoutes/RegisterWorkers/Start/Stop 门面（与 35b 会话面共享，module.go 文件注释实证），试点为嵌套 queryhistory/module.go 门面（无 Start/Stop、依赖试点版 bootstrap.WorkerRegistry 接口）→ 移植后需适配并由 coordinator 裁定嵌套/折叠方案。(6) T11（legacy 删除）未执行、试点 t10 双栈并存（legacy provider 惰性保留，progress.md:134）——删除恰为 b3 核心义务（横向包纪律），试点计划 T11 文本（wave0-wave1.md:890-902）直接作蓝本。另注：任务书称 main@29c1e5635，实际 HEAD 为 b1a3d6dd8（多 2 个纯前端 parity 提交，不触及试点 61 文件），全部实验按 b1a3d6dd8 执行。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。"
   },
   {
    "id": "b3-conv-session",
@@ -1995,7 +2083,7 @@
      "verify-module-moves"
     ]
    ],
-   "notes": "CORR-3：framework:179 允许 35a/35b application 层并行（装配串行、QueryHistory 先集成），但 handler/session 宿主包 agentcatalog↔conversation 未导出互耦 + module.go 门面共享，DAG 层保守串行；35 计划内部可安排 application 层并行预写。session stream 属高风险差分面（framework:40）。conversation 侧完整耦合面（package_private_couplings）：出向 →knowledge 6 符号 11 调用点、→execution browserSkillScope/resolveTenantSandboxForConfig 10 调用点、→agentcatalog agentRequiresRerankModel/skillsForRun；入向 agentcatalog→conversation 7 符号 10 调用点、knowledge→conversation getParserEngineOverridesFromContext（attachment_processor.go:334）/isValidFileType、craft→conversation safeFileName（artifact_collector.go:518=conversation.yaml:35）、execution→conversation resolveSandboxForExecution——本节点是 conversation 属主符号导出化与 *Handler（handler.go 67 字段）拆分收口的最终落点。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。"
+   "notes": "CORR-3：framework:179 允许 35a/35b application 层并行（装配串行、QueryHistory 先集成），但 handler/session 宿主包 agentcatalog↔conversation 未导出互耦 + module.go 门面共享，DAG 层保守串行；35 计划内部可安排 application 层并行预写。session stream 属高风险差分面（framework:40）。conversation 侧完整耦合面（package_private_couplings）：出向 →knowledge 6 符号 11 调用点、→execution browserSkillScope/resolveTenantSandboxForConfig 10 调用点、→agentcatalog agentRequiresRerankModel/skillsForRun；入向 agentcatalog→conversation 7 符号 10 调用点、knowledge→conversation getParserEngineOverridesFromContext（attachment_processor.go:334）/isValidFileType、craft→conversation safeFileName（artifact_collector.go:518=conversation.yaml:35）、execution→conversation resolveSandboxForExecution——本节点是 conversation 属主符号导出化与 *Handler（handler.go 67 字段）拆分收口的最终落点。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。"
   },
   {
    "id": "b3-channels",
@@ -2051,7 +2139,7 @@
      "verify-module-moves"
     ]
    ],
-   "notes": "application 层可与 R1/R2、conversation 并行，集成等 conversation session API（framework:186）；DAG 取集成视角串行。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。"
+   "notes": "application 层可与 R1/R2、conversation 并行，集成等 conversation session API（framework:186）；DAG 取集成视角串行。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。"
   },
   {
    "id": "b3-insights",
@@ -2105,7 +2193,7 @@
      "verify-module-moves"
     ]
    ],
-   "notes": "可与 R1/R2、conversation application 层并行（framework:186）。analytics 方言测试属 IB3 必测（framework:192）。未导出耦合：insights→knowledge deleteReferencedKnowledge（knowledge_delete_plan.go:36，K4 已导出，package_private_couplings）。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。"
+   "notes": "可与 R1/R2、conversation application 层并行（framework:186）。analytics 方言测试属 IB3 必测（framework:192）。未导出耦合：insights→knowledge deleteReferencedKnowledge（knowledge_delete_plan.go:36，K4 已导出，package_private_couplings）。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。"
   },
   {
    "id": "ib3",
@@ -2178,7 +2266,7 @@
      "golangci-lint run --new-from-rev=\"$PASSB_BASE_SHA\" ./..."
     ]
    ],
-   "notes": "集成顺序按 framework:192；worker/route/hook 奇偶三方一致（F5）；只删 IB3 属主例外。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。"
+   "notes": "集成顺序按 framework:192；worker/route/hook 奇偶三方一致（F5）；只删 IB3 属主例外。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。"
   },
   {
    "id": "b4-workbench",
@@ -2236,7 +2324,7 @@
      "verify-module-moves"
     ]
    ],
-   "notes": "与 craft 并行的前提：B0/IB3 冻结共享 Task/Artifact 契约且 handler/session 文件所有权精确不相交（framework:204）。测试夹具随迁：workbench 测试→agentruntime(7)/commercial(4)/execution(1)（架构事实）。未导出耦合（package_private_couplings）：入向 agentruntime→workbench artifactHandle（artifact_download.go:442）/rewriteArtifactReferences（artifact_reference.go:56，workbench.yaml:67）、airesource→workbench 与 agentcatalog→workbench isUniqueViolation、craft→workbench paramSessionID；出向 workbench→airesource isUniqueViolation——isUniqueViolation 重复 helper 族在 IB3 收口为单一实现。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。"
+   "notes": "与 craft 并行的前提：B0/IB3 冻结共享 Task/Artifact 契约且 handler/session 文件所有权精确不相交（framework:204）。测试夹具随迁：workbench 测试→agentruntime(7)/commercial(4)/execution(1)（架构事实）。未导出耦合（package_private_couplings）：入向 agentruntime→workbench artifactHandle（artifact_download.go:442）/rewriteArtifactReferences（artifact_reference.go:56，workbench.yaml:67）、airesource→workbench 与 agentcatalog→workbench isUniqueViolation、craft→workbench paramSessionID；出向 workbench→airesource isUniqueViolation——isUniqueViolation 重复 helper 族在 IB3 收口为单一实现。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。"
   },
   {
    "id": "b4-craft",
@@ -2293,7 +2381,7 @@
      "verify-module-moves"
     ]
    ],
-   "notes": "Craft Artifact 行为属高风险差分面（framework:40）。craft 测试→commercial(1) 夹具随迁（架构事实）。未导出耦合（package_private_couplings）：craft→agentruntime runScope/toolCallScope/runView 5 调用点（repository/agent_run.go，B3 已导出）、craft→conversation safeFileName（artifact_collector.go:518=conversation.yaml:35，B3 已导出）、craft→workbench paramSessionID（workbench 同期搬迁，IB4 收口）。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。"
+   "notes": "Craft Artifact 行为属高风险差分面（framework:40）。craft 测试→commercial(1) 夹具随迁（架构事实）。未导出耦合（package_private_couplings）：craft→agentruntime runScope/toolCallScope/runView 5 调用点（repository/agent_run.go，B3 已导出）、craft→conversation safeFileName（artifact_collector.go:518=conversation.yaml:35，B3 已导出）、craft→workbench paramSessionID（workbench 同期搬迁，IB4 收口）。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。"
   },
   {
    "id": "b4-systempolicy",
@@ -2351,7 +2439,7 @@
      "verify-module-moves"
     ]
    ],
-   "notes": "housekeeping：knowledge_housekeeping.go 业务清扫规则归 Knowledge，System 只经窄端口调度（freeze:209，禁双实现）。审校 F3 修正：system→identity 的未导出调用仅 auditActor（tenant_member.go:162=identity.yaml:69，IB1 已导出）；isStorageProviderAllowed 定义于 internal/handler/storage_allowlist.go:13、归属 policy.yaml:27=本节点属主文件（policy 1 条 legacy），其跨 owner 消费方处理随本节点。channels→policy 例外（ipclass/ratelimit 2 对）随本节点删除或改走门面。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。"
+   "notes": "housekeeping：knowledge_housekeeping.go 业务清扫规则归 Knowledge，System 只经窄端口调度（freeze:209，禁双实现）。审校 F3 修正：system→identity 的未导出调用仅 auditActor（tenant_member.go:162=identity.yaml:69，IB1 已导出）；isStorageProviderAllowed 定义于 internal/handler/storage_allowlist.go:13、归属 policy.yaml:27=本节点属主文件（policy 1 条 legacy），其跨 owner 消费方处理随本节点。channels→policy 例外（ipclass/ratelimit 2 对）随本节点删除或改走门面。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。"
   },
   {
    "id": "ib4",
@@ -2421,7 +2509,7 @@
      "golangci-lint run --new-from-rev=\"$PASSB_BASE_SHA\" ./..."
     ]
    ],
-   "notes": "集成顺序 Workbench→Craft→System+Policy（framework:210）；B5 台账必须用实际剩余路径生成，不得预发明（framework:235）。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。"
+   "notes": "集成顺序 Workbench→Craft→System+Policy（framework:210）；B5 台账必须用实际剩余路径生成，不得预发明（framework:235）。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。"
   },
   {
    "id": "b5",
@@ -2496,7 +2584,7 @@
      "golangci-lint run ./..."
     ]
    ],
-   "notes": "『unused but harmless』兼容包不算完成（framework:41）；零债断言用实际剩余路径（framework:235）；migration checksum/count 与 route/worker/hook 奇偶三方一致（F5）。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。"
+   "notes": "『unused but harmless』兼容包不算完成（framework:41）；零债断言用实际剩余路径（framework:235）；migration checksum/count 与 route/worker/hook 奇偶三方一致（F5）。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。"
   }
  ]
 }
