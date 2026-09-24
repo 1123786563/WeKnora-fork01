@@ -113,6 +113,7 @@ function taskOfficeFor(activeRuntime: MobileRuntime, origin: string): TaskOffice
     office = createTaskOffice({
       backend: remote,
       detail: remote,
+      interactions: remote,
       lease: () => activeRuntime.scopeLease(),
       // 显式装配（R1-F20 最小修复）：App 重启恢复需要持久 TaskProjectionStore（SQLite 后端，Round 2）；
       // 此处显式传 in-memory store 使「未注入持久化」成为组合根的显式决策而非静默回退。
