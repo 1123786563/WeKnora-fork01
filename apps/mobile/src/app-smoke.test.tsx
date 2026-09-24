@@ -24,7 +24,7 @@ const NATIVE_MODULE_STUBS: Record<string, string> = {
   'expo-router': "module.exports = { Stack: function Stack() { return null; }, router: { replace() {}, push() {} }, useLocalSearchParams() { return {}; } }",
   'expo-secure-store': "module.exports = { getItemAsync: async () => null, setItemAsync: async () => {}, deleteItemAsync: async () => {} }",
   'expo-web-browser': "module.exports = { openAuthSessionAsync: async () => ({ type: 'dismiss' }) }",
-  'react-native': "module.exports = { View: 'View', Text: 'Text', TextInput: 'TextInput', Button: 'Button', ScrollView: 'ScrollView' }",
+  'react-native': "module.exports = { View: 'View', Text: 'Text', TextInput: 'TextInput', Button: 'Button', ScrollView: 'ScrollView', Image: 'Image' }",
   react: "let values = []; let cursor = 0; let pendingEffects = []; let effectCleanups = []; module.exports = { __beginRender() { cursor = 0; }, __reset() { values = []; cursor = 0; pendingEffects = []; effectCleanups = []; }, useState(initial) { const index = cursor++; if (!(index in values)) values[index] = initial; return [values[index], (next) => { values[index] = typeof next === 'function' ? next(values[index]) : next; }]; }, useRef(value) { const index = cursor++; if (!(index in values)) values[index] = { current: value }; return values[index]; }, useEffect(setup) { pendingEffects.push(setup); }, __mount() { for (const setup of pendingEffects.splice(0)) effectCleanups.push(setup()); }, __unmount() { for (const cleanup of effectCleanups.splice(0)) { if (typeof cleanup === 'function') cleanup(); } }, useSyncExternalStore(_subscribe, getSnapshot) { return getSnapshot(); }, createElement(type, props, ...children) { return { type, props: { ...(props || {}), ...(children.length === 0 ? {} : { children: children.length === 1 ? children[0] : children }) } }; } };",
 };
 const stubDir = mkdtempSync(join(tmpdir(), 'weknora-mobile-stub-'));
@@ -816,4 +816,37 @@ test('the task detail error chain maps codes to copy instead of leaking raw inte
   assert.match(screen, /INTERRUPTION_COPY/, 'interruption 原因必须经文案映射（B2-F40）');
   assert.match(screen, /INTERRUPTION_COPY\[view\.interruption\.reason\]/, '不得直出内部码');
   assert.match(tasks, /title="Details"/, '打开按钮文案与同屏英文统一（B2-F5）');
+});
+
+test('the task detail screen exposes the materials entry point', async () => {
+  const screen = await import('./screens/TaskDetailScreen.tsx');
+  const offline = screen.TaskDetailScreen({ view: undefined, loading: false, error: 'x', onRefresh: () => {}, onOpenMaterials: () => {} });
+  assert.ok(JSON.stringify(offline).includes('重试'), 'offline fallback still renders');
+  const view: import('@weknora/mobile-core').TaskDetailView = {
+    taskId: 'task-1', runId: 'run-1', title: '报告', lifecycle: 'active', runStatus: 'succeeded', attention: 'none',
+    executionStatus: 'succeeded', settlementStatus: 'settled', revision: 1, cursor: 2, incomplete: false, connection: 'drained',
+    timeline: [], duplicateSeqs: [],
+  };
+  const withEntry = screen.TaskDetailScreen({ view, loading: false, onRefresh: () => {}, onOpenMaterials: () => {} });
+  assert.ok(JSON.stringify(withEntry).includes('任务材料'), 'the materials entry renders when the callback is provided');
+  const withoutEntry = screen.TaskDetailScreen({ view, loading: false, onRefresh: () => {} });
+  assert.ok(!JSON.stringify(withoutEntry).includes('任务材料'), 'no entry without the callback (older callers compile unchanged)');
+});
+
+test('the materials screen and route consume the Task Material interface only', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { dirname, join } = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  const here = dirname(fileURLToPath(import.meta.url));
+  const composition = readFileSync(join(here, 'composition.ts'), 'utf8');
+  assert.match(composition, /createTaskMaterial\(/, 'composition must instantiate the Task Material module');
+  assert.match(composition, /createMobileMaterialRemote/, 'composition must bind the remote adapter to the module');
+  for (const relative of ['screens/MaterialsScreen.tsx', 'materials-view.ts', 'app/tasks/materials.tsx']) {
+    const source = readFileSync(join(here, relative), 'utf8');
+    assert.equal(/@weknora\/(api-client|contracts)/.test(source), false, `${relative} must consume the Task Material Interface only`);
+  }
+  const route = await import('./app/tasks/materials.tsx');
+  assert.equal(typeof route.default, 'function', 'src/app/tasks/materials.tsx must default-export the materials route');
+  const screen = await import('./screens/MaterialsScreen.tsx');
+  assert.equal(typeof screen.MaterialsScreen, 'function');
 });

@@ -8,7 +8,10 @@ import { createMobileRuntime } from '@weknora/mobile-core';
 import { createScopedVault, createWebCryptoCipher, createInMemoryTaskProjectionStore } from '@weknora/mobile-core';
 import type { MobileRuntime, RuntimeSnapshot, ScopedVault, Deployment } from '@weknora/mobile-core';
 import { createTaskOffice, type TaskOffice } from '@weknora/mobile-core';
+import { createTaskMaterial } from '@weknora/mobile-core';
+import type { TaskMaterial } from '@weknora/mobile-core';
 import { createTaskOfficeRemote } from '@weknora/api-client/mobile/task-office';
+import { createMobileMaterialRemote } from '@weknora/api-client/mobile/materials';
 import { createNativeOidcBrowser } from './adapters/oidc-browser.ts';
 import { createNativeSecurePendingOidcStore } from './adapters/secure-store.ts';
 import type { SecureStorePort } from './adapters/secure-store.ts';
@@ -17,6 +20,7 @@ import { createNativeSecureCredentialStore } from './adapters/credential-store.t
 import { createNativeSecureDeploymentStore } from './adapters/deployment-store.ts';
 import { streamAuthorizedSse, type SseFetchLike } from './adapters/sse-stream.ts';
 import { createNativeSecureDeploymentRegistry } from './adapters/deployment-registry.ts';
+import { createFetchBlobAdapter, createNativeSharePortIfAvailable } from './adapters/material-adapters.ts';
 import { HomeScreen } from './screens/HomeScreen.tsx';
 import { TasksScreen } from './screens/TasksScreen.tsx';
 import { DeploymentLoginScreen, validatedDeploymentOrigin } from './screens/DeploymentLoginScreen.tsx';
@@ -141,6 +145,27 @@ export function activeTaskOffice(): TaskOffice | undefined {
   const snapshot = activeRuntime.snapshot();
   if (snapshot.surface !== 'authorized' || !snapshot.deployment || !snapshot.identity?.userId) return undefined;
   return taskOfficeFor(activeRuntime, snapshot.deployment.origin);
+}
+
+const taskMaterials = new Map<string, TaskMaterial>();
+
+/** Task Material 按 deployment origin 记忆化；lease 由 Runtime 提供，切租户即 fail closed（module-seams §7）。 */
+function taskMaterialFor(activeRuntime: MobileRuntime, origin: string): TaskMaterial {
+  let material = taskMaterials.get(origin);
+  if (!material) {
+    const remote = createMobileMaterialRemote({ origin, request: (input) => activeRuntime.authorizedRequest(input) });
+    material = createTaskMaterial({ remote, blob: createFetchBlobAdapter(), share: createNativeSharePortIfAvailable() });
+    taskMaterials.set(origin, material);
+  }
+  return material;
+}
+
+/** 详情/材料路由经此取当前授权 scope 的 Task Material（无授权面返回 undefined）。 */
+export function activeTaskMaterial(): TaskMaterial | undefined {
+  const activeRuntime = runtime();
+  const snapshot = activeRuntime.snapshot();
+  if (snapshot.surface !== 'authorized' || !snapshot.deployment || !snapshot.identity?.userId) return undefined;
+  return taskMaterialFor(activeRuntime, snapshot.deployment.origin);
 }
 
 /** Selects a visible surface only from the presentation-safe Runtime snapshot. */
