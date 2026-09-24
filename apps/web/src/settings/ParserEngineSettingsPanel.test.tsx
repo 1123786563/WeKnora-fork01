@@ -92,12 +92,14 @@ test('mineru drawer exposes the Vue config controls (backend, parse method, lang
   try {
     (container.querySelector('[data-testid="parser-engine-card-mineru"]') as HTMLButtonElement).click();
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    /* SettingDrawer 同构后抽屉经 t-drawer attach body 渲染（body portal），
+       配置控件不在面板 container 子树内——钩子与文案断言查 document。 */
     // S6：tdesign Select 根不透传 data-*（台账 #8），select 断言走语义类名钩子。
     for (const hook of ['.wk-parser-sel-mineru-model', '[data-testid="mineru-vllm-server-url"]', '.wk-parser-sel-mineru-parse-method', '[data-testid="mineru-language"]']) {
-      assert.ok(container.querySelector(hook), `${hook} control renders in the drawer`);
+      assert.ok(document.querySelector(hook), `${hook} control renders in the drawer`);
     }
-    assert.match(container.textContent ?? '', /公式识别/);
-    assert.match(container.textContent ?? '', /表格识别/);
+    assert.match(document.body.textContent ?? '', /公式识别/);
+    assert.match(document.body.textContent ?? '', /表格识别/);
   } finally {
     await cleanup();
   }
