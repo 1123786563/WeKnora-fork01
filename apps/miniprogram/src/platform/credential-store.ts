@@ -23,7 +23,12 @@ export function readStoredCredential(store: ValueStore, origin: string): StoredC
   return { token, refreshToken };
 }
 
-/** 一次性收养旧登录态（D7 语义迁移）：同 origin 的大小写变体收养首个有效 bearer 后清除；垃圾变体直接清除；其他 origin 不动。 */
+/**
+ * 一次性收养旧登录态（D7 语义迁移）：同 origin 的大小写变体收养首个有效 bearer 后清除；
+ * 变体键一律移除，canonical 仅在为空时写入（canonical 已有凭据则只清变体、不覆盖）。
+ * normalizeApiOrigin 不归一空白，尾随空白等畸形变体会被当作不同 origin 原样保留、
+ * 不在此清除——畸形清理待 Task 3 重写 auth.ts 归一化时统一处置（审查修复轮 1 注记）。
+ */
 export function adoptLegacyCredentials(store: ValueStore, origin: string): void {
   const canonical = credentialKeyOf(origin);
   for (const key of store.keys?.() ?? []) {

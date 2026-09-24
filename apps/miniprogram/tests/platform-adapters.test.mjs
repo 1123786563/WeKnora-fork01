@@ -51,6 +51,7 @@ test('credential store: legacy bearer shape and host-case variants are adopted e
   credentialStore.adoptLegacyCredentials(store, 'https://api.example.test');
   assert.deepEqual(credentialStore.readStoredCredential(store, 'https://api.example.test'), { token: 'legacy', refreshToken: 'legacy-r' });
   assert.equal(store.keys().includes('wk:auth:https://API.example.test'), false, 'case variant removed after adoption');
+  assert.equal(store.keys().includes('wk:auth:https://api.example.test '), true, 'malformed trailing-space key stays: normalizeApiOrigin does not fold whitespace; cleanup defers to the Task 3 auth.ts rewrite');
   assert.deepEqual(credentialStore.readStoredCredential(store, 'https://other.example.test'), { token: 'other', refreshToken: 'other-r' }, 'other origin untouched');
 });
 
