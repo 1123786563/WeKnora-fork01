@@ -155,7 +155,7 @@ func TestCraftAccessProductionSessionAssemblyAuthAndAudit(t *testing.T) {
 	})
 	r.Use(g.ensureAPIKeyAuthorizer().Middleware())
 	v1 := r.Group("/api/v1")
-	RegisterSessionRoutes(v1, &session.Handler{}, nil, g, features)
+	registerSessionRoutes(v1, RouterParams{SessionHandler: &session.Handler{}, CraftFeatureRoutes: features}, g)
 
 	request := func(method, path, user, key, body string) *httptest.ResponseRecorder {
 		t.Helper()

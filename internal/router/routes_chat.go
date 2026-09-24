@@ -92,6 +92,13 @@ func RegisterSessionShareRoutes(r *gin.RouterGroup, handler *session.Handler, g 
 // the message routes above. A future refactor can introduce
 // per-session ownership in the middleware layer the same way KB/agent
 // routes do today.
+// registerSessionRoutes is the container/router seam. Keeping RouterParams in
+// this call ensures each NewRouter mounts only the Craft feature registry
+// provided by the same dig assembly.
+func registerSessionRoutes(r *gin.RouterGroup, params RouterParams, g *rbacGuards) {
+	RegisterSessionRoutes(r, params.SessionHandler, params.MessageSuggestionHandler, g, params.CraftFeatureRoutes)
+}
+
 func RegisterSessionRoutes(
 	r *gin.RouterGroup,
 	handler *session.Handler,

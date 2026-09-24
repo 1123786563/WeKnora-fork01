@@ -58,7 +58,8 @@ func TestCraftT08Journey(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []string{"task-1"}, listed)
 	var audits []struct{ Action, TargetUserID, Details string }
-	require.NoError(t, db.Table("audit_logs").Order("id").Find(&audits).Error)
+	require.NoError(t, db.Table("audit_logs").Where("action IN ?", []string{"craft.member_added", "craft.member_revoked"}).Order("id").Find(&audits).Error)
+	require.Len(t, audits, 3)
 	require.Equal(t, []string{"craft.member_added", "craft.member_added", "craft.member_revoked"}, []string{audits[0].Action, audits[1].Action, audits[2].Action})
 	require.Contains(t, audits[0].Details, `"role":"viewer"`)
 	var count int64
@@ -98,13 +99,67 @@ func TestCraftT08Journey(t *testing.T) {
 	require.Len(t, members, 3)
 }
 
+func TestCraftTaskLookupIsTenantAndSessionScopedIndependentOfGrant(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
+	require.NoError(t, err)
+	for _, ddl := range []string{
+		`CREATE TABLE sessions (id text primary key, tenant_id integer not null, user_id text not null, deleted_at datetime)`,
+		`CREATE TABLE craft_sessions (session_id text primary key, tenant_id integer not null, kind text not null)`,
+		`INSERT INTO sessions (id,tenant_id,user_id) VALUES ('task-1',1,'owner'),('plain-1',1,'owner'),('task-2',2,'owner')`,
+		`INSERT INTO craft_sessions (session_id,tenant_id,kind) VALUES ('task-1',1,'web'),('task-2',2,'web')`,
+	} {
+		require.NoError(t, db.Exec(ddl).Error)
+	}
+	lookup := NewCraftAccessService(db)
+	registered, err := lookup.IsCraftTask(context.Background(), 1, "task-1")
+	require.NoError(t, err)
+	require.True(t, registered, "classification is based on registration, without requiring the actor to have a grant")
+	registered, err = lookup.IsCraftTask(context.Background(), 1, "task-2")
+	require.ErrorIs(t, err, craft.ErrNotFound, "same session id in another tenant is an inconsistent session lookup")
+	require.False(t, registered)
+	registered, err = lookup.IsCraftTask(context.Background(), 1, "plain-1")
+	require.NoError(t, err)
+	require.False(t, registered, "ordinary sessions remain generic")
+	_, err = (*CraftAccessService)(nil).IsCraftTask(context.Background(), 1, "task-1")
+	require.ErrorIs(t, err, craft.ErrForbidden, "missing lookup assembly fails closed")
+}
+
+func TestCraftTaskLookupFailsClosedForMissingOrDeletedSession(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
+	require.NoError(t, err)
+	for _, ddl := range []string{
+		`CREATE TABLE sessions (id text primary key, tenant_id integer not null, user_id text not null, deleted_at datetime)`,
+		`CREATE TABLE craft_sessions (session_id text primary key, tenant_id integer not null, kind text not null)`,
+		`INSERT INTO sessions (id,tenant_id,user_id) VALUES ('active-craft',1,'owner'),('deleted-craft',1,'owner'),('active-generic',1,'owner'),('wrong-tenant',2,'owner')`,
+		`INSERT INTO craft_sessions (session_id,tenant_id,kind) VALUES ('active-craft',1,'web'),('deleted-craft',1,'web'),('wrong-tenant',2,'web')`,
+		`UPDATE sessions SET deleted_at = CURRENT_TIMESTAMP WHERE id = 'deleted-craft'`,
+	} {
+		require.NoError(t, db.Exec(ddl).Error)
+	}
+
+	lookup := NewCraftAccessService(db)
+	registered, err := lookup.IsCraftTask(context.Background(), 1, "active-craft")
+	require.NoError(t, err)
+	require.True(t, registered)
+	registered, err = lookup.IsCraftTask(context.Background(), 1, "active-generic")
+	require.NoError(t, err)
+	require.False(t, registered, "only an existing active generic session may classify as non-Craft")
+
+	for _, sessionID := range []string{"deleted-craft", "missing", "wrong-tenant"} {
+		t.Run(sessionID, func(t *testing.T) {
+			registered, err := lookup.IsCraftTask(context.Background(), 1, sessionID)
+			require.ErrorIs(t, err, craft.ErrNotFound, "missing, deleted, or mismatched sessions must fail closed")
+			require.False(t, registered)
+		})
+	}
+}
+
 // The lane's local DDL above isolates policy failures; this path also checks
 // that T08's real migration and the existing sessions/audit schema agree.
 func TestCraftAccessMigrationJourney(t *testing.T) {
 	db := openCraftSessionDB(t)
 	require.NoError(t, db.Exec(`INSERT INTO sessions (id, tenant_id, title, user_id, engine_type) VALUES ('task-migrated',1,'craft','u1','trpc')`).Error)
 	require.NoError(t, db.Exec(`INSERT INTO craft_sessions (session_id, tenant_id, kind) VALUES ('task-migrated',1,'web')`).Error)
-	require.NoError(t, db.Exec(`INSERT INTO tenant_members (tenant_id,user_id,role,status,joined_at,created_at,updated_at) VALUES (1,'u1','contributor','active',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP),(1,'u2','admin','active',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)`).Error)
 	svc := NewCraftAccessService(db)
 	owner := craft.Scope{TenantID: 1, UserID: "u1", SessionID: "task-migrated"}
 	viewer := craft.Scope{TenantID: 1, UserID: "u2", SessionID: "task-migrated"}
@@ -153,4 +208,63 @@ func TestCraftAccessMigrationJourney(t *testing.T) {
 	require.Equal(t, replacementMemberID, grantMembershipID)
 	require.NoError(t, svc.Revoke(context.Background(), owner, "u2"))
 	require.ErrorIs(t, svc.CheckTaskAccess(context.Background(), viewer, craft.TaskRead), craft.ErrForbidden)
+}
+
+func TestCraftAccessDenialAuditIsTenantScopedAndBounded(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
+	require.NoError(t, err)
+	for _, ddl := range []string{
+		`CREATE TABLE sessions (id text primary key, tenant_id integer not null, user_id text not null, deleted_at datetime)`,
+		`CREATE TABLE craft_sessions (session_id text primary key, tenant_id integer not null, kind text not null)`,
+		`CREATE TABLE tenant_members (id integer primary key, tenant_id integer not null, user_id text not null, status text not null, deleted_at datetime)`,
+		`CREATE TABLE craft_task_grants (tenant_id integer not null, session_id text not null, user_id text not null, membership_id integer not null, role text not null, granted_by text not null, created_at datetime, updated_at datetime, primary key (tenant_id, session_id, user_id))`,
+		`CREATE TABLE audit_logs (id integer primary key autoincrement, tenant_id integer, actor_user_id text, action text, scope_type text, scope_id text, target_type text, target_id text, target_user_id text, outcome text, details text, created_at datetime)`,
+		`INSERT INTO sessions (id,tenant_id,user_id) VALUES ('task-1',1,'owner'),('task-2',2,'owner')`,
+		`INSERT INTO craft_sessions (session_id,tenant_id,kind) VALUES ('task-1',1,'web'),('task-2',2,'web')`,
+		`INSERT INTO tenant_members (id,tenant_id,user_id,status) VALUES (1,1,'owner','active'),(2,1,'viewer','active'),(3,1,'admin','active'),(4,2,'foreign','active')`,
+		`INSERT INTO craft_task_grants (tenant_id,session_id,user_id,membership_id,role,granted_by) VALUES (1,'task-1','viewer',2,'viewer','owner')`,
+	} {
+		require.NoError(t, db.Exec(ddl).Error)
+	}
+	svc := NewCraftAccessService(db)
+	ctx := context.Background()
+	visible := func(user string) craft.Scope { return craft.Scope{TenantID: 1, UserID: user, SessionID: "task-1"} }
+
+	// Both no-grant and disallowed-role decisions on a known Task are durable.
+	require.ErrorIs(t, svc.CheckTaskAccess(ctx, visible("admin"), craft.TaskRead), craft.ErrForbidden)
+	require.ErrorIs(t, svc.CheckTaskAccess(ctx, visible("viewer"), craft.TaskWrite), craft.ErrForbidden)
+	// A hidden/missing Task, malformed scope, or a database fault is not a Task denial record.
+	require.ErrorIs(t, svc.CheckTaskAccess(ctx, craft.Scope{TenantID: 1, UserID: "viewer", SessionID: "missing"}, craft.TaskRead), craft.ErrNotFound)
+	require.ErrorIs(t, svc.CheckTaskAccess(ctx, craft.Scope{TenantID: 1, UserID: "foreign", SessionID: "task-2"}, craft.TaskRead), craft.ErrNotFound)
+	require.ErrorIs(t, svc.CheckTaskAccess(ctx, craft.Scope{TenantID: 0, UserID: "viewer", SessionID: "task-1"}, craft.TaskRead), craft.ErrForbidden)
+
+	var rows []craftAccessAudit
+	require.NoError(t, db.Where("action = ?", "craft.access_denied").Order("id").Find(&rows).Error)
+	require.Len(t, rows, 2)
+	for i, action := range []string{"read", "write"} {
+		require.Equal(t, uint64(1), rows[i].TenantID)
+		require.Equal(t, []string{"admin", "viewer"}[i], rows[i].ActorUserID)
+		require.Equal(t, "craft.access_denied", rows[i].Action)
+		require.Equal(t, "session", rows[i].ScopeType)
+		require.Equal(t, "task-1", rows[i].ScopeID)
+		require.Equal(t, "denied", rows[i].Outcome)
+		require.JSONEq(t, `{"task_action":"`+action+`","reason":"policy_denied"}`, string(rows[i].Details))
+	}
+
+	// Identical checks are independent decisions; no time-window dedup may hide them.
+	require.ErrorIs(t, svc.CheckTaskAccess(ctx, visible("admin"), craft.TaskRead), craft.ErrForbidden)
+	var count int64
+	require.NoError(t, db.Model(&craftAccessAudit{}).Where("action = ?", "craft.access_denied").Count(&count).Error)
+	require.EqualValues(t, 3, count)
+	// Successful reads do not create denial rows; owner is always allowed.
+	require.NoError(t, svc.CheckTaskAccess(ctx, visible("owner"), craft.TaskRead))
+	require.NoError(t, svc.CheckTaskAccess(ctx, visible("viewer"), craft.TaskRead))
+	require.NoError(t, db.Model(&craftAccessAudit{}).Where("action = ?", "craft.access_denied").Count(&count).Error)
+	require.EqualValues(t, 3, count)
+	require.NoError(t, db.Exec(`UPDATE tenant_members SET status = 'inactive' WHERE tenant_id = 1 AND user_id = 'viewer'`).Error)
+	require.ErrorIs(t, svc.CheckTaskAccess(ctx, visible("viewer"), craft.TaskRead), craft.ErrForbidden)
+	require.NoError(t, db.Model(&craftAccessAudit{}).Where("action = ?", "craft.access_denied").Count(&count).Error)
+	require.EqualValues(t, 4, count, "stale tenant membership on an existing Task is audited")
+	require.NoError(t, db.Migrator().DropTable("audit_logs"))
+	require.ErrorIs(t, svc.CheckTaskAccess(ctx, visible("viewer"), craft.TaskRead), craft.ErrForbidden, "audit sink failure does not change a refusal into authorization or a new error")
 }

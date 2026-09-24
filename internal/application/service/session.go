@@ -17,6 +17,7 @@ import (
 	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
 	chatpipeline "github.com/Tencent/WeKnora/internal/modules/conversation/chat_pipeline"
+	"github.com/Tencent/WeKnora/internal/modules/craft"
 	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
@@ -141,7 +142,8 @@ type sessionService struct {
 	tenantSkillRepo   repository.TenantSkillRepository
 	// feedbackRepo reads the cross-user feedback rows of one session for the
 	// admin query-history audit snapshot (SP13).
-	feedbackRepo interfaces.FeedbackRepository
+	feedbackRepo    interfaces.FeedbackRepository
+	craftTaskAccess craft.TaskRunAccess
 }
 
 // NewSessionService creates a new session service instance with all required dependencies
@@ -168,6 +170,7 @@ func NewSessionService(cfg *config.Config,
 	sandboxConfigRepo repository.TenantSandboxConfigRepository,
 	tenantSkillRepo repository.TenantSkillRepository,
 	feedbackRepo interfaces.FeedbackRepository,
+	craftTaskAccess craft.TaskRunAccess,
 ) interfaces.SessionService {
 	// The query-history audit snapshot reads the cross-user feedback rows on
 	// every call. A missing repo is a wiring bug, not a runtime condition:
@@ -199,6 +202,7 @@ func NewSessionService(cfg *config.Config,
 		sandboxConfigRepo:     sandboxConfigRepo,
 		tenantSkillRepo:       tenantSkillRepo,
 		feedbackRepo:          feedbackRepo,
+		craftTaskAccess:       craftTaskAccess,
 	}
 	// The durable tRPC worker resolves its graph executor lazily because the
 	// runtime is constructed before this service in the dependency graph.
@@ -287,6 +291,36 @@ func (s *sessionService) GetSession(ctx context.Context, id string) (*types.Sess
 	logger.Infof(ctx, "Retrieving session, ID: %s, tenant ID: %d", id, tenantID)
 
 	// Get session from repository
+	if s.craftTaskAccess != nil {
+		registeredCraft, classifyErr := s.craftTaskAccess.IsCraftTask(ctx, tenantID, id)
+		if classifyErr != nil {
+			return nil, apperrors.ErrSessionNotFound
+		}
+		if registeredCraft {
+			scope := craft.Scope{TenantID: tenantID, UserID: userID, SessionID: id}
+			if accessErr := s.craftTaskAccess.CheckTaskAccess(ctx, scope, craft.TaskRead); accessErr != nil {
+				return nil, apperrors.ErrSessionNotFound
+			}
+
+			// A Craft grant permits parent Session metadata reads while the
+			// persisted owner remains the key used to load the storage row.
+			// GetByID is scoped to the authenticated tenant, not the owner.
+			session, err := s.sessionRepo.GetByID(ctx, tenantID, id)
+			if err != nil {
+				return nil, err
+			}
+
+			// Recheck registration after loading metadata so a concurrent
+			// deletion/deregistration cannot turn this into a generic read.
+			stillCraft, recheckErr := s.craftTaskAccess.IsCraftTask(ctx, tenantID, id)
+			if recheckErr != nil || !stillCraft {
+				return nil, apperrors.ErrSessionNotFound
+			}
+
+			logger.Infof(ctx, "Session retrieved successfully, ID: %s, tenant ID: %d", session.ID, session.TenantID)
+			return session, nil
+		}
+	}
 	session, err := loadSessionForRead(ctx, s.sessionRepo, tenantID, userID, id)
 	if err != nil {
 		logger.ErrorWithFields(ctx, err, map[string]interface{}{

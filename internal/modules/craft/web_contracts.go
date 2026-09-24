@@ -13,6 +13,21 @@ type TaskAccessChecker interface {
 	CheckTaskAccess(context.Context, Scope, TaskAction) error
 }
 
+// CraftTaskLookup classifies a durable session from its tenant-scoped
+// registration row. It is independent of actor grants and request snapshots:
+// snapshots can predate the typed Craft manifest, while grant checks cannot
+// distinguish a non-Craft session from an inaccessible Craft task.
+type CraftTaskLookup interface {
+	IsCraftTask(context.Context, uint64, string) (bool, error)
+}
+
+// TaskRunAccess is the worker's complete authority seam: authoritative task
+// classification plus a live action check for registered Craft tasks.
+type TaskRunAccess interface {
+	TaskAccessChecker
+	CraftTaskLookup
+}
+
 type TaskAction string
 
 const (

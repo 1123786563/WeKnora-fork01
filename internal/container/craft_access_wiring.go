@@ -8,9 +8,9 @@ import (
 	"github.com/Tencent/WeKnora/internal/modules/craft"
 )
 
-// craftTaskAccessChecker exposes the same persistent policy instance through
-// the narrow port used by Craft services that need Task authorization.
-func craftTaskAccessChecker(svc *service.CraftAccessService) craft.TaskAccessChecker {
+// craftTaskAccessChecker exposes the same persistent service through the
+// worker's combined classification and authorization port.
+func craftTaskAccessChecker(svc *service.CraftAccessService) craft.TaskRunAccess {
 	return svc
 }
 

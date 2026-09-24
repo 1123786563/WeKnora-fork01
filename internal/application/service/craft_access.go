@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/modules/craft"
 	"github.com/Tencent/WeKnora/internal/types"
 	"gorm.io/gorm"
@@ -113,12 +114,71 @@ func (s *CraftAccessService) Role(ctx context.Context, scope craft.Scope) (craft
 func (s *CraftAccessService) CheckTaskAccess(ctx context.Context, scope craft.Scope, action craft.TaskAction) error {
 	role, err := s.Role(ctx, scope)
 	if err != nil {
+		if errors.Is(err, craft.ErrForbidden) && s.knownTask(ctx, scope) {
+			s.auditTaskDenial(ctx, scope, action)
+		}
 		return err
 	}
 	if !role.AllowsTaskAction(action) {
+		s.auditTaskDenial(ctx, scope, action)
 		return craft.ErrForbidden
 	}
 	return nil
+}
+
+// knownTask distinguishes a proven refusal on a tenant-visible Craft Task
+// from malformed, missing, hidden, or unavailable Task lookups.
+func (s *CraftAccessService) knownTask(ctx context.Context, scope craft.Scope) bool {
+	_, err := s.session(ctx, scope)
+	return err == nil
+}
+
+func (s *CraftAccessService) auditTaskDenial(ctx context.Context, scope craft.Scope, action craft.TaskAction) {
+	// TaskAction is externally reachable through application seams, so only
+	// persist the finite action vocabulary defined by the Craft contract.
+	switch action {
+	case craft.TaskRead, craft.TaskWrite, craft.TaskShare, craft.TaskOpenSource, craft.TaskPreview:
+	default:
+		return
+	}
+	err := s.db.WithContext(ctx).Create(&craftAccessAudit{
+		TenantID: scope.TenantID, ActorUserID: scope.UserID, Action: "craft.access_denied",
+		ScopeType: "session", ScopeID: scope.SessionID, Outcome: "denied",
+		Details: types.JSON(fmt.Sprintf(`{"task_action":%q,"reason":"policy_denied"}`, action)), CreatedAt: time.Now(),
+	}).Error
+	if err != nil {
+		logger.ErrorWithFields(ctx, err, map[string]interface{}{"audit_action": "craft.access_denied"})
+	}
+}
+
+// IsCraftTask classifies an existing active session from the durable
+// tenant-scoped Craft registration, without using actor grants or snapshot
+// metadata. A missing, deleted, or tenant-mismatched session is an error so
+// callers cannot mistake inconsistent state for a generic session. Database
+// errors propagate so callers can fail closed instead of treating an
+// unavailable lookup as a generic session.
+func (s *CraftAccessService) IsCraftTask(ctx context.Context, tenantID uint64, sessionID string) (bool, error) {
+	if s == nil || s.db == nil || tenantID == 0 || strings.TrimSpace(sessionID) == "" {
+		return false, craft.ErrForbidden
+	}
+	var sessionCount int64
+	err := s.db.WithContext(ctx).Table("sessions").
+		Where("tenant_id = ? AND id = ? AND deleted_at IS NULL", tenantID, sessionID).
+		Limit(1).Count(&sessionCount).Error
+	if err != nil {
+		return false, err
+	}
+	if sessionCount == 0 {
+		return false, craft.ErrNotFound
+	}
+	var registrationCount int64
+	err = s.db.WithContext(ctx).Table("craft_sessions").
+		Where("tenant_id = ? AND session_id = ?", tenantID, sessionID).
+		Limit(1).Count(&registrationCount).Error
+	if err != nil {
+		return false, err
+	}
+	return registrationCount > 0, nil
 }
 
 func (s *CraftAccessService) owner(ctx context.Context, scope craft.Scope) error {

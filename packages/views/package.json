@@ -18,6 +18,7 @@
     "./craft/files": "./src/craft/files.tsx",
     "./craft/home": "./src/craft/home.tsx",
     "./craft/interaction": "./src/craft/interaction.tsx",
+    "./craft/access": "./src/craft/access.tsx",
     "./craft/library": "./src/craft/library.tsx",
     "./craft/presentation": "./src/craft/presentation.ts",
     "./craft/preview": "./src/craft/preview.tsx",
