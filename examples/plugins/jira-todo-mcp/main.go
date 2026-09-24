@@ -93,32 +93,49 @@ func Run(ctx context.Context, opts Options) error {
 	if err != nil {
 		return fmt.Errorf("listen %s: %w", listenAddr, err)
 	}
-	srv := &http.Server{
-		Handler:           handler,
-		ReadHeaderTimeout: 10 * time.Second,
-	}
+	srv := newHTTPServer(handler)
 	done := make(chan error, 1)
 	go func() { done <- srv.Serve(ln) }()
 	select {
 	case <-ctx.Done():
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		err := srv.Shutdown(shutdownCtx)
-		if err != nil {
-			// 跨任务转交 T01-R2-F6：/mcp 是 streamable HTTP
-			//（WithStateLess(false)），活跃 SSE 长连接永远不会变为 idle，
-			// ctx 取消时 Shutdown 必然等满 5s 超时——残留连接与 Serve
-			// goroutine 靠 Close 强制断开回收（http.Server 文档对 Shutdown
-			// 超时后应使用 Close 的约定）。
-			_ = srv.Close()
-		}
-		return err
+		return shutdownGracefully(srv, 5*time.Second)
 	case err := <-done:
 		if err == http.ErrServerClosed {
 			return nil
 		}
 		return err
 	}
+}
+
+// newHTTPServer 构造本服务的 http.Server，集中钉住超时纪律（OCR 二轮
+// F1）：/mcp、/register、/authorize、/token 都是未认证 1MiB 输入面，
+// MaxBytesReader 只封顶字节数不封顶读取时间——ReadTimeout 覆盖整个请求
+// 读取阶段（gate 在 handler 前已读完 body，不影响 /mcp SSE 流式响应），
+// IdleTimeout 回收空闲 keep-alive 连接；WriteTimeout 必须保持为零，否则
+// 会切断 /mcp 的 SSE 长响应。
+func newHTTPServer(handler http.Handler) *http.Server {
+	return &http.Server{
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       60 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
+}
+
+// shutdownGracefully 宽限停机并在超时后强制回收（跨任务转交 T01-R2-F6 +
+// OCR 二轮 F4）：/mcp 是 streamable HTTP（WithStateLess(false)），活跃
+// SSE 长连接永远不会变为 idle——Shutdown 必然等满超时，Close 强制断开
+// 残留连接与 Serve goroutine（http.Server 文档对 Shutdown 超时后应使用
+// Close 的约定）。Close 之后进程状态已干净：无论宽限关闭还是强制回收，
+// 停机都算完成，返回 nil——把超时错误上抛只会让 log.Fatalf 把「已妥善
+// 强制停机」误判为失败。
+func shutdownGracefully(srv *http.Server, grace time.Duration) error {
+	ctx, cancel := context.WithTimeout(context.Background(), grace)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		_ = srv.Close()
+	}
+	return nil
 }
 
 // validateBaseURL 校验一个配置方提供的 URL：仅 http/https 且带非空
@@ -154,6 +171,25 @@ func validateBaseURL(where, raw string) error {
 	return nil
 }
 
+// validateServiceBaseURL 在 validateBaseURL 之上收紧服务自身 BaseURL
+// （OCR 二轮 F3）：元数据端点、WWW-Authenticate challenge 与 manifest
+// endpoint 都由它拼接——携带 path/query/fragment 时（fragment 吞掉路径、
+// query 干扰路由、sub-path 与根挂载的 mux 不匹配）产物全部不可用却静默
+// 启动。JiraBaseURL 不适用（Jira Data Center 常合法部署在 /jira 下）。
+func validateServiceBaseURL(where, raw string) error {
+	if err := validateBaseURL(where, raw); err != nil {
+		return err
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("%s %q: %w", where, raw, err)
+	}
+	if u.Path != "" && u.Path != "/" || u.RawQuery != "" || u.Fragment != "" {
+		return fmt.Errorf("%s must be a bare origin (no path/query/fragment), got %q", where, raw)
+	}
+	return nil
+}
+
 // parseHostList 解析逗号分隔的 host 名单（PLUGIN_ALLOWED_REDIRECT_HOSTS）：
 // 逐项去空白并小写化；空串或全空白 → nil（不限制）。名单项不含 scheme/path
 // ——与 /register 的 redirect_uri host 匹配（小写主机名比较）。
@@ -174,7 +210,7 @@ func parseHostList(raw string) []string {
 // NewHandler 校验 Options 并组装完整 HTTP handler：/mcp（MCP 端点）、
 // OAuth 端点集与 /manifest.json。
 func NewHandler(opts Options) (http.Handler, error) {
-	if err := validateBaseURL("BaseURL", opts.BaseURL); err != nil {
+	if err := validateServiceBaseURL("BaseURL", opts.BaseURL); err != nil {
 		return nil, err
 	}
 	// fail-closed：PLUGIN_JIRA_BASE_URL 缺失时拒绝启动，不猜测默认值。
