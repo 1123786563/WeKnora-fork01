@@ -161,7 +161,8 @@ test('surface routing keeps upgrade-required free of authorized controls and gua
   const homeButtons = descendants(homeElement).filter(({ type }) => type === 'Button').map(({ props }) => props.title);
   assert.equal(homeButtons.includes('View all tasks'), true);
   assert.equal(homeButtons.includes('Open Resources'), true, 'removing the landing screen must not take away the only /resources entry');
-  assert.equal(homeButtons.includes('Open Inbox'), true, 'the authorized home keeps a resident attention inbox entry (T08)');
+  assert.equal(homeButtons.includes('Open Approvals'), true, 'the authorized home keeps a resident attention inbox entry (T08, relocated to /attention during #41 integration)');
+  assert.equal(homeButtons.includes('Open Inbox'), true, 'the authorized home keeps the notification inbox entry (#41)');
   const homeText = descendants(homeElement).filter(({ type }) => type === 'Text').flatMap(({ props }) => props.children).join(' ');
   assert.equal(homeText.includes('Acme'), true);
   assert.equal((authorized.props as { key?: string }).key, 'https://weknora.example.test::tenant-1', 'the home screen is keyed by deployment origin + active tenant');
@@ -231,8 +232,10 @@ test('the home header activates any listed tenant through the runtime callback',
   });
 
   const buttons = descendants(element).filter(({ type }) => type === 'Button').map(({ props }) => props.title);
-  assert.deepEqual(buttons, ['Acme', 'Beta', 'Sign out', 'New task', 'View all tasks', 'Open Inbox', 'Open Resources', 'Load home'], 'with more than one tenant every tenant is a header switch button');
-  const single = render(HomeScreen, {
+  // 集成合并：HEAD（T08 New task + Open Inbox）∪ t41（#41 Open Inbox）——两分支并行各自加
+  // 入口导致 Open Inbox 重复；集成分流后审批收件箱迁至 /attention（Open Approvals，
+  // T08 常驻入口），行动通知收件箱留守 /inbox（Open Inbox，#41）。
+  assert.deepEqual(buttons, ['Acme', 'Beta', 'Sign out', 'New task', 'View all tasks', 'Open Approvals', 'Open Inbox', 'Open Resources', 'Load home'], 'with more than one tenant every tenant is a header switch button');  const single = render(HomeScreen, {
     deploymentLabel: 'WeKnora',
     tenants: [{ id: '7', name: 'Acme' }],
     activeTenantId: '7',
@@ -968,12 +971,13 @@ test('the /new lifecycle host disposes its controller on unmount, including afte
   assert.equal(calls.length, afterSecond);
 });
 
-test('the inbox route, screen and view consume the task office interface only', async () => {
+test('the attention inbox route, screen and view consume the task office interface only', async () => {
   const { readFileSync } = await import('node:fs');
   const { dirname, join } = await import('node:path');
   const { fileURLToPath } = await import('node:url');
   const here = dirname(fileURLToPath(import.meta.url));
-  for (const relative of ['screens/AttentionInboxScreen.tsx', 'attention-inbox-view.ts', 'app/inbox.tsx']) {
+  // 集成说明：T08 路由原为 app/inbox.tsx；#41 行动通知收件箱并入后迁至 app/attention.tsx。
+  for (const relative of ['screens/AttentionInboxScreen.tsx', 'attention-inbox-view.ts', 'app/attention.tsx']) {
     const source = readFileSync(join(here, relative), 'utf8');
     assert.equal(/@weknora\/(api-client|contracts)/.test(source), false, `${relative} must consume the Task Office Interface only (T08)`);
   }
@@ -1008,4 +1012,165 @@ test('the attention inbox screen renders honest receipt copy and per-kind matrix
   const approve = descendants(element).find(({ type, props }) => type === 'Button' && props.title === '批准');
   (approve!.props.onPress as () => void)();
   assert.deepEqual(decided, [{ interactionId: 'i-1', action: 'approve' }]);
+});
+
+test('the inbox route exists behind a default export', async () => {
+  const inboxRoute = await import('./app/inbox.tsx');
+  assert.equal(typeof inboxRoute.default, 'function', 'src/app/inbox.tsx must default-export the inbox route');
+});
+
+test('notification navigation re-authorizes, parses the safe deep link, and never performs business actions', async () => {
+  const { openNotificationFromInbox } = await import('./composition.ts');
+
+  const calls: string[] = [];
+  const pushes: Array<{ path: string; params?: Record<string, string> }> = [];
+  const push = (path: string, params?: Record<string, string>): void => { pushes.push({ path, params }); };
+  const navigableInbox = {
+    resolveTarget: () => ({ kind: 'task-detail' as const, taskId: 't-1', runId: 'r-1' }),
+    markRead: async (id: string) => { calls.push(`markRead:${id}`); },
+  };
+  const invalidInbox = {
+    resolveTarget: () => undefined,
+    markRead: navigableInbox.markRead,
+  };
+  const authorized = { surface: 'authorized' as const };
+  const unauthorized = { surface: 'deployment-login' as const };
+
+  assert.equal(await openNotificationFromInbox(navigableInbox, authorized, { notificationId: 'n-1' }, push), 'navigated');
+  assert.deepEqual(pushes, [{ path: '/tasks/detail', params: { taskId: 't-1', runId: 'r-1' } }]);
+  assert.deepEqual(calls, ['markRead:n-1']);
+
+  pushes.length = 0; calls.length = 0;
+  assert.equal(await openNotificationFromInbox(navigableInbox, unauthorized, { notificationId: 'n-1' }, push), 'blocked-unauthorized');
+  assert.deepEqual(pushes, [], 'an unauthorized surface must not navigate');
+  assert.deepEqual(calls, [], 'an unauthorized surface must not mark read');
+
+  assert.equal(await openNotificationFromInbox(invalidInbox, authorized, { notificationId: 'n-2' }, push), 'invalid-link');
+  assert.deepEqual(pushes, [], 'a malformed deep link must not navigate');
+  assert.deepEqual(calls, [], 'a malformed deep link must not mark read');
+});
+
+test('device registration is fail-closed without a native push token or device identity', async () => {
+  const { registerActiveDeviceIfPossible } = await import('./composition.ts');
+  const authorizedRuntime = {
+    snapshot: () => ({ surface: 'authorized' as const, deployment: { origin: 'https://weknora.example.test', label: 'Test' } }),
+    authorizedRequest: async () => { throw new Error('must not reach the wire without a token'); },
+    scopeLease: () => undefined,
+  };
+  const unauthorizedRuntime = { snapshot: () => ({ surface: 'deployment-login' as const }) };
+
+  assert.equal(await registerActiveDeviceIfPossible(authorizedRuntime as never, { token: async () => undefined }, { deviceId: async () => 'device-1' }), 'no-token');
+  assert.equal(await registerActiveDeviceIfPossible(authorizedRuntime as never, { token: async () => 'tok' }, { deviceId: async () => undefined }), 'no-device-id');
+  assert.equal(await registerActiveDeviceIfPossible(unauthorizedRuntime as never, { token: async () => 'tok' }, { deviceId: async () => 'device-1' }), 'unauthorized');
+});
+
+test('the home surface keeps a reachable inbox entry point and the inbox screen renders projections', async () => {
+  const { HomeScreen } = await import('./screens/HomeScreen.tsx');
+  hooks().__reset();
+  const home = render(HomeScreen, {
+    deploymentLabel: 'Test', tenants: [{ id: '7' }], activeTenantId: '7',
+    onActivateTenant: () => {}, onSignOut: async () => {},
+    taskOffice: { home: async () => ({ needsMe: [], running: [], recentlyCompleted: [], unreadNotifications: 0, asOf: '2026-09-24T00:00:00Z' }) },
+  });
+  assert.notEqual(
+    descendants(home).find(({ type, props }) => type === 'Button' && props.title === 'Open Inbox'),
+    undefined,
+    'HomeScreen must keep an Open Inbox entry point',
+  );
+
+  const { InboxScreen } = await import('./screens/InboxScreen.tsx');
+  hooks().__reset();
+  const opened: string[] = [];
+  const screen = render(InboxScreen, {
+    view: {
+      items: [
+        { notificationId: 'n-1', kind: 'attention', title: '需要你处理', body: '', createdAt: '2026-09-24T01:00:00Z', read: false, deepLink: 'weknora://tasks/detail?taskId=t-1&runId=r-1' },
+        { notificationId: 'n-2', kind: 'budget', title: '预算事件', body: '', createdAt: '2026-09-24T02:00:00Z', read: true },
+      ],
+      unreadCount: 1,
+      duplicateNotificationIds: [],
+    },
+    loading: false,
+    onRefresh: () => {}, onLoadMore: () => {},
+    onOpenNotification: (item: { notificationId: string }) => { opened.push(item.notificationId); },
+  });
+  const texts = descendants(screen).filter(({ type }) => type === 'Text').map(({ props }) => String(props.children));
+  assert.ok(texts.some((text) => text.includes('未读 1')), 'unread count is visible');
+  const row = descendants(screen).find(({ type, props }) => type === 'Button' && String(props.title).includes('需要你处理'));
+  (row!.props.onPress as () => void)();
+  assert.deepEqual(opened, ['n-1'], 'tapping a row hands the item to the composition-owned navigation seam');
+});
+
+test('tapping a notification whose markRead fails degrades to a visible notice instead of an unhandled rejection', async () => {
+  const { InboxRouteLifecycle } = await import('./app/inbox.tsx');
+  const { InboxScreen } = await import('./screens/InboxScreen.tsx');
+  hooks().__reset();
+  const view: import('@weknora/mobile-core').InboxView = {
+    items: [
+      { notificationId: 'n-1', kind: 'attention', title: '需要你处理', body: '', createdAt: '2026-09-24T01:00:00Z', read: false, deepLink: 'weknora://tasks/detail?taskId=t-1&runId=r-1' },
+    ],
+    unreadCount: 1,
+    duplicateNotificationIds: [],
+  };
+  const inbox = {
+    subscribe(listener: (next: import('@weknora/mobile-core').InboxView) => void) { listener(view); return () => {}; },
+    page: async () => view,
+    more: async () => view,
+    applyHint: async () => view,
+    resolveTarget: () => ({ kind: 'task-detail' as const, taskId: 't-1', runId: 'r-1' }),
+    markRead: async () => { throw new Error('INBOX_BACKEND'); },
+  };
+  const runtime = { snapshot: () => ({ surface: 'authorized' as const }) };
+
+  const unhandled: unknown[] = [];
+  const recordUnhandled = (reason: unknown) => { unhandled.push(reason); };
+  process.on('unhandledRejection', recordUnhandled);
+  try {
+    render(InboxRouteLifecycle, { inbox, runtime });
+    hooks().__mount();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const withRows = render(InboxRouteLifecycle, { inbox, runtime });
+    const screenWithRows = descendants(withRows).find(({ type }) => type === InboxScreen);
+    assert.ok(screenWithRows, 'the route renders the inbox screen');
+    const screenTree = render(InboxScreen, screenWithRows!.props);
+    const row = descendants(screenTree).find(({ type, props }) => type === 'Button' && String(props.title).includes('需要你处理'));
+    assert.ok(row, 'the notification row renders once the projection arrives');
+    (row!.props.onPress as () => void)();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.deepEqual(unhandled, [], 'a failing markRead must never escape the tap handler as an unhandled rejection');
+    const after = render(InboxRouteLifecycle, { inbox, runtime });
+    const screenElement = descendants(after).find(({ type }) => type === InboxScreen);
+    assert.ok(screenElement, 'the route keeps rendering the inbox screen after the failure');
+    assert.match(
+      String((screenElement!.props as { notice?: string }).notice ?? ''),
+      /已读状态同步失败.*INBOX_BACKEND/,
+      'the markRead failure is surfaced as a visible notice carrying the error code',
+    );
+    hooks().__unmount();
+  } finally {
+    process.off('unhandledRejection', recordUnhandled);
+  }
+});
+
+test('the inbox screen surfaces refresh failures in place when a projection is already on screen', async () => {
+  const { InboxScreen } = await import('./screens/InboxScreen.tsx');
+  hooks().__reset();
+  const screen = render(InboxScreen, {
+    view: {
+      items: [
+        { notificationId: 'n-1', kind: 'attention', title: '需要你处理', body: '', createdAt: '2026-09-24T01:00:00Z', read: false, deepLink: 'weknora://tasks/detail?taskId=t-1&runId=r-1' },
+      ],
+      unreadCount: 1,
+      duplicateNotificationIds: [],
+    },
+    loading: false,
+    error: 'INBOX_SCOPE_CHANGED',
+    onRefresh: () => {},
+    onOpenNotification: () => {},
+  });
+  const json = JSON.stringify(screen);
+  assert.ok(json.includes('INBOX_SCOPE_CHANGED'), 'a refresh/load-more failure must be visible in place when a view already exists');
+  assert.ok(json.includes('需要你处理'), 'the already-loaded rows stay on screen instead of being replaced');
+  assert.ok(!json.includes('无法读取行动通知'), 'a screen with a projection must not fall back to the empty-view error branch');
 });

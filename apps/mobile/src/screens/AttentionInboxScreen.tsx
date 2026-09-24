@@ -1,6 +1,6 @@
 import { Button, ScrollView, Text, View } from 'react-native';
 import { INTERACTION_ACTIONS } from '@weknora/mobile-core';
-import type { InboxItem, InteractionActionValue } from '@weknora/mobile-core';
+import type { AttentionInboxItem as InboxItem, InteractionActionValue } from '@weknora/mobile-core';
 import type { AttentionInboxViewState } from '../attention-inbox-view.ts';
 
 const ACTION_LABELS: Record<InteractionActionValue, string> = {

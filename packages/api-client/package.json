@@ -7,6 +7,8 @@
     ".": "./src/index.ts",
     "./chat/native": "./src/chat/native.ts",
     "./embed": "./src/embed/client.ts",
+    "./mobile/devices": "./src/mobile/devices.ts",
+    "./mobile/inbox": "./src/mobile/inbox.ts",
     "./mobile/runtime": "./src/mobile/runtime.ts",
     "./mobile/task-office": "./src/mobile/task-office.ts",
     "./mobile/resources": "./src/mobile/resources.ts",

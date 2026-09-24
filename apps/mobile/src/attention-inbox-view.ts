@@ -1,5 +1,5 @@
 import { TaskOfficeError } from '@weknora/mobile-core';
-import type { AttentionDecisionReceipt, InboxItem, InteractionActionValue, TaskOffice } from '@weknora/mobile-core';
+import type { AttentionDecisionReceipt, AttentionInboxItem as InboxItem, InteractionActionValue, TaskOffice } from '@weknora/mobile-core';
 
 /** Receipt 四态文案（AC2 语义锚点）：recorded 仅表示决定已记录，绝不解释为外部派发完成。 */
 export const ATTENTION_RECEIPT_COPY: Record<AttentionDecisionReceipt['status'], string> = {

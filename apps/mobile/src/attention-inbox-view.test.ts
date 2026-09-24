@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { TaskOfficeError } from '@weknora/mobile-core';
-import type { AttentionDecisionReceipt, InboxItem, TaskOffice } from '@weknora/mobile-core';
+import type { AttentionDecisionReceipt, AttentionInboxItem as InboxItem, TaskOffice } from '@weknora/mobile-core';
 import { createAttentionInboxController, ATTENTION_RECEIPT_COPY } from './attention-inbox-view.ts';
 
 const ITEM: InboxItem = {

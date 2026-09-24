@@ -21,8 +21,13 @@ export type {
   TaskOfficeGoal, TaskOfficePorts, TaskOfficeQuery, TaskStartReceipt, TaskStatusFilter,
 } from './task-office/task-office.ts';
 export { createAttentionDecider, interactionActionAllowed, INTERACTION_ACTIONS } from './task-office/attention-inbox.ts';
+// 集成说明（T08 #38 × #41）：两分支各自定义了 InboxItem/InboxView。行动通知收件箱（#41，
+// inbox/notification-inbox.ts）保留 InboxItem/InboxView 本名；审批交互收件箱（T08，
+// task-office/attention-inbox.ts）在 barrel 以 AttentionInboxItem/AttentionInboxView 别名导出，
+// 消除重复标识符，两者语义并存。
 export type {
-  AttentionDecisionInput, AttentionDecisionReceipt, AttentionDeciderDeps, InboxItem, InboxView,
+  AttentionDecisionInput, AttentionDecisionReceipt, AttentionDeciderDeps,
+  InboxItem as AttentionInboxItem, InboxView as AttentionInboxView,
   InteractionActionValue, InteractionBackendPort, InteractionKindValue, ResolvedDecisionRecord,
 } from './task-office/attention-inbox.ts';
 export type { ScenarioTaskBackend, ScenarioTaskBackendHandlers } from './task-office/in-memory-task-backend.ts';
@@ -35,3 +40,16 @@ export type {
 export type { TaskLifecycleState, TaskTimelineEntry, TaskTimelineKind, TaskTimelineSourceEvent } from './task-office/task-timeline.ts';
 export { isTerminalRunStatus, mergeEventHistory, projectTimeline, taskLifecycleOf, terminalRunStatusOf, timelineKindLabel } from './task-office/task-timeline.ts';
 export type { ScenarioTaskDetailHandlers, ScriptedTaskStream } from './task-office/in-memory-task-detail.ts';
+export { parseNotificationDeepLink } from './inbox/deep-link.ts';
+export type { DeepLinkTarget, TaskDetailDeepLinkTarget } from './inbox/deep-link.ts';
+export { createDeviceRegistry, DeviceError } from './device/device-registry.ts';
+export type { DeviceErrorCode, DevicePlatform, DevicePorts, DeviceRegistrationRecord, DeviceRegistry, DeviceRemote } from './device/device-registry.ts';
+export { createScenarioDeviceRemote } from './device/in-memory-device-remote.ts';
+export type { ScenarioDeviceRemote, ScenarioDeviceSnapshot } from './device/in-memory-device-remote.ts';
+export { createNotificationInbox, InboxError } from './inbox/notification-inbox.ts';
+export type {
+  InboxBackendItem, InboxBackendPage, InboxErrorCode, InboxItem, InboxRemote, InboxView,
+  NotificationInbox, NotificationInboxPorts,
+} from './inbox/notification-inbox.ts';
+export { createScenarioInboxRemote } from './inbox/in-memory-inbox-remote.ts';
+export type { InboxScriptPage, ScenarioInboxRemote } from './inbox/in-memory-inbox-remote.ts';

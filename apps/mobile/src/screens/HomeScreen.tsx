@@ -45,7 +45,10 @@ export function HomeScreen({ deploymentLabel, tenants, activeTenantId, onActivat
       <Button title="Sign out" onPress={() => { void onSignOut(); }} />
       <Button title="New task" onPress={() => router.push('/new')} />
       <Button title="View all tasks" onPress={() => router.push('/tasks')} />
-      {/* T08 Attention Inbox 常驻入口：首页 needsMe 与收件箱同一 Interaction 身份。 */}
+      {/* T08（#38）Attention Inbox 常驻入口：首页 needsMe 与收件箱同一 Interaction 身份。
+          集成说明：/inbox 已归行动通知收件箱（#41），审批收件箱迁至 /attention。 */}
+      <Button title="Open Approvals" onPress={() => router.push('/attention')} />
+      {/* T11（#41）：行动通知收件箱入口。 */}
       <Button title="Open Inbox" onPress={() => router.push('/inbox')} />
       {/* /resources 屏（#32 交付）的常驻入口：占位屏删除后不得丢失可达性。 */}
       <Button title="Open Resources" onPress={() => router.push('/resources')} />
