@@ -1033,3 +1033,54 @@ finding 主体（B3/B4/B5/B2 升级面/B1 UI/B7 仍缺）继续成立。本轮�
   B9 PG 集成迁移测试（blocked-env）、T17 漂移检测持久化闭环（CheckDrift/
   ResolveDrift——本轮 ErrPluginDrift/FilterToolsBySnapshot 已为它备好导出面）
   未实现——分支仍不可按 Issue #106 整体验收通过。
+
+---
+
+# 任务级 OCR 转交 13 项复核轮（R11 轮，2026-09-24）——重复投递，零新 diff
+
+输入：任务级 OCR 分流转交 13 项（T01-R1-F1/F2、T01-R2-F1/F2/F3/F4/F5/F6/
+F7/F9、T01-R3-F1、T01-R4-F1/F2/F5）。逐项对当前 HEAD（c566f0473）复核，
+全部已由前序轮次（R5 F8/F9、R7 F11-F19 及 85db4b1f8 跨任务转交批）修复
+在位——与 R6 轮同型的重复投递，不硬凑新代码：
+
+- T01-R1-F1 scopes [] 形态：plugin.go:85/310 make+copy（32022f0e7）。
+- T01-R2-F1 expires_at 索引：两份迁移 000189:24 / sqlite 000110:22。
+- T01-R2-F2 抓取故障 503：plugin.go:123 ErrManifestFetchFailed 分支。
+- T01-R2-F3 swagger：plugin.go:36-38 @Failure 400/500/503。
+- T01-R3-F1 TTL 上限：plugin_service.go maxPluginPreviewTTL=24h 钳制。
+- T01-R1-F2 state 往返：oauth.go:532 value="%s"（1e9173815）。
+- T01-R2-F4 lookupSession O(1)：oauth.go:299-311 单条查表（R5 F8，R7 复核闭环）。
+- T01-R2-F5 register 严格解析：oauth.go:358-365 err!=nil 一律 400。
+- T01-R2-F6 Shutdown 兜底：main.go:136 _ = srv.Close()（85db4b1f8）。
+- T01-R2-F7 BaseURL 拒非具体 host：main.go:165 IsUnspecified。
+- T01-R2-F9 code_challenge 封顶：oauth.go:56/599 maxCodeChallengeBytes=128。
+- T01-R4-F1 令牌总量封顶：oauth.go:74-85 maxActiveTokens=8192/
+  maxRefreshTokens=4096（R5 F8 + R7 F19）。
+- T01-R4-F2 工具输出封顶：jira.go:241-259 maxToolOutputLines/Bytes +
+  UTF-8 安全截断 + 显式 ⚠ 标注。
+- T01-R4-F5 BaseURL 拒 userinfo：main.go:168 u.User != nil。
+
+## 工作区卫生
+
+按指令删除未跟踪编译产物二进制：examples/plugins/jira-todo-mcp/jira-todo-mcp
+（31,096,082 B）与仓库根 jira-todo-mcp（31,079,298 B）——均为历史 go build
+残留，未跟踪、未入库，直接删除（不采用 .gitignore 方案：仓库 .gitignore
+的 `.*`/`migrations/` 等规则属既有配置，不为一次性产物增行）。未跟踪的
+docs/plans/issue-106-*.md 报告文件非二进制产物，不属于本指令范围，保留。
+
+## R11 轮完成条件
+
+1. 13 项逐项复核证据在位（上行清单）；
+2. 门控重跑：`go test -count=1 ./internal/modules/plugins/ ./internal/handler/`
+   与 `go test -race -count=2 ./examples/plugins/jira-todo-mcp/` 全绿；
+3. 工作区无二进制产物；本节回填；中文提交标注「跨任务转交复核」。
+
+### R11 轮完成记录（2026-09-24）
+
+- 13/13 逐项复核通过（证据见上行清单），零新代码 diff——维持 R6 同型
+  重复投递处置；二进制产物已删（git status ?? 仅余 7 个 docs/plans
+  报告文件，非产物）。
+- 门控（本轮真实运行）：`go test -count=1 ./internal/modules/plugins/
+  ./internal/handler/` ok；`go test -race -count=2
+  ./examples/plugins/jira-todo-mcp/` ok（4.811s）。
+- 提交：仅本文件复核记录（中文，标注「跨任务转交复核」）。
