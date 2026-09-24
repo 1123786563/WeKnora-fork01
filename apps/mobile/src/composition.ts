@@ -25,6 +25,10 @@ import { createNativeSecureDeploymentRegistry } from './adapters/deployment-regi
 import { createDeviceRegistry, createNotificationInbox, type DeviceRegistry, type InboxItem, type NotificationInbox } from '@weknora/mobile-core';
 import { createMobileDeviceRemote } from '@weknora/api-client/mobile/devices';
 import { createMobileInboxRemote } from '@weknora/api-client/mobile/inbox';
+import { createDictation } from '@weknora/mobile-core';
+import type { Dictation } from '@weknora/mobile-core';
+import { createMobileVoiceTranscriptionRemote } from '@weknora/api-client/mobile/voice';
+import { createNativeDictationCaptureIfAvailable } from './adapters/dictation-capture.ts';
 import { createNativePushTokenIfAvailable } from './adapters/push-token.ts';
 import { createNativeDeviceIdentity, nativeDevicePlatform } from './adapters/device-identity.ts';
 import { createFetchBlobAdapter, createNativeSharePortIfAvailable } from './adapters/material-adapters.ts';
@@ -39,6 +43,8 @@ import { createNativeSecureIntentLog } from './adapters/intent-log.ts';
 
 /** App 生命周期单例：Runtime 撤销 scope 时 revoke 的就是这把 vault（#32）。 */
 const nativeScopedVault = createNativeScopedVaultIfAvailable();
+/** 听写捕获原生 Adapter 单例（组合根唯一探测点；不可用时全 App 无麦克风入口，fail closed）。 */
+const nativeDictationCapture = createNativeDictationCaptureIfAvailable();
 let nativeIntentLog: ReturnType<typeof createNativeSecureIntentLog> | undefined;
 /** 惰性解析 expo-secure-store（与 pendingOidcStore 的函数体内 require 同模式；app-smoke 环境有 stub）。 */
 const intentLogOf = (): ReturnType<typeof createNativeSecureIntentLog> => (nativeIntentLog ??= createNativeSecureIntentLog());
@@ -276,6 +282,29 @@ export function activeTaskMaterial(): TaskMaterial | undefined {
   const snapshot = activeRuntime.snapshot();
   if (snapshot.surface !== 'authorized' || !snapshot.deployment || !snapshot.identity?.userId) return undefined;
   return taskMaterialFor(activeRuntime, snapshot.deployment.origin, snapshot.identity.activeTenantId ?? '');
+}
+
+const dictations = new Map<string, Dictation>();
+
+/** 听写 Dictation 按 deployment scope key 记忆化（同 taskOfficeFor 模式）：转写 multipart
+ * FormData 体经 Runtime.authorizedRequest 原样透传（RuntimeAuthorizedRequest.body →
+ * client.ts:196 → transport/json.ts:136 FormData 直传 fetch，已核实）；无原生捕获 Adapter
+ * 时返回 undefined（fail closed）。 */
+function dictationFor(activeRuntime: MobileRuntime, origin: string, tenantId: string): Dictation | undefined {
+  if (nativeDictationCapture === undefined) return undefined;
+  return cachePut(dictations, deploymentScopeKey(origin, tenantId), () => createDictation({
+    capture: nativeDictationCapture,
+    transcribe: createMobileVoiceTranscriptionRemote({ origin, request: (input) => activeRuntime.authorizedRequest(input) }),
+    newRequestId: createNativeRequestId(),
+  }));
+}
+
+/** /new 路由经此取当前授权 scope 的听写模块（无授权面或无原生捕获时 undefined）。 */
+export function activeDictation(): Dictation | undefined {
+  const activeRuntime = runtime();
+  const snapshot = activeRuntime.snapshot();
+  if (snapshot.surface !== 'authorized' || !snapshot.deployment || !snapshot.identity?.userId) return undefined;
+  return dictationFor(activeRuntime, snapshot.deployment.origin, snapshot.identity.activeTenantId ?? '');
 }
 
 /** Selects a visible surface only from the presentation-safe Runtime snapshot. */

@@ -1402,3 +1402,17 @@ test('a denied microphone leaves typing and submission fully usable (拒权不�
   const text = descendants(element).filter(({ type }) => type === 'Text').flatMap(({ props }) => props.children).join(' ');
   assert.ok(text.includes('麦克风权限被拒绝'), '拒权有如实文案');
 });
+
+test('the /new route wires dictation through the composition root; confirmed text enters the goal draft, never the wire', async () => {
+  const { readFileSync } = await import('node:fs');
+  const routeSource = readFileSync(resolve(workspaceRoot, 'apps/mobile/src/app/new.tsx'), 'utf8');
+  const compositionSource = readFileSync(resolve(workspaceRoot, 'apps/mobile/src/composition.ts'), 'utf8');
+  const screenSource = readFileSync(resolve(workspaceRoot, 'apps/mobile/src/screens/NewTaskScreen.tsx'), 'utf8');
+  assert.match(routeSource, /activeDictation\(\)/, '路由经组合根取听写模块（module-seams §10：Screen 不见 wire）');
+  assert.match(routeSource, /confirmTranscript\(\)/, 'AC2：确认动作显式调用模块的 confirmTranscript');
+  assert.match(routeSource, /applyConfirmedDictation/, '确认文字必须经 applyConfirmedDictation 并入目标草稿（含 500 字截断）');
+  assert.match(routeSource, /dictation\.cancel\(\)/, '卸载兜底：录音/转写在途时取消（不留悬空麦克风与在途派发）');
+  assert.equal(/mobile\/voice/.test(routeSource) || /mobile\/voice/.test(screenSource), false, '屏/路由不出现 wire 路径');
+  assert.match(compositionSource, /createMobileVoiceTranscriptionRemote/, '转写 Remote 只在组合根装配');
+  assert.match(compositionSource, /createNativeDictationCaptureIfAvailable/, '原生捕获 Adapter 只在组合根探测');
+});
