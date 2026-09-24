@@ -22,6 +22,7 @@ import { openContextualGuide } from '@weknora/views/guides/contextual-guides';
 import type { ChatMentionView, ChatSubmission } from '@weknora/views/chat/composer';
 import type { ScopeController } from '@weknora/domain/scope';
 import { chatSessionIdFromPath, SHELL_SESSION_ROUTE_EVENT } from './session-route.ts';
+import { navigate } from '../platform/navigation.ts';
 import { MessagePlugin } from 'tdesign-react';
 import { buildWebChatStreamOptions, CHAT_ATTACHMENT_DEFAULT_EXTENSIONS, initialAgentSelection, mergeChatAttachmentExtensions, resolveChatAttachmentLimits, shouldPollAttachmentStatus, validateChatAttachment, type ChatMentionItem } from './agent-selection.ts';
 // R490 B1 — Vue Input-field.vue agent-scoped KB filter for the @ mention popup.
@@ -1931,6 +1932,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
       setUserModelPick(modelId);
       setSelectedModelId(modelId);
     }}
+    onModelAdd={() => { navigate('/platform/settings?section=models&subsection=chat'); }}
     headerUtilityItems={headerUtilityItems}
     headerSlot={selectedSessionId ? (
       <ChatHeader

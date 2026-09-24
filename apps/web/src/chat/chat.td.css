@@ -1881,6 +1881,178 @@
   font-weight: 600;
   font-family: var(--app-font-family);
 }
+
+/* ===== §15 Input-field.vue 模型下拉（model-selector-overlay；Vue Teleport
+   body → views 包 in-tree fixed 同几何，3673-3853 原样平移） ===== */
+.model-selector-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: transparent;
+  touch-action: none;
+}
+
+.model-selector-dropdown {
+  position: fixed;
+  z-index: 10000;
+  background: var(--td-bg-color-container);
+  border: .5px solid var(--td-component-border);
+  border-radius: 10px;
+  box-shadow: var(--td-shadow-2);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transform-origin: top left;
+  animation: modelSelectorFadeIn 0.15s ease-out;
+}
+
+@keyframes modelSelectorFadeIn {
+  from { opacity: 0; transform: scale(0.98); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.model-selector-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-bottom: .5px solid var(--td-component-stroke);
+  background: var(--td-bg-color-container);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--td-text-color-secondary);
+}
+
+.model-selector-content {
+  flex: 1;
+  min-height: 0;
+  max-height: 260px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 6px 8px;
+}
+
+.model-selector-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: .5px solid transparent;
+  background: transparent;
+  color: var(--td-brand-color);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.12s;
+  /* Vue 端 button 无 font-family 规则 → UA 默认按钮字体（本环境 Arial）；
+     apps/web styles.css 的表单控件 reset（font: inherit）会盖成系统栈——
+     「+」ASCII 字形度量随字体改变（px-chat-model-selector 36px 残差根因）。
+     revert 回滚 author 层 reset、恢复 UA 值，与 Vue 同一解析路径。 */
+  font-family: revert;
+  line-height: inherit;
+}
+
+.model-selector-add .add-icon {
+  font-size: 14px;
+  line-height: 1;
+  font-weight: 400;
+}
+
+.model-selector-add:hover {
+  color: var(--td-brand-color-hover);
+  background: var(--td-bg-color-secondarycontainer);
+}
+
+.model-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  cursor: pointer;
+  transition: background 0.12s;
+  border-radius: 6px;
+  margin-bottom: 4px;
+}
+
+.model-option:last-child {
+  margin-bottom: 0;
+}
+
+.model-option:hover,
+.model-option.selected {
+  background: var(--td-bg-color-secondarycontainer);
+}
+
+.model-option.empty {
+  color: var(--td-text-color-placeholder);
+  cursor: default;
+  text-align: center;
+  padding: 20px 8px;
+}
+
+.model-option.empty:hover {
+  background: transparent;
+}
+
+.model-option-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.model-option-icon {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--td-text-color-secondary);
+}
+
+.model-option-name-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.model-option-name {
+  font-size: 12px;
+  color: var(--td-text-color-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.4;
+}
+
+.model-option-raw-name {
+  font-size: 11px;
+  color: var(--td-text-color-placeholder);
+  flex-shrink: 0;
+}
+
+.model-option-ctx {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--td-text-color-secondary);
+  background: var(--td-bg-color-secondarycontainer);
+  padding: 0 6px;
+  border-radius: 4px;
+  line-height: 18px;
+}
+
+.model-option-ctx.is-default {
+  color: var(--td-text-color-placeholder);
+}
+
 /* ===== §16 SandboxSidePanel.vue + ChatArtifactsPanel.vue（px-chat-sandbox）
    Vue 三 tab 侧面板（fixed 右缘 420 可拖宽）+ 产物 tab 内容，scoped 原样平移。 ===== */
 .chat-sandbox-panel {
@@ -2307,6 +2479,23 @@
   font-weight: 650;
   letter-spacing: 0.2px;
 }
+
+/* §15 续 —— composer 模型触发器闭合态（Vue .model-selector-trigger 行为面）：
+   hover 底色 + 展开态箭头旋转（.model-dropdown-arrow.rotate）。 */
+.wk-chat-model-display > div.wk-chat-model-chip:hover {
+  background: var(--td-bg-color-secondarycontainer-hover, #e6e6e6);
+}
+
+.wk-chat-model-chip .wk-chat-chip-arrow,
+.wk-chat-agent-chip .wk-vc-composer-17 {
+  transition: transform 0.12s;
+}
+
+.wk-chat-model-chip[aria-expanded='true'] .wk-chat-chip-arrow,
+.wk-chat-agent-chip[aria-expanded='true'] .wk-vc-composer-17 {
+  transform: rotate(180deg);
+}
+
 /* ===== §18 ChatQuestionMinimap.vue（px-chat-sandbox 根因②：问答目录轨道） =====
    Vue scoped 块逐条平移；类名自带 question-minimap 前缀（scoped 语义天然成立）。
    挂载于 .chat（position:relative）左缘竖直居中，pointer-events 仅轨道/面板可命中。 */

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from 'react';
 import { formatChatCopy, resolveChatCopy, resolveChatLocale, type ChatCopyTable } from './chat-copy.ts';
 import { AgentSelectorPanel, type AgentSelectorAgent, type AgentSelectorModel } from './agent-selector.tsx';
+import { ModelSelectorPanel, type ModelSelectorOption } from './model-selector.tsx';
 
 export interface ChatSubmission {
   content: string;
@@ -180,8 +181,12 @@ export interface ChatComposerProps {
   modelContext?: string;
   /** True when the model has no explicit context window (Vue model-selector-ctx is-default). */
   modelContextIsDefault?: boolean;
+  /** ModelSelectorOption 兼容结构（rawName/contextLabel 供下拉行展示）。 */
+  modelOptions?: readonly ModelSelectorOption[];
   selectedModelId?: string;
   onModelChange?(modelId: string): void;
+  /** Vue 模型下拉「+ 添加模型」（handleGoToConversationModels → 设置页模型分区）。 */
+  onModelAdd?(): void;
   /** Vue control-right swaps send for stop while a reply is running (isReplying: dispatched through stream end, incl. the pre-stream window). */
   streaming?: boolean;
   /** Vue shows stop whenever the active session cannot accept a steer. */
@@ -219,7 +224,7 @@ export interface ChatComposerProps {
  * left chips are the agent selector + attachment/@ buttons, right side holds
  * the model chip and the circular green send (or stop) button.
  */
-export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraftChange, onSubmit, attachments = [], onAttachmentSelect, onRemoveAttachment, attachmentAccept, mentionOptions = [], mentionedItems = [], mentionOpen: initialMentionOpen = false, mentionLoading = false, mentionError, mentionEmptyHint, onMentionOpen, onMentionSelect, onMentionRemove, agents, selectedAgentId, onAgentChange, agentModels, onManageAgents, onConfigureAgent, onAgentNotReady, modelLabel, modelContext, modelContextIsDefault, modelOptions = [], selectedModelId, onModelChange, streaming = false, canSteer = false, onStop, steerQueue = [], onSteerPromote, onSteerRemove, onSteerRetry, webSearchVisible = false, webSearchConfigured = true, webSearchEnabled = false, onWebSearchToggle, copy }: ChatComposerProps) {
+export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraftChange, onSubmit, attachments = [], onAttachmentSelect, onRemoveAttachment, attachmentAccept, mentionOptions = [], mentionedItems = [], mentionOpen: initialMentionOpen = false, mentionLoading = false, mentionError, mentionEmptyHint, onMentionOpen, onMentionSelect, onMentionRemove, agents, selectedAgentId, onAgentChange, agentModels, onManageAgents, onConfigureAgent, onAgentNotReady, modelLabel, modelContext, modelContextIsDefault, modelOptions = [], selectedModelId, onModelChange, onModelAdd, streaming = false, canSteer = false, onStop, steerQueue = [], onSteerPromote, onSteerRemove, onSteerRetry, webSearchVisible = false, webSearchConfigured = true, webSearchEnabled = false, onWebSearchToggle, copy }: ChatComposerProps) {
   const t = copy ?? resolveChatCopy(resolveChatLocale());
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -243,6 +248,10 @@ export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraft
   const [activeMentionIndex, setActiveMentionIndex] = useState(0);
   const [agentPanelOpen, setAgentPanelOpen] = useState(false);
   const agentChipRef = useRef<HTMLDivElement>(null);
+  // Vue toggleModelSelector（Input-field.vue:1756-1771）：模型下拉开合，与
+  // mention/agent 弹层互斥。
+  const [modelPanelOpen, setModelPanelOpen] = useState(false);
+  const modelTriggerRef = useRef<HTMLDivElement>(null);
   function submitDraft(): void {
     if (!draft.trim()) return;
     onSubmit({ ...createChatSubmission(draft), ...(selectedModelId ? { modelId: selectedModelId } : {}) });
@@ -585,9 +594,18 @@ export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraft
           </div>
           {/* Vue Input-field.vue:2787-2795 — the model chip lives at the right
               edge of control-left (.model-display margin-left:auto), NOT in
-              control-right; keeping it there shifts it ~8px left to x≈1022. */}
+              control-right; keeping it there shifts it ~8px left to x≈1022.
+              px-chat-model-selector：Vue .model-selector-trigger 是 div（开自定义
+              model-selector-overlay），native select 已移除，点击开下方 overlay。 */}
           <div className="wk-chat-model-display wk-vc-composer-25">
-            {modelOptions.length > 0 && onModelChange ? <label className="wk-chat-model-chip wk-vc-composer-26"><span className="wk-vc-composer-27" aria-hidden="true">{t.modelChip}</span><span className="wk-chat-model-name wk-vc-composer-28">{selectedModelId ? (modelOptions.find((model) => model.id === selectedModelId)?.name ?? modelOptions[0]?.name ?? '') : (modelOptions[0]?.name ?? '')}</span><select aria-label={t.modelChip} value={selectedModelId ?? modelOptions[0]?.id ?? ''} onChange={(event) => onModelChange(event.target.value)} className="wk-vc-composer-29">{modelOptions.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}</select>{modelContext ? <span className={modelContextIsDefault ? 'wk-chat-model-ctx is-default wk-vc-composer-36' : 'wk-chat-model-ctx wk-vc-composer-37'}>{modelContext}</span> : null}<svg className="wk-chat-chip-arrow wk-vc-composer-30" width="10" height="10" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><path d="M2.5 4.5L6 8L9.5 4.5H2.5Z" /></svg></label> : <button type="button" className="wk-chat-model-chip wk-vc-composer-31" disabled aria-disabled="true" aria-label={modelLabel ?? t.modelChip} title={modelLabel ?? t.modelChip}>
+            {modelOptions.length > 0 && onModelChange ? <div
+              ref={modelTriggerRef}
+              className="wk-chat-model-chip wk-vc-composer-26"
+              aria-label={t.modelChip}
+              aria-haspopup="dialog"
+              aria-expanded={modelPanelOpen}
+              onClick={(event) => { event.stopPropagation(); setMentionOpen(false); setAgentPanelOpen(false); setModelPanelOpen((open) => !open); }}
+            ><span className="wk-vc-composer-27" aria-hidden="true">{t.modelChip}</span><span className="wk-chat-model-name wk-vc-composer-28">{selectedModelId ? (modelOptions.find((model) => model.id === selectedModelId)?.name ?? modelOptions[0]?.name ?? '') : (modelOptions[0]?.name ?? '')}</span>{modelContext ? <span className={modelContextIsDefault ? 'wk-chat-model-ctx is-default wk-vc-composer-36' : 'wk-chat-model-ctx wk-vc-composer-37'}>{modelContext}</span> : null}<svg className="wk-chat-chip-arrow wk-vc-composer-30" width="10" height="10" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><path d="M2.5 4.5L6 8L9.5 4.5H2.5Z" /></svg></div> : <button type="button" className="wk-chat-model-chip wk-vc-composer-31" disabled aria-disabled="true" aria-label={modelLabel ?? t.modelChip} title={modelLabel ?? t.modelChip}>
               <span className="wk-chat-model-name wk-vc-composer-28">{modelLabel ?? t.modelChip}</span>
               {modelContext ? <span className={modelContextIsDefault ? 'wk-chat-model-ctx is-default wk-vc-composer-38' : 'wk-chat-model-ctx wk-vc-composer-39'}>{modelContext}</span> : null}
               <svg className="wk-chat-chip-arrow wk-vc-composer-30" width="10" height="10" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><path d="M2.5 4.5L6 8L9.5 4.5H2.5Z" /></svg>

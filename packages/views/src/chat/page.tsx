@@ -237,9 +237,11 @@ export interface ChatPageProps {
   modelContext?: string;
   /** True when the context spec is the 200K default (dims the suffix). */
   modelContextIsDefault?: boolean;
-  modelOptions?: readonly { id: string; name: string }[];
+  modelOptions?: readonly { id: string; name: string; rawName?: string; contextLabel?: string; contextIsDefault?: boolean }[];
   selectedModelId?: string;
   onModelChange?(modelId: string): void;
+  /** Vue 模型下拉「+ 添加模型」（handleGoToConversationModels → 设置页模型分区）。 */
+  onModelAdd?(): void;
   /**
    * R484 D15 — Vue Input-field.vue web-search toggle, forwarded to the
    * composer globe button. Visibility gates on readiness (tenant default
@@ -665,6 +667,7 @@ export function ChatPage(props: ChatPageProps) {
       modelOptions={props.modelOptions}
       selectedModelId={props.selectedModelId}
       onModelChange={props.onModelChange}
+      onModelAdd={props.onModelAdd}
       webSearchVisible={props.webSearchVisible}
       webSearchConfigured={props.webSearchConfigured}
       webSearchEnabled={props.webSearchEnabled}
