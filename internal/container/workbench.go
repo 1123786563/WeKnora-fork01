@@ -81,7 +81,7 @@ func NewWorkbenchInteractionService(store *workbenchservice.GormInteractionStore
 	return workbenchservice.NewInteractionServiceWithRestart(
 		store,
 		workbenchservice.NewGormSteerPort(storeDB(store), streams),
-		workbenchservice.NewGormCancelPort(storeDB(store)),
+		workbenchservice.NewGormCancelPort(runs),
 		gate,
 		workbenchservice.NewGormRunRestartPort(storeDB(store), admission),
 	)

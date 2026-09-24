@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/approval"
 	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
 	workbench "github.com/Tencent/WeKnora/internal/modules/workbench"
@@ -374,24 +375,22 @@ type RemoteInteractionPort interface {
 	SubmitInteraction(context.Context, uint64, string, string, string, string, string, string, int64, int64) error
 }
 
-// GormCancelPort is the durable cancel command. It only transitions the
-// authenticated run and fences on its revision; unknown or already-terminal
+// GormCancelPort is the durable cancel command. It delegates to the
+// repository's CancelOwnedRun so cancellation keeps its full fidelity: the
+// revision-CAS terminal transition, the cancellation_requested run event and
+// the session-slot release land in one transaction. Unknown or already-terminal
 // runs are conflicts and never mutate a different run.
-type GormCancelPort struct{ db *gorm.DB }
+type GormCancelPort struct{ runs *repository.AgentRunStore }
 
-func NewGormCancelPort(db *gorm.DB) *GormCancelPort { return &GormCancelPort{db: db} }
+func NewGormCancelPort(runs *repository.AgentRunStore) *GormCancelPort {
+	return &GormCancelPort{runs: runs}
+}
+
 func (p *GormCancelPort) Cancel(ctx context.Context, tenantID uint64, ownerID, runID string, expectedRevision int64) error {
-	if p == nil || p.db == nil {
+	if p == nil || p.runs == nil {
 		return ErrCapabilityUnavailable
 	}
-	updated := p.db.WithContext(ctx).Table("agent_runs").Where("tenant_id = ? AND owner_id = ? AND run_id = ? AND revision = ? AND status IN ('queued','running','waiting_user','reconciling','recovering')", tenantID, ownerID, runID, expectedRevision).Updates(map[string]any{"status": "canceled", "revision": gorm.Expr("revision + 1"), "updated_at": gorm.Expr("CURRENT_TIMESTAMP")})
-	if updated.Error != nil {
-		return updated.Error
-	}
-	if updated.RowsAffected != 1 {
-		return agentruntime.ErrConflict
-	}
-	return nil
+	return p.runs.CancelOwnedRun(ctx, tenantID, ownerID, runID, expectedRevision, "user_requested")
 }
 
 // GormSteerPort resolves the run owner and assistant message from the durable
