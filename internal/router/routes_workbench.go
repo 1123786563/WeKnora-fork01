@@ -165,6 +165,10 @@ func RegisterWorkbenchCommandRoutes(r *gin.RouterGroup, h *session.WorkbenchComm
 	workbench.GET("/:run_id/interactions", h.ListInteractions)
 	workbench.POST("/interactions/:id/decisions", h.DecideInteraction)
 	workbench.POST("/:run_id/commands", h.Command)
+	// T08 Attention Inbox: the owner's open interactions across runs. Same
+	// Viewer/API-key boundary; the handler applies the tenant+owner predicate.
+	inbox := g.apiKeyGroup(r.Group("/workbench/interactions", g.Viewer()), apiKeyChat(apiKeyFullAccess()))
+	inbox.GET("", h.ListInboxInteractions)
 }
 
 // RegisterMobileVoiceRoutes exposes the W30 mobile voice surface: the
