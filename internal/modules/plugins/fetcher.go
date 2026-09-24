@@ -29,6 +29,9 @@ var ErrOAuthProtectedEndpoint = errors.New("plugin endpoint requires OAuth autho
 // rather than deterministic rejections of the admin's input — the handler maps
 // it onto 5xx without echoing the transport detail (which can carry internal
 // proxy addresses when HTTP(S)_PROXY is configured) (跨任务转交 T01-R2-F2).
+// 4xx status answers (404/401/410/429...) are deliberately NOT sentinelled:
+// they are the admin's wrong URL or an auth-gated manifest, and retrying can
+// never succeed (OCR T01-OCR2-F7).
 var ErrManifestFetchFailed = errors.New("manifest fetch failed")
 
 // IsOAuthProtected reports whether err (or anything it wraps) carries the
@@ -187,7 +190,18 @@ func fetchLimited(ctx context.Context, manifestURL string) ([]byte, error) {
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return nil, fmt.Errorf("%w: unexpected status %d", ErrManifestFetchFailed, resp.StatusCode)
+		if resp.StatusCode >= http.StatusInternalServerError {
+			// Upstream 5xx IS a server-side fault — inside the sentinel's
+			// contract (handler → 503 + "retry later").
+			return nil, fmt.Errorf("%w: unexpected status %d", ErrManifestFetchFailed, resp.StatusCode)
+		}
+		// A 4xx answer (wrong path → 404, auth-gated manifest → 401, gone
+		// → 410, throttled → 429) is a DETERMINISTIC rejection of the
+		// admin's input: retrying can never succeed, so it must NOT wear
+		// the server-side-fault sentinel — a plain error (bounded, no
+		// untrusted echo: the status is an int) falls through to the
+		// handler's 400 branch (OCR T01-OCR2-F7).
+		return nil, fmt.Errorf("manifest endpoint answered status %d", resp.StatusCode)
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, int64(maxManifestBytes)+1))
 	if err != nil {

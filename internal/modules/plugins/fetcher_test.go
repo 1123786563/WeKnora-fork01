@@ -353,6 +353,40 @@ func TestBuildVerifiedSnapshotScopesAreDefensivelyCopied(t *testing.T) {
 	require.Equal(t, []string{"read:jira"}, snapshot[0].Scopes)
 }
 
+// TestFetchAndVerifyClassifiesNon2xxByFamily (OCR T01-OCR2-F7): the
+// ErrManifestFetchFailed sentinel's contract covers SERVER-side faults only
+// (DNS failure, egress timeout, proxy errors, upstream 5xx) — the handler
+// maps it to 503 + "retry later". A 4xx answer (wrong path → 404, auth-gated
+// manifest → 401, gone → 410, throttled → 429) is a DETERMINISTIC rejection
+// of the admin's input: retrying can never succeed, so it must NOT wear the
+// server-side sentinel. Upstream 5xx keeps it.
+func TestFetchAndVerifyClassifiesNon2xxByFamily(t *testing.T) {
+	utils.SetSSRFWhitelistFromRaw("127.0.0.1")
+	t.Cleanup(utils.ResetSSRFWhitelistForTest)
+	lister := func(context.Context, string, string) ([]*types.MCPTool, error) {
+		t.Fatal("lister must not be called when the manifest download fails")
+		return nil, nil
+	}
+	t.Run("4xx is a deterministic rejection without the sentinel", func(t *testing.T) {
+		base := newControlledPluginHost(t,
+			func(w http.ResponseWriter, _ *http.Request) { http.Error(w, "not found", http.StatusNotFound) },
+			func(http.ResponseWriter, *http.Request) {},
+		)
+		_, err := FetchAndVerify(context.Background(), base+"/manifest.json", lister)
+		require.Error(t, err)
+		require.ErrorContains(t, err, "404")
+		require.NotErrorIs(t, err, ErrManifestFetchFailed, "a 404 is the admin's wrong URL, not a server-side fault — it must reach the 400 branch, not 503+retry")
+	})
+	t.Run("upstream 5xx keeps the server-side sentinel", func(t *testing.T) {
+		base := newControlledPluginHost(t,
+			func(w http.ResponseWriter, _ *http.Request) { http.Error(w, "boom", http.StatusServiceUnavailable) },
+			func(http.ResponseWriter, *http.Request) {},
+		)
+		_, err := FetchAndVerify(context.Background(), base+"/manifest.json", lister)
+		require.ErrorIs(t, err, ErrManifestFetchFailed, "upstream 5xx is inside the sentinel's contract")
+	})
+}
+
 // TestBuildVerifiedSnapshotRejectsDuplicateLiveTool (OCR T01-R2-6): a live
 // directory containing the same tool name twice is self-contradictory; the
 // last entry must not silently mask the other's differing schema.
