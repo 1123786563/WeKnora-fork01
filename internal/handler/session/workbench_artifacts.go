@@ -45,11 +45,11 @@ func NewWorkbenchArtifactHandler(runs OwnedRunReader, refs ArtifactRefReader) *W
 // adds the session-wide index used to address the artifact on the signed-URL
 // endpoint.
 type workbenchArtifactItem struct {
-	Index     int    `json:"index"`
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Mime      string `json:"mime"`
-	Version   string `json:"version"`
+	Index   int    `json:"index"`
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Mime    string `json:"mime"`
+	Version string `json:"version"`
 	// Digest is the persisted SHA-256 of the artifact bytes when the
 	// producer recorded one; the content-addressed proof behind Version.
 	Digest    string `json:"digest,omitempty"`
