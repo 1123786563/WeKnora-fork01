@@ -141,6 +141,12 @@ func NewCraftRunViewRuntimeCoordinator(
 	return &CraftRunViewRuntimeCoordinator{store: store, provider: provider, privateRootBase: privateRootBase}, nil
 }
 
+// admittedRunViewKey derives the durable RunView key from the original
+// admitted Task: the Task scope's owner/session plus the fenced Run identity.
+func admittedRunViewKey(task craft.Task) craft.RunViewKey {
+	return craft.RunViewKey{TenantID: task.Scope.TenantID, OwnerID: task.Scope.UserID, SessionID: task.Scope.SessionID, RunID: task.Fence.RunID}
+}
+
 // ResolveAdmitted binds a runtime using the original server-admitted Task. Every
 // provider mutation requires a matching durable claim immediately before the
 // call; a replay is observe-only and can never resend an unknown operation.
@@ -152,9 +158,12 @@ func (c *CraftRunViewRuntimeCoordinator) ResolveAdmitted(ctx context.Context, ta
 		return CraftRunViewRuntimeHandle{}, unresolvedCraftRunView("admitted resolution canceled", err)
 	}
 	key := admittedRunViewKey(task)
+	// The Task snapshot digest is the durable admitted Run identity: a raw
+	// lowercase SHA-256 hex digest, exactly as AgentRunStore persists it and
+	// CraftStore.PrepareTask / the effect store compare it.
 	if err := craft.ValidateRunViewKey(key); err != nil || task.Fence.TenantID != key.TenantID || task.Fence.RunID != key.RunID ||
 		task.Fence.Owner == "" || task.Fence.Epoch <= 0 || task.SnapshotDigestVersion != 1 ||
-		!validSHA256Digest(task.SnapshotDigest) || task.Fence.SnapshotDigestVersion != task.SnapshotDigestVersion ||
+		!validSHA256Hex(task.SnapshotDigest) || task.Fence.SnapshotDigestVersion != task.SnapshotDigestVersion ||
 		task.Fence.SnapshotDigest != task.SnapshotDigest {
 		return CraftRunViewRuntimeHandle{}, unresolvedCraftRunView("original admitted Task identity is incomplete or inconsistent", err)
 	}

@@ -214,6 +214,48 @@ func (e *h2DockerProviderEngine) EnsurePrivateNetwork(ctx context.Context, spec 
 	return actual, err
 }
 
+// ObserveNetwork inspects the generation network read-only; absence is found=false.
+func (e *h2DockerProviderEngine) ObserveNetwork(ctx context.Context, spec CraftRunViewContainerNetworkSpec) (CraftRunViewContainerNetwork, bool, error) {
+	actual, err := e.inspectNetwork(ctx, spec.Name)
+	if err != nil {
+		return CraftRunViewContainerNetwork{}, false, nil
+	}
+	e.mu.Lock()
+	e.networks[spec.Name] = actual
+	e.mu.Unlock()
+	return actual, true, nil
+}
+
+// CreateGenerationNetwork sends exactly one network create and inspects the receipt.
+func (e *h2DockerProviderEngine) CreateGenerationNetwork(ctx context.Context, spec CraftRunViewContainerNetworkSpec) (CraftRunViewContainerNetwork, error) {
+	args := []string{"network", "create", "--driver", spec.Driver}
+	if spec.Internal {
+		args = append(args, "--internal")
+	}
+	for name, value := range spec.Labels {
+		args = append(args, "--label", name+"="+value)
+	}
+	args = append(args, spec.Name)
+	if _, createErr := e.command(ctx, args...); createErr != nil {
+		return CraftRunViewContainerNetwork{}, createErr
+	}
+	return e.inspectNetwork(ctx, spec.Name)
+}
+
+func (e *h2DockerProviderEngine) ObserveRuntimeProbe(context.Context, string) (CraftRunViewRuntimeProbe, bool, error) {
+	return CraftRunViewRuntimeProbe{}, false, unresolvedCraftRunView("live test engine cannot reconstruct probe output read-only", nil)
+}
+
+func (e *h2DockerProviderEngine) SendRuntimeProbe(ctx context.Context, id string) (CraftRunViewRuntimeProbe, error) {
+	probe, err := e.ProbeRuntime(ctx, id)
+	if err != nil {
+		return CraftRunViewRuntimeProbe{}, err
+	}
+	probe.ContainerID = id
+	probe.ExecID = "exec-" + id
+	return probe, nil
+}
+
 func (e *h2DockerProviderEngine) inspectNetwork(ctx context.Context, name string) (CraftRunViewContainerNetwork, error) {
 	var rows []struct {
 		ID, Name, Driver string

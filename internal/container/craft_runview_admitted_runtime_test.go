@@ -105,6 +105,9 @@ func (a *admittedRuntimeAuthorityFake) FinishEffect(_ context.Context, claim cra
 	if prior, ok := a.outcomes[claim.Kind]; ok && prior != outcome {
 		return craft.ErrConflict
 	}
+	if a.outcomes == nil {
+		a.outcomes = map[craft.RunViewEffectKind]craft.RunViewEffectOutcome{}
+	}
 	a.outcomes[claim.Kind] = outcome
 	return nil
 }
@@ -421,11 +424,10 @@ type admittedSplitRuntimeProvider interface {
 	CraftRunViewAdmittedSplitProvider
 }
 
-func admittedRunViewKey(task craft.Task) craft.RunViewKey {
-	return craft.RunViewKey{TenantID: task.Scope.TenantID, OwnerID: task.Scope.UserID, SessionID: task.Scope.SessionID, RunID: task.Fence.RunID}
-}
 func admittedTask() craft.Task {
-	const digest = "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	// The durable admitted Run snapshot digest is raw lowercase hex, exactly
+	// as AgentRunStore persists it.
+	const digest = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 	fence := runtime.Fence{RunKey: runtime.RunKey{TenantID: 8, RunID: "run-1"}, Owner: "writer-1", Epoch: 3, SnapshotDigestVersion: 1, SnapshotDigest: digest}
 	return craft.Task{Scope: craft.Scope{TenantID: 8, UserID: "owner-1", SessionID: "session-main"}, Fence: fence, SnapshotDigestVersion: 1, SnapshotDigest: digest, WorkspaceID: "workspace-1"}
 }

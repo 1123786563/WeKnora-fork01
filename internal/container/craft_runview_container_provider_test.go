@@ -947,7 +947,7 @@ func TestCraftRunViewMaterialHandleBindsVerifiedGenerationAndRun(t *testing.T) {
 	}
 
 	viewA := boundMaterialTestView(keyA, containerA, "generation-a", sessionID)
-	storeA := materialTestStore{view: viewA}
+	storeA := &materialTestStore{view: viewA}
 	handleA := CraftRunViewRuntimeHandle{View: viewA, Directory: containerA.Directory}
 	materialA, err := provider.MaterialHandle(context.Background(), storeA, keyA, handleA)
 	require.NoError(t, err)
@@ -959,7 +959,7 @@ func TestCraftRunViewMaterialHandleBindsVerifiedGenerationAndRun(t *testing.T) {
 	sessionB := "ses_0123456789ab0123456789ABCE"
 	api.sessions = append(api.sessions, rvTestOpenCodeSession(sessionB, containerB.Directory, containerB.ProjectID))
 	viewB := boundMaterialTestView(keyB, containerB, "generation-b", sessionB)
-	storeB := materialTestStore{view: viewB}
+	storeB := &materialTestStore{view: viewB}
 	handleB := CraftRunViewRuntimeHandle{View: viewB, Directory: containerB.Directory}
 	materialB, err := provider.MaterialHandle(context.Background(), storeB, keyB, handleB)
 	require.NoError(t, err)
@@ -1062,7 +1062,7 @@ func TestCraftRunViewMaterialLayoutIdentityIsDurableBeforeCreateAndAcrossRestart
 	secondAPI.sessions = []opencode.SessionInfo{rvTestOpenCodeSession(sessionID, resumed.Directory, resumed.ProjectID)}
 	key := craft.RunViewKey{TenantID: 7, OwnerID: "owner", SessionID: "task-session", RunID: "run-after-restart"}
 	view := boundMaterialTestView(key, resumed, spec.Generation, sessionID)
-	material, err := restarted.MaterialHandle(context.Background(), materialTestStore{view: view}, key, CraftRunViewRuntimeHandle{View: view, Directory: resumed.Directory})
+	material, err := restarted.MaterialHandle(context.Background(), &materialTestStore{view: view}, key, CraftRunViewRuntimeHandle{View: view, Directory: resumed.Directory})
 	require.NoError(t, err)
 	require.Equal(t, filepath.Join(restarted.config.SandboxRoot, filepath.Base(layout.root), "inputs"), material.inputs)
 
@@ -1210,18 +1210,51 @@ func shortGeneration(generation string) string {
 
 type materialTestStore struct{ view craft.RunView }
 
-func (s materialTestStore) Allocate(context.Context, craft.RunViewKey) (craft.RunView, error) {
+func (s *materialTestStore) Allocate(context.Context, craft.RunViewKey) (craft.RunView, error) {
 	return s.view, nil
 }
-func (s materialTestStore) Load(_ context.Context, key craft.RunViewKey) (craft.RunView, error) {
+func (s *materialTestStore) Load(_ context.Context, key craft.RunViewKey) (craft.RunView, error) {
 	if key != s.view.Key {
 		return craft.RunView{}, craft.ErrNotFound
 	}
 	return s.view, nil
 }
-func (s materialTestStore) BeginSessionCreate(context.Context, craft.RunViewKey, string) (craft.RunView, bool, error) {
-	return craft.RunView{}, false, errors.New("unused")
+func (s *materialTestStore) BeginSessionCreate(_ context.Context, key craft.RunViewKey, generation string) (craft.RunView, bool, error) {
+	// Mirrors the durable CraftRunViewStore semantics the admitted coordinator
+	// relies on: one create intent per allocating generation, idempotent once
+	// claimed, never granted for an unknown key/generation.
+	if key != s.view.Key || generation != s.view.Generation {
+		return craft.RunView{}, false, craft.ErrConflict
+	}
+	if s.view.State != craft.RunViewStateAllocating && s.view.State != craft.RunViewStateBound {
+		return craft.RunView{}, false, craft.ErrConflict
+	}
+	maySend := s.view.SessionCreateIntentAt == nil && s.view.State == craft.RunViewStateAllocating
+	if maySend {
+		now := time.Now().UTC()
+		s.view.SessionCreateIntentAt = &now
+	}
+	return s.view, maySend, nil
 }
-func (s materialTestStore) BindRuntime(context.Context, craft.RunViewKey, string, craft.RunViewRuntime) (craft.RunView, error) {
-	return craft.RunView{}, errors.New("unused")
+func (s *materialTestStore) BindRuntime(_ context.Context, key craft.RunViewKey, generation string, runtime craft.RunViewRuntime) (craft.RunView, error) {
+	// Mirrors the durable CAS: an allocating generation with a claimed intent
+	// binds exactly once; a bound generation replays only the same runtime.
+	if key != s.view.Key || generation != s.view.Generation {
+		return craft.RunView{}, craft.ErrConflict
+	}
+	switch s.view.State {
+	case craft.RunViewStateAllocating:
+		if s.view.SessionCreateIntentAt == nil {
+			return craft.RunView{}, craft.ErrConflict
+		}
+		s.view.State = craft.RunViewStateBound
+		s.view.Runtime = runtime
+	case craft.RunViewStateBound:
+		if s.view.Runtime != runtime {
+			return craft.RunView{}, craft.ErrConflict
+		}
+	default:
+		return craft.RunView{}, craft.ErrConflict
+	}
+	return s.view, nil
 }

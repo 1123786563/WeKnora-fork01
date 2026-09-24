@@ -747,7 +747,7 @@ func newCraftRuntimeTestMaterial(t *testing.T, task craft.Task, generation strin
 	api.sessions = []opencode.SessionInfo{rvTestOpenCodeSession(sessionID, container.Directory, container.ProjectID)}
 	key := craft.RunViewKey{TenantID: task.Fence.TenantID, OwnerID: task.Scope.UserID, SessionID: task.Scope.SessionID, RunID: task.Fence.RunID}
 	view := boundMaterialTestView(key, container, generation, sessionID)
-	store := materialTestStore{view: view}
+	store := &materialTestStore{view: view}
 	handle := CraftRunViewRuntimeHandle{View: view, Directory: container.Directory}
 	material, err := provider.MaterialHandle(context.Background(), store, key, handle)
 	require.NoError(t, err)

@@ -496,6 +496,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// registration is owned by the router assembly that receives this registry.
 	must(container.Provide(service.NewCraftAccessService))
 	must(container.Provide(craftTaskAccessChecker))
+	must(container.Provide(craftTaskAccessNarrowPort))
 	must(container.Provide(session.NewCraftFeatureRoutes))
 	must(container.Provide(service.CraftActiveRunsQuery))
 	// W06 (coordinator-authorized): the executor assembly is env-driven —
@@ -2711,7 +2712,7 @@ func provideCraftRunViewProductionAssembly(db *gorm.DB, runs *repository.AgentRu
 	if err != nil {
 		return &CraftRunViewProductionAssembly{Unavailable: fmt.Sprintf("RunView Docker engine unavailable: %v", err)}
 	}
-	assembly, err := assembleCraftRunViewProduction(config, repository.NewCraftRunViewStore(db), runs, engine)
+	assembly, err := assembleCraftRunViewProduction(config, repository.NewCraftRunViewStore(db), repository.NewCraftRunViewEffectStore(db), runs, engine)
 	if err != nil {
 		_ = engine.Close()
 		return &CraftRunViewProductionAssembly{Unavailable: fmt.Sprintf("RunView provider unavailable: %v", err)}
@@ -2723,19 +2724,24 @@ func provideCraftRunViewProductionAssembly(db *gorm.DB, runs *repository.AgentRu
 // assembleCraftRunViewProduction is the testable constructor behind the
 // production DI provider. Its resolver verifies the current durable Run and
 // writer slot before the coordinator can allocate a generation or create a
-// container/session.
+// container/session. The effect authority is mandatory: every mutating
+// provider send (Docker network create, container create/start/probe and the
+// OpenCode session create) is claimed through the durable RunView effect
+// store instead of the legacy composite EnsurePrivateNetwork path.
 func assembleCraftRunViewProduction(
 	config CraftRunViewContainerProviderConfig,
 	store craft.RunViewStore,
+	authority craft.RunViewEffectAuthority,
 	runs craftRunViewAdmittedRunReader,
 	engine CraftRunViewContainerEngine,
 ) (*CraftRunViewProductionAssembly, error) {
-	return assembleCraftRunViewProductionWithAPI(config, store, runs, engine, newCraftRunViewSessionAPI)
+	return assembleCraftRunViewProductionWithAPI(config, store, authority, runs, engine, newCraftRunViewSessionAPI)
 }
 
 func assembleCraftRunViewProductionWithAPI(
 	config CraftRunViewContainerProviderConfig,
 	store craft.RunViewStore,
+	authority craft.RunViewEffectAuthority,
 	runs craftRunViewAdmittedRunReader,
 	engine CraftRunViewContainerEngine,
 	apiFactory craftRunViewSessionAPIFactory,
@@ -2743,11 +2749,14 @@ func assembleCraftRunViewProductionWithAPI(
 	if store == nil || runs == nil {
 		return nil, unresolvedCraftRunView("RunView store or durable Run reader is missing", nil)
 	}
+	if authority == nil {
+		return nil, unresolvedCraftRunView("RunView effect authority is missing; the physical stage is fail-closed", nil)
+	}
 	provider, err := newCraftRunViewContainerProvider(config, engine, apiFactory)
 	if err != nil {
 		return nil, err
 	}
-	coordinator, err := NewCraftRunViewRuntimeCoordinator(store, provider, "/workspace")
+	coordinator, err := NewCraftRunViewAdmittedRuntimeCoordinator(store, authority, provider, "/workspace")
 	if err != nil {
 		return nil, err
 	}
@@ -2792,7 +2801,7 @@ func assembleCraftRunViewProductionWithAPI(
 		if err := ctx.Err(); err != nil {
 			return CraftRunViewMaterialHandle{}, unresolvedCraftRunView("material resolution canceled after Run verification", err)
 		}
-		runtime, err := coordinator.Resolve(ctx, key)
+		runtime, err := coordinator.ResolveAdmitted(ctx, task)
 		if err != nil {
 			return CraftRunViewMaterialHandle{}, unresolvedCraftRunView("resolve admitted RunView runtime", err)
 		}

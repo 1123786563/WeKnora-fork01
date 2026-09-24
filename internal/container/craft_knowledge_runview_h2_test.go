@@ -266,7 +266,7 @@ func reconstructH2KnowledgeRuntime(t *testing.T, fixture *h2KnowledgeRuntimeFixt
 				return CraftRunViewMaterialHandle{}, inspectErr
 			}
 			view := boundMaterialTestView(fixture.material.key, container, fixture.material.generation, sessionID)
-			materialStore := materialTestStore{view: view}
+			materialStore := &materialTestStore{view: view}
 			material, materialErr := provider.MaterialHandle(ctx, materialStore, fixture.material.key,
 				CraftRunViewRuntimeHandle{View: view, Directory: container.Directory})
 			if materialErr != nil {

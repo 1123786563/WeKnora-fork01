@@ -38,7 +38,11 @@ func TestCraftRunViewProductionAssemblyDefaultsOffWithoutRegistryDigest(t *testi
 func TestCraftRunViewProductionAssemblyResolvesOnlyPersistedBoundTaskRun(t *testing.T) {
 	provider, engine, api, store, _, _ := newMaterialHandleFixture(t, "assembly-generation")
 	reader := &craftRunViewAssemblyRunReader{run: validCraftRunViewAssemblyRun(t, store.view.Key)}
-	assembly, err := assembleCraftRunViewProductionWithAPI(provider.config, store, reader, engine,
+	// The fake engine cannot reconstruct a read-only probe observation, so the
+	// pinned runtime probe is claimed and sent once through the effect chain.
+	authority := &admittedRuntimeAuthorityFake{view: store.view,
+		maySend: map[craft.RunViewEffectKind]bool{craft.RunViewEffectDockerProbe: true}}
+	assembly, err := assembleCraftRunViewProductionWithAPI(provider.config, store, authority, reader, engine,
 		func(string, string, string) (craftRunViewSessionAPI, error) { return api, nil })
 	require.NoError(t, err)
 	require.NotNil(t, assembly.Provider)
@@ -56,11 +60,17 @@ func TestCraftRunViewProductionAssemblyResolvesOnlyPersistedBoundTaskRun(t *test
 	require.ErrorIs(t, err, craft.ErrConflict)
 }
 
-func TestCraftRunViewProductionAssemblyRejectsUnboundPersistedRunView(t *testing.T) {
+// TestCraftRunViewProductionAssemblyRejectsPersistedBindingThatDiffersFromEvidence
+// keeps the fail-closed half of the old unbound-view rejection: an allocating
+// generation with complete verified evidence now completes its binding through
+// the admitted effect chain, so the durable rejection is a persisted runtime
+// binding that differs from the observed container/session identity.
+func TestCraftRunViewProductionAssemblyRejectsPersistedBindingThatDiffersFromEvidence(t *testing.T) {
 	provider, engine, api, store, _, _ := newMaterialHandleFixture(t, "assembly-unbound-generation")
-	store.view.State = craft.RunViewStateAllocating
+	store.view.Runtime = craft.RunViewRuntime{RuntimeID: "rv-runtime-foreign", ContainerID: "rv-container-foreign", OpenCodeSessionID: store.view.Runtime.OpenCodeSessionID}
 	reader := &craftRunViewAssemblyRunReader{run: validCraftRunViewAssemblyRun(t, store.view.Key)}
-	assembly, err := assembleCraftRunViewProductionWithAPI(provider.config, store, reader, engine,
+	assembly, err := assembleCraftRunViewProductionWithAPI(provider.config, store,
+		&admittedRuntimeAuthorityFake{view: store.view}, reader, engine,
 		func(string, string, string) (craftRunViewSessionAPI, error) { return api, nil })
 	require.NoError(t, err)
 
@@ -108,7 +118,8 @@ func TestCraftRunViewProductionAssemblyRejectsStaleTaskBeforeSideEffects(t *test
 				tt.mutate(&task, &run)
 			}
 			reader := &craftRunViewAssemblyRunReader{run: run}
-			assembly, err := assembleCraftRunViewProductionWithAPI(provider.config, storeSpy, reader, engineSpy,
+			assembly, err := assembleCraftRunViewProductionWithAPI(provider.config, storeSpy,
+				&admittedRuntimeAuthorityFake{view: store.view}, reader, engineSpy,
 				func(string, string, string) (craftRunViewSessionAPI, error) { return apiSpy, nil })
 			require.NoError(t, err)
 
@@ -146,7 +157,8 @@ func TestCraftRunViewProductionAssemblyRejectsChangedSameWorkspaceSnapshotDigest
 	require.NotEqual(t, task.SnapshotDigest, run.SnapshotDigest, "the durable Run carries a matching digest for the changed snapshot")
 
 	reader := &craftRunViewAssemblyRunReader{run: run}
-	assembly, err := assembleCraftRunViewProductionWithAPI(provider.config, storeSpy, reader, engineSpy,
+	assembly, err := assembleCraftRunViewProductionWithAPI(provider.config, storeSpy,
+		&admittedRuntimeAuthorityFake{view: store.view}, reader, engineSpy,
 		func(string, string, string) (craftRunViewSessionAPI, error) { return apiSpy, nil })
 	require.NoError(t, err)
 	_, err = assembly.ResolveMaterial(craftRunViewAssemblyActorContext(), task)

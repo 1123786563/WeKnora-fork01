@@ -157,7 +157,7 @@ func newCraftRunViewKnowledgeTestBuilder(t *testing.T, selected []string, owner,
 	}
 	key := craft.RunViewKey{TenantID: 7, OwnerID: owner, SessionID: "task-1", RunID: runID}
 	view := boundMaterialTestView(key, runtimeContainer, generation, sessionID)
-	material, err := provider.MaterialHandle(context.Background(), materialTestStore{view: view}, key,
+	material, err := provider.MaterialHandle(context.Background(), &materialTestStore{view: view}, key,
 		CraftRunViewRuntimeHandle{View: view, Directory: runtimeContainer.Directory})
 	require.NoError(t, err)
 	return builder, run, material, provider, store, access, search, taskAccess

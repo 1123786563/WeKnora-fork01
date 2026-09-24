@@ -14,6 +14,13 @@ func craftTaskAccessChecker(svc *service.CraftAccessService) craft.TaskRunAccess
 	return svc
 }
 
+// craftTaskAccessNarrowPort exposes the very same service instance through the
+// narrow action-check port. dig cannot downcast interfaces, so assemblies that
+// require craft.TaskAccessChecker get it from the combined port explicitly.
+func craftTaskAccessNarrowPort(access craft.TaskRunAccess) craft.TaskAccessChecker {
+	return access
+}
+
 func wireCraftAccessFeature(
 	svc *service.CraftAccessService,
 	routes *session.CraftFeatureRoutes,

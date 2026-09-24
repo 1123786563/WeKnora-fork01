@@ -127,6 +127,7 @@ func assembleCraftAccessTestFeature(t *testing.T, db *gorm.DB) *session.CraftFea
 	require.NoError(t, container.Provide(func() *gorm.DB { return db }))
 	require.NoError(t, container.Provide(service.NewCraftAccessService))
 	require.NoError(t, container.Provide(craftTaskAccessChecker))
+	require.NoError(t, container.Provide(craftTaskAccessNarrowPort))
 	require.NoError(t, container.Provide(session.NewCraftFeatureRoutes))
 	var routes *session.CraftFeatureRoutes
 	require.NoError(t, container.Invoke(func(svc *service.CraftAccessService, checker craft.TaskAccessChecker, featureRoutes *session.CraftFeatureRoutes) error {

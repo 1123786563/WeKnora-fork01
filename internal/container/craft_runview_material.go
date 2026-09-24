@@ -65,16 +65,37 @@ func (p *CraftRunViewContainerProvider) MaterialHandle(
 		return CraftRunViewMaterialHandle{}, unresolvedCraftRunView("runtime identity is not derived from the persisted generation", err)
 	}
 
-	container := CraftRunViewRuntimeContainer{
-		Generation: spec.Generation, RuntimeID: spec.RuntimeID, ContainerID: spec.ContainerID,
-		Directory: spec.Directory, ProjectID: p.config.ProjectID,
-		IdentityVerified: true, DedicatedForRun: true, DirectoryCanonical: true,
-	}
-	binding, err := p.currentBinding(ctx, container)
+	// Verify the bound generation through the durable split observation chain
+	// instead of the legacy in-memory binding registry: the network, the
+	// marker/layout-pinned container facts and the private endpoint are all
+	// re-derived from the engine, so a restarted process reaches the same
+	// conclusion without legacy composite operations.
+	network, found, err := p.ObserveNetwork(ctx, spec)
 	if err != nil {
 		return CraftRunViewMaterialHandle{}, err
 	}
-	session, err := binding.sessions.GetSession(ctx, runtime.View.Runtime.OpenCodeSessionID)
+	if !found {
+		return CraftRunViewMaterialHandle{}, unresolvedCraftRunView("bound generation network is not observable", nil)
+	}
+	observation, found, err := p.ObserveContainer(ctx, spec, network)
+	if err != nil {
+		return CraftRunViewMaterialHandle{}, err
+	}
+	if !found || observation.State != "running" {
+		return CraftRunViewMaterialHandle{}, unresolvedCraftRunView("bound generation container is not observable and running", nil)
+	}
+	// Re-verify the pinned runtime binary/config probe exactly as the legacy
+	// binding verification did; the admitted coordinator has already claimed
+	// and sent the probe for this generation before dispatch.
+	probe, probeErr := p.engine.ProbeRuntime(ctx, observation.DockerID)
+	if probeErr != nil || !p.validProbe(probe) {
+		return CraftRunViewMaterialHandle{}, unresolvedCraftRunView("runtime binary or baked config is not verified", probeErr)
+	}
+	bindingAPI, err := p.sessionAPIForObservation(observation)
+	if err != nil {
+		return CraftRunViewMaterialHandle{}, err
+	}
+	session, err := bindingAPI.GetSession(ctx, runtime.View.Runtime.OpenCodeSessionID)
 	if err != nil || session.ID != runtime.View.Runtime.OpenCodeSessionID ||
 		session.ProjectID != p.config.ProjectID || session.Location.Directory != spec.Directory {
 		return CraftRunViewMaterialHandle{}, unresolvedCraftRunView("persisted OpenCode session identity is stale or foreign", err)
