@@ -17,6 +17,8 @@ import type { ScopeLease } from '../runtime/types.ts';
 import { createAttentionDecider } from './attention-inbox.ts';
 import type { AttentionDecisionInput, AttentionDecisionReceipt, InboxView, InteractionBackendPort } from './attention-inbox.ts';
 import { createInMemoryTaskProjectionStore } from './in-memory-task-detail.ts';
+import { createTaskBudgetOps } from './task-budget.ts';
+import type { TaskBudgetBackendPort, TaskBudgetExtendInput, TaskBudgetExtendReceipt, TaskBudgetFacts } from './task-budget.ts';
 import { legacyTaskGates } from './legacy-tasks.ts';
 import type {
   LegacyBackendTask, LegacyFollowUpInput, LegacyMessage, LegacyTaskBackendPage, LegacyTaskBackendPort,
@@ -183,6 +185,10 @@ export interface TaskOfficePorts {
   interactions?: InteractionBackendPort;
   /** T14（#44）Legacy Task 端口；缺失时 legacy 入口 fail closed（TASK_OFFICE_LEGACY_UNAVAILABLE）。 */
   legacy?: LegacyTaskBackendPort;
+  /** T09（#39）预算端口：四数字读 + 授权扩额。缺失时 budget()/extendBudget()
+   *  fail closed（TASK_OFFICE_BUDGET_UNAVAILABLE）——预算扩展归 Task Office 所有
+   *  （module-seams §5.1），幂等键由 office 内 task-budget 深模块持有。 */
+  budget?: TaskBudgetBackendPort;
 }
 
 export interface TaskOffice {
@@ -195,6 +201,10 @@ export interface TaskOffice {
   inbox(): Promise<InboxView>;
   /** T08: 类型化决定——冻结 decision_id 幂等重放；receipt 如实区分 recorded / delivery-unknown / superseded / gone。 */
   decide(input: AttentionDecisionInput): Promise<AttentionDecisionReceipt>;
+  /** T09（#39）：一个 Task 的预算四数字（预计/已用/预占/剩余，根行聚合含委派 Run）。 */
+  budget(taskId: string): Promise<TaskBudgetFacts>;
+  /** T09（#39）：授权扩额（幂等键模块内保持，失败重试同键）；receipt 携带本次唤醒的 run 数。 */
+  extendBudget(input: TaskBudgetExtendInput): Promise<TaskBudgetExtendReceipt>;
   open(input: { taskId: string; runId: string }): TaskHandle;
   start(goal: TaskOfficeGoal, options?: { requestId?: string }): Promise<TaskStartReceipt>;
   reconcilePending(): Promise<TaskStartReceipt[]>;
@@ -293,6 +303,11 @@ export function createTaskOffice(ports: TaskOfficePorts): TaskOffice {
     if (typeof globalThis.crypto?.randomUUID === 'function') return globalThis.crypto.randomUUID();
     throw new TaskOfficeError('TASK_OFFICE_INVALID_INPUT', { cause: new Error('newRequestId port is required on platforms without crypto.randomUUID') });
   };
+  const budgetOps = ports.budget === undefined ? undefined : createTaskBudgetOps({
+    backend: ports.budget,
+    lease: ports.lease,
+    newIdempotencyKey: ports.newRequestId,
+  });
   const goalDraftOf = (goal: TaskOfficeGoal): NewTaskDraft => ({
     text: goal.text,
     agentId: goal.agentId,
@@ -456,6 +471,14 @@ export function createTaskOffice(ports: TaskOfficePorts): TaskOffice {
     },
     decide(input: AttentionDecisionInput): Promise<AttentionDecisionReceipt> {
       return attention.decide(input);
+    },
+    budget(taskId: string): Promise<TaskBudgetFacts> {
+      if (budgetOps === undefined) return Promise.reject(new TaskOfficeError('TASK_OFFICE_BUDGET_UNAVAILABLE'));
+      return budgetOps.budget(taskId);
+    },
+    extendBudget(input: TaskBudgetExtendInput): Promise<TaskBudgetExtendReceipt> {
+      if (budgetOps === undefined) return Promise.reject(new TaskOfficeError('TASK_OFFICE_BUDGET_UNAVAILABLE'));
+      return budgetOps.extendBudget(input);
     },
     open(taskOpen: { taskId: string; runId: string }): TaskHandle {
       const taskId = taskOpen.taskId.trim();

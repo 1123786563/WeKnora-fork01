@@ -76,3 +76,9 @@ export type {
   EvidenceCitation, MaterialActResult, MaterialEntry, MaterialEntryKind, MaterialEvent, MaterialIndex,
   MaterialIntent, MaterialRef, MaterialView, PreviewVerdict, TaskMaterial, TaskMaterialHandle, TerminalLine,
 } from './material/types.ts';
+export { createTaskBudgetOps, TaskBudgetError } from './task-office/task-budget.ts';
+export type {
+  TaskBudgetBackendPort, TaskBudgetErrorCode, TaskBudgetExtendInput, TaskBudgetExtendReceipt, TaskBudgetFacts,
+} from './task-office/task-budget.ts';
+export { createScenarioTaskBudgetBackend } from './task-office/in-memory-task-budget.ts';
+export type { ScenarioTaskBudgetScript } from './task-office/in-memory-task-budget.ts';
