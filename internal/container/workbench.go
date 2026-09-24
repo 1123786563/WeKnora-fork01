@@ -170,3 +170,12 @@ func NewTaskComplianceService(
 func NewWorkbenchTaskComplianceHandler(compliance *service.TaskComplianceService) *session.WorkbenchTaskComplianceHandler {
 	return session.NewWorkbenchTaskComplianceHandler(compliance)
 }
+
+// wireTaskDeletionGuard installs the T13 legal-hold gate at the session
+// deletion entrances (O03 wireCraftSessionTombstone shape).
+func wireTaskDeletionGuard(handler *session.Handler, compliance *service.TaskComplianceService) {
+	if handler == nil || compliance == nil {
+		return
+	}
+	handler.SetTaskDeletionGuard(compliance)
+}

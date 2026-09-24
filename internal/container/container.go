@@ -1049,6 +1049,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// O03 wiring: the craft tombstone at the session-deletion entrance (the
 	// Handler is fully constructible here — the router below resolves it).
 	must(container.Invoke(wireCraftSessionTombstone))
+	must(container.Invoke(wireTaskDeletionGuard))
 
 	// Router configuration
 	logger.Debugf(ctx, "[Container] Registering router and starting task server...")

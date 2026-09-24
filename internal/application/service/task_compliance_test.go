@@ -219,3 +219,35 @@ func TestTaskMetadataIsAdminOnlyAndCarriesNoContent(t *testing.T) {
 			viewType.Field(i).Name)
 	}
 }
+
+// T13 (#43) Task 5: the legal-hold deletion gate. No policy → ungated
+// (today's behavior preserved); hold on → refused AND audited; a broken
+// audit trail never un-gates the hold (the audit is the trail, not the
+// authority — the deletion is already denied).
+func TestAllowsTaskDeletionUnderLegalHold(t *testing.T) {
+	store, audit, svc := complianceFixtures()
+	ctx := context.Background()
+
+	// No policy → ungated (today's behavior preserved).
+	require.NoError(t, svc.AllowsTaskDeletion(ctx, 1, "u1", "s1"))
+
+	// Policy without hold → allowed.
+	store.policy = &types.TenantTaskPolicy{TenantID: 1}
+	require.NoError(t, svc.AllowsTaskDeletion(ctx, 1, "u1", "s1"))
+
+	// Legal hold → refused, and the refusal itself is audited.
+	store.policy.LegalHold = true
+	err := svc.AllowsTaskDeletion(ctx, 1, "u1", "s1")
+	require.ErrorIs(t, err, ErrTaskLegalHold)
+	require.Len(t, audit.entries, 1)
+	require.Equal(t, types.AuditActionTaskDeleteDenied, audit.entries[0].Action)
+	require.Equal(t, types.AuditOutcomeDenied, audit.entries[0].Outcome)
+	require.Equal(t, "s1", audit.entries[0].TargetID)
+
+	// A broken audit trail must not silently un-gate the hold: the refusal
+	// stands even when its audit write fails (deletion is already denied).
+	store.policy.LegalHold = true
+	audit.err = context.DeadlineExceeded
+	err = svc.AllowsTaskDeletion(ctx, 1, "u1", "s2")
+	require.ErrorIs(t, err, ErrTaskLegalHold)
+}

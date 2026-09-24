@@ -32,6 +32,10 @@ func TestTaskComplianceWiringRegistered(t *testing.T) {
 		require.True(t, strings.Contains(containerSrc, want),
 			"container.go must register %q — without it the optional handler stays nil and the compliance routes silently disappear", want)
 	}
+	// T13 (#43) Task 5: the legal-hold gate must be Invoke-wired at the
+	// session deletion entrances, or the refusal never fires in production.
+	require.True(t, strings.Contains(containerSrc, "must(container.Invoke(wireTaskDeletionGuard))"),
+		"container.go must Invoke wireTaskDeletionGuard — without it the legal-hold gate is never installed at the deletion entrances")
 	workbenchSrc := readRepoFile(t, "workbench.go")
 	for _, want := range []string{
 		"func NewTaskComplianceStore(",

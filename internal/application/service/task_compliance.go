@@ -235,3 +235,28 @@ func normalizeComplianceMiss(err error) error {
 	}
 	return err
 }
+
+// ErrTaskLegalHold refuses internal deletion lanes under the tenant legal
+// hold (users cannot bypass organizational obligations — Spec story 55).
+var ErrTaskLegalHold = apperrors.NewConflictError("task deletion is blocked by the tenant legal hold")
+
+// AllowsTaskDeletion is the T13 deletion gate (session.TaskDeletionGuard).
+// No policy or hold off → nil (today's flow). Hold on → ErrTaskLegalHold
+// with an audit row; the refusal stands even when its audit write fails
+// (deletion is already denied — the audit is the trail, not the authority).
+func (s *TaskComplianceService) AllowsTaskDeletion(ctx context.Context, tenantID uint64, actorUserID, sessionID string) error {
+	policy, err := s.store.GetTaskPolicy(ctx, tenantID)
+	if err != nil {
+		return err
+	}
+	if policy == nil || !policy.LegalHold {
+		return nil
+	}
+	_ = s.audit.Log(ctx, &types.AuditLog{
+		TenantID: tenantID, ActorUserID: actorUserID,
+		Action:     types.AuditActionTaskDeleteDenied,
+		TargetType: "task", TargetID: sessionID,
+		Outcome: types.AuditOutcomeDenied,
+	})
+	return ErrTaskLegalHold
+}
