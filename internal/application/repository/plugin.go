@@ -115,6 +115,26 @@ func (r *pluginRepository) GetInstallationByTenantPlugin(ctx context.Context, te
 	return &inst, nil
 }
 
+// GetByServiceID retrieves the installation bound to a materialized service
+// ID within a tenant; not found (including manual services) is (nil, nil).
+// The runtime snapshot guard resolves accepted capability through this.
+func (r *pluginRepository) GetByServiceID(ctx context.Context, tenantID uint64, serviceID string) (*types.PluginInstallation, error) {
+	if serviceID == "" {
+		return nil, nil
+	}
+	var inst types.PluginInstallation
+	err := r.db.WithContext(ctx).
+		Where("tenant_id = ? AND service_id = ?", tenantID, serviceID).
+		First(&inst).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &inst, nil
+}
+
 // ListInstallationsByTenant returns all installations of a tenant.
 func (r *pluginRepository) ListInstallationsByTenant(ctx context.Context, tenantID uint64) ([]*types.PluginInstallation, error) {
 	var installations []*types.PluginInstallation

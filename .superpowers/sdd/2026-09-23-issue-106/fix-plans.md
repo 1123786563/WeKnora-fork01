@@ -957,3 +957,74 @@ B7 对话端到端（T13）仍未实现——不宣称任何验收边界已完�
   快照守卫与漂移阻断（T09/T17）、B4 个人授权 connections-me（T11）、B5 写工具
   审批闭环（T18/T19）、B7 对话内端到端（T13）、B9 PG 集成迁移测试
  （blocked-env）未实现——分支仍不可按 Issue #106 整体验收通过。
+
+---
+
+# 范围缺口修复批次计划（R10 轮，2026-09-24）——同 finding 重复投递，按优先级续切
+
+输入：与 R9 同一 critical 范围缺口 finding 再次投递（evidence 基于 e050f5e90
+旧 HEAD）。当前 HEAD（270dec1da）复核：000190/000111 迁移、PluginInstallation
+生产代码、routes_plugins.go 6 条路由均已由 R9 落地——该 evidence 已过时；但
+finding 主体（B3/B4/B5/B2 升级面/B1 UI/B7 仍缺）继续成立。本轮按指令续切
+下一优先级：**B3 运行时快照守卫与漂移阻断（T09，计划 04）**——安全上最关键
+的缺口：现状物化 mcp_services 会把远端当前全部工具暴露给 Agent 目录，
+「已接受快照=运行时核验基准」（ID52/US25）不存在。
+
+## R10-A（critical·范围缺口 B3）RegisterMCPTools 快照守卫注入 [T09]
+
+- 根因：无运行时过滤——安装接受的 tools_snapshot 不参与 Agent 目录组装。
+- 文件（按计划 04 Task 9）：
+  - `internal/modules/agentruntime/agent/tools/mcp_tool.go`：
+    `PluginRuntimeSnapshot`/`PluginSnapshotProvider`/`ErrPluginDrift`/
+    `FilterToolsBySnapshot`（导出，T17 复用）；`RegisterMCPTools` 第 9 参
+    `pluginGuard`（nil=现状逐字节一致）；loader 闭包在 loadMCPDirectory
+    返回后过滤：guard 错误 fail-closed；快照外工具剔除；快照内 digest 不符
+    → ErrPluginDrift。
+  - `internal/types/interfaces/plugin.go` + `internal/application/repository/plugin.go`：
+    `GetByServiceID`（参数绑定 WHERE tenant_id=? AND service_id=?）。
+  - `internal/application/service/plugin_install_service.go`：
+    `PluginSnapshotLookup(repo) tools.PluginSnapshotProvider`（未命中 (nil,nil)
+    =非插件服务；命中反序列化快照）。
+  - `internal/application/service/agent_service.go`：agentService 增
+    pluginRepo 字段（NewAgentService 追加 1 参，dig 自动解析），registerMCPTools
+    注入 provider；既有 8 处测试调用点补 nil。
+- 回归测试（先 RED 后 GREEN，`tools/mcp_plugin_guard_test.go`，组装先例
+  mcp_catalog_integration_test.go）：TestFilterToolsBySnapshot（纯函数三态）、
+  TestRegisterMCPToolsFiltersPluginToolsToAcceptedSnapshot（快照外工具目录
+  不可见）、TestRegisterMCPToolsRejectsSchemaDrift（digest 不符→ErrPluginDrift
+  文案）、TestRegisterMCPToolsNilGuardKeepsLegacyBehavior（nil guard 与
+  非插件服务全工具可见）、TestRegisterMCPToolsGuardErrorFailsClosed。
+- 完成条件：新测试全绿；`go test ./internal/modules/agentruntime/agent/tools/`
+  与 `./internal/modules/airesource/mcp/` 不回归；`go build ./...` exit 0。
+
+## R10 轮完成条件（总）
+
+1. 新测试先 RED（编译失败）后 GREEN；既有 MCP 目录/代理测试零回归；
+2. agent 集成面（`./internal/application/service/`）复跑不回归；
+3. 中文提交标注「范围缺口 R10」轮次 [T09]；账本 tasks/T09.md + 本节回填；
+4. remaining 如实上报：B1 前端（T03/T08）、B2 升级面（T14/T16）、B4 个人
+   授权（T11）、B5 审批闭环（T18/T19）、B7 端到端（T10/T13）、B9 PG 集成
+   迁移测试仍缺——分支仍不可按 Issue #106 整体验收通过。
+
+### R10 轮完成记录（2026-09-24）
+
+- TDD：RED（`undefined: PluginRuntimeSnapshot` 编译失败）→ GREEN；新测试 6 个
+ （tools 层 5 + repo 层 1）全绿。
+- 实施中两处修正：①受控工具 schema 改 `sdkmcp.NewToolWithRawSchema` 钉死
+  字节（`NewTool+WithRawInputSchema` 会双设冲突运行时报错）；②drift/guard-
+  error 集成断言改「控制孪生 + fail-closed 消息」——catalog 既有设计把
+  loader 错误折叠为确定性 error 态消息，漂移原文断言留在纯函数测试层，
+  孪生排除连接失败假阳性（空洞断言风险已消除）。
+- 门控（本轮真实运行，-count=1）：agentruntime 全树 19 包 ok（tools 37s 含
+  5 新测试与全部既有目录/代理/曝光测试）；airesource/mcp ok；service ok
+ （471s）；repository 单独重跑 ok（437s）；opencode 单独重跑 ok（23s）——
+  首轮 ~20 包并行时 repository/opencode 触 10m 默认包级超时假红，单独复跑
+  通过，与本轮改动无关（opencode 不导入任何本轮改动包）；container/types/
+  handler/modules/plugins ok。`go build ./...` exit 0；改动文件 gofmt 无输出。
+- 账本：tasks/T09.md 新建；本节回填。
+- 提交：一条中文提交标注「范围缺口 R10」轮次 [T09]。
+- remaining 如实维持：B1 前端（T03/T08）、B2 升级面（T14/T16）、B4 个人授权
+  connections-me（T11）、B5 审批闭环（T18/T19）、B7 端到端（T10/T13）、
+  B9 PG 集成迁移测试（blocked-env）、T17 漂移检测持久化闭环（CheckDrift/
+  ResolveDrift——本轮 ErrPluginDrift/FilterToolsBySnapshot 已为它备好导出面）
+  未实现——分支仍不可按 Issue #106 整体验收通过。

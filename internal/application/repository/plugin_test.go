@@ -139,3 +139,47 @@ func TestGetPreviewScopesByTenant(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, got)
 }
+
+// TestGetByServiceIDScopesByTenant（T09）：运行时快照守卫的仓储查询——
+// 同租户按 service_id 命中、跨租户与手工服务（无安装行）返回 (nil,nil)、
+// 空 service_id 短路返回 (nil,nil) 不落库查询。
+func TestGetByServiceIDScopesByTenant(t *testing.T) {
+	ctx := context.Background()
+	db := newPluginPreviewTestDB(t)
+	require.NoError(t, db.AutoMigrate(&types.PluginInstallation{}))
+	repo := NewPluginRepository(db)
+	require.NoError(t, db.Create(&types.PluginInstallation{
+		ID:              "inst-1",
+		TenantID:        7,
+		PluginID:        "com.example.jira-todo",
+		Name:            "Jira 本周待办",
+		ManifestURL:     "https://plugins.example.com/manifest.json",
+		AcceptedVersion: "1.2.0",
+		TransportType:   "http-streamable",
+		EndpointURL:     "https://plugins.example.com/mcp",
+		ToolsSnapshot:   types.PluginPreviewTools{{Name: "search_my_week_issues", InputSchemaDigest: "d"}},
+		ToolsDigest:     "digest",
+		ServiceID:       "svc-1",
+		DriftState:      types.PluginDriftNone,
+		State:           types.PluginInstallationActive,
+		CreatedBy:       "admin-1",
+	}).Error)
+
+	got, err := repo.GetByServiceID(ctx, 7, "svc-1")
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	require.Equal(t, "inst-1", got.ID)
+	require.Equal(t, "svc-1", got.ServiceID)
+
+	got, err = repo.GetByServiceID(ctx, 8, "svc-1")
+	require.NoError(t, err)
+	require.Nil(t, got, "cross-tenant service lookup must return (nil, nil)")
+
+	got, err = repo.GetByServiceID(ctx, 7, "manual-svc-no-row")
+	require.NoError(t, err)
+	require.Nil(t, got, "manual services have no installation row")
+
+	got, err = repo.GetByServiceID(ctx, 7, "")
+	require.NoError(t, err)
+	require.Nil(t, got, "empty service_id short-circuits")
+}

@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/approval"
 	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/mcp"
+	"github.com/Tencent/WeKnora/internal/modules/plugins"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
@@ -533,9 +535,70 @@ func loadMCPDirectory(
 	return definitions, instructions, nil
 }
 
+// ErrPluginDrift marks a plugin-materialized service whose LIVE tool
+// directory no longer matches the tenant's accepted snapshot: a tool inside
+// the snapshot changed its input schema. This is a hard fail-closed verdict
+// — the accepted snapshot is the runtime verification baseline (spec ID52),
+// so drifted capability must surface for administrator review, never
+// silently pass through and never be quietly dropped.
+var ErrPluginDrift = errors.New("plugin capability drift detected; administrator review required")
+
+// PluginRuntimeSnapshot is the runtime view of one installation's accepted
+// tool snapshot: what the tenant reviewed and accepted at install/upgrade
+// time. Service-materialized plugin rows are filtered against exactly this.
+type PluginRuntimeSnapshot struct {
+	InstallationID string
+	Tools          []types.PluginToolSnapshot
+}
+
+// PluginSnapshotProvider resolves the accepted snapshot behind a service ID.
+// nil, nil = the service is NOT plugin-materialized (manual service —
+// legacy behavior, no filtering); a non-nil error = fail-closed (the caller
+// must abort the directory load, never fall back to unfiltered).
+type PluginSnapshotProvider func(ctx context.Context, tenantID uint64, serviceID string) (*PluginRuntimeSnapshot, error)
+
+// FilterToolsBySnapshot filters a live MCP directory against an accepted
+// plugin snapshot. Tools NOT in the snapshot are dropped (unaccepted
+// capability must stay invisible to the Agent); a snapshot tool whose live
+// schema digest disagrees with the accepted digest is ErrPluginDrift (a
+// changed capability is a review event, not a silent drop or pass-through).
+// Survivors keep the live order. Exported for drift detection reuse (T17).
+func FilterToolsBySnapshot(snap *PluginRuntimeSnapshot, defs []*types.MCPTool) ([]*types.MCPTool, error) {
+	if snap == nil {
+		return defs, nil
+	}
+	accepted := make(map[string]types.PluginToolSnapshot, len(snap.Tools))
+	for _, tool := range snap.Tools {
+		accepted[tool.Name] = tool
+	}
+	kept := make([]*types.MCPTool, 0, len(defs))
+	for _, def := range defs {
+		if def == nil {
+			continue
+		}
+		tool, ok := accepted[def.Name]
+		if !ok {
+			// Outside the accepted snapshot: the tenant never accepted this
+			// capability, so the Agent must not discover it.
+			continue
+		}
+		if plugins.ToolSchemaDigest(def.InputSchema) != tool.InputSchemaDigest {
+			return nil, fmt.Errorf("%w: tool %q schema changed", ErrPluginDrift, def.Name)
+		}
+		kept = append(kept, def)
+	}
+	return kept, nil
+}
+
 // RegisterMCPTools installs a scoped directory and call proxy without connecting
 // to MCP servers or advertising their full schemas. The count is services, not
 // tools: discovery occurs on demand during tool execution.
+//
+// pluginGuard filters plugin-materialized services' live directories against
+// the tenant's accepted installation snapshot (issue #116 runtime baseline).
+// nil keeps behavior byte-identical to the pre-plugin era — manual MCP
+// services never pass a guard hit in production either (the provider returns
+// nil for rows without plugin_installation_id).
 func RegisterMCPTools(
 	ctx context.Context,
 	registry *ToolRegistry,
@@ -545,6 +608,7 @@ func RegisterMCPTools(
 	authWaitTimeoutSeconds int,
 	lookup MCPServiceLookup,
 	metadata *MCPMetadataIO,
+	pluginGuard PluginSnapshotProvider,
 ) (int, error) {
 	catalog := newMCPCatalog(
 		ctx,
@@ -558,6 +622,24 @@ func RegisterMCPTools(
 			)
 			if err != nil {
 				return nil, err
+			}
+			// Plugin runtime guard (issue #116): filter the live directory
+			// against the accepted installation snapshot. Guard errors are
+			// fail-closed; manual services resolve to a nil snapshot and
+			// keep the legacy unfiltered behavior.
+			if pluginGuard != nil {
+				tenantID, _ := types.TenantIDFromContext(loadCtx)
+				snap, guardErr := pluginGuard(loadCtx, tenantID, service.ID)
+				if guardErr != nil {
+					return nil, fmt.Errorf("plugin snapshot guard failed for %s: %w", service.Name, guardErr)
+				}
+				if snap != nil {
+					filtered, filterErr := FilterToolsBySnapshot(snap, definitions)
+					if filterErr != nil {
+						return nil, filterErr
+					}
+					definitions = filtered
+				}
 			}
 			tools := make([]*MCPTool, 0, len(definitions))
 			seen := make(map[string]bool)

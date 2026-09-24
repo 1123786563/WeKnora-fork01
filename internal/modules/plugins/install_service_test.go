@@ -211,6 +211,14 @@ func (r *fakePluginInstallRepo) GetInstallationByTenantPlugin(_ context.Context,
 	}
 	return nil, nil
 }
+func (r *fakePluginInstallRepo) GetByServiceID(_ context.Context, tenantID uint64, serviceID string) (*types.PluginInstallation, error) {
+	for _, inst := range r.installations {
+		if inst.TenantID == tenantID && inst.ServiceID == serviceID {
+			return inst, nil
+		}
+	}
+	return nil, nil
+}
 func (r *fakePluginInstallRepo) ListInstallationsByTenant(_ context.Context, tenantID uint64) ([]*types.PluginInstallation, error) {
 	var out []*types.PluginInstallation
 	for _, inst := range r.installations {

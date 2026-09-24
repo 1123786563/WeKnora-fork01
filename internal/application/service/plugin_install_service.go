@@ -9,10 +9,34 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/Tencent/WeKnora/internal/logger"
+	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/tools"
 	"github.com/Tencent/WeKnora/internal/modules/plugins"
 	"github.com/Tencent/WeKnora/internal/types"
+	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"gorm.io/gorm"
 )
+
+// PluginSnapshotLookup builds the production runtime guard provider over
+// the plugin repository (T09): a service with no installation row (every
+// manual MCP service) resolves to (nil, nil) — the tools layer reads that
+// as "not plugin-materialized, legacy behavior"; a found row hands its
+// accepted snapshot to the guard. Repository faults propagate as errors so
+// the guard fails closed.
+func PluginSnapshotLookup(repo interfaces.PluginRepository) tools.PluginSnapshotProvider {
+	return func(ctx context.Context, tenantID uint64, serviceID string) (*tools.PluginRuntimeSnapshot, error) {
+		inst, err := repo.GetByServiceID(ctx, tenantID, serviceID)
+		if err != nil {
+			return nil, err
+		}
+		if inst == nil {
+			return nil, nil
+		}
+		return &tools.PluginRuntimeSnapshot{
+			InstallationID: inst.ID,
+			Tools:          inst.ToolsSnapshot,
+		}, nil
+	}
+}
 
 // Install-slice sentinels (T06). They are the ONLY texts the handler maps
 // onto verdicts; underlying DB faults are logged server-side and surface as

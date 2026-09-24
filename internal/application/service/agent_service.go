@@ -120,6 +120,11 @@ type agentService struct {
 	sandboxPolicy        WorkspaceSandboxPolicy
 	browserSkill         *browserskill.Manager
 	userRepo             interfaces.UserRepository
+	// pluginRepo backs the runtime snapshot guard (T09): registerMCPTools
+	// filters plugin-materialized services' live directories against the
+	// tenant's accepted installation snapshot. nil keeps the pre-plugin
+	// unfiltered behavior (test assemblies).
+	pluginRepo interfaces.PluginRepository
 	// craft is the optional Craft delegation assembly. nil leaves every
 	// session on the unchanged builtin tool set.
 	craft *CraftDelegation
@@ -152,6 +157,7 @@ func NewAgentService(
 	craftDelegation *CraftDelegation,
 	browserSkill *browserskill.Manager,
 	userRepo interfaces.UserRepository,
+	pluginRepo interfaces.PluginRepository,
 ) interfaces.AgentService {
 	return &agentService{
 		cfg:                  cfg,
@@ -181,6 +187,7 @@ func NewAgentService(
 		sandboxPolicy:    sandboxPolicy,
 		browserSkill:     browserSkill,
 		userRepo:         userRepo,
+		pluginRepo:       pluginRepo,
 		craft:            craftDelegation,
 	}
 }
@@ -290,6 +297,7 @@ func (s *agentService) registerMCPTools(
 			ctx, toolRegistry, enabledServices, s.mcpManager, s.toolApprovalGate,
 			config.MCPAuthWaitTimeout, s.mcpServiceService.GetMCPServiceByID,
 			&tools.MCPMetadataIO{Get: metadataService.GetMCPMetadata, Put: metadataService.PersistMCPMetadata},
+			s.pluginSnapshotGuard(),
 		)
 		if err != nil {
 			logger.Warnf(ctx, "Failed to register MCP directory: %v", err)
@@ -297,6 +305,18 @@ func (s *agentService) registerMCPTools(
 			logger.Infof(ctx, "Registered %d MCP service(s) for on-demand discovery", registered)
 		}
 	}
+}
+
+// pluginSnapshotGuard returns the runtime snapshot provider for
+// registerMCPTools (T09): with a plugin repo it resolves each service's
+// accepted installation snapshot (manual services resolve to nil and keep
+// legacy behavior); without one (test assemblies) it returns nil, which the
+// tools layer reads as "no plugin era, unfiltered".
+func (s *agentService) pluginSnapshotGuard() tools.PluginSnapshotProvider {
+	if s.pluginRepo == nil {
+		return nil
+	}
+	return PluginSnapshotLookup(s.pluginRepo)
 }
 
 // registerOpenConnectorTool mounts the open-connector app action tool

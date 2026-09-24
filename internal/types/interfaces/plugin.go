@@ -44,6 +44,12 @@ type PluginRepository interface {
 	// pluginID within a tenant. Not found returns (nil, nil).
 	GetInstallationByTenantPlugin(ctx context.Context, tenantID uint64, pluginID string) (*types.PluginInstallation, error)
 
+	// GetByServiceID retrieves the installation bound to a materialized MCP
+	// service ID within a tenant (the runtime snapshot guard's lookup).
+	// Not found returns (nil, nil) — including manual services, which have
+	// no installation row by construction.
+	GetByServiceID(ctx context.Context, tenantID uint64, serviceID string) (*types.PluginInstallation, error)
+
 	// ListInstallationsByTenant returns all installations of a tenant.
 	ListInstallationsByTenant(ctx context.Context, tenantID uint64) ([]*types.PluginInstallation, error)
 
