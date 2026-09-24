@@ -42,6 +42,9 @@ export interface NewTaskController {
 
 const emptyDraft = (): NewTaskDraft => ({ ...EMPTY_DRAFT, attachments: [], knowledgeIds: [] });
 
+/** rejected 终态的用户可见文案（B3-F41）：服务端确定性拒绝，修改目标后重试=新请求标识。 */
+export const SUBMISSION_REJECTED_COPY = '上次提交已被服务端拒绝；修改目标后重新提交将使用新的请求标识。';
+
 /**
  * New 屏控制器（module-seams §5.4：task-form 纯策略的宿主编排，Screen 只见状态与意图）。
  * AC2 的保留语义全部落在这里：未就绪/离线/冲突一律不清草稿；只有 bound 才清空可编辑
@@ -58,6 +61,7 @@ export function createNewTaskController(ports: NewTaskControllerPorts): NewTaskC
     submitting: false,
   };
   let intentRequestId: string | undefined;
+  let draftDirty = false; // loading 窗口内的用户编辑（B3-F40）：初始化不得覆盖
   let disposed = false;
   const listeners = new Set<(state: NewTaskViewState) => void>();
   const publish = (next: NewTaskViewState): void => {
@@ -69,21 +73,26 @@ export function createNewTaskController(ports: NewTaskControllerPorts): NewTaskC
   };
   const project = (patch: Partial<NewTaskViewState> & { draft?: NewTaskDraft }): void => {
     const draft = patch.draft ?? state.draft;
-    publish({ ...state, ...patch, draft, readiness: evaluateSubmitReadiness(draft), recommendation: recommendLeadAgent(state.agents) });
+    const agents = patch.agents ?? state.agents; // 以合并后目录求推荐（B3-F39）
+    publish({ ...state, ...patch, draft, readiness: evaluateSubmitReadiness(draft), recommendation: recommendLeadAgent(agents) });
   };
   const initialized = (async (): Promise<void> => {
     try {
       const [stored, agents, knowledge] = await Promise.all([
         ports.drafts?.load().catch(() => undefined),
-        ports.agents(),
+        ports.agents().catch(() => [] as const), // 目录是可降级输入（B3-F59，对照 knowledge 先例）
         ports.knowledge?.().catch(() => [] as const) ?? ([] as const),
       ]);
       let pending: TaskStartReceipt[] = [];
       try { pending = await ports.office.reconcilePending(); } catch { /* 恢复失败不阻塞新建流 */ }
       if (disposed) return;
-      const draft = stored ?? emptyDraft();
-      if (draft.agentId === null) draft.agentId = recommendLeadAgent(agents).agent?.id ?? null;
+      const storedDraft = stored ?? emptyDraft();
+      // loading 窗口内的用户编辑优先（B3-F40）；agentId 为空时兜底推荐。
+      const draft = draftDirty
+        ? { ...state.draft, agentId: state.draft.agentId ?? recommendLeadAgent(agents).agent?.id ?? null }
+        : (storedDraft.agentId === null ? { ...storedDraft, agentId: recommendLeadAgent(agents).agent?.id ?? null } : storedDraft);
       const unresolved = pending.find((receipt) => receipt.phase !== 'bound' && receipt.phase !== 'rejected');
+      if (unresolved !== undefined) intentRequestId = unresolved.requestId; // 回填（B3-F37）：重试同 ID
       publish({
         ...state,
         draft,
@@ -103,14 +112,17 @@ export function createNewTaskController(ports: NewTaskControllerPorts): NewTaskC
     state: () => state,
     subscribe(listener) { listeners.add(listener); return () => { listeners.delete(listener); }; },
     update(patch) {
+      draftDirty = true;
       project({ draft: { ...state.draft, ...patch } });
       persistDraft();
     },
     setAttachments(attachments) {
+      draftDirty = true;
       project({ draft: { ...state.draft, attachments: [...attachments] } });
       persistDraft();
     },
     toggleKnowledge(knowledgeId) {
+      draftDirty = true;
       const attached = state.draft.knowledgeIds.includes(knowledgeId);
       project({ draft: { ...state.draft, knowledgeIds: attached ? state.draft.knowledgeIds.filter((id) => id !== knowledgeId) : [...state.draft.knowledgeIds, knowledgeId] } });
       persistDraft();
@@ -144,9 +156,13 @@ export function createNewTaskController(ports: NewTaskControllerPorts): NewTaskC
         );
         if (receipt.phase === 'bound' && receipt.runId !== undefined) {
           intentRequestId = undefined;
+          draftDirty = false;
           const cleared: NewTaskDraft = { ...emptyDraft(), agentId: state.draft.agentId, budgetUpper: state.draft.budgetUpper };
           publish({ ...state, draft: cleared, readiness: evaluateSubmitReadiness(cleared), recommendation: state.recommendation, submitting: false, inFlight: undefined });
           await ports.drafts?.save(cleared).catch(() => undefined);
+        } else if (receipt.phase === 'rejected') {
+          intentRequestId = undefined; // 终态（B3-F41）：新意图=新 request_id，不驱动同 ID 重试
+          publish({ ...state, submitting: false, inFlight: undefined, error: SUBMISSION_REJECTED_COPY });
         } else {
           intentRequestId = receipt.requestId;
           publish({ ...state, submitting: false, inFlight: receipt });

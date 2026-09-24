@@ -152,3 +152,65 @@ test('unresolved submissions from before the restart are surfaced on initializat
   assert.deepEqual(controller.state().inFlight, { requestId: 'req-old', phase: 'awaiting_reconciliation', dispatched: false });
   controller.dispose();
 });
+
+test('a recovered unresolved intent is retried with the same request id (D5)', async () => {
+  const office = officeDouble(undefined);
+  office.reconcilePending = async () => [{ requestId: 'req-recovered', phase: 'awaiting_reconciliation', dispatched: false }];
+  const controller = createNewTaskController({ office, agents: async () => agents(), newRequestId: () => 'req-new' });
+  await controller.whenInitialized();
+  assert.equal(controller.state().inFlight?.requestId, 'req-recovered');
+  controller.update({ text: '整理周报' });
+  controller.update({ agentId: 'a-general' });
+  await controller.submit();
+  const last = office.calls[office.calls.length - 1]!;
+  assert.equal(last.options?.requestId, 'req-recovered', 'B3-F37：跨重启恢复的意图重试必须同 ID，绝不换 ID 重建任务');
+  controller.dispose();
+});
+
+test('a rejected receipt is terminal: no inFlight, no same-id retry', async () => {
+  const office = officeDouble(async () => ({ requestId: 'req-1', phase: 'rejected', dispatched: true }));
+  const controller = createNewTaskController({ office, agents: async () => agents(), newRequestId: () => 'req-new' });
+  await controller.whenInitialized();
+  controller.update({ text: '整理周报', agentId: 'a-general' });
+  const receipt = await controller.submit();
+  assert.equal(receipt?.phase, 'rejected');
+  const state = controller.state();
+  assert.equal(state.inFlight, undefined, 'B3-F41：rejected 终态不得驱动同 ID 重试引导');
+  assert.ok(state.error !== undefined && state.error.includes('拒绝'), '错误文案提示服务端拒绝');
+  controller.update({ text: '修改后的目标' }); // 用户修改后重试 = 新意图 = 新 request_id
+  await controller.submit();
+  const last = office.calls[office.calls.length - 1]!;
+  assert.equal(last.options?.requestId, undefined, 'rejected 后的新提交不携带旧 requestId');
+  controller.dispose();
+});
+
+test('agents() failing offline must not lose the stored draft', async () => {
+  const drafts = memoryDrafts();
+  await drafts.save({ text: '离线时的重要草稿', agentId: 'a-coding', budgetUpper: 50, attachments: [], knowledgeIds: [] });
+  const controller = createNewTaskController({ office: officeDouble(), agents: async () => { throw new Error('offline'); }, drafts, newRequestId: () => 'req-9' });
+  await controller.whenInitialized();
+  const state = controller.state();
+  assert.equal(state.loading, false, 'B3-F59：agents 失败不得让初始化整体失败');
+  assert.equal(state.draft.text, '离线时的重要草稿', '已保存草稿不被 emptyDraft 覆盖');
+  controller.dispose();
+});
+
+test('user input during the loading window survives initialization', async () => {
+  let releaseAgents: (() => void) | undefined;
+  const agentsPromise = new Promise<AgentOption[]>((resolve) => { releaseAgents = () => resolve(agents()); });
+  const controller = createNewTaskController({ office: officeDouble(), agents: () => agentsPromise, newRequestId: () => 'req-9' });
+  controller.update({ text: '秒级窗口内输入的目标' }); // 初始化未完成
+  releaseAgents?.();
+  await controller.whenInitialized();
+  assert.equal(controller.state().draft.text, '秒级窗口内输入的目标', 'B3-F40：初始化完成不得覆盖用户已输入内容');
+  controller.dispose();
+});
+
+test('refreshAgents recomputes the recommendation from the fresh catalog', async () => {
+  let current: AgentOption[] = [];
+  const controller = createNewTaskController({ office: officeDouble(), agents: async () => current, newRequestId: () => 'req-9' });
+  current = agents();
+  await controller.refreshAgents();
+  assert.deepEqual(controller.state().recommendation, recommendLeadAgent(agents()), 'B3-F39：目录刷新后推荐必须更新');
+  controller.dispose();
+});

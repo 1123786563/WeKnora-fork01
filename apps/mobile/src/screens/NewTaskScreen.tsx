@@ -1,14 +1,15 @@
+import { useEffect, useState } from 'react';
 import { Button, Text, TextInput, View } from 'react-native';
 import type { NewTaskDraft, TaskAttachmentRef } from '@weknora/domain/mobile';
 import type { NewTaskViewState } from '../new-task-view.ts';
 
 /**
  * 目标文本的源头长度上限（R1 裁决第三层，主控裁决 2026-09-24，数值为工程默认）：
- * Android SecureStore 单值约 2048 字节，最坏情形（500 个中文字 × 3B UTF-8 +
- * UUID 形态 requestId/sessionId 与 scope 固定开销）单条意图记录序列化约
- * 1.8KB，仍在信封内；无上限时约 560+ 中文字即超限，intent log 的
- * setItemAsync 抛错会让提交永久失败（见 adapters/intent-log.ts 的 1536B
- * 预算注释：单条超限在源头拦截，不在存储层截断——截断破坏 goalKeyOf digest）。
+ * Android SecureStore 单值约 2048 字节；500 个中文字 ≈1500B，knowledgeIds（UUID
+ * 数组）与 attachments 逐项计入单条记录——合法组合仍可能越限，此时存储层以
+ * TASK_OFFICE_INVALID_INPUT 显式拒绝（B3-F38 双保险：源头 maxLength 控制常规
+ * 情形，越限组合得到可行动错误码而非 setItemAsync 底层抛错；不在存储层截断
+ * ——截断破坏 goalKeyOf digest，见 adapters/intent-log.ts 的 1536B 预算注释）。
  */
 export const GOAL_TEXT_MAX_LENGTH = 500;
 
@@ -24,6 +25,10 @@ export interface NewTaskScreenProps {
 
 /** 统一 New 入口屏（受控组件）：目标输入 + 推荐/改选主理 Agent + 附加知识 + 预算 + 就绪裁决（module-seams §10：Screen 不见 wire）。 */
 export function NewTaskScreen({ state, onUpdate, onSetAttachments, onToggleKnowledge, onSubmit, onCancel, onRefreshAgents }: NewTaskScreenProps) {
+  // 预算输入的本地中间态（B3-F46）：''（未设置）与 0 是两个状态，双向折叠会
+  // 把非纯数字的编辑中间态静默清零并渲染为空——本地保留原样，仅在合法数字时提交。
+  const [budgetText, setBudgetText] = useState(state.draft.budgetUpper === 0 ? '' : String(state.draft.budgetUpper));
+  useEffect(() => { if (state.draft.budgetUpper === 0) setBudgetText(''); }, [state.draft.budgetUpper]); // bound 清空草稿后同步
   return (
     <View>
       <Text>{state.loading ? 'Loading' : 'New task'}</Text>
@@ -32,22 +37,25 @@ export function NewTaskScreen({ state, onUpdate, onSetAttachments, onToggleKnowl
         <Button
           key={agent.id}
           title={`${agent.name}${state.draft.agentId === agent.id ? ' ✓' : ''}`}
+          disabled={state.loading}
           onPress={() => { onUpdate({ agentId: agent.id }); }}
         />
       ))}
-      <Button title="Refresh agents" onPress={() => { void onRefreshAgents(); }} />
-      <TextInput value={state.draft.text} onChangeText={(text) => { onUpdate({ text }); }} placeholder="今天想完成什么？" multiline maxLength={GOAL_TEXT_MAX_LENGTH} />
+      <Button title="Refresh agents" disabled={state.loading} onPress={() => { void onRefreshAgents(); }} />
+      <TextInput value={state.draft.text} onChangeText={(text) => { onUpdate({ text }); }} placeholder="今天想完成什么？" multiline maxLength={GOAL_TEXT_MAX_LENGTH} editable={!state.loading} />
       {state.draft.text.length >= GOAL_TEXT_MAX_LENGTH && <Text>{`目标文本已达 ${GOAL_TEXT_MAX_LENGTH} 字上限，超出部分不会保存`}</Text>}
       <TextInput
-        value={state.draft.budgetUpper === 0 ? '' : String(state.draft.budgetUpper)}
-        onChangeText={(text) => { onUpdate({ budgetUpper: /^\d+$/.test(text) ? Number(text) : 0 }); }}
+        value={budgetText}
+        onChangeText={(text) => { setBudgetText(text); onUpdate({ budgetUpper: /^\d+$/.test(text) ? Number(text) : 0 }); }}
         placeholder="预算上限（Credits，可留空）"
         keyboardType="numeric"
+        editable={!state.loading}
       />
       {state.knowledge.map((item) => (
         <Button
           key={item.id}
           title={`${state.draft.knowledgeIds.includes(item.id) ? '✓ ' : ''}${item.title}`}
+          disabled={state.loading}
           onPress={() => { onToggleKnowledge(item.id); }}
         />
       ))}
@@ -55,9 +63,9 @@ export function NewTaskScreen({ state, onUpdate, onSetAttachments, onToggleKnowl
         <Text key={attachment.id}>{`${attachment.name} · ${attachment.readiness}`}</Text>
       ))}
       {!state.readiness.ready && state.readiness.reason !== undefined && <Text>{state.readiness.reason}</Text>}
-      {state.inFlight !== undefined && <Text>{`Unresolved submission ${state.inFlight.requestId} (${state.inFlight.phase}) — retrying keeps the same request id`}</Text>}
+      {state.inFlight !== undefined && state.inFlight.phase !== 'rejected' && <Text>{`Unresolved submission ${state.inFlight.requestId} (${state.inFlight.phase}) — retrying keeps the same request id`}</Text>}
       {state.error !== undefined && <Text>{state.error}</Text>}
-      <Button title="Submit task" disabled={state.submitting || !state.readiness.ready} onPress={() => { void onSubmit(); }} />
+      <Button title="Submit task" disabled={state.submitting || !state.readiness.ready || state.loading} onPress={() => { void onSubmit(); }} />
       <Button title="Keep draft" onPress={() => { void onCancel(); }} />
     </View>
   );
