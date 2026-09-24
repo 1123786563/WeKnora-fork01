@@ -176,7 +176,10 @@ func (s *GormInteractionStore) CreatePending(ctx context.Context, req approval.P
 		return ErrCapabilityUnavailable
 	}
 	hash := sha256.Sum256(req.Args)
-	expires := time.Now().Add(10 * time.Minute)
+	// SQLite serializes time.Time as offset-bearing text; the expiry predicate
+	// below compares that text. Both ends must share the UTC offset or rows
+	// written in one zone get misjudged in another (see mobile_notification.go).
+	expires := time.Now().UTC().Add(10 * time.Minute)
 	credentialVersion := req.CredentialVersion
 	// Keep an unresolved version visible in the durable projection. The
 	// decision path rejects non-positive snapshots; persisting zero here lets
@@ -224,7 +227,7 @@ func (s *GormInteractionStore) ListPending(ctx context.Context, tenantID uint64,
 		Select("workbench_interactions.*").
 		Joins("LEFT JOIN agent_runs ar ON ar.tenant_id = workbench_interactions.tenant_id AND ar.run_id = workbench_interactions.run_id").
 		Joins("LEFT JOIN sessions ON sessions.tenant_id = ar.tenant_id AND sessions.id = ar.session_id").
-		Where("workbench_interactions.tenant_id = ? AND workbench_interactions.owner_id = ? AND workbench_interactions.status = ? AND sessions.archived_at IS NULL AND (workbench_interactions.expires_at IS NULL OR workbench_interactions.expires_at > ?)", tenantID, ownerID, "pending", time.Now()).
+		Where("workbench_interactions.tenant_id = ? AND workbench_interactions.owner_id = ? AND workbench_interactions.status = ? AND sessions.archived_at IS NULL AND (workbench_interactions.expires_at IS NULL OR workbench_interactions.expires_at > ?)", tenantID, ownerID, "pending", time.Now().UTC()).
 		Order("workbench_interactions.created_at ASC, workbench_interactions.id ASC").
 		Limit(limit).Find(&rows).Error
 	if err != nil {
