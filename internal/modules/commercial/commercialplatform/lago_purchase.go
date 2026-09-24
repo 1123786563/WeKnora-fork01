@@ -472,16 +472,86 @@ func (a *LagoAdapter) readPurchaseSnapshot(ctx context.Context, tenantID uint64)
 	return commercial.Snapshot{Kind: commercial.SnapshotKindPurchase, Purchase: p}, nil
 }
 
-// readPurchaseInvoiceFees is the finalized-stage invoice line read (#82/#84
-// interface, D2 condition 3): once the gating payment finalizes the invoice
-// (a VISIBLE status), the adapter fills the lines authoritatively. During
-// the awaiting-payment stage this answers empty — the pinned authority
-// version keeps open invoices invisible to every API path (t09 evidence
-// F3-F5) and an invisible line is never fabricated.
+// readPurchaseInvoiceFees is the finalized-stage invoice line read (#82,
+// T09 mandatory condition 3): once the gating payment finalizes the invoice
+// (a VISIBLE status — pinned v1.53.0 Invoice::VISIBLE_STATUS), the adapter
+// fills the lines authoritatively from the visible invoice fees (F6: v1.53
+// carries the line TYPE inside item.type — there is no top-level fee_type).
+// During the awaiting-payment stage this answers empty — the pinned version
+// keeps open invoices invisible to every API path (t09 evidence F3-F5, t10
+// runtime re-proof) and an invisible line is never fabricated.
+//
+// A 404 folds into the SAME empty semantics: on this pinned version a tenant
+// whose invoices surface has no rows yet answers 404, which is exactly the
+// open stage (nothing is known about invisible lines). Every other 4xx and
+// a malformed body are definitive wrong answers (invalid response); 5xx is
+// transient (unreachable) — the fail-closed contract, lago.go precedent.
 func (a *LagoAdapter) readPurchaseInvoiceFees(ctx context.Context, tenantID uint64) ([]commercial.InvoiceLineSnapshot, error) {
-	// Finalized-line extraction lands with #82 (the first consumer) against
-	// the visible finalized invoice; the awaiting-payment stage can never
-	// reach here with visible lines.
+	query := url.Values{}
+	query.Set("external_customer_id", commercial.ExternalCustomerID(tenantID))
+	status, body, err := a.do(ctx, http.MethodGet, "/api/v1/invoices?"+query.Encode(), nil)
+	if err != nil {
+		return nil, err
+	}
+	switch {
+	case status >= 200 && status < 300:
+	case status == http.StatusNotFound:
+		// No visible invoices for this customer — the open stage.
+		return nil, nil
+	case status >= 500:
+		return nil, fmt.Errorf("%w: invoice fees read unavailable", commercial.ErrPlatformUnreachable)
+	default:
+		return nil, fmt.Errorf("%w: invoice fees read rejected", commercial.ErrPlatformInvalidResponse)
+	}
+	var parsed struct {
+		Invoices []struct {
+			LagoID      string `json:"lago_id"`
+			InvoiceType string `json:"invoice_type"`
+			Status      string `json:"status"`
+			Fees        []struct {
+				Item *struct {
+					Type string `json:"type"`
+					Name string `json:"name"`
+				} `json:"item"`
+				Name        string      `json:"name"`
+				AmountCents json.Number `json:"amount_cents"`
+			} `json:"fees"`
+		} `json:"invoices"`
+	}
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return nil, fmt.Errorf("%w: invoice fees read malformed", commercial.ErrPlatformInvalidResponse)
+	}
+	for _, inv := range parsed.Invoices {
+		// The gating invoice is the first finalized SUBSCRIPTION invoice
+		// (finalized = a visible status; other invoice types are not the
+		// purchase's line).
+		if inv.Status != "finalized" ||
+			inv.InvoiceType != "" && inv.InvoiceType != "subscription" {
+			continue
+		}
+		lines := make([]commercial.InvoiceLineSnapshot, 0, len(inv.Fees))
+		for _, fee := range inv.Fees {
+			kind := "unknown"
+			name := fee.Name
+			if fee.Item != nil {
+				if fee.Item.Type != "" {
+					kind = fee.Item.Type
+				}
+				if fee.Item.Name != "" {
+					name = fee.Item.Name
+				}
+			}
+			amount, err := fee.AmountCents.Int64()
+			if err != nil {
+				return nil, fmt.Errorf("%w: invoice fee amount not an integer", commercial.ErrPlatformInvalidResponse)
+			}
+			lines = append(lines, commercial.InvoiceLineSnapshot{
+				Kind: kind, Name: name, AmountFen: amount,
+			})
+		}
+		return lines, nil
+	}
+	// No finalized invoice yet — the open stage answers empty.
 	return nil, nil
 }
 
