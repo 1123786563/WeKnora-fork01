@@ -1,0 +1,214 @@
+import assert from 'node:assert/strict';
+import * as nodeModule from 'node:module';
+import test from 'node:test';
+import * as React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+
+type ResolveHook = (specifier: string, context: unknown, nextResolve: (specifier: string, context: unknown) => unknown) => unknown;
+const resolveCSS: ResolveHook = (specifier, context, nextResolve) => specifier.endsWith('.css')
+  ? { shortCircuit: true, url: 'data:text/javascript,export default {}' }
+  : nextResolve(specifier, context);
+const hooks = nodeModule as typeof nodeModule & { registerHooks?: (hooks: { resolve: ResolveHook }) => void };
+if (hooks.registerHooks) hooks.registerHooks({ resolve: resolveCSS });
+else nodeModule.register(`data:text/javascript,${encodeURIComponent(`
+  export async function resolve(specifier, context, nextResolve) {
+    if (specifier.endsWith('.css')) return { shortCircuit: true, url: 'data:text/javascript,export default {}' };
+    return nextResolve(specifier, context);
+  }
+`)}`, import.meta.url);
+(globalThis as typeof globalThis & { React: typeof React }).React = React;
+
+const { PluginsSettingsPanel, formatPreviewExpiry, parsePluginPreviewEnvelope, pluginPreviewRequest } = await import('./PluginsSettingsPanel.tsx');
+
+function previewEnvelope(): unknown {
+  return {
+    success: true,
+    data: {
+      preview_id: 'p-1',
+      plugin_id: 'com.example.jira-todo',
+      version: '1.2.0',
+      name: 'Jira 本周待办',
+      description: '个人待办视角',
+      transport_type: 'http-streamable',
+      endpoint_url: 'https://plugins.example.com/jira-todo/v1.2.0/mcp',
+      tools: [
+        { name: 'search_my_week_issues', description: '搜索本周待办', read_only: true, requires_personal_auth: true, scopes: ['read:jira-work'] },
+        { name: 'create_todo', description: '创建待办', read_only: false, requires_personal_auth: false, scopes: null },
+      ],
+      identity_fingerprint: 'a'.repeat(64),
+      expires_at: '2026-09-23T12:00:00Z',
+    },
+  };
+}
+
+test('插件面板管理员初始态渲染粘贴表单且无预览卡', () => {
+  const html = renderToStaticMarkup(React.createElement(PluginsSettingsPanel, { client: {} as never, role: 'admin' }));
+  assert.match(html, /插件管理/);
+  assert.match(html, /manifest\.json/);
+  assert.ok(html.includes('type="url"') || html.includes('type="text"'), 'the manifest URL input renders');
+  assert.doesNotMatch(html, /data-testid="plugin-preview-card"/);
+  assert.doesNotMatch(html, /data-testid="plugin-preview-error"/);
+});
+
+test('插件面板对 viewer 隐藏提交表单（registry minRole=admin）', () => {
+  const html = renderToStaticMarkup(React.createElement(PluginsSettingsPanel, { client: {} as never, role: 'viewer' }));
+  assert.doesNotMatch(html, /<form/, 'no submit form renders for a viewer');
+  assert.doesNotMatch(html, /核验预览/, 'the admin submit action is hidden');
+  assert.match(html, /管理员/);
+});
+
+test('pluginPreviewRequest 构造 POST 预览请求并在空 URL 上拒绝', () => {
+  const request = pluginPreviewRequest('https://plugins.example.com/manifest.json');
+  assert.equal(request.method, 'POST');
+  assert.equal(request.path, '/api/v1/plugins/installations/preview');
+  assert.deepEqual(request.body, { manifest_url: 'https://plugins.example.com/manifest.json' });
+  assert.throws(() => pluginPreviewRequest('   '), /manifest/);
+});
+
+test('parsePluginPreviewEnvelope 拒绝非法 envelope（非 success/缺字段）', () => {
+  assert.throws(() => parsePluginPreviewEnvelope({ success: false }), /success/);
+  const missing = previewEnvelope() as { data: Record<string, unknown> };
+  delete missing.data.endpoint_url;
+  assert.throws(() => parsePluginPreviewEnvelope(missing), /endpoint_url/);
+  const toolMissingAuth = previewEnvelope() as { data: { tools: Array<Record<string, unknown>> } };
+  delete toolMissingAuth.data.tools[0]!.requires_personal_auth;
+  assert.throws(() => parsePluginPreviewEnvelope(toolMissingAuth), /requires_personal_auth/);
+  const value = parsePluginPreviewEnvelope(previewEnvelope());
+  assert.equal(value.previewId, 'p-1');
+  assert.equal(value.tools[1]!.scopes.length, 0, 'null scopes collapse to an empty list');
+});
+
+test('formatPreviewExpiry 本地化有效期并防御非法时间串', () => {
+  const formatted = formatPreviewExpiry('2026-09-23T12:00:00Z');
+  assert.ok(formatted.includes('2026'), 'a parseable expiry renders a localized date');
+  assert.equal(formatPreviewExpiry('not-a-date'), 'not-a-date', 'an unparseable expiry falls back to the raw string');
+});
+
+// ---- jsdom interaction: paste → submit → preview card / error state ----
+const { JSDOM } = nodeModule.createRequire(import.meta.url)('jsdom') as { JSDOM: new (html: string, options: { url: string }) => { window: Window & typeof globalThis } };
+const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://weknora.test' });
+Object.assign(globalThis, {
+  window: dom.window,
+  document: dom.window.document,
+  HTMLElement: dom.window.HTMLElement,
+  Event: dom.window.Event,
+  IS_REACT_ACT_ENVIRONMENT: true,
+});
+Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator });
+
+const { createRoot } = await import('react-dom/client');
+const { act } = await import('react');
+
+type CapturedRequest = { method: string; path: string; body: unknown };
+
+function stubClient(handler: (input: CapturedRequest) => Promise<unknown>) {
+  const captured: CapturedRequest[] = [];
+  const client = {
+    request: async (input: { method: string; path: string; body?: unknown }) => {
+      const entry = { method: input.method, path: input.path, body: input.body };
+      captured.push(entry);
+      return handler(entry);
+    },
+  };
+  return { client: client as never, captured };
+}
+
+async function mount(element: React.ReactElement) {
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  await act(async () => { root.render(element); });
+  return root;
+}
+
+async function unmount(root: ReturnType<typeof createRoot>) {
+  await act(async () => root.unmount());
+  document.body.replaceChildren();
+}
+
+function setInputValue(input: HTMLInputElement, value: string) {
+  const setter = Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')?.set;
+  setter?.call(input, value);
+  input.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+}
+
+function submitForm(form: HTMLFormElement) {
+  form.dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true }));
+}
+
+test('插件面板管理员可提交清单地址并渲染预览结果', async () => {
+  const { client, captured } = stubClient(async () => previewEnvelope());
+  const root = await mount(React.createElement(PluginsSettingsPanel, { client, role: 'admin' }));
+  try {
+    const input = document.querySelector('input[type="url"]') as HTMLInputElement | null;
+    assert.ok(input, 'manifest URL input renders');
+    await act(async () => { setInputValue(input!, 'https://plugins.example.com/manifest.json'); });
+    const form = document.querySelector('form');
+    assert.ok(form, 'preview form renders');
+    await act(async () => { submitForm(form); });
+    assert.equal(captured.length, 1, 'one preview request fires');
+    assert.equal(captured[0]!.method, 'POST');
+    assert.equal(captured[0]!.path, '/api/v1/plugins/installations/preview');
+    assert.deepEqual(captured[0]!.body, { manifest_url: 'https://plugins.example.com/manifest.json' });
+    const card = document.querySelector('[data-testid="plugin-preview-card"]');
+    assert.ok(card, 'the preview card renders');
+    const text = card?.textContent ?? '';
+    assert.match(text, /Jira 本周待办/);
+    assert.match(text, /1\.2\.0/);
+    assert.match(text, /com\.example\.jira-todo/);
+    assert.match(text, /https:\/\/plugins\.example\.com\/jira-todo\/v1\.2\.0\/mcp/);
+    assert.match(text, /search_my_week_issues/);
+    assert.match(text, /create_todo/);
+    assert.match(text, /只读/, 'the read-only badge renders');
+    assert.match(text, /写入/, 'the write classification badge renders');
+    assert.match(text, /需个人授权/, 'the personal-auth badge renders');
+    assert.match(text, /read:jira-work/, 'declared scopes render');
+    assert.match(text, /2026/, 'the preview expiry renders');
+    assert.match(text, /schema 指纹已核验/, 'each tool row carries the verified-schema badge');
+    // Spec US9 取舍：平台 digest 核验，界面不渲染 schema 原文（远端不可信数据不进管理界面）。
+    assert.ok(!text.includes('"type":"object"') && !text.includes('additionalProperties'), 'no raw schema JSON leaks into the panel');
+    assert.ok(!document.querySelector('[data-testid="plugin-preview-error"]'), 'no error banner after a successful preview');
+  } finally {
+    await unmount(root);
+  }
+});
+
+test('插件面板渲染校验失败错误且不残留预览卡', async () => {
+  const { client } = stubClient(async () => { throw new Error('manifest URL rejected: 私网地址禁止访问'); });
+  const root = await mount(React.createElement(PluginsSettingsPanel, { client, role: 'admin' }));
+  try {
+    await act(async () => { setInputValue(document.querySelector('input[type="url"]') as HTMLInputElement, 'http://127.0.0.1/manifest.json'); });
+    await act(async () => { submitForm(document.querySelector('form')!); });
+    const errorBanner = document.querySelector('[data-testid="plugin-preview-error"]');
+    assert.ok(errorBanner, 'the error banner renders');
+    assert.match(errorBanner?.textContent ?? '', /manifest URL rejected/);
+    assert.ok(!document.querySelector('[data-testid="plugin-preview-card"]'), 'no preview card leaks after a rejected preview');
+  } finally {
+    await unmount(root);
+  }
+});
+
+test('插件面板把非法 envelope 解析失败呈现为错误态', async () => {
+  const { client } = stubClient(async () => ({ success: false }));
+  const root = await mount(React.createElement(PluginsSettingsPanel, { client, role: 'admin' }));
+  try {
+    await act(async () => { setInputValue(document.querySelector('input[type="url"]') as HTMLInputElement, 'https://plugins.example.com/manifest.json'); });
+    await act(async () => { submitForm(document.querySelector('form')!); });
+    assert.ok(document.querySelector('[data-testid="plugin-preview-error"]'), 'a non-success envelope surfaces as the error state');
+    assert.ok(!document.querySelector('[data-testid="plugin-preview-card"]'));
+  } finally {
+    await unmount(root);
+  }
+});
+
+test('插件面板拒绝空 URL 提交且不发请求', async () => {
+  const { client, captured } = stubClient(async () => previewEnvelope());
+  const root = await mount(React.createElement(PluginsSettingsPanel, { client, role: 'admin' }));
+  try {
+    await act(async () => { submitForm(document.querySelector('form')!); });
+    assert.equal(captured.length, 0, 'no request fires for an empty URL');
+    assert.match(document.querySelector('[data-testid="plugin-preview-error"]')?.textContent ?? '', /请输入/);
+  } finally {
+    await unmount(root);
+  }
+});
