@@ -17,6 +17,8 @@ import (
 // 宿主 3 个禁改测试文件（user_env_test.go / agent_service_skill_bundle_test.go /
 // agent_service_install_shell_test.go）以未导出符号共享 25b 搬迁面的测试装置；
 // 本文件按裁定提供最小宿主侧定义，禁止夹带业务逻辑。
+// 25c（b2-ac-market）按同一裁定的「宿主包唯一垫片文件」约束追加 fakePublisherNames
+// （见文件尾标注小节），删除期限按其独立注释执行。
 
 // validSkillMD：agent_service_skill_bundle_test.go 消费的 SKILL.md fixture
 // （与 agentcatalog/service/tenant_skill_bundle_test.go 同源副本，仅测试数据）。
@@ -271,4 +273,28 @@ func (r *installSkillRepo) DeleteUserEnvVarsByConfig(
 	}
 	r.userEnvs = kept
 	return nil
+}
+
+// —— 25c 追加（b2-ac-market；Ruling 2026-09-24-TEST-SUPPORT-SHIM）——
+// fakePublisherNames：宿主禁改推迟件测试 tenant_expert_market_service_test.go:365
+// 消费的 publisher-names fake；原定义随 25c 搬迁至
+// agentcatalog/service/tenant_skill_market_service_test.go，此处为逐字同体副本。
+// remove_at: 推迟件 tenant_expert_market_service.go 及其测试搬迁时（25a 批次 2
+// / B3 窗口），随该测试文件同删。
+type fakePublisherNames struct {
+	users map[string]*types.User
+	err   error
+}
+
+func (f *fakePublisherNames) GetUsersByIDs(_ context.Context, ids []string) (map[string]*types.User, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	out := make(map[string]*types.User, len(ids))
+	for _, id := range ids {
+		if u := f.users[id]; u != nil {
+			out[id] = u
+		}
+	}
+	return out, nil
 }

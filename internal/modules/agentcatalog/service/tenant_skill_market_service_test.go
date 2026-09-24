@@ -186,6 +186,18 @@ func tenantCatalog(tenantID uint64, id, name string) *types.TenantSkillCatalogEn
 	}
 }
 
+// requireAppErrorStatus 与留宿推迟件测试 internal/application/service/
+// skill_market_service_test.go:292 的同名 helper 逐字同体（该文件系 25c 推迟
+// 批次残留、不随迁）；随迁测试原引用它，故在此补包内本地副本。两包各自持有，
+// 无跨包依赖；IB2 推迟件搬迁同包化后随族收口。
+func requireAppErrorStatus(t *testing.T, err error, wantHTTP int) {
+	t.Helper()
+	require.Error(t, err)
+	var appErr *apperrors.AppError
+	require.ErrorAs(t, err, &appErr)
+	require.Equal(t, wantHTTP, appErr.HTTPCode, "error: %v", err)
+}
+
 // ---------------------------------------------------------------------------
 // publish / unpublish
 // ---------------------------------------------------------------------------

@@ -132,7 +132,7 @@ func marketplaceMetadata() types.ReleaseMetadata {
 
 func TestAgentMarketplaceSubmitBindsFrozenSnapshotAndLocksEveryPayloadReference(t *testing.T) {
 	repo := &marketplaceRepoFake{}
-	svc := NewAgentMarketplaceService(marketplaceVersionsFake{marketplaceTestSnapshot()}, marketplaceResolverFake{marketplaceTestLock()}, repo, t.TempDir())
+	svc := NewAgentMarketplaceService(marketplaceVersionsFake{marketplaceTestSnapshot()}, marketplaceResolverFake{marketplaceTestLock()}, repo, t.TempDir(), MarketHostAdapters{BuildReleaseBundle: experts.BuildAgentReleaseBundle})
 	got, err := svc.SubmitRelease(context.Background(), 7, "author", "version-1", interfaces.SubmitReleaseInput{Metadata: marketplaceMetadata()})
 	require.NoError(t, err)
 	require.Equal(t, "version-1", got.AgentVersionID)
@@ -149,7 +149,7 @@ func TestAgentMarketplaceSubmitBindsFrozenSnapshotAndLocksEveryPayloadReference(
 func TestAgentMarketplaceSubmitRejectsAnyUnlockedPayloadReference(t *testing.T) {
 	lock := marketplaceTestLock()
 	lock.Dependencies = lock.Dependencies[:1]
-	svc := NewAgentMarketplaceService(marketplaceVersionsFake{marketplaceTestSnapshot()}, marketplaceResolverFake{lock}, &marketplaceRepoFake{}, t.TempDir())
+	svc := NewAgentMarketplaceService(marketplaceVersionsFake{marketplaceTestSnapshot()}, marketplaceResolverFake{lock}, &marketplaceRepoFake{}, t.TempDir(), MarketHostAdapters{BuildReleaseBundle: experts.BuildAgentReleaseBundle})
 	_, err := svc.SubmitRelease(context.Background(), 7, "author", "version-1", interfaces.SubmitReleaseInput{Metadata: marketplaceMetadata()})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "agent-a")
@@ -159,7 +159,7 @@ func TestAgentMarketplaceReviewRejectRequiresReasonAndStaleDigestDoesNotPublish(
 	bundle, err := buildServiceTestBundle()
 	require.NoError(t, err)
 	repo := &marketplaceRepoFake{queue: []types.AgentReleaseSubmissionEntity{{ID: "submission-1", ListingID: "listing-1", BundleDigest: bundle.SHA256, Bundle: bundle.Bytes}}}
-	svc := NewAgentMarketplaceService(nil, nil, repo, t.TempDir())
+	svc := NewAgentMarketplaceService(nil, nil, repo, t.TempDir(), MarketHostAdapters{BuildReleaseBundle: experts.BuildAgentReleaseBundle})
 	_, err = svc.ReviewSubmission(context.Background(), 7, "reviewer", "submission-1", bundle.SHA256, types.AgentReleaseReviewDecision{Decision: "rejected"})
 	require.Error(t, err)
 	_, err = svc.ReviewSubmission(context.Background(), 7, "reviewer", "submission-1", strings.Repeat("0", 64), types.AgentReleaseReviewDecision{Decision: "approved"})
@@ -171,7 +171,7 @@ func TestAgentMarketplaceApprovalStagesVerifiedReleaseBytesAndRetryIsIdempotent(
 	bundle, err := buildServiceTestBundle()
 	require.NoError(t, err)
 	repo := &marketplaceRepoFake{queue: []types.AgentReleaseSubmissionEntity{{ID: "submission-1", ListingID: "listing-1", BundleDigest: bundle.SHA256, Bundle: bundle.Bytes}}}
-	svc := NewAgentMarketplaceService(nil, nil, repo, t.TempDir())
+	svc := NewAgentMarketplaceService(nil, nil, repo, t.TempDir(), MarketHostAdapters{BuildReleaseBundle: experts.BuildAgentReleaseBundle})
 	first, err := svc.ReviewSubmission(context.Background(), 7, "reviewer", "submission-1", bundle.SHA256, types.AgentReleaseReviewDecision{Decision: "approved"})
 	require.NoError(t, err)
 	require.NotNil(t, first.Release)
@@ -189,7 +189,7 @@ func TestAgentMarketplaceApprovalCompensatesFinalObjectWhenTransactionFails(t *t
 	bundle, err := buildServiceTestBundle()
 	require.NoError(t, err)
 	repo := &marketplaceRepoFake{queue: []types.AgentReleaseSubmissionEntity{{ID: "submission-1", ListingID: "listing-1", BundleDigest: bundle.SHA256, Bundle: bundle.Bytes}}, reviewErr: errors.New("db unavailable")}
-	svc := NewAgentMarketplaceService(nil, nil, repo, t.TempDir())
+	svc := NewAgentMarketplaceService(nil, nil, repo, t.TempDir(), MarketHostAdapters{BuildReleaseBundle: experts.BuildAgentReleaseBundle})
 	_, err = svc.ReviewSubmission(context.Background(), 7, "reviewer", "submission-1", bundle.SHA256, types.AgentReleaseReviewDecision{Decision: "approved"})
 	require.Error(t, err)
 	_, err = os.Stat(filepath.Join(svc.bundleRoot, "tenant-7", "releases", "submission-1", bundle.SHA256))
@@ -269,7 +269,7 @@ func TestAgentMarketplaceConcurrentApprovalFailureKeepsPeerCommittedBundle(t *te
 	bundle, err := buildServiceTestBundle()
 	require.NoError(t, err)
 	repo := &concurrentApprovalRepo{submission: types.AgentReleaseSubmissionEntity{ID: "submission-race", ListingID: "listing-race", BundleDigest: bundle.SHA256, Bundle: bundle.Bytes}, listing: types.AgentMarketplaceListingEntity{ID: "listing-race", TenantID: 7, SourceAgentID: "agent-1", DisplayName: "Helper", State: "listed"}}
-	svc := NewAgentMarketplaceService(nil, nil, repo, t.TempDir())
+	svc := NewAgentMarketplaceService(nil, nil, repo, t.TempDir(), MarketHostAdapters{BuildReleaseBundle: experts.BuildAgentReleaseBundle})
 	type outcome struct {
 		result interfaces.ReleaseReviewResult
 		err    error
@@ -304,7 +304,7 @@ func TestAgentMarketplaceExclusivePublishVerifiesExistingDigest(t *testing.T) {
 	bundle, err := buildServiceTestBundle()
 	require.NoError(t, err)
 	repo := &marketplaceRepoFake{queue: []types.AgentReleaseSubmissionEntity{{ID: "submission-existing", ListingID: "listing-1", BundleDigest: bundle.SHA256, Bundle: bundle.Bytes}}}
-	svc := NewAgentMarketplaceService(nil, nil, repo, t.TempDir())
+	svc := NewAgentMarketplaceService(nil, nil, repo, t.TempDir(), MarketHostAdapters{BuildReleaseBundle: experts.BuildAgentReleaseBundle})
 	final := filepath.Join(svc.bundleRoot, "tenant-7", "releases", "submission-existing", bundle.SHA256)
 	svc.publishNoReplace = func(_, destination string) error {
 		require.Equal(t, final, destination)
@@ -324,7 +324,7 @@ func buildServiceTestBundle() (types.AgentReleaseBundle, error) {
 
 func TestAgentMarketplaceCatalogHidesPendingListing(t *testing.T) {
 	repo := &marketplaceRepoFake{listing: types.AgentMarketplaceListingEntity{ID: "listing-pending", TenantID: 7, State: "listed"}}
-	svc := NewAgentMarketplaceService(nil, nil, repo, t.TempDir())
+	svc := NewAgentMarketplaceService(nil, nil, repo, t.TempDir(), MarketHostAdapters{BuildReleaseBundle: experts.BuildAgentReleaseBundle})
 	listings, err := svc.ListTenantCatalog(context.Background(), 7)
 	require.NoError(t, err)
 	require.Empty(t, listings)
