@@ -13,6 +13,7 @@ import { createTaskMaterial } from '@weknora/mobile-core';
 import type { TaskMaterial } from '@weknora/mobile-core';
 import { createTaskOfficeRemote } from '@weknora/api-client/mobile/task-office';
 import { createMobileLegacyTaskRemote } from '@weknora/api-client/mobile/legacy-tasks';
+import { createMobileKnowledgeQARemote } from '@weknora/api-client/mobile/knowledge-qa';
 import { createMobileMaterialRemote } from '@weknora/api-client/mobile/materials';
 import { createNativeOidcBrowser } from './adapters/oidc-browser.ts';
 import { createNativeSecurePendingOidcStore } from './adapters/secure-store.ts';
@@ -158,6 +159,12 @@ function taskOfficeFor(activeRuntime: MobileRuntime, origin: string, tenantId: s
       detail: remote,
       interactions: remote,
       legacy: createMobileLegacyTaskRemote({
+        origin,
+        request: (input) => activeRuntime.authorizedRequest(input),
+        stream: (input, onChunk) => activeRuntime.authorizedEventStream(input, onChunk),
+      }),
+      // T15（#45）：知识问答端口——同一授权读/流通道（不新建传输），evidence 帧缺失 fail closed。
+      knowledgeQA: createMobileKnowledgeQARemote({
         origin,
         request: (input) => activeRuntime.authorizedRequest(input),
         stream: (input, onChunk) => activeRuntime.authorizedEventStream(input, onChunk),
