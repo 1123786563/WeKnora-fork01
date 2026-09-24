@@ -53,6 +53,11 @@ func openHandlerRunDB(t *testing.T) *gorm.DB {
 	require.NoError(t, db.Exec(
 		"INSERT INTO users (id, username, email, password_hash, tenant_id)"+
 			" VALUES ('web_user:u1','u1','u1@example.test','x',1)").Error)
+	// Admissions are actor-fenced: AgentRunStore.Admit requires the acting
+	// principal to be an active member of the tenant, mirroring production.
+	require.NoError(t, db.Exec(
+		"INSERT INTO tenant_members (tenant_id,user_id,role,status,joined_at,created_at,updated_at)"+
+			" VALUES (1,'web_user:u1','owner','active',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)").Error)
 	require.NoError(t, db.Exec(
 		"INSERT INTO sessions (id, tenant_id, title, user_id, engine_type)"+
 			" VALUES ('s1',1,'handler','web_user:u1','trpc')").Error)

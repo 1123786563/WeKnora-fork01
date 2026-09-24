@@ -226,7 +226,16 @@ func TestCraftT01RecoveryRotatesExpiredClaimAndFencesPausedSubmit(t *testing.T) 
 	require.Equal(t, runID, newClaims[0].RunID)
 
 	// Claimant A was paused before Submit and still holds its old token. Its
-	// late Submit must fail before creating any durable Run.
+	// late Submit must fail before creating any durable Run. The snapshot must
+	// mirror the production Craft admission contract: Submit rejects a
+	// registered Craft Task admission whose snapshot carries no input manifest.
+	manifest, err := json.Marshal([]craft.Input{inputs[0]})
+	require.NoError(t, err)
+	pausedSnapshot, err := json.Marshal(map[string]json.RawMessage{
+		"version":              json.RawMessage(`1`),
+		"craft_input_manifest": manifest,
+	})
+	require.NoError(t, err)
 	pausedAdmission := agentruntime.Admission{
 		Key:                agentruntime.RunKey{TenantID: 1, RunID: runID},
 		SessionID:          ws.SessionID,
@@ -235,7 +244,7 @@ func TestCraftT01RecoveryRotatesExpiredClaimAndFencesPausedSubmit(t *testing.T) 
 		RequestID:          requestID,
 		AssistantMessageID: "paused-assistant",
 		RequestHash:        "paused-request-hash",
-		Snapshot:           json.RawMessage(`{"version":1}`),
+		Snapshot:           pausedSnapshot,
 		UserMessage:        json.RawMessage(`{"role":"user","content":"build"}`),
 		AssistantMessage:   json.RawMessage(`{"role":"assistant","content":""}`),
 		Deadline:           time.Now().Add(time.Hour),

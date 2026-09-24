@@ -84,6 +84,11 @@ func wiringTestDB(t *testing.T) *gorm.DB {
 func wiringRuntime(t *testing.T) (*localCraftRuntime, *CraftInteractionAssembly, *wiringRunController, agentruntime.Fence, craft.Task) {
 	t.Helper()
 	db := wiringTestDB(t)
+	// Admissions are actor-fenced: AgentRunStore.Admit requires an active user
+	// and tenant-membership row for the acting principal. Seed the durable
+	// identity chain the production admission path reads.
+	require.NoError(t, db.Exec("INSERT INTO users (id,username,email,password_hash,tenant_id) VALUES ('u-wiring','u-wiring','u-wiring@example.test','x',1)").Error)
+	require.NoError(t, db.Exec("INSERT INTO tenant_members (tenant_id,user_id,role,status,joined_at,created_at,updated_at) VALUES (1,'u-wiring','owner','active',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)").Error)
 
 	runs := repository.NewAgentRunStore(db)
 	user, err := json.Marshal(map[string]any{"role": "user", "content": "build"})

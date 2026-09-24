@@ -7,8 +7,23 @@ import (
 	"time"
 
 	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
+	"github.com/Tencent/WeKnora/internal/modules/craft"
 	"github.com/stretchr/testify/require"
 )
+
+// craftTestAdmission mirrors the production Craft admission contract: a
+// registered Craft Task admission snapshot must carry a valid Craft input
+// manifest. Callers registering the session as a Craft Task must also seed
+// its Workspace so the repository can freeze the server-owned seed.
+func craftTestAdmission() agentruntime.Admission {
+	in := testAdmission()
+	snapshot, err := json.Marshal(map[string]any{"version": 1, "craft_input_manifest": []craft.Input{}})
+	if err != nil {
+		panic(err)
+	}
+	in.Snapshot = snapshot
+	return in
+}
 
 func TestAdmissionUsesActiveMembershipInsteadOfHomeTenant(t *testing.T) {
 	db := openRunTestDB(t)
@@ -18,8 +33,9 @@ func TestAdmissionUsesActiveMembershipInsteadOfHomeTenant(t *testing.T) {
 	require.NoError(t, db.Exec(`INSERT INTO tenant_members (tenant_id, user_id, role, status) VALUES
 		(1, 'cross-home-actor', 'contributor', 'active'), (2, 'cross-home-actor', 'admin', 'active')`).Error)
 	require.NoError(t, db.Exec(`INSERT INTO craft_sessions (session_id, tenant_id, kind) VALUES ('s1', 1, 'web')`).Error)
+	putCraftWorkspace(t, NewCraftStore(db))
 
-	craftAdmission := testAdmission()
+	craftAdmission := craftTestAdmission()
 	craftAdmission.Key.RunID = "craft-cross-home-actor"
 	craftAdmission.ActorUserID = "cross-home-actor"
 	store := NewAgentRunStore(db)
@@ -98,8 +114,9 @@ func TestCraftRunAdmissionStoresOwnerAndAuthenticatedActorSeparately(t *testing.
 		"collaborator", "collaborator", "collaborator@example.test", "x", 1).Error)
 	require.NoError(t, db.Exec(`INSERT INTO tenant_members (tenant_id, user_id, role, status) VALUES (1, 'collaborator', 'contributor', 'active')`).Error)
 	require.NoError(t, db.Exec(`INSERT INTO craft_sessions (session_id, tenant_id, kind) VALUES ('s1', 1, 'web')`).Error)
+	putCraftWorkspace(t, NewCraftStore(db))
 
-	in := testAdmission()
+	in := craftTestAdmission()
 	in.Key.RunID = "craft-actor-run"
 	in.ActorUserID = "collaborator"
 	store := NewAgentRunStore(db)
@@ -131,8 +148,9 @@ func TestCraftRunAdmissionRejectsCrossActorReplayAndCrossTenantActor(t *testing.
 		('other-tenant-user', 'other', 'other@example.test', 'x', 2)`).Error)
 	require.NoError(t, db.Exec(`INSERT INTO tenant_members (tenant_id, user_id, role, status) VALUES (1, 'collaborator', 'contributor', 'active'), (2, 'other-tenant-user', 'contributor', 'active')`).Error)
 	require.NoError(t, db.Exec(`INSERT INTO craft_sessions (session_id, tenant_id, kind) VALUES ('s1', 1, 'web')`).Error)
+	putCraftWorkspace(t, NewCraftStore(db))
 
-	in := testAdmission()
+	in := craftTestAdmission()
 	in.Key.RunID = "craft-actor-replay"
 	in.ActorUserID = "collaborator"
 	store := NewAgentRunStore(db)
@@ -157,8 +175,9 @@ func TestCraftRunAdmissionRejectsCrossActorReplayAndCrossTenantActor(t *testing.
 func TestCraftRunAdmissionFailsClosedWithoutActorAndForLegacyReplay(t *testing.T) {
 	db := openRunTestDB(t)
 	require.NoError(t, db.Exec(`INSERT INTO craft_sessions (session_id, tenant_id, kind) VALUES ('s1', 1, 'web')`).Error)
+	putCraftWorkspace(t, NewCraftStore(db))
 	store := NewAgentRunStore(db)
-	in := testAdmission()
+	in := craftTestAdmission()
 	in.Key.RunID = "craft-actor-missing"
 	_, err := store.Admit(context.Background(), in)
 	require.ErrorIs(t, err, agentruntime.ErrConflict, "new Craft rows cannot infer actor from storage owner")
