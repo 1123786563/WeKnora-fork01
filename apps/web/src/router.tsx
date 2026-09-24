@@ -46,6 +46,7 @@ const KnowledgeSettingsPage = lazy(() => import('./knowledge-settings/KnowledgeS
 const ConfigurationPage = lazy(() => import('./configuration/ConfigurationPage.tsx').then((module) => ({ default: module.ConfigurationPage })));
 const CareerPage = lazy(() => import('./career/CareerPage.tsx').then((module) => ({ default: module.CareerPage })));
 const OpportunityEvidencePage = lazy(() => import('./career/OpportunityPage.tsx').then((module) => ({ default: module.OpportunityEvidencePage })));
+const EvaluationDetailPage = lazy(() => import('./career/OpportunityPage.tsx').then((module) => ({ default: module.EvaluationDetailPage })));
 const AgentsPage = lazy(() => import('./agents/AgentsPage.tsx').then((module) => ({ default: module.AgentsPage })));
 const AdministrationPage = lazy(() => import('./administration/AdministrationPage.tsx').then((module) => ({ default: module.AdministrationPage })));
 const OrganizationsPage = lazy(() => import('./organizations/OrganizationsPage.tsx').then((module) => ({ default: module.OrganizationsPage })));
@@ -729,6 +730,17 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
     },
   });
 
+  const careerEvaluationRoute = createRoute({
+    getParentRoute: () => platformRoute,
+    path: 'career/evaluations/$evaluationId',
+    component: (): ReactNode => {
+      const { evaluationId } = useParams({ strict: false }) as { evaluationId?: string };
+      let decodedEvaluationId = '';
+      try { decodedEvaluationId = decodeURIComponent(evaluationId ?? ''); } catch { decodedEvaluationId = ''; }
+      return <Suspense fallback={<RoutePending loadingText={deps.loadingText} />}><EvaluationDetailPage client={client} scopeController={scopeController} evaluationId={decodedEvaluationId} /></Suspense>;
+    },
+  });
+
   const expertsRoute = createRoute({
     getParentRoute: () => platformRoute,
     path: 'experts',
@@ -937,6 +949,7 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
       agentsRoute,
       careerRoute,
       careerOpportunityRoute,
+      careerEvaluationRoute,
       expertsRoute,
       marketRoute,
       configurationRoute,

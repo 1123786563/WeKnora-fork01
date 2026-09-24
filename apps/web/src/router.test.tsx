@@ -115,6 +115,11 @@ test('Opportunity evidence path with fixed snapshot ID matches its protected pla
  assert.ok(matchedRouteIds(router, '/platform/career/opportunities/opp-1?snapshotId=snapshot-1').some((id) => id.includes('career/opportunities/$opportunityId')));
 });
 
+test('Career evaluation detail path matches its protected platform route by stable evaluation ID', () => {
+ const router = bootRouter(member, '/platform/career/evaluations/evaluation-1');
+ assert.ok(matchedRouteIds(router, '/platform/career/evaluations/evaluation-1').some((id) => id.includes('career/evaluations/$evaluationId')));
+});
+
 test('anonymous root visits get an SPA replace to login', async () => {
   const router = bootRouter(anonymous, '/login');
   const replaceCalls = (router as unknown as { __replaceCalls: string[] }).__replaceCalls;

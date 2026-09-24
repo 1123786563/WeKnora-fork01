@@ -11,6 +11,7 @@ export type RouteMatch =
   | { kind: 'knowledge-faq'; path: string; knowledgeBaseId: string }
   | { kind: 'knowledge-settings'; path: string; knowledgeBaseId: string }
   | { kind: 'career-opportunity'; path: string; opportunityId: string; snapshotId: string }
+  | { kind: 'career-evaluation'; path: string; evaluationId: string }
   | { kind: 'join'; path: '/join' }
   | { kind: 'onboarding'; path: '/onboarding/workspace' }
   | { kind: 'apps'; path: string; mode: 'catalog' | 'connections' | 'authorization' | 'action'; id?: string }
@@ -56,6 +57,11 @@ export function resolveRoute(pathname: string, options: { development?: boolean 
     const opportunityId = decodeSegment(careerOpportunity[1]!);
     const snapshotId = query.get('snapshotId')?.trim();
     return opportunityId && snapshotId ? { kind: 'career-opportunity', path, opportunityId, snapshotId } : { kind: 'not-found', path };
+  }
+  const careerEvaluation = path.match(/^\/platform\/career\/evaluations\/([^/]+)$/);
+  if (careerEvaluation) {
+    const evaluationId = decodeSegment(careerEvaluation[1]!);
+    return evaluationId ? { kind: 'career-evaluation', path, evaluationId } : { kind: 'not-found', path };
   }
   if (path === '/craft' || path.startsWith('/craft/')) return { kind: 'craft', path };
   if (path.startsWith('/embed/')) return { kind: 'embed', path };
