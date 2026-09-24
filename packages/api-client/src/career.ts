@@ -1,5 +1,5 @@
 import type { CareerAction, CareerChangeSet, CareerDocumentSource, CareerReceipt, CareerUpload, CareerView, Evaluation, EvaluationReceipt, OpportunityEvidence, OpportunityImportInput, OpportunityReceipt, OpportunitySource, OpportunityStatus } from '../../career-core/src/contracts.ts'
-import { decodeCareerReceipt, decodeCareerSources, decodeCareerUpload, decodeEvaluation, decodeEvaluationReceipt, decodeOpportunityEvidence, decodeOpportunityReceipt } from '../../career-core/src/contracts.ts'
+import { decodeCareerReceipt, decodeCareerSources, decodeCareerUpload, decodeEvaluation, decodeEvaluationReceipt, decodeOpportunityReceipt } from '../../career-core/src/contracts.ts'
 import type { ClientRequest } from './client.ts'
 
 export type CareerRequest = (input: ClientRequest) => Promise<unknown>
@@ -71,6 +71,45 @@ export function decodeOpportunityObservations(value: unknown): OpportunityObserv
  return { observations: record.observations.map(decodeOpportunityObservation) }
 }
 
+// T09 backend failure observations intentionally persist an empty-text
+// snapshot (SHA-256 of zero bytes, needs_review) so the observation stays
+// traceable. The career-core contract decoder keeps rejecting those pages, so
+// the client layer owns this evidence-page decode: rawText may be the empty
+// string, while every other field keeps the same strict validation.
+function decodeEvidenceValue(value: unknown, message: string): OpportunityEvidence['extracted'][keyof OpportunityEvidence['extracted']] {
+ if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new TypeError(message)
+ const record = value as Record<string, unknown>
+ if (record.state === 'unknown' && record.value === undefined) return { state: 'unknown' }
+ if (record.state === 'known' && typeof record.value === 'string' && record.value.trim().length > 0) return { state: 'known', value: record.value }
+ throw new TypeError(message)
+}
+
+export function decodeOpportunityEvidencePage(value: unknown): OpportunityEvidence {
+ const record = decodeRecord(value, 'invalid opportunity evidence')
+ const source = decodeRecord(record.source, 'invalid opportunity evidence')
+ const rawText: unknown = record.rawText
+ if (!validIdentifier(record.opportunityId) || !validIdentifier(record.observationId) || !validIdentifier(record.snapshotId)
+  || typeof rawText !== 'string' || (rawText.length > 0 && rawText.trim().length === 0)
+  || typeof record.rawSha256 !== 'string' || !/^[a-f0-9]{64}$/.test(record.rawSha256)
+  || typeof record.extracted !== 'object' || record.extracted === null || Array.isArray(record.extracted)
+  || !validIdentifier(source.kind) || (source.label !== undefined && typeof source.label !== 'string') || (source.referenceId !== undefined && typeof source.referenceId !== 'string')
+  || !validTimestamp(record.acquiredAt) || (record.status !== 'stored' && record.status !== 'needs_review')) throw new TypeError('invalid opportunity evidence')
+ const extractedRecord = record.extracted as Record<string, unknown>
+ const extracted: OpportunityEvidence['extracted'] = {
+  title: decodeEvidenceValue(extractedRecord.title, 'invalid opportunity evidence'),
+  company: decodeEvidenceValue(extractedRecord.company, 'invalid opportunity evidence'),
+  location: decodeEvidenceValue(extractedRecord.location, 'invalid opportunity evidence'),
+  batch: decodeEvidenceValue(extractedRecord.batch, 'invalid opportunity evidence'),
+  requirements: decodeEvidenceValue(extractedRecord.requirements, 'invalid opportunity evidence'),
+ }
+ return {
+  opportunityId: record.opportunityId, observationId: record.observationId, snapshotId: record.snapshotId,
+  rawText, rawSha256: record.rawSha256, extracted,
+  source: { kind: source.kind, ...(typeof source.label === 'string' ? { label: source.label } : {}), ...(typeof source.referenceId === 'string' ? { referenceId: source.referenceId } : {}) },
+  acquiredAt: record.acquiredAt, status: record.status as OpportunityStatus,
+ }
+}
+
 export function createCareerApi(request: CareerRequest) {
  return {
   async open(signal?: AbortSignal): Promise<CareerView> { return await request({ method: 'GET', path: '/api/v1/career/open', ...(signal ? { signal } : {}) }) as CareerView },
@@ -109,7 +148,7 @@ export function createCareerApi(request: CareerRequest) {
   },
   async opportunityEvidence(opportunityId: string, snapshotId: string, signal?: AbortSignal): Promise<OpportunityEvidence> {
    if (!opportunityId.trim() || !snapshotId.trim()) throw new TypeError('opportunity evidence IDs must not be empty')
-   return decodeOpportunityEvidence(await request({ method: 'GET', path: `/api/v1/career/opportunities/${encodeURIComponent(opportunityId)}?snapshotId=${encodeURIComponent(snapshotId)}`, ...(signal ? { signal } : {}) }))
+   return decodeOpportunityEvidencePage(await request({ method: 'GET', path: `/api/v1/career/opportunities/${encodeURIComponent(opportunityId)}?snapshotId=${encodeURIComponent(snapshotId)}`, ...(signal ? { signal } : {}) }))
   },
   async evaluateOpportunity(input: { requestId: string; opportunityId: string; snapshotId: string; profileRevision?: number }, signal?: AbortSignal): Promise<EvaluationReceipt> {
    if (!input.requestId.trim() || !input.opportunityId.trim() || !input.snapshotId.trim() || (input.profileRevision !== undefined && (!Number.isSafeInteger(input.profileRevision) || input.profileRevision < 0))) throw new TypeError('evaluation request identifiers and revision must be valid')

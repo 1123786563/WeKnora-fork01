@@ -143,3 +143,21 @@ test('importOpportunity appends a paste onto a URL observation only with both ow
  await assert.rejects(api.importOpportunity({ requestId: 'half', rawText: 'jd', opportunityId: 'opp/1' }), /opportunityId and priorObservationId/)
  await assert.rejects(api.importOpportunity({ requestId: 'half', rawText: 'jd', priorObservationId: 'observation-1' }), /opportunityId and priorObservationId/)
 })
+
+// T14 Step 0: the T09 backend deliberately stores empty-text snapshots for
+// failed URL observations (SHA-256 of zero bytes, needs_review). The api-client
+// evidence decode must open those evidence pages: rawText '' is accepted while
+// every other field keeps its strict validation.
+test('opportunity evidence decode opens the empty-rawText failure snapshot and keeps other fields strict', async () => {
+ const emptySnapshot = { opportunityId: 'opp/1', observationId: 'observation-1', snapshotId: 'snapshot ?1', rawText: '', rawSha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855', extracted: { title: { state: 'unknown' }, company: { state: 'unknown' }, location: { state: 'unknown' }, batch: { state: 'unknown' }, requirements: { state: 'unknown' } }, source: { kind: 'url' }, acquiredAt: '2026-09-24T01:02:03Z', status: 'needs_review' }
+ const api = createCareerApi(async () => emptySnapshot)
+ const evidence = await api.opportunityEvidence('opp/1', 'snapshot ?1')
+ assert.equal(evidence.rawText, '')
+ assert.equal(evidence.rawSha256, 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855')
+ const blankOnly = createCareerApi(async () => ({ ...emptySnapshot, rawText: ' \n\t ' }))
+ await assert.rejects(blankOnly.opportunityEvidence('opp/1', 'snapshot ?1'), TypeError)
+ const badDigest = createCareerApi(async () => ({ ...emptySnapshot, rawSha256: 'not-a-sha' }))
+ await assert.rejects(badDigest.opportunityEvidence('opp/1', 'snapshot ?1'), TypeError)
+ const inventedStatus = createCareerApi(async () => ({ ...emptySnapshot, status: 'super_stored' }))
+ await assert.rejects(inventedStatus.opportunityEvidence('opp/1', 'snapshot ?1'), TypeError)
+})
