@@ -145,17 +145,32 @@ test('superseded and gone outcomes report honestly instead of throwing', async (
 });
 
 test('a decided interaction invalidates the home projection and late inbox reads (Review Focus 5)', async () => {
-  const interactions = scriptedInteractions({});
-  const gate = deferred<{ needsMe: []; running: []; recentlyCompleted: []; unreadNotifications: 0; asOf: string }>();
+  const homeGate = deferred<{ needsMe: []; running: []; recentlyCompleted: []; unreadNotifications: 0; asOf: string }>();
+  const inboxGate = deferred<InboxItem[]>();
   const backend: TaskBackendPort = {
     ...emptyBackend,
-    overview: () => gate.promise,
+    overview: () => homeGate.promise,
+  };
+  const interactions: InteractionBackendPort = {
+    inbox: () => inboxGate.promise,
+    decide: (input) => Promise.resolve({
+      interactionId: input.item.interactionId,
+      runId: input.item.runId,
+      kind: input.item.kind,
+      decisionId: input.decisionId,
+      action: input.action,
+      argsHash: input.item.argsHash,
+      expectedRevision: input.item.expectedRevision + 1,
+    }),
   };
   const office = createTaskOffice({ backend, lease: () => leaseFixture().lease, interactions });
   const lateHome = office.home();
+  const lateInbox = office.inbox();
   await office.decide({ item: ITEM, action: 'approve' });
-  gate.resolve({ needsMe: [], running: [], recentlyCompleted: [], unreadNotifications: 0, asOf: '2026-09-24T00:00:00Z' });
+  homeGate.resolve({ needsMe: [], running: [], recentlyCompleted: [], unreadNotifications: 0, asOf: '2026-09-24T00:00:00Z' });
+  inboxGate.resolve([ITEM]);
   await assert.rejects(lateHome, (error: unknown) => error instanceof TaskOfficeError && error.code === 'TASK_OFFICE_SUPERSEDED', '决定终态 bump home epoch：迟到首页读不得回填已决定行');
+  await assert.rejects(lateInbox, (error: unknown) => error instanceof TaskOfficeError && error.code === 'TASK_OFFICE_SUPERSEDED', '决定终态 bump inbox epoch：迟到收件箱读不得把已决定行回填为 pending（Review Focus 5 的 inbox 半边）');
 });
 
 test('a decided interaction whose scope was revoked mid-flight reports SCOPE_CHANGED, not recorded', async () => {

@@ -90,7 +90,7 @@ export function newDecisionId(): string {
 export interface AttentionDeciderDeps {
   interactions(): InteractionBackendPort | undefined;
   lease(): ScopeLease | undefined;
-  /** 决定到达终态（recorded/delivery-unknown/superseded/gone 均已落地或失效）后回调：宿主失效 home/inbox 读。 */
+  /** 决定到达终态（recorded/delivery-unknown/superseded/gone 均已落地或失效）后回调：宿主失效 home/task list 读（inbox epoch 由 decider 自身递增）。 */
   onDecided(): void;
 }
 
@@ -135,6 +135,12 @@ export function createAttentionDecider(deps: AttentionDeciderDeps): {
       const key = `${input.item.interactionId}::${input.action}`;
       const decisionId = frozenDecisionIds.get(key) ?? newDecisionId();
       frozenDecisionIds.set(key, decisionId);
+      // Review Focus 5（plan-t38.md:68）：决定终态 bump inbox 读 epoch——在途的旧
+      // inbox() 不得把已决定行回填为 pending（home/task list 由宿主 onDecided 失效）。
+      const decided = (): void => {
+        inboxEpoch += 1;
+        deps.onDecided();
+      };
       let record: ResolvedDecisionRecord;
       try {
         record = await backend.decide({ item: input.item, decisionId, action: input.action });
@@ -142,22 +148,22 @@ export function createAttentionDecider(deps: AttentionDeciderDeps): {
         const code = errorCode(error);
         if (code === INTERACTION_DELIVERY_UNKNOWN) {
           // 决定已落地、外部派发未知：不冒充成功，保留同一 decision_id 供重试重放。
-          deps.onDecided();
+          decided();
           return { status: 'delivery-unknown', interactionId: input.item.interactionId, decisionId };
         }
         if (code === INTERACTION_SUPERSEDED) {
-          deps.onDecided();
+          decided();
           return { status: 'superseded', interactionId: input.item.interactionId };
         }
         if (code === INTERACTION_GONE) {
-          deps.onDecided();
+          decided();
           return { status: 'gone', interactionId: input.item.interactionId };
         }
         throw error instanceof TaskOfficeError ? error : new TaskOfficeError('TASK_OFFICE_BACKEND', { cause: error });
       }
       // 与 mutate() 同一守卫：写落地后 scope 已撤销 → SCOPE_CHANGED（receipt 不跨 scope 泄漏）。
       if (!leaseActive(lease)) throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED');
-      deps.onDecided();
+      decided();
       return { status: 'recorded', record };
     },
   };
