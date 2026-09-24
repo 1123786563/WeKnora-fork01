@@ -652,4 +652,12 @@ exceptions:
 #   protected_test: internal/application/service/document_write_access_test.go
 #   symbol: chunkService（service/chunk.go 随 K1.2 迁出后的宿主测试夹具类型）
 #   remove_at: ib2
+# - id: tshim-0002
+#   file: internal/application/service/chunk_ingest_test_shim_test.go（K1.3 追加段）
+#   ruling: 2026-09-24-TEST-SUPPORT-SHIM
+#   owner: 21-knowledge-ingest
+#   protected_test: internal/application/service/knowledge_transfer_test.go（:448/:450）
+#   symbol: DataTableSummaryService/extractionResources/cleanupOnFailure（service/extract.go 随 K1.3 迁出；
+#     经 R1 窄端口 ingest.CleanupOnFailure/ExtractionResources 委托真实现）
+#   remove_at: ib2
 # ----------------------------------------------------------------------------
