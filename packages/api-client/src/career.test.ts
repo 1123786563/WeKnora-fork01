@@ -71,3 +71,22 @@ test('opportunity client refuses blank request and evidence identifiers', async 
  await assert.rejects(api.opportunityReceipt(' '), /requestId/)
  await assert.rejects(api.opportunityEvidence('id', ' '), /IDs/)
 })
+
+test('evaluation client encodes create, receipt recovery and immutable detail paths', async () => {
+ const calls: Array<{ method: string; path: string; body?: unknown }> = []
+ const receipt = { kind: 'evaluation_created', requestId: 'req /1', evaluationId: 'eval/1', opportunityId: 'opp/1', snapshotId: 'snap ?1', profileRevision: 4, status: 'unknown' }
+ const evaluation = { ...receipt, createdAt: '2026-09-24T01:02:03Z', rulesetVersion: 'career-qualification-v1', snapshot: { opportunityId: 'opp/1', observationId: 'obs-1', snapshotId: 'snap ?1', rawText: '原始 JD', rawSha256: 'a'.repeat(64), source: { kind: 'manual_paste' }, acquiredAt: '2026-09-24T01:02:03Z' }, hard: { overall: 'unknown', rules: [] }, soft: { matches: [] }, facts: [] }
+ const api = createCareerApi(async (input) => {
+  calls.push({ method: input.method, path: input.path, ...(input.body !== undefined ? { body: input.body } : {}) })
+  return input.path.endsWith('/evaluations') && input.method === 'POST' || input.path.includes('/receipt?') ? receipt : evaluation
+ })
+ const input = { requestId: 'req /1', opportunityId: 'opp/1', snapshotId: 'snap ?1', profileRevision: 4 }
+ assert.deepEqual(await api.evaluateOpportunity(input), receipt)
+ assert.deepEqual(await api.evaluationReceipt(input.requestId), receipt)
+ assert.equal((await api.evaluation(receipt.evaluationId)).snapshot.rawText, '原始 JD')
+ assert.deepEqual(calls, [
+  { method: 'POST', path: '/api/v1/career/evaluations', body: input },
+  { method: 'GET', path: '/api/v1/career/evaluations/receipt?requestId=req%20%2F1' },
+  { method: 'GET', path: '/api/v1/career/evaluations/eval%2F1' },
+ ])
+})

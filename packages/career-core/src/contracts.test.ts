@@ -1,7 +1,7 @@
 import { strict as assert } from 'node:assert'
 import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
-import { decodeCareerError, decodeCareerReceipt, decodeCareerSource, decodeCareerUpload, decodeOpportunityEvidence, decodeOpportunityReceipt } from './contracts.ts'
+import { decodeCareerError, decodeCareerReceipt, decodeCareerSource, decodeCareerUpload, decodeOpportunityEvidence, decodeOpportunityReceipt, decodeEvaluation, decodeEvaluationReceipt } from './contracts.ts'
 const fixture = JSON.parse(readFileSync(new URL('../testdata/wire-fixtures.json', import.meta.url), 'utf8')) as Record<string, unknown>
 test('Go wire fixtures decode proposed and confirmed receipts without type ambiguity', () => {
  const proposed = decodeCareerReceipt(fixture.proposed); assert.equal(proposed.kind, 'proposed')
@@ -58,4 +58,29 @@ test('opportunity evidence decoder preserves explicit unknown fields and inert r
  assert.throws(() => decodeOpportunityEvidence({ ...opportunityEvidence, acquiredAt: '2026-02-30T01:02:03Z' }))
  const exactText = '\n  original JD text\r\n\twith spacing  \n'
  assert.equal(decodeOpportunityEvidence({ ...opportunityEvidence, rawText: exactText }).rawText, exactText)
+})
+
+const factEvidence = { factKey: 'education.graduation_year', value: '2026', revision: 4, factRevision: 3, source: { kind: 'manual' }, confirmation: { userId: 'owner-1', confirmedAt: '2026-09-24T01:02:03Z' }, confirmedAt: '2026-09-24T01:02:03Z' }
+const jobEvidence = { snapshotId: 'snapshot-1', observationId: 'observation-1', acquiredAt: '2026-09-24T01:02:03Z', rawSha256: 'a'.repeat(64), spanStart: 0, spanEnd: 13, quotedText: '仅限2027届' }
+const evaluationReceipt = { kind: 'evaluation_created', requestId: 'eval-1', evaluationId: 'evaluation-1', opportunityId: 'opportunity-1', snapshotId: 'snapshot-1', profileRevision: 4, status: 'ineligible' }
+const evaluation = { ...evaluationReceipt, createdAt: '2026-09-24T01:02:03Z', rulesetVersion: 'career-qualification-v1', snapshot: { opportunityId: 'opportunity-1', observationId: 'observation-1', snapshotId: 'snapshot-1', rawText: '仅限2027届 TypeScript', rawSha256: 'a'.repeat(64), source: { kind: 'manual_paste' }, acquiredAt: '2026-09-24T01:02:03Z' }, hard: { overall: 'ineligible', rules: [{ ruleId: 'graduation_year', criterion: 'graduation year', outcome: 'ineligible', reasonCode: 'graduation_year_mismatch', jobEvidence, profileEvidence: factEvidence }] }, soft: { matches: [{ kind: 'skill', value: 'TypeScript', jobEvidence: { ...jobEvidence, quotedText: 'TypeScript', spanStart: 14, spanEnd: 24 }, profileEvidence: { ...factEvidence, factKey: 'skill.programming', value: 'TypeScript' } }] }, facts: [factEvidence] }
+
+test('evaluation contract accepts all hard statuses and retains fixed refs and provenance', () => {
+ for (const status of ['eligible', 'ineligible', 'unknown']) assert.equal(decodeEvaluationReceipt({ ...evaluationReceipt, status }).status, status)
+ const decoded = decodeEvaluation(evaluation)
+ assert.equal(decoded.hard.overall, 'ineligible')
+ assert.equal(decoded.snapshot.snapshotId, 'snapshot-1')
+ assert.equal(decoded.facts[0]?.factRevision, 3)
+ assert.equal(decoded.hard.rules[0]?.jobEvidence?.quotedText, '仅限2027届')
+ assert.equal(decoded.soft.matches[0]?.profileEvidence.factRevision, 3)
+ assert.equal(decoded.snapshot.rawText, '仅限2027届 TypeScript')
+})
+
+test('evaluation decoders reject missing provenance, unknown enums, probability fields and wrong receipt discriminator', () => {
+ assert.throws(() => decodeEvaluationReceipt({ ...evaluationReceipt, kind: 'confirmed' }))
+ assert.throws(() => decodeEvaluationReceipt({ ...evaluationReceipt, status: 'maybe' }))
+ assert.throws(() => decodeEvaluation({ ...evaluation, overallScore: 0.99 }))
+ assert.throws(() => decodeEvaluation({ ...evaluation, facts: [{ ...factEvidence, factRevision: undefined }] }))
+ assert.throws(() => decodeEvaluation({ ...evaluation, hard: { overall: 'eligible', rules: [{ ...evaluation.hard.rules[0], jobEvidence: { ...jobEvidence, spanEnd: 3 } }] } }))
+ assert.throws(() => decodeEvaluation({ ...evaluation, soft: { matches: [{ ...evaluation.soft.matches[0], profileEvidence: { ...factEvidence, confirmation: undefined } }] } }))
 })

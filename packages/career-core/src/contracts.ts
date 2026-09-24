@@ -115,3 +115,41 @@ export function decodeOpportunityEvidence(value: unknown): OpportunityEvidence {
  }
  return { opportunityId: value.opportunityId, observationId: value.observationId, snapshotId: value.snapshotId, rawText: value.rawText, rawSha256: value.rawSha256, extracted, source: { kind: value.source.kind, ...(value.source.label !== undefined ? { label: value.source.label } : {}), ...(value.source.referenceId !== undefined ? { referenceId: value.source.referenceId } : {}) }, acquiredAt: value.acquiredAt, status: value.status as OpportunityStatus }
 }
+
+export type EvaluationStatus = 'eligible' | 'ineligible' | 'unknown'
+export type EvaluationReceipt = { kind: 'evaluation_created'; requestId: string; evaluationId: string; opportunityId: string; snapshotId: string; profileRevision: number; status: EvaluationStatus }
+export type EvaluationFactEvidence = { factKey: string; value: string; revision: number; factRevision: number; source: CareerSource; confirmation: CareerConfirmation; confirmedAt: string }
+export type EvaluationJobEvidence = { snapshotId: string; observationId: string; acquiredAt: string; rawSha256: string; spanStart: number; spanEnd: number; quotedText: string }
+export type EvaluationHardRule = { ruleId: string; criterion: string; outcome: EvaluationStatus; reasonCode: string; jobEvidence?: EvaluationJobEvidence; profileEvidence?: EvaluationFactEvidence }
+export type EvaluationSoftMatch = { kind: 'skill' | 'project' | 'intent'; value: string; jobEvidence: EvaluationJobEvidence; profileEvidence: EvaluationFactEvidence }
+export type Evaluation = EvaluationReceipt & { createdAt: string; rulesetVersion: string; snapshot: { opportunityId: string; observationId: string; snapshotId: string; rawText: string; rawSha256: string; source: OpportunitySource; acquiredAt: string }; hard: { overall: EvaluationStatus; rules: EvaluationHardRule[] }; soft: { matches: EvaluationSoftMatch[] }; facts: EvaluationFactEvidence[] }
+
+const evaluationStatuses: EvaluationStatus[] = ['eligible', 'ineligible', 'unknown']
+function onlyKeys(value: Record<string, unknown>, keys: string[]): boolean { return Object.keys(value).every((key) => keys.includes(key)) }
+function validEvaluationFact(value: unknown): value is EvaluationFactEvidence {
+ if (!isRecord(value) || !onlyKeys(value, ['factKey', 'value', 'revision', 'factRevision', 'source', 'confirmation', 'confirmedAt']) || !validIdentifier(value.factKey) || typeof value.value !== 'string' || !Number.isSafeInteger(value.revision) || Number(value.revision) < 0 || !Number.isSafeInteger(value.factRevision) || Number(value.factRevision) < 0 || !isRecord(value.source) || !onlyKeys(value.source, ['kind', 'label', 'referenceId']) || !validSource(value.source) || !isRecord(value.confirmation) || !onlyKeys(value.confirmation, ['userId', 'confirmedAt']) || !validIdentifier(value.confirmation.userId) || !validTimestamp(value.confirmation.confirmedAt) || !validTimestamp(value.confirmedAt)) return false
+ return true
+}
+function validEvaluationJob(value: unknown): value is EvaluationJobEvidence {
+ return isRecord(value) && onlyKeys(value, ['snapshotId', 'observationId', 'acquiredAt', 'rawSha256', 'spanStart', 'spanEnd', 'quotedText']) && validIdentifier(value.snapshotId) && validIdentifier(value.observationId) && validTimestamp(value.acquiredAt) && typeof value.rawSha256 === 'string' && /^[a-f0-9]{64}$/.test(value.rawSha256) && Number.isSafeInteger(value.spanStart) && Number(value.spanStart) >= 0 && Number.isSafeInteger(value.spanEnd) && Number(value.spanEnd) > Number(value.spanStart) && typeof value.quotedText === 'string' && value.quotedText.length > 0
+}
+function validEvaluationReceipt(value: unknown): value is Evaluation & EvaluationReceipt {
+ return isRecord(value) && onlyKeys(value, ['kind', 'requestId', 'evaluationId', 'opportunityId', 'snapshotId', 'profileRevision', 'status', 'createdAt', 'rulesetVersion', 'snapshot', 'hard', 'soft', 'facts']) && value.kind === 'evaluation_created' && validIdentifier(value.requestId) && validIdentifier(value.evaluationId) && validIdentifier(value.opportunityId) && validIdentifier(value.snapshotId) && Number.isSafeInteger(value.profileRevision) && Number(value.profileRevision) >= 0 && evaluationStatuses.includes(value.status as EvaluationStatus)
+}
+export function decodeEvaluationReceipt(value: unknown): EvaluationReceipt {
+ if (!validEvaluationReceipt(value)) throw new TypeError('invalid career evaluation receipt')
+ return { kind: 'evaluation_created', requestId: value.requestId, evaluationId: value.evaluationId, opportunityId: value.opportunityId, snapshotId: value.snapshotId, profileRevision: value.profileRevision as number, status: value.status as EvaluationStatus }
+}
+export function decodeEvaluation(value: unknown): Evaluation {
+ if (!validEvaluationReceipt(value) || !isRecord(value) || !onlyKeys(value, ['kind', 'requestId', 'evaluationId', 'opportunityId', 'snapshotId', 'profileRevision', 'status', 'createdAt', 'rulesetVersion', 'snapshot', 'hard', 'soft', 'facts']) || !validTimestamp(value.createdAt) || !validIdentifier(value.rulesetVersion) || !isRecord(value.snapshot) || !onlyKeys(value.snapshot, ['opportunityId', 'observationId', 'snapshotId', 'rawText', 'rawSha256', 'source', 'acquiredAt']) || value.snapshot.opportunityId !== value.opportunityId || value.snapshot.snapshotId !== value.snapshotId || !validIdentifier(value.snapshot.observationId) || typeof value.snapshot.rawText !== 'string' || !value.snapshot.rawText.trim() || typeof value.snapshot.rawSha256 !== 'string' || !/^[a-f0-9]{64}$/.test(value.snapshot.rawSha256) || !isRecord(value.snapshot.source) || !validIdentifier(value.snapshot.source.kind) || (value.snapshot.source.label !== undefined && typeof value.snapshot.source.label !== 'string') || (value.snapshot.source.referenceId !== undefined && typeof value.snapshot.source.referenceId !== 'string') || !validTimestamp(value.snapshot.acquiredAt) || !isRecord(value.hard) || !onlyKeys(value.hard, ['overall', 'rules']) || !evaluationStatuses.includes(value.hard.overall as EvaluationStatus) || value.hard.overall !== value.status || !Array.isArray(value.hard.rules) || !isRecord(value.soft) || !onlyKeys(value.soft, ['matches']) || !Array.isArray(value.soft.matches) || !Array.isArray(value.facts) || !value.facts.every(validEvaluationFact)) throw new TypeError('invalid career evaluation')
+ const rawText = value.snapshot.rawText
+ const bytes = new TextEncoder().encode(rawText)
+ const validEvidence = (evidence: unknown): evidence is EvaluationJobEvidence => {
+  if (!validEvaluationJob(evidence) || evidence.snapshotId !== value.snapshot.snapshotId || evidence.observationId !== value.snapshot.observationId || evidence.acquiredAt !== value.snapshot.acquiredAt || evidence.rawSha256 !== value.snapshot.rawSha256 || evidence.spanEnd > bytes.length) return false
+  return new TextDecoder().decode(bytes.slice(evidence.spanStart, evidence.spanEnd)) === evidence.quotedText
+ }
+ const validRule = (rule: unknown): rule is EvaluationHardRule => isRecord(rule) && onlyKeys(rule, ['ruleId', 'criterion', 'outcome', 'reasonCode', 'jobEvidence', 'profileEvidence']) && validIdentifier(rule.ruleId) && typeof rule.criterion === 'string' && evaluationStatuses.includes(rule.outcome as EvaluationStatus) && validIdentifier(rule.reasonCode) && (rule.jobEvidence === undefined || validEvidence(rule.jobEvidence)) && (rule.profileEvidence === undefined || (validEvaluationFact(rule.profileEvidence) && rule.profileEvidence.revision === value.profileRevision))
+ const validMatch = (match: unknown): match is EvaluationSoftMatch => isRecord(match) && onlyKeys(match, ['kind', 'value', 'jobEvidence', 'profileEvidence']) && ['skill', 'project', 'intent'].includes(String(match.kind)) && typeof match.value === 'string' && validEvidence(match.jobEvidence) && validEvaluationFact(match.profileEvidence) && match.profileEvidence.revision === value.profileRevision
+ if (!value.hard.rules.every(validRule) || !value.soft.matches.every(validMatch) || !value.facts.every((fact) => fact.revision === value.profileRevision)) throw new TypeError('invalid career evaluation evidence')
+ return value as unknown as Evaluation
+}
