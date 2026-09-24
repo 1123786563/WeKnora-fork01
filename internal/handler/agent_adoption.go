@@ -37,6 +37,17 @@ type createAdoptionVariantBody struct {
 	ReleaseID string `json:"release_id,omitempty"`
 }
 
+type capabilityMappingEntryBody struct {
+	Capability       string   `json:"capability"`
+	ModelID          string   `json:"model_id,omitempty"`
+	KnowledgeBaseIDs []string `json:"knowledge_base_ids,omitempty"`
+	ConnectionIDs    []string `json:"connection_ids,omitempty"`
+}
+
+type updateCapabilityMappingBody struct {
+	Mappings []capabilityMappingEntryBody `json:"mappings"`
+}
+
 type adoptionVariantResponse struct {
 	ID                  string    `json:"id"`
 	AdoptionID          string    `json:"adoption_id"`
@@ -155,4 +166,41 @@ func (h *AgentAdoptionHandler) CreateVariant(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusCreated, gin.H{"success": true, "data": adoptionVariantDTO(view)})
+}
+
+func (h *AgentAdoptionHandler) UpdateCapabilityMapping(c *gin.Context) {
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, agentMarketplaceMaxRequestBytes)
+	var body *updateCapabilityMappingBody
+	if err := decodeAgentMarketplaceBody(c.Request.Body, &body); err != nil {
+		invalidMarketplaceBody(c, err)
+		return
+	}
+	if body == nil || body.Mappings == nil {
+		invalidMarketplaceBody(c, stderrors.New("mappings are required"))
+		return
+	}
+	mappings := make([]interfaces.CapabilityMapping, 0, len(body.Mappings))
+	for _, entry := range body.Mappings {
+		mappings = append(mappings, interfaces.CapabilityMapping{
+			Capability: entry.Capability, ModelID: entry.ModelID,
+			KnowledgeBaseIDs: entry.KnowledgeBaseIDs, ConnectionIDs: entry.ConnectionIDs,
+		})
+	}
+	actorID, _ := types.UserIDFromContext(c.Request.Context())
+	view, err := h.adoptions.UpdateCapabilityMapping(c.Request.Context(), sandboxConfigTenantID(c), actorID, c.Param("id"), mappings)
+	if err != nil {
+		_ = c.Error(adoptionClientError(err))
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": adoptionVariantDTO(view)})
+}
+
+func (h *AgentAdoptionHandler) TestVariant(c *gin.Context) {
+	actorID, _ := types.UserIDFromContext(c.Request.Context())
+	view, err := h.adoptions.TestVariant(c.Request.Context(), sandboxConfigTenantID(c), actorID, c.Param("id"))
+	if err != nil {
+		_ = c.Error(adoptionClientError(err))
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": adoptionVariantDTO(view)})
 }

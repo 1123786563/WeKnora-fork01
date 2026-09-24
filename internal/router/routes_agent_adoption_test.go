@@ -212,3 +212,93 @@ func TestTenantAgentAdoptionRoutesAndAuthorization(t *testing.T) {
 		t.Fatalf("variant policy = %#v, want full-access", variantPolicy)
 	}
 }
+
+func TestTenantAgentVariantCapabilityMappingAndTestGate(t *testing.T) {
+	r, _, _ := newAgentAdoptionTestApp(t)
+	listingID, _ := publishAdoptionRelease(t, r)
+	adopted := adoptionCall(r, 1, http.MethodPost, "/api/v1/marketplace/tenant/adoptions", "admin", "admin", map[string]any{"listing_id": listingID})
+	require.Equal(t, http.StatusCreated, adopted.Code, adopted.Body.String())
+	var adoptionBody struct {
+		Data struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(adopted.Body.Bytes(), &adoptionBody))
+	variant := adoptionCall(r, 1, http.MethodPost, "/api/v1/marketplace/tenant/adoptions/"+adoptionBody.Data.ID+"/variants", "admin", "admin", map[string]any{"name": "Sales Assistant"})
+	require.Equal(t, http.StatusCreated, variant.Code, variant.Body.String())
+	var variantBody struct {
+		Data struct {
+			ID                  string   `json:"id"`
+			State               string   `json:"state"`
+			MissingCapabilities []string `json:"missing_capabilities"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(variant.Body.Bytes(), &variantBody))
+
+	assertConflict := func(response *httptest.ResponseRecorder, message string) {
+		t.Helper()
+		require.Equal(t, http.StatusConflict, response.Code, response.Body.String())
+		var envelope struct {
+			Success bool `json:"success"`
+			Error   struct {
+				Code    int    `json:"code"`
+				Message string `json:"message"`
+			} `json:"error"`
+		}
+		require.NoError(t, json.Unmarshal(response.Body.Bytes(), &envelope))
+		require.False(t, envelope.Success)
+		require.Equal(t, 1005, envelope.Error.Code)
+		require.Equal(t, message, envelope.Error.Message)
+	}
+
+	// AC2 over HTTP: missing required capabilities -> 409 with every missing
+	// capability named in the message.
+	assertConflict(
+		adoptionCall(r, 1, http.MethodPost, "/api/v1/marketplace/tenant/variants/"+variantBody.Data.ID+"/test", "admin", "admin", nil),
+		"agent adoption variant is not runnable: missing required capabilities: knowledge, model",
+	)
+
+	partial := adoptionCall(r, 1, http.MethodPut, "/api/v1/marketplace/tenant/variants/"+variantBody.Data.ID+"/capability-mapping", "admin", "admin", map[string]any{"mappings": []map[string]any{{"capability": "model", "model_id": "gpt-x"}}})
+	require.Equal(t, http.StatusOK, partial.Code, partial.Body.String())
+	require.NoError(t, json.Unmarshal(partial.Body.Bytes(), &variantBody))
+	require.Equal(t, "draft", variantBody.Data.State)
+	require.Equal(t, []string{"knowledge"}, variantBody.Data.MissingCapabilities)
+	assertConflict(
+		adoptionCall(r, 1, http.MethodPost, "/api/v1/marketplace/tenant/variants/"+variantBody.Data.ID+"/test", "admin", "admin", nil),
+		"agent adoption variant is not runnable: missing required capabilities: knowledge",
+	)
+
+	unknownCapability := adoptionCall(r, 1, http.MethodPut, "/api/v1/marketplace/tenant/variants/"+variantBody.Data.ID+"/capability-mapping", "admin", "admin", map[string]any{"mappings": []map[string]any{{"capability": "sandbox"}}})
+	require.Equal(t, http.StatusBadRequest, unknownCapability.Code, unknownCapability.Body.String())
+	duplicateCapability := adoptionCall(r, 1, http.MethodPut, "/api/v1/marketplace/tenant/variants/"+variantBody.Data.ID+"/capability-mapping", "admin", "admin", map[string]any{"mappings": []map[string]any{{"capability": "model", "model_id": "a"}, {"capability": "model", "model_id": "b"}}})
+	require.Equal(t, http.StatusBadRequest, duplicateCapability.Code)
+	emptyBinding := adoptionCall(r, 1, http.MethodPut, "/api/v1/marketplace/tenant/variants/"+variantBody.Data.ID+"/capability-mapping", "admin", "admin", map[string]any{"mappings": []map[string]any{{"capability": "model"}, {"capability": "knowledge"}}})
+	require.Equal(t, http.StatusOK, emptyBinding.Code)
+	require.NoError(t, json.Unmarshal(emptyBinding.Body.Bytes(), &variantBody))
+	require.Equal(t, []string{"knowledge", "model"}, variantBody.Data.MissingCapabilities, "empty bindings never cover a capability")
+	viewerMapping := adoptionCall(r, 1, http.MethodPut, "/api/v1/marketplace/tenant/variants/"+variantBody.Data.ID+"/capability-mapping", "viewer", "viewer", map[string]any{"mappings": []map[string]any{}})
+	require.Equal(t, http.StatusForbidden, viewerMapping.Code)
+	crossTenantMapping := adoptionCall(r, 2, http.MethodPut, "/api/v1/marketplace/tenant/variants/"+variantBody.Data.ID+"/capability-mapping", "admin", "admin", map[string]any{"mappings": []map[string]any{}})
+	require.Equal(t, http.StatusNotFound, crossTenantMapping.Code)
+	viewerTest := adoptionCall(r, 1, http.MethodPost, "/api/v1/marketplace/tenant/variants/"+variantBody.Data.ID+"/test", "viewer", "viewer", nil)
+	require.Equal(t, http.StatusForbidden, viewerTest.Code)
+
+	complete := adoptionCall(r, 1, http.MethodPut, "/api/v1/marketplace/tenant/variants/"+variantBody.Data.ID+"/capability-mapping", "admin", "admin", map[string]any{"mappings": []map[string]any{
+		{"capability": "model", "model_id": "gpt-x"},
+		{"capability": "knowledge", "knowledge_base_ids": []string{"kb-sales"}},
+	}})
+	require.Equal(t, http.StatusOK, complete.Code, complete.Body.String())
+	require.NoError(t, json.Unmarshal(complete.Body.Bytes(), &variantBody))
+	require.Equal(t, "mapped", variantBody.Data.State)
+	require.Empty(t, variantBody.Data.MissingCapabilities)
+
+	tested := adoptionCall(r, 1, http.MethodPost, "/api/v1/marketplace/tenant/variants/"+variantBody.Data.ID+"/test", "admin", "admin", nil)
+	require.Equal(t, http.StatusOK, tested.Code, tested.Body.String())
+	require.NoError(t, json.Unmarshal(tested.Body.Bytes(), &variantBody))
+	require.Equal(t, "tested", variantBody.Data.State)
+	// Re-testing a tested variant is a state conflict, not a silent re-run.
+	assertConflict(
+		adoptionCall(r, 1, http.MethodPost, "/api/v1/marketplace/tenant/variants/"+variantBody.Data.ID+"/test", "admin", "admin", nil),
+		"agent adoption variant state conflict: state is \"tested\"; complete capability mapping first",
+	)
+}

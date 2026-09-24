@@ -23,4 +23,6 @@ func RegisterAgentAdoptionRoutes(r *gin.RouterGroup, adoptionHandler *handler.Ag
 	g.apiKeyRoute(r, http.MethodPost, "/marketplace/tenant/adoptions", admin, g.Admin(), adoptionHandler.Adopt)
 	g.apiKeyRoute(r, http.MethodGet, "/marketplace/tenant/adoptions", admin, g.Admin(), adoptionHandler.ListAdoptions)
 	g.apiKeyRoute(r, http.MethodPost, "/marketplace/tenant/adoptions/:id/variants", admin, g.Admin(), adoptionHandler.CreateVariant)
+	g.apiKeyRoute(r, http.MethodPut, "/marketplace/tenant/variants/:id/capability-mapping", admin, g.Admin(), adoptionHandler.UpdateCapabilityMapping)
+	g.apiKeyRoute(r, http.MethodPost, "/marketplace/tenant/variants/:id/test", admin, g.Admin(), adoptionHandler.TestVariant)
 }
