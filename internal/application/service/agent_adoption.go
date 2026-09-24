@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
+	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )
@@ -286,6 +287,15 @@ func (s *AgentAdoptionService) PublishVariant(ctx context.Context, tenantID uint
 	}
 	view, err := s.versions.FreezeAgentVersion(ctx, tenantID, actorID, created.ID)
 	if err != nil {
+		// Known architectural limitation (parked, controller ruling): the
+		// local agent above is already instantiated; this failure leaves it
+		// orphaned while the variant stays tested. Log the id so a later
+		// reconciliation pass can find it.
+		logger.ErrorWithFields(ctx, err, map[string]interface{}{
+			"variant_id": variant.ID, "tenant_id": tenantID,
+			"local_agent_id": created.ID,
+			"stage":          "freeze_variant_local_agent_version",
+		})
 		return interfaces.PublishVariantResult{}, fmt.Errorf("freeze the variant local agent version: %w", err)
 	}
 	publishedAt := s.now().UTC()
@@ -294,6 +304,15 @@ func (s *AgentAdoptionService) PublishVariant(ctx context.Context, tenantID uint
 		"published_by": actorID, "published_at": publishedAt,
 	})
 	if err != nil {
+		// Known architectural limitation (parked, controller ruling): the
+		// CAS to published failed after the local agent and its frozen
+		// version exist; retrying would instantiate another agent. Log the
+		// ids so a later reconciliation pass can find the orphan.
+		logger.ErrorWithFields(ctx, err, map[string]interface{}{
+			"variant_id": variant.ID, "tenant_id": tenantID,
+			"local_agent_id": created.ID, "local_agent_version_id": view.ID,
+			"stage": "cas_variant_to_published",
+		})
 		return interfaces.PublishVariantResult{}, err
 	}
 	variantView, err := s.variantView(ctx, tenantID, updated)
