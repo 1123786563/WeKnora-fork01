@@ -17,6 +17,7 @@ import { installNavigationObserver } from './platform/navigation.ts';
 import { resolveRoute } from './routes.tsx';
 import { createWeKnoraRouter } from './router.tsx';
 import './styles.css';
+import './career/opportunity.css';
 // tdesign-react 命令式 API（MessagePlugin/NotificationPlugin/Dialog 等）在 React 19 下
 // 依赖此 adapter 替换 ReactDOM.render（T2 spike 实测，Phase 0 证据 spike-tdesign-react19.md）
 import 'tdesign-react/es/_util/react-19-adapter';

@@ -1,0 +1,538 @@
+/* Career Opportunity evidence and conversation import surfaces. */
+.wk-opportunity-import {
+  box-sizing: border-box;
+  width: min(100%, 960px);
+  margin: 0 auto 16px;
+  padding: clamp(16px, 3vw, 24px);
+  border: 1px solid var(--td-component-border, #dcdcdc);
+  border-radius: 12px;
+  background: var(--td-bg-color-container, #fff);
+  color: var(--td-text-color-primary, #222);
+}
+.wk-opportunity-import__intro h2,
+.wk-opportunity-evidence h1,
+.wk-opportunity-evidence h2 { margin: 0; }
+.wk-opportunity-import__intro p,
+.wk-opportunity-evidence .wk-header p { margin: 6px 0 0; color: var(--td-text-color-secondary, #666); }
+.wk-opportunity-import__eyebrow { margin: 0 0 4px; color: var(--td-brand-color, #0052d9); font-size: .8rem; font-weight: 600; letter-spacing: .04em; }
+.wk-opportunity-import__label,
+.wk-opportunity-import__metadata label { display: grid; gap: 6px; color: var(--td-text-color-primary, #222); font-size: .9rem; font-weight: 600; }
+.wk-opportunity-import textarea,
+.wk-opportunity-import__metadata input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--td-component-border, #c8c8c8);
+  border-radius: 6px;
+  padding: 10px 12px;
+  background: var(--td-bg-color-container, #fff);
+  color: var(--td-text-color-primary, #222);
+  font: inherit;
+}
+.wk-opportunity-import textarea { display: block; margin-top: 12px; resize: vertical; line-height: 1.5; }
+.wk-opportunity-import textarea:focus-visible,
+.wk-opportunity-import__metadata input:focus-visible,
+.wk-opportunity-import button:focus-visible,
+.wk-opportunity-import a:focus-visible,
+.wk-opportunity-evidence button:focus-visible,
+.wk-opportunity-evidence a:focus-visible { outline: 3px solid var(--td-brand-color-focus, #0052d9); outline-offset: 2px; }
+.wk-opportunity-import textarea:disabled,
+.wk-opportunity-import__metadata input:disabled { opacity: .7; }
+.wk-opportunity-import__metadata { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
+.wk-opportunity-import__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.wk-opportunity-import__actions button,
+.wk-opportunity-import__result a,
+.wk-opportunity-evidence button,
+.wk-opportunity-evidence .wk-header a { display: inline-flex; align-items: center; min-height: 40px; border: 1px solid var(--td-brand-color, #0052d9); border-radius: 6px; padding: 8px 14px; background: var(--td-brand-color, #0052d9); color: #fff; font: inherit; font-weight: 600; text-decoration: none; cursor: pointer; }
+.wk-opportunity-import__actions button:disabled { opacity: .55; cursor: not-allowed; }
+.wk-opportunity-import__message { margin: 12px 0 0; color: var(--td-text-color-secondary, #555); }
+.wk-opportunity-import__message--error { color: var(--td-error-color, #b42318); }
+.wk-opportunity-import__result { margin-top: 14px; padding: 12px; border-radius: 8px; background: var(--td-bg-color-secondarycontainer, #f4f6fa); }
+.wk-opportunity-import__result p { margin: 6px 0 10px; overflow-wrap: anywhere; }
+.wk-opportunity-import__result a { min-height: 36px; }
+.wk-opportunity-evidence { box-sizing: border-box; width: 100%; max-width: 1100px; margin-inline: auto; padding: clamp(18px, 4vw, 40px); }
+.wk-opportunity-evidence .wk-header { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 20px; }
+.wk-opportunity-evidence__state,
+.wk-opportunity-evidence__meta,
+.wk-opportunity-evidence__fields,
+.wk-opportunity-evidence__raw { margin: 16px 0; padding: clamp(16px, 3vw, 24px); border: 1px solid var(--td-component-border, #dcdcdc); border-radius: 10px; background: var(--td-bg-color-container, #fff); }
+.wk-opportunity-evidence__meta dl,
+.wk-opportunity-evidence__fields dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin: 0; }
+.wk-opportunity-evidence dl > div { min-width: 0; }
+.wk-opportunity-evidence dt { margin-bottom: 4px; color: var(--td-text-color-secondary, #666); font-size: .85rem; }
+.wk-opportunity-evidence dd { margin: 0; overflow-wrap: anywhere; }
+.wk-opportunity-evidence__notice { padding: 12px 16px; border-left: 3px solid var(--td-warning-color, #d68b00); background: var(--td-warning-color-1, #fff7e6); }
+.wk-opportunity-evidence__raw pre { max-height: 60vh; overflow: auto; margin: 12px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; line-height: 1.55; }
+@media (max-width: 640px) {
+  .wk-opportunity-import__metadata,
+  .wk-opportunity-evidence__meta dl,
+  .wk-opportunity-evidence__fields dl { grid-template-columns: minmax(0, 1fr); }
+  .wk-opportunity-evidence .wk-header { align-items: flex-start; flex-direction: column; gap: 12px; }
+}
+
+body { margin: 0; min-width: 320px; background: var(--wk-color-page, #eee);
+  /* Vue App.vue body/html/#app 同款字体平滑（frontend/src/App.vue:301-302），
+     缺失时 React 全站字形以亚像素渲染、笔画偏粗，逐像素对比整页字形红。 */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* Vue 全站字体栈（frontend/src/assets/theme/theme.css --app-font-family，
+     TDesign 挂在 body 上）；React 缺失时 body 落到 Times，未带显式字体
+     utility 的文本（侧栏、弹层、按钮内文字）逐像素整行偏红。 */
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  /* Vue App.vue body/html/#app 同款全局字号/文字色（frontend/src/App.vue:299-305
+     font-size: 14px; color: var(--td-text-color-primary)）；R5 复验口径：图标
+     currentColor 与未带字号组件文本继承 body，缺这两条时 spike 图标区不坍缩。 */
+  font-size: 14px;
+  color: var(--td-text-color-primary); }
+/* .wk-muted deleted: every consumer carries the text-muted utility (or an
+   overriding variant) since the family migrated off this file. */
+/* S7 壳层回收（判例同 S6 wk-list 集中回收）：.wk-page 标准版（960px 居中）
+   自消费者 utilities 回迁为修饰类规则，值 = 消费者编码的生效值
+   （mx-auto box-border max-w-[960px] px-5/px-[1.25rem] py-12 → 20px/48px）。
+   注意：只挂在原携带该组 utilities 的页面上（.wk-page 裸类消费者现今无
+   样式，保持不动）；宽版 1180px 页由各域 u.css 页规则承载。
+   PlatformShell 壳内由 platform-shell.td.css 的 .plat-shell__outlet .wk-page
+   覆盖为全宽滚动（max-width:none!important，层叠与先前壳层 utility 等价）。 */
+.wk-page--std { margin-inline: auto; box-sizing: border-box; max-width: 960px; padding: 48px 20px; }
+/* NotFoundPage（404）：壳内实际生效值（h-full w-full box-border overflow-y-auto
+   px-[1.25rem] py-12）——不挂 .wk-page，直接全宽滚动版式。 */
+.wk-notfound { height: 100%; width: 100%; box-sizing: border-box; overflow-y: auto; padding: 48px 20px; }
+/* The page shell families (.wk-page/.wk-header/.wk-eyebrow/.wk-debug/.wk-list ± li/li span/
+   .wk-list-item-copy/.wk-list-item-actions/.wk-list-actions ± span/select/.wk-form ± label/input/select/
+   .wk-form-grid(±--two/--three)/.wk-form-label/.wk-toolbar ± label/select/input) moved to Tailwind
+   utilities on their consumers (按生效值编码: layered utilities that competed with these unlayered
+   rules were re-encoded with ! so the effective cascade is preserved). Class names remain on the
+   DOM as hooks: tests query them and PlatformShell's outlet override ([&_.wk-page]:max-w-none! /
+   h-full / overflow-y-auto) depends on .wk-page existing. */
+/* .wk-settings-tabs/-tab(.is-active)/.wk-settings-section family (incl. its
+   h2/label/input/textarea/select descendants and :read-only/:disabled states)/
+   .wk-settings-table(± label) deleted: every consumer now carries the effective
+   values as element or container utilities (KnowledgeSettingsPage cards, the
+   SettingsPage drawer panels, ResourceSettingsPanel). The .wk-settings-section
+   class stays on the SettingsPage drawer wrapper as a cascade-scope hook for
+   settings-wrapper.css's retained rules; drawer select chrome still lives
+   there too. */
+/* .wk-settings-page/.wk-settings-layout/.wk-settings-nav/.wk-settings-save deleted:
+   dead rules (zero source consumers) — the inline settings page was replaced by
+   the .wks-* drawer shell. */
+/* .wk-settings-panel-heading family deleted: all consumers (settings drawer
+   panels, ResourceSettingsPanel, configuration ModelUsageNotice/
+   ConfigurationEditor/ConfigurationOperations, chat sandbox drawer) carry the
+   base and the h2/p margins as element utilities; the chat.css drawer-scoped
+   guard was deleted with it (its values were already on the element). */
+/* .wk-settings-operation-list deleted (dead). .wk-settings-read-note deleted:
+   its two consumers (EnvVarSettingsPanel/PortedSectionsPanel) carry
+   text-muted-strong text-[.9rem] utilities. */
+/* .wk-settings-editor family deleted: settings-domain editors carry equivalent
+   utilities; configuration editors (ConfigurationEditor/ConfigurationOperations/
+   ModelDebugPanel) now encode the base and the label/input rules as container
+   variants; McpSettingsPanel's max-w-none! stays correct against them. */
+/* .wk-model-tabs family kept: SandboxSettingsPanel.tsx (out of model-wave scope) still
+   consumes it; delete once the sandbox panel migrates to utilities. */
+.wks-overlay.wks-mcp-overlay { align-items: stretch; justify-content: flex-end; padding: 0; backdrop-filter: none; }
+.wks-modal.wks-mcp-drawer { box-sizing: border-box; width: min(var(--mcp-drawer-width, 680px), 100%); height: 100vh; max-height: 100vh; overflow-y: auto; padding: 0 18px; border-radius: 0; }
+/* The .wks-mcp-drawer .wk-settings-* overrides (heading sticky chrome, editor
+   max-width/fieldset/select layout) moved to element utilities on
+   McpSettingsPanel's drawer heading/form/fieldsets/selects. Select chrome
+   (border/radius/height/chevron) still comes from the drawer-wide promoted rule
+   in settings-wrapper.css (.wks-modal ancestor is shared with this drawer). */
+@media (max-width: 720px) { .wks-modal.wks-mcp-drawer { width: 100%; height: 100vh; max-height: 100vh; padding: 0 16px; } }
+/* .wk-visually-hidden deleted: consumers carry sr-only; class name stays as a
+   hook. */
+/* .wk-settings-values family deleted: its four consumers (CloudSettingsPanel,
+   OllamaSettingsPanel ×2, PortedSectionsPanel) carry exact dl/div/dt/dd
+   utilities incl. max-[720px]: variants. The ≤720px fragments of the dead
+   .wk-settings-layout/.wk-settings-operation-list went with them; the
+   panel-heading fragment went with its family. */
+
+/* Integrations surface — ported from frontend/src/components/css/channel-panel-list.less
+   (Vue baseline); the .wk-integrations-page/header/tabs/panel and .wk-int-*
+   families moved to Tailwind utilities in packages/views/src/integrations/page.tsx. */
+/* The .wk-button (base/disabled/--text/--danger), .wk-tag/.wk-tag--warning,
+   .wk-switch/.wk-switch-knob, .wk-status(-error/-ok) and .wk-mono-input families
+   moved to Tailwind utilities on their consumers (packages/views/src/integrations/
+   page.tsx, apps/web/src/integrations/*, apps/web/src/settings/*). Class names
+   stay in the DOM as querySelector/test/variant hooks; .wk-switch checked states
+   are encoded with peer-checked utilities, and the drawer's [&_input]:! variants
+   keep owning the .wk-mono-input padding/border/radius they already outranked. */
+/* The .wk-option-chips/.wk-option-chip(--active) and .wk-check-row families moved
+   to Tailwind utilities on their consumer (packages/views/src/integrations/page.tsx
+   CHIP_BASE/chip and the wizard/API label rows). .wk-check-row stays on the labels
+   as a :not() selector hook for the integration drawer's font-medium! variant. */
+/* .wk-muted--warn deleted: the three consumers carry text-[#b45309] (the
+   INTEGRATION_FORM_CLASS [&_.wk-muted]:text-[#98a2b3]! variant still overrides
+   it inside the form, exactly as this unlayered rule was overridden). */
+
+/* S00 N-2: Vue CreateTenantDialog.vue renders a centered t-dialog at 480px;
+   narrow the shared wk-dialog panel for the tenant-create modal only. */
+
+/* Integration drawer animations: the .wk-integration-drawer family moved to
+   Tailwind utilities (packages/views/src/integrations/page.tsx
+   INTEGRATION_DRAWER_* classes, referenced via animate-[...]); reduced motion
+   is carried by motion-reduce:animate-none on the overlay/aside. */
+@keyframes wk-integration-drawer-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes wk-integration-drawer-slide-in { from { transform: translateX(24px); } to { transform: translateX(0); } }
+
+/* The .wk-embed-preview-* family moved to Tailwind utilities on its two
+   consumers (packages/views/src/integrations/page.tsx preview panel and
+   apps/web/src/integrations/EmbedPreviewModal.tsx); the ≤720px tweaks became
+   max-[720px]: variants and iframe .is-loading became a static 'invisible'
+   condition. */
+/* The .wk-capability-grid/.wk-capability-card family moved to Tailwind utilities
+   on its consumer (packages/views/src/integrations/page.tsx chrome/claw tabs). */
+
+
+
+/* ==== Settings drawer visual form (ported from frontend/src/views/settings/Settings.vue
+   .settings-overlay/.settings-modal/.settings-sidebar/.nav-*). wks- prefix avoids any
+   collision with the legacy inline .wk-settings-* page layout above. ==== */
+/*
+ * Settings drawer visual form — ported from frontend/src/views/settings/Settings.vue
+ * (.settings-overlay / .settings-modal / .settings-sidebar / .nav-* styles).
+ * All classes use the wks- prefix so nothing collides with the shared
+ * styles.css rules for the old inline .wk-settings-* page layout.
+ */
+.wks-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--wk-overlay-settings-z, 1100);
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  backdrop-filter: blur(4px);
+}
+
+.wks-modal {
+  position: relative;
+  width: 100%;
+  max-width: 1080px;
+  height: 780px;
+  max-height: calc(100vh - 40px);
+  background: var(--wk-color-surface, #fff);
+  border-radius: 12px;
+  box-shadow: var(--wk-shadow-panel, 0 6px 30px rgba(0, 0, 0, 0.12));
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.wks-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  color: var(--wk-color-text-secondary, #66758b);
+  cursor: pointer;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  z-index: 10;
+}
+
+.wks-close:hover { background: var(--wk-color-surface-hover, #f0f2f7); color: var(--wk-color-text, #172033); }
+
+.wks-container {
+  display: flex;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+/* Left navigation column */
+.wks-sidebar {
+  width: 208px;
+  /* Settings.vue .settings-sidebar: --td-bg-color-settings-modal #f9f9f9,
+     border --td-component-stroke #e7e7e7 (theme.css light tokens). */
+  background-color: var(--wk-color-settings-panel, #f9f9f9);
+  border-right: 1px solid var(--wk-color-component, #e7e7e7);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.wks-sidebar-header {
+  padding: 16px 14px 12px;
+  border-bottom: 1px solid var(--wk-color-component, #e7e7e7);
+  flex-shrink: 0;
+}
+
+.wks-sidebar-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--wk-color-text, rgba(0, 0, 0, 0.9));
+  margin: 0;
+}
+
+.wks-nav {
+  padding: 8px 8px 12px;
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.wks-nav-group-title {
+  padding: 9px 14px 4px;
+  color: var(--wk-color-text-placeholder, rgba(0, 0, 0, 0.4));
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.wks-nav-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 6px 12px;
+  margin-bottom: 2px;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+  background: transparent;
+  color: var(--wk-color-text, rgba(0, 0, 0, 0.9));
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+/* Settings.vue .nav-item:hover / &.active: hover = --td-bg-color-container-hover
+   (gray-1 #f3f3f3) + --td-text-color-primary rgba(0,0,0,.9); active =
+   --td-bg-color-secondarycontainer (#f3f3f3) + --td-brand-color #07c05f. */
+.wks-nav-item:hover { background-color: var(--wk-color-surface-hover, #f3f3f3); color: var(--wk-color-text, rgba(0, 0, 0, 0.9)); }
+
+.wks-nav-item.is-active {
+  background-color: var(--wk-color-surface-hover, #f3f3f3);
+  color: var(--wk-color-brand, #07c05f);
+  font-weight: 500;
+}
+
+.wks-nav-icon {
+  margin-right: 9px;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: inherit;
+}
+
+/* Settings.vue .nav-icon-emoji (Claw Skill nav row): the raw emoji span is
+   clamped to a 14px line so it cannot inflate the fixed-height nav row. */
+.nav-icon-emoji {
+  font-size: 14px;
+  line-height: 1;
+}
+
+/* Settings.vue .nav-item: 32px rows for CJK labels (20px CJK line + 6px×2
+   padding); without a pinned height the button line box rounds a pixel taller
+   and the sidebar drifts ~1px per row versus the Vue drawer. Pure latin/emoji
+   labels (Ollama, WeKnora Cloud, CLI, Claw) use the smaller latin line box:
+   29px rows in Vue. */
+.wks-nav-item {
+  height: 32px;
+}
+
+.wks-nav-item[data-nav-icon-size="17"] {
+  height: 29px;
+}
+
+.wks-nav-label { flex: 1; }
+
+/* Right content column */
+.wks-content { flex: 1; overflow-y: auto; background-color: var(--wk-color-surface, #fff); }
+
+.wks-content-wrapper { max-width: 760px; padding: 40px 48px; }
+.wks-content-wrapper--wide,
+.wks-content-wrapper--full {
+  max-width: none;
+  width: 100%;
+  box-sizing: border-box;
+}
+.wks-content-wrapper--wide { padding: 32px 36px 40px; }
+.wks-content-wrapper--full { padding: 30px 34px 40px; }
+
+@media (max-width: 1100px) {
+  .wks-content-wrapper { padding: 28px 24px 40px; }
+  .wks-content-wrapper--wide { padding: 32px 36px 40px; }
+  .wks-content-wrapper--full { padding: 30px 34px 40px; }
+}
+
+.wks-section { animation: wks-fade-in 0.3s ease; }
+
+@keyframes wks-fade-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.wks-reload {
+  border: 1px solid #dce3ed;
+  border-radius: 999px;
+  background: #fff;
+  color: #506078;
+  cursor: pointer;
+  padding: 0.35rem 0.8rem;
+  font: inherit;
+  font-size: 13px;
+}
+
+.wks-reload:disabled { opacity: 0.6; cursor: default; }
+
+/* Scrollbars */
+.wks-nav::-webkit-scrollbar,
+.wks-content::-webkit-scrollbar { width: 6px; }
+.wks-nav::-webkit-scrollbar-track { background: #eef1f6; }
+.wks-nav::-webkit-scrollbar-thumb { background: #aab4c4; border-radius: 3px; }
+.wks-content::-webkit-scrollbar-track { background: #fff; }
+.wks-content::-webkit-scrollbar-thumb { background: #aab4c4; border-radius: 3px; }
+
+/* Role-denied empty state (Vue .role-denied) */
+.wks-role-denied {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 64px 24px;
+  gap: 12px;
+  min-height: 240px;
+}
+
+/* highlightKbId flash animation (Vue KnowledgeBaseList.vue highlight-flash) */
+
+/* Knowledge documents: match Vue's thin horizontal filter scrollbar. */
+.doc-filter-bar__filters {
+  -webkit-overflow-scrolling: touch;
+  scrollbar-color: rgba(0, 0, 0, 0.15) transparent;
+}
+.doc-filter-bar__filters::-webkit-scrollbar { height: 4px; }
+.doc-filter-bar__filters::-webkit-scrollbar-thumb { background-color: rgba(0, 0, 0, 0.15); border-radius: 2px; }
+
+/* Knowledge graph selected-node pulse (Vue WikiBrowser.vue @keyframes
+   node-active-pulse, .node-active-ring): the selection ring scales from the
+   node center and fades out on a 1.5s loop. transform-origin is set inline
+   per ring because the React renderer positions circles with absolute
+   cx/cy rather than Vue's per-node translate group. */
+@keyframes wk-node-active-pulse {
+  0% { transform: scale(1); opacity: 0.8; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+
+/* ---- 语义设计 token 事实源（T15：原 packages/ui/src/theme.css @theme 块整体平移）----
+ * packages/ui 退役后，存量 CSS（settings-wrapper.css 的 rq/skill 族、settings.td.css、
+ * kb-u.css、editor-layout.ts、wk-legacy.css 等）仍引用 --color-* / --radius-* /
+ * --shadow-* token；此处以 :root 原值承接，计算样式与删除前逐字一致。
+ * --color-brand 等别名链到 --wk-*（design-tokens styles.css :root 提供，含暗色）。 */
+:root {
+  /* 字体 */
+  /* Vue useFont.ts is authoritative for the default and user-selected stack.
+     Keep the runtime preference hook so every shared shadcn primitive follows
+     the same font as the application shell. */
+  --font-sans: var(--app-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif);
+  --font-mono: var(--app-font-family-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
+
+  /* 圆角（wk 控件 6px / 卡片 8px） */
+  --radius-control: 6px;
+  --radius-field: 3px;
+  --radius-card: 8px;
+  --radius-dialog: 10px;
+  --radius-large: 12px;
+  --radius-pill: 999px;
+
+  /*
+   * Vue/TDesign-compatible aliases. The generated design-token stylesheet is
+   * the runtime light/dark source for these values; keeping the aliases in
+   * @theme makes the same values available to Tailwind utilities and to
+   * arbitrary-value consumers such as var(--color-brand).
+   */
+  --color-brand: var(--wk-color-brand, #07c05f);
+  --color-brand-hover: var(--wk-color-brand-hover, #08dd6e);
+  --color-brand-active: var(--wk-color-brand-active, #06b04d);
+  --color-brand-light: var(--wk-color-brand-light, #e9f8ec);
+  --color-text: var(--wk-color-text, #000000e6);
+  --color-text-secondary: var(--wk-color-text-secondary, #00000099);
+  --color-text-placeholder: var(--wk-color-text-placeholder, #00000066);
+  --color-text-disabled: var(--wk-color-text-disabled, #00000042);
+  --color-page: var(--wk-color-page, #eeeeee);
+  --color-surface-hover: var(--wk-color-surface-hover, #f3f3f3);
+  --color-surface-active: var(--wk-color-surface-active, #e7e7e7);
+  --color-settings-panel: var(--wk-color-settings-panel, #f9f9f9);
+  --color-border: var(--wk-color-border, #dcdcdc);
+  --color-component: var(--wk-color-component, #e7e7e7);
+  --color-error: var(--wk-color-error, #e34d59);
+  --color-error-light: var(--wk-color-error-light, #fdecee);
+  --color-warning-vue: var(--wk-color-warning, #ed7b2f);
+  --color-success-vue: var(--wk-color-success, #00a870);
+
+  /* 表面 */
+  --color-canvas: #f7f9fc;        /* 应用底色 */
+  --color-surface: #ffffff;       /* 卡片/面板 */
+  --color-surface-alt: #f2f4f8;   /* 次级填充 #f3f3f3/#eef1f5/#f4f6fa */
+  --color-surface-muted: #f3f3f3; /* Vue td-bg-color-secondarycontainer */
+  --color-surface-wash: #eff4ff;  /* 蓝色浅底（选中/提示） */
+
+  /* 文本 */
+  --color-ink: #172033;           /* 主文本 */
+  --color-ink-strong: #101828;    /* 强标题 */
+  --color-muted: #66758b;         /* 次文本 */
+  --color-muted-strong: #506078;  /* 状态文本 */
+  --color-faint: #98a2b8;         /* 占位/三级 */
+
+  /* 线与描边 */
+  --color-line: #dce3ed;          /* 通用边框 */
+  --color-line-soft: #edf0f5;     /* 细分隔线 */
+  --color-line-strong: #b8c5d6;   /* 输入描边（蓝灰系） */
+  --color-line-input: #dcdcdc;    /* 输入描边（中性系，Vue 控件） */
+  --color-line-neutral: #e7e7e7;  /* 中性发丝线 */
+  --color-line-subtle: #e4e7ec;   /* 浅描边 */
+  --color-line-control: #cbd5e1;  /* 按钮描边（slate 系） */
+  --color-hover-wash: #f2f5fa;    /* 控件悬停浅底 */
+  --color-track-off: rgb(120 135 155 / 0.35); /* switch 未选中轨道 */
+  --color-track-on-disabled: #8ce0af; /* switch 选中态禁用轨道 */
+  --color-placeholder: #8a8a8a;   /* 输入占位文本 */
+  --color-disabled-bg: #eeeeee;   /* 输入禁用底色 */
+
+  /* 品牌（WeKnora 蓝系） */
+  --color-primary: #2e6de6;
+  --color-primary-strong: #0052d9;
+  --color-primary-deep: #1849a9;
+  --color-primary-soft: #245a9b;
+
+  /* 控件强调（Vue tdesign 绿） */
+  --color-accent: #07c05f;
+  --color-accent-strong: #0a8f4c;
+  --color-accent-hover: #08dd6e;
+  --color-accent-active: #06b04d;
+  --color-accent-deep: #00a870;
+  --color-accent-soft: rgba(7, 192, 95, 0.12);
+  --color-accent-wash: rgba(7, 192, 95, 0.08);
+
+  /* 语义状态 */
+  --color-success: #00a870;
+  --color-warning: #e37318;
+  --color-warning-strong: #b54708;
+  --color-danger: #b42318;
+  --color-success-text: #137333;  /* wk 族成功文本 */
+  --color-warning-text: #9a6700;  /* wk 族警告文本 */
+  --color-danger-strong: #d54941;
+  --color-info-line: #b3ccf5;
+  --color-success-line: #8ce0af;
+  --color-warning-line: #fedf89;
+  --color-warning-wash: #fffaeb;
+  --color-danger-line: #f1b8b3;
+  --color-danger-wash: #fdecea;
+
+  /* Shared primitive effects, matching Vue TDesign defaults. */
+  --color-overlay: rgb(23 32 51 / 45%);
+  --shadow-panel: 0 20px 60px rgb(23 32 51 / 20%);
+  --shadow-popover: 0 8px 24px rgb(15 23 42 / 12%);
+}

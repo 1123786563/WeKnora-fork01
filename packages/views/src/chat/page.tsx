@@ -253,6 +253,8 @@ export interface ChatPageProps {
    * 注入。缺省回退为结构面（.chat-header 标题 + ⋯ 按钮，无弹层）。
    */
   headerSlot?: ReactNode;
+  /** Career-owned actions that belong in the current conversation context. */
+  conversationActionSlot?: ReactNode;
   /** Vue index.vue .sandbox-header-toggle 注入（宿主 t-tooltip 版）；缺省回退为结构面。 */
   sandboxToggleSlot?: ReactNode;
 }
@@ -642,6 +644,7 @@ export function ChatPage(props: ChatPageProps) {
         </div>
       )) : null}
       <div className="chat_thread">
+        {props.conversationActionSlot}
         <ChatActionCards {...props} copy={copy} />
         {props.stream ? <LiveResponse copy={copy} stream={props.stream} /> : null}
         {props.error ? <p role="alert">{props.error}</p> : null}
@@ -736,6 +739,7 @@ export function ChatPage(props: ChatPageProps) {
       <div className="dialogue-wrap wk-vc-page-47">
       <div className="dialogue-answers wk-vc-page-48">
       <h1 className="dialogue-title" style={{ '--wails-draggable': 'drag' } as React.CSSProperties}><span style={{ '--wails-draggable': 'drag' } as React.CSSProperties}>{copy.createChatTitle}</span></h1>
+      {props.conversationActionSlot}
       <div className={'suggested-questions-container' + (props.starterQuestionsLoading ? ' wk-chat-starters--loading' : '')} aria-label={(props.starterQuestionsLoading || (props.starterQuestions?.length ?? 0) > 0) ? copy.suggestedQuestions : copy.streamStatus} aria-busy={props.starterQuestionsLoading || undefined}>
             {props.starterQuestionsLoading && (props.starterQuestions?.length ?? 0) === 0 ? (
               <ul className="wk-chat-starters-grid wk-vc-page-49">

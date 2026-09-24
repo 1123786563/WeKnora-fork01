@@ -45,6 +45,7 @@ const FAQPage = lazy(() => import('./faq/FAQPage.tsx').then((module) => ({ defau
 const KnowledgeSettingsPage = lazy(() => import('./knowledge-settings/KnowledgeSettingsPage.tsx').then((module) => ({ default: module.KnowledgeSettingsPage })));
 const ConfigurationPage = lazy(() => import('./configuration/ConfigurationPage.tsx').then((module) => ({ default: module.ConfigurationPage })));
 const CareerPage = lazy(() => import('./career/CareerPage.tsx').then((module) => ({ default: module.CareerPage })));
+const OpportunityEvidencePage = lazy(() => import('./career/OpportunityPage.tsx').then((module) => ({ default: module.OpportunityEvidencePage })));
 const AgentsPage = lazy(() => import('./agents/AgentsPage.tsx').then((module) => ({ default: module.AgentsPage })));
 const AdministrationPage = lazy(() => import('./administration/AdministrationPage.tsx').then((module) => ({ default: module.AdministrationPage })));
 const OrganizationsPage = lazy(() => import('./organizations/OrganizationsPage.tsx').then((module) => ({ default: module.OrganizationsPage })));
@@ -715,6 +716,19 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
     component: (): ReactNode => <CareerPage client={client} scopeController={scopeController} userId={scopeController.current().scope.userId} />,
   });
 
+  const careerOpportunityRoute = createRoute({
+    getParentRoute: () => platformRoute,
+    path: 'career/opportunities/$opportunityId',
+    component: (): ReactNode => {
+      const { opportunityId } = useParams({ strict: false }) as { opportunityId?: string };
+      const location = useLocation();
+      const snapshotId = new URLSearchParams(location.searchStr).get('snapshotId') ?? '';
+      let decodedOpportunityId = '';
+      try { decodedOpportunityId = decodeURIComponent(opportunityId ?? ''); } catch { decodedOpportunityId = ''; }
+      return <Suspense fallback={<RoutePending loadingText={deps.loadingText} />}><OpportunityEvidencePage client={client} scopeController={scopeController} opportunityId={decodedOpportunityId} snapshotId={snapshotId} /></Suspense>;
+    },
+  });
+
   const expertsRoute = createRoute({
     getParentRoute: () => platformRoute,
     path: 'experts',
@@ -922,6 +936,7 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
       chatSplatRoute,
       agentsRoute,
       careerRoute,
+      careerOpportunityRoute,
       expertsRoute,
       marketRoute,
       configurationRoute,
