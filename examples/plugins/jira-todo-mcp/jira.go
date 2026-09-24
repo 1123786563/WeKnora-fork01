@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -146,6 +147,13 @@ func (c *JiraClient) do(ctx context.Context, method, path string, payload any, o
 		[]byte(c.Email+":"+c.APIToken)))
 	resp, err := jiraHTTPClient.Do(req)
 	if err != nil {
+		// 超时语义显式化（T05）：ctx 整体 deadline 或页级超时触发时，Go 的
+		// 错误文本是 "context deadline exceeded"——不含任何 "timeout" 字样，
+		// 调用方无法据此区分「上游拒绝」与「上游超时」。deadline 错误在此
+		// 以 timeout 措辞包装（保留原错误链），其余传输错误维持 failed 措辞。
+		if errors.Is(err, context.DeadlineExceeded) {
+			return fmt.Errorf("jira request %s %s timeout: %w", method, path, err)
+		}
 		return fmt.Errorf("jira request %s %s failed: %w", method, path, err)
 	}
 	defer func() { _ = resp.Body.Close() }()

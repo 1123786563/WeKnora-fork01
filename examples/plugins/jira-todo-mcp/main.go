@@ -244,9 +244,21 @@ func NewHandler(opts Options) (http.Handler, error) {
 	}
 	oauthSrv := newOAuthServer(opts.BaseURL, opts.JiraBaseURL, opts.AllowedRedirectHosts)
 
-	mcpServer := sdkserver.NewMCPServer(serverName, pluginVersion)
+	// 参数严格校验（T05）双保险：
+	//  1. SDK 层——WithInputSchemaValidation 让 canonicalToolInputSchema 的
+	//     additionalProperties:false 真正生效：携带 token/user_id/jql/url 等
+	//     任何多余字段的 tools/call 在进入 handler 前即被拒（SEP-1303 工具
+	//     执行错误，模型可在上下文内自我纠正）。缺省该选项时 mcp-go 不做
+	//     schema 校验，多余参数会被静默放行。
+	//  2. handler 层——兜底拒绝一切非空参数：即使日后有人移除上面的 SDK
+	//     选项，「工具不接受任何参数」这一安全不变量仍在工具逻辑本地成立。
+	mcpServer := sdkserver.NewMCPServer(serverName, pluginVersion,
+		sdkserver.WithInputSchemaValidation())
 	tool := mcp.NewToolWithRawSchema(toolName, toolDescription, json.RawMessage(canonicalToolInputSchema))
-	mcpServer.AddTool(tool, func(ctx context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	mcpServer.AddTool(tool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if args := req.GetArguments(); len(args) != 0 {
+			return nil, fmt.Errorf("tool %s accepts no arguments (schema additionalProperties:false), got %d unexpected field(s)", toolName, len(args))
+		}
 		return handleSearchMyWeek(ctx, opts.JiraBaseURL)
 	})
 
