@@ -771,3 +771,36 @@ test('persist carries the offline snapshot so a later offline hydrate can degrad
   assert.ok(persisted!.snapshot !== undefined);
   assert.equal('events' in persisted!.snapshot, false, 'the snapshot must not duplicate the event log');
 });
+
+test('a stale offline degradation never overwrites a newer authoritative state (R1-F43 对齐)', async () => {
+  const leaseRef: { lease?: ScopeLease } = {};
+  leaseRef.lease = leased().lease;
+  const store = createInMemoryTaskProjectionStore();
+  await store.save({
+    taskId: 'task-1', runId: 'run-1', cursor: 2,
+    events: [event$(1, 'run.started'), event$(2, 'tool.started')],
+    savedAt: '2026-09-24T00:00:00Z', snapshot: snapshotOf(detail$()),
+  });
+  let detailCalls = 0;
+  const { office } = officeWithDetail(leaseRef, {
+    detail: async () => {
+      detailCalls += 1;
+      if (detailCalls === 1) { await settle(8); throw new Error('network unreachable'); } // A：慢且失败（迟到拒绝）
+      return detail$({ watermark: 4, events: [event$(1, 'run.started'), event$(2, 'tool.started'), event$(3, 'text.delta'), event$(4, 'text.delta')] }); // B：后发先回
+    },
+    stream: () => createScriptedTaskStream(),
+  }, store);
+  const handle = office.open({ taskId: 'task-1', runId: 'run-1' });
+  const stale = handle.hydrate();              // A 先发（挂起多个宏任务）
+  await settle(1);
+  await handle.resync();                       // B 后发先回：watermark 4 已提交并开流
+  await stale.catch(() => undefined);          // A 的 detail 失败迟到落地：降级分支必须被 epoch 守卫拒绝
+  await settle();
+  const view = handle.view()!;
+  assert.equal(view.cursor, 4, '陈旧离线降级不得回退 committedCursor');
+  assert.notEqual(view.interruption?.reason, 'offline', 'B 已成功同步，不得被迟到降级错标 offline');
+  assert.equal(view.connection, 'live');
+  handle.close();
+  await settle(); // close 的 best-effort flush 异步落盘
+  assert.equal(store.snapshot().find((row) => row.runId === 'run-1')!.cursor, 4, 'close flush 不得把磁盘投影回退到旧游标');
+});

@@ -221,6 +221,9 @@ export function createTaskDetail(input: { taskId: string; runId: string }, ports
       if (error instanceof TaskOfficeError && error.code !== 'TASK_OFFICE_BACKEND') throw error;
       if (!leaseActive(lease)) throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED'); // 撤权不得伪装成离线
       const persisted = await ports.store.load(input.runId).catch(() => undefined);
+      // store.load 挂起点期间被并发 hydrate/resync 取代则丢弃陈旧降级（R1-F43 对齐）：
+      // 否则旧 catch 落地会覆盖新权威状态、错标 offline、回退游标，close 的 flushPersisted 还会把磁盘投影回退。
+      if (epoch !== streamEpoch || !leaseActive(lease)) throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED');
       if (persisted === undefined || persisted.snapshot === undefined) throw error;
       detail = { ...persisted.snapshot, events: [] };
       events = persisted.events.slice(-TASK_DETAIL_HISTORY_LIMIT);
