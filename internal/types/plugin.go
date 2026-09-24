@@ -162,3 +162,97 @@ type PluginPreview struct {
 func (p *PluginPreview) Expired(now time.Time) bool {
 	return p.ConsumedAt != nil || !now.Before(p.ExpiresAt)
 }
+
+// PluginInstallation states. active: the accepted version is live and its
+// materialized MCP service is enabled. disabled: the admin paused the
+// installation — the materialized service flips Enabled=false, which removes
+// it from the agent-visible MCP directory on the next registration pass.
+const (
+	PluginInstallationActive   = "active"
+	PluginInstallationDisabled = "disabled"
+)
+
+// PluginInstallation drift states. The runtime verification baseline is the
+// accepted tools snapshot; drift handling lands with the drift slice (T17) —
+// the column and constants are fixed here so the migration and model agree
+// from day one.
+const (
+	PluginDriftNone     = "none"
+	PluginDriftDetected = "detected"
+)
+
+// PluginInstallation persists ONE accepted version of a plugin for ONE
+// tenant: the tenant's runtime verification baseline (accepted_version +
+// tools_snapshot + tools_digest), the long-lived manifest source
+// (manifest_url, copied from the consumed preview at confirm time — the
+// preview row itself is TTL-bound and single-use, while upgrades re-fetch
+// from this URL), and the materialized MCP service binding (service_id).
+// Migration 000190 writes NO approval rows: legacy manual tools are never
+// auto-promoted into approved plugin versions.
+type PluginInstallation struct {
+	ID              string             `json:"id"               gorm:"type:varchar(36);primaryKey"`
+	TenantID        uint64             `json:"tenant_id"        gorm:"not null;uniqueIndex:uq_plugin_installations_tenant_plugin,priority:1"`
+	PluginID        string             `json:"plugin_id"        gorm:"type:varchar(128);not null;uniqueIndex:uq_plugin_installations_tenant_plugin,priority:2"`
+	Name            string             `json:"name"             gorm:"type:varchar(255);not null"`
+	Description     string             `json:"description"      gorm:"type:text;not null;default:''"`
+	ManifestURL     string             `json:"manifest_url"     gorm:"type:varchar(512);not null"`
+	AcceptedVersion string             `json:"accepted_version" gorm:"type:varchar(64);not null"`
+	TransportType   string             `json:"transport_type"   gorm:"type:varchar(50);not null"`
+	EndpointURL     string             `json:"endpoint_url"     gorm:"type:varchar(512);not null"`
+	ToolsSnapshot   PluginPreviewTools `json:"tools_snapshot"   gorm:"type:json;not null"`
+	ToolsDigest     string             `json:"tools_digest"     gorm:"type:varchar(64);not null"`
+	ServiceID       string             `json:"service_id"       gorm:"type:varchar(36);not null;default:''"`
+	DriftState      string             `json:"drift_state"      gorm:"type:varchar(16);not null;default:'none'"`
+	DriftDetail     json.RawMessage    `json:"drift_detail,omitempty" gorm:"type:json"`
+	State           string             `json:"state"            gorm:"type:varchar(16);not null;default:'active'"`
+	CreatedBy       string             `json:"created_by"       gorm:"type:varchar(255);not null"`
+	CreatedAt       time.Time          `json:"created_at"`
+	UpdatedAt       time.Time          `json:"updated_at"`
+}
+
+// PluginInstallationToolView is one row of an installation's tool directory
+// as the service returns it: snapshot metadata plus the CURRENT policy
+// verdict when one is known (Enabled: true=exposed, false=disabled — write
+// tools install as false per B5; nil=no explicit row, legacy default
+// enabled). The input schema itself is never included — schema text is
+// untrusted remote data and only its verified digest is meaningful here.
+type PluginInstallationToolView struct {
+	Name                 string   `json:"name"`
+	Description          string   `json:"description"`
+	ReadOnly             bool     `json:"read_only"`
+	RequiresPersonalAuth bool     `json:"requires_personal_auth"`
+	Scopes               []string `json:"scopes"`
+	Enabled              *bool    `json:"enabled,omitempty"`
+}
+
+// PluginInstallationResult is the full installation payload (confirm, state
+// change, get-by-id): identity, accepted version, materialized service
+// binding and the tool directory. Types-layer service contract per the F2
+// ruling — the handler maps it onto its DTO.
+type PluginInstallationResult struct {
+	InstallationID string                       `json:"installation_id"`
+	PluginID       string                       `json:"plugin_id"`
+	Name           string                       `json:"name"`
+	Description    string                       `json:"description"`
+	Version        string                       `json:"version"`
+	State          string                       `json:"state"`
+	DriftState     string                       `json:"drift_state"`
+	TransportType  string                       `json:"transport_type"`
+	EndpointURL    string                       `json:"endpoint_url"`
+	ServiceID      string                       `json:"service_id"`
+	Tools          []PluginInstallationToolView `json:"tools"`
+}
+
+// PluginInstallationSummary is one row of the member-facing installation
+// list: no snapshot payload, no endpoint echo — members discover WHAT is
+// installed and its state, not the verified directory detail.
+type PluginInstallationSummary struct {
+	InstallationID       string `json:"installation_id"`
+	PluginID             string `json:"plugin_id"`
+	Name                 string `json:"name"`
+	Version              string `json:"version"`
+	State                string `json:"state"`
+	DriftState           string `json:"drift_state"`
+	RequiresPersonalAuth bool   `json:"requires_personal_auth"`
+	ToolCount            int    `json:"tool_count"`
+}

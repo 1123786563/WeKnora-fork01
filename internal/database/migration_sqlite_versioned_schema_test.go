@@ -41,7 +41,8 @@ var versionedSQLiteTables = []string{
 	"agent_release_submissions",
 	"agent_release_reviews",
 	"agent_releases",
-	"plugin_previews", // 000110 twin of versioned 000189 (issue #108)
+	"plugin_previews",      // 000110 twin of versioned 000189 (issue #108)
+	"plugin_installations", // 000111 twin of versioned 000190 (issue #110)
 }
 
 // versionedSQLiteColumns maps each existing table to the columns that the
@@ -55,6 +56,7 @@ var versionedSQLiteColumns = map[string][]string{
 	"embed_channels":     {"allow_memory"},                   // 000060
 	"mcp_oauth_tokens":   {"principal_type", "principal_id"}, // 000064
 	"mcp_tool_approvals": {"enabled"},                        // 000091
+	"mcp_services":       {"plugin_installation_id"},         // 000190
 	"tenant_skills": {
 		"catalog_id", "install_session_id", "install_message_id", "envs",
 	}, // 000086-000090

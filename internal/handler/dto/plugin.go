@@ -42,3 +42,49 @@ type PluginPreviewResponse struct {
 	IdentityFingerprint string              `json:"identity_fingerprint"`
 	ExpiresAt           time.Time           `json:"expires_at"`
 }
+
+// PluginInstallConfirmRequest is the body of POST /plugins/installations:
+// the preview ID the admin reviewed. Confirming consumes the preview.
+type PluginInstallConfirmRequest struct {
+	PreviewID string `json:"preview_id" binding:"required"`
+}
+
+// PluginInstallationTool is one row of an installation's tool directory.
+// The input schema itself is never echoed — only metadata and the policy
+// verdict (enabled: omitted = no explicit row / unknown).
+type PluginInstallationTool struct {
+	Name                 string   `json:"name"`
+	Description          string   `json:"description"`
+	ReadOnly             bool     `json:"read_only"`
+	RequiresPersonalAuth bool     `json:"requires_personal_auth"`
+	Scopes               []string `json:"scopes"`
+	Enabled              *bool    `json:"enabled,omitempty"`
+}
+
+// PluginInstallationResponse is the full installation payload (confirm,
+// state change, get-by-id).
+type PluginInstallationResponse struct {
+	InstallationID string                   `json:"installation_id"`
+	PluginID       string                   `json:"plugin_id"`
+	Name           string                   `json:"name"`
+	Description    string                   `json:"description"`
+	Version        string                   `json:"version"`
+	State          string                   `json:"state"`
+	DriftState     string                   `json:"drift_state"`
+	TransportType  string                   `json:"transport_type"`
+	EndpointURL    string                   `json:"endpoint_url"`
+	ServiceID      string                   `json:"service_id"`
+	Tools          []PluginInstallationTool `json:"tools"`
+}
+
+// PluginInstallationSummary is one row of the member-facing list.
+type PluginInstallationSummary struct {
+	InstallationID       string `json:"installation_id"`
+	PluginID             string `json:"plugin_id"`
+	Name                 string `json:"name"`
+	Version              string `json:"version"`
+	State                string `json:"state"`
+	DriftState           string `json:"drift_state"`
+	RequiresPersonalAuth bool   `json:"requires_personal_auth"`
+	ToolCount            int    `json:"tool_count"`
+}

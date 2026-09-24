@@ -119,20 +119,34 @@ func pluginPreviewTTL() time.Duration {
 // pluginService implements the PluginService interface. The EndpointLister
 // seam is injected by the composition root (internal/container's
 // NewPluginMCPEndpointLister over the airesource MCPManager) so this package
-// never depends on the MCP client stack directly.
+// never depends on the MCP client stack directly. The install slice (T06)
+// additionally holds the product-layer seams it materializes into:
+// MCPServiceService (validated service creation), MCPServiceRepository
+// (state sync + compensation deletes) and MCPToolApprovalService (per-tool
+// policies) — reusing the existing MCP product layer per spec line 55
+// instead of forking a parallel one.
 type pluginService struct {
-	pluginRepo interfaces.PluginRepository
-	lister     plugins.EndpointLister
+	pluginRepo          interfaces.PluginRepository
+	mcpServiceService   interfaces.MCPServiceService
+	mcpServiceRepo      interfaces.MCPServiceRepository
+	toolApprovalService interfaces.MCPToolApprovalService
+	lister              plugins.EndpointLister
 }
 
 // NewPluginService creates a new plugin service.
 func NewPluginService(
 	pluginRepo interfaces.PluginRepository,
+	mcpServiceService interfaces.MCPServiceService,
+	mcpServiceRepo interfaces.MCPServiceRepository,
+	toolApprovalService interfaces.MCPToolApprovalService,
 	lister plugins.EndpointLister,
 ) interfaces.PluginService {
 	return &pluginService{
-		pluginRepo: pluginRepo,
-		lister:     lister,
+		pluginRepo:          pluginRepo,
+		mcpServiceService:   mcpServiceService,
+		mcpServiceRepo:      mcpServiceRepo,
+		toolApprovalService: toolApprovalService,
+		lister:              lister,
 	}
 }
 

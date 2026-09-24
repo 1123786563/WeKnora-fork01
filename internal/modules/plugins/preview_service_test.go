@@ -85,6 +85,12 @@ func previewFakeLister() plugins.EndpointLister {
 	}
 }
 
+// newPreviewServiceForTest 用最小依赖构造预览路径服务（T06 扩展了
+// NewPluginService 的依赖面；预览路径不触碰安装/MCP 物化 seam，nil 即可）。
+func newPreviewServiceForTest(repo interfaces.PluginRepository, lister plugins.EndpointLister) interfaces.PluginService {
+	return service.NewPluginService(repo, nil, nil, nil, lister)
+}
+
 func TestPreviewPersistsFingerprintAndExpiry(t *testing.T) {
 	// httptest 监听 127.0.0.1，需快照恢复式放行（-count>=2 安全）。
 	t.Cleanup(utils.SnapshotSSRFWhitelistForTest())
@@ -101,7 +107,7 @@ func TestPreviewPersistsFingerprintAndExpiry(t *testing.T) {
 	require.NoError(t, err)
 
 	repo := &fakePluginPreviewRepo{}
-	svc := service.NewPluginService(repo, previewFakeLister())
+	svc := newPreviewServiceForTest(repo, previewFakeLister())
 
 	start := time.Now()
 	resp, err := svc.PreviewFromManifest(context.Background(), 7, "admin-1", base+"/manifest.json")
@@ -154,7 +160,7 @@ func TestPreviewRejectsPrivateManifestURLWithoutWrite(t *testing.T) {
 	utils.SetSSRFWhitelistFromRaw("127.0.0.1") // 只放行回环，10.x 仍被拒绝
 
 	repo := &fakePluginPreviewRepo{}
-	svc := service.NewPluginService(repo, previewFakeLister())
+	svc := newPreviewServiceForTest(repo, previewFakeLister())
 
 	resp, err := svc.PreviewFromManifest(context.Background(), 7, "admin-1", "http://10.1.2.3/manifest.json")
 	require.Nil(t, resp)
@@ -183,7 +189,7 @@ func TestPreviewRejectsOversizedManifestURL(t *testing.T) {
 	utils.SetSSRFWhitelistFromRaw("127.0.0.1")
 
 	repo := &fakePluginPreviewRepo{}
-	svc := service.NewPluginService(repo, previewFakeLister())
+	svc := newPreviewServiceForTest(repo, previewFakeLister())
 	oversized := "http://127.0.0.1/m/" + strings.Repeat("a", 600)
 	require.Greater(t, len(oversized), 512)
 
@@ -211,7 +217,7 @@ func TestPreviewSweepsExpiredRowsOnSuccess(t *testing.T) {
 	require.NoError(t, err)
 
 	repo := &fakePluginPreviewRepo{}
-	svc := service.NewPluginService(repo, previewFakeLister())
+	svc := newPreviewServiceForTest(repo, previewFakeLister())
 	start := time.Now()
 	resp, err := svc.PreviewFromManifest(context.Background(), 7, "admin-1", base+"/manifest.json")
 	require.NoError(t, err)
@@ -226,7 +232,7 @@ func TestPreviewSweepsExpiredRowsOnSuccess(t *testing.T) {
 
 	// 拒绝路径 1：SSRF 拒绝发生在任何持久化/清理之前。
 	rejected := &fakePluginPreviewRepo{}
-	svc2 := service.NewPluginService(rejected, previewFakeLister())
+	svc2 := newPreviewServiceForTest(rejected, previewFakeLister())
 	_, err = svc2.PreviewFromManifest(context.Background(), 7, "admin-1", "http://10.1.2.3/manifest.json")
 	require.ErrorIs(t, err, service.ErrManifestURLRejected)
 	require.Equal(t, 0, rejected.deleteCalls, "an SSRF rejection must not trigger cleanup")
@@ -240,7 +246,7 @@ func TestPreviewSweepsExpiredRowsOnSuccess(t *testing.T) {
 	manifestJSON2, err = json.Marshal(m2)
 	require.NoError(t, err)
 	failed := &failingPluginPreviewRepo{err: errors.New("boom")}
-	svc3 := service.NewPluginService(failed, previewFakeLister())
+	svc3 := newPreviewServiceForTest(failed, previewFakeLister())
 	_, err = svc3.PreviewFromManifest(context.Background(), 7, "admin-1", base2+"/manifest.json")
 	require.ErrorIs(t, err, service.ErrPreviewPersistFailed)
 	require.Equal(t, 0, failed.deleteCalls, "a persist failure must not trigger cleanup")
@@ -278,7 +284,7 @@ func TestPreviewPersistFailureDoesNotLeakRepoError(t *testing.T) {
 
 	repo := &failingPluginPreviewRepo{err: errors.New(
 		`pq: duplicate key value violates unique constraint "plugin_previews_pkey" SECRET-DB-DETAIL-123`)}
-	svc := service.NewPluginService(repo, previewFakeLister())
+	svc := newPreviewServiceForTest(repo, previewFakeLister())
 
 	resp, err := svc.PreviewFromManifest(context.Background(), 7, "admin-1", base+"/manifest.json")
 	require.Nil(t, resp)
@@ -306,7 +312,7 @@ func TestPreviewRejectsOversizedEndpoint(t *testing.T) {
 	require.NoError(t, err)
 
 	repo := &fakePluginPreviewRepo{}
-	svc := service.NewPluginService(repo, previewFakeLister())
+	svc := newPreviewServiceForTest(repo, previewFakeLister())
 
 	resp, err := svc.PreviewFromManifest(context.Background(), 7, "admin-1", base+"/manifest.json")
 	require.Nil(t, resp)

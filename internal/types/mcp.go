@@ -39,9 +39,14 @@ type MCPService struct {
 	StdioConfig    *MCPStdioConfig    `json:"stdio_config,omitempty" gorm:"type:json"`     // Required for stdio transport
 	EnvVars        MCPEnvVars         `json:"env_vars,omitempty"     gorm:"type:json"`     // Environment variables for stdio
 	IsBuiltin      bool               `json:"is_builtin"             gorm:"default:false"` // Whether this is a builtin MCP service (visible to all workspaces)
-	CreatedAt      time.Time          `json:"created_at"`
-	UpdatedAt      time.Time          `json:"updated_at"`
-	DeletedAt      gorm.DeletedAt     `json:"deleted_at"             gorm:"index"`
+	// PluginInstallationID links a service row materialized by a plugin
+	// install confirm (migration 000190) back to its installation. NULL =
+	// a manual/admin-created service — its behavior is unchanged by the
+	// plugin domain (spec line 55: manual compatibility).
+	PluginInstallationID *string        `json:"plugin_installation_id,omitempty" gorm:"type:varchar(36);index"`
+	CreatedAt            time.Time      `json:"created_at"`
+	UpdatedAt            time.Time      `json:"updated_at"`
+	DeletedAt            gorm.DeletedAt `json:"deleted_at"             gorm:"index"`
 }
 
 // EffectiveUsageInstructions preserves documentation on legacy services until

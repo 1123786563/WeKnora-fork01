@@ -76,3 +76,94 @@ func (r *pluginRepository) DeleteExpiredPreviews(ctx context.Context, before tim
 		Where("expires_at <= ?", before).
 		Delete(&types.PluginPreview{}).Error
 }
+
+// CreateInstallation persists one accepted installation row.
+func (r *pluginRepository) CreateInstallation(ctx context.Context, inst *types.PluginInstallation) error {
+	return r.db.WithContext(ctx).Create(inst).Error
+}
+
+// GetInstallation retrieves an installation by ID within a tenant; not
+// found (including a foreign tenant's ID) is (nil, nil) — existence is not
+// leaked across tenants.
+func (r *pluginRepository) GetInstallation(ctx context.Context, tenantID uint64, id string) (*types.PluginInstallation, error) {
+	var inst types.PluginInstallation
+	err := r.db.WithContext(ctx).
+		Where("tenant_id = ? AND id = ?", tenantID, id).
+		First(&inst).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &inst, nil
+}
+
+// GetInstallationByTenantPlugin retrieves the unique installation of one
+// plugin within a tenant; not found is (nil, nil).
+func (r *pluginRepository) GetInstallationByTenantPlugin(ctx context.Context, tenantID uint64, pluginID string) (*types.PluginInstallation, error) {
+	var inst types.PluginInstallation
+	err := r.db.WithContext(ctx).
+		Where("tenant_id = ? AND plugin_id = ?", tenantID, pluginID).
+		First(&inst).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &inst, nil
+}
+
+// ListInstallationsByTenant returns all installations of a tenant.
+func (r *pluginRepository) ListInstallationsByTenant(ctx context.Context, tenantID uint64) ([]*types.PluginInstallation, error) {
+	var installations []*types.PluginInstallation
+	err := r.db.WithContext(ctx).
+		Where("tenant_id = ?", tenantID).
+		Order("created_at ASC").
+		Find(&installations).Error
+	return installations, err
+}
+
+// UpdateInstallationState flips state in place and refreshes updated_at;
+// a zero-row update surfaces as gorm.ErrRecordNotFound.
+func (r *pluginRepository) UpdateInstallationState(ctx context.Context, tenantID uint64, id, state string) error {
+	result := r.db.WithContext(ctx).
+		Model(&types.PluginInstallation{}).
+		Where("tenant_id = ? AND id = ?", tenantID, id).
+		Updates(map[string]interface{}{"state": state, "updated_at": time.Now()})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
+// UpdateInstallationServiceID backfills the materialized service binding.
+func (r *pluginRepository) UpdateInstallationServiceID(ctx context.Context, tenantID uint64, id, serviceID string) error {
+	result := r.db.WithContext(ctx).
+		Model(&types.PluginInstallation{}).
+		Where("tenant_id = ? AND id = ?", tenantID, id).
+		Updates(map[string]interface{}{"service_id": serviceID, "updated_at": time.Now()})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
+// DeleteInstallation HARD-deletes (Unscoped) — this is the compensation
+// path of ConfirmInstallation: a failed materialization must free the
+// (tenant_id, plugin_id) unique slot. Installations carry no soft-delete
+// column; the row either is the tenant's accepted baseline or does not
+// exist.
+func (r *pluginRepository) DeleteInstallation(ctx context.Context, tenantID uint64, id string) error {
+	return r.db.WithContext(ctx).
+		Unscoped().
+		Where("tenant_id = ? AND id = ?", tenantID, id).
+		Delete(&types.PluginInstallation{}).Error
+}
