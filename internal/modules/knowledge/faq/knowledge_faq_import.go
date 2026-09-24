@@ -2170,11 +2170,11 @@ func (s *Service) deleteFAQChunkVectors(ctx context.Context,
 			if tenantInfo.StorageUsed < 0 {
 				tenantInfo.StorageUsed = 0
 			}
-			if knowledge.StorageSize >= size {
-				knowledge.StorageSize -= size
-			} else {
-				knowledge.StorageSize = 0
-			}
+		}
+		if knowledge.StorageSize >= size {
+			knowledge.StorageSize -= size
+		} else {
+			knowledge.StorageSize = 0
 		}
 	}
 	knowledge.UpdatedAt = time.Now()

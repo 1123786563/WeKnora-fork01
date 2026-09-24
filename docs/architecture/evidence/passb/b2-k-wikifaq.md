@@ -118,6 +118,13 @@ T0 service 18 − {TestAcquireFAQCreateGuard×3}（随迁 faq 包，3/3 PASS）=
 
 `git diff --cached -M --summary`：8 个 rename 全识别（faq_clone_sync 84%、knowledge_faq 93%、knowledge_faq_batch 96%、knowledge_faq_create_guard 98%、knowledge_faq_create_guard_test 84%、knowledge_faq_import 96%、handler/faq.go→faq_handler.go 86%、faq_enabled_filter_test 70%）。生产文件 diff 类别：package 子句、接收者 `(s *knowledgeService)`→`(s *Service)`（57 处）、R1 导出改名（6 方法 + 2 类型 + 2 纯函数）、seam 调用前缀（22 处：writable 10 / recordKBActivity 7 / kbActivityTrigger 2 / withKBActivityTask 1 / appendSampleTitles 1 / resolveKBReadTenant 1）、faq_handler 双 helper seam 点（2）。
 
+### 2.8 审阅轮 R1 修复（review finding，2026-09-25）
+
+- **finding（critical）**：knowledge_faq_import.go `deleteFAQChunkVectors` 的 `knowledge.StorageSize` 扣减块在迁移 commit f6dfba041 中被误移入 `AdjustStorageUsed` 的 `err == nil` 分支内（BASE：tenant 记账失败仍扣减并经 UpdateKnowledge 持久化）——手写转录 2882 行文件时引入的大括号层级错误，未申报的行为变化（纯移动违规）。
+- **修复**：恢复 BASE 结构（`git show BASE:internal/application/service/knowledge_faq_import.go | sed -n '2160,2179p'` 与 HEAD 逐行比对确认）；fix commit 见分支 log。
+- **全面自查（防同类）**：对 5 个 service 侧迁移文件做「HEAD 逆向机械变换（package/接收者/seam 前缀/R1 改名）→ 与 BASE diff」——knowledge_faq_batch.go、knowledge_faq_create_guard.go 0 差异；faq_clone_sync.go/knowledge_faq.go/knowledge_faq_import.go 仅剩 22 行 R1 导出注释；faq_handler.go 仅剩 seam 机制声明差异（字段/构造器/访问器/2 调用点）；knowledge_faq_create_guard_test.go 仅剩构造面等价改写（`&knowledgeService{redisClient}`→`NewService(Deps{RedisClient})`）+注释。**无其他行为差异。**
+- **修复后复跑**：`go build ./...` exit0；`go test -count=1 ./internal/modules/knowledge/faq/...` ok；`go test -count=1 ./internal/application/service/ -run 'FAQ|Knowledge'` ok；`go test -count=1 ./internal/modules/knowledge/...` exit0；`make verify-module-moves` OK；`make check-backend-architecture` OK（633/23+23/58 不变）；`gofmt -l` 空。
+
 ## 3. K3.3/K3.4 章（占位，后续任务填充）
 
 - Integration Brief、断链登记、终稿四行差分表与节点门禁收口：K3.3/K3.4 填充。
