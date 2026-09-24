@@ -125,3 +125,10 @@ func NewMobileDeviceHandler(store *repository.MobileDeviceStore) *handler.Mobile
 func NewWorkbenchTaskStateHandler(states *repository.WorkbenchTaskStateStore) *session.WorkbenchTaskStateHandler {
 	return session.NewWorkbenchTaskStateHandler(states)
 }
+
+// NewWorkbenchLegacyListHandler wires the T14 legacy task projection to the
+// ownership-scoped repository; tenant/owner always come from the
+// authenticated context.
+func NewWorkbenchLegacyListHandler(db *gorm.DB) *session.WorkbenchLegacyListHandler {
+	return session.NewWorkbenchLegacyListHandler(repository.NewWorkbenchLegacyListStore(db))
+}

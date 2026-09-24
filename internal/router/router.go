@@ -54,10 +54,11 @@ type RouterParams struct {
 	AuditLogService            interfaces.AuditLogService
 	ChunkHandler               *handler.ChunkHandler
 	SessionHandler             *session.Handler
-	WorkbenchHandler           *session.WorkbenchReadHandler    `optional:"true"`
-	WorkbenchListHandler       *session.WorkbenchListHandler    `optional:"true"`
-	WorkbenchStartHandler      *session.WorkbenchStartHandler   `optional:"true"`
-	WorkbenchCommandHandler    *session.WorkbenchCommandHandler `optional:"true"`
+	WorkbenchHandler           *session.WorkbenchReadHandler       `optional:"true"`
+	WorkbenchListHandler       *session.WorkbenchListHandler       `optional:"true"`
+	WorkbenchLegacyListHandler *session.WorkbenchLegacyListHandler `optional:"true"`
+	WorkbenchStartHandler      *session.WorkbenchStartHandler      `optional:"true"`
+	WorkbenchCommandHandler    *session.WorkbenchCommandHandler    `optional:"true"`
 	// NativeArchiveHandler is absent until an approved archive store and scope
 	// resolver are assembled.  The router then fails closed (no archive route)
 	// rather than mounting a reader without an authority boundary.
@@ -370,6 +371,7 @@ func NewRouter(params RouterParams) *gin.Engine {
 		RegisterWorkbenchStartRoutes(v1, params.WorkbenchStartHandler, rbacGuards)
 		RegisterWorkbenchOverviewRoutes(v1, params.WorkbenchOverviewHandler, rbacGuards)
 		RegisterWorkbenchTaskStateRoutes(v1, params.WorkbenchTaskStateHandler, rbacGuards)
+		RegisterWorkbenchLegacyTaskRoutes(v1, params.WorkbenchLegacyListHandler, rbacGuards)
 		RegisterWorkbenchInboxRoutes(v1, params.WorkbenchInboxHandler, rbacGuards)
 		RegisterWorkbenchCommandRoutes(v1, params.WorkbenchCommandHandler, rbacGuards)
 		RegisterMobileVoiceRoutes(v1, params.MobileVoiceHandler, rbacGuards)

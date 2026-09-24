@@ -272,6 +272,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(NewWorkbenchArtifactHandler))
 	must(container.Provide(repository.NewWorkbenchListStore))
 	must(container.Provide(NewWorkbenchListHandler))
+	must(container.Provide(NewWorkbenchLegacyListHandler))
 	must(container.Provide(NewWorkbenchAdmissionCoordinator))
 	must(container.Provide(NewWorkbenchStartHandler))
 	must(container.Provide(NewWorkbenchInteractionStore))

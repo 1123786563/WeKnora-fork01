@@ -215,3 +215,14 @@ func RegisterWorkbenchTaskStateRoutes(r *gin.RouterGroup, h *session.WorkbenchTa
 	tasks.POST("/:task_id/archive", h.Archive)
 	tasks.DELETE("/:task_id/archive", h.Restore)
 }
+
+// RegisterWorkbenchLegacyTaskRoutes exposes the T14 legacy task projection:
+// sessions that never had a Run, projected as facts-only legacy rows under
+// the same Viewer/API-key boundary and W34 read gate as the run list.
+func RegisterWorkbenchLegacyTaskRoutes(r *gin.RouterGroup, h *session.WorkbenchLegacyListHandler, g *rbacGuards) {
+	if h == nil || g == nil {
+		return
+	}
+	legacy := g.apiKeyGroup(r.Group("/workbench/legacy-tasks", g.Viewer(), workbenchReadGate(g.cfg)), apiKeyChat(apiKeyFullAccess()))
+	legacy.GET("", h.ListLegacyTasks)
+}
