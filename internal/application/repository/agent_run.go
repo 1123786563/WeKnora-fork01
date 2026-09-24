@@ -555,6 +555,33 @@ func (s *AgentRunStore) SetStatus(ctx context.Context, fence agentruntime.Fence,
 	})
 }
 
+// RequeueBudgetPausedRuns resumes the runs durably parked at
+// waiting_user/budget_exhausted under one task budget — the root run plus
+// every attached child run — flipping them back to claimable queued. The
+// guarded UPDATE mirrors ApplyDecision's waiting_user→queued transition
+// (revision advances; lease fields clear); rows parked for any other wait
+// reason, other budget roots, or non-parked states are untouched, and a
+// replay affecting already-queued rows is a no-op. T09 (#39): called from
+// the authorized budget-extension success path.
+func (s *AgentRunStore) RequeueBudgetPausedRuns(ctx context.Context, tenantID uint64, budgetRootRunID string) (int64, error) {
+	if tenantID == 0 || budgetRootRunID == "" {
+		return 0, agentruntime.ErrConflict
+	}
+	result := s.db.WithContext(ctx).Table("agent_runs").
+		Where("tenant_id = ? AND status = ? AND wait_reason = ?",
+			tenantID, "waiting_user", "budget_exhausted").
+		Where("run_id = ? OR run_id IN (SELECT run_id FROM commercial_task_budgets WHERE tenant_id = ? AND root_run_id = ?)",
+			budgetRootRunID, tenantID, budgetRootRunID).
+		Updates(map[string]any{
+			"status": "queued", "wait_reason": "", "lease_owner": "", "lease_until": nil,
+			"revision": gorm.Expr("revision + 1"), "updated_at": gorm.Expr("CURRENT_TIMESTAMP"),
+		})
+	if result.Error != nil {
+		return 0, result.Error
+	}
+	return result.RowsAffected, nil
+}
+
 // LoadCheckpoint returns the latest committed graph snapshot for one tenant/run.
 func (s *AgentRunStore) LoadCheckpoint(
 	ctx context.Context, key agentruntime.RunKey,
