@@ -9,6 +9,7 @@ package service
 import (
 	"context"
 	"net/http"
+	"reflect"
 	"testing"
 	"time"
 
@@ -200,8 +201,21 @@ func TestTaskMetadataIsAdminOnlyAndCarriesNoContent(t *testing.T) {
 	require.Equal(t, "task-s1", view.Metadata.Title)
 	require.Equal(t, int64(1), view.Metadata.RunCount)
 
-	// Structural (compile-time): the metadata view type has no content field —
-	// this line fails to compile if anyone adds one without a spec change.
+	// Marker tripwire (compile-time): this assignment fails to compile only
+	// if the MetadataOnly() method itself is removed — Go method sets ignore
+	// fields, so it is a deliberate-change tripwire, NOT a field guarantee.
 	var noContent interface{ MetadataOnly() } = view
 	_ = noContent
+
+	// Field-level guard (runtime — the real one): reflect over the view and
+	// fail on ANY field outside the content-free whitelist, so adding a
+	// content field to TaskMetadataView is a visible test change instead of
+	// a silent drift (metadata needs no reason; content does).
+	allowed := map[string]bool{"Metadata": true, "Policy": true}
+	viewType := reflect.TypeOf(view)
+	for i := 0; i < viewType.NumField(); i++ {
+		require.True(t, allowed[viewType.Field(i).Name],
+			"TaskMetadataView grew non-whitelisted field %q: content fields require a spec change (T13 #43)",
+			viewType.Field(i).Name)
+	}
 }

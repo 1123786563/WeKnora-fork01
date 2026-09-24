@@ -77,19 +77,23 @@ type TaskMessageFact struct {
 }
 
 // TaskMetadataView is the administrator's default, metadata-only view of one
-// task, joined with the tenant policy. The marker method is a compile-time
-// guard: adding a content field to this view must be a visible, deliberate
-// change (the compliance flow's whole point is that metadata needs no
-// reason and content does).
+// task, joined with the tenant policy. Content-freeness is enforced by the
+// service package's reflect field-whitelist test (runtime), NOT by the Go
+// compiler — adding a field never breaks method-set satisfaction. The
+// MetadataOnly() method is only a deliberate-change tripwire: removing it
+// fails the service test's interface assertion to compile. The point of the
+// whole arrangement: metadata needs no reason, content does (T13 #43).
 type TaskMetadataView struct {
 	Metadata TaskMetadataFacts `json:"metadata"`
 	Policy   *TenantTaskPolicy `json:"policy"`
 }
 
-// MetadataOnly marks the view as content-free (compile-time guard only).
-// Exported because the guard lives in the service package's test: a Go
-// interface literal with an unexported method can only be satisfied by
-// types in the declaring package.
+// MetadataOnly is a deliberate-change tripwire only — it does NOT keep the
+// struct content-free (Go method sets ignore fields). The actual
+// field-level guarantee is the service test's reflect whitelist over the
+// struct's fields. Exported because that assertion lives in the service
+// package: a Go interface literal with an unexported method can only be
+// satisfied by types in the declaring package.
 func (TaskMetadataView) MetadataOnly() {}
 
 // TaskContentView is the windowed private-content projection.
