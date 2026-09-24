@@ -245,16 +245,18 @@ export function createTaskDetail(input: { taskId: string; runId: string }, ports
       /* best-effort：内存投影仍正确，重启后由 hydrate 兜底 */
     }
   };
-  const pumpQueuedNext = async (): Promise<void> => {
+  const pumpQueuedNext = async (lease: ScopeLease): Promise<void> => {
     while (queuedNext.length > 0 && unknownGate === undefined) {
       if (!isTerminalRunStatus(currentRunStatus())) return;
       const next = queuedNext[0]!;
       const dispatch = { runId: input.runId, action: 'queue_next' as const, text: next.text, expectedRevision: commandRevision(), intentId: next.intentId };
       try {
         const ack = await wrapCommand(() => ports.commands!.command(dispatch));
+        if (!leaseActive(lease)) throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED'); // 迟到结果拒绝（§5.3，与 act() 同一竞态同一处理）
         queuedNext.shift();
         interventions.push({ intent: { kind: 'queue-next', text: next.text, intentId: next.intentId }, outcome: 'accepted', boundRunId: input.runId, revision: dispatch.expectedRevision, ...(ack.nextRunId === undefined ? {} : { nextRunId: ack.nextRunId }), at: new Date().toISOString() });
       } catch (error) {
+        if (error instanceof TaskOfficeError && error.code === 'TASK_OFFICE_SCOPE_CHANGED') throw error; // scope 死亡：不 shift、不记回执，flush 整体如实拒绝
         // one-shot：一次失败的 flush 不重试、不静默丢弃——以回执如实呈现后移除。
         queuedNext.shift();
         const code = (error as { code?: unknown } | null)?.code;
@@ -268,9 +270,10 @@ export function createTaskDetail(input: { taskId: string; runId: string }, ports
   /** hydrate 终态分支与显式调用共用同一在途 flush：并发调用合流，同一 parked 意图只派发一次。 */
   const flushQueuedIntents = async (): Promise<void> => {
     requireOpen();
+    const lease = requireLease(); // §5.3：scope 已死亡的 flush fail closed（hydrate 自身已先过同一门禁）
     if (ports.commands === undefined) throw new TaskOfficeError('TASK_OFFICE_COMMAND_UNAVAILABLE');
     if (flushInFlight !== undefined) return flushInFlight;
-    const run = pumpQueuedNext();
+    const run = pumpQueuedNext(lease);
     flushInFlight = run.finally(() => { flushInFlight = undefined; });
     await flushInFlight;
   };

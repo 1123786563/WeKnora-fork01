@@ -858,3 +858,37 @@ test('a command landing while the lease died is rejected, never silently recorde
   assert.equal(handle.view()?.interventions?.length ?? 0, 0, 'a late result must not be recorded as an intervention');
   handle.close('done');
 });
+
+test('a flush racing a dead scope lease is rejected, never silently recorded (§5.3)', async () => {
+  // 与 act() 同一竞态同一处理：flush 的 queue_next 在 lease 死亡后，迟到 ack 绝不记 accepted 回执。
+  let release: (() => void) | undefined;
+  const calls: RecordedCommand[] = [];
+  const gatedPort: TaskCommandPort = {
+    command: (input) => {
+      calls.push(input);
+      return new Promise((resolve) => { release = () => resolve({ runId: input.runId, action: 'queue_next' }); });
+    },
+  };
+  const { handle, detailBackend, revocable } = newHandleForIntervention({ runStatus: 'running', revision: 5 }, gatedPort);
+  await handle.hydrate();
+  const parked = await handle.act({ kind: 'queue-next', text: 'next instruction' });
+  assert.equal(parked.outcome, 'parked');
+  detailBackend.detailResult = interventionDetail({ runStatus: 'succeeded', revision: 5 });
+  await handle.resync(); // 终态观察：hydrate 自动放行 flush，命令在 gatedPort 处挂起（在途）
+  assert.equal(calls.length, 1, '自动 flush 已派发且尚未返回');
+  const flushing = handle.flushQueuedIntents(); // 合流到同一在途 flush
+  revocable.revoke();
+  release!(); // 迟到 ack
+  await assert.rejects(() => flushing, /TASK_OFFICE_SCOPE_CHANGED/);
+  assert.equal(handle.view()?.interventions?.length, 1, '只保留 parked 回执，迟到的 ack 不得追加 accepted 回执');
+  handle.close('done');
+});
+
+test('flushQueuedIntents after the scope died fails closed with SCOPE_CHANGED', async () => {
+  const commands = scriptedCommandPort();
+  const { handle, revocable } = newHandleForIntervention({ runStatus: 'canceled', revision: 3 }, commands.port);
+  await handle.hydrate(); // 终态：drained（自动 flush 在 revoke 前已无队列空转）
+  revocable.revoke();
+  await assert.rejects(() => handle.flushQueuedIntents(), /TASK_OFFICE_SCOPE_CHANGED/);
+  handle.close('done');
+});
