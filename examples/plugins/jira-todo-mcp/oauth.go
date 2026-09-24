@@ -83,6 +83,13 @@ var maxActiveTokens = 8192
 // 不变量对齐。var 以便测试改写。
 var maxRefreshTokens = 4096
 
+// maxActiveCodes 封顶窗口内未消费授权码条目数（OCR 一轮 F9）：codes 曾是
+// 唯一只有 TTL 没有容量上限的令牌 map——发码即消费 state 释放
+// pendingAuths 名额，持有有效 Jira 凭据者可循环「登记→发码」在 authCodeTTL
+// 窗口内按吞吐无界堆积（issuedCode 含 Email/APIToken/authorizationRequest）。
+// var 以便测试改写。
+var maxActiveCodes = 4096
+
 // oauthServer 是一个简化的 OAuth 2.0 授权码服务器（内存态）：
 //   - RFC 9728 protected-resource / RFC 8414 authorization-server metadata；
 //   - RFC 7591 动态客户端注册（POST /register，注册时绑定 redirect_uris）；
@@ -504,10 +511,16 @@ func (s *oauthServer) validateAuthorizationRequest(req authorizationRequest, res
 		return registeredClient{}, fmt.Errorf("response_type must be \"code\"")
 	}
 	s.mu.Lock()
-	// 先清扫再查（整分支 OCR 一轮 F5）：过期注册在此即时失效——authorize
-	// 不能依赖下一条写路径碰巧触发淘汰。
-	s.sweepExpiredLocked(time.Now())
+	// 单条 O(1) 过期判定（OCR 一轮 F8）：读路径不得全量清扫——sweep 会
+	// 遍历 5 个 map（达上限 ≈1.8 万条目）且这把锁被 /mcp 每请求两次的
+	// lookupSession 依赖，未认证垃圾 client_id 可造成锁 convoy。查到的
+	// 过期注册即时删除拒绝（lookupSession 同款语义）；全量清扫职责保留
+	// 在写路径（/register、/authorize 写入段、/token）。
 	client, registered := s.clients[req.ClientID]
+	if registered && time.Now().After(client.ExpiresAt) {
+		delete(s.clients, req.ClientID)
+		registered = false
+	}
 	s.mu.Unlock()
 	if !registered {
 		return registeredClient{}, fmt.Errorf("unknown client_id")
@@ -624,6 +637,15 @@ func (s *oauthServer) submitAuthorizeForm(w http.ResponseWriter, r *http.Request
 	code := randomToken()
 	s.mu.Lock()
 	now = time.Now()
+	s.sweepExpiredLocked(now)
+	// OCR 一轮 F9：先清扫再查容量（过期 code 即时释放名额）。满容不消费
+	// state——容量是暂时态，成员可稍后重试提交而非重启授权流（与
+	// exchangeCode 满容语义一致）。
+	if len(s.codes) >= maxActiveCodes {
+		s.mu.Unlock()
+		http.Error(w, "too many pending codes; retry later", http.StatusTooManyRequests)
+		return
+	}
 	consumed, still := s.pendingAuths[state]
 	if still && now.After(consumed.ExpiresAt) {
 		delete(s.pendingAuths, state)

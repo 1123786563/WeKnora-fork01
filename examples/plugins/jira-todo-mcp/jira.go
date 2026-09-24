@@ -40,6 +40,12 @@ const (
 	maxToolOutputBytes = 64 << 10
 )
 
+// maxToolCallTimeout 是单次工具调用的整体时限（OCR 一轮 F5）：分页循环
+// 最多 10 页、每页由 jiraHTTPClient 的 30s Timeout 独立约束——上游持续
+// 慢响应时单次调用最坏 ≈5 分钟占用 /mcp 连接与 goroutine（WeKnora 默认
+// 30s 客户端会提前切断，但 AdvancedConfig.Timeout 可调大）。var 供测试改写。
+var maxToolCallTimeout = 60 * time.Second
+
 // jiraMaxResponseBytes 封顶单次 Jira 响应体的解码读取量（整分支 OCR 二轮
 // F5）：分页/条数封顶只约束请求参数，响应体积由对端决定——被攻陷或异常的
 // Jira 可在 30s 超时窗口内推送超大 JSON 流，Decoder 随解码逐步分配造成内存
@@ -271,6 +277,10 @@ func handleSearchMyWeek(ctx context.Context, jiraBaseURL string) (*mcp.CallToolR
 		// 绝不带默认凭据执行。
 		return nil, fmt.Errorf("unauthorized: no personal OAuth session bound to this tool call")
 	}
+	// OCR 一轮 F5：分页循环的每页 30s 超时只约束单页，最多 10 页叠加可拖
+	// 满 ≈5 分钟——入口施加整体 deadline，慢上游在此被确定性切断。
+	ctx, cancel := context.WithTimeout(ctx, maxToolCallTimeout)
+	defer cancel()
 	client := &JiraClient{BaseURL: jiraBaseURL, Email: session.Email, APIToken: session.APIToken}
 	issues, truncated, err := client.SearchMyWeek(ctx)
 	if err != nil {

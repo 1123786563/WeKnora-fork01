@@ -1184,3 +1184,111 @@ func TestRefreshTokensBoundedOnExchange(t *testing.T) {
 	require.Equal(t, http.StatusTooManyRequests, exStatus,
 		"an unconsumed code must survive a 429 (not burned)")
 }
+
+// --- OCR 一轮 R8：oauth.go 两项 + jira.go 整体时限 ---
+
+// TestValidateAuthorizationRequestDoesNotSweep（OCR 一轮 F8）：
+// validateAuthorizationRequest 曾持 s.mu 执行 sweepExpiredLocked 全量清扫
+// （5 个 map 达上限 ≈1.8 万条目）——这把锁同时被 /mcp 每请求两次的
+// lookupSession 依赖，R5 F8 已消除的 O(n) 放大被重新挂到未认证
+// GET /authorize（垃圾 client_id 即触达）。读路径必须 O(1)：只查目标
+// client（查到的过期注册即时删除拒绝），无关过期条目不被清扫。
+func TestValidateAuthorizationRequestDoesNotSweep(t *testing.T) {
+	s := newOAuthServer("http://auth.example", "http://jira.example", nil)
+	now := time.Now()
+	s.clients["jtm-expired"] = registeredClient{
+		RedirectURIs: []string{"https://a.example/cb"}, ExpiresAt: now.Add(-time.Minute),
+	}
+	s.clients["jtm-valid"] = registeredClient{
+		ClientName: "WeKnora", RedirectURIs: []string{"https://client.example/cb"}, ExpiresAt: now.Add(time.Hour),
+	}
+	s.pendingAuths["st-expired"] = pendingAuth{ExpiresAt: now.Add(-time.Minute)}
+	_, challenge := testPKCE(t)
+
+	client, err := s.validateAuthorizationRequest(authorizationRequest{
+		ClientID: "jtm-valid", RedirectURI: "https://client.example/cb",
+		CodeChallenge: challenge, CodeChallengeMethod: "S256",
+	}, "code")
+	require.NoError(t, err)
+	require.Equal(t, "WeKnora", client.ClientName)
+	_, stillClient := s.clients["jtm-expired"]
+	require.True(t, stillClient,
+		"the client_id read path must not sweep unrelated expired clients (lock convoy on /mcp)")
+	_, stillPending := s.pendingAuths["st-expired"]
+	require.True(t, stillPending,
+		"the client_id read path must not sweep unrelated expired pending auths")
+
+	// 查到的过期注册本身：即时删除并拒绝（lookupSession 同款单条语义）。
+	_, err = s.validateAuthorizationRequest(authorizationRequest{
+		ClientID: "jtm-expired", RedirectURI: "https://a.example/cb",
+		CodeChallenge: challenge, CodeChallengeMethod: "S256",
+	}, "code")
+	require.Error(t, err, "an expired registration must be rejected on sight")
+	_, stillThere := s.clients["jtm-expired"]
+	require.False(t, stillThere,
+		"the looked-up expired entry itself must still be removed")
+}
+
+// TestCodesBoundedOnIssue（OCR 一轮 F9）：codes 是唯一只有 TTL 没有窗口
+// 容量上限的令牌 map——发码即消费 state 释放 pendingAuths 名额，持有有效
+// Jira 凭据者可循环「登记→发码」在 10min TTL 窗口内按吞吐无界堆积
+// （R7 的豁免论证被本轮评审推翻）。满容不消费 state、429（与 exchangeCode
+// 满容语义一致）。
+func TestCodesBoundedOnIssue(t *testing.T) {
+	base, _ := newTestService(t, testJiraAuthOK(t, "member@example.com", "tok", nil))
+	redirectURI := "https://client.example/callback"
+
+	oldMax := maxActiveCodes
+	maxActiveCodes = 1
+	t.Cleanup(func() { maxActiveCodes = oldMax })
+
+	// 第一条授权流发码占满唯一名额（code 不 exchange，TTL 内驻留）。
+	clientID := testRegisterClient(t, base, redirectURI)
+	_, challenge := testPKCE(t)
+	require.Equal(t, http.StatusOK,
+		testAuthorizeGET(t, base, clientID, redirectURI, "r8-c1", challenge))
+	status, location := testAuthorizePOST(t, base, "r8-c1", "member@example.com", "tok")
+	require.Equal(t, http.StatusFound, status, "location: %s", location)
+	require.Contains(t, location, "code=")
+
+	// 第二条授权流：凭据验证通过但发码满容 → 429，且 state 未消费可重试
+	//（重试仍 429 而非 409/400——容量是暂时态）。
+	clientID2 := testRegisterClient(t, base, redirectURI)
+	_, challenge2 := testPKCE(t)
+	require.Equal(t, http.StatusOK,
+		testAuthorizeGET(t, base, clientID2, redirectURI, "r8-c2", challenge2))
+	status, _ = testAuthorizePOST(t, base, "r8-c2", "member@example.com", "tok")
+	require.Equal(t, http.StatusTooManyRequests, status,
+		"issuing beyond maxActiveCodes must be rejected with 429")
+	status, _ = testAuthorizePOST(t, base, "r8-c2", "member@example.com", "tok")
+	require.Equal(t, http.StatusTooManyRequests, status,
+		"the pending state must survive a 429 (not consumed)")
+}
+
+// TestSearchMyWeekOverallDeadline（OCR 一轮 F5）：分页循环最多 10 页、每页
+// 独立 30s 超时，缺整体 deadline 时上游持续慢响应可拖满 ≈5 分钟。入口
+// context.WithTimeout 整体时限必须先于页级超时切断。
+func TestSearchMyWeekOverallDeadline(t *testing.T) {
+	old := maxToolCallTimeout
+	maxToolCallTimeout = 100 * time.Millisecond
+	t.Cleanup(func() { maxToolCallTimeout = old })
+
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/rest/api/3/search/jql" {
+			time.Sleep(300 * time.Millisecond) // 慢于整体 deadline，远快于页级 30s
+			_ = json.NewEncoder(w).Encode(map[string]any{"issues": []any{}})
+			return
+		}
+		t.Errorf("unexpected jira path: %s", r.URL.Path)
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	t.Cleanup(fake.Close)
+	utils.SetSSRFWhitelistFromRaw("127.0.0.1")
+	t.Cleanup(utils.ResetSSRFWhitelistForTest)
+
+	ctx := context.WithValue(context.Background(), sessionContextKey{},
+		&oauthSession{Email: "member@example.com", APIToken: "tok"})
+	_, err := handleSearchMyWeek(ctx, fake.URL)
+	require.Error(t, err,
+		"the overall tool-call deadline must cut a slow upstream before page timeouts pile up")
+}
