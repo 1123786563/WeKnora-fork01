@@ -9,6 +9,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"strings"
 
 	apperrors "github.com/Tencent/WeKnora/internal/errors"
@@ -59,7 +60,12 @@ func (s *TaskGrantService) loadTaskForGrantManagement(
 	}
 	session, err := s.sessions.GetByID(ctx, caller.TenantID, taskID)
 	if err != nil {
-		return nil, apperrors.NewNotFoundError("task not found")
+		if errors.Is(err, apperrors.ErrSessionNotFound) {
+			return nil, apperrors.NewNotFoundError("task not found")
+		}
+		// Infrastructure failure passes through — a 5xx must never masquerade
+		// as a 404 miss (B3-F82; mirrors GetRunForGrantedReader's convention).
+		return nil, err
 	}
 	if strings.TrimSpace(session.UserID) == "" {
 		// A task with no owner row cannot be shared — there is no authority
@@ -161,7 +167,11 @@ func (s *TaskGrantService) ResolveTaskAccess(
 	}
 	session, err := s.sessions.GetByID(ctx, caller.TenantID, taskID)
 	if err != nil {
-		return types.TaskAccess{}, apperrors.NewNotFoundError("task not found")
+		if errors.Is(err, apperrors.ErrSessionNotFound) {
+			return types.TaskAccess{}, apperrors.NewNotFoundError("task not found")
+		}
+		// Infrastructure failure passes through (B3-F82).
+		return types.TaskAccess{}, err
 	}
 	access := types.TaskAccess{TaskID: session.ID, OwnerID: session.UserID, Role: types.TaskAccessNone}
 	if strings.TrimSpace(caller.UserID) != "" && caller.UserID == session.UserID {
@@ -172,11 +182,20 @@ func (s *TaskGrantService) ResolveTaskAccess(
 		return types.TaskAccess{}, rErr
 	} else if found {
 		access.GrantRole = role
-		switch role {
-		case types.TaskGrantRoleCollaborator:
-			access.Role = types.TaskAccessCollaborator
-		case types.TaskGrantRoleViewer:
-			access.Role = types.TaskAccessViewer
+		// A grant row is not authorization by itself: the grantee must still be
+		// an active same-tenant member. A suspended member collapses to none on
+		// the very next resolve (B3-F84), converging with GetRunForGrantedReader's
+		// live tenant_members JOIN.
+		if s.members != nil {
+			if member, mErr := s.members.Get(ctx, caller.UserID, caller.TenantID); mErr == nil &&
+				member != nil && member.Status == types.TenantMemberStatusActive {
+				switch role {
+				case types.TaskGrantRoleCollaborator:
+					access.Role = types.TaskAccessCollaborator
+				case types.TaskGrantRoleViewer:
+					access.Role = types.TaskAccessViewer
+				}
+			}
 		}
 	}
 	return access, nil

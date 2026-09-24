@@ -8,6 +8,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	apperrors "github.com/Tencent/WeKnora/internal/errors"
@@ -249,4 +250,55 @@ func TestResolveTaskAccessCrossTenantIsUniform404(t *testing.T) {
 	require.Equal(t, apperrors.ErrNotFound, errorCodeOf(t, err))
 	_, err = svc.GrantTaskAccess(ctx, types.Caller{TenantID: 2, UserID: "owner-1"}, "s1", "member-2", types.TaskGrantRoleViewer)
 	require.Equal(t, apperrors.ErrNotFound, errorCodeOf(t, err))
+}
+
+// explodingTaskGrantSessions injects a non-NotFound infrastructure failure.
+type explodingTaskGrantSessions struct {
+	interfaces.SessionRepository
+}
+
+func (r *explodingTaskGrantSessions) GetByID(_ context.Context, _ uint64, _ string) (*types.Session, error) {
+	return nil, errors.New("db connection refused")
+}
+
+func assertNotTaskNotFound404(t *testing.T, err error) {
+	t.Helper()
+	require.Error(t, err)
+	var appErr *apperrors.AppError
+	if errors.As(err, &appErr) {
+		require.NotEqual(t, apperrors.ErrNotFound, appErr.Code, "基础设施故障不得伪装成 task not found（B3-F82）")
+	}
+}
+
+func TestGrantTaskAccessSurfacesInfrastructureErrorsInsteadOf404(t *testing.T) {
+	ctx := context.Background()
+	svc := NewTaskGrantService(&stubTaskGrantRepo{}, &explodingTaskGrantSessions{}, &stubTaskGrantMembers{})
+	_, err := svc.GrantTaskAccess(ctx, taskGrantOwner(), "s1", "member-2", types.TaskGrantRoleViewer)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "db connection refused")
+	assertNotTaskNotFound404(t, err)
+}
+
+func TestResolveTaskAccessSurfacesInfrastructureErrorsInsteadOf404(t *testing.T) {
+	ctx := context.Background()
+	svc := NewTaskGrantService(&stubTaskGrantRepo{}, &explodingTaskGrantSessions{}, &stubTaskGrantMembers{})
+	_, err := svc.ResolveTaskAccess(ctx, types.Caller{TenantID: 1, UserID: "owner-1"}, "s1")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "db connection refused")
+	assertNotTaskNotFound404(t, err)
+}
+
+func TestResolveTaskAccessDeactivatesStaleGrants(t *testing.T) {
+	ctx := context.Background()
+	grants := &stubTaskGrantRepo{grants: map[string]types.TaskGrant{
+		taskGrantKey("s1", "member-2"): {TenantID: 1, TaskID: "s1", GranteeID: "member-2", Role: types.TaskGrantRoleViewer},
+	}}
+	// The grant row survives, but the grantee's live membership no longer is.
+	members := &stubTaskGrantMembers{members: map[string]*types.TenantMember{
+		"member-2": {UserID: "member-2", TenantID: 1, Status: types.TenantMemberStatusSuspended},
+	}}
+	svc := newTaskGrantServiceForTest(grants, &types.Session{ID: "s1", TenantID: 1, UserID: "owner-1"}, members)
+	access, err := svc.ResolveTaskAccess(ctx, types.Caller{TenantID: 1, UserID: "member-2"}, "s1")
+	require.NoError(t, err)
+	require.Equal(t, types.TaskAccessNone, access.Role, "停用成员的 grant 必须收敛（B3-F84，与 GetRunForGrantedReader 的实时 JOIN 一致）")
 }

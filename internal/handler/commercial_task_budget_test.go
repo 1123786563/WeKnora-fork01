@@ -26,9 +26,12 @@ func newBudgetGateDB(t *testing.T) *gorm.DB {
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared&_busy_timeout=5000"),
 		&gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
 	require.NoError(t, err)
-	// The owner predicate only reads agent_runs(tenant_id, run_id, owner_id).
+	// The owner predicate reads the task owner authority: sessions.user_id
+	// joined through agent_runs.session_id (ADR-0004). owner_id on agent_runs
+	// is the run CREATOR and may be a collaborator.
 	require.NoError(t, db.Exec(`CREATE TABLE agent_runs (
-		tenant_id INTEGER NOT NULL, run_id TEXT NOT NULL, owner_id TEXT NOT NULL)`).Error)
+		tenant_id INTEGER NOT NULL, run_id TEXT NOT NULL, owner_id TEXT NOT NULL, session_id TEXT)`).Error)
+	require.NoError(t, db.Exec(`CREATE TABLE sessions (id TEXT PRIMARY KEY, tenant_id INTEGER NOT NULL, user_id TEXT)`).Error)
 	require.NoError(t, db.Exec(`CREATE TABLE commercial_budget_accounts (
 		tenant_id INTEGER PRIMARY KEY, verified_micro BIGINT NOT NULL, unreflected_micro BIGINT NOT NULL DEFAULT 0,
 		held_micro BIGINT NOT NULL DEFAULT 0, refund_locked_micro BIGINT NOT NULL DEFAULT 0,
@@ -38,7 +41,8 @@ func newBudgetGateDB(t *testing.T) *gorm.DB {
 		spent_micro BIGINT NOT NULL DEFAULT 0, held_micro BIGINT NOT NULL DEFAULT 0,
 		deadline DATETIME NOT NULL, version BIGINT NOT NULL DEFAULT 1,
 		PRIMARY KEY (tenant_id, run_id))`).Error)
-	require.NoError(t, db.Exec(`INSERT INTO agent_runs (tenant_id, run_id, owner_id) VALUES (7, 'r1', 'u1')`).Error)
+	require.NoError(t, db.Exec(`INSERT INTO sessions (id, tenant_id, user_id) VALUES ('s1', 7, 'u1')`).Error)
+	require.NoError(t, db.Exec(`INSERT INTO agent_runs (tenant_id, run_id, owner_id, session_id) VALUES (7, 'r1', 'u1', 's1')`).Error)
 	require.NoError(t, db.Exec(`INSERT INTO commercial_budget_accounts
 		(tenant_id, verified_micro, verified_until, version) VALUES (7, 100000000, ?, 0)`,
 		time.Now().Add(time.Hour).UTC()).Error)
@@ -122,4 +126,22 @@ func TestExtendTaskBudgetBillingGrantAndNotFoundKeepContract(t *testing.T) {
 	require.NoError(t, db.Exec(`INSERT INTO agent_runs (tenant_id, run_id, owner_id) VALUES (8, 'r8', 'u1')`).Error)
 	w = postBudgetExtend(t, db, "contributor", "u1", "r8", "k-fresh-4")
 	require.Equal(t, http.StatusNotFound, w.Code)
+}
+
+func TestExtendTaskBudgetGatesBySessionOwnerAuthority(t *testing.T) {
+	db := newBudgetGateDB(t)
+	// B3-F83: agent_runs.owner_id is the run creator (a collaborator may run);
+	// the TASK owner authority is sessions.user_id (ADR-0004 / TaskGrantStore).
+	require.NoError(t, db.Exec(`UPDATE sessions SET user_id = 'real-owner' WHERE id = 's1'`).Error)
+	require.NoError(t, db.Exec(`UPDATE agent_runs SET owner_id = 'collaborator-1' WHERE run_id = 'r1'`).Error)
+
+	// The real owner (sessions.user_id) passes the gate.
+	w := postBudgetExtend(t, db, "contributor", "real-owner", "r1", "k-session-owner-1")
+	require.Equal(t, http.StatusOK, w.Code, "sessions.user_id is the owner authority: %s", w.Body.String())
+
+	// The run creator (agent_runs.owner_id) is refused — collaborators never
+	// pass the budget-extension gate on their own runs.
+	w2 := postBudgetExtend(t, db, "contributor", "collaborator-1", "r1", "k-session-owner-2")
+	require.Equal(t, http.StatusForbidden, w2.Code, "run creator is not the task owner: %s", w2.Body.String())
+	require.Contains(t, w2.Body.String(), "BUDGET_FORBIDDEN")
 }

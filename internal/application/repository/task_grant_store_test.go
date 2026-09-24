@@ -134,3 +134,54 @@ func TestTaskGrantStoreTaskOwnerIDResolvesSessionOwner(t *testing.T) {
 	_, err = store.TaskOwnerID(ctx, 1, "missing")
 	require.ErrorIs(t, err, repository.ErrTaskGrantTaskNotFound)
 }
+
+// openTaskGrantStoreDB builds the minimal task_grants + sessions schema
+// directly. The B3-F74/F75 behaviors under test are store-level SQL semantics
+// (NULL scan, upsert conflict), not migration-track properties, so these cases
+// stay runnable independently of the pre-existing migrations/sqlite 000112
+// duplicate-number conflict (out of scope for the B3 batch).
+func openTaskGrantStoreDB(t *testing.T) *gorm.DB {
+	t.Helper()
+	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared&_busy_timeout=5000"),
+		&gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	require.NoError(t, err)
+	require.NoError(t, db.Exec(`CREATE TABLE task_grants (
+		tenant_id INTEGER NOT NULL, task_id TEXT NOT NULL, grantee_id TEXT NOT NULL,
+		role TEXT NOT NULL, granted_by TEXT NOT NULL,
+		created_at DATETIME NOT NULL, updated_at DATETIME NOT NULL,
+		PRIMARY KEY (tenant_id, task_id, grantee_id))`).Error)
+	require.NoError(t, db.Exec(`CREATE TABLE sessions (
+		id TEXT PRIMARY KEY, tenant_id INTEGER NOT NULL, title TEXT, user_id TEXT, engine_type TEXT)`).Error)
+	t.Cleanup(func() { conn, _ := db.DB(); _ = conn.Close() })
+	return db
+}
+
+func TestTaskGrantStoreTaskOwnerIDHandlesNullOwnerRows(t *testing.T) {
+	db := openTaskGrantStoreDB(t)
+	store := repository.NewTaskGrantStore(db)
+	// sessions.user_id is nullable in the schema; an ownerless task must be a
+	// uniform miss, not a gorm "converting NULL to string" scan failure (B3-F74).
+	require.NoError(t, db.Exec(`INSERT INTO sessions (id, tenant_id, user_id) VALUES ('s-null', 1, NULL)`).Error)
+	_, err := store.TaskOwnerID(context.Background(), 1, "s-null")
+	require.ErrorIs(t, err, repository.ErrTaskGrantTaskNotFound, "NULL user_id 是 ownerless 语义（一致 miss），不是扫描错误")
+}
+
+func TestTaskGrantStoreUpsertConflictPathReturnsPersistedCreatedAt(t *testing.T) {
+	db := openTaskGrantStoreDB(t)
+	store := repository.NewTaskGrantStore(db)
+	ctx := context.Background()
+
+	_, err := store.UpsertGrant(ctx, 1, "s1", "u2", types.TaskGrantRoleViewer, "u1")
+	require.NoError(t, err)
+	past := time.Now().UTC().Add(-24 * time.Hour).Truncate(time.Second)
+	require.NoError(t, db.Exec(`UPDATE task_grants SET created_at = ? WHERE tenant_id = 1 AND task_id = 's1' AND grantee_id = 'u2'`, past).Error)
+
+	// Conflict path (role flip on an existing grantee row): the returned
+	// created_at must match the persisted row, not a freshly minted now (B3-F75).
+	second, err := store.UpsertGrant(ctx, 1, "s1", "u2", types.TaskGrantRoleCollaborator, "u1")
+	require.NoError(t, err)
+	require.WithinDuration(t, past, second.CreatedAt, time.Second, "冲突路径返回 DB 持久化的 created_at")
+	var persisted time.Time
+	require.NoError(t, db.Raw(`SELECT created_at FROM task_grants WHERE tenant_id = 1 AND task_id = 's1' AND grantee_id = 'u2'`).Scan(&persisted).Error)
+	require.WithinDuration(t, persisted, second.CreatedAt, time.Second)
+}

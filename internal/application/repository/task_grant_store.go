@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"strings"
 	"time"
@@ -50,6 +51,15 @@ func (s *TaskGrantStore) UpsertGrant(
 	if err != nil {
 		return types.TaskGrant{}, err
 	}
+	// The conflict path leaves the DB row's created_at untouched, so the
+	// returned struct must be re-read from the persisted row instead of
+	// carrying the locally minted now (B3-F75).
+	var persisted types.TaskGrant
+	if readErr := s.db.WithContext(ctx).
+		Where("tenant_id = ? AND task_id = ? AND grantee_id = ?", tenantID, taskID, granteeID).
+		Take(&persisted).Error; readErr == nil {
+		return persisted, nil
+	}
 	return grant, nil
 }
 
@@ -94,20 +104,21 @@ func (s *TaskGrantStore) RoleForGrantee(
 
 // TaskOwnerID resolves the task's owner: sessions.user_id inside the tenant
 // (ADR-0004). A miss — unknown task, cross-tenant probe — is one uniform
-// ErrTaskGrantTaskNotFound.
+// ErrTaskGrantTaskNotFound. A NULL user_id row is ownerless and lands in the
+// same uniform miss instead of a scan failure (B3-F74).
 func (s *TaskGrantStore) TaskOwnerID(ctx context.Context, tenantID uint64, taskID string) (string, error) {
 	if s == nil || s.db == nil || tenantID == 0 || strings.TrimSpace(taskID) == "" {
 		return "", ErrTaskGrantTaskNotFound
 	}
-	var owner string
+	var owner sql.NullString
 	err := s.db.WithContext(ctx).Table("sessions").
 		Where("tenant_id = ? AND id = ?", tenantID, taskID).
 		Select("user_id").Scan(&owner).Error
 	if err != nil {
 		return "", err
 	}
-	if owner == "" {
+	if !owner.Valid || strings.TrimSpace(owner.String) == "" {
 		return "", ErrTaskGrantTaskNotFound
 	}
-	return owner, nil
+	return owner.String, nil
 }

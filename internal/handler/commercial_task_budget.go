@@ -2,8 +2,10 @@ package handler
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/Tencent/WeKnora/internal/modules/commercial"
 	repocommercial "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
@@ -94,21 +96,26 @@ func (h *CommercialHandler) ExtendTaskBudget(c *gin.Context) {
 	})
 }
 
-// taskRunOwner resolves the business owner of one run (agent_runs.owner_id)
-// inside the tenant. found=false covers unknown and cross-tenant runs alike.
+// taskRunOwner resolves the business owner of one run inside the tenant. The
+// authority is sessions.user_id joined through agent_runs.session_id (ADR-0004,
+// same as TaskGrantStore.TaskOwnerID) — agent_runs.owner_id is merely the run
+// CREATOR, which a collaborator can be, so it must never gate the budget raise
+// (B3-F83). found=false covers unknown and cross-tenant runs alike.
 func (h *CommercialHandler) taskRunOwner(ctx context.Context, tenantID uint64, runID string) (string, bool, error) {
 	if h == nil || h.db == nil || tenantID == 0 || runID == "" {
 		return "", false, nil
 	}
-	var ownerID string
+	var ownerID sql.NullString
 	err := h.db.WithContext(ctx).Table("agent_runs").
-		Where("tenant_id = ? AND run_id = ?", tenantID, runID).
-		Select("owner_id").Scan(&ownerID).Error
+		Select("sessions.user_id").
+		Joins("JOIN sessions ON sessions.id = agent_runs.session_id AND sessions.tenant_id = ?", tenantID).
+		Where("agent_runs.tenant_id = ? AND agent_runs.run_id = ?", tenantID, runID).
+		Scan(&ownerID).Error
 	if err != nil {
 		return "", false, err
 	}
-	if ownerID == "" {
+	if !ownerID.Valid || strings.TrimSpace(ownerID.String) == "" {
 		return "", false, nil
 	}
-	return ownerID, true, nil
+	return ownerID.String, true, nil
 }
