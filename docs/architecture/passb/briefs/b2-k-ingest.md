@@ -83,3 +83,38 @@ ledger 严格解码失败掩蔽；ocr-r1-1 修复后可见，2026-09-25 实测�
   `ingest.CleanupOnFailure`（原 cleanupOnFailure）+ `ingest.ExtractionResources`
   （原 extractionResources；导出 Knowledge/RetrieveEngine/EmbeddingModel 三字段，
   余字段包内私有）——供 tshim-0002 垫片委托真实现；K4 域改写后可回收敛。
+
+## 5. K1.4（image_multimodal.go + ocr_sanitizer.go 搬迁）交付的 shim/seam/导出义务（K5/ib2 集成工程师执行）
+
+- **R1-5 宿主转发**（`internal/application/service/chunk_ingest_shim.go`，ib2 删除批）：
+  `NewImageMultimodalService` 保 container.go:411 dig 旧 14 参签名（末参
+  `spanTracker SpanTracker`），体内以 `NewSpanTraceSeamAdapter` + 宿主
+  `repository.ErrKnowledgeNotFound`/`ErrKnowledgeBaseNotFound` 哨兵 + 本包
+  `previewText`/`ResolveProcessConfig`/`knowledgePostProcessTaskOptions` 函数值
+  供给 ingest 新签名（哨兵注入发生在宿主边界——ingest 禁 import 宿主
+  repository，R1-8 shim import 环实测裁决，plan §6.3）。
+- **R1-7 宿主转发**：`isFinalAsynqAttempt`（真源 `ingest.IsFinalAsynqAttempt`）——
+  保护 knowledge_process.go:1125/:1497/:1868（K4 属主）与
+  knowledge_summary_test.go:230/:238；K4 搬迁后随其文件收敛。
+- **R1-10 宿主转发（conversation ib2 改写项）**：`sanitizeOCRText` /
+  `buildVLMCaptionPrompt`（真源 `ingest.SanitizeOCRText` /
+  `ingest.BuildVLMCaptionPrompt`，K0 §6.2 组 D）——保护
+  temporary_document.go:541/:560；**ib2 改写为直连 ingest 导出形式后删除转发**。
+- **R1 增量常量导出（超出 §6.2 字面清单）**：`ingest.VlmOCRPrompt` /
+  `ingest.VlmOCRScannedPDFPrompt` 常量别名——保护 temporary_document.go:513/:515
+  （conversation 属主，ib2 改写项，同上随 R1-10 批收敛）。
+- **K1.4 增量 seam（plan §6.3 未枚举，按 R2 机制具体化）**：
+  ImageMultimodalService 的 `previewTextFn`（K3 wiki_ingest.go:1383，K1.3 同款）、
+  `resolveProcessConfigFn`（K4 knowledge_process_config.go:40，K1.3 同款）、
+  `postProcessTaskOptionsFn`（K4 knowledge_task_options.go:21，K1.4 新增——
+  原包级调用 `knowledgePostProcessTaskOptions()` 随文件迁移断链，构造注入零复制）；
+  K3/K4 搬迁导出后由集成工程师改指其导出形式。
+- **随迁测试哨兵孪生**：ingest/image_multimodal_orphan_test.go 以测试本地
+  `errors.New` 孪生值注入 `knowledgeNotFoundErr`/`knowledgeBaseNotFoundErr`
+  同名字段（plan §6.3 末行；比对语义不变，字段即 errors.Is 比对目标）；
+  `postProcessTaskOptionsFn` 测试桩返回 nil（用例仅断言任务类型与计数；
+  生产代码对 nil 字段快速失败不设静默回退）——K1.2 no-op guard 先例同机制。
+- **E5/E6 例外（K1.6 登记）**：ingest/image_multimodal.go import
+  `airesource/models/utils/ollama` 与 `airesource/models/vlm`（Pass A 前宿主直连，
+  plan §7.2 表）。
+
