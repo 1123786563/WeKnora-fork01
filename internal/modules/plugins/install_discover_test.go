@@ -157,16 +157,27 @@ func TestGetMyConnectionStatusHealsEmptyServiceIDAnchor(t *testing.T) {
 	require.Equal(t, "/api/v1/mcp-services/svc-orphan/oauth/authorize-url", status.AuthorizeURLPath)
 	require.Equal(t, "/api/v1/mcp-services/svc-orphan/oauth/token", status.RevokePath)
 
-	// 反查不到孤儿（物化从未发生，如崩溃早于 CreateMCPService）且装配无
-	// mcpServiceRepo（T11 fake 层形态）：不 panic、按降级视图返回。
-	degradedSvc, _ := newConnectionStatusService([]*types.PluginInstallation{
+	// 反查不到孤儿（物化从未发生，如崩溃早于 CreateMCPService）但装配了
+	// stub 存储时：不报错、按降级视图返回（unauthorized、无路径）。
+	repoNone := &installPreviewRepo{}
+	repoNone.installations = []*types.PluginInstallation{
 		connectionStatusInstallation("inst-none", "", true),
-	})
+	}
+	degradedSvc := service.NewPluginService(repoNone, nil, &fakeInstallMCPServiceRepo{}, nil, nil, nil, oauthRepo)
 	degraded, err := degradedSvc.GetMyConnectionStatus(ctx, tenantID, "inst-none", principal)
 	require.NoError(t, err)
 	require.False(t, degraded.Authorized)
 	require.Empty(t, degraded.AuthorizeURLPath)
 	require.Empty(t, degraded.RevokePath)
+
+	// nil 装配（生产经 dig 必注入）必须响亮失败，不得静默按「无孤儿」
+	// 跳过——那会让连接视图退回死端、卸载删锚行后物化服务成永久孤儿
+	// （与 oauthRepo == nil 的 fail-loudly 惯例一致，T07-OCR3-F2）。
+	nilWired, _ := newConnectionStatusService([]*types.PluginInstallation{
+		connectionStatusInstallation("inst-nilwired", "", true),
+	})
+	_, err = nilWired.GetMyConnectionStatus(ctx, tenantID, "inst-nilwired", principal)
+	require.ErrorIs(t, err, service.ErrConnectionQueryFailed)
 }
 
 // TestManualMCPServiceUnaffectedByInstallations（T07/B9 守护）：预置一行

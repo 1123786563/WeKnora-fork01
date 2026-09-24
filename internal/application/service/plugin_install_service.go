@@ -536,11 +536,14 @@ func (s *pluginService) serviceIDByInstallation(
 	tenantID uint64,
 	installationID string,
 ) (string, error) {
-	// nil 装配防御（最小测试夹具形态，如 connection_status_test 的
-	// mcpServiceRepo=nil 装配）：无可反查的存储时按「无孤儿」处理，
-	// 调用方保持既有空 service_id 行为，绝不 panic。
+	// 装配故障（生产经 dig 必注入）：响亮失败而非按「无孤儿」静默跳过
+	// ——静默跳过会让卸载删掉锚行后物化服务成永久孤儿（唯一索引阻断
+	// 重装）、连接视图退回死端视图，与 oauthRepo == nil 的 fail-loudly
+	// 惯例一致（T07-OCR3-F2）。调用方已按各自域哨兵 fail-closed；
+	// 测试夹具注入 stub MCPServiceRepository（fakeInstallMCPServiceRepo
+	// 先例）而非依赖 nil 妥协。
 	if s.mcpServiceRepo == nil {
-		return "", nil
+		return "", fmt.Errorf("plugin service store is not wired")
 	}
 	services, err := s.mcpServiceRepo.List(ctx, tenantID)
 	if err != nil {
