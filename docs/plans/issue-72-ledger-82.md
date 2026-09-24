@@ -66,3 +66,17 @@
 - **本次实跑核验**（全部本会话执行）：`go build ./...` → exit 0；`go test ./internal/modules/commercial/... -count=1` → 全部 ok（commercial 0.058s / commercialplatform 70.227s / payment 7.303s / repository 0.247s / service 0.919s 等 7 包）；`cd deploy/lago-lab/payment-trigger && python3 -m unittest test_phases -v` → Ran 21 tests, OK。
 - **工作区注意**：暂存区有 Task 1 的 `deploy/lago-lab/payment-trigger/` 14 个文件（属执行流产物，非本计划提交范围）；本次提交仅含 `docs/plans/` 两文件（pathspec commit，不触碰他人暂存状态）。
 - **计划文件自检（本次复核后）**：占位符扫描零命中；执行状态注记为 additive，未改动任何 Task/接口/追踪矩阵条目；Task 2-4 的 Produces 签名与已落地代码一致（`purchase_settlement_command.go` 存在，提交信息与 Task 2/3/4 标题逐字对应）。
+
+## 审查记录（续）
+
+### 第 2 轮（2026-09-25，计划审查员）——critical 1 条 + medium 1 条 + low 3 条，全部处置
+
+| # | 发现（severity） | 复核（本 worktree 实测） | 处置 |
+|---|---|---|---|
+| 1 | 【critical·阻断】t10 证伪后计划正文（Task 5-10、追踪矩阵、真实流程验证方案）仍按 D2 可交付写成，与头部注记/升级条款矛盾；AC1/AC3/AC4/AC5 在重议前不可达成，需 spec/ADR owner 重议并产出修订版计划（替换 D2 与 Task 5-10）后方可批准执行 | 复核 t10 DECISION.md verdict 与 p1/p2 实录属实（P1 `payments: []`、P2d 404 `invoice_not_found`、pm 重导 31 次耗尽） | 头部注记升级为「执行状态注记与计划处置声明」4 条（正文最高优先级约束）；Task 5-10 标题全部加【冻结——设计存档，禁止执行】及各自冻结理由（Task 7 例外声明：AC2 渠道 pin 不受冻结影响）；追踪矩阵重编+逐条 ⛔/✅ 现状列；验证方案第 5-8 步冻结标注+通过判据改写（failures 必记 `d2-falsified-t10-p2-fail`）；D2/F3/F5 三处加证伪/收窄标注防误读。修订版计划的产出权在 spec/ADR owner，本计划不自行设计替代路径 |
+| 2 | 【medium】Task 7 AC2 测试骨架引用不存在的 helper（newAlipayProviderForTest/signedReturn*），真实构造是 `alipayNotifyFixture(t)`（alipay_test.go:59），既有近义测试 `TestAlipaySyncReturnNeverConfirms`（:228-235）只断言 err!=nil 未 pin 哨兵；alipay.go 行号应为 :341-342 而非 :330-332 | `grep -n 'func newAlipayProviderForTest\|func signedReturn'` 零命中；sed 实测 :228-235 既有测试与 :59 fixture；alipay.go 实测 `VerifySyncReturn` 函数体在 :340-342（注释 :336-339） | Task 7 测试骨架改写为 `alipayNotifyFixture(t)` + 既有同款字面量查询串；明示增量价值仅一条：`errors.Is(err, ErrAlipaySyncReturn)` 哨兵 pin（防泛化错误回退）；Review Focus 第 3 条与 alipay.go 锚点改为 :340-342 |
+| 3 | 【low】追踪矩阵把 spec L125 派生条件编为"AC5"与 issue 正式 AC 混排；`gh issue view 82` 实取仅 4 条 AC | 本会话实跑 `gh issue view 82 --repo 1123786563/WeKnora-fork01 --json body` → Acceptance criteria 恰 4 条（三态呈现/同步返回不确认/不重复履约/真实沙箱证据） | 矩阵节重编：编号勘误说明 + 正式 AC1-AC4 各一行 + GC-3 独立行 + Review Focus 行；每行加「现状」列（⛔ 被证伪阻断 / ✅ 已落地），并声明 ⛔ 行不得宣称达成 |
+| 4 | 【low】行号漂移：providerOutboundCall/providerAttachDefaultPaymentMethod 实际在 lago_purchase.go:619/:654（原引 :549-617）；Task 4 占位 :481-486 已被落地实现替换（:489 起） | grep -n 实测两函数确在 :619/:654；sed 实测 :489 起为 `readPurchaseInvoiceFees` 真实实现（404 空语义） | Task 5 Consumes 行号勘误并注明"第 2 轮审查勘误"；Task 4 Files/Step 3 注明【已执行】与现位置 |
+| 5 | 【low·核实通过】头部执行状态注记与仓库事实一致；Task 2/3/4 落地与 Produces 契约逐条吻合；lago_settlement.go 不存在与升级纪律一致；行号抽查（container.go:943、order.go、fulfillment.go、purchase_test.go、contract_test.go 等）全部命中；ledger 基线勘误属实 | 审查员实测 + 本会话 `go build ./...` exit 0、`go test ./internal/modules/commercial/... -count=1` 全绿（7 包，含 commercialplatform 70.2s） | 无需改动；作为本轮基线可信度记录在案 |
+
+第 2 轮修订后自检：占位符扫描零命中；冻结标记覆盖 Task 5-10 全部标题与验证方案第 5-8 步；追踪矩阵 ⛔ 行与头部声明第 2 条口径一致（AC1/AC3/AC4/GC-3 受阻、AC2 渠道面 ✅）；未发明任何替代激活路径。本计划待修订版计划替换 D2/Task 5-10 后方可解冻执行。

@@ -10,10 +10,15 @@
 
 **Spec:** `docs/specs/2026-09-20-lago-billing-migration-design.md`（"Quotes, payments, and fulfillment" L122-127、"Public product states" L169-171、"Behavior and contract matrix" #5 L218 / #20 L233）；决策依据 `docs/migrations/lago/t02-payment-activation/DECISION.md`（§3 provider 轨道实测、§4 渠道阻断、§5 裁决记录）、`docs/migrations/lago/t09-quote-invoice/DECISION.md`（§3 强制条件③ InvoiceFees 接口）、`docs/plans/issue-72-user-rulings.md` R-1/R-3、ADR-0012、ADR-0014。
 
-> **执行状态注记（2026-09-25 复核，不改动以下任何设计条目）**
-> - **Task 1 probe 已在 pinned 栈运行并触发本计划写明的升级路径**：P1 FAIL（F5 被证伪——挂死窗口内 `GET /payments` 对该客户返回空数组，付款行仅落 authority DB 不可见）且 P2d FAIL（F3 收窄——gating invoice 隐藏窗口内 `retry_payment` 返回 404 `invoice_not_found`）；即 D2 结算触发链在 pinned v1.53.0 上被证伪。逐链实测见 `docs/migrations/lago/t10-payment-trigger/DECISION.md`（verdict：升级路径触发）。按 Task 1 升级条款：**Task 5+ 的实现面改动停止**，凭 t10 证据回到 spec/ADR owner 重议 T02 §5 选项；**不得实施替代猜测路径**。
-> - 不依赖 P2 结论的 Task 2（seam additive）、Task 3（fake 语义）、Task 4（InvoiceFees finalized 读）已按本计划落地（提交 66ab920cc/1cf072701/782e316da）；`lago_settlement.go` 不存在（Task 5 未实施，与升级纪律一致）。
-> - 集成基线勘误见 Ledger「集成基线（2026-09-25 勘误）」：本分支基于 7a665bb57（其时点即集成分支 tip），集成分支此后推进至 900041bb05（+4 个 #81 OCR 修复提交）；重入集成前需 rebase 并适配 lago.go 的 R1-24 测试缝与 `StripePmToken==""` 跳过轮询语义。
+> **执行状态注记与计划处置声明（2026-09-25，第 2 轮审查后定稿；本节为计划正文的最高优先级约束）**
+>
+> **1. D2 结算触发链已在 pinned v1.53.0 上被证伪，Task 5-10 冻结为设计存档，禁止执行。** Task 1 probe 在 pinned 栈实跑：P1 FAIL（F5 被证伪——挂死窗口内 `GET /payments?external_customer_id=` 返回 `payments: []`，付款行仅落 authority DB 不可见）且 P2d FAIL（F3 收窄——gating invoice 隐藏窗口内 `POST /invoices/{id}/retry_payment` 返回 404 `invoice_not_found`，另两次 pm 重导轮询 31 次耗尽不产生导入）。逐链实录见 `docs/migrations/lago/t10-payment-trigger/DECISION.md`（verdict："The D2 settlement-trigger chain is FALSIFIED on the pinned stack"）与 `t10-payment-probe-p1.json`/`t10-trigger-p2.json`。按 Task 1 升级条款：**Task 5 及其后全部实现面改动停止，不得实施替代猜测路径**。Task 5-10 正文与「真实流程验证方案」第 5-8 步按原 D2 机制写成，现全部标记【冻结——设计存档】，仅作重议输入，任何执行者不得按其施工；各节标题处有同款标记。
+>
+> **2. 本票在当前形态下的结论（诚实账面）。** 已落地且不受证伪影响：Task 2（seam additive：settle 命令与钱包身份，66ab920cc）、Task 3（fake 确定性语义，1cf072701）、Task 4（InvoiceFees finalized 读，782e316da）、Task 1 probe 证据（t10）。**Issue #82 四条正式 AC（gh issue view 82 实取：三态呈现/同步返回页不确认/不重复履约/真实沙箱证据四对象关联）在重议裁决前均无法经本计划达成**——激活后半链（AC1 后半、AC3 的 authority 侧防线、AC4 的四对象关联、GC-3 的受支持触发器）全部依赖被证伪的 D2 机制。追踪矩阵已按 AC1-AC4 重编并逐条标注受阻状态（见「验收标准 → Task → 测试 追踪矩阵」节）。
+>
+> **3. 批准前置条件。** 本计划须经 spec/ADR owner 完成 T02 §5 选项重议（t10 DECISION.md 已列为升级输入）并产出修订版计划（替换 D2 与 Task 5-10）后，方可批准执行被冻结部分。修订版计划产出前，本文件 Task 1-4 的已完成内容与 t10 证据即为 #82 的当前可交付全集。
+>
+> **4. 不受冻结影响的独立面（仅此一项可继续）。** Task 7 内的 AC2 渠道面 pin 测试 `TestSyncReturnCannotConfirmPurchase`（`internal/modules/commercial/payment/alipay_test.go`）只 pin 既有渠道语义（`VerifySyncReturn` 恒返 `ErrAlipaySyncReturn`，alipay.go:340-342），不依赖任何 authority 机制，保持可执行；其测试骨架已于本轮按真实 helper 名修订（见 Task 7 Step 1）。
 
 ---
 
@@ -34,9 +39,9 @@
 
 - **F1（运行时，t02-activation.json observed）**：gated 订阅在 provider 扣款成功后 → `subscription_status: active`、恰好 1 个 `succeeded` provider payment（`provider_payment_id: pi_…`）、invoice `finalized`+编号+`payment_status: succeeded`、entitlements 200、`totals_match`。激活由 authority 自身 worker 异步驱动，无需任何 WeKnora 侧 API 调用去"登记"付款。
 - **F2（运行时，t02-duplicates.json responses.retry_payment）**：对已支付 invoice `POST /api/v1/invoices/{lago_id}/retry_payment` → HTTP 405 `{"code":"invalid_status","error":"Method Not Allowed"}`——**POST 动词路由存在**（错误体是 controller 渲染的 Lago 错误，非 Rails 路由 404），只是"已成功不可重试"。
-- **F3（源码核实，pinned `app/controllers/api/v1/invoices_controller.rb`；⚠️ 仓库内不可复核——本地无 lago-api clone，全仓 `find`/`grep 591ae900` 于 deploy/ 仅命中 wallet-semantics 的注释引用；本会话经 raw.githubusercontent 实取，运行时兜底＝Task 1 probe P2）**：`retry_payment` action 存在，调 `Invoices::Payments::RetryService.new(invoice:, payment_method_params: retry_payment_params[:payment_method]).call`，成功 `head(:ok)`；`retry_payment_params` 允许 `payment_method: {payment_method_type, payment_method_id}`。
+- **F3（源码核实，pinned `app/controllers/api/v1/invoices_controller.rb`；⚠️ 仓库内不可复核——本地无 lago-api clone，全仓 `find`/`grep 591ae900` 于 deploy/ 仅命中 wallet-semantics 的注释引用；本会话经 raw.githubusercontent 实取，运行时兜底＝Task 1 probe P2）**：`retry_payment` action 存在，调 `Invoices::Payments::RetryService.new(invoice:, payment_method_params: retry_payment_params[:payment_method]).call`，成功 `head(:ok)`；`retry_payment_params` 允许 `payment_method: {payment_method_type, payment_method_id}`。**【t10 运行时收窄】gating invoice 隐藏窗口内实调返回 404 `invoice_not_found`（t10-trigger-p2.json）——源码核实成立但运行时前置（发票可见性）不成立，本条不可作为激活触发依据。**
 - **F4（源码核实，pinned `app/services/invoices/payments/retry_service.rb`；⚠️ 同 F3 仓库内不可复核，运行时兜底＝Task 1 probe P2/P3）**：retry 对 draft/voided/已 succeeded 支付的 invoice 拒绝；`ready_for_payment_processing?` 为假（正在处理中）时拒绝（`payment_processor_is_currently_handling_payment`）；否则 enqueue `Invoices::Payments::CreateService.call_async(invoice:, payment_method_params:)`——与 gated 创建时自动扣款是**同一服务**，用当前解析到的 provider 默认支付方式发起新收款尝试。
-- **F5（源码核实，pinned `app/serializers/v1/payment_serializer.rb`）**：Payment API 对象渲染 `lago_id`、`invoice_ids`（payable 为 invoice 时是含该 invoice lago_id 的数组）、`lago_payable_id`/`payable_type`、`status`、`payment_status`、`provider_payment_id`、`payment_provider_code`。`GET /api/v1/payments?external_customer_id=` **不做 visible 过滤**（lab `phases.py:287-306,638-642` 实测列出过非 succeeded 付款）——产品代码可从挂死的付款行拿到不可见 gating invoice 的 lago_id（open invoice 本身对全部 API 不可见，t09 F3-F5）。
+- **F5（源码核实，pinned `app/serializers/v1/payment_serializer.rb`）**：Payment API 对象渲染 `lago_id`、`invoice_ids`（payable 为 invoice 时是含该 invoice lago_id 的数组）、`lago_payable_id`/`payable_type`、`status`、`payment_status`、`provider_payment_id`、`payment_provider_code`。`GET /api/v1/payments?external_customer_id=` **不做 visible 过滤**（lab `phases.py:287-306,638-642` 实测列出过非 succeeded 付款）——产品代码可从挂死的付款行拿到不可见 gating invoice 的 lago_id（open invoice 本身对全部 API 不可见，t09 F3-F5）。**【t10 运行时证伪】P1 实测：挂死窗口内该端点对该客户返回 `payments: []`，付款行仅落 authority DB（failed/canceled）不可见（t10-payment-probe-p1.json）——本条整段作废，不得据其设计读取路径。**
 - **F6（源码核实，pinned `app/serializers/v1/invoice_serializer.rb` + `fee_serializer.rb`；⚠️ 同 F3 仓库内不可复核，运行时兜底＝Task 1 probe P2 的留档响应 + Task 9 集成测试的真实读断言）**：invoice 对象渲染 `lago_id/number/invoice_type/status/payment_status/total_amount_cents` 与 `fees` 集合；每个 fee 渲染 `item{type,code,name,…}`、`amount_cents`、`amount_currency`、`units`、`payment_status`——**v1.53 fee 顶层没有 `fee_type` 字段，费目类型在 `item.type`**（订阅费 = `"subscription"`）。
 - **F7（运行时，#81 flow evidence `README.md` 环境表第 15 行）**：`pm_card_threeDSecure2Required` 作 authority 结算凭据时收款停 `requires_action`、Lago payment=processing、gating invoice 保持 open、订阅保持 incomplete——**稳定待付款窗口**；`timeout_hours:0` 下订阅不因首扣失败自取消（t02-decline：`canceled(payment_failed)` 仅在非零超时的整点 job 后出现）。
 - **F8（运行时，lab customer A/B 对照 + `phase_retries`）**：3DS 卡的挂死收款最终走向终态（invoice closed/failed），期间 `retry_payment` 因 `ready_for_payment_processing?` 可能被拒——**"先取消挂死的 provider 意图再 retry"是本计划的 probe 验证点 P2**（见 Task 1）。
@@ -50,7 +55,7 @@
 ## 设计决策记录（本计划定稿，执行者按此实现）
 
 - **D1 并存口径（R-1 的 #82 细化）**：支付宝渠道是**收款事实**通道（spec L123，WeKnora 拥有请求/验签/查询/关单）；Lago Payment 是**激活结算事实**，由受支持 provider 集成（Stripe）在 authority 内部创建（F1/F9）。两者由 WeKnora 协调层关联：可信渠道付款事实（ConfirmPayment 落账 + outbox 事件）→ `settle_purchase_payment` 命令触发 provider 轨道结算 → 观察 purchase 快照 active 才开放履约。**订单创建时的 gated create 不动**（F10）。
-- **D2 激活触发机制**：订单时结算是凭据是**非结算 pm**（默认 `WEKNORA_COMMERCIAL_STRIPE_PM_TOKEN`，#81 已接线，验证环境用 3DS 必验卡造成 F7 稳定待付款窗口）；付款确认后 `settle_purchase_payment` 用**结算 pm**（新配置 `WEKNORA_COMMERCIAL_STRIPE_SETTLE_PM_TOKEN`，如 `pm_card_visa` 类即结算测试卡）走 provider API attach+默认 → 等 Lago 导入 → 对 gating invoice `POST retry_payment`（F3/F4）。该机制的三个未决链接（挂死付款行的 invoice_ids 字段、intent 取消解锁 `ready_for_payment_processing?`、retry 用新默认 pm 结算）由 **Task 1 probe 在 pinned 栈上实证**；若 P2 被证伪 → 按「升级路径」小节escalate，不实施替代猜测路径。
+- **D2 激活触发机制【已被 t10 证伪——保留原文仅作重议输入，禁止据此实现】**：订单时结算是凭据是**非结算 pm**（默认 `WEKNORA_COMMERCIAL_STRIPE_PM_TOKEN`，#81 已接线，验证环境用 3DS 必验卡造成 F7 稳定待付款窗口）；付款确认后 `settle_purchase_payment` 用**结算 pm**（新配置 `WEKNORA_COMMERCIAL_STRIPE_SETTLE_PM_TOKEN`，如 `pm_card_visa` 类即结算测试卡）走 provider API attach+默认 → 等 Lago 导入 → 对 gating invoice `POST retry_payment`（F3/F4）。该机制的三个未决链接由 Task 1 probe 在 pinned 栈实证——**实测结果：P1 FAIL（payment 行不可见，D2 的发票定位步骤无输入）+ P2c 不触发（pm 重导不发生）+ P2d FAIL（retry 404 invoice_not_found），全链证伪（t10 DECISION.md）**；按升级条款回到 T02 §5 选项重议，不实施替代猜测路径。
 - **D3 产品三态**：`paid_awaiting_activation` 是**协调层合成态**（本地订单 paid + authority 快照非 active），不是 authority 真值。常量落点唯一：**seam 包 `internal/modules/commercial/purchase_command.go`**（`PurchaseState*` 权威集同区，purchase_command.go:106-117 之后），注释注明"coordinator-composed（订单 paid + authority 非 active），永不来自 authority 观察"；`service/commercial/purchase.go` 仅消费该常量（经既有 `domain.` 别名）。seam 的 authority 观察集不变——`readPurchaseSnapshot` 永不产出该值。authority canceled + 本地 paid = `canceled` 呈现 + fulfillment attention（异常付款面留给 #84，本票只保证不扩大权益）。
 - **D4 套餐首期 Credits 发放身份**：命令键 `GrantCreditsCommandKey(ExternalPurchaseSubscriptionID(t), period)`（独立键族）；钱包名 `PurchaseWalletName(t) = ExternalPurchaseSubscriptionID(t)+"-"+period`；钱包 meta 写 `tenant` + 新键 `purchase_period`（**不写** `period` 键，F11 防撞 Base 批次；benefits 快照把它计入余额、不计入月度批次——批次分解是 #86 面）。`GrantIncludedCreditsPayload` additive 新增可选 `WalletName string`（空 = 现行 `MonthlyWalletName`，全部既有调用零改动）。
 - **D5 旧 gateway 路由**：`FulfillmentService.fulfillEvent` 对 `row.Kind == OrderKindPurchase` 分流到注入的 `*PurchaseFulfiller`（构造参数新增，container 与测试显式传 nil/实例）；top-up/upgrade 等既有路径一行不动。
@@ -61,7 +66,7 @@
 
 1. **重复回调中第二笔不同交易号的成功付款**（用户连刷两次付款）：第一笔赢得 fulfill 权，第二笔只入 over_payment 审计事件、绝不二次履约——归属 Task 7 `TestPurchaseFulfillOverPaymentNoSecondBenefit`。
 2. **settle 命令在 authority 已 active 后的迟到重放**（响应丢失 + outbox 重放叠加）：必须零副作用返回同一回执，不得再 attach pm / 再 retry——归属 Task 5 `TestLagoSettleAlreadyActiveNoOutbound`。
-3. **同步返回页与一切未验签入口**：`VerifySyncReturn` 恒返 `ErrAlipaySyncReturn`（alipay.go:330-332），任何伪造"已付"查询串不得推进状态——归属 Task 7 `TestSyncReturnCannotConfirmPurchase`。
+3. **同步返回页与一切未验签入口**：`VerifySyncReturn` 恒返 `ErrAlipaySyncReturn`（alipay.go:340-342，注释 :336-339），任何伪造"已付"查询串不得推进状态——归属 Task 7 `TestSyncReturnCannotConfirmPurchase`（该 pin 不依赖被冻结的 Task 5-7 编排面，可执行，见头部注记第 4 条）。
 4. **settle 执行到一半进程崩溃**（pm 已切换、retry 未发）：下一轮 Recover 重放必须收敛到同一终态且不产生第二张 payment 行——归属 Task 1 probe P3 + Task 7 `TestPurchaseFulfillCrashReplayConverges`。
 5. **authority 已取消（canceled）却收到渠道成功付款**（超时边界竞态）：订单已付但权益永不开放，状态诚实呈现 canceled、记录 attention，不伪造生效——归属 Task 7 `TestPurchaseFulfillCanceledStaysClosed`。
 6. **Base 批次与套餐批次同周期并存**：Base 月度 grant 的重放不得因套餐 wallet 存在而 content-conflict——归属 Task 3 `TestFakeGrantPurchaseWalletNoMonthlyCollision` + Task 6 契约腿。
@@ -275,7 +280,7 @@ func TestFakeSettlePurchasePayment(t *testing.T) {
 ### Task 4: Lago 适配器——readPurchaseInvoiceFees finalized 阶段真实读取（T09 强制条件③）
 
 **Files:**
-- Modify: `internal/modules/commercial/commercialplatform/lago_purchase.go:481-486`（替换占位实现）
+- Modify: `internal/modules/commercial/commercialplatform/lago_purchase.go`（原引 :481-486 占位——**该 Task 已执行完毕**：占位已被真实实现替换，`readPurchaseInvoiceFees` 现位于 :489 起，404 归入空语义）
 - Test: `internal/modules/commercial/commercialplatform/lago_purchase_test.go`（追加 stub 腿）
 
 **Interfaces:**
@@ -320,18 +325,18 @@ func TestLagoReadPurchaseInvoiceFees(t *testing.T) {
 
 （stub 若与既有 `purchaseStub` 结构不合，允许就地构造独立 `httptest.Server`——以既有测试文件实际形状为准，断言不动。）
 - [ ] **Step 2: 跑失败**。Run: `go test ./internal/modules/commercial/commercialplatform/ -count=1 -run TestLagoReadPurchaseInvoiceFees -v` → FAIL（占位实现恒返回 nil, nil）。
-- [ ] **Step 3: 实现**（替换 lago_purchase.go:481-486 占位；JSON 解析结构体按 F6 键名；`item.type` 缺失的 fee 记 `Kind:"unknown"` 并继续——复核判据只认 `subscription`）。
+- [ ] **Step 3: 实现**（替换 lago_purchase.go 原 :481-486 占位——【已执行】真实实现落于 :489 起；JSON 解析结构体按 F6 键名；`item.type` 缺失的 fee 记 `Kind:"unknown"` 并继续——复核判据只认 `subscription`）。
 - [ ] **Step 4: 跑绿**（同 Step 2）+ 快照回归 `go test ./internal/modules/commercial/commercialplatform/ -count=1 -run TestLagoPurchase -v` → ok（既有 active 快照用例的 InvoiceFees 空断言若依赖 stub 无 invoices 端点会得到 404 → 实现为 4xx→ErrPlatformInvalidResponse 会破坏既有用例；处理：invoices 端点 404 视为"无可见 invoice"返回空——把非 500 的 404 归入空语义，其余 4xx 仍 invalid_response，注释写明 v1.53.0 无该客户时 404 的边界）。
 - [ ] **Step 5: 提交** `git commit -m "issue-82(lago): finalized-stage purchase invoice fees read (T09 condition 3)"`
 
-### Task 5: Lago 适配器——settle_purchase_payment（provider 轨道触发，D2）
+### Task 5: Lago 适配器——settle_purchase_payment（provider 轨道触发，D2）【冻结——设计存档，禁止执行：D2 已被 t10 证伪，待 T02 §5 重议裁决后由修订版计划替换】
 
 **Files:**
 - Create: `internal/modules/commercial/commercialplatform/lago_settlement.go`、`internal/modules/commercial/commercialplatform/lago_settlement_test.go`
 - Modify: `internal/modules/commercial/commercialplatform/lago.go`（SubmitCommand 分发，lago.go:147-163 处加 case）、`internal/modules/commercial/commercialplatform/config.go`（`EnvStripeSettlePmToken = "WEKNORA_COMMERCIAL_STRIPE_SETTLE_PM" + "_TOKEN"`，Config 增 `StripeSettlePmToken string`，ConfigFromEnv 读取）
 
 **Interfaces:**
-- Consumes: Task 2 类型；`validateOutboundHost`/`providerOutboundCall`/`providerAttachDefaultPaymentMethod`（lago_purchase.go:69,167-180,549-617）；`readSubscriptionByIdentity`（lago.go:650）；F3-F5 契约；Task 1 的 P1-P4 实测结论。
+- Consumes: Task 2 类型；`validateOutboundHost`/`providerOutboundCall`/`providerAttachDefaultPaymentMethod`（lago_purchase.go:69,167-180 及 :619、:654——第 2 轮审查勘误，原引 :549-617 已漂移）；`readSubscriptionByIdentity`（lago.go:650）；F3-F5 契约；Task 1 的 P1-P4 实测结论（**P1/P2d 已 FAIL，本 Task 整体冻结**）。
 - Produces: `func (a *LagoAdapter) settlePurchasePayment(ctx context.Context, cmd commercial.Command) (commercial.CommandReceipt, error)`，算法（每步 fail-closed 语义与文件头契约一致）：
   1. `configured()` + payload 校验 + `purchaseRequestTimeout` 预算；
   2. 身份读订阅（显式 status 集）：`active` → 零出站回执（Review Focus 2）；`canceled/terminated` → `ErrPlatformInvalidResponse`；缺席 → `ErrPlatformInvalidResponse`；
@@ -419,7 +424,7 @@ func TestLagoSettleUnconfiguredFailsClosed(t *testing.T) {
 - [ ] **Step 4: 跑绿**（同 Step 2）+ `go test ./internal/modules/commercial/commercialplatform/ -count=1` 全绿 + `go run ./tools/architectureguard`（Makefile:255 同款）守卫模块边界 → 通过。
 - [ ] **Step 5: 提交** `git commit -m "issue-82(lago): settle_purchase_payment via supported provider rails"`
 
-### Task 6: 双适配器共享契约腿（contract_test.go）
+### Task 6: 双适配器共享契约腿（contract_test.go）【冻结——设计存档，禁止执行：消费 Task 5 的 settle 面，随 D2 重议一并处置】
 
 **Files:**
 - Modify: `internal/modules/commercial/commercialplatform/contract_test.go`
@@ -478,7 +483,7 @@ grant+WalletName 腿并入 `runGrantContract` 风格的追加断言（contract_t
 - [ ] **Step 2: 跑**。Run: `go test ./internal/modules/commercial/commercialplatform/ -count=1 -run TestContract -v` → Expected: FAIL（legs 未全实现/lago stub 缺端点）→ 补 stub 后 PASS。
 - [ ] **Step 3: 全包回归 + 提交**。Run: `go test ./internal/modules/commercial/commercialplatform/ -count=1` → ok。`git commit -m "issue-82(contract): settle + purchase grant shared contract legs"`
 
-### Task 7: 服务编排——PurchaseFulfiller、purchase 路由与三态产品状态
+### Task 7: 服务编排——PurchaseFulfiller、purchase 路由与三态产品状态【冻结——设计存档，除 Step 1 末尾的 AC2 渠道面 pin 测试外禁止执行：Fulfill 编排消费被证伪的 settle 面；AC2 pin 只依赖既有渠道语义（头部注记第 4 条）】
 
 **Files:**
 - Create: `internal/modules/commercial/service/commercial/purchase_fulfillment.go`、`purchase_fulfillment_test.go`
@@ -609,23 +614,23 @@ func TestPurchaseFulfillLineMismatchRefused(t *testing.T) {
 }
 ```
 
-`TestSyncReturnCannotConfirmPurchase` 落在 `internal/modules/commercial/payment/alipay_test.go`（AC2 渠道面 pin）：
+`TestSyncReturnCannotConfirmPurchase` 落在 `internal/modules/commercial/payment/alipay_test.go`（AC2 渠道面 pin；**不依赖被冻结的 Task 5-7 编排面，本测试保持可执行**——头部注记第 4 条）。第 2 轮审查勘误：包内**不存在** `newAlipayProviderForTest`/`signedReturnHeader`/`signedReturnBody`（grep 零命中）；既有构造是 `alipayNotifyFixture(t)`（alipay_test.go:59），且该文件已有几乎同义的 `TestAlipaySyncReturnNeverConfirms`（alipay_test.go:228-235，仅断言 `err==nil` 与 fact 零值，**未 pin 哨兵**）。本测试的增量价值因此只有一条：把失败模式 pin 到 `ErrAlipaySyncReturn` 哨兵本身（防止未来实现改成泛化错误导致调用方无法区分"同步返回不可信"与"渠道故障"）：
 
 ```go
+// alipay_test.go 追加（与既有 TestAlipaySyncReturnNeverConfirms 并列）：
+// pin the SENTINEL, not just failure (incremental over :228-235).
 func TestSyncReturnCannotConfirmPurchase(t *testing.T) {
-	p := newAlipayProviderForTest(t) // 包内既有构造方式（alipay_test.go 现有 helper）
-	// 同步返回串（真实签名）：走 VerifySyncReturn 必须恒 ErrAlipaySyncReturn
-	// 且零 PaymentFact——同步通道永不确认付款（alipay.go:330-332 既有语义在
-	// 购买语境下的回归 pin）
-	fact, err := p.VerifySyncReturn(context.Background(),
-		signedReturnHeader(t), signedReturnBody(t))
+	p, _, _ := alipayNotifyFixture(t) // 包内既有构造，alipay_test.go:59
+	fact, err := p.VerifySyncReturn(context.Background(), http.Header{},
+		[]byte("out_trade_no=out-1&trade_no=trade-1"))
 	if !errors.Is(err, ErrAlipaySyncReturn) || fact != (commercial.PaymentFact{}) {
-		t.Fatalf("sync return must never confirm: fact=%+v err=%v", fact, err)
+		t.Fatalf("sync return must fail with the dedicated sentinel: fact=%+v err=%v",
+			fact, err)
 	}
 }
 ```
 
-（`signedReturnHeader/Body` 用包内既有签名 fixture 拼装；若该文件已无对应 helper，则用 `TestAlipay*` 现有用例的 payload 构造段复刻，断言不变。）
+（payload 用既有 `TestAlipaySyncReturnNeverConfirms` 同款字面量查询串——同步通道本就不验签，无需签名 fixture；`errors`/`http` import 按包既有测试文件惯例补全。）
 
 - [ ] **Step 2: 跑失败**（RED 分两步）：
 
@@ -639,7 +644,7 @@ Expected: 编译错 `undefined: TestSyncReturnCannotConfirmPurchase`（该测试
 - [ ] **Step 4: 跑绿**（同 Step 2 两条命令）→ PASS；回归 `go test ./internal/modules/commercial/service/commercial/... -count=1`、`go test ./internal/modules/commercial/payment/ -count=1` 与 `go test ./internal/handler/... -count=1 -run Commercial` → ok（既有 fulfillment gateway 用例不受校验放宽影响）。
 - [ ] **Step 5: 提交** `git commit -m "issue-82(service): purchase fulfillment orchestration + paid_awaiting_activation state"`
 
-### Task 8: 契约与前端三态呈现
+### Task 8: 契约与前端三态呈现【冻结——设计存档，禁止执行：三态的激活出口路径在 D2 证伪后无裁决依据，先行放开会造成只有入口没有出口的产品态】
 
 **Files:**
 - Modify: `packages/contracts/src/commercial.ts:177-204`（`PurchaseView.state` 联合与 `PURCHASE_STATES` 增 `'paid_awaiting_activation'`）
@@ -665,7 +670,7 @@ it('accepts paid_awaiting_activation and rejects unknown purchase states', () =>
 - [ ] **Step 4: 跑绿**。Run: `pnpm test:shared && pnpm --filter @weknora/web test 2>&1 | tail -3` → 全 PASS；`pnpm typecheck:shared && pnpm typecheck:web` → 零错误。
 - [ ] **Step 5: 提交** `git commit -m "issue-82(web): paid_awaiting_activation product state across contracts and pages"`
 
-### Task 9: 真实栈集成测试（lago_integration build tag）
+### Task 9: 真实栈集成测试（lago_integration build tag）【冻结——设计存档，禁止执行：验证对象即被证伪的 settle→active 全链】
 
 **Files:**
 - Create: `internal/modules/commercial/commercialplatform/lago_settlement_integration_test.go`
@@ -676,7 +681,7 @@ it('accepts paid_awaiting_activation and rejects unknown purchase states', () =>
 
 ```
 阶段 1（AC1 前置）：真实 gated create（StripePmToken=3DS 必验卡）→ 快照 awaiting_payment；
-阶段 2（AC5）：提交 settle_purchase_payment（ChannelTransactionID="it-txn-1"）→ 轮询快照
+阶段 2（GC-3，重编前旧号 AC5）：提交 settle_purchase_payment（ChannelTransactionID="it-txn-1"）→ 轮询快照
         （显式 status 集，10s×24 次）到 active；期间断言快照 active 后 InvoiceFees
         恰 1 条 subscription 行且 AmountFen==创建金额（D6 在真实 authority 上的成立）；
 阶段 3（AC4/AC3）：同 Key 重放 settle → 回执一致、零新增对象；grant 命令（购买钱包名）
@@ -689,7 +694,7 @@ it('accepts paid_awaiting_activation and rejects unknown purchase states', () =>
 - [ ] **Step 3: 有栈运行**（Task 10 的 lab 栈起好后，env 指向 :48895）：Expected: PASS（真实结算证据，输出附 Lago payment provider_payment_id）。
 - [ ] **Step 4: 提交** `git commit -m "issue-82(integration): real-Lago settlement chain evidence test"`
 
-### Task 10: 真实流程验证、证据、文档、Ledger、收尾提交
+### Task 10: 真实流程验证、证据、文档、Ledger、收尾提交【冻结——设计存档，仅「真实流程验证方案」第 1-4 步（已落地能力面）可执行留证，第 5-8 步与收尾提交待修订版计划】
 
 **Files:**
 - Create: `docs/plans/issue-72-flow-evidence-82/`（README.md + 截图 + API/Lago 留档 + `alipay_sandbox_notify.py`）
@@ -709,16 +714,18 @@ git commit -m "issue-82(#82): alipay settlement exactly-once activation — flow
 
 ---
 
-## 验收标准 → Task → 测试 追踪矩阵
+## 验收标准 → Task → 测试 追踪矩阵（第 2 轮审查后重编）
 
-| Issue #82 验收标准 | Task | 测试（命令可跑） |
-|---|---|---|
-| AC1 状态依次呈现待付款→已付款待激活→已生效 | Task 7、8 | `TestPurchaseStatusPaidAwaitingActivation`（service 包）；`commercial.test.ts` parse 新态；BillingPage 文案单测 |
-| AC2 同步返回页不能确认付款，只有可信渠道事实可推进 | Task 7 | `TestSyncReturnCannotConfirmPurchase`（payment/alipay_test.go，Task 7 Step 2 第二条 Run 命令执行）；`TestPurchaseFulfillCanceledStaysClosed` |
-| AC3 重复回调、Outbox 重放与响应丢失不重复履约 | Task 3、5、7、9 | `TestFakeSettlePurchasePayment`（重放分支）；`TestLagoSettleAlreadyActiveNoOutbound`；`TestPurchaseFulfillExactlyOnce`；`TestPurchaseFulfillOverPaymentNoSecondBenefit`；`TestPurchaseFulfillCrashReplayConverges`（Task 7 Step 1 定义、Step 4 命令执行）；集成测试阶段 3 |
-| AC4 真实支付宝沙箱证据关联 Invoice/Payment/Subscription/Credits | Task 1、9、10 | probe P1/P2 证据（t10）；集成测试；flow evidence README 断言表（Lago API+DB 四对象关联留档）。**残余风险**：支付宝沙箱凭据不可用时降级为签名 notify 替身——该情形 AC4 不宣称达成，见「真实流程验证方案·通过判据」 |
-| AC5 受支持通道记录 Payment；禁止本地强制 active（spec L125） | Task 5、6、10 | `TestLagoSettlePurchasePaymentHappyPath`（断言只调 provider/Lago 受支持端点）；契约 settle leg；红线 grep（Task 10 Step 2）；architectureguard |
-| Review Focus 1-6 | Task 3、5、7、9 | 见「Review Focus」各行归属 |
+编号勘误（第 2 轮审查·low）：`gh issue view 82 --repo 1123786563/WeKnora-fork01` 实取 Acceptance criteria 共 **4 条**；原矩阵的"AC5 受支持通道记录 Payment"实为 Global Constraint 3（spec L125）的派生约束，非 issue 正文条目，现改列 **GC-3**，不再与正式 AC 混排。**现状列含义**：✅=已落地可验证；⛔=被 t10 证伪阻断（Task 5-10 冻结），待 T02 §5 重议裁决后的修订版计划承接——任何执行者不得宣称 ⛔ 行达成。
+
+| Issue #82 正式 AC（实取原文摘要） | Task | 测试（命令可跑） | 现状 |
+|---|---|---|---|
+| AC1 状态依次呈现待付款、已付款待激活、已生效 | 前置：Task 2-4（已落地）；后半：Task 7、8（冻结） | `TestPurchaseStatusPaidAwaitingActivation`（service 包，冻结）；`commercial.test.ts` parse 新态（冻结）；BillingPage 文案单测（冻结） | ⛔ 三态的激活出口依赖被证伪的 D2；「待付款→已付款待激活」前半的读侧素材（InvoiceFees/快照）已落地 |
+| AC2 同步返回页不能确认付款，只有可信渠道事实可推进流程 | Task 7 内 AC2 pin（**不受冻结影响**）；渠道语义既有 | `TestSyncReturnCannotConfirmPurchase`（payment/alipay_test.go，骨架已按真实 helper 修订，可执行）；`TestAlipaySyncReturnNeverConfirms`（既有 :228-235）；`TestPurchaseFulfillCanceledStaysClosed`（冻结） | ✅ 渠道层语义既有且 pin 测试可执行；消费侧闭环（履约推进）仍 ⛔ |
+| AC3 重复回调、Outbox 重放与响应丢失不重复履约 | 渠道层+fake：Task 3（已落地）；authority 侧防线：Task 5、7、9（冻结） | `TestFakeSettlePurchasePayment`（重放分支，已落地）；`TestLagoSettleAlreadyActiveNoOutbound`（冻结）；`TestPurchaseFulfillExactlyOnce`/`TestPurchaseFulfillOverPaymentNoSecondBenefit`/`TestPurchaseFulfillCrashReplayConverges`（冻结）；集成测试阶段 3（冻结） | ⛔ 渠道幂等与 fake 重放语义已落地；authority 侧「恰好一次」防线（唯一 pending payment 索引路径）即 t10 证伪标的 |
+| AC4 真实支付宝沙箱证据关联 Invoice、Payment、Subscription 和 Credits | Task 1（probe 已执行）、9、10 | probe P1/P2 证据（t10，**verdict=FAIL**）；集成测试（冻结）；flow evidence README 断言表（冻结）。沙箱凭据缺席时 failures 记 `ac4-sandbox-credentials-unavailable`，不写达成 | ⛔ 四对象关联证据依赖激活链；t10 已产出的是证伪证据而非达成证据 |
+| GC-3（spec L125 派生约束）只有受支持的 Lago 外部付款集成可记录 Payment；manual Payment 不能释放激活规则时必须换受支持 Provider 适配器，禁止本地强制 active | 排除性证据：F9/F14（既有）；正面通道：Task 5、6（冻结） | `TestLagoSettlePurchasePaymentHappyPath`（冻结，断言只调受支持端点）；契约 settle leg（冻结）；红线 grep 与 architectureguard（Task 10 Step 2，冻结） | ⛔ 本行正是 T02 §5 重议标的：pinned Community v1.53.0 上受支持触发器缺席（t10 实测 404 `invoice_not_found`） |
+| Review Focus 1-6 | Task 3、5、7、9 | 见「Review Focus」各行归属 | 同上各行，随归属 Task 的冻结状态 |
 
 ## Spec 行为矩阵覆盖对照（#82 分片）
 
@@ -734,6 +741,8 @@ git commit -m "issue-82(#82): alipay settlement exactly-once activation — flow
 - 本地/authority 数据库直写的一切形式（含"修状态"式运维脚本）。
 
 ## 真实流程验证方案（真实环境端到端，集成分支/worktree 构建运行）
+
+> **【冻结标注（第 2 轮审查）】本方案第 5-8 步依赖被证伪的 D2 激活链（Task 5-7 冻结），在 T02 §5 重议裁决并产出修订版计划前不可执行、不可宣称达成。** 仅第 1-4 步（登录/发布/下单/回调入账+「已付款待激活」呈现）验证的是**已落地能力**（#81 交付 + 本计划 Task 2-4 + 既有渠道语义），可在无裁决情形下执行留证，但其结论只能是「部分面证据」，不得作为 AC1/AC3/AC4 的达成证据（AC4 的四对象关联证据需要激活，属第 5-6 步）。第 5-8 步原文保留为修订版计划的重议输入。
 
 **环境拓扑（全部端口避开 :5272/:5273；:8080 本会话实测已被占，:8084/:8091/:5183 为其他会话与 #81 遗留，:48889-48892 为 operator 栈与 #74 lab）**
 
@@ -754,11 +763,11 @@ git commit -m "issue-82(#82): alipay settlement exactly-once activation — flow
 3. **支付宝沙箱下单**：`POST /api/v1/commercial/purchases` provider=alipay → 响应 `checkout_url` 为沙箱 precreate 返回的真实二维码串；有沙箱钱包则真机扫码付款（截图 `02-alipay-qr.png`）。留档 `api-03-purchase-alipay.json`。**残余风险披露（AC4）**：支付宝沙箱凭据（ALIPAY_*）的可用性未在本计划编写会话证实——凭据缺席时第 3-4 步降级为「真实 precreate（或 precreate 亦不可用时的本地构造）+ 与渠道同源签名链路构造的 notify」，该替身只能证明"渠道验签→履约"链路，**不构成真实沙箱钱包付款证据**；此情形下 AC4 不得宣称达成：failures 节必须记录 `ac4-sandbox-credentials-unavailable`，收尾报告如实披露，由编排层裁决补验或带残余合并。
 4. **可信异步回调（AC2）**：同步返回页/GET 断言**不变**（仍待付款，权益未开放——截图 `03-sync-return-no-confirmation.png`）；随后以沙箱密钥用与渠道一致的签名链路构造 trade_status=TRADE_SUCCESS 的 notify（`alipay_sandbox_notify.py`，签名代码路径与 `payment/alipay_sandbox_test.go` 同源）POST 到 `http://127.0.0.1:8092/api/v1/commercial/callbacks/alipay` → 断言响应体恰为 `success`；重复 POST 同一 notify → 仍 `success` 且订单/事件计数不变（AC3 渠道层）。留档 `callback-01-first.txt`/`callback-02-replay.txt`。
 5. **已付款待激活（AC1 中态）**：`GET /api/v1/commercial/purchase` → `state=="paid_awaiting_activation"`；浏览器 Billing 页套餐行呈「已付款待激活（权益未开放）」（截图 `04-billing-paid-awaiting.png`）；此时 entitlements 探针仍 404（权益未开放）。
-6. **恰好一次激活（AC1 后半 + AC5）**：fulfillment 轮询内 settle 触发 provider 轨道 → 120s 内 `GET /purchase` 变 `active`；Billing 呈「已生效」+ 套餐 Credits 余额出现（截图 `05-billing-active-credits.png`）；Lago 侧四对象关联留档 `lago-after-settlement.txt`：API 读 payments（`provider_payment_id`、`invoice_ids`）+ 订阅 active + invoice finalized/编号/`payment_status: succeeded` + customer wallets（购买钱包 `weknora-tenant-<t>-purchase-<period>`）+ entitlements 200；DB 直查 invoice/payment/wallet 行关联 ID 一致（AC4 核心证据）。
+6. **恰好一次激活（AC1 后半 + GC-3）【第 5-8 步：冻结，依赖被证伪的 D2 激活链，禁止执行】**：fulfillment 轮询内 settle 触发 provider 轨道 → 120s 内 `GET /purchase` 变 `active`；Billing 呈「已生效」+ 套餐 Credits 余额出现（截图 `05-billing-active-credits.png`）；Lago 侧四对象关联留档 `lago-after-settlement.txt`：API 读 payments（`provider_payment_id`、`invoice_ids`）+ 订阅 active + invoice finalized/编号/`payment_status: succeeded` + customer wallets（购买钱包 `weknora-tenant-<t>-purchase-<period>`）+ entitlements 200；DB 直查 invoice/payment/wallet 行关联 ID 一致（AC4 核心证据）。
 7. **重复回调/重放不重复履约（AC3 终验）**：重放 notify ×1、重启后端进程一次（Recover 全量重放）→ Lago succeeded payment 计数、购买钱包余额、本地 FulfillmentRecord 数全部不变（`idempotent-after-restart.txt`）。
 8. **负对照**：独立租户 B 下单后不付款、不回调 → 30 分钟观察窗内保持待付款且无任何 Lago 付款行（`negative-control.txt`；配合集成测试阶段 4 的 120s 负对照）。
 
-**通过判据**：上述 1-8 全部断言绿 + Task 9 集成测试在 :48895 栈 PASS + 红线自查（Task 10 Step 2）零命中 + `make test` 全绿。任何一步不绿，flow evidence README 的 failures 节如实记录，不伪造通过。**特别地：failures 含 `ac4-sandbox-credentials-unavailable` 时，本票结论只能是「其余 AC 达成 + AC4 带残余」，不得写 AC4 达成**（Issue #82 验收标准④要求真实支付宝沙箱证据）。
+**通过判据（第 2 轮审查后改写）**：原「1-8 全部断言绿」的整链判据**随 D2 证伪失效**。本版计划下有效判据为：(a) 第 1-4 步在真实栈全绿且证据入档——它证明的是「下单→可信回调入账→协调层呈现『已付款待激活』」的已落地面，failures 如实记录；(b) Task 2-4 已落地测试全绿（`go test ./internal/modules/commercial/... -count=1`）；(c) 红线自查（Task 10 Step 2 的 grep 与 architectureguard）零命中；(d) **无论 (a)-(c) 多绿，本票不得宣称 AC1/AC3/AC4/GC-3 达成**——激活链缺席，failures 节必须记 `d2-falsified-t10-p2-fail`（机制级，优先于沙箱凭据项 `ac4-sandbox-credentials-unavailable`）；本票结论只能是「已落地面达成 + 激活链受阻，待 T02 §5 重议」。任何一步不绿，flow evidence README 的 failures 节如实记录，不伪造通过。
 
 ## 执行注意事项（并行环境）
 
