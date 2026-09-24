@@ -104,25 +104,9 @@ legacy_files:
     reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
     navigation_label: Knowledgebase (application/repository)
     passb_task: B-knowledge
-  - path: internal/application/repository/semantic_model_invocation.go
-    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
-    navigation_label: Semantic model invocation (application/repository)
-    passb_task: B-knowledge
-  - path: internal/application/repository/semantic_model_policy.go
-    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
-    navigation_label: Semantic model policy (application/repository)
-    passb_task: B-knowledge
-  - path: internal/application/repository/semantic_outbox.go
-    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
-    navigation_label: Semantic outbox (application/repository)
-    passb_task: B-knowledge
-  - path: internal/application/repository/semantic_scope_epoch.go
-    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
-    navigation_label: Semantic scope epoch (application/repository)
-    passb_task: B-knowledge
-  - path: internal/application/repository/tag.go
-    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
-    navigation_label: Tag (application/repository)
+  - path: internal/application/repository/kbretrieval_passb_compat.go
+    reason: host compatibility aliases after retrieval repository files moved into module (Pass B)
+    navigation_label: Knowledge retrieval host compat (application/repository)
     passb_task: B-knowledge
   - path: internal/application/repository/wiki_page.go
     reason: trapped in horizontal repository package internal/application/repository (Pass B file split)

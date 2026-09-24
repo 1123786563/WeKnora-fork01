@@ -2,6 +2,7 @@
 
 与 `docs/architecture/moves/knowledge.yaml` 的 `legacy_files` 逐条镜像（同路径、同 Pass B 任务）。
 非测试 `.go` 文件；同目录 `_test.go` 随主题文件一并搬迁。
+标 **已迁移** 的行是已物理落位 `internal/modules/knowledge/retrieval/app/...` 的迁移轨迹记录（manifest 行已按 Ruling 2026-09-23-LEGACY-ROW-OWNERSHIP 随物理迁移 commit 删除，此镜像行保留至 ib2 收口）。
 
 | 文件 | 导航标签 | Pass B 任务 |
 |---|---|---|
@@ -12,11 +13,12 @@
 | `internal/application/repository/knowledge_tag.go` | Knowledge tag (application/repository) | `B-knowledge` |
 | `internal/application/repository/knowledge_transfer.go` | Knowledge transfer (application/repository) | `B-knowledge` |
 | `internal/application/repository/knowledgebase.go` | Knowledgebase (application/repository) | `B-knowledge` |
-| `internal/application/repository/semantic_model_invocation.go` | Semantic model invocation (application/repository) | `B-knowledge` |
-| `internal/application/repository/semantic_model_policy.go` | Semantic model policy (application/repository) | `B-knowledge` |
-| `internal/application/repository/semantic_outbox.go` | Semantic outbox (application/repository) | `B-knowledge` |
-| `internal/application/repository/semantic_scope_epoch.go` | Semantic scope epoch (application/repository) | `B-knowledge` |
-| `internal/application/repository/tag.go` | Tag (application/repository) | `B-knowledge` |
+| `internal/application/repository/kbretrieval_passb_compat.go` | Knowledge retrieval host compat (application/repository) | `B-knowledge`（K2.2 新增 compat） |
+| `internal/application/repository/semantic_model_invocation.go` | Semantic model invocation (application/repository) | `B-knowledge` — **已迁移**（K2.2 → `retrieval/app/repository/`） |
+| `internal/application/repository/semantic_model_policy.go` | Semantic model policy (application/repository) | `B-knowledge` — **已迁移**（K2.2 → `retrieval/app/repository/`） |
+| `internal/application/repository/semantic_outbox.go` | Semantic outbox (application/repository) | `B-knowledge` — **已迁移**（K2.2 → `retrieval/app/repository/`） |
+| `internal/application/repository/semantic_scope_epoch.go` | Semantic scope epoch (application/repository) | `B-knowledge` — **已迁移**（K2.2 → `retrieval/app/repository/`） |
+| `internal/application/repository/tag.go` | Tag (application/repository) | `B-knowledge` — **已迁移**（K2.2 → `retrieval/app/repository/`） |
 | `internal/application/repository/wiki_page.go` | Wiki page (application/repository) | `B-knowledge` |
 | `internal/application/service/chunk.go` | Chunk (application/service) | `B-knowledge` |
 | `internal/application/service/chunk_write.go` | Chunk write (application/service) | `B-knowledge` |

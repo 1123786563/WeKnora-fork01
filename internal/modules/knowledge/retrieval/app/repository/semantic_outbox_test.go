@@ -360,7 +360,9 @@ func newSemanticSQLiteTestDBWithPath(t *testing.T) (*gorm.DB, string) {
 	t.Helper()
 	_, file, _, ok := runtime.Caller(0)
 	require.True(t, ok)
-	root := filepath.Clean(filepath.Join(filepath.Dir(file), "../../.."))
+	// Pass B K2.2 机械适配：文件自 internal/application/repository/（根下 3 级）迁至
+	// internal/modules/knowledge/retrieval/app/repository/（根下 6 级），上跳层数 3→6。
+	root := filepath.Clean(filepath.Join(filepath.Dir(file), "../../../../../.."))
 	path := filepath.Join(t.TempDir(), "semantic.db")
 	sqlDB, err := sql.Open("sqlite3", path)
 	require.NoError(t, err)

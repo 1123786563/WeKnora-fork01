@@ -226,7 +226,9 @@ func newSemanticPostgresDB(t *testing.T) *gorm.DB {
 	require.NoError(t, err)
 	_, file, _, ok := runtime.Caller(0)
 	require.True(t, ok)
-	root := filepath.Clean(filepath.Join(filepath.Dir(file), "../../.."))
+	// Pass B K2.2 机械适配：文件自 internal/application/repository/（根下 3 级）迁至
+	// internal/modules/knowledge/retrieval/app/repository/（根下 6 级），上跳层数 3→6。
+	root := filepath.Clean(filepath.Join(filepath.Dir(file), "../../../../../.."))
 	m, err := migrate.NewWithDatabaseInstance("file://"+filepath.Join(root, "migrations/versioned"), "postgres", driver)
 	require.NoError(t, err)
 	require.NoError(t, m.Up())
