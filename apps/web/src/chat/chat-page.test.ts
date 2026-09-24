@@ -135,10 +135,15 @@ test('chat page exposes the selected agent and server-disabled state at the chat
   // 修改标题 / chatHeader.deleteSession 删除对话).
   // Vue ChatHeader.vue t-popup destroyOnClose：菜单项仅开层时渲染（ix-chat-header-menu 扫描覆盖）。
   assert.match(html, /aria-label=\"更多对话操作\"/);
-  // Sandbox drawer opened via terminalOpen: connected terminal surface.
+  // B1 SandboxSidePanel：terminalOpen 开 aside.chat-sandbox-panel（受控 tab
+  // 默认产物）；终端面惰性挂载——SSR/首帧不渲染终端内容（Vue SandboxSidePanel
+  // terminalMounted watch 同构），三 tab 入口随面板出现。
   assert.match(html, /沙箱可视化/);
-  assert.match(html, /ls/);
-  assert.match(html, /终端输入/);
+  assert.match(html, /chat-sandbox-panel/);
+  assert.match(html, />产物</);
+  assert.match(html, />终端</);
+  assert.match(html, />桌面</);
+  assert.doesNotMatch(html, /终端输入/);
   assert.match(html, /id="wk-chat-draft"[^>]*disabled=""/);
 });
 
@@ -158,7 +163,7 @@ test('sandbox terminal stays hidden until the header toggle opens the drawer', (
   assert.match(html, /aria-expanded="false"/);
 });
 
-test('opened drawer with an unstarted terminal shows the start action', () => {
+test('sandbox panel opens on the artifacts tab; the unstarted terminal stays lazily unmounted', () => {
   const html = renderToStaticMarkup(React.createElement(ChatPage, {
     ...baseProps,
     terminal: { status: 'idle', output: '' },
@@ -167,9 +172,17 @@ test('opened drawer with an unstarted terminal shows the start action', () => {
     onTerminalInput: async () => undefined,
     onCloseTerminal: () => undefined,
   }));
-  assert.match(html, /wk-chat-sandbox-drawer/);
+  // B1 SandboxSidePanel：面板 = aside.chat-sandbox-panel（默认产物 tab）；终端面
+  // （含 unstarted 的 启动终端 start action）首切终端 tab 才惰性挂载，SSR/首帧
+  // 不渲染（Vue SandboxSidePanel terminalMounted watch 同构）。start action 的
+  // 存在性由源码断言锁定（TerminalPanel 的 copy.startTerminal 按钮）。
+  assert.match(html, /chat-sandbox-panel/);
   assert.match(html, /沙箱可视化/);
-  assert.match(html, /启动终端/);
+  assert.match(html, />产物</);
+  assert.doesNotMatch(html, /wk-chat-sandbox-drawer/);
+  assert.doesNotMatch(html, /启动终端/);
+  const pageSource = readFileSync(new URL('../../../../packages/views/src/chat/page.tsx', import.meta.url), 'utf8');
+  assert.match(pageSource, /copy\.startTerminal/);
 });
 
 test('chat page renders an expandable args editor on the pending tool approval card', () => {

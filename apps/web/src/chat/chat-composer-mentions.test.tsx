@@ -8,6 +8,19 @@ const { JSDOM } = nodeModule.createRequire(import.meta.url)('jsdom') as { JSDOM:
 const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://weknora.test' });
 Object.assign(globalThis, { React, window: dom.window, document: dom.window.document, HTMLElement: dom.window.HTMLElement, HTMLInputElement: dom.window.HTMLInputElement, IS_REACT_ACT_ENVIRONMENT: true });
 Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator });
+// B1 question-minimap（ChatPage 渲染路径）经 window.requestAnimationFrame
+// 调度测量；jsdom 无 raf，window 侧与 globalThis 侧都垫 setTimeout 帧垫片
+// （同 settings 域判例 SkillSettingsPanel.test）。
+const w = dom.window as unknown as { requestAnimationFrame?: unknown; cancelAnimationFrame?: unknown };
+w.requestAnimationFrame = w.requestAnimationFrame ?? ((cb: (t: number) => void) => setTimeout(() => cb(Date.now()), 16));
+w.cancelAnimationFrame = w.cancelAnimationFrame ?? ((id: ReturnType<typeof setTimeout>) => clearTimeout(id));
+(globalThis as unknown as { requestAnimationFrame?: unknown }).requestAnimationFrame
+  = (globalThis as unknown as { requestAnimationFrame?: unknown }).requestAnimationFrame ?? w.requestAnimationFrame;
+(globalThis as unknown as { cancelAnimationFrame?: unknown }).cancelAnimationFrame
+  = (globalThis as unknown as { cancelAnimationFrame?: unknown }).cancelAnimationFrame ?? w.cancelAnimationFrame;
+// B1 question-minimap 指针粗细探测（question-minimap.tsx setIsCoarsePointer）：
+// jsdom 无 matchMedia，垫 coarse=false 的最小桩。
+w.matchMedia = w.matchMedia ?? ((query: string) => ({ matches: false, media: query, addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {}, onchange: null, dispatchEvent: () => false }));
 const { createRoot } = await import('react-dom/client');
 const { ChatComposer, ChatPage, resolveChatCopy } = await import('@weknora/views');
 

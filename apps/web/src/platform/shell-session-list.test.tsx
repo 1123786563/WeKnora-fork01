@@ -41,6 +41,19 @@ Object.assign(globalThis, {
 const jsdomNavigator = dom.window.navigator;
 try { Object.defineProperty(jsdomNavigator, 'language', { value: 'zh-CN', configurable: true }); } catch { /* keep default locale */ }
 Object.defineProperty(globalThis, 'navigator', { configurable: true, value: jsdomNavigator });
+// B1 question-minimap（ChatPage 渲染路径）经 window.requestAnimationFrame 调度
+// 测量；jsdom 无 raf，window 侧与 globalThis 侧都垫 setTimeout 帧垫片
+// （同 settings 域判例 SkillSettingsPanel.test）。
+const w = dom.window as unknown as { requestAnimationFrame?: unknown; cancelAnimationFrame?: unknown };
+w.requestAnimationFrame = w.requestAnimationFrame ?? ((cb: (t: number) => void) => setTimeout(() => cb(Date.now()), 16));
+w.cancelAnimationFrame = w.cancelAnimationFrame ?? ((id: ReturnType<typeof setTimeout>) => clearTimeout(id));
+(globalThis as unknown as { requestAnimationFrame?: unknown }).requestAnimationFrame
+  = (globalThis as unknown as { requestAnimationFrame?: unknown }).requestAnimationFrame ?? w.requestAnimationFrame;
+(globalThis as unknown as { cancelAnimationFrame?: unknown }).cancelAnimationFrame
+  = (globalThis as unknown as { cancelAnimationFrame?: unknown }).cancelAnimationFrame ?? w.cancelAnimationFrame;
+// B1 question-minimap 指针粗细探测（question-minimap.tsx setIsCoarsePointer）：
+// jsdom 无 matchMedia，垫 coarse=false 的最小桩。
+w.matchMedia = w.matchMedia ?? ((query: string) => ({ matches: false, media: query, addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {}, onchange: null, dispatchEvent: () => false }));
 
 const { createRoot } = await import('react-dom/client');
 const { PlatformShell } = await import('./PlatformShell.tsx');
