@@ -243,8 +243,12 @@ func TestAgentAdoptionRepositoryAdoptListingLostRaceDifferentRelease(t *testing.
 
 // openAdoptionVariantDB builds only the tables ReplaceCapabilityMappings
 // touches (gorm AutoMigrate of the entities). The B3-F87 CAS guard under
-// test is store-level SQL semantics, so the case stays runnable independently
-// of the pre-existing migrations/sqlite 000112 duplicate-number conflict.
+// test is store-level SQL semantics, so the case keeps its direct-DDL setup.
+// It originally sidestepped the full migration track because this table held
+// both migrations/sqlite 000112 and migrations/versioned 000191 (duplicate
+// numbers against task_grants); that conflict is fixed by renumbering
+// agent_adoption_variants to 000113/000192, and the direct-DDL approach
+// stays unchanged.
 func openAdoptionVariantDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared&_busy_timeout=5000"),
