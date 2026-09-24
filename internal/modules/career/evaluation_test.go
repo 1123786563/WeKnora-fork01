@@ -34,6 +34,15 @@ func TestEvaluateOpportunityHardOutcomesArePinnedToEvidence(t *testing.T) {
 		{name: "negated graduation rule is unknown", jd: "并非仅限2027届", year: "2026", want: EvaluationUnknown},
 		{name: "unparsed same-line condition is unknown", jd: "仅限2027届，要求本科及以上", year: "2026", want: EvaluationUnknown},
 		{name: "standalone condition line remains conclusive", jd: "仅限2027届\n技能要求：Go", year: "2026", want: EvaluationIneligible, citation: true},
+		{name: "wrapped alternative on following line is unknown", jd: "仅限2027届\n或2026届", year: "2026", want: EvaluationUnknown},
+		{name: "wrapped alternative before candidate is unknown", jd: "2026届或\n仅限2027届", year: "2026", want: EvaluationUnknown},
+		{name: "second graduation option on following line is unknown", jd: "仅限2027届\n2026届亦可", year: "2026", want: EvaluationUnknown},
+		{name: "negation prefix on prior line is unknown", jd: "并非\n仅限2027届", year: "2026", want: EvaluationUnknown},
+		{name: "negation directly before clause is unknown", jd: "非仅限2027届", year: "2026", want: EvaluationUnknown},
+		{name: "punctuation separated year list is unknown", jd: "仅限2027届、2028届", year: "2026", want: EvaluationUnknown},
+		{name: "CRLF wrapped alternative is unknown", jd: "仅限2027届\r\n或2026届", year: "2026", want: EvaluationUnknown},
+		{name: "CRLF prior alternative is unknown", jd: "2026届或\r\n仅限2027届", year: "2026", want: EvaluationUnknown},
+		{name: "labeled skill section preserves standalone mismatch", jd: "仅限2027届\r\n技能：Go", year: "2026", want: EvaluationIneligible, citation: true},
 		{name: "missing graduation condition is unknown", jd: "要求熟悉 Go 并具备项目经验", year: "2026", want: EvaluationUnknown},
 		{name: "bare batch is not treated as an explicit rule", jd: "2027届", year: "2027", want: EvaluationUnknown},
 	} {
@@ -72,6 +81,8 @@ func TestEvaluateOpportunityHardOutcomesArePinnedToEvidence(t *testing.T) {
 				require.Equal(t, "owner", read.Hard.Rules[0].ProfileEvidence.Confirmation.UserID)
 			} else if tc.year == "" {
 				require.Nil(t, read.Hard.Rules[0].ProfileEvidence)
+			} else if tc.want == EvaluationUnknown {
+				require.Nil(t, read.Hard.Rules[0].ProfileEvidence, "an ambiguous graduation block cannot use profile evidence")
 			}
 			encoded, err := json.Marshal(read)
 			require.NoError(t, err)
@@ -188,7 +199,7 @@ func TestEvaluationUsesOnlyConfirmedSoftEvidenceAndKeepsItSeparate(t *testing.T)
 	require.NoError(t, err)
 	_, err = o.Confirm(ctx, "preference.location", "Hangzhou", "confirm-location", 4, Source{Kind: "manual"})
 	require.NoError(t, err)
-	job, err := o.ImportJD(ctx, ImportJDInput{RequestID: "job", RawText: "仅限2027届\n熟悉Python，Compiler项目优先，意向地点Hangzhou"})
+	job, err := o.ImportJD(ctx, ImportJDInput{RequestID: "job", RawText: "仅限2027届\n技能要求：熟悉Python，Compiler项目优先，意向地点Hangzhou"})
 	require.NoError(t, err)
 	result, err := o.EvaluateOpportunity(ctx, EvaluateInput{RequestID: "eval-soft", OpportunityID: job.OpportunityID, SnapshotID: job.SnapshotID})
 	require.NoError(t, err)

@@ -278,7 +278,7 @@ func evaluateGraduationRule(job EvaluationSnapshotEvidence, revision uint64, fac
 		return rule, EvaluationUnknown
 	}
 	spanStart, spanEnd := matches[0][0], matches[0][1]
-	if !isIsolatedGraduationClause(job.RawText, spanStart, spanEnd) {
+	if !isIsolatedGraduationBlock(job.RawText, spanStart, spanEnd) {
 		rule.ReasonCode = "graduation_requirement_ambiguous_or_qualified"
 		return rule, EvaluationUnknown
 	}
@@ -364,15 +364,73 @@ func onlyPunctuationAndSpace(value string) bool {
 	return true
 }
 
-func isIsolatedGraduationClause(raw string, start, end int) bool {
-	lineStart := strings.LastIndex(raw[:start], "\n") + 1
-	lineEnd := len(raw)
-	if nextLine := strings.IndexByte(raw[end:], '\n'); nextLine >= 0 {
-		lineEnd = end + nextLine
+func isIsolatedGraduationBlock(raw string, start, end int) bool {
+	lines := splitEvaluationLines(raw)
+	candidateLine := -1
+	for i := range lines {
+		if start >= lines[i].start && start < lines[i].end {
+			candidateLine = i
+			break
+		}
 	}
-	before := strings.TrimSpace(raw[lineStart:start])
-	after := strings.TrimSpace(raw[end:lineEnd])
-	return onlyPunctuationAndSpace(before + after)
+	if candidateLine < 0 || !onlyPunctuationAndSpace(strings.TrimSpace(raw[lines[candidateLine].start:start]+raw[end:lines[candidateLine].end])) {
+		return false
+	}
+
+	// A nearby graduation phrase or continuation can qualify the candidate even
+	// when it is on another physical line. Only a clearly labeled skills/project
+	// section is accepted as a boundary; any other non-empty neighboring line is
+	// conservatively treated as part of an unparsed requirement block.
+	for i := candidateLine - 1; i >= 0; i-- {
+		line := strings.TrimSpace(raw[lines[i].start:lines[i].end])
+		if line == "" || onlyPunctuationAndSpace(line) {
+			continue
+		}
+		if isEvaluationSoftSection(line) {
+			break
+		}
+		return false
+	}
+	for i := candidateLine + 1; i < len(lines); i++ {
+		line := strings.TrimSpace(raw[lines[i].start:lines[i].end])
+		if line == "" || onlyPunctuationAndSpace(line) {
+			continue
+		}
+		if isEvaluationSoftSection(line) {
+			break
+		}
+		return false
+	}
+	return true
+}
+
+type evaluationLine struct{ start, end int }
+
+func splitEvaluationLines(raw string) []evaluationLine {
+	lines := make([]evaluationLine, 0, strings.Count(raw, "\n")+1)
+	start := 0
+	for i := 0; i < len(raw); i++ {
+		if raw[i] != '\n' {
+			continue
+		}
+		end := i
+		if end > start && raw[end-1] == '\r' {
+			end--
+		}
+		lines = append(lines, evaluationLine{start: start, end: end})
+		start = i + 1
+	}
+	lines = append(lines, evaluationLine{start: start, end: len(raw)})
+	return lines
+}
+
+func isEvaluationSoftSection(line string) bool {
+	for _, prefix := range []string{"技能：", "技能:", "技能要求：", "技能要求:", "项目：", "项目:", "项目经验：", "项目经验:"} {
+		if strings.HasPrefix(line, prefix) && len(strings.TrimSpace(strings.TrimPrefix(line, prefix))) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func evaluationJobEvidence(job EvaluationSnapshotEvidence, start, end int) *EvaluationJobEvidence {
