@@ -319,7 +319,9 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
   const shellSidebarCopy = useMemo(() => resolveChatCopy(locale), [locale]);
 
   const [pathname, setPathname] = useState(() => window.location.pathname);
-  const [collapsed, setCollapsed] = useState(() => window.localStorage.getItem(COLLAPSE_STORAGE_KEY) === 'true');
+  const [collapsed, setCollapsed] = useState(() =>
+    window.innerWidth <= 640 || window.localStorage.getItem(COLLAPSE_STORAGE_KEY) === 'true',
+  );
   const [menuOpen, setMenuOpen] = useState(false);
   const [tenantMenuOpen, setTenantMenuOpen] = useState(false);
   const [tenantSwitchPending, setTenantSwitchPending] = useState<string | null>(null);

@@ -10,6 +10,7 @@
 //   Vue-era key `sidebar_collapsed` and is re-read on the next boot, so the
 //   collapsed rail survives a reload and is shared with the Vue artifact).
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import * as nodeModule from 'node:module';
 import test, { afterEach } from 'node:test';
 import * as React from 'react';
@@ -47,6 +48,7 @@ const { formatMessage } = await import('@weknora/i18n');
 
 let mountedRoot: Root | undefined;
 afterEach(async () => {
+  Object.defineProperty(window, 'innerWidth', { value: 1024, configurable: true });
   if (mountedRoot) await act(async () => mountedRoot?.unmount());
   mountedRoot = undefined;
   document.body.replaceChildren();
@@ -121,4 +123,21 @@ test('collapsing the sidebar persists under the Vue key and a fresh mount restor
   const container = await mountShell();
   assert.ok(expandButton(), 'a remounted shell restores the collapsed rail from sidebar_collapsed');
   assert.equal(container.querySelector('a[aria-label="WeKnora"] img'), null, 'collapsed rail hides the logo image (Vue logo_row v-if)');
+});
+
+test('a fresh narrow shell starts collapsed without changing the desktop preference', async () => {
+  Object.defineProperty(window, 'innerWidth', { value: 390, configurable: true });
+  window.localStorage.setItem('sidebar_collapsed', 'false');
+  const container = await mountShell();
+  assert.ok(expandButton(), 'narrow shell exposes a labeled button to reopen navigation');
+  assert.equal(window.localStorage.getItem('sidebar_collapsed'), 'false', 'narrow initialization leaves the desktop preference unchanged');
+  await act(async () => { expandButton()!.click(); });
+  assert.ok(collapseButton(), 'explicit toggle expands navigation and updates its accessible label');
+  assert.equal(window.localStorage.getItem('sidebar_collapsed'), 'false', 'explicit expansion persists normally');
+  assert.ok(container.querySelector('.plat-shell__outlet'), 'main route remains mounted beside the narrow navigation rail');
+});
+
+test('shell stylesheet removes the 600px width floor on narrow viewports', async () => {
+  const css = await readFile(new URL('./platform-u.css', import.meta.url), 'utf8');
+  assert.match(css, /@media[^{}]*max-width:\s*640px[\s\S]*?\.wk-shell-1\s*\{[^}]*min-width:\s*0/, 'narrow media rule allows the platform shell to fit the viewport');
 });

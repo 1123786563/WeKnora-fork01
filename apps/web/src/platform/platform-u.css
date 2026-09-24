@@ -683,3 +683,11 @@
 }
 .wk-cmdk-item-row:hover,
 .wk-cmdk-item-row--selected { background-color: #f2f5f9; }
+
+/* Career evidence and action cards stack at 640px; let their shell use the
+   available viewport width instead of retaining the desktop 600px floor. */
+@media (max-width: 640px) {
+  .wk-shell-1 {
+    min-width: 0;
+  }
+}
