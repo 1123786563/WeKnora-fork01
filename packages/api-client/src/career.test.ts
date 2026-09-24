@@ -91,3 +91,55 @@ test('evaluation client encodes create, receipt recovery and immutable detail pa
   { method: 'GET', path: '/api/v1/career/evaluations/eval%2F1' },
  ])
 })
+
+test('opportunity URL client posts import-url and lists owner-scoped observations with frozen enums', async () => {
+ const calls: Array<{ method: string; path: string; body?: unknown }> = []
+ const urlReceipt = { kind: 'opportunity_url_imported', requestId: 'url request/1', opportunityId: 'opp/1', observationId: 'observation-1', snapshotId: 'snapshot ?1', status: 'needs_review', sourceStatus: 'policy_unverified', completeness: 'unknown', failureCode: 'source_unverified', submittedUrl: 'https://jobs.example.test/1', acquiredAt: '2026-09-25T08:00:00Z', needsUserJD: true }
+ const observations = { observations: [
+  { observationId: 'observation-1', snapshotId: 'snapshot ?1', source: { kind: 'url', label: 'jobs.example.test', referenceId: 'https://jobs.example.test/1' }, sourceStatus: 'policy_unverified', completeness: 'unknown', failureCode: 'source_unverified', submittedUrl: 'https://jobs.example.test/1', needsUserJD: true, acquiredAt: '2026-09-25T08:00:00Z' },
+  { observationId: 'observation-2', snapshotId: 'snapshot-paste-1', source: { kind: 'manual_paste' }, needsUserJD: false, acquiredAt: '2026-09-25T09:00:00Z' },
+ ] }
+ const api = createCareerApi(async (input) => {
+  calls.push({ method: input.method, path: input.path, ...(input.body !== undefined ? { body: input.body } : {}) })
+  return input.path.endsWith('/import-url') ? urlReceipt : observations
+ })
+ const input = { requestId: 'url request/1', url: 'https://jobs.example.test/1' }
+ const receipt = await api.importUrl(input)
+ assert.equal(receipt.sourceStatus, 'policy_unverified')
+ assert.equal(receipt.completeness, 'unknown')
+ assert.equal(receipt.failureCode, 'source_unverified')
+ assert.equal(receipt.needsUserJD, true)
+ assert.equal(receipt.submittedUrl, 'https://jobs.example.test/1')
+ const listed = await api.opportunityObservations(receipt.opportunityId)
+ assert.equal(listed.observations.length, 2)
+ assert.equal(listed.observations[0]?.sourceStatus, 'policy_unverified')
+ assert.equal(listed.observations[1]?.source.kind, 'manual_paste')
+ assert.deepEqual(calls, [
+  { method: 'POST', path: '/api/v1/career/opportunities/import-url', body: input },
+  { method: 'GET', path: '/api/v1/career/opportunities/opp%2F1/observations' },
+ ])
+})
+
+test('importUrl refuses blank identifiers and never decodes invented enum values', async () => {
+ const refusing = createCareerApi(async () => { throw new Error('must not send invalid request') })
+ await assert.rejects(refusing.importUrl({ requestId: ' ', url: 'https://example.test/jd' }), /requestId/)
+ await assert.rejects(refusing.importUrl({ requestId: 'r', url: ' ' }), /url/)
+ await assert.rejects(refusing.opportunityObservations(' '), /opportunity/)
+ const inventing = createCareerApi(async () => ({ kind: 'opportunity_url_imported', requestId: 'r', opportunityId: 'o', observationId: 'b', snapshotId: 's', status: 'needs_review', sourceStatus: 'super_verified', completeness: 'unknown', submittedUrl: 'u', acquiredAt: '2026-09-25T08:00:00Z', needsUserJD: true }))
+ await assert.rejects(inventing.importUrl({ requestId: 'r', url: 'https://example.test/jd' }), TypeError)
+ const observing = createCareerApi(async () => ({ observations: [{ observationId: 'o', snapshotId: 's', source: { kind: 'url' }, sourceStatus: 'totally_fine', needsUserJD: true, acquiredAt: '2026-09-25T08:00:00Z' }] }))
+ await assert.rejects(observing.opportunityObservations('opp-1'), TypeError)
+})
+
+test('importOpportunity appends a paste onto a URL observation only with both owner-scoped IDs', async () => {
+ const calls: Array<{ method: string; path: string; body?: unknown }> = []
+ const receipt = { kind: 'opportunity_imported', requestId: 'paste-2', opportunityId: 'opp/1', observationId: 'observation-2', snapshotId: 'snapshot-2', status: 'stored', acquiredAt: '2026-09-25T09:00:00Z' }
+ const api = createCareerApi(async (input) => {
+  calls.push({ method: input.method, path: input.path, ...(input.body !== undefined ? { body: input.body } : {}) })
+  return receipt
+ })
+ await api.importOpportunity({ requestId: 'paste-2', rawText: '完整粘贴的职位描述', opportunityId: 'opp/1', priorObservationId: 'observation-1' })
+ assert.deepEqual(calls, [{ method: 'POST', path: '/api/v1/career/opportunities/import', body: { requestId: 'paste-2', rawText: '完整粘贴的职位描述', opportunityId: 'opp/1', priorObservationId: 'observation-1' } }])
+ await assert.rejects(api.importOpportunity({ requestId: 'half', rawText: 'jd', opportunityId: 'opp/1' }), /opportunityId and priorObservationId/)
+ await assert.rejects(api.importOpportunity({ requestId: 'half', rawText: 'jd', priorObservationId: 'observation-1' }), /opportunityId and priorObservationId/)
+})

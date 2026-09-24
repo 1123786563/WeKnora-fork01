@@ -602,3 +602,151 @@ test('narrow evaluation layout stacks fields and preserves wrapping for citation
  assert.match(css, /\.wk-evaluation-detail__rule,[\s\S]*?overflow-wrap: anywhere;/)
  assert.match(css, /\.wk-evaluation-detail__snapshot pre[\s\S]*?white-space: pre-wrap; overflow-wrap: anywhere;/)
 })
+
+type URLReceiptFixture = { kind: 'opportunity_url_imported'; requestId: string; opportunityId: string; observationId: string; snapshotId: string; status: 'needs_review'; sourceStatus: string; completeness: string; failureCode?: string; submittedUrl: string; acquiredAt: string; needsUserJD: boolean }
+const completeURLReceipt: URLReceiptFixture = { kind: 'opportunity_url_imported', requestId: 'url-request-complete', opportunityId: 'opp-url-1', observationId: 'observation-url-1', snapshotId: 'snapshot-url-1', status: 'needs_review', sourceStatus: 'complete', completeness: 'complete', submittedUrl: 'https://jobs.example.test/posting/1', acquiredAt: '2026-09-25T08:00:00Z', needsUserJD: false }
+const unverifiedURLReceipt: URLReceiptFixture = { kind: 'opportunity_url_imported', requestId: 'url-request-unverified', opportunityId: 'opp-url-1', observationId: 'observation-url-1', snapshotId: 'snapshot-url-1', status: 'needs_review', sourceStatus: 'policy_unverified', completeness: 'unknown', failureCode: 'source_unverified', submittedUrl: 'https://jobs.example.test/posting/1', acquiredAt: '2026-09-25T08:00:00Z', needsUserJD: true }
+const submittedURL = 'https://jobs.example.test/posting/1'
+
+function findButton(container: HTMLElement, label: string): HTMLButtonElement | undefined {
+ return [...container.querySelectorAll<HTMLButtonElement>('button')].find((item) => item.textContent?.trim() === label)
+}
+async function submitURL(container: HTMLElement, url = submittedURL): Promise<void> {
+ await act(async () => { setInput(container.querySelector<HTMLInputElement>('[aria-label="职位链接"]')!, url) })
+ await act(async () => { byLabel(container, 'button', '导入链接').click(); await settle() })
+}
+
+test('imports a complete URL and renders typed status, submitted link, times, and an inert owner-scoped evidence link', async () => {
+ const sent: Array<{ requestId: string; url: string }> = []
+ const container = await mountImport({
+  importUrl: async (input: { requestId: string; url: string }) => { sent.push(input); return { ...completeURLReceipt, requestId: input.requestId } },
+ }).then((x) => x.container)
+ await submitURL(container)
+ assert.equal(sent.length, 1)
+ assert.equal(sent[0]!.url, submittedURL)
+ assert.ok(sent[0]!.requestId)
+ assert.match(container.textContent ?? '', /来源状态：来源完整/)
+ assert.match(container.textContent ?? '', /完整度：完整/)
+ assert.match(container.textContent ?? '', new RegExp(`提交链接：${submittedURL.replace(/\//g, '\\/')}`))
+ assert.match(container.textContent ?? '', /尝试时间/)
+ assert.match(container.textContent ?? '', /采集时间/)
+ assert.match(container.textContent ?? '', /2026-09-25T08:00:00/)
+ assert.doesNotMatch(container.textContent ?? '', /需用户补充 JD/)
+ const evidence = byLabel(container, 'a', '查看来源观察证据') as HTMLAnchorElement
+ assert.equal(evidence.getAttribute('href'), '/platform/career/opportunities/opp-url-1?snapshotId=snapshot-url-1')
+ assert.equal(container.querySelector(`a[href^="${submittedURL}"]`), null)
+ assert.doesNotMatch(container.textContent ?? '', /资格判断|届别|学历/)
+})
+
+test('policy_unverified URL shows bounded reason and 需用户补充 JD without any hard-condition conclusion', async () => {
+ const container = await mountImport({ importUrl: async (input: { requestId: string }) => ({ ...unverifiedURLReceipt, requestId: input.requestId }) }).then((x) => x.container)
+ await submitURL(container)
+ assert.match(container.textContent ?? '', /来源状态：来源未核验/)
+ assert.match(container.textContent ?? '', /完整度：未知/)
+ assert.match(container.textContent ?? '', /原因：该来源尚未通过核验/)
+ assert.match(container.textContent ?? '', /需用户补充 JD/)
+ assert.match(container.textContent ?? '', new RegExp(`提交链接：${submittedURL.replace(/\//g, '\\/')}`))
+ assert.doesNotMatch(container.textContent ?? '', /资格判断|届别|学历/)
+ assert.equal(findButton(container, '评估此 JD'), undefined)
+})
+
+test('login_required and timed_out URLs render typed statuses with bounded reasons', async () => {
+ const container = await mountImport({
+  importUrl: async (input: { requestId: string; url: string }) => input.url.includes('login-wall')
+   ? { ...unverifiedURLReceipt, requestId: input.requestId, sourceStatus: 'login_required', failureCode: 'login_required' }
+   : { ...unverifiedURLReceipt, requestId: input.requestId, sourceStatus: 'timed_out', failureCode: 'timeout' },
+ }).then((x) => x.container)
+ await act(async () => { setInput(container.querySelector<HTMLInputElement>('[aria-label="职位链接"]')!, 'https://jobs.example.test/login-wall') })
+ await act(async () => { byLabel(container, 'button', '导入链接').click(); await settle() })
+ assert.match(container.textContent ?? '', /来源状态：需要登录/)
+ assert.match(container.textContent ?? '', /原因：目标站点要求登录/)
+ await act(async () => { setInput(container.querySelector<HTMLInputElement>('[aria-label="职位链接"]')!, 'https://jobs.example.test/slow') })
+ await act(async () => { byLabel(container, 'button', '导入链接').click(); await settle() })
+ assert.match(container.textContent ?? '', /来源状态：抓取超时/)
+ assert.match(container.textContent ?? '', /原因：抓取超时/)
+ assert.doesNotMatch(container.textContent ?? '', /资格判断|届别|学历/)
+})
+
+test('unknown URL POST outcome recovers through the same request ID', async () => {
+ const sent: Array<{ requestId: string; url: string }> = []
+ let first = true
+ const container = await mountImport({
+  importUrl: async (input: { requestId: string; url: string }) => {
+   sent.push(input)
+   if (first) { first = false; throw Object.assign(new Error('outcome unknown'), { code: 'outcome_unknown', requestId: input.requestId }) }
+   return { ...unverifiedURLReceipt, requestId: input.requestId }
+  },
+ }).then((x) => x.container)
+ await submitURL(container)
+ assert.equal(sent.length, 1)
+ assert.match(container.textContent ?? '', /暂时无法确认链接导入结果/)
+ await act(async () => { byLabel(container, 'button', '使用原请求编号重试导入').click(); await settle() })
+ assert.equal(sent.length, 2)
+ assert.equal(sent[1]!.requestId, sent[0]!.requestId)
+ assert.equal(sent[1]!.url, sent[0]!.url)
+ assert.match(container.textContent ?? '', /来源状态：来源未核验/)
+})
+
+test('URL import 403 clears the submitted URL and any pasted draft without stale retry', async () => {
+ const container = await mountImport({ importUrl: async () => { throw Object.assign(new Error('forbidden'), { code: 'forbidden' }) } }).then((x) => x.container)
+ await act(async () => { setInput(container.querySelector<HTMLTextAreaElement>('[aria-label="职位描述"]')!, 'sensitive draft JD') })
+ await submitURL(container, 'https://private.example.test/jd')
+ assert.equal(container.querySelector<HTMLInputElement>('[aria-label="职位链接"]')?.value, '')
+ assert.doesNotMatch(container.textContent ?? '', /来源状态：/)
+ assert.doesNotMatch(container.textContent ?? '', /jobs\.example\.test|private\.example\.test/)
+ assert.doesNotMatch(container.textContent ?? '', /sensitive draft JD/)
+ assert.match(container.textContent ?? '', /当前空间不可访问，已清除链接和职位描述/)
+ assert.equal(container.querySelector('a[href*="snapshotId="]'), null)
+})
+
+test('scope switch during URL import clears the URL and fences a late receipt', async () => {
+ let resolveImport!: (value: URLReceiptFixture) => void
+ const scope = createScopeController({ origin: 'https://weknora.test', userId: 'u', tenantId: 't' })
+ const { container } = await mountImport({ importUrl: async () => new Promise<URLReceiptFixture>((resolve) => { resolveImport = resolve }) }, scope)
+ await act(async () => { setInput(container.querySelector<HTMLInputElement>('[aria-label="职位链接"]')!, submittedURL) })
+ await act(async () => { byLabel(container, 'button', '导入链接').click(); await settle() })
+ await act(async () => { scope.switchScope('https://weknora.test', 'other-user', 'other-tenant'); await settle() })
+ assert.equal(container.querySelector<HTMLInputElement>('[aria-label="职位链接"]')?.value, '')
+ assert.doesNotMatch(container.textContent ?? '', new RegExp(submittedURL.replace(/\//g, '\\/')))
+ await act(async () => { resolveImport(unverifiedURLReceipt); await settle() })
+ assert.doesNotMatch(container.textContent ?? '', /来源状态：|需用户补充 JD/)
+ assert.equal(container.querySelector('a[href*="snapshotId="]'), null)
+})
+
+test('unverified URL then pasted JD appends a new snapshot and keeps the original observation trace', async () => {
+ const urlSent: Array<{ requestId: string; url: string }> = []
+ const pasteSent: Array<{ requestId: string; rawText: string; opportunityId?: string; priorObservationId?: string }> = []
+ const observationReads: string[] = []
+ const pasteReceipt: OpportunityReceipt = { kind: 'opportunity_imported', requestId: 'paste-request-1', opportunityId: 'opp-url-1', observationId: 'observation-paste-1', snapshotId: 'snapshot-paste-1', status: 'stored', acquiredAt: '2026-09-25T09:00:00Z' }
+ const container = await mountImport({
+  importUrl: async (input: { requestId: string; url: string }) => { urlSent.push(input); return { ...unverifiedURLReceipt, requestId: input.requestId } },
+  importOpportunity: async (input: { requestId: string; rawText: string }) => { pasteSent.push(input); return { ...pasteReceipt, requestId: input.requestId } },
+  opportunityObservations: async (opportunityId: string) => {
+   observationReads.push(opportunityId)
+   return { observations: [
+    { observationId: 'observation-url-1', snapshotId: 'snapshot-url-1', source: { kind: 'url', label: 'jobs.example.test', referenceId: submittedURL }, sourceStatus: 'policy_unverified', completeness: 'unknown', failureCode: 'source_unverified', submittedUrl: submittedURL, needsUserJD: true, acquiredAt: '2026-09-25T08:00:00Z' },
+    { observationId: 'observation-paste-1', snapshotId: 'snapshot-paste-1', source: { kind: 'manual_paste' }, needsUserJD: false, acquiredAt: '2026-09-25T09:00:00Z' },
+   ] }
+  },
+ }).then((x) => x.container)
+ await submitURL(container)
+ assert.match(container.textContent ?? '', /需用户补充 JD/)
+ assert.doesNotMatch(container.textContent ?? '', /资格判断|届别|学历/)
+ const pastedText = '完整粘贴的职位描述：仅面向2027届毕业生'
+ await act(async () => { setInput(container.querySelector<HTMLTextAreaElement>('[aria-label="职位描述"]')!, pastedText) })
+ await act(async () => { byLabel(container, 'button', '保存 JD').click(); await settle() })
+ assert.equal(pasteSent.length, 1)
+ assert.equal(pasteSent[0]!.rawText, pastedText)
+ assert.equal(pasteSent[0]!.opportunityId, 'opp-url-1')
+ assert.equal(pasteSent[0]!.priorObservationId, 'observation-url-1')
+ assert.ok(pasteSent[0]!.requestId)
+ assert.notEqual(pasteSent[0]!.requestId, urlSent[0]!.requestId)
+ assert.deepEqual(observationReads, ['opp-url-1'])
+ assert.equal((byLabel(container, 'a', '查看已保存的 JD 证据') as HTMLAnchorElement).getAttribute('href'), '/platform/career/opportunities/opp-url-1?snapshotId=snapshot-paste-1')
+ const historyLinks = [...container.querySelectorAll<HTMLAnchorElement>('a[href*="snapshotId="]')].map((item) => item.getAttribute('href'))
+ assert.ok(historyLinks.includes('/platform/career/opportunities/opp-url-1?snapshotId=snapshot-url-1'), `history keeps the original URL observation trace: ${JSON.stringify(historyLinks)}`)
+ assert.ok(historyLinks.includes('/platform/career/opportunities/opp-url-1?snapshotId=snapshot-paste-1'))
+ assert.ok(historyLinks.every((href) => href!.startsWith('/platform/career/opportunities/opp-url-1')), 'history links stay inert in-app and owner-scoped')
+ assert.match(container.querySelector('[aria-label="来源观察历史"]')?.textContent ?? '', /来源未核验/)
+ assert.match(container.querySelector('[aria-label="来源观察历史"]')?.textContent ?? '', /手工粘贴/)
+})

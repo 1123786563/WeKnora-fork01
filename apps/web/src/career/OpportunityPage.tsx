@@ -2,10 +2,17 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { WeKnoraClient } from '@weknora/api-client'
 import type { ScopeController } from '@weknora/domain/scope'
 import type { Evaluation, EvaluationReceipt, OpportunityEvidence, OpportunityImportInput, OpportunityReceipt } from '../../../../packages/career-core/src/contracts.ts'
+import type { OpportunityCompleteness, OpportunityFailureCode, OpportunityObservation, OpportunitySourceStatus, OpportunityURLImportReceipt } from '../../../../packages/api-client/src/career.ts'
 
-type Attempt = OpportunityImportInput
+type Attempt = OpportunityImportInput & { opportunityId?: string; priorObservationId?: string }
+type URLAttempt = { requestId: string; url: string; attemptedAt: string }
+type URLImportState = 'idle' | 'busy' | 'unknown' | 'observed' | 'error'
 type ImportState = 'idle' | 'busy' | 'unknown' | 'saved' | 'error' | 'forbidden' | 'scope-changed'
 const newRequestId = (): string => typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+// Frozen backend enums rendered verbatim: no frontend-invented status, completeness, or failure code ever reaches the user.
+const sourceStatusLabels: Record<OpportunitySourceStatus, string> = { complete: '来源完整', partial: '内容不完整', login_required: '需要登录', blocked: '访问受限', not_found: '页面不存在', timed_out: '抓取超时', fetch_failed: '抓取失败', policy_unverified: '来源未核验' }
+const completenessLabels: Record<OpportunityCompleteness, string> = { complete: '完整', incomplete: '不完整', unknown: '未知' }
+const failureReasons: Record<OpportunityFailureCode, string> = { login_required: '目标站点要求登录', access_blocked: '目标站点拒绝访问', not_found: '目标页面不存在', timeout: '抓取超时', source_unverified: '该来源尚未通过核验', unsupported_content: '不支持的内容类型', empty_content: '页面没有可用正文', response_too_large: '响应超过大小上限', network_error: '网络错误', redirect_disallowed: '重定向不在允许范围内' }
 function errorDetails(cause: unknown): { code?: string; requestId?: string; status?: number; message: string } {
  const error = cause as { code?: string; requestId?: string; status?: number; message?: string }
  return { code: error?.code, requestId: error?.requestId, status: error?.status, message: error?.message || '请求未完成' }
@@ -37,6 +44,12 @@ export function OpportunityImportPanel({ client, scopeController }: { client: We
  const [receipt, setReceipt] = useState<OpportunityReceipt>()
  const [state, setState] = useState<ImportState>('idle')
  const [message, setMessage] = useState('')
+ const [urlDraft, setUrlDraft] = useState('')
+ const [urlAttempt, setUrlAttempt] = useState<URLAttempt>()
+ const [urlReceipt, setUrlReceipt] = useState<OpportunityURLImportReceipt>()
+ const [urlState, setUrlState] = useState<URLImportState>('idle')
+ const [urlMessage, setUrlMessage] = useState('')
+ const [observations, setObservations] = useState<OpportunityObservation[]>()
  const [evaluationState, setEvaluationState] = useState<'idle' | 'busy' | 'unknown' | 'saved' | 'error'>('idle')
  const [evaluationRequestId, setEvaluationRequestId] = useState('')
  const [evaluationReceipt, setEvaluationReceipt] = useState<EvaluationReceipt>()
@@ -49,11 +62,15 @@ export function OpportunityImportPanel({ client, scopeController }: { client: We
  const evaluationIsCurrent = (generation: number, fixedReceipt: OpportunityReceipt): boolean =>
   draftGeneration.current === generation && currentReceipt.current?.opportunityId === fixedReceipt.opportunityId && currentReceipt.current?.snapshotId === fixedReceipt.snapshotId
 
+ const clearURL = useCallback((): void => {
+  setUrlDraft(''); setUrlAttempt(undefined); setUrlReceipt(undefined); setUrlState('idle'); setUrlMessage(''); setObservations(undefined)
+ }, [])
  const clearPrivate = useCallback((notice: string, nextState: 'forbidden' | 'scope-changed' = 'forbidden') => {
   draftGeneration.current += 1; currentReceipt.current = undefined; evaluationInFlight.current = undefined
   setDraft(''); setSourceLabel(''); setSourceReference(''); setAttempt(undefined); setReceipt(undefined); setState(nextState); setMessage(notice)
   setEvaluationReceipt(undefined); setEvaluationReceipts([]); setEvaluationRequestId(''); setEvaluationState('idle'); setEvaluationMessage('')
- }, [])
+  clearURL()
+ }, [clearURL])
  useEffect(() => {
   const activeScope = scopeController.current()
   const clear = () => clearPrivate('空间已切换或登录已失效，已清除职位描述。', 'scope-changed')
@@ -66,6 +83,51 @@ export function OpportunityImportPanel({ client, scopeController }: { client: We
   currentReceipt.current = next
   setReceipt(next); setState('saved'); setMessage('')
  }
+ const refreshObservations = async (opportunityId: string): Promise<void> => {
+  const requestScope = scopeController.current()
+  try {
+   const list = await client.career.opportunityObservations(opportunityId, requestScope.signal)
+   if (!scopeController.isCurrent(requestScope.scope)) return
+   setObservations(list.observations)
+  } catch {
+   // The observation history is supplementary trace; the fixed evidence links stay authoritative.
+   setObservations(undefined)
+  }
+ }
+ const importURLAttempt = async (currentAttempt: URLAttempt): Promise<void> => {
+  const requestScope = scopeController.current()
+  setUrlAttempt(currentAttempt); setUrlState('busy'); setUrlMessage('正在导入链接…')
+  try {
+   const next = await client.career.importUrl({ requestId: currentAttempt.requestId, url: currentAttempt.url }, requestScope.signal)
+   if (!scopeController.isCurrent(requestScope.scope)) return
+   if (next.requestId !== currentAttempt.requestId) throw new TypeError('服务返回的请求编号与本次链接导入不匹配')
+   setUrlReceipt(next); setUrlState('observed'); setUrlMessage('')
+  } catch (cause) {
+   if (!scopeController.isCurrent(requestScope.scope)) return
+   const parsed = errorDetails(cause)
+   if (parsed.code === 'forbidden') { clearPrivate('当前空间不可访问，已清除链接和职位描述。'); return }
+   if (['invalid_request', 'idempotency_conflict', 'request_too_large', 'PAYLOAD_TOO_LARGE'].includes(parsed.code ?? '')) {
+    setUrlState('error')
+    setUrlAttempt(undefined)
+    setUrlMessage(parsed.code === 'PAYLOAD_TOO_LARGE' || parsed.code === 'request_too_large' ? '链接请求超过服务端允许的大小，请缩短后重新导入。' : `链接未被接受：${parsed.message}`)
+    return
+   }
+   setUrlState('unknown')
+   setUrlMessage('暂时无法确认链接导入结果。请使用原请求编号重试导入以恢复。')
+  }
+ }
+ const beginURLImport = async (): Promise<void> => {
+  if (urlState === 'busy' || urlState === 'unknown' || !urlDraft.trim()) return
+  await importURLAttempt({ requestId: newRequestId(), url: urlDraft.trim(), attemptedAt: new Date().toISOString() })
+ }
+ const retryURLImport = async (): Promise<void> => {
+  if (!urlAttempt || urlState === 'busy') return
+  await importURLAttempt(urlAttempt)
+ }
+ const onURLDraftChange = (value: string): void => {
+  setUrlDraft(value)
+  if (urlState === 'error') { setUrlAttempt(undefined); setUrlReceipt(undefined); setUrlState('idle'); setUrlMessage('') }
+ }
  const importAttempt = async (currentAttempt: Attempt): Promise<void> => {
   const requestScope = scopeController.current()
   setAttempt(currentAttempt); setState('busy'); setMessage('正在保存职位描述…')
@@ -73,6 +135,9 @@ export function OpportunityImportPanel({ client, scopeController }: { client: We
    const next = await client.career.importOpportunity(currentAttempt, requestScope.signal)
    if (!scopeController.isCurrent(requestScope.scope)) return
    acceptReceipt(next, currentAttempt)
+   // A paste after a URL observation appends to the same opportunity; refresh
+   // the immutable observation history so the original URL trace stays visible.
+   if (currentAttempt.opportunityId) await refreshObservations(currentAttempt.opportunityId)
   } catch (cause) {
    if (!scopeController.isCurrent(requestScope.scope)) return
    const parsed = errorDetails(cause)
@@ -89,7 +154,10 @@ export function OpportunityImportPanel({ client, scopeController }: { client: We
  }
  const beginImport = async (): Promise<void> => {
   if (state === 'busy' || state === 'unknown' || !draft.trim()) return
-  const nextAttempt: Attempt = { requestId: newRequestId(), rawText: draft, ...(sourceLabel.trim() ? { sourceLabel } : {}), ...(sourceReference.trim() ? { sourceReference } : {}) }
+  // After a URL observation the paste joins the same opportunity as a new
+  // immutable snapshot, referencing the prior URL observation by ID.
+  const appendContext = urlState === 'observed' && urlReceipt ? { opportunityId: urlReceipt.opportunityId, priorObservationId: urlReceipt.observationId } : {}
+  const nextAttempt: Attempt = { requestId: newRequestId(), rawText: draft, ...(sourceLabel.trim() ? { sourceLabel } : {}), ...(sourceReference.trim() ? { sourceReference } : {}), ...appendContext }
   await importAttempt(nextAttempt)
  }
  const lookupReceipt = async (): Promise<void> => {
@@ -116,6 +184,7 @@ export function OpportunityImportPanel({ client, scopeController }: { client: We
  const beginNewDraft = (): void => {
   draftGeneration.current += 1; currentReceipt.current = undefined; evaluationInFlight.current = undefined
   setDraft(''); setSourceLabel(''); setSourceReference(''); setAttempt(undefined); setReceipt(undefined); setState('idle'); setMessage(''); setEvaluationReceipt(undefined); setEvaluationReceipts([]); setEvaluationRequestId(''); setEvaluationState('idle'); setEvaluationMessage('')
+  clearURL()
  }
  const runEvaluation = async (requestId: string): Promise<void> => {
   if (!receipt || evaluationInFlight.current) return
@@ -160,10 +229,27 @@ export function OpportunityImportPanel({ client, scopeController }: { client: We
   } finally { if (evaluationInFlight.current === flight) evaluationInFlight.current = undefined }
  }
  const locked = state === 'busy' || state === 'unknown' || state === 'saved'
+ const urlLocked = urlState === 'busy' || urlState === 'unknown'
  return <section className="wk-opportunity-import" aria-labelledby="wk-opportunity-import-title">
-  <div className="wk-opportunity-import__intro"><div><p className="wk-opportunity-import__eyebrow">Career</p><h2 id="wk-opportunity-import-title">保存职位描述</h2><p>粘贴职位描述作为独立证据保存，不会发送到聊天或执行其中的指令。</p></div></div>
+  <div className="wk-opportunity-import__intro"><div><p className="wk-opportunity-import__eyebrow">Career</p><h2 id="wk-opportunity-import-title">保存职位描述</h2><p>可提交职位链接由服务端核验抓取，或直接粘贴职位描述作为独立证据保存；内容不会发送到聊天或执行其中的指令。</p></div></div>
+  <label className="wk-opportunity-import__label" htmlFor="wk-opportunity-url">职位链接（选填，由服务端核验抓取）</label>
+  <input id="wk-opportunity-url" className="wk-opportunity-import__url" aria-label="职位链接" value={urlState === 'unknown' && urlAttempt ? urlAttempt.url : urlDraft} disabled={urlLocked} onChange={(event) => onURLDraftChange(event.target.value)} placeholder="https://…" inputMode="url" autoComplete="off" />
+  <div className="wk-opportunity-import__actions wk-opportunity-import__actions--url">
+   {urlState === 'unknown' ? <button type="button" onClick={() => void retryURLImport()}>使用原请求编号重试导入</button> : <button type="button" disabled={urlLocked || !urlDraft.trim()} onClick={() => void beginURLImport()}>{urlState === 'busy' ? '正在导入链接…' : '导入链接'}</button>}
+  </div>
+  {urlMessage ? <p className={urlState === 'error' ? 'wk-opportunity-import__message wk-opportunity-import__message--error' : 'wk-opportunity-import__message'} role={urlState === 'error' ? 'alert' : 'status'} aria-live="polite">{urlMessage}</p> : null}
+  {urlReceipt ? <div className={`wk-source-status wk-source-status--${urlReceipt.sourceStatus}`} role="status" aria-live="polite">
+   <strong>来源状态：{sourceStatusLabels[urlReceipt.sourceStatus]}</strong>
+   <p>完整度：{completenessLabels[urlReceipt.completeness]}</p>
+   {urlReceipt.failureCode !== undefined ? <p>原因：{failureReasons[urlReceipt.failureCode]}</p> : null}
+   <p className="wk-source-status__url">提交链接：<code>{urlReceipt.submittedUrl}</code></p>
+   <p>尝试时间：<time dateTime={urlAttempt?.attemptedAt ?? urlReceipt.acquiredAt}>{urlAttempt?.attemptedAt ?? urlReceipt.acquiredAt}</time> · 采集时间：<time dateTime={urlReceipt.acquiredAt}>{urlReceipt.acquiredAt}</time></p>
+   {urlReceipt.needsUserJD ? <p className="wk-source-status__needs-jd">需用户补充 JD</p> : null}
+   <p><a href={opportunityEvidencePath(urlReceipt.opportunityId, urlReceipt.snapshotId)}>查看来源观察证据</a></p>
+  </div> : null}
+  {observations && urlReceipt ? <section className="wk-source-history" aria-label="来源观察历史"><h3>来源观察历史</h3><ul>{observations.map((observation) => <li key={observation.observationId}><a href={opportunityEvidencePath(urlReceipt.opportunityId, observation.snapshotId)}>{observation.source.kind === 'url' ? `来源观察（${observation.sourceStatus !== undefined ? sourceStatusLabels[observation.sourceStatus] : '链接'}）` : '来源观察（手工粘贴）'}</a> <time dateTime={observation.acquiredAt}>{observation.acquiredAt}</time></li>)}</ul><p>历史观察不可变：补充粘贴产生新快照，原链接观察保持原样。</p></section> : null}
   <label className="wk-opportunity-import__label" htmlFor="wk-opportunity-raw-text">职位描述</label>
-  <textarea id="wk-opportunity-raw-text" aria-label="职位描述" rows={5} value={state === 'unknown' && attempt ? attempt.rawText : draft} disabled={locked || state === 'forbidden'} onChange={(event) => onDraftChange(event.target.value)} placeholder="粘贴完整的职位描述…" />
+  <textarea id="wk-opportunity-raw-text" aria-label="职位描述" rows={5} value={state === 'unknown' && attempt ? attempt.rawText : draft} disabled={locked || state === 'forbidden'} onChange={(event) => onDraftChange(event.target.value)} placeholder={urlReceipt?.needsUserJD ? '来源不完整，请粘贴完整职位描述补充…' : '粘贴完整的职位描述…'} />
   <div className="wk-opportunity-import__metadata">
    <label>来源名称（选填）<input aria-label="来源名称" value={sourceLabel} disabled={locked || state === 'forbidden'} onChange={(event) => setSourceLabel(event.target.value)} /></label>
    <label>来源链接或编号（仅记录，不会访问）<input aria-label="来源链接或编号" value={sourceReference} disabled={locked || state === 'forbidden'} onChange={(event) => setSourceReference(event.target.value)} /></label>
