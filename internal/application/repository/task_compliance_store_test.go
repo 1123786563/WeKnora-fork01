@@ -178,6 +178,57 @@ func TestTaskMetadataFactsProjectsMetadataOnly(t *testing.T) {
 	require.NotNil(t, facts.DeletedAt)
 }
 
+func TestPurgeTaskDeletesInternalRowsOnlyKeepsAudit(t *testing.T) {
+	db := openTaskComplianceDB(t)
+	seedComplianceTask(t, db, 1, "s1")
+	store := repository.NewTaskComplianceStore(db)
+	ctx := context.Background()
+
+	// Historical audit rows + a compliance window + a grant on the task.
+	require.NoError(t, db.Exec(
+		"INSERT INTO audit_logs (tenant_id, actor_user_id, action) VALUES (1,'u1','session.created'),(1,'u1','kb.indexed')").Error)
+	_, err := store.OpenComplianceAccess(ctx, types.TaskComplianceAccess{
+		TenantID: 1, TaskID: "s1", AdminID: "u9", Reason: "audit", ExpiresAt: time.Now().Add(time.Hour),
+	})
+	require.NoError(t, err)
+	require.NoError(t, db.Exec(
+		"INSERT INTO task_grants (tenant_id, task_id, grantee_id, role, granted_by) VALUES (1,'s1','u2','viewer','u1')").Error)
+	var auditsBefore int64
+	require.NoError(t, db.Table("audit_logs").Where("tenant_id = ?", uint64(1)).Count(&auditsBefore).Error)
+	require.Equal(t, int64(2), auditsBefore)
+
+	// Purge is idempotent-miss on an unknown task.
+	require.ErrorIs(t, store.PurgeTask(ctx, 1, "s-missing"), types.ErrTaskComplianceNotFound)
+	// Cross-tenant probe: same uniform miss.
+	require.ErrorIs(t, store.PurgeTask(ctx, 2, "s1"), types.ErrTaskComplianceNotFound)
+
+	require.NoError(t, store.PurgeTask(ctx, 1, "s1"))
+
+	// Every INTERNAL row of the task is gone. Where clauses are fully
+	// explicit per table — no string-built SQL anywhere (values bind as
+	// parameters; the column/table names never come from input).
+	require.Zero(t, complianceRowCount(t, db, "sessions", "tenant_id = ? AND id = ?", uint64(1), "s1"))
+	require.Zero(t, complianceRowCount(t, db, "messages", "session_id = ?", "s1"))
+	require.Zero(t, complianceRowCount(t, db, "agent_runs", "tenant_id = ? AND session_id = ?", uint64(1), "s1"))
+	require.Zero(t, complianceRowCount(t, db, "task_grants", "tenant_id = ? AND task_id = ?", uint64(1), "s1"))
+	require.Zero(t, complianceRowCount(t, db, "task_compliance_access", "tenant_id = ? AND task_id = ?", uint64(1), "s1"))
+
+	// AC2 / Review Focus 4: audit rows survive every purge untouched, and
+	// the new trail (task.purged) is APPENDED, never destructive.
+	var auditsAfter int64
+	require.NoError(t, db.Table("audit_logs").Where("tenant_id = ?", uint64(1)).Count(&auditsAfter).Error)
+	require.GreaterOrEqual(t, auditsAfter, auditsBefore, "audit_logs is append-only across purges")
+}
+
+// complianceRowCount is the test-only count helper: table and where come
+// from call sites above (fixed literals), args bind as parameters.
+func complianceRowCount(t *testing.T, db *gorm.DB, table, where string, args ...any) int64 {
+	t.Helper()
+	var n int64
+	require.NoError(t, db.Table(table).Where(where, args...).Count(&n).Error)
+	return n
+}
+
 func TestListTaskMessagesScopedToSession(t *testing.T) {
 	db := openTaskComplianceDB(t)
 	seedComplianceTask(t, db, 1, "s1")

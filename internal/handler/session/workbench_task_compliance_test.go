@@ -33,6 +33,9 @@ type fakeComplianceManager struct {
 		ttl    time.Duration
 	}
 	lastContentTask string
+	purgeReceipt    types.TaskPurgeReceipt
+	purgeErr        error
+	lastPurgeTask   string
 }
 
 func (f *fakeComplianceManager) GetTaskPolicy(context.Context, types.Caller) (*types.TenantTaskPolicy, error) {
@@ -64,6 +67,11 @@ func (f *fakeComplianceManager) ReadTaskContent(_ context.Context, _ types.Calle
 	return f.content, f.contentErr
 }
 
+func (f *fakeComplianceManager) PurgeTask(_ context.Context, _ types.Caller, taskID string) (types.TaskPurgeReceipt, error) {
+	f.lastPurgeTask = taskID
+	return f.purgeReceipt, f.purgeErr
+}
+
 func complianceRequest(t *testing.T, method, path, body string, role types.TenantRole) (*http.Request, *httptest.ResponseRecorder) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
@@ -92,6 +100,7 @@ func newComplianceTestEngine(t *testing.T, fake *fakeComplianceManager) *gin.Eng
 	v1.GET("/workbench/compliance/tasks/:task_id", h.TaskMetadata)
 	v1.POST("/workbench/compliance/tasks/:task_id/access", h.RequestContentAccess)
 	v1.GET("/workbench/compliance/tasks/:task_id/content", h.ReadTaskContent)
+	v1.DELETE("/workbench/tasks/:task_id", h.PurgeTask)
 	return r
 }
 
@@ -173,4 +182,29 @@ func TestComplianceHandlerMapsErrorCodes(t *testing.T) {
 			require.Equal(t, tc.want, w.Code, "%s: %s", tc.name, w.Body.String())
 		})
 	}
+}
+
+// T13 (#43) Task 6: the permanent-deletion endpoint. 200 with the receipt on
+// success; service refusals map through the same envelope (legal hold →
+// 409, fail-closed audit → 503).
+func TestCompliancePurgeEndpoint(t *testing.T) {
+	fake := &fakeComplianceManager{}
+	engine := newComplianceTestEngine(t, fake)
+
+	req, w := complianceRequest(t, http.MethodDelete, "/api/v1/workbench/tasks/s1", "", types.TenantRoleAdmin)
+	engine.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	require.Equal(t, "s1", fake.lastPurgeTask)
+
+	// Service refusals map through the same envelope: legal hold → 409.
+	fake.purgeErr = apperrors.NewConflictError("task deletion is blocked by the tenant legal hold")
+	req, w = complianceRequest(t, http.MethodDelete, "/api/v1/workbench/tasks/s1", "", types.TenantRoleAdmin)
+	engine.ServeHTTP(w, req)
+	require.Equal(t, http.StatusConflict, w.Code, w.Body.String())
+
+	// Audit missing → 503 (fail closed surfaces as service unavailable).
+	fake.purgeErr = apperrors.NewServiceUnavailableError("compliance audit trail is required")
+	req, w = complianceRequest(t, http.MethodDelete, "/api/v1/workbench/tasks/s1", "", types.TenantRoleAdmin)
+	engine.ServeHTTP(w, req)
+	require.Equal(t, http.StatusServiceUnavailable, w.Code, w.Body.String())
 }

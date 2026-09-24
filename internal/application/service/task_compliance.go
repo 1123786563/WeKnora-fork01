@@ -34,10 +34,10 @@ type TaskComplianceStorePort interface {
 	OpenComplianceAccess(ctx context.Context, access types.TaskComplianceAccess) (types.TaskComplianceAccess, error)
 	ActiveComplianceAccess(ctx context.Context, tenantID uint64, taskID, adminID string, now time.Time) (*types.TaskComplianceAccess, error)
 	ListTaskMessages(ctx context.Context, taskID string, limit int) ([]types.TaskMessageFact, error)
-	// PurgeTask is added back in Task 6 (retention purge); the port grows
-	// with implemented capability (ruling via escalation, t13 #43 task 4:
-	// a port method declared ahead of its only implementation is masked by
-	// test stubs and explodes at the first real wiring point).
+	// PurgeTask is the retention purge transaction (added in Task 6 as
+	// planned; the port grows with implemented capability — ruling via
+	// escalation, t13 #43 task 4).
+	PurgeTask(ctx context.Context, tenantID uint64, taskID string) error
 }
 
 // TaskComplianceService carries the compliance surface and the deletion
@@ -259,4 +259,56 @@ func (s *TaskComplianceService) AllowsTaskDeletion(ctx context.Context, tenantID
 		Outcome: types.AuditOutcomeDenied,
 	})
 	return ErrTaskLegalHold
+}
+
+// ErrTaskNotSoftDeleted refuses purging a task the user still sees.
+var ErrTaskNotSoftDeleted = apperrors.NewConflictError("task must be soft-deleted before permanent deletion")
+
+// ErrTaskRetentionActive refuses purging inside the tenant retention window.
+var ErrTaskRetentionActive = apperrors.NewConflictError("task is still inside the tenant retention window")
+
+// PurgeTask is the permanent-deletion lane (admin-only). The check chain is
+// fixed: task exists (uniform 404) → legal hold off → already soft-deleted
+// → past the retention horizon. The authorization audit row is written
+// BEFORE the destructive transaction (fail closed); if the transaction then
+// fails the row remains as the authorization event, never as proof of
+// deletion (the receipt is the proof).
+func (s *TaskComplianceService) PurgeTask(ctx context.Context, caller types.Caller, taskID string) (types.TaskPurgeReceipt, error) {
+	if err := s.requireAdmin(caller); err != nil {
+		return types.TaskPurgeReceipt{}, err
+	}
+	taskID = strings.TrimSpace(taskID)
+	if taskID == "" {
+		return types.TaskPurgeReceipt{}, apperrors.NewBadRequestError("task id is required")
+	}
+	facts, err := s.store.TaskMetadataFacts(ctx, caller.TenantID, taskID)
+	if err != nil {
+		return types.TaskPurgeReceipt{}, normalizeComplianceMiss(err)
+	}
+	policy, err := s.store.GetTaskPolicy(ctx, caller.TenantID)
+	if err != nil {
+		return types.TaskPurgeReceipt{}, err
+	}
+	if policy != nil && policy.LegalHold {
+		return types.TaskPurgeReceipt{}, ErrTaskLegalHold
+	}
+	if facts.DeletedAt == nil {
+		return types.TaskPurgeReceipt{}, ErrTaskNotSoftDeleted
+	}
+	now := s.now().UTC()
+	if policy != nil && policy.RetentionDays > 0 && now.Sub(*facts.DeletedAt) < time.Duration(policy.RetentionDays)*24*time.Hour {
+		return types.TaskPurgeReceipt{}, ErrTaskRetentionActive
+	}
+	if err := s.audited(ctx, &types.AuditLog{
+		TenantID: caller.TenantID, ActorUserID: caller.UserID, ActorRole: string(caller.Role),
+		Action:     types.AuditActionTaskPurged,
+		TargetType: "task", TargetID: facts.TaskID, TargetUserID: facts.OwnerID,
+		Outcome: types.AuditOutcomeSuccess,
+	}); err != nil {
+		return types.TaskPurgeReceipt{}, err
+	}
+	if err := s.store.PurgeTask(ctx, caller.TenantID, facts.TaskID); err != nil {
+		return types.TaskPurgeReceipt{}, normalizeComplianceMiss(err)
+	}
+	return types.TaskPurgeReceipt{TaskID: facts.TaskID, PurgedAt: now}, nil
 }

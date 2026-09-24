@@ -102,3 +102,9 @@ type TaskContentView struct {
 	Window   TaskComplianceAccess `json:"window"`
 	Messages []TaskMessageFact    `json:"messages"`
 }
+
+// TaskPurgeReceipt reports one completed permanent deletion.
+type TaskPurgeReceipt struct {
+	TaskID   string    `json:"task_id"`
+	PurgedAt time.Time `json:"purged_at"`
+}

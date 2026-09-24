@@ -26,6 +26,7 @@ type stubComplianceStore struct {
 	opened   []types.TaskComplianceAccess
 	window   *types.TaskComplianceAccess
 	messages []types.TaskMessageFact
+	purgeFn  func() error
 }
 
 func (s *stubComplianceStore) GetTaskPolicy(context.Context, uint64) (*types.TenantTaskPolicy, error) {
@@ -55,7 +56,12 @@ func (s *stubComplianceStore) ListTaskMessages(context.Context, string, int) ([]
 	return s.messages, nil
 }
 
-func (s *stubComplianceStore) PurgeTask(context.Context, uint64, string) error { return nil }
+func (s *stubComplianceStore) PurgeTask(context.Context, uint64, string) error {
+	if s.purgeFn != nil {
+		return s.purgeFn()
+	}
+	return nil
+}
 
 type recordingAudit struct {
 	interfaces.AuditLogService
@@ -250,4 +256,52 @@ func TestAllowsTaskDeletionUnderLegalHold(t *testing.T) {
 	audit.err = context.DeadlineExceeded
 	err = svc.AllowsTaskDeletion(ctx, 1, "u1", "s2")
 	require.ErrorIs(t, err, ErrTaskLegalHold)
+}
+
+// T13 (#43) Task 6: the permanent-deletion check chain. Legal hold refuses
+// first; a live (not soft-deleted) task refuses; the retention window
+// refuses; past the horizon proceeds with the audit row written BEFORE the
+// destructive transaction.
+func TestPurgeTaskPolicyChain(t *testing.T) {
+	deletedAt := time.Now().UTC().Add(-10 * 24 * time.Hour) // soft-deleted 10 days ago
+	now := func() time.Time { return time.Now().UTC() }
+
+	newStore := func() *stubComplianceStore {
+		return &stubComplianceStore{
+			facts: &types.TaskMetadataFacts{TaskID: "s1", OwnerID: "u1", DeletedAt: &deletedAt},
+		}
+	}
+	audit := &recordingAudit{}
+
+	// Legal hold refuses first, even before the soft-delete check.
+	store := newStore()
+	store.policy = &types.TenantTaskPolicy{TenantID: 1, LegalHold: true}
+	_, err := NewTaskComplianceServiceWithClock(store, audit, now).PurgeTask(context.Background(), adminCaller(), "s1")
+	require.ErrorIs(t, err, ErrTaskLegalHold)
+
+	// A live (not soft-deleted) task refuses: purge never hard-deletes what
+	// the user still sees.
+	store = newStore()
+	store.facts.DeletedAt = nil
+	_, err = NewTaskComplianceServiceWithClock(store, audit, now).PurgeTask(context.Background(), adminCaller(), "s1")
+	require.ErrorIs(t, err, ErrTaskNotSoftDeleted)
+
+	// Inside the retention window (30 days, deleted 10 days ago) refuses.
+	store = newStore()
+	store.policy = &types.TenantTaskPolicy{TenantID: 1, RetentionDays: 30}
+	_, err = NewTaskComplianceServiceWithClock(store, audit, now).PurgeTask(context.Background(), adminCaller(), "s1")
+	require.ErrorIs(t, err, ErrTaskRetentionActive)
+
+	// Past the horizon (retention 7 days, deleted 10 days ago) proceeds,
+	// with the audit row written BEFORE the destructive transaction.
+	store = newStore()
+	store.policy = &types.TenantTaskPolicy{TenantID: 1, RetentionDays: 7}
+	deleted := false
+	store.purgeFn = func() error { deleted = true; return nil }
+	receipt, err := NewTaskComplianceServiceWithClock(store, audit, now).PurgeTask(context.Background(), adminCaller(), "s1")
+	require.NoError(t, err)
+	require.Equal(t, "s1", receipt.TaskID)
+	require.True(t, deleted)
+	require.NotEmpty(t, audit.entries, "purge leaves an audit row")
+	require.Equal(t, types.AuditActionTaskPurged, audit.entries[len(audit.entries)-1].Action)
 }

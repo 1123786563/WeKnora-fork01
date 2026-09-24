@@ -1,9 +1,9 @@
 package session
 
 // T13 (#43): the compliance HTTP surface. Admin+ lane: metadata by default,
-// reasoned+time-limited+audited windows for private content, and the tenant
-// policy switches. Identity always arrives from the authenticated context
-// (taskGrantCaller shape). The permanent-deletion endpoint joins in Task 6.
+// reasoned+time-limited+audited windows for private content, the tenant
+// policy switches, and the retention purge. Identity always arrives from
+// the authenticated context (taskGrantCaller shape).
 
 import (
 	"context"
@@ -17,13 +17,13 @@ import (
 )
 
 // TaskComplianceManager is the compliance service port (service.TaskComplianceService).
-// Task 6 extends it with PurgeTask once the service side exists.
 type TaskComplianceManager interface {
 	GetTaskPolicy(ctx context.Context, caller types.Caller) (*types.TenantTaskPolicy, error)
 	SetTaskPolicy(ctx context.Context, caller types.Caller, retentionDays int, legalHold bool) (*types.TenantTaskPolicy, error)
 	TaskMetadata(ctx context.Context, caller types.Caller, taskID string) (types.TaskMetadataView, error)
 	RequestContentAccess(ctx context.Context, caller types.Caller, taskID, reason string, ttl time.Duration) (types.TaskComplianceAccess, error)
 	ReadTaskContent(ctx context.Context, caller types.Caller, taskID string) (types.TaskContentView, error)
+	PurgeTask(ctx context.Context, caller types.Caller, taskID string) (types.TaskPurgeReceipt, error)
 }
 
 // WorkbenchTaskComplianceHandler serves the T13 compliance lanes.
@@ -193,4 +193,22 @@ func (h *WorkbenchTaskComplianceHandler) ReadTaskContent(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"content": content}})
+}
+
+// PurgeTask DELETE /workbench/tasks/:task_id — permanent deletion behind the
+// fixed check chain (exists → no legal hold → soft-deleted → past retention).
+func (h *WorkbenchTaskComplianceHandler) PurgeTask(c *gin.Context) {
+	if h.refuseUnassembled(c) {
+		return
+	}
+	caller, ok := h.refuseIdentity(c)
+	if !ok {
+		return
+	}
+	receipt, err := h.compliance.PurgeTask(c.Request.Context(), caller, c.Param("task_id"))
+	if err != nil {
+		complianceWriteError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"purged": receipt}})
 }

@@ -183,3 +183,43 @@ func (s *TaskComplianceStore) ListTaskMessages(ctx context.Context, taskID strin
 	}
 	return rows, nil
 }
+
+// PurgeTask permanently deletes ONE task's internal rows inside one
+// transaction. The statement set is exactly these five tables, child rows
+// first: messages (content), agent_runs (durable runs; their decision/
+// interaction/observation children carry ON DELETE CASCADE), task_grants
+// (#42 collaboration metadata), task_compliance_access (the windows die
+// with the task — the AUDIT rows in audit_logs are a different,
+// append-only store and are never touched here), and finally the session
+// row itself (its craft workspace/delegation rows cascade with it; the
+// external resources they reference were already tombstoned at soft-delete
+// time and belong to the sweep lanes, not to this statement). No external
+// system is contacted — AC2 is structural.
+func (s *TaskComplianceStore) PurgeTask(ctx context.Context, tenantID uint64, taskID string) error {
+	if s == nil || s.db == nil || tenantID == 0 || strings.TrimSpace(taskID) == "" {
+		return errors.New("task compliance store is not assembled")
+	}
+	taskID = strings.TrimSpace(taskID)
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec("DELETE FROM messages WHERE session_id = ?", taskID).Error; err != nil {
+			return err
+		}
+		if err := tx.Exec("DELETE FROM agent_runs WHERE tenant_id = ? AND session_id = ?", tenantID, taskID).Error; err != nil {
+			return err
+		}
+		if err := tx.Exec("DELETE FROM task_grants WHERE tenant_id = ? AND task_id = ?", tenantID, taskID).Error; err != nil {
+			return err
+		}
+		if err := tx.Exec("DELETE FROM task_compliance_access WHERE tenant_id = ? AND task_id = ?", tenantID, taskID).Error; err != nil {
+			return err
+		}
+		res := tx.Exec("DELETE FROM sessions WHERE tenant_id = ? AND id = ?", tenantID, taskID)
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return types.ErrTaskComplianceNotFound
+		}
+		return nil
+	})
+}
