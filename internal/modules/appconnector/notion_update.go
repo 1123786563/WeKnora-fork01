@@ -504,3 +504,16 @@ func (m *NotionUpdateAdapter) Query(ctx context.Context, a Action) (ActionResult
 	raw, _ := json.Marshal(map[string]string{"object": "page", "id": ver.PageID, "last_edited_time": ver.LastEditedTime})
 	return ActionResult{State: ActionSucceeded, ExternalID: snap.PageID, Output: raw}, nil
 }
+
+// ReadNotionPageVersion performs a one-off version read (GET
+// /v1/pages/{id}) through the given reviewed policy and token source —
+// the plan-formation pre-read shared by the publish seam. It performs no
+// write of any kind.
+func ReadNotionPageVersion(ctx context.Context, pol HTTPPolicy, token func(ctx context.Context) (string, error), pageID string) (string, error) {
+	m := &NotionUpdateAdapter{Policy: pol, Token: token}
+	ver, err := m.readPageVersion(ctx, pageID)
+	if err != nil {
+		return "", err
+	}
+	return ver.LastEditedTime, nil
+}
