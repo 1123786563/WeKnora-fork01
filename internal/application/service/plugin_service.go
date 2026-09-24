@@ -135,6 +135,12 @@ type pluginService struct {
 	// clients for a service after the plugin domain hard-deletes or flips
 	// its materialized row — injected by the composition root, nil-safe.
 	clientCloser MCPClientCloser
+	// oauthRepo (T11, GAP-4) reads the per-principal MCP OAuth tokens of a
+	// materialized service for the member connection view — the plugin
+	// domain reuses the existing token storage, it owns none of its own.
+	// Injected by the composition root (dig resolves the shared
+	// MCPOAuthRepository); nil only in wiring-less unit slices.
+	oauthRepo interfaces.MCPOAuthRepository
 }
 
 // NewPluginService creates a new plugin service.
@@ -145,6 +151,7 @@ func NewPluginService(
 	toolApprovalService interfaces.MCPToolApprovalService,
 	lister plugins.EndpointLister,
 	clientCloser MCPClientCloser,
+	oauthRepo interfaces.MCPOAuthRepository,
 ) interfaces.PluginService {
 	return &pluginService{
 		pluginRepo:          pluginRepo,
@@ -153,6 +160,7 @@ func NewPluginService(
 		toolApprovalService: toolApprovalService,
 		lister:              lister,
 		clientCloser:        clientCloser,
+		oauthRepo:           oauthRepo,
 	}
 }
 

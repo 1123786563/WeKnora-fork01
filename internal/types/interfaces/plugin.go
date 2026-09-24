@@ -113,4 +113,12 @@ type PluginService interface {
 	// GetInstallation returns one installation's full view within the
 	// tenant; a foreign tenant's ID is "not found".
 	GetInstallation(ctx context.Context, tenantID uint64, installationID string) (*types.PluginInstallationResult, error)
+
+	// GetMyConnectionStatus returns ONE principal's personal connection view
+	// of one installation (T11, GAP-4): the three-state verdict
+	// (authorized/expired/unauthorized) over the per-principal token stored
+	// for the installation's materialized service, plus the legacy MCP OAuth
+	// endpoint paths mapped onto that service_id. A foreign tenant's
+	// installation ID is "not found". The result carries no token material.
+	GetMyConnectionStatus(ctx context.Context, tenantID uint64, installationID string, principal types.Principal) (*types.PluginMyConnection, error)
 }

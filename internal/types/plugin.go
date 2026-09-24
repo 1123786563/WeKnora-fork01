@@ -256,3 +256,40 @@ type PluginInstallationSummary struct {
 	RequiresPersonalAuth bool   `json:"requires_personal_auth"`
 	ToolCount            int    `json:"tool_count"`
 }
+
+// Member personal-connection states (T11, GAP-4). The connection view reuses
+// the per-principal MCP OAuth storage (mcp_oauth_tokens keyed by
+// (tenant, principal, service)); these constants name the member-facing
+// verdicts over that storage.
+const (
+	// PluginConnectionAuthorized: usable now — a valid access token, or an
+	// expired one whose refresh token lets the runtime renew under the
+	// member's existing consent (oauthRuntime.ensureFresh).
+	PluginConnectionAuthorized = "authorized"
+	// PluginConnectionExpired: the stored token is past expiry with no
+	// refresh token — only a NEW member consent (re-authorization) recovers.
+	PluginConnectionExpired = "expired"
+	// PluginConnectionUnauthorized: this principal has no token for the
+	// materialized service.
+	PluginConnectionUnauthorized = "unauthorized"
+)
+
+// PluginMyConnection is ONE member's personal connection view of ONE
+// installation (GET /plugins/installations/:id/connections/me): identity,
+// the materialized service binding, the three-state OAuth verdict and the
+// LEGACY MCP OAuth endpoint paths (AuthorizeURLPath/RevokePath map onto the
+// materialized service_id — the plugin domain owns no OAuth endpoints of its
+// own, GAP-4). No token material appears here — by construction this type
+// has none.
+type PluginMyConnection struct {
+	InstallationID       string   `json:"installation_id"`
+	PluginID             string   `json:"plugin_id"`
+	Name                 string   `json:"name"`
+	ServiceID            string   `json:"service_id"`
+	RequiresPersonalAuth bool     `json:"requires_personal_auth"`
+	Authorized           bool     `json:"authorized"`
+	State                string   `json:"state"`
+	AuthorizeURLPath     string   `json:"authorize_url_path"`
+	RevokePath           string   `json:"revoke_path"`
+	RequiresAuthTools    []string `json:"requires_auth_tools"`
+}

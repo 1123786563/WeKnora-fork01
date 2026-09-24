@@ -364,6 +364,85 @@ func installationResponseDTO(result *types.PluginInstallationResult) *dto.Plugin
 	}
 }
 
+// GetMyConnection godoc
+// @Summary      查询我的插件连接状态
+// @Description  返回当前成员对一个插件安装的个人授权视图：三态（authorized/expired/unauthorized）、需个人授权工具清单，以及映射到物化 MCP 服务的既有 OAuth 授权/撤销端点路径；响应不含任何令牌材料
+// @Tags         插件
+// @Produce      json
+// @Param        id   path  string  true  "安装 ID"
+// @Success      200  {object}  map[string]interface{}  "我的连接状态"
+// @Failure      401  {object}  errors.AppError         "缺少身份上下文"
+// @Failure      404  {object}  errors.AppError         "安装不存在"
+// @Failure      500  {object}  errors.AppError         "查询失败"
+// @Security     Bearer
+// @Router       /plugins/installations/{id}/connections/me [get]
+func (h *PluginHandler) GetMyConnection(c *gin.Context) {
+	ctx := c.Request.Context()
+	tenantID := c.GetUint64(types.TenantIDContextKey.String())
+	if tenantID == 0 {
+		logger.Error(ctx, "Tenant ID is empty")
+		c.Error(errors.NewBadRequestError("Workspace ID cannot be empty"))
+		return
+	}
+	principal, _ := mcpOAuthPrincipalsFromContext(c)
+	if !principal.Valid() {
+		c.Error(errors.NewUnauthorizedError("authentication required"))
+		return
+	}
+	resp, err := h.pluginService.GetMyConnectionStatus(ctx, tenantID, c.Param("id"), principal)
+	if err != nil {
+		mapPluginConnectionError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    myConnectionResponseDTO(resp),
+	})
+}
+
+// myConnectionResponseDTO maps the types-layer connection view onto the HTTP
+// DTO. RequiresAuthTools is copied, never aliased, and stays [] — one wire
+// shape end to end (跨任务转交 T01-R1-F1 convention).
+func myConnectionResponseDTO(result *types.PluginMyConnection) *dto.PluginMyConnection {
+	if result == nil {
+		return nil
+	}
+	tools := make([]string, len(result.RequiresAuthTools))
+	copy(tools, result.RequiresAuthTools)
+	return &dto.PluginMyConnection{
+		InstallationID:       result.InstallationID,
+		PluginID:             result.PluginID,
+		Name:                 result.Name,
+		ServiceID:            result.ServiceID,
+		RequiresPersonalAuth: result.RequiresPersonalAuth,
+		Authorized:           result.Authorized,
+		State:                result.State,
+		AuthorizeURLPath:     result.AuthorizeURLPath,
+		RevokePath:           result.RevokePath,
+		RequiresAuthTools:    tools,
+	}
+}
+
+// mapPluginConnectionError maps the connection view's service failures onto
+// HTTP verdicts: a foreign/absent installation is a flat 404 (no existence
+// leak); a missing principal context is 401; token-store faults are 5xx with
+// sentinel-only text (driver internals stay server-side).
+func mapPluginConnectionError(c *gin.Context, err error) {
+	switch {
+	case stderrors.Is(err, service.ErrInstallationNotFound):
+		c.Error(errors.NewNotFoundError(err.Error()))
+	case stderrors.Is(err, service.ErrConnectionPrincipalRequired):
+		c.Error(errors.NewUnauthorizedError(err.Error()))
+	case stderrors.Is(err, service.ErrInstallationPersistFailed),
+		stderrors.Is(err, service.ErrConnectionQueryFailed):
+		logger.Error(c.Request.Context(), "Plugin connection status query failed", err)
+		c.Error(errors.NewInternalServerError("查询插件连接状态失败：服务端内部故障，请稍后重试"))
+	default:
+		logger.Error(c.Request.Context(), "Unmapped plugin connection error", err)
+		c.Error(errors.NewInternalServerError("查询插件连接状态失败：服务端内部故障，请稍后重试"))
+	}
+}
+
 // mapPluginInstallationError maps install-slice service failures onto HTTP
 // verdicts. Deterministic rejections of the confirm input (consumed /
 // expired / changed preview, duplicate install) are 4xx with the sentinel

@@ -88,3 +88,23 @@ type PluginInstallationSummary struct {
 	RequiresPersonalAuth bool   `json:"requires_personal_auth"`
 	ToolCount            int    `json:"tool_count"`
 }
+
+// PluginMyConnection is the member's personal connection view of one
+// installation (GET /plugins/installations/:id/connections/me): identity,
+// the materialized service binding, the three-state OAuth verdict
+// (authorized/expired/unauthorized) and the legacy MCP OAuth endpoint paths
+// mapped onto that service_id — the frontend drives authorize/revoke through
+// those existing endpoints. No token material ever appears here — by
+// construction this type has none.
+type PluginMyConnection struct {
+	InstallationID       string   `json:"installation_id"`
+	PluginID             string   `json:"plugin_id"`
+	Name                 string   `json:"name"`
+	ServiceID            string   `json:"service_id"`
+	RequiresPersonalAuth bool     `json:"requires_personal_auth"`
+	Authorized           bool     `json:"authorized"`
+	State                string   `json:"state"`
+	AuthorizeURLPath     string   `json:"authorize_url_path"`
+	RevokePath           string   `json:"revoke_path"`
+	RequiresAuthTools    []string `json:"requires_auth_tools"`
+}

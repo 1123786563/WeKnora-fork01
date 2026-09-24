@@ -40,5 +40,11 @@ func RegisterPluginRoutes(r *gin.RouterGroup, pluginHandler *handler.PluginHandl
 		pluginRoutes.DELETE("/installations/:id", g.SystemAdmin(), pluginHandler.UninstallInstallation)
 		pluginRoutes.GET("/installations", g.Viewer(), pluginHandler.ListInstallations)
 		pluginRoutes.GET("/installations/:id", g.Viewer(), pluginHandler.GetInstallation)
+		// Member personal connection view (T11, GAP-4): every member reads
+		// THEIR OWN authorization state for an installation — the principal
+		// comes from the session context, never from the request, so the
+		// endpoint has no way to ask about another member. Viewer+ like the
+		// other discovery endpoints; cross-tenant isolation in the service.
+		pluginRoutes.GET("/installations/:id/connections/me", g.Viewer(), pluginHandler.GetMyConnection)
 	}
 }

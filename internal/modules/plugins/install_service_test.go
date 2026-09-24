@@ -497,7 +497,7 @@ func newInstallTestStackCustom(
 	approvalSvc := service.NewMCPToolApprovalService(approvalRepo, mcpRepo)
 	closed := &[]string{}
 	closer := service.MCPClientCloser(func(serviceID string) { *closed = append(*closed, serviceID) })
-	svc := service.NewPluginService(pluginRepo, mcpSvcService, mcpRepo, approvalSvc, lister.asEndpointLister(), closer)
+	svc := service.NewPluginService(pluginRepo, mcpSvcService, mcpRepo, approvalSvc, lister.asEndpointLister(), closer, nil)
 
 	resp, err := svc.PreviewFromManifest(context.Background(), tenantID, "admin-1", srv.URL+"/manifest.json")
 	require.NoError(t, err)

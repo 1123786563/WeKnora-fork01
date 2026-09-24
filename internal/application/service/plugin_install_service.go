@@ -101,6 +101,15 @@ var (
 	// deterministic 4xx rejection of the confirmed input, mirroring the
 	// preview path. Fetch faults keep their own 503 sentinel.
 	ErrPluginVerifyFailed = errors.New("plugin verification failed")
+
+	// ErrConnectionQueryFailed (T11): 5xx fault while reading the member's
+	// OAuth token row for the connection view. Token details never travel
+	// with the error — only the server log sees the driver text.
+	ErrConnectionQueryFailed = errors.New("failed to query plugin connection status")
+
+	// ErrConnectionPrincipalRequired (T11): the caller's principal context
+	// is missing/invalid — the connection view is inherently per-identity.
+	ErrConnectionPrincipalRequired = errors.New("principal context is required to query plugin connection status")
 )
 
 // ConfirmInstallation implements the compensated seven-step confirm flow
@@ -598,4 +607,89 @@ func installationSummary(inst *types.PluginInstallation) *types.PluginInstallati
 		RequiresPersonalAuth: requiresPersonalAuth,
 		ToolCount:            len(inst.ToolsSnapshot),
 	}
+}
+
+// GetMyConnectionStatus returns ONE principal's personal connection view of
+// one installation (T11, GAP-4): the tenant-scoped installation lookup, the
+// personal-auth requirement derived from the ACCEPTED tool snapshot (never
+// the live remote), and the three-state verdict over the per-principal token
+// stored for the materialized service — the plugin domain reuses the MCP
+// OAuth storage keyed by (tenant, principal, service_id), it owns no token
+// table of its own. AuthorizeURLPath/RevokePath map onto the materialized
+// service_id's LEGACY MCP OAuth endpoints (fixed concatenation); the result
+// carries no token material.
+func (s *pluginService) GetMyConnectionStatus(
+	ctx context.Context,
+	tenantID uint64,
+	installationID string,
+	principal types.Principal,
+) (*types.PluginMyConnection, error) {
+	principal = principal.Normalize()
+	if !principal.Valid() {
+		return nil, ErrConnectionPrincipalRequired
+	}
+
+	inst, err := s.pluginRepo.GetInstallation(ctx, tenantID, installationID)
+	if err != nil {
+		logger.GetLogger(ctx).Errorf("failed to load plugin installation: %v", err)
+		return nil, ErrInstallationPersistFailed
+	}
+	if inst == nil {
+		return nil, ErrInstallationNotFound
+	}
+
+	conn := &types.PluginMyConnection{
+		InstallationID:    inst.ID,
+		PluginID:          inst.PluginID,
+		Name:              inst.Name,
+		ServiceID:         inst.ServiceID,
+		Authorized:        true,
+		State:             types.PluginConnectionAuthorized,
+		RequiresAuthTools: []string{},
+	}
+	for _, tool := range inst.ToolsSnapshot {
+		if tool.RequiresPersonalAuth {
+			conn.RequiresPersonalAuth = true
+			conn.RequiresAuthTools = append(conn.RequiresAuthTools, tool.Name)
+		}
+	}
+	if !conn.RequiresPersonalAuth {
+		// No personal OAuth in the accepted snapshot — nothing to authorize,
+		// the connection is trivially usable; no endpoint paths to offer.
+		return conn, nil
+	}
+	if inst.ServiceID != "" {
+		conn.AuthorizeURLPath = "/api/v1/mcp-services/" + inst.ServiceID + "/oauth/authorize-url"
+		conn.RevokePath = "/api/v1/mcp-services/" + inst.ServiceID + "/oauth/token"
+	}
+
+	if s.oauthRepo == nil {
+		// Wiring fault (production always injects via dig): fail loudly
+		// rather than reporting a misleading unauthorized.
+		logger.GetLogger(ctx).Errorf("plugin connection status: oauth repository is not wired")
+		return nil, ErrConnectionQueryFailed
+	}
+	token, err := s.oauthRepo.GetTokenForPrincipal(ctx, tenantID, principal, inst.ServiceID)
+	if err != nil {
+		logger.GetLogger(ctx).Errorf("failed to load member oauth token for plugin connection: %v", err)
+		return nil, ErrConnectionQueryFailed
+	}
+	switch {
+	case token == nil || token.AccessToken == "":
+		conn.State = types.PluginConnectionUnauthorized
+		conn.Authorized = false
+	case token.ExpiresAt.IsZero() || token.ExpiresAt.After(time.Now()):
+		// usable now
+	default:
+		if token.RefreshToken == "" {
+			// Expired with no refresh token: only a NEW member consent
+			// recovers — the UI guides re-authorization.
+			conn.State = types.PluginConnectionExpired
+			conn.Authorized = false
+		}
+		// Expired WITH a refresh token stays authorized: the runtime
+		// renews under the member's existing consent (oauthRuntime.
+		// ensureFresh), so the member's connection is live.
+	}
+	return conn, nil
 }
