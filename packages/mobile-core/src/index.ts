@@ -29,3 +29,5 @@ export type {
 export type { TaskLifecycleState, TaskTimelineEntry, TaskTimelineKind, TaskTimelineSourceEvent } from './task-office/task-timeline.ts';
 export { isTerminalRunStatus, mergeEventHistory, projectTimeline, taskLifecycleOf, terminalRunStatusOf, timelineKindLabel } from './task-office/task-timeline.ts';
 export type { ScenarioTaskDetailHandlers, ScriptedTaskStream } from './task-office/in-memory-task-detail.ts';
+export { parseNotificationDeepLink } from './inbox/deep-link.ts';
+export type { DeepLinkTarget, TaskDetailDeepLinkTarget } from './inbox/deep-link.ts';
