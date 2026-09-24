@@ -8,12 +8,15 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	appdatabase "github.com/Tencent/WeKnora/internal/database"
+	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -205,6 +208,136 @@ func TestEnsureCareerApplicationTaskReplayReturnsSameTaskAndRun(t *testing.T) {
 	require.Equal(t, int64(1), mappings)
 }
 
+type applicationTaskCallResult struct {
+	link interfaces.CareerApplicationTaskLink
+	err  error
+}
+
+func ensureCareerApplicationTasksConcurrently(
+	t *testing.T,
+	coordinator *ApplicationTaskCoordinator,
+	intents []interfaces.CareerApplicationTaskIntent,
+) []applicationTaskCallResult {
+	t.Helper()
+
+	start := make(chan struct{})
+	ready := make(chan struct{}, len(intents))
+	sessionCreates := make(chan struct{}, len(intents))
+	resumeSessionCreates := make(chan struct{})
+	results := make(chan applicationTaskCallResult, len(intents))
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	var workers sync.WaitGroup
+	require.NoError(t, coordinator.db.Callback().Create().Before("gorm:create").Register(
+		"test/pause_application_task_session_creates",
+		func(tx *gorm.DB) {
+			if tx.Statement == nil || tx.Statement.Table != "sessions" {
+				return
+			}
+			sessionCreates <- struct{}{}
+			<-resumeSessionCreates
+		},
+	))
+	defer func() {
+		coordinator.db.Callback().Create().Remove("test/pause_application_task_session_creates")
+	}()
+	for _, intent := range intents {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			ready <- struct{}{}
+			<-start
+			link, err := coordinator.EnsureCareerApplicationTask(ctx, 701, "owner-1", intent)
+			results <- applicationTaskCallResult{link: link, err: err}
+		}()
+	}
+	for range intents {
+		<-ready
+	}
+	close(start)
+	for range intents {
+		<-sessionCreates
+	}
+	close(resumeSessionCreates)
+	workers.Wait()
+	close(results)
+
+	output := make([]applicationTaskCallResult, 0, len(intents))
+	for result := range results {
+		output = append(output, result)
+	}
+	return output
+}
+
+func TestEnsureCareerApplicationTaskConcurrentExactReplayReturnsOriginal(t *testing.T) {
+	db := openApplicationTaskDB(t)
+	coordinator := NewApplicationTaskCoordinator(db)
+
+	intents := make([]interfaces.CareerApplicationTaskIntent, 2)
+	for i := range intents {
+		intents[i] = applicationTaskIntent()
+	}
+	results := ensureCareerApplicationTasksConcurrently(t, coordinator, intents)
+	for _, result := range results {
+		require.NoError(t, result.err)
+		require.Equal(t, results[0].link, result.link)
+	}
+	requireApplicationProjection(t, db, results[0].link)
+}
+
+func TestEnsureCareerApplicationTaskConcurrentChangedIntentIsTypedConflict(t *testing.T) {
+	db := openApplicationTaskDB(t)
+	coordinator := NewApplicationTaskCoordinator(db)
+
+	intents := make([]interfaces.CareerApplicationTaskIntent, 2)
+	for i := range intents {
+		intents[i] = applicationTaskIntent()
+		intents[i].ApplicationID = uuid.NewString()
+	}
+	results := ensureCareerApplicationTasksConcurrently(t, coordinator, intents)
+	winners := 0
+	for _, result := range results {
+		if result.err == nil {
+			winners++
+			continue
+		}
+		require.ErrorIs(t, result.err, ErrApplicationTaskConflict)
+	}
+	require.Equal(t, 1, winners)
+	var sessions, runs, mappings int64
+	require.NoError(t, db.Table("sessions").Count(&sessions).Error)
+	require.NoError(t, db.Table("agent_runs").Count(&runs).Error)
+	require.NoError(t, db.Table("workbench_application_tasks").Count(&mappings).Error)
+	require.Equal(t, int64(1), sessions)
+	require.Equal(t, int64(1), runs)
+	require.Equal(t, int64(1), mappings)
+}
+
+func TestEnsureCareerApplicationTaskCanonicalizesEquivalentUUIDForms(t *testing.T) {
+	db := openApplicationTaskDB(t)
+	coordinator := NewApplicationTaskCoordinator(db)
+	ctx := context.Background()
+
+	first, err := coordinator.EnsureCareerApplicationTask(ctx, 701, "owner-1", applicationTaskIntent())
+	require.NoError(t, err)
+	for _, equivalentForm := range []string{
+		"{0CD7EE38-03E5-45BF-A070-6A8675DA7DB3}",
+		"0CD7EE3803E545BFA0706A8675DA7DB3",
+		"urn:uuid:0cd7ee38-03e5-45bf-a070-6a8675da7db3",
+	} {
+		equivalent := applicationTaskIntent()
+		equivalent.ApplicationID = equivalentForm
+		replayed, err := coordinator.EnsureCareerApplicationTask(ctx, 701, "owner-1", equivalent)
+		require.NoError(t, err)
+		require.Equal(t, first, replayed)
+	}
+
+	var applications []string
+	require.NoError(t, db.Table("workbench_application_tasks").
+		Pluck("application_id", &applications).Error)
+	require.Equal(t, []string{applicationTaskIntent().ApplicationID}, applications)
+}
+
 func TestEnsureCareerApplicationTaskChangedIntentConflicts(t *testing.T) {
 	db := openApplicationTaskDB(t)
 	coordinator := NewApplicationTaskCoordinator(db)
@@ -251,13 +384,40 @@ func TestFindCareerApplicationTaskIsTenantAndOwnerScoped(t *testing.T) {
 func TestApplicationTaskProjectionIsListReadableArchivableAndRestorable(t *testing.T) {
 	db := openApplicationTaskDB(t)
 	coordinator := NewApplicationTaskCoordinator(db)
+	runs := repository.NewAgentRunStore(db)
 	lists := repository.NewWorkbenchListStore(db)
 	states := repository.NewWorkbenchTaskStateStore(db)
 	ctx := context.Background()
 
 	link, err := coordinator.EnsureCareerApplicationTask(ctx, 701, "owner-1", applicationTaskIntent())
 	require.NoError(t, err)
+	run, err := runs.GetOwnedRun(ctx, 701, "owner-1", link.RunID)
+	require.NoError(t, err)
+	require.Equal(t, link.RunID, run.Key.RunID)
+	require.Equal(t, link.TaskID, run.SessionID)
+	require.Equal(t, "career-create-application", run.RequestID)
+
+	facts, err := lists.ReadTaskFactsForRun(ctx, 701, "owner-1", link.RunID)
+	require.NoError(t, err)
+	require.Equal(t, link.TaskID, facts.TaskID)
+	require.Equal(t, "Backend Engineer Application", facts.Title)
+	require.Equal(t, "required", facts.Attention)
+	require.Empty(t, facts.ArchivedAt)
+
+	_, err = runs.GetOwnedRun(ctx, 702, "owner-1", link.RunID)
+	require.ErrorIs(t, err, agentruntime.ErrNotFound)
+	_, err = runs.GetOwnedRun(ctx, 701, "owner-2", link.RunID)
+	require.ErrorIs(t, err, agentruntime.ErrNotFound)
+	_, err = lists.ReadTaskFactsForRun(ctx, 702, "owner-1", link.RunID)
+	require.ErrorIs(t, err, agentruntime.ErrNotFound)
+	_, err = lists.ReadTaskFactsForRun(ctx, 701, "owner-2", link.RunID)
+	require.ErrorIs(t, err, agentruntime.ErrNotFound)
+
 	archivedAt := time.Date(2026, 9, 24, 10, 0, 0, 0, time.UTC)
+	err = states.SetTaskArchived(ctx, 702, "owner-1", link.TaskID, true, archivedAt)
+	require.ErrorIs(t, err, repository.ErrWorkbenchTaskNotFound)
+	err = states.SetTaskArchived(ctx, 701, "owner-2", link.TaskID, true, archivedAt)
+	require.ErrorIs(t, err, repository.ErrWorkbenchTaskNotFound)
 	require.NoError(t, states.SetTaskArchived(ctx, 701, "owner-1", link.TaskID, true, archivedAt))
 
 	active, err := lists.ListOwnedExecutions(ctx, 701, "owner-1", repository.WorkbenchExecutionFilter{})

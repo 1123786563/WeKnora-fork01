@@ -65,8 +65,31 @@ func (c *ApplicationTaskCoordinator) EnsureCareerApplicationTask(
 		return interfaces.CareerApplicationTaskLink{}, err
 	}
 
+	for attempt := 0; attempt < 3; attempt++ {
+		link, err := c.ensureOnce(ctx, tenantID, ownerID, intent)
+		if err == nil {
+			return link, nil
+		}
+		if attempt == 2 || !isApplicationTaskCreationRace(err) {
+			return interfaces.CareerApplicationTaskLink{}, err
+		}
+		select {
+		case <-ctx.Done():
+			return interfaces.CareerApplicationTaskLink{}, ctx.Err()
+		case <-time.After(time.Duration(attempt+1) * time.Millisecond):
+		}
+	}
+	return interfaces.CareerApplicationTaskLink{}, ErrApplicationTaskConflict
+}
+
+func (c *ApplicationTaskCoordinator) ensureOnce(
+	ctx context.Context,
+	tenantID uint64,
+	ownerID string,
+	intent interfaces.CareerApplicationTaskIntent,
+) (interfaces.CareerApplicationTaskLink, error) {
 	var link interfaces.CareerApplicationTaskLink
-	err = c.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err := c.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		existing, found, err := findApplicationTask(tx, tenantID, ownerID, intent.RequestID, true)
 		if err != nil {
 			return err
@@ -172,6 +195,25 @@ func (c *ApplicationTaskCoordinator) EnsureCareerApplicationTask(
 	return link, nil
 }
 
+func isApplicationTaskCreationRace(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, gorm.ErrDuplicatedKey) {
+		return true
+	}
+	message := strings.ToLower(err.Error())
+	for _, marker := range []string{
+		"unique constraint", "duplicate key", "23505", "database is locked",
+		"database table is locked", "sqlite_busy",
+	} {
+		if strings.Contains(message, marker) {
+			return true
+		}
+	}
+	return false
+}
+
 func (c *ApplicationTaskCoordinator) FindCareerApplicationTask(
 	ctx context.Context,
 	tenantID uint64,
@@ -201,9 +243,11 @@ func normalizeApplicationTaskIntent(
 	}
 	intent.RequestID = requestID
 	intent.ApplicationID = strings.TrimSpace(intent.ApplicationID)
-	if _, err := uuid.Parse(intent.ApplicationID); err != nil {
+	parsedApplicationID, err := uuid.Parse(intent.ApplicationID)
+	if err != nil {
 		return intent, fmt.Errorf("%w: application id must be a UUID", ErrApplicationTaskConflict)
 	}
+	intent.ApplicationID = parsedApplicationID.String()
 	intent.Title = strings.Join(strings.Fields(intent.Title), " ")
 	if intent.Title == "" || len(intent.Title) > 255 {
 		return intent, fmt.Errorf("%w: title must be 1 to 255 characters", ErrApplicationTaskConflict)
