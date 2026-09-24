@@ -28,6 +28,8 @@ import { formatMessage, type Locale } from '@weknora/i18n';
 import { createTranslator, useAppLocale } from '../i18n.ts';
 import { navigate as clientNavigate } from '../platform/navigation.ts';
 import { computeKBPermissions, type KBSurfaceKB, type KBSurfaceMe } from '../knowledge/permissions.ts';
+import { KBInfoPopover, type KBInfoPopoverKB } from '../documents/KBInfoPopover.tsx';
+import { findSharedKBGrant } from '../wiki/edit-permission.ts';
 import { normalizeFAQPayload, parseExcelFile, parseFAQImportText, serializeFAQEntries } from './import-export.ts';
 import './faq.td.css';
 
@@ -448,6 +450,14 @@ export interface FAQBreadcrumbProps {
   kbName?: string | null;
   kbList?: KBListItem[];
   kbMeta?: FAQKBMeta;
+  /** KBInfoPopover 完整数据源（B2 批 2）：优先于 kbMeta——六段 section 全量渲染。 */
+  kbInfo?: KBInfoPopoverKB | null;
+  /** Vue authStore.user?.id（owner 判定）。 */
+  infoUserId?: string;
+  /** Vue orgStore currentSharedKb（来自 org_name/shared_at 行）。 */
+  infoSharedKb?: { orgName: string; sharedAt: string } | null;
+  /** Vue effectiveKBPermission（getKBPermission || my_permission）。 */
+  infoPermission?: string;
   canManage?: boolean;
   /** 导入结果条（Vue showImportResultBadge 分支）。 */
   importResult?: FAQImportResultView | null;
@@ -475,6 +485,10 @@ export function FAQBreadcrumb(props: FAQBreadcrumbProps = {}) {
     kbName = null,
     kbList = [],
     kbMeta,
+    kbInfo = null,
+    infoUserId,
+    infoSharedKb = null,
+    infoPermission,
     canManage = false,
     importResult = null,
     importResultExpanded = false,
@@ -487,7 +501,6 @@ export function FAQBreadcrumb(props: FAQBreadcrumbProps = {}) {
   } = props;
   const t = tr ?? createTranslator('zh-CN');
   const [switcherOpen, setSwitcherOpen] = useState(false);
-  const [infoOpen, setInfoOpen] = useState(false);
   const sortedKbList = sortKbListForSwitcher(kbList, knowledgeBaseId);
   const showImportResultBadge = faqImportResultVisible(importResult, Boolean(importTask));
   return (
@@ -540,44 +553,14 @@ export function FAQBreadcrumb(props: FAQBreadcrumbProps = {}) {
         <span className="breadcrumb-current">{t('knowledgeEditor.faq.title')}</span>
       </h2>
       <div className="kb-title-actions">
-        {kbMeta ? (
-          <Tooltip content={t('knowledgeBase.infoCard.tooltip')} placement="top">
-            <Popup
-              visible={infoOpen}
-              trigger="click"
-              placement="bottom-right"
-              overlayStyle={{ padding: 0 }}
-              overlayInnerStyle={{ padding: 0 }}
-              onVisibleChange={setInfoOpen}
-              content={(
-                <div className="kb-info-card">
-                  <div className="kb-info-card-header">{t('knowledgeBase.infoCard.title')}</div>
-                  <div className="kb-info-card-body">
-                    <div className="kb-info-card-row">
-                      <span className="kb-info-card-label">{t('knowledgeBase.infoCard.type')}</span>
-                      <span className="kb-info-card-value">{kbMeta.type?.toLowerCase() === 'faq' ? t('knowledgeEditor.basic.typeFAQ') : t('knowledgeEditor.basic.typeDocument')}</span>
-                    </div>
-                    {kbMeta.description ? (
-                      <div className="kb-info-card-row">
-                        <span className="kb-info-card-label">{t('knowledgeBase.description')}</span>
-                        <span className="kb-info-card-value kb-info-card-value-block">{kbMeta.description}</span>
-                      </div>
-                    ) : null}
-                    {kbMeta.createdAt ? (
-                      <div className="kb-info-card-row">
-                        <span className="kb-info-card-label">{t('knowledgeBase.infoCard.createdAt')}</span>
-                        <span className="kb-info-card-value">{kbMeta.createdAt}</span>
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-              )}
-            >
-              <button type="button" className="kb-info-button" aria-label={t('knowledgeBase.infoCard.tooltip')} title={t('knowledgeBase.infoCard.tooltip')} aria-expanded={infoOpen}>
-                <TIcon name="info-circle" size="16px" />
-              </button>
-            </Popup>
-          </Tooltip>
+        {(kbInfo ?? kbMeta) ? (
+          <KBInfoPopover
+            t={t}
+            kbInfo={(kbInfo ?? kbMeta) as KBInfoPopoverKB}
+            userId={infoUserId}
+            sharedKb={infoSharedKb}
+            permission={infoPermission}
+          />
         ) : null}
         {canManage ? (
           <Tooltip content={t('knowledgeBase.settings')} placement="top">
@@ -658,6 +641,11 @@ export interface FAQPageViewProps {
   knowledgeBaseId?: string;
   kbName?: string | null;
   kbMeta?: FAQKBMeta;
+  /** KBInfoPopover 完整数据源（B2 批 2）。 */
+  kbInfo?: KBInfoPopoverKB | null;
+  infoUserId?: string;
+  infoSharedKb?: { orgName: string; sharedAt: string } | null;
+  infoPermission?: string;
   kbList?: KBListItem[];
   tags?: KnowledgeTag[];
   activeTagIds?: string[];
@@ -759,6 +747,10 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
     knowledgeBaseId = '',
     kbName = null,
     kbMeta,
+    kbInfo = null,
+    infoUserId,
+    infoSharedKb = null,
+    infoPermission,
     kbList = [],
     tags = [],
     activeTagIds = [],
@@ -1026,6 +1018,10 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
                 knowledgeBaseId={knowledgeBaseId}
                 kbName={kbName}
                 kbMeta={kbMeta}
+                kbInfo={kbInfo}
+                infoUserId={infoUserId}
+                infoSharedKb={infoSharedKb}
+                infoPermission={infoPermission}
                 kbList={kbList}
                 canManage={canManage}
                 importResult={importResult}
@@ -2087,6 +2083,8 @@ export function FAQPage({ client, knowledgeBaseId }: { client: WeKnoraClient; kn
   const [kb, setKb] = useState<KnowledgeBase | null>(null);
   const [kbList, setKbList] = useState<KBListItem[]>([]);
   const [tags, setTags] = useState<KnowledgeTag[]>([]);
+  // Vue authStore.user?.id（KBInfoPopover owner 判定）。
+  const [meId, setMeId] = useState('');
   const [entries, setEntries] = useState<FAQEntry[]>([]);
   const [total, setTotal] = useState(0);
   const [hasMore, setHasMore] = useState(true);
@@ -2211,6 +2209,8 @@ export function FAQPage({ client, knowledgeBaseId }: { client: WeKnoraClient; kn
       setKb(kbRow);
       setKbList(list.map((item) => ({ id: String(item.id), name: item.name, type: typeof item.type === 'string' ? item.type : undefined })));
       setTags(tagRows);
+      const meRow = me as { user?: { id?: unknown } } | null;
+      setMeId(meRow?.user && typeof meRow.user.id === 'string' ? meRow.user.id : '');
       const permissions = computeKBPermissions(kbRow as KBSurfaceKB, me as KBSurfaceMe | null);
       setCanContribute(permissions.canContribute);
       setCanManage(permissions.canContribute);
@@ -2225,6 +2225,32 @@ export function FAQPage({ client, knowledgeBaseId }: { client: WeKnoraClient; kn
     if (faqGate !== 'blocked') return;
     clientNavigate(faqKBDetailPath(knowledgeBaseId), 'replace');
   }, [faqGate, knowledgeBaseId]);
+
+  // KBInfoPopover 访问段（B2 批 2）：Vue orgStore currentSharedKb /
+  // effectiveKBPermission 的 org shared-knowledge-bases 行解析（edit-permission
+  // findSharedKBGrant 同源），失败静默降级为非共享视图。
+  const [infoShared, setInfoShared] = useState<{ sharedKb: { orgName: string; sharedAt: string } | null; permission: string }>({ sharedKb: null, permission: '' });
+  useEffect(() => {
+    let active = true;
+    void client.identity.organizations.knowledgeBaseShares.listShared().then((rows) => {
+      if (!active) return;
+      const grant = findSharedKBGrant(rows, knowledgeBaseId);
+      const row = Array.isArray(rows)
+        ? (rows as Array<Record<string, unknown>>).find((entry) => {
+          const kb = entry?.knowledge_base as { id?: unknown } | null | undefined;
+          return kb && String(kb.id) === knowledgeBaseId;
+        })
+        : null;
+      setInfoShared({
+        sharedKb: grant && row ? {
+          orgName: typeof row.org_name === 'string' ? row.org_name : '',
+          sharedAt: typeof row.shared_at === 'string' ? row.shared_at : '',
+        } : null,
+        permission: grant?.permission ?? '',
+      });
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [client, knowledgeBaseId]);
 
   // Scroll-append guard shared with the sync loadMore callback.
   const loadingMoreRef = useRef(false);
@@ -2436,6 +2462,10 @@ export function FAQPage({ client, knowledgeBaseId }: { client: WeKnoraClient; kn
       knowledgeBaseId={knowledgeBaseId}
       kbName={kb?.name ?? null}
       kbMeta={metaFromKB(kb)}
+      kbInfo={kb as unknown as KBInfoPopoverKB | null}
+      infoUserId={meId}
+      infoSharedKb={infoShared.sharedKb}
+      infoPermission={infoShared.permission}
       kbList={kbList}
       tags={tags}
       activeTagIds={activeTagIds}

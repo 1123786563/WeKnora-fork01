@@ -7,6 +7,7 @@ import type {
   WeKnoraClient,
 } from "@weknora/api-client";
 import { diffWikiRevision } from "@weknora/domain/wiki/diff";
+import { findSharedKBGrant } from "../wiki/edit-permission.ts";
 // S6 换装（T15 前置）：packages/ui 旧栈 离栈——Button/Input/Textarea 换 tdesign
 // （playbook §1：onChange 改 (value) 签名）；Dialog 是测试锚定弹层
 // （[role="dialog"]/.wk-dialog-close）且宿主 KnowledgeSettingsPage 依赖
@@ -15,6 +16,7 @@ import { Button as TButton, Input as TdInput, Textarea as TdTextarea } from "tde
 import { WkCard as Card, WkDialog as Dialog, WkStatus as Status } from "../shared/wk-legacy.tsx";
 import { Icon as TIcon } from "tdesign-icons-react";
 import { DocumentsBreadcrumb, ParserHint, type DocumentsBreadcrumbTab, type KBChromeListItem } from "../documents/DocumentsPageChrome.tsx";
+import type { KBInfoPopoverKB } from "../documents/KBInfoPopover.tsx";
 import { computeSupportedFileTypes, computeUnsupportedFileTypes, documentsKBSettingsPath } from "../documents/page-chrome.ts";
 import { KnowledgeSettingsPage } from "../knowledge-settings/KnowledgeSettingsPage.tsx";
 import { applyWikiSearch, overwriteWikiPage, saveWikiPage, validateWikiPageInput, wikiReaderEmptyState, wikiRevertCopy, type WikiSaveState } from "./editor.ts";
@@ -405,6 +407,10 @@ export function WikiPage({
   const [kbMeta, setKbMeta] = useState<KBSurfaceKB | null>(null);
   const [kbList, setKbList] = useState<KBChromeListItem[]>([]);
   const [canManage, setCanManage] = useState(false);
+  // KBInfoPopover 访问段（B2 批 2）：Vue authStore user id + orgStore share 行。
+  const [meId, setMeId] = useState("");
+  const [infoSharedKb, setInfoSharedKb] = useState<{ orgName: string; sharedAt: string } | null>(null);
+  const [infoPermission, setInfoPermission] = useState("");
   const [parserEngines, setParserEngines] = useState<{ Name: string; FileTypes?: string[]; Available?: boolean }[]>([]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const supportedFileTypes = useMemo(() => {
@@ -477,6 +483,20 @@ export function WikiPage({
     ] as const).then(([kb, me, sharedRows, list, engines]) => {
       if (!active) return;
       setKbMeta(kb as KBSurfaceKB);
+      const meRow = me as { user?: { id?: unknown } } | null;
+      setMeId(meRow?.user && typeof meRow.user.id === 'string' ? meRow.user.id : '');
+      const grant = findSharedKBGrant(sharedRows, knowledgeBaseId);
+      const row = Array.isArray(sharedRows)
+        ? (sharedRows as Array<Record<string, unknown>>).find((entry) => {
+          const entryKb = entry?.knowledge_base as { id?: unknown } | null | undefined;
+          return entryKb && String(entryKb.id) === knowledgeBaseId;
+        })
+        : null;
+      setInfoSharedKb(grant && row ? {
+        orgName: typeof row.org_name === "string" ? row.org_name : "",
+        sharedAt: typeof row.shared_at === "string" ? row.shared_at : "",
+      } : null);
+      setInfoPermission(grant?.permission ?? "");
       setCanManage(canUploadKnowledgeDocuments(kb as KBSurfaceKB, me as KBSurfaceMe | null));
       setKbList((list as { id: unknown; name: unknown }[]).map((item) => ({ id: String(item.id), name: String(item.name) })));
       setParserEngines((engines.data ?? []) as { Name: string; FileTypes?: string[]; Available?: boolean }[]);
@@ -1188,11 +1208,10 @@ export function WikiPage({
             knowledgeBaseId={knowledgeBaseId}
             kbName={typeof kbMeta?.name === "string" ? kbMeta.name : null}
             kbList={kbList}
-            kbMeta={{
-              type: typeof kbMeta?.type === "string" ? kbMeta.type : undefined,
-              description: typeof kbMeta?.description === "string" ? kbMeta.description : undefined,
-              createdAt: typeof kbMeta?.created_at === "string" ? kbMeta.created_at.slice(0, 10) : undefined,
-            }}
+            kbInfo={kbMeta as unknown as KBInfoPopoverKB | null}
+            infoUserId={meId}
+            infoSharedKb={infoSharedKb}
+            infoPermission={infoPermission}
             supportedFileTypes={supportedFileTypes}
             canManage={canManage}
             onOpenSettings={() => setSettingsOpen(true)}
