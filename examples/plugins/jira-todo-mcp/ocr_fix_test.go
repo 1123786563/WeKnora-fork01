@@ -18,6 +18,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 	"unicode/utf8"
@@ -1437,5 +1438,57 @@ func TestShutdownGracefullyReturnsNilAfterClose(t *testing.T) {
 	case <-done:
 	case <-time.After(2 * time.Second):
 		t.Fatal("the hung request must be released by Close")
+	}
+}
+
+// TestRunMainDrainsOnSIGTERM（跨任务转交 T01-OCR1-F9）：main() 曾以
+// context.Background() 启动 Run，而 Run 的优雅停机只挂 ctx.Done()——
+// Background 永不取消，shutdownGracefully（5s 宽限 + Close 强制回收）在
+// 生产部署不可达：SIGTERM/SIGINT 时进程被直接杀死，/mcp SSE 长连接与
+// 最长 60s 的 Jira 工具调用不排水。runMain 必须用 signal.NotifyContext
+// 挂 SIGINT/SIGTERM——本测试向自身进程发送真实 SIGTERM（handler 注册期
+// 内进程不会被杀死，只会取消 ctx），断言服务完整监听后 runMain 仍能在
+// 有限时间内优雅返回 nil（runMain → Run → shutdownGracefully）。
+func TestRunMainDrainsOnSIGTERM(t *testing.T) {
+	// 先占一个自由端口拿具体地址（BaseURL 走 main 的缺省回退路径时，
+	// host 具体且非通配，validateServiceBaseURL 通过）。
+	probe, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	addr := probe.Addr().String()
+	require.NoError(t, probe.Close())
+
+	// 启动期不访问 Jira（与 TestRunShutdownReturnsAfterContextCancel 同值）。
+	t.Setenv("PLUGIN_JIRA_BASE_URL", "http://127.0.0.1:9")
+	t.Setenv("PLUGIN_LISTEN_ADDR", addr)
+
+	errCh := make(chan error, 1)
+	go func() { errCh <- runMain() }()
+
+	// 等服务真正监听后再发信号（SIGTERM 必须落在 NotifyContext 注册期内；
+	// 注册早于 net.Listen，监听成功即已注册）。
+	listening := false
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		select {
+		case err := <-errCh:
+			t.Fatalf("runMain returned before signal: %v", err)
+		default:
+		}
+		if conn, derr := net.DialTimeout("tcp", addr, 200*time.Millisecond); derr == nil {
+			_ = conn.Close()
+			listening = true
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	require.True(t, listening, "service must be listening before SIGTERM")
+
+	require.NoError(t, syscall.Kill(syscall.Getpid(), syscall.SIGTERM))
+
+	select {
+	case err := <-errCh:
+		require.NoError(t, err, "graceful shutdown after SIGTERM must return nil")
+	case <-time.After(10 * time.Second):
+		t.Fatal("runMain did not return after SIGTERM — graceful shutdown unreachable (dead code)")
 	}
 }

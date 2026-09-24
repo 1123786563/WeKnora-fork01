@@ -25,7 +25,9 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/modules/plugins"
@@ -191,8 +193,9 @@ func validateServiceBaseURL(where, raw string) error {
 }
 
 // parseHostList 解析逗号分隔的 host 名单（PLUGIN_ALLOWED_REDIRECT_HOSTS）：
-// 逐项去空白并小写化；空串或全空白 → nil（不限制）。名单项不含 scheme/path
-// ——与 /register 的 redirect_uri host 匹配（小写主机名比较）。
+// 逐项去空白并小写化；空串或全空白 → nil（不限制）。名单项不含 scheme/path，
+// 形态两种（OCR 一轮 R12 F18）：裸 host（=该主机任意端口）或 host:port
+// （=精确匹配）——与 /register 的 redirect_uri host[:port] 匹配。
 func parseHostList(raw string) []string {
 	if strings.TrimSpace(raw) == "" {
 		return nil
@@ -299,6 +302,20 @@ func bearerToken(header string) string {
 }
 
 func main() {
+	if err := runMain(); err != nil {
+		log.Fatalf("jira-todo-mcp: %v", err)
+	}
+}
+
+// runMain 从环境变量装配 Options 并启动 Run，阻塞至进程退出语义出现。
+// 信号纪律（跨任务转交 T01-OCR1-F9）：Run 的优雅停机只挂 ctx.Done()，
+// 若以 context.Background() 启动则永不取消——shutdownGracefully
+// （5s 宽限 + Close 强制回收）成为死代码，SIGTERM/SIGINT 时进程被直接
+// 杀死，/mcp SSE 长连接与最长 60s 的 Jira 工具调用不排水。因此这里必须
+// 用 signal.NotifyContext 挂 SIGINT/SIGTERM，让系统停止信号转化为
+// ctx 取消、进入宽限停机。抽出为独立函数以支撑真实信号回归测试
+// （TestRunMainDrainsOnSIGTERM）。
+func runMain() error {
 	opts := Options{
 		BaseURL:              strings.TrimRight(os.Getenv("PLUGIN_BASE_URL"), "/"),
 		JiraBaseURL:          strings.TrimRight(os.Getenv("PLUGIN_JIRA_BASE_URL"), "/"),
@@ -316,9 +333,9 @@ func main() {
 		}
 		opts.BaseURL = "http://" + listenAddr
 	}
-	if err := Run(context.Background(), opts); err != nil {
-		log.Fatalf("jira-todo-mcp: %v", err)
-	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	return Run(ctx, opts)
 }
 
 // Manifest 构造本服务的 weknora.plugin/1 清单。input_schema_digest 与
