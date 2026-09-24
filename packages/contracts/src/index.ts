@@ -643,9 +643,10 @@ export type {
   ExecutionDTO,
   ExecutionEvent,
   ExecutionSnapshot,
+  QueueNextDecision,
   RunStatus,
 } from './mobile/execution.ts';
-export { parseExecution, parseExecutionEvent, parseExecutionSnapshot, evaluateCommand } from './mobile/execution.ts';
+export { parseExecution, parseExecutionEvent, parseExecutionSnapshot, evaluateCommand, evaluateQueueNext } from './mobile/execution.ts';
 
 export type {
   InteractionAction,
