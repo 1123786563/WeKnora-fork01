@@ -36,7 +36,7 @@ check("env.release==v1.53.0", env["release"]["release"] == "v1.53.0")
 check("env.stripe.test_mode_key_present", env["stripe"]["test_mode_key_present"] is True)
 check("env.graphql_login_ok", env["lago"]["graphql_login_ok"] is True)
 check("env.secrets_scan.clean", env["secrets_scan"]["clean"] is True)
-check("env.all_phases_pass", all(v == "pass" for v in env["run"]["phase_statuses"].values()))
+check("env.all_phases_pass", bool(env["run"]["phase_statuses"]) and all(v == "pass" for v in env["run"]["phase_statuses"].values()))
 
 # AC1: gate (payment-gated subscription stays incomplete, entitlements unusable)
 g = load("t02-gating")
@@ -63,7 +63,7 @@ check("AC4 manual.status==pass", m["status"] == "pass")
 a = load("t02-activation")
 oa = a["observed"]
 check("AC2 activation.status==pass", a["status"] == "pass")
-check("AC2 checks all true", all(oa["checks"].values()))
+check("AC2 checks all true", bool(oa["checks"]) and all(oa["checks"].values()))
 check("AC2 exactly one succeeded payment", oa["payments_succeeded_count"] == 1)
 check("AC2 provider_payment_id recorded", bool(oa["provider_payment_id"]))
 d = load("t02-duplicates")
@@ -75,12 +75,12 @@ check("AC2 duplicates final state intact",
 # AC3: retries (same business identity recoverable, no double charge)
 r = load("t02-retries")
 check("AC3 retries.status==pass", r["status"] == "pass")
-check("AC3 checks all true", all(r["observed"]["checks"].values()))
+check("AC3 checks all true", bool(r["observed"]["checks"]) and all(r["observed"]["checks"].values()))
 
 # negative control: declined charge never activates
 c = load("t02-decline")
 check("decline.status==pass", c["status"] == "pass")
-check("decline checks all true", all(c["observed"]["checks"].values()))
+check("decline checks all true", bool(c["observed"]["checks"]) and all(c["observed"]["checks"].values()))
 
 print("RESULT:", "ALL PASS" if not fail else f"{len(fail)} FAILED: {fail}")
 sys.exit(0 if not fail else 1)

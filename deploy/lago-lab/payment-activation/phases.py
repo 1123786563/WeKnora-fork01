@@ -568,16 +568,31 @@ def phase_gate(ctx):
                 ((sb or {}).get("subscription") or {}).get("status")
                 if isinstance(sb, dict) else None
             )
+            # (ocr-81 R1-08) The payments API is NOT affected by the invoice
+            # INVISIBLE_STATUS, so AC1's exactly-once line ("at most one
+            # non-succeeded payment whenever the API can see it") is asserted
+            # on this path too — not only when the gating invoice is visible.
+            ps, payments = _payments_for(ctx, customer["external_id"])
+            non_succeeded = [p for p in payments if p.get("status") != "succeeded"]
+            observed["payments_non_succeeded_count"] = len(non_succeeded)
             ctx.state["gate"] = {
                 "subscription_external_id": ext,
                 "invoice_lago_id": None,
                 "customer_external_id": customer["external_id"],
             }
             if core_ok and still_incomplete:
+                if len(non_succeeded) > 1:
+                    observed["error"] = (
+                        "subscription stayed incomplete but the payments API "
+                        f"shows {len(non_succeeded)} non-succeeded payments "
+                        "(the exactly-once line of AC1 is violated)"
+                    )
+                    return _report(ctx, "gate", expected, observed, FAIL)
                 ctx.note(
                     "gating invoice stayed API-invisible (v1.53.0 INVISIBLE_STATUS "
                     "open); AC1 asserted from subscription incomplete + "
-                    "entitlements 404 held across the window"
+                    "entitlements 404 held across the window and at most one "
+                    "non-succeeded payment"
                 )
                 return _report(ctx, "gate", expected, observed, PASS)
             if core_ok:
@@ -586,7 +601,7 @@ def phase_gate(ctx):
                 reason = ((cb2 or {}).get("subscription") or {}).get("cancellation_reason") \
                     if canceled else None
                 observed["cancellation_reason"] = reason
-                if canceled and reason == "payment_failed":
+                if canceled and reason == "payment_failed" and len(non_succeeded) <= 1:
                     ctx.note(
                         "charge-failure endgame reached before the invoice became "
                         f"API-visible (subscription canceled, reason={reason}); "
@@ -595,10 +610,12 @@ def phase_gate(ctx):
                     return _report(ctx, "gate", expected, observed, PASS)
                 # Same strictness as the invoice-visible-as-failed branch
                 # above: a cancellation for any other reason (or none) is
-                # not AC1's charge-failure endgame (ocr-3).
+                # not AC1's charge-failure endgame (ocr-3); more than one
+                # non-succeeded payment betrays it too (ocr-81 R1-08).
                 observed["error"] = (
                     "invoice invisible and the cancellation contract did not "
-                    f"hold (canceled={canceled}, cancellation_reason={reason!r})"
+                    f"hold (canceled={canceled}, cancellation_reason={reason!r}, "
+                    f"non_succeeded_payments={len(non_succeeded)})"
                 )
                 return _report(ctx, "gate", expected, observed, FAIL,
                                evidence={"invoices_last_seen": invoice_last})

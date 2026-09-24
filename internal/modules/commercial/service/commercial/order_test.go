@@ -182,6 +182,48 @@ func TestOrderQuoteExpiryAndUnconfiguredProvider(t *testing.T) {
 // contract: a channel failure AFTER the atomic open leaves a durable
 // pending order, and CreateOrder answers with the operation ID + state
 // (CheckoutError set, nil error) so the client recovers through
+// TestCheckoutURLPersistsAndReplaysVerbatim (R1-35): the channel link used
+// to live ONLY in the first CreateOrder answer — a client that timed out or
+// refreshed after the channel call lost the payment entry to an
+// already-consumed quote. The link is now persisted on the order row and
+// re-served verbatim by the recovery projection while the order is pending.
+func TestCheckoutURLPersistsAndReplaysVerbatim(t *testing.T) {
+	svc, provider, db := newOrderTestEnv(t)
+	seedPublishedPlan(t, db)
+	ctx := context.Background()
+	q, err := svc.CreateQuote(ctx, 104, "pro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	order, err := svc.CreateOrder(ctx, 104, q.ID, "wechat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if order.CheckoutURL == "" {
+		t.Fatalf("first answer must carry the link: %+v", order)
+	}
+	// Persisted on the order row (the bounded update after the atomic unit).
+	var stored repocommercial.OrderRow
+	if err := db.Where("id = ?", order.ID).First(&stored).Error; err != nil {
+		t.Fatal(err)
+	}
+	if stored.CheckoutURL != order.CheckoutURL {
+		t.Fatalf("checkout_url must be persisted, row=%q answer=%q", stored.CheckoutURL, order.CheckoutURL)
+	}
+	// The recovery projection re-serves it verbatim while the channel is
+	// still pending (queryState switched BEFORE the recover call).
+	provider.mu.Lock()
+	provider.queryState = payment.StatePending
+	provider.mu.Unlock()
+	got, err := svc.RecoverOrderStatus(ctx, 104, order.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.State != domain.OrderStatePending || got.CheckoutURL != order.CheckoutURL {
+		t.Fatalf("pending recovery must re-serve the checkout link verbatim, got %+v (want %q)", got, order.CheckoutURL)
+	}
+}
+
 // RecoverOrderStatus instead of retrying the consumed quote.
 func TestOrderChannelFailureStillReturnsRecoverableOrder(t *testing.T) {
 	svc, provider, db := newOrderTestEnv(t)

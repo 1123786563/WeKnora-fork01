@@ -149,6 +149,13 @@ func TestPurchaseRetryReturnsExistingOrderWithoutDuplicates(t *testing.T) { // A
 	if first.Order.ID != second.Order.ID {
 		t.Fatalf("retry must return the SAME order, got %q then %q", first.Order.ID, second.Order.ID)
 	}
+	// (R1-35) The replay re-serves the persisted checkout_url verbatim: the
+	// quote is already consumed, so the link in the replay answer is the
+	// ONLY way back to the payment page after a lost first answer.
+	if second.Order.CheckoutURL == "" || second.Order.CheckoutURL != first.Order.CheckoutURL {
+		t.Fatalf("replay must carry the persisted checkout_url verbatim, first=%q second=%q",
+			first.Order.CheckoutURL, second.Order.CheckoutURL)
+	}
 	if len(cp.createCalls) != 1 {
 		t.Fatalf("retry must not open a second channel request, creates=%d", len(cp.createCalls))
 	}

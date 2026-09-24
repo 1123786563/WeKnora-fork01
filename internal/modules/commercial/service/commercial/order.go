@@ -341,9 +341,21 @@ func (s *OrderService) openOrder(ctx context.Context, tenantID uint64, q repocom
 			AmountFen: amountFen, Currency: "CNY", Provider: providerName, Version: 1,
 			CheckoutError: fmt.Sprintf("channel checkout failed for %s: %v", id, err)}, nil
 	}
-	return OrderView{ID: id, QuoteID: q.ID, State: domain.OrderStatePending,
+	view := OrderView{ID: id, QuoteID: q.ID, State: domain.OrderStatePending,
 		AmountFen: amountFen, Currency: "CNY", Provider: providerName,
-		CheckoutURL: res.CheckoutURL, Version: 1}, nil
+		CheckoutURL: res.CheckoutURL, Version: 1}
+	// (R1-35) Persist the channel link so the POST replay (the existing-order
+	// branch) and the GetOrder recovery path re-serve it verbatim — without
+	// the persistence the first answer carried the ONLY copy of the payment
+	// entry to an already-consumed quote, and a client that lost it (timeout,
+	// refresh) had no way back to the checkout. A persistence failure does
+	// NOT undo the answer: the write-answer contract still holds (the client
+	// gets the link this once); the failure is surfaced through CheckoutError
+	// so the degraded replay is visible instead of silent.
+	if err := s.orders.SetCheckoutURL(ctx, id, res.CheckoutURL); err != nil {
+		view.CheckoutError = fmt.Sprintf("checkout_url persistence failed for %s: %v", id, err)
+	}
+	return view, nil
 }
 
 // ListOrders returns the caller space's orders, newest first. Never crosses
@@ -382,9 +394,11 @@ func (s *OrderService) RecoverOrderStatus(ctx context.Context, tenantID uint64, 
 	att, err := s.orders.FirstPendingAttempt(ctx, orderID)
 	if errors.Is(err, repocommercial.ErrPaymentAttemptNotFound) {
 		// No attempt ever registered (e.g. channel unconfigured at creation):
-		// honestly pending, nothing to recover.
+		// honestly pending, nothing to recover. The persisted checkout link
+		// (R1-35) still rides along so the customer keeps a payment entry.
 		return OrderView{ID: row.ID, QuoteID: row.QuoteID, State: row.State,
-			AmountFen: row.AmountFen, Currency: row.Currency, Version: row.Version}, nil
+			AmountFen: row.AmountFen, Currency: row.Currency, CheckoutURL: row.CheckoutURL,
+			Version: row.Version}, nil
 	}
 	if err != nil {
 		return OrderView{}, err
@@ -415,9 +429,13 @@ func (s *OrderService) RecoverOrderStatus(ctx context.Context, tenantID uint64, 
 			return OrderView{}, err
 		}
 	}
+	// (R1-35) A still-pending order re-serves the persisted checkout link
+	// verbatim: the channel said pending (or the confirm re-read the row),
+	// and the customer must be able to reach the payment page again without
+	// a second checkout of the same consumed quote.
 	return OrderView{ID: row.ID, QuoteID: row.QuoteID, State: row.State,
 		AmountFen: row.AmountFen, Currency: row.Currency, Provider: att.Provider,
-		Version: row.Version}, nil
+		CheckoutURL: row.CheckoutURL, Version: row.Version}, nil
 }
 
 // ChangePlanView is the Commerce.ChangePlan answer: either an UPGRADE order

@@ -45,6 +45,14 @@ type OrderRow struct {
 	Currency  string `gorm:"column:currency;not null"`
 	State     string `gorm:"column:state;not null"`
 	Version   int64  `gorm:"column:version;not null;default:1"`
+	// CheckoutURL persists the channel's customer-facing payment link
+	// (R1-35): it arrives from the provider AFTER the order unit commits, so
+	// it is written in its own step and the replay/recovery projections
+	// re-serve it verbatim — a client that lost the first answer (timeout,
+	// refresh) must not lose the only payment entry to an already-consumed
+	// quote. Empty when the channel call failed (the CheckoutError posture)
+	// or never made; never fabricated.
+	CheckoutURL string `gorm:"column:checkout_url"`
 }
 
 func (OrderRow) TableName() string { return "commercial_orders" }
@@ -270,6 +278,28 @@ func (s *OrderStore) GetOrder(ctx context.Context, id string) (OrderRow, error) 
 		return OrderRow{}, ErrOrderNotFound
 	}
 	return row, err
+}
+
+// SetCheckoutURL persists the channel checkout link after the order unit
+// committed (R1-35): the link is produced by the provider call that follows
+// OpenOrder, so it lands in its own bounded update. An empty url is refused
+// (nothing to persist — the CheckoutError posture stays the single marker of
+// a failed channel call); the update is parameter-bound and reports
+// ErrOrderNotFound when the order row is gone.
+func (s *OrderStore) SetCheckoutURL(ctx context.Context, orderID, checkoutURL string) error {
+	if orderID == "" || checkoutURL == "" {
+		return ErrInvalidOrderRow
+	}
+	res := s.db.WithContext(ctx).Model(&OrderRow{}).
+		Where("id = ?", orderID).
+		Update("checkout_url", checkoutURL)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return ErrOrderNotFound
+	}
+	return nil
 }
 
 // GetOrderByQuote returns the order opened against one quote (#81): the

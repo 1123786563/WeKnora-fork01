@@ -351,7 +351,10 @@ func PurchaseUnavailableReason(err error) string {
 
 // orderViewFromRow projects a stored order row (the OrderService keeps this
 // mapping private to its list paths; the purchase replay needs it too).
+// CheckoutURL rides along (R1-35): the replayed POST answers the persisted
+// channel link verbatim instead of dropping the customer's payment entry.
 func orderViewFromRow(r repocommercial.OrderRow) OrderView {
 	return OrderView{ID: r.ID, QuoteID: r.QuoteID, State: r.State,
-		AmountFen: r.AmountFen, Currency: r.Currency, Version: r.Version}
+		AmountFen: r.AmountFen, Currency: r.Currency, CheckoutURL: r.CheckoutURL,
+		Version: r.Version}
 }

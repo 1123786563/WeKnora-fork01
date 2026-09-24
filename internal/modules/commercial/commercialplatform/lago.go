@@ -69,6 +69,13 @@ var (
 type LagoAdapter struct {
 	cfg    Config
 	client *http.Client
+	// Test seams (R1-24): the provider-customer id derivation and the
+	// payment-method sync poll. NewLagoAdapter binds them to the real
+	// methods; only tests override them, to exercise the binding decision
+	// without a live provider endpoint (the outbound host policy refuses
+	// loopback, so the provider side cannot be stubbed over HTTP locally).
+	deriveProviderCustomer func(context.Context, string) (string, providerCustomerSource, error)
+	syncPaymentMethods     func(context.Context, string) error
 }
 
 // NewLagoAdapter builds the adapter. Construction succeeds unconfigured on
@@ -79,7 +86,10 @@ func NewLagoAdapter(cfg Config) *LagoAdapter {
 	if client == nil {
 		client = &http.Client{Timeout: healthRequestTimeout}
 	}
-	return &LagoAdapter{cfg: cfg, client: client}
+	a := &LagoAdapter{cfg: cfg, client: client}
+	a.deriveProviderCustomer = a.deriveProviderCustomerID
+	a.syncPaymentMethods = a.waitForPaymentMethodSync
+	return a
 }
 
 // ReadSnapshot answers the readiness snapshot (GET <base>/health) and the

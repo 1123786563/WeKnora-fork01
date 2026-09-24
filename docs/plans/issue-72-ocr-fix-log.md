@@ -597,3 +597,158 @@ adapter 三层 Go 回归测试 + 前端 jsdom 渲染测试覆盖，`wechat_pay_s
 ## 提交
 
 - 提交 message 前缀：`issue-72(ocr-81-1):`
+
+---
+
+# Issue #72 — Issue #81 OCR 增量批次修复记录（ocr-81-2）
+
+- 日期：2026-09-25
+- worktree：`.worktrees/issue72-lago`（分支 `codex/issue-72-lago`）
+- 修复基线：`d27a451cb`（issue-72: ocr issue-81 round 1），即本批 findings 所审的 HEAD
+- 修复人：修复员（dynamic workflow subagent）
+- 范围：Issue #81 增量 OCR 有效 findings R1-08 / R1-15 / R1-24 / R1-35（4 项 medium），4 项全部修复，0 项 deferred。
+
+## 总则
+
+- 每个 finding 先在基线 `d27a451cb` 上以真实 RED 运行复现旧行为，再在修复版上验证（GREEN）。
+- 安全约束核对：本轮无新增服务端外部请求（R1-24 是"少轮询"而非新出站；取消分类修正
+  不改变任何出站 URL/host 校验路径）；新增 SQL 仅 `SetCheckoutURL` 一条，
+  gorm `Where("id = ?") + Update` 全参数绑定；未引入任何凭据字面量
+  （测试用 inert 哨兵 `pm_test_canary`，非凭据形状，非可用凭据）。
+
+## 逐条 Ruling 与处置
+
+### OCR81-R1-08（medium）phase_gate 发票不可见分支 PASS 缺 payments 断言 — 已修复
+
+- Ruling：finding 成立。expected 文本承诺 "at most one non-succeeded payment
+  whenever the API can see it"，而 payments 接口不受发票 INVISIBLE_STATUS 影响
+  （payments 读取只存在于发票可见路径），不可见分支仅凭 subscription incomplete +
+  entitlements 404 返回 PASS——本次归档 t02-gating.json
+  （payments_non_succeeded_count=None）正是从该豁免分支产出，AC1 的 exactly-once
+  防线在该路径上零断言。采用 fixHint 首选方案（补断言），expected 文本无须收窄。
+- 处置：`phases.py` 不可见分支在订阅复查后补 `_payments_for` 读取并写入
+  `observed["payments_non_succeeded_count"]`；still_incomplete PASS 条件收紧为
+  `len(non_succeeded) <= 1`（>1 时 FAIL，error 文案点明 exactly-once 违约）；
+  canceled(payment_failed) 终态 PASS 条件同样收紧，其 FAIL 文案追加
+  `non_succeeded_payments=<n>` 便于归因；PASS note 同步披露 payments 断言。
+- RED 证据：基线 worktree（d27a451cb + 仅有测试补丁）运行
+  `pytest test_phases.py -k invisible` → 2 failed：新增测试
+  `test_fails_when_invisible_invoice_path_sees_multiple_non_succeeded_payments`
+  （旧行为 status=pass）与既有
+  `test_passes_when_invoice_stays_api_invisible_and_incomplete_holds`
+  （KeyError: 'payments_non_succeeded_count'）。
+- 回归测试：FakeLago 新增 `extra_non_succeeded` 旋钮（payments 列表注入额外
+  非 succeeded 行）；上述两条测试：注入 2 笔非 succeeded 且发票保持不可见 →
+  FAIL 且 `payments_non_succeeded_count >= 2`；既有不可见 PASS 测试补断言
+  `payments_non_succeeded_count == 0`。
+
+### OCR81-R1-15（medium）verify_ac_assertions.py 空 checks 空真通过 — 已修复（四副本）
+
+- Ruling：finding 成立。`all(oa["checks"].values())` 对空字典恒 True
+  （`python3 -c "print(all({}.values()))"` → `True`，RED 证据），checks 结构
+  经历过键改名/增删，未来重构使某 phase 的 checks 清空时验收断言静默通过；
+  同目录 verify_db_watch.py 的 sub-a/b/c 已有 len>0 守卫而本脚本没有，风格不一致。
+  同一模式存在于四份副本（ocr1/ocr2/ocr3/flow-evidence-74 各 4 处，共 16 处），
+  按 R1-V10/R1-V22 的"副本同病同步修"先例四份全部修复（finding 点名的 ocr3
+  副本为主，其余三份为同一结构性缺陷）。
+- 处置：四处裸 `all(...values())`（phase_statuses、AC2 checks、AC3 checks、
+  decline checks）全部改为 `bool(...) and all(...values())`；ocr3 副本附注释
+  说明守卫风格来源，docstring 行号引用按 R1-V23 惯例同步更新（83/99、88/105）
+  并如实记录本副本相对上一副本的差异（新增空 checks 守卫）；其余三副本以单行
+  形式修改，不移动行号。
+- RED 证据：`python3 -c "print(all({}.values()))"` → `True`（空真）；
+  属结构性风险（当前归档 checks 非空，本次运行未触发——与 finding 证据一致）。
+- 回归验证：四副本对各自归档证据重放全部 `ALL PASS`（exit 0）——正向对照，
+  守卫不改变现行判定。
+
+### OCR81-R1-24（medium）PM 导入轮询的生产姿态残留 + ctx 取消错分 — 已修复
+
+- Ruling：finding 成立。`ensureProviderBinding` 对 source==providerCustomerAPI
+  的绑定无条件轮询 `waitForPaymentMethodSync`：生产姿态（Stripe key 已设、
+  StripePmToken 留空等待 #82 checkout）下 import 永不落地，每次购买烧满
+  pmSyncWait=20s 后以 ErrPlatformUnreachable（可重试类）失败，而 config.go
+  F11 注释与 `providerCreateCustomer` 注释明确承诺此时应到达 gated create 并以
+  no_default_payment_method 失败关闭——实现与自身契约矛盾（R1-V06 只修了
+  case a 占位前缀）。另 `sleepCtx` 的 ctx 取消被折算为 Unreachable
+  "interrupted"，错误类别错分。
+- 处置：
+  - `lago_purchase.go`：占位前缀跳过之后，`a.cfg.StripePmToken == ""` 时同样
+    跳过轮询直接放行到 gated create（fail closed 按契约）；注释说明第二个
+    轮询空转来源与契约依据。
+  - `waitForPaymentMethodSync` 的 `sleepCtx` 分支改为
+    `fmt.Errorf("payment method sync interrupted: %w", err)`（裸包 ctx.Err()，
+    不再携带 ErrPlatformUnreachable 哨兵——调用方刚取消的轮询不应诱导重试）。
+  - 可测性：`LagoAdapter` 新增 `deriveProviderCustomer` / `syncPaymentMethods`
+    两个测试 seam（构造时绑定真实方法，仅测试可覆写——provider 出站 host 策略
+    拒绝环回，provider 侧无法本地 HTTP stub，见 R1-V08）。
+- RED 证据：基线 worktree（d27a451cb + 仅 seam/字段 + 测试）运行新测试 →
+  `TestLagoAPIBindingWithoutPmTokenSkipsPaymentMethodSyncWait` FAIL
+  （"payment-method sync must not run without a PM token, calls=1"——基线
+  无 PM token 仍轮询）；`TestLagoPaymentMethodSyncCancellationIsNotUnreachable`
+  FAIL（"caller cancellation must surface context.Canceled, got
+  platform_unreachable: payment method sync interrupted"）。
+- 回归测试：`TestLagoAPIBindingWithoutPmTokenSkipsPaymentMethodSyncWait`
+  （API 来源 + 空 PM token：零轮询、快速返回、gated create 恰好到达 1 次）、
+  `TestLagoAPIBindingWithPmTokenStillPollsPaymentMethodSync`（PM token 已设时
+  轮询恰 1 次——R1-24 跳过严格限定空 token 姿态）、
+  `TestLagoPaymentMethodSyncCancellationIsNotUnreachable`（stub 首响应 flush 后
+  50ms 取消、tick 500ms——取消确定性落在 sleep 内，断言
+  `errors.Is(err, context.Canceled)` 且不携带 ErrPlatformUnreachable）。
+
+### OCR81-R1-35（medium）checkout_url 未持久化，第 8 步幂等重放无法 verbatim — 已修复
+
+- Ruling：finding 成立。checkout_url 仅存在于首次 openOrder 的渠道应答；
+  OrderRow 无该列、orderViewFromRow 不投影、RecoverOrderStatus 三条返回路径
+  均不携带——客户端超时/刷新后重放 POST /purchases 或 GET 订单拿不到
+  checkout_url，报价已消费、订阅停留 awaiting_payment，用户失去支付入口。
+  采用 fixHint：在 commercial_orders 增列持久化，并让两条投影携带。
+- 处置：
+  - `repository/commercial/order.go`：`OrderRow` 新增 `checkout_url` 列
+    （服务内 AutoMigrate 增量加列，沿用 kind 列"Additive column upgrades"
+    先例，版本化迁移不含该列与 kind 列一致）；新增 `SetCheckoutURL`
+    （参数绑定 Update，空 url 拒绝，0 行命中报 ErrOrderNotFound）。
+  - `service/commercial/order.go::openOrder`：渠道成功后持久化
+    `res.CheckoutURL`；持久化失败不撤销应答（写应答契约仍成立——客户端本次
+    仍拿到链接），降级经 `CheckoutError` 显式可见而非静默。
+  - 投影：`RecoverOrderStatus` pending 两条路径（无 attempt 与常规返回）
+    携带 `row.CheckoutURL`；`purchase.go::orderViewFromRow` 携带
+    （POST 重放 existing 分支与 `CurrentPurchaseOrder` 投影随之 verbatim）。
+    已付/已履行分支不携带（已无需支付入口，omitempty 保持空）。
+- RED 证据：基线 worktree（d27a451cb + 仅字段 + 测试）运行新测试 →
+  `TestCheckoutURLPersistsAndReplaysVerbatim` FAIL（"checkout_url must be
+  persisted, row=\"\" answer=\"https://pay.example/qr\""）；
+  `TestPurchaseRetryReturnsExistingOrderWithoutDuplicates`（补断言）FAIL
+  （"replay must carry the persisted checkout_url verbatim, first=… second=\"\""）。
+- 回归测试：`TestCheckoutURLPersistsAndReplaysVerbatim`（落库行 == 首答、
+  pending 恢复投影 verbatim）；`TestPurchaseRetryReturnsExistingOrderWithoutDuplicates`
+  补 AC4 重放断言（第二次 POST 携带与首次相同的 checkout_url 且非空）。
+
+## 测试与重放证据（全部在本轮实际执行）
+
+| 检查 | 命令 | 结果 |
+|---|---|---|
+| RED（R1-08） | 基线 worktree `pytest test_phases.py -k invisible` | 2 failed（KeyError payments_non_succeeded_count / 旧行为 pass） |
+| RED（R1-24） | 基线 worktree `go test ./internal/modules/commercial/commercialplatform/ -run 'TestLagoAPIBinding…\|TestLagoPaymentMethodSyncCancellation'` | 2 failed（calls=1 / platform_unreachable） |
+| RED（R1-35） | 基线 worktree `go test ./internal/modules/commercial/service/commercial/ -run 'TestCheckoutURL…\|TestPurchaseRetry…'` | 2 failed（row="" / second=""） |
+| RED（R1-15） | `python3 -c "print(all({}.values()))"` | True（空真） |
+| commercial 全部 Go 包 | `go test ./internal/modules/commercial/... -count=1` | 7 包全 ok |
+| handler 全部测试 | `go test ./internal/handler/ -count=1` | ok |
+| 全仓编译 | `go build ./internal/...` | 通过 |
+| lago-lab 离线回归 | `cd deploy/lago-lab/payment-activation && python3 -m pytest test_lab.py test_phases.py ../../../docs/plans/issue-72-flow-evidence-74/test_verify_db_watch.py -q` | 83 passed（ocr-3 后 82 + 新增 1） |
+| AC 断言重放 ×4 | `python3 docs/plans/<dir>/verify_ac_assertions.py` | evidence-74/ocr1/ocr2/ocr3 全部 ALL PASS（exit 0） |
+
+**全链路真实流程未重放（与上一轮 ocr-81-1 同因）**：8091 后端为其他会话的旧
+构建进程（不可重启）、`WEKNORA_COMMERCIAL_STRIPE_API_KEY` 不在本环境；
+`docs/plans/issue-72-flow-evidence-81/` 中唯一可重放脚本为
+`wechat_pay_stub.py`（微信渠道 stub，与本批四处修复无交集）。影响面说明：
+R1-24 只改"生产姿态（PM token 为空）"分支——#81 flow 验证当时
+`WEKNORA_COMMERCIAL_STRIPE_PM_TOKEN=pm_card_threeDSecure2Required` 已设
+（README 环境表），已验证流程未走被改分支，行为不回归由
+`TestLagoAPIBindingWithPmTokenStillPollsPaymentMethodSync` 锁定；R1-35 对
+已验证 AC4 重放流是**增量字段**（重放应答新增 checkout_url，同订单/同状态
+断言不变），由 service 层 AC4 重放回归 + handler 投影测试覆盖。
+
+## 提交
+
+- 提交 message 前缀：`issue-72(ocr-81-1):`（按本批 ask 指定）
+

@@ -213,6 +213,18 @@ class FakeLagoHandler(BaseHTTPRequestHandler):
             payments = [p for p in s.payments if p["external_customer_id"] == ext]
             if s.mutate_after_duplicates:
                 payments = payments + [dict(payments[-1], id=777777)] if payments else payments
+            if s.extra_non_succeeded:
+                # ocr-81 R1-08 knob: the payments list carries extra
+                # non-succeeded rows even though the gate invoice never
+                # became visible — the exactly-once violation signature the
+                # invoice-invisible branch must now catch.
+                template = payments[-1] if payments else {
+                    "id": 0, "external_customer_id": ext, "invoice_lago_id": None,
+                    "amount_cents": s.plan_amount_cents, "provider_payment_id": None,
+                    "payable_id": None, "payment_type": "stripe",
+                }
+                payments = payments + [dict(template, id=880000 + i, status="pending")
+                                       for i in range(s.extra_non_succeeded)]
             self._send(200, {"payments": payments})
             return
         self._send(404, {"status": 404, "error": "Not Found", "code": "not_found"})
@@ -601,6 +613,9 @@ class FakeLago(ThreadingHTTPServer):
         # issuing a renewal invoice.
         self.gate_cancel_reason_while_invisible = None
         self.duplicate_re_post_adds_invoice = False
+        # ocr-81 knob: inject extra non-succeeded payments into every
+        # payments-list answer (the invoice-invisible exactly-once probe).
+        self.extra_non_succeeded = 0
 
     def seq(self, kind):
         self.seq_counters[kind] += 1
@@ -802,8 +817,32 @@ class TestGatePhase(unittest.TestCase):
         observed = report["observed"]
         self.assertFalse(observed["invoice_api_visible"])
         self.assertEqual(observed["recheck_subscription_status"], "incomplete")
+        # ocr-81 R1-08: the invoice-invisible PASS also stands on the
+        # exactly-once payments assertion (payments API is not affected by
+        # the invoice INVISIBLE_STATUS).
+        self.assertEqual(observed["payments_non_succeeded_count"], 0)
         notes = " ".join(report["contract_notes"])
         self.assertIn("API-invisible", notes)
+
+    def test_fails_when_invisible_invoice_path_sees_multiple_non_succeeded_payments(self):
+        # ocr-81 R1-08: the invoice-invisible branch used to PASS on
+        # subscription incomplete + entitlements 404 alone, leaving AC1's
+        # exactly-once line ("at most one non-succeeded payment whenever
+        # the API can see it") unasserted — while the payments API answers
+        # normally in that very state. More than one non-succeeded payment
+        # with the invoice never visible is a double-charge signature and
+        # must FAIL the gate.
+        with stack() as env:
+            ctx = seeded(env)
+            env.lago.invoice_appear_polls = 10 ** 6  # invoice stays invisible
+            env.lago.extra_non_succeeded = 2
+            report = phase_gate(ctx)
+        self.assertEqual(report["status"], "fail", report)
+        observed = report["observed"]
+        self.assertFalse(observed["invoice_api_visible"])
+        self.assertEqual(observed["recheck_subscription_status"], "incomplete")
+        self.assertGreaterEqual(observed["payments_non_succeeded_count"], 2)
+        self.assertIn("non-succeeded payments", observed["error"])
         # the expected text must only promise invoice observations the
         # API-invisible branch can actually make (ocr-1: expected/observed
         # honesty for the PASS path)

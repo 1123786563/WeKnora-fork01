@@ -281,7 +281,7 @@ func (a *LagoAdapter) ensureProviderBinding(ctx context.Context, externalCustome
 	if bound {
 		return nil
 	}
-	providerCustomerID, source, err := a.deriveProviderCustomerID(ctx, externalCustomerID)
+	providerCustomerID, source, err := a.deriveProviderCustomer(ctx, externalCustomerID)
 	if err != nil {
 		return err
 	}
@@ -332,7 +332,19 @@ func (a *LagoAdapter) ensureProviderBinding(ctx context.Context, externalCustome
 		if source == providerCustomerPlaceholder {
 			return nil
 		}
-		return a.waitForPaymentMethodSync(ctx, externalCustomerID)
+		// (R1-24) The same stall has a second source in the production
+		// posture: StripePmToken empty means NO default payment method was
+		// attached during the provider customer create (the real card arrives
+		// through the provider checkout, #82) — the import can never land
+		// either, and polling would burn the whole pmSyncWait on every
+		// purchase before answering the wrong transient unreachable. The
+		// contract (config.go F11 note, providerCreateCustomer) promises the
+		// opposite: a binding without a default PM reaches the gated create
+		// and fails CLOSED there (no_default_payment_method).
+		if a.cfg.StripePmToken == "" {
+			return nil
+		}
+		return a.syncPaymentMethods(ctx, externalCustomerID)
 	case status == http.StatusUnprocessableEntity && strings.Contains(string(respBody), "payment_provider_not_found"):
 		// F2: the org has no registered provider — configuration, not a
 		// transient failure; fail closed and stop the purchase.
@@ -373,7 +385,12 @@ func (a *LagoAdapter) waitForPaymentMethodSync(ctx context.Context, externalCust
 			return fmt.Errorf("%w: default payment method not imported in time", commercial.ErrPlatformUnreachable)
 		}
 		if err := sleepCtx(ctx, pmSyncTick); err != nil {
-			return fmt.Errorf("%w: payment method sync interrupted", commercial.ErrPlatformUnreachable)
+			// (R1-24) A cancelled caller context (client disconnect, command
+			// budget deadline) is the caller's own end — it is NOT a platform
+			// unreachability and must not carry that sentinel (a retrying
+			// coordinator would otherwise re-enter a poll it just cancelled).
+			// Surface ctx.Err() on its own error chain.
+			return fmt.Errorf("payment method sync interrupted: %w", err)
 		}
 	}
 }

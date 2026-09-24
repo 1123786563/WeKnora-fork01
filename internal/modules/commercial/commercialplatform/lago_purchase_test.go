@@ -473,6 +473,120 @@ func TestLagoPlaceholderBindingSkipsPaymentMethodSyncWait(t *testing.T) {
 	}
 }
 
+// TestLagoAPIBindingWithoutPmTokenSkipsPaymentMethodSyncWait (R1-24): the
+// production posture leaves StripePmToken EMPTY — no default payment method
+// is attached (the real card arrives through the provider checkout, #82), so
+// the provider-side import can never land. Polling would burn the whole
+// pmSyncWait on every purchase and then answer the wrong transient
+// unreachable; the contract (config.go F11 note, providerCreateCustomer)
+// promises the flow REACHES the gated create and fails closed there
+// (no_default_payment_method). The binding must skip the poll entirely.
+// The provider-customer derivation and the sync poll are injected through
+// the R1-24 test seams (the outbound host policy refuses loopback, so the
+// provider side cannot be stubbed over local HTTP).
+func TestLagoAPIBindingWithoutPmTokenSkipsPaymentMethodSyncWait(t *testing.T) {
+	stub := newPurchaseStub()
+	stub.mu.Lock()
+	stub.pmAlwaysEmpty = true // the import never lands
+	stub.mu.Unlock()
+	srv := stub.server(t)
+	a := purchaseAdapterWithPrefix(t, srv)
+	a.deriveProviderCustomer = func(_ context.Context, externalCustomerID string) (string, providerCustomerSource, error) {
+		return "cus-real-" + externalCustomerID, providerCustomerAPI, nil
+	}
+	syncCalls := 0
+	a.syncPaymentMethods = func(context.Context, string) error {
+		syncCalls++
+		return nil
+	}
+	oldWait, oldTick := pmSyncWait, pmSyncTick
+	pmSyncWait, pmSyncTick = 700*time.Millisecond, 50*time.Millisecond
+	t.Cleanup(func() { pmSyncWait, pmSyncTick = oldWait, oldTick })
+	start := time.Now()
+	if _, err := a.SubmitCommand(context.Background(), purchaseCmd(29, "weknora-pro-v1", 9900)); err != nil {
+		t.Fatalf("binding without a PM token must skip the sync wait, got %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > 3*time.Second {
+		t.Fatalf("binding must not poll the PM list without a PM token, took %s", elapsed)
+	}
+	if syncCalls != 0 {
+		t.Fatalf("payment-method sync must not run without a PM token, calls=%d", syncCalls)
+	}
+	// The gated create was REACHED (the contract's fail-closed point), not
+	// short-circuited before it.
+	if n := stub.countSubscriptionPosts(); n != 1 {
+		t.Fatalf("the flow must reach the gated create, subscription posts=%d", n)
+	}
+}
+
+// TestLagoAPIBindingWithPmTokenStillPollsPaymentMethodSync (R1-24): the
+// dev/test posture attaches a payment-method token (StripePmToken set), so
+// the import CAN land and the bounded sync poll must still run — the R1-24
+// skip is scoped to the empty-token production posture only.
+func TestLagoAPIBindingWithPmTokenStillPollsPaymentMethodSync(t *testing.T) {
+	stub := newPurchaseStub()
+	srv := stub.server(t)
+	a := purchaseAdapterWithPrefix(t, srv)
+	a.cfg.StripePmToken = "pm_test_canary" // dev/test posture: a PM is attached
+	a.deriveProviderCustomer = func(_ context.Context, externalCustomerID string) (string, providerCustomerSource, error) {
+		return "cus-real-" + externalCustomerID, providerCustomerAPI, nil
+	}
+	syncCalls := 0
+	a.syncPaymentMethods = func(context.Context, string) error {
+		syncCalls++
+		return nil
+	}
+	if _, err := a.SubmitCommand(context.Background(), purchaseCmd(30, "weknora-pro-v1", 9900)); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if syncCalls != 1 {
+		t.Fatalf("the PM sync must run exactly once when a token is attached, calls=%d", syncCalls)
+	}
+}
+
+// TestLagoPaymentMethodSyncCancellationIsNotUnreachable (R1-24): a cancelled
+// caller context (client disconnect, command budget deadline) is the
+// caller's own end — it must surface context.Canceled on its own error
+// chain, never the platform-unreachable sentinel (which would invite a
+// doomed retry into a poll the caller just cancelled). The stub cancels the
+// context after its first response is flushed and the poll tick (500ms) is
+// far longer than the delivery latency, so the cancellation is observed by
+// sleepCtx INSIDE a sleep, never by an in-flight request.
+func TestLagoPaymentMethodSyncCancellationIsNotUnreachable(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	served := make(chan struct{}, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"payment_methods":[]}`))
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+		served <- struct{}{}
+	}))
+	t.Cleanup(srv.Close)
+	go func() {
+		<-served
+		time.Sleep(50 * time.Millisecond)
+		cancel()
+	}()
+	a := NewLagoAdapter(Config{Provider: ProviderLago, BaseURL: srv.URL, APIKey: testAPIKey, Release: "v1.53.0"})
+	oldWait, oldTick := pmSyncWait, pmSyncTick
+	pmSyncWait, pmSyncTick = 10*time.Second, 500*time.Millisecond
+	t.Cleanup(func() { pmSyncWait, pmSyncTick = oldWait, oldTick })
+	err := a.waitForPaymentMethodSync(ctx, commercial.ExternalCustomerID(31))
+	if err == nil {
+		t.Fatal("cancelled sync must fail")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("caller cancellation must surface context.Canceled, got %v", err)
+	}
+	if errors.Is(err, commercial.ErrPlatformUnreachable) {
+		t.Fatalf("caller cancellation must NOT be classified unreachable, got %v", err)
+	}
+}
+
 func TestValidateOutboundHost(t *testing.T) {
 	for _, ok := range []string{"https://api.stripe.com", "http://api.stripe.com/v1"} {
 		if err := validateOutboundHost(ok); err != nil {

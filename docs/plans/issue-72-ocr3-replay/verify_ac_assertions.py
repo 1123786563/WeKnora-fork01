@@ -9,9 +9,11 @@ the window (plan: `phases.py` invoice-invisible branch, Task 2 Step 4 note).
 
 ocr-3 replay copy, executed against the docs/plans/issue-72-ocr3-replay/
 evidence directory. Derived from the ocr-2 copy (97 lines): it keeps the
-two "# ocr-2:" annotations (lines 74 and 89) and adds two ocr-3-specific
-assertion annotations, "# ocr-3:" at lines 79 and 95 (R1-V23: the previous
-note here wrongly claimed "unmodified").
+two "# ocr-2:" annotations (lines 83 and 99) and adds two ocr-3-specific
+assertion annotations, "# ocr-3:" at lines 88 and 105 (R1-V23: the previous
+note here wrongly claimed "unmodified"). This copy additionally guards every
+bare all(...values()) with an existence check (ocr-81 R1-15): an empty checks
+dict is a FAIL, never a vacuous pass.
 """
 import json
 import sys
@@ -39,7 +41,8 @@ check("env.release==v1.53.0", env["release"]["release"] == "v1.53.0")
 check("env.stripe.test_mode_key_present", env["stripe"]["test_mode_key_present"] is True)
 check("env.graphql_login_ok", env["lago"]["graphql_login_ok"] is True)
 check("env.secrets_scan.clean", env["secrets_scan"]["clean"] is True)
-check("env.all_phases_pass", all(v == "pass" for v in env["run"]["phase_statuses"].values()))
+check("env.all_phases_pass", bool(env["run"]["phase_statuses"])
+      and all(v == "pass" for v in env["run"]["phase_statuses"].values()))
 
 # AC1: gate (payment-gated subscription stays incomplete, entitlements unusable)
 g = load("t02-gating")
@@ -66,7 +69,10 @@ check("AC4 manual.status==pass", m["status"] == "pass")
 a = load("t02-activation")
 oa = a["observed"]
 check("AC2 activation.status==pass", a["status"] == "pass")
-check("AC2 checks all true", all(oa["checks"].values()))
+# ocr-81: the all() below is guarded by an existence check — an empty checks
+# dict must be a FAIL, never a vacuous pass (same guard style as the len>0
+# sub-a/b/c checks in verify_db_watch.py).
+check("AC2 checks all true", bool(oa["checks"]) and all(oa["checks"].values()))
 check("AC2 exactly one succeeded payment", oa["payments_succeeded_count"] == 1)
 check("AC2 provider_payment_id recorded", bool(oa["provider_payment_id"]))
 d = load("t02-duplicates")
@@ -88,7 +94,8 @@ check("AC2 duplicates invoice count == baseline",
 # AC3: retries (same business identity recoverable, no double charge)
 r = load("t02-retries")
 check("AC3 retries.status==pass", r["status"] == "pass")
-check("AC3 checks all true", all(r["observed"]["checks"].values()))
+check("AC3 checks all true", bool(r["observed"]["checks"])
+      and all(r["observed"]["checks"].values()))
 # ocr-2: with the gate invoice API-invisible the retry probe is skipped and
 # recorded not_applicable (an unknown-id 404 is not retry evidence).
 gr = r["observed"]["pending_gate_retry"]
@@ -102,7 +109,8 @@ check("AC3 gate end state recorded (not active)",
 # negative control: declined charge never activates
 c = load("t02-decline")
 check("decline.status==pass", c["status"] == "pass")
-check("decline checks all true", all(c["observed"]["checks"].values()))
+check("decline checks all true", bool(c["observed"]["checks"])
+      and all(c["observed"]["checks"].values()))
 
 print("RESULT:", "ALL PASS" if not fail else f"{len(fail)} FAILED: {fail}")
 sys.exit(0 if not fail else 1)
