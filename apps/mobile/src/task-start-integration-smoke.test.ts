@@ -5,8 +5,9 @@ import { emitTaskStartIntegrationEvidence, runTaskStartIntegration, taskStartInt
 const env = () => process.env as Record<string, string | undefined>;
 
 test('integration stays opt-in: missing credentials skip, never fake a pass', () => {
-  delete process.env.WEKNORA_MOBILE_TEST_DEPLOYMENT_URL;
-  const config = taskStartIntegrationConfig(env());
+  // 不修改 process.env（同进程泄漏会让 live 用例在环境齐备时也永远 skip）：
+  // 用剔除该变量的 env 快照验证 skip 语义。
+  const config = taskStartIntegrationConfig({ ...env(), WEKNORA_MOBILE_TEST_DEPLOYMENT_URL: undefined });
   assert.equal(config.enabled, false);
   assert.equal(config.disposition, 'skip');
   const invalid = taskStartIntegrationConfig({ WEKNORA_MOBILE_TEST_DEPLOYMENT_URL: 'http://insecure.example', WEKNORA_MOBILE_TEST_EMAIL: 'e', WEKNORA_MOBILE_TEST_PASSWORD: 'p' });
