@@ -29,3 +29,20 @@ export type {
 export type { TaskLifecycleState, TaskTimelineEntry, TaskTimelineKind, TaskTimelineSourceEvent } from './task-office/task-timeline.ts';
 export { isTerminalRunStatus, mergeEventHistory, projectTimeline, taskLifecycleOf, terminalRunStatusOf, timelineKindLabel } from './task-office/task-timeline.ts';
 export type { ScenarioTaskDetailHandlers, ScriptedTaskStream } from './task-office/in-memory-task-detail.ts';
+export { createTaskMaterial } from './material/task-material.ts';
+export { MaterialError } from './material/material-errors.ts';
+export type { MaterialErrorCode } from './material/material-errors.ts';
+export { materialKindOf, previewVerdictOf, isInlineImageMime, PREVIEW_MAX_BYTES } from './material/material-kinds.ts';
+export { parseUnifiedDiff } from './material/diff.ts';
+export type { DiffHunk, DiffLine } from './material/diff.ts';
+export { projectCitations } from './material/evidence.ts';
+export { createScenarioMaterialRemote, createScriptedBlobFetch, createRecordingSharePort } from './material/in-memory-material-remote.ts';
+export type { ScenarioMaterialHandlers } from './material/in-memory-material-remote.ts';
+export type {
+  BlobFetchPort, MaterialBackendArtifact, MaterialBackendEvent, MaterialBackendGrant, MaterialBackendList,
+  MaterialBackendPort, MaterialBackendTerminalLine, MaterialBackendTerminalPage, SharePort, TaskMaterialPorts,
+} from './material/ports.ts';
+export type {
+  EvidenceCitation, MaterialActResult, MaterialEntry, MaterialEntryKind, MaterialEvent, MaterialIndex,
+  MaterialIntent, MaterialRef, MaterialView, PreviewVerdict, TaskMaterial, TaskMaterialHandle, TerminalLine,
+} from './material/types.ts';
