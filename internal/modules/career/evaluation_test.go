@@ -28,14 +28,19 @@ func TestEvaluateOpportunityHardOutcomesArePinnedToEvidence(t *testing.T) {
 		{name: "graduation year with 届 suffix is normalized", jd: "仅限2027届", year: "2026届", want: EvaluationIneligible, citation: true},
 		{name: "graduation date is normalized", jd: "仅限2027届", year: "2026-06-30", want: EvaluationIneligible, citation: true},
 		{name: "2027 graduate matches sole recognized rule", jd: "仅限2027届。", year: "2027", want: EvaluationEligible, citation: true},
+		{name: "ASCII full stop terminates declaration", jd: "仅限 2027 届.", year: "2026", want: EvaluationIneligible, citation: true},
+		{name: "surrounding whitespace preserves raw citation", jd: " \n仅限2027届。\r\n", year: "2026", want: EvaluationIneligible, citation: true},
+		{name: "fullwidth question is not affirmative", jd: "仅限2027届？", year: "2026", want: EvaluationUnknown},
+		{name: "ASCII question is not affirmative", jd: "仅限2027届?", year: "2026", want: EvaluationUnknown},
 		{name: "additional symbol is not ignored as punctuation", jd: "仅限2027届✅", year: "2027", want: EvaluationUnknown},
 		{name: "missing confirmed graduation year is unknown", jd: "仅限2027届", want: EvaluationUnknown, citation: true},
 		{name: "alternative batch is unknown", jd: "仅限2027届或2026届", year: "2026", want: EvaluationUnknown},
 		{name: "negated graduation rule is unknown", jd: "并非仅限2027届", year: "2026", want: EvaluationUnknown},
 		{name: "unparsed same-line condition is unknown", jd: "仅限2027届，要求本科及以上", year: "2026", want: EvaluationUnknown},
-		{name: "standalone condition with skill field remains conclusive", jd: "仅限2027届\n技能：Go", year: "2026", want: EvaluationIneligible, citation: true},
-		{name: "standalone condition with project field remains conclusive", jd: "仅限2027届\n项目：X", year: "2026", want: EvaluationIneligible, citation: true},
-		{name: "standalone condition with skill and project fields remains conclusive", jd: "技能：Go\n仅限2027届\n项目：X", year: "2026", want: EvaluationIneligible, citation: true},
+		{name: "skill field makes hard rule unknown", jd: "仅限2027届\n技能：Go", year: "2026", want: EvaluationUnknown},
+		{name: "project field makes hard rule unknown", jd: "仅限2027届\n项目：X", year: "2026", want: EvaluationUnknown},
+		{name: "skill and project fields make hard rule unknown", jd: "技能：Go\n仅限2027届\n项目：X", year: "2026", want: EvaluationUnknown},
+		{name: "implicit exception in skill field makes hard rule unknown", jd: "仅限2027届\n技能：Go，其他批次均可", year: "2026", want: EvaluationUnknown},
 		{name: "wrapped alternative on following line is unknown", jd: "仅限2027届\n或2026届", year: "2026", want: EvaluationUnknown},
 		{name: "wrapped alternative before candidate is unknown", jd: "2026届或\n仅限2027届", year: "2026", want: EvaluationUnknown},
 		{name: "second graduation option on following line is unknown", jd: "仅限2027届\n2026届亦可", year: "2026", want: EvaluationUnknown},
@@ -44,7 +49,7 @@ func TestEvaluateOpportunityHardOutcomesArePinnedToEvidence(t *testing.T) {
 		{name: "punctuation separated year list is unknown", jd: "仅限2027届、2028届", year: "2026", want: EvaluationUnknown},
 		{name: "CRLF wrapped alternative is unknown", jd: "仅限2027届\r\n或2026届", year: "2026", want: EvaluationUnknown},
 		{name: "CRLF prior alternative is unknown", jd: "2026届或\r\n仅限2027届", year: "2026", want: EvaluationUnknown},
-		{name: "labeled skill section preserves standalone mismatch", jd: "仅限2027届\r\n技能：Go", year: "2026", want: EvaluationIneligible, citation: true},
+		{name: "CRLF skill field makes hard rule unknown", jd: "仅限2027届\r\n技能：Go", year: "2026", want: EvaluationUnknown},
 		{name: "later unlabeled graduation alternative makes result unknown", jd: "仅限2027届\n技能：Go\n2026届亦可", year: "2026", want: EvaluationUnknown},
 		{name: "embedded alternative in skill field makes result unknown", jd: "仅限2027届\n技能：Go，2026届亦可", year: "2026", want: EvaluationUnknown},
 		{name: "CRLF later graduation alternative makes result unknown", jd: "仅限2027届\r\n技能：Go\r\n2026届亦可", year: "2026", want: EvaluationUnknown},
@@ -56,6 +61,8 @@ func TestEvaluateOpportunityHardOutcomesArePinnedToEvidence(t *testing.T) {
 		{name: "negation language in soft field makes result unknown", jd: "仅限2027届\n项目：非应届限制", year: "2026", want: EvaluationUnknown},
 		{name: "publication year in allowed field makes result unknown", jd: "仅限2027届\n项目：2024年论文", year: "2026", want: EvaluationUnknown},
 		{name: "unrecognized continuation makes result unknown", jd: "仅限2027届\n要求应届毕业生", year: "2026", want: EvaluationUnknown},
+		{name: "another sentence makes result unknown", jd: "仅限2027届。岗位开放", year: "2026", want: EvaluationUnknown},
+		{name: "another punctuation mark makes result unknown", jd: "仅限2027届！", year: "2026", want: EvaluationUnknown},
 		{name: "missing graduation condition is unknown", jd: "要求熟悉 Go 并具备项目经验", year: "2026", want: EvaluationUnknown},
 		{name: "bare batch is not treated as an explicit rule", jd: "2027届", year: "2027", want: EvaluationUnknown},
 	} {
@@ -82,6 +89,8 @@ func TestEvaluateOpportunityHardOutcomesArePinnedToEvidence(t *testing.T) {
 				require.NotNil(t, read.Hard.Rules[0].JobEvidence)
 				evidence := read.Hard.Rules[0].JobEvidence
 				require.Equal(t, tc.jd[evidence.SpanStart:evidence.SpanEnd], evidence.QuotedText)
+				require.Equal(t, strings.Index(tc.jd, "仅限"), evidence.SpanStart)
+				require.Equal(t, strings.Index(tc.jd, "届")+len("届"), evidence.SpanEnd)
 			} else {
 				require.Nil(t, read.Hard.Rules[0].JobEvidence)
 			}
@@ -217,7 +226,7 @@ func TestEvaluationUsesOnlyConfirmedSoftEvidenceAndKeepsItSeparate(t *testing.T)
 	result, err := o.EvaluateOpportunity(ctx, EvaluateInput{RequestID: "eval-soft", OpportunityID: job.OpportunityID, SnapshotID: job.SnapshotID})
 	require.NoError(t, err)
 	read := mustEvaluation(t, o, ctx, result.EvaluationID)
-	require.Equal(t, EvaluationIneligible, read.Hard.Overall)
+	require.Equal(t, EvaluationUnknown, read.Hard.Overall)
 	require.Len(t, read.Soft.Matches, 3)
 	for _, match := range read.Soft.Matches {
 		require.NotEmpty(t, match.ProfileEvidence.FactKey)
