@@ -844,6 +844,22 @@ var importExceptions = []importException{
 			"batch-a4 搬迁后显形），Pass A 不改边界",
 		PassBTask: "B-workbench",
 	},
+	// ---- Pass B 搬迁显形的预存横向包耦合：knowledge retrieval semantic 面消费 commercial
+	// 域类型（22-knowledge-retrieval K2.3 搬迁后显形；Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY）----
+	{
+		ImporterFile: "internal/modules/knowledge/retrieval/app/semantic_model_capability.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/commercial",
+		Reason: "预存横向包耦合（Pass B 前均在 internal/application/service 下，" +
+			"K2.3 搬迁后显形），Pass B 不改边界",
+		PassBTask: "B-knowledge",
+	},
+	{
+		ImporterFile: "internal/modules/knowledge/retrieval/app/semantic_model_policy.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/commercial",
+		Reason: "预存横向包耦合（Pass B 前均在 internal/application/service 下，" +
+			"K2.3 搬迁后显形），Pass B 不改边界",
+		PassBTask: "B-knowledge",
+	},
 }
 
 // importExcepted 报告 (importerFile, importedPath) 是否命中一条精确豁免。

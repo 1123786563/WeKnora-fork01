@@ -1,4 +1,5 @@
-# Pass B exception ledger — 105 条 Pass A 精确路径 import 例外的删除属主与期限（B0.2 生成）。
+# Pass B exception ledger — 107 条精确路径 import 例外的删除属主与期限（B0.2 生成 105 条
+# Pass A 行 + 2 条 Pass B K2.3 搬迁显形行，Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY）。
 # 事实源：tools/architectureguard/check.go importExceptions 复合字面量（go/ast 解析，
 # F1 裁定）：from=ImporterFile、to=ImportedPath、reason 逐字复制；plan 按 importer
 # 文件所属子计划归属（guard 源 PassBTask 的模块绑定由 passbguard 校验）；
@@ -635,3 +636,15 @@ exceptions:
     plan: 40-workbench
     remove_at: ib4
     reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a4 搬迁后显形），Pass A 不改边界"
+  - id: exc-0106
+    from: internal/modules/knowledge/retrieval/app/semantic_model_capability.go
+    to: "github.com/Tencent/WeKnora/internal/modules/commercial"
+    plan: 22-knowledge-retrieval
+    remove_at: ib2
+    reason: "预存横向包耦合（Pass B 前均在 internal/application/service 下，K2.3 搬迁后显形），Pass B 不改边界"
+  - id: exc-0107
+    from: internal/modules/knowledge/retrieval/app/semantic_model_policy.go
+    to: "github.com/Tencent/WeKnora/internal/modules/commercial"
+    plan: 22-knowledge-retrieval
+    remove_at: ib2
+    reason: "预存横向包耦合（Pass B 前均在 internal/application/service 下，K2.3 搬迁后显形），Pass B 不改边界"
