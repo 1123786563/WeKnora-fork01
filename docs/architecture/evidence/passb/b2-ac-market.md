@@ -84,8 +84,43 @@
 
 1. TestTenantAgentMarketplaceLifecycleAndAuthorization（1.53s）
 
-## 4. 差分锚定备注（T5 填结论）
+## 4. 等价双跑（T5 Step 1，2026-09-25 终态实跑；conventions §6 格式）
 
-- §5 高风险差分 ①（38+1 用例双跑）：基线 = 本文件 §3；终态待 T5。
-- §5 高风险差分 ②（发布重试/幂等，`ReviewAndPublishTx` 唯一冲突重试路径）：本基线含 repo `…ConcurrentPublishingUsesUniqueReleaseNumbers`、service `…ConcurrentApprovalFailureKeepsPeerCommittedBundle`、路由全生命周期用例；模块本地 `isUniqueViolation` 副本落位后由 parity 测试 + 并发用例双锚定（T2）。
-- §5 高风险差分 ③（注入位）：宿主路由测试经残差构造链绑真源 `experts.BuildAgentReleaseBundle`；模块 service 测试同源注入（T3 落地后复跑）。
+> 旧实现侧 = 本文件 §3（T1 Step 4，宿主原文件被测，39 用例全 PASS）；新实现侧 = 分支 HEAD `53646cb10`（T2/T3/T4 搬迁完成后）。随迁使用例物理位置从宿主两包转至模块两包，同 `-run` 模式改指模块包；宿主侧同模式复跑为 `[no tests to run]`（25c.3 复核轮命令 2 在案），即用例零丢失、零复制双跑。
+
+### 4.1 新实现侧命令与输出（全部本会话实跑，`-count=1 -v`）
+
+| # | 命令 | 退出码 | 输出摘要 |
+|---|---|---|---|
+| 1 | `go test -count=1 -v ./internal/modules/agentcatalog/repository -run 'TestAgentMarketplace\|TestExpertInstall\|TestPublishedExpertRepo\|TestPublishedSkillRepo'` | 0 | 21 用例全 `--- PASS`（§3.1 同名清单），`ok 7.332s`（首轮 `9.866s`） |
+| 2 | `go test -count=1 -v ./internal/modules/agentcatalog/service -run 'TestAgentMarketplaceSubmit\|TestAgentMarketplaceReview\|TestAgentMarketplaceApproval\|TestAgentMarketplaceConcurrent\|TestAgentMarketplaceExclusive\|TestAgentMarketplaceCatalog\|TestTenantMarket'`（七段原式） | 0 | 17 用例全 `--- PASS`（§3.2 同名清单），`ok 1.478s` |
+| 3 | `go test -count=1 -v ./internal/router -run 'TestTenantAgentMarketplaceLifecycleAndAuthorization'` | 0 | `--- PASS: TestTenantAgentMarketplaceLifecycleAndAuthorization (0.89s)`，`ok 2.657s` |
+| 4 | `go test -count=1 -v ./internal/modules/agentcatalog/repository -run 'TestIsUniqueViolationParity'` | 0 | 8/8 子用例全 PASS（nil/`gorm.ErrDuplicatedKey` 及 wrap/sqlite/postgres 消息/23505/无关错误/哨兵），`ok 1.010s` |
+
+### 4.2 逐用例比对结论
+
+- **repository 21 用例**：新旧两侧用例名逐条一致（§3.1 清单 1-21 ↔ 终态同名 21 条），双侧全 PASS。含并发唯一发布号 `TestAgentMarketplaceConcurrentPublishingUsesUniqueReleaseNumbers`（唯一冲突重试路径走模块本地 `isUniqueViolation` 副本）与 `TestAgentMarketplaceSQLiteDownWithPublishedListing`（机制适配注记见 4.4-②）。
+- **service 17 用例**：新旧两侧用例名逐条一致（§3.2 清单 1-17 ↔ 终态同名 17 条），双侧全 PASS。含补偿 `…CompensatesFinalObjectWhenTransactionFails`、独占发布 `…ExclusivePublishVerifiesExistingDigest`、并发审批 `…ConcurrentApprovalFailureKeepsPeerCommittedBundle`（注入位改 `s.adapters.BuildReleaseBundle` 后期望值同源）。
+- **router 1 用例**：`TestTenantAgentMarketplaceLifecycleAndAuthorization` 双侧 PASS——经宿主 shim 链零改动执行真实构造链 `NewAgentMarketplaceRepository`（shim var 转发）→ `NewAgentMarketplaceService`（残差 4 参构造器绑真源 `experts.BuildAgentReleaseBundle`）→ `NewAgentMarketplaceHandler`（shim var 转发），HTTP 面（路由/状态码/RBAC 守卫/错误码映射）等价。
+- **计数奇偶**：21+17+1 = 39 用例两侧一致，无丢失、无新增、无跳过（无 SKIP）。
+
+### 4.3 §5 高风险差分三项结论（conventions §6 / spec §14.3 口径）
+
+1. **① 搬迁等价双跑（38 用例 + 路由 1 例）**：双侧全 PASS、用例名逐条一致（§4.2）——**通过**。
+2. **② 发布重试/幂等差分（`ReviewAndPublishTx` 唯一冲突重试路径）**：repo 侧 `…ConcurrentPublishingUsesUniqueReleaseNumbers`、service 侧 `…ConcurrentApprovalFailureKeepsPeerCommittedBundle`、路由侧全生命周期用例三锚定搬迁后全绿；模块本地 `isUniqueViolation` 副本分类结果由 parity 表（8 子用例）+ 上述并发用例双锚定——**通过**。
+3. **③ 注入位差分（`MarketHostAdapters.BuildReleaseBundle`）**：宿主路由测试经残差构造器绑真源 builder 全链路执行（命令 3），模块 service 17 用例同源注入（测试 8 处构造点均绑 `experts.BuildAgentReleaseBundle` 真源，25c.3 复核轮 §1 Step 2 diff 实证），两侧期望值同源——**通过**。
+
+### 4.4 机制/装置差异注记（不影响用例级结论，如实登记）
+
+1. **`openRunTestDB` 测试装置副本**（T2 偏差 1）：随迁 `agent_marketplace_test.go` 内的最小装置副本（sqlite 分支逐字 + `remove_at: ib2`，TEST-SUPPORT-SHIM 裁定族）——装置差异不进入被测行为面。
+2. **down 迁移执行机制适配**（T2 偏差 2）：`TestAgentMarketplaceSQLiteDownWithPublishedListing` 旧侧动态 `db.Exec(string(down))`、新侧 migrate 引擎 `Steps(-1)`（同一份已入库 000109 down 文件）；断言零改动，用例级结论可比对（双侧 PASS；探针实证 before 109 clean → after 108、`agent_versions` 保留、`agent_releases` 删除）。
+3. **`requireAppErrorStatus` 包内副本**（T3 偏差 1，:189-200，与留宿 `skill_market_service_test.go:292` 逐字同体）与 **`fakePublisherNames` 宿主垫片追加**（T3 偏差 2，`tenant_skill_testsupport_test.go` +26 行，Ruling 2026-09-24-TEST-SUPPORT-SHIM）——均为测试装置，不改变被测实现语义。
+
+## 5. 终态门禁（T5 Step 2，分支 HEAD `53646cb10` 实跑）
+
+| # | 命令 | 退出码 | 关键输出 |
+|---|---|---|---|
+| 1 | `go build ./...` | 0 | 仅 cmd/server、cmd/desktop 两条 `ld: warning: ignoring duplicate libraries: '-lc++'`（在案非错误） |
+| 2 | `go test -count=1 ./internal/modules/agentcatalog/...` | 0 | 根 `[no test files]`；handler `ok 1.781s`、repository `ok 11.508s`、service `ok 8.879s` |
+| 3 | `make check-backend-architecture` | 0 | `literal=564 apiKeyRoute=69 handle=0 total=633 \| redis=23 lite=23 \| hooks=58 \| modules=16` + `OK (0 violations)`——计数零漂移 |
+| 4 | `make verify-module-moves` | 0 | `modulemove: OK (16 manifests verified)` |

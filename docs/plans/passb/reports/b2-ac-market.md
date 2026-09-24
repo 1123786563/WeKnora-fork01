@@ -1,6 +1,7 @@
 # b2-ac-market（25c Marketplace）实施报告 — Pass B
 
-> 状态：**T1 完成**（T2–T5 未开始）。分支 `codex/passb-b2-ac-market`；对齐后任务基线 `c0ddf768a`（见下）。
+> 状态：**T1–T5 全部完成**（节点实施收口 @ T5 commit）。分支 `codex/passb-b2-ac-market`；对齐后任务基线 `c0ddf768a`（见下）；节点终态头 `53646cb10`（T5 docs commit 前）。
+> 任务轨迹：T1 `e4753ae49`/`e056eb807`（基线表征 + 对齐台账）；T2 `4b4171e09`；T3 `8e7fe5810`；T4 `4f7e7650c` + gofmt 修复 `53646cb10`；T5 本 commit（docs 收口）。25c.3/25c.4 曾各派发一轮复核（派发 BASE 恰为已实施头，定位为复核轮，任务报告见主 checkout `.superpowers/sdd/passb/b2-ac-market/25c.{3,4}-report.md`）。
 
 ## T1（25c.1）基线锚定与前置门核验 — done @ 本 commit
 
@@ -63,10 +64,80 @@
 
 ### 遗留
 
-- T3–T5 未开始；偏差 2 的机制差异待 T5 差分章节落盘；偏差 1 的装置副本随 IB2 收口删除。
+- ~~T3–T5 未开始~~（T3–T5 已随后续任务完成，见下）；偏差 2 的机制差异已落 evidence §4.4-②；偏差 1 的装置副本随 IB2 收口删除（Brief §3）。
 
-## T3（25c.3）service 批次搬迁 + MarketHostAdapters — pending
+## T3（25c.3）service 批次搬迁 + MarketHostAdapters — done @ `8e7fe5810`（2026-09-24）
 
-## T4（25c.4）handler 搬迁 + marketTenantID — pending
+### 变更（8 文件）
 
-## T5（25c.5）差分证据收口 + Brief + 节点门禁 — pending
+- 新建 `internal/modules/agentcatalog/service/market_host_adapters.go`：单字段 `BuildReleaseBundle`（签名与 `experts.BuildAgentReleaseBundle` 全公共类型逐参一致）+ 构造器 `BuildReleaseBundle==nil` fail-fast（`agent_marketplace.go:42-46`）。
+- #5 `tenant_skill_market_service.go` 随迁：与原文件 diff 仅 import `repository.`→`acrepo.`（:46/:61 两处前缀），零注入；#6 `agent_marketplace.go` 随迁：计划列明 5 组差异（import 删宿主 repository+experts 增 acrepo；`adapters` 未导出字段；构造器 5 参；`:60`→`:65` 改 `s.adapters.BuildReleaseBundle(...)`；哨兵前缀 ×2）；`var _ interfaces.AgentMarketplaceService`（:40）/`var _ interfaces.TenantSkillMarketService`（:55）断言随迁。
+- 宿主 shim 两件：#6 = 4 参残差构造器（绑真源 `experts.BuildAgentReleaseBundle`）+ 3 哨兵 var；#5 = 2 个未导出接口跨包别名 + 4 参 1:1 转发；均 `remove_at: ib2`。
+- 随迁测试 2 件：`agent_marketplace_test.go` 恰 8 行适配（8 处构造点追加 adapters 实参绑真源 builder）；`tenant_skill_market_service_test.go` 用例体零改动。
+
+### 计划偏差（裁定族共同原则授权，就地补齐 + 留痕）
+
+1. `requireAppErrorStatus` 包内副本（随迁测试 :189-200）：原定义于留宿推迟件测试 `skill_market_service_test.go:292`（跨文件依赖计划未预见），逐字同体复制 + 注释登记。
+2. `fakePublisherNames` 宿主垫片追加（`internal/application/service/tenant_skill_testsupport_test.go` +26 行，白名单外文件）：删除宿主随迁测试后留宿禁改测试 `tenant_expert_market_service_test.go:365` 断链，按 Ruling 2026-09-24-TEST-SUPPORT-SHIM「宿主包唯一垫片文件」约束追加进 25b 已建垫片（未新建第二文件），独立 remove_at = 推迟件搬迁窗口。
+
+### 已运行命令（实施轮 + 复核轮，详见归档 `25c.3-report.md` §2；T5 已全量重跑收口，见 T5 节）
+
+`go build ./...`=0；定向七包与全量五包测试全 ok（含 `routes_agent_marketplace_test.go` 经 shim 链路端到端）；import 纪律精确 grep 零命中；两 make 绿（计数零漂移）。复核轮性质说明：该轮派发 BASE 恰为已实施头 `8e7fe5810`，定位为复核轮（重验产物 + 亲手重跑全部检查，零新增提交），报告见主 checkout 归档。
+
+## T4（25c.4）handler 搬迁 + marketTenantID — done @ `4f7e7650c` + `53646cb10`（2026-09-24/25）
+
+### 变更（2 文件）
+
+- 模块 `internal/modules/agentcatalog/handler/agent_marketplace.go` 1:1 随迁：与搬迁前原文件 diff 恰为计划列明四组——import 2 行（`marketrepo`→`acrepo`、`marketservice`→`acatsvc`）、`marketTenantID` helper +4 行（与宿主 `sandboxConfigTenantID` 函数体逐字一致）、`marketplaceClientError` 哨兵前缀 4 行（6×`acrepo.` + 3×`acatsvc.`，同一 var 实体）、调用点 ×4 改 `marketTenantID(c)`。
+- 宿主 `internal/handler/agent_marketplace.go` 重写为 shim：`type AgentMarketplaceHandler = acathandler.AgentMarketplaceHandler` + `var NewAgentMarketplaceHandler` 转发，`remove_at: ib2`。
+
+### 计划偏差（复核轮发现并修复）
+
+- 前轮 import 别名替换后 `apperrors` 行滞留原字母序位致 gofmt 不合规（`.golangci.yml` 启用 gofmt，IB2 `--new-from-rev` 门禁会标记该新文件）——复核轮以独立 style commit `53646cb10` 修复（单行移动、零逻辑变更、可独立 revert），修复后 Step 2 三命令重跑全绿。范围外未修：`tenant_skill_verify_python_test.go` gofmt 残留系 25b 提交 `7c76e7cf1` 带入（本节点 §2.4 禁改），移交 25b 属主/IB2。
+
+### 已运行命令（详见归档 `25c.4-report.md` §2；T5 已重跑收口）
+
+`go build ./...`=0；`go test ./internal/router -run 'TestTenantAgentMarketplace'` ok；模块 + 宿主 handler 四包全 ok；两 make 绿。复核轮性质：派发 BASE 恰为已实施头，复核 + 单点修复（上述 gofmt）。
+
+## T5（25c.5）差分证据收口 + Brief + 节点门禁 — done @ 本 commit（2026-09-25）
+
+### Step 1 双跑差分（evidence §4 全文落盘）
+
+- 39 用例终态复跑（本会话 `-count=1 -v`）：模块 repository 21/21 PASS（`ok 7.332s`）、模块 service 17/17 PASS（`ok 1.478s`）、router 1/1 PASS（`ok 2.657s`）——用例名与 T1 基线清单逐条一致，无丢失/新增/跳过；parity 8/8 子用例 PASS。
+- §5 高风险差分三项结论（evidence §4.3）：①搬迁等价双跑通过；②发布重试/幂等（唯一冲突重试路径三锚定 + parity 双锚定）通过；③注入位差分（宿主残差与模块测试同绑真源 builder）通过。
+- 机制差异注记（evidence §4.4）：down 迁移执行机制（动态 Exec → migrate `Steps(-1)`，断言零改动）、`openRunTestDB`/`requireAppErrorStatus`/`fakePublisherNames` 三项测试装置差异——均不改变被测行为面。
+
+### Step 2 节点 gates（DAG 四条 + 通用，分支 HEAD 实跑）
+
+| 命令 | 退出码 | 输出摘要 |
+|---|---|---|
+| `go build ./...` | 0 | 仅 cmd/server、cmd/desktop 两条在案 ld 告警 |
+| `go test -count=1 ./internal/modules/agentcatalog/...` | 0 | 根 `[no test files]`；handler `ok 1.781s`、repository `ok 11.508s`、service `ok 8.879s` |
+| `make check-backend-architecture` | 0 | `literal=564 apiKeyRoute=69 handle=0 total=633 \| redis=23 lite=23 \| hooks=58 \| modules=16` + `OK (0 violations)`——零漂移 |
+| `make verify-module-moves` | 0 | `modulemove: OK (16 manifests verified)` |
+
+### Step 3 Integration Brief 定稿
+
+`docs/architecture/passb/briefs/b2-ac-market.md`：①7 shim 消费方切换与删除顺序 + `isUniqueViolation` 第 4 副本族收口登记（conventions §7.1，四副本全清单）；②§4-② 推迟台账 6 行（符号@文件:行可复核）+ 反向义务核对；③13 文件拆分确认请求；④计数零漂移声明 + contracts.yaml 回写申请；另附测试装置台账 3 行（TEST-SUPPORT-SHIM）与 manifest 处置申请。
+
+### Step 4 本报告 + Step 5 说明
+
+本节即 Step 4 产物。Step 5（DAG `status`/`head_sha`/`review_status`/`task_ids` 回填）属协调者（conventions §9），实施者未写 DAG。
+
+### 节点级自查（验收标准 §9 逐条）
+
+1. **gates 全绿**：✅（上表四条 + 通用两 make；命令原文与输出摘录落盘 evidence §5）。
+2. **差集核对**：✅ `git diff --name-only c0ddf768a...HEAD \| sort` = 27 文件 = §2.3 白名单 24 项（7 模块生产 + 6 随迁测试 + 1 parity + 7 shim + 3 文档）+ 3 项在案登记偏离：`market_host_adapters.go`（§4-③/T3 Step 1 明示新建，§2.3 白名单文字遗漏）、`tenant_skill_testsupport_test.go`（Ruling TEST-SUPPORT-SHIM，T3 偏差 2）、`execution-ledger.md`（Ruling WAVE-DEP-BASELINE §6 分支侧台账）。
+3. **1:1 与冻结签名**：✅（T2/T3/T4 各轮 1:1 diff 逐行核对在案；`var _` 断言 + 全仓编译 = `marketplace-service`/`tenant-skill-market-service` 冻结签名逐字不变；`agent-version-service`/`skill-market-service` 只消费/零触及）。
+4. **等价双跑**：✅（evidence §4；并发发布/审批用例经模块本地 `isUniqueViolation` 副本仍绿）。
+5. **parity 测试**：✅（8 子用例覆盖 nil/`gorm.ErrDuplicatedKey` 及 wrap/三驱动标记/非唯一错误分类）。
+6. **模块零禁 import**：✅ import 块精确 grep 八文件 0 命中（计划原命令 3 命中均为注释词）；architectureguard 0 violations。
+7. **Brief 完整性**：✅（推迟台账 6 行 + 反向义务 + 拆分确认 + shim 删除清单 + 族收口登记）。
+8. **禁改清单零出现**：✅（27 文件 diff 中无 router/container/bootstrap/migrations/go.mod/go.sum/tools/治理 YAML/moves YAML/module.go/推迟 6 文件/25a-25b 已搬文件与残差）。
+
+### 遗留（移交，如实）
+
+1. 7 个 shim + parity 测试 + `isUniqueViolation` 副本删除归 IB2（Brief §1.3 顺序表）；contracts.yaml consumers 路径回写归 barrier（Brief §5）。
+2. 6 个推迟文件的裁定请求待协调者/IB2/B3 处置（Brief §2）；测试装置 3 项按各自 remove_at 回收（Brief §3）。
+3. 范围外未修：`tenant_skill_verify_python_test.go` gofmt 残留（25b 属主）；`internal/handler/skill_catalog.go` 过渡占位注释（OCR f1，25b 残差，DAG notes 已明示路由）。
+4. 节点级 OCR 复扫（2026-09-24 11:00，对齐后全量 diff）报告 2 findings 的 confirmed/rejected 逐条对应未点名（调度口径 1/1）——留痕待协调者补充，非本节点可自行判定。
