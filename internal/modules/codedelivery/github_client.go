@@ -182,6 +182,24 @@ func (c *gitHubRestClient) CreateCommit(ctx context.Context, parent, tree, messa
 	return out.SHA, err
 }
 
+// BranchHead reads refs/heads/<branch>; (sha,false,nil) when the branch
+// does not exist. Used by unknown-resolution to read remote facts only.
+func (c *gitHubRestClient) BranchHead(ctx context.Context, branch string) (string, bool, error) {
+	var out struct {
+		Object struct {
+			SHA string `json:"sha"`
+		} `json:"object"`
+	}
+	if err := c.call(ctx, http.MethodGet, "/repos/"+c.repoString()+"/git/ref/heads/"+branch, nil, &out); err != nil {
+		var apiErr *GitHubAPIError
+		if asGitHubAPIError(err, &apiErr) && apiErr.Status == http.StatusNotFound {
+			return "", false, nil
+		}
+		return "", false, err
+	}
+	return out.Object.SHA, out.Object.SHA != "", nil
+}
+
 // EnsureBranch creates refs/heads/<branch>; on "already exists" it updates the
 // SAME task branch to the new commit (draft-PR iteration on one task branch).
 func (c *gitHubRestClient) EnsureBranch(ctx context.Context, branch, commit string) error {

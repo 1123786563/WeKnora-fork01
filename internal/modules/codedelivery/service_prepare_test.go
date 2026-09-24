@@ -81,20 +81,15 @@ type deliveryFixture struct {
 	workspace   WorkspaceFileSource
 	root        string
 	connections *fixtureConnections
+	dispatcher  *DeliveryDispatcher
 }
 
 // newDeliveryFixture 装配真实 sqlite（AutoMigrate）+ 真实 A03 ActionStore +
 // 真实 ocAuthorizer + httptest GitHub 模拟器 + 本地目录工作区。
-// 可选 dispatcher 参数：Task 5 阶段省略（NewActionService 允许 nil
-// dispatcher，本任务只测物化/prepare 路径）；Task 6 会把本函数改造为
-// 「dispatcher 内部单实例构造」（见 Task 6 Step 3 的夹具改造——所有底层件
-// 同源，杜绝 db/模拟器双实例分裂）。
-func newDeliveryFixture(t *testing.T, mutate func(root string), dispatcher ...appconnectorsvc.ActionDispatcher) *deliveryFixture {
+// Task 6 起为 dispatcher 内部单实例构造：dispatcher 与 service 共享同一
+// db/emulator/connections/workspace/store 实例，绝无两套底层件。
+func newDeliveryFixture(t *testing.T, mutate func(root string)) *deliveryFixture {
 	t.Helper()
-	var dispatch appconnectorsvc.ActionDispatcher
-	if len(dispatcher) > 0 {
-		dispatch = dispatcher[0]
-	}
 	dsn := "file:" + filepath.Join(t.TempDir(), "svc.db") + "?_foreign_keys=on&_busy_timeout=5000"
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
 	require.NoError(t, err)
@@ -122,20 +117,20 @@ func newDeliveryFixture(t *testing.T, mutate func(root string), dispatcher ...ap
 	connections := &fixtureConnections{db: db, members: map[string]bool{"u1": true, "u2": true}}
 	guard := appconnectorsvc.NewSubjectGuard(connections) // 单参 permission-only guard：个人连接 owner-only + 成员资格
 	factory := NewGitHubClientFactory(http.DefaultClient, e.srv.URL)
-	var unknown appconnectorsvc.UnknownResolver
-	if dispatch != nil {
-		if resolver, ok := dispatch.(appconnectorsvc.UnknownResolver); ok {
-			unknown = resolver
-		}
-	}
-	actions := appconnectorsvc.NewActionService(actionStore, guard, nil, dispatch, unknown)
 	store := deliveryrepo.NewDeliveryStore(db)
+	dispatcher := NewDeliveryDispatcher(DispatcherDeps{
+		Connections: connections, Creds: connections, Guard: guard,
+		GitHub: factory, Workspace: workspace, Store: store,
+		ActionRows: actionStore, Runs: fixtureRun{sessionID: "s-1"},
+	})
+	actions := appconnectorsvc.NewActionService(actionStore, guard, nil, dispatcher, dispatcher)
 	svc := NewCodeDeliveryService(CodeDeliveryDeps{
 		Store: store, Actions: actions, ActionRows: actionStore,
 		Connections: connections, Creds: connections,
 		GitHub: factory, Workspace: workspace, Runs: fixtureRun{sessionID: "s-1"},
+		Dispatcher: dispatcher,
 	})
-	return &deliveryFixture{db: db, store: store, actions: actions, svc: svc, github: e, workspace: workspace, root: root, connections: connections}
+	return &deliveryFixture{db: db, store: store, actions: actions, svc: svc, github: e, workspace: workspace, root: root, connections: connections, dispatcher: dispatcher}
 }
 
 func membersDrop(f *deliveryFixture, userID string) { f.connections.drop(userID) }

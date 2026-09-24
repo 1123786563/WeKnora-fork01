@@ -54,6 +54,10 @@ type CodeDeliveryDeps struct {
 	GitHub      GitHubClientFactory
 	Workspace   WorkspaceFileSource
 	Runs        RunReader
+	// Dispatcher executes approved deliveries and recovers pushed ones
+	// (Task 6). Nil keeps the prepare-only wiring usable; a dispatch on a
+	// pushed row without it fails closed.
+	Dispatcher *DeliveryDispatcher
 }
 
 type CodeDeliveryService struct {
@@ -250,6 +254,86 @@ func (s *CodeDeliveryService) GetDeliveryForRun(ctx context.Context, tenantID ui
 // signature is frozen here, Task 6 reuses it after state transitions).
 func (s *CodeDeliveryService) GetDelivery(ctx context.Context, tenantID uint64, deliveryID string) (DeliveryView, error) {
 	row, err := s.deps.Store.GetDelivery(ctx, tenantID, deliveryID)
+	if err != nil {
+		return DeliveryView{}, err
+	}
+	return s.viewOf(ctx, row)
+}
+
+// DispatchInput addresses one delivery. CallerID must be the run owner.
+type DispatchInput struct {
+	TenantID   uint64
+	CallerID   string
+	RunID      string
+	DeliveryID string
+}
+
+// ErrDeliveryState guards the delivery state machine at the service seam.
+var ErrDeliveryState = errors.New("code_delivery_state_conflict")
+
+// DispatchDelivery executes the approved delivery. prepared → consume the
+// approval through the dedicated A03 instance; pushed → PR-only recovery
+// under the SAME approval (never re-push); unknown → provider query only.
+func (s *CodeDeliveryService) DispatchDelivery(ctx context.Context, in DispatchInput) (DeliveryView, error) {
+	if _, err := s.deps.Runs.GetOwnedRun(ctx, in.TenantID, in.CallerID, in.RunID); err != nil {
+		return DeliveryView{}, ErrNotDeliveryOwner
+	}
+	row, err := s.deps.Store.GetDelivery(ctx, in.TenantID, in.DeliveryID)
+	if err != nil {
+		return DeliveryView{}, err
+	}
+	switch DeliveryState(row.State) {
+	case DeliveryPrepared:
+		if err := s.deps.Store.TransitionState(ctx, in.TenantID, row.ID,
+			[]string{string(DeliveryPrepared)}, string(DeliveryDispatched), ""); err != nil {
+			return DeliveryView{}, err
+		}
+		if err := s.deps.Actions.Execute(ctx, row.ActionID); err != nil {
+			if errors.Is(err, appconnectorsvc.ErrDispatchUnknown) {
+				_ = s.deps.Store.TransitionState(ctx, in.TenantID, row.ID,
+					[]string{string(DeliveryDispatched), string(DeliveryPushed)}, string(DeliveryUnknown), "")
+				return s.viewAfter(ctx, in, row.ID)
+			}
+			after, gerr := s.deps.Store.GetDelivery(ctx, in.TenantID, row.ID)
+			if gerr == nil && after.State == string(DeliveryPushed) {
+				// 部分完成已由 dispatcher 落账：等待 PR-only 恢复，不算失败。
+				return s.viewOf(ctx, after)
+			}
+			_ = s.deps.Store.TransitionState(ctx, in.TenantID, row.ID,
+				[]string{string(DeliveryDispatched), string(DeliveryPrepared)}, string(DeliveryFailed), err.Error())
+			return DeliveryView{}, err
+		}
+	case DeliveryPushed:
+		// pushed → PR-only 恢复（同一批准的未完成半程；A02 复验在恢复端内部）。
+		if s.deps.Dispatcher == nil {
+			return DeliveryView{}, fmt.Errorf("%w: dispatcher not wired", ErrDeliveryState)
+		}
+		if err := s.deps.Dispatcher.RecoverPullRequest(ctx, in.TenantID, row.ID); err != nil {
+			return DeliveryView{}, err
+		}
+	default:
+		return DeliveryView{}, fmt.Errorf("%w: %s", ErrDeliveryState, row.State)
+	}
+	return s.viewAfter(ctx, in, row.ID)
+}
+
+// ResolveDeliveryUnknown settles an unknown delivery from remote facts only.
+func (s *CodeDeliveryService) ResolveDeliveryUnknown(ctx context.Context, in DispatchInput) (DeliveryView, error) {
+	if _, err := s.deps.Runs.GetOwnedRun(ctx, in.TenantID, in.CallerID, in.RunID); err != nil {
+		return DeliveryView{}, ErrNotDeliveryOwner
+	}
+	row, err := s.deps.Store.GetDelivery(ctx, in.TenantID, in.DeliveryID)
+	if err != nil {
+		return DeliveryView{}, err
+	}
+	if err := s.deps.Actions.ResolveUnknown(ctx, row.ActionID); err != nil {
+		return DeliveryView{}, err
+	}
+	return s.viewAfter(ctx, in, row.ID)
+}
+
+func (s *CodeDeliveryService) viewAfter(ctx context.Context, in DispatchInput, deliveryID string) (DeliveryView, error) {
+	row, err := s.deps.Store.GetDelivery(ctx, in.TenantID, deliveryID)
 	if err != nil {
 		return DeliveryView{}, err
 	}

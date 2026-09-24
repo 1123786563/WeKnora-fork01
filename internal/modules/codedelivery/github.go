@@ -79,6 +79,7 @@ type GitHubClient interface {
 	CreateBlob(ctx context.Context, content []byte) (string, error)
 	CreateTree(ctx context.Context, baseTree string, entries []TreeEntry) (string, error)
 	CreateCommit(ctx context.Context, parent, tree, message string) (string, error)
+	BranchHead(ctx context.Context, branch string) (string, bool, error)
 	EnsureBranch(ctx context.Context, branch, commit string) error
 	DraftPullRequest(ctx context.Context, input PullRequestInput) (PullRequestReceipt, error)
 	PullRequestForHead(ctx context.Context, head string) (*PullRequestReceipt, error)

@@ -34,6 +34,7 @@ type githubEmulator struct {
 	protectedBranches []string
 	failPR            bool // 下一条 POST /pulls 确定性 422 一次
 	blackout          bool // 所有请求 hijack 断连（传输不可观测）
+	blackoutAfterRef  bool // 下一次成功的 POST /git/refs 之后进入 blackout
 }
 
 type emulatorPR struct {
@@ -98,9 +99,11 @@ func (e *githubEmulator) protectBranch(branch string) {
 
 func (e *githubEmulator) failNextPRCreation() { e.mu.Lock(); e.failPR = true; e.mu.Unlock() }
 
+// blackoutAfterRefCreate：下一次成功的 POST /git/refs 之后，所有后续请求
+// hijack 断连（模拟推送已完成、PR 创建中途网络不可观测）。
 func (e *githubEmulator) blackoutAfterRefCreate() {
 	e.mu.Lock()
-	e.blackout = true
+	e.blackoutAfterRef = true
 	e.mu.Unlock()
 }
 
@@ -163,6 +166,17 @@ func (e *githubEmulator) serve(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, map[string]any{"sha": sha, "tree": treeSHA, "parents": []string{}})
+	case r.Method == http.MethodGet && strings.HasPrefix(path, "/repos/octocat/hello/git/ref/heads/"):
+		e.note("GET /git/ref")
+		branch := strings.TrimPrefix(path, "/repos/octocat/hello/git/ref/heads/")
+		e.mu.Lock()
+		sha, ok := e.refs["refs/heads/"+branch]
+		e.mu.Unlock()
+		if !ok {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		writeJSON(w, map[string]any{"ref": "refs/heads/" + branch, "object": map[string]any{"sha": sha}})
 	case r.Method == http.MethodGet && strings.HasPrefix(path, "/repos/octocat/hello/git/trees/"):
 		e.note("GET /git/trees")
 		sha := strings.TrimPrefix(path, "/repos/octocat/hello/git/trees/")
@@ -272,6 +286,9 @@ func (e *githubEmulator) serve(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		e.refs[body.Ref] = body.SHA
+		if e.blackoutAfterRef {
+			e.blackout = true
+		}
 		e.mu.Unlock()
 		writeJSON(w, map[string]any{"ref": body.Ref, "object": map[string]any{"sha": body.SHA}})
 	case r.Method == http.MethodPatch && strings.HasPrefix(path, "/repos/octocat/hello/git/refs/heads/"):
