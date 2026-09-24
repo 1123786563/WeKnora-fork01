@@ -74,3 +74,26 @@ test('the controller skips empty follow-up input', async () => {
   assert.equal(calls.filter((call) => call.startsWith('followUp')).length, 0);
   controller.dispose();
 });
+
+test('a failed post-follow-up refresh resets followUpState instead of sticking on sending', async () => {
+  const calls: string[] = [];
+  const base = fakeLegacyOffice(calls);
+  let lists = 0;
+  const failingReload = {
+    ...base,
+    async legacyTasks(query: Parameters<LegacyOffice['legacyTasks']>[0]) {
+      lists += 1;
+      if (lists >= 2) throw new Error('refresh failed'); // 追问成功后的刷新失败（B3-F23 前提）
+      return base.legacyTasks(query);
+    },
+  };
+  const controller = createLegacyTasksController(failingReload);
+  await controller.whenSettled();
+  await controller.submitFollowUp('lg-1', '追问内容');
+  const state = controller.state();
+  assert.notEqual(state.followUpState, 'sending', 'B3-F23：刷新失败也必须复位 followUpState');
+  assert.equal(state.followUpState, 'idle');
+  assert.ok(state.followUpError !== undefined, '刷新失败有诚实提示');
+  assert.match(state.followUpError ?? '', /已发送/);
+  controller.dispose();
+});

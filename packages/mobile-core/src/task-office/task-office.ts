@@ -198,10 +198,10 @@ export interface TaskOffice {
   open(input: { taskId: string; runId: string }): TaskHandle;
   start(goal: TaskOfficeGoal, options?: { requestId?: string }): Promise<TaskStartReceipt>;
   reconcilePending(): Promise<TaskStartReceipt[]>;
-  /** T14（#44）追加区：Legacy Task 读投影与普通追问。 */
+  /** T14（#44）追加区：Legacy Task 读投影与普通追问。history 的分页参数（B3-F24）透传适配层。 */
   legacyTasks(query: { search?: string; archived?: boolean; limit?: number }): Promise<LegacyTaskListPage>;
   moreLegacyTasks(): Promise<LegacyTaskListPage>;
-  legacyHistory(taskId: string): Promise<LegacyMessage[]>;
+  legacyHistory(taskId: string, options?: { limit?: number; before?: string }): Promise<LegacyMessage[]>;
   followUp(input: LegacyFollowUpInput): Promise<void>;
 }
 
@@ -583,11 +583,14 @@ export function createTaskOffice(ports: TaskOfficePorts): TaskOffice {
       const page = settle(epoch, 'legacy', lease, await callBackend(() => requireLegacy().list({ ...state.input, cursor: state.cursor })));
       return accumulateLegacy(state, page);
     },
-    async legacyHistory(taskId: string): Promise<LegacyMessage[]> {
+    async legacyHistory(taskId: string, options: { limit?: number; before?: string } = {}): Promise<LegacyMessage[]> {
+      // 与 legacyTasks/moreLegacyTasks 同规则（B3-F66）：epoch 失效保护——写操作
+      // 作废在途读，迟到的旧历史不覆盖新状态。
+      const epoch = ++legacyListEpoch;
       const lease = requireLease();
       const trimmed = taskId.trim();
       if (trimmed === '') throw new TaskOfficeError('TASK_OFFICE_INVALID_INPUT');
-      const messages = await callBackend(() => requireLegacy().history(trimmed));
+      const messages = settle(epoch, 'legacy', lease, await callBackend(() => requireLegacy().history(trimmed, options)));
       if (!leaseActive(lease)) throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED');
       return messages;
     },

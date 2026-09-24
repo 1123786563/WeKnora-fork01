@@ -1232,3 +1232,30 @@ test('the inbox screen surfaces refresh failures in place when a projection is a
   assert.ok(json.includes('需要你处理'), 'the already-loaded rows stay on screen instead of being replaced');
   assert.ok(!json.includes('无法读取行动通知'), 'a screen with a projection must not fall back to the empty-view error branch');
 });
+
+test('the legacy screen renders an explicit unauthenticated state and per-card inputs', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { dirname, join } = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  const here = dirname(fileURLToPath(import.meta.url));
+  const source = readFileSync(join(here, 'screens/LegacyTasksScreen.tsx'), 'utf8');
+  // B3-F22：无授权面必须发布显式空态文案（对照 app/attention.tsx:13-16 范式），不得停留 Loading。
+  assert.match(source, /请先登录/);
+  // B3-F21：question 状态按 taskId 隔离（Record 槽位），不再整屏单一 useState。
+  assert.match(source, /Record<string, string>/);
+  assert.match(source, /questions\[card\.taskId\]/);
+  assert.doesNotMatch(source, /const \[question, setQuestion\] = useState\(''\)/, '整屏单一 question state 必须移除');
+});
+
+test('the legacy screen shows the explicit empty state when no office is active', async () => {
+  const hooks2 = hooks();
+  hooks2.__beginRender();
+  const { LegacyTasksScreen } = await import('./screens/LegacyTasksScreen.tsx');
+  LegacyTasksScreen({}); // 首渲染（activeTaskOffice() 为 undefined——无授权面）
+  hooks2.__mount(); // effect 挂载：发布显式空态
+  hooks2.__beginRender(); // 重渲染读取挂载后的状态
+  const tree = LegacyTasksScreen({});
+  const json = JSON.stringify(tree);
+  assert.ok(json.includes('请先登录'), 'B3-F22：显式空态文案渲染（不永久停留 loading）');
+  assert.ok(!json.includes('Loading'), 'loading 已复位');
+});

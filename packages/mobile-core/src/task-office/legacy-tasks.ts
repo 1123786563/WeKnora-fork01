@@ -59,21 +59,22 @@ export interface LegacyFollowUpInput {
 
 export interface LegacyTaskBackendPort {
   list(input: { search?: string; archived?: boolean; cursor?: string; limit?: number }): Promise<LegacyTaskBackendPage>;
-  history(taskId: string): Promise<LegacyMessage[]>;
+  /** history 的分页参数（B3-F24）透传：limit/before（before_time 通道）。 */
+  history(taskId: string, options?: { limit?: number; before?: string }): Promise<LegacyMessage[]>;
   followUp(input: LegacyFollowUpInput): Promise<void>;
 }
 
 /** Scriptable scenario Adapter（module-seams §12：remote-owned 依赖的 in-memory 场景）。 */
 export interface ScenarioLegacyTaskBackendHandlers {
   list?: (input: { search?: string; archived?: boolean; cursor?: string; limit?: number }) => Promise<LegacyTaskBackendPage>;
-  history?: (taskId: string) => Promise<LegacyMessage[]>;
+  history?: (taskId: string, options?: { limit?: number; before?: string }) => Promise<LegacyMessage[]>;
   followUp?: (input: LegacyFollowUpInput) => Promise<void>;
 }
 
 export interface ScenarioLegacyTaskBackend extends LegacyTaskBackendPort {
   calls: Array<
     | { kind: 'list'; input: { search?: string; archived?: boolean; cursor?: string; limit?: number } }
-    | { kind: 'history'; taskId: string }
+    | { kind: 'history'; taskId: string; options?: { limit?: number; before?: string } }
     | { kind: 'followUp'; input: LegacyFollowUpInput }
   >;
 }
@@ -86,9 +87,9 @@ export function createScenarioLegacyTaskBackend(handlers: ScenarioLegacyTaskBack
       calls.push({ kind: 'list', input });
       return handlers.list ? handlers.list(input) : { items: [] };
     },
-    async history(taskId) {
-      calls.push({ kind: 'history', taskId });
-      return handlers.history ? handlers.history(taskId) : [];
+    async history(taskId, options) {
+      calls.push({ kind: 'history', taskId, ...(options === undefined ? {} : { options }) });
+      return handlers.history ? handlers.history(taskId, options) : [];
     },
     async followUp(input) {
       calls.push({ kind: 'followUp', input });

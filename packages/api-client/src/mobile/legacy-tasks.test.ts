@@ -68,6 +68,21 @@ test('legacy remote maps message history from the messages-load wire', async () 
   ]);
 });
 
+test('history passes paging parameters through to the wire', async () => {
+  const paths: string[] = [];
+  const remote = createMobileLegacyTaskRemote({
+    origin: 'https://weknora.example.test',
+    request: async (input) => {
+      paths.push(input.path);
+      return { success: true, data: [] };
+    },
+  });
+  await remote.history('task-9');
+  await remote.history('task-9', { limit: 100, before: 'msg-42' });
+  assert.equal(paths[0], '/api/v1/messages/task-9/load?limit=20');
+  assert.equal(paths[1], '/api/v1/messages/task-9/load?limit=100&before_time=msg-42', 'B3-F24：翻页通道必须透传');
+});
+
 test('legacy followUp posts the ordinary chat body through the stream channel and resolves on completion', async () => {
   const streams: ClientRequest[] = [];
   const remote = createMobileLegacyTaskRemote({

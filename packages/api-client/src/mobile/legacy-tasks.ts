@@ -62,12 +62,18 @@ export function createMobileLegacyTaskRemote(options: LegacyTaskRemoteOptions) {
         ...(typeof page.next_cursor === 'string' && page.next_cursor !== '' ? { nextCursor: page.next_cursor } : {}),
       };
     },
-    async history(taskId: string): Promise<RemoteLegacyMessage[]> {
+    async history(taskId: string, options: { limit?: number; before?: string } = {}): Promise<RemoteLegacyMessage[]> {
       const trimmed = taskId.trim();
       if (trimmed === '') throw new Error('taskId must not be empty');
+      // 分页参数透传（B3-F24）：默认 20 与旧行为一致；before 翻页走服务端
+      // /messages/:id/load 的 before_time 通道（chat/sessions.ts 同型）。
+      const limit = options.limit !== undefined && Number.isSafeInteger(options.limit) && options.limit > 0 ? options.limit : 20;
+      const suffix = options.before !== undefined && options.before.trim() !== ''
+        ? `?limit=${limit}&before_time=${encodeURIComponent(options.before.trim())}`
+        : `?limit=${limit}`;
       const messages = parseChatMessageListResponse(await request({
         method: 'GET',
-        path: `/api/v1/messages/${encodeURIComponent(trimmed)}/load?limit=20`,
+        path: `/api/v1/messages/${encodeURIComponent(trimmed)}/load${suffix}`,
       }));
       return messages.map((message) => ({
         messageId: message.id,
