@@ -1,0 +1,240 @@
+package repository
+
+import (
+	"context"
+	"testing"
+
+	"github.com/Tencent/WeKnora/internal/types"
+	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
+)
+
+// seedAdoptionRelease drives the REAL marketplace repository to publish one
+// immutable Release whose Manifest declares capability requirements, so the
+// adoption rows under test bind to genuine FK-respecting marketplace data.
+func seedAdoptionRelease(t *testing.T, db *gorm.DB, tenantID uint64, agentID, semanticVersion string) (listingID, releaseID string) {
+	t.Helper()
+	versionID := agentID + "-v1"
+	require.NoError(t, db.Exec(
+		`INSERT INTO agent_versions (id, tenant_id, agent_id, version_number, snapshot, source_sha256, frozen_by) VALUES (?, ?, ?, 1, '{}', 'sha', 'author')`,
+		versionID, tenantID, agentID,
+	).Error)
+	manifest := `{"semantic_version":"` + semanticVersion + `","display_name":"Listing ` + agentID + `","summary":"s","supported_languages":["en"],"use_cases":["u"],"capability_requirements":["model","knowledge"],"minimum_weknora_capability":"1","license_id":"MIT","source":{"agent_version_id":"` + versionID + `","version_number":1,"source_sha256":"sha"}}`
+	bundle := []byte(`{"payload":{"agent_mode":"quick-answer","system_prompt":"p"},"manifest":` + manifest + `,"dependency_lock":{"dependencies":[]}}`)
+	repo := NewAgentMarketplaceRepository(db)
+	submission, err := repo.CreateSubmission(context.Background(),
+		&types.AgentMarketplaceListingEntity{TenantID: tenantID, SourceAgentID: agentID, DisplayName: "Listing " + agentID, Summary: "s", State: "listed"},
+		&types.AgentReleaseSubmissionEntity{
+			TenantID: tenantID, AgentVersionID: versionID, SourceAgentID: agentID, AuthorID: "author",
+			SemanticVersion: semanticVersion, BundleDigest: "digest-" + agentID,
+			ManifestJSON: manifest, DependencyLockJSON: `{"dependencies":[]}`,
+			Bundle: bundle, Status: "submitted",
+		})
+	require.NoError(t, err)
+	_, release, err := repo.ReviewAndPublishTx(context.Background(), tenantID, "", submission.ID, "digest-"+agentID, types.AgentReleaseReviewDecision{ReviewerID: "reviewer", Decision: "approved"})
+	require.NoError(t, err)
+	require.NotNil(t, release)
+	return submission.ListingID, release.ID
+}
+
+func TestAgentAdoptionRepositoryLifecycle(t *testing.T) {
+	db := openRunTestDB(t)
+	listingID, releaseID := seedAdoptionRelease(t, db, 1, "agent-a", "1.0.0")
+	repo := NewAgentAdoptionRepository(db)
+	ctx := context.Background()
+
+	adopted, created, err := repo.AdoptListing(ctx, &types.AgentAdoptionEntity{TenantID: 1, ListingID: listingID, AcceptedReleaseID: releaseID, State: "active", CreatedBy: "admin"})
+	require.NoError(t, err)
+	require.True(t, created)
+	require.NotEmpty(t, adopted.ID)
+	again, createdAgain, err := repo.AdoptListing(ctx, &types.AgentAdoptionEntity{TenantID: 1, ListingID: listingID, AcceptedReleaseID: releaseID, State: "active", CreatedBy: "admin"})
+	require.NoError(t, err)
+	require.False(t, createdAgain, "re-adopting the same listing is idempotent")
+	require.Equal(t, adopted.ID, again.ID)
+
+	// Marketplace read proxies are tenant-scoped: another tenant reads absence.
+	listing, err := repo.GetMarketplaceListing(ctx, 1, listingID)
+	require.NoError(t, err)
+	require.NotNil(t, listing)
+	listing, err = repo.GetMarketplaceListing(ctx, 2, listingID)
+	require.NoError(t, err)
+	require.Nil(t, listing)
+	release, err := repo.GetRelease(ctx, 2, releaseID)
+	require.NoError(t, err)
+	require.Nil(t, release)
+
+	variant, err := repo.CreateVariant(ctx, &types.AgentAdoptionVariantEntity{TenantID: 1, AdoptionID: adopted.ID, ReleaseID: releaseID, Name: "Sales", State: "draft", CreatedBy: "admin"})
+	require.NoError(t, err)
+	secondVariant, err := repo.CreateVariant(ctx, &types.AgentAdoptionVariantEntity{TenantID: 1, AdoptionID: adopted.ID, ReleaseID: releaseID, Name: "Legal", State: "draft", CreatedBy: "admin"})
+	require.NoError(t, err)
+	require.NotEqual(t, variant.ID, secondVariant.ID, "one adoption owns multiple independent variants")
+	variants, err := repo.ListVariantsByAdoption(ctx, 1, adopted.ID)
+	require.NoError(t, err)
+	require.Len(t, variants, 2)
+	stored, err := repo.GetVariant(ctx, 1, variant.ID)
+	require.NoError(t, err)
+	require.Equal(t, "draft", stored.State)
+	foreignVariant, err := repo.GetVariant(ctx, 2, variant.ID)
+	require.NoError(t, err)
+	require.Nil(t, foreignVariant)
+
+	require.NoError(t, repo.ReplaceCapabilityMappings(ctx, 1, variant.ID, []types.AgentVariantCapabilityMappingEntity{
+		{TenantID: 1, VariantID: variant.ID, Capability: "model", ModelID: "gpt-x", KnowledgeBaseIDs: "[]", ConnectionIDs: "[]", UpdatedBy: "admin"},
+	}, "draft"))
+	require.NoError(t, repo.ReplaceCapabilityMappings(ctx, 1, variant.ID, []types.AgentVariantCapabilityMappingEntity{
+		{TenantID: 1, VariantID: variant.ID, Capability: "model", ModelID: "gpt-x", KnowledgeBaseIDs: "[]", ConnectionIDs: "[]", UpdatedBy: "admin"},
+		{TenantID: 1, VariantID: variant.ID, Capability: "knowledge", KnowledgeBaseIDs: `["kb-1"]`, ConnectionIDs: "[]", UpdatedBy: "admin"},
+	}, "mapped"))
+	rows, err := repo.ListCapabilityMappings(ctx, 1, variant.ID)
+	require.NoError(t, err)
+	require.Len(t, rows, 2, "replacement must not accumulate stale rows")
+	stored, err = repo.GetVariant(ctx, 1, variant.ID)
+	require.NoError(t, err)
+	require.Equal(t, "mapped", stored.State)
+	err = repo.ReplaceCapabilityMappings(ctx, 1, "missing-variant", nil, "draft")
+	require.ErrorIs(t, err, ErrAgentAdoptionNotFound, "replacing mappings of an unknown variant must fail as not-found")
+
+	tested, err := repo.UpdateVariantState(ctx, 1, variant.ID, []string{"mapped"}, "tested", map[string]any{"tested_by": "admin"})
+	require.NoError(t, err)
+	require.Equal(t, "tested", tested.State)
+	require.Equal(t, "admin", tested.TestedBy)
+	require.NotNil(t, tested.TestedAt)
+	_, err = repo.UpdateVariantState(ctx, 1, variant.ID, []string{"mapped"}, "tested", nil)
+	require.ErrorIs(t, err, ErrAgentAdoptionVariantTransition, "a stale from-state must refuse the transition")
+	_, err = repo.UpdateVariantState(ctx, 1, "missing-variant", []string{"mapped"}, "tested", nil)
+	require.ErrorIs(t, err, ErrAgentAdoptionNotFound)
+
+	adoptions, err := repo.ListAdoptions(ctx, 1)
+	require.NoError(t, err)
+	require.Len(t, adoptions, 1)
+	foreignAdoption, err := repo.GetAdoption(ctx, 2, adopted.ID)
+	require.NoError(t, err)
+	require.Nil(t, foreignAdoption)
+}
+
+func TestAgentAdoptionPublishedAvailableAgentsJoinsLocalAgents(t *testing.T) {
+	db := openRunTestDB(t)
+	listingID, releaseID := seedAdoptionRelease(t, db, 1, "agent-b", "1.0.0")
+	repo := NewAgentAdoptionRepository(db)
+	ctx := context.Background()
+	adopted, _, err := repo.AdoptListing(ctx, &types.AgentAdoptionEntity{TenantID: 1, ListingID: listingID, AcceptedReleaseID: releaseID, State: "active", CreatedBy: "admin"})
+	require.NoError(t, err)
+	published, err := repo.CreateVariant(ctx, &types.AgentAdoptionVariantEntity{TenantID: 1, AdoptionID: adopted.ID, ReleaseID: releaseID, Name: "Sales", State: "published", LocalAgentID: "agent-sales", CreatedBy: "admin"})
+	require.NoError(t, err)
+
+	rows, err := repo.PublishedAvailableAgents(ctx, 1)
+	require.NoError(t, err)
+	require.Empty(t, rows, "a published variant whose local agent row is absent yields no available agent")
+
+	require.NoError(t, db.Create(&types.CustomAgent{ID: "agent-sales", TenantID: 1, Name: "Sales Assistant", CreatedBy: "admin", Config: types.CustomAgentConfig{AgentMode: "quick-answer"}}).Error)
+	rows, err = repo.PublishedAvailableAgents(ctx, 1)
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	require.Equal(t, published.ID, rows[0].Variant.ID)
+	require.NotNil(t, rows[0].Agent)
+	require.Equal(t, "agent-sales", rows[0].Agent.ID)
+
+	require.NoError(t, db.Delete(&types.CustomAgent{}, "tenant_id = ? AND id = ?", 1, "agent-sales").Error)
+	rows, err = repo.PublishedAvailableAgents(ctx, 1)
+	require.NoError(t, err)
+	require.Empty(t, rows, "a soft-deleted local agent disappears from the read model")
+
+	rows, err = repo.PublishedAvailableAgents(ctx, 2)
+	require.NoError(t, err)
+	require.Empty(t, rows, "another tenant never sees tenant-1 availability")
+}
+
+// TestAgentAdoptionRepositoryAdoptListingLostRaceConverges covers the
+// concurrent-first-adopt race in AdoptListing: two requests pass the
+// missing-row check, the loser's INSERT hits uq_agent_adoptions_scope and
+// must converge to the winner's row (idempotent result, no unique-index
+// error). The race is injected deterministically: a one-shot query callback
+// commits the winner's row between the loser's miss-read and its INSERT.
+func TestAgentAdoptionRepositoryAdoptListingLostRaceConverges(t *testing.T) {
+	db := openRunTestDB(t)
+	listingID, releaseID := seedAdoptionRelease(t, db, 1, "agent-race", "1.0.0")
+	repo := NewAgentAdoptionRepository(db)
+	ctx := context.Background()
+
+	var injected bool
+	var injectErr error
+	require.NoError(t, db.Callback().Query().After("gorm:query").Register("test:inject_racing_adoption", func(tx *gorm.DB) {
+		if injected || tx.Statement == nil || tx.Statement.Table != "agent_adoptions" {
+			return
+		}
+		injected = true
+		// Execute on the root db handle: tx already carries the miss-read's
+		// ErrRecordNotFound, which Session(NewDB) would leak into .Error.
+		injectErr = db.Exec(
+			`INSERT INTO agent_adoptions (id, tenant_id, listing_id, accepted_release_id, state, created_by) VALUES ('winner', 1, ?, ?, 'active', 'other-admin')`,
+			listingID, releaseID,
+		).Error
+	}))
+	defer db.Callback().Query().Remove("test:inject_racing_adoption")
+
+	adoptive := &types.AgentAdoptionEntity{TenantID: 1, ListingID: listingID, AcceptedReleaseID: releaseID, State: "active", CreatedBy: "admin"}
+	adopted, created, err := repo.AdoptListing(ctx, adoptive)
+	require.NoError(t, injectErr)
+	require.True(t, injected, "the test must have injected the racing winner between miss-read and INSERT")
+	require.NoError(t, err, "the loser of a concurrent first adopt must converge, not surface the unique-index error")
+	require.False(t, created, "the racing loser did not create the row")
+	require.Equal(t, "winner", adopted.ID, "the loser reuses the winner's row")
+	require.Equal(t, releaseID, adopted.AcceptedReleaseID)
+	require.Equal(t, "active", adopted.State)
+
+	// The converged row keeps sequential semantics afterwards.
+	again, createdAgain, err := repo.AdoptListing(ctx, adoptive)
+	require.NoError(t, err)
+	require.False(t, createdAgain)
+	require.Equal(t, "winner", again.ID)
+}
+
+// TestAgentAdoptionRepositoryAdoptListingLostRaceDifferentRelease verifies
+// the racing loser accepting a different release still advances the accepted
+// pointer on the winner's row — the same last-write-wins rule as a sequential
+// re-adopt (spec §8 step 3 "建立或更新 Adoption").
+func TestAgentAdoptionRepositoryAdoptListingLostRaceDifferentRelease(t *testing.T) {
+	db := openRunTestDB(t)
+	listingID, winnerRelease := seedAdoptionRelease(t, db, 1, "agent-race-b", "1.0.0")
+	// A second, later release on the same listing for the loser to accept,
+	// cloned from the winner release to keep every FK linkage valid. The
+	// digest and semantic version change to satisfy the (listing, digest) and
+	// (listing, semantic_version) unique indexes.
+	require.NoError(t, db.Exec(
+		`INSERT INTO agent_releases (id, tenant_id, listing_id, submission_id, agent_version_id, source_agent_id, release_number, semantic_version, bundle_digest, manifest_json, dependency_lock_json, bundle, published_by)
+		 SELECT 'loser-release', tenant_id, listing_id, submission_id, agent_version_id, source_agent_id, release_number + 1, '2.0.0', bundle_digest || '-r2', manifest_json, dependency_lock_json, bundle, published_by
+		 FROM agent_releases WHERE tenant_id = 1 AND id = ?`,
+		winnerRelease,
+	).Error)
+	repo := NewAgentAdoptionRepository(db)
+	ctx := context.Background()
+
+	var injected bool
+	var injectErr error
+	require.NoError(t, db.Callback().Query().After("gorm:query").Register("test:inject_racing_adoption_b", func(tx *gorm.DB) {
+		if injected || tx.Statement == nil || tx.Statement.Table != "agent_adoptions" {
+			return
+		}
+		injected = true
+		// Execute on the root db handle: tx already carries the miss-read's
+		// ErrRecordNotFound, which Session(NewDB) would leak into .Error.
+		injectErr = db.Exec(
+			`INSERT INTO agent_adoptions (id, tenant_id, listing_id, accepted_release_id, state, created_by) VALUES ('winner', 1, ?, ?, 'active', 'other-admin')`,
+			listingID, winnerRelease,
+		).Error
+	}))
+	defer db.Callback().Query().Remove("test:inject_racing_adoption_b")
+
+	adopted, created, err := repo.AdoptListing(ctx, &types.AgentAdoptionEntity{TenantID: 1, ListingID: listingID, AcceptedReleaseID: "loser-release", State: "active", CreatedBy: "admin"})
+	require.NoError(t, injectErr)
+	require.True(t, injected)
+	require.NoError(t, err)
+	require.False(t, created)
+	require.Equal(t, "winner", adopted.ID)
+	require.Equal(t, "loser-release", adopted.AcceptedReleaseID, "the racing loser advances the accepted pointer on the winner's row")
+
+	stored, err := repo.GetAdoption(ctx, 1, "winner")
+	require.NoError(t, err)
+	require.NotNil(t, stored)
+	require.Equal(t, "loser-release", stored.AcceptedReleaseID, "the pointer advance is persisted")
+}

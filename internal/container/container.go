@@ -431,6 +431,11 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	}))
 	must(container.Provide(handler.NewAgentVersionHandler))
 	must(container.Provide(handler.NewAgentMarketplaceHandler))
+	must(container.Provide(repository.NewAgentAdoptionRepository))
+	must(container.Provide(func(repo repository.AgentAdoptionRepository, agents interfaces.CustomAgentService, versions interfaces.AgentVersionService) interfaces.AgentAdoptionService {
+		return service.NewAgentAdoptionService(repo, agents, versions)
+	}))
+	must(container.Provide(handler.NewAgentAdoptionHandler))
 	must(container.Provide(service.NewUserResourceFavoriteService))
 	must(container.Provide(service.NewWikiPageService))
 	must(container.Provide(service.NewWikiIngestService, dig.Name("wikiIngest")))

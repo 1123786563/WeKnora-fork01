@@ -726,3 +726,5 @@ export type { AgentVersion } from './agents/versions.ts';
 export { parseAgentVersion, parseAgentVersionListResponse } from './agents/versions.ts';
 export type { ReleaseSubmission, ReleaseReview, AgentRelease, TenantReleaseListing, ReleaseReviewResult } from './marketplace/tenant-releases.ts';
 export { parseReleaseSubmissionResponse, parseReleaseReviewResponse, parseReleaseSubmissionListResponse, parseTenantReleaseListResponse } from './marketplace/tenant-releases.ts';
+export type { AgentAdoption, AgentAdoptionVariant, AvailableAgent } from './marketplace/agent-adoption.ts';
+export { parseAdoptionResponse, parseAdoptionListResponse, parseVariantResponse, parseAvailableAgentListResponse } from './marketplace/agent-adoption.ts';
