@@ -12,6 +12,7 @@ package wiki
 
 import (
 	"context"
+	"reflect"
 
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
@@ -92,11 +93,21 @@ type Span struct {
 	raw any
 }
 
-// NewSpan wraps a host span pointer (nil-safe). Exported for the host-side
-// adapter (W2) so it can translate between the host SpanTracker and the
-// wiki-side narrow interface below.
+// NewSpan wraps a host span pointer (nil-safe, 含 typed-nil 归一). Exported
+// for the host-side adapter (W2) so it can translate between the host
+// SpanTracker and the wiki-side narrow interface below.
+//
+// 宿主 spanTracker.LookupStage（查无记录 / list 失败）与 BeginSubSpan
+// （parent==nil / Upsert 失败）均返回 nil *Span；装箱进 any 后 == nil 判定
+// 失效（typed-nil），因此以 reflect 归一：任何 nil 指针一律映射 nil 句柄，
+// 保 wiki 侧 `span == nil` 控制流与迁移前直传 *Span 语义一致
+// （OCR R1 修复，回归测试见 seams_test.go 与宿主侧
+// wiki_k3_span_adapter_test.go）。
 func NewSpan(raw any) *Span {
 	if raw == nil {
+		return nil
+	}
+	if v := reflect.ValueOf(raw); v.Kind() == reflect.Pointer && v.IsNil() {
 		return nil
 	}
 	return &Span{raw: raw}
