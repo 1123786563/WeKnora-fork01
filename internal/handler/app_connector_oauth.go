@@ -54,6 +54,10 @@ var appOAuthDefaults = map[string]AppOAuthProviderConfig{
 		AuthorizeURL: "https://api.notion.com/v1/oauth/authorize",
 		TokenURL:     "https://api.notion.com/v1/oauth/token",
 	},
+	"github": {
+		AuthorizeURL: "https://github.com/login/oauth/authorize",
+		TokenURL:     "https://github.com/login/oauth/access_token",
+	},
 }
 
 // DefaultAppOAuthProviderConfigs returns the fixed provider endpoints of
@@ -115,6 +119,18 @@ func exchangeAppOAuthCode(ctx context.Context, cfg AppOAuthProviderConfig, appID
 		}
 		req.SetBasicAuth(cfg.ClientID, cfg.ClientSecret)
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	case "github":
+		form := url.Values{}
+		form.Set("client_id", cfg.ClientID)
+		form.Set("client_secret", cfg.ClientSecret)
+		form.Set("code", code)
+		form.Set("redirect_uri", redirectURI)
+		req, err = http.NewRequestWithContext(ctx, http.MethodPost, cfg.TokenURL, strings.NewReader(form.Encode()))
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("Accept", "application/json")
 	default: // feishu shape
 		body, _ := json.Marshal(map[string]string{
 			"grant_type": "authorization_code", "client_id": cfg.ClientID,
@@ -196,16 +212,25 @@ func (h *AppConnectionHandler) createConnectionOAuth(c *gin.Context, tenantID ui
 	if err := h.bindings.IssueBindingState(c.Request.Context(), binding, appID); err != nil {
 		return "", "", time.Time{}, err
 	}
+	return state, appAuthorizeURL(cfg, appID, state, redirectURI), expires, nil
+}
+
+// appAuthorizeURL builds the provider authorize URL. github requests the
+// repo + read:user scope (code delivery writes task branches and draft PRs;
+// read:user records the actual remote identity).
+func appAuthorizeURL(cfg AppOAuthProviderConfig, appID, state, redirectURI string) string {
 	q := url.Values{}
 	q.Set("client_id", cfg.ClientID)
 	q.Set("redirect_uri", redirectURI)
 	q.Set("state", state)
-	if appID == "notion" {
+	switch appID {
+	case "notion":
 		q.Set("response_type", "code")
 		q.Set("owner", "user")
+	case "github":
+		q.Set("scope", "repo read:user")
 	}
-	authorizeURL := cfg.AuthorizeURL + "?" + q.Encode()
-	return state, authorizeURL, expires, nil
+	return cfg.AuthorizeURL + "?" + q.Encode()
 }
 
 // ConnectionOAuthCallback is the PUBLIC redirect leg. The one-time state is
