@@ -94,7 +94,12 @@ test('F1: tdesign 拷贝闭包完整（button 及其 usingComponents 传递依�
     const dep = resolve(tdesignDir, 'button', m[1].endsWith('.js') ? m[1] : m[1] + '.js');
     assert.ok(existsSync(dep), `button 运行时依赖 ${m[1]} 必须存在`);
   }
+  // TDesign 组件 JS 以裸模块名 require 依赖（如 require("tslib")）；微信按向上查找
+  // miniprogram_npm/<name> 解析。miniprogram_dist/miniprogram_npm 必须一并拷入，否则
+  // 组件模块初始化抛 module not defined → 页面 "has not been registered yet" 白屏
+  // （第 2 轮实测定位：npm/tdesign/button/tslib.js is not defined, require args is 'tslib'）。
+  assert.ok(existsSync(resolve(tdesignDir, 'miniprogram_npm/tslib/index.js')), 'miniprogram_npm/tslib 必须随闭包拷入');
   // 收窄：未使用的组件目录不得拷入（防回归到全量拷贝）
   const dirs = readdirSync(tdesignDir, { withFileTypes: true }).filter(e => e.isDirectory()).map(e => e.name).sort();
-  assert.deepEqual(dirs, ['button', 'common', 'icon', 'loading'].sort(), 'tdesign 拷贝范围必须收窄到 button 闭包');
+  assert.deepEqual(dirs, ['button', 'common', 'icon', 'loading', 'miniprogram_npm'].sort(), 'tdesign 拷贝范围必须收窄到 button 闭包 + miniprogram_npm');
 });

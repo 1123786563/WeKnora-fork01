@@ -21,6 +21,9 @@ if(!existsSync(resolve(tdesignDist,'button/button.js')))throw new Error(`tdesign
 // F1（评审第 1 轮）：只拷 button 的运行时闭包，禁止全量拷贝——整个 miniprogram_dist 会把
 // 主包推到 2285KB，超过微信 2MB 单包/主包上限（真机上传被拒）；.d.ts 纯类型文件也不入包。
 // 闭包在构建期按各组件 json 的 usingComponents 递归收集，TDesign 升级新增依赖自动跟进。
+// common 与 miniprogram_npm 必须随闭包：组件 JS 以裸模块名 require（如 require("tslib")），
+// 微信按向上查找 miniprogram_npm/<name> 解析；缺了它组件初始化直接 module not defined，
+// 页面 "has not been registered yet" 白屏（第 2 轮 DevTools 实测定位）。
 function tdesignClosure(entry:string):Set<string>{
  const seen=new Set<string>(),queue=[entry];
  while(queue.length){
@@ -42,7 +45,7 @@ function tdesignClosure(entry:string):Set<string>{
  }
  return seen;
 }
-const tdesignDirs=['common',...new Set([...tdesignClosure('button/button')].map(stem=>stem.split('/')[0]))];
+const tdesignDirs=['common','miniprogram_npm',...new Set([...tdesignClosure('button/button')].map(stem=>stem.split('/')[0]))];
 for(const dir of tdesignDirs){
  if(!readdirSync(resolve(tdesignDist,dir)).length)throw new Error(`tdesign closure: empty dir ${dir}`);
 }
