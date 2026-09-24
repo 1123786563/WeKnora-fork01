@@ -23,7 +23,7 @@ import type {
   LegacyTaskCard, LegacyTaskListPage,
 } from './legacy-tasks.ts';
 import { createTaskDetail } from './task-detail.ts';
-import type { TaskDetailBackendPort, TaskHandle, TaskProjectionStore } from './task-detail.ts';
+import type { TaskCommandPort, TaskDetailBackendPort, TaskHandle, TaskProjectionStore } from './task-detail.ts';
 import { TaskOfficeError } from './task-office-errors.ts';
 import type { AttentionState } from './task-office-errors.ts';
 
@@ -181,6 +181,9 @@ export interface TaskOfficePorts {
   newRequestId?: () => string;
   /** T08: 类型化交互端口（Attention Inbox 读 + 决定）。缺失时 inbox()/decide() fail closed。 */
   interactions?: InteractionBackendPort;
+  /** T07 干预通道（steer/queue_next/cancel）：注入后 open() 返回的句柄具备 act()/flushQueuedIntents()；
+   *  缺失时句柄的写意图 fail closed（TASK_OFFICE_COMMAND_UNAVAILABLE）。 */
+  commands?: TaskCommandPort;
   /** T14（#44）Legacy Task 端口；缺失时 legacy 入口 fail closed（TASK_OFFICE_LEGACY_UNAVAILABLE）。 */
   legacy?: LegacyTaskBackendPort;
 }
@@ -462,7 +465,7 @@ export function createTaskOffice(ports: TaskOfficePorts): TaskOffice {
       const runId = taskOpen.runId.trim();
       if (taskId === '' || runId === '') throw new TaskOfficeError('TASK_OFFICE_INVALID_INPUT');
       if (ports.detail === undefined) throw new TaskOfficeError('TASK_OFFICE_DETAIL_UNAVAILABLE');
-      return createTaskDetail({ taskId, runId }, { backend: ports.detail, store: ports.store ?? defaultDetailStore, lease: ports.lease });
+      return createTaskDetail({ taskId, runId }, { backend: ports.detail, store: ports.store ?? defaultDetailStore, lease: ports.lease, ...(ports.commands === undefined ? {} : { commands: ports.commands }) });
     },
     async start(startGoal: TaskOfficeGoal, options: { requestId?: string } = {}): Promise<TaskStartReceipt> {
       const lease = requireLease();

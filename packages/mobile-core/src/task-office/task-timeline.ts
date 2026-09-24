@@ -68,6 +68,7 @@ const KIND_OF_TYPE: Record<string, TaskTimelineKind> = {
   'run.started': 'run_status', 'run.status': 'run_status', 'run.failed': 'run_status', 'run.canceled': 'run_status',
   'attempt.started': 'run_status', 'attempt.replaced': 'run_status', 'attempt.finished': 'run_status',
   'execution.failed': 'run_status', 'status.failed': 'run_status', 'execution.canceled': 'run_status', 'status.canceled': 'run_status',
+  'cancellation_requested': 'run_status',
   'run.completed': 'conclusion', 'execution.succeeded': 'conclusion', 'status.succeeded': 'conclusion',
   'tool.started': 'tool_activity', 'tool.planned': 'tool_activity', 'tool.completed': 'tool_activity', 'tool.result': 'tool_activity',
   'interaction.required': 'approval', 'decision.required': 'approval',
@@ -76,6 +77,7 @@ const KIND_OF_TYPE: Record<string, TaskTimelineKind> = {
 
 const EVENT_SUMMARIES: Record<string, string> = {
   'run.started': '任务已开始', 'run.completed': '任务已完成', 'run.failed': '任务未能完成', 'run.canceled': '任务已取消',
+  'cancellation_requested': '已请求停止',
   'tool.started': '正在使用工具', 'tool.completed': '工具处理完成',
   'interaction.required': '需要你的确认', 'decision.required': '需要一次决定',
   'artifact.created': '已生成产物', 'artifact.available': '产物已就绪',

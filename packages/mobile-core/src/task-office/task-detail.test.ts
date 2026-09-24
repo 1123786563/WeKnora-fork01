@@ -4,7 +4,8 @@ import { RuntimeScopeLease } from '../runtime/scope-lease.ts';
 import type { ScopeLease } from '../runtime/types.ts';
 import { createScenarioTaskBackend } from './in-memory-task-backend.ts';
 import { createInMemoryTaskProjectionStore, createScenarioTaskDetailBackend, createScriptedTaskStream } from './in-memory-task-detail.ts';
-import type { TaskBackendDetail, TaskBackendEvent, TaskDetailBackendPort, TaskProjectionStore, TaskStreamControlFrame } from './task-detail.ts';
+import { createTaskDetail } from './task-detail.ts';
+import type { TaskBackendDetail, TaskBackendEvent, TaskCommandPort, TaskDetailBackendPort, TaskProjectionStore, TaskStreamControlFrame } from './task-detail.ts';
 import { createTaskOffice, TaskOfficeError } from './task-office.ts';
 
 function deferred<T>() {
@@ -686,4 +687,174 @@ test('persist failure stays observable when the store keeps failing (R1-F23 语�
   assert.equal(view.interruption?.reason, 'persist-failed');
   assert.equal(view.connection, 'interrupted'); // 不静默
   handle.close();
+});
+
+// —— T07（#37）：TaskHandle.act 干预合同（三态停止 / unknown 门 / parked queue-next） ——
+// helper 与任务简报原文的差异点（按本文件既有惯例对齐）：
+// 1) 工厂不自动 hydrate：用例显式 await（简报括注要求，保证断言时序确定）；
+// 2) stream stub 用永不 resolve 的流（活动 Run 的真实 SSE 语义）：立即 resolve 的空流会让
+//    每个非终态 hydrate 触发 stream-ended → 有界自动重连级联，与用例的 resync 时序竞争；
+// 3) lease 复用本文件既有 leased() 的 RuntimeScopeLease（leaseActive 只认该实例），
+//    用例经返回的 revocable 撤销（简报的 revokeLease() helper 本文件不存在）；
+// 4) 简报用例 2 未复位 script.error——重试要得到 accepted 必须切回成功脚本（对齐冲突用例
+//    的 script 切换惯例）；空数组字段断言补 `?? 0`（buildView 对空集省略字段的既有惯例）。
+interface RecordedCommand { runId: string; action: 'steer' | 'queue_next' | 'cancel'; text?: string; expectedRevision: number; intentId?: string }
+interface CommandScript { result?: { runId: string; action: RecordedCommand['action']; nextRunId?: string }; error?: unknown }
+
+function scriptedCommandPort(initial: CommandScript = {}) {
+  const calls: RecordedCommand[] = [];
+  const script: CommandScript = { ...initial };
+  return {
+    calls,
+    script,
+    port: {
+      async command(input: RecordedCommand): Promise<{ runId: string; action: RecordedCommand['action']; nextRunId?: string }> {
+        calls.push(input);
+        if (script.error !== undefined) throw script.error;
+        return script.result ?? { runId: input.runId, action: input.action };
+      },
+    },
+  };
+}
+
+const codedError = (code: string): Error => Object.assign(new Error(code), { code });
+
+function interventionDetail(execution: { runStatus: string; revision: number }): TaskBackendDetail {
+  return {
+    taskId: 's1', runId: 'run-1', title: 't', attention: 'none',
+    execution: { runStatus: execution.runStatus, executionStatus: execution.runStatus, settlementStatus: 'pending', revision: execution.revision, seq: 0 },
+    watermark: 0, incomplete: false, events: [],
+  };
+}
+
+function newHandleForIntervention(execution: { runStatus: string; revision: number }, commands?: TaskCommandPort) {
+  const { revocable, lease } = leased();
+  const detailBackend = {
+    detailResult: interventionDetail(execution),
+    async detail(): Promise<TaskBackendDetail> { return this.detailResult; },
+    stream(): Promise<void> { return new Promise<void>(() => undefined); }, // 活动 Run 的流保持打开，直至 resync/close abort
+  };
+  const handle = createTaskDetail(
+    { taskId: 's1', runId: 'run-1' },
+    { backend: detailBackend, store: createInMemoryTaskProjectionStore(), lease: () => lease, ...(commands === undefined ? {} : { commands }) },
+  );
+  return { handle, detailBackend, revocable };
+}
+
+test('act(stop) presents requested, then confirmed when the projection observes canceled', async () => {
+  const commands = scriptedCommandPort();
+  const { handle, detailBackend } = newHandleForIntervention({ runStatus: 'running', revision: 4 }, commands.port);
+  await handle.hydrate();
+  const receipt = await handle.act({ kind: 'stop' });
+  assert.equal(receipt.outcome, 'accepted');
+  assert.equal(receipt.boundRunId, 'run-1');
+  assert.equal(receipt.revision, 4, 'the command must carry the observed revision');
+  assert.equal(commands.calls[0]?.action, 'cancel');
+  assert.equal(commands.calls[0]?.expectedRevision, 4);
+  assert.equal(handle.view()?.stop?.phase, 'requested');
+  // 快照观察到 canceled → confirmed（AC1）。
+  detailBackend.detailResult = interventionDetail({ runStatus: 'canceled', revision: 5 });
+  await handle.resync();
+  assert.equal(handle.view()?.stop?.phase, 'confirmed');
+  handle.close('done');
+});
+
+test('act(stop) with an unknown delivery outcome gates further writes until a resync reconciles', async () => {
+  const commands = scriptedCommandPort({ error: codedError('TASK_COMMAND_UNKNOWN') });
+  const { handle, detailBackend } = newHandleForIntervention({ runStatus: 'running', revision: 2 }, commands.port);
+  await handle.hydrate();
+  const receipt = await handle.act({ kind: 'stop' });
+  assert.equal(receipt.outcome, 'unknown');
+  assert.equal(handle.view()?.stop?.phase, 'unknown');
+  // AC2：unknown 未核对前，同句柄后续写意图一律拒绝。
+  await assert.rejects(() => handle.act({ kind: 'steer', text: 'x' }), /TASK_OFFICE_COMMAND_UNKNOWN/);
+  await assert.rejects(() => handle.act({ kind: 'stop' }), /TASK_OFFICE_COMMAND_UNKNOWN/);
+  // 核对：仍 running ⇒ 取消未落地 ⇒ 门解除、停止卡清除。
+  detailBackend.detailResult = interventionDetail({ runStatus: 'running', revision: 2 });
+  await handle.resync();
+  assert.equal(handle.view()?.stop, undefined);
+  commands.script.error = undefined; // 简报原文缺此行：重试要走通必须切回成功脚本（见上方差异点 4）
+  const retry = await handle.act({ kind: 'stop' });
+  assert.equal(retry.outcome, 'accepted');
+  handle.close('done');
+});
+
+test('act(stop) unknown reconciles to confirmed when the run was actually canceled', async () => {
+  const commands = scriptedCommandPort({ error: codedError('TASK_COMMAND_UNKNOWN') });
+  const { handle, detailBackend } = newHandleForIntervention({ runStatus: 'running', revision: 2 }, commands.port);
+  await handle.hydrate();
+  await handle.act({ kind: 'stop' });
+  detailBackend.detailResult = interventionDetail({ runStatus: 'canceled', revision: 3 });
+  await handle.resync();
+  assert.equal(handle.view()?.stop?.phase, 'confirmed');
+  handle.close('done');
+});
+
+test('a 409 conflict is a receipt, not the unknown gate', async () => {
+  const commands = scriptedCommandPort({ error: codedError('TASK_COMMAND_CONFLICT') });
+  const { handle } = newHandleForIntervention({ runStatus: 'running', revision: 1 }, commands.port);
+  await handle.hydrate();
+  const receipt = await handle.act({ kind: 'stop' });
+  assert.equal(receipt.outcome, 'conflict');
+  assert.equal(handle.view()?.stop, undefined, 'a conflict leaves no stop card');
+  // 冲突不进门：后续意图仍可发出。
+  commands.script.error = undefined;
+  const next = await handle.act({ kind: 'steer', text: 'go' });
+  assert.equal(next.outcome, 'accepted');
+  handle.close('done');
+});
+
+test('act(queue-next) on an active run parks locally and flushes on terminal observation', async () => {
+  const commands = scriptedCommandPort();
+  const { handle, detailBackend } = newHandleForIntervention({ runStatus: 'running', revision: 7 }, commands.port);
+  await handle.hydrate();
+  const parked = await handle.act({ kind: 'queue-next', text: 'next instruction' });
+  assert.equal(parked.outcome, 'parked', 'never claim a server queue that does not exist');
+  assert.equal(commands.calls.length, 0);
+  assert.deepEqual(handle.view()?.queuedNext?.map((q) => q.text), ['next instruction']);
+  // 观察到终态 → flush 发出 queue_next，服务端准入下一 Run。
+  detailBackend.detailResult = interventionDetail({ runStatus: 'succeeded', revision: 7 });
+  await handle.resync();
+  await handle.flushQueuedIntents();
+  assert.equal(commands.calls.length, 1, 'hydrate 内的自动 flush 与显式 flush 合流，绝不重复派发');
+  assert.equal(commands.calls[0]?.action, 'queue_next');
+  assert.equal(commands.calls[0]?.intentId !== undefined, true, 'parked intents fire with a stable idempotency id');
+  const receipt = handle.view()?.interventions?.at(-1);
+  assert.equal(receipt?.outcome, 'accepted');
+  assert.equal(handle.view()?.queuedNext?.length ?? 0, 0, '空队列按字段省略呈现（buildView 空集省略惯例）');
+  handle.close('done');
+});
+
+test('act(queue-next) on a terminal run dispatches immediately', async () => {
+  const commands = scriptedCommandPort({ result: { runId: 'run-1', action: 'queue_next', nextRunId: 'run-2' } });
+  const { handle } = newHandleForIntervention({ runStatus: 'canceled', revision: 6 }, commands.port);
+  await handle.hydrate();
+  const receipt = await handle.act({ kind: 'queue-next', text: 'restart now' });
+  assert.equal(receipt.outcome, 'accepted');
+  assert.equal(receipt.boundRunId, 'run-1');
+  assert.equal(receipt.nextRunId, 'run-2');
+  handle.close('done');
+});
+
+test('act before hydrate and a missing commands port fail closed', async () => {
+  const noPort = newHandleForIntervention({ runStatus: 'running', revision: 1 });
+  await assert.rejects(() => noPort.handle.act({ kind: 'stop' }), /TASK_OFFICE_COMMAND_UNAVAILABLE/);
+  const withPort = newHandleForIntervention({ runStatus: 'running', revision: 1 }, scriptedCommandPort().port);
+  await assert.rejects(() => withPort.handle.act({ kind: 'stop' }), /TASK_OFFICE_NO_SNAPSHOT/);
+  noPort.handle.close('done'); withPort.handle.close('done');
+});
+
+test('a command landing while the lease died is rejected, never silently recorded', async () => {
+  // Scope Lease 失效后丢弃迟到结果（module-seams §5.3）：lease 在命令在途时撤销 → SCOPE_CHANGED。
+  let release: (() => void) | undefined;
+  type CancelAck = { runId: string; action: 'cancel' };
+  const slowPort = { command: (): Promise<CancelAck> => new Promise((resolve) => { release = () => resolve({ runId: 'run-1', action: 'cancel' }); }) };
+  const { handle, revocable } = newHandleForIntervention({ runStatus: 'running', revision: 9 }, slowPort);
+  await handle.hydrate();
+  const pending = handle.act({ kind: 'stop' });
+  revocable.revoke();
+  release!();
+  await assert.rejects(() => pending, /TASK_OFFICE_SCOPE_CHANGED/);
+  assert.equal(handle.view()?.interventions?.length ?? 0, 0, 'a late result must not be recorded as an intervention');
+  handle.close('done');
 });
