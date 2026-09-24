@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"errors"
 	"net/http"
 
@@ -22,7 +23,7 @@ import (
 // and never authorizes an external write (that is the separate A03
 // approval on /apps/actions).
 func (h *CommercialHandler) ExtendTaskBudget(c *gin.Context) {
-	tenantID, _, ok := commercialTenantScope(c)
+	tenantID, role, ok := commercialTenantScope(c)
 	if !ok {
 		appFail(c, http.StatusForbidden, "MISSING_TENANT_SCOPE", ErrMissingTenantScope.Error())
 		return
@@ -47,6 +48,24 @@ func (h *CommercialHandler) ExtendTaskBudget(c *gin.Context) {
 		return
 	}
 	runID := c.Param("id")
+	// T12 (#42): a budget raise admits the TASK OWNER or a billing-authorized
+	// caller (CONTEXT.md 任务预算). The gate runs BEFORE the service so a
+	// collaborator is refused ahead of any idempotency replay. found=false
+	// (unknown or cross-tenant run) deliberately falls through so the service
+	// keeps its explicit TASK_BUDGET_NOT_FOUND 404 contract.
+	userID := commercialUserID(c)
+	if !commercial.CanManageBilling(role, true, h.hasBillingGrant(c, tenantID)) {
+		ownerID, found, ownerErr := h.taskRunOwner(c.Request.Context(), tenantID, runID)
+		if ownerErr != nil {
+			appFail(c, http.StatusInternalServerError, "BUDGET_OWNER_LOOKUP_FAILED", "failed to resolve the task owner")
+			return
+		}
+		if found && ownerID != userID {
+			appFail(c, http.StatusForbidden, "BUDGET_FORBIDDEN",
+				"raising a task budget requires the task owner or billing authority")
+			return
+		}
+	}
 	if err := svc.Extend(c.Request.Context(), tenantID, runID, input.IdempotencyKey,
 		commercial.Credits(*input.AdditionalCredits)); err != nil {
 		switch {
@@ -73,4 +92,23 @@ func (h *CommercialHandler) ExtendTaskBudget(c *gin.Context) {
 		"task_id":            runID,
 		"additional_credits": *input.AdditionalCredits,
 	})
+}
+
+// taskRunOwner resolves the business owner of one run (agent_runs.owner_id)
+// inside the tenant. found=false covers unknown and cross-tenant runs alike.
+func (h *CommercialHandler) taskRunOwner(ctx context.Context, tenantID uint64, runID string) (string, bool, error) {
+	if h == nil || h.db == nil || tenantID == 0 || runID == "" {
+		return "", false, nil
+	}
+	var ownerID string
+	err := h.db.WithContext(ctx).Table("agent_runs").
+		Where("tenant_id = ? AND run_id = ?", tenantID, runID).
+		Select("owner_id").Scan(&ownerID).Error
+	if err != nil {
+		return "", false, err
+	}
+	if ownerID == "" {
+		return "", false, nil
+	}
+	return ownerID, true, nil
 }
