@@ -93,17 +93,22 @@ export function createMobileLegacyTaskRemote(options: LegacyTaskRemoteOptions) {
       const question = input.question.trim();
       if (taskId === '' || question === '') throw new Error('legacy follow-up requires taskId and question');
       let failed = false;
+      let terminated = false;
+      let frames = 0;
       const parser = createServerSentEventParser((frame) => {
+        frames += 1;
         let event;
         try {
           event = parseChatEvent(frame);
         } catch {
           throw new Error('LEGACY_FOLLOW_UP_MALFORMED_FRAME');
         }
-        if (responseType(event) === 'error') {
+        const type = responseType(event);
+        if (type === 'error') {
           failed = true;
           return;
         }
+        if (type === 'complete' || type === 'stop') terminated = true;
       });
       await transport({
         method: 'POST',
@@ -114,6 +119,10 @@ export function createMobileLegacyTaskRemote(options: LegacyTaskRemoteOptions) {
       }, (chunk) => parser.push(chunk));
       parser.finish();
       if (failed) throw new Error('LEGACY_FOLLOW_UP_FAILED');
+      // Fail-closed 终止帧判定（T44 Task 6 修复轮主控裁决）：服务端正常完成必发 complete/stop
+      // （internal/handler/session/stream.go:143,186,404）；流正常结束但未见终止帧＝结果未知
+      // （代理断连/服务端中途崩溃），按 #30 Spec 信任模型必须让上层感知并触发对账，不得静默判成功。
+      if (!terminated) throw new Error(`LEGACY_FOLLOW_UP_TRUNCATED: legacy follow-up for task ${taskId} ended without a terminal frame after ${frames} frame(s)`);
     },
   };
 }

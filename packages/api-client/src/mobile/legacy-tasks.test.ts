@@ -110,3 +110,30 @@ test('legacy remote validates the deployment origin like the task office remote'
   assert.throws(() => createMobileLegacyTaskRemote({ origin: 'https://weknora.example.test/path', request: async () => undefined }), /must not include a path/);
   assert.throws(() => createMobileLegacyTaskRemote({ origin: 'http://weknora.example.test', request: async () => undefined }), /HTTPS/);
 });
+
+test('legacy followUp fails closed with LEGACY_FOLLOW_UP_TRUNCATED when the stream ends without a terminal frame', async () => {
+  const truncated = createMobileLegacyTaskRemote({
+    origin: 'https://weknora.example.test',
+    request: async () => undefined,
+    stream: async (_input, onChunk) => {
+      onChunk('data: {"response_type":"answer","content":"部分回答"}\n\n');
+      onChunk('data: {"response_type":"references"}\n\n');
+    },
+  });
+  await assert.rejects(truncated.followUp({ taskId: 'lg-9', question: 'x' }), /LEGACY_FOLLOW_UP_TRUNCATED: .*task lg-9.*2 frame\(s\)/);
+});
+
+test('legacy followUp succeeds when a stop terminal frame arrives', async () => {
+  const streams: ClientRequest[] = [];
+  const remote = createMobileLegacyTaskRemote({
+    origin: 'https://weknora.example.test',
+    request: async () => undefined,
+    stream: async (input, onChunk) => {
+      streams.push(input);
+      onChunk('data: {"response_type":"answer","content":"答"}\n\n');
+      onChunk('data: {"response_type":"stop"}\n\n');
+    },
+  });
+  await remote.followUp({ taskId: 'lg-1', question: 'x' });
+  assert.equal(streams.length, 1);
+});
