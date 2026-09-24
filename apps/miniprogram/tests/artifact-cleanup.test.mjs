@@ -47,6 +47,7 @@ test('D3: 受保护产物从可写的私有副本打开，且副本在打开后�
   const { srcPath, destPath } = stub.state.copies[0];
   assert.equal(srcPath, TEMP_PDF, '复制源必须是 downloadFile 落下的临时文件');
   assert.ok(destPath.startsWith('wxfile://usr/'), `副本必须位于 USER_DATA_PATH（当前：${destPath}）`);
+  assert.match(destPath, /\.pdf$/, '副本文件名必须以原始扩展名结尾——openDocument 靠扩展名识别文件类型');
   assert.ok(!isRuntimeTemp(destPath), '副本不能仍在运行时临时目录（那里 unlink 被 deny）');
   assert.deepEqual(stub.state.openedDocuments, [{ filePath: destPath, showMenu: true }], 'openDocument 必须打开私有副本');
   assert.deepEqual(stub.state.removedFiles, [destPath], '打开结束后副本必须被删除');

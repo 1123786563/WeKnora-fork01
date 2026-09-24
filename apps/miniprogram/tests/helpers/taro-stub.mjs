@@ -101,12 +101,16 @@ const Taro = {
       },
     };
   },
-  env: { USER_DATA_PATH: 'wxfile://usr' },
+  // 注意：真实运行时的 Taro 对象没有 env 字段（@tarojs/api 不提供、weapp 插件也不复制
+  // wx.env——实测 Taro.env.USER_DATA_PATH 抛 TypeError）。替身同样不提供，USER_DATA_PATH
+  // 只经 wx 全局暴露，防止单测再次掩盖平台契约差异。
   getStorageSync(key) { return state.storage.has(key) ? state.storage.get(key) : ''; },
   setStorageSync(key, value) { state.storage.set(key, value); },
   removeStorageSync(key) { state.storage.delete(key); },
   getStorageInfoSync() { return { keys: [...state.storage.keys()] }; },
 };
+// weapp 运行时全局存在 wx 对象；USER_DATA_PATH 只能从这里取。
+globalThis.wx = globalThis.wx ?? { env: { USER_DATA_PATH: 'wxfile://usr' } };
 
 // ---- 测试驱动面 ----
 function reset() {

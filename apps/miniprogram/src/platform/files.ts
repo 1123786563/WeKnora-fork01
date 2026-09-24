@@ -19,9 +19,23 @@ async function downloadErrorCode(filePath:string):Promise<string|undefined>{
 // 打开后立即清理”。运行时临时目录不归应用管理；应用可写可删的只有 USER_DATA_PATH。
 // 因此受保护产物先复制成私有副本再打开，副本在打开结束后立即删除——UI 的清理承诺
 // 对“我们创建的文件”真实成立。
+// 注意：真实运行时的 Taro 对象没有 env 字段（@tarojs/api 的 Taro 无 env，weapp 插件
+// 的 initNativeApi 也不复制 wx.env；类型声明里的 Taro.env.USER_DATA_PATH 是假的），
+// USER_DATA_PATH 只能从 weapp 全局 wx.env 读取。
+function userDir():string{
+ const env=(globalThis as {wx?:{env?:{USER_DATA_PATH?:string}}}).wx?.env;
+ const dir=env?.USER_DATA_PATH;
+ if(!dir)throw new Error('本机存储目录不可用');
+ return dir;
+}
 function toUserCopyPath(name:string):string{
- const safe=name.replace(/[^A-Za-z0-9._-]+/g,'-').replace(/^[-.]+/,'')||'artifact';
- return `${Taro.env.USER_DATA_PATH}/wk-open-${safe}-${Date.now().toString(36)}${Math.random().toString(36).slice(2,8)}`;
+ // openDocument 靠文件扩展名识别类型：随机后缀必须放在扩展名之前，副本必须以
+ // 原始扩展名结尾（实测 DevTools 对无 .pdf 结尾的同内容文件报 filetype not supported）。
+ const dot=name.lastIndexOf('.');
+ const ext=dot>0?name.slice(dot+1).toLowerCase():'';
+ const stem=(dot>0?name.slice(0,dot):name).replace(/[^A-Za-z0-9._-]+/g,'-').replace(/^[-.]+/,'')||'artifact';
+ const suffix=`${Date.now().toString(36)}${Math.random().toString(36).slice(2,8)}`;
+ return `${userDir()}/wk-open-${stem}-${suffix}${ext?`.${ext}`:''}`;
 }
 function copyFile(fs:ReturnType<typeof Taro.getFileSystemManager>,srcPath:string,destPath:string):Promise<void>{
  return new Promise((resolve,reject)=>fs.copyFile({srcPath,destPath,success:()=>resolve(),fail:e=>reject(Object.assign(new Error('本机文件准备失败'),{cause:e}))}));
