@@ -26,6 +26,12 @@ var (
 
 const sqliteWorkbenchRunsMigrationVersion = 55
 
+// sqliteAdoptionFKRelaxationMigrationVersion is the sqlite twin of the
+// public-marketplace adoption FK relaxation (000114). Like the workbench
+// rebuild (v55) that file owns its transaction and PRAGMAs, so it must run
+// with the driver's NoTxWrap while every other file keeps per-file wrapping.
+const sqliteAdoptionFKRelaxationMigrationVersion = 114
+
 // CachedMigrationVersion returns the migration version captured at startup.
 // Returns (version, dirty, ok). ok is false if the version was never captured.
 //
@@ -108,11 +114,14 @@ func RunMigrationsWithOptions(dsn string, opts MigrationOptions) error {
 
 	migrationsPath := "file://migrations/versioned"
 	workbenchSQLiteMigrationPresent := false
+	adoptionFKRelaxationSQLiteMigrationPresent := false
 	isSQLite := strings.HasPrefix(dsn, "sqlite3://")
 	if isSQLite {
 		migrationsPath = "file://migrations/sqlite"
 		_, err := os.Stat("migrations/sqlite/000055_workbench_runs.up.sql")
 		workbenchSQLiteMigrationPresent = err == nil
+		_, err = os.Stat("migrations/sqlite/000114_public_agent_marketplace.up.sql")
+		adoptionFKRelaxationSQLiteMigrationPresent = err == nil
 	}
 
 	var (
@@ -210,6 +219,34 @@ func RunMigrationsWithOptions(dsn string, opts MigrationOptions) error {
 		}
 		if _, err := m.Close(); err != nil {
 			return fmt.Errorf("failed to close SQLite workbench migration driver: %w", err)
+		}
+		m, err = newSQLiteMigrator(migrationsPath, sqliteMigrationDSN(dsn, opts), sqliteMigrationTable(dsn), false)
+		if err != nil {
+			return captureMigrationFailure(m, fmt.Errorf("failed to restore SQLite migration driver: %w", err))
+		}
+	}
+
+	// Migration 000114 relaxes the three #59 adoption FKs via table rebuild.
+	// Same constraint as v55: PRAGMA foreign_keys only changes outside a
+	// transaction, so this one file runs NoTxWrap while every other
+	// migration keeps its per-file transaction.
+	if isSQLite && adoptionFKRelaxationSQLiteMigrationPresent &&
+		(versionErr == migrate.ErrNilVersion || oldVersion < sqliteAdoptionFKRelaxationMigrationVersion) {
+		if err := m.Migrate(sqliteAdoptionFKRelaxationMigrationVersion - 1); err != nil && err != migrate.ErrNoChange {
+			return captureMigrationFailure(m, fmt.Errorf("failed to prepare SQLite adoption FK relaxation: %w", err))
+		}
+		if _, err := m.Close(); err != nil {
+			return fmt.Errorf("failed to close SQLite migration driver before adoption FK relaxation: %w", err)
+		}
+		m, err = newSQLiteMigrator(migrationsPath, sqliteMigrationDSN(dsn, opts), sqliteMigrationTable(dsn), true)
+		if err != nil {
+			return captureMigrationFailure(m, fmt.Errorf("failed to create SQLite adoption FK relaxation migrator: %w", err))
+		}
+		if err := m.Steps(1); err != nil && err != migrate.ErrNoChange {
+			return captureMigrationFailure(m, fmt.Errorf("failed to run SQLite adoption FK relaxation migration: %w", err))
+		}
+		if _, err := m.Close(); err != nil {
+			return fmt.Errorf("failed to close SQLite adoption FK relaxation migrator: %w", err)
 		}
 		m, err = newSQLiteMigrator(migrationsPath, sqliteMigrationDSN(dsn, opts), sqliteMigrationTable(dsn), false)
 		if err != nil {

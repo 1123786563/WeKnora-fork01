@@ -44,6 +44,12 @@ var versionedSQLiteTables = []string{
 	"agent_adoptions",
 	"agent_adoption_variants",
 	"agent_variant_capability_mappings",
+	"public_marketplace_verified_publishers",
+	"public_marketplace_listings",
+	"public_release_submissions",
+	"public_release_reviews",
+	"public_agent_releases",
+	"tenant_introduced_releases",
 }
 
 // versionedSQLiteColumns maps each existing table to the columns that the
