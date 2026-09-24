@@ -146,6 +146,24 @@ type sourceRevision struct {
 	CreatedAt         time.Time
 	CompletedAt       *time.Time
 }
+
+type evaluationRecord struct {
+	ID              string    `gorm:"primaryKey;size:36"`
+	TenantID        uint64    `gorm:"uniqueIndex:career_evaluation_scope_request;index:idx_career_evaluation_scope"`
+	UserID          string    `gorm:"uniqueIndex:career_evaluation_scope_request;index:idx_career_evaluation_scope;size:512"`
+	RequestID       string    `gorm:"uniqueIndex:career_evaluation_scope_request;size:128"`
+	Fingerprint     string    `gorm:"size:64;not null"`
+	Intent          string    `gorm:"type:text;not null"`
+	OpportunityID   string    `gorm:"size:36;not null;index"`
+	SnapshotID      string    `gorm:"size:36;not null;index"`
+	ProfileRevision uint64    `gorm:"not null"`
+	ReceiptBody     string    `gorm:"type:text;not null"`
+	EvaluationBody  string    `gorm:"type:text;not null"`
+	CreatedAt       time.Time `gorm:"not null"`
+}
+
+func (evaluationRecord) TableName() string { return "career_evaluations" }
+
 type Fact struct {
 	Key          string       `json:"key"`
 	Value        string       `json:"value"`
@@ -216,13 +234,14 @@ type Office struct {
 	beforeReplayReceipt          func(context.Context)
 	beforeOpportunityTransaction func()
 	afterOpportunityCommit       func() error
+	afterEvaluationCommit        func() error
 }
 
 func NewOffice(db *gorm.DB) (*Office, error) {
 	if db == nil {
 		return nil, errors.New("career database required")
 	}
-	models := []any{&profile{}, &space{}, &fact{}, &factVersion{}, &proposal{}, &change{}, &receipt{}, &sourceRevision{}, &opportunity{}, &opportunityObservation{}, &opportunitySnapshot{}, &opportunityReceipt{}}
+	models := []any{&profile{}, &space{}, &fact{}, &factVersion{}, &proposal{}, &change{}, &receipt{}, &sourceRevision{}, &opportunity{}, &opportunityObservation{}, &opportunitySnapshot{}, &opportunityReceipt{}, &evaluationRecord{}}
 	if db.Dialector.Name() == "sqlite" {
 		present := 0
 		for _, model := range models {
@@ -271,6 +290,7 @@ func validateSQLiteCareerSchema(db *gorm.DB) error {
 		"career_opportunity_observations": {"id", "tenant_id", "user_id", "opportunity_id", "snapshot_id", "source_kind", "source_label", "source_ref", "acquired_at", "created_at"},
 		"career_opportunity_snapshots":    {"id", "tenant_id", "user_id", "opportunity_id", "observation_id", "raw_text", "raw_sha256", "extracted", "status", "acquired_at", "created_at"},
 		"career_opportunity_receipts":     {"tenant_id", "user_id", "request_id", "fingerprint", "body", "created_at"},
+		"career_evaluations":              {"id", "tenant_id", "user_id", "request_id", "fingerprint", "intent", "opportunity_id", "snapshot_id", "profile_revision", "receipt_body", "evaluation_body", "created_at"},
 	}
 	for table, columns := range requiredColumns {
 		for _, column := range columns {
@@ -285,6 +305,7 @@ func validateSQLiteCareerSchema(db *gorm.DB) error {
 		"career_receipts":             {"tenant_id", "user_id", "request_id"},
 		"career_source_revisions":     {"tenant_id", "user_id", "revision"},
 		"career_opportunity_receipts": {"tenant_id", "user_id", "request_id"},
+		"career_evaluations":          {"tenant_id", "user_id", "request_id"},
 	} {
 		if err := requireSQLiteUniqueConstraint(db, table, columns); err != nil {
 			return fmt.Errorf("incomplete Career SQLite schema: %w; apply database migrations before startup", err)

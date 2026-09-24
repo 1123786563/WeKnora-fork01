@@ -265,6 +265,65 @@ func (h *Handler) OpportunityReceipt(c *gin.Context) {
 	c.JSON(http.StatusOK, receipt)
 }
 
+// EvaluateOpportunity creates an immutable evaluation from a fixed JD snapshot
+// and the current or explicitly pinned confirmed profile revision.
+func (h *Handler) EvaluateOpportunity(c *gin.Context) {
+	ctx, ok := h.scope(c, false)
+	if !ok {
+		return
+	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 16*1024)
+	decoder := json.NewDecoder(c.Request.Body)
+	decoder.DisallowUnknownFields()
+	var input EvaluateInput
+	if err := decoder.Decode(&input); err != nil {
+		var maxBytesError *http.MaxBytesError
+		if errors.As(err, &maxBytesError) {
+			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": gin.H{"code": "request_too_large", "message": "evaluation request is too large"}})
+			return
+		}
+		writeError(c, ErrInvalidRequest)
+		return
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		writeError(c, ErrInvalidRequest)
+		return
+	}
+	receipt, err := h.office.EvaluateOpportunity(ctx, input)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, receipt)
+}
+
+func (h *Handler) Evaluation(c *gin.Context) {
+	ctx, ok := h.scope(c, false)
+	if !ok {
+		return
+	}
+	evaluation, err := h.office.Evaluation(ctx, c.Param("evaluationId"))
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, evaluation)
+}
+
+func (h *Handler) EvaluationReceipt(c *gin.Context) {
+	ctx, ok := h.scope(c, false)
+	if !ok {
+		return
+	}
+	receipt, err := h.office.FindEvaluationReceipt(ctx, c.Query("requestId"))
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, receipt)
+}
+
 func (h *Handler) Sources(c *gin.Context) {
 	ctx, ok := h.scope(c, false)
 	if !ok {
