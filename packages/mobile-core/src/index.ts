@@ -35,3 +35,10 @@ export { createDeviceRegistry, DeviceError } from './device/device-registry.ts';
 export type { DeviceErrorCode, DevicePlatform, DevicePorts, DeviceRegistrationRecord, DeviceRegistry, DeviceRemote } from './device/device-registry.ts';
 export { createScenarioDeviceRemote } from './device/in-memory-device-remote.ts';
 export type { ScenarioDeviceRemote, ScenarioDeviceSnapshot } from './device/in-memory-device-remote.ts';
+export { createNotificationInbox, InboxError } from './inbox/notification-inbox.ts';
+export type {
+  InboxBackendItem, InboxBackendPage, InboxErrorCode, InboxItem, InboxRemote, InboxView,
+  NotificationInbox, NotificationInboxPorts,
+} from './inbox/notification-inbox.ts';
+export { createScenarioInboxRemote } from './inbox/in-memory-inbox-remote.ts';
+export type { InboxScriptPage, ScenarioInboxRemote } from './inbox/in-memory-inbox-remote.ts';
