@@ -1,4 +1,6 @@
 -- 回滚到 000202 的原始 block 触发器（无 bound RunView 的终态 Run 也封锁新 Run）。
+-- 依赖序修正（与 up 同因）：先移除依赖该函数的触发器，再替换函数。
+DROP TRIGGER IF EXISTS trg_craft_capture_block_new_run ON agent_runs;
 DROP FUNCTION IF EXISTS craft_capture_block_new_run();
 CREATE FUNCTION craft_capture_block_new_run() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
@@ -15,6 +17,5 @@ BEGIN
   RETURN NEW;
 END;
 $$;
-DROP TRIGGER IF EXISTS trg_craft_capture_block_new_run ON agent_runs;
 CREATE TRIGGER trg_craft_capture_block_new_run BEFORE INSERT ON agent_runs
   FOR EACH ROW EXECUTE FUNCTION craft_capture_block_new_run();

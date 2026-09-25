@@ -1,6 +1,10 @@
 -- R4 Task3 收敛：终态 Run 的采集义务以“存在 bound RunView”为准（与 000202
 -- 的 enqueue 触发器义务定义一致）。未绑定 RunView 的终态 Run 无容器输出，
 -- 不构成可修复的草稿捕获，不得永久封锁同 Workspace 的新 Run 提交。
+-- 依赖序修正：先移除 000202 建立的触发器，再替换其函数；原序在全新 PG
+-- 回放中因触发器依赖函数而以 2BP01 失败（postgres 迁移子测试在无 DSN 环境
+-- 全部 skip，故此前未暴露）。
+DROP TRIGGER IF EXISTS trg_craft_capture_block_new_run ON agent_runs;
 DROP FUNCTION IF EXISTS craft_capture_block_new_run();
 CREATE FUNCTION craft_capture_block_new_run() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
@@ -18,6 +22,5 @@ BEGIN
   RETURN NEW;
 END;
 $$;
-DROP TRIGGER IF EXISTS trg_craft_capture_block_new_run ON agent_runs;
 CREATE TRIGGER trg_craft_capture_block_new_run BEFORE INSERT ON agent_runs
   FOR EACH ROW EXECUTE FUNCTION craft_capture_block_new_run();
