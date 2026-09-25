@@ -338,9 +338,6 @@ func sameCraftVersionEvidence(a, b craft.VersionEvidence) bool {
 	return true
 }
 
-// insertCraftVersionEvidence writes one evidence row; a racing identical
-// insert adopts the stored row, a different evidence under the same version
-// identity is a conflict and changes nothing.
 // adoptCraftVersionEvidence adopts the evidence already pinned to an
 // existing version row. A stored version WITHOUT an evidence member was
 // published by an earlier, evidence-less route (a pre-T07 deployment, or
