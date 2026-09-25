@@ -41,9 +41,23 @@ type CraftDockerRestrictedExec struct {
 	coordinator *CraftDockerSendCoordinator
 	client      sandbox.DockerOutputlessExecClient
 	events      sandbox.DockerExecEventPairObserver
-	rpcTimeout  time.Duration
-	mu          sync.Mutex
-	running     map[string]bool
+	// policy is the T03 uploaded-material execution gate (#122). When the
+	// central assembly provides it, Start is screened before the durable
+	// send is prepared. nil keeps the unwired legacy behavior.
+	policy     CraftExecutionPolicyGate
+	rpcTimeout time.Duration
+	mu         sync.Mutex
+	running    map[string]bool
+}
+
+// WithExecutionPolicy attaches the T03 uploaded-material execution gate
+// (#122) to this command face. It must be set by the central assembly
+// before the service is exposed; the gate runs first in Start.
+func (s *CraftDockerRestrictedExec) WithExecutionPolicy(policy CraftExecutionPolicyGate) *CraftDockerRestrictedExec {
+	if s != nil {
+		s.policy = policy
+	}
+	return s
 }
 
 func NewCraftDockerRestrictedExec(coordinator *CraftDockerSendCoordinator, docker sandbox.DockerOutputlessExecClient, rpcTimeout time.Duration) (*CraftDockerRestrictedExec, error) {
@@ -75,6 +89,14 @@ func (s *CraftDockerRestrictedExec) Start(ctx context.Context, grantID, activity
 	}
 	if handle == nil || handle.Provider() != sandbox.SandboxTypeDocker || handle.ID() == "" || strings.TrimSpace(request.Exec.Command) == "" || (request.Exec.Shell && len(request.Exec.Args) > 0) {
 		return CraftDockerOutputlessResult{}, fmt.Errorf("restricted Docker exec target or command is invalid")
+	}
+	// T03 (#122): uploaded code stays data. Screen the command before the
+	// durable send is prepared; a denial returns the member-visible refusal
+	// and nothing is created, bound or sent.
+	if s.policy != nil {
+		if err := s.policy.ReviewOutputlessExec(ctx, binding, request); err != nil {
+			return CraftDockerOutputlessResult{}, err
+		}
 	}
 	op, err := s.coordinator.Prepare(ctx, grantID, activityID, binding)
 	if err != nil {

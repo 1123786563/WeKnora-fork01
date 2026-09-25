@@ -45,8 +45,23 @@ type CraftDockerNormalExecService struct {
 	inputs      craftDockerNormalInputReader
 	provider    craftDockerNormalProvider
 	output      *CraftDockerOutputService
-	mu          sync.Mutex
-	started     map[string]bool
+	// policy is the T03 uploaded-material execution gate (#122). When the
+	// central assembly provides it, every Execute is screened before any
+	// create, bind, claim or send; a denial surfaces the member-visible
+	// refusal instead of sending. nil keeps the unwired legacy behavior.
+	policy  CraftExecutionPolicyGate
+	mu      sync.Mutex
+	started map[string]bool
+}
+
+// WithExecutionPolicy attaches the T03 uploaded-material execution gate
+// (#122) to this command face. It must be set by the central assembly
+// before the service is exposed; the gate runs first in Execute.
+func (s *CraftDockerNormalExecService) WithExecutionPolicy(policy CraftExecutionPolicyGate) *CraftDockerNormalExecService {
+	if s != nil {
+		s.policy = policy
+	}
+	return s
 }
 
 // limitedNormalExecSink enforces the request's durable output quota even when
@@ -116,6 +131,14 @@ func (s *CraftDockerNormalExecService) Execute(ctx context.Context, grantID, act
 	}
 	if err := ctx.Err(); err != nil {
 		return CraftDockerNormalExecResult{}, err
+	}
+	// T03 (#122): uploaded code stays data. Screen the staged command
+	// against the Run's admitted input manifest before anything is created,
+	// bound, claimed or sent; a denial returns the member-visible refusal.
+	if s.policy != nil {
+		if err := s.policy.ReviewNormalExec(ctx, request); err != nil {
+			return CraftDockerNormalExecResult{}, err
+		}
 	}
 
 	operation, staged, receipt, err := s.prepareOrRecover(ctx, grantID, activityID, binding, handle, request)

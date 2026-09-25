@@ -431,7 +431,7 @@ func newCraftGateService(t *testing.T, db *gorm.DB, exec craft.Executor) *agentS
 	manager := mcp.NewMCPManager(nil)
 	t.Cleanup(manager.Shutdown)
 	store := repository.NewCraftStore(db)
-	delegation, err := NewCraftDelegation(store, exec)
+	delegation, err := NewCraftDelegation(store, exec, nil)
 	require.NoError(t, err)
 	return &agentService{db: db, mcpManager: manager, craft: delegation}
 }
@@ -726,7 +726,7 @@ func TestExecuteDurableRunCraftDelegationLoop(t *testing.T) {
 	seedCraftWorkspace(t, db, "s1")
 
 	sub := &scriptedSubExecutor{store: craftStore}
-	delegation, err := NewCraftDelegation(craftStore, sub)
+	delegation, err := NewCraftDelegation(craftStore, sub, nil)
 	require.NoError(t, err)
 
 	model := &scriptedCraftModel{turns: craftFixtureTurns()}
@@ -803,7 +803,7 @@ func TestCraftToolCallJournalReplayReusesResult(t *testing.T) {
 	craftStore := repository.NewCraftStore(db)
 	seedCraftWorkspace(t, db, "s1")
 	sub := &scriptedSubExecutor{store: craftStore}
-	delegation, err := NewCraftDelegation(craftStore, sub)
+	delegation, err := NewCraftDelegation(craftStore, sub, nil)
 	require.NoError(t, err)
 
 	manager := mcp.NewMCPManager(nil)
