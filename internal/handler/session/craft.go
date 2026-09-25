@@ -34,6 +34,9 @@ type CraftSessionAPI interface {
 	View(context.Context, craft.Scope) (service.CraftWorkspaceView, error)
 	List(context.Context, craft.Scope, string, int) ([]service.CraftSessionSummary, string, error)
 	AssociateInput(context.Context, craft.Scope, string, string) (craft.Input, error)
+	// ExpandArchive (#121) extracts one associated archive input within hard
+	// resource limits and returns the all-or-nothing member projection.
+	ExpandArchive(context.Context, craft.Scope, string) ([]craft.Input, error)
 	StartRun(context.Context, craft.Scope, service.CraftRunRequest) (agentruntime.Run, error)
 	ListVersions(context.Context, craft.Scope) ([]craft.Version, error)
 	GetVersion(context.Context, craft.Scope, string) (craft.Version, error)
@@ -130,6 +133,7 @@ func RegisterCraftSessionRoutes(craftSessions, sessions craftRouteGroup, craftHa
 		sessions.GET("/:id/craft/versions/:version_id", craftHandler.GetCraftVersion)
 		sessions.GET("/:id/craft/versions/:version_id/files/*file_path", craftHandler.DownloadCraftVersionFile)
 		sessions.POST("/:session_id/craft/inputs", craftHandler.PostCraftInput)
+		sessions.POST("/:session_id/craft/inputs/expand", craftHandler.PostCraftInputExpand)
 		sessions.POST("/:session_id/craft/runs", craftHandler.PostCraftRun)
 	}
 	if usageHandler := RegisteredCraftUsageHandler(); usageHandler != nil {
@@ -276,6 +280,13 @@ type createCraftSessionRequest struct {
 type craftInputRequest struct {
 	ResourceRef    string `json:"resource_ref"`
 	ExpectedSHA256 string `json:"expected_sha256"`
+}
+
+// craftExpandArchiveRequest addresses one already-associated archive input
+// by its opaque resource ref; the response reuses the craftInputDTO
+// projection for the extracted members, so no new response fields exist.
+type craftExpandArchiveRequest struct {
+	ResourceRef string `json:"resource_ref"`
 }
 
 type craftRunRequestDTO struct {
@@ -472,6 +483,37 @@ func (h *CraftSessionHandler) PostCraftInput(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusCreated, gin.H{"success": true, "data": craftInputDTO(input)})
+}
+
+// PostCraftInputExpand serves POST /api/v1/sessions/:session_id/craft/inputs/expand
+// (#121): the body addresses one associated archive input by its opaque
+// resource ref; the bounded atomic extraction publishes every member as an
+// immutable input (all-or-nothing) and the response reuses the existing
+// Input projection. A mid-extraction failure leaves zero new material.
+func (h *CraftSessionHandler) PostCraftInputExpand(c *gin.Context) {
+	if h == nil || h.svc == nil {
+		c.Error(apperrors.NewServiceUnavailableError("craft sessions are unavailable"))
+		return
+	}
+	scope, ok := craftScope(c)
+	if !ok || scope.SessionID == "" {
+		craftUnauthorized(c)
+		return
+	}
+	var body craftExpandArchiveRequest
+	if !decodeCraftBody(c, &body) {
+		return
+	}
+	inputs, err := h.svc.ExpandArchive(c.Request.Context(), scope, body.ResourceRef)
+	if err != nil {
+		craftHTTPError(c, err)
+		return
+	}
+	members := make([]gin.H, 0, len(inputs))
+	for _, in := range inputs {
+		members = append(members, craftInputDTO(in))
+	}
+	c.JSON(http.StatusCreated, gin.H{"success": true, "data": members})
 }
 
 // PostCraftRun serves POST /api/v1/sessions/:session_id/craft/runs.

@@ -4,3 +4,4 @@ Open-code-review records for the delivered Craft #107 scope. Per `docs/plans/202
 
 | Date (UTC) | Scope / commits | OCR verdict | Findings | Follow-up |
 | --- | --- | --- | --- | --- |
+| 2026-09-25 | T01: cf0920e1b^..ceb079e89c | clean（增量收敛后干净） | 0 open | 报告: docs/plans/craft-107-ocr-t01.md |
