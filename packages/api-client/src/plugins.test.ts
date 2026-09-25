@@ -484,6 +484,16 @@ test('createPluginsApi.previewUpgrade rejects an empty installation id before an
   assert.equal(calls, 0, 'no request leaves the client for an invalid input');
 });
 
+// T15-OCR1-F1 回归：input_schema_digest 是 schema_changed 徽标的判定依据，
+// 后端清单校验（manifest.go schemaDigestPattern）与快照核验两处都保证下发
+// 非空 64 位 hex——协议上不存在空串合法场景，空串必须拒绝（required 而非
+// optionalText，与「拒绝任何缺失/畸形字段」的模块契约一致）。
+test('parsePluginUpgradePreview rejects an empty input_schema_digest', () => {
+  const envelope = upgradePreviewEnvelope() as { data: { diff: { added_tools: Array<Record<string, unknown>> } } };
+  envelope.data.diff.added_tools[0]!.input_schema_digest = '';
+  assert.throws(() => parsePluginUpgradePreview(envelope), /input_schema_digest/);
+});
+
 // ---- T12: member personal connection (dto.PluginMyConnection,
 // GET /plugins/installations/:id/connections/me, handler GetMyConnection) ----
 

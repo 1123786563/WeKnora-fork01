@@ -402,7 +402,11 @@ function parseUpgradeToolSnapshot(value: unknown, path: string): PluginUpgradeTo
   return {
     name: required(row.name, `${path}.name`),
     description: optionalText(row.description, `${path}.description`),
-    inputSchemaDigest: optionalText(row.input_schema_digest, `${path}.input_schema_digest`),
+    // T15-OCR1-F1：digest 是 schema_changed 徽标的判定依据，后端清单校验
+    // （schemaDigestPattern 64 位 hex）与快照核验两处保证非空——用 required
+    // 与「拒绝任何缺失/畸形字段」的模块契约一致（description 才是协议允许
+    // 空串、用 optionalText 的字段）。
+    inputSchemaDigest: required(row.input_schema_digest, `${path}.input_schema_digest`),
     readOnly: flag(row.read_only, `${path}.read_only`),
     requiresPersonalAuth: flag(row.requires_personal_auth, `${path}.requires_personal_auth`),
     scopes: scopeList(row.scopes, `${path}.scopes`),
@@ -437,15 +441,17 @@ export function parsePluginUpgradePreview(value: unknown): PluginUpgradePreview 
       removedTools: (rawDiff.removed_tools as unknown[]).map((item, index) =>
         parseUpgradeToolSnapshot(item, `${UPGRADE_PREVIEW_PATH}.data.diff.removed_tools[${index}]`)),
       changedTools: (rawDiff.changed_tools as unknown[]).map((item, index) => {
-        const row = record(item, `${UPGRADE_PREVIEW_PATH}.data.diff.changed_tools[${index}]`);
+        // T15-OCR1-F2：行路径前缀提取局部常量，八处引用一处调整。
+        const entry = `${UPGRADE_PREVIEW_PATH}.data.diff.changed_tools[${index}]`;
+        const row = record(item, entry);
         return {
-          name: required(row.name, `${UPGRADE_PREVIEW_PATH}.data.diff.changed_tools[${index}].name`),
-          schemaChanged: flag(row.schema_changed, `${UPGRADE_PREVIEW_PATH}.data.diff.changed_tools[${index}].schema_changed`),
-          scopeChanged: flag(row.scope_changed, `${UPGRADE_PREVIEW_PATH}.data.diff.changed_tools[${index}].scope_changed`),
-          readWriteClassChanged: flag(row.read_write_class_changed, `${UPGRADE_PREVIEW_PATH}.data.diff.changed_tools[${index}].read_write_class_changed`),
-          personalAuthChanged: flag(row.personal_auth_changed, `${UPGRADE_PREVIEW_PATH}.data.diff.changed_tools[${index}].personal_auth_changed`),
-          current: parseUpgradeToolSnapshot(row.current, `${UPGRADE_PREVIEW_PATH}.data.diff.changed_tools[${index}].current`),
-          candidate: parseUpgradeToolSnapshot(row.candidate, `${UPGRADE_PREVIEW_PATH}.data.diff.changed_tools[${index}].candidate`),
+          name: required(row.name, `${entry}.name`),
+          schemaChanged: flag(row.schema_changed, `${entry}.schema_changed`),
+          scopeChanged: flag(row.scope_changed, `${entry}.scope_changed`),
+          readWriteClassChanged: flag(row.read_write_class_changed, `${entry}.read_write_class_changed`),
+          personalAuthChanged: flag(row.personal_auth_changed, `${entry}.personal_auth_changed`),
+          current: parseUpgradeToolSnapshot(row.current, `${entry}.current`),
+          candidate: parseUpgradeToolSnapshot(row.candidate, `${entry}.candidate`),
         };
       }),
     },

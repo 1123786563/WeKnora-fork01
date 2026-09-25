@@ -50,9 +50,8 @@ function apiErrorMessage(cause: unknown): string | null {
   return cause instanceof Error && cause.name === "ApiError" ? cause.message : null;
 }
 
-/** 升级差异面板的挂载状态：记录来源安装行，重开/切换互斥渲染。 */
+/** 升级差异面板的挂载状态：记录来源插件名，重开/切换互斥渲染。 */
 type UpgradePreviewState = {
-  installationId: string;
   pluginName: string;
   result: PluginUpgradePreview;
 };
@@ -238,6 +237,9 @@ export function PluginsSettingsPanel({ client, role }: Props) {
     if (!canEdit || actionBusyId !== null) return;
     setActionBusyId(item.installationId);
     setListError(null);
+    // T15-OCR1-F4(low)：成功的状态变更同时清掉升级预览错误条——两类横幅的
+    // 清理行为保持一致，陈旧的升级失败提示不在数次无关操作后悬挂。
+    setUpgradeError(null);
     try {
       await pluginsApi.setInstallationState(
         item.installationId,
@@ -263,7 +265,7 @@ export function PluginsSettingsPanel({ client, role }: Props) {
     try {
       const result = await pluginsApi.previewUpgrade(item.installationId);
       // 只读预览成功即替换面板（重复点击 = 幂等重读，结果不累积）。
-      setUpgradePreview({ installationId: item.installationId, pluginName: item.name, result });
+      setUpgradePreview({ pluginName: item.name, result });
     } catch (cause) {
       // 候选不可达/核验失败：错误条定位来源安装行，面板不残留，安装列表不动。
       // message 存纯文案（渲染层统一「升级预览失败（插件名）：」前缀，不再双拼）。
@@ -440,6 +442,7 @@ export function PluginsSettingsPanel({ client, role }: Props) {
                     <Button
                       type="button"
                       loading={upgradeBusyId === item.installationId}
+                      disabled={upgradeBusyId !== null && upgradeBusyId !== item.installationId}
                       onClick={() => void checkUpgrade(item)}
                     >
                       检查升级

@@ -640,3 +640,86 @@ test('viewer 安装行无检查升级按钮（registry minRole=admin 治理动�
     await unmount(root);
   }
 });
+
+// ---- T15-OCR1-F3：其他行预览进行中的按钮禁用反馈（不静默吞点击） ----
+
+test('其他行升级预览进行中时检查升级按钮呈现禁用态且完成后恢复', async () => {
+  let releaseFirst!: (value: unknown) => void;
+  const gatedPreview = new Promise<unknown>((resolve) => { releaseFirst = resolve; });
+  const { client, captured } = stubClient(async (input) => {
+    if (input.method === 'GET' && input.path === '/api/v1/plugins/installations') {
+      return {
+        success: true,
+        data: [
+          { ...jiraSummary },
+          { ...jiraSummary, installation_id: 'inst-2', plugin_id: 'com.example.weather', name: '天气查询' },
+        ],
+      };
+    }
+    if (input.method === 'POST' && input.path === '/api/v1/plugins/installations/inst-1/upgrade-preview') {
+      return gatedPreview; // 行 A 的预览挂起：重抓清单+核验的长网络往返
+    }
+    throw new Error(`unexpected request ${input.method} ${input.path}`);
+  });
+  const root = await mount(React.createElement(PluginsSettingsPanel, { client, role: 'admin' }));
+  try {
+    await flushEffects();
+    const rows = Array.from(document.querySelectorAll('[data-testid="plugin-installations"] li'));
+    assert.equal(rows.length, 2, 'two installation rows render');
+    const firstButton = findButtonByText(rows[0] as ParentNode, '检查升级');
+    const secondButton = findButtonByText(rows[1] as ParentNode, '检查升级');
+    assert.ok(firstButton && secondButton, 'both rows carry a check-upgrade button');
+    assert.equal(firstButton!.disabled, false, 'idle rows are clickable');
+    await act(async () => { firstButton!.click(); });
+    await flushEffects(2);
+    // 挂起期间：请求行经 loading 禁用；另一行必须有可见禁用态——全局互斥不能
+    // 只靠静默 return 吞点击（用户会误以为按钮失效）。
+    assert.equal(firstButton!.disabled, true, 'the in-flight row disables itself via loading');
+    assert.equal(secondButton!.disabled, true, 'another row disables visibly while a preview is in flight');
+    // 禁用态下点击另一行不发请求（全局互斥语义不变）。
+    await act(async () => { secondButton!.click(); });
+    await flushEffects(2);
+    assert.equal(captured.filter((entry) => entry.path === '/api/v1/plugins/installations/inst-2/upgrade-preview').length, 0, 'a disabled row fires no request');
+    releaseFirst(upgradePreviewEnvelope());
+    await flushEffects();
+    assert.equal(secondButton!.disabled, false, 'buttons re-enable once the preview settles');
+    assert.ok(document.querySelector('[data-testid="plugin-upgrade-preview"]'), 'the gated preview resolves and renders');
+  } finally {
+    await unmount(root);
+  }
+});
+
+// ---- T15-OCR1-F4(low)：升级错误条生命周期与列表操作对齐 ----
+
+test('停用成功后升级预览错误条同步清除（横幅清理行为一致）', async () => {
+  const rows: unknown[] = [{ ...jiraSummary }];
+  const { client } = stubClient(async (input) => {
+    if (input.method === 'GET' && input.path === '/api/v1/plugins/installations') {
+      return { success: true, data: [...rows] };
+    }
+    if (input.method === 'POST' && input.path === '/api/v1/plugins/installations/inst-1/upgrade-preview') {
+      throw new ApiError({ code: 'HTTP_503', message: 'candidate manifest unreachable: 候选清单抓取失败' });
+    }
+    if (input.method === 'POST' && input.path === '/api/v1/plugins/installations/inst-1/disable') {
+      rows[0] = { ...jiraSummary, state: 'disabled' };
+      const disabled = installationEnvelope() as { data: Record<string, unknown> };
+      disabled.data.state = 'disabled';
+      return disabled;
+    }
+    throw new Error(`unexpected request ${input.method} ${input.path}`);
+  });
+  const root = await mount(React.createElement(PluginsSettingsPanel, { client, role: 'admin' }));
+  try {
+    await flushEffects();
+    const list = document.querySelector('[data-testid="plugin-installations"]') as ParentNode;
+    await act(async () => { findButtonByText(list, '检查升级')!.click(); });
+    await flushEffects();
+    assert.ok(document.querySelector('[data-testid="plugin-upgrade-error"]'), 'the upgrade error banner renders first');
+    await act(async () => { findButtonByText(list, '停用')!.click(); });
+    await flushEffects();
+    assert.ok(!document.querySelector('[data-testid="plugin-upgrade-error"]'), 'a successful state change clears the stale upgrade error banner');
+    assert.match(document.querySelector('[data-testid="plugin-installations"]')?.textContent ?? '', /已停用/, 'the state change itself still lands');
+  } finally {
+    await unmount(root);
+  }
+});
