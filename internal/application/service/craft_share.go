@@ -1,0 +1,346 @@
+// Package service - Craft restricted-share consent (T11, #128).
+//
+// The share service is the consent authority of the derived web result:
+// it computes one immutable version's restricted-source contribution
+// server-side from RECORDED evidence (the version's stored citation
+// manifest plus the Run's immutable knowledge record), shows the owner the
+// exact version and evidence digest they are consenting to, and records
+// owner decisions bound to that identity. Sharing authority exists only
+// while a live approved decision binds the CURRENT evidence; reject,
+// expiry, replay (a decision of other evidence) and revocation never
+// create it. Every projection carries only typed consent facts — sharing
+// the derived result never grants original-source access — and every
+// decision, revocation and proven refusal is audited.
+package service
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"strings"
+	"time"
+
+	"github.com/Tencent/WeKnora/internal/logger"
+	"github.com/Tencent/WeKnora/internal/modules/craft"
+	"github.com/Tencent/WeKnora/internal/types"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
+)
+
+// CraftShareVersionReader reads one delivered immutable version. The
+// production adapter is the same version store the Craft session reads.
+type CraftShareVersionReader interface {
+	Get(context.Context, craft.Scope, string) (craft.Version, error)
+}
+
+// CraftShareFileReader opens one stored version object by its durable ref.
+// The production adapter is the existing file service.
+type CraftShareFileReader interface {
+	GetFile(context.Context, string) (io.ReadCloser, error)
+}
+
+// CraftShareConfig assembles the share service. Every port is required and
+// the service fails closed without it: authority must never degrade into a
+// permissive default.
+type CraftShareConfig struct {
+	DB         *gorm.DB
+	Versions   CraftShareVersionReader
+	Files      CraftShareFileReader
+	Records    CraftCitationRecordReader
+	TaskAccess craft.TaskAccessChecker
+	Now        func() time.Time
+}
+
+// CraftShareService owns the restricted-share consent of web versions.
+type CraftShareService struct {
+	db         *gorm.DB
+	versions   CraftShareVersionReader
+	files      CraftShareFileReader
+	records    CraftCitationRecordReader
+	taskAccess craft.TaskAccessChecker
+	now        func() time.Time
+}
+
+// NewCraftShareService validates the assembly.
+func NewCraftShareService(cfg CraftShareConfig) (*CraftShareService, error) {
+	if cfg.DB == nil {
+		return nil, errors.New("craft: share service requires the database")
+	}
+	if cfg.Versions == nil || cfg.Files == nil || cfg.Records == nil || cfg.TaskAccess == nil {
+		return nil, errors.New("craft: share service requires versions, files, records and task access")
+	}
+	now := cfg.Now
+	if now == nil {
+		now = time.Now
+	}
+	return &CraftShareService{db: cfg.DB, versions: cfg.Versions, files: cfg.Files, records: cfg.Records, taskAccess: cfg.TaskAccess, now: now}, nil
+}
+
+// craftShareDecisionRow persists one task+version's latest owner decision.
+// A fresh decision upserts the row; RevokedAt marks the row dead. The
+// decision identity (Version ID + evidence digest) is stored with the row
+// so authority checks re-derive the binding from recorded evidence rather
+// than trusting the stored pair alone.
+type craftShareDecisionRow struct {
+	TenantID       uint64               `gorm:"primaryKey"`
+	SessionID      string               `gorm:"primaryKey;column:session_id;type:varchar(128)"`
+	VersionID      string               `gorm:"primaryKey;column:version_id;type:varchar(128)"`
+	EvidenceDigest string               `gorm:"column:evidence_digest;type:char(64);not null"`
+	OwnerID        string               `gorm:"column:owner_id;type:varchar(512);not null"`
+	Decision       craft.DecisionStatus `gorm:"column:decision;type:varchar(16);not null"`
+	DecidedAt      time.Time            `gorm:"column:decided_at;not null"`
+	RevokedAt      *time.Time           `gorm:"column:revoked_at"`
+	CreatedAt      time.Time            `gorm:"column:created_at"`
+	UpdatedAt      time.Time            `gorm:"column:updated_at"`
+}
+
+func (craftShareDecisionRow) TableName() string { return "craft_share_decisions" }
+
+// CraftShareView is the consent summary projected to members: the typed
+// contribution, the current sharing state, the latest decision when one
+// binds, and its expiry. It never carries source refs, excerpts or titles.
+type CraftShareView struct {
+	Contribution craft.RestrictedContribution `json:"contribution"`
+	State        craft.ShareState             `json:"state"`
+	Decision     *craft.ShareDecision         `json:"decision,omitempty"`
+	ExpiresAt    *time.Time                   `json:"expires_at,omitempty"`
+}
+
+// contribution derives one version's restricted contribution from recorded
+// evidence. The version must exist in the requesting scope; its citation
+// manifest is read from the immutable version files (missing manifest = no
+// declared facts), and the evidence record must be the published record of
+// the exact Run that produced the version — the same server-side binding
+// the citation gate enforces.
+func (s *CraftShareService) contribution(ctx context.Context, scope craft.Scope, versionID string) (craft.RestrictedContribution, error) {
+	if s == nil || s.versions == nil || s.files == nil || s.records == nil {
+		return craft.RestrictedContribution{}, craft.ErrForbidden
+	}
+	if scope.TenantID == 0 || scope.UserID == "" || scope.SessionID == "" || strings.TrimSpace(versionID) == "" {
+		return craft.RestrictedContribution{}, fmt.Errorf("%w: incomplete share request", craft.ErrInvalidInput)
+	}
+	version, err := s.versions.Get(ctx, scope, strings.TrimSpace(versionID))
+	if err != nil {
+		return craft.RestrictedContribution{}, err
+	}
+	// The version store is the scope authority: Get only answers versions
+	// of the requesting task's workspace.
+	manifest := craft.WebCitationManifest{Schema: craft.WebCitationSchema, Entries: []craft.WebCitationEntry{}}
+	for _, file := range version.Files {
+		if file.Path != craft.WebCitationsPath {
+			continue
+		}
+		reader, err := s.files.GetFile(ctx, file.Ref)
+		if err != nil {
+			return craft.RestrictedContribution{}, err
+		}
+		raw, err := io.ReadAll(reader)
+		reader.Close()
+		if err != nil {
+			return craft.RestrictedContribution{}, err
+		}
+		manifest, err = craft.DecodeWebCitationManifest(raw)
+		if err != nil {
+			return craft.RestrictedContribution{}, err
+		}
+		break
+	}
+	record, err := s.records.Load(ctx, scope, version.RunID)
+	if err != nil {
+		return craft.RestrictedContribution{}, err
+	}
+	if record.Scope.TenantID != scope.TenantID || record.Scope.SessionID != scope.SessionID || record.RunID != version.RunID {
+		return craft.RestrictedContribution{}, craft.ErrForbidden
+	}
+	if record.PublicationState != craft.KnowledgePublicationPublished {
+		return craft.RestrictedContribution{}, craft.ErrConflict
+	}
+	return craft.RestrictedContributionFrom(version.ID, manifest, record)
+}
+
+// decision loads the latest persisted decision row for one task+version.
+func (s *CraftShareService) decision(ctx context.Context, scope craft.Scope, versionID string) (*craft.RecordedShareDecision, error) {
+	var row craftShareDecisionRow
+	err := s.db.WithContext(ctx).
+		Where("tenant_id = ? AND session_id = ? AND version_id = ?", scope.TenantID, scope.SessionID, strings.TrimSpace(versionID)).
+		First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	recorded := &craft.RecordedShareDecision{
+		Decision: craft.ShareDecision{
+			VersionID:      row.VersionID,
+			EvidenceDigest: row.EvidenceDigest,
+			OwnerID:        row.OwnerID,
+			Decision:       row.Decision,
+		},
+		DecidedAt: row.DecidedAt,
+	}
+	if row.RevokedAt != nil {
+		recorded.RevokedAt = *row.RevokedAt
+	}
+	return recorded, nil
+}
+
+// view assembles the externally visible consent summary.
+func (s *CraftShareService) view(ctx context.Context, scope craft.Scope, versionID string) (CraftShareView, error) {
+	contribution, err := s.contribution(ctx, scope, versionID)
+	if err != nil {
+		return CraftShareView{}, err
+	}
+	decision, err := s.decision(ctx, scope, versionID)
+	if err != nil {
+		return CraftShareView{}, err
+	}
+	now := s.now()
+	state := craft.ShareStateOf(contribution, decision, now)
+	view := CraftShareView{Contribution: contribution, State: state}
+	if decision != nil && craft.DecisionBinds(decision.Decision, contribution) {
+		bound := decision.Decision
+		view.Decision = &bound
+		if state == craft.ShareStateConsented {
+			expires := decision.DecidedAt.Add(craft.ShareDecisionTTL)
+			view.ExpiresAt = &expires
+		}
+	}
+	return view, nil
+}
+
+// ShareView projects one version's consent summary to a task member
+// (a TaskRead fact). The projection is typed consent facts only.
+func (s *CraftShareService) ShareView(ctx context.Context, scope craft.Scope, versionID string) (CraftShareView, error) {
+	if err := craft.RequireTaskAccess(ctx, s.taskAccess, scope, craft.TaskRead); err != nil {
+		return CraftShareView{}, err
+	}
+	return s.view(ctx, scope, versionID)
+}
+
+// DecideShare records the owner's explicit decision. Only the CURRENT Task
+// Owner can consent (a fresh TaskShare check on every submission — a
+// revoked owner is refused like any non-owner). The decision binds the
+// contribution computed server-side at submission time; seenDigest is the
+// evidence digest the owner is deciding on, and a mismatch is a conflict:
+// replaying a decision recorded for other evidence creates no authority.
+func (s *CraftShareService) DecideShare(ctx context.Context, scope craft.Scope, versionID string, decision craft.DecisionStatus, seenDigest string) (CraftShareView, error) {
+	if decision != craft.DecisionApproved && decision != craft.DecisionRejected {
+		return CraftShareView{}, fmt.Errorf("%w: share decision must be approved or rejected", craft.ErrInvalidInput)
+	}
+	seenDigest = strings.TrimSpace(seenDigest)
+	if seenDigest == "" {
+		return CraftShareView{}, fmt.Errorf("%w: a share decision must state the evidence digest it binds", craft.ErrInvalidInput)
+	}
+	if err := craft.RequireTaskAccess(ctx, s.taskAccess, scope, craft.TaskShare); err != nil {
+		s.auditShare(ctx, scope, versionID, "craft.share_denied", "denied", map[string]string{"attempted_decision": string(decision)})
+		return CraftShareView{}, err
+	}
+	caller := types.CallerFromContext(ctx)
+	if caller.TenantID != scope.TenantID || caller.UserID != scope.UserID {
+		return CraftShareView{}, craft.ErrForbidden
+	}
+	contribution, err := s.contribution(ctx, scope, versionID)
+	if err != nil {
+		return CraftShareView{}, err
+	}
+	if seenDigest != contribution.EvidenceDigest {
+		return CraftShareView{}, fmt.Errorf("%w: the decision binds other evidence than the version's current evidence", craft.ErrConflict)
+	}
+	now := s.now()
+	row := craftShareDecisionRow{
+		TenantID: scope.TenantID, SessionID: scope.SessionID, VersionID: contribution.VersionID,
+		EvidenceDigest: contribution.EvidenceDigest, OwnerID: scope.UserID, Decision: decision,
+		DecidedAt: now, RevokedAt: nil, CreatedAt: now, UpdatedAt: now,
+	}
+	// One row per task+version: a fresh decision replaces (and thereby
+	// supersedes) whatever was decided before, including its timestamps.
+	if err := s.db.WithContext(ctx).Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "tenant_id"}, {Name: "session_id"}, {Name: "version_id"}},
+		DoUpdates: clause.AssignmentColumns([]string{"evidence_digest", "owner_id", "decision", "decided_at", "revoked_at", "updated_at"}),
+	}).Create(&row).Error; err != nil {
+		return CraftShareView{}, err
+	}
+	s.auditShare(ctx, scope, contribution.VersionID, "craft.share_decision_recorded", "success", map[string]string{
+		"decision": string(decision), "evidence_digest": contribution.EvidenceDigest,
+	})
+	return s.view(ctx, scope, versionID)
+}
+
+// RevokeShare ends a live consent: the persisted decision row is marked
+// revoked and can never grant again, even inside its TTL. Only the current
+// Task Owner may revoke.
+func (s *CraftShareService) RevokeShare(ctx context.Context, scope craft.Scope, versionID string) (CraftShareView, error) {
+	if err := craft.RequireTaskAccess(ctx, s.taskAccess, scope, craft.TaskShare); err != nil {
+		s.auditShare(ctx, scope, versionID, "craft.share_denied", "denied", map[string]string{"attempted_decision": "revoke"})
+		return CraftShareView{}, err
+	}
+	caller := types.CallerFromContext(ctx)
+	if caller.TenantID != scope.TenantID || caller.UserID != scope.UserID {
+		return CraftShareView{}, craft.ErrForbidden
+	}
+	versionID = strings.TrimSpace(versionID)
+	now := s.now()
+	result := s.db.WithContext(ctx).
+		Where("tenant_id = ? AND session_id = ? AND version_id = ? AND revoked_at IS NULL", scope.TenantID, scope.SessionID, versionID).
+		Updates(&craftShareDecisionRow{RevokedAt: &now, UpdatedAt: now})
+	if result.Error != nil {
+		return CraftShareView{}, result.Error
+	}
+	if result.RowsAffected > 0 {
+		s.auditShare(ctx, scope, versionID, "craft.share_revoked", "success", nil)
+	}
+	// No live row (never decided, or already revoked): revocation is
+	// idempotent and the view simply reports the resulting state.
+	return s.view(ctx, scope, versionID)
+}
+
+// ShareAuthority is the gate downstream sharing surfaces (T13 export, T20
+// composition) consult: it re-derives the contribution from recorded
+// evidence and reports whether a live approved owner decision binds it
+// right now. It grants no original-source access by construction — the
+// answer is the typed contribution plus a boolean.
+func (s *CraftShareService) ShareAuthority(ctx context.Context, scope craft.Scope, versionID string) (craft.RestrictedContribution, bool, error) {
+	if err := craft.RequireTaskAccess(ctx, s.taskAccess, scope, craft.TaskRead); err != nil {
+		return craft.RestrictedContribution{}, false, err
+	}
+	contribution, err := s.contribution(ctx, scope, versionID)
+	if err != nil {
+		return craft.RestrictedContribution{}, false, err
+	}
+	if !contribution.Restricted {
+		return contribution, true, nil
+	}
+	decision, err := s.decision(ctx, scope, versionID)
+	if err != nil {
+		return contribution, false, err
+	}
+	return contribution, craft.GrantsShareAuthority(contribution, decision, s.now()), nil
+}
+
+// auditShare records a durable sharing event into the shared audit trail.
+// The write failure is logged, never propagated: authority was already
+// decided and must not flip on the audit sink.
+func (s *CraftShareService) auditShare(ctx context.Context, scope craft.Scope, versionID, action, outcome string, details map[string]string) {
+	actor, full := craftAuditActorUserID(scope.UserID)
+	if details == nil {
+		details = map[string]string{}
+	}
+	if full != "" {
+		details["actor_user_id_full"] = full
+	}
+	raw, err := json.Marshal(details)
+	if err != nil {
+		raw = []byte(`{}`)
+	}
+	if err := s.db.WithContext(ctx).Create(&craftAccessAudit{
+		TenantID: scope.TenantID, ActorUserID: actor, Action: action,
+		ScopeType: "session", ScopeID: scope.SessionID, TargetType: "artifact_version",
+		TargetID: strings.TrimSpace(versionID), Outcome: outcome,
+		Details: types.JSON(raw), CreatedAt: time.Now(),
+	}).Error; err != nil {
+		logger.ErrorWithFields(ctx, err, map[string]interface{}{"audit_action": action})
+	}
+}
