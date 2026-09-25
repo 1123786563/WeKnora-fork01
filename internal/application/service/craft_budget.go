@@ -1004,6 +1004,12 @@ func (s *CraftBudgetService) Extend(ctx context.Context, grantID, key string, ex
 	}
 	var applied repocommercial.TaskBudgetExtensionRow
 	if err := s.db.WithContext(ctx).Where("tenant_id = ? AND run_id = ? AND key = ?", row.TenantID, row.RunID, key).Take(&applied).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// ExtendTaskLimit just applied (or idempotently replayed) this key,
+			// so a missing extension row means the durable extension evidence
+			// vanished — surface the domain NotFound instead of a bare gorm error.
+			return craft.ErrNotFound
+		}
 		return err
 	}
 	if commercial.Credits(applied.ExtraMicro) != extraCredits {

@@ -195,6 +195,34 @@ type craftCancelAdapterEventRow struct {
 
 func (craftCancelAdapterEventRow) TableName() string { return "agent_run_events" }
 
+// craftCancelAdapterEffectIntentRow mirrors the production
+// craftRunViewEffectIntentRow schema: cancelRunTx always passes through
+// rejectUnresolvedCraftRunViewEffects, so the Workbench cancel fixture must
+// provision craft_run_view_effect_intents even when no intent is seeded.
+type craftCancelAdapterEffectIntentRow struct {
+	TenantID              uint64 `gorm:"primaryKey"`
+	RunID                 string `gorm:"primaryKey"`
+	OwnerID               string
+	SessionID             string
+	Generation            string
+	EffectKind            string
+	RequestDigest         string
+	ClaimToken            string
+	ActorUserID           string
+	WriterOwner           string
+	FenceEpoch            int64
+	SnapshotDigestVersion int
+	SnapshotDigest        string
+	State                 string
+	Outcome               string
+	Receipt               string
+	CreatedAt             time.Time
+	UpdatedAt             time.Time
+	FinishedAt            *time.Time
+}
+
+func (craftCancelAdapterEffectIntentRow) TableName() string { return "craft_run_view_effect_intents" }
+
 func TestGormCancelPortDefersUnresolvedCraftStart(t *testing.T) {
 	dsn := "file:" + filepath.Join(t.TempDir(), "craft-cancel.db") + "?_foreign_keys=on&_busy_timeout=5000"
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
@@ -202,7 +230,7 @@ func TestGormCancelPortDefersUnresolvedCraftStart(t *testing.T) {
 	sqlDB, err := db.DB()
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = sqlDB.Close() })
-	require.NoError(t, db.AutoMigrate(&craftCancelAdapterRunRow{}, &craftCancelAdapterSessionRow{}, &craftCancelAdapterJournalRow{}, &craftCancelAdapterEventRow{}))
+	require.NoError(t, db.AutoMigrate(&craftCancelAdapterRunRow{}, &craftCancelAdapterSessionRow{}, &craftCancelAdapterJournalRow{}, &craftCancelAdapterEventRow{}, &craftCancelAdapterEffectIntentRow{}))
 	lease := time.Now().Add(time.Minute)
 	activeRun := "charge-workbench-cancel"
 	require.NoError(t, db.Create(&craftCancelAdapterRunRow{
