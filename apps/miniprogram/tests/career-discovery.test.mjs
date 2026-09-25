@@ -18,6 +18,7 @@ globalThis.__API_ORIGIN__ = 'https://api.example.test';
 const { stub } = await import('./helpers/taro-stub.mjs');
 const runtime = await import('../src/services/runtime.ts');
 const career = await import('../src/services/career.ts');
+const { errorMessage } = await import('../src/core/errors.ts');
 
 const me = () => ({ success: true, data: { user: { id: 'u1', username: 'Lin' }, tenant: { id: 1, name: 'Space' }, memberships: [] } });
 const fact = (key, value, revision = 3) => ({ key, value, revision, source: { kind: 'resume' }, confirmation: { userId: 'u1', confirmedAt: '2026-09-25T00:00:00Z' }, confirmedAt: '2026-09-25T00:00:00Z' });
@@ -234,6 +235,37 @@ test('D5: an unknown search outcome is recovered through the receipt endpoint wi
   assert.equal(career.pendingSearch(), null, 'recovery clears the intent');
   const receiptCall = careerCall('/searches/receipt')[0];
   assert.equal(new URL(receiptCall.options.url).searchParams.get('requestId'), pending.requestId, 'recovery replays the original request id');
+});
+
+test('D4b: a quota refusal renders the dedicated actionable prompt through the real error chain', async () => {
+  await freshLogin({
+    'GET /api/v1/career/open': call => stub.succeed(call, { data: { revision: 0, facts: [], proposals: [] } }),
+    'POST /api/v1/career/searches': call => stub.succeed(call, { statusCode: 429, data: { error: { code: 'search_quota_refused', message: 'quota' } } }),
+  });
+  await career.loadCareer();
+  const refused = await career.searchOnce('任意岗位').catch(error => error);
+  assert.equal(refused.code, 'search_quota_refused', 'the typed refusal reaches the app');
+  // 页面渲染链：useAction 捕获后经 errorMessage() 成串（searchBusy.error），Notice 呈现。
+  // 专属提示必须经这条真实链路可达，而不是死代码。
+  const shown = errorMessage(refused);
+  assert.ok(shown.includes('搜索额度不足'), 'the dedicated quota prompt is what the UI renders');
+  assert.ok(shown.includes('仍可查看既有档案与申请记录'), 'the prompt keeps the quota-exhausted readability guarantee');
+});
+
+test('D7: a quota-refused safe resend keeps the typed code, the dedicated prompt, and the intent', async () => {
+  let postFails = true;
+  await freshLogin({
+    'GET /api/v1/career/open': call => stub.succeed(call, { data: { revision: 0, facts: [], proposals: [] } }),
+    'POST /api/v1/career/searches': call => { if (postFails) stub.fail(call, 'request:fail network'); else stub.succeed(call, { statusCode: 429, data: { error: { code: 'search_quota_refused', message: 'quota' } } }); },
+  });
+  await career.loadCareer();
+  await assert.rejects(career.searchOnce('Go 工程师'), error => error.code === 'outcome_unknown');
+  const pending = career.pendingSearch();
+  postFails = false;
+  const refused = await career.retryPendingSearch().catch(error => error);
+  assert.equal(refused.code, 'search_quota_refused', 'the resend path surfaces the typed refusal');
+  assert.ok(errorMessage(refused).includes('搜索额度不足'), 'the dedicated prompt also covers the resend path');
+  assert.equal(career.pendingSearch()?.requestId, pending.requestId, 'a refused resend keeps the intent for later recovery');
 });
 
 test('E1: share import previews verbatim before any network write, then submits the same payload', async () => {

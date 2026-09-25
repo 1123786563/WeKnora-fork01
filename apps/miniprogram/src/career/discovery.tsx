@@ -33,7 +33,9 @@ export default function DiscoveryPage() {
 
   const pendingFactAction = career.pendingAction();
   const pendingSearch = career.pendingSearch();
-  const quotaRefused = searchBusy.error?.includes('search_quota_refused');
+  // 额度不足专属提示（typed 429 search_quota_refused）经 errorMessage 真实可达：
+  // useAction 存的串即页面呈现文案，专属句式同时决定 Notice 降为 warning 而非失败。
+  const quotaRefused = (message?: string) => message?.includes('搜索额度不足') ?? false;
 
   const copyLink = (link: string) => { void Taro.setClipboardData({ data: link }).then(() => Taro.showToast({ title: '链接已复制', icon: 'none' })); };
 
@@ -97,7 +99,7 @@ export default function DiscoveryPage() {
       <View className='wk-between'><View className='wk-tdesign-scope'>
         <t-button block size='large' theme='primary' ariaLabel='发起一次性搜索' customStyle={tdesignButtonStyle} loading={searchBusy.busy} onTap={() => void searchBusy.run(async () => { setSearchOut(await career.searchOnce(searchInput)); })}>搜索</t-button>
       </View></View>
-      {searchBusy.error && <Notice tone={quotaRefused ? 'warning' : 'danger'}>{searchBusy.error}{quotaRefused ? ' 搜索额度不足：仍可查看既有档案与申请记录。' : ''}</Notice>}
+      {searchBusy.error && <Notice tone={quotaRefused(searchBusy.error) ? 'warning' : 'danger'}>{searchBusy.error}</Notice>}
       {pendingSearch && <Notice tone='warning'>有一次结果未知的搜索（{pendingSearch.query}）。</Notice>}
       {pendingSearch && <Action secondary loading={recoverBusy.busy} onClick={() => void recoverBusy.run(async () => { setSearchOut(await career.searchReceipt()); })}>用原请求对账</Action>}
       {searchOut && <>
