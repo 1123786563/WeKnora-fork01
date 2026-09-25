@@ -25,6 +25,8 @@ package plugins_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -62,6 +64,19 @@ type driftRepo struct {
 	*upgradeAcceptRepo
 	driftWrites     []driftWrite
 	updateDriftErr error
+	// conditionalWrites 记录 UpdateDriftIfToolsDigest 调用（T17-OCR1-F2：
+	// best-effort 置位走基线前校的条件写）；applied 标记条件命中与否。
+	conditionalWrites []driftConditionalWrite
+	// staleRead 非 nil 时 GetByServiceID 返回它——模拟 provider 读行后、
+	// 落库前行快照被并发重定基推进的竞态窗口（T17-OCR1-F2 回归）。
+	staleRead *types.PluginInstallation
+}
+
+// driftConditionalWrite 记录一次基线前校的条件漂移写。
+type driftConditionalWrite struct {
+	expectDigest string
+	state        string
+	applied      bool
 }
 
 func (r *driftRepo) UpdateDrift(
@@ -85,6 +100,42 @@ func (r *driftRepo) UpdateDrift(
 	return gorm.ErrRecordNotFound
 }
 
+// UpdateDriftIfToolsDigest 是条件漂移写的同构内存实现：行的 tools_digest
+// 仍等于 expectDigest 才落（零行 = 基线已前进，applied=false，非错误）。
+func (r *driftRepo) UpdateDriftIfToolsDigest(
+	_ context.Context, tenantID uint64, id, expectToolsDigest, state string, detail json.RawMessage,
+) (bool, error) {
+	for _, inst := range r.installations {
+		if inst.TenantID == tenantID && inst.ID == id {
+			if inst.ToolsDigest != expectToolsDigest {
+				r.conditionalWrites = append(r.conditionalWrites, driftConditionalWrite{
+					expectDigest: expectToolsDigest, state: state, applied: false,
+				})
+				return false, nil
+			}
+			inst.DriftState = state
+			if detail == nil {
+				inst.DriftDetail = nil
+			} else {
+				inst.DriftDetail = append(json.RawMessage(nil), detail...)
+			}
+			r.conditionalWrites = append(r.conditionalWrites, driftConditionalWrite{
+				expectDigest: expectToolsDigest, state: state, applied: true,
+			})
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// GetByServiceID 遮蔽嵌入实现：staleRead 在场时返回过期视图（竞态模拟）。
+func (r *driftRepo) GetByServiceID(ctx context.Context, tenantID uint64, serviceID string) (*types.PluginInstallation, error) {
+	if r.staleRead != nil {
+		return r.staleRead, nil
+	}
+	return r.upgradeAcceptRepo.GetByServiceID(ctx, tenantID, serviceID)
+}
+
 // driftStack：plugintest 单远端 + 可下线清单 host + 包装仓储 + 真实
 // PluginService，落一条已确认安装（快照 [a, b]，均只读）。
 type driftStack struct {
@@ -99,6 +150,9 @@ type driftStack struct {
 	manifestHost *httptest.Server
 	manifestNext *[]byte
 	inst         *types.PluginInstallation
+	// setLister 运行时替换服务持有的 EndpointLister（T17-OCR1-F6 回归：
+	// 注入重名/超限/坏名目录的 stub，观察 resolve 的卫生门拒绝）。
+	setLister func(plugins.EndpointLister)
 }
 
 // driftInstalledTools 是安装时（快照基线）的目录：a、b 两个只读工具。
@@ -153,8 +207,13 @@ func newDriftStack(t *testing.T, tenantID uint64) *driftStack {
 		manifestHost: manifestHost,
 		manifestNext: &manifestJSON,
 	}
+	// 可替换 lister：默认真实 manager lister，测试可热换 stub。
+	var listerFn plugins.EndpointLister = newManagerLister(manager)
+	stack.setLister = func(fn plugins.EndpointLister) { listerFn = fn }
 	stack.svc = service.NewPluginService(pluginRepo, mcpSvcService, mcpRepo, approvalSvc,
-		newManagerLister(manager), nil, nil)
+		func(ctx context.Context, transportType, endpointURL string) ([]*types.MCPTool, error) {
+			return listerFn(ctx, transportType, endpointURL)
+		}, nil, nil)
 
 	ctx := context.Background()
 	preview, err := stack.svc.PreviewFromManifest(ctx, tenantID, "admin-1", manifestHost.URL+"/manifest.json")
@@ -431,6 +490,179 @@ func installationToolViewNames(tools []types.PluginInstallationToolView) []strin
 		names = append(names, tool.Name)
 	}
 	return names
+}
+
+// TestResolveDriftCompensationKeepsDriftState（T17-OCR1-F1）：resolve 中途
+// 失败补偿回写旧快照时，必须一并恢复调用前的漂移判定与已持久化的漂移
+// 明细（审计材料）——UpdateInstallationAccepted 无条件清 drift 列，而补偿
+// 语义是回到调用前：此时端点仍偏离旧快照，行上必须仍是 detected + 原
+// detail，否则成员目录被 ErrPluginDrift 阻断而 GetDrift 显示 none。
+func TestResolveDriftCompensationKeepsDriftState(t *testing.T) {
+	const tenantID = uint64(11)
+	s := newDriftStack(t, tenantID)
+	ctx := context.Background()
+
+	// 漂移（a schema 变 + 新增 c——新增工具驱动 5b 策略行写入，是补偿
+	// 路径的触发面）→ CheckDrift 置位 detected 并落明细。
+	s.remote.SetTools([]plugintest.Tool{
+		{Name: "a", Description: "tool a", ReadOnly: true, InputSchema: driftSchemaA2},
+		{Name: "b", Description: "tool b", ReadOnly: true, InputSchema: upgradeV1SearchSchema},
+		{Name: "c", Description: "tool c", ReadOnly: true, InputSchema: upgradeV2WriteSchema},
+	})
+	_, err := s.svc.CheckDrift(ctx, tenantID, s.inst.ID)
+	require.NoError(t, err)
+	driftedState := cloneInstallation(s.innerRepo.installations[0])
+	require.Equal(t, types.PluginDriftDetected, driftedState.DriftState)
+	require.NotNil(t, driftedState.DriftDetail)
+	driftedDetail := append(json.RawMessage(nil), driftedState.DriftDetail...)
+
+	// 5b 策略行写入失败 → 补偿。
+	s.approvalRepo.upsertErr = errors.New("injected policy fault on resolve")
+	_, err = s.svc.ResolveDrift(ctx, tenantID, "admin-1", s.inst.ID)
+	require.Error(t, err)
+
+	// 补偿后：快照回旧（既有语义）+ 漂移判定/明细恢复调用前（F1 修复面）。
+	after := cloneInstallation(s.innerRepo.installations[0])
+	require.Equal(t, driftedState.ToolsDigest, after.ToolsDigest, "the snapshot must roll back")
+	require.ElementsMatch(t, snapshotToolNames(driftedState.ToolsSnapshot), snapshotToolNames(after.ToolsSnapshot))
+	require.Equal(t, types.PluginDriftDetected, after.DriftState,
+		"compensation must restore the drift VERDICT — the endpoint still deviates from the rolled-back snapshot (T17-OCR1-F1)")
+	require.Equal(t, string(driftedDetail), string(after.DriftDetail),
+		"compensation must restore the persisted drift detail document (audit material)")
+}
+
+// TestDriftMarkerConditionalWriteSkipsRebasedRow（T17-OCR1-F2）：best-effort
+// 置位与重定基的竞态窗口——provider 读到旧基线行（digest D1）后、落库前，
+// 并发 ResolveDrift 已把行重定基（快照含 c、digest D2、state=none）：此时
+// 基于 D1 基线算出的 detected+明细不得落库到已重定基的行上（管理端会看到
+// 虚假 detected、明细描述已不存在的基线，且置位后 marker 不再自愈）。
+// 修复形态：置位走「以 tools_digest 为前置的条件更新」，基线已前进则零写。
+func TestDriftMarkerConditionalWriteSkipsRebasedRow(t *testing.T) {
+	const tenantID = uint64(11)
+	s := newDriftStack(t, tenantID)
+	ctx := context.Background()
+
+	// 调用前基线（快照 [a,b]、digest D1、state=none）——竞态模拟里
+	// provider 读到的过期视图；必须在 resolve 之前保存（栈内 inst 与行
+	// 存储共享指针，resolve 会把它重定基）。
+	staleBaseline := cloneInstallation(s.inst)
+	staleBaseline.DriftState = types.PluginDriftNone
+	staleBaseline.DriftDetail = nil
+
+	// 行的真实状态：已被（模拟的）并发 resolve 重定基到 [a, c]——digest
+	// D2、state=none。
+	s.remote.SetTools([]plugintest.Tool{
+		{Name: "a", Description: "tool a", ReadOnly: true, InputSchema: driftSchemaA},
+		{Name: "c", Description: "tool c", ReadOnly: true, InputSchema: upgradeV2WriteSchema},
+	})
+	live := []*types.MCPTool{
+		{Name: "a", Description: "tool a", InputSchema: json.RawMessage(driftSchemaA)},
+		{Name: "c", Description: "tool c", InputSchema: json.RawMessage(upgradeV2WriteSchema)},
+	}
+	rebased, err := s.svc.ResolveDrift(ctx, tenantID, "admin-1", s.inst.ID)
+	require.NoError(t, err)
+	rebasedState := cloneInstallation(s.innerRepo.installations[0])
+	require.Equal(t, types.PluginDriftNone, rebasedState.DriftState)
+	require.Equal(t, "1.0.0", rebased.Version)
+
+	// 竞态模拟：provider/标记器读到的是重定基前的过期行——staleRead
+	// 遮蔽 GetByServiceID。
+	s.pluginRepo.staleRead = staleBaseline
+
+	// 目录实况 [a, c]：按 D1 过期基线算出漂移（Added=[c], Removed=[b]）。
+	// 标记器必须以 D1 为前置条件落库——行的 digest 已是 D2 → 零写放弃。
+	guard := service.PluginSnapshotLookupWithDriftMarking(s.pluginRepo, func(
+		_ context.Context, _, _ string,
+	) ([]*types.MCPTool, error) {
+		return live, nil
+	})
+	snap, err := guard(ctx, tenantID, s.inst.ServiceID)
+	require.NoError(t, err)
+	require.NotNil(t, snap)
+
+	current := s.innerRepo.installations[0]
+	require.Equal(t, types.PluginDriftNone, current.DriftState,
+		"a stale-baseline detected verdict must NOT land on the rebased row (T17-OCR1-F2)")
+	require.Nil(t, current.DriftDetail)
+	require.Empty(t, s.pluginRepo.driftWrites,
+		"the unconditional UpdateDrift seam must not be used by the best-effort marker")
+	require.NotEmpty(t, s.pluginRepo.conditionalWrites,
+		"the marker must have attempted the baseline-guarded write")
+	require.False(t, s.pluginRepo.conditionalWrites[len(s.pluginRepo.conditionalWrites)-1].applied,
+		"the conditional write must observe the moved baseline and apply zero rows")
+	require.Equal(t, rebasedState.ToolsDigest, current.ToolsDigest)
+}
+
+// TestValidateLiveDirectoryForRebase（T17-OCR1-F6 纯函数面）：重定基入口
+// 对不可信 live 目录的卫生门与安装侧 BuildVerifiedSnapshot 同一套——上限
+// maxLiveTools、重名拒绝、名字过 validateName；空/合法目录放行。
+func TestValidateLiveDirectoryForRebase(t *testing.T) {
+	t.Run("accepts a clean directory", func(t *testing.T) {
+		live := []*types.MCPTool{
+			{Name: "a", Description: "tool a", InputSchema: json.RawMessage(driftSchemaA)},
+			{Name: "b", Description: "tool b", InputSchema: json.RawMessage(upgradeV1SearchSchema)},
+		}
+		require.NoError(t, plugins.ValidateLiveDirectoryForRebase(live))
+		require.NoError(t, plugins.ValidateLiveDirectoryForRebase(nil))
+	})
+
+	t.Run("rejects duplicate names", func(t *testing.T) {
+		live := []*types.MCPTool{
+			{Name: "a", Description: "one", InputSchema: json.RawMessage(driftSchemaA)},
+			{Name: "a", Description: "two", InputSchema: json.RawMessage(driftSchemaA)},
+		}
+		err := plugins.ValidateLiveDirectoryForRebase(live)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "duplicate tool name")
+	})
+
+	t.Run("rejects unhygienic names", func(t *testing.T) {
+		live := []*types.MCPTool{
+			{Name: "bad\x02name", Description: "ctrl", InputSchema: json.RawMessage(driftSchemaA)},
+		}
+		err := plugins.ValidateLiveDirectoryForRebase(live)
+		require.Error(t, err)
+	})
+
+	t.Run("rejects an oversized directory", func(t *testing.T) {
+		live := make([]*types.MCPTool, 1025)
+		for i := range live {
+			live[i] = &types.MCPTool{Name: fmt.Sprintf("t%d", i), InputSchema: json.RawMessage(driftSchemaA)}
+		}
+		err := plugins.ValidateLiveDirectoryForRebase(live)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "exceeding the maximum")
+	})
+}
+
+// TestResolveDriftRejectsUnhygienicLiveDirectory（T17-OCR1-F6 服务面）：
+// 恶意/劣化端点的重名目录不得被铸成已接受快照——resolve 在重定基前过
+// 卫生门，确定性拒绝（4xx 语义）且零写入。
+func TestResolveDriftRejectsUnhygienicLiveDirectory(t *testing.T) {
+	const tenantID = uint64(11)
+	s := newDriftStack(t, tenantID)
+	ctx := context.Background()
+
+	before := cloneInstallation(s.innerRepo.installations[0])
+	acceptedWritesBefore := len(s.pluginRepo.acceptedWrites)
+
+	// 注入重名目录（真实 MCP ListTools 下游已按名去重，这里是卫生门的
+	// 直接注入面——与 BuildVerifiedSnapshot 对清单路径的防备同构）。
+	s.setLister(func(_ context.Context, _, _ string) ([]*types.MCPTool, error) {
+		return []*types.MCPTool{
+			{Name: "a", Description: "one", InputSchema: json.RawMessage(driftSchemaA)},
+			{Name: "a", Description: "two", InputSchema: json.RawMessage(driftSchemaA2)},
+		}, nil
+	})
+
+	_, err := s.svc.ResolveDrift(ctx, tenantID, "admin-1", s.inst.ID)
+	require.Error(t, err)
+	require.ErrorIs(t, err, service.ErrPluginVerifyFailed)
+	require.Contains(t, err.Error(), "duplicate tool name")
+
+	// 零写入：安装行逐字段不变、无升级写。
+	require.Equal(t, before, cloneInstallation(s.innerRepo.installations[0]))
+	require.Len(t, s.pluginRepo.acceptedWrites, acceptedWritesBefore)
 }
 
 // Compile-time guard: drift_test.go 的栈组装依赖 upgradeV1SearchSchema /

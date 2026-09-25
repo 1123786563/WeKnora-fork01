@@ -137,15 +137,26 @@ func markDriftBestEffort(
 		logger.GetLogger(ctx).Errorf("plugin drift marker: failed to encode detail for installation %s: %v", inst.ID, err)
 		return
 	}
-	writer, ok := repo.(installationDriftWriter)
+	// Baseline-guarded write (T17-OCR1-F2): the marker runs unserialized, so
+	// the verdict lands only while the row still carries the baseline it was
+	// computed against — a concurrently rebased row (accept/resolve) makes
+	// the precondition miss and the stale verdict is dropped, never written.
+	writer, ok := repo.(installationDriftMarker)
 	if !ok {
 		logger.GetLogger(ctx).Errorf(
-			"plugin drift marker: repository %T does not implement installationDriftWriter", repo)
+			"plugin drift marker: repository %T does not implement installationDriftMarker", repo)
 		return
 	}
-	if err := writer.UpdateDrift(ctx, tenantID, inst.ID, types.PluginDriftDetected, raw); err != nil {
+	applied, err := writer.UpdateDriftIfToolsDigest(ctx, tenantID, inst.ID, inst.ToolsDigest, types.PluginDriftDetected, raw)
+	if err != nil {
 		logger.GetLogger(ctx).Errorf(
 			"plugin drift marker: failed to persist detected state for installation %s: %v", inst.ID, err)
+		return
+	}
+	if !applied {
+		logger.GetLogger(ctx).Infof(
+			"plugin drift marker: baseline for installation %s moved before the verdict landed — dropping the stale detection",
+			inst.ID)
 		return
 	}
 	logger.GetLogger(ctx).Infof(
@@ -294,6 +305,27 @@ type installationDriftWriter interface {
 	// UpdateDrift persists one installation's drift state and detail in one
 	// parameter-bound update; detail == nil clears the column.
 	UpdateDrift(ctx context.Context, tenantID uint64, id, state string, detail json.RawMessage) error
+}
+
+// installationDriftMarker is the BASELINE-GUARDED persistence capability the
+// best-effort runtime marker needs (T17-OCR1-F2): the marker runs OUTSIDE the
+// accept/resolve serialization (it sits on the member directory-load path and
+// must not hold the lock across a live ListTools), so its write carries the
+// tools_digest it computed the verdict against as a precondition — one
+// parameter-bound UPDATE ... WHERE tools_digest = ?. When the baseline moved
+// (a concurrent CheckDrift/ResolveDrift/accept rebased the snapshot between
+// the marker's read and its write), ZERO rows match and applied=false: the
+// stale verdict (a detail naming tools outside the new baseline) never lands
+// on the rebased row — the marker gives up silently, and the next load
+// re-evaluates against the new baseline.
+type installationDriftMarker interface {
+	// UpdateDriftIfToolsDigest persists the drift verdict only while the
+	// installation row's tools_digest still equals expectToolsDigest.
+	// applied reports whether the row was written; a moved baseline is NOT
+	// an error.
+	UpdateDriftIfToolsDigest(
+		ctx context.Context, tenantID uint64, id, expectToolsDigest, state string, detail json.RawMessage,
+	) (applied bool, err error)
 }
 
 // upgradeAcceptMutexes serializes AcceptUpgrade per installation
@@ -1421,11 +1453,21 @@ func parseDriftDetail(ctx context.Context, raw json.RawMessage) *types.PluginDri
 // baseline again (drift is not a one-way ratchet; a healed endpoint heals the
 // row). The fetch happens BEFORE any write, so an unreachable endpoint
 // rejects with zero writes. A foreign tenant's installation ID is "not found".
+//
+// Serialized by the SAME per-installation mutex as AcceptUpgrade/ResolveDrift
+// (T17-OCR1-F2): without it, a check that read the OLD snapshot could land a
+// detected verdict (and a detail naming the old baseline) onto a row a
+// concurrent resolve already rebased — a stale verdict the runtime marker
+// then never self-heals (state==detected skips re-evaluation). Holding the
+// mutex across the live ListTools matches the accept/resolve shape (the lock
+// spans remote I/O by design, upgradeAcceptMutexes).
 func (s *pluginService) CheckDrift(
 	ctx context.Context,
 	tenantID uint64,
 	installationID string,
 ) (*types.PluginDriftReport, error) {
+	defer lockUpgradeAccept(installationID)()
+
 	inst, err := s.pluginRepo.GetInstallation(ctx, tenantID, installationID)
 	if err != nil {
 		logger.GetLogger(ctx).Errorf("failed to load plugin installation: %v", err)
@@ -1592,13 +1634,20 @@ func (s *pluginService) ResolveDrift(
 		return nil, ErrInstallationNotFound
 	}
 
-	// Step 2: capability seam — the rebase persists (and compensates) through
-	// the T16 upgrade writer.
+	// Step 2: capability seams — the rebase persists (and compensates) through
+	// the T16 upgrade writer, and the compensation restores the drift verdict
+	// through the drift writer (T17-OCR1-F1).
 	writer, ok := s.pluginRepo.(installationUpgradeWriter)
 	if !ok {
 		logger.GetLogger(ctx).Errorf(
 			"plugin drift resolve: repository %T does not implement installationUpgradeWriter", s.pluginRepo)
 		return nil, ErrUpgradeWriterNotWired
+	}
+	driftWriter, ok := s.pluginRepo.(installationDriftWriter)
+	if !ok {
+		logger.GetLogger(ctx).Errorf(
+			"plugin drift resolve: repository %T does not implement installationDriftWriter", s.pluginRepo)
+		return nil, ErrDriftPersistFailed
 	}
 
 	// Step 3: the remote truth the admin is accepting — the accepted
@@ -1606,6 +1655,18 @@ func (s *pluginService) ResolveDrift(
 	live, err := s.liveDirectoryFromAcceptedEndpoint(ctx, inst)
 	if err != nil {
 		return nil, err
+	}
+	// Hygiene gate (T17-OCR1-F6): drift's premise is that the endpoint may
+	// have turned hostile, and this directory is about to be minted into the
+	// tenant's accepted snapshot (DB rows, per-tool policies, the
+	// member-visible directory) — the same gates BuildVerifiedSnapshot runs
+	// the install path's directory through: size cap, duplicate-name
+	// rejection, identifier hygiene. A rejection is deterministic 4xx with
+	// ZERO writes.
+	if err := plugins.ValidateLiveDirectoryForRebase(live); err != nil {
+		logger.GetLogger(ctx).Errorf(
+			"plugin drift resolve: live directory rejected for installation %s: %v", installationID, err)
+		return nil, fmt.Errorf("%w: %v", ErrPluginVerifyFailed, err)
 	}
 
 	rebased := rebaseSnapshotOnLive(live, inst.ToolsSnapshot)
@@ -1631,9 +1692,18 @@ func (s *pluginService) ResolveDrift(
 		}
 	}
 
-	// Memory-held old values — the compensation write-back source.
+	// Memory-held old values — the compensation write-back source. The drift
+	// verdict is captured alongside the snapshot fields: UpdateInstallation-
+	// Accepted resets drift as part of the accepting write, and the
+	// compensation must restore BOTH (T17-OCR1-F1). Local copies, never
+	// fields read back off inst at compensation time — the in-memory row can
+	// be aliased by the forward write (the fake repositories mutate the same
+	// pointer; a gorm row is a fresh scan either way, but the compensation
+	// must not depend on that).
 	oldSnapshot := append(types.PluginPreviewTools(nil), inst.ToolsSnapshot...)
 	oldDigest := inst.ToolsDigest
+	oldDriftState := inst.DriftState
+	oldDriftDetail := append(json.RawMessage(nil), inst.DriftDetail...)
 
 	// Step 5a: installation row first — the snapshot is the runtime
 	// authority; UpdateInstallationAccepted resets drift as part of the
@@ -1661,6 +1731,19 @@ func (s *pluginService) ResolveDrift(
 			inst.AcceptedVersion, inst.EndpointURL, oldSnapshot, oldDigest); err != nil {
 			logger.GetLogger(ctx).Errorf(
 				"plugin drift resolve compensation: failed to restore installation %s snapshot: %v", installationID, err)
+		} else {
+			// UpdateInstallationAccepted unconditionally resets drift to
+			// none — the compensation must ALSO restore the drift verdict it
+			// cleared (T17-OCR1-F1): the endpoint still deviates from the
+			// restored snapshot, and the persisted detail is audit material.
+			// Without this, member directories fail-closed on ErrPluginDrift
+			// while GetDrift reports "none" — a user-visible contradiction.
+			if err := driftWriter.UpdateDrift(compCtx, tenantID, installationID,
+				oldDriftState, oldDriftDetail); err != nil {
+				logger.GetLogger(ctx).Errorf(
+					"plugin drift resolve compensation: failed to restore drift verdict %q for installation %s: %v",
+					oldDriftState, installationID, err)
+			}
 		}
 		return cause
 	}

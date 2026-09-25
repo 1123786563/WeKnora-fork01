@@ -271,6 +271,31 @@ func (r *pluginRepository) UpdateDrift(
 	return nil
 }
 
+// UpdateDriftIfToolsDigest is the BASELINE-GUARDED drift write the runtime
+// best-effort marker uses (T17-OCR1-F2): the UPDATE carries tools_digest =
+// expectToolsDigest as a precondition, so a verdict computed against an OLD
+// baseline can never land on a row a concurrent accept/resolve already
+// rebased. ZERO matching rows is NOT an error — applied=false tells the
+// caller the baseline moved and the stale verdict is dropped. Consumed via
+// the service's installationDriftMarker capability seam. All values are
+// parameter-bound.
+func (r *pluginRepository) UpdateDriftIfToolsDigest(
+	ctx context.Context, tenantID uint64, id, expectToolsDigest, state string, detail json.RawMessage,
+) (bool, error) {
+	result := r.db.WithContext(ctx).
+		Model(&types.PluginInstallation{}).
+		Where("tenant_id = ? AND id = ? AND tools_digest = ?", tenantID, id, expectToolsDigest).
+		Updates(map[string]interface{}{
+			"drift_state":  state,
+			"drift_detail": detail,
+			"updated_at":   time.Now(),
+		})
+	if result.Error != nil {
+		return false, result.Error
+	}
+	return result.RowsAffected > 0, nil
+}
+
 // DeleteInstallationToolPolicies removes the per-tool policy rows an upgrade
 // accept CREATED in that call (T16-OCR1-F2 compensation): when the incremental
 // policy loop fails mid-way, the rows already landed for tools of the

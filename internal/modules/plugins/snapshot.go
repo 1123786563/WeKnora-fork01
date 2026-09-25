@@ -384,6 +384,50 @@ func DiffLiveAgainstSnapshot(live []*types.MCPTool, snap []types.PluginToolSnaps
 	return detail
 }
 
+// ValidateLiveDirectoryForRebase vets an UNTRUSTED live directory before
+// ResolveDrift mints it into the tenant's accepted snapshot (T17-OCR1-F6):
+// the install/upgrade path runs the same directory through
+// BuildVerifiedSnapshot's hygiene gates (size cap, duplicate-name rejection,
+// per-name identifier hygiene) — and drift's PREMISE is that the endpoint may
+// have turned hostile, so the rebase path must not trust what the install
+// path vetted. Semantics mirror BuildVerifiedSnapshot exactly:
+//
+//   - more than maxLiveTools tools → rejection (a hostile endpoint cannot
+//     balloon the snapshot, the policy rows and the member-visible directory,
+//     nor stretch the serialized DB writes inside the resolve's lock);
+//   - one duplicated name → rejection (letting either entry win would mint a
+//     self-contradictory baseline — the same verdict the install path gives);
+//   - a name failing the identifier hygiene rules → rejection (unvetted
+//     names must not reach the snapshot, the per-tool policy rows or the
+//     member-visible directory). The `where` echoes the position index,
+//     never the untrusted name itself.
+//
+// A nil/empty clean directory passes (removing every tool is a reviewable
+// drift form, not an attack). The caller rejects the resolve with ZERO
+// writes on any error.
+func ValidateLiveDirectoryForRebase(live []*types.MCPTool) error {
+	if len(live) > maxLiveTools {
+		return fmt.Errorf("live endpoint returned %d tools, exceeding the maximum of %d", len(live), maxLiveTools)
+	}
+	seen := make(map[string]bool, len(live))
+	for i, tool := range live {
+		if tool == nil {
+			continue
+		}
+		// Vet up front, keyed by position (never echo the untrusted name):
+		// everything that reaches the duplicate echo below has passed the
+		// same hygiene the install path enforces.
+		if err := validateName(fmt.Sprintf("live tools[%d].name", i), tool.Name, maxToolNameLen); err != nil {
+			return err
+		}
+		if seen[tool.Name] {
+			return fmt.Errorf("live endpoint returned duplicate tool name %q", tool.Name)
+		}
+		seen[tool.Name] = true
+	}
+	return nil
+}
+
 // ComparePluginVersions compares two weknora.plugin/1 version strings
 // (MAJOR.MINOR.PATCH) by three-segment numeric value: -1 when a < b, 0 when
 // equal, 1 when a > b (T14's IsDowngrade basis). Versions reaching the plugin
