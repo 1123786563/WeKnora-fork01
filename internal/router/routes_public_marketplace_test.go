@@ -369,3 +369,175 @@ func TestPublicMarketplaceCatalogAndAdoptAuthorization(t *testing.T) {
 	missingRelease := publicCall(r, 2, false, http.MethodPost, "/api/v1/marketplace/public/listings/"+publicListingID+"/adopt", "admin", "adopter-admin", map[string]any{"release_id": "no-such-release"})
 	require.Equal(t, http.StatusNotFound, missingRelease.Code, missingRelease.Body.String())
 }
+
+// TestPublicMarketplaceCrossTenantEndToEndAndPrivacy 是 Issue #60 三条验收
+// 标准的最高稳定 Interface 证据（真实 sqlite 迁移流 + 真实服务栈 + 真实
+// HTTP）：
+//   AC1 跨 Tenant 只传播可移植 Release —— 发布者 Agent 的 KB/模型绑定
+//        （kb-publisher / model-publisher）不进入采用方本地 Agent；采用方
+//        的知识绑定完全来自本地映射（kb-tenant-2）。
+//   AC2 发布者和源 Tenant 无法读取采用方身份、映射或 Task 内容 ——
+//        发布者视角（tenant 1）全部可见响应不含任何采用方标识；公共目录
+//        行字段集被严格解码钉死。
+//   AC3 全链真实 HTTP：freeze → tenant release → tenant review → verify →
+//        public submit → platform review → catalog → adopt → variant →
+//        mapping → test → publish → GET /api/v1/agents（#33 移动 Resource
+//        Shelf wire）→ available-agents。
+func TestPublicMarketplaceCrossTenantEndToEndAndPrivacy(t *testing.T) {
+	r, _, db := newPublicMarketplaceTestApp(t)
+	listingID := publishTenantRelease(t, r)
+	// publicReleaseID 在本测试无断言消费，用 _ 接收（编译修复，断言语义不变）
+	publicListingID, _ := approvePublicRelease(t, r, listingID)
+
+	// --- 采用方（tenant 2）发现并引入 ---
+	catalog := publicCall(r, 2, false, http.MethodGet, "/api/v1/marketplace/public/catalog", "viewer", "viewer-2", nil)
+	require.Equal(t, http.StatusOK, catalog.Code, catalog.Body.String())
+	rows := decodeStrictCatalogRows(t, catalog.Body.Bytes())
+	require.Len(t, rows, 1)
+
+	adopted := publicCall(r, 2, false, http.MethodPost, "/api/v1/marketplace/public/listings/"+publicListingID+"/adopt", "admin", "adopter-admin", map[string]any{})
+	require.Equal(t, http.StatusCreated, adopted.Code, adopted.Body.String())
+	var adoptBody struct {
+		Data struct {
+			Introduction struct {
+				ID string `json:"id"`
+			} `json:"introduction"`
+			Adoption struct {
+				ID                string `json:"id"`
+				AcceptedReleaseID string `json:"accepted_release_id"`
+			} `json:"adoption"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(adopted.Body.Bytes(), &adoptBody))
+	introductionID := adoptBody.Data.Introduction.ID
+	adoptionID := adoptBody.Data.Adoption.ID
+	require.NotEmpty(t, introductionID)
+	require.Equal(t, introductionID, adoptBody.Data.Adoption.AcceptedReleaseID)
+
+	// --- 采用方本地 Variant 链（#59 端点原样） ---
+	variant := publicCall(r, 2, false, http.MethodPost, "/api/v1/marketplace/tenant/adoptions/"+adoptionID+"/variants", "admin", "adopter-admin", map[string]any{"name": "Imported helper"})
+	require.Equal(t, http.StatusCreated, variant.Code, variant.Body.String())
+	var variantBody struct {
+		Data struct {
+			ID                  string   `json:"id"`
+			ReleaseID           string   `json:"release_id"`
+			State               string   `json:"state"`
+			MissingCapabilities []string `json:"missing_capabilities"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(variant.Body.Bytes(), &variantBody))
+	require.Equal(t, introductionID, variantBody.Data.ReleaseID, "Variant 固定引入 release")
+	require.Equal(t, []string{"knowledge"}, variantBody.Data.MissingCapabilities)
+
+	mapped := publicCall(r, 2, false, http.MethodPut, "/api/v1/marketplace/tenant/variants/"+variantBody.Data.ID+"/capability-mapping", "admin", "adopter-admin", map[string]any{"mappings": []map[string]any{{"capability": "knowledge", "knowledge_base_ids": []string{"kb-tenant-2"}}}})
+	require.Equal(t, http.StatusOK, mapped.Code, mapped.Body.String())
+	tested := publicCall(r, 2, false, http.MethodPost, "/api/v1/marketplace/tenant/variants/"+variantBody.Data.ID+"/test", "admin", "adopter-admin", nil)
+	require.Equal(t, http.StatusOK, tested.Code, tested.Body.String())
+	published := publicCall(r, 2, false, http.MethodPost, "/api/v1/marketplace/tenant/variants/"+variantBody.Data.ID+"/publish", "admin", "adopter-admin", nil)
+	require.Equal(t, http.StatusOK, published.Code, published.Body.String())
+	var publishedBody struct {
+		Data struct {
+			LocalAgentID string `json:"local_agent_id"`
+			State        string `json:"state"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(published.Body.Bytes(), &publishedBody))
+	require.Equal(t, "published", publishedBody.Data.State)
+	localAgentID := publishedBody.Data.LocalAgentID
+	require.NotEmpty(t, localAgentID)
+
+	// --- AC1/AC3：移动 Resource Shelf wire（#33）中传播产物只含可移植内容 ---
+	agents2 := publicCall(r, 2, false, http.MethodGet, "/api/v1/agents", "viewer", "viewer-2", nil)
+	require.Equal(t, http.StatusOK, agents2.Code, agents2.Body.String())
+	var agentsBody struct {
+		Data []struct {
+			ID     string `json:"id"`
+			Name   string `json:"name"`
+			Config struct {
+				SystemPrompt   string   `json:"system_prompt"`
+				KnowledgeBases []string `json:"knowledge_bases"`
+				ModelID        string   `json:"model_id"`
+			} `json:"config"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(agents2.Body.Bytes(), &agentsBody))
+	var imported *struct {
+		ID     string `json:"id"`
+		Name   string `json:"name"`
+		Config struct {
+			SystemPrompt   string   `json:"system_prompt"`
+			KnowledgeBases []string `json:"knowledge_bases"`
+			ModelID        string   `json:"model_id"`
+		} `json:"config"`
+	}
+	for i := range agentsBody.Data {
+		if agentsBody.Data[i].ID == localAgentID {
+			imported = &agentsBody.Data[i]
+		}
+	}
+	require.NotNil(t, imported, "发布后的本地 Agent 必须出现在 GET /api/v1/agents（移动 Resource Shelf wire）")
+	require.Equal(t, "Be portable.", imported.Config.SystemPrompt, "可移植 system prompt 随传播")
+	require.Equal(t, []string{"kb-tenant-2"}, imported.Config.KnowledgeBases, "AC1：知识绑定只来自采用方本地映射")
+	require.Equal(t, "", imported.Config.ModelID, "AC1：发布者模型绑定（model-publisher）不得传播")
+	require.NotContains(t, agents2.Body.String(), "kb-publisher", "AC1：发布者 KB 不外泄")
+	require.NotContains(t, agents2.Body.String(), "model-publisher", "AC1：发布者模型不外泄")
+
+	available := publicCall(r, 2, false, http.MethodGet, "/api/v1/marketplace/tenant/available-agents", "viewer", "viewer-2", nil)
+	require.Equal(t, http.StatusOK, available.Code, available.Body.String())
+	require.Contains(t, available.Body.String(), localAgentID)
+
+	// --- AC2：发布者（tenant 1）与源租户可见面零采用方痕迹 ---
+	publisherAgents := publicCall(r, 1, false, http.MethodGet, "/api/v1/agents", "admin", "tenant-admin", nil)
+	require.Equal(t, http.StatusOK, publisherAgents.Code)
+	require.NotContains(t, publisherAgents.Body.String(), localAgentID)
+	require.NotContains(t, publisherAgents.Body.String(), "Imported helper")
+	require.NotContains(t, publisherAgents.Body.String(), "kb-tenant-2")
+
+	publisherAdoptions := publicCall(r, 1, false, http.MethodGet, "/api/v1/marketplace/tenant/adoptions", "admin", "tenant-admin", nil)
+	require.Equal(t, http.StatusOK, publisherAdoptions.Code)
+	var publisherAdoptionsEnvelope struct {
+		Data []json.RawMessage `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(publisherAdoptions.Body.Bytes(), &publisherAdoptionsEnvelope))
+	require.Empty(t, publisherAdoptionsEnvelope.Data, "AC2：发布者视角无任何（含采用方的）Adoption 行")
+
+	publisherCatalog := publicCall(r, 1, false, http.MethodGet, "/api/v1/marketplace/public/catalog", "viewer", "viewer-1", nil)
+	require.Equal(t, http.StatusOK, publisherCatalog.Code)
+	for _, secret := range []string{adoptionID, variantBody.Data.ID, introductionID, localAgentID, "kb-tenant-2", "Imported helper", "adopter-admin"} {
+		require.NotContains(t, publisherCatalog.Body.String(), secret, "AC2：公共目录不得含采用方标识")
+	}
+
+	publisherSubmissions := publicCall(r, 1, false, http.MethodGet, "/api/v1/marketplace/public/release-submissions", "admin", "tenant-admin", nil)
+	require.Equal(t, http.StatusOK, publisherSubmissions.Code)
+	require.NotContains(t, publisherSubmissions.Body.String(), adoptionID)
+
+	// 平台审核面也不含采用方数据（结构钉死：队列行=提交行字段集）
+	queue := publicCall(r, 1, true, http.MethodGet, "/api/v1/marketplace/public/release-submissions/review-queue", "admin", "sysadmin", nil)
+	require.Equal(t, http.StatusOK, queue.Code)
+	require.NotContains(t, queue.Body.String(), adoptionID)
+	require.NotContains(t, queue.Body.String(), localAgentID)
+
+	// db 侧证：采用方行只存在于 tenant 2 作用域
+	var adoptionRows int64
+	db.Table("agent_adoptions").Where("listing_id = ?", publicListingID).Count(&adoptionRows)
+	require.Equal(t, int64(1), adoptionRows)
+	db.Table("agent_adoptions").Where("tenant_id = ? AND listing_id = ?", uint64(2), publicListingID).Count(&adoptionRows)
+	require.Equal(t, int64(1), adoptionRows)
+}
+
+func TestPublicMarketplaceAdoptRejectsTamperedPublicRelease(t *testing.T) {
+	r, _, db := newPublicMarketplaceTestApp(t)
+	listingID := publishTenantRelease(t, r)
+	publicListingID, publicReleaseID := approvePublicRelease(t, r, listingID)
+
+	// 公共 release 字节被篡改（digest 不再匹配）：引入必须拒绝且零行落库
+	require.NoError(t, db.Exec("UPDATE public_agent_releases SET bundle = ? WHERE id = ?", []byte(`{"payload":{"system_prompt":"evil"}}`), publicReleaseID).Error)
+	rejected := publicCall(r, 2, false, http.MethodPost, "/api/v1/marketplace/public/listings/"+publicListingID+"/adopt", "admin", "adopter-admin", map[string]any{})
+	require.Equal(t, http.StatusConflict, rejected.Code, rejected.Body.String())
+
+	var introducedCount, adoptionCount int64
+	db.Table("tenant_introduced_releases").Where("tenant_id = ?", uint64(2)).Count(&introducedCount)
+	db.Table("agent_adoptions").Where("tenant_id = ?", uint64(2)).Count(&adoptionCount)
+	require.Zero(t, introducedCount, "AC1：篡改的公共 release 不得产生引入行")
+	require.Zero(t, adoptionCount, "AC1：篡改的公共 release 不得产生 Adoption")
+}
