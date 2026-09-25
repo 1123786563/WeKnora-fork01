@@ -7,6 +7,7 @@ import {
   parsePluginInstallations,
   parsePluginMyConnection,
   parsePluginPreview,
+  parsePluginToolPolicyRows,
   parsePluginUpgradePreview,
 } from './plugins.ts';
 import type { ClientRequest } from './client.ts';
@@ -608,5 +609,118 @@ test('createPluginsApi.getMyConnection GETs connections/me with the encoded id a
   assert.equal(requests[0]!.path, '/api/v1/plugins/installations/inst%2F1/connections/me');
   assert.equal(value.state, 'unauthorized');
   await assert.rejects(() => api.getMyConnection('  '), /installation/);
+});
+
+// ---- T19: tool governance surface (GET .../tools, PUT .../tools/:tool_name/policy) ----
+// 治理面（dto.PluginInstallationTool，internal/handler/dto/plugin.go）是
+// require_approval 的权威确定值视图——enabled / require_approval /
+// disabled_reason 全为确定值（详情面省略 require_approval 键是 T18-OCR1-F2
+// 的既定契约，治理面必须带键）。
+
+function toolPolicyEnvelope(): unknown {
+  return {
+    success: true,
+    data: [
+      {
+        name: 'r',
+        description: 'read tool',
+        read_only: true,
+        requires_personal_auth: false,
+        scopes: [],
+        enabled: true,
+        require_approval: false,
+        disabled_reason: '',
+      },
+      {
+        name: 'w',
+        description: 'write tool',
+        read_only: false,
+        requires_personal_auth: false,
+        scopes: ['write:demo'],
+        enabled: false,
+        require_approval: true,
+        disabled_reason: 'write tool disabled by default; enable explicit',
+      },
+    ],
+  };
+}
+
+test('parsePluginToolPolicyRows maps governance rows with definite require_approval', () => {
+  const rows = parsePluginToolPolicyRows(toolPolicyEnvelope());
+  assert.equal(rows.length, 2);
+  assert.deepEqual(
+    { ...rows[0] },
+    {
+      name: 'r',
+      description: 'read tool',
+      readOnly: true,
+      requiresPersonalAuth: false,
+      scopes: [],
+      enabled: true,
+      requireApproval: false,
+      disabledReason: '',
+    },
+  );
+  assert.equal(rows[1]!.name, 'w');
+  assert.equal(rows[1]!.enabled, false);
+  assert.equal(rows[1]!.requireApproval, true, 'the governance row carries the CURRENT approval verdict as a definite value');
+  assert.equal(rows[1]!.disabledReason, 'write tool disabled by default; enable explicit');
+});
+
+test('parsePluginToolPolicyRows rejects non-success envelopes, non-array data and malformed rows', () => {
+  assert.throws(() => parsePluginToolPolicyRows({ success: false }), /success/);
+  assert.throws(() => parsePluginToolPolicyRows({ success: true, data: {} }), /array/);
+  const badRow = toolPolicyEnvelope() as { data: Array<Record<string, unknown>> };
+  delete badRow.data[0]!.name;
+  assert.throws(() => parsePluginToolPolicyRows(badRow), /\.name/);
+});
+
+test('parsePluginToolPolicyRows rejects a governance row that omits require_approval', () => {
+  const envelope = toolPolicyEnvelope() as { data: Array<Record<string, unknown>> };
+  delete envelope.data[1]!.require_approval;
+  assert.throws(() => parsePluginToolPolicyRows(envelope), /require_approval/,
+    'the governance surface asserts a DEFINITE approval verdict — an omitted key is a contract break, not a silent false');
+});
+
+test('createPluginsApi.listInstallationTools GETs the governance list and rejects empty ids', async () => {
+  const requests: ClientRequest[] = [];
+  const api = createPluginsApi(async (input: ClientRequest) => {
+    requests.push(input);
+    return toolPolicyEnvelope();
+  });
+  const rows = await api.listInstallationTools('inst/1');
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0]!.method, 'GET');
+  assert.equal(requests[0]!.path, '/api/v1/plugins/installations/inst%2F1/tools');
+  assert.equal(rows.length, 2);
+  assert.equal(rows[1]!.requireApproval, true);
+  await assert.rejects(() => api.listInstallationTools(' '), /installation/);
+});
+
+test('createPluginsApi.setInstallationToolPolicy PUTs the encoded patch and parses refreshed rows', async () => {
+  const requests: ClientRequest[] = [];
+  const api = createPluginsApi(async (input: ClientRequest) => {
+    requests.push(input);
+    return toolPolicyEnvelope();
+  });
+  const rows = await api.setInstallationToolPolicy('inst/1', 'write tool', { enabled: true, requireApproval: true });
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0]!.method, 'PUT');
+  assert.equal(requests[0]!.path, '/api/v1/plugins/installations/inst%2F1/tools/write%20tool/policy');
+  assert.deepEqual(requests[0]!.body, { enabled: true, require_approval: true });
+  assert.equal(rows.length, 2);
+  await assert.rejects(() => api.setInstallationToolPolicy('', 'w', { enabled: true }), /installation/);
+  await assert.rejects(() => api.setInstallationToolPolicy('inst-1', '', { enabled: true }), /tool/);
+});
+
+test('createPluginsApi.setInstallationToolPolicy rejects an empty patch before any request', async () => {
+  let fired = 0;
+  const api = createPluginsApi(async () => {
+    fired += 1;
+    return toolPolicyEnvelope();
+  });
+  await assert.rejects(() => api.setInstallationToolPolicy('inst-1', 'w', {}), /enabled or require_approval/,
+    'the client-side guard mirrors the server 400 — at least one field per patch');
+  assert.equal(fired, 0, 'no request leaves the client for an empty patch');
 });
 

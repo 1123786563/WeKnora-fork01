@@ -723,3 +723,165 @@ test('停用成功后升级预览错误条同步清除（横幅清理行为一�
     await unmount(root);
   }
 });
+
+// ---- T19: 工具策略治理行（enabled 开关 + 成员审批开关同行）----
+
+function toolPolicyRows(): Array<Record<string, unknown>> {
+  return [
+    {
+      name: 'search_my_week_issues',
+      description: '搜索本周待办',
+      read_only: true,
+      requires_personal_auth: true,
+      scopes: ['read:jira-work'],
+      enabled: true,
+      require_approval: false,
+      disabled_reason: '',
+    },
+    {
+      name: 'create_todo',
+      description: '创建待办',
+      read_only: false,
+      requires_personal_auth: true,
+      scopes: [],
+      enabled: false,
+      require_approval: false,
+      disabled_reason: 'write tool disabled by default; enable explicit',
+    },
+  ];
+}
+
+function switchByAriaLabel(root: ParentNode, label: string): HTMLButtonElement | null {
+  return root.querySelector(`button[role="switch"][aria-label="${label}"]`);
+}
+
+test('管理员展开工具治理：GET tools 渲染策略行与双开关初始态（含关闭原因）', async () => {
+  const { client, captured } = stubClient(async (input) => {
+    if (input.method === 'GET' && input.path === '/api/v1/plugins/installations') {
+      return { success: true, data: [{ ...jiraSummary }] };
+    }
+    if (input.method === 'GET' && input.path === '/api/v1/plugins/installations/inst-1/tools') {
+      return { success: true, data: toolPolicyRows() };
+    }
+    throw new Error(`unexpected request ${input.method} ${input.path}`);
+  });
+  const root = await mount(React.createElement(PluginsSettingsPanel, { client, role: 'admin' }));
+  try {
+    await flushEffects();
+    const list = document.querySelector('[data-testid="plugin-installations"]') as ParentNode;
+    await act(async () => { findButtonByText(list, '工具治理')!.click(); });
+    await flushEffects();
+    const governance = document.querySelector('[data-testid="plugin-tool-policy"]');
+    assert.ok(governance, 'the tool governance surface renders after expand');
+    assert.equal(
+      captured.filter((entry) => entry.method === 'GET' && entry.path === '/api/v1/plugins/installations/inst-1/tools').length,
+      1, 'exactly one governance list request fires');
+    const text = governance?.textContent ?? '';
+    assert.match(text, /search_my_week_issues/);
+    assert.match(text, /create_todo/);
+    assert.match(text, /write tool disabled by default; enable explicit/, 'the disabled write tool carries its reason');
+    const readEnabled = switchByAriaLabel(governance as ParentNode, 'search_my_week_issues 启用');
+    assert.ok(readEnabled, 'each tool row carries an enable switch');
+    assert.equal(readEnabled!.getAttribute('aria-checked'), 'true');
+    const writeEnabled = switchByAriaLabel(governance as ParentNode, 'create_todo 启用');
+    assert.equal(writeEnabled!.getAttribute('aria-checked'), 'false', 'the write tool installs disabled');
+    const readApproval = switchByAriaLabel(governance as ParentNode, 'search_my_week_issues 成员审批');
+    const writeApproval = switchByAriaLabel(governance as ParentNode, 'create_todo 成员审批');
+    assert.ok(readApproval && writeApproval, 'each tool row carries the member-approval switch on the SAME row');
+    assert.equal(writeApproval!.getAttribute('aria-checked'), 'false');
+  } finally {
+    await unmount(root);
+  }
+});
+
+test('点击写工具启用开关：PUT policy 只带 enabled 且治理行刷新', async () => {
+  const rows = toolPolicyRows();
+  const { client, captured } = stubClient(async (input) => {
+    if (input.method === 'GET' && input.path === '/api/v1/plugins/installations') {
+      return { success: true, data: [{ ...jiraSummary }] };
+    }
+    if (input.method === 'GET' && input.path === '/api/v1/plugins/installations/inst-1/tools') {
+      return { success: true, data: rows.map((row) => ({ ...row })) };
+    }
+    if (input.method === 'PUT' && input.path === '/api/v1/plugins/installations/inst-1/tools/create_todo/policy') {
+      const patch = input.body as { enabled?: boolean };
+      const target = rows.find((row) => row.name === 'create_todo') as Record<string, unknown>;
+      if (patch.enabled !== undefined) target.enabled = patch.enabled;
+      return { success: true, data: rows.map((row) => ({ ...row })) };
+    }
+    throw new Error(`unexpected request ${input.method} ${input.path}`);
+  });
+  const root = await mount(React.createElement(PluginsSettingsPanel, { client, role: 'admin' }));
+  try {
+    await flushEffects();
+    const list = document.querySelector('[data-testid="plugin-installations"]') as ParentNode;
+    await act(async () => { findButtonByText(list, '工具治理')!.click(); });
+    await flushEffects();
+    const governance = document.querySelector('[data-testid="plugin-tool-policy"]') as ParentNode;
+    await act(async () => { switchByAriaLabel(governance, 'create_todo 启用')!.click(); });
+    await flushEffects();
+    const put = captured.find((entry) => entry.method === 'PUT' && entry.path === '/api/v1/plugins/installations/inst-1/tools/create_todo/policy');
+    assert.ok(put, 'the enable toggle fires the policy PUT');
+    assert.deepEqual(put!.body, { enabled: true }, 'the patch carries ONLY the toggled field — require_approval keeps its value');
+    assert.equal(
+      switchByAriaLabel(document.querySelector('[data-testid="plugin-tool-policy"]') as ParentNode, 'create_todo 启用')!.getAttribute('aria-checked'),
+      'true', 'the refreshed governance list flips the switch');
+  } finally {
+    await unmount(root);
+  }
+});
+
+test('点击成员审批开关：PUT policy 只带 require_approval 且开关翻转', async () => {
+  const rows = toolPolicyRows();
+  const { client, captured } = stubClient(async (input) => {
+    if (input.method === 'GET' && input.path === '/api/v1/plugins/installations') {
+      return { success: true, data: [{ ...jiraSummary }] };
+    }
+    if (input.method === 'GET' && input.path === '/api/v1/plugins/installations/inst-1/tools') {
+      return { success: true, data: rows.map((row) => ({ ...row })) };
+    }
+    if (input.method === 'PUT' && input.path === '/api/v1/plugins/installations/inst-1/tools/create_todo/policy') {
+      const patch = input.body as { require_approval?: boolean };
+      const target = rows.find((row) => row.name === 'create_todo') as Record<string, unknown>;
+      if (patch.require_approval !== undefined) target.require_approval = patch.require_approval;
+      return { success: true, data: rows.map((row) => ({ ...row })) };
+    }
+    throw new Error(`unexpected request ${input.method} ${input.path}`);
+  });
+  const root = await mount(React.createElement(PluginsSettingsPanel, { client, role: 'admin' }));
+  try {
+    await flushEffects();
+    const list = document.querySelector('[data-testid="plugin-installations"]') as ParentNode;
+    await act(async () => { findButtonByText(list, '工具治理')!.click(); });
+    await flushEffects();
+    const governance = document.querySelector('[data-testid="plugin-tool-policy"]') as ParentNode;
+    await act(async () => { switchByAriaLabel(governance, 'create_todo 成员审批')!.click(); });
+    await flushEffects();
+    const put = captured.find((entry) => entry.method === 'PUT' && entry.path === '/api/v1/plugins/installations/inst-1/tools/create_todo/policy');
+    assert.ok(put, 'the approval toggle fires the policy PUT');
+    assert.deepEqual(put!.body, { require_approval: true }, 'the patch carries ONLY require_approval');
+    assert.equal(
+      switchByAriaLabel(document.querySelector('[data-testid="plugin-tool-policy"]') as ParentNode, 'create_todo 成员审批')!.getAttribute('aria-checked'),
+      'true', 'the refreshed list flips the approval switch');
+  } finally {
+    await unmount(root);
+  }
+});
+
+test('viewer 安装行无工具治理入口', async () => {
+  const { client, captured } = stubClient(async (input) => {
+    if (input.method === 'GET' && input.path === '/api/v1/plugins/installations') {
+      return { success: true, data: [{ ...jiraSummary }] };
+    }
+    throw new Error(`unexpected request ${input.method} ${input.path}`);
+  });
+  const root = await mount(React.createElement(PluginsSettingsPanel, { client, role: 'viewer' }));
+  try {
+    await flushEffects();
+    const list = document.querySelector('[data-testid="plugin-installations"]') as ParentNode;
+    assert.ok(!findButtonByText(list, '工具治理'), 'no governance entry for a viewer');
+    assert.equal(captured.filter((entry) => entry.path.endsWith('/tools')).length, 0, 'no governance request fires for a viewer');
+  } finally {
+    await unmount(root);
+  }
+});

@@ -11,6 +11,7 @@ import {
   createPluginsApi,
   type PluginInstallationSummary,
   type PluginPreviewResult,
+  type PluginToolPolicyRow,
   type PluginUpgradePreview,
   type PluginUpgradeToolChange,
   type PluginUpgradeToolSnapshot,
@@ -143,6 +144,17 @@ export function PluginsSettingsPanel({ client, role }: Props) {
   const [upgradePreview, setUpgradePreview] = useState<UpgradePreviewState | null>(null);
   const [upgradeBusyId, setUpgradeBusyId] = useState<string | null>(null);
   const [upgradeError, setUpgradeError] = useState<{ pluginName: string; message: string } | null>(null);
+  // T19（Issue #118）：工具策略治理面——一次展开一个安装（互斥），行内
+  // enabled 与成员审批（require_approval）两开关，PUT 成功以服务端返回的
+  // 刷新列表回填（服务端是策略权威，客户端不做乐观翻转）。
+  const [toolPolicy, setToolPolicy] = useState<{
+    installationId: string;
+    pluginName: string;
+    rows: readonly PluginToolPolicyRow[];
+    error: string | null;
+  } | null>(null);
+  const [toolPolicyBusyId, setToolPolicyBusyId] = useState<string | null>(null);
+  const [policyToggleBusy, setPolicyToggleBusy] = useState<string | null>(null);
 
   // useMemo 稳定 pluginsApi（T08-OCR1-F4）：client.request 是纯传输包装，
   // 稳定引用让 refreshInstallations 的 useCallback 依赖完整（exhaustive-deps）。
@@ -279,6 +291,61 @@ export function PluginsSettingsPanel({ client, role }: Props) {
       }
     } finally {
       setUpgradeBusyId(null);
+    }
+  }
+
+  // T19：展开/收起一个安装的工具治理面（GET .../tools——require_approval
+  // 的权威确定值视图）。再次点击同一安装 = 收起；点其他安装 = 互斥切换。
+  async function toggleToolPolicyView(item: PluginInstallationSummary) {
+    if (!canEdit || toolPolicyBusyId !== null) return;
+    if (toolPolicy?.installationId === item.installationId) {
+      setToolPolicy(null);
+      return;
+    }
+    setToolPolicyBusyId(item.installationId);
+    try {
+      const rows = await pluginsApi.listInstallationTools(item.installationId);
+      setToolPolicy({ installationId: item.installationId, pluginName: item.name, rows, error: null });
+    } catch (cause) {
+      const message = apiErrorMessage(cause);
+      if (message === null) {
+        console.warn("plugin tool policy load failed:", cause);
+        setToolPolicy({ installationId: item.installationId, pluginName: item.name, rows: [], error: "工具策略加载失败，请稍后重试" });
+      } else {
+        setToolPolicy({ installationId: item.installationId, pluginName: item.name, rows: [], error: message });
+      }
+    } finally {
+      setToolPolicyBusyId(null);
+    }
+  }
+
+  // T19：行内开关——每次 PUT 只带被切换的字段（省略键 = 服务端保持原值），
+  // 成功后以返回的刷新列表整体回填。
+  async function toggleToolPolicyFlag(
+    installationId: string,
+    row: PluginToolPolicyRow,
+    field: "enabled" | "requireApproval",
+  ) {
+    if (!canEdit || policyToggleBusy !== null) return;
+    setPolicyToggleBusy(`${row.name}:${field}`);
+    try {
+      const rows = await pluginsApi.setInstallationToolPolicy(
+        installationId,
+        row.name,
+        field === "enabled" ? { enabled: !row.enabled } : { requireApproval: !row.requireApproval },
+      );
+      setToolPolicy((prev) =>
+        prev && prev.installationId === installationId ? { ...prev, rows, error: null } : prev);
+    } catch (cause) {
+      const message = apiErrorMessage(cause);
+      if (message === null) {
+        console.warn("plugin tool policy update failed:", cause);
+        setToolPolicy((prev) => (prev ? { ...prev, error: "工具策略更新失败，请重试" } : prev));
+      } else {
+        setToolPolicy((prev) => (prev ? { ...prev, error: message } : prev));
+      }
+    } finally {
+      setPolicyToggleBusy(null);
     }
   }
 
@@ -441,6 +508,14 @@ export function PluginsSettingsPanel({ client, role }: Props) {
                   <span className="ml-auto flex flex-wrap gap-2">
                     <Button
                       type="button"
+                      loading={toolPolicyBusyId === item.installationId}
+                      disabled={toolPolicyBusyId !== null && toolPolicyBusyId !== item.installationId}
+                      onClick={() => void toggleToolPolicyView(item)}
+                    >
+                      工具治理
+                    </Button>
+                    <Button
+                      type="button"
                       loading={upgradeBusyId === item.installationId}
                       disabled={upgradeBusyId !== null && upgradeBusyId !== item.installationId}
                       onClick={() => void checkUpgrade(item)}
@@ -455,6 +530,82 @@ export function PluginsSettingsPanel({ client, role }: Props) {
                       {item.state === "active" ? "停用" : "启用"}
                     </Button>
                   </span>
+                ) : null}
+                {/* T19：工具策略治理面——enabled 与成员审批（require_approval）
+                    两开关同行；关闭原因随行呈现（写工具默认关闭的解释面）。 */}
+                {toolPolicy?.installationId === item.installationId ? (
+                  <div className="w-full" data-testid="plugin-tool-policy">
+                    <h4 className="m-0 mb-1 text-[13px] font-medium">工具策略（{toolPolicy.pluginName}）</h4>
+                    <p className="wk-muted m-0 mb-2 text-[12px] leading-[18px] text-[#66758b]">
+                      成员审批开启后，每次调用前成员审阅确定的操作目标与参数原文，批准才派发且仅派发一次。
+                    </p>
+                    {toolPolicy.error ? <Status tone="error">{toolPolicy.error}</Status> : null}
+                    {toolPolicy.rows.length === 0 && toolPolicy.error === null ? (
+                      <Status>该安装的已接受快照内没有工具</Status>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full border-collapse text-[12px] leading-[18px]">
+                          <thead>
+                            <tr className="text-left text-[#66758b]">
+                              <th className="py-1 pr-3 font-medium">工具</th>
+                              <th className="py-1 pr-3 font-medium">分类</th>
+                              <th className="py-1 pr-3 font-medium">启用</th>
+                              <th className="py-1 pr-3 font-medium">成员审批</th>
+                              <th className="py-1 pr-3 font-medium">说明</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {toolPolicy.rows.map((row) => (
+                              <tr key={row.name} className="border-t border-[#eef1f6] align-top">
+                                <td className="py-1 pr-3 [overflow-wrap:anywhere]">
+                                  <span className="font-medium">{row.name}</span>
+                                  {row.description ? (
+                                    <span className="block text-[#66758b]">{row.description}</span>
+                                  ) : null}
+                                </td>
+                                <td className="py-1 pr-3">
+                                  {row.readOnly ? (
+                                    <span className={pluginBadgeInfo}>只读</span>
+                                  ) : (
+                                    <span className={pluginBadgeWarn}>写</span>
+                                  )}
+                                </td>
+                                <td className="py-1 pr-3">
+                                  <button
+                                    type="button"
+                                    role="switch"
+                                    aria-checked={row.enabled}
+                                    aria-label={`${row.name} 启用`}
+                                    disabled={policyToggleBusy !== null}
+                                    className={row.enabled ? "text-[#137333]" : "text-[#98a2b8]"}
+                                    onClick={() => void toggleToolPolicyFlag(item.installationId, row, "enabled")}
+                                  >
+                                    {row.enabled ? "已启用" : "已停用"}
+                                  </button>
+                                </td>
+                                <td className="py-1 pr-3">
+                                  <button
+                                    type="button"
+                                    role="switch"
+                                    aria-checked={row.requireApproval}
+                                    aria-label={`${row.name} 成员审批`}
+                                    disabled={policyToggleBusy !== null}
+                                    className={row.requireApproval ? "text-[#137333]" : "text-[#98a2b8]"}
+                                    onClick={() => void toggleToolPolicyFlag(item.installationId, row, "requireApproval")}
+                                  >
+                                    {row.requireApproval ? "需审批" : "免审批"}
+                                  </button>
+                                </td>
+                                <td className="py-1 pr-3 text-[#66758b] [overflow-wrap:anywhere]">
+                                  {row.disabledReason}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
                 ) : null}
               </li>
             ))}

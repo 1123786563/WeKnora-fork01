@@ -136,6 +136,23 @@ export interface PluginsApi {
    * mapped onto the materialized service_id. Never carries token material.
    */
   getMyConnection(installationId: string, signal?: AbortSignal): Promise<PluginMyConnection>;
+  /**
+   * GET one installation's tool governance list (Viewer+): every snapshot
+   * tool with DEFINITE enabled / require_approval / disabled_reason verdicts
+   * (the authoritative approval view — the detail payload omits require_approval).
+   */
+  listInstallationTools(installationId: string, signal?: AbortSignal): Promise<PluginToolPolicyRow[]>;
+  /**
+   * PUT one tool's policy patch (Admin): {enabled?, require_approval?} —
+   * omitted fields keep their values, at least one per patch. Resolves to the
+   * refreshed governance list.
+   */
+  setInstallationToolPolicy(
+    installationId: string,
+    toolName: string,
+    patch: PluginToolPolicyPatch,
+    signal?: AbortSignal,
+  ): Promise<PluginToolPolicyRow[]>;
 }
 
 /** Build the plugins domain API over the shared client request transport. */
@@ -201,6 +218,40 @@ export function createPluginsApi(request: (input: ClientRequest) => Promise<unkn
       return parsePluginMyConnection(await request({
         method: 'GET',
         path: `${INSTALLATIONS_PATH}/${encodeURIComponent(id)}/connections/me`,
+        ...(signal === undefined ? {} : { signal }),
+      }));
+    },
+    async listInstallationTools(installationId: string, signal?: AbortSignal): Promise<PluginToolPolicyRow[]> {
+      const id = installationId.trim();
+      if (id === '') throw new Error('installationId must not be empty');
+      return parsePluginToolPolicyRows(await request({
+        method: 'GET',
+        path: `${INSTALLATIONS_PATH}/${encodeURIComponent(id)}/tools`,
+        ...(signal === undefined ? {} : { signal }),
+      }));
+    },
+    async setInstallationToolPolicy(
+      installationId: string,
+      toolName: string,
+      patch: PluginToolPolicyPatch,
+      signal?: AbortSignal,
+    ): Promise<PluginToolPolicyRow[]> {
+      const id = installationId.trim();
+      if (id === '') throw new Error('installationId must not be empty');
+      const tool = toolName.trim();
+      if (tool === '') throw new Error('toolName must not be empty');
+      // 客户端前置镜像服务端 400（"enabled or require_approval is required"）：
+      // 空 patch 不发请求。只发显式提供的字段——省略键 = 服务端保持原值。
+      const body: { enabled?: boolean; require_approval?: boolean } = {};
+      if (patch.enabled !== undefined) body.enabled = patch.enabled;
+      if (patch.requireApproval !== undefined) body.require_approval = patch.requireApproval;
+      if (body.enabled === undefined && body.require_approval === undefined) {
+        throw new Error('enabled or require_approval is required');
+      }
+      return parsePluginToolPolicyRows(await request({
+        method: 'PUT',
+        path: `${INSTALLATIONS_PATH}/${encodeURIComponent(id)}/tools/${encodeURIComponent(tool)}/policy`,
+        body,
         ...(signal === undefined ? {} : { signal }),
       }));
     },
@@ -534,4 +585,62 @@ export function parsePluginMyConnection(value: unknown): PluginMyConnection {
     revokePath: optionalText(data.revoke_path, `${CONNECTION_PATH}.data.revoke_path`),
     requiresAuthTools: scopeList(data.requires_auth_tools, `${CONNECTION_PATH}.data.requires_auth_tools`),
   };
+}
+
+// ---- T19: tool governance surface (GET .../tools, PUT .../tools/:tool_name/policy;
+// dto.PluginInstallationTool, internal/handler/dto/plugin.go) ----
+
+/**
+ * One row of the tool governance list — the AUTHORITATIVE approval view. All
+ * verdicts are definite values (T18 unification + T18-OCR1-F2): enabled /
+ * require_approval / disabled_reason always carry the CURRENT policy state,
+ * unlike the detail payload which omits require_approval entirely.
+ */
+export interface PluginToolPolicyRow {
+  readonly name: string;
+  readonly description: string;
+  readonly readOnly: boolean;
+  readonly requiresPersonalAuth: boolean;
+  readonly scopes: readonly string[];
+  readonly enabled: boolean;
+  readonly requireApproval: boolean;
+  readonly disabledReason: string;
+}
+
+/**
+ * One nullable-flag patch for PUT .../tools/:tool_name/policy: omitted fields
+ * keep their current values, at least one must be present (mirrors the server
+ * 400 "enabled or require_approval is required" client-side).
+ */
+export interface PluginToolPolicyPatch {
+  readonly enabled?: boolean;
+  readonly requireApproval?: boolean;
+}
+
+/**
+ * Strict parser for the tool governance envelope (GET .../tools and the
+ * refreshed list every PUT returns). require_approval is REQUIRED here — the
+ * governance surface asserts the current approval verdict as a definite value;
+ * an omitted key is a contract break, never a silent false (the detail
+ * payload's omittance is its own contract, T18-OCR1-F2).
+ */
+export function parsePluginToolPolicyRows(value: unknown): PluginToolPolicyRow[] {
+  const envelope = record(value, INSTALLATIONS_PATH);
+  if (envelope.success !== true) throw new Error(`${INSTALLATIONS_PATH}.success must be true`);
+  const data = envelope.data;
+  if (!Array.isArray(data)) throw new Error(`${INSTALLATIONS_PATH}.data must be an array`);
+  return data.map((item: unknown, index: number) => {
+    const path = `${INSTALLATIONS_PATH}.data.${index}`;
+    const row = record(item, path);
+    return {
+      name: required(row.name, `${path}.name`),
+      description: optionalText(row.description, `${path}.description`),
+      readOnly: flag(row.read_only, `${path}.read_only`),
+      requiresPersonalAuth: flag(row.requires_personal_auth, `${path}.requires_personal_auth`),
+      scopes: scopeList(row.scopes, `${path}.scopes`),
+      enabled: flag(row.enabled, `${path}.enabled`),
+      requireApproval: flag(row.require_approval, `${path}.require_approval`),
+      disabledReason: typeof row.disabled_reason === 'string' ? row.disabled_reason : '',
+    };
+  });
 }
