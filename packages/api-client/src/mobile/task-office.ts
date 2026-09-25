@@ -59,6 +59,10 @@ export interface RemoteDecisionRecord {
   expectedRevision: number;
 }
 
+/** Task 6 的 TaskCommandPort 结构（remote 以结构化类型满足，无需 import）。 */
+export interface RemoteTaskCommandInput { runId: string; action: 'steer' | 'queue_next' | 'cancel'; text?: string; expectedRevision: number; intentId?: string }
+export interface RemoteTaskCommandAck { runId: string; action: 'steer' | 'queue_next' | 'cancel'; nextRunId?: string }
+
 function unwrap(value: unknown): void {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new Error('task office response must be a success envelope');
   const envelope = value as { success?: unknown; data?: unknown };
@@ -235,6 +239,30 @@ export function createTaskOfficeRemote(options: TaskOfficeRemoteOptions) {
           if (error.status === 404 || error.status === 403 || error.status === 410) coded('INTERACTION_GONE');
         }
         throw error;
+      }
+    },
+    async command(input: RemoteTaskCommandInput): Promise<RemoteTaskCommandAck> {
+      const wire = input.action === 'cancel'
+        ? { action: 'cancel' as const, expected_revision: input.expectedRevision }
+        : { action: input.action, text: input.text ?? '', expected_revision: input.expectedRevision, ...(input.intentId === undefined ? {} : { external_pending_id: input.intentId }) };
+      try {
+        const ack = await executionsApi.command(input.runId, wire);
+        return { runId: ack.run_id, action: ack.action, ...(ack.next_run_id === undefined ? {} : { nextRunId: ack.next_run_id }) };
+      } catch (error) {
+        // 跨包契约码（沿 TASK_STREAM_CURSOR_EXPIRED / INTERACTION_* 先例，不得改名）：
+        // 409/404 是确定性冲突；其余（5xx、502 command_recovery_unknown、传输失败）投递结果未知。
+        // 变量级 never 注解：coded 恒抛出，TS 据此接受 catch 块无显式收尾（TS2366；
+        // 箭头函数返回注解形式不被 TS 6 识别，见 decide 处等价先例以 throw error 收尾）。
+        const coded: (message: string) => never = (message) => {
+          const translated = new Error(message);
+          (translated as unknown as { code?: string }).code = message;
+          throw translated;
+        };
+        if (error instanceof ApiError) {
+          if (error.status === 409 || error.status === 404) coded('TASK_COMMAND_CONFLICT');
+          coded('TASK_COMMAND_UNKNOWN');
+        }
+        coded('TASK_COMMAND_UNKNOWN');
       }
     },
   };

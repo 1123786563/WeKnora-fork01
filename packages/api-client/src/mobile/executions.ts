@@ -26,13 +26,15 @@ export interface StartAck {
 
 export interface CommandAck {
   run_id: string;
-  action: 'cancel' | 'steer';
+  action: 'cancel' | 'steer' | 'queue_next';
+  next_run_id?: string;
 }
 
 /** Commands are intentionally a closed union: arbitrary method/body pairs are not exposed. */
 export type ExecutionCommandInput =
   | { action: 'cancel'; expected_revision: number }
-  | { action: 'steer'; text: string; expected_revision: number };
+  | { action: 'steer'; text: string; expected_revision: number }
+  | { action: 'queue_next'; text: string; expected_revision: number; external_pending_id?: string };
 
 export type RequestLookupState = 'pending' | 'dispatching' | 'admitted' | 'rejected' | 'unknown';
 
@@ -217,7 +219,11 @@ function parseCommandAck(value: unknown, runID: string, action: ExecutionCommand
   const row = value as Record<string, unknown>;
   if (row.run_id !== runID) throw new ContractError('run_id', 'must match the requested run_id');
   if (row.action !== action) throw new ContractError('action', 'must match the submitted command');
-  return { run_id: runID, action };
+  return {
+    run_id: runID,
+    action,
+    ...(typeof row.next_run_id === 'string' && row.next_run_id !== '' ? { next_run_id: row.next_run_id } : {}),
+  };
 }
 
 function validateLastEventID(value: string): string {
@@ -239,12 +245,12 @@ function validateStart(input: StartExecutionInput): void {
 }
 
 function validateCommand(input: ExecutionCommandInput): void {
-  if (input.action !== 'cancel' && input.action !== 'steer') throw new Error('command action is invalid');
+  if (input.action !== 'cancel' && input.action !== 'steer' && input.action !== 'queue_next') throw new Error('command action is invalid');
   positiveSafeInteger(input.expected_revision, 'expected_revision');
   if (input.action === 'cancel') {
     if ('text' in input) throw new Error('cancel command cannot include text');
   } else if (typeof input.text !== 'string' || input.text.trim() === '') {
-    throw new Error('steer command text must not be empty');
+    throw new Error(`${input.action} command text must not be empty`);
   }
 }
 

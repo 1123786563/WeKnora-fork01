@@ -76,7 +76,11 @@ func (d InteractionDecision) Validate() error {
 }
 
 // ExecutionCommand is a closed union. cancel has no payload; steer carries a
-// text payload which is delivered through the existing steer queue.
+// text payload which is delivered through the existing steer queue; queue_next
+// carries a text payload for the NEXT run of the same task and is only
+// admissible on a terminal run (one task permits at most one write run — an
+// active run owns the write lane, so queueing on it is a conflict, never a
+// silent queue).
 type ExecutionCommand struct {
 	Action            string `json:"action"`
 	Text              string `json:"text,omitempty"`
@@ -91,7 +95,7 @@ func (c ExecutionCommand) Validate() error {
 		if strings.TrimSpace(c.Text) != "" {
 			return ErrCommandActionMismatch
 		}
-	case "steer":
+	case "steer", "queue_next":
 		if strings.TrimSpace(c.Text) == "" {
 			return ErrCommandActionMismatch
 		}
@@ -102,4 +106,14 @@ func (c ExecutionCommand) Validate() error {
 		return ErrCommandActionMismatch
 	}
 	return nil
+}
+
+// CommandAck is the honest command receipt: the run the command bound to, the
+// echoed action, and — for queue_next — the follow-up run admitted for the
+// queued instruction. Clients present bound Run + NextRunID so the owner sees
+// which run the intervention actually attached to (T07).
+type CommandAck struct {
+	RunID     string `json:"run_id"`
+	Action    string `json:"action"`
+	NextRunID string `json:"next_run_id,omitempty"`
 }

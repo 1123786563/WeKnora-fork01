@@ -588,6 +588,7 @@ test('the composition wires the task office detail port and detail files stay of
   const here = dirname(fileURLToPath(import.meta.url));
   const composition = readFileSync(join(here, 'composition.ts'), 'utf8');
   assert.match(composition, /detail:\s*remote/, 'taskOfficeFor must pass the remote as the detail port; open() fails closed without it (T05)');
+  assert.match(composition, /commands:\s*remote/, 'taskOfficeFor must wire the command channel; handle.act() fails closed (TASK_OFFICE_COMMAND_UNAVAILABLE) without it (T07 #37)');
   for (const relative of ['screens/TaskDetailScreen.tsx', 'task-detail-view.ts', 'app/tasks/detail.tsx']) {
     const source = readFileSync(join(here, relative), 'utf8');
     assert.equal(/@weknora\/(api-client|contracts)/.test(source), false, `${relative} must consume the Task Office Interface only`);
@@ -1294,4 +1295,28 @@ test('composition caches instances by deployment scope key and registration fail
   assert.match(source, /registrationAttempts/, '会话内有界重试的尝试计数存在');
   // B3-F29：openNotificationFromInbox 的 item 参数类型对齐实现（读 deepLink），删除 as 断言。
   assert.doesNotMatch(source, /as InboxItem/, 'as InboxItem 断言必须删除');
+});
+
+test('the stop card renders the module note instead of claiming a cancellation that never happened (T07 #37 终审修复)', async () => {
+  const { TaskDetailScreen } = await import('./screens/TaskDetailScreen.tsx');
+  hooks().__reset();
+  const base: import('@weknora/mobile-core').TaskDetailView = {
+    taskId: 't', runId: 'r', title: '报告', lifecycle: 'completed', runStatus: 'failed', attention: 'none',
+    executionStatus: 'failed', settlementStatus: 'settled', revision: 3, cursor: 4, incomplete: false,
+    connection: 'drained', timeline: [], duplicateSeqs: [],
+  };
+  // stopProjection 观察到自然终态获胜：confirmed + note——那次取消并未发生，
+  // 硬编码「停止已确认：运行已取消」等于谎报（Spec Story 23 隐藏后果）。
+  const noted = TaskDetailScreen({ view: { ...base, stop: { phase: 'confirmed', since: '2026-09-25T00:00:00Z', note: 'run ended as failed before the stop landed' } }, loading: false, onRefresh: () => {} });
+  const notedJson = JSON.stringify(noted);
+  assert.ok(notedJson.includes('停止流程已结束：run ended as failed before the stop landed'), '带 note 的 confirmed 必须用中性文案呈现模块 note');
+  assert.ok(!notedJson.includes('停止已确认：运行已取消'), '自然终态获胜时绝不声称一次未发生的取消');
+
+  // 无 note 的 confirmed（观察到 canceled）：确认文案保持明确。
+  const plain = TaskDetailScreen({ view: { ...base, stop: { phase: 'confirmed', since: '2026-09-25T00:00:00Z' } }, loading: false, onRefresh: () => {} });
+  assert.ok(JSON.stringify(plain).includes('停止已确认：运行已取消'), '观察到 canceled 的 confirmed 仍明确确认取消');
+
+  // requested / unknown 分支不受影响。
+  const requested = TaskDetailScreen({ view: { ...base, stop: { phase: 'requested', since: '2026-09-25T00:00:00Z' } }, loading: false, onRefresh: () => {} });
+  assert.ok(JSON.stringify(requested).includes('停止请求已发出，等待运行确认停止'));
 });

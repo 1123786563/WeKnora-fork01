@@ -4,6 +4,7 @@ import {
   parseExecution,
   parseExecutionEvent,
   parseExecutionSnapshot,
+  evaluateQueueNext,
 } from '../src/mobile/execution.ts';
 
 const event = {
@@ -69,4 +70,31 @@ test('snapshot task facts parse optionally and reject malformed values', () => {
   assert.throws(() => parseExecutionSnapshot({ ...base, task: { task_id: 's', attention: 'maybe' } }), /task.attention/);
   assert.throws(() => parseExecutionSnapshot({ ...base, task: { task_id: 's', attention: 'none', archived_at: 'yesterday' } }), /task.archived_at/);
   assert.throws(() => parseExecutionSnapshot({ ...base, task: { task_id: 's', attention: 'none', title: 7 } }), /task.title/);
+});
+
+const queueNextBase = { schema_version: 1, run_id: 'r1', session_id: 's1', revision: 3, driver: 'platform', run_status: 'queued', execution_status: 'queued', settlement_status: 'pending', seq: 1, capabilities: {} };
+const queueNextExecutionOf = (runStatus: string, revision = 3) => ({ ...queueNextBase, run_status: runStatus, execution_status: runStatus, revision });
+
+test('evaluateQueueNext rejects an active run: one task permits at most one write run', () => {
+  for (const status of ['queued', 'running', 'waiting_user', 'reconciling', 'recovering'] as const) {
+    const decision = evaluateQueueNext(queueNextExecutionOf(status));
+    assert.equal(decision.allowed, false);
+    assert.match(decision.reason, /still/);
+  }
+});
+
+test('evaluateQueueNext allows a terminal run carrying a real revision', () => {
+  for (const status of ['succeeded', 'failed', 'canceled'] as const) {
+    assert.deepEqual(evaluateQueueNext(queueNextExecutionOf(status)), { allowed: true, reason: '' });
+  }
+});
+
+test('evaluateQueueNext rejects a terminal run without a snapshot revision', () => {
+  const decision = evaluateQueueNext(queueNextExecutionOf('canceled', 0));
+  assert.equal(decision.allowed, false);
+  assert.match(decision.reason, /revision/);
+});
+
+test('evaluateQueueNext rejects an unknown run status without guessing', () => {
+  assert.equal(evaluateQueueNext(queueNextExecutionOf('warping')).allowed, false);
 });

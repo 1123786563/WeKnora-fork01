@@ -147,6 +147,31 @@ test('parses the exact W04 start and W05 command acknowledgement fixtures', asyn
   assert.deepEqual(await api.command('run-1', { action: 'cancel', expected_revision: 0 }), { run_id: 'run-1', action: 'cancel' });
 });
 
+test('queue_next sends external_pending_id, passes next_run_id through and never translates HTTP errors', async () => {
+  const requests: ClientRequest[] = [];
+  const api = createExecutionsApi(async (input) => {
+    requests.push(input);
+    return { success: true, data: { run_id: 'run-1', action: 'queue_next', next_run_id: 'run-2' } };
+  });
+  const command: ExecutionCommandInput = { action: 'queue_next', text: 'next', expected_revision: 5, external_pending_id: 'qid-1' };
+  assert.deepEqual(await api.command('run-1', command), { run_id: 'run-1', action: 'queue_next', next_run_id: 'run-2' });
+  assert.equal(requests[0]!.method, 'POST');
+  assert.equal(requests[0]!.path, '/api/v1/workbench/executions/run-1/commands');
+  assert.deepEqual(requests[0]!.body, { action: 'queue_next', text: 'next', expected_revision: 5, external_pending_id: 'qid-1' });
+
+  // 服务器省略 next_run_id 时 ack 不携带该键
+  const plain = createExecutionsApi(async () => ({ success: true, data: { run_id: 'run-1', action: 'queue_next' } }));
+  assert.deepEqual(await plain.command('run-1', { action: 'queue_next', text: 'next', expected_revision: 5 }), { run_id: 'run-1', action: 'queue_next' });
+
+  // 活动 Run 的 409 不在 api-client 层翻译——原始 ApiError 透传给上层 remote（由 remote.command 统一翻译）
+  const conflict = new ApiError({ status: 409, code: 'HTTP_409', message: 'conflict' });
+  const passthrough = createExecutionsApi(async () => { throw conflict; });
+  await assert.rejects(
+    passthrough.command('run-1', { action: 'queue_next', text: 'next', expected_revision: 5 }),
+    (error: unknown) => error === conflict,
+  );
+});
+
 test('list encodes facets without tenant/owner and parses the page', async () => {
   const requests: ClientRequest[] = [];
   const page = {

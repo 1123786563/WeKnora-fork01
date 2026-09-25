@@ -70,8 +70,8 @@ function snapshotTaskFacts(value: unknown): SnapshotTaskFacts {
   };
 }
 
-/** 命令闭集，镜像 internal/workbench/interaction.go ExecutionCommand（cancel 无载荷，steer 带文本）。 */
-export type CommandAction = 'cancel' | 'steer';
+/** 命令闭集，镜像 internal/workbench/interaction.go ExecutionCommand（cancel 无载荷，steer/queue_next 带文本）。 */
+export type CommandAction = 'cancel' | 'steer' | 'queue_next';
 
 export interface CommandDecision {
   action: CommandAction;
@@ -104,6 +104,30 @@ export function evaluateCommand(execution: ExecutionDTO, action: CommandAction):
     return { action, allowed: false, reason: 'command requires a snapshot revision (expected_revision)' };
   }
   return { action, allowed: true, reason: '' };
+}
+
+export interface QueueNextDecision {
+  allowed: boolean;
+  reason: string;
+}
+
+/**
+ * 冻结的 queue_next 准入规则（T07）：
+ * 1. 活动 Run（queued/running/waiting_user/reconciling/recovering）拒绝——一个 Task 至多一个写
+ *    Run，下一 Run 的准入必须等当前 Run 终态；
+ * 2. 未知 run_status 不默认放行（没有事实不猜测）；
+ * 3. revision<=0（无快照 revision）拒绝——命令必须携带真实 expected_revision；
+ * 4. 终态 + 真实 revision 放行。与 evaluateCommand（MX-003）不同：queue_next 不查
+ *    capability——它走准入（budget/槽位），不是 Run 生命周期能力。
+ */
+export function evaluateQueueNext(execution: ExecutionDTO): QueueNextDecision {
+  if (TERMINAL_RUN_STATUS.includes(execution.run_status)) {
+    if (execution.revision <= 0) {
+      return { allowed: false, reason: 'command requires a snapshot revision (expected_revision)' };
+    }
+    return { allowed: true, reason: '' };
+  }
+  return { allowed: false, reason: `run still ${execution.run_status}; one task permits at most one write run` };
 }
 
 function object(value: unknown, path: string): Record<string, unknown> {

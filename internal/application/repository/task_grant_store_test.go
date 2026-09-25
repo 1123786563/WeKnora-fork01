@@ -138,8 +138,9 @@ func TestTaskGrantStoreTaskOwnerIDResolvesSessionOwner(t *testing.T) {
 // openTaskGrantStoreDB builds the minimal task_grants + sessions schema
 // directly. The B3-F74/F75 behaviors under test are store-level SQL semantics
 // (NULL scan, upsert conflict), not migration-track properties, so these cases
-// stay runnable independently of the pre-existing migrations/sqlite 000112
-// duplicate-number conflict (out of scope for the B3 batch).
+// stay runnable independently of migrations/sqlite 000112 (task_grants, the
+// sole occupant of that number after the renumbering; the conflict itself was
+// out of scope for the B3 batch).
 func openTaskGrantStoreDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared&_busy_timeout=5000"),

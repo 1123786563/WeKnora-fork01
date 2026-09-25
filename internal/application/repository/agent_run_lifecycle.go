@@ -3,9 +3,12 @@ package repository
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"strings"
 
 	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // CancelRun atomically marks a run terminal and releases its session slot.
@@ -39,6 +42,53 @@ func (s *AgentRunStore) CancelRun(ctx context.Context, key agentruntime.RunKey, 
 			return err
 		}
 		return tx.Table("sessions").Where("tenant_id=? AND id=? AND active_agent_run_id=?", key.TenantID, run.SessionID, key.RunID).Update("active_agent_run_id", nil).Error
+	})
+}
+
+// CancelOwnedRun is the workbench command-surface cancellation: a revision-CAS
+// transition to canceled that also writes the durable cancellation_requested
+// run event and releases the session's active-run slot in the same
+// transaction. The slot release is what makes a later restart (queue_next on
+// the terminal run) admissible; the run event is what makes the stop request a
+// timeline fact clients can present. A foreign owner is indistinguishable from
+// a missing run: uniform not-found, zero side effects.
+func (s *AgentRunStore) CancelOwnedRun(ctx context.Context, tenantID uint64, ownerID, runID string, expectedRevision int64, reason string) error {
+	if tenantID == 0 || strings.TrimSpace(ownerID) == "" || strings.TrimSpace(runID) == "" {
+		return agentruntime.ErrConflict
+	}
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var run agentRunRow
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("tenant_id = ? AND run_id = ?", tenantID, strings.TrimSpace(runID)).Take(&run).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return agentruntime.ErrNotFound
+			}
+			return err
+		}
+		if run.OwnerID != strings.TrimSpace(ownerID) {
+			return agentruntime.ErrNotFound
+		}
+		if run.Status == "canceled" {
+			return nil // idempotent, same as CancelRun
+		}
+		if run.Status == "succeeded" || run.Status == "failed" || run.Revision != expectedRevision {
+			return agentruntime.ErrConflict
+		}
+		if err := tx.Model(&agentRunRow{}).
+			Where("tenant_id = ? AND run_id = ? AND revision = ?", tenantID, run.RunID, run.Revision).
+			Updates(map[string]any{"status": "canceled", "wait_reason": reason, "lease_owner": "", "lease_until": nil,
+				"revision": gorm.Expr("revision + 1"), "updated_at": gorm.Expr("CURRENT_TIMESTAMP")}).Error; err != nil {
+			return err
+		}
+		payloadBytes, err := json.Marshal(map[string]string{"reason": reason})
+		if err != nil {
+			return err
+		}
+		if err := appendRunEventLocked(tx, agentruntime.Fence{RunKey: agentruntime.RunKey{TenantID: tenantID, RunID: run.RunID}}, "cancellation_requested", string(payloadBytes)); err != nil {
+			return err
+		}
+		return tx.Table("sessions").Where("tenant_id = ? AND id = ? AND active_agent_run_id = ?",
+			tenantID, run.SessionID, run.RunID).Update("active_agent_run_id", nil).Error
 	})
 }
 
