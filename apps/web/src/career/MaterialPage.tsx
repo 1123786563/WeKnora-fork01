@@ -2,14 +2,20 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { WeKnoraClient } from '@weknora/api-client'
 import type { ScopeController } from '@weknora/domain/scope'
 import type { CareerView } from '../../../../packages/career-core/src/contracts.ts'
-import type { ConfirmMaterialInput, EditMaterialInput, MaterialBody, MaterialClaim, MaterialReceipt, MaterialVersionChange, MaterialVersionComparison, MaterialVersionView, MaterialView } from '../../../../packages/api-client/src/career.ts'
+import type { ConfirmMaterialInput, EditMaterialInput, MaterialBody, MaterialClaim, MaterialExportDownload, MaterialExportFormat, MaterialExportReceipt, MaterialReceipt, MaterialVersionChange, MaterialVersionComparison, MaterialVersionView, MaterialView, PublishMaterialInput, RevokeMaterialExportInput } from '../../../../packages/api-client/src/career.ts'
 import './material.css'
 
 type MaterialPhase = 'idle' | 'busy' | 'unknown' | 'error' | 'forbidden' | 'scope-changed'
 type EditableClaim = { claimId: string; text: string; factKey: string; needsReview: boolean; reviewNote: string }
 type EditableSection = { heading: string; content: string; claims: EditableClaim[] }
 type MaterialAttempt = { kind: 'edit' | 'confirm'; requestId: string; input: EditMaterialInput | ConfirmMaterialInput }
+type ExportAttempt = { kind: 'publish' | 'revoke'; requestId: string; input: PublishMaterialInput | RevokeMaterialExportInput }
+type ExportPhase = 'idle' | 'busy' | 'unknown' | 'error'
+type DownloadNote = { state: 'busy' | 'ok' | 'error'; note: string }
 const newRequestId = (): string => typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+// Mirrors MaxExportGrantTTL in internal/modules/career/rendering.go: a
+// career export download grant lives at most 15 minutes.
+const EXPORT_GRANT_TTL_SECONDS = 600
 
 function errorDetails(cause: unknown): { code?: string; requestId?: string; currentRevision?: number; status?: number; message: string } {
  const error = cause as { code?: string; requestId?: string; currentRevision?: number; status?: number; message?: string }
@@ -29,6 +35,25 @@ function materialParamUrl(materialId?: string): string | undefined {
  else params.delete('material')
  const search = params.toString()
  return `${window.location.pathname}${search ? `?${search}` : ''}`
+}
+// SHA-256 of the downloaded bytes, compared against the grant digest before
+// anything is offered to the browser as a file.
+const sha256Hex = async (body: string | Blob | ArrayBuffer): Promise<string> => {
+ const bytes = typeof body === 'string' ? new TextEncoder().encode(body) : body instanceof ArrayBuffer ? body : await body.arrayBuffer()
+ const sum = await crypto.subtle.digest('SHA-256', bytes)
+ return [...new Uint8Array(sum)].map((byte) => byte.toString(16).padStart(2, '0')).join('')
+}
+const saveBlob = (body: string | Blob | ArrayBuffer, fileName: string, contentType?: string): void => {
+ if (typeof document === 'undefined' || typeof URL === 'undefined' || typeof URL.createObjectURL !== 'function') return
+ const blob = body instanceof Blob ? body : new Blob([body], { type: contentType ?? 'application/octet-stream' })
+ const url = URL.createObjectURL(blob)
+ const anchor = document.createElement('a')
+ anchor.href = url
+ anchor.download = fileName
+ document.body.append(anchor)
+ anchor.click()
+ anchor.remove()
+ setTimeout(() => URL.revokeObjectURL(url), 5_000)
 }
 const editableFromBody = (body: MaterialBody): EditableSection[] => body.sections.map((section) => ({ heading: section.heading, content: section.content, claims: section.claims.map((claim: MaterialClaim) => ({ claimId: claim.claimId, text: claim.text, factKey: claim.factKey ?? '', needsReview: claim.needsReview, reviewNote: claim.reviewNote ?? '' })) }))
 const bodyFromEditable = (sections: EditableSection[]): MaterialBody => ({ sections: sections.map((section) => ({ heading: section.heading.trim(), content: section.content, claims: section.claims.map((claim) => ({ claimId: claim.claimId, text: claim.text, ...(claim.factKey.trim() ? { factKey: claim.factKey.trim() } : {}), needsReview: claim.needsReview, ...(claim.reviewNote.trim() ? { reviewNote: claim.reviewNote } : {}) })) })) })
@@ -72,6 +97,16 @@ export function MaterialPage({ client, scopeController, opportunityId, snapshotI
  const [revisionConflict, setRevisionConflict] = useState<number>()
  const [comparison, setComparison] = useState<MaterialVersionComparison>()
  const [versionDetail, setVersionDetail] = useState<MaterialVersionView>()
+ // Export seam (T16): every publish renders the same-body PDF/DOCX pair of
+ // one immutable version; the list shows both files, the shared content
+ // digest and the version binding; downloads redeem authenticated grants
+ // and verify the SHA-256 before saving; revocation kills issued grants.
+ const [exports, setExports] = useState<MaterialExportReceipt[]>()
+ const [exportPhase, setExportPhase] = useState<ExportPhase>('idle')
+ const [exportMessage, setExportMessage] = useState('')
+ const [exportConflict, setExportConflict] = useState<number>()
+ const [exportAttempt, setExportAttempt] = useState<ExportAttempt>()
+ const [downloads, setDownloads] = useState<Record<string, DownloadNote>>({})
  const claimCounter = useRef(0)
  const restored = useRef(false)
  const dirty = savedBody === undefined || JSON.stringify(bodyFromEditable(sections)) !== JSON.stringify(savedBody)
@@ -94,6 +129,7 @@ export function MaterialPage({ client, scopeController, opportunityId, snapshotI
  const clearPrivate = useCallback((notice: string, nextState: 'forbidden' | 'scope-changed' = 'forbidden') => {
   setAttempt(undefined); setView(undefined); setSavedBody(undefined); setSections([]); setPhase(nextState); setMessage(notice)
   setMaterialId(undefined); setRevisionConflict(undefined); setComparison(undefined); setVersionDetail(undefined)
+  setExports(undefined); setExportPhase('idle'); setExportMessage(''); setExportConflict(undefined); setExportAttempt(undefined); setDownloads({})
   const url = materialParamUrl(undefined)
   if (url) window.history.replaceState({}, document.title, url)
  }, [])
@@ -310,6 +346,135 @@ export function MaterialPage({ client, scopeController, opportunityId, snapshotI
   }
  }, [clearPrivate, client, materialId, phase, scopeController])
 
+ const reloadExports = useCallback(async (id: string): Promise<void> => {
+  const requestScope = scopeController.current()
+  const list = await client.career.materialExports(id, requestScope.signal)
+  if (!scopeController.isCurrent(requestScope.scope)) return
+  setExports(list.exports)
+ }, [client, scopeController])
+
+ useEffect(() => {
+  if (!materialId) return
+  void reloadExports(materialId).catch((cause: unknown) => {
+   if (!scopeController.isCurrent(scopeController.current().scope)) return
+   const parsed = errorDetails(cause)
+   if (parsed.code === 'forbidden') { clearPrivate('当前空间不可访问此材料，已清除编辑内容。'); return }
+   setExportMessage(`导出列表暂时无法读取：${parsed.message}`)
+  })
+ }, [clearPrivate, materialId, reloadExports, scopeController])
+
+ const publishExport = useCallback(async (version: number, fixedAttempt?: ExportAttempt): Promise<void> => {
+  const currentAttempt: ExportAttempt | undefined = fixedAttempt ?? ((): ExportAttempt | undefined => {
+   if (exportPhase === 'busy' || materialId === undefined || revision === undefined) return undefined
+   const requestId = newRequestId()
+   return { kind: 'publish', requestId, input: { requestId, materialId, version, expectedRevision: revision } }
+  })()
+  if (!currentAttempt) return
+  const requestScope = scopeController.current()
+  setExportAttempt(currentAttempt); setExportPhase('busy'); setExportMessage('正在渲染并核验导出（PDF 与 DOCX 双格式核验）…'); setExportConflict(undefined)
+  try {
+   const receipt: MaterialExportReceipt = await client.career.publishMaterial(currentAttempt.input as PublishMaterialInput, requestScope.signal)
+   if (!scopeController.isCurrent(requestScope.scope)) return
+   if (receipt.requestId !== currentAttempt.requestId || receipt.kind !== 'material_published') throw new TypeError('导出回执与本次请求不匹配')
+   setExportAttempt(undefined); setExportPhase('idle')
+   const success = receipt.status === 'submittable'
+    ? `导出已发布：PDF 与 DOCX 均核验通过，可用于投递（绑定版本 V${receipt.version}）。`
+    : receipt.status === 'failed'
+     ? '导出保留暂存：PDF 与 DOCX 核验均未通过，未标记可用于投递。'
+     : '导出保留暂存：仅一种格式核验通过，未标记可用于投递。'
+   setExportMessage(success)
+   try { await reloadExports((currentAttempt.input as PublishMaterialInput).materialId) } catch { if (scopeController.isCurrent(requestScope.scope)) setExportMessage(`${success}导出列表暂时无法刷新，可稍后重试。`) }
+  } catch (cause) {
+   if (!scopeController.isCurrent(requestScope.scope)) return
+   const parsed = errorDetails(cause)
+   if (parsed.code === 'forbidden') { clearPrivate('当前空间不可访问此材料，已清除编辑内容。'); return }
+   if (parsed.code === 'revision_conflict') {
+    setExportAttempt(undefined); setExportPhase('error'); setExportConflict(parsed.currentRevision)
+    setMessage(`档案已更新${parsed.currentRevision !== undefined ? `（当前修订 ${parsed.currentRevision}）` : ''}。请重新读取档案修订后再次发布导出；新提交会使用新的请求编号。`)
+    return
+   }
+   if (['invalid_request', 'idempotency_conflict', 'not_found', 'request_too_large', 'PAYLOAD_TOO_LARGE', 'export_not_submittable', 'export_storage_unavailable', 'export_signing_key_missing'].includes(parsed.code ?? '')) {
+    setExportAttempt(undefined); setExportPhase('error')
+    setExportMessage(parsed.code === 'idempotency_conflict' ? '请求编号已对应其他内容，服务器拒绝了本次导出发布。请检查后重新发布。' : parsed.code === 'not_found' ? '材料或版本不存在（可能不属于当前空间），本次导出发布未完成。' : `导出发布未被接受：${parsed.message}`)
+    return
+   }
+   if (!isUncertainWrite(cause)) {
+    setExportAttempt(undefined); setExportPhase('error')
+    setExportMessage(`导出发布未完成：${parsed.message}`)
+    return
+   }
+   setExportPhase('unknown')
+   setExportMessage('暂时无法确认导出是否已发布。请用原请求编号重试发布；不会自动更换请求编号。')
+  }
+ }, [clearPrivate, client, exportPhase, materialId, reloadExports, revision, scopeController])
+
+ const revokeExport = useCallback(async (exportId: string, fixedAttempt?: ExportAttempt): Promise<void> => {
+  const currentAttempt: ExportAttempt | undefined = fixedAttempt ?? ((): ExportAttempt | undefined => {
+   if (exportPhase === 'busy' || materialId === undefined || revision === undefined) return undefined
+   const requestId = newRequestId()
+   return { kind: 'revoke', requestId, input: { requestId, materialId, exportId, expectedRevision: revision } }
+  })()
+  if (!currentAttempt) return
+  const requestScope = scopeController.current()
+  setExportAttempt(currentAttempt); setExportPhase('busy'); setExportMessage('正在撤销导出…'); setExportConflict(undefined)
+  try {
+   const receipt: MaterialExportReceipt = await client.career.revokeMaterialExport(currentAttempt.input as RevokeMaterialExportInput, requestScope.signal)
+   if (!scopeController.isCurrent(requestScope.scope)) return
+   if (receipt.requestId !== currentAttempt.requestId || receipt.kind !== 'material_export_revoked') throw new TypeError('导出回执与本次请求不匹配')
+   setExportAttempt(undefined); setExportPhase('idle')
+   setExportMessage('导出已撤销：已签发的下载授权立即失效。')
+   try { await reloadExports((currentAttempt.input as RevokeMaterialExportInput).materialId) } catch { if (scopeController.isCurrent(requestScope.scope)) setExportMessage('导出已撤销：已签发的下载授权立即失效。导出列表暂时无法刷新，可稍后重试。') }
+  } catch (cause) {
+   if (!scopeController.isCurrent(requestScope.scope)) return
+   const parsed = errorDetails(cause)
+   if (parsed.code === 'forbidden') { clearPrivate('当前空间不可访问此材料，已清除编辑内容。'); return }
+   if (parsed.code === 'revision_conflict') {
+    setExportAttempt(undefined); setExportPhase('error'); setExportConflict(parsed.currentRevision)
+    setMessage(`档案已更新${parsed.currentRevision !== undefined ? `（当前修订 ${parsed.currentRevision}）` : ''}。请重新读取档案修订后再次撤销导出；新提交会使用新的请求编号。`)
+    return
+   }
+   if (['invalid_request', 'idempotency_conflict', 'not_found', 'export_not_submittable', 'export_storage_unavailable'].includes(parsed.code ?? '')) {
+    setExportAttempt(undefined); setExportPhase('error')
+    setExportMessage(parsed.code === 'idempotency_conflict' ? '请求编号已对应其他内容，服务器拒绝了本次撤销。请检查后再次撤销。' : parsed.code === 'not_found' ? '导出不存在（可能不属于当前空间），本次撤销未完成。' : `撤销未被接受：${parsed.message}`)
+    return
+   }
+   if (!isUncertainWrite(cause)) {
+    setExportAttempt(undefined); setExportPhase('error')
+    setExportMessage(`撤销未完成：${parsed.message}`)
+    return
+   }
+   setExportPhase('unknown')
+   setExportMessage('暂时无法确认导出是否已撤销。请用原请求编号重试撤销；不会自动更换请求编号。')
+  }
+ }, [clearPrivate, client, exportPhase, materialId, reloadExports, revision, scopeController])
+
+ const downloadExport = useCallback(async (exportId: string, format: MaterialExportFormat): Promise<void> => {
+  if (materialId === undefined) return
+  const key = `${exportId}:${format}`
+  setDownloads((current) => ({ ...current, [key]: { state: 'busy', note: '正在签发下载授权…' } }))
+  const requestScope = scopeController.current()
+  try {
+   const grant: MaterialExportDownload = await client.career.materialExportSignedURL(materialId, exportId, format, EXPORT_GRANT_TTL_SECONDS, requestScope.signal)
+   if (!scopeController.isCurrent(requestScope.scope)) return
+   if (grant.exportId !== exportId || grant.format !== format) throw new TypeError('下载授权与本次请求不匹配')
+   setDownloads((current) => ({ ...current, [key]: { state: 'busy', note: '正在认证下载…' } }))
+   const file = await client.career.materialExportDownload(grant, requestScope.signal)
+   if (!scopeController.isCurrent(requestScope.scope)) return
+   const digest = await sha256Hex(file.body)
+   if (digest !== grant.digest) {
+    setDownloads((current) => ({ ...current, [key]: { state: 'error', note: '下载字节摘要与授权摘要不一致，已拒绝保存。' } }))
+    return
+   }
+   saveBlob(file.body, `career-material-v${grant.version}.${format}`, file.contentType)
+   setDownloads((current) => ({ ...current, [key]: { state: 'ok', note: `${format.toUpperCase()} 已下载，SHA-256 与授权摘要一致（${digest.slice(0, 16)}…）。` } }))
+  } catch (cause) {
+   if (!scopeController.isCurrent(requestScope.scope)) return
+   const parsed = errorDetails(cause)
+   if (parsed.code === 'forbidden') { clearPrivate('当前空间不可访问此材料，已清除编辑内容。'); return }
+   setDownloads((current) => ({ ...current, [key]: { state: 'error', note: parsed.code === 'export_grant_invalid' ? '下载授权已失效（导出可能已被撤销），本次下载被拒绝。' : `下载未完成：${parsed.message}` } }))
+  }
+ }, [clearPrivate, client, materialId, scopeController])
+
  const locked = phase === 'busy' || phase === 'unknown'
  const canSubmit = phase === 'idle' || phase === 'error'
  const saveBlocked = !canSubmit || revision === undefined || sections.length === 0
@@ -364,7 +529,45 @@ export function MaterialPage({ client, scopeController, opportunityId, snapshotI
     <ul>{view.versions.map((version) => <li key={version.version}><strong>V{version.version}</strong> · <time dateTime={version.createdAt}>{version.createdAt}</time>
      <button type="button" aria-label={`只读查看 V${version.version}`} disabled={locked} onClick={() => void openVersion(version.version)}>只读查看</button>
      {version.version >= 2 ? <button type="button" aria-label={`比较 V${version.version - 1} 与 V${version.version}`} disabled={locked} onClick={() => void openComparison(version.version - 1, version.version)}>{`与 V${version.version - 1} 比较`}</button> : null}
+     <button type="button" aria-label={`发布导出 V${version.version}`} disabled={locked || revision === undefined || exportPhase === 'busy'} title={revision === undefined ? '需先读取当前档案修订' : '渲染并核验同一正文的 PDF 与 DOCX'} onClick={() => void publishExport(version.version)}>发布导出</button>
     </li>)}</ul>
+   </section> : null}
+   {materialId && exports !== undefined ? <section className="wk-material__exports" aria-label="材料导出">
+    <h3>导出（同一正文的 PDF 与 DOCX）</h3>
+    <p className="wk-material__hint">每次发布用同一结构化正文渲染 PDF 与 DOCX 并各自核验；两种格式都通过后才可用于投递；下载需先签发授权并携带登录态；撤销后已签发的下载授权立即失效。</p>
+    {exportPhase === 'unknown' && exportAttempt ? <div className="wk-material__actions" role="group" aria-label="恢复导出写入">
+     <button type="button" onClick={() => { if (exportAttempt.kind === 'publish') void publishExport((exportAttempt.input as PublishMaterialInput).version, exportAttempt); else void revokeExport((exportAttempt.input as RevokeMaterialExportInput).exportId, exportAttempt) }}>{exportAttempt.kind === 'publish' ? '用原请求编号重试发布' : '用原请求编号重试撤销'}</button>
+    </div> : null}
+    {exportPhase === 'error' && exportConflict !== undefined ? <div className="wk-material__actions"><button type="button" onClick={() => void readRevision()}>重新读取档案修订</button></div> : null}
+    {exportMessage ? <p className={exportPhase === 'error' ? 'wk-material__message wk-material__message--error' : 'wk-material__message'} role={exportPhase === 'error' ? 'alert' : 'status'} aria-live="polite">{exportMessage}</p> : null}
+    {exports.length ? <ul className="wk-material__export-list" aria-label="材料导出列表">{exports.map((receipt) => {
+     // The UI gate mirrors the backend rule: only a both-verified pair is
+     // ever offered for delivery — a half-verified payload claiming
+     // submittable stays undeliverable here too.
+     const deliverable = receipt.status === 'submittable' && receipt.submittable && receipt.files.length >= 2 && receipt.files.every((file) => file.verified)
+     const statusText = receipt.kind === 'material_export_revoked' ? '已撤销（revoked）：旧下载授权立即失效'
+      : receipt.status === 'submittable' ? (deliverable ? '双格式核验通过（submittable）' : '双格式核验记录不一致，暂不提供投递')
+      : receipt.status === 'staged' ? '已暂存（staged）：仅一种格式核验通过，不可投递'
+      : '双格式核验失败（failed），不可投递'
+     return <li className="wk-material__export" key={receipt.exportId} aria-label={`导出 ${receipt.exportId}`}>
+      <p className="wk-material__export-meta">导出 <code>{receipt.exportId}</code> · 绑定不可变版本 V{receipt.version} · <span className={deliverable ? 'wk-material__export-submittable' : 'wk-material__export-status'}>状态：{statusText}</span>{deliverable ? '（可用于投递）' : ''}</p>
+      <p className="wk-material__digest">正文摘要（两种格式同一摘要）<code>{receipt.contentDigest}</code></p>
+      <ul className="wk-material__export-files" aria-label={`导出 ${receipt.exportId} 文件`}>
+       {receipt.files.map((file) => <li key={file.format} className={file.verified ? undefined : 'wk-material__export-file--failed'}>{file.format.toUpperCase()} · {file.verified ? '核验通过' : `核验未通过${file.error ? `：${file.error}` : ''}`}{file.fileDigest ? <> · 文件摘要 <code>{file.fileDigest}</code></> : null}{file.contentDigest === receipt.contentDigest ? ' · 与导出正文摘要一致' : ' · 正文摘要与导出不一致'}{typeof file.size === 'number' ? ` · ${file.size} 字节` : ''}</li>)}
+      </ul>
+      {receipt.failureMessage ? <p className="wk-material__export-failure" role="alert">核验失败（{receipt.failureCode}）：{receipt.failureMessage}</p> : null}
+      {deliverable ? <div className="wk-material__actions">
+       <button type="button" aria-label={`下载 PDF ${receipt.exportId}`} disabled={exportPhase === 'busy'} onClick={() => void downloadExport(receipt.exportId, 'pdf')}>下载 PDF</button>
+       <button type="button" aria-label={`下载 DOCX ${receipt.exportId}`} disabled={exportPhase === 'busy'} onClick={() => void downloadExport(receipt.exportId, 'docx')}>下载 DOCX</button>
+       <button type="button" aria-label={`撤销导出 ${receipt.exportId}`} disabled={exportPhase === 'busy'} onClick={() => void revokeExport(receipt.exportId)}>撤销导出</button>
+      </div> : null}
+      <div aria-label={`导出 ${receipt.exportId} 下载状态`}>
+       {(['pdf', 'docx'] as const).map((format) => {
+        const note = downloads[`${receipt.exportId}:${format}`]
+        return note ? <p key={format} className={note.state === 'error' ? 'wk-material__export-note wk-material__export-note--error' : 'wk-material__export-note'} role={note.state === 'error' ? 'alert' : 'status'}>{note.note}</p> : null
+       })}
+      </div>
+     </li>})}</ul> : <p className="wk-material__hint">还没有导出。在上方不可变版本列表点击「发布导出」，用同一正文生成并核验 PDF 与 DOCX。</p>}
    </section> : null}
    {comparison ? <section className="wk-material__compare" aria-label="版本并排比较">
     <h3>版本 V{comparison.baseline.version} 与 V{comparison.target.version} 并排比较</h3>

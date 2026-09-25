@@ -352,7 +352,7 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
   return {
     request,
     requestBinary,
-    career: createCareerApi(request),
+    career: createCareerApi(request, requestBinary),
     knowledgeBases: {
       async list(params: KnowledgeBaseListParams = {}): Promise<KnowledgeBase[]> {
         const path = withQuery('/api/v1/knowledge-bases', { ...params });

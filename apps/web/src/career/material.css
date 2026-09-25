@@ -172,6 +172,33 @@
   font-size: .88em;
   overflow-wrap: anywhere;
 }
+/* T16 export seam: same-body PDF/DOCX pair with the shared content digest;
+   the #07c05f brand green marks the both-verified submittable state. */
+.wk-material__exports {
+  margin: 16px 0 0;
+  padding: 12px 14px 14px;
+  border: 1px solid var(--td-component-border, #e7e7e7);
+  border-radius: 8px;
+  background: var(--td-bg-color-container, #fff);
+}
+.wk-material__export-list { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 12px; }
+.wk-material__export {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--td-component-border, #e7e7e7);
+  border-radius: 8px;
+  background: var(--td-bg-color-container, #fff);
+}
+.wk-material__export-meta { margin: 0; font-size: .9rem; overflow-wrap: anywhere; }
+.wk-material__export-submittable { color: #07c05f; font-weight: 600; }
+.wk-material__export-status { color: var(--td-text-color-primary, #222); font-weight: 600; }
+.wk-material__digest { margin: 8px 0 0; font-size: .82rem; color: var(--td-text-color-secondary, #666); overflow-wrap: anywhere; }
+.wk-material__export-files { margin: 8px 0 0; padding-left: 18px; font-size: .86rem; }
+.wk-material__export-files li { margin-top: 4px; overflow-wrap: anywhere; }
+.wk-material__export-file--failed { color: var(--td-error-color, #d54941); }
+.wk-material__export-failure { margin: 8px 0 0; font-size: .86rem; color: var(--td-error-color, #d54941); }
+.wk-material__export-note { margin: 8px 0 0; font-size: .86rem; color: var(--td-text-color-secondary, #666); }
+.wk-material__export-note--error { color: var(--td-error-color, #d54941); font-weight: 600; }
 @media (max-width: 640px) {
   .wk-material { padding: 14px; }
   .wk-material__pinned { grid-template-columns: 1fr; }

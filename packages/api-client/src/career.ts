@@ -384,6 +384,117 @@ export function decodeMaterialComparison(value: unknown): MaterialVersionCompari
  return { materialId: record.materialId, baseline: decodeMaterialVersionView(record.baseline), target: decodeMaterialVersionView(record.target), changes: record.changes.map(decodeMaterialChange) }
 }
 
+// Frozen export contract owned by the career backend (T16,
+// internal/modules/career/rendering.go). One publish renders a same-body
+// PDF/DOCX pair of one immutable material version; both files record the
+// same content digest and version binding; only the both-verified export is
+// submittable; revocation kills already-issued download grants immediately.
+// Decoders reject invented kinds, statuses, formats, or broken digests
+// before they reach the UI, including a receipt that claims submittable
+// while a format record says its verification failed.
+export type MaterialExportKind = 'material_published' | 'material_export_revoked'
+export type MaterialExportStatus = 'staged' | 'submittable' | 'failed' | 'revoked'
+export type MaterialExportFormat = 'pdf' | 'docx'
+export type MaterialExportFailureCode = 'export_verification_failed'
+export type MaterialExportedFile = { format: MaterialExportFormat; materialId: string; version: number; contentDigest: string; objectKey?: string; fileDigest?: string; size?: number; verified: boolean; error?: string }
+export type MaterialExportReceipt = { kind: MaterialExportKind; requestId: string; exportId: string; materialId: string; version: number; status: MaterialExportStatus; submittable: boolean; contentDigest: string; files: MaterialExportedFile[]; failureCode?: MaterialExportFailureCode; failureMessage?: string; createdAt: string; revokedAt?: string }
+export type MaterialExportList = { materialId: string; exports: MaterialExportReceipt[] }
+// A grant is a short-lived download authorization bound to the issuing
+// owner, the export, and one format; `digest` is the SHA-256 of the stored
+// file bytes (what a downloaded blob must hash to), not the body digest.
+export type MaterialExportDownload = { exportId: string; materialId: string; version: number; format: MaterialExportFormat; digest: string; size: number; expiresAt: number; signature: string; url: string }
+export type PublishMaterialInput = { requestId: string; materialId: string; version: number; expectedRevision: number }
+export type RevokeMaterialExportInput = { requestId: string; materialId: string; exportId: string; expectedRevision: number }
+export type MaterialExportFile = { format: MaterialExportFormat; digest: string; size: number; body: string | Blob | ArrayBuffer; contentType?: string }
+
+const materialExportKinds: MaterialExportKind[] = ['material_published', 'material_export_revoked']
+const materialExportStatuses: MaterialExportStatus[] = ['staged', 'submittable', 'failed', 'revoked']
+const materialExportFormats: MaterialExportFormat[] = ['pdf', 'docx']
+// MaxExportGrantTTL in rendering.go: a grant may live at most 15 minutes.
+export const MAX_EXPORT_GRANT_TTL_SECONDS = 900
+// The browser download is an authenticated redemption: the client rebuilds
+// the path from the decoded grant fields and sends it through the binary
+// transport (which carries Authorization), never following grant.url itself.
+export type CareerBinaryRequest = (input: ClientRequest) => Promise<{ body: string | Blob | ArrayBuffer; contentType?: string; headers: Record<string, string> }>
+
+const sha256Hex = /^[a-f0-9]{64}$/
+
+function decodeMaterialExportedFile(value: unknown): MaterialExportedFile {
+ const record = decodeRecord(value, 'invalid material export file')
+ const objectKey: unknown = record.objectKey
+ const fileDigest: unknown = record.fileDigest
+ const size: unknown = record.size
+ if (!materialExportFormats.includes(record.format as MaterialExportFormat) || !validIdentifier(record.materialId)
+  || !validPositiveVersion(record.version)
+  || typeof record.contentDigest !== 'string' || !sha256Hex.test(record.contentDigest)
+  || (fileDigest !== undefined && (typeof fileDigest !== 'string' || !sha256Hex.test(fileDigest)))
+  || (objectKey !== undefined && !validOptionalIdentifier(objectKey))
+  || (size !== undefined && (typeof size !== 'number' || !Number.isSafeInteger(size) || size < 0))
+  || typeof record.verified !== 'boolean' || !validOptionalString(record.error)) throw new TypeError('invalid material export file')
+ return {
+  format: record.format as MaterialExportFormat, materialId: record.materialId, version: record.version as number, contentDigest: record.contentDigest,
+  ...(validIdentifier(objectKey) ? { objectKey: objectKey as string } : {}),
+  ...(typeof fileDigest === 'string' ? { fileDigest } : {}),
+  ...(typeof size === 'number' ? { size } : {}),
+  verified: record.verified, ...(typeof record.error === 'string' ? { error: record.error } : {}),
+ }
+}
+
+export function decodeMaterialExportReceipt(value: unknown): MaterialExportReceipt {
+ const record = decodeRecord(value, 'invalid material export receipt')
+ if (!materialExportKinds.includes(record.kind as MaterialExportKind) || !validIdentifier(record.requestId) || !validIdentifier(record.exportId) || !validIdentifier(record.materialId)
+  || !validPositiveVersion(record.version)
+  || !materialExportStatuses.includes(record.status as MaterialExportStatus)
+  || typeof record.submittable !== 'boolean'
+  || typeof record.contentDigest !== 'string' || !sha256Hex.test(record.contentDigest)
+  || !Array.isArray(record.files)
+  || (record.failureCode !== undefined && record.failureCode !== 'export_verification_failed')
+  || !validOptionalString(record.failureMessage) || !validTimestamp(record.createdAt)
+  || (record.revokedAt !== undefined && !validTimestamp(record.revokedAt))) throw new TypeError('invalid material export receipt')
+ const files = record.files.map(decodeMaterialExportedFile)
+ // Coherence frozen from the backend state machine: a publish is submittable
+ // exactly when the status says so with both format records verified; a
+ // revoked export is never submittable and always carries the audit stamp.
+ const revoked = record.kind === 'material_export_revoked'
+ if (revoked !== validTimestamp(record.revokedAt)) throw new TypeError('invalid material export receipt')
+ if ((record.status === 'submittable') !== record.submittable) throw new TypeError('invalid material export receipt')
+ if (revoked && (record.status !== 'revoked' || record.submittable)) throw new TypeError('invalid material export receipt')
+ if (!revoked && record.status === 'revoked') throw new TypeError('invalid material export receipt')
+ if (record.status === 'submittable' && !(files.length === 2 && files.every((file) => file.verified))) throw new TypeError('invalid material export receipt')
+ // Both format records must carry the export's shared body digest; a file
+ // bound to a different body digest is a tampered pair, not the same export.
+ if (files.some((file) => file.contentDigest !== record.contentDigest)) throw new TypeError('invalid material export receipt')
+ return {
+  kind: record.kind as MaterialExportKind, requestId: record.requestId, exportId: record.exportId, materialId: record.materialId,
+  version: record.version as number, status: record.status as MaterialExportStatus, submittable: record.submittable, contentDigest: record.contentDigest, files,
+  ...(record.failureCode !== undefined ? { failureCode: record.failureCode as MaterialExportFailureCode } : {}),
+  ...(typeof record.failureMessage === 'string' ? { failureMessage: record.failureMessage } : {}),
+  createdAt: record.createdAt, ...(typeof record.revokedAt === 'string' ? { revokedAt: record.revokedAt } : {}),
+ }
+}
+
+export function decodeMaterialExportList(value: unknown): MaterialExportList {
+ const record = decodeRecord(value, 'invalid material export list')
+ if (!validIdentifier(record.materialId) || !Array.isArray(record.exports)) throw new TypeError('invalid material export list')
+ return { materialId: record.materialId, exports: record.exports.map(decodeMaterialExportReceipt) }
+}
+
+export function decodeMaterialExportDownload(value: unknown): MaterialExportDownload {
+ const record = decodeRecord(value, 'invalid material export download grant')
+ const size: unknown = record.size
+ const expiresAt: unknown = record.expiresAt
+ // The URL is only a server-echoed relative path; the client never fetches
+ // it directly, so anything absolute (or off the career export seam) is an
+ // invented payload and rejected before the UI sees the grant.
+ if (!validIdentifier(record.exportId) || !validIdentifier(record.materialId) || !validPositiveVersion(record.version)
+  || !materialExportFormats.includes(record.format as MaterialExportFormat)
+  || typeof record.digest !== 'string' || !sha256Hex.test(record.digest)
+  || !Number.isSafeInteger(size) || (size as number) < 0
+  || !Number.isSafeInteger(expiresAt) || (expiresAt as number) <= 0
+  || !validIdentifier(record.signature) || typeof record.url !== 'string' || !record.url.startsWith('/api/v1/career/materials/')) throw new TypeError('invalid material export download grant')
+ return { exportId: record.exportId, materialId: record.materialId, version: record.version as number, format: record.format as MaterialExportFormat, digest: record.digest, size: size as number, expiresAt: expiresAt as number, signature: record.signature, url: record.url }
+}
+
 // Frozen progress contract owned by the career backend (T17,
 // internal/modules/career/progress.go). The timeline is append-only: event
 // types and the seven-stage projection are closed enums and a correction
@@ -461,7 +572,7 @@ export function decodeProgressView(value: unknown): ProgressView {
  return { applicationId: record.applicationId, revision: record.revision as number, stage: record.stage as ProgressStage, events: record.events.map(decodeProgressEvent) }
 }
 
-export function createCareerApi(request: CareerRequest) {
+export function createCareerApi(request: CareerRequest, binaryRequest?: CareerBinaryRequest) {
  return {
   async open(signal?: AbortSignal): Promise<CareerView> { return await request({ method: 'GET', path: '/api/v1/career/open', ...(signal ? { signal } : {}) }) as CareerView },
   async list(signal?: AbortSignal): Promise<CareerView> { return await request({ method: 'GET', path: '/api/v1/career/list', ...(signal ? { signal } : {}) }) as CareerView },
@@ -576,6 +687,36 @@ export function createCareerApi(request: CareerRequest) {
    if (!materialId.trim()) throw new TypeError('material ID must not be empty')
    if (!Number.isSafeInteger(baseline) || baseline <= 0 || !Number.isSafeInteger(target) || target <= 0) throw new TypeError('material compare versions must be positive integers')
    return decodeMaterialComparison(await request({ method: 'GET', path: `/api/v1/career/materials/${encodeURIComponent(materialId)}/versions/${target}/compare?baseline=${baseline}`, ...(signal ? { signal } : {}) }))
+  },
+  async publishMaterial(input: PublishMaterialInput, signal?: AbortSignal): Promise<MaterialExportReceipt> {
+   if (!input.requestId.trim() || !input.materialId.trim()) throw new TypeError('material export publish requestId and materialId must not be empty')
+   if (!Number.isSafeInteger(input.version) || input.version <= 0) throw new TypeError('material export publish version must be a positive integer')
+   if (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0) throw new TypeError('material export publish expected revision must be a non-negative integer')
+   return decodeMaterialExportReceipt(await request({ method: 'POST', path: `/api/v1/career/materials/${encodeURIComponent(input.materialId)}/exports`, body: { requestId: input.requestId, version: input.version, expectedRevision: input.expectedRevision }, ...(signal ? { signal } : {}) }))
+  },
+  async materialExports(materialId: string, signal?: AbortSignal): Promise<MaterialExportList> {
+   if (!materialId.trim()) throw new TypeError('material export materialId must not be empty')
+   return decodeMaterialExportList(await request({ method: 'GET', path: `/api/v1/career/materials/${encodeURIComponent(materialId)}/exports`, ...(signal ? { signal } : {}) }))
+  },
+  async materialExportSignedURL(materialId: string, exportId: string, format: MaterialExportFormat, ttlSeconds: number, signal?: AbortSignal): Promise<MaterialExportDownload> {
+   if (!materialId.trim() || !exportId.trim()) throw new TypeError('material export grant materialId and exportId must not be empty')
+   if (!materialExportFormats.includes(format)) throw new TypeError('material export grant format must be pdf or docx')
+   if (!Number.isSafeInteger(ttlSeconds) || ttlSeconds <= 0 || ttlSeconds > MAX_EXPORT_GRANT_TTL_SECONDS) throw new TypeError(`material export grant ttl must be an integer between 1 and ${MAX_EXPORT_GRANT_TTL_SECONDS}`)
+   return decodeMaterialExportDownload(await request({ method: 'POST', path: `/api/v1/career/materials/${encodeURIComponent(materialId)}/exports/${encodeURIComponent(exportId)}/signed-url`, body: { format, ttlSeconds }, ...(signal ? { signal } : {}) }))
+  },
+  // Authenticated redemption: the path is rebuilt from the decoded grant
+  // fields and sent through the binary transport so Authorization travels
+  // with the download; grant.url is never fetched.
+  async materialExportDownload(grant: MaterialExportDownload, signal?: AbortSignal): Promise<MaterialExportFile> {
+   if (!binaryRequest) throw new Error('Binary transport is unavailable')
+   if (!materialExportFormats.includes(grant.format)) throw new TypeError('material export download format must be pdf or docx')
+   const response = await binaryRequest({ method: 'GET', path: `/api/v1/career/materials/${encodeURIComponent(grant.materialId)}/exports/${encodeURIComponent(grant.exportId)}/download?format=${grant.format}&expires=${grant.expiresAt}&signature=${encodeURIComponent(grant.signature)}`, ...(signal ? { signal } : {}) })
+   return { format: grant.format, digest: grant.digest, size: grant.size, body: response.body, ...(response.contentType !== undefined ? { contentType: response.contentType } : {}) }
+  },
+  async revokeMaterialExport(input: RevokeMaterialExportInput, signal?: AbortSignal): Promise<MaterialExportReceipt> {
+   if (!input.requestId.trim() || !input.materialId.trim() || !input.exportId.trim()) throw new TypeError('material export revoke requestId, materialId and exportId must not be empty')
+   if (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0) throw new TypeError('material export revoke expected revision must be a non-negative integer')
+   return decodeMaterialExportReceipt(await request({ method: 'DELETE', path: `/api/v1/career/materials/${encodeURIComponent(input.materialId)}/exports/${encodeURIComponent(input.exportId)}`, body: { requestId: input.requestId, expectedRevision: input.expectedRevision }, ...(signal ? { signal } : {}) }))
   },
   async appendProgress(input: AppendProgressInput, signal?: AbortSignal): Promise<ProgressReceipt> {
    if (!input.requestId.trim() || !input.applicationId.trim()) throw new TypeError('progress requestId and applicationId must not be empty')

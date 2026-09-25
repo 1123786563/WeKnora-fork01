@@ -345,4 +345,220 @@ test('material styles keep TDesign light surfaces, brand green confirmations, si
  assert.match(css, /\.wk-material__compare \{[\s\S]*?grid-template-columns: 1fr 1fr/)
  assert.match(css, /@media \(max-width: 640px\)/)
  assert.match(css, /overflow-wrap: anywhere/)
+ assert.match(css, /\.wk-material__export \{/)
+ assert.match(css, /\.wk-material__export-submittable \{[\s\S]*?#07c05f/)
+ assert.match(css, /\.wk-material__export-file--failed/)
+})
+
+// T16 export seam: one publish renders the PDF/DOCX pair of one immutable
+// version; only the both-verified export is offered for delivery; downloads
+// redeem an authenticated grant and verify the SHA-256 before saving; a
+// revocation kills already-issued grants while other exports stay live.
+const exportTs = '2026-09-25T09:00:00Z'
+const exportDigest = 'f'.repeat(64)
+const exportFile = (format: 'pdf' | 'docx', verified: boolean, fileDigest: string, size: number) => ({ format, materialId: 'mat-1', version: 1, contentDigest: exportDigest, objectKey: `objects/${format}`, fileDigest, size, verified, ...(verified ? {} : { error: `verify ${format} failed: truncated body` }) })
+const exportReceipt = (options: { status?: 'staged' | 'submittable' | 'failed' | 'revoked'; submittable?: boolean; docxVerified?: boolean; pdfVerified?: boolean; kind?: 'material_published' | 'material_export_revoked'; exportId?: string; version?: number } = {}) => {
+ const status = options.status ?? 'submittable'
+ const pdfVerified = options.pdfVerified ?? true
+ const docxVerified = options.docxVerified ?? true
+ return {
+  kind: options.kind ?? 'material_published', requestId: `publish-${options.exportId ?? 'exp-1'}`, exportId: options.exportId ?? 'exp-1', materialId: 'mat-1', version: options.version ?? 1, status, submittable: options.submittable ?? status === 'submittable', contentDigest: exportDigest,
+  files: [exportFile('pdf', pdfVerified, 'a'.repeat(64), 2048), exportFile('docx', docxVerified, 'b'.repeat(64), 4096)],
+  failureCode: status === 'submittable' ? undefined : 'export_verification_failed',
+  failureMessage: status === 'staged' ? 'verify docx failed: truncated body' : status === 'failed' ? 'verify pdf failed: truncated body verify docx failed: truncated body' : undefined,
+  createdAt: exportTs, ...(options.kind === 'material_export_revoked' ? { revokedAt: exportTs } : {}),
+ }
+}
+const grantFixture = (format: 'pdf' | 'docx', digest: string) => ({ exportId: 'exp-1', materialId: 'mat-1', version: 1, format, digest, size: 12, expiresAt: 1790000000, signature: 'c0ffee'.repeat(4), url: `/api/v1/career/materials/mat-1/exports/exp-1/download?format=${format}&expires=1790000000&signature=${'c0ffee'.repeat(4)}` })
+
+async function mountStoredMaterial(career: CareerStub) {
+ window.history.replaceState({}, '', '/platform/career/opportunities/opp%2F1?snapshotId=snapshot%20%3F1&material=mat-1')
+ const mounted = await mountMaterial(career)
+ return mounted.container
+}
+
+test('publishing an immutable version renders the submittable export with the shared digest and the version binding', async () => {
+ const publishes: unknown[] = []
+ const career: CareerStub = {
+  open: async () => profileView,
+  material: async () => materialView([1]),
+  materialExports: async (id: string) => { exportsReads.push(id); return { materialId: id, exports: [exportReceipt()] } },
+  publishMaterial: async (input: { requestId: string }) => { publishes.push(input); return { ...exportReceipt(), requestId: input.requestId } },
+ }
+ const exportsReads: string[] = []
+ const container = await mountStoredMaterial(career)
+ await act(async () => { click(container.querySelector<HTMLButtonElement>('[aria-label="发布导出 V1"]')!); await settle(); await settle() })
+ assert.equal(publishes.length, 1)
+ const input = publishes[0] as { requestId: string; materialId: string; version: number; expectedRevision: number }
+ assert.equal(input.materialId, 'mat-1')
+ assert.equal(input.version, 1)
+ assert.equal(input.expectedRevision, 4)
+ assert.ok(input.requestId)
+ assert.match(container.textContent ?? '', /导出已发布：PDF 与 DOCX 均核验通过，可用于投递/)
+ const item = container.querySelector('[aria-label="导出 exp-1"]')?.textContent ?? ''
+ assert.match(item, /状态：双格式核验通过（submittable）/)
+ assert.match(item, /可用于投递/)
+ assert.match(item, /绑定不可变版本 V1/)
+ assert.match(item, new RegExp(`正文摘要（两种格式同一摘要）${exportDigest}`))
+ const files = container.querySelector('[aria-label="导出 exp-1 文件"]')?.textContent ?? ''
+ assert.match(files, /PDF · 核验通过/)
+ assert.match(files, new RegExp('a'.repeat(64)))
+ assert.match(files, /DOCX · 核验通过/)
+ assert.match(files, new RegExp('b'.repeat(64)))
+ assert.match(files, /2048 字节/)
+ assert.equal((files.match(/与导出正文摘要一致/g) ?? []).length, 2, 'both format files bind the export body digest')
+ assert.ok(container.querySelector('[aria-label="下载 PDF exp-1"]'))
+ assert.ok(container.querySelector('[aria-label="下载 DOCX exp-1"]'))
+ assert.ok(container.querySelector('[aria-label="撤销导出 exp-1"]'))
+ assert.deepEqual(exportsReads, ['mat-1', 'mat-1'], 'exports load once on restore and reload after publish')
+})
+
+test('a single-format verification failure keeps the export staged with its error and never deliverable', async () => {
+ const container = await mountStoredMaterial({
+  open: async () => profileView,
+  material: async () => materialView([1]),
+  materialExports: async (id: string) => ({ materialId: id, exports: [exportReceipt({ status: 'staged', docxVerified: false })] }),
+  publishMaterial: async (input: { requestId: string }) => ({ ...exportReceipt({ status: 'staged', docxVerified: false }), requestId: input.requestId }),
+ })
+ await act(async () => { click(container.querySelector<HTMLButtonElement>('[aria-label="发布导出 V1"]')!); await settle(); await settle() })
+ assert.match(container.textContent ?? '', /导出保留暂存/)
+ const item = container.querySelector('[aria-label="导出 exp-1"]')?.textContent ?? ''
+ assert.match(item, /状态：已暂存（staged）/)
+ assert.match(item, /仅一种格式核验通过/)
+ assert.match(item, /DOCX · 核验未通过/)
+ assert.match(item, /verify docx failed: truncated body/)
+ assert.doesNotMatch(item, /可用于投递/)
+ assert.equal(container.querySelector('[aria-label="下载 PDF exp-1"]'), null)
+ assert.equal(container.querySelector('[aria-label="下载 DOCX exp-1"]'), null)
+ assert.equal(container.querySelector('[aria-label="撤销导出 exp-1"]'), null)
+})
+
+test('a payload claiming submittable with an unverified format is never offered for delivery', async () => {
+ const container = await mountStoredMaterial({
+  open: async () => profileView,
+  material: async () => materialView([1]),
+  materialExports: async (id: string) => ({ materialId: id, exports: [exportReceipt({ status: 'submittable', submittable: true, docxVerified: false })] }),
+ })
+ await act(async () => { await settle(); await settle() })
+ const item = container.querySelector('[aria-label="导出 exp-1"]')?.textContent ?? ''
+ assert.doesNotMatch(item, /可用于投递/)
+ assert.match(item, /DOCX · 核验未通过/)
+ assert.equal(container.querySelector('[aria-label="下载 PDF exp-1"]'), null)
+ assert.equal(container.querySelector('[aria-label="撤销导出 exp-1"]'), null)
+})
+
+test('downloads redeem an authenticated grant and verify the SHA-256 digest before saving', async () => {
+ const bytes = new TextEncoder().encode('%PDF-1.4 career material')
+ const digest = [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map((byte) => byte.toString(16).padStart(2, '0')).join('')
+ const grants: unknown[][] = []
+ const downloads: unknown[] = []
+ const created: Blob[] = []
+ const originalCreate = URL.createObjectURL
+ ;(URL as unknown as { createObjectURL: (blob: Blob) => string }).createObjectURL = (blob: Blob) => { created.push(blob); return 'blob:stub' }
+ try {
+  const container = await mountStoredMaterial({
+   open: async () => profileView,
+   material: async () => materialView([1]),
+   materialExports: async (id: string) => ({ materialId: id, exports: [exportReceipt()] }),
+   materialExportSignedURL: async (materialId: string, exportId: string, format: 'pdf' | 'docx', ttl: number) => { grants.push([materialId, exportId, format, ttl]); return grantFixture(format, digest) },
+   materialExportDownload: async (grant: unknown) => { downloads.push(grant); return { format: 'pdf', digest, size: bytes.byteLength, body: new Blob([bytes], { type: 'application/pdf' }), contentType: 'application/pdf' } },
+  })
+  await act(async () => { click(container.querySelector<HTMLButtonElement>('[aria-label="下载 PDF exp-1"]')!); await settle(); await settle() })
+  assert.deepEqual(grants, [['mat-1', 'exp-1', 'pdf', 600]])
+  assert.equal(downloads.length, 1)
+  assert.equal((downloads[0] as { digest: string }).digest, digest)
+  const note = container.querySelector('[aria-label="导出 exp-1 下载状态"]')?.textContent ?? ''
+  assert.match(note, /PDF 已下载，SHA-256 与授权摘要一致/)
+  assert.equal(created.length, 1, 'the verified blob is offered as a browser download')
+ } finally { (URL as unknown as { createObjectURL: (blob: Blob) => string }).createObjectURL = originalCreate }
+})
+
+test('a digest mismatch refuses to save the downloaded bytes and reports the mismatch', async () => {
+ const bytes = new TextEncoder().encode('%PDF-1.4 tampered bytes')
+ const created: Blob[] = []
+ const originalCreate = URL.createObjectURL
+ ;(URL as unknown as { createObjectURL: (blob: Blob) => string }).createObjectURL = (blob: Blob) => { created.push(blob); return 'blob:stub' }
+ try {
+  const container = await mountStoredMaterial({
+   open: async () => profileView,
+   material: async () => materialView([1]),
+   materialExports: async (id: string) => ({ materialId: id, exports: [exportReceipt()] }),
+   materialExportSignedURL: async (_materialId: string, _exportId: string, format: 'pdf' | 'docx') => grantFixture(format, '0'.repeat(64)),
+   materialExportDownload: async () => ({ format: 'pdf', digest: '0'.repeat(64), size: bytes.byteLength, body: new Blob([bytes], { type: 'application/pdf' }), contentType: 'application/pdf' }),
+  })
+  await act(async () => { click(container.querySelector<HTMLButtonElement>('[aria-label="下载 PDF exp-1"]')!); await settle(); await settle() })
+  const note = container.querySelector('[aria-label="导出 exp-1 下载状态"]')?.textContent ?? ''
+  assert.match(note, /下载字节摘要与授权摘要不一致，已拒绝保存/)
+  assert.equal(created.length, 0, 'tampered bytes are never handed to the browser')
+ } finally { (URL as unknown as { createObjectURL: (blob: Blob) => string }).createObjectURL = originalCreate }
+})
+
+test('revoking invalidates one export immediately while the old-version export stays downloadable', async () => {
+ const revokes: unknown[] = []
+ let exports = [exportReceipt({ exportId: 'exp-1', version: 1 }), exportReceipt({ exportId: 'exp-2', version: 2 })]
+ const container = await mountStoredMaterial({
+  open: async () => profileView,
+  material: async () => materialView([1, 2]),
+  materialExports: async (id: string) => ({ materialId: id, exports }),
+  revokeMaterialExport: async (input: { requestId: string }) => { revokes.push(input); exports = [exports[0]!, exportReceipt({ kind: 'material_export_revoked', exportId: 'exp-2', version: 2, status: 'revoked', submittable: false })]; return { ...exports[1]!, requestId: input.requestId } },
+ })
+ await act(async () => { click(container.querySelector<HTMLButtonElement>('[aria-label="撤销导出 exp-2"]')!); await settle(); await settle() })
+ assert.equal(revokes.length, 1)
+ const input = revokes[0] as { requestId: string; materialId: string; exportId: string; expectedRevision: number }
+ assert.equal(input.materialId, 'mat-1')
+ assert.equal(input.exportId, 'exp-2')
+ assert.equal(input.expectedRevision, 4)
+ assert.ok(input.requestId)
+ assert.match(container.textContent ?? '', /导出已撤销：已签发的下载授权立即失效/)
+ const revoked = container.querySelector('[aria-label="导出 exp-2"]')?.textContent ?? ''
+ assert.match(revoked, /状态：已撤销（revoked）/)
+ assert.match(revoked, /旧下载授权立即失效/)
+ assert.equal(container.querySelector('[aria-label="下载 PDF exp-2"]'), null)
+ assert.ok(container.querySelector('[aria-label="下载 PDF exp-1"]'), 'the old-version export stays downloadable')
+ assert.ok(container.querySelector('[aria-label="撤销导出 exp-1"]'))
+})
+
+test('an uncertain publish outcome recovers by replaying the original request id', async () => {
+ const publishes: Array<{ requestId: string }> = []
+ let first = true
+ const container = await mountStoredMaterial({
+  open: async () => profileView,
+  material: async () => materialView([1]),
+  materialExports: async (id: string) => ({ materialId: id, exports: first ? [] : [exportReceipt()] }),
+  publishMaterial: async (input: { requestId: string }) => {
+   publishes.push(input)
+   if (first) { first = false; throw Object.assign(new Error('gateway timeout'), { code: 'TIMEOUT' }) }
+   return { ...exportReceipt(), requestId: input.requestId }
+  },
+ })
+ await act(async () => { click(container.querySelector<HTMLButtonElement>('[aria-label="发布导出 V1"]')!); await settle(); await settle() })
+ assert.match(container.textContent ?? '', /无法确认导出是否已发布/)
+ await act(async () => { click(byLabel(container, 'button', '用原请求编号重试发布')); await settle(); await settle() })
+ assert.equal(publishes.length, 2)
+ assert.equal(publishes[0]?.requestId, publishes[1]?.requestId, 'the retry replays the original request id')
+ assert.match(container.textContent ?? '', /导出已发布：PDF 与 DOCX 均核验通过/)
+})
+
+test('export failures surface revision conflicts, clear on forbidden scope and report refused grants', async () => {
+ const container = await mountStoredMaterial({
+  open: async () => profileView,
+  material: async () => materialView([1]),
+  materialExports: async (id: string) => ({ materialId: id, exports: [exportReceipt()] }),
+  publishMaterial: async () => { throw Object.assign(new Error('revision conflict'), { code: 'revision_conflict', currentRevision: 9 }) },
+ })
+ await act(async () => { click(container.querySelector<HTMLButtonElement>('[aria-label="发布导出 V1"]')!); await settle(); await settle() })
+ assert.match(container.textContent ?? '', /档案已更新/)
+ assert.match(container.textContent ?? '', /当前修订 9/)
+
+ const denied = await mountStoredMaterial({ open: async () => profileView, material: async () => materialView([1]), materialExports: async () => { throw Object.assign(new Error('forbidden'), { code: 'forbidden' }) } })
+ assert.match(denied.textContent ?? '', /当前空间不可访问此材料，已清除编辑内容。/)
+
+ const refused = await mountStoredMaterial({
+  open: async () => profileView,
+  material: async () => materialView([1]),
+  materialExports: async (id: string) => ({ materialId: id, exports: [exportReceipt()] }),
+  materialExportSignedURL: async () => { throw Object.assign(new Error('career material export grant invalid'), { code: 'export_grant_invalid' }) },
+ })
+ await act(async () => { click(refused.querySelector<HTMLButtonElement>('[aria-label="下载 DOCX exp-1"]')!); await settle(); await settle() })
+ assert.match(refused.querySelector('[aria-label="导出 exp-1 下载状态"]')?.textContent ?? '', /下载授权已失效（导出可能已被撤销），本次下载被拒绝/)
 })

@@ -466,3 +466,105 @@ test('progress client refuses blank identifiers, invalid revisions and invented 
   await assert.rejects(api.applicationProgress('app /1'), TypeError)
  }
 })
+
+// T16 material exports: publish/list/signed-url/authenticated-download/revoke
+// follow the frozen backend contract (internal/modules/career/rendering.go).
+// One publish renders a same-body PDF/DOCX pair; only the both-verified
+// export is submittable; downloads redeem a short-lived grant while still
+// carrying authentication through the binary transport.
+const exportTs = '2026-09-25T09:00:00Z'
+const exportDigest = 'f'.repeat(64)
+const publishedExport = () => ({
+ kind: 'material_published', requestId: 'pub /1', exportId: 'exp /1', materialId: 'mat /1', version: 2, status: 'submittable', submittable: true, contentDigest: exportDigest,
+ files: [
+  { format: 'pdf', materialId: 'mat /1', version: 2, contentDigest: exportDigest, objectKey: 'objects/pdf-1', fileDigest: 'a'.repeat(64), size: 2048, verified: true },
+  { format: 'docx', materialId: 'mat /1', version: 2, contentDigest: exportDigest, objectKey: 'objects/docx-1', fileDigest: 'b'.repeat(64), size: 4096, verified: true },
+ ],
+ createdAt: exportTs,
+})
+const revokedExport = () => ({ ...publishedExport(), kind: 'material_export_revoked', requestId: 'rev /1', status: 'revoked', submittable: false, revokedAt: exportTs })
+const exportGrant = () => ({ exportId: 'exp /1', materialId: 'mat /1', version: 2, format: 'pdf', digest: 'a'.repeat(64), size: 2048, expiresAt: 1790000000, signature: 'c0ffee'.repeat(4), url: `/api/v1/career/materials/mat%20%2F1/exports/exp%20%2F1/download?format=pdf&expires=1790000000&signature=${'c0ffee'.repeat(4)}` })
+
+test('material export client walks the five-route surface and decodes strictly', async () => {
+ const calls: Array<{ kind: 'json' | 'binary'; method: string; path: string; body?: unknown }> = []
+ const api = createCareerApi(async (input) => {
+  calls.push({ kind: 'json', method: input.method, path: input.path, ...(input.body !== undefined ? { body: input.body } : {}) })
+  if (input.method === 'POST' && input.path.endsWith('/exports')) return publishedExport()
+  if (input.method === 'POST' && input.path.endsWith('/signed-url')) return exportGrant()
+  if (input.method === 'DELETE') return revokedExport()
+  return { materialId: 'mat /1', exports: [publishedExport(), revokedExport()] }
+ }, async (input) => {
+  calls.push({ kind: 'binary', method: input.method, path: input.path })
+  return { body: new Blob(['%PDF-1.4 career material'], { type: 'application/pdf' }), contentType: 'application/pdf', headers: { 'content-type': 'application/pdf' } }
+ })
+ const published = await api.publishMaterial({ requestId: 'pub /1', materialId: 'mat /1', version: 2, expectedRevision: 5 })
+ assert.equal(published.kind, 'material_published')
+ assert.equal(published.submittable, true)
+ assert.equal(published.files.length, 2)
+ assert.ok(published.files.every((file) => file.verified))
+ assert.equal(published.files[0]?.fileDigest, 'a'.repeat(64))
+ assert.deepEqual(await api.materialExports('mat /1'), { materialId: 'mat /1', exports: [publishedExport(), revokedExport()] })
+ const grant = await api.materialExportSignedURL('mat /1', 'exp /1', 'pdf', 600)
+ assert.equal(grant.digest, 'a'.repeat(64))
+ const downloaded = await api.materialExportDownload(grant)
+ assert.ok(downloaded.body instanceof Blob)
+ assert.equal(downloaded.format, 'pdf')
+ assert.equal(downloaded.digest, grant.digest)
+ const revoked = await api.revokeMaterialExport({ requestId: 'rev /1', materialId: 'mat /1', exportId: 'exp /1', expectedRevision: 5 })
+ assert.equal(revoked.status, 'revoked')
+ assert.equal(revoked.revokedAt, exportTs)
+ assert.deepEqual(calls, [
+  { kind: 'json', method: 'POST', path: '/api/v1/career/materials/mat%20%2F1/exports', body: { requestId: 'pub /1', version: 2, expectedRevision: 5 } },
+  { kind: 'json', method: 'GET', path: '/api/v1/career/materials/mat%20%2F1/exports' },
+  { kind: 'json', method: 'POST', path: '/api/v1/career/materials/mat%20%2F1/exports/exp%20%2F1/signed-url', body: { format: 'pdf', ttlSeconds: 600 } },
+  { kind: 'binary', method: 'GET', path: `/api/v1/career/materials/mat%20%2F1/exports/exp%20%2F1/download?format=pdf&expires=1790000000&signature=${'c0ffee'.repeat(4)}` },
+  { kind: 'json', method: 'DELETE', path: '/api/v1/career/materials/mat%20%2F1/exports/exp%20%2F1', body: { requestId: 'rev /1', expectedRevision: 5 } },
+ ])
+})
+
+test('material export decoders reject invented statuses, broken digests and half-verified submittable exports', async () => {
+ const refusing = createCareerApi(async () => { throw new Error('must not send invalid request') })
+ await assert.rejects(refusing.publishMaterial({ requestId: ' ', materialId: 'm-1', version: 1, expectedRevision: 0 }), /requestId/)
+ await assert.rejects(refusing.publishMaterial({ requestId: 'p-1', materialId: ' ', version: 1, expectedRevision: 0 }), /materialId/)
+ await assert.rejects(refusing.publishMaterial({ requestId: 'p-1', materialId: 'm-1', version: 0, expectedRevision: 0 }), /version/)
+ await assert.rejects(refusing.publishMaterial({ requestId: 'p-1', materialId: 'm-1', version: 1, expectedRevision: -1 }), /revision/)
+ await assert.rejects(refusing.materialExports(' '), /materialId/)
+ await assert.rejects(refusing.materialExportSignedURL('m-1', 'e-1', 'pptx' as 'pdf', 600), /format/)
+ await assert.rejects(refusing.materialExportSignedURL('m-1', 'e-1', 'pdf', 0), /ttl/)
+ await assert.rejects(refusing.materialExportSignedURL('m-1', 'e-1', 'pdf', 901), /ttl/)
+ await assert.rejects(refusing.revokeMaterialExport({ requestId: 'r-1', materialId: 'm-1', exportId: ' ', expectedRevision: 0 }), /exportId/)
+ const receiptInventors: Array<Record<string, unknown>> = [
+  { ...publishedExport(), kind: 'material_half_published' },
+  { ...publishedExport(), status: 'half_published' },
+  { ...publishedExport(), submittable: false },
+  { ...publishedExport(), contentDigest: 'f'.repeat(63) },
+  { ...publishedExport(), files: [{ ...publishedExport().files[0] }] },
+  { ...publishedExport(), files: [...publishedExport().files, { format: 'pdf', materialId: 'mat /1', version: 2, contentDigest: exportDigest, verified: false }] },
+  { ...publishedExport(), files: publishedExport().files.map((file, index) => index === 1 ? { ...file, verified: false } : file) },
+  { ...publishedExport(), files: publishedExport().files.map((file, index) => index === 1 ? { ...file, contentDigest: 'e'.repeat(64) } : file) },
+  { ...publishedExport(), files: publishedExport().files.map((file) => ({ ...file, format: 'pptx' })) },
+  { ...publishedExport(), files: publishedExport().files.map((file) => ({ ...file, fileDigest: 'zz' })) },
+  { ...publishedExport(), createdAt: 'just now' },
+  { ...publishedExport(), revokedAt: exportTs },
+  { ...revokedExport(), revokedAt: undefined },
+  { ...revokedExport(), status: 'submittable', submittable: true },
+  { ...revokedExport(), failureCode: 'ghost_code' },
+ ]
+ for (const payload of receiptInventors) {
+  const api = createCareerApi(async () => payload)
+  await assert.rejects(api.materialExports('m-1'), TypeError)
+ }
+ const grantInventors: Array<Record<string, unknown>> = [
+  { ...exportGrant(), format: 'exe' },
+  { ...exportGrant(), digest: 'a'.repeat(63) },
+  { ...exportGrant(), size: -1 },
+  { ...exportGrant(), expiresAt: 0 },
+  { ...exportGrant(), signature: ' ' },
+  { ...exportGrant(), url: `https://evil.test/api/v1/career/materials/mat%20%2F1/exports/exp%20%2F1/download?format=pdf&expires=1790000000&signature=${'c0ffee'.repeat(4)}` },
+ ]
+ for (const payload of grantInventors) {
+  const api = createCareerApi(async () => payload)
+  await assert.rejects(api.materialExportSignedURL('m-1', 'e-1', 'pdf', 600), TypeError)
+ }
+ await assert.rejects(createCareerApi(async () => ({ materialId: 'm-1', exports: {} })).materialExports('m-1'), TypeError)
+})
