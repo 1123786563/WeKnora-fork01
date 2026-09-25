@@ -34,6 +34,103 @@ func NewCraftPreviewCheckStore(db *gorm.DB) craft.PreviewCheckStore {
 	return &CraftPreviewCheckStore{db: db}
 }
 
+// UpdateWebProbeCheck records one externally observed T15 web-gate probe fact
+// — preview reachability or actual page load — on a published version. One
+// call records exactly one fact: the other web fact, the build/entry checks,
+// the version's identity and its file manifest stay untouched, so the two
+// probe facts are recorded independently by construction.
+//
+// Substitution and immutability rules:
+//   - page load may only pass after reachability passed — the load fact can
+//     never be recorded on the strength of a reachable origin alone;
+//   - reachability cannot be withdrawn while a passed page load exists;
+//   - a fact already recorded with a different status is a conflict
+//     (recorded facts are immutable); an identical rewrite is an idempotent
+//     no-op, which is what duplicate probe callbacks are.
+func (s *CraftPreviewCheckStore) UpdateWebProbeCheck(ctx context.Context, scope craft.Scope, versionID, name string, outcome craft.CheckOutcome) (craft.Version, error) {
+	if scope.TenantID == 0 || scope.UserID == "" || scope.SessionID == "" {
+		return craft.Version{}, fmt.Errorf("%w: incomplete web probe scope", craft.ErrInvalidInput)
+	}
+	if !craft.IsVersionID(versionID) {
+		return craft.Version{}, fmt.Errorf("%w: version id %q", craft.ErrInvalidInput, versionID)
+	}
+	switch name {
+	case craft.CheckPreviewReachable, craft.CheckPageLoad:
+	default:
+		return craft.Version{}, fmt.Errorf("%w: channel updates only the %q/%q checks, got %q", craft.ErrInvalidInput, craft.CheckPreviewReachable, craft.CheckPageLoad, name)
+	}
+	switch outcome {
+	case craft.WebCheckPassed, craft.WebCheckFailed, craft.WebCheckNotRun:
+	default:
+		return craft.Version{}, fmt.Errorf("%w: unknown web check outcome %q", craft.ErrInvalidInput, string(outcome))
+	}
+
+	var out craft.Version
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var row craftVersionRow
+		e := tx.Where("id = ?", versionID).Take(&row).Error
+		if errors.Is(e, gorm.ErrRecordNotFound) {
+			return fmt.Errorf("%w: version %s", craft.ErrNotFound, versionID)
+		}
+		if e != nil {
+			return e
+		}
+		if e := authorizeCraftVersion(tx, row, scope); e != nil {
+			return e
+		}
+
+		checks := []craft.Check{}
+		if row.ChecksJSON != "" {
+			if err := json.Unmarshal([]byte(row.ChecksJSON), &checks); err != nil {
+				return fmt.Errorf("craft: decode version %s checks: %w", versionID, err)
+			}
+		}
+		current := craft.WebEvidenceFromChecks(checks)
+
+		// Substitution fence: the load fact needs a reachable origin behind it.
+		if name == craft.CheckPageLoad && outcome == craft.WebCheckPassed && current.PreviewReachable != craft.WebCheckPassed {
+			return fmt.Errorf("%w: page load cannot pass before the preview origin is reachable", craft.ErrInvalidInput)
+		}
+		// A passed load proves the origin was reachable; withdrawing
+		// reachability afterwards contradicts a recorded fact.
+		if name == craft.CheckPreviewReachable && outcome != craft.WebCheckPassed && current.PageLoaded == craft.WebCheckPassed {
+			return fmt.Errorf("%w: reachability cannot be withdrawn while a page load passed", craft.ErrConflict)
+		}
+
+		detail := "controlled preview origin reachability observed"
+		if name == craft.CheckPageLoad {
+			detail = "actual browser page load observed"
+		}
+		check := craft.Check{Name: name, Status: string(outcome), Detail: detail}
+		for _, existing := range checks {
+			if existing.Name != name {
+				continue
+			}
+			if existing.Status != check.Status {
+				return fmt.Errorf("%w: check %q already recorded %q for version %s", craft.ErrConflict, name, existing.Status, versionID)
+			}
+			out, e = loadCraftVersion(tx, versionID)
+			return e // identical rewrite: idempotent no-op
+		}
+		checks = append(checks, check)
+		encoded, err := json.Marshal(checks)
+		if err != nil {
+			return err
+		}
+		if e := tx.Model(&craftVersionRow{}).
+			Where("id = ?", versionID).
+			Update("checks_json", string(encoded)).Error; e != nil {
+			return e
+		}
+		out, e = loadCraftVersion(tx, versionID)
+		return e
+	})
+	if err != nil {
+		return craft.Version{}, err
+	}
+	return out, nil
+}
+
 // UpdatePreviewCheck replaces (or appends, for pre-W01 rows) the preview
 // check of one published version in the requesting scope. The version's
 // build and entry checks, its identity and its file manifest are left
