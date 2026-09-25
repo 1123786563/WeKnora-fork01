@@ -2790,3 +2790,148 @@
   background: transparent !important;
   box-shadow: none !important;
 }
+
+/* ==== B4/B6：api-key-create-drawer 体（ApiIntegrationSettings.vue scoped 块
+   2045-2160 平移，锚 .api-key-create-drawer 防串染）==== */
+.api-key-create-drawer .api-key-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
+  border-bottom: 1px solid var(--td-component-stroke);
+}
+
+.api-key-create-drawer .api-key-dialog-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 0 16px;
+  border-bottom: 1px solid var(--td-component-stroke);
+}
+
+.api-key-create-drawer .api-key-dialog-row:first-child {
+  padding-top: 0;
+}
+
+.api-key-create-drawer .api-key-dialog-row:last-child {
+  border-bottom: none;
+}
+
+.api-key-create-drawer .api-key-dialog-row__label {
+  min-width: 0;
+}
+
+.api-key-create-drawer .api-key-dialog-row__label label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--td-text-color-primary);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.api-key-create-drawer .api-key-dialog-row__label label::before {
+  content: '';
+  flex-shrink: 0;
+  width: 3px;
+  height: 14px;
+  border-radius: 2px;
+  background: var(--td-brand-color);
+}
+
+/* Vue :deep(.t-input)：灰底无边框输入（radius 4）。 */
+.api-key-create-drawer .t-input {
+  border-radius: 4px;
+  background-color: var(--td-bg-color-secondarycontainer);
+  border-color: transparent;
+  box-shadow: none !important;
+}
+
+.api-key-create-drawer .scope-hint {
+  margin: 8px 0 0;
+  color: var(--td-text-color-placeholder);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.api-key-create-drawer .api-key-capability-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.api-key-create-drawer .api-key-capability-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 0 2px;
+}
+
+.api-key-create-drawer .api-key-capability-group + .api-key-capability-group {
+  border-top: 1px solid var(--td-component-stroke);
+}
+
+.api-key-create-drawer .api-key-capability-group__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 24px;
+  color: var(--td-text-color-primary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.api-key-create-drawer .api-key-capability-group__items {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.api-key-create-drawer .api-key-capability-item .scope-hint {
+  margin-top: 2px;
+}
+
+/* Vue 组头 t-button size=small 高 24；wk-vi-48 无高度约束（实测 +5px 漂移）。 */
+.api-key-create-drawer .api-key-capability-group__header button {
+  height: 24px;
+  padding-block: 0;
+}
+
+/* ==== B4：mode-callout（ApiIntegrationSettings.vue:2214-2247 scoped 平移）——
+   direct_header 警示框 + signed_token 提示框 ==== */
+.mode-callout {
+  position: relative;
+  padding: 12px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--td-component-stroke);
+  background: var(--td-bg-color-secondarycontainer);
+  overflow: hidden;
+}
+
+.mode-callout--warning {
+  border-color: var(--td-warning-color-3);
+  background: var(--td-warning-color-1);
+}
+
+.mode-callout__body {
+  display: block;
+  margin: 0;
+}
+
+.mode-callout__body strong {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--td-text-color-primary);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.mode-callout__body p {
+  margin: 0;
+  color: var(--td-text-color-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+}

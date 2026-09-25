@@ -876,7 +876,7 @@ function TInputLike({ value, placeholder, onChange, onFocus, onEnter }: { value:
 function TRadioGroupLike({ value, options, onPick, className }: { value: string; options: Array<{ value: string; label: string }>; onPick: (next: string) => void; className?: string }) {
   return <div className={'t-radio-group t-size-m t-radio-group__outline' + (className ? ' ' + className : '')} role="radiogroup">
     {options.map((option) => (
-      <label key={option.value} className={'t-radio-button' + (option.value === value ? ' t-is-checked' : '')} tabIndex={0}>
+      <label key={option.value} role="radio" aria-checked={option.value === value} className={'t-radio-button' + (option.value === value ? ' t-is-checked' : '')} tabIndex={0}>
         <input type="radio" className="t-radio-button__former" checked={option.value === value} tabIndex={-1} value={option.value} autoComplete="off" onChange={() => onPick(option.value)} />
         <span className="t-radio-button__input"></span>
         <span className="t-radio-button__label">{option.label}</span>
@@ -885,9 +885,9 @@ function TRadioGroupLike({ value, options, onPick, className }: { value: string;
   </div>;
 }
 
-/** t-checkbox（Vue t-checkbox 实测 DOM）。 */
+/** t-checkbox（Vue t-checkbox 实测 DOM；wk-check-row 为既有测试 seam）。 */
 function TCheckboxLike({ checked, onChange, children }: { checked: boolean; onChange: (next: boolean) => void; children?: React.ReactNode }) {
-  return <label className={'t-checkbox' + (checked ? ' t-is-checked' : '')} tabIndex={0}>
+  return <label className={'t-checkbox wk-check-row' + (checked ? ' t-is-checked' : '')} tabIndex={0}>
     <input type="checkbox" className="t-checkbox__former" tabIndex={-1} checked={checked} autoComplete="off" onChange={(event) => onChange(event.target.checked)} />
     <span className="t-checkbox__input"></span>
     <span className="t-checkbox__label">{children}</span>
@@ -1732,11 +1732,24 @@ function ApiIntegrationPanel({ apiBaseUrl, actions, principalMode, setPrincipalM
         ))}
       </div>
       {principalMode === 'direct_header' ? <div className="wk-vi-77">
-        <p className="wk-muted wk-muted--warn wk-vi-50">{t('integrations.api.directWarning')}</p>
+        {/* Vue ApiIntegrationSettings.vue:211-219 mode-callout--warning（B4 静态项
+            settings-integration-api 4.284% 归因：React 缺警示框+detail 第二行）。 */}
+        <div className="mode-callout mode-callout--warning">
+          <div className="mode-callout__body">
+            <strong>{t('integrations.api.directWarning')}</strong>
+            <p>{t('integrations.api.directWarningDetail')}</p>
+          </div>
+        </div>
         <label className="wk-check-row wk-vi-44"><input className="wk-vi-78 wk-vi-accent-primary" type="checkbox" checked={requireDirectHeader} onChange={(event) => setRequireDirectHeader(event.target.checked)} />{t('integrations.api.requireDirectHeader')}</label>
         <p className="wk-muted wk-vi-3">{t('integrations.api.requireDirectHeaderDesc')}</p>
       </div> : null}
       {principalMode === 'signed_token' ? <div className="wk-vi-77">
+        <div className="mode-callout">
+          <div className="mode-callout__body">
+            <strong>{t('integrations.api.signedRecommended')}</strong>
+            <p>{t('integrations.api.signedFlowDetail')}</p>
+          </div>
+        </div>
         <label className="wk-vi-79">{t('integrations.api.hmacSecret')}<input className="wk-vi-80" type="password" value={hmacSecret} onChange={(event) => setHmacSecret(event.target.value)} placeholder={principal?.has_hmac_secret ? t('integrations.api.secretConfigured') : ''} /></label>
         <p className="wk-muted wk-vi-3">{t('integrations.api.hmacSecretDesc')}</p>
       </div> : null}
@@ -1796,60 +1809,76 @@ function ApiKeyCreateForm({ t, busy, knowledgeBases, canSubmit, onCreate, onCanc
   const [warning, setWarning] = useState('');
   const selected = selectedApiKeyCapabilities(selections);
   const knowledgeScopeApplies = apiKeyKnowledgeScopeApplies(fullAccess, selected);
-  const submit = (event: React.FormEvent) => {
-    event.preventDefault();
-    const trimmed = name.trim();
-    if (!trimmed) { setWarning(t('integrations.api.apiKeyNameRequired')); return; }
-    if (!fullAccess && selected.length === 0) { setWarning(t('integrations.api.apiKeyCapabilitiesRequired')); return; }
-    setWarning('');
-    onCreate?.(buildApiKeyCreatePayload({ name: trimmed, fullAccess, capabilities: selected, knowledgeBaseIds }));
-  };
   const groupAllSelected = (group: (typeof TENANT_API_KEY_CAPABILITY_GROUPS)[number]) => group.capabilities.every((capability) => selections[capability.value]);
   const toggleGroup = (group: (typeof TENANT_API_KEY_CAPABILITY_GROUPS)[number], selected: boolean) => setSelections((current) => {
     const next = { ...current };
     group.capabilities.forEach((capability) => { next[capability.value] = selected; });
     return next;
   });
-  return <form className={INTEGRATION_FORM_CLASS} onSubmit={submit}>
-    {/* Vue SettingDrawer description (createApiKeyDialogDesc). */}
-    <p className="wk-muted wk-vi-3">{t('integrations.api.createApiKeyDialogDesc')}</p>
-    <label>{t('integrations.api.apiKeyName')}<input type="text" required value={name} onChange={(event) => setName(event.target.value)} placeholder={t('integrations.api.apiKeyNamePlaceholder')} /></label>
-    <div className="wk-vi-92">
-      <span className="wk-vi-93">{t('integrations.api.apiKeyAccessType')}</span>
-      <span className="wk-vi-94" role="radiogroup" aria-label={t('integrations.api.apiKeyAccessType')}>
-        <button type="button" role="radio" aria-checked={!fullAccess} className={chip(!fullAccess)} onClick={() => setFullAccess(false)}>{t('integrations.api.apiKeyScopedAccess')}</button>
-        <button type="button" role="radio" aria-checked={fullAccess} className={chip(fullAccess)} onClick={() => setFullAccess(true)}>{t('integrations.api.capabilityTenantFull')}</button>
-      </span>
-      <p className="wk-muted wk-vi-3">{t(fullAccess ? 'integrations.api.capabilityTenantFullHint' : 'integrations.api.apiKeyAccessTypeHint')}</p>
-    </div>
-    {!fullAccess ? <div className="wk-vi-95">
-      <span className="wk-vi-93">{t('integrations.api.apiKeyCapabilities')}</span>
-      {TENANT_API_KEY_CAPABILITY_GROUPS.map((group) => <div className="api-key-capability-group wk-vi-81" key={group.key}>
-        <div className="api-key-capability-group__header wk-vi-96">
-          <span className="wk-vi-97">{t(group.labelKey)}</span>
-          <button className="wk-button wk-button--text wk-vi-48" type="button" onClick={() => toggleGroup(group, !groupAllSelected(group))}>{t(groupAllSelected(group) ? 'integrations.api.apiKeyCapabilityClearGroup' : 'integrations.api.apiKeyCapabilitySelectGroup')}</button>
+  /* B4/B6：Vue ApiIntegrationSettings.vue:462-560 的 api-key-create-drawer 同构——
+     SettingDrawer(lock-on 图标、遮罩点击不关) + .api-key-dialog 行结构（绿杆
+     label + t-input / mode-radio / capability 分组），footer 取消+创建。 */
+  const submitAction = () => {
+    const trimmed = name.trim();
+    if (!trimmed) { setWarning(t('integrations.api.apiKeyNameRequired')); return; }
+    if (!fullAccess && selected.length === 0) { setWarning(t('integrations.api.apiKeyCapabilitiesRequired')); return; }
+    setWarning('');
+    onCreate?.(buildApiKeyCreatePayload({ name: trimmed, fullAccess, capabilities: selected, knowledgeBaseIds }));
+  };
+  const submit = (event?: React.FormEvent) => { event?.preventDefault(); submitAction(); };
+  return <SettingDrawerChrome
+    className="api-key-create-drawer"
+    width="560px"
+    closeOnOverlayClick={false}
+    onClose={onCancel}
+    headerIcon={<SpriteIcon name="lock-on" size="16px" fallback={<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 018 0v4" /></svg>} />}
+    title={t('integrations.api.createApiKey')}
+    subtitle={t('integrations.api.createApiKeyDialogDesc')}
+    footerRight={<div className="wk-form-actions">
+      <TButtonLike variant="outline" onClick={onCancel}>{t('common.cancel')}</TButtonLike>
+      <TButtonLike variant="base" theme="primary" disabled={busy || !canSubmit} onClick={() => submit()}>{t('integrations.api.createApiKey')}</TButtonLike>
+    </div>}
+    bodyChildren={<form className="api-key-dialog" onSubmit={submit}>
+      {warning ? <p className="wk-status wk-status-error wk-vi-12" role="alert">{warning}</p> : null}
+      <div className="api-key-dialog-row">
+        <div className="api-key-dialog-row__label"><label>{t('integrations.api.apiKeyName')}</label></div>
+        <TInputLike value={name} placeholder={t('integrations.api.apiKeyNamePlaceholder')} onChange={setName} onEnter={() => submit()} />
+      </div>
+      <div className="api-key-dialog-row">
+        <div className="api-key-dialog-row__label"><label>{t('integrations.api.apiKeyAccessType')}</label></div>
+        <TRadioGroupLike
+          value={fullAccess ? 'full' : 'scoped'}
+          options={[{ value: 'scoped', label: t('integrations.api.apiKeyScopedAccess') }, { value: 'full', label: t('integrations.api.capabilityTenantFull') }]}
+          onPick={(next) => setFullAccess(next === 'full')}
+          className="mode-radio api-key-access-type-radio"
+        />
+        <p className="scope-hint">{t(fullAccess ? 'integrations.api.capabilityTenantFullHint' : 'integrations.api.apiKeyAccessTypeHint')}</p>
+      </div>
+      {!fullAccess ? <div className="api-key-dialog-row">
+        <div className="api-key-dialog-row__label"><label>{t('integrations.api.apiKeyCapabilities')}</label></div>
+        <div className="api-key-capability-list">
+          {TENANT_API_KEY_CAPABILITY_GROUPS.map((group) => <div className="api-key-capability-group" key={group.key}>
+            <div className="api-key-capability-group__header">
+              <span>{t(group.labelKey)}</span>
+              <button className="wk-button wk-button--text wk-vi-48" type="button" onClick={() => toggleGroup(group, !groupAllSelected(group))}>{t(groupAllSelected(group) ? 'integrations.api.apiKeyCapabilityClearGroup' : 'integrations.api.apiKeyCapabilitySelectGroup')}</button>
+            </div>
+            <div className="api-key-capability-group__items">
+              {group.capabilities.map((capability) => <div className="api-key-capability-item" key={capability.value}>
+                <TCheckboxLike checked={selections[capability.value]} onChange={(next) => setSelections((current) => ({ ...current, [capability.value]: next }))}>{t(capability.labelKey)}</TCheckboxLike>
+                <p className="scope-hint">{t(capability.hintKey)}</p>
+              </div>)}
+            </div>
+          </div>)}
         </div>
-        {group.capabilities.map((capability) => <div className="api-key-capability-item" key={capability.value}>
-          <label className="wk-check-row wk-vi-44">
-            <input className="wk-vi-78 wk-vi-accent-primary" type="checkbox" checked={selections[capability.value]} onChange={(event) => setSelections((current) => ({ ...current, [capability.value]: event.target.checked }))} />
-            <span>{t(capability.labelKey)}</span>
-          </label>
-          <p className="wk-muted wk-vi-98">{t(capability.hintKey)}</p>
-        </div>)}
-      </div>)}
-    </div> : null}
-    {knowledgeScopeApplies ? <label>{t('integrations.api.apiKeyKnowledgeScope')}
-      <select multiple value={knowledgeBaseIds} size={Math.min(6, Math.max(3, knowledgeBases.length || 3))} onChange={(event) => setKnowledgeBaseIds(Array.from(event.target.selectedOptions).map((option) => option.value))}>
-        {knowledgeBases.map((kb) => <option key={kb.id} value={kb.id}>{kb.name}</option>)}
-      </select>
-      <span className="wk-muted wk-vi-3">{t('integrations.api.apiKeyKnowledgeScopePlaceholder')}</span>
-    </label> : null}
-    {warning ? <p className="wk-status wk-status-error wk-vi-12" role="alert">{warning}</p> : null}
-    <div className="wk-form-actions">
-      <button className="wk-button wk-button--primary wk-vi-4" type="submit" disabled={busy || !canSubmit}>{t('integrations.api.createApiKey')}</button>
-      <button className="wk-button wk-button--text wk-vi-48" type="button" onClick={onCancel}>{t('common.cancel')}</button>
-    </div>
-  </form>;
+      </div> : null}
+      {knowledgeScopeApplies ? <div className="api-key-dialog-row">
+        <div className="api-key-dialog-row__label"><label>{t('integrations.api.apiKeyKnowledgeScope')}</label></div>
+        <select multiple value={knowledgeBaseIds} size={Math.min(6, Math.max(3, knowledgeBases.length || 3))} onChange={(event) => setKnowledgeBaseIds(Array.from(event.target.selectedOptions).map((option) => option.value))}>
+          {knowledgeBases.map((kb) => <option key={kb.id} value={kb.id}>{kb.name}</option>)}
+        </select>
+        <p className="scope-hint">{t('integrations.api.apiKeyKnowledgeScopePlaceholder')}</p>
+      </div> : null}
+    </form>} />;
 }
 
 function ExternalLandingPanel({ tab, locale, externalUrl, apiBaseUrl, onOpenApiSettings, t }: { tab: IntegrationKey; locale: Locale; externalUrl?: string; apiBaseUrl: string; onOpenApiSettings?: () => void; t: Translator }) {
