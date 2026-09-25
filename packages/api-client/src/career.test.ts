@@ -284,3 +284,117 @@ test('search client refuses blank identifiers, invalid revisions and invented en
   await assert.rejects(api.searchOnce({ requestId: 'r-1', query: '找岗', expectedRevision: 0 }), TypeError)
  }
 })
+
+// T15: seven frozen material routes (POST /materials, POST /materials/confirm,
+// GET receipt, GET :materialId, GET versions, GET versions/:versionId,
+// GET versions/:versionId/compare?baseline=N) with strict decoding of the
+// structured body, pinned evidence, review risks, and version comparisons.
+const materialPin = { opportunityId: 'opp/1', snapshotId: 'snap ?1', snapshotSha256: 'a'.repeat(64), profileRevision: 4 }
+const materialBody = { sections: [{ heading: '教育经历', content: '计算机科学与技术本科', claims: [
+ { claimId: 'claim-edu', text: '最高学历为本科', factKey: '学历', needsReview: false },
+ { claimId: 'claim-intern', text: '实习经历待补充', needsReview: true, reviewNote: '缺少实习证明' },
+] }] }
+const materialRisks = [{ code: 'missing_placeholder', message: '缺失或待补充信息占位（实习经历待补充）：不得由系统补造', claimId: 'claim-intern' }]
+const materialTs = '2026-09-25T08:00:00Z'
+
+test('material client encodes edit, confirm, receipt, detail, versions, version and compare routes', async () => {
+ const calls: Array<{ method: string; path: string; body?: unknown }> = []
+ const editedReceipt = { kind: 'material_edited', requestId: 'edit /1', materialId: 'mat/1', status: 'draft', pinnedEvidence: materialPin, body: materialBody, reviewRisks: materialRisks }
+ const confirmedReceipt = { kind: 'material_confirmed', requestId: 'confirm /1', materialId: 'mat/1', status: 'confirmed', version: 2, pinnedEvidence: materialPin, body: materialBody, reviewRisks: materialRisks }
+ const view = { materialId: 'mat/1', status: 'confirmed', pinnedEvidence: materialPin, body: materialBody, reviewRisks: materialRisks, failureCode: 'claim_unconfirmed', failureMessage: 'career material claim references an unconfirmed fact: 城市', versionCount: 2, versions: [{ version: 1, createdAt: materialTs }, { version: 2, createdAt: materialTs }], createdAt: materialTs, updatedAt: materialTs }
+ const versionList = { materialId: 'mat/1', versions: [{ version: 1, createdAt: materialTs }, { version: 2, createdAt: materialTs }] }
+ const versionView = { version: 1, pinnedEvidence: materialPin, factBasisRevision: 4, body: materialBody, reviewRisks: materialRisks, requestId: 'confirm /1', createdAt: materialTs }
+ const comparison = { materialId: 'mat/1', baseline: versionView, target: { ...versionView, version: 2 }, changes: [{ kind: 'section_changed', heading: '教育经历', baseline: '计算机科学与技术本科', target: '软件工程硕士' }] }
+ const api = createCareerApi(async (input) => {
+  calls.push({ method: input.method, path: input.path, ...(input.body !== undefined ? { body: input.body } : {}) })
+  if (input.path === '/api/v1/career/materials' && input.method === 'POST') return editedReceipt
+  if (input.path === '/api/v1/career/materials/confirm') return confirmedReceipt
+  if (input.path.includes('/materials/receipt?')) return editedReceipt
+  if (input.path.endsWith('/versions/2/compare?baseline=1')) return comparison
+  if (input.path.endsWith('/versions/2')) return { ...versionView, version: 2 }
+  if (input.path.endsWith('/versions')) return versionList
+  if (input.path.includes('/materials/mat%2F1')) return view
+  throw new Error(`unexpected path ${input.path}`)
+ })
+ const editInput = { requestId: 'edit /1', opportunityId: 'opp/1', snapshotId: 'snap ?1', body: materialBody, expectedRevision: 4 }
+ const confirmInput = { requestId: 'confirm /1', materialId: 'mat/1', expectedRevision: 4 }
+ assert.deepEqual(await api.editMaterial(editInput), editedReceipt)
+ assert.deepEqual(await api.confirmMaterial(confirmInput), confirmedReceipt)
+ assert.deepEqual(await api.materialReceipt('edit /1'), editedReceipt)
+ assert.deepEqual(await api.material('mat/1'), view)
+ assert.deepEqual(await api.materialVersions('mat/1'), versionList)
+ assert.deepEqual(await api.materialVersion('mat/1', 2), { ...versionView, version: 2 })
+ assert.deepEqual(await api.compareMaterialVersions('mat/1', 1, 2), comparison)
+ assert.deepEqual(calls, [
+  { method: 'POST', path: '/api/v1/career/materials', body: editInput },
+  { method: 'POST', path: '/api/v1/career/materials/confirm', body: confirmInput },
+  { method: 'GET', path: '/api/v1/career/materials/receipt?requestId=edit%20%2F1' },
+  { method: 'GET', path: '/api/v1/career/materials/mat%2F1' },
+  { method: 'GET', path: '/api/v1/career/materials/mat%2F1/versions' },
+  { method: 'GET', path: '/api/v1/career/materials/mat%2F1/versions/2' },
+  { method: 'GET', path: '/api/v1/career/materials/mat%2F1/versions/2/compare?baseline=1' },
+ ])
+})
+
+test('material decode keeps a minimal edit receipt, a risk-free version and a no-change comparison', async () => {
+ const minimal = { kind: 'material_edited', requestId: 'e-1', materialId: 'm-1', status: 'draft', pinnedEvidence: materialPin, body: { sections: [{ heading: '自我介绍', content: '', claims: [] }] }, reviewRisks: [] }
+ const identical = { materialId: 'm-1', baseline: { version: 1, pinnedEvidence: materialPin, factBasisRevision: 4, body: minimal.body, reviewRisks: [], requestId: 'c-1', createdAt: materialTs }, target: { version: 2, pinnedEvidence: materialPin, factBasisRevision: 4, body: minimal.body, reviewRisks: [], requestId: 'c-2', createdAt: materialTs }, changes: [] }
+ const sent: unknown[] = []
+ const api = createCareerApi(async () => { const next = sent.length === 0 ? minimal : identical; sent.push(next); return next })
+ assert.deepEqual(await api.editMaterial({ requestId: 'e-1', opportunityId: 'opp/1', snapshotId: 'snap ?1', body: minimal.body, expectedRevision: 0 }), minimal)
+ assert.deepEqual(await api.compareMaterialVersions('m-1', 1, 2), identical)
+})
+
+test('material client refuses blank identifiers, invalid revisions, bodiless creates and invented enums', async () => {
+ const refusing = createCareerApi(async () => { throw new Error('must not send invalid request') })
+ const body = { sections: [{ heading: '教育经历', content: 'x', claims: [] }] }
+ await assert.rejects(refusing.editMaterial({ requestId: ' ', opportunityId: 'opp/1', snapshotId: 'snap/1', body, expectedRevision: 1 }), /requestId/)
+ await assert.rejects(refusing.editMaterial({ requestId: 'e-1', snapshotId: 'snap/1', body, expectedRevision: 1 }), /opportunity/)
+ await assert.rejects(refusing.editMaterial({ requestId: 'e-1', opportunityId: 'opp/1', snapshotId: ' ', body, expectedRevision: 1 }), /snapshot/)
+ await assert.rejects(refusing.editMaterial({ requestId: 'e-1', opportunityId: 'opp/1', snapshotId: 'snap/1', body: { sections: [] }, expectedRevision: 1 }), /body/)
+ await assert.rejects(refusing.editMaterial({ requestId: 'e-1', opportunityId: 'opp/1', snapshotId: 'snap/1', body, expectedRevision: -1 }), /revision/)
+ await assert.rejects(refusing.confirmMaterial({ requestId: ' ', materialId: 'm-1', expectedRevision: 1 }), /requestId/)
+ await assert.rejects(refusing.confirmMaterial({ requestId: 'c-1', materialId: ' ', expectedRevision: 1 }), /materialId/)
+ await assert.rejects(refusing.materialReceipt(' '), /requestId/)
+ await assert.rejects(refusing.material(' '), /material ID/)
+ await assert.rejects(refusing.materialVersions(' '), /material ID/)
+ await assert.rejects(refusing.materialVersion('m-1', 0), /version/)
+ await assert.rejects(refusing.compareMaterialVersions('m-1', 0, 2), /version/)
+ const base = { kind: 'material_edited', requestId: 'e-1', materialId: 'm-1', status: 'draft', pinnedEvidence: materialPin, body: materialBody, reviewRisks: materialRisks }
+ const receiptInventors: Array<Record<string, unknown>> = [
+  { ...base, kind: 'material_deleted' },
+  { ...base, status: 'published' },
+  { ...base, version: 0 },
+  { ...base, pinnedEvidence: { ...materialPin, snapshotSha256: 'deadbeef' } },
+  { ...base, pinnedEvidence: { ...materialPin, profileRevision: 4.5 } },
+  { ...base, reviewRisks: [{ code: 'fabricated_value', message: 'x' }] },
+  { ...base, body: { sections: [] } },
+  { ...base, body: { sections: [{ heading: ' ', content: 'x', claims: [] }] } },
+  { ...base, body: { sections: [{ heading: 'h', content: 'x', claims: [{ claimId: 'c', text: 't', needsReview: 'yes' }] }] } },
+  { ...base, body: { sections: [{ heading: 'h', content: 'x', claims: [{ claimId: ' ', text: 't', needsReview: true }] }] } },
+  { ...base, failureCode: 7 },
+ ]
+ for (const payload of receiptInventors) {
+  const api = createCareerApi(async () => payload)
+  await assert.rejects(api.materialReceipt('e-1'), TypeError)
+ }
+ const version = { version: 1, pinnedEvidence: materialPin, factBasisRevision: 4, body: materialBody, reviewRisks: materialRisks, requestId: 'c-1', createdAt: materialTs }
+ const versionInventors: Array<Record<string, unknown>> = [
+  { ...version, createdAt: 'just now' },
+  { ...version, factBasisRevision: -1 },
+  { ...version, requestId: '' },
+ ]
+ for (const payload of versionInventors) {
+  const api = createCareerApi(async () => payload)
+  await assert.rejects(api.materialVersion('m-1', 1), TypeError)
+ }
+ const comparisonInventors: Array<Record<string, unknown>> = [
+  { materialId: 'm-1', baseline: version, target: version, changes: [{ kind: 'section_moved', heading: 'h' }] },
+  { materialId: 'm-1', baseline: version, target: version, changes: [{ kind: 'claim_changed', claimId: 'c', baseline: 3, target: 't' }] },
+  { materialId: ' ', baseline: version, target: version, changes: [] },
+ ]
+ for (const payload of comparisonInventors) {
+  const api = createCareerApi(async () => payload)
+  await assert.rejects(api.compareMaterialVersions('m-1', 1, 2), TypeError)
+ }
+})

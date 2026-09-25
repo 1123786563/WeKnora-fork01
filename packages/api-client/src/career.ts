@@ -236,6 +236,154 @@ export function decodeApplicationReceipt(value: unknown): ApplicationReceipt {
  }
 }
 
+// Frozen material contract owned by the career backend (T15,
+// internal/modules/career/material.go). One structured body feeds every
+// client; confirmation makes an append-only immutable version and missing
+// items stay explicit needs_review placeholders instead of fabricated
+// values. Decoders reject invented kinds, statuses, risk codes, change
+// kinds, or malformed pinned evidence before they reach the UI.
+export type MaterialKind = 'material_edited' | 'material_confirmed'
+export type MaterialStatus = 'draft' | 'failed' | 'confirmed'
+export type MaterialRiskCode = 'missing_placeholder' | 'needs_review'
+export type MaterialChangeKind = 'section_added' | 'section_removed' | 'section_changed' | 'claim_added' | 'claim_removed' | 'claim_changed'
+export type MaterialClaim = { claimId: string; text: string; factKey?: string; needsReview: boolean; reviewNote?: string }
+export type MaterialSection = { heading: string; content: string; claims: MaterialClaim[] }
+export type MaterialBody = { sections: MaterialSection[] }
+export type MaterialEvidencePin = { opportunityId: string; snapshotId: string; snapshotSha256: string; profileRevision: number }
+export type MaterialReviewRisk = { code: MaterialRiskCode; message: string; claimId?: string }
+export type MaterialReceipt = { kind: MaterialKind; requestId: string; materialId: string; status: MaterialStatus; version?: number; pinnedEvidence: MaterialEvidencePin; body: MaterialBody; reviewRisks: MaterialReviewRisk[]; failureCode?: string; failureMessage?: string }
+export type EditMaterialInput = { requestId: string; materialId?: string; opportunityId?: string; snapshotId?: string; body: MaterialBody; expectedRevision: number }
+export type ConfirmMaterialInput = { requestId: string; materialId: string; expectedRevision: number }
+export type MaterialVersionSummary = { version: number; createdAt: string }
+export type MaterialVersionList = { materialId: string; versions: MaterialVersionSummary[] }
+export type MaterialVersionView = { version: number; pinnedEvidence: MaterialEvidencePin; factBasisRevision: number; body: MaterialBody; reviewRisks: MaterialReviewRisk[]; requestId: string; createdAt: string }
+export type MaterialVersionChange = { kind: MaterialChangeKind; heading?: string; claimId?: string; baseline?: string; target?: string }
+export type MaterialVersionComparison = { materialId: string; baseline: MaterialVersionView; target: MaterialVersionView; changes: MaterialVersionChange[] }
+export type MaterialView = { materialId: string; status: MaterialStatus; pinnedEvidence: MaterialEvidencePin; body: MaterialBody; reviewRisks: MaterialReviewRisk[]; failureCode?: string; failureMessage?: string; versionCount: number; versions: MaterialVersionSummary[]; createdAt: string; updatedAt: string }
+
+const materialKinds: MaterialKind[] = ['material_edited', 'material_confirmed']
+const materialStatuses: MaterialStatus[] = ['draft', 'failed', 'confirmed']
+const materialRiskCodes: MaterialRiskCode[] = ['missing_placeholder', 'needs_review']
+const materialChangeKinds: MaterialChangeKind[] = ['section_added', 'section_removed', 'section_changed', 'claim_added', 'claim_removed', 'claim_changed']
+
+function validOptionalIdentifier(value: unknown): boolean { return value === undefined || validIdentifier(value) }
+function validPositiveVersion(value: unknown): value is number { return typeof value === 'number' && Number.isSafeInteger(value) && value > 0 }
+function validRevision(value: unknown): value is number { return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 }
+
+function decodeMaterialPin(value: unknown): MaterialEvidencePin {
+ const record = decodeRecord(value, 'invalid material pinned evidence')
+ if (!validIdentifier(record.opportunityId) || !validIdentifier(record.snapshotId)
+  || typeof record.snapshotSha256 !== 'string' || !/^[a-f0-9]{64}$/.test(record.snapshotSha256)
+  || !validRevision(record.profileRevision)) throw new TypeError('invalid material pinned evidence')
+ return { opportunityId: record.opportunityId, snapshotId: record.snapshotId, snapshotSha256: record.snapshotSha256, profileRevision: record.profileRevision as number }
+}
+
+function decodeMaterialClaim(value: unknown): MaterialClaim {
+ const record = decodeRecord(value, 'invalid material claim')
+ if (!validIdentifier(record.claimId) || typeof record.text !== 'string'
+  || !validOptionalIdentifier(record.factKey) || typeof record.needsReview !== 'boolean'
+  || !validOptionalString(record.reviewNote)) throw new TypeError('invalid material claim')
+ return {
+  claimId: record.claimId, text: record.text,
+  ...(validIdentifier(record.factKey) ? { factKey: record.factKey } : {}),
+  needsReview: record.needsReview,
+  ...(typeof record.reviewNote === 'string' ? { reviewNote: record.reviewNote } : {}),
+ }
+}
+
+function decodeMaterialBody(value: unknown): MaterialBody {
+ const record = decodeRecord(value, 'invalid material body')
+ if (!Array.isArray(record.sections) || record.sections.length === 0) throw new TypeError('invalid material body')
+ return { sections: record.sections.map((section) => {
+  const sectionRecord = decodeRecord(section, 'invalid material section')
+  if (!validIdentifier(sectionRecord.heading) || typeof sectionRecord.content !== 'string' || !Array.isArray(sectionRecord.claims)) throw new TypeError('invalid material section')
+  return { heading: sectionRecord.heading, content: sectionRecord.content, claims: sectionRecord.claims.map(decodeMaterialClaim) }
+ }) }
+}
+
+function decodeMaterialRisks(value: unknown): MaterialReviewRisk[] {
+ if (!Array.isArray(value)) throw new TypeError('invalid material review risks')
+ return value.map((risk) => {
+  const record = decodeRecord(risk, 'invalid material review risk')
+  if (!materialRiskCodes.includes(record.code as MaterialRiskCode) || !validIdentifier(record.message) || !validOptionalIdentifier(record.claimId)) throw new TypeError('invalid material review risk')
+  return { code: record.code as MaterialRiskCode, message: record.message, ...(validIdentifier(record.claimId) ? { claimId: record.claimId } : {}) }
+ })
+}
+
+export function decodeMaterialReceipt(value: unknown): MaterialReceipt {
+ const record = decodeRecord(value, 'invalid material receipt')
+ if (!materialKinds.includes(record.kind as MaterialKind) || !validIdentifier(record.requestId) || !validIdentifier(record.materialId)
+  || !materialStatuses.includes(record.status as MaterialStatus)
+  || (record.version !== undefined && !validPositiveVersion(record.version))
+  || !validOptionalString(record.failureCode) || !validOptionalString(record.failureMessage)) throw new TypeError('invalid material receipt')
+ return {
+  kind: record.kind as MaterialKind, requestId: record.requestId, materialId: record.materialId, status: record.status as MaterialStatus,
+  ...(validPositiveVersion(record.version) ? { version: record.version } : {}),
+  pinnedEvidence: decodeMaterialPin(record.pinnedEvidence), body: decodeMaterialBody(record.body), reviewRisks: decodeMaterialRisks(record.reviewRisks),
+  ...(typeof record.failureCode === 'string' ? { failureCode: record.failureCode } : {}),
+  ...(typeof record.failureMessage === 'string' ? { failureMessage: record.failureMessage } : {}),
+ }
+}
+
+function decodeMaterialVersionSummary(value: unknown): MaterialVersionSummary {
+ const record = decodeRecord(value, 'invalid material version summary')
+ if (!validPositiveVersion(record.version) || !validTimestamp(record.createdAt)) throw new TypeError('invalid material version summary')
+ return { version: record.version, createdAt: record.createdAt }
+}
+
+export function decodeMaterialView(value: unknown): MaterialView {
+ const record = decodeRecord(value, 'invalid material view')
+ if (!validIdentifier(record.materialId) || !materialStatuses.includes(record.status as MaterialStatus)
+  || !validRevision(record.versionCount) || !Array.isArray(record.versions)
+  || !validOptionalString(record.failureCode) || !validOptionalString(record.failureMessage)
+  || !validTimestamp(record.createdAt) || !validTimestamp(record.updatedAt)) throw new TypeError('invalid material view')
+ return {
+  materialId: record.materialId, status: record.status as MaterialStatus,
+  pinnedEvidence: decodeMaterialPin(record.pinnedEvidence), body: decodeMaterialBody(record.body), reviewRisks: decodeMaterialRisks(record.reviewRisks),
+  ...(typeof record.failureCode === 'string' ? { failureCode: record.failureCode } : {}),
+  ...(typeof record.failureMessage === 'string' ? { failureMessage: record.failureMessage } : {}),
+  versionCount: record.versionCount as number, versions: record.versions.map(decodeMaterialVersionSummary),
+  createdAt: record.createdAt, updatedAt: record.updatedAt,
+ }
+}
+
+export function decodeMaterialVersionList(value: unknown): MaterialVersionList {
+ const record = decodeRecord(value, 'invalid material version list')
+ if (!validIdentifier(record.materialId) || !Array.isArray(record.versions)) throw new TypeError('invalid material version list')
+ return { materialId: record.materialId, versions: record.versions.map(decodeMaterialVersionSummary) }
+}
+
+export function decodeMaterialVersionView(value: unknown): MaterialVersionView {
+ const record = decodeRecord(value, 'invalid material version')
+ if (!validPositiveVersion(record.version) || !validRevision(record.factBasisRevision)
+  || !validIdentifier(record.requestId) || !validTimestamp(record.createdAt)) throw new TypeError('invalid material version')
+ return {
+  version: record.version, pinnedEvidence: decodeMaterialPin(record.pinnedEvidence), factBasisRevision: record.factBasisRevision as number,
+  body: decodeMaterialBody(record.body), reviewRisks: decodeMaterialRisks(record.reviewRisks),
+  requestId: record.requestId, createdAt: record.createdAt,
+ }
+}
+
+function decodeMaterialChange(value: unknown): MaterialVersionChange {
+ const record = decodeRecord(value, 'invalid material version change')
+ if (!materialChangeKinds.includes(record.kind as MaterialChangeKind)
+  || !validOptionalIdentifier(record.heading) || !validOptionalIdentifier(record.claimId)
+  || !validOptionalString(record.baseline) || !validOptionalString(record.target)) throw new TypeError('invalid material version change')
+ return {
+  kind: record.kind as MaterialChangeKind,
+  ...(validIdentifier(record.heading) ? { heading: record.heading } : {}),
+  ...(validIdentifier(record.claimId) ? { claimId: record.claimId } : {}),
+  ...(typeof record.baseline === 'string' ? { baseline: record.baseline } : {}),
+  ...(typeof record.target === 'string' ? { target: record.target } : {}),
+ }
+}
+
+export function decodeMaterialComparison(value: unknown): MaterialVersionComparison {
+ const record = decodeRecord(value, 'invalid material comparison')
+ if (!validIdentifier(record.materialId) || !Array.isArray(record.changes)) throw new TypeError('invalid material comparison')
+ return { materialId: record.materialId, baseline: decodeMaterialVersionView(record.baseline), target: decodeMaterialVersionView(record.target), changes: record.changes.map(decodeMaterialChange) }
+}
+
 export function createCareerApi(request: CareerRequest) {
  return {
   async open(signal?: AbortSignal): Promise<CareerView> { return await request({ method: 'GET', path: '/api/v1/career/open', ...(signal ? { signal } : {}) }) as CareerView },
@@ -316,6 +464,41 @@ export function createCareerApi(request: CareerRequest) {
   async search(searchId: string, signal?: AbortSignal): Promise<SearchOnceReceipt> {
    if (!searchId.trim()) throw new TypeError('search ID must not be empty')
    return decodeSearchOnceReceipt(await request({ method: 'GET', path: `/api/v1/career/searches/${encodeURIComponent(searchId)}`, ...(signal ? { signal } : {}) }))
+  },
+  async editMaterial(input: EditMaterialInput, signal?: AbortSignal): Promise<MaterialReceipt> {
+   if (!input.requestId.trim()) throw new TypeError('material requestId must not be empty')
+   if (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0) throw new TypeError('material expected revision must be a non-negative integer')
+   if (!input.materialId?.trim() && (!input.opportunityId?.trim() || !input.snapshotId?.trim())) throw new TypeError('material creation requires opportunity and snapshot IDs')
+   if (!Array.isArray(input.body?.sections) || input.body.sections.length === 0) throw new TypeError('material body must contain at least one section')
+   const body: Record<string, unknown> = { requestId: input.requestId, ...(input.materialId?.trim() ? { materialId: input.materialId.trim() } : { opportunityId: input.opportunityId!.trim(), snapshotId: input.snapshotId!.trim() }), body: input.body, expectedRevision: input.expectedRevision }
+   return decodeMaterialReceipt(await request({ method: 'POST', path: '/api/v1/career/materials', body, ...(signal ? { signal } : {}) }))
+  },
+  async confirmMaterial(input: ConfirmMaterialInput, signal?: AbortSignal): Promise<MaterialReceipt> {
+   if (!input.requestId.trim() || !input.materialId.trim()) throw new TypeError('material confirm requestId and materialId must not be empty')
+   if (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0) throw new TypeError('material confirm expected revision must be a non-negative integer')
+   return decodeMaterialReceipt(await request({ method: 'POST', path: '/api/v1/career/materials/confirm', body: { requestId: input.requestId, materialId: input.materialId, expectedRevision: input.expectedRevision }, ...(signal ? { signal } : {}) }))
+  },
+  async materialReceipt(requestId: string, signal?: AbortSignal): Promise<MaterialReceipt> {
+   if (!requestId.trim()) throw new TypeError('material receipt requestId must not be empty')
+   return decodeMaterialReceipt(await request({ method: 'GET', path: `/api/v1/career/materials/receipt?requestId=${encodeURIComponent(requestId)}`, ...(signal ? { signal } : {}) }))
+  },
+  async material(materialId: string, signal?: AbortSignal): Promise<MaterialView> {
+   if (!materialId.trim()) throw new TypeError('material ID must not be empty')
+   return decodeMaterialView(await request({ method: 'GET', path: `/api/v1/career/materials/${encodeURIComponent(materialId)}`, ...(signal ? { signal } : {}) }))
+  },
+  async materialVersions(materialId: string, signal?: AbortSignal): Promise<MaterialVersionList> {
+   if (!materialId.trim()) throw new TypeError('material ID must not be empty')
+   return decodeMaterialVersionList(await request({ method: 'GET', path: `/api/v1/career/materials/${encodeURIComponent(materialId)}/versions`, ...(signal ? { signal } : {}) }))
+  },
+  async materialVersion(materialId: string, version: number, signal?: AbortSignal): Promise<MaterialVersionView> {
+   if (!materialId.trim()) throw new TypeError('material ID must not be empty')
+   if (!Number.isSafeInteger(version) || version <= 0) throw new TypeError('material version must be a positive integer')
+   return decodeMaterialVersionView(await request({ method: 'GET', path: `/api/v1/career/materials/${encodeURIComponent(materialId)}/versions/${version}`, ...(signal ? { signal } : {}) }))
+  },
+  async compareMaterialVersions(materialId: string, baseline: number, target: number, signal?: AbortSignal): Promise<MaterialVersionComparison> {
+   if (!materialId.trim()) throw new TypeError('material ID must not be empty')
+   if (!Number.isSafeInteger(baseline) || baseline <= 0 || !Number.isSafeInteger(target) || target <= 0) throw new TypeError('material compare versions must be positive integers')
+   return decodeMaterialComparison(await request({ method: 'GET', path: `/api/v1/career/materials/${encodeURIComponent(materialId)}/versions/${target}/compare?baseline=${baseline}`, ...(signal ? { signal } : {}) }))
   },
  }
 }

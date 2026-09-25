@@ -3,6 +3,7 @@ import type { WeKnoraClient } from '@weknora/api-client'
 import type { ScopeController } from '@weknora/domain/scope'
 import type { EvaluationReceipt } from '../../../../packages/career-core/src/contracts.ts'
 import type { ApplicationReceipt, CreateApplicationInput } from '../../../../packages/api-client/src/career.ts'
+import { MaterialPage } from './MaterialPage.tsx'
 import './application.css'
 
 type ApplicationPhase = 'idle' | 'busy' | 'created' | 'unknown' | 'error' | 'forbidden' | 'scope-changed'
@@ -248,6 +249,9 @@ export function ApplicationPage({ client, scopeController, opportunityId, snapsh
     <dl className="wk-application__pinned" aria-label="本次申请固定的证据"><div><dt>岗位</dt><dd>{receipt.pinnedEvidence.opportunityId}</dd></div><div><dt>快照</dt><dd>{receipt.pinnedEvidence.snapshotId}</dd></div><div><dt>评估</dt><dd>{receipt.pinnedEvidence.evaluationId}</dd></div><div><dt>档案修订</dt><dd>{receipt.pinnedEvidence.profileRevision}</dd></div><div><dt>评估结论</dt><dd>{evaluationStatusLabel(receipt.pinnedEvidence.evaluationStatus)}</dd></div><div><dt>批次</dt><dd>{receipt.pinnedEvidence.batchIdentity}</dd></div></dl>
     <div className="wk-application__actions"><button type="button" onClick={startAnotherBatch}>为其他批次创建新申请</button></div>
    </div> : null}
+   {/* T15: the application context opens the material editor pinned to the
+       same frozen opportunity snapshot and profile revision. */}
+   {receipt ? <MaterialPage key={`material-${receipt.pinnedEvidence.opportunityId}-${receipt.pinnedEvidence.snapshotId}`} client={client} scopeController={scopeController} opportunityId={receipt.pinnedEvidence.opportunityId} snapshotId={receipt.pinnedEvidence.snapshotId} /> : null}
   </>}
  </section>
 }

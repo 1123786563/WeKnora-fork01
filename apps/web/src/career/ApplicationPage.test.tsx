@@ -307,6 +307,19 @@ test('without any evaluation the entry explains that the snapshot must be evalua
  assert.equal((byLabel(container, 'button', '创建申请') as HTMLButtonElement).disabled, true)
 })
 
+// T15: the application context opens the material editor pinned to the same
+// frozen evidence once the application receipt exists.
+test('a created application opens the material editor on the same frozen evidence', async () => {
+ const { container } = await mountApplication({ open: async () => view, createApplication: async (input: { requestId: string }) => ({ ...readyReceipt, requestId: input.requestId }) } as unknown as CareerStub & { createApplication: (input: any) => Promise<ApplicationReceipt> })
+ assert.doesNotMatch(container.textContent ?? '', /求职材料编辑/)
+ await submitApplication(container, 'eval-eligible', '2026 秋招 A 批', { open: async () => view, createApplication: async (input: { requestId: string }) => ({ ...readyReceipt, requestId: input.requestId }) } as unknown as CareerStub & { createApplication: (input: any) => Promise<ApplicationReceipt> })
+ const material = container.querySelector('.wk-material')
+ assert.ok(material, 'material editor appears from the application context')
+ assert.match(material.textContent ?? '', /求职材料编辑/)
+ assert.match(material.textContent ?? '', /缺失信息以占位标注，不会由系统补造/)
+ assert.ok(material.querySelector('button[aria-label="新增章节"]'), 'structured body editor is ready')
+})
+
 test('scope switch clears the in-flight application state', async () => {
  const scope = createScopeController({ origin: 'https://weknora.test', userId: 'u', tenantId: 't' })
  const { container } = await mountApplication({ open: async () => view }, { scopeController: scope })
