@@ -204,7 +204,7 @@ func ValidateManifest(m *types.PluginManifest) error {
 	}
 	seen := make(map[string]bool, len(m.Tools))
 	for i, tool := range m.Tools {
-		if err := validateName(fmt.Sprintf("tools[%d].name", i), tool.Name, maxToolNameLen); err != nil {
+		if err := validateToolName(fmt.Sprintf("tools[%d].name", i), tool.Name, maxToolNameLen); err != nil {
 			return err
 		}
 		if seen[tool.Name] {
@@ -253,13 +253,28 @@ func validateName(where, name string, maxRunes int) error {
 			unicode.Is(unicode.Zl, r) || unicode.Is(unicode.Zp, r) {
 			return fmt.Errorf("%s must not contain control, format, private-use or line/paragraph separator characters (U+%04X)", where, r)
 		}
-		// OCR R1 F16: '/' and '%' are legal for the general Unicode hygiene
-		// above but break addressability — the per-tool policy endpoint
+	}
+	return nil
+}
+
+// validateToolName layers the addressability rules on top of validateName for
+// names that MUST be reachable through the per-tool policy endpoint
+// (manifest-declared tools and live directory tools). OCR R1 F16 added these
+// rejections to validateName itself, which OCR R2 F34 found to over-reach:
+// the plugin DISPLAY name shares validateName and has no addressability
+// semantics — "CI/CD Helper" is a legitimate name. Keep the separator rules
+// scoped to tool names only.
+func validateToolName(where, name string, maxRunes int) error {
+	if err := validateName(where, name, maxRunes); err != nil {
+		return err
+	}
+	for _, r := range name {
+		// '/' and '%' are legal for the general Unicode hygiene above but
+		// break addressability — the per-tool policy endpoint
 		// /tools/:tool_name/policy matches ONE decoded path segment, so a
 		// snapshot tool named "a/b" (or smuggled "a%2Fb") can never be
 		// governed. Rejecting them here makes "every snapshot tool is
-		// addressable through the policy endpoint" an install-time invariant
-		// for both manifest-declared and live directory names.
+		// addressable through the policy endpoint" an install-time invariant.
 		if r == '/' || r == '%' {
 			return fmt.Errorf("%s must not contain path separator or percent characters (/ or %%; U+%04X) — per-tool policy endpoints address tools by a single URL path segment", where, r)
 		}
@@ -423,10 +438,15 @@ func IdentityFingerprint(pluginID, version, endpoint string, toolsDigest string)
 // where the split is ambiguous — failing open to "" makes the caller's
 // masking a no-op, never a panic or a wrong redaction).
 func userinfoOf(rawURL string) string {
-	schemeEnd := strings.Index(rawURL, "://")
 	rest := rawURL
-	if schemeEnd >= 0 {
+	if schemeEnd := strings.Index(rawURL, "://"); schemeEnd >= 0 {
 		rest = rawURL[schemeEnd+3:]
+	} else if strings.HasPrefix(rest, "//") {
+		// OCR R2 F33: a protocol-relative URL ("//user:pass@host/...") carries
+		// an authority too — without this branch the FIRST "/" (the prefix)
+		// would terminate the authority as an empty string and the userinfo
+		// would be missed exactly on the inputs that fail url.Parse.
+		rest = rest[2:]
 	}
 	authority := rest
 	if slash := strings.Index(rest, "/"); slash >= 0 {
@@ -444,10 +464,12 @@ func userinfoOf(rawURL string) string {
 // rejection fires, so the raw echo would leak the very credentials the
 // well-formed path deliberately hides.
 func maskEndpointCredentials(rawURL string) string {
-	schemeEnd := strings.Index(rawURL, "://")
 	prefix, rest := "", rawURL
-	if schemeEnd >= 0 {
+	if schemeEnd := strings.Index(rawURL, "://"); schemeEnd >= 0 {
 		prefix, rest = rawURL[:schemeEnd+3], rawURL[schemeEnd+3:]
+	} else if strings.HasPrefix(rest, "//") {
+		// OCR R2 F33: protocol-relative URLs — see userinfoOf.
+		rest = rest[2:]
 	}
 	authority, tail := rest, ""
 	if slash := strings.Index(rest, "/"); slash >= 0 {

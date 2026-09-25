@@ -319,6 +319,9 @@ type installPreviewRepo struct {
 	// hardDeleteErr 注入级联删除失败（T06-OCR2-F1）：补偿在级联失败时
 	// 必须保留安装行（uninstall 自愈入口需要它存在）。
 	hardDeleteErr error
+	// onHardDelete 在 HardDeleteServiceCascade 入口触发一次（OCR R2 F20
+	// 并发串行化测试的卸载中途挂钩）。
+	onHardDelete func()
 }
 
 func (r *installPreviewRepo) CreatePreview(_ context.Context, p *types.PluginPreview) error {
@@ -407,6 +410,11 @@ func (r *installPreviewRepo) HardDeleteServiceCascade(ctx context.Context, tenan
 		if err := ctx.Err(); err != nil {
 			return err
 		}
+	}
+	if r.onHardDelete != nil {
+		hook := r.onHardDelete
+		r.onHardDelete = nil // 只触发一次
+		hook()
 	}
 	if r.hardDeleteErr != nil {
 		return r.hardDeleteErr
@@ -991,4 +999,54 @@ func TestGenericMCPAPIRejectsPluginManagedServices(t *testing.T) {
 	stored, err := s.mcpRepo.GetByID(context.Background(), 7, "svc-manual")
 	require.NoError(t, err)
 	require.Equal(t, "after", stored.Description)
+}
+
+// TestSetInstallationStateZeroRowUpdateIsNotFound（OCR R2 F21）：仓储契约对
+// 0 行更新返回 gorm.ErrRecordNotFound——入口 GetInstallation 已确认行存在，
+// 0 行只可能来自并发卸载删除了安装行，语义是 404（ErrInstallationNotFound）
+// 而非 500（ErrInstallationPersistFailed）。
+func TestSetInstallationStateZeroRowUpdateIsNotFound(t *testing.T) {
+	s := newInstallTestStack(t, 7)
+	resp, err := s.confirm(t, 7, s.previewID)
+	require.NoError(t, err)
+	s.pluginRepo.updateStateErr = gorm.ErrRecordNotFound
+	_, err = s.svc.SetInstallationState(context.Background(), 7, resp.InstallationID, types.PluginInstallationDisabled)
+	require.ErrorIs(t, err, service.ErrInstallationNotFound,
+		"a 0-row state flip after the entry lookup can only mean a concurrent uninstall — surface the 404 verdict")
+}
+
+// TestUninstallConcurrentAcceptSerializes（OCR R2 F20）：卸载与升级接受是
+// 同域写路径（级联硬删服务行+策略行 vs 接受切换快照后写策略行）——必须共
+// 持 per-installation 锁。在卸载的级联中途（onHardDelete 钩子）并发发起
+// 接受：卸载在途期间接受必须零进展。
+func TestUninstallConcurrentAcceptSerializes(t *testing.T) {
+	const tenantID = uint64(9)
+	s := newUpgradeAcceptStack(t, tenantID)
+	resp := s.previewV2(t, tenantID)
+
+	acceptDone := make(chan error, 1)
+	acceptProgressedDuringUninstall := make(chan bool, 1)
+	s.pluginRepo.onHardDelete = func() {
+		go func() {
+			_, err := s.svc.AcceptUpgrade(context.Background(), tenantID, "admin-1", s.inst.ID, resp.CandidateFingerprint)
+			acceptDone <- err
+		}()
+		select {
+		case <-acceptDone:
+			acceptProgressedDuringUninstall <- true // 接受在卸载未返回前完成 → 未串行化
+		case <-time.After(1500 * time.Millisecond):
+			acceptProgressedDuringUninstall <- false // 接受全程被阻塞 → 串行化生效
+		}
+	}
+
+	uninstallErr := make(chan error, 1)
+	go func() {
+		uninstallErr <- s.svc.UninstallInstallation(context.Background(), tenantID, s.inst.ID)
+	}()
+	require.NoError(t, <-uninstallErr, "the in-flight uninstall completes normally")
+	require.False(t, <-acceptProgressedDuringUninstall,
+		"a concurrent accept must make no progress while an uninstall of the SAME installation is mid-flight (OCR R2 F20)")
+	// 卸载后安装行已删——接受以 ErrInstallationNotFound 收场（而非对已删
+	// serviceID 写策略行的 FK violation 形态）。
+	require.ErrorIs(t, <-acceptDone, service.ErrInstallationNotFound)
 }

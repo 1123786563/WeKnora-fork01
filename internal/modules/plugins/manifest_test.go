@@ -293,17 +293,40 @@ func TestValidateManifestParseFailureKeepsReasonReadableWithoutUserinfo(t *testi
 		"no userinfo on the endpoint means nothing to redact — empty-string replace must not corrupt the message")
 }
 
-// TestValidateNameRejectsPathSeparators（OCR R1 F16）：含 '/' 或 '%' 的名字
-// 可完整通过现有卫生规则进入快照，但策略端点 /tools/:tool_name/policy 按
-// 单段匹配（%2F 也会被还原），这类工具永不可寻址——逐工具治理被静默架空。
-// 名称里拒绝这两类字符使「快照内工具必然可经策略端点寻址」成为安装时不
-// 变量（同时覆盖 manifest 声明名与 live 目录名——两者共用 validateName）。
+// TestValidateNameRejectsPathSeparators（OCR R1 F16）：含 '/' 或 '%' 的
+// 工具名可完整通过现有卫生规则进入快照，但策略端点 /tools/:tool_name/policy
+// 按单段匹配（%2F 也会被还原），这类工具永不可寻址——逐工具治理被静默架空。
+// 工具名拒绝这两类字符使「快照内工具必然可经策略端点寻址」成为安装时不
+// 变量（同时覆盖 manifest 声明名与 live 目录名——两者共用 validateToolName）。
 func TestValidateNameRejectsPathSeparators(t *testing.T) {
 	for _, name := range []string{"foo/bar", "foo%2Fbar", "foo%bar", "/"} {
 		m := validManifest()
 		m.Tools[0].Name = name
 		err := ValidateManifest(m)
-		require.Error(t, err, "name %q must be rejected", name)
+		require.Error(t, err, "tool name %q must be rejected", name)
 		require.Contains(t, err.Error(), "must not contain", "the rejection must name the character class")
 	}
+}
+
+// TestPluginDisplayNameAllowsSeparators（OCR R2 F34）：'/' 拒绝依据是工具名
+// 的策略端点单段可达性——插件 name 是纯展示字段，无寻址语义，"CI/CD
+// Helper" 这类合法名字不得被 R1-F16 规则误伤。
+func TestPluginDisplayNameAllowsSeparators(t *testing.T) {
+	m := validManifest()
+	m.Name = "CI/CD Helper"
+	require.NoError(t, ValidateManifest(m))
+}
+
+// TestValidateManifestParseFailureMasksProtocolRelativeUserinfo（OCR R2
+// F33）：协议相对 URL "//user:pass@host:badport/" 无 "://" 前缀——旧
+// userinfoOf/mask 把 rest 首个 "/" 当 authority 终点，authority 切成空串、
+// 掩码 no-op，而该输入恰令 url.Parse 失败走失败回显路径，凭据明文进 400。
+func TestValidateManifestParseFailureMasksProtocolRelativeUserinfo(t *testing.T) {
+	m := validManifest()
+	m.Transport.Endpoint = "//user:pass@host:badport/"
+	err := ValidateManifest(m)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "invalid transport endpoint")
+	require.Contains(t, err.Error(), "REDACTED@")
+	require.NotContains(t, err.Error(), "user:pass", "protocol-relative credentials must not leak into the admin-visible error")
 }

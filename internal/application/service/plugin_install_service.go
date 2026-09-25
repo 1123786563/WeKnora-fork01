@@ -735,6 +735,13 @@ func (s *pluginService) SetInstallationState(
 	}
 	flipInstallation := func() error {
 		if err := s.pluginRepo.UpdateInstallationState(ctx, tenantID, installationID, state); err != nil {
+			// OCR R2 F21: the repository contract returns gorm.ErrRecordNotFound
+			// for a 0-row update. The entry lookup above already confirmed the
+			// row, so a 0-row flip can only mean a concurrent uninstall removed
+			// it — surface the 404 verdict, not a 500 persistence fault.
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrInstallationNotFound
+			}
 			logger.GetLogger(ctx).Errorf("failed to update plugin installation state: %v", err)
 			return ErrInstallationPersistFailed
 		}
@@ -775,6 +782,17 @@ func (s *pluginService) UninstallInstallation(
 	tenantID uint64,
 	installationID string,
 ) error {
+	// OCR R2 F20: uninstall rewrites the same rows the upgrade/drift writers
+	// touch (the cascade hard-deletes the materialized service row AND its
+	// approval rows). Without the per-installation lock a concurrent
+	// AcceptUpgrade can pass its re-verification, have the cascade delete the
+	// service row under it, and then write policy rows against the deleted
+	// serviceID — on PG an FK violation forces the compensation path and the
+	// admin sees a spurious 500; on production SQLite (foreign_keys off) the
+	// rows land as permanent orphans. Same serialization as
+	// AcceptUpgrade/ResolveDrift/CheckDrift.
+	defer lockUpgradeAccept(installationID)()
+
 	inst, err := s.pluginRepo.GetInstallation(ctx, tenantID, installationID)
 	if err != nil {
 		logger.GetLogger(ctx).Errorf("failed to load plugin installation: %v", err)

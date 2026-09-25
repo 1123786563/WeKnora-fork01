@@ -68,10 +68,18 @@ type PluginRepository interface {
 	DeleteInstallation(ctx context.Context, tenantID uint64, id string) error
 
 	// HardDeleteServiceCascade HARD-deletes a plugin-materialized MCP
-	// service row AND its derived per-tool approval rows (OCR round-1 R12
-	// F21): the approvals FK only cascades on hard DELETE, so the shared
-	// MCPServiceRepository.Delete (soft) would orphan policy rows keyed to
-	// a dead serviceID. Used by the confirm compensation and by uninstall.
+	// service row AND every row derived from it (OCR round-1 R12 F21 + OCR R2
+	// F24 — the full production sweep, all in one transaction):
+	//   - mcp_tool_approvals (the approvals FK only cascades on hard DELETE,
+	//     so the shared MCPServiceRepository.Delete (soft) would orphan
+	//     policy rows keyed to a dead serviceID);
+	//   - mcp_oauth_tokens (per-member AES-256-GCM credential material) and
+	//     mcp_oauth_clients (the dynamic client registration);
+	//   - mcp_metadata rows on PostgreSQL (the cached tool directory; the
+	//     SQLite schema has no such table).
+	// Implementations MUST clear all of these — a fake that only deletes the
+	// service + approvals diverges from production semantics. Used by the
+	// confirm compensation and by uninstall.
 	HardDeleteServiceCascade(ctx context.Context, tenantID uint64, serviceID string) error
 }
 
