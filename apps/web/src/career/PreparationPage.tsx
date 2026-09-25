@@ -89,6 +89,7 @@ export function PreparationPage({ client, scopeController, applicationId }: { cl
  const [message, setMessage] = useState('')
  const [revisionConflict, setRevisionConflict] = useState<number>()
  const [editing, setEditing] = useState<{ materialId: string; body: MaterialBody; source: PreparationReceipt }>()
+ const [revised, setRevised] = useState<{ materialId: string; body: MaterialBody }>()
  const [reviseBusy, setReviseBusy] = useState(false)
  const [reviseMessage, setReviseMessage] = useState('')
  const [reviseConflict, setReviseConflict] = useState<number>()
@@ -97,7 +98,7 @@ export function PreparationPage({ client, scopeController, applicationId }: { cl
  const clearPrivate = useCallback((notice: string, nextState: 'forbidden' | 'scope-changed' = 'forbidden') => {
   setItems(undefined); setReadState(nextState); setReadMessage(notice)
   setAttempt(undefined); setWritePhase('idle'); setMessage(''); setFocus('')
-  setEditing(undefined); setReviseMessage(''); setReviseConflict(undefined)
+  setEditing(undefined); setRevised(undefined); setReviseMessage(''); setReviseConflict(undefined)
  }, [])
  useEffect(() => {
   const requestScope = scopeController.current()
@@ -225,7 +226,10 @@ export function PreparationPage({ client, scopeController, applicationId }: { cl
 
  // The revision seam is the frozen edit_material intent: a non-empty
  // materialId edits that material's draft in place (never its frozen
- // evidence), so revising keeps the same anchored draft.
+ // evidence), so revising keeps the same anchored draft. The preparation
+ // receipt stays the snapshot of what generation produced; the saved
+ // revision is read back from the material domain so the user sees exactly
+ // what is stored.
  const startRevise = (receipt: PreparationReceipt): void => {
   if (!receipt.materialId) return
   setEditing({ materialId: receipt.materialId, body: cloneBody(receipt.body), source: receipt })
@@ -241,7 +245,13 @@ export function PreparationPage({ client, scopeController, applicationId }: { cl
    const next = await client.career.editMaterial({ requestId: current.requestId, materialId: current.materialId, body: current.body, expectedRevision: current.expectedRevision }, requestScope.signal)
    if (!scopeController.isCurrent(requestScope.scope)) return
    if (next.requestId !== current.requestId || next.materialId !== current.materialId) throw new ReceiptMismatchError('材料回执与本次修订不匹配')
+   // Read the stored draft back from the material domain: the receipt above
+   // echoes the write, the material view is the durable truth.
+   const view = await client.career.material(current.materialId, requestScope.signal)
+   if (!scopeController.isCurrent(requestScope.scope)) return
+   if (view.materialId !== current.materialId) throw new ReceiptMismatchError('材料视图与本次修订不匹配')
    setReviseBusy(false); setEditing(undefined)
+   setRevised({ materialId: current.materialId, body: view.body })
    setReviseMessage('修订已保存：材料草稿已更新（仍未确认成版本，可继续修订或到材料区确认）。来源链与锚定投递版本保持不变。')
    refresh()
   } catch (cause) {
@@ -283,11 +293,10 @@ export function PreparationPage({ client, scopeController, applicationId }: { cl
      <button type="button" onClick={() => void lookupReceipt()}>查询准备回执</button>
      <button type="button" onClick={() => void runGenerate(attempt)}>用原请求编号重试</button>
     </div> : null}
-    {message && writePhase !== 'idle' ? <p className={writePhase === 'error' ? 'wk-preparation__message wk-preparation__message--error' : 'wk-preparation__message'} role={writePhase === 'error' ? 'alert' : 'status'} aria-live="polite">{message}</p> : null}
+    {message ? <p className={writePhase === 'error' ? 'wk-preparation__message wk-preparation__message--error' : 'wk-preparation__message'} role={writePhase === 'error' ? 'alert' : 'status'} aria-live="polite">{message}</p> : null}
     {writePhase === 'error' && revisionConflict !== undefined ? <div className="wk-preparation__actions"><button type="button" onClick={() => { setRevisionConflict(undefined); void readRevision() }}>重新读取档案修订</button></div> : null}
     {items && items.length ? <ol className="wk-preparation__list" aria-label="准备列表">{items.map((item) => <PreparationRow key={item.preparationId} item={item} revising={reviseBusy || writePhase === 'busy'} onRevise={startRevise} />)}</ol> : <p className="wk-preparation__hint">此申请还没有面试准备草稿。</p>}
-    {editing ? <fieldset className="wk-preparation__edit" aria-label="修订准备草稿">
-     <legend>修订草稿 <code>{editing.materialId}</code>（保存为材料草稿，不改变已锚定的投递版本）</legend>
+    {editing ? <fieldset className="wk-preparation__edit" aria-label="修订准备草稿">     <legend>修订草稿 <code>{editing.materialId}</code>（保存为材料草稿，不改变已锚定的投递版本）</legend>
      {editing.body.sections.map((section, sectionIndex) => <div className="wk-preparation__edit-section" key={`${section.heading}-${sectionIndex}`}>
       <label className="wk-preparation__label">段落标题</label>
       <input aria-label="段落标题" value={section.heading} disabled={reviseBusy} onChange={(event) => setEditing((current) => {
@@ -321,6 +330,15 @@ export function PreparationPage({ client, scopeController, applicationId }: { cl
       <button type="button" disabled={reviseBusy} onClick={() => { setEditing(undefined); setReviseMessage(''); setReviseConflict(undefined) }}>放弃修订</button>
      </div>
     </fieldset> : null}
+    {revised ? <section className="wk-preparation__revised" aria-label="修订后草稿">
+     <h4>修订后草稿（已保存为材料草稿 <code>{revised.materialId}</code>）</h4>
+     {revised.body.sections.map((section, index) => <div className="wk-preparation__section" key={`${section.heading}-${index}`}>
+      <h5>{section.heading}</h5>
+      <p>{section.content}</p>
+      {section.claims.length ? <ul>{section.claims.map((claim) => <li key={claim.claimId} className={claim.needsReview ? 'wk-preparation__claim--needs-review' : undefined}>{claim.text}{claim.factKey ? `（已链接确认事实：${claim.factKey}）` : claim.needsReview ? '（缺失/待补充，不得补造）' : ''}</li>)}</ul> : null}
+     </div>)}
+     <p className="wk-preparation__hint">这是材料域当前保存的草稿正文；上方列表行保留生成时的回执快照与锚定投递版本，两者都以同一材料草稿为准继续演进。</p>
+    </section> : null}
     {reviseConflict !== undefined ? <div className="wk-preparation__actions"><button type="button" onClick={() => { setReviseConflict(undefined); void readRevision() }}>重新读取档案修订</button></div> : null}
     {reviseMessage ? <p className={reviseMessage.startsWith('修订已保存') ? 'wk-preparation__message' : 'wk-preparation__message wk-preparation__message--error'} role={reviseMessage.startsWith('修订已保存') ? 'status' : 'alert'} aria-live="polite">{reviseMessage}</p> : null}
    </>}

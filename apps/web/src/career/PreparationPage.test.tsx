@@ -146,16 +146,19 @@ test('an unknown submitted version answers the typed prompt state without guessi
 test('viewing the sources and revising the draft saves through the material edit seam', async () => {
  const edits: Array<{ requestId: string; materialId?: string; body: unknown; expectedRevision: number }> = []
  let stored: PreparationReceipt[] = [draft()]
+ let materialBody: PreparationReceipt['body'] = draftBody
  const career: CareerStub = {
   open: async () => ({ revision: 5 }),
   applicationPreparations: async () => ({ preparations: stored }),
   generatePreparation: async () => { throw new Error('no generation in this flow') },
   editMaterial: async (input: { requestId: string; materialId?: string; body: unknown; expectedRevision: number }) => {
    edits.push(input)
-   const revised = draft({ body: input.body as PreparationReceipt['body'] })
-   stored = [revised]
+   materialBody = input.body as PreparationReceipt['body']
    return { kind: 'material_edited', requestId: input.requestId, materialId: input.materialId, status: 'draft', pinnedEvidence: { opportunityId: 'opp/1', snapshotId: 'snap-1', snapshotSha256: 'a'.repeat(64), profileRevision: 5 }, body: input.body, reviewRisks: [] }
   },
+  // The saved revision is read back from the material domain: the durable
+  // truth of what is stored, not the echoed write.
+  material: async (materialId: string) => ({ materialId, status: 'draft', pinnedEvidence: { opportunityId: 'opp/1', snapshotId: 'snap-1', snapshotSha256: 'a'.repeat(64), profileRevision: 5 }, body: materialBody, reviewRisks: [], versionCount: 0, versions: [], createdAt: ts, updatedAt: ts }),
  }
  const container = await mountPreparation(career)
  const row = container.querySelector<HTMLElement>('[aria-label="准备列表"] > li')
@@ -181,7 +184,11 @@ test('viewing the sources and revising the draft saves through the material edit
   { claimId: 'claim-2', text: '实习经历待补充', needsReview: true, reviewNote: '缺实习经历，不得补造' },
  ] }] })
  assert.match(container.textContent ?? '', /修订已保存/)
- assert.match(container.textContent ?? '', /项目经历两段/)
+ const revisedView = container.querySelector('[aria-label="修订后草稿"]')
+ assert.ok(revisedView, 'the saved revision is read back from the material domain')
+ assert.match(revisedView.textContent ?? '', /教育经历与项目/)
+ assert.match(revisedView.textContent ?? '', /项目经历两段/)
+ assert.match(revisedView.textContent ?? '', /已链接确认事实：学历/)
  // The anchored version stays visible after the revision.
  assert.match(container.querySelector('[aria-label="准备列表"]')?.textContent ?? '', /基于实际投递版本 V2/)
 })
