@@ -88,6 +88,14 @@ func (e *ActiveRunConflict) Error() string {
 
 func (e *ActiveRunConflict) Unwrap() error { return craft.ErrBusy }
 
+// DefaultVersionSelector resolves a scope's default preview version under
+// the T15 (#130) promotion policy: the newest published web version whose
+// four independent checks each passed. The boolean reports whether any
+// version qualified; an error degrades to the legacy newest-version rule
+// at the call site (the seat is a projection, never an authorization
+// boundary).
+type DefaultVersionSelector = func(ctx context.Context, scope craft.Scope) (craft.Version, bool, error)
+
 // CraftSessionConfig assembles the craft session service.
 type CraftSessionConfig struct {
 	// DB is the migrated business database.
@@ -121,6 +129,11 @@ type CraftSessionConfig struct {
 	Models interfaces.ModelService
 	// Gate is the deployment feature gate; the zero value keeps craft closed.
 	Gate CraftFeatureGate
+	// DefaultVersionSelector picks the session's default preview version for
+	// web-kind sessions (T15 #130: only a version whose four independent
+	// checks each passed takes the seat). nil keeps the recorded legacy
+	// behavior (newest version); non-web kinds always use the legacy rule.
+	DefaultVersionSelector func(ctx context.Context, scope craft.Scope) (craft.Version, bool, error)
 	// Now is injectable for tests.
 	Now func() time.Time
 }
@@ -139,7 +152,10 @@ type CraftSessionService struct {
 	files         interfaces.FileService
 	models        interfaces.ModelService
 	gate          CraftFeatureGate
-	now           func() time.Time
+	// defaultVersionSelector is the T15 web default-seat selector; nil
+	// keeps the legacy newest-version behavior.
+	defaultVersionSelector func(ctx context.Context, scope craft.Scope) (craft.Version, bool, error)
+	now                    func() time.Time
 }
 
 // NewCraftSessionService validates the assembly and returns the service.
@@ -157,7 +173,8 @@ func NewCraftSessionService(cfg CraftSessionConfig) (*CraftSessionService, error
 		db: cfg.DB, sessions: cfg.Sessions, store: cfg.Store, versions: cfg.Versions,
 		runs: cfg.Runs, activeRuns: cfg.ActiveRuns, access: cfg.Access, taskList: cfg.TaskList,
 		temporaryDocs: cfg.TemporaryDocs,
-		files:         cfg.Files, models: cfg.Models, gate: cfg.Gate, now: now,
+		files:         cfg.Files, models: cfg.Models, gate: cfg.Gate,
+		defaultVersionSelector: cfg.DefaultVersionSelector, now: now,
 	}, nil
 }
 
@@ -467,7 +484,22 @@ func (s *CraftSessionService) View(ctx context.Context, scope craft.Scope) (Craf
 			}
 		}
 	}
-	if versions, verr := s.versions.List(ctx, owner); verr == nil && len(versions) > 0 {
+	if registration.Kind == craft.KindWeb && s.defaultVersionSelector != nil {
+		// T15 (#130): a web session's default preview seat goes to the
+		// newest version whose four independent checks each passed. A
+		// selector error degrades to the legacy newest-version rule rather
+		// than failing the whole workspace read (the seat is a projection,
+		// never an authorization boundary).
+		if selected, ok, serr := s.defaultVersionSelector(ctx, owner); serr == nil && ok {
+			view.CurrentVersion = &selected
+		} else if serr != nil {
+			versions, verr := s.versions.List(ctx, owner)
+			if verr == nil && len(versions) > 0 {
+				current := versions[0]
+				view.CurrentVersion = &current
+			}
+		}
+	} else if versions, verr := s.versions.List(ctx, owner); verr == nil && len(versions) > 0 {
 		current := versions[0]
 		view.CurrentVersion = &current
 	}

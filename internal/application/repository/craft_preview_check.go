@@ -34,6 +34,13 @@ func NewCraftPreviewCheckStore(db *gorm.DB) craft.PreviewCheckStore {
 	return &CraftPreviewCheckStore{db: db}
 }
 
+// NewCraftPreviewCheckStoreConcrete is the same store at its concrete type
+// for consumers that need the T15 (#130) UpdateWebProbeCheck fact channel
+// beyond the frozen craft.PreviewCheckStore interface (dig.As binding).
+func NewCraftPreviewCheckStoreConcrete(db *gorm.DB) *CraftPreviewCheckStore {
+	return &CraftPreviewCheckStore{db: db}
+}
+
 // UpdateWebProbeCheck records one externally observed T15 web-gate probe fact
 // — preview reachability or actual page load — on a published version. One
 // call records exactly one fact: the other web fact, the build/entry checks,

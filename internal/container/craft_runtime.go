@@ -221,6 +221,13 @@ func newCraftRuntimeExecutor(
 	runViewArtifacts := service.NewCraftArtifactServiceWithCandidates(closedCraftArtifactSource{}, files, versions,
 		repository.NewCraftCandidateStore(db), runViewEvidence,
 		service.CraftArtifactConfig{Kind: craft.KindWeb, OutputDir: craftLocalOutputDir, WebCitationGate: citationGate})
+	// T15 (#130): the run-bound collector carries the four-check promotion
+	// gate. The draft-head store fences stale promotion callbacks against
+	// the Workspace revision; the T14 browser page-load probe is not yet
+	// implemented (T14 live gate closed), so nil leaves both probe facts
+	// not_run and promotion fails closed — exactly the recorded contract.
+	// The promotion TRIGGER (post-terminal orchestration) is T20 scope.
+	runViewArtifacts.WithWebPromotion(repository.NewCraftDraftHeadStore(db), nil)
 	// C02: an interaction.pending event first lands durably (interaction row
 	// + waiting_user park) before it is projected to the run stream, so the
 	// pending decision is decidable through the HTTP surface. The registrar

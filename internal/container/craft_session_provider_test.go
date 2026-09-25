@@ -47,6 +47,7 @@ func TestNewCraftSessionServiceReceivesSharedTaskACLPorts(t *testing.T) {
 		craftProviderModels{},
 		access,
 		&AgentRuntime{Runs: runs},
+		nil,
 	)
 	require.NoError(t, err)
 

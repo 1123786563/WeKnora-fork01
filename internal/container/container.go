@@ -528,9 +528,10 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// uninstantiated: the executor above fails closed, which is the recorded
 	// assembly boundary (craft runtime deployment task).
 	must(container.Provide(repository.NewCraftVersionStore))
-	must(container.Provide(repository.NewCraftPreviewCheckStore))
+	must(container.Provide(newCraftPreviewCheckStoreConcrete, dig.As(new(craft.PreviewCheckStore))))
 	must(container.Provide(newCraftPreviewService))
 	must(container.Provide(newCraftSessionService))
+	must(container.Provide(newCraftDefaultVersionSelector))
 	// C05: the recovery snapshot service rides the same env-driven local
 	// runtime as the executor; without the craft dial it stays nil and the
 	// snapshot/restore routes never mount (fail-closed, like the executor).
@@ -2543,6 +2544,9 @@ func craftFeatureGateFromEnv() service.CraftFeatureGate {
 // newCraftSessionService assembles W03's craft session service from the
 // already-registered craft stores and the existing session, upload, file and
 // model services. New runs are admitted through the live agent run service.
+// T15 (#130): web sessions resolve their default preview seat through the
+// promotion-gated selector (newest version whose four independent checks
+// passed) — the run-bound collector carries the promotion assembly.
 func newCraftSessionService(
 	db *gorm.DB,
 	sessions interfaces.SessionService,
@@ -2553,6 +2557,7 @@ func newCraftSessionService(
 	models interfaces.ModelService,
 	access *service.CraftAccessService,
 	runtime *AgentRuntime,
+	defaultVersionSelector service.DefaultVersionSelector,
 ) (*service.CraftSessionService, error) {
 	runs := runtime.Runs
 	if runs == nil {
@@ -2563,8 +2568,30 @@ func newCraftSessionService(
 		Runs: runs, ActiveRuns: service.CraftActiveRunsQuery(db),
 		TemporaryDocs: documents, Files: files, Models: models,
 		Access: access, TaskList: access,
-		Gate: craftFeatureGateFromEnv(),
+		Gate: craftFeatureGateFromEnv(), DefaultVersionSelector: defaultVersionSelector,
 	})
+}
+
+// newCraftDefaultVersionSelector exposes the run-bound collector's
+// T15-gated default-seat selection as the session view's web selector. A
+// nil executor (craft dial not configured) keeps the legacy newest-version
+// projection: without a run-bound collector there are no four-check
+// versions to select anyway.
+func newCraftDefaultVersionSelector(executor craft.Executor) service.DefaultVersionSelector {
+	runtime, ok := executor.(*localCraftRuntime)
+	if !ok || runtime == nil || runtime.runViewArtifacts == nil {
+		return nil
+	}
+	return runtime.runViewArtifacts.SelectDefaultVersion
+}
+
+// newCraftPreviewCheckStoreConcrete constructs the concrete preview-check
+// store. dig.As registers it under the frozen craft.PreviewCheckStore
+// interface too, so existing interface consumers are unchanged while the
+// T14/T20 probe writer can resolve the concrete type for the T15
+// UpdateWebProbeCheck fact channel.
+func newCraftPreviewCheckStoreConcrete(db *gorm.DB) *repository.CraftPreviewCheckStore {
+	return repository.NewCraftPreviewCheckStoreConcrete(db)
 }
 
 // newCraftPreviewService assembles W02's preview service. Without a
