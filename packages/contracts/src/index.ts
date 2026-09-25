@@ -735,3 +735,5 @@ export type { AgentAdoption, AgentAdoptionVariant, AvailableAgent } from './mark
 export { parseAdoptionResponse, parseAdoptionListResponse, parseVariantResponse, parseAvailableAgentListResponse } from './marketplace/agent-adoption.ts';
 export { parseAnswerEvidence } from './mobile/knowledge-evidence.ts';
 export type { AnswerEvidenceStateWire, AnswerEvidenceWire, EvidenceCitationWire, EvidenceConclusionWire, EvidenceKindWire, EvidenceReasoningStateWire, EvidenceReasoningWire } from './mobile/knowledge-evidence.ts';
+export type { VerifiedPublisher, PublicCatalogListing, PublicCatalogRelease, PublicReleaseSubmission, PublicReleaseReview, PublicIntroduction, PublicAdoption, AdoptPublicListingResult } from './marketplace/public-marketplace.ts';
+export { parseVerifiedPublisherResponse, parseVerifiedPublisherListResponse, parsePublicCatalogListResponse, parsePublicListingResponse, parsePublicSubmissionResponse, parsePublicSubmissionListResponse, parsePublicReviewResponse, parseAdoptPublicListingResponse } from './marketplace/public-marketplace.ts';

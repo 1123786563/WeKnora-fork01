@@ -371,21 +371,22 @@ func TestTenantAgentAdoptionPublishesIndependentVariantsIntoMobileAvailableAgent
 	publish := func(variantID string) (localAgentID, localVersionID string) {
 		published := adoptionCall(r, 1, http.MethodPost, "/api/v1/marketplace/tenant/variants/"+variantID+"/publish", "admin", "admin", nil)
 		require.Equal(t, http.StatusOK, published.Code, published.Body.String())
+		// The publish response envelope is the unwrapped variant body
+		// (B3-F86): data IS the variant, same as the other variant
+		// endpoints — pinned by TestPublishVariantReturnsVariantBodyDirectly.
 		var publishBody struct {
 			Data struct {
-				Variant struct {
-					ID                  string `json:"id"`
-					State               string `json:"state"`
-					LocalAgentID        string `json:"local_agent_id"`
-					LocalAgentVersionID string `json:"local_agent_version_id"`
-				} `json:"variant"`
+				ID                  string `json:"id"`
+				State               string `json:"state"`
+				LocalAgentID        string `json:"local_agent_id"`
+				LocalAgentVersionID string `json:"local_agent_version_id"`
 			} `json:"data"`
 		}
 		require.NoError(t, json.Unmarshal(published.Body.Bytes(), &publishBody))
-		require.Equal(t, "published", publishBody.Data.Variant.State)
-		require.NotEmpty(t, publishBody.Data.Variant.LocalAgentID)
-		require.NotEmpty(t, publishBody.Data.Variant.LocalAgentVersionID)
-		return publishBody.Data.Variant.LocalAgentID, publishBody.Data.Variant.LocalAgentVersionID
+		require.Equal(t, "published", publishBody.Data.State)
+		require.NotEmpty(t, publishBody.Data.LocalAgentID)
+		require.NotEmpty(t, publishBody.Data.LocalAgentVersionID)
+		return publishBody.Data.LocalAgentID, publishBody.Data.LocalAgentVersionID
 	}
 	salesAgentID, salesVersionID := publish(salesID)
 	legalAgentID, legalVersionID := publish(legalID)

@@ -13,14 +13,14 @@ import (
 
 // TestCodeDeliveriesMigrationSQLMatchesModel executes THIS plan's sqlite
 // migration verbatim against a clean database and compares the resulting
-// columns with the gorm model projection. (The full migration track is
-// broken by the pre-existing 000112 duplicate — see plan 差异记录 5.)
+// columns with the gorm model projection. (本迁移在 issue30 合流时从
+// 000113/000192 重编号为 000117/000196 以恢复唯一版本号。)
 func TestCodeDeliveriesMigrationSQLMatchesModel(t *testing.T) {
 	_, filename, _, ok := runtime.Caller(0)
 	require.True(t, ok)
 	// 本文件位于 internal/modules/codedelivery/repository/codedelivery/，
 	// 5 级 .. 回到 worktree 根。
-	upPath := filepath.Join(filepath.Dir(filename), "..", "..", "..", "..", "..", "migrations", "sqlite", "000113_code_deliveries.up.sql")
+	upPath := filepath.Join(filepath.Dir(filename), "..", "..", "..", "..", "..", "migrations", "sqlite", "000117_code_deliveries.up.sql")
 	raw, err := os.ReadFile(upPath)
 	require.NoError(t, err, "migration file must exist: %s", upPath)
 
