@@ -3,7 +3,7 @@ import Taro from '@tarojs/taro';
 import { Text, View } from '@tarojs/components';
 import { Screen, Card, Action, Field, Notice, Badge, DataBoundary, useData, useAction, useSession } from '../components/ui.tsx';
 import * as career from '../services/career.ts';
-import { savePreparationDraft, readPreparationDraft, clearPreparationDraft, type PreparationDraftRecord } from '../adapters/career-platform.ts';
+import { savePreparationDraft, readPreparationDraft, clearPreparationDraft, attachClaimsFromServer, recoverEmptyClaims, type PreparationDraftRecord } from '../adapters/career-platform.ts';
 import type { ProgressView, ProgressEventView, ProgressEventType, ProgressReceipt, PreparationReceipt, PreparationFocus, MaterialBody } from '../../../../packages/api-client/src/career.ts';
 import { formatTime } from '../core/format.ts';
 
@@ -86,16 +86,19 @@ export default function ProgressPreparationPage() {
     void loadBusy.run(loadTimeline);
   };
 
-  // 进入某条准备草稿的修订：优先恢复本地草稿（断网期间保留的编辑，heading/content），
-  // claims 一律以服务端正文为准回填——本地草稿只是断网过渡态，不是第二份事实源。
+  // 进入某条准备草稿的修订：优先恢复本地草稿——本地优先合并（R1-F2）：本地草稿是用户
+  // 最新编辑态（可能新增/删除小节），以它为基数；主张（claims）一律以服务端正文为准
+  // 按同名小节回填——本端不编辑主张，也绝不静默丢弃 Web/生成链路建立的主张。
   const startEditing = (receipt: PreparationReceipt): void => {
     setEditing(receipt); setDraftEditing(undefined);
     setReviseErrCode(undefined);
     const server = career.editableFromBody(receipt.body);
     const local = readPreparationDraft(receipt.applicationId, receipt.focus);
     if (local && local.materialId === receipt.materialId) {
-      setSections(server.map((section, index) => ({ ...section, ...(local.sections[index] ? { heading: local.sections[index].heading, content: local.sections[index].content } : {}) })));
-      setDraftNotice(`已恢复本地草稿（保存于 ${formatTime(local.savedAt)}，尚未提交）：可继续编辑，联网后请显式保存修订。`);
+      const merged = attachClaimsFromServer(local.sections, server);
+      const added = merged.length - server.length;
+      setSections(merged.map(section => ({ ...section, claims: Array.isArray(section.claims) ? section.claims : [] })));
+      setDraftNotice(`已恢复本地草稿（保存于 ${formatTime(local.savedAt)}，尚未提交，共 ${merged.length} 节${added > 0 ? `，其中 ${added} 节为本地新增` : ''}；各节主张以服务端为准已回填）：可继续编辑，联网后请显式保存修订。`);
       return;
     }
     setSections(server);
@@ -103,11 +106,12 @@ export default function ProgressPreparationPage() {
   };
 
   // 断网可再编辑：服务端列表不可达时，本地草稿可独立进入编辑（不依赖网络读取）。
+  // claims 用草稿携带的快照（若有）；旧格式草稿无 claims——由保存前的取回兜底（R1-F1）。
   const startDraftEditing = (draft: PreparationDraftRecord): void => {
     setEditing(undefined); setDraftEditing(draft);
     setReviseErrCode(undefined);
-    setSections(draft.sections.map(section => ({ heading: section.heading, content: section.content, claims: [] })));
-    setDraftNotice('正在编辑本地草稿（未提交）：联网后「保存修订」才会提交；锚定信息以联网读取的准备回执为准。');
+    setSections(draft.sections.map(section => ({ heading: section.heading, content: section.content, claims: Array.isArray(section.claims) ? section.claims : [] })));
+    setDraftNotice('正在编辑本地草稿（未提交）：联网后「保存修订」才会提交；各节主张会在提交前从材料域取回，不会丢弃；锚定信息以联网读取的准备回执为准。');
   };
 
   const editTarget = editing ?? draftEditing;
@@ -116,7 +120,7 @@ export default function ProgressPreparationPage() {
     applicationId: editTarget!.applicationId, focus: editTarget!.focus,
     ...(editTarget!.preparationId ? { preparationId: editTarget!.preparationId } : {}),
     ...(editTarget!.materialId ? { materialId: editTarget!.materialId } : {}),
-    sections: sections.map(section => ({ heading: section.heading, content: section.content })),
+    sections: sections.map(section => ({ heading: section.heading, content: section.content, claims: section.claims })),
     savedAt: new Date().toISOString(), // savePreparationDraft 会以实际写入时间覆盖
   });
 
@@ -125,7 +129,12 @@ export default function ProgressPreparationPage() {
     if (!materialId) throw new Error('本地草稿缺少材料编号：请联网读取准备列表后再保存修订');
     // 断网语义：先保留本地草稿（可再编辑），再尝试提交；失败也不静默改申请状态。
     savePreparationDraft(draftFromSections());
-    const body = career.bodyFromEditable(sections);
+    let body = career.bodyFromEditable(sections);
+    // 主张保全（R1-F1）：服务端材料编辑是整体替换草稿正文——任何 claims 为空的小节，
+    // 提交前先从材料域当前正文按同名小节取回主张，绝不把 claims 为空的正文整体提交。
+    if (body.sections.some(section => (section.claims ?? []).length === 0)) {
+      body = { sections: recoverEmptyClaims(body.sections, (await career.material(materialId)).body.sections) };
+    }
     try {
       await career.editMaterial({ materialId, body });
       clearPreparationDraft(editTarget!.applicationId, editTarget!.focus);
@@ -267,7 +276,7 @@ export default function ProgressPreparationPage() {
           <Text className='wk-row-title'>{focusLabels[item.focus] ?? item.focus} · {item.status === 'draft' ? '草稿（可审阅、可修订）' : item.status === 'failed' ? `生成失败（${item.failureCode ?? ''}）：${item.failureMessage ?? '生成未完成'}` : '生成中（可恢复）'}</Text>
           <Text className='wk-muted wk-small'>基于实际投递版本 V{item.anchor.version}（材料 {item.anchor.materialId.slice(0, 10)}… · 导出 {item.anchor.exportId.slice(0, 10)}… · 提交 {item.anchor.submissionId.slice(0, 10)}…）</Text>
           {item.status === 'draft' && item.sources.snapshot.snapshotId ? <Text className='wk-muted wk-small'>来源链：快照 {item.sources.snapshot.snapshotId.slice(0, 10)}…（SHA-256 {digestHead(item.sources.snapshot.snapshotSha256 ?? '')}…）· 引用事实 {item.sources.factKeys.length} 项 · 档案修订 {item.sources.profileRevision}</Text> : null}
-          {item.status === 'draft' && item.body.sections.map((section, index) => <Text key={index} className='wk-muted wk-small'>{section.heading}：{section.content}</Text>)}
+          {item.status === 'draft' && item.body.sections.map((section, index) => <Text key={index} className='wk-muted wk-small'>{section.heading}：{section.content}（引用主张 {section.claims.length} 条）</Text>)}
           {item.status === 'draft' && <Text className='wk-small' onClick={() => startEditing(item)}>修订这份草稿 ›</Text>}
         </View>
       </View>)}
@@ -277,7 +286,7 @@ export default function ProgressPreparationPage() {
     {localDraft && !editing && !draftEditing && <Card tone='warning'>
       <Text className='wk-h3'>本地草稿（未提交，可继续编辑）</Text>
       <Text className='wk-muted wk-small'>保存于 {formatTime(localDraft.savedAt)} · {focusLabels[localDraft.focus] ?? localDraft.focus}{localDraft.materialId ? ` · 材料 ${localDraft.materialId.slice(0, 10)}…` : ''}。断网期间申请进展不会有任何改动；联网后「保存修订」才会提交。</Text>
-      {localDraft.sections.map((section, index) => <Text key={index} className='wk-muted wk-small'>{section.heading}：{section.content}</Text>)}
+      {localDraft.sections.map((section, index) => <Text key={index} className='wk-muted wk-small'>{section.heading}：{section.content}{Array.isArray(section.claims) && section.claims.length > 0 ? `（主张快照 ${section.claims.length} 条，提交前以材料域为准复核）` : ''}</Text>)}
       <Action secondary onClick={() => startDraftEditing(localDraft)}>继续编辑本地草稿 ›</Action>
     </Card>}
 
@@ -307,7 +316,7 @@ export default function ProgressPreparationPage() {
 
     {revisedBody && <Card tone='mint'>
       <Text className='wk-h3'>材料域回读（修订后的草稿正文）</Text>
-      {revisedBody.sections.map((section, index) => <Text key={index} className='wk-muted wk-small'>{section.heading}：{section.content}</Text>)}
+      {revisedBody.sections.map((section, index) => <Text key={index} className='wk-muted wk-small'>{section.heading}：{section.content}（引用主张 {section.claims.length} 条，未被丢弃）</Text>)}
       <Text className='wk-muted wk-small'>回执只是回声：修订的持久事实在材料草稿里（Web PreparationPage 同语义）；仍未确认成版本，可继续修订。</Text>
     </Card>}
 

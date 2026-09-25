@@ -335,3 +335,81 @@ test('F1: cross-tenant progress and preparation reads stay typed forbidden', asy
   await assert.rejects(career.applicationProgress('app-x'), error => error.code === 'forbidden');
   await assert.rejects(career.listPreparations('app-x'), error => error.code === 'forbidden');
 });
+
+// ---- 评审修复轮 R1（F1 主张保全 / F2 本地优先合并）----
+
+const claimOf = id => ({ claimId: id, text: `主张${id}`, needsReview: false });
+const matViewFor = body => ({
+  materialId: 'mat-9', status: 'draft',
+  pinnedEvidence: { opportunityId: 'opp-1', snapshotId: 'snap-1', snapshotSha256: 'a'.repeat(64), profileRevision: 3 },
+  body, reviewRisks: [], versionCount: 1, versions: [{ version: 1, createdAt: T }], createdAt: T, updatedAt: T,
+});
+
+test('R1-P1: the local draft round-trips section claims', () => {
+  stub.reset();
+  platform.savePreparationDraft({ applicationId: 'app-1', focus: 'interview_prep', materialId: 'mat-9', sections: [{ heading: '面试要点', content: '断网编辑', claims: [claimOf('c1')] }] });
+  const kept = platform.readPreparationDraft('app-1', 'interview_prep');
+  assert.ok(kept, 'draft present');
+  assert.deepEqual(kept.sections[0].claims, [claimOf('c1')], 'claims travel with the retained draft (F1 前置：本地草稿携带主张快照)');
+  // 旧格式草稿（无 claims 字段）仍可读取，claims 为 []——由提交前取回兜底。
+  platform.savePreparationDraft({ applicationId: 'app-1', focus: 'cover_letter', sections: [{ heading: '求职信', content: '旧格式' }] });
+  const legacy = platform.readPreparationDraft('app-1', 'cover_letter');
+  assert.deepEqual(legacy.sections[0].claims, [], 'legacy drafts without claims stay readable');
+});
+
+test('R1-P2: merging a retained draft into the server body is local-first — locally added sections survive, claims come from the server (F2)', () => {
+  const server = [
+    { heading: '面试要点', content: '服务端正文', claims: [claimOf('c1')] },
+    { heading: '本地已删除的节', content: 'x', claims: [claimOf('c2')] },
+  ];
+  const local = [
+    { heading: '面试要点', content: '本地编辑后的正文' },
+    { heading: '断网新增节', content: '断网期间新增的内容' },
+  ];
+  const merged = platform.attachClaimsFromServer(local, server);
+  assert.equal(merged.length, 2, 'local is the base — the section count follows the local draft');
+  assert.equal(merged[0].heading, '面试要点');
+  assert.equal(merged[0].content, '本地编辑后的正文', 'the user\'s local words win');
+  assert.deepEqual(merged[0].claims, [claimOf('c1')], 'claims are re-attached from the server body');
+  assert.equal(merged[1].heading, '断网新增节');
+  assert.deepEqual(merged[1].claims, [], 'a genuinely new section starts claim-free');
+  assert.ok(!merged.some(section => section.heading === '本地已删除的节'), 'a section deleted locally is not silently resurrected');
+});
+
+test('R1-P3: empty claims are recovered from the material domain before submission — never silently dropped (F1)', () => {
+  const sections = [
+    { heading: '面试要点', content: '编辑后', claims: [] },
+    { heading: '系统设计', content: '新增节', claims: [] },
+  ];
+  const server = [
+    { heading: '面试要点', content: '旧正文', claims: [claimOf('c1'), claimOf('c3')] },
+    { heading: '其他节', content: 'y', claims: [claimOf('c9')] },
+  ];
+  const recovered = platform.recoverEmptyClaims(sections, server);
+  assert.deepEqual(recovered[0].claims, [claimOf('c1'), claimOf('c3')], 'same-heading server claims are attached before the write');
+  assert.deepEqual(recovered[1].claims, [], 'a new section with no same-heading server counterpart stays claim-free');
+  const alreadyClaimed = [{ heading: '面试要点', content: 'z', claims: [claimOf('c7')] }];
+  assert.deepEqual(platform.recoverEmptyClaims(alreadyClaimed, server)[0].claims, [claimOf('c7')], 'existing claims are never overwritten by the recovery');
+});
+
+test('R1-P4: the composed save chain preserves server claims through the real material write (F1 端到端)', async () => {
+  const serverBody = { sections: [{ heading: '面试要点', content: '服务端正文', claims: [claimOf('c1')] }] };
+  await freshLogin(meA, {
+    'GET /api/v1/career/materials/mat-9': call => stub.succeed(call, { data: matViewFor(serverBody) }),
+    'POST /api/v1/career/materials': call => stub.succeed(call, { data: materialReceipt({ materialId: 'mat-9', body: serverBody }) }),
+  });
+  await career.loadCareer();
+  // 旧格式本地草稿（heading/content only——正是 F1 场景：断网独立入口保存后 claims 未知）。
+  platform.savePreparationDraft({ applicationId: 'app-1', focus: 'interview_prep', materialId: 'mat-9', sections: [{ heading: '面试要点', content: '编辑后' }] });
+  const draft = platform.readPreparationDraft('app-1', 'interview_prep');
+  // 页面 saveRevision 的同链组合（t-button 不可单测，逐句复刻页面逻辑）：
+  const editable = draft.sections.map(section => ({ heading: section.heading, content: section.content, claims: Array.isArray(section.claims) ? section.claims : [] }));
+  let body = career.bodyFromEditable(editable);
+  if (body.sections.some(section => (section.claims ?? []).length === 0)) {
+    body = { sections: platform.recoverEmptyClaims(body.sections, (await career.material('mat-9')).body.sections) };
+  }
+  await career.editMaterial({ materialId: 'mat-9', body });
+  const posted = stub.state.calls.filter(c => new URL(c.options.url).pathname === '/api/v1/career/materials')[0].options.data;
+  assert.deepEqual(posted.body.sections[0].claims, [claimOf('c1')], 'claims survive the write — the server body is not replaced by a claim-free one');
+  assert.equal(posted.body.sections[0].content, '编辑后', 'the edited content still lands');
+});

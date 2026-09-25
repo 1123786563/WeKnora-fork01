@@ -1,5 +1,6 @@
 import Taro from '@tarojs/taro';
 import type { NativeFileSource } from '@weknora/api-client';
+import type { MaterialBody } from '../../../../packages/api-client/src/career.ts';
 import { storage } from '../platform/storage.ts';
 import { chooseDocument } from '../platform/files.ts';
 import { requestId } from '../core/intent.ts';
@@ -317,9 +318,13 @@ export async function copySpaceExportToClipboard(payload: string): Promise<void>
 // 重联网也不自动提交——同步永远是用户显式动作（页面上的保存/对账/重试）。草稿键 =
 // 前缀 + scopeKey（origin+userId+tenantId）+ 申请 + 焦点：账号切换后读不到前一用户的
 // 草稿；登出 clearPrivateCache 清 wk:career:* 时整段一并清除。
+// 主张保全（R1-F1/F2）：本地草稿携带各节 claims 快照；恢复编辑与提交前都从材料域正文
+// 取回主张——本端不编辑主张，也绝不静默丢弃 Web/生成链路建立的主张。
 
-/** 面试准备本地草稿的可编辑小节（claims 不在本端编辑，随材料域往返保留）。 */
-export interface PreparationDraftSection { heading: string; content: string }
+/** 材料小节主张（api-client MaterialBody 同形，解耦包边界的结构引用）。 */
+export type PreparationSectionClaim = MaterialBody['sections'][number]['claims'][number];
+/** 面试准备本地草稿的可编辑小节（claims 不在本端编辑，随草稿往返保留）。 */
+export interface PreparationDraftSection { heading: string; content: string; claims?: PreparationSectionClaim[] }
 /** 一次保留在本机的准备草稿：断网期间的用户输入，联网后由用户显式提交。 */
 export interface PreparationDraftRecord {
   applicationId: string;
@@ -351,16 +356,55 @@ export function readPreparationDraft(applicationId: string, focus: string): Prep
   if (!sections?.every(section => {
     if (!section || typeof section !== 'object') return false;
     const s = section as Record<string, unknown>;
-    return typeof s.heading === 'string' && typeof s.content === 'string';
+    return typeof s.heading === 'string' && typeof s.content === 'string' && (s.claims === undefined || Array.isArray(s.claims));
   })) return undefined;
   return {
     applicationId: parsed.applicationId, focus: parsed.focus,
     ...(typeof parsed.preparationId === 'string' ? { preparationId: parsed.preparationId } : {}),
     ...(typeof parsed.materialId === 'string' ? { materialId: parsed.materialId } : {}),
-    sections: sections as PreparationDraftSection[], savedAt: parsed.savedAt,
+    sections: (sections as PreparationDraftSection[]).map(section => ({ heading: section.heading, content: section.content, claims: claimsOf(section) })),
+    savedAt: parsed.savedAt,
   };
 }
 /** 修订成功提交后清除本地草稿（草稿只是断网过渡态，不是第二份事实源）。 */
 export function clearPreparationDraft(applicationId: string, focus: string): void {
   draftStore.remove(preparationDraftKey(applicationId, focus));
+}
+
+/** 把小节的 claims 规整成数组（undefined/null → []；其余原样）。 */
+function claimsOf(section: PreparationDraftSection): PreparationSectionClaim[] {
+  return Array.isArray(section.claims) ? section.claims : [];
+}
+/** 合并/取回结果：claims 恒为数组（可直接进入材料正文）。 */
+export type ClaimedDraftSection = PreparationDraftSection & { claims: PreparationSectionClaim[] };
+
+/**
+ * 恢复编辑时的本地优先合并（R1-F2）：以本地草稿为基数（它是用户最新编辑态，可能新增
+ * 或删除小节——服务端为基数会把本地新增节静默丢掉），主张一律从服务端正文按同名小节
+ * 取回（服务端是主张的事实源）；本地已删除的服务端小节不复活；真正的本地新增小节从
+ * 无主张开始。
+ */
+export function attachClaimsFromServer(local: PreparationDraftSection[], server: PreparationDraftSection[]): ClaimedDraftSection[] {
+  const unconsumed = server.map(section => ({ heading: section.heading, claims: claimsOf(section) }));
+  return local.map(section => {
+    const at = unconsumed.findIndex(candidate => candidate.heading.trim() === section.heading.trim() && candidate.claims.length > 0);
+    if (at >= 0) { const [matched] = unconsumed.splice(at, 1); return { heading: section.heading, content: section.content, claims: matched.claims }; }
+    return { heading: section.heading, content: section.content, claims: claimsOf(section) };
+  });
+}
+
+/**
+ * 提交前主张保全（R1-F1）：claims 为空的小节，若材料域当前正文有同名小节的主张则取回
+ * 合并；已有主张的小节绝不改写；无同名服务端小节的（真正新增节）保持无主张。服务端
+ * 材料编辑是整体替换草稿正文（material.go DraftBody）——缺了这一步，断网独立入口保存
+ * 会把 claims 为空的正文整体提交，静默丢弃已建立的主张。
+ */
+export function recoverEmptyClaims(sections: PreparationDraftSection[], server: PreparationDraftSection[]): ClaimedDraftSection[] {
+  const unconsumed = server.map(section => ({ heading: section.heading, claims: claimsOf(section) }));
+  return sections.map(section => {
+    const claims = claimsOf(section);
+    if (claims.length > 0) return { heading: section.heading, content: section.content, claims };
+    const at = unconsumed.findIndex(candidate => candidate.heading.trim() === section.heading.trim() && candidate.claims.length > 0);
+    return { heading: section.heading, content: section.content, claims: at >= 0 ? unconsumed.splice(at, 1)[0].claims : [] };
+  });
 }
