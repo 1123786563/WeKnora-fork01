@@ -49,7 +49,11 @@ func t07RepoDigest(seed string) string {
 // member, and the evidence read answers exactly the pinned facts.
 func TestCraftT07EvidencePersistsInSameCommitAsVersion(t *testing.T) {
 	db := openCraftDB(t)
-	require.NoError(t, db.AutoMigrate(&craftVersionEvidenceRow{}))
+	// The central migration (INT sqlite 000130) owns this schema on the
+	// migrated chain openCraftDB provides; asserting it exists beats
+	// re-AutoMigrating over it (GORM sqlite table-rebuild misparses the
+	// migration FOREIGN KEY clause as a column).
+	require.True(t, db.Migrator().HasTable(&craftVersionEvidenceRow{}), "central migration must create craft_version_evidence")
 	store := &CraftVersionStore{db: db}
 	ws := putCraftWorkspace(t, NewCraftStore(db))
 	scope := craftTestScope()
@@ -83,7 +87,11 @@ func TestCraftT07EvidencePersistsInSameCommitAsVersion(t *testing.T) {
 // the earlier version's pinned facts.
 func TestCraftT07EvidenceImmutableAcrossReplaysAndLaterVersions(t *testing.T) {
 	db := openCraftDB(t)
-	require.NoError(t, db.AutoMigrate(&craftVersionEvidenceRow{}))
+	// The central migration (INT sqlite 000130) owns this schema on the
+	// migrated chain openCraftDB provides; asserting it exists beats
+	// re-AutoMigrating over it (GORM sqlite table-rebuild misparses the
+	// migration FOREIGN KEY clause as a column).
+	require.True(t, db.Migrator().HasTable(&craftVersionEvidenceRow{}), "central migration must create craft_version_evidence")
 	store := &CraftVersionStore{db: db}
 	ws := putCraftWorkspace(t, NewCraftStore(db))
 	scope := craftTestScope()
@@ -133,7 +141,11 @@ func TestCraftT07EvidenceImmutableAcrossReplaysAndLaterVersions(t *testing.T) {
 // its integrity digest, and the read carries the version scope ACL.
 func TestCraftT07EvidenceReadNeverReconstructs(t *testing.T) {
 	db := openCraftDB(t)
-	require.NoError(t, db.AutoMigrate(&craftVersionEvidenceRow{}))
+	// The central migration (INT sqlite 000130) owns this schema on the
+	// migrated chain openCraftDB provides; asserting it exists beats
+	// re-AutoMigrating over it (GORM sqlite table-rebuild misparses the
+	// migration FOREIGN KEY clause as a column).
+	require.True(t, db.Migrator().HasTable(&craftVersionEvidenceRow{}), "central migration must create craft_version_evidence")
 	store := &CraftVersionStore{db: db}
 	ws := putCraftWorkspace(t, NewCraftStore(db))
 	scope := craftTestScope()

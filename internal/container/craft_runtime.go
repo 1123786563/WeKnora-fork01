@@ -181,6 +181,12 @@ func newCraftRuntimeExecutor(
 	artifacts := service.NewCraftArtifactServiceWithCandidates(source, files, versions,
 		repository.NewCraftCandidateStore(db), evidence,
 		service.CraftArtifactConfig{Kind: craft.KindWeb, OutputDir: outputDir, WebCitationGate: citationGate})
+	// T07 (#131): promotion pins the promoting Run's immutable knowledge
+	// record as the published version's evidence member (same commit). The
+	// record repository is the same reader the citation gate uses, so the
+	// pinned evidence and the admitted citations always agree; the store
+	// side is the shared version store (type-asserted by the service).
+	artifacts.WithVersionEvidence(repository.NewCraftKnowledgeRecordRepository(db))
 	// The Run-bound candidate route always materializes from the verified
 	// generation's fixed "output" layout (its source rejects any other dir),
 	// so it gets a dedicated service with the RunView OutputDir pinned — the
@@ -227,6 +233,11 @@ func newCraftRuntimeExecutor(
 	// implemented (T14 live gate closed), so nil leaves both probe facts
 	// not_run and promotion fails closed — exactly the recorded contract.
 	// The promotion TRIGGER (post-terminal orchestration) is T20 scope.
+	// T07 (#131): the same route pins the promoting Run's immutable
+	// knowledge record as the promoted version's evidence (same commit as
+	// the publish), through the same record repository the citation gate
+	// reads — pinned evidence and admitted citations can never disagree.
+	runViewArtifacts.WithVersionEvidence(repository.NewCraftKnowledgeRecordRepository(db))
 	runViewArtifacts.WithWebPromotion(repository.NewCraftDraftHeadStore(db), nil)
 	// C02: an interaction.pending event first lands durably (interaction row
 	// + waiting_user park) before it is projected to the run stream, so the
