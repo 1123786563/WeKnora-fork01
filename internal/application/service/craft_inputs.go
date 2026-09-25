@@ -180,7 +180,12 @@ func (s *CraftSessionService) AcceptInputRound(ctx context.Context, scope craft.
 	// Save only after all shape, quota and digest checks. Database rows are
 	// inserted as one unit; on failure, only refs with no workspace association
 	// are eligible for cleanup. A lookup error preserves the object fail-safe.
+	// Cleanup runs detached from ctx: the failure that reached the rollback
+	// is often the very cancellation or deadline of the request context, and
+	// a canceled context would make the Count and DeleteFile calls fail
+	// immediately, leaking every stored object.
 	created := make([]string, 0, len(uploads))
+	cleanupCtx := context.WithoutCancel(ctx)
 	rollback := func() {
 		seen := make(map[string]struct{}, len(created))
 		for _, ref := range created {
@@ -189,10 +194,10 @@ func (s *CraftSessionService) AcceptInputRound(ctx context.Context, scope craft.
 			}
 			seen[ref] = struct{}{}
 			var associations int64
-			if err := s.db.WithContext(ctx).Model(&craftWorkspaceInputRow{}).Where("ref = ?", ref).Count(&associations).Error; err != nil || associations != 0 {
+			if err := s.db.WithContext(cleanupCtx).Model(&craftWorkspaceInputRow{}).Where("ref = ?", ref).Count(&associations).Error; err != nil || associations != 0 {
 				continue
 			}
-			_ = s.files.DeleteFile(ctx, ref)
+			_ = s.files.DeleteFile(cleanupCtx, ref)
 		}
 	}
 	for i, upload := range uploads {

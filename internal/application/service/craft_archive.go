@@ -118,6 +118,15 @@ func (s *CraftSessionService) ExpandArchive(
 		// one canonical path element and every downstream consumer (Run
 		// admission, staging, sandbox layout) validates that shape.
 		name := path.Base(member.Path)
+		if len(member.Content) == 0 {
+			// Fail with the root cause instead of letting the shared T01
+			// manifest gate report an opaque "no declared size" per name:
+			// an archive holding empty members (for example a bare
+			// __init__.py) cannot be expanded at all under the frozen
+			// contract, and the caller must learn that up front.
+			return nil, fmt.Errorf("%w: archive %q holds empty member %q; every input must carry bytes",
+				craft.ErrInvalidInput, archiveRow.Name, name)
+		}
 		manifest[i] = craft.Input{
 			Ref:         "pending",
 			Name:        name,
@@ -136,11 +145,19 @@ func (s *CraftSessionService) ExpandArchive(
 		return nil, err
 	}
 
-	// Save only after every check passed. A store failure rolls the objects
-	// back unless an association already protects them (the T01 rollback
-	// contract); rows follow in one transaction, so no partial manifest is
-	// ever resolvable by a Run.
+	// Save only after every check passed. Replay idempotency keys on the
+	// member identity, not on the ref: production object stores mint a fresh
+	// key on every SaveBytes (timestamp or uuid names), so a ref-keyed
+	// conflict would never fire in production and every replay would
+	// duplicate rows and objects. An existing row for the same
+	// (workspace, name, digest) is reused verbatim — including its original
+	// ref — and only genuinely new members are uploaded.
 	created := make([]string, 0, len(members))
+	// The failure that reaches rollback is often the very cancellation or
+	// timeout of ctx (the hard extract budget); cleanup must run on a
+	// detached context or the association Count and the DeleteFile calls
+	// would fail immediately and leak every stored object.
+	cleanupCtx := context.WithoutCancel(ctx)
 	rollback := func() {
 		seen := make(map[string]struct{}, len(created))
 		for _, createdRef := range created {
@@ -149,14 +166,30 @@ func (s *CraftSessionService) ExpandArchive(
 			}
 			seen[createdRef] = struct{}{}
 			var associations int64
-			if err := s.db.WithContext(ctx).Model(&craftWorkspaceInputRow{}).
+			if err := s.db.WithContext(cleanupCtx).Model(&craftWorkspaceInputRow{}).
 				Where("ref = ?", createdRef).Count(&associations).Error; err != nil || associations != 0 {
 				continue
 			}
-			_ = s.files.DeleteFile(ctx, createdRef)
+			_ = s.files.DeleteFile(cleanupCtx, createdRef)
 		}
 	}
 	for i, member := range members {
+		var existing craftWorkspaceInputRow
+		err := s.db.WithContext(ctx).Where("workspace_id = ? AND name = ? AND sha256 = ?",
+			workspace.ID, manifest[i].Name, manifest[i].SHA256).Take(&existing).Error
+		if err == nil {
+			if existing.TenantID != session.TenantID || existing.Bytes != manifest[i].Bytes {
+				rollback()
+				return nil, fmt.Errorf("%w: member %s collides with different legacy content",
+					craft.ErrConflict, manifest[i].Name)
+			}
+			manifest[i] = existing.input()
+			continue
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			rollback()
+			return nil, err
+		}
 		storageName := "craft_input_" + manifest[i].SHA256 + filepath.Ext(member.Path)
 		memberRef, err := s.files.SaveBytes(ctx, member.Content, session.TenantID, storageName, false)
 		if err != nil {
@@ -182,8 +215,11 @@ func (s *CraftSessionService) ExpandArchive(
 				return result.Error
 			}
 			if result.RowsAffected == 0 {
-				// Idempotent replay: the member object is content-addressed,
-				// so an existing row must name byte-identical content.
+				// Idempotent collapse: production stores mint a fresh key
+				// per SaveBytes, so a conflicting row means either a
+				// deterministic-ref test backend replaying byte-identical
+				// content or two same-identity archive members collapsing
+				// onto one row; anything else is a conflict.
 				var existing craftWorkspaceInputRow
 				if err := tx.Where("workspace_id = ? AND ref = ?", workspace.ID, manifest[i].Ref).
 					Take(&existing).Error; err != nil {

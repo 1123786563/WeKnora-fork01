@@ -343,8 +343,12 @@ func TestCraftArchiveRejectsNonArchiveInput(t *testing.T) {
 		Name: "fake.zip", Content: plain, SHA256: sha256SumBytes(plain),
 	}})
 	require.NoError(t, err)
+	// Non-archive bytes are a deterministic rejection of the caller's own
+	// content: request-scoped 400 (ErrInvalidInput), never the 503
+	// (ErrUnsupported) that would promise a retryable server dependency.
 	_, err = env.svc.ExpandArchive(ctx, scope, uploaded[0].Ref)
-	require.ErrorIs(t, err, craft.ErrUnsupported)
+	require.ErrorIs(t, err, craft.ErrInvalidInput)
+	require.NotErrorIs(t, err, craft.ErrUnsupported)
 }
 
 // TestCraftArchivePublishRollbackOnStoreFailure proves the publish phase is

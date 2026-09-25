@@ -153,8 +153,11 @@ func TestArchiveExtractsTarGzWithinLimits(t *testing.T) {
 }
 
 func TestArchiveRejectsUnsupportedBytes(t *testing.T) {
+	// Deterministic rejection of the caller's own bytes maps to a request
+	// error (400), never the retryable-503 class of ErrUnsupported.
 	_, err := ExtractArchive([]byte("definitely not an archive"))
-	require.ErrorIs(t, err, ErrUnsupported)
+	require.ErrorIs(t, err, ErrInvalidInput)
+	require.NotErrorIs(t, err, ErrUnsupported)
 }
 
 func TestArchiveValidateEntryPathRules(t *testing.T) {
@@ -259,7 +262,7 @@ func TestArchiveRejectsNestedArchiveMembers(t *testing.T) {
 		{name: "payload.bin", content: inner},
 	})
 	_, err := ExtractArchive(data)
-	require.ErrorIs(t, err, ErrUnsupported, "recursive archive expansion must fail deterministically")
+	require.ErrorIs(t, err, ErrInvalidInput, "recursive archive expansion must fail deterministically as a request error")
 
 	// A member merely claiming an archive extension is also refused, even
 	// when its bytes are not an archive, so renaming cannot smuggle one.
@@ -267,14 +270,14 @@ func TestArchiveRejectsNestedArchiveMembers(t *testing.T) {
 		{name: "inner.zip", content: []byte("not really a zip")},
 	})
 	_, err = ExtractArchive(data)
-	require.ErrorIs(t, err, ErrUnsupported)
+	require.ErrorIs(t, err, ErrInvalidInput)
 
 	gz := buildTestTarGz(t, []testTarEntry{{name: "a.txt", content: []byte("x")}})
 	data = buildTestZip(t, []testZipEntry{
 		{name: "inner.tgz", content: gz},
 	})
 	_, err = ExtractArchive(data)
-	require.ErrorIs(t, err, ErrUnsupported)
+	require.ErrorIs(t, err, ErrInvalidInput)
 }
 
 func TestArchiveRejectsCompressionBomb(t *testing.T) {

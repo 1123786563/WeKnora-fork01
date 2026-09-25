@@ -80,7 +80,10 @@ type ArchiveMember struct {
 // duplicate: empty names, NUL and backslash separators, absolute paths,
 // Windows drive letters, parent traversal, over-deep nesting and over-long
 // segments. The returned path is the clean, forward-slash, relative form
-// used for duplicate detection and member identities.
+// used for duplicate detection and member identities. The archive root
+// itself ("." / "./", the common first entry of `tar -czf x.tgz .`) is a
+// validated no-op: it names nothing below the root, so the caller skips it
+// via IsArchiveRootEntry instead of reserving a canonical path.
 func ValidateArchiveEntryPath(raw string) (string, error) {
 	if raw == "" {
 		return "", fmt.Errorf("%w: empty archive entry name", ErrInvalidInput)
@@ -92,7 +95,7 @@ func ValidateArchiveEntryPath(raw string) (string, error) {
 		return "", fmt.Errorf("%w: archive entry %q is an absolute path", ErrInvalidInput, raw)
 	}
 	cleaned := path.Clean(raw)
-	if cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, "../") || strings.HasPrefix(cleaned, "/") {
+	if cleaned == ".." || strings.HasPrefix(cleaned, "../") || strings.HasPrefix(cleaned, "/") {
 		return "", fmt.Errorf("%w: archive entry %q escapes the archive root", ErrInvalidInput, raw)
 	}
 	segments := strings.Split(cleaned, "/")
@@ -114,6 +117,14 @@ func ValidateArchiveEntryPath(raw string) (string, error) {
 	return cleaned, nil
 }
 
+// IsArchiveRootEntry reports whether an entry names the archive root itself
+// ("." / "./" — the common first entry of GNU `tar -czf x.tgz .`). Root
+// directory entries carry no material and no path below the root, so the
+// extractors treat them as a no-op instead of an escape.
+func IsArchiveRootEntry(raw string) bool {
+	return path.Clean(raw) == "."
+}
+
 func isDriveLetter(c byte) bool {
 	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
 }
@@ -127,7 +138,10 @@ func isDriveLetter(c byte) bool {
 func ExtractArchive(archive []byte) ([]ArchiveMember, error) {
 	format, ok := DetectArchiveFormat(archive)
 	if !ok {
-		return nil, fmt.Errorf("%w: bytes are not a supported archive", ErrUnsupported)
+		// Deterministic rejection of the caller's own bytes: this is request
+		// content, not a server dependency, so it maps to 400 (not the 503
+		// that ErrUnsupported would produce).
+		return nil, fmt.Errorf("%w: bytes are not a supported archive", ErrInvalidInput)
 	}
 	switch format {
 	case ArchiveZip:
@@ -199,8 +213,10 @@ func (b *archiveBudget) readMember(r io.Reader, canonical string) error {
 			ErrInvalidInput, b.total, b.compressed, MaxArchiveCompressionRatio)
 	}
 	if nestedArchiveMember(canonical, content) {
+		// Deterministic content rejection: retrying the same archive can
+		// never succeed, so this is a 4xx request error, not 503.
 		return fmt.Errorf("%w: archive member %s is itself an archive; recursive expansion is refused",
-			ErrUnsupported, canonical)
+			ErrInvalidInput, canonical)
 	}
 	b.entries++
 	b.members = append(b.members, ArchiveMember{Path: canonical, Content: content})
@@ -244,7 +260,11 @@ func extractZipArchive(data []byte) ([]ArchiveMember, error) {
 		case mode.IsDir():
 			// Directory entries carry no material but still validate and
 			// occupy their canonical path, so a later file cannot shadow
-			// them and duplicates still conflict.
+			// them and duplicates still conflict. The archive root itself
+			// ("./") is the one no-op: it names nothing below the root.
+			if IsArchiveRootEntry(file.Name) {
+				continue
+			}
 			if _, err := budget.reserveEntry(file.Name); err != nil {
 				return nil, err
 			}
@@ -292,6 +312,12 @@ func extractTarArchive(r io.Reader, compressed int64) ([]ArchiveMember, error) {
 				return nil, err
 			}
 		case tar.TypeDir:
+			// The archive root itself ("./", the common first entry of
+			// `tar -czf x.tgz .`) is a no-op; other directories validate
+			// and occupy their canonical path.
+			if IsArchiveRootEntry(header.Name) {
+				continue
+			}
 			if _, err := budget.reserveEntry(header.Name); err != nil {
 				return nil, err
 			}
