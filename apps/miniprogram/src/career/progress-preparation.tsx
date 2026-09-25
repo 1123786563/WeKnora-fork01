@@ -4,7 +4,7 @@ import { Text, View } from '@tarojs/components';
 import { Screen, Card, Action, Field, Notice, Badge, DataBoundary, useData, useAction, useSession } from '../components/ui.tsx';
 import * as career from '../services/career.ts';
 import { savePreparationDraft, readPreparationDraft, clearPreparationDraft, type PreparationDraftRecord } from '../adapters/career-platform.ts';
-import type { ProgressView, ProgressEventView, ProgressEventType, ProgressReceipt, PreparationReceipt, PreparationFocus } from '../../../../packages/api-client/src/career.ts';
+import type { ProgressView, ProgressEventView, ProgressEventType, ProgressReceipt, PreparationReceipt, PreparationFocus, MaterialBody } from '../../../../packages/api-client/src/career.ts';
 import { formatTime } from '../core/format.ts';
 
 // T28 申请进展时间线与按需准备：与 Web ProgressPage/PreparationPage 同源同版本（同一批
@@ -29,7 +29,7 @@ export default function ProgressPreparationPage() {
   const session = useSession();
   const desk = useData(`career:${session.userId}:${session.tenantId}`, () => career.loadCareer());
   const loadBusy = useAction(); const appendBusy = useAction(); const correctBusy = useAction();
-  const genBusy = useAction(); const listBusy = useAction(); const reviseBusy = useAction();
+  const genBusy = useAction(); const listBusy = useAction(); const reviseBusy = useAction(); const readBackBusy = useAction();
   const recProgBusy = useAction(); const retryProgBusy = useAction();
   const recPrepBusy = useAction(); const retryPrepBusy = useAction();
 
@@ -56,6 +56,8 @@ export default function ProgressPreparationPage() {
   const [draftNotice, setDraftNotice] = useState('');
   const [reviseErrCode, setReviseErrCode] = useState<string>();
   const [fromTimeline, setFromTimeline] = useState(false);
+  // 材料域回读：修订的持久事实在材料草稿里（Web PreparationPage 同语义——回执只是回声）。
+  const [revisedBody, setRevisedBody] = useState<MaterialBody>();
 
   const pendingProgress = career.pendingProgressWrite();
   const pendingPreparation = career.pendingPreparationWrite();
@@ -114,6 +116,8 @@ export default function ProgressPreparationPage() {
       clearPreparationDraft(editing.applicationId, editing.focus);
       setDraftNotice(''); setReviseErrCode(undefined);
       setGenNotice('准备草稿修订已提交（仍是可审阅草稿，发布需另行确认材料版本）。');
+      // 与 Web 同语义：回执只是回声，修订的持久事实从材料域回读。
+      setRevisedBody((await career.material(editing.materialId)).body);
       void listBusy.run(loadPreparations);
     } catch (error) {
       setReviseErrCode(typedCode(error));
@@ -246,7 +250,16 @@ export default function ProgressPreparationPage() {
       </View></View>
       {reviseBusy.error && <Notice tone='danger'>{reviseBusy.error}{reviseErrCode === 'outcome_unknown' ? ' 修订结果未知：本地草稿已保留，请到「申请与材料」页用原请求对账（幂等可恢复），本页不会自动重发。' : reviseErrCode === 'revision_conflict' ? ' 档案已更新：请重新读取修订后再保存（新保存会使用新的请求编号）。' : ''}</Notice>}
       {reviseErrCode === 'outcome_unknown' && pendingMaterial && <Notice tone='warning'>待对账的材料写入：{pendingMaterial.requestId.slice(0, 10)}…（原请求编号，幂等可恢复）。</Notice>}
-      <Action secondary onClick={() => { setEditing(undefined); setSections([]); setDraftNotice(''); }}>结束修订</Action>
+      <Action secondary loading={readBackBusy.busy} onClick={() => void readBackBusy.run(async () => {
+        if (!editing?.materialId) throw new Error('该准备尚未物化为材料草稿');
+        setRevisedBody((await career.material(editing.materialId)).body);
+      })}>回读材料草稿正文（修订后的持久事实）</Action>
+      {readBackBusy.error && <Notice tone='danger'>{readBackBusy.error} 可稍后重试。</Notice>}
+      {revisedBody && <Card tone='mint'>
+        <Text className='wk-h3'>材料域回读（修订后的草稿正文）</Text>
+        {revisedBody.sections.map((section, index) => <Text key={index} className='wk-muted wk-small'>{section.heading}：{section.content}</Text>)}
+      </Card>}
+      <Action secondary onClick={() => { setEditing(undefined); setSections([]); setDraftNotice(''); setRevisedBody(undefined); }}>结束修订</Action>
     </Card>}
 
     <Notice tone='info'>断网时只保留本地草稿（按账号隔离，登出即清），申请进展绝不本地改写；联网后一切同步都需要你显式确认。结果未知的写入都可以用原请求编号对账或安全重发。</Notice>
