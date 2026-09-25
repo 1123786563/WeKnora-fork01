@@ -185,15 +185,15 @@ func TestCraftB5JoinedCurrentProduction(t *testing.T) {
 		return w
 	}
 	denialRows := func() []struct {
-		ID                                                        uint64
-		TenantID                                                  uint64
-		ActorUserID, Action, ScopeType, ScopeID, Outcome, Details string
+		ID                                                               uint64
+		TenantID                                                         uint64
+		ActorUserID, Action, ScopeType, ScopeID, TargetID, Outcome, Details string
 	} {
 		t.Helper()
 		var rows []struct {
-			ID                                                        uint64
-			TenantID                                                  uint64
-			ActorUserID, Action, ScopeType, ScopeID, Outcome, Details string
+			ID                                                               uint64
+			TenantID                                                         uint64
+			ActorUserID, Action, ScopeType, ScopeID, TargetID, Outcome, Details string
 		}
 		if err := db.Table("audit_logs").Where("action = ? AND scope_id = ?", "craft.access_denied", "task-b5").Order("id").Scan(&rows).Error; err != nil {
 			t.Fatal(err)
@@ -225,14 +225,23 @@ func TestCraftB5JoinedCurrentProduction(t *testing.T) {
 			}
 			afterAuditRows := denialRows()
 			if !listRoute && taskACLReached {
-				if len(afterAuditRows) != len(beforeAuditRows)+1 {
-					t.Errorf("%s %s actor=%s denial audit delta=%d want exactly one", route.method, route.path, actor, len(afterAuditRows)-len(beforeAuditRows))
-				} else {
+				// Window dedup contract (mirrors middleware LogDenied): the
+				// FIRST denial of an (actor, task_action) tuple writes one
+				// durable row; repeated identical denials inside the window
+				// write none. The route matrix repeats the same read tuple,
+				// so the delta is 0 or 1 per route.
+				delta := len(afterAuditRows) - len(beforeAuditRows)
+				if delta != 0 && delta != 1 {
+					t.Errorf("%s %s actor=%s denial audit delta=%d want 0 (window-deduped) or 1 (first tuple denial)", route.method, route.path, actor, delta)
+				}
+				if delta == 1 {
 					row := afterAuditRows[len(afterAuditRows)-1]
 					if len(beforeAuditRows) > 0 && row.ID <= beforeAuditRows[len(beforeAuditRows)-1].ID {
 						t.Errorf("%s %s actor=%s audit row id=%d did not follow prior row id=%d", route.method, route.path, actor, row.ID, beforeAuditRows[len(beforeAuditRows)-1].ID)
 					}
-					if row.TenantID != 1 || row.ActorUserID != user || row.Action != "craft.access_denied" || row.ScopeType != "session" || row.ScopeID != "task-b5" || row.Outcome != "denied" || row.Details != `{"task_action":"read","reason":"policy_denied"}` {
+					// Details keys are map-marshaled and therefore sorted:
+					// reason before task_action.
+					if row.TenantID != 1 || row.ActorUserID != user || row.Action != "craft.access_denied" || row.ScopeType != "session" || row.ScopeID != "task-b5" || row.Outcome != "denied" || row.TargetID != "read" || row.Details != `{"reason":"policy_denied","task_action":"read"}` {
 						t.Errorf("%s %s actor=%s audit attribution/details=%+v", route.method, route.path, actor, row)
 					}
 				}
@@ -274,6 +283,18 @@ func TestCraftB5JoinedCurrentProduction(t *testing.T) {
 	assertDenied("ordinary admin", "admin", http.StatusOK, true)
 	assertDenied("tenant B actor", "tenant-b", http.StatusOK, false)
 	assertDenied("same-tenant nonmember", "nonmember", http.StatusForbidden, false)
+	// Window-dedup contract: each denied (actor, read) tuple from the joined
+	// matrix above owns exactly one durable row even though several routes
+	// repeated the denial.
+	for _, actor := range []string{"viewer", "admin"} {
+		var tupleRows int64
+		if err := db.Table("audit_logs").Where("action = ? AND actor_user_id = ? AND scope_id = ? AND target_id = ?", "craft.access_denied", actor, "task-b5", "read").Count(&tupleRows).Error; err != nil {
+			t.Fatal(err)
+		}
+		if tupleRows != 1 {
+			t.Errorf("actor=%s read-denial tuple rows=%d want exactly one (window dedup collapses repeats)", actor, tupleRows)
+		}
+	}
 	var joinedDenials []struct {
 		TenantID                                                                          uint64
 		ActorUserID, Action, ScopeType, ScopeID, TargetID, TargetUserID, Outcome, Details string
@@ -284,8 +305,11 @@ func TestCraftB5JoinedCurrentProduction(t *testing.T) {
 	if len(joinedDenials) == 0 {
 		t.Fatal("denied joined production HTTP requests created no Craft ACL audit rows")
 	}
+	validTaskActions := map[string]bool{"read": true, "write": true, "share": true, "open_source": true, "preview": true}
 	for _, row := range joinedDenials {
-		if row.TenantID != 1 || row.ScopeType != "session" || row.ScopeID != "task-b5" || row.Outcome != "denied" || row.TargetID != "" || row.TargetUserID != "" {
+		// TargetID carries the denied task action (the dedup key element);
+		// TargetUserID stays empty for policy denials.
+		if row.TenantID != 1 || row.ScopeType != "session" || row.ScopeID != "task-b5" || row.Outcome != "denied" || !validTaskActions[row.TargetID] || row.TargetUserID != "" {
 			t.Errorf("invalid Craft ACL denial audit attribution: %+v", row)
 		}
 		if strings.Contains(row.Details, "pinned-b5") || strings.Contains(row.Details, "secret") || strings.Contains(row.Details, "index.html") || strings.Contains(row.Details, "task-b5") {
@@ -428,7 +452,8 @@ func TestCraftB5JoinedCurrentProduction(t *testing.T) {
 		t.Errorf("test-gated revoked Viewer preview audit delta=%d want exactly one", len(afterRevokedPreview)-len(beforeRevokedPreview))
 	} else {
 		row := afterRevokedPreview[len(afterRevokedPreview)-1]
-		if row.TenantID != 1 || row.ActorUserID != "viewer" || row.Action != "craft.access_denied" || row.ScopeType != "session" || row.ScopeID != "task-b5" || row.Outcome != "denied" || row.Details != `{"task_action":"preview","reason":"policy_denied"}` {
+		// Details keys are map-marshaled and therefore sorted.
+		if row.TenantID != 1 || row.ActorUserID != "viewer" || row.Action != "craft.access_denied" || row.ScopeType != "session" || row.ScopeID != "task-b5" || row.Outcome != "denied" || row.TargetID != "preview" || row.Details != `{"reason":"policy_denied","task_action":"preview"}` {
 			t.Errorf("test-gated revoked Viewer preview audit attribution/details=%+v", row)
 		}
 	}
