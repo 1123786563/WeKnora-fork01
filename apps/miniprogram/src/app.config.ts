@@ -46,7 +46,8 @@ export default defineAppConfig({
       "root": "career",
       "pages": [
         "discovery",
-        "application-material"
+        "application-material",
+        "export-deletion"
       ]
     },
     {

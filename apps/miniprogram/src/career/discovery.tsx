@@ -162,6 +162,8 @@ export default function DiscoveryPage() {
     </Card>
 
     <Action secondary onClick={() => void recoverBusy.run(async () => { await career.syncFromWeb(); query.reload(); })} loading={recoverBusy.busy}>同步 Web 端档案变更</Action>
+    {/* T32：全空间导出与完整删除的入口（页面可达，无死代码）。 */}
+    <Action secondary onClick={() => void navigate('careerLifecycle')}>导出或完整删除你的求职数据 ›</Action>
     <Notice tone='info'>资格冲突、来源状态与待核实项全部如实展示；结果未知时可随时用原请求对账，不会重复执行。</Notice>
   </Screen>;
 }

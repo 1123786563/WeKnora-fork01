@@ -10,6 +10,8 @@ const state = {
   copies: [],
   fileContents: new Map(),
   fileReads: [],
+  fileWrites: [],
+  clipboard: [],
   fileInfoSize: 128,
   fileInfoError: null,
   openDocumentError: null,
@@ -102,6 +104,15 @@ const Taro = {
           success?.({});
         });
       },
+      // T32：导出包留存 seam 需要真实 weapp 的 writeFile 契约（回调式，utf8 字符串）。
+      writeFile({ filePath, data, encoding = 'utf8', success, fail }) {
+        queueMicrotask(() => {
+          state.fileWrites.push({ filePath, encoding, length: typeof data === 'string' ? data.length : -1 });
+          if (typeof data !== 'string' || encoding !== 'utf8') { fail?.({ errMsg: `writeFile:fail unsupported encoding ${encoding}` }); return; }
+          state.fileContents.set(filePath, data);
+          success?.({});
+        });
+      },
     };
   },
   // 注意：真实运行时的 Taro 对象没有 env 字段（@tarojs/api 不提供、weapp 插件也不复制
@@ -111,6 +122,8 @@ const Taro = {
   setStorageSync(key, value) { state.storage.set(key, value); },
   removeStorageSync(key) { state.storage.delete(key); },
   getStorageInfoSync() { return { keys: [...state.storage.keys()] }; },
+  // T32：等效可取得流程的剪贴板 seam（完整载荷不截断地到达系统剪贴板）。
+  setClipboardData(options) { state.clipboard.push(options?.data); return Promise.resolve({ data: options?.data }); },
 };
 // weapp 运行时全局存在 wx 对象；USER_DATA_PATH 只能从这里取。
 globalThis.wx = globalThis.wx ?? { env: { USER_DATA_PATH: 'wxfile://usr' } };
@@ -124,6 +137,8 @@ function reset() {
   state.copies.length = 0;
   state.fileContents.clear();
   state.fileReads.length = 0;
+  state.fileWrites.length = 0;
+  state.clipboard.length = 0;
   state.fileInfoSize = 128;
   state.fileInfoError = null;
   state.openDocumentError = null;

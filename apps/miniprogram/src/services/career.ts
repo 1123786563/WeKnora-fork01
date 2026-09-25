@@ -4,10 +4,11 @@ import { CareerDesk } from '../../../../packages/career-core/src/desk.ts';
 import type { CareerRemote } from '../../../../packages/career-core/src/desk.ts';
 import type { CareerView, CareerReceipt, CareerChangeSet, CareerAction, CareerUpload, CareerDocumentSource, OpportunityReceipt, OpportunityEvidence, EvaluationReceipt } from '../../../../packages/career-core/src/contracts.ts';
 import { decodeCareerUpload, decodeCareerSources, decodeOpportunityReceipt, decodeEvaluationReceipt } from '../../../../packages/career-core/src/contracts.ts';
-import { decodeOpportunityEvidencePage, decodeApplicationReceipt, decodeMaterialReceipt, decodeMaterialView, decodeMaterialVersionList, decodeMaterialExportReceipt, decodeMaterialExportList, decodeMaterialExportDownload, decodeSubmissionReceipt, decodeSubmissionList } from '../../../../packages/api-client/src/career.ts';
-import type { ApplicationReceipt, MaterialReceipt, MaterialView, MaterialVersionList, MaterialExportReceipt, MaterialExportList, MaterialExportDownload, MaterialExportFormat, SubmissionReceipt, SubmissionList, SubmissionChannel, MaterialBody } from '../../../../packages/api-client/src/career.ts';
+import { decodeOpportunityEvidencePage, decodeApplicationReceipt, decodeMaterialReceipt, decodeMaterialView, decodeMaterialVersionList, decodeMaterialExportReceipt, decodeMaterialExportList, decodeMaterialExportDownload, decodeSubmissionReceipt, decodeSubmissionList, decodeCareerExportReceipt, decodeCareerDeletionBoundary, decodeCareerDeletionReceipt } from '../../../../packages/api-client/src/career.ts';
+import type { ApplicationReceipt, MaterialReceipt, MaterialView, MaterialVersionList, MaterialExportReceipt, MaterialExportList, MaterialExportDownload, MaterialExportFormat, SubmissionReceipt, SubmissionList, SubmissionChannel, MaterialBody, CareerExportReceipt, CareerDeletionBoundaryView, CareerDeletionReceipt } from '../../../../packages/api-client/src/career.ts';
 import type { NativeFileSource } from '@weknora/api-client';
 import { requestId as newRequestId } from '../core/intent.ts';
+import { storage } from '../platform/storage.ts';
 import { scopeKey } from '../core/scope.ts';
 import { CAREER_STORE_PREFIX, createControlledStore, type SharedImportDraft, openExportedDocument, EXPORT_GRANT_EXPIRED, type ExportDownloadGrant, type ExportOpenRecord } from '../adapters/career-platform.ts';
 
@@ -435,4 +436,94 @@ export async function retryPendingSubmission(): Promise<SubmissionReceipt> {
 export async function listSubmissions(applicationId: string): Promise<SubmissionList> {
   if (!applicationId.trim()) throw new Error('缺少申请编号');
   return decodeSubmissionList(await client.request({ method: 'GET', path: `/api/v1/career/applications/${encodeURIComponent(applicationId.trim())}/submissions` }));
+}
+
+// ---- T32 全空间生命周期：导出、删除边界与完整删除（与 Web ExportDeletionPage 同源）----
+// 五路由（internal/router/routes_career.go）：POST /exports、GET /exports/receipt、
+// GET /deletions/boundary、POST /deletions、GET /deletions/receipt。同一批 api-client
+// 解码器（同源同版本）；写入一律 requestId + expectedRevision，结果未知用原 requestId
+// 对账/安全重发；删除回执只有在全部步骤成功后才报 deleted，部分失败保留可恢复状态。
+
+// —— 全空间导出：同步内联归档（档案/原始岗位快照/申请事件/材料版本/投递记录）+ sha256 摘要 ——
+export async function exportWholeSpace(): Promise<CareerExportReceipt> {
+  return writeRecoverable<CareerExportReceipt>('spaceExport', '导出', {}, async (id, expected) =>
+    decodeCareerExportReceipt(await client.request({ method: 'POST', path: '/api/v1/career/exports', body: { requestId: id, expectedRevision: expected } })));
+}
+export function pendingSpaceExport(): StoredIntent<Record<string, unknown>> | null { return readIntent<Record<string, unknown>>(intentKey('spaceExport')); }
+export async function reconcilePendingSpaceExport(): Promise<CareerExportReceipt> {
+  return reconcileIntent<CareerExportReceipt>('spaceExport', '导出', async id =>
+    decodeCareerExportReceipt(await client.request({ method: 'GET', path: `/api/v1/career/exports/receipt?requestId=${encodeURIComponent(id)}` })));
+}
+export async function retryPendingSpaceExport(): Promise<CareerExportReceipt> {
+  const pending = pendingSpaceExport();
+  if (!pending) throw new Error('没有待恢复的导出');
+  return retryIntent<CareerExportReceipt>('spaceExport', '导出', async (id, expected) =>
+    decodeCareerExportReceipt(await client.request({ method: 'POST', path: '/api/v1/career/exports', body: { requestId: id, expectedRevision: expected } })));
+}
+/** 删除后旧授权复验：按原请求编号读历史导出回执（完整删除后服务端应 404 not_found）。 */
+export async function spaceExportReceipt(requestId: string): Promise<CareerExportReceipt> {
+  if (!requestId.trim()) throw new Error('缺少原导出请求编号');
+  return decodeCareerExportReceipt(await client.request({ method: 'GET', path: `/api/v1/career/exports/receipt?requestId=${encodeURIComponent(requestId.trim())}` }));
+}
+
+// —— 删除边界（pre-deletion explanation）：空间内将删什么、外部平台不可撤回什么、保留什么 ——
+export async function deletionBoundary(): Promise<CareerDeletionBoundaryView> {
+  return decodeCareerDeletionBoundary(await client.request({ method: 'GET', path: '/api/v1/career/deletions/boundary' }));
+}
+
+// —— 完整删除：步骤全成才报 deleted；部分失败同 requestId 可恢复，绝不称已完全删除。
+// 与通用 writeRecoverable 的关键差异：部分失败（partial）是**成功的 HTTP 响应**，但
+// 删除未到终态——intent 必须保留（存续至 deleted 终态），否则用户离开页面就丢了唯一
+// 可恢复的原 request id。对账同理：非 deleted 回执不清 intent。
+export async function deleteWholeSpace(): Promise<CareerDeletionReceipt> {
+  const id = newRequestId();
+  const expected = revision();
+  const stamp = auth.scope.capture();
+  try {
+    const receipt = decodeCareerDeletionReceipt(await client.request({ method: 'POST', path: '/api/v1/career/deletions', body: { requestId: id, expectedRevision: expected } }));
+    if (receipt.status !== 'deleted') store.write(intentKey('spaceDeletion'), { requestId: id, input: {}, expectedRevision: expected });
+    return receipt;
+  } catch (error) {
+    if (ambiguous(error) && !auth.scope.isCurrent(stamp)) {
+      throw Object.assign(new Error('SCOPE_CHANGED'), { cause: error });
+    }
+    if (ambiguous(error)) {
+      store.write(intentKey('spaceDeletion'), { requestId: id, input: {}, expectedRevision: expected });
+      throw Object.assign(new Error('删除结果未知：请用原请求对账后再试', { cause: error }), { code: 'outcome_unknown', requestId: id });
+    }
+    throw error;
+  }
+}
+export function pendingSpaceDeletion(): StoredIntent<Record<string, unknown>> | null { return readIntent<Record<string, unknown>>(intentKey('spaceDeletion')); }
+export async function reconcilePendingSpaceDeletion(): Promise<CareerDeletionReceipt> {
+  const pending = pendingSpaceDeletion();
+  if (!pending) throw new Error('没有待对账的删除');
+  const receipt = decodeCareerDeletionReceipt(await client.request({ method: 'GET', path: `/api/v1/career/deletions/receipt?requestId=${encodeURIComponent(pending.requestId)}` }));
+  if (receipt.status === 'deleted') store.remove(intentKey('spaceDeletion'));
+  return receipt;
+}
+export async function retryPendingSpaceDeletion(): Promise<CareerDeletionReceipt> {
+  const pending = pendingSpaceDeletion();
+  if (!pending) throw new Error('没有待恢复的删除');
+  const expected = pending.expectedRevision ?? revision();
+  const stamp = auth.scope.capture();
+  try {
+    const receipt = decodeCareerDeletionReceipt(await client.request({ method: 'POST', path: '/api/v1/career/deletions', body: { requestId: pending.requestId, expectedRevision: expected } }));
+    if (receipt.status === 'deleted') store.remove(intentKey('spaceDeletion'));
+    return receipt;
+  } catch (error) {
+    if (ambiguous(error) && (!auth.scope.isCurrent(stamp) || definiteLocalFailure(error))) throw Object.assign(new Error('SCOPE_CHANGED'), { cause: error });
+    if (ambiguous(error)) throw Object.assign(new Error('删除结果未知：请用原请求对账后再试', { cause: error }), { code: 'outcome_unknown', requestId: pending.requestId });
+    throw error;
+  }
+}
+
+/** 删除完成后的本机缓存清理：只清 wk:career:* 键并重置共享 desk；登录凭据与其他键不动。 */
+export function clearCareerCaches(): string[] {
+  const cleared: string[] = [];
+  for (const key of storage.keys?.() ?? []) {
+    if (key.startsWith(CAREER_STORE_PREFIX)) { storage.remove(key); cleared.push(key); }
+  }
+  resetCareerDesk();
+  return cleared;
 }

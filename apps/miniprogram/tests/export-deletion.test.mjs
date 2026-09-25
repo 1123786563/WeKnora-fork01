@@ -1,0 +1,314 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { registerHooks } from 'node:module';
+import { pathToFileURL } from 'node:url';
+
+// T32 小程序 全空间导出与完整删除的可观察行为：真实 transport + AuthCoordinator 装配
+// （T24/T26 同款），假后端按 method+pathname 路由。五路由与 Web ExportDeletionPage
+// 同源同版本（同一批 api-client 解码器，packages/api-client/src/career.ts）：导出内联
+// 归档+sha256 摘要、删除先呈现边界清单、部分失败保留可恢复状态且绝不称完全删除、
+// 删除后旧导出授权 404、本地 storage 缓存清理。
+const stubURL = pathToFileURL(new URL('./helpers/taro-stub.mjs', import.meta.url).pathname).href;
+registerHooks({
+  resolve(specifier, context, nextResolve) {
+    if (specifier === '@tarojs/taro') return { url: stubURL, shortCircuit: true };
+    return nextResolve(specifier, context);
+  },
+});
+globalThis.__API_ORIGIN__ = 'https://api.example.test';
+const { stub } = await import('./helpers/taro-stub.mjs');
+const runtime = await import('../src/services/runtime.ts');
+const career = await import('../src/services/career.ts');
+const platform = await import('../src/adapters/career-platform.ts');
+
+const T = '2026-09-26T08:00:00Z';
+const encoder = new TextEncoder();
+const me = () => ({ success: true, data: { user: { id: 'u1', username: 'Lin' }, tenant: { id: 1, name: 'Space' }, memberships: [] } });
+const open3 = call => stub.succeed(call, { data: { revision: 3, facts: [], proposals: [] } });
+
+// 与服务端冻结结构一一对应的导出归档 fixture（career_export.go CareerExportArchive）：
+// 六段包含性——profile 事实、事实历史、岗位与原始快照、申请与进展事件、材料与版本、投递记录。
+const exportedFact = { key: 'education.graduation_year', value: '2026', revision: 2, source: { kind: 'user', label: 'live' }, confirmation: { userId: 'u1', confirmedAt: T }, confirmedAt: T };
+const archive = {
+  profile: { revision: 3, facts: [exportedFact], proposals: [] },
+  factHistory: [exportedFact],
+  opportunities: [{ opportunityId: 'opp-1', snapshots: [{ snapshotId: 'snap-1', status: 'stored', rawText: '仅限2027届', acquiredAt: T }] }],
+  applications: [{ applicationId: 'app-1', opportunityId: 'opp-1', snapshotId: 'snap-1', batchIdentity: '2026秋招A批', progressEvents: [{ eventId: 'evt-1', applicationId: 'app-1', seq: 1, eventType: 'applied', occurredAt: T, source: { kind: 'manual' }, confirmer: 'u1' }] }],
+  materials: [{ materialId: 'mat-1', opportunityId: 'opp-1', status: 'confirmed', versions: [{ version: 1, versionBody: '{"sections":[]}', createdAt: T }, { version: 2, versionBody: '{"sections":[]}', createdAt: T }] }],
+  submissions: [{ submissionId: 'sub-1', applicationId: 'app-1', channel: 'web', occurredAt: T, versionConfirmed: true, materialId: 'mat-1', exportId: 'exp-1', version: 2, contentDigest: 'c'.repeat(64), confirmer: 'u1', createdAt: T }],
+};
+const exportReceipt = (over = {}) => ({
+  kind: 'career_exported', requestId: 'srv-space-exp', exportId: 'exp-space-1', revision: 3, status: 'complete',
+  digest: 'a'.repeat(64), archive, createdAt: T, ...over,
+});
+const doneSteps = [
+  { name: 'revoke_material_exports', status: 'done' },
+  { name: 'purge_career_data', status: 'done' },
+  { name: 'remove_workbench_tasks', status: 'done' },
+  { name: 'finalize', status: 'done' },
+];
+const partialSteps = [
+  { name: 'revoke_material_exports', status: 'done' },
+  { name: 'purge_career_data', status: 'failed', detail: 'career_submissions: row locked' },
+  { name: 'remove_workbench_tasks', status: 'pending' },
+  { name: 'finalize', status: 'pending' },
+];
+const retention = [
+  { holder: 'career_data_deletions', reason: '删除审计与可恢复状态（法定/技术保留）', status: 'retained' },
+  { holder: 'career_changes', reason: '仅保留 deletion 事件以驱动客户端缓存失效', status: 'retained' },
+];
+const deletedReceipt = (over = {}) => ({
+  kind: 'career_deleted', requestId: 'srv-del', status: 'deleted', steps: doneSteps, retention,
+  revision: 4, startedAt: T, completedAt: T, ...over,
+});
+const partialReceipt = (over = {}) => ({
+  kind: 'career_deleted', requestId: 'srv-del', status: 'partial', steps: partialSteps, retention,
+  revision: 3, startedAt: T, ...over,
+});
+const boundaryView = {
+  inSpace: [
+    { section: 'profile', description: '已确认的档案事实与待处理提案', count: 1 },
+    { section: 'material_exports', description: '材料导出与下载授权', count: 2 },
+  ],
+  external: [
+    { item: 'external_platform_submissions', description: '你在外部招聘平台完成的投递、沟通与账号操作不在本空间控制范围内。', revocable: false },
+    { item: 'external_email_copies', description: '已通过邮件或其他渠道发往外部的简历与材料副本无法由本系统收回。', revocable: false },
+  ],
+  retention,
+};
+
+function backend(routes) {
+  stub.use(call => {
+    const method = call.options.method ?? (call.kind === 'uploadFile' ? 'POST' : 'GET');
+    const path = new URL(call.options.url).pathname;
+    let fn = routes[`${method} ${path}`];
+    if (fn === undefined) {
+      const prefix = Object.keys(routes).filter(k => k.endsWith('/') && `${method} ${path}`.startsWith(k)).sort((a, b) => b.length - a.length)[0];
+      if (prefix) fn = routes[prefix];
+    }
+    if (fn === undefined) { call.options.fail({ errMsg: `no backend route for ${method} ${path}` }); return; }
+    fn(call);
+  });
+}
+async function freshLogin(extraRoutes = {}) {
+  stub.reset();
+  backend({
+    'POST /api/v1/auth/login': call => stub.succeed(call, { data: { success: true, data: { token: 't1', refresh_token: 'r1' } } }),
+    'GET /api/v1/auth/me': call => stub.succeed(call, { data: me() }),
+    'GET /api/v1/career/open': open3,
+    ...extraRoutes,
+  });
+  await runtime.auth.login('u@example.test', 'pw');
+  career.resetCareerDesk();
+}
+const careerCall = suffix => stub.state.calls.filter(c => new URL(c.options.url).pathname.startsWith('/api/v1/career') && (!suffix || new URL(c.options.url).pathname.includes(suffix)));
+const errorCode = error => error?.code;
+const notFound = call => stub.succeed(call, { statusCode: 404, data: { error: { code: 'not_found', message: 'career export receipt not found' } } });
+
+test('A1: whole-space export posts the frozen two-field contract and returns the inline archive the web sees', async () => {
+  await freshLogin({
+    'POST /api/v1/career/exports': call => stub.succeed(call, { data: exportReceipt() }),
+  });
+  await career.loadCareer();
+  const receipt = await career.exportWholeSpace();
+  assert.equal(receipt.kind, 'career_exported');
+  assert.equal(receipt.exportId, 'exp-space-1');
+  assert.equal(receipt.status, 'complete');
+  assert.match(receipt.digest, /^[a-f0-9]{64}$/);
+  const call = careerCall('/exports').find(c => (c.options.method ?? 'GET') === 'POST');
+  assert.deepEqual(Object.keys(call.options.data).sort(), ['expectedRevision', 'requestId'], 'body must match the frozen CareerExportInput (DisallowUnknownFields)');
+  assert.equal(call.options.data.expectedRevision, 3, 'the pinned desk revision travels in the intent');
+  assert.equal(call.options.header.Authorization, 'Bearer t1', 'identity flows through the authenticated client');
+});
+
+test('A2: the export archive carries all six segments the web inventory renders', async () => {
+  await freshLogin({
+    'POST /api/v1/career/exports': call => stub.succeed(call, { data: exportReceipt() }),
+  });
+  await career.loadCareer();
+  const { archive: view } = await career.exportWholeSpace();
+  assert.equal(view.profile.facts.length, 1, 'confirmed profile facts');
+  assert.equal(view.profile.proposals.length, 0, 'pending proposals');
+  assert.equal(view.factHistory.length, 1, 'fact history');
+  assert.equal(view.opportunities.length, 1);
+  assert.equal(view.opportunities[0].snapshots.length, 1, 'original job snapshots ride along');
+  assert.equal(view.applications[0].progressEvents.length, 1, 'application progress events');
+  assert.equal(view.materials[0].versions.length, 2, 'immutable material versions');
+  assert.equal(view.submissions.length, 1, 'submission records');
+  assert.equal(view.submissions[0].boundVersion === undefined || view.submissions[0].versionConfirmed === true, true);
+});
+
+test('A3: saving the export package writes the complete JSON to a local file — no silent truncation', async () => {
+  await freshLogin({
+    'POST /api/v1/career/exports': call => stub.succeed(call, { data: exportReceipt() }),
+  });
+  await career.loadCareer();
+  const receipt = await career.exportWholeSpace();
+  const payload = platform.spaceExportPayload(receipt);
+  assert.deepEqual(JSON.parse(payload), JSON.parse(JSON.stringify(receipt)), 'the payload round-trips the whole receipt');
+  const record = await platform.saveSpaceExportPackage(payload, receipt.exportId);
+  assert.ok(record.filePath.startsWith('wxfile://usr/'), `saved inside USER_DATA_PATH (got ${record.filePath})`);
+  assert.ok(record.filePath.includes('career-export'), 'the file name identifies the package');
+  const saved = stub.state.fileContents.get(record.filePath);
+  assert.equal(saved, payload, 'the saved bytes are the complete payload');
+  assert.equal(record.bytes, encoder.encode(payload).length, 'the recorded size equals the full byte length');
+  assert.equal(record.digest, platform.sha256Hex(encoder.encode(payload)), 'the local copy digest is verifiable from the exact saved bytes');
+  assert.ok(record.savedAt);
+});
+
+test('A4: the clipboard equivalent flow carries the full package when local saving is not enough', async () => {
+  stub.reset();
+  const receipt = exportReceipt();
+  const payload = platform.spaceExportPayload(receipt);
+  await platform.copySpaceExportToClipboard(payload);
+  assert.equal(stub.state.clipboard.at(-1), payload, 'the full untruncated package reaches the clipboard');
+});
+
+test('B1: the deletion boundary view decodes in-space sections, external non-revocable items and retention', async () => {
+  await freshLogin({
+    'GET /api/v1/career/deletions/boundary': call => stub.succeed(call, { data: boundaryView }),
+  });
+  await career.loadCareer();
+  const view = await career.deletionBoundary();
+  assert.deepEqual(view.inSpace.map(s => s.section), ['profile', 'material_exports']);
+  assert.equal(view.inSpace[0].count, 1);
+  assert.ok(view.external.every(item => item.revocable === false), 'external platform data is disclosed as non-revocable');
+  assert.equal(view.retention.length, 2);
+  assert.equal(view.retention[0].status, 'retained');
+});
+
+test('B2: deletion posts the frozen contract and only reports deleted after every step done', async () => {
+  await freshLogin({
+    'POST /api/v1/career/deletions': call => stub.succeed(call, { data: deletedReceipt() }),
+  });
+  await career.loadCareer();
+  const receipt = await career.deleteWholeSpace();
+  assert.equal(receipt.status, 'deleted');
+  assert.ok(receipt.completedAt, 'a complete deletion carries the completion time');
+  assert.ok(receipt.steps.every(step => step.status === 'done'), 'every step reports done');
+  assert.equal(receipt.retention.length, 2, 'the retention disclosure travels with the receipt');
+  const call = careerCall('/deletions').find(c => (c.options.method ?? 'GET') === 'POST' && new URL(c.options.url).pathname === '/api/v1/career/deletions');
+  assert.deepEqual(Object.keys(call.options.data).sort(), ['expectedRevision', 'requestId'], 'body must match the frozen CareerDeletionInput');
+  assert.equal(call.options.data.expectedRevision, 3);
+});
+
+test('B3: a partial deletion never claims complete deletion and recovers under the same request id', async () => {
+  let posts = 0;
+  await freshLogin({
+    'POST /api/v1/career/deletions': call => { posts++; if (posts === 1) stub.succeed(call, { data: partialReceipt() }); else stub.succeed(call, { data: deletedReceipt() }); },
+  });
+  await career.loadCareer();
+  const partial = await career.deleteWholeSpace();
+  assert.equal(partial.status, 'partial');
+  assert.ok(partial.steps.some(step => step.status === 'failed'), 'the failed step stays visible');
+  assert.equal(partial.completedAt, undefined, 'a partial deletion never claims a completion time');
+  // 部分失败可恢复：同一 request id 重试（服务端幂等续跑），不是新删除。
+  const intent = career.pendingSpaceDeletion();
+  assert.ok(intent, 'the deletion intent is kept recoverable');
+  const done = await career.retryPendingSpaceDeletion();
+  assert.equal(done.status, 'deleted');
+  const bodies = careerCall('/deletions').filter(c => (c.options.method ?? 'GET') === 'POST' && new URL(c.options.url).pathname === '/api/v1/career/deletions').map(c => c.options.data);
+  assert.equal(bodies.length, 2, 'one partial attempt plus one recovery replay');
+  assert.equal(bodies[1].requestId, bodies[0].requestId, 'the recovery replays the original request id');
+  assert.equal(career.pendingSpaceDeletion(), null, 'a complete deletion clears the intent');
+});
+
+test('C1: an unknown export outcome is reconciled through the original request id', async () => {
+  let postFails = true;
+  await freshLogin({
+    'POST /api/v1/career/exports': call => { if (postFails) stub.fail(call, 'request:fail timeout'); else stub.succeed(call, { data: exportReceipt() }); },
+    'GET /api/v1/career/exports/receipt': call => stub.succeed(call, { data: exportReceipt() }),
+  });
+  await career.loadCareer();
+  await assert.rejects(career.exportWholeSpace(), error => error.code === 'outcome_unknown');
+  const pending = career.pendingSpaceExport();
+  assert.ok(pending, 'the unresolved export is kept for recovery');
+  const sent = careerCall('/exports').find(c => (c.options.method ?? 'GET') === 'POST').options.data.requestId;
+  assert.equal(pending.requestId, sent);
+  const receipt = await career.reconcilePendingSpaceExport();
+  assert.equal(receipt.exportId, 'exp-space-1');
+  assert.equal(career.pendingSpaceExport(), null, 'reconciliation clears the pending intent');
+  assert.equal(new URL(careerCall('/exports/receipt')[0].options.url).searchParams.get('requestId'), sent, 'recovery replays the original request id');
+});
+
+test('C2: an unknown deletion outcome keeps the intent; a missing receipt is distinguishable and the resend replays the id', async () => {
+  let postFails = true;
+  await freshLogin({
+    'POST /api/v1/career/deletions': call => { if (postFails) stub.fail(call, 'request:fail network'); else stub.succeed(call, { data: deletedReceipt() }); },
+    'GET /api/v1/career/deletions/receipt': notFound,
+  });
+  await career.loadCareer();
+  await assert.rejects(career.deleteWholeSpace(), error => error.code === 'outcome_unknown');
+  const pending = career.pendingSpaceDeletion();
+  assert.ok(pending, 'intent persisted for reconciliation');
+  const missing = await career.reconcilePendingSpaceDeletion().catch(error => error);
+  assert.ok(career.isReceiptMissing(missing), 'a missing receipt is distinguishable for the recovery UI');
+  assert.equal(career.pendingSpaceDeletion()?.requestId, pending.requestId, 'a missing receipt keeps the intent');
+  postFails = false;
+  const receipt = await career.retryPendingSpaceDeletion();
+  assert.equal(receipt.status, 'deleted');
+  assert.equal(career.pendingSpaceDeletion(), null, 'a successful safe resend clears the intent');
+  const bodies = careerCall('/deletions').filter(c => (c.options.method ?? 'GET') === 'POST' && new URL(c.options.url).pathname === '/api/v1/career/deletions').map(c => c.options.data);
+  assert.equal(bodies.length, 2, 'one failed attempt plus one safe resend');
+  assert.equal(bodies[1].requestId, bodies[0].requestId, 'the resend replays the original request id');
+  assert.equal(bodies[1].expectedRevision, bodies[0].expectedRevision, 'the resend replays the original fingerprint revision');
+});
+
+test('D1: after a complete deletion the old export receipt is rejected typed (404)', async () => {
+  await freshLogin({
+    'POST /api/v1/career/exports': call => stub.succeed(call, { data: exportReceipt() }),
+    'POST /api/v1/career/deletions': call => stub.succeed(call, { data: deletedReceipt() }),
+    'GET /api/v1/career/exports/receipt': notFound,
+  });
+  await career.loadCareer();
+  const exported = await career.exportWholeSpace();
+  await career.deleteWholeSpace();
+  const stale = await career.spaceExportReceipt(exported.requestId).catch(error => error);
+  assert.equal(errorCode(stale), 'not_found', 'the pre-deletion export receipt is dead after deletion');
+  assert.ok(career.isReceiptMissing(stale), 'the UI can distinguish the dead old grant');
+});
+
+test('D2: clearing local career caches removes only wk:career storage keys and resets the desk', async () => {
+  await freshLogin();
+  await career.loadCareer();
+  stub.state.storage.set('wk:career:search:u1:1', { requestId: 'r1', query: '岗位' });
+  stub.state.storage.set('wk:career:application:u1:1', { requestId: 'r2' });
+  stub.state.storage.set('wk:auth:token', 'keep-me');
+  stub.state.storage.set('wk:theme', 'light');
+  const cleared = career.clearCareerCaches();
+  assert.deepEqual([...cleared].sort(), ['wk:career:application:u1:1', 'wk:career:search:u1:1'], 'exactly the career cache keys are cleared');
+  assert.equal(stub.state.storage.has('wk:auth:token'), true, 'auth storage is not the career cache');
+  assert.equal(stub.state.storage.has('wk:theme'), true, 'unrelated keys survive');
+  assert.equal(career.careerDesk().snapshot, undefined, 'the shared desk is reset so stale views cannot come back');
+});
+
+test('E1: a scope change discards a stale deletion response and persists no intent', async () => {
+  await freshLogin({
+    'POST /api/v1/career/deletions': () => {/* hangs until the test answers */},
+  });
+  await career.loadCareer();
+  const pending = career.deleteWholeSpace();
+  await runtime.auth.clear(); // logout invalidates the scope
+  stub.succeed(stub.lastCall('request'), { data: deletedReceipt() });
+  await assert.rejects(pending, error => /SCOPE_CHANGED|cancelled/i.test(`${error.message} ${error.code ?? ''}`));
+  assert.equal(career.pendingSpaceDeletion(), null, 'a stale response must not persist a recovery intent for the wrong scope');
+});
+
+test('E2: a cross-tenant boundary read surfaces the typed forbidden', async () => {
+  await freshLogin({
+    'GET /api/v1/career/deletions/boundary': call => stub.succeed(call, { statusCode: 403, data: { error: { code: 'forbidden', message: 'career workspace not allowed' } } }),
+  });
+  await career.loadCareer();
+  await assert.rejects(career.deletionBoundary(), error => error.code === 'forbidden');
+});
+
+test('E3: a revision conflict on deletion is typed with the current revision', async () => {
+  await freshLogin({
+    'POST /api/v1/career/deletions': call => stub.succeed(call, { statusCode: 409, data: { error: { code: 'revision_conflict', message: 'stale view', currentRevision: 11 } } }),
+  });
+  await career.loadCareer();
+  const refused = await career.deleteWholeSpace().catch(error => error);
+  assert.equal(errorCode(refused), 'revision_conflict');
+  assert.equal(refused.currentRevision, 11, 'the current revision travels for the reload affordance');
+  assert.equal(career.pendingSpaceDeletion(), null, 'a definite refusal leaves no pending intent');
+});

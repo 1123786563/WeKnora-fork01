@@ -264,3 +264,49 @@ export async function openExportedDocument(grant: ExportDownloadGrant, deps: Exp
   if (failure.failed) throw failure.error;
   return record;
 }
+
+// ---- T32 全空间导出的本端留存 seam：等效可取得流程，不静默截断 ----
+// 微信小程序没有浏览器式下载（无 Blob/URL.createObjectURL/anchor 保存）；平台限制下的
+// 等效可取得流程 = ①写入 USER_DATA_PATH 真实文件（本机持久目录，跨会话留存，路径如实
+// 呈现）+ ②完整内容复制到剪贴板（可转移到任何长期留存位置）。写入字节 = 完整 JSON
+// 载荷；本地副本摘要由落盘字节独立复算，用户可用文件字节复核。
+
+/** 序列化整份导出回执（含内联归档）为可留存的 JSON 载荷——内容不截断。 */
+export function spaceExportPayload(receipt: unknown): string {
+  return JSON.stringify(receipt, null, 2);
+}
+
+/** 一次本机留存的如实记录：路径、字节长度与由落盘字节复算的摘要。 */
+export interface SpaceExportSaveRecord { filePath: string; bytes: number; digest: string; savedAt: string }
+
+/**
+ * 把完整导出载荷写入 USER_DATA_PATH（weapp 唯一可写的本机持久目录）。写入后回读
+ * 落盘字节计算 sha256——记录的是磁盘上真实内容的摘要，不是内存载荷的摘要。
+ */
+export async function saveSpaceExportPackage(payload: string, exportId: string): Promise<SpaceExportSaveRecord> {
+  const env = (globalThis as { wx?: { env?: { USER_DATA_PATH?: string } } }).wx?.env;
+  const dir = env?.USER_DATA_PATH;
+  if (!dir) throw Object.assign(new Error('本机存储目录不可用，无法保存导出包'), { code: 'export_save_unavailable' });
+  const stem = exportId.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^[-.]+/, '') || 'export';
+  const filePath = `${dir}/career-export-${stem}.json`;
+  const fs = Taro.getFileSystemManager();
+  await new Promise<void>((resolve, reject) => fs.writeFile({
+    filePath, data: payload, encoding: 'utf8',
+    success: () => resolve(),
+    fail: e => reject(Object.assign(new Error('导出包写入本机失败'), { cause: e })),
+  }));
+  // 无 encoding 的 readFileSync 返回精确文件字节的 ArrayBuffer（T26 保真契约）。
+  const written = fs.readFileSync(filePath) as unknown as ArrayBuffer;
+  const bytes = new Uint8Array(written).length;
+  const digest = sha256Hex(new Uint8Array(written));
+  return { filePath, bytes, digest, savedAt: new Date().toISOString() };
+}
+
+/** 等效可取得流程之二：完整载荷（不截断）复制到系统剪贴板，供转移到长期留存位置。 */
+export async function copySpaceExportToClipboard(payload: string): Promise<void> {
+  try {
+    await Taro.setClipboardData({ data: payload });
+  } catch (cause) {
+    throw Object.assign(new Error('复制完整导出内容失败，可重试或先保存本机文件'), { cause });
+  }
+}
