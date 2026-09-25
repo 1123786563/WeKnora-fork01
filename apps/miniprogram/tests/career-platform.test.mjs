@@ -69,3 +69,14 @@ test('P6: chooseResume delegates to the injected file seam and forwards the nati
   const adapter = platform.createCareerPlatform({ chooseFile: async () => file });
   assert.deepEqual(await adapter.chooseResume(), file);
 });
+
+test('P7: percent-encoded share payloads are decoded, literal % text is preserved', () => {
+  const adapter = platform.createCareerPlatform({ entryParams: () => ({ jd: encodeURIComponent('岗位：Go 工程师\n要求：三年经验') }) });
+  const entry = adapter.readSharedEntry();
+  assert.ok(entry, 'encoded payload must yield an entry');
+  assert.equal(entry.text, '岗位：Go 工程师\n要求：三年经验', 'percent-encoding is decoded once');
+  const literal = platform.createCareerPlatform({ entryParams: () => ({ jd: '增长率 100% 未达成' }) });
+  assert.equal(literal.readSharedEntry().text, '增长率 100% 未达成', 'plain text with a bare % is not mangled');
+  const broken = platform.createCareerPlatform({ entryParams: () => ({ jd: 'broken %E4%B8' }) });
+  assert.equal(broken.readSharedEntry().text, 'broken %E4%B8', 'undecodable text is kept verbatim');
+});

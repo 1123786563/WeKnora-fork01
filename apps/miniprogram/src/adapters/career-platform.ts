@@ -30,13 +30,23 @@ function defaultEntryParams(): Record<string, string | undefined> {
   const params = Taro.getCurrentInstance().router?.params;
   return (params ?? {}) as Record<string, string | undefined>;
 }
+/** 分享卡片 path 的 query 在部分基础库/入口下拿到的是未解码的 percent-encoding
+ * （DevTools automator 实测 71 字 JD 变 400 字）；仅在解码成功且更短时采用，
+ * 避免把用户原文里的字面 '%' 误解码。 */
+function decodeEntryPayload(raw: string): string {
+  if (!/%[0-9A-Fa-f]{2}/.test(raw)) return raw;
+  try {
+    const decoded = decodeURIComponent(raw);
+    return decoded.length < raw.length ? decoded : raw;
+  } catch { return raw; }
+}
 
 export function createCareerPlatform(deps: CareerPlatformDeps = {}): CareerPlatform {
   return {
     // 负载缺失返回 undefined：由 UI 展示恢复入口（粘贴原文），绝不用演示数据顶替。
     readSharedEntry() {
       const raw = (deps.entryParams ?? defaultEntryParams)()[SHARED_ENTRY_PARAM];
-      const textValue = typeof raw === 'string' ? raw.trim() : '';
+      const textValue = typeof raw === 'string' ? decodeEntryPayload(raw).trim() : '';
       if (!textValue) return undefined;
       return { text: textValue, sourceLabel: SHARED_ENTRY_SOURCE };
     },
