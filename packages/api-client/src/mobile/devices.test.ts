@@ -46,7 +46,7 @@ test('register puts the sealed wire body and maps the returned record', async ()
 
   const record = await remote.register({ deviceId: 'device-1', token: 'push-token', platform: 'ios', registrationIntent: 'aW50ZW50.WQ' });
 
-  assert.deepEqual(record, { deviceId: 'device-1', platform: 'ios', environment: 'production', revision: 1, scopeGeneration: 2 });
+  assert.deepEqual(record, { appId: 'official', deviceId: 'device-1', platform: 'ios', environment: 'production', revision: 1, scopeGeneration: 2 });
   assert.equal(spy.seen[0]!.method, 'PUT');
   assert.equal(spy.seen[0]!.path, '/api/v1/mobile/devices/device-1');
   assert.deepEqual(spy.seen[0]!.body, { token: 'push-token', platform: 'ios', registration_intent: 'aW50ZW50.WQ' });
@@ -82,8 +82,8 @@ test('list maps rows and never surfaces token ciphertext columns (Review Focus #
   const rows = await remote.list();
 
   assert.deepEqual(rows, [
-    { deviceId: 'device-1', platform: 'ios', environment: 'production', revision: 3, scopeGeneration: 5, lastSeenAt: '2026-09-24T00:00:00Z' },
-    { deviceId: 'device-2', platform: 'android', environment: 'production', revision: 1, scopeGeneration: 1 },
+    { appId: 'official', deviceId: 'device-1', platform: 'ios', environment: 'production', revision: 3, scopeGeneration: 5, lastSeenAt: '2026-09-24T00:00:00Z' },
+    { appId: 'official', deviceId: 'device-2', platform: 'android', environment: 'production', revision: 1, scopeGeneration: 1 },
   ]);
   const serialized = JSON.stringify(rows);
   for (const forbidden of ['token_ciphertext', 'token_hash', 'tenant_id', 'owner_id']) {
