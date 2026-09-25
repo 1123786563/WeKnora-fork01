@@ -115,3 +115,40 @@
 | # | 发现（severity） | 根因定位（systematic-debugging） | 处置与证据 |
 |---|---|---|---|
 | F1 | 【medium】phases.py:42-44 `sys.path.insert(0, _PA_DIR)` 使独立导入场景下 `import fixtures` 绑到 payment-activation/fixtures.py（缺全部 8 个探针 helper），phase 运行时 AttributeError 被记为误导性 fail；仅 run_lab.py 导入序（append 到末尾）解析正确（lab 工具缺陷，不影响已入库证据有效性） | 复现证实根因：审查者路径（本目录在 sys.path 前列 + cwd 在仓外）下，phases 的 `insert(0)` 把 _PA_DIR 推到本目录之前，裸名 `import fixtures` 按 sys.path 顺序命中 pa 模块。根因类：**导入绑定依赖 sys.path 顺序**（模块遮蔽），非逻辑错误 | **修复**（phases.py:47-77）：删除 `insert(0)`，仿 fixtures.py 自身的 `pa_fixtures` 手法改用 importlib `spec_from_file_location` 按文件路径显式加载——`clients` 以规范名从 _PA_DIR/clients.py 加载、`fixtures` 以规范名从本目录加载；`_load_by_path` 对 `sys.modules` 中 `__file__` 相同的已载模块直接复用，故 run_lab.py 的裸 `import clients` 与 phases 共享同一实例（零重复加载，HTTP 客户端状态单例保持）。**回归测试**（test_phases.py `StandaloneImportTest` 2 例，subprocess 在仓外 cwd 下独立导入）：①本目录优先导入序 → 断言 `phases.fixtures.__file__` 指向本目录且 8 helper hasattr 全真；②run_lab 导入序 → 同断言 + `clients` 与 `sys.modules['clients']` 同一对象。**RED→GREEN**：修复前 ①FAIL（missing 8 helpers，与审查证据逐字一致）、②PASS（印证缺陷仅限非 run_lab 导入序）；修复后 `python3 -m unittest test_phases -v` → Ran 23 tests, OK；审查者原始复现路径实测 `phases.fixtures.__file__` 指向 payment-trigger/fixtures.py、hasattr 全 True；`python3 -m py_compile phases.py fixtures.py test_phases.py run_lab.py` OK |
+
+## 2026-09-25 流程修复（流程修复员-82 会话，提交 7324eb054）
+
+真实流程验证（issue-72-flow-evidence-82，五失败项）中三处高优**产品代码缺陷**按 systematic-debugging 定位根因、修复、补回归测试并在同一真实栈复验；机制级第 4 项（d2-falsified-t10-p2-fail）维持冻结待 T02 §5 重议，第 5 项（ac4-sandbox-credentials-unavailable）为披露非缺陷，均不在本修复范围。
+
+### 根因与修复（全部本会话实读源码/实测）
+
+| # | 验证缺陷 | 根因（实读定位） | 修复（提交 7324eb054） |
+|---|---|---|---|
+| 1 | 回调端点被全局 Auth 拦截（401 missing authentication） | 回调组挂于 Auth 之后创建的 /api/v1 组（router.go:269 全局 Use），`noAuthAPI` 白名单（auth.go:36-65）无该路径——设计注释（routes_commercial.go:104-108「publicly reachable」）与挂载时序矛盾 | 白名单补 `/api/v1/commercial/callbacks/*`（仅 POST；handler 以渠道签名验签 fail-closed，遵循 invitations/lookup 同款先例） |
+| 2 | 回调 attempt 解析 merchant 错配（404 no registered payment attempt） | 下单侧 attempt.merchant 写 providerName 字面量 'alipay'（order.go:320 `Merchant: providerName`），回调侧 fact.Merchant=SellerID（alipay.go:328）/MchID（wechat.go:289），两侧解析键 (provider, merchant, merchant_order_id) 永不相交——**接口缺口**：Provider 契约未暴露「回调将携带的商户身份」，下单侧只能猜 | Provider 接口新增 `MerchantID() string`（Alipay=cfg.SellerID、WeChat=cfg.MchID），openOrder 注册 attempt 改用 `provider.MerchantID()`；5 个测试 stub 补齐实现（返回 1900000109，刻意≠provider 名） |
+| 3 | 新租户首购 503 invalid_response（PUT customer 404） | ensureProviderBinding exists 分支发 `PUT /api/v1/customers/:external_id`（lago_purchase.go:307），pinned v1.53.0 路由 `resources :customers only [create index show destroy]`（容器 /app/config/routes/shared_api.rb:19 实读）无 update → 404。**先例教训**：#81 OCR R1-V05 按「upsert 会覆写显示名」假设改 PUT，未经真实栈验证——实测 upsert 仅在键存在时覆写（UpsertFromApiService `customer.name = params[:name] if params.key?(:name)`，容器源码 + 运行栈双实证） | exists 分支改走集合 POST upsert（body 带 external_id + billing_configuration、**不带 name 键**）→ 绑定落库且 onboarding 显示名保留（R1-V05 意图在真实契约上达成）；stub PUT 分支改保真 404 |
+
+### 真实栈复验（修复版二进制 :8093 + DB 副本 issue82-flowfix.db，对运行中的 weknora-lago-82flow 栈，全 14 断言 PASS）
+
+新租户（register→create tenant→lazy ensure）→ Lago 客户未绑定+真实显示名 → 首购 **201 awaiting_payment**（不再 503）→ Lago `billing_configuration{payment_provider:stripe, code:weknora-stripe, provider_customer_id:cus_…}` 且**显示名保留** → attempt.merchant=`2088000000000000`（SellerID 非 'alipay'）→ 同源签名 notify（alipay_sandbox_notify.py）→ **HTTP 200 "success"** → 订单 **paid** + fulfill outbox **恰 1** → 重放幂等（仍 1）→ 匿名回调 401 plain `failure`（handler 验签拒绝，非中间件 JSON 401）→ Lago 侧 gated 订阅 incomplete（付款门语义不变）。验证后临时实例/密钥临时文件/DB 副本已清理，验证者原 :8092 栈未触碰。
+
+### 测试命令与结果（全部本会话实跑）
+
+| 命令 | 结果 |
+|---|---|
+| `go test ./internal/router/ -run TestProviderCallbackRouteIsAnonymouslyReachable`（缺陷1，临时摘除白名单条目复跑） | RED：`got 401: {"error":"Unauthorized: missing authentication"}`（与验证实录同因）→ GREEN PASS |
+| `go test ./internal/handler/ -run 'TestAlipayCallbackConfirms\|TestCallbackMerchantMismatch'`（缺陷2，临时回退 order.go 复跑） | RED：`attempt.merchant must be … got "alipay"`（两测同断言咬住）→ GREEN PASS |
+| `go test ./internal/modules/commercial/commercialplatform/ -run TestLagoBindingUpdateOnExistingCustomerKeepsDisplayName`（缺陷3，git stash 还原生产文件复跑） | RED：`create: platform_invalid_response: provider binding rejected`（PUT→stub 保真 404）→ GREEN PASS |
+| `go build ./...` | exit 0（仅既有 ld 重复库告警） |
+| `go test ./internal/modules/commercial/... -count=1` | 7 包全 ok（commercial 0.360s / commercialplatform 70.851s / openmeter 0.734s / payment 10.343s / repository 0.583s / service 1.605s / usage 0.366s） |
+| `go test ./internal/handler/ ./internal/router/ ./internal/middleware/ -count=1` | 全 ok（2.887s / 5.091s / 2.143s） |
+| `go run ./tools/architectureguard` | OK（0 violations；literal=566 apiKeyRoute=69 total=635 hooks=59——与 #82 前基线计数一致） |
+| `make verify-module-moves` | OK（16 manifests verified） |
+| 红线 grep（diff 内 sk_test/sk_live/whsec_/rk_live；非 _test diff 行 force…active） | 双双 0 命中（353 行 diff） |
+
+### Ruling（追加）
+
+1. **缺陷 2 的修复形态＝接口契约而非局部补丁**：merchant 错配的根因是 Provider 接口未暴露「回调将携带的商户身份」，下单侧只能用 providerName 兜底猜测。选接口扩展（`MerchantID()` 强制每个实现声明）而非调用点 type-assert：后者会让未实现者静默保留旧错配（五 stub 即证明该缺口普遍存在）。错误代价：若仅改 order.go 硬编码 SellerID 查表，微信渠道与新渠道接入仍会复发。
+2. **缺陷 3 的修复形态＝对 pinned 契约实证而非对先例假设服从**：R1-V05 的「POST 会覆写显示名」假设在 pinned v1.53.0 上不成立（upsert 字段级覆写，键缺席即保留）。裁决：以容器源码 + 运行栈双实证为准改走 POST upsert 且不带 name 键——显示名保留（R1-V05 目标）与绑定落库（本缺陷）同时达成；stub 的 PUT 分支同步改保真 404，防止未来测试在虚构的 update 语义上再验过。错误代价：若按验证者的「删客户重 POST」绕过路径产品化，将丢显示名且对已有订阅客户是破坏性操作。
+3. **回调匿名可达的安全边界**：白名单仅放行 POST + `/api/v1/commercial/callbacks/*` 前缀；该前缀下唯一路由是 `/:provider`，handler 对未知 provider 503、验签失败 401、未配置 fail-closed——匿名面没有任何绕过签名验签的路径（回归测试负控：同前缀外商业路由仍 401）。
+4. **修复边界声明（诚实账面）**：本次修复使「可信回调入账链」在真实栈可用（验证断言 8/9/12 的阻断解除），但 #82 的激活后半链（AC1 后半/AC3 authority 面/AC4 四对象关联/GC-3）仍受 d2-falsified-t10-p2-fail 冻结约束（Task 5-8 未实施，`paid_awaiting_activation` 仍不存在）——复验中 Lago 侧订阅保持 incomplete 即该边界的直接体现；修订版计划承接前不得宣称 #82 整体达成。AC4 沙箱凭据披露同样不变。
