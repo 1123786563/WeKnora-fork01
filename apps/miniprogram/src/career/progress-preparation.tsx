@@ -58,11 +58,15 @@ export default function ProgressPreparationPage() {
   const [fromTimeline, setFromTimeline] = useState(false);
   // 材料域回读：修订的持久事实在材料草稿里（Web PreparationPage 同语义——回执只是回声）。
   const [revisedBody, setRevisedBody] = useState<MaterialBody>();
+  // 断网可再编辑：仅凭本地草稿进入的编辑态（无服务端准备回执）。
+  const [draftEditing, setDraftEditing] = useState<PreparationDraftRecord>();
 
   const pendingProgress = career.pendingProgressWrite();
   const pendingPreparation = career.pendingPreparationWrite();
   const pendingMaterial = career.pendingMaterialWrite();
   const revision = desk.data?.revision;
+  // 断网可再编辑：当前申请+焦点下的本地草稿（按 scope 隔离；读取不需要网络）。
+  const localDraft = applicationId.trim() ? readPreparationDraft(applicationId.trim(), focus) : undefined;
 
   const loadTimeline = async (): Promise<void> => {
     setView(undefined); setViewErrCode(undefined);
@@ -85,7 +89,7 @@ export default function ProgressPreparationPage() {
   // 进入某条准备草稿的修订：优先恢复本地草稿（断网期间保留的编辑，heading/content），
   // claims 一律以服务端正文为准回填——本地草稿只是断网过渡态，不是第二份事实源。
   const startEditing = (receipt: PreparationReceipt): void => {
-    setEditing(receipt);
+    setEditing(receipt); setDraftEditing(undefined);
     setReviseErrCode(undefined);
     const server = career.editableFromBody(receipt.body);
     const local = readPreparationDraft(receipt.applicationId, receipt.focus);
@@ -98,26 +102,37 @@ export default function ProgressPreparationPage() {
     setDraftNotice('');
   };
 
+  // 断网可再编辑：服务端列表不可达时，本地草稿可独立进入编辑（不依赖网络读取）。
+  const startDraftEditing = (draft: PreparationDraftRecord): void => {
+    setEditing(undefined); setDraftEditing(draft);
+    setReviseErrCode(undefined);
+    setSections(draft.sections.map(section => ({ heading: section.heading, content: section.content, claims: [] })));
+    setDraftNotice('正在编辑本地草稿（未提交）：联网后「保存修订」才会提交；锚定信息以联网读取的准备回执为准。');
+  };
+
+  const editTarget = editing ?? draftEditing;
+
   const draftFromSections = (): PreparationDraftRecord => ({
-    applicationId: editing!.applicationId, focus: editing!.focus,
-    ...(editing!.preparationId ? { preparationId: editing!.preparationId } : {}),
-    ...(editing!.materialId ? { materialId: editing!.materialId } : {}),
+    applicationId: editTarget!.applicationId, focus: editTarget!.focus,
+    ...(editTarget!.preparationId ? { preparationId: editTarget!.preparationId } : {}),
+    ...(editTarget!.materialId ? { materialId: editTarget!.materialId } : {}),
     sections: sections.map(section => ({ heading: section.heading, content: section.content })),
     savedAt: new Date().toISOString(), // savePreparationDraft 会以实际写入时间覆盖
   });
 
   const saveRevision = async (): Promise<void> => {
-    if (!editing?.materialId) throw new Error('该准备尚未物化为材料草稿，无法在本端修订');
+    const materialId = editing?.materialId ?? draftEditing?.materialId;
+    if (!materialId) throw new Error('本地草稿缺少材料编号：请联网读取准备列表后再保存修订');
     // 断网语义：先保留本地草稿（可再编辑），再尝试提交；失败也不静默改申请状态。
     savePreparationDraft(draftFromSections());
     const body = career.bodyFromEditable(sections);
     try {
-      await career.editMaterial({ materialId: editing.materialId, body });
-      clearPreparationDraft(editing.applicationId, editing.focus);
+      await career.editMaterial({ materialId, body });
+      clearPreparationDraft(editTarget!.applicationId, editTarget!.focus);
       setDraftNotice(''); setReviseErrCode(undefined);
       setGenNotice('准备草稿修订已提交（仍是可审阅草稿，发布需另行确认材料版本）。');
       // 与 Web 同语义：回执只是回声，修订的持久事实从材料域回读。
-      setRevisedBody((await career.material(editing.materialId)).body);
+      setRevisedBody((await career.material(materialId)).body);
       void listBusy.run(loadPreparations);
     } catch (error) {
       setReviseErrCode(typedCode(error));
@@ -258,9 +273,19 @@ export default function ProgressPreparationPage() {
       </View>)}
     </Card>
 
-    {editing && <Card>
-      <Text className='wk-h3'>修订准备草稿（{focusLabels[editing.focus] ?? editing.focus}）</Text>
-      <Text className='wk-muted wk-small'>修订走材料域同一链（claims 原样保留）；提交仍是草稿，发布需另行确认材料版本。锚定投递版本 V{editing.anchor.version} 不随修订漂移。</Text>
+    {/* 断网可再编辑：本地草稿独立入口（列表不可达也能继续编辑，不依赖网络读取）。 */}
+    {localDraft && !editing && !draftEditing && <Card tone='warning'>
+      <Text className='wk-h3'>本地草稿（未提交，可继续编辑）</Text>
+      <Text className='wk-muted wk-small'>保存于 {formatTime(localDraft.savedAt)} · {focusLabels[localDraft.focus] ?? localDraft.focus}{localDraft.materialId ? ` · 材料 ${localDraft.materialId.slice(0, 10)}…` : ''}。断网期间申请进展不会有任何改动；联网后「保存修订」才会提交。</Text>
+      {localDraft.sections.map((section, index) => <Text key={index} className='wk-muted wk-small'>{section.heading}：{section.content}</Text>)}
+      <Action secondary onClick={() => startDraftEditing(localDraft)}>继续编辑本地草稿 ›</Action>
+    </Card>}
+
+    {(editing || draftEditing) && <Card>
+      <Text className='wk-h3'>修订准备草稿（{focusLabels[editTarget!.focus] ?? editTarget!.focus}）</Text>
+      {editing
+        ? <Text className='wk-muted wk-small'>修订走材料域同一链（claims 原样保留）；提交仍是草稿，发布需另行确认材料版本。锚定投递版本 V{editing.anchor.version} 不随修订漂移。</Text>
+        : <Text className='wk-muted wk-small'>修订走材料域同一链；当前为本地草稿编辑态（无服务端回执），锚定信息以联网读取的准备回执为准。</Text>}
       {draftNotice && <Notice tone='warning'>{draftNotice}</Notice>}
       {sections.map((section, index) => <View key={index}>
         <Field label={`第 ${index + 1} 节标题`} value={section.heading} onChange={value => setSections(previous => previous.map((item, at) => at === index ? { ...item, heading: value } : item))} placeholder='例如：面试要点' />
@@ -272,11 +297,12 @@ export default function ProgressPreparationPage() {
       </View></View>
       {reviseBusy.error && <Notice tone='danger'>{reviseBusy.error}{reviseErrCode === 'outcome_unknown' ? ' 修订结果未知：本地草稿已保留，请用页首「用原请求编号重试材料修订」恢复（幂等可重放），本页不会自动重发。' : reviseErrCode === 'revision_conflict' ? ' 档案已更新：请重新读取修订后再保存（新保存会使用新的请求编号）。' : ''}</Notice>}
       <Action secondary loading={readBackBusy.busy} onClick={() => void readBackBusy.run(async () => {
-        if (!editing?.materialId) throw new Error('该准备尚未物化为材料草稿');
-        setRevisedBody((await career.material(editing.materialId)).body);
+        const materialId = editing?.materialId ?? draftEditing?.materialId;
+        if (!materialId) throw new Error('该准备尚未物化为材料草稿');
+        setRevisedBody((await career.material(materialId)).body);
       })}>回读材料草稿正文（修订后的持久事实）</Action>
       {readBackBusy.error && <Notice tone='danger'>{readBackBusy.error} 可稍后重试。</Notice>}
-      <Action secondary onClick={() => { setEditing(undefined); setSections([]); setDraftNotice(''); setRevisedBody(undefined); }}>结束修订</Action>
+      <Action secondary onClick={() => { setEditing(undefined); setDraftEditing(undefined); setSections([]); setDraftNotice(''); setRevisedBody(undefined); }}>结束修订</Action>
     </Card>}
 
     {revisedBody && <Card tone='mint'>
