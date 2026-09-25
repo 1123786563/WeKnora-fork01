@@ -498,6 +498,12 @@ func (o *Office) ImportURLReceipt(ctx context.Context, input ImportURLInput) (Im
 		return ImportURLReceipt{}, err
 	}
 	if err = o.requireSpace(ctx, s); err != nil {
+		if isSQLiteBusy(err) {
+			// Space validation hit a transient SQLite lock before any claim
+			// or network I/O started; the same request ID may be retried, so
+			// report a typed unknown outcome instead of a raw lock error.
+			return ImportURLReceipt{}, &OutcomeUnknownError{RequestID: input.RequestID}
+		}
 		return ImportURLReceipt{}, err
 	}
 	input.RequestID = strings.TrimSpace(input.RequestID)
