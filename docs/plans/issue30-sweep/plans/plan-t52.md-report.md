@@ -671,3 +671,56 @@ ok 92 - composition exposes a delivery reader only under an authorized runtime
 
 - 计划注释要求的「授权面两次调用同实例」未能以纯行为断言落地（§4.2，环境限制而非实现疑点）：`cachePut` 记忆化语义由既有 1280 行用例与全量回归背书，若控制器希望更硬的证据，可在 Task 11 集成证据（真实 Runtime 装配）中补行为级断言。
 - `pnpm exec` 环境有预存在 WARNING（`Unsupported engine: wanted node>=26, current v22.22.3`），为全仓既有状态，非本任务引入。
+
+---
+
+# Task 10 · 修复轮 1 报告（审查发现 1 项 [plan-mandated]：交付读取失败静默的裁决上报）
+
+## 1. 发现核实（全部在本轮亲读/实跑）
+
+发现描述准确，事实核实如下：
+
+1. **实现现状**：`apps/mobile/src/app/tasks/detail.tsx:98-107` 的交付读取 effect 以 `.catch(() => { /* 交付区块缺失是合法空态（无交付/未登录），不阻塞详情 */ })` 收尾——`DeliveryReaderError` 的两类 code（`DELIVERY_BACKEND` / `DELIVERY_SCOPE_CHANGED`，`packages/mobile-core/src/delivery/delivery-reader.ts:9`）连同一切异常都被吞掉，**加载失败与无交付空态在 UI 上确实不可区分**。
+2. **计划明文**：`plan-t52.md:4865`「失败静默——交付区块缺失是合法空态」；`:4875` 计划自带代码块即为该 `.catch(() => { … })` 静默形态。实现逐字忠实于计划——发现自身的定性（`[plan-mandated]`「实现忠实执行」）与本核实一致。
+3. **Spec / Issue 层依据（裁决材料）**：
+   - Spec User Stories 41–48（`docs/specs/2026-09-20-mobile-ai-office-design.md:70-77`）全部聚焦服务端交付链语义（基线可复现、Diff 审阅、任务分支/草稿 PR、连接隔离、审计追溯、部分完成、凭据不进 Shell），**无一条**要求移动端交付读失败的用户可见性。
+   - Issue #52 三条验收标准（`docs/plans/issue30-sweep/issues/issue-52.md`）同样无此要求；移动面在本计划中的定位是「只读投影」（`plan-t52.md:7`）。
+   - 结论：计划「失败静默」与已批准 Spec / Issue **不存在冲突**——不触发「Spec 冲突须升级重设计」路径；「是否补失败态提示」是产品层裁量，且审查者已明示裁决位置在 **Task 11/Spec 层**，非本 diff。
+
+## 2. 修复动作与理由
+
+**不改 Task 10 实现。** 理由：
+
+1. 当前行为即计划明文要求；在实现层把「失败静默」改为「失败提示」属于对已批准计划的静默重设计（AGENTS.md 冲突规则所禁），且超出审查者指出的裁决层（Task 11/Spec）。
+2. 若报请人裁决需要失败态提示，正确的落地路径是：先在计划/Spec 层定稿语义（`DELIVERY_BACKEND` 与 `DELIVERY_SCOPE_CHANGED` 是否同文案、失败提示是否随重进页面消失等），再在 Task 11 或后续修复轮实现——届时本 diff 的 `.catch` 与测试断言随之演进。
+
+**未新增「钉死静默行为」的测试**，理由：`TaskDetailRouteLifecycle` 的 effect 依赖模块私有 `runtime()` 单例（`activeDeliveryReader()` 无参，composition.ts:309-314），「read 拒绝 → 详情照常渲染、无区块」在 app-smoke stub 基础设施下不可行为级构造（同 Task 10 报告 §4.2 已实证的环境限制）；而源码文本断言钉死 `.catch` 形态只锁实现细节，若裁决后改行为反而制造回归负担。现有 2 个 Task 10 测试与全量回归已覆盖「区块条件渲染」与「composition fail closed」两面。
+
+## 3. 回归证据（实跑，本轮）
+
+命令与输出（计划 Task 10 Step 4 指定的两个命令）：
+
+```
+$ pnpm --filter @weknora/mobile test
+1..156
+# tests 156
+# pass 151
+# fail 0
+# cancelled 0
+# skipped 5
+$ pnpm --filter @weknora/mobile typecheck
+（无诊断输出，exit 0）
+```
+
+与 Task 10 提交时基线（151 pass / 0 fail / 5 skipped、typecheck exit 0）一致，无回归。
+
+## 4. 文件清单
+
+本轮零代码改动；仅本报告追加。Task 10 既有提交（`e3fe4fe58`）不受影响。
+
+## 5. 提请报请人裁决
+
+「交付读取失败是否需要用户可见提示」——如裁决需要：
+- 语义输入：`DELIVERY_BACKEND`（服务端/网络失败，可重试）与 `DELIVERY_SCOPE_CHANGED`（scope 切换，应静默丢弃迟到结果）大概率不应同文案；
+- 落地位置建议 Task 11（集成证据轮）或独立修复轮，先改计划 `plan-t52.md` 对应行再动实现。
+
