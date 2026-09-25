@@ -284,6 +284,9 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewWorkbenchTaskStateStore))
 	must(container.Provide(NewWorkbenchTaskStateHandler))
 	must(container.Provide(NewWorkbenchTaskGrantsHandler))
+	must(container.Provide(NewTaskComplianceStore))
+	must(container.Provide(NewTaskComplianceService))
+	must(container.Provide(NewWorkbenchTaskComplianceHandler))
 	must(container.Provide(repository.NewMessageSuggestionRepository))
 	must(container.Provide(repository.NewModelRepository))
 	must(container.Provide(repository.NewUserRepository))
@@ -1046,6 +1049,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// O03 wiring: the craft tombstone at the session-deletion entrance (the
 	// Handler is fully constructible here — the router below resolves it).
 	must(container.Invoke(wireCraftSessionTombstone))
+	must(container.Invoke(wireTaskDeletionGuard))
 
 	// Router configuration
 	logger.Debugf(ctx, "[Container] Registering router and starting task server...")

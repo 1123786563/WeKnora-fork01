@@ -250,3 +250,23 @@ func RegisterWorkbenchLegacyTaskRoutes(r *gin.RouterGroup, h *session.WorkbenchL
 	legacy := g.apiKeyGroup(r.Group("/workbench/legacy-tasks", g.Viewer(), workbenchReadGate(g.cfg)), apiKeyChat(apiKeyFullAccess()))
 	legacy.GET("", h.ListLegacyTasks)
 }
+
+// RegisterWorkbenchTaskComplianceRoutes exposes the T13 compliance lanes:
+// tenant task policy, metadata-by-default, reasoned+time-limited+audited
+// content windows, and the retention purge. The lane is Admin+ at the route;
+// the handler repeats the predicate so an unguarded mount still fails closed.
+// The permanent-deletion endpoint reuses the :task_id wildcard the
+// archive/grants trees already bind.
+func RegisterWorkbenchTaskComplianceRoutes(r *gin.RouterGroup, h *session.WorkbenchTaskComplianceHandler, g *rbacGuards) {
+	if h == nil || g == nil {
+		return
+	}
+	compliance := g.apiKeyGroup(r.Group("/workbench/compliance", g.Admin()), apiKeyChat(apiKeyFullAccess()))
+	compliance.GET("/task-policy", h.GetTaskPolicy)
+	compliance.PUT("/task-policy", h.SetTaskPolicy)
+	compliance.GET("/tasks/:task_id", h.TaskMetadata)
+	compliance.POST("/tasks/:task_id/access", h.RequestContentAccess)
+	compliance.GET("/tasks/:task_id/content", h.ReadTaskContent)
+	purge := g.apiKeyGroup(r.Group("/workbench/tasks", g.Admin()), apiKeyChat(apiKeyFullAccess()))
+	purge.DELETE("/:task_id", h.PurgeTask)
+}

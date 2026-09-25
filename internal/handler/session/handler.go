@@ -67,6 +67,10 @@ type Handler struct {
 	// deleted (O03 integration wiring). Nil (craft not assembled) keeps the
 	// unchanged deletion flow.
 	craftTombstoner CraftSessionTombstoner
+	// taskDeletionGuard refuses the internal task deletion lanes when the
+	// tenant policy (legal hold) forbids them (T13). Nil (policy lane not
+	// assembled) keeps the deletion flow unchanged.
+	taskDeletionGuard TaskDeletionGuard
 	// browserSkill is the local-browser gateway (A13). Nil-safe by design:
 	// every browserskill.go handler treats the nil manager as disabled.
 	browserSkill *browserskill.Manager
@@ -114,6 +118,36 @@ type CraftSessionTombstoner interface {
 // SetCraftTombstoner installs the craft lifecycle tombstone entry (O03
 // integration wiring; see internal/container).
 func (h *Handler) SetCraftTombstoner(t CraftSessionTombstoner) { h.craftTombstoner = t }
+
+// TaskDeletionGuard refuses internal task deletion lanes when the tenant
+// policy (legal hold) forbids them (T13, #43). Implemented by
+// service.TaskComplianceService.AllowsTaskDeletion.
+type TaskDeletionGuard interface {
+	AllowsTaskDeletion(ctx context.Context, tenantID uint64, actorUserID, sessionID string) error
+}
+
+// SetTaskDeletionGuard installs the T13 legal-hold gate (see internal/container).
+func (h *Handler) SetTaskDeletionGuard(guard TaskDeletionGuard) { h.taskDeletionGuard = guard }
+
+// guardTaskDeletion applies the T13 policy gate before any destructive
+// delete. A refusal aborts with the AppError (409 under legal hold); an
+// infrastructure error aborts 500 — fail closed, deletion never proceeds
+// past a broken policy check.
+func (h *Handler) guardTaskDeletion(c *gin.Context, ctx context.Context, sessionID string) bool {
+	if h.taskDeletionGuard == nil {
+		return true
+	}
+	tenant, ok := types.TenantIDFromContext(ctx)
+	if !ok || tenant == 0 {
+		return true
+	}
+	actor, _ := types.UserIDFromContext(ctx)
+	if err := h.taskDeletionGuard.AllowsTaskDeletion(ctx, tenant, actor, sessionID); err != nil {
+		c.Error(err)
+		return false
+	}
+	return true
+}
 
 // tombstoneCraftSession runs the craft tombstone best-effort at the session
 // deletion entrance. The periodic sweep's discovery pass re-derives the
@@ -573,6 +607,10 @@ func (h *Handler) DeleteSession(c *gin.Context) {
 		c.Error(errors.NewNotFoundError("session not found"))
 		return
 	}
+	// T13: the tenant policy gate precedes every destructive delete.
+	if !h.guardTaskDeletion(c, ctx, id) {
+		return
+	}
 	// O03 wiring: the craft tombstone precedes the destructive deletes — the
 	// deleting mark blocks new dispatches and restores mid-teardown.
 	h.tombstoneCraftSession(ctx, id)
@@ -629,6 +667,10 @@ func (h *Handler) ClearSessionMessages(c *gin.Context) {
 		c.Error(errors.NewNotFoundError("session not found"))
 		return
 	}
+	// T13: the tenant policy gate precedes every destructive delete.
+	if !h.guardTaskDeletion(c, ctx, id) {
+		return
+	}
 	if err := h.fenceSessionRuns(ctx, id); err != nil {
 		c.Error(errors.NewInternalServerError(err.Error()))
 		return
@@ -681,6 +723,11 @@ func (h *Handler) BatchDeleteSessions(c *gin.Context) {
 	}
 
 	if req.DeleteAll {
+		// T13: the whole-tenant wipe is one tenant-level gate call, before
+		// any session is listed.
+		if !h.guardTaskDeletion(c, ctx, "batch:delete_all") {
+			return
+		}
 		sessions, listErr := h.sessionService.GetSessionsByTenant(ctx)
 		if listErr != nil {
 			c.Error(errors.NewInternalServerError(listErr.Error()))
@@ -730,6 +777,10 @@ func (h *Handler) BatchDeleteSessions(c *gin.Context) {
 	for _, id := range sanitizedIDs {
 		if _, ownErr := h.sessionService.GetOwnedSession(ctx, id); ownErr != nil {
 			c.Error(errors.NewNotFoundError("session not found"))
+			return
+		}
+		// T13: the tenant policy gate precedes every destructive delete.
+		if !h.guardTaskDeletion(c, ctx, id) {
 			return
 		}
 		h.tombstoneCraftSession(ctx, id)
