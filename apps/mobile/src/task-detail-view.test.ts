@@ -96,6 +96,6 @@ test('controller.act maps TaskOfficeError codes to user copy instead of raw code
   assert.match(TASK_OFFICE_ERROR_COPY.TASK_OFFICE_COMMAND_UNKNOWN, /核对/);
   assert.equal(TASK_OFFICE_ERROR_COPY.TASK_OFFICE_COMMAND_UNAVAILABLE, '当前部署未提供运行干预通道。');
   assert.equal(TASK_OFFICE_ERROR_COPY.TASK_OFFICE_NO_SNAPSHOT, '任务快照尚未同步，请稍候再试。');
-  assert.equal(TASK_OFFICE_ERROR_COPY.TASK_OFFICE_COMMAND_CONFLICT, '任务状态已变化，正在刷新最新状态。');
+  assert.equal('TASK_OFFICE_COMMAND_CONFLICT' in TASK_OFFICE_ERROR_COPY, false, '死码不得回潮：该码从未有抛出点（R1-F9），冲突走跨包契约码 TASK_COMMAND_CONFLICT');
   controller.dispose();
 });

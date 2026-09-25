@@ -16,7 +16,6 @@ export const TASK_OFFICE_ERROR_COPY: Record<string, string> = {
   TASK_OFFICE_DETAIL_CLOSED: '该任务详情已关闭。',
   TASK_OFFICE_COMMAND_UNAVAILABLE: '当前部署未提供运行干预通道。',
   TASK_OFFICE_NO_SNAPSHOT: '任务快照尚未同步，请稍候再试。',
-  TASK_OFFICE_COMMAND_CONFLICT: '任务状态已变化，正在刷新最新状态。',
   TASK_OFFICE_COMMAND_UNKNOWN: '指令结果未知，正在与服务端核对；核对完成前暂不能下达新指令。',
 };
 
