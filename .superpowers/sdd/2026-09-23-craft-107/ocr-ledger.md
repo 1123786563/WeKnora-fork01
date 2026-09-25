@@ -10,3 +10,4 @@ Open-code-review records for the delivered Craft #107 scope. Per `docs/plans/202
 | 2026-09-25 | T08: 13c656301^..d7e522c61 | clean（增量收敛后干净；范围经核实修正为 T08 4 提交，见报告头） | 0 open | 报告: docs/plans/craft-107-ocr-t08.md |
 | 2026-09-25 | T04: dd1cc3b83^..9542f2d99 | clean（增量收敛后干净） | 0 open | 报告: docs/plans/craft-107-ocr-t04.md |
 | 2026-09-25 | T10: adf910ac1^..c799642d0 | clean（首轮即净，纯迁移 0 findings） | 0 open | 报告: docs/plans/craft-107-ocr-t10.md |
+| 2026-09-26 | T14: eeb1ee2db^..700238a7 | clean（增量收敛后干净；范围经核实修正为 T14 提交序列，见报告头） | 0 open | 报告: docs/plans/craft-107-ocr-t14.md |
