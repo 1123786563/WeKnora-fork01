@@ -244,6 +244,9 @@ var ErrTaskLegalHold = apperrors.NewConflictError("task deletion is blocked by t
 // No policy or hold off → nil (today's flow). Hold on → ErrTaskLegalHold
 // with an audit row; the refusal stands even when its audit write fails
 // (deletion is already denied — the audit is the trail, not the authority).
+// Unlike the audited paths this gate is best-effort on the audit write: a
+// nil audit (mis-assembled deployment) skips the row but still refuses —
+// it never panics and never un-gates the hold.
 func (s *TaskComplianceService) AllowsTaskDeletion(ctx context.Context, tenantID uint64, actorUserID, sessionID string) error {
 	policy, err := s.store.GetTaskPolicy(ctx, tenantID)
 	if err != nil {
@@ -251,6 +254,9 @@ func (s *TaskComplianceService) AllowsTaskDeletion(ctx context.Context, tenantID
 	}
 	if policy == nil || !policy.LegalHold {
 		return nil
+	}
+	if s.audit == nil {
+		return ErrTaskLegalHold
 	}
 	_ = s.audit.Log(ctx, &types.AuditLog{
 		TenantID: tenantID, ActorUserID: actorUserID,

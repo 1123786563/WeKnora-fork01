@@ -258,6 +258,27 @@ func TestAllowsTaskDeletionUnderLegalHold(t *testing.T) {
 	require.ErrorIs(t, err, ErrTaskLegalHold)
 }
 
+// Final-review finding (issue30-sweep t43): AllowsTaskDeletion called
+// s.audit.Log without a nil check while its comment promised a nil audit
+// merely "skips the trail but keeps the refusal" — in reality it panicked.
+// Regression: a nil audit (mis-assembled deployment; production always
+// Provides one) must skip the row AND still refuse, never panic.
+func TestAllowsTaskDeletionWithNilAuditStillRefuses(t *testing.T) {
+	store := &stubComplianceStore{
+		facts: &types.TaskMetadataFacts{TaskID: "s1", Title: "task-s1", OwnerID: "u1", RunCount: 1, LastRunState: "succeeded"},
+	}
+	svc := NewTaskComplianceService(store, nil)
+	ctx := context.Background()
+
+	// Hold off → ungated even without an audit service.
+	require.NoError(t, svc.AllowsTaskDeletion(ctx, 1, "u1", "s1"))
+
+	// Hold on → refused (not panicked) with no audit row to write.
+	store.policy = &types.TenantTaskPolicy{TenantID: 1, LegalHold: true}
+	err := svc.AllowsTaskDeletion(ctx, 1, "u1", "s1")
+	require.ErrorIs(t, err, ErrTaskLegalHold)
+}
+
 // T13 (#43) Task 6: the permanent-deletion check chain. Legal hold refuses
 // first; a live (not soft-deleted) task refuses; the retention window
 // refuses; past the horizon proceeds with the audit row written BEFORE the
