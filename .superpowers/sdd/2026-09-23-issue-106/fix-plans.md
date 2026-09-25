@@ -1084,3 +1084,148 @@ docs/plans/issue-106-*.md 报告文件非二进制产物，不属于本指令范
   ./internal/handler/` ok；`go test -race -count=2
   ./examples/plugins/jira-todo-mcp/` ok（4.811s）。
 - 提交：仅本文件复核记录（中文，标注「跨任务转交复核」）。
+
+---
+
+# OCR 第 1 轮修复批次计划（R12 轮，2026-09-24）——20 项（F01-F04/F06-F21）
+
+输入：OCR 第 1 轮 21 条中 20 条有效发现（无 F05）。原则不变：证据优先、
+TDD、中文提交标注「OCR 一轮 R12」、范围仅本 worktree。处置前逐项读码核实
+（plugin.go:348-374、plugin_install_service.go 全文、manifest.go:135-172、
+snapshot.go:60-90、run-with-node-gte26.mjs/run-gates.mjs 全文、package.json:13-15、
+frontend.yml:41、oauth.go:405-425/538-556、main.go:188-208），20 条全部属实。
+按域分五批，依赖关系：R12-D（共享节点模块）先行——F11 是 F09/F10 的载体；
+R12-B 依赖 R12-C 的守卫语义（F06 的 fail-open 面由 F20 关闭）。
+
+## R12-A（medium×2）安装确认错误映射面 [T06]：F01/F02
+
+- 根因：mapPluginInstallationError default 分支把未映射错误判 400 并回显
+  err.Error()（F01：第 7 步 MarkPreviewConsumed 非 NotFound 仓储故障经补偿
+  原样上抛→驱动内部文本直达 400 响应体）；且漏列 ErrPreviewPersistFailed
+  （F02：第 1 步 GetPreview 仓储故障哨兵落入 default 被判 400）。
+- 文件：internal/handler/plugin.go——ErrPreviewPersistFailed 并入 500 case；
+  default 改保守 500 + 固定文案（细节仅日志），FetchAndVerify 的确定性
+  校验错误仍按既有 4xx 哨兵/IsOAuthProtected 分支先行命中。
+- 回归测试（先 RED）：TestConfirmInstallationHandlerUnknownRepoFaultIs500Not400
+  （stub 返回非哨兵 DB 错误→500 且 body 不含驱动文本）、
+  TestConfirmInstallationHandlerPreviewPersistFailedIs500（RED：现 400）。
+
+## R12-B（high×2+medium×2+low×2）补偿健壮性与状态一致性 [T06]：F14/F06/F16/F15/F17/F21
+
+- 根因：①补偿复用已取消 ctx（F14）且物化服务软删留孤儿策略行（F21）；
+  ②残留安装行锁死 uq(tenant,plugin) 无解锁入口（F06b）；③并发确认输家
+  收 duplicate-key 原始错误被笼统 500（F15）；④SetInstallationState 两段写
+  无回滚产生 disabled 安装+Enabled 服务的不一致（F16）；⑤Step 7 折叠语义
+  把跨 TTL 过期误报为已消费（F17）。
+- 文件：plugin_install_service.go（补偿改 context.WithoutCancel+独立 15s
+  超时；MarkPreviewConsumed NotFound 分支重读 preview 区分消费/过期；
+  CreateInstallation duplicate-key 改写 ErrPluginAlreadyInstalled；
+  SetInstallationState 改方向序写入——disable 先服务后安装、enable 先安装
+  后服务，任一失败面收敛 fail-closed 并尽力回滚安装行）；repository/plugin.go
+  （CreateInstallation 识别唯一约束冲突→哨兵 ErrInstallationDuplicateKey；
+  新增 HardDeleteServiceCascade 硬删物化服务+按 service_id 清策略行）；
+  interfaces/plugin.go + dto/handler/routes（新增 DELETE
+  /plugins/installations/:id 卸载入口（Admin）：删物化服务（硬删+策略行）+
+  硬删安装行，释放唯一槽——计划 03「本版不提供卸载」的口径由本 finding
+  裁定突破，docs 同步注明）。
+- 回归测试：TestConfirmInstallationCompensatesWithCancelledContext（fake 记录
+  ctx 取消后补偿仍执行）、TestMarkPreviewConsumedExpiredSurfacesExpiry（跨
+  TTL→ErrPreviewExpired 非 AlreadyConsumed）、TestCreateInstallationDuplicate
+  （fake 返回约束冲突→ErrPluginAlreadyInstalled→409）、
+  TestSetInstallationStateFailureStaysFailClosed（服务同步失败→服务保持
+  禁用向）、TestUninstallInstallationReleasesUniqueSlot（卸载后可重装）、
+  handler 卸载 200/404 映射。
+
+## R12-C（medium×1，high F06 的运行面）守卫 fail-closed [T09]：F20
+
+- 根因：guard 仅以「查到安装行」判定插件物化——窗口期（第 6 步先提交
+  Enabled 服务、绑定与策略后写）与孤儿物化服务（补偿删服务失败删安装成功）
+  均解析 (nil,nil) 走 manual 未过滤路径，写工具无策略行默认 enabled。
+- 文件：mcp_tool.go loader 闭包——snap==nil 且 service.PluginInstallationID
+  != nil 时返回 fail-closed 错误（该字段随 CreateMCPService 原子落库，
+  足以区分 manual NULL）。
+- 回归测试：TestRegisterMCPToolsOrphanPluginServiceFailsClosed（服务带
+  PluginInstallationID + guard (nil,nil) → 目录失败；manual 服务不受影响）。
+
+## R12-D（high×2+medium×3+low×2）节点门禁基建 [scripts]：F07/F08/F09/F10/F11/F12/F13
+
+- 根因：wrapper 只覆盖 test:shared（F07）；信号终止 status:null 假绿 +
+  spawn 失败静默（F08）；Linux 无候选路径→CI 确定性红（F09，frontend.yml
+  NODE_VERSION 24 与 engines >=26 不一致）；shim 目录名可预测可预创建
+  （F10，CWE-377/426）；与 run-gates.mjs 逐行重复（F11，双份同步负担）；
+  无信号清理（F12）；注释引用未入库文件（F13）。
+- 文件：新建 scripts/lib/node-gte26.mjs（majorOf/candidateBin/
+  findNodeGte26+PATH 扫描+Linux 候选/mkdtempSync 随机 shim 目录/信号
+  清理 helper），run-with-node-gte26.mjs 与 run-gates.mjs 改 import 共享
+  （run-gates 的固定 shim 目录一并换 mkdtempSync）；package.json
+  test:craft:shared 加 wrapper 前缀；frontend.yml NODE_VERSION "24"→"26"；
+  注释改注明 environment.md 仅存在于本地工作区。
+- 验证：node 直跑 wrapper（exit 0/spawn 失败/信号杀死三态 exit code 与
+  输出）；pnpm run test:craft:shared 真实跑通。
+
+## R12-E（low×4）回显与示例服务卫生 [T01/T04]：F03/F04/F18/F19
+
+- 根因：manifest parse 失败回显可泄 userinfo（F03）；未净化名称重复回显
+  未按名去重违契约（F04）；AllowedRedirectHosts 裸主机名匹配任意端口且
+  host:port 条目永Miss（F18）；HTML 页缺 Cache-Control: no-store（F19）。
+- 文件：manifest.go（回显前脱敏 authority 中 userinfo）；
+  snapshot.go（reportedUnvetted 按名去重）；oauth.go（名单匹配改
+  parsed.Host，裸 host 条目=任意端口、host:port 条目=精确——注释注明；
+  setHTMLPageHeaders 补 Cache-Control: no-store）；main.go（parseHostList
+  注释同步，条目形态文档化）。
+- 回归测试：TestValidateManifestParseFailureMasksUserinfo、
+  TestBuildVerifiedSnapshotDedupesUnvettedNames、
+  TestRegisterRedirectHostPortSemantics、TestAuthorizePagesNoStoreHeader。
+
+## R12 轮完成条件（总）
+
+1. 全部新测试先 RED 后 GREEN；受影响包
+   （modules/plugins/handler/application/agentruntime tools/examples）复跑全绿；
+2. `pnpm run test:craft:shared` 真实跑通；wrapper 三态 exit code 验证；
+3. `go build ./...` exit 0；改动文件 gofmt/vet 干净；
+4. 中文提交标注「OCR 一轮 R12」，按域分批 [scripts]/[T01]/[T06]/[T09]/[T04]；
+5. 本节回填完成记录。
+
+### R12 轮完成记录（2026-09-24，跨任务转交修复轮 2026-09-26 收敛回填）
+
+R12 计划五批次中，本轮（跨任务转交统一修复会话）实际收敛的范围与证据：
+
+**R12-D（scripts/CI）——全部完成**（前轮已写主体代码未提交，本轮验证+补缺口）：
+- `scripts/lib/node-gte26.mjs` 抽取共享（F11）：两入口改 import，单一实现；
+- Linux/`$PATH` 候选发现（F09）+ `frontend.yml` NODE_VERSION "24"→"26"（CI 与
+  engines >=26 对齐）——T01-OCR1-F1 的两面修复；
+- 退出码纪律（F08 = T01-OCR1-F2）：`spawnExitCode` 三态（干净透传/信号杀死
+  exit 1 + 诊断/spawn 失败 exit 1 + ENOENT 输出），`exitWithSpawnResult` 委托；
+- mkdtempSync 随机 shim 目录（F10）+ SIGINT/SIGTERM 清理（F12）；
+- `test:craft:shared` 加 wrapper 前缀（F07 = T01-OCR1-F11）；
+- 本轮增补：`createNodeShim` symlink EPERM → copyFileSync 兜底 + PATH 拼接改
+  `path.delimiter`（T01-OCR1-F12 win32 兼容）；`test:mobile-v2` 同款 wrapper
+  前缀（T04-OCR1-F16 尾巴）；新增 `scripts/lib/node-gte26.test.mjs` 十条单测。
+- 证据：单测 10/10；wrapper 端到端四态 exit code（0 / 3 透传 / SIGTERM→1+
+  诊断 / ENOENT→1+诊断）；`pnpm run test:craft:shared` 真跑 113/113；
+  `pnpm run test:mobile-v2` 0 tests exit 0（目录仅 fixtures，与改造前行为一致）；
+  frontend.yml NODE_VERSION="26" 就位（宿主无 pyyaml，YAML 深度解析未跑，
+  逐行 diff 人工核对）。
+
+**R12-E 之 F03（manifest 回显脱敏）——代码与测试已就位，本轮验证提交**：
+`TestValidateManifestParseFailureMasksUserinfo` 真跑 ok。
+
+**R12-A/B/C 及 R12-E 其余项（F01/F02/F04/F06/F14-F21 等）——本轮未实施**：
+不在本次跨任务转交清单内（已按任务归属另行分流），状态如实保留为未做。
+
+**本轮另完成的跨任务转交项**（详见对应提交信息）：
+- T06-OCR1-F11：`ErrPluginManagedService` 三写面（PUT/DELETE/credentials PUT）
+  经 `pluginManagedConflict` 映射 409（新增 handler 测试 4 条，RED→GREEN；
+  handler/service/plugins 三包全量回归绿）；
+- T07-OCR1-F9：handler `CreateMCPService` 绑定后剥离客户端提供的
+  `plugin_installation_id`（物化路径只走插件安装服务内部调用）；
+- T08-OCR1-F1 缺口①：`settingsSectionLabel` 对 `integration-plugins` 直译
+  兜底（比照 T03 先例；@weknora/i18n 主表无 integrations.tabs.plugins 词条）；
+- T08-OCR2-F5：`page.tsx` 新增 `pluginsSlot` view 层插槽 + `tab === 'plugins'`
+  渲染分支，`IntegrationsRoutePage` 接线 `PluginsPanel`（面板本体 T08/T12 已
+  建成但此前无任何挂载点）；
+- 证据：page.test 11/11、SettingsPage.test 26/26、PluginsPanel.test 12/12、
+  typecheck:web / typecheck:shared 退出 0、page.tsx 单独 tsc 通过。
+
+**工作区卫生**：`examples/plugins/jira-todo-mcp/jira-todo-mcp` 与仓库根
+`jira-todo-mcp` 二进制产物经 `test -f` 确认均不存在，无需清理。
