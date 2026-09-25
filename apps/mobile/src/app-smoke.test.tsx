@@ -863,7 +863,8 @@ test('composition wires the knowledge QA remote into Task Office and /ask consum
   const composition = readFileSync(join(here, 'composition.ts'), 'utf8');
   const askRoute = readFileSync(join(here, 'app/ask.tsx'), 'utf8');
   const home = readFileSync(join(here, 'screens/HomeScreen.tsx'), 'utf8');
-  assert.match(composition, /knowledgeQA:\s*createMobileKnowledgeQARemote\(/, 'Task Office 必须装配 knowledgeQA 端口');
+  // R1-F7：组合根为 knowledgeQA 接 guardKnowledgeQABackend 端口级纵深（断言随新接线语义更新）。
+  assert.match(composition, /knowledgeQA:\s*guardKnowledgeQABackend\(\s*createMobileKnowledgeQARemote\(/, 'Task Office 必须装配 knowledgeQA 端口（经 Offline Guard 纵深）');
   assert.match(composition, /import \{ createMobileKnowledgeQARemote \} from '@weknora\/api-client\/mobile\/knowledge-qa';/);
   assert.match(askRoute, /activeTaskOffice\(\)/, '/ask 只经组合根取 Task Office，不直连 api-client');
   assert.doesNotMatch(askRoute, /@weknora\/api-client/, 'Screen/路由禁止直连 wire 客户端（module-seams §10）');

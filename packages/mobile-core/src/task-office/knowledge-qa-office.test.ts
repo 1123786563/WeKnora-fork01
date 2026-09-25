@@ -4,6 +4,7 @@ import { RuntimeScopeLease } from '../runtime/scope-lease.ts';
 import type { ScopeLease } from '../runtime/types.ts';
 import { createScenarioTaskBackend } from './in-memory-task-backend.ts';
 import { createScenarioKnowledgeQABackend } from './knowledge-qa.ts';
+import { createOfflineGate, OfflineGateError } from '../offline/offline-gate.ts';
 import { createTaskOffice, TaskOfficeError } from './task-office.ts';
 
 function leased() {
@@ -102,6 +103,52 @@ test('askKnowledge invalidates in-flight list reads like followUp does', async (
   await office.askKnowledge({ question: '问' });
   resolveList!({ items: [] });
   await assert.rejects(older, (error: unknown) => error instanceof TaskOfficeError && error.code === 'TASK_OFFICE_SUPERSEDED');
+});
+
+test('offline askKnowledge is refused OFFLINE_ACTION_BLOCKED:run with zero backend dispatch (R1-F7)', async () => {
+  const leaseRef: { lease?: ScopeLease } = {};
+  leaseRef.lease = leased().lease;
+  const created: string[] = [];
+  const backend = createScenarioTaskBackend({
+    createSession: async (input) => { created.push(input.title); return { sessionId: 'new-1' }; },
+  });
+  const knowledgeQA = createScenarioKnowledgeQABackend({
+    ask: async () => ({ answer: '不应到达', isFallback: false, evidence: citedOfficeEvidence() }),
+  });
+  const office = createTaskOffice({
+    backend, knowledgeQA,
+    gate: createOfflineGate({ online: async () => false }),
+    lease: () => leaseRef.lease,
+  });
+  await assert.rejects(
+    office.askKnowledge({ question: '离线提问' }),
+    (error: unknown) => error instanceof OfflineGateError && error.action === 'run',
+    '离线 askKnowledge 必须以 OFFLINE_ACTION_BLOCKED:run 结构化拒绝，而不是 transport 错误伪装成 TASK_OFFICE_BACKEND',
+  );
+  assert.deepEqual(created, [], '零后端派发：createSession 不得被触达');
+  assert.equal(knowledgeQA.calls.length, 0, '零后端派发：ask 不得被触达');
+});
+
+test('an online gate lets askKnowledge dispatch as usual (R1-F7 no-regression)', async () => {
+  const leaseRef: { lease?: ScopeLease } = {};
+  leaseRef.lease = leased().lease;
+  const created: string[] = [];
+  const knowledgeQA = createScenarioKnowledgeQABackend({
+    ask: async () => ({ answer: '回答', isFallback: false, evidence: citedOfficeEvidence() }),
+  });
+  const office = createTaskOffice({
+    backend: createScenarioTaskBackend({
+      createSession: async (input) => { created.push(input.title); return { sessionId: `new-${created.length}` }; },
+    }),
+    knowledgeQA,
+    gate: createOfflineGate({ online: async () => true }),
+    lease: () => leaseRef.lease,
+  });
+  const turn = await office.askKnowledge({ question: '在线提问' });
+  assert.equal(turn.sessionId, 'new-1');
+  assert.equal(turn.answer, '回答');
+  assert.deepEqual(created, ['在线提问'], '在线门放行：createSession 正常触达');
+  assert.equal(knowledgeQA.calls.length, 1, '在线门放行：ask 正常触达');
 });
 
 function citedOfficeEvidence() {

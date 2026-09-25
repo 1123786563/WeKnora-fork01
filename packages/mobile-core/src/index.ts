@@ -87,7 +87,7 @@ export { createScenarioTaskBudgetBackend } from './task-office/in-memory-task-bu
 export type { ScenarioTaskBudgetScript } from './task-office/in-memory-task-budget.ts';
 export { createOfflineGate, OfflineGateError, OFFLINE_ACTION_BLOCKED } from './offline/offline-gate.ts';
 export type { NetworkStatusPort, OfflineActionKind, OfflineGate } from './offline/offline-gate.ts';
-export { guardInteractionBackend, guardLegacyTaskBackend, guardTaskBackend } from './offline/guarded-ports.ts';
+export { guardInteractionBackend, guardKnowledgeQABackend, guardLegacyTaskBackend, guardTaskBackend } from './offline/guarded-ports.ts';
 // T15（#45）：知识问答证据域与 Task Office askKnowledge 端口。
 // 集成说明（T15 #45 × material #T11）：material 域已占用本名导出 EvidenceCitation（material/types.ts）。
 // 知识问答引用在 barrel 以 KnowledgeQAEvidenceCitation 别名导出（与上方 AttentionInboxItem 同先例），

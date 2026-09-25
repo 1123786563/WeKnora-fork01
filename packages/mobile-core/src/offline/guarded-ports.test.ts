@@ -4,8 +4,9 @@ import { emptyOverview, createScenarioTaskBackend } from '../task-office/in-memo
 import type { TaskBackendPort, TaskBackendStartInput } from '../task-office/task-office.ts';
 import type { InteractionBackendPort, InteractionActionValue, InteractionKindValue, InboxItem, ResolvedDecisionRecord } from '../task-office/attention-inbox.ts';
 import type { LegacyBackendTask, LegacyFollowUpInput, LegacyMessage, LegacyTaskBackendPort, LegacyTaskBackendPage } from '../task-office/legacy-tasks.ts';
+import type { KnowledgeQABackendPort } from '../task-office/knowledge-qa.ts';
 import { createOfflineGate, OfflineGateError, type NetworkStatusPort } from './offline-gate.ts';
-import { guardInteractionBackend, guardLegacyTaskBackend, guardTaskBackend } from './guarded-ports.ts';
+import { guardInteractionBackend, guardKnowledgeQABackend, guardLegacyTaskBackend, guardTaskBackend } from './guarded-ports.ts';
 
 const startInput: TaskBackendStartInput = {
   request_id: 'req-1', session_id: 'session-1', agent_id: 'agent-1', target_id: 'platform', workspace_ref: '', text: 'goal', budget_upper: 10,
@@ -98,4 +99,28 @@ test('guards preserve the scenario backend structure (structural compatibility w
   const guarded = guardTaskBackend(scenario, createOfflineGate(online));
   const methods: Array<keyof TaskBackendPort> = ['overview', 'list', 'archive', 'restore', 'createSession', 'start', 'lookup'];
   for (const method of methods) assert.equal(typeof guarded[method], 'function', `${String(method)} must survive the guard`);
+});
+
+const knowledgeTurn = {
+  answer: '回答', isFallback: false,
+  evidence: {
+    state: 'cited' as const, semanticGraphUsed: false, retrievedAt: '2026-09-24T08:00:00Z',
+    citations: [], conclusions: [],
+    reasoning: { requested: false, state: 'not_requested' as const, retryable: false },
+  },
+};
+
+test('offline knowledge ask is refused as run; online passes through (R1-F7 port-level defense)', async () => {
+  const log: string[] = [];
+  const knowledgeQA: KnowledgeQABackendPort = { ask: async () => { log.push('ask'); return knowledgeTurn; } };
+  const guarded = guardKnowledgeQABackend(knowledgeQA, createOfflineGate(offline));
+  await assert.rejects(
+    guarded.ask({ sessionId: 's1', question: '问' }),
+    (error: unknown) => error instanceof OfflineGateError && error.action === 'run',
+  );
+  assert.deepEqual(log, [], 'an offline dangerous action must never reach the backend');
+  const onlineGuarded = guardKnowledgeQABackend(knowledgeQA, createOfflineGate(online));
+  const turn = await onlineGuarded.ask({ sessionId: 's1', question: '问' });
+  assert.equal(turn.answer, '回答');
+  assert.deepEqual(log, ['ask']);
 });

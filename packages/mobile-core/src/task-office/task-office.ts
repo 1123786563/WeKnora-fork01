@@ -262,6 +262,8 @@ export function createInMemoryIntentLog(): SubmissionIntentLog {
 
 const searchMaxLen = 200;
 const statusFilters: ReadonlySet<TaskStatusFilter> = new Set(['running', 'waiting_user', 'succeeded', 'failed', 'canceled']);
+const QUESTION_MAX_LEN = 8000; // legacy followUp 与 askKnowledge 共用的提问长度上限（R1-F8）
+const SESSION_TITLE_MAX_LEN = 60; // 目标会话标题截断（start 与 askKnowledge 共用）（R1-F8）
 
 function normalizeQuery(query: TaskOfficeQuery): TaskBackendListInput {
   const search = typeof query.search === 'string' ? query.search.trim().replace(/\s+/g, ' ').slice(0, searchMaxLen) : '';
@@ -542,7 +544,7 @@ export function createTaskOffice(ports: TaskOfficePorts): TaskOffice {
         // 包装），零后端派发；上方 bound 幂等重放（零网络）不受影响，仍可离线返回回执。
         // if 形式而非 ?.：gate 缺省时不引入额外微任务（start 的 mid-start 撤权时序语义不变）。
         if (ports.gate !== undefined) await ports.gate.assertOnline('run');
-        const session = await callBackend(() => ports.backend.createSession({ title: startGoal.text.trim().slice(0, 60) }));
+        const session = await callBackend(() => ports.backend.createSession({ title: startGoal.text.trim().slice(0, SESSION_TITLE_MAX_LEN) }));
         if (!leaseActive(lease)) throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED');
         sessionId = session.sessionId;
         await intentLog.save({ requestId, sessionId, goal: startGoal, scope, persistedAt: new Date().toISOString() });
@@ -642,7 +644,7 @@ export function createTaskOffice(ports: TaskOfficePorts): TaskOffice {
       const lease = requireLease();
       const taskId = (input?.taskId ?? '').trim();
       const question = (input?.question ?? '').trim();
-      if (taskId === '' || question === '' || question.length > 8000) throw new TaskOfficeError('TASK_OFFICE_INVALID_INPUT');
+      if (taskId === '' || question === '' || question.length > QUESTION_MAX_LEN) throw new TaskOfficeError('TASK_OFFICE_INVALID_INPUT');
       await callBackend(() => requireLegacy().followUp({ taskId, question, ...(input.signal === undefined ? {} : { signal: input.signal }) }));
       if (!leaseActive(lease)) throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED');
       // 追问改变了会话 updated_at：一切在途读失效（与 archive/restore 同规则）。
@@ -656,12 +658,17 @@ export function createTaskOffice(ports: TaskOfficePorts): TaskOffice {
     async askKnowledge(askInput: { question: string; sessionId?: string; knowledgeBaseIds?: string[]; signal?: AbortSignal }): Promise<KnowledgeQATurn> {
       const lease = requireLease();
       const question = (askInput?.question ?? '').trim();
-      if (question === '' || question.length > 8000) throw new TaskOfficeError('TASK_OFFICE_INVALID_INPUT');
+      if (question === '' || question.length > QUESTION_MAX_LEN) throw new TaskOfficeError('TASK_OFFICE_INVALID_INPUT');
       if (ports.knowledgeQA === undefined) throw new TaskOfficeError('TASK_OFFICE_KNOWLEDGE_QA_UNAVAILABLE');
+      // R1-F7：与 start() 同款纵深防御第一道——askKnowledge 的两笔网络派发（无 sessionId
+      // 时的 createSession、knowledgeQA.ask）都触发服务端执行，离线时在首笔之前结构化拒绝。
+      // 在 callBackend 之外直接上抛（不被包装成 TASK_OFFICE_BACKEND）；if 形式而非 ?.：gate
+      // 缺省时不引入额外微任务（与 start 同一注释约定）。
+      if (ports.gate !== undefined) await ports.gate.assertOnline('run');
       let sessionId = (askInput?.sessionId ?? '').trim();
       if (sessionId === '') {
         // 快速知识问题也是 Task（spec 故事 12/24）：一次初始提问创建目标会话。
-        const session = await callBackend(() => ports.backend.createSession({ title: question.slice(0, 60) }));
+        const session = await callBackend(() => ports.backend.createSession({ title: question.slice(0, SESSION_TITLE_MAX_LEN) }));
         if (!leaseActive(lease)) throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED');
         sessionId = session.sessionId;
       }

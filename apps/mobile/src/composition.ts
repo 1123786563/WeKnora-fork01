@@ -11,7 +11,7 @@ import type { MobileRuntime, RuntimeSnapshot, ScopedVault, Deployment } from '@w
 import { createTaskOffice, type TaskOffice } from '@weknora/mobile-core';
 import { createTaskMaterial } from '@weknora/mobile-core';
 import type { TaskMaterial } from '@weknora/mobile-core';
-import { createOfflineGate, createVaultTaskProjectionStore, guardInteractionBackend, guardLegacyTaskBackend, guardTaskBackend } from '@weknora/mobile-core';
+import { createOfflineGate, createVaultTaskProjectionStore, guardInteractionBackend, guardKnowledgeQABackend, guardLegacyTaskBackend, guardTaskBackend } from '@weknora/mobile-core';
 import { createNativeNetworkStatusIfAvailable } from './adapters/network-status.ts';
 import { createDeliveryReader, type DeliveryReader } from '@weknora/mobile-core';
 import { createMobileCodeDeliveryRemote } from '@weknora/api-client/mobile/code-delivery';
@@ -187,11 +187,12 @@ function taskOfficeFor(activeRuntime: MobileRuntime, origin: string, tenantId: s
       }), nativeOfflineGate),
       budget: createMobileTaskBudgetRemote({ origin, request: (input) => activeRuntime.authorizedRequest(input) }),
       // T15（#45）：知识问答端口——同一授权读/流通道（不新建传输），evidence 帧缺失 fail closed。
-      knowledgeQA: createMobileKnowledgeQARemote({
+      // R1-F7：端口级纵深防御第二道——askKnowledge 触发服务端执行，与 backend/legacy 同款接 guard。
+      knowledgeQA: guardKnowledgeQABackend(createMobileKnowledgeQARemote({
         origin,
         request: (input) => activeRuntime.authorizedRequest(input),
         stream: (input, onChunk) => activeRuntime.authorizedEventStream(input, onChunk),
-      }),
+      }), nativeOfflineGate),
       lease: () => activeRuntime.scopeLease(),
       // T10（#40）AC1：获准 Task 内容的加密投影经 Scoped Vault event-projection 仓储持久化；
       // vault 缺席（无 WebCrypto/SecureStore）时显式回退 in-memory——持久化缺失是组合根的显式决策
