@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/Tencent/WeKnora/internal/application/service"
+	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/modules/craft"
 )
 
@@ -135,7 +136,7 @@ func LoadCraftWebToolchainPin(dir string) (CraftWebToolchainPin, error) {
 	sort.Strings(listed)
 	fixed := append([]string(nil), craftWebFixedDependencies...)
 	sort.Strings(fixed)
-	if !equalStrings(listed, fixed) {
+	if !sameStrings(listed, fixed) {
 		return CraftWebToolchainPin{}, fmt.Errorf("%w: craft web toolchain dependencies must be exactly %v, got %v", craft.ErrInvalidInput, fixed, listed)
 	}
 	if !validSHA256Hex(lock.Template.SHA256) || !validSHA256Hex(lock.BuildProgram.SHA256) || !validSHA256Hex(lock.ToolchainDigest) {
@@ -148,18 +149,28 @@ func LoadCraftWebToolchainPin(dir string) (CraftWebToolchainPin, error) {
 	}
 
 	// Re-verify the actual bytes: template, every dependency, build program.
-	if got := fileDigestOrEmpty(filepath.Join(dir, "template.html")); got != lock.Template.SHA256 {
+	// Read failures surface as deployment errors (ErrInvalidInput chain), so
+	// ErrConflict stays reserved for "bytes were read but differ from the
+	// pin" — a mis-deployed directory is not tampering.
+	if got, err := fileDigest(filepath.Join(dir, "template.html")); err != nil {
+		return CraftWebToolchainPin{}, err
+	} else if got != lock.Template.SHA256 {
 		return CraftWebToolchainPin{}, fmt.Errorf("%w: craft web template bytes differ from the pin", craft.ErrConflict)
 	}
 	deps := map[string]string{}
 	for _, name := range craftWebFixedDependencies {
-		got := fileDigestOrEmpty(filepath.Join(dir, "deps", name))
+		got, err := fileDigest(filepath.Join(dir, "deps", name))
+		if err != nil {
+			return CraftWebToolchainPin{}, err
+		}
 		if got != byName[name] {
 			return CraftWebToolchainPin{}, fmt.Errorf("%w: craft web dependency %s bytes differ from the pin", craft.ErrConflict, name)
 		}
 		deps[name] = got
 	}
-	if got := fileDigestOrEmpty(filepath.Join(dir, "build.py")); got != lock.BuildProgram.SHA256 {
+	if got, err := fileDigest(filepath.Join(dir, "build.py")); err != nil {
+		return CraftWebToolchainPin{}, err
+	} else if got != lock.BuildProgram.SHA256 {
 		return CraftWebToolchainPin{}, fmt.Errorf("%w: craft web build program bytes differ from the pin", craft.ErrConflict)
 	}
 
@@ -244,7 +255,7 @@ func validCraftWebLocalAsset(asset string) error {
 	if strings.Contains(asset, "\\") || strings.Contains(asset, "\x00") {
 		return fmt.Errorf("%w: craft web asset path %q is not a plain relative path", craft.ErrInvalidInput, asset)
 	}
-	if strings.HasPrefix(asset, "/") || strings.HasPrefix(asset, "//") {
+	if strings.HasPrefix(asset, "/") {
 		return fmt.Errorf("%w: craft web asset %q must be relative, not absolute", craft.ErrInvalidInput, asset)
 	}
 	if strings.Contains(asset, "://") {
@@ -267,6 +278,13 @@ func CraftWebBuildEvidence(log CraftWebBuildLog, pin CraftWebToolchainPin) (craf
 	}
 	if log.TemplateSHA256 != pin.TemplateSHA256 {
 		return craft.ArtifactEvidence{}, fmt.Errorf("%w: build log names template %s, deployment pins %s", craft.ErrConflict, log.TemplateSHA256, pin.TemplateSHA256)
+	}
+	// The toolchain digest derivation does not include the version string,
+	// so the log's declared version is compared directly: a log claiming a
+	// different template version than the pinned one is a foreign log even
+	// when every digest matches.
+	if log.TemplateVersion != pin.TemplateVersion {
+		return craft.ArtifactEvidence{}, fmt.Errorf("%w: build log names template version %s, deployment pins %s", craft.ErrConflict, log.TemplateVersion, pin.TemplateVersion)
 	}
 	return craft.ArtifactEvidence{BuildRan: true, BuildExitCode: log.ExitCode}, nil
 }
@@ -292,14 +310,25 @@ func craftWebBuildEvidenceSource(
 		}
 		raw, err := readLog(ctx, task)
 		if err != nil || len(raw) == 0 {
+			if err != nil {
+				// Missing file is the common "no build ran" case and stays
+				// silent; a read failure beyond that is worth a trace.
+				logger.Warnf(ctx, "[CraftWebBuild] build log read failed for run %s: %v", task.Fence.RunID, err)
+			}
 			return evidence
 		}
 		log, err := ParseCraftWebBuildLog(raw)
 		if err != nil {
+			// A present-but-malformed log is a tamper/drift signal the
+			// operator must be able to see; the decision stays unobserved.
+			logger.Warnf(ctx, "[CraftWebBuild] rejecting malformed build log for run %s: %v", task.Fence.RunID, err)
 			return evidence
 		}
 		build, err := CraftWebBuildEvidence(log, pin)
 		if err != nil {
+			// A log naming a foreign toolchain is refused whole — and is
+			// precisely the alert-worthy case, so it is never silent.
+			logger.Warnf(ctx, "[CraftWebBuild] refusing build log for run %s: %v", task.Fence.RunID, err)
 			return evidence
 		}
 		evidence.BuildRan = build.BuildRan
@@ -324,26 +353,14 @@ func craftSessionBuildLogReader(src interface {
 	}
 }
 
-// equalStrings reports element-wise equality of two slices.
-func equalStrings(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
-}
-
-// fileDigestOrEmpty hashes one file, returning "" when unreadable so callers
-// compare against the pin and fail closed.
-func fileDigestOrEmpty(path string) string {
+// fileDigest hashes one file. A read failure is distinguished from a
+// content mismatch so a mis-deployed toolchain directory (missing files)
+// reports a deployment error instead of being mislabeled as tampering.
+func fileDigest(path string) (string, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return ""
+		return "", fmt.Errorf("read toolchain file %s: %w", path, err)
 	}
 	sum := sha256.Sum256(raw)
-	return hex.EncodeToString(sum[:])
+	return hex.EncodeToString(sum[:]), nil
 }

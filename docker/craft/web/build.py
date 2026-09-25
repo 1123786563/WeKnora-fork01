@@ -63,7 +63,14 @@ EXTERNAL_URL_RE = re.compile(r"(https?:)?//[^\s\"'<>`]|://", re.IGNORECASE)
 ABSOLUTE_REF_RE = re.compile(r"""(?:src|href|action|poster)\s*=\s*["']?\s*(?:/[a-zA-Z]|[a-zA-Z][a-zA-Z0-9+.-]*:)""", re.IGNORECASE)
 ACTIVE_DATA_RE = re.compile(r"data:text/html|javascript:", re.IGNORECASE)
 CSS_FETCH_RE = re.compile(r"url\(|@import", re.IGNORECASE)
-EMBED_TAG_RE = re.compile(r"<\s*(base|iframe|object|embed|form)\b", re.IGNORECASE)
+EMBED_TAG_RE = re.compile(r"<\s*(base|iframe|object|embed|form|script|meta)\b", re.IGNORECASE)
+# Active content: inline event handler attributes (onclick=, onload=, ...)
+# execute attacker script even when every URL check passes (for example the
+# classic <img src=x onerror=...>, whose src does not match the absolute
+# reference pattern at all), and svg-embedded script bodies. Staged
+# fragments are untrusted agent output, so script execution of any shape is
+# refused, not just network egress.
+EVENT_ATTR_RE = re.compile(r"""\bon[a-z]+\s*=""", re.IGNORECASE)
 
 
 class BuildError(Exception):
@@ -143,18 +150,28 @@ def load_pin(toolchain_dir: str) -> dict:
     if not lock_path.is_file():
         raise BuildError(EXIT_TOOLCHAIN, "missing provisioned dependency: {}".format(LOCK_NAME))
     with lock_path.open("r", encoding="utf-8") as handle:
-        lock = json.load(handle)
+        try:
+            lock = json.load(handle)
+        except ValueError as malformed:
+            raise BuildError(EXIT_TOOLCHAIN, "toolchain lock is not valid JSON: {}".format(malformed))
+    if not isinstance(lock, dict):
+        raise BuildError(EXIT_TOOLCHAIN, "toolchain lock must be a JSON object")
     if lock.get("name") != TOOLCHAIN_NAME:
         raise BuildError(EXIT_TOOLCHAIN, "toolchain lock names {}".format(lock.get("name")))
-    if lock.get("template", {}).get("name") != TEMPLATE_NAME:
+    template_pin = lock.get("template")
+    program_pin = lock.get("build_program")
+    dependencies_pin = lock.get("dependencies")
+    if not isinstance(template_pin, dict) or not isinstance(program_pin, dict) or not isinstance(dependencies_pin, list):
+        raise BuildError(EXIT_TOOLCHAIN, "toolchain lock template/build_program must be objects and dependencies a list")
+    if template_pin.get("name") != TEMPLATE_NAME:
         raise BuildError(EXIT_TOOLCHAIN, "toolchain lock template name must be {}".format(TEMPLATE_NAME))
-    if lock.get("build_program", {}).get("name") != BUILD_PROGRAM_NAME:
+    if program_pin.get("name") != BUILD_PROGRAM_NAME:
         raise BuildError(EXIT_TOOLCHAIN, "toolchain lock build program name must be {}".format(BUILD_PROGRAM_NAME))
 
-    listed = sorted(dep.get("name") for dep in lock.get("dependencies", []))
-    if listed != sorted(FIXED_DEPENDENCIES):
+    listed = sorted(dep.get("name") for dep in dependencies_pin if isinstance(dep, dict))
+    if listed != sorted(FIXED_DEPENDENCIES) or len(listed) != len(dependencies_pin):
         raise BuildError(EXIT_TOOLCHAIN, "toolchain lock dependency set must be exactly {}: got {}".format(sorted(FIXED_DEPENDENCIES), listed))
-    pinned = {dep["name"]: dep["sha256"] for dep in lock["dependencies"]}
+    pinned = {dep["name"]: dep["sha256"] for dep in dependencies_pin}
 
     template_path = safe_path(toolchain_root, TEMPLATE_NAME)
     if not template_path.is_file():
@@ -216,7 +233,9 @@ def pin_from_lock(toolchain_dir: str) -> dict:
         return {"toolchain_digest": "", "template_version": "", "template_sha256": ""}
 
 
-def render_table(heading: str, table: dict) -> str:
+def render_table(heading: str, table) -> str:
+    if not isinstance(table, dict):
+        raise BuildError(EXIT_CONTENT, "table section {!r} is not an object".format(heading))
     columns = table.get("columns", [])
     rows = table.get("rows", [])
     if not isinstance(columns, list) or not all(isinstance(c, str) for c in columns):
@@ -224,7 +243,7 @@ def render_table(heading: str, table: dict) -> str:
     if not isinstance(rows, list) or not all(isinstance(r, list) and all(isinstance(c, str) for c in r) for r in rows):
         raise BuildError(EXIT_CONTENT, "table section {!r} has non-string rows".format(heading))
     parts = ["<h2>{}</h2>".format(html_mod.escape(heading))]
-    parts.append('<input class="craft-filter" type="search" placeholder="筛选行…" aria-label="filter rows">')
+    parts.append('<input class="craft-filter" type="search" placeholder="筛选行…" aria-label="筛选表格行">')
     parts.append('<table class="craft-table">')
     parts.append("<thead><tr>{}</tr></thead>".format("".join("<th>{}</th>".format(html_mod.escape(c)) for c in columns)))
     parts.append("<tbody>")
@@ -242,7 +261,8 @@ def render_html(heading: str, fragment: str) -> str:
         (ABSOLUTE_REF_RE, "absolute or scheme reference"),
         (ACTIVE_DATA_RE, "active data/javascript URI"),
         (CSS_FETCH_RE, "css url()/@import fetch"),
-        (EMBED_TAG_RE, "embedding/navigation tag"),
+        (EMBED_TAG_RE, "embedding/script/navigation tag"),
+        (EVENT_ATTR_RE, "inline event handler attribute"),
     ):
         if pattern.search(fragment):
             raise BuildError(EXIT_CONTENT, "html section {!r} contains a {}: offline local assets only".format(heading, why))
@@ -255,7 +275,12 @@ def load_content(input_dir: str) -> dict:
     if not content_path.is_file():
         raise BuildError(EXIT_CONTENT, "staged material has no {}".format(CONTENT_NAME))
     with content_path.open("r", encoding="utf-8") as handle:
-        content = json.load(handle)
+        try:
+            content = json.load(handle)
+        except ValueError as malformed:
+            raise BuildError(EXIT_CONTENT, "staged {} is not valid JSON: {}".format(CONTENT_NAME, malformed))
+    if not isinstance(content, dict):
+        raise BuildError(EXIT_CONTENT, "staged {} must be a JSON object".format(CONTENT_NAME))
     title = content.get("title")
     if not isinstance(title, str) or not title.strip():
         raise BuildError(EXIT_CONTENT, "content.json requires a non-empty title")
@@ -282,6 +307,9 @@ def load_content(input_dir: str) -> dict:
     return content
 
 
+PLACEHOLDER_RE = re.compile(r"\{\{(CRAFT_[A-Z0-9_]+)\}\}")
+
+
 def render_entry(template: str, content: dict, template_version: str) -> str:
     replacements = {
         "CRAFT_LANG": html_mod.escape(content.get("lang") or "zh-CN"),
@@ -290,12 +318,19 @@ def render_entry(template: str, content: dict, template_version: str) -> str:
         "CRAFT_CONTENT": content["rendered_sections"],
         "CRAFT_TEMPLATE_VERSION": html_mod.escape(template_version),
     }
-    entry = template
-    for key, value in replacements.items():
-        entry = entry.replace("{{" + key + "}}", value)
-    if "{{CRAFT_" in entry:
-        raise BuildError(EXIT_RENDER, "template placeholder left unfilled")
-    return entry
+
+    # Single pass: re.sub never rescans substituted text, so user-controlled
+    # title/subtitle/lang can neither re-expand CRAFT_CONTENT into the head
+    # nor smuggle a second-order placeholder. Unknown template placeholders
+    # are a real template defect; literal {{...}} inside staged content is
+    # inert and passes through untouched.
+    def substitute(match: "re.Match[str]") -> str:
+        key = match.group(1)
+        if key not in replacements:
+            raise BuildError(EXIT_RENDER, "template references unknown placeholder {}".format(key))
+        return replacements[key]
+
+    return PLACEHOLDER_RE.sub(substitute, template)
 
 
 def write_build_log(output_dir: str, pin: dict, runtime_digest: str, exit_code: int, assets: list, error: str) -> Path:
@@ -395,7 +430,10 @@ def main(argv=None) -> int:
         parser.error("--input and --output are required (or use --selftest)")
 
     # Every termination writes the log with the REAL exit status, including
-    # the failure paths below.
+    # the failure paths below. BuildError carries a categorized exit; an
+    # OSError during rendering/publication (read-only output, disk full, ...)
+    # is still a rendering-environment failure and must not escape as a bare
+    # traceback that skips the log.
     try:
         return build(args.toolchain, args.input, args.output, args.runtime_digest)
     except BuildError as failure:
@@ -403,6 +441,12 @@ def main(argv=None) -> int:
         write_build_log(args.output, pin, args.runtime_digest, failure.exit_code, [], failure.message)
         print("craft web build failed (exit {}): {}".format(failure.exit_code, failure.message), file=sys.stderr)
         return failure.exit_code
+    except OSError as io_failure:
+        pin = pin_from_lock(args.toolchain)
+        message = "render/publish IO failure: {}".format(io_failure)
+        write_build_log(args.output, pin, args.runtime_digest, EXIT_RENDER, [], message)
+        print("craft web build failed (exit {}): {}".format(EXIT_RENDER, message), file=sys.stderr)
+        return EXIT_RENDER
 
 
 if __name__ == "__main__":
@@ -411,3 +455,8 @@ if __name__ == "__main__":
     except BuildError as fatal:
         print("craft web build failed (exit {}): {}".format(fatal.exit_code, fatal.message), file=sys.stderr)
         sys.exit(fatal.exit_code)
+    except OSError as fatal_io:
+        # The output directory itself is unusable, so even the log cannot be
+        # written; surface the real cause instead of a bare traceback.
+        print("craft web build failed (exit {}): unloggable IO failure: {}".format(EXIT_RENDER, fatal_io), file=sys.stderr)
+        sys.exit(EXIT_RENDER)

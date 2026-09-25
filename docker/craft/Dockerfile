@@ -242,8 +242,21 @@ RUN set -eux; \
 COPY --from=opencode-fetch /usr/local/bin/opencode /usr/local/bin/opencode
 COPY runtime-config.json /etc/craft/runtime-config.json
 # COPY keeps the source file mode; force the world-readable mode so the
-# non-root runtime user can always read the runtime contract.
-RUN chmod 0644 /etc/craft/runtime-config.json
+# non-root runtime user can always read the runtime contract. The web
+# toolchain pin is carried by TWO authorities (web/toolchain.lock.json and
+# this runtime-config.json) — build-time cross-assertion so an upgrade that
+# updates one but not the other fails the image instead of shipping a
+# runtime identity file with stale toolchain metadata.
+RUN chmod 0644 /etc/craft/runtime-config.json && \
+    rc_digest="$(python3 -c 'import json;print(json.load(open("/etc/craft/runtime-config.json"))["web_toolchain"]["toolchain_digest"])')" && \
+    lock_digest="$(python3 -c 'import json;print(json.load(open("/opt/craft/web/toolchain.lock.json"))["toolchain_digest"])')" && \
+    rc_template="$(python3 -c 'import json;print(json.load(open("/etc/craft/runtime-config.json"))["web_toolchain"]["template_sha256"])')" && \
+    lock_template="$(python3 -c 'import json;print(json.load(open("/opt/craft/web/toolchain.lock.json"))["template"]["sha256"])')" && \
+    rc_build="$(python3 -c 'import json;print(json.load(open("/etc/craft/runtime-config.json"))["web_toolchain"]["build_program_sha256"])')" && \
+    lock_build="$(python3 -c 'import json;print(json.load(open("/opt/craft/web/toolchain.lock.json"))["build_program"]["sha256"])')" && \
+    test "$rc_digest" = "$lock_digest" && \
+    test "$rc_template" = "$lock_template" && \
+    test "$rc_build" = "$lock_build"
 
 # OpenCode global config derived from /etc/craft/runtime-config.json's
 # permission policy. Keep in sync with that file's "permissions" section:
