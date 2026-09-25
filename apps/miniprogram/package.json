@@ -10,7 +10,7 @@
     "dev:weapp": "taro build --type weapp --watch",
     "build:weapp": "taro build --type weapp",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test tests/*.test.mjs",
+    "test": "node --experimental-transform-types --test tests/*.test.mjs tests/integration/*.test.mjs",
     "tokens:check": "node scripts/check-tokens.mjs",
     "tokens:build": "node scripts/build-tokens.mjs"
   },
