@@ -267,13 +267,18 @@ type Office struct {
 	exportSigningKey []byte
 	exportNow        func() time.Time
 	failExportVerify func(format string) error
+	// Complete-deletion seam (T22): the remover is the only channel to
+	// Workbench application-task projections during delete_career.
+	// failDeletionStep injects a sub-deletion failure for recovery tests.
+	applicationTaskRemover interfaces.CareerApplicationTaskProjectionRemover
+	failDeletionStep       func(step string) error
 }
 
 func NewOffice(db *gorm.DB) (*Office, error) {
 	if db == nil {
 		return nil, errors.New("career database required")
 	}
-	models := []any{&profile{}, &space{}, &fact{}, &factVersion{}, &proposal{}, &change{}, &receipt{}, &sourceRevision{}, &opportunity{}, &opportunityObservation{}, &opportunitySnapshot{}, &opportunityReceipt{}, &evaluationRecord{}, &applicationRecord{}, &searchRecord{}, &searchResultRecord{}, &materialRecord{}, &materialVersionRecord{}, &materialReceiptRecord{}, &materialExportRecord{}, &progressEventRecord{}, &searchRuleRecord{}, &searchRuleReceiptRecord{}, &searchRuleRunRecord{}, &searchDiscoveryTodoRecord{}, &submissionRecord{}}
+	models := []any{&profile{}, &space{}, &fact{}, &factVersion{}, &proposal{}, &change{}, &receipt{}, &sourceRevision{}, &opportunity{}, &opportunityObservation{}, &opportunitySnapshot{}, &opportunityReceipt{}, &evaluationRecord{}, &applicationRecord{}, &searchRecord{}, &searchResultRecord{}, &materialRecord{}, &materialVersionRecord{}, &materialReceiptRecord{}, &materialExportRecord{}, &progressEventRecord{}, &searchRuleRecord{}, &searchRuleReceiptRecord{}, &searchRuleRunRecord{}, &searchDiscoveryTodoRecord{}, &submissionRecord{}, &careerDataExportRecord{}, &careerDataDeletionRecord{}}
 	if db.Dialector.Name() == "sqlite" {
 		present := 0
 		for _, model := range models {
@@ -343,6 +348,8 @@ func validateSQLiteCareerSchema(db *gorm.DB) error {
 		"career_search_rule_runs":         {"id", "tenant_id", "user_id", "rule_id", "period", "request_id", "status", "body", "created_at"},
 		"career_search_discovery_todos":   {"id", "tenant_id", "user_id", "rule_id", "run_id", "search_id", "source_id", "link", "status", "created_at"},
 		"career_submissions":              {"id", "tenant_id", "user_id", "application_id", "request_id", "fingerprint", "channel", "occurred_at", "version_confirmed", "material_id", "export_id", "version", "content_digest", "note", "confirmer", "receipt_body", "created_at", "updated_at"},
+		"career_data_exports":             {"id", "tenant_id", "user_id", "request_id", "fingerprint", "revision", "digest", "archive_body", "receipt_body", "created_at"},
+		"career_data_deletions":           {"id", "tenant_id", "user_id", "request_id", "fingerprint", "expected_revision", "status", "state_body", "receipt_body", "created_at", "updated_at"},
 	}
 	for table, columns := range requiredColumns {
 		for _, column := range columns {
@@ -371,6 +378,8 @@ func validateSQLiteCareerSchema(db *gorm.DB) error {
 		"career_search_rule_runs":       {"tenant_id", "user_id", "rule_id", "period"},
 		"career_search_discovery_todos": {"tenant_id", "user_id", "link"},
 		"career_submissions":            {"tenant_id", "user_id", "request_id"},
+		"career_data_exports":           {"tenant_id", "user_id", "request_id"},
+		"career_data_deletions":         {"tenant_id", "user_id", "request_id"},
 	} {
 		if err := requireSQLiteUniqueConstraint(db, table, columns); err != nil {
 			return fmt.Errorf("incomplete Career SQLite schema: %w; apply database migrations before startup", err)

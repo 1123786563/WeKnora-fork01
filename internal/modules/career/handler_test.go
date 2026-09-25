@@ -733,3 +733,88 @@ func TestCareerSubmissionHTTPContract(t *testing.T) {
 	rec = call(http.MethodPost, "/api/v1/career/applications/"+fx.ApplicationID+"/submissions", mismatchBody, applicationParams)
 	require.Equal(t, 400, rec.Code, rec.Body.String())
 }
+
+// TestCareerExportDeletionHTTPContract drives the closed export_career and
+// delete_career intents through the HTTP surface: boundary explanation,
+// export with digest, receipt replay, deletion, and typed error mapping.
+func TestCareerExportDeletionHTTPContract(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	office, err := NewOffice(db)
+	require.NoError(t, err)
+	office.SetExportStorage(newMapExportStorage())
+	office.SetExportSigningKey([]byte("0123456789abcdef0123456789abcdef"))
+	scope := Scope{UserID: "lifecycle-owner", TenantID: 101}
+	base := context.WithValue(context.Background(), types.UserIDContextKey, scope.UserID)
+	base = context.WithValue(base, types.TenantIDContextKey, scope.TenantID)
+	ctx := WithScope(base, scope)
+	require.NoError(t, office.ClaimSpace(ctx))
+
+	view, err := office.Open(ctx)
+	require.NoError(t, err)
+	_, err = office.Confirm(ctx, "education.graduation_year", "2027", "lifecycle-year", view.Revision, Source{Kind: "manual"})
+	require.NoError(t, err)
+	view, err = office.Open(ctx)
+	require.NoError(t, err)
+
+	h := &Handler{office: office, members: &memberListStub{members: []*types.TenantMember{{UserID: scope.UserID, TenantID: scope.TenantID, Role: types.TenantRoleOwner}}}}
+	call := func(method, target, body string, dispatch func(*gin.Context)) *httptest.ResponseRecorder {
+		gin.SetMode(gin.TestMode)
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		var reader io.Reader
+		if body != "" {
+			reader = strings.NewReader(body)
+		}
+		c.Request = httptest.NewRequest(method, target, reader).WithContext(base)
+		if body != "" {
+			c.Request.Header.Set("Content-Type", "application/json")
+		}
+		dispatch(c)
+		return rec
+	}
+
+	// Boundary first: the structured in-space vs external explanation.
+	rec := call(http.MethodGet, "/api/v1/career/deletions/boundary", "", h.CareerDeletionBoundaryHandler)
+	require.Equal(t, 200, rec.Code, rec.Body.String())
+	require.Contains(t, rec.Body.String(), "external_platform_submissions")
+	require.Contains(t, rec.Body.String(), "career_data_deletions")
+
+	// Export: one complete package with a verifiable digest.
+	exportBody := fmt.Sprintf(`{"requestId":"life-export-1","expectedRevision":%d}`, view.Revision)
+	rec = call(http.MethodPost, "/api/v1/career/exports", exportBody, h.ExportCareerHandler)
+	require.Equal(t, 200, rec.Code, rec.Body.String())
+	require.Contains(t, rec.Body.String(), `"kind":"career_exported"`)
+	require.Contains(t, rec.Body.String(), `"digest":"`)
+	require.Contains(t, rec.Body.String(), "education.graduation_year")
+
+	// Receipt replay by request ID; unknown request IDs 404.
+	rec = call(http.MethodGet, "/api/v1/career/exports/receipt?requestId=life-export-1", "", h.ExportCareerReceiptHandler)
+	require.Equal(t, 200, rec.Code, rec.Body.String())
+	rec = call(http.MethodGet, "/api/v1/career/exports/receipt?requestId=missing", "", h.ExportCareerReceiptHandler)
+	require.Equal(t, 404, rec.Code, rec.Body.String())
+
+	// A changed intent under the same request ID is the typed 409.
+	conflictBody := fmt.Sprintf(`{"requestId":"life-export-1","expectedRevision":%d}`, view.Revision+1)
+	rec = call(http.MethodPost, "/api/v1/career/exports", conflictBody, h.ExportCareerHandler)
+	require.Equal(t, 409, rec.Code, rec.Body.String())
+	require.Contains(t, rec.Body.String(), "idempotency_conflict")
+
+	// Empty request IDs stay 400.
+	rec = call(http.MethodPost, "/api/v1/career/exports", `{"requestId":"","expectedRevision":1}`, h.ExportCareerHandler)
+	require.Equal(t, 400, rec.Code, rec.Body.String())
+
+	// Deletion: only after every step succeeds does it answer "deleted".
+	deleteBody := fmt.Sprintf(`{"requestId":"life-delete-1","expectedRevision":%d}`, view.Revision)
+	rec = call(http.MethodPost, "/api/v1/career/deletions", deleteBody, h.DeleteCareerHandler)
+	require.Equal(t, 200, rec.Code, rec.Body.String())
+	require.Contains(t, rec.Body.String(), `"status":"partial"`)
+	// Without a configured Workbench remover the removal step fails honestly;
+	// the receipt keeps the recoverable state instead of claiming success.
+
+	rec = call(http.MethodGet, "/api/v1/career/deletions/receipt?requestId=life-delete-1", "", h.CareerDeletionReceiptHandler)
+	require.Equal(t, 200, rec.Code, rec.Body.String())
+	require.Contains(t, rec.Body.String(), `"status":"partial"`)
+	rec = call(http.MethodGet, "/api/v1/career/deletions/receipt?requestId=missing", "", h.CareerDeletionReceiptHandler)
+	require.Equal(t, 404, rec.Code, rec.Body.String())
+}

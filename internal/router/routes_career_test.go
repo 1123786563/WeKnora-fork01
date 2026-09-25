@@ -13,7 +13,7 @@ import (
 func TestCareerEvaluationRoutesAreRegistered(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	handler, err := career.NewHandler(db, nil, nil, nil, nil, nil)
+	handler, err := career.NewHandler(db, nil, nil, nil, nil, nil, nil)
 	require.NoError(t, err)
 	engine := gin.New()
 	RegisterCareerRoutes(engine.Group("/api/v1"), handler)
@@ -29,7 +29,7 @@ func TestCareerEvaluationRoutesAreRegistered(t *testing.T) {
 func TestCareerSourceImportRoutesAreRegistered(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	handler, err := career.NewHandler(db, nil, nil, nil, nil, nil)
+	handler, err := career.NewHandler(db, nil, nil, nil, nil, nil, nil)
 	require.NoError(t, err)
 	engine := gin.New()
 	RegisterCareerRoutes(engine.Group("/api/v1"), handler)
@@ -45,7 +45,7 @@ func TestCareerSourceImportRoutesAreRegistered(t *testing.T) {
 func TestCareerApplicationRoutesAreRegistered(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	handler, err := career.NewHandler(db, nil, nil, nil, nil, nil)
+	handler, err := career.NewHandler(db, nil, nil, nil, nil, nil, nil)
 	require.NoError(t, err)
 	engine := gin.New()
 	RegisterCareerRoutes(engine.Group("/api/v1"), handler)
@@ -62,7 +62,7 @@ func TestCareerApplicationRoutesAreRegistered(t *testing.T) {
 func TestCareerSearchRoutesAreRegistered(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	handler, err := career.NewHandler(db, nil, nil, nil, nil, nil)
+	handler, err := career.NewHandler(db, nil, nil, nil, nil, nil, nil)
 	require.NoError(t, err)
 	engine := gin.New()
 	RegisterCareerRoutes(engine.Group("/api/v1"), handler)
@@ -78,7 +78,7 @@ func TestCareerSearchRoutesAreRegistered(t *testing.T) {
 func TestCareerSearchRuleRoutesAreRegistered(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	handler, err := career.NewHandler(db, nil, nil, nil, nil, nil)
+	handler, err := career.NewHandler(db, nil, nil, nil, nil, nil, nil)
 	require.NoError(t, err)
 	engine := gin.New()
 	RegisterCareerRoutes(engine.Group("/api/v1"), handler)
@@ -94,7 +94,7 @@ func TestCareerSearchRuleRoutesAreRegistered(t *testing.T) {
 func TestCareerMaterialRoutesAreRegistered(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	handler, err := career.NewHandler(db, nil, nil, nil, nil, nil)
+	handler, err := career.NewHandler(db, nil, nil, nil, nil, nil, nil)
 	require.NoError(t, err)
 	engine := gin.New()
 	RegisterCareerRoutes(engine.Group("/api/v1"), handler)
@@ -114,7 +114,7 @@ func TestCareerMaterialRoutesAreRegistered(t *testing.T) {
 func TestCareerMaterialExportRoutesAreRegistered(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	handler, err := career.NewHandler(db, nil, nil, nil, nil, nil)
+	handler, err := career.NewHandler(db, nil, nil, nil, nil, nil, nil)
 	require.NoError(t, err)
 	engine := gin.New()
 	RegisterCareerRoutes(engine.Group("/api/v1"), handler)
@@ -132,7 +132,7 @@ func TestCareerMaterialExportRoutesAreRegistered(t *testing.T) {
 func TestCareerProgressRoutesAreRegistered(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	handler, err := career.NewHandler(db, nil, nil, nil, nil, nil)
+	handler, err := career.NewHandler(db, nil, nil, nil, nil, nil, nil)
 	require.NoError(t, err)
 	engine := gin.New()
 	RegisterCareerRoutes(engine.Group("/api/v1"), handler)
@@ -149,7 +149,7 @@ func TestCareerProgressRoutesAreRegistered(t *testing.T) {
 func TestCareerSubmissionRoutesAreRegistered(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	handler, err := career.NewHandler(db, nil, nil, nil, nil, nil)
+	handler, err := career.NewHandler(db, nil, nil, nil, nil, nil, nil)
 	require.NoError(t, err)
 	engine := gin.New()
 	RegisterCareerRoutes(engine.Group("/api/v1"), handler)
@@ -160,4 +160,22 @@ func TestCareerSubmissionRoutesAreRegistered(t *testing.T) {
 	require.True(t, paths["POST /api/v1/career/applications/:applicationId/submissions"])
 	require.True(t, paths["GET /api/v1/career/applications/:applicationId/submissions"])
 	require.True(t, paths["GET /api/v1/career/submissions/receipt"])
+}
+
+func TestCareerExportDeletionRoutesAreRegistered(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	handler, err := career.NewHandler(db, nil, nil, nil, nil, nil, nil)
+	require.NoError(t, err)
+	engine := gin.New()
+	RegisterCareerRoutes(engine.Group("/api/v1"), handler)
+	paths := make(map[string]bool)
+	for _, route := range engine.Routes() {
+		paths[route.Method+" "+route.Path] = true
+	}
+	require.True(t, paths["POST /api/v1/career/exports"])
+	require.True(t, paths["GET /api/v1/career/exports/receipt"])
+	require.True(t, paths["GET /api/v1/career/deletions/boundary"])
+	require.True(t, paths["POST /api/v1/career/deletions"])
+	require.True(t, paths["GET /api/v1/career/deletions/receipt"])
 }

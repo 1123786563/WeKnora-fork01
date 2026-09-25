@@ -54,4 +54,9 @@ func RegisterCareerRoutes(r *gin.RouterGroup, h *career.Handler) {
 	g.POST("/applications/:applicationId/submissions", h.RecordSubmission)
 	g.GET("/applications/:applicationId/submissions", h.ApplicationSubmissions)
 	g.GET("/submissions/receipt", h.SubmissionReceiptHandler)
+	g.POST("/exports", h.ExportCareerHandler)
+	g.GET("/exports/receipt", h.ExportCareerReceiptHandler)
+	g.GET("/deletions/boundary", h.CareerDeletionBoundaryHandler)
+	g.POST("/deletions", h.DeleteCareerHandler)
+	g.GET("/deletions/receipt", h.CareerDeletionReceiptHandler)
 }

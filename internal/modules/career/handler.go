@@ -32,12 +32,13 @@ type Handler struct {
 // NewHandler wires the Career HTTP surface. The linker is the Workbench
 // boundary for durable application tasks; Career never imports Workbench
 // repositories directly.
-func NewHandler(db *gorm.DB, members interfaces.TenantMemberService, files interfaces.FileService, catalog interfaces.ResourceCatalog, reader interfaces.DocumentReader, linker interfaces.CareerApplicationTaskLinker) (*Handler, error) {
+func NewHandler(db *gorm.DB, members interfaces.TenantMemberService, files interfaces.FileService, catalog interfaces.ResourceCatalog, reader interfaces.DocumentReader, linker interfaces.CareerApplicationTaskLinker, remover interfaces.CareerApplicationTaskProjectionRemover) (*Handler, error) {
 	o, e := NewOffice(db)
 	if e != nil {
 		return nil, e
 	}
 	o.SetApplicationTaskLinker(linker)
+	o.SetApplicationTaskRemover(remover)
 	if files != nil {
 		o.SetExportStorage(newFileExportStorage(files))
 	}
@@ -133,6 +134,9 @@ func writeError(c *gin.Context, e error) {
 		status = 409
 		code = "submission_already_confirmed"
 	case errors.Is(e, ErrExportNotFound):
+		status = 404
+		code = "not_found"
+	case errors.Is(e, ErrDeletionNotFound):
 		status = 404
 		code = "not_found"
 	case errors.Is(e, ErrExportNotSubmittable):
@@ -1144,6 +1148,111 @@ func (h *Handler) SubmissionReceiptHandler(c *gin.Context) {
 		return
 	}
 	receipt, err := h.office.FindSubmissionReceipt(ctx, c.Query("requestId"))
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, receipt)
+}
+
+const maxExportDeletionBodyBytes = 16 * 1024
+
+func decodeCareerLifecycleJSON(c *gin.Context, target any, label string) bool {
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxExportDeletionBodyBytes)
+	decoder := json.NewDecoder(c.Request.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
+		var maxBytesError *http.MaxBytesError
+		if errors.As(err, &maxBytesError) {
+			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": gin.H{"code": "request_too_large", "message": label + " request is too large"}})
+			return false
+		}
+		writeError(c, ErrInvalidRequest)
+		return false
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		writeError(c, ErrInvalidRequest)
+		return false
+	}
+	return true
+}
+
+// ExportCareerHandler runs the closed export_career intent: one complete,
+// owner-scoped export package per request ID, synchronous, digest-verifiable.
+func (h *Handler) ExportCareerHandler(c *gin.Context) {
+	ctx, ok := h.scope(c, false)
+	if !ok {
+		return
+	}
+	var input CareerExportInput
+	if !decodeCareerLifecycleJSON(c, &input, "career export") {
+		return
+	}
+	receipt, err := h.office.ExportCareer(ctx, input)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, receipt)
+}
+
+// ExportCareerReceiptHandler replays one stored export receipt by request ID.
+func (h *Handler) ExportCareerReceiptHandler(c *gin.Context) {
+	ctx, ok := h.scope(c, false)
+	if !ok {
+		return
+	}
+	receipt, err := h.office.FindCareerExport(ctx, c.Query("requestId"))
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, receipt)
+}
+
+// CareerDeletionBoundaryHandler explains, before any deletion, the in-space
+// versus external-platform boundary and the disclosed retention rows.
+func (h *Handler) CareerDeletionBoundaryHandler(c *gin.Context) {
+	ctx, ok := h.scope(c, false)
+	if !ok {
+		return
+	}
+	boundary, err := h.office.CareerDeletionBoundary(ctx)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, boundary)
+}
+
+// DeleteCareerHandler runs the closed delete_career intent. Partial failures
+// answer with the truthful partial receipt, never a success claim.
+func (h *Handler) DeleteCareerHandler(c *gin.Context) {
+	ctx, ok := h.scope(c, false)
+	if !ok {
+		return
+	}
+	var input CareerDeletionInput
+	if !decodeCareerLifecycleJSON(c, &input, "career deletion") {
+		return
+	}
+	receipt, err := h.office.DeleteCareer(ctx, input)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, receipt)
+}
+
+// CareerDeletionReceiptHandler replays the durable deletion receipt (status,
+// steps, retention) by its original request ID.
+func (h *Handler) CareerDeletionReceiptHandler(c *gin.Context) {
+	ctx, ok := h.scope(c, false)
+	if !ok {
+		return
+	}
+	receipt, err := h.office.FindCareerDeletion(ctx, c.Query("requestId"))
 	if err != nil {
 		writeError(c, err)
 		return

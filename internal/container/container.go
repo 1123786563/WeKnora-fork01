@@ -713,6 +713,11 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(func(coordinator *workbenchservice.ApplicationTaskCoordinator) interfaces.CareerApplicationTaskLinker {
 		return coordinator
 	}))
+	// T22 complete deletion keeps the same boundary: Career removes Workbench
+	// application-task projections only through the remover port.
+	must(container.Provide(func(coordinator *workbenchservice.ApplicationTaskCoordinator) interfaces.CareerApplicationTaskProjectionRemover {
+		return coordinator
+	}))
 	must(container.Provide(career.NewHandler))
 	must(container.Provide(handler.NewTenantHandler))
 	must(container.Provide(handler.NewTenantMemberHandler))

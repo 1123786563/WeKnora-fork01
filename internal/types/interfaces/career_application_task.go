@@ -44,3 +44,26 @@ type CareerApplicationTaskLinker interface {
 		requestID string,
 	) (CareerApplicationTaskLink, error)
 }
+
+// CareerApplicationTaskProjection describes one durable Workbench task that
+// originated from a Career application. It is returned by the removal port so
+// the caller can audit exactly which projections disappeared.
+type CareerApplicationTaskProjection struct {
+	TaskID        string
+	RunID         string
+	ApplicationID string
+}
+
+// CareerApplicationTaskProjectionRemover is the complete-deletion seam
+// (T22): Career asks Workbench to remove every application-task projection
+// it owns. Career never imports Workbench repositories or writes their
+// tables directly — same boundary shape as the linker above. The call is
+// idempotent: re-running it after a partial failure must succeed with the
+// remaining (possibly empty) set of projections.
+type CareerApplicationTaskProjectionRemover interface {
+	RemoveCareerApplicationTaskProjections(
+		ctx context.Context,
+		tenantID uint64,
+		ownerID string,
+	) ([]CareerApplicationTaskProjection, error)
+}
