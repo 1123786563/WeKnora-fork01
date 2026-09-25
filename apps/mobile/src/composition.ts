@@ -11,6 +11,8 @@ import type { MobileRuntime, RuntimeSnapshot, ScopedVault, Deployment } from '@w
 import { createTaskOffice, type TaskOffice } from '@weknora/mobile-core';
 import { createTaskMaterial } from '@weknora/mobile-core';
 import type { TaskMaterial } from '@weknora/mobile-core';
+import { createDeliveryReader, type DeliveryReader } from '@weknora/mobile-core';
+import { createMobileCodeDeliveryRemote } from '@weknora/api-client/mobile/code-delivery';
 import { createTaskOfficeRemote } from '@weknora/api-client/mobile/task-office';
 import { createMobileLegacyTaskRemote } from '@weknora/api-client/mobile/legacy-tasks';
 import { createMobileMaterialRemote } from '@weknora/api-client/mobile/materials';
@@ -276,6 +278,24 @@ export function activeTaskMaterial(): TaskMaterial | undefined {
   const snapshot = activeRuntime.snapshot();
   if (snapshot.surface !== 'authorized' || !snapshot.deployment || !snapshot.identity?.userId) return undefined;
   return taskMaterialFor(activeRuntime, snapshot.deployment.origin, snapshot.identity.activeTenantId ?? '');
+}
+
+const deliveryReaders = new Map<string, DeliveryReader>();
+
+/** Delivery reader 按 deployment scope key 记忆化；lease 由 Runtime 提供，切租户即 fail closed。 */
+function deliveryFor(activeRuntime: MobileRuntime, origin: string, tenantId: string): DeliveryReader {
+  return cachePut(deliveryReaders, deploymentScopeKey(origin, tenantId), () => {
+    const remote = createMobileCodeDeliveryRemote({ origin, request: (input) => activeRuntime.authorizedRequest(input) });
+    return createDeliveryReader({ remote, lease: () => activeRuntime.scopeLease() });
+  });
+}
+
+/** 详情路由经此取当前授权 scope 的交付读器（无授权面返回 undefined）。 */
+export function activeDeliveryReader(): DeliveryReader | undefined {
+  const activeRuntime = runtime();
+  const snapshot = activeRuntime.snapshot();
+  if (snapshot.surface !== 'authorized' || !snapshot.deployment || !snapshot.identity?.userId) return undefined;
+  return deliveryFor(activeRuntime, snapshot.deployment.origin, snapshot.identity.activeTenantId ?? '');
 }
 
 /** Selects a visible surface only from the presentation-safe Runtime snapshot. */

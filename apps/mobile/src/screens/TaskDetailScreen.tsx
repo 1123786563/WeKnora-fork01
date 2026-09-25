@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Button, ScrollView, Text, View } from 'react-native';
-import type { TaskDetailView } from '@weknora/mobile-core';
+import type { DeliveryReceiptView, DeliveryState, TaskDetailView } from '@weknora/mobile-core';
 import { timelineKindLabel } from '@weknora/mobile-core';
 
 export interface TaskDetailScreenProps {
@@ -9,6 +9,7 @@ export interface TaskDetailScreenProps {
   error?: string;
   onRefresh(): void;
   onOpenMaterials?: () => void;
+  delivery?: DeliveryReceiptView;
 }
 
 const CONNECTION_LABELS: Record<TaskDetailView['connection'], string> = { syncing: '同步中', live: '已连接', interrupted: '连接中断，可恢复', drained: '已同步' };
@@ -16,8 +17,34 @@ const LIFECYCLE_LABELS: Record<TaskDetailView['lifecycle'], string> = { active: 
 /** interruption 原因 → 用户文案（B2-F40：不得直出内部码；Task 10 会为 'stream-unavailable' 追加条目）。 */
 const INTERRUPTION_COPY: Record<string, string> = { gap: '事件流出现缺口', 'cursor-expired': '同步游标过期', 'stream-error': '实时通道中断', 'stream-ended-nonterminal': '事件流提前结束', 'persist-failed': '本地保存失败', 'stream-unavailable': '此部署暂无实时通道，可手动刷新' };
 
+/** 交付六态的如实中文文案：不粉饰部分完成（pushed）与不可观测（unknown）。 */
+export const DELIVERY_STATE_COPY: Record<DeliveryState, string> = {
+  prepared: '待审批：审阅 Diff 与候选提交后在行动收件箱批准',
+  dispatched: '交付进行中：正在推送任务分支',
+  pushed: '已推送，等待草稿 PR 恢复',
+  delivered: '草稿 PR 已创建',
+  failed: '交付失败',
+  unknown: '远端结果待确认',
+};
+
+/** 交付回执区块：只读呈现服务端落账的追溯字段（仓库/分支/提交/PR/远端身份/批准人）。 */
+function DeliveryReceiptSection({ delivery }: { delivery: DeliveryReceiptView }) {
+  return (
+    <View style={{ marginTop: 16, padding: 12, borderWidth: 1, borderColor: '#ccc', borderRadius: 8 }}>
+      <Text style={{ fontWeight: '600' }}>代码交付</Text>
+      <Text>{DELIVERY_STATE_COPY[delivery.state]}</Text>
+      <Text numberOfLines={1}>仓库：{delivery.repo}</Text>
+      <Text numberOfLines={1}>分支：{delivery.branch}</Text>
+      {delivery.commitSha !== undefined ? <Text numberOfLines={1}>提交：{delivery.commitSha.slice(0, 12)}</Text> : null}
+      {delivery.prUrl !== undefined ? <Text numberOfLines={1}>PR：{delivery.prUrl}</Text> : null}
+      {delivery.remoteLogin !== undefined ? <Text numberOfLines={1}>远端身份：{delivery.remoteLogin}</Text> : null}
+      {delivery.approver !== undefined ? <Text numberOfLines={1}>批准人：{delivery.approver}</Text> : null}
+    </View>
+  );
+}
+
 /** 结果优先详情屏：状态卡 + 三层状态 + attention 横幅在前，时间线事实流在后；原始证据默认折叠、按需展开。 */
-export function TaskDetailScreen({ view, loading, error, onRefresh, onOpenMaterials }: TaskDetailScreenProps) {
+export function TaskDetailScreen({ view, loading, error, onRefresh, onOpenMaterials, delivery }: TaskDetailScreenProps) {
   const [expanded, setExpanded] = useState<ReadonlySet<number>>(new Set());
   // B2-F41：expanded 以 runId 隔离——切换任务（组件复用）时不携带上一个任务的展开状态。
   const runKey = view?.runId ?? '';
@@ -66,6 +93,7 @@ export function TaskDetailScreen({ view, loading, error, onRefresh, onOpenMateri
       ))}
       {view.duplicateSeqs.length > 0 && <Text>已忽略重复事件：{view.duplicateSeqs.join(', ')}</Text>}
       {onOpenMaterials !== undefined && <Button title="任务材料" onPress={onOpenMaterials} />}
+      {delivery !== undefined ? <DeliveryReceiptSection delivery={delivery} /> : null}
       <Button title="重新同步快照" onPress={onRefresh} disabled={loading} />
       {error !== undefined && <Text>{error}</Text>}
     </ScrollView>
