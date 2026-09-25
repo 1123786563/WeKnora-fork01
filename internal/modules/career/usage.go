@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // Frozen usage admission contract (T21). Exactly one operation is charged:
@@ -50,6 +51,10 @@ const (
 // cannot be read. It is fail-closed: a charged run is never executed first
 // and reported afterwards.
 var ErrAdmissionUnavailable = errors.New("career usage admission unavailable")
+
+// errLedgerState marks a stored reservation status outside the frozen
+// reserved/settled/released vocabulary — a corrupt ledger fails closed.
+var errLedgerState = errors.New("career usage reservation has an unknown status")
 
 // UsageEstimateView is the frozen pre-execution estimate: the cost that the
 // next charged run would consume, the conditions under which it is charged,
@@ -155,6 +160,13 @@ func usageAdmissionConditions() []string {
 // admitSearchUsage is the single admission seam for charged runs. It is
 // idempotent by request ID: a replay of an admitted request never reserves a
 // second unit. A refusal leaves no durable state.
+//
+// The read-balance / decide / insert sequence runs inside one transaction
+// that first locks the scope's career_spaces row (SELECT ... FOR UPDATE on
+// PostgreSQL; the single-writer lock plus the busy retry loop covers SQLite).
+// Concurrent admissions for one scope therefore serialize on that row, so
+// the loser of the race re-reads the winner's reservation in its totals and
+// is refused — the limit can never be bypassed by interleaving.
 func (o *Office) admitSearchUsage(ctx context.Context, s Scope, requestID string) error {
 	requestID = strings.TrimSpace(requestID)
 	if requestID == "" || len(requestID) > 128 {
@@ -163,75 +175,96 @@ func (o *Office) admitSearchUsage(ctx context.Context, s Scope, requestID string
 	if o.usageLedgerUnavailable() {
 		return ErrAdmissionUnavailable
 	}
-	if err := o.reconcileUsage(ctx, s); err != nil {
-		return ErrAdmissionUnavailable
-	}
-	var existing usageReservationRecord
-	err := o.db.WithContext(ctx).
-		Where("tenant_id=? AND user_id=? AND request_id=?", s.TenantID, s.UserID, requestID).
-		First(&existing).Error
-	if err == nil {
-		switch existing.Status {
-		case usageStatusReserved, usageStatusSettled:
-			// The request ID was already admitted (possibly by the rule
-			// trigger's pre-check): replaying admission never charges twice.
-			return nil
-		case usageStatusReleased:
-			return o.reviveReleasedReservation(ctx, s, existing)
+	admitErr := o.runImportTransaction(ctx, func(tx *gorm.DB) error {
+		// Serialize concurrent admissions for one scope: the row lock is
+		// held until commit, so a racing admission re-reads the winner's
+		// reservation inside its own totals check.
+		var home space
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("tenant_id=? AND owner_user_id=?", s.TenantID, s.UserID).
+			First(&home).Error; err != nil {
+			return err
 		}
-		return ErrAdmissionUnavailable
-	}
-	if !errors.Is(err, gorm.ErrRecordNotFound) {
-		return ErrAdmissionUnavailable
-	}
-	now := time.Now().UTC()
-	start, end := usagePeriod(now)
-	reserved, settled, totalsErr := o.usageTotals(ctx, s, start)
-	if totalsErr != nil {
-		return ErrAdmissionUnavailable
-	}
-	if o.searchQuotaLimitUnits()-reserved-settled < searchOnceCostUnits {
-		return ErrSearchQuotaRefused
-	}
-	lease := now.Add(usageReservationLease)
-	row := usageReservationRecord{
-		ID: uuid.NewString(), TenantID: s.TenantID, UserID: s.UserID,
-		Operation: UsageOperationSearchOnce, RequestID: requestID, CostUnits: searchOnceCostUnits,
-		Status: usageStatusReserved, PeriodStart: start, PeriodEnd: end,
-		LeaseUntil: &lease, CreatedAt: now,
-	}
-	if err = o.db.WithContext(ctx).Create(&row).Error; err != nil {
-		if isReceiptRaceError(err) {
-			// A concurrent admission for the same request ID won the insert:
-			// the ledger already holds exactly one reservation for it.
-			return nil
+		if err := reconcileUsageTx(tx, s); err != nil {
+			return err
 		}
+		var existing usageReservationRecord
+		err := tx.Where("tenant_id=? AND user_id=? AND request_id=?", s.TenantID, s.UserID, requestID).
+			First(&existing).Error
+		if err == nil {
+			switch existing.Status {
+			case usageStatusReserved, usageStatusSettled:
+				// The request ID was already admitted (possibly by the rule
+				// trigger's pre-check): replaying admission never charges twice.
+				return nil
+			case usageStatusReleased:
+				return reviveReleasedReservationTx(tx, s, o.searchQuotaLimitUnits(), existing)
+			}
+			return errLedgerState
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		now := time.Now().UTC()
+		start, end := usagePeriod(now)
+		reserved, settled, totalsErr := usageTotalsTx(tx, s, start)
+		if totalsErr != nil {
+			return totalsErr
+		}
+		if o.searchQuotaLimitUnits()-reserved-settled < searchOnceCostUnits {
+			return ErrSearchQuotaRefused
+		}
+		lease := now.Add(usageReservationLease)
+		row := usageReservationRecord{
+			ID: uuid.NewString(), TenantID: s.TenantID, UserID: s.UserID,
+			Operation: UsageOperationSearchOnce, RequestID: requestID, CostUnits: searchOnceCostUnits,
+			Status: usageStatusReserved, PeriodStart: start, PeriodEnd: end,
+			LeaseUntil: &lease, CreatedAt: now,
+		}
+		if err = tx.Create(&row).Error; err != nil {
+			if isReceiptRaceError(err) {
+				// A concurrent admission for the same request ID won the insert:
+				// the ledger already holds exactly one reservation for it.
+				return nil
+			}
+			return err
+		}
+		return nil
+	})
+	switch {
+	case admitErr == nil:
+		return nil
+	case errors.Is(admitErr, ErrSearchQuotaRefused):
+		return admitErr
+	default:
+		// Any other ledger failure fails closed: the charged run is never
+		// executed on a quota state that could not be verified.
 		return ErrAdmissionUnavailable
 	}
-	return nil
 }
 
-// reviveReleasedReservation re-admits a request ID whose earlier reservation
+// reviveReleasedReservationTx re-admits a request ID whose earlier reservation
 // was released (the run never claimed its search and the lease expired). The
-// same row is re-armed so one request ID always owns at most one row.
-func (o *Office) reviveReleasedReservation(ctx context.Context, s Scope, existing usageReservationRecord) error {
+// same row is re-armed so one request ID always owns at most one row. It runs
+// inside the caller's admission transaction, after the scope row lock.
+func reviveReleasedReservationTx(tx *gorm.DB, s Scope, limit int64, existing usageReservationRecord) error {
 	now := time.Now().UTC()
 	start, end := usagePeriod(now)
-	reserved, settled, totalsErr := o.usageTotals(ctx, s, start)
+	reserved, settled, totalsErr := usageTotalsTx(tx, s, start)
 	if totalsErr != nil {
-		return ErrAdmissionUnavailable
+		return totalsErr
 	}
-	if o.searchQuotaLimitUnits()-reserved-settled < existing.CostUnits {
+	if limit-reserved-settled < existing.CostUnits {
 		return ErrSearchQuotaRefused
 	}
 	lease := now.Add(usageReservationLease)
-	if err := o.db.WithContext(ctx).Model(&usageReservationRecord{}).
+	if err := tx.Model(&usageReservationRecord{}).
 		Where("id=? AND status=?", existing.ID, usageStatusReleased).
 		Updates(map[string]any{
 			"status": usageStatusReserved, "period_start": start, "period_end": end,
 			"lease_until": lease, "settled_at": nil,
 		}).Error; err != nil {
-		return ErrAdmissionUnavailable
+		return err
 	}
 	return nil
 }
@@ -252,8 +285,15 @@ func (o *Office) usageLedgerUnavailable() bool {
 // idempotent and conservative: reserved units keep counting until they are
 // provably settled or released.
 func (o *Office) reconcileUsage(ctx context.Context, s Scope) error {
+	return reconcileUsageTx(o.db.WithContext(ctx), s)
+}
+
+// reconcileUsageTx is the transaction-scoped reconcile used both by the
+// read paths above and inside the admission transaction, where it runs after
+// the scope row lock so concurrent admissions reconcile the same view.
+func reconcileUsageTx(tx *gorm.DB, s Scope) error {
 	var pending []usageReservationRecord
-	if err := o.db.WithContext(ctx).
+	if err := tx.
 		Where("tenant_id=? AND user_id=? AND status=?", s.TenantID, s.UserID, usageStatusReserved).
 		Find(&pending).Error; err != nil {
 		return err
@@ -261,7 +301,7 @@ func (o *Office) reconcileUsage(ctx context.Context, s Scope) error {
 	now := time.Now().UTC()
 	for _, row := range pending {
 		var search searchRecord
-		err := o.db.WithContext(ctx).
+		err := tx.
 			Where("tenant_id=? AND user_id=? AND request_id=?", s.TenantID, s.UserID, row.RequestID).
 			First(&search).Error
 		switch {
@@ -272,7 +312,7 @@ func (o *Office) reconcileUsage(ctx context.Context, s Scope) error {
 				// unit keeps holding until the run turns terminal.
 				continue
 			}
-			if updateErr := o.db.WithContext(ctx).Model(&usageReservationRecord{}).
+			if updateErr := tx.Model(&usageReservationRecord{}).
 				Where("id=? AND status=?", row.ID, usageStatusReserved).
 				Updates(map[string]any{"status": usageStatusSettled, "settled_at": now, "lease_until": nil}).Error; updateErr != nil {
 				return updateErr
@@ -281,7 +321,7 @@ func (o *Office) reconcileUsage(ctx context.Context, s Scope) error {
 			if row.LeaseUntil == nil || !row.LeaseUntil.Before(now) {
 				continue
 			}
-			if updateErr := o.db.WithContext(ctx).Model(&usageReservationRecord{}).
+			if updateErr := tx.Model(&usageReservationRecord{}).
 				Where("id=? AND status=?", row.ID, usageStatusReserved).
 				Updates(map[string]any{"status": usageStatusReleased, "lease_until": nil}).Error; updateErr != nil {
 				return updateErr
@@ -296,11 +336,18 @@ func (o *Office) reconcileUsage(ctx context.Context, s Scope) error {
 // usageTotals sums the units held in the given accounting window. Released
 // rows never count; reserved rows count conservatively until reconciled.
 func (o *Office) usageTotals(ctx context.Context, s Scope, periodStart time.Time) (reserved, settled int64, err error) {
+	return usageTotalsTx(o.db.WithContext(ctx), s, periodStart)
+}
+
+// usageTotalsTx is the transaction-scoped totals query: inside the admission
+// transaction it reads the post-lock view, which is what makes the limit
+// check race-free.
+func usageTotalsTx(tx *gorm.DB, s Scope, periodStart time.Time) (reserved, settled int64, err error) {
 	var rows []struct {
 		Status string
 		Total  int64
 	}
-	if err = o.db.WithContext(ctx).Model(&usageReservationRecord{}).
+	if err = tx.Model(&usageReservationRecord{}).
 		Select("status, SUM(cost_units) AS total").
 		Where("tenant_id=? AND user_id=? AND period_start=? AND status IN ?", s.TenantID, s.UserID, periodStart, []string{usageStatusReserved, usageStatusSettled}).
 		Group("status").Scan(&rows).Error; err != nil {

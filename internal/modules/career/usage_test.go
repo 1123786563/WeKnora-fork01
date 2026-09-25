@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/url"
+	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -502,4 +505,63 @@ func TestAdmissionReservationIsReleasableWhenNeverClaimed(t *testing.T) {
 	require.NoError(t, err)
 	require.EqualValues(t, 0, estimate.ReservedUnits, "an expired, never-claimed reservation is released")
 	require.True(t, estimate.WouldAdmit, "the released unit is spendable again")
+}
+
+// ---- 11. admission atomicity under concurrency (review F1) ------------------
+
+func TestAdmissionIsAtomicUnderConcurrentRequests(t *testing.T) {
+	// The check-then-insert of admission must be atomic: with a one-unit
+	// limit, concurrent admissions under different request IDs may admit
+	// exactly one — never more, whatever the interleaving. The shared-cache
+	// in-memory database gives every goroutine its own connection, so the
+	// statements genuinely interleave instead of being serialized by a
+	// single pooled connection.
+	for round := 0; round < 10; round++ {
+		db, err := gorm.Open(sqlite.Open(fmt.Sprintf("file:usage_race_%d_%d?mode=memory&cache=shared", os.Getpid(), round)), &gorm.Config{})
+		require.NoError(t, err)
+		o, err := NewOffice(db)
+		require.NoError(t, err)
+		o.SetSearchQuotaLimit(1)
+		policy := &stubSourcePolicy{approvedHosts: map[string]bool{"jobs.example.test": true}}
+		o.sourcePolicy = policy
+		o.sourceTransport = &scriptedTransport{policy: policy, scripts: map[string]scriptedFetch{}}
+		ctx := WithScope(context.Background(), Scope{UserID: "owner", TenantID: 106 + uint64(round)})
+		require.NoError(t, o.ClaimSpace(ctx))
+		s, err := getScope(ctx)
+		require.NoError(t, err)
+
+		const racers = 8
+		results := make([]error, racers)
+		var start sync.WaitGroup
+		start.Add(1)
+		var done sync.WaitGroup
+		for i := 0; i < racers; i++ {
+			done.Add(1)
+			go func(i int) {
+				defer done.Done()
+				start.Wait() // maximize the check-then-insert overlap
+				results[i] = o.admitSearchUsage(ctx, s, fmt.Sprintf("usage-race-%d", i))
+			}(i)
+		}
+		start.Done()
+		done.Wait()
+
+		admitted := 0
+		for _, result := range results {
+			switch {
+			case result == nil:
+				admitted++
+			case errors.Is(result, ErrSearchQuotaRefused):
+			default:
+				t.Fatalf("round %d: unexpected admission error: %v", round, result)
+			}
+		}
+		require.Equalf(t, 1, admitted, "round %d: a one-unit limit admits exactly one concurrent request", round)
+		require.EqualValuesf(t, 1, usageReservationCount(t, o), "round %d: exactly one reservation row exists", round)
+
+		// The estimate agrees with the ledger after the race.
+		estimate, err := o.UsageEstimate(ctx, UsageOperationSearchOnce)
+		require.NoError(t, err)
+		require.EqualValuesf(t, 1, estimate.ReservedUnits+estimate.SettledUnits, "round %d: the ledger holds exactly one held unit", round)
+	}
 }
