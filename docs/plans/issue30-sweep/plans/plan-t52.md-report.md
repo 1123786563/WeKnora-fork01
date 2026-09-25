@@ -586,3 +586,88 @@ index.ts 为共享文件，mobile-core 全量回归无破坏。
 ## 7. 遗留与关注点
 
 - `DeliveryRemoteRecord` 与 contracts `CodeDeliveryRecord` 的结构可赋值性将由 Task 10 接线时 `pnpm --filter @weknora/mobile typecheck` 首次实证（两文件已逐字段核对一致）。
+
+---
+
+# Task 10 报告：apps/mobile——TaskDetailScreen 交付回执接线（2026-09-25）
+
+## 1. 实现内容
+
+按 `docs/plans/issue30-sweep/plans/plan-t52.md` Task 10（4757-4892 行）落地交付回执移动面接线，全部为共享文件最小追加：
+
+1. `apps/mobile/src/screens/TaskDetailScreen.tsx`：
+   - import 扩为 `import type { DeliveryReceiptView, DeliveryState, TaskDetailView } from '@weknora/mobile-core';`。
+   - `TaskDetailScreenProps` 增加可选 `delivery?: DeliveryReceiptView`（解构同步）。
+   - 新增 `export const DELIVERY_STATE_COPY: Record<DeliveryState, string>` 六态中文文案，逐字采用计划 4816-4823 行文本（prepared/dispatched/pushed/delivered/failed/unknown，不粉饰部分完成与不可观测态）。
+   - 新增 `DeliveryReceiptSection` 组件（计划 4825-4838 行形态）：标题「代码交付」+ 状态文案 + 仓库/分支/提交（前 12 位）/PR/远端身份/批准人，可选字段缺省即不渲染。
+   - 渲染点：`onOpenMaterials` 按钮行后、刷新按钮行前插入 `{delivery !== undefined ? <DeliveryReceiptSection delivery={delivery} /> : null}`。
+2. `apps/mobile/src/composition.ts`：在 `activeTaskMaterial` 后追加 `deliveryReaders: Map<string, DeliveryReader>` + 私有 `deliveryFor`（`cachePut` + `deploymentScopeKey` 记忆化，与 `taskOfficeFor`/`taskMaterialFor` 严格同构；remote 用 `createMobileCodeDeliveryRemote`，lease 用 `() => activeRuntime.scopeLease()`）+ `export function activeDeliveryReader(): DeliveryReader | undefined`（未授权面 fail closed 返回 undefined，与 `activeTaskOffice`/`activeTaskMaterial` 同构）。import 区补 `createDeliveryReader`/`DeliveryReader`（mobile-core）与 `createMobileCodeDeliveryRemote`（`@weknora/api-client/mobile/code-delivery`）。
+3. `apps/mobile/src/app/tasks/detail.tsx`：`TaskDetailRouteLifecycle` 增加 `delivery` 态；mount 时经 `activeDeliveryReader()` 读一次（`[runId]` 依赖、`cancelled` 守卫、失败静默——交付区块缺失是合法空态，不阻塞详情渲染）；`delivery` 透传给 `<TaskDetailScreen>`。刷新路径 `onRefresh` 不拉交付（回执不因刷新而变，重进页面即重读），与计划 4880 行要求一致。
+4. `apps/mobile/src/app-smoke.test.tsx`：末尾追加 2 个测试（见 §2）。
+
+依赖方向检查：Screen（TaskDetailScreen.tsx）只 import `@weknora/mobile-core` 类型与 react-native，不接触 contracts/api-client（module-seams §10）；contracts↔mobile-core 结构可赋值由 typecheck 实证（§3）——Task 9 报告 §7 预告的此项验证在此轮 `tsc --noEmit` exit 0 中落定。
+
+## 2. TDD 证据
+
+### RED
+
+先追加测试（实现尚未存在），运行 `pnpm --filter @weknora/mobile test`（tsx --test 'src/**/*.test.ts*'），输出关键片段：
+
+```
+not ok 91 - the task detail screen renders the code delivery receipt section with honest state copy
+  failureType: 'testCodeFailure'
+  error: 'delivery section is present'      ← AssertionError, expected true actual false
+not ok 92 - composition exposes a delivery reader only under an authorized runtime
+  failureType: 'testCodeFailure'
+  error: 'activeDeliveryReader is not a function'   ← TypeError
+not ok 44 - pnpm --filter @weknora/mobile typecheck resolves the package
+  error: src/app-smoke.test.tsx(1323,11): error TS2339: Property 'activeDeliveryReader' does not exist
+    on type 'typeof import(".../apps/mobile/src/composition")'.
+# fail 3（44 为既有 typecheck 自检测试，因新测试引用未实现符号而连带失败——RED 的编译级证据）
+```
+
+失败原因均为被测符号未实现，符合预期。
+
+### GREEN
+
+实现三个生产文件后复跑同命令：
+
+```
+ok 91 - the task detail screen renders the code delivery receipt section with honest state copy
+ok 92 - composition exposes a delivery reader only under an authorized runtime
+1..156
+# tests 156
+# pass 151
+# fail 0
+# skipped 5   ← opt-in 集成证据（缺真实部署 env），与本任务无关
+```
+
+## 3. 验证命令（计划 Step 4 指定）
+
+- `pnpm --filter @weknora/mobile test` → 156 tests，151 pass / 0 fail / 5 skipped（见 §2 GREEN）。
+- `pnpm --filter @weknora/mobile typecheck` → exit 0，无诊断输出（`DeliveryRemoteRecord` ↔ api-client `CodeDeliveryRecord` 结构可赋值、composition/Screen/路由装配类型全部在此实证）。
+
+## 4. 与计划测试骨架的偏差及理由（逐条声明，均不放松断言强度）
+
+1. **测试 1 的区块断言改为「找组件元素 → 手动渲染 → 断言子树」**：计划骨架直接 `JSON.stringify(tree)` 断言文案，但 `DeliveryReceiptSection` 是嵌套函数组件——app-smoke 的 react stub（`app-smoke.test.tsx:28`）`createElement` 不调用组件函数，子树不进渲染树，且函数 type 被 `JSON.stringify` 省略（用临时最小复现脚本实证渲染树为 `{"props":{"delivery":…}}`，脚本已删除）。按既有范式（同文件 1207-1210 行 InboxRouteLifecycle→InboxScreen）改为：`descendants(tree).find(({ type, props }) => typeof type === 'function' && 'delivery' in props)` 找到区块元素后 `render(type, props)` 展开断言 '代码交付'/'已推送，等待草稿 PR 恢复'/'octocat/hello'/'c1f0'；无交付分支额外断言渲染树中不存在区块元素（比原骨架只查文案更强）。
+2. **测试 2 的「授权面 → reader 非 undefined 且两次调用同实例」以 fail-closed 行为断言 + 源码记忆化断言落地**：`activeDeliveryReader()` 无参、内部绑定模块私有 `runtime()` 单例（composition.ts:309-314），Node 测试环境无法把该单例驱动到 authorized 面（signIn 需真实网络登录，无法注入 stub transport）。按计划 4804 行括号指示「以既有 `composition caches instances by deployment scope key` 测试的 stub 方式为模板」——该用例的装配方式即读 composition.ts 源码做文本断言。故：行为级断言未授权面 `activeDeliveryReader() === undefined` 且不抛错（fail closed）；源码级断言 `const deliveryReaders = new Map<string, DeliveryReader>` 存在、`cachePut(deliveryReaders, deploymentScopeKey(origin, tenantId)` 记忆化（同 scope key 两次调用同实例的实现机制，cachePut 语义由既有 1280 行用例及全量回归背书）、`createDeliveryReader({ remote, lease: () => activeRuntime.scopeLease() })`（lease 由 Runtime 提供）。
+3. **测试对象补 `onRefresh: () => {}`**：`TaskDetailScreenProps.onRefresh` 为必需 prop，`tsconfig include` 含 `src/**/*.tsx`（typecheck 会查测试文件），计划骨架的 `{ view, loading: false, delivery }` 缺该字段；不影响被测行为。
+4. 测试 1 的 `view`/`delivery` 字面量补 `as const`（TaskDetailView 各必需字段与计划 4776-4785 行逐字一致，`DeliveryReceiptView` 字段与 4781-4785 行一致）。
+
+## 5. 文件清单（4 个，全部为任务授权文件）
+
+- Modify：`apps/mobile/src/screens/TaskDetailScreen.tsx`（+31/-2：DELIVERY_STATE_COPY + DeliveryReceiptSection + Props.delivery）
+- Modify：`apps/mobile/src/composition.ts`（+19：deliveryReaders/deliveryFor/activeDeliveryReader + 2 行 import）
+- Modify：`apps/mobile/src/app/tasks/detail.tsx`（+12/-2：delivery 态 + 读一次 effect + 透传）
+- Modify：`apps/mobile/src/app-smoke.test.tsx`（+48：2 个新测试）
+
+## 6. 自检发现与修正
+
+1. GREEN 首轮失败于测试 1（'delivery section is present'）——根因即 §4.1 所述 stub 不展开嵌套组件；用临时最小复现脚本（已删除）实证渲染树形状后，按既有范式修测试断言方式，未改生产代码。
+2. 复核计划「Produces」签名：`activeDeliveryReader(): DeliveryReader | undefined` ✅、`DELIVERY_STATE_COPY: Record<DeliveryState, string>` 置于 TaskDetailScreen.tsx ✅；`DeliveryReceiptView` 字段消费与 `packages/mobile-core/src/delivery/delivery-view.ts:30-47` 逐字段一致（含 commitSha 截前 12 位、prUrl/remoteLogin/approver 可选渲染）。
+3. detail.tsx 的交付读取用 `.catch(() => …)` 吞掉 `DeliveryReaderError`（DELIVERY_SCOPE_CHANGED/DELIVERY_BACKEND）——与计划 4875 行「失败静默」一致；scope 切换后迟到结果由 `cancelled` 守卫丢弃。
+
+## 7. 遗留与关注点
+
+- 计划注释要求的「授权面两次调用同实例」未能以纯行为断言落地（§4.2，环境限制而非实现疑点）：`cachePut` 记忆化语义由既有 1280 行用例与全量回归背书，若控制器希望更硬的证据，可在 Task 11 集成证据（真实 Runtime 装配）中补行为级断言。
+- `pnpm exec` 环境有预存在 WARNING（`Unsupported engine: wanted node>=26, current v22.22.3`），为全仓既有状态，非本任务引入。
