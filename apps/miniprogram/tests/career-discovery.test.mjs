@@ -252,6 +252,31 @@ test('D4b: a quota refusal renders the dedicated actionable prompt through the r
   assert.ok(shown.includes('仍可查看既有档案与申请记录'), 'the prompt keeps the quota-exhausted readability guarantee');
 });
 
+test('D6: a missing receipt (404) during reconciliation exposes an actionable recovery state', async () => {
+  let postFails = true;
+  await freshLogin({
+    'GET /api/v1/career/open': call => stub.succeed(call, { data: { revision: 0, facts: [], proposals: [] } }),
+    'POST /api/v1/career/searches': call => { if (postFails) stub.fail(call, 'request:fail network'); else stub.succeed(call, { data: searchReceipt() }); },
+    'GET /api/v1/career/searches/receipt': call => stub.succeed(call, { statusCode: 404, data: { error: { code: 'not_found', message: 'no receipt yet' } } }),
+  });
+  await career.loadCareer();
+  await assert.rejects(career.searchOnce('Go 工程师'), error => error.code === 'outcome_unknown');
+  const pending = career.pendingSearch();
+  assert.ok(pending, 'intent persisted for reconciliation');
+  // 对账返回 404：UI 必须能把“回执缺失”从其他失败中区分出来，呈现可操作恢复态。
+  const missing = await career.searchReceipt().catch(error => error);
+  assert.ok(career.isReceiptMissing(missing), 'receipt-missing is distinguishable for the recovery UI');
+  assert.equal(career.pendingSearch()?.requestId, pending.requestId, 'a missing receipt keeps the intent — nothing is silently dropped');
+  // 恢复动作：同 requestId 安全重发（服务端幂等不重复执行），成功后清除 intent。
+  postFails = false;
+  const recovered = await career.retryPendingSearch();
+  assert.equal(recovered.status, 'completed');
+  assert.equal(career.pendingSearch(), null, 'a successful safe resend clears the intent');
+  const bodies = stub.state.calls.filter(c => new URL(c.options.url).pathname === '/api/v1/career/searches' && (c.options.method ?? 'GET') === 'POST').map(call => call.options.data);
+  assert.equal(bodies.length, 2, 'one failed attempt plus one safe resend');
+  assert.equal(bodies[0].requestId, bodies[1].requestId, 'the safe resend replays the original request id');
+});
+
 test('D7: a quota-refused safe resend keeps the typed code, the dedicated prompt, and the intent', async () => {
   let postFails = true;
   await freshLogin({

@@ -20,8 +20,10 @@ export default function DiscoveryPage() {
   const query = useData(`career:${session.userId}:${session.tenantId}`, () => career.loadCareer());
   const confirmBusy = useAction(); const dismissBusy = useAction(); const proposeBusy = useAction(); const uploadBusy = useAction();
   const searchBusy = useAction(); const recoverBusy = useAction(); const importBusy = useAction();
+  const reconcileBusy = useAction(); const resendBusy = useAction();
   const [searchInput, setSearchInput] = useState('');
   const [searchOut, setSearchOut] = useState<career.SearchOutcome>();
+  const [receiptMissing, setReceiptMissing] = useState(false);
   const [factKey, setFactKey] = useState<string>(FIELDS[0]);
   const [factValue, setFactValue] = useState('');
   const [entry] = useState(() => careerPlatform.readSharedEntry());
@@ -101,7 +103,22 @@ export default function DiscoveryPage() {
       </View></View>
       {searchBusy.error && <Notice tone={quotaRefused(searchBusy.error) ? 'warning' : 'danger'}>{searchBusy.error}</Notice>}
       {pendingSearch && <Notice tone='warning'>有一次结果未知的搜索（{pendingSearch.query}）。</Notice>}
-      {pendingSearch && <Action secondary loading={recoverBusy.busy} onClick={() => void recoverBusy.run(async () => { setSearchOut(await career.searchReceipt()); })}>用原请求对账</Action>}
+      {pendingSearch && <Action secondary loading={reconcileBusy.busy} onClick={() => void reconcileBusy.run(async () => {
+        setReceiptMissing(false);
+        try {
+          setSearchOut(await career.searchReceipt());
+        } catch (error) {
+          // 对账确认服务端无回执（404）：不是失败终态，而是可操作恢复入口。
+          if (career.isReceiptMissing(error)) { setReceiptMissing(true); return; }
+          throw error;
+        }
+      })}>用原请求对账</Action>}
+      {reconcileBusy.error && <Notice tone='danger'>{reconcileBusy.error}</Notice>}
+      {receiptMissing && <>
+        <Notice tone='warning'>尚未找到该请求的回执：搜索请求可能未送达服务器。可安全重发（同一请求 ID，服务端不会重复执行），或稍后再用原请求对账。</Notice>
+        <Action secondary loading={resendBusy.busy} onClick={() => void resendBusy.run(async () => { setSearchOut(await career.retryPendingSearch()); setReceiptMissing(false); })}>安全重发原搜索</Action>
+      </>}
+      {resendBusy.error && <Notice tone={quotaRefused(resendBusy.error) ? 'warning' : 'danger'}>{resendBusy.error}</Notice>}
       {searchOut && <>
         {searchOut.status === 'failed' && <Notice tone='danger'>搜索未完成（{searchOut.failureCode ?? '未知原因'}）。</Notice>}
         {searchOut.hasNoVettedSources && <Notice tone='warning'>当前没有已核验的搜索来源，本次未返回任何结果行；来源接入后会如实列出。</Notice>}

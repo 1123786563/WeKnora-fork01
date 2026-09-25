@@ -146,6 +146,13 @@ export async function searchReceipt(): Promise<SearchOutcome | undefined> {
   store.remove(searchKey());
   return outcome;
 }
+/** 对账确认服务端尚无该请求的回执（404/not_found，handler 冻结映射）：请求可能未送达，
+ * intent 保留；UI 依此呈现可操作恢复态（同 request id 安全重发，服务端幂等不重复执行）。 */
+export function isReceiptMissing(error: unknown): boolean {
+  const code = (error as { code?: unknown } | null | undefined)?.code;
+  if (code === 'not_found') return true;
+  return (error as { status?: unknown } | null | undefined)?.status === 404;
+}
 /** 对账确认服务端无记录（404）后的安全重试：同 request id 幂等重发。 */
 export async function retryPendingSearch(): Promise<SearchOutcome> {
   const pending = pendingSearch();
