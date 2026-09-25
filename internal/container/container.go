@@ -325,8 +325,12 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(newSandboxManager))
 	// Per-tenant sandbox backends: the resolver builds a manager per request
 	// from the tenant's own configuration, falling back to the singleton above
-	// for tenants that configured nothing.
+	// for tenants that configured nothing. The binding store is one shared
+	// singleton for every writer and reader (resolver, preview no-egress
+	// checker, craft lifecycle) so Lite-mode memory bindings are visible
+	// across all of them.
 	must(container.Provide(service.NewTenantSandboxConfigLoader))
+	must(container.Provide(newSharedSessionSandboxBindingStore))
 	must(container.Provide(newTenantSandboxResolver))
 
 	// Business service layer
@@ -2580,13 +2584,13 @@ func newCraftPreviewService(
 	checks craft.PreviewCheckStore,
 	access *service.CraftAccessService,
 	loader sandbox.TenantSandboxConfigLoader,
-	redisClient *redis.Client,
+	bindings sandbox.SessionSandboxBindingStore,
 ) *service.CraftPreviewService {
-	global := sandbox.DefaultConfig()
-	bindings, _, err := selectSessionBindingStore(redisClient, false)
-	if err != nil {
-		logger.Warnf(context.Background(), "[CraftPreview] binding store unavailable, network checker stays zero-value (fail-closed): %v", err)
-		bindings = nil
+	// bindings is the process-wide shared singleton (resolver writes it,
+	// this checker reads it). nil keeps the checker zero-value = every
+	// issuance fails closed with "preview network policy is unavailable".
+	if bindings == nil {
+		logger.Warnf(context.Background(), "[CraftPreview] shared binding store unavailable; network checker stays zero-value (fail-closed)")
 	}
 	return service.NewCraftPreviewService(versions, files, checks, service.CraftPreviewConfig{
 		AppOrigin:     strings.TrimSpace(os.Getenv("WEKNORA_CRAFT_APP_ORIGIN")),
@@ -2595,7 +2599,7 @@ func newCraftPreviewService(
 		NetworkChecker: service.CraftPreviewDockerNetworkChecker{
 			Bindings:  bindings,
 			Loader:    loader,
-			Global:    global,
+			Global:    sandbox.DefaultConfig(),
 			Inspector: service.CraftPreviewLocalDockerInspector{},
 		},
 		BrowserNavigationProtected: strings.EqualFold(strings.TrimSpace(os.Getenv("WEKNORA_CRAFT_PREVIEW_NAVIGATION_PROTECTED")), "true"),

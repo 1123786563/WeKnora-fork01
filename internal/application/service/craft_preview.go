@@ -25,6 +25,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
 	"net/url"
 	"strings"
 	"sync"
@@ -97,6 +98,39 @@ type CraftPreviewContainerNetworkInspector interface {
 // container that was created while the config still used bridge.
 type CraftPreviewLocalDockerInspector struct{}
 
+// craftPreviewInspectTimeout bounds one inspect RPC, mirroring the sandbox
+// module's DefaultDockerHTTPTimeout convention for short Engine API calls:
+// a hung local daemon must not pin a preview worker until the browser
+// drops the connection.
+const craftPreviewInspectTimeout = 30 * time.Second
+
+// craftPreviewDockerClients caches one shared client per daemon host. The
+// no-egress check runs per preview resource request; building (and
+// closing) a fresh client per call would re-dial the unix socket and redo
+// the lazy API-version negotiation every time (the sandbox module keeps
+// the same per-endpoint pool discipline in dockerEngineClientPool).
+var craftPreviewDockerClients struct {
+	mu      sync.Mutex
+	clients map[string]*client.Client
+}
+
+func craftPreviewDockerClient(host string) (*client.Client, error) {
+	craftPreviewDockerClients.mu.Lock()
+	defer craftPreviewDockerClients.mu.Unlock()
+	if craftPreviewDockerClients.clients == nil {
+		craftPreviewDockerClients.clients = make(map[string]*client.Client)
+	}
+	if existing, ok := craftPreviewDockerClients.clients[host]; ok {
+		return existing, nil
+	}
+	built, err := client.New(client.WithHost(host))
+	if err != nil {
+		return nil, err
+	}
+	craftPreviewDockerClients.clients[host] = built
+	return built, nil
+}
+
 func (CraftPreviewLocalDockerInspector) NetworkMode(ctx context.Context, config *sandbox.Config, sandboxID string) (string, error) {
 	if config == nil || sandboxID == "" {
 		return "", fmt.Errorf("%w: Docker preview inspect needs config and container", craft.ErrUnsupported)
@@ -108,12 +142,13 @@ func (CraftPreviewLocalDockerInspector) NetworkMode(ctx context.Context, config 
 	if !strings.HasPrefix(host, "unix://") {
 		return "", fmt.Errorf("%w: remote Docker preview inspection is not configured", craft.ErrUnsupported)
 	}
-	api, err := client.New(client.WithHost(host))
+	api, err := craftPreviewDockerClient(host)
 	if err != nil {
 		return "", err
 	}
-	defer api.Close()
-	inspected, err := api.ContainerInspect(ctx, sandboxID, client.ContainerInspectOptions{})
+	inspectCtx, cancel := context.WithTimeout(ctx, craftPreviewInspectTimeout)
+	defer cancel()
+	inspected, err := api.ContainerInspect(inspectCtx, sandboxID, client.ContainerInspectOptions{})
 	if err != nil {
 		return "", err
 	}
@@ -123,19 +158,30 @@ func (CraftPreviewLocalDockerInspector) NetworkMode(ctx context.Context, config 
 	return string(inspected.Container.HostConfig.NetworkMode), nil
 }
 
+// optionalErr renders an underlying error for a refusal message without
+// leaking a "<nil>" tail when the refusal came from a condition (nil
+// binding, missing config, wrong mode) rather than a failed call. These
+// messages surface to authenticated callers and must stay decipherable.
+func optionalErr(err error) string {
+	if err == nil {
+		return ""
+	}
+	return ": " + err.Error()
+}
+
 func (n CraftPreviewDockerNetworkChecker) CheckPreviewNoEgress(ctx context.Context, scope craft.Scope) error {
 	if n.Bindings == nil || n.Loader == nil || n.Global == nil || n.Inspector == nil || scope.TenantID == 0 || scope.SessionID == "" {
 		return fmt.Errorf("%w: preview network policy is unavailable", craft.ErrUnsupported)
 	}
 	binding, err := n.Bindings.Get(ctx, sandbox.SessionSandboxKey{TenantID: scope.TenantID, SessionID: scope.SessionID})
 	if err != nil || binding == nil || binding.StaleAt != nil || binding.Provider != sandbox.SandboxTypeDocker || binding.ConfigID == "" {
-		return fmt.Errorf("%w: no current Docker sandbox binding: %v", craft.ErrUnsupported, err)
+		return fmt.Errorf("%w: no current Docker sandbox binding%s", craft.ErrUnsupported, optionalErr(err))
 	}
 	config := n.Global
 	if binding.ConfigID != types.SandboxConfigIDGlobalDefault {
 		selected, loadErr := n.Loader.Load(ctx, scope.TenantID, binding.ConfigID)
 		if loadErr != nil || !selected.Found || selected.Cordoned || selected.Config == nil {
-			return fmt.Errorf("%w: bound sandbox config is unavailable: %v", craft.ErrUnsupported, loadErr)
+			return fmt.Errorf("%w: bound sandbox config is unavailable%s", craft.ErrUnsupported, optionalErr(loadErr))
 		}
 		config, err = sandbox.ResolveEffectiveConfig(selected.Config, n.Global)
 		if err != nil {
@@ -147,7 +193,7 @@ func (n CraftPreviewDockerNetworkChecker) CheckPreviewNoEgress(ctx context.Conte
 	}
 	actual, err := n.Inspector.NetworkMode(ctx, config, binding.SandboxID)
 	if err != nil || !strings.EqualFold(strings.TrimSpace(actual), "none") {
-		return fmt.Errorf("%w: bound Docker container is not running with network_mode=none: %v", craft.ErrUnsupported, err)
+		return fmt.Errorf("%w: bound Docker container is not running with network_mode=none%s", craft.ErrUnsupported, optionalErr(err))
 	}
 	return nil
 }
@@ -222,12 +268,30 @@ func (s *CraftPreviewService) Enabled() bool {
 
 // AcceptsPreviewHost prevents the auth-free /p route mounted on the shared
 // router from redeeming a ticket on the main product host.
+// trimDefaultPort strips a port that is the scheme's default (https=443,
+// http=80). RFC 7230 allows clients and some reverse proxies to send the
+// default port explicitly; the origin config usually omits it, and a bare
+// EqualFold would silently 404 the shared /p route for those deployments.
+func trimDefaultPort(host, scheme string) string {
+	if h, p, err := net.SplitHostPort(host); err == nil {
+		if (scheme == "https" && p == "443") || (scheme == "http" && p == "80") {
+			return h
+		}
+	}
+	return host
+}
+
 func (s *CraftPreviewService) AcceptsPreviewHost(host string) bool {
 	if !s.Enabled() {
 		return false
 	}
 	u, err := url.Parse(s.config.PreviewOrigin)
-	return err == nil && strings.EqualFold(host, u.Host)
+	if err != nil {
+		return false
+	}
+	// Normalize both sides: the config side may omit the default port while
+	// the request carries it (or vice versa).
+	return strings.EqualFold(trimDefaultPort(host, u.Scheme), trimDefaultPort(u.Host, u.Scheme))
 }
 
 // Issue mints one redemption ticket for a published version after the full
@@ -391,14 +455,21 @@ func (s *CraftPreviewService) lookup(ctx context.Context, digest, rel string) (c
 	if !ok {
 		return craft.File{}, craft.Scope{}, craftPreviewGrant{}, fmt.Errorf("%w: no preview capability", craft.ErrNotFound)
 	}
+	// The per-capability allowlist is O(1) local state frozen from the
+	// immutable version at issuance, so it gates FIRST: favicon probes and
+	// stale relative references answer 404 without paying the two
+	// I/O-heavy per-resource doors (membership store, then binding store +
+	// config load + live container inspect). Authorized manifest paths
+	// still run both doors before any byte is served — the order change
+	// only short-circuits guaranteed-404 requests.
+	if _, ok := grant.files[rel]; !ok {
+		return craft.File{}, craft.Scope{}, craftPreviewGrant{}, fmt.Errorf("%w: file is outside preview capability", craft.ErrNotFound)
+	}
 	if err := craft.RequireTaskAccess(ctx, s.config.AccessChecker, grant.scope, craft.TaskPreview); err != nil {
 		return craft.File{}, craft.Scope{}, craftPreviewGrant{}, err
 	}
 	if err := s.requireNoEgress(ctx, grant.scope); err != nil {
 		return craft.File{}, craft.Scope{}, craftPreviewGrant{}, err
-	}
-	if _, ok := grant.files[rel]; !ok {
-		return craft.File{}, craft.Scope{}, craftPreviewGrant{}, fmt.Errorf("%w: file is outside preview capability", craft.ErrNotFound)
 	}
 	version, err := s.versions.Get(ctx, grant.scope, grant.versionID)
 	if err != nil {
