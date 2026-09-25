@@ -1,0 +1,11 @@
+{
+  "name": "craft-web-build",
+  "version": "1.0.0",
+  "digest": "e37596a19c246ae2cc3866a1b53b69319a3f134f3c5df8b4ffd3487a09be38c0",
+  "digest_of": "SKILL.md",
+  "artifact_kind": "web",
+  "tool_requirements": [
+    "read_file",
+    "shell_exec"
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "name": "craft-web-toolchain",
+  "template": {
+    "name": "template.html",
+    "version": "1.0.0",
+    "sha256": "ecf1a109e97e0d991aeb4507fdb5079d71576f2caff1608491bf05961ae16d61"
+  },
+  "dependencies": [
+    {
+      "name": "craft-web.css",
+      "version": "1.0.0",
+      "sha256": "b6109648e3f77bbf7ad679939ae1a3f3b8b5507b01efd9e74080d0fe0bede30b"
+    },
+    {
+      "name": "craft-web.js",
+      "version": "1.0.0",
+      "sha256": "e3bb701722a92a9f74238547cd778da263c1d821f1032168cd632d0d11b67e96"
+    }
+  ],
+  "build_program": {
+    "name": "build.py",
+    "sha256": "ab05fa4558f37caf236ee4e9bb45576bebd7c845fe660408ee20b7fa80e20b45"
+  },
+  "toolchain_digest": "9459a7f47c76b440e1f5594c4836de856f70e7bc92cb1e3fb946736ab0ca705f"
+}

@@ -15,7 +15,29 @@
     "digest_provenance": "linux-amd64/linux-arm64 were hashed from the official v1.18.4 release tarballs (opencode-linux-x64.tar.gz, opencode-linux-arm64.tar.gz) on 2026-09-14 and pinned here plus in the Dockerfile build args; darwin-arm64 is the R01 local probe carried in opencode.lock.json.",
     "health_check": "opencode --version must print exactly 1.18.4 AND the installed binary's sha256 must equal the pinned per-arch digest before a sandbox is accepted; GET /doc info.version=1.0.0 is a static OpenAPI constant and must never be used as the version signal."
   },
-  "skills": [],
+  "web_toolchain": {
+    "name": "craft-web-toolchain",
+    "root": "/opt/craft/web",
+    "lock": "docker/craft/web/toolchain.lock.json (T04, read-only authority)",
+    "template_version": "1.0.0",
+    "template_sha256": "ecf1a109e97e0d991aeb4507fdb5079d71576f2caff1608491bf05961ae16d61",
+    "dependencies": [
+      {"name": "craft-web.css", "version": "1.0.0", "sha256": "b6109648e3f77bbf7ad679939ae1a3f3b8b5507b01efd9e74080d0fe0bede30b"},
+      {"name": "craft-web.js", "version": "1.0.0", "sha256": "e3bb701722a92a9f74238547cd778da263c1d821f1032168cd632d0d11b67e96"}
+    ],
+    "build_program_sha256": "ab05fa4558f37caf236ee4e9bb45576bebd7c845fe660408ee20b7fa80e20b45",
+    "toolchain_digest": "9459a7f47c76b440e1f5594c4836de856f70e7bc92cb1e3fb946736ab0ca705f",
+    "digest_rule": "The toolchain digest is the deterministic identity of the fixed template + provisioned dependencies + build program (docker/craft/web/toolchain.lock.json pins every file). The build verifies every file against the lock before building and the runtime refuses a sandbox whose /etc/craft/runtime-config.json digest differs from the pinned value, so the web template and dependency versions are represented in the runtime identity the probe hashes.",
+    "egress": "The web build runs with all external egress denied (no HTTP, no DNS, no Git, no package manager); the build program performs no network access and rejects staged content referencing any external origin."
+  },
+  "skills": [
+    {
+      "name": "craft-web-build",
+      "version": "1.0.0",
+      "sha256": "e37596a19c246ae2cc3866a1b53b69319a3f134f3c5df8b4ffd3487a09be38c0",
+      "path": "skills/craft-web-build"
+    }
+  ],
   "skill_entry_shape": [
     "name",
     "version",

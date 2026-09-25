@@ -75,6 +75,12 @@ const (
 	// craftOpenCodeRuntimeDigestEnv overrides the runtime digest stamped
 	// into provisioned workspaces (default marks the local serve runtime).
 	craftOpenCodeRuntimeDigestEnv = "CRAFT_OPENCODE_RUNTIME_DIGEST"
+	// craftWebToolchainDirEnv names the pinned fixed offline web toolchain
+	// directory (docker/craft/web layout: template.html, deps/, build.py,
+	// toolchain.lock.json). Empty keeps the preview-only evidence — no build
+	// fact is fabricated; a configured directory is verified at assembly and
+	// the assembly refuses on any pin mismatch.
+	craftWebToolchainDirEnv = "CRAFT_WEB_TOOLCHAIN_DIR"
 	// craftLocalRuntimeDigest is the honest default identity of the local
 	// single-serve runtime: it is not a reproducible image digest.
 	craftLocalRuntimeDigest = "local-opencode-serve"
@@ -129,6 +135,20 @@ func newCraftRuntimeExecutor(
 		evidence = previews.EvidenceSource()
 	}
 	source := &localCraftArtifactSource{workDir: workDir, outputDir: outputDir}
+	// T04 (#123) fixed offline web build: when the deployment pins the web
+	// toolchain directory, the collector's evidence additionally reads the
+	// delegated run's output/build-log.json and folds its REAL exit status
+	// into the W01 build evidence — but only when the log names exactly this
+	// deployment's pinned toolchain. Unset keeps the preview-only evidence
+	// (default-off, like the rest of this assembly); set-but-invalid refuses
+	// the whole assembly rather than trusting an unverifiable toolchain.
+	if toolchainDir := strings.TrimSpace(os.Getenv(craftWebToolchainDirEnv)); toolchainDir != "" {
+		pin, pinErr := LoadCraftWebToolchainPin(toolchainDir)
+		if pinErr != nil {
+			return nil, fmt.Errorf("craft web toolchain pin %s: %w", toolchainDir, pinErr)
+		}
+		evidence = craftWebBuildEvidenceSource(evidence, craftSessionBuildLogReader(source, outputDir), pin)
+	}
 	// The candidate store backs the R4 Task3 Run-bound collection: successful
 	// delegations stage a private candidate and the post-terminal capture
 	// seals the draft; the legacy session-wide publication route keeps its
