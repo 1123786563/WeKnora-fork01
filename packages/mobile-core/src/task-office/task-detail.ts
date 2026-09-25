@@ -238,16 +238,12 @@ export function createTaskDetail(input: { taskId: string; runId: string }, ports
     controller?.abort();
     controller = undefined;
   };
-  const snapshotOf = (source: TaskBackendDetail): OfflineTaskSnapshot => ({
-    taskId: source.taskId,
-    runId: source.runId,
-    title: source.title,
-    attention: source.attention,
-    ...(source.archivedAt === undefined ? {} : { archivedAt: source.archivedAt }),
-    execution: source.execution,
-    watermark: source.watermark,
-    incomplete: source.incomplete,
-  });
+  // 新增可选字段自动随行进离线快照（R1-F6）：手工逐字段拷贝会把未来字段静默排除。
+  // 与 task-detail.test.ts 的既有同款解构惯例一致。
+  const snapshotOf = (source: TaskBackendDetail): OfflineTaskSnapshot => {
+    const { events: _events, ...snapshot } = source;
+    return snapshot;
+  };
   const persist = async (cursor: number, history: TaskBackendEvent[]): Promise<void> => {
     await ports.store.save({ taskId: detail!.taskId, runId: input.runId, cursor, events: history.slice(-TASK_DETAIL_HISTORY_LIMIT), savedAt: new Date().toISOString(), snapshot: snapshotOf(detail!) });
   };
@@ -455,6 +451,7 @@ export function createTaskDetail(input: { taskId: string; runId: string }, ports
       await flushPersisted(); // 终态必已落盘（幂等：processEvent 已 flush 时跳过）
       interruption = undefined;
       notify('drained');
+      void flushQueuedIntents().catch(() => undefined); // R1-F1：自然完成与 hydrate 终态同款放行（一次性，失败不重试）
       return;
     }
     await interrupt('stream-ended-nonterminal', 'the event stream ended before a terminal status');

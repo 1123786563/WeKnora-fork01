@@ -893,6 +893,42 @@ test('flushQueuedIntents after the scope died fails closed with SCOPE_CHANGED', 
   handle.close('done');
 });
 
+test('a naturally ended stream releases parked queue-next without an explicit flush (R1-F1)', async () => {
+  const commands = scriptedCommandPort({ result: { runId: 'run-1', action: 'queue_next', nextRunId: 'run-2' } });
+  const { lease } = leased();
+  const scripted = createScriptedTaskStream();
+  const handle = createTaskDetail(
+    { taskId: 's1', runId: 'run-1' },
+    {
+      backend: {
+        detail: async () => interventionDetail({ runStatus: 'running', revision: 7 }),
+        stream: (input: { runId: string; cursor: number; signal: AbortSignal; onEvent(event: TaskBackendEvent): void; onControl(frame: TaskStreamControlFrame): void }) =>
+          new Promise<void>((resolve) => {
+            scripted.attach({ signal: input.signal, onEvent: input.onEvent, onControl: input.onControl, resolve, reject: () => undefined });
+          }),
+      },
+      store: createInMemoryTaskProjectionStore(),
+      lease: () => lease,
+      commands: commands.port,
+    },
+  );
+  await handle.hydrate();
+  const parked = await handle.act({ kind: 'queue-next', text: 'next instruction' });
+  assert.equal(parked.outcome, 'parked');
+  assert.equal(commands.calls.length, 0);
+  // 自然完成主路径：流内终态事件先到（seq 必须 = committedCursor + 1，见差异记录 6），
+  // 随后服务端正常结束流——期间无 hydrate/resync 参与，放行只能来自 streamEnded 终态分支。
+  scripted.emit(event$(1, 'run.completed'));
+  scripted.end();
+  await settle();
+  assert.equal(handle.view()?.connection, 'drained', 'streamEnded 终态分支已执行（前置：确认走的是自然完成路径）');
+  assert.equal(handle.view()?.runStatus, 'succeeded');
+  assert.equal(commands.calls.length, 1, '自然完成必须兑现「已排队（等待当前 Run 结束后发出）」承诺——parked 项自动放行');
+  assert.equal(handle.view()?.interventions?.at(-1)?.outcome, 'accepted');
+  assert.equal(handle.view()?.queuedNext?.length ?? 0, 0);
+  handle.close('done');
+});
+
 // ── T10（#40）：detail 通道失败时的离线降级（加密投影渲染）──
 
 const snapshotOf = (source: TaskBackendDetail): OfflineTaskSnapshot => {
