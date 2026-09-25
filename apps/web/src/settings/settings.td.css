@@ -753,12 +753,23 @@
   color: var(--td-brand-color);
 }
 
-/* hint 弹层 portal 到 body——按 §2.5 类名已带语义前缀，原样平移不加前缀。 */
+/* hint 弹层 portal 到 body——按 §2.5 类名已带语义前缀，原样平移不加前缀。
+   env/sandbox 两域 Vue scoped 同名类不同源（EnvVarSettings.vue gap12+__text
+   上距 4px vs SandboxSettings.vue gap4+__text 无上距），portal 后无 scoped
+   祖先可锚，以 --env/--sandbox 变体类区分，防同名类互相覆盖（曾致 envvars
+   沙箱密钥提示弹层被 sandbox 版覆盖，px-envvars-sandbox-key-hint 1.837%）。 */
 .hint-popover {
   display: flex;
   flex-direction: column;
-  gap: 12px;
   max-width: 340px;
+}
+
+.hint-popover--env {
+  gap: 12px;
+}
+
+.hint-popover--sandbox {
+  gap: 4px;
 }
 
 .hint-popover__title {
@@ -769,10 +780,14 @@
 }
 
 .hint-popover__text {
-  margin: 4px 0 0;
+  margin: 0;
   color: var(--td-text-color-secondary);
   font-size: 12px;
   line-height: 1.55;
+}
+
+.hint-popover--env .hint-popover__text {
+  margin: 4px 0 0;
 }
 
 .env-empty {
@@ -3423,27 +3438,10 @@
   color: var(--td-brand-color);
 }
 
-/* hint-popover 服务 t-popup portal 到 body 的内容（§2.5：原样平移不加前缀）。 */
-.hint-popover {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  max-width: 340px;
-}
-
-.hint-popover__title {
-  margin: 0;
-  color: var(--td-text-color-primary);
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.hint-popover__text {
-  margin: 0;
-  color: var(--td-text-color-secondary);
-  font-size: 12px;
-  line-height: 1.55;
-}
+/* hint-popover 服务 t-popup portal 到 body 的内容（§2.5：原样平移不加前缀）。
+   sandbox 域变体（gap4+__text 无上距，= SandboxSettings.vue scoped 基线）
+   已并入上方 .hint-popover--sandbox；此处不再保留裸 .hint-popover 定义——
+   曾无差别覆盖 env 域 gap12 版（px-envvars-sandbox-key-hint 1.837% 根因）。 */
 
 .wk-settings-drawer-root .sandbox-settings .sandbox-list-loading {
   min-height: 120px;
@@ -7123,7 +7121,14 @@
   background-color: var(--td-bg-color-container);
 }
 
-.api-key-create-drawer .scope-hint {
+/* scope-hint 两规则锚 pak-create-drawer 变体（PlatformApiKeysPanel drawerClass）：
+   .api-key-create-drawer 类名与 integration 域 views-integrations-u.css 同源段共用
+   （两 Vue 源共享抽屉类名但 hint 规则不同源——本段=system/PlatformAPIKeys.vue:648-691，
+   行级 margin:0 + capability-item 24px 缩进；integration 源=8px 0 0 + 无缩进）。
+   抽屉 portal 到 body 后两套全局规则在 integration-api 分区页同级联叠加，
+   简写/长写交互令 24px 残留（px-integration-api-create-key 2.374% 回退根因）。
+   共享规则（dialog/capability-list 家族）两源逐字一致，保留共享锚无害。 */
+.pak-create-drawer .scope-hint {
   margin: 0;
   color: var(--td-text-color-placeholder);
   font-size: 12px;
@@ -7164,7 +7169,7 @@
   gap: 10px;
 }
 
-.api-key-create-drawer .api-key-capability-item .scope-hint {
+.pak-create-drawer .api-key-capability-item .scope-hint {
   margin: 2px 0 0 24px;
 }
 

@@ -112,7 +112,7 @@ export function EnvVarSettingsPanel({ client, initialPayload, onMutated }: { cli
         trigger="hover"
         overlayInnerStyle={{ maxWidth: '380px' }}
         content={(
-          <div className="hint-popover" data-testid="envvar-help-popover">
+          <div className="hint-popover hint-popover--env" data-testid="envvar-help-popover">
             <div className="hint-popover__block">
               <p className="hint-popover__title">{t('envVarSettings.introPersonalTitle')}</p>
               <p className="hint-popover__text">{t('envVarSettings.introPersonalBody')}</p>

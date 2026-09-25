@@ -273,10 +273,17 @@ export function PlatformApiKeysPanel({ client, initialKeys }: { client: WeKnoraC
       </table></div>}
     </section>
 
-    {/* Vue SettingDrawer（PlatformAPIKeys.vue:129-144）——创建抽屉 */}
+    {/* Vue SettingDrawer（PlatformAPIKeys.vue:129-144）——创建抽屉。
+        pak-create-drawer 变体锚（台账 #28 同名串染判例）：system/PlatformAPIKeys.vue 与
+        integrations/ApiIntegrationSettings.vue 两 Vue 源共用 .api-key-create-drawer 抽屉类名，
+        但 scope-hint 两规则不同源（本源行级 margin:0 + capability-item 缩进 24px）；
+        抽屉 portal 到 body 后无 scoped 祖先，settings.td.css 的差异规则须锚变体类，
+        防在 integration-api 分区页与 views-integrations-u.css 同名规则串染
+        （px-integration-api-create-key 2.374% 回退根因：简写 margin:2px 0 0 24px 与
+        u.css 长写 margin-top:2px 级联叠加，24px 左距残留）。 */}
     <SettingDrawer
       visible={createDrawerVisible}
-      drawerClass="api-key-create-drawer"
+      drawerClass="api-key-create-drawer pak-create-drawer"
       title={t('platformApiKeys.create')}
       description={t('platformApiKeys.createDescription')}
       icon="secured"

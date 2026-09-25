@@ -1814,7 +1814,7 @@ export function SandboxSettingsPanel({ client, role, initialData, dockerBackendE
                 placement="bottom-left"
                 trigger="hover"
                 overlayInnerStyle={{ maxWidth: '380px' }}
-                content={<div className="hint-popover">
+                content={<div className="hint-popover hint-popover--sandbox">
                   <p className="hint-popover__title">{t('settings.sandbox.pageHintTitle')}</p>
                   <p className="hint-popover__text">{t('settings.sandbox.pageHint')}</p>
                 </div>}
