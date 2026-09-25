@@ -258,7 +258,7 @@ func NewOffice(db *gorm.DB) (*Office, error) {
 	if db == nil {
 		return nil, errors.New("career database required")
 	}
-	models := []any{&profile{}, &space{}, &fact{}, &factVersion{}, &proposal{}, &change{}, &receipt{}, &sourceRevision{}, &opportunity{}, &opportunityObservation{}, &opportunitySnapshot{}, &opportunityReceipt{}, &evaluationRecord{}, &applicationRecord{}, &searchRecord{}, &searchResultRecord{}}
+	models := []any{&profile{}, &space{}, &fact{}, &factVersion{}, &proposal{}, &change{}, &receipt{}, &sourceRevision{}, &opportunity{}, &opportunityObservation{}, &opportunitySnapshot{}, &opportunityReceipt{}, &evaluationRecord{}, &applicationRecord{}, &searchRecord{}, &searchResultRecord{}, &materialRecord{}, &materialVersionRecord{}, &materialReceiptRecord{}}
 	if db.Dialector.Name() == "sqlite" {
 		present := 0
 		for _, model := range models {
@@ -318,6 +318,9 @@ func validateSQLiteCareerSchema(db *gorm.DB) error {
 		"career_applications":             {"id", "tenant_id", "user_id", "request_id", "fingerprint", "opportunity_id", "snapshot_id", "evaluation_id", "profile_revision", "evidence_body", "batch_identity", "continue_despite_hard_failure", "evaluation_status", "qualified", "warning_body", "link_state", "task_id", "run_id", "receipt_body", "created_at", "updated_at"},
 		"career_searches":                 {"id", "tenant_id", "user_id", "request_id", "fingerprint", "status", "claim_token", "lease_until", "query", "receipt_body", "created_at", "completed_at"},
 		"career_search_results":           {"id", "tenant_id", "user_id", "search_id", "source_id", "link", "checked_at", "qualification", "uncertainty", "created_at"},
+		"career_materials":                {"id", "tenant_id", "user_id", "request_id", "fingerprint", "opportunity_id", "snapshot_id", "profile_revision", "evidence_body", "status", "draft_body", "failure_code", "failure_message", "version_count", "receipt_body", "created_at", "updated_at"},
+		"career_material_versions":        {"id", "tenant_id", "user_id", "material_id", "version", "request_id", "fingerprint", "evidence_body", "version_body", "receipt_body", "created_at"},
+		"career_material_receipts":        {"tenant_id", "user_id", "request_id", "fingerprint", "body", "created_at"},
 	}
 	for table, columns := range requiredColumns {
 		for _, column := range columns {
@@ -336,6 +339,9 @@ func validateSQLiteCareerSchema(db *gorm.DB) error {
 		"career_applications":         {"tenant_id", "user_id", "request_id"},
 		"career_searches":             {"tenant_id", "user_id", "request_id"},
 		"career_search_results":       {"tenant_id", "user_id", "search_id", "link"},
+		"career_materials":            {"tenant_id", "user_id", "request_id"},
+		"career_material_versions":    {"tenant_id", "user_id", "material_id", "version"},
+		"career_material_receipts":    {"tenant_id", "user_id", "request_id"},
 	} {
 		if err := requireSQLiteUniqueConstraint(db, table, columns); err != nil {
 			return fmt.Errorf("incomplete Career SQLite schema: %w; apply database migrations before startup", err)

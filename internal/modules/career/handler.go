@@ -107,6 +107,12 @@ func writeError(c *gin.Context, e error) {
 	case errors.Is(e, ErrSearchQuotaRefused):
 		status = http.StatusTooManyRequests
 		code = "search_quota_refused"
+	case errors.Is(e, ErrMaterialNotFound), errors.Is(e, ErrMaterialVersionNotFound):
+		status = 404
+		code = "not_found"
+	case errors.Is(e, ErrMaterialClaimUnconfirmed):
+		status = 409
+		code = "material_claim_unconfirmed"
 	}
 	body := gin.H{"code": code, "message": e.Error()}
 	if errors.Is(e, ErrRevisionConflict) {
@@ -545,6 +551,165 @@ func (h *Handler) GetSearch(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, receipt)
+}
+
+const maxMaterialBodyBytes = 256 * 1024
+
+// EditMaterial creates or edits one structured material draft. Creation
+// freezes the opportunity snapshot and profile revision; claims may only
+// reference confirmed facts, and a refused edit keeps the prior draft.
+func (h *Handler) EditMaterial(c *gin.Context) {
+	ctx, ok := h.scope(c, false)
+	if !ok {
+		return
+	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxMaterialBodyBytes)
+	decoder := json.NewDecoder(c.Request.Body)
+	decoder.DisallowUnknownFields()
+	var input EditMaterialInput
+	if err := decoder.Decode(&input); err != nil {
+		var maxBytesError *http.MaxBytesError
+		if errors.As(err, &maxBytesError) {
+			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": gin.H{"code": "request_too_large", "message": "material request is too large"}})
+			return
+		}
+		writeError(c, ErrInvalidRequest)
+		return
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		writeError(c, ErrInvalidRequest)
+		return
+	}
+	receipt, err := h.office.EditMaterial(ctx, input)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, receipt)
+}
+
+// ConfirmMaterialBody confirms the current draft as the next immutable
+// version; no earlier version is ever rewritten.
+func (h *Handler) ConfirmMaterialBody(c *gin.Context) {
+	ctx, ok := h.scope(c, false)
+	if !ok {
+		return
+	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 16*1024)
+	decoder := json.NewDecoder(c.Request.Body)
+	decoder.DisallowUnknownFields()
+	var input ConfirmMaterialInput
+	if err := decoder.Decode(&input); err != nil {
+		var maxBytesError *http.MaxBytesError
+		if errors.As(err, &maxBytesError) {
+			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": gin.H{"code": "request_too_large", "message": "material confirm request is too large"}})
+			return
+		}
+		writeError(c, ErrInvalidRequest)
+		return
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		writeError(c, ErrInvalidRequest)
+		return
+	}
+	receipt, err := h.office.ConfirmMaterial(ctx, input)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, receipt)
+}
+
+// MaterialReceiptHandler replays a stored material receipt by request ID.
+func (h *Handler) MaterialReceiptHandler(c *gin.Context) {
+	ctx, ok := h.scope(c, false)
+	if !ok {
+		return
+	}
+	receipt, err := h.office.FindMaterialReceipt(ctx, c.Query("requestId"))
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, receipt)
+}
+
+// GetMaterial serves one material with its draft, review risks, and version
+// history under the authenticated scope.
+func (h *Handler) GetMaterial(c *gin.Context) {
+	ctx, ok := h.scope(c, false)
+	if !ok {
+		return
+	}
+	view, err := h.office.Material(ctx, c.Param("materialId"))
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, view)
+}
+
+// ListMaterialVersions serves the immutable version history of one material.
+func (h *Handler) ListMaterialVersions(c *gin.Context) {
+	ctx, ok := h.scope(c, false)
+	if !ok {
+		return
+	}
+	versions, err := h.office.MaterialVersions(ctx, c.Param("materialId"))
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	if versions == nil {
+		versions = []MaterialVersionSummary{}
+	}
+	c.JSON(http.StatusOK, gin.H{"materialId": c.Param("materialId"), "versions": versions})
+}
+
+// GetMaterialVersion serves one immutable version by its number.
+func (h *Handler) GetMaterialVersion(c *gin.Context) {
+	ctx, ok := h.scope(c, false)
+	if !ok {
+		return
+	}
+	version, err := strconv.ParseUint(c.Param("versionId"), 10, 64)
+	if err != nil || version == 0 {
+		writeError(c, ErrInvalidRequest)
+		return
+	}
+	view, err := h.office.MaterialVersion(ctx, c.Param("materialId"), version)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, view)
+}
+
+// CompareMaterialVersions serves the honest diff between an old (baseline)
+// version and the target version.
+func (h *Handler) CompareMaterialVersions(c *gin.Context) {
+	ctx, ok := h.scope(c, false)
+	if !ok {
+		return
+	}
+	target, err := strconv.ParseUint(c.Param("versionId"), 10, 64)
+	if err != nil || target == 0 {
+		writeError(c, ErrInvalidRequest)
+		return
+	}
+	baseline, err := strconv.ParseUint(c.Query("baseline"), 10, 64)
+	if err != nil || baseline == 0 {
+		writeError(c, ErrInvalidRequest)
+		return
+	}
+	comparison, err := h.office.CompareMaterialVersions(ctx, c.Param("materialId"), baseline, target)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, comparison)
 }
 
 func (h *Handler) Sources(c *gin.Context) {

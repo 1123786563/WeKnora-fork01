@@ -259,3 +259,99 @@ func TestCareerSearchHandlerMapsQuotaRefusalUnknownAndReceipt(t *testing.T) {
 	h.GetSearch(intruderCtx)
 	require.Equal(t, 403, intruderRec.Code)
 }
+
+func TestCareerMaterialHTTPContract(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	office, err := NewOffice(db)
+	require.NoError(t, err)
+	scope := Scope{UserID: "material-owner", TenantID: 97}
+	base := context.WithValue(context.Background(), types.UserIDContextKey, scope.UserID)
+	base = context.WithValue(base, types.TenantIDContextKey, scope.TenantID)
+	ctx := WithScope(base, scope)
+	require.NoError(t, office.ClaimSpace(ctx))
+
+	view, err := office.Open(ctx)
+	require.NoError(t, err)
+	_, err = office.Confirm(ctx, "education.graduation_year", "2027", "mat-http-year", view.Revision, Source{Kind: "manual"})
+	require.NoError(t, err)
+	view, err = office.Open(ctx)
+	require.NoError(t, err)
+	job, err := office.ImportJD(ctx, ImportJDInput{RequestID: "mat-http-job", RawText: "仅限2027届。"})
+	require.NoError(t, err)
+
+	h := &Handler{office: office, members: &memberListStub{members: []*types.TenantMember{{UserID: scope.UserID, TenantID: scope.TenantID, Role: types.TenantRoleOwner}}}}
+	materialJSON := func(requestID string, claims string) string {
+		return fmt.Sprintf(`{"requestId":%q,"opportunityId":%q,"snapshotId":%q,"expectedRevision":%d,"body":{"sections":[{"heading":"summary","content":"正文","claims":[%s]}]}}`,
+			requestID, job.OpportunityID, job.SnapshotID, view.Revision, claims)
+	}
+	post := func(body string) *httptest.ResponseRecorder {
+		gin.SetMode(gin.TestMode)
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/career/materials", strings.NewReader(body)).WithContext(base)
+		h.EditMaterial(c)
+		return rec
+	}
+
+	// A claim on an unconfirmed fact maps to the typed 409 contract.
+	rec := post(materialJSON("mat-http-1", `{"claimId":"c1","text":"曾在某公司实习","factKey":"experience.internship"}`))
+	require.Equal(t, 409, rec.Code, rec.Body.String())
+	require.Contains(t, rec.Body.String(), "material_claim_unconfirmed")
+
+	// A claim linked to a confirmed fact returns the frozen receipt shape.
+	rec = post(materialJSON("mat-http-2", `{"claimId":"c1","text":"2027 届毕业生","factKey":"education.graduation_year"}`))
+	require.Equal(t, 200, rec.Code, rec.Body.String())
+	require.Contains(t, rec.Body.String(), `"kind":"material_edited"`)
+	require.Contains(t, rec.Body.String(), `"pinnedEvidence":`)
+	var created MaterialReceipt
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &created))
+	require.Equal(t, view.Revision, created.PinnedEvidence.ProfileRevision)
+
+	// Confirm forms an immutable version through the HTTP seam.
+	gin.SetMode(gin.TestMode)
+	confirmRec := httptest.NewRecorder()
+	confirmCtx, _ := gin.CreateTestContext(confirmRec)
+	confirmCtx.Request = httptest.NewRequest(http.MethodPost, "/api/v1/career/materials/confirm", strings.NewReader(fmt.Sprintf(`{"requestId":"mat-http-confirm","materialId":%q,"expectedRevision":%d}`, created.MaterialID, view.Revision))).WithContext(base)
+	h.ConfirmMaterialBody(confirmCtx)
+	require.Equal(t, 200, confirmRec.Code, confirmRec.Body.String())
+	require.Contains(t, confirmRec.Body.String(), `"kind":"material_confirmed"`)
+	require.Contains(t, confirmRec.Body.String(), `"version":1`)
+
+	// Version reads and compares serve the immutable history.
+	gin.SetMode(gin.TestMode)
+	getRec := httptest.NewRecorder()
+	getCtx, _ := gin.CreateTestContext(getRec)
+	getCtx.Request = httptest.NewRequest(http.MethodGet, "/api/v1/career/materials/"+created.MaterialID, nil).WithContext(base)
+	getCtx.Params = gin.Params{{Key: "materialId", Value: created.MaterialID}}
+	h.GetMaterial(getCtx)
+	require.Equal(t, 200, getRec.Code, getRec.Body.String())
+	require.Contains(t, getRec.Body.String(), `"versionCount":1`)
+
+	gin.SetMode(gin.TestMode)
+	verRec := httptest.NewRecorder()
+	verCtx, _ := gin.CreateTestContext(verRec)
+	verCtx.Request = httptest.NewRequest(http.MethodGet, "/api/v1/career/materials/"+created.MaterialID+"/versions", nil).WithContext(base)
+	verCtx.Params = gin.Params{{Key: "materialId", Value: created.MaterialID}}
+	h.ListMaterialVersions(verCtx)
+	require.Equal(t, 200, verRec.Code, verRec.Body.String())
+	require.Contains(t, verRec.Body.String(), `"version":1`)
+
+	gin.SetMode(gin.TestMode)
+	cmpRec := httptest.NewRecorder()
+	cmpCtx, _ := gin.CreateTestContext(cmpRec)
+	cmpCtx.Request = httptest.NewRequest(http.MethodGet, "/api/v1/career/materials/"+created.MaterialID+"/versions/1/compare?baseline=1", nil).WithContext(base)
+	cmpCtx.Params = gin.Params{{Key: "materialId", Value: created.MaterialID}, {Key: "versionId", Value: "1"}}
+	h.CompareMaterialVersions(cmpCtx)
+	require.Equal(t, 200, cmpRec.Code, cmpRec.Body.String())
+
+	// An unknown material is a plain 404 without leaking existence.
+	gin.SetMode(gin.TestMode)
+	missingRec := httptest.NewRecorder()
+	missingCtx, _ := gin.CreateTestContext(missingRec)
+	missingCtx.Request = httptest.NewRequest(http.MethodGet, "/api/v1/career/materials/00000000-0000-0000-0000-000000000000", nil).WithContext(base)
+	missingCtx.Params = gin.Params{{Key: "materialId", Value: "00000000-0000-0000-0000-000000000000"}}
+	h.GetMaterial(missingCtx)
+	require.Equal(t, 404, missingRec.Code)
+	require.Contains(t, missingRec.Body.String(), "not_found")
+}

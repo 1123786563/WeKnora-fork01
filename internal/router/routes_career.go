@@ -32,4 +32,11 @@ func RegisterCareerRoutes(r *gin.RouterGroup, h *career.Handler) {
 	g.POST("/searches", h.SearchOnce)
 	g.GET("/searches/receipt", h.SearchReceipt)
 	g.GET("/searches/:searchId", h.GetSearch)
+	g.POST("/materials", h.EditMaterial)
+	g.POST("/materials/confirm", h.ConfirmMaterialBody)
+	g.GET("/materials/receipt", h.MaterialReceiptHandler)
+	g.GET("/materials/:materialId", h.GetMaterial)
+	g.GET("/materials/:materialId/versions", h.ListMaterialVersions)
+	g.GET("/materials/:materialId/versions/:versionId", h.GetMaterialVersion)
+	g.GET("/materials/:materialId/versions/:versionId/compare", h.CompareMaterialVersions)
 }

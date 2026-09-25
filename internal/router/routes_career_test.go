@@ -74,3 +74,23 @@ func TestCareerSearchRoutesAreRegistered(t *testing.T) {
 	require.True(t, paths["GET /api/v1/career/searches/receipt"])
 	require.True(t, paths["GET /api/v1/career/searches/:searchId"])
 }
+
+func TestCareerMaterialRoutesAreRegistered(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	handler, err := career.NewHandler(db, nil, nil, nil, nil, nil)
+	require.NoError(t, err)
+	engine := gin.New()
+	RegisterCareerRoutes(engine.Group("/api/v1"), handler)
+	paths := make(map[string]bool)
+	for _, route := range engine.Routes() {
+		paths[route.Method+" "+route.Path] = true
+	}
+	require.True(t, paths["POST /api/v1/career/materials"])
+	require.True(t, paths["POST /api/v1/career/materials/confirm"])
+	require.True(t, paths["GET /api/v1/career/materials/receipt"])
+	require.True(t, paths["GET /api/v1/career/materials/:materialId"])
+	require.True(t, paths["GET /api/v1/career/materials/:materialId/versions"])
+	require.True(t, paths["GET /api/v1/career/materials/:materialId/versions/:versionId"])
+	require.True(t, paths["GET /api/v1/career/materials/:materialId/versions/:versionId/compare"])
+}
