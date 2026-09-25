@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Button, ScrollView, Text, TextInput, View } from 'react-native';
-import type { InterventionReceipt, StopPhase, TaskDetailView, TaskIntent } from '@weknora/mobile-core';
+import type { DeliveryReceiptView, DeliveryState, InterventionReceipt, StopPhase, TaskDetailView, TaskIntent } from '@weknora/mobile-core';
 import { timelineKindLabel } from '@weknora/mobile-core';
 
 export interface TaskDetailScreenProps {
@@ -12,6 +12,7 @@ export interface TaskDetailScreenProps {
   /** T07：受控干预入口；未提供时整个干预区不渲染（通道缺失 fail closed 的呈现面）。 */
   onAct?: (intent: TaskIntent) => Promise<InterventionReceipt>;
   onOpenBudget?: () => void;
+  delivery?: DeliveryReceiptView;
 }
 
 const CONNECTION_LABELS: Record<TaskDetailView['connection'], string> = { syncing: '同步中', live: '已连接', interrupted: '连接中断，可恢复', drained: '已同步' };
@@ -38,8 +39,34 @@ const OUTCOME_COPY: Record<InterventionReceipt['outcome'], string> = {
   accepted: '已受理', parked: '已排队（等待当前 Run 结束后发出）', conflict: '状态冲突，请刷新后重试', unknown: '结果未知，核对中',
 };
 
-/** 结果优先详情屏：状态卡 + 三层状态 + attention 横幅在前，干预区随后，时间线事实流在后；原始证据默认折叠、按需展开；预算入口在底部操作区。 */
-export function TaskDetailScreen({ view, loading, error, onRefresh, onOpenMaterials, onOpenBudget, onAct }: TaskDetailScreenProps) {
+/** 交付六态的如实中文文案：不粉饰部分完成（pushed）与不可观测（unknown）。 */
+export const DELIVERY_STATE_COPY: Record<DeliveryState, string> = {
+  prepared: '待审批：审阅 Diff 与候选提交后在行动收件箱批准',
+  dispatched: '交付进行中：正在推送任务分支',
+  pushed: '已推送，等待草稿 PR 恢复',
+  delivered: '草稿 PR 已创建',
+  failed: '交付失败',
+  unknown: '远端结果待确认',
+};
+
+/** 交付回执区块：只读呈现服务端落账的追溯字段（仓库/分支/提交/PR/远端身份/批准人）。 */
+function DeliveryReceiptSection({ delivery }: { delivery: DeliveryReceiptView }) {
+  return (
+    <View style={{ marginTop: 16, padding: 12, borderWidth: 1, borderColor: '#ccc', borderRadius: 8 }}>
+      <Text style={{ fontWeight: '600' }}>代码交付</Text>
+      <Text>{DELIVERY_STATE_COPY[delivery.state]}</Text>
+      <Text numberOfLines={1}>仓库：{delivery.repo}</Text>
+      <Text numberOfLines={1}>分支：{delivery.branch}</Text>
+      {delivery.commitSha !== undefined ? <Text numberOfLines={1}>提交：{delivery.commitSha.slice(0, 12)}</Text> : null}
+      {delivery.prUrl !== undefined ? <Text numberOfLines={1}>PR：{delivery.prUrl}</Text> : null}
+      {delivery.remoteLogin !== undefined ? <Text numberOfLines={1}>远端身份：{delivery.remoteLogin}</Text> : null}
+      {delivery.approver !== undefined ? <Text numberOfLines={1}>批准人：{delivery.approver}</Text> : null}
+    </View>
+  );
+}
+
+/** 结果优先详情屏：状态卡 + 三层状态 + attention 横幅在前，干预区随后，时间线事实流在后；原始证据默认折叠、按需展开；预算入口与交付回执在底部操作区。 */
+export function TaskDetailScreen({ view, loading, error, onRefresh, onOpenMaterials, onOpenBudget, onAct, delivery }: TaskDetailScreenProps) {
   const [expanded, setExpanded] = useState<ReadonlySet<number>>(new Set());
   const [draft, setDraft] = useState('');
   // B2-F41：expanded 以 runId 隔离——切换任务（组件复用）时不携带上一个任务的展开状态。
@@ -111,6 +138,7 @@ export function TaskDetailScreen({ view, loading, error, onRefresh, onOpenMateri
       {view.duplicateSeqs.length > 0 && <Text>已忽略重复事件：{view.duplicateSeqs.join(', ')}</Text>}
       {onOpenMaterials !== undefined && <Button title="任务材料" onPress={onOpenMaterials} />}
       {onOpenBudget !== undefined && <Button title="任务预算" onPress={onOpenBudget} />}
+      {delivery !== undefined ? <DeliveryReceiptSection delivery={delivery} /> : null}
       <Button title="重新同步快照" onPress={onRefresh} disabled={loading} />
       {error !== undefined && <Text>{error}</Text>}
     </ScrollView>

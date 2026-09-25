@@ -1359,6 +1359,54 @@ test('composition wires the concrete budget remote into the Task Office (source-
   assert.match(source, /budget:\s*createMobileTaskBudgetRemote/, 'taskOfficeFor must assemble the budget remote on the authorized channel');
 });
 
+test('the task detail screen renders the code delivery receipt section with honest state copy', async () => {
+  const { TaskDetailScreen } = await import('../src/screens/TaskDetailScreen.tsx');
+  const view = {
+    taskId: 's-1', runId: 'run-1', title: '修复问候语', lifecycle: 'active', runStatus: 'completed',
+    attention: 'required', executionStatus: 'completed', settlementStatus: 'settled', revision: 3,
+    cursor: 9, incomplete: false, connection: 'drained', timeline: [], duplicateSeqs: [],
+  } as const;
+  const delivery = {
+    deliveryId: 'dlv-1', taskId: 's-1', runId: 'run-1', state: 'pushed', repo: 'octocat/hello',
+    branch: 'weknora/task/s-1', baselineSha: 'b'.repeat(40), commitSha: 'c1f0', attention: true,
+    updatedAt: '2026-09-24T00:00:30Z', remoteLogin: 'octocat',
+  } as const;
+  const tree = render(TaskDetailScreen, { view, loading: false, delivery, onRefresh: () => {} });
+  // 区块是嵌套函数组件（stub createElement 不展开子树）：按既有范式（InboxRouteLifecycle→InboxScreen）
+  // 先找到组件元素、再手动渲染该组件断言文案。
+  const sectionElement = descendants(tree).find(({ type, props }) => typeof type === 'function' && 'delivery' in props);
+  assert.ok(sectionElement, 'delivery section is present');
+  const section = render(sectionElement!.type as (props: unknown) => unknown, sectionElement!.props);
+  const text = JSON.stringify(section);
+  assert.ok(text.includes('代码交付'), 'delivery section is present');
+  assert.ok(text.includes('已推送，等待草稿 PR 恢复'), 'pushed state uses honest copy');
+  assert.ok(text.includes('octocat/hello'), 'repo is shown');
+  assert.ok(text.includes('c1f0'), 'commit sha is shown');
+  // 无交付时不渲染区块。
+  const without = render(TaskDetailScreen, { view, loading: false, onRefresh: () => {} });
+  assert.ok(!JSON.stringify(without).includes('代码交付'));
+  assert.ok(
+    !descendants(without).some(({ type, props }) => typeof type === 'function' && 'delivery' in props),
+    'no delivery → no section element at all',
+  );
+});
+
+test('composition exposes a delivery reader only under an authorized runtime', async () => {
+  const { activeDeliveryReader } = await import('../src/composition.ts');
+  // 未登录（无授权面）：reader 必须是 undefined（fail closed，不抛错）。
+  assert.equal(activeDeliveryReader(), undefined, 'no runtime → no reader');
+  // 授权面的「reader 非 undefined 且两次调用同实例」以既有 composition 缓存测试的源码断言
+  // 方式为模板钉死实现机制：deliveryReaders 走 cachePut 按 deploymentScopeKey 记忆化。
+  const { readFileSync } = await import('node:fs');
+  const { dirname, join } = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  const here = dirname(fileURLToPath(import.meta.url));
+  const source = readFileSync(join(here, 'composition.ts'), 'utf8');
+  assert.match(source, /const deliveryReaders = new Map<string, DeliveryReader>/, 'deliveryReaders 缓存存在');
+  assert.match(source, /cachePut\(deliveryReaders, deploymentScopeKey\(origin, tenantId\)/, 'reader 按 deployment scope key 记忆化（两次调用同实例）');
+  assert.match(source, /createDeliveryReader\(\{ remote, lease: \(\) => activeRuntime\.scopeLease\(\) \}\)/, 'lease 由 Runtime 提供（切租户 fail closed）');
+});
+
 test('the composition guards offline-dangerous ports and persists projections through the scoped vault (T10)', async () => {
   const { readFileSync } = await import('node:fs');
   const { dirname, join } = await import('node:path');

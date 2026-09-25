@@ -15,6 +15,7 @@
     "./mobile/legacy-tasks": "./src/mobile/legacy-tasks.ts",
     "./mobile/knowledge-qa": "./src/mobile/knowledge-qa.ts",
     "./mobile/materials": "./src/mobile/materials.ts",
+    "./mobile/code-delivery": "./src/mobile/code-delivery.ts",
     "./mobile/resources": "./src/mobile/resources.ts",
     "./transport": "./src/transport/json.ts"
   },

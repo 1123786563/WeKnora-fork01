@@ -299,6 +299,15 @@ func (h *AppActionHandler) ExecuteAction(c *gin.Context) {
 		appFail(c, http.StatusConflict, "ACTION_STATE_CONFLICT", "action state is outside the lifecycle vocabulary")
 		return
 	}
+	// T22 (#52)：risk 超出通用词汇表（如 deliver）的动作由其所属专用管线
+	// （代码交付端点）派发；经本通用端点执行只会在 OC dispatcher 的
+	// ErrDispatchNotStarted 处白白消耗一次批准并落账 failed。此处 fail
+	// closed 拒绝——不消费批准、不派发。
+	if !appActionRisks[row.Risk] {
+		appFail(c, http.StatusConflict, "ACTION_WRONG_PIPELINE",
+			"this action belongs to its owning pipeline; dispatch it through that pipeline's endpoint")
+		return
+	}
 	if h.actions == nil {
 		appFail(c, http.StatusNotImplemented, "ACTION_PIPELINE_NOT_CONFIGURED",
 			"the A03 action approval pipeline is not wired in this environment; refusing to fabricate a dispatch")

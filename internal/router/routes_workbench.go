@@ -270,3 +270,21 @@ func RegisterWorkbenchTaskComplianceRoutes(r *gin.RouterGroup, h *session.Workbe
 	purge := g.apiKeyGroup(r.Group("/workbench/tasks", g.Admin()), apiKeyChat(apiKeyFullAccess()))
 	purge.DELETE("/:task_id", h.PurgeTask)
 }
+
+// RegisterWorkbenchDeliveryRoutes exposes the developer code-delivery
+// surface (T22 #52): baseline materialization, delivery prepare/dispatch and
+// the traceability read. Writes are owner-only (handler predicate); the read
+// reuses the granted-read face. Same Viewer/API-key boundary as the other
+// workbench lanes.
+func RegisterWorkbenchDeliveryRoutes(r *gin.RouterGroup, h *session.WorkbenchDeliveryHandler, g *rbacGuards) {
+	if g == nil || h == nil {
+		return
+	}
+	reads := g.apiKeyGroup(r.Group("/workbench/executions", g.Viewer(), workbenchReadGate(g.cfg)), apiKeyChat(apiKeyFullAccess()))
+	reads.GET("/:run_id/delivery", h.GetDelivery)
+	writes := g.apiKeyGroup(r.Group("/workbench/executions", g.Viewer()), apiKeyChat(apiKeyFullAccess()))
+	writes.POST("/:run_id/baseline", h.MaterializeBaseline)
+	writes.POST("/:run_id/delivery", h.PrepareDelivery)
+	writes.POST("/:run_id/delivery/:delivery_id/dispatch", h.DispatchDelivery)
+	writes.POST("/:run_id/delivery/:delivery_id/resolve", h.ResolveDeliveryUnknown)
+}

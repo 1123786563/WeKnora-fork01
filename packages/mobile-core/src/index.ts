@@ -99,3 +99,9 @@ export type {
   KnowledgeQAAskInput, KnowledgeQABackendPort, KnowledgeQATurn, KnowledgeQATurnBody,
   ScenarioKnowledgeQABackend, ScenarioKnowledgeQABackendHandlers,
 } from './task-office/knowledge-qa.ts';
+// —— T22 (#52) 代码交付只读投影 ——
+export { deliveryViewOf } from './delivery/delivery-view.ts';
+export type { DeliveryReceiptView, DeliveryRemoteRecord, DeliveryState } from './delivery/delivery-view.ts';
+export { createDeliveryReader, DeliveryReaderError } from './delivery/delivery-reader.ts';
+export type { DeliveryReader, DeliveryReaderErrorCode, DeliveryRemote } from './delivery/delivery-reader.ts';
+export { createScenarioDeliveryRemote } from './delivery/in-memory-delivery-remote.ts';
