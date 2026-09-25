@@ -1021,6 +1021,24 @@ var importExceptions = []importException{
 			"K2.4 搬迁后显形），Pass B 不改边界",
 		PassBTask: "B-knowledge",
 	},
+	// ---- Pass B 搬迁显形的预存横向包耦合：knowledge process K4 handler/write 面消费
+	// policy 内部包（24-knowledge-process §5.5 种子表多退少补：种子 3 对横向包目标不在
+	// forbidden-import 判定面（仅 internal/modules/ 前缀）零诊断退回，本 2 对实测诊断补录；
+	// Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY）----
+	{
+		ImporterFile: "internal/modules/knowledge/process/handler/kb_access.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/policy/access",
+		Reason: "预存横向包耦合（Pass B 前宿主 internal/handler 直引；" +
+			"24-knowledge-process K4.3 搬迁后显形），Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY 登记",
+		PassBTask: "B-knowledge",
+	},
+	{
+		ImporterFile: "internal/modules/knowledge/process/knowledge_write.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/policy/access",
+		Reason: "预存横向包耦合（Pass B 前宿主 internal/application/service 直引；" +
+			"24-knowledge-process K4.2 搬迁后显形），Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY 登记",
+		PassBTask: "B-knowledge",
+	},
 }
 
 // importExcepted 报告 (importerFile, importedPath) 是否命中一条精确豁免。

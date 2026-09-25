@@ -1,5 +1,7 @@
-# Pass B exception ledger — 129 条精确路径 import 例外的删除属主与期限（B0.2 生成 105 条
-# Pass A 行 + 6 条 Pass B K1 搬迁显形行 + 5 条 Pass B K2 搬迁显形行 + 13 条 Pass B K3 搬迁显形行，
+# Pass B exception ledger — 131 条精确路径 import 例外的删除属主与期限（B0.2 生成 105 条
+# Pass A 行 + 6 条 Pass B K1 搬迁显形行 + 5 条 Pass B K2 搬迁显形行 + 13 条 Pass B K3 搬迁显形行
+# + 2 条 Pass B K4 搬迁显形行（24-knowledge-process K4.4，2026-09-26，§5.5 种子多退少补：
+# 种子 3 对横向包目标零诊断退回、实测 policy/access 2 对补录），
 # Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY；K2 五行经 2026-09-25 基线对齐 merge
 # 由 exc-0106..0110 重编号为 exc-0112..0116（K1 已占 0106..0111）；K3 十三行经同窗
 # 由 exc-0106..0118 重编号为 exc-0117..0129；(from,to) 边键与五字段逐字不变；
@@ -793,6 +795,18 @@ exceptions:
     plan: 23-knowledge-wikifaq
     remove_at: ib2
     reason: "预存横向包耦合（Pass B 前宿主 internal/application/service 直引；23-knowledge-wikifaq K3.2 搬迁后显形），Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY 登记"
+  - id: exc-0130
+    from: internal/modules/knowledge/process/handler/kb_access.go
+    to: "github.com/Tencent/WeKnora/internal/modules/policy/access"
+    plan: 24-knowledge-process
+    remove_at: ib2
+    reason: "预存横向包耦合（Pass B 前宿主 internal/handler 直引；24-knowledge-process K4.3 搬迁后显形），Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY 登记"
+  - id: exc-0131
+    from: internal/modules/knowledge/process/knowledge_write.go
+    to: "github.com/Tencent/WeKnora/internal/modules/policy/access"
+    plan: 24-knowledge-process
+    remove_at: ib2
+    reason: "预存横向包耦合（Pass B 前宿主 internal/application/service 直引；24-knowledge-process K4.2 搬迁后显形），Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY 登记"
 
 # ----------------------------------------------------------------------------
 # 临时测试装置垫片台账（B5 清理范围）——Ruling 2026-09-24-TEST-SUPPORT-SHIM
