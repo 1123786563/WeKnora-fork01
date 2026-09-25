@@ -27,7 +27,7 @@ let host: HTMLDivElement | undefined
 afterEach(async () => { if (root) await act(async () => root?.unmount()); root = undefined; host?.remove(); host = undefined; document.body.replaceChildren() })
 async function mount(api: Record<string, (...args: never[]) => unknown>) {
  host = document.createElement('div'); document.body.append(host); root = createRoot(host)
- const client = { career: { ...api, sources: api.sources ?? (async () => []), upload: api.upload ?? (async () => { throw new Error('unused upload') }) } } as unknown as WeKnoraClient
+ const client = { career: { ...api, sources: api.sources ?? (async () => []), upload: api.upload ?? (async () => { throw new Error('unused upload') }), reminders: api.reminders ?? (async () => ({ reminders: [] })) } } as unknown as WeKnoraClient
  const scopeController = createScopeController({ origin: 'https://weknora.test', userId: 'u', tenantId: 't' })
  await act(async () => { root!.render(React.createElement(CareerPage, { client, scopeController, userId: 'u' })); await new Promise((resolve) => setImmediate(resolve)); await new Promise((resolve) => setImmediate(resolve)) })
  return host

@@ -1007,3 +1007,105 @@ test('preparation decoder keeps the typed failure state decodable with its empty
  assert.equal('failureCode' in decodedInFlight, false)
  assert.deepEqual(decodedInFlight.body, { sections: [] })
 })
+
+// T20 in-station reminders: the frozen privacy contract owned by the career
+// backend (internal/modules/career/reminder.go). One source event holds
+// exactly one todo; the push body is drawn exclusively from the frozen
+// template table (company, job and interview detail never leave the space),
+// and the push report is response-only — a delivery failure never fails the
+// durable write and is never a todo state change. Decoders reject invented
+// notice keys, interpolated notice bodies, wrong kinds or push reports that
+// disagree with their own flags before they reach the UI.
+const reminderTs = '2026-09-26T09:15:00Z'
+const reminderReceipt = (extra: Record<string, unknown> = {}) => ({
+ kind: 'reminder_set', requestId: 'rem-req /1', reminderId: 'rem-1', sourceKind: 'progress_event', sourceId: 'evt /1',
+ applicationId: 'app /1', opportunityId: 'opp /1', noticeKey: 'progress_updated', notice: '你有新的求职进展，请登录查看。',
+ deduplicated: false, status: 'open', revision: 6, createdAt: reminderTs, ...extra,
+})
+const reminderView = (extra: Record<string, unknown> = {}) => ({
+ reminderId: 'rem-1', sourceKind: 'progress_event', sourceId: 'evt /1', applicationId: 'app /1', opportunityId: 'opp /1',
+ noticeKey: 'progress_updated', notice: '你有新的求职进展，请登录查看。', status: 'open', createdAt: reminderTs, ...extra,
+})
+
+test('reminder client encodes set, list and receipt recovery paths', async () => {
+ const calls: Array<{ method: string; path: string; body?: unknown }> = []
+ const api = createCareerApi(async (input) => {
+  calls.push({ method: input.method, path: input.path, ...(input.body !== undefined ? { body: input.body } : {}) })
+  if (input.method === 'POST') {
+   const body = input.body as { sourceKind: string; sourceId: string }
+   return body.sourceKind === 'discovery' ? reminderReceipt({ sourceKind: 'discovery', sourceId: 'todo /1', applicationId: undefined, opportunityId: undefined, noticeKey: 'discovery_found', notice: '持续找岗有新发现，请登录查看。' }) : reminderReceipt()
+  }
+  return input.path.includes('/receipt?') ? reminderReceipt() : { reminders: [reminderView()] }
+ })
+ assert.deepEqual(await api.setReminder({ requestId: 'rem-req /1', sourceKind: 'progress_event', sourceId: 'evt /1', expectedRevision: 6 }), reminderReceipt())
+ assert.deepEqual(await api.setReminder({ requestId: 'rem-req-2', sourceKind: 'discovery', sourceId: 'todo /1', expectedRevision: 6 }), { kind: 'reminder_set', requestId: 'rem-req /1', reminderId: 'rem-1', sourceKind: 'discovery', sourceId: 'todo /1', deduplicated: false, noticeKey: 'discovery_found', notice: '持续找岗有新发现，请登录查看。', status: 'open', revision: 6, createdAt: reminderTs })
+ assert.deepEqual(await api.reminders(), { reminders: [reminderView()] })
+ assert.deepEqual(await api.reminderReceipt('rem-req /1'), reminderReceipt())
+ assert.deepEqual(calls, [
+  { method: 'POST', path: '/api/v1/career/reminders', body: { requestId: 'rem-req /1', sourceKind: 'progress_event', sourceId: 'evt /1', expectedRevision: 6 } },
+  { method: 'POST', path: '/api/v1/career/reminders', body: { requestId: 'rem-req-2', sourceKind: 'discovery', sourceId: 'todo /1', expectedRevision: 6 } },
+  { method: 'GET', path: '/api/v1/career/reminders' },
+  { method: 'GET', path: '/api/v1/career/reminders/receipt?requestId=rem-req%20%2F1' },
+ ])
+})
+
+test('reminder client refuses blank identifiers, invented source kinds and negative revisions', async () => {
+ const refusing = createCareerApi(async () => { throw new Error('must not send invalid request') })
+ await assert.rejects(refusing.setReminder({ requestId: ' ', sourceKind: 'progress_event', sourceId: 'evt-1', expectedRevision: 0 }), /requestId/)
+ await assert.rejects(refusing.setReminder({ requestId: 'r-1', sourceKind: 'progress_event', sourceId: ' ', expectedRevision: 0 }), /sourceId/)
+ await assert.rejects(refusing.setReminder({ requestId: 'r-1', sourceKind: 'interview_round', sourceId: 'evt-1', expectedRevision: 0 }), /sourceKind/)
+ await assert.rejects(refusing.setReminder({ requestId: 'r-1', sourceKind: 'progress_event', sourceId: 'evt-1', expectedRevision: -1 }), /revision/)
+ await assert.rejects(refusing.reminderReceipt(' '), /requestId/)
+})
+
+test('reminder decoder keeps only the frozen privacy notice bodies and the closed source vocabulary', async () => {
+ const inventors = [
+  reminderReceipt({ notice: '字节跳动已为你安排一面，请查看。' }),
+  reminderReceipt({ noticeKey: 'interview_scheduled' }),
+  reminderReceipt({ noticeKey: 'discovery_found', notice: '你有新的求职进展，请登录查看。' }),
+  reminderReceipt({ kind: 'reminder_updated' }),
+  reminderReceipt({ status: 'notified' }),
+  reminderReceipt({ sourceKind: 'progress_event', applicationId: undefined }),
+  reminderView({ notice: '高级后端工程师岗位有更新。' }),
+  reminderView({ noticeKey: 'interview_scheduled' }),
+  { reminders: [reminderView({ notice: undefined })] },
+ ]
+ for (const payload of inventors) {
+  const api = createCareerApi(async () => payload)
+  await assert.rejects(api.setReminder({ requestId: 'rem-req /1', sourceKind: 'progress_event', sourceId: 'evt /1', expectedRevision: 6 }), TypeError)
+ }
+})
+
+test('reminder decoder keeps the response-only push report and its frozen reasons', async () => {
+ // A delivery failure (or an unsubscribed skip) never fails the write: the
+ // receipt stays decodable and the reason comes from the frozen set.
+ const delivered = createCareerApi(async () => reminderReceipt({ push: { attempted: true, delivered: true } }))
+ assert.deepEqual((await delivered.setReminder({ requestId: 'rem-req /1', sourceKind: 'progress_event', sourceId: 'evt /1', expectedRevision: 6 })).push, { attempted: true, delivered: true })
+ const failed = createCareerApi(async () => reminderReceipt({ push: { attempted: true, delivered: false, reason: 'delivery_failed' } }))
+ assert.deepEqual((await failed.reminderReceipt('rem-req /1')).push, { attempted: true, delivered: false, reason: 'delivery_failed' })
+ const skipped = createCareerApi(async () => reminderReceipt({ push: { attempted: false, delivered: false, reason: 'unsubscribed' } }))
+ assert.deepEqual((await skipped.reminderReceipt('rem-req /1')).push, { attempted: false, delivered: false, reason: 'unsubscribed' })
+ for (const invented of [
+  reminderReceipt({ push: { attempted: true, delivered: true, reason: 'delivery_failed' } }),
+  reminderReceipt({ push: { attempted: false, delivered: true } }),
+  reminderReceipt({ push: { attempted: false, delivered: false, reason: 'provider_timeout' } }),
+  reminderReceipt({ push: { attempted: true, delivered: false } }),
+  reminderReceipt({ push: { attempted: true, delivered: false, reason: 'unsubscribed' } }),
+ ]) {
+  const api = createCareerApi(async () => invented)
+  await assert.rejects(api.reminderReceipt('rem-req /1'), TypeError)
+ }
+})
+
+test('reminder list decoder accepts the empty inbox and the discovery shape', async () => {
+ const empty = createCareerApi(async () => ({ reminders: [] }))
+ assert.deepEqual(await empty.reminders(), { reminders: [] })
+ const discovery = createCareerApi(async () => ({ reminders: [reminderView({ reminderId: 'rem-2', sourceKind: 'discovery', sourceId: 'todo /1', applicationId: undefined, opportunityId: undefined, noticeKey: 'discovery_found', notice: '持续找岗有新发现，请登录查看。' })] }))
+ const decoded = await discovery.reminders()
+ assert.equal(decoded.reminders[0]?.notice, '持续找岗有新发现，请登录查看。')
+ assert.equal('applicationId' in decoded.reminders[0]!, false)
+ for (const payload of [{}, { reminders: {} }, { reminders: [null] }]) {
+  const api = createCareerApi(async () => payload)
+  await assert.rejects(api.reminders(), TypeError)
+ }
+})

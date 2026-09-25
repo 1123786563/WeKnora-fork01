@@ -824,6 +824,97 @@ export function decodePreparationList(value: unknown): PreparationList {
  return { preparations: record.preparations.map(decodePreparationReceipt) }
 }
 
+// Frozen reminder contract owned by the career backend (T20,
+// internal/modules/career/reminder.go). One source event holds exactly one
+// todo; the notice body is drawn exclusively from the backend's frozen
+// privacy template table (company, job and interview detail never leave the
+// space), and the push report is response-only — a delivery failure never
+// fails the durable write and is never a todo state change. Decoders reject
+// invented notice keys, interpolated bodies, wrong kinds, or push reports
+// that disagree with their own flags before they reach the UI.
+export type ReminderSourceKind = 'progress_event' | 'discovery'
+export type ReminderNoticeKey = 'progress_updated' | 'discovery_found'
+export type ReminderPushReason = 'unsubscribed' | 'delivery_failed'
+export type ReminderPushReport = { attempted: boolean; delivered: boolean; reason?: ReminderPushReason }
+export type ReminderReceipt = { kind: 'reminder_set'; requestId: string; reminderId: string; sourceKind: ReminderSourceKind; sourceId: string; deduplicated: boolean; applicationId?: string; opportunityId?: string; noticeKey: ReminderNoticeKey; notice: string; status: 'open'; revision: number; createdAt: string; push?: ReminderPushReport }
+export type ReminderView = { reminderId: string; sourceKind: ReminderSourceKind; sourceId: string; applicationId?: string; opportunityId?: string; noticeKey: ReminderNoticeKey; notice: string; status: 'open'; createdAt: string }
+export type ReminderList = { reminders: ReminderView[] }
+export type SetReminderInput = { requestId: string; sourceKind: ReminderSourceKind; sourceId: string; expectedRevision: number }
+
+const reminderSourceKinds: ReminderSourceKind[] = ['progress_event', 'discovery']
+// ReminderNoticeBodies in internal/modules/career/reminder.go, mirrored
+// verbatim: these two literals are the complete push vocabulary, so any
+// other body is an invented payload and never reaches the UI.
+const reminderNoticeBodies: Record<ReminderNoticeKey, string> = {
+ progress_updated: '你有新的求职进展，请登录查看。',
+ discovery_found: '持续找岗有新发现，请登录查看。',
+}
+const reminderPushReasons: ReminderPushReason[] = ['unsubscribed', 'delivery_failed']
+
+function validReminderNotice(key: unknown, notice: unknown, message: string): void {
+ if (!(key === 'progress_updated' || key === 'discovery_found')) throw new TypeError(message)
+ if (notice !== reminderNoticeBodies[key as ReminderNoticeKey]) throw new TypeError(message)
+}
+
+function decodeReminderPush(value: unknown): ReminderPushReport {
+ const record = decodeRecord(value, 'invalid reminder push report')
+ if (typeof record.attempted !== 'boolean' || typeof record.delivered !== 'boolean'
+  || (record.reason !== undefined && !reminderPushReasons.includes(record.reason as ReminderPushReason))) throw new TypeError('invalid reminder push report')
+ // The frozen push semantics: an unattempted push is never delivered and
+ // always carries the unsubscribed reason; an attempted one either delivered
+ // with no reason or failed with the delivery failure reason.
+ if (record.attempted === false && (record.delivered !== false || record.reason !== 'unsubscribed')) throw new TypeError('invalid reminder push report')
+ if (record.attempted === true && record.delivered === false && record.reason !== 'delivery_failed') throw new TypeError('invalid reminder push report')
+ if (record.delivered === true && record.reason !== undefined) throw new TypeError('invalid reminder push report')
+ return { attempted: record.attempted, delivered: record.delivered, ...(record.reason !== undefined ? { reason: record.reason as ReminderPushReason } : {}) }
+}
+
+function decodeReminderIds(record: Record<string, unknown>, message: string): { applicationId?: string; opportunityId?: string } {
+ const hasApplication = validIdentifier(record.applicationId)
+ // resolveReminderSource freezes the shape: a progress-event todo always
+ // pins its application (and its opportunity), a discovery todo pins
+ // neither. Anything else is an invented payload.
+ if ((record.sourceKind === 'progress_event') !== hasApplication) throw new TypeError(message)
+ return { ...(hasApplication ? { applicationId: record.applicationId as string } : {}), ...(validIdentifier(record.opportunityId) ? { opportunityId: record.opportunityId as string } : {}) }
+}
+
+export function decodeReminderReceipt(value: unknown): ReminderReceipt {
+ const record = decodeRecord(value, 'invalid reminder receipt')
+ if (record.kind !== 'reminder_set' || !validIdentifier(record.requestId) || !validIdentifier(record.reminderId)
+  || !reminderSourceKinds.includes(record.sourceKind as ReminderSourceKind) || !validIdentifier(record.sourceId)
+  || typeof record.deduplicated !== 'boolean' || record.status !== 'open'
+  || !validRevision(record.revision) || !validTimestamp(record.createdAt)) throw new TypeError('invalid reminder receipt')
+ validReminderNotice(record.noticeKey, record.notice, 'invalid reminder receipt')
+ const ids = decodeReminderIds(record, 'invalid reminder receipt')
+ return {
+  kind: 'reminder_set', requestId: record.requestId, reminderId: record.reminderId,
+  sourceKind: record.sourceKind as ReminderSourceKind, sourceId: record.sourceId, deduplicated: record.deduplicated,
+  ...ids, noticeKey: record.noticeKey as ReminderNoticeKey, notice: record.notice as string,
+  status: 'open', revision: record.revision as number, createdAt: record.createdAt,
+  ...(record.push !== undefined ? { push: decodeReminderPush(record.push) } : {}),
+ }
+}
+
+export function decodeReminderView(value: unknown): ReminderView {
+ const record = decodeRecord(value, 'invalid reminder view')
+ if (!validIdentifier(record.reminderId) || !reminderSourceKinds.includes(record.sourceKind as ReminderSourceKind)
+  || !validIdentifier(record.sourceId) || record.status !== 'open' || !validTimestamp(record.createdAt)) throw new TypeError('invalid reminder view')
+ validReminderNotice(record.noticeKey, record.notice, 'invalid reminder view')
+ const ids = decodeReminderIds(record, 'invalid reminder view')
+ return {
+  reminderId: record.reminderId, sourceKind: record.sourceKind as ReminderSourceKind, sourceId: record.sourceId,
+  ...ids, noticeKey: record.noticeKey as ReminderNoticeKey, notice: record.notice as string,
+  status: 'open', createdAt: record.createdAt,
+ }
+}
+
+export function decodeReminderList(value: unknown): ReminderList {
+ const record = decodeRecord(value, 'invalid reminder list')
+ if (!Array.isArray(record.reminders)) throw new TypeError('invalid reminder list')
+ return { reminders: record.reminders.map(decodeReminderView) }
+}
+
+
 // Frozen whole-space lifecycle contract owned by the career backend (T22,
 // internal/modules/career/career_export.go). The export package travels
 // inline (synchronous export) with a sha256 digest over the frozen archive;
@@ -1224,6 +1315,24 @@ export function createCareerApi(request: CareerRequest, binaryRequest?: CareerBi
   async preparationReceipt(requestId: string, signal?: AbortSignal): Promise<PreparationReceipt> {
    if (!requestId.trim()) throw new TypeError('preparation receipt requestId must not be empty')
    return decodePreparationReceipt(await request({ method: 'GET', path: `/api/v1/career/preparations/receipt?requestId=${encodeURIComponent(requestId)}`, ...(signal ? { signal } : {}) }))
+  },
+  // T20 in-station todos: one source event holds exactly one todo (the
+  // backend's dedupe answers deduplicated=true under a fresh receipt), the
+  // notice body is the frozen privacy literal, and the push report — when a
+  // channel exists — is response-only: a delivery failure never fails the
+  // write and never mutates the todo.
+  async setReminder(input: SetReminderInput, signal?: AbortSignal): Promise<ReminderReceipt> {
+   if (!input.requestId.trim() || !input.sourceId.trim()) throw new TypeError('reminder requestId and sourceId must not be empty')
+   if (!reminderSourceKinds.includes(input.sourceKind)) throw new TypeError('reminder sourceKind must be progress_event or discovery')
+   if (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0) throw new TypeError('reminder expected revision must be a non-negative integer')
+   return decodeReminderReceipt(await request({ method: 'POST', path: '/api/v1/career/reminders', body: { requestId: input.requestId, sourceKind: input.sourceKind, sourceId: input.sourceId, expectedRevision: input.expectedRevision }, ...(signal ? { signal } : {}) }))
+  },
+  async reminders(signal?: AbortSignal): Promise<ReminderList> {
+   return decodeReminderList(await request({ method: 'GET', path: '/api/v1/career/reminders', ...(signal ? { signal } : {}) }))
+  },
+  async reminderReceipt(requestId: string, signal?: AbortSignal): Promise<ReminderReceipt> {
+   if (!requestId.trim()) throw new TypeError('reminder receipt requestId must not be empty')
+   return decodeReminderReceipt(await request({ method: 'GET', path: `/api/v1/career/reminders/receipt?requestId=${encodeURIComponent(requestId)}`, ...(signal ? { signal } : {}) }))
   },
   // T22 whole-space lifecycle: export packages, the pre-deletion boundary
   // explanation and complete deletion. Both writes carry a request ID and
