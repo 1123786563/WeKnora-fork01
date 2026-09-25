@@ -217,6 +217,9 @@ export function buildNavItems(t: (key: string) => string, labels: Record<string,
     // T11 one-shot search — a sibling entry under the career office; the
     // page itself never offers a continuous-rule control (T13 scope).
     { key: 'careerSearch', href: '/platform/career/search', label: '找岗', icon: 'careerSearch', iconNode: <ReactOnlyNavIcon paths={['M10.5 4.5a6 6 0 1 0 0 12 6 6 0 0 0 0-12Z', 'M15 15l4.5 4.5']} />, match: (p: string) => p === '/platform/career/search' },
+    // T13 recurring search rules — the explicit continuous surface next to
+    // the one-shot search; rules default to off and only run when enabled.
+    { key: 'careerRules', href: '/platform/career/rules', label: '持续找岗', icon: 'careerRules', iconNode: <ReactOnlyNavIcon paths={['M10.5 4.5a6 6 0 1 0 0 12 6 6 0 0 0 0-12Z', 'M15 15l4.5 4.5', 'M4.5 7.5h6', 'M4.5 10.5h4']} />, match: (p: string) => p === '/platform/career/rules' },
     { key: 'knowledgeBases', href: '/platform/knowledge-bases', label: t('common.knowledgeBases'), icon: 'knowledge-bases', match: (p: string) => KB_ACTIVE(p) && !/\/creatChat$/.test(p), guide: 'nav-knowledge-bases' },
     { key: 'agents', href: '/platform/agents', label: labels.agents, icon: 'agents', match: (p: string) => p === '/platform/agents' || p.startsWith('/platform/agents/') || p === '/platform/configuration', guide: 'nav-agents' },
     // M2 expert templates — a creation surface next to agents; unconditional

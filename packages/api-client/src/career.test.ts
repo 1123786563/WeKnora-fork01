@@ -568,3 +568,99 @@ test('material export decoders reject invented statuses, broken digests and half
  }
  await assert.rejects(createCareerApi(async () => ({ materialId: 'm-1', exports: {} })).materialExports('m-1'), TypeError)
 })
+
+// T13: recurring search rule client — POST /rules (create/update), GET
+// /rules/receipt by request ID, GET /rules/:ruleId (live view with run
+// history and discovery todos) — with the frozen rule/run/todo enums decoded
+// strictly; the enable-time estimate is displayed verbatim (backend basis
+// text included) and never recomputed client-side.
+const ruleEstimate = { triggersPerDay: 1, sourcesPerTrigger: 0, estimatedSearchesPerDay: 0, basis: 'deterministic projection: triggers_per_day = 1440 / interval_minutes; estimated_searches_per_day = triggers_per_day × vetted sources per trigger; this is an estimate from rule parameters, not a quota balance' }
+const setRuleReceipt = { kind: 'rule_set', requestId: 'rule /1', ruleId: 'rule-1', query: '上海 前端 实习', intervalMinutes: 1440, status: 'disabled', revision: 1, estimate: ruleEstimate }
+
+test('rule client encodes create, receipt replay and detail routes with strict decoding', async () => {
+ const calls: Array<{ method: string; path: string; body?: unknown }> = []
+ const api = createCareerApi(async (input) => {
+  calls.push({ method: input.method, path: input.path, ...(input.body !== undefined ? { body: input.body } : {}) })
+  return setRuleReceipt
+ })
+ const input = { requestId: 'rule /1', query: '上海 前端 实习', intervalMinutes: 1440, status: 'disabled', expectedRevision: 0 }
+ assert.deepEqual(await api.setRule(input), setRuleReceipt)
+ assert.deepEqual(await api.ruleReceipt('rule /1'), setRuleReceipt)
+ assert.deepEqual(calls, [
+  { method: 'POST', path: '/api/v1/career/rules', body: { requestId: 'rule /1', query: '上海 前端 实习', intervalMinutes: 1440, status: 'disabled', expectedRevision: 0 } },
+  { method: 'GET', path: '/api/v1/career/rules/receipt?requestId=rule%20%2F1' },
+ ])
+ const update = { requestId: 'rule-2', ruleId: 'rule-1', query: '杭州 后端', intervalMinutes: 60, status: 'enabled', expectedRevision: 0 }
+ const updated = { ...setRuleReceipt, requestId: 'rule-2', query: '杭州 后端', intervalMinutes: 60, status: 'enabled', revision: 2, nextDueAt: '2026-09-26T08:00:00Z' }
+ const updating = createCareerApi(async () => updated)
+ assert.deepEqual(await updating.setRule(update), updated)
+ assert.equal(updated.nextDueAt, '2026-09-26T08:00:00Z')
+})
+
+test('rule view decode keeps blocked run statuses, todos and the estimate basis verbatim', async () => {
+ const view = {
+  ruleId: 'rule-1', query: '上海 前端 实习', intervalMinutes: 1440, status: 'paused', revision: 3, lastPeriod: 2,
+  estimate: ruleEstimate,
+  runs: [
+   { kind: 'rule_run', ruleId: 'rule-1', period: 1, requestId: 'rule:rule-1:1', status: 'no_vetted_sources', note: 'no vetted search source is configured; the trigger was not searched and nothing was fabricated', triggeredAt: '2026-09-25T08:00:00Z' },
+   { kind: 'rule_run', ruleId: 'rule-1', period: 2, requestId: 'rule:rule-1:2', status: 'blocked_no_quota', note: 'the search quota gate refused admission for this trigger; no search was consumed and nothing was fabricated', triggeredAt: '2026-09-25T22:00:00Z' },
+  ],
+  todos: [
+   { todoId: 'todo-1', ruleId: 'rule-1', runId: 'run-1', searchId: 'search-1', link: 'https://jobs.example.test/1', status: 'open', createdAt: '2026-09-25T08:00:01Z' },
+   { todoId: 'todo-2', ruleId: 'rule-1', runId: 'run-2', searchId: 'search-2', sourceId: 'board-1', link: 'https://jobs.example.test/2', status: 'open', createdAt: '2026-09-25T22:00:01Z' },
+  ],
+  createdAt: '2026-09-24T08:00:00Z', updatedAt: '2026-09-25T22:00:00Z',
+ }
+ const api = createCareerApi(async () => view)
+ const decoded = await api.getRule('rule-1')
+ assert.equal(decoded.status, 'paused')
+ assert.equal(decoded.nextDueAt, undefined)
+ assert.equal(decoded.runs.length, 2)
+ assert.equal(decoded.runs[0]?.status, 'no_vetted_sources')
+ assert.match(decoded.runs[0]?.note ?? '', /no vetted search source/)
+ assert.equal(decoded.runs[1]?.status, 'blocked_no_quota')
+ assert.equal(decoded.todos.length, 2)
+ assert.equal(decoded.todos[1]?.sourceId, 'board-1')
+ assert.equal(decoded.estimate.basis, ruleEstimate.basis)
+})
+
+test('rule client refuses blank identifiers, out-of-range intervals and invented enum values', async () => {
+ const refusing = createCareerApi(async () => { throw new Error('must not send invalid request') })
+ const base = { requestId: 'rule-1', query: '前端', intervalMinutes: 60, status: 'enabled', expectedRevision: 2 }
+ await assert.rejects(refusing.setRule({ ...base, requestId: ' ' }), /requestId/)
+ await assert.rejects(refusing.setRule({ ...base, query: ' ' }), /query/)
+ await assert.rejects(refusing.setRule({ ...base, status: 'running' }), /status/)
+ await assert.rejects(refusing.setRule({ ...base, intervalMinutes: 0 }), /interval/)
+ await assert.rejects(refusing.setRule({ ...base, intervalMinutes: 43201 }), /interval/)
+ await assert.rejects(refusing.setRule({ ...base, intervalMinutes: 1.5 }), /interval/)
+ await assert.rejects(refusing.setRule({ ...base, expectedRevision: -1 }), /revision/)
+ await assert.rejects(refusing.ruleReceipt(' '), /requestId/)
+ await assert.rejects(refusing.getRule(' '), /rule ID/)
+ const inventors: Array<Record<string, unknown>> = [
+  { ...setRuleReceipt, kind: 'rule_run' },
+  { ...setRuleReceipt, status: 'archived' },
+  { ...setRuleReceipt, revision: 0 },
+  { ...setRuleReceipt, estimate: { ...ruleEstimate, basis: '' } },
+  { ...setRuleReceipt, estimate: { ...ruleEstimate, triggersPerDay: 'daily' } },
+  { ...setRuleReceipt, nextDueAt: 'tomorrow' },
+ ]
+ for (const payload of inventors) {
+  const api = createCareerApi(async () => payload)
+  await assert.rejects(api.ruleReceipt('rule /1'), TypeError)
+ }
+ const runTs = '2026-09-25T08:00:00Z'
+ const viewBase = { ruleId: 'rule-1', query: '找岗', intervalMinutes: 60, status: 'enabled', revision: 1, lastPeriod: 0, nextDueAt: '2026-09-26T08:00:00Z', estimate: ruleEstimate, runs: [], todos: [], createdAt: runTs, updatedAt: runTs }
+ const viewInventors: Array<Record<string, unknown>> = [
+  { ...viewBase, status: 'running' },
+  { ...viewBase, runs: [{ kind: 'rule_run', ruleId: 'rule-1', period: 0, requestId: 'r', status: 'completed', triggeredAt: runTs }] },
+  { ...viewBase, runs: [{ kind: 'rule_set', ruleId: 'rule-1', period: 1, requestId: 'r', status: 'completed', triggeredAt: runTs }] },
+  { ...viewBase, runs: [{ kind: 'rule_run', ruleId: 'rule-1', period: 1, requestId: 'r', status: 'silently_skipped', triggeredAt: runTs }] },
+  { ...viewBase, todos: [{ todoId: 'todo-1', ruleId: 'rule-1', runId: 'run-1', searchId: 'search-1', link: 'javascript:alert(1)', status: 'open', createdAt: runTs }] },
+  { ...viewBase, todos: [{ todoId: 'todo-1', ruleId: 'rule-1', runId: 'run-1', searchId: 'search-1', link: 'https://jobs.example.test/1', status: 'closed', createdAt: runTs }] },
+  { ...viewBase, intervalMinutes: 0 },
+ ]
+ for (const payload of viewInventors) {
+  const api = createCareerApi(async () => payload)
+  await assert.rejects(api.getRule('rule-1'), TypeError)
+ }
+})

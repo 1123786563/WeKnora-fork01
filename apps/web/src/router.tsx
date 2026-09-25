@@ -46,6 +46,7 @@ const KnowledgeSettingsPage = lazy(() => import('./knowledge-settings/KnowledgeS
 const ConfigurationPage = lazy(() => import('./configuration/ConfigurationPage.tsx').then((module) => ({ default: module.ConfigurationPage })));
 const CareerPage = lazy(() => import('./career/CareerPage.tsx').then((module) => ({ default: module.CareerPage })));
 const CareerSearchPage = lazy(() => import('./career/SearchPage.tsx').then((module) => ({ default: module.CareerSearchPage })));
+const CareerRulePage = lazy(() => import('./career/RulePage.tsx').then((module) => ({ default: module.CareerRulePage })));
 const OpportunityEvidencePage = lazy(() => import('./career/OpportunityPage.tsx').then((module) => ({ default: module.OpportunityEvidencePage })));
 const EvaluationDetailPage = lazy(() => import('./career/OpportunityPage.tsx').then((module) => ({ default: module.EvaluationDetailPage })));
 const AgentsPage = lazy(() => import('./agents/AgentsPage.tsx').then((module) => ({ default: module.AgentsPage })));
@@ -730,6 +731,20 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
     ),
   });
 
+  // T13 recurring search rule surface: the only continuous search
+  // structure, explicitly enabled/paused/disabled by the user; the page
+  // shows conditions, frequency, the backend's enable-time estimate, and
+  // the next run plan (paused/disabled rules hold no schedule).
+  const careerRulesRoute = createRoute({
+    getParentRoute: () => platformRoute,
+    path: 'career/rules',
+    component: (): ReactNode => (
+      <Suspense fallback={<RoutePending loadingText={deps.loadingText} />}>
+        <CareerRulePage client={client} scopeController={scopeController} />
+      </Suspense>
+    ),
+  });
+
   const careerOpportunityRoute = createRoute({
     getParentRoute: () => platformRoute,
     path: 'career/opportunities/$opportunityId',
@@ -962,6 +977,7 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
       agentsRoute,
       careerRoute,
       careerSearchRoute,
+      careerRulesRoute,
       careerOpportunityRoute,
       careerEvaluationRoute,
       expertsRoute,

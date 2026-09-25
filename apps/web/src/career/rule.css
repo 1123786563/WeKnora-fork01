@@ -1,0 +1,79 @@
+/* Career recurring search rule surface (T13). WeKnora TDesign light theme
+   with the #07c05f brand accent; light-only by design (career office
+   constraint, search.css parity). */
+.wk-career-rule {
+  box-sizing: border-box;
+  width: min(100%, 960px);
+  margin: 0 auto;
+  padding: clamp(16px, 3vw, 24px);
+  color: var(--td-text-color-primary, #222);
+}
+.wk-career-rule__header h1 { margin: 6px 0; }
+.wk-career-rule__header .wk-career-rule__eyebrow { margin: 0; color: #07c05f; font-size: .8rem; font-weight: 600; letter-spacing: .04em; }
+.wk-career-rule__header p:last-child { margin: 6px 0 0; color: var(--td-text-color-secondary, #666); }
+.wk-career-rule form { display: grid; gap: 10px; }
+.wk-career-rule form label { font-size: .9rem; font-weight: 600; color: var(--td-text-color-primary, #222); }
+.wk-career-rule textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--td-component-border, #c8c8c8);
+  border-radius: 6px;
+  padding: 10px 12px;
+  background: var(--td-bg-color-container, #fff);
+  color: var(--td-text-color-primary, #222);
+  font: inherit;
+  resize: vertical;
+  line-height: 1.5;
+}
+.wk-career-rule textarea:disabled { background: var(--td-bg-color-component-disabled, #f5f5f5); color: var(--td-text-color-disabled, #a6a6a6); cursor: not-allowed; }
+.wk-career-rule input[type='number'] {
+  box-sizing: border-box;
+  width: min(100%, 220px);
+  border: 1px solid var(--td-component-border, #c8c8c8);
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: var(--td-bg-color-container, #fff);
+  color: var(--td-text-color-primary, #222);
+  font: inherit;
+}
+.wk-career-rule textarea:focus-visible,
+.wk-career-rule input:focus-visible,
+.wk-career-rule button:focus-visible,
+.wk-career-rule a:focus-visible { outline: 3px solid rgba(7, 192, 95, .45); outline-offset: 2px; }
+.wk-career-rule__status-field {
+  border: 1px solid var(--td-component-border, #e7e7e7);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: grid;
+  gap: 6px;
+}
+.wk-career-rule__status-field legend { font-size: .9rem; font-weight: 600; padding: 0 4px; }
+.wk-career-rule__status-field label { display: flex; gap: 8px; align-items: center; font-weight: 400; font-size: .9rem; }
+.wk-career-rule__actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.wk-career-rule__notice { margin: 8px 0 0; color: var(--td-text-color-secondary, #666); }
+.wk-career-rule__form-note,
+.wk-career-rule__scope-note,
+.wk-career-rule__basis { margin: 6px 0 0; color: var(--td-text-color-secondary, #666); font-size: .85rem; }
+.wk-career-rule__basis { border-left: 2px solid #07c05f; padding-left: 8px; word-break: break-word; }
+.wk-career-rule [role='alert'] { border-left: 3px solid var(--td-error-color, #d54941); padding-left: 10px; margin: 10px 0; }
+.wk-career-rule__live-head h2 { margin: 0; }
+.wk-career-rule__live-head p { margin: 6px 0 0; color: var(--td-text-color-secondary, #666); }
+.wk-career-rule__statusline { margin: 4px 0 0; }
+.wk-career-rule__plan { margin: 4px 0 0; }
+.wk-career-rule__plan--scheduled { color: var(--td-text-color-primary, #222); font-weight: 600; }
+.wk-career-rule__plan--paused { color: var(--td-warning-color-7, #e37318); }
+.wk-career-rule__plan--off { color: var(--td-text-color-secondary, #666); }
+.wk-career-rule__runs,
+.wk-career-rule__todos { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 8px; }
+.wk-career-rule__runs li,
+.wk-career-rule__todos li { border: 1px solid var(--td-component-border, #e7e7e7); border-radius: 8px; padding: 10px 12px; }
+.wk-career-rule__run-main { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.wk-career-rule__run-main span { color: var(--td-text-color-secondary, #555); font-size: .9rem; }
+.wk-career-rule__run-status--blocked { color: var(--td-error-color, #d54941); font-weight: 600; }
+.wk-career-rule__run-status--completed { color: #07c05f; font-weight: 600; }
+.wk-career-rule__run-status--failed { color: var(--td-error-color, #d54941); font-weight: 600; }
+.wk-career-rule__run-note { margin: 6px 0 0; color: var(--td-text-color-secondary, #666); font-size: .85rem; word-break: break-word; }
+.wk-career-rule__todos li { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.wk-career-rule__todos a { color: #07c05f; font-weight: 600; }
+.wk-career-rule__todos span { color: var(--td-text-color-secondary, #555); font-size: .9rem; }

@@ -40,6 +40,7 @@ test('keeps legacy deep links and redirects the misspelled chat path compatibly'
   assert.equal(resolveRoute('/knowledgeBase/%E0%A4%A').kind, 'not-found');
   assert.deepEqual(resolveRoute('/platform/career'), { kind: 'platform', path: '/platform/career' });
   assert.deepEqual(resolveRoute('/platform/career/search'), { kind: 'platform', path: '/platform/career/search' });
+  assert.deepEqual(resolveRoute('/platform/career/rules'), { kind: 'platform', path: '/platform/career/rules' });
   assert.deepEqual(resolveRoute('/platform/career/opportunities/opp-1?snapshotId=snapshot-1'), { kind: 'career-opportunity', path: '/platform/career/opportunities/opp-1', opportunityId: 'opp-1', snapshotId: 'snapshot-1' });
   assert.equal(resolveRoute('/platform/career/opportunities/opp-1').kind, 'not-found');
   assert.deepEqual(resolveRoute('/platform/career/evaluations/evaluation-old'), { kind: 'career-evaluation', path: '/platform/career/evaluations/evaluation-old', evaluationId: 'evaluation-old' });

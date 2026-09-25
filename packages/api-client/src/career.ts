@@ -148,6 +148,105 @@ const searchUncertainties: SearchUncertainty[] = ['low_confidence']
 const searchFailureCodes: SearchFailureCode[] = ['no_vetted_sources', 'all_sources_unavailable']
 const searchCoverageFailureCodes: SearchCoverageFailureCode[] = ['source_misconfigured', 'login_required', 'access_blocked', 'not_found', 'timeout', 'source_unverified', 'unsupported_content', 'empty_content', 'response_too_large', 'network_error', 'redirect_disallowed']
 
+// Frozen recurring search rule enums owned by the career backend (T13,
+// internal/modules/career/search_rule.go). A rule only ever runs when the
+// user explicitly enables it; blocked runs (quota refused, no vetted
+// sources) are durable visible statuses, never silent skips. The
+// enable-time estimate is the backend's deterministic projection — the
+// client displays it verbatim (basis text included) and never recomputes it.
+export type RuleStatus = 'enabled' | 'paused' | 'disabled'
+export type RuleRunStatus = 'completed' | 'failed' | 'blocked_no_quota' | 'no_vetted_sources'
+export type RuleTodoStatus = 'open'
+export type RuleCostEstimate = { triggersPerDay: number; sourcesPerTrigger: number; estimatedSearchesPerDay: number; basis: string }
+export type SetRuleInput = { requestId: string; ruleId?: string; query: string; intervalMinutes: number; status: RuleStatus; expectedRevision: number }
+export type SetRuleReceipt = { kind: 'rule_set'; requestId: string; ruleId: string; query: string; intervalMinutes: number; status: RuleStatus; revision: number; nextDueAt?: string; estimate: RuleCostEstimate }
+export type RuleRunView = { kind: 'rule_run'; ruleId: string; period: number; requestId: string; status: RuleRunStatus; searchId?: string; failureCode?: string; note?: string; triggeredAt: string }
+export type RuleTodoView = { todoId: string; ruleId: string; runId: string; searchId: string; sourceId?: string; link: string; status: RuleTodoStatus; createdAt: string }
+export type RuleView = { ruleId: string; query: string; intervalMinutes: number; status: RuleStatus; revision: number; lastPeriod: number; nextDueAt?: string; estimate: RuleCostEstimate; runs: RuleRunView[]; todos: RuleTodoView[]; createdAt: string; updatedAt: string }
+
+const ruleStatuses: RuleStatus[] = ['enabled', 'paused', 'disabled']
+const ruleRunStatuses: RuleRunStatus[] = ['completed', 'failed', 'blocked_no_quota', 'no_vetted_sources']
+const minRuleIntervalMinutes = 1
+const maxRuleIntervalMinutes = 43200 // 30 days, mirroring the backend bounds
+
+function decodeRuleEstimate(value: unknown): RuleCostEstimate {
+ const record = decodeRecord(value, 'invalid rule estimate')
+ if (!validEstimateNumber(record.triggersPerDay) || !validEstimateNumber(record.estimatedSearchesPerDay)
+  || !Number.isSafeInteger(record.sourcesPerTrigger) || Number(record.sourcesPerTrigger) < 0
+  || typeof record.basis !== 'string' || record.basis.trim().length === 0) throw new TypeError('invalid rule estimate')
+ return { triggersPerDay: record.triggersPerDay as number, sourcesPerTrigger: record.sourcesPerTrigger as number, estimatedSearchesPerDay: record.estimatedSearchesPerDay as number, basis: record.basis }
+}
+function validEstimateNumber(value: unknown): value is number { return typeof value === 'number' && Number.isFinite(value) && value >= 0 }
+
+export function decodeSetRuleReceipt(value: unknown): SetRuleReceipt {
+ const record = decodeRecord(value, 'invalid rule receipt')
+ if (record.kind !== 'rule_set' || !validIdentifier(record.requestId) || !validIdentifier(record.ruleId)
+  || !validIdentifier(record.query)
+  || !Number.isSafeInteger(record.intervalMinutes) || Number(record.intervalMinutes) < minRuleIntervalMinutes || Number(record.intervalMinutes) > maxRuleIntervalMinutes
+  || !ruleStatuses.includes(record.status as RuleStatus)
+  || !Number.isSafeInteger(record.revision) || Number(record.revision) < 1
+  || (record.nextDueAt !== undefined && !validTimestamp(record.nextDueAt))) throw new TypeError('invalid rule receipt')
+ return {
+  kind: 'rule_set', requestId: record.requestId, ruleId: record.ruleId, query: record.query,
+  intervalMinutes: record.intervalMinutes as number, status: record.status as RuleStatus, revision: record.revision as number,
+  ...(record.nextDueAt !== undefined ? { nextDueAt: record.nextDueAt } : {}),
+  estimate: decodeRuleEstimate(record.estimate),
+ }
+}
+
+function decodeRuleRun(value: unknown): RuleRunView {
+ const record = decodeRecord(value, 'invalid rule run')
+ const failureCode: unknown = record.failureCode
+ const note: unknown = record.note
+ if (record.kind !== 'rule_run' || !validIdentifier(record.ruleId) || !validIdentifier(record.requestId)
+  || !Number.isSafeInteger(record.period) || Number(record.period) < 1
+  || !ruleRunStatuses.includes(record.status as RuleRunStatus)
+  || (record.searchId !== undefined && !validIdentifier(record.searchId))
+  || (failureCode !== undefined && !searchFailureCodes.includes(failureCode as SearchFailureCode))
+  || (note !== undefined && (typeof note !== 'string' || note.trim().length === 0))
+  || !validTimestamp(record.triggeredAt)) throw new TypeError('invalid rule run')
+ return {
+  kind: 'rule_run', ruleId: record.ruleId, period: record.period as number, requestId: record.requestId,
+  status: record.status as RuleRunStatus,
+  ...(record.searchId !== undefined ? { searchId: record.searchId } : {}),
+  ...(failureCode !== undefined ? { failureCode: failureCode as SearchFailureCode } : {}),
+  ...(note !== undefined ? { note: note as string } : {}),
+  triggeredAt: record.triggeredAt,
+ }
+}
+
+function decodeRuleTodo(value: unknown): RuleTodoView {
+ const record = decodeRecord(value, 'invalid rule todo')
+ if (!validIdentifier(record.todoId) || !validIdentifier(record.ruleId) || !validIdentifier(record.runId)
+  || !validIdentifier(record.searchId) || (record.sourceId !== undefined && !validIdentifier(record.sourceId))
+  || !validHttpUrl(record.link) || record.status !== 'open' || !validTimestamp(record.createdAt)) throw new TypeError('invalid rule todo')
+ return {
+  todoId: record.todoId, ruleId: record.ruleId, runId: record.runId, searchId: record.searchId,
+  ...(record.sourceId !== undefined ? { sourceId: record.sourceId } : {}),
+  link: record.link, status: 'open', createdAt: record.createdAt,
+ }
+}
+
+export function decodeRuleView(value: unknown): RuleView {
+ const record = decodeRecord(value, 'invalid rule view')
+ if (!validIdentifier(record.ruleId) || !validIdentifier(record.query)
+  || !Number.isSafeInteger(record.intervalMinutes) || Number(record.intervalMinutes) < minRuleIntervalMinutes || Number(record.intervalMinutes) > maxRuleIntervalMinutes
+  || !ruleStatuses.includes(record.status as RuleStatus)
+  || !Number.isSafeInteger(record.revision) || Number(record.revision) < 1
+  || !Number.isSafeInteger(record.lastPeriod) || Number(record.lastPeriod) < 0
+  || (record.nextDueAt !== undefined && !validTimestamp(record.nextDueAt))
+  || !Array.isArray(record.runs) || !Array.isArray(record.todos)
+  || !validTimestamp(record.createdAt) || !validTimestamp(record.updatedAt)) throw new TypeError('invalid rule view')
+ return {
+  ruleId: record.ruleId, query: record.query, intervalMinutes: record.intervalMinutes as number,
+  status: record.status as RuleStatus, revision: record.revision as number, lastPeriod: record.lastPeriod as number,
+  ...(record.nextDueAt !== undefined ? { nextDueAt: record.nextDueAt } : {}),
+  estimate: decodeRuleEstimate(record.estimate),
+  runs: record.runs.map(decodeRuleRun), todos: record.todos.map(decodeRuleTodo),
+  createdAt: record.createdAt, updatedAt: record.updatedAt,
+ }
+}
+
 // Backend rows only ever contain links that literally appeared in fetched
 // source text as absolute http(s) URLs; the decoder holds the same line.
 function validHttpUrl(value: unknown): value is string {
@@ -652,6 +751,22 @@ export function createCareerApi(request: CareerRequest, binaryRequest?: CareerBi
   async search(searchId: string, signal?: AbortSignal): Promise<SearchOnceReceipt> {
    if (!searchId.trim()) throw new TypeError('search ID must not be empty')
    return decodeSearchOnceReceipt(await request({ method: 'GET', path: `/api/v1/career/searches/${encodeURIComponent(searchId)}`, ...(signal ? { signal } : {}) }))
+  },
+  async setRule(input: SetRuleInput, signal?: AbortSignal): Promise<SetRuleReceipt> {
+   if (!input.requestId.trim() || !input.query.trim()) throw new TypeError('rule requestId and query must not be empty')
+   if (!ruleStatuses.includes(input.status)) throw new TypeError('rule status must be enabled, paused, or disabled')
+   if (!Number.isSafeInteger(input.intervalMinutes) || input.intervalMinutes < minRuleIntervalMinutes || input.intervalMinutes > maxRuleIntervalMinutes) throw new TypeError('rule interval must be an integer between 1 and 43200 minutes')
+   if (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0) throw new TypeError('rule expected revision must be a non-negative integer')
+   const body: Record<string, unknown> = { requestId: input.requestId, query: input.query, intervalMinutes: input.intervalMinutes, status: input.status, expectedRevision: input.expectedRevision, ...(input.ruleId?.trim() ? { ruleId: input.ruleId.trim() } : {}) }
+   return decodeSetRuleReceipt(await request({ method: 'POST', path: '/api/v1/career/rules', body, ...(signal ? { signal } : {}) }))
+  },
+  async ruleReceipt(requestId: string, signal?: AbortSignal): Promise<SetRuleReceipt> {
+   if (!requestId.trim()) throw new TypeError('rule receipt requestId must not be empty')
+   return decodeSetRuleReceipt(await request({ method: 'GET', path: `/api/v1/career/rules/receipt?requestId=${encodeURIComponent(requestId)}`, ...(signal ? { signal } : {}) }))
+  },
+  async getRule(ruleId: string, signal?: AbortSignal): Promise<RuleView> {
+   if (!ruleId.trim()) throw new TypeError('rule ID must not be empty')
+   return decodeRuleView(await request({ method: 'GET', path: `/api/v1/career/rules/${encodeURIComponent(ruleId)}`, ...(signal ? { signal } : {}) }))
   },
   async editMaterial(input: EditMaterialInput, signal?: AbortSignal): Promise<MaterialReceipt> {
    if (!input.requestId.trim()) throw new TypeError('material requestId must not be empty')
