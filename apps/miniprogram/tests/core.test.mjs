@@ -70,9 +70,9 @@ test('pending submission reuses the same id and unknown lookup never releases th
   assert.throws(()=>p.reset(),/active/i);
   p.acknowledge();assert.equal(p.begin().requestId,'req-2');
 });
-test('route manifest has twenty-one screens and only four primary tabs',()=>{
+test('route manifest has twenty-two screens and only four primary tabs',()=>{
   assert.ok(routing.ROUTES);
-  assert.equal(Object.keys(routing.ROUTES).length,21); // T24 新增 career/discovery
+  assert.equal(Object.keys(routing.ROUTES).length,22); // T24 新增 career/discovery；T26 新增 career/application-material
   assert.equal(Object.values(routing.ROUTES).filter(x=>x.tab).length,4);
   assert.match(routing.pageUrl('document',{id:'a/b?c'}),/a%2Fb%3Fc/);
   assert.throws(()=>routing.pageUrl('not-a-page'));

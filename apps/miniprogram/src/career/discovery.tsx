@@ -2,6 +2,7 @@ import { useState } from 'react';
 import Taro, { useShareAppMessage } from '@tarojs/taro';
 import { Text, View } from '@tarojs/components';
 import { Screen, Card, Action, Field, Notice, Badge, Empty, DataBoundary, useData, useAction, useSession } from '../components/ui.tsx';
+import { navigate } from '../platform/navigation.ts';
 import { auth } from '../services/runtime.ts';
 import * as career from '../services/career.ts';
 import { careerPlatform, type SharedImportDraft } from '../adapters/career-platform.ts';
@@ -30,6 +31,8 @@ export default function DiscoveryPage() {
   const [draft, setDraft] = useState<SharedImportDraft | undefined>(() => (entry ? career.prepareSharedImport(entry.text, entry.sourceLabel) : undefined));
   const [pasteText, setPasteText] = useState('');
   const [importNotice, setImportNotice] = useState('');
+  // T26：导入成功后保住岗位/快照编号，作为进入“申请与材料”的入口参数。
+  const [imported, setImported] = useState<{ opportunityId: string; snapshotId: string }>();
   // 分享导出：把当前核对中的 JD 原文随卡片带给接收方（先核对后提交的另一半）。
   useShareAppMessage(() => ({ title: draft ? `职位核对：${draft.preview.excerpt.slice(0, 20)}` : 'WeKnora 求职工作台', path: `/career/discovery${draft ? `?jd=${encodeURIComponent(draft.rawText)}` : ''}` }));
 
@@ -142,11 +145,13 @@ export default function DiscoveryPage() {
           <t-button block size='large' theme='primary' ariaLabel='确认导入该职位' customStyle={tdesignButtonStyle} loading={importBusy.busy} onTap={() => void importBusy.run(async () => {
             const receipt = await career.confirmSharedImport(draft);
             setImportNotice(`已导入岗位 ${receipt.opportunityId}（${receipt.status === 'stored' ? '已存档' : '待复核'}）。`);
+            setImported({ opportunityId: receipt.opportunityId, snapshotId: receipt.snapshotId });
             setDraft(undefined);
           })}>核对无误，导入</t-button>
         </View></View>
         <Action secondary onClick={() => setDraft(undefined)}>放弃本次导入</Action>
       </>}
+      {imported && <Action secondary onClick={() => void navigate('careerApply', { opportunityId: imported.opportunityId, snapshotId: imported.snapshotId })}>就这个岗位继续：评估、申请与材料 ›</Action>}
       {!draft && <>
         {!entry && <Notice tone='info'>没有收到分享内容：可从微信聊天重新打开分享卡片，或在下方粘贴职位原文。</Notice>}
         <Field label='粘贴职位原文' value={pasteText} onChange={setPasteText} multiline placeholder='粘贴 JD 原文后先核对再导入' />

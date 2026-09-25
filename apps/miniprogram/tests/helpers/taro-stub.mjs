@@ -76,7 +76,10 @@ const Taro = {
         const content = state.fileContents.get(path);
         if (content === undefined) throw new Error(`stub: missing file ${path}`);
         const bytes = Buffer.from(content, 'utf8').subarray(position, length === undefined ? undefined : position + length);
-        return encoding === 'utf8' ? bytes.toString('utf8') : bytes.buffer;
+        // 无 encoding 时真实 weapp 返回“精确文件字节”的 ArrayBuffer；Node Buffer 小对象
+        // 落在共享池里，直接给 bytes.buffer 会把整池脏字节一起暴露（丢失 byteOffset）。
+        // T26 摘要校验依赖该契约保真：必须切出精确范围。
+        return encoding === 'utf8' ? bytes.toString('utf8') : bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
       },
       unlinkSync(path) {
         if (isRuntimeTempPath(path)) {

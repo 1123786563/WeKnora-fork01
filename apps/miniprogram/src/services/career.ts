@@ -2,13 +2,14 @@ import { client, auth } from './runtime.ts';
 import { record, text } from './views.ts';
 import { CareerDesk } from '../../../../packages/career-core/src/desk.ts';
 import type { CareerRemote } from '../../../../packages/career-core/src/desk.ts';
-import type { CareerView, CareerReceipt, CareerChangeSet, CareerAction, CareerUpload, CareerDocumentSource, OpportunityReceipt, OpportunityEvidence } from '../../../../packages/career-core/src/contracts.ts';
-import { decodeCareerUpload, decodeCareerSources, decodeOpportunityReceipt } from '../../../../packages/career-core/src/contracts.ts';
-import { decodeOpportunityEvidencePage } from '../../../../packages/api-client/src/career.ts';
+import type { CareerView, CareerReceipt, CareerChangeSet, CareerAction, CareerUpload, CareerDocumentSource, OpportunityReceipt, OpportunityEvidence, EvaluationReceipt } from '../../../../packages/career-core/src/contracts.ts';
+import { decodeCareerUpload, decodeCareerSources, decodeOpportunityReceipt, decodeEvaluationReceipt } from '../../../../packages/career-core/src/contracts.ts';
+import { decodeOpportunityEvidencePage, decodeApplicationReceipt, decodeMaterialReceipt, decodeMaterialView, decodeMaterialVersionList, decodeMaterialExportReceipt, decodeMaterialExportList, decodeMaterialExportDownload, decodeSubmissionReceipt, decodeSubmissionList } from '../../../../packages/api-client/src/career.ts';
+import type { ApplicationReceipt, MaterialReceipt, MaterialView, MaterialVersionList, MaterialExportReceipt, MaterialExportList, MaterialExportDownload, MaterialExportFormat, SubmissionReceipt, SubmissionList, SubmissionChannel, MaterialBody } from '../../../../packages/api-client/src/career.ts';
 import type { NativeFileSource } from '@weknora/api-client';
 import { requestId as newRequestId } from '../core/intent.ts';
 import { scopeKey } from '../core/scope.ts';
-import { CAREER_STORE_PREFIX, createControlledStore, type SharedImportDraft } from '../adapters/career-platform.ts';
+import { CAREER_STORE_PREFIX, createControlledStore, type SharedImportDraft, openExportedDocument, EXPORT_GRANT_EXPIRED, type ExportDownloadGrant, type ExportOpenRecord } from '../adapters/career-platform.ts';
 
 export { prepareSharedImport, careerPlatform, CAREER_STORE_PREFIX } from '../adapters/career-platform.ts';
 export type { SharedImportDraft, SharedEntry } from '../adapters/career-platform.ts';
@@ -189,4 +190,201 @@ export async function confirmSharedImport(draft: SharedImportDraft): Promise<Opp
 export async function opportunityEvidence(opportunityId: string, snapshotId: string): Promise<OpportunityEvidence> {
   if (!opportunityId.trim() || !snapshotId.trim()) throw new Error('缺少岗位快照信息');
   return decodeOpportunityEvidencePage(await client.request({ method: 'GET', path: `/api/v1/career/opportunities/${encodeURIComponent(opportunityId)}?snapshotId=${encodeURIComponent(snapshotId)}` }));
+}
+
+// ---- T26 申请、材料、导出与本人投递：与 Web 同源同版本（同一批 api-client 解码器，
+// 同一冻结合同）。写入一律 requestId + expectedRevision；结果未知用原 requestId 对账，
+// 空间切换的旧响应绝不当成新事实落地。投递确认只记录用户声明，零自动提交零外发。 ----
+
+/** 评估当前档案对固定岗位快照的资格（申请创建前的一步；三值结论如实返回）。 */
+export async function evaluateOpportunity(opportunityId: string, snapshotId: string): Promise<EvaluationReceipt> {
+  if (!opportunityId.trim() || !snapshotId.trim()) throw new Error('缺少岗位快照信息');
+  return decodeEvaluationReceipt(await client.request({ method: 'POST', path: '/api/v1/career/evaluations', body: { requestId: newRequestId(), opportunityId: opportunityId.trim(), snapshotId: snapshotId.trim() } }));
+}
+
+export interface ApplicationIntentInput { opportunityId: string; snapshotId: string; evaluationId: string; batchIdentity: string; continueDespiteHardFailure: boolean }
+interface StoredIntent<T> { requestId: string; input: T }
+function intentKey(kind: string): string { return `${CAREER_STORE_PREFIX}${kind}:${scopeKey(auth.scope.capture())}`; }
+function readIntent<T>(key: string): StoredIntent<T> | null {
+  const value = store.read(key);
+  if (!value || typeof value !== 'object') return null;
+  const parsed = value as { requestId?: unknown; input?: unknown };
+  if (typeof parsed.requestId !== 'string' || !parsed.requestId || typeof parsed.input !== 'object' || !parsed.input) return null;
+  return { requestId: parsed.requestId, input: parsed.input as T };
+}
+/** 空间切换/AUTH_REQUIRED 是确定失败：旧作用域的响应不能为新作用域留恢复意图。 */
+function definiteLocalFailure(error: unknown): boolean { return /SCOPE_CHANGED|AUTH_REQUIRED/i.test(`${(error as Error)?.message ?? ''} ${(error as { code?: unknown })?.code ?? ''}`); }
+/** 写入 + 未知结果恢复：ambiguous 失败把 intent（含重放所需原始内容）存进受控存储，
+ * 用原 requestId 对账/重发。空间切换（含其引发的请求取消）是本地确定失败：旧作用域
+ * 的响应不能为新作用域留恢复意图，直接按 SCOPE_CHANGED 抛出。 */
+async function writeRecoverable<T>(kind: string, describe: string, input: unknown, send: (id: string) => Promise<unknown>): Promise<T> {
+  const id = newRequestId();
+  const stamp = auth.scope.capture();
+  try {
+    return await send(id) as T;
+  } catch (error) {
+    if (ambiguous(error) && !auth.scope.isCurrent(stamp)) {
+      throw Object.assign(new Error('SCOPE_CHANGED'), { cause: error });
+    }
+    if (ambiguous(error)) {
+      store.write(intentKey(kind), { requestId: id, input });
+      throw Object.assign(new Error(`${describe}结果未知：请用原请求对账后再试`, { cause: error }), { code: 'outcome_unknown', requestId: id });
+    }
+    throw error;
+  }
+}
+async function reconcileIntent<T>(kind: string, describe: string, fetch: (id: string) => Promise<unknown>): Promise<T> {
+  const pending = readIntent<Record<string, unknown>>(intentKey(kind));
+  if (!pending) throw new Error(`没有待对账的${describe}`);
+  const receipt = await fetch(pending.requestId);
+  store.remove(intentKey(kind));
+  return receipt as T;
+}
+async function retryIntent<T>(kind: string, describe: string, resend: (id: string) => Promise<unknown>): Promise<T> {
+  const pending = readIntent<Record<string, unknown>>(intentKey(kind));
+  if (!pending) throw new Error(`没有待恢复的${describe}`);
+  const stamp = auth.scope.capture();
+  try {
+    const receipt = await resend(pending.requestId);
+    store.remove(intentKey(kind));
+    return receipt as T;
+  } catch (error) {
+    if (ambiguous(error) && (!auth.scope.isCurrent(stamp) || definiteLocalFailure(error))) throw Object.assign(new Error('SCOPE_CHANGED'), { cause: error });
+    if (ambiguous(error)) throw Object.assign(new Error(`${describe}结果未知：请用原请求对账后再试`, { cause: error }), { code: 'outcome_unknown', requestId: pending.requestId });
+    throw error;
+  }
+}
+
+// —— 申请（T14 合同）：一岗一批一申请；硬条件不符必须显式继续 ——
+export async function createApplication(input: ApplicationIntentInput): Promise<ApplicationReceipt> {
+  if (!input.opportunityId.trim() || !input.snapshotId.trim() || !input.evaluationId.trim() || !input.batchIdentity.trim()) throw new Error('申请缺少岗位、评估或批次信息');
+  const batch = input.batchIdentity.trim();
+  return writeRecoverable<ApplicationReceipt>('application', '申请创建', input, async id =>
+    decodeApplicationReceipt(await client.request({ method: 'POST', path: '/api/v1/career/applications', body: { requestId: id, opportunityId: input.opportunityId.trim(), snapshotId: input.snapshotId.trim(), evaluationId: input.evaluationId.trim(), batchIdentity: batch, continueDespiteHardFailure: input.continueDespiteHardFailure, expectedRevision: revision() } })));
+}
+export function pendingApplication(): StoredIntent<ApplicationIntentInput> | null { return readIntent<ApplicationIntentInput>(intentKey('application')); }
+export async function reconcilePendingApplication(): Promise<ApplicationReceipt> {
+  return reconcileIntent<ApplicationReceipt>('application', '申请', async id =>
+    decodeApplicationReceipt(await client.request({ method: 'GET', path: `/api/v1/career/applications/receipt?requestId=${encodeURIComponent(id)}` })));
+}
+export async function retryPendingApplication(): Promise<ApplicationReceipt> {
+  const pending = pendingApplication();
+  if (!pending) throw new Error('没有待恢复的申请');
+  return retryIntent<ApplicationReceipt>('application', '申请', async id =>
+    decodeApplicationReceipt(await client.request({ method: 'POST', path: '/api/v1/career/applications', body: { requestId: id, ...pending.input, expectedRevision: revision() } })));
+}
+export async function getApplication(applicationId: string): Promise<ApplicationReceipt> {
+  if (!applicationId.trim()) throw new Error('缺少申请编号');
+  return decodeApplicationReceipt(await client.request({ method: 'GET', path: `/api/v1/career/applications/${encodeURIComponent(applicationId.trim())}` }));
+}
+/** link_state=linking/link_failed 的 Task 关联只能用原 requestId 对账（服务端幂等）。 */
+export async function reconcileApplicationLink(requestId: string): Promise<ApplicationReceipt> {
+  if (!requestId.trim()) throw new Error('缺少原请求编号');
+  return decodeApplicationReceipt(await client.request({ method: 'POST', path: '/api/v1/career/applications/link/reconcile', body: { requestId: requestId.trim() } }));
+}
+
+// —— 材料（T15 合同）：同一结构化正文，确认生成不可变新版本，不覆盖旧版 ——
+export interface EditMaterialIntent { materialId?: string; opportunityId?: string; snapshotId?: string; body: MaterialBody }
+function materialRequestBody(id: string, intent: EditMaterialIntent): Record<string, unknown> {
+  if (intent.materialId?.trim()) return { requestId: id, materialId: intent.materialId.trim(), body: intent.body, expectedRevision: revision() };
+  if (intent.opportunityId?.trim() && intent.snapshotId?.trim()) return { requestId: id, opportunityId: intent.opportunityId.trim(), snapshotId: intent.snapshotId.trim(), body: intent.body, expectedRevision: revision() };
+  throw new Error('材料编辑缺少岗位证据或材料编号');
+}
+export async function editMaterial(intent: EditMaterialIntent): Promise<MaterialReceipt> {
+  materialRequestBody(newRequestId(), intent); // 先做参数校验，再进入可恢复写入
+  return writeRecoverable<MaterialReceipt>('material', '材料编辑', { ...intent, body: intent.body }, async id =>
+    decodeMaterialReceipt(await client.request({ method: 'POST', path: '/api/v1/career/materials', body: materialRequestBody(id, intent) })));
+}
+export async function confirmMaterial(materialId: string): Promise<MaterialReceipt> {
+  if (!materialId.trim()) throw new Error('缺少材料编号');
+  return writeRecoverable<MaterialReceipt>('material', '材料确认', { materialId: materialId.trim() }, async id =>
+    decodeMaterialReceipt(await client.request({ method: 'POST', path: '/api/v1/career/materials/confirm', body: { requestId: id, materialId: materialId.trim(), expectedRevision: revision() } })));
+}
+export function pendingMaterialWrite(): StoredIntent<Record<string, unknown>> | null { return readIntent<Record<string, unknown>>(intentKey('material')); }
+export async function reconcilePendingMaterial(): Promise<MaterialReceipt> {
+  return reconcileIntent<MaterialReceipt>('material', '材料写入', async id =>
+    decodeMaterialReceipt(await client.request({ method: 'GET', path: `/api/v1/career/materials/receipt?requestId=${encodeURIComponent(id)}` })));
+}
+export async function retryPendingMaterial(): Promise<MaterialReceipt> {
+  const pending = pendingMaterialWrite();
+  if (!pending) throw new Error('没有待恢复的材料写入');
+  const stored = pending.input as { materialId?: unknown };
+  return retryIntent<MaterialReceipt>('material', '材料写入', async id =>
+    decodeMaterialReceipt(await client.request({ method: 'POST', path: '/api/v1/career/materials/confirm', body: { requestId: id, materialId: String(stored.materialId ?? ''), expectedRevision: revision() } })));
+}
+export async function material(materialId: string): Promise<MaterialView> {
+  if (!materialId.trim()) throw new Error('缺少材料编号');
+  return decodeMaterialView(await client.request({ method: 'GET', path: `/api/v1/career/materials/${encodeURIComponent(materialId.trim())}` }));
+}
+export async function materialVersions(materialId: string): Promise<MaterialVersionList> {
+  if (!materialId.trim()) throw new Error('缺少材料编号');
+  return decodeMaterialVersionList(await client.request({ method: 'GET', path: `/api/v1/career/materials/${encodeURIComponent(materialId.trim())}/versions` }));
+}
+
+// —— 导出（T16 合同）：发布双格式；下载走 signed-url → 认证兑付；过期授权重取 ——
+export async function publishMaterial(materialId: string, version: number): Promise<MaterialExportReceipt> {
+  if (!materialId.trim() || !Number.isSafeInteger(version) || version <= 0) throw new Error('发布需要材料编号与确认版本');
+  return writeRecoverable<MaterialExportReceipt>('export', '材料发布', { materialId: materialId.trim(), version }, async id =>
+    decodeMaterialExportReceipt(await client.request({ method: 'POST', path: `/api/v1/career/materials/${encodeURIComponent(materialId.trim())}/exports`, body: { requestId: id, version, expectedRevision: revision() } })));
+}
+export async function listMaterialExports(materialId: string): Promise<MaterialExportList> {
+  if (!materialId.trim()) throw new Error('缺少材料编号');
+  return decodeMaterialExportList(await client.request({ method: 'GET', path: `/api/v1/career/materials/${encodeURIComponent(materialId.trim())}/exports` }));
+}
+const EXPORT_GRANT_TTL_SECONDS = 300;
+async function issueExportGrant(materialId: string, exportId: string, format: MaterialExportFormat): Promise<MaterialExportDownload> {
+  return decodeMaterialExportDownload(await client.request({ method: 'POST', path: `/api/v1/career/materials/${encodeURIComponent(materialId)}/exports/${encodeURIComponent(exportId)}/signed-url`, body: { format, ttlSeconds: EXPORT_GRANT_TTL_SECONDS } }));
+}
+export interface MaterialExportOpenOutcome { grant: MaterialExportDownload; check: ExportOpenRecord }
+/** 签发授权 → 认证兑付下载（digest 校验+打开）。授权过期（typed）自动重取一次再试。 */
+export async function openMaterialExport(materialId: string, exportId: string, format: MaterialExportFormat): Promise<MaterialExportOpenOutcome> {
+  if (!materialId.trim() || !exportId.trim()) throw new Error('下载需要材料与导出编号');
+  const grant = await issueExportGrant(materialId.trim(), exportId.trim(), format);
+  try {
+    return { grant, check: await openExportedDocument(grant as ExportDownloadGrant) };
+  } catch (error) {
+    if ((error as { code?: unknown })?.code === EXPORT_GRANT_EXPIRED) {
+      const refreshed = await issueExportGrant(materialId.trim(), exportId.trim(), format);
+      return { grant: refreshed, check: await openExportedDocument(refreshed as ExportDownloadGrant) };
+    }
+    throw error;
+  }
+}
+
+// —— 本人投递（T18 合同）：只记录用户声明的渠道/时间/版本绑定或显式未知 ——
+export interface RecordSubmissionIntent { applicationId: string; channel: SubmissionChannel; occurredAt?: string; materialId?: string; exportId?: string; versionUnknown: boolean; note?: string }
+function submissionRequestBody(id: string, input: RecordSubmissionIntent): Record<string, unknown> {
+  if (!input.applicationId.trim() || !['email', 'web', 'other'].includes(input.channel)) throw new Error('投递确认缺少申请或渠道');
+  // 显式未知独占：不携带任何版本绑定；确认版本则必须双标识齐全。
+  if (input.versionUnknown && (input.materialId !== undefined || input.exportId !== undefined)) throw new Error('版本未知声明不能同时携带版本绑定');
+  if (!input.versionUnknown && (!input.materialId?.trim() || !input.exportId?.trim())) throw new Error('投递确认需绑定可提交版本，或显式声明版本未知');
+  return {
+    requestId: id, applicationId: input.applicationId.trim(), channel: input.channel,
+    ...(input.occurredAt ? { occurredAt: input.occurredAt } : {}),
+    ...(input.materialId?.trim() ? { materialId: input.materialId.trim() } : {}),
+    ...(input.exportId?.trim() ? { exportId: input.exportId.trim() } : {}),
+    versionUnknown: input.versionUnknown,
+    ...(input.note?.trim() ? { note: input.note.trim() } : {}),
+    expectedRevision: revision(),
+  };
+}
+export async function recordSubmission(input: RecordSubmissionIntent): Promise<SubmissionReceipt> {
+  submissionRequestBody(newRequestId(), input); // 先校验，再进入可恢复写入
+  return writeRecoverable<SubmissionReceipt>('submission', '投递确认', input, async id =>
+    decodeSubmissionReceipt(await client.request({ method: 'POST', path: `/api/v1/career/applications/${encodeURIComponent(input.applicationId.trim())}/submissions`, body: submissionRequestBody(id, input) })));
+}
+export function pendingSubmission(): StoredIntent<RecordSubmissionIntent> | null { return readIntent<RecordSubmissionIntent>(intentKey('submission')); }
+export async function reconcilePendingSubmission(): Promise<SubmissionReceipt> {
+  return reconcileIntent<SubmissionReceipt>('submission', '投递确认', async id =>
+    decodeSubmissionReceipt(await client.request({ method: 'GET', path: `/api/v1/career/submissions/receipt?requestId=${encodeURIComponent(id)}` })));
+}
+export async function retryPendingSubmission(): Promise<SubmissionReceipt> {
+  const pending = pendingSubmission();
+  if (!pending) throw new Error('没有待恢复的投递确认');
+  return retryIntent<SubmissionReceipt>('submission', '投递确认', async id =>
+    decodeSubmissionReceipt(await client.request({ method: 'POST', path: `/api/v1/career/applications/${encodeURIComponent(pending.input.applicationId)}/submissions`, body: submissionRequestBody(id, pending.input) })));
+}
+export async function listSubmissions(applicationId: string): Promise<SubmissionList> {
+  if (!applicationId.trim()) throw new Error('缺少申请编号');
+  return decodeSubmissionList(await client.request({ method: 'GET', path: `/api/v1/career/applications/${encodeURIComponent(applicationId.trim())}/submissions` }));
 }

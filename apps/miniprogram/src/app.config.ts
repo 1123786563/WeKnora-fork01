@@ -45,7 +45,8 @@ export default defineAppConfig({
     {
       "root": "career",
       "pages": [
-        "discovery"
+        "discovery",
+        "application-material"
       ]
     },
     {
