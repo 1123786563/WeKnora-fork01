@@ -131,6 +131,28 @@ export interface PluginsApi {
    */
   previewUpgrade(installationId: string, signal?: AbortSignal): Promise<PluginUpgradePreview>;
   /**
+   * POST the upgrade accept (Admin, OCR R1 F19): switches the installation to
+   * the previewed candidate — {candidate_fingerprint} binds the accept to the
+   * exact diff the admin reviewed (a candidate that moved on is rejected
+   * server-side with 409). Resolves to the refreshed installation.
+   */
+  acceptUpgrade(installationId: string, candidateFingerprint: string, signal?: AbortSignal): Promise<PluginInstallation>;
+  /**
+   * GET the persisted drift report (Viewer+, OCR R1 F23): drift state, the
+   * persisted detail when one exists and the accepted snapshot's tool names.
+   */
+  getDrift(installationId: string, signal?: AbortSignal): Promise<PluginDriftReport>;
+  /** POST an on-demand drift re-check (Admin, OCR R1 F23): live endpoint re-verified against the accepted snapshot. */
+  checkDrift(installationId: string, signal?: AbortSignal): Promise<PluginDriftReport>;
+  /**
+   * POST the drift resolution (Admin, OCR R1 F23): re-verify and REBASE the
+   * accepted snapshot onto the live directory (version/endpoint unchanged,
+   * digest recomputed, drift cleared; tools new to the directory land
+   * conservatively as write-class Enabled=false). An unreachable endpoint is
+   * refused with zero writes.
+   */
+  resolveDrift(installationId: string, signal?: AbortSignal): Promise<PluginDriftReport>;
+  /**
    * GET the member's personal connection view of one installation (Viewer+):
    * the three-state OAuth verdict plus the legacy MCP OAuth endpoint paths
    * mapped onto the materialized service_id. Never carries token material.
@@ -212,6 +234,45 @@ export function createPluginsApi(request: (input: ClientRequest) => Promise<unkn
         ...(signal === undefined ? {} : { signal }),
       }));
     },
+    async acceptUpgrade(installationId: string, candidateFingerprint: string, signal?: AbortSignal): Promise<PluginInstallation> {
+      const id = installationId.trim();
+      if (id === '') throw new Error('installationId must not be empty');
+      const fingerprint = candidateFingerprint.trim();
+      if (fingerprint === '') throw new Error('candidateFingerprint must not be empty');
+      return parsePluginInstallation(await request({
+        method: 'POST',
+        path: `${INSTALLATIONS_PATH}/${encodeURIComponent(id)}/upgrade-accept`,
+        body: { candidate_fingerprint: fingerprint },
+        ...(signal === undefined ? {} : { signal }),
+      }));
+    },
+    async getDrift(installationId: string, signal?: AbortSignal): Promise<PluginDriftReport> {
+      const id = installationId.trim();
+      if (id === '') throw new Error('installationId must not be empty');
+      return parsePluginDriftReport(await request({
+        method: 'GET',
+        path: `${INSTALLATIONS_PATH}/${encodeURIComponent(id)}/drift`,
+        ...(signal === undefined ? {} : { signal }),
+      }));
+    },
+    async checkDrift(installationId: string, signal?: AbortSignal): Promise<PluginDriftReport> {
+      const id = installationId.trim();
+      if (id === '') throw new Error('installationId must not be empty');
+      return parsePluginDriftReport(await request({
+        method: 'POST',
+        path: `${INSTALLATIONS_PATH}/${encodeURIComponent(id)}/drift/check`,
+        ...(signal === undefined ? {} : { signal }),
+      }));
+    },
+    async resolveDrift(installationId: string, signal?: AbortSignal): Promise<PluginDriftReport> {
+      const id = installationId.trim();
+      if (id === '') throw new Error('installationId must not be empty');
+      return parsePluginDriftReport(await request({
+        method: 'POST',
+        path: `${INSTALLATIONS_PATH}/${encodeURIComponent(id)}/drift/resolve`,
+        ...(signal === undefined ? {} : { signal }),
+      }));
+    },
     async getMyConnection(installationId: string, signal?: AbortSignal): Promise<PluginMyConnection> {
       const id = installationId.trim();
       if (id === '') throw new Error('installationId must not be empty');
@@ -268,8 +329,15 @@ export interface PluginInstallationTool {
   readonly readOnly: boolean;
   readonly requiresPersonalAuth: boolean;
   readonly scopes: readonly string[];
-  /** dto Enabled *bool omitempty: absent key = no explicit policy row = unknown, kept as null. */
-  readonly enabled: boolean | null;
+  /**
+   * dto.Enabled is a NON-pointer bool without omitempty — the wire always
+   * carries a definite verdict (the handler resolves a missing policy row to
+   * ReadOnly; the field omitted by omitempty on the detail payload is
+   * require_approval, not this one). Parsed strictly as boolean
+   * (OCR R1 F21): the old boolean|null shape described a pre-T18 contract
+   * whose null branch is unreachable.
+   */
+  readonly enabled: boolean;
 }
 
 /** Full installation payload (confirm / state change / get-by-id) in camelCase. */
@@ -318,15 +386,19 @@ function driftState(value: unknown, path: string): 'none' | 'detected' {
   return value as 'none' | 'detected';
 }
 
-function optionalFlag(value: unknown, path: string): boolean | null {
-  // Go *bool with omitempty: the key is absent when the pointer is nil.
-  if (value === null || value === undefined) return null;
-  return flag(value, path);
-}
-
 function toolCount(value: unknown, path: string): number {
   if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
     throw new Error(`${path} must be a non-negative integer`);
+  }
+  return value;
+}
+
+/** Tool-name list normalized to [] (never null) — mirrors the [] wire shape
+ * the drift handler guarantees (OCR R1 F09) so consumers can .map/.length. */
+function nameList(value: unknown, path: string): string[] {
+  if (value === null || value === undefined) return [];
+  if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) {
+    throw new Error(`${path} must be a string array`);
   }
   return value;
 }
@@ -339,7 +411,7 @@ function parseInstallationTool(value: unknown, path: string): PluginInstallation
     readOnly: flag(row.read_only, `${path}.read_only`),
     requiresPersonalAuth: flag(row.requires_personal_auth, `${path}.requires_personal_auth`),
     scopes: scopeList(row.scopes, `${path}.scopes`),
-    enabled: optionalFlag(row.enabled, `${path}.enabled`),
+    enabled: flag(row.enabled, `${path}.enabled`),
   };
 }
 
@@ -368,7 +440,13 @@ export function parsePluginInstallation(value: unknown): PluginInstallation {
     driftState: driftState(data.drift_state, `${INSTALLATIONS_PATH}.data.drift_state`),
     transportType,
     endpointUrl: required(data.endpoint_url, `${INSTALLATIONS_PATH}.data.endpoint_url`),
-    serviceId: required(data.service_id, `${INSTALLATIONS_PATH}.data.service_id`),
+    // OCR R1 F18: an installation confirmed BEFORE the materialized service
+    // was persisted answers with service_id "" — a legal 200 (the server's
+    // healing lookup only runs on the connection view). Only the type is
+    // enforced, same reading as parsePluginMyConnection (T12-OCR1-F3): a
+    // strict required() made the panel throw AFTER a successful disable/
+    // enable call, reporting an error for an operation that had taken effect.
+    serviceId: optionalText(data.service_id, `${INSTALLATIONS_PATH}.data.service_id`),
     tools: tools.map((item, index) => parseInstallationTool(item, `${INSTALLATIONS_PATH}.data.tools[${index}]`)),
   };
 }
@@ -543,6 +621,7 @@ export interface PluginMyConnection {
 // T15-OCR2-low：诊断前缀对齐 UPGRADE_PREVIEW_PATH 的 `:id` 占位约定——真实
 // 请求是 /installations/{id}/connections/me，缺段前缀会误导排障时的路径定位。
 const CONNECTION_PATH = `${INSTALLATIONS_PATH}/:id/connections/me`;
+const DRIFT_PATH = `${INSTALLATIONS_PATH}/:id/drift`;
 
 const CONNECTION_STATES = ['authorized', 'expired', 'unauthorized'] as const;
 
@@ -584,6 +663,59 @@ export function parsePluginMyConnection(value: unknown): PluginMyConnection {
     authorizeUrlPath: optionalText(data.authorize_url_path, `${CONNECTION_PATH}.data.authorize_url_path`),
     revokePath: optionalText(data.revoke_path, `${CONNECTION_PATH}.data.revoke_path`),
     requiresAuthTools: scopeList(data.requires_auth_tools, `${CONNECTION_PATH}.data.requires_auth_tools`),
+  };
+}
+
+// ---- drift governance surface (GET/POST .../drift(/{check,resolve});
+// dto.PluginDriftReportResponse, internal/handler/dto/plugin.go) — OCR R1 F23 ----
+
+/** The deviation record of one drift check: tool NAME lists per drift form. */
+export interface PluginDriftDetail {
+  readonly added: readonly string[];
+  readonly removed: readonly string[];
+  readonly schemaChanged: readonly string[];
+  readonly descriptionChanged: readonly string[];
+  readonly checkedAt: string;
+}
+
+/**
+ * The persisted drift report: state, the persisted detail when one exists
+ * (null when none/never checked — dto Detail is omitempty), and the accepted
+ * snapshot's tool names (the baseline the live directory deviates from).
+ */
+export interface PluginDriftReport {
+  readonly installationId: string;
+  readonly driftState: 'none' | 'detected';
+  readonly detail: PluginDriftDetail | null;
+  readonly snapshotToolNames: readonly string[];
+}
+
+/**
+ * Strict parser for the drift report envelope shared by GET /drift and POST
+ * /drift/{check,resolve}. Lists are normalized to [] (never null) — the
+ * server guarantees the [] wire shape (handler driftReportResponseDTO,
+ * OCR R1 F09) and consumers index into them (.map/.length).
+ */
+export function parsePluginDriftReport(value: unknown): PluginDriftReport {
+  const envelope = record(value, DRIFT_PATH);
+  if (envelope.success !== true) throw new Error(`${DRIFT_PATH}.success must be true`);
+  const data = record(envelope.data, `${DRIFT_PATH}.data`);
+  let detail: PluginDriftDetail | null = null;
+  if (data.detail !== null && data.detail !== undefined) {
+    const row = record(data.detail, `${DRIFT_PATH}.data.detail`);
+    detail = {
+      added: nameList(row.added, `${DRIFT_PATH}.data.detail.added`),
+      removed: nameList(row.removed, `${DRIFT_PATH}.data.detail.removed`),
+      schemaChanged: nameList(row.schema_changed, `${DRIFT_PATH}.data.detail.schema_changed`),
+      descriptionChanged: nameList(row.description_changed, `${DRIFT_PATH}.data.detail.description_changed`),
+      checkedAt: required(row.checked_at, `${DRIFT_PATH}.data.detail.checked_at`),
+    };
+  }
+  return {
+    installationId: required(data.installation_id, `${DRIFT_PATH}.data.installation_id`),
+    driftState: driftState(data.drift_state, `${DRIFT_PATH}.data.drift_state`),
+    detail,
+    snapshotToolNames: nameList(data.snapshot_tool_names, `${DRIFT_PATH}.data.snapshot_tool_names`),
   };
 }
 
@@ -630,7 +762,8 @@ export function parsePluginToolPolicyRows(value: unknown): PluginToolPolicyRow[]
   const data = envelope.data;
   if (!Array.isArray(data)) throw new Error(`${INSTALLATIONS_PATH}.data must be an array`);
   return data.map((item: unknown, index: number) => {
-    const path = `${INSTALLATIONS_PATH}.data.${index}`;
+    // Bracket path style统一为 parsePluginInstallations 同款（OCR R1 F20）。
+    const path = `${INSTALLATIONS_PATH}.data[${index}]`;
     const row = record(item, path);
     return {
       name: required(row.name, `${path}.name`),
@@ -640,7 +773,10 @@ export function parsePluginToolPolicyRows(value: unknown): PluginToolPolicyRow[]
       scopes: scopeList(row.scopes, `${path}.scopes`),
       enabled: flag(row.enabled, `${path}.enabled`),
       requireApproval: flag(row.require_approval, `${path}.require_approval`),
-      disabledReason: typeof row.disabled_reason === 'string' ? row.disabled_reason : '',
+      // dto.DisabledReason is a non-omitempty string — always present. The
+      // old silent `?? ''` downgrade let contract breaks flow into the UI as
+      // empty strings (OCR R1 F20); enforce the type explicitly.
+      disabledReason: optionalText(row.disabled_reason, `${path}.disabled_reason`),
     };
   });
 }

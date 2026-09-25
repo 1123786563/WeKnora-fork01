@@ -179,12 +179,8 @@ test('parsePluginInstallation rejects envelopes with missing or malformed fields
   assert.throws(() => parsePluginInstallation(mutate('tools', {})), /tools/);
 });
 
-test('parsePluginInstallation maps fields, collapses null scopes and keeps a missing enabled as null', () => {
+test('parsePluginInstallation maps fields and collapses null scopes', () => {
   const envelope = installationEnvelope() as { data: { tools: Array<Record<string, unknown>> } };
-  // dto.PluginInstallationTool.Enabled is *bool omitempty: a tool row without
-  // an explicit policy row serializes WITHOUT the key — that means unknown,
-  // which must stay null, never coerce to false.
-  delete envelope.data.tools[1]!.enabled;
   const value = parsePluginInstallation(envelope);
   assert.equal(value.installationId, 'inst-1');
   assert.equal(value.pluginId, 'com.example.jira-todo');
@@ -211,7 +207,7 @@ test('parsePluginInstallation maps fields, collapses null scopes and keeps a mis
     readOnly: false,
     requiresPersonalAuth: true,
     scopes: [],
-    enabled: null,
+    enabled: false,
   });
 });
 
@@ -722,5 +718,89 @@ test('createPluginsApi.setInstallationToolPolicy rejects an empty patch before a
   await assert.rejects(() => api.setInstallationToolPolicy('inst-1', 'w', {}), /enabled or require_approval/,
     'the client-side guard mirrors the server 400 — at least one field per patch');
   assert.equal(fired, 0, 'no request leaves the client for an empty patch');
+});
+
+// ---- OCR R1 F18/F19/F20/F21/F23: parser/endpoint contract corrections ----
+
+test('parsePluginInstallation tolerates an empty service_id (confirm-interruption window, OCR R1 F18)', () => {
+  const envelope = installationEnvelope() as { data: Record<string, unknown> };
+  envelope.data.service_id = '';
+  const value = parsePluginInstallation(envelope);
+  assert.equal(value.serviceId, '',
+    'an installation confirmed before the materialized service persisted answers service_id "" — a legal 200; the parser must not throw after a successful state change');
+});
+
+test('parsePluginInstallation rejects a missing enabled key as a contract break (OCR R1 F21)', () => {
+  const envelope = installationEnvelope() as { data: { tools: Array<Record<string, unknown>> } };
+  delete envelope.data.tools[1]!.enabled;
+  assert.throws(() => parsePluginInstallation(envelope), /enabled/,
+    'dto.Enabled is a non-omitempty bool always carrying a definite verdict — the old null branch was unreachable pre-T18 contract');
+});
+
+test('parsePluginToolPolicyRows rejects a non-string disabled_reason instead of silently downgrading (OCR R1 F20)', () => {
+  const envelope = {
+    success: true,
+    data: [{
+      name: 'search', description: '', read_only: true, requires_personal_auth: false,
+      scopes: [], enabled: true, require_approval: false, disabled_reason: 42,
+    }],
+  };
+  assert.throws(() => parsePluginToolPolicyRows(envelope), /disabled_reason/);
+});
+
+test('createPluginsApi.acceptUpgrade posts the fingerprint and parses the installation (OCR R1 F19)', async () => {
+  const calls: Array<ClientRequest> = [];
+  const api = createPluginsApi(async (input) => {
+    calls.push(input);
+    return installationEnvelope();
+  });
+  const value = await api.acceptUpgrade('inst-1', 'f'.repeat(64));
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0]!.method, 'POST');
+  assert.equal(calls[0]!.path, '/api/v1/plugins/installations/inst-1/upgrade-accept');
+  assert.deepEqual(calls[0]!.body, { candidate_fingerprint: 'f'.repeat(64) });
+  assert.equal(value.installationId, 'inst-1');
+  await assert.rejects(() => api.acceptUpgrade('inst-1', ''), /candidateFingerprint/);
+});
+
+test('drift governance endpoints: paths, verbs and the never-null list shape (OCR R1 F23)', async () => {
+  const driftEnvelope = {
+    success: true,
+    data: {
+      installation_id: 'inst-1',
+      drift_state: 'detected',
+      detail: {
+        added: ['create_issue'], removed: [], schema_changed: ['search'],
+        description_changed: [], checked_at: '2026-09-26T00:00:00Z',
+      },
+      snapshot_tool_names: ['search', 'lookup'],
+    },
+  };
+  const calls: Array<ClientRequest> = [];
+  const api = createPluginsApi(async (input) => {
+    calls.push(input);
+    return driftEnvelope;
+  });
+  const checked = await api.checkDrift('inst-1');
+  assert.deepEqual([checked.detail?.added, checked.detail?.removed, checked.detail?.schemaChanged, checked.detail?.descriptionChanged],
+    [['create_issue'], [], ['search'], []], 'empty drift lists must parse as [], never null');
+  await api.getDrift('inst-1');
+  await api.resolveDrift('inst-1');
+  assert.deepEqual(
+    calls.map((call) => [call.method, call.path]),
+    [
+      ['POST', '/api/v1/plugins/installations/inst-1/drift/check'],
+      ['GET', '/api/v1/plugins/installations/inst-1/drift'],
+      ['POST', '/api/v1/plugins/installations/inst-1/drift/resolve'],
+    ],
+  );
+  // detail 为 null（未检测/无漂移）合法。
+  const noneApi = createPluginsApi(async () => ({
+    success: true,
+    data: { installation_id: 'inst-1', drift_state: 'none', detail: null, snapshot_tool_names: [] },
+  }));
+  const none = await noneApi.getDrift('inst-1');
+  assert.equal(none.detail, null);
+  assert.deepEqual(none.snapshotToolNames, []);
 });
 
