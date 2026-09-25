@@ -1229,3 +1229,219 @@ R12 计划五批次中，本轮（跨任务转交统一修复会话）实际收�
 
 **工作区卫生**：`examples/plugins/jira-todo-mcp/jira-todo-mcp` 与仓库根
 `jira-todo-mcp` 二进制产物经 `test -f` 确认均不存在，无需清理。
+
+---
+
+# OCR 修复轮次计划（R1 轮，2026-09-26）——33 项（F01-F04/F06-F10/F12-F21/F23-F21 增项/F23-F45 缺号跳过）
+
+输入：OCR R1 轮 33 条有效发现。多项直指上一轮跨任务转交修复自身的缺陷
+（F08 swag 注释错位、F12 ReplaceAll 空串乱码、F27-F33 node-gte26 win32 系
+列、F25/F26 过期注释）。原则不变：证据优先、TDD、中文提交标注「OCR R1」、
+范围仅本 worktree。处置前逐项读码复核。按域分六批，依赖关系：
+N1（api-client 方法）先行于 W1 的 F19/F23 面板接入；S1/G1/G2/G3 相互独立。
+
+## 批次 S1（scripts，medium×5+low×1）：F17/F27/F28/F29/F30/F31/F33
+
+- 根因：上一轮 node-gte26 抽库只做了 darwin/linux 正确性，win32 声明了
+  目标面（EPERM 兜底、delimiter）却留四处缺口——shim 条目名缺 .exe
+  （F27）、PATH/Path 大小写重复键使 shim 静默失效（F30/F33）、spawn 无法
+  执行 tsx.cmd（F31）、测试套件自身 win32 false-red（F29）；另有 mkdtempSync
+  后的死代码 rmSync（F28）与 test:node-gte26 未接任何门禁（F17）。
+- 文件：scripts/lib/node-gte26.mjs（新增导出 shimEnv(shimDir)：大小写无关
+  覆盖既有 PATH 变体键；shimNode/win32 node.exe 条目名；$PATH 扫描按平台
+  拼 node(.exe)；删 rmSync 死代码）、run-gates.mjs 与 run-with-node-gte26.mjs
+  （改用 shimEnv；wrapper win32 spawn 加 shell:true）、run-gates.mjs GATES
+  增 test:node-gte26、.github/workflows/frontend.yml 增步、
+  node-gte26.test.mjs（平台无关输入 os.tmpdir/path.join 构造、win32 skip
+  装饰、新增 shimEnv 测试）。
+- 回归测试：node --test scripts/lib/node-gte26.test.mjs（darwin 实跑；win32
+  分支以注入 linker/平台无关断言覆盖）；wrapper 四态 exit code 复验。
+- 完成条件：单测全绿（含 shimEnv 大小写覆盖）、GATES 首项前含 node-gte26
+  自检、frontend.yml 增步、gofmt 无涉。
+
+## 批次 G1（internal/modules/plugins+agentruntime，medium×4+low×1）：F10/F12/F15/F16/F45
+
+- 根因：①manifest parse 失败分支 ReplaceAll 对 userinfoOf 空串（无凭据端
+  点）按 Go 语义每 rune 后插 REDACTED 产出乱码（F12，上一轮 F03 修复引入
+  的边角 bug）；②validateName 不拒 '/'/'%'，含 '/' 工具名可进快照但策略
+  端点 :tool_name 单段匹配永 404，逐工具治理被架空（F16）；③
+  DiffLiveAgainstSnapshot 是唯一直接消费未受限 live 目录的路径却无
+  ValidateLiveDirectoryForRebase 三门（上限/重名/卫生），恶意端点无界放
+  大+未过滤名单持久化回显（F15）；④AcceptUpgrade/PreviewUpgrade 候选端点
+  缺 512 rune 长度校验，PG 首写 value too long 误报 500（F45）；⑤插件行
+  live instructions 不在快照基线内却透传进模型上下文——与 description 漂
+  移同一 prompt-injection 威胁模型（F10）。
+- 文件：manifest.go（ReplaceAll 先判空；validateName 拒 '/' 与 '%'——百
+  分号一并拒防 %2F 编码绕过）、snapshot.go（DiffLiveAgainstSnapshot 入口
+  先跑 ValidateLiveDirectoryForRebase 同款三门，失败返回 nil 让调用方按
+  无法产出判定处理——需读两调用方 CheckDrift/markDriftBestEffort 的 nil
+  语义并适配）、plugin_install_service.go（AcceptUpgrade/PreviewUpgrade
+  指纹守卫后补 validatePluginURLLength 挂 ErrPluginVerifyFailed 映 400）、
+  mcp_tool.go（loadPluginDirectory 插件行 snap!=nil 时 instructions 置空
+  不透传 live 值）。
+- 回归测试：manifest_test.go（无凭据坏端口端点错误文本可读、名含 '/'、
+  '%' 拒绝）、snapshot_test.go（超限/重名 live 目录 Diff 返回无法判定态、
+  调用方不 panic）、install_service_test.go（超长候选端点 400 非 500）、
+  agentruntime tools 包（插件行 instructions 置空断言）。
+- 完成条件：各测试先 RED 后 GREEN；modules/plugins、agentruntime 全量绿。
+
+## 批次 G2（MCP 服务/handler，medium×3+low×1）：F06/F07/F08/F09
+
+- 根因：①ClearMCPCredential 缺 UpdateMCPCredentials 已有的插件守卫（凭据
+  写面语义不对称，F06）；②GetMCPServiceTools（Viewer+）对插件行返回 live
+  目录，绕过快照封堵泄露未接受能力（F07）；③pluginManagedConflict 连注
+  释插进 CreateMCPService 的 swaggo 注释块与函数声明之间，swag 按「注释
+  组紧邻其后函数」配对把 POST /mcp-services 误绑到辅助函数（F08，上一
+  轮引入）；④driftReportResponseDTO 四列表 append([]string(nil),...) 空
+  输入得 nil，wire 恒 null 违反「one wire shape」自述（F09）。
+- 文件：mcp_service.go 服务层（两处补 PluginInstallationID 守卫返
+  ErrPluginManagedService）、handler/mcp_credentials.go（DeleteField 复用
+  pluginManagedConflict 映 409）、handler/mcp_service.go（GetMCPServiceTools
+  handler 映 409；pluginManagedConflict 连注释整体移到首个 swag 注释块
+  之前）、handler/plugin.go（四列表 make+copy 归一化）。
+- 回归测试：mcp_plugin_guard_test.go 追加（Clear 插件行 409、tools 插件
+  行 409）；plugin handler 测试（drift 响应空列表为 [] 非 null——
+  json.Marshal 断言）；swag 位置以源码断言（注解块与 CreateMCPService 声
+  明之间无函数声明）。
+- 完成条件：新增测试 RED→GREEN；handler/service 包全量绿；go vet 干净。
+
+## 批次 G3（示例服务+测试替身，medium×3+low×3）：F01/F02/F03/F04/F13/F14
+
+- 根因：①jira-todo-mcp WithStateLess(false) 在 mcp-go v0.52.0 是空操作，
+  未认证 initialize 无界堆积会话内存（F01）；②validateAllowedRedirectHosts
+  漏拒 ":8080" 形态空 host 条目（F02）；③manifest.json 副本缺
+  content_digest、防漂移测试只比 InputSchemaDigest（F03）；④handleRegister
+  的 Decode 不拒尾随垃圾+1<<20 裸字面量（F04）；⑤fakejira DenySearch 等
+  未命中静默返回，装配错误面与 AddAccount 不一致（F13）；⑥plugintest 替
+  身把 Tool.Call 失败呈现为 isError 成功结果，与示例服务协议级 error 面
+  相反，三场景 e2e 断言验证的是替身特有路径（F14）。
+- 文件：examples/plugins/jira-todo-mcp/（main.go WithStateLess(true)+
+  空 host 校验+常量复用说明、manifest.json 补 content_digest、oauth.go
+  decoder.More()+maxRPCBodyBytes、server_test.go 双 digest 比对）、
+  internal/modules/plugins/plugintest/（fakejira.go testing.TB+Fatal、
+  server.go 返回协议级 error 并同步修正 jira_e2e_integration_test.go 三
+  场景断言——401 场景改为断言授权引导文案替换后的形态）。
+- 回归测试：examples 包与 plugintest 相关测试全量；e2e 三场景真实复跑。
+- 完成条件：go test ./examples/plugins/jira-todo-mcp/ 与
+  ./internal/modules/plugins/ 全绿。
+
+## 批次 N1（api-client，high×2+medium 余项）：F18/F19/F20/F21/F23
+
+- 根因：①parsePluginInstallation service_id 用 required，与后端「confirm
+  中断的安装行 service_id 空串合法 200」矛盾，操作已生效面板却报错
+  （F18）；②升级闭环前端断裂——后端 upgrade-accept 齐备而 api-client 无
+  acceptUpgrade、面板无入口（F19）；③drift 治理端点族（get/check/resolve）
+  整体缺失，漂移复审闭环前端不可达（F23）；④disabledReason 静默降级 +
+  点号路径风格不一（F20）；⑤enabled 类型 boolean|null 与注释过期（F21）。
+- 文件：packages/api-client/src/plugins.ts（service_id 改 optionalText 同
+  parsePluginMyConnection 口径；新增 acceptUpgrade/getDrift/checkDrift/
+  resolveDrift + PluginDriftReport 解析器（明细四列表与 R1-F09 的 [] 形态
+  对齐、空列表归一 []）；disabledReason optionalText 显式化+方括号路径；
+  enabled 类型收窄 boolean 改 flag 解析并更正注释）+ plugins.test.ts。
+- 回归测试：plugins.test.ts 追加（空 service_id 解析通过、accept/drift
+  wire 形态、drift 空列表为 []、enabled 缺 key 抛错口径如契约所定）。
+- 完成条件：单测 RED→GREEN；typecheck:shared（含 api-client 入口）绿。
+
+## 批次 N2+W1（views 注释/i18n + apps/web 面板，medium×3+low×6）：F24/F25/F26/F34/F35/F40/F42/F43/F44 + F19/F23 面板接入
+
+- 根因：①四 locale subtitle 缺「写入类工具默认关闭」治理承诺（F24）；
+  ②page.tsx/view.ts 三处注释描述已落地的过渡态（F25/F26）；③
+  PluginsSettingsPanel client 失效只清 toolPolicy，preview/confirmError/
+  upgradePreview/upgradeError 留存，跨账号切换后旧空间预览卡仍可「确认
+  安装」（F34）；④PluginsPanel requestedRef 去重集 client 变化不重置，
+  旧 principal 连接徽标残留（F42）；⑤retryConnection delete+add 净空死
+  代码（F35）；⑥两面板跨行 pending/禁用口径不一致（F40/F43）；⑦
+  policyToggleBusy 键值死数据（F44）；⑧升级差异面板接入接受按钮、漂移
+  徽标接入 check/resolve 入口（F19/F23 的面板侧，依赖 N1 方法先落）。
+- 文件：packages/views/src/integrations/messages.ts（四 locale subtitle 补
+  齐表述）、page.tsx/view.ts（注释改述）、apps/web/src/settings/
+  PluginsSettingsPanel.tsx（失效 effect 清全部临时态+confirmInstall 成功
+  清 upgradePreview+停用/启用跨行 disabled+policyToggleBusy 收窄+
+  接受升级按钮+drift check/resolve 入口）、apps/web/src/integrations/
+  PluginsPanel.tsx（requestedRef/connections 随 pluginsApi 重置+删净空两
+  行+anyPending 禁用）。
+- 回归测试：registry.test.ts 追加四 locale subtitle 断言；两面板
+  .test.tsx 追加（client 切换清临时态、连接缓存重置、跨行禁用、接受/
+  drift 调用发出）——先 RED 后 GREEN。
+- 完成条件：面板与 views 测试全绿；typecheck:web/typecheck:shared 退出
+  0；page.test/SettingsPage.test/PluginsPanel.test 回归不破。
+
+## R1 轮完成条件（总）
+
+1. 33 项全部处置（修复或如实说明不可行）；各批次新测试先 RED 后 GREEN；
+2. 受影响包复跑全绿（modules/plugins、application/service、handler、
+   agentruntime tools、examples、api-client/panels/views 测试）；
+3. `go build ./...` exit 0、gofmt/vet 干净；typecheck:web/shared 退出 0；
+4. 中文提交按域分批标注「OCR R1」；本节回填完成记录。
+
+### R1 轮完成记录（2026-09-26）
+
+33 项全部修复，无剩余项。逐批证据：
+
+**S1（F17/F27/F28/F29/F30/F31/F33）**：node-gte26.mjs 新增 shimEnv（大小
+写无关覆盖 PATH 变体键）+ shimEntryName（win32 node.exe）+ $PATH 扫描按
+平台 + 删 rmSync 死代码；两入口改用 shimEnv（wrapper win32 spawn 加
+shell）；GATES 首项 node-gte26-selftest + frontend.yml 增步；测试平台无关
+化（os.tmpdir/path.join 构造、win32 skip）+ 新增 5 测。证据：
+`pnpm run test:node-gte26` 13/13；wrapper 四态 exit code 复验（0/透传 3/
+SIGTERM→1/ENOENT→1）。
+
+**G1（F10/F12/F15/F16/F45）**：manifest.go ReplaceAll 先判空（F12，无凭据
+坏端口端点文本可读）+ validateName 拒 '/'/'%'（F16，快照工具必可经策略端
+点寻址）+ ValidateManifest 补 maxEndpointRunes=512（F45 统一入口，覆盖
+preview/upgrade-preview/upgrade-accept）；snapshot.go DiffLiveAgainstSnapshot
+签名改 (detail, error) 入口先过 ValidateLiveDirectoryForRebase 三门
+（F15），CheckDrift 映 ErrPluginVerifyFailed 400、markDriftBestEffort 静默
+不落未审名单；mcp_tool.go 插件行（snap!=nil）instructions 置空（F10）。
+证据：manifest 三测（乱码可读/'/' '%' 拒绝/超长端点）、drift 三门测、
+upgrade 端点长度测（PreviewUpgrade 400 非 500）、tools 包 instructions 置
+空测全过。
+
+**G2（F06/F07/F08/F09）**：服务层 ClearMCPCredential/GetMCPServiceTools 补
+插件守卫返 ErrPluginManagedService，handler DeleteField/tools 端点映 409；
+pluginManagedConflict 连注释移到首个 swag 注释块之前（F08，注解不再被劫
+持——源码断言测试锁定）；driftReportResponseDTO 四列表 make+copy（F09，
+wire 恒 [] 非 null——json.Marshal 断言锁定）。证据：mcp_plugin_guard_test
+新增四测先 RED（500/null/位置错）后 GREEN。
+
+**G3（F01/F02/F03/F04/F13/F14）**：WithStateLess(true)（F01，未认证
+initialize 不再无界堆积会话）；validateAllowedRedirectHosts 拒空 host 带
+端口条目（F02）；manifest.json 副本补 content_digest + server_test 双
+digest 比对（F03，值经 plugins.ManifestContentDigest 对副本计算得出）；oauth
+decoder.More() 拒尾随垃圾 + 复用 maxRPCBodyBytes（F04）；fakejira 三注入
+方法接受 testing.TB 未命中 Fatal（F13）；plugintest 替身 Tool.Call 失败改
+协议级 error（F14）+ e2e 三场景断言同步（401 场景改断言真实链路的授权引
+导文案替换分支；上游计数断言 2→GreaterOrEqual(2)——协议 error 断连重试一
+次属真实链路语义）。证据：examples 包全测 ok（含新双 digest 断言）；
+`go test -tags integration -run TestJira*`（真 PG 容器）四测 ok。
+
+**N1（F18/F19/F20/F21/F23）**：service_id 改 optionalText（F18，confirm 中
+断窗口的空串 200 不再被解析器抛错）；新增 acceptUpgrade（F19）与
+getDrift/checkDrift/resolveDrift + PluginDriftReport 解析器（F23，空列表归
+一 [] 对齐 F09 wire 形态）；disabledReason 改 optionalText + 方括号路径
+（F20）；enabled 类型收窄 boolean + flag 严格解析 + 注释更正（F21）。
+证据：plugins.test.ts 39/39（新增五测；旧的 missing-enabled-as-null 用例按
+新契约改为缺 key 抛错）。
+
+**N2+W1（F24/F25/F26/F34/F35/F40/F42/F43/F44 + F19/F23 面板接入）**：四
+locale subtitle 补「写入类工具默认关闭」（F24，registry.test 五 locale 断
+言）；page.tsx/view.ts 三处过期注释改述（F25/F26）；Settings 面板失效
+effect 清全部 client-bound 临时态 + confirmInstall 成功清 upgradePreview
+（F34）；policyToggleBusy 收窄 boolean（F44）；停用/启用补跨行 disabled
+（F40）；升级面板接入「接受升级」（F19）与「漂移复审」面
+（getDrift/checkDrift/resolveDrift + 四名单 + 重定基，F23）；PluginsPanel
+pluginsApi 变化重置 requestedRef/connections（F42）、删 retryConnection 净
+空两行（F35）、anyPending 全行冻结 + 行内 loading（F43）。证据：
+PluginsSettingsPanel.test 32/32（新增 F19/F34/F23 三测）、PluginsPanel.test
+13/13（新增 F42 重置测——未修复时第二次 connections/me 不可能发出）。
+
+**全量回归**：`go build ./...` ok；gofmt 改动文件全净、go vet 干净；
+`go test` plugins/handler/service/plugintest/agentruntime-tools/examples 全
+ok（service 180s）；integration e2e 真 PG 四测 ok；typecheck:shared 与
+typecheck:web 均 0 error；前端相关测试全绿（13/17/26/39/13/32）；
+`pnpm run test:craft:shared` 113/113。
+
+**计划文档同步**（接口/依赖变化）：DiffLiveAgainstSnapshot 签名（detail,
+error）——两调用方与 drift_test 已同步；fakejira 三方法加 testing.TB——
+e2e 调用点同步；api-client PluginsApi 接口新增五方法（acceptUpgrade/
+getDrift/checkDrift/resolveDrift）+ PluginDriftReport 类型导出；PluginInstallationTool.enabled 类型 boolean。
