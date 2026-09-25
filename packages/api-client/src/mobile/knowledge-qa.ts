@@ -136,6 +136,10 @@ export function createMobileKnowledgeQARemote(options: KnowledgeQARemoteOptions)
 					return;
 				}
 				if (type === 'evidence') {
+					// 防御深度：服务端契约保证 evidence 先于 CHAT_COMPLETION_STREAM
+					//（complete/stop）发射；晚于终止帧到达的 evidence 说明流序错乱，
+					// 不得采信（fail closed，与缺帧同判）。
+					if (terminated) throw new Error('KNOWLEDGE_QA_EVIDENCE_AFTER_TERMINAL');
 					// evidence 帧畸形/不自洽时 parseAnswerEvidence 整体拒绝（不部分渲染）。
 					const data = (event.data ?? {}) as { evidence?: unknown };
 					evidence = evidenceOf(parseAnswerEvidence(data.evidence));

@@ -44,7 +44,8 @@ export function KnowledgeQAScreen(props: {
 function TurnView({ turn }: { turn: KnowledgeQATurn }) {
   return (
     <View>
-      <Text>{`问：${turn.sessionId}`}</Text>
+      {/* turn 不携带问题文本（成功后输入已清空），问题行由上方输入区承担；
+          此处不再回退展示 sessionId（对用户无意义）。 */}
       <Text>{turn.answer === '' ? '（无回答内容）' : turn.answer}</Text>
       <Text>证据</Text>
       {turn.evidence.citations.map((citation: KnowledgeQAEvidenceCitation) => (

@@ -693,6 +693,9 @@ func (s *sessionService) KnowledgeQAByEvent(ctx context.Context,
 	var retrievalStart time.Time
 	var understandProgress *chatpipeline.StageProgress
 	var understandStart time.Time
+	// T15：证据检索完成时刻（最终审查收敛：retrieved_at 取检索管线完成时刻而非
+	// 交付前信封组装时刻——长管线下二者偏差秒~分级，审计语义以检索完成为准）。
+	var evidenceRetrievedAt time.Time
 	for _, eventType := range eventList {
 		stageStart := time.Now()
 		// Wrap each pipeline stage in a Langfuse span so the trace timeline
@@ -733,7 +736,7 @@ func (s *sessionService) KnowledgeQAByEvent(ctx context.Context,
 		if eventType == types.CHAT_COMPLETION_STREAM {
 			// T15：交付前撤权重校验 + 引用帧 + 证据信封帧；全部证据失权时作废本
 			// 回答（固定文案已发），不进入 completion。
-			if s.deliverKnowledgeEvidence(ctx, chatManage) == types.EvidenceStateRevoked {
+			if s.deliverKnowledgeEvidence(ctx, chatManage, evidenceRetrievedAt) == types.EvidenceStateRevoked {
 				return nil
 			}
 		}
@@ -752,6 +755,11 @@ func (s *sessionService) KnowledgeQAByEvent(ctx context.Context,
 		if retrievalProgress != nil && chatpipeline.ShouldCloseRetrievalProgress(eventType, lastRetrievalStage, err) {
 			chatpipeline.EndRetrievalProgress(stageCtx, chatManage, retrievalProgress, retrievalStart, err)
 			retrievalProgress = nil
+		}
+		// 检索管线成功完成即盖戳（短路 ErrSearchNothing/失败不盖：信封届时回退为
+		// 「确认无证据/失败」时刻，该路径本就没有检索时间可言）。
+		if err == nil && lastRetrievalStage != "" && eventType == lastRetrievalStage {
+			evidenceRetrievedAt = time.Now().UTC()
 		}
 		stageDuration := time.Since(stageStart)
 		var spanErr error
@@ -789,7 +797,7 @@ func (s *sessionService) KnowledgeQAByEvent(ctx context.Context,
 				"reason":      "search_nothing",
 				"strategy":    string(chatManage.FallbackStrategy),
 			})
-			s.emitKnowledgeEvidenceEvent(ctx, chatManage, types.EvidenceStateNoEvidence, types.EvidenceReasoning{})
+			s.emitKnowledgeEvidenceEvent(ctx, chatManage, types.EvidenceStateNoEvidence, types.EvidenceReasoning{}, time.Time{})
 			s.handleFallbackResponse(ctx, chatManage)
 			return nil
 		}
@@ -1238,10 +1246,11 @@ const (
 // deliverKnowledgeEvidence 在答案流开始前交付证据（T15）：交付前撤权重校验 →
 // 引用帧（既有形状，现为过滤后行集）→ 证据信封帧。全部证据失权时按 ADR-0002
 // 作废本回答（固定文案 fallback），返回状态供调用方跳过 completion。
-func (s *sessionService) deliverKnowledgeEvidence(ctx context.Context, chatManage *types.ChatManage) types.AnswerEvidenceState {
+// retrievedAt 为检索管线完成时刻（检索短路/缺失时传零值，由信封组装回退为当下）。
+func (s *sessionService) deliverKnowledgeEvidence(ctx context.Context, chatManage *types.ChatManage, retrievedAt time.Time) types.AnswerEvidenceState {
 	state := s.applyEvidenceRevocation(ctx, chatManage)
 	emitKnowledgeReferencesEvent(ctx, chatManage)
-	s.emitKnowledgeEvidenceEvent(ctx, chatManage, state, types.EvidenceReasoning{})
+	s.emitKnowledgeEvidenceEvent(ctx, chatManage, state, types.EvidenceReasoning{}, retrievedAt)
 	if state == types.EvidenceStateRevoked {
 		s.emitFallbackAnswer(ctx, chatManage, knowledgeEvidenceRevokedCopy)
 	}
@@ -1302,15 +1311,19 @@ func (s *sessionService) applyEvidenceRevocation(ctx context.Context, chatManage
 }
 
 // emitKnowledgeEvidenceEvent 组装并发射证据信封（T15）。信封先过交付不变量
-// （ValidateAnswerEvidence）：不自洽的证据不得上线。
-func (s *sessionService) emitKnowledgeEvidenceEvent(ctx context.Context, chatManage *types.ChatManage, state types.AnswerEvidenceState, reasoning types.EvidenceReasoning) {
+// （ValidateAnswerEvidence）：不自洽的证据不得上线。retrievedAt 为检索管线完成
+// 时刻（最终审查收敛：长管线下组装时刻会晚于检索数秒~数分钟，审计语义以检索
+// 完成为准）；零值（检索短路/无证据路径）回退为「确认无证据」的当下时刻。
+func (s *sessionService) emitKnowledgeEvidenceEvent(ctx context.Context, chatManage *types.ChatManage, state types.AnswerEvidenceState, reasoning types.EvidenceReasoning, retrievedAt time.Time) {
 	if chatManage == nil || chatManage.EventBus == nil {
 		return
 	}
 	if reasoning.State == "" {
 		reasoning.State = types.EvidenceReasoningNotRequested
 	}
-	retrievedAt := time.Now().UTC()
+	if retrievedAt.IsZero() {
+		retrievedAt = time.Now().UTC()
+	}
 	envelope := types.AnswerEvidence{
 		State:             state,
 		SemanticGraphUsed: false, // 本地检索路径显式注明未使用语义图谱（ADR-0002）

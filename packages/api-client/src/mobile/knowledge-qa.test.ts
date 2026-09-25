@@ -103,6 +103,17 @@ test('ask fails closed on error frames, malformed frames, missing evidence and t
 	);
 });
 
+test('ask rejects evidence frames arriving after the terminal frame (out-of-order stream, fail closed)', async () => {
+	await assert.rejects(
+		harness([
+			sseFrame({ response_type: 'complete' }),
+			sseFrame(evidenceFrame),
+		]).remote.ask({ sessionId: 's', question: 'q' }),
+		/KNOWLEDGE_QA_EVIDENCE_AFTER_TERMINAL/,
+		'晚于终止帧到达的 evidence＝流序错乱，不得采信',
+	);
+});
+
 test('constructor validates the deployment origin and ask validates its input', async () => {
 	assert.throws(() => createMobileKnowledgeQARemote({ origin: 'http://insecure.example.test', request: async () => undefined, stream: async () => undefined }));
 	const { remote } = harness([sseFrame({ response_type: 'complete' })]);

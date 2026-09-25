@@ -110,6 +110,10 @@ func searchRow(chunkID, knowledgeID, kbID, title string, revision int) *types.Se
 	return &types.SearchResult{ID: chunkID, KnowledgeID: knowledgeID, KnowledgeBaseID: kbID, KnowledgeTitle: title, ContentRevision: revision, Content: "命中内容", StartAt: 10, EndAt: 40}
 }
 
+// knowledgeRetrievedStamp 模拟「检索管线完成时刻」的盖戳：取一个明显早于测试
+// 运行的固定时刻，断言信封精确携带它（而非交付组装时的 time.Now()）。
+var knowledgeRetrievedStamp = time.Date(2026, 9, 24, 8, 0, 0, 0, time.UTC)
+
 // 场景 3（多知识源）+ AC1（三类区分）：同租户与跨租户共享两个知识源的引用并存，
 // 逐引用携带 revision 与 retrieved_at；结论是模型推断（带模型标识），引用是原文事实。
 func TestKnowledgeQAEvidenceMultiKnowledgeSourceAndKinds(t *testing.T) {
@@ -120,11 +124,13 @@ func TestKnowledgeQAEvidenceMultiKnowledgeSourceAndKinds(t *testing.T) {
 		searchRow("chunk-shared", "doc-shared", "kb-shared", "指南", 5),
 	})
 
-	state := svc.deliverKnowledgeEvidence(knowledgeEvidenceCallerContext(), cm)
+	state := svc.deliverKnowledgeEvidence(knowledgeEvidenceCallerContext(), cm, knowledgeRetrievedStamp)
 	require.Equal(t, types.EvidenceStateCited, state)
 	require.Len(t, capture.evidence, 1)
 	envelope := capture.evidence[0]
 	require.NoError(t, types.ValidateAnswerEvidence(envelope))
+	require.Equal(t, knowledgeRetrievedStamp.Format(time.RFC3339), envelope.RetrievedAt,
+		"信封 retrieved_at 必须取检索管线完成时刻（调用方盖戳），而非交付前信封组装时刻")
 	kbIDs := []string{envelope.Citations[0].KnowledgeBaseID, envelope.Citations[1].KnowledgeBaseID}
 	require.ElementsMatch(t, []string{"kb-own", "kb-shared"}, kbIDs, "两个知识源的引用都必须在场")
 	revisions := map[string]int{}
@@ -156,7 +162,7 @@ func TestKnowledgeQAEvidenceRevocationBeforeDeliveryDropsSource(t *testing.T) {
 		searchRow("chunk-own", "doc-own", "kb-own", "手册", 3),
 		searchRow("chunk-shared", "doc-shared", "kb-shared", "指南", 5),
 	})
-	require.Equal(t, types.EvidenceStateCited, svc.deliverKnowledgeEvidence(ctx, before))
+	require.Equal(t, types.EvidenceStateCited, svc.deliverKnowledgeEvidence(ctx, before, knowledgeRetrievedStamp))
 
 	// 真实撤权：share-1 的原始分享者移除共享（真实 service 方法 + 真实行删除）。
 	sharerCtx := context.WithValue(context.Background(), types.TenantIDContextKey, uint64(3))
@@ -170,7 +176,7 @@ func TestKnowledgeQAEvidenceRevocationBeforeDeliveryDropsSource(t *testing.T) {
 		searchRow("chunk-shared", "doc-shared", "kb-shared", "指南", 5),
 		searchRow("chunk-denied", "doc-denied", "kb-denied", "无权文档", 1),
 	})
-	state := svc.deliverKnowledgeEvidence(ctx, after)
+	state := svc.deliverKnowledgeEvidence(ctx, after, knowledgeRetrievedStamp)
 	require.Equal(t, types.EvidenceStateCited, state)
 	require.Len(t, capture.evidence, 1)
 	for _, citation := range capture.evidence[0].Citations {
@@ -194,7 +200,7 @@ func TestKnowledgeQAEvidenceAllSourcesRevokedVoidsAnswer(t *testing.T) {
 	cm := evidenceChatManage(bus, []*types.SearchResult{
 		searchRow("chunk-shared", "doc-shared", "kb-shared", "指南", 5),
 	})
-	state := svc.deliverKnowledgeEvidence(ctx, cm)
+	state := svc.deliverKnowledgeEvidence(ctx, cm, knowledgeRetrievedStamp)
 	require.Equal(t, types.EvidenceStateRevoked, state)
 	require.Len(t, capture.evidence, 1)
 	require.Equal(t, types.EvidenceStateRevoked, capture.evidence[0].State)
@@ -213,7 +219,7 @@ func TestKnowledgeQAEvidenceDropsUnattributableRows(t *testing.T) {
 	kept := searchRow("chunk-own", "doc-own", "kb-own", "手册", 3)
 	cm := evidenceChatManage(bus, []*types.SearchResult{orphan, kept})
 
-	state := svc.deliverKnowledgeEvidence(knowledgeEvidenceCallerContext(), cm)
+	state := svc.deliverKnowledgeEvidence(knowledgeEvidenceCallerContext(), cm, knowledgeRetrievedStamp)
 	require.Equal(t, types.EvidenceStateCited, state)
 	require.Len(t, capture.evidence[0].Citations, 1)
 	require.Equal(t, "chunk-own", capture.evidence[0].Citations[0].CitationID)
@@ -225,7 +231,7 @@ func TestKnowledgeQAEvidenceNoEvidenceIsExplicit(t *testing.T) {
 	cm := evidenceChatManage(bus, nil)
 	// 检索为空时管线不会进入 deliverKnowledgeEvidence 的 cited 路径；直接断言
 	// no_evidence 信封的组装与发射（KnowledgeQAByEvent 的 ErrSearchNothing 分支调用同一方法）。
-	svc.emitKnowledgeEvidenceEvent(knowledgeEvidenceCallerContext(), cm, types.EvidenceStateNoEvidence, types.EvidenceReasoning{})
+	svc.emitKnowledgeEvidenceEvent(knowledgeEvidenceCallerContext(), cm, types.EvidenceStateNoEvidence, types.EvidenceReasoning{}, time.Time{})
 	require.Len(t, capture.evidence, 1)
 	envelope := capture.evidence[0]
 	require.Equal(t, types.EvidenceStateNoEvidence, envelope.State)

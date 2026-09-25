@@ -4,7 +4,7 @@ import type { KnowledgeResource } from '@weknora/domain/mobile';
 import type { KnowledgeQATurn, TaskOffice } from '@weknora/mobile-core';
 import {
   EVIDENCE_NO_EVIDENCE_COPY, EVIDENCE_REASONING_INCOMPLETE_COPY, EVIDENCE_REVOKED_COPY,
-  createKnowledgeQAController, evidenceCitationLine,
+  createKnowledgeQAController, evidenceCitationLine, formatEvidenceTimestamp,
 } from './knowledge-qa-view.ts';
 
 function turn(overrides: Partial<KnowledgeQATurn['evidence']> = {}): KnowledgeQATurn {
@@ -65,12 +65,21 @@ test('ask passes the selected knowledge scope and renders the evidence turn', as
   assert.deepEqual(state.selectedKnowledgeIds, ['kb-own']);
 });
 
-test('citation lines show source, version, time and kind distinctly', () => {
+test('citation lines show source, version, readable time and kind distinctly', () => {
   const line = evidenceCitationLine(turn().evidence.citations[0]!);
   assert.ok(line.includes('手册'));
   assert.ok(line.includes('v3'));
-  assert.ok(line.includes('2026-09-24T08:00:00Z'));
+  assert.ok(line.includes('2026-09-24 08:00:00 UTC'), '检索时间以无歧义的可读 UTC 形态展示');
+  assert.ok(!line.includes('T08:00:00Z'), '不再直接暴露原始 RFC3339 串');
   assert.ok(line.includes('原文事实'));
+});
+
+test('evidence timestamps stay audit-exact and fall back to the raw string on unparsable input', () => {
+  assert.equal(formatEvidenceTimestamp('2026-09-24T08:00:00Z'), '2026-09-24 08:00:00 UTC');
+  assert.equal(formatEvidenceTimestamp('2026-09-24T08:00:01.500Z'), '2026-09-24 08:00:01 UTC', '亚秒精度丢弃不得进位篡改审计时刻');
+  assert.equal(formatEvidenceTimestamp('2026-09-24T08:00:00+08:00'), '2026-09-24 00:00:00 UTC', '带时区偏移的输入归一化为 UTC，避免歧义');
+  assert.equal(formatEvidenceTimestamp('not-a-timestamp'), 'not-a-timestamp', '不可解析原样保留，不丢审计信息');
+  assert.equal(formatEvidenceTimestamp('2026-09-24 08:00:00'), '2026-09-24 08:00:00', '非 RFC3339 样式不强行转换');
 });
 
 test('no-evidence, revoked and reasoning-incomplete states get honest copy and retry only when retryable', async () => {

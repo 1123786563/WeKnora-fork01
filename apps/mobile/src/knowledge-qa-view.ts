@@ -27,10 +27,21 @@ export const EVIDENCE_NO_EVIDENCE_COPY = '知识库中没有支持回答本问�
 export const EVIDENCE_REVOKED_COPY = '本回答所依据的知识访问已被撤销，结果已作废。';
 export const EVIDENCE_REASONING_INCOMPLETE_COPY = '推理未完成：当前部署尚未接入语义推理服务。';
 
+/** 证据时间戳展示：RFC3339 → `YYYY-MM-DD HH:mm:ss UTC`（去掉 T/Z 噪音且保持
+ * UTC 标注，不做本地时区换算——证据时间是审计语义，模糊不得、歧义也不得）。
+ * 解析失败原样返回，不因格式化丢掉原始审计信息。 */
+export function formatEvidenceTimestamp(iso: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(iso)) return iso;
+  const parsed = new Date(iso);
+  if (Number.isNaN(parsed.getTime())) return iso;
+  const pad = (n: number): string => String(n).padStart(2, '0');
+  return `${parsed.getUTCFullYear()}-${pad(parsed.getUTCMonth() + 1)}-${pad(parsed.getUTCDate())} ${pad(parsed.getUTCHours())}:${pad(parsed.getUTCMinutes())}:${pad(parsed.getUTCSeconds())} UTC`;
+}
+
 /** 证据行展示：来源 · 版本 · 检索时间 · 类别——四个可核对维度都必须可见。 */
 export function evidenceCitationLine(citation: KnowledgeQAEvidenceCitation): string {
   const title = citation.title === undefined || citation.title === '' ? citation.knowledgeId : citation.title;
-  return `${title} · v${citation.revision} · ${citation.retrievedAt} · ${EVIDENCE_KIND_LABEL[citation.kind]}`;
+  return `${title} · v${citation.revision} · ${formatEvidenceTimestamp(citation.retrievedAt)} · ${EVIDENCE_KIND_LABEL[citation.kind]}`;
 }
 
 export interface KnowledgeQAController {
