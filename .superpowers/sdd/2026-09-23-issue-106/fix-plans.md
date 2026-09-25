@@ -1445,3 +1445,167 @@ typecheck:web 均 0 error；前端相关测试全绿（13/17/26/39/13/32）；
 error）——两调用方与 drift_test 已同步；fakejira 三方法加 testing.TB——
 e2e 调用点同步；api-client PluginsApi 接口新增五方法（acceptUpgrade/
 getDrift/checkDrift/resolveDrift）+ PluginDriftReport 类型导出；PluginInstallationTool.enabled 类型 boolean。
+
+---
+
+# OCR 修复轮次计划（R2 轮，2026-09-26）——22 项
+
+输入：OCR R2 轮 22 条有效发现，多项直指 R1 轮修复自身的残余缺陷（F33 掩码
+协议相对 URL 失效、F34 '/' 拒绝误伤插件名、F29/F30 测试 win32 假红、
+F02/F03 R1-F42 修复的竞态/首跑残余、F10/F11/F13/F14 面板失效不彻底）。原
+则不变：证据优先、TDD、中文提交标注「OCR R2」、范围仅本 worktree。按域分
+五批，依赖：C 批 F27（shimEnv baseEnv 参数）先行于 F29/F30 测试改造；A/B
+相互独立；D/E 相互独立。
+
+## 批次 A（Go 安全/并发，medium×3+low×2）：F33/F20/F21/F24/F34
+
+- 根因：①userinfoOf/maskEndpointCredentials 在无 "://" 输入下把 rest 首个
+  "/" 当 authority 终点，协议相对 URL "//user:pass@host:badport/" 的
+  authority 切为空串——掩码 no-op，而该输入恰令 url.Parse 失败走失败回显
+  路径，凭据明文进 400（F33，R1 F03 修复的旁路）；②UninstallInstallation
+  与 AcceptUpgrade/ResolveDrift/CheckDrift 同域写路径不共持 per-installation
+  锁，卸载级联删 approvals 后并发 accept 再写策略行→FK violation 误报 500
+  （F20）；③flipInstallation 把 UpdateInstallationState 的 0 行更新
+  （gorm.ErrRecordNotFound，仅并发卸载可致）包成 500，语义应 404（F21）；
+  ④HardDeleteServiceCascade 接口文档只列 approvals，生产实现同事务还删
+  oauth tokens/clients/mcp_metadata——按文档实现的 fake 与生产语义相悖
+  （F24）；⑤R1-F16 的 '/'/'%' 拒绝加在插件 name 共用的 validateName，
+  "CI/CD Helper" 这类合法展示名被拒（F34）。
+- 文件：manifest.go（userinfoOf/maskEndpointCredentials 识别前导 "//"；
+  拆 validateToolName 承载 '/'/%' 拒绝——validateName 保留 Unicode 卫生，
+  四处工具名调用点换用 validateToolName）、plugin_install_service.go
+  （UninstallInstallation 入口 defer lockUpgradeAccept；flipInstallation
+  errors.Is(gorm.ErrRecordNotFound)→ErrInstallationNotFound）、
+  types/interfaces/plugin.go（HardDeleteServiceCascade 文档枚举完整清扫范围）。
+- 回归测试：manifest_test（协议相对 URL 掩码+parse 失败回显不含凭据；插件
+  名含 '/' 通过、工具名含 '/' 仍拒）、install_service_test（并发卸载后
+  SetInstallationState 404——用 fake UpdateInstallationState 返回
+  gorm.ErrRecordNotFound 断言 ErrInstallationNotFound）。
+- 完成条件：新测 RED→GREEN；modules/plugins、application/service 全量绿。
+
+## 批次 B（示例+替身，high×1+low×2）：F18/F19/F35
+
+- 根因：①SearchMyWeek 分页请求键 pageToken 与 Atlassian /search/jql 契约
+  不符（应为 nextPageToken）——真实 Jira 忽略未知键恒返第一页，>100 条时
+  循环抓重复页并误报 truncated；两处替身（examples ocr_fix_test 与
+  fakejira）钉死/掩盖错误契约（F18）；②handleRegister 对 redirect_uri 未
+  拒 fragment/userinfo（RFC 6749 §3.1.2）（F19）；③SetMyselfDelay 违反
+  R1-F13 确立的注入方法 TB+Fatal 约定（F35）。
+- 文件：examples jira.go（payload 键 nextPageToken）、ocr_fix_test.go（替身
+  读 nextPageToken+断言同步）、oauth.go（注册校验补 Fragment/User 拒收）、
+  plugintest/fakejira.go（SetMyselfDelay 加 TB 未命中 Fatal）、
+  jira_e2e_integration_test.go:499 调用点。
+- 回归测试：examples 分页测试改键后全过；注册 fragment/userinfo 拒收新测。
+- 完成条件：examples 包与 plugintest 相关测试全绿。
+
+## 批次 C（scripts，medium×3+low×2）：F01/F27/F28/F29/F30
+
+- 根因：①frontend.yml 的 on.push/on.pull_request paths 不含 node-gte26 管
+  线文件——只改管线的 PR 整体跳过 workflow，自测恰在最需要时失效（F01）；
+  ②shimEnv 只覆写 find() 首个大小写变体键，双键共存（POSIX 显式注入）时
+  未命中键的旧值仍传子进程（F27）；③copyFileSync 失败时 mkdtemp 私有目录
+  泄漏（调用方未拿到 shimDir 无从清理）（F28）；④两条 shimEnv 测试操纵
+  process.env.Path/PATH，win32 的大小写不敏感赋值/删除使断言必然假红或不
+  稳定（F29/F30）。
+- 文件：node-gte26.mjs（shimEnv 加 baseEnv 参数+删除全部变体键再写唯一
+  键；createNodeShim copy 失败先 removeNodeShim 再抛）、node-gte26.test.mjs
+  （双测改 baseEnv 对象字面量+大小写无关键查找断言，新增双键共存测试）、
+  frontend.yml（两处 paths 补 scripts/lib/** 与 run-gates.mjs/
+  run-with-node-gte26.mjs/package.json 的 test:node-gte26 相关——直接补
+  "scripts/lib/**" 与两入口路径）。
+- 回归测试：node --test 全绿（含新双键用例）。
+- 完成条件：单测绿；frontend.yml 逐行核对。
+
+## 批次 D（PluginsPanel，medium×2+low×4）：F02/F03/F04/F06/F07/F08
+
+- 根因：①loadConnection 无代际守卫——client 切换后旧 principal 在途回包
+  经函数式 setConnections 落键覆盖新视图（F02，R1-F42 修复的竞态残余）；
+  ②重置 effect 首挂无条件执行，SSR 直出路径连接请求×2（F03）；③共享页
+  section heading 与面板自带 h2/描述双重渲染且文案分叉（F04）；④未区分
+  加载中/无数据——首拉期间闪现空态（F06）；⑤import * as React 死导入
+  （F07）；⑥授权轮询缺卸载终止，后台请求照发 60s（F08）。
+- 文件：PluginsPanel.tsx（connectionEpoch ref+loadConnection 代数比对丢弃；
+  重置 effect 跳首跑；删内置标题块；listLoaded 态；删死导入；authorize
+  轮询 aliveRef）、messages.ts（subtitle 并入「需个人授权」分句——五
+  locale）。
+- 回归测试：PluginsPanel.test.tsx 追加（client 切换后旧回包不覆盖、首挂
+  仅一次 connections 请求、加载中不闪空态）；既有 13 测不破。
+- 完成条件：面板测试全绿；typecheck:web 0 error。
+
+## 批次 E（PluginsSettingsPanel，medium×3+low×2）：F10/F11/F12/F13/F14
+
+- 根因：①acceptUpgradeInstall 成功未失效同安装 toolPolicy——升级切换快照
+  后治理行停留在旧快照，PUT 旧工具 404、新工具不可见（F10）；②
+  runDriftResolve 成功同样未失效（F11）；③五处动作驱动 refreshInstallations()
+  直调无 isStale——旧 client 闭包动作完成时迟到列表响应覆盖新空间（F12）；
+  ④checkUpgrade 失败无条件撤面板——误撤其他来源安装的已展开面板（F13）；
+  ⑤client 切换失效块漏 setError(null)（F14）。
+- 文件：PluginsSettingsPanel.tsx（accept/resolve 成功路径
+  setToolPolicy(null)；refreshInstallations 内部默认绑定 epoch 代数比对；
+  checkUpgrade 失败 setUpgradePreview 按来源安装条件撤；失效块补
+  setError(null)）。
+- 回归测试：追加（接受升级后治理面撤下、B 失败不撤 A 面板）；既有 32 测
+  不破。
+- 完成条件：面板测试全绿。
+
+## R2 轮完成条件（总）
+
+1. 22 项全部处置；各批次新测试先 RED 后 GREEN；
+2. 受影响包复跑全绿（modules/plugins、application/service、examples、
+   plugintest、面板/views/api-client 测试、node-gte26 单测）；
+3. go build/gofmt/vet 干净；typecheck:web/shared 0 error；
+4. 中文提交按域分批标注「OCR R2」；本节回填完成记录。
+
+### R2 轮完成记录（2026-09-26）
+
+22 项全部修复，无剩余项。逐批证据：
+
+**A（F33/F20/F21/F24/F34）**：userinfoOf/maskEndpointCredentials 识别前导
+"//"（协议相对 URL 的 authority 不再切空串——F33 的 RED 实测形态
+masked 原样返回/凭据明文已由新测锁定）；UninstallInstallation 入口加
+defer lockUpgradeAccept（F20——测试先无锁跑出 "must make no progress"
+失败后恢复锁 GREEN，RED/GREEN 双验证）；flipInstallation 对 0 行更新
+（gorm.ErrRecordNotFound）返 ErrInstallationNotFound（F21，updateStateErr
+注入实测）；HardDeleteServiceCascade 文档枚举完整清扫范围（F24）；
+validateToolName 拆分承载 '/'/'%' 拒绝、插件展示名只留 Unicode 卫生
+（F34——"CI/CD Helper" 通过、工具名 "a/b" 仍拒双断言）。证据：五组新测
+全绿 + plugins/service 两包全量 ok。
+
+**B（F18/F19/F35）**：分页键 pageToken→nextPageToken（jira.go+替身 JSON
+键与断言同步）；注册校验补 fragment/userinfo 拒收（新增两 URI 拒绝断
+言）；SetMyselfDelay 加 testing.TB 未命中 Fatal（e2e 调用点同步）。证据：
+examples 包全测 ok；-tags integration 慢验证 e2e ok。
+
+**C（F01/F27/F28/F29/F30）**：frontend.yml 两处 paths 补 scripts/lib/**
+与两入口（F01）；shimEnv 删全部大小写变体键再写唯一规范键+baseEnv 参
+数（F27——新增 PATH/Path 双键共存测试）；createNodeShim copy 失败先
+removeNodeShim 再抛（F28）；两条 shimEnv 测试改 baseEnv 对象字面量+大
+小写无关键查找（F29/F30）。证据：test:node-gte26 14/14；wrapper exit 0
+复验。
+
+**D（F02/F03/F04/F06/F07/F08）**：connectionEpoch 代数守卫（F02——挂起
+旧回包+切 client+放行的时序实测：旧 authorized 回包被丢弃、新视图保持
+未授权）；重置 effect 跳首跑（F03）；删面板内置标题块+「需个人授权」
+分句并入五 locale subtitle（F04）；listLoaded 加载态区分（F06——挂起列
+表请求实测不闪空态、直出空数组视为已加载）；删 React 死导入（F07）；
+授权轮询 aliveRef 卸载终止（F08）。证据：PluginsPanel.test 15/15（含
+F02/F06 两新测）。
+
+**E（F10/F11/F12/F13/F14）**：accept/resolve 成功路径失效同安装
+toolPolicy（F10 新测实测展开→接受→治理面撤下；F11 同款代码路径）；
+refreshInstallations 内部默认绑定 installationsEpoch（F12——五处直调共
+享陈旧防护，effect 同步自增）；checkUpgrade 失败按来源安装条件撤面板
+（F13——B 失败不撤 A 面板新测）；失效块补 setError(null)（F14）。证据：
+PluginsSettingsPanel.test 34/34（含 F10/F13 两新测）。
+
+**全量回归**：go build ok；本轮改动文件 gofmt 全净（三个 gofmt 项
+plugin_drift_integration_test/tool_policy_test/query_history_policy_test
+经 stash 比对确认为基线固有，未触碰）；go vet 六包无输出；Go 六包测试
+全 ok；-tags integration 真 PG 五测 ok；typecheck:web/shared 0 error；
+views 17/17、SettingsPage 26/26、api-client 39/39、PluginsPanel 15/15、
+PluginsSettingsPanel 34/34、craft:shared 113/113。
+
+**接口/依赖变化同步**：PluginsPanel Props 的 initialInstallations 去掉
+默认参数（undefined=无直出/数组=直出含空列表，listLoaded 语义依赖该区
+分）；fakejira SetMyselfDelay 加 testing.TB（调用点同步）；node-gte26
+shimEnv 增可选 baseEnv 参数（默认 process.env，既有调用零改动）。
