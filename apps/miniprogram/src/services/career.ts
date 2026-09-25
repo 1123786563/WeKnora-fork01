@@ -4,8 +4,8 @@ import { CareerDesk } from '../../../../packages/career-core/src/desk.ts';
 import type { CareerRemote } from '../../../../packages/career-core/src/desk.ts';
 import type { CareerView, CareerReceipt, CareerChangeSet, CareerAction, CareerUpload, CareerDocumentSource, OpportunityReceipt, OpportunityEvidence, EvaluationReceipt } from '../../../../packages/career-core/src/contracts.ts';
 import { decodeCareerUpload, decodeCareerSources, decodeOpportunityReceipt, decodeEvaluationReceipt } from '../../../../packages/career-core/src/contracts.ts';
-import { decodeOpportunityEvidencePage, decodeApplicationReceipt, decodeMaterialReceipt, decodeMaterialView, decodeMaterialVersionList, decodeMaterialExportReceipt, decodeMaterialExportList, decodeMaterialExportDownload, decodeSubmissionReceipt, decodeSubmissionList, decodeCareerExportReceipt, decodeCareerDeletionBoundary, decodeCareerDeletionReceipt } from '../../../../packages/api-client/src/career.ts';
-import type { ApplicationReceipt, MaterialReceipt, MaterialView, MaterialVersionList, MaterialExportReceipt, MaterialExportList, MaterialExportDownload, MaterialExportFormat, SubmissionReceipt, SubmissionList, SubmissionChannel, MaterialBody, CareerExportReceipt, CareerDeletionBoundaryView, CareerDeletionReceipt } from '../../../../packages/api-client/src/career.ts';
+import { decodeOpportunityEvidencePage, decodeApplicationReceipt, decodeMaterialReceipt, decodeMaterialView, decodeMaterialVersionList, decodeMaterialExportReceipt, decodeMaterialExportList, decodeMaterialExportDownload, decodeSubmissionReceipt, decodeSubmissionList, decodeCareerExportReceipt, decodeCareerDeletionBoundary, decodeCareerDeletionReceipt, decodeProgressReceipt, decodeProgressView, decodePreparationReceipt, decodePreparationList } from '../../../../packages/api-client/src/career.ts';
+import type { ApplicationReceipt, MaterialReceipt, MaterialView, MaterialVersionList, MaterialExportReceipt, MaterialExportList, MaterialExportDownload, MaterialExportFormat, SubmissionReceipt, SubmissionList, SubmissionChannel, MaterialBody, CareerExportReceipt, CareerDeletionBoundaryView, CareerDeletionReceipt, ProgressReceipt, ProgressView, ProgressEventType, PreparationReceipt, PreparationList, PreparationFocus } from '../../../../packages/api-client/src/career.ts';
 import type { NativeFileSource } from '@weknora/api-client';
 import { requestId as newRequestId } from '../core/intent.ts';
 import { storage } from '../platform/storage.ts';
@@ -218,10 +218,11 @@ function readIntent<T>(key: string): StoredIntent<T> | null {
 function definiteLocalFailure(error: unknown): boolean { return /SCOPE_CHANGED|AUTH_REQUIRED/i.test(`${(error as Error)?.message ?? ''} ${(error as { code?: unknown })?.code ?? ''}`); }
 /** 写入 + 未知结果恢复。expectedRevision 在发送前捕获并随 intent 持久化：服务端幂等
  * 指纹是全量请求体（含 expectedRevision），安全重发必须逐字节重放原始值——desk 修订
- * 前进后用当前值重发必然 ErrIdempotencyConflict，恢复死路。 */
-async function writeRecoverable<T>(kind: string, describe: string, input: unknown, send: (id: string, expected: number) => Promise<unknown>): Promise<T> {
+ * 前进后用当前值重发必然 ErrIdempotencyConflict，恢复死路。expectedOverride 供 CAS
+ * 域不是档案修订的写入（T17 进展=每应用事件计数）显式传入读取到的域值。 */
+async function writeRecoverable<T>(kind: string, describe: string, input: unknown, send: (id: string, expected: number) => Promise<unknown>, expectedOverride?: number): Promise<T> {
   const id = newRequestId();
-  const expected = revision();
+  const expected = expectedOverride ?? revision();
   const stamp = auth.scope.capture();
   try {
     return await send(id, expected) as T;
@@ -436,6 +437,97 @@ export async function retryPendingSubmission(): Promise<SubmissionReceipt> {
 export async function listSubmissions(applicationId: string): Promise<SubmissionList> {
   if (!applicationId.trim()) throw new Error('缺少申请编号');
   return decodeSubmissionList(await client.request({ method: 'GET', path: `/api/v1/career/applications/${encodeURIComponent(applicationId.trim())}/submissions` }));
+}
+
+// ---- T28 申请进展时间线与按需准备（T17/T19 合同，与 Web 同源同版本）----
+// 进展 append-only：纠错=追加引用事件，原事件保留可追溯；expectedRevision 域=每申请
+// 事件计数（GET progress 的 revision 字段，首事件=0；progress.go CAS），不是档案修订。
+// 准备锚定实际投递版：未确认投递返回 typed 提示态（409 preparation_version_unknown），
+// 绝不静默改用最新材料版本；草稿物化 materials 域可修订（走上方 editMaterial 同一链）。
+
+// —— 进展时间线（T17）：读取、录入、纠错、未知对账 ——
+export interface ProgressEventInput { applicationId: string; eventType: ProgressEventType; note?: string; occurredAt?: string }
+export interface CorrectProgressInputMin extends ProgressEventInput { correctsEventId: string }
+function progressRequestBody(id: string, input: ProgressEventInput, expected: number): Record<string, unknown> {
+  if (!input.applicationId.trim() || !input.eventType) throw new Error('进展事件缺少申请或事件类型');
+  // 服务端把 HTTP 来源钉死为 manual（progressClientSource 白名单），客户端只声明该值。
+  const body: Record<string, unknown> = { requestId: id, applicationId: input.applicationId.trim(), eventType: input.eventType, source: { kind: 'manual' }, expectedRevision: expected };
+  const note = input.note?.trim();
+  if (note) body.note = note;
+  if (input.occurredAt) body.occurredAt = input.occurredAt;
+  if ('correctsEventId' in input && input.correctsEventId) body.correctsEventId = (input as CorrectProgressInputMin).correctsEventId;
+  return body;
+}
+/** 读取申请进展视图：事件按服务端权威顺序返回（seq 升序），7 阶段确定性投影随行。 */
+export async function applicationProgress(applicationId: string): Promise<ProgressView> {
+  if (!applicationId.trim()) throw new Error('缺少申请编号');
+  return decodeProgressView(await client.request({ method: 'GET', path: `/api/v1/career/applications/${encodeURIComponent(applicationId.trim())}/progress` }));
+}
+/** 追加一件不可变进展事件。expectedRevision 必须传 GET progress 读到的 revision（事件计数）。 */
+export async function appendProgressEvent(input: ProgressEventInput, expectedRevision: number): Promise<ProgressReceipt> {
+  if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) throw new Error('进展事件缺少有效的预期修订（事件计数）');
+  progressRequestBody(newRequestId(), input, expectedRevision); // 先校验，再进入可恢复写入
+  return writeRecoverable<ProgressReceipt>('progress', '进展录入', input, async (id, expected) =>
+    decodeProgressReceipt(await client.request({ method: 'POST', path: `/api/v1/career/applications/${encodeURIComponent(input.applicationId.trim())}/progress`, body: progressRequestBody(id, input, expected) })), expectedRevision);
+}
+/** 纠错=追加引用事件（原事件保留）：只能纠 plain 事件，不能纠一条更正。 */
+export async function correctProgressEvent(input: CorrectProgressInputMin, expectedRevision: number): Promise<ProgressReceipt> {
+  if (!input.correctsEventId.trim()) throw new Error('纠错缺少被更正的事件编号');
+  if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) throw new Error('进展事件缺少有效的预期修订（事件计数）');
+  progressRequestBody(newRequestId(), input, expectedRevision);
+  return writeRecoverable<ProgressReceipt>('progress', '进展纠错', input, async (id, expected) =>
+    decodeProgressReceipt(await client.request({ method: 'POST', path: `/api/v1/career/applications/${encodeURIComponent(input.applicationId.trim())}/progress/correct`, body: progressRequestBody(id, input, expected) })), expectedRevision);
+}
+export function pendingProgressWrite(): StoredIntent<ProgressEventInput> | null { return readIntent<ProgressEventInput>(intentKey('progress')); }
+export async function reconcilePendingProgress(): Promise<ProgressReceipt> {
+  return reconcileIntent<ProgressReceipt>('progress', '进展写入', async id =>
+    decodeProgressReceipt(await client.request({ method: 'GET', path: `/api/v1/career/progress/receipt?requestId=${encodeURIComponent(id)}` })));
+}
+export async function retryPendingProgress(): Promise<ProgressReceipt> {
+  const pending = pendingProgressWrite();
+  if (!pending) throw new Error('没有待恢复的进展写入');
+  const input = pending.input as ProgressEventInput & { correctsEventId?: string };
+  const correction = typeof input.correctsEventId === 'string' && input.correctsEventId;
+  return retryIntent<ProgressReceipt>('progress', '进展写入', async (id, expected) =>
+    decodeProgressReceipt(await client.request({
+      method: 'POST',
+      path: `/api/v1/career/applications/${encodeURIComponent(input.applicationId.trim())}/progress${correction ? '/correct' : ''}`,
+      body: progressRequestBody(id, input, expected),
+    })));
+}
+
+// —— 面试准备（T19）：生成（锚定实际投递版）、列表、未知对账 ——
+export const PREPARATION_VERSION_UNKNOWN = 'preparation_version_unknown';
+/** 未确认实际投递版本的 typed 提示态（与 Web PreparationPage 同语义判定）。 */
+export function isPreparationVersionUnknown(error: unknown): boolean {
+  return (error as { code?: unknown } | null | undefined)?.code === PREPARATION_VERSION_UNKNOWN;
+}
+export interface GeneratePreparationIntent { applicationId: string; focus: PreparationFocus }
+function preparationRequestBody(id: string, input: GeneratePreparationIntent, expected: number): Record<string, unknown> {
+  if (!input.applicationId.trim() || !input.focus) throw new Error('准备生成缺少申请或焦点');
+  return { requestId: id, applicationId: input.applicationId.trim(), focus: input.focus, expectedRevision: expected };
+}
+/** 生成准备草稿：锚定该申请实际投递版本（未确认投递→409 typed 提示态，由上层引导
+ * 先记录投递；本端绝不自行改用最新材料版本）。CAS 域=档案头修订（expectedRevision）。 */
+export async function generatePreparation(intent: GeneratePreparationIntent): Promise<PreparationReceipt> {
+  preparationRequestBody(newRequestId(), intent, revision()); // 先校验，再进入可恢复写入
+  return writeRecoverable<PreparationReceipt>('preparation', '准备生成', intent, async (id, expected) =>
+    decodePreparationReceipt(await client.request({ method: 'POST', path: `/api/v1/career/applications/${encodeURIComponent(intent.applicationId.trim())}/preparations`, body: preparationRequestBody(id, intent, expected) })));
+}
+export async function listPreparations(applicationId: string): Promise<PreparationList> {
+  if (!applicationId.trim()) throw new Error('缺少申请编号');
+  return decodePreparationList(await client.request({ method: 'GET', path: `/api/v1/career/applications/${encodeURIComponent(applicationId.trim())}/preparations` }));
+}
+export function pendingPreparationWrite(): StoredIntent<GeneratePreparationIntent> | null { return readIntent<GeneratePreparationIntent>(intentKey('preparation')); }
+export async function reconcilePendingPreparation(): Promise<PreparationReceipt> {
+  return reconcileIntent<PreparationReceipt>('preparation', '准备生成', async id =>
+    decodePreparationReceipt(await client.request({ method: 'GET', path: `/api/v1/career/preparations/receipt?requestId=${encodeURIComponent(id)}` })));
+}
+export async function retryPendingPreparation(): Promise<PreparationReceipt> {
+  const pending = pendingPreparationWrite();
+  if (!pending) throw new Error('没有待恢复的准备生成');
+  return retryIntent<PreparationReceipt>('preparation', '准备生成', async (id, expected) =>
+    decodePreparationReceipt(await client.request({ method: 'POST', path: `/api/v1/career/applications/${encodeURIComponent(pending.input.applicationId.trim())}/preparations`, body: preparationRequestBody(id, pending.input, expected) })));
 }
 
 // ---- T32 全空间生命周期：导出、删除边界与完整删除（与 Web ExportDeletionPage 同源）----

@@ -47,7 +47,8 @@ export default defineAppConfig({
       "pages": [
         "discovery",
         "application-material",
-        "export-deletion"
+        "export-deletion",
+        "progress-preparation"
       ]
     },
     {

@@ -7,6 +7,7 @@ import type { ValueStore } from '../core/intent.ts';
 // T26 导出兑付下载与 T06 files.ts 同源：认证凭据与可信 origin 只来自 runtime 单例。
 // runtime 不反向依赖本适配器，无环。
 import { auth, apiOrigin } from '../services/runtime.ts';
+import { scopeKey } from '../core/scope.ts';
 
 // T24 小程序 Career 平台适配器：分享、文件、受控存储三个本端能力 seam。
 // 全部依赖可注入（测试与真实运行时共用同一实现）；网络一律经 services/career.ts
@@ -309,4 +310,57 @@ export async function copySpaceExportToClipboard(payload: string): Promise<void>
   } catch (cause) {
     throw Object.assign(new Error('复制完整导出内容失败，可重试或先保存本机文件'), { cause });
   }
+}
+
+// ---- T28 面试准备本地草稿 seam：断网可再编辑、按 scope 隔离、登出即清 ----
+// 断网语义（简报第 5 节）：网络失败只保留本地草稿（可继续编辑），绝不静默改申请状态，
+// 重联网也不自动提交——同步永远是用户显式动作（页面上的保存/对账/重试）。草稿键 =
+// 前缀 + scopeKey（origin+userId+tenantId）+ 申请 + 焦点：账号切换后读不到前一用户的
+// 草稿；登出 clearPrivateCache 清 wk:career:* 时整段一并清除。
+
+/** 面试准备本地草稿的可编辑小节（claims 不在本端编辑，随材料域往返保留）。 */
+export interface PreparationDraftSection { heading: string; content: string }
+/** 一次保留在本机的准备草稿：断网期间的用户输入，联网后由用户显式提交。 */
+export interface PreparationDraftRecord {
+  applicationId: string;
+  focus: string;
+  preparationId?: string;
+  materialId?: string;
+  sections: PreparationDraftSection[];
+  savedAt: string;
+}
+export const PREPARATION_DRAFT_PREFIX = `${CAREER_STORE_PREFIX}prep-draft:`;
+const draftStore = createControlledStore();
+function preparationDraftKey(applicationId: string, focus: string): string {
+  return `${PREPARATION_DRAFT_PREFIX}${scopeKey(auth.scope.capture())}:${applicationId.trim()}:${focus}`;
+}
+/** 保留（或覆盖）当前作用域的一份准备草稿。返回实际写入的受控键。 */
+export function savePreparationDraft(record: PreparationDraftRecord): string {
+  if (!record.applicationId.trim() || !record.focus.trim()) throw new Error('准备草稿缺少申请或焦点');
+  const key = preparationDraftKey(record.applicationId, record.focus);
+  draftStore.write(key, { ...record, savedAt: new Date().toISOString() });
+  return key;
+}
+/** 读取当前作用域的准备草稿；无草稿或结构不符返回 undefined（绝不用演示数据顶替）。 */
+export function readPreparationDraft(applicationId: string, focus: string): PreparationDraftRecord | undefined {
+  const value = draftStore.read(preparationDraftKey(applicationId, focus));
+  if (!value || typeof value !== 'object') return undefined;
+  const parsed = value as Record<string, unknown>;
+  if (typeof parsed.applicationId !== 'string' || typeof parsed.focus !== 'string' || typeof parsed.savedAt !== 'string') return undefined;
+  const sections = Array.isArray(parsed.sections) ? parsed.sections : undefined;
+  if (!sections?.every(section => {
+    if (!section || typeof section !== 'object') return false;
+    const s = section as Record<string, unknown>;
+    return typeof s.heading === 'string' && typeof s.content === 'string';
+  })) return undefined;
+  return {
+    applicationId: parsed.applicationId, focus: parsed.focus,
+    ...(typeof parsed.preparationId === 'string' ? { preparationId: parsed.preparationId } : {}),
+    ...(typeof parsed.materialId === 'string' ? { materialId: parsed.materialId } : {}),
+    sections: sections as PreparationDraftSection[], savedAt: parsed.savedAt,
+  };
+}
+/** 修订成功提交后清除本地草稿（草稿只是断网过渡态，不是第二份事实源）。 */
+export function clearPreparationDraft(applicationId: string, focus: string): void {
+  draftStore.remove(preparationDraftKey(applicationId, focus));
 }
