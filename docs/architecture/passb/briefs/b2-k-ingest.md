@@ -1,10 +1,12 @@
 # Integration Brief — b2-k-ingest（21-knowledge-ingest）
 
-> **状态：部分草稿（K1.2 OCR 修复 ocr-r1-1 先行登记 1 项）**。完整十类接线/删除项
-> （R1 shim 全清单、seam→生产接线表、conversation 调用点改写、handler wrapper
-> 删除批、exc-0088、E1-E6 例外删除批等）由 Task K1.6 按 plan
-> `docs/plans/passb/21-knowledge-ingest.md` §8 K1.6 补齐——本文件为属主文件，
-> K1.6 在此基础上扩写，不另起文件。
+> **状态：K1.6 完整登记（2026-09-25）**。十类接线/删除项齐备（plan §10 验收 8）：
+> ①临时测试垫片批 §1；②R1 宿主 shim 全清单 §6；③seam→生产接线表 §7；
+> ④conversation 调用点 ib2 改写项 §8；⑤handler wrapper 删除批与 identity 去方法化
+> 联动 §9；⑥exc-0088 删除批及 airesource 门面前置 §10；⑦搬迁显形 import 例外
+> （exc-0106..0111）删除批 §11；⑧契约/事件区路径漂移回写批 §3；⑨过渡 shim 行
+> ib2 删行闭环 §12；⑩K1.2–K1.5 分任务交付的增量义务 §2/§4/§5。
+> 本文件为属主文件（plan §4.1），K1.6 在 K1.2–K1.5 分段登记基础上扩写汇总。
 
 ## 1. 临时测试装置垫片删除批（Ruling 2026-09-24-TEST-SUPPORT-SHIM）
 
@@ -118,3 +120,93 @@ ledger 严格解码失败掩蔽；ocr-r1-1 修复后可见，2026-09-25 实测�
   `airesource/models/utils/ollama` 与 `airesource/models/vlm`（Pass A 前宿主直连，
   plan §7.2 表）。
 
+
+## 6. R1 宿主 shim 全清单（plan §6.2 十项 + K1.1–K1.5 增量；逐条宿主引用，2026-09-25 会话 grep 复核）
+
+### 6.1 `internal/application/repository/chunk_ingest_shim.go`（ib2 删除批）
+
+| # | shim 符号 | 被保护的宿主引用（实测） | 真源 |
+|---|---|---|---|
+| R1-8 | `NewChunkRepository(db *gorm.DB)` | container.go:205（dig Provide）；宿主测试 document_write_access_test.go / knowledge_write_access_test.go:113 / knowledge_caller_scope_test.go（K4 属主） | `ingest.NewChunkRepository` |
+| R1-8 增量 | `var ErrChunkRevisionConflict` | errors.Is 链同实例语义（plan §5.3；service/chunk.go:23 旧别名已随 K1.2 删） | `ingest.ErrChunkRevisionConflict` |
+| R1-8 增量 | `var ErrChunkNotFound` | service/knowledge.go:38（K4 属主，禁改）；document_write_access_test.go:568 | `ingest.ErrChunkNotFound` |
+
+### 6.2 `internal/application/service/chunk_ingest_shim.go`（ib2 删除批）
+
+| # | shim 符号 | 被保护的宿主引用（实测） | 真源 |
+|---|---|---|---|
+| R1-1 | `var ErrChunkRevisionConflict` | knowledge_process.go:2282（K4） | `ingest.ErrChunkRevisionConflict` |
+| R1 增量 | `sameChunkDocument`（包内私有） | knowledge_process.go:2256/:3002（K4） | `ingest.SameChunkDocument` |
+| R1-2 | `NewChunkService`（dig 旧签名，末参 spanTracker） | container.go:375（dig Provide） | `ingest.NewChunkService`（新签名，体内经 §7 适配器接线） |
+| R1-3 | `NewChunkExtractService`（dig 旧签名） | container.go:409 | `ingest.NewChunkExtractService` |
+| R1-4 | `NewDataTableSummaryService`（原 10 参签名） | container.go:410 | `ingest.NewDataTableSummaryService` |
+| R1-6 | `NewChunkExtractTask`（8 参） | knowledge_post_process.go:418（K4） | `ingest.NewChunkExtractTask` |
+| R1-9 | `enqueueDataTableSummaryIfNeeded`（8 参包级） | knowledge_create.go:295/:746、knowledge_process.go:2629/:2682（K4；本会话 grep 复核存活） | `ingest.EnqueueDataTableSummaryIfNeeded` + `ingest.NewDataTableSummaryEnqueuer(normalizeFileExtension, isDataTableFileType, getFileType)`（宿主函数值注入，零复制） |
+| R1-5 | `NewImageMultimodalService`（dig 旧 14 参签名） | container.go:411 | `ingest.NewImageMultimodalService`（新签名：SpanTraceSeam + 哨兵 error 注入在宿主边界） |
+| R1-7 | `isFinalAsynqAttempt` | knowledge_process.go:1125/:1497/:1868（K4）+ knowledge_summary_test.go:230/:238 | `ingest.IsFinalAsynqAttempt` |
+| R1-10 | `sanitizeOCRText` | temporary_document.go:541（conversation，ib2 改写项，§8） | `ingest.SanitizeOCRText` |
+| R1-10 | `buildVLMCaptionPrompt` | temporary_document.go:560（conversation，ib2 改写项，§8） | `ingest.BuildVLMCaptionPrompt` |
+| R1 增量 | `vlmOCRPrompt` / `vlmOCRScannedPDFPrompt` 常量 | temporary_document.go:513/:515（conversation，ib2 改写项） | `ingest.VlmOCRPrompt` / `ingest.VlmOCRScannedPDFPrompt` |
+| R1 增量 | `validateParserEngineOverrideURLs` | knowledge_process.go:3750（K4） | `ingest.ValidateParserEngineOverrideURLs` |
+
+### 6.3 `internal/handler/chunk_ingest_shim.go`（wrapper，§9 删除批）
+
+| # | shim 符号 | 被保护的宿主引用（实测） | 真源 |
+|---|---|---|---|
+| R1（§6.4） | `type ChunkHandler`（嵌入 `*ingest.ChunkHandler` + service/kgService 字段副本）+ 11 路由方法转发 | routes_knowledge.go:28-66（11 条 /chunks 路由）、container.go:719、rbac_lookups.go:103/:104/:130/:149（identity 属主，禁改） | `ingest.ChunkHandler`（唯一实现） |
+| R1（§6.4） | `NewChunkHandler` | container.go:719（dig） | `ingest.NewChunkHandler` |
+| R1（§6.4） | `PreviewChunking` | routes_knowledge.go:19（/chunker/preview） | `ingest.PreviewChunking` |
+
+## 7. seam→生产接线总表（K5/ib2 集成工程师执行；适配器现位 `internal/application/service/span_trace_seam_adapter.go`，与 shim 同属 ib2 删除批）
+
+| ingest 侧 seam（定义 `ingest/seams.go`） | 生产接线（ib2） | 现接线点 |
+|---|---|---|
+| `SpanTraceSeam` | `NewSpanTraceSeamAdapter(tr SpanTracker)`；container.go:374 `service.NewSpanTracker` 经适配器直供 R1-2/3/5 新参；K4 搬迁 knowledge_span_tracker.go 后指其导出包装 | span_trace_seam_adapter.go:30 |
+| `KnowledgeWriteGuard` | `KnowledgeWriteGuardProvider()`；K4 搬迁 knowledge_write.go 后指其导出包装 | :99 |
+| `KBByIDLookup` | `KnowledgeWriteKBProvider()`（结构等价适配；`interfaces.KnowledgeBaseRepository` 天然满足） | :146 |
+| `enqueueSummaryRefresh` 闭包 | `EnqueueSummaryRefreshProvider(tr)`（参数 `summaryKnowledgeBaseReader` → KBByIDLookup） | :81 |
+| `BuildKnowledgeIndexContent` 闭包 | `BuildKnowledgeIndexContentProvider()`（K4 knowledge_index_content.go 导出后改指） | :126 |
+| `attemptSupersededFn` | `AttemptSupersededProvider(tr)`（nil tracker 恒 false，noop 语义；K4 knowledge.go:202 导出后改指） | :133 |
+| `previewTextFn` | 直传宿主 `previewText`（K3 wiki_ingest.go:1383 导出 `PreviewText` 后改指） | R1-3/R1-5 shim 体内 |
+| `resolveProcessConfigFn` | 直传宿主 `ResolveProcessConfig`（K4 knowledge_process_config.go:40 导出后改指） | R1-3/R1-5 shim 体内 |
+| `postProcessTaskOptionsFn` | 直传宿主 `knowledgePostProcessTaskOptions`（K4 knowledge_task_options.go:21 导出后改指） | R1-5 shim 体内 |
+| `DataAnalysisToolFactory` | `DataAnalysisToolSeamFactory()`（agentruntime/conversation 根门面端口就绪后切换直连） | :164 |
+| `GraphExtractorFactory`（chat.Chat 参数） | `GraphExtractorSeamFactory()`（同上；K1.3 import 环裁决，§4） | :216 |
+| 哨兵 error 字段（knowledgeNotFoundErr/knowledgeBaseNotFoundErr） | 宿主 `repository.ErrKnowledgeNotFound`/`ErrKnowledgeBaseNotFound` 注入（ingest 禁 import 宿主 repository——R1-8 环裁决；K4 搬迁后指其导出） | R1-5 shim 体内 |
+
+## 8. conversation 调用点 ib2 改写项（跨 owner 调用点修改，集成工程师执行）
+
+- temporary_document.go:541（`sanitizeOCRText`）与 :560（`buildVLMCaptionPrompt`）：ib2 改写为直连 `ingest.SanitizeOCRText` / `ingest.BuildVLMCaptionPrompt` 后删除 R1-10 转发。
+- temporary_document.go:513/:515（`vlmOCRPrompt` / `vlmOCRScannedPDFPrompt`）：同批改写为直连 `ingest.VlmOCRPrompt` / `ingest.VlmOCRScannedPDFPrompt`。
+- 本节点未改 conversation 属主文件一字（diff 零出现，plan §10 验收 5）。
+
+## 9. handler wrapper 删除批与 identity 去方法化联动（ib2）
+
+- `internal/handler/chunk_ingest_shim.go` 的包装类型（§6.3）：rbac_lookups.go:130/:149（identity 属主，禁改）在宿主 `*ChunkHandler` 上定义 `KBCreatorLookupFromKnowledgeIDParam`/`KBCreatorLookupFromChunkIDParam`，方法体访问 `h.kgService`（:135）与 `h.service`——包装的自有字段承载之。
+- ib2 删除序：①identity 去方法化（B0.3 裁定：两 lookup 改包级函数或迁 identity 域）；②路由切模块门面（routes_knowledge.go 11+1 条改 `ingest` 直供）；③container.go:719 切 `ingest.NewChunkHandler`；④wrapper 文件删除。四步同窗，rbac_lookups.go 与路由计数 633 不变。
+- 删除前置：rbac_lookups_test.go 经 wrapper 保绿的用例随去方法化同步改写。
+
+## 10. exc-0088 删除批及 airesource 门面前置（plan §7.3）
+
+- exc-0088（exception-ledger.yaml，owner=21-knowledge-ingest，remove_at=ib2）：`internal/modules/knowledge/docparser/weknoracloud_http_reader.go` import `airesource/models/utils` 仅用 `utils.Sign`（:237 → signer.go:24）。
+- 前置（属 airesource/ib2 契约动作，非本节点）：airesource 根门面现为零逻辑骨架（`internal/modules/airesource/module.go` 无导出符号，K1.6 会话实测），无合法替代 import 可切。ib2 删除批 = airesource 根门面暴露 `Sign` 或等价端口 → docreader 消费切换 → 删 exc-0088 行。
+- 本节点不删行、不改 docparser 文件（Pass A 已在模块内，非本节点 9 文件）。
+
+## 11. 搬迁显形 import 例外删除批（exc-0106..0111，Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY；commit fc14f4c2e 登记）
+
+| id | from → to | 删除前置（ib2） |
+|---|---|---|
+| exc-0106 | ingest/extract.go → airesource/models/chat | airesource 根门面/契约端口暴露所需符号后切换直连，删 check.go 数据行 + ledger 行（同窗） |
+| exc-0107 | ingest/extract.go → airesource/models/embedding | 同上 |
+| exc-0108 | ingest/extract.go → policy/access | policy 根门面端口就绪后切换 |
+| exc-0109 | ingest/seams.go → airesource/models/chat | GraphExtractorFactory 生产接线（§7）改门面端口后，seams.go 类型签名随之收敛 |
+| exc-0110 | ingest/image_multimodal.go → airesource/models/utils/ollama | airesource 门面端口（同 exc-0106 批） |
+| exc-0111 | ingest/image_multimodal.go → airesource/models/vlm | 同上 |
+
+注：plan §7.2 预测的 E3（agentruntime/agent/tools）经 K1.3 import 环裁决改走消费侧 seam，未登记（§4）；实测集与 guard 诊断逐条对齐（K1.6 报告 §1）。ib2 删除时与 §3 契约 consumers 回写同窗复核 passbguard 三方计数。
+
+## 12. 过渡 shim 行 ib2 删行闭环（Ruling 2026-09-25-TRANSITION-SHIM-ROW-REGISTRATION 第 3 条）
+
+- 4 个过渡 shim 文件（§6.1/§6.2/§6.3 四件）在 knowledge.yaml legacy_files 与 ownership-matrix.yaml 的成对行（commit 253497b1f 登记）：**ib2 收口时 shim 文件与其 manifest/matrix 行同 commit 删除**（Ruling 2026-09-23-LEGACY-ROW-OWNERSHIP 删行语义衔接）。
+- 届时 legacy 计数回落（391 → −4）走 conventions §8 基线变更（台账条目 + evidence），F5 三方一致复验。
+- 删除前置：本 Brief §6 全部宿主引用清零（§7 接线 + §8 改写 + §9 wrapper 批完成后）；ib2 前任何残留 importer 未清零禁止删除（conventions §7.5）。
