@@ -57,35 +57,42 @@ test("joinShimPath tolerates an empty existing PATH without a trailing delimiter
   assert.equal(joined, shimDir);
 });
 
-test("shimEnv overwrites the existing PATH case variant instead of adding a second key (R1-F30/F33)", (t) => {
-  const previousPath = process.env.PATH;
-  const previousVariant = process.env.Path;
-  // Simulate the win32 shape where the inherited key is cased `Path`: on a
-  // case-sensitive platform both keys can coexist in process.env, which is
-  // exactly the duplicate shape the naive spread would ship to the child.
-  process.env.Path = "/legacy/value";
-  delete process.env.PATH;
-  t.after(() => {
-    process.env.PATH = previousPath;
-    if (previousVariant === undefined) delete process.env.Path;
-    else process.env.Path = previousVariant;
-  });
+test("shimEnv overwrites the existing PATH case variant instead of adding a second key (R1-F30/F33, OCR R2 F29)", () => {
+  // Plain object literal via baseEnv (OCR R2 F29): mutating the real
+  // process.env cannot express the duplicate-key shape on win32 (assignment
+  // and deletion are case-INsensitive there), which made this test a
+  // deterministic false-red on Windows.
   const shimDir = path.join(os.tmpdir(), "weknora-shim-x");
-  const env = shimEnv(shimDir);
+  const env = shimEnv(shimDir, { Path: "/legacy/value", UNTOUCHED: "1" });
   const pathKeys = Object.keys(env).filter((key) => key.toUpperCase() === "PATH");
   assert.equal(pathKeys.length, 1, `exactly one PATH variant key must survive: ${pathKeys.join(",")}`);
+  assert.equal(pathKeys[0], "PATH", "the canonical PATH key is written");
   const value = env[pathKeys[0]];
   assert.ok(value.startsWith(shimDir + path.delimiter), `shim dir must lead: ${value}`);
   assert.ok(value.includes("/legacy/value"), "the old PATH content must be preserved after the shim dir");
+  assert.equal(env.UNTOUCHED, "1", "unrelated env keys pass through");
 });
 
-test("shimEnv prepends to a normally-cased PATH", (t) => {
-  const previous = process.env.PATH;
-  t.after(() => { process.env.PATH = previous; });
-  process.env.PATH = ["/a", "/b"].join(path.delimiter);
+test("shimEnv drops EVERY case variant, not just the first (OCR R2 F27)", () => {
+  // A POSIX parent can explicitly inject both PATH and Path; a child reading
+  // case-sensitively would still see the untouched variant's old value if
+  // only the first match were overwritten.
+  const shimDir = path.join(os.tmpdir(), "weknora-shim-variants");
+  const env = shimEnv(shimDir, { PATH: "/posix/value", Path: "/sneaky/old/value" });
+  const pathKeys = Object.keys(env).filter((key) => key.toUpperCase() === "PATH");
+  assert.deepEqual(pathKeys, ["PATH"], "all variants collapse onto the single canonical key");
+  assert.equal(env.PATH, [shimDir, "/posix/value"].join(path.delimiter),
+    "the first variant's value is preserved and prefixed with the shim dir");
+});
+
+test("shimEnv prepends to a normally-cased PATH (OCR R2 F30)", () => {
   const shimDir = path.join(os.tmpdir(), "weknora-shim-y");
-  const env = shimEnv(shimDir);
-  assert.equal(env.PATH, [shimDir, "/a", "/b"].join(path.delimiter));
+  const env = shimEnv(shimDir, { PATH: ["/a", "/b"].join(path.delimiter) });
+  // Case-insensitive key lookup (OCR R2 F30): reading env.PATH directly is
+  // machine-dependent on win32 where the inherited key is usually cased Path.
+  const pathKeys = Object.keys(env).filter((key) => key.toUpperCase() === "PATH");
+  assert.equal(pathKeys.length, 1);
+  assert.equal(env[pathKeys[0]], [shimDir, "/a", "/b"].join(path.delimiter));
 });
 
 test("shimEntryName carries .exe on win32 only (R1-F27)", () => {

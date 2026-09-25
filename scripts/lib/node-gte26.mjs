@@ -107,7 +107,15 @@ export function createNodeShim(targetBin, { linker = fs.symlinkSync } = {}) {
     console.warn(
       `[node-gte26] symlink denied (${cause && cause.code ? cause.code : cause}) — falling back to copying ${targetBin}`,
     );
-    fs.copyFileSync(targetBin, shimNode);
+    try {
+      fs.copyFileSync(targetBin, shimNode);
+    } catch (copyCause) {
+      // OCR R2 F28: the copy fallback can fail (disk full, antivirus lock) —
+      // the caller never receives shimDir, so without this cleanup the
+      // mkdtempSync private dir would leak on every such failure.
+      removeNodeShim(shimDir);
+      throw copyCause;
+    }
   }
   return { shimDir, shimNode };
 }
@@ -129,14 +137,26 @@ export function joinShimPath(shimDir, existingPath) {
  * `Path`). The naive `{ ...process.env, PATH: ... }` materializes BOTH the
  * old `Path` and the new `PATH` into the child's environment block; duplicate
  * names are case-insensitive there and the first (OLD) value typically wins —
- * the shim prepend silently no-ops for the re-exec'd child. This helper
- * overwrites whichever case-variant key already exists, so exactly one PATH
- * entry reaches the child, with the shim dir in front.
+ * the shim prepend silently no-ops for the re-exec'd child.
+ *
+ * OCR R2 F27: EVERY case-variant key must go, not just the first one found —
+ * a POSIX parent can explicitly inject both `PATH` and `Path`, and a child
+ * reading case-SENSITIVELY would still see the untouched variant's old value.
+ * All variants are deleted, then exactly one (canonical `PATH`) is written.
+ *
+ * `baseEnv` (defaults to process.env) lets tests exercise the duplicate-key
+ * shapes with a plain object literal instead of mutating the global env
+ * (win32 env assignment/deletion is case-insensitive and cannot express
+ * them — OCR R2 F29/F30).
  */
-export function shimEnv(shimDir) {
-  const env = { ...process.env };
-  const pathKey = Object.keys(env).find((key) => key.toUpperCase() === "PATH") ?? "PATH";
-  env[pathKey] = joinShimPath(shimDir, env[pathKey]);
+export function shimEnv(shimDir, baseEnv = process.env) {
+  const env = { ...baseEnv };
+  const pathKeys = Object.keys(env).filter((key) => key.toUpperCase() === "PATH");
+  for (const key of pathKeys) {
+    delete env[key];
+  }
+  const existing = pathKeys.length > 0 ? baseEnv[pathKeys[0]] : baseEnv.PATH;
+  env.PATH = joinShimPath(shimDir, existing);
   return env;
 }
 

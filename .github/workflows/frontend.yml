@@ -13,6 +13,12 @@ on:
       - "scripts/build_frontend_dist.sh"
       - "scripts/build_react_web_bundle.sh"
       - "scripts/check-react-boundaries.mjs"
+      # OCR R2 F01: the node>=26 gate plumbing (self-tested by the workflow's
+      # first test step) must itself trigger the workflow — a PR that only
+      # changes the shim/discovery code previously skipped it entirely.
+      - "scripts/lib/**"
+      - "scripts/run-gates.mjs"
+      - "scripts/run-with-node-gte26.mjs"
       - ".dockerignore"
       - ".github/workflows/frontend.yml"
   pull_request:
@@ -26,6 +32,9 @@ on:
       - "scripts/build_frontend_dist.sh"
       - "scripts/build_react_web_bundle.sh"
       - "scripts/check-react-boundaries.mjs"
+      - "scripts/lib/**"
+      - "scripts/run-gates.mjs"
+      - "scripts/run-with-node-gte26.mjs"
       - ".dockerignore"
       - ".github/workflows/frontend.yml"
   workflow_dispatch:
