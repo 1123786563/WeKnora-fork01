@@ -5,10 +5,9 @@
 import { useEffect, useRef, useState } from 'react';
 import type { OllamaModel, OllamaStatus, SettingsPayload, WeKnoraClient } from '@weknora/api-client';
 import { Icon as TIcon } from 'tdesign-icons-react';
-import { Alert as TAlert, Button as TButton, Input as TInput, Loading as TLoading, Progress as TProgress, Tag as TTag } from 'tdesign-react';
+import { Alert as TAlert, Button as TButton, Input as TInput, Loading as TLoading, MessagePlugin, Progress as TProgress, Tag as TTag } from 'tdesign-react';
 import { ollamaModelInput } from './surface.ts';
 import { readInitialLocale, settingsT } from './PortedSectionsPanel.tsx';
-import { pushSettingsToast } from './settings-toast.tsx';
 
 type OllamaPayload = { status?: OllamaStatus; models?: OllamaModel[] };
 function object(value: unknown): Record<string, unknown> { return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}; }
@@ -69,7 +68,7 @@ export function OllamaSettingsPanel({ client, initialValue }: { client: WeKnoraC
       const nextModels = await client.settings.ollama.models();
       setModels(nextModels);
     } catch (reason) {
-      pushSettingsToast(reason instanceof Error ? reason.message : t('ollamaSettings.toasts.listFailed'));
+      void MessagePlugin.error(reason instanceof Error ? reason.message : t('ollamaSettings.toasts.listFailed'));
     } finally { setLoadingModels(false); }
   }
 
@@ -82,14 +81,14 @@ export function OllamaSettingsPanel({ client, initialValue }: { client: WeKnoraC
       if (typeof nextStatus.baseUrl === 'string' && nextStatus.baseUrl && nextStatus.baseUrl !== localBaseUrl) setLocalBaseUrl(nextStatus.baseUrl);
       setStatus(nextStatus);
       if (nextStatus.available === true) {
-        pushSettingsToast(t('ollamaSettings.toasts.connected'), 'success');
+        void MessagePlugin.success(t('ollamaSettings.toasts.connected'));
         void refreshModels();
       } else {
-        pushSettingsToast((nextStatus as { error?: string }).error || t('ollamaSettings.toasts.connectFailed'));
+        void MessagePlugin.error((nextStatus as { error?: string }).error || t('ollamaSettings.toasts.connectFailed'));
       }
     } catch (reason) {
       setStatus({ available: false });
-      pushSettingsToast(reason instanceof Error ? reason.message : t('ollamaSettings.toasts.connectFailed'));
+      void MessagePlugin.error(reason instanceof Error ? reason.message : t('ollamaSettings.toasts.connectFailed'));
     } finally { setTesting(false); }
   }
 
@@ -102,12 +101,12 @@ export function OllamaSettingsPanel({ client, initialValue }: { client: WeKnoraC
       const result = await client.settings.ollama.download(ollamaModelInput(downloadModelName));
       const id = taskId(result);
       if ((result as { status?: string }).status === 'failed' || !id) {
-        pushSettingsToast(t('ollamaSettings.toasts.downloadFailed'));
+        void MessagePlugin.error(t('ollamaSettings.toasts.downloadFailed'));
         setDownloading(false);
         setDownloadProgress(0);
         return;
       }
-      pushSettingsToast(t('ollamaSettings.toasts.downloadStarted', { name: downloadModelName }), 'success');
+      void MessagePlugin.success(t('ollamaSettings.toasts.downloadStarted', { name: downloadModelName }));
       if (progressTimerRef.current !== null) window.clearInterval(progressTimerRef.current);
       progressTimerRef.current = window.setInterval(async () => {
         try {
@@ -117,7 +116,7 @@ export function OllamaSettingsPanel({ client, initialValue }: { client: WeKnoraC
           if (task.status === 'completed') {
             window.clearInterval(progressTimerRef.current!);
             progressTimerRef.current = null;
-            pushSettingsToast(t('ollamaSettings.toasts.downloadCompleted', { name: downloadModelName }), 'success');
+            void MessagePlugin.success(t('ollamaSettings.toasts.downloadCompleted', { name: downloadModelName }));
             setDownloadModelName('');
             setDownloadProgress(0);
             setDownloading(false);
@@ -125,20 +124,20 @@ export function OllamaSettingsPanel({ client, initialValue }: { client: WeKnoraC
           } else if (task.status === 'failed') {
             window.clearInterval(progressTimerRef.current!);
             progressTimerRef.current = null;
-            pushSettingsToast((task as { message?: string }).message || t('ollamaSettings.toasts.downloadFailed'));
+            void MessagePlugin.error((task as { message?: string }).message || t('ollamaSettings.toasts.downloadFailed'));
             setDownloading(false);
             setDownloadProgress(0);
           }
         } catch {
           window.clearInterval(progressTimerRef.current!);
           progressTimerRef.current = null;
-          pushSettingsToast(t('ollamaSettings.toasts.progressFailed'));
+          void MessagePlugin.error(t('ollamaSettings.toasts.progressFailed'));
           setDownloading(false);
           setDownloadProgress(0);
         }
       }, 1000);
     } catch (reason) {
-      pushSettingsToast(reason instanceof Error ? reason.message : t('ollamaSettings.toasts.downloadFailed'));
+      void MessagePlugin.error(reason instanceof Error ? reason.message : t('ollamaSettings.toasts.downloadFailed'));
       setDownloading(false);
       setDownloadProgress(0);
     }

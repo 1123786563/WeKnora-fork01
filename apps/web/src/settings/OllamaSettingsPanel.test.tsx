@@ -32,6 +32,13 @@ Object.assign(globalThis, {
 Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator });
 
 const { createRoot } = await import('react-dom/client');
+// tdesign 命令式 API（MessagePlugin 等）在 React 19 下需要适配器（main.tsx 引
+// es/_util/react-19-adapter；node/tsx 下组件走 lib 入口，直接对 lib 的
+// react-render 注入 createRoot，保证与组件同一模块实例——agent-editor.test 先例）。
+{
+  const { renderAdapter } = await import('tdesign-react/lib/_util/react-render.js');
+  renderAdapter(createRoot);
+}
 const { OllamaSettingsPanel } = await import('./OllamaSettingsPanel.tsx');
 
 let mountedRoot: Root | undefined;
