@@ -1072,6 +1072,11 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Invoke(wireCraftKnowledgeRuntime))
 	must(container.Invoke(registerCraftKnowledgeFeature))
 	must(container.Invoke(wireCraftSessionTombstone))
+	// T11 (#128): the restricted-share consent surface (read/decision/
+	// revocation feature routes) over the shared version/file/record
+	// stores and the persistent TaskAccess checker.
+	must(container.Provide(newCraftShareService))
+	must(container.Invoke(registerCraftShareFeature))
 
 	// Router configuration
 	logger.Debugf(ctx, "[Container] Registering router and starting task server...")
