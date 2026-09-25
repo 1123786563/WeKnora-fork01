@@ -194,6 +194,12 @@ type ChunkExtractService struct {
 // attemptSupersededFn（plan §6.1）；previewTextFn/finalizeSubtaskFn/
 // isFinalAttemptFn/resolveProcessConfigFn/newGraphExtractor 为增量 seam
 // 闭包（R2 构造注入）。
+// OCR f3：六项 seam 闭包在 Handle/defer 期被无条件调用（:253 attemptSupersededFn；
+// defer :284-286 finalizeSubtaskFn/isFinalAttemptFn 每个终端路径必经），漏注 nil
+// 将 panic 于 defer 且 pending_subtasks_count 永不递减——构造期 fail-fast
+// （格式对齐宿主先例 service/session.go:176）。spanTrace 为唯一允许 nil 的
+// seam：trace() 回退 noopSpanTraceSeam，零值语义与原 noopSpanTracker{} 一致
+// （plan §6.3），不参与 fail-fast。
 func NewChunkExtractService(
 	config *config.Config,
 	modelService interfaces.ModelService,
@@ -209,6 +215,26 @@ func NewChunkExtractService(
 	resolveProcessConfigFn func(kb *types.KnowledgeBase, overrides *types.KnowledgeProcessOverrides) types.EffectiveProcessConfig,
 	newGraphExtractor GraphExtractorFactory,
 ) interfaces.TaskHandler {
+	// 漏注任何一项 seam 闭包都是接线 bug 而非运行期条件：构造期点名 panic，
+	// 而不是等到 Handle/defer 期 nil 调用（OCR f3，先例 session.go:176）。
+	if attemptSupersededFn == nil {
+		panic("NewChunkExtractService: attemptSupersededFn is required (stale-attempt short-circuit runs unconditionally in Handle)")
+	}
+	if previewTextFn == nil {
+		panic("NewChunkExtractService: previewTextFn is required (graph extract input truncation)")
+	}
+	if finalizeSubtaskFn == nil {
+		panic("NewChunkExtractService: finalizeSubtaskFn is required (defer decrements pending_subtasks_count on every terminal path)")
+	}
+	if isFinalAttemptFn == nil {
+		panic("NewChunkExtractService: isFinalAttemptFn is required (dead-letter decision in the finalize defer)")
+	}
+	if resolveProcessConfigFn == nil {
+		panic("NewChunkExtractService: resolveProcessConfigFn is required (per-KB effective process config)")
+	}
+	if newGraphExtractor == nil {
+		panic("NewChunkExtractService: newGraphExtractor is required (chat_pipeline extractor seam)")
+	}
 	return &ChunkExtractService{
 		template:               config.ExtractManager.ExtractGraph,
 		modelService:           modelService,
