@@ -432,6 +432,15 @@ func (s *oauthServer) handleRegister(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
+		// OCR R2 F19：RFC 6749 §3.1.2——redirect endpoint URI MUST NOT include
+		// a fragment component（RFC 7591 注册校验同理）；userinfo 同拒
+		//（凭据不进注册元数据，302 时也无需保留）。
+		if parsed.Fragment != "" || parsed.User != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{
+				"error": "invalid_redirect_uri", "error_description": "redirect_uri must not include a fragment or userinfo component",
+			})
+			return
+		}
 		// 整分支终评 r2-012/r4-008：装配了 AllowedRedirectHosts 时，注册即
 		// 拒绝名单外 host——授权码的目的地在注册期收敛，而非到同意页才告警。
 		// 匹配按 host[:port]（OCR 一轮 R12 F18）：裸 host 条目=该主机任意

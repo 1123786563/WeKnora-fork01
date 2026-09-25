@@ -193,7 +193,11 @@ func (c *JiraClient) SearchMyWeek(ctx context.Context) (issues []JiraIssue, trun
 			"maxResults": jiraSearchMaxResults,
 		}
 		if pageToken != "" {
-			payload["pageToken"] = pageToken
+			// OCR R2 F18：POST /rest/api/3/search/jql 的分页请求键是
+			// nextPageToken（已废弃的 /rest/api/3/search 才用 startAt）。
+			// 旧键 pageToken 是真实 Jira 忽略的未知字段——恒返回第一页+
+			// 新 token，>100 条时循环重复抓第一页并误报 truncated。
+			payload["nextPageToken"] = pageToken
 		}
 		var result jiraSearchResponse
 		if err := c.do(ctx, http.MethodPost, "/rest/api/3/search/jql", payload, &result); err != nil {

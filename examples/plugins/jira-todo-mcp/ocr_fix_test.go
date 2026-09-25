@@ -341,7 +341,9 @@ func TestSearchFollowsNextPageToken(t *testing.T) {
 			return
 		}
 		var body struct {
-			PageToken string `json:"pageToken"`
+			// OCR R2 F18：请求键与 Atlassian /search/jql 契约对齐为
+			// nextPageToken（替身此前按同样错误的 pageToken 键钉死错误契约）。
+			PageToken string `json:"nextPageToken"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		if body.PageToken == "" {
@@ -647,6 +649,20 @@ func TestRegisterBoundsRedirectURIs(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = resp.Body.Close() }()
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode, "3000-byte redirect_uri must be rejected")
+
+	// OCR R2 F19：RFC 6749 §3.1.2——redirect endpoint URI MUST NOT include a
+	// fragment component（RFC 7591 注册校验同理）；userinfo 同拒。
+	for _, uri := range []string{
+		"https://client.example/cb#section",
+		"https://user:pass@client.example/cb",
+	} {
+		body, err = json.Marshal(map[string]any{"redirect_uris": []string{uri}})
+		require.NoError(t, err)
+		resp, err = http.Post(base+"/register", "application/json", strings.NewReader(string(body)))
+		require.NoError(t, err)
+		defer func() { _ = resp.Body.Close() }()
+		require.Equal(t, http.StatusBadRequest, resp.StatusCode, "redirect_uri %q must be rejected (fragment/userinfo)", uri)
+	}
 }
 
 // --- 整分支终评（R4）：跨轮转交安全 findings 回归 ---

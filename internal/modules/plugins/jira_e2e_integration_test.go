@@ -496,7 +496,7 @@ func TestJiraSlowCredentialCheckDoesNotBlockOtherMembers(t *testing.T) {
 		plugintest.JiraIssue{Key: "A-101", Summary: "成员A的本周任务", Status: "进行中", Due: jiraE2EWeekday(4)})
 	jira.AddAccount(t, emailB, tokenB,
 		plugintest.JiraIssue{Key: "B-201", Summary: "成员B的本周任务", Status: "进行中", Due: jiraE2EWeekday(4)})
-	jira.SetMyselfDelay(emailA, 1500*time.Millisecond) // A 的凭据验证慢
+	jira.SetMyselfDelay(t, emailA, 1500*time.Millisecond) // A 的凭据验证慢
 	st := newJiraE2EStack(t, db, 1, jira)
 
 	// A 在后台发起授权：POST /authorize 触发 credentialCheck → 慢 /myself。

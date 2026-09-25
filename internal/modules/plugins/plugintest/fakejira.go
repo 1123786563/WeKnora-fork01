@@ -141,7 +141,11 @@ func (j *FakeJira) SetSearchDelay(t testing.TB, d time.Duration) {
 // SetMyselfDelay 注入该账本 /myself 的响应延迟——替身授权页的凭据验证
 // （credentialCheck 出站）变慢，供「慢验证不得串行化替身其他链路」的回归
 // 测试使用（T13-OCR1-F4）。按账本注入，避免波及其他成员的正常验证。
-func (j *FakeJira) SetMyselfDelay(email string, d time.Duration) {
+// OCR R2 F35：与同文件注入方法（R1 F13 约定）一致接受 testing.TB——email
+// 未命中账本即装配错误，直接 Fatal（延迟注入静默失效会让慢验证回归测试
+// 失败难定位）。
+func (j *FakeJira) SetMyselfDelay(t testing.TB, email string, d time.Duration) {
+	t.Helper()
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	for _, account := range j.accounts {
@@ -150,6 +154,7 @@ func (j *FakeJira) SetMyselfDelay(email string, d time.Duration) {
 			return
 		}
 	}
+	t.Fatalf("fakejira: SetMyselfDelay: no account registered for %s — the injection would silently no-op", email)
 }
 
 // verifyCredentialClient 给 /myself 验证出站一个上界（T13-OCR1-F4 第二层
