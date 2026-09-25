@@ -10,7 +10,7 @@ import type { AttentionState } from './task-office-errors.ts';
 export const TASK_DETAIL_HISTORY_LIMIT = 200;
 
 export type TaskConnectionState = 'syncing' | 'live' | 'interrupted' | 'drained';
-export type TaskInterruptionReason = 'gap' | 'cursor-expired' | 'stream-error' | 'stream-ended-nonterminal' | 'persist-failed' | 'stream-unavailable';
+export type TaskInterruptionReason = 'gap' | 'cursor-expired' | 'stream-error' | 'stream-ended-nonterminal' | 'persist-failed' | 'stream-unavailable' | 'offline';
 
 export interface TaskBackendEvent {
   runId: string;
@@ -40,12 +40,18 @@ export interface TaskDetailBackendPort {
   stream(input: { runId: string; cursor: number; signal: AbortSignal; onEvent(event: TaskBackendEvent): void; onControl(frame: TaskStreamControlFrame): void }): Promise<void>;
 }
 
+/** T10（#40）离线降级渲染所需的权威快照：detail 去 events 形态（title/attention/execution 等）。
+ *  旧格式投影无 snapshot = 离线降级不可用（fail closed），联网路径不受影响。 */
+export type OfflineTaskSnapshot = Omit<TaskBackendDetail, 'events'>;
+
 export interface PersistedTaskProjection {
   taskId: string;
   runId: string;
   cursor: number;
   events: TaskBackendEvent[];
   savedAt: string;
+  /** T10（#40）：detail 通道失败时构建离线视图的快照；缺省（旧格式）不降级。 */
+  snapshot?: OfflineTaskSnapshot;
 }
 
 export interface TaskProjectionStore {
@@ -232,8 +238,18 @@ export function createTaskDetail(input: { taskId: string; runId: string }, ports
     controller?.abort();
     controller = undefined;
   };
+  const snapshotOf = (source: TaskBackendDetail): OfflineTaskSnapshot => ({
+    taskId: source.taskId,
+    runId: source.runId,
+    title: source.title,
+    attention: source.attention,
+    ...(source.archivedAt === undefined ? {} : { archivedAt: source.archivedAt }),
+    execution: source.execution,
+    watermark: source.watermark,
+    incomplete: source.incomplete,
+  });
   const persist = async (cursor: number, history: TaskBackendEvent[]): Promise<void> => {
-    await ports.store.save({ taskId: detail!.taskId, runId: input.runId, cursor, events: history.slice(-TASK_DETAIL_HISTORY_LIMIT), savedAt: new Date().toISOString() });
+    await ports.store.save({ taskId: detail!.taskId, runId: input.runId, cursor, events: history.slice(-TASK_DETAIL_HISTORY_LIMIT), savedAt: new Date().toISOString(), snapshot: snapshotOf(detail!) });
   };
   /** best-effort 强制 flush（终态/中断/close 前）：只补落未落盘的跨度，失败不抛——失败可见性由 interruption 表达。 */
   const flushPersisted = async (): Promise<void> => {
@@ -284,7 +300,28 @@ export function createTaskDetail(input: { taskId: string; runId: string }, ports
     abortStream();
     const epoch = streamEpoch;
     if (detail !== undefined) notify('syncing');
-    const fetched = await wrap(() => ports.backend.detail(input.runId));
+    let fetched: TaskBackendDetail;
+    try {
+      fetched = await wrap(() => ports.backend.detail(input.runId));
+    } catch (error) {
+      // T10（#40）离线降级：detail 通道失败而本 scope 有带快照的持久投影——渲染离线快照，
+      // 明确标记 interrupted/offline、不自动重连；联网后显式 resync() 恢复权威同步。
+      if (error instanceof TaskOfficeError && error.code !== 'TASK_OFFICE_BACKEND') throw error;
+      if (!leaseActive(lease)) throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED'); // 撤权不得伪装成离线
+      const persisted = await ports.store.load(input.runId).catch(() => undefined);
+      // store.load 挂起点期间被并发 hydrate/resync 取代则丢弃陈旧降级（R1-F43 对齐）：
+      // 否则旧 catch 落地会覆盖新权威状态、错标 offline、回退游标，close 的 flushPersisted 还会把磁盘投影回退。
+      if (epoch !== streamEpoch || !leaseActive(lease)) throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED');
+      if (persisted === undefined || persisted.snapshot === undefined) throw error;
+      detail = { ...persisted.snapshot, events: [] };
+      events = persisted.events.slice(-TASK_DETAIL_HISTORY_LIMIT);
+      committedCursor = persisted.cursor;
+      duplicateSeqs = [];
+      interruption = { reason: 'offline', message: '当前离线：以下为最近一次同步的加密缓存内容' };
+      autoResyncs = AUTO_RESYNC_LIMIT; // 离线不自动重试；显式 resync()（联网后）重置
+      notify('interrupted');
+      return current!;
+    }
     if (epoch !== streamEpoch || !leaseActive(lease)) throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED');
     detail = fetched;
     const persisted = await ports.store.load(input.runId).catch(() => undefined);

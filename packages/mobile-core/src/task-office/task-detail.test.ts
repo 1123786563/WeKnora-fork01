@@ -5,7 +5,7 @@ import type { ScopeLease } from '../runtime/types.ts';
 import { createScenarioTaskBackend } from './in-memory-task-backend.ts';
 import { createInMemoryTaskProjectionStore, createScenarioTaskDetailBackend, createScriptedTaskStream } from './in-memory-task-detail.ts';
 import { createTaskDetail } from './task-detail.ts';
-import type { TaskBackendDetail, TaskBackendEvent, TaskCommandPort, TaskDetailBackendPort, TaskProjectionStore, TaskStreamControlFrame } from './task-detail.ts';
+import type { OfflineTaskSnapshot, TaskBackendDetail, TaskBackendEvent, TaskCommandPort, TaskDetailBackendPort, TaskProjectionStore, TaskStreamControlFrame } from './task-detail.ts';
 import { createTaskOffice, TaskOfficeError } from './task-office.ts';
 
 function deferred<T>() {
@@ -891,4 +891,121 @@ test('flushQueuedIntents after the scope died fails closed with SCOPE_CHANGED', 
   revocable.revoke();
   await assert.rejects(() => handle.flushQueuedIntents(), /TASK_OFFICE_SCOPE_CHANGED/);
   handle.close('done');
+});
+
+// ── T10（#40）：detail 通道失败时的离线降级（加密投影渲染）──
+
+const snapshotOf = (source: TaskBackendDetail): OfflineTaskSnapshot => {
+  const { events: _events, ...snapshot } = source;
+  return snapshot;
+};
+
+test('offline degradation renders the persisted snapshot when the detail channel fails, and resync recovers', async () => {
+  const leaseRef: { lease?: ScopeLease } = {};
+  leaseRef.lease = leased().lease;
+  const store = createInMemoryTaskProjectionStore();
+  // 预置带快照的投影（模拟此前在线会话经 persist 落盘的形态）
+  await store.save({
+    taskId: 'task-1', runId: 'run-1', cursor: 2,
+    events: [event$(1, 'run.started'), event$(2, 'tool.started')],
+    savedAt: '2026-09-24T00:00:00Z', snapshot: snapshotOf(detail$()),
+  });
+  let reachable = false;
+  const { office } = officeWithDetail(
+    leaseRef,
+    { detail: async () => { if (!reachable) throw new Error('network unreachable'); return detail$(); }, stream: () => createScriptedTaskStream() },
+    store,
+  );
+  const handle = office.open({ taskId: 'task-1', runId: 'run-1' });
+  const view = await handle.hydrate();
+  assert.equal(view.connection, 'interrupted');
+  assert.equal(view.interruption?.reason, 'offline');
+  assert.equal(view.taskId, 'task-1');
+  assert.equal(view.title, '季度竞品报告', 'the offline card comes from the snapshot, not the network');
+  assert.equal(view.runStatus, 'running');
+  assert.deepEqual(view.timeline.map((entry) => entry.seq), [1, 2], 'the offline timeline comes from the persisted projection');
+  assert.equal(view.cursor, 2);
+  // 联网后显式 resync 恢复权威同步，offline 标记被清除
+  reachable = true;
+  const recovered = await handle.resync();
+  assert.notEqual(recovered.interruption?.reason, 'offline');
+  assert.notEqual(recovered.connection, 'interrupted');
+  handle.close();
+});
+
+test('detail failure without a snapshotted projection stays an honest error', async () => {
+  const leaseRef: { lease?: ScopeLease } = {};
+  leaseRef.lease = leased().lease;
+  const store = createInMemoryTaskProjectionStore();
+  await store.save({ taskId: 'task-1', runId: 'run-1', cursor: 0, events: [], savedAt: '2026-09-24T00:00:00Z' }); // 旧格式：无 snapshot
+  const { office } = officeWithDetail(leaseRef, { detail: async () => { throw new Error('network unreachable'); } }, store);
+  const handle = office.open({ taskId: 'task-1', runId: 'run-1' });
+  await assert.rejects(handle.hydrate(), (error: unknown) => error instanceof TaskOfficeError && error.code === 'TASK_OFFICE_BACKEND');
+  handle.close();
+});
+
+test('a revoked lease never degrades to the offline projection', async () => {
+  const leasedScope = leased();
+  const leaseRef: { lease?: ScopeLease } = {};
+  leaseRef.lease = leasedScope.lease;
+  const store = createInMemoryTaskProjectionStore();
+  await store.save({
+    taskId: 'task-1', runId: 'run-1', cursor: 2, events: [event$(1), event$(2)],
+    savedAt: '2026-09-24T00:00:00Z', snapshot: snapshotOf(detail$()),
+  });
+  const { office } = officeWithDetail(leaseRef, { detail: async () => { throw new Error('network unreachable'); } }, store);
+  const handle = office.open({ taskId: 'task-1', runId: 'run-1' });
+  leasedScope.revocable.revoke(); // 撤权发生在 detail 失败之前：不得用旧 scope 投影降级
+  await assert.rejects(handle.hydrate(), (error: unknown) => error instanceof TaskOfficeError && error.code === 'TASK_OFFICE_SCOPE_CHANGED');
+  handle.close();
+});
+
+test('persist carries the offline snapshot so a later offline hydrate can degrade', async () => {
+  const leaseRef: { lease?: ScopeLease } = {};
+  leaseRef.lease = leased().lease;
+  const store = createInMemoryTaskProjectionStore();
+  const { office } = officeWithDetail(leaseRef, { detail: async () => detail$() }, store);
+  const handle = office.open({ taskId: 'task-1', runId: 'run-1' });
+  await handle.hydrate();
+  handle.close();
+  const persisted = store.snapshot().find((row) => row.runId === 'run-1');
+  assert.ok(persisted, 'hydrate persists the projection');
+  assert.equal(persisted!.snapshot?.title, '季度竞品报告', 'the persisted row carries the offline snapshot');
+  assert.equal(persisted!.snapshot?.attention, 'required');
+  assert.equal(persisted!.snapshot?.watermark, 2);
+  assert.ok(persisted!.snapshot !== undefined);
+  assert.equal('events' in persisted!.snapshot, false, 'the snapshot must not duplicate the event log');
+});
+
+test('a stale offline degradation never overwrites a newer authoritative state (R1-F43 对齐)', async () => {
+  const leaseRef: { lease?: ScopeLease } = {};
+  leaseRef.lease = leased().lease;
+  const store = createInMemoryTaskProjectionStore();
+  await store.save({
+    taskId: 'task-1', runId: 'run-1', cursor: 2,
+    events: [event$(1, 'run.started'), event$(2, 'tool.started')],
+    savedAt: '2026-09-24T00:00:00Z', snapshot: snapshotOf(detail$()),
+  });
+  let detailCalls = 0;
+  const { office } = officeWithDetail(leaseRef, {
+    detail: async () => {
+      detailCalls += 1;
+      if (detailCalls === 1) { await settle(8); throw new Error('network unreachable'); } // A：慢且失败（迟到拒绝）
+      return detail$({ watermark: 4, events: [event$(1, 'run.started'), event$(2, 'tool.started'), event$(3, 'text.delta'), event$(4, 'text.delta')] }); // B：后发先回
+    },
+    stream: () => createScriptedTaskStream(),
+  }, store);
+  const handle = office.open({ taskId: 'task-1', runId: 'run-1' });
+  const stale = handle.hydrate();              // A 先发（挂起多个宏任务）
+  await settle(1);
+  await handle.resync();                       // B 后发先回：watermark 4 已提交并开流
+  await stale.catch(() => undefined);          // A 的 detail 失败迟到落地：降级分支必须被 epoch 守卫拒绝
+  await settle();
+  const view = handle.view()!;
+  assert.equal(view.cursor, 4, '陈旧离线降级不得回退 committedCursor');
+  assert.notEqual(view.interruption?.reason, 'offline', 'B 已成功同步，不得被迟到降级错标 offline');
+  assert.equal(view.connection, 'live');
+  handle.close();
+  await settle(); // close 的 best-effort flush 异步落盘
+  assert.equal(store.snapshot().find((row) => row.runId === 'run-1')!.cursor, 4, 'close flush 不得把磁盘投影回退到旧游标');
 });

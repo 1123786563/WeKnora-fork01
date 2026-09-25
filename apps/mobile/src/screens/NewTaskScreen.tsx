@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Button, Text, TextInput, View } from 'react-native';
 import type { NewTaskDraft, TaskAttachmentRef } from '@weknora/domain/mobile';
-import type { NewTaskViewState } from '../new-task-view.ts';
+import { OFFLINE_SUBMIT_COPY, type NewTaskViewState } from '../new-task-view.ts';
 
 /**
  * 目标文本的源头长度上限（R1 裁决第三层，主控裁决 2026-09-24，数值为工程默认）：
@@ -64,6 +64,7 @@ export function NewTaskScreen({ state, onUpdate, onSetAttachments, onToggleKnowl
       ))}
       {!state.readiness.ready && state.readiness.reason !== undefined && <Text>{state.readiness.reason}</Text>}
       {state.inFlight !== undefined && state.inFlight.phase !== 'rejected' && <Text>{`Unresolved submission ${state.inFlight.requestId} (${state.inFlight.phase}) — retrying keeps the same request id`}</Text>}
+      {state.offline && <Text>{OFFLINE_SUBMIT_COPY}</Text>}
       {state.error !== undefined && <Text>{state.error}</Text>}
       <Button title="Submit task" disabled={state.submitting || !state.readiness.ready || state.loading} onPress={() => { void onSubmit(); }} />
       <Button title="Keep draft" onPress={() => { void onCancel(); }} />

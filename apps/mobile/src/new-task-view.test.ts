@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import type { AgentOption, KnowledgeResource } from '@weknora/domain/mobile';
+import type { AgentOption, KnowledgeResource, NewTaskDraft } from '@weknora/domain/mobile';
 import { recommendLeadAgent } from '@weknora/domain/mobile';
 import type { TaskOffice, TaskStartReceipt } from '@weknora/mobile-core';
-import { createNewTaskController, type NewTaskDraftPersistence } from './new-task-view.ts';
+import { createNewTaskController, OFFLINE_SUBMIT_COPY, type NewTaskDraftPersistence } from './new-task-view.ts';
 
 function agents(): AgentOption[] {
   return [
@@ -212,5 +212,96 @@ test('refreshAgents recomputes the recommendation from the fresh catalog', async
   current = agents();
   await controller.refreshAgents();
   assert.deepEqual(controller.state().recommendation, recommendLeadAgent(agents()), 'B3-F39：目录刷新后推荐必须更新');
+  controller.dispose();
+});
+
+// ── T10（#40）：New 屏离线确认门（AC2：联网后由用户确认提交）──
+
+const LEAD_AGENT: AgentOption = {
+  id: 'agent-1', name: '通用助手', summary: '', kind: 'general',
+  capability: { state: 'supported', reason: 'scenario' },
+};
+
+test('offline submit is refused before dispatch and the draft stays saved', async () => {
+  const started: string[] = [];
+  const saved: NewTaskDraft[] = [];
+  const controller = createNewTaskController({
+    office: {
+      start: async (goal) => { started.push(goal.text); return { requestId: 'req-1', phase: 'bound', runId: 'run-1', dispatched: true }; },
+      reconcilePending: async () => [],
+    },
+    agents: async () => [LEAD_AGENT],
+    drafts: { load: async () => undefined, save: async (draft) => { saved.push(draft); } },
+    newRequestId: () => 'req-1',
+    network: { online: async () => false },
+  });
+  await controller.whenInitialized();
+  controller.update({ text: '离线目标' });
+  const receipt = await controller.submit();
+  assert.equal(receipt, undefined);
+  assert.deepEqual(started, [], 'an offline submit must never reach office.start');
+  assert.equal(controller.state().error, OFFLINE_SUBMIT_COPY);
+  assert.ok(controller.state().offline, 'the offline flag stays set on refusal');
+  assert.ok(saved.some((draft) => draft.text === '离线目标'), 'the draft must stay persisted through the offline refusal');
+  controller.dispose();
+});
+
+test('the offline flag is surfaced for the screen banner and cleared when back online', async () => {
+  let online = false;
+  const controller = createNewTaskController({
+    office: {
+      start: async () => ({ requestId: 'req-1', phase: 'bound', runId: 'run-1', dispatched: true }),
+      reconcilePending: async () => [],
+    },
+    agents: async () => [LEAD_AGENT],
+    newRequestId: () => 'req-1',
+    network: { online: async () => online },
+  });
+  await controller.whenInitialized();
+  assert.equal(controller.state().offline, true, 'initialization probes the network status');
+  controller.update({ text: '联网目标' });
+  online = true;
+  const receipt = await controller.submit();
+  assert.equal(receipt?.runId, 'run-1');
+  assert.equal(controller.state().offline, false, 'a successful online submit clears the flag');
+  controller.dispose();
+});
+
+test('no network port keeps the existing behavior (no interception)', async () => {
+  const controller = createNewTaskController({
+    office: { start: async () => ({ requestId: 'req-1', phase: 'bound', runId: 'run-1', dispatched: true }), reconcilePending: async () => [] },
+    agents: async () => [LEAD_AGENT],
+    newRequestId: () => 'req-1',
+  });
+  await controller.whenInitialized();
+  assert.equal(controller.state().offline, false);
+  controller.update({ text: '普通目标' });
+  const receipt = await controller.submit();
+  assert.equal(receipt?.runId, 'run-1');
+  controller.dispose();
+});
+
+test('a double submit while the network probe is in flight dispatches office.start only once', async () => {
+  let probesHang = false;
+  const hungProbes: Array<(online: boolean) => void> = [];
+  const office = officeDouble();
+  const controller = createNewTaskController({
+    office,
+    agents: async () => [LEAD_AGENT],
+    newRequestId: () => 'req-1',
+    network: {
+      online: () => (probesHang ? new Promise<boolean>((resolve) => { hungProbes.push(resolve); }) : Promise.resolve(true)),
+    },
+  });
+  await controller.whenInitialized(); // 初始化探测不挂起（probesHang 尚为 false）
+  controller.update({ text: '双击目标' });
+  probesHang = true; // 仅 submit 期间的探测挂起
+  const first = controller.submit();
+  const second = controller.submit(); // 探测挂起期间的同帧第二次点击：必须被 submitting 守卫拒绝
+  probesHang = false;
+  hungProbes.forEach((resolve) => { resolve(true); }); // 放行所有挂起的探测
+  const [receipt] = await Promise.all([first, second]);
+  assert.equal(receipt?.runId, 'run-1');
+  assert.equal(office.calls.length, 1, 'a double click during the probe must not create two billing Runs');
   controller.dispose();
 });

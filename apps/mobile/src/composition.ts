@@ -11,6 +11,8 @@ import type { MobileRuntime, RuntimeSnapshot, ScopedVault, Deployment } from '@w
 import { createTaskOffice, type TaskOffice } from '@weknora/mobile-core';
 import { createTaskMaterial } from '@weknora/mobile-core';
 import type { TaskMaterial } from '@weknora/mobile-core';
+import { createOfflineGate, createVaultTaskProjectionStore, guardInteractionBackend, guardLegacyTaskBackend, guardTaskBackend } from '@weknora/mobile-core';
+import { createNativeNetworkStatusIfAvailable } from './adapters/network-status.ts';
 import { createTaskOfficeRemote } from '@weknora/api-client/mobile/task-office';
 import { createMobileLegacyTaskRemote } from '@weknora/api-client/mobile/legacy-tasks';
 import { createMobileMaterialRemote } from '@weknora/api-client/mobile/materials';
@@ -40,6 +42,9 @@ import { createNativeSecureIntentLog } from './adapters/intent-log.ts';
 
 /** App 生命周期单例：Runtime 撤销 scope 时 revoke 的就是这把 vault（#32）。 */
 const nativeScopedVault = createNativeScopedVaultIfAvailable();
+/** T10（#40）离线危险动作门（run/approval/budget/external-action）：原生网络状态缺席时
+ *  gate 透传（物理离线的派发失败由传输层兜底，fail closed 不变）。 */
+const nativeOfflineGate = createOfflineGate(createNativeNetworkStatusIfAvailable());
 let nativeIntentLog: ReturnType<typeof createNativeSecureIntentLog> | undefined;
 /** 惰性解析 expo-secure-store（与 pendingOidcStore 的函数体内 require 同模式；app-smoke 环境有 stub）。 */
 const intentLogOf = (): ReturnType<typeof createNativeSecureIntentLog> => (nativeIntentLog ??= createNativeSecureIntentLog());
@@ -155,20 +160,27 @@ function taskOfficeFor(activeRuntime: MobileRuntime, origin: string, tenantId: s
   return cachePut(taskOffices, deploymentScopeKey(origin, tenantId), () => {
     const remote = createTaskOfficeRemote({ origin, request: (input) => activeRuntime.authorizedRequest(input), stream: (input, onChunk) => activeRuntime.authorizedEventStream(input, onChunk) });
     return createTaskOffice({
-      backend: remote,
+      // T10（#40）AC2：Run/审批/追问在派发前经 Offline Gate 拒绝；读通道与 detail 不拦。
+      backend: guardTaskBackend(remote, nativeOfflineGate),
+      // T10（#40）AC3（final review）：新意图 start 在 createSession 之前经 office 级门——
+      // guardTaskBackend 只拦 Start POST，createSession 是它的未拦截前置调用。
+      gate: nativeOfflineGate,
       detail: remote,
-      interactions: remote,
+      interactions: guardInteractionBackend(remote, nativeOfflineGate),
       commands: remote,
-      legacy: createMobileLegacyTaskRemote({
+      legacy: guardLegacyTaskBackend(createMobileLegacyTaskRemote({
         origin,
         request: (input) => activeRuntime.authorizedRequest(input),
         stream: (input, onChunk) => activeRuntime.authorizedEventStream(input, onChunk),
-      }),
+      }), nativeOfflineGate),
       budget: createMobileTaskBudgetRemote({ origin, request: (input) => activeRuntime.authorizedRequest(input) }),
       lease: () => activeRuntime.scopeLease(),
-      // 显式装配（R1-F20 最小修复）：App 重启恢复需要持久 TaskProjectionStore（SQLite 后端，Round 2）；
-      // 此处显式传 in-memory store 使「未注入持久化」成为组合根的显式决策而非静默回退。
-      store: createInMemoryTaskProjectionStore(),
+      // T10（#40）AC1：获准 Task 内容的加密投影经 Scoped Vault event-projection 仓储持久化；
+      // vault 缺席（无 WebCrypto/SecureStore）时显式回退 in-memory——持久化缺失是组合根的显式决策
+      // （SQLite 加密 Adapter 的存储选型 ADR 未决，B2-F23 延期项；行预算见 vault-projection-store.ts）。
+      store: nativeScopedVault
+        ? createVaultTaskProjectionStore({ vault: nativeScopedVault, lease: () => activeRuntime.scopeLease() })
+        : createInMemoryTaskProjectionStore(),
       intentLog: intentLogOf(),
       newRequestId: createNativeRequestId(),
     });

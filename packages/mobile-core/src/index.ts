@@ -34,11 +34,12 @@ export type { ScenarioTaskBackend, ScenarioTaskBackendHandlers } from './task-of
 export { createScriptedTaskStream, createScenarioTaskDetailBackend, createInMemoryTaskProjectionStore } from './task-office/in-memory-task-detail.ts';
 export { createTaskDetail, TASK_DETAIL_HISTORY_LIMIT } from './task-office/task-detail.ts';
 export type {
-  PersistedTaskProjection, TaskBackendDetail, TaskBackendEvent, TaskCommandAction, TaskCommandPort, TaskConnectionState, TaskDetailView,
+  OfflineTaskSnapshot, PersistedTaskProjection, TaskBackendDetail, TaskBackendEvent, TaskCommandAction, TaskCommandPort, TaskConnectionState, TaskDetailView,
   TaskDetailBackendPort, TaskDetailPorts, TaskHandle, TaskInterruptionReason, TaskProjectionStore, TaskStreamControlFrame,
 } from './task-office/task-detail.ts';
 export { resolveUnknownStop } from './task-office/task-intent.ts';
 export type { InterventionOutcome, InterventionReceipt, StopPhase, TaskIntent } from './task-office/task-intent.ts';
+export { createVaultTaskProjectionStore, PROJECTION_BODY_BUDGET_BYTES } from './task-office/vault-projection-store.ts';
 export type { TaskLifecycleState, TaskTimelineEntry, TaskTimelineKind, TaskTimelineSourceEvent } from './task-office/task-timeline.ts';
 export { isTerminalRunStatus, mergeEventHistory, projectTimeline, taskLifecycleOf, terminalRunStatusOf, timelineKindLabel } from './task-office/task-timeline.ts';
 export type { ScenarioTaskDetailHandlers, ScriptedTaskStream } from './task-office/in-memory-task-detail.ts';
@@ -84,3 +85,6 @@ export type {
 } from './task-office/task-budget.ts';
 export { createScenarioTaskBudgetBackend } from './task-office/in-memory-task-budget.ts';
 export type { ScenarioTaskBudgetScript } from './task-office/in-memory-task-budget.ts';
+export { createOfflineGate, OfflineGateError, OFFLINE_ACTION_BLOCKED } from './offline/offline-gate.ts';
+export type { NetworkStatusPort, OfflineActionKind, OfflineGate } from './offline/offline-gate.ts';
+export { guardInteractionBackend, guardLegacyTaskBackend, guardTaskBackend } from './offline/guarded-ports.ts';

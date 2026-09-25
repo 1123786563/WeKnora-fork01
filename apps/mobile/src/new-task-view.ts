@@ -1,5 +1,5 @@
 import { EMPTY_DRAFT, evaluateSubmitReadiness, recommendLeadAgent, type AgentOption, type KnowledgeResource, type LeadAgentRecommendation, type NewTaskDraft, type SubmitReadiness, type TaskAttachmentRef } from '@weknora/domain/mobile';
-import type { TaskOffice, TaskStartReceipt } from '@weknora/mobile-core';
+import type { NetworkStatusPort, TaskOffice, TaskStartReceipt } from '@weknora/mobile-core';
 import type { NewTaskDraftPersistence } from './new-task-drafts.ts';
 // 简报测试文件经 './new-task-view.ts' 导入该类型（brief 内部契约）；再导出以保持两个文件逐字兼容。
 export type { NewTaskDraftPersistence };
@@ -11,6 +11,8 @@ export interface NewTaskControllerPorts {
   knowledge?(): Promise<readonly KnowledgeResource[]>;
   /** 加密离线草稿（Scoped Vault）；缺省时草稿仅存活于本控制器（组合根显式决定）。 */
   drafts?: NewTaskDraftPersistence;
+  /** T10（#40）离线确认门：离线时 submit 在派发前拒绝、草稿保持保存；缺省不拦截。 */
+  network?: NetworkStatusPort;
   newRequestId(): string;
 }
 
@@ -24,6 +26,8 @@ export interface NewTaskViewState {
   submitting: boolean;
   /** 上一次未决提交（本会话失败或重启恢复），驱动「同一意图同 request_id」重入。 */
   inFlight?: TaskStartReceipt;
+  /** T10（#40）：网络离线标记（驱动 New 屏提示行；submit 的离线拒绝与此同源）。 */
+  offline: boolean;
   error?: string;
 }
 
@@ -45,6 +49,9 @@ const emptyDraft = (): NewTaskDraft => ({ ...EMPTY_DRAFT, attachments: [], knowl
 /** rejected 终态的用户可见文案（B3-F41）：服务端确定性拒绝，修改目标后重试=新请求标识。 */
 export const SUBMISSION_REJECTED_COPY = '上次提交已被服务端拒绝；修改目标后重新提交将使用新的请求标识。';
 
+/** T10（#40）离线确认门文案：草稿已加密保存，联网后由用户手动确认提交（绝不自动重放）。 */
+export const OFFLINE_SUBMIT_COPY = '当前离线：目标已加密保存为草稿；恢复联网后请手动点击提交确认发送。';
+
 /**
  * New 屏控制器（module-seams §5.4：task-form 纯策略的宿主编排，Screen 只见状态与意图）。
  * AC2 的保留语义全部落在这里：未就绪/离线/冲突一律不清草稿；只有 bound 才清空可编辑
@@ -59,6 +66,7 @@ export function createNewTaskController(ports: NewTaskControllerPorts): NewTaskC
     readiness: evaluateSubmitReadiness(emptyDraft()),
     loading: true,
     submitting: false,
+    offline: false,
   };
   let intentRequestId: string | undefined;
   let draftDirty = false; // loading 窗口内的用户编辑（B3-F40）：初始化不得覆盖
@@ -91,6 +99,7 @@ export function createNewTaskController(ports: NewTaskControllerPorts): NewTaskC
       const draft = draftDirty
         ? { ...state.draft, agentId: state.draft.agentId ?? recommendLeadAgent(agents).agent?.id ?? null }
         : (storedDraft.agentId === null ? { ...storedDraft, agentId: recommendLeadAgent(agents).agent?.id ?? null } : storedDraft);
+      const offline = ports.network !== undefined ? !(await ports.network.online().catch(() => false)) : false;
       const unresolved = pending.find((receipt) => receipt.phase !== 'bound' && receipt.phase !== 'rejected');
       if (unresolved !== undefined) intentRequestId = unresolved.requestId; // 回填（B3-F37）：重试同 ID
       publish({
@@ -99,6 +108,7 @@ export function createNewTaskController(ports: NewTaskControllerPorts): NewTaskC
         agents,
         knowledge,
         loading: false,
+        offline,
         readiness: evaluateSubmitReadiness(draft),
         recommendation: recommendLeadAgent(agents),
         ...(unresolved === undefined ? {} : { inFlight: unresolved }),
@@ -142,7 +152,19 @@ export function createNewTaskController(ports: NewTaskControllerPorts): NewTaskC
         persistDraft();
         return undefined;
       }
-      publish({ ...state, submitting: true, error: undefined });
+      // submitting 必须在首个 await（网络探测）之前同步置位（审查修复轮 1）：
+      // 检查-置位原子，同帧双击在探测挂起期间即被 submitting 守卫拒绝，绝不双派发计费 Run。
+      publish({ ...state, submitting: true, offline: false, error: undefined });
+      // T10（#40）离线确认门：派发前拒绝（AC2——离线不能执行 Run），草稿保持加密保存。
+      let offline = false;
+      if (ports.network !== undefined) {
+        offline = !(await ports.network.online().catch(() => false)); // 探测失败 = 离线（fail closed）
+      }
+      if (offline) {
+        persistDraft();
+        publish({ ...state, submitting: false, offline: true, error: OFFLINE_SUBMIT_COPY });
+        return undefined;
+      }
       try {
         const receipt = await ports.office.start(
           {

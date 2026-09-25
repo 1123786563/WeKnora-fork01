@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 import type { AgentOption, KnowledgeResource } from '@weknora/domain/mobile';
 import { activeMobileRuntime, activeTaskOffice, openScopedDraftStore } from '../composition.ts';
+import { createNativeNetworkStatusIfAvailable } from '../adapters/network-status.ts';
 import { createNativeRequestId } from '../adapters/request-id.ts';
 import { createScopedNewTaskDrafts } from '../new-task-drafts.ts';
 import { createNewTaskController, type NewTaskController, type NewTaskViewState } from '../new-task-view.ts';
@@ -19,6 +20,7 @@ export function NewTaskRouteLifecycle({ office }: { office: NonNullable<ReturnTy
     let createdController: NewTaskController | undefined;
     void (async () => {
       const draftsStore = await openScopedDraftStore();
+      const network = createNativeNetworkStatusIfAvailable();
       const created = createNewTaskController({
         office,
         agents: async () => {
@@ -32,6 +34,7 @@ export function NewTaskRouteLifecycle({ office }: { office: NonNullable<ReturnTy
           return (await handle.browse()).knowledge as KnowledgeResource[];
         },
         ...(draftsStore === undefined ? {} : { drafts: createScopedNewTaskDrafts(draftsStore.drafts) }),
+        ...(network === undefined ? {} : { network }),
         newRequestId: createNativeRequestId(),
       });
       if (disposed) { created.dispose(); return; }

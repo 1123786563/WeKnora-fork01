@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createInMemorySubmissionStore, type SubmissionStore } from '@weknora/domain/mobile';
 import { RuntimeScopeLease } from '../runtime/scope-lease.ts';
+import { createOfflineGate, OfflineGateError } from '../offline/offline-gate.ts';
+import { guardTaskBackend } from '../offline/guarded-ports.ts';
 import { createScenarioTaskBackend } from './in-memory-task-backend.ts';
 import { createInMemoryIntentLog, createTaskOffice, TaskOfficeError, type SubmissionIntentLog, type TaskBackendStartInput } from './task-office.ts';
 
@@ -287,4 +289,60 @@ test('reconcilePending skips a poisoned record and keeps the rest of the batch',
   const receipts = await office.reconcilePending(); // B3-F65：毒记录不得让整批恢复 reject
   assert.ok(receipts.some((receipt) => receipt.requestId === 'req-good'));
   assert.ok(!receipts.some((receipt) => receipt.requestId === 'req-poison'), '毒记录被跳过，不出现在回执中');
+});
+
+// T10（#40）AC3 收口（final review critical）：该路径此前仅 opt-in live 冒烟覆盖——
+// guardTaskBackend 只拦 Start POST，离线新意图先打未拦截的 createSession，以 transport
+// 错误伪装成 TASK_OFFICE_BACKEND（cause 非 OfflineGateError），结构化 'run' 判决不可达。
+// office 级 gate 端口使判决在最高稳定 Interface（office.start）直接可达。
+test('an offline start (new intent) is refused at the office gate with a structured run verdict and zero backend dispatch', async () => {
+  const { revocable, lease } = leased();
+  let online = true;
+  const gate = createOfflineGate({ online: async () => online });
+  const backend = createScenarioTaskBackend({
+    // transport 层故障按网络状态注入（smoke 同款 fetcher 语义）：离线时 createSession 若
+    // 真触网必然失败——gate 缺席时这就是把 'run' 伪装成 TASK_OFFICE_BACKEND 的故障形状。
+    createSession: async () => {
+      if (!online) throw new Error('offline: network unreachable');
+      return { sessionId: 'session-recovered' };
+    },
+  });
+  const office = createTaskOffice({
+    backend: guardTaskBackend(backend, gate), // 组合根同款：端口级 Start POST guard 仍在
+    gate,
+    lease: () => lease,
+  });
+  online = false; // 断网（smoke 同款注入语义）
+  await assert.rejects(
+    office.start(goal),
+    (error: unknown) => error instanceof OfflineGateError && error.action === 'run',
+    'the structured OFFLINE_ACTION_BLOCKED:run verdict must surface unwrapped at office.start',
+  );
+  assert.equal(backend.calls.length, 0, 'the refusal must precede even the pre-Start createSession');
+  online = true; // 恢复联网：同一 office 正常提交
+  const receipt = await office.start(goal);
+  assert.equal(receipt.phase, 'bound');
+  revocable.revoke();
+});
+
+test('an offline replay of an already-bound request still returns the zero-network receipt', async () => {
+  const { revocable, lease } = leased();
+  let online = true;
+  const gate = createOfflineGate({ online: async () => online });
+  const backend = createScenarioTaskBackend({});
+  const office = createTaskOffice({
+    backend: guardTaskBackend(backend, gate),
+    gate,
+    lease: () => lease,
+    newRequestId: () => 'req-1',
+  });
+  const first = await office.start(goal); // 联网 bound
+  assert.equal(first.phase, 'bound');
+  online = false; // 断网：幂等重放零网络，不得被 gate 拒绝（它不派发任何新东西）
+  const replay = await office.start(goal, { requestId: 'req-1' });
+  assert.equal(replay.phase, 'bound');
+  assert.equal(replay.dispatched, false);
+  assert.equal(backend.calls.filter((call) => call.kind === 'start').length, 1, 'no second POST');
+  assert.equal(backend.calls.filter((call) => call.kind === 'createSession').length, 1, 'no second session');
+  revocable.revoke();
 });
