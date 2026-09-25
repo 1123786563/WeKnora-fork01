@@ -2,7 +2,7 @@
 
 与 `docs/architecture/moves/knowledge.yaml` 的 `legacy_files` 逐条镜像（同路径、同 Pass B 任务）。
 非测试 `.go` 文件；同目录 `_test.go` 随主题文件一并搬迁。
-标 **已迁移** 的行是已物理落位 `internal/modules/knowledge/retrieval/app/...` 的迁移轨迹记录（manifest 行已按 Ruling 2026-09-23-LEGACY-ROW-OWNERSHIP 随物理迁移 commit 删除，此镜像行保留至 ib2 收口）。
+标 **已迁移** 的行是已物理落位 `internal/modules/knowledge/...`（retrieval/app、process 等模块内包）的迁移轨迹记录（manifest 行已按 Ruling 2026-09-23-LEGACY-ROW-OWNERSHIP 随物理迁移 commit 删除，此镜像行保留至 ib2 收口）。
 
 | 文件 | 导航标签 | Pass B 任务 |
 |---|---|---|
@@ -29,7 +29,7 @@
 | `internal/application/service/knowledge_delete.go` | Knowledge delete (application/service) | `B-knowledge` |
 | `internal/application/service/knowledge_delete_plan.go` | Knowledge delete plan (application/service) | `B-knowledge` |
 | `internal/application/service/knowledge_housekeeping.go` | Knowledge housekeeping (application/service) | `B-knowledge` |
-| `internal/application/service/knowledge_index_content.go` | Knowledge index content (application/service) | `B-knowledge` |
+| `internal/application/service/knowledge_index_content.go` | Knowledge index content (application/service) | `B-knowledge` — **已迁移**（K4.2 → `process/`） |
 | `internal/application/service/knowledge_post_process.go` | Knowledge post process (application/service) | `B-knowledge` |
 | `internal/application/service/knowledge_process.go` | Knowledge process (application/service) | `B-knowledge` |
 | `internal/application/service/knowledge_process_config.go` | Knowledge process config (application/service) | `B-knowledge` |
@@ -37,10 +37,10 @@
 | `internal/application/service/knowledge_replace.go` | Knowledge replace (application/service) | `B-knowledge` |
 | `internal/application/service/knowledge_span_tracker.go` | Knowledge span tracker (application/service) | `B-knowledge` |
 | `internal/application/service/knowledge_summary_refresh.go` | Knowledge summary refresh (application/service) | `B-knowledge` |
-| `internal/application/service/knowledge_task_options.go` | Knowledge task options (application/service) | `B-knowledge` |
+| `internal/application/service/knowledge_task_options.go` | Knowledge task options (application/service) | `B-knowledge` — **已迁移**（K4.2 → `process/`） |
 | `internal/application/service/knowledge_transfer.go` | Knowledge transfer (application/service) | `B-knowledge` |
 | `internal/application/service/knowledge_util.go` | Knowledge util (application/service) | `B-knowledge` |
-| `internal/application/service/knowledge_write.go` | Knowledge write (application/service) | `B-knowledge` |
+| `internal/application/service/knowledge_write.go` | Knowledge write (application/service) | `B-knowledge` — **已迁移**（K4.2 → `process/`） |
 | `internal/application/service/knowledgebase.go` | Knowledgebase (application/service) | `B-knowledge` |
 | `internal/application/service/knowledgebase_access.go` | Knowledgebase access (application/service) | `B-knowledge` — **已迁移**（K2.4 → `retrieval/app/`） |
 | `internal/application/service/knowledgebase_search.go` | Knowledgebase search (application/service) | `B-knowledge` |
@@ -70,3 +70,4 @@
 | `internal/application/service/chunk_ingest_shim.go` | Chunk ingest shim (application/service) | `B-knowledge` |
 | `internal/application/service/span_trace_seam_adapter.go` | Span trace seam adapter (application/service) | `B-knowledge` |
 | `internal/handler/chunk_ingest_shim.go` | Chunk ingest shim (handler) | `B-knowledge` |
+| `internal/application/service/kbprocess_passb_compat.go` | Knowledge process host compat (application/service) | `B-knowledge`（K4.2 新增 compat） |

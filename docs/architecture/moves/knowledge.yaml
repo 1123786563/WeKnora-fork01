@@ -140,10 +140,6 @@ legacy_files:
     reason: trapped in horizontal service package internal/application/service (Pass B file split)
     navigation_label: Knowledge housekeeping (application/service)
     passb_task: B-knowledge
-  - path: internal/application/service/knowledge_index_content.go
-    reason: trapped in horizontal service package internal/application/service (Pass B file split)
-    navigation_label: Knowledge index content (application/service)
-    passb_task: B-knowledge
   - path: internal/application/service/knowledge_post_process.go
     reason: trapped in horizontal service package internal/application/service (Pass B file split)
     navigation_label: Knowledge post process (application/service)
@@ -172,10 +168,6 @@ legacy_files:
     reason: trapped in horizontal service package internal/application/service (Pass B file split)
     navigation_label: Knowledge summary refresh (application/service)
     passb_task: B-knowledge
-  - path: internal/application/service/knowledge_task_options.go
-    reason: trapped in horizontal service package internal/application/service (Pass B file split)
-    navigation_label: Knowledge task options (application/service)
-    passb_task: B-knowledge
   - path: internal/application/service/knowledge_transfer.go
     reason: trapped in horizontal service package internal/application/service (Pass B file split)
     navigation_label: Knowledge transfer (application/service)
@@ -183,10 +175,6 @@ legacy_files:
   - path: internal/application/service/knowledge_util.go
     reason: trapped in horizontal service package internal/application/service (Pass B file split)
     navigation_label: Knowledge util (application/service)
-    passb_task: B-knowledge
-  - path: internal/application/service/knowledge_write.go
-    reason: trapped in horizontal service package internal/application/service (Pass B file split)
-    navigation_label: Knowledge write (application/service)
     passb_task: B-knowledge
   - path: internal/application/service/knowledgebase.go
     reason: trapped in horizontal service package internal/application/service (Pass B file split)
@@ -301,6 +289,10 @@ legacy_files:
   - path: internal/handler/chunk_ingest_shim.go
     reason: Pass B 过渡 shim，ib2 同 commit 随文件删行
     navigation_label: Chunk ingest shim (handler)
+    passb_task: B-knowledge
+  - path: internal/application/service/kbprocess_passb_compat.go
+    reason: Pass B 过渡 shim，ib2 同 commit 随文件删行
+    navigation_label: Knowledge process host compat (application/service)
     passb_task: B-knowledge
 owned_files:
   move_sources:

@@ -971,12 +971,6 @@ legacy_files:
     destination: internal/modules/knowledge/process
     integration_owner: ib2
     delete_barrier: ib2
-  - path: internal/application/service/knowledge_index_content.go
-    module: knowledge
-    plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
-    integration_owner: ib2
-    delete_barrier: ib2
   - path: internal/application/service/knowledge_post_process.go
     module: knowledge
     plan: 24-knowledge-process
@@ -1019,12 +1013,6 @@ legacy_files:
     destination: internal/modules/knowledge/process
     integration_owner: ib2
     delete_barrier: ib2
-  - path: internal/application/service/knowledge_task_options.go
-    module: knowledge
-    plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
-    integration_owner: ib2
-    delete_barrier: ib2
   - path: internal/application/service/knowledge_transfer.go
     module: knowledge
     plan: 24-knowledge-process
@@ -1032,12 +1020,6 @@ legacy_files:
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/knowledge_util.go
-    module: knowledge
-    plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
-    integration_owner: ib2
-    delete_barrier: ib2
-  - path: internal/application/service/knowledge_write.go
     module: knowledge
     plan: 24-knowledge-process
     destination: internal/modules/knowledge/process
@@ -2375,6 +2357,12 @@ legacy_files:
     module: knowledge
     plan: 21-knowledge-ingest
     destination: internal/modules/knowledge/ingest
+    integration_owner: ib2
+    delete_barrier: ib2
+  - path: internal/application/service/kbprocess_passb_compat.go
+    module: knowledge
+    plan: 24-knowledge-process
+    destination: internal/modules/knowledge/process
     integration_owner: ib2
     delete_barrier: ib2
 aliases:

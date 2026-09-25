@@ -1,4 +1,4 @@
-package service
+package process
 
 import (
 	"time"
@@ -8,7 +8,7 @@ import (
 	"github.com/hibiken/asynq"
 )
 
-func documentProcessTaskOptions(cfg *config.Config, extra ...asynq.Option) []asynq.Option {
+func DocumentProcessTaskOptions(cfg *config.Config, extra ...asynq.Option) []asynq.Option {
 	opts := []asynq.Option{
 		asynq.Queue(types.QueueDefault),
 		asynq.Timeout(config.DocumentProcessTimeout(cfg)),
@@ -18,7 +18,7 @@ func documentProcessTaskOptions(cfg *config.Config, extra ...asynq.Option) []asy
 	return opts
 }
 
-func knowledgePostProcessTaskOptions() []asynq.Option {
+func KnowledgePostProcessTaskOptions() []asynq.Option {
 	return []asynq.Option{
 		asynq.Queue(types.QueuePostProcess),
 		asynq.MaxRetry(3),

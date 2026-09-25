@@ -1,20 +1,21 @@
-package service
+package process
 
 import (
 	"context"
 	"strings"
 
 	apperrors "github.com/Tencent/WeKnora/internal/errors"
+	kbretrieval "github.com/Tencent/WeKnora/internal/modules/knowledge/retrieval/app"
 	"github.com/Tencent/WeKnora/internal/modules/policy/access"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )
 
-type knowledgeBaseWriteLookup interface {
+type KnowledgeBaseWriteLookup interface {
 	GetKnowledgeBaseByID(context.Context, string) (*types.KnowledgeBase, error)
 }
 
-func writeResourceIDs(ids []string) ([]string, error) {
+func WriteResourceIDs(ids []string) ([]string, error) {
 	result := make([]string, 0, len(ids))
 	seen := make(map[string]bool, len(ids))
 	for _, id := range ids {
@@ -29,7 +30,7 @@ func writeResourceIDs(ids []string) ([]string, error) {
 	return result, nil
 }
 
-func writeExecutionTenant(ctx context.Context) (uint64, error) {
+func WriteExecutionTenant(ctx context.Context) (uint64, error) {
 	tenant, ok := types.TenantIDFromContext(ctx)
 	if !ok || tenant == 0 {
 		return 0, apperrors.NewUnauthorizedError("workspace context unavailable")
@@ -39,9 +40,9 @@ func writeExecutionTenant(ctx context.Context) (uint64, error) {
 
 // Resolve persisted bindings before consuming grants. An input object's KB or
 // tenant must never select the scope used to authorize an existing resource.
-func knowledgeWriteKB(
+func KnowledgeWriteKB(
 	ctx context.Context,
-	lookup knowledgeBaseWriteLookup,
+	lookup KnowledgeBaseWriteLookup,
 	knowledge *types.Knowledge,
 ) (*types.KnowledgeBase, error) {
 	if knowledge == nil || knowledge.ID == "" || knowledge.KnowledgeBaseID == "" || knowledge.TenantID == 0 {
@@ -57,13 +58,13 @@ func knowledgeWriteKB(
 	return kb, nil
 }
 
-func loadKnowledgeWrite(
+func LoadKnowledgeWrite(
 	ctx context.Context,
 	repo interfaces.KnowledgeRepository,
-	lookup knowledgeBaseWriteLookup,
+	lookup KnowledgeBaseWriteLookup,
 	id string,
 ) (*types.Knowledge, *types.KnowledgeBase, error) {
-	tenant, err := writeExecutionTenant(ctx)
+	tenant, err := WriteExecutionTenant(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -77,30 +78,30 @@ func loadKnowledgeWrite(
 	if err := access.RejectMovingKnowledge(knowledge); err != nil {
 		return nil, nil, err
 	}
-	kb, err := knowledgeWriteKB(ctx, lookup, knowledge)
+	kb, err := KnowledgeWriteKB(ctx, lookup, knowledge)
 	if err != nil {
 		return nil, nil, err
 	}
-	if _, err := requireKBWrite(ctx, kb); err != nil {
+	if _, err := kbretrieval.RequireKBWrite(ctx, kb); err != nil {
 		return nil, nil, err
 	}
 	copyOfKnowledge := *knowledge
 	return &copyOfKnowledge, kb, nil
 }
 
-// loadKnowledgeWriteBatch validates every requested ID, including missing
+// LoadKnowledgeWriteBatch validates every requested ID, including missing
 // entries, before any caller can apply changes. Each KB needs its own grant.
-func loadKnowledgeWriteBatch(
+func LoadKnowledgeWriteBatch(
 	ctx context.Context,
 	repo interfaces.KnowledgeRepository,
-	lookup knowledgeBaseWriteLookup,
+	lookup KnowledgeBaseWriteLookup,
 	ids []string,
 ) ([]*types.Knowledge, error) {
-	ids, err := writeResourceIDs(ids)
+	ids, err := WriteResourceIDs(ids)
 	if err != nil || len(ids) == 0 {
 		return nil, err
 	}
-	tenant, err := writeExecutionTenant(ctx)
+	tenant, err := WriteExecutionTenant(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -125,11 +126,11 @@ func loadKnowledgeWriteBatch(
 			return nil, err
 		}
 		if !checked[row.KnowledgeBaseID] {
-			kb, err := knowledgeWriteKB(ctx, lookup, row)
+			kb, err := KnowledgeWriteKB(ctx, lookup, row)
 			if err != nil {
 				return nil, err
 			}
-			if _, err := requireKBWrite(ctx, kb); err != nil {
+			if _, err := kbretrieval.RequireKBWrite(ctx, kb); err != nil {
 				return nil, err
 			}
 			checked[row.KnowledgeBaseID] = true
