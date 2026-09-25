@@ -100,6 +100,9 @@ importers:
       '@weknora/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@weknora/mobile-core':
+        specifier: workspace:*
+        version: link:../../packages/mobile-core
       core-js:
         specifier: 3.41.0
         version: 3.41.0
