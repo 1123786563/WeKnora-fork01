@@ -1044,10 +1044,10 @@
     "docs/architecture/evidence/passb/b2-k-retrieval.md"
    ],
    "execution_mode": "parallel",
-   "status": "in_progress",
+   "status": "done",
    "base_sha": null,
-   "head_sha": null,
-   "review_status": "pending",
+   "head_sha": "968d3d6554cb867feb71b97fbf08137ac26bc8a8",
+   "review_status": "approved",
    "evidence_paths": [
     "docs/architecture/evidence/passb/b2-k-retrieval.md",
     "docs/plans/passb/reports/b2-k-retrieval.md",
@@ -1246,7 +1246,7 @@
     "docs/architecture/evidence/passb/b2-k-process.md"
    ],
    "execution_mode": "serial",
-   "status": "pending",
+   "status": "in_progress",
    "base_sha": null,
    "head_sha": null,
    "review_status": "pending",
@@ -1276,7 +1276,7 @@
      "verify-module-moves"
     ]
    ],
-   "notes": "K4 在 ingest/retrieval 契约稳定后串行执行（framework:118-119）；worker 注册行禁改（与 conversation-queryhistory.md:39-42 义务 3 同律，本会话验证）。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-retrieval 阻塞；解除条件：修复并 done b2-k-retrieval 后恢复。"
+   "notes": "K4 在 ingest/retrieval 契约稳定后串行执行（framework:118-119）；worker 注册行禁改（与 conversation-queryhistory.md:39-42 义务 3 同律，本会话验证）。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-retrieval 阻塞；解除条件：修复并 done b2-k-retrieval 后恢复。 BLOCKED（2026-09-25 16:10）：调度方指令——Error: 计划 docs/plans/passb/24-knowledge-process.md 审校 2 轮未通过（conventions §5 上报摘要；节点 14:55 派发后尚无任务产出——task_ids 空、实现 worktree 未建）。解除条件：修复后恢复。"
   },
   {
    "id": "b2-k-integration",
@@ -1340,7 +1340,7 @@
      "verify-module-moves"
     ]
    ],
-   "notes": "CORR-1：骨架修正——depends_on 由 [b2-k-process] 改为 [b2-k-process, b2-k-wikifaq]，K5 是 K1-K4 全量汇聚，漏 wikifaq 会丢 18 文件、wiki_fixer_scope.go 与对应别名。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-retrieval 阻塞；解除条件：修复并 done b2-k-retrieval 后恢复。"
+   "notes": "CORR-1：骨架修正——depends_on 由 [b2-k-process] 改为 [b2-k-process, b2-k-wikifaq]，K5 是 K1-K4 全量汇聚，漏 wikifaq 会丢 18 文件、wiki_fixer_scope.go 与对应别名。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-retrieval 阻塞；解除条件：修复并 done b2-k-retrieval 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-process 阻塞；解除条件：修复并 done b2-k-process 后恢复。"
   },
   {
    "id": "b2-ac-definition",
@@ -1568,10 +1568,10 @@
     "docs/architecture/evidence/passb/b2-ac-market.md"
    ],
    "execution_mode": "serial",
-   "status": "in_progress",
+   "status": "done",
    "base_sha": null,
-   "head_sha": null,
-   "review_status": "changes_requested",
+   "head_sha": "8e0ce1a670c5c584af6f9f4730df35e15a17ee36",
+   "review_status": "approved",
    "evidence_paths": [
     "docs/architecture/evidence/passb/b2-ac-market.md",
     "docs/plans/passb/reports/b2-ac-market.md",
@@ -1695,7 +1695,7 @@
      "verify-module-moves"
     ]
    ],
-   "notes": "CORR-2：骨架修正——由 [ib1] 增加 b2-k-integration 前置。datasource→knowledge 5 符号 24 调用点同宿主包未导出调用（调用方 datasource_service.go 归属 datasource.yaml:59；定义方审校 F1 修正后分两处：kb_activity 4 函数在 kb_activity.go=K2 retrieval（knowledge-retrieval.md:11）、withKnowledgeCleanup 在 knowledge_delete_plan.go:22=K4 process（knowledge-process.md:12），本会话 grep 双向实证）——依赖 b2-k-integration 同时覆盖 K2 与 K4，边不变。若 IB1 裁定共享 shim/提前导出，可回写本 DAG 降级为并行（基线变更流程）。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-retrieval 阻塞；解除条件：修复并 done b2-k-retrieval 后恢复。"
+   "notes": "CORR-2：骨架修正——由 [ib1] 增加 b2-k-integration 前置。datasource→knowledge 5 符号 24 调用点同宿主包未导出调用（调用方 datasource_service.go 归属 datasource.yaml:59；定义方审校 F1 修正后分两处：kb_activity 4 函数在 kb_activity.go=K2 retrieval（knowledge-retrieval.md:11）、withKnowledgeCleanup 在 knowledge_delete_plan.go:22=K4 process（knowledge-process.md:12），本会话 grep 双向实证）——依赖 b2-k-integration 同时覆盖 K2 与 K4，边不变。若 IB1 裁定共享 shim/提前导出，可回写本 DAG 降级为并行（基线变更流程）。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-retrieval 阻塞；解除条件：修复并 done b2-k-retrieval 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-process 阻塞；解除条件：修复并 done b2-k-process 后恢复。"
   },
   {
    "id": "b2-appconnector",
@@ -1861,7 +1861,7 @@
      "golangci-lint run --new-from-rev=\"$PASSB_BASE_SHA\" ./..."
     ]
    ],
-   "notes": "集成顺序与删除纪律按 framework:152；只删 IB2 属主例外。R0 前置检查（30 计划）：engine/protocol 所有权按 freeze:193-196 复核后方可派发 b3-r-*。计数奇偶三方一致（F5）。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-retrieval 阻塞；解除条件：修复并 done b2-k-retrieval 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。"
+   "notes": "集成顺序与删除纪律按 framework:152；只删 IB2 属主例外。R0 前置检查（30 计划）：engine/protocol 所有权按 freeze:193-196 复核后方可派发 b3-r-*。计数奇偶三方一致（F5）。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-retrieval 阻塞；解除条件：修复并 done b2-k-retrieval 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-process 阻塞；解除条件：修复并 done b2-k-process 后恢复。"
   },
   {
    "id": "b3-r-memory",
@@ -1919,7 +1919,7 @@
      "verify-module-moves"
     ]
    ],
-   "notes": "与 R2 并行（framework:165）。agentruntime→airesource 引用（审校 F6 双口径，本会话实测）：import/例外口径 32 对、包限定符口径 203 处——须改走 ib1 冻结门面，禁止保留/新增例外（framework:38）。另按 package_private_couplings：agentruntime→identity forUpdateClause（R 面消费 identity 属主未导出，identity B1 已搬，须消费其 IB1 导出端口）。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-retrieval 阻塞；解除条件：修复并 done b2-k-retrieval 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。"
+   "notes": "与 R2 并行（framework:165）。agentruntime→airesource 引用（审校 F6 双口径，本会话实测）：import/例外口径 32 对、包限定符口径 203 处——须改走 ib1 冻结门面，禁止保留/新增例外（framework:38）。另按 package_private_couplings：agentruntime→identity forUpdateClause（R 面消费 identity 属主未导出，identity B1 已搬，须消费其 IB1 导出端口）。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-retrieval 阻塞；解除条件：修复并 done b2-k-retrieval 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-process 阻塞；解除条件：修复并 done b2-k-process 后恢复。"
   },
   {
    "id": "b3-r-tools",
@@ -1976,7 +1976,7 @@
      "verify-module-moves"
     ]
    ],
-   "notes": "runtime 属主文件搬出 repository 宿主包时，为 B4-craft 消费者导出 runScope 等端口或留 shim（craft 属主文件当时仍在宿主包，会断链）。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-retrieval 阻塞；解除条件：修复并 done b2-k-retrieval 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。"
+   "notes": "runtime 属主文件搬出 repository 宿主包时，为 B4-craft 消费者导出 runScope 等端口或留 shim（craft 属主文件当时仍在宿主包，会断链）。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-retrieval 阻塞；解除条件：修复并 done b2-k-retrieval 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-process 阻塞；解除条件：修复并 done b2-k-process 后恢复。"
   },
   {
    "id": "b3-r-engine",
@@ -2037,7 +2037,7 @@
      "verify-module-moves"
     ]
    ],
-   "notes": "跨 owner 断链风险（行号/文件经审校 F5 修正，本会话复验）：(1) 调用 conversation 属主 helpers.go:471 searchResultFromMap，调用点仅 agent_stream_handler.go:431；(2) 调用 workbench 属主 artifact_download.go:442 artifactHandle 与 artifact_reference.go:56 rewriteArtifactReferences（workbench B4 才搬）；(3) agent_run.go 等自身为 conversation 属主 *Handler 方法文件。均须裁定后搬迁；Agent Run recovery 属高风险差分面（framework:40）。完整耦合清单见 top-level package_private_couplings。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-retrieval 阻塞；解除条件：修复并 done b2-k-retrieval 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。"
+   "notes": "跨 owner 断链风险（行号/文件经审校 F5 修正，本会话复验）：(1) 调用 conversation 属主 helpers.go:471 searchResultFromMap，调用点仅 agent_stream_handler.go:431；(2) 调用 workbench 属主 artifact_download.go:442 artifactHandle 与 artifact_reference.go:56 rewriteArtifactReferences（workbench B4 才搬）；(3) agent_run.go 等自身为 conversation 属主 *Handler 方法文件。均须裁定后搬迁；Agent Run recovery 属高风险差分面（framework:40）。完整耦合清单见 top-level package_private_couplings。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-retrieval 阻塞；解除条件：修复并 done b2-k-retrieval 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-process 阻塞；解除条件：修复并 done b2-k-process 后恢复。"
   },
   {
    "id": "b3-r-protocol",
@@ -2093,7 +2093,7 @@
      "verify-module-moves"
     ]
    ],
-   "notes": "审校 F4 修正：internal/handler/session/native_archive.go 定义独立的 NativeArchiveHandler struct（:16）、NewNativeArchiveHandler 构造（:23）及其方法（:27/45/58），并非共享 conversation 属主 *Handler（handler.go:24）上的方法文件——搬迁不涉及 Handler 拆分，实际风险低于早先描述。engine/protocol 所有权以 B0.3 Step 2 精确清单为准，不得出现『先合并者得』类歧义表述（freeze:187）。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-retrieval 阻塞；解除条件：修复并 done b2-k-retrieval 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。"
+   "notes": "审校 F4 修正：internal/handler/session/native_archive.go 定义独立的 NativeArchiveHandler struct（:16）、NewNativeArchiveHandler 构造（:23）及其方法（:27/45/58），并非共享 conversation 属主 *Handler（handler.go:24）上的方法文件——搬迁不涉及 Handler 拆分，实际风险低于早先描述。engine/protocol 所有权以 B0.3 Step 2 精确清单为准，不得出现『先合并者得』类歧义表述（freeze:187）。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-retrieval 阻塞；解除条件：修复并 done b2-k-retrieval 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-process 阻塞；解除条件：修复并 done b2-k-process 后恢复。"
   },
   {
    "id": "b3-r-integration",
@@ -2153,7 +2153,7 @@
      "verify-module-moves"
     ]
    ],
-   "notes": "恢复竞态属 IB3 差分必测项（framework:192）；13 条 Agent Runtime lint 已知债在本程序内清偿（framework:21）。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-retrieval 阻塞；解除条件：修复并 done b2-k-retrieval 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。"
+   "notes": "恢复竞态属 IB3 差分必测项（framework:192）；13 条 Agent Runtime lint 已知债在本程序内清偿（framework:21）。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-retrieval 阻塞；解除条件：修复并 done b2-k-retrieval 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-process 阻塞；解除条件：修复并 done b2-k-process 后恢复。"
   },
   {
    "id": "b3-conv-queryhistory",
@@ -2212,7 +2212,7 @@
      "verify-module-moves"
     ]
    ],
-   "notes": "试点复用裁定（对试点 sdd-bm-t10，任务书原文收录）：【选择性采纳——文件级移植，禁止直接 merge/cherry-pick】。依据：(1) 完整性：sdd-bm-t10（= backend-mod-wave01 + ceb2a8b3d；祖先链本会话 git merge-base --is-ancestor 实证 sdd-bm-t5⊆backend-mod-wave01⊆sdd-bm-t10）含 T4-T10 全量 queryhistory 纵向切片，本会话在 .worktrees/bm-t10 实跑 go build ./... exit=0、go test ./internal/modules/conversation/... ./internal/application/repository/ ./internal/handler/session/ ./internal/router/ 全 ok，与台账记录一致（progress.md:133）。(2) 拓扑断裂：三分支同源于 20d2350dc（Pass A 之前），main 已前进 153 提交含 Pass A 16 模块重构；git merge-tree 实测 main×sdd-bm-t10 冲突 10 文件（backend-baseline.md/backend-modules.yaml/bootstrap×3/architectureguard×4 为 add/add 双侧独立新建、container.go 为 content），main×backend-mod-wave01 冲突 9 文件（无 container.go）；t10 共改 61 文件，其中 50 个（queryhistory 子树+router 文件+legacy repo 改动+differential tests）与 main 分叉后改动零交集、可干净落地。(3) 治理资产已被取代：试点 T1/T2 的 guard/baseline/manifest 被 main 的 Pass A 演进版取代（guard check.go 266→1371 行、函数集完全不同；bootstrap 同名异构：试点为 gin 耦合 interface RouteModule/WorkerRegistry，main 为防重登记 struct WorkerRegistry+RouteSink）——冲突 9 文件取 main 侧，试点版仅按特性回收。(4) 契约冲突：brief（docs/architecture/passb/conversation-queryhistory.md:39-42）义务 3 禁改 router/task.go:326、sync_task.go:165 注册行，试点 T10 却改写了注册（RegisterSyncHandlers 返回 error、SyncTaskParams.QueryHistory 换模块参数，diff 实证），35a 须单列 router 装配评审吸收试点改法或回退为只动参数类型路径。(5) 门面不匹配：main conversation/module.go 冻结 NewModule/RegisterRoutes/RegisterWorkers/Start/Stop 门面（与 35b 会话面共享，module.go 文件注释实证），试点为嵌套 queryhistory/module.go 门面（无 Start/Stop、依赖试点版 bootstrap.WorkerRegistry 接口）→ 移植后需适配并由 coordinator 裁定嵌套/折叠方案。(6) T11（legacy 删除）未执行、试点 t10 双栈并存（legacy provider 惰性保留，progress.md:134）——删除恰为 b3 核心义务（横向包纪律），试点计划 T11 文本（wave0-wave1.md:890-902）直接作蓝本。另注：任务书称 main@29c1e5635，实际 HEAD 为 b1a3d6dd8（多 2 个纯前端 parity 提交，不触及试点 61 文件），全部实验按 b1a3d6dd8 执行。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-retrieval 阻塞；解除条件：修复并 done b2-k-retrieval 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。"
+   "notes": "试点复用裁定（对试点 sdd-bm-t10，任务书原文收录）：【选择性采纳——文件级移植，禁止直接 merge/cherry-pick】。依据：(1) 完整性：sdd-bm-t10（= backend-mod-wave01 + ceb2a8b3d；祖先链本会话 git merge-base --is-ancestor 实证 sdd-bm-t5⊆backend-mod-wave01⊆sdd-bm-t10）含 T4-T10 全量 queryhistory 纵向切片，本会话在 .worktrees/bm-t10 实跑 go build ./... exit=0、go test ./internal/modules/conversation/... ./internal/application/repository/ ./internal/handler/session/ ./internal/router/ 全 ok，与台账记录一致（progress.md:133）。(2) 拓扑断裂：三分支同源于 20d2350dc（Pass A 之前），main 已前进 153 提交含 Pass A 16 模块重构；git merge-tree 实测 main×sdd-bm-t10 冲突 10 文件（backend-baseline.md/backend-modules.yaml/bootstrap×3/architectureguard×4 为 add/add 双侧独立新建、container.go 为 content），main×backend-mod-wave01 冲突 9 文件（无 container.go）；t10 共改 61 文件，其中 50 个（queryhistory 子树+router 文件+legacy repo 改动+differential tests）与 main 分叉后改动零交集、可干净落地。(3) 治理资产已被取代：试点 T1/T2 的 guard/baseline/manifest 被 main 的 Pass A 演进版取代（guard check.go 266→1371 行、函数集完全不同；bootstrap 同名异构：试点为 gin 耦合 interface RouteModule/WorkerRegistry，main 为防重登记 struct WorkerRegistry+RouteSink）——冲突 9 文件取 main 侧，试点版仅按特性回收。(4) 契约冲突：brief（docs/architecture/passb/conversation-queryhistory.md:39-42）义务 3 禁改 router/task.go:326、sync_task.go:165 注册行，试点 T10 却改写了注册（RegisterSyncHandlers 返回 error、SyncTaskParams.QueryHistory 换模块参数，diff 实证），35a 须单列 router 装配评审吸收试点改法或回退为只动参数类型路径。(5) 门面不匹配：main conversation/module.go 冻结 NewModule/RegisterRoutes/RegisterWorkers/Start/Stop 门面（与 35b 会话面共享，module.go 文件注释实证），试点为嵌套 queryhistory/module.go 门面（无 Start/Stop、依赖试点版 bootstrap.WorkerRegistry 接口）→ 移植后需适配并由 coordinator 裁定嵌套/折叠方案。(6) T11（legacy 删除）未执行、试点 t10 双栈并存（legacy provider 惰性保留，progress.md:134）——删除恰为 b3 核心义务（横向包纪律），试点计划 T11 文本（wave0-wave1.md:890-902）直接作蓝本。另注：任务书称 main@29c1e5635，实际 HEAD 为 b1a3d6dd8（多 2 个纯前端 parity 提交，不触及试点 61 文件），全部实验按 b1a3d6dd8 执行。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-retrieval 阻塞；解除条件：修复并 done b2-k-retrieval 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-process 阻塞；解除条件：修复并 done b2-k-process 后恢复。"
   },
   {
    "id": "b3-conv-session",
@@ -2272,7 +2272,7 @@
      "verify-module-moves"
     ]
    ],
-   "notes": "CORR-3：framework:179 允许 35a/35b application 层并行（装配串行、QueryHistory 先集成），但 handler/session 宿主包 agentcatalog↔conversation 未导出互耦 + module.go 门面共享，DAG 层保守串行；35 计划内部可安排 application 层并行预写。session stream 属高风险差分面（framework:40）。conversation 侧完整耦合面（package_private_couplings）：出向 →knowledge 6 符号 11 调用点、→execution browserSkillScope/resolveTenantSandboxForConfig 10 调用点、→agentcatalog agentRequiresRerankModel/skillsForRun；入向 agentcatalog→conversation 7 符号 10 调用点、knowledge→conversation getParserEngineOverridesFromContext（attachment_processor.go:334）/isValidFileType、craft→conversation safeFileName（artifact_collector.go:518=conversation.yaml:35）、execution→conversation resolveSandboxForExecution——本节点是 conversation 属主符号导出化与 *Handler（handler.go 67 字段）拆分收口的最终落点。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-retrieval 阻塞；解除条件：修复并 done b2-k-retrieval 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。"
+   "notes": "CORR-3：framework:179 允许 35a/35b application 层并行（装配串行、QueryHistory 先集成），但 handler/session 宿主包 agentcatalog↔conversation 未导出互耦 + module.go 门面共享，DAG 层保守串行；35 计划内部可安排 application 层并行预写。session stream 属高风险差分面（framework:40）。conversation 侧完整耦合面（package_private_couplings）：出向 →knowledge 6 符号 11 调用点、→execution browserSkillScope/resolveTenantSandboxForConfig 10 调用点、→agentcatalog agentRequiresRerankModel/skillsForRun；入向 agentcatalog→conversation 7 符号 10 调用点、knowledge→conversation getParserEngineOverridesFromContext（attachment_processor.go:334）/isValidFileType、craft→conversation safeFileName（artifact_collector.go:518=conversation.yaml:35）、execution→conversation resolveSandboxForExecution——本节点是 conversation 属主符号导出化与 *Handler（handler.go 67 字段）拆分收口的最终落点。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-retrieval 阻塞；解除条件：修复并 done b2-k-retrieval 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-process 阻塞；解除条件：修复并 done b2-k-process 后恢复。"
   },
   {
    "id": "b3-channels",
@@ -2328,7 +2328,7 @@
      "verify-module-moves"
     ]
    ],
-   "notes": "application 层可与 R1/R2、conversation 并行，集成等 conversation session API（framework:186）；DAG 取集成视角串行。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-retrieval 阻塞；解除条件：修复并 done b2-k-retrieval 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。"
+   "notes": "application 层可与 R1/R2、conversation 并行，集成等 conversation session API（framework:186）；DAG 取集成视角串行。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-retrieval 阻塞；解除条件：修复并 done b2-k-retrieval 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-process 阻塞；解除条件：修复并 done b2-k-process 后恢复。"
   },
   {
    "id": "b3-insights",
@@ -2382,7 +2382,7 @@
      "verify-module-moves"
     ]
    ],
-   "notes": "可与 R1/R2、conversation application 层并行（framework:186）。analytics 方言测试属 IB3 必测（framework:192）。未导出耦合：insights→knowledge deleteReferencedKnowledge（knowledge_delete_plan.go:36，K4 已导出，package_private_couplings）。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-retrieval 阻塞；解除条件：修复并 done b2-k-retrieval 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。"
+   "notes": "可与 R1/R2、conversation application 层并行（framework:186）。analytics 方言测试属 IB3 必测（framework:192）。未导出耦合：insights→knowledge deleteReferencedKnowledge（knowledge_delete_plan.go:36，K4 已导出，package_private_couplings）。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-retrieval 阻塞；解除条件：修复并 done b2-k-retrieval 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-process 阻塞；解除条件：修复并 done b2-k-process 后恢复。"
   },
   {
    "id": "ib3",
@@ -2455,7 +2455,7 @@
      "golangci-lint run --new-from-rev=\"$PASSB_BASE_SHA\" ./..."
     ]
    ],
-   "notes": "集成顺序按 framework:192；worker/route/hook 奇偶三方一致（F5）；只删 IB3 属主例外。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-retrieval 阻塞；解除条件：修复并 done b2-k-retrieval 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。"
+   "notes": "集成顺序按 framework:192；worker/route/hook 奇偶三方一致（F5）；只删 IB3 属主例外。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-retrieval 阻塞；解除条件：修复并 done b2-k-retrieval 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-process 阻塞；解除条件：修复并 done b2-k-process 后恢复。"
   },
   {
    "id": "b4-workbench",
@@ -2513,7 +2513,7 @@
      "verify-module-moves"
     ]
    ],
-   "notes": "与 craft 并行的前提：B0/IB3 冻结共享 Task/Artifact 契约且 handler/session 文件所有权精确不相交（framework:204）。测试夹具随迁：workbench 测试→agentruntime(7)/commercial(4)/execution(1)（架构事实）。未导出耦合（package_private_couplings）：入向 agentruntime→workbench artifactHandle（artifact_download.go:442）/rewriteArtifactReferences（artifact_reference.go:56，workbench.yaml:67）、airesource→workbench 与 agentcatalog→workbench isUniqueViolation、craft→workbench paramSessionID；出向 workbench→airesource isUniqueViolation——isUniqueViolation 重复 helper 族在 IB3 收口为单一实现。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-retrieval 阻塞；解除条件：修复并 done b2-k-retrieval 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。"
+   "notes": "与 craft 并行的前提：B0/IB3 冻结共享 Task/Artifact 契约且 handler/session 文件所有权精确不相交（framework:204）。测试夹具随迁：workbench 测试→agentruntime(7)/commercial(4)/execution(1)（架构事实）。未导出耦合（package_private_couplings）：入向 agentruntime→workbench artifactHandle（artifact_download.go:442）/rewriteArtifactReferences（artifact_reference.go:56，workbench.yaml:67）、airesource→workbench 与 agentcatalog→workbench isUniqueViolation、craft→workbench paramSessionID；出向 workbench→airesource isUniqueViolation——isUniqueViolation 重复 helper 族在 IB3 收口为单一实现。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-retrieval 阻塞；解除条件：修复并 done b2-k-retrieval 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-process 阻塞；解除条件：修复并 done b2-k-process 后恢复。"
   },
   {
    "id": "b4-craft",
@@ -2570,7 +2570,7 @@
      "verify-module-moves"
     ]
    ],
-   "notes": "Craft Artifact 行为属高风险差分面（framework:40）。craft 测试→commercial(1) 夹具随迁（架构事实）。未导出耦合（package_private_couplings）：craft→agentruntime runScope/toolCallScope/runView 5 调用点（repository/agent_run.go，B3 已导出）、craft→conversation safeFileName（artifact_collector.go:518=conversation.yaml:35，B3 已导出）、craft→workbench paramSessionID（workbench 同期搬迁，IB4 收口）。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-retrieval 阻塞；解除条件：修复并 done b2-k-retrieval 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。"
+   "notes": "Craft Artifact 行为属高风险差分面（framework:40）。craft 测试→commercial(1) 夹具随迁（架构事实）。未导出耦合（package_private_couplings）：craft→agentruntime runScope/toolCallScope/runView 5 调用点（repository/agent_run.go，B3 已导出）、craft→conversation safeFileName（artifact_collector.go:518=conversation.yaml:35，B3 已导出）、craft→workbench paramSessionID（workbench 同期搬迁，IB4 收口）。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-retrieval 阻塞；解除条件：修复并 done b2-k-retrieval 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-process 阻塞；解除条件：修复并 done b2-k-process 后恢复。"
   },
   {
    "id": "b4-systempolicy",
@@ -2628,7 +2628,7 @@
      "verify-module-moves"
     ]
    ],
-   "notes": "housekeeping：knowledge_housekeeping.go 业务清扫规则归 Knowledge，System 只经窄端口调度（freeze:209，禁双实现）。审校 F3 修正：system→identity 的未导出调用仅 auditActor（tenant_member.go:162=identity.yaml:69，IB1 已导出）；isStorageProviderAllowed 定义于 internal/handler/storage_allowlist.go:13、归属 policy.yaml:27=本节点属主文件（policy 1 条 legacy），其跨 owner 消费方处理随本节点。channels→policy 例外（ipclass/ratelimit 2 对）随本节点删除或改走门面。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-retrieval 阻塞；解除条件：修复并 done b2-k-retrieval 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。"
+   "notes": "housekeeping：knowledge_housekeeping.go 业务清扫规则归 Knowledge，System 只经窄端口调度（freeze:209，禁双实现）。审校 F3 修正：system→identity 的未导出调用仅 auditActor（tenant_member.go:162=identity.yaml:69，IB1 已导出）；isStorageProviderAllowed 定义于 internal/handler/storage_allowlist.go:13、归属 policy.yaml:27=本节点属主文件（policy 1 条 legacy），其跨 owner 消费方处理随本节点。channels→policy 例外（ipclass/ratelimit 2 对）随本节点删除或改走门面。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-retrieval 阻塞；解除条件：修复并 done b2-k-retrieval 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-process 阻塞；解除条件：修复并 done b2-k-process 后恢复。"
   },
   {
    "id": "ib4",
@@ -2698,7 +2698,7 @@
      "golangci-lint run --new-from-rev=\"$PASSB_BASE_SHA\" ./..."
     ]
    ],
-   "notes": "集成顺序 Workbench→Craft→System+Policy（framework:210）；B5 台账必须用实际剩余路径生成，不得预发明（framework:235）。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-retrieval 阻塞；解除条件：修复并 done b2-k-retrieval 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。"
+   "notes": "集成顺序 Workbench→Craft→System+Policy（framework:210）；B5 台账必须用实际剩余路径生成，不得预发明（framework:235）。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-retrieval 阻塞；解除条件：修复并 done b2-k-retrieval 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-process 阻塞；解除条件：修复并 done b2-k-process 后恢复。"
   },
   {
    "id": "b5",
@@ -2773,7 +2773,7 @@
      "golangci-lint run ./..."
     ]
    ],
-   "notes": "『unused but harmless』兼容包不算完成（framework:41）；零债断言用实际剩余路径（framework:235）；migration checksum/count 与 route/worker/hook 奇偶三方一致（F5）。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-retrieval 阻塞；解除条件：修复并 done b2-k-retrieval 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。"
+   "notes": "『unused but harmless』兼容包不算完成（framework:41）；零债断言用实际剩余路径（framework:235）；migration checksum/count 与 route/worker/hook 奇偶三方一致（F5）。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-retrieval 阻塞；解除条件：修复并 done b2-k-retrieval 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-process 阻塞；解除条件：修复并 done b2-k-process 后恢复。"
   }
  ]
 }
