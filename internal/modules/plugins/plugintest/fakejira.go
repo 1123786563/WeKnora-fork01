@@ -40,10 +40,11 @@ type JiraIssue struct {
 
 // jiraAccount 是一名成员的凭据与账本。
 type jiraAccount struct {
-	Email      string
-	APIToken   string
-	Issues     []JiraIssue
-	SearchDeny int // 0=正常；非 0 = /search/jql 对该账本返回此状态码（403/401 注入）
+	Email       string
+	APIToken    string
+	Issues      []JiraIssue
+	SearchDeny  int           // 0=正常；非 0 = /search/jql 对该账本返回此状态码（403/401 注入）
+	MyselfDelay time.Duration // /myself 对该账本的响应延迟（慢凭据验证注入，T13-OCR1-F4 回归）
 }
 
 // FakeJira 是按凭据分账本的 fake Jira REST v3 服务。
@@ -126,6 +127,25 @@ func (j *FakeJira) SetSearchDelay(d time.Duration) {
 	j.delay = d
 }
 
+// SetMyselfDelay 注入该账本 /myself 的响应延迟——替身授权页的凭据验证
+// （credentialCheck 出站）变慢，供「慢验证不得串行化替身其他链路」的回归
+// 测试使用（T13-OCR1-F4）。按账本注入，避免波及其他成员的正常验证。
+func (j *FakeJira) SetMyselfDelay(email string, d time.Duration) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	for _, account := range j.accounts {
+		if account.Email == email {
+			account.MyselfDelay = d
+			return
+		}
+	}
+}
+
+// verifyCredentialClient 给 /myself 验证出站一个上界（T13-OCR1-F4 第二层
+// 防御）：credentialCheck 是替身 OAuth 端点的同步路径，无界出站会挂起整条
+// 授权链；本地 fake 正常响应在毫秒级，10s 足够宽。
+var verifyCredentialClient = &http.Client{Timeout: 10 * time.Second}
+
 // VerifyCredentials 以 Basic(email:APIToken) 调 /myself 验证凭据：200 视为
 // 有效；401 返回凭据错误（替身授权页发码前的真实验证，T04 同语义）。
 func (j *FakeJira) VerifyCredentials(email, apiToken string) error {
@@ -134,7 +154,7 @@ func (j *FakeJira) VerifyCredentials(email, apiToken string) error {
 		return fmt.Errorf("build myself request: %w", err)
 	}
 	req.Header.Set("Authorization", jiraBasicAuth(email, apiToken))
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := verifyCredentialClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("verify jira credentials: %w", err)
 	}
@@ -149,6 +169,10 @@ func (j *FakeJira) handle(w http.ResponseWriter, r *http.Request) {
 	j.calls.Add(1)
 	j.mu.Lock()
 	account := j.accounts[r.Header.Get("Authorization")]
+	var myselfDelay time.Duration
+	if account != nil {
+		myselfDelay = account.MyselfDelay
+	}
 	j.mu.Unlock()
 	if account == nil {
 		w.WriteHeader(http.StatusUnauthorized)
@@ -157,6 +181,9 @@ func (j *FakeJira) handle(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.URL.Path {
 	case "/rest/api/3/myself":
+		if myselfDelay > 0 {
+			time.Sleep(myselfDelay)
+		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"emailAddress": account.Email,
 			"displayName":  account.Email,

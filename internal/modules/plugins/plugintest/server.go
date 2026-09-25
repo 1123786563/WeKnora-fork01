@@ -511,22 +511,49 @@ func (o *oauthStub) startAuthorization(req authzRequest) error {
 // credentialCheck is configured (enableWithCheck) it is the authority;
 // otherwise the in-table users comparison applies. On success the submitted
 // credential is recorded in sessionCredentials for tool-side egress.
+//
+// Lock discipline (T13-OCR1-F4): credentialCheck is an UNBOUNDED egress (the
+// Jira-shaped stand-in calls fake Jira /myself over real HTTP). It must run
+// OUTSIDE o.mu — holding the lock across it would serialize lookupMember
+// (every /mcp request and tools/call authz), startAuthorization, exchangeCode/
+// refresh and sessionCredential behind one slow verification. The pattern
+// mirrors exchangeCode: map operations under the lock, verification outside.
+// The state is re-checked under the lock before minting, so a concurrent
+// double-submit of the same state still yields exactly one code.
 func (o *oauthStub) submitCredentials(state, username, password string) (string, error) {
+	// 快查 state 在册（锁内只做 map 读；未知/已消费 state 不触发任何出站）。
+	o.mu.Lock()
+	_, ok := o.pendingAuths[state]
+	check := o.credentialCheck
+	var expected string
+	if check == nil {
+		var known bool
+		expected, known = o.users[username]
+		if !known {
+			o.mu.Unlock()
+			return "", fmt.Errorf("invalid credentials")
+		}
+	}
+	o.mu.Unlock()
+	if !ok {
+		return "", fmt.Errorf("unknown or already-consumed state")
+	}
+
+	// 凭据验证在锁外执行（可能出站，无上界回调不得持锁）。
+	if check != nil {
+		if err := check(username, password); err != nil {
+			return "", err // state 保留，可重试（与 T04 同语义）
+		}
+	} else if expected != password {
+		return "", fmt.Errorf("invalid credentials") // state 保留，可重试
+	}
+
+	// 重锁消费 state 并发码；并发同 state 双提交只有一个能消费成功。
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	req, ok := o.pendingAuths[state]
 	if !ok {
 		return "", fmt.Errorf("unknown or already-consumed state")
-	}
-	if o.credentialCheck != nil {
-		if err := o.credentialCheck(username, password); err != nil {
-			return "", err
-		}
-	} else {
-		credential, known := o.users[username]
-		if !known || credential != password {
-			return "", fmt.Errorf("invalid credentials")
-		}
 	}
 	delete(o.pendingAuths, state)
 	code := randomToken()

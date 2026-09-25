@@ -180,40 +180,65 @@ func jiraE2EListTools(
 
 // authorizeJiraMember 驱动真实成员 OAuth 流（与 T11 authorizeMember 同构，
 // 凭据换成成员的 Jira 凭据：POST username=email、password=apiToken——替身
-// 经 fake Jira /myself 真实验证后才发一次性 code）。
-func (st *jiraE2EStack) authorizeJiraMember(t *testing.T, principalID, email, apiToken string) {
-	t.Helper()
+// 经 fake Jira /myself 真实验证后才发一次性 code）。返回 error 而非内部
+// require：供并发测试在 goroutine 中安全调用（t.FailNow 只能在测试
+// goroutine 里执行）。
+func (st *jiraE2EStack) authorizeJiraMember(principalID, email, apiToken string) error {
 	principal := memberPrincipal(principalID)
 	ctx := context.Background()
 	authURL, _, err := st.oauthManager.StartAuthorization(
 		ctx, st.service, st.tenantID, principal, "http://127.0.0.1:1/cb", "/")
-	require.NoError(t, err)
+	if err != nil {
+		return fmt.Errorf("start authorization: %w", err)
+	}
 
 	u, err := url.Parse(authURL)
-	require.NoError(t, err)
+	if err != nil {
+		return fmt.Errorf("parse authorize url: %w", err)
+	}
 	state := u.Query().Get("state")
-	require.NotEmpty(t, state)
-	require.NotEmpty(t, u.Query().Get("code_challenge"), "PKCE code_challenge required")
+	if state == "" {
+		return fmt.Errorf("authorize url carries no state")
+	}
+	if u.Query().Get("code_challenge") == "" {
+		return fmt.Errorf("PKCE code_challenge required")
+	}
 
 	noRedirect := &http.Client{
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}
 	page, err := noRedirect.Get(u.String())
-	require.NoError(t, err)
-	require.Equal(t, http.StatusOK, page.StatusCode, "authorize page must render")
+	if err != nil {
+		return fmt.Errorf("get authorize page: %w", err)
+	}
+	if page.StatusCode != http.StatusOK {
+		return fmt.Errorf("authorize page must render, got HTTP %d", page.StatusCode)
+	}
 
 	form := url.Values{"state": {state}, "username": {email}, "password": {apiToken}}
 	resp, err := noRedirect.PostForm(u.String(), form)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusFound, resp.StatusCode, "member consent must 302 back with a code")
+	if err != nil {
+		return fmt.Errorf("submit credentials: %w", err)
+	}
+	if resp.StatusCode != http.StatusFound {
+		return fmt.Errorf("member consent must 302 back with a code, got HTTP %d", resp.StatusCode)
+	}
 	location, err := url.Parse(resp.Header.Get("Location"))
-	require.NoError(t, err)
+	if err != nil {
+		return fmt.Errorf("parse consent redirect: %w", err)
+	}
 	code := location.Query().Get("code")
-	require.NotEmpty(t, code)
-	require.Equal(t, state, location.Query().Get("state"))
+	if code == "" {
+		return fmt.Errorf("successful authorization must issue a code")
+	}
+	if got := location.Query().Get("state"); got != state {
+		return fmt.Errorf("state must round-trip verbatim, got %q", got)
+	}
 
-	_, _, err = st.oauthManager.CompleteAuthorization(ctx, state, code)
-	require.NoError(t, err)
+	if _, _, err := st.oauthManager.CompleteAuthorization(ctx, state, code); err != nil {
+		return fmt.Errorf("complete authorization: %w", err)
+	}
+	return nil
 }
 
 // askJiraTool 是成员在对话中问待办的完整动作：发现目录 → describe 拿
@@ -292,7 +317,7 @@ func TestJiraTodoVerticalEndToEnd(t *testing.T) {
 
 	// 2) A 完成真实 OAuth（提交 Jira 凭据，替身经 fake Jira /myself 验证）
 	//    → 对话内重试 → 成功且只含本人本周事项与 /browse/<KEY> 来源链接。
-	st.authorizeJiraMember(t, "user-a", emailA, tokenA)
+	require.NoError(t, st.authorizeJiraMember("user-a", emailA, tokenA))
 	granted := st.askJiraTool(t, "user-a", map[string]any{})
 	require.True(t, granted.Success, granted.Error)
 	// 行格式与示例服务 formatIssues 逐段一致：[KEY] 标题 · 状态 X · 截止 Y · URL
@@ -305,7 +330,7 @@ func TestJiraTodoVerticalEndToEnd(t *testing.T) {
 		"the conversation result must carry the untrusted-source prefix")
 
 	// 3) 成员 B 授权后：只见 B-201；A 的结果不受影响（两成员数据隔离）。
-	st.authorizeJiraMember(t, "user-b", emailB, tokenB)
+	require.NoError(t, st.authorizeJiraMember("user-b", emailB, tokenB))
 	outB := st.askJiraTool(t, "user-b", map[string]any{})
 	require.True(t, outB.Success, outB.Error)
 	require.Contains(t, outB.Output,
@@ -347,7 +372,7 @@ func TestJiraFailureModesDoNotFabricate(t *testing.T) {
 			inject(jira, email)
 		}
 		st := newJiraE2EStack(t, db, 1, jira, opts...)
-		st.authorizeJiraMember(t, "user-a", email, apiToken)
+		require.NoError(t, st.authorizeJiraMember("user-a", email, apiToken))
 		return st, email
 	}
 
@@ -397,7 +422,7 @@ func TestJiraEmptyWeekIsEmpty(t *testing.T) {
 	email, apiToken := jiraE2ECredential(t)
 	jira.AddAccount(t, email, apiToken) // 本周无任何事项
 	st := newJiraE2EStack(t, db, 1, jira)
-	st.authorizeJiraMember(t, "user-a", email, apiToken)
+	require.NoError(t, st.authorizeJiraMember("user-a", email, apiToken))
 
 	result := st.askJiraTool(t, "user-a", map[string]any{})
 	require.True(t, result.Success, result.Error, "an empty week is a legal success, not an error")
@@ -422,7 +447,7 @@ func TestModelCannotInjectAccountParameters(t *testing.T) {
 		plugintest.JiraIssue{Key: "A-101", Summary: "成员A的本周任务", Status: "进行中", Due: jiraE2EWeekday(4)},
 	)
 	st := newJiraE2EStack(t, db, 1, jira)
-	st.authorizeJiraMember(t, "user-a", email, apiToken)
+	require.NoError(t, st.authorizeJiraMember("user-a", email, apiToken))
 	before := jira.Calls()
 
 	result := st.askJiraTool(t, "user-a", map[string]any{
@@ -440,4 +465,52 @@ func TestModelCannotInjectAccountParameters(t *testing.T) {
 	// 该次调用不得发起任何 Jira 请求。
 	require.Equal(t, before, jira.Calls(),
 		"a schema-rejected call must not reach Jira at all")
+}
+
+// ---------------------------------------------------------------------------
+// OCR 修复轮（T13-OCR1-F4）：慢凭据验证不得串行化替身的其他 OAuth/鉴权链。
+// ---------------------------------------------------------------------------
+
+// TestJiraSlowCredentialCheckDoesNotBlockOtherMembers 钉住替身 OAuth 的锁
+// 纪律：submitCredentials 的凭据验证（credentialCheck——对 fake Jira
+// /myself 的真实 HTTP 出站）必须在 oauthStub.mu 之外执行，否则一次慢验证
+// 会把 lookupMember（每个 /mcp 请求与 tools/call 鉴权）、startAuthorization
+// （GET /authorize）、exchangeCode/refresh（/token）、sessionCredential
+// （每次工具调用）全部串行化。场景：A 的 /myself 延迟 1.5s 期间，B 的完整
+// 授权（GET /authorize → POST 凭据 → /token 交换）必须远早于 A 的验证
+// 完成——B 授权耗时 < 1s 即为不阻塞（持锁实现下 B 至少要等 A 剩余的
+// ~1.3s）。
+func TestJiraSlowCredentialCheckDoesNotBlockOtherMembers(t *testing.T) {
+	db := openPluginDB(t)
+	jira := plugintest.NewFakeJira(t)
+	emailA, tokenA := jiraE2ECredential(t)
+	emailB, tokenB := jiraE2ECredential(t)
+	jira.AddAccount(t, emailA, tokenA,
+		plugintest.JiraIssue{Key: "A-101", Summary: "成员A的本周任务", Status: "进行中", Due: jiraE2EWeekday(4)})
+	jira.AddAccount(t, emailB, tokenB,
+		plugintest.JiraIssue{Key: "B-201", Summary: "成员B的本周任务", Status: "进行中", Due: jiraE2EWeekday(4)})
+	jira.SetMyselfDelay(emailA, 1500*time.Millisecond) // A 的凭据验证慢
+	st := newJiraE2EStack(t, db, 1, jira)
+
+	// A 在后台发起授权：POST /authorize 触发 credentialCheck → 慢 /myself。
+	errA := make(chan error, 1)
+	go func() { errA <- st.authorizeJiraMember("user-a", emailA, tokenA) }()
+	// 等 A 的慢验证已经占住出站（若实现持锁，此刻 o.mu 被 A 占着）。
+	time.Sleep(200 * time.Millisecond)
+
+	// B 的完整授权必须不被 A 的慢验证阻塞。
+	bStart := time.Now()
+	require.NoError(t, st.authorizeJiraMember("user-b", emailB, tokenB),
+		"member B's authorization must complete while A's slow verification is in flight")
+	require.Less(t, time.Since(bStart), time.Second,
+		"a slow credential check must not serialize other members' OAuth traffic (lock held across egress)")
+
+	// A 的授权最终也成功（慢但正确）。
+	require.NoError(t, <-errA)
+
+	// 两成员数据隔离不受并发影响：各自能查到本人事项。
+	outA := st.askJiraTool(t, "user-a", map[string]any{})
+	require.True(t, outA.Success, outA.Error)
+	require.Contains(t, outA.Output, "A-101")
+	require.NotContains(t, outA.Output, "B-201")
 }
