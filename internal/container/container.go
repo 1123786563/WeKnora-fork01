@@ -534,7 +534,10 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// C01 production assembly (coordinator-assigned C06 integration item):
 	// the knowledge material build mounted with its REAL ACL ports. Without
 	// the craft runtime dial the provider answers nil — fail-closed, the
-	// same boundary the executor and snapshot service keep.
+	// same boundary the executor and snapshot service keep. T05 adds the
+	// durable record repository + current Task authority injection and the
+	// runtime/HTTP wiring (see craft_knowledge_wiring.go).
+	must(container.Provide(repository.NewCraftKnowledgeRecordRepository))
 	must(container.Provide(newCraftKnowledgeService))
 	// O03/O04 integration wiring (coordinator-assigned): the craft lifecycle
 	// service (guards, tombstone, sweep), the O01 usage ledger read side and
@@ -1055,6 +1058,13 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// Handler is fully constructible here — the router below resolves it).
 	must(container.Invoke(registerCraftAccessFeature))
 	must(container.Invoke(registerCraftInputFeature))
+	// T05 wiring: the per-Run knowledge package chain on the local craft
+	// runtime (H1 builder + H2 exact verifier + dispatch-time current-
+	// authority recheck) and the knowledge read-surface feature routes. Both
+	// run before router construction and fail application setup closed when
+	// a required port is missing.
+	must(container.Invoke(wireCraftKnowledgeRuntime))
+	must(container.Invoke(registerCraftKnowledgeFeature))
 	must(container.Invoke(wireCraftSessionTombstone))
 
 	// Router configuration
@@ -2633,11 +2643,23 @@ func newUsageRecorderService(repo interfaces.UsageRepository) interfaces.UsageRe
 // resolves the workspace-relative paths the material manifest names. Without
 // the real runtime dial (CRAFT_OPENCODE_BASE_URL unset) the provider answers
 // a nil service — fail-closed, like the executor and snapshot service.
+//
+// T05 additionally injects the durable actual-source record store and the
+// current Task membership authority (T08 narrow port), so the HTTP read
+// surface (Sources/AuthorizeSourceOpen) and the dispatch-time
+// RevalidateForDispatch are reachable on this production service. The per-Run
+// atomic Publisher is deliberately NOT bound here: a package root exists only
+// inside one admitted RunView generation, so BuildForRun stays fail-closed on
+// this instance and production package building runs through
+// CraftKnowledgeRunViewBuilder (see wireCraftKnowledgeRuntime) — no competing
+// singleton publisher exists.
 func newCraftKnowledgeService(
 	store craft.Store,
 	knowledge interfaces.KnowledgeService,
 	knowledgeBases interfaces.KnowledgeBaseService,
 	executor craft.Executor,
+	taskAccess craft.TaskAccessChecker,
+	records *repository.CraftKnowledgeRecordRepository,
 ) (*service.CraftKnowledgeService, error) {
 	runtime, ok := executor.(*localCraftRuntime)
 	if !ok {
@@ -2664,6 +2686,9 @@ func newCraftKnowledgeService(
 		Access: service.BindCraftKnowledgeAccess(knowledge),
 		Search: service.BindCraftKnowledgeSearch(knowledgeBases),
 		Writer: writer,
+		// T05: durable per-Run actual-source records + current Task authority.
+		TaskAccess: taskAccess,
+		Records:    records,
 	})
 }
 
