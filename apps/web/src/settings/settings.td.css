@@ -8428,113 +8428,35 @@
   line-height: 1;
 }
 
-/* ==== 23. TenantMembers.vue scoped 块平移（settings-members 分区，
+/* ==== 23. TenantMembers.vue 权限弹层平移（settings-members 分区，
    px-members-rbac-hint 收敛） ====
- * frontend/src/views/settings/TenantMembers.vue:1782-1955 <style scoped>
- * LESS 嵌套展开平移。hover 权限弹层经 t-popup overlayClassName
- * permissions-popup-overlay portal 到 body（§3b 同款 body 弹层），规则锚
- * overlay 类、禁用 .wk-settings-drawer-root 祖先前缀。此前本族规则于
- * 72de117db 弃置后从未移植（DOM 780667f00/ebb2d12a2 落地）——豁免 #27 判据
- * 被证伪回退为工单的真因。 */
-.permissions-popup-overlay .permissions-compact {
-  padding: 8px;
+ * frontend/src/views/settings/TenantMembers.vue:2333-2461 第二
+ * <style lang="less"> unscoped 块（.permissions-popup-overlay 前缀的弹层全局
+ * 规则，hover 弹层实际生效源——scoped 块 :1782-1955 的 .permissions-compact
+ * 基础规则只服务非弹层场景，弹层 DOM 仅 --popover 实例）逐条展开平移。
+ * 规则锚 overlay 类（t-popup portal 到 body），禁用 .wk-settings-drawer-root
+ * 祖先前缀。此前本族规则于 72de117db 弃置后从未移植（git log -S 为空）——
+ * 豁免 #27 判据被证伪回退为工单的真因。 */
+.permissions-popup-overlay {
+  z-index: 3050 !important;
 }
 
-.permissions-popup-overlay .permissions-compact-header {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-bottom: 16px;
+.permissions-popup-overlay .t-popup__content {
+  padding: 0 !important;
+  border-radius: 12px !important;
+  background: var(--td-bg-color-container) !important;
+  border: 0.5px solid var(--td-component-stroke) !important;
+  box-shadow:
+    0 0 0 0.5px rgba(0, 0, 0, 0.03),
+    0 2px 4px rgba(0, 0, 0, 0.04),
+    0 8px 24px rgba(0, 0, 0, 0.1) !important;
+  backdrop-filter: blur(20px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
+  overflow: hidden;
 }
 
-.permissions-popup-overlay .permissions-compact-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--td-text-color-primary);
-}
-
-.permissions-popup-overlay .permissions-compact-desc {
-  font-size: 13px;
-  color: var(--td-text-color-secondary);
-}
-
-.permissions-popup-overlay .permissions-compact-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 12px;
-}
-
-.permissions-popup-overlay .perm-role-block {
-  border: 1px solid var(--td-component-stroke);
-  border-radius: 8px;
-  padding: 14px 16px;
-  background: var(--td-bg-color-container);
-  transition: all 0.2s ease;
-}
-
-.permissions-popup-overlay .perm-role-block.is-me {
-  border-color: var(--td-brand-color);
-  background: var(--td-brand-color-light);
-}
-
-.permissions-popup-overlay .perm-role-tag {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--td-text-color-primary);
-  margin-bottom: 12px;
-}
-
-.permissions-popup-overlay .perm-role-tag .me-badge {
-  margin-left: auto;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--td-brand-color);
-  padding: 2px 8px;
-  background: var(--td-brand-color-light);
-  border-radius: 4px;
-}
-
-.permissions-popup-overlay .perm-items {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.permissions-popup-overlay .perm-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  font-size: 13px;
-  line-height: 1.5;
-}
-
-.permissions-popup-overlay .perm-item .t-icon {
-  margin-top: 2px;
-  flex-shrink: 0;
-}
-
-.permissions-popup-overlay .perm-item.has {
-  color: var(--td-text-color-secondary);
-}
-
-.permissions-popup-overlay .perm-item.has .t-icon {
-  color: var(--td-brand-color);
-}
-
-.permissions-popup-overlay .perm-item.no {
-  color: var(--td-text-color-disabled);
-}
-
-.permissions-popup-overlay .perm-item.no .t-icon {
-  color: var(--td-text-color-disabled);
-}
-
-/* Hover 弹出层变体：压扁占位 + 2×2 角色块 + 内部滚动（Vue &.permissions-compact--popover） */
-.permissions-popup-overlay .permissions-compact--popover {
-  padding: 10px 12px;
+.permissions-popup-overlay .permissions-compact.permissions-compact--popover {
+  padding: 12px 14px;
   margin: 0;
   max-height: min(392px, calc(65vh - 8px));
   overflow-x: hidden;
@@ -8542,53 +8464,101 @@
 }
 
 .permissions-popup-overlay .permissions-compact--popover .permissions-compact-header {
+  display: flex;
+  flex-direction: column;
   gap: 2px;
   margin-bottom: 10px;
 }
 
 .permissions-popup-overlay .permissions-compact--popover .permissions-compact-title {
   font-size: 13px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
 }
 
 .permissions-popup-overlay .permissions-compact--popover .permissions-compact-desc {
-  font-size: 11px;
-  line-height: 1.4;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--td-text-color-secondary);
 }
 
 .permissions-popup-overlay .permissions-compact--popover .permissions-compact-grid {
+  display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
 
 .permissions-popup-overlay .permissions-compact--popover .perm-role-block {
-  padding: 8px 10px;
+  border: 1px solid var(--td-component-stroke);
   border-radius: 6px;
+  padding: 8px 10px;
+  background: var(--td-bg-color-container);
+}
+
+.permissions-popup-overlay .permissions-compact--popover .perm-role-block.is-me {
+  border-color: var(--td-brand-color);
+  background: var(--td-brand-color-light);
 }
 
 .permissions-popup-overlay .permissions-compact--popover .perm-role-tag {
-  font-size: 12px;
-  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
   gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+  margin-bottom: 6px;
 }
 
 .permissions-popup-overlay .permissions-compact--popover .perm-role-tag .me-badge {
+  margin-left: auto;
   font-size: 10px;
+  font-weight: 500;
+  color: var(--td-brand-color);
   padding: 1px 5px;
+  background: var(--td-brand-color-light);
+  border-radius: 4px;
 }
 
 .permissions-popup-overlay .permissions-compact--popover .perm-items {
+  display: flex;
+  flex-direction: column;
   gap: 3px;
 }
 
 .permissions-popup-overlay .permissions-compact--popover .perm-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
   font-size: 11px;
   line-height: 1.35;
-  gap: 4px;
+  color: var(--td-text-color-secondary);
 }
 
 .permissions-popup-overlay .permissions-compact--popover .perm-item .t-icon {
   margin-top: 1px;
   flex-shrink: 0;
+}
+
+.permissions-popup-overlay .permissions-compact--popover .perm-item.has .t-icon {
+  color: var(--td-brand-color);
+}
+
+.permissions-popup-overlay .permissions-compact--popover .perm-item.no {
+  color: var(--td-text-color-disabled);
+}
+
+.permissions-popup-overlay .permissions-compact--popover .perm-item.no .t-icon {
+  color: var(--td-text-color-disabled);
+}
+
+:root[theme-mode='dark'] .permissions-popup-overlay .t-popup__content {
+  background: rgba(36, 36, 36, 0.92) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  box-shadow:
+    0 0 0 0.5px rgba(255, 255, 255, 0.05),
+    0 2px 4px rgba(0, 0, 0, 0.12),
+    0 8px 32px rgba(0, 0, 0, 0.28) !important;
 }
 
 @media (max-width: 480px) {

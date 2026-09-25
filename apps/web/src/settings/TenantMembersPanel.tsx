@@ -256,9 +256,19 @@ function roleIcon(role: TenantRole | string): string {
   if (role === 'owner') return 'user-vip-filled';
   if (role === 'admin') return 'user-safety';
   if (role === 'contributor') return 'edit';
-  if (role === 'viewer') return 'user';
-  return 'user';
+  return 'browse';
 }
+
+/** Vue permissionsPopupInnerStyle（TenantMembers.vue:549-556）：t-popup overlay-inner-style，
+ * 弹层内容壳定宽 520（px-members-rbac-hint 收敛：缺它 React 弹层 422 vs Vue 520）。 */
+const permissionsPopupInnerStyle = {
+  boxSizing: 'border-box' as const,
+  padding: 0,
+  width: 'min(520px, calc(100vw - 24px))',
+  maxWidth: 'min(520px, calc(100vw - 24px))',
+  maxHeight: 'min(400px, 65vh)',
+  overflow: 'hidden',
+};
 
 function TablePager({ total, page, pageSize, onPage, onPageSize, tr }: {
   total: number; page: number; pageSize: number;
@@ -312,7 +322,6 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
   // keep the manage surface (invites / 待接受的邀请 table) here too.
   const canManage = role === 'owner' || role === 'admin' || role === 'system-admin';
   const canViewAudit = canManage;
-  const currentRole = role === 'system-admin' ? '' : (role as TenantRole);
 
   const [members, setMembers] = useState(initialMembers?.items ?? []);
   const [total, setTotal] = useState(initialMembers?.total ?? 0);
@@ -369,6 +378,14 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
   const [removeConfirmKey, setRemoveConfirmKey] = useState<string | null>(null);
 
   useEffect(() => { void client.auth.me().then((result) => setCurrentUserId(String(result.user?.id ?? ''))).catch(() => setCurrentUserId('')); }, [client]);
+
+  // is-me/我徽标判定（px-members-rbac-hint 收敛）：对齐 Vue currentTenantRole
+  // （stores/auth.ts:143-159）——当前用户在当前租户的成员角色（member 行匹配），
+  // 不随 router 的 system-admin 折叠（该折叠只服务导航门控，parity-test
+  // is_system_admin=true 时折叠使 is-me 永不渲染，与 Vue 双端分歧根因）。
+  // member 行缺席（分页/未加载）时回退折叠 role 语义（system-admin→''）。
+  const memberRole = members.find((m) => m.user_id === currentUserId)?.role;
+  const currentRole = memberRole ?? (role === 'system-admin' ? '' : (role as TenantRole));
 
   async function load(nextPage = page, nextQuery = query, nextPageSize = pageSize) {
     setLoading(true); setError(null);
@@ -771,6 +788,7 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
             placement="bottom-left"
             trigger="hover"
             overlayClassName="permissions-popup-overlay"
+            overlayInnerStyle={permissionsPopupInnerStyle}
             content={(
               <div className="permissions-compact permissions-compact--popover" role="dialog" aria-label={tr('tenantMember.permissions.title')}>
                 <div className="permissions-compact-header">
@@ -781,11 +799,12 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
                   {roleMatrixOrder.map((matrixRole) => (
                     <div key={matrixRole} className={'perm-role-block ' + matrixRole + (currentRole === matrixRole ? ' is-me' : '')}>
                       <div className="perm-role-tag">
+                        <TIcon name={roleIcon(matrixRole)} size="12px" />
                         <span>{tr('tenantMember.role.' + matrixRole)}</span>
                         {currentRole === matrixRole ? <span className="me-badge">{tr('common.me')}</span> : null}
                       </div>
                       <div className="perm-items">
-                        {roleMatrix[matrixRole].map((perm) => <span key={perm.key} className={'perm-item ' + (perm.has ? 'has' : 'no')}>{tr('tenantMember.permissions.' + perm.key)}</span>)}
+                        {roleMatrix[matrixRole].map((perm) => <span key={perm.key} className={'perm-item ' + (perm.has ? 'has' : 'no')}><TIcon name={perm.has ? 'check' : 'close'} size="12px" />{` ${tr('tenantMember.permissions.' + perm.key)}`}</span>)}
                       </div>
                     </div>
                   ))}
