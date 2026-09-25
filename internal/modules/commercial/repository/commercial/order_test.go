@@ -358,18 +358,21 @@ func TestCurrentPendingPurchaseOrderReturnsNewestPayablePending(t *testing.T) {
 	}
 }
 
-// TestPartialPendingIndexRejectsSecondPayableOrder（R2-26）：数据库层不变量
-// ——同租户至多一张可付 pending 购买单。两张不同 quote 的并发形态（前置
-// SELECT 均未命中彼时对方的未提交单）由部分唯一索引在插入时兜住：第二张
-// 撞索引报 ErrPurchasePendingExists（与 ErrQuoteAlreadyUsed 同构的回放触发）；
-// channel_failed 死单不占 pending 槽。
+// TestPartialPendingIndexRejectsSecondPayableOrder（R2-26/R3-26/R3-27）：
+// 数据库层不变量——同租户至多一张 channel_failed=false 的 pending 购买单
+// （boolean 字面量而非 0/1——PG 无 boolean=integer 隐式转换）。两张不同
+// quote 的并发形态（前置 SELECT 均未命中彼时对方的未提交单）由部分唯一
+// 索引在 INSERT 时兜住：第二张撞索引报 ErrPurchasePendingExists（与
+// ErrQuoteAlreadyUsed 同构的回放触发）。channel_failed 死单让槽；无链接
+// 残留占槽（由 SweepStaleLinklessPending 解锁——见下个测试）。
 func TestPartialPendingIndexRejectsSecondPayableOrder(t *testing.T) {
 	s, db := testOrderStore(t)
 	ctx := context.Background()
-	// (testOrderStore 的 AutoMigrate 不含索引——服务装配点建。)
+	// (testOrderStore 的 AutoMigrate 不含索引——服务装配点建。DDL 与生产
+	// NewOrderService 逐字一致。)
 	if err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS uq_purchase_pending_per_tenant
 		ON commercial_orders (tenant_id)
-		WHERE kind = 'purchase' AND state = 'pending' AND channel_failed = 0`).Error; err != nil {
+		WHERE kind = 'purchase' AND state = 'pending' AND channel_failed = false`).Error; err != nil {
 		t.Fatal(err)
 	}
 	if err := s.CreateOrder(ctx, OrderRow{ID: "o1", TenantID: 7, QuoteID: "q1",
@@ -379,7 +382,7 @@ func TestPartialPendingIndexRejectsSecondPayableOrder(t *testing.T) {
 	err := s.CreateOrder(ctx, OrderRow{ID: "o2", TenantID: 7, QuoteID: "q2",
 		AmountFen: 100, Currency: "CNY", CheckoutURL: "https://pay.example/o2"})
 	if !errors.Is(err, ErrPurchasePendingExists) {
-		t.Fatalf("second concurrent payable pending must hit the partial index, got %v", err)
+		t.Fatalf("second concurrent payable pending must hit the partial index at INSERT time, got %v", err)
 	}
 	// quote_id 唯一索引的冲突形态不误判为 pending 冲突（同 quote 第二张）。
 	err = s.CreateOrder(ctx, OrderRow{ID: "o3", TenantID: 8, QuoteID: "q1",
@@ -391,20 +394,50 @@ func TestPartialPendingIndexRejectsSecondPayableOrder(t *testing.T) {
 		t.Fatal("quote reuse must still fail")
 	}
 	// channel_failed 死单让出 pending 槽：新单可插入。
-	if err := db.Exec(`UPDATE commercial_orders SET channel_failed = 1 WHERE id = 'o1'`).Error; err != nil {
+	if err := db.Exec(`UPDATE commercial_orders SET channel_failed = true WHERE id = 'o1'`).Error; err != nil {
 		t.Fatal(err)
 	}
 	if err := s.CreateOrder(ctx, OrderRow{ID: "o4", TenantID: 7, QuoteID: "q4",
-		AmountFen: 100, Currency: "CNY"}); err != nil {
+		AmountFen: 100, Currency: "CNY", CheckoutURL: "https://pay.example/o4"}); err != nil {
 		t.Fatalf("a channel-failed dead order must not block a fresh payable order: %v", err)
 	}
 	// 终态单同样不占槽。
-	if err := db.Exec(`UPDATE commercial_orders SET state = 'paid', channel_failed = 0 WHERE id = 'o4'`).Error; err != nil {
+	if err := db.Exec(`UPDATE commercial_orders SET state = 'paid' WHERE id = 'o4'`).Error; err != nil {
 		t.Fatal(err)
 	}
 	if err := s.CreateOrder(ctx, OrderRow{ID: "o5", TenantID: 7, QuoteID: "q5",
 		AmountFen: 100, Currency: "CNY"}); err != nil {
 		t.Fatalf("a paid order must not block a fresh payable order: %v", err)
+	}
+}
+
+// TestSweepStaleLinklessPendingReleasesTheSlot（R3-26）：channel_failed=false
+// 且无链接的 pending（降级残留——渠道调用成功但链接未持久化）占着索引槽：
+// 清扫把它标记 channel_failed 后槽位释放，新单可插入。
+func TestSweepStaleLinklessPendingReleasesTheSlot(t *testing.T) {
+	s, db := testOrderStore(t)
+	ctx := context.Background()
+	if err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS uq_purchase_pending_per_tenant
+		ON commercial_orders (tenant_id)
+		WHERE kind = 'purchase' AND state = 'pending' AND channel_failed = false`).Error; err != nil {
+		t.Fatal(err)
+	}
+	// 降级残留：pending、channel_failed=false、无链接。
+	if err := s.CreateOrder(ctx, OrderRow{ID: "z1", TenantID: 7, QuoteID: "zq1",
+		AmountFen: 100, Currency: "CNY"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CreateOrder(ctx, OrderRow{ID: "z2", TenantID: 7, QuoteID: "zq2",
+		AmountFen: 100, Currency: "CNY"}); !errors.Is(err, ErrPurchasePendingExists) {
+		t.Fatalf("the link-less residue occupies the slot, got %v", err)
+	}
+	swept, err := s.SweepStaleLinklessPending(ctx, 7)
+	if err != nil || swept != 1 {
+		t.Fatalf("sweep must release exactly the one stale row, swept=%d err=%v", swept, err)
+	}
+	if err := s.CreateOrder(ctx, OrderRow{ID: "z3", TenantID: 7, QuoteID: "zq3",
+		AmountFen: 100, Currency: "CNY", CheckoutURL: "https://pay.example/z3"}); err != nil {
+		t.Fatalf("after the sweep a fresh payable order must insert, got %v", err)
 	}
 }
 

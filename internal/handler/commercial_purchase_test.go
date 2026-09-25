@@ -245,6 +245,58 @@ func TestPurchaseHandlerAnswersServerErrorClosedOnInfrastructureFailure(t *testi
 // 回退 "WeKnora Space 50"），不再硬编码 "space"；actor 参数同样来自
 // commercialUserID(c)（认证中间件注入的 user-50）——fake 的客户记录面
 // 观察到的即 ensure 载荷的真实 DisplayName。
+// (R3-25) POST /commercial/orders（遗留路径，无 PurchaseService 前置检查）：
+// OpenOrder 插入撞部分唯一索引返回 ErrPurchasePendingExists 时，必须答 409
+// 并附带既有可付 pending 订单（客户端保住支付入口），而不是落 default 的
+// 400 + 裸令牌 "purchase_pending_exists"。
+func TestCreateOrderHandlerMapsPendingExistsWithReplay(t *testing.T) {
+	env := newPurchaseHandlerEnv(t)
+	seedHandlerPlan(t, env.plans)
+	ctx := context.Background()
+	// 既有可付 pending（不同 quote，渠道成功 + 链接已持久化）。
+	q1, err := env.orders.CreateQuote(ctx, 50, "pro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := env.orders.CreateOrder(ctx, 50, q1.ID, "wechat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.CheckoutURL == "" {
+		t.Fatalf("the existing order must be payable, got %+v", first)
+	}
+	// 新 quote 走遗留 POST /orders。
+	q2, err := env.orders.CreateQuote(ctx, 50, "pro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	router := gin.New()
+	env.handler.SetOrderService(env.orders)
+	router.POST("/api/v1/commercial/orders", func(c *gin.Context) {
+		cctx := context.WithValue(c.Request.Context(), types.TenantIDContextKey, uint64(50))
+		cctx = context.WithValue(cctx, types.UserIDContextKey, "user-50")
+		c.Request = c.Request.WithContext(cctx)
+		c.Next()
+	}, env.handler.CreateOrder)
+	body := `{"quote_id":"` + q2.ID + `","provider":"wechat"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/commercial/orders", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("pending-exists must answer 409, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !bytes.Contains(rec.Body.Bytes(), []byte("purchase pending exists")) {
+		t.Fatalf("409 must carry the closed message: %s", rec.Body.String())
+	}
+	if !bytes.Contains(rec.Body.Bytes(), []byte(first.ID)) {
+		t.Fatalf("409 must attach the existing payable order for replay: %s", rec.Body.String())
+	}
+	if !bytes.Contains(rec.Body.Bytes(), []byte(first.CheckoutURL)) {
+		t.Fatalf("the replayed order must carry the payment entry: %s", rec.Body.String())
+	}
+}
+
 func TestPurchaseHandlerCarriesRealActorAndDisplayName(t *testing.T) {
 	env := newPurchaseHandlerEnv(t)
 	seedHandlerPlan(t, env.plans)

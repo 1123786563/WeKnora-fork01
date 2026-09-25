@@ -80,14 +80,28 @@ const PURCHASE_CONFLICT_MESSAGES: Record<string, string> = {
 };
 const PURCHASE_ERROR_FALLBACK = '购买未能创建，请稍后重试';
 
+// R3-07：报价级冲突令牌——同一 quote 的重试是死胡同（后端按 quote 查库
+// 确定性返回同一 409），重试必须走一次新报价（catch 中清空 quoteRef）。
+const QUOTE_LEVEL_CONFLICT_TOKENS = new Set<string>([
+  'quote expired',
+  'quote already used',
+  'quote predates the purchase freeze; please re-quote',
+  'subscription changed since the quote was cut; please re-quote',
+]);
+
+export function isQuoteLevelConflict(error: unknown): boolean {
+  return error instanceof ApiError && QUOTE_LEVEL_CONFLICT_TOKENS.has(error.message);
+}
+
 export function purchaseConflictMessage(message: string | undefined): string | undefined {
   if (message === undefined) return undefined;
   return PURCHASE_CONFLICT_MESSAGES[message];
 }
 
-// error→展示文案（R2-01）：reason 令牌优先（503 信封），其次 message 令牌
-// （409/500 族）；服务端 ApiError 未命中任何已知令牌时给统一中文兜底——
-// 非服务端错误（网络层等）保留原始 message。
+// error→展示文案（R2-01/R3-02）：reason 令牌优先（503 信封），其次 message
+// 令牌（409/500 族）；服务端 ApiError 未命中任何已知令牌时给统一中文兜底；
+// 非服务端错误（网络层等）同样收敛为中文兜底——原始 message 仅进 console，
+// 英文技术串不渲染给用户（spec L210）。
 export function purchaseErrorText(error: unknown): string {
   if (error instanceof ApiError) {
     const closedReason = purchaseReasonMessage((error.details as { reason?: unknown } | undefined)?.reason);
@@ -96,7 +110,8 @@ export function purchaseErrorText(error: unknown): string {
     if (conflict !== undefined) return conflict;
     if (error.status !== undefined && error.status >= 400) return PURCHASE_ERROR_FALLBACK;
   }
-  return error instanceof Error ? error.message : 'Unable to open checkout';
+  if (error instanceof Error) console.warn('checkout purchase failed:', error.message);
+  return '网络异常，请稍后重试';
 }
 
 interface CheckoutPageProps {
@@ -144,8 +159,11 @@ export function CheckoutPage({ client, scopeController, orderId }: CheckoutPageP
         // R1-V01：purchase.order 缺席时不再发起空 ID 的 getOrder 请求（那必然
         // 产生 /orders/ 的 404/路由错配，且丢失闭合 reason）。按闭合
         // state/reason 渲染失败文案；正常路径后端必带 order。
+        // (R3-02) 直接落错误态——不经过 throw/catch（catch 的统一兜底会把
+        // 这条已映射的闭合文案再兜成「网络异常」）。
         if (!purchase.order) {
-          throw new Error(purchaseErrorMessage(purchase));
+          setState({ status: 'error', message: purchaseErrorMessage(purchase) });
+          return;
         }
         // From here on this page only re-queries the same order id; it never creates another order.
         const order = purchase.order;
@@ -155,6 +173,11 @@ export function CheckoutPage({ client, scopeController, orderId }: CheckoutPageP
         }
       } catch (error) {
         if (!active || !scopeController.isCurrent(currentScope.scope)) return;
+        // R3-07：报价级冲突（过期/已消费/前置版本）对同一 quote 是确定性的
+        // ——重试前清空缓存的报价，让「重试」走一次新报价而不是死循环。
+        if (isQuoteLevelConflict(error)) {
+          quoteRef.current = null;
+        }
         // R1-24/R2-01：POST /purchases 的失败面按闭合令牌映射（503 reason、
         // 409/500 message 令牌、统一中文兜底）——英文机器令牌/原始 message
         // 不直接展示给用户（spec L210）。
@@ -183,6 +206,16 @@ export function CheckoutPage({ client, scopeController, orderId }: CheckoutPageP
         : { status: 'error', message: error instanceof Error ? error.message : 'Unable to load order' }));
     });
   }, [client, scopeController]);
+
+  // R3-09：重新发起支付——渠道失败/无链接的 pending 订单是支付死胡同（刷新
+  // 永远拿同一行），唯一出路是新报价新订单：清空订单与报价引用后重跑加载
+  // 流程（服务端已保证无链接 pending 不阻塞新结账）。
+  const restartCheckout = useCallback((): void => {
+    orderIdRef.current = null;
+    quoteRef.current = null;
+    setState({ status: 'loading' });
+    setRetryToken((value) => value + 1);
+  }, []);
 
   const order = state.status === 'ready' ? state.order : null;
 
@@ -229,6 +262,16 @@ export function CheckoutPage({ client, scopeController, orderId }: CheckoutPageP
                 <p>
                   <a href={state.order.checkout_url} target="_blank" rel="noreferrer">前往支付</a>
                 </p>
+              ) : null}
+              {/* R3-09：渠道创建失败（后端 202 姿态）——订单 pending 但没有任何
+                  可用支付链接，本页刷新永远拿回同一行：给出渠道异常提示与
+                  「重新发起支付」入口（新报价新订单），不让用户困在死胡同。 */}
+              {state.order.payment === 'pending'
+                && !(state.order.checkout_url && isSafeCheckoutUrl(state.order.checkout_url)) ? (
+                <>
+                  <Status tone="error">支付渠道异常，此订单暂无可用支付链接</Status>
+                  <Button type="button" onClick={restartCheckout}>重新发起支付（获取新报价）</Button>
+                </>
               ) : null}
               <Button type="button" onClick={refreshOrder}>刷新订单状态</Button>
             </section>

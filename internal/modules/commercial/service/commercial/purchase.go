@@ -260,11 +260,27 @@ func (s *PurchaseService) Purchase(ctx context.Context, tenantID uint64, quoteID
 		// conflict read needs no price-face match: the index already proved
 		// a payable pending order for this tenant exists.
 		existing, gerr := s.orders.orders.CurrentPayablePendingOrder(ctx, tenantID)
-		if gerr != nil {
+		if gerr == nil {
+			ovExisting := orderViewFromRow(existing)
+			return s.purchaseView(p, snap, pub, &ovExisting), nil
+		}
+		if !errors.Is(gerr, repocommercial.ErrOrderNotFound) {
 			return PurchaseView{}, err
 		}
-		ovExisting := orderViewFromRow(existing)
-		return s.purchaseView(p, snap, pub, &ovExisting), nil
+		// (R3-26) The slot is held by a link-less residue (channel call
+		// succeeded but the link never persisted — the only shape the
+		// migration backfill does not already cover): it is not a replayable
+		// payment entry, so sweep it to channel-failed and retry the create
+		// ONCE. A second conflict is a genuine race beyond the sweep —
+		// surface the conflict error, never loop.
+		if _, serr := s.orders.orders.SweepStaleLinklessPending(ctx, tenantID); serr != nil {
+			return PurchaseView{}, err
+		}
+		ov2, rerr := s.orders.CreateOrder(ctx, tenantID, quoteID, providerName)
+		if rerr != nil {
+			return PurchaseView{}, rerr
+		}
+		return s.purchaseView(p, snap, pub, &ov2), nil
 	}
 	if err != nil {
 		return PurchaseView{}, err

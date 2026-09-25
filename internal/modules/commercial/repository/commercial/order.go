@@ -346,13 +346,18 @@ func (s *OrderStore) CurrentPendingPurchaseOrder(ctx context.Context, tenantID u
 // so the price face would only risk a read mismatch (the concurrent winner
 // consumed a quote of the SAME purchase, hence the same frozen face, but
 // the looser read keeps the replay unconditional on matching keys).
+// (R3-26) PAYABLE is the SAME predicate as the index: channel_failed =
+// false AND a persisted checkout_url — a link-less row (persist-degraded,
+// ctx-cancelled channel failure, pre-column legacy) is never replayed as a
+// clean winner; the caller that cannot find a replayable row surfaces the
+// conflict error instead of answering an unpayable 201.
 func (s *OrderStore) CurrentPayablePendingOrder(ctx context.Context, tenantID uint64) (OrderRow, error) {
 	if tenantID == 0 {
 		return OrderRow{}, ErrOrderNotFound
 	}
 	var row OrderRow
 	err := s.db.WithContext(ctx).
-		Where("tenant_id = ? AND kind = ? AND state = ? AND channel_failed = ?",
+		Where("tenant_id = ? AND kind = ? AND state = ? AND channel_failed = ? AND checkout_url <> ''",
 			tenantID, domain.OrderKindPurchase, domain.OrderStatePending, false).
 		Order("created_at DESC, id ASC").First(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -384,6 +389,25 @@ func (s *OrderStore) MarkChannelFailed(ctx context.Context, orderID string) erro
 		return ErrOrderNotFound
 	}
 	return nil
+}
+
+// SweepStaleLinklessPending marks the tenant's pending purchase rows that
+// carry channel_failed=false but NO persisted checkout link (R3-26): the
+// persist-degraded residue (the channel call succeeded but the link never
+// landed — including pre-column legacy rows before the migration backfill).
+// Such a row is not a replayable payment entry, yet it occupies the
+// pending-uniqueness slot; sweeping it to channel-failed releases the slot
+// so a fresh quote's checkout can proceed. Parameter-bound; returns the
+// number of rows swept.
+func (s *OrderStore) SweepStaleLinklessPending(ctx context.Context, tenantID uint64) (int64, error) {
+	res := s.db.WithContext(ctx).Model(&OrderRow{}).
+		Where("tenant_id = ? AND kind = ? AND state = ? AND channel_failed = ? AND (checkout_url IS NULL OR checkout_url = '')",
+			tenantID, domain.OrderKindPurchase, domain.OrderStatePending, false).
+		Update("channel_failed", true)
+	if res.Error != nil {
+		return 0, res.Error
+	}
+	return res.RowsAffected, nil
 }
 
 // FirstPendingAttempt returns the oldest still-pending attempt of an order —

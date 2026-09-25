@@ -1268,7 +1268,41 @@ def phase_retries(ctx):
             checks["no_succeeded_payment_for_gate"] = (
                 gate_retry["succeeded_count_after"] == 0
             )
+        # (ocr-3 R3-39) The re-POST above is the SAME duplicate-registration
+        # probe phase_duplicates runs (a 200 answer against customer B's
+        # active subscription); the minutes-late drift that probe once
+        # produced (termination + a renewal invoice AFTER the immediate
+        # window) is exactly what duplicates' deferred re-check exists for —
+        # retries asserted only its immediate window. Re-check B's
+        # authoritative state after the same minute-scale settle delay when
+        # the immediate checks all passed: B still active, same lago_id,
+        # exactly one succeeded payment and still ONE invoice (the settled
+        # activation invoice; a late renewal betrays the drift). Drift now
+        # fails AC3 HERE instead of surfacing as an unrelated cleanup
+        # failure — or not at all.
+        deferred = {"checked": False, "ok": None}
+        if all(checks.values()):
+            time.sleep(ctx.duplicates_settle_delay)
+            _, sub_body3 = _subscription_show(ctx, sub_ext, "active")
+            sub3 = (sub_body3 or {}).get("subscription", {}) if isinstance(sub_body3, dict) else {}
+            _, invoices3 = _invoices_for(ctx, customer_b["external_id"])
+            _, payments3 = _payments_for(ctx, customer_b["external_id"])
+            deferred = {
+                "checked": True,
+                "subscription_status": sub3.get("status"),
+                "subscription_same_lago_id": sub3.get("lago_id") == known_lago_id,
+                "payments_succeeded_count": len(_succeeded(payments3)),
+                "invoice_count": len(invoices3),
+            }
+            deferred["ok"] = (
+                deferred["subscription_status"] == "active"
+                and deferred["subscription_same_lago_id"]
+                and deferred["payments_succeeded_count"] == 1
+                and deferred["invoice_count"] == 1
+            )
+        checks["deferred_no_drift"] = bool(deferred["ok"])
         observed["checks"] = checks
+        observed["deferred_recheck"] = deferred
         status = PASS if all(checks.values()) else FAIL
         return _report(ctx, "retries", expected, observed, status,
                        evidence={"responses": {"re_post": _rb, "retry_payment": rrb}})
@@ -1414,6 +1448,10 @@ def phase_cleanup(ctx):
     # subscription up by params[:status] (default :active), so terminating
     # an incomplete or canceled subscription needs the status spelled out;
     # try each candidate in turn and report the last status on failure.
+    # (ocr-3 R3-39) `terminated` joins the candidates: a duplicate
+    # registration's minutes-late drift (the retries/duplicates deferred
+    # re-check's failure shape) leaves the subscription terminated, which
+    # the original candidate set could not delete.
     created_tags = state.get("subscriptions_created", set())
     for tag in CUSTOMER_TAGS:
         if tag not in created_tags:
@@ -1421,7 +1459,7 @@ def phase_cleanup(ctx):
         sub_ext = ctx.subscription_external_id(tag)
         deleted = False
         last_status = None
-        for sub_status in ("active", "incomplete", "canceled"):
+        for sub_status in ("active", "incomplete", "canceled", "terminated"):
             try:
                 status, _body = ctx.lago.delete(
                     f"/api/v1/subscriptions/{sub_ext}?status={sub_status}")

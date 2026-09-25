@@ -1175,7 +1175,11 @@ class TestRetriesPhase(unittest.TestCase):
         with stack() as env:
             ctx = seeded(env)
             settled_gate_and_activation(ctx)
-            report = phase_retries(ctx)
+            # (R3-39) the deferred re-check rides the minute-scale knob —
+            # keep the suite fast with a short override.
+            env.ctx = env._make_ctx(duplicates_settle_delay=0.05)
+            env.ctx.state = ctx.state
+            report = phase_retries(env.ctx)
         self.assertEqual(report["status"], "pass", report)
         observed = report["observed"]
         recovery = observed["response_loss_recovery"]
@@ -1191,6 +1195,12 @@ class TestRetriesPhase(unittest.TestCase):
         # ocr-3: the gate's actual end state must be part of the evidence
         # (the check itself only consumes the HTTP status).
         self.assertEqual(gate_retry["subscription_status_after"], "incomplete")
+        # (R3-39) the re-POST is a duplicate-registration probe: the PASS
+        # now also stands on the deferred re-check after the settle delay.
+        deferred = observed["deferred_recheck"]
+        self.assertTrue(deferred["checked"])
+        self.assertTrue(deferred["ok"])
+        self.assertTrue(observed["checks"]["deferred_no_drift"])
 
     def test_fails_when_second_commercial_object_appears(self):
         with stack() as env:
@@ -1200,6 +1210,30 @@ class TestRetriesPhase(unittest.TestCase):
             report = phase_retries(ctx)
         self.assertEqual(report["status"], "fail", report)
         self.assertEqual(report["observed"]["response_loss_recovery"]["subscription_count"], 2)
+
+    def test_retries_deferred_recheck_catches_late_termination(self):
+        # (R3-39) the retries re-POST is the SAME duplicate-registration
+        # probe phase_duplicates runs; the minutes-late drift it once
+        # produced must fail AC3 HERE (deferred re-check) instead of
+        # surfacing as an unrelated cleanup failure — or not at all.
+        with stack() as env:
+            ctx = seeded(env)
+            settled_gate_and_activation(ctx)
+            env.ctx = env._make_ctx(duplicates_settle_delay=0.05)
+            env.ctx.state = ctx.state
+            phase_duplicates(env.ctx)
+            # Arm the drift so it lands INSIDE retries' deferred re-check:
+            # after duplicates' own re-check GET, the next B subscription-
+            # show GETs are retries' identity read and its deferred re-check.
+            env.lago.deferred_terminate_after_duplicates = 3
+            report = phase_retries(env.ctx)
+        self.assertEqual(report["status"], "fail", report)
+        observed = report["observed"]
+        deferred = observed["deferred_recheck"]
+        self.assertTrue(deferred["checked"])
+        self.assertFalse(deferred["ok"])
+        self.assertNotEqual(deferred["subscription_status"], "active")
+        self.assertFalse(observed["checks"]["deferred_no_drift"])
 
     def test_gate_invoice_id_unknown_skips_retry_post(self):
         # ocr-2: when the gate invoice never became API-visible its lago_id
@@ -1222,7 +1256,8 @@ class TestRetriesPhase(unittest.TestCase):
         checks = report["observed"]["checks"]
         self.assertEqual(
             sorted(checks),
-            ["gate_not_activated", "no_second_payment_row", "same_identity_recovered"],
+            ["deferred_no_drift", "gate_not_activated", "no_second_payment_row",
+             "same_identity_recovered"],
         )
         self.assertTrue(all(checks.values()))
         notes = " ".join(report["contract_notes"])

@@ -60,3 +60,20 @@ test('bodies without a reason token leave details untouched', () => {
   const error = errorFromResult(409, { error: 'quote expired' });
   assert.equal(error.details, undefined);
 });
+
+// (R3-31) 数组/字符串型 details 不得被展开合并污染：数组被 {...} 展开会变成
+// 索引键对象（数组语义静默丢失），字符串会被整体丢弃——两者都改为仅携带
+// reason 令牌的新对象。
+test('an array details body is not spread into index keys when merging the reason', () => {
+  const error = errorFromResult(503, { error: 'unavailable', reason: 'unreachable', details: ['a', 'b'] });
+  const details = error.details as { reason?: string };
+  assert.equal(details?.reason, 'unreachable');
+  assert.equal(Array.isArray(error.details), false);
+  assert.equal('0' in (error.details as object), false);
+});
+
+test('a string details body degrades to a token-only object, not a silent drop', () => {
+  const error = errorFromResult(503, { error: 'unavailable', reason: 'unconfigured', details: 'hint-text' });
+  const details = error.details as { reason?: string };
+  assert.equal(details?.reason, 'unconfigured');
+});

@@ -105,13 +105,15 @@ class layout:
 
 class TestVerifyDbWatch(unittest.TestCase):
     def test_missing_tsv_exits_2_with_actionable_message(self):
-        # No archive AND no runs/ TSV: missing evidence (exit 2), never an
+        # No archive (and runs/ contents are now irrelevant — the fallback is
+        # not decidable evidence): missing evidence (exit 2), never an
         # IndexError crash and never a PASS.
         with layout() as env:
             code, out = env.run()
         self.assertEqual(code, 2, out)
-        self.assertIn("no observer TSV", out)
-        self.assertIn("git-ignored", out)
+        self.assertIn("no archived", out)
+        self.assertIn("not decidable", out)
+        self.assertIn("archive its TSV", out)
 
     def test_runs_fallback_degrades_to_missing_evidence(self):
         # (R1-07) The runs/-fallback guard used to be constant-false

@@ -1206,3 +1206,210 @@ redirect-loop 行为）。
 
 - 提交 message 前缀：`issue-72(ocr-2):`（按本批 ask 指定）
 
+---
+
+# Issue #72 — OCR 第 3 轮修复记录（ocr-r3，11 组 findings）
+
+- 日期：2026-09-25
+- worktree：`.worktrees/issue72-lago`（分支 `codex/issue-72-lago`）
+- 修复基线：findings 审查 `cfa1b2452`（R2 修复提交）；RED 在 `7b9db0314`
+  （其上的 findings 记录提交，代码态相同）复现。
+- 修复人：修复员（dynamic workflow subagent）
+- 范围：OCR-R3-27（critical）、R3-26（high）、R3-28（high）、
+  R3-25/R3-07/R3-09/R3-02/R3-17/R3-19/R3-31/R3-39（medium 各组），
+  11 组全部修复，0 项 deferred。
+
+## 总则
+
+- R3-27 以真实 PostgreSQL 17（WeKnora-postgres-dev 容器，临时库）做了方言
+  级 RED/GREEN 双证；行为级 RED 均在基线 worktree 真实运行复现。
+- 安全约束核对：本轮未新增出站请求；新增 SQL 均参数绑定或静态 DDL
+  （boolean 字面量）；无凭据字面量（PG 验证用本地容器 postgres 用户，
+  无凭据写入仓库）。
+
+## 逐条 Ruling 与处置
+
+### OCR-R3-27（critical）PG 部署启动必失败：索引谓词 boolean = integer — 已修复
+
+- Ruling：finding 成立。GORM 将 ChannelFailed（bool）在 PG 迁移为 boolean
+  列，`channel_failed = 0` 无隐式转换，CREATE INDEX 解析期即报错——
+  DB_DRIVER=postgres 是受支持生产驱动，服务完全无法启动。
+- 处置：索引谓词改 `channel_failed = false`（SQLite 3.23+ 与 PG 均支持
+  boolean 字面量）；注释记录 0/1 拼法在 PG 的失败形态；fixHint 的
+  「dialect 分支」不需要（false 字面量两库通用）。
+- RED/GREEN（PG 17 实测）：旧 DDL → `ERROR: operator does not exist:
+  boolean = integer`；新 DDL → CREATE INDEX 成功（含回填/清扫 UPDATE 全部
+  在 PG 上执行通过）。
+- 回归：fixHint 的「PG 方言迁移启动测试」以真实容器一次性验证落地
+  （测试套件内的 PG 依赖不可行——本仓库单测栈为 sqlite；DDL 与生产
+  NewOrderService 逐字一致的 sqlite 测试 + 本节 PG 实证共同防回归）。
+
+### OCR-R3-26（high）可付判定三处不一致 + 迁移未处置存量行 — 已修复
+
+- Ruling：finding 成立。(1) 索引谓词只排 channel_failed、
+  CurrentPendingPurchaseOrder 要求 URL 非空、CurrentPayablePendingOrder 无
+  URL 条件——link-less 行占槽锁死且被当胜者干净重放；(2) 三个触发源中
+  迁移前存量 pending（URL 全空、channel_failed 回填 false、created_at NULL
+  在 PG NULLS FIRST）部署当天即落入索引作用域。
+- 处置（含一次设计修正）：
+  - **首轮实现**（索引谓词补 `checkout_url <> ''`）被本轮自己的 handler
+    回归测试推翻：把 URL 纳入谓词会把冲突从原子 INSERT 挪到之后的
+    SetCheckoutURL UPDATE（两张并发结账都 link-less 插入成功，第二个
+    链接持久化撞索引）——插入原子性丢失。已回退并采用下述结构。
+  - **最终结构**：索引谓词保持 `channel_failed = false`（INSERT 即原子
+    冲突，R2-26 语义不变 + R3-27 字面量修复）；两处读判定统一
+    「channel_failed=false AND checkout_url<>''」（重放必为可付单）；
+    **冲突回放读不到可付行时清扫解锁**：新增
+    `SweepStaleLinklessPending`（tenant 的 pending+channel_failed=false+
+    无链接行 → channel_failed=true）后重试 CreateOrder 恰一次（二次冲突
+    上抛，绝不循环）。link-less 残留（SetCheckoutURL 降级——渠道成功但
+    链接未落库）由此不再锁死租户。
+  - **迁移处置存量行**（NewOrderService 建索引前，参数绑定）：存量
+    pending purchase 无链接行 → channel_failed=true（触发源 c：旧管线
+    行不再入索引作用域）；created_at NULL/零值回填 NOW（消除 PG
+    NULLS FIRST 遮蔽）。
+  - **触发源 b**：渠道 Create 成功但返回空 CheckoutURL → openOrder 视同
+    渠道失败（MarkChannelFailed + CheckoutError 姿态）——渠道没给链接
+    就不是可付结果，不再产生 channel_failed=false 的 link-less 行。
+  - 双收权衡（注释记录）：清扫放行新结账后，被清扫单的渠道侧单仍可能
+    存在（降级场景渠道成功）——与 R2-28 已接受的边界同型，迟到回调照常
+    ConfirmPayment。
+- RED 证据：基线 `TestLinkLessPendingOrderDoesNotBlockFreshQuote` →
+  zombie 被当胜者重放（view.Order=ord_zombie、CheckoutURL 空串的干净
+  201 形态）。
+- 回归测试：service 上述测试（清扫后新单可付、createCalls==1）+
+  `TestSweepStaleLinklessPendingReleasesTheSlot`（repository：link-less
+  占槽→清扫恰 1 行→新单可插）+ 更新后的
+  `TestPartialPendingIndexRejectsSecondPayableOrder`（INSERT 时原子冲突
+  + 0/1→false 字面量）。
+
+### OCR-R3-28（high）持久化写复用请求级 ctx，取消即留僵尸行 — 已修复
+
+- Ruling：finding 成立。渠道 Create 因调用方取消（客户端断连）失败时，
+  MarkChannelFailed 用同一已取消 ctx——标记写入同败（仅日志），订单残留
+  pending+channel_failed=false+无链接：占索引槽且被冲突回读当胜者，
+  无过期/清理路径，购买链路永久卡死。
+- 处置：openOrder 的两个持久化写（MarkChannelFailed/SetCheckoutURL）改
+  `context.WithTimeout(context.WithoutCancel(ctx), checkoutPersistTimeout=5s)`
+  ——脱离请求取消、独立有界；SetCheckoutURL 同享（其降级残留同样会僵尸）。
+  fixHint 的「长期无链接 pending 的恢复/超时出口」由 R3-26 清扫（服务端
+  解锁）+ R3-09 前端重发入口共同提供，注释记录取舍。
+- RED 证据：基线 `TestOpenOrderPersistsChannelFailurePastCallerCancellation`
+  → `ChannelFailed:false`（取消吞掉标记，僵尸行成形）。
+- 回归测试：该测试（cancellingCreateStub 在渠道调用中取消 → 应答仍带
+  CheckoutError 姿态且行上 ChannelFailed=true）。
+
+### OCR-R3-25（medium）ErrPurchasePendingExists 从 POST /orders 逃逸 — 已修复
+
+- Ruling：finding 成立。CreateOrder（service/order.go）同为 kind=purchase，
+  旧路径无 PurchaseService 前置检查，OpenOrder 撞索引返回哨兵，handler
+  CreateOrder switch 无映射 → default 400 + 裸令牌，无回放数据。
+- 处置：handler 补 `errors.Is(ErrPurchasePendingExists)` 分支：409 +
+  "purchase pending exists" + 附带既有可付 pending 订单（新增
+  `OrderService.CurrentPayablePendingOrderView` 投影，回读不到可付行时
+  409 不带 order——清扫解锁走 Purchase 主路径，注释记录）。
+- RED 证据：基线 handler 测试 → `got 400: {"error":"purchase_pending_exists"}`。
+- 回归测试：`TestCreateOrderHandlerMapsPendingExistsWithReplay`
+  （409 + 闭合文案 + 附 first.ID 与 first.CheckoutURL）。
+
+### OCR-R3-07/09/02（medium）CheckoutPage 重试死胡同/支付死胡同/英文兜底 — 已修复
+
+- Ruling：三条均成立。R3-07：报价级冲突重试复用同一失效报价（quoteRef
+  永不重置）；R3-09：渠道失败 202 的 pending 无链接订单页面只有「刷新」
+  死胡同；R3-02：非服务端错误走 error.message 展示浏览器英文技术串。
+- 处置：
+  - `QUOTE_LEVEL_CONFLICT_TOKENS`（4 令牌）+ `isQuoteLevelConflict`：catch
+    命中即清空 quoteRef.current——「重试」按钮触发 effect 重新 quote()。
+  - ready 态 pending 且无安全 checkout_url → 「支付渠道异常，此订单暂无
+    可用支付链接」提示 + 「重新发起支付（获取新报价）」按钮
+    （restartCheckout：清 orderIdRef/quoteRef → loading → retryToken 重跑
+    effect；服务端 R2-28/R3-26 已保证不阻塞）。
+  - `purchaseErrorText` 非服务端错误收敛「网络异常，请稍后重试」（原始
+    message 仅 console.warn）；R1-V01 的中文闭合文案改为直接落错误态
+    （不经 throw/catch，避免被统一兜底覆盖）。
+- RED（源码级）：基线无 restartCheckout/isQuoteLevelConflict/中文兜底
+  （grep 0 命中；RED worktree 无 node_modules 无法跑 jsdom，已如实记录）。
+- 回归测试：`a quote-level conflict retry re-cuts a fresh quote`（重试后
+  quoteCalls==2）、`a link-less pending order offers a restart-checkout way
+  out`（提示+按钮+重启后渲染支付链接、quote/purchase 各 2 次）、
+  `a network-layer error renders the closed Chinese copy`（TypeError 不外显）。
+
+### OCR-R3-17（medium）verify_db_watch 降级时机与 docstring 自相矛盾 — 已修复（四副本）
+
+- Ruling：finding 成立。docstring 称 exit 2 仅「无归档且 runs/ 无 TSV」，
+  实际 R1-V10 后置守卫使任何无归档场景都 2 退出：elif matches 选出的
+  runs/ 文件永不被断言（读取解析为死计算），输出先 "using <runs tsv>"
+  再 WARNING 自相矛盾，审计者按 docstring 误读退出码含义。
+- 处置（四副本同步）：降级提前到文件选择处（`if not archived.exists():`
+  WARNING+exit 2，无 runs/ 探测、无 using 行）；删除后置守卫；docstring
+  退出码 2 契约改为「无归档 TSV：runs/ 回退对 run 级 exactly-once 断言
+  不可判定」；test_verify_db_watch 的 missing-ts­v 用例断言同步。
+- RED 证据：基线脚本 + runs TSV（无归档）实测输出同时含 "using" 与
+  "WARNING"、exit 2（自相矛盾形态）；修复版同场景仅 WARNING + exit 2。
+- 回归验证：test_verify_db_watch 6 passed；四副本归档路径重放
+  DB-WATCH: PASS ×4。
+
+### OCR-R3-19（medium）ocr3 docstring 增量声明失实 — 已修复
+
+- Ruling：finding 成立。「This copy additionally guards every bare
+  all(...values())」处于 Derived-from-ocr-2 的增量清单，但 R1-15 守卫是
+  同批落到全部四副本的——ocr-3 对这些调用未做任何改动，误记为本副本
+  变更误导后续审计（与 R1-V23 同类失实溯源）。
+- 处置：docstring 改写为 Provenance note：守卫系继承（R1-15 四副本同批），
+  本副本实际新增只有 R1-37 invoice-count 守卫；行号引用改按 check 名锚定
+  （fixHint 建议），后续副本沿用该惯例。
+- 回归验证：ocr3 副本对归档证据重放 ALL PASS。
+
+### OCR-R3-31（medium）reason 合并对数组/字符串 details 的边界 — 已修复
+
+- Ruling：finding 成立。`typeof [] === 'object'` 使数组 details 被
+  `{...base, reason}` 展开成索引键对象（数组语义静默丢失）、字符串型整体
+  丢弃；errorFromResult 是所有非 2xx 的公共构造路径。按 fixHint 首选：
+  base 条件加 !Array.isArray（数组/字符串均弃用为仅携带令牌的新对象；
+  fixHint 的「reason 独立字段」改造面更大，未采用）。
+- RED 证据：基线 errors 新测试 1 fail（数组被展开，'0' in details）。
+- 回归测试：数组/字符串型 details 两用例 + 既有无令牌用例。
+
+### OCR-R3-39（medium）retries 无延迟复查，与 duplicates 不对称 — 已修复
+
+- Ruling：finding 成立。retries 的 re-POST 与 duplicates 探针 1 同型
+  （对 B active 订阅的重复注册，归档证据 re_post_http_status=200），而
+  duplicates 加 120s 延迟复查的依据正是该探针的分钟级漂移——retries 只看
+  即时窗口，AC3「不产生第二个商业对象」的结论可能是错的。
+- 处置：retries 即时 checks 全真时复用 `ctx.duplicates_settle_delay` 对 B
+  做延迟复查（仍 active、同 lago_id、恰 1 笔 succeeded、发票仍恰 1 张——
+  续期发票即漂移证据），新 check `deferred_no_drift` 入 checks 与证据
+  `deferred_recheck`；cleanup 的 DELETE 状态候选加入 `terminated`
+  （漂移终止形态可清理）。
+- RED 证据：基线跑新测试 → FAIL（无 deferred_recheck，漂移不判 FAIL）。
+- 回归测试：`test_retries_deferred_recheck_catches_late_termination`
+  （deferred_terminate_after_duplicates=3 落在复查内 → FAIL + ok=False）；
+  既有 PASS 测试补 deferred 复查断言；`test_gate_invoice_id_unknown…`
+  的 checks 键集合断言更新（+deferred_no_drift）。
+
+## 测试与重放证据（全部在本轮实际执行）
+
+| 检查 | 命令 | 结果 |
+|---|---|---|
+| RED（R3-27） | WeKnora-postgres-dev（PG 17）临时库执行旧/新 DDL | 旧：`operator does not exist: boolean = integer`；新：CREATE INDEX；回填/清扫 UPDATE 均可执行 |
+| RED（R3-26/28/25） | 基线 7b9db0314 + 测试补丁 | zombie 当胜者重放（URL 空串）/ ChannelFailed:false / 400 purchase_pending_exists |
+| RED（R3-31/39/17） | 基线 errors.test / phases 测试 / verify_db_watch 演示 | 数组被展开 1 fail / 无延迟复查 FAIL / using+WARNING 同输出 |
+| RED（R3-07/09/02） | 基线 grep | restartCheckout/isQuoteLevelConflict/中文兜底 0 命中 |
+| 全仓编译 | `go build ./internal/...`（worktree） | 通过 |
+| commercial + handler 全量 | `go test ./internal/modules/commercial/... ./internal/handler/ -count=1` | 8 包全 ok |
+| lago-lab 离线回归 | `pytest test_lab.py test_phases.py test_verify_db_watch.py -q` | 87 passed in 904.34s（+2 新测试；1 个既有断言更新后单独复跑通过——checks 键集合含 deferred_no_drift） |
+| TS 单测 | `npx tsx --test` CheckoutPage/errors/contracts | 10/10、8/8、21/21 |
+| 四副本重放 | verify_ac_assertions + verify_db_watch ×4 | AC ALL PASS ×4、DB-WATCH PASS ×4（归档路径不变；runs/ 无归档路径由 6 用例锁定） |
+| 微信 stub 往返 | POST 127.0.0.1:8291 | code_url 正常下发 |
+
+### 重放说明（全链路真实流程未重放）
+
+本批 R3-26/28/25/07/09/02 改变已验证用户流程行为面，与前几轮同因（8091
+为其他会话旧构建进程、Stripe key 不在环境）不可全链路重放，已如实记录；
+独立可重放脚本全部重放（四副本 AC/DB-WATCH ×4、微信 stub），行为等价性
+由分层回归覆盖；R3-27 另有真实 PostgreSQL 17 方言实证。
+
+## 提交
+
+- 提交 message 前缀：`issue-72(ocr-3):`（按本批 ask 指定）
+

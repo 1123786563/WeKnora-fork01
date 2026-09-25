@@ -316,11 +316,11 @@ func TestPurchaseSecondQuoteReplaysExistingPendingOrder(t *testing.T) {
 	}
 }
 
-// TestConcurrentFreshQuoteConflictReplaysWinner（R2-26）：前置读-判-写只缩小
-// 竞态窗口——两张新报价并发 POST 时双方前置 SELECT 都可能未命中对方的未提交
-// 单。数据库层部分唯一索引在插入时兜住不变量：败者拿到
-// ErrPurchasePendingExists 并回放胜者的订单（与 ErrQuoteAlreadyUsed 同构），
-// 绝不产生第二张可付渠道单。
+// TestConcurrentFreshQuoteConflictReplaysWinner（R2-26/R3-26）：PAYABLE 谓词
+// 三处一致（索引、前置检查、冲突回读）后的端到端不变量语义：同租户已有一
+// 张可付 pending（链接已持久化）时，新报价的提交以重放该单回答、渠道零调用
+// （确定性路径走前置检查；真并发的前置放行窗口由 repository 层
+// TestPartialPendingIndexRejectsSecondPayableOrder 锁定——插入撞索引报哨兵）。
 func TestConcurrentFreshQuoteConflictReplaysWinner(t *testing.T) {
 	svc, fake, cp, db := newPurchaseTestEnv(t)
 	purchaseSeedPlan(t, svc.plans, "pro", 9900)
@@ -339,25 +339,65 @@ func TestConcurrentFreshQuoteConflictReplaysWinner(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	// 「并发胜者」中间态：订单行已提交（pending、channel_failed=0——索引槽
-	// 已被占），但渠道链接尚未持久化（checkout_url 空）——前置
-	// CurrentPendingPurchaseOrder 的可付条件（URL 非空）恰好漏掉它，构造出
-	// 前置 SELECT 放行、索引拒绝的竞态形态。
+	// 「并发胜者」：同价面、链接已持久化的可付 pending（占住索引槽；价面与
+	// 新 quote 相同——match gate 放行，冲突由索引裁决）。
 	if err := db.Exec(`INSERT INTO commercial_orders (id, tenant_id, quote_id, kind, amount_fen, currency, state, version, created_at, checkout_url)
-		VALUES ('ord_winner', 46, 'qt_winner', 'purchase', 9900, 'CNY', 'pending', 1, ?, '')`,
+		VALUES ('ord_winner', 46, 'qt_winner', 'purchase', 9900, 'CNY', 'pending', 1, ?, 'https://pay.example/winner')`,
 		time.Now().UTC().Format(time.RFC3339Nano)).Error; err != nil {
 		t.Fatal(err)
 	}
 	q := purchaseQuote(t, svc.orders, 46, "pro")
 	view, err := svc.Purchase(context.Background(), 46, q.ID, "wechat", "a", "WeKnora Space 46")
 	if err != nil {
-		t.Fatalf("conflict must resolve by replay, got %v", err)
+		t.Fatalf("the payable pending must be replayed, got %v", err)
 	}
 	if view.Order == nil || view.Order.ID != "ord_winner" {
-		t.Fatalf("the index loser must replay the winner's order, got %+v", view.Order)
+		t.Fatalf("the loser must replay the winner's payable order, got %+v", view.Order)
+	}
+	if view.Order.CheckoutURL != "https://pay.example/winner" {
+		t.Fatalf("replay must carry the winner's payment entry, got %q", view.Order.CheckoutURL)
 	}
 	if n := len(cp.createCalls); n != 0 {
-		t.Fatalf("conflict must NEVER open a second channel request, creates=%d", n)
+		t.Fatalf("a replay must NEVER open a second channel request, creates=%d", n)
+	}
+}
+
+// TestLinkLessPendingOrderDoesNotBlockFreshQuote（R3-26）：channel_failed=0 但
+// 无链接的 pending（SetCheckoutURL 降级残留 / 旧管线存量行 / 空链接应答）
+// 不是可付单——不占索引槽、不被重放，新报价照常开新渠道单。
+func TestLinkLessPendingOrderDoesNotBlockFreshQuote(t *testing.T) {
+	svc, fake, cp, db := newPurchaseTestEnv(t)
+	purchaseSeedPlan(t, svc.plans, "pro", 9900)
+	if _, err := fake.SubmitCommand(context.Background(), commercial.Command{
+		Kind: commercial.CommandKindCreatePurchaseSubscription,
+		Key: commercial.CreatePurchaseSubscriptionCommandKey(
+			commercial.ExternalPurchaseSubscriptionID(49), commercial.DeterministicPlanCode("pro", 1)),
+		Actor: "test", Reason: "purchase",
+		Payload: commercial.CreatePurchaseSubscriptionPayload{
+			TenantID: 49, ExternalCustomerID: commercial.ExternalCustomerID(49),
+			ExternalPurchaseSubscriptionID: commercial.ExternalPurchaseSubscriptionID(49),
+			PlanCode:                       commercial.DeterministicPlanCode("pro", 1),
+			AmountFen:                      9900, Currency: commercial.CurrencyCNY,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// link-less 残留（channel_failed=0、URL 空——迁移前存量行/降级残留形态）。
+	if err := db.Exec(`INSERT INTO commercial_orders (id, tenant_id, quote_id, kind, amount_fen, currency, state, version, created_at, checkout_url, channel_failed)
+		VALUES ('ord_zombie', 49, 'qt_zombie', 'purchase', 9900, 'CNY', 'pending', 1, ?, '', 0)`,
+		time.Now().UTC().Format(time.RFC3339Nano)).Error; err != nil {
+		t.Fatal(err)
+	}
+	q := purchaseQuote(t, svc.orders, 49, "pro")
+	view, err := svc.Purchase(context.Background(), 49, q.ID, "wechat", "a", "WeKnora Space 49")
+	if err != nil {
+		t.Fatalf("a link-less pending must NOT block the fresh quote: %v", err)
+	}
+	if view.Order == nil || view.Order.ID == "ord_zombie" || view.Order.CheckoutURL == "" {
+		t.Fatalf("the fresh quote must open a NEW payable order, got %+v", view.Order)
+	}
+	if n := len(cp.createCalls); n != 1 {
+		t.Fatalf("channel creates = %d, want 1", n)
 	}
 }
 

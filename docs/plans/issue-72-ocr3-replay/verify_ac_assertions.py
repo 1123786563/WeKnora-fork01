@@ -9,11 +9,16 @@ the window (plan: `phases.py` invoice-invisible branch, Task 2 Step 4 note).
 
 ocr-3 replay copy, executed against the docs/plans/issue-72-ocr3-replay/
 evidence directory. Derived from the ocr-2 copy (97 lines): it keeps the
-two "# ocr-2:" annotations (lines 83 and 99) and adds two ocr-3-specific
-assertion annotations, "# ocr-3:" at lines 88 and 105 (R1-V23: the previous
-note here wrongly claimed "unmodified"). This copy additionally guards every
-bare all(...values()) with an existence check (ocr-81 R1-15): an empty checks
-dict is a FAIL, never a vacuous pass.
+two "# ocr-2:" annotations and adds two ocr-3-specific assertion
+annotations ("# ocr-3:" beside the deferred no-new-invoice and gate-end-state
+checks; R1-V23: the previous note here wrongly claimed "unmodified").
+Provenance note (ocr-3 R3-19): the empty-checks existence guard on every
+all(...values()) call is INHERITED, not added here — the ocr-81 R1-15 fix
+landed the same guard in ALL FOUR copies (flow-evidence-74, ocr1, ocr2 and
+this one) in one batch, so relative to the ocr-2 copy these calls are
+unchanged. What this copy actually ADDS is the ocr-1 R1-37 existence guard
+on the invoice-count check. Later copies: anchor descriptions on check
+names, not line numbers.
 """
 import json
 import sys

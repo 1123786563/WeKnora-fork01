@@ -6,10 +6,7 @@ Rails enum for subscriptions.status in Lago v1.53.0 (verified from the api
 container's app/models/subscription.rb STATUSES): 0=pending 1=active
 2=terminated 3=canceled 4=incomplete.
 
-Exit codes: 0 PASS, 1 CHECK (an assertion failed), 2 MISSING-EVIDENCE (no
-usable TSV: no archived verify-db-watch-samples.tsv next to this script and
-no db-watch-verify-*.tsv under runs/ — that directory is a git-ignored
-runtime artifact, so a fresh clone has none until db_watch.sh is replayed).
+Exit codes: 0 PASS, 1 CHECK (an assertion failed), 2 MISSING-EVIDENCE (no archived verify-db-watch-samples.tsv next to this script: a runs/ fallback TSV is a whole-DB aggregate whose payments cannot be keyed to this run, so the run-level exactly-once assertion is not decidable).
 """
 import glob
 import json
@@ -26,16 +23,21 @@ RUNS = Path(__file__).resolve().parents[3] / "deploy/lago-lab/payment-activation
 # the pick was never printed). Fall back to the newest runs/ TSV only when
 # no archive exists, and always print the file actually used.
 archived = EVID / "verify-db-watch-samples.tsv"
-matches = sorted(glob.glob(str(RUNS / "db-watch-verify-*.tsv")))
-if archived.exists():
-    path = str(archived)
-elif matches:
-    path = matches[-1]
-else:
-    print(f"DB-WATCH: no observer TSV under {RUNS} (db-watch-verify-*.tsv; "
-          "runs/ is git-ignored) and no archived verify-db-watch-samples.tsv "
-          "next to this script")
+# (R3-17) The runs/ fallback is NOT decidable evidence: a runs/ TSV is a
+# whole-DB payments aggregate that cannot be keyed to THIS run, so the
+# exactly-once max_succeeded assertion would be evaluated on foreign data.
+# Degrade to MISSING-EVIDENCE AT SELECTION TIME - no runs/ probe, no
+# "using <file>" line for a file the assertions never read (the old shape
+# printed both "using <runs tsv>" and the WARNING, and the runs/ read+parse
+# below it was dead computation).
+if not archived.exists():
+    print("DB-WATCH: WARNING no archived verify-db-watch-samples.tsv next "
+          "to this script - a runs/ fallback TSV is a whole-DB aggregate "
+          "that cannot be keyed to this run, so the exactly-once "
+          "max_succeeded assertion is not decidable; re-run the observer "
+          "and archive its TSV")
     sys.exit(2)
+path = str(archived)
 print(f"DB-WATCH: using {path}")
 lines = Path(path).read_text().splitlines()
 
@@ -95,17 +97,6 @@ def rows_for(tag, only_midrun=True):
 sub_b = rows_for("-sub-b")
 sub_c = rows_for("-sub-c")
 sub_a = rows_for("-sub-a")
-
-# (R1-V10) The rows_for() assertions are run-keyed by run_prefix, but the
-# payments aggregate is not keyable at all. On the runs/ FALLBACK the TSV
-# may be a different (or multi-) run's observer output, so the
-# max_succeeded()==1 exactly-once invariant is simply not decidable from it:
-# degrade loudly to MISSING-EVIDENCE instead of risking a false CHECK.
-if not archived.exists():
-    print("DB-WATCH: WARNING runs/-fallback TSV in use — payments are a "
-          "whole-DB aggregate and cannot be keyed to this run, so the "
-          "exactly-once max_succeeded assertion is not decidable")
-    sys.exit(2)
 
 midrun_lines = sum(1 for ln in lines if midrun(ln))
 

@@ -181,6 +181,109 @@ test('an unmapped server error falls back to the closed Chinese copy, never the 
   await act(async () => { root?.unmount(); });
 });
 
+// R3-07：报价级冲突的重试必须走一次新报价（quoteRef 清空），不是对同一张
+// 失效报价死循环。
+test('a quote-level conflict retry re-cuts a fresh quote', async () => {
+  const { ApiError } = await import('@weknora/api-client');
+  const expired = new ApiError({ status: 409, code: 'HTTP_409', message: 'quote expired' });
+  let quoteCalls = 0;
+  let purchaseCalls = 0;
+  const client = {
+    commercial: {
+      quote: async () => { quoteCalls += 1; return quote; },
+      purchase: async () => {
+        purchaseCalls += 1;
+        if (purchaseCalls === 1) throw expired;
+        return { state: 'awaiting_payment', order, plan_key: 'pro', plan_version: 1, amount_fen: '9900', currency: 'CNY' };
+      },
+      getOrder: async () => order,
+    },
+  };
+  const { CheckoutPage } = await import('./CheckoutPage.tsx');
+  const { createScopeController } = await import('@weknora/domain/scope');
+  const scopeController = createScopeController({ origin: '', userId: 'user-1', tenantId: '47' });
+  let root: Root | undefined;
+  await act(async () => {
+    root = createRoot(document.body.appendChild(document.createElement('div')));
+    root.render(React.createElement(CheckoutPage, { client: client as never, scopeController, orderId: '' }));
+  });
+  await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+  assert.match(document.body.textContent ?? '', /报价已过期/);
+  assert.equal(quoteCalls, 1);
+  // 点击重试：quoteRef 已被清空 → 重新调 quote（新报价），purchase 用新 quote。
+  const retry = [...document.querySelectorAll('button')].find((b) => b.textContent?.includes('重试'));
+  assert.ok(retry, 'the retry button must exist');
+  await act(async () => { retry?.click(); });
+  await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+  assert.equal(quoteCalls, 2, 'a quote-level conflict retry must re-cut a fresh quote');
+  assert.equal(purchaseCalls, 2);
+  await act(async () => { root?.unmount(); });
+});
+
+// R3-09：渠道失败（202 姿态——pending 订单无可用支付链接）不再是死胡同：
+// 给出渠道异常提示与「重新发起支付」入口（新报价新订单）。
+test('a link-less pending order offers a restart-checkout way out', async () => {
+  const deadOrder = { ...order, checkout_url: '' };
+  let quoteCalls = 0;
+  let purchaseCalls = 0;
+  const client = {
+    commercial: {
+      quote: async () => { quoteCalls += 1; return quote; },
+      purchase: async () => {
+        purchaseCalls += 1;
+        if (purchaseCalls === 1) return { state: 'awaiting_payment', order: deadOrder, plan_key: 'pro', plan_version: 1, amount_fen: '9900', currency: 'CNY' };
+        return { state: 'awaiting_payment', order, plan_key: 'pro', plan_version: 1, amount_fen: '9900', currency: 'CNY' };
+      },
+      getOrder: async () => deadOrder,
+    },
+  };
+  const { CheckoutPage } = await import('./CheckoutPage.tsx');
+  const { createScopeController } = await import('@weknora/domain/scope');
+  const scopeController = createScopeController({ origin: '', userId: 'user-1', tenantId: '48' });
+  let root: Root | undefined;
+  await act(async () => {
+    root = createRoot(document.body.appendChild(document.createElement('div')));
+    root.render(React.createElement(CheckoutPage, { client: client as never, scopeController, orderId: '' }));
+  });
+  await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+  const text = document.body.textContent ?? '';
+  assert.match(text, /支付渠道异常/);
+  assert.match(text, /重新发起支付/);
+  const restart = [...document.querySelectorAll('button')].find((b) => b.textContent?.includes('重新发起支付'));
+  assert.ok(restart, 'the restart button must exist');
+  await act(async () => { restart?.click(); });
+  await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+  assert.equal(quoteCalls, 2, 'restart must re-cut a quote');
+  assert.equal(purchaseCalls, 2, 'restart must open a new order');
+  const link = document.querySelector('a[href="https://pay.example/qr"]');
+  assert.ok(link, 'the restarted checkout must render the payment link');
+  await act(async () => { root?.unmount(); });
+});
+
+// R3-02：非服务端错误（网络层）收敛为中文兜底——浏览器英文技术串不渲染。
+test('a network-layer error renders the closed Chinese copy', async () => {
+  const client = {
+    commercial: {
+      quote: async () => quote,
+      purchase: async () => { throw new TypeError('Failed to fetch'); },
+      getOrder: async () => order,
+    },
+  };
+  const { CheckoutPage } = await import('./CheckoutPage.tsx');
+  const { createScopeController } = await import('@weknora/domain/scope');
+  const scopeController = createScopeController({ origin: '', userId: 'user-1', tenantId: '49' });
+  let root: Root | undefined;
+  await act(async () => {
+    root = createRoot(document.body.appendChild(document.createElement('div')));
+    root.render(React.createElement(CheckoutPage, { client: client as never, scopeController, orderId: '' }));
+  });
+  await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+  const text = document.body.textContent ?? '';
+  assert.match(text, /网络异常，请稍后重试/);
+  assert.doesNotMatch(text, /Failed to fetch/);
+  await act(async () => { root?.unmount(); });
+});
+
 // R1-V12：已支付的订单不再显示「待付款（权益未开通）」标签（付款后回访/轮询
 // 更新后不得误导重复支付）。
 test('a paid order no longer shows the awaiting-payment label', async () => {

@@ -271,6 +271,66 @@ func seedSecondPlan(t *testing.T, db *gorm.DB) {
 	}
 }
 
+// cancellingCreateStub (R3-28): the channel Create fails BECAUSE the caller
+// cancelled — the cancellation happens DURING the channel call (the client
+// disconnected mid-checkout), exactly the shape whose row-persisting writes
+// must survive the request's end.
+type cancellingCreateStub struct {
+	*stubCheckoutProvider
+	onCreate func()
+}
+
+func (p *cancellingCreateStub) Create(_ context.Context, _ payment.OrderRequest) (payment.AttemptResult, error) {
+	p.onCreate()
+	return payment.AttemptResult{}, context.Canceled
+}
+
+// TestOpenOrderPersistsChannelFailurePastCallerCancellation（R3-28）：渠道
+// Create 因调用方取消而失败时，channel_failed 标记的写入曾复用同一已取消
+// ctx（标记丢失 → 僵尸 pending：channel_failed=false 且无链接，永久占用租户
+// 的可付槽并阻塞一切新结账）。持久化写现在脱离请求取消——标记必须落地。
+func TestOpenOrderPersistsChannelFailurePastCallerCancellation(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared&_busy_timeout=5000"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s, err := db.DB(); err == nil {
+		s.SetMaxOpenConns(1)
+	}
+	if err := db.AutoMigrate(&repocommercial.OrderRow{}, &repocommercial.PaymentAttemptRow{},
+		&repocommercial.OutboxEvent{}, &repocommercial.PlanRow{}, &repocommercial.QuoteRow{},
+		&repocommercial.Subscription{}); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	base := &stubCheckoutProvider{queryState: payment.StatePending}
+	wrapped := &cancellingCreateStub{stubCheckoutProvider: base, onCreate: cancel}
+	svc, err := NewOrderService(db, map[string]payment.Provider{"wechat": wrapped})
+	if err != nil {
+		t.Fatal(err)
+	}
+	seedPublishedPlan(t, db)
+	q, err := svc.CreateQuote(context.Background(), 110, "pro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, err := svc.CreateOrder(ctx, 110, q.ID, "wechat")
+	if err != nil {
+		t.Fatalf("the channel-failure posture must still answer the write: %v", err)
+	}
+	if view.CheckoutError == "" {
+		t.Fatalf("expected the channel-failure posture, got %+v", view)
+	}
+	var stored repocommercial.OrderRow
+	if err := db.Where("id = ?", view.ID).First(&stored).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !stored.ChannelFailed {
+		t.Fatalf("the channel-failed mark must survive the caller's cancellation, row=%+v", stored)
+	}
+}
+
 func seedChangePlanSubscription(t *testing.T, db *gorm.DB, tenantID uint64, plan domain.PlanVersion, anchor, paidUntil time.Time) {
 	t.Helper()
 	snap, _ := json.Marshal(plan)

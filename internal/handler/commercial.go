@@ -800,6 +800,18 @@ func (h *CommercialHandler) CreateOrder(c *gin.Context) {
 		c.JSON(http.StatusConflict, gin.H{"error": "quote expired"})
 	case errors.Is(err, repocommercial.ErrQuoteVersionConflict):
 		c.JSON(http.StatusConflict, gin.H{"error": "subscription changed since the quote was cut"})
+	case errors.Is(err, repocommercial.ErrPurchasePendingExists):
+		// (R3-25) The partial pending-purchase invariant rejected this
+		// insert (the legacy POST /orders path has no PurchaseService-style
+		// pre-check, so the sentinel escapes through OpenOrder): answer 409
+		// and attach the EXISTING payable pending order so the client holds
+		// the payment entry instead of a bare error token.
+		if existing, rerr := h.orders.CurrentPayablePendingOrderView(c.Request.Context(), tenantID); rerr == nil {
+			c.JSON(http.StatusConflict, gin.H{"error": "purchase pending exists",
+				"order": orderWire(existing)})
+			return
+		}
+		c.JSON(http.StatusConflict, gin.H{"error": "purchase pending exists"})
 	default:
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	}
