@@ -45,11 +45,15 @@ type acceptedUpgradeWrite struct {
 }
 
 // upgradeAcceptRepo 在 installPreviewRepo 之上补齐升级写方法（对真实 gorm
-// pluginRepository.UpdateInstallationAccepted 的同构内存实现：版本/端点/
-// 快照/digest 落行 + 漂移重置），并记录全部调用供补偿序断言。
+// pluginRepository.UpdateInstallationAccepted / DeleteInstallationToolPolicies
+// 的同构内存实现：版本/端点/快照/digest 落行 + 漂移重置；按名删除本轮回写的
+// 策略行），并记录全部调用供补偿序断言。
 type upgradeAcceptRepo struct {
 	*installPreviewRepo
-	acceptedWrites []acceptedUpgradeWrite
+	acceptedWrites   []acceptedUpgradeWrite
+	approvalRows     *fakeInstallApprovalRepo
+	deletedPolicies  []string
+	deletePolicyFail bool
 }
 
 func (r *upgradeAcceptRepo) UpdateInstallationAccepted(
@@ -71,6 +75,41 @@ func (r *upgradeAcceptRepo) UpdateInstallationAccepted(
 		}
 	}
 	return gorm.ErrRecordNotFound
+}
+
+// DeleteInstallationToolPolicies 删除本次接受新写入的策略行（补偿清理）——
+// 内存实现直接从审批 fake 的行集移除。
+func (r *upgradeAcceptRepo) DeleteInstallationToolPolicies(
+	_ context.Context, tenantID uint64, serviceID string, toolNames []string,
+) error {
+	if r.deletePolicyFail {
+		return fmt.Errorf("injected policy-cleanup fault")
+	}
+	for _, name := range toolNames {
+		delete(r.approvalRows.rows, approvalKey(serviceID, name))
+		r.deletedPolicies = append(r.deletedPolicies, name)
+	}
+	return nil
+}
+
+// upgradeAcceptApprovalRepo 包装 fakeInstallApprovalRepo，按调用序号注入
+// UpsertPolicy 故障（OCR T16-OCR1-F2：制造「前一工具已落行、后一工具失败」
+// 的中途中断窗口——快照迭代顺序不应影响测试确定性，故按第 N 次调用注入而
+// 非按工具名），断言补偿删除已落行的新策略行。
+type upgradeAcceptApprovalRepo struct {
+	*fakeInstallApprovalRepo
+	failOnNthUpsert int // 0=不注入；N=第 N 次 UpsertPolicy 调用失败
+	upsertCalls     int
+}
+
+func (r *upgradeAcceptApprovalRepo) UpsertPolicy(
+	ctx context.Context, tenantID uint64, serviceID, toolName string, patch types.MCPToolPolicyPatch,
+) error {
+	r.upsertCalls++
+	if r.failOnNthUpsert > 0 && r.upsertCalls == r.failOnNthUpsert {
+		return fmt.Errorf("injected policy fault on call #%d (%s)", r.failOnNthUpsert, toolName)
+	}
+	return r.fakeInstallApprovalRepo.UpsertPolicy(ctx, tenantID, serviceID, toolName, patch)
 }
 
 // upgradeAcceptMCPRepo 包装 fakeInstallMCPServiceRepo：Update 全字段持久化
@@ -98,13 +137,13 @@ func (r *upgradeAcceptMCPRepo) Update(_ context.Context, svc *types.MCPService) 
 
 // upgradeAcceptStack：plugintest v1/v2 双远端（端点隔离，endpoint 切换的
 // 前提）+ 可热换清单 host + 包装仓储 + 真实 PluginService，落一条已确认
-// 安装（v1 目录 1 只读工具 search）。
+// 安装。
 type upgradeAcceptStack struct {
 	svc          interfaces.PluginService
 	pluginRepo   *upgradeAcceptRepo
 	innerRepo    *installPreviewRepo
 	mcpRepo      *upgradeAcceptMCPRepo
-	approvalRepo *fakeInstallApprovalRepo
+	approvalRepo *upgradeAcceptApprovalRepo
 	approvalSvc  interfaces.MCPToolApprovalService
 	manager      *internalmcp.MCPManager
 	remoteV1     *plugintest.Server
@@ -115,31 +154,43 @@ type upgradeAcceptStack struct {
 	closerCalls  int
 }
 
-func newUpgradeAcceptStack(t *testing.T, tenantID uint64) *upgradeAcceptStack {
-	t.Helper()
-
-	remoteV1 := plugintest.New()
-	remoteV1.PluginID = upgradeAcceptPluginID
-	remoteV1.Version = "1.0.0"
-	remoteV1.SetTools([]plugintest.Tool{{
+// v1/v2 默认目录：v1 = 1 只读 search；v2 = search（同 schema）+ 新增只读
+// lookup + 新增写 create_issue（独立远端 → 端点切换）。
+func upgradeAcceptV1Tools() []plugintest.Tool {
+	return []plugintest.Tool{{
 		Name: "search", Description: "search v1", ReadOnly: true,
 		InputSchema: upgradeV1SearchSchema,
-	}})
-	remoteV1.Start(t)
+	}}
+}
 
-	// v2：保留 search（同 schema）+ 新增 1 只读 lookup + 1 写 create_issue；
-	// 独立远端 → 端点路径切换（endpoint_changed 的前提）。
-	remoteV2 := plugintest.New()
-	remoteV2.PluginID = upgradeAcceptPluginID
-	remoteV2.Version = "2.0.0"
-	remoteV2.SetTools([]plugintest.Tool{
+func upgradeAcceptV2Tools() []plugintest.Tool {
+	return []plugintest.Tool{
 		{Name: "search", Description: "search v1", ReadOnly: true,
 			InputSchema: upgradeV1SearchSchema},
 		{Name: "lookup", Description: "lookup v2", ReadOnly: true,
 			InputSchema: upgradeV1SearchSchema},
 		{Name: "create_issue", Description: "create v2", ReadOnly: false,
 			InputSchema: upgradeV2WriteSchema},
-	})
+	}
+}
+
+func newUpgradeAcceptStack(t *testing.T, tenantID uint64) *upgradeAcceptStack {
+	return newUpgradeAcceptStackWithTools(t, tenantID, upgradeAcceptV1Tools(), upgradeAcceptV2Tools())
+}
+
+func newUpgradeAcceptStackWithTools(t *testing.T, tenantID uint64, v1Tools, v2Tools []plugintest.Tool) *upgradeAcceptStack {
+	t.Helper()
+
+	remoteV1 := plugintest.New()
+	remoteV1.PluginID = upgradeAcceptPluginID
+	remoteV1.Version = "1.0.0"
+	remoteV1.SetTools(v1Tools)
+	remoteV1.Start(t)
+
+	remoteV2 := plugintest.New()
+	remoteV2.PluginID = upgradeAcceptPluginID
+	remoteV2.Version = "2.0.0"
+	remoteV2.SetTools(v2Tools)
 	remoteV2.Start(t)
 
 	v1Manifest, err := marshalManifest(remoteV1)
@@ -158,10 +209,10 @@ func newUpgradeAcceptStack(t *testing.T, tenantID uint64) *upgradeAcceptStack {
 
 	innerRepo := &installPreviewRepo{}
 	mcpRepo := &upgradeAcceptMCPRepo{fakeInstallMCPServiceRepo: &fakeInstallMCPServiceRepo{}}
-	approvalRepo := &fakeInstallApprovalRepo{}
+	approvalRepo := &upgradeAcceptApprovalRepo{fakeInstallApprovalRepo: &fakeInstallApprovalRepo{}}
 	innerRepo.mcpRepo = mcpRepo.fakeInstallMCPServiceRepo
-	innerRepo.approvalRepo = approvalRepo
-	pluginRepo := &upgradeAcceptRepo{installPreviewRepo: innerRepo}
+	innerRepo.approvalRepo = approvalRepo.fakeInstallApprovalRepo
+	pluginRepo := &upgradeAcceptRepo{installPreviewRepo: innerRepo, approvalRows: approvalRepo.fakeInstallApprovalRepo}
 
 	mcpSvcService := service.NewMCPServiceService(mcpRepo, nil, nil)
 	approvalSvc := service.NewMCPToolApprovalService(approvalRepo, mcpRepo)
@@ -433,5 +484,152 @@ func TestAcceptUpgradeFailureKeepsOldVersion(t *testing.T) {
 		require.Equal(t, v1State, cloneInstallation(s.innerRepo.installations[0]))
 		require.Equal(t, v1Endpoint, s.materialized(t).URL, "the materialized URL must be restored to v1")
 		require.ElementsMatch(t, []string{"search"}, snapshotToolNames(s.guardSnapshot(t, tenantID)))
+	})
+}
+
+// TestAcceptUpgradeDanglingServiceRowStillAccepts（OCR T16-OCR1-F1）：
+// 悬空 service_id 锚行（卸载中断：物化服务行已删而安装行残留）下，7b 按
+// 「无行可同步」继续，7c 不得因 ListByService 内部 GetByID 落空以
+// "mcp service not found" 确定性阻断接受——策略行以服务为键，行已丢失则
+// 无可读也无可写。接受应成功切换安装行（安装行保持权威）且零补偿。
+func TestAcceptUpgradeDanglingServiceRowStillAccepts(t *testing.T) {
+	const tenantID = uint64(9)
+	s := newUpgradeAcceptStack(t, tenantID)
+	ctx := context.Background()
+	resp := s.previewV2(t, tenantID)
+
+	// 模拟卸载中断的悬空锚：物化服务行消失，安装行 service_id 仍指向它。
+	s.mcpRepo.services = nil
+
+	accepted, err := s.svc.AcceptUpgrade(ctx, tenantID, "admin-1", s.inst.ID, resp.CandidateFingerprint)
+	require.NoError(t, err, "a dangling service_id anchor must not deterministically abort every accept")
+	require.Equal(t, "2.0.0", accepted.Version)
+	require.Len(t, s.pluginRepo.acceptedWrites, 1, "no compensation write-back on the success path")
+	require.Equal(t, "2.0.0", s.innerRepo.installations[0].AcceptedVersion)
+	// 策略面保持 confirm 时的原样（search 一行），无新增也无失败残留。
+	rows := s.policyRows(t, tenantID)
+	require.Len(t, rows, 1)
+	require.Contains(t, rows, "search")
+	// 运行时守卫目录已切 v2（安装行权威）。
+	require.ElementsMatch(t, []string{"search", "lookup", "create_issue"},
+		snapshotToolNames(s.guardSnapshot(t, tenantID)))
+}
+
+// TestAcceptUpgradePolicyFaultCompensatesNewRows（OCR T16-OCR1-F2）：
+// 7c 增量循环中途失败（第 1 个新工具已落行、第 2 个失败）时，本轮回写的
+// 新策略行必须在补偿中删除——否则残留行会把同名工具的安装时规则
+// （新工具 Enabled=ReadOnly）短路成治理放宽路径（后续接受跳过已有行）。
+func TestAcceptUpgradePolicyFaultCompensatesNewRows(t *testing.T) {
+	const tenantID = uint64(9)
+	s := newUpgradeAcceptStack(t, tenantID)
+	ctx := context.Background()
+	resp := s.previewV2(t, tenantID)
+	v1State := cloneInstallation(s.innerRepo.installations[0])
+	v1Endpoint := s.materialized(t).URL
+
+	// v2 恰有两个新工具（lookup、create_issue）：武装时清零计数（confirm
+	// 已消耗 1 次调用），第 2 次 UpsertPolicy 失败 → 第 1 次必然已成功落行
+	// （顺序无关的确定性中断窗口）。
+	s.approvalRepo.upsertCalls = 0
+	s.approvalRepo.failOnNthUpsert = 2
+	_, err := s.svc.AcceptUpgrade(ctx, tenantID, "admin-1", s.inst.ID, resp.CandidateFingerprint)
+	require.Error(t, err)
+
+	// 本轮新写入的策略行必须被补偿删除；search 既有行保留。
+	rows := s.policyRows(t, tenantID)
+	require.Len(t, rows, 1, "only the pre-existing search row may remain — this accept's new rows must be compensated away")
+	require.Contains(t, rows, "search")
+	require.NotEmpty(t, s.pluginRepo.deletedPolicies, "the compensation must have deleted the rows this accept wrote")
+	require.Len(t, s.pluginRepo.deletedPolicies, 1)
+
+	// 保旧版三件套同既有补偿语义。
+	require.Equal(t, v1State, cloneInstallation(s.innerRepo.installations[0]))
+	require.Equal(t, v1Endpoint, s.materialized(t).URL)
+	require.ElementsMatch(t, []string{"search"}, snapshotToolNames(s.guardSnapshot(t, tenantID)))
+}
+
+// TestAcceptUpgradeSyncsOAuthConfigToCandidate（OCR T16-OCR1-F3）：
+// 7b 必须按候选快照重导出物化服务的 AuthConfig（镜像 ConfirmInstallation
+// 的 oauthConfigFromVerifiedBaseline），否则 v1 无个人授权工具升级到 v2
+// 新增个人授权工具时成员拿到永久死链（AuthorizeURL 以 IsOAuth() 拒绝）、
+// scope 集变化时授权请求按旧并集发起；候选不再需要个人授权时必须显式
+// 清空（共享 Update 对 nil AuthConfig 跳过写列）。
+func TestAcceptUpgradeSyncsOAuthConfigToCandidate(t *testing.T) {
+	const tenantID = uint64(9)
+	ctx := context.Background()
+
+	t.Run("new personal-auth tool arms OAuth on the service row", func(t *testing.T) {
+		// v1 无个人授权工具（物化 AuthConfig=nil）；v2 新增个人授权只读工具。
+		v2 := upgradeAcceptV2Tools()
+		v2 = append(v2, plugintest.Tool{
+			Name: "private_lookup", Description: "auth lookup", ReadOnly: true,
+			RequiresPersonalAuth: true, Scopes: []string{"read:demo"},
+			InputSchema: upgradeV1SearchSchema,
+		})
+		s := newUpgradeAcceptStackWithTools(t, tenantID, upgradeAcceptV1Tools(), v2)
+		resp := s.previewV2(t, tenantID)
+
+		require.Nil(t, s.materialized(t).AuthConfig, "v1 install materializes no OAuth config")
+		_, err := s.svc.AcceptUpgrade(ctx, tenantID, "admin-1", s.inst.ID, resp.CandidateFingerprint)
+		require.NoError(t, err)
+
+		svcRow := s.materialized(t)
+		require.NotNil(t, svcRow.AuthConfig, "the accepted personal-auth snapshot must arm OAuth on the service row")
+		require.True(t, svcRow.AuthConfig.IsOAuth(), "authorize-url must not dead-end at IsOAuth()")
+		require.Equal(t, []string{"read:demo"}, svcRow.AuthConfig.Scopes)
+	})
+
+	t.Run("candidate without personal auth clears OAuth explicitly", func(t *testing.T) {
+		// v1 带个人授权工具（物化 OAuth）；v2 全部无个人授权 → 必须显式清空
+		// （repo Update 对 nil AuthConfig 不写列，置 nil 不会生效）。
+		v1 := append(upgradeAcceptV1Tools(), plugintest.Tool{
+			Name: "private_lookup", Description: "auth lookup", ReadOnly: true,
+			RequiresPersonalAuth: true, Scopes: []string{"read:demo"},
+			InputSchema: upgradeV1SearchSchema,
+		})
+		v2 := []plugintest.Tool{
+			{Name: "search", Description: "search v1", ReadOnly: true, InputSchema: upgradeV1SearchSchema},
+			{Name: "lookup", Description: "lookup v2", ReadOnly: true, InputSchema: upgradeV1SearchSchema},
+		}
+		s := newUpgradeAcceptStackWithTools(t, tenantID, v1, v2)
+		resp := s.previewV2(t, tenantID)
+		require.True(t, s.materialized(t).AuthConfig.IsOAuth(), "v1 install materializes OAuth")
+
+		_, err := s.svc.AcceptUpgrade(ctx, tenantID, "admin-1", s.inst.ID, resp.CandidateFingerprint)
+		require.NoError(t, err)
+
+		svcRow := s.materialized(t)
+		require.False(t, svcRow.AuthConfig == nil || svcRow.AuthConfig.IsOAuth(),
+			"the candidate's no-auth baseline must CLEAR OAuth on the service row")
+	})
+
+	t.Run("compensation restores the old OAuth baseline", func(t *testing.T) {
+		// v1 OAuth scope 并集 [read:demo]；v2 扩到 [read:demo write:thing]，
+		// 第 2 次策略写失败 → 补偿必须把 AuthConfig 连同 URL/安装行一起回旧值。
+		v1 := append(upgradeAcceptV1Tools(), plugintest.Tool{
+			Name: "private_lookup", Description: "auth lookup", ReadOnly: true,
+			RequiresPersonalAuth: true, Scopes: []string{"read:demo"},
+			InputSchema: upgradeV1SearchSchema,
+		})
+		v2 := []plugintest.Tool{
+			{Name: "search", Description: "search v1", ReadOnly: true, InputSchema: upgradeV1SearchSchema},
+			{Name: "private_lookup", Description: "auth lookup", ReadOnly: true,
+				RequiresPersonalAuth: true, Scopes: []string{"read:demo", "write:thing"},
+				InputSchema: upgradeV1SearchSchema},
+			{Name: "lookup", Description: "lookup v2", ReadOnly: true, InputSchema: upgradeV1SearchSchema},
+			{Name: "create_issue", Description: "create v2", ReadOnly: false, InputSchema: upgradeV2WriteSchema},
+		}
+		s := newUpgradeAcceptStackWithTools(t, tenantID, v1, v2)
+		resp := s.previewV2(t, tenantID)
+		oldAuth := s.materialized(t).AuthConfig
+
+		s.approvalRepo.upsertCalls = 0
+		s.approvalRepo.failOnNthUpsert = 2
+		_, err := s.svc.AcceptUpgrade(ctx, tenantID, "admin-1", s.inst.ID, resp.CandidateFingerprint)
+		require.Error(t, err)
+
+		svcRow := s.materialized(t)
+		require.True(t, svcRow.AuthConfig.IsOAuth(), "compensation must restore the old OAuth baseline")
+		require.Equal(t, oldAuth.Scopes, svcRow.AuthConfig.Scopes, "the widened scope union must roll back")
 	})
 }

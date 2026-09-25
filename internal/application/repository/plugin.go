@@ -241,6 +241,29 @@ func (r *pluginRepository) UpdateInstallationAccepted(
 	return nil
 }
 
+// DeleteInstallationToolPolicies removes the per-tool policy rows an upgrade
+// accept CREATED in that call (T16-OCR1-F2 compensation): when the incremental
+// policy loop fails mid-way, the rows already landed for tools of the
+// candidate snapshot must go — the compensation restores the OLD snapshot,
+// and a residual row would (a) sit as a governance record for a tool that is
+// not in the restored snapshot and (b) short-circuit the install-time rule
+// (a NEW tool lands Enabled=ReadOnly) on a later accept of a candidate that
+// reclassifies the same name as a write tool, landing it exposed. The plugin
+// domain owns its derived policy rows (the HardDeleteServiceCascade
+// discipline); MCPToolApproval carries no soft-delete column, so this is a
+// hard, parameter-bound delete. Consumed via the service's
+// installationUpgradeWriter capability seam.
+func (r *pluginRepository) DeleteInstallationToolPolicies(
+	ctx context.Context, tenantID uint64, serviceID string, toolNames []string,
+) error {
+	if serviceID == "" || len(toolNames) == 0 {
+		return nil
+	}
+	return r.db.WithContext(ctx).
+		Where("tenant_id = ? AND service_id = ? AND tool_name IN ?", tenantID, serviceID, toolNames).
+		Delete(&types.MCPToolApproval{}).Error
+}
+
 // DeleteInstallation HARD-deletes (Unscoped) — this is the compensation
 // path of ConfirmInstallation: a failed materialization must free the
 // (tenant_id, plugin_id) unique slot. Installations carry no soft-delete

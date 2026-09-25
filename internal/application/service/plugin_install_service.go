@@ -126,14 +126,21 @@ var (
 
 // installationUpgradeWriter is the narrow persistence capability AcceptUpgrade
 // needs (T16): persisting an accepted upgrade (or its compensation write-back)
-// onto the installation row. The gorm pluginRepository implements it
-// (repository.UpdateInstallationAccepted). It is consumed via a type assertion
-// on the injected PluginRepository rather than by extending that interface:
-// the T06-era contract and its in-tree test fakes predate the upgrade slice,
-// and the upgrade write is one additive method — repositories without it fail
+// onto the installation row, and deleting the per-tool policy rows this
+// accept created when a later step fails (T16-OCR1-F2 — the plugin domain
+// owns its derived policy rows, HardDeleteServiceCascade discipline; the
+// shared MCPToolApprovalRepository has no delete API). The gorm
+// pluginRepository implements both. It is consumed via a type assertion on
+// the injected PluginRepository rather than by extending that interface: the
+// T06-era contract and its in-tree test fakes predate the upgrade slice, and
+// the upgrade writes are additive methods — repositories without them fail
 // LOUDLY here (ErrUpgradeWriterNotWired) instead of at compile time.
 type installationUpgradeWriter interface {
 	UpdateInstallationAccepted(ctx context.Context, tenantID uint64, id, acceptedVersion, endpointURL string, toolsSnapshot types.PluginPreviewTools, toolsDigest string) error
+
+	// DeleteInstallationToolPolicies hard-deletes the policy rows this accept
+	// wrote for toolNames (the compensation of the incremental 7c loop).
+	DeleteInstallationToolPolicies(ctx context.Context, tenantID uint64, serviceID string, toolNames []string) error
 }
 
 // ConfirmInstallation implements the compensated seven-step confirm flow
@@ -997,6 +1004,15 @@ func (s *pluginService) AcceptUpgrade(
 	oldEndpoint := inst.EndpointURL
 	oldSnapshot := append(types.PluginPreviewTools(nil), inst.ToolsSnapshot...)
 	oldDigest := inst.ToolsDigest
+	var oldAuth *types.MCPAuthConfig // captured before 7b overwrites it
+	if svc != nil {
+		oldAuth = svc.AuthConfig
+	}
+	// writtenPolicies accumulates the per-tool rows THIS accept creates in the
+	// incremental 7c loop — the compensation delete set (T16-OCR1-F2): a row
+	// appended only after its SetPolicy SUCCEEDED, so a mid-loop failure
+	// deletes exactly the rows this call wrote (UpsertPolicy is atomic).
+	var writtenPolicies []string
 
 	// Step 7a: installation row first (the snapshot is the runtime authority;
 	// writing it before the service row means a later failure leaves the OLD
@@ -1008,16 +1024,36 @@ func (s *pluginService) AcceptUpgrade(
 	}
 
 	// compensate writes the OLD values back on a FRESH context (the request
-	// ctx may already be cancelled — R12 F14 discipline): the service row
-	// first (the runtime-visible endpoint), then the installation row (the
-	// snapshot authority last, so a failing compensation leaves the retriable
-	// "installation ahead, service behind" shape rather than the reverse).
+	// ctx may already be cancelled — R12 F14 discipline), unwinding the write
+	// order in REVERSE: this accept's NEW policy rows first (T16-OCR1-F2 — a
+	// residual row keyed to a tool outside the restored snapshot would
+	// short-circuit the install-time Enabled=ReadOnly rule on a later accept
+	// of a candidate that reclassifies the same name), then the service row
+	// (the runtime-visible endpoint AND the OAuth baseline, T16-OCR1-F3),
+	// then the installation row (the snapshot authority last, so a failing
+	// compensation leaves the retriable "installation ahead, service behind"
+	// shape rather than the reverse).
 	compensate := func(cause error) error {
 		compCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
 		defer cancel()
+		if len(writtenPolicies) > 0 {
+			if err := writer.DeleteInstallationToolPolicies(compCtx, tenantID, inst.ServiceID, writtenPolicies); err != nil {
+				logger.GetLogger(ctx).Errorf(
+					"plugin upgrade accept compensation: failed to remove this accept's new policy rows for %s (%v): %v",
+					inst.ServiceID, writtenPolicies, err)
+			}
+		}
 		if svc != nil {
 			old := oldEndpoint
 			svc.URL = &old
+			if oldAuth != nil {
+				svc.AuthConfig = oldAuth
+			} else {
+				// A nil old config cannot be expressed through the shared
+				// Update (nil skips the auth_config column) — restore the
+				// functional equivalent: explicit none.
+				svc.AuthConfig = &types.MCPAuthConfig{AuthType: types.MCPAuthNone}
+			}
 			svc.UpdatedAt = time.Now()
 			if err := s.mcpServiceRepo.Update(compCtx, svc); err != nil {
 				logger.GetLogger(ctx).Errorf(
@@ -1037,13 +1073,29 @@ func (s *pluginService) AcceptUpgrade(
 		return cause
 	}
 
-	// Step 7b: materialized service URL switch. Name/ID/PluginInstallationID
-	// stay put (session server_id stability — Global Constraints); the
-	// UpdatedAt refresh invalidates the manager's version-keyed client cache
-	// and the explicit close evicts any live connection at the old endpoint.
+	// Step 7b: materialized service URL switch + OAuth baseline re-derivation.
+	// Name/ID/PluginInstallationID stay put (session server_id stability —
+	// Global Constraints); the UpdatedAt refresh invalidates the manager's
+	// version-keyed client cache and the explicit close evicts any live
+	// connection at the old endpoint. The AuthConfig is re-derived from the
+	// ACCEPTED candidate baseline (T16-OCR1-F3) — the mirror of
+	// ConfirmInstallation's materialization: the connection view derives
+	// RequiresPersonalAuth from the accepted SNAPSHOT while the authorize
+	// flow reads svc.AuthConfig.IsOAuth(); leaving the install-time config
+	// would dead-end a newly personal-auth tool at IsOAuth() (permanent 400)
+	// and keep authorization requests at the OLD scope union.
 	if svc != nil {
 		newEndpoint := candidateEndpoint
 		svc.URL = &newEndpoint
+		newAuth := oauthConfigFromVerifiedBaseline(candidateSnapshot)
+		if newAuth == nil {
+			// The shared repo Update SKIPS a nil AuthConfig (it only writes
+			// the column when non-nil) — a candidate baseline with no
+			// personal-auth tools must CLEAR the column explicitly, not
+			// silently keep the install-time OAuth config.
+			newAuth = &types.MCPAuthConfig{AuthType: types.MCPAuthNone}
+		}
+		svc.AuthConfig = newAuth
 		svc.UpdatedAt = time.Now()
 		if err := s.mcpServiceRepo.Update(ctx, svc); err != nil {
 			logger.GetLogger(ctx).Errorf(
@@ -1061,7 +1113,15 @@ func (s *pluginService) AcceptUpgrade(
 	// upgrade never resets governance. A NEW tool lands the install-time
 	// rule: read tools exposed, WRITE TOOLS DISABLED (B5; full write-tool
 	// governance acceptance is T18's slice — this lands the rows).
-	if inst.ServiceID != "" {
+	//
+	// Guarded on svc != nil, NOT ServiceID != "" (T16-OCR1-F1): with the
+	// service row GONE (a dangling service_id anchor — an interrupted
+	// uninstall) ListByService/SetPolicy fail inside on the missing service
+	// row and would deterministically abort EVERY accept after 7a wrote the
+	// installation, contradicting 7b's "nothing to sync" reading. Policy
+	// rows are keyed to the service row; with the row gone there is nothing
+	// to read and nothing to write.
+	if svc != nil {
 		existing := map[string]bool{}
 		rows, err := s.toolApprovalService.ListByService(ctx, tenantID, inst.ServiceID)
 		if err != nil {
@@ -1081,6 +1141,9 @@ func (s *pluginService) AcceptUpgrade(
 					"failed to write tool policy for %s/%s on upgrade: %v", inst.PluginID, tool.Name, err)
 				return nil, compensate(ErrInstallationMaterializeFailed)
 			}
+			// Recorded only after the row landed — the compensation delete
+			// set is exactly what this call wrote (T16-OCR1-F2).
+			writtenPolicies = append(writtenPolicies, tool.Name)
 		}
 	}
 
