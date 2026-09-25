@@ -494,6 +494,13 @@ test('parsePluginUpgradePreview rejects an empty input_schema_digest', () => {
   assert.throws(() => parsePluginUpgradePreview(envelope), /input_schema_digest/);
 });
 
+// T15-OCR2-low（plugins.ts CONNECTION_PATH）：connection envelope 的诊断前缀
+// 必须含 :id 占位段——与 UPGRADE_PREVIEW_PATH 同约定，缺段前缀会误导排障时的
+// 路径定位（真实请求是 /installations/{id}/connections/me）。
+test('parsePluginMyConnection 诊断前缀含 :id 段（与 UPGRADE_PREVIEW_PATH 同约定）', () => {
+  assert.throws(() => parsePluginMyConnection(null), /installations\/:id\/connections\/me/);
+});
+
 // ---- T12: member personal connection (dto.PluginMyConnection,
 // GET /plugins/installations/:id/connections/me, handler GetMyConnection) ----
 

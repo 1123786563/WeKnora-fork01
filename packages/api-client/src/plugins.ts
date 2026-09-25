@@ -467,8 +467,12 @@ export function parsePluginUpgradePreview(value: unknown): PluginUpgradePreview 
  * The member's personal OAuth connection view of one installation: the
  * materialized service binding, the three-state verdict
  * (authorized | expired | unauthorized) and the legacy MCP OAuth endpoint
- * paths mapped onto that service_id — the panel drives authorize/revoke
- * through those existing endpoints. No token material ever crosses the wire.
+ * paths mapped onto that service_id. No token material ever crosses the wire.
+ *
+ * T15-OCR2-low（消费方说明）: authorizeUrlPath/revokePath are carried for
+ * envelope completeness and diagnostics only — the member panel drives
+ * authorize/revoke through the EXISTING mcp-oauth client methods located by
+ * serviceId (client.configuration.mcp.oauth), not through these paths.
  */
 export interface PluginMyConnection {
   readonly installationId: string;
@@ -478,14 +482,16 @@ export interface PluginMyConnection {
   readonly requiresPersonalAuth: boolean;
   readonly authorized: boolean;
   readonly state: 'authorized' | 'expired' | 'unauthorized';
-  /** Legacy authorize-url endpoint path; empty when the plugin needs no personal auth. */
+  /** Legacy authorize-url endpoint path (diagnostics only); empty when the plugin needs no personal auth. */
   readonly authorizeUrlPath: string;
-  /** Legacy DELETE-token endpoint path; empty when the plugin needs no personal auth. */
+  /** Legacy DELETE-token endpoint path (diagnostics only); empty when the plugin needs no personal auth. */
   readonly revokePath: string;
   readonly requiresAuthTools: readonly string[];
 }
 
-const CONNECTION_PATH = '/api/v1/plugins/installations/connections/me';
+// T15-OCR2-low：诊断前缀对齐 UPGRADE_PREVIEW_PATH 的 `:id` 占位约定——真实
+// 请求是 /installations/{id}/connections/me，缺段前缀会误导排障时的路径定位。
+const CONNECTION_PATH = `${INSTALLATIONS_PATH}/:id/connections/me`;
 
 const CONNECTION_STATES = ['authorized', 'expired', 'unauthorized'] as const;
 
