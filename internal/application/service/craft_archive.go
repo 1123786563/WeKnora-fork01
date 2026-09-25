@@ -141,6 +141,26 @@ func (s *CraftSessionService) ExpandArchive(
 	if err := craft.ValidateInputManifest(manifest); err != nil {
 		return nil, err
 	}
+	// Fold same-identity members — the same base name and digest under
+	// different archive paths, for example a/LICENSE and b/LICENSE — onto
+	// one manifest entry before publishing. The identity reuse below only
+	// sees committed rows, so without the fold both members of one expansion
+	// would upload as separate objects and rows (production stores mint a
+	// unique ref per save and the table keys rows by ref), duplicating the
+	// input in the response and the workspace.
+	folded := make([]craft.Input, 0, len(manifest))
+	foldedMembers := make([]craft.ArchiveMember, 0, len(members))
+	seenIdentity := make(map[string]struct{}, len(manifest))
+	for i, entry := range manifest {
+		identity := entry.Name + "\x00" + entry.SHA256
+		if _, dup := seenIdentity[identity]; dup {
+			continue
+		}
+		seenIdentity[identity] = struct{}{}
+		folded = append(folded, entry)
+		foldedMembers = append(foldedMembers, members[i])
+	}
+	manifest, members = folded, foldedMembers
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -156,8 +176,12 @@ func (s *CraftSessionService) ExpandArchive(
 	// The failure that reaches rollback is often the very cancellation or
 	// timeout of ctx (the hard extract budget); cleanup must run on a
 	// detached context or the association Count and the DeleteFile calls
-	// would fail immediately and leak every stored object.
-	cleanupCtx := context.WithoutCancel(ctx)
+	// would fail immediately and leak every stored object. The detachment
+	// also drops the deadline, so a finite cleanup budget is layered on top:
+	// a wedged database or object backend must not pin the request forever
+	// either.
+	cleanupCtx, cleanupDone := context.WithTimeout(context.WithoutCancel(ctx), craftInputCleanupBudget)
+	defer cleanupDone()
 	rollback := func() {
 		seen := make(map[string]struct{}, len(created))
 		for _, createdRef := range created {
@@ -178,9 +202,15 @@ func (s *CraftSessionService) ExpandArchive(
 		err := s.db.WithContext(ctx).Where("workspace_id = ? AND name = ? AND sha256 = ?",
 			workspace.ID, manifest[i].Name, manifest[i].SHA256).Take(&existing).Error
 		if err == nil {
-			if existing.TenantID != session.TenantID || existing.Bytes != manifest[i].Bytes {
+			// Legacy rows written while the recognition columns were being
+			// added (ALTER TABLE ADD COLUMN, all three NULL) project a nil
+			// Recognition; reusing one would nil-dereference in the publish
+			// transaction below. They are conflicts, exactly like the
+			// transaction's own fallback branch treats them.
+			if existing.TenantID != session.TenantID || existing.Bytes != manifest[i].Bytes ||
+				existing.RecognitionAccepted == nil || existing.RecognitionUnderstood == nil || existing.RecognitionReason == nil {
 				rollback()
-				return nil, fmt.Errorf("%w: member %s collides with different legacy content",
+				return nil, fmt.Errorf("%w: member %s collides with different or legacy content",
 					craft.ErrConflict, manifest[i].Name)
 			}
 			manifest[i] = existing.input()

@@ -22,6 +22,12 @@ import (
 
 const craftInputAdmissionLease = 2 * time.Minute
 
+// craftInputCleanupBudget bounds the object-store rollback that follows a
+// failed publish: the cleanup context is detached from the (usually already
+// canceled or timed-out) request context, so without its own deadline a
+// wedged database or object backend could pin the request indefinitely.
+const craftInputCleanupBudget = 30 * time.Second
+
 func craftInputLeaseExpiryPredicate(db *gorm.DB) string {
 	if db.Name() == "sqlite" {
 		return "julianday(lease_expires_at) <= julianday(?)"
@@ -183,9 +189,12 @@ func (s *CraftSessionService) AcceptInputRound(ctx context.Context, scope craft.
 	// Cleanup runs detached from ctx: the failure that reached the rollback
 	// is often the very cancellation or deadline of the request context, and
 	// a canceled context would make the Count and DeleteFile calls fail
-	// immediately, leaking every stored object.
+	// immediately, leaking every stored object. Detachment also drops the
+	// deadline, so a finite cleanup budget bounds a wedged backend instead
+	// of pinning the upload request forever.
 	created := make([]string, 0, len(uploads))
-	cleanupCtx := context.WithoutCancel(ctx)
+	cleanupCtx, cleanupDone := context.WithTimeout(context.WithoutCancel(ctx), craftInputCleanupBudget)
+	defer cleanupDone()
 	rollback := func() {
 		seen := make(map[string]struct{}, len(created))
 		for _, ref := range created {
