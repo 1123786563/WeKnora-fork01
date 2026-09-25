@@ -1424,3 +1424,124 @@ test('the composition guards offline-dangerous ports and persists projections th
   // 既有防线不回归（#35 源级断言，app-smoke.test.tsx:590）
   assert.match(source, /detail:\s*remote/, 'taskOfficeFor must still pass the remote as the detail port');
 });
+
+test('the New entry renders the dictation review surface: editable transcript, confirm and discard (AC2)', async () => {
+  const { NewTaskScreen } = await import('./screens/NewTaskScreen.tsx');
+  hooks().__reset();
+  const events: string[] = [];
+  const baseState = {
+    draft: { text: '手写目标', agentId: 'a-general', budgetUpper: 0, attachments: [] as never[], knowledgeIds: [] as string[] },
+    agents: [],
+    knowledge: [],
+    recommendation: { agent: null, basis: 'none' },
+    readiness: { ready: true, blockingAttachments: [] },
+    loading: false,
+    submitting: false,
+    inFlight: undefined,
+  };
+  const callbacks = {
+    onUpdate: () => {}, onSetAttachments: () => {}, onToggleKnowledge: () => {},
+    onSubmit: () => { events.push('submit'); }, onCancel: () => {}, onRefreshAgents: () => {},
+  };
+  const element = render(NewTaskScreen, {
+    state: baseState,
+    ...callbacks,
+    dictation: { phase: 'review', transcript: '整理知识库' },
+    onDictationBegin: () => { events.push('begin'); },
+    onDictationFinish: () => { events.push('finish'); },
+    onDictationCancel: () => { events.push('cancel'); },
+    onDictationEditTranscript: (text: string) => { events.push(`edit:${text}`); },
+    onDictationRetryTranscription: () => { events.push('retry'); },
+    onDictationConfirmTranscript: () => { events.push('confirm'); },
+    onDictationDiscardTranscript: () => { events.push('discard'); },
+  });
+  const transcriptInput = descendants(element).find(({ type, props }) => type === 'TextInput' && props.placeholder === '转写草稿（确认前可编辑）');
+  assert.ok(transcriptInput, 'review 态渲染可编辑转写输入');
+  (transcriptInput!.props.onChangeText as (text: string) => void)('整理知识库（已校对）');
+  assert.deepEqual(events, ['edit:整理知识库（已校对）'], '编辑先于确认（AC2：转写错误可修正）');
+  const buttons = descendants(element).filter(({ type }) => type === 'Button').map(({ props }) => props.title);
+  assert.equal(buttons.includes('Use transcript'), true);
+  assert.equal(buttons.includes('Discard transcript'), true);
+  (descendants(element).find(({ type, props }) => type === 'Button' && props.title === 'Use transcript')!.props.onPress as () => void)();
+  assert.deepEqual(events, ['edit:整理知识库（已校对）', 'confirm'], '确认是显式用户动作，不是转写返回即提交');
+  assert.ok(!events.includes('submit'), '确认动作本身绝不触发 Submit');
+});
+
+test('cancelling dictation from the New entry only cancels the recording surface, never the goal draft (AC1)', async () => {
+  const { NewTaskScreen } = await import('./screens/NewTaskScreen.tsx');
+  hooks().__reset();
+  const events: string[] = [];
+  const baseState = {
+    draft: { text: '手写目标', agentId: 'a-general', budgetUpper: 0, attachments: [] as never[], knowledgeIds: [] as string[] },
+    agents: [], knowledge: [],
+    recommendation: { agent: null, basis: 'none' },
+    readiness: { ready: true, blockingAttachments: [] },
+    loading: false, submitting: false, inFlight: undefined,
+  };
+  const callbacks = {
+    onUpdate: () => {}, onSetAttachments: () => {}, onToggleKnowledge: () => {},
+    onSubmit: () => { events.push('submit'); }, onCancel: () => { events.push('keep-draft'); }, onRefreshAgents: () => {},
+  };
+  const element = render(NewTaskScreen, {
+    state: baseState,
+    ...callbacks,
+    dictation: { phase: 'recording' },
+    onDictationBegin: () => {}, onDictationFinish: () => { events.push('finish'); },
+    onDictationCancel: () => { events.push('cancel'); }, onDictationEditTranscript: () => {},
+    onDictationRetryTranscription: () => {}, onDictationConfirmTranscript: () => {}, onDictationDiscardTranscript: () => {},
+  });
+  const goalInput = descendants(element).find(({ type, props }) => type === 'TextInput' && props.placeholder === '今天想完成什么？');
+  assert.ok(goalInput, '录音态下手打目标输入仍在屏');
+  assert.equal((goalInput!.props as { value?: string }).value, '手写目标', '手打文字原样保留（不被清空）');
+  const buttons = descendants(element).filter(({ type }) => type === 'Button').map(({ props }) => props.title);
+  assert.equal(buttons.includes('Cancel recording'), true);
+  assert.equal(buttons.includes('Stop dictation'), true);
+  (descendants(element).find(({ type, props }) => type === 'Button' && props.title === 'Cancel recording')!.props.onPress as () => void)();
+  assert.deepEqual(events, ['cancel'], '取消只作用于听写面；Submit/Keep draft 均未被触发');
+});
+
+test('a denied microphone leaves typing and submission fully usable (拒权不破坏文字输入)', async () => {
+  const { NewTaskScreen } = await import('./screens/NewTaskScreen.tsx');
+  hooks().__reset();
+  const baseState = {
+    draft: { text: '手写目标', agentId: 'a-general', budgetUpper: 0, attachments: [] as never[], knowledgeIds: [] as string[] },
+    agents: [], knowledge: [],
+    recommendation: { agent: null, basis: 'none' },
+    readiness: { ready: true, blockingAttachments: [] },
+    loading: false, submitting: false, inFlight: undefined,
+  };
+  const callbacks = {
+    onUpdate: () => {}, onSetAttachments: () => {}, onToggleKnowledge: () => {},
+    onSubmit: () => {}, onCancel: () => {}, onRefreshAgents: () => {},
+  };
+  const element = render(NewTaskScreen, {
+    state: baseState,
+    ...callbacks,
+    dictation: { phase: 'denied' },
+    onDictationBegin: () => {}, onDictationFinish: () => {}, onDictationCancel: () => {},
+    onDictationEditTranscript: () => {}, onDictationRetryTranscription: () => {},
+    onDictationConfirmTranscript: () => {}, onDictationDiscardTranscript: () => {},
+  });
+  const goalInput = descendants(element).find(({ type, props }) => type === 'TextInput' && props.placeholder === '今天想完成什么？');
+  assert.ok(goalInput, '拒权态下手打目标输入仍在屏');
+  assert.equal((goalInput!.props as { value?: string }).value, '手写目标', '手打文字原样保留（不清空）');
+  assert.equal((goalInput!.props as { editable?: boolean }).editable, true, '输入未被锁死');
+  const buttons = descendants(element).filter(({ type }) => type === 'Button').map(({ props }) => props.title);
+  assert.equal(buttons.includes('Submit task'), true, '提交通道不受拒权影响');
+  const text = descendants(element).filter(({ type }) => type === 'Text').flatMap(({ props }) => props.children).join(' ');
+  assert.ok(text.includes('麦克风权限被拒绝'), '拒权有如实文案');
+});
+
+test('the /new route wires dictation through the composition root; confirmed text enters the goal draft, never the wire', async () => {
+  const { readFileSync } = await import('node:fs');
+  const routeSource = readFileSync(resolve(workspaceRoot, 'apps/mobile/src/app/new.tsx'), 'utf8');
+  const compositionSource = readFileSync(resolve(workspaceRoot, 'apps/mobile/src/composition.ts'), 'utf8');
+  const screenSource = readFileSync(resolve(workspaceRoot, 'apps/mobile/src/screens/NewTaskScreen.tsx'), 'utf8');
+  assert.match(routeSource, /activeDictation\(\)/, '路由经组合根取听写模块（module-seams §10：Screen 不见 wire）');
+  assert.match(routeSource, /confirmTranscript\(\)/, 'AC2：确认动作显式调用模块的 confirmTranscript');
+  assert.match(routeSource, /applyConfirmedDictation/, '确认文字必须经 applyConfirmedDictation 并入目标草稿（含 500 字截断）');
+  assert.match(routeSource, /dictation\.cancel\(\)/, '卸载兜底：录音/转写在途时取消（不留悬空麦克风与在途派发）');
+  assert.equal(/mobile\/voice/.test(routeSource) || /mobile\/voice/.test(screenSource), false, '屏/路由不出现 wire 路径');
+  assert.match(compositionSource, /createMobileVoiceTranscriptionRemote/, '转写 Remote 只在组合根装配');
+  assert.match(compositionSource, /createNativeDictationCaptureIfAvailable/, '原生捕获 Adapter 只在组合根探测');
+});

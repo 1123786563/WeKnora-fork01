@@ -17,6 +17,7 @@
     "./mobile/materials": "./src/mobile/materials.ts",
     "./mobile/code-delivery": "./src/mobile/code-delivery.ts",
     "./mobile/resources": "./src/mobile/resources.ts",
+    "./mobile/voice": "./src/mobile/voice.ts",
     "./transport": "./src/transport/json.ts"
   },
   "dependencies": {

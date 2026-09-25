@@ -105,3 +105,12 @@ export type { DeliveryReceiptView, DeliveryRemoteRecord, DeliveryState } from '.
 export { createDeliveryReader, DeliveryReaderError } from './delivery/delivery-reader.ts';
 export type { DeliveryReader, DeliveryReaderErrorCode, DeliveryRemote } from './delivery/delivery-reader.ts';
 export { createScenarioDeliveryRemote } from './delivery/in-memory-delivery-remote.ts';
+
+export { createDictation, DICTATION_MAX_AUDIO_BYTES, DICTATION_MAX_DURATION_MS } from './voice/dictation.ts';
+export type {
+  Dictation, DictationAudio, DictationCapturePort, DictationCaptureStart, DictationFailure,
+  DictationPhase, DictationPorts, DictationState, DictationTranscriptionInput,
+  DictationTranscriptionPort, DictationTranscriptionResult,
+} from './voice/dictation.ts';
+export { createScenarioDictationTranscriber, createScriptedDictationCapture } from './voice/in-memory-dictation.ts';
+export type { ScenarioDictationTranscriber, ScriptedDictationCapture, ScriptedDictationCaptureOptions } from './voice/in-memory-dictation.ts';
