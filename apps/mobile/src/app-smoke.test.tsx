@@ -235,7 +235,7 @@ test('the home header activates any listed tenant through the runtime callback',
   // 集成合并：HEAD（T08 New task + Open Inbox）∪ t41（#41 Open Inbox）——两分支并行各自加
   // 入口导致 Open Inbox 重复；集成分流后审批收件箱迁至 /attention（Open Approvals，
   // T08 常驻入口），行动通知收件箱留守 /inbox（Open Inbox，#41）。
-  assert.deepEqual(buttons, ['Acme', 'Beta', 'Sign out', 'New task', 'View all tasks', 'Open Approvals', 'Open Inbox', 'Open Resources', 'Load home'], 'with more than one tenant every tenant is a header switch button');  const single = render(HomeScreen, {
+  assert.deepEqual(buttons, ['Acme', 'Beta', 'Sign out', 'New task', 'Ask knowledge', 'View all tasks', 'Open Approvals', 'Open Inbox', 'Open Resources', 'Load home'], 'with more than one tenant every tenant is a header switch button');  const single = render(HomeScreen, {
     deploymentLabel: 'WeKnora',
     tenants: [{ id: '7', name: 'Acme' }],
     activeTenantId: '7',
@@ -838,6 +838,21 @@ test('the task detail error chain maps codes to copy instead of leaking raw inte
   assert.match(screen, /INTERRUPTION_COPY/, 'interruption 原因必须经文案映射（B2-F40）');
   assert.match(screen, /INTERRUPTION_COPY\[view\.interruption\.reason\]/, '不得直出内部码');
   assert.match(tasks, /title="Details"/, '打开按钮文案与同屏英文统一（B2-F5）');
+});
+
+test('composition wires the knowledge QA remote into Task Office and /ask consumes the office only (T15)', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { dirname, join } = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  const here = dirname(fileURLToPath(import.meta.url));
+  const composition = readFileSync(join(here, 'composition.ts'), 'utf8');
+  const askRoute = readFileSync(join(here, 'app/ask.tsx'), 'utf8');
+  const home = readFileSync(join(here, 'screens/HomeScreen.tsx'), 'utf8');
+  assert.match(composition, /knowledgeQA:\s*createMobileKnowledgeQARemote\(/, 'Task Office 必须装配 knowledgeQA 端口');
+  assert.match(composition, /import \{ createMobileKnowledgeQARemote \} from '@weknora\/api-client\/mobile\/knowledge-qa';/);
+  assert.match(askRoute, /activeTaskOffice\(\)/, '/ask 只经组合根取 Task Office，不直连 api-client');
+  assert.doesNotMatch(askRoute, /@weknora\/api-client/, 'Screen/路由禁止直连 wire 客户端（module-seams §10）');
+  assert.match(home, /Ask knowledge/, '授权首页必须有知识问纳入口');
 });
 
 test('the universal New entry renders the recommended lead agent, budget control and a blocked-submit reason', async () => {

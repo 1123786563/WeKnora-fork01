@@ -15,6 +15,7 @@ import { createOfflineGate, createVaultTaskProjectionStore, guardInteractionBack
 import { createNativeNetworkStatusIfAvailable } from './adapters/network-status.ts';
 import { createTaskOfficeRemote } from '@weknora/api-client/mobile/task-office';
 import { createMobileLegacyTaskRemote } from '@weknora/api-client/mobile/legacy-tasks';
+import { createMobileKnowledgeQARemote } from '@weknora/api-client/mobile/knowledge-qa';
 import { createMobileMaterialRemote } from '@weknora/api-client/mobile/materials';
 import { createMobileTaskBudgetRemote } from '@weknora/api-client/mobile/task-budget';
 import { createNativeOidcBrowser } from './adapters/oidc-browser.ts';
@@ -174,6 +175,12 @@ function taskOfficeFor(activeRuntime: MobileRuntime, origin: string, tenantId: s
         stream: (input, onChunk) => activeRuntime.authorizedEventStream(input, onChunk),
       }), nativeOfflineGate),
       budget: createMobileTaskBudgetRemote({ origin, request: (input) => activeRuntime.authorizedRequest(input) }),
+      // T15（#45）：知识问答端口——同一授权读/流通道（不新建传输），evidence 帧缺失 fail closed。
+      knowledgeQA: createMobileKnowledgeQARemote({
+        origin,
+        request: (input) => activeRuntime.authorizedRequest(input),
+        stream: (input, onChunk) => activeRuntime.authorizedEventStream(input, onChunk),
+      }),
       lease: () => activeRuntime.scopeLease(),
       // T10（#40）AC1：获准 Task 内容的加密投影经 Scoped Vault event-projection 仓储持久化；
       // vault 缺席（无 WebCrypto/SecureStore）时显式回退 in-memory——持久化缺失是组合根的显式决策

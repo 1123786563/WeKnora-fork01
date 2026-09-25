@@ -23,7 +23,8 @@ export type TaskOfficeErrorCode =
   | 'TASK_OFFICE_COMMAND_UNAVAILABLE'
   | 'TASK_OFFICE_NO_SNAPSHOT'
   | 'TASK_OFFICE_COMMAND_CONFLICT'
-  | 'TASK_OFFICE_COMMAND_UNKNOWN';
+  | 'TASK_OFFICE_COMMAND_UNKNOWN'
+  | 'TASK_OFFICE_KNOWLEDGE_QA_UNAVAILABLE';
 
 export class TaskOfficeError extends Error {
   constructor(readonly code: TaskOfficeErrorCode, options?: { cause?: unknown }) {

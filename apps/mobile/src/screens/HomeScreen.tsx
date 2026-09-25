@@ -44,6 +44,7 @@ export function HomeScreen({ deploymentLabel, tenants, activeTenantId, onActivat
         : null}
       <Button title="Sign out" onPress={() => { void onSignOut(); }} />
       <Button title="New task" onPress={() => router.push('/new')} />
+      <Button title="Ask knowledge" onPress={() => router.push('/ask')} />
       <Button title="View all tasks" onPress={() => router.push('/tasks')} />
       {/* T08（#38）Attention Inbox 常驻入口：首页 needsMe 与收件箱同一 Interaction 身份。
           集成说明：/inbox 已归行动通知收件箱（#41），审批收件箱迁至 /attention。 */}

@@ -731,3 +731,5 @@ export type { ReleaseSubmission, ReleaseReview, AgentRelease, TenantReleaseListi
 export { parseReleaseSubmissionResponse, parseReleaseReviewResponse, parseReleaseSubmissionListResponse, parseTenantReleaseListResponse } from './marketplace/tenant-releases.ts';
 export type { AgentAdoption, AgentAdoptionVariant, AvailableAgent } from './marketplace/agent-adoption.ts';
 export { parseAdoptionResponse, parseAdoptionListResponse, parseVariantResponse, parseAvailableAgentListResponse } from './marketplace/agent-adoption.ts';
+export { parseAnswerEvidence } from './mobile/knowledge-evidence.ts';
+export type { AnswerEvidenceStateWire, AnswerEvidenceWire, EvidenceCitationWire, EvidenceConclusionWire, EvidenceKindWire, EvidenceReasoningStateWire, EvidenceReasoningWire } from './mobile/knowledge-evidence.ts';

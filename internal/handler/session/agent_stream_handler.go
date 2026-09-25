@@ -136,6 +136,7 @@ func (h *AgentStreamHandler) Subscribe() {
 	h.eventBus.On(event.EventAgentToolResult, h.handleToolResult)
 	h.eventBus.On(event.EventAgentCommandOutput, h.handleCommandOutput)
 	h.eventBus.On(event.EventAgentReferences, h.handleReferences)
+	h.eventBus.On(event.EventAgentEvidence, h.handleEvidence)
 	h.eventBus.On(event.EventMemoryRecalled, h.handleMemoryRecalled)
 	h.eventBus.On(event.EventContextCompacted, h.handleContextCompacted)
 	h.eventBus.On(event.EventUserMessageInjected, h.handleUserMessageInjected)
@@ -450,6 +451,28 @@ func (h *AgentStreamHandler) handleReferences(ctx context.Context, evt event.Eve
 		logger.GetLogger(h.ctx).Error("Append references event to stream failed", "error", err)
 	}
 
+	return nil
+}
+
+// handleEvidence streams the answer evidence envelope (T15). The envelope is
+// authoritative provenance: version + retrieval time per citation and the
+// fact/rule-derived/model-inferred classification of conclusions. It is
+// emitted before the answer streams; no client-visible mutation happens here.
+func (h *AgentStreamHandler) handleEvidence(ctx context.Context, evt event.Event) error {
+	data, ok := evt.Data.(event.AgentEvidenceData)
+	if !ok {
+		return nil
+	}
+	if err := h.streamManager.AppendEvent(h.ctx, h.sessionID, h.assistantMessageID, interfaces.StreamEvent{
+		ID:        evt.ID,
+		Type:      types.ResponseTypeEvidence,
+		Content:   "",
+		Done:      false,
+		Timestamp: time.Now(),
+		Data:      map[string]interface{}{"evidence": data.Evidence},
+	}); err != nil {
+		logger.GetLogger(h.ctx).Error("Append evidence event to stream failed", "error", err)
+	}
 	return nil
 }
 
