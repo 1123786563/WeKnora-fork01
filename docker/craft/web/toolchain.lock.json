@@ -14,13 +14,13 @@
     },
     {
       "name": "craft-web.js",
-      "version": "1.0.0",
-      "sha256": "3812625d71f5c10c26d7d9c21fa5d88d024969636c75060db65b6297b2ad055a"
+      "version": "1.1.1",
+      "sha256": "5b930dd96b33bf707653ed6c1b5dc294cb8a790ee7ba7b6adfd13d65a0130064"
     }
   ],
   "build_program": {
     "name": "build.py",
-    "sha256": "10807721f255bdf2fc09b580c565a8b30e755b59e88c89cc0e4e4cb0ec87adb8"
+    "sha256": "02ad19f473105039377006df8c29de4b95eb4bc175ffdf79b335c095b097787a"
   },
-  "toolchain_digest": "b121a3be8fff8ea4e9d0ed3f12e99f54df1c5aa9fcf04936ea5f3400441f6f00"
+  "toolchain_digest": "5d9d7d283de0cfd84c40a7b411c07f4dfb74051b438dad2dd4f44a5e4a52deff"
 }

@@ -37,10 +37,10 @@ output/assets/craft-web.js
 output/build-log.json
 ```
 
-`build-log.json`（`offline-build-output/build-log.json`，未截断原文）：
+`build-log.json`（`offline-build-output/build-log.json`，未截断原文；随 OCR 修复轮 v1.1.1 工具链重跑重录）：
 
 ```json
-{"assets": ["assets/craft-web.css", "assets/craft-web.js"], "egress": "denied", "entry": "index.html", "error": "", "exit_code": 0, "kind": "web", "runtime_digest": "sha256:t04-offline-probe-1790338831", "schema": 1, "template_sha256": "ecf1a109e97e0d991aeb4507fdb5079d71576f2caff1608491bf05961ae16d61", "template_version": "1.0.0", "toolchain_digest": "9459a7f47c76b440e1f5594c4836de856f70e7bc92cb1e3fb946736ab0ca705f"}
+{"assets": ["assets/craft-web.css", "assets/craft-web.js"], "egress": "denied", "entry": "index.html", "error": "", "exit_code": 0, "kind": "web", "runtime_digest": "sha256:t04-offline-probe-1790338831", "schema": 1, "template_sha256": "ecf1a109e97e0d991aeb4507fdb5079d71576f2caff1608491bf05961ae16d61", "template_version": "1.0.0", "toolchain_digest": "5d9d7d283de0cfd84c40a7b411c07f4dfb74051b438dad2dd4f44a5e4a52deff"}
 ```
 
 日志标明模板/运行时摘要与真实退出码（0）；入口与资产全部本地相对引用（`offline-build-output/index.html` 可复核：仅 `assets/craft-web.css`、`assets/craft-web.js`）。

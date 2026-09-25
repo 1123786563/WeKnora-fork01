@@ -189,11 +189,12 @@ func TestCraftWebBuildLogWriterIOFailure(t *testing.T) {
 func TestCraftWebBuildEvidenceRejectsForeignTemplateVersion(t *testing.T) {
 	pin, err := LoadCraftWebToolchainPin(craftWebToolchainAbsDir(t))
 	require.NoError(t, err)
+	foreignZero := 0
 	log := CraftWebBuildLog{
 		Schema: 1, Kind: "web",
 		ToolchainDigest: pin.ToolchainDigest, TemplateVersion: "9.9.9-foreign",
 		TemplateSHA256: pin.TemplateSHA256, RuntimeDigest: "sha256:" + strings.Repeat("cd", 32),
-		ExitCode: 0, Entry: "index.html",
+		ExitCode: &foreignZero, Entry: "index.html",
 		Assets: []string{"assets/craft-web.css", "assets/craft-web.js"}, Egress: "denied",
 	}
 	_, err = CraftWebBuildEvidence(log, pin)
@@ -235,3 +236,115 @@ func TestCraftWebEvidenceKeepsUnobservedOnForeignLog(t *testing.T) {
 }
 
 type service_ArtifactEvidenceSource = func(context.Context, craft.Task) craft.ArtifactEvidence
+
+// TestCraftWebSnapshotMatchesShippedToolchain is the snapshot machine-check
+// regression: the t04 offline-build-output fixture must stay byte-identical
+// to what the current pinned toolchain actually builds from the recorded
+// staged content, so an upgraded toolchain with a stale snapshot fails here
+// instead of silently invalidating the fixed evidence.
+func TestCraftWebSnapshotMatchesShippedToolchain(t *testing.T) {
+	snapshotDir := filepath.Join("..", "..", "docs", "testing", "craft", "t04", "offline-build-output")
+	for _, required := range []string{"index.html", "build-log.json", "assets/craft-web.css", "assets/craft-web.js"} {
+		if _, err := os.Stat(filepath.Join(snapshotDir, filepath.FromSlash(required))); err != nil {
+			t.Fatalf("snapshot file %s is missing: %v", required, err)
+		}
+	}
+	// The snapshot assets must be byte-identical to the shipped deps.
+	for _, dep := range []string{"craft-web.css", "craft-web.js"} {
+		shipped, err := os.ReadFile(filepath.Join(craftWebToolchainAbsDir(t), "deps", dep))
+		require.NoError(t, err)
+		snapshot, err := os.ReadFile(filepath.Join(snapshotDir, "assets", dep))
+		require.NoError(t, err, "snapshot asset %s must exist (self-contained layout)", dep)
+		require.Equal(t, shipped, snapshot, "snapshot asset %s must be byte-identical to the pinned dependency", dep)
+	}
+	// The snapshot build-log must name the CURRENT toolchain digest — a
+	// snapshot from an older toolchain is stale evidence.
+	pin, err := LoadCraftWebToolchainPin(craftWebToolchainAbsDir(t))
+	require.NoError(t, err)
+	raw, err := os.ReadFile(filepath.Join(snapshotDir, "build-log.json"))
+	require.NoError(t, err)
+	var log CraftWebBuildLog
+	require.NoError(t, json.Unmarshal(raw, &log))
+	require.Equal(t, pin.ToolchainDigest, log.ToolchainDigest, "snapshot build-log must match the shipped toolchain digest")
+}
+
+// TestCraftWebBuildLogRejectsGarbageTrailingContent pins the fixed trailing
+// check: both a valid trailing JSON document AND trailing garbage are
+// refused (the old inverted check only caught the valid-JSON case).
+func TestCraftWebBuildLogRejectsGarbageTrailingContent(t *testing.T) {
+	pin, err := LoadCraftWebToolchainPin(craftWebToolchainAbsDir(t))
+	require.NoError(t, err)
+	base := func() string {
+		return fmt.Sprintf(`{"schema":1,"kind":"web","runtime_digest":"sha256:%s","toolchain_digest":"%s","template_version":"%s","template_sha256":"%s","exit_code":0,"entry":"index.html","assets":["assets/craft-web.css"],"egress":"denied","error":""}`,
+			strings.Repeat("ab", 32), pin.ToolchainDigest, pin.TemplateVersion, pin.TemplateSHA256)
+	}
+	for name, raw := range map[string]string{
+		"valid trailing JSON": base() + ` {"extra":1}`,
+		"garbage trailing":    base() + `garbage-tail`,
+	} {
+		_, err := ParseCraftWebBuildLog([]byte(raw))
+		require.ErrorIs(t, err, craft.ErrInvalidInput, "%s must be refused", name)
+	}
+}
+
+// TestCraftWebBuildLogRequiresExitCodeField pins the pointer-typed exit
+// code: a log missing exit_code (or writing null) is refused rather than
+// decoding as a successful zero — agent-writable input must never turn a
+// missing field into "build succeeded".
+func TestCraftWebBuildLogRequiresExitCodeField(t *testing.T) {
+	pin, err := LoadCraftWebToolchainPin(craftWebToolchainAbsDir(t))
+	require.NoError(t, err)
+	template := `{"schema":1,"kind":"web","runtime_digest":"sha256:%s","toolchain_digest":"%s","template_version":"%s","template_sha256":"%s",%s,"entry":"index.html","assets":["assets/craft-web.css"],"egress":"denied","error":""}`
+	raw := fmt.Sprintf(template, strings.Repeat("ab", 32), pin.ToolchainDigest, pin.TemplateVersion, pin.TemplateSHA256, `"exit_code":null`)
+	_, err = ParseCraftWebBuildLog([]byte(raw))
+	require.ErrorIs(t, err, craft.ErrInvalidInput, "null exit_code must be refused")
+	// Construct a missing-field variant by removing the key entirely.
+	raw = fmt.Sprintf(template, strings.Repeat("ab", 32), pin.ToolchainDigest, pin.TemplateVersion, pin.TemplateSHA256, `"exit_code":0`)
+	raw = strings.Replace(raw, `,"exit_code":0`, ``, 1)
+	_, err = ParseCraftWebBuildLog([]byte(raw))
+	require.ErrorIs(t, err, craft.ErrInvalidInput, "missing exit_code must be refused")
+}
+
+// TestCraftWebEvidenceRejectsForeignRuntimeDigest pins the runtime-identity
+// agreement: with the deployment digest pinned into CraftWebToolchainPin, a
+// log naming any other runtime is refused whole.
+func TestCraftWebEvidenceRejectsForeignRuntimeDigest(t *testing.T) {
+	pin, err := LoadCraftWebToolchainPin(craftWebToolchainAbsDir(t))
+	require.NoError(t, err)
+	pin.RuntimeDigest = "sha256:" + strings.Repeat("11", 32)
+	exit := 0
+	log := CraftWebBuildLog{
+		Schema: 1, Kind: "web",
+		ToolchainDigest: pin.ToolchainDigest, TemplateVersion: pin.TemplateVersion,
+		TemplateSHA256: pin.TemplateSHA256, RuntimeDigest: "sha256:" + strings.Repeat("22", 32),
+		ExitCode: &exit, Entry: "index.html",
+		Assets: []string{"assets/craft-web.css", "assets/craft-web.js"}, Egress: "denied",
+	}
+	_, err = CraftWebBuildEvidence(log, pin)
+	require.ErrorIs(t, err, craft.ErrConflict)
+	require.Contains(t, err.Error(), "runtime")
+}
+
+// TestCraftWebToolchainLockRejectsGarbageTrailing pins the lock-side fixed
+// trailing check and schema validation.
+func TestCraftWebToolchainLockRejectsGarbageTrailing(t *testing.T) {
+	original, err := os.ReadFile(filepath.Join(craftWebToolchainAbsDir(t), "toolchain.lock.json"))
+	require.NoError(t, err)
+	broken := t.TempDir()
+	require.NoError(t, runCpR(t, craftWebToolchainAbsDir(t), broken))
+	require.NoError(t, os.WriteFile(filepath.Join(broken, "toolchain.lock.json"),
+		append(append([]byte{}, original...), []byte("garbage")...), 0o644))
+	_, err = LoadCraftWebToolchainPin(broken)
+	require.ErrorIs(t, err, craft.ErrInvalidInput)
+
+	// Schema must be validated: a future schema-2 lock is refused by this
+	// code instead of being parsed under v1 semantics.
+	schemaBumped := t.TempDir()
+	require.NoError(t, runCpR(t, craftWebToolchainAbsDir(t), schemaBumped))
+	bumped := strings.Replace(string(original), `"schema": 1`, `"schema": 2`, 1)
+	require.NotEqual(t, string(original), bumped, "fixture must carry schema 1")
+	require.NoError(t, os.WriteFile(filepath.Join(schemaBumped, "toolchain.lock.json"), []byte(bumped), 0o644))
+	_, err = LoadCraftWebToolchainPin(schemaBumped)
+	require.ErrorIs(t, err, craft.ErrInvalidInput)
+	require.Contains(t, err.Error(), "schema")
+}

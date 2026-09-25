@@ -124,7 +124,8 @@ func TestCraftT04Journey(t *testing.T) {
 	require.Equal(t, pin.ToolchainDigest, buildLog.ToolchainDigest, "log identifies the pinned toolchain digest")
 	require.Equal(t, pin.TemplateVersion, buildLog.TemplateVersion)
 	require.Equal(t, pin.TemplateSHA256, buildLog.TemplateSHA256)
-	require.Zero(t, buildLog.ExitCode)
+	require.NotNil(t, buildLog.ExitCode)
+	require.Zero(t, *buildLog.ExitCode)
 	require.Equal(t, "index.html", buildLog.Entry)
 
 	// The log feeds the W01 evidence seam: build ran and exited 0, so the
@@ -174,7 +175,8 @@ func TestCraftT04Journey(t *testing.T) {
 	require.NoError(t, err, "failed build still leaves its log")
 	failLog, err := ParseCraftWebBuildLog(rawFailLog)
 	require.NoError(t, err)
-	require.Equal(t, code, failLog.ExitCode, "log records the real exit status")
+	require.NotNil(t, failLog.ExitCode)
+	require.Equal(t, code, *failLog.ExitCode, "log records the real exit status")
 	require.NotEmpty(t, failLog.Error, "failure names its cause")
 	require.Contains(t, failureLog, "craft-web.css", "stderr names the missing dependency")
 	failEvidence, err := CraftWebBuildEvidence(failLog, pin)
@@ -222,7 +224,8 @@ func TestCraftT04Journey(t *testing.T) {
 	require.Error(t, err, "escaping asset path must reject")
 
 	bigExit := buildLog
-	bigExit.ExitCode = 256
+	tooBig := 256
+	bigExit.ExitCode = &tooBig
 	_, err = ParseCraftWebBuildLog(mustJSON(t, bigExit))
 	require.Error(t, err, "impossible exit code must reject")
 

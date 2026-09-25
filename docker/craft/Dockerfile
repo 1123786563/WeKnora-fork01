@@ -254,9 +254,15 @@ RUN chmod 0644 /etc/craft/runtime-config.json && \
     lock_template="$(python3 -c 'import json;print(json.load(open("/opt/craft/web/toolchain.lock.json"))["template"]["sha256"])')" && \
     rc_build="$(python3 -c 'import json;print(json.load(open("/etc/craft/runtime-config.json"))["web_toolchain"]["build_program_sha256"])')" && \
     lock_build="$(python3 -c 'import json;print(json.load(open("/opt/craft/web/toolchain.lock.json"))["build_program"]["sha256"])')" && \
+    rc_version="$(python3 -c 'import json;print(json.load(open("/etc/craft/runtime-config.json"))["web_toolchain"]["template_version"])')" && \
+    lock_version="$(python3 -c 'import json;print(json.load(open("/opt/craft/web/toolchain.lock.json"))["template"]["version"])')" && \
+    rc_deps="$(python3 -c 'import json;print(sorted((d["name"],d["version"],d["sha256"]) for d in json.load(open("/etc/craft/runtime-config.json"))["web_toolchain"]["dependencies"]))')" && \
+    lock_deps="$(python3 -c 'import json;print(sorted((d["name"],d["version"],d["sha256"]) for d in json.load(open("/opt/craft/web/toolchain.lock.json"))["dependencies"]))')" && \
     test "$rc_digest" = "$lock_digest" && \
     test "$rc_template" = "$lock_template" && \
-    test "$rc_build" = "$lock_build"
+    test "$rc_build" = "$lock_build" && \
+    test "$rc_version" = "$lock_version" && \
+    test "$rc_deps" = "$lock_deps"
 
 # OpenCode global config derived from /etc/craft/runtime-config.json's
 # permission policy. Keep in sync with that file's "permissions" section:

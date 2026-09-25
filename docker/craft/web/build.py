@@ -156,6 +156,8 @@ def load_pin(toolchain_dir: str) -> dict:
             raise BuildError(EXIT_TOOLCHAIN, "toolchain lock is not valid JSON: {}".format(malformed))
     if not isinstance(lock, dict):
         raise BuildError(EXIT_TOOLCHAIN, "toolchain lock must be a JSON object")
+    if lock.get("schema") != SCHEMA:
+        raise BuildError(EXIT_TOOLCHAIN, "toolchain lock schema must be {}".format(SCHEMA))
     if lock.get("name") != TOOLCHAIN_NAME:
         raise BuildError(EXIT_TOOLCHAIN, "toolchain lock names {}".format(lock.get("name")))
     template_pin = lock.get("template")
@@ -163,13 +165,22 @@ def load_pin(toolchain_dir: str) -> dict:
     dependencies_pin = lock.get("dependencies")
     if not isinstance(template_pin, dict) or not isinstance(program_pin, dict) or not isinstance(dependencies_pin, list):
         raise BuildError(EXIT_TOOLCHAIN, "toolchain lock template/build_program must be objects and dependencies a list")
+    if not isinstance(template_pin.get("sha256"), str) or not isinstance(program_pin.get("sha256"), str) or not isinstance(lock.get("toolchain_digest"), str):
+        raise BuildError(EXIT_TOOLCHAIN, "toolchain lock digests must be strings")
     if template_pin.get("name") != TEMPLATE_NAME:
         raise BuildError(EXIT_TOOLCHAIN, "toolchain lock template name must be {}".format(TEMPLATE_NAME))
     if program_pin.get("name") != BUILD_PROGRAM_NAME:
         raise BuildError(EXIT_TOOLCHAIN, "toolchain lock build program name must be {}".format(BUILD_PROGRAM_NAME))
 
-    listed = sorted(dep.get("name") for dep in dependencies_pin if isinstance(dep, dict))
-    if listed != sorted(FIXED_DEPENDENCIES) or len(listed) != len(dependencies_pin):
+    # Defensive per-entry validation: a hostile/corrupted lock with missing
+    # "name"/"sha256" keys must be rejected categorically, never crash into
+    # a bare traceback (None does not sort against str; dep["sha256"] would
+    # raise KeyError outside every handler).
+    for dep in dependencies_pin:
+        if not isinstance(dep, dict) or not isinstance(dep.get("name"), str) or not isinstance(dep.get("sha256"), str):
+            raise BuildError(EXIT_TOOLCHAIN, "toolchain lock dependency entries must be objects with string name and sha256")
+    listed = sorted(dep["name"] for dep in dependencies_pin)
+    if listed != sorted(FIXED_DEPENDENCIES):
         raise BuildError(EXIT_TOOLCHAIN, "toolchain lock dependency set must be exactly {}: got {}".format(sorted(FIXED_DEPENDENCIES), listed))
     pinned = {dep["name"]: dep["sha256"] for dep in dependencies_pin}
 
@@ -194,8 +205,15 @@ def load_pin(toolchain_dir: str) -> dict:
     if not build_path.is_file():
         raise BuildError(EXIT_TOOLCHAIN, "missing provisioned dependency: {}".format(BUILD_PROGRAM_NAME))
     build_sha = sha256_file(build_path)
-    if build_sha != lock["build_program"]["sha256"]:
+    build_pin = lock["build_program"]
+    if not isinstance(build_pin, dict) or not isinstance(build_pin.get("sha256"), str):
+        raise BuildError(EXIT_TOOLCHAIN, "toolchain lock build program entry is malformed")
+    if build_sha != build_pin["sha256"]:
         raise BuildError(EXIT_TOOLCHAIN, "build program changed (digest mismatch)")
+
+    template_pin = lock["template"]
+    if not isinstance(template_pin.get("version"), str) or not template_pin["version"].strip():
+        raise BuildError(EXIT_TOOLCHAIN, "toolchain lock template version is malformed")
 
     derived = toolchain_digest(template_sha, dep_shas, build_sha)
     if derived != lock["toolchain_digest"]:
@@ -224,12 +242,17 @@ def pin_from_lock(toolchain_dir: str) -> dict:
         lock_path = safe_path(toolchain_root, LOCK_NAME)
         with lock_path.open("r", encoding="utf-8") as handle:
             lock = json.load(handle)
+        if not isinstance(lock, dict):
+            raise TypeError("toolchain lock must be a JSON object")
+        template_pin = lock.get("template")
+        if not isinstance(template_pin, dict):
+            template_pin = {}
         return {
-            "template_version": str(lock.get("template", {}).get("version", "")),
-            "template_sha256": str(lock.get("template", {}).get("sha256", "")),
+            "template_version": str(template_pin.get("version", "")),
+            "template_sha256": str(template_pin.get("sha256", "")),
             "toolchain_digest": str(lock.get("toolchain_digest", "")),
         }
-    except (BuildError, OSError, ValueError):
+    except (BuildError, OSError, ValueError, AttributeError, TypeError):
         return {"toolchain_digest": "", "template_version": "", "template_sha256": ""}
 
 
@@ -242,9 +265,14 @@ def render_table(heading: str, table) -> str:
         raise BuildError(EXIT_CONTENT, "table section {!r} has non-string columns".format(heading))
     if not isinstance(rows, list) or not all(isinstance(r, list) and all(isinstance(c, str) for c in r) for r in rows):
         raise BuildError(EXIT_CONTENT, "table section {!r} has non-string rows".format(heading))
+    # The filter id doubles as the explicit pairing contract: the table's
+    # aria-labelledby points back at it, so the runtime script binds by
+    # reference instead of positional adjacency.
+    safe_heading = re.sub(r"[^a-zA-Z0-9-]+", "-", heading).strip("-").lower()
+    filter_id = "craft-filter-{}".format(safe_heading or "table")
     parts = ["<h2>{}</h2>".format(html_mod.escape(heading))]
-    parts.append('<input class="craft-filter" type="search" placeholder="筛选行…" aria-label="筛选表格行">')
-    parts.append('<table class="craft-table">')
+    parts.append('<input id="{}" class="craft-filter" type="search" placeholder="筛选行…" aria-label="筛选表格行">'.format(filter_id))
+    parts.append('<table class="craft-table" aria-labelledby="{}">'.format(filter_id))
     parts.append("<thead><tr>{}</tr></thead>".format("".join("<th>{}</th>".format(html_mod.escape(c)) for c in columns)))
     parts.append("<tbody>")
     for row in rows:
@@ -256,17 +284,43 @@ def render_table(heading: str, table) -> str:
 def render_html(heading: str, fragment: str) -> str:
     if not isinstance(fragment, str) or not fragment.strip():
         raise BuildError(EXIT_CONTENT, "html section {!r} is empty".format(heading))
-    for pattern, why in (
-        (EXTERNAL_URL_RE, "external URL"),
-        (ABSOLUTE_REF_RE, "absolute or scheme reference"),
-        (ACTIVE_DATA_RE, "active data/javascript URI"),
-        (CSS_FETCH_RE, "css url()/@import fetch"),
-        (EMBED_TAG_RE, "embedding/script/navigation tag"),
-        (EVENT_ATTR_RE, "inline event handler attribute"),
-    ):
-        if pattern.search(fragment):
-            raise BuildError(EXIT_CONTENT, "html section {!r} contains a {}: offline local assets only".format(heading, why))
+    # Browsers decode HTML character entities (&#106;, &colon;, \75 rl CSS
+    # escapes) BEFORE the URL parser and DOM act, while the denylist below
+    # sees raw bytes. Decode entities to a fixed point and CSS-style escapes
+    # once, then screen every variant: an encoded javascript:/url( smuggle
+    # must be refused exactly like its literal form.
+    variants = [fragment, html_mod.unescape(fragment), css_unescape(fragment)]
+    decoded = html_mod.unescape(fragment)
+    while decoded not in variants:
+        variants.append(decoded)
+        decoded = html_mod.unescape(decoded)
+    for candidate in variants:
+        for pattern, why in (
+            (EXTERNAL_URL_RE, "external URL"),
+            (ABSOLUTE_REF_RE, "absolute or scheme reference"),
+            (ACTIVE_DATA_RE, "active data/javascript URI"),
+            (CSS_FETCH_RE, "css url()/@import fetch"),
+            (EMBED_TAG_RE, "embedding/script/navigation tag"),
+            (EVENT_ATTR_RE, "inline event handler attribute"),
+        ):
+            if pattern.search(candidate):
+                raise BuildError(EXIT_CONTENT, "html section {!r} contains a {}: offline local assets only".format(heading, why))
     return "<h2>{}</h2>{}".format(html_mod.escape(heading), fragment)
+
+
+CSS_ESCAPE_RE = re.compile(r"\\([0-9a-fA-F]{1,6})[ \t\r\n\f]?")
+
+
+def css_unescape(text: str) -> str:
+    """Resolve CSS backslash hex escapes (\\75 rl -> url) once."""
+
+    def resolve(match: "re.Match[str]") -> str:
+        try:
+            return chr(int(match.group(1), 16))
+        except (ValueError, OverflowError):
+            return match.group(0)
+
+    return CSS_ESCAPE_RE.sub(resolve, text)
 
 
 def load_content(input_dir: str) -> dict:
@@ -377,17 +431,25 @@ def build(toolchain_dir: str, input_dir: str, output_dir: str, runtime_digest: s
         assets.append(ASSET_OUTPUT_DIR + "/" + dep_name)
     safe_path(staged, ENTRY_NAME).write_text(entry + "\n", encoding="utf-8")
 
-    # Atomic-ish publication: the entry and assets land in the output only
-    # after every byte rendered, so a failed build never leaves a half entry.
+    # Atomic-ish publication. The ENTRY is the commit point: assets land
+    # first, the entry last, so a failure anywhere below leaves either no
+    # published files at all or assets without a referencing entry — never
+    # a published entry whose assets are missing. Any failure rolls the
+    # staged directory back so no .craft-build-staging residue is ever
+    # collected or previewed alongside real output.
     staged_entry = safe_path(staged, ENTRY_NAME)
     final_entry = safe_path(output_root, ENTRY_NAME)
-    final_entry.parent.mkdir(parents=True, exist_ok=True)
-    shutil.move(str(staged_entry), str(final_entry))
-    for dep_name in FIXED_DEPENDENCIES:
-        staged_dep = safe_path(staged, ASSET_OUTPUT_DIR, dep_name)
-        final_dep = safe_path(output_root, ASSET_OUTPUT_DIR, dep_name)
-        final_dep.parent.mkdir(parents=True, exist_ok=True)
-        shutil.move(str(staged_dep), str(final_dep))
+    try:
+        for dep_name in FIXED_DEPENDENCIES:
+            staged_dep = safe_path(staged, ASSET_OUTPUT_DIR, dep_name)
+            final_dep = safe_path(output_root, ASSET_OUTPUT_DIR, dep_name)
+            final_dep.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(staged_dep), str(final_dep))
+        final_entry.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(staged_entry), str(final_entry))
+    except OSError:
+        shutil.rmtree(staged, ignore_errors=True)
+        raise
     shutil.rmtree(staged, ignore_errors=True)
     write_build_log(str(output_root), pin, runtime_digest, EXIT_OK, assets, "")
     return EXIT_OK

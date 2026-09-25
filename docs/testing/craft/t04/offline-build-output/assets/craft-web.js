@@ -1,4 +1,4 @@
-/* craft-web.js v1.1.0 — provisioned offline runtime of the Craft web
+/* craft-web.js v1.1.1 — provisioned offline runtime of the Craft web
  * toolchain. It performs local DOM filtering only: no fetch, no XHR, no
  * WebSocket, no EventSource, no dynamic script/style loading, no eval. */
 (function () {
@@ -8,30 +8,48 @@
     return String(text === null || text === undefined ? "" : text).trim().toLowerCase();
   }
 
-  function filterTable(input, table) {
-    const needle = normalize(input.value);
-    const rows = table.querySelectorAll("tbody tr");
-    for (const row of rows) {
-      const haystack = normalize(row.textContent);
-      const hit = needle === "" || haystack.indexOf(needle) !== -1;
-      if (hit) {
-        row.removeAttribute("data-craft-filter-hide");
-      } else {
-        row.setAttribute("data-craft-filter-hide", "1");
+  function bindTable(table) {
+    // Explicit pairing: build.py emits aria-controls on the filter input so
+    // the binding survives template insertions between the two nodes.
+    const inputId = table.getAttribute("aria-labelledby");
+    let input = null;
+    if (inputId !== null && inputId !== "") {
+      input = document.getElementById(inputId);
+    }
+    if (input === null) {
+      const previous = table.previousElementSibling;
+      if (previous !== null && previous.classList.contains("craft-filter")) {
+        input = previous;
       }
     }
+    if (input === null) {
+      if (typeof console !== "undefined" && console.warn !== undefined) {
+        console.warn("craft-web: table without a paired filter control");
+      }
+      return;
+    }
+    // Static rendered rows: precompute each haystack once so a keystroke
+    // costs only indexOf plus attribute toggles.
+    const rows = [];
+    for (const row of table.querySelectorAll("tbody tr")) {
+      rows.push({ row: row, haystack: normalize(row.textContent) });
+    }
+    input.addEventListener("input", function () {
+      const needle = normalize(input.value);
+      for (const entry of rows) {
+        const hit = needle === "" || entry.haystack.indexOf(needle) !== -1;
+        if (hit) {
+          entry.row.removeAttribute("data-craft-filter-hide");
+        } else {
+          entry.row.setAttribute("data-craft-filter-hide", "1");
+        }
+      }
+    });
   }
 
   function boot() {
-    // build.py renders one filter input immediately before each table, so
-    // every table pairs with its own controlling input (all matches, not
-    // just the first — later tables used to be dead controls).
-    const tables = document.querySelectorAll("table.craft-table");
-    for (const table of tables) {
-      const input = table.previousElementSibling;
-      if (input !== null && input.classList !== undefined && input.classList.contains("craft-filter")) {
-        input.addEventListener("input", function () { filterTable(input, table); });
-      }
+    for (const table of document.querySelectorAll("table.craft-table")) {
+      bindTable(table);
     }
   }
 

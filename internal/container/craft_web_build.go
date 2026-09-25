@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
@@ -47,23 +49,24 @@ var craftWebFixedDependencies = []string{"craft-web.css", "craft-web.js"}
 // toolchain.lock.json + runtime-config.json both carry it, so three
 // independent derivations must agree before a build counts.
 func CraftWebToolchainDigest(templateSHA string, dependencies map[string]string, buildSHA string) string {
-	names := make([]string, 0, len(dependencies))
-	for name := range dependencies {
-		names = append(names, name)
+	// Mirror the Python derivation exactly: sort the complete "name:sha"
+	// byte strings (not just the names) so a future dependency whose name is
+	// a prefix of another cannot diverge between the two implementations.
+	entries := make([]string, 0, len(dependencies))
+	for name, sha := range dependencies {
+		entries = append(entries, name+":"+sha)
 	}
-	sort.Strings(names)
+	sort.Strings(entries)
 	payload := &bytes.Buffer{}
 	payload.WriteString(craftWebToolchainName)
 	payload.WriteByte(0)
 	payload.WriteString(templateSHA)
 	payload.WriteByte(0)
-	for i, name := range names {
+	for i, entry := range entries {
 		if i > 0 {
 			payload.WriteByte(0)
 		}
-		payload.WriteString(name)
-		payload.WriteString(":")
-		payload.WriteString(dependencies[name])
+		payload.WriteString(entry)
 	}
 	payload.WriteByte(0)
 	payload.WriteString(buildSHA)
@@ -72,11 +75,15 @@ func CraftWebToolchainDigest(templateSHA string, dependencies map[string]string,
 }
 
 // CraftWebToolchainPin is the pinned identity a build log must match before
-// its exit status may become the collector's build evidence.
+// its exit status may become the collector's build evidence. RuntimeDigest
+// optionally carries the deployment's own runtime identity (from
+// craftRuntimeDigestFromEnv): when set, a log naming any other runtime is
+// refused whole.
 type CraftWebToolchainPin struct {
 	ToolchainDigest string
 	TemplateVersion string
 	TemplateSHA256  string
+	RuntimeDigest   string
 }
 
 // craftWebToolchainLock is the shipped toolchain.lock.json shape.
@@ -117,9 +124,14 @@ func LoadCraftWebToolchainPin(dir string) (CraftWebToolchainPin, error) {
 	if err := dec.Decode(&lock); err != nil {
 		return CraftWebToolchainPin{}, fmt.Errorf("%w: craft web toolchain lock decode: %v", craft.ErrInvalidInput, err)
 	}
-	var trailing any
-	if err := dec.Decode(&trailing); err == nil {
+	// The stream must be exactly exhausted: anything other than io.EOF after
+	// the primary decode — valid trailing JSON or garbage alike — means the
+	// lock carries extra content and is refused.
+	if err := dec.Decode(new(any)); !errors.Is(err, io.EOF) {
 		return CraftWebToolchainPin{}, fmt.Errorf("%w: craft web toolchain lock carries trailing content", craft.ErrInvalidInput)
+	}
+	if lock.Schema != 1 {
+		return CraftWebToolchainPin{}, fmt.Errorf("%w: craft web toolchain lock must be schema 1, got %d", craft.ErrInvalidInput, lock.Schema)
 	}
 	if lock.Name != craftWebToolchainName {
 		return CraftWebToolchainPin{}, fmt.Errorf("%w: craft web toolchain lock names %q", craft.ErrInvalidInput, lock.Name)
@@ -194,7 +206,11 @@ type CraftWebBuildLog struct {
 	ToolchainDigest string   `json:"toolchain_digest"`
 	TemplateVersion string   `json:"template_version"`
 	TemplateSHA256  string   `json:"template_sha256"`
-	ExitCode        int      `json:"exit_code"`
+	// ExitCode is a pointer so a missing exit_code field (or an explicit
+	// null) is distinguishable from a genuine 0: the log is agent-writable
+	// untrusted input and a missing field must never decode as "build
+	// succeeded".
+	ExitCode        *int     `json:"exit_code"`
 	Entry           string   `json:"entry"`
 	Assets          []string `json:"assets"`
 	Egress          string   `json:"egress"`
@@ -213,8 +229,9 @@ func ParseCraftWebBuildLog(raw []byte) (CraftWebBuildLog, error) {
 	if err := dec.Decode(&log); err != nil {
 		return CraftWebBuildLog{}, fmt.Errorf("%w: craft web build log decode: %v", craft.ErrInvalidInput, err)
 	}
-	var trailing any
-	if err := dec.Decode(&trailing); err == nil {
+	// The stream must be exactly exhausted (io.EOF): both a valid trailing
+	// JSON document and trailing garbage mean the log carries extra content.
+	if err := dec.Decode(new(any)); !errors.Is(err, io.EOF) {
 		return CraftWebBuildLog{}, fmt.Errorf("%w: craft web build log carries trailing content", craft.ErrInvalidInput)
 	}
 	if log.Schema != 1 || log.Kind != craft.KindWeb {
@@ -229,8 +246,11 @@ func ParseCraftWebBuildLog(raw []byte) (CraftWebBuildLog, error) {
 	if strings.TrimSpace(log.TemplateVersion) == "" {
 		return CraftWebBuildLog{}, fmt.Errorf("%w: craft web build log requires the template version", craft.ErrInvalidInput)
 	}
-	if log.ExitCode < 0 || log.ExitCode > 255 {
-		return CraftWebBuildLog{}, fmt.Errorf("%w: craft web build log exit code %d is impossible", craft.ErrInvalidInput, log.ExitCode)
+	if log.ExitCode == nil {
+		return CraftWebBuildLog{}, fmt.Errorf("%w: craft web build log is missing its exit code", craft.ErrInvalidInput)
+	}
+	if *log.ExitCode < 0 || *log.ExitCode > 255 {
+		return CraftWebBuildLog{}, fmt.Errorf("%w: craft web build log exit code %d is impossible", craft.ErrInvalidInput, *log.ExitCode)
 	}
 	if log.Entry != "index.html" {
 		return CraftWebBuildLog{}, fmt.Errorf("%w: craft web entry must be index.html, got %q", craft.ErrInvalidInput, log.Entry)
@@ -286,7 +306,14 @@ func CraftWebBuildEvidence(log CraftWebBuildLog, pin CraftWebToolchainPin) (craf
 	if log.TemplateVersion != pin.TemplateVersion {
 		return craft.ArtifactEvidence{}, fmt.Errorf("%w: build log names template version %s, deployment pins %s", craft.ErrConflict, log.TemplateVersion, pin.TemplateVersion)
 	}
-	return craft.ArtifactEvidence{BuildRan: true, BuildExitCode: log.ExitCode}, nil
+	// The runtime identity participates in the same agreement: when the
+	// deployment pinned its own runtime digest, a log naming any other
+	// runtime (a stale tree, another serve instance) is foreign even when
+	// the toolchain pins match.
+	if pin.RuntimeDigest != "" && log.RuntimeDigest != pin.RuntimeDigest {
+		return craft.ArtifactEvidence{}, fmt.Errorf("%w: build log names runtime %s, deployment runs %s", craft.ErrConflict, log.RuntimeDigest, pin.RuntimeDigest)
+	}
+	return craft.ArtifactEvidence{BuildRan: true, BuildExitCode: *log.ExitCode}, nil
 }
 
 // craftWebBuildEvidenceSource wraps one preview evidence source with the
@@ -310,9 +337,9 @@ func craftWebBuildEvidenceSource(
 		}
 		raw, err := readLog(ctx, task)
 		if err != nil || len(raw) == 0 {
-			if err != nil {
-				// Missing file is the common "no build ran" case and stays
-				// silent; a read failure beyond that is worth a trace.
+			// Missing file is the common "no build ran" case and stays
+			// silent; a read failure beyond not-exist is worth a trace.
+			if err != nil && !errors.Is(err, fs.ErrNotExist) {
 				logger.Warnf(ctx, "[CraftWebBuild] build log read failed for run %s: %v", task.Fence.RunID, err)
 			}
 			return evidence
