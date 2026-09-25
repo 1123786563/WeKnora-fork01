@@ -199,15 +199,20 @@ func TestFuncDeclNamesRecursive(t *testing.T) {
 // + GET rules/:ruleId，规则触发是 office 级显式 seam 无独立路由）。历史 681
 // 条 = 既有 678 条 + T18 Career Submission 3（POST applications/:applicationId/
 // submissions + GET applications/:applicationId/submissions + GET
-// submissions/receipt）。当前 686 条 = 既有 681 条 + T22 Career Export/Delete 5
+// submissions/receipt）。历史 686 条 = 既有 681 条 + T22 Career Export/Delete 5
 // （POST exports + GET exports/receipt + GET deletions/boundary + POST
-// deletions + GET deletions/receipt）。日期说明见 docs/architecture/moves/README.md。
+// deletions + GET deletions/receipt）。历史 689 条 = 既有 686 条 + T19 Career
+// Preparation 3（POST applications/:applicationId/preparations + GET
+// applications/:applicationId/preparations + GET preparations/receipt）。当前
+// 692 条 = 既有 689 条 + T20 Career Reminder 3（POST reminders + GET reminders
+// + GET reminders/receipt，站内待办权威、推送仅为提醒 seam 无独立路由）。
+// 日期说明见 docs/architecture/moves/README.md。
 
 const (
-	wantRouteLiteral  = 620
+	wantRouteLiteral  = 623
 	wantRouteAPIKey   = 69
 	wantRouteHandle   = 0
-	wantRouteTotal    = 689
+	wantRouteTotal    = 692
 	wantWorkersPerMix = 23
 	wantHooks         = 58
 )

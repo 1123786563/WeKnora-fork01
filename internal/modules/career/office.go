@@ -277,13 +277,17 @@ type Office struct {
 	// deterministic local composer — no external LLM dependency exists on
 	// the production path; tests inject fakes through the setter.
 	preparationGenerator PreparationGenerator
+	// Push reminder seam (T20): the notifier is the only push channel for the
+	// in-station todos. Production wires nil — the todo row alone is the
+	// authoritative reminder fact; tests inject fakes through the setter.
+	reminderNotifier ReminderNotifier
 }
 
 func NewOffice(db *gorm.DB) (*Office, error) {
 	if db == nil {
 		return nil, errors.New("career database required")
 	}
-	models := []any{&profile{}, &space{}, &fact{}, &factVersion{}, &proposal{}, &change{}, &receipt{}, &sourceRevision{}, &opportunity{}, &opportunityObservation{}, &opportunitySnapshot{}, &opportunityReceipt{}, &evaluationRecord{}, &applicationRecord{}, &searchRecord{}, &searchResultRecord{}, &materialRecord{}, &materialVersionRecord{}, &materialReceiptRecord{}, &materialExportRecord{}, &progressEventRecord{}, &searchRuleRecord{}, &searchRuleReceiptRecord{}, &searchRuleRunRecord{}, &searchDiscoveryTodoRecord{}, &submissionRecord{}, &careerDataExportRecord{}, &careerDataDeletionRecord{}, &preparationRecord{}}
+	models := []any{&profile{}, &space{}, &fact{}, &factVersion{}, &proposal{}, &change{}, &receipt{}, &sourceRevision{}, &opportunity{}, &opportunityObservation{}, &opportunitySnapshot{}, &opportunityReceipt{}, &evaluationRecord{}, &applicationRecord{}, &searchRecord{}, &searchResultRecord{}, &materialRecord{}, &materialVersionRecord{}, &materialReceiptRecord{}, &materialExportRecord{}, &progressEventRecord{}, &searchRuleRecord{}, &searchRuleReceiptRecord{}, &searchRuleRunRecord{}, &searchDiscoveryTodoRecord{}, &submissionRecord{}, &careerDataExportRecord{}, &careerDataDeletionRecord{}, &preparationRecord{}, &reminderRecord{}, &reminderReceiptRecord{}}
 	if db.Dialector.Name() == "sqlite" {
 		present := 0
 		for _, model := range models {
@@ -357,6 +361,8 @@ func validateSQLiteCareerSchema(db *gorm.DB) error {
 		"career_data_exports":             {"id", "tenant_id", "user_id", "request_id", "fingerprint", "revision", "digest", "archive_body", "receipt_body", "created_at"},
 		"career_data_deletions":           {"id", "tenant_id", "user_id", "request_id", "fingerprint", "expected_revision", "status", "state_body", "receipt_body", "created_at", "updated_at"},
 		"career_preparations":             {"id", "tenant_id", "user_id", "application_id", "request_id", "fingerprint", "focus", "status", "submission_id", "submitted_material_id", "submitted_export_id", "submitted_version", "submitted_digest", "snapshot_id", "snapshot_sha256", "profile_revision", "material_id", "failure_code", "failure_message", "receipt_body", "created_at", "updated_at"},
+		"career_reminders":                {"id", "tenant_id", "user_id", "source_kind", "source_id", "application_id", "opportunity_id", "notice_key", "status", "request_id", "created_at", "updated_at"},
+		"career_reminder_receipts":        {"tenant_id", "user_id", "request_id", "fingerprint", "body", "created_at"},
 	}
 	for table, columns := range requiredColumns {
 		for _, column := range columns {
@@ -388,6 +394,8 @@ func validateSQLiteCareerSchema(db *gorm.DB) error {
 		"career_data_exports":           {"tenant_id", "user_id", "request_id"},
 		"career_data_deletions":         {"tenant_id", "user_id", "request_id"},
 		"career_preparations":           {"tenant_id", "user_id", "request_id"},
+		"career_reminders":              {"tenant_id", "user_id", "source_kind", "source_id"},
+		"career_reminder_receipts":      {"tenant_id", "user_id", "request_id"},
 	} {
 		if err := requireSQLiteUniqueConstraint(db, table, columns); err != nil {
 			return fmt.Errorf("incomplete Career SQLite schema: %w; apply database migrations before startup", err)
@@ -405,6 +413,12 @@ func validateSQLiteCareerSchema(db *gorm.DB) error {
 	}
 	// One application holds at most one user-confirmed submission record.
 	if err := requireSQLiteUniqueConstraint(db, "career_submissions", []string{"tenant_id", "user_id", "application_id"}); err != nil {
+		return fmt.Errorf("incomplete Career SQLite schema: %w; apply database migrations before startup", err)
+	}
+	// One source event holds exactly one reminder todo; this second uniqueness
+	// (the creating request ID) needs its own check because the map above
+	// allows one entry per table.
+	if err := requireSQLiteUniqueConstraint(db, "career_reminders", []string{"tenant_id", "user_id", "request_id"}); err != nil {
 		return fmt.Errorf("incomplete Career SQLite schema: %w; apply database migrations before startup", err)
 	}
 	return nil

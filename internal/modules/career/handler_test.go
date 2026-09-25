@@ -904,3 +904,70 @@ func TestCareerPreparationHandlersPromptReplayAndFailure(t *testing.T) {
 	require.Equal(t, 409, rec.Code, rec.Body.String())
 	require.Contains(t, rec.Body.String(), "idempotency_conflict")
 }
+
+// TestCareerReminderHandlerWritesTodoWithFrozenNotice pins the T20 HTTP
+// surface: set_reminder takes a closed payload (request ID + expected
+// revision), answers the frozen privacy notice, replays by request ID, and
+// maps the typed source/reminder misses onto 404.
+func TestCareerReminderHandlerWritesTodoWithFrozenNotice(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	office, err := NewOffice(db)
+	require.NoError(t, err)
+	scope := Scope{UserID: "reminder-owner", TenantID: 4713}
+	base := context.WithValue(context.Background(), types.UserIDContextKey, scope.UserID)
+	base = context.WithValue(base, types.TenantIDContextKey, scope.TenantID)
+	ctx := WithScope(base, scope)
+	require.NoError(t, office.ClaimSpace(ctx))
+	h := &Handler{office: office, members: &memberListStub{members: []*types.TenantMember{{UserID: scope.UserID, TenantID: scope.TenantID, Role: types.TenantRoleOwner}}}}
+	applicationID := seedProgressApplication(t, office, ctx, completeJDText, "2027", "http-rem", "http-rem-batch")
+	view, err := office.Open(ctx)
+	require.NoError(t, err)
+	event, err := office.AppendProgress(ctx, appendProgressInput(applicationID, "http-rem-evt", ProgressEventInterview, "Acme 面试 10月1日", 0))
+	require.NoError(t, err)
+
+	invoke := func(method, target, body string, dispatch func(*gin.Context)) *httptest.ResponseRecorder {
+		gin.SetMode(gin.TestMode)
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		var reader io.Reader
+		if body != "" {
+			reader = strings.NewReader(body)
+		}
+		c.Request = httptest.NewRequest(method, target, reader).WithContext(base)
+		if body != "" {
+			c.Request.Header.Set("Content-Type", "application/json")
+		}
+		dispatch(c)
+		return rec
+	}
+
+	// A closed payload: unknown fields are rejected outright.
+	rec := invoke(http.MethodPost, "/api/v1/career/reminders", `{"requestId":"http-rem-1","sourceKind":"progress_event","sourceId":"`+event.EventID+`","expectedRevision":`+fmt.Sprint(view.Revision)+`,"note":"leak"}`, h.SetReminderHandler)
+	require.Equal(t, 400, rec.Code, rec.Body.String())
+
+	rec = invoke(http.MethodPost, "/api/v1/career/reminders", `{"requestId":"http-rem-1","sourceKind":"progress_event","sourceId":"`+event.EventID+`","expectedRevision":`+fmt.Sprint(view.Revision)+`}`, h.SetReminderHandler)
+	require.Equal(t, 200, rec.Code, rec.Body.String())
+	require.Contains(t, rec.Body.String(), `"kind":"reminder_set"`)
+	require.Contains(t, rec.Body.String(), ReminderNoticeBodies[ReminderNoticeProgressUpdated])
+	require.NotContains(t, rec.Body.String(), "Acme")
+
+	// The inbox listing is the authoritative reading surface.
+	rec = invoke(http.MethodGet, "/api/v1/career/reminders", "", h.ListRemindersHandler)
+	require.Equal(t, 200, rec.Code, rec.Body.String())
+	require.Contains(t, rec.Body.String(), `"reminders"`)
+
+	// The receipt replays by request ID; foreign sources stay 404.
+	rec = invoke(http.MethodGet, "/api/v1/career/reminders/receipt?requestId=http-rem-1", "", h.ReminderReceiptHandler)
+	require.Equal(t, 200, rec.Code, rec.Body.String())
+	require.Contains(t, rec.Body.String(), `"requestId":"http-rem-1"`)
+	rec = invoke(http.MethodGet, "/api/v1/career/reminders/receipt?requestId=missing", "", h.ReminderReceiptHandler)
+	require.Equal(t, 404, rec.Code, rec.Body.String())
+	rec = invoke(http.MethodPost, "/api/v1/career/reminders", `{"requestId":"http-rem-2","sourceKind":"progress_event","sourceId":"no-such-event","expectedRevision":`+fmt.Sprint(view.Revision)+`}`, h.SetReminderHandler)
+	require.Equal(t, 404, rec.Code, rec.Body.String())
+
+	// A changed intent under the same request ID is the typed 409.
+	rec = invoke(http.MethodPost, "/api/v1/career/reminders", `{"requestId":"http-rem-1","sourceKind":"progress_event","sourceId":"no-such-event","expectedRevision":`+fmt.Sprint(view.Revision)+`}`, h.SetReminderHandler)
+	require.Equal(t, 409, rec.Code, rec.Body.String())
+	require.Contains(t, rec.Body.String(), "idempotency_conflict")
+}

@@ -148,6 +148,9 @@ func writeError(c *gin.Context, e error) {
 	case errors.Is(e, ErrPreparationGenerationFailed):
 		status = 500
 		code = "preparation_generation_failed"
+	case errors.Is(e, ErrReminderNotFound), errors.Is(e, ErrReminderSourceNotFound):
+		status = 404
+		code = "not_found"
 	case errors.Is(e, ErrExportGrantInvalid):
 		status = 404
 		code = "export_grant_invalid"
@@ -1233,6 +1236,71 @@ func (h *Handler) PreparationReceiptHandler(c *gin.Context) {
 		return
 	}
 	receipt, err := h.office.FindPreparationReceipt(ctx, c.Query("requestId"))
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, receipt)
+}
+
+const maxReminderBodyBytes = 4 * 1024
+
+// SetReminderHandler produces the in-station todo for one source event. The
+// payload is closed (request ID + source + expected revision); the response
+// carries the frozen privacy notice and, when a push channel exists, its
+// best-effort report — a delivery failure never fails this request.
+func (h *Handler) SetReminderHandler(c *gin.Context) {
+	ctx, ok := h.scope(c, false)
+	if !ok {
+		return
+	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxReminderBodyBytes)
+	decoder := json.NewDecoder(c.Request.Body)
+	decoder.DisallowUnknownFields()
+	var input SetReminderInput
+	if err := decoder.Decode(&input); err != nil {
+		var maxBytesError *http.MaxBytesError
+		if errors.As(err, &maxBytesError) {
+			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": gin.H{"code": "request_too_large", "message": "reminder request is too large"}})
+			return
+		}
+		writeError(c, ErrInvalidRequest)
+		return
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		writeError(c, ErrInvalidRequest)
+		return
+	}
+	receipt, err := h.office.SetReminder(ctx, input)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, receipt)
+}
+
+// ListRemindersHandler serves the authoritative in-station todo list.
+func (h *Handler) ListRemindersHandler(c *gin.Context) {
+	ctx, ok := h.scope(c, false)
+	if !ok {
+		return
+	}
+	reminders, err := h.office.ListReminders(ctx)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"reminders": reminders})
+}
+
+// ReminderReceiptHandler replays a stored reminder receipt by request ID.
+func (h *Handler) ReminderReceiptHandler(c *gin.Context) {
+	ctx, ok := h.scope(c, false)
+	if !ok {
+		return
+	}
+	receipt, err := h.office.FindReminderReceipt(ctx, c.Query("requestId"))
 	if err != nil {
 		writeError(c, err)
 		return
