@@ -317,7 +317,13 @@ func (s *OrderService) openOrder(ctx context.Context, tenantID uint64, q repocom
 	cmd := repocommercial.OpenOrderCommand{
 		OrderID: id, AttemptID: "att_" + newLeaseToken(), TenantID: tenantID,
 		QuoteID: q.ID, Kind: kind, AmountFen: amountFen, Currency: "CNY",
-		Provider: providerName, Merchant: providerName, MerchantOrderID: merchantOrderID,
+		// The attempt's merchant MUST be the channel merchant identity the
+		// provider's verified callbacks carry (SellerID/MchID) — NOT the
+		// provider name: resolveByMerchantOrderID and ConfirmPayment key on
+		// (provider, merchant, merchant_order_id), so any other value makes
+		// every genuine channel callback unresolvable (issue #82 flow
+		// defect 2: registered 'alipay' vs notified SellerID → 404).
+		Provider: providerName, Merchant: provider.MerchantID(), MerchantOrderID: merchantOrderID,
 		SubscriptionVersion: subVersion, Now: time.Now(),
 	}
 	if claim != nil {

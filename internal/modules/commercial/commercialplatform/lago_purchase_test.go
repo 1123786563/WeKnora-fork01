@@ -125,9 +125,12 @@ func newPurchaseStub() *purchaseStub {
 			}
 			id, _ := body["external_id"].(string)
 			s.mu.Lock()
-			if existing, ok := s.customer[id]; ok { // upsert: merge billing_configuration
+			if existing, ok := s.customer[id]; ok { // upsert (UpsertFromApiService): a field is overwritten ONLY when its key is present in the body
 				if bc, ok := body["billing_configuration"]; ok {
 					existing["billing_configuration"] = bc
+				}
+				if name, ok := body["name"]; ok {
+					existing["name"] = name
 				}
 				body = existing
 			}
@@ -135,30 +138,8 @@ func newPurchaseStub() *purchaseStub {
 			s.mu.Unlock()
 			b, _ := json.Marshal(map[string]any{"customer": body})
 			respond(w, r, &s.requests, &s.mu, http.StatusOK, string(b), blob)
-		case r.Method == http.MethodPut && ext != "": // PUT /api/v1/customers/{id} — update-only semantics: merge billing_configuration, NEVER touch any other field (an absent customer is still a 404).
-			var parsed struct {
-				Customer map[string]any `json:"customer"`
-			}
-			_ = json.Unmarshal(blob, &parsed)
-			body := parsed.Customer
-			if body == nil {
-				respond(w, r, &s.requests, &s.mu, http.StatusUnprocessableEntity, "{}", blob)
-				return
-			}
-			s.mu.Lock()
-			existing, ok := s.customer[ext]
-			if ok {
-				if bc, has := body["billing_configuration"]; has {
-					existing["billing_configuration"] = bc
-				}
-			}
-			s.mu.Unlock()
-			if !ok {
-				respond(w, r, &s.requests, &s.mu, http.StatusNotFound, "{}", blob)
-				return
-			}
-			b, _ := json.Marshal(map[string]any{"customer": existing})
-			respond(w, r, &s.requests, &s.mu, http.StatusOK, string(b), blob)
+		case r.Method == http.MethodPut && ext != "": // The pinned v1.53.0 shared API exposes customers as create/index/show/destroy ONLY — there is no update route, so a single-customer PUT must 404 (issue #82 flow defect 3: the real stack answered exactly this before the fix moved the binding write to the upsert POST).
+			respond(w, r, &s.requests, &s.mu, http.StatusNotFound, "{}", blob)
 		default:
 			http.NotFound(w, r)
 		}
@@ -414,11 +395,14 @@ func TestLagoCreatePurchaseFailsClosedWithoutBindingSource(t *testing.T) {
 	}
 }
 
-// TestLagoBindingUpdateOnExistingCustomerKeepsDisplayName (R1-V05): the
+// TestLagoBindingUpdateOnExistingCustomerKeepsDisplayName (R1-V05, restated
+// on the pinned v1.53.0 contract after issue #82 flow defect 3): the
 // customer already exists (onboarding created it with the REAL display
-// name) but carries no provider binding — the binding write must be the
-// update-only PUT (billing_configuration only) and must never overwrite
-// the display name with the bare external id.
+// name) but carries no provider binding. The shared API has NO customer
+// update route (create/index/show/destroy only) — the binding write MUST be
+// the collection POST upsert with NO name key (a present key would overwrite
+// the display name; the old PUT form 404'd on the real stack and killed
+// every first purchase with 503 invalid_response).
 func TestLagoBindingUpdateOnExistingCustomerKeepsDisplayName(t *testing.T) {
 	stub := newPurchaseStub()
 	ext := commercial.ExternalCustomerID(27)
@@ -432,6 +416,12 @@ func TestLagoBindingUpdateOnExistingCustomerKeepsDisplayName(t *testing.T) {
 	}
 	stub.mu.Lock()
 	cust := stub.customer[ext]
+	var bindingPostBody string
+	for _, req := range stub.requests {
+		if req.Method == http.MethodPost && req.Path == "/api/v1/customers" {
+			bindingPostBody = req.Body
+		}
+	}
 	stub.mu.Unlock()
 	if cust["name"] != "真实空间名" {
 		t.Fatalf("existing customer's display name must be preserved, got %v", cust["name"])
@@ -440,11 +430,25 @@ func TestLagoBindingUpdateOnExistingCustomerKeepsDisplayName(t *testing.T) {
 	if bc == nil || bc["provider_customer_id"] != "cus-dev-"+ext {
 		t.Fatalf("binding must still land: %+v", bc)
 	}
-	if n := stub.countCustomerPosts(); n != 0 {
-		t.Fatalf("existing customer must be bound via PUT, not a collection POST, posts=%d", n)
+	// The upsert body must carry external_id + billing_configuration and NO
+	// name key — that is what keeps the display name on the real stack.
+	var sent struct {
+		Customer map[string]any `json:"customer"`
 	}
-	if n := stub.countCustomerPuts(); n != 1 {
-		t.Fatalf("exactly one update-only PUT expected, puts=%d", n)
+	if err := json.Unmarshal([]byte(bindingPostBody), &sent); err != nil {
+		t.Fatalf("binding POST body unreadable: %v (%s)", err, bindingPostBody)
+	}
+	if _, hasName := sent.Customer["name"]; hasName {
+		t.Fatalf("binding upsert must NOT carry a name key (it would overwrite the display name): %s", bindingPostBody)
+	}
+	if sent.Customer["external_id"] != ext {
+		t.Fatalf("binding upsert must locate the customer by external_id, body: %s", bindingPostBody)
+	}
+	if n := stub.countCustomerPosts(); n != 1 {
+		t.Fatalf("existing customer must be bound through exactly one collection POST (upsert), posts=%d", n)
+	}
+	if n := stub.countCustomerPuts(); n != 0 {
+		t.Fatalf("single-customer PUT must never be sent (no update route on pinned v1.53.0, it 404s), puts=%d", n)
 	}
 }
 

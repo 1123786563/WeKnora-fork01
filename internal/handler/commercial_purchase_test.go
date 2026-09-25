@@ -60,6 +60,10 @@ func (p *handlerStubProvider) QueryRefund(context.Context, string) (payment.Refu
 	return payment.RefundResult{State: payment.StatePending}, nil
 }
 
+// MerchantID models the channel merchant identity contract (NOT the provider
+// name — see the Provider interface doc).
+func (p *handlerStubProvider) MerchantID() string { return "1900000109" }
+
 type purchaseHandlerEnv struct {
 	handler  *CommercialHandler
 	router   *gin.Engine

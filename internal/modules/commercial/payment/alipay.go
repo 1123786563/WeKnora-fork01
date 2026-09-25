@@ -280,6 +280,10 @@ func (p *AlipayProvider) alipayVerifySignature(signType, sign, content string) e
 	return nil
 }
 
+// MerchantID reports the configured SellerID — the identity Verify stamps
+// on every verified fact (trusted: matched against the configured seller).
+func (p *AlipayProvider) MerchantID() string { return p.cfg.SellerID }
+
 // Verify authenticates one asynchronous payment notification (ALI-02). The
 // RAW form body is parsed exactly once; the signature is recomputed over
 // the received values without re-encoding, so any double-decode or re-sign

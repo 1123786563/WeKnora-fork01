@@ -225,6 +225,10 @@ type wechatPaymentResult struct {
 	Amount        wechatAmountJSON `json:"amount"`
 }
 
+// MerchantID reports the configured MchID — the identity Verify stamps on
+// every verified fact (trusted: matched against the configured merchant).
+func (p *WechatProvider) MerchantID() string { return p.cfg.MchID }
+
 // Verify authenticates one payment callback end to end (WX-02): serial
 // selection from CONFIGURED references only, timestamp window,
 // RSA-SHA256 signature over the raw body, AES-256-GCM resource decryption

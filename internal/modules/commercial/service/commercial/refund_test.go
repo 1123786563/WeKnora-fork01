@@ -50,6 +50,10 @@ func (p *stubRefundProvider) QueryRefund(_ context.Context, refundID string) (pa
 	return payment.RefundResult{State: p.queryState, ProviderID: "pr_" + refundID}, nil
 }
 
+// MerchantID models the channel merchant identity contract (NOT the provider
+// name — see the Provider interface doc).
+func (p *stubRefundProvider) MerchantID() string { return "1900000109" }
+
 func (p *stubRefundProvider) counts() (int, int, []string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()

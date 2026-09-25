@@ -267,12 +267,17 @@ const (
 // ensureProviderBinding guarantees the authority customer carries a
 // provider binding before any gated create (D3): GET the customer — bound
 // means done; otherwise derive the provider customer id from the provider
-// API (key present) or the placeholder prefix and write ONLY the binding:
-// an ABSENT customer is created (with its name), an EXISTING customer is
-// updated through PUT so the onboarding display name is never overwritten
-// (R1-V05 — Lago's external_id is create/upsert semantics, lago.go
-// precedent). Unbound AND no source → ErrPlatformUnconfigured (fail
-// closed).
+// API (key present) or the placeholder prefix and write ONLY the binding
+// through the customers collection POST, whose upsert semantics
+// (Customers::UpsertFromApiService) apply billing_configuration to an
+// EXISTING customer and overwrite a field only when its key is present —
+// so the onboarding display name survives because no name key is sent
+// (R1-V05 intent, restated on the pinned v1.53.0 contract: the shared API
+// exposes customers as create/index/show/destroy ONLY — there is no update
+// route, and PUT /api/v1/customers/:external_id 404s; issue #82 flow
+// defect 3 made every existing-but-unbound customer's first purchase die
+// 503 invalid_response there). An ABSENT customer is created (with its
+// name). Unbound AND no source → ErrPlatformUnconfigured (fail closed).
 func (a *LagoAdapter) ensureProviderBinding(ctx context.Context, externalCustomerID string) error {
 	exists, bound, err := a.customerProviderBound(ctx, externalCustomerID)
 	if err != nil {
@@ -295,27 +300,21 @@ func (a *LagoAdapter) ensureProviderBinding(ctx context.Context, externalCustome
 		"provider_customer_id":     providerCustomerID,
 		"provider_payment_methods": []string{"card"},
 	}
-	var status int
-	var respBody []byte
-	if exists {
-		// (R1-V05) The customer already exists (onboarding's ensureCustomer
-		// created it with the real DisplayName): update ONLY the
-		// billing_configuration. A collection POST here would either
-		// silently overwrite the display name with the bare external id
-		// (upsert authority) or fail 422 forever (create-only authority).
-		body := map[string]any{"customer": map[string]any{"billing_configuration": billing}}
-		status, respBody, err = a.do(ctx, http.MethodPut,
-			"/api/v1/customers/"+url.PathEscape(externalCustomerID), body)
-	} else {
-		body := map[string]any{
-			"customer": map[string]any{
-				"external_id":           externalCustomerID,
-				"name":                  externalCustomerID,
-				"billing_configuration": billing,
-			},
-		}
-		status, respBody, err = a.do(ctx, http.MethodPost, "/api/v1/customers", body)
+	// One collection POST serves both branches (pinned v1.53.0 upsert):
+	// absent → create (name required); existing → update-only — the body
+	// deliberately carries NO name key so the onboarding display name is
+	// never overwritten. The bound short-circuit above keeps the replay
+	// path from ever re-POSTing.
+	body := map[string]any{
+		"customer": map[string]any{
+			"external_id":           externalCustomerID,
+			"billing_configuration": billing,
+		},
 	}
+	if !exists {
+		body["customer"].(map[string]any)["name"] = externalCustomerID
+	}
+	status, respBody, err := a.do(ctx, http.MethodPost, "/api/v1/customers", body)
 	if err != nil {
 		return err
 	}

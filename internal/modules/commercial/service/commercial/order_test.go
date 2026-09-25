@@ -56,6 +56,12 @@ func (p *stubCheckoutProvider) QueryRefund(_ context.Context, id string) (paymen
 	return payment.RefundResult{State: payment.StatePending, ProviderID: id}, nil
 }
 
+// MerchantID models the channel merchant identity contract: a WeChat-shaped
+// mchid that is deliberately NOT the provider name, so any attempt
+// registration that writes the provider name instead fails the merchant
+// assertions (issue #82 flow defect 2).
+func (p *stubCheckoutProvider) MerchantID() string { return "1900000109" }
+
 func newOrderTestEnv(t *testing.T) (*OrderService, *stubCheckoutProvider, *gorm.DB) {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared&_busy_timeout=5000"), &gorm.Config{})
