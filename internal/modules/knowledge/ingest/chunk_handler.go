@@ -359,9 +359,9 @@ func (h *ChunkHandler) RegenerateGeneratedQuestions(c *gin.Context) {
 // @Produce      json
 // @Param        knowledge_id  path      string  true  "知识ID"
 // @Param        id            path      string  true  "分块ID"
-// @Success      200  {object}  map[string]interface{}  "删除成功"
-// @Failure      400  {object}  errors.AppError         "请求参数错误"
-// @Failure      404  {object}  errors.AppError         "分块不存在"
+// @Success      200           {object}  map[string]interface{}  "删除成功"
+// @Failure      400           {object}  errors.AppError         "请求参数错误"
+// @Failure      404           {object}  errors.AppError         "分块不存在"
 // @Security     Bearer
 // @Security     ApiKeyAuth
 // @Router       /chunks/{knowledge_id}/{id} [delete]
@@ -394,8 +394,8 @@ func (h *ChunkHandler) DeleteChunk(c *gin.Context) {
 // @Accept       json
 // @Produce      json
 // @Param        knowledge_id  path      string  true  "知识ID"
-// @Success      200  {object}  map[string]interface{}  "删除成功"
-// @Failure      400  {object}  errors.AppError         "请求参数错误"
+// @Success      200           {object}  map[string]interface{}  "删除成功"
+// @Failure      400           {object}  errors.AppError         "请求参数错误"
 // @Security     Bearer
 // @Security     ApiKeyAuth
 // @Router       /chunks/{knowledge_id} [delete]
