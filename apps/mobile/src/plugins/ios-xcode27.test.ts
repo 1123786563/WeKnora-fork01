@@ -10,6 +10,8 @@ const plugin = require('../../plugins/ios-xcode27.js') as {
   SCENE_MANIFEST: Record<string, unknown>;
   applySceneLifecycle(contents: string): string;
   applyPodfileClamp(contents: string): string;
+  applyPodfileWarningsInhibit(contents: string): string;
+  applySplashStoryboard(contents: string): string;
   raiseDeploymentTargets(project: unknown): unknown;
   resolveNewArchEnabled(config: unknown): { effective: boolean; warned: boolean };
 };
@@ -219,4 +221,72 @@ test('the plugin honors and warns about an opt-in newArchEnabled declaration (R1
   } finally {
     console.warn = originalWarn;
   }
+});
+
+// ---- B4 复验修复轮（b4-recheck-fix.md）----
+
+test('applySceneLifecycle wires the RCTRootView splash loadingView (B4 F1)', () => {
+  // Release 冷启动 JS bundle 执行期 root view 纯白：修复 = factory 根视图
+  // RCTSurfaceHostingProxyRootView 的 loadingView（surface hosting view 的
+  // activity indicator，Preparing 阶段全屏显示、Running 后移除）。
+  const patched = plugin.applySceneLifecycle(TEMPLATE_APP_DELEGATE);
+  assert.match(patched, /rootView\.loadingView = Self\.makeSplashLoadingView\(size: window\.bounds\.size\)/);
+  assert.match(patched, /private static func makeSplashLoadingView\(size: CGSize\) -> UIView/);
+  assert.match(patched, /window\.rootViewController\?\.view as\? RCTSurfaceHostingProxyRootView/);
+  // splash 注入必须发生在 RN 启动之后（拿到 root view 才有意义）。
+  const start = patched.indexOf('factory.startReactNative(');
+  const splash = patched.indexOf('rootView.loadingView');
+  assert.ok(start >= 0 && splash > start, 'splash wiring must run after startReactNative');
+  // 既有幂等/模板断言仍适用：重跑不重复、模板漂移抛错。
+  assert.equal(plugin.applySceneLifecycle(patched), patched);
+});
+
+test('applyPodfileWarningsInhibit injects a top-level inhibit_all_warnings! (B4 F2)', () => {
+  // 真实模板里 prepare_react_native_project! 在 target 之前；测试夹具补齐该行作锚。
+  const templateWithPrepare = `prepare_react_native_project!\n${TEMPLATE_PODFILE}`;
+  const inhibited = plugin.applyPodfileWarningsInhibit(templateWithPrepare);
+  // 必须在 target 定义之前（顶层 DSL 调用，作用于全部 pod targets）。
+  const inhibit = inhibited.indexOf('inhibit_all_warnings!');
+  const target = inhibited.indexOf("target 'WeKnora' do");
+  assert.ok(inhibit >= 0 && inhibit < target, 'inhibit_all_warnings! must precede the target block');
+  assert.ok(inhibited.includes('# weknora_ios_inhibit_warnings'));
+  // 幂等（唯一锚注释判已注入，同 R1-F7 规则）。
+  assert.equal(plugin.applyPodfileWarningsInhibit(inhibited), inhibited);
+  // 模板漂移必须失败而非静默跳过。
+  assert.throws(
+    () => plugin.applyPodfileWarningsInhibit("platform :ios, '15.1'\ntarget x\nend\n"),
+    /no longer matches the Expo SDK 55 template/,
+  );
+});
+
+test('withPodfile applies the warning inhibit and the clamp together (B4 F2)', () => {
+  // 组合入口：两个注入共存于同一 Podfile 输出且互不吞并。
+  const templateWithPrepare = `prepare_react_native_project!\n${TEMPLATE_PODFILE}`;
+  const combined = plugin.applyPodfileClamp(plugin.applyPodfileWarningsInhibit(templateWithPrepare));
+  assert.ok(combined.includes('# weknora_ios_inhibit_warnings'));
+  assert.ok(combined.includes('# weknora_ios_xcode27_clamp'));
+});
+
+// Expo SDK 55 模板 SplashScreen.storyboard 的空容器（白屏根因：launch snapshot 只有白底，
+// 且容器约束悬空引用不存在的 EXPO-SplashScreen item）。
+const TEMPLATE_SPLASH_STORYBOARD = `<subviews/>
+                        <viewLayoutGuide key="safeArea" id="Rmq-lb-GrQ"/>
+                        <constraints>
+                            <constraint firstItem="EXPO-SplashScreen" firstAttribute="centerY" secondItem="EXPO-ContainerView" secondAttribute="centerY" id="0VC-Wk-OaO"/>
+                            <constraint firstItem="EXPO-SplashScreen" firstAttribute="centerX" secondItem="EXPO-ContainerView" secondAttribute="centerX" id="zR4-NK-mVN"/>
+                        </constraints>`;
+
+test('applySplashStoryboard revives the dangling splash constraints with a wordmark (B4 F1)', () => {
+  const patched = plugin.applySplashStoryboard(TEMPLATE_SPLASH_STORYBOARD);
+  // label 复用悬空约束引用的 id：约束原样生效，无需改动 constraints 段。
+  assert.match(patched, /<subviews>\s*\n\s*<label[\s\S]*?id="EXPO-SplashScreen">/);
+  assert.match(patched, /text="WeKnora"/);
+  assert.equal(patched.includes('<subviews/>'), false, 'empty container must be replaced');
+  // 幂等。
+  assert.equal(plugin.applySplashStoryboard(patched), patched);
+  // 模板漂移必须失败而非静默跳过。
+  assert.throws(
+    () => plugin.applySplashStoryboard('<subviews><label text="x"/></subviews>'),
+    /no longer matches the Expo SDK 55 template/,
+  );
 });
