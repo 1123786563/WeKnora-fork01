@@ -261,21 +261,45 @@ type CraftWriterLeaseStore interface {
 }
 
 // AcquireWriter admits one writing Run on the scope's Workspace. The lease
-// binds the Task (session), Workspace, Run and the draft-head revision.
+// binds the Task (session), Workspace, Run and the draft-head revision; a
+// concurrent writer receives a stable conflict instead of an error. The
+// read-only workspace paths (Resolve, GetWorkspace, version reads) never
+// come through here.
 func (s *CraftWorkspaceService) AcquireWriter(ctx context.Context, scope craft.Scope, runID string) (craft.WriterAcquisition, error) {
 	if scope.TenantID == 0 || scope.UserID == "" || scope.SessionID == "" || runID == "" {
 		return craft.WriterAcquisition{}, fmt.Errorf("%w: incomplete writer admission", craft.ErrInvalidInput)
 	}
-	return craft.WriterAcquisition{}, fmt.Errorf("%w: writer admission is not implemented", craft.ErrUnsupported)
+	if s.writerLeases == nil {
+		return craft.WriterAcquisition{}, fmt.Errorf("%w: workspace service is not assembled with a writer lease store", craft.ErrUnsupported)
+	}
+	workspace, err := s.store.GetWorkspace(ctx, scope)
+	if err != nil {
+		return craft.WriterAcquisition{}, err
+	}
+	acquisition, err := s.writerLeases.AcquireWriterLease(ctx, scope, workspace.ID, runID)
+	if err != nil {
+		return craft.WriterAcquisition{}, fmt.Errorf("craft: acquire writer for session %s: %w", scope.SessionID, err)
+	}
+	return acquisition, nil
 }
 
 // ReleaseWriter releases the scope's Workspace writer lease under the named
-// basis. An unknown basis retains the fence.
+// basis. An unknown basis retains the fence; a non-holder is forbidden.
 func (s *CraftWorkspaceService) ReleaseWriter(ctx context.Context, scope craft.Scope, runID, basis string) error {
 	if scope.TenantID == 0 || scope.UserID == "" || scope.SessionID == "" || runID == "" {
 		return fmt.Errorf("%w: incomplete writer release", craft.ErrInvalidInput)
 	}
-	return fmt.Errorf("%w: writer release is not implemented", craft.ErrUnsupported)
+	if s.writerLeases == nil {
+		return fmt.Errorf("%w: workspace service is not assembled with a writer lease store", craft.ErrUnsupported)
+	}
+	workspace, err := s.store.GetWorkspace(ctx, scope)
+	if err != nil {
+		return err
+	}
+	if err := s.writerLeases.ReleaseWriterLease(ctx, scope, workspace.ID, runID, basis); err != nil {
+		return fmt.Errorf("craft: release writer for session %s: %w", scope.SessionID, err)
+	}
+	return nil
 }
 
 // WriterLease projects the scope's durable writer lease without acquiring
@@ -284,5 +308,16 @@ func (s *CraftWorkspaceService) WriterLease(ctx context.Context, scope craft.Sco
 	if scope.TenantID == 0 || scope.UserID == "" || scope.SessionID == "" {
 		return nil, fmt.Errorf("%w: incomplete lease projection", craft.ErrInvalidInput)
 	}
-	return nil, fmt.Errorf("%w: lease projection is not implemented", craft.ErrUnsupported)
+	if s.writerLeases == nil {
+		return nil, fmt.Errorf("%w: workspace service is not assembled with a writer lease store", craft.ErrUnsupported)
+	}
+	workspace, err := s.store.GetWorkspace(ctx, scope)
+	if err != nil {
+		return nil, err
+	}
+	lease, err := s.writerLeases.GetWriterLease(ctx, scope, workspace.ID)
+	if err != nil {
+		return nil, fmt.Errorf("craft: read writer lease for session %s: %w", scope.SessionID, err)
+	}
+	return lease, nil
 }

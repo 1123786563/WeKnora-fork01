@@ -276,3 +276,56 @@ const (
 	// never releases the lease.
 	WriterReleaseUnknown = "unknown"
 )
+
+// WriterRunFacts is the authoritative observation of the lease-holding Run
+// at decision time, always read from the durable run row inside the deciding
+// transaction — never from a snapshot cached by the caller. Observed false
+// means the run row cannot be read at all: the outcome is unknown, which is
+// never permission.
+type WriterRunFacts struct {
+	// Observed reports whether the durable run row was readable at all.
+	Observed bool
+	// Status is the durable run status vocabulary (queued, running,
+	// waiting_user, reconciling, recovering, succeeded, failed, canceled).
+	Status string
+	// PendingToolWriters counts tool calls of the Run that are not yet in a
+	// terminal state — each may still write through the workspace.
+	PendingToolWriters int64
+	// PendingDelegations counts craft delegations of the Run that are not
+	// yet terminal.
+	PendingDelegations int64
+}
+
+// WriterRunTerminal reports whether a durable run status is a confirmed
+// terminal outcome. Anything else — including an unreadable row — is not.
+func WriterRunTerminal(status string) bool {
+	switch status {
+	case "succeeded", "failed", "canceled":
+		return true
+	default:
+		return false
+	}
+}
+
+// WriterLeaseReleasable reports whether the holder's authoritative facts
+// permit releasing the Workspace writer lease: a confirmed terminal outcome
+// (verified completion, confirmed stop, or the same evidence an
+// authoritative recovery would inspect) with zero unfinished writers. An
+// unreadable or non-terminal run — an unknown outcome — always retains the
+// fence: it can never permit a conflicting writer.
+func WriterLeaseReleasable(facts WriterRunFacts) bool {
+	return facts.Observed && WriterRunTerminal(facts.Status) &&
+		facts.PendingToolWriters == 0 && facts.PendingDelegations == 0
+}
+
+// WriterLeaseTakeover reports whether a new writer may TAKE OVER the lease
+// currently held under the observed facts. This is exactly the authoritative
+// recovery verdict: only a releasable holder (verified completion, confirmed
+// stop, or an authoritative recovery's evidence) may be superseded. An
+// absent lease is always takeable; an unknown or live holder never is.
+func WriterLeaseTakeover(held *WriterLease, facts WriterRunFacts) bool {
+	if held == nil {
+		return true
+	}
+	return WriterLeaseReleasable(facts)
+}
