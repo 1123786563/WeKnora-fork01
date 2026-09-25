@@ -90,7 +90,9 @@ func TestCraftNormalExecServiceEnforcesPolicyGateBeforeSend(t *testing.T) {
 	t.Setenv("SYSTEM_AES_KEY", "01234567890123456789012345678901")
 	db := openCraftBudgetTestDB(t)
 	const tenant = uint64(9302)
-	coordinator, _, grantID := seedCraftDockerNormalCoordinator(t, db, tenant, "run-gated-exec", "sess-gated-exec")
+	// The seeded run's session must equal the staged request's TaskID
+	// binding: the gate mirrors the coordinator's consistency check.
+	coordinator, _, grantID := seedCraftDockerNormalCoordinator(t, db, tenant, "run-gated-exec", "task-gated-exec")
 	request := craftDockerNormalCoordinatorRequest(tenant, "task-gated-exec", "run-gated-exec", "activity-gated-exec")
 	craftPolicySeed(t, db, tenant, request.RunID)
 
@@ -176,4 +178,103 @@ func TestCraftMaterialPolicyPersistsAuditRows(t *testing.T) {
 	require.Equal(t, types.AuditOutcomeDenied, audit.entries[1].Outcome)
 	require.Equal(t, "craft_run", audit.entries[1].ScopeType)
 	require.Equal(t, "run-policy-audit", audit.entries[1].ScopeID)
+}
+
+// gateWithAuditedRun seeds one craft run and returns a gate wired to a
+// recording audit sink alongside the uploaded input.
+func gateWithAuditedRun(t *testing.T, tenant uint64, runID, sessionID string) (*CraftDelegateExecutionPolicy, *recordingAuditSink, craft.Input) {
+	t.Helper()
+	db := openCraftBudgetTestDB(t)
+	seedCraftFundedTenant(t, db, tenant, 10000)
+	seedCraftBudgetRun(t, db, tenant, runID, sessionID)
+	uploaded := craftPolicySeed(t, db, tenant, runID)
+	delegate := NewCraftDelegateService(repository.NewCraftStore(db), nil)
+	gate, err := NewCraftDelegateExecutionPolicy(delegate, db, "/workspace")
+	require.NoError(t, err)
+	audit := &recordingAuditSink{}
+	gate.WithAuditLog(audit)
+	return gate, audit, uploaded
+}
+
+// TestCraftExecutionPolicyGateDeniesShellWrappedCommand is the OCR
+// high-finding regression: `bash -c "python3 <uploaded>"` in argv form is
+// recognized as a shell expression and denied fail-closed.
+func TestCraftExecutionPolicyGateDeniesShellWrappedCommand(t *testing.T) {
+	const tenant = uint64(9304)
+	gate, _, _ := gateWithAuditedRun(t, tenant, "run-policy-shell", "sess-policy-shell")
+	err := gate.ReviewNormalExec(context.Background(), repository.CraftDockerNormalInputRequest{
+		TenantID: tenant, RunID: "run-policy-shell", TaskID: "sess-policy-shell",
+		WorkingDir: "/workspace",
+		Command:    []string{"bash", "-c", "python3 /workspace/inputs/analyze.py"},
+	})
+	require.ErrorIs(t, err, craft.ErrForbidden)
+}
+
+// TestCraftExecutionPolicyGateDeniesUploadedStdinBytes is the OCR
+// high-finding regression: stdin bytes equal to an admitted input are
+// matched by digest, and interpreter stdin-program forms are refused.
+func TestCraftExecutionPolicyGateDeniesUploadedStdinBytes(t *testing.T) {
+	const tenant = uint64(9305)
+	gate, _, uploaded := gateWithAuditedRun(t, tenant, "run-policy-stdin", "sess-policy-stdin")
+
+	// Uploaded bytes on stdin of an interpreter stdin-program form.
+	err := gate.ReviewNormalExec(context.Background(), repository.CraftDockerNormalInputRequest{
+		TenantID: tenant, RunID: "run-policy-stdin", TaskID: "sess-policy-stdin",
+		WorkingDir: "/workspace", Command: []string{"python3"},
+		StdinEnabled: true, Stdin: []byte("print('data')\n"),
+	})
+	require.ErrorIs(t, err, craft.ErrForbidden)
+
+	// The explicit stdin marker form is refused regardless of the bytes.
+	err = gate.ReviewNormalExec(context.Background(), repository.CraftDockerNormalInputRequest{
+		TenantID: tenant, RunID: "run-policy-stdin", TaskID: "sess-policy-stdin",
+		WorkingDir: "/workspace", Command: []string{"python3", "-"},
+		StdinEnabled: true, Stdin: []byte("anything"),
+	})
+	require.ErrorIs(t, err, craft.ErrForbidden)
+	require.NotEqual(t, uploaded.SHA256, "", "fixture sanity")
+}
+
+// TestCraftExecutionPolicyGateDeniesEnvironmentHook is the OCR medium
+// finding regression: a startup-hook environment value pointing at the
+// read-only tree is denied.
+func TestCraftExecutionPolicyGateDeniesEnvironmentHook(t *testing.T) {
+	const tenant = uint64(9306)
+	gate, _, _ := gateWithAuditedRun(t, tenant, "run-policy-env", "sess-policy-env")
+	err := gate.ReviewNormalExec(context.Background(), repository.CraftDockerNormalInputRequest{
+		TenantID: tenant, RunID: "run-policy-env", TaskID: "sess-policy-env",
+		WorkingDir: "/workspace", Command: []string{"bash"},
+		Environment: map[string]string{"BASH_ENV": "/workspace/inputs/analyze.py"},
+	})
+	require.ErrorIs(t, err, craft.ErrForbidden)
+}
+
+// TestCraftExecutionPolicyGateCrossChecksTaskBinding is the OCR medium
+// finding regression: the request's task binding must agree with the run's
+// session, so a request cannot review against another run of the tenant.
+func TestCraftExecutionPolicyGateCrossChecksTaskBinding(t *testing.T) {
+	const tenant = uint64(9307)
+	gate, audit, _ := gateWithAuditedRun(t, tenant, "run-policy-bind", "sess-policy-bind")
+	err := gate.ReviewNormalExec(context.Background(), repository.CraftDockerNormalInputRequest{
+		TenantID: tenant, RunID: "run-policy-bind", TaskID: "some-other-session",
+		WorkingDir: "/workspace", Command: []string{"/bin/true"},
+	})
+	require.ErrorIs(t, err, craft.ErrConflict)
+	require.NotEmpty(t, audit.entries, "the fail-closed refusal must persist a denied audit row")
+	require.Equal(t, types.AuditOutcomeDenied, audit.entries[len(audit.entries)-1].Outcome)
+}
+
+// TestCraftExecutionPolicyGateAuditsRestrictedRefusal is the OCR low-finding
+// regression: the restricted face's constant denial also persists a
+// craft.input.execute_denied row.
+func TestCraftExecutionPolicyGateAuditsRestrictedRefusal(t *testing.T) {
+	const tenant = uint64(9308)
+	gate, audit, _ := gateWithAuditedRun(t, tenant, "run-policy-restricted", "sess-policy-restricted")
+	err := gate.ReviewOutputlessExec(context.Background(), CraftCallBinding{}, CraftDockerOutputlessRequest{
+		DiscardOutput: true, Exec: sandbox.RemoteExecRequest{Command: "true"},
+	})
+	require.ErrorIs(t, err, craft.ErrForbidden)
+	require.Len(t, audit.entries, 1)
+	require.Equal(t, types.AuditAction(craft.AuditKindInputExecuteDenied), audit.entries[0].Action)
+	require.Equal(t, types.AuditOutcomeDenied, audit.entries[0].Outcome)
 }
