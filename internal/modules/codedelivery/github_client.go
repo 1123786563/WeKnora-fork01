@@ -42,7 +42,8 @@ func (c *gitHubRestClient) call(ctx context.Context, method, path string, body a
 	}
 	req, err := http.NewRequestWithContext(ctx, method, c.base+path, reader)
 	if err != nil {
-		return fmt.Errorf("%w: build %s %s: %v", ErrGitHubTransport, method, path, err)
+		// 请求从未被构建成功 = 可证未出网；不得伪装成传输不可观测。
+		return fmt.Errorf("%w: build %s %s: %v", ErrGitHubRequestInvalid, method, path, err)
 	}
 	req.Header.Set("Authorization", "Bearer "+c.token)
 	req.Header.Set("Accept", "application/vnd.github+json")
@@ -200,17 +201,30 @@ func (c *gitHubRestClient) BranchHead(ctx context.Context, branch string) (strin
 	return out.Object.SHA, out.Object.SHA != "", nil
 }
 
-// EnsureBranch creates refs/heads/<branch>; on "already exists" it updates the
-// SAME task branch to the new commit (draft-PR iteration on one task branch).
+// EnsureBranch creates refs/heads/<branch>; a create 422 falls through to a
+// force:false update ONLY when the ref genuinely already exists (verified by
+// a ref read — a nonexistent ref would also 422 the PATCH, masking the create
+// root cause). The update must be a fast-forward: callers chain each
+// iteration's commit onto the branch's current head (dispatcher.deliver), so
+// real GitHub accepts it; a non-fast-forward refusal surfaces verbatim.
 func (c *gitHubRestClient) EnsureBranch(ctx context.Context, branch, commit string) error {
 	create := map[string]any{"ref": "refs/heads/" + branch, "sha": commit}
-	if err := c.call(ctx, http.MethodPost, "/repos/"+c.repoString()+"/git/refs", create, nil); err == nil {
+	err := c.call(ctx, http.MethodPost, "/repos/"+c.repoString()+"/git/refs", create, nil)
+	if err == nil {
 		return nil
-	} else {
-		var apiErr *GitHubAPIError
-		if !asGitHubAPIError(err, &apiErr) || apiErr.Status != http.StatusUnprocessableEntity {
-			return err
-		}
+	}
+	var apiErr *GitHubAPIError
+	if !asGitHubAPIError(err, &apiErr) || apiErr.Status != http.StatusUnprocessableEntity {
+		return err
+	}
+	// 仅当 ref 确实已存在（远端事实）才走更新路径；否则原样浮出 create 的
+	// 根因（非法 sha、ref 名被拒等不再被注定失败的 PATCH 遮蔽）。
+	_, exists, gerr := c.BranchHead(ctx, branch)
+	if gerr != nil {
+		return gerr
+	}
+	if !exists {
+		return err
 	}
 	return c.call(ctx, http.MethodPatch, "/repos/"+c.repoString()+"/git/refs/heads/"+branch,
 		map[string]any{"sha": commit, "force": false}, nil)

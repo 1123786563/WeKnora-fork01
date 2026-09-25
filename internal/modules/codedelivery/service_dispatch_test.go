@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	appconnectorrepo "github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector"
 	appconnectorsvc "github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector"
 	"github.com/stretchr/testify/require"
 )
@@ -213,4 +214,83 @@ func TestDispatchFailsClosedWhenConnectionUnusable(t *testing.T) {
 	require.Error(t, err)
 	require.Zero(t, f.github.Calls()["POST /git/refs"])
 	require.Zero(t, f.github.Calls()["POST /pulls"])
+}
+
+// 同任务分支二次交付（CONTEXT.md「创建或更新草稿 PR」迭代语义，最终修复
+// 轮发现 1）：第二次交付的提交必须以任务分支现 head 为 parent。模拟器
+// PATCH 现按 fast-forward 校验（真实 GitHub 同语义），parent 链错误时本
+// 测试以 422 失败——这正是修复前实现（恒以 BaselineSHA 为 parent）在真实
+// GitHub 必败的回归守卫。
+func TestSecondDeliveryOnSameTaskBranchFastForwards(t *testing.T) {
+	f := seededFixture(t)
+	ctx := context.Background()
+
+	first, err := f.svc.DispatchDelivery(ctx, dispatchInput(firstDelivery(t, f)))
+	require.NoError(t, err)
+	require.Equal(t, string(DeliveryDelivered), first.State)
+	firstCommit := first.CommitSHA
+
+	// 批准之后工作区再变 → 新 Prepare（新 digest）→ 新批准 → 二次交付。
+	require.NoError(t, os.WriteFile(filepath.Join(f.root, "octocat/hello/main.go"),
+		[]byte("package main\n\nfunc main() { _ = 1 }\n"), 0o644))
+	second, err := f.svc.PrepareDelivery(ctx, prepareInput())
+	require.NoError(t, err)
+	require.NotEqual(t, first.Digest, second.Digest, "内容变化必须铸造新 digest")
+	require.NoError(t, f.actions.Approve(ctx, second.ActionID, "u1", second.Digest))
+
+	secondView, err := f.svc.DispatchDelivery(ctx, dispatchInput(second))
+	require.NoError(t, err)
+	require.Equal(t, string(DeliveryDelivered), secondView.State)
+	require.NotEqual(t, firstCommit, secondView.CommitSHA)
+
+	// fast-forward 事实链：分支现 head = 第二颗提交，且其 parent 是第一颗。
+	head, ok := f.github.BranchCommit("weknora/task/s-1")
+	require.True(t, ok)
+	require.Equal(t, secondView.CommitSHA, head)
+	require.Equal(t, []string{firstCommit}, f.github.ParentOf(secondView.CommitSHA),
+		"二次交付的提交必须以分支现 head 为 parent（force:false 只接受 ff）")
+
+	// 草稿 PR 迭代复用同一 head 的既有 PR（更新语义），不重复开 PR。
+	require.Equal(t, first.PRNumber, secondView.PRNumber)
+	// Repository 远端读恰好 4 次：两次 prepare 各 1 + 两次派发各 1（PR 半程
+	// 复用推送半程已读的默认分支，最终修复轮发现 5 去掉了重复读——修复前
+	// 每次派发读 2 次，总计 6）。
+	require.Equal(t, 4, f.github.Calls()["GET /repos"], "每次 prepare/派发只读一次 Repository")
+	require.Empty(t, f.github.Violations())
+}
+
+// 前置门拒绝自愈（最终修复轮发现 2）：派发期凭据解析失败 =
+// ErrDispatchNotStarted → A03 落 action=failed 且 Execute 返回 nil。交付行
+// 必须跟随落 failed——修复前它永久滞留 dispatched（再派发被 default 拒、
+// resolve 因 action 非 unknown 被拒，无自愈路径）。
+func TestPreSendGateFailureSettlesDeliveryFailedNotStranded(t *testing.T) {
+	f := seededFixture(t)
+	ctx := context.Background()
+	breakCreds(f) // 准备已获批；此后凭据行「被删」→ 仅派发期 tokenFor 失败
+
+	_, err := f.svc.DispatchDelivery(ctx, dispatchInput(firstDelivery(t, f)))
+	require.ErrorIs(t, err, ErrDeliveryDispatchRejected)
+
+	// 交付行已诚实落账 failed（含失败原因），不再是滞留的 dispatched。
+	view, gerr := f.svc.GetDelivery(ctx, 7, firstDelivery(t, f).ID)
+	require.NoError(t, gerr)
+	require.Equal(t, string(DeliveryFailed), view.State)
+	require.NotEmpty(t, view.Failure)
+	// A03 侧一致：action 行 = failed（"dispatch rejected before send"）。
+	var row appconnectorrepo.ActionRow
+	require.NoError(t, f.db.Where("id = ?", view.ActionID).First(&row).Error)
+	require.Equal(t, "failed", row.State)
+
+	// 零远端调用：拒绝发生在任何出网之前（GET /repos//branches 各 1 次是
+	// prepare 阶段的既有读；派发期新增为 0——派发期专属的 GET /git/ref 为 0）。
+	require.Zero(t, f.github.Calls()["GET /git/ref"])
+	require.Zero(t, f.github.Calls()["POST /git/blobs"])
+	require.Zero(t, f.github.Calls()["POST /git/refs"])
+
+	// 滞留态的两个死路现在是干净的终态拒绝：再派发 → 状态冲突；resolve →
+	// action 非 unknown 被拒。行不再「卡死在中间态无声无息」。
+	_, err = f.svc.DispatchDelivery(ctx, dispatchInput(view))
+	require.ErrorIs(t, err, ErrDeliveryState)
+	_, err = f.svc.ResolveDeliveryUnknown(ctx, dispatchInput(view))
+	require.Error(t, err)
 }

@@ -65,6 +65,36 @@ func ValidateTaskBranch(branch string) error {
 	return nil
 }
 
+// branchShapeLegal is the pure-local refname shape gate: non-empty, bounded
+// length (git's own loose-ref ceiling), no "..", printable refname charset
+// only. It runs BEFORE any provider round-trip (final-fix round: a branch
+// string that is not even a legal refname must not spend a remote read nor
+// reach URL construction). The deliberate AC1 order is untouched — any
+// well-formed branch (including "main") still hits RefuseProtectedTarget
+// before the prefix whitelist; only genuinely malformed strings are refused
+// locally.
+func branchShapeLegal(branch string) bool {
+	if branch == "" || len(branch) > 255 {
+		return false
+	}
+	if strings.Contains(branch, "..") {
+		return false
+	}
+	if branch[0] == '/' || branch[len(branch)-1] == '/' {
+		return false
+	}
+	for i := 0; i < len(branch); i++ {
+		c := branch[i]
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
+		case c == '.' || c == '_' || c == '-' || c == '/':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
 // RefuseProtectedTarget is the AC1 guardrail: the delivery target must differ
 // from the repository default branch and must not be marked protected by the
 // code platform.

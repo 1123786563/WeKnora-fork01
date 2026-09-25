@@ -17,6 +17,13 @@ const GitHubAPIBaseURL = "https://api.github.com"
 // and surfaces as *GitHubAPIError instead.
 var ErrGitHubTransport = errors.New("github_transport_unobservable")
 
+// ErrGitHubRequestInvalid marks a request that could not even be CONSTRUCTED
+// (unusable method/URL): nothing ever left the process, so the outcome is
+// provably not-sent. It must not masquerade as ErrGitHubTransport — a build
+// failure is our own malformed request, not an unobservable provider outage
+// (final-fix round: error classification).
+var ErrGitHubRequestInvalid = errors.New("github_request_invalid")
+
 // GitHubAPIError is a definite provider refusal with an HTTP status.
 type GitHubAPIError struct {
 	Status   int

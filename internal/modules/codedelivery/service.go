@@ -164,6 +164,13 @@ func (s *CodeDeliveryService) PrepareDelivery(ctx context.Context, in PrepareInp
 	if in.Branch == "" {
 		in.Branch = TaskBranchOf(sessionID)
 	}
+	// 纯本地形状闸（先于任何远端读）：连合法 refname 都不是的分支字符串
+	// 不应花费一次 provider 往返，也不应参与 URL 构建。默认分支/远端
+	// protected 判定仍在其后——"main" 形状合法，仍先撞保护分支拒绝
+	//（AC1 第一道闸次序不变）。
+	if !branchShapeLegal(in.Branch) {
+		return DeliveryView{}, fmt.Errorf("%w: %q is not a legal refname", ErrInvalidBranch, in.Branch)
+	}
 	info, err := client.Repository(ctx)
 	if err != nil {
 		return DeliveryView{}, err
@@ -271,6 +278,13 @@ type DispatchInput struct {
 // ErrDeliveryState guards the delivery state machine at the service seam.
 var ErrDeliveryState = errors.New("code_delivery_state_conflict")
 
+// ErrDeliveryDispatchRejected: the approved dispatch was refused BEFORE any
+// remote call left the process (A03 settled the action failed via
+// ErrDispatchNotStarted — snapshot drift, A02, credential or workspace-read
+// gate). The delivery row settles failed with the action; the approval is
+// consumed, so a retry goes through a fresh Prepare.
+var ErrDeliveryDispatchRejected = errors.New("code_delivery_dispatch_rejected")
+
 // DispatchDelivery executes the approved delivery. prepared → consume the
 // approval through the dedicated A03 instance; pushed → PR-only recovery
 // under the SAME approval (never re-push); unknown → provider query only.
@@ -302,6 +316,24 @@ func (s *CodeDeliveryService) DispatchDelivery(ctx context.Context, in DispatchI
 			_ = s.deps.Store.TransitionState(ctx, in.TenantID, row.ID,
 				[]string{string(DeliveryDispatched), string(DeliveryPrepared)}, string(DeliveryFailed), err.Error())
 			return DeliveryView{}, err
+		}
+		// Execute 返回 nil 不等于成功：settleOutcome 会把「可证未出网的
+		// 前置门拒绝」（ErrDispatchNotStarted——快照损坏/A02/凭据/工作区
+		// 读失败）落成 action=failed 且不再上抛。交付行必须跟随落
+		// failed，否则永久滞留 dispatched（再派发被 default 拒、resolve
+		// 因 action 非 unknown 被拒，无自愈路径）。
+		action, gerr := s.deps.ActionRows.FindAction(ctx, row.ActionID)
+		if gerr != nil {
+			return DeliveryView{}, gerr
+		}
+		if action.State == appconnector.ActionFailed {
+			failure := action.ProviderResult
+			if failure == "" {
+				failure = "dispatch rejected before send"
+			}
+			_ = s.deps.Store.TransitionState(ctx, in.TenantID, row.ID,
+				[]string{string(DeliveryDispatched), string(DeliveryPrepared)}, string(DeliveryFailed), failure)
+			return DeliveryView{}, fmt.Errorf("%w: %s", ErrDeliveryDispatchRejected, failure)
 		}
 	case DeliveryPushed:
 		// pushed → PR-only 恢复（同一批准的未完成半程；A02 复验在恢复端内部）。

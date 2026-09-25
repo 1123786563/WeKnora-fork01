@@ -28,6 +28,7 @@ type githubEmulator struct {
 	blobs             map[string][]byte            // sha → content
 	trees             map[string]map[string]string // tree sha → path→blob sha
 	commits           map[string]string            // commit sha → tree sha
+	commitParents     map[string][]string          // commit sha → parents（fast-forward 判定）
 	refs              map[string]string            // refs/heads/<branch> → commit sha
 	prs               []emulatorPR
 	nextPR            int64
@@ -50,7 +51,8 @@ func newGitHubEmulator(t *testing.T) *githubEmulator {
 	e := &githubEmulator{
 		t: t, token: "gho_testtoken", calls: map[string]int{},
 		blobs: map[string][]byte{}, trees: map[string]map[string]string{},
-		commits: map[string]string{}, refs: map[string]string{}, prs: []emulatorPR{},
+		commits: map[string]string{}, commitParents: map[string][]string{},
+		refs: map[string]string{}, prs: []emulatorPR{},
 		protectedBranches: []string{"prod"},
 		repo: map[string][]byte{
 			"README.md": []byte("# hello\n"),
@@ -89,6 +91,13 @@ func (e *githubEmulator) BranchCommit(branch string) (string, bool) {
 	defer e.mu.Unlock()
 	sha, ok := e.refs["refs/heads/"+branch]
 	return sha, ok
+}
+
+// ParentOf returns the recorded parents of a commit (fast-forward assertions).
+func (e *githubEmulator) ParentOf(sha string) []string {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return append([]string(nil), e.commitParents[sha]...)
 }
 
 func (e *githubEmulator) protectBranch(branch string) {
@@ -265,6 +274,7 @@ func (e *githubEmulator) serve(w http.ResponseWriter, r *http.Request) {
 		sha := fmt.Sprintf("c%d", len(e.commits)+1)
 		e.mu.Lock()
 		e.commits[sha] = body.Tree
+		e.commitParents[sha] = body.Parents
 		e.mu.Unlock()
 		writeJSON(w, map[string]any{"sha": sha})
 	case r.Method == http.MethodPost && path == "/repos/octocat/hello/git/refs":
@@ -280,11 +290,19 @@ func (e *githubEmulator) serve(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		e.mu.Lock()
-		if _, exists := e.refs[body.Ref]; exists {
-			e.mu.Unlock()
+		_, shaExists := e.commits[body.SHA]
+		_, refExists := e.refs[body.Ref]
+		e.mu.Unlock()
+		if !shaExists { // 真实 GitHub 同语义：目标对象不存在 → 422
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			_ = json.NewEncoder(w).Encode(map[string]any{"message": "Object does not exist"})
+			return
+		}
+		if refExists {
 			w.WriteHeader(http.StatusUnprocessableEntity)
 			return
 		}
+		e.mu.Lock()
 		e.refs[body.Ref] = body.SHA
 		if e.blackoutAfterRef {
 			e.blackout = true
@@ -300,9 +318,33 @@ func (e *githubEmulator) serve(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		var body struct {
-			SHA string `json:"sha"`
+			SHA   string `json:"sha"`
+			Force bool   `json:"force"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&body)
+		e.mu.Lock()
+		current, refOK := e.refs["refs/heads/"+branch]
+		_, shaOK := e.commits[body.SHA]
+		e.mu.Unlock()
+		if !refOK { // 真实 GitHub 同语义：ref 不存在 → 422（不得以 PATCH 掩盖 create 根因）
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			_ = json.NewEncoder(w).Encode(map[string]any{"message": "Reference does not exist"})
+			return
+		}
+		if !shaOK {
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			_ = json.NewEncoder(w).Encode(map[string]any{"message": "Object does not exist"})
+			return
+		}
+		// 真实 GitHub 同语义：force:false 的 ref 更新必须 fast-forward——
+		// 分支现 head 必须在新 sha 的祖先链上，否则 422。该校验是「同任务
+		// 分支二次交付必须以现 head 为 parent」的契约钉子（此前模拟器无
+		// 条件接受任何 PATCH，掩盖了非 ff 迭代在真实 GitHub 必败）。
+		if !body.Force && body.SHA != current && !e.isAncestor(current, body.SHA) {
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			_ = json.NewEncoder(w).Encode(map[string]any{"message": "Update is not a fast forward"})
+			return
+		}
 		e.mu.Lock()
 		e.refs["refs/heads/"+branch] = body.SHA
 		e.mu.Unlock()
@@ -351,6 +393,28 @@ func (e *githubEmulator) serve(w http.ResponseWriter, r *http.Request) {
 	default:
 		w.WriteHeader(http.StatusNotFound)
 	}
+}
+
+// isAncestor 判定 ancestor 是否在 descendant 的提交祖先链上（模拟器内的
+// fast-forward 判定；种子提交无 parents 记录时视为根）。
+func (e *githubEmulator) isAncestor(ancestor, descendant string) bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	seen := map[string]bool{}
+	stack := []string{descendant}
+	for len(stack) > 0 {
+		cur := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if cur == ancestor {
+			return true
+		}
+		if seen[cur] {
+			continue
+		}
+		seen[cur] = true
+		stack = append(stack, e.commitParents[cur]...)
+	}
+	return false
 }
 
 func prURL(n int64) string { return fmt.Sprintf("https://github.com/octocat/hello/pull/%d", n) }
@@ -461,4 +525,51 @@ func TestGitHubClientClassifiesDefiniteVsUnobservable(t *testing.T) {
 	closed.Close()
 	_, err = NewGitHubClientFactory(http.DefaultClient, closed.URL)(e.token, RepoRef{Owner: "octocat", Name: "hello"}).Repository(ctx)
 	require.ErrorIs(t, err, ErrGitHubTransport)
+}
+
+// 同任务分支迭代（真实 GitHub 语义回归，最终修复轮发现 1/5）：PATCH 现在
+// 按 fast-forward 校验——以分支现 head 为 parent 的提交能顶上去；以
+// BaselineSHA 为 parent 的「平行」提交被 422 拒绝且 head 不动；create 422
+// 但分支不存在时根因原样浮出（不再被注定失败的 PATCH 遮蔽）。
+func TestGitHubClientEnsureBranchFastForwardAndRootCause(t *testing.T) {
+	e := newGitHubEmulator(t)
+	factory := NewGitHubClientFactory(http.DefaultClient, e.srv.URL)
+	ctx := context.Background()
+	client := factory(e.token, RepoRef{Owner: "octocat", Name: "hello"})
+	baseline := "b" + strings.Repeat("0", 39)
+	branch := TaskBranchOf("s-ff")
+
+	c1, err := client.CreateCommit(ctx, baseline, "tree-baseline", "one")
+	require.NoError(t, err)
+	require.NoError(t, client.EnsureBranch(ctx, branch, c1), "首次交付：分支不存在 → create")
+	got, ok := e.BranchCommit(branch)
+	require.True(t, ok)
+	require.Equal(t, c1, got)
+
+	// 平行提交（parent=baseline，非分支现 head）：create 422（已存在）→
+	// PATCH 被模拟器 fast-forward 校验拒绝——真实 GitHub 同样 422。旧实现
+	// 的 PATCH 无条件接受该更新，此断言在其上必失败（契约钉子）。
+	parallel, err := client.CreateCommit(ctx, baseline, "tree-baseline", "parallel")
+	require.NoError(t, err)
+	err = client.EnsureBranch(ctx, branch, parallel)
+	var apiErr *GitHubAPIError
+	require.ErrorAs(t, err, &apiErr, "非 ff 的 ref 更新必须被拒")
+	require.Equal(t, http.StatusUnprocessableEntity, apiErr.Status)
+	got, _ = e.BranchCommit(branch)
+	require.Equal(t, c1, got, "被拒后分支 head 不动")
+
+	// ff 迭代：parent=现 head 的第二颗提交成功顶上去（二次交付的正确形态）。
+	c2, err := client.CreateCommit(ctx, c1, "tree-baseline", "two")
+	require.NoError(t, err)
+	require.NoError(t, client.EnsureBranch(ctx, branch, c2))
+	got, _ = e.BranchCommit(branch)
+	require.Equal(t, c2, got)
+
+	// create 422 但分支并不存在（sha 非法 → "Object does not exist"）：
+	// 根因原样浮出，不被 PATCH 的 "Reference does not exist" 遮蔽。
+	err = client.EnsureBranch(ctx, TaskBranchOf("s-fresh"), "dead"+strings.Repeat("0", 36))
+	require.ErrorAs(t, err, &apiErr)
+	require.Equal(t, "Object does not exist", apiErr.Message)
+	_, ok = e.BranchCommit(TaskBranchOf("s-fresh"))
+	require.False(t, ok)
 }

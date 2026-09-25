@@ -216,10 +216,25 @@ func writeDeliveryError(c *gin.Context, err error) {
 		c.JSON(http.StatusConflict, gin.H{"success": false, "code": "code_delivery_state_conflict", "error": "delivery state does not allow this operation"})
 	case errors.Is(err, deliveryrepo.ErrDeliveryNotFound):
 		c.JSON(http.StatusNotFound, gin.H{"success": false, "code": "code_delivery_not_found", "error": "delivery not found"})
+	case errors.Is(err, codedelivery.ErrInvalidMaterial),
+		errors.Is(err, codedelivery.ErrInvalidBranch),
+		errors.Is(err, codedelivery.ErrInvalidBaselineSHA),
+		errors.Is(err, codedelivery.ErrRepoRefInvalid),
+		errors.Is(err, codedelivery.ErrBaselineTooLarge):
+		// 输入类错误（材料/分支/基线/仓库引用非法或超限）：400，不落 500。
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "code": "code_delivery_invalid_material", "error": "the delivery material or target is invalid"})
+	case errors.Is(err, codedelivery.ErrDeliveryDispatchRejected):
+		// 可证未出网的前置门拒绝（审批已消费）：409，重试须重新 Prepare。
+		c.JSON(http.StatusConflict, gin.H{"success": false, "code": "code_delivery_dispatch_rejected", "error": "the delivery was refused before any remote call; prepare a new delivery to retry"})
 	default:
 		var apiErr *codedelivery.GitHubAPIError
 		if errors.As(err, &apiErr) {
 			c.JSON(http.StatusBadGateway, gin.H{"success": false, "code": "code_delivery_provider_refused", "error": "the code platform refused the delivery"})
+			return
+		}
+		if errors.Is(err, codedelivery.ErrGitHubRequestInvalid) {
+			// 请求构建失败 = 可证未出网：这是我方请求畸形，不是平台不可达。
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "code": "code_delivery_request_invalid", "error": "the delivery request could not be constructed; nothing reached the code platform"})
 			return
 		}
 		if errors.Is(err, codedelivery.ErrGitHubTransport) {

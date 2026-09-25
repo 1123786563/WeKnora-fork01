@@ -71,9 +71,12 @@ func (s *DeliveryStore) GetDelivery(ctx context.Context, tenantID uint64, id str
 
 func (s *DeliveryStore) LatestForRun(ctx context.Context, tenantID uint64, runID string) (DeliveryRow, error) {
 	var row DeliveryRow
+	// created_at 并列（sqlite DATETIME 秒级精度下可能发生）时以 id DESC
+	// 决出全序——单一 created_at 排序的并列行次序未定，同一 run 并发多次
+	// prepare 的极端场景读面可能取错行。
 	err := s.db.WithContext(ctx).
 		Where("tenant_id = ? AND run_id = ?", tenantID, runID).
-		Order("created_at DESC").First(&row).Error
+		Order("created_at DESC").Order("id DESC").First(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return DeliveryRow{}, ErrDeliveryNotFound
 	}

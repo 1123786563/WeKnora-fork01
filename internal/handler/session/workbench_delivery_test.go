@@ -36,10 +36,11 @@ func (deliveryGrantedStub) GetRunForGrantedReader(ctx context.Context, tenantID 
 }
 
 type deliveryServiceStub struct {
-	prepared int
-	readRuns int
-	prepErr  error
-	lastView codedelivery.DeliveryView
+	prepared    int
+	readRuns    int
+	prepErr     error
+	dispatchErr error
+	lastView    codedelivery.DeliveryView
 }
 
 func (s *deliveryServiceStub) MaterializeBaseline(ctx context.Context, in codedelivery.BaselineInput) (codedelivery.BaselineReceipt, error) {
@@ -60,6 +61,9 @@ func (s *deliveryServiceStub) PrepareDelivery(ctx context.Context, in codedelive
 }
 
 func (s *deliveryServiceStub) DispatchDelivery(ctx context.Context, in codedelivery.DispatchInput) (codedelivery.DeliveryView, error) {
+	if s.dispatchErr != nil {
+		return codedelivery.DeliveryView{}, s.dispatchErr
+	}
 	return codedelivery.DeliveryView{ID: in.DeliveryID, State: "delivered", CommitSHA: "c1", PRNumber: 1, Approver: "u1"}, nil
 }
 
@@ -175,4 +179,46 @@ func TestDeliveryDispatchOwnerOnlyAndBaselineMaterializes(t *testing.T) {
 	h.DispatchDelivery(c)
 	require.Equal(t, http.StatusOK, c.Writer.Status())
 	require.Contains(t, rec.Body.String(), "\"state\":\"delivered\"")
+}
+
+// 错误分类表（最终修复轮发现 2/3）：输入类错误 400、可证未出网的前置门
+// 拒绝 409、请求构建失败 500（非 502 provider_unreachable）——各自独立成
+// 码，不再统统掉进 500 code_delivery_failed。
+func TestDeliveryErrorClassificationTable(t *testing.T) {
+	cases := []struct {
+		name   string
+		err    error
+		status int
+		code   string
+	}{
+		{"invalid material", codedelivery.ErrInvalidMaterial, http.StatusBadRequest, "code_delivery_invalid_material"},
+		{"invalid branch", codedelivery.ErrInvalidBranch, http.StatusBadRequest, "code_delivery_invalid_material"},
+		{"invalid baseline", codedelivery.ErrInvalidBaselineSHA, http.StatusBadRequest, "code_delivery_invalid_material"},
+		{"invalid repo ref", codedelivery.ErrRepoRefInvalid, http.StatusBadRequest, "code_delivery_invalid_material"},
+		{"baseline too large", codedelivery.ErrBaselineTooLarge, http.StatusBadRequest, "code_delivery_invalid_material"},
+		{"dispatch rejected pre-send", codedelivery.ErrDeliveryDispatchRejected, http.StatusConflict, "code_delivery_dispatch_rejected"},
+		{"request build failure", codedelivery.ErrGitHubRequestInvalid, http.StatusInternalServerError, "code_delivery_request_invalid"},
+		{"provider refused", &codedelivery.GitHubAPIError{Status: 422, Endpoint: "POST /pulls"}, http.StatusBadGateway, "code_delivery_provider_refused"},
+		{"provider unobservable", codedelivery.ErrGitHubTransport, http.StatusBadGateway, "code_delivery_provider_unreachable"},
+		{"unknown failure", context.DeadlineExceeded, http.StatusInternalServerError, "code_delivery_failed"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := &deliveryServiceStub{prepErr: tc.err, dispatchErr: tc.err}
+			h := NewWorkbenchDeliveryHandler(deliveryRunsStub{}, deliveryGrantedStub{}, svc)
+
+			c, rec := deliveryContext(http.MethodPost, "/api/v1/workbench/executions/run-1/delivery",
+				`{"connection_id":"conn-gh","repo":"octocat/hello","baseline_sha":"b0000000000000000000000000000000000000000","commit_message":"m","pr_title":"t"}`, "u1")
+			c.Params = gin.Params{{Key: "run_id", Value: "run-1"}}
+			h.PrepareDelivery(c)
+			require.Equal(t, tc.status, c.Writer.Status(), "%s: prepare status", tc.name)
+			require.Contains(t, rec.Body.String(), "\"code\":\""+tc.code+"\"", "%s: prepare code", tc.name)
+
+			c, rec = deliveryContext(http.MethodPost, "/api/v1/workbench/executions/run-1/delivery/dlv-1/dispatch", "", "u1")
+			c.Params = gin.Params{{Key: "run_id", Value: "run-1"}, {Key: "delivery_id", Value: "dlv-1"}}
+			h.DispatchDelivery(c)
+			require.Equal(t, tc.status, c.Writer.Status(), "%s: dispatch status", tc.name)
+			require.Contains(t, rec.Body.String(), "\"code\":\""+tc.code+"\"", "%s: dispatch code", tc.name)
+		})
+	}
 }

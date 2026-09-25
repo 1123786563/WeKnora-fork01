@@ -99,23 +99,39 @@ func (d *DeliveryDispatcher) RecoverPullRequest(ctx context.Context, tenantID ui
 // deliver runs the delivery chain. partialRecovery=true skips the push half
 // entirely — it already happened under the SAME approval.
 func (d *DeliveryDispatcher) deliver(ctx context.Context, snap appconnectorsvc.ActionSnapshot, material DeliveryMaterial, row deliveryrepo.DeliveryRow, client GitHubClient, partialRecovery bool) (appconnectorsvc.DispatchOutcome, error) {
+	// 默认分支只读一次：推送半程已取（护栏 1）时 PR 半程直接复用，只有
+	// 恢复半程（跳过了推送半程）才自取（最终修复轮：去掉重复远端读）。
+	defaultBranch := ""
 	if !partialRecovery {
 		info, err := client.Repository(ctx)
 		if err != nil {
 			return appconnectorsvc.DispatchOutcome{}, err
 		}
+		defaultBranch = info.DefaultBranch
 		protected, err := client.BranchProtected(ctx, material.Branch)
 		if err != nil {
 			return appconnectorsvc.DispatchOutcome{}, err
 		}
 		// AC1 双保险：派发前复验目标分支不是默认分支/未被远端标记保护。
-		if err := RefuseProtectedTarget(material.Branch, info.DefaultBranch, protected); err != nil {
+		if err := RefuseProtectedTarget(material.Branch, defaultBranch, protected); err != nil {
 			return appconnectorsvc.DispatchOutcome{}, fmt.Errorf("%w: %v", appconnectorsvc.ErrDispatchNotStarted, err)
 		}
 		// 内容从会话工作区读取（令牌只留在服务端，永不进沙箱）。
 		run, err := d.deps.Runs.GetOwnedRun(ctx, snap.TenantID, snap.ActorID, row.RunID)
 		if err != nil || run.SessionID == "" {
 			return appconnectorsvc.DispatchOutcome{}, fmt.Errorf("%w: run %s", appconnectorsvc.ErrDispatchNotStarted, row.RunID)
+		}
+		// 同任务分支迭代语义（CONTEXT.md「创建或更新草稿 PR」）：分支已
+		// 存在时新提交必须以分支现 head 为 parent——GitHub 的 force:false
+		// ref 更新只接受 fast-forward，恒以 BaselineSHA 为 parent 的第二颗
+		// 提交与分支现 head 互不为后代，真实 GitHub 会 422 拒绝。
+		parent := material.BaselineSHA
+		head, exists, herr := client.BranchHead(ctx, material.Branch)
+		if herr != nil {
+			return appconnectorsvc.DispatchOutcome{}, herr
+		}
+		if exists {
+			parent = head
 		}
 		root := WorkspaceRepoRoot(material.Repo)
 		entries := make([]TreeEntry, 0, len(material.Files))
@@ -142,7 +158,7 @@ func (d *DeliveryDispatcher) deliver(ctx context.Context, snap appconnectorsvc.A
 		if trerr != nil {
 			return appconnectorsvc.DispatchOutcome{}, trerr
 		}
-		commitSHA, cerr := client.CreateCommit(ctx, material.BaselineSHA, treeSHA, material.CommitMessage)
+		commitSHA, cerr := client.CreateCommit(ctx, parent, treeSHA, material.CommitMessage)
 		if cerr != nil {
 			return appconnectorsvc.DispatchOutcome{}, cerr
 		}
@@ -157,13 +173,17 @@ func (d *DeliveryDispatcher) deliver(ctx context.Context, snap appconnectorsvc.A
 			return appconnectorsvc.DispatchOutcome{}, err
 		}
 	}
-	// —— PR 半程 ——（恢复路径只走这里）
-	repoInfo, err := client.Repository(ctx)
-	if err != nil {
-		return appconnectorsvc.DispatchOutcome{}, err
+	// —— PR 半程 ——（恢复路径只走这里；默认分支复用推送半程已读事实）
+	base := defaultBranch
+	if base == "" {
+		repoInfo, err := client.Repository(ctx)
+		if err != nil {
+			return appconnectorsvc.DispatchOutcome{}, err
+		}
+		base = repoInfo.DefaultBranch
 	}
 	receipt, prerr := client.DraftPullRequest(ctx, PullRequestInput{
-		Title: material.PRTitle, Head: material.Repo.Owner + ":" + material.Branch, Base: repoInfo.DefaultBranch,
+		Title: material.PRTitle, Head: material.Repo.Owner + ":" + material.Branch, Base: base,
 	})
 	var login string
 	if prerr == nil {
@@ -253,9 +273,11 @@ func (d *DeliveryDispatcher) tokenFor(ctx context.Context, snap appconnectorsvc.
 
 func (d *DeliveryDispatcher) findByAction(ctx context.Context, tenantID uint64, actionID string) (deliveryrepo.DeliveryRow, error) {
 	var row deliveryrepo.DeliveryRow
+	// created_at 并列（sqlite DATETIME 秒级精度下可能发生）时以 id DESC
+	// 决出全序——单一 created_at 排序的并列行次序未定，读面可能取错行。
 	err := d.deps.Store.DB().WithContext(ctx).
 		Where("tenant_id = ? AND action_id = ?", tenantID, actionID).
-		Order("created_at DESC").First(&row).Error
+		Order("created_at DESC").Order("id DESC").First(&row).Error
 	if err != nil {
 		return deliveryrepo.DeliveryRow{}, deliveryrepo.ErrDeliveryNotFound
 	}

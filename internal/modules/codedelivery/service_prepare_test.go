@@ -36,10 +36,11 @@ func (f fixtureRun) GetOwnedRun(ctx context.Context, tenantID uint64, ownerID, r
 }
 
 // fixtureConnections 同时实现 ConnectionReader 与 CredentialResolver（与生产
-// MCPOAuthBindingStore 的双角色一致）；指针接收者使 membersDrop 生效。
+// MCPOAuthBindingStore 的双角色一致）；指针接收者使 membersDrop/breakCreds 生效。
 type fixtureConnections struct {
-	db      *gorm.DB
-	members map[string]bool
+	db          *gorm.DB
+	members     map[string]bool
+	credsBroken bool // 模拟凭据行被删后 Resolve 失败（前置门拒绝注入点）
 }
 
 func (f *fixtureConnections) FindConnectionByID(ctx context.Context, id string) (appconnector.Connection, error) {
@@ -67,6 +68,9 @@ func (f *fixtureConnections) TryAcquireRefreshLease(ctx context.Context, c appco
 }
 
 func (f *fixtureConnections) Resolve(ctx context.Context, connectionID string, expectedVersion int64) ([]byte, error) {
+	if f.credsBroken {
+		return nil, errors.New("credential row deleted")
+	}
 	return []byte("gho_testtoken"), nil
 }
 
@@ -134,6 +138,8 @@ func newDeliveryFixture(t *testing.T, mutate func(root string)) *deliveryFixture
 }
 
 func membersDrop(f *deliveryFixture, userID string) { f.connections.drop(userID) }
+
+func breakCreds(f *deliveryFixture) { f.connections.credsBroken = true }
 
 func baselineInput() BaselineInput {
 	return BaselineInput{
@@ -243,6 +249,23 @@ func TestPrepareDeliveryRefusesProtectedBranchWithZeroRemoteWrites(t *testing.T)
 	require.Zero(t, f.github.Calls()["PATCH /git/refs"])
 	require.Zero(t, f.github.Calls()["POST /pulls"])
 	require.Empty(t, f.github.Violations())
+}
+
+// 非法形状分支在任何远端读之前就被本地拒绝（最终修复轮发现 3：不再先打
+// BranchProtected 浪费 provider 往返）；而形状合法的 "main" 仍先撞保护
+// 分支闸——AC1 第一道闸的次序不变。
+func TestPrepareDeliveryRejectsIllegalBranchShapeBeforeAnyRemoteRead(t *testing.T) {
+	f := newDeliveryFixture(t, nil)
+	ctx := context.Background()
+
+	for _, branch := range []string{"weknora/task/bad branch", "weknora/task/a..b", "main/../escape"} {
+		in := prepareInput()
+		in.Branch = branch
+		_, err := f.svc.PrepareDelivery(ctx, in)
+		require.ErrorIs(t, err, ErrInvalidBranch, "branch %q must be refused locally", branch)
+	}
+	require.Zero(t, f.github.Calls()["GET /repos"], "非法分支不得花费任何远端读")
+	require.Zero(t, f.github.Calls()["GET /branches"])
 }
 
 func TestPrepareDeliveryAlwaysAwaitsApprovalEvenWithWritePreAuthorization(t *testing.T) {
