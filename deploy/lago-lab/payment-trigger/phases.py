@@ -31,6 +31,7 @@ is a ``fail`` with the last observed state attached.
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import sys
 import time
@@ -40,11 +41,33 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 _PA_DIR = Path(__file__).resolve().parent.parent / "payment-activation"
-if str(_PA_DIR) not in sys.path:
-    sys.path.insert(0, str(_PA_DIR))
+_THIS_DIR = Path(__file__).resolve().parent
 
-import clients  # noqa: E402  (payment-activation clients, read-only)
-import fixtures  # noqa: E402  (THIS directory's payloads shadow pa's fixtures)
+
+def _load_by_path(name: str, path: Path):
+    """Import ``path`` as module ``name`` WITHOUT relying on sys.path order.
+
+    F1 (review round 1): the previous ``sys.path.insert(0, _PA_DIR)`` made
+    any standalone import of this module bind the bare name ``fixtures`` to
+    the payment-activation lab's fixtures.py — which lacks every probe
+    helper, so all phases died with AttributeError at runtime. Loading by
+    file location (the same technique fixtures.py uses to alias-load
+    ``pa_fixtures``) makes the binding order-independent. An already-loaded
+    module with the same ``__file__`` is reused, so run_lab.py's bare
+    ``import clients`` and this module share ONE instance.
+    """
+    loaded = sys.modules.get(name)
+    if loaded is not None and getattr(loaded, "__file__", None) == str(path):
+        return loaded
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+clients = _load_by_path("clients", _PA_DIR / "clients.py")  # noqa: E402  (payment-activation clients, read-only)
+fixtures = _load_by_path("fixtures", _THIS_DIR / "fixtures.py")  # noqa: E402  (THIS directory's payloads, NOT pa's)
 
 # Stripe test-mode payment-method tokens (public, throwaway). The gate pm is
 # the 3DS-challenge card: its off-session charge stalls in requires_action,

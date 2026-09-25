@@ -7,9 +7,16 @@ can fail on the pinned runtime.
 
 from __future__ import annotations
 
+import subprocess
+import sys
+import tempfile
 import unittest
+from pathlib import Path
 
 import fixtures
+
+_LAB_DIR = Path(__file__).resolve().parent
+_PA_DIR = _LAB_DIR.parent / "payment-activation"
 
 
 class GatedSubscriptionPayloadTest(unittest.TestCase):
@@ -147,6 +154,67 @@ class ReexportTest(unittest.TestCase):
         self.assertEqual(
             cust["customer"]["billing_configuration"]["provider_customer_id"], "pcus-1")
         self.assertIn("addStripePaymentProvider", fixtures.ADD_STRIPE_PROVIDER_QUERY)
+
+
+# F1 regression (review round 1): importing ``phases`` outside the run_lab.py
+# import order used to bind the bare name ``fixtures`` to the payment-
+# activation lab's module (which lacks every probe helper), so all phases
+# died with AttributeError at runtime. The binding must never depend on
+# sys.path order. Verified in a subprocess with this directory first on
+# sys.path and cwd outside the repo — the exact order under which phases'
+# own ``sys.path.insert(0, _PA_DIR)`` pushed the WRONG fixtures.py to the
+# front of the search path.
+_PROBE_HELPERS = (
+    "gated_subscription_payload", "retry_body", "second_pm_present",
+    "intent_cancelable", "finalized_invoice", "succeeded_payments",
+    "unsettled_intents", "intent_invoice_id",
+)
+
+
+class StandaloneImportTest(unittest.TestCase):
+    def _probe(self, setup_lines: str) -> str:
+        lab_dir = str(_LAB_DIR)
+        code = (
+            "import sys\n"
+            f"{setup_lines}\n"
+            "import phases\n"
+            "assert phases.fixtures.__file__ is not None\n"
+            f"helpers = {list(_PROBE_HELPERS)!r}\n"
+            "missing = [h for h in helpers if not hasattr(phases.fixtures, h)]\n"
+            "assert not missing, missing\n"
+            "print(phases.fixtures.__file__)\n"
+            "print(phases.clients.__file__)\n"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", code], capture_output=True, text=True,
+            cwd=tempfile.gettempdir(),
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return result.stdout
+
+    def test_import_with_this_dir_first_binds_probe_fixtures(self):
+        out = self._probe(f"sys.path.insert(0, {str(_LAB_DIR)!r})")
+        self.assertTrue(
+            out.splitlines()[0].startswith(str(_LAB_DIR)),
+            f"fixtures must resolve to THIS probe's module, got {out!r}")
+
+    def test_run_lab_import_order_binds_probe_fixtures_and_shared_clients(self):
+        # run_lab.py: sys.path.insert(0, LAB_DIR) then append(_PA_DIR); bare
+        # `import clients` must stay the SAME module object for both run_lab
+        # and phases (no double-load of the HTTP clients).
+        setup = (
+            f"sys.path.insert(0, {str(_LAB_DIR)!r})\n"
+            f"sys.path.append({str(_PA_DIR)!r})\n"
+            "import clients\n"
+            "same = clients is sys.modules['clients']\n"
+        )
+        out = self._probe(setup)
+        self.assertTrue(
+            out.splitlines()[0].startswith(str(_LAB_DIR)),
+            f"fixtures must resolve to THIS probe's module, got {out!r}")
+        self.assertTrue(
+            out.splitlines()[1].startswith(str(_PA_DIR)),
+            f"clients must resolve to the payment-activation module, got {out!r}")
 
 
 if __name__ == "__main__":

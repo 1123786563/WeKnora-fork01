@@ -109,3 +109,9 @@
 1. **lab.env 永不入库**（依据：文件首行自声明 + 安全约束「源码/示例/测试不得写入可用凭据字面量」+ payment-activation 先例；错误代价：若提交，本地 lab 生成密钥永久泄漏于 git 历史，且违反本票 Global Constraint 7/8 的凭据纪律——即使该密钥是一次性隔离 lab 栈的，纪律不因「看起来无害」破例）。
 2. **AC2 pin 的形态**：只 pin 既有渠道语义（`alipay.go:341-343` 恒返 `ErrAlipaySyncReturn`），不改任何生产代码——它是回归防线不是功能实现；错误代价：未来若有人把哨兵改成泛化 error，该测试立即红灯，防止同步返回页被误用为确认通道（issue AC2）。
 3. **本票终态结论（诚实账面）**：#82 四条正式 AC 中仅 AC2 渠道面 ✅（本会话补齐哨兵 pin）；AC1/AC3/AC4/GC-3 仍 ⛔，激活链待 spec/ADR owner 完成 T02 §5 重议并产出修订版计划（替换 D2 与 Task 5-10）后方可续做。已交付全集＝Task 2-4（66ab920cc/1cf072701/782e316da）+ Task 1 probe 证据与 lab（ca04d7da7）+ AC2 pin（098de74aa）。
+
+## 2026-09-25 代码审查第 1 轮处置（实施员-82 会话续）
+
+| # | 发现（severity） | 根因定位（systematic-debugging） | 处置与证据 |
+|---|---|---|---|
+| F1 | 【medium】phases.py:42-44 `sys.path.insert(0, _PA_DIR)` 使独立导入场景下 `import fixtures` 绑到 payment-activation/fixtures.py（缺全部 8 个探针 helper），phase 运行时 AttributeError 被记为误导性 fail；仅 run_lab.py 导入序（append 到末尾）解析正确（lab 工具缺陷，不影响已入库证据有效性） | 复现证实根因：审查者路径（本目录在 sys.path 前列 + cwd 在仓外）下，phases 的 `insert(0)` 把 _PA_DIR 推到本目录之前，裸名 `import fixtures` 按 sys.path 顺序命中 pa 模块。根因类：**导入绑定依赖 sys.path 顺序**（模块遮蔽），非逻辑错误 | **修复**（phases.py:47-77）：删除 `insert(0)`，仿 fixtures.py 自身的 `pa_fixtures` 手法改用 importlib `spec_from_file_location` 按文件路径显式加载——`clients` 以规范名从 _PA_DIR/clients.py 加载、`fixtures` 以规范名从本目录加载；`_load_by_path` 对 `sys.modules` 中 `__file__` 相同的已载模块直接复用，故 run_lab.py 的裸 `import clients` 与 phases 共享同一实例（零重复加载，HTTP 客户端状态单例保持）。**回归测试**（test_phases.py `StandaloneImportTest` 2 例，subprocess 在仓外 cwd 下独立导入）：①本目录优先导入序 → 断言 `phases.fixtures.__file__` 指向本目录且 8 helper hasattr 全真；②run_lab 导入序 → 同断言 + `clients` 与 `sys.modules['clients']` 同一对象。**RED→GREEN**：修复前 ①FAIL（missing 8 helpers，与审查证据逐字一致）、②PASS（印证缺陷仅限非 run_lab 导入序）；修复后 `python3 -m unittest test_phases -v` → Ran 23 tests, OK；审查者原始复现路径实测 `phases.fixtures.__file__` 指向 payment-trigger/fixtures.py、hasattr 全 True；`python3 -m py_compile phases.py fixtures.py test_phases.py run_lab.py` OK |
