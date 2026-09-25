@@ -124,6 +124,86 @@ const applicationLinkStates: ApplicationLinkState[] = ['linking', 'ready', 'link
 const applicationEvaluationStatuses: ApplicationEvaluationStatus[] = ['eligible', 'ineligible', 'unknown']
 const applicationWarningKeys = ['evaluationId', 'evaluationStatus', 'hardRuleId', 'reasonCode']
 
+// Frozen one-shot search enums owned by the career backend (T11,
+// internal/modules/career/search_once.go). A search is never a continuous
+// rule: the client consumes the enums verbatim and decoders reject any
+// invented status, qualification, uncertainty, or failure code before it
+// reaches the UI. Receipt-level failures are the two bounded terminal codes;
+// per-source coverage failures reuse the bounded source fetch codes plus the
+// dedicated misconfiguration code.
+export type SearchOnceInput = { requestId: string; query: string; expectedRevision: number }
+export type SearchStatus = 'completed' | 'failed'
+export type SearchQualification = 'needs_review' | 'qualified' | 'not_qualified'
+export type SearchUncertainty = 'low_confidence'
+export type SearchFailureCode = 'no_vetted_sources' | 'all_sources_unavailable'
+export type SearchCoverageFailureCode = 'source_misconfigured' | 'login_required' | 'access_blocked' | 'not_found' | 'timeout' | 'source_unverified' | 'unsupported_content' | 'empty_content' | 'response_too_large' | 'network_error' | 'redirect_disallowed'
+export type SearchSourceCoverage = { sourceId: string; label: string; accessMethods: string[]; cities: string[]; available: boolean; failureCode?: SearchCoverageFailureCode }
+export type SearchCoverage = { sources: SearchSourceCoverage[] }
+export type SearchResultRow = { resultId: string; sourceId: string; link: string; checkedAt: string; qualification: SearchQualification; uncertainty: SearchUncertainty }
+export type SearchOnceReceipt = { kind: 'search_once'; requestId: string; searchId: string; status: SearchStatus; query: string; coverage: SearchCoverage; scopeNotes: string[]; failureCode?: SearchFailureCode; results: SearchResultRow[]; checkedAt: string }
+
+const searchStatuses: SearchStatus[] = ['completed', 'failed']
+const searchQualifications: SearchQualification[] = ['needs_review', 'qualified', 'not_qualified']
+const searchUncertainties: SearchUncertainty[] = ['low_confidence']
+const searchFailureCodes: SearchFailureCode[] = ['no_vetted_sources', 'all_sources_unavailable']
+const searchCoverageFailureCodes: SearchCoverageFailureCode[] = ['source_misconfigured', 'login_required', 'access_blocked', 'not_found', 'timeout', 'source_unverified', 'unsupported_content', 'empty_content', 'response_too_large', 'network_error', 'redirect_disallowed']
+
+// Backend rows only ever contain links that literally appeared in fetched
+// source text as absolute http(s) URLs; the decoder holds the same line.
+function validHttpUrl(value: unknown): value is string {
+ if (typeof value !== 'string') return false
+ return value.startsWith('http://') || value.startsWith('https://')
+}
+
+function decodeStringArray(value: unknown, message: string): string[] {
+ if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) throw new TypeError(message)
+ return value as string[]
+}
+
+function decodeSearchSourceCoverage(value: unknown): SearchSourceCoverage {
+ const record = decodeRecord(value, 'invalid search source coverage')
+ const failureCode: unknown = record.failureCode
+ if (!validIdentifier(record.sourceId) || typeof record.label !== 'string'
+  || (failureCode !== undefined && !searchCoverageFailureCodes.includes(failureCode as SearchCoverageFailureCode))
+  || typeof record.available !== 'boolean') throw new TypeError('invalid search source coverage')
+ return {
+  sourceId: record.sourceId, label: record.label,
+  accessMethods: decodeStringArray(record.accessMethods, 'invalid search source coverage'),
+  cities: decodeStringArray(record.cities, 'invalid search source coverage'),
+  available: record.available,
+  ...(failureCode !== undefined ? { failureCode: failureCode as SearchCoverageFailureCode } : {}),
+ }
+}
+
+export function decodeSearchOnceReceipt(value: unknown): SearchOnceReceipt {
+ const record = decodeRecord(value, 'invalid search receipt')
+ const coverage = decodeRecord(record.coverage, 'invalid search receipt')
+ const failureCode: unknown = record.failureCode
+ if (record.kind !== 'search_once' || !validIdentifier(record.requestId) || !validIdentifier(record.searchId)
+  || !searchStatuses.includes(record.status as SearchStatus)
+  || !validIdentifier(record.query) || !Array.isArray(coverage.sources)
+  || (failureCode !== undefined && !searchFailureCodes.includes(failureCode as SearchFailureCode))
+  || !validTimestamp(record.checkedAt)) throw new TypeError('invalid search receipt')
+ const results = record.results
+ if (!Array.isArray(results)) throw new TypeError('invalid search receipt')
+ return {
+  kind: 'search_once', requestId: record.requestId, searchId: record.searchId,
+  status: record.status as SearchStatus, query: record.query,
+  coverage: { sources: coverage.sources.map(decodeSearchSourceCoverage) },
+  scopeNotes: decodeStringArray(record.scopeNotes, 'invalid search receipt'),
+  ...(failureCode !== undefined ? { failureCode: failureCode as SearchFailureCode } : {}),
+  results: results.map((row) => {
+   const rowRecord = decodeRecord(row, 'invalid search result row')
+   if (!validIdentifier(rowRecord.resultId) || !validIdentifier(rowRecord.sourceId)
+    || !validHttpUrl(rowRecord.link) || !validTimestamp(rowRecord.checkedAt)
+    || !searchQualifications.includes(rowRecord.qualification as SearchQualification)
+    || !searchUncertainties.includes(rowRecord.uncertainty as SearchUncertainty)) throw new TypeError('invalid search result row')
+   return { resultId: rowRecord.resultId, sourceId: rowRecord.sourceId, link: rowRecord.link, checkedAt: rowRecord.checkedAt, qualification: rowRecord.qualification as SearchQualification, uncertainty: rowRecord.uncertainty as SearchUncertainty }
+  }),
+  checkedAt: record.checkedAt,
+ }
+}
+
 function decodeApplicationPin(value: unknown): ApplicationEvidencePin {
  const record = decodeRecord(value, 'invalid application pinned evidence')
  if (!validIdentifier(record.opportunityId) || !validIdentifier(record.snapshotId) || !validIdentifier(record.evaluationId)
@@ -223,6 +303,19 @@ export function createCareerApi(request: CareerRequest) {
   async reconcileApplicationLink(requestId: string, signal?: AbortSignal): Promise<ApplicationReceipt> {
    if (!requestId.trim()) throw new TypeError('application reconcile requestId must not be empty')
    return decodeApplicationReceipt(await request({ method: 'POST', path: '/api/v1/career/applications/link/reconcile', body: { requestId }, ...(signal ? { signal } : {}) }))
+  },
+  async searchOnce(input: SearchOnceInput, signal?: AbortSignal): Promise<SearchOnceReceipt> {
+   if (!input.requestId.trim() || !input.query.trim()) throw new TypeError('search requestId and query must not be empty')
+   if (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0) throw new TypeError('search expected revision must be a non-negative integer')
+   return decodeSearchOnceReceipt(await request({ method: 'POST', path: '/api/v1/career/searches', body: { requestId: input.requestId, query: input.query, expectedRevision: input.expectedRevision }, ...(signal ? { signal } : {}) }))
+  },
+  async searchReceipt(requestId: string, signal?: AbortSignal): Promise<SearchOnceReceipt> {
+   if (!requestId.trim()) throw new TypeError('search receipt requestId must not be empty')
+   return decodeSearchOnceReceipt(await request({ method: 'GET', path: `/api/v1/career/searches/receipt?requestId=${encodeURIComponent(requestId)}`, ...(signal ? { signal } : {}) }))
+  },
+  async search(searchId: string, signal?: AbortSignal): Promise<SearchOnceReceipt> {
+   if (!searchId.trim()) throw new TypeError('search ID must not be empty')
+   return decodeSearchOnceReceipt(await request({ method: 'GET', path: `/api/v1/career/searches/${encodeURIComponent(searchId)}`, ...(signal ? { signal } : {}) }))
   },
  }
 }

@@ -221,3 +221,66 @@ test('application client refuses blank identifiers, invalid revisions and invent
   await assert.rejects(api.applicationReceipt('apply-1'), TypeError)
  }
 })
+
+// T11: one-shot search client — POST /searches, GET receipt by request ID,
+// GET result by search ID — with the frozen coverage/row enums decoded
+// strictly (no invented status, qualification, uncertainty, or failure code
+// ever reaches the UI).
+test('search client posts one-shot searches and recovers by request ID and search ID', async () => {
+ const calls: Array<{ method: string; path: string; body?: unknown }> = []
+ const receipt = { kind: 'search_once', requestId: 'search /1', searchId: 'search-1', status: 'completed', query: '上海 前端 实习', coverage: { sources: [{ sourceId: 'board-1', label: '校招看板', accessMethods: ['public_listing'], cities: ['上海'], available: true }] }, scopeNotes: [], results: [{ resultId: 'result-1', sourceId: 'board-1', link: 'https://jobs.example.test/1', checkedAt: '2026-09-25T08:00:00Z', qualification: 'needs_review', uncertainty: 'low_confidence' }], checkedAt: '2026-09-25T08:00:00Z' }
+ const api = createCareerApi(async (input) => {
+  calls.push({ method: input.method, path: input.path, ...(input.body !== undefined ? { body: input.body } : {}) })
+  return receipt
+ })
+ const input = { requestId: 'search /1', query: '上海 前端 实习', expectedRevision: 3 }
+ assert.deepEqual(await api.searchOnce(input), receipt)
+ assert.deepEqual(await api.searchReceipt('search /1'), receipt)
+ assert.deepEqual(await api.search('search-1'), receipt)
+ assert.deepEqual(calls, [
+  { method: 'POST', path: '/api/v1/career/searches', body: input },
+  { method: 'GET', path: '/api/v1/career/searches/receipt?requestId=search%20%2F1' },
+  { method: 'GET', path: '/api/v1/career/searches/search-1' },
+ ])
+})
+
+test('search decode accepts the empty-coverage failure receipt and keeps failure enums honest', async () => {
+ const failed = { kind: 'search_once', requestId: 'r-1', searchId: 's-1', status: 'failed', query: '找岗', coverage: { sources: [] }, scopeNotes: ['no vetted search source is configured; nothing was fetched and no result is fabricated'], failureCode: 'no_vetted_sources', results: [], checkedAt: '2026-09-25T08:00:00Z' }
+ const api = createCareerApi(async () => failed)
+ const decoded = await api.searchOnce({ requestId: 'r-1', query: '找岗', expectedRevision: 0 })
+ assert.equal(decoded.status, 'failed')
+ assert.equal(decoded.failureCode, 'no_vetted_sources')
+ assert.equal(decoded.coverage.sources.length, 0)
+ assert.deepEqual(decoded.scopeNotes, failed.scopeNotes)
+ const unavailable = createCareerApi(async () => ({ ...failed, failureCode: 'all_sources_unavailable', coverage: { sources: [{ sourceId: 'board-2', label: '区域看板', accessMethods: ['public_listing'], cities: ['杭州'], available: false, failureCode: 'network_error' }] } }))
+ const unavailableDecoded = await unavailable.search('s-1')
+ assert.equal(unavailableDecoded.failureCode, 'all_sources_unavailable')
+ assert.equal(unavailableDecoded.coverage.sources[0]?.failureCode, 'network_error')
+ assert.equal(unavailableDecoded.coverage.sources[0]?.available, false)
+})
+
+test('search client refuses blank identifiers, invalid revisions and invented enum values', async () => {
+ const refusing = createCareerApi(async () => { throw new Error('must not send invalid request') })
+ await assert.rejects(refusing.searchOnce({ requestId: ' ', query: '前端', expectedRevision: 0 }), /requestId/)
+ await assert.rejects(refusing.searchOnce({ requestId: 'r-1', query: ' ', expectedRevision: 0 }), /query/)
+ await assert.rejects(refusing.searchOnce({ requestId: 'r-1', query: '前端', expectedRevision: -1 }), /revision/)
+ await assert.rejects(refusing.searchOnce({ requestId: 'r-1', query: '前端', expectedRevision: 1.5 }), /revision/)
+ await assert.rejects(refusing.searchReceipt(' '), /requestId/)
+ await assert.rejects(refusing.search(' '), /search ID/)
+ const base = { kind: 'search_once', requestId: 'r-1', searchId: 's-1', status: 'completed', query: '找岗', coverage: { sources: [] }, scopeNotes: [], results: [], checkedAt: '2026-09-25T08:00:00Z' }
+ const inventors: Array<Record<string, unknown>> = [
+  { ...base, kind: 'search_rule' },
+  { ...base, status: 'running' },
+  { ...base, failureCode: 'mystery_failure' },
+  { ...base, results: [{ resultId: 'r1', sourceId: 'board-1', link: 'https://jobs.example.test/1', checkedAt: '2026-09-25T08:00:00Z', qualification: 'maybe', uncertainty: 'low_confidence' }] },
+  { ...base, results: [{ resultId: 'r1', sourceId: 'board-1', link: 'https://jobs.example.test/1', checkedAt: '2026-09-25T08:00:00Z', qualification: 'needs_review', uncertainty: 'high' }] },
+  { ...base, results: [{ resultId: 'r1', sourceId: 'board-1', link: 'javascript:alert(1)', checkedAt: '2026-09-25T08:00:00Z', qualification: 'needs_review', uncertainty: 'low_confidence' }] },
+  { ...base, results: [{ resultId: 'r1', sourceId: 'board-1', link: 'https://jobs.example.test/1', checkedAt: 'yesterday', qualification: 'needs_review', uncertainty: 'low_confidence' }] },
+  { ...base, coverage: { sources: [{ sourceId: 'board-1', label: 'B', accessMethods: [], cities: [], available: false, failureCode: 'invented_code' }] } },
+  { ...base, scopeNotes: 'none' },
+ ]
+ for (const payload of inventors) {
+  const api = createCareerApi(async () => payload)
+  await assert.rejects(api.searchOnce({ requestId: 'r-1', query: '找岗', expectedRevision: 0 }), TypeError)
+ }
+})

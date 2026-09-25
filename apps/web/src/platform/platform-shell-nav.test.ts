@@ -30,7 +30,7 @@ test('M2: the rail carries the experts entry right after agents', () => {
     analytics: 'Analytics',
   });
   assert.deepEqual(items.map((item) => item.key), [
-    'newChat', 'career', 'knowledgeBases', 'agents', 'experts', 'market', 'organizations', 'analytics',
+    'newChat', 'career', 'careerSearch', 'knowledgeBases', 'agents', 'experts', 'market', 'organizations', 'analytics',
   ]);
   const experts = items.find((item) => item.key === 'experts');
   assert.ok(experts);
@@ -40,6 +40,21 @@ test('M2: the rail carries the experts entry right after agents', () => {
   assert.equal(experts.match('/platform/experts'), true);
   assert.equal(experts.match('/platform/experts/news-trend'), true);
   assert.equal(experts.match('/platform/agents'), false);
+});
+
+// T11 one-shot search entry: an exact-match sibling under the career office.
+// The career entry must not light up for /career/search (and vice versa).
+test('T11: the rail carries the one-shot search entry next to the career office', () => {
+  const items = buildNavItems((key) => key, {});
+  const search = items.find((item) => item.key === 'careerSearch');
+  const career = items.find((item) => item.key === 'career');
+  assert.ok(search);
+  assert.equal(search.href, '/platform/career/search');
+  assert.equal(search.label, '找岗');
+  assert.equal(search.match('/platform/career/search'), true);
+  assert.equal(search.match('/platform/career'), false);
+  assert.ok(career);
+  assert.equal(career.match('/platform/career/search'), false);
 });
 
 test('M4: the rail carries the skills-market entry right after experts', () => {

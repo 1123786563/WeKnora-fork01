@@ -45,6 +45,7 @@ const FAQPage = lazy(() => import('./faq/FAQPage.tsx').then((module) => ({ defau
 const KnowledgeSettingsPage = lazy(() => import('./knowledge-settings/KnowledgeSettingsPage.tsx').then((module) => ({ default: module.KnowledgeSettingsPage })));
 const ConfigurationPage = lazy(() => import('./configuration/ConfigurationPage.tsx').then((module) => ({ default: module.ConfigurationPage })));
 const CareerPage = lazy(() => import('./career/CareerPage.tsx').then((module) => ({ default: module.CareerPage })));
+const CareerSearchPage = lazy(() => import('./career/SearchPage.tsx').then((module) => ({ default: module.CareerSearchPage })));
 const OpportunityEvidencePage = lazy(() => import('./career/OpportunityPage.tsx').then((module) => ({ default: module.OpportunityEvidencePage })));
 const EvaluationDetailPage = lazy(() => import('./career/OpportunityPage.tsx').then((module) => ({ default: module.EvaluationDetailPage })));
 const AgentsPage = lazy(() => import('./agents/AgentsPage.tsx').then((module) => ({ default: module.AgentsPage })));
@@ -717,6 +718,18 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
     component: (): ReactNode => <CareerPage client={client} scopeController={scopeController} userId={scopeController.current().scope.userId} />,
   });
 
+  // T11 one-shot search surface: every search runs once per request ID and
+  // the page deliberately offers no continuous-rule control (T13 scope).
+  const careerSearchRoute = createRoute({
+    getParentRoute: () => platformRoute,
+    path: 'career/search',
+    component: (): ReactNode => (
+      <Suspense fallback={<RoutePending loadingText={deps.loadingText} />}>
+        <CareerSearchPage client={client} scopeController={scopeController} />
+      </Suspense>
+    ),
+  });
+
   const careerOpportunityRoute = createRoute({
     getParentRoute: () => platformRoute,
     path: 'career/opportunities/$opportunityId',
@@ -948,6 +961,7 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
       chatSplatRoute,
       agentsRoute,
       careerRoute,
+      careerSearchRoute,
       careerOpportunityRoute,
       careerEvaluationRoute,
       expertsRoute,
