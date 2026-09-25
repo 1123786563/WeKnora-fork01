@@ -234,15 +234,31 @@ func (s *CraftArtifactService) PromoteWebVersion(ctx context.Context, scope craf
 		return craft.Version{}, fmt.Errorf("%w: the four-check gate promotes web versions only, got kind %q", craft.ErrInvalidInput, candidate.Kind)
 	}
 
-	// Revision fence: the callback's revision must be the Workspace's current
-	// draft-head revision. A late callback for a superseded revision is a
-	// conflict, never a silent promotion of stale files.
+	// Revision fence with identity binding: the callback's revision must be
+	// the Workspace's CURRENT draft-head revision, AND the head itself must
+	// be the sealed product of THIS candidate's run. Comparing the revision
+	// number alone lets a stale candidate ride a current head revision (an
+	// old run's files silently promoted as the newest version) and lets an
+	// empty head (revision 0, capture not yet sealed) promote unstaged
+	// content — both exactly the "silent promotion of stale files" this
+	// fence exists to refuse. The head's State/SourceRunID/ManifestDigest
+	// carry the sealed binding; DraftHeadStore.Read has already verified
+	// them against the immutable revision row.
 	head, err := s.drafts.Read(ctx, scope, candidate.WorkspaceID)
 	if err != nil {
 		return craft.Version{}, err
 	}
 	if head.Revision != req.Revision {
 		return craft.Version{}, fmt.Errorf("%w: stale workspace revision %d (head is %d) for run %s", craft.ErrConflict, req.Revision, head.Revision, candidate.RunID)
+	}
+	if head.State != craft.DraftHeadSelected {
+		return craft.Version{}, fmt.Errorf("%w: workspace revision %d is not a sealed draft head (state %q); unsealed content cannot be promoted", craft.ErrConflict, head.Revision, head.State)
+	}
+	if head.SourceRunID != candidate.RunID {
+		return craft.Version{}, fmt.Errorf("%w: workspace revision %d is sealed from run %s, not the candidate's run %s", craft.ErrConflict, head.Revision, head.SourceRunID, candidate.RunID)
+	}
+	if head.ManifestDigest != candidate.ManifestDigest {
+		return craft.Version{}, fmt.Errorf("%w: workspace revision %d is sealed from manifest %s, not the candidate's manifest %s", craft.ErrConflict, head.Revision, head.ManifestDigest, candidate.ManifestDigest)
 	}
 
 	// The four facts, each from its own observation source.

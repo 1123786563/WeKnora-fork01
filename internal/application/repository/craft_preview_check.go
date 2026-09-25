@@ -8,6 +8,7 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/modules/craft"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // CraftPreviewCheckStore is W02's preview check update channel (独立 origin
@@ -75,7 +76,13 @@ func (s *CraftPreviewCheckStore) UpdateWebProbeCheck(ctx context.Context, scope 
 	var out craft.Version
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var row craftVersionRow
-		e := tx.Where("id = ?", versionID).Take(&row).Error
+		// Row lock (SELECT ... FOR UPDATE, the repo's established pattern):
+		// check writers arrive from independent observation callbacks, so
+		// concurrent updates must serialize on the version row. Without the
+		// lock both read the same old checks_json snapshot and the last
+		// unconditional write silently drops the other's fact — or worse,
+		// rewrites a recorded outcome and breaks fact immutability.
+		e := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", versionID).Take(&row).Error
 		if errors.Is(e, gorm.ErrRecordNotFound) {
 			return fmt.Errorf("%w: version %s", craft.ErrNotFound, versionID)
 		}
@@ -161,7 +168,13 @@ func (s *CraftPreviewCheckStore) UpdatePreviewCheck(ctx context.Context, scope c
 	var out craft.Version
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var row craftVersionRow
-		e := tx.Where("id = ?", versionID).Take(&row).Error
+		// Row lock (SELECT ... FOR UPDATE, the repo's established pattern):
+		// check writers arrive from independent observation callbacks, so
+		// concurrent updates must serialize on the version row. Without the
+		// lock both read the same old checks_json snapshot and the last
+		// unconditional write silently drops the other's fact — or worse,
+		// rewrites a recorded outcome and breaks fact immutability.
+		e := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", versionID).Take(&row).Error
 		if errors.Is(e, gorm.ErrRecordNotFound) {
 			return fmt.Errorf("%w: version %s", craft.ErrNotFound, versionID)
 		}

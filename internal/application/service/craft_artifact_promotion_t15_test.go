@@ -52,9 +52,16 @@ func (s *stubDraftHeadStore) Advance(_ context.Context, _ craft.Scope, _ string,
 }
 
 func (s *stubDraftHeadStore) set(workspaceID string, revision int64, runID string) {
+	s.setSealed(workspaceID, revision, runID, "")
+}
+
+// setSealed records the head with the sealed manifest digest, mirroring the
+// real post-terminal capture (DraftHeadStore.Advance binds State/SourceRunID/
+// ManifestDigest to the immutable revision row).
+func (s *stubDraftHeadStore) setSealed(workspaceID string, revision int64, runID, manifest string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.heads[workspaceID] = craft.DraftHead{WorkspaceID: workspaceID, Revision: revision, State: craft.DraftHeadSelected, SourceRunID: runID}
+	s.heads[workspaceID] = craft.DraftHead{WorkspaceID: workspaceID, Revision: revision, State: craft.DraftHeadSelected, SourceRunID: runID, ManifestDigest: manifest}
 }
 
 // scriptedPageProbe is the T14 seam double: externally observed reachability
@@ -108,7 +115,7 @@ func TestCraftT15Journey(t *testing.T) {
 		generation := "gen-" + runID
 		candidate, err := svc.CollectCandidate(ctx, task, craft.KindWeb, candidateSource(runID, generation, content), generation)
 		require.NoError(t, err)
-		draftHeads.set(workspaceID, revision, runID)
+		draftHeads.setSealed(workspaceID, revision, runID, candidate.ManifestDigest)
 		return candidate
 	}
 	promote := func(runID string, candidate craft.Candidate, revision int64) (craft.Version, error) {

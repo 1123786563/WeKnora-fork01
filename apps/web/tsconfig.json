@@ -50,6 +50,9 @@
       "@weknora/domain/craft/reconnect": [
         "../../packages/domain/src/craft/reconnect.ts"
       ],
+      "@weknora/domain/craft/web-promotion": [
+        "../../packages/domain/src/craft/web-promotion.ts"
+      ],
       "@weknora/domain/craft/capabilities": [
         "../../packages/domain/src/craft/capabilities.ts"
       ],

@@ -18,6 +18,8 @@ import (
 	"github.com/Tencent/WeKnora/internal/modules/craft"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
+
+	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -487,17 +489,18 @@ func (s *CraftSessionService) View(ctx context.Context, scope craft.Scope) (Craf
 	if registration.Kind == craft.KindWeb && s.defaultVersionSelector != nil {
 		// T15 (#130): a web session's default preview seat goes to the
 		// newest version whose four independent checks each passed. A
-		// selector error degrades to the legacy newest-version rule rather
-		// than failing the whole workspace read (the seat is a projection,
-		// never an authorization boundary).
-		if selected, ok, serr := s.defaultVersionSelector(ctx, owner); serr == nil && ok {
+		// selector failure degrades CONSERVATIVELY: the seat stays empty
+		// rather than falling back to the newest version — an unverified
+		// latest version on the preview seat is exactly what #130 forbids.
+		// The read itself never fails (the seat is a projection, not an
+		// authorization boundary), but the degradation is logged so a
+		// broken selector is observable in production.
+		selected, ok, serr := s.defaultVersionSelector(ctx, owner)
+		switch {
+		case serr != nil:
+			logger.Warnf(ctx, "[CraftSession] web default-version selector failed for workspace %s; the default preview seat stays empty this read: %v", workspace.ID, serr)
+		case ok:
 			view.CurrentVersion = &selected
-		} else if serr != nil {
-			versions, verr := s.versions.List(ctx, owner)
-			if verr == nil && len(versions) > 0 {
-				current := versions[0]
-				view.CurrentVersion = &current
-			}
 		}
 	} else if versions, verr := s.versions.List(ctx, owner); verr == nil && len(versions) > 0 {
 		current := versions[0]
