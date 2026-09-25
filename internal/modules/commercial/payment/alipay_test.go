@@ -234,6 +234,22 @@ func TestAlipaySyncReturnNeverConfirms(t *testing.T) {
 	}
 }
 
+// TestSyncReturnCannotConfirmPurchase pins the SENTINEL, not just failure
+// (incremental over TestAlipaySyncReturnNeverConfirms, which only asserts
+// err != nil). A future implementation must not degrade to a generic error:
+// callers rely on errors.Is(err, ErrAlipaySyncReturn) to tell "the
+// synchronous return page can never confirm a payment" (issue #82 AC2)
+// apart from a transient channel failure.
+func TestSyncReturnCannotConfirmPurchase(t *testing.T) {
+	p, _, _ := alipayNotifyFixture(t)
+	fact, err := p.VerifySyncReturn(context.Background(), http.Header{},
+		[]byte("out_trade_no=out-1&trade_no=trade-1"))
+	if !errors.Is(err, ErrAlipaySyncReturn) || fact != (commercial.PaymentFact{}) {
+		t.Fatalf("sync return must fail with the dedicated sentinel: fact=%+v err=%v",
+			fact, err)
+	}
+}
+
 // alipayGatewayFixture stands up an offline gateway that answers signed
 // envelopes with the test "Alipay" key and records the last request form.
 // (R1-V09) The loopback gateway rides the SSRF_WHITELIST exemption — the

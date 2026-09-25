@@ -635,6 +635,99 @@ func TestProviderOutboundClientRejectsInternalRedirect(t *testing.T) {
 	}
 }
 
+// Task 4 (#82, T09 mandatory condition 3): the finalized-stage invoice line
+// read. F6 contract: v1.53 fee objects carry the line TYPE inside item.type
+// (no top-level fee_type), and only a FINALIZED (visible-status) invoice
+// answers lines; the open stage keeps answering empty — an invisible line is
+// never fabricated (F3-F5).
+func TestLagoReadPurchaseInvoiceFees(t *testing.T) {
+	var invoiceHandler func(w http.ResponseWriter, r *http.Request)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if invoiceHandler != nil {
+			invoiceHandler(w, r)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	t.Cleanup(srv.Close)
+	a := NewLagoAdapter(Config{Provider: ProviderLago, BaseURL: srv.URL, APIKey: testAPIKey})
+
+	// Finalized invoice: the fees map item.type/item.name/amount_cents.
+	invoiceHandler = func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"invoices":[{"lago_id":"inv_1","invoice_type":"subscription",
+			"status":"finalized","payment_status":"succeeded","number":"WK-001",
+			"total_amount_cents":9900,
+			"fees":[{"item":{"type":"subscription","code":"plan-p","name":"Pro"},
+				"amount_cents":9900,"amount_currency":"CNY","units":"1"}]}]}`))
+	}
+	lines, err := a.readPurchaseInvoiceFees(context.Background(), 11)
+	if err != nil || len(lines) != 1 {
+		t.Fatalf("finalized fees must read, got %v lines=%v err=%v", lines, len(lines), err)
+	}
+	if lines[0].Kind != "subscription" || lines[0].AmountFen != 9900 || lines[0].Name != "Pro" {
+		t.Fatalf("fee mapping wrong: %+v", lines[0])
+	}
+
+	// Open stage: no finalized invoice → empty (invisible lines never fabricated).
+	invoiceHandler = func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"invoices":[]}`))
+	}
+	lines, err = a.readPurchaseInvoiceFees(context.Background(), 11)
+	if err != nil || lines != nil {
+		t.Fatalf("open stage must answer empty, got %v err=%v", lines, err)
+	}
+
+	// A missing customer/invoice surface answers 404: v1.53.0 has no
+	// invoices for the tenant yet — the 404 folds into the SAME empty
+	// semantics (the open stage), never an invalid-response failure.
+	invoiceHandler = func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	}
+	lines, err = a.readPurchaseInvoiceFees(context.Background(), 11)
+	if err != nil || lines != nil {
+		t.Fatalf("404 must fold into empty semantics, got %v err=%v", lines, err)
+	}
+
+	// Other definitive 4xx: invalid response (fail closed).
+	invoiceHandler = func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "{}", http.StatusBadRequest)
+	}
+	if _, err := a.readPurchaseInvoiceFees(context.Background(), 11); !errors.Is(err, commercial.ErrPlatformInvalidResponse) {
+		t.Fatalf("4xx must be invalid response, got %v", err)
+	}
+
+	// 5xx: unreachable (transient).
+	invoiceHandler = func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "{}", http.StatusInternalServerError)
+	}
+	if _, err := a.readPurchaseInvoiceFees(context.Background(), 11); !errors.Is(err, commercial.ErrPlatformUnreachable) {
+		t.Fatalf("5xx must be unreachable, got %v", err)
+	}
+
+	// A fee without item.type maps to Kind "unknown" and keeps reading.
+	invoiceHandler = func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"invoices":[{"lago_id":"inv_2","invoice_type":"subscription",
+			"status":"finalized","fees":[{"amount_cents":100,"amount_currency":"CNY"}]}]}`))
+	}
+	lines, err = a.readPurchaseInvoiceFees(context.Background(), 11)
+	if err != nil || len(lines) != 1 || lines[0].Kind != "unknown" || lines[0].AmountFen != 100 {
+		t.Fatalf("typeless fee must map unknown, got %+v err=%v", lines, err)
+	}
+
+	// The read is addressed by the DERIVED customer identity only.
+	invoiceHandler = func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.URL.RawQuery, "external_customer_id=weknora-tenant-11") {
+			t.Errorf("invoices read must be addressed by the derived identity, got %q", r.URL.RawQuery)
+		}
+		_, _ = w.Write([]byte(`{"invoices":[]}`))
+	}
+	if _, err := a.readPurchaseInvoiceFees(context.Background(), 11); err != nil {
+		t.Fatalf("identity-addressed read failed: %v", err)
+	}
+}
+
 func TestLagoPurchaseSnapshotMapsClosedStates(t *testing.T) {
 	stub := newPurchaseStub()
 	// The authority's plan truth: the index echoes the plan's frozen amount.
