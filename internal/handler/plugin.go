@@ -793,13 +793,23 @@ func driftReportResponseDTO(report *types.PluginDriftReport) *dto.PluginDriftRep
 		SnapshotToolNames: append([]string(nil), report.SnapshotToolNames...),
 	}
 	if report.Detail != nil {
+		// make+copy, never append([]string(nil), ...) (OCR R1 F09): the
+		// append form yields nil for empty inputs and the DTO fields carry no
+		// omitempty — the wire would show null where this file promises "one
+		// wire shape / 绝不 null", breaking string[] consumers (.map/.length).
+		// The persisted layer round-trips empty lists to nil (omitempty), so
+		// the GetDrift path hits this constantly.
 		out.Detail = &dto.PluginDriftDetailDTO{
-			Added:              append([]string(nil), report.Detail.Added...),
-			Removed:            append([]string(nil), report.Detail.Removed...),
-			SchemaChanged:      append([]string(nil), report.Detail.SchemaChanged...),
-			DescriptionChanged: append([]string(nil), report.Detail.DescriptionChanged...),
+			Added:              make([]string, len(report.Detail.Added)),
+			Removed:            make([]string, len(report.Detail.Removed)),
+			SchemaChanged:      make([]string, len(report.Detail.SchemaChanged)),
+			DescriptionChanged: make([]string, len(report.Detail.DescriptionChanged)),
 			CheckedAt:          report.Detail.CheckedAt,
 		}
+		copy(out.Detail.Added, report.Detail.Added)
+		copy(out.Detail.Removed, report.Detail.Removed)
+		copy(out.Detail.SchemaChanged, report.Detail.SchemaChanged)
+		copy(out.Detail.DescriptionChanged, report.Detail.DescriptionChanged)
 	}
 	if out.SnapshotToolNames == nil {
 		out.SnapshotToolNames = []string{}

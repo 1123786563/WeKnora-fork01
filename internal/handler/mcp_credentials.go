@@ -149,6 +149,11 @@ func (h *MCPCredentialsHandler) DeleteField(c *gin.Context) {
 	}
 
 	if err := h.svc.ClearMCPCredential(ctx, tenantID, serviceID, field); err != nil {
+		// OCR R1 F06: deterministic plugin-managed rejection is 409, same
+		// mapping as the credentials PUT and the generic MCP PUT/DELETE.
+		if pluginManagedConflict(c, err) {
+			return
+		}
 		logger.ErrorWithFields(ctx, err, map[string]interface{}{
 			"service_id": secutils.SanitizeForLog(serviceID),
 			"field":      field,

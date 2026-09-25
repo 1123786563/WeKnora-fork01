@@ -3,8 +3,11 @@ package handler
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/Tencent/WeKnora/internal/application/service"
@@ -36,6 +39,8 @@ type pluginGuardService struct {
 	updateErr error
 	deleteErr error
 	credErr   error
+	toolsErr  error
+	clearErr  error
 }
 
 func (s *pluginGuardService) CreateMCPService(_ context.Context, svc *types.MCPService) error {
@@ -59,6 +64,17 @@ func (s *pluginGuardService) UpdateMCPCredentials(
 	return nil, s.credErr
 }
 
+// OCR R1 F07：通用读取面 GET /mcp-services/{id}/tools（Viewer+）对插件物化
+// 行不得返回 live 目录（未接受能力经此面泄露）。
+func (s *pluginGuardService) GetMCPServiceTools(_ context.Context, _ uint64, _ string) ([]*types.MCPTool, error) {
+	return nil, s.toolsErr
+}
+
+// OCR R1 F06：ClearMCPCredential 与 PUT 凭据同族，插件行必须同口径拒绝。
+func (s *pluginGuardService) ClearMCPCredential(_ context.Context, _ uint64, _, _ string) error {
+	return s.clearErr
+}
+
 func pluginGuardRouter(svc *pluginGuardService) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
@@ -73,6 +89,8 @@ func pluginGuardRouter(svc *pluginGuardService) *gin.Engine {
 	r.PUT("/mcp-services/:id", h.UpdateMCPService)
 	r.DELETE("/mcp-services/:id", h.DeleteMCPService)
 	r.PUT("/mcp-services/:id/credentials", creds.Put)
+	r.DELETE("/mcp-services/:id/credentials/:field", creds.DeleteField)
+	r.GET("/mcp-services/:id/tools", h.GetMCPServiceTools)
 	return r
 }
 
@@ -118,4 +136,58 @@ func TestCreateMCPServiceStripsClientPluginInstallationID(t *testing.T) {
 	require.NotNil(t, svc.created, "service layer must be invoked")
 	require.Nil(t, svc.created.PluginInstallationID,
 		"a client-supplied plugin_installation_id must be stripped before the service call — a forged row would be born Enabled, enter the agent catalog, be rejected by all three write guards, and be unreachable by the uninstall cascade")
+}
+
+// OCR R1 F07：Viewer 可达的通用工具列表面对插件物化行必须确定性拒绝——
+// live 目录携带未接受能力/漂移后 schema，绕过快照封堵泄露。
+func TestGetMCPServiceToolsPluginManagedIsConflictNot500(t *testing.T) {
+	svc := &pluginGuardService{toolsErr: service.ErrPluginManagedService}
+	w := pluginGuardRequest(pluginGuardRouter(svc), http.MethodGet, "/mcp-services/svc-1/tools", "")
+	require.Equal(t, http.StatusConflict, w.Code,
+		"plugin-materialized rows must not serve the live directory through the generic tools endpoint: %s", w.Body.String())
+}
+
+// OCR R1 F06：DELETE /credentials/{field} 与 PUT 凭据同族写面，插件行 409。
+func TestDeleteMCPCredentialFieldPluginManagedIsConflictNot500(t *testing.T) {
+	svc := &pluginGuardService{clearErr: service.ErrPluginManagedService}
+	w := pluginGuardRequest(pluginGuardRouter(svc), http.MethodDelete, "/mcp-services/svc-1/credentials/api_key", "")
+	require.Equal(t, http.StatusConflict, w.Code,
+		"credential write faces must reject plugin-managed rows uniformly (PUT already does): %s", w.Body.String())
+}
+
+// OCR R1 F09 + F08：drift 响应四列表绝不为 null（one wire shape），且
+// pluginManagedConflict 不得插在 swaggo 注释块与其函数之间（swag 按紧邻
+// 配对会把注解误绑到辅助函数）。
+func TestDriftReportResponseListsNeverSerializeAsNull(t *testing.T) {
+	report := &types.PluginDriftReport{
+		InstallationID:    "inst-1",
+		DriftState:        types.PluginDriftDetected,
+		SnapshotToolNames: nil,                        // 持久化层 omitempty 反序列化回 nil 的形态
+		Detail:            &types.PluginDriftDetail{}, // 全空列表输入
+	}
+	out := driftReportResponseDTO(report)
+	require.NotNil(t, out)
+	require.NotNil(t, out.Detail)
+	encoded, err := json.Marshal(out)
+	require.NoError(t, err)
+	body := string(encoded)
+	for _, key := range []string{`"added":[]`, `"removed":[]`, `"schema_changed":[]`, `"description_changed":[]`} {
+		require.Contains(t, body, key, "drift detail lists must serialize as [] — null breaks string[] consumers (.map/.length)")
+	}
+	require.Contains(t, body, `"snapshot_tool_names":[]`)
+}
+
+func TestSwagAnnotationsPrecedeCreateMCPServiceDeclaration(t *testing.T) {
+	source, err := os.ReadFile("mcp_service.go")
+	require.NoError(t, err)
+	text := string(source)
+	annotAt := strings.Index(text, "/mcp-services [post]")
+	require.NotEqual(t, -1, annotAt, "the POST annotation must exist")
+	createAt := strings.Index(text, "func (h *MCPServiceHandler) CreateMCPService")
+	require.NotEqual(t, -1, createAt)
+	// 注释块与声明之间不得再出现函数声明（swag 按「注释组紧邻其后函数」
+	// 配对——中间插入 pluginManagedConflict 会让注解误绑、Create 从
+	// OpenAPI 规格消失）。
+	between := text[annotAt:createAt]
+	require.NotContains(t, between, "func ", "no function declaration may sit between the swag block and CreateMCPService")
 }

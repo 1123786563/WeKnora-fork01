@@ -490,6 +490,15 @@ func (s *mcpServiceService) GetMCPServiceTools(
 		return nil, fmt.Errorf("MCP service not found")
 	}
 
+	// OCR R1 F07: plugin-materialized rows serve their directory through the
+	// plugin install APIs (accepted snapshot, filtered). The live ListTools
+	// call below would expose unaccepted capabilities and post-drift schemas
+	// to any Viewer — the very leak the write faces and the agent runtime
+	// (FilterToolsBySnapshot) close. Deterministic 409 via the handler.
+	if service.PluginInstallationID != nil {
+		return nil, ErrPluginManagedService
+	}
+
 	// Get or create client
 	client, err := s.mcpManager.GetOrCreateClient(ctx, service)
 	if err != nil {
@@ -583,6 +592,14 @@ func (s *mcpServiceService) ClearMCPCredential(
 	}
 	if existing.IsBuiltin {
 		return fmt.Errorf("builtin MCP services cannot have credentials modified")
+	}
+	// OCR R1 F06: same plugin guard as UpdateMCPCredentials — the credential
+	// write faces must reject plugin-materialized rows uniformly (the PUT
+	// already returns ErrPluginManagedService; today a plugin row's
+	// credentials are empty by construction, so this is a harmless no-op 204,
+	// but any future injection path would otherwise be an asymmetric bypass).
+	if existing.PluginInstallationID != nil {
+		return ErrPluginManagedService
 	}
 	if existing.AuthConfig == nil {
 		return nil // nothing to clear

@@ -61,6 +61,26 @@ func (h *MCPServiceHandler) mcpServiceResponses(
 	return resp
 }
 
+// pluginManagedConflict (跨任务转交 T06-OCR1-F11): the service layer's
+// ErrPluginManagedService is a DETERMINISTIC policy rejection — generic MCP
+// write faces refuse plugin-materialized rows on purpose. Rendering it as the
+// default 500 pollutes 5xx alerting for an expected admin action; map it to
+// 409 Conflict like the plugin-domain handler maps its sentinels to 4xx.
+//
+// NOTE (OCR R1 F08): this helper and its comment must stay ABOVE the first
+// swaggo annotation block — swag pairs an annotation group with the function
+// declared immediately after it, so anything between a block and its function
+// hijacks the binding (CreateMCPService's POST annotations would silently
+// attach to this helper and drop the endpoint from the generated OpenAPI
+// spec).
+func pluginManagedConflict(c *gin.Context, err error) bool {
+	if stderrors.Is(err, service.ErrPluginManagedService) {
+		c.Error(errors.NewConflictError(err.Error()))
+		return true
+	}
+	return false
+}
+
 // CreateMCPService godoc
 // @Summary      创建MCP服务
 // @Description  创建新的MCP服务配置
@@ -73,19 +93,6 @@ func (h *MCPServiceHandler) mcpServiceResponses(
 // @Security     Bearer
 // @Security     ApiKeyAuth
 // @Router       /mcp-services [post]
-// pluginManagedConflict (跨任务转交 T06-OCR1-F11): the service layer's
-// ErrPluginManagedService is a DETERMINISTIC policy rejection — generic MCP
-// write faces refuse plugin-materialized rows on purpose. Rendering it as the
-// default 500 pollutes 5xx alerting for an expected admin action; map it to
-// 409 Conflict like the plugin-domain handler maps its sentinels to 4xx.
-func pluginManagedConflict(c *gin.Context, err error) bool {
-	if stderrors.Is(err, service.ErrPluginManagedService) {
-		c.Error(errors.NewConflictError(err.Error()))
-		return true
-	}
-	return false
-}
-
 func (h *MCPServiceHandler) CreateMCPService(c *gin.Context) {
 	ctx := c.Request.Context()
 
@@ -539,6 +546,9 @@ func (h *MCPServiceHandler) GetMCPServiceTools(c *gin.Context) {
 
 	tools, err := h.mcpServiceService.GetMCPServiceTools(ctx, tenantID, serviceID)
 	if err != nil {
+		if pluginManagedConflict(c, err) {
+			return
+		}
 		logger.ErrorWithFields(ctx, err, map[string]interface{}{"service_id": secutils.SanitizeForLog(serviceID)})
 		c.Error(errors.NewInternalServerError("Failed to get MCP service tools: " + err.Error()))
 		return
