@@ -542,6 +542,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// durable record repository + current Task authority injection and the
 	// runtime/HTTP wiring (see craft_knowledge_wiring.go).
 	must(container.Provide(repository.NewCraftKnowledgeRecordRepository))
+	must(container.Provide(newCraftWebCitationGate))
 	must(container.Provide(newCraftKnowledgeService))
 	// O03/O04 integration wiring (coordinator-assigned): the craft lifecycle
 	// service (guards, tombstone, sweep), the O01 usage ledger read side and

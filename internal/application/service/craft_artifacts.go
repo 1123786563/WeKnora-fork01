@@ -51,6 +51,23 @@ type CraftArtifactConfig struct {
 
 	// MaxTotalBytes caps the summed bytes of one round.
 	MaxTotalBytes int64
+
+	// WebCitationGate is the T06 (#125) evidence-backed citation admission
+	// port. When present and the collected kind is web, every staged round
+	// passes AdmitStagedWebCitations before any byte is uploaded: facts
+	// must bind to sources this Run actually recorded, inferences must be
+	// explicitly marked, and fabricated citation ids are refused. nil keeps
+	// the unwired legacy behavior (fail-open for citation evidence, the
+	// recorded pre-integration state).
+	WebCitationGate WebCitationGate
+}
+
+// WebCitationGate admits one staged web round's citation manifest. The
+// production implementation is CraftCitationService; the seam exists so the
+// artifact collector (T07 ownership) can consume the citation service (T06
+// ownership) without either owning the other's files.
+type WebCitationGate interface {
+	AdmitStagedWebCitations(ctx context.Context, scope craft.Scope, runID string, staged map[string][]byte) (craft.WebCitationManifest, error)
 }
 
 func (c CraftArtifactConfig) withDefaults() CraftArtifactConfig {
@@ -314,6 +331,25 @@ func (s *CraftArtifactService) stageAndUpload(
 	if err := craftValidateStagedManifest(kind, staged); err != nil {
 		logger.Warnf(ctx, "[CraftArtifact] manifest admission rejected the round: %v", err)
 		return nil, err
+	}
+	// T06 (#125): the web kind's citation admission runs after the shape
+	// gate and BEFORE any byte is uploaded, so a round with fabricated
+	// citations never stages objects. The admitted manifest digest is
+	// logged for evidence correlation; the gate is optional only because
+	// non-web kinds and unwired assemblies keep their recorded behavior.
+	if s.config.WebCitationGate != nil && kind == craft.KindWeb {
+		stagedBytes := make(map[string][]byte, len(staged))
+		for _, a := range staged {
+			stagedBytes[a.rel] = a.data
+		}
+		manifest, err := s.config.WebCitationGate.AdmitStagedWebCitations(ctx, task.Scope, task.Fence.RunID, stagedBytes)
+		if err != nil {
+			logger.Warnf(ctx, "[CraftArtifact] citation admission rejected the round for run %s: %v", task.Fence.RunID, err)
+			return nil, err
+		}
+		if digest, derr := craft.WebCitationsDigest(manifest); derr == nil {
+			logger.Infof(ctx, "[CraftArtifact] web citations admitted for run %s: manifest digest %s", task.Fence.RunID, digest)
+		}
 	}
 	files := make([]craft.File, 0, len(staged))
 	for _, a := range staged {

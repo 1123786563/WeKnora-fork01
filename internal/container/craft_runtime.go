@@ -96,6 +96,26 @@ const (
 	runBoundArtifactMaxEntriesPerDirectory = 1024
 )
 
+// newCraftWebCitationGate assembles the T06 (#125) web citation admission
+// gate over the same immutable Run source-record store T05's Sources
+// projection reads. The Authorizer seam is intentionally absent here: it is
+// only required for ResolveCitation (workbench opens, a read surface), and
+// its absence disables that one method fail-closed — admission itself is
+// fully functional from the records alone.
+func newCraftWebCitationGate(records *repository.CraftKnowledgeRecordRepository) (service.WebCitationGate, error) {
+	if records == nil {
+		return nil, nil
+	}
+	citationSvc, err := service.NewCraftCitationService(service.CraftCitationConfig{Records: records})
+	if err != nil {
+		// The gate is optional to the collector: a failed assembly keeps
+		// the recorded pre-integration behavior rather than refusing boot.
+		logger.Warnf(context.Background(), "[CraftRuntime] web citation gate unavailable, staged citation admission stays unwired: %v", err)
+		return nil, nil
+	}
+	return citationSvc, nil
+}
+
 // newCraftRuntimeExecutor assembles the craft.Executor for the container:
 // the env-driven real chain when CRAFT_OPENCODE_BASE_URL is configured, the
 // unchanged R05 fail-closed executor otherwise.
@@ -106,6 +126,7 @@ func newCraftRuntimeExecutor(
 	files interfaces.FileService,
 	versions craft.VersionStore,
 	previews *service.CraftPreviewService,
+	citationGate service.WebCitationGate,
 ) (craft.Executor, error) {
 	baseURL := strings.TrimSpace(os.Getenv(craftOpenCodeBaseURLEnv))
 	if baseURL == "" {
@@ -159,7 +180,7 @@ func newCraftRuntimeExecutor(
 	// own source unchanged.
 	artifacts := service.NewCraftArtifactServiceWithCandidates(source, files, versions,
 		repository.NewCraftCandidateStore(db), evidence,
-		service.CraftArtifactConfig{Kind: craft.KindWeb, OutputDir: outputDir})
+		service.CraftArtifactConfig{Kind: craft.KindWeb, OutputDir: outputDir, WebCitationGate: citationGate})
 	// The Run-bound candidate route always materializes from the verified
 	// generation's fixed "output" layout (its source rejects any other dir),
 	// so it gets a dedicated service with the RunView OutputDir pinned — the
@@ -199,7 +220,7 @@ func newCraftRuntimeExecutor(
 	}
 	runViewArtifacts := service.NewCraftArtifactServiceWithCandidates(closedCraftArtifactSource{}, files, versions,
 		repository.NewCraftCandidateStore(db), runViewEvidence,
-		service.CraftArtifactConfig{Kind: craft.KindWeb, OutputDir: craftLocalOutputDir})
+		service.CraftArtifactConfig{Kind: craft.KindWeb, OutputDir: craftLocalOutputDir, WebCitationGate: citationGate})
 	// C02: an interaction.pending event first lands durably (interaction row
 	// + waiting_user park) before it is projected to the run stream, so the
 	// pending decision is decidable through the HTTP surface. The registrar
