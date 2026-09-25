@@ -101,6 +101,10 @@ export async function runOfflineVaultIntegration(config: Extract<OfflineVaultInt
     const remote = createTaskOfficeRemote({ origin: config.deploymentOrigin, request: (input) => runtime.authorizedRequest(input) });
     const office: TaskOffice = createTaskOffice({
       backend: guardTaskBackend(remote, gate),
+      // AC3（final review critical）：新意图 start 在 createSession 之前经 office 级门——
+      // guardTaskBackend 只拦 Start POST，createSession 离线时会以 transport 错误伪装
+      // 成 TASK_OFFICE_BACKEND（cause 非 OfflineGateError），'run' 判决不可达。
+      gate,
       detail: remote,
       interactions: guardInteractionBackend(remote, gate),
       lease: () => runtime.scopeLease(),
@@ -133,8 +137,9 @@ export async function runOfflineVaultIntegration(config: Extract<OfflineVaultInt
     // 不用 includes(taskId)——数字 taskId 作子串在 base64 中误匹配率高（scoped-vault.test.ts:40-50 同款 base64 断言）。
     const ciphertextRows = [...storage.entries().values()].filter((value) => !value.startsWith('['));
     evidence.ciphertextProjectionRows = ciphertextRows.length > 0 && ciphertextRows.every((value) => /^[A-Za-z0-9+/]+={0,2}$/.test(value));
-    // ③ 断网：四类危险动作全部 fail closed（run=真实 Start 重放经 guarded office；
-    //    approval=guarded decide；budget/external-action=gate 通道——两类的服务端入口属 #39/#48/#51）
+    // ③ 断网：四类危险动作全部 fail closed（run=真实 Start 重放，office 级 gate 在
+    //    createSession 之前拒绝；approval=guarded decide；budget/external-action=gate
+    //    通道——两类的服务端入口属 #39/#48/#51）
     networkOnline = false;
     const blocked: string[] = [];
     try {

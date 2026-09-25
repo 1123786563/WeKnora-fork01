@@ -14,6 +14,7 @@ import {
 } from '@weknora/domain/mobile';
 import { leaseActive, leaseScopeOf } from '../runtime/scope-lease.ts';
 import type { ScopeLease } from '../runtime/types.ts';
+import type { OfflineGate } from '../offline/offline-gate.ts';
 import { createAttentionDecider } from './attention-inbox.ts';
 import type { AttentionDecisionInput, AttentionDecisionReceipt, InboxView, InteractionBackendPort } from './attention-inbox.ts';
 import { createInMemoryTaskProjectionStore } from './in-memory-task-detail.ts';
@@ -181,6 +182,11 @@ export interface TaskOfficePorts {
   newRequestId?: () => string;
   /** T08: 类型化交互端口（Attention Inbox 读 + 决定）。缺失时 inbox()/decide() fail closed。 */
   interactions?: InteractionBackendPort;
+  /** T10（#40）AC3 收口（final review）：新意图 start 的首笔网络派发（createSession）之前
+   *  经 Offline Gate 结构化拒绝（OFFLINE_ACTION_BLOCKED:run，零后端派发）——guardTaskBackend
+   *  只拦 Start POST，createSession 是它未拦截的前置调用，离线时会以 transport 错误伪装成
+   *  TASK_OFFICE_BACKEND。缺省无门（端口级 guard 仍是组合根契约，此处为纵深防御的第一道）。 */
+  gate?: OfflineGate;
   /** T14（#44）Legacy Task 端口；缺失时 legacy 入口 fail closed（TASK_OFFICE_LEGACY_UNAVAILABLE）。 */
   legacy?: LegacyTaskBackendPort;
 }
@@ -498,6 +504,11 @@ export function createTaskOffice(ports: TaskOfficePorts): TaskOffice {
         }
         // 新意图：目标会话是前置网络调用（无 Task/预算副作用，与 miniprogram AgentPage 同序），
         // 随后在 Start POST 之前耐久落盘意图记录——intentLog 写失败（磁盘满等）上抛且零 Start 派发。
+        // AC3（final review critical）：首笔网络派发前经 Offline Gate——离线时新意图在
+        // createSession 之前即以 OFFLINE_ACTION_BLOCKED:run 原样上抛（不经 callBackend
+        // 包装），零后端派发；上方 bound 幂等重放（零网络）不受影响，仍可离线返回回执。
+        // if 形式而非 ?.：gate 缺省时不引入额外微任务（start 的 mid-start 撤权时序语义不变）。
+        if (ports.gate !== undefined) await ports.gate.assertOnline('run');
         const session = await callBackend(() => ports.backend.createSession({ title: startGoal.text.trim().slice(0, 60) }));
         if (!leaseActive(lease)) throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED');
         sessionId = session.sessionId;

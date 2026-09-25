@@ -20,13 +20,22 @@ const projectionIdOf = (runId: string): string => `run.${runId}`;
 const sizeOf = (value: string): number => new TextEncoder().encode(value).length;
 
 function serializeWithinBudget(projection: PersistedTaskProjection): string {
-  let events = projection.events;
-  let body = JSON.stringify({ ...projection, events });
-  while (events.length > 0 && sizeOf(body) > PROJECTION_BODY_BUDGET_BYTES) {
-    events = events.slice(1); // 丢最旧：预算优先保快照与最新事件
-    body = JSON.stringify({ ...projection, events });
+  // 增量计量（final review minor）：固定开销与每事件尺寸只序列化计长一次（O(n)）——
+  // 原实现每丢一事件全量 JSON.stringify+UTF8 计长（O(n²)），预算 1400B 下无感，
+  // 但预算随 B2-F23 SQLite Adapter 放大后会退化。字节数与全量序列化逐字节一致：
+  // 体 = 固定前缀 + "[" + events.join(",") + "]"，即 count≥1 时结构开销 = count+1
+  // （两括号 + count-1 逗号），空数组 = 2（"[]"）。
+  const fixed = sizeOf(JSON.stringify({ ...projection, events: [] })) - 2; // 去掉空数组的 "[]"
+  const sizes = projection.events.map((event) => sizeOf(JSON.stringify(event)));
+  let byteSum = sizes.reduce((total, size) => total + size, 0);
+  const overheadOf = (count: number): number => (count === 0 ? 2 : count + 1);
+  let dropped = 0; // 已丢弃的最旧事件数
+  while (dropped < projection.events.length
+    && fixed + byteSum + overheadOf(projection.events.length - dropped) > PROJECTION_BODY_BUDGET_BYTES) {
+    byteSum -= sizes[dropped]!;
+    dropped += 1; // 丢最旧：预算优先保快照与最新事件
   }
-  return body;
+  return JSON.stringify({ ...projection, events: projection.events.slice(dropped) });
 }
 
 function parseProjection(raw: string, runId: string): PersistedTaskProjection {

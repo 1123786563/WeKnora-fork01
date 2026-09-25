@@ -161,6 +161,9 @@ function taskOfficeFor(activeRuntime: MobileRuntime, origin: string, tenantId: s
     return createTaskOffice({
       // T10（#40）AC2：Run/审批/追问在派发前经 Offline Gate 拒绝；读通道与 detail 不拦。
       backend: guardTaskBackend(remote, nativeOfflineGate),
+      // T10（#40）AC3（final review）：新意图 start 在 createSession 之前经 office 级门——
+      // guardTaskBackend 只拦 Start POST，createSession 是它的未拦截前置调用。
+      gate: nativeOfflineGate,
       detail: remote,
       interactions: guardInteractionBackend(remote, nativeOfflineGate),
       legacy: guardLegacyTaskBackend(createMobileLegacyTaskRemote({

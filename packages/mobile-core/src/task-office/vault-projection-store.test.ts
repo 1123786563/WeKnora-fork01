@@ -72,6 +72,43 @@ test('oversized projections shed the oldest events within budget and keep the sn
   assert.ok(new TextEncoder().encode(serialized).length <= PROJECTION_BODY_BUDGET_BYTES + 200, `serialized body ${serialized.length}B stays near budget`);
 });
 
+test('budget trimming stays identical to the full-reserialization reference (incremental accounting)', async () => {
+  // final review minor：serializeWithinBudget 已改为增量计量（O(n)）——本测试把修复前
+  // 的全量重序列化语义固化为参考实现，证明各保留窗口逐字节同判（含空时间线、预算内、
+  // 需丢弃若干、丢弃大半、fixed 本身超预算丢到空五类边界）。
+  const { store } = leasedVault();
+  const sizeOf = (value: string): number => new TextEncoder().encode(value).length;
+  const reference = (projection: PersistedTaskProjection): string => {
+    let events = projection.events;
+    let body = JSON.stringify({ ...projection, events });
+    while (events.length > 0 && sizeOf(body) > PROJECTION_BODY_BUDGET_BYTES) {
+      events = events.slice(1);
+      body = JSON.stringify({ ...projection, events });
+    }
+    return body;
+  };
+  const cases: Array<{ name: string; events: TaskBackendEvent[]; snapshotTitle?: string }> = [
+    { name: 'empty timeline', events: [] },
+    { name: 'single event within budget', events: [event$(1)] },
+    { name: 'a few events within budget', events: Array.from({ length: 3 }, (_unused, index) => event$(index + 1)) },
+    { name: 'shed several oldest events', events: Array.from({ length: 30 }, (_unused, index) => event$(index + 1)) },
+    { name: 'shed the vast majority', events: Array.from({ length: 400 }, (_unused, index) => event$(index + 1)) },
+    { name: 'oversized snapshot sheds down to empty', events: Array.from({ length: 5 }, (_unused, index) => event$(index + 1)), snapshotTitle: 'x'.repeat(1400) },
+  ];
+  for (const testCase of cases) {
+    const projection = projection$(testCase.events, testCase.events.length);
+    if (testCase.snapshotTitle !== undefined) projection.snapshot = { ...projection.snapshot!, title: testCase.snapshotTitle };
+    await store.save(projection);
+    const loaded = await store.load('run-42');
+    assert.ok(loaded, `${testCase.name}: must load`);
+    assert.deepEqual(
+      loaded,
+      JSON.parse(reference(projection)),
+      `${testCase.name}: the retained window must match the reference trimming exactly`,
+    );
+  }
+});
+
 test('a revoked or missing lease fails closed on save and load', async () => {
   const { store, revokeLease } = leasedVault();
   await store.save(projection$([event$(1)], 1));
