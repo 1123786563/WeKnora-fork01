@@ -272,9 +272,16 @@ func (s *CraftPreviewService) Enabled() bool {
 // http=80). RFC 7230 allows clients and some reverse proxies to send the
 // default port explicitly; the origin config usually omits it, and a bare
 // EqualFold would silently 404 the shared /p route for those deployments.
+// The result keeps the bracketed form for IPv6 literals ("[::1]"), because
+// that is the only legal spelling inside a URL authority or Host header —
+// comparing a de-bracketed "::1" against a configured "[::1]" would never
+// match in either direction.
 func trimDefaultPort(host, scheme string) string {
 	if h, p, err := net.SplitHostPort(host); err == nil {
 		if (scheme == "https" && p == "443") || (scheme == "http" && p == "80") {
+			if strings.Contains(h, ":") {
+				return "[" + h + "]"
+			}
 			return h
 		}
 	}

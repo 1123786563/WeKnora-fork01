@@ -75,6 +75,23 @@ func TestCraftPreviewAcceptsPreviewHostStripsDefaultPort(t *testing.T) {
 	require.True(t, svc.AcceptsPreviewHost("preview.example.test:443"), "explicit https default port is normalized away (RFC 7230)")
 	require.False(t, svc.AcceptsPreviewHost("preview.example.test:8443"), "non-default ports still refuse")
 	require.False(t, svc.AcceptsPreviewHost("app.example.test"), "the app host never redeems preview tickets")
+
+	// IPv6 literals keep their brackets after port stripping, so the
+	// bracketed config form and the bracketed request form compare equal in
+	// both directions.
+	v6 := NewCraftPreviewService(previewNoopVersions{}, previewNoopFiles{}, nil, CraftPreviewConfig{
+		AppOrigin:     "https://app.example.test",
+		PreviewOrigin: "https://[2001:db8::1]",
+	})
+	require.True(t, v6.AcceptsPreviewHost("[2001:db8::1]"), "bare bracketed IPv6 matches")
+	require.True(t, v6.AcceptsPreviewHost("[2001:db8::1]:443"), "explicit default port on an IPv6 literal is normalized (brackets preserved)")
+	require.False(t, v6.AcceptsPreviewHost("[2001:db8::2]"), "a different IPv6 literal refuses")
+
+	v6Port := NewCraftPreviewService(previewNoopVersions{}, previewNoopFiles{}, nil, CraftPreviewConfig{
+		AppOrigin:     "https://app.example.test",
+		PreviewOrigin: "https://[2001:db8::1]:443",
+	})
+	require.True(t, v6Port.AcceptsPreviewHost("[2001:db8::1]"), "config with explicit default port matches the bare bracketed form")
 }
 
 // TestCraftPreviewLookupAnswersOutsideAllowlistBeforeIO pins the reordered
