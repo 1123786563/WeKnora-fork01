@@ -83,12 +83,13 @@
 | `internal/handler/chunker_debug.go` | Chunker debug (handler) | `B-knowledge` |
 | `internal/handler/faq.go` | Faq (handler) | `B-knowledge` |
 | `internal/handler/kb_access.go` | Kb access (handler) | `B-knowledge` |
+| `internal/handler/kbretrieval_passb_compat.go` | Knowledge retrieval host compat (handler) | `B-knowledge`（K2.6 新增 compat） |
 | `internal/handler/knowledge.go` | Knowledge (handler) | `B-knowledge` |
 | `internal/handler/knowledge_download.go` | Knowledge download (handler) | `B-knowledge` |
 | `internal/handler/knowledgebase.go` | Knowledgebase (handler) | `B-knowledge` |
-| `internal/handler/semantic_internal.go` | Semantic internal (handler) | `B-knowledge` |
-| `internal/handler/semantic_model_policy.go` | Semantic model policy (handler) | `B-knowledge` |
+| `internal/handler/semantic_internal.go` | Semantic internal (handler) | `B-knowledge` — **已迁移**（K2.6 → `retrieval/app/handler/`） |
+| `internal/handler/semantic_model_policy.go` | Semantic model policy (handler) | `B-knowledge` — **已迁移**（K2.6 → `retrieval/app/handler/`） |
 | `internal/handler/session/wiki_fixer_scope.go` | Wiki fixer scope (handler/session) | `B-knowledge` |
-| `internal/handler/tag.go` | Tag (handler) | `B-knowledge` |
+| `internal/handler/tag.go` | Tag (handler) | `B-knowledge` — **已迁移**（K2.6 → `retrieval/app/handler/`） |
 | `internal/handler/task_progress_auth.go` | Task progress auth (handler) | `B-knowledge` |
 | `internal/handler/wiki_page.go` | Wiki page (handler) | `B-knowledge` |

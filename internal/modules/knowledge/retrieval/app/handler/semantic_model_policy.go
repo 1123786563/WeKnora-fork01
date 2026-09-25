@@ -6,7 +6,7 @@ import (
 	"io"
 	"net/http"
 
-	policy "github.com/Tencent/WeKnora/internal/application/service"
+	policy "github.com/Tencent/WeKnora/internal/modules/knowledge/retrieval/app"
 	apperrors "github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/gin-gonic/gin"
