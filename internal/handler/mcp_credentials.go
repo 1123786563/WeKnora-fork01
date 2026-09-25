@@ -97,6 +97,11 @@ func (h *MCPCredentialsHandler) Put(c *gin.Context) {
 
 	updated, err := h.svc.UpdateMCPCredentials(ctx, tenantID, serviceID, req.APIKey, req.Token)
 	if err != nil {
+		// 跨任务转交 T06-OCR1-F11: deterministic plugin-managed rejection is
+		// 409, not the default 500 (same mapping as the generic MCP PUT/DELETE).
+		if pluginManagedConflict(c, err) {
+			return
+		}
 		logger.ErrorWithFields(ctx, err, map[string]interface{}{
 			"service_id": secutils.SanitizeForLog(serviceID),
 		})

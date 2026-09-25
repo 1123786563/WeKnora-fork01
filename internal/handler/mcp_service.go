@@ -8,6 +8,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/Tencent/WeKnora/internal/application/service"
 	"github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/handler/dto"
 	"github.com/Tencent/WeKnora/internal/logger"
@@ -72,6 +73,19 @@ func (h *MCPServiceHandler) mcpServiceResponses(
 // @Security     Bearer
 // @Security     ApiKeyAuth
 // @Router       /mcp-services [post]
+// pluginManagedConflict (跨任务转交 T06-OCR1-F11): the service layer's
+// ErrPluginManagedService is a DETERMINISTIC policy rejection — generic MCP
+// write faces refuse plugin-materialized rows on purpose. Rendering it as the
+// default 500 pollutes 5xx alerting for an expected admin action; map it to
+// 409 Conflict like the plugin-domain handler maps its sentinels to 4xx.
+func pluginManagedConflict(c *gin.Context, err error) bool {
+	if stderrors.Is(err, service.ErrPluginManagedService) {
+		c.Error(errors.NewConflictError(err.Error()))
+		return true
+	}
+	return false
+}
+
 func (h *MCPServiceHandler) CreateMCPService(c *gin.Context) {
 	ctx := c.Request.Context()
 
@@ -89,6 +103,17 @@ func (h *MCPServiceHandler) CreateMCPService(c *gin.Context) {
 		return
 	}
 	service.TenantID = tenantID
+
+	// 跨任务转交 T07-OCR1-F9: plugin_installation_id is server-authoritative
+	// metadata of plugin-materialized rows. A client-supplied value would
+	// forge a plugin-managed row that is born Enabled, enters the agent
+	// catalog, is then rejected by all three generic write guards, and is
+	// unreachable by the uninstall cascade (no installation row references
+	// the service) — a permanent dead row only removable by DB surgery.
+	// Strip it here: the ONLY legitimate materialization path is the plugin
+	// install service, which calls the service layer directly and never goes
+	// through this handler.
+	service.PluginInstallationID = nil
 
 	// SSRF validation for MCP service URL
 	if service.URL != nil && *service.URL != "" {
@@ -382,6 +407,9 @@ func (h *MCPServiceHandler) UpdateMCPService(c *gin.Context) {
 	}
 
 	if err := h.mcpServiceService.UpdateMCPService(ctx, &service, updateFields); err != nil {
+		if pluginManagedConflict(c, err) {
+			return
+		}
 		logger.ErrorWithFields(ctx, err, map[string]interface{}{"service_id": secutils.SanitizeForLog(serviceID)})
 		c.Error(errors.NewInternalServerError("Failed to update MCP service: " + err.Error()))
 		return
@@ -426,6 +454,9 @@ func (h *MCPServiceHandler) DeleteMCPService(c *gin.Context) {
 	}
 
 	if err := h.mcpServiceService.DeleteMCPService(ctx, tenantID, serviceID); err != nil {
+		if pluginManagedConflict(c, err) {
+			return
+		}
 		logger.ErrorWithFields(ctx, err, map[string]interface{}{"service_id": secutils.SanitizeForLog(serviceID)})
 		c.Error(errors.NewInternalServerError("Failed to delete MCP service: " + err.Error()))
 		return
