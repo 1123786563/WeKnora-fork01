@@ -986,3 +986,101 @@ test('T19-OCR1-F4 client 变化重载安装列表时治理面同步失效（不�
     document.body.replaceChildren();
   }
 });
+
+// ---- T19-OCR2-F1/F2：GET 路径陈旧性校验与冻结对称闭合 ----
+
+test('T19-OCR2-F1 client 切换后在途 GET 的迟到回包被丢弃（epoch 校验，不把旧 client 行写回新视图）', async () => {
+  let releaseGet: ((value: unknown) => void) | undefined;
+  const client1 = {
+    request: async (input: { method: string; path: string }) => {
+      if (input.method === 'GET' && input.path === '/api/v1/plugins/installations') {
+        return { success: true, data: [{ ...jiraSummary }] };
+      }
+      if (input.method === 'GET' && input.path === '/api/v1/plugins/installations/inst-1/tools') {
+        // 挂起 GET：模拟在途请求，由测试手动放行（放行的是旧 client 的回包）。
+        await new Promise<unknown>((resolve) => { releaseGet = resolve; });
+        return { success: true, data: toolPolicyRows() };
+      }
+      throw new Error(`unexpected request ${input.method} ${input.path}`);
+    },
+  };
+  const client2 = {
+    request: async (input: { method: string; path: string }) => {
+      if (input.method === 'GET' && input.path === '/api/v1/plugins/installations') {
+        // 同一安装仍在列表：排除「行消失连带面板消失」的渲染巧合（假绿）。
+        return { success: true, data: [{ ...jiraSummary }] };
+      }
+      throw new Error(`unexpected request ${input.method} ${input.path}`);
+    },
+  };
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => { root.render(React.createElement(PluginsSettingsPanel, { client: client1 as never, role: 'admin' })); });
+    await flushEffects();
+    const list = document.querySelector('[data-testid="plugin-installations"]') as ParentNode;
+    await act(async () => { findButtonByText(list, '工具治理')!.click(); });
+    await flushEffects();
+    // GET(tools) 在途时切换 client：effect 失效治理面（epoch bump）。
+    await act(async () => { root.render(React.createElement(PluginsSettingsPanel, { client: client2 as never, role: 'admin' })); });
+    await flushEffects();
+    assert.ok(!document.querySelector('[data-testid="plugin-tool-policy"]'), 'the panel collapses on the client switch while the GET is still in flight');
+    // 旧 client 的迟到回包：不得把旧策略行写回新 client 视图。
+    releaseGet!(undefined);
+    await flushEffects();
+    assert.ok(!document.querySelector('[data-testid="plugin-tool-policy"]'),
+      'the STALE client\'s late GET response is dropped — old-client rows never re-enter the new client\'s view');
+    assert.match(document.querySelector('[data-testid="plugin-installations"]')?.textContent ?? '', /Jira 本周待办/, 'the installation row itself keeps rendering');
+  } finally {
+    await act(async () => { root.unmount(); });
+    document.body.replaceChildren();
+  }
+});
+
+test('T19-OCR2-F2 GET(B) 在途时 A 面板行开关冻结（对称闭合，迟到 PUT 零反馈窗口消除）', async () => {
+  let releaseGetB: ((value: unknown) => void) | undefined;
+  const { client, captured } = stubClient(async (input) => {
+    if (input.method === 'GET' && input.path === '/api/v1/plugins/installations') {
+      return { success: true, data: [{ ...jiraSummary }, { ...otherSummary }] };
+    }
+    if (input.method === 'GET' && input.path === '/api/v1/plugins/installations/inst-1/tools') {
+      return { success: true, data: toolPolicyRows() };
+    }
+    if (input.method === 'GET' && input.path === '/api/v1/plugins/installations/inst-2/tools') {
+      await new Promise<unknown>((resolve) => { releaseGetB = resolve; });
+      return { success: true, data: [{ ...toolPolicyRows()[0]!, name: 'other_tool' }] };
+    }
+    throw new Error(`unexpected request ${input.method} ${input.path}`);
+  });
+  const root = await mount(React.createElement(PluginsSettingsPanel, { client, role: 'admin' }));
+  try {
+    await flushEffects();
+    const list = document.querySelector('[data-testid="plugin-installations"]') as ParentNode;
+    await act(async () => { findButtonByText(list, '工具治理')!.click(); });
+    await flushEffects();
+    // A 面板展开。发起 B 的工具治理（GET(B) 挂起在途）。
+    const otherGovernance = Array.from(list.querySelectorAll('button'))
+      .find((button) => (button.textContent ?? '').trim() === '工具治理'
+        && button.closest('li')?.textContent?.includes('其他插件')) as HTMLButtonElement | undefined;
+    assert.ok(otherGovernance, 'the other installation carries its governance button');
+    await act(async () => { otherGovernance!.click(); });
+    await flushEffects();
+    // A 面板仍渲染（互斥在 GET(B) 回包后才翻转），但行内开关必须已冻结：
+    // 否则 GET(B) 翻面板后 PUT(A) 的迟到回包被守卫丢弃——失败被吞/成功被丢。
+    const switchA = switchByAriaLabel(document.querySelector('[data-testid="plugin-tool-policy"]') as ParentNode, 'create_todo 成员审批');
+    assert.ok(switchA, 'panel A still renders while GET(B) is in flight');
+    assert.equal(switchA!.disabled, true, 'panel A\'s row switches freeze while another installation\'s governance GET is in flight');
+    // 冻结的开关不发起 PUT（jsdom 对 disabled 按钮不派发 click 事件——双保险断言请求面）。
+    await act(async () => { switchA!.click(); });
+    await flushEffects();
+    assert.equal(captured.filter((entry) => entry.method === 'PUT').length, 0, 'no policy PUT leaves while a governance GET is in flight');
+    // 放行 GET(B)：面板翻到 B，整链恢复正常。
+    releaseGetB!(undefined);
+    await flushEffects();
+    const panelB = document.querySelector('[data-testid="plugin-tool-policy"]');
+    assert.match(panelB?.textContent ?? '', /other_tool/, 'the panel flips to installation B after its GET lands');
+  } finally {
+    await unmount(root);
+  }
+});

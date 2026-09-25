@@ -1,5 +1,5 @@
 import * as React from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { WeKnoraClient } from "@weknora/api-client";
 import { Button, Input, Status } from "@weknora/ui";
 import { roleAtLeast } from "@weknora/views/settings/registry";
@@ -155,6 +155,10 @@ export function PluginsSettingsPanel({ client, role }: Props) {
   } | null>(null);
   const [toolPolicyBusyId, setToolPolicyBusyId] = useState<string | null>(null);
   const [policyToggleBusy, setPolicyToggleBusy] = useState<string | null>(null);
+  // 治理面失效代数（T19-OCR2-F1）：effect 失效（client 变化）时自增；在途
+  // GET 的迟到回包携带发起时的代数，落地前比对——陈旧代数直接丢弃，旧
+  // client 的策略行不再写回新视图（effect 的 cancelled 布尔同款陈旧性范式）。
+  const toolPolicyEpoch = useRef(0);
 
   // useMemo 稳定 pluginsApi（T08-OCR1-F4）：client.request 是纯传输包装，
   // 稳定引用让 refreshInstallations 的 useCallback 依赖完整（exhaustive-deps）。
@@ -191,6 +195,8 @@ export function PluginsSettingsPanel({ client, role }: Props) {
     // 无操作；toggleState 等函数直调 refreshInstallations 不经本 effect，
     // 不会误伤正常重载（安装停用/启用不改变策略行）。
     setToolPolicy(null);
+    // 代数自增（T19-OCR2-F1）：已在途的 GET 的迟到回包凭旧代数被丢弃。
+    toolPolicyEpoch.current += 1;
     void refreshInstallations(() => cancelled);
     return () => {
       cancelled = true;
@@ -311,10 +317,15 @@ export function PluginsSettingsPanel({ client, role }: Props) {
       return;
     }
     setToolPolicyBusyId(item.installationId);
+    const epoch = toolPolicyEpoch.current;
     try {
       const rows = await pluginsApi.listInstallationTools(item.installationId);
+      // 陈旧性校验（T19-OCR2-F1）：client 已切换（effect 失效过治理面）的
+      // 迟到回包直接丢弃——旧 client 的策略行不写回新视图。
+      if (epoch !== toolPolicyEpoch.current) return;
       setToolPolicy({ installationId: item.installationId, pluginName: item.name, rows, error: null });
     } catch (cause) {
+      if (epoch !== toolPolicyEpoch.current) return;
       const message = apiErrorMessage(cause);
       if (message === null) {
         console.warn("plugin tool policy load failed:", cause);
@@ -328,13 +339,16 @@ export function PluginsSettingsPanel({ client, role }: Props) {
   }
 
   // T19：行内开关——每次 PUT 只带被切换的字段（省略键 = 服务端保持原值），
-  // 成功后以返回的刷新列表整体回填。
+  // 成功后以返回的刷新列表整体回填。守卫同时冻结 toolPolicyBusyId
+  // （T19-OCR2-F2）：另一安装的治理 GET 在途时面板即将翻转，此时发起的
+  // PUT 迟到回包会被 installationId 守卫丢弃——失败被吞、成功被丢，用户
+  // 对写操作零反馈；对称冻结直接闭合该窗口。
   async function toggleToolPolicyFlag(
     installationId: string,
     row: PluginToolPolicyRow,
     field: "enabled" | "requireApproval",
   ) {
-    if (!canEdit || policyToggleBusy !== null) return;
+    if (!canEdit || policyToggleBusy !== null || toolPolicyBusyId !== null) return;
     setPolicyToggleBusy(`${row.name}:${field}`);
     try {
       const rows = await pluginsApi.setInstallationToolPolicy(
@@ -589,7 +603,7 @@ export function PluginsSettingsPanel({ client, role }: Props) {
                                     role="switch"
                                     aria-checked={row.enabled}
                                     aria-label={`${row.name} 启用`}
-                                    disabled={policyToggleBusy !== null}
+                                    disabled={policyToggleBusy !== null || toolPolicyBusyId !== null}
                                     className={row.enabled ? "text-[#137333]" : "text-[#98a2b8]"}
                                     onClick={() => void toggleToolPolicyFlag(item.installationId, row, "enabled")}
                                   >
@@ -602,7 +616,7 @@ export function PluginsSettingsPanel({ client, role }: Props) {
                                     role="switch"
                                     aria-checked={row.requireApproval}
                                     aria-label={`${row.name} 成员审批`}
-                                    disabled={policyToggleBusy !== null}
+                                    disabled={policyToggleBusy !== null || toolPolicyBusyId !== null}
                                     className={row.requireApproval ? "text-[#137333]" : "text-[#98a2b8]"}
                                     onClick={() => void toggleToolPolicyFlag(item.installationId, row, "requireApproval")}
                                   >
