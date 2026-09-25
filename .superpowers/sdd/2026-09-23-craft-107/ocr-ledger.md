@@ -6,3 +6,4 @@ Open-code-review records for the delivered Craft #107 scope. Per `docs/plans/202
 | --- | --- | --- | --- | --- |
 | 2026-09-25 | T01: cf0920e1b^..ceb079e89c | clean（增量收敛后干净） | 0 open | 报告: docs/plans/craft-107-ocr-t01.md |
 | 2026-09-25 | T02: 2e68bb0ed^..f257d67f8 | clean（增量收敛后干净） | 0 open | 报告: docs/plans/craft-107-ocr-t02.md |
+| 2026-09-25 | T03: bc013e0f1^..25caebd13 | clean（增量收敛后干净） | 0 open | 报告: docs/plans/craft-107-ocr-t03.md |
