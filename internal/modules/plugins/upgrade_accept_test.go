@@ -24,7 +24,9 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/Tencent/WeKnora/internal/application/service"
 	internalmcp "github.com/Tencent/WeKnora/internal/modules/airesource/mcp"
@@ -114,15 +116,20 @@ func (r *upgradeAcceptApprovalRepo) UpsertPolicy(
 
 // upgradeAcceptMCPRepo 包装 fakeInstallMCPServiceRepo：Update 全字段持久化
 // （含 URL——T06 fake 只拷 enabled/name/description，升级切片的端点切换
-// 断言需要 URL 落行），failUpdateAt 注入第 N 次 Update 失败（0=不注入）。
+// 断言需要 URL 落行），failUpdateAt 注入第 N 次 Update 失败（0=不注入），
+// onUpdate 在每次 Update 入口触发一次（并发串行化测试的 7b 中途挂钩）。
 type upgradeAcceptMCPRepo struct {
 	*fakeInstallMCPServiceRepo
 	updates      int
 	failUpdateAt int
+	onUpdate     func()
 }
 
 func (r *upgradeAcceptMCPRepo) Update(_ context.Context, svc *types.MCPService) error {
 	r.updates++
+	if r.onUpdate != nil {
+		r.onUpdate()
+	}
 	if r.failUpdateAt > 0 && r.updates == r.failUpdateAt {
 		return fmt.Errorf("injected materialization fault")
 	}
@@ -632,4 +639,50 @@ func TestAcceptUpgradeSyncsOAuthConfigToCandidate(t *testing.T) {
 		require.True(t, svcRow.AuthConfig.IsOAuth(), "compensation must restore the old OAuth baseline")
 		require.Equal(t, oldAuth.Scopes, svcRow.AuthConfig.Scopes, "the widened scope union must roll back")
 	})
+}
+
+// TestAcceptUpgradeConcurrentSameInstallationSerializes（OCR T16-OCR2-F1）：
+// 同一安装的并发接受必须串行化。无串行化时，B 的 ListByService 快照可拍摄于
+// A 的 SetPolicy 落行之前 → A 已成功落库的策略行进入 B 的补偿删除集，B 失败
+// 触发补偿会把 A 的行整行删除；缺行默认 enabled=true（执行时
+// gate.IsEnabled 语义，mcp_tool.go:127）→ 已接受快照中的写工具以暴露状态
+// 落地（fail-open）。测试在 A 的 7b 中途（onUpdate 钩子）并发发起 B 并观察：
+// A 在途期间 B 必须零进展；A 返回后 B 才能完成。
+func TestAcceptUpgradeConcurrentSameInstallationSerializes(t *testing.T) {
+	const tenantID = uint64(9)
+	s := newUpgradeAcceptStack(t, tenantID)
+	resp := s.previewV2(t, tenantID)
+
+	// A、B 均为同指纹健康接受（无故障注入——串行化断言与成败无关）：
+	// 在 A 的 7b 中途并发发起 B，A 在途期间 B 必须零进展。
+	bDone := make(chan error, 1)
+	bProgressedDuringA := make(chan bool, 1)
+	var hookArm sync.Once
+	s.mcpRepo.onUpdate = func() {
+		hookArm.Do(func() {
+			s.mcpRepo.onUpdate = nil // 只在 A 的 7b 触发一次
+			go func() {
+				_, err := s.svc.AcceptUpgrade(context.Background(), tenantID, "admin-1", s.inst.ID, resp.CandidateFingerprint)
+				bDone <- err
+			}()
+			select {
+			case <-bDone:
+				bProgressedDuringA <- true // B 在 A 未返回前完成 → 未串行化
+			case <-time.After(1500 * time.Millisecond):
+				bProgressedDuringA <- false // B 全程被阻塞 → 串行化生效
+			}
+		})
+	}
+
+	aErr := make(chan error, 1)
+	go func() {
+		_, err := s.svc.AcceptUpgrade(context.Background(), tenantID, "admin-1", s.inst.ID, resp.CandidateFingerprint)
+		aErr <- err
+	}()
+	require.NoError(t, <-aErr, "the in-flight accept A completes normally")
+
+	require.False(t, <-bProgressedDuringA,
+		"a concurrent accept of the SAME installation must make no progress while another accept is mid-flight (T16-OCR2-F1)")
+	require.NoError(t, <-bDone, "B completes once A has returned and released the serialization")
+	require.Equal(t, "2.0.0", s.innerRepo.installations[0].AcceptedVersion, "B's accept lands the upgrade")
 }

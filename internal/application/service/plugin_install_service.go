@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -123,6 +124,35 @@ var (
 	// than reporting a misleading success or silently skipping persistence.
 	ErrUpgradeWriterNotWired = errors.New("plugin upgrade persistence is not wired")
 )
+
+// upgradeAcceptMutexes serializes AcceptUpgrade per installation
+// (T16-OCR2-F1): the WHOLE accept — from the installation read through the
+// compensated writes — runs under one in-process mutex keyed by installation
+// ID (the processCraftWorkspaceLock precedent, craft_snapshot.go). Without
+// serialization, two concurrent accepts of the same installation interleave
+// their ListByService snapshots and SetPolicy writes: a failing accept's
+// compensation delete could remove a policy row ANOTHER accept had already
+// landed, and with the missing-row default enabled=true (the runtime gate
+// reads IsEnabled at call time, mcp_tool.go) plus require_approval default
+// false until T18 lands, the deleted row re-exposes a WRITE tool of the
+// accepted snapshot — a fail-open outcome. A keyed in-process mutex rather
+// than a DB row lock: the accept spans a remote manifest fetch plus
+// compensated writes across three stores, and holding a transaction/row lock
+// across network I/O is the wrong shape. Scope: one process — the deployment
+// model is one API replica per workspace; multi-replica deployments would
+// need DB-level advisory locks (out of scope, noted). Entries are never
+// evicted: one small mutex per installation that ever accepted, negligible
+// for an admin-gated operation.
+var upgradeAcceptMutexes sync.Map // installationID → *sync.Mutex
+
+// lockUpgradeAccept acquires the per-installation accept mutex and returns
+// the release func (defer at the accept's entry).
+func lockUpgradeAccept(installationID string) func() {
+	v, _ := upgradeAcceptMutexes.LoadOrStore(installationID, &sync.Mutex{})
+	mu := v.(*sync.Mutex)
+	mu.Lock()
+	return mu.Unlock
+}
 
 // installationUpgradeWriter is the narrow persistence capability AcceptUpgrade
 // needs (T16): persisting an accepted upgrade (or its compensation write-back)
@@ -917,6 +947,12 @@ func (s *pluginService) AcceptUpgrade(
 	tenantID uint64,
 	actorID, installationID, candidateFingerprint string,
 ) (*types.PluginInstallationResult, error) {
+	// Serialize accepts of the SAME installation end to end (T16-OCR2-F1) —
+	// see upgradeAcceptMutexes. Foreign tenants' IDs never share a key with
+	// this tenant's (UUIDs are globally unique), so the lock never
+	// cross-tenant blocks.
+	defer lockUpgradeAccept(installationID)()
+
 	// Step 1: installation within this tenant (absent/foreign → one verdict).
 	inst, err := s.pluginRepo.GetInstallation(ctx, tenantID, installationID)
 	if err != nil {
