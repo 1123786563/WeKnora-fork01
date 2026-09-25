@@ -346,3 +346,63 @@ func parseTenantIDParam(raw string) (uint64, error) {
 	}
 	return value, nil
 }
+
+func (h *PublicMarketplaceHandler) ListPublicCatalog(c *gin.Context) {
+	entries, err := h.public.ListPublicCatalog(c.Request.Context())
+	if err != nil {
+		_ = c.Error(publicMarketplaceClientError(err))
+		return
+	}
+	data := make([]publicCatalogListingResponse, 0, len(entries))
+	for _, entry := range entries {
+		data = append(data, publicCatalogListingDTO(entry))
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": data})
+}
+
+func (h *PublicMarketplaceHandler) GetPublicListing(c *gin.Context) {
+	entry, err := h.public.GetPublicListing(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		_ = c.Error(publicMarketplaceClientError(err))
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": publicCatalogListingDTO(entry.PublicCatalogEntryView)})
+}
+
+func (h *PublicMarketplaceHandler) AdoptPublicListing(c *gin.Context) {
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, agentMarketplaceMaxRequestBytes)
+	var body *adoptPublicListingBody
+	if err := decodeAgentMarketplaceBody(c.Request.Body, &body); err != nil {
+		invalidMarketplaceBody(c, err)
+		return
+	}
+	releaseID := ""
+	if body != nil {
+		releaseID = body.ReleaseID
+	}
+	actorID, _ := types.UserIDFromContext(c.Request.Context())
+	result, created, err := h.public.AdoptPublicListing(c.Request.Context(), sandboxConfigTenantID(c), actorID, c.Param("id"), releaseID)
+	if err != nil {
+		_ = c.Error(publicMarketplaceClientError(err))
+		return
+	}
+	response := adoptPublicListingResponse{
+		Introduction: publicIntroductionResponse{
+			ID: result.Introduction.ID, PublicListingID: result.Introduction.PublicListingID,
+			PublicReleaseID: result.Introduction.PublicReleaseID, DisplayName: result.Introduction.DisplayName,
+			Summary: result.Introduction.Summary, SemanticVersion: result.Introduction.SemanticVersion,
+			BundleDigest: result.Introduction.BundleDigest, IntroducedBy: result.Introduction.IntroducedBy,
+			IntroducedAt: result.Introduction.IntroducedAt,
+		},
+		Adoption: publicAdoptionSummaryResponse{
+			ID: result.Adoption.ID, ListingID: result.Adoption.ListingID,
+			AcceptedReleaseID: result.Adoption.AcceptedReleaseID, State: result.Adoption.State,
+			CreatedBy: result.Adoption.CreatedBy, CreatedAt: result.Adoption.CreatedAt, UpdatedAt: result.Adoption.UpdatedAt,
+		},
+	}
+	status := http.StatusOK
+	if created {
+		status = http.StatusCreated
+	}
+	c.JSON(status, gin.H{"success": true, "data": response})
+}

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/application/service"
@@ -237,4 +238,134 @@ func TestPublicMarketplaceReviewAuthorization(t *testing.T) {
 	// 重复审核 → 409
 	duplicate := publicCall(r, 1, true, http.MethodPost, "/api/v1/marketplace/public/release-submissions/"+submissionBody.Data.ID+"/review", "admin", "sysadmin", map[string]any{"expected_digest": submissionBody.Data.BundleDigest, "decision": "rejected", "reason": "late"})
 	require.Equal(t, http.StatusConflict, duplicate.Code, duplicate.Body.String())
+}
+
+// publicCatalogRow 是目录行 wire 的严格镜像：DisallowUnknownFields 解码
+// 使任何新增 adopter 派生字段（adoption 计数、adopter id、metrics）直接
+// 破坏测试（AC2 结构性隐私钉）。
+type publicCatalogRow struct {
+	ID                string `json:"id"`
+	DisplayName       string `json:"display_name"`
+	Summary           string `json:"summary"`
+	State             string `json:"state"`
+	PublisherTenantID uint64 `json:"publisher_tenant_id"`
+	PublisherVerified bool   `json:"publisher_verified"`
+	CurrentRelease    *struct {
+		ID              string          `json:"id"`
+		SemanticVersion string          `json:"semantic_version"`
+		BundleDigest    string          `json:"bundle_digest"`
+		Manifest        json.RawMessage `json:"manifest"`
+		DependencyLock  json.RawMessage `json:"dependency_lock"`
+		CreatedAt       time.Time       `json:"created_at"`
+	} `json:"current_release"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+func decodeStrictCatalogRows(t *testing.T, body []byte) []publicCatalogRow {
+	t.Helper()
+	var envelope struct {
+		Success bool             `json:"success"`
+		Data    []map[string]any `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(body, &envelope))
+	require.True(t, envelope.Success)
+	raw, err := json.Marshal(envelope.Data)
+	require.NoError(t, err)
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	var rows []publicCatalogRow
+	require.NoError(t, dec.Decode(&rows))
+	return rows
+}
+
+// approvePublicRelease walks verify -> submit -> review-approve and returns
+// the public listing id + release id.
+func approvePublicRelease(t *testing.T, r *gin.Engine, listingID string) (publicListingID, publicReleaseID string) {
+	t.Helper()
+	_ = publicCall(r, 1, true, http.MethodPost, "/api/v1/marketplace/public/verified-publishers", "admin", "sysadmin", map[string]any{"tenant_id": 1})
+	submitted := publicCall(r, 1, false, http.MethodPost, "/api/v1/marketplace/public/release-submissions", "admin", "tenant-admin", map[string]any{"source_listing_id": listingID})
+	require.Equal(t, http.StatusCreated, submitted.Code, submitted.Body.String())
+	var submissionBody struct {
+		Data struct {
+			ID              string `json:"id"`
+			PublicListingID string `json:"public_listing_id"`
+			BundleDigest    string `json:"bundle_digest"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(submitted.Body.Bytes(), &submissionBody))
+	approved := publicCall(r, 1, true, http.MethodPost, "/api/v1/marketplace/public/release-submissions/"+submissionBody.Data.ID+"/review", "admin", "sysadmin", map[string]any{"expected_digest": submissionBody.Data.BundleDigest, "decision": "approved"})
+	require.Equal(t, http.StatusOK, approved.Code, approved.Body.String())
+	var reviewBody struct {
+		Data struct {
+			Release struct {
+				ID string `json:"id"`
+			} `json:"release"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(approved.Body.Bytes(), &reviewBody))
+	require.NotEmpty(t, reviewBody.Data.Release.ID)
+	return submissionBody.Data.PublicListingID, reviewBody.Data.Release.ID
+}
+
+func TestPublicMarketplaceCatalogAndAdoptAuthorization(t *testing.T) {
+	r, _, _ := newPublicMarketplaceTestApp(t)
+	listingID := publishTenantRelease(t, r)
+	publicListingID, publicReleaseID := approvePublicRelease(t, r, listingID)
+
+	// 目录：Viewer+ 可读；严格解码钉死字段集
+	catalog := publicCall(r, 2, false, http.MethodGet, "/api/v1/marketplace/public/catalog", "viewer", "viewer-2", nil)
+	require.Equal(t, http.StatusOK, catalog.Code, catalog.Body.String())
+	rows := decodeStrictCatalogRows(t, catalog.Body.Bytes())
+	require.Len(t, rows, 1)
+	require.Equal(t, publicListingID, rows[0].ID)
+	require.True(t, rows[0].PublisherVerified)
+	require.NotNil(t, rows[0].CurrentRelease)
+	require.Equal(t, publicReleaseID, rows[0].CurrentRelease.ID)
+	require.NotEmpty(t, rows[0].CurrentRelease.Manifest)
+
+	// Listing 详情：Viewer+ 可读
+	detail := publicCall(r, 2, false, http.MethodGet, "/api/v1/marketplace/public/listings/"+publicListingID, "viewer", "viewer-2", nil)
+	require.Equal(t, http.StatusOK, detail.Code, detail.Body.String())
+
+	// Adopt：Viewer 403，Admin 201；幂等重放 200
+	viewerAdopt := publicCall(r, 2, false, http.MethodPost, "/api/v1/marketplace/public/listings/"+publicListingID+"/adopt", "viewer", "viewer-2", map[string]any{})
+	require.Equal(t, http.StatusForbidden, viewerAdopt.Code, viewerAdopt.Body.String())
+	adopted := publicCall(r, 2, false, http.MethodPost, "/api/v1/marketplace/public/listings/"+publicListingID+"/adopt", "admin", "adopter-admin", map[string]any{})
+	require.Equal(t, http.StatusCreated, adopted.Code, adopted.Body.String())
+	var adoptBody struct {
+		Data struct {
+			Introduction struct {
+				ID              string `json:"id"`
+				PublicListingID string `json:"public_listing_id"`
+				PublicReleaseID string `json:"public_release_id"`
+				BundleDigest    string `json:"bundle_digest"`
+			} `json:"introduction"`
+			Adoption struct {
+				ID                string `json:"id"`
+				ListingID         string `json:"listing_id"`
+				AcceptedReleaseID string `json:"accepted_release_id"`
+				State             string `json:"state"`
+			} `json:"adoption"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(adopted.Body.Bytes(), &adoptBody))
+	require.Equal(t, publicListingID, adoptBody.Data.Introduction.PublicListingID)
+	require.Equal(t, publicReleaseID, adoptBody.Data.Introduction.PublicReleaseID)
+	require.Equal(t, adoptBody.Data.Introduction.ID, adoptBody.Data.Adoption.AcceptedReleaseID)
+	require.Equal(t, "active", adoptBody.Data.Adoption.State)
+
+	readopt := publicCall(r, 2, false, http.MethodPost, "/api/v1/marketplace/public/listings/"+publicListingID+"/adopt", "admin", "adopter-admin", map[string]any{})
+	require.Equal(t, http.StatusOK, readopt.Code, readopt.Body.String())
+
+	// 采用方租户经 #59 端点看到引入关系
+	adoptions := publicCall(r, 2, false, http.MethodGet, "/api/v1/marketplace/tenant/adoptions", "admin", "adopter-admin", nil)
+	require.Equal(t, http.StatusOK, adoptions.Code, adoptions.Body.String())
+	require.Contains(t, adoptions.Body.String(), adoptBody.Data.Adoption.ID)
+
+	// 未知 listing / release → 404
+	missing := publicCall(r, 2, false, http.MethodPost, "/api/v1/marketplace/public/listings/no-such-listing/adopt", "admin", "adopter-admin", map[string]any{})
+	require.Equal(t, http.StatusNotFound, missing.Code, missing.Body.String())
+	missingRelease := publicCall(r, 2, false, http.MethodPost, "/api/v1/marketplace/public/listings/"+publicListingID+"/adopt", "admin", "adopter-admin", map[string]any{"release_id": "no-such-release"})
+	require.Equal(t, http.StatusNotFound, missingRelease.Code, missingRelease.Body.String())
 }
