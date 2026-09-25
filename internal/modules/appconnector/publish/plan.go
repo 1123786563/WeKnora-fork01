@@ -299,6 +299,11 @@ func (s *NotionPublishService) project(ctx context.Context, tenantID uint64, act
 	out := PublishExecuteOutcome{ActionState: row.State, Conflict: strings.HasPrefix(row.ProviderResult, PublishVersionConflictResult)}
 	switch row.State {
 	case appconn.ActionSucceeded:
+		// Defensive: a succeeded payload that no longer parses as a page
+		// receipt skips settle rather than guessing a state. Unreachable
+		// today — every succeeded ProviderResult is the adapter's read-back
+		// receipt — and safe on re-entry: any later Execute/Reconcile re-runs
+		// project, which retries the settle from the durable action row.
 		rcpt, rerr := appconn.ParseNotionPageReceipt([]byte(row.ProviderResult))
 		if rerr == nil {
 			if serr := s.pubs.SettlePublication(ctx, tenantID, actionID, repoappconn.PublicationPublished, rcpt.ExternalID, rcpt.ExternalVersion, row.ProviderResult); serr != nil && !errors.Is(serr, repoappconn.ErrPublicationConflict) {

@@ -150,6 +150,10 @@ type fakeNotionDocs struct {
 	// knobs: apply the effect then lose the reply (unknown outcome).
 	dropNextTitlePatch bool
 	dropNextAppend     bool
+	// dropVersionGetFrom: once pageGets reaches this count, page GET replies
+	// are lost (0 = off). The pre-read is GET #1; the final read-back is
+	// GET #2 — set 2 to lose only the read-back after the writes landed.
+	dropVersionGetFrom int
 }
 
 type fakeNotionPage struct {
@@ -241,8 +245,15 @@ func (f *fakeNotionDocs) server(t *testing.T) *httptest.Server {
 		case http.MethodGet:
 			f.mu.Lock()
 			f.pageGets++
+			drop := f.dropVersionGetFrom > 0 && f.pageGets >= f.dropVersionGetFrom
 			edited := p.lastEdited
 			f.mu.Unlock()
+			if drop {
+				// A read has no side effect to apply, but losing its reply
+				// still leaves the client unable to observe the outcome —
+				// exactly the final read-back case under test.
+				panic(http.ErrAbortHandler)
+			}
 			writeJSON(w, 200, fmt.Sprintf(`{"object":"page","id":%q,"last_edited_time":%q,"parent":{"type":"page_id","page_id":%q}}`, p.id, edited, p.parent))
 		case http.MethodPatch:
 			body, _ := io.ReadAll(r.Body)
@@ -456,6 +467,26 @@ func TestNotionUpdateUnknownOnLostWriteReply(t *testing.T) {
 	out, err := ad.Execute(context.Background(), updateAction(updateArgs("page-9", "2026-09-24T08:00:00.000Z", "new title", nil)))
 	if out.State != ActionUnknown || !errors.Is(err, ErrNotionOutcomeUnknown) {
 		t.Fatalf("lost write reply must park unknown, got state=%s err=%v", out.State, err)
+	}
+}
+
+// TestNotionUpdateUnknownOnLostFinalReadBack pins the reliable read-back
+// contract after the writes landed: a lost reply on the FINAL page version
+// read parks unknown (the effect exists — never failed, AC2) and keeps the
+// external id so Query can reconcile.
+func TestNotionUpdateUnknownOnLostFinalReadBack(t *testing.T) {
+	fake := newFakeNotionDocs("secret_test_token")
+	fake.addPage("page-9", "parent-1", "old title")
+	fake.dropVersionGetFrom = 2 // pre-read (GET #1) passes; the final read-back (GET #2) is lost
+	srv := fake.server(t)
+	ad := newUpdateAdapter(srv, map[string]NotionPageProgress{})
+
+	out, err := ad.Execute(context.Background(), updateAction(updateArgs("page-9", "2026-09-24T08:00:00.000Z", "new title", nil)))
+	if out.State != ActionUnknown || !errors.Is(err, ErrNotionOutcomeUnknown) {
+		t.Fatalf("lost final read-back must park unknown (never failed), got state=%s err=%v", out.State, err)
+	}
+	if out.ExternalID != "page-9" {
+		t.Fatalf("external id must survive a lost read-back for reconcile, got %q", out.ExternalID)
 	}
 }
 

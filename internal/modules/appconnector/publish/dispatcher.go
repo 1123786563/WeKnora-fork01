@@ -147,6 +147,11 @@ func (b *NotionBridge) adapterFor(ctx context.Context, snap appconnectorsvc.Acti
 
 // publicationProgress adapts the publication row's progress_json onto the
 // adapters' LoadProgress/SaveProgress hooks.
+// publicationProgress persists adapter checkpoints on the publication row.
+// load/save deliberately use context.Background(), NOT the dispatch ctx: a
+// checkpoint write must not be cut short by the dispatch deadline (30s), so
+// an interrupted publish resumes from durable progress instead of redoing
+// committed blocks (NO-03 recovery semantics).
 type publicationProgress struct {
 	pubs     PublicationSource
 	tenantID uint64
@@ -260,6 +265,14 @@ type dbNotionScopeSource struct{ db *gorm.DB }
 // NewDBNotionScopeSource builds the production scope source.
 func NewDBNotionScopeSource(db *gorm.DB) NotionScopeSource { return &dbNotionScopeSource{db: db} }
 
+// NotionScope's first lookup keys on connection id ALONE — no tenant
+// predicate. Tenant isolation here is a caller contract, not defense this
+// query provides: every reachable path tenant-checks BEFORE calling
+// (FormPlan's handler 404s cross-tenant connection ids at
+// app_connector_notion_publish.go; dispatch acts only on the snapshot of an
+// action row whose tenant was bound and validated at Prepare), and the
+// resolved scope never crosses back out to an external caller. Reusers
+// (#49/#50) MUST keep this "tenant check first, then NotionScope" order.
 func (s *dbNotionScopeSource) NotionScope(ctx context.Context, connectionID string) (NotionConnectionScope, error) {
 	var conn repoappconn.ConnectionRow
 	if err := s.db.WithContext(ctx).Where("id = ?", connectionID).First(&conn).Error; err != nil {

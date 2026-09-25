@@ -469,9 +469,8 @@ func (m *NotionUpdateAdapter) Execute(ctx context.Context, a Action) (ActionResu
 	// the effect exists; the honest state is unknown for Query to resolve.
 	final, ferr := m.readPageVersion(ctx, pageID)
 	if ferr != nil {
-		if errors.Is(ferr, ErrNotionOutcomeUnknown) {
-			return ActionResult{State: ActionUnknown, ExternalID: pageID}, ferr
-		}
+		// Any read-back failure parks unknown: the writes already landed, so
+		// neither failed (AC2) nor a fabricated success is honest.
 		return ActionResult{State: ActionUnknown, ExternalID: pageID}, ferr
 	}
 	raw, _ := json.Marshal(map[string]string{"object": "page", "id": final.PageID, "last_edited_time": final.LastEditedTime})
