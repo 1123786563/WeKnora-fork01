@@ -40,6 +40,9 @@ type CraftWorkspaceConfig struct {
 	// binary/image digest). A workspace whose digest no longer matches was
 	// built on a replaced runtime and must be re-bound before reuse.
 	RuntimeDigest string
+	// WriterLeases is the T16 (#134) durable writer-lease store. Nil leaves
+	// the writer admission surface fail-closed.
+	WriterLeases CraftWriterLeaseStore
 }
 
 // CraftWorkspaceService binds one session to one sandboxed OpenCode session
@@ -52,6 +55,7 @@ type CraftWorkspaceService struct {
 	activeRuns    CraftRunActivity
 	dial          CraftOpenCodeDial
 	runtimeDigest string
+	writerLeases  CraftWriterLeaseStore
 }
 
 // NewCraftWorkspaceService validates the assembly and returns the resolver.
@@ -64,7 +68,7 @@ func NewCraftWorkspaceService(cfg CraftWorkspaceConfig) (*CraftWorkspaceService,
 	}
 	return &CraftWorkspaceService{
 		store: cfg.Store, bindings: cfg.Bindings, activeRuns: cfg.ActiveRuns,
-		dial: cfg.Dial, runtimeDigest: cfg.RuntimeDigest,
+		dial: cfg.Dial, runtimeDigest: cfg.RuntimeDigest, writerLeases: cfg.WriterLeases,
 	}, nil
 }
 
@@ -240,4 +244,45 @@ func (s *CraftWorkspaceService) reconcile(
 		return craft.Workspace{}, false, nil
 	}
 	return ws, true, nil
+}
+
+// CraftWriterLeaseStore is the T16 (#134) durable writer-lease seam. The
+// concrete *repository.CraftStore satisfies it; every method is
+// scope-guarded by the owning Task session.
+type CraftWriterLeaseStore interface {
+	// AcquireWriterLease admits at most one writing Run per Workspace; a
+	// concurrent loser receives a stable conflict naming the holder.
+	AcquireWriterLease(context.Context, craft.Scope, string, string) (craft.WriterAcquisition, error)
+	// ReleaseWriterLease releases the lease only after a verified outcome;
+	// an unknown outcome retains the fence.
+	ReleaseWriterLease(context.Context, craft.Scope, string, string, string) error
+	// GetWriterLease projects the durable lease row without acquiring it.
+	GetWriterLease(context.Context, craft.Scope, string) (*craft.WriterLease, error)
+}
+
+// AcquireWriter admits one writing Run on the scope's Workspace. The lease
+// binds the Task (session), Workspace, Run and the draft-head revision.
+func (s *CraftWorkspaceService) AcquireWriter(ctx context.Context, scope craft.Scope, runID string) (craft.WriterAcquisition, error) {
+	if scope.TenantID == 0 || scope.UserID == "" || scope.SessionID == "" || runID == "" {
+		return craft.WriterAcquisition{}, fmt.Errorf("%w: incomplete writer admission", craft.ErrInvalidInput)
+	}
+	return craft.WriterAcquisition{}, fmt.Errorf("%w: writer admission is not implemented", craft.ErrUnsupported)
+}
+
+// ReleaseWriter releases the scope's Workspace writer lease under the named
+// basis. An unknown basis retains the fence.
+func (s *CraftWorkspaceService) ReleaseWriter(ctx context.Context, scope craft.Scope, runID, basis string) error {
+	if scope.TenantID == 0 || scope.UserID == "" || scope.SessionID == "" || runID == "" {
+		return fmt.Errorf("%w: incomplete writer release", craft.ErrInvalidInput)
+	}
+	return fmt.Errorf("%w: writer release is not implemented", craft.ErrUnsupported)
+}
+
+// WriterLease projects the scope's durable writer lease without acquiring
+// it — the read-only seam for status surfaces.
+func (s *CraftWorkspaceService) WriterLease(ctx context.Context, scope craft.Scope) (*craft.WriterLease, error) {
+	if scope.TenantID == 0 || scope.UserID == "" || scope.SessionID == "" {
+		return nil, fmt.Errorf("%w: incomplete lease projection", craft.ErrInvalidInput)
+	}
+	return nil, fmt.Errorf("%w: lease projection is not implemented", craft.ErrUnsupported)
 }

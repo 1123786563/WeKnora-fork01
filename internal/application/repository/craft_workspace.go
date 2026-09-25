@@ -516,3 +516,46 @@ func (s *CraftStore) GetResult(ctx context.Context, scope craft.Scope, taskID st
 	}
 	return result, nil
 }
+
+// ---------------------------------------------------------------------------
+// T16 (#134): the durable Workspace writer lease.
+// ---------------------------------------------------------------------------
+
+// craftWriterLeaseRow is the one-row-per-Workspace writer lease. The
+// workspace_id primary key IS the compare-and-swap identity: two concurrent
+// writers race a single insert/update on it and the database decides.
+type craftWriterLeaseRow struct {
+	WorkspaceID string    `gorm:"column:workspace_id;primaryKey"`
+	TenantID    uint64    `gorm:"column:tenant_id"`
+	SessionID   string    `gorm:"column:session_id"`
+	RunID       string    `gorm:"column:run_id"`
+	Revision    int64     `gorm:"column:revision"`
+	CreatedAt   time.Time `gorm:"column:created_at"`
+	UpdatedAt   time.Time `gorm:"column:updated_at"`
+}
+
+func (craftWriterLeaseRow) TableName() string { return "craft_workspace_writer_leases" }
+
+// AcquireWriterLease admits at most one writing Run per Workspace.
+func (s *CraftStore) AcquireWriterLease(ctx context.Context, scope craft.Scope, workspaceID, runID string) (craft.WriterAcquisition, error) {
+	if scope.TenantID == 0 || scope.UserID == "" || scope.SessionID == "" || workspaceID == "" || runID == "" {
+		return craft.WriterAcquisition{}, fmt.Errorf("%w: incomplete writer lease request", craft.ErrInvalidInput)
+	}
+	return craft.WriterAcquisition{}, fmt.Errorf("%w: writer lease acquisition is not implemented", craft.ErrUnsupported)
+}
+
+// ReleaseWriterLease releases the lease only after a verified outcome.
+func (s *CraftStore) ReleaseWriterLease(ctx context.Context, scope craft.Scope, workspaceID, runID, basis string) error {
+	if scope.TenantID == 0 || scope.UserID == "" || scope.SessionID == "" || workspaceID == "" || runID == "" {
+		return fmt.Errorf("%w: incomplete writer lease release", craft.ErrInvalidInput)
+	}
+	return fmt.Errorf("%w: writer lease release is not implemented", craft.ErrUnsupported)
+}
+
+// GetWriterLease projects the durable lease row without ever taking it.
+func (s *CraftStore) GetWriterLease(ctx context.Context, scope craft.Scope, workspaceID string) (*craft.WriterLease, error) {
+	if scope.TenantID == 0 || scope.UserID == "" || scope.SessionID == "" || workspaceID == "" {
+		return nil, fmt.Errorf("%w: incomplete writer lease read", craft.ErrInvalidInput)
+	}
+	return nil, fmt.Errorf("%w: writer lease read is not implemented", craft.ErrUnsupported)
+}
