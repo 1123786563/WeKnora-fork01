@@ -44,14 +44,17 @@ export async function refreshCareer(): Promise<CareerView | undefined> { activat
 /** 增量同步：同一用户在 Web 修改档案后，小程序侧经 changes 合并可见。 */
 export async function syncFromWeb(): Promise<CareerChangeSet | undefined> { return careerDesk().syncChanges(); }
 
+// source.kind 必须落在服务端冻结白名单内（handler Act：propose/confirm→manual|user，
+// confirm_proposal/dismiss→user_confirmation|user；客户端不得声称 parser 来源）。
+const weappSource = { kind: 'user', label: '微信小程序' } as const;
 export async function proposeFact(key: string, value: string): Promise<CareerReceipt | undefined> {
-  return careerDesk().mutate({ action: 'propose', key, value, source: { kind: 'miniprogram' }, requestId: newRequestId(), expectedRevision: revision() });
+  return careerDesk().mutate({ action: 'propose', key, value, source: weappSource, requestId: newRequestId(), expectedRevision: revision() });
 }
 export async function confirmProposal(proposalId: string): Promise<CareerReceipt | undefined> {
-  return careerDesk().mutate({ action: 'confirm_proposal', proposalId, source: { kind: 'miniprogram' }, requestId: newRequestId(), expectedRevision: revision() });
+  return careerDesk().mutate({ action: 'confirm_proposal', proposalId, source: weappSource, requestId: newRequestId(), expectedRevision: revision() });
 }
 export async function dismissProposal(proposalId: string): Promise<CareerReceipt | undefined> {
-  return careerDesk().mutate({ action: 'dismiss', proposalId, source: { kind: 'miniprogram' }, requestId: newRequestId(), expectedRevision: revision() });
+  return careerDesk().mutate({ action: 'dismiss', proposalId, source: weappSource, requestId: newRequestId(), expectedRevision: revision() });
 }
 export function pendingAction(): CareerAction | undefined { return careerDesk().pendingAction; }
 export async function reconcilePending(): Promise<CareerReceipt | undefined> {

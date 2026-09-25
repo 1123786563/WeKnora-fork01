@@ -98,6 +98,7 @@ test('B1: extracted facts join the profile only after an item-by-item confirm_pr
   assert.equal(body.proposalId, 'p1');
   assert.equal(body.expectedRevision, 3);
   assert.ok(typeof body.requestId === 'string' && body.requestId.length > 0);
+  assert.equal(body.source.kind, 'user', 'source.kind must stay inside the frozen server whitelist (no client parser provenance)');
   const view = career.careerDesk().snapshot;
   assert.ok(view.facts.some(f => f.key === '学历' && f.value === '本科'), 'confirmed fact is visible');
   assert.equal(view.revision, 4);
