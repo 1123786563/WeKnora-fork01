@@ -72,7 +72,7 @@
 ### 批 3：设置域（18 项）——B3 串行流收敛（截至 9f274c977；run auto-scan/2026-09-24T12-48-10 回归）
 | id | 基线 | 终值 | 状态 |
 |---|---|---|---|
-| px-userprofile-change-password | 2.949 | 2.949 | ⚠️ 静态底差转交（判例 #27）：popconfirm 双端同构 (566,228,320×132)，弹层内仅 5px AA；2.949% 与 settings-userprofile 静态基线同值，全部来自分区静态底差 |
+| px-userprofile-change-password | 2.949 | **0** | ✅ 豁免 #27 回退复勘后已修（7d351553a）：真因=§3 六条 .password-popup-* 规则以 .wk-settings-drawer-root .user-profile 祖先锚定而弹层 portal 到 body 致规则失配（b1f440178 引入、早于 B3c），改锚 .user-profile-password-popup-overlay；04-07-05 轮终值 0 |
 | px-mymemory-usage-hint | 0 | 0 | ✅ |
 | px-models-model-card | 62.438 | 0 | ✅ 已收敛（批 3 余量：wk-model-editor 居中壳→SettingDrawer model-editor-drawer 家族 + ModelEditorDialog 解剖移植 + CredentialResource 端口；19-08-35 终值 0） |
 | px-models-card-more | 0.764 | 0.003 | ✅ §13d dropdown 全局块带零（AA 残差） |
@@ -88,8 +88,18 @@
 | px-websearch-provider-card | 14.26 | 0.002 | ✅ 已收敛（35ccd539c；AA 残差） |
 | px-websearch-card-more | 0.775 | 0 | ✅ 已收敛（35ccd539c，触发器已命中） |
 | px-platform-api-keys-create | 62.964 | 0 | ✅ 已收敛（批 3 余量：pak-drawer 自制壳→SettingDrawer api-key-create-drawer 家族 + 整面板 Vue 原名类系（api-key-table/chip/popconfirm/t-dialog）+ PLATFORM_API_KEY_CAPABILITY_GROUPS 分组全选；19-08-35 终值 0） |
-| px-members-rbac-hint | 10.919 | 10.919 | ⚠️ 静态底差转交（判例 #27）：role-hint popover 双端同构 (620,118,360×120) 内 0px；10.919% 与 settings-members 静态基线同值 |
-| px-ollama-redetect | 2.496 | 2.197-2.496 | ⚠️ 静态底差转交（判例 #27）：弹层内 3px AA；差异与 settings-ollama 静态基线同源（轮间 2.197↔2.496 为静态底差相位波动） |
+| px-members-rbac-hint | 10.919 | **0.043** | ✅ 豁免 #27 回退复勘后已修（7d351553a/ddad150ae）：真因=.permissions-compact 族于 72de117db 弃置后从未移植 + 面板 DOM 缺 role/perm-item icon、overlayInnerStyle、is-me 判定折叠分歧；§23 按 unscoped 源（TenantMembers.vue:2333-2461）重平移 + DOM 补齐；04-07-05 轮终值 0.043（AA 残差级） |
+| px-ollama-redetect | 2.496 | **0** | ✅ 豁免 #27 回退复勘后已修（da187f072）：真因=React 检测失败走自研 wk-settings-toast 右上角 vs Vue t-message 顶部居中（异构早于 B3c），10 处 pushSettingsToast 换 tdesign-react MessagePlugin 同构；04-07-05 轮终值 0 |
+
+### 豁免 #27 回退复勘（2026-09-25，run auto-scan/2026-09-25T04-07-05）
+
+判例 #27 的三项实证项经逐项深度复勘**全部证伪**（详见上行终值列）：
+
+- px-userprofile-change-password：所称 2.949% 静态漂移不存在（settings-userprofile 静态现场 0.000%）；真因为弹层内层排版规则锚定失配——弹层同构判据系 #27 错记。
+- px-ollama-redetect：所称静态底差不存在（settings-ollama 静态现场 0.000%）；真因为失败提示呈现异构（自研 toast vs t-message），#27 的"静态底差同源"归因被证伪。
+- px-members-rbac-hint：10.919% 是该交互项自身 diff 被 #27 错记为静态底差（settings-members 静态实为 0.084%）；真因为弹层 CSS/DOM 双缺口（含 is-me 判定随 system-admin 折叠的语义分歧）。
+
+教训：判据①"交互项终值与静态基线同值"不构成弹层同构证明——同值可能同为缺陷放大；豁免前必须弹层 rect 级 DOM 探针实证。
 
 批 3 小结：18 项中 11 项 0/AA 残差（含 parser 续作）、3 项静态底差转交（弹层同构实证）、
 4 项基线即零；剩 3 项（models/mcp/api-keys）为居中壳/自制壳 vs SettingDrawer 右抽屉的
