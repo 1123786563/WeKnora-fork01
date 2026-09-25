@@ -252,6 +252,13 @@ func (s *PublicMarketplaceService) GetPublicListing(ctx context.Context, listing
 	if listing == nil {
 		return nil, repository.ErrPublicMarketplaceNotFound
 	}
+	// 目录可见性与 ListPublicCatalog 同口径（state=listed 且已批准 release）：
+	// 首个 submission 落库到平台批准之间 current_release_id 为 NULL，listing
+	// 行虽已存在，detail 不得提前暴露 display_name/summary/publisher_tenant_id。
+	// repo 层不加此过滤——ReviewPublicSubmission 首个批准时必须读到 NULL 指针行。
+	if listing.State != PublicListingStateListed || listing.CurrentReleaseID == nil {
+		return nil, repository.ErrPublicMarketplaceNotFound
+	}
 	entry := interfaces.PublicCatalogEntryView{
 		ListingID: listing.ID, DisplayName: listing.DisplayName, Summary: listing.Summary,
 		State: listing.State, PublisherTenantID: listing.PublisherTenantID,

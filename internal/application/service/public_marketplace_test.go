@@ -180,3 +180,55 @@ func TestPublicMarketplaceServiceAdoptPropagatesPortableReleaseAndFeedsVariantCh
 	require.Len(t, entries, 1)
 	require.Equal(t, result.Release.ListingID, entries[0].ListingID)
 }
+
+// TestPublicMarketplaceServiceGetListingMatchesCatalogVisibility pins the
+// detail endpoint to the SAME catalog visibility as ListPublicCatalog
+// (state=listed AND current release approved). The listing row already
+// exists between the first submission landing and platform approval
+// (state=listed, current_release_id NULL) — detail must not leak
+// display_name/summary/publisher_tenant_id ahead of approval.
+func TestPublicMarketplaceServiceGetListingMatchesCatalogVisibility(t *testing.T) {
+	svc, db := newPublicMarketplaceServiceForTest(t)
+	listingID, _, _ := seedTenantRelease(t, db)
+	ctx := context.Background()
+	_, _, err := svc.VerifyPublisher(ctx, "sysadmin", 1, "")
+	require.NoError(t, err)
+	submission, err := svc.SubmitPublicRelease(ctx, 1, "publisher-admin", listingID, "")
+	require.NoError(t, err)
+
+	// 审批窗口内：listing 行已落库（state=listed，current_release_id NULL），
+	// detail 必须与目录列表同口径 404，不得提前暴露元数据
+	var row types.PublicMarketplaceListingEntity
+	require.NoError(t, db.Where("id = ?", submission.PublicListingID).First(&row).Error)
+	require.Equal(t, "listed", row.State, "前置：窗口期 listing 行 state 确为 listed")
+	require.Nil(t, row.CurrentReleaseID, "前置：窗口期 current_release_id 确为 NULL")
+	detail, err := svc.GetPublicListing(ctx, submission.PublicListingID)
+	require.Nil(t, detail)
+	require.ErrorIs(t, err, repository.ErrPublicMarketplaceNotFound)
+	catalog, err := svc.ListPublicCatalog(ctx)
+	require.NoError(t, err)
+	require.Empty(t, catalog, "同刻目录列表也为空：detail 与列表口径一致")
+
+	// 平台批准后：detail 可见且带 current release（正常路径不被误伤）
+	result, err := svc.ReviewPublicSubmission(ctx, "platform-reviewer", submission.ID, submission.BundleDigest, types.AgentReleaseReviewDecision{Decision: "approved"})
+	require.NoError(t, err)
+	detail, err = svc.GetPublicListing(ctx, submission.PublicListingID)
+	require.NoError(t, err)
+	require.NotNil(t, detail)
+	require.Equal(t, result.Release.ListingID, detail.ListingID)
+	require.NotNil(t, detail.CurrentRelease)
+	require.Equal(t, result.Release.ID, detail.CurrentRelease.ID)
+	require.Equal(t, uint64(1), detail.PublisherTenantID)
+	require.True(t, detail.PublisherVerified)
+
+	// state 离开 listed（如 #63 unlist）后 detail 同样 404
+	require.NoError(t, db.Model(&types.PublicMarketplaceListingEntity{}).Where("id = ?", submission.PublicListingID).Update("state", "unlisted").Error)
+	detail, err = svc.GetPublicListing(ctx, submission.PublicListingID)
+	require.Nil(t, detail)
+	require.ErrorIs(t, err, repository.ErrPublicMarketplaceNotFound)
+
+	// 未知 id 保持 404 语义
+	detail, err = svc.GetPublicListing(ctx, "no-such-listing")
+	require.Nil(t, detail)
+	require.ErrorIs(t, err, repository.ErrPublicMarketplaceNotFound)
+}
