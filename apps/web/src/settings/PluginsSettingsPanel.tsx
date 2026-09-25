@@ -9,6 +9,7 @@ import { roleAtLeast } from "@weknora/views/settings/registry";
 // 发现 T06-OCR3-F1/T03-OCR1-F1/T07-OCR1-F1/T09-OCR1-F3 的统一解法。
 import {
   createPluginsApi,
+  type PluginDriftReport,
   type PluginInstallationSummary,
   type PluginPreviewResult,
   type PluginToolPolicyRow,
@@ -46,13 +47,28 @@ export function formatPreviewExpiry(expiresAt: string, locale = "zh-CN"): string
   return Number.isNaN(date.getTime()) ? expiresAt : date.toLocaleString(locale);
 }
 
+/** 漂移复审面的名单行（OCR R1 F23）：caption + 名称胶囊列表，空名单显示计数 0。 */
+function DriftNameList({ caption, names, tone }: { caption: string; names: readonly string[]; tone: "warn" | "muted" | "info" }) {
+  const badgeClass = tone === "warn" ? pluginBadgeWarn : tone === "info" ? pluginBadgeInfo : pluginBadgeMuted;
+  return (
+    <div className="flex flex-wrap items-center gap-1">
+      <span className="text-[12px] font-medium text-[#66758b]">{caption}（{names.length}）</span>
+      {names.map((name) => (
+        <span key={name} className={badgeClass}>{name}</span>
+      ))}
+    </div>
+  );
+}
+
 /** ApiError（后端/网络拒绝）原文透传；其余错误统一中文并 console.warn 留痕。 */
 function apiErrorMessage(cause: unknown): string | null {
   return cause instanceof Error && cause.name === "ApiError" ? cause.message : null;
 }
 
-/** 升级差异面板的挂载状态：记录来源插件名，重开/切换互斥渲染。 */
+/** 升级差异面板的挂载状态：记录来源安装与插件名，重开/切换互斥渲染。
+ * installationId 供接受升级（OCR R1 F19）回指安装行。 */
 type UpgradePreviewState = {
+  installationId: string;
   pluginName: string;
   result: PluginUpgradePreview;
 };
@@ -154,11 +170,25 @@ export function PluginsSettingsPanel({ client, role }: Props) {
     error: string | null;
   } | null>(null);
   const [toolPolicyBusyId, setToolPolicyBusyId] = useState<string | null>(null);
-  const [policyToggleBusy, setPolicyToggleBusy] = useState<string | null>(null);
+  // OCR R1 F44：布尔开关量——原 `${row.name}:${field}` 键值从未被读取（全
+  // 部消费点只判空），死数据误导维护者以为存在按开关粒度的反馈。
+  const [policyToggleBusy, setPolicyToggleBusy] = useState(false);
   // 治理面失效代数（T19-OCR2-F1）：effect 失效（client 变化）时自增；在途
   // GET 的迟到回包携带发起时的代数，落地前比对——陈旧代数直接丢弃，旧
   // client 的策略行不再写回新视图（effect 的 cancelled 布尔同款陈旧性范式）。
   const toolPolicyEpoch = useRef(0);
+  // OCR R1 F19：接受升级（Admin）——POST upgrade-accept，指纹绑定管理员
+  // 刚评审过的这份差异；在途时冻结重按。
+  const [upgradeAcceptBusy, setUpgradeAcceptBusy] = useState(false);
+  // OCR R1 F23：漂移复审面（Viewer 可读报告、Admin 可 check/resolve）——
+  // 一次展开一个安装，报告为服务端权威形态（四名单 + 基线名单）。
+  const [driftView, setDriftView] = useState<{
+    installationId: string;
+    pluginName: string;
+    busy: "check" | "resolve" | null;
+    report: PluginDriftReport | null;
+    error: string | null;
+  } | null>(null);
 
   // useMemo 稳定 pluginsApi（T08-OCR1-F4）：client.request 是纯传输包装，
   // 稳定引用让 refreshInstallations 的 useCallback 依赖完整（exhaustive-deps）。
@@ -194,7 +224,16 @@ export function PluginsSettingsPanel({ client, role }: Props) {
     // installationId 发 PUT。挂载首跑时 toolPolicy 本就是 null，此清空为
     // 无操作；toggleState 等函数直调 refreshInstallations 不经本 effect，
     // 不会误伤正常重载（安装停用/启用不改变策略行）。
+    // OCR R1 F34：同威胁模型下 ALL client-bound 临时态一并失效——
+    // preview（含可消费 previewId）与 upgradePreview 留存会让「确认安装/
+    // 接受升级」以新 client POST 旧空间的 previewId/fingerprint；confirmError
+    // /upgradeError/driftView 同属旧 client 视图的悬挂横幅。
     setToolPolicy(null);
+    setPreview(null);
+    setConfirmError(null);
+    setUpgradePreview(null);
+    setUpgradeError(null);
+    setDriftView(null);
     // 代数自增（T19-OCR2-F1）：已在途的 GET 的迟到回包凭旧代数被丢弃。
     toolPolicyEpoch.current += 1;
     void refreshInstallations(() => cancelled);
@@ -243,6 +282,9 @@ export function PluginsSettingsPanel({ client, role }: Props) {
       await pluginsApi.confirmInstallation(preview.previewId);
       // 预览已消费：撤卡并刷新已安装列表（列表将出现该插件与已接受版本）。
       setPreview(null);
+      // OCR R1 F34：安装成功即当前已接受版本变更——残留的升级差异面板针对
+      // 的是旧版本基线，一并撤下。
+      setUpgradePreview(null);
       await refreshInstallations();
     } catch (cause) {
       const message = apiErrorMessage(cause);
@@ -289,7 +331,7 @@ export function PluginsSettingsPanel({ client, role }: Props) {
     try {
       const result = await pluginsApi.previewUpgrade(item.installationId);
       // 只读预览成功即替换面板（重复点击 = 幂等重读，结果不累积）。
-      setUpgradePreview({ pluginName: item.name, result });
+      setUpgradePreview({ installationId: item.installationId, pluginName: item.name, result });
     } catch (cause) {
       // 候选不可达/核验失败：错误条定位来源安装行，面板不残留，安装列表不动。
       // message 存纯文案（渲染层统一「升级预览失败（插件名）：」前缀，不再双拼）。
@@ -306,12 +348,100 @@ export function PluginsSettingsPanel({ client, role }: Props) {
     }
   }
 
+  // OCR R1 F19：接受升级——指纹把接受绑定到管理员刚评审的差异（远端再变
+  // 服务端 409 拒绝）；成功后面板撤下、列表刷新出新已接受版本。
+  async function acceptUpgradeInstall() {
+    if (!upgradePreview || upgradeAcceptBusy || !canEdit) return;
+    setUpgradeAcceptBusy(true);
+    setUpgradeError(null);
+    try {
+      await pluginsApi.acceptUpgrade(
+        upgradePreview.installationId,
+        upgradePreview.result.candidateFingerprint,
+      );
+      setUpgradePreview(null);
+      await refreshInstallations();
+    } catch (cause) {
+      const message = apiErrorMessage(cause);
+      if (message === null) {
+        console.warn("plugin upgrade accept failed:", cause);
+        setUpgradeError({ pluginName: upgradePreview.pluginName, message: "接受升级失败，请重试" });
+      } else {
+        setUpgradeError({ pluginName: upgradePreview.pluginName, message });
+      }
+    } finally {
+      setUpgradeAcceptBusy(false);
+    }
+  }
+
+  // OCR R1 F23：打开漂移复审面（GET 持久化报告——Viewer 权限面同款数据）。
+  async function openDriftView(item: PluginInstallationSummary) {
+    if (!canEdit || driftView?.busy) return;
+    if (driftView?.installationId === item.installationId) {
+      setDriftView(null);
+      return;
+    }
+    setDriftView({ installationId: item.installationId, pluginName: item.name, busy: "check", report: null, error: null });
+    try {
+      const report = await pluginsApi.getDrift(item.installationId);
+      setDriftView((prev) =>
+        prev && prev.installationId === item.installationId ? { ...prev, busy: null, report, error: null } : prev);
+    } catch (cause) {
+      const message = apiErrorMessage(cause);
+      setDriftView((prev) =>
+        prev && prev.installationId === item.installationId
+          ? { ...prev, busy: null, error: message ?? "漂移报告加载失败，请稍后重试" }
+          : prev);
+      if (message === null) console.warn("plugin drift report load failed:", cause);
+    }
+  }
+
+  // OCR R1 F23：按需重检（POST drift/check——按已接受端点实况重算漂移）。
+  async function runDriftCheck() {
+    if (!driftView || driftView.busy || !canEdit) return;
+    setDriftView((prev) => (prev ? { ...prev, busy: "check", error: null } : prev));
+    try {
+      const report = await pluginsApi.checkDrift(driftView.installationId);
+      setDriftView((prev) =>
+        prev && prev.installationId === driftView.installationId ? { ...prev, busy: null, report, error: null } : prev);
+      await refreshInstallations();
+    } catch (cause) {
+      const message = apiErrorMessage(cause);
+      setDriftView((prev) =>
+        prev && prev.installationId === driftView.installationId
+          ? { ...prev, busy: null, error: message ?? "漂移检查失败，请稍后重试" }
+          : prev);
+      if (message === null) console.warn("plugin drift check failed:", cause);
+    }
+  }
+
+  // OCR R1 F23：复审接受（POST drift/resolve——以已接受端点的当前目录重定基
+  // 快照；新增工具保守按写 Enabled=false，既有行保持管理员决定）。
+  async function runDriftResolve() {
+    if (!driftView || driftView.busy || !canEdit) return;
+    setDriftView((prev) => (prev ? { ...prev, busy: "resolve", error: null } : prev));
+    try {
+      await pluginsApi.resolveDrift(driftView.installationId);
+      const report = await pluginsApi.getDrift(driftView.installationId);
+      setDriftView((prev) =>
+        prev && prev.installationId === driftView.installationId ? { ...prev, busy: null, report, error: null } : prev);
+      await refreshInstallations();
+    } catch (cause) {
+      const message = apiErrorMessage(cause);
+      setDriftView((prev) =>
+        prev && prev.installationId === driftView.installationId
+          ? { ...prev, busy: null, error: message ?? "漂移重定基失败，已回旧快照" }
+          : prev);
+      if (message === null) console.warn("plugin drift resolve failed:", cause);
+    }
+  }
+
   // T19：展开/收起一个安装的工具治理面（GET .../tools——require_approval
   // 的权威确定值视图）。再次点击同一安装 = 收起；点其他安装 = 互斥切换。
   // PUT 在途（policyToggleBusy）期间整体冻结——杜绝「旧安装的迟到回包
   // （成功或失败）写进新展开面板」的错位窗口（T19-OCR1-F3）。
   async function toggleToolPolicyView(item: PluginInstallationSummary) {
-    if (!canEdit || toolPolicyBusyId !== null || policyToggleBusy !== null) return;
+    if (!canEdit || toolPolicyBusyId !== null || policyToggleBusy) return;
     if (toolPolicy?.installationId === item.installationId) {
       setToolPolicy(null);
       return;
@@ -348,8 +478,8 @@ export function PluginsSettingsPanel({ client, role }: Props) {
     row: PluginToolPolicyRow,
     field: "enabled" | "requireApproval",
   ) {
-    if (!canEdit || policyToggleBusy !== null || toolPolicyBusyId !== null) return;
-    setPolicyToggleBusy(`${row.name}:${field}`);
+    if (!canEdit || policyToggleBusy || toolPolicyBusyId !== null) return;
+    setPolicyToggleBusy(true);
     try {
       const rows = await pluginsApi.setInstallationToolPolicy(
         installationId,
@@ -371,7 +501,7 @@ export function PluginsSettingsPanel({ client, role }: Props) {
           prev && prev.installationId === installationId ? { ...prev, error: message } : prev);
       }
     } finally {
-      setPolicyToggleBusy(null);
+      setPolicyToggleBusy(false);
     }
   }
 
@@ -536,7 +666,7 @@ export function PluginsSettingsPanel({ client, role }: Props) {
                       type="button"
                       loading={toolPolicyBusyId === item.installationId}
                       disabled={(toolPolicyBusyId !== null && toolPolicyBusyId !== item.installationId)
-                        || policyToggleBusy !== null}
+                        || policyToggleBusy}
                       onClick={() => void toggleToolPolicyView(item)}
                     >
                       工具治理
@@ -549,9 +679,23 @@ export function PluginsSettingsPanel({ client, role }: Props) {
                     >
                       检查升级
                     </Button>
+                    {/* OCR R1 F23：漂移复审入口——徽章此前只是只读标记，漂移
+                        明细永远到不了管理员评审面（check/resolve 前端不可达）。 */}
+                    <Button
+                      type="button"
+                      loading={driftView?.installationId === item.installationId && driftView.busy !== null}
+                      disabled={(driftView !== null && driftView.installationId !== item.installationId && driftView.busy !== null)
+                        || actionBusyId !== null || upgradeBusyId !== null}
+                      onClick={() => void openDriftView(item)}
+                    >
+                      漂移复审
+                    </Button>
                     <Button
                       type="button"
                       loading={actionBusyId === item.installationId}
+                      // OCR R1 F40：与同组两按钮一致的跨行禁用——toggleState
+                      // 首行守卫静默吞掉其他行在途时的点击，UI 必须同步冻结。
+                      disabled={actionBusyId !== null && actionBusyId !== item.installationId}
                       onClick={() => void toggleState(item)}
                     >
                       {item.state === "active" ? "停用" : "启用"}
@@ -603,7 +747,7 @@ export function PluginsSettingsPanel({ client, role }: Props) {
                                     role="switch"
                                     aria-checked={row.enabled}
                                     aria-label={`${row.name} 启用`}
-                                    disabled={policyToggleBusy !== null || toolPolicyBusyId !== null}
+                                    disabled={policyToggleBusy || toolPolicyBusyId !== null}
                                     className={row.enabled ? "text-[#137333]" : "text-[#98a2b8]"}
                                     onClick={() => void toggleToolPolicyFlag(item.installationId, row, "enabled")}
                                   >
@@ -616,7 +760,7 @@ export function PluginsSettingsPanel({ client, role }: Props) {
                                     role="switch"
                                     aria-checked={row.requireApproval}
                                     aria-label={`${row.name} 成员审批`}
-                                    disabled={policyToggleBusy !== null || toolPolicyBusyId !== null}
+                                    disabled={policyToggleBusy || toolPolicyBusyId !== null}
                                     className={row.requireApproval ? "text-[#137333]" : "text-[#98a2b8]"}
                                     onClick={() => void toggleToolPolicyFlag(item.installationId, row, "requireApproval")}
                                   >
@@ -639,9 +783,10 @@ export function PluginsSettingsPanel({ client, role }: Props) {
           </ul>
         )}
       </section>
-      {/* T15（Issue #114）：五维差异预览面板——只读，不提供接受入口（接受升级
-          属后续切片）；渲染版本对（含降级标注）、端点变化行、新增/移除/变更
-          工具表与四个独立变更理由徽标（schema/scope/读写分类/授权面）。 */}
+      {/* T15（Issue #114）+ OCR R1 F19：五维差异预览面板——版本对（含降级
+          标注）、端点变化行、新增/移除/变更工具表与四个独立变更理由徽标
+          （schema/scope/读写分类/授权面）；「接受升级」以候选身份指纹绑定
+          管理员刚评审的这份差异（POST upgrade-accept，Admin）。 */}
       {upgradePreview ? (
         <article
           data-testid="plugin-upgrade-preview"
@@ -658,6 +803,16 @@ export function PluginsSettingsPanel({ client, role }: Props) {
               <code className="text-[rgb(0_0_0_/_90%)]">{upgradePreview.result.diff.currentVersion}</code>
               <span className="text-[#66758b]">→</span>
               <code className="text-[rgb(0_0_0_/_90%)]">{upgradePreview.result.diff.candidateVersion}</code>
+              {/* OCR R1 F19：差异展示后的手动接受入口——升级治理动作此前在
+                  产品内不可达（边界 2 断在展示一步）。 */}
+              <Button
+                type="button"
+                loading={upgradeAcceptBusy}
+                disabled={!canEdit}
+                onClick={() => void acceptUpgradeInstall()}
+              >
+                接受升级
+              </Button>
               <Button type="button" onClick={() => setUpgradePreview(null)}>
                 关闭
               </Button>
@@ -714,8 +869,72 @@ export function PluginsSettingsPanel({ client, role }: Props) {
               </span>
             </div>
             <p className="wk-muted m-0 text-[12px] leading-[18px] text-[#66758b]">
-              预览为只读操作：在管理员另行确认接受前，本空间继续使用当前已接受版本；候选端点不可达或清单核验不符时预览直接失败，不影响已安装插件。
+              预览本身不改变安装：在管理员点击「接受升级」前，本空间继续使用当前已接受版本；候选端点不可达或清单核验不符时预览直接失败，不影响已安装插件。接受以候选身份指纹绑定——远端在此期间再变会被拒绝，需重新预览。
             </p>
+          </div>
+        </article>
+      ) : null}
+      {/* OCR R1 F23：漂移复审面——服务端权威报告（持久化状态 + 四名单 + 基线
+          名单），Admin 可按需重检（check）与复审接受（resolve：以已接受端点
+          的当前目录重定基快照，新增工具保守按写默认停用）。 */}
+      {driftView ? (
+        <article
+          data-testid="plugin-drift-view"
+          className="min-w-0 overflow-hidden rounded-[10px] border border-[#dce3ed] bg-white"
+        >
+          <div className="flex flex-wrap items-center gap-2 border-b border-[#eef1f5] p-3">
+            <h3 className="m-0 text-[15px] font-semibold leading-[21px]">漂移复审 · {driftView.pluginName}</h3>
+            {driftView.report ? (
+              driftView.report.driftState === "detected" ? (
+                <span className={pluginBadgeWarn}>检测到漂移</span>
+              ) : (
+                <span className={pluginBadgeOk}>无漂移</span>
+              )
+            ) : null}
+            <span className="ml-auto flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                loading={driftView.busy === "check"}
+                disabled={driftView.busy !== null || !canEdit}
+                onClick={() => void runDriftCheck()}
+              >
+                重新检查
+              </Button>
+              <Button
+                type="button"
+                loading={driftView.busy === "resolve"}
+                disabled={driftView.busy !== null || !canEdit}
+                onClick={() => void runDriftResolve()}
+              >
+                按当前实况重定基
+              </Button>
+              <Button type="button" onClick={() => setDriftView(null)}>
+                关闭
+              </Button>
+            </span>
+          </div>
+          <div className="grid gap-2 p-3 text-[13px] leading-[20px]">
+            {driftView.error ? <Status tone="error">{driftView.error}</Status> : null}
+            {driftView.report ? (
+              <>
+                <DriftNameList caption="新增（未接受）工具" names={driftView.report.detail?.added ?? []} tone="warn" />
+                <DriftNameList caption="已移除工具" names={driftView.report.detail?.removed ?? []} tone="muted" />
+                <DriftNameList caption="Schema 变更工具" names={driftView.report.detail?.schemaChanged ?? []} tone="warn" />
+                <DriftNameList caption="描述变更工具" names={driftView.report.detail?.descriptionChanged ?? []} tone="warn" />
+                <DriftNameList caption="已接受基线工具" names={[...driftView.report.snapshotToolNames]} tone="info" />
+                {driftView.report.detail ? (
+                  <p className="wk-muted m-0 text-[12px] leading-[18px] text-[#66758b]">
+                    上次检查 {formatPreviewExpiry(driftView.report.detail.checkedAt)}。「按当前实况重定基」以已接受端点的当前目录重定基快照：新增工具因远端无法自证只读而保守按写默认停用（可在工具治理中逐项开启），既有工具保持管理员既有决定。
+                  </p>
+                ) : (
+                  <p className="wk-muted m-0 text-[12px] leading-[18px] text-[#66758b]">
+                    尚无持久化漂移明细——点击「重新检查」按已接受端点实况重算。
+                  </p>
+                )}
+              </>
+            ) : !driftView.error ? (
+              <p className="wk-muted m-0 text-[13px] text-[#66758b]">加载中…</p>
+            ) : null}
           </div>
         </article>
       ) : null}

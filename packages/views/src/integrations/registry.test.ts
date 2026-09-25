@@ -57,3 +57,20 @@ test('maps legacy integration section and tab query aliases to a concrete tab', 
   assert.equal(integrationKeyFromQuery('?section=integrations&tab=embed'), 'embed');
   assert.equal(integrationKeyFromQuery('?section=unknown'), 'embed');
 });
+
+// OCR R1 F24：subtitle 的治理语义（验收边界 5「写入类工具默认关闭」）不得
+// 只在 zh-CN 存在——四个非中文 locale 此前只译出「只能调用已启用工具」，
+// 非中文用户看到的治理口径弱一档。
+test('plugins subtitle keeps the write-tools-disabled-by-default governance promise in every locale (OCR R1 F24)', () => {
+  const markers: Record<string, RegExp> = {
+    'zh-CN': /写入类工具默认关闭/,
+    'en-US': /write tools are disabled by default/,
+    'ja-JP': /書き込みツールは既定で無効/,
+    'ko-KR': /쓰기 도구는 기본적으로 비활성화/,
+    'ru-RU': /инструменты записи по умолчанию отключены/,
+  };
+  for (const [locale, marker] of Object.entries(markers)) {
+    const subtitle = integrationsT(locale as Parameters<typeof integrationsT>[0], 'integrations.plugins.subtitle');
+    assert.match(subtitle, marker, `the subtitle for ${locale} must carry the write-tools governance promise`);
+  }
+});

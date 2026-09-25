@@ -480,3 +480,46 @@ test('IntegrationsRoutePage wires PluginsPanel into the shared page via pluginsS
   assert.match(source, /import \{ PluginsPanel \} from '\.\/PluginsPanel\.tsx'/, 'the panel must be imported');
   assert.match(source, /pluginsSlot=\{<PluginsPanel client=\{client\}/, 'the panel must be passed through the view-layer slot');
 });
+
+// OCR R1 F42：client 切换（跨账号/工作区，页面不重挂载）时连接状态缓存必须
+// 失效——requestedRef 去重集此前持有全部 installationId，上一 principal 的
+// 「已授权/已过期」徽标原样残留展示在新 client 视图下直到手动操作覆盖。
+test('client 变化时连接缓存失效并按新 principal 重新拉取（OCR R1 F42）', async () => {
+  const captured: CapturedRequest[] = [];
+  const makeClient = () => ({
+    request: async (input: { method: string; path: string; body?: unknown }) => {
+      captured.push({ method: input.method, path: input.path, body: input.body });
+      if (input.method === 'GET' && input.path === '/api/v1/plugins/installations') {
+        return {
+          success: true,
+          data: [
+            { installation_id: 'inst-1', plugin_id: 'com.example.jira-todo', name: 'Jira 本周待办', version: '1.2.0', state: 'active', drift_state: 'none', requires_personal_auth: true, tool_count: 2 },
+          ],
+        };
+      }
+      if (input.method === 'GET' && input.path === '/api/v1/plugins/installations/inst-1/connections/me') {
+        return connectionEnvelope('inst-1', 'authorized');
+      }
+      throw new Error(`unexpected request ${input.method} ${input.path}`);
+    },
+  });
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  await act(async () => { root.render(React.createElement(PluginsPanel, { client: makeClient() as never })); });
+  try {
+    for (let i = 0; i < 4; i += 1) await act(async () => {});
+    const firstPass = captured.filter((entry) => entry.path.endsWith('/connections/me')).length;
+    assert.equal(firstPass, 1, 'the first principal fetches the connection exactly once');
+    assert.match(container.innerHTML, /已授权/, 'the first principal sees the authorized badge');
+    // client 切换：同容器 rerender（页面不重挂载）。
+    await act(async () => { root.render(React.createElement(PluginsPanel, { client: makeClient() as never })); });
+    for (let i = 0; i < 4; i += 1) await act(async () => {});
+    const secondPass = captured.filter((entry) => entry.path.endsWith('/connections/me')).length;
+    assert.equal(secondPass, 2,
+      'the new principal must re-fetch the connection — the stale-cache reset (requestedRef + connections) is what makes the second fetch possible');
+  } finally {
+    await act(async () => root.unmount());
+    document.body.replaceChildren();
+  }
+});

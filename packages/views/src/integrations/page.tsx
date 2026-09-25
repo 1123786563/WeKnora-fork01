@@ -146,10 +146,11 @@ export interface IntegrationsPageProps {
    */
   swaggerEnabled?: boolean;
   /**
-   * 跨任务转交 T08-OCR2-F5：plugins tab 的内容面板挂载插槽。packages/views
+   * plugins tab 的内容面板挂载插槽（跨任务转交 T08-OCR2-F5）。packages/views
    * 不能反向 import apps/web 的 PluginsPanel（依赖方向 apps/web ->
-   * packages/views），面板由 apps/web 的集成路由页经此插槽传入——在接线落位
-   * 前，registry 的 plugins section 只会渲染 heading+description 空壳。
+   * packages/views），面板由 apps/web 的集成路由页经此插槽传入
+   *（IntegrationsRoutePage 已接线）；仅当某个复用方未传插槽时，该 tab 才
+   * 只渲染 heading+description。
    */
   pluginsSlot?: React.ReactNode;
 }

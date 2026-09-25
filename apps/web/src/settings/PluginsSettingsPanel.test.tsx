@@ -1084,3 +1084,145 @@ test('T19-OCR2-F2 GET(B) 在途时 A 面板行开关冻结（对称闭合，迟�
     await unmount(root);
   }
 });
+
+// ---- OCR R1 F19/F34/F23：升级接受入口 / client 失效全量清理 / 漂移复审面 ----
+
+test('OCR R1 F19：升级差异面板提供接受入口——POST upgrade-accept 携候选指纹、成功后面板撤下', async () => {
+  const { client, captured } = stubClient(async (input) => {
+    if (input.method === 'GET' && input.path === '/api/v1/plugins/installations') {
+      return { success: true, data: [{ ...jiraSummary }] };
+    }
+    if (input.method === 'POST' && input.path === '/api/v1/plugins/installations/inst-1/upgrade-preview') {
+      return upgradePreviewEnvelope({ isDowngrade: false });
+    }
+    if (input.method === 'POST' && input.path === '/api/v1/plugins/installations/inst-1/upgrade-accept') {
+      return {
+        success: true,
+        data: {
+          installation_id: 'inst-1', plugin_id: 'com.example.jira-todo', name: 'Jira 本周待办', description: '',
+          version: '1.3.0', state: 'active', drift_state: 'none', transport_type: 'http-streamable',
+          endpoint_url: 'https://plugins.example.com/jira-todo/v1.3.0/mcp', service_id: 'svc-1', tools: [],
+        },
+      };
+    }
+    throw new Error(`unexpected request ${input.method} ${input.path}`);
+  });
+  const root = await mount(React.createElement(PluginsSettingsPanel, { client, role: 'admin' }));
+  try {
+    await flushEffects();
+    const list = document.querySelector('[data-testid="plugin-installations"]') as ParentNode;
+    await act(async () => { findButtonByText(list, '检查升级')!.click(); });
+    await flushEffects();
+    const panel = document.querySelector('[data-testid="plugin-upgrade-preview"]');
+    assert.ok(panel, 'the diff panel renders first');
+    const acceptButton = findButtonByText(panel as ParentNode, '接受升级');
+    assert.ok(acceptButton, 'the diff panel carries the accept entry point (boundary 2)');
+    await act(async () => { acceptButton!.click(); });
+    await flushEffects();
+    const accepts = captured.filter((entry) => entry.method === 'POST' && entry.path === '/api/v1/plugins/installations/inst-1/upgrade-accept');
+    assert.equal(accepts.length, 1, 'one accept request fires');
+    assert.deepEqual(accepts[0]!.body, { candidate_fingerprint: 'f'.repeat(64) },
+      'the accept binds to the fingerprint of the exact diff the admin reviewed');
+    assert.equal(document.querySelector('[data-testid="plugin-upgrade-preview"]'), null,
+      'the diff panel is dismissed after a successful accept');
+  } finally {
+    await unmount(root);
+  }
+});
+
+test('OCR R1 F34：client 变化时升级差异面板随治理面一并失效（不残留旧空间的接受入口）', async () => {
+  const makeClient = () => stubClient(async (input) => {
+    if (input.method === 'GET' && input.path === '/api/v1/plugins/installations') {
+      return { success: true, data: [{ ...jiraSummary }] };
+    }
+    if (input.method === 'POST' && input.path.endsWith('/upgrade-preview')) {
+      return upgradePreviewEnvelope({ isDowngrade: false });
+    }
+    throw new Error(`unexpected request ${input.method} ${input.path}`);
+  }).client;
+  const root = await mount(React.createElement(PluginsSettingsPanel, { client: makeClient(), role: 'admin' }));
+  try {
+    await flushEffects();
+    const list = document.querySelector('[data-testid="plugin-installations"]') as ParentNode;
+    await act(async () => { findButtonByText(list, '检查升级')!.click(); });
+    await flushEffects();
+    assert.ok(document.querySelector('[data-testid="plugin-upgrade-preview"]'), 'the diff panel renders for the first client');
+    // client 切换（跨账号/工作区）：同容器 rerender——残留的 upgradePreview
+    // 会让「接受升级」以新 client POST 旧空间的 fingerprint。
+    await act(async () => {
+      root.render(React.createElement(PluginsSettingsPanel, { client: makeClient(), role: 'admin' }));
+    });
+    await flushEffects();
+    assert.equal(document.querySelector('[data-testid="plugin-upgrade-preview"]'), null,
+      'the stale upgrade diff panel must be invalidated with the client switch');
+  } finally {
+    await unmount(root);
+  }
+});
+
+test('OCR R1 F23：漂移复审面——打开拉取报告、重新检查 POST drift/check、重定基 POST drift/resolve', async () => {
+  const driftReport = (state: 'none' | 'detected') => ({
+    success: true,
+    data: {
+      installation_id: 'inst-1',
+      drift_state: state,
+      detail: state === 'detected'
+        ? { added: ['rogue_tool'], removed: [], schema_changed: ['search'], description_changed: [], checked_at: '2026-09-26T00:00:00Z' }
+        : null,
+      snapshot_tool_names: ['search'],
+    },
+  });
+  let resolved = false;
+  const { client, captured } = stubClient(async (input) => {
+    if (input.method === 'GET' && input.path === '/api/v1/plugins/installations') {
+      return { success: true, data: [{ ...jiraSummary, drift_state: resolved ? 'none' : 'detected' }] };
+    }
+    if (input.method === 'GET' && input.path === '/api/v1/plugins/installations/inst-1/drift') {
+      return driftReport(resolved ? 'none' : 'detected');
+    }
+    if (input.method === 'POST' && input.path === '/api/v1/plugins/installations/inst-1/drift/check') {
+      return driftReport('detected');
+    }
+    if (input.method === 'POST' && input.path === '/api/v1/plugins/installations/inst-1/drift/resolve') {
+      resolved = true;
+      return {
+        success: true,
+        data: {
+          installation_id: 'inst-1', plugin_id: 'com.example.jira-todo', name: 'Jira 本周待办', description: '',
+          version: '1.2.0', state: 'active', drift_state: 'none', transport_type: 'http-streamable',
+          endpoint_url: 'https://plugins.example.com/jira-todo/v1.2.0/mcp', service_id: 'svc-1', tools: [],
+        },
+      };
+    }
+    throw new Error(`unexpected request ${input.method} ${input.path}`);
+  });
+  const root = await mount(React.createElement(PluginsSettingsPanel, { client, role: 'admin' }));
+  try {
+    await flushEffects();
+    const list = document.querySelector('[data-testid="plugin-installations"]') as ParentNode;
+    const driftButton = findButtonByText(list, '漂移复审');
+    assert.ok(driftButton, 'the installation row carries a drift review entry (boundary 3)');
+    await act(async () => { driftButton!.click(); });
+    await flushEffects();
+    let panel = document.querySelector('[data-testid="plugin-drift-view"]');
+    assert.ok(panel, 'the drift review panel renders');
+    const text = panel?.textContent ?? '';
+    assert.match(text, /rogue_tool/, 'the unaccepted tool name reaches the admin review surface');
+    assert.match(text, /search/, 'the accepted baseline names render');
+    const check = findButtonByText(panel as ParentNode, '重新检查');
+    assert.ok(check);
+    await act(async () => { check!.click(); });
+    await flushEffects();
+    panel = document.querySelector('[data-testid="plugin-drift-view"]');
+    const resolve = findButtonByText(panel as ParentNode, '按当前实况重定基');
+    assert.ok(resolve);
+    await act(async () => { resolve!.click(); });
+    await flushEffects();
+    assert.ok(captured.some((entry) => entry.method === 'POST' && entry.path === '/api/v1/plugins/installations/inst-1/drift/resolve'),
+      'the admin resolve action reaches the server (boundary 6 remediation)');
+    panel = document.querySelector('[data-testid="plugin-drift-view"]');
+    assert.match(panel?.textContent ?? '', /无漂移/, 'the post-resolve report shows the cleared drift state');
+  } finally {
+    await unmount(root);
+  }
+});

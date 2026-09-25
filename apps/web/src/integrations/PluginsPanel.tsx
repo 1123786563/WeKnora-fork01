@@ -109,6 +109,17 @@ export function PluginsPanel({ client, initialInstallations = [] }: Props) {
     }
   }, [pluginsApi, installations]);
 
+  // OCR R1 F42：client 切换（跨账号/工作区，页面不重挂载）时连接缓存必须
+  // 失效——pluginsApi 重建会刷新列表，但 requestedRef 去重集仍持有全部
+  // installationId，上一 effect 对每行直接 continue，旧 principal 的
+  // 「已授权/已过期」徽标与 serviceId 原样残留展示在新 client 视图下。
+  // 重置去重集与连接表，让新列表到位后按新 principal 重新拉取
+  //（对照 PluginsSettingsPanel 的显式失效先例 T19-OCR1-F4/F1）。
+  useEffect(() => {
+    requestedRef.current = new Set();
+    setConnections({});
+  }, [pluginsApi]);
+
   function loadConnection(installationId: string): Promise<PluginMyConnection | null> {
     return pluginsApi
       .getMyConnection(installationId)
@@ -128,8 +139,9 @@ export function PluginsPanel({ client, initialInstallations = [] }: Props) {
   function retryConnection(installationId: string) {
     if (pendingId !== null) return;
     setPendingId(installationId);
-    requestedRef.current.delete(installationId);
-    requestedRef.current.add(installationId);
+    // 墓碑清理不需要动 requestedRef（OCR R1 F35）：墓碑键落在 connections
+    // state 而非去重集，重试的 loadConnection 成功/失败都会覆盖
+    // connections[id]，去重集语义（本挂载周期已发起过）不受影响。
     void loadConnection(installationId).finally(() => {
       setPendingId(null);
     });
@@ -219,6 +231,11 @@ export function PluginsPanel({ client, initialInstallations = [] }: Props) {
                 installationId={item.installationId}
                 entry={connections[item.installationId]}
                 pending={pendingId === item.installationId}
+                // OCR R1 F43：pendingId 是全面板单锁（授权轮询最长约 60s），
+                // 任何操作在途时冻结所有行入口——否则其他行按钮可点但点击
+                // 被各函数首行守卫静默吞掉，用户零反馈（与 PluginsSettingsPanel
+                // 的跨行 disabled 口径一致）。
+                anyPending={pendingId !== null}
                 onAuthorize={authorizeConnection}
                 onRevoke={revokeConnection}
                 onRetry={retryConnection}
@@ -240,6 +257,7 @@ function MemberConnectionControl({
   installationId,
   entry,
   pending,
+  anyPending,
   onAuthorize,
   onRevoke,
   onRetry,
@@ -247,6 +265,7 @@ function MemberConnectionControl({
   installationId: string;
   entry: ConnectionEntry | undefined;
   pending: boolean;
+  anyPending: boolean;
   onAuthorize: (connection: PluginMyConnection) => Promise<void>;
   onRevoke: (connection: PluginMyConnection) => Promise<void>;
   onRetry: (installationId: string) => void;
@@ -257,7 +276,7 @@ function MemberConnectionControl({
     return (
       <span className="flex flex-wrap items-center gap-2" data-testid="plugin-my-connection">
         <span className={pluginBadgeMuted}>授权状态加载失败</span>
-        <Button type="button" className="h-7 rounded-[6px] px-3 text-[12px]" disabled={pending} onClick={() => onRetry(installationId)}>
+        <Button type="button" className="h-7 rounded-[6px] px-3 text-[12px]" loading={pending} disabled={anyPending} onClick={() => onRetry(installationId)}>
           重试
         </Button>
       </span>
@@ -272,7 +291,9 @@ function MemberConnectionControl({
         : { className: pluginBadgeMuted, label: "未授权" };
   // T12-OCR1-F3：service_id 空（confirm 中断窗口且无孤儿服务可自愈）时无
   // OAuth 端点可指——徽标照常呈现，入口禁用而非发起注定失败的请求。
+  // anyPending（OCR R1 F43）：任一行操作在途即全行冻结。
   const noService = connection.serviceId === "";
+  const frozen = anyPending || noService;
   return (
     <span className="flex flex-wrap items-center gap-2" data-testid="plugin-my-connection">
       <span className={badge.className}>{badge.label}</span>
@@ -280,7 +301,8 @@ function MemberConnectionControl({
         <Button
           type="button"
           className="h-7 rounded-[6px] px-3 text-[12px]"
-          disabled={pending || noService}
+          loading={pending}
+          disabled={frozen}
           title={noService ? "插件服务尚未就绪，请稍后重试" : undefined}
           onClick={() => void onRevoke(connection)}
         >
@@ -290,7 +312,8 @@ function MemberConnectionControl({
         <Button
           type="button"
           className="h-7 rounded-[6px] px-3 text-[12px]"
-          disabled={pending || noService}
+          loading={pending}
+          disabled={frozen}
           title={noService ? "插件服务尚未就绪，请稍后重试" : undefined}
           onClick={() => void onAuthorize(connection)}
         >
