@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import * as nodeModule from 'node:module';
 import test from 'node:test';
 import * as React from 'react';
@@ -468,4 +469,14 @@ test('OCR1-F5：用户在弹窗完成授权后关闭弹窗——先刷新先判 
     document.body.replaceChildren();
     dom.window.open = originalOpen;
   }
+});
+
+// 跨任务转交 T08-OCR2-F5：PluginsPanel（成员插件发现面板）必须有真实挂载点
+// ——面板本体（T08/T12）此前已建成但无任何页面接线，plugins tab 点开只有
+// 标题+描述、正文空白。断言 apps/web 的集成路由页把面板经 pluginsSlot 挂进
+// 共享 IntegrationsPage（依赖方向 apps/web -> packages/views）。
+test('IntegrationsRoutePage wires PluginsPanel into the shared page via pluginsSlot', () => {
+  const source = readFileSync(new URL('./IntegrationsRoutePage.tsx', import.meta.url), 'utf8');
+  assert.match(source, /import \{ PluginsPanel \} from '\.\/PluginsPanel\.tsx'/, 'the panel must be imported');
+  assert.match(source, /pluginsSlot=\{<PluginsPanel client=\{client\}/, 'the panel must be passed through the view-layer slot');
 });

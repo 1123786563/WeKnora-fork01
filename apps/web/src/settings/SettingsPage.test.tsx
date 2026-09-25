@@ -35,8 +35,21 @@ Object.assign(globalThis, {
 Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator });
 
 const { createRoot } = await import('react-dom/client');
-const { SettingsPage, settingsNavGroups } = await import('./SettingsPage.tsx');
+const { SettingsPage, settingsNavGroups, settingsSectionLabel } = await import('./SettingsPage.tsx');
 const { auditDateParts, auditOutcomeTone, auditTargetSummary } = await import('./SystemAuditLogPanel.tsx');
+
+// 跨任务转交 T08-OCR1-F1（同 T08-OCR2-F6 指认的缺口①）：侧边栏的
+// integration-plugins 分区 label 走 @weknora/i18n formatMessage 直查，主表
+// 无 integrations.tabs.plugins 词条时回显裸 key——全员可见缺陷。
+test('settings sidebar label never leaks a raw i18n key for the plugins integration tab', () => {
+  assert.equal(settingsSectionLabel('zh-CN', 'integration-plugins'), '插件');
+  assert.equal(settingsSectionLabel('en-US', 'integration-plugins'), 'Plugins');
+  for (const locale of ['zh-CN', 'en-US', 'ja-JP', 'ko-KR', 'ru-RU'] as const) {
+    const label = settingsSectionLabel(locale, 'integration-plugins');
+    assert.ok(!label.includes('integrations.tabs.plugins'), `raw key leaked for ${locale}: ${label}`);
+    assert.ok(label.length > 0, `empty label for ${locale}`);
+  }
+});
 
 let mountedRoot: Root | undefined;
 afterEach(async () => {

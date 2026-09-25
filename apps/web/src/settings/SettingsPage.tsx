@@ -694,6 +694,12 @@ export interface SettingsNavGroupView {
 
 export function settingsSectionLabel(locale: Locale, key: string): string {
   const integrationTab = integrationTabForSection(key);
+  // 跨任务转交 T08-OCR1-F1（T08-OCR2-F6 同指认的缺口①）：integrations 页新
+  // 增的 plugins tab 让侧边栏多出 integration-plugins 分区，而 @weknora/i18n
+  // 主表（generated/integrations.ts，Vue locales 逐字移植）没有
+  // integrations.tabs.plugins 词条——formatMessage 缺 key 回显 key 本身，全员
+  // 侧边栏会露出裸 key。比照下方 T03 先例做直译兜底，i18n 词条落位后迁回。
+  if (integrationTab === 'plugins') return locale === 'zh-CN' ? '插件' : 'Plugins';
   if (integrationTab) return formatMessage(locale, `integrations.tabs.${integrationTab}`);
   // Issue #108 T03 — plugins 分区标签直译：packages/i18n 不在本任务文件所有权
   // 内（无 settings.plugins* key，formatMessage 缺 key 会回显 key 本身），
