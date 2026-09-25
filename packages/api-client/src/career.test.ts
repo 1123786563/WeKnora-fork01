@@ -161,3 +161,63 @@ test('opportunity evidence decode opens the empty-rawText failure snapshot and k
  const inventedStatus = createCareerApi(async () => ({ ...emptySnapshot, status: 'super_stored' }))
  await assert.rejects(inventedStatus.opportunityEvidence('opp/1', 'snapshot ?1'), TypeError)
 })
+
+// T14: four frozen application routes (POST /applications, GET receipt,
+// GET :applicationId, POST link/reconcile) with strict receipt decoding.
+test('application client encodes create, receipt, detail and reconcile routes with pinned evidence', async () => {
+ const calls: Array<{ method: string; path: string; body?: unknown }> = []
+ const receipt = { applicationId: 'app/1', requestId: 'apply /1', linkState: 'linking', qualified: true, pinnedEvidence: { opportunityId: 'opp/1', snapshotId: 'snap ?1', evaluationId: 'eval/1', profileRevision: 4, evaluationStatus: 'eligible', batchIdentity: '2026 autumn campus' } }
+ const api = createCareerApi(async (input) => {
+  calls.push({ method: input.method, path: input.path, ...(input.body !== undefined ? { body: input.body } : {}) })
+  return receipt
+ })
+ const input = { requestId: 'apply /1', opportunityId: 'opp/1', snapshotId: 'snap ?1', evaluationId: 'eval/1', batchIdentity: '2026 Autumn Campus', continueDespiteHardFailure: false, expectedRevision: 4 }
+ assert.deepEqual(await api.createApplication(input), receipt)
+ assert.deepEqual(await api.applicationReceipt('apply /1'), receipt)
+ assert.deepEqual(await api.application('app/1'), receipt)
+ assert.deepEqual(await api.reconcileApplicationLink('apply /1'), receipt)
+ assert.deepEqual(calls, [
+  { method: 'POST', path: '/api/v1/career/applications', body: input },
+  { method: 'GET', path: '/api/v1/career/applications/receipt?requestId=apply%20%2F1' },
+  { method: 'GET', path: '/api/v1/career/applications/app%2F1' },
+  { method: 'POST', path: '/api/v1/career/applications/link/reconcile', body: { requestId: 'apply /1' } },
+ ])
+})
+
+test('application decode accepts the full frozen receipt shape including warning and ready link', async () => {
+ const ready = { applicationId: 'app-2', requestId: 'apply-2', linkState: 'ready', taskId: 'task-9', runId: 'run-9', qualified: false, warning: { evaluationId: 'eval/1', evaluationStatus: 'ineligible', hardRuleId: 'graduation_year', reasonCode: 'graduation_year_mismatch' }, pinnedEvidence: { opportunityId: 'opp/1', snapshotId: 'snap-1', evaluationId: 'eval/1', profileRevision: 4, evaluationStatus: 'ineligible', batchIdentity: 'autumn' } }
+ const api = createCareerApi(async () => ready)
+ const decoded = await api.applicationReceipt('apply-2')
+ assert.equal(decoded.linkState, 'ready')
+ assert.equal(decoded.taskId, 'task-9')
+ assert.equal(decoded.qualified, false)
+ assert.deepEqual(decoded.warning, ready.warning)
+ assert.equal(decoded.pinnedEvidence.profileRevision, 4)
+ const failed = createCareerApi(async () => ({ ...ready, linkState: 'link_failed', taskId: undefined, runId: undefined }))
+ const failedDecoded = await failed.applicationReceipt('apply-2')
+ assert.equal(failedDecoded.linkState, 'link_failed')
+ assert.equal(failedDecoded.taskId, undefined)
+})
+
+test('application client refuses blank identifiers, invalid revisions and invented enum values', async () => {
+ const refusing = createCareerApi(async () => { throw new Error('must not send invalid request') })
+ const input = { requestId: 'apply-1', opportunityId: 'opp/1', snapshotId: 'snap-1', evaluationId: 'eval/1', batchIdentity: 'batch-1', continueDespiteHardFailure: false, expectedRevision: 3 }
+ await assert.rejects(refusing.createApplication({ ...input, requestId: ' ' }), /identifiers/)
+ await assert.rejects(refusing.createApplication({ ...input, batchIdentity: ' ' }), /identifiers/)
+ await assert.rejects(refusing.createApplication({ ...input, expectedRevision: -1 }), /identifiers/)
+ await assert.rejects(refusing.applicationReceipt(' '), /requestId/)
+ await assert.rejects(refusing.application(' '), /application ID/)
+ await assert.rejects(refusing.reconcileApplicationLink(' '), /requestId/)
+ const base = { applicationId: 'app-1', requestId: 'apply-1', qualified: true, pinnedEvidence: { opportunityId: 'opp/1', snapshotId: 'snap-1', evaluationId: 'eval/1', profileRevision: 4, evaluationStatus: 'eligible', batchIdentity: 'batch-1' } }
+ const inventors: Array<Record<string, unknown>> = [
+  { ...base, linkState: 'connected' },
+  { ...base, linkState: 'ready', pinnedEvidence: { ...base.pinnedEvidence, evaluationStatus: 'maybe' } },
+  { ...base, pinnedEvidence: { ...base.pinnedEvidence, profileRevision: -2 } },
+  { ...base, warning: { evaluationId: 'eval/1' } },
+  { ...base, pinnedEvidence: { ...base.pinnedEvidence, batchIdentity: '' } },
+ ]
+ for (const payload of inventors) {
+  const api = createCareerApi(async () => payload)
+  await assert.rejects(api.applicationReceipt('apply-1'), TypeError)
+ }
+})

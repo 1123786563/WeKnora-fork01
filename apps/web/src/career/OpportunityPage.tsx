@@ -3,6 +3,7 @@ import type { WeKnoraClient } from '@weknora/api-client'
 import type { ScopeController } from '@weknora/domain/scope'
 import type { Evaluation, EvaluationReceipt, OpportunityEvidence, OpportunityImportInput, OpportunityReceipt } from '../../../../packages/career-core/src/contracts.ts'
 import type { OpportunityCompleteness, OpportunityFailureCode, OpportunityObservation, OpportunitySourceStatus, OpportunityURLImportReceipt } from '../../../../packages/api-client/src/career.ts'
+import { ApplicationPage } from './ApplicationPage.tsx'
 
 type Attempt = OpportunityImportInput & { opportunityId?: string; priorObservationId?: string }
 type URLAttempt = { requestId: string; url: string; attemptedAt: string }
@@ -266,7 +267,7 @@ const statusLabel = (status: Evaluation['status']): string => status === 'inelig
 const unknownReason = (reason: string): string => ['graduation_year_missing', 'confirmed_graduation_year_missing'].includes(reason) ? '缺少已确认的毕业届别资料。' : ['graduation_year_ambiguous', 'graduation_fact_ambiguous'].includes(reason) ? '档案中的毕业届别信息存在冲突，需要确认。' : reason === 'graduation_requirement_invalid' ? '职位描述中的毕业届别条件无法可靠解析，需要人工核对。' : '此项招聘条件尚未能从职位描述或档案中确认。'
 const factAnchor = (fact: Evaluation['facts'][number]): string => `fact-${fact.factKey.replace(/[^a-zA-Z0-9_-]/g, '-')}-${fact.factRevision}`
 
-export function EvaluationAction({ client, scopeController, opportunityId, snapshotId, initialEvaluation }: { client: WeKnoraClient; scopeController: ScopeController; opportunityId: string; snapshotId: string; initialEvaluation?: Evaluation }): ReactNode {
+export function EvaluationAction({ client, scopeController, opportunityId, snapshotId, initialEvaluation, onReceipts }: { client: WeKnoraClient; scopeController: ScopeController; opportunityId: string; snapshotId: string; initialEvaluation?: Evaluation; onReceipts?: (receipts: EvaluationReceipt[]) => void }): ReactNode {
  const [state, setState] = useState<'idle' | 'busy' | 'unknown' | 'error' | 'forbidden' | 'scope-changed'>('idle')
  const [requestId, setRequestId] = useState('')
  const [message, setMessage] = useState('')
@@ -274,6 +275,7 @@ export function EvaluationAction({ client, scopeController, opportunityId, snaps
  const [history, setHistory] = useState<EvaluationReceipt[]>(initialEvaluation ? [initialEvaluation] : [])
  const active = useRef(false)
  const scope = scopeController.current()
+ useEffect(() => { onReceipts?.(history) }, [history, onReceipts])
  useEffect(() => {
   const requestScope = scopeController.current()
   const clear = () => { setLatest(undefined); setHistory([]); setState('scope-changed'); setMessage('空间已切换或登录已失效，已清除评估结果。') }
@@ -375,9 +377,11 @@ function fieldValue(value: OpportunityEvidence['extracted'][keyof OpportunityEvi
 export function OpportunityEvidencePage({ client, scopeController, opportunityId, snapshotId }: { client: WeKnoraClient; scopeController: ScopeController; opportunityId: string; snapshotId: string }): ReactNode {
  const scope = scopeController.current()
  const [evidence, setEvidence] = useState<OpportunityEvidence>()
+ const [evaluationReceipts, setEvaluationReceipts] = useState<EvaluationReceipt[]>([])
+ const trackEvaluations = useCallback((receipts: EvaluationReceipt[]) => setEvaluationReceipts(receipts), [])
  const [state, setState] = useState<'loading' | 'ready' | 'error' | 'forbidden' | 'invalid' | 'scope-changed'>('loading')
  const [reload, setReload] = useState(0)
- useEffect(() => {
+ useEffect(() => { setEvaluationReceipts([])
   const requestScope = scopeController.current()
   let active = true
   const clearForScopeChange = () => { active = false; setEvidence(undefined); setState('scope-changed') }
@@ -403,7 +407,8 @@ export function OpportunityEvidencePage({ client, scopeController, opportunityId
  const source = [currentEvidence.source.label, currentEvidence.source.referenceId].filter((value): value is string => Boolean(value)).join(' · ') || currentEvidence.source.kind
  return <main className="wk-page wk-opportunity-evidence"><header className="wk-header"><div><p className="wk-opportunity-import__eyebrow">Career · 职位证据</p><h1>{currentEvidence.status === 'needs_review' ? '已保存，待确认' : '已保存的职位证据'}</h1><p>此页面显示固定快照的原始内容和当前可确认的信息。</p></div><a href="/platform/creatChat">返回对话</a></header>
   <section className="wk-opportunity-evidence__meta" aria-label="来源信息"><dl><div><dt>来源</dt><dd>{source}</dd></div><div><dt>采集时间</dt><dd><time dateTime={currentEvidence.acquiredAt}>{currentEvidence.acquiredAt}</time></dd></div><div><dt>状态</dt><dd>{currentEvidence.status === 'needs_review' ? '待确认' : '已保存'}</dd></div><div><dt>快照编号</dt><dd><code>{currentEvidence.snapshotId}</code></dd></div></dl></section>
-  <EvaluationAction key={JSON.stringify([currentEvidence.opportunityId, currentEvidence.snapshotId])} client={client} scopeController={scopeController} opportunityId={currentEvidence.opportunityId} snapshotId={currentEvidence.snapshotId} />
+  <EvaluationAction key={JSON.stringify([currentEvidence.opportunityId, currentEvidence.snapshotId])} client={client} scopeController={scopeController} opportunityId={currentEvidence.opportunityId} snapshotId={currentEvidence.snapshotId} onReceipts={trackEvaluations} />
+  <ApplicationPage key={`application-${currentEvidence.opportunityId}-${currentEvidence.snapshotId}`} client={client} scopeController={scopeController} opportunityId={currentEvidence.opportunityId} snapshotId={currentEvidence.snapshotId} evaluations={evaluationReceipts} batchHint={currentEvidence.extracted.batch} />
   {currentEvidence.status === 'needs_review' ? <p className="wk-opportunity-evidence__notice" role="status">职位描述已保存为证据，提取字段仍需核对。</p> : null}
   <section className="wk-opportunity-evidence__fields" aria-labelledby="wk-opportunity-fields-title"><h2 id="wk-opportunity-fields-title">提取字段</h2><dl>{fields.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl></section>
   <section className="wk-opportunity-evidence__raw" aria-labelledby="wk-opportunity-raw-title"><h2 id="wk-opportunity-raw-title">原始职位描述</h2><pre>{currentEvidence.rawText}</pre></section>

@@ -1,0 +1,120 @@
+/* Career application surface opened from a job card (T14). TDesign light
+   theme tokens with the #07c05f brand green for the ready/qualified states. */
+.wk-application {
+  box-sizing: border-box;
+  width: min(100%, 960px);
+  margin: 16px auto;
+  padding: clamp(16px, 3vw, 24px);
+  border: 1px solid var(--td-component-border, #dcdcdc);
+  border-radius: 12px;
+  background: var(--td-bg-color-container, #fff);
+  color: var(--td-text-color-primary, #222);
+}
+.wk-application h2 { margin: 0; }
+.wk-application > p { margin: 6px 0 0; color: var(--td-text-color-secondary, #666); }
+.wk-application__revision { margin: 10px 0 0; font-size: .9rem; }
+.wk-application__hint {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--td-bg-color-secondarycontainer, #f3f3f3);
+  color: var(--td-text-color-secondary, #666);
+}
+.wk-application__evaluations {
+  margin: 12px 0 0;
+  padding: 10px 12px 12px;
+  border: 1px solid var(--td-component-border, #e7e7e7);
+  border-radius: 8px;
+}
+.wk-application__evaluations legend { padding: 0 4px; font-weight: 600; font-size: .9rem; }
+.wk-application__evaluation { display: flex; align-items: center; gap: 8px; margin-top: 8px; overflow-wrap: anywhere; }
+.wk-application__hard-warning {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border: 1px solid #ffb648;
+  border-left: 4px solid #ffb648;
+  border-radius: 8px;
+  background: #fff7e8;
+  color: #4a3200;
+}
+.wk-application__hard-warning strong { display: block; }
+.wk-application__hard-warning p { margin: 4px 0 0; }
+.wk-application__acknowledge { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-weight: 600; }
+.wk-application__label { display: grid; gap: 6px; margin-top: 14px; font-size: .9rem; font-weight: 600; }
+.wk-application input[type='text'],
+.wk-application__label + input,
+.wk-application #wk-application-batch {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--td-component-border, #c8c8c8);
+  border-radius: 6px;
+  padding: 10px 12px;
+  background: var(--td-bg-color-container, #fff);
+  color: var(--td-text-color-primary, #222);
+  font: inherit;
+}
+.wk-application #wk-application-batch:disabled { opacity: .7; }
+.wk-application button:focus-visible,
+.wk-application input:focus-visible,
+.wk-application a:focus-visible { outline: 3px solid var(--td-brand-color-focus, #0052d9); outline-offset: 2px; }
+.wk-application__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.wk-application__actions button,
+.wk-application__submit {
+  border: 1px solid var(--td-component-border, #dcdcdc);
+  border-radius: 6px;
+  padding: 8px 14px;
+  background: var(--td-bg-color-container, #fff);
+  color: var(--td-text-color-primary, #222);
+  font: inherit;
+  cursor: pointer;
+}
+.wk-application__actions button:disabled,
+.wk-application__submit:disabled { opacity: .55; cursor: not-allowed; }
+.wk-application__submit:not(:disabled) {
+  border-color: #07c05f;
+  background: #07c05f;
+  color: #fff;
+}
+.wk-application__message { margin: 12px 0 0; }
+.wk-application__message--error { color: var(--td-error-color, #d54941); font-weight: 600; }
+.wk-application__receipt {
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid var(--td-component-border, #e7e7e7);
+  border-radius: 10px;
+  background: var(--td-bg-color-secondarycontainer, #f7f7f7);
+}
+.wk-application__receipt p { margin: 6px 0 0; }
+.wk-application__link--ready { color: #07c05f; font-weight: 600; }
+.wk-application__link--linking { color: var(--td-warning-color, #ed7b2f); font-weight: 600; }
+.wk-application__link--link_failed { color: var(--td-error-color, #d54941); font-weight: 600; }
+.wk-application__qualified { margin-top: 10px; font-weight: 600; color: #07c05f; }
+.wk-application__qualified--warned { color: #b45309; }
+.wk-application__pinned {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px;
+  margin: 12px 0 0;
+  padding: 0;
+}
+.wk-application__pinned > div {
+  border: 1px solid var(--td-component-border, #e7e7e7);
+  border-radius: 8px;
+  padding: 10px;
+  background: var(--td-bg-color-container, #fff);
+}
+.wk-application__pinned dt { color: var(--td-text-color-secondary, #666); font-size: .82rem; }
+.wk-application__pinned dd { margin: 4px 0 0; font-weight: 600; overflow-wrap: anywhere; }
+.wk-application code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--td-bg-color-secondarycontainer, #eee);
+  font-size: .88em;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 640px) {
+  .wk-application { padding: 14px; }
+  .wk-application__pinned { grid-template-columns: 1fr; }
+  .wk-application__evaluation { align-items: flex-start; }
+}

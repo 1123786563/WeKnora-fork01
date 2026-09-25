@@ -4,6 +4,16 @@ import type { ClientRequest } from './client.ts'
 
 export type CareerRequest = (input: ClientRequest) => Promise<unknown>
 
+// Frozen application contract owned by the career backend (T14). The client
+// consumes the enums verbatim; decoders reject invented link states,
+// evaluation statuses, or malformed pinned evidence before they reach the UI.
+export type ApplicationLinkState = 'linking' | 'ready' | 'link_failed'
+export type ApplicationEvaluationStatus = 'eligible' | 'ineligible' | 'unknown'
+export type ApplicationEvidencePin = { opportunityId: string; snapshotId: string; evaluationId: string; profileRevision: number; evaluationStatus: ApplicationEvaluationStatus; batchIdentity: string }
+export type ApplicationWarning = { evaluationId: string; evaluationStatus: 'ineligible'; hardRuleId?: string; reasonCode?: string }
+export type ApplicationReceipt = { applicationId: string; requestId: string; linkState: ApplicationLinkState; taskId?: string; runId?: string; qualified: boolean; warning?: ApplicationWarning; pinnedEvidence: ApplicationEvidencePin }
+export type CreateApplicationInput = { requestId: string; opportunityId: string; snapshotId: string; evaluationId: string; batchIdentity: string; continueDespiteHardFailure: boolean; expectedRevision: number }
+
 // Frozen source-integrity enums owned by the career backend (T09). The client
 // consumes them verbatim: decoders reject any value outside the frozen sets,
 // so invented statuses or failure codes can never reach the UI.
@@ -110,6 +120,42 @@ export function decodeOpportunityEvidencePage(value: unknown): OpportunityEviden
  }
 }
 
+const applicationLinkStates: ApplicationLinkState[] = ['linking', 'ready', 'link_failed']
+const applicationEvaluationStatuses: ApplicationEvaluationStatus[] = ['eligible', 'ineligible', 'unknown']
+const applicationWarningKeys = ['evaluationId', 'evaluationStatus', 'hardRuleId', 'reasonCode']
+
+function decodeApplicationPin(value: unknown): ApplicationEvidencePin {
+ const record = decodeRecord(value, 'invalid application pinned evidence')
+ if (!validIdentifier(record.opportunityId) || !validIdentifier(record.snapshotId) || !validIdentifier(record.evaluationId)
+  || !Number.isSafeInteger(record.profileRevision) || Number(record.profileRevision) < 0
+  || !applicationEvaluationStatuses.includes(record.evaluationStatus as ApplicationEvaluationStatus)
+  || !validIdentifier(record.batchIdentity)) throw new TypeError('invalid application pinned evidence')
+ return { opportunityId: record.opportunityId, snapshotId: record.snapshotId, evaluationId: record.evaluationId, profileRevision: record.profileRevision as number, evaluationStatus: record.evaluationStatus as ApplicationEvaluationStatus, batchIdentity: record.batchIdentity }
+}
+
+export function decodeApplicationReceipt(value: unknown): ApplicationReceipt {
+ const record = decodeRecord(value, 'invalid application receipt')
+ if (!validIdentifier(record.applicationId) || !validIdentifier(record.requestId)
+  || !applicationLinkStates.includes(record.linkState as ApplicationLinkState)
+  || (record.taskId !== undefined && !validIdentifier(record.taskId))
+  || (record.runId !== undefined && !validIdentifier(record.runId))
+  || typeof record.qualified !== 'boolean') throw new TypeError('invalid application receipt')
+ let warning: ApplicationWarning | undefined
+ if (record.warning !== undefined) {
+  const raw = decodeRecord(record.warning, 'invalid application warning')
+  if (Object.keys(raw).some((key) => !applicationWarningKeys.includes(key))
+   || !validIdentifier(raw.evaluationId) || raw.evaluationStatus !== 'ineligible'
+   || (raw.hardRuleId !== undefined && !validIdentifier(raw.hardRuleId))
+   || (raw.reasonCode !== undefined && !validIdentifier(raw.reasonCode))) throw new TypeError('invalid application warning')
+  warning = { evaluationId: raw.evaluationId, evaluationStatus: 'ineligible', ...(raw.hardRuleId !== undefined ? { hardRuleId: raw.hardRuleId } : {}), ...(raw.reasonCode !== undefined ? { reasonCode: raw.reasonCode } : {}) }
+ }
+ return {
+  applicationId: record.applicationId, requestId: record.requestId, linkState: record.linkState as ApplicationLinkState,
+  ...(record.taskId !== undefined ? { taskId: record.taskId } : {}), ...(record.runId !== undefined ? { runId: record.runId } : {}),
+  qualified: record.qualified, ...(warning ? { warning } : {}), pinnedEvidence: decodeApplicationPin(record.pinnedEvidence),
+ }
+}
+
 export function createCareerApi(request: CareerRequest) {
  return {
   async open(signal?: AbortSignal): Promise<CareerView> { return await request({ method: 'GET', path: '/api/v1/career/open', ...(signal ? { signal } : {}) }) as CareerView },
@@ -161,6 +207,22 @@ export function createCareerApi(request: CareerRequest) {
   async evaluation(evaluationId: string, signal?: AbortSignal): Promise<Evaluation> {
    if (!evaluationId.trim()) throw new TypeError('evaluation ID must not be empty')
    return decodeEvaluation(await request({ method: 'GET', path: `/api/v1/career/evaluations/${encodeURIComponent(evaluationId)}`, ...(signal ? { signal } : {}) }))
+  },
+  async createApplication(input: CreateApplicationInput, signal?: AbortSignal): Promise<ApplicationReceipt> {
+   if (!input.requestId.trim() || !input.opportunityId.trim() || !input.snapshotId.trim() || !input.evaluationId.trim() || !input.batchIdentity.trim() || !Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0) throw new TypeError('application request identifiers and revision must be valid')
+   return decodeApplicationReceipt(await request({ method: 'POST', path: '/api/v1/career/applications', body: input, ...(signal ? { signal } : {}) }))
+  },
+  async applicationReceipt(requestId: string, signal?: AbortSignal): Promise<ApplicationReceipt> {
+   if (!requestId.trim()) throw new TypeError('application receipt requestId must not be empty')
+   return decodeApplicationReceipt(await request({ method: 'GET', path: `/api/v1/career/applications/receipt?requestId=${encodeURIComponent(requestId)}`, ...(signal ? { signal } : {}) }))
+  },
+  async application(applicationId: string, signal?: AbortSignal): Promise<ApplicationReceipt> {
+   if (!applicationId.trim()) throw new TypeError('application ID must not be empty')
+   return decodeApplicationReceipt(await request({ method: 'GET', path: `/api/v1/career/applications/${encodeURIComponent(applicationId)}`, ...(signal ? { signal } : {}) }))
+  },
+  async reconcileApplicationLink(requestId: string, signal?: AbortSignal): Promise<ApplicationReceipt> {
+   if (!requestId.trim()) throw new TypeError('application reconcile requestId must not be empty')
+   return decodeApplicationReceipt(await request({ method: 'POST', path: '/api/v1/career/applications/link/reconcile', body: { requestId }, ...(signal ? { signal } : {}) }))
   },
  }
 }
