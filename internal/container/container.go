@@ -2565,16 +2565,40 @@ func newCraftSessionService(
 // newCraftPreviewService assembles W02's preview service. Without a
 // configured isolated https preview origin the feature stays disabled:
 // issuance answers unavailable and the isolated origin 404s.
+//
+// T14 (#129) completion wiring: the service also receives the REAL Docker
+// network checker (bound-sandbox policy + live container inspection — a
+// stored config value alone cannot attest an old bridge container) and the
+// explicit browser-navigation protection gate. The gate is env-driven and
+// defaults OFF: a deployment enables previews only after the isolated
+// origin's no-egress posture is actually proven (the T14 live matrix).
+// Until then issuance stays fail-closed (ErrUnsupported) even with both
+// origins configured — the recorded default-off contract.
 func newCraftPreviewService(
 	versions craft.VersionStore,
 	files interfaces.FileService,
 	checks craft.PreviewCheckStore,
 	access *service.CraftAccessService,
+	loader sandbox.TenantSandboxConfigLoader,
+	redisClient *redis.Client,
 ) *service.CraftPreviewService {
+	global := sandbox.DefaultConfig()
+	bindings, _, err := selectSessionBindingStore(redisClient, false)
+	if err != nil {
+		logger.Warnf(context.Background(), "[CraftPreview] binding store unavailable, network checker stays zero-value (fail-closed): %v", err)
+		bindings = nil
+	}
 	return service.NewCraftPreviewService(versions, files, checks, service.CraftPreviewConfig{
 		AppOrigin:     strings.TrimSpace(os.Getenv("WEKNORA_CRAFT_APP_ORIGIN")),
 		PreviewOrigin: strings.TrimSpace(os.Getenv("WEKNORA_CRAFT_PREVIEW_ORIGIN")),
 		AccessChecker: access,
+		NetworkChecker: service.CraftPreviewDockerNetworkChecker{
+			Bindings:  bindings,
+			Loader:    loader,
+			Global:    global,
+			Inspector: service.CraftPreviewLocalDockerInspector{},
+		},
+		BrowserNavigationProtected: strings.EqualFold(strings.TrimSpace(os.Getenv("WEKNORA_CRAFT_PREVIEW_NAVIGATION_PROTECTED")), "true"),
 	})
 }
 

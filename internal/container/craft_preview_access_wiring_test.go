@@ -38,7 +38,7 @@ func TestCraftPreviewConstructorUsesCurrentPersistentTaskAccessAndStaysDisabled(
 	t.Setenv("WEKNORA_CRAFT_APP_ORIGIN", "https://app.test")
 	t.Setenv("WEKNORA_CRAFT_PREVIEW_ORIGIN", "https://preview.test")
 	preview := newCraftPreviewService(
-		struct{ craft.VersionStore }{}, struct{ interfaces.FileService }{}, nil, policy,
+		struct{ craft.VersionStore }{}, struct{ interfaces.FileService }{}, nil, policy, nil, nil,
 	)
 	require.True(t, preview.Enabled(), "valid isolated origins assemble without enabling browser navigation")
 	_, err := preview.Issue(context.Background(), owner, "v-preview-test")
@@ -54,4 +54,33 @@ func TestCraftPreviewConstructorUsesCurrentPersistentTaskAccessAndStaysDisabled(
 	require.NoError(t, db.Exec(`UPDATE tenant_members SET deleted_at = CURRENT_TIMESTAMP, status = 'inactive' WHERE id = ?`, oldID).Error)
 	require.ErrorIs(t, checker.CheckTaskAccess(context.Background(), viewer, craft.TaskPreview), craft.ErrForbidden)
 
+}
+
+// TestCraftPreviewNavigationGateEnvWiring pins the T14 completion wiring:
+// the production constructor carries the real Docker network checker and
+// the browser-navigation gate reads WEKNORA_CRAFT_PREVIEW_NAVIGATION_PROTECTED
+// (default OFF — fail-closed). With the gate explicitly enabled the service
+// stops refusing at the navigation door; without the env the door stays
+// closed even though both origins are configured.
+func TestCraftPreviewNavigationGateEnvWiring(t *testing.T) {
+	t.Setenv("WEKNORA_CRAFT_APP_ORIGIN", "https://app.test")
+	t.Setenv("WEKNORA_CRAFT_PREVIEW_ORIGIN", "https://preview.test")
+	// The constructor panics on nil stores, so hand it inert non-nil
+	// implementations purely for the gate assertions.
+	versions := struct{ craft.VersionStore }{}
+	files := struct{ interfaces.FileService }{}
+
+	defaulted := newCraftPreviewService(versions, files, nil, nil, nil, nil)
+	require.True(t, defaulted.Enabled())
+	_, err := defaulted.Issue(context.Background(), craft.Scope{TenantID: 1, UserID: "u1", SessionID: "s1"}, "v-anything")
+	require.ErrorIs(t, err, craft.ErrUnsupported, "default env leaves the navigation gate closed (fail-closed)")
+
+	t.Setenv("WEKNORA_CRAFT_PREVIEW_NAVIGATION_PROTECTED", "true")
+	gated := newCraftPreviewService(versions, files, nil, nil, nil, nil)
+	require.True(t, gated.Enabled())
+	// With the gate open, the next refusal must come from a door OTHER than
+	// the navigation gate (task access / no-egress), never
+	// ErrUnsupported-from-navigation again.
+	_, err = gated.Issue(context.Background(), craft.Scope{TenantID: 1, UserID: "u1", SessionID: "s1"}, "v-anything")
+	require.NotErrorIs(t, err, craft.ErrUnsupported, "navigation gate no longer the refusing door once explicitly enabled")
 }
