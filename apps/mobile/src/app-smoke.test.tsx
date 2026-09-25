@@ -588,6 +588,7 @@ test('the composition wires the task office detail port and detail files stay of
   const here = dirname(fileURLToPath(import.meta.url));
   const composition = readFileSync(join(here, 'composition.ts'), 'utf8');
   assert.match(composition, /detail:\s*remote/, 'taskOfficeFor must pass the remote as the detail port; open() fails closed without it (T05)');
+  assert.match(composition, /commands:\s*remote/, 'taskOfficeFor must wire the command channel; handle.act() fails closed (TASK_OFFICE_COMMAND_UNAVAILABLE) without it (T07 #37)');
   for (const relative of ['screens/TaskDetailScreen.tsx', 'task-detail-view.ts', 'app/tasks/detail.tsx']) {
     const source = readFileSync(join(here, relative), 'utf8');
     assert.equal(/@weknora\/(api-client|contracts)/.test(source), false, `${relative} must consume the Task Office Interface only`);

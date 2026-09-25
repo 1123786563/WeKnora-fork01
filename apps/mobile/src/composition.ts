@@ -157,6 +157,7 @@ function taskOfficeFor(activeRuntime: MobileRuntime, origin: string, tenantId: s
       backend: remote,
       detail: remote,
       interactions: remote,
+      commands: remote,
       legacy: createMobileLegacyTaskRemote({
         origin,
         request: (input) => activeRuntime.authorizedRequest(input),
