@@ -89,3 +89,10 @@ go test -count=1 -v ./internal/handler/ -run 'TestComputeChunkSizeStats|TestPrev
 ### 逐用例等价比对
 
 （K1.7 填写：用例数、PASS/FAIL、关键断言输出比对结论。）
+
+## §8 计数基线登记：例外台账 105 → 111（K1.6，Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY）
+
+- **变更**：`docs/architecture/passb/exception-ledger.yaml` 追加 6 条 K1 搬迁显形 import 例外（exc-0106..exc-0111，owner=21-knowledge-ingest，remove_at=ib2），同窗 `tools/architectureguard/check.go` importExceptions 数据行（PassBTask=B-knowledge——模块级口径，沿 K2.3/K2.4 先例；plan §7.2 字面的 `21-knowledge-ingest` 不在 passbguard PassBTaskModule 映射表（tools/passbguard/check.go:83-93），字面采用将在 ib2 触发 `exception-task-module` 诊断，偏差如实登记待协调者确认）。头计数注释 105→111。
+- **实测集 vs 计划预测集偏差**：plan §7.2 预测 E1-E6 中 **E3（extract.go→agentruntime/agent/tools）无需登记**——K1.3 import 环裁决（CYCLE-FORCED-COMPOSITION 同律）将 tools/chat_pipeline 消费改走 `DataAnalysisToolSeam`/`GraphExtractorSeam` 消费侧 seam，extract.go 保持零 agentruntime import（Brief §4 已留痕）；**新增 1 条计划未预测**：`ingest/seams.go→airesource/models/chat`（seam 类型签名承载 chat.Chat，K1.3 产物）。实测 6 条 = E1/E2/E4/E5/E6 + seams 行，与 `make check-backend-architecture` 诊断逐条对齐。
+- **exc-id 跨分支续号说明**：并行兄弟分支（retrieval 至 exc-0110、wikifaq 至 exc-0118、ac-skills/ac-market 至 exc-0113）各自从本分支上界独立续号，集成侧合并如撞号按 (from,to) 边键重排（passbguard exception-overlap 以边为键，不以 id）。
+- **验证命令与退出码**：登记前 `make check-backend-architecture` 退出码 1（6 forbidden-import + 4 legacy-guard）；登记后退出码 1（仅余 4 legacy-guard 过渡 shim 诊断——K1.1 报告遗留 1 的已升级项，见 Brief/K1.6 报告），6 条 forbidden-import 全消解；`make verify-module-moves` 退出码 0（16 manifests OK）；`go run ./tools/passbguard -root .` 零 `exception-*` 新增诊断（既有契约/事件漂移项不变，Brief §3 ib2 回写批）。
