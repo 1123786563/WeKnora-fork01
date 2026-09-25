@@ -81,3 +81,55 @@ test('invalid local input is rejected without touching the office', async () => 
   assert.equal(controller.state().error, TASK_BUDGET_COPY.TASK_BUDGET_INVALID_INPUT);
   controller.dispose();
 });
+
+test('a failed refetch after a committed extend states the commit and forbids a blind retry', async () => {
+  const extendCalls: number[] = [];
+  let budgetCalls = 0;
+  const office = officeWith({
+    budget: async () => {
+      budgetCalls += 1;
+      if (budgetCalls === 1) {
+        return {
+          taskId: 'r1', rootRunId: 'r1',
+          limitCredits: 1000, usedCredits: 400, heldCredits: 100, remainingCredits: 500,
+          delegatedRunIds: [], pausedRunIds: ['r1'], canExtend: true,
+        };
+      }
+      throw new TaskBudgetError('TASK_BUDGET_BACKEND');
+    },
+    extendBudget: async (input: { additionalCredits: number }) => {
+      extendCalls.push(input.additionalCredits);
+      return { additionalCredits: input.additionalCredits, resumedRuns: 1 };
+    },
+  });
+  const controller = createTaskBudgetController(office, { taskId: 'r1' });
+  await controller.refresh();
+  await controller.extend(10);
+  const state = controller.state();
+  assert.deepEqual(extendCalls, [10], 'the extend was committed exactly once');
+  assert.equal(state.error, undefined, 'a committed extend must not be reported as a failure');
+  assert.equal(state.extending, false, 'the busy state must settle so the user can act on the facts');
+  assert.equal(state.facts?.limitCredits, 1000, 'stale facts stay on screen until a refetch succeeds (never locally mutated)');
+  assert.equal(
+    state.message,
+    '扩额已提交（追加 10 额度，恢复 1 个运行），但读取最新预算失败；请先刷新核实结果，不要直接重复提交扩额。',
+  );
+  controller.dispose();
+});
+
+test('extend publishes its terminal state to subscribers on both the refetched and the unrefetched paths', async () => {
+  const seen: Array<{ extending: boolean; message?: string; error?: string }> = [];
+  const office = officeWith({
+    extendBudget: async (input: { additionalCredits: number }) => ({ additionalCredits: input.additionalCredits, resumedRuns: 2 }),
+  });
+  const controller = createTaskBudgetController(office, { taskId: 'r1' });
+  await controller.refresh();
+  controller.subscribe((state) => seen.push(state));
+  await controller.extend(10);
+  const last = seen[seen.length - 1];
+  assert.ok(last !== undefined, 'extend must publish at least one terminal update');
+  assert.equal(last.extending, false, 'the terminal publish must settle the busy state');
+  assert.match(last.message ?? '', /^已追加 10 额度，恢复 2 个运行/, 'the terminal publish must carry the receipt message');
+  assert.equal(last.error, undefined);
+  controller.dispose();
+});

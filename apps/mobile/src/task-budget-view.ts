@@ -66,11 +66,25 @@ export function createTaskBudgetController(
       emit();
       try {
         const receipt = await office.extendBudget({ taskId: input.taskId, additionalCredits });
-        const facts = await office.budget(input.taskId); // 权威重取，绝不本地加数
+        let facts: TaskBudgetFacts | undefined;
+        try {
+          facts = await office.budget(input.taskId); // 权威重取，绝不本地加数
+        } catch {
+          // 修复轮 1（T09 #39 review）：提交成功 ≠ 重取成功。扩额已在服务端生效
+          // （幂等键已清除），此刻重试将以新键二次扣费——必须明示「已提交、待核实」
+          // 并引导刷新，不得折叠为「读取失败」引导重试。
+          state = {
+            ...state, extending: false, error: undefined,
+            message: `扩额已提交（追加 ${receipt.additionalCredits} 额度，恢复 ${receipt.resumedRuns} 个运行），但读取最新预算失败；请先刷新核实结果，不要直接重复提交扩额。`,
+          };
+          emit();
+          return;
+        }
         state = {
           ...state, extending: false, facts,
           message: `已追加 ${receipt.additionalCredits} 额度，恢复 ${receipt.resumedRuns} 个运行；追加预算不等于外部操作批准。`,
         };
+        emit();
       } catch (error) {
         failWith(error);
       }
