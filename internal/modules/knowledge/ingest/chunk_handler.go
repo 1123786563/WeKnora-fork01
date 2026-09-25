@@ -1,10 +1,9 @@
-package handler
+package ingest
 
 import (
 	stderrors "errors"
 	"net/http"
 
-	"github.com/Tencent/WeKnora/internal/application/service"
 	"github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/types"
@@ -66,7 +65,7 @@ func (h *ChunkHandler) GetChunkByIDOnly(c *gin.Context) {
 	// permission against the parent KB before we got here).
 	chunk, err := h.service.GetChunkByIDOnly(ctx, chunkID)
 	if err != nil {
-		if err == service.ErrChunkNotFound {
+		if err == ErrChunkNotFound {
 			logger.Warnf(ctx, "Chunk not found, chunk ID: %s", chunkID)
 			c.Error(errors.NewNotFoundError("Chunk not found"))
 			return
@@ -179,7 +178,7 @@ func (h *ChunkHandler) fetchChunkAndVerifyOwnership(c *gin.Context) (*types.Chun
 	}
 	chunk, err := h.service.GetChunkByID(ctx, id)
 	if err != nil {
-		if err == service.ErrChunkNotFound {
+		if err == ErrChunkNotFound {
 			logger.Warnf(ctx, "Chunk not found, knowledge ID: %s, chunk ID: %s", knowledgeID, id)
 			return nil, knowledgeID, errors.NewNotFoundError("Chunk not found")
 		}
@@ -227,7 +226,7 @@ func (h *ChunkHandler) UpdateChunk(c *gin.Context) {
 	chunk, err = h.service.UpdateDocumentChunk(ctx, chunk.ID, req.Content, req.IsEnabled, req.ExpectedRevision)
 	if err != nil {
 		logger.ErrorWithFields(ctx, err, nil)
-		if stderrors.Is(err, service.ErrChunkRevisionConflict) {
+		if stderrors.Is(err, ErrChunkRevisionConflict) {
 			c.Error(errors.NewConflictError("Chunk was modified by another user; refresh and retry"))
 			return
 		}
@@ -289,7 +288,7 @@ func (h *ChunkHandler) RevertChunk(c *gin.Context) {
 		return
 	}
 	updated, err := h.service.RevertDocumentChunk(c.Request.Context(), chunk.ID, *req.Revision, req.ExpectedRevision)
-	if stderrors.Is(err, service.ErrChunkRevisionConflict) {
+	if stderrors.Is(err, ErrChunkRevisionConflict) {
 		c.Error(errors.NewConflictError("Chunk was modified by another user; refresh and retry"))
 		return
 	}

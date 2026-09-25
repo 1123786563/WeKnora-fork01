@@ -1,4 +1,4 @@
-package service
+package ingest
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 )
 
 func (s *chunkService) writableChunk(ctx context.Context, id string) (*types.Chunk, error) {
-	tenant, err := writeExecutionTenant(ctx)
+	tenant, err := s.writeGuard.WriteExecutionTenant(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -19,7 +19,7 @@ func (s *chunkService) writableChunk(ctx context.Context, id string) (*types.Chu
 	if chunk == nil || chunk.ID != id || chunk.TenantID != tenant {
 		return nil, apperrors.NewNotFoundError("chunk not found")
 	}
-	knowledge, _, err := loadKnowledgeWrite(ctx, s.knowledgeRepo, s.kbRepository, chunk.KnowledgeID)
+	knowledge, _, err := s.writeGuard.LoadKnowledgeWrite(ctx, s.knowledgeRepo, s.kbRepository, chunk.KnowledgeID)
 	if err != nil {
 		return nil, err
 	}
@@ -30,7 +30,10 @@ func (s *chunkService) writableChunk(ctx context.Context, id string) (*types.Chu
 	return &copyOfChunk, nil
 }
 
-func sameChunkDocument(a, b *types.Chunk) bool {
+// SameChunkDocument 判定两个 chunk 是否属于同一租户下的同一文档。
+// Pass B K1.2 导出（R1 增量）：宿主 knowledge_process.go:2256/:3002（K4 属主，
+// 禁改）经宿主薄 shim 消费同一实现，真源唯一在 ingest（plan 21 §6.2/§7.5）。
+func SameChunkDocument(a, b *types.Chunk) bool {
 	return a != nil && b != nil && a.TenantID == b.TenantID &&
 		a.KnowledgeBaseID == b.KnowledgeBaseID && a.KnowledgeID == b.KnowledgeID
 }
@@ -45,7 +48,7 @@ func (s *chunkService) validateChunkWrites(ctx context.Context, chunks []*types.
 		}
 		ids = append(ids, chunk.KnowledgeID)
 	}
-	knowledge, err := loadKnowledgeWriteBatch(ctx, s.knowledgeRepo, s.kbRepository, ids)
+	knowledge, err := s.writeGuard.LoadKnowledgeWriteBatch(ctx, s.knowledgeRepo, s.kbRepository, ids)
 	if err != nil {
 		return err
 	}
@@ -76,7 +79,7 @@ func (s *chunkService) validateChunkWrites(ctx context.Context, chunks []*types.
 		}
 		if !create {
 			stored := storedByID[chunk.ID]
-			if stored == nil || stored.ID != chunk.ID || !sameChunkDocument(stored, chunk) {
+			if stored == nil || stored.ID != chunk.ID || !SameChunkDocument(stored, chunk) {
 				return apperrors.NewForbiddenError("chunk ownership cannot be changed")
 			}
 		}
@@ -85,11 +88,11 @@ func (s *chunkService) validateChunkWrites(ctx context.Context, chunks []*types.
 }
 
 func (s *chunkService) writableChunkIDs(ctx context.Context, ids []string) ([]string, error) {
-	ids, err := writeResourceIDs(ids)
+	ids, err := s.writeGuard.WriteResourceIDs(ids)
 	if err != nil || len(ids) == 0 {
 		return ids, err
 	}
-	tenant, err := writeExecutionTenant(ctx)
+	tenant, err := s.writeGuard.WriteExecutionTenant(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -123,7 +126,7 @@ func (s *chunkService) validateDocumentChunkRelations(ctx context.Context, chunk
 		if err != nil {
 			return err
 		}
-		if parent == nil || parent.ID != chunk.ParentChunkID || !sameChunkDocument(chunk, parent) {
+		if parent == nil || parent.ID != chunk.ParentChunkID || !SameChunkDocument(chunk, parent) {
 			return apperrors.NewForbiddenError("parent chunk does not belong to its document")
 		}
 		parents = append(parents, parent)
@@ -134,7 +137,7 @@ func (s *chunkService) validateDocumentChunkRelations(ctx context.Context, chunk
 			return err
 		}
 		for _, child := range children {
-			if !sameChunkDocument(chunk, child) || child.ParentChunkID != parent.ID {
+			if !SameChunkDocument(chunk, child) || child.ParentChunkID != parent.ID {
 				return apperrors.NewForbiddenError("child chunk does not belong to its document")
 			}
 		}

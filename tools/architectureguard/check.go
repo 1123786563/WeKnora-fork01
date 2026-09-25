@@ -844,6 +844,52 @@ var importExceptions = []importException{
 			"batch-a4 搬迁后显形），Pass A 不改边界",
 		PassBTask: "B-workbench",
 	},
+	// ---- Pass B 搬迁显形的预存横向包耦合：knowledge ingest K1（21-knowledge-ingest
+	// §7.2 实测集 = E1/E2/E4/E5/E6 + seams.go→chat；E3（agentruntime/agent/tools）经
+	// K1.3 import 环裁决改走消费侧 seam 后不再 import，无需登记——Ruling
+	// 2026-09-24-IMPORT-EXCEPTION-REGISTRY；airesource 行属 plan 20 §7.4 合法消费清单）----
+	{
+		ImporterFile: "internal/modules/knowledge/ingest/extract.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat",
+		Reason: "搬迁显形横向耦合（Pass B 前宿主 internal/application/service 直连，" +
+			"plan 20 §7.4 合法消费清单；K1.3 搬迁后显形），Pass B 不改边界",
+		PassBTask: "B-knowledge",
+	},
+	{
+		ImporterFile: "internal/modules/knowledge/ingest/extract.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/embedding",
+		Reason: "搬迁显形横向耦合（Pass B 前宿主 internal/application/service 直连，" +
+			"plan 20 §7.4 合法消费清单；K1.3 搬迁后显形），Pass B 不改边界",
+		PassBTask: "B-knowledge",
+	},
+	{
+		ImporterFile: "internal/modules/knowledge/ingest/extract.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/policy/access",
+		Reason: "搬迁显形横向耦合（Pass B 前宿主 internal/application/service 直连 " +
+			"policy 公开包，随文件纯移动；K1.3 搬迁后显形），Pass B 不改边界",
+		PassBTask: "B-knowledge",
+	},
+	{
+		ImporterFile: "internal/modules/knowledge/ingest/seams.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat",
+		Reason: "搬迁显形横向耦合（原 service/extract.go 直连 chat，K1.3 消费侧 seam " +
+			"具体化后由 seams.go 承载 chat.Chat 类型签名，plan 21 §6.3），Pass B 不改边界",
+		PassBTask: "B-knowledge",
+	},
+	{
+		ImporterFile: "internal/modules/knowledge/ingest/image_multimodal.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/utils/ollama",
+		Reason: "搬迁显形横向耦合（Pass B 前宿主 internal/application/service 直连，" +
+			"plan 20 §7.4 合法消费清单；K1.4 搬迁后显形），Pass B 不改边界",
+		PassBTask: "B-knowledge",
+	},
+	{
+		ImporterFile: "internal/modules/knowledge/ingest/image_multimodal.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/vlm",
+		Reason: "搬迁显形横向耦合（Pass B 前宿主 internal/application/service 直连，" +
+			"plan 20 §7.4 合法消费清单；K1.4 搬迁后显形），Pass B 不改边界",
+		PassBTask: "B-knowledge",
+	},
 }
 
 // importExcepted 报告 (importerFile, importedPath) 是否命中一条精确豁免。

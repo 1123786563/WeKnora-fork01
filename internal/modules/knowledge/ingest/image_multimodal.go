@@ -1,4 +1,4 @@
-package service
+package ingest
 
 import (
 	"context"
@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/utils/ollama"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/vlm"
@@ -50,6 +49,14 @@ const (
 		"</instructions>"
 )
 
+// VlmOCRPrompt / VlmOCRScannedPDFPrompt 导出常量别名（K1.4 R1 增量，超出
+// plan §6.2 字面清单）：conversation 调用方 temporary_document.go:513/:515
+// （禁改）经宿主 shim 消费同一常量值。
+const (
+	VlmOCRPrompt           = vlmOCRPrompt
+	VlmOCRScannedPDFPrompt = vlmOCRScannedPDFPrompt
+)
+
 func buildVLMCaptionPrompt(ctx context.Context, cfg types.VLMConfig) string {
 	language := strings.TrimSpace(cfg.DescriptionLanguage)
 	if language == "" {
@@ -57,6 +64,12 @@ func buildVLMCaptionPrompt(ctx context.Context, cfg types.VLMConfig) string {
 	}
 	prompt := fmt.Sprintf("Provide a brief and concise description of the main content of the image in %s.", language)
 	return types.AppendCustomPromptInstructions(prompt, cfg.CustomInstructions, "image_description")
+}
+
+// BuildVLMCaptionPrompt 导出包装（plan §6.1，K0 §6.2 组 D R1）：conversation
+// 调用方（temporary_document.go:560）经宿主 R1-10 shim 消费同一实现。
+func BuildVLMCaptionPrompt(ctx context.Context, cfg types.VLMConfig) string {
+	return buildVLMCaptionPrompt(ctx, cfg)
 }
 
 // ImageMultimodalService handles image:multimodal asynq tasks.
@@ -85,11 +98,32 @@ type ImageMultimodalService struct {
 	// the knowledge base's currently configured one.
 	resourceCatalog interfaces.ResourceCatalog
 
-	// spanTracker records this image's subspan under the parent attempt's
-	// multimodal stage. nil-safe — falls back to no-op via tracker().
-	spanTracker SpanTracker
+	// spanTrace records this image's subspan under the parent attempt's
+	// multimodal stage. nil-safe — falls back to no-op via trace().
+	// Pass B K1.4：原 spanTracker SpanTracker（宿主 knowledge_span_tracker.go，
+	// K4 属主）改经 SpanTraceSeam 投影，构造注入，禁包级 var（plan §6.3）。
+	spanTrace SpanTraceSeam
+	// previewTextFn 承载宿主 previewText（wiki_ingest.go:1383，K3 属主）；
+	// 生产接线 K5 接 K3 导出 PreviewText（plan §6.3 组 A）。
+	previewTextFn func(s string, maxRunes int) string
+	// knowledgeNotFoundErr / knowledgeBaseNotFoundErr 承载宿主 repository
+	// 哨兵（knowledge.go:15 / knowledgebase.go:13，K4 属主）。ingest 禁 import
+	// 宿主 repository 包（R1-8 shim 将形成 repository→ingest→repository
+	// import 环，plan §6.3），故以 error 字段注入，errors.Is 比对目标不变。
+	knowledgeNotFoundErr     error
+	knowledgeBaseNotFoundErr error
+	// resolveProcessConfigFn 承载宿主 ResolveProcessConfig
+	// （knowledge_process_config.go:40，K4 属主；K1.3 同款增量 seam）。
+	resolveProcessConfigFn func(kb *types.KnowledgeBase, overrides *types.KnowledgeProcessOverrides) types.EffectiveProcessConfig
+	// postProcessTaskOptionsFn 承载宿主 knowledgePostProcessTaskOptions
+	// （knowledge_task_options.go:21，K4 属主；K1.4 增量 seam，零复制）。
+	postProcessTaskOptionsFn func() []asynq.Option
 }
 
+// Pass B K1.4：原 14 参签名末参 spanTracker SpanTracker 改为 spanTrace
+// SpanTraceSeam，追加 knowledgeNotFoundErr / knowledgeBaseNotFoundErr 两哨兵
+// 参数（plan §6.1）；previewTextFn / resolveProcessConfigFn /
+// postProcessTaskOptionsFn 为增量 seam（构造注入，spec §4.3）。
 func NewImageMultimodalService(
 	chunkService interfaces.ChunkService,
 	modelService interfaces.ModelService,
@@ -104,33 +138,43 @@ func NewImageMultimodalService(
 	fileSvc interfaces.FileService,
 	storageResolver interfaces.StorageBackendResolver,
 	resourceCatalog interfaces.ResourceCatalog,
-	spanTracker SpanTracker,
+	spanTrace SpanTraceSeam,
+	knowledgeNotFoundErr error,
+	knowledgeBaseNotFoundErr error,
+	previewTextFn func(s string, maxRunes int) string,
+	resolveProcessConfigFn func(kb *types.KnowledgeBase, overrides *types.KnowledgeProcessOverrides) types.EffectiveProcessConfig,
+	postProcessTaskOptionsFn func() []asynq.Option,
 ) interfaces.TaskHandler {
 	return &ImageMultimodalService{
-		chunkService:    chunkService,
-		modelService:    modelService,
-		kbService:       kbService,
-		knowledgeRepo:   knowledgeRepo,
-		tenantRepo:      tenantRepo,
-		retrieveEngine:  retrieveEngine,
-		ownership:       ownership,
-		ollamaService:   ollamaService,
-		taskEnqueuer:    taskEnqueuer,
-		redisClient:     redisClient,
-		fileSvc:         fileSvc,
-		storageResolver: storageResolver,
-		resourceCatalog: resourceCatalog,
-		spanTracker:     spanTracker,
+		chunkService:             chunkService,
+		modelService:             modelService,
+		kbService:                kbService,
+		knowledgeRepo:            knowledgeRepo,
+		tenantRepo:               tenantRepo,
+		retrieveEngine:           retrieveEngine,
+		ownership:                ownership,
+		ollamaService:            ollamaService,
+		taskEnqueuer:             taskEnqueuer,
+		redisClient:              redisClient,
+		fileSvc:                  fileSvc,
+		storageResolver:          storageResolver,
+		resourceCatalog:          resourceCatalog,
+		spanTrace:                spanTrace,
+		knowledgeNotFoundErr:     knowledgeNotFoundErr,
+		knowledgeBaseNotFoundErr: knowledgeBaseNotFoundErr,
+		previewTextFn:            previewTextFn,
+		resolveProcessConfigFn:   resolveProcessConfigFn,
+		postProcessTaskOptionsFn: postProcessTaskOptionsFn,
 	}
 }
 
-// tracker returns a usable SpanTracker — falls back to a no-op when the
-// service was constructed without one.
-func (s *ImageMultimodalService) tracker() SpanTracker {
-	if s.spanTracker == nil {
-		return noopSpanTracker{}
+// trace 返回 seam 句柄；nil 回退 noopSpanTraceSeam，零值语义与原
+// tracker() 的 noopSpanTracker{} 一致（plan §6.3）。
+func (s *ImageMultimodalService) trace() SpanTraceSeam {
+	if s.spanTrace == nil {
+		return noopSpanTraceSeam{}
 	}
-	return s.spanTracker
+	return s.spanTrace
 }
 
 // Handle implements asynq handler for TypeImageMultimodal.
@@ -170,13 +214,13 @@ func (s *ImageMultimodalService) Handle(ctx context.Context, task *asynq.Task) e
 	// task, or the upstream code shipped without span tracking), the
 	// tracker is a no-op so we silently fall back to the existing
 	// counter-based finalize semantics.
-	tracker := s.tracker()
-	var imgSpan *Span
+	trace := s.trace()
+	var imgSpan any
 	if payload.Attempt > 0 {
-		parent := tracker.LookupStage(ctx, payload.KnowledgeID, payload.Attempt, types.StageMultimodal)
+		parent := trace.LookupStage(ctx, payload.KnowledgeID, payload.Attempt, types.StageMultimodal)
 		if parent != nil {
 			name := fmt.Sprintf("multimodal.image[%d]", payload.ImageIndex)
-			imgSpan = tracker.BeginSubSpan(ctx, parent, name, types.SpanKindGeneration, types.JSONMap{
+			imgSpan = trace.BeginSubSpan(ctx, parent, name, types.SpanKindGeneration, types.JSONMap{
 				"image_url":         payload.ImageURL,
 				"image_source_type": payload.ImageSourceType,
 				"enable_ocr":        payload.EnableOCR,
@@ -207,9 +251,9 @@ func (s *ImageMultimodalService) Handle(ctx context.Context, task *asynq.Task) e
 		// UI whether THIS specific image worked.
 		if imgSpan != nil {
 			if handleErr == nil {
-				tracker.EndSpan(ctx, imgSpan, imgOut)
+				trace.EndSpan(ctx, imgSpan, imgOut)
 			} else if isFinalAsynqAttempt(ctx) {
-				tracker.FailSpan(ctx, imgSpan,
+				trace.FailSpan(ctx, imgSpan,
 					"MULTIMODAL_VLM_FAILED",
 					handleErr.Error(),
 					handleErr)
@@ -273,11 +317,11 @@ func (s *ImageMultimodalService) Handle(ctx context.Context, task *asynq.Task) e
 			logger.Warnf(ctx, "[ImageMultimodal] OCR failed for %s: %v", payload.ImageURL, ocrErr)
 			imgOut["ocr_error"] = ocrErr.Error()
 		} else {
-			ocrText = sanitizeOCRText(ocrText)
+			ocrText = SanitizeOCRText(ocrText)
 			if ocrText != "" {
 				imageInfo.OCRText = ocrText
 				imgOut["ocr_chars"] = len([]rune(ocrText))
-				imgOut["ocr_preview"] = previewText(ocrText, 200)
+				imgOut["ocr_preview"] = s.previewTextFn(ocrText, 200)
 			} else {
 				logger.Warnf(ctx, "[ImageMultimodal] OCR returned empty/invalid content for %s, discarded", payload.ImageURL)
 				imgOut["ocr_chars"] = 0
@@ -286,14 +330,14 @@ func (s *ImageMultimodalService) Handle(ctx context.Context, task *asynq.Task) e
 		}
 	}
 
-	caption, capErr := vlmModel.Predict(ctx, [][]byte{imgBytes}, buildVLMCaptionPrompt(ctx, vlmCfg))
+	caption, capErr := vlmModel.Predict(ctx, [][]byte{imgBytes}, BuildVLMCaptionPrompt(ctx, vlmCfg))
 	if capErr != nil {
 		logger.Warnf(ctx, "[ImageMultimodal] Caption failed for %s: %v", payload.ImageURL, capErr)
 		imgOut["caption_error"] = capErr.Error()
 	} else if caption != "" {
 		imageInfo.Caption = caption
 		imgOut["caption_chars"] = len([]rune(caption))
-		imgOut["caption_preview"] = previewText(caption, 200)
+		imgOut["caption_preview"] = s.previewTextFn(caption, 200)
 	}
 
 	// Build child chunks for OCR and caption results
@@ -374,7 +418,7 @@ func (s *ImageMultimodalService) shouldDropOrphanedMultimodal(
 ) (bool, error) {
 	if payload.KnowledgeID != "" && s.knowledgeRepo != nil {
 		k, err := s.knowledgeRepo.GetKnowledgeByIDOnly(ctx, payload.KnowledgeID)
-		if errors.Is(err, repository.ErrKnowledgeNotFound) {
+		if errors.Is(err, s.knowledgeNotFoundErr) {
 			return true, nil
 		}
 		if err != nil {
@@ -387,7 +431,7 @@ func (s *ImageMultimodalService) shouldDropOrphanedMultimodal(
 	}
 	if payload.KnowledgeBaseID != "" && s.kbService != nil {
 		kb, err := s.kbService.GetKnowledgeBaseByIDOnly(ctx, payload.KnowledgeBaseID)
-		if errors.Is(err, repository.ErrKnowledgeBaseNotFound) {
+		if errors.Is(err, s.knowledgeBaseNotFoundErr) {
 			return true, nil
 		}
 		if err != nil {
@@ -420,6 +464,12 @@ func isFinalAsynqAttempt(ctx context.Context) bool {
 	}
 	retried, maxRetry, ok := types.TaskRetryMetadataFromContext(ctx)
 	return ok && retried >= maxRetry
+}
+
+// IsFinalAsynqAttempt 导出包装（plan §6.1）：宿主 knowledge_process.go
+// :1125/:1497/:1868（K4 属主）经 R1-7 shim 消费同一实现。
+func IsFinalAsynqAttempt(ctx context.Context) bool {
+	return isFinalAsynqAttempt(ctx)
 }
 
 // indexChunks indexes the newly created multimodal chunks into the retrieval engine
@@ -529,7 +579,7 @@ func (s *ImageMultimodalService) resolveVLM(ctx context.Context, kbID, knowledge
 			processOverrides, _ = k.ProcessOverrides()
 		}
 	}
-	vlmCfg := ResolveProcessConfig(kb, processOverrides).VLMConfig
+	vlmCfg := s.resolveProcessConfigFn(kb, processOverrides).VLMConfig
 	if !vlmCfg.IsEnabled() {
 		return nil, types.VLMConfig{}, fmt.Errorf("VLM is not enabled for knowledge base %s", kbID)
 	}
@@ -697,7 +747,7 @@ func (s *ImageMultimodalService) enqueueKnowledgePostProcessTask(ctx context.Con
 	}
 
 	task := asynq.NewTask(types.TypeKnowledgePostProcess, payloadBytes,
-		knowledgePostProcessTaskOptions()...)
+		s.postProcessTaskOptionsFn()...)
 	if _, err := s.taskEnqueuer.Enqueue(task); err != nil {
 		logger.Warnf(ctx, "[ImageMultimodal] Failed to enqueue post process task for %s: %v", payload.KnowledgeID, err)
 	} else {

@@ -113,12 +113,6 @@ legacy_files:
     destination: internal/modules/identity/repository
     integration_owner: ib1
     delete_barrier: ib1
-  - path: internal/application/repository/chunk.go
-    module: knowledge
-    plan: 21-knowledge-ingest
-    destination: internal/modules/knowledge/ingest
-    integration_owner: ib2
-    delete_barrier: ib2
   - path: internal/application/repository/craft_preview_check.go
     module: craft
     plan: 41-craft
@@ -707,18 +701,6 @@ legacy_files:
     destination: internal/modules/identity/service
     integration_owner: ib1
     delete_barrier: ib1
-  - path: internal/application/service/chunk.go
-    module: knowledge
-    plan: 21-knowledge-ingest
-    destination: internal/modules/knowledge/ingest
-    integration_owner: ib2
-    delete_barrier: ib2
-  - path: internal/application/service/chunk_write.go
-    module: knowledge
-    plan: 21-knowledge-ingest
-    destination: internal/modules/knowledge/ingest
-    integration_owner: ib2
-    delete_barrier: ib2
   - path: internal/application/service/craft_artifacts.go
     module: craft
     plan: 41-craft
@@ -887,12 +869,6 @@ legacy_files:
     destination: internal/modules/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
-  - path: internal/application/service/extract.go
-    module: knowledge
-    plan: 21-knowledge-ingest
-    destination: internal/modules/knowledge/ingest
-    integration_owner: ib2
-    delete_barrier: ib2
   - path: internal/application/service/faq_clone_sync.go
     module: knowledge
     plan: 23-knowledge-wikifaq
@@ -915,12 +891,6 @@ legacy_files:
     module: knowledge
     plan: 22-knowledge-retrieval
     destination: internal/modules/knowledge/retrieval/app
-    integration_owner: ib2
-    delete_barrier: ib2
-  - path: internal/application/service/image_multimodal.go
-    module: knowledge
-    plan: 21-knowledge-ingest
-    destination: internal/modules/knowledge/ingest
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/kb_activity.go
@@ -1211,24 +1181,12 @@ legacy_files:
     destination: internal/modules/agentruntime/service
     integration_owner: ib3
     delete_barrier: ib3
-  - path: internal/application/service/ocr_sanitizer.go
-    module: knowledge
-    plan: 21-knowledge-ingest
-    destination: internal/modules/knowledge/ingest
-    integration_owner: ib2
-    delete_barrier: ib2
   - path: internal/application/service/organization.go
     module: identity
     plan: 10-identity
     destination: internal/modules/identity/service
     integration_owner: ib1
     delete_barrier: ib1
-  - path: internal/application/service/parser_url_security.go
-    module: knowledge
-    plan: 21-knowledge-ingest
-    destination: internal/modules/knowledge/ingest
-    integration_owner: ib2
-    delete_barrier: ib2
   - path: internal/application/service/password_policy.go
     module: identity
     plan: 10-identity
@@ -1769,18 +1727,6 @@ legacy_files:
     destination: internal/modules/identity/handler
     integration_owner: ib1
     delete_barrier: ib1
-  - path: internal/handler/chunk.go
-    module: knowledge
-    plan: 21-knowledge-ingest
-    destination: internal/modules/knowledge/ingest
-    integration_owner: ib2
-    delete_barrier: ib2
-  - path: internal/handler/chunker_debug.go
-    module: knowledge
-    plan: 21-knowledge-ingest
-    destination: internal/modules/knowledge/ingest
-    integration_owner: ib2
-    delete_barrier: ib2
   - path: internal/handler/commercial.go
     module: commercial
     plan: 12-commercial
@@ -2403,6 +2349,32 @@ legacy_files:
     module: knowledge
     plan: 23-knowledge-wikifaq
     destination: internal/modules/knowledge/wiki
+    integration_owner: ib2
+    delete_barrier: ib2
+  # ---- Pass B 过渡 shim 登记（Ruling 2026-09-25-TRANSITION-SHIM-ROW-REGISTRATION：
+  # 与 knowledge.yaml legacy_files 成对；终态=ib2 同 commit 随文件删行）----
+  - path: internal/application/repository/chunk_ingest_shim.go
+    module: knowledge
+    plan: 21-knowledge-ingest
+    destination: internal/modules/knowledge/ingest
+    integration_owner: ib2
+    delete_barrier: ib2
+  - path: internal/application/service/chunk_ingest_shim.go
+    module: knowledge
+    plan: 21-knowledge-ingest
+    destination: internal/modules/knowledge/ingest
+    integration_owner: ib2
+    delete_barrier: ib2
+  - path: internal/application/service/span_trace_seam_adapter.go
+    module: knowledge
+    plan: 21-knowledge-ingest
+    destination: internal/modules/knowledge/ingest
+    integration_owner: ib2
+    delete_barrier: ib2
+  - path: internal/handler/chunk_ingest_shim.go
+    module: knowledge
+    plan: 21-knowledge-ingest
+    destination: internal/modules/knowledge/ingest
     integration_owner: ib2
     delete_barrier: ib2
 aliases:
