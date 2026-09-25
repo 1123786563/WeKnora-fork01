@@ -326,20 +326,31 @@ func (h *PluginHandler) GetInstallation(c *gin.Context) {
 
 // installationResponseDTO maps the types-layer installation result onto the
 // HTTP DTO. Tool scopes are copied, never aliased, and stay [] — one wire
-// shape end to end (跨任务转交 T01-R1-F1 convention).
+// shape end to end (跨任务转交 T01-R1-F1 convention). Tool verdicts are
+// DEFINITE values (T18 unification), derived from the detail view's own
+// contract with no extra service call: the view's Enabled *bool resolves
+// (nil → Enabled=ReadOnly — the plugin-domain default over the missing row,
+// the plan's explicit unification rule), DisabledReason follows the
+// deterministic plugin-domain formula, and RequireApproval stays false —
+// the detail view's types contract carries no approval column; the tools
+// endpoint (GET .../tools) is the authoritative governance surface, and no
+// T18 plugin flow writes RequireApproval=true.
 func installationResponseDTO(result *types.PluginInstallationResult) *dto.PluginInstallationResponse {
 	if result == nil {
 		return nil
 	}
 	tools := make([]dto.PluginInstallationTool, 0, len(result.Tools))
 	for _, tool := range result.Tools {
+		enabled := tool.ReadOnly
+		if tool.Enabled != nil {
+			enabled = *tool.Enabled
+		}
+		reason := ""
+		if !enabled && !tool.ReadOnly {
+			reason = interfaces.PluginWriteToolDisabledReason
+		}
 		scopes := make([]string, len(tool.Scopes))
 		copy(scopes, tool.Scopes)
-		var enabled *bool
-		if tool.Enabled != nil {
-			value := *tool.Enabled
-			enabled = &value
-		}
 		tools = append(tools, dto.PluginInstallationTool{
 			Name:                 tool.Name,
 			Description:          tool.Description,
@@ -347,6 +358,8 @@ func installationResponseDTO(result *types.PluginInstallationResult) *dto.Plugin
 			RequiresPersonalAuth: tool.RequiresPersonalAuth,
 			Scopes:               scopes,
 			Enabled:              enabled,
+			RequireApproval:      false,
+			DisabledReason:       reason,
 		})
 	}
 	return &dto.PluginInstallationResponse{
@@ -362,6 +375,111 @@ func installationResponseDTO(result *types.PluginInstallationResult) *dto.Plugin
 		ServiceID:      result.ServiceID,
 		Tools:          tools,
 	}
+}
+
+// installationToolDTO maps one governance row onto the wire DTO (scopes
+// copied, never aliased — one wire shape end to end).
+func installationToolDTO(row interfaces.PluginInstallationToolPolicy) dto.PluginInstallationTool {
+	scopes := make([]string, len(row.Scopes))
+	copy(scopes, row.Scopes)
+	return dto.PluginInstallationTool{
+		Name:                 row.Name,
+		Description:          row.Description,
+		ReadOnly:             row.ReadOnly,
+		RequiresPersonalAuth: row.RequiresPersonalAuth,
+		Scopes:               scopes,
+		Enabled:              row.Enabled,
+		RequireApproval:      row.RequireApproval,
+		DisabledReason:       row.DisabledReason,
+	}
+}
+
+// ListInstallationTools godoc
+// @Summary      查询插件安装工具治理列表
+// @Description  返回安装已接受快照内全部工具的治理视图（读写分类/个人授权面/当前启停与审批策略的确定值）；写工具默认关闭并带关闭原因；快照是成员资格来源——已被升级或漂移重定基移除的工具不再出现（残留策略行不复活）；跨空间 ID 返回 404
+// @Tags         插件
+// @Produce      json
+// @Param        id   path  string  true  "安装 ID"
+// @Success      200  {object}  map[string]interface{}  "工具治理列表"
+// @Failure      404  {object}  errors.AppError         "安装不存在"
+// @Failure      500  {object}  errors.AppError         "查询失败"
+// @Security     Bearer
+// @Router       /plugins/installations/{id}/tools [get]
+func (h *PluginHandler) ListInstallationTools(c *gin.Context) {
+	ctx := c.Request.Context()
+	tenantID := c.GetUint64(types.TenantIDContextKey.String())
+	if tenantID == 0 {
+		logger.Error(ctx, "Tenant ID is empty")
+		c.Error(errors.NewBadRequestError("Workspace ID cannot be empty"))
+		return
+	}
+	rows, err := h.pluginService.ListInstallationTools(ctx, tenantID, c.Param("id"))
+	if err != nil {
+		mapPluginInstallationError(c, err)
+		return
+	}
+	items := make([]dto.PluginInstallationTool, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, installationToolDTO(row))
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    items,
+	})
+}
+
+// SetInstallationToolPolicy godoc
+// @Summary      更新插件工具启停策略
+// @Description  管理员逐工具治理：body 携带 enabled 和/或 require_approval（可空布尔，省略保持原值，至少一项；本需求启用 enabled——管理员显式启用后写工具即可被调用，再关闭回到默认关闭原因；require_approval 为同端点的成员审批扩展预留）。工具必须在已接受快照内——已被移除工具的残留策略行不可寻址；更新成功返回刷新后的完整治理列表
+// @Tags         插件
+// @Accept       json
+// @Produce      json
+// @Param        id         path  string                     true  "安装 ID"
+// @Param        tool_name  path  string                     true  "工具名"
+// @Param        request    body  dto.PluginToolPolicyRequest  true  "{enabled?: bool, require_approval?: bool}"
+// @Success      200  {object}  map[string]interface{}  "更新后的工具治理列表"
+// @Failure      400  {object}  errors.AppError         "请求非法（无可更新字段）"
+// @Failure      404  {object}  errors.AppError         "安装或工具不存在"
+// @Failure      500  {object}  errors.AppError         "策略写入失败"
+// @Security     Bearer
+// @Router       /plugins/installations/{id}/tools/{tool_name}/policy [put]
+func (h *PluginHandler) SetInstallationToolPolicy(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	var req dto.PluginToolPolicyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		logger.Error(ctx, "Failed to parse plugin tool policy request", err)
+		c.Error(errors.NewBadRequestError(err.Error()))
+		return
+	}
+	if req.Enabled == nil && req.RequireApproval == nil {
+		c.Error(errors.NewBadRequestError("enabled or require_approval is required"))
+		return
+	}
+
+	tenantID := c.GetUint64(types.TenantIDContextKey.String())
+	if tenantID == 0 {
+		logger.Error(ctx, "Tenant ID is empty")
+		c.Error(errors.NewBadRequestError("Workspace ID cannot be empty"))
+		return
+	}
+
+	// Gin already URL-decodes path params (the SetMCPToolApproval precedent):
+	// a tool name containing a literal "%" must not be double-decoded.
+	rows, err := h.pluginService.SetInstallationToolPolicy(
+		ctx, tenantID, c.Param("id"), c.Param("tool_name"), req.Enabled, req.RequireApproval)
+	if err != nil {
+		mapPluginInstallationError(c, err)
+		return
+	}
+	items := make([]dto.PluginInstallationTool, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, installationToolDTO(row))
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    items,
+	})
 }
 
 // GetMyConnection godoc
@@ -715,13 +833,20 @@ func mapPluginConnectionError(c *gin.Context, err error) {
 func mapPluginInstallationError(c *gin.Context, err error) {
 	switch {
 	case stderrors.Is(err, service.ErrPluginPreviewNotFound),
-		stderrors.Is(err, service.ErrInstallationNotFound):
+		stderrors.Is(err, service.ErrInstallationNotFound),
+		// ErrInstallationToolNotFound (T18): the addressed tool is not in the
+		// accepted snapshot — never declared, or removed by an upgrade/drift
+		// rebase whose residual policy row stays unaddressable.
+		stderrors.Is(err, service.ErrInstallationToolNotFound):
 		c.Error(errors.NewNotFoundError(err.Error()))
 	case stderrors.Is(err, service.ErrPreviewAlreadyConsumed),
 		stderrors.Is(err, service.ErrPreviewExpired),
 		stderrors.Is(err, service.ErrPreviewContentChanged),
 		stderrors.Is(err, service.ErrInstallationStateInvalid),
-		stderrors.Is(err, service.ErrPluginVerifyFailed):
+		stderrors.Is(err, service.ErrPluginVerifyFailed),
+		// ErrInstallationPolicyInvalid (T18): a patch updating nothing — the
+		// same 4xx the manual MCP tool-approval endpoint gives.
+		stderrors.Is(err, service.ErrInstallationPolicyInvalid):
 		c.Error(errors.NewBadRequestError(err.Error()))
 	case stderrors.Is(err, service.ErrPluginAlreadyInstalled),
 		// ErrUpgradeCandidateChanged (T16): the remote candidate moved on

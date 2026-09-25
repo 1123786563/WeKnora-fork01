@@ -177,4 +177,55 @@ type PluginService interface {
 	// disabled; existing rows keep the admin's verdicts). An unreachable
 	// endpoint rejects with zero writes — the drift state stays as it was.
 	ResolveDrift(ctx context.Context, tenantID uint64, actorID, installationID string) (*types.PluginInstallationResult, error)
+
+	// ListInstallationTools returns the tool-governance view of ONE
+	// installation (T18): every tool of the ACCEPTED snapshot with its CURRENT
+	// policy verdict as DEFINITE values. The snapshot is the membership
+	// authority — a tool REMOVED by an upgrade/drift-resolve never reappears
+	// through its residual policy row. A snapshot tool with NO explicit row
+	// derives Enabled=ReadOnly (write tools default disabled): the
+	// missing-row-default-enabled semantics of types.MCPToolApproval stay
+	// reserved for MANUAL services and are untouched here. DisabledReason is
+	// the deterministic plugin-domain derivation (read_only=false AND not
+	// enabled → PluginWriteToolDisabledReason; otherwise empty). A foreign
+	// tenant's installation ID is "not found".
+	ListInstallationTools(ctx context.Context, tenantID uint64, installationID string) ([]PluginInstallationToolPolicy, error)
+
+	// SetInstallationToolPolicy patches ONE tool's policy of ONE installation
+	// (T18; Admin) and returns the refreshed governance list. toolName MUST be
+	// in the accepted snapshot (ErrInstallationToolNotFound otherwise — a
+	// removed tool's residual row is not addressable). enabled takes effect
+	// now; requireApproval is accepted and passed through to the shared
+	// MCPToolApprovalService.SetPolicy unchanged — the two are independent
+	// nullable pointers of one patch (the T19 approval slice extends THIS
+	// endpoint without a signature change). Both nil is
+	// ErrInstallationPolicyInvalid; a foreign tenant's installation ID is
+	// "not found".
+	SetInstallationToolPolicy(ctx context.Context, tenantID uint64, installationID, toolName string, enabled, requireApproval *bool) ([]PluginInstallationToolPolicy, error)
+}
+
+// PluginWriteToolDisabledReason is the deterministic governance copy a
+// disabled WRITE tool of a plugin installation carries (T18): the plugin
+// domain installs write tools disabled (B5 — a manifest declaration is never
+// execution authorization) and the admin enables them per tool. Derived, not
+// persisted: read_only=false AND Enabled=false on the accepted snapshot.
+const PluginWriteToolDisabledReason = "write tool disabled by default; enable explicit"
+
+// PluginInstallationToolPolicy is one row of an installation's tool-governance
+// surface (T18): snapshot metadata plus the CURRENT policy verdict as definite
+// values (the detail view's Enabled *bool unknowns resolve here — a snapshot
+// tool without an explicit row derives Enabled=ReadOnly). Defined in this
+// package (the agent_marketplace ReleaseSubmissionView precedent): the
+// interfaces contract must not depend on the handler layer, and the
+// types-layer installation view stays owned by its slice. The handler maps it
+// onto its DTO.
+type PluginInstallationToolPolicy struct {
+	Name                 string
+	Description          string
+	ReadOnly             bool
+	RequiresPersonalAuth bool
+	Scopes               []string
+	Enabled              bool
+	RequireApproval      bool
+	DisabledReason       string
 }

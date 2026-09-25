@@ -291,6 +291,19 @@ var (
 	// always injects the gorm repository). Logged with the cause server-side;
 	// the caller sees the sentinel semantics only.
 	ErrDriftPersistFailed = errors.New("failed to persist plugin drift state")
+
+	// ErrInstallationToolNotFound (T18): the tool name is not in the
+	// installation's ACCEPTED snapshot — either never declared or removed by
+	// an upgrade/drift-resolve (whose residual policy row stays
+	// unaddressable; the snapshot is the membership authority). Deterministic
+	// 4xx rejection of the addressed tool.
+	ErrInstallationToolNotFound = errors.New("plugin installation tool not found")
+
+	// ErrInstallationPolicyInvalid (T18): a policy patch that updates nothing
+	// (enabled and requireApproval both nil). Deterministic 4xx rejection —
+	// mirrors the manual MCP endpoint's "require_approval or enabled is
+	// required".
+	ErrInstallationPolicyInvalid = errors.New("plugin tool policy requires enabled or require_approval")
 )
 
 // installationDriftWriter is the narrow persistence capability the drift
@@ -1784,4 +1797,125 @@ func (s *pluginService) ResolveDrift(
 	inst.DriftState = types.PluginDriftNone
 	inst.DriftDetail = nil
 	return s.installationResult(ctx, tenantID, inst)
+}
+
+// ListInstallationTools returns the tool-governance view of ONE installation
+// (T18): every tool of the ACCEPTED snapshot with its CURRENT policy verdict
+// as definite values. Unlike the detail view's best-effort Enabled *bool, a
+// policy-store fault FAILS the request — the admin acts on this surface, and
+// a governance list read under a silent store fault would show every write
+// tool under its default reason while the runtime gate enforces stale rows.
+// A foreign tenant's installation ID is "not found".
+func (s *pluginService) ListInstallationTools(
+	ctx context.Context,
+	tenantID uint64,
+	installationID string,
+) ([]interfaces.PluginInstallationToolPolicy, error) {
+	inst, err := s.pluginRepo.GetInstallation(ctx, tenantID, installationID)
+	if err != nil {
+		logger.GetLogger(ctx).Errorf("failed to load plugin installation: %v", err)
+		return nil, ErrInstallationPersistFailed
+	}
+	if inst == nil {
+		return nil, ErrInstallationNotFound
+	}
+	return s.installationToolPolicies(ctx, tenantID, inst)
+}
+
+// SetInstallationToolPolicy patches ONE tool's policy of ONE installation
+// (T18) and returns the refreshed governance list. The tool must be in the
+// accepted snapshot — the snapshot is the membership authority, so a removed
+// tool's residual Enabled row is never addressable (and can never resurrect
+// the tool). The patch passes through to the shared
+// MCPToolApprovalService.SetPolicy unchanged: enabled and requireApproval are
+// independent nullable pointers of one patch (requireApproval takes effect
+// from T19's endpoint extension — the signature is final here). The shared
+// insert-default (a first row lands Enabled=true) never applies to write
+// tools in practice: install/upgrade/resolve write an explicit row for every
+// snapshot tool; a missing row on a write tool is an anomaly the admin's
+// explicit patch resolves in one write either way.
+func (s *pluginService) SetInstallationToolPolicy(
+	ctx context.Context,
+	tenantID uint64,
+	installationID, toolName string,
+	enabled, requireApproval *bool,
+) ([]interfaces.PluginInstallationToolPolicy, error) {
+	inst, err := s.pluginRepo.GetInstallation(ctx, tenantID, installationID)
+	if err != nil {
+		logger.GetLogger(ctx).Errorf("failed to load plugin installation: %v", err)
+		return nil, ErrInstallationPersistFailed
+	}
+	if inst == nil {
+		return nil, ErrInstallationNotFound
+	}
+
+	inSnapshot := false
+	for _, tool := range inst.ToolsSnapshot {
+		if tool.Name == toolName {
+			inSnapshot = true
+			break
+		}
+	}
+	if !inSnapshot {
+		return nil, fmt.Errorf("%w: %q is not in the accepted snapshot", ErrInstallationToolNotFound, toolName)
+	}
+	if enabled == nil && requireApproval == nil {
+		return nil, ErrInstallationPolicyInvalid
+	}
+	if err := s.toolApprovalService.SetPolicy(ctx, tenantID, inst.ServiceID, toolName, requireApproval, enabled); err != nil {
+		logger.GetLogger(ctx).Errorf(
+			"failed to write tool policy for %s/%s: %v", inst.PluginID, toolName, err)
+		return nil, ErrInstallationPersistFailed
+	}
+	return s.installationToolPolicies(ctx, tenantID, inst)
+}
+
+// installationToolPolicies derives the governance rows of ONE installation:
+// the accepted snapshot drives membership (removed tools drop out even with
+// residual rows), and each tool's verdict comes from its explicit
+// MCPToolApproval row when one exists — otherwise the plugin-domain default
+// Enabled=ReadOnly. DisabledReason is the deterministic copy from the
+// architecture formula: read_only=false AND not enabled.
+func (s *pluginService) installationToolPolicies(
+	ctx context.Context,
+	tenantID uint64,
+	inst *types.PluginInstallation,
+) ([]interfaces.PluginInstallationToolPolicy, error) {
+	rowsByTool := map[string]*types.MCPToolApproval{}
+	if inst.ServiceID != "" {
+		rows, err := s.toolApprovalService.ListByService(ctx, tenantID, inst.ServiceID)
+		if err != nil {
+			logger.GetLogger(ctx).Errorf(
+				"failed to load tool policies for installation %s: %v", inst.ID, err)
+			return nil, ErrInstallationPersistFailed
+		}
+		for _, row := range rows {
+			rowsByTool[row.ToolName] = row
+		}
+	}
+	out := make([]interfaces.PluginInstallationToolPolicy, 0, len(inst.ToolsSnapshot))
+	for _, tool := range inst.ToolsSnapshot {
+		scopes := make([]string, len(tool.Scopes))
+		copy(scopes, tool.Scopes)
+		policy := interfaces.PluginInstallationToolPolicy{
+			Name:                 tool.Name,
+			Description:          tool.Description,
+			ReadOnly:             tool.ReadOnly,
+			RequiresPersonalAuth: tool.RequiresPersonalAuth,
+			Scopes:               scopes,
+			// Missing row → plugin-domain default: read tools enabled, WRITE
+			// tools disabled (the shared missing-row-default-enabled semantics
+			// stay reserved for manual services — types/mcp.go:148-152).
+			Enabled: tool.ReadOnly,
+		}
+		if row, ok := rowsByTool[tool.Name]; ok {
+			policy.Enabled = row.Enabled
+			policy.RequireApproval = row.RequireApproval
+		}
+		if !policy.Enabled && !tool.ReadOnly {
+			policy.DisabledReason = interfaces.PluginWriteToolDisabledReason
+		}
+		out = append(out, policy)
+	}
+	return out, nil
 }

@@ -47,6 +47,14 @@ func RegisterPluginRoutes(r *gin.RouterGroup, pluginHandler *handler.PluginHandl
 		pluginRoutes.GET("/installations/:id/drift", g.Viewer(), pluginHandler.GetDrift)
 		pluginRoutes.POST("/installations/:id/drift/check", g.Admin(), pluginHandler.CheckDrift)
 		pluginRoutes.POST("/installations/:id/drift/resolve", g.Admin(), pluginHandler.ResolveDrift)
+		// Tool governance (T18): the per-tool policy view is part of WHAT is
+		// installed — every member can see which tools are callable and why a
+		// write tool is off (Viewer+ like the other discovery endpoints);
+		// flipping a tool's policy rewrites the tenant's callable surface —
+		// Admin-only like the other governance levers. Same default-deny for
+		// API keys as the rest.
+		pluginRoutes.GET("/installations/:id/tools", g.Viewer(), pluginHandler.ListInstallationTools)
+		pluginRoutes.PUT("/installations/:id/tools/:tool_name/policy", g.Admin(), pluginHandler.SetInstallationToolPolicy)
 		// Ops-only self-heal channel (rulings.md R4): removes a failed
 		// confirm's leftover rows. NOT a user-facing feature — the
 		// user-visible governance endpoint stays "disable" and the web UI

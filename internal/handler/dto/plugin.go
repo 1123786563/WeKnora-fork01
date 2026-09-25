@@ -49,16 +49,33 @@ type PluginInstallConfirmRequest struct {
 	PreviewID string `json:"preview_id" binding:"required"`
 }
 
-// PluginInstallationTool is one row of an installation's tool directory.
-// The input schema itself is never echoed — only metadata and the policy
-// verdict (enabled: omitted = no explicit row / unknown).
+// PluginInstallationTool is one row of an installation's tool directory —
+// shared by the detail payload and the T18 governance surface
+// (GET .../tools, PUT .../tools/:tool_name/policy). The input schema itself
+// is never echoed — only metadata and the policy verdict as DEFINITE values
+// (T18 unification): Enabled resolves the detail view's unknowns (no explicit
+// row → Enabled=ReadOnly for snapshot tools), RequireApproval is the current
+// row verdict, DisabledReason is the deterministic plugin-domain copy for a
+// disabled write tool.
 type PluginInstallationTool struct {
 	Name                 string   `json:"name"`
 	Description          string   `json:"description"`
 	ReadOnly             bool     `json:"read_only"`
 	RequiresPersonalAuth bool     `json:"requires_personal_auth"`
 	Scopes               []string `json:"scopes"`
-	Enabled              *bool    `json:"enabled,omitempty"`
+	Enabled              bool     `json:"enabled"`
+	RequireApproval      bool     `json:"require_approval"`
+	DisabledReason       string   `json:"disabled_reason"`
+}
+
+// PluginToolPolicyRequest is the body of PUT
+// /plugins/installations/:id/tools/:tool_name/policy: independent nullable
+// flags — omitted fields keep their current values, at least one must be
+// present. T18 acts on enabled; require_approval is carried for the T19
+// approval slice on the same endpoint.
+type PluginToolPolicyRequest struct {
+	Enabled         *bool `json:"enabled"`
+	RequireApproval *bool `json:"require_approval"`
 }
 
 // PluginInstallationResponse is the full installation payload (confirm,
