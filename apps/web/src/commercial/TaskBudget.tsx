@@ -11,6 +11,12 @@ export interface TaskBudgetSnapshot {
   held: number;
 }
 
+/** 剩余 = 批准上限 − 已用 − 占用（Story 58 四数分立；对既有三事实的派生算术，
+ * 不是新数据源——snapshot 缺失时 UI 仍显示「暂无数据」，不编造数字）。 */
+export function remainingCreditsOf(snapshot: { limit: number; used: number; held: number }): number {
+  return snapshot.limit - snapshot.used - snapshot.held;
+}
+
 interface TaskBudgetProps {
   client: WeKnoraClient;
   taskId: string;
@@ -85,6 +91,7 @@ export function TaskBudget({ client, taskId, snapshot }: TaskBudgetProps) {
         <li><strong>批准上限</strong><span>{limit === undefined ? '暂无数据' : limit + ' 额度'}</span></li>
         <li><strong>已用</strong><span>{used === undefined ? '暂无数据' : used + ' 额度'}</span></li>
         <li><strong>占用</strong><span>{held === undefined ? '暂无数据' : held + ' 额度'}</span></li>
+        <li><strong>剩余</strong><span>{limit === undefined || used === undefined || held === undefined ? '暂无数据' : remainingCreditsOf({ limit, used, held }) + ' 额度'}</span></li>
       </ul>
       <div>
         <label htmlFor="task-budget-credits">追加额度（正整数）</label>
