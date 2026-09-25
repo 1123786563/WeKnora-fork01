@@ -368,3 +368,42 @@ func registerCraftSessionForCaptureTest(t *testing.T, db *gorm.DB) {
 	t.Helper()
 	require.NoError(t, db.Exec(`INSERT INTO craft_sessions (session_id, tenant_id, kind) VALUES ('s1', 1, 'web')`).Error)
 }
+
+// A durably budget-paused Run (status waiting_user + wait_reason
+// budget_exhausted, the pauseOnDenial contract) must not be able to promote a
+// version: it cannot enter the capture/promotion path, and the Workspace
+// draft head refuses it as a source. This is the direct automated proof of
+// #138 acceptance "Paused Run cannot promote a version" at both SQL fences.
+func TestCraftRunCaptureAndDraftAdvanceRefuseBudgetPausedRun(t *testing.T) {
+	ctx := context.Background()
+	db := openRunTestDB(t)
+	registerCraftSessionForCaptureTest(t, db)
+	workspace := putCraftWorkspace(t, NewCraftStore(db))
+	runs := NewAgentRunStore(db)
+	in := agentRunAdmissionForCaptureTest("capture-budget-paused", workspace.ID)
+	_, err := runs.Admit(ctx, in)
+	require.NoError(t, err)
+	fence, err := runs.Claim(ctx, in.Key, "capture-worker", time.Minute)
+	require.NoError(t, err)
+	views := NewCraftRunViewStore(db)
+	key := craft.RunViewKey{TenantID: 1, OwnerID: "u1", SessionID: "s1", RunID: fence.RunID}
+	view, err := views.Allocate(ctx, key)
+	require.NoError(t, err)
+	view, _, err = views.BeginSessionCreate(ctx, key, view.Generation)
+	require.NoError(t, err)
+	_, err = views.BindRuntime(ctx, key, view.Generation, craft.RunViewRuntime{RuntimeID: "capture-runtime", ContainerID: "capture-container", OpenCodeSessionID: "capture-oc"})
+	require.NoError(t, err)
+	require.NoError(t, db.Exec(`UPDATE agent_runs SET status='waiting_user', wait_reason='budget_exhausted' WHERE tenant_id=1 AND run_id=?`, fence.RunID).Error)
+
+	store := NewCraftRunCaptureStore(db)
+	_, err = store.EnsurePending(ctx, craftTestScope(), workspace.ID, fence.RunID, view.Generation)
+	require.ErrorIs(t, err, craft.ErrConflict, "a budget-paused Run cannot enter the capture/promotion path")
+	var n int64
+	require.NoError(t, db.Table("craft_run_captures").Where("tenant_id=? AND run_id=?", 1, fence.RunID).Count(&n).Error)
+	require.Zero(t, n, "no capture receipt exists for the paused Run")
+
+	drafts := NewCraftDraftHeadStore(db)
+	valid := []craft.File{sealedDraftFile("index.html", "object://draft/paused", "a", 12)}
+	_, err = drafts.Advance(ctx, craftTestScope(), workspace.ID, 0, fence.RunID, valid)
+	require.ErrorIs(t, err, craft.ErrBusy, "a budget-paused Run cannot advance the Workspace draft toward a promoted version")
+}
