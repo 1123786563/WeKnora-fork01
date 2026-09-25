@@ -17,7 +17,9 @@ export interface TaskBudgetIntegrationEvidence {
   /** 四数分立（Story 58）与算术一致性（remaining === limit-used-held）在真实 wire 上的投影。 */
   fourNumbersDistinct?: boolean;
   remainingConsistent?: boolean;
-  pausedListed?: boolean;
+  /** 达限暂停清单的实况计数（终审修复 #3：parse 已保证数组，>0 即存在暂停 Run、
+   * ===0 即清单为空——比 Array.isArray 复述类型更有区分度）。 */
+  pausedRunCount?: number;
   extend?: 'skipped' | 'extended' | 'refused' | 'failed';
   limitRaisedBy?: number;
   replayNeverDoubled?: boolean;
@@ -94,7 +96,7 @@ export async function runTaskBudgetIntegration(config: Extract<TaskBudgetIntegra
     evidence.fourNumbersDistinct =
       facts.limitCredits !== facts.usedCredits || facts.usedCredits !== facts.heldCredits || facts.heldCredits !== facts.remainingCredits;
     evidence.remainingConsistent = facts.remainingCredits === facts.limitCredits - facts.usedCredits - facts.heldCredits;
-    evidence.pausedListed = Array.isArray(facts.pausedRunIds);
+    evidence.pausedRunCount = facts.pausedRunIds.length;
 
     if (!config.extendBudget) { evidence.extend = 'skipped'; return evidence; }
     if (!facts.canExtend) { evidence.extend = 'refused'; return evidence; }

@@ -46,6 +46,22 @@ test('parseTaskBudgetFacts rejects arithmetic inconsistency and malformed number
   assert.throws(() => parseTaskBudgetFacts(null), ContractError);
 });
 
+test('parseTaskBudgetFacts rejects self-consistent negative credit rows outright (limit<0 / remaining<0)', () => {
+  // 终审修复 #2：服务端即使序列化出算术自洽的负数行（limit=-100/used=0/held=0/remaining=-100），
+  // 也必须被显式拒绝——不能依赖算术不一致才间接 fail-closed。
+  assert.throws(
+    () => parseTaskBudgetFacts({ ...factsWire, limit_credits: -100, used_credits: 0, held_credits: 0, remaining_credits: -100 }),
+    ContractError,
+    'limit_credits=-100 with a self-consistent remaining must be rejected',
+  );
+  // 算术自洽但 remaining 为负（used+held 超过 limit 的超支行）同样显式拒绝。
+  assert.throws(
+    () => parseTaskBudgetFacts({ ...factsWire, limit_credits: 100, used_credits: 400, held_credits: 100, remaining_credits: -400 }),
+    ContractError,
+    'arithmetic-consistent but negative remaining must be rejected',
+  );
+});
+
 test('parseTaskBudgetExtension requires positive credits and a non-negative resume count', () => {
   const row = parseTaskBudgetExtension({ task_id: 'r1', additional_credits: 10, resumed_runs: 2 });
   assert.equal(row.task_id, 'r1');

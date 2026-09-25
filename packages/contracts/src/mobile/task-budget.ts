@@ -3,10 +3,11 @@ import { ContractError } from '../index.ts';
 /**
  * Task Budget wire 契约（T09 #39）。四个数字全部是 millionths-of-a-Credit 的
  * 安全整数（与既有 additional_credits wire 单位一致，commercial.Credits 定义见
- * internal/modules/commercial/amount.go:11）；remaining 与三数的算术一致性由
- * 解析器强制——序列化缺陷 fail-closed，客户端永不展示幻影数字。delegated 与
- * paused 清单来自根预算行聚合（子 Run 预占天然计入根行）；can_extend 是服务端
- * 对「账单权威 OR 任务 Owner」的判定投影，grant 协作者恒 false。
+ * internal/modules/commercial/amount.go:11）；四数恒非负（显式拒绝自洽负数行，
+ * 终审修复 #2），remaining 与三数的算术一致性由解析器强制——序列化缺陷
+ * fail-closed，客户端永不展示幻影数字。delegated 与 paused 清单来自根预算行
+ * 聚合（子 Run 预占天然计入根行）；can_extend 是服务端对「账单权威 OR 任务
+ * Owner」的判定投影，grant 协作者恒 false。
  */
 export interface TaskBudgetWireFacts {
   task_id: string;
@@ -52,6 +53,9 @@ export function parseTaskBudgetFacts(value: unknown): TaskBudgetWireFacts {
   }
   const row = value as Record<string, unknown>;
   const limit = microCredits(row.limit_credits, 'limit_credits');
+  if (limit < 0) {
+    throw new ContractError('limit_credits', 'must be non-negative');
+  }
   const used = microCredits(row.used_credits, 'used_credits');
   const held = microCredits(row.held_credits, 'held_credits');
   const remaining = microCredits(row.remaining_credits, 'remaining_credits');
@@ -60,6 +64,9 @@ export function parseTaskBudgetFacts(value: unknown): TaskBudgetWireFacts {
   }
   if (used < 0 || held < 0) {
     throw new ContractError('credits', 'used/held must be non-negative');
+  }
+  if (remaining < 0) {
+    throw new ContractError('remaining_credits', 'must be non-negative');
   }
   if (row.deadline !== undefined && typeof row.deadline !== 'string') {
     throw new ContractError('deadline', 'must be a string when present');
