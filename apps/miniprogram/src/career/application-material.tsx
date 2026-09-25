@@ -70,6 +70,27 @@ export default function ApplicationMaterialPage() {
     <Text className='wk-display'>一份申请，一份材料，{'\n'}一次本人投递。</Text>
     <Notice tone='info'>与 Web 端同源同版本：同一份档案、同一份申请与结构化正文；材料确认后生成不可变新版本，旧版本不被覆盖。</Notice>
 
+    {/* 恢复态置顶（T24 discovery 同款次序）：结果未知的写入是当务之急，必须第一屏可见、可操作。 */}
+    {pendingApplication && <>
+      <Notice tone='warning'>有一次结果未知的申请创建（{pendingApplication.requestId.slice(0, 10)}…）。请先用原请求对账，不会重复创建。</Notice>
+      <Action secondary loading={recoverAppBusy.busy} onClick={() => void recoverAppBusy.run(async () => { setApplication(await career.reconcilePendingApplication()); })}>用原请求对账申请</Action>
+      {recoverAppBusy.error && <Notice tone='danger'>{recoverAppBusy.error} 对账被拒时说明该请求不属于当前空间或不存在；可稍后再试，不会自动重发。</Notice>}
+    </>}
+    {pendingMaterial && <>
+      <Notice tone='warning'>有一次结果未知的材料写入（{pendingMaterial.requestId.slice(0, 10)}…）。</Notice>
+      <Action secondary loading={recoverMatBusy.busy} onClick={() => void recoverMatBusy.run(async () => { await career.reconcilePendingMaterial(); setMaterial(await career.material(materialId)); })}>用原请求对账材料</Action>
+      {recoverMatBusy.error && <Notice tone='danger'>{recoverMatBusy.error} 对账被拒时说明该请求不属于当前空间或不存在；intent 保留，可稍后再试。</Notice>}
+    </>}
+    {pendingSubmission && <>
+      <Notice tone='warning'>有一次结果未知的投递确认（{pendingSubmission.requestId.slice(0, 10)}…）。请先对账，确认前不会重复记录。</Notice>
+      <Action secondary loading={recoverSubBusy.busy} onClick={() => void recoverSubBusy.run(async () => {
+        const receipt = await career.reconcilePendingSubmission();
+        if (application) await loadSubmissions(application.applicationId);
+        void receipt;
+      })}>用原请求对账投递</Action>
+      {recoverSubBusy.error && <Notice tone='danger'>{recoverSubBusy.error} 对账被拒时说明该请求不属于当前空间或不存在；intent 保留，可稍后再试。</Notice>}
+    </>}
+
     <DataBoundary state={desk}>{view => view && <Card>
       <Text className='wk-muted wk-small'>当前档案修订 {view.revision}（申请与材料写入将按此修订校验）</Text>
       <Text className='wk-muted wk-small'>待确认事实 {view.proposals.length} 条 · 已确认 {view.facts.length} 条</Text>
@@ -93,11 +114,6 @@ export default function ApplicationMaterialPage() {
         <Badge tone={evaluationTone[evaluation.status] ?? 'neutral'}>{evaluationLabel[evaluation.status] ?? evaluation.status}</Badge>
       </View>}
     </Card>
-
-    {pendingApplication && <>
-      <Notice tone='warning'>有一次结果未知的申请创建（{pendingApplication.requestId.slice(0, 10)}…）。请先用原请求对账，不会重复创建。</Notice>
-      <Action secondary loading={recoverAppBusy.busy} onClick={() => void recoverAppBusy.run(async () => { setApplication(await career.reconcilePendingApplication()); })}>用原请求对账申请</Action>
-    </>}
 
     {evaluation && <Card>
       <Text className='wk-h3'>创建求职申请</Text>
@@ -146,6 +162,8 @@ export default function ApplicationMaterialPage() {
         const view = await career.material(materialId);
         setMaterial(view);
         setSectionHeading(view.body.sections[0]?.heading ?? sectionHeading);
+        // 同源语义：版本在 Web 或本端确认过即可管理发布/下载/投递绑定。
+        if (view.versionCount > 0) setExports((await career.listMaterialExports(materialId)).exports);
       })}>读取材料</Action>
       {matLoadBusy.error && <Notice tone='danger'>{matLoadBusy.error} 若材料不属于当前空间或不存在，会如实提示；不会用演示数据代替。</Notice>}
       {material && <>
@@ -181,12 +199,7 @@ export default function ApplicationMaterialPage() {
       {matConfirmBusy.error && <Notice tone='danger'>{matConfirmBusy.error}</Notice>}
     </Card>}
 
-    {pendingMaterial && <>
-      <Notice tone='warning'>有一次结果未知的材料写入（{pendingMaterial.requestId.slice(0, 10)}…）。</Notice>
-      <Action secondary loading={recoverMatBusy.busy} onClick={() => void recoverMatBusy.run(async () => { await career.reconcilePendingMaterial(); setMaterial(await career.material(materialId)); })}>用原请求对账材料</Action>
-    </>}
-
-    {(confirmedVersion !== undefined || exports) && <Card>
+    {((material?.versionCount ?? 0) > 0 || exports) && <Card>
       <Text className='wk-h3'>发布与下载（PDF / DOCX）</Text>
       <View className='wk-between'><View className='wk-tdesign-scope'>
         <t-button block size='large' theme='primary' ariaLabel='发布双格式导出' customStyle={tdesignButtonStyle} loading={publishBusy.busy} onTap={() => void publishBusy.run(async () => {
@@ -256,15 +269,6 @@ export default function ApplicationMaterialPage() {
       </Card>)}
       {!submissions?.length && submissions !== undefined && <Empty title='还没有投递确认' body='你在外部完成投递后，回到这里记录事实即可。'/>}
     </Card>}
-
-    {pendingSubmission && <>
-      <Notice tone='warning'>有一次结果未知的投递确认（{pendingSubmission.requestId.slice(0, 10)}…）。请先对账，确认前不会重复记录。</Notice>
-      <Action secondary loading={recoverSubBusy.busy} onClick={() => void recoverSubBusy.run(async () => {
-        const receipt = await career.reconcilePendingSubmission();
-        if (application) await loadSubmissions(application.applicationId);
-        void receipt;
-      })}>用原请求对账投递</Action>
-    </>}
 
     <Notice tone='info'>结果未知的写入都可以用原请求编号对账或安全重发（同一请求编号服务端不会重复执行）；空间切换后旧响应一律失效。</Notice>
   </Screen>;
