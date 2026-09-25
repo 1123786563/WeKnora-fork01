@@ -11,6 +11,7 @@ export interface TaskDetailScreenProps {
   onOpenMaterials?: () => void;
   /** T07：受控干预入口；未提供时整个干预区不渲染（通道缺失 fail closed 的呈现面）。 */
   onAct?: (intent: TaskIntent) => Promise<InterventionReceipt>;
+  onOpenBudget?: () => void;
 }
 
 const CONNECTION_LABELS: Record<TaskDetailView['connection'], string> = { syncing: '同步中', live: '已连接', interrupted: '连接中断，可恢复', drained: '已同步' };
@@ -37,8 +38,8 @@ const OUTCOME_COPY: Record<InterventionReceipt['outcome'], string> = {
   accepted: '已受理', parked: '已排队（等待当前 Run 结束后发出）', conflict: '状态冲突，请刷新后重试', unknown: '结果未知，核对中',
 };
 
-/** 结果优先详情屏：状态卡 + 三层状态 + attention 横幅在前，干预区随后，时间线事实流在后；原始证据默认折叠、按需展开。 */
-export function TaskDetailScreen({ view, loading, error, onRefresh, onOpenMaterials, onAct }: TaskDetailScreenProps) {
+/** 结果优先详情屏：状态卡 + 三层状态 + attention 横幅在前，干预区随后，时间线事实流在后；原始证据默认折叠、按需展开；预算入口在底部操作区。 */
+export function TaskDetailScreen({ view, loading, error, onRefresh, onOpenMaterials, onOpenBudget, onAct }: TaskDetailScreenProps) {
   const [expanded, setExpanded] = useState<ReadonlySet<number>>(new Set());
   const [draft, setDraft] = useState('');
   // B2-F41：expanded 以 runId 隔离——切换任务（组件复用）时不携带上一个任务的展开状态。
@@ -109,6 +110,7 @@ export function TaskDetailScreen({ view, loading, error, onRefresh, onOpenMateri
       ))}
       {view.duplicateSeqs.length > 0 && <Text>已忽略重复事件：{view.duplicateSeqs.join(', ')}</Text>}
       {onOpenMaterials !== undefined && <Button title="任务材料" onPress={onOpenMaterials} />}
+      {onOpenBudget !== undefined && <Button title="任务预算" onPress={onOpenBudget} />}
       <Button title="重新同步快照" onPress={onRefresh} disabled={loading} />
       {error !== undefined && <Text>{error}</Text>}
     </ScrollView>

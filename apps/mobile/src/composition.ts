@@ -14,6 +14,7 @@ import type { TaskMaterial } from '@weknora/mobile-core';
 import { createTaskOfficeRemote } from '@weknora/api-client/mobile/task-office';
 import { createMobileLegacyTaskRemote } from '@weknora/api-client/mobile/legacy-tasks';
 import { createMobileMaterialRemote } from '@weknora/api-client/mobile/materials';
+import { createMobileTaskBudgetRemote } from '@weknora/api-client/mobile/task-budget';
 import { createNativeOidcBrowser } from './adapters/oidc-browser.ts';
 import { createNativeSecurePendingOidcStore } from './adapters/secure-store.ts';
 import type { SecureStorePort } from './adapters/secure-store.ts';
@@ -163,6 +164,7 @@ function taskOfficeFor(activeRuntime: MobileRuntime, origin: string, tenantId: s
         request: (input) => activeRuntime.authorizedRequest(input),
         stream: (input, onChunk) => activeRuntime.authorizedEventStream(input, onChunk),
       }),
+      budget: createMobileTaskBudgetRemote({ origin, request: (input) => activeRuntime.authorizedRequest(input) }),
       lease: () => activeRuntime.scopeLease(),
       // 显式装配（R1-F20 最小修复）：App 重启恢复需要持久 TaskProjectionStore（SQLite 后端，Round 2）；
       // 此处显式传 in-memory store 使「未注入持久化」成为组合根的显式决策而非静默回退。

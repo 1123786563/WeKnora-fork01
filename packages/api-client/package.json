@@ -11,6 +11,7 @@
     "./mobile/inbox": "./src/mobile/inbox.ts",
     "./mobile/runtime": "./src/mobile/runtime.ts",
     "./mobile/task-office": "./src/mobile/task-office.ts",
+    "./mobile/task-budget": "./src/mobile/task-budget.ts",
     "./mobile/legacy-tasks": "./src/mobile/legacy-tasks.ts",
     "./mobile/materials": "./src/mobile/materials.ts",
     "./mobile/resources": "./src/mobile/resources.ts",

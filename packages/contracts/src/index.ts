@@ -661,6 +661,8 @@ export {
 } from './mobile/interactions.ts';
 export { parseInteractionWithRun } from './mobile/interaction-inbox.ts';
 export type { InboxInteractionRecord } from './mobile/interaction-inbox.ts';
+export { parseTaskBudgetFacts, parseTaskBudgetExtension } from './mobile/task-budget.ts';
+export type { TaskBudgetWireFacts, TaskBudgetWireExtension } from './mobile/task-budget.ts';
 
 export type {
   ArtifactSummary,

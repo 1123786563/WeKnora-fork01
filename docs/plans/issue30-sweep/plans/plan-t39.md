@@ -2021,7 +2021,7 @@ git commit -m "feat(api-client): createMobileTaskBudgetRemote on the authorized 
 
 **Interfaces:**
 - Consumes: Task 7 的 `TaskOffice.budget()/extendBudget()` 与 `TaskBudgetFacts`/`TaskBudgetError`；`activeTaskOffice()`（`composition.ts`）；`#46 materials` 的 Screen/入口模式（`TaskDetailScreen.tsx:68`）；`MATERIAL_ERROR_COPY`→`TASK_BUDGET_COPY` 模式（`materials-view.ts:13`）；Task 8 的 remote（经 composition 注入）。
-- Produces: `/tasks/budget?taskId=` 路由与 `TaskBudgetScreen`（四数字 + 委派/暂停 + 独立扩额操作）；`createTaskBudgetController`（Task 10 复用其状态机做集成断言的视图层对照）。
+- Produces: `/tasks/budget?taskId=` 路由与 `TaskBudgetScreen`（四数字 + 委派/暂停 + 独立扩额操作）；`createTaskBudgetController`（`/tasks/budget` 路由的视图层状态机）。〔终审修订 #4：原文「Task 10 复用其状态机做集成断言的视图层对照」与实现不符——Task 10 的集成证据直接对照 `office.budget()` 的 wire 事实投影，未引用该控制器；已按实际产出修订。〕
 
 - [ ] **Step 1: 写失败测试**
 
@@ -2402,7 +2402,7 @@ git commit -m "feat(mobile): task budget screen with four distinct numbers, paus
 
 **Interfaces:**
 - Consumes: Task 7 的 `createTaskOffice({ budget: createMobileTaskBudgetRemote(...) })`；Task 8 的 remote；`createMobileRuntime`/`createInMemoryCredentialStore`（`@weknora/mobile-core`）；`disallowedDeploymentHost`（`./runtime-integration-smoke.ts:118` 起，#32 主机防线——拒绝 localhost/环回/私网/链路本地/保留地址）；`material-integration-smoke.ts` 的 opt-in 范式（`materialIntegrationConfig`）。
-- Produces: `TaskBudgetIntegrationConfig`（`{enabled:true; deploymentOrigin; email; password; extendBudget:boolean; extendCredits:number}` | `{enabled:false; disposition:'skip'|'invalid'; reason}`）；`TaskBudgetIntegrationEvidence`（`{deploymentOrigin; budgetFacts:'read'|'no-tasks'|'failed'; fourNumbersDistinct?:boolean; remainingConsistent?:boolean; pausedListed?:boolean; extend?:'skipped'|'extended'|'refused'|'failed'; limitRaisedBy?:number; replayNeverDoubled?:boolean; failure?; commandTimestamp}`）；`taskBudgetIntegrationConfig(env)`、`runTaskBudgetIntegration(config)`、`emitTaskBudgetIntegrationEvidence(evidence, emit)`。
+- Produces: `TaskBudgetIntegrationConfig`（`{enabled:true; deploymentOrigin; email; password; extendBudget:boolean; extendCredits:number}` | `{enabled:false; disposition:'skip'|'invalid'; reason}`）；`TaskBudgetIntegrationEvidence`（`{deploymentOrigin; budgetFacts:'read'|'no-tasks'|'failed'; fourNumbersDistinct?:boolean; remainingConsistent?:boolean; pausedRunCount?:number（终审修订 #3：原 pausedListed?:boolean 为同义反复，改为计数承载「达限暂停清单非空/为空」语义）; extend?:'skipped'|'extended'|'refused'|'failed'; limitRaisedBy?:number; replayNeverDoubled?:boolean; failure?; commandTimestamp}`）；`taskBudgetIntegrationConfig(env)`、`runTaskBudgetIntegration(config)`、`emitTaskBudgetIntegrationEvidence(evidence, emit)`、测试套内 opt-in 钩子（终审修订 #1：仿 material-integration-smoke，具备 `WEKNORA_MOBILE_TEST_*` 环境的常规套件运行自动产出预算端到端证据）。
 
 - [ ] **Step 1: 写失败测试**
 
@@ -2482,7 +2482,9 @@ export interface TaskBudgetIntegrationEvidence {
   /** 四数分立（Story 58）与算术一致性（remaining === limit-used-held）在真实 wire 上的投影。 */
   fourNumbersDistinct?: boolean;
   remainingConsistent?: boolean;
-  pausedListed?: boolean;
+  /** 达限暂停清单的实况计数（终审修复 #3：parse 已保证数组，>0 即存在暂停 Run、
+   * ===0 即清单为空——比 Array.isArray 复述类型更有区分度）。 */
+  pausedRunCount?: number;
   extend?: 'skipped' | 'extended' | 'refused' | 'failed';
   limitRaisedBy?: number;
   replayNeverDoubled?: boolean;
@@ -2559,7 +2561,7 @@ export async function runTaskBudgetIntegration(config: Extract<TaskBudgetIntegra
     evidence.fourNumbersDistinct =
       facts.limitCredits !== facts.usedCredits || facts.usedCredits !== facts.heldCredits || facts.heldCredits !== facts.remainingCredits;
     evidence.remainingConsistent = facts.remainingCredits === facts.limitCredits - facts.usedCredits - facts.heldCredits;
-    evidence.pausedListed = Array.isArray(facts.pausedRunIds);
+    evidence.pausedRunCount = facts.pausedRunIds.length;
 
     if (!config.extendBudget) { evidence.extend = 'skipped'; return evidence; }
     if (!facts.canExtend) { evidence.extend = 'refused'; return evidence; }
