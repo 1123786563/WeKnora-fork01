@@ -1,0 +1,6 @@
+{
+  "proposed": {"kind":"proposed","requestId":"p-1","revision":1,"proposal":{"id":"proposal-1","key":"graduation_year","value":"2027","source":{"kind":"resume_extraction","referenceId":"file-1"},"status":"pending","createdAt":"2026-09-24T00:00:00Z"}},
+  "confirmed": {"kind":"confirmed","requestId":"c-1","revision":2,"proposal":{"id":"proposal-1","key":"graduation_year","value":"2027","source":{"kind":"resume_extraction","referenceId":"file-1"},"status":"confirmed","revision":2,"createdAt":"2026-09-24T00:00:00Z"},"fact":{"key":"graduation_year","value":"2027","revision":2,"source":{"kind":"resume_extraction","referenceId":"file-1"},"confirmation":{"userId":"u1","confirmedAt":"2026-09-24T00:00:01Z"},"confirmedAt":"2026-09-24T00:00:01Z"}},
+  "not_found": {"error":{"code":"not_found","message":"career receipt not found"}},
+  "revision_conflict": {"error":{"code":"revision_conflict","message":"career revision conflict","currentRevision":2}}
+}

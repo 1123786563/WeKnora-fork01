@@ -489,8 +489,7 @@ func TestCraftHTTPListAndVersionDownload(t *testing.T) {
 	// Publish a real version for the first session, then download its pinned
 	// entry file through the full chain.
 	sessionID := first["session_id"].(string)
-	workspaceID := "ws-http-" + sessionID
-	env.db.Exec("UPDATE craft_workspaces SET id = ? WHERE session_id = ?", workspaceID, sessionID)
+	workspaceID := first["workspace_id"].(string)
 	page := "<h1>v1</h1>"
 	files := []craft.File{{
 		Path: "index.html", Ref: "blob://http-index", SHA256: craftDigest(page),
