@@ -152,3 +152,34 @@
 2. **缺陷 3 的修复形态＝对 pinned 契约实证而非对先例假设服从**：R1-V05 的「POST 会覆写显示名」假设在 pinned v1.53.0 上不成立（upsert 字段级覆写，键缺席即保留）。裁决：以容器源码 + 运行栈双实证为准改走 POST upsert 且不带 name 键——显示名保留（R1-V05 目标）与绑定落库（本缺陷）同时达成；stub 的 PUT 分支同步改保真 404，防止未来测试在虚构的 update 语义上再验过。错误代价：若按验证者的「删客户重 POST」绕过路径产品化，将丢显示名且对已有订阅客户是破坏性操作。
 3. **回调匿名可达的安全边界**：白名单仅放行 POST + `/api/v1/commercial/callbacks/*` 前缀；该前缀下唯一路由是 `/:provider`，handler 对未知 provider 503、验签失败 401、未配置 fail-closed——匿名面没有任何绕过签名验签的路径（回归测试负控：同前缀外商业路由仍 401）。
 4. **修复边界声明（诚实账面）**：本次修复使「可信回调入账链」在真实栈可用（验证断言 8/9/12 的阻断解除），但 #82 的激活后半链（AC1 后半/AC3 authority 面/AC4 四对象关联/GC-3）仍受 d2-falsified-t10-p2-fail 冻结约束（Task 5-8 未实施，`paid_awaiting_activation` 仍不存在）——复验中 Lago 侧订阅保持 incomplete 即该边界的直接体现；修订版计划承接前不得宣称 #82 整体达成。AC4 沙箱凭据披露同样不变。
+
+## 2026-09-25 流程修复第 2 轮（流程修复员-82 会话，裁定：无产品缺陷）
+
+复验第 1 轮（reverify1，证据提交 4292e69f6，代码 HEAD=59465f8fe）失败清单三项，逐项核实分类成立，**本轮无可修的产品代码缺陷**；行动落在环境遗留清理与流程规则固化。
+
+### 三项失败分类核实（全部本会话实读/实跑）
+
+| 项 | 验证者分类 | 核实依据（实读/实跑） | 裁定 |
+|---|---|---|---|
+| d2-falsified-t10-p2-fail | 机制级·计划已知边界，非本轮回归 | 计划头部注记第 1/2 条（Task 5-10 冻结、修订版计划产出权在 spec/ADR owner）；`grep paid_awaiting_activation internal/ apps/web/src` → 0 命中（常量确不存在）；付款后呈现「已付款，权益处理中」为**既有诚实呈现**（`apps/web/src/commercial/CheckoutPage.test.tsx:120` 已 pin 该文案，不虚报已生效）；rv1-lago-four-objects-after-paid.txt 实读（tenant-4 订阅 incomplete/wallets=0/无 succeeded payment） | 维持冻结，不实施激活链——按计划纪律「不得实施替代猜测路径」，修复它=越权重设计，升级归 T02 §5 重议 |
+| ac4-sandbox-credentials-unavailable | 披露 | 无 ALIPAY_* 沙箱配置；替身链（本地 RSA+回环 stub+同源签名 notify）验证的是修复后入账链 | 披露不变，非缺陷 |
+| 环境痕迹（tenant-3 名/tenant-3、6 wallets/截图覆盖） | 披露，非缺陷 | Lago customers/wallets/subscriptions 三列表实测（本会话）；rv1 已恢复第 1 轮 01/02 截图原件（evidence 目录 git 状态 clean） | 非产品缺陷；根因在**上轮修复员自验设计**，本轮清理 + 固化规则（见下） |
+
+### 环境遗留：根因、清理实录与保留项
+
+**根因**：上一轮修复员复验以「WeKnora DB 副本（issue82-flowfix.db）的临时实例 :8093」对**共享** Lago authority 栈写入——`ExternalCustomerID(t)=weknora-tenant-<WeKnora 租户 id>`，两个 DB 各自编号的租户在 authority 侧共享同一 external_id 空间，跨实例必撞（上轮临时实例租户 3/6 与本轮原库租户 C(3) 撞名即其实例化）。
+
+**清理实录（对运行中 weknora-lago-82flow 栈，全部实跑）**：
+- tenant-3 显示名回真：`POST /api/v1/customers`（upsert 带 name 键——正是缺陷 3 修复所实证的字段级覆写语义）→ 200，name=`issue82-c's Workspace`（读自 WeKnora 库 tenants 表真名），binding `stripe/weknora-stripe/cus_VJo6y3G3zUa1oE` 与 C 的 gated 订阅（04:03:04Z）未动。注意：rv1 的 R1-V05 证据文件 rv1-lago-tenant3-upsert-keeps-name.txt 记录的修复前旧名 `fix82-1790308166's Workspace` 是其时点事实，本次回真不改变该证据效力。
+- 纯遗留顾客删除（destroy 均 200）：`weknora-tenant-6`（上轮自验购买链）、`issue82fix-probe-1790307250`、`issue82fix-probe2-1790307270`（缺陷 3 调查期 upsert 语义探针）；tenant-6 wallet 随顾客弃用从读面消失。
+- 清理后 customers 读面恰余 weknora-tenant-1/2/3/4（两轮验证者数据），wallets tenant-6=∅。
+
+**保留项（如实披露，不静默扩大清理）**：① wallet `weknora-tenant-3-2026-09`——上轮创建但现承载本轮 C 的 Base grant 状态，删除会破坏 C 的权益面；② 订阅 `weknora-tenant-6-purchase`（incomplete）——pinned v1.53.0 共享 API 订阅仅 [create update show index]（容器 shared_api.rb:54 实读）无 destroy，行附着于已弃用顾客仅存于 status[] 过滤读面；**未来轮若 WeKnora 租户 id 到 6，gated create 身份读会撞该行被 replay 短路——未来轮租户 id 应 ≥5 且 ≠6，或换新栈**；③ Stripe TEST 侧上轮 provider customer（TEST 模式一次性环境，不属 Lago 读面）。
+
+### 流程规则（Ruling，防复发）
+
+**验证/自验实例永远不得以「复制的 WeKnora DB」对共享 Lago authority 栈写入**：external_id 以 WeKnora 租户 id 为身份，DB 副本的租户编号与 authority 侧他实例同号即污染（本轮 C 撞 tenant-3、未来轮险撞 tenant-6 皆此类）。自验要么用独立 Lago 栈（lab.sh 先例），要么与 authority 共用同一 WeKnora DB。上轮修复员自验违反此规则（虽有 14 断言全绿的验证价值），遗留已清理，规则入册。
+
+### 证据缺口如实记录
+
+reverify1/README.md:21 引用 `rv1-gotest.txt`，但复验者提交 4292e69f6 未含该文件（15 文件清单实核）。不伪造其原文件；流程修复员在同一 HEAD 按 README 同款命令补跑（`go test ./internal/modules/commercial/... ./internal/handler/ ./internal/router/ ./internal/middleware/ -count=1` → 10 包全 ok），输出署名存 `reverify1/rv1-gotest-rerun-by-fixer.txt`。
