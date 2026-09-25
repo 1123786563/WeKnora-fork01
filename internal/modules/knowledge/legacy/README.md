@@ -57,7 +57,7 @@
 | `internal/application/service/slug_fuzzy.go` | Slug fuzzy (application/service) | `B-knowledge` — **已迁移**（K2.4 → `retrieval/app/`） |
 | `internal/application/service/tag.go` | Tag (application/service) | `B-knowledge` |
 | `internal/application/service/tag_access.go` | Tag access (application/service) | `B-knowledge` |
-| `internal/handler/kb_access.go` | Kb access (handler) | `B-knowledge` |
+| `internal/handler/kb_access.go` | Kb access (handler) | `B-knowledge` — **已迁移**（K4.3 → `process/handler/`） |
 | `internal/handler/kbretrieval_passb_compat.go` | Knowledge retrieval host compat (handler) | `B-knowledge`（K2.6 新增 compat） |
 | `internal/handler/knowledge.go` | Knowledge (handler) | `B-knowledge` |
 | `internal/handler/knowledge_download.go` | Knowledge download (handler) | `B-knowledge` |
@@ -65,9 +65,10 @@
 | `internal/handler/semantic_internal.go` | Semantic internal (handler) | `B-knowledge` — **已迁移**（K2.6 → `retrieval/app/handler/`） |
 | `internal/handler/semantic_model_policy.go` | Semantic model policy (handler) | `B-knowledge` — **已迁移**（K2.6 → `retrieval/app/handler/`） |
 | `internal/handler/tag.go` | Tag (handler) | `B-knowledge` — **已迁移**（K2.6 → `retrieval/app/handler/`） |
-| `internal/handler/task_progress_auth.go` | Task progress auth (handler) | `B-knowledge` |
+| `internal/handler/task_progress_auth.go` | Task progress auth (handler) | `B-knowledge` — **已迁移**（K4.3 → `process/handler/`） |
 | `internal/application/repository/chunk_ingest_shim.go` | Chunk ingest shim (application/repository) | `B-knowledge` |
 | `internal/application/service/chunk_ingest_shim.go` | Chunk ingest shim (application/service) | `B-knowledge` |
 | `internal/application/service/span_trace_seam_adapter.go` | Span trace seam adapter (application/service) | `B-knowledge` |
 | `internal/handler/chunk_ingest_shim.go` | Chunk ingest shim (handler) | `B-knowledge` |
 | `internal/application/service/kbprocess_passb_compat.go` | Knowledge process host compat (application/service) | `B-knowledge`（K4.2 新增 compat） |
+| `internal/handler/kbprocess_passb_compat.go` | Knowledge process host compat (handler) | `B-knowledge`（K4.3 新增 compat） |

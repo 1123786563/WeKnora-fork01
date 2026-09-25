@@ -220,10 +220,6 @@ legacy_files:
     reason: trapped in horizontal service package internal/application/service (Pass B file split)
     navigation_label: Tag access (application/service)
     passb_task: B-knowledge
-  - path: internal/handler/kb_access.go
-    reason: trapped in horizontal handler package internal/handler (Pass B file split)
-    navigation_label: Kb access (handler)
-    passb_task: B-knowledge
   - path: internal/handler/kbretrieval_passb_compat.go
     reason: host compatibility aliases after retrieval handlers moved into module (Pass B)
     navigation_label: Knowledge retrieval host compat (handler)
@@ -239,10 +235,6 @@ legacy_files:
   - path: internal/handler/knowledgebase.go
     reason: trapped in horizontal handler package internal/handler (Pass B file split)
     navigation_label: Knowledgebase (handler)
-    passb_task: B-knowledge
-  - path: internal/handler/task_progress_auth.go
-    reason: trapped in horizontal handler package internal/handler (Pass B file split)
-    navigation_label: Task progress auth (handler)
     passb_task: B-knowledge
   - path: internal/application/service/wiki_k3_compat.go
     reason: Pass B 23-knowledge-wikifaq 宿主过渡 shim（wiki 域符号转发，保 K1/K4 宿主调用点编译）；删除点 ib2
@@ -293,6 +285,10 @@ legacy_files:
   - path: internal/application/service/kbprocess_passb_compat.go
     reason: Pass B 过渡 shim，ib2 同 commit 随文件删行
     navigation_label: Knowledge process host compat (application/service)
+    passb_task: B-knowledge
+  - path: internal/handler/kbprocess_passb_compat.go
+    reason: Pass B 过渡 shim，ib2 同 commit 随文件删行
+    navigation_label: Knowledge process host compat (handler)
     passb_task: B-knowledge
 owned_files:
   move_sources:

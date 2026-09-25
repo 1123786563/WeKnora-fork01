@@ -1805,12 +1805,6 @@ legacy_files:
     destination: internal/modules/system/handler
     integration_owner: ib4
     delete_barrier: ib4
-  - path: internal/handler/kb_access.go
-    module: knowledge
-    plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
-    integration_owner: ib2
-    delete_barrier: ib2
   - path: internal/handler/knowledge.go
     module: knowledge
     plan: 24-knowledge-process
@@ -2231,12 +2225,6 @@ legacy_files:
     destination: internal/modules/knowledge/retrieval/app
     integration_owner: ib2
     delete_barrier: ib2
-  - path: internal/handler/task_progress_auth.go
-    module: knowledge
-    plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
-    integration_owner: ib2
-    delete_barrier: ib2
   - path: internal/handler/tenant.go
     module: identity
     plan: 10-identity
@@ -2360,6 +2348,12 @@ legacy_files:
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/kbprocess_passb_compat.go
+    module: knowledge
+    plan: 24-knowledge-process
+    destination: internal/modules/knowledge/process
+    integration_owner: ib2
+    delete_barrier: ib2
+  - path: internal/handler/kbprocess_passb_compat.go
     module: knowledge
     plan: 24-knowledge-process
     destination: internal/modules/knowledge/process
