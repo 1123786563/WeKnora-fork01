@@ -444,3 +444,71 @@ $ pnpm --filter @weknora/mobile typecheck   # tsc --noEmit
 
 - 无阻塞项。三处对计划代码的修正理由与证据已列第 3 节，供审查者复核。
 - Task 9（mobile-core）的 `DeliveryRemote` 结构需与本任务 `MobileCodeDeliveryRemote` 结构逐字一致（结构可赋值由 apps/mobile typecheck 证明）；Task 10 接线时 typecheck 将首次覆盖两接口的可赋值性。
+
+---
+
+# Task 8 · 修复轮 1 报告（审查发现 1 项：测试 4 正面路径覆盖洞）
+
+## 1. 审查发现与确认
+
+发现（severity: important）：`packages/api-client/src/mobile/code-delivery.test.ts:55-58` 的测试 4 声称覆盖「顶层 code 无 body 也映射 null」，但 null 断言走的 `fakeRequest` 会挂 `err.body`（`:14-26`），与测试 2 第一例形状重复——顶层 `code='code_delivery_not_found'` 无 body → null 的正面路径零覆盖。
+
+**变异复现确认（实跑）**：把 `isDeliveryNotFound` 临时退回计划原稿的只查 `body.code`（`code-delivery.ts:31` 删第一析取支），实跑：
+
+```
+$ pnpm exec tsx --test packages/api-client/src/mobile/code-delivery.test.ts
+# tests 4 / pass 4 / fail 0   ← 证实：退回实现后全部测试仍绿，修正③可被静默复活
+```
+
+## 2. 修复内容（仅测试文件，+9/-2；实现文件与 HEAD 逐字节一致）
+
+- **测试 4 第一例改形**：transport 改为直接抛 `{ status: 404, code: 'code_delivery_not_found' }` 且**不设 body** 的错误（生产 `errorFromResult` ApiError 形状，`errors.ts:60`），null 断言从此必须经过顶层 `code` 分支；并加注释钉死「实现退回只查 body.code 时本测试必须红」。
+- 测试 4 第二例（404 顶层 code=`run_not_found` → reject）与计划原 3 测试逐字保留。
+
+## 3. TDD 双向验证（实跑）
+
+**RED（修复后的测试 × 故意退回的实现）**——退回实现后重跑：
+
+```
+$ pnpm exec tsx --test packages/api-client/src/mobile/code-delivery.test.ts
+ok 1 / ok 2 / ok 3
+not ok 4 - a real ApiError-shaped 404 (top-level code, no body) also maps to null
+# tests 4 / pass 3 / fail 1   ← 覆盖洞已闭合：测试现在钉死该行为
+```
+
+**GREEN（恢复双形状实现后）**——计划 Step 4 命令完整跑：
+
+```
+$ pnpm exec tsx --test packages/contracts/test/mobile-code-delivery.test.ts packages/api-client/src/mobile/code-delivery.test.ts
+TAP version 13
+ok 1 - delivery() maps GET /workbench/executions/:run/delivery onto the record
+ok 2 - a 404 code_delivery_not_found maps to null, other failures reject
+ok 3 - origin is validated at construction
+ok 4 - a real ApiError-shaped 404 (top-level code, no body) also maps to null
+ok 5 - delivered wire parses into the traceability record
+ok 6 - prepared wire parses with optional receipts omitted
+ok 7 - unknown state fails closed
+1..7
+# tests 7 / # pass 7 / # fail 0 / # skipped 0
+```
+
+## 4. 回归（实跑）
+
+```
+$ pnpm exec tsx --test packages/contracts/test/*.test.ts
+# tests 71 / pass 71 / fail 0 / skipped 0
+
+$ pnpm exec tsx --test "packages/api-client/src/mobile/*.test.ts"
+# tests 84 / pass 80 / fail 0 / skipped 4（4 skip 为既有 runtime 集成类）
+
+$ pnpm --filter @weknora/mobile typecheck   # tsc --noEmit
+（无输出，退出码 0）
+```
+
+## 5. 文件清单（1 个）
+
+- Modify：`packages/api-client/src/mobile/code-delivery.test.ts`（测试 4 第一例改形 + 注释；`git diff --stat` = 1 file, +9/-2）
+
+## 6. 遗留与关注点
+
+- 无。变异验证（退回实现→红、恢复实现→绿）已双向证明该正面路径不可再被静默移除。

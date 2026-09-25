@@ -53,8 +53,15 @@ test('origin is validated at construction', () => {
 });
 
 test('a real ApiError-shaped 404 (top-level code, no body) also maps to null', async () => {
-  const apiErrorTransport = fakeRequest(() => ({ status: 404, body: { code: 'code_delivery_not_found' } }));
-  const remote = createMobileCodeDeliveryRemote({ origin: 'https://weknora.example.com', request: apiErrorTransport.request });
+  // 生产通道形状：errorFromResult 产出的 ApiError 是顶层 .status/.code（errors.ts:60），
+  // 无 .body —— 此路径若缺覆盖，实现退回只查 body.code 时本测试仍全绿（审查轮 1）。
+  const apiErrorShape = async () => {
+    const err = new Error('api error 404') as any;
+    err.status = 404;
+    err.code = 'code_delivery_not_found';
+    throw err;
+  };
+  const remote = createMobileCodeDeliveryRemote({ origin: 'https://weknora.example.com', request: apiErrorShape });
   assert.equal(await remote.delivery('run-1'), null);
 
   // 生产通道形状：errorFromResult 产出的 ApiError 是顶层 .status/.code（errors.ts:60），
