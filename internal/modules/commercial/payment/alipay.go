@@ -195,17 +195,17 @@ func NewAlipayProvider(cfg AlipayConfig) (*AlipayProvider, error) {
 	return &AlipayProvider{
 		cfg:          cfg,
 		alipayPubKey: pub,
-		// (R1-V09) Redirects are never followed blindly: every hop's target
-		// is re-validated against the same SSRF policy.
-		client: &http.Client{
-			Timeout: cfg.timeout(),
-			CheckRedirect: func(req *http.Request, via []*http.Request) error {
-				if err := secutils.ValidateURLForSSRF(req.URL.String()); err != nil {
-					return fmt.Errorf("alipay redirect target failed SSRF validation: %w", err)
-				}
-				return nil
-			},
-		},
+		// (R1-V09/R1-14) The shared SSRF-safe client: every redirect hop is
+		// re-validated against the same policy AND capped at MaxRedirects
+		// (a custom CheckRedirect replaces the stdlib's default 10-hop
+		// limit, so the previous per-hop check alone allowed an unlimited
+		// redirect loop), while the SSRFSafe transport pins the DNS answer
+		// at DIAL time — closing the validate-then-dial rebinding window a
+		// default Transport leaves open (it re-resolves independently).
+		client: secutils.NewSSRFSafeHTTPClient(secutils.SSRFSafeHTTPClientConfig{
+			Timeout:      cfg.timeout(),
+			MaxRedirects: 10,
+		}),
 		now: time.Now,
 	}, nil
 }

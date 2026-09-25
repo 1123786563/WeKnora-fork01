@@ -214,6 +214,33 @@ func TestPurchaseHandlerAnswersUnavailableOnPlatformFailure(t *testing.T) {
 	}
 }
 
+// (R1-09) 未映射的基础设施错误（存储层故障）必须答 500 + 固定闭合文案，
+// 不得 400（诱导调用方按 4xx 语义重试同一请求）也不得把 SQL/驱动错误文本
+// 透到公网边界——与本端点 503 分支自述的闭合词汇约束一致。
+func TestPurchaseHandlerAnswersServerErrorClosedOnInfrastructureFailure(t *testing.T) {
+	env := newPurchaseHandlerEnv(t)
+	seedHandlerPlan(t, env.plans)
+	q, err := env.orders.CreateQuote(context.Background(), 50, "pro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 基础设施故障：报价表被破坏后 QuoteSnapshotForTenant 的存储层读失败，
+	// 落到 Purchase switch 的 default 分支。
+	if err := env.db.Exec(`DROP TABLE commercial_quotes`).Error; err != nil {
+		t.Fatal(err)
+	}
+	rec := postPurchase(t, env, q.ID)
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("infrastructure failure must answer 500, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !bytes.Contains(rec.Body.Bytes(), []byte(`"purchase failed"`)) {
+		t.Fatalf("500 must carry the closed message: %s", rec.Body.String())
+	}
+	if bytes.Contains(rec.Body.Bytes(), []byte("no such table")) {
+		t.Fatalf("raw driver error text must not cross the boundary: %s", rec.Body.String())
+	}
+}
+
 // (R1-V17) ensure 显示名来自 handler 的 tenantDisplayName（无 tenants 表时
 // 回退 "WeKnora Space 50"），不再硬编码 "space"；actor 参数同样来自
 // commercialUserID(c)（认证中间件注入的 user-50）——fake 的客户记录面

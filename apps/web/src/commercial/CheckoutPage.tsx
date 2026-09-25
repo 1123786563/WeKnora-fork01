@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ApiError } from '@weknora/api-client';
 import type { WeKnoraClient } from '@weknora/api-client';
 import type { OrderView, PurchaseView, QuoteView } from '@weknora/contracts';
 import { isSafeCheckoutUrl } from '@weknora/contracts';
@@ -41,15 +42,23 @@ function isTerminal(order: OrderView): boolean {
 // R1-V01：purchase 缺单/不可确认时的闭合失败文案（reason 是后端闭合令牌，
 // state 是闭合产品状态；页面词汇稳定，不含平台词汇——spec L210）。
 export function purchaseErrorMessage(purchase: PurchaseView): string {
-  switch (purchase.reason) {
+  const closed = purchaseReasonMessage(purchase.reason);
+  if (closed !== undefined) return closed;
+  return purchase.state === 'canceled'
+    ? '该购买已取消，请重新发起购买'
+    : '购买未能创建，请稍后重试';
+}
+
+// 闭合 reason 令牌 → 中文文案。R1-24：POST /purchases 平台故障走 503 信封
+// （{"error":..., "reason":"unreachable|..."}），ApiError.details.reason 携带
+// 同一枚令牌——两条路径（GET 2xx 视图与 POST 503 错误）共用这一份映射。
+export function purchaseReasonMessage(reason: unknown): string | undefined {
+  switch (reason) {
     case 'unconfigured': return '支付渠道未配置，购买暂不可用';
     case 'unreachable': return '支付平台暂时不可达，请稍后重试';
     case 'invalid_response': return '支付平台返回异常，请稍后重试';
     case 'unsupported': return '当前环境暂不支持购买';
-    default:
-      return purchase.state === 'canceled'
-        ? '该购买已取消，请重新发起购买'
-        : '购买未能创建，请稍后重试';
+    default: return undefined;
   }
 }
 
@@ -109,7 +118,16 @@ export function CheckoutPage({ client, scopeController, orderId }: CheckoutPageP
         }
       } catch (error) {
         if (!active || !scopeController.isCurrent(currentScope.scope)) return;
-        setState({ status: 'error', message: error instanceof Error ? error.message : 'Unable to open checkout' });
+        // R1-24：POST /purchases 的平台故障以 503 + 顶层闭合 reason 令牌回答，
+        // ApiError.details.reason 携带它——优先映射闭合文案，而不是把英文
+        // 原始 message（"purchase temporarily unavailable"）直接展示给用户。
+        const closedReason = error instanceof ApiError
+          ? purchaseReasonMessage((error.details as { reason?: unknown } | undefined)?.reason)
+          : undefined;
+        setState({
+          status: 'error',
+          message: closedReason ?? (error instanceof Error ? error.message : 'Unable to open checkout'),
+        });
       }
     }
 

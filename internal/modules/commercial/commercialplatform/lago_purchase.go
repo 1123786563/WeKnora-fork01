@@ -36,10 +36,19 @@ import (
 // status text, no response body and no credential — only the shared
 // sentinel and a short closed description.
 
-// purchaseRequestTimeout bounds one create_purchase_subscription command:
-// the binding read/write, the possible provider-customer round trip, the
-// identity read and the gated create.
-const purchaseRequestTimeout = subscriptionRequestTimeout + 10*time.Second
+// purchaseRequestTimeout bounds one create_purchase_subscription command.
+// (R1-12) The budget must cover the whole chain it actually runs: the
+// binding read/write, up to THREE provider round trips (customer create,
+// attach, set-default, each bounded by outboundProviderTimeout), the
+// bounded payment-method import wait (pmSyncWait) and the identity read +
+// gated create (subscriptionRequestTimeout). A budget smaller than the sum
+// starves the import poll — the outer deadline expires mid-poll and the
+// transport layer wraps it as an unreachable. Computed at CALL time (not
+// package init) so tests that shorten pmSyncWait keep the budget
+// self-consistent.
+func purchaseRequestTimeout() time.Duration {
+	return subscriptionRequestTimeout + 3*outboundProviderTimeout + pmSyncWait
+}
 
 // pmSyncWait bounds the poll for the authority's import of the tenant's
 // default payment method (F11: the gated create answers
@@ -194,7 +203,7 @@ func (a *LagoAdapter) createPurchaseSubscription(ctx context.Context, cmd commer
 	if err := payload.Validate(); err != nil {
 		return commercial.CommandReceipt{}, fmt.Errorf("%w: %v", commercial.ErrPlatformInvalidResponse, err)
 	}
-	ctx, cancel := context.WithTimeout(ctx, purchaseRequestTimeout)
+	ctx, cancel := context.WithTimeout(ctx, purchaseRequestTimeout())
 	defer cancel()
 
 	if err := a.ensureProviderBinding(ctx, payload.ExternalCustomerID); err != nil {
@@ -231,13 +240,24 @@ func (a *LagoAdapter) createPurchaseSubscription(ctx context.Context, cmd commer
 			"activation_rules": []map[string]any{{"type": "payment", "timeout_hours": 0}},
 		},
 	}
-	status, _, err := a.do(ctx, http.MethodPost, "/api/v1/subscriptions", body)
+	status, respBody, err := a.do(ctx, http.MethodPost, "/api/v1/subscriptions", body)
 	if err != nil {
 		return commercial.CommandReceipt{}, err
 	}
 	switch {
 	case status >= 200 && status < 300:
 		return receipt, nil
+	case status == http.StatusUnprocessableEntity &&
+		strings.Contains(string(respBody), "no_default_payment_method"):
+		// (R1-12) The authority's payment-method import had not landed when
+		// the gated create ran (the bounded sync wait above is the primary
+		// absorber). The replay's bound short-circuit does NOT re-wait, so
+		// escalating this transient import lag to a terminal verdict would
+		// permanently lose the sync window — classify it as the retryable
+		// unreachable instead: the import keeps progressing server-side and
+		// the next attempt's create succeeds.
+		return commercial.CommandReceipt{}, fmt.Errorf(
+			"%w: default payment method not imported yet", commercial.ErrPlatformUnreachable)
 	case status == http.StatusUnprocessableEntity:
 		// The indistinguishable 422 (#76 lab fact, F7 race): resolve by an
 		// identity re-read + plan-code compare — never a second create.

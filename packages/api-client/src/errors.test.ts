@@ -29,3 +29,34 @@ test('plain string body still becomes the message (kept verbatim)', () => {
   const error = errorFromResult(500, ' upstream exploded ');
   assert.equal(error.message, ' upstream exploded ');
 });
+
+// (R1-24) POST /purchases 的平台故障信封是 503 + 顶层闭合 reason 令牌
+// （{"error":"purchase temporarily unavailable","reason":"unreachable"}）——
+// 非 2xx 直接抛 ApiError，顶层 reason 必须并入 details 存活下来，调用方才能
+// 按闭合令牌映射文案，而不是只拿到英文 message。
+test('503 purchase envelope preserves the top-level reason token in details', () => {
+  const error = errorFromResult(503, {
+    error: 'purchase temporarily unavailable',
+    reason: 'unreachable',
+  });
+  assert.equal(error.status, 503);
+  assert.equal(error.message, 'purchase temporarily unavailable');
+  const details = error.details as { reason?: string };
+  assert.equal(details?.reason, 'unreachable');
+});
+
+test('existing details object is preserved when merging the reason token', () => {
+  const error = errorFromResult(503, {
+    error: 'purchase temporarily unavailable',
+    reason: 'unconfigured',
+    details: { hint: 'channel not wired' },
+  });
+  const details = error.details as { hint?: string; reason?: string };
+  assert.equal(details?.hint, 'channel not wired');
+  assert.equal(details?.reason, 'unconfigured');
+});
+
+test('bodies without a reason token leave details untouched', () => {
+  const error = errorFromResult(409, { error: 'quote expired' });
+  assert.equal(error.details, undefined);
+});

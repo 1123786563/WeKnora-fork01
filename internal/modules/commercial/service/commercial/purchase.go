@@ -223,6 +223,22 @@ func (s *PurchaseService) Purchase(ctx context.Context, tenantID uint64, quoteID
 	if p.State != domain.PurchaseStateAwaitingPayment {
 		return PurchaseView{}, fmt.Errorf("%w: %s", ErrPurchaseNotAwaiting, p.State)
 	}
+	// (R1-22) ONE payable channel order per purchase: the idempotency key so
+	// far was only the quote, so a FRESH quote (re-quote after expiry, a
+	// second tab) reached CreateOrder while the purchase's previous pending
+	// order was still payable — two concurrent channel orders on the same
+	// gating invoice, each callback confirming independently, is the
+	// awaiting-period shape of the "must not be charged twice" contract
+	// below. Resolve the purchase's existing PENDING order first and answer
+	// it verbatim (the match gate above already proved the quote buys the
+	// same plan at the same frozen face, so the replayed order IS this
+	// purchase's order).
+	if existing, perr := s.orders.orders.CurrentPendingPurchaseOrder(ctx, tenantID, p.AmountFen, p.Currency); perr == nil {
+		ov := orderViewFromRow(existing)
+		return s.purchaseView(p, snap, pub, &ov), nil
+	} else if !errors.Is(perr, repocommercial.ErrOrderNotFound) {
+		return PurchaseView{}, perr
+	}
 	ov, err := s.orders.CreateOrder(ctx, tenantID, quoteID, providerName)
 	if errors.Is(err, repocommercial.ErrQuoteAlreadyUsed) {
 		// The concurrent race lost the quote consumption: answer the

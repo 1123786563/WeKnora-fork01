@@ -555,6 +555,29 @@ class FakeLagoHandler(BaseHTTPRequestHandler):
             invoice["revealed_polls"] += 1
             if invoice["revealed_polls"] > s.invoice_appear_polls:
                 invoice["revealed"] = True
+                if (s.gate_invoice_reveals_failed
+                        and invoice["subscription_external_id"].endswith("-sub-a")):
+                    # ocr-1 R1-05 knob: the gate invoice first becomes
+                    # visible IN the terminal failed shape (the declined
+                    # off-session charge ended it while it was still an
+                    # INVISIBLE_STATUS `open`), the subscription canceled
+                    # with payment_failed and exactly one failed payment.
+                    sub = s.subscriptions.get(invoice["subscription_external_id"])
+                    if sub is not None:
+                        sub["status"] = "canceled"
+                        sub["cancellation_reason"] = "payment_failed"
+                    invoice["status"] = "failed"
+                    invoice["payment_status"] = "failed"
+                    invoice["pending_payment_added"] = True
+                    s.payments.append({
+                        "id": s.seq("pay"),
+                        "external_customer_id": ext,
+                        "invoice_lago_id": invoice["lago_id"], "status": "failed",
+                        "amount_cents": invoice["total_amount_cents"],
+                        "provider_payment_id": "pi_test_failed", "payable_id": invoice["lago_id"],
+                        "payment_type": "stripe",
+                    })
+                    continue
                 if not invoice["pending_payment_added"]:
                     invoice["pending_payment_added"] = True
                     s.payments.append({
@@ -616,6 +639,10 @@ class FakeLago(ThreadingHTTPServer):
         # ocr-81 knob: inject extra non-succeeded payments into every
         # payments-list answer (the invoice-invisible exactly-once probe).
         self.extra_non_succeeded = 0
+        # ocr-1 R1-05 knob: the gate invoice reveals directly in the
+        # terminal failed shape (subscription canceled payment_failed, one
+        # failed payment) — the invoice-visible-as-failed branch.
+        self.gate_invoice_reveals_failed = False
 
     def seq(self, kind):
         self.seq_counters[kind] += 1
@@ -916,6 +943,36 @@ class TestGatePhase(unittest.TestCase):
         self.assertEqual(observed["cancellation_reason"], "payment_failed")
         notes = " ".join(report["contract_notes"])
         self.assertIn("charge-failure endgame", notes)
+
+    def test_failed_invoice_branch_passes_with_exactly_once_payments_recorded(self):
+        # ocr-1 R1-05: the invoice-visible-as-failed branch must record the
+        # payments evidence (payments_non_succeeded_count) and stand on the
+        # exactly-once line like its two sibling branches.
+        with stack() as env:
+            ctx = seeded(env)
+            env.lago.gate_invoice_reveals_failed = True
+            report = phase_gate(ctx)
+        self.assertEqual(report["status"], "pass", report)
+        observed = report["observed"]
+        self.assertEqual(observed["invoice_status"], "failed")
+        self.assertEqual(observed["cancellation_reason"], "payment_failed")
+        self.assertEqual(observed["payments_non_succeeded_count"], 1)
+
+    def test_failed_invoice_branch_fails_on_multiple_non_succeeded_payments(self):
+        # ocr-1 R1-05: a duplicate payment row on the failed endgame is a
+        # double-charge signature — the invoice-visible-as-failed PASS used
+        # to omit the payments assertion entirely (stricter siblings already
+        # had it), producing a misleading PASS with missing evidence.
+        with stack() as env:
+            ctx = seeded(env)
+            env.lago.gate_invoice_reveals_failed = True
+            env.lago.extra_non_succeeded = 2
+            report = phase_gate(ctx)
+        self.assertEqual(report["status"], "fail", report)
+        observed = report["observed"]
+        self.assertEqual(observed["invoice_status"], "failed")
+        self.assertGreaterEqual(observed["payments_non_succeeded_count"], 3)
+        self.assertIn("non_succeeded_payments", observed["error"])
 
 
 class TestManualPhase(unittest.TestCase):

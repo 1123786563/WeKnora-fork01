@@ -95,6 +95,39 @@ test('purchase without an order shows the closed failure message and never queri
   await act(async () => { root?.unmount(); });
 });
 
+// R1-24：POST /purchases 的平台故障走 503 错误信封（非 2xx → ApiError，
+// 顶层 reason 令牌在 details 里）——页面必须按闭合令牌映射中文文案，而不是
+// 把英文原始 message（"purchase temporarily unavailable"）直接展示。
+test('a 503 purchase failure with a closed reason token maps to the Chinese message', async () => {
+  const { ApiError } = await import('@weknora/api-client');
+  const failure = new ApiError({
+    status: 503,
+    code: 'HTTP_503',
+    message: 'purchase temporarily unavailable',
+    details: { reason: 'unreachable' },
+  });
+  const client = {
+    commercial: {
+      quote: async () => quote,
+      purchase: async () => { throw failure; },
+      getOrder: async () => order,
+    },
+  };
+  const { CheckoutPage } = await import('./CheckoutPage.tsx');
+  const { createScopeController } = await import('@weknora/domain/scope');
+  const scopeController = createScopeController({ origin: '', userId: 'user-1', tenantId: '43' });
+  let root: Root | undefined;
+  await act(async () => {
+    root = createRoot(document.body.appendChild(document.createElement('div')));
+    root.render(React.createElement(CheckoutPage, { client: client as never, scopeController, orderId: '' }));
+  });
+  await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+  const text = document.body.textContent ?? '';
+  assert.match(text, /支付平台暂时不可达/);
+  assert.doesNotMatch(text, /purchase temporarily unavailable/);
+  await act(async () => { root?.unmount(); });
+});
+
 // R1-V12：已支付的订单不再显示「待付款（权益未开通）」标签（付款后回访/轮询
 // 更新后不得误导重复支付）。
 test('a paid order no longer shows the awaiting-payment label', async () => {

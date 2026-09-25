@@ -264,6 +264,74 @@ func TestOrderQuoteConsumableByExactlyOneOrder(t *testing.T) {
 	}
 }
 
+// insertCreatedAtOrder 以参数绑定落一张指定 created_at 的购买单（R1-20 测试
+// 的可控时间锚；order ids 故意用字典序与时间序相反的构造）。
+func insertCreatedAtOrder(t *testing.T, db *gorm.DB, id, state, createdAt string) {
+	t.Helper()
+	if err := db.Exec(`INSERT INTO commercial_orders (id, tenant_id, quote_id, kind, amount_fen, currency, state, version, created_at)
+		VALUES (?, 7, ?, 'purchase', 100, 'CNY', ?, 1, ?)`, id, "qt_"+id, state, createdAt).Error; err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestCurrentPurchaseOrderPrefersNewestByCreatedAt（R1-20）：order id 是
+// "ord_"+随机 hex，id 序不是时间序——同价面历史购买单全部命中价格面匹配时，
+// 唯一确定的"当前购买"锚点是 created_at（新 pending 优先、双 pending 取最新、
+// 全终态取最新终态，而非 id ASC 的随机 tie-break / 最旧一单）。
+func TestCurrentPurchaseOrderPrefersNewestByCreatedAt(t *testing.T) {
+	s, db := testOrderStore(t)
+	ctx := context.Background()
+	// 字典序最 OLD 的行时间最新——id ASC 会选错。
+	insertCreatedAtOrder(t, db, "ord_0000newest", "pending", "2026-06-01T00:00:00Z")
+	insertCreatedAtOrder(t, db, "ord_0001mid", "paid", "2026-03-01T00:00:00Z")
+	insertCreatedAtOrder(t, db, "ord_0002oldest", "paid", "2026-01-01T00:00:00Z")
+	row, err := s.CurrentPurchaseOrder(ctx, 7, 100, "CNY")
+	if err != nil || row.ID != "ord_0000newest" {
+		t.Fatalf("newest pending must win, got %+v err=%v", row, err)
+	}
+	// 双 pending：created_at 最新者胜（id 序随机）。
+	insertCreatedAtOrder(t, db, "ord_0003newerpending", "pending", "2026-07-01T00:00:00Z")
+	row, err = s.CurrentPurchaseOrder(ctx, 7, 100, "CNY")
+	if err != nil || row.ID != "ord_0003newerpending" {
+		t.Fatalf("newest of two pendings must win, got %+v err=%v", row, err)
+	}
+	// 全终态：取最新终态（id ASC 的 rows[0] 会投影最旧一单的陈旧 quote_id）。
+	if err := db.Exec(`UPDATE commercial_orders SET state = 'paid' WHERE state = ?`,
+		domain.OrderStatePending).Error; err != nil {
+		t.Fatal(err)
+	}
+	row, err = s.CurrentPurchaseOrder(ctx, 7, 100, "CNY")
+	if err != nil || row.ID != "ord_0003newerpending" {
+		t.Fatalf("all-terminal must project the NEWEST row, got %+v err=%v", row, err)
+	}
+	// 无匹配行：ErrOrderNotFound。
+	if _, err := s.CurrentPurchaseOrder(ctx, 8, 100, "CNY"); !errors.Is(err, ErrOrderNotFound) {
+		t.Fatalf("no matching order must be ErrOrderNotFound, got %v", err)
+	}
+}
+
+// TestCurrentPendingPurchaseOrderReturnsNewestPending（R1-22）：一个购买至多
+// 一张可支付渠道订单——仅 pending、created_at 最新优先；无 pending 报
+// ErrOrderNotFound（历史终态单不得被当作可支付入口重放）。
+func TestCurrentPendingPurchaseOrderReturnsNewestPending(t *testing.T) {
+	s, db := testOrderStore(t)
+	ctx := context.Background()
+	insertCreatedAtOrder(t, db, "ord_0000oldpending", "pending", "2026-01-01T00:00:00Z")
+	insertCreatedAtOrder(t, db, "ord_0001paid", "paid", "2026-06-01T00:00:00Z")
+	insertCreatedAtOrder(t, db, "ord_0002newpending", "pending", "2026-07-01T00:00:00Z")
+	row, err := s.CurrentPendingPurchaseOrder(ctx, 7, 100, "CNY")
+	if err != nil || row.ID != "ord_0002newpending" {
+		t.Fatalf("newest pending must win over paid and older pending, got %+v err=%v", row, err)
+	}
+	if err := db.Exec(`UPDATE commercial_orders SET state = 'paid' WHERE state = ?`,
+		domain.OrderStatePending).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CurrentPendingPurchaseOrder(ctx, 7, 100, "CNY"); !errors.Is(err, ErrOrderNotFound) {
+		t.Fatalf("no pending order must be ErrOrderNotFound, got %v", err)
+	}
+}
+
 func TestOrderGetDistinguishesPaidFromFulfilled(t *testing.T) {
 	s, _ := testOrderStore(t)
 	ctx := context.Background()

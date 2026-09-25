@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -487,7 +488,16 @@ func (h *CommercialHandler) Purchase(c *gin.Context) {
 		// (R1-V21) Same race outcome as POST /orders: 409, not a generic 400.
 		c.JSON(http.StatusConflict, gin.H{"error": "quote already used"})
 	default:
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		// (R1-09) The residual error face is server-side (gorm/storage
+		// failures from EnsureBillingAccount/GetPublication/GetVersion/
+		// CreateOrder, snapshot JSON corruption): 500 with a CLOSED
+		// message — never a 400 (which invites the caller to retry the
+		// same request as if it were a client fault) and never raw error
+		// text across the public boundary (same posture as the 503
+		// branch's "never raw error text"). The original error stays in
+		// the server log.
+		log.Printf("commercial: purchase failed for tenant %d: %v", tenantID, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "purchase failed"})
 	}
 }
 

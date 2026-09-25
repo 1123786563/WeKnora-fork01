@@ -15,6 +15,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -259,5 +260,58 @@ func TestWechatDuplicateDeliveryIsIdempotent(t *testing.T) {
 		first.Transaction != second.Transaction || first.Amount != second.Amount ||
 		first.State != second.State {
 		t.Fatalf("duplicate delivery produced a different fact: %+v vs %+v", first, second)
+	}
+}
+
+// TestChannelClientsCapRedirectLoop（R1-14）：两个主机互发 302 即成无限重定向
+// 环——旧客户端的自定义 CheckRedirect 整体替换了标准库默认的 10 跳上限（该
+// 默认仅 CheckRedirect 为 nil 时生效），每次支付/查单会持续跳转直到 Timeout
+// 耗尽。共享 SSRFSafe 客户端在 MaxRedirects 上限处终止；环回桩经
+// SSRF_WHITELIST 显式豁免（与真实出站策略同一豁免通道）。
+func TestChannelClientsCapRedirectLoop(t *testing.T) {
+	t.Setenv("SSRF_WHITELIST", "127.0.0.1")
+	secutils.ResetSSRFWhitelistForTest()
+	t.Cleanup(secutils.ResetSSRFWhitelistForTest)
+
+	var hops int64
+	var srvA, srvB *httptest.Server
+	srvA = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt64(&hops, 1)
+		http.Redirect(w, r, srvB.URL+"/hop", http.StatusFound)
+	}))
+	srvB = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt64(&hops, 1)
+		http.Redirect(w, r, srvA.URL+"/hop", http.StatusFound)
+	}))
+	t.Cleanup(srvA.Close)
+	t.Cleanup(srvB.Close)
+
+	clients := map[string]*http.Client{}
+	wechat := newWechatProvider(WechatConfig{AppID: "wx-test", MchID: "1900000001",
+		APIBaseURL: srvA.URL}, nil, nil)
+	clients["wechat"] = wechat.client
+	if p, _, _ := alipayNotifyFixture(t); p != nil {
+		clients["alipay"] = p.client
+	}
+
+	for name, client := range clients {
+		if client == nil || client.CheckRedirect == nil {
+			t.Fatalf("%s client must carry the shared SSRF-safe redirect policy", name)
+		}
+		atomic.StoreInt64(&hops, 0)
+		req, err := http.NewRequest(http.MethodGet, srvA.URL+"/start", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = client.Do(req)
+		if err == nil {
+			t.Fatalf("%s: redirect loop must fail, not return a response", name)
+		}
+		if !strings.Contains(err.Error(), "stopped after 10 redirects") {
+			t.Fatalf("%s: loop must stop at the redirect cap, got %v", name, err)
+		}
+		if n := atomic.LoadInt64(&hops); n > 12 {
+			t.Fatalf("%s: loop must stop at the cap (hops=%d), not run to the client timeout", name, n)
+		}
 	}
 }

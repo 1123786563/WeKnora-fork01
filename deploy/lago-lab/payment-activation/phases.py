@@ -637,18 +637,30 @@ def phase_gate(ctx):
             reason = ((cb2 or {}).get("subscription") or {}).get("cancellation_reason") \
                 if canceled else None
             observed["cancellation_reason"] = reason
+            # (ocr-1 R1-05) Same exactly-once strictness as the two sibling
+            # branches (the invoice-invisible canceled endgame and the
+            # open/pending pre_charge_ok): the payments API is not affected
+            # by the invoice INVISIBLE_STATUS, so the failed endgame PASS
+            # also stands on at most one non-succeeded payment.
+            ps, payments = _payments_for(ctx, customer["external_id"])
+            non_succeeded = [p for p in payments if p.get("status") != "succeeded"]
+            observed["payments_non_succeeded_count"] = len(non_succeeded)
             ctx.state["gate"] = {
                 "subscription_external_id": ext,
                 "invoice_lago_id": observed["invoice_lago_id"],
                 "customer_external_id": customer["external_id"],
             }
-            if core_ok and canceled and reason == "payment_failed":
+            if core_ok and canceled and reason == "payment_failed" and len(non_succeeded) <= 1:
                 ctx.note(
                     "3DS off-session charge failed: invoice visible as failed, "
                     "subscription canceled(payment_failed), entitlements stayed 404"
                 )
                 return _report(ctx, "gate", expected, observed, PASS)
-            observed["error"] = "invoice visible as failed but the cancellation contract did not hold"
+            observed["error"] = (
+                "invoice visible as failed but the cancellation contract did "
+                f"not hold (canceled={canceled}, cancellation_reason={reason!r}, "
+                f"non_succeeded_payments={len(non_succeeded)})"
+            )
             return _report(ctx, "gate", expected, observed, FAIL)
 
         try:

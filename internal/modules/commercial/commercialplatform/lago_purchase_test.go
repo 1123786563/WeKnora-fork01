@@ -62,7 +62,12 @@ type purchaseStub struct {
 	// answers 200 with an empty array forever, so a waitForPaymentMethodSync
 	// call would poll until its budget is exhausted.
 	pmAlwaysEmpty bool
-	mux           *http.ServeMux // assembled by newPurchaseStub
+	// rejectCreateNoDefaultPM models the gated create answering 422
+	// no_default_payment_method (R1-12): the payment-method import has not
+	// landed yet, so the create is refused and NO subscription record is
+	// created.
+	rejectCreateNoDefaultPM bool
+	mux                     *http.ServeMux // assembled by newPurchaseStub
 }
 
 func newPurchaseStub() *purchaseStub {
@@ -153,6 +158,15 @@ func newPurchaseStub() *purchaseStub {
 		case http.MethodPost:
 			var body map[string]any
 			_ = json.Unmarshal(blob, &body)
+			s.mu.Lock()
+			noDefaultPM := s.rejectCreateNoDefaultPM
+			s.mu.Unlock()
+			if noDefaultPM {
+				// (R1-12) the import-not-landed refusal: no record is created.
+				respond(w, r, &s.requests, &s.mu, http.StatusUnprocessableEntity,
+					`{"status":422,"error":"Unprocessable Entity","code":"no_default_payment_method"}`, blob)
+				return
+			}
 			status := func() int {
 				s.mu.Lock()
 				defer s.mu.Unlock()
@@ -588,6 +602,52 @@ func TestLagoPaymentMethodSyncCancellationIsNotUnreachable(t *testing.T) {
 	}
 	if errors.Is(err, commercial.ErrPlatformUnreachable) {
 		t.Fatalf("caller cancellation must NOT be classified unreachable, got %v", err)
+	}
+}
+
+// TestPurchaseRequestTimeoutBudgetCoversProviderChainAndSyncWait (R1-12):
+// the command budget must cover the chain it actually runs — up to three
+// provider round trips plus the bounded payment-method import wait plus the
+// subscription-grade tail — and must shrink with a shortened pmSyncWait
+// (call-time computation, not package-init constant).
+func TestPurchaseRequestTimeoutBudgetCoversProviderChainAndSyncWait(t *testing.T) {
+	oldWait := pmSyncWait
+	pmSyncWait = 20 * time.Second
+	t.Cleanup(func() { pmSyncWait = oldWait })
+	budget := purchaseRequestTimeout()
+	want := subscriptionRequestTimeout + 3*outboundProviderTimeout + 20*time.Second
+	if budget != want {
+		t.Fatalf("budget = %s, want the full chain sum %s", budget, want)
+	}
+	if budget < pmSyncWait+3*outboundProviderTimeout {
+		t.Fatalf("budget %s must cover provider round trips AND the sync wait", budget)
+	}
+	// Self-consistency: shortening pmSyncWait shrinks the budget with it.
+	pmSyncWait = 700 * time.Millisecond
+	if got := purchaseRequestTimeout(); got != want-(20*time.Second-700*time.Millisecond) {
+		t.Fatalf("budget must follow a shortened pmSyncWait, got %s", got)
+	}
+}
+
+// TestLagoGatedCreateNoDefaultPaymentMethodIsRetryable (R1-12): a 422
+// no_default_payment_method from the gated create is TRANSIENT import lag
+// (the bounded sync wait above is the primary absorber). The replay's bound
+// short-circuit does not re-wait, so escalating this to the terminal
+// invalid-response verdict would permanently lose the sync window — it must
+// classify as the retryable unreachable instead.
+func TestLagoGatedCreateNoDefaultPaymentMethodIsRetryable(t *testing.T) {
+	stub := newPurchaseStub()
+	stub.mu.Lock()
+	stub.rejectCreateNoDefaultPM = true
+	stub.mu.Unlock()
+	srv := stub.server(t)
+	a := purchaseAdapterWithPrefix(t, srv)
+	_, err := a.SubmitCommand(context.Background(), purchaseCmd(32, "weknora-pro-v1", 9900))
+	if !errors.Is(err, commercial.ErrPlatformUnreachable) {
+		t.Fatalf("import-not-landed 422 must be retryable unreachable, got %v", err)
+	}
+	if errors.Is(err, commercial.ErrPlatformInvalidResponse) {
+		t.Fatalf("import-not-landed 422 must NOT be a terminal verdict, got %v", err)
 	}
 }
 

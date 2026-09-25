@@ -113,24 +113,44 @@ class TestVerifyDbWatch(unittest.TestCase):
         self.assertIn("no observer TSV", out)
         self.assertIn("git-ignored", out)
 
-    def test_missing_sub_a_samples_is_check_not_vacuous_pass(self):
+    def test_runs_fallback_degrades_to_missing_evidence(self):
+        # (R1-07) The runs/-fallback guard used to be constant-false
+        # (`archived.exists() and path != str(archived)` can never hold: path
+        # is only assigned inside the archived.exists() branch), so the
+        # declared MISSING-EVIDENCE degradation never fired and a foreign
+        # runs/ TSV was silently asserted on. Now a runs/ TSV with no
+        # archive degrades loudly to exit 2: the payments aggregate cannot
+        # be keyed to this run, so the exactly-once assertion is not
+        # decidable — even when the TSV itself would have passed.
         with layout() as env:
             env.write_tsv("db-watch-verify-20260923T061349Z.tsv",
-                          tsv_text(NO_SUB_A_TSV))
+                          tsv_text(GOOD_TSV))
+            code, out = env.run()
+        self.assertEqual(code, 2, out)
+        self.assertIn("WARNING", out)
+        self.assertIn("not decidable", out)
+
+    def test_missing_sub_a_samples_is_check_not_vacuous_pass(self):
+        # Same assertion as before, now anchored on the ARCHIVED TSV (the
+        # only decidable source): a missing sub-a sample set is a CHECK
+        # (exit 1), never a vacuous pass.
+        with layout() as env:
+            env.write_archive(tsv_text(NO_SUB_A_TSV))
             code, out = env.run()
         self.assertEqual(code, 1, out)
         self.assertIn("DB-WATCH: CHECK", out)
 
     def test_good_tsv_still_passes_and_prints_the_selected_file(self):
+        # (R1-07) The PASS path is the ARCHIVED TSV; the runs/ fallback now
+        # degrades to exit 2 (see test_runs_fallback_degrades_to_missing_evidence).
         with layout() as env:
-            env.write_tsv("db-watch-verify-20260923T061349Z.tsv",
-                          tsv_text(GOOD_TSV))
+            env.write_archive(tsv_text(GOOD_TSV))
             code, out = env.run()
         self.assertEqual(code, 0, out)
         self.assertIn("DB-WATCH: PASS", out)
         self.assertIn("sub-a states: [4]", out)
         self.assertIn("DB-WATCH: using ", out)
-        self.assertIn("db-watch-verify-20260923T061349Z.tsv", out)
+        self.assertIn("verify-db-watch-samples.tsv", out)
 
     def test_archived_tsv_takes_priority_over_runs_and_is_printed(self):
         # ocr-2: this directory's archive must win over whatever replay TSV
@@ -150,10 +170,10 @@ class TestVerifyDbWatch(unittest.TestCase):
     def test_foreign_run_rows_do_not_leak_into_assertions(self):
         # ocr-2: a multi-run TSV mixes a foreign run's terminal sub-a with
         # this run's clean rows; only weknora-t02-<this run_id>- prefixed
-        # rows may feed the assertions.
+        # rows may feed the assertions. (R1-07) anchored on the archive —
+        # the runs/ fallback itself now degrades to exit 2.
         with layout() as env:
-            env.write_tsv("db-watch-verify-20260923T061349Z.tsv",
-                          tsv_text(FOREIGN_MIX_TSV))
+            env.write_archive(tsv_text(FOREIGN_MIX_TSV))
             code, out = env.run()
         self.assertEqual(code, 0, out)
         self.assertIn("DB-WATCH: PASS", out)

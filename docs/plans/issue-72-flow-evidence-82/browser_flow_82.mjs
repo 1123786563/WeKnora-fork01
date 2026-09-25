@@ -6,7 +6,7 @@
 //
 // Run from anywhere:  node browser_flow_82.mjs
 import { createRequire } from 'node:module';
-const require = createRequire('/Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue72-lago/apps/web/package.json');
+const require = createRequire(new URL('../../../apps/web/package.json', import.meta.url));
 const { chromium } = require('@playwright/test');
 
 const WEB = 'http://localhost:5192';

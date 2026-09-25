@@ -752,3 +752,265 @@ R1-24 只改"生产姿态（PM token 为空）"分支——#81 flow 验证当时
 
 - 提交 message 前缀：`issue-72(ocr-81-1):`（按本批 ask 指定）
 
+---
+
+# Issue #72 — OCR 第 1 轮修复记录（ocr-r1，10 组 findings）
+
+- 日期：2026-09-25
+- worktree：`.worktrees/issue72-lago`（分支 `codex/issue-72-lago`）
+- 修复基线：ask 标称 `29c1e5635`；经核对该提交是当前 HEAD（`1c684ae68`，
+  findings 记录提交）的远祖且不含 findings 引用的文件（如
+  `internal/handler/commercial_purchase_test.go`），而 findings 的行号
+  （purchase.go:217、commercial.go:489-490、alipay.go:199-208 等）全部与
+  `1c684ae68` 吻合——RED 一律在 `1c684ae68`（findings 实际审查的代码态）复现。
+- 修复人：修复员（dynamic workflow subagent）
+- 范围：OCR-R1-22（high）、R1-07/08/35/36（high）、R1-05/R1-09/R1-12/
+  R1-14+16+17+19/R1-20/R1-24/R1-28+29+31/R1-37（medium 各组），全部修复，
+  0 项 deferred。
+
+## 总则
+
+- 每个行为级 finding 先在基线 `1c684ae68` 上真实运行复现旧行为（RED），再在
+  修复版验证（GREEN）；表达式级风险（R1-37 空转、R1-28 路径）以最小复现
+  演示 + 源码论据记录。
+- 安全约束核对（Mimosa 前置约束）：R1-14 将渠道出站并入共享 SSRFSafe 客户端
+  ——仅 http/https、每跳重定向复检 + 10 跳上限、拨号层 DNS 钉扎关掉
+  validate-then-dial rebinding 窗口、跨域凭证头剥离，白名单豁免通道不变
+  （环回 stub 仍需显式 `SSRF_WHITELIST(_EXTRA)`）；本轮新增 SQL 均参数绑定
+  （`CurrentPendingPurchaseOrder`、测试 INSERT）；未引入任何凭据字面量。
+
+## 逐条 Ruling 与处置
+
+### OCR-R1-22（high）同一 awaiting 购买可开多张并存可支付渠道订单 — 已修复
+
+- Ruling：finding 成立。幂等键只有 quote：过期重报价/双开标签页各自 POST
+  /quotes 后，第二张 quote 走到第 8 步时 `GetOrderByQuote(Q2)` 未命中、购买
+  仍 awaiting，`CreateOrder` 为同一 gating invoice 开出新 merchant_order_id
+  与新 checkout URL；旧 pending 订单无任何关闭（`provider.Close` 无生产调用
+  点、状态机无 closed/canceled 转移——grep 核实），两张渠道单同时可支付，
+  分别付款各自 ConfirmPayment→paid→fulfilled。采用 fixHint 首选：CreateOrder
+  前解析该购买名下已有 pending 渠道订单，存在则原样重放。
+- 处置：repository 新增 `CurrentPendingPurchaseOrder`（kind=purchase +
+  冻结价面 + state=pending，`created_at DESC, id ASC`，全参数绑定）；purchase.go
+  第 8 步在 awaiting 检查后、CreateOrder 前调用——命中则 verbatim 重放该订单
+  （match gate 已证明新 quote 购买同 plan 同价面，重放订单即本购买的订单），
+  ErrOrderNotFound 之外的读错误照常上抛。
+- RED 证据：基线运行 `TestPurchaseSecondQuoteReplaysExistingPendingOrder` →
+  FAIL（第二 quote 开出第二张订单/渠道调用 ≠ 1）。
+- 回归测试：上述 service 测试（Q1 购买 → Q2 提交返回同 ID 同 checkout_url、
+  渠道 createCalls==1）+ `TestCurrentPendingPurchaseOrderReturnsNewestPending`
+  （repository：仅 pending、最新优先、无 pending 报 ErrOrderNotFound）。
+
+### OCR-R1-07/08/35/36（high）verify_db_watch 四副本 runs/ 回退守卫恒假 — 已修复
+
+- Ruling：finding 成立。`path` 仅在 `if archived.exists():` 分支被赋值为
+  `str(archived)`，故 `archived.exists() and path != str(archived)` 在任何路径
+  下恒 False（走到 elif matches 必然 archived 不存在）——R1-V10 声明的
+  「runs/ 回退 → MISSING-EVIDENCE exit 2」降级从未生效，外来回放 TSV 会被
+  静默断言（错配时 exit 1 形似业务回归，违背退出码契约）。按 fixHint 四副本
+  一并修。
+- 处置：守卫改 `if not archived.exists():`（flow-evidence-74/ocr1/ocr2/ocr3
+  四份同步，WARNING + exit 2 文案不变——现在真正可达）；
+  `test_verify_db_watch.py` 同步更新：runs/ 回退用例改为断言 WARNING + exit 2
+  （新增 `test_runs_fallback_degrades_to_missing_evidence`），原 exit 1/0/0
+  三个用例的语义锚点移到归档路径（write_archive）。
+- RED 证据：基线脚本 + runs TSV（无归档）实测 exit 1、无 WARNING；修复版同
+  场景 exit 2 + WARNING（本轮实际运行）。
+- 回归验证：更新后 `test_verify_db_watch.py` 6 passed；四副本对各自归档
+  TSV 重放全部 `DB-WATCH: PASS`（exit 0，归档主路径不受影响）。
+
+### OCR-R1-05（medium）failed 分支 PASS 缺 exactly-once payments 校验 — 已修复
+
+- Ruling：finding 成立且与本仓库既有严格度不对称论据一致：发票不可见分支
+  （ocr-81 R1-08）与 open/pending 的 pre_charge_ok 都要求
+  `len(non_succeeded) <= 1`，唯独发票可见为 failed 的分支只查
+  `core_ok and canceled and reason=="payment_failed"` 即 PASS，且不记录
+  payments_non_succeeded_count——而 R1-08 注释声称 payments 校验
+  "asserted on this path too"，与实现矛盾。
+- 处置：failed 分支在取消复查后补 `_payments_for` 读取（处于外层 try 内，
+  OSError 同样映射 blocked）、写入 `payments_non_succeeded_count`、PASS 条件
+  收紧 `len(non_succeeded) <= 1`；FAIL 文案附
+  `non_succeeded_payments=<n>` 便于归因。
+- RED 证据：基线 + 测试补丁运行 `pytest -k failed_invoice` → 2 failed
+  （多支付注入用例得 pass；PASS 用例 KeyError payments_non_succeeded_count）。
+- 回归测试：FakeLago 新增 `gate_invoice_reveals_failed` 旋钮（gate 发票以终态
+  failed 形态首次可见：订阅 canceled(payment_failed) + 恰 1 笔 failed 支付）；
+  `test_failed_invoice_branch_passes_with_exactly_once_payments_recorded`
+  （PASS + count==1）与 `..._fails_on_multiple_non_succeeded_payments`
+  （注入 2 笔 → FAIL + error 含 non_succeeded_payments）。
+
+### OCR-R1-09（medium）Purchase default 分支 400+err.Error() 透出 — 已修复
+
+- Ruling：finding 成立。default 分支把 EnsureBillingAccount/GetPublication/
+  GetVersion/CreateOrder 的存储层错误与快照 JSON 解析错误以 400 + 原始
+  err.Error() 透出——既误标客户端错误（诱导按 4xx 重试同一请求），又把
+  SQL/驱动文本暴露到公网边界，与本端点 503 分支自述的闭合词汇矛盾。按
+  fixHint 与 GetOrder 的 default→500 姿态对齐（GetOrder 透 err.Error() 但
+  状态码 500；本端点进一步用固定闭合文案）。
+- 处置：default 改 `log.Printf` 记原始错误（tenant 归因）+ 500 +
+  `"purchase failed"` 固定文案。
+- RED 证据：基线运行 `TestPurchaseHandlerAnswersServerErrorClosedOnInfrastructureFailure`
+  （DROP TABLE commercial_quotes 构造存储层故障）→ FAIL（400 != 500）。
+- 回归测试：上述 handler 测试（500 + "purchase failed" + 不含 "no such table"）。
+
+### OCR-R1-12（medium）purchaseRequestTimeout 预算不自洽 + 422 终态错分 — 已修复
+
+- Ruling：finding 成立。const 25s < 实际链条（≤3 次 provider 出站各 15s +
+  pmSyncWait 20s + 订阅级尾部），轮询实际窗口远小于 20s；更关键的是失败重试
+  走 bound 短路不再执行 PM 同步等待，create 撞 422 no_default_payment_method
+  被映射为终态 `ErrPlatformInvalidResponse("purchase replay cannot be
+  verified")`——瞬态导入等待永久丢失。采用 fixHint 首选（预算显式纳入）+
+  次选第三项（422 no_default_payment_method 归类可重试 Unreachable）闭合
+  重试链条。
+- 处置：
+  - `purchaseRequestTimeout` 由 const 25s 改为**调用时求值**的函数
+    `subscriptionRequestTimeout + 3*outboundProviderTimeout + pmSyncWait`
+    （包初始化 var 会在 init 时固化 pmSyncWait 初值，函数形式才能做到
+    fixHint 要求的「测试调短 pmSyncWait 时总预算自洽」）。
+  - gated create 的 422 分支前置特判：响应体含 `no_default_payment_method`
+    → `ErrPlatformUnreachable: default payment method not imported yet`
+    （重试的 bound 短路虽不再等待，但权威侧导入持续进行，下次 create 成功；
+    不再升级为终态 InvalidResponse）。原 422 race 的 identity re-read 分支
+    保持不变。
+- RED 证据：基线上 (a) 预算测试（RED 变体直断 const）→ 「baseline const
+  budget 25s starves the chain (sync wait 20s + 3 provider hops 45s)」；
+  (b) `TestLagoGatedCreateNoDefaultPaymentMethodIsRetryable` →
+  「got platform_invalid_response: purchase replay cannot be verified」。
+- 回归测试：`TestPurchaseRequestTimeoutBudgetCoversProviderChainAndSyncWait`
+  （预算 == 链条和；调短 pmSyncWait 后预算随之收缩）、
+  `TestLagoGatedCreateNoDefaultPaymentMethodIsRetryable`（stub 旋钮
+  `rejectCreateNoDefaultPM`：422 no_default_payment_method → Unreachable
+  且非 InvalidResponse）。
+
+### OCR-R1-14/16/17/19（medium）渠道客户端 rebinding 窗口 + 重定向无上限 — 已修复
+
+- Ruling：finding 成立。两个渠道 client 用默认 Transport（校验时 LookupIP、
+  拨号时默认 Transport 再独立解析——rebinding 应答可让校验见公网 IP、拨号落
+  内网）；自定义 CheckRedirect 整体替换标准库默认 10 跳上限（该默认仅
+  CheckRedirect 为 nil 时生效），两闭包均不查 len(via)——互发 302 的两个公网
+  主机即可形成无限重定向环。采用 fixHint：改用
+  `secutils.NewSSRFSafeHTTPClient`（同时获得拨号期 IP 钉扎、每请求带缓存的
+  出站校验、跨域凭证剥离、MaxRedirects 上限）。
+- 处置：alipay.go 与 wechat.go 构造处 client 统一为
+  `secutils.NewSSRFSafeHTTPClient(SSRFSafeHTTPClientConfig{Timeout: cfg.timeout(),
+  MaxRedirects: 10})`，删除自定义 CheckRedirect；注释记录替换理由（含
+  「自定义 CheckRedirect 替换默认 10 跳上限」与「默认 Transport 二次解析」
+  两个根因）。
+- RED 证据：基线运行 `TestChannelClientsCapRedirectLoop` → FAIL：wechat
+  client 在互发 302 的两 stub 间跳转至 Client.Timeout 耗尽
+  （`context deadline exceeded (Client.Timeout exceeded while awaiting
+  headers)`）——无跳数上限的直接实证。
+- 回归测试：`TestChannelClientsCapRedirectLoop`（wechat+alipay 两个 client：
+  环必须停在 "stopped after 10 redirects"，hops ≤ 12 而非跑到 Timeout；
+  白名单豁免环回 stub 与真实出站同一通道）；既有出站测试
+  （TestWechatDoRejectsInternalEgressWithoutWhitelist /
+  TestWechatDoAllowsWhitelistedLoopbackStub / alipay fixture 组）全量通过
+  证明豁免与既有校验行为不回归。
+- 说明：DNS rebinding 的拨号层钉扎由共享设施 `SSRFSafeDialContext` 提供
+  （internal/utils/security_transport_test.go 已有设施级测试），渠道侧回归
+  锚定在客户端行为（跳数上限 + 共享策略挂载）。
+
+### OCR-R1-20（medium）CurrentPurchaseOrder 价格面匹配无时间锚 — 已修复
+
+- Ruling：finding 成立。同租户同价面历史购买单全部命中（取消后同价复购），
+  `id ASC` 对 "ord_"+随机 hex 是纯字典序随机 tie-break（两单 pending 时可能
+  投影旧单 checkout_url——渠道侧可能已失效；两单皆终态时取最旧一单），
+  OrderRow 无任何时间戳列。采用 fixHint 首选：加 created_at 列并按
+  created_at DESC 取最近（pending 优先）。
+- 处置：`OrderRow` 新增 `CreatedAt`（AutoMigrate 原位补列，与 checkout_url/
+  kind 同一 additive 先例）；`createOrderTx` 零值时填 `time.Now().UTC()`
+  （调用方可预置，`OpenOrder` 传 `cmd.Now` 保持单元时间基一致）；
+  `CurrentPurchaseOrder` 与新的 `CurrentPendingPurchaseOrder` 排序均为
+  `created_at DESC, id ASC`（id 仅确定性 tie-break）。
+- RED 证据（源码级）：基线 `git show 1c684ae68:...order.go` — grep
+  created_at/CreatedAt 零命中（无时间戳列），L245 `Order("id ASC")`。
+- 回归测试：`TestCurrentPurchaseOrderPrefersNewestByCreatedAt`
+  （字典序最旧但时间最新的 pending 胜出；双 pending 取最新；全终态取最新
+  终态而非最旧；无匹配 ErrOrderNotFound）。
+
+### OCR-R1-24（medium）purchase() 丢弃 503 顶层 reason 令牌 — 已修复
+
+- Ruling：finding 成立。POST 平台故障走 503 信封
+  （`{"error":...,"reason":"unreachable|..."}`），request 层非 2xx 直接抛
+  ApiError，errorFromResult 只提取 message/code——CheckoutPage 专门写的
+  purchaseErrorMessage 闭合文案映射在真正的 POST 故障路径永不可达。
+  采用 fixHint 首选：errorFromResult 提取顶层 reason 到 details，
+  页面按令牌映射。
+- 处置：`errors.ts::errorFromResult` 顶层 `reason`（非空字符串）并入
+  details（保留既有 nested/record details 字段）；CheckoutPage 提取
+  `purchaseReasonMessage(reason)`（两条路径共用一份闭合映射），catch 分支对
+  ApiError 优先按 `details.reason` 映射中文文案，无令牌再回退原始 message。
+- RED 证据：基线运行新增 errors 测试 → 2 failed（details undefined，
+  reason 被丢弃）。
+- 回归测试：errors.test.ts 三用例（503 信封 reason 入 details / 既有
+  details 字段保留 / 无令牌 details 不动）+ CheckoutPage.test.tsx
+  `a 503 purchase failure with a closed reason token maps to the Chinese
+  message`（渲染「支付平台暂时不可达」且不出现英文 message）。
+
+### OCR-R1-28/29/31（medium）flow-evidence-82 三脚本硬编码绝对路径 — 已修复
+
+- Ruling：finding 成立。三脚本 createRequire 均硬编码
+  `/Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue72-lago/apps/web/package.json`，
+  与脚本头 "Run from anywhere" 注释矛盾——其它机器/checkout/CI 上
+  `require('@playwright/test')` 解析失败。按 fixHint 改 import.meta.url 相对解析。
+- 处置：三脚本统一
+  `createRequire(new URL('../../../apps/web/package.json', import.meta.url))`
+  （本目录相对仓库根上溯 3 级）。
+- RED 证据：node 以另一路径构造 createRequire → require('@playwright/test')
+  抛 `MODULE_NOT_FOUND`；修复后以脚本实际位置解析 `@playwright/test` 成功
+  （typeof function、chromium 可用），三脚本 `node --check` 语法通过。
+- 回归验证：见上（完整浏览器流程重放需 8091 栈，见「重放说明」）。
+
+### OCR-R1-37（medium）AC2 无新发票断言缺存在性守卫 — 已修复
+
+- Ruling：finding 成立。`dr.get("invoice_count") == dr.get("invoice_count_baseline")`
+  在两键同时缺失时 None==None 空转通过；`d["evidence"]["baseline"]` 直接索引
+  键缺失时 KeyError 崩溃（无 RESULT 行）而非记名 FAIL——与 docstring 自述的
+  守卫不变量矛盾。当前归档证据三键均在（实测均 1），属 replay 场景潜在缺口。
+- 处置：断言补 `dr.get("invoice_count") is not None` 前置；baseline 改
+  `(d.get("evidence") or {}).get("baseline") or {}` 后 `.get("invoice_count")`
+  （缺键 → 第三合取项 False → 记名 FAIL，不再 KeyError）。
+- RED 证据：`dr={}` 时 `dr.get(...)==dr.get(...)` → True（空转，python 实测）。
+- 回归验证：ocr3 副本对归档证据重放 ALL PASS（三键在时判定不变）。
+
+## 测试与重放证据（全部在本轮实际执行）
+
+| 检查 | 命令 | 结果 |
+|---|---|---|
+| RED（R1-22） | 基线 1c684ae68 `go test ./internal/modules/commercial/service/commercial/ -run TestPurchaseSecondQuoteReplaysExistingPendingOrder` | FAIL（第二 quote 开出第二张订单） |
+| RED（R1-07） | 基线 verify_db_watch.py + runs TSV（无归档） | exit 1、无 WARNING（降级不可达） |
+| RED（R1-05） | 基线 `pytest -k failed_invoice` | 2 failed（多支付得 pass / KeyError count） |
+| RED（R1-09） | 基线 handler 新测试 | FAIL（400 != 500） |
+| RED（R1-12） | 基线两测试 | 「const budget 25s starves the chain (20s+45s)」/「got platform_invalid_response」 |
+| RED（R1-14） | 基线 `TestChannelClientsCapRedirectLoop` | FAIL：跳转至 Client.Timeout 耗尽（无跳数上限） |
+| RED（R1-24） | 基线 errors.test.ts 新增 3 用例 | 2 failed（details undefined） |
+| RED（R1-37/R1-28） | python None==None / node 异路径 createRequire | True 空转 / MODULE_NOT_FOUND |
+| 全仓编译 | `go build ./internal/...`（worktree） | 通过 |
+| commercial + handler 全量 | `go test ./internal/modules/commercial/... ./internal/handler/ -count=1` | 8 包全 ok |
+| lago-lab 离线回归 | `pytest test_lab.py test_phases.py test_verify_db_watch.py -q` | 86 passed in 669.38s（ocr-81-2 后 83 + 新增 3：R1-05 两用例 + R1-07 runs 回退降级用例；R1-07 其余三用例更新后仍全过） |
+| TS 单测 | `npx tsx --test errors.test.ts CheckoutPage.test.tsx` | 11/11 pass |
+| contracts/commercial 回归 | `npx tsx --test packages/api-client/src/commercial.test.ts` | 9/9 pass |
+| AC 断言重放 ×4 | `python3 docs/plans/<dir>/verify_ac_assertions.py` | evidence-74/ocr1/ocr2/ocr3 全部 ALL PASS |
+| DB-WATCH 归档重放 ×4 | `python3 docs/plans/<dir>/verify_db_watch.py` | 四副本 `DB-WATCH: PASS`（归档主路径不变） |
+| 微信 stub 往返 | POST/GET 127.0.0.1:8291（flow 遗留实例） | code_url 正常下发、查单 NOTPAY（R1-14 渠道契约面旁证） |
+
+### 重放说明（全链路真实流程未重放）
+
+本批 R1-22/R1-20/R1-09/R1-24/R1-14 改变了已验证用户流程（#81 微信 checkout、
+#82 支付宝同步返回）的行为面，按 ask 应重放
+`docs/plans/issue-72-flow-evidence-*/` 可重放脚本；与上两轮同因不可行：8091
+后端为其他会话的旧构建进程（不含本批修复，重放无意义且不可重启）、
+`WEKNORA_COMMERCIAL_STRIPE_API_KEY` 不在本环境。实际执行的重放与替代覆盖：
+- 独立可重放脚本全部重放：四副本 verify_ac_assertions（ALL PASS×4）与
+  verify_db_watch（归档路径 PASS×4，runs/ 回退新降级路径由
+  test_verify_db_watch 6 用例锁定）；微信 stub 下单/查单往返正常。
+- flow-evidence-82 三浏览器脚本：修复项即其可重放性本身，已验证相对解析在
+  本 checkout 下正确加载 @playwright/test（完整跑需 8091+vite 栈，环境同上）。
+- 行为等价性由分层回归覆盖：R1-22/R1-20（service+repository 测试）、R1-09
+  （handler 测试）、R1-24（errors+CheckoutPage 测试）、R1-14（redirect-loop +
+  既有 SSRF 出站/豁免测试全量通过）。
+
+## 提交
+
+- 提交 message 前缀：`issue-72(ocr-1):`（按本批 ask 指定）
+

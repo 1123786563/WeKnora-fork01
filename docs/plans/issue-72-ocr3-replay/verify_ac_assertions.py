@@ -87,9 +87,15 @@ check("AC2 duplicates deferred re-check clean",
       dr.get("checked") is True and dr.get("ok") is True)
 # ocr-3: the deferred no-new-invoice assertion anchors on the PRE-PROBE
 # baseline count (synchronous invoice issuance cannot slip through).
+# ocr-1 R1-37: existence-guarded like every other check in this file —
+# two missing keys would compare None==None and pass vacuously, and a
+# missing evidence.baseline would crash with KeyError instead of a named
+# FAIL (the docstring's "an empty checks dict is a FAIL" invariant).
+_baseline = (d.get("evidence") or {}).get("baseline") or {}
 check("AC2 duplicates invoice count == baseline",
-      dr.get("invoice_count") == dr.get("invoice_count_baseline")
-      and d["evidence"]["baseline"].get("invoice_count") == dr.get("invoice_count"))
+      dr.get("invoice_count") is not None
+      and dr.get("invoice_count") == dr.get("invoice_count_baseline")
+      and _baseline.get("invoice_count") == dr.get("invoice_count"))
 
 # AC3: retries (same business identity recoverable, no double charge)
 r = load("t02-retries")

@@ -45,6 +45,11 @@ type OrderRow struct {
 	Currency  string `gorm:"column:currency;not null"`
 	State     string `gorm:"column:state;not null"`
 	Version   int64  `gorm:"column:version;not null;default:1"`
+	// CreatedAt (R1-20): order ids are "ord_"+random hex, so id order is NOT
+	// a recency order — the timestamp is the only deterministic "newest"
+	// anchor for the current-purchase resolution (same-price historical
+	// purchases, repurchases after cancellation).
+	CreatedAt time.Time `gorm:"column:created_at"`
 	// CheckoutURL persists the channel's customer-facing payment link
 	// (R1-35): it arrives from the provider AFTER the order unit commits, so
 	// it is written in its own step and the replay/recovery projections
@@ -112,6 +117,11 @@ func createOrderTx(tx *gorm.DB, row OrderRow) error {
 	row.State = domain.OrderStatePending
 	if row.Version == 0 {
 		row.Version = 1
+	}
+	// (R1-20) creation timestamp: the deterministic recency anchor. Tests
+	// may pre-set it; the store never overwrites a caller-provided value.
+	if row.CreatedAt.IsZero() {
+		row.CreatedAt = time.Now().UTC()
 	}
 	var existing OrderRow
 	err := tx.Where("quote_id = ?", row.QuoteID).First(&existing).Error
@@ -197,6 +207,9 @@ func (s *OrderStore) OpenOrder(ctx context.Context, cmd OpenOrderCommand) error 
 		if err := createOrderTx(tx, OrderRow{
 			ID: cmd.OrderID, TenantID: cmd.TenantID, QuoteID: cmd.QuoteID,
 			Kind: cmd.Kind, AmountFen: cmd.AmountFen, Currency: cmd.Currency,
+			// (R1-20) the command's clock: the order's creation timestamp
+			// shares the unit's time base (quote consumption included).
+			CreatedAt: cmd.Now,
 		}); err != nil {
 			return err
 		}
@@ -228,12 +241,13 @@ func (s *OrderStore) ListOrdersByTenant(ctx context.Context, tenantID uint64) ([
 
 // CurrentPurchaseOrder returns the order row that belongs to the CURRENT
 // purchase (#81): purchase-kind orders at the held purchase's frozen price
-// face (amount+currency), an unfinished (pending) checkout preferred, ties
-// broken by the deterministic id order. Order ids are "ord_"+random hex, so
-// ListOrdersByTenant's `id DESC` is NOT a recency order — a caller must
-// never project its rows[0] as the current purchase (it may be any
-// historical purchase or an upgrade order). All bounds are parameter-bound;
-// no matching order reports ErrOrderNotFound.
+// face (amount+currency), the NEWEST unfinished (pending) checkout
+// preferred (R1-20: order ids are "ord_"+random hex, so id order is not a
+// recency order — created_at DESC is the recency anchor, id the deterministic
+// tie-break; same-price historical purchases and repurchases after
+// cancellation must not shadow the current order, and a stale pending
+// leftover must not outrank the current one). All bounds are
+// parameter-bound; no matching order reports ErrOrderNotFound.
 func (s *OrderStore) CurrentPurchaseOrder(ctx context.Context, tenantID uint64, amountFen int64, currency string) (OrderRow, error) {
 	if tenantID == 0 {
 		return OrderRow{}, ErrOrderNotFound
@@ -242,7 +256,7 @@ func (s *OrderStore) CurrentPurchaseOrder(ctx context.Context, tenantID uint64, 
 	if err := s.db.WithContext(ctx).
 		Where("tenant_id = ? AND kind = ? AND amount_fen = ? AND currency = ?",
 			tenantID, domain.OrderKindPurchase, amountFen, currency).
-		Order("id ASC").Find(&rows).Error; err != nil {
+		Order("created_at DESC, id ASC").Find(&rows).Error; err != nil {
 		return OrderRow{}, err
 	}
 	for _, row := range rows {
@@ -254,6 +268,31 @@ func (s *OrderStore) CurrentPurchaseOrder(ctx context.Context, tenantID uint64, 
 		return rows[0], nil
 	}
 	return OrderRow{}, ErrOrderNotFound
+}
+
+// CurrentPendingPurchaseOrder returns the NEWEST still-PENDING purchase
+// order at the held purchase's frozen price face (R1-22): at most ONE
+// payable channel order may exist per purchase, so a checkout under a
+// fresh quote must replay the existing pending order instead of opening a
+// second concurrent channel order for the same gating invoice (two payable
+// orders would double-charge the same subscription — each callback
+// confirms independently). No pending order reports ErrOrderNotFound.
+func (s *OrderStore) CurrentPendingPurchaseOrder(ctx context.Context, tenantID uint64, amountFen int64, currency string) (OrderRow, error) {
+	if tenantID == 0 {
+		return OrderRow{}, ErrOrderNotFound
+	}
+	var row OrderRow
+	err := s.db.WithContext(ctx).
+		Where("tenant_id = ? AND kind = ? AND amount_fen = ? AND currency = ? AND state = ?",
+			tenantID, domain.OrderKindPurchase, amountFen, currency, domain.OrderStatePending).
+		Order("created_at DESC, id ASC").First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return OrderRow{}, ErrOrderNotFound
+	}
+	if err != nil {
+		return OrderRow{}, err
+	}
+	return row, nil
 }
 
 // FirstPendingAttempt returns the oldest still-pending attempt of an order —

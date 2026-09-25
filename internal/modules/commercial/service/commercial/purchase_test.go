@@ -281,6 +281,41 @@ func TestPurchaseStatusAttachesOnlyTheCurrentPurchaseOrder(t *testing.T) {
 	}
 }
 
+// TestPurchaseSecondQuoteReplaysExistingPendingOrder（R1-22）：同一 awaiting
+// 购买的幂等键此前只有 quote——客户端换一张新 quote（过期重报价/双开标签页
+// 各自 POST /quotes）再提交时，第 8 步会为同一 gating invoice 开出第二张并存
+// 的可支付渠道订单（两张各自可付、各自回调 ConfirmPayment → 双重收款）。修复
+// 后新 quote 的提交必须原样重放该购买既有的 pending 订单。
+func TestPurchaseSecondQuoteReplaysExistingPendingOrder(t *testing.T) {
+	svc, _, cp, _ := newPurchaseTestEnv(t)
+	purchaseSeedPlan(t, svc.plans, "pro", 9900)
+	q1 := purchaseQuote(t, svc.orders, 44, "pro")
+	first, err := svc.Purchase(context.Background(), 44, q1.ID, "wechat", "a", "WeKnora Space 44")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Order == nil || first.Order.ID == "" {
+		t.Fatalf("first purchase must open an order, got %+v", first)
+	}
+	// 新 quote（同 plan 同价面——match gate 之下这是唯一能走到第 8 步的形态）。
+	q2 := purchaseQuote(t, svc.orders, 44, "pro")
+	second, err := svc.Purchase(context.Background(), 44, q2.ID, "wechat", "a", "WeKnora Space 44")
+	if err != nil {
+		t.Fatalf("second quote must replay, got %v", err)
+	}
+	if second.Order == nil || second.Order.ID != first.Order.ID {
+		t.Fatalf("second quote must replay the SAME pending order, first=%v second=%+v",
+			first.Order.ID, second.Order)
+	}
+	if second.Order.CheckoutURL == "" || second.Order.CheckoutURL != first.Order.CheckoutURL {
+		t.Fatalf("replayed order must carry the same checkout entry, first=%q second=%q",
+			first.Order.CheckoutURL, second.Order.CheckoutURL)
+	}
+	if n := len(cp.createCalls); n != 1 {
+		t.Fatalf("ONE payable channel order per purchase: channel creates=%d", n)
+	}
+}
+
 // (R1-V03) 权威面已 active/canceled 时新报价不得再开渠道订单（active 二次扣款
 // 无门控发票、canceled 的门控发票永远无法结算）；同一 quote 的既有订单重放
 // 保持放行（付款后 POST 重演返回已付订单）。

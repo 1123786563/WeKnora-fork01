@@ -105,7 +105,7 @@ sub_a = rows_for("-sub-a")
 # may be a different (or multi-) run's observer output, so the
 # max_succeeded()==1 exactly-once invariant is simply not decidable from it:
 # degrade loudly to MISSING-EVIDENCE instead of risking a false CHECK.
-if archived.exists() and path != str(archived):
+if not archived.exists():
     print("DB-WATCH: WARNING runs/-fallback TSV in use — payments are a "
           "whole-DB aggregate and cannot be keyed to this run, so the "
           "exactly-once max_succeeded assertion is not decidable")
