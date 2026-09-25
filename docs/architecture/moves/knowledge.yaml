@@ -376,6 +376,24 @@ legacy_files:
     reason: trapped in horizontal handler package internal/handler (Pass B file split)
     navigation_label: Wiki page (handler)
     passb_task: B-knowledge
+  # ---- Pass B 过渡 shim 登记（Ruling 2026-09-25-TRANSITION-SHIM-ROW-REGISTRATION：
+  # 宿主侧兼容物成对补行；终态=ib2 同 commit 随文件删行，非迁移目标）----
+  - path: internal/application/repository/chunk_ingest_shim.go
+    reason: Pass B 过渡 shim，ib2 同 commit 随文件删行
+    navigation_label: Chunk ingest shim (application/repository)
+    passb_task: B-knowledge
+  - path: internal/application/service/chunk_ingest_shim.go
+    reason: Pass B 过渡 shim，ib2 同 commit 随文件删行
+    navigation_label: Chunk ingest shim (application/service)
+    passb_task: B-knowledge
+  - path: internal/application/service/span_trace_seam_adapter.go
+    reason: Pass B 过渡 shim，ib2 同 commit 随文件删行
+    navigation_label: Span trace seam adapter (application/service)
+    passb_task: B-knowledge
+  - path: internal/handler/chunk_ingest_shim.go
+    reason: Pass B 过渡 shim，ib2 同 commit 随文件删行
+    navigation_label: Chunk ingest shim (handler)
+    passb_task: B-knowledge
 owned_files:
   move_sources:
   - internal/application/repository/retriever/doris
