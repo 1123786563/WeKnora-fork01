@@ -82,13 +82,42 @@ go test -count=1 -v ./internal/handler/ -run 'TestComputeChunkSizeStats|TestPrev
 | TestDiffFAQChunkIDsByContentHash*（FAQ diff，4 用例） | PASS |
 | TestImageMultimodalHandle*（finalize-once/死信语义，3 用例） | PASS |
 
-### 新实现（ingest 包，搬迁后重跑同清单）
+### 新实现（ingest 包，搬迁后重跑同清单，2026-09-25 K1.7 采集）
 
-（K1.7 填写：同命令对新包路径重跑的用例清单、输出、退出码。）
+命令原文（T0 三条命令的 -run 模式合并为一条——9 文件 + 11 随迁测试已同包落位 `internal/modules/knowledge/ingest`，逐字保留全部用例名模式）：
 
-### 逐用例等价比对
+```bash
+go test -count=1 -v ./internal/modules/knowledge/ingest/ -run 'TestDiffFAQChunkIDsByContentHash|TestFAQChunkDiff|TestTagFieldUpdatesReturnAllAffectedChunks|TestSaveChunkRevisionIsAtomicAndOptimistic|TestCreateChunks|TestKnowledgeTag_SQLite|TestValidateEditedChunkImages|TestImageChildMatchesEditedContent|TestSyncEditedChunkImages|TestBuildSampleDataDescription|TestShouldDropOrphanedMultimodal|TestImageMultimodalHandle|TestSanitizeOCRText|TestBuildVLMCaptionPrompt|TestValidateParserOverrideURLs|TestComputeChunkSizeStats|TestPreviewChunking'
+```
 
-（K1.7 填写：用例数、PASS/FAIL、关键断言输出比对结论。）
+结果摘要（退出码 0；`ok  github.com/Tencent/WeKnora/internal/modules/knowledge/ingest  1.391s`）：
+
+| 指标 | T0（三包分跑） | K1.7（ingest 单包） | 等价 |
+|---|---|---|---|
+| 顶层用例 | 40（repository 13 + service 14 + handler 13） | 40（同包合并） | ✅ |
+| 子用例 | 25（2 + 21 + 2） | 25 | ✅ |
+| FAIL | 0 | 0（`grep -c FAIL` = 0） | ✅ |
+| 退出码 | 0 ×3 | 0 | ✅ |
+
+顶层用例清单逐名比对：`grep '^--- PASS'` 提取 40 名排序后与 T0 清单（本文件上文逐条转录）**完全一致**（含 TestCreateChunks_SQLite_SeqID* 4 用例、TestDiffFAQChunkIDsByContentHash 族 4、TestImageMultimodalHandle* 3、TestPreviewChunking_* 9、TestComputeChunkSizeStats_* 4）；子用例 25 名（`grep '^    --- PASS'`）与 T0 转录逐一对应：TestBuildVLMCaptionPrompt 2、TestPreviewChunking_LineEndingsMatchUpload 2（pasted_LF/uploaded_CRLF）、TestSanitizeOCRText 14、TestTagFieldUpdatesReturnAllAffectedChunks 2（flags_only/tag_only）、TestValidateParserOverrideURLsRejectsEverySupportedURLKey 5。
+
+高风险面锚点（plan §8 K1.7 指定，新实现状态 + 关键断言输出摘录）：
+
+| 锚点用例 | K1.7 状态 | 关键输出摘录 |
+|---|---|---|
+| TestCreateChunks_SQLite_SeqID*（4 用例：AutoAssigned/ContinuesFromExisting/AfterSoftDelete/UniqueAcrossKBs） | PASS ×4 | `--- PASS: TestCreateChunks_SQLite_SeqIDAutoAssigned (0.00s)` 等 4 行 |
+| TestSaveChunkRevisionIsAtomicAndOptimistic（revision 原子性） | PASS | `--- PASS: TestSaveChunkRevisionIsAtomicAndOptimistic (0.00s)` |
+| TestTagFieldUpdatesReturnAllAffectedChunks（TypeIndexDelete tag 侧） | PASS（含 flags_only/tag_only 子用例） | `--- PASS: TestTagFieldUpdatesReturnAllAffectedChunks/flags_only (0.00s)` |
+| TestDiffFAQChunkIDsByContentHash*（FAQ diff，4 用例） | PASS ×4 | `--- PASS: TestDiffFAQChunkIDsByContentHash (0.00s)` 等 |
+| TestImageMultimodalHandle*（finalize-once/死信语义，3 用例） | PASS ×3 | 日志链完整复现：`image_multimodal.go:187 [Handle] Processing image` → `:203 Dropping task chunk= knowledge=missing` → `:724 [checkAndFinalizeAllImages] All images processed for knowledge missing. Finalizing...` |
+
+### 逐用例等价比对（K1.7 结论）
+
+- **用例数等价**：40 顶层 + 25 子用例，双跑两侧计数一致（T0 见上文章节；K1.7 见上表）。
+- **清单等价**：顶层 40 名、子用例 25 名逐名一致（两侧均为 `=== RUN`/`--- PASS` 全集转录比对，非抽样）。
+- **结果等价**：两侧 0 FAIL；无 skip、无 timeout。
+- **行为等价（关键断言输出）**：TestImageMultimodalHandle* 三用例的 Handle→Drop→Finalize 日志链在 K1.7 输出中逐行复现（file:line 锚点随迁后仍为 image_multimodal.go:187/:203/:724，纯移动验证旁证）；其余用例为断言型测试（失败即 FAIL），全 PASS 即行为锚定。
+- **结论**：同用例双跑**逐用例等价**，高风险面（knowledge deletion/indexing，framework:40）五个锚点族全部双侧 PASS——spec §14.3 差分要求满足，legacy 删除（K1.1–K1.5 各 M2 commit）前置于本比对的时序约束在 K1.1–K1.5 会话已按任务内双跑履行，本节为节点级收口重证。
 
 ## §8 计数基线登记：例外台账 105 → 111（K1.6，Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY）
 
