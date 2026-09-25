@@ -31,7 +31,7 @@ export default function ProgressPreparationPage() {
   const loadBusy = useAction(); const appendBusy = useAction(); const correctBusy = useAction();
   const genBusy = useAction(); const listBusy = useAction(); const reviseBusy = useAction(); const readBackBusy = useAction();
   const recProgBusy = useAction(); const retryProgBusy = useAction();
-  const recPrepBusy = useAction(); const retryPrepBusy = useAction();
+  const recPrepBusy = useAction(); const retryPrepBusy = useAction(); const retryMatBusy = useAction();
 
   const params = Taro.getCurrentInstance().router?.params as Record<string, string | undefined> | undefined;
   const [applicationId, setApplicationId] = useState(params?.applicationId ?? '');
@@ -145,7 +145,16 @@ export default function ProgressPreparationPage() {
       <Action secondary loading={retryPrepBusy.busy} onClick={() => void retryPrepBusy.run(async () => { await career.retryPendingPreparation(); setGenNotice('准备生成已恢复完成。'); void listBusy.run(loadPreparations); })}>用原请求编号重试准备生成</Action>
       {retryPrepBusy.error && <Notice tone='danger'>{retryPrepBusy.error} 重试沿用原请求编号，服务端幂等不会重复执行。</Notice>}
     </>}
-    {pendingMaterial && !editing && <Notice tone='warning'>有一次结果未知的材料写入（{pendingMaterial.requestId.slice(0, 10)}…）。保存准备修订走同一恢复链：请到「申请与材料」页对账或重试，本页不会自动重发。</Notice>}
+    {pendingMaterial && <>
+      <Notice tone='warning'>有一次结果未知的材料写入（{pendingMaterial.requestId.slice(0, 10)}…）。保存准备修订走同一恢复链；重发沿用原请求编号与原正文，服务端幂等不会重复执行。</Notice>
+      <Action secondary loading={retryMatBusy.busy} onClick={() => void retryMatBusy.run(async () => {
+        const receipt = await career.retryPendingMaterial();
+        setGenNotice('材料修订已用原请求编号恢复完成（幂等重放，不会重复写入）。');
+        // 与保存后同语义：修订的持久事实从材料域回读。
+        try { setRevisedBody((await career.material(receipt.materialId)).body); } catch { /* 回读失败不掩埋重试成功的事实 */ }
+      })}>用原请求编号重试材料修订</Action>
+      {retryMatBusy.error && <Notice tone='danger'>{retryMatBusy.error} 重试被拒时说明该请求编号已对应其他内容或不属于当前空间；可到「申请与材料」页对账。</Notice>}
+    </>}
 
     <Card>
       <Text className='wk-h3'>申请进展时间线</Text>
@@ -248,18 +257,19 @@ export default function ProgressPreparationPage() {
       <View className='wk-between'><View className='wk-tdesign-scope'>
         <t-button block size='large' theme='primary' ariaLabel='保存准备草稿修订' customStyle={tdesignButtonStyle} loading={reviseBusy.busy} onTap={() => void reviseBusy.run(saveRevision)}>保存修订（显式提交）</t-button>
       </View></View>
-      {reviseBusy.error && <Notice tone='danger'>{reviseBusy.error}{reviseErrCode === 'outcome_unknown' ? ' 修订结果未知：本地草稿已保留，请到「申请与材料」页用原请求对账（幂等可恢复），本页不会自动重发。' : reviseErrCode === 'revision_conflict' ? ' 档案已更新：请重新读取修订后再保存（新保存会使用新的请求编号）。' : ''}</Notice>}
-      {reviseErrCode === 'outcome_unknown' && pendingMaterial && <Notice tone='warning'>待对账的材料写入：{pendingMaterial.requestId.slice(0, 10)}…（原请求编号，幂等可恢复）。</Notice>}
+      {reviseBusy.error && <Notice tone='danger'>{reviseBusy.error}{reviseErrCode === 'outcome_unknown' ? ' 修订结果未知：本地草稿已保留，请用页首「用原请求编号重试材料修订」恢复（幂等可重放），本页不会自动重发。' : reviseErrCode === 'revision_conflict' ? ' 档案已更新：请重新读取修订后再保存（新保存会使用新的请求编号）。' : ''}</Notice>}
       <Action secondary loading={readBackBusy.busy} onClick={() => void readBackBusy.run(async () => {
         if (!editing?.materialId) throw new Error('该准备尚未物化为材料草稿');
         setRevisedBody((await career.material(editing.materialId)).body);
       })}>回读材料草稿正文（修订后的持久事实）</Action>
       {readBackBusy.error && <Notice tone='danger'>{readBackBusy.error} 可稍后重试。</Notice>}
-      {revisedBody && <Card tone='mint'>
-        <Text className='wk-h3'>材料域回读（修订后的草稿正文）</Text>
-        {revisedBody.sections.map((section, index) => <Text key={index} className='wk-muted wk-small'>{section.heading}：{section.content}</Text>)}
-      </Card>}
       <Action secondary onClick={() => { setEditing(undefined); setSections([]); setDraftNotice(''); setRevisedBody(undefined); }}>结束修订</Action>
+    </Card>}
+
+    {revisedBody && <Card tone='mint'>
+      <Text className='wk-h3'>材料域回读（修订后的草稿正文）</Text>
+      {revisedBody.sections.map((section, index) => <Text key={index} className='wk-muted wk-small'>{section.heading}：{section.content}</Text>)}
+      <Text className='wk-muted wk-small'>回执只是回声：修订的持久事实在材料草稿里（Web PreparationPage 同语义）；仍未确认成版本，可继续修订。</Text>
     </Card>}
 
     <Notice tone='info'>断网时只保留本地草稿（按账号隔离，登出即清），申请进展绝不本地改写；联网后一切同步都需要你显式确认。结果未知的写入都可以用原请求编号对账或安全重发。</Notice>
