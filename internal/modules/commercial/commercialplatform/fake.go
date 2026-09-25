@@ -40,17 +40,13 @@ type fakeSubscription struct {
 
 // fakeWallet is one stored authority-side wallet (T08): the deterministic
 // name, the customer it belongs to, the granted amount and the short TTL.
-// PurchasePeriod mirrors the Lago-side purchase_period meta key (#82 D4) —
-// recorded on purchase wallets INSTEAD of the Base period meta, never
-// matched by the Base monthly-batch identity.
 type fakeWallet struct {
-	Name           string
-	Customer       string
-	GrantedCents   int64
-	ExpiresAt      time.Time
-	Terminated     bool
-	CreatedAt      time.Time
-	PurchasePeriod string
+	Name         string
+	Customer     string
+	GrantedCents int64
+	ExpiresAt    time.Time
+	Terminated   bool
+	CreatedAt    time.Time
 }
 
 // FakeWallet is the observable wallet state for tests: the VISIBLE
@@ -598,18 +594,7 @@ func (f *FakeAdapter) SubmitCommand(_ context.Context, cmd commercial.Command) (
 		if err := payload.Validate(); err != nil {
 			return commercial.CommandReceipt{}, fmt.Errorf("%w: %v", commercial.ErrPlatformInvalidResponse, err)
 		}
-		// Wallet identity (#82 D4): an explicit payload.WalletName (the
-		// purchase first-period grant's PurchaseWalletName) wins; empty falls
-		// back to the historical MonthlyWalletName — every existing caller is
-		// unchanged. Matching stays byName here; the corresponding Lago-side
-		// meta discipline (purchase wallets write purchase_period, NEVER the
-		// Base period key, F11) lives in the Lago adapter's createWallet.
 		walletName := commercial.MonthlyWalletName(payload.TenantID, payload.Period)
-		purchasePeriod := "" // non-empty ONLY on purchase wallets (D4)
-		if payload.WalletName != "" {
-			walletName = payload.WalletName
-			purchasePeriod = payload.Period
-		}
 		wantCents := payload.CreditsMicro / 10_000
 		f.mu.Lock()
 		defer f.mu.Unlock()
@@ -638,7 +623,6 @@ func (f *FakeAdapter) SubmitCommand(_ context.Context, cmd commercial.Command) (
 			f.wallets = append(f.wallets, fakeWallet{
 				Name: walletName, Customer: payload.ExternalCustomerID,
 				GrantedCents: wantCents, ExpiresAt: payload.ExpiresAt, CreatedAt: f.nowUTC(),
-				PurchasePeriod: purchasePeriod,
 			})
 			return commercial.CommandReceipt{}, f.failSubmits
 		}
@@ -650,7 +634,6 @@ func (f *FakeAdapter) SubmitCommand(_ context.Context, cmd commercial.Command) (
 		f.wallets = append(f.wallets, fakeWallet{
 			Name: walletName, Customer: payload.ExternalCustomerID,
 			GrantedCents: wantCents, ExpiresAt: payload.ExpiresAt, CreatedAt: f.nowUTC(),
-			PurchasePeriod: purchasePeriod,
 		})
 		return commercial.CommandReceipt{
 			Key:        cmd.Key,
@@ -709,46 +692,6 @@ func (f *FakeAdapter) SubmitCommand(_ context.Context, cmd commercial.Command) (
 			ExternalID: payload.ExternalPurchaseSubscriptionID,
 			RecordedAt: f.nowUTC(),
 		}, nil
-
-	case commercial.CommandKindSettlePurchasePayment:
-		payload, ok := cmd.Payload.(commercial.SettlePurchasePaymentPayload)
-		if !ok {
-			return commercial.CommandReceipt{}, commercial.ErrPlatformUnsupported
-		}
-		if err := payload.Validate(); err != nil {
-			return commercial.CommandReceipt{}, fmt.Errorf("%w: %v", commercial.ErrPlatformInvalidResponse, err)
-		}
-		f.mu.Lock()
-		defer f.mu.Unlock()
-		held, heldOK := f.purchaseSubs[payload.ExternalPurchaseSubscriptionID]
-		if !heldOK {
-			// An absent purchase is a definitive wrong answer, never a
-			// fabricatable activation (fail closed).
-			return commercial.CommandReceipt{}, fmt.Errorf("%w: settle targets an absent purchase", commercial.ErrPlatformInvalidResponse)
-		}
-		receipt := commercial.CommandReceipt{
-			Key:        cmd.Key,
-			ExternalID: payload.ExternalPurchaseSubscriptionID,
-			RecordedAt: f.nowUTC(),
-		}
-		if held.Status == "active" || held.Status == "canceled" {
-			// Already-terminal: the settle replays the SAME receipt with ZERO
-			// side effects (Review Focus 2 — a late replay after a lost
-			// response must never re-settle, re-attach, or re-grant).
-			return receipt, nil
-		}
-		if f.failSubmits != nil {
-			// Persisted-but-response-lost: the activation applies, the caller
-			// observes the injected failure (the replay above then answers).
-			held.Status = "active"
-			f.purchaseSubs[payload.ExternalPurchaseSubscriptionID] = held
-			return commercial.CommandReceipt{}, f.failSubmits
-		}
-		// The fake settles deterministically (the idealized F1 provider
-		// outcome): incomplete → active in one step.
-		held.Status = "active"
-		f.purchaseSubs[payload.ExternalPurchaseSubscriptionID] = held
-		return receipt, nil
 
 	default:
 		return commercial.CommandReceipt{}, commercial.ErrPlatformUnsupported
