@@ -18,8 +18,6 @@
 | `internal/application/repository/semantic_outbox.go` | Semantic outbox (application/repository) | `B-knowledge` — **已迁移**（K2.2 → `retrieval/app/repository/`） |
 | `internal/application/repository/semantic_scope_epoch.go` | Semantic scope epoch (application/repository) | `B-knowledge` — **已迁移**（K2.2 → `retrieval/app/repository/`） |
 | `internal/application/repository/tag.go` | Tag (application/repository) | `B-knowledge` — **已迁移**（K2.2 → `retrieval/app/repository/`） |
-| `internal/application/repository/wiki_page.go` | Wiki page (application/repository) | `B-knowledge` |
-| `internal/application/service/faq_clone_sync.go` | Faq clone sync (application/service) | `B-knowledge` |
 | `internal/application/service/graph.go` | Graph (application/service) | `B-knowledge` — **已迁移**（K2.4 → `retrieval/app/`） |
 | `internal/application/service/kb_activity.go` | Kb activity (application/service) | `B-knowledge` — **已迁移**（K2.5 → `retrieval/app/`） |
 | `internal/application/service/kbshare.go` | Kbshare (application/service) | `B-knowledge` |
@@ -30,10 +28,6 @@
 | `internal/application/service/knowledge_create.go` | Knowledge create (application/service) | `B-knowledge` |
 | `internal/application/service/knowledge_delete.go` | Knowledge delete (application/service) | `B-knowledge` |
 | `internal/application/service/knowledge_delete_plan.go` | Knowledge delete plan (application/service) | `B-knowledge` |
-| `internal/application/service/knowledge_faq.go` | Knowledge faq (application/service) | `B-knowledge` |
-| `internal/application/service/knowledge_faq_batch.go` | Knowledge faq batch (application/service) | `B-knowledge` |
-| `internal/application/service/knowledge_faq_create_guard.go` | Knowledge faq create guard (application/service) | `B-knowledge` |
-| `internal/application/service/knowledge_faq_import.go` | Knowledge faq import (application/service) | `B-knowledge` |
 | `internal/application/service/knowledge_housekeeping.go` | Knowledge housekeeping (application/service) | `B-knowledge` |
 | `internal/application/service/knowledge_index_content.go` | Knowledge index content (application/service) | `B-knowledge` |
 | `internal/application/service/knowledge_post_process.go` | Knowledge post process (application/service) | `B-knowledge` |
@@ -63,16 +57,6 @@
 | `internal/application/service/slug_fuzzy.go` | Slug fuzzy (application/service) | `B-knowledge` — **已迁移**（K2.4 → `retrieval/app/`） |
 | `internal/application/service/tag.go` | Tag (application/service) | `B-knowledge` |
 | `internal/application/service/tag_access.go` | Tag access (application/service) | `B-knowledge` |
-| `internal/application/service/wiki_ingest.go` | Wiki ingest (application/service) | `B-knowledge` |
-| `internal/application/service/wiki_ingest_batch.go` | Wiki ingest batch (application/service) | `B-knowledge` |
-| `internal/application/service/wiki_ingest_cite.go` | Wiki ingest cite (application/service) | `B-knowledge` |
-| `internal/application/service/wiki_ingest_dedup.go` | Wiki ingest dedup (application/service) | `B-knowledge` |
-| `internal/application/service/wiki_ingest_taxonomy.go` | Wiki ingest taxonomy (application/service) | `B-knowledge` |
-| `internal/application/service/wiki_linkify.go` | Wiki linkify (application/service) | `B-knowledge` |
-| `internal/application/service/wiki_lint.go` | Wiki lint (application/service) | `B-knowledge` |
-| `internal/application/service/wiki_page.go` | Wiki page (application/service) | `B-knowledge` |
-| `internal/application/service/wiki_slug_handles.go` | Wiki slug handles (application/service) | `B-knowledge` |
-| `internal/handler/faq.go` | Faq (handler) | `B-knowledge` |
 | `internal/handler/kb_access.go` | Kb access (handler) | `B-knowledge` |
 | `internal/handler/kbretrieval_passb_compat.go` | Knowledge retrieval host compat (handler) | `B-knowledge`（K2.6 新增 compat） |
 | `internal/handler/knowledge.go` | Knowledge (handler) | `B-knowledge` |
@@ -80,10 +64,8 @@
 | `internal/handler/knowledgebase.go` | Knowledgebase (handler) | `B-knowledge` |
 | `internal/handler/semantic_internal.go` | Semantic internal (handler) | `B-knowledge` — **已迁移**（K2.6 → `retrieval/app/handler/`） |
 | `internal/handler/semantic_model_policy.go` | Semantic model policy (handler) | `B-knowledge` — **已迁移**（K2.6 → `retrieval/app/handler/`） |
-| `internal/handler/session/wiki_fixer_scope.go` | Wiki fixer scope (handler/session) | `B-knowledge` |
 | `internal/handler/tag.go` | Tag (handler) | `B-knowledge` — **已迁移**（K2.6 → `retrieval/app/handler/`） |
 | `internal/handler/task_progress_auth.go` | Task progress auth (handler) | `B-knowledge` |
-| `internal/handler/wiki_page.go` | Wiki page (handler) | `B-knowledge` |
 | `internal/application/repository/chunk_ingest_shim.go` | Chunk ingest shim (application/repository) | `B-knowledge` |
 | `internal/application/service/chunk_ingest_shim.go` | Chunk ingest shim (application/service) | `B-knowledge` |
 | `internal/application/service/span_trace_seam_adapter.go` | Span trace seam adapter (application/service) | `B-knowledge` |
