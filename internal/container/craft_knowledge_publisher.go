@@ -361,6 +361,12 @@ func (p *craftKnowledgeFilesystemPublisher) recoverPublished(ctx context.Context
 		if err := p.syncDir(filepath.Dir(finalPath)); err != nil {
 			return service.CraftKnowledgeMaterialPackage{}, false, errCraftKnowledgePublisherFS
 		}
+		// Durability parity with the Publish success path: the crash this
+		// recovery completes may also predate the fsync of the freshly created
+		// runs/ entry inside knowledge/, so finish the grandparent sync too.
+		if err := p.syncDir(filepath.Dir(filepath.Dir(finalPath))); err != nil {
+			return service.CraftKnowledgeMaterialPackage{}, false, errCraftKnowledgePublisherFS
+		}
 		if acceptedDigest == pkg.Digest {
 			if err := p.removePublishedCandidate(workspace, pkg); err != nil {
 				return service.CraftKnowledgeMaterialPackage{}, false, err
@@ -404,6 +410,11 @@ func (p *craftKnowledgeFilesystemPublisher) recoverPublished(ctx context.Context
 			return service.CraftKnowledgeMaterialPackage{}, false, errCraftKnowledgePublisherFS
 		}
 		if err := p.syncDir(filepath.Dir(finalPath)); err != nil {
+			return service.CraftKnowledgeMaterialPackage{}, false, errCraftKnowledgePublisherFS
+		}
+		// Same durability parity as the sealed-package branch above and the
+		// Publish success path: complete the knowledge/ grandparent fsync.
+		if err := p.syncDir(filepath.Dir(filepath.Dir(finalPath))); err != nil {
 			return service.CraftKnowledgeMaterialPackage{}, false, errCraftKnowledgePublisherFS
 		}
 		if err := p.removePublishedCandidate(workspace, pkg); err != nil {

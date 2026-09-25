@@ -404,6 +404,43 @@ func citationFile(pkg service.CraftKnowledgeMaterialPackage) string {
 	return ""
 }
 
+func TestCraftKnowledgePublisherRecoverySyncsKnowledgeGrandparentLikePublish(t *testing.T) {
+	// Durability parity with the Publish success path: a crash between the
+	// atomic rename and the directory fsync chain may leave the runs/ entry —
+	// or even the freshly created runs/ directory itself under knowledge/ —
+	// undurable. Whichever recovery branch finalizes the package must therefore
+	// fsync the same three levels Publish syncs: the sealed run directory, its
+	// runs/ parent and the knowledge/ grandparent.
+	for _, crashWindow := range []string{"unsealed-0700", "sealed-0555"} {
+		t.Run(crashWindow, func(t *testing.T) {
+			root := publisherTestRoot(t)
+			workspace := publisherTestWorkspace()
+			pkg := publisherTestPackage(t, "run-recovery-grandparent-"+crashWindow, "accepted material")
+			publisher, err := NewCraftKnowledgePackagePublisher(root, pkg.RunID)
+			require.NoError(t, err)
+			require.NoError(t, publisher.Prepare(context.Background(), workspace, pkg))
+			finalPath := publisherSimulateCrashAfterRename(t, publisher, pkg)
+			if crashWindow == "sealed-0555" {
+				require.NoError(t, os.Chmod(finalPath, 0555), "fixture models the crash window after the directory seal")
+			}
+
+			restarted, err := NewCraftKnowledgePackagePublisher(root, pkg.RunID)
+			require.NoError(t, err)
+			var synced []string
+			restarted.syncDir = func(directory string) error {
+				synced = append(synced, directory)
+				return syncCraftKnowledgeDir(directory)
+			}
+			resumed, err := restarted.Resume(context.Background(), workspace, pkg.RunID, pkg.Digest)
+			require.NoError(t, err)
+			require.Equal(t, pkg, resumed)
+			require.Contains(t, synced, finalPath, "recovery must sync the sealed run directory itself")
+			require.Contains(t, synced, filepath.Dir(finalPath), "recovery must sync the runs/ parent")
+			require.Contains(t, synced, filepath.Dir(filepath.Dir(finalPath)), "recovery must sync the knowledge/ grandparent like the Publish success path")
+		})
+	}
+}
+
 func TestCraftKnowledgePublisherSyncsImmediateCandidateParentAfterRemoval(t *testing.T) {
 	for _, operation := range []string{"publish", "discard"} {
 		t.Run(operation, func(t *testing.T) {
