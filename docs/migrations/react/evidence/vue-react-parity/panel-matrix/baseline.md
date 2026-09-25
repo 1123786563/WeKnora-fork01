@@ -13,7 +13,7 @@
 | 基线 0.00% | 16 项 |
 | 基线 >0 | 39 项（Phase II 工单池） |
 | 触发器未命中（warning） | 5 项（见下） |
-| 静态页回归（存量，非本批引入） | settings-general 5.439%、settings-integration-api 4.284%（根因见文末） |
+| 静态页回归（存量，非本批引入） | settings-general 5.439%（根因见文末）；~~settings-integration-api 4.284~~ 已修（批 4，mode-callout 补齐） |
 
 ## 批 1（全局壳+对话 12 项）收敛状态（截至 69acbada9：12/12 全收敛，chat 4 工单见 auto-scan/2026-09-24T14-57-58）
 
@@ -109,6 +109,22 @@
 | px-login-register-confirm | 0 | ✅ |
 | px-register-register-confirm | 0 | ✅ |
 
+### 批 4 收敛状态（截至 2026-09-25T03-07-18：11/11 ≤0.113 全收敛，含静态项 settings-integration-api；提交 36a610456/1ce982001/891d0ab69/5fbde2205/7edec47b3）
+
+| 项 | 基线 | 终值 | 状态 |
+|---|---|---|---|
+| px-system-auth-priority | 2.984 | **0.00** | ✅ 前任 t-popup 同构续做收口（priority hint bottom-start→bottom-left，#15） |
+| px-system-create-user | 84.547 | **0.00** | ✅ 同上（CreateUser/ResetPassword 弹层换 t-popup 锚定，TInput 悬空引用修复） |
+| px-integrations-agent-filter | 1.562 | 0.069 | ⚠️ 残差豁免 #25 同类（下拉同构后余边框亚像素+字形栅格化 AA；无效 calc(100%+4px) 修复+度量对齐，1.2-1.35px 平台期实证） |
+| px-integrations-add-channel | 59.292 | 0.078 | ⚠️ 残差豁免 #25 同类（B3 抽屉换 SettingDrawer t-drawer 同构 chrome + step0 体平移；页脚 t-button 亚像素 AA） |
+| px-integration-embed-agent-filter | 1.558 | 0.069 | ⚠️ 残差豁免 #25 同类（同 agent-filter 判例，embed 相位单独微调 1.05px） |
+| px-integration-api-create-key | 71.577 | 0.113 | ⚠️ 残差豁免 #25 同类（B6 换 api-key-create-drawer 同构；残差=mode-callout 静态底差消除后余 checkbox/hint AA） |
+| px-login-lang | 0.001 | 0.001 | ⚠️ 豁免 #25 同类取证：7 像素、bbox(1014-1017,31-62) 语言图标字形 AA，几何对齐 |
+| px-register-lang | 0.001 | 0.001 | ⚠️ 同上（同源图标） |
+| px-login-register-confirm | 0 | 0 | ✅ 基线即零 |
+| px-register-register-confirm | 0 | 0 | ✅ 基线即零 |
+| settings-integration-api（静态） | 4.284 | **0.00** | ✅ 已修（5fbde2205：direct_header 补 mode-callout--warning 警示框 + signed_token 提示框） |
+
 ## 触发器未命中（基线 warning；批 2 已全消，余 A9 两项批 3 处置）
 
 - ~~px-kb-faq-doctype-select~~：已修（代表页改 kb-demo，真值 0.00）。
@@ -125,7 +141,7 @@
 ## 存量静态页分歧（非本批引入，登记待归属域）
 
 - **settings-general 5.439%**：React-only「套餐与额度」卡（SP14 T1，GeneralPreferencesPanel.tsx:256 已注记豁免传导项；像素归因见 task-12a）。整页下移 ~110px。
-- **settings-integration-api 4.284%**：principalMode=direct_header 状态下 Vue 渲染 `mode-callout--warning` 警示框（含 directWarningDetail 第二行，ApiIntegrationSettings.vue:210-216）；React 只有 `wk-muted--warn` 纯文本一行（integrations/page.tsx:1572）。09-23 验收三轮 0%→数据态切到 direct_header 后暴露（功能测试或数据变化），非像素回归。
+- ~~**settings-integration-api 4.284%**~~：已修（批 4 5fbde2205）。principalMode=direct_header 状态下 Vue 渲染 `mode-callout--warning` 警示框（含 directWarningDetail 第二行，ApiIntegrationSettings.vue:210-216）；React 原只有 `wk-muted--warn` 纯文本一行。补 mode-callout 双变体（warning/signed）后复扫 0%。
 
 ## 扫描器机制注记
 
