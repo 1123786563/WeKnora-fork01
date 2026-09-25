@@ -3,9 +3,10 @@ import test from 'node:test';
 import * as nodeModule from 'node:module';
 
 // T12c：IntegrationsRoutePage 引入 integrations.td.css（域平移样式）——
-// node:test 直跑需短路 css 解析（settings 各 test 同款 stub）。
+// node:test 直跑需短路 css 解析（settings 各 test 同款 stub）。B4 起
+// IntegrationsRoutePage 另注入 ../assets/img/im/*.{svg,png} 平台 logo，同款短路。
 const hooks = nodeModule as typeof nodeModule & { registerHooks?: (hooks: { resolve: (specifier: string, context: unknown, nextResolve: (specifier: string, context: unknown) => unknown) => unknown }) => void };
-if (hooks.registerHooks) hooks.registerHooks({ resolve: (specifier, context, nextResolve) => specifier.endsWith('.css') ? { shortCircuit: true, url: 'data:text/javascript,export default {}' } : nextResolve(specifier, context) });
+if (hooks.registerHooks) hooks.registerHooks({ resolve: (specifier, context, nextResolve) => /\.(css|svg|png)$/.test(specifier) ? { shortCircuit: true, url: 'data:text/javascript,export default {}' } : nextResolve(specifier, context) });
 
 const { buildIntegrationPath, parseIntegrationRoute } = await import('./route.ts');
 const { restoreApiPlaygroundFocus, resolveIntegrationsTab } = await import('./IntegrationsRoutePage.tsx');
