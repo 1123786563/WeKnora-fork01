@@ -32,7 +32,10 @@ export class CareerDesk {
  private currentView?: CareerView
  private unresolved?: CareerAction
  private receiptMissing = false
- constructor(private readonly remote: CareerRemote) {}
+ private readonly remote: CareerRemote
+ // 显式赋值而非 constructor 参数属性：小程序端 node --experimental-strip-types
+ // （strip-only，无 transform）不支持 parameter property 语法，共享包需保持可直载。
+ constructor(remote: CareerRemote) { this.remote = remote }
  get snapshot(): CareerView | undefined { return this.currentView }
  get pendingAction(): CareerAction | undefined { return this.unresolved }
  get safeToRetry(): boolean { return this.receiptMissing }
