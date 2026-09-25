@@ -110,6 +110,12 @@ jobs:
       - name: Check React boundaries
         run: node scripts/check-react-boundaries.mjs
 
+      # OCR R1-F17: the node>=26 discovery/shim/exit-code plumbing every later
+      # test step rides on must be self-tested in CI too (previously the suite
+      # only ran when invoked by hand).
+      - name: Test node-gte26 gate plumbing
+        run: pnpm test:node-gte26
+
       - name: Test shared packages
         run: pnpm test:shared
 

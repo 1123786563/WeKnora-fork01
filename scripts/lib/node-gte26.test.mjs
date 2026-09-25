@@ -23,6 +23,8 @@ import {
   findNodeGte26,
   joinShimPath,
   majorOf,
+  shimEnv,
+  shimEntryName,
   spawnExitCode,
 } from "./node-gte26.mjs";
 
@@ -35,19 +37,60 @@ test("majorOf parses plain, v-prefixed and dirty version strings", () => {
 });
 
 test("joinShimPath puts the shim dir first and uses the platform delimiter", () => {
-  const joined = joinShimPath("/tmp/shim-dir", "/usr/bin:/usr/local/bin");
-  assert.ok(joined.startsWith("/tmp/shim-dir" + path.delimiter), `shim dir must lead: ${joined}`);
+  // Platform-neutral inputs (R1-F29): literal POSIX strings made this test a
+  // deterministic false-red on win32, where ':' is an ordinary character.
+  const first = path.join(os.tmpdir(), "bin-a");
+  const second = path.join(os.tmpdir(), "bin-b");
+  const third = path.join(os.tmpdir(), "bin-c");
+  const existing = [second, third].join(path.delimiter);
+  const joined = joinShimPath(first, existing);
   const parts = joined.split(path.delimiter);
-  assert.equal(parts[0], "/tmp/shim-dir");
-  assert.equal(parts[1], "/usr/bin");
-  // Hard-coded ':' would break win32 (';' delimiter): assert the join honors
-  // path.delimiter rather than a literal separator.
-  assert.ok(!joined.includes(":") || path.delimiter === ":" || process.platform !== "win32");
+  assert.equal(parts.length, 3);
+  assert.equal(parts[0], first);
+  assert.equal(parts[1], second);
+  assert.equal(parts[2], third);
 });
 
 test("joinShimPath tolerates an empty existing PATH without a trailing delimiter", () => {
-  const joined = joinShimPath("/tmp/shim-dir", "");
-  assert.equal(joined, "/tmp/shim-dir");
+  const shimDir = path.join(os.tmpdir(), "shim-dir");
+  const joined = joinShimPath(shimDir, "");
+  assert.equal(joined, shimDir);
+});
+
+test("shimEnv overwrites the existing PATH case variant instead of adding a second key (R1-F30/F33)", (t) => {
+  const previousPath = process.env.PATH;
+  const previousVariant = process.env.Path;
+  // Simulate the win32 shape where the inherited key is cased `Path`: on a
+  // case-sensitive platform both keys can coexist in process.env, which is
+  // exactly the duplicate shape the naive spread would ship to the child.
+  process.env.Path = "/legacy/value";
+  delete process.env.PATH;
+  t.after(() => {
+    process.env.PATH = previousPath;
+    if (previousVariant === undefined) delete process.env.Path;
+    else process.env.Path = previousVariant;
+  });
+  const shimDir = path.join(os.tmpdir(), "weknora-shim-x");
+  const env = shimEnv(shimDir);
+  const pathKeys = Object.keys(env).filter((key) => key.toUpperCase() === "PATH");
+  assert.equal(pathKeys.length, 1, `exactly one PATH variant key must survive: ${pathKeys.join(",")}`);
+  const value = env[pathKeys[0]];
+  assert.ok(value.startsWith(shimDir + path.delimiter), `shim dir must lead: ${value}`);
+  assert.ok(value.includes("/legacy/value"), "the old PATH content must be preserved after the shim dir");
+});
+
+test("shimEnv prepends to a normally-cased PATH", (t) => {
+  const previous = process.env.PATH;
+  t.after(() => { process.env.PATH = previous; });
+  process.env.PATH = ["/a", "/b"].join(path.delimiter);
+  const shimDir = path.join(os.tmpdir(), "weknora-shim-y");
+  const env = shimEnv(shimDir);
+  assert.equal(env.PATH, [shimDir, "/a", "/b"].join(path.delimiter));
+});
+
+test("shimEntryName carries .exe on win32 only (R1-F27)", () => {
+  const expected = process.platform === "win32" ? "node.exe" : "node";
+  assert.equal(shimEntryName(), expected);
 });
 
 test("findNodeGte26 honors $WEKNORA_NODE_BIN pointing at a >=26 binary", { skip: process.platform === "win32" }, (t) => {
@@ -84,7 +127,13 @@ test("findNodeGte26 skips an override candidate below the floor", { skip: proces
   if (hit) assert.ok(majorOf(hit.version) >= MIN_MAJOR, `discovered binary must be >= ${MIN_MAJOR}: ${hit.version}`);
 });
 
-test("createNodeShim symlinks the target by default and cleans up", (t) => {
+test("createNodeShim symlinks the target by default and cleans up", {
+  // R1-F29: without developer mode win32 denies real symlinks with EPERM, the
+  // copy fallback fires and the realpath assertion below would fail on the
+  // copy's (different) path — the symlinked shape is only guaranteed where
+  // symlinks actually work.
+  skip: process.platform === "win32",
+}, (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "node-gte26-shim-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const target = path.join(dir, "real-node");

@@ -36,9 +36,9 @@ import {
   exitWithSpawnResult,
   findNodeGte26,
   installShimSignalCleanup,
-  joinShimPath,
   majorOf,
   removeNodeShim,
+  shimEnv,
 } from "./lib/node-gte26.mjs";
 
 function main() {
@@ -69,11 +69,20 @@ function main() {
 
   const { shimDir } = createNodeShim(target.bin);
   installShimSignalCleanup(shimDir);
-  // Platform-delimiter join (跨任务转交 T01-OCR1-F12): a hard-coded ':' broke
-  // PATH resolution on win32 even when the shim itself had succeeded.
-  const env = { ...process.env, PATH: joinShimPath(shimDir, process.env.PATH) };
+  // shimEnv (R1-F30/F33): case-insensitive PATH overwrite — a naive spread
+  // would materialize both `Path` (old) and `PATH` (new) on win32 and the
+  // child would honor the old value, silently dropping the shim.
+  const env = shimEnv(shimDir);
 
-  const result = spawnSync(command, args, { stdio: "inherit", env });
+  // win32 (R1-F31): pnpm dispatches tsx as tsx.cmd, and spawnSync without a
+  // shell cannot execute .cmd files (libuv does no PATHEXT resolution; Node
+  // explicitly errors EINVAL/ENOENT). The command/args come from our own
+  // package.json scripts, so the shell surface is fixed, not user input.
+  const result = spawnSync(command, args, {
+    stdio: "inherit",
+    env,
+    shell: process.platform === "win32",
+  });
   removeNodeShim(shimDir);
   exitWithSpawnResult(result, "with-node");
 }

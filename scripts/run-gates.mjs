@@ -25,12 +25,16 @@ import {
   exitWithSpawnResult,
   findNodeGte26,
   installShimSignalCleanup,
-  joinShimPath,
   majorOf,
   removeNodeShim,
+  shimEnv,
 } from "./lib/node-gte26.mjs";
 
 const GATES = [
+  // R1-F17: the shim/discovery plumbing this runner itself depends on must be
+  // self-tested before any gate rides on it (previously the suite only ran
+  // when invoked by hand — node --test itself needs node >= 18, not 26).
+  ["node-gte26-selftest", "pnpm run test:node-gte26"],
   ["test:shared", "pnpm run test:shared"],
   ["typecheck:shared", "pnpm run typecheck:shared"],
   ["test:web", "pnpm run test:web"],
@@ -55,12 +59,10 @@ function reexecWith(node) {
   // racing concurrent runs. mkdtempSync is private and unique per run.
   const { shimDir, shimNode } = createNodeShim(node.bin);
   installShimSignalCleanup(shimDir);
-  const env = {
-    ...process.env,
-    // Platform-delimiter join (跨任务转交 T01-OCR1-F12): a hard-coded ':'
-    // broke PATH resolution on win32 even when the shim itself had succeeded.
-    PATH: joinShimPath(shimDir, process.env.PATH),
-  };
+  // shimEnv (R1-F30): case-insensitive PATH overwrite — a naive spread would
+  // materialize both `Path` (old) and `PATH` (new) on win32 and the re-exec'd
+  // child would honor the old value, silently dropping the shim.
+  const env = shimEnv(shimDir);
   console.error(`[gates] current node ${process.version} < ${MIN_MAJOR}; re-exec via ${node.bin} (${node.version})`);
   const result = spawnSync(shimNode, [process.argv[1], ...process.argv.slice(2)], {
     stdio: "inherit",

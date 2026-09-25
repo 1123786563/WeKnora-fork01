@@ -60,7 +60,10 @@ export function findNodeGte26() {
     candidates.push(...nvmNodes);
   }
   for (const dir of (process.env.PATH || "").split(path.delimiter)) {
-    if (dir) candidates.push(path.join(dir, "node"));
+    // win32 binaries ship as node.exe — an extension-less "node" entry is
+    // never statable there and execFileSync does no PATHEXT resolution
+    // (R1-F27), which made the $PATH scan a guaranteed miss on Windows.
+    if (dir) candidates.push(path.join(dir, process.platform === "win32" ? "node.exe" : "node"));
   }
   const seen = new Set();
   for (const bin of candidates) {
@@ -73,6 +76,16 @@ export function findNodeGte26() {
 }
 
 /**
+ * The shim entry name inside the shim dir. cmd.exe resolves PATH entries via
+ * PATHEXT and never matches an extension-less file, so child processes on
+ * win32 would silently resolve their bundled OLD node instead of the shim —
+ * the entry must be node.exe there (R1-F27).
+ */
+export function shimEntryName() {
+  return process.platform === "win32" ? "node.exe" : "node";
+}
+
+/**
  * Create the PATH shim directory holding ONLY a `node` symlink to the >=26
  * binary. mkdtempSync (F10) gives an unpredictable name AND creates the
  * directory with 0700 in one step — the previous predictable
@@ -82,8 +95,7 @@ export function findNodeGte26() {
  */
 export function createNodeShim(targetBin, { linker = fs.symlinkSync } = {}) {
   const shimDir = fs.mkdtempSync(path.join(os.tmpdir(), "weknora-node26-shim-"));
-  const shimNode = path.join(shimDir, "node");
-  fs.rmSync(shimNode, { force: true });
+  const shimNode = path.join(shimDir, shimEntryName());
   try {
     linker(targetBin, shimNode);
   } catch (cause) {
@@ -108,6 +120,24 @@ export function createNodeShim(targetBin, { linker = fs.symlinkSync } = {}) {
  */
 export function joinShimPath(shimDir, existingPath) {
   return [shimDir, existingPath || ""].filter(Boolean).join(path.delimiter);
+}
+
+/**
+ * Build the child env with the shim dir prepended to PATH (R1-F30/F33).
+ *
+ * Windows keeps the ORIGINAL casing of environment variable names (usually
+ * `Path`). The naive `{ ...process.env, PATH: ... }` materializes BOTH the
+ * old `Path` and the new `PATH` into the child's environment block; duplicate
+ * names are case-insensitive there and the first (OLD) value typically wins —
+ * the shim prepend silently no-ops for the re-exec'd child. This helper
+ * overwrites whichever case-variant key already exists, so exactly one PATH
+ * entry reaches the child, with the shim dir in front.
+ */
+export function shimEnv(shimDir) {
+  const env = { ...process.env };
+  const pathKey = Object.keys(env).find((key) => key.toUpperCase() === "PATH") ?? "PATH";
+  env[pathKey] = joinShimPath(shimDir, env[pathKey]);
+  return env;
 }
 
 /** Best-effort shim removal; never throws (callers run it on every exit path). */
