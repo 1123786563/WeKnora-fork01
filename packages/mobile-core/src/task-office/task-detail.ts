@@ -338,7 +338,9 @@ export function createTaskDetail(input: { taskId: string; runId: string }, ports
       return current;
     }
     if (unknownGate !== undefined) {
-      const resolved = resolveUnknownStop(fetched.execution.runStatus);
+      // R1-F2：核对改用合并口径（与 :353 终态判断及全模块其余终态判断一致；快照未刷新前
+      // 流内终态事件也参与核对——模块注释 R1-F27 语义）。
+      const resolved = resolveUnknownStop(terminalRunStatusOf(fetched.execution.runStatus, events));
       if (resolved === 'confirmed') {
         stopState = { phase: 'confirmed', since: stopState?.since ?? new Date().toISOString(), note: 'reconciled: canceled' };
       } else {
@@ -548,6 +550,10 @@ export function createTaskDetail(input: { taskId: string; runId: string }, ports
         const receipt: InterventionReceipt = { intent, outcome: 'unknown', boundRunId: input.runId, revision, note: messageOf(error), at };
         interventions.push(receipt); trimInterventions();
         notify(current?.connection === undefined ? 'syncing' : current.connection); // 停止卡/回执立即可见
+        // R1-F3：置门后自行安排核对，门不得滞留到仅剩显式 resync——与 accepted :533 / conflict :542
+        // 的 fire-and-forget hydrate 同款；一次核对失败由流/下次 hydrate/显式 resync 兜底，
+        // 门在核对完成前照常阻塞（AC2 不放松）。
+        void hydrate().catch(() => undefined);
         return receipt;
       }
     },

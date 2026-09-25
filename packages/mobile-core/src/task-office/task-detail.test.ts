@@ -719,11 +719,11 @@ function scriptedCommandPort(initial: CommandScript = {}) {
 
 const codedError = (code: string): Error => Object.assign(new Error(code), { code });
 
-function interventionDetail(execution: { runStatus: string; revision: number }): TaskBackendDetail {
+function interventionDetail(execution: { runStatus: string; revision: number; watermark?: number }): TaskBackendDetail {
   return {
     taskId: 's1', runId: 'run-1', title: 't', attention: 'none',
     execution: { runStatus: execution.runStatus, executionStatus: execution.runStatus, settlementStatus: 'pending', revision: execution.revision, seq: 0 },
-    watermark: 0, incomplete: false, events: [],
+    watermark: execution.watermark ?? 0, incomplete: false, events: [],
   };
 }
 
@@ -787,6 +787,74 @@ test('act(stop) unknown reconciles to confirmed when the run was actually cancel
   detailBackend.detailResult = interventionDetail({ runStatus: 'canceled', revision: 3 });
   await handle.resync();
   assert.equal(handle.view()?.stop?.phase, 'confirmed');
+  handle.close('done');
+});
+
+test('the unknown gate reconciles on the merged caliber: an in-stream cancel lands confirmed (R1-F2)', async () => {
+  const commands = scriptedCommandPort({ error: codedError('TASK_COMMAND_UNKNOWN') });
+  const { lease } = leased();
+  const scripted = createScriptedTaskStream();
+  let detailResult = interventionDetail({ runStatus: 'running', revision: 2 });
+  const handle = createTaskDetail(
+    { taskId: 's1', runId: 'run-1' },
+    {
+      backend: {
+        detail: async () => detailResult,
+        stream: (input: { runId: string; cursor: number; signal: AbortSignal; onEvent(event: TaskBackendEvent): void; onControl(frame: TaskStreamControlFrame): void }) =>
+          new Promise<void>((resolve) => {
+            scripted.attach({ signal: input.signal, onEvent: input.onEvent, onControl: input.onControl, resolve, reject: () => undefined });
+          }),
+      },
+      store: createInMemoryTaskProjectionStore(),
+      lease: () => lease,
+      commands: commands.port,
+    },
+  );
+  await handle.hydrate();
+  // 取消先经流落地并持久化（终态 → processEvent 立即落盘）——真实时序：服务端已取消、
+  // 事件先送达，随后取消命令的回执丢失。R1-F3 的置门自动核对会同步 abort 流，
+  // 因此流内事件只能在 act() 之前到达（之后流已被 aborted，emit 不再可达）。
+  scripted.emit(event$(1, 'run.canceled')); // seq 必须 = committedCursor + 1（差异记录 6）
+  await settle();
+  assert.equal(handle.view()?.runStatus, 'canceled', '合并口径下视图已推进取消（R1-F27 语义）');
+  // 快照滞后：服务端事件水位已含取消事件（watermark 1 ≥ seq 1，mergeEventHistory 才会保留），
+  // 但 runStatus 投影字段滞后仍报 running——核对必须按合并口径判 confirmed（R1-F27 语义）。
+  detailResult = interventionDetail({ runStatus: 'running', revision: 2, watermark: 1 });
+  const receipt = await handle.act({ kind: 'stop' });
+  assert.equal(receipt.outcome, 'unknown');
+  await handle.resync();
+  assert.equal(handle.view()?.runStatus, 'canceled', '持久化事件主导合并口径');
+  assert.equal(handle.view()?.stop?.phase, 'confirmed', '已落地取消必须核对为 confirmed——不得因快照滞后被误判未落地');
+  handle.close('done');
+});
+
+test('the unknown gate schedules its own reconciliation: a landed cancel settles confirmed without resync (R1-F3)', async () => {
+  const commands = scriptedCommandPort({ error: codedError('TASK_COMMAND_UNKNOWN') });
+  const { handle, detailBackend } = newHandleForIntervention({ runStatus: 'running', revision: 2 }, commands.port);
+  await handle.hydrate();
+  detailBackend.detailResult = interventionDetail({ runStatus: 'canceled', revision: 3 }); // 服务端其实已落地取消
+  const receipt = await handle.act({ kind: 'stop' });
+  assert.equal(receipt.outcome, 'unknown');
+  await settle(); // 置门后安排的核对（无外部操作、无 resync）
+  assert.equal(handle.view()?.stop?.phase, 'confirmed', '门不得滞留：置门后自动核对，取消其实已落地');
+  assert.equal(handle.view()?.runStatus, 'canceled');
+  handle.close('done');
+});
+
+test('the unknown gate schedules its own reconciliation: not landed releases the gate for a retry (R1-F3)', async () => {
+  const commands = scriptedCommandPort({ error: codedError('TASK_COMMAND_UNKNOWN') });
+  const { handle } = newHandleForIntervention({ runStatus: 'running', revision: 2 }, commands.port);
+  await handle.hydrate();
+  const receipt = await handle.act({ kind: 'stop' });
+  assert.equal(receipt.outcome, 'unknown');
+  assert.equal(handle.view()?.stop?.phase, 'unknown');
+  // 核对窗口内写意图仍被阻止（AC2 不放松）。
+  await assert.rejects(() => handle.act({ kind: 'steer', text: 'x' }), /TASK_OFFICE_COMMAND_UNKNOWN/);
+  await settle(); // 置门后安排的核对：快照仍 running ⇒ 未落地 ⇒ 门解除
+  assert.equal(handle.view()?.stop, undefined, '未落地则门解除、停止卡清除——滞留窗口收敛为一次核对');
+  commands.script.error = undefined;
+  const retry = await handle.act({ kind: 'stop' });
+  assert.equal(retry.outcome, 'accepted', '门解除后写意图恢复');
   handle.close('done');
 });
 
