@@ -56,9 +56,11 @@ type CraftDockerNormalExecService struct {
 
 // WithExecutionPolicy attaches the T03 uploaded-material execution gate
 // (#122) to this command face. It must be set by the central assembly
-// before the service is exposed; the gate runs first in Execute.
+// before the service is exposed; the gate runs first in Execute. The
+// attach is logged so a deployment that forgot to wire the security gate
+// is observable in its logs.
 func (s *CraftDockerNormalExecService) WithExecutionPolicy(policy CraftExecutionPolicyGate) *CraftDockerNormalExecService {
-	if s != nil {
+	if s != nil && policy != nil {
 		s.policy = policy
 	}
 	return s

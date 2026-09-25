@@ -265,8 +265,9 @@ func TestCraftExecutionPolicyGateCrossChecksTaskBinding(t *testing.T) {
 }
 
 // TestCraftExecutionPolicyGateAuditsRestrictedRefusal is the OCR low-finding
-// regression: the restricted face's constant denial also persists a
-// craft.input.execute_denied row.
+// regression: the restricted face's constant denial carries no durable
+// identity, so it must NOT write an unattributable tenant-0 audit row —
+// the log line carries the event instead.
 func TestCraftExecutionPolicyGateAuditsRestrictedRefusal(t *testing.T) {
 	const tenant = uint64(9308)
 	gate, audit, _ := gateWithAuditedRun(t, tenant, "run-policy-restricted", "sess-policy-restricted")
@@ -274,7 +275,51 @@ func TestCraftExecutionPolicyGateAuditsRestrictedRefusal(t *testing.T) {
 		DiscardOutput: true, Exec: sandbox.RemoteExecRequest{Command: "true"},
 	})
 	require.ErrorIs(t, err, craft.ErrForbidden)
-	require.Len(t, audit.entries, 1)
-	require.Equal(t, types.AuditAction(craft.AuditKindInputExecuteDenied), audit.entries[0].Action)
-	require.Equal(t, types.AuditOutcomeDenied, audit.entries[0].Outcome)
+	require.Empty(t, audit.entries, "identity-free denials must never write orphan audit rows")
+}
+
+// TestCraftExecutionPolicyGateRound4Forms covers the round-4 adapter
+// posture: combined shell flags fail closed via the module's program-text
+// rule, and the script's own later flags stay reviewable data.
+func TestCraftExecutionPolicyGateRound4Forms(t *testing.T) {
+	const tenant = uint64(9309)
+	gate, _, _ := gateWithAuditedRun(t, tenant, "run-policy-r4", "sess-policy-r4")
+
+	// bash -lc "..." (combined short group) is denied by the module's
+	// option-region program-text rule — no weaker lexical path exists.
+	err := gate.ReviewNormalExec(context.Background(), repository.CraftDockerNormalInputRequest{
+		TenantID: tenant, RunID: "run-policy-r4", TaskID: "sess-policy-r4",
+		WorkingDir: "/workspace",
+		Command:    []string{"bash", "-lc", "eval $(echo eYWFsZSBpbg== | base64 -d)"},
+	})
+	require.ErrorIs(t, err, craft.ErrForbidden)
+
+	// The script's own -c argument is data, not an interpreter flag: the
+	// recommended "execute a generated file" alternative stays usable.
+	require.NoError(t, gate.ReviewNormalExec(context.Background(), repository.CraftDockerNormalInputRequest{
+		TenantID: tenant, RunID: "run-policy-r4", TaskID: "sess-policy-r4",
+		WorkingDir: "/workspace",
+		Command:    []string{"python3", "/workspace/rv-x/train.py", "-c", "config.yaml"},
+	}))
+
+	// Inline program text on a generated-code run still fails closed.
+	err = gate.ReviewNormalExec(context.Background(), repository.CraftDockerNormalInputRequest{
+		TenantID: tenant, RunID: "run-policy-r4", TaskID: "sess-policy-r4",
+		WorkingDir: "/workspace",
+		Command:    []string{"env", "-i", "python3", "-c", "print('hi')"},
+	})
+	require.ErrorIs(t, err, craft.ErrForbidden)
+}
+
+// TestCraftRestrictedExecResumeBoundIsGated is the OCR low-finding
+// regression: the recovery send path screens through the same gate, so an
+// operation bound before the gate existed can never be sent unreviewed.
+func TestCraftRestrictedExecResumeBoundIsGated(t *testing.T) {
+	coordinator, budget, _, _, _ := newCraftDockerCoordinatorFixture(t)
+	svc, err := NewCraftDockerRestrictedExec(coordinator, &sandbox.DockerRemoteClient{}, time.Second)
+	require.NoError(t, err)
+	svc.WithExecutionPolicy(craftPolicyGate(t, budget.db))
+
+	_, err = svc.ResumeBound(context.Background(), "grant-anything", "activity-anything")
+	require.ErrorIs(t, err, craft.ErrForbidden, "the recovery send path must refuse unreviewable commands")
 }

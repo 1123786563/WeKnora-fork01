@@ -111,6 +111,12 @@ func (d InputExecutionDecision) Refusal() string {
 	if target == "" {
 		target = d.Digest
 	}
+	if target == "" {
+		// Evidence-free denials (unreviewable shell or program-text forms)
+		// carry no matched identity; the member still needs a readable,
+		// non-degenerate refusal.
+		target = "an unreviewable command form (shell expression or inline program)"
+	}
 	return fmt.Sprintf(
 		"Execution denied: uploaded input material is read-only data and must not be executed (matched %s). "+
 			"Allowed alternative: have the sub-executor generate the code in the writable Workspace and execute the generated file instead.",
@@ -261,11 +267,16 @@ func (p *InputExecutionPolicy) Review(req InputExecutionRequest) InputExecutionD
 	// 2b. Environment values that point into the read-only tree turn a
 	// benign command into execution of uploaded material (BASH_ENV,
 	// PYTHONSTARTUP, ENV, NODE_OPTIONS --require, RUBYOPT, PERL5OPT ...),
-	// because runtimes source those files at startup.
+	// because runtimes source those files at startup. Path-list variables
+	// (PYTHONPATH, NODE_PATH, PERL5LIB, RUBYLIB, PATH) carry colon-separated
+	// entries, so every segment is screened independently — an inputs entry
+	// hidden behind a leading /usr/lib must not slip through.
 	for _, value := range req.Environment {
 		for _, token := range shellTokens(value) {
-			if abs := p.canonical(req.WorkingDir, token); p.withinInputs(abs) {
-				return p.deny("input_target", abs, "")
+			for _, segment := range strings.Split(token, ":") {
+				if abs := p.canonical(req.WorkingDir, segment); p.withinInputs(abs) {
+					return p.deny("input_target", abs, "")
+				}
 			}
 		}
 	}
@@ -284,6 +295,19 @@ func (p *InputExecutionPolicy) Review(req InputExecutionRequest) InputExecutionD
 			}
 		}
 	} else if interpreter, offset := InterpreterPrefix(req.Command); interpreter {
+		// The wrapper prefix consumed by InterpreterPrefix is itself
+		// screened: env assignments (env BASH_ENV=<inputs>/x.sh bash gen.sh)
+		// are startup hooks exactly like Environment entries and must not
+		// ride along unscreened just because the interpreter was found.
+		for _, prefix := range req.Command[:offset] {
+			for _, token := range shellTokens(prefix) {
+				for _, segment := range strings.Split(token, ":") {
+					if abs := p.canonical(req.WorkingDir, segment); p.withinInputs(abs) {
+						return p.deny("input_target", abs, "")
+					}
+				}
+			}
+		}
 		rest := req.Command[offset:]
 		// An interpreter reading its program from stdin executes whatever
 		// bytes arrive on stdin — deny the marker forms outright; the
@@ -299,11 +323,29 @@ func (p *InputExecutionPolicy) Review(req InputExecutionRequest) InputExecutionD
 		// any operand carrying embedded whitespace is screened as a nested
 		// command (bash -c "python3 <path>" smuggling).
 		scriptSeen := false
+		pendingRun := false
 		for _, arg := range rest {
-			if !scriptSeen && strings.HasPrefix(arg, "-") {
-				continue
-			}
 			if !scriptSeen {
+				// run subcommands (deno run x.ts, bun run x.js) shift the
+				// executed file one operand later; remember and keep
+				// treating the remainder as the option/operand region.
+				if arg == "run" && !pendingRun {
+					pendingRun = true
+					continue
+				}
+				if strings.HasPrefix(arg, "-") {
+					// Program-text options are unreviewable by construction
+					// (their payload is code, not a screenable path):
+					// -c/-e/-r inline programs (python3 -c, node -e, php
+					// -r, perl -e, ruby -e/-r, awk -e), including combined
+					// short groups (-cexec(...), -lc "...") and python -m
+					// module indirection. Long options and the bare "-"
+					// stdin marker are not program text.
+					if arg != "-" && !strings.HasPrefix(arg, "--") && carriesProgramTextFlag(arg) {
+						return p.deny("interpreter_input", arg, "")
+					}
+					continue
+				}
 				scriptSeen = true
 				if abs := p.canonical(req.WorkingDir, arg); p.withinInputs(abs) {
 					return p.deny("interpreter_input", abs, "")
@@ -372,11 +414,13 @@ var wrapperCommands = map[string]bool{
 // readOnlyCommands may name input material as operands without being
 // execution of it. Deliberately narrow: text/byte readers and inspectors
 // only. awk/sed (they execute programs), find (it has -exec) and every
-// copying command (cp, mv, dd, tee, install, rsync) are NOT here, so their
-// operand set is screened by the containment rule above.
+// copying command (cp, mv, dd, tee, install, rsync) are NOT here, and
+// neither are rg (--pre runs a subprocess per file), less/more (the +!cmd
+// initial command executes) — their operand set is screened by the
+// containment rule above instead.
 var readOnlyCommands = map[string]bool{
-	"cat": true, "head": true, "tail": true, "less": true, "more": true,
-	"grep": true, "egrep": true, "fgrep": true, "rg": true, "wc": true,
+	"cat": true, "head": true, "tail": true,
+	"grep": true, "egrep": true, "fgrep": true, "wc": true,
 	"stat": true, "file": true, "ls": true, "du": true, "diff": true,
 	"md5sum": true, "sha1sum": true, "sha256sum": true, "sha512sum": true,
 	"sort": true, "uniq": true, "cut": true, "tr": true,
@@ -402,12 +446,23 @@ func InterpreterPrefix(command []string) (bool, int) {
 		offset++
 		switch base {
 		case "env":
-			// Skip VAR=value assignments and env's own flags before the
-			// real program.
+			// Skip VAR=value assignments and env's own flags (-i, -u NAME,
+			// -S ...) before the real program; a flag-bearing env used to
+			// hide the interpreter must not defeat detection.
 			for offset < len(command) {
 				next := command[offset]
 				if strings.Contains(next, "=") && !strings.HasPrefix(next, "-") {
 					offset++
+					continue
+				}
+				if strings.HasPrefix(next, "-") && next != "-" {
+					offset++
+					if next == "-u" || next == "-S" {
+						// These flags consume one value operand.
+						if offset < len(command) {
+							offset++
+						}
+					}
 					continue
 				}
 				break
@@ -456,6 +511,25 @@ func (p *InputExecutionPolicy) deny(reason, target, digest string) InputExecutio
 		Digest:    digest,
 		Err:       fmt.Errorf("%w: %s matched %s", ErrExecutionDenied, reason, target),
 	}
+}
+
+// carriesProgramTextFlag reports whether a short-option group (already
+// known to start with a single '-' and not be the stdin marker) selects a
+// program-text or module-loading flag: c (inline program), e (inline
+// program for node/php/perl/ruby/awk), r (php program / ruby require), m
+// (python module-by-name indirection). Combined groups (-lc, -cexec(...))
+// match too; long options are excluded by the caller.
+func carriesProgramTextFlag(arg string) bool {
+	for _, r := range arg[1:] {
+		switch r {
+		case 'c', 'e', 'r', 'm':
+			return true
+		}
+		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') {
+			return false // payload text after combined flags ends the group
+		}
+	}
+	return false
 }
 
 // shellTokens splits a shell expression into policy-checkable tokens.

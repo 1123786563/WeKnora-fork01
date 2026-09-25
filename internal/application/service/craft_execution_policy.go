@@ -71,7 +71,14 @@ func (g *CraftDelegateExecutionPolicy) WithAuditLog(audit interfaces.AuditLogSer
 
 // writeDenied persists one denied audit row for a gate refusal that did not
 // come from a policy decision (those are audited by CraftMaterialPolicy).
+// Rows without a durable identity (tenant 0 / empty run) are never written:
+// they would be unattributable, unqueryable orphans on every constant
+// denial; the log line carries the event instead.
 func (g *CraftDelegateExecutionPolicy) writeDenied(ctx context.Context, tenantID uint64, runID, detail string) {
+	if tenantID == 0 || strings.TrimSpace(runID) == "" {
+		logger.Warnf(ctx, "[CraftExecutionPolicy] denial without durable identity: %s", detail)
+		return
+	}
 	if g == nil || g.audit == nil {
 		return
 	}
@@ -119,25 +126,20 @@ func (g *CraftDelegateExecutionPolicy) ReviewNormalExec(ctx context.Context, req
 		stdinSum := sha256.Sum256(request.Stdin)
 		execRequest.TargetSHA256 = hex.EncodeToString(stdinSum[:])
 	}
-	if interpreter, offset := craft.InterpreterPrefix(request.Command); interpreter {
-		rest := request.Command[offset:]
-		// A wrapped shell reading its program from -c is a shell expression:
-		// send it as Shell/CommandText, which the policy denies without
-		// adapter-normalized evidence (lexical screening of shell forms is
-		// bypassable by construction).
-		if idx := shellCommandFlagIndex(rest); idx >= 0 && idx+1 < len(rest) {
-			execRequest.Shell = true
-			execRequest.CommandText = strings.Join(rest[idx+1:], " ")
-			execRequest.Command = nil
-			execRequest.Environment = nil
-		} else if request.StdinEnabled && !hasScriptOperand(rest) {
-			// A bare interpreter with stdin enabled reads its program from
-			// stdin; the stdin digest screen above covers uploaded bytes,
-			// but generated program bytes on stdin are indistinguishable
-			// from an attempt to smuggle them, so refuse the form.
-			g.writeDenied(ctx, request.TenantID, request.RunID, "interpreter reading its program from stdin")
-			return fmt.Errorf("%w: an interpreter reading its program from stdin cannot be reviewed against the admitted material; stage the generated program as a file in the writable Workspace instead. Allowed alternative: execute a generated file, not stdin", craft.ErrForbidden)
-		}
+	// Shell and inline-program forms (-c, -lc, -e, -r, -m and combined
+	// groups, including wrapped `env -i sh -c ...`) are denied by the
+	// module's option-region program-text rule; the adapter no longer
+	// re-normalizes them, which both avoids double semantics and keeps the
+	// script's own later flags (python3 gen.py -c config.yaml) reviewable
+	// as data operands.
+	if interpreter, offset := craft.InterpreterPrefix(request.Command); interpreter &&
+		request.StdinEnabled && !hasScriptOperand(request.Command[offset:]) {
+		// A bare interpreter with stdin enabled reads its program from
+		// stdin; the stdin digest screen above covers uploaded bytes, but
+		// generated program bytes on stdin are indistinguishable from an
+		// attempt to smuggle them, so refuse the form.
+		g.writeDenied(ctx, request.TenantID, request.RunID, "interpreter reading its program from stdin")
+		return fmt.Errorf("%w: an interpreter reading its program from stdin cannot be reviewed against the admitted material; stage the generated program as a file in the writable Workspace instead. Allowed alternative: execute a generated file, not stdin", craft.ErrForbidden)
 	}
 	return g.review(ctx, request.TenantID, request.RunID, request.TaskID, execRequest)
 }
@@ -153,17 +155,6 @@ func (g *CraftDelegateExecutionPolicy) ReviewOutputlessExec(ctx context.Context,
 	}
 	g.writeDenied(ctx, 0, "", "restricted exec carries no durable run identity")
 	return fmt.Errorf("%w: restricted Docker exec carries no durable Run identity to review uploaded material against; refusing to send an unreviewable command. Allowed alternative: generated code inside the writable Workspace, staged through a normal exec that names the Run", craft.ErrForbidden)
-}
-
-// shellCommandFlagIndex returns the index of the -c flag in an interpreter
-// operand list, or -1 when absent.
-func shellCommandFlagIndex(rest []string) int {
-	for i, arg := range rest {
-		if arg == "-c" {
-			return i
-		}
-	}
-	return -1
 }
 
 // hasScriptOperand reports whether the interpreter operand list names a
@@ -191,7 +182,8 @@ func (g *CraftDelegateExecutionPolicy) review(ctx context.Context, tenantID uint
 		Select("owner_id", "session_id", "snapshot").
 		Where("tenant_id = ? AND run_id = ?", tenantID, runID).Take(&row).Error; err != nil {
 		g.writeDenied(ctx, tenantID, runID, "run identity not resolvable")
-		return err
+		logger.Warnf(ctx, "[CraftExecutionPolicy] resolve run %s for execution review failed: %v", runID, err)
+		return fmt.Errorf("%w: run %s could not be resolved for execution review: %w", craft.ErrConflict, runID, err)
 	}
 	// The reviewed identity must agree with the staged request's own task
 	// binding, mirroring the coordinator's session/task consistency check:

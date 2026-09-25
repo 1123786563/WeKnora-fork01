@@ -1,226 +1,260 @@
-Review complete: 14 finding(s) across 6 selected item(s).
+Review complete: 12 finding(s) across 6 selected item(s).
 
-─── internal/modules/craft/input_code.go:250-254 ───
-[security · critical] 非解释器分支只检查 Command[0]，Command[1:] 的所有 operand 一律不做 inputs
-树包含检查。结合生产接线点（craft_execution_policy.go 的 ReviewNormalExec 只回填
-Command+WorkingDir，TargetSHA256/ResolvedTargetPath
-恒为空，字节身份层与符号链接层从不触发），本分支成为唯一生效防线，而以下命令全部放行上传脚本：`timeout 10 python3
-/workspace/inputs/<sha>/x.py`、`env VAR=1 python3 ...`（interpreterPrefix 只识别 `env <interp>`，不跳过
-VAR=x）、`nohup python3 ...`、`xargs python3 ...`、`python3.11 ...`（interpreterCommands 为精确 basename
-匹配，无版本号/变体形态）。这直接击穿文件头声明的核心承诺（"no interpreter, shell, copy, link or alias path may execute the
-uploaded bytes"）。建议对 Command[1:] 每个 operand 都做包含检查——这同时顺带拦截 cp 复制上传字节到可写区（copy 也在威胁列表内）；若需保留
-cat/grep 等读取型命令，可用显式只读白名单而非依赖 argv[0] 形态匹配的默认放行。
+─── internal/modules/craft/input_code.go:286-287 ───
+[security · high] 解释器分支只审查 offset 之后的操作数，而 InterpreterPrefix 消费掉的前缀参数（尤其是 env 的 VAR=value
+赋值项）不被任何层筛查：这些赋值既不在 rest 中，也不会出现在 req.Environment（适配器 ReviewNormalExec 只把请求的 environment map 填入
+Environment，argv 中的赋值不会合并进去），而命令命中解释器后又跳过了非解释器分支的全操作数筛查。具体绕过：`env
+BASH_ENV=/workspace/inputs/<sha>/x.sh bash /workspace/gen.sh`、`env PYTHONSTARTUP=<inputs>/x.py
+python3 gen.py`、`env PYTHONPATH=<inputs>/<sha> python3 -m ...` —— bash/python 启动时 source/import
+上传材料并执行，2b 层注释声称防护的 BASH_ENV/PYTHONSTARTUP 场景在 argv 形式下完全失效，Review 返回 Allowed 并打上
+AuditKindGeneratedExecute。建议：解释器分支对 req.Command[:offset] 的包装器前缀一并用 shellTokens+canonical
+筛查（shellTokens 的 envAssignment 剥离会让 BASH_ENV=<path> 的路径重新可见），命中即 deny("input_target")。
 
-  	} else if len(req.Command) > 0 {
-- 		if abs := p.canonical(req.WorkingDir, req.Command[0]); p.withinInputs(abs) {
-- 			// Direct execution of the uploaded path itself.
-+ 		for _, arg := range req.Command {
-+ 			if abs := p.canonical(req.WorkingDir, arg); p.withinInputs(abs) {
-+ 				// Direct execution of the uploaded path itself, or any
-+ 				// wrapper (timeout/env VAR=x/nohup/xargs/versioned
-+ 				// interpreters) forwarding it as the operand to run.
-- 			return p.deny("input_target", abs, "")
-+ 				return p.deny("input_target", abs, "")
-+ 			}
-  		}
-
-
-─── internal/modules/craft/input_code.go:243-249 ───
-[security · high] 解释器分支对 `bash -c "python3 /workspace/inputs/<sha>/x.py"` 失效：内层命令作为单个含空白的 argv
-元素传入，canonical 结果是 "/workspace/python3 /workspace/inputs/..."（空格保留在路径中），永远不命中 inputs 前缀而放行；现有测试只覆盖了
-Shell=true 的 CommandText 形态，未覆盖 argv 形式的 -c 内嵌命令。建议解释器 operand 含空白/引号时按空白再切分逐 token 复检（与 shellTokens
-同策略）。
-
-  	} else if interpreter, offset := p.interpreterPrefix(req); interpreter {
-  		// Any input-tree argument feeds the interpreter as the script to run.
-  		for _, arg := range req.Command[offset:] {
-- 			if abs := p.canonical(req.WorkingDir, arg); p.withinInputs(abs) {
-+ 			for _, token := range strings.Fields(trimQuotes(arg)) {
+  	} else if interpreter, offset := InterpreterPrefix(req.Command); interpreter {
+  		rest := req.Command[offset:]
++ 		// The wrapper-consumed prefix (env VAR=value assignments, timeout
++ 		// operands) reaches the runtime exactly like Environment entries
++ 		// (BASH_ENV, PYTHONSTARTUP, PYTHONPATH, ...), so screen it too.
++ 		for _, arg := range req.Command[:offset] {
++ 			for _, token := range shellTokens(arg) {
 + 				if abs := p.canonical(req.WorkingDir, token); p.withinInputs(abs) {
-- 				return p.deny("interpreter_input", abs, "")
-+ 					return p.deny("interpreter_input", abs, "")
++ 					return p.deny("input_target", abs, "")
++ 				}
++ 			}
++ 		}
+
+
+─── internal/modules/craft/input_code.go:265-271 ───
+[security · high] 2b 层对 Environment 值的筛查复用 shellTokens，只按空白/shell
+分隔符切分，不切分冒号：路径列表型变量（PYTHONPATH、NODE_PATH、PERL5LIB、RUBYLIB、PATH）会作为单个 token 参与判定，而 withinInputs 要求
+token 以 inputsTree+"/" 开头，因此只要把 inputs 目录放在列表的非首位（如
+`PYTHONPATH=/usr/lib/python3:/workspace/inputs/<sha>`）即可通过筛查（首位形式反而会被前缀匹配拒绝）。该请求的 Environment 由
+agent 侧完全可控（staged request 的 environment 字段原样透传到容器 exec），随后 `python3 gen.py` 即可 `import analyze`
+执行上传模块字节，违背“启动钩子不得指向上传材料”的设计意图。建议：对每个 token 再按 ':' 拆分后逐段做 canonical/withinInputs
+筛查（拆分只会增加被筛查的路径元素，不会丢失）。
+
+  	for _, value := range req.Environment {
+  		for _, token := range shellTokens(value) {
+- 			if abs := p.canonical(req.WorkingDir, token); p.withinInputs(abs) {
++ 			// Path-list variables (PYTHONPATH, NODE_PATH, PERL5LIB, RUBYLIB,
++ 			// PATH) carry colon-separated entries: screen each element.
++ 			for _, entry := range strings.Split(token, ":") {
++ 				if abs := p.canonical(req.WorkingDir, entry); p.withinInputs(abs) {
+- 				return p.deny("input_target", abs, "")
++ 					return p.deny("input_target", abs, "")
 + 				}
   			}
   		}
-
-
-─── internal/modules/craft/input_code.go:255-257 ───
-[security · high] 注释声称"digest 规则会在复制字节后续执行时拦截"，但生产适配层（ReviewNormalExec）从不回填
-TargetSHA256/ResolvedTargetPath，第 1 层（符号链接）与第 2 层（字节身份）恒不触发，该承诺在唯一接线配置下不成立：先 `cp
-/workspace/inputs/<sha>/x.py /workspace/app/main.py` 再 `python3 /workspace/app/main.py`，以及 `ln -s
-/workspace/inputs/<sha>/x.py /workspace/run.sh && /workspace/run.sh`，全部检查通过，上传字节被原样执行——而 copy 与 link
-正是文件头明确列出的防御对象（测试中的 copy/symlink 用例均依赖手工回填字段，掩盖了该缺口）。建议：要求适配层在 send
-前于容器内探测主目标摘要并回填（完成设计中的第三层），本模块也应把"适配层未提供摘要且未解析链接"视为降级证据并在契约中显式声明，而非由注释给出实际不成立的保证。
-
-
-
-─── internal/modules/craft/input_code.go:237-242 ───
-[security · medium] shellTokens 纯词法切分可被间接引用绕过：`f=/workspace/inputs/<sha>/x.py; python3 "$f"`
-中路径仅出现在赋值 token `f=...` 内（canonical 后不命中前缀）；`python3 "in""puts/x.py"` 与 `python3 in\puts/x.py` 经真实
-shell 展开后指向 inputs，但策略看到的 token 分别为 `in""puts/x.py`、`in\puts/x.py`，均放行。同时末尾 TargetPath 兜底检查带 `&&
-!req.Shell`，Shell=true 的请求即使适配层已填 TargetPath 也不复核。当前生产路径尚无 Shell=true 的生产者（受限执行一律
-fail-closed），但该面一旦接线即为零成本绕过。建议与 ReviewOutputlessExec 的 fail-closed 立场对齐：shell
-表达式在无法获得适配层归一化/摘要证据时按不可审查直接拒绝；至少应移除 `!req.Shell` 限制并扩展 token 归一（剥离赋值前缀、处理反斜杠转义与相邻引号拼接）。
-
-
-
-─── internal/modules/craft/input_code.go:61-63 ───
-[bug · low] 带 UTF-8 BOM 前缀（\xEF\xBB\xBF#!）的脚本不会被识别为 shebang，来源标签会被低估为 data。仅影响 ClassifyInputCode
-的标签与后续审计口径，不影响执行拦截；建议检测前跳过 BOM。
-
-  func hasShebang(content []byte) bool {
-+ 	content = bytes.TrimPrefix(content, []byte("\xef\xbb\xbf"))
-  	return len(content) >= 2 && content[0] == '#' && content[1] == '!'
-  }
-
-
-─── internal/application/service/craft_execution_policy.go:66-70 ───
-[security · high] 门禁可被 shell 包装命令单条绕过：适配器只填 Command/WorkingDir，从不设置 Shell/CommandText。对 `Command:
-["sh", "-c", "python /workspace/inputs/uploaded.py"]`，策略走 argv 分支（interpreterPrefix 命中 sh），对
-Command[1:] 逐元素做 canonical——整个表达式作为单个参数被拼成 `/workspace/python
-/workspace/inputs/uploaded.py`（空格不拆分），不在 inputs 树内 → 放行。而 craftDockerNormalProviderRequest 以
-argv（Command[0]+Args）直发容器，sh -c 会真实执行上传脚本，T03「上传代码仅作数据」被绕过。策略模块专门设计的 Shell=true + shellTokens 路径（拆分
-&& ; | 后逐 token 判定）完全没有被此适配器使用。建议识别 argv[0] basename 为 shell（sh/bash/zsh/dash/ksh/csh/tcsh/ash，含 env
-包装）且带 -c 时，把 -c 后的表达式作为 CommandText 并置 Shell=true 送审。
-
-  	execRequest := craft.InputExecutionRequest{
-  		Command:    append([]string(nil), request.Command...),
-  		WorkingDir: request.WorkingDir,
-+ 	}
-+ 	// A shell wrapper must be reviewed as the shell expression it will run.
-+ 	if expr, ok := craft.ShellExpressionOf(request.Command); ok {
-+ 		execRequest.Shell, execRequest.CommandText = true, expr
   	}
-  	return g.review(ctx, request.TenantID, request.RunID, execRequest)
 
 
-─── internal/application/service/craft_execution_policy.go:66-70 ───
-[security · medium] request.Environment 完全不参与审查：`Environment: {"BASH_ENV":
-"/workspace/inputs/init.sh"}` + `Command: ["bash"]` 会放行（interpreterPrefix 命中后 Command[1:]
-为空，无参数可查），而 Environment 会被 craftDockerNormalProviderRequest 原样透传进容器，bash/POSIX sh 启动时 source
-BASH_ENV，等于执行上传材料。PYTHONSTARTUP、ENV、NODE_OPTIONS（--require）、RUBYOPT、PERL5OPT 同理。建议至少对 Environment
-的值做与命令 token 相同的 inputs 树词法判定，或拒绝上述启动钩子键指向 inputs 树。
+─── internal/modules/craft/input_code.go:302-305 ───
+[security · high] 解释器分支把所有以 '-' 开头的操作数当作纯标志位整块跳过，且子 token
+筛查只对含空白的操作数生效，导致携带代码载荷的标志位完全不被审查：解释器支持连写与独立两种形式——`python3
+-cexec(open('/workspace/inputs/<sha>/analyze.py').read())`（连写，无空白，路径嵌在 token 中部永远不可能成为独立 token）与
+`node -e 'require("/workspace/inputs/<sha>/x.js")'`（独立 -e，载荷无空白）。二者在 Review 中均被跳过或筛查不中而返回
+Allowed+AuditKindGeneratedExecute；适配器侧的兜底（shellCommandFlagIndex 精确匹配 "-c" 后转 Shell 形式 fail-closed
+拒绝）只覆盖独立的 -c，连写 -c 与一切 -e 均漏过。这与注释中对 shell 表达式的 fail-closed 理由（词法不可审查即拒绝）应同等适用于 -c/-e 代码载荷。建议：解释器分支对
+-c/-e 前缀（含连写载荷）的操作数按不可审查直接 deny，与 Shell 分支保持一致。
 
-  	execRequest := craft.InputExecutionRequest{
-  		Command:    append([]string(nil), request.Command...),
-  		WorkingDir: request.WorkingDir,
-+ 	}
-+ 	if hook := environmentTouchingInputs(request.Environment, g.workspaceRoot); hook != "" {
-+ 		return fmt.Errorf("%w: environment %s points at uploaded input material", craft.ErrForbidden, hook)
-  	}
-  	return g.review(ctx, request.TenantID, request.RunID, execRequest)
-
-
-─── internal/application/service/craft_execution_policy.go:35-41 ───
-[security · medium] 注释宣称防线是 "lexical canonicalization plus canonical byte identity"，但适配器构造的
-InputExecutionRequest 从不填 TargetSHA256（服务器读不到容器内字节，也无从计算），策略的 byDigest
-字节同一性分支在本面永远不会触发；ResolvedTargetPath 同样恒空。因此本面实际只剩词法路径包含一条防线：先 `cp /workspace/inputs/x.py
-/tmp/x.py`（或 `ln -s`，两步各自都会放行——cp/ln 非 interpreter，argv[0] 不在 inputs
-树内）再执行拷贝/软链路径，即可让解释器执行上传字节。策略侧注释 "the digest rule above catches the copied bytes when they later
-execute" 在此适配器上不成立。建议：修正本注释以反映实际防线范围（仅词法），并考虑由能观测容器文件系统的一侧（如执行回执/挂载清单）补 digest
-证据，否则应把该两步绕过明确记为已知残余风险，供后续 ticket 收紧。
-
-
-
-─── internal/application/service/craft_execution_policy.go:86-88 ───
-[security · medium] 作为 T03 安全控件，本 gate 的审查身份完全取自被审查请求自身（self-attested TenantID/RunID），未与 Execute 链上的
-grantID/activityID/binding 或鉴权 scope 做任何交叉校验；coordinator.Stage 的 run.SessionID == request.TaskID
-校验发生在 gate 之后，且同样基于请求内嵌身份。若上游调用链允许指定同租户的任意 run_id，指向一个输入清单为空的合法 Run 即可把字节同一性集合清零（路径判定仍在，但 digest
-维度失效），叠加词法判定的绕过面。当前虽无生产调用点，但接线前应收紧契约：gate 改用从 grant/binding 服务端解析出的 tenant/run，或至少复用 Stage 的
-session/task 一致性校验后再审查。
-
-
-
-─── internal/application/service/craft_execution_policy.go:82-82 ───
-[security · low] 恒拒路径（本处）以及 review() 中的身份缺失、agent_runs 查询失败、快照解析失败、无 workspace seed 等 fail-closed
-拒绝，都不会产生任何 craft.input.execute_denied 持久审计事件——writeAuditRow 只覆盖 MaterialPolicy.ReviewExecution
-产生的策略决策。T03 要求拒绝事件写入 audit_rows；这些路径只留下日志行，审计证据在受限面与故障路径上不完整。建议让 gate 持有 audit sink（或复用
-CraftDelegateService 注入的 audit），对恒拒与 fail-closed 拒绝补记 outcome=denied 的行（不含载荷，仅身份）。
-
-
-
-─── internal/application/service/craft_execution_policy.go:50-50 ───
-[maintainability · low] 装配确认：NewCraftDelegateExecutionPolicy、两个命令面的 WithExecutionPolicy、以及
-NewCraftDelegation 的 audit 参数目前在生产代码中均无调用点（仅测试使用）。本 PR 合并后，T03 门禁在所有生产路径上都不会生效（两个命令面保持 nil legacy
-行为），材料审计事件也只会停留在日志行（audit 静默降级为 nil 且无任何信号）。若中心装配由后续 ticket 完成，请确认其存在并覆盖：gate 注入两个 exec
-面、AuditLogService 实参传入 NewCraftDelegation——否则安全控件只存在于测试中。
-
-
-
-─── internal/modules/craft/input_code.go:274-276 ───
-[security · high] interpreterCommands 用 basename 精确等值匹配识别解释器，带版本后缀的解释器名完全不被识别：`python3.11
-/workspace/inputs/<sha>/x.py`（或 `php8.2`、`ruby3.1`、`lua5.4`、`tclsh8.6`、Debian 默认 awk 实现 `mawk`，这些在
-Debian/Ubuntu 基础镜像中是真实存在的二进制，python3 只是指向它们的符号链接）中 argv[0] 的 basename 是
-"python3.11"，不在表内，于是落入非解释器分支，只检查 Command[0]（解释器自身，不在 inputs 树内）而放行，上传脚本被直接执行。这与已确认的 timeout/env
-包装绕过根因不同：这里 argv[0] 本身就是解释器，只是精确匹配漏识别。建议匹配时容忍版本后缀（同时补充 scala/groovy/elixir/runghc 等缺失项，或改为前缀模式匹配）：
-
-- 	if interpreterCommands[path.Base(req.Command[0])] {
-+ // interpreterBase strips a version suffix so python3.11/php8.2/lua5.4
-+ // still resolve to their base interpreter name.
-+ func interpreterBase(name string) string {
-+ 	base := path.Base(name)
-+ 	if interpreterCommands[base] {
-+ 		return base
-+ 	}
-+ 	return strings.TrimRight(base, "0123456789.")
-+ }
-+ 
-+ func (p *InputExecutionPolicy) interpreterPrefix(req InputExecutionRequest) (bool, int) {
-+ 	if len(req.Command) == 0 {
-+ 		return false, 0
-+ 	}
-+ 	if interpreterCommands[interpreterBase(req.Command[0])] {
-  		return true, 1
-+ 	}
-+ 	if path.Base(req.Command[0]) == "env" && len(req.Command) > 1 && interpreterCommands[interpreterBase(req.Command[1])] {
-+ 		return true, 2
-+ 	}
-+ 	return false, 0
-- 	}
-+ }
-
-
-─── internal/modules/craft/input_code.go:245-249 ───
-[bug · medium] 解释器分支把 offset 之后的所有 operand 都当作"要执行的脚本"检查，会误杀本策略明确允许的合法用法：`python3
-/workspace/app/main.py /workspace/inputs/<sha>/data.csv` 中 main.py 是可写区生成代码，data.csv 只是作为 argv
-传入的上传数据（本文件自述读取 input 是允许的：AuditKindInputRead "read, cited, parsed — never executed"，非解释器分支注释也允许
-cp/mv/cat 命名 input 材料），但该命令因 data.csv 命中 inputs 树被拒，且 Refusal 给出的替代方案（"generate the code in the
-writable Workspace and execute the generated file"）正是它已经在做的事，Agent
-会陷入无解的拒绝死胡同，只能改写脚本硬编码路径。解释器实际只执行第一个非选项 operand，后续 operand 是脚本的数据。建议只对脚本 operand（第一个非 `-` 前缀
-operand）做 inputs 树判定，其余 operand 按数据读取记录审计；注意个别带值选项（如 `python3 -W ignore`）的值会被误认为脚本
-operand，必要时用小的选项值表或在 InputExecutionRequest 上显式标注脚本 operand。
-
-+ 		// Only the first non-flag operand is the script the interpreter
-+ 		// executes; later operands are argv data passed to that script.
-  		for _, arg := range req.Command[offset:] {
-+ 			if strings.HasPrefix(arg, "-") {
-+ 				continue // flags; option values need a per-interpreter table
-+ 			}
-  			if abs := p.canonical(req.WorkingDir, arg); p.withinInputs(abs) {
-  				return p.deny("interpreter_input", abs, "")
+  		for _, arg := range rest {
+  			if !scriptSeen && strings.HasPrefix(arg, "-") {
++ 				// Code-carrying flags (-c<code>, -e<code>, attached or as a
++ 				// following operand) embed an unreviewable program, exactly
++ 				// like a shell expression: deny fail-closed.
++ 				if payload := strings.TrimPrefix(arg, "-"); len(payload) > 1 && (payload[0] == 'c' || payload[0] == 'e') {
++ 					return p.deny("interpreter_input", arg, "")
++ 				}
+  				continue
   			}
-+ 			break // script operand found outside the input tree
+
+
+─── internal/modules/craft/input_code.go:110-113 ───
+[bug · medium] Target 与 Digest 可能同时为空，Refusal() 会渲染出 "(matched )" 的残缺文案，deny() 的 Err 同样输出 "matched
+"。这不是罕见路径：适配器 ReviewNormalExec 把 -c 形式转为 Shell 请求时从不填 TargetPath/ResolvedTargetPath（TargetSHA256
+也仅来自 stdin 字节），因此所有 shell 表达式的 fail-closed 拒绝都会走 canonical(WorkingDir, "")=="" → deny("shell_input",
+"", "")，而这是该执行面最常见的拒绝路径，成员可见的拒绝信息却无法辨识被拒目标。建议在两者均为空时回退到稳定文案（如 "unreviewable shell
+expression"）或（截断后的）CommandText。
+
+  	target := d.Target
+  	if target == "" {
+  		target = d.Digest
++ 	}
++ 	if target == "" {
++ 		target = "unreviewable shell expression"
+  	}
+
+
+─── internal/modules/craft/input_code.go:336-344 ───
+[security · critical] readOnlyCommands 豁免名单中包含能执行操作数的工具，导致上传材料可被执行：`rg` 在名单内，但 ripgrep 的
+`--pre`/`--pre=COMMAND` 选项会为每个被搜索文件以子进程执行该 COMMAND。请求 `rg --pre /workspace/inputs/<sha>/x.sh --
+/workspace/notes.txt` 走到本分支时，因 `readOnlyCommands["rg"]` 为 true，全部操作数筛查被跳过，决策返回
+Allowed+craft.generated.execute，容器内即执行了上传字节（`--pre 'sh /workspace/inputs/<sha>/x.sh'`
+形式连执行位都不需要）。当前唯一接线的适配器 ReviewNormalExec 不解析文件目标摘要（服务端无法访问容器文件系统），字节身份层也不生效，所以这是该执行面上的完整绕过。同类向量还有
+less/more 的 `+!cmd` 初始命令串（非 secure 模式下允许执行 shell 命令）。建议：豁免仅对纯读取工具成立——为豁免工具增加执行型选项守卫（rg 的
+`--pre`/`--pre=`、less/more 的 `+`/`-+`/`+!` 命令串出现时撤回豁免、照常筛查全部操作数），或直接将 rg/less/more 移出
+readOnlyCommands（纯读取场景可由 cat/grep 覆盖）。
+
+- 		if !readOnlyCommands[path.Base(req.Command[0])] {
++ 		base := path.Base(req.Command[0])
++ 		// 豁免仅对纯读取操作数成立：出现执行型选项（rg 的 --pre/--pre=、
++ 		// less/more 的 + 命令串）时撤回豁免，全部操作数照常遏制筛查。
++ 		if !readOnlyCommands[base] || readOnlyToolCarriesExecutingOption(base, req.Command) {
+  			for _, arg := range req.Command[1:] {
+  				for _, token := range shellTokens(arg) {
+  					if abs := p.canonical(req.WorkingDir, token); p.withinInputs(abs) {
+  						return p.deny("input_target", abs, "")
+  					}
+  				}
+  			}
   		}
 
 
-─── internal/application/service/craft_execution_policy.go:66-70 ───
-[security · high] 与已确认的 Environment 缺口同族但独立的通道：request.Stdin / StdinEnabled 完全不参与审查，而 stdin
-会被原样送进容器——craftDockerNormalProviderRequest 设 Stdin: string(request.Stdin)，StartAttachedExecOnce 透传
-staged.Request.Stdin。单条请求即可绕过 T03：`Command: ["python3", "-"]`（或裸 `["bash"]`/`["sh"]`/`["node"]`）+
-`StdinEnabled: true` + `Stdin` = 上传的 .py/.sh 字节。argv 分支中 "-" 或空参数列表经 canonical 后永远不在 <root>/inputs 内
-→ 放行并审计为 craft.generated.execute，随后解释器从 stdin 执行上传材料字节。与容器内 symlink（服务器无法求值）不同，这条通道服务端完全可查：准入输入的
-SHA256 就在 review() 加载的 manifest 里，stdin 字节就在被审查的请求上。建议至少：StdinEnabled 且 len(Stdin)>0 时计算
-sha256(request.Stdin) 并与准入输入摘要比对（可直接复用 policy.Review 的 TargetSHA256
-字节同一性分支语义——它表达的正是"将要执行的字节"），并拒绝解释器从 stdin 读程序的 argv 形态（"-"、"/dev/stdin"、StdinEnabled 下的裸解释器）。
+─── internal/application/service/craft_execution_policy.go:158-167 ───
+[security · high] shellCommandFlagIndex 只做精确 "-c" 匹配，存在两个相反方向的缺口：
 
-  	execRequest := craft.InputExecutionRequest{
-  		Command:    append([]string(nil), request.Command...),
-  		WorkingDir: request.WorkingDir,
-+ 	}
-+ 	// T03: stdin 是可被解释器执行的载荷通道，必须与 Command 一起审查。
-+ 	if request.StdinEnabled && len(request.Stdin) > 0 {
-+ 		sum := sha256.Sum256(request.Stdin)
-+ 		execRequest.TargetSHA256 = hex.EncodeToString(sum[:]) // "将要执行的字节"的摘要，命中准入输入即拒
+1) 绕过（安全）：组合短旗标如 `bash -lc "…"` / `sh -ic "…"` 中 "-lc" ≠ "-c"，不触发 Shell 归一化，落入
+InputExecutionPolicy.Review 的解释器 operand 词法筛查——而 Evidence contract 自己声明 "lexical screening of shell
+forms is bypassable by construction"，这正是 shell 表达式必须 fail-closed 的原因。具体逃逸：`bash -lc "eval $(echo
+<base64> | base64 -d)"` 的 token 中不含明文路径，词法层放行，实际执行了解码后的 `python3
+/workspace/inputs/analyze.py`（上传材料）；同一表达式换成 `bash -c` 则被正确拒绝。语义等价形式获得更弱的审查路径，破坏 T03 门禁的 fail-closed
+立场。
+
+2) 误杀（可用性）：扫描整个 rest 而非仅解释器选项前缀，`python3 gen.py -c config.yaml` 这类生成脚本自身参数携带 -c 的合法命令被误判为 shell
+表达式而拒绝（拒绝文案还会误导成员说是 shell 形式）。
+
+建议：仅在第一个脚本操作数（首个非 "-" 开头参数）之前的选项前缀内查找，且匹配任何携带 c 的短旗标组合（偏向 fail-closed；注意排除 "--" 长选项与单独 "-" stdin
+标记）。
+
+- // shellCommandFlagIndex returns the index of the -c flag in an interpreter
+- // operand list, or -1 when absent.
++ // shellCommandFlagIndex returns the index of a shell command flag (-c, or a
++ // combined short flag carrying c like -lc/-ic) inside the interpreter's
++ // option prefix — before the first script operand — or -1 when absent.
++ // A -c after the script operand belongs to the script, not the shell.
+  func shellCommandFlagIndex(rest []string) int {
+  	for i, arg := range rest {
+- 		if arg == "-c" {
++ 		if arg == "-" || !strings.HasPrefix(arg, "-") {
++ 			return -1 // reached the script operand (or stdin marker): stop
++ 		}
++ 		if !strings.HasPrefix(arg, "--") && strings.Contains(arg, "c") {
+  			return i
+  		}
   	}
-  	return g.review(ctx, request.TenantID, request.RunID, execRequest)
+  	return -1
+  }
+
+
+─── internal/application/service/craft_execution_policy.go:154-154 ───
+[bug · low] writeDenied(ctx, 0, "", …) 以 TenantID=0、ScopeID="" 落审计行：audit_logs
+的查询面（AuditLogQuery.List）始终按 tenantID 过滤，这些行写入后不可归属、不可检索，成为零租户孤儿数据；且 AuditLogService.Log 无 dedup（只有
+LogDenied 有），一旦该面被调用，每次 Start 都会恒定产生一行无效审计。该拒绝是恒定的（不依赖输入），审计行信息量也仅剩固定 reason。建议：audit
+未携带身份时只走日志（logger.Warnf），或在 binding/request 可提取身份前跳过落库；至少应避免写入 TenantID=0 的行。
+
+
+
+─── internal/application/service/craft_docker_normal_exec.go:57-60 ───
+[maintainability · low] 安全门禁完全依赖装配层主动调用 WithExecutionPolicy（与 craft_docker_restricted_exec.go
+同模式），nil 时静默保持旧行为。全库检索确认 NewCraftDelegateExecutionPolicy / NewCraftDockerNormalExecService /
+NewCraftDelegation（新三参签名）目前仅测试调用，生产装配点尚不存在——即 T03 门禁当前整体为 no-op 且无任何运行时告警。分阶段合入可以理解，但装配 PR
+一旦遗漏注入，无编译错误、无日志可发现。建议：在最终装配处将门禁作为构造参数（或注入时输出一条启动日志），使"安全特性未接线"可被检测；合入装配时需同时覆盖 normal 与 restricted
+两个服务及 WithAuditLog。
+
+
+
+─── internal/application/service/craft_execution_policy.go:190-195 ───
+[maintainability · low] agent_runs 查询失败时裸返回 gorm 错误（含 ErrRecordNotFound）：错误既不属于 craft 哨兵族（上层无法用
+errors.Is(craft.Err…) 归类为成员可见拒绝/系统错误），也丢失了是哪个 Run 解析失败的上下文；且当 audit sink 未注入（当前默认状态）时，该 fail-closed
+路径无任何日志痕迹。建议包装 %w 并附身份上下文，同时补一条 logger.Warnf，与 ReviewExecution 的决策日志对齐。
+
+  	if err := g.db.WithContext(ctx).Table("agent_runs").
+  		Select("owner_id", "session_id", "snapshot").
+  		Where("tenant_id = ? AND run_id = ?", tenantID, runID).Take(&row).Error; err != nil {
++ 		logger.Warnf(ctx, "[CraftExecutionPolicy] run identity not resolvable tenant=%d run=%s: %v", tenantID, runID, err)
+  		g.writeDenied(ctx, tenantID, runID, "run identity not resolvable")
+- 		return err
++ 		return fmt.Errorf("craft: run %d/%s identity not resolvable: %w", tenantID, runID, err)
+  	}
+
+
+─── internal/application/service/craft_execution_policy.go:124-128 ───
+[security · critical] 与已确认的 "-lc 组合旗标" 问题（#2）同类但独立：这里对"程序文本类证据"的归一化枚举不完整，导致单条命令即可执行上传材料，绕过 T03
+门禁的核心承诺（"词法筛查 by construction 可绕过，故 shell 表达式必须 fail-closed"）：
+
+1) 内联程序旗标不止 -c：`node -e "require('in'+'puts/x.js')"`、`php -r`、`perl -e`、`ruby -e`、`lua -e`、`awk -e`
+的程序文本落在 policy 的"首个非旗标 operand"位置，只做 shellTokens 词法筛查——运行期字符串拼接/base64/`require(process.argv[1])`
+都能让真实路径永不作为独立 token 出现，上传字节被原地执行（非文档化的 copy-then-execute 残余，无需两步）。
+
+2) run 子命令：`deno run /workspace/inputs/x.ts`、`bun run x.js`——"run" 被当作 script operand
+筛查，真正被执行的文件是"后续纯数据 operand"，在 InputExecutionPolicy.Review 中被显式跳过（`!strings.ContainsAny(arg, "
+\t\n")` → continue），连字面路径都不筛查，直接放行。
+
+3) `env -i python3 -c "…"`：InterpreterPrefix 不跳过 env 自身旗标（只跳 VAR=value），返回非解释器，连 -c 的 Shell 归一化都不触发。
+
+建议：适配器侧对任何"无法唯一确定 leading script operand"的解释器 argv 形式（-e/-r 等内联旗标、deno/bun run 子命令）一律按本处 -c 的处理方式送
+Shell fail-closed 拒绝；对 env 旗标形式要么补齐跳过逻辑要么同样 fail-closed。
+
+- 		// A wrapped shell reading its program from -c is a shell expression:
+- 		// send it as Shell/CommandText, which the policy denies without
+- 		// adapter-normalized evidence (lexical screening of shell forms is
+- 		// bypassable by construction).
++ 		// Fail-closed normalization: any interpreter form whose executed
++ 		// program is not unambiguously a single leading script operand
++ 		// (-c/-e/-r inline program flags, run-style subcommands) is sent
++ 		// as Shell/CommandText, which the policy denies without
++ 		// adapter-normalized evidence.
+  		if idx := shellCommandFlagIndex(rest); idx >= 0 && idx+1 < len(rest) {
++ 			execRequest.Shell = true
++ 			execRequest.CommandText = strings.Join(rest[idx+1:], " ")
++ 			execRequest.Command = nil
++ 			execRequest.Environment = nil
++ 		} else if hasInlineProgramFlag(rest) || hasRunSubcommand(rest) {
++ 			execRequest.Shell = true
++ 			execRequest.CommandText = strings.Join(rest, " ")
++ 			execRequest.Command = nil
++ 			execRequest.Environment = nil
++ 		}
+
+
+─── internal/application/service/craft_execution_policy.go:128-130 ───
+[bug · medium] shellCommandFlagIndex 扫描整个 operand 列表而不在首个非旗标 operand（脚本路径）处停止，把"脚本自己的 -c
+参数"误判为解释器旗标：`python3 /workspace/rv-x/train.py -c config.json` 会被归一化为
+Shell=true（CommandText="config.json"）并在 policy 的 shell_input 分支被 fail-closed 拒绝——这恰好拒绝了拒绝文案自己推荐的"执行
+Workspace 生成文件"替代方案，属误伤性可用性缺陷（与已确认 #2 的漏判方向相反，此处是误判方向）。建议只在脚本 operand 之前的旗标区间内查找 -c。
+
+- 		if idx := shellCommandFlagIndex(rest); idx >= 0 && idx+1 < len(rest) {
++ 		flags := rest
++ 		for i, arg := range rest {
++ 			if !strings.HasPrefix(arg, "-") {
++ 				flags = rest[:i] // 脚本 operand 之后的参数属于脚本自身，不属于解释器旗标
++ 				break
++ 			}
++ 		}
++ 		if idx := shellCommandFlagIndex(flags); idx >= 0 && idx+1 < len(flags) {
+  			execRequest.Shell = true
+  			execRequest.CommandText = strings.Join(rest[idx+1:], " ")
+
+
+─── internal/application/service/craft_docker_restricted_exec.go:93-100 ───
+[security · low] 门禁只挂在 Start 上，而同一服务的 ResumeBound → claimAndStart → StartOutputlessExec
+是另一条真实发送路径，完全不做策略审查。对于门禁挂载前（升级窗口或混布集群中未挂门禁的实例）已 Bind 未 Claim 的操作，恢复方会在无任何 T03
+审查的情况下把命令发送出去——与本变更自己声明的不变量"an unreviewable command must never be
+sent"矛盾（受限请求本就无可审查身份，ReviewOutputlessExec 对新命令一律拒绝，恢复路径却放行）。建议 ResumeBound
+也过同一门禁（按其语义应同样拒绝），或至少在注释中显式记录该恢复窗口例外及其理由。
+
+- 	// T03 (#122): uploaded code stays data. Screen the command before the
+- 	// durable send is prepared; a denial returns the member-visible refusal
+- 	// and nothing is created, bound or sent.
++ // ResumeBound starts only the exact persisted receipt left by a crash after
++ // bind. A consumed claim returns no permission and can never resend.
++ // T03: recovery sends an unreviewable command too — screen it like Start.
++ func (s *CraftDockerRestrictedExec) ResumeBound(ctx context.Context, grantID, activityID string) (CraftDockerOutputlessResult, error) {
+  	if s.policy != nil {
+- 		if err := s.policy.ReviewOutputlessExec(ctx, binding, request); err != nil {
++ 		if err := s.policy.ReviewOutputlessExec(ctx, CraftCallBinding{}, CraftDockerOutputlessRequest{}); err != nil {
+  			return CraftDockerOutputlessResult{}, err
+  		}
+  	}
++ 	op, durable, err := s.coordinator.ResumeBound(ctx, grantID, activityID)
 

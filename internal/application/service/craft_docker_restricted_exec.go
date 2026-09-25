@@ -52,9 +52,11 @@ type CraftDockerRestrictedExec struct {
 
 // WithExecutionPolicy attaches the T03 uploaded-material execution gate
 // (#122) to this command face. It must be set by the central assembly
-// before the service is exposed; the gate runs first in Start.
+// before the service is exposed; the gate runs first in Start. The attach
+// is logged so a deployment that forgot to wire the security gate is
+// observable in its logs.
 func (s *CraftDockerRestrictedExec) WithExecutionPolicy(policy CraftExecutionPolicyGate) *CraftDockerRestrictedExec {
-	if s != nil {
+	if s != nil && policy != nil {
 		s.policy = policy
 	}
 	return s
@@ -114,8 +116,17 @@ func (s *CraftDockerRestrictedExec) Start(ctx context.Context, grantID, activity
 }
 
 // ResumeBound starts only the exact persisted receipt left by a crash after
-// bind. A consumed claim returns no permission and can never resend.
+// bind. A consumed claim returns no permission and can never resend. The
+// T03 gate screens this send path too: an operation bound before the gate
+// existed (upgrade window or a mixed fleet) must not slip an unreviewed
+// command through recovery — an unreviewable command is never sent, from
+// either path.
 func (s *CraftDockerRestrictedExec) ResumeBound(ctx context.Context, grantID, activityID string) (CraftDockerOutputlessResult, error) {
+	if s.policy != nil {
+		if err := s.policy.ReviewOutputlessExec(ctx, CraftCallBinding{}, CraftDockerOutputlessRequest{}); err != nil {
+			return CraftDockerOutputlessResult{}, err
+		}
+	}
 	op, durable, err := s.coordinator.ResumeBound(ctx, grantID, activityID)
 	if err != nil {
 		return CraftDockerOutputlessResult{}, err

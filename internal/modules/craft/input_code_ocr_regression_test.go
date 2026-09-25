@@ -1,6 +1,7 @@
 package craft
 
 import (
+	"path"
 	"strings"
 	"testing"
 )
@@ -169,5 +170,113 @@ func TestInputCodeClassifySkipsBOMBeforeShebang(t *testing.T) {
 	label := ClassifyInputCode("boot.py", append([]byte("\xef\xbb\xbf"), []byte("#!/usr/bin/env python3\nprint(1)\n")...))
 	if !label.IsCode || label.Reason != "shebang" {
 		t.Fatalf("BOM-prefixed shebang must still be classified as code, got %+v", label)
+	}
+}
+
+// Round 4: execution-capable tools must not sit in the read-only whitelist
+// (rg --pre runs a subprocess per file; less/more +!cmd run commands), and
+// every program-text or indirection form must fail closed.
+func TestInputCodePolicyScreensExecCapableReadOnlyCandidates(t *testing.T) {
+	policy := newT03Policy(t)
+	script := t03ScriptPath()
+	cases := [][]string{
+		{"rg", "--pre", script, "--", "/workspace/notes.txt"},
+		{"rg", script},
+		{"less", script},
+		{"more", script},
+	}
+	for _, command := range cases {
+		decision := policy.Review(InputExecutionRequest{Command: command, WorkingDir: "/workspace"})
+		if decision.Allowed {
+			t.Fatalf("execution-capable reader/wrapper form must be screened: %v -> %+v", command, decision)
+		}
+	}
+	// The whitelist itself stays usable for pure reads.
+	if read := policy.Review(InputExecutionRequest{Command: []string{"cat", script}, WorkingDir: "/workspace"}); !read.Allowed {
+		t.Fatalf("cat must remain a whitelisted read: %+v", read)
+	}
+}
+
+func TestInputCodePolicyDeniesInlineProgramAndRunSubcommandForms(t *testing.T) {
+	policy := newT03Policy(t)
+	script := t03ScriptPath()
+	cases := [][]string{
+		{"python3", "-c", "exec(open('" + script + "').read())"},
+		{"python3", "-cexec(open('" + script + "').read())"},
+		{"node", "-e", "require('" + script + "')"},
+		{"php", "-r", "include '" + script + "';"},
+		{"perl", "-e", "do '" + script + "'"},
+		{"ruby", "-e", "load '" + script + "'"},
+		{"awk", "-e", "'" + script + "'"},
+		{"bash", "-lc", "python3 " + script},
+		{"sh", "-ic", "python3 " + script},
+		{"deno", "run", script},
+		{"bun", "run", script},
+		{"env", "-i", "python3", script},
+		{"python3", "-m", "analyze"},
+	}
+	for _, command := range cases {
+		decision := policy.Review(InputExecutionRequest{Command: command, WorkingDir: "/workspace"})
+		if decision.Allowed {
+			t.Fatalf("inline-program / run-subcommand / env-flag form must fail closed: %v -> %+v", command, decision)
+		}
+	}
+}
+
+func TestInputCodePolicyScreensWrapperPrefixAssignmentsAndPathLists(t *testing.T) {
+	policy := newT03Policy(t)
+	script := t03ScriptPath()
+
+	// argv-form startup-hook assignment rides in the wrapper prefix.
+	argvHook := policy.Review(InputExecutionRequest{
+		Command: []string{"env", "BASH_ENV=" + script, "bash", "/workspace/gen.sh"}, WorkingDir: "/workspace",
+	})
+	if argvHook.Allowed {
+		t.Fatalf("wrapper-prefix assignment pointing at uploaded material must be denied: %+v", argvHook)
+	}
+
+	// Path-list environment entries are screened per colon segment, in both
+	// the argv prefix and the environment map.
+	argvPathList := policy.Review(InputExecutionRequest{
+		Command: []string{"env", "PYTHONPATH=/usr/lib/python3:" + path.Dir(script), "python3", "/workspace/gen.py"},
+		WorkingDir: "/workspace",
+	})
+	if argvPathList.Allowed {
+		t.Fatalf("argv path-list containing the inputs tree must be denied: %+v", argvPathList)
+	}
+	envPathList := policy.Review(InputExecutionRequest{
+		Command:    []string{"python3", "/workspace/gen.py"},
+		WorkingDir: "/workspace",
+		Environment: map[string]string{"PYTHONPATH": "/usr/lib/python3:" + path.Dir(script)},
+	})
+	if envPathList.Allowed {
+		t.Fatalf("environment path-list containing the inputs tree must be denied: %+v", envPathList)
+	}
+}
+
+func TestInputCodePolicyAllowsScriptOwnFlagsAfterScriptOperand(t *testing.T) {
+	policy := newT03Policy(t)
+	decision := policy.Review(InputExecutionRequest{
+		Command: []string{"python3", "/workspace/rv-x/train.py", "-c", "config.yaml"}, WorkingDir: "/workspace",
+	})
+	if !decision.Allowed {
+		t.Fatalf("the script's own -c argument is data, not an interpreter shell flag: %+v", decision)
+	}
+}
+
+func TestInputCodeRefusalNeverRendersDegenerateTarget(t *testing.T) {
+	policy := newT03Policy(t)
+	decision := policy.Review(InputExecutionRequest{
+		Shell: true, CommandText: "echo hi", WorkingDir: "/workspace",
+	})
+	if decision.Allowed {
+		t.Fatalf("evidence-free shell must deny")
+	}
+	refusal := decision.Refusal()
+	if strings.Contains(refusal, "(matched )") {
+		t.Fatalf("refusal must not render a degenerate empty target: %q", refusal)
+	}
+	if !strings.Contains(refusal, "unreviewable command form") {
+		t.Fatalf("refusal must carry the stable fallback identity: %q", refusal)
 	}
 }
