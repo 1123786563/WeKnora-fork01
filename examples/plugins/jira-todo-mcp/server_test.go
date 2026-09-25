@@ -224,6 +224,14 @@ func TestSelfHostedManifestMatchesContract(t *testing.T) {
 	require.NoError(t, json.Unmarshal(reference, &referenceManifest))
 	require.NoError(t, plugins.ValidateManifest(&referenceManifest))
 	require.Equal(t, manifest.Tools[0].InputSchemaDigest, referenceManifest.Tools[0].InputSchemaDigest)
+	// OCR R1 F03：双 digest 比对——副本此前缺 content_digest 字段，且测试
+	// 只比 InputSchemaDigest，name/description 等语义字段漂移不被捕获。副
+	// 本声明的 content_digest 必须等于对副本自身（排除该字段后）的计算结
+	// 果；动态权威产物同样自洽（Manifest() 写入的值 = 重算值）。
+	require.Equal(t, plugins.ManifestContentDigest(&referenceManifest), referenceManifest.ContentDigest,
+		"the reference copy's declared content_digest must match the digest computed over the copy itself")
+	require.Equal(t, plugins.ManifestContentDigest(&manifest), manifest.ContentDigest,
+		"the dynamic /manifest.json output must carry a self-consistent content_digest")
 }
 
 // --- T05：示例服务自测（fake Jira 全场景） ---

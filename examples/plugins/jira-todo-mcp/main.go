@@ -218,9 +218,16 @@ func parseHostList(raw string) []string {
 // 形态成功，裸 IPv6 字面量（含多冒号无括号）报错——不受影响。
 func validateAllowedRedirectHosts(hosts []string) error {
 	for _, entry := range hosts {
-		_, port, err := net.SplitHostPort(entry)
+		host, port, err := net.SplitHostPort(entry)
 		if err != nil {
 			continue // 裸 host / 裸 IPv6 条目，无端口语义
+		}
+		// OCR R1 F02：":8080" 形态（空 host 带端口）SplitHostPort 成功返回
+		// host==""，该条目在 handleRegister 的 entry==host||entry==bareHost
+		// 匹配中对任何真实 redirect_uri 永不命中——运营者名单写错静默失
+		// 效，与下方钉默认端口的条目同类，fail-closed 拒绝启动。
+		if host == "" {
+			return fmt.Errorf("AllowedRedirectHosts entry %q has an empty host (\":port\" form never matches a real redirect_uri host); use host:port or the bare host instead", entry)
 		}
 		if port == "80" || port == "443" {
 			return fmt.Errorf("AllowedRedirectHosts entry %q pins a default port that URIs normally elide (url.Parse does not materialize it); use the bare host instead", entry)
@@ -263,7 +270,16 @@ func NewHandler(opts Options) (http.Handler, error) {
 	})
 
 	streamable := sdkserver.NewStreamableHTTPServer(mcpServer,
-		sdkserver.WithStateLess(false),
+		// OCR R1 F01：mcp-go v0.52.0 里 WithStateLess(false) 实为空操作
+		//（选项体只在 stateLess==true 时生效），服务器维持默认
+		// StatelessGeneratingSessionIdManager——每个 initialize 生成新会话
+		// 并注册进 activeSessions+sessions，默认 sessionIdleTTL=0 不启动
+		// 清扫，唯一释放途径是客户端 DELETE。而 gateCallToolAuth 对
+		// initialize 未认证放行（目录公开设计）→ 未认证 initialize 无界
+		// 堆积服务端会话内存。WithStateLess(true) + WithHTTPContextFunc 的
+		// 组合对 WeKnora 客户端全路径可用（plugintest/server.go:188-193
+		// 生产验证同款组合；无会话即无堆积）。
+		sdkserver.WithStateLess(true),
 		// 从每个入站 HTTP 请求提取 Bearer 并解析为已授权会话，注入工具
 		// handler 的 context（SDK 工具 handler 本身不透传 HTTP 头）。
 		sdkserver.WithHTTPContextFunc(oauthSrv.contextFunc),

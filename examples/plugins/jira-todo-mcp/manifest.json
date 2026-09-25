@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "name": "Jira 本周待办（只读示例）",
   "description": "查询授权成员本周未解决的 Jira 待办事项；只读、固定 JQL、不接受模型传参。",
+  "content_digest": "f8276f8c2c2dd235e5b536aef68d46e41a48b929d546b810e600eb82bca70ac1",
   "transport": {
     "type": "http-streamable",
     "endpoint": "https://REPLACE-WITH-YOUR-DEPLOYMENT-HOST/mcp"

@@ -378,7 +378,7 @@ func TestJiraFailureModesDoNotFabricate(t *testing.T) {
 
 	t.Run("jira-403", func(t *testing.T) {
 		st, _ := newAuthorized(t, func(jira *plugintest.FakeJira, email string) {
-			jira.DenySearch(email, http.StatusForbidden)
+			jira.DenySearch(t, email, http.StatusForbidden)
 		})
 		result := st.askJiraTool(t, "user-a", map[string]any{})
 		require.False(t, result.Success, "a Jira 403 must surface as a failure, never an empty success")
@@ -391,7 +391,7 @@ func TestJiraFailureModesDoNotFabricate(t *testing.T) {
 		st, _ := newAuthorized(t, nil,
 			plugintest.WithJiraToolTimeout(500*time.Millisecond),
 		)
-		st.jira.SetSearchDelay(3 * time.Second)
+		st.jira.SetSearchDelay(t, 3*time.Second)
 		start := time.Now()
 		result := st.askJiraTool(t, "user-a", map[string]any{})
 		require.False(t, result.Success, "a Jira timeout must surface as a failure, never an empty success")
@@ -402,12 +402,19 @@ func TestJiraFailureModesDoNotFabricate(t *testing.T) {
 	})
 
 	t.Run("jira-token-invalid", func(t *testing.T) {
-		// 授权完成后 Jira 侧凭据失效（如 API token 被吊销）→ 401 如实报错。
+		// 授权完成后 Jira 侧凭据失效（如 API token 被吊销）→ 401 经真实链
+		// 路（协议级 error → 断连重试一次 → oauthAwareConnectError 判定
+		// isAuthorizationRequired）被替换为授权引导文案——替身忠实复刻示例
+		// 错误面后（OCR R1 F14），本场景验证的正是该替换分支而非替身特有
+		// 的 isError 透传路径。
 		st, email := newAuthorized(t, nil)
-		st.jira.InvalidateAccount(email)
+		st.jira.InvalidateAccount(t, email)
 		result := st.askJiraTool(t, "user-a", map[string]any{})
 		require.False(t, result.Success, "an invalidated Jira credential must surface as a failure")
-		require.Contains(t, result.Error, "401")
+		// isAuthorizationRequired 判定命中后的固定引导文案
+		//（oauthAwareConnectError mcp_oauth.go:228-236）。
+		require.Contains(t, result.Error, "requires OAuth authorization",
+			"the real client path replaces a 401 with the re-authorization guidance — the stand-in now mirrors the example service's protocol-level error surface (OCR R1 F14)")
 		require.NotContains(t, result.Error, "A-101")
 	})
 }

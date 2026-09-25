@@ -372,7 +372,12 @@ func (s *oauthServer) handleRegister(w http.ResponseWriter, r *http.Request) {
 	// 等错误下会保留已成功解码的字段（截断形态则不发生部分 unmarshal），
 	// 「err!=nil 且 redirect_uris==nil 才拒」会让部分解码的注册体带着空
 	// client_name 入库——与 RFC 7591 严格解析不符。
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&registration); err != nil {
+	// decoder 上限复用 maxRPCBodyBytes（OCR R1 F04）：与 /mcp 面同源的请求
+	// 上限常量，两处裸字面量会各自漂移。More() 拒绝尾随垃圾值（Decode 只
+	// 消费首个 JSON 值，`{...}+尾随内容` 仍会解析成功——与错误文案的
+	// fail-closed 表述不一致；gateCallToolAuth 对同形态已 400 拒绝）。
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxRPCBodyBytes))
+	if err := decoder.Decode(&registration); err != nil || decoder.More() {
 		writeJSON(w, http.StatusBadRequest, map[string]any{
 			"error": "invalid_client_metadata", "error_description": "request body must be a valid JSON registration document with redirect_uris",
 		})

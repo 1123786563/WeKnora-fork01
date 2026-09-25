@@ -216,7 +216,13 @@ func (s *Server) addToolLocked(t Tool) {
 		}
 		result, err := call(member)
 		if err != nil {
-			return sdkmcp.NewToolResultError(err.Error()), nil
+			// OCR R1 F14：返回协议级 error（而非 isError=true 的成功结果），
+			// 与它对齐的示例服务错误面一致（examples jira-todo-mcp 的
+			// handleSearchMyWeek 对 Jira 故障返回 (nil, err)）。isError 形态
+			// 在 WeKnora 客户端不触发断连重试、不经 oauthAwareConnectError
+			// 包装——401 文案替换等真实链路行为在替身上失真，集成测试因此
+			// 验证到替身特有路径而非示例契约。
+			return nil, err
 		}
 		return sdkmcp.NewToolResultText(result), nil
 	})

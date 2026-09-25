@@ -96,7 +96,11 @@ func (j *FakeJira) AddAccount(t testing.TB, email, apiToken string, issues ...Ji
 }
 
 // DenySearch 注入该账本 /search/jql 的拒绝状态码（403 无权限 / 401 失效）。
-func (j *FakeJira) DenySearch(email string, statusCode int) {
+// OCR R1 F13：与 AddAccount 同款接受 testing.TB——email 未命中账本即装配
+// 错误（email/token 随机生成，调用方拼写不一致时故障注入会静默失效，下游
+// 断言失败难定位），直接 Fatal。
+func (j *FakeJira) DenySearch(t testing.TB, email string, statusCode int) {
+	t.Helper()
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	for _, account := range j.accounts {
@@ -105,11 +109,14 @@ func (j *FakeJira) DenySearch(email string, statusCode int) {
 			return
 		}
 	}
+	t.Fatalf("fakejira: DenySearch: no account registered for %s — the injection would silently no-op", email)
 }
 
 // InvalidateAccount 使该账本凭据失效：此后 /myself 与 /search 均对其 401
-// （授权完成后 token 失效场景）。
-func (j *FakeJira) InvalidateAccount(email string) {
+// （授权完成后 token 失效场景）。OCR R1 F13：同 DenySearch，未命中即装配
+// 错误 Fatal。
+func (j *FakeJira) InvalidateAccount(t testing.TB, email string) {
+	t.Helper()
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	for key, account := range j.accounts {
@@ -118,10 +125,14 @@ func (j *FakeJira) InvalidateAccount(email string) {
 			return
 		}
 	}
+	t.Fatalf("fakejira: InvalidateAccount: no account registered for %s — the injection would silently no-op", email)
 }
 
 // SetSearchDelay 注入 /search/jql 响应延迟（配合替身可配短超时制造超时态）。
-func (j *FakeJira) SetSearchDelay(d time.Duration) {
+// OCR R1 F13：接受 testing.TB 与同组注入方法保持一致（全局设置，无未命中
+// 语义）。
+func (j *FakeJira) SetSearchDelay(t testing.TB, d time.Duration) {
+	t.Helper()
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	j.delay = d
