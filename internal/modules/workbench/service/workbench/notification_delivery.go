@@ -219,11 +219,22 @@ func validNotificationEndpoint(endpoint string) bool {
 // DisallowedPushEndpointHost rejects push endpoints that target loopback,
 // private, link-local, or reserved hosts — the server-side counterpart of the
 // mobile disallowedDeploymentHost rule. The config-assembly layer (story 67
-// controller ruling) runs it on every APNs/FCM endpoint so a misdirected
-// vendor lane fails closed at startup instead of sending tokens to an
-// internal address. The default vendor endpoints are public DNS names and
-// pass. The provider layer stays scheme-only on purpose: validation sits at
-// the assembly boundary so providers remain httptest-testable.
+// controller ruling + final-fix round) runs it on every push URL — the
+// official gateway/expo endpoint, the APNs/FCM lanes, and the FCM
+// credential-file token_uri fallback — so a misdirected vendor lane fails
+// closed at startup instead of sending tokens to an internal address. The
+// default vendor endpoints are public DNS names and pass. The provider layer
+// stays scheme-only on purpose: validation sits at the assembly boundary so
+// providers remain httptest-testable.
+//
+// Known boundary (documented, accepted): the check inspects literal hosts
+// only — IP literals and localhost names. It does NOT resolve DNS, so a
+// public-looking hostname that resolves to a private address passes this
+// gate. This mirrors the mobile disallowedDeploymentHost precedent and is
+// considered acceptable for an admin-controlled config plane whose vendor
+// endpoints are fixed public DNS names (exp.host, api.push.apple.com,
+// fcm.googleapis.com, oauth2.googleapis.com); revisit only if endpoints
+// become operator-supplied hostnames.
 func DisallowedPushEndpointHost(endpoint string) error {
 	u, err := url.Parse(strings.TrimSpace(endpoint))
 	if err != nil {

@@ -143,6 +143,21 @@ asynq/Lite 队列。
     `enterprise:<slug>`）、`MOBILE_ENTERPRISE_PUSH_PROVIDER`（apns|fcm）、
     `MOBILE_APNS_{ENDPOINT,TOPIC,KEY_PATH,KEY_ID,TEAM_ID}`、
     `MOBILE_FCM_{ENDPOINT,PROJECT_ID,CREDENTIALS_PATH}`（凭据只从密钥文件路径读取）。
+  - push endpoint host 防线（T37 #67 主控裁决 + 最终修复批次）：装配层
+    （`newMobileNotificationProvider`）对**所有** push URL 运行
+    `DisallowedPushEndpointHost`——official gateway/expo endpoint、APNs/FCM
+    endpoint、FCM 凭据文件 `token_uri` 回落——命中 localhost/环回/私有/保留主机
+    一律 fail closed（对应通道落 Disabled，错误码
+    `mobile_notification_provider_disabled`；空 URL 仍是「未配置」语义
+    `mobile_notification_provider_unconfigured`）。已知边界：只校验字面
+    host（IP/localhost 名），不解析 DNS——公网域名解析到私网可穿过，与移动端
+    `disallowedDeploymentHost` 先例对齐，管理面配置的可接受取舍
+    （`notification_delivery.go` `DisallowedPushEndpointHost` 注释）。
+  - 混合部署运维语义（T37 #67，commit 48d109b98 有意取舍）：official=disabled
+    且企业通道活跃时，每个到期的 official intent 仍会 claim→config 类失败→
+    暂停共享 `mobile` 健康键，`alert_count` 随退避尝试递增（指数退避兜底，
+    非告警风暴）；企业 lane 不被饿死（聚合 `Configured()` 为 OR 语义），恢复
+    official 配置后共享键在下一次投递成功时自动 recover。
 
 ## 8. 横向包内遗留文件（Pass B 拆分，本任务未动）
 

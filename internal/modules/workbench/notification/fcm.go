@@ -92,6 +92,17 @@ func NewFcmServiceAccountTokenSource(credentialsPath, tokenURL string, client *h
 	return &FcmServiceAccountTokenSource{credentials: credentials, key: parsed, tokenURL: tokenURL, client: client}, nil
 }
 
+// TokenURL exposes the resolved exchange URL (explicit override, credential
+// file token_uri, or the Google OAuth2 default) so the config-assembly layer
+// can run the same push-endpoint host gate on it as on the FCM endpoint
+// (story 67 final-fix round: the credential-file token_uri fallback is the
+// production path — the container passes an empty override — so an admin
+// credentials file pointing the signed assertion at a loopback/private/
+// reserved host must fail closed at assembly, not at first send).
+func (s *FcmServiceAccountTokenSource) TokenURL() string {
+	return s.tokenURL
+}
+
 func (s *FcmServiceAccountTokenSource) Token(ctx context.Context) (string, error) {
 	if s == nil || s.key == nil {
 		return "", errors.New("fcm service account source is not configured")

@@ -1123,9 +1123,20 @@ func newMobileNotificationProvider(cfg *config.Config, devices *repository.Mobil
 			return secutils.DecryptAESGCM(registration.TokenCiphertext, key)
 		}
 	}
+	// 最终修复批次（审查发现 1）：official 通道与 APNs/FCM 分支共用同一 host
+	// 防线。空 endpoint 不受影响——gateway 空值保留既有「未配置」fail-closed
+	// 语义（mobile_notification_provider_unconfigured），expo 空值回落公网默认
+	// endpoint；仅「配置了 URL 但指向 loopback/私有/保留主机」时 fail closed
+	// 为 Disabled。校验保持在装配层，provider 层维持 scheme-only，不破坏
+	// httptest e2e（mobile_push_isolation_test.go 直连 provider 构造器）。
+	officialBlocked := endpoint != "" && workbenchservice.DisallowedPushEndpointHost(endpoint) != nil
 	var official workbenchservice.NotificationProvider
 	switch {
 	case providerKind == "disabled" || providerKind == "none":
+		official = workbenchservice.NewDisabledNotificationProvider()
+	case officialBlocked:
+		// 与 APNs/FCM 装配分支同裁决：禁用主机 fail closed 为 Disabled
+		// （mobile_notification_provider_disabled），而非静默投递到内网地址。
 		official = workbenchservice.NewDisabledNotificationProvider()
 	case strings.EqualFold(providerKind, "expo"):
 		official = workbenchservice.NewPushNotificationProviderWithOptions(pushnotification.NewExpoProvider(endpoint, accessToken), resolveFor(repository.MobileAppIDOfficial), workbenchservice.PushPayloadPolicy{Blind: blind})
@@ -1163,9 +1174,11 @@ func newMobileNotificationProvider(cfg *config.Config, devices *repository.Mobil
 			endpoint = "https://fcm.googleapis.com"
 		}
 		// tokenURL 由凭据文件提供（装配不注入自定义 tokenURL）；endpoint 的
-		// host 校验与 apns 分支同裁决。
+		// host 校验与 apns 分支同裁决。最终修复批次（审查发现 3）：凭据文件
+		// token_uri 回落是生产唯一路径，与 gateway host 校验一并补齐——解析后
+		// 的交换 URL 指向 loopback/私有/保留主机时同样 fail closed 不装配。
 		if workbenchservice.DisallowedPushEndpointHost(endpoint) == nil {
-			if source, err := pushnotification.NewFcmServiceAccountTokenSource(os.Getenv("MOBILE_FCM_CREDENTIALS_PATH"), "", nil); err == nil {
+			if source, err := pushnotification.NewFcmServiceAccountTokenSource(os.Getenv("MOBILE_FCM_CREDENTIALS_PATH"), "", nil); err == nil && workbenchservice.DisallowedPushEndpointHost(source.TokenURL()) == nil {
 				enterprise = workbenchservice.NewPushNotificationProviderWithOptions(
 					pushnotification.NewFcmProvider(endpoint, os.Getenv("MOBILE_FCM_PROJECT_ID"), source),
 					resolveFor(enterpriseApp), workbenchservice.PushPayloadPolicy{Blind: blind})
