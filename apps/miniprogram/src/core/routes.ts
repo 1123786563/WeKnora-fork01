@@ -13,6 +13,7 @@ export const ROUTES = {
   kb:{path:'subpackages/knowledge/detail/index',title:'知识库详情',tab:false},
   upload:{path:'subpackages/knowledge/upload/index',title:'添加知识',tab:false},
   document:{path:'subpackages/knowledge/document/index',title:'文档与引用',tab:false},
+  career:{path:'career/discovery',title:'求职工作台',tab:false},
   me:{path:'pages/me/index',title:'我的',tab:true},
   usage:{path:'subpackages/account/usage/index',title:'用量与套餐',tab:false},
   checkout:{path:'subpackages/account/checkout/index',title:'确认订单',tab:false},

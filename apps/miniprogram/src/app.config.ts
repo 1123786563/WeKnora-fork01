@@ -43,6 +43,12 @@ export default defineAppConfig({
       ]
     },
     {
+      "root": "career",
+      "pages": [
+        "discovery"
+      ]
+    },
+    {
       "root": "subpackages/account",
       "pages": [
         "usage/index",
