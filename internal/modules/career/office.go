@@ -258,6 +258,7 @@ type Office struct {
 	failApplicationReadyUpdate   func() error
 	failSearchTerminalCommit     func() error
 	afterProgressEventPersist    func() error
+	afterSubmissionPersist       func() error
 	// Export rendering seams (T16): storage holds the rendered bytes under
 	// local:// object keys, the signing key mints short-lived download grants,
 	// and exportNow only makes expiry testable. failExportVerify injects a
@@ -272,7 +273,7 @@ func NewOffice(db *gorm.DB) (*Office, error) {
 	if db == nil {
 		return nil, errors.New("career database required")
 	}
-	models := []any{&profile{}, &space{}, &fact{}, &factVersion{}, &proposal{}, &change{}, &receipt{}, &sourceRevision{}, &opportunity{}, &opportunityObservation{}, &opportunitySnapshot{}, &opportunityReceipt{}, &evaluationRecord{}, &applicationRecord{}, &searchRecord{}, &searchResultRecord{}, &materialRecord{}, &materialVersionRecord{}, &materialReceiptRecord{}, &materialExportRecord{}, &progressEventRecord{}, &searchRuleRecord{}, &searchRuleReceiptRecord{}, &searchRuleRunRecord{}, &searchDiscoveryTodoRecord{}}
+	models := []any{&profile{}, &space{}, &fact{}, &factVersion{}, &proposal{}, &change{}, &receipt{}, &sourceRevision{}, &opportunity{}, &opportunityObservation{}, &opportunitySnapshot{}, &opportunityReceipt{}, &evaluationRecord{}, &applicationRecord{}, &searchRecord{}, &searchResultRecord{}, &materialRecord{}, &materialVersionRecord{}, &materialReceiptRecord{}, &materialExportRecord{}, &progressEventRecord{}, &searchRuleRecord{}, &searchRuleReceiptRecord{}, &searchRuleRunRecord{}, &searchDiscoveryTodoRecord{}, &submissionRecord{}}
 	if db.Dialector.Name() == "sqlite" {
 		present := 0
 		for _, model := range models {
@@ -341,6 +342,7 @@ func validateSQLiteCareerSchema(db *gorm.DB) error {
 		"career_search_rule_receipts":     {"tenant_id", "user_id", "request_id", "fingerprint", "body", "created_at"},
 		"career_search_rule_runs":         {"id", "tenant_id", "user_id", "rule_id", "period", "request_id", "status", "body", "created_at"},
 		"career_search_discovery_todos":   {"id", "tenant_id", "user_id", "rule_id", "run_id", "search_id", "source_id", "link", "status", "created_at"},
+		"career_submissions":              {"id", "tenant_id", "user_id", "application_id", "request_id", "fingerprint", "channel", "occurred_at", "version_confirmed", "material_id", "export_id", "version", "content_digest", "note", "confirmer", "receipt_body", "created_at", "updated_at"},
 	}
 	for table, columns := range requiredColumns {
 		for _, column := range columns {
@@ -368,6 +370,7 @@ func validateSQLiteCareerSchema(db *gorm.DB) error {
 		"career_search_rule_receipts":   {"tenant_id", "user_id", "request_id"},
 		"career_search_rule_runs":       {"tenant_id", "user_id", "rule_id", "period"},
 		"career_search_discovery_todos": {"tenant_id", "user_id", "link"},
+		"career_submissions":            {"tenant_id", "user_id", "request_id"},
 	} {
 		if err := requireSQLiteUniqueConstraint(db, table, columns); err != nil {
 			return fmt.Errorf("incomplete Career SQLite schema: %w; apply database migrations before startup", err)
@@ -381,6 +384,10 @@ func validateSQLiteCareerSchema(db *gorm.DB) error {
 	// Progress events are append-only: one application holds each sequence
 	// number exactly once and each request ID writes exactly one event.
 	if err := requireSQLiteUniqueConstraint(db, "career_progress_events", []string{"tenant_id", "user_id", "application_id", "seq"}); err != nil {
+		return fmt.Errorf("incomplete Career SQLite schema: %w; apply database migrations before startup", err)
+	}
+	// One application holds at most one user-confirmed submission record.
+	if err := requireSQLiteUniqueConstraint(db, "career_submissions", []string{"tenant_id", "user_id", "application_id"}); err != nil {
 		return fmt.Errorf("incomplete Career SQLite schema: %w; apply database migrations before startup", err)
 	}
 	return nil

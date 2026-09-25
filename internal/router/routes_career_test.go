@@ -145,3 +145,19 @@ func TestCareerProgressRoutesAreRegistered(t *testing.T) {
 	require.True(t, paths["GET /api/v1/career/applications/:applicationId/progress"])
 	require.True(t, paths["GET /api/v1/career/progress/receipt"])
 }
+
+func TestCareerSubmissionRoutesAreRegistered(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	handler, err := career.NewHandler(db, nil, nil, nil, nil, nil)
+	require.NoError(t, err)
+	engine := gin.New()
+	RegisterCareerRoutes(engine.Group("/api/v1"), handler)
+	paths := make(map[string]bool)
+	for _, route := range engine.Routes() {
+		paths[route.Method+" "+route.Path] = true
+	}
+	require.True(t, paths["POST /api/v1/career/applications/:applicationId/submissions"])
+	require.True(t, paths["GET /api/v1/career/applications/:applicationId/submissions"])
+	require.True(t, paths["GET /api/v1/career/submissions/receipt"])
+}

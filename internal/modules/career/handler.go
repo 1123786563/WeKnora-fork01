@@ -126,6 +126,12 @@ func writeError(c *gin.Context, e error) {
 	case errors.Is(e, ErrProgressEventNotFound):
 		status = 404
 		code = "not_found"
+	case errors.Is(e, ErrSubmissionNotFound):
+		status = 404
+		code = "not_found"
+	case errors.Is(e, ErrSubmissionAlreadyConfirmed):
+		status = 409
+		code = "submission_already_confirmed"
 	case errors.Is(e, ErrExportNotFound):
 		status = 404
 		code = "not_found"
@@ -1072,6 +1078,77 @@ func (h *Handler) ApplicationProgress(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, view)
+}
+
+const maxSubmissionBodyBytes = 16 * 1024
+
+// RecordSubmission persists the user-confirmed submission fact of the
+// application named in the path: the channel they picked, the time they
+// claim, and either a submittable material export or the explicit unknown
+// marker. It never performs or infers any external action.
+func (h *Handler) RecordSubmission(c *gin.Context) {
+	ctx, ok := h.scope(c, false)
+	if !ok {
+		return
+	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxSubmissionBodyBytes)
+	decoder := json.NewDecoder(c.Request.Body)
+	decoder.DisallowUnknownFields()
+	var input RecordSubmissionInput
+	if err := decoder.Decode(&input); err != nil {
+		var maxBytesError *http.MaxBytesError
+		if errors.As(err, &maxBytesError) {
+			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": gin.H{"code": "request_too_large", "message": "submission request is too large"}})
+			return
+		}
+		writeError(c, ErrInvalidRequest)
+		return
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		writeError(c, ErrInvalidRequest)
+		return
+	}
+	applicationID, ok := bindProgressApplication(c, input.ApplicationID)
+	if !ok {
+		return
+	}
+	input.ApplicationID = applicationID
+	receipt, err := h.office.RecordSubmission(ctx, input)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, receipt)
+}
+
+// ApplicationSubmissions serves the submissions of one application under the
+// authenticated scope.
+func (h *Handler) ApplicationSubmissions(c *gin.Context) {
+	ctx, ok := h.scope(c, false)
+	if !ok {
+		return
+	}
+	submissions, err := h.office.ApplicationSubmissions(ctx, c.Param("applicationId"))
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"submissions": submissions})
+}
+
+// SubmissionReceiptHandler replays a stored submission receipt by request ID.
+func (h *Handler) SubmissionReceiptHandler(c *gin.Context) {
+	ctx, ok := h.scope(c, false)
+	if !ok {
+		return
+	}
+	receipt, err := h.office.FindSubmissionReceipt(ctx, c.Query("requestId"))
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, receipt)
 }
 
 func (h *Handler) Sources(c *gin.Context) {

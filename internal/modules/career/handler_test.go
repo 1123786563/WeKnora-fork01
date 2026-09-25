@@ -640,3 +640,96 @@ func TestCareerRuleHTTPContract(t *testing.T) {
 	h.SetRule(intruderCtx)
 	require.Equal(t, 403, intruderRec.Code)
 }
+
+func TestCareerSubmissionHTTPContract(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	office, err := NewOffice(db)
+	require.NoError(t, err)
+	store := newMapExportStorage()
+	office.SetExportStorage(store)
+	office.SetExportSigningKey([]byte("0123456789abcdef0123456789abcdef"))
+	scope := Scope{UserID: "submission-owner", TenantID: 99}
+	base := context.WithValue(context.Background(), types.UserIDContextKey, scope.UserID)
+	base = context.WithValue(base, types.TenantIDContextKey, scope.TenantID)
+	ctx := WithScope(base, scope)
+	require.NoError(t, office.ClaimSpace(ctx))
+
+	fx := seedSubmissionFixture(t, office, ctx, "sub-http")
+	h := &Handler{office: office, members: &memberListStub{members: []*types.TenantMember{{UserID: scope.UserID, TenantID: scope.TenantID, Role: types.TenantRoleOwner}}}}
+	call := func(method, target, body string, params gin.Params) *httptest.ResponseRecorder {
+		gin.SetMode(gin.TestMode)
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		var reader io.Reader
+		if body != "" {
+			reader = strings.NewReader(body)
+		}
+		c.Request = httptest.NewRequest(method, target, reader).WithContext(base)
+		if body != "" {
+			c.Request.Header.Set("Content-Type", "application/json")
+		}
+		c.Params = params
+		switch {
+		case method == http.MethodPost:
+			h.RecordSubmission(c)
+		case strings.Contains(target, "/receipt"):
+			h.SubmissionReceiptHandler(c)
+		default:
+			h.ApplicationSubmissions(c)
+		}
+		return rec
+	}
+	applicationParams := gin.Params{{Key: "applicationId", Value: fx.ApplicationID}}
+
+	// A stale expected revision maps to the typed 409 with the current value
+	// (checked while the application is still unconfirmed).
+	staleBody := fmt.Sprintf(`{"requestId":"sub-http-3","channel":"web","versionUnknown":true,"expectedRevision":%d}`, fx.Revision+9)
+	rec := call(http.MethodPost, "/api/v1/career/applications/"+fx.ApplicationID+"/submissions", staleBody, applicationParams)
+	require.Equal(t, 409, rec.Code, rec.Body.String())
+	require.Contains(t, rec.Body.String(), "revision_conflict")
+	require.Contains(t, rec.Body.String(), fmt.Sprintf(`"currentRevision":%d`, fx.Revision))
+
+	// An unknown field is rejected: the contract stays closed.
+	rec = call(http.MethodPost, "/api/v1/career/applications/"+fx.ApplicationID+"/submissions",
+		fmt.Sprintf(`{"requestId":"sub-http-x","channel":"web","autoSubmit":true,"expectedRevision":%d}`, fx.Revision), applicationParams)
+	require.Equal(t, 400, rec.Code, rec.Body.String())
+
+	// The record seam returns the frozen receipt: channel, claimed time, and
+	// the exact bound version of the submittable export.
+	boundBody := fmt.Sprintf(`{"requestId":"sub-http-1","channel":"email","occurredAt":"2026-09-22T08:30:00Z","materialId":%q,"exportId":%q,"expectedRevision":%d}`,
+		fx.MaterialID, fx.ExportID, fx.Revision)
+	rec = call(http.MethodPost, "/api/v1/career/applications/"+fx.ApplicationID+"/submissions", boundBody, applicationParams)
+	require.Equal(t, 200, rec.Code, rec.Body.String())
+	require.Contains(t, rec.Body.String(), `"kind":"submission_recorded"`)
+	require.Contains(t, rec.Body.String(), `"channel":"email"`)
+	require.Contains(t, rec.Body.String(), `"versionConfirmed":true`)
+	require.Contains(t, rec.Body.String(), `"confirmer":"submission-owner"`)
+	var recorded SubmissionReceipt
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &recorded))
+	require.NotNil(t, recorded.BoundVersion)
+	require.EqualValues(t, fx.Version, recorded.BoundVersion.Version)
+
+	// A repeat confirmation under a new request ID is the typed 409.
+	unknownBody := fmt.Sprintf(`{"requestId":"sub-http-2","channel":"web","versionUnknown":true,"expectedRevision":%d}`, fx.Revision)
+	rec = call(http.MethodPost, "/api/v1/career/applications/"+fx.ApplicationID+"/submissions", unknownBody, applicationParams)
+	require.Equal(t, 409, rec.Code, rec.Body.String())
+	require.Contains(t, rec.Body.String(), "submission_already_confirmed")
+
+	// The list seam serves the single durable record.
+	rec = call(http.MethodGet, "/api/v1/career/applications/"+fx.ApplicationID+"/submissions", "", applicationParams)
+	require.Equal(t, 200, rec.Code, rec.Body.String())
+	require.Contains(t, rec.Body.String(), recorded.SubmissionID)
+
+	// The receipt endpoint replays by request ID and 404s unknown requests.
+	rec = call(http.MethodGet, "/api/v1/career/submissions/receipt?requestId=sub-http-1", "", nil)
+	require.Equal(t, 200, rec.Code, rec.Body.String())
+	require.Contains(t, rec.Body.String(), `"requestId":"sub-http-1"`)
+	rec = call(http.MethodGet, "/api/v1/career/submissions/receipt?requestId=missing", "", nil)
+	require.Equal(t, 404, rec.Code, rec.Body.String())
+
+	// A body application ID diverging from the path is rejected.
+	mismatchBody := fmt.Sprintf(`{"requestId":"sub-http-4","applicationId":"00000000-0000-0000-0000-00000000000f","channel":"web","versionUnknown":true,"expectedRevision":%d}`, fx.Revision)
+	rec = call(http.MethodPost, "/api/v1/career/applications/"+fx.ApplicationID+"/submissions", mismatchBody, applicationParams)
+	require.Equal(t, 400, rec.Code, rec.Body.String())
+}

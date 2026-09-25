@@ -194,16 +194,18 @@ func TestFuncDeclNamesRecursive(t *testing.T) {
 // progress + GET progress/receipt）。历史 675 条 = 既有 670 条 + T16 Career
 // Material Export 5（POST materials/:materialId/exports + GET
 // materials/:materialId/exports + POST .../exports/:exportId/signed-url + GET
-// .../exports/:exportId/download + DELETE .../exports/:exportId）。当前 678
+// .../exports/:exportId/download + DELETE .../exports/:exportId）。历史 678
 // 条 = 既有 675 条 + T13 Career Search Rule 3（POST rules + GET rules/receipt
-// + GET rules/:ruleId，规则触发是 office 级显式 seam 无独立路由）。日期说明见
-// docs/architecture/moves/README.md。
+// + GET rules/:ruleId，规则触发是 office 级显式 seam 无独立路由）。当前 681
+// 条 = 既有 678 条 + T18 Career Submission 3（POST applications/:applicationId/
+// submissions + GET applications/:applicationId/submissions + GET
+// submissions/receipt）。日期说明见 docs/architecture/moves/README.md。
 
 const (
-	wantRouteLiteral  = 609
+	wantRouteLiteral  = 612
 	wantRouteAPIKey   = 69
 	wantRouteHandle   = 0
-	wantRouteTotal    = 678
+	wantRouteTotal    = 681
 	wantWorkersPerMix = 23
 	wantHooks         = 58
 )
