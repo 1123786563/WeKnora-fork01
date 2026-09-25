@@ -51,6 +51,13 @@ type DockerSendObservation struct {
 	State   string
 	Receipt *repository.DockerExecReceipt
 	Claimed bool
+	// ClaimedAt is the durable send claim moment; the daemon event replay
+	// window starts no later than here. ExecEvent*/DurationSource carry the
+	// persisted exec_start/exec_die pair once one was captured.
+	ClaimedAt           *time.Time
+	ExecEventStartedNS  *int64
+	ExecEventFinishedNS *int64
+	DurationSource      *string
 }
 
 // CraftDockerSendCoordinator sequences the durable intent/hold, immutable
@@ -346,15 +353,19 @@ func (c *CraftDockerSendCoordinator) Observe(ctx context.Context, grantID, activ
 		return DockerSendObservation{}, err
 	}
 	var row struct {
-		GrantID       string
-		State         string
-		Protocol      *string
-		Provider      *string
-		ContainerID   *string
-		ExecID        *string
-		SendClaimedAt *time.Time
+		GrantID             string
+		State               string
+		Protocol            *string
+		Provider            *string
+		ContainerID         *string
+		ExecID              *string
+		SendClaimedAt       *time.Time
+		ExecEventStartedNS  *int64 `gorm:"column:exec_event_started_at_ns"`
+		ExecEventFinishedNS *int64 `gorm:"column:exec_event_finished_at_ns"`
+		DurationSource      *string
 	}
-	err = c.budget.db.WithContext(ctx).Table("craft_charge_start_journal").Select("grant_id, state, protocol, provider, container_id, exec_id, send_claimed_at").
+	err = c.budget.db.WithContext(ctx).Table("craft_charge_start_journal").
+		Select("grant_id, state, protocol, provider, container_id, exec_id, send_claimed_at, exec_event_started_at_ns, exec_event_finished_at_ns, duration_source").
 		Where("tenant_id = ? AND run_id = ? AND activity_key = ?", grant.TenantID, grant.RunID, activityID).Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return DockerSendObservation{}, craft.ErrNotFound
@@ -368,11 +379,37 @@ func (c *CraftDockerSendCoordinator) Observe(ctx context.Context, grantID, activ
 	if row.Protocol == nil || *row.Protocol != craftDockerSendProtocol {
 		return DockerSendObservation{}, fmt.Errorf("%w: operation belongs to another start protocol", craft.ErrConflict)
 	}
-	observation := DockerSendObservation{State: row.State, Claimed: row.SendClaimedAt != nil}
+	observation := DockerSendObservation{State: row.State, Claimed: row.SendClaimedAt != nil,
+		ClaimedAt: row.SendClaimedAt, ExecEventStartedNS: row.ExecEventStartedNS, ExecEventFinishedNS: row.ExecEventFinishedNS, DurationSource: row.DurationSource}
 	if row.Provider != nil && row.ContainerID != nil && row.ExecID != nil {
 		observation.Receipt = &repository.DockerExecReceipt{Provider: *row.Provider, ContainerID: *row.ContainerID, ExecID: *row.ExecID}
 	}
 	return observation, nil
+}
+
+// RecordExecEventPair persists daemon-authored exec timing evidence for one
+// grant-owned activity. It performs no provider I/O and grants no permission.
+func (c *CraftDockerSendCoordinator) RecordExecEventPair(ctx context.Context, grantID, activityID string, receipt repository.DockerExecReceipt, startedNS, finishedNS int64) error {
+	if c == nil || c.budget == nil || c.claims == nil || strings.TrimSpace(grantID) == "" || strings.TrimSpace(activityID) == "" {
+		return craft.ErrInvalidInput
+	}
+	grant, err := c.budget.loadGrant(ctx, grantID)
+	if err != nil {
+		return err
+	}
+	var row struct{ GrantID string }
+	err = c.budget.db.WithContext(ctx).Table("craft_charge_start_journal").Select("grant_id").
+		Where("tenant_id = ? AND run_id = ? AND activity_key = ?", grant.TenantID, grant.RunID, activityID).Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return craft.ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if row.GrantID != grantID {
+		return craft.ErrForbidden
+	}
+	return c.claims.RecordDockerExecEventPair(ctx, repository.CraftChargeStartKey{TenantID: grant.TenantID, RunID: grant.RunID, ActivityKey: activityID}, receipt, startedNS, finishedNS)
 }
 
 // Bind persists the exact receipt returned by an inert Docker exec create.

@@ -1,0 +1,5 @@
+DROP TRIGGER IF EXISTS ck_craft_charge_start_exec_event_pair_update;
+DROP TRIGGER IF EXISTS ck_craft_charge_start_exec_event_pair_insert;
+ALTER TABLE craft_charge_start_journal DROP COLUMN duration_source;
+ALTER TABLE craft_charge_start_journal DROP COLUMN exec_event_finished_at_ns;
+ALTER TABLE craft_charge_start_journal DROP COLUMN exec_event_started_at_ns;

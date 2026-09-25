@@ -677,3 +677,246 @@ type integrationDockerHandle struct{ id string }
 func (h integrationDockerHandle) ID() string                     { return h.id }
 func (integrationDockerHandle) Provider() sandbox.RemoteProvider { return sandbox.SandboxTypeDocker }
 func (integrationDockerHandle) Metadata() map[string]string      { return nil }
+
+// futureSinceEventObserver replays real daemon events but forces the window
+// to start after every event of the exec, proving the explicit indeterminate
+// contract against the real events API instead of a fabricated stream.
+type futureSinceEventObserver struct {
+	inner sandbox.DockerExecEventPairObserver
+}
+
+func (f futureSinceEventObserver) ObserveExecEventPair(ctx context.Context, receipt sandbox.DockerOutputlessExecReceipt, _ time.Time) (sandbox.DockerExecEventPair, sandbox.DockerExecEventPairStatus, error) {
+	return f.inner.ObserveExecEventPair(ctx, receipt, time.Now().Add(time.Hour))
+}
+
+func TestCraftDockerRestrictedRealDockerExecEventPairDuration(t *testing.T) {
+	if os.Getenv("WEKNORA_DOCKER_COORDINATOR_INTEGRATION") != "1" {
+		t.Skip("real coordinator-to-Docker duration proof is opt-in")
+	}
+	host := os.Getenv("DOCKER_HOST")
+	if host == "" {
+		host = sandbox.DefaultDockerHost
+	}
+	const image = "wechatopenai/weknora-sandbox:main"
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	api, err := client.New(client.WithHost(host))
+	require.NoError(t, err)
+	defer api.Close()
+	_, err = api.ImageInspect(ctx, image)
+	require.NoError(t, err, "the bounded integration proof requires the pinned local sandbox image")
+	created, err := api.ContainerCreate(ctx, client.ContainerCreateOptions{
+		Config:     &container.Config{Image: image, Entrypoint: []string{"/bin/sh", "-c"}, Cmd: []string{"exec sleep infinity"}, User: "root"},
+		HostConfig: &container.HostConfig{NetworkMode: "none"},
+	})
+	require.NoError(t, err)
+	defer func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cleanupCancel()
+		_, cleanupErr := api.ContainerRemove(cleanupCtx, created.ID, client.ContainerRemoveOptions{Force: true, RemoveVolumes: true})
+		t.Logf("cleanup container=%s force_remove=true error=%v", created.ID, cleanupErr)
+		require.NoError(t, cleanupErr)
+	}()
+	_, err = api.ContainerStart(ctx, created.ID, client.ContainerStartOptions{})
+	require.NoError(t, err)
+
+	provider, err := sandbox.NewDockerRemoteClientForCheck(&sandbox.Config{DockerImage: image, DockerHost: host, DockerNetworkMode: "none", DockerHTTPTimeout: 5 * time.Second})
+	require.NoError(t, err)
+	coordinator, budget, _, _, grantID := newCraftDockerCoordinatorFixture(t)
+
+	captured, err := NewCraftDockerRestrictedExec(coordinator, provider, 3*time.Second)
+	require.NoError(t, err)
+	captured.WithExecEventPairObserver(provider)
+	request := CraftDockerOutputlessRequest{DiscardOutput: true, Exec: sandbox.RemoteExecRequest{Command: "/bin/sh", Args: []string{"-c", "sleep 1"}, Timeout: 8 * time.Second}}
+	start, err := captured.Start(ctx, grantID, "activity-real-duration", CraftCallBinding{ModelID: "integration-model", Funding: commercial.FundingPlatform}, integrationDockerHandle{id: created.ID}, request)
+	require.NoError(t, err)
+	terminal, err := captured.Wait(ctx, grantID, "activity-real-duration", 15*time.Second)
+	require.NoError(t, err)
+	require.Equal(t, sandbox.DockerOutputlessSucceeded, terminal.State)
+	require.Equal(t, start.Receipt, terminal.Receipt)
+	require.True(t, terminal.DurationAvailable, "the real daemon exec_start/exec_die pair must answer the authoritative duration")
+	require.Equal(t, "docker_exec_events", terminal.DurationSource)
+	require.GreaterOrEqual(t, terminal.Duration.Milliseconds(), int64(900), "the paired sleep-1 command cannot be shorter than its own runtime")
+	require.LessOrEqual(t, terminal.Duration.Milliseconds(), int64(10000))
+	var pair struct {
+		StartedNS  *int64  `gorm:"column:exec_event_started_at_ns"`
+		FinishedNS *int64  `gorm:"column:exec_event_finished_at_ns"`
+		Source     *string `gorm:"column:duration_source"`
+	}
+	require.NoError(t, budget.db.Table("craft_charge_start_journal").Select("exec_event_started_at_ns, exec_event_finished_at_ns, duration_source").
+		Where("tenant_id = ? AND activity_key = ?", 701, "activity-real-duration").Take(&pair).Error)
+	require.NotNil(t, pair.StartedNS)
+	require.NotNil(t, pair.FinishedNS)
+	require.NotNil(t, pair.Source)
+	require.Equal(t, "docker_exec_events", *pair.Source)
+	require.Equal(t, terminal.Duration, time.Duration(*pair.FinishedNS-*pair.StartedNS), "the reported duration is exactly the persisted daemon pair")
+
+	// An intentionally unavailable pair (replay window after every event)
+	// must keep the terminal result while reporting the indeterminate source.
+	empty, err := NewCraftDockerRestrictedExec(coordinator, provider, 3*time.Second)
+	require.NoError(t, err)
+	empty.WithExecEventPairObserver(futureSinceEventObserver{inner: provider})
+	emptyStart, err := empty.Start(ctx, grantID, "activity-real-duration-empty", CraftCallBinding{ModelID: "integration-model", Funding: commercial.FundingPlatform}, integrationDockerHandle{id: created.ID}, request)
+	require.NoError(t, err)
+	emptyTerminal, err := empty.Wait(ctx, grantID, "activity-real-duration-empty", 15*time.Second)
+	require.NoError(t, err)
+	require.Equal(t, sandbox.DockerOutputlessSucceeded, emptyTerminal.State)
+	require.Equal(t, emptyStart.Receipt, emptyTerminal.Receipt)
+	require.False(t, emptyTerminal.DurationAvailable, "an empty replay window reports the explicit indeterminate contract")
+	require.Equal(t, "unavailable", emptyTerminal.DurationSource)
+	t.Logf("container=%s captured_exec=%s duration=%s empty_window_exec=%s", created.ID, start.Receipt.ExecID, terminal.Duration, emptyStart.Receipt.ExecID)
+}
+
+type fakeExecEventObserver struct {
+	calls     int
+	pair      sandbox.DockerExecEventPair
+	status    sandbox.DockerExecEventPairStatus
+	err       error
+	sinceSeen []time.Time
+}
+
+func (f *fakeExecEventObserver) ObserveExecEventPair(_ context.Context, receipt sandbox.DockerOutputlessExecReceipt, since time.Time) (sandbox.DockerExecEventPair, sandbox.DockerExecEventPairStatus, error) {
+	f.calls++
+	f.sinceSeen = append(f.sinceSeen, since)
+	if f.pair.ExecID == "" {
+		f.pair.ExecID = receipt.ExecID
+	}
+	return f.pair, f.status, f.err
+}
+
+func startClaimedOutputlessExec(t *testing.T, service *CraftDockerRestrictedExec, grantID, activity string) repository.DockerExecReceipt {
+	t.Helper()
+	result, err := service.Start(context.Background(), grantID, activity, CraftCallBinding{ModelID: "model", Funding: commercial.FundingPlatform}, fakeDockerHandle{}, CraftDockerOutputlessRequest{DiscardOutput: true, Exec: sandbox.RemoteExecRequest{Command: "true"}})
+	require.NoError(t, err)
+	require.True(t, result.Accepted)
+	return result.Receipt
+}
+
+func TestCraftDockerRestrictedWaitCapturesExecEventPairDuration(t *testing.T) {
+	coordinator, budget, _, _, grantID := newCraftDockerCoordinatorFixture(t)
+	docker := &fakeOutputlessDocker{observations: []sandbox.DockerOutputlessExecObservation{
+		{State: sandbox.DockerOutputlessSucceeded, ExitCode: ptr(0)},
+	}}
+	events := &fakeExecEventObserver{status: sandbox.DockerExecEventPairCaptured, pair: sandbox.DockerExecEventPair{StartedNano: 1758796800_000000000, FinishedNano: 1758796801_250000000}}
+	service, err := NewCraftDockerRestrictedExec(coordinator, docker, time.Second)
+	require.NoError(t, err)
+	service.WithExecEventPairObserver(events)
+	receipt := startClaimedOutputlessExec(t, service, grantID, "activity-duration-capture")
+
+	terminal, err := service.Wait(context.Background(), grantID, "activity-duration-capture", 2*time.Second)
+	require.NoError(t, err)
+	require.Equal(t, sandbox.DockerOutputlessSucceeded, terminal.State)
+	require.True(t, terminal.DurationAvailable, "captured exec event pair is authoritative duration evidence")
+	require.Equal(t, 1250*time.Millisecond, terminal.Duration)
+	require.Equal(t, "docker_exec_events", terminal.DurationSource)
+	require.Equal(t, 1, events.calls)
+	require.Equal(t, receipt.ExecID, events.pair.ExecID)
+
+	// The replay window must start at or before the durable send claim.
+	require.NotEmpty(t, events.sinceSeen)
+	var claimed struct {
+		SendClaimedAt *time.Time `gorm:"column:send_claimed_at"`
+	}
+	require.NoError(t, budget.db.Table("craft_charge_start_journal").Select("send_claimed_at").
+		Where("tenant_id = ? AND activity_key = ?", 701, "activity-duration-capture").Take(&claimed).Error)
+	require.NotNil(t, claimed.SendClaimedAt)
+	require.False(t, events.sinceSeen[0].After(*claimed.SendClaimedAt), "event replay window starts no later than the durable claim")
+
+	var pair struct {
+		StartedNS  *int64  `gorm:"column:exec_event_started_at_ns"`
+		FinishedNS *int64  `gorm:"column:exec_event_finished_at_ns"`
+		Source     *string `gorm:"column:duration_source"`
+	}
+	require.NoError(t, budget.db.Table("craft_charge_start_journal").Select("exec_event_started_at_ns, exec_event_finished_at_ns, duration_source").
+		Where("tenant_id = ? AND activity_key = ?", 701, "activity-duration-capture").Take(&pair).Error)
+	require.NotNil(t, pair.StartedNS)
+	require.EqualValues(t, 1758796800_000000000, *pair.StartedNS)
+	require.NotNil(t, pair.FinishedNS)
+	require.EqualValues(t, 1758796801_250000000, *pair.FinishedNS)
+	require.NotNil(t, pair.Source)
+	require.Equal(t, "docker_exec_events", *pair.Source)
+}
+
+func TestCraftDockerRestrictedWaitDurationSurvivesRestartFromJournal(t *testing.T) {
+	coordinator, _, _, _, grantID := newCraftDockerCoordinatorFixture(t)
+	docker := &fakeOutputlessDocker{observations: []sandbox.DockerOutputlessExecObservation{
+		{State: sandbox.DockerOutputlessSucceeded, ExitCode: ptr(0)},
+	}}
+	events := &fakeExecEventObserver{status: sandbox.DockerExecEventPairCaptured, pair: sandbox.DockerExecEventPair{StartedNano: 1758796800_000000000, FinishedNano: 1758796800_500000000}}
+	service, err := NewCraftDockerRestrictedExec(coordinator, docker, time.Second)
+	require.NoError(t, err)
+	service.WithExecEventPairObserver(events)
+	startClaimedOutputlessExec(t, service, grantID, "activity-duration-restart")
+	first, err := service.Wait(context.Background(), grantID, "activity-duration-restart", 2*time.Second)
+	require.NoError(t, err)
+	require.True(t, first.DurationAvailable)
+	require.Equal(t, 1, events.calls)
+
+	// A restarted process without the observer still answers from the journal.
+	restartedDocker := &fakeOutputlessDocker{observations: []sandbox.DockerOutputlessExecObservation{
+		{State: sandbox.DockerOutputlessSucceeded, ExitCode: ptr(0)},
+	}}
+	restarted, err := NewCraftDockerRestrictedExec(coordinator, restartedDocker, time.Second)
+	require.NoError(t, err)
+	again, err := restarted.Wait(context.Background(), grantID, "activity-duration-restart", 2*time.Second)
+	require.NoError(t, err)
+	require.True(t, again.DurationAvailable)
+	require.Equal(t, 500*time.Millisecond, again.Duration)
+	require.Equal(t, "docker_exec_events", again.DurationSource)
+	require.Equal(t, 1, events.calls, "journal evidence must not trigger a second daemon query")
+}
+
+func TestCraftDockerRestrictedWaitExplicitlyUnavailableDuration(t *testing.T) {
+	base := int64(1758796800_000000000)
+	cases := []struct {
+		name   string
+		events *fakeExecEventObserver
+	}{
+		{"missing_exec_die", &fakeExecEventObserver{status: sandbox.DockerExecEventPairUnavailable}},
+		{"observer_error", &fakeExecEventObserver{status: sandbox.DockerExecEventPairCaptured, err: errors.New("daemon event stream lost")}},
+		{"non_monotonic_pair", &fakeExecEventObserver{status: sandbox.DockerExecEventPairCaptured, pair: sandbox.DockerExecEventPair{StartedNano: base + 10, FinishedNano: base}}},
+		{"no_observer_attached", nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Each subtest owns its fixture: the journal's receipt uniqueness
+			// would otherwise collide the fake provider's constant receipt.
+			coordinator, _, _, _, grantID := newCraftDockerCoordinatorFixture(t)
+			docker := &fakeOutputlessDocker{observations: []sandbox.DockerOutputlessExecObservation{
+				{State: sandbox.DockerOutputlessFailed, ExitCode: ptr(3)},
+			}}
+			service, err := NewCraftDockerRestrictedExec(coordinator, docker, time.Second)
+			require.NoError(t, err)
+			if tc.events != nil {
+				service.WithExecEventPairObserver(tc.events)
+			}
+			startClaimedOutputlessExec(t, service, grantID, "activity-duration-missing")
+			terminal, err := service.Wait(context.Background(), grantID, "activity-duration-missing", 2*time.Second)
+			require.NoError(t, err, "missing timing evidence never fails the terminal observation")
+			require.Equal(t, sandbox.DockerOutputlessFailed, terminal.State)
+			require.False(t, terminal.DurationAvailable, "an absent or ambiguous event pair must stay explicitly unavailable")
+			require.Zero(t, terminal.Duration)
+			require.Equal(t, "unavailable", terminal.DurationSource)
+		})
+	}
+}
+
+func TestCraftDockerRestrictedWaitConflictingJournalPairRefusesNewEvidence(t *testing.T) {
+	coordinator, _, _, _, grantID := newCraftDockerCoordinatorFixture(t)
+	docker := &fakeOutputlessDocker{observations: []sandbox.DockerOutputlessExecObservation{
+		{State: sandbox.DockerOutputlessSucceeded, ExitCode: ptr(0)},
+	}}
+	service, err := NewCraftDockerRestrictedExec(coordinator, docker, time.Second)
+	require.NoError(t, err)
+	receipt := startClaimedOutputlessExec(t, service, grantID, "activity-duration-conflict")
+	require.NoError(t, coordinator.RecordExecEventPair(context.Background(), grantID, "activity-duration-conflict", receipt, 1758796800_000000000, 1758796800_250000000))
+
+	events := &fakeExecEventObserver{status: sandbox.DockerExecEventPairCaptured, pair: sandbox.DockerExecEventPair{StartedNano: 1758796800_000000000, FinishedNano: 1758796800_750000000}}
+	service.WithExecEventPairObserver(events)
+	terminal, err := service.Wait(context.Background(), grantID, "activity-duration-conflict", 2*time.Second)
+	require.NoError(t, err)
+	require.True(t, terminal.DurationAvailable, "valid durable journal evidence answers without provider I/O")
+	require.Equal(t, 250*time.Millisecond, terminal.Duration, "the persisted journal pair wins over any later divergent observation")
+	require.Equal(t, "docker_exec_events", terminal.DurationSource)
+	require.Zero(t, events.calls, "journal evidence must not trigger a daemon query that could contradict it")
+}

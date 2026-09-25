@@ -42,6 +42,10 @@ type craftDockerSendClaimRow struct {
 	SendClaimedAt *time.Time `gorm:"column:send_claimed_at"`
 	State         string     `gorm:"column:state"`
 	RunRevision   int64      `gorm:"column:run_revision"`
+	// Exec event pair columns hold daemon-authored timing evidence for the one
+	// claimed physical start; NULL means the pair was never captured.
+	ExecEventStartedNS  *int64 `gorm:"column:exec_event_started_at_ns"`
+	ExecEventFinishedNS *int64 `gorm:"column:exec_event_finished_at_ns"`
 }
 
 func (craftDockerSendClaimRow) TableName() string { return "craft_charge_start_journal" }
@@ -156,6 +160,41 @@ func (r *CraftDockerSendClaimRepository) claimDockerExecSend(ctx context.Context
 		return false, nil
 	}
 	return false, craftDockerSendConflict("send claim did not match an unclaimed operation epoch")
+}
+
+// RecordDockerExecEventPair persists the daemon-authored exec_start/exec_die
+// timing pair for one already-claimed send. Identical evidence replays
+// idempotently; an unclaimed operation, another receipt, or a different pair
+// conflicts, and a non-monotonic pair is refused outright.
+func (r *CraftDockerSendClaimRepository) RecordDockerExecEventPair(ctx context.Context, key CraftChargeStartKey, receipt DockerExecReceipt, startedNS, finishedNS int64) error {
+	if err := validateCraftDockerSendIdentity(key, receipt); err != nil {
+		return err
+	}
+	if startedNS <= 0 || finishedNS <= startedNS {
+		return craftDockerSendConflict("exec event pair must be positive and monotonic")
+	}
+	result := r.db.WithContext(ctx).Exec(`UPDATE craft_charge_start_journal
+		SET exec_event_started_at_ns = ?, exec_event_finished_at_ns = ?, duration_source = 'docker_exec_events'
+		WHERE tenant_id = ? AND run_id = ? AND activity_key = ?
+		  AND protocol = 'docker_coordinator' AND provider = ? AND container_id = ? AND exec_id = ?
+		  AND send_claimed_at IS NOT NULL
+		  AND exec_event_started_at_ns IS NULL AND exec_event_finished_at_ns IS NULL AND duration_source IS NULL`,
+		startedNS, finishedNS, key.TenantID, key.RunID, key.ActivityKey, receipt.Provider, receipt.ContainerID, receipt.ExecID)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 1 {
+		return nil
+	}
+	row, err := r.load(ctx, key)
+	if err != nil {
+		return err
+	}
+	if row.SendClaimedAt != nil && row.Protocol != nil && *row.Protocol == "docker_coordinator" && matchesCraftDockerReceipt(row, receipt) &&
+		row.ExecEventStartedNS != nil && *row.ExecEventStartedNS == startedNS && row.ExecEventFinishedNS != nil && *row.ExecEventFinishedNS == finishedNS {
+		return nil
+	}
+	return craftDockerSendConflict("exec event pair cannot attach to this operation epoch")
 }
 
 func (r *CraftDockerSendClaimRepository) normalInputExists(db *gorm.DB, ctx context.Context, key CraftChargeStartKey) (bool, error) {

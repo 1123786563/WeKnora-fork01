@@ -19,6 +19,9 @@ type CraftDockerOutputlessRequest struct {
 }
 
 // CraftDockerOutputlessResult states explicitly that output was unavailable.
+// DurationSource names the only authority behind Duration: "docker_exec_events"
+// (daemon exec_start/exec_die pair joined by the exact exec ID) or
+// "unavailable" when no authoritative pair exists.
 type CraftDockerOutputlessResult struct {
 	Receipt           repository.DockerExecReceipt
 	Accepted          bool
@@ -26,6 +29,7 @@ type CraftDockerOutputlessResult struct {
 	ExitCode          *int
 	Duration          time.Duration
 	DurationAvailable bool
+	DurationSource    string
 	StdoutAvailable   bool
 	StderrAvailable   bool
 }
@@ -36,6 +40,7 @@ type CraftDockerOutputlessResult struct {
 type CraftDockerRestrictedExec struct {
 	coordinator *CraftDockerSendCoordinator
 	client      sandbox.DockerOutputlessExecClient
+	events      sandbox.DockerExecEventPairObserver
 	rpcTimeout  time.Duration
 	mu          sync.Mutex
 	running     map[string]bool
@@ -49,6 +54,16 @@ func NewCraftDockerRestrictedExec(coordinator *CraftDockerSendCoordinator, docke
 		rpcTimeout = sandbox.DefaultDockerHTTPTimeout
 	}
 	return &CraftDockerRestrictedExec{coordinator: coordinator, client: docker, rpcTimeout: rpcTimeout, running: make(map[string]bool)}, nil
+}
+
+// WithExecEventPairObserver attaches the daemon event replay seam that makes an
+// authoritative exec duration observable. Without an observer, terminal waits
+// keep reporting the explicit "unavailable" duration contract.
+func (s *CraftDockerRestrictedExec) WithExecEventPairObserver(events sandbox.DockerExecEventPairObserver) *CraftDockerRestrictedExec {
+	if s != nil {
+		s.events = events
+	}
+	return s
 }
 
 // Start prepares the durable hold before inert create, binds that exact exec
@@ -109,11 +124,14 @@ func (s *CraftDockerRestrictedExec) claimAndStart(ctx context.Context, op *Docke
 }
 
 // Wait polls only the exact durably claimed receipt until terminal state or
-// the caller's bound. Docker's ExecInspect response has no execution timestamps,
-// so DurationAvailable remains false rather than reporting poll time as command
-// duration. Cancellation/deadline leaves the claimed hold unresolved.
+// the caller's bound. Duration comes only from the daemon exec_start/exec_die
+// event pair joined by the exact exec ID (never from poll elapsed time or
+// ExecInspect, which carries no timestamps); a missing, ambiguous or
+// non-monotonic pair reports the explicit unavailable contract and the
+// captured pair is persisted to the operation journal. Cancellation/deadline
+// leaves the claimed hold unresolved.
 func (s *CraftDockerRestrictedExec) Wait(ctx context.Context, grantID, activityID string, maxWait time.Duration) (CraftDockerOutputlessResult, error) {
-	unknown := CraftDockerOutputlessResult{State: sandbox.DockerOutputlessUnknown}
+	unknown := CraftDockerOutputlessResult{State: sandbox.DockerOutputlessUnknown, DurationSource: string(sandbox.DockerExecEventPairUnavailable)}
 	if s == nil || s.coordinator == nil || s.client == nil || grantID == "" || activityID == "" || maxWait <= 0 {
 		return unknown, fmt.Errorf("restricted Docker Wait requires grant, activity and positive bound")
 	}
@@ -151,7 +169,10 @@ func (s *CraftDockerRestrictedExec) Wait(ctx context.Context, grantID, activityI
 		}
 		switch observation.State {
 		case sandbox.DockerOutputlessSucceeded, sandbox.DockerOutputlessFailed:
-			return CraftDockerOutputlessResult{Receipt: *durable.Receipt, Accepted: true, State: observation.State, ExitCode: observation.ExitCode, DurationAvailable: false, StdoutAvailable: false, StderrAvailable: false}, nil
+			result := CraftDockerOutputlessResult{Receipt: *durable.Receipt, Accepted: true, State: observation.State, ExitCode: observation.ExitCode,
+				DurationSource: string(sandbox.DockerExecEventPairUnavailable), StdoutAvailable: false, StderrAvailable: false}
+			result.Duration, result.DurationAvailable, result.DurationSource = s.resolveTerminalDuration(ctx, grantID, activityID, *durable.Receipt)
+			return result, nil
 		case sandbox.DockerOutputlessUnknown:
 			// Unknown is not terminal proof. Continue until the caller's bound.
 		}
@@ -161,6 +182,52 @@ func (s *CraftDockerRestrictedExec) Wait(ctx context.Context, grantID, activityI
 		case <-ticker.C:
 		}
 	}
+}
+
+const craftDockerEventObserveTimeout = 3 * time.Second
+
+// resolveTerminalDuration answers the authoritative duration for one terminal
+// claimed receipt. Journal-persisted evidence wins without provider I/O;
+// otherwise the daemon event pair is replayed from the durable claim moment
+// and persisted. Anything missing, ambiguous, conflicting or non-monotonic —
+// including a persistence failure — stays explicitly unavailable.
+func (s *CraftDockerRestrictedExec) resolveTerminalDuration(ctx context.Context, grantID, activityID string, receipt repository.DockerExecReceipt) (time.Duration, bool, string) {
+	const unavailableSource = string(sandbox.DockerExecEventPairUnavailable)
+	unavailable := func() (time.Duration, bool, string) { return 0, false, unavailableSource }
+	resolveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), craftDockerEventObserveTimeout)
+	defer cancel()
+	durable, err := s.coordinator.Observe(resolveCtx, grantID, activityID)
+	if err != nil {
+		return unavailable()
+	}
+	if durable.Claimed && durable.Receipt != nil && *durable.Receipt != receipt {
+		return unavailable()
+	}
+	if durable.DurationSource != nil && *durable.DurationSource == string(sandbox.DockerExecEventPairCaptured) {
+		if durable.ExecEventStartedNS == nil || durable.ExecEventFinishedNS == nil {
+			return unavailable()
+		}
+		persisted := sandbox.DockerExecEventPair{ExecID: receipt.ExecID, StartedNano: *durable.ExecEventStartedNS, FinishedNano: *durable.ExecEventFinishedNS}
+		if d, ok := persisted.Duration(); ok {
+			return d, true, string(sandbox.DockerExecEventPairCaptured)
+		}
+		return unavailable()
+	}
+	if s.events == nil || durable.ClaimedAt == nil {
+		return unavailable()
+	}
+	pair, status, err := s.events.ObserveExecEventPair(resolveCtx, sandbox.DockerOutputlessExecReceipt{ContainerID: receipt.ContainerID, ExecID: receipt.ExecID}, *durable.ClaimedAt)
+	if err != nil || status != sandbox.DockerExecEventPairCaptured {
+		return unavailable()
+	}
+	duration, ok := pair.Duration()
+	if !ok {
+		return unavailable()
+	}
+	if err := s.coordinator.RecordExecEventPair(resolveCtx, grantID, activityID, receipt, pair.StartedNano, pair.FinishedNano); err != nil {
+		return unavailable()
+	}
+	return duration, true, string(sandbox.DockerExecEventPairCaptured)
 }
 
 func outputlessUnknownResult(op *DockerSendOperation, receipt repository.DockerExecReceipt, cause error) (CraftDockerOutputlessResult, error) {
