@@ -5,6 +5,7 @@ import {
   createPluginsApi,
   parsePluginInstallation,
   parsePluginInstallations,
+  parsePluginMyConnection,
   parsePluginPreview,
   parsePluginUpgradePreview,
 } from './plugins.ts';
@@ -481,5 +482,96 @@ test('createPluginsApi.previewUpgrade rejects an empty installation id before an
   });
   await assert.rejects(() => api.previewUpgrade('  '), /installation/);
   assert.equal(calls, 0, 'no request leaves the client for an invalid input');
+});
+
+// ---- T12: member personal connection (dto.PluginMyConnection,
+// GET /plugins/installations/:id/connections/me, handler GetMyConnection) ----
+
+function myConnectionEnvelope(): { success: boolean; data: Record<string, unknown> } {
+  return {
+    success: true,
+    data: {
+      installation_id: 'inst-1',
+      plugin_id: 'com.example.jira-todo',
+      name: 'Jira 本周待办',
+      service_id: 'svc-1',
+      requires_personal_auth: true,
+      authorized: false,
+      state: 'unauthorized',
+      authorize_url_path: '/api/v1/mcp-services/svc-1/oauth/authorize-url',
+      revoke_path: '/api/v1/mcp-services/svc-1/oauth/token',
+      requires_auth_tools: ['search_my_week_issues', 'create_todo'],
+    },
+  };
+}
+
+test('parsePluginMyConnection maps the three-state verdict, service binding and legacy OAuth paths', () => {
+  const value = parsePluginMyConnection(myConnectionEnvelope());
+  assert.deepEqual(value, {
+    installationId: 'inst-1',
+    pluginId: 'com.example.jira-todo',
+    name: 'Jira 本周待办',
+    serviceId: 'svc-1',
+    requiresPersonalAuth: true,
+    authorized: false,
+    state: 'unauthorized',
+    authorizeUrlPath: '/api/v1/mcp-services/svc-1/oauth/authorize-url',
+    revokePath: '/api/v1/mcp-services/svc-1/oauth/token',
+    requiresAuthTools: ['search_my_week_issues', 'create_todo'],
+  });
+});
+
+test('parsePluginMyConnection keeps empty endpoint paths for no-auth plugins and collapses null tool lists', () => {
+  // T11 Ruling: requires_personal_auth=false leaves authorize_url_path/revoke_path
+  // empty — there is no OAuth to point at; Go nil slices serialize as null.
+  const envelope = myConnectionEnvelope();
+  envelope.data.requires_personal_auth = false;
+  envelope.data.authorized = true;
+  envelope.data.state = 'authorized';
+  envelope.data.authorize_url_path = '';
+  envelope.data.revoke_path = '';
+  envelope.data.requires_auth_tools = null;
+  const value = parsePluginMyConnection(envelope);
+  assert.equal(value.requiresPersonalAuth, false);
+  assert.equal(value.state, 'authorized');
+  assert.equal(value.authorized, true);
+  assert.equal(value.authorizeUrlPath, '');
+  assert.equal(value.revokePath, '');
+  assert.deepEqual(value.requiresAuthTools, []);
+});
+
+test('parsePluginMyConnection rejects non-success envelopes, foreign states and malformed fields', () => {
+  assert.throws(() => parsePluginMyConnection({ success: false }), /success/);
+  assert.throws(() => parsePluginMyConnection(null), /connections\/me/);
+  // The mcp oauth STATUS vocabulary (refreshable/reauth_required/pending) is a
+  // different endpoint's state machine — it must never pass as a connection state.
+  const foreignState = myConnectionEnvelope();
+  foreignState.data.state = 'refreshable';
+  assert.throws(() => parsePluginMyConnection(foreignState), /state/);
+  for (const field of ['installation_id', 'plugin_id', 'name', 'service_id', 'requires_personal_auth', 'authorized', 'state', 'authorize_url_path', 'revoke_path']) {
+    const drop = myConnectionEnvelope();
+    delete drop.data[field];
+    assert.throws(() => parsePluginMyConnection(drop), new RegExp(field), `missing ${field} must be rejected`);
+  }
+  const badTools = myConnectionEnvelope();
+  badTools.data.requires_auth_tools = 'search_my_week_issues';
+  assert.throws(() => parsePluginMyConnection(badTools), /requires_auth_tools/);
+  const badAuthorized = myConnectionEnvelope();
+  badAuthorized.data.authorized = 'yes';
+  assert.throws(() => parsePluginMyConnection(badAuthorized), /authorized/);
+});
+
+test('createPluginsApi.getMyConnection GETs connections/me with the encoded id and rejects empty ids', async () => {
+  const requests: ClientRequest[] = [];
+  const api = createPluginsApi(async (input: ClientRequest) => {
+    requests.push(input);
+    return myConnectionEnvelope();
+  });
+  const value = await api.getMyConnection('inst/1');
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0]!.method, 'GET');
+  assert.equal(requests[0]!.path, '/api/v1/plugins/installations/inst%2F1/connections/me');
+  assert.equal(value.state, 'unauthorized');
+  await assert.rejects(() => api.getMyConnection('  '), /installation/);
 });
 

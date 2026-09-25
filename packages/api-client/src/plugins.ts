@@ -130,6 +130,12 @@ export interface PluginsApi {
    * five-dimension diff. The accepted version never changes server-side.
    */
   previewUpgrade(installationId: string, signal?: AbortSignal): Promise<PluginUpgradePreview>;
+  /**
+   * GET the member's personal connection view of one installation (Viewer+):
+   * the three-state OAuth verdict plus the legacy MCP OAuth endpoint paths
+   * mapped onto the materialized service_id. Never carries token material.
+   */
+  getMyConnection(installationId: string, signal?: AbortSignal): Promise<PluginMyConnection>;
 }
 
 /** Build the plugins domain API over the shared client request transport. */
@@ -186,6 +192,15 @@ export function createPluginsApi(request: (input: ClientRequest) => Promise<unkn
       return parsePluginUpgradePreview(await request({
         method: 'POST',
         path: `${INSTALLATIONS_PATH}/${encodeURIComponent(id)}/upgrade-preview`,
+        ...(signal === undefined ? {} : { signal }),
+      }));
+    },
+    async getMyConnection(installationId: string, signal?: AbortSignal): Promise<PluginMyConnection> {
+      const id = installationId.trim();
+      if (id === '') throw new Error('installationId must not be empty');
+      return parsePluginMyConnection(await request({
+        method: 'GET',
+        path: `${INSTALLATIONS_PATH}/${encodeURIComponent(id)}/connections/me`,
         ...(signal === undefined ? {} : { signal }),
       }));
     },
@@ -436,5 +451,68 @@ export function parsePluginUpgradePreview(value: unknown): PluginUpgradePreview 
     },
     candidateFingerprint: required(data.candidate_fingerprint, `${UPGRADE_PREVIEW_PATH}.data.candidate_fingerprint`),
     candidateToolsDigest: required(data.candidate_tools_digest, `${UPGRADE_PREVIEW_PATH}.data.candidate_tools_digest`),
+  };
+}
+
+// ---- T12: member personal connection envelope (dto.PluginMyConnection,
+// GET /plugins/installations/:id/connections/me, handler internal/handler/plugin.go GetMyConnection) ----
+
+/**
+ * The member's personal OAuth connection view of one installation: the
+ * materialized service binding, the three-state verdict
+ * (authorized | expired | unauthorized) and the legacy MCP OAuth endpoint
+ * paths mapped onto that service_id — the panel drives authorize/revoke
+ * through those existing endpoints. No token material ever crosses the wire.
+ */
+export interface PluginMyConnection {
+  readonly installationId: string;
+  readonly pluginId: string;
+  readonly name: string;
+  readonly serviceId: string;
+  readonly requiresPersonalAuth: boolean;
+  readonly authorized: boolean;
+  readonly state: 'authorized' | 'expired' | 'unauthorized';
+  /** Legacy authorize-url endpoint path; empty when the plugin needs no personal auth. */
+  readonly authorizeUrlPath: string;
+  /** Legacy DELETE-token endpoint path; empty when the plugin needs no personal auth. */
+  readonly revokePath: string;
+  readonly requiresAuthTools: readonly string[];
+}
+
+const CONNECTION_PATH = '/api/v1/plugins/installations/connections/me';
+
+const CONNECTION_STATES = ['authorized', 'expired', 'unauthorized'] as const;
+
+function connectionState(value: unknown, path: string): 'authorized' | 'expired' | 'unauthorized' {
+  // Deliberately narrower than the mcp oauth STATUS vocabulary
+  // (refreshable/reauth_required/pending) — that is a different endpoint's
+  // state machine and must never pass as a plugin connection state.
+  if (typeof value !== 'string' || !CONNECTION_STATES.includes(value as 'authorized' | 'expired' | 'unauthorized')) {
+    throw new Error(`${path} must be one of ${CONNECTION_STATES.join('|')}`);
+  }
+  return value as 'authorized' | 'expired' | 'unauthorized';
+}
+
+/**
+ * Strict parser for the personal connection envelope: identity, service
+ * binding, three-state verdict and mapped endpoint paths. authorize_url_path /
+ * revoke_path may legitimately be EMPTY (no-personal-auth plugins carry no
+ * OAuth endpoints — T11 ruling), so only their type is enforced.
+ */
+export function parsePluginMyConnection(value: unknown): PluginMyConnection {
+  const envelope = record(value, CONNECTION_PATH);
+  if (envelope.success !== true) throw new Error(`${CONNECTION_PATH}.success must be true`);
+  const data = record(envelope.data, `${CONNECTION_PATH}.data`);
+  return {
+    installationId: required(data.installation_id, `${CONNECTION_PATH}.data.installation_id`),
+    pluginId: required(data.plugin_id, `${CONNECTION_PATH}.data.plugin_id`),
+    name: required(data.name, `${CONNECTION_PATH}.data.name`),
+    serviceId: required(data.service_id, `${CONNECTION_PATH}.data.service_id`),
+    requiresPersonalAuth: flag(data.requires_personal_auth, `${CONNECTION_PATH}.data.requires_personal_auth`),
+    authorized: flag(data.authorized, `${CONNECTION_PATH}.data.authorized`),
+    state: connectionState(data.state, `${CONNECTION_PATH}.data.state`),
+    authorizeUrlPath: optionalText(data.authorize_url_path, `${CONNECTION_PATH}.data.authorize_url_path`),
+    revokePath: optionalText(data.revoke_path, `${CONNECTION_PATH}.data.revoke_path`),
+    requiresAuthTools: scopeList(data.requires_auth_tools, `${CONNECTION_PATH}.data.requires_auth_tools`),
   };
 }

@@ -112,6 +112,10 @@ test('成员面板挂载时经 client 拉取已安装插件列表', async () => 
           ],
         };
       }
+      // T12：挂载后需个人授权的行会追拉 connections/me（该测试只关心列表请求）。
+      if (input.method === 'GET' && input.path === '/api/v1/plugins/installations/inst-1/connections/me') {
+        return connectionEnvelope('inst-1', 'unauthorized');
+      }
       throw new Error(`unexpected request ${input.method} ${input.path}`);
     },
   };
@@ -127,6 +131,190 @@ test('成员面板挂载时经 client 拉取已安装插件列表', async () => 
     assert.match(html, /1\.2\.0/);
     assert.match(html, /可用/);
     assert.ok(!html.includes('停用'), 'no governance action leaks into the member panel');
+  } finally {
+    await act(async () => { root.unmount(); });
+    document.body.replaceChildren();
+  }
+});
+
+// ---- T12: 成员个人授权/撤销入口（connections/me 三态徽标 + 既有 OAuth 端点复用） ----
+
+function connectionEnvelope(installationId: string, state: 'authorized' | 'expired' | 'unauthorized'): unknown {
+  return {
+    success: true,
+    data: {
+      installation_id: installationId,
+      plugin_id: 'com.example.jira-todo',
+      name: '插件',
+      service_id: `svc-${installationId}`,
+      requires_personal_auth: true,
+      authorized: state === 'authorized',
+      state,
+      authorize_url_path: `/api/v1/mcp-services/svc-${installationId}/oauth/authorize-url`,
+      revoke_path: `/api/v1/mcp-services/svc-${installationId}/oauth/token`,
+      requires_auth_tools: ['search_my_week_issues'],
+    },
+  };
+}
+
+function listEnvelopeWithAuthRows(): { success: boolean; data: Array<Record<string, unknown>> } {
+  return {
+    success: true,
+    data: [
+      { installation_id: 'inst-1', plugin_id: 'com.example.jira-todo', name: 'Jira 本周待办', version: '1.2.0', state: 'active', drift_state: 'none', requires_personal_auth: true, tool_count: 2 },
+      { installation_id: 'inst-2', plugin_id: 'com.example.weather', name: '天气查询', version: '0.3.1', state: 'active', drift_state: 'none', requires_personal_auth: false, tool_count: 1 },
+      { installation_id: 'inst-3', plugin_id: 'com.example.gitlab', name: 'GitLab 议题', version: '2.0.0', state: 'active', drift_state: 'none', requires_personal_auth: true, tool_count: 1 },
+    ],
+  };
+}
+
+function noOauthClient() {
+  return {
+    authorizeUrl: async () => { throw new Error('authorizeUrl must not be called in this test'); },
+    revoke: async () => { throw new Error('revoke must not be called in this test'); },
+  };
+}
+
+function findButton(container: HTMLElement, label: string): HTMLButtonElement | undefined {
+  return Array.from(container.querySelectorAll('button')).find((button) => button.textContent === label);
+}
+
+test('成员面板为需个人授权插件渲染三态徽标与入口；无个人授权插件不出现授权区', async () => {
+  const connectionCalls: string[] = [];
+  const client = {
+    request: async (input: { method: string; path: string }) => {
+      if (input.method === 'GET' && input.path === '/api/v1/plugins/installations') return listEnvelopeWithAuthRows();
+      if (input.method === 'GET' && input.path === '/api/v1/plugins/installations/inst-1/connections/me') {
+        connectionCalls.push(input.path);
+        return connectionEnvelope('inst-1', 'authorized');
+      }
+      if (input.method === 'GET' && input.path === '/api/v1/plugins/installations/inst-3/connections/me') {
+        connectionCalls.push(input.path);
+        return connectionEnvelope('inst-3', 'expired');
+      }
+      throw new Error(`unexpected request ${input.method} ${input.path}`);
+    },
+    configuration: { mcp: { oauth: noOauthClient() } },
+  };
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  await act(async () => { root.render(React.createElement(PluginsPanel, { client: client as never })); });
+  try {
+    for (let i = 0; i < 6; i += 1) await act(async () => {});
+    const rows = Array.from(container.querySelectorAll('li'));
+    assert.equal(rows.length, 3);
+    // authorized：徽标「已授权」+ 撤销入口，无去授权。
+    assert.match(rows[0]!.innerHTML, /已授权/);
+    assert.match(rows[0]!.innerHTML, /撤销/);
+    assert.ok(!findButton(rows[0] as HTMLElement, '去授权'), 'an authorized connection offers revoke, not authorize');
+    // requires_personal_auth=false：整行无授权区（无徽标、无按钮、不发 connections/me）。
+    assert.ok(!rows[1]!.innerHTML.includes('已授权') && !rows[1]!.innerHTML.includes('已过期') && !rows[1]!.innerHTML.includes('未授权'), 'a no-auth plugin renders no connection badge');
+    assert.equal(rows[1]!.querySelectorAll('button').length, 0, 'a no-auth plugin renders no auth buttons');
+    // expired：徽标「已过期」+ 去授权（引导重授权），无撤销。
+    assert.match(rows[2]!.innerHTML, /已过期/);
+    assert.match(rows[2]!.innerHTML, /去授权/);
+    assert.ok(!findButton(rows[2] as HTMLElement, '撤销'), 'an expired connection guides re-authorization, not revoke');
+    // connections/me 只为 requires_personal_auth 插件发起。
+    assert.deepEqual([...connectionCalls].sort(), [
+      '/api/v1/plugins/installations/inst-1/connections/me',
+      '/api/v1/plugins/installations/inst-3/connections/me',
+    ]);
+  } finally {
+    await act(async () => { root.unmount(); });
+    document.body.replaceChildren();
+  }
+});
+
+test('成员面板未授权态点击「去授权」：经既有 oauth 客户端取授权地址并 window.open 弹窗', async () => {
+  const opened: string[] = [];
+  const originalOpen = dom.window.open;
+  dom.window.open = ((url: unknown) => {
+    opened.push(String(url));
+    return { closed: true } as never;
+  }) as never;
+  const authorizeCalls: string[] = [];
+  const client = {
+    request: async (input: { method: string; path: string }) => {
+      if (input.method === 'GET' && input.path === '/api/v1/plugins/installations') {
+        return { success: true, data: [listEnvelopeWithAuthRows().data[0]] };
+      }
+      if (input.method === 'GET' && input.path === '/api/v1/plugins/installations/inst-1/connections/me') {
+        return connectionEnvelope('inst-1', 'unauthorized');
+      }
+      throw new Error(`unexpected request ${input.method} ${input.path}`);
+    },
+    configuration: { mcp: { oauth: {
+      authorizeUrl: async (serviceId: string) => {
+        authorizeCalls.push(serviceId);
+        return { authorizationUrl: 'https://idp.test/authorize', authorizationAttempt: 'att-1' };
+      },
+      revoke: async () => { throw new Error('revoke must not be called in this test'); },
+    } } },
+  };
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  await act(async () => { root.render(React.createElement(PluginsPanel, { client: client as never })); });
+  try {
+    for (let i = 0; i < 6; i += 1) await act(async () => {});
+    assert.match(container.innerHTML, /未授权/);
+    const authorizeButton = findButton(container, '去授权');
+    assert.ok(authorizeButton, 'an unauthorized connection renders the authorize entry');
+    await act(async () => { authorizeButton!.click(); });
+    for (let i = 0; i < 4; i += 1) await act(async () => {});
+    // 去授权 = 复用物化 service_id 上的既有 authorize-url 端点 + 弹窗打开授权服务器页面。
+    assert.deepEqual(authorizeCalls, ['svc-inst-1']);
+    assert.deepEqual(opened, ['https://idp.test/authorize']);
+  } finally {
+    await act(async () => { root.unmount(); });
+    document.body.replaceChildren();
+    dom.window.open = originalOpen;
+  }
+});
+
+test('成员面板已授权态点击「撤销」：DELETE token 后刷新 connections/me 回到未授权', async () => {
+  const sequence: string[] = [];
+  let connectionState: 'authorized' | 'unauthorized' = 'authorized';
+  const client = {
+    request: async (input: { method: string; path: string }) => {
+      sequence.push(`${input.method} ${input.path}`);
+      if (input.method === 'GET' && input.path === '/api/v1/plugins/installations') {
+        return { success: true, data: [listEnvelopeWithAuthRows().data[0]] };
+      }
+      if (input.method === 'GET' && input.path === '/api/v1/plugins/installations/inst-1/connections/me') {
+        return connectionEnvelope('inst-1', connectionState);
+      }
+      throw new Error(`unexpected request ${input.method} ${input.path}`);
+    },
+    configuration: { mcp: { oauth: {
+      authorizeUrl: async () => { throw new Error('authorizeUrl must not be called in this test'); },
+      revoke: async (serviceId: string) => {
+        sequence.push(`REVOKE ${serviceId}`);
+        connectionState = 'unauthorized';
+      },
+    } } },
+  };
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  await act(async () => { root.render(React.createElement(PluginsPanel, { client: client as never })); });
+  try {
+    for (let i = 0; i < 6; i += 1) await act(async () => {});
+    assert.match(container.innerHTML, /已授权/);
+    const revokeButton = findButton(container, '撤销');
+    assert.ok(revokeButton, 'an authorized connection renders the revoke entry');
+    const listAndFirstConnection = sequence.length;
+    await act(async () => { revokeButton!.click(); });
+    for (let i = 0; i < 4; i += 1) await act(async () => {});
+    // 调用序列：撤销（既有 DELETE token 客户端方法，物化 service_id）→ 刷新 connections/me。
+    assert.deepEqual(sequence.slice(listAndFirstConnection), [
+      'REVOKE svc-inst-1',
+      'GET /api/v1/plugins/installations/inst-1/connections/me',
+    ]);
+    assert.match(container.innerHTML, /未授权/);
+    assert.ok(findButton(container, '去授权'), 'after revoke the panel offers authorize again');
+    assert.ok(!findButton(container, '撤销'), 'the revoke entry disappears once unauthorized');
   } finally {
     await act(async () => { root.unmount(); });
     document.body.replaceChildren();
