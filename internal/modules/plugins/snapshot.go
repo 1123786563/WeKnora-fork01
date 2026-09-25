@@ -81,7 +81,7 @@ func BuildVerifiedSnapshot(manifest *types.PluginManifest, live []*types.MCPTool
 		// Vet the name up front, keyed by position (never by the untrusted
 		// name itself): everything that reaches an error message below has
 		// passed the same hygiene the manifest validator enforces.
-		if err := validateName(fmt.Sprintf("live tools[%d].name", i), tool.Name, maxToolNameLen); err != nil {
+		if err := validateToolName(fmt.Sprintf("live tools[%d].name", i), tool.Name, maxToolNameLen); err != nil {
 			if !reportedUnvetted[tool.Name] {
 				reportedUnvetted[tool.Name] = true
 				problems = append(problems, err.Error())
@@ -111,7 +111,7 @@ func BuildVerifiedSnapshot(manifest *types.PluginManifest, live []*types.MCPTool
 		// live endpoint" (it can never match a vetted live name). The
 		// `where` uses the position index, never the untrusted name itself
 		// (OCR T01-R3-F4).
-		if err := validateName(fmt.Sprintf("manifest tools[%d].name", i), decl.Name, maxToolNameLen); err != nil {
+		if err := validateToolName(fmt.Sprintf("manifest tools[%d].name", i), decl.Name, maxToolNameLen); err != nil {
 			return nil, "", err
 		}
 		if err := validateScopes(decl.Scopes, fmt.Sprintf("manifest tools[%d]", i)); err != nil {
@@ -427,7 +427,7 @@ func ValidateLiveDirectoryForRebase(live []*types.MCPTool) error {
 		// Vet up front, keyed by position (never echo the untrusted name):
 		// everything that reaches the duplicate echo below has passed the
 		// same hygiene the install path enforces.
-		if err := validateName(fmt.Sprintf("live tools[%d].name", i), tool.Name, maxToolNameLen); err != nil {
+		if err := validateToolName(fmt.Sprintf("live tools[%d].name", i), tool.Name, maxToolNameLen); err != nil {
 			return err
 		}
 		if seen[tool.Name] {
