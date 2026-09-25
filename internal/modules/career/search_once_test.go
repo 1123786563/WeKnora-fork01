@@ -105,12 +105,20 @@ func TestSearchOnceCreatesSingleDurableSearchPerRequest(t *testing.T) {
 	require.NoError(t, o.db.Model(&searchResultRecord{}).Count(&results).Error)
 	require.EqualValues(t, 2, results)
 
-	// A one-shot search must not create any continuous rule structure: no
-	// rule-shaped table exists, no profile change events are emitted, and the
-	// profile revision stays untouched.
-	var ruleTables []string
-	require.NoError(t, o.db.Raw("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE '%rule%'").Scan(&ruleTables).Error)
-	require.Empty(t, ruleTables, "no continuous rule structure may be created: %v", ruleTables)
+	// A one-shot search must not create any continuous rule structure. The
+	// T13 schema legitimately ships rule tables, so the honest assertion is
+	// data-level: a one-shot search stores no rule, schedules nothing due,
+	// and records no rule run or discovery todo.
+	var rules, ruleRuns, ruleTodos int64
+	require.NoError(t, o.db.Model(&searchRuleRecord{}).Count(&rules).Error)
+	require.Zero(t, rules, "a one-shot search must not create a rule")
+	var dueRules int64
+	require.NoError(t, o.db.Model(&searchRuleRecord{}).Where("next_due_at IS NOT NULL").Count(&dueRules).Error)
+	require.Zero(t, dueRules, "a one-shot search must not schedule anything")
+	require.NoError(t, o.db.Model(&searchRuleRunRecord{}).Count(&ruleRuns).Error)
+	require.Zero(t, ruleRuns, "a one-shot search must not record a rule run")
+	require.NoError(t, o.db.Model(&searchDiscoveryTodoRecord{}).Count(&ruleTodos).Error)
+	require.Zero(t, ruleTodos, "a one-shot search must not enqueue a discovery todo")
 	var changes int64
 	require.NoError(t, o.db.Model(&change{}).Count(&changes).Error)
 	require.Zero(t, changes, "a search is not a profile mutation")

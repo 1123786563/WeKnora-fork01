@@ -242,6 +242,11 @@ type Office struct {
 	// authority (production enforces nothing yet; the real ledger is T21).
 	searchRegistry  SearchSourceRegistry
 	searchQuotaGate SearchQuotaGate
+	// Recurring search rule clock seam (T13): set_rule scheduling decisions
+	// read this injected clock; tests pin it, production reads the wall clock.
+	// Rule triggering itself is the explicit TriggerDueRules(ctx, now) seam —
+	// no resident scheduler exists on the production path.
+	searchRuleNow func() time.Time
 	// These hooks only synchronize transaction-boundary and error-path tests.
 	beforeFirstWrite             func()
 	afterReceiptPersist          func()
@@ -267,7 +272,7 @@ func NewOffice(db *gorm.DB) (*Office, error) {
 	if db == nil {
 		return nil, errors.New("career database required")
 	}
-	models := []any{&profile{}, &space{}, &fact{}, &factVersion{}, &proposal{}, &change{}, &receipt{}, &sourceRevision{}, &opportunity{}, &opportunityObservation{}, &opportunitySnapshot{}, &opportunityReceipt{}, &evaluationRecord{}, &applicationRecord{}, &searchRecord{}, &searchResultRecord{}, &materialRecord{}, &materialVersionRecord{}, &materialReceiptRecord{}, &materialExportRecord{}, &progressEventRecord{}}
+	models := []any{&profile{}, &space{}, &fact{}, &factVersion{}, &proposal{}, &change{}, &receipt{}, &sourceRevision{}, &opportunity{}, &opportunityObservation{}, &opportunitySnapshot{}, &opportunityReceipt{}, &evaluationRecord{}, &applicationRecord{}, &searchRecord{}, &searchResultRecord{}, &materialRecord{}, &materialVersionRecord{}, &materialReceiptRecord{}, &materialExportRecord{}, &progressEventRecord{}, &searchRuleRecord{}, &searchRuleReceiptRecord{}, &searchRuleRunRecord{}, &searchDiscoveryTodoRecord{}}
 	if db.Dialector.Name() == "sqlite" {
 		present := 0
 		for _, model := range models {
@@ -332,6 +337,10 @@ func validateSQLiteCareerSchema(db *gorm.DB) error {
 		"career_material_receipts":        {"tenant_id", "user_id", "request_id", "fingerprint", "body", "created_at"},
 		"career_material_exports":         {"id", "tenant_id", "user_id", "material_id", "version", "request_id", "fingerprint", "content_digest", "status", "pdf_object_key", "pdf_digest", "pdf_size", "pdf_error", "docx_object_key", "docx_digest", "docx_size", "docx_error", "revoked_at", "receipt_body", "created_at", "updated_at"},
 		"career_progress_events":          {"id", "tenant_id", "user_id", "application_id", "seq", "kind", "event_type", "note", "occurred_at", "corrects_event_id", "source", "confirmer", "request_id", "fingerprint", "receipt_body", "created_at"},
+		"career_search_rules":             {"id", "tenant_id", "user_id", "query", "interval_minutes", "status", "revision", "last_period", "next_due_at", "created_at", "updated_at"},
+		"career_search_rule_receipts":     {"tenant_id", "user_id", "request_id", "fingerprint", "body", "created_at"},
+		"career_search_rule_runs":         {"id", "tenant_id", "user_id", "rule_id", "period", "request_id", "status", "body", "created_at"},
+		"career_search_discovery_todos":   {"id", "tenant_id", "user_id", "rule_id", "run_id", "search_id", "source_id", "link", "status", "created_at"},
 	}
 	for table, columns := range requiredColumns {
 		for _, column := range columns {
@@ -341,20 +350,24 @@ func validateSQLiteCareerSchema(db *gorm.DB) error {
 		}
 	}
 	for table, columns := range map[string][]string{
-		"career_facts":                {"tenant_id", "user_id", "key"},
-		"career_changes":              {"tenant_id", "user_id", "revision"},
-		"career_receipts":             {"tenant_id", "user_id", "request_id"},
-		"career_source_revisions":     {"tenant_id", "user_id", "revision"},
-		"career_opportunity_receipts": {"tenant_id", "user_id", "request_id"},
-		"career_evaluations":          {"tenant_id", "user_id", "request_id"},
-		"career_applications":         {"tenant_id", "user_id", "request_id"},
-		"career_searches":             {"tenant_id", "user_id", "request_id"},
-		"career_search_results":       {"tenant_id", "user_id", "search_id", "link"},
-		"career_materials":            {"tenant_id", "user_id", "request_id"},
-		"career_material_versions":    {"tenant_id", "user_id", "material_id", "version"},
-		"career_material_receipts":    {"tenant_id", "user_id", "request_id"},
-		"career_material_exports":     {"tenant_id", "user_id", "request_id"},
-		"career_progress_events":      {"tenant_id", "user_id", "request_id"},
+		"career_facts":                  {"tenant_id", "user_id", "key"},
+		"career_changes":                {"tenant_id", "user_id", "revision"},
+		"career_receipts":               {"tenant_id", "user_id", "request_id"},
+		"career_source_revisions":       {"tenant_id", "user_id", "revision"},
+		"career_opportunity_receipts":   {"tenant_id", "user_id", "request_id"},
+		"career_evaluations":            {"tenant_id", "user_id", "request_id"},
+		"career_applications":           {"tenant_id", "user_id", "request_id"},
+		"career_searches":               {"tenant_id", "user_id", "request_id"},
+		"career_search_results":         {"tenant_id", "user_id", "search_id", "link"},
+		"career_materials":              {"tenant_id", "user_id", "request_id"},
+		"career_material_versions":      {"tenant_id", "user_id", "material_id", "version"},
+		"career_material_receipts":      {"tenant_id", "user_id", "request_id"},
+		"career_material_exports":       {"tenant_id", "user_id", "request_id"},
+		"career_progress_events":        {"tenant_id", "user_id", "request_id"},
+		"career_search_rules":           {"tenant_id", "user_id", "id"},
+		"career_search_rule_receipts":   {"tenant_id", "user_id", "request_id"},
+		"career_search_rule_runs":       {"tenant_id", "user_id", "rule_id", "period"},
+		"career_search_discovery_todos": {"tenant_id", "user_id", "link"},
 	} {
 		if err := requireSQLiteUniqueConstraint(db, table, columns); err != nil {
 			return fmt.Errorf("incomplete Career SQLite schema: %w; apply database migrations before startup", err)

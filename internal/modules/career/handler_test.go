@@ -556,3 +556,87 @@ func TestCareerMaterialExportHTTPContract(t *testing.T) {
 	require.Equal(t, 409, rec.Code)
 	require.Contains(t, rec.Body.String(), "export_not_submittable")
 }
+
+func TestCareerRuleHTTPContract(t *testing.T) {
+	o, _, _, ctx := newSearchRuleOffice(t)
+	require.NoError(t, o.ClaimSpace(ctx))
+	base := context.WithValue(context.Background(), types.UserIDContextKey, "rule-owner")
+	base = context.WithValue(base, types.TenantIDContextKey, uint64(96))
+	h := &Handler{office: o, members: &memberListStub{members: []*types.TenantMember{{UserID: "rule-owner", TenantID: 96, Role: types.TenantRoleOwner}}}}
+
+	post := func(body string) *httptest.ResponseRecorder {
+		gin.SetMode(gin.TestMode)
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/career/rules", strings.NewReader(body)).WithContext(base)
+		c.Request.Header.Set("Content-Type", "application/json")
+		h.SetRule(c)
+		return rec
+	}
+
+	// set_rule stores the rule and surfaces the frozen receipt with the
+	// deterministic estimate.
+	rec := post(`{"requestId":"rule-http-1","query":"go engineer","intervalMinutes":60,"status":"enabled","expectedRevision":0}`)
+	require.Equal(t, 200, rec.Code, rec.Body.String())
+	var receipt SetRuleReceipt
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &receipt))
+	require.Equal(t, RuleKindSet, receipt.Kind)
+	require.Equal(t, RuleStatusEnabled, receipt.Status)
+	require.NotNil(t, receipt.NextDueAt)
+	require.NotEmpty(t, receipt.Estimate.Basis)
+
+	// Exact replay replays the stored receipt by request ID.
+	rec = post(`{"requestId":"rule-http-1","query":"go engineer","intervalMinutes":60,"status":"enabled","expectedRevision":0}`)
+	require.Equal(t, 200, rec.Code, rec.Body.String())
+	require.Contains(t, rec.Body.String(), receipt.RuleID)
+
+	// Content change under the same request ID is a typed conflict.
+	rec = post(`{"requestId":"rule-http-1","query":"go engineer","intervalMinutes":30,"status":"enabled","expectedRevision":0}`)
+	require.Equal(t, 409, rec.Code, rec.Body.String())
+	require.Contains(t, rec.Body.String(), "idempotency_conflict")
+
+	// Unknown fields, invalid status, and out-of-range intervals are invalid.
+	rec = post(`{"requestId":"rule-http-bad","query":"go engineer","intervalMinutes":60,"status":"enabled","expectedRevision":0,"extra":1}`)
+	require.Equal(t, 400, rec.Code, rec.Body.String())
+	rec = post(`{"requestId":"rule-http-bad","query":"go engineer","intervalMinutes":60,"status":"sometimes","expectedRevision":0}`)
+	require.Equal(t, 400, rec.Code, rec.Body.String())
+	rec = post(`{"requestId":"rule-http-bad","query":"go engineer","intervalMinutes":0,"status":"enabled","expectedRevision":0}`)
+	require.Equal(t, 400, rec.Code, rec.Body.String())
+
+	// The receipt endpoint replays by request ID and 404s unknown requests.
+	gin.SetMode(gin.TestMode)
+	receiptRec := httptest.NewRecorder()
+	receiptCtx, _ := gin.CreateTestContext(receiptRec)
+	receiptCtx.Request = httptest.NewRequest(http.MethodGet, "/api/v1/career/rules/receipt?requestId=rule-http-1", nil).WithContext(base)
+	h.RuleReceipt(receiptCtx)
+	require.Equal(t, 200, receiptRec.Code, receiptRec.Body.String())
+	require.Contains(t, receiptRec.Body.String(), RuleKindSet)
+
+	gin.SetMode(gin.TestMode)
+	missingRec := httptest.NewRecorder()
+	missingCtx, _ := gin.CreateTestContext(missingRec)
+	missingCtx.Request = httptest.NewRequest(http.MethodGet, "/api/v1/career/rules/receipt?requestId=missing", nil).WithContext(base)
+	h.RuleReceipt(missingCtx)
+	require.Equal(t, 404, missingRec.Code)
+
+	// The rule view serves the live contract under the authenticated scope.
+	gin.SetMode(gin.TestMode)
+	viewRec := httptest.NewRecorder()
+	viewCtx, _ := gin.CreateTestContext(viewRec)
+	viewCtx.Request = httptest.NewRequest(http.MethodGet, "/api/v1/career/rules/"+receipt.RuleID, nil).WithContext(base)
+	viewCtx.Params = gin.Params{{Key: "ruleId", Value: receipt.RuleID}}
+	h.GetRule(viewCtx)
+	require.Equal(t, 200, viewRec.Code, viewRec.Body.String())
+	require.Contains(t, viewRec.Body.String(), `"estimate":`)
+
+	// An intruder from the same tenant is rejected at the scope gate.
+	gin.SetMode(gin.TestMode)
+	intruderRec := httptest.NewRecorder()
+	intruderCtx, _ := gin.CreateTestContext(intruderRec)
+	intruderBase := context.WithValue(context.Background(), types.UserIDContextKey, "intruder")
+	intruderBase = context.WithValue(intruderBase, types.TenantIDContextKey, uint64(96))
+	intruderCtx.Request = httptest.NewRequest(http.MethodPost, "/api/v1/career/rules", strings.NewReader(`{"requestId":"rule-http-intruder","query":"go engineer","intervalMinutes":60,"status":"enabled","expectedRevision":0}`)).WithContext(intruderBase)
+	intruderCtx.Request.Header.Set("Content-Type", "application/json")
+	h.SetRule(intruderCtx)
+	require.Equal(t, 403, intruderRec.Code)
+}

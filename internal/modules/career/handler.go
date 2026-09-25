@@ -111,6 +111,9 @@ func writeError(c *gin.Context, e error) {
 	case errors.Is(e, ErrSearchNotFound):
 		status = 404
 		code = "not_found"
+	case errors.Is(e, ErrRuleNotFound):
+		status = 404
+		code = "not_found"
 	case errors.Is(e, ErrSearchQuotaRefused):
 		status = http.StatusTooManyRequests
 		code = "search_quota_refused"
@@ -576,6 +579,74 @@ func (h *Handler) GetSearch(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, receipt)
+}
+
+const maxRuleBodyBytes = 16 * 1024
+
+// SetRule creates or updates one user-controlled recurring search rule. The
+// rule never runs on its own here: triggering is the explicit office-level
+// TriggerDueRules seam, so nothing in this HTTP path schedules background
+// work. The receipt surfaces the conditions, the frequency, and the
+// deterministic estimated consumption before any run happens.
+func (h *Handler) SetRule(c *gin.Context) {
+	ctx, ok := h.scope(c, true)
+	if !ok {
+		return
+	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxRuleBodyBytes)
+	decoder := json.NewDecoder(c.Request.Body)
+	decoder.DisallowUnknownFields()
+	var input SetRuleInput
+	if err := decoder.Decode(&input); err != nil {
+		var maxBytesError *http.MaxBytesError
+		if errors.As(err, &maxBytesError) {
+			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": gin.H{"code": "request_too_large", "message": "rule request is too large"}})
+			return
+		}
+		writeError(c, ErrInvalidRequest)
+		return
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		writeError(c, ErrInvalidRequest)
+		return
+	}
+	receipt, err := h.office.SetRule(ctx, input)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, receipt)
+}
+
+// RuleReceipt replays a stored set_rule receipt by its original request ID.
+func (h *Handler) RuleReceipt(c *gin.Context) {
+	ctx, ok := h.scope(c, false)
+	if !ok {
+		return
+	}
+	receipt, err := h.office.FindRuleReceipt(ctx, c.Query("requestId"))
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, receipt)
+}
+
+// GetRule serves the live rule contract: configuration, deterministic
+// estimate, full run history (including blocked statuses), and discovery
+// todos.
+func (h *Handler) GetRule(c *gin.Context) {
+	ctx, ok := h.scope(c, false)
+	if !ok {
+		return
+	}
+	view, err := h.office.Rule(ctx, c.Param("ruleId"))
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, view)
 }
 
 const maxMaterialBodyBytes = 256 * 1024

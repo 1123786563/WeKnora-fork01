@@ -19,7 +19,7 @@ func TestCareerMigrationCreatesPersonalEvidenceSchema(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "career-migration.db")
 	require.NoError(t, RunMigrationsWithOptions("sqlite3://unused", MigrationOptions{SQLiteDBPath: path}))
 	db := openSQLiteDB(t, path)
-	for _, table := range []string{"career_spaces", "career_profiles", "career_facts", "career_fact_versions", "career_proposals", "career_changes", "career_receipts", "career_source_revisions", "career_opportunities", "career_opportunity_observations", "career_opportunity_snapshots", "career_opportunity_receipts", "career_evaluations", "career_applications", "career_materials", "career_material_versions", "career_material_receipts", "career_material_exports"} {
+	for _, table := range []string{"career_spaces", "career_profiles", "career_facts", "career_fact_versions", "career_proposals", "career_changes", "career_receipts", "career_source_revisions", "career_opportunities", "career_opportunity_observations", "career_opportunity_snapshots", "career_opportunity_receipts", "career_evaluations", "career_applications", "career_materials", "career_material_versions", "career_material_receipts", "career_material_exports", "career_search_rules", "career_search_rule_receipts", "career_search_rule_runs", "career_search_discovery_todos"} {
 		require.Truef(t, sqliteTableExists(t, db, table), "career migration must create %s", table)
 	}
 	for _, column := range []string{"id", "tenant_id", "user_id", "revision", "file_name", "mime_type", "size", "digest", "request_id", "intent_hash", "expected_revision", "claim_token", "lease_until", "resource_ref", "status", "error_category", "error_message", "extracted_text", "missing_categories", "review_flags", "created_at", "completed_at"} {
@@ -130,7 +130,7 @@ func TestCareerOpportunitySQLiteMigrationUpDownUp(t *testing.T) {
 	require.NoError(t, RunMigrationsWithOptions("sqlite3://unused", MigrationOptions{SQLiteDBPath: path}))
 	db := openSQLiteDB(t, path)
 	version, _ := sqliteMigrationState(t, db)
-	require.Equal(t, 123, version)
+	require.Equal(t, 124, version)
 	m, err := newSQLiteMigrator("file://"+filepath.Join(root, "migrations/sqlite"), path, "", true)
 	require.NoError(t, err)
 	t.Cleanup(func() { _, _ = m.Close() })
@@ -156,7 +156,7 @@ func TestSourceObservationMigrationUpAndDown(t *testing.T) {
 	require.NoError(t, RunMigrationsWithOptions("sqlite3://unused", MigrationOptions{SQLiteDBPath: path}))
 	db := openSQLiteDB(t, path)
 	version, _ := sqliteMigrationState(t, db)
-	require.Equal(t, 123, version)
+	require.Equal(t, 124, version)
 	addedColumns := []string{"source_status", "completeness", "failure_code", "submitted_url", "final_url", "adapter_id", "adapter_version", "observed_http_status"}
 	preservedColumns := []string{"id", "tenant_id", "user_id", "opportunity_id", "snapshot_id", "source_kind", "source_label", "source_ref", "acquired_at", "created_at"}
 	columnPresent := func(column string) bool {
@@ -188,7 +188,7 @@ func TestSourceObservationMigrationUpAndDown(t *testing.T) {
 	}
 	require.NoError(t, m.Up())
 	version, _ = sqliteMigrationState(t, db)
-	require.Equal(t, 123, version)
+	require.Equal(t, 124, version)
 	for _, column := range addedColumns {
 		require.Truef(t, columnPresent(column), "re-applying up must restore %s", column)
 	}
@@ -201,7 +201,7 @@ func TestCareerEvaluationSQLiteMigrationUpDownUp(t *testing.T) {
 	require.NoError(t, RunMigrationsWithOptions("sqlite3://unused", MigrationOptions{SQLiteDBPath: path}))
 	db := openSQLiteDB(t, path)
 	version, _ := sqliteMigrationState(t, db)
-	require.Equal(t, 123, version)
+	require.Equal(t, 124, version)
 	m, err := newSQLiteMigrator("file://"+filepath.Join(root, "migrations/sqlite"), path, "", true)
 	require.NoError(t, err)
 	t.Cleanup(func() { _, _ = m.Close() })
@@ -234,7 +234,7 @@ func TestCareerApplicationSQLiteMigrationUpDownUp(t *testing.T) {
 	require.NoError(t, RunMigrationsWithOptions("sqlite3://unused", MigrationOptions{SQLiteDBPath: path}))
 	db := openSQLiteDB(t, path)
 	version, _ := sqliteMigrationState(t, db)
-	require.Equal(t, 123, version)
+	require.Equal(t, 124, version)
 	require.True(t, sqliteTableExists(t, db, "career_applications"))
 
 	insertApplication := func(id, requestID, opportunityID, batch string) error {
@@ -281,7 +281,7 @@ func TestSearchOnceMigrationUpAndDown(t *testing.T) {
 	require.NoError(t, RunMigrationsWithOptions("sqlite3://unused", MigrationOptions{SQLiteDBPath: path}))
 	db := openSQLiteDB(t, path)
 	version, _ := sqliteMigrationState(t, db)
-	require.Equal(t, 123, version)
+	require.Equal(t, 124, version)
 	for _, table := range []string{"career_searches", "career_search_results"} {
 		require.Truef(t, sqliteTableExists(t, db, table), "up migration must create %s", table)
 	}
@@ -324,7 +324,7 @@ func TestSearchOnceMigrationUpAndDown(t *testing.T) {
 	require.True(t, sqliteTableExists(t, db, "career_applications"), "down migration must preserve the prior Career schema")
 	require.NoError(t, m.Up())
 	version, _ = sqliteMigrationState(t, db)
-	require.Equal(t, 123, version)
+	require.Equal(t, 124, version)
 	for _, table := range []string{"career_searches", "career_search_results"} {
 		require.Truef(t, sqliteTableExists(t, db, table), "re-applying up must restore %s", table)
 	}
@@ -345,7 +345,7 @@ func TestMaterialMigrationUpAndDown(t *testing.T) {
 	require.NoError(t, RunMigrationsWithOptions("sqlite3://unused", MigrationOptions{SQLiteDBPath: path}))
 	db := openSQLiteDB(t, path)
 	version, _ := sqliteMigrationState(t, db)
-	require.Equal(t, 123, version)
+	require.Equal(t, 124, version)
 	for _, table := range []string{"career_materials", "career_material_versions", "career_material_receipts"} {
 		require.Truef(t, sqliteTableExists(t, db, table), "up migration must create %s", table)
 	}
@@ -397,7 +397,7 @@ func TestMaterialMigrationUpAndDown(t *testing.T) {
 	require.True(t, sqliteTableExists(t, db, "career_searches"), "down migration must preserve the prior Career schema")
 	require.NoError(t, m.Up())
 	version, _ = sqliteMigrationState(t, db)
-	require.Equal(t, 123, version)
+	require.Equal(t, 124, version)
 	for _, table := range []string{"career_materials", "career_material_versions", "career_material_receipts"} {
 		require.Truef(t, sqliteTableExists(t, db, table), "re-applying up must restore %s", table)
 	}
@@ -421,7 +421,7 @@ func TestProgressMigrationUpAndDown(t *testing.T) {
 	require.NoError(t, RunMigrationsWithOptions("sqlite3://unused", MigrationOptions{SQLiteDBPath: path}))
 	db := openSQLiteDB(t, path)
 	version, _ := sqliteMigrationState(t, db)
-	require.Equal(t, 123, version)
+	require.Equal(t, 124, version)
 	require.True(t, sqliteTableExists(t, db, "career_progress_events"))
 	for _, column := range []string{"id", "tenant_id", "user_id", "application_id", "seq", "kind", "event_type", "note", "occurred_at", "corrects_event_id", "source", "confirmer", "request_id", "fingerprint", "receipt_body", "created_at"} {
 		var present int
@@ -451,7 +451,7 @@ func TestProgressMigrationUpAndDown(t *testing.T) {
 	require.True(t, sqliteTableExists(t, db, "career_materials"), "down migration must preserve the prior Career schema")
 	require.NoError(t, m.Up())
 	version, _ = sqliteMigrationState(t, db)
-	require.Equal(t, 123, version)
+	require.Equal(t, 124, version)
 	require.True(t, sqliteTableExists(t, db, "career_progress_events"), "re-applying up must restore career_progress_events")
 	var count int
 	require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM career_progress_events").Scan(&count))
@@ -523,6 +523,85 @@ func TestCareerOfficeRejectsPartialVersionedSQLiteSchema(t *testing.T) {
 	require.False(t, db.Migrator().HasTable("career_receipts"), "startup must not run AutoMigrate over a partial versioned schema")
 }
 
+func TestSearchRuleMigrationUpAndDown(t *testing.T) {
+	root := sqliteRepoRoot(t)
+	chdirAndRestore(t, root)
+	for _, tree := range []string{
+		"migrations/versioned/000203_career_search_rules.up.sql",
+		"migrations/versioned/000203_career_search_rules.down.sql",
+		"migrations/sqlite/000124_career_search_rules.up.sql",
+		"migrations/sqlite/000124_career_search_rules.down.sql",
+	} {
+		require.FileExistsf(t, filepath.Join(root, tree), "paired migration files must exist: %s", tree)
+	}
+	path := filepath.Join(t.TempDir(), "career-search-rule-up-down.db")
+	require.NoError(t, RunMigrationsWithOptions("sqlite3://unused", MigrationOptions{SQLiteDBPath: path}))
+	db := openSQLiteDB(t, path)
+	version, _ := sqliteMigrationState(t, db)
+	require.Equal(t, 124, version)
+	for _, table := range []string{"career_search_rules", "career_search_rule_receipts", "career_search_rule_runs", "career_search_discovery_todos"} {
+		require.Truef(t, sqliteTableExists(t, db, table), "up migration must create %s", table)
+	}
+	for _, column := range []string{"id", "tenant_id", "user_id", "query", "interval_minutes", "status", "revision", "last_period", "next_due_at", "created_at", "updated_at"} {
+		var count int
+		require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM pragma_table_info('career_search_rules') WHERE name = ?", column).Scan(&count))
+		require.Equalf(t, 1, count, "career_search_rules must include %s", column)
+	}
+
+	_, err := db.Exec(`INSERT INTO career_search_rules
+		(id,tenant_id,user_id,query,interval_minutes,status,revision,last_period,next_due_at,created_at,updated_at)
+		VALUES ('rule-1',42,'rule-owner','go engineer',60,'enabled',1,0,NULL,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)`)
+	require.NoError(t, err)
+	_, err = db.Exec(`INSERT INTO career_search_rules
+		(id,tenant_id,user_id,query,interval_minutes,status,revision,last_period,next_due_at,created_at,updated_at)
+		VALUES ('rule-1',42,'rule-owner','go engineer',30,'paused',2,0,NULL,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)`)
+	require.Error(t, err, "scope uniqueness must reject a duplicate (tenant,user,id)")
+	_, err = db.Exec(`INSERT INTO career_search_rule_receipts (tenant_id,user_id,request_id,fingerprint,body,created_at)
+		VALUES (42,'rule-owner','req-1',?,'{}',CURRENT_TIMESTAMP)`, strings.Repeat("f", 64))
+	require.NoError(t, err)
+	_, err = db.Exec(`INSERT INTO career_search_rule_receipts (tenant_id,user_id,request_id,fingerprint,body,created_at)
+		VALUES (42,'rule-owner','req-1',?,'{}',CURRENT_TIMESTAMP)`, strings.Repeat("g", 64))
+	require.Error(t, err, "request uniqueness must reject a duplicate (tenant,user,request)")
+	_, err = db.Exec(`INSERT INTO career_search_rule_runs (id,tenant_id,user_id,rule_id,period,request_id,status,body,created_at)
+		VALUES ('run-1',42,'rule-owner','rule-1',1,'rule:rule-1:1','completed','{}',CURRENT_TIMESTAMP)`)
+	require.NoError(t, err)
+	_, err = db.Exec(`INSERT INTO career_search_rule_runs (id,tenant_id,user_id,rule_id,period,request_id,status,body,created_at)
+		VALUES ('run-2',42,'rule-owner','rule-1',1,'rule:rule-1:1','completed','{}',CURRENT_TIMESTAMP)`)
+	require.Error(t, err, "one rule may hold each period exactly once")
+	_, err = db.Exec(`INSERT INTO career_search_discovery_todos (id,tenant_id,user_id,rule_id,run_id,search_id,source_id,link,status,created_at)
+		VALUES ('todo-1',42,'rule-owner','rule-1','run-1','search-1','src','https://jobs.example.test/j/1001','open',CURRENT_TIMESTAMP)`)
+	require.NoError(t, err)
+	_, err = db.Exec(`INSERT INTO career_search_discovery_todos (id,tenant_id,user_id,rule_id,run_id,search_id,source_id,link,status,created_at)
+		VALUES ('todo-2',42,'rule-owner','rule-1','run-1','search-1','src','https://jobs.example.test/j/1001','open',CURRENT_TIMESTAMP)`)
+	require.Error(t, err, "one discovered job link may produce exactly one todo")
+
+	m, err := newSQLiteMigrator("file://"+filepath.Join(root, "migrations/sqlite"), path, "", true)
+	require.NoError(t, err)
+	t.Cleanup(func() { _, _ = m.Close() })
+	require.NoError(t, m.Migrate(123))
+	downVersion, _ := sqliteMigrationState(t, db)
+	require.Equal(t, 123, downVersion)
+	for _, table := range []string{"career_search_rules", "career_search_rule_receipts", "career_search_rule_runs", "career_search_discovery_todos"} {
+		require.Falsef(t, sqliteTableExists(t, db, table), "down migration must remove %s", table)
+	}
+	require.True(t, sqliteTableExists(t, db, "career_material_exports"), "down migration must preserve the prior Career schema")
+	require.NoError(t, m.Up())
+	version, _ = sqliteMigrationState(t, db)
+	require.Equal(t, 124, version)
+	for _, table := range []string{"career_search_rules", "career_search_rule_receipts", "career_search_rule_runs", "career_search_discovery_todos"} {
+		require.Truef(t, sqliteTableExists(t, db, table), "re-applying up must restore %s", table)
+	}
+	var rulesCount, receiptsCount, runsCount, todosCount int
+	require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM career_search_rules").Scan(&rulesCount))
+	require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM career_search_rule_receipts").Scan(&receiptsCount))
+	require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM career_search_rule_runs").Scan(&runsCount))
+	require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM career_search_discovery_todos").Scan(&todosCount))
+	require.Zerof(t, rulesCount, "re-applying up must restore an empty career_search_rules")
+	require.Zerof(t, receiptsCount, "re-applying up must restore an empty career_search_rule_receipts")
+	require.Zerof(t, runsCount, "re-applying up must restore an empty career_search_rule_runs")
+	require.Zerof(t, todosCount, "re-applying up must restore an empty career_search_discovery_todos")
+}
+
 func TestPublishMaterialMigrationUpAndDown(t *testing.T) {
 	root := sqliteRepoRoot(t)
 	chdirAndRestore(t, root)
@@ -538,7 +617,7 @@ func TestPublishMaterialMigrationUpAndDown(t *testing.T) {
 	require.NoError(t, RunMigrationsWithOptions("sqlite3://unused", MigrationOptions{SQLiteDBPath: path}))
 	db := openSQLiteDB(t, path)
 	version, _ := sqliteMigrationState(t, db)
-	require.Equal(t, 123, version)
+	require.Equal(t, 124, version)
 	require.True(t, sqliteTableExists(t, db, "career_material_exports"))
 	for _, column := range []string{"id", "tenant_id", "user_id", "material_id", "version", "request_id", "fingerprint", "content_digest", "status", "pdf_object_key", "pdf_digest", "pdf_size", "pdf_error", "docx_object_key", "docx_digest", "docx_size", "docx_error", "revoked_at", "receipt_body", "created_at", "updated_at"} {
 		var count int
@@ -570,7 +649,7 @@ func TestPublishMaterialMigrationUpAndDown(t *testing.T) {
 	}
 	require.NoError(t, m.Up())
 	version, _ = sqliteMigrationState(t, db)
-	require.Equal(t, 123, version)
+	require.Equal(t, 124, version)
 	require.True(t, sqliteTableExists(t, db, "career_material_exports"), "re-applying up must restore career_material_exports")
 	var count int
 	require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM career_material_exports").Scan(&count))
