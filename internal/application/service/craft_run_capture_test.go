@@ -113,6 +113,13 @@ func (s *memoryCaptureStore) RecoverPending(context.Context, int) ([]repository.
 	}
 	return []repository.CraftRunCapture{s.receipt}, nil
 }
+func (s *memoryCaptureStore) RecoverPendingForRun(_ context.Context, tenantID uint64, runID string) ([]repository.CraftRunCapture, error) {
+	if s.receipt.State == "" || s.receipt.State == "advanced" ||
+		s.receipt.Scope.TenantID != tenantID || s.receipt.RunID != runID {
+		return nil, nil
+	}
+	return []repository.CraftRunCapture{s.receipt}, nil
+}
 func (s *memoryCaptureStore) BeginCapture(_ context.Context, r repository.CraftRunCapture, digest string) (repository.CraftRunCapture, error) {
 	if r.ManifestDigest != "" && r.ManifestDigest != digest {
 		return repository.CraftRunCapture{}, craft.ErrConflict

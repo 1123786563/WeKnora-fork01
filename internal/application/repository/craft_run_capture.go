@@ -337,6 +337,33 @@ func craftCaptureRecoveryInsertSQL(dialect string) string {
 	ON CONFLICT(tenant_id,workspace_id,run_id) DO NOTHING`
 }
 
+// RecoverPendingForRun returns the still-unadvanced receipts of one Run. It
+// deliberately performs no global missing-receipt synthesis: the per-run
+// drain is a cheap targeted post-terminal path, and the periodic scan owns
+// synthesis for receipts stranded between the terminal commit and enqueue.
+func (s *CraftRunCaptureStore) RecoverPendingForRun(ctx context.Context, tenantID uint64, runID string) ([]CraftRunCapture, error) {
+	if tenantID == 0 || runID == "" {
+		return nil, fmt.Errorf("%w: per-run capture recovery requires the Run identity", craft.ErrInvalidInput)
+	}
+	var rows []craftRunCaptureRow
+	if err := s.db.WithContext(ctx).
+		Where("tenant_id = ? AND run_id = ? AND state IN ('pending','capturing','sealed','blocked')", tenantID, runID).
+		Order("created_at ASC").Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	out := make([]CraftRunCapture, 0, len(rows))
+	for _, row := range rows {
+		var files []craftRunCaptureFileRow
+		if row.State == "sealed" {
+			if err := s.db.WithContext(ctx).Where("tenant_id=? AND workspace_id=? AND run_id=?", row.TenantID, row.WorkspaceID, row.RunID).Order("path ASC").Find(&files).Error; err != nil {
+				return nil, err
+			}
+		}
+		out = append(out, captureValue(row, files))
+	}
+	return out, nil
+}
+
 func (s *CraftRunCaptureStore) Seal(ctx context.Context, receipt CraftRunCapture, files []craft.File, digest string) (CraftRunCapture, error) {
 	if digest == "" || len(files) == 0 {
 		return CraftRunCapture{}, fmt.Errorf("%w: empty capture manifest", craft.ErrInvalidInput)

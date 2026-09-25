@@ -3,6 +3,7 @@ package container
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
@@ -84,6 +85,11 @@ type CraftRunCaptureRunner struct {
 
 	unavailable string
 	interval    time.Duration
+
+	inertOnce sync.Once
+	// inertLog defaults to nil and logInertOnce then stays silent; the
+	// container wiring installs logger.Infof, tests install a counter.
+	inertLog func(ctx context.Context, format string, args ...any)
 }
 
 // newCraftRunCaptureRunner assembles the R4 Task3 capture coordinator. The
@@ -101,7 +107,7 @@ func newCraftRunCaptureRunner(
 		if assembly != nil && assembly.Unavailable != "" {
 			reason = assembly.Unavailable
 		}
-		return &CraftRunCaptureRunner{unavailable: reason, interval: craftRunCaptureScanInterval}
+		return &CraftRunCaptureRunner{unavailable: reason, interval: craftRunCaptureScanInterval, inertLog: logger.Infof}
 	}
 	artifacts := service.NewCraftArtifactServiceWithCandidates(
 		closedCraftArtifactSource{}, files, versions, repository.NewCraftCandidateStore(db), nil,
@@ -109,7 +115,7 @@ func newCraftRunCaptureRunner(
 	)
 	runner := &CraftRunCaptureRunner{
 		db: db, store: assembly.Store, provider: assembly.Provider,
-		interval: craftRunCaptureScanInterval,
+		interval: craftRunCaptureScanInterval, inertLog: logger.Infof,
 	}
 	runner.svc = service.NewCraftRunCaptureService(
 		artifacts, repository.NewCraftRunCaptureStore(db), repository.NewCraftDraftHeadStore(db),
@@ -119,6 +125,16 @@ func newCraftRunCaptureRunner(
 }
 
 const craftRunCaptureScanInterval = 15 * time.Second
+
+// craftRunCaptureScanBudget is the per-round budget of the periodic recovery
+// scan, deliberately decoupled from (and much larger than) the scan interval
+// and the immediate post-terminal drain budget: sealing one receipt performs
+// repeated full-tree quiescence walks (sha256 over every byte) plus complete
+// object uploads, so a budget equal to the interval would cut large receipts
+// off mid-flight on both paths and force a full redo every tick, preventing
+// convergence ("retries anything this immediate pass could not finish" only
+// holds if the retry path has materially more budget than the drain).
+const craftRunCaptureScanBudget = 5 * time.Minute
 
 // resolveSource rebuilds the quiescent Run-bound artifact source for one
 // durable capture receipt.
@@ -160,11 +176,29 @@ func (r *CraftRunCaptureRunner) resolveSource(ctx context.Context, receipt repos
 	return &quiescentRunViewArtifactSource{runBoundCraftArtifactSource: source}, nil
 }
 
-// AfterTerminal drains the durable capture outbox right after a graph run
-// finished and its Run transitioned terminal. Best-effort: the periodic
-// recovery scan retries anything this immediate pass could not finish.
-func (r *CraftRunCaptureRunner) AfterTerminal(ctx context.Context, _ runtime.Fence) {
-	r.Recover(ctx, 32)
+// AfterTerminal drains the durable capture outbox for the Run that just
+// finished, immediately and best-effort. The periodic recovery scan owns the
+// global pass (including missing-receipt synthesis) and retries anything
+// this immediate, per-Run pass could not finish.
+func (r *CraftRunCaptureRunner) AfterTerminal(ctx context.Context, fence runtime.Fence) {
+	r.RecoverRun(ctx, fence)
+}
+
+// RecoverRun drains only the receipts of one Run. An unrelated Run's
+// completion must never pay for a global recovery scan (multi-table JOIN
+// synthesis plus arbitrary tenants' receipts) inside its worker executor
+// slot.
+func (r *CraftRunCaptureRunner) RecoverRun(ctx context.Context, fence runtime.Fence) {
+	if r == nil {
+		return
+	}
+	if r.svc == nil {
+		r.logInertOnce(ctx)
+		return
+	}
+	if err := r.svc.RecoverRun(ctx, fence.TenantID, fence.RunID); err != nil {
+		logger.Warnf(ctx, "[CraftRunCapture] per-run recovery left receipts pending: %v", err)
+	}
 }
 
 // Recover drains up to limit durable capture receipts. Missing receipts for
@@ -175,12 +209,24 @@ func (r *CraftRunCaptureRunner) Recover(ctx context.Context, limit int) {
 		return
 	}
 	if r.svc == nil {
-		logger.Infof(ctx, "[CraftRunCapture] inert: %s", r.unavailable)
+		r.logInertOnce(ctx)
 		return
 	}
 	if err := r.svc.RecoverPending(ctx, limit); err != nil {
 		logger.Warnf(ctx, "[CraftRunCapture] recovery pass left receipts pending: %v", err)
 	}
+}
+
+// logInertOnce explains the fail-closed inert state at most once per
+// process: AfterTerminal runs after every graph run, and repeating the same
+// "inert" line for each completion in a default (unconfigured) deployment is
+// pure log noise. Tests replace inertLog to observe the dedup.
+func (r *CraftRunCaptureRunner) logInertOnce(ctx context.Context) {
+	r.inertOnce.Do(func() {
+		if r.inertLog != nil {
+			r.inertLog(ctx, "[CraftRunCapture] inert: %s", r.unavailable)
+		}
+	})
 }
 
 // Start launches the periodic recovery scan until ctx is canceled. The scan
@@ -202,7 +248,7 @@ func (r *CraftRunCaptureRunner) Start(ctx context.Context) {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				scanCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), interval)
+				scanCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), craftRunCaptureScanBudget)
 				r.Recover(scanCtx, 100)
 				cancel()
 			}
@@ -225,8 +271,9 @@ func (r *CraftRunCaptureRunner) Unavailable() string {
 // AfterTerminal runs synchronously inside the worker's executor goroutine;
 // without a deadline a stuck engine, database or object store would pin the
 // worker's concurrency slot indefinitely. Whatever the budget cannot finish
-// stays pending for the periodic recovery scan, which has its own interval
-// budget.
+// stays pending for the periodic recovery scan, whose per-round budget
+// (craftRunCaptureScanBudget) is materially larger so large receipts can
+// still converge there.
 const craftCaptureAfterTerminalBudget = 15 * time.Second
 
 // drainCraftCaptureAfterTerminal applies the bounded budget around the

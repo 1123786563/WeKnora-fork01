@@ -28,6 +28,7 @@ type craftRunCaptureStore interface {
 	EnsurePending(context.Context, craft.Scope, string, string, string) (repository.CraftRunCapture, error)
 	BeginCapture(context.Context, repository.CraftRunCapture, string) (repository.CraftRunCapture, error)
 	RecoverPending(context.Context, int) ([]repository.CraftRunCapture, error)
+	RecoverPendingForRun(context.Context, uint64, string) ([]repository.CraftRunCapture, error)
 	Seal(context.Context, repository.CraftRunCapture, []craft.File, string) (repository.CraftRunCapture, error)
 	VerifySealedRefs(context.Context, repository.CraftRunCapture) error
 	MarkAdvanced(context.Context, repository.CraftRunCapture, int64) error
@@ -81,6 +82,25 @@ func (s *CraftRunCaptureService) RecoverPending(ctx context.Context, limit int) 
 	if err != nil {
 		return err
 	}
+	return s.recoverReceipts(ctx, receipts)
+}
+
+// RecoverRun replays only the receipts of one Run. The post-terminal drain
+// uses it so an unrelated Run's completion never pays for a global recovery
+// pass; the periodic scan keeps the global pass, including missing-receipt
+// synthesis for runs whose enqueue trigger was lost.
+func (s *CraftRunCaptureService) RecoverRun(ctx context.Context, tenantID uint64, runID string) error {
+	if s == nil || s.resolve == nil {
+		return fmt.Errorf("%w: capture recovery source resolver unavailable", craft.ErrInvalidInput)
+	}
+	receipts, err := s.captures.RecoverPendingForRun(ctx, tenantID, runID)
+	if err != nil {
+		return err
+	}
+	return s.recoverReceipts(ctx, receipts)
+}
+
+func (s *CraftRunCaptureService) recoverReceipts(ctx context.Context, receipts []repository.CraftRunCapture) error {
 	var first error
 	for _, receipt := range receipts {
 		if receipt.State == "sealed" {

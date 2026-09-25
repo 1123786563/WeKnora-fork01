@@ -12,6 +12,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/modules/craft"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 // TestCraftRunCaptureRunnerRecoversStrandedReceiptsAfterProcessRestart is the
@@ -221,4 +222,198 @@ func TestQuiescenceProofRejectsSameSizeInPlaceRewrite(t *testing.T) {
 		}
 	}
 	require.ErrorIs(t, q.VerifyCraftCaptureQuiescent(ctx), craft.ErrBusy)
+}
+
+// captureWiringAdmissionFor is captureWiringAdmission parameterized by the
+// craft session, so one test can hold two independent Workspaces.
+func captureWiringAdmissionFor(sessionID, runID string) runtime.Admission {
+	snapshot, err := json.Marshal(map[string]any{
+		"version": 1, "query": "build", "model_id": "model-1",
+		"agent_config": json.RawMessage(`{}`), "craft_input_manifest": []craft.Input{},
+	})
+	if err != nil {
+		panic(err)
+	}
+	return runtime.Admission{
+		Key:                runtime.RunKey{TenantID: 1, RunID: runID},
+		SessionID:          sessionID,
+		UserID:             "u-wiring",
+		ActorUserID:        "u-wiring",
+		RequestID:          runID + "-request",
+		AssistantMessageID: runID + "-assistant",
+		RequestHash:        runID + "-hash",
+		Snapshot:           snapshot,
+		UserMessage:        json.RawMessage(`{"role":"user","content":"build"}`),
+		AssistantMessage:   json.RawMessage(`{"role":"assistant","content":""}`),
+		Deadline:           time.Now().Add(time.Hour),
+	}
+}
+
+// seedPendingCaptureReceipt materializes one fully bound, terminal Run with
+// a pending capture receipt and returns the fence of its final claim.
+func seedPendingCaptureReceipt(t *testing.T, db *gorm.DB, provider *CraftRunViewContainerProvider, sessionID, runID, sessionMarker, html string) runtime.Fence {
+	t.Helper()
+	ctx := context.Background()
+	_, err := repository.NewCraftStore(db).PutWorkspace(ctx, craft.Workspace{
+		Scope: craft.Scope{TenantID: 1, UserID: "u-wiring", SessionID: sessionID},
+		SandboxID: "sbx-" + runID, Generation: "0",
+		OpenCodeSessionID: "oc-" + runID, RuntimeDigest: "sha256:runtime",
+	}, 0)
+	require.NoError(t, err)
+
+	runs := repository.NewAgentRunStore(db)
+	admission := captureWiringAdmissionFor(sessionID, runID)
+	_, err = runs.Admit(ctx, admission)
+	require.NoError(t, err)
+
+	views := repository.NewCraftRunViewStore(db)
+	key := craft.RunViewKey{TenantID: 1, OwnerID: "u-wiring", SessionID: sessionID, RunID: runID}
+	view, err := views.Allocate(ctx, key)
+	require.NoError(t, err)
+	spec := rvTestSpec(view.Generation)
+	container, err := provider.InspectOrCreateContainer(ctx, spec)
+	require.NoError(t, err)
+	_, _, err = views.BeginSessionCreate(ctx, key, view.Generation)
+	require.NoError(t, err)
+	_, err = views.BindRuntime(ctx, key, view.Generation, runtimeForSession(container, CraftRunViewRuntimeSession{
+		ID: sessionMarker, ProjectID: container.ProjectID, Directory: container.Directory,
+	}))
+	require.NoError(t, err)
+
+	layout := generationLayoutPaths(provider.config.SandboxRoot, spec)
+	require.NoError(t, os.MkdirAll(layout.output, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(layout.output, "index.html"), []byte(html), 0o644))
+
+	fence, err := runs.Claim(ctx, admission.Key, "worker-"+runID, time.Hour)
+	require.NoError(t, err)
+	require.NoError(t, runs.Finalize(ctx, fence, json.RawMessage(`{"content":"done"}`)))
+	var pending string
+	require.NoError(t, db.Table("craft_run_captures").Select("state").
+		Where("tenant_id = ? AND run_id = ?", 1, runID).Scan(&pending).Error)
+	require.Equal(t, "pending", pending)
+	return fence
+}
+
+// TestCraftRunCaptureAfterTerminalDrainsOnlyTheFinishedRun is the OCR
+// medium-finding regression: the post-terminal drain must be directed by the
+// finished Run's fence instead of running a global recovery pass, so an
+// unrelated Workspace's receipt is left for the periodic scan.
+func TestCraftRunCaptureAfterTerminalDrainsOnlyTheFinishedRun(t *testing.T) {
+	db := wiringTestDB(t)
+	seedCraftCaptureWiringDB(t, db)
+	require.NoError(t, db.Exec("INSERT INTO sessions (id, tenant_id, title, user_id, engine_type) VALUES ('s-wiring-2', 1, 'wiring', 'u-wiring', 'trpc')").Error)
+	require.NoError(t, db.Exec("INSERT INTO craft_sessions (session_id, tenant_id, kind) VALUES ('s-wiring-2', 1, 'web')").Error)
+
+	engine := newFakeCraftRunViewContainerEngine()
+	provider, _ := newRVTestProviderWithSessionAPI(t, engine)
+	fenceA := seedPendingCaptureReceipt(t, db, provider, "s-wiring", "run-directed-a", "ses_0123456789ab0123456789ABE1", "<html>D1</html>")
+	_ = seedPendingCaptureReceipt(t, db, provider, "s-wiring-2", "run-directed-b", "ses_0123456789ab0123456789ABE2", "<html>D2</html>")
+
+	runner := newCraftRunCaptureRunner(db, newCaptureWiringFiles(t, db),
+		repository.NewCraftVersionStore(db),
+		&CraftRunViewProductionAssembly{Provider: provider, Store: repository.NewCraftRunViewStore(db)})
+	require.Empty(t, runner.Unavailable())
+	runner.AfterTerminal(context.Background(), fenceA)
+
+	var stateA, stateB string
+	require.NoError(t, db.Table("craft_run_captures").Select("state").
+		Where("tenant_id = ? AND run_id = ?", 1, "run-directed-a").Scan(&stateA).Error)
+	require.NoError(t, db.Table("craft_run_captures").Select("state").
+		Where("tenant_id = ? AND run_id = ?", 1, "run-directed-b").Scan(&stateB).Error)
+	require.Equal(t, "advanced", stateA, "the finished Run's own receipt must drain")
+	require.Equal(t, "pending", stateB, "an unrelated Workspace's receipt must wait for the periodic scan")
+}
+
+// TestCraftRunCaptureScanBudgetExceedsDrainBudgetAndInterval pins the OCR
+// high-finding contract: the periodic scan's per-round budget must be
+// materially larger than both the scan interval and the immediate drain
+// budget, otherwise receipts cut off mid-seal on both paths could never
+// converge.
+func TestCraftRunCaptureScanBudgetExceedsDrainBudgetAndInterval(t *testing.T) {
+	require.Greater(t, craftRunCaptureScanBudget, 2*craftRunCaptureScanInterval,
+		"the scan budget must be decoupled from (and larger than) the scan interval")
+	require.Greater(t, craftRunCaptureScanBudget, 2*craftCaptureAfterTerminalBudget,
+		"the scan budget must materially exceed the immediate drain budget")
+}
+
+// TestCraftRunCaptureInertLogEmittedOnce is the OCR low-finding regression:
+// in an unconfigured deployment the inert explanation is logged once per
+// process, not once per graph-run completion.
+func TestCraftRunCaptureInertLogEmittedOnce(t *testing.T) {
+	runner := newCraftRunCaptureRunner(nil, nil, nil, nil)
+	logs := 0
+	runner.inertLog = func(context.Context, string, ...any) { logs++ }
+	for i := 0; i < 3; i++ {
+		runner.AfterTerminal(context.Background(), runtime.Fence{RunKey: runtime.RunKey{TenantID: 1, RunID: "run-noise"}})
+		runner.Recover(context.Background(), 10)
+	}
+	require.Equal(t, 1, logs, "the inert explanation must be logged once, not per run completion")
+}
+
+// TestCraftRunViewCandidateStagesWithNonDefaultOutputDirEnv is the OCR
+// medium-finding regression: with CRAFT_OPENCODE_OUTPUT_DIR set to a
+// non-default value the Run-bound candidate route still stages its private
+// candidate from the verified generation's fixed "output" layout instead of
+// failing its first ListSessionFiles with only a Warn.
+func TestCraftRunViewCandidateStagesWithNonDefaultOutputDirEnv(t *testing.T) {
+	db := wiringTestDB(t)
+	seedCraftCaptureWiringDB(t, db)
+	ctx := context.Background()
+	_, err := repository.NewCraftStore(db).PutWorkspace(ctx, craft.Workspace{
+		Scope: craft.Scope{TenantID: 1, UserID: "u-wiring", SessionID: "s-wiring"},
+		SandboxID: "sbx-candenv", Generation: "0",
+		OpenCodeSessionID: "oc-candenv", RuntimeDigest: "sha256:runtime",
+	}, 0)
+	require.NoError(t, err)
+	runs := repository.NewAgentRunStore(db)
+	admission := captureWiringAdmission("run-candenv-a")
+	_, err = runs.Admit(ctx, admission)
+	require.NoError(t, err)
+
+	t.Setenv(craftOpenCodeBaseURLEnv, "http://127.0.0.1:1")
+	t.Setenv(craftOpenCodeWorkDirEnv, t.TempDir())
+	t.Setenv(craftOpenCodeOutputDirEnv, "custom-output")
+	executor, err := newCraftRuntimeExecutor(db, repository.NewCraftStore(db), runs,
+		newCaptureWiringFiles(t, db), repository.NewCraftVersionStore(db), nil)
+	require.NoError(t, err)
+	runtimeExec, ok := executor.(*localCraftRuntime)
+	require.True(t, ok)
+	require.NotNil(t, runtimeExec.runViewArtifacts)
+
+	engine := newFakeCraftRunViewContainerEngine()
+	provider, _ := newRVTestProviderWithSessionAPI(t, engine)
+	views := repository.NewCraftRunViewStore(db)
+	key := craft.RunViewKey{TenantID: 1, OwnerID: "u-wiring", SessionID: "s-wiring", RunID: "run-candenv-a"}
+	view, err := views.Allocate(ctx, key)
+	require.NoError(t, err)
+	spec := rvTestSpec(view.Generation)
+	container, err := provider.InspectOrCreateContainer(ctx, spec)
+	require.NoError(t, err)
+	const sessionID = "ses_0123456789ab0123456789ABE3"
+	_, _, err = views.BeginSessionCreate(ctx, key, view.Generation)
+	require.NoError(t, err)
+	_, err = views.BindRuntime(ctx, key, view.Generation, runtimeForSession(container, CraftRunViewRuntimeSession{
+		ID: sessionID, ProjectID: container.ProjectID, Directory: container.Directory,
+	}))
+	require.NoError(t, err)
+
+	layout := generationLayoutPaths(provider.config.SandboxRoot, spec)
+	require.NoError(t, os.MkdirAll(layout.output, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(layout.output, "index.html"), []byte("<html>E1</html>"), 0o644))
+
+	claimFence, err := runs.Claim(ctx, admission.Key, "worker-candenv", time.Hour)
+	require.NoError(t, err)
+	material, err := provider.MaterialHandleForCapture(ctx, views, key)
+	require.NoError(t, err)
+	task := craft.Task{
+		Scope: craft.Scope{TenantID: 1, UserID: "u-wiring", SessionID: "s-wiring"},
+		WorkspaceID: materialWorkspaceID(t, db, "s-wiring"),
+		Fence:       runtime.Fence{RunKey: runtime.RunKey{TenantID: 1, RunID: "run-candenv-a"}, Epoch: claimFence.Epoch},
+	}
+	require.NoError(t, runtimeExec.stageRunViewCandidate(ctx, task, material))
+
+	var candidates int64
+	require.NoError(t, db.Table("craft_candidates").
+		Where("tenant_id = ? AND run_id = ?", 1, "run-candenv-a").Count(&candidates).Error)
+	require.EqualValues(t, 1, candidates, "candidate staging must succeed under a non-default output-dir override")
 }

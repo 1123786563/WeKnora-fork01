@@ -136,6 +136,19 @@ func newCraftRuntimeExecutor(
 	artifacts := service.NewCraftArtifactServiceWithCandidates(source, files, versions,
 		repository.NewCraftCandidateStore(db), evidence,
 		service.CraftArtifactConfig{Kind: craft.KindWeb, OutputDir: outputDir})
+	// The Run-bound candidate route always materializes from the verified
+	// generation's fixed "output" layout (its source rejects any other dir),
+	// so it gets a dedicated service with the RunView OutputDir pinned — the
+	// deployment-wide CRAFT_OPENCODE_OUTPUT_DIR override applies only to the
+	// legacy session-wide publication route. Its session-wide source is the
+	// deliberately closed one, exactly like the capture coordinator's own
+	// service: the RunView route must never fall back to session-wide
+	// collection. Without this pin a non-default env would make every
+	// candidate staging fail its first ListSessionFiles and only log a Warn,
+	// with no self-healing path.
+	runViewArtifacts := service.NewCraftArtifactServiceWithCandidates(closedCraftArtifactSource{}, files, versions,
+		repository.NewCraftCandidateStore(db), evidence,
+		service.CraftArtifactConfig{Kind: craft.KindWeb, OutputDir: craftLocalOutputDir})
 	// C02: an interaction.pending event first lands durably (interaction row
 	// + waiting_user park) before it is projected to the run stream, so the
 	// pending decision is decidable through the HTTP surface. The registrar
@@ -150,16 +163,17 @@ func newCraftRuntimeExecutor(
 	// through to the durable run event stream.
 	emit := craftRunEventEmitter(runs)
 	runtime := &localCraftRuntime{
-		db:            db,
-		client:        client,
-		store:         store,
-		files:         files,
-		artifacts:     artifacts,
-		emit:          emit,
-		outputDir:     outputDir,
-		runtimeDigest: runtimeDigest,
-		sessionsRoot:  filepath.Join(workDir, "ws"),
-		workDir:       workDir,
+		db:                db,
+		client:            client,
+		store:             store,
+		files:             files,
+		artifacts:         artifacts,
+		runViewArtifacts:  runViewArtifacts,
+		emit:              emit,
+		outputDir:         outputDir,
+		runtimeDigest:     runtimeDigest,
+		sessionsRoot:      filepath.Join(workDir, "ws"),
+		workDir:           workDir,
 	}
 	runtime.inner = opencode.NewExecutor(client, store,
 		func(ctx context.Context, task craft.Task, kind string, data json.RawMessage) error {
@@ -181,12 +195,17 @@ type localCraftRuntime struct {
 	files            interfaces.FileService
 	inner            craft.Executor
 	artifacts        *service.CraftArtifactService
-	emit             func(context.Context, craft.Task, string, json.RawMessage) error
-	workDir          string
-	outputDir        string
-	runtimeDigest    string
-	sessionsRoot     string
-	materialResolver func(context.Context, craft.Task) (CraftRunViewMaterialHandle, error)
+	// runViewArtifacts is the Run-bound candidate service with the RunView
+	// OutputDir pinned to craftLocalOutputDir, independent of the
+	// deployment-wide CRAFT_OPENCODE_OUTPUT_DIR that configures the legacy
+	// session-wide publication route on artifacts.
+	runViewArtifacts  *service.CraftArtifactService
+	emit              func(context.Context, craft.Task, string, json.RawMessage) error
+	workDir           string
+	outputDir         string
+	runtimeDigest     string
+	sessionsRoot      string
+	materialResolver  func(context.Context, craft.Task) (CraftRunViewMaterialHandle, error)
 	// knowledgeResolver must load the admitted Run and use its durable
 	// selection plus exact accepted record/package for this material handle.
 	knowledgeResolver       func(context.Context, craft.Task, CraftRunViewMaterialHandle) (CraftKnowledgeRunViewAcceptance, error)
@@ -277,7 +296,7 @@ func (e *localCraftRuntime) Execute(ctx context.Context, task craft.Task) (craft
 // verified Run-bound source into the private candidate store. It can never
 // publish a Version or change the workspace default.
 func (e *localCraftRuntime) stageRunViewCandidate(ctx context.Context, task craft.Task, material CraftRunViewMaterialHandle) error {
-	if e.artifacts == nil {
+	if e.runViewArtifacts == nil {
 		return unresolvedCraftRunView("Run-bound candidate artifact service is not assembled", nil)
 	}
 	source, err := newRunBoundCraftArtifactSource(ctx, e, task, material, craftLocalOutputDir)
@@ -285,7 +304,7 @@ func (e *localCraftRuntime) stageRunViewCandidate(ctx context.Context, task craf
 		return err
 	}
 	kind := e.sessionKind(ctx, task)
-	if _, err := e.artifacts.CollectCandidate(ctx, task, kind, source, material.generation); err != nil {
+	if _, err := e.runViewArtifacts.CollectCandidate(ctx, task, kind, source, material.generation); err != nil {
 		return err
 	}
 	return nil
