@@ -1,5 +1,5 @@
 import * as React from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { WeKnoraClient } from "@weknora/api-client";
 import { Button, Input, Status } from "@weknora/ui";
 import { roleAtLeast } from "@weknora/views/settings/registry";
@@ -65,25 +65,39 @@ export function PluginsSettingsPanel({ client, role }: Props) {
   const [listError, setListError] = useState<string | null>(null);
   const [actionBusyId, setActionBusyId] = useState<string | null>(null);
 
-  const pluginsApi = createPluginsApi((input) => client.request(input));
+  // useMemo 稳定 pluginsApi（T08-OCR1-F4）：client.request 是纯传输包装，
+  // 稳定引用让 refreshInstallations 的 useCallback 依赖完整（exhaustive-deps）。
+  const pluginsApi = useMemo(() => createPluginsApi((input) => client.request(input)), [client]);
 
-  const refreshInstallations = React.useCallback(async () => {
-    try {
-      setInstallations(await pluginsApi.listInstallations());
-      setListError(null);
-    } catch (cause) {
-      const message = apiErrorMessage(cause);
-      if (message === null) {
-        console.warn("plugin installations load failed:", cause);
-        setListError("已安装插件加载失败");
-      } else {
-        setListError(message);
+  // isStale 供 effect 的 cancelled 清理模式使用：client 变化触发重跑时，
+  // 旧请求的迟到响应/迟到失败不再覆盖新 client 的列表状态（对齐 PluginsPanel）。
+  const refreshInstallations = React.useCallback(
+    async (isStale?: () => boolean) => {
+      try {
+        const rows = await pluginsApi.listInstallations();
+        if (isStale?.()) return;
+        setInstallations(rows);
+        setListError(null);
+      } catch (cause) {
+        if (isStale?.()) return;
+        const message = apiErrorMessage(cause);
+        if (message === null) {
+          console.warn("plugin installations load failed:", cause);
+          setListError("已安装插件加载失败，请稍后重试");
+        } else {
+          setListError(message);
+        }
       }
-    }
-  }, [client]);
+    },
+    [pluginsApi],
+  );
 
   useEffect(() => {
-    void refreshInstallations();
+    let cancelled = false;
+    void refreshInstallations(() => cancelled);
+    return () => {
+      cancelled = true;
+    };
   }, [refreshInstallations]);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
@@ -160,8 +174,7 @@ export function PluginsSettingsPanel({ client, role }: Props) {
       }
     } finally {
       setActionBusyId(null);
-    }
-  }
+    }  }
 
   return (
     <section className="grid gap-4" data-testid="plugins-settings">
@@ -283,9 +296,12 @@ export function PluginsSettingsPanel({ client, role }: Props) {
         <p className="wk-muted m-0 text-[12px] leading-[18px] text-[#66758b]">
           插件治理以停用为终点：停用后 Agent 不再调用该插件，成员连接与审计记录保留。
         </p>
-        {listError ? <Status tone="error">已安装插件加载失败：{listError}</Status> : null}
+        {/* 完整文案由各 catch 分支写入（T08-OCR1-F3：加载失败与状态变更失败
+            各自表述，不再固定拼接「加载失败」前缀）；失败 ≠ 空——空态仅在
+            无错误且无数据时呈现，失败时只留错误横幅（T08-OCR1-F7）。 */}
+        {listError ? <Status tone="error">{listError}</Status> : null}
         {installations.length === 0 ? (
-          <Status>暂无已安装插件</Status>
+          listError === null ? <Status>暂无已安装插件</Status> : null
         ) : (
           <ul className="m-0 grid list-none gap-2 p-0">
             {installations.map((item) => (

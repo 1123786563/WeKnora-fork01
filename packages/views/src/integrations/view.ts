@@ -36,10 +36,14 @@ const HEADING_KEYS: Record<IntegrationKey, string> = {
   cli: 'integrations.cli.title',
   chrome: 'integrations.chrome.title',
   claw: 'integrations.claw.title',
-  // T08 (issue #110): member plugin discovery copy — the i18n entries and the
-  // panel mounting in the integrations page are wired by a later slice that
-  // owns the i18n tables / page.tsx tab content; the key resolves to itself
-  // until then and no current consumer renders this tab.
+  // T08 (issue #110): member plugin discovery copy. CONSUMED IMMEDIATELY by
+  // the integrations page tab strip (page.tsx renders t('integrations.tabs.'
+  // + key) for every INTEGRATION_SECTIONS entry) and the section heading —
+  // resolved via integrationsT's FALLBACK_STRINGS (messages.ts, all five
+  // locales, T08-OCR1-F1). The SettingsPage sidebar label reads
+  // @weknora/i18n's formatMessage DIRECTLY, so it stays a raw-key handoff
+  // until that package owns integrations.tabs.plugins (same T03 precedent as
+  // the settings 'plugins' section label).
   plugins: 'integrations.plugins.title',
 };
 

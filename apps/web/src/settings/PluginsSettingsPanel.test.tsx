@@ -379,3 +379,55 @@ test('卸载范围明示：面板不出现卸载/删除插件的入口与文案�
     await unmount(root);
   }
 });
+
+// ---- T08-OCR1-F3/F7：listError 文案准确性 ----
+
+test('列表加载失败（非 ApiError）呈现单一完整文案且不与空态并列', async () => {
+  const { client } = stubClient(async (input) => {
+    if (input.method === 'GET' && input.path === '/api/v1/plugins/installations') {
+      throw new Error('network down');
+    }
+    throw new Error(`unexpected request ${input.method} ${input.path}`);
+  });
+  const root = await mount(React.createElement(PluginsSettingsPanel, { client, role: 'admin' }));
+  try {
+    await flushEffects();
+    const section = document.querySelector('[data-testid="plugin-installations"]');
+    assert.ok(section, 'the installations section renders');
+    const text = section?.textContent ?? '';
+    assert.match(text, /已安装插件加载失败/, 'the load failure surfaces');
+    // F3：固定前缀拼接会造成同句重复——首末出现位置必须相同。
+    assert.equal(text.indexOf('已安装插件加载失败'), text.lastIndexOf('已安装插件加载失败'), 'no duplicated prefix from the fixed JSX prefix');
+    // F7：失败 ≠ 空——错误横幅与「暂无已安装插件」空态不得同时呈现。
+    assert.ok(!text.includes('暂无已安装插件'), 'a failed load must not also render the empty state');
+  } finally {
+    await unmount(root);
+  }
+});
+
+test('停用失败（非 ApiError）文案为状态变更失败而非误报加载失败', async () => {
+  const { client } = stubClient(async (input) => {
+    if (input.method === 'GET' && input.path === '/api/v1/plugins/installations') {
+      return { success: true, data: [{ ...jiraSummary }] };
+    }
+    if (input.method === 'POST' && input.path === '/api/v1/plugins/installations/inst-1/disable') {
+      throw new Error('boom');
+    }
+    throw new Error(`unexpected request ${input.method} ${input.path}`);
+  });
+  const root = await mount(React.createElement(PluginsSettingsPanel, { client, role: 'admin' }));
+  try {
+    await flushEffects();
+    const disableButton = findButtonByText(document.querySelector('[data-testid="plugin-installations"]') as ParentNode, '停用');
+    assert.ok(disableButton, 'the disable button renders');
+    await act(async () => { disableButton!.click(); });
+    await flushEffects();
+    const text = document.querySelector('[data-testid="plugin-installations"]')?.textContent ?? '';
+    assert.match(text, /插件状态变更失败，请重试/, 'the state-change failure copy surfaces');
+    assert.ok(!text.includes('已安装插件加载失败'), 'a toggle failure must not be misreported as a load failure');
+    // 状态变更失败 ≠ 空：列表数据仍在，空态不应出现。
+    assert.match(text, /Jira 本周待办/, 'the list itself stays rendered');
+  } finally {
+    await unmount(root);
+  }
+});
