@@ -83,7 +83,7 @@ function BodyReadonly({ body }: { body: MaterialBody }): ReactNode {
 // placeholders and are never fabricated; confirming the draft appends the
 // next immutable version while every earlier version stays readable,
 // comparable, and read-only.
-export function MaterialPage({ client, scopeController, opportunityId, snapshotId }: { client: WeKnoraClient; scopeController: ScopeController; opportunityId: string; snapshotId: string }): ReactNode {
+export function MaterialPage({ client, scopeController, opportunityId, snapshotId, onMaterialId }: { client: WeKnoraClient; scopeController: ScopeController; opportunityId: string; snapshotId: string; onMaterialId?: (materialId: string) => void }): ReactNode {
  const scope = scopeController.current()
  const [revision, setRevision] = useState<number | undefined>()
  const [revisionState, setRevisionState] = useState<'loading' | 'ready' | 'error'>('loading')
@@ -154,6 +154,10 @@ export function MaterialPage({ client, scopeController, opportunityId, snapshotI
   return () => requestScope.signal?.removeEventListener('abort', clear)
  }, [clearPrivate, scopeController, scope.scope.generation])
  useEffect(() => { void readRevision() }, [readRevision])
+ // T18: the submission panel of the same application needs the resolved
+ // material to list its submittable exports; the editor reports the durable
+ // pointer upward and nothing else.
+ useEffect(() => { if (materialId) onMaterialId?.(materialId) }, [materialId, onMaterialId])
 
  const acceptView = useCallback((next: MaterialView): void => {
   setView(next); setMaterialId(next.materialId); setSavedBody(next.body); setSections(editableFromBody(next.body))

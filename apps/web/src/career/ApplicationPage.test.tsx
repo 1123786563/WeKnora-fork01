@@ -355,3 +355,26 @@ test('the created application opens its own progress timeline on demand', async 
  assert.match(timeline.textContent ?? '', /当前阶段/)
  assert.match(timeline.textContent ?? '', /准备中/)
 })
+
+// T18: the created application exposes the user-confirmed submission panel;
+// it stays closed by default and opens against this application's records.
+test('the created application opens the submission confirmation panel on demand', async () => {
+ const reads: string[] = []
+ const career: CareerStub & { createApplication: (input: any) => Promise<ApplicationReceipt> } = {
+  open: async () => view,
+  createApplication: async (input: { requestId: string }) => ({ ...readyReceipt, requestId: input.requestId }),
+  applicationSubmissions: async (id: string) => { reads.push(id); return { submissions: [] } },
+ }
+ const { container } = await mountApplication(career)
+ await submitApplication(container, 'eval-eligible', '2026 秋招 A 批', career)
+ assert.ok(!container.querySelector('.wk-submission'), 'submission panel stays closed until the user enters it')
+ await act(async () => { byLabel(container, 'button', '投递确认与回看').click(); await settle(); await settle() })
+ const panel = container.querySelector('.wk-submission')
+ assert.ok(panel, 'submission panel opens from the application detail')
+ assert.deepEqual(reads, ['app-1'])
+ assert.match(panel.textContent ?? '', /投递确认（本人确认）/)
+ assert.match(panel.textContent ?? '', /系统不代投/)
+ assert.match(panel.textContent ?? '', /不会被视为投递/)
+ assert.ok(panel.querySelector('[aria-label="确认投递表单"]'), 'confirm form is present')
+ assert.ok(!panel.querySelector('button[aria-label^="下载"]'), 'no download action lives in the submission panel')
+})

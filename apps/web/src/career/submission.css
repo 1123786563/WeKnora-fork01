@@ -1,0 +1,115 @@
+/* Career submission confirmation (T18). TDesign light theme tokens with the
+   #07c05f brand green for the confirm action and the recorded timeline. The
+   download seam stays in MaterialPage — nothing here records or infers a
+   submission from a download. */
+.wk-submission {
+  box-sizing: border-box;
+  width: min(100%, 960px);
+  margin: 16px auto;
+  padding: clamp(16px, 3vw, 24px);
+  border: 1px solid var(--td-component-border, #dcdcdc);
+  border-radius: 12px;
+  background: var(--td-bg-color-container, #fff);
+  color: var(--td-text-color-primary, #222);
+}
+.wk-submission h3 { margin: 0; }
+.wk-submission h4 { margin: 12px 0 0; }
+.wk-submission h5 { margin: 10px 0 4px; }
+.wk-submission > p { margin: 6px 0 0; color: var(--td-text-color-secondary, #666); }
+.wk-submission__notice {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--td-component-border, #e7e7e7);
+  border-left: 4px solid #07c05f;
+  border-radius: 8px;
+  background: var(--td-brand-color-light, #e8f8ef);
+}
+.wk-submission__confirmed {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid #07c05f;
+  border-radius: 8px;
+  color: #07c05f;
+  font-weight: 600;
+}
+.wk-submission__records {
+  margin: 14px 0 0;
+  padding: 0 0 0 18px;
+  list-style: none;
+}
+.wk-submission__record {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--td-component-border, #e7e7e7);
+  border-left: 4px solid #07c05f;
+  border-radius: 8px;
+}
+.wk-submission__record-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  color: var(--td-text-color-secondary, #666);
+  font-size: .88rem;
+}
+.wk-submission__record-version { margin: 8px 0 0; }
+.wk-submission__record-version--unknown {
+  color: var(--td-text-color-warning, #e37318);
+}
+.wk-submission__record-note { margin: 6px 0 0; color: var(--td-text-color-secondary, #666); }
+.wk-submission__compose {
+  margin: 14px 0 0;
+  padding: 12px 14px 14px;
+  border: 1px solid var(--td-component-border, #e7e7e7);
+  border-radius: 8px;
+}
+.wk-submission__compose legend { padding: 0 4px; font-weight: 600; font-size: .9rem; }
+.wk-submission__label { display: grid; gap: 6px; margin-top: 10px; font-size: .9rem; font-weight: 600; }
+.wk-submission select,
+.wk-submission textarea,
+.wk-submission input[type="datetime-local"] {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--td-component-border, #c8c8c8);
+  border-radius: 6px;
+  padding: 10px 12px;
+  background: var(--td-bg-color-container, #fff);
+  color: var(--td-text-color-primary, #222);
+  font: inherit;
+}
+.wk-submission textarea { min-height: 64px; resize: vertical; }
+.wk-submission__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.wk-submission button {
+  border: 1px solid var(--td-component-border, #dcdcdc);
+  border-radius: 6px;
+  padding: 8px 14px;
+  background: var(--td-bg-color-container, #fff);
+  color: var(--td-text-color-primary, #222);
+  cursor: pointer;
+}
+.wk-submission button:hover:not(:disabled) { border-color: #07c05f; color: #07c05f; }
+.wk-submission button:disabled { opacity: .5; cursor: not-allowed; }
+.wk-submission__submit { border-color: #07c05f; background: #07c05f; color: #fff; }
+.wk-submission__submit:hover:not(:disabled) { color: #fff; opacity: .9; }
+.wk-submission__review { margin-left: 8px; padding: 2px 10px; font-size: .85rem; }
+.wk-submission__message { margin: 10px 0 0; }
+.wk-submission__message--error { color: var(--td-error-color, #d54941); }
+.wk-submission__hint { margin: 8px 0 0; color: var(--td-text-color-secondary, #666); font-size: .88rem; }
+.wk-submission__version {
+  margin: 14px 0 0;
+  padding: 12px 14px;
+  border: 1px solid var(--td-component-border, #e7e7e7);
+  border-radius: 8px;
+}
+.wk-submission__version-meta { margin: 6px 0 0; color: var(--td-text-color-secondary, #666); font-size: .88rem; }
+.wk-submission__version-section {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px dashed var(--td-component-border, #dcdcdc);
+  border-radius: 8px;
+}
+.wk-submission__version-section ul { margin: 6px 0 0; padding-left: 18px; }
+.wk-submission__claim--needs-review { color: var(--td-text-color-warning, #e37318); }
+@media (max-width: 640px) {
+  .wk-submission__record-head { flex-direction: column; gap: 4px; }
+}

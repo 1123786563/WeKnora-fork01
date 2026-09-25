@@ -664,3 +664,84 @@ test('rule client refuses blank identifiers, out-of-range intervals and invented
   await assert.rejects(api.getRule('rule-1'), TypeError)
  }
 })
+
+// T18 user-confirmed submissions: record/list/receipt follow the frozen
+// backend enums (internal/modules/career/submission.go). One application holds
+// at most one submission; the version reference is either an exact submittable
+// export binding or the explicit unknown marker — the client never fabricates
+// a binding and never lets an invented one reach the UI.
+const submissionTs = '2026-09-25T09:15:00Z'
+const submissionBinding = { materialId: 'mat /1', exportId: 'exp-1', version: 3, contentDigest: 'b'.repeat(64) }
+const submissionReceipt = (extra: Record<string, unknown> = {}) => ({ kind: 'submission_recorded', requestId: 'sub-req /1', applicationId: 'app /1', submissionId: 'sub-1', channel: 'web', occurredAt: submissionTs, versionConfirmed: true, boundVersion: { ...submissionBinding }, note: '官网已投', confirmer: 'owner-1', revision: 2, createdAt: submissionTs, ...extra })
+const unknownVersionReceipt = () => submissionReceipt({ versionConfirmed: false, boundVersion: undefined, note: undefined })
+
+test('submission client encodes record, list and receipt recovery paths', async () => {
+ const calls: Array<{ method: string; path: string; body?: unknown }> = []
+ const api = createCareerApi(async (input) => {
+  calls.push({ method: input.method, path: input.path, ...(input.body !== undefined ? { body: input.body } : {}) })
+  return input.method === 'POST' ? submissionReceipt() : input.path.includes('/receipt?') ? submissionReceipt() : { submissions: [submissionReceipt()] }
+ })
+ assert.deepEqual(await api.recordSubmission({ requestId: 'sub-req /1', applicationId: 'app /1', channel: 'web', occurredAt: submissionTs, materialId: 'mat /1', exportId: 'exp-1', versionUnknown: false, note: '官网已投', expectedRevision: 2 }), submissionReceipt())
+ assert.deepEqual(await api.recordSubmission({ requestId: 'sub-req-2', applicationId: 'app /1', channel: 'email', versionUnknown: true, expectedRevision: 2 }), submissionReceipt())
+ assert.deepEqual(await api.applicationSubmissions('app /1'), { submissions: [submissionReceipt()] })
+ assert.deepEqual(await api.submissionReceipt('sub-req /1'), submissionReceipt())
+ assert.deepEqual(calls, [
+  { method: 'POST', path: '/api/v1/career/applications/app%20%2F1/submissions', body: { requestId: 'sub-req /1', applicationId: 'app /1', channel: 'web', occurredAt: submissionTs, materialId: 'mat /1', exportId: 'exp-1', versionUnknown: false, note: '官网已投', expectedRevision: 2 } },
+  { method: 'POST', path: '/api/v1/career/applications/app%20%2F1/submissions', body: { requestId: 'sub-req-2', applicationId: 'app /1', channel: 'email', versionUnknown: true, expectedRevision: 2 } },
+  { method: 'GET', path: '/api/v1/career/applications/app%20%2F1/submissions' },
+  { method: 'GET', path: '/api/v1/career/submissions/receipt?requestId=sub-req%20%2F1' },
+ ])
+})
+
+test('submission client refuses blank identifiers, mismatched version markers and invented enums', async () => {
+ const refusing = createCareerApi(async () => { throw new Error('must not send invalid request') })
+ await assert.rejects(refusing.recordSubmission({ requestId: ' ', applicationId: 'app-1', channel: 'web', versionUnknown: true, expectedRevision: 0 }), /requestId/)
+ await assert.rejects(refusing.recordSubmission({ requestId: 's-1', applicationId: ' ', channel: 'web', versionUnknown: true, expectedRevision: 0 }), /applicationId/)
+ await assert.rejects(refusing.recordSubmission({ requestId: 's-1', applicationId: 'app-1', channel: 'wechat', versionUnknown: true, expectedRevision: 0 }), /channel/)
+ await assert.rejects(refusing.recordSubmission({ requestId: 's-1', applicationId: 'app-1', channel: 'web', occurredAt: 'just now', versionUnknown: true, expectedRevision: 0 }), /occurredAt/)
+ await assert.rejects(refusing.recordSubmission({ requestId: 's-1', applicationId: 'app-1', channel: 'web', versionUnknown: true, expectedRevision: -1 }), /revision/)
+ // The explicit unknown marker is exclusive; a confirmed binding needs both IDs.
+ await assert.rejects(refusing.recordSubmission({ requestId: 's-1', applicationId: 'app-1', channel: 'web', materialId: 'mat-1', versionUnknown: true, expectedRevision: 0 }), /versionUnknown/)
+ await assert.rejects(refusing.recordSubmission({ requestId: 's-1', applicationId: 'app-1', channel: 'web', exportId: 'exp-1', versionUnknown: true, expectedRevision: 0 }), /versionUnknown/)
+ await assert.rejects(refusing.recordSubmission({ requestId: 's-1', applicationId: 'app-1', channel: 'web', versionUnknown: false, expectedRevision: 0 }), /materialId/)
+ await assert.rejects(refusing.recordSubmission({ requestId: 's-1', applicationId: 'app-1', channel: 'web', materialId: 'mat-1', versionUnknown: false, expectedRevision: 0 }), /materialId/)
+ await assert.rejects(refusing.recordSubmission({ requestId: 's-1', applicationId: 'app-1', channel: 'web', versionUnknown: true, note: 'x'.repeat(4097), expectedRevision: 0 }), /note/)
+ await assert.rejects(refusing.applicationSubmissions(' '), /applicationId/)
+ await assert.rejects(refusing.submissionReceipt(' '), /requestId/)
+ const receiptInventors: Array<Record<string, unknown>> = [
+  { ...submissionReceipt(), kind: 'submission_deleted' },
+  { ...submissionReceipt(), channel: 'carrier_pigeon' },
+  { ...submissionReceipt(), occurredAt: 'yesterday' },
+  { ...submissionReceipt(), createdAt: 'soon' },
+  { ...submissionReceipt(), submissionId: ' ' },
+  { ...submissionReceipt(), confirmer: ' ' },
+  { ...submissionReceipt(), revision: -1 },
+  { ...submissionReceipt(), versionConfirmed: false },
+  { ...submissionReceipt(), boundVersion: undefined },
+  { ...submissionReceipt(), versionConfirmed: false, boundVersion: { ...submissionBinding } },
+  { ...submissionReceipt(), boundVersion: { ...submissionBinding, version: 0 } },
+  { ...submissionReceipt(), boundVersion: { ...submissionBinding, contentDigest: 'not-a-digest' } },
+  { ...submissionReceipt(), boundVersion: { ...submissionBinding, materialId: ' ' } },
+  { ...unknownVersionReceipt(), versionConfirmed: true },
+ ]
+ for (const payload of receiptInventors) {
+  const api = createCareerApi(async () => payload)
+  await assert.rejects(api.submissionReceipt('sub-req /1'), TypeError)
+ }
+ // The frozen backend guard is one submission per application: a list
+ // claiming two rows for one application is an invented payload.
+ const listInventors: Array<Record<string, unknown>> = [
+  { submissions: 'none' },
+  { submissions: [submissionReceipt(), submissionReceipt({ submissionId: 'sub-2' })] },
+  { applications: [submissionReceipt()] },
+ ]
+ for (const payload of listInventors) {
+  const api = createCareerApi(async () => payload)
+  await assert.rejects(api.applicationSubmissions('app /1'), TypeError)
+ }
+ // An explicit unknown receipt decodes with no binding at all.
+ const unknownApi = createCareerApi(async () => unknownVersionReceipt())
+ const decoded = await unknownApi.submissionReceipt('sub-req /1')
+ assert.equal(decoded.versionConfirmed, false)
+ assert.equal('boundVersion' in decoded, false)
+})

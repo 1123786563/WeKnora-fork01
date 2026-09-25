@@ -671,6 +671,60 @@ export function decodeProgressView(value: unknown): ProgressView {
  return { applicationId: record.applicationId, revision: record.revision as number, stage: record.stage as ProgressStage, events: record.events.map(decodeProgressEvent) }
 }
 
+// Frozen submission contract owned by the career backend (T18,
+// internal/modules/career/submission.go). One application holds at most one
+// user-confirmed submission; the version reference is either an exact
+// submittable export binding frozen at recording time or the explicit
+// unknown marker. The client consumes the enums verbatim and never lets an
+// invented channel, a binding that disagrees with its confirmation flag, or a
+// two-row list for one application reach the UI.
+export type SubmissionChannel = 'email' | 'web' | 'other'
+export type SubmissionVersionBinding = { materialId: string; exportId: string; version: number; contentDigest: string }
+export type SubmissionReceipt = { kind: 'submission_recorded'; requestId: string; applicationId: string; submissionId: string; channel: SubmissionChannel; occurredAt: string; versionConfirmed: boolean; boundVersion?: SubmissionVersionBinding; note?: string; confirmer: string; revision: number; createdAt: string }
+export type RecordSubmissionInput = { requestId: string; applicationId: string; channel: SubmissionChannel; occurredAt?: string; materialId?: string; exportId?: string; versionUnknown: boolean; note?: string; expectedRevision: number }
+export type SubmissionList = { submissions: SubmissionReceipt[] }
+
+const submissionChannels: SubmissionChannel[] = ['email', 'web', 'other']
+// maxSubmissionNoteBytes in internal/modules/career/submission.go.
+const maxSubmissionNoteBytes = 4096
+
+export function decodeSubmissionReceipt(value: unknown): SubmissionReceipt {
+ const record = decodeRecord(value, 'invalid submission receipt')
+ if (record.kind !== 'submission_recorded' || !validIdentifier(record.requestId) || !validIdentifier(record.applicationId)
+  || !validIdentifier(record.submissionId) || !submissionChannels.includes(record.channel as SubmissionChannel)
+  || !validTimestamp(record.occurredAt) || typeof record.versionConfirmed !== 'boolean'
+  || !validOptionalString(record.note) || !validIdentifier(record.confirmer)
+  || !validRevision(record.revision) || !validTimestamp(record.createdAt)) throw new TypeError('invalid submission receipt')
+ // The confirmation flag and the binding are one fact: a confirmed version
+ // always freezes the exact export reference; an explicit unknown never
+ // carries one. Anything else is an invented payload.
+ const bound = record.boundVersion === undefined ? undefined : (() => {
+  const binding = decodeRecord(record.boundVersion, 'invalid submission version binding')
+  if (!validIdentifier(binding.materialId) || !validIdentifier(binding.exportId)
+   || !validPositiveVersion(binding.version)
+   || typeof binding.contentDigest !== 'string' || !sha256Hex.test(binding.contentDigest)) throw new TypeError('invalid submission version binding')
+  return { materialId: binding.materialId as string, exportId: binding.exportId as string, version: binding.version as number, contentDigest: binding.contentDigest as string }
+ })()
+ if ((bound !== undefined) !== record.versionConfirmed) throw new TypeError('invalid submission receipt')
+ return {
+  kind: 'submission_recorded', requestId: record.requestId, applicationId: record.applicationId, submissionId: record.submissionId,
+  channel: record.channel as SubmissionChannel, occurredAt: record.occurredAt, versionConfirmed: record.versionConfirmed,
+  ...(bound ? { boundVersion: bound } : {}), ...(typeof record.note === 'string' ? { note: record.note } : {}),
+  confirmer: record.confirmer, revision: record.revision as number, createdAt: record.createdAt,
+ }
+}
+
+export function decodeSubmissionList(value: unknown): SubmissionList {
+ const record = decodeRecord(value, 'invalid submission list')
+ if (!Array.isArray(record.submissions)) throw new TypeError('invalid submission list')
+ const submissions = record.submissions.map(decodeSubmissionReceipt)
+ // One application holds at most one submission (the frozen backend guard);
+ // a list claiming more is an invented payload.
+ if (submissions.length > 1) throw new TypeError('invalid submission list')
+ return { submissions }
+}
+
+
 export function createCareerApi(request: CareerRequest, binaryRequest?: CareerBinaryRequest) {
  return {
   async open(signal?: AbortSignal): Promise<CareerView> { return await request({ method: 'GET', path: '/api/v1/career/open', ...(signal ? { signal } : {}) }) as CareerView },
@@ -856,6 +910,33 @@ export function createCareerApi(request: CareerRequest, binaryRequest?: CareerBi
   async progressReceipt(requestId: string, signal?: AbortSignal): Promise<ProgressReceipt> {
    if (!requestId.trim()) throw new TypeError('progress receipt requestId must not be empty')
    return decodeProgressReceipt(await request({ method: 'GET', path: `/api/v1/career/progress/receipt?requestId=${encodeURIComponent(requestId)}`, ...(signal ? { signal } : {}) }))
+  },
+  // T18: the user confirms what they did externally; the product records the
+  // claimed fact and never performs or infers any external action. The
+  // explicit unknown marker is exclusive — no material/export reference may
+  // accompany it — and a confirmed binding requires both identifiers.
+  async recordSubmission(input: RecordSubmissionInput, signal?: AbortSignal): Promise<SubmissionReceipt> {
+   if (!input.requestId.trim() || !input.applicationId.trim()) throw new TypeError('submission requestId and applicationId must not be empty')
+   if (!submissionChannels.includes(input.channel)) throw new TypeError('submission channel must be email, web, or other')
+   if (input.occurredAt !== undefined && !validTimestamp(input.occurredAt)) throw new TypeError('submission occurredAt must be an RFC3339 timestamp')
+   if (input.note !== undefined && input.note.length > maxSubmissionNoteBytes) throw new TypeError('submission note must not exceed 4096 bytes')
+   if (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0) throw new TypeError('submission expected revision must be a non-negative integer')
+   if (input.versionUnknown && (input.materialId !== undefined || input.exportId !== undefined)) throw new TypeError('submission versionUnknown must not carry a material or export binding')
+   if (!input.versionUnknown && (!input.materialId?.trim() || !input.exportId?.trim())) throw new TypeError('submission requires materialId and exportId unless versionUnknown is explicit')
+   const body = { requestId: input.requestId, applicationId: input.applicationId, channel: input.channel,
+    ...(input.occurredAt !== undefined ? { occurredAt: input.occurredAt } : {}),
+    ...(input.materialId !== undefined ? { materialId: input.materialId } : {}),
+    ...(input.exportId !== undefined ? { exportId: input.exportId } : {}),
+    versionUnknown: input.versionUnknown, ...(input.note !== undefined ? { note: input.note } : {}), expectedRevision: input.expectedRevision }
+   return decodeSubmissionReceipt(await request({ method: 'POST', path: `/api/v1/career/applications/${encodeURIComponent(input.applicationId)}/submissions`, body, ...(signal ? { signal } : {}) }))
+  },
+  async applicationSubmissions(applicationId: string, signal?: AbortSignal): Promise<SubmissionList> {
+   if (!applicationId.trim()) throw new TypeError('submission applicationId must not be empty')
+   return decodeSubmissionList(await request({ method: 'GET', path: `/api/v1/career/applications/${encodeURIComponent(applicationId)}/submissions`, ...(signal ? { signal } : {}) }))
+  },
+  async submissionReceipt(requestId: string, signal?: AbortSignal): Promise<SubmissionReceipt> {
+   if (!requestId.trim()) throw new TypeError('submission receipt requestId must not be empty')
+   return decodeSubmissionReceipt(await request({ method: 'GET', path: `/api/v1/career/submissions/receipt?requestId=${encodeURIComponent(requestId)}`, ...(signal ? { signal } : {}) }))
   },
  }
 }
