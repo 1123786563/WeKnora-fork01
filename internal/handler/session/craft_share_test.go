@@ -16,6 +16,7 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -24,6 +25,7 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/application/service"
+	"github.com/Tencent/WeKnora/internal/middleware"
 	"github.com/Tencent/WeKnora/internal/modules/craft"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/gin-gonic/gin"
@@ -223,4 +225,106 @@ func TestCraftT11ShareHTTPJourney(t *testing.T) {
 	// --- a missing version answers a stable 404.
 	missing := get("viewer", "/sessions/session-t11/craft/versions/v-none/share")
 	require.Equal(t, http.StatusNotFound, missing.Code)
+}
+
+// TestCraftT11ShareDecisionBodyGuards pins the T11 OCR fix: the consent
+// decision body goes through the shared strict decoder like every craft
+// body. Injected authority fields and trailing data answer 400, an
+// oversized body answers 413 before any consent work, and a valid minimal
+// decision still records.
+func TestCraftT11ShareDecisionBodyGuards(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db, err := gorm.Open(sqlite.Open("file:craft107_t11_guards?mode=memory&cache=shared"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.Exec(`CREATE TABLE IF NOT EXISTS craft_share_decisions (tenant_id integer, session_id text, version_id text, evidence_digest text, owner_id text, decision text, decided_at datetime, revoked_at datetime, created_at datetime, updated_at datetime, PRIMARY KEY (tenant_id, session_id, version_id))`).Error)
+	require.NoError(t, db.Exec(`CREATE TABLE IF NOT EXISTS audit_logs (id integer primary key autoincrement, tenant_id integer, actor_user_id text, action text, scope_type text, scope_id text, target_type text, target_id text, target_user_id text, outcome text, details text, created_at datetime)`).Error)
+
+	shared := craft.KnowledgeSourceRecord{
+		ID: "kc_" + strings.Repeat("a", 24), Ref: "craftkb://kb/k-shared/knowledge/k-s/chunk/c-s",
+		Digest: "d-shared", TenantID: 7, ExcerptBytes: 32,
+	}
+	record := craft.KnowledgeRecord{
+		Scope:            craft.Scope{TenantID: 1, UserID: "owner", SessionID: "session-t11"},
+		RunID:            "run-t11",
+		PublicationState: craft.KnowledgePublicationPublished,
+		Sources:          []craft.KnowledgeSourceRecord{shared},
+	}
+	manifest, err := json.Marshal(craft.WebCitationManifest{Schema: craft.WebCitationSchema, Entries: []craft.WebCitationEntry{{Kind: craft.WebCitationFact, CitationID: shared.ID, Claim: "shared fact"}}})
+	require.NoError(t, err)
+	files := t11HTTPFiles{objects: map[string][]byte{"obj-v1": manifest}}
+	versions := t11HTTPVersionStore{byID: map[string]craft.Version{
+		"v-1": {ID: "v-1", WorkspaceID: "ws", RunID: "run-t11", Kind: craft.KindWeb,
+			Files: []craft.File{{Path: craft.WebCitationsPath, Ref: "obj-v1", SHA256: "sha", MIME: "application/json", Bytes: 64}}},
+	}}
+	checker := &t11HTTPChecker{roles: map[string]craft.TaskRole{"owner": craft.TaskRoleOwner, "viewer": craft.TaskRoleViewer}}
+	share, err := service.NewCraftShareService(service.CraftShareConfig{
+		DB: db, Versions: versions, Files: files, Records: t11HTTPRecords{record: record}, TaskAccess: checker,
+		Now: func() time.Time { return time.Date(2026, 9, 26, 9, 0, 0, 0, time.UTC) },
+	})
+	require.NoError(t, err)
+
+	features := NewCraftFeatureRoutes()
+	require.NoError(t, RegisterCraftShareFeature(features, share))
+	router := gin.New()
+	// The production error handler translates the strict decoder's
+	// c.Error rejections into 400 responses.
+	router.Use(middleware.ErrorHandler())
+	group := router.Group("/sessions", func(c *gin.Context) {
+		if c.GetHeader("X-Test-Auth") != "yes" {
+			c.AbortWithStatus(http.StatusUnauthorized)
+			return
+		}
+		c.Set(types.TenantIDContextKey.String(), uint64(1))
+		ctx := context.WithValue(c.Request.Context(), types.TenantIDContextKey, uint64(1))
+		ctx = context.WithValue(ctx, types.UserIDContextKey, c.GetHeader("X-Test-User"))
+		c.Request = c.Request.WithContext(ctx)
+	})
+	require.NoError(t, features.Mount(group))
+	do := func(method, user, path, rawBody string) *httptest.ResponseRecorder {
+		var reader io.Reader
+		if rawBody != "" {
+			reader = strings.NewReader(rawBody)
+		}
+		req := httptest.NewRequest(method, path, reader)
+		req.Header.Set("X-Test-Auth", "yes")
+		req.Header.Set("X-Test-User", user)
+		if rawBody != "" {
+			req.Header.Set("Content-Type", "application/json")
+		}
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		return w
+	}
+
+	// The current evidence digest comes from the share summary itself.
+	summary := do(http.MethodGet, "owner", "/sessions/session-t11/craft/versions/v-1/share", "")
+	require.Equal(t, http.StatusOK, summary.Code)
+	var initial struct {
+		EvidenceDigest string `json:"evidence_digest"`
+	}
+	require.NoError(t, json.Unmarshal(summary.Body.Bytes(), &initial))
+	require.NotEmpty(t, initial.EvidenceDigest)
+
+	decide := "/sessions/session-t11/craft/versions/v-1/share/decision"
+
+	// An injected authority field riding the consent body is rejected.
+	stolen := do(http.MethodPost, "owner", decide, fmt.Sprintf(`{"decision":"approved","evidence_digest":%q,"tenant_id":2}`, initial.EvidenceDigest))
+	require.Equal(t, http.StatusBadRequest, stolen.Code, "an unknown field never reaches the consent path: %s", stolen.Body.String())
+
+	// Trailing data after the decision object is rejected.
+	trailing := do(http.MethodPost, "owner", decide, fmt.Sprintf(`{"decision":"approved","evidence_digest":%q}{}`, initial.EvidenceDigest))
+	require.Equal(t, http.StatusBadRequest, trailing.Code, "trailing data is rejected: %s", trailing.Body.String())
+
+	// A body over the craft ceiling answers 413 before any consent work.
+	huge := do(http.MethodPost, "owner", decide, `{"decision":"approved","evidence_digest":"`+strings.Repeat("a", service.MaxCraftRequestBodyBytes)+`"}`)
+	require.Equal(t, http.StatusRequestEntityTooLarge, huge.Code, "the oversized body is refused: %s", huge.Body.String())
+
+	// A valid minimal decision still records and consents.
+	valid := do(http.MethodPost, "owner", decide, fmt.Sprintf(`{"decision":"approved","evidence_digest":%q}`, initial.EvidenceDigest))
+	require.Equal(t, http.StatusOK, valid.Code, "the strict decoder did not break the happy path: %s", valid.Body.String())
+	var consented struct {
+		Status string `json:"status"`
+	}
+	require.NoError(t, json.Unmarshal(valid.Body.Bytes(), &consented))
+	require.Equal(t, "consented", consented.Status)
 }

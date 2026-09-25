@@ -115,8 +115,10 @@ func (h *CraftShareHandler) DecideCraftShare(c *gin.Context) {
 		return
 	}
 	var body craftShareDecisionRequest
-	if err := c.ShouldBindJSON(&body); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Bad Request"})
+	// The decision body goes through the same strict decoder as every craft
+	// body: 1MiB ceiling and unknown-field rejection (no injected authority
+	// fields ride a consent submission).
+	if !decodeCraftBody(c, &body) {
 		return
 	}
 	decision := craft.DecisionStatus(strings.TrimSpace(body.Decision))

@@ -33,6 +33,7 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/modules/craft"
+	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -333,4 +334,172 @@ type t11RecordsStub struct{}
 
 func (t11RecordsStub) Load(context.Context, craft.Scope, string) (craft.KnowledgeRecord, error) {
 	return craft.KnowledgeRecord{}, craft.ErrNotFound
+}
+
+// t11FixedRecords serves the recorded knowledge record per Run.
+type t11FixedRecords struct{ byRun map[string]craft.KnowledgeRecord }
+
+func (r t11FixedRecords) Load(_ context.Context, _ craft.Scope, runID string) (craft.KnowledgeRecord, error) {
+	record, ok := r.byRun[runID]
+	if !ok {
+		return craft.KnowledgeRecord{}, craft.ErrNotFound
+	}
+	return record, nil
+}
+
+// t11CountingVersions counts Get calls so a code path can prove how many
+// times it derived a contribution from the version store.
+type t11CountingVersions struct {
+	t11VersionStore
+	gets *int
+}
+
+func (s t11CountingVersions) Get(ctx context.Context, scope craft.Scope, id string) (craft.Version, error) {
+	*s.gets++
+	return s.t11VersionStore.Get(ctx, scope, id)
+}
+
+// TestCraftT11OCRShareRegressions pins the T11 OCR fixes at the service
+// seam: a non-restricted version never projects a bound historical
+// rejection beside its consented state (F1); digest-replay conflicts and
+// caller identity mismatches are audited refusals (F2); repeated identical
+// denials are deduplicated inside the shared window while a different
+// actor's refusal still records (F4); and the decide hot path derives the
+// contribution exactly once, composing its response without a re-read (F6).
+func TestCraftT11OCRShareRegressions(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:craft107_t11_ocr?mode=memory&cache=shared"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.Exec(`CREATE TABLE audit_logs (id integer primary key autoincrement, tenant_id integer, actor_user_id text, action text, scope_type text, scope_id text, target_type text, target_id text, target_user_id text, outcome text, details text, created_at datetime)`).Error)
+	require.NoError(t, db.AutoMigrate(&craftShareDecisionRow{}))
+
+	shared := craft.KnowledgeSourceRecord{
+		ID: "kc_" + strings.Repeat("a", 24), Ref: "craftkb://kb/k-shared/knowledge/k-s/chunk/c-s",
+		Digest: "d-shared", TenantID: 7, ExcerptBytes: 32,
+	}
+	own := craft.KnowledgeSourceRecord{
+		ID: "kc_" + strings.Repeat("b", 24), Ref: "craftkb://kb/k-own/knowledge/k-o/chunk/c-o",
+		Digest: "d-own", TenantID: 1, ExcerptBytes: 32,
+	}
+	scope := craft.Scope{TenantID: 1, UserID: "u-owner", SessionID: "s-craft"}
+	records := t11FixedRecords{byRun: map[string]craft.KnowledgeRecord{
+		"run-r":   {Scope: scope, RunID: "run-r", PublicationState: craft.KnowledgePublicationPublished, Sources: []craft.KnowledgeSourceRecord{shared, own}},
+		"run-own": {Scope: scope, RunID: "run-own", PublicationState: craft.KnowledgePublicationPublished, Sources: []craft.KnowledgeSourceRecord{own}},
+	}}
+	manifestBytes := func(ids ...string) []byte {
+		entries := make([]craft.WebCitationEntry, 0, len(ids))
+		for _, id := range ids {
+			entries = append(entries, craft.WebCitationEntry{Kind: craft.WebCitationFact, CitationID: id, Claim: "claim of " + id})
+		}
+		raw, err := json.Marshal(craft.WebCitationManifest{Schema: craft.WebCitationSchema, Entries: entries})
+		require.NoError(t, err)
+		return raw
+	}
+	files := t11Files{objects: map[string][]byte{}}
+	version := func(id, runID string, citationIDs ...string) craft.Version {
+		ref := "obj-" + id
+		files.objects[ref] = manifestBytes(citationIDs...)
+		return craft.Version{ID: id, WorkspaceID: "ws-t11", RunID: runID, Kind: craft.KindWeb, Files: []craft.File{{Path: craft.WebCitationsPath, Ref: ref, SHA256: "sha", MIME: "application/json", Bytes: 64}}}
+	}
+	versions := t11VersionStore{byID: map[string]craft.Version{}}
+	versions.byID["v-r"] = version("v-r", "run-r", shared.ID, own.ID)
+	versions.byID["v-x"] = version("v-x", "run-r", shared.ID)
+	versions.byID["v-own"] = version("v-own", "run-own", own.ID)
+
+	gets := 0
+	checker := &t10RoleChecker{roles: map[string]craft.TaskRole{
+		"u-owner": craft.TaskRoleOwner, "u-viewer": craft.TaskRoleViewer, "u-viewer2": craft.TaskRoleViewer,
+	}}
+	share, err := NewCraftShareService(CraftShareConfig{
+		DB: db, Versions: t11CountingVersions{versions, &gets}, Files: files, Records: records, TaskAccess: checker,
+		Now: func() time.Time { return time.Date(2026, 9, 26, 9, 0, 0, 0, time.UTC) },
+	})
+	require.NoError(t, err)
+	ownerCtx := craftKnowledgeCtx(scope)
+	viewer := craft.Scope{TenantID: 1, UserID: "u-viewer", SessionID: "s-craft"}
+	viewer2 := craft.Scope{TenantID: 1, UserID: "u-viewer2", SessionID: "s-craft"}
+	// The scope names the owner (it passes the TaskShare check) while the
+	// context carries someone else's identity: exactly the caller mismatch
+	// the service must refuse and audit.
+	mismatchCtx := context.WithValue(ownerCtx, types.UserIDContextKey, "u-other")
+
+	// --- F1: an unrestricted version never projects a bound historical
+	// rejection beside its consented state.
+	ownView, err := share.ShareView(ownerCtx, scope, "v-own")
+	require.NoError(t, err)
+	require.False(t, ownView.Contribution.Restricted)
+	digestOwn := ownView.Contribution.EvidenceDigest
+	decided, err := share.DecideShare(ownerCtx, scope, "v-own", craft.DecisionRejected, digestOwn)
+	require.NoError(t, err)
+	require.Equal(t, craft.ShareStateConsented, decided.State, "an unrestricted version stays consented")
+	require.Nil(t, decided.Decision, "F1: a bound historical rejection is never projected beside an unrestricted consent")
+	require.Nil(t, decided.ExpiresAt)
+	reread, err := share.ShareView(ownerCtx, scope, "v-own")
+	require.NoError(t, err)
+	require.Equal(t, craft.ShareStateConsented, reread.State)
+	require.Nil(t, reread.Decision)
+
+	// --- F2a: replaying a decision of other evidence is an audited refusal.
+	restricted, err := share.ShareView(ownerCtx, scope, "v-r")
+	require.NoError(t, err)
+	require.True(t, restricted.Contribution.Restricted)
+	digestR := restricted.Contribution.EvidenceDigest
+	_, err = share.DecideShare(ownerCtx, scope, "v-r", craft.DecisionApproved, strings.Repeat("0", 64))
+	require.ErrorIs(t, err, craft.ErrConflict)
+	denialDetails := func() []string {
+		var details []string
+		require.NoError(t, db.Table("audit_logs").Where("action = ? AND outcome = ?", "craft.share_denied", "denied").Order("id").Pluck("details", &details).Error)
+		return details
+	}
+	require.Contains(t, strings.Join(denialDetails(), "\n"), "evidence_digest_mismatch", "F2: the replay conflict is audited with its reason")
+
+	// --- F2b: a caller identity mismatch (decide and revoke) is audited too.
+	// (Decide targets v-own and revoke targets v-x: the dedup window keys on
+	// actor+action+scope+target, so distinct targets keep each refusal's row
+	// independent instead of collapsing into one.)
+	_, err = share.DecideShare(mismatchCtx, scope, "v-own", craft.DecisionApproved, digestR)
+	require.ErrorIs(t, err, craft.ErrForbidden)
+	_, err = share.RevokeShare(mismatchCtx, scope, "v-x")
+	require.ErrorIs(t, err, craft.ErrForbidden)
+	require.Equal(t, 2, strings.Count(strings.Join(denialDetails(), "\n"), "caller_identity_mismatch"), "F2: both identity-mismatch refusals are audited")
+
+	// --- F6: the decide hot path derives the contribution exactly once and
+	// composes its response without re-reading the version store.
+	before := gets
+	approved, err := share.DecideShare(ownerCtx, scope, "v-r", craft.DecisionApproved, digestR)
+	require.NoError(t, err)
+	require.Equal(t, craft.ShareStateConsented, approved.State)
+	require.NotNil(t, approved.Decision)
+	require.Equal(t, digestR, approved.Decision.EvidenceDigest)
+	require.NotNil(t, approved.ExpiresAt)
+	require.Equal(t, before+1, gets, "F6: DecideShare composes the response from the already-derived contribution")
+	fresh, err := share.ShareView(ownerCtx, scope, "v-r")
+	require.NoError(t, err)
+	require.Equal(t, fresh.State, approved.State, "the composed response equals a fresh read")
+	require.Equal(t, fresh.Decision, approved.Decision)
+	require.Equal(t, before+2, gets, "only the fresh read adds a second derivation")
+
+	// --- the F1 guard did not over-suppress: a restricted version still
+	// projects its bound rejected decision as declined.
+	declined, err := share.DecideShare(ownerCtx, scope, "v-r", craft.DecisionRejected, digestR)
+	require.NoError(t, err)
+	require.Equal(t, craft.ShareStateDeclined, declined.State)
+	require.NotNil(t, declined.Decision)
+	require.Equal(t, craft.DecisionRejected, declined.Decision.Decision)
+
+	// --- F4: a probing client replaying the same denial writes exactly one
+	// audit row inside the window, and a different actor is not swallowed.
+	var before4 int64
+	require.NoError(t, db.Table("audit_logs").Where("action = ? AND outcome = ?", "craft.share_denied", "denied").Count(&before4).Error)
+	for i := 0; i < 3; i++ {
+		_, err = share.DecideShare(craftKnowledgeCtx(viewer), viewer, "v-r", craft.DecisionApproved, digestR)
+		require.ErrorIs(t, err, craft.ErrForbidden)
+	}
+	var afterViewer int64
+	require.NoError(t, db.Table("audit_logs").Where("action = ? AND outcome = ?", "craft.share_denied", "denied").Count(&afterViewer).Error)
+	require.Equal(t, before4+1, afterViewer, "F4: the same denial replayed three times writes exactly one row")
+	_, err = share.DecideShare(craftKnowledgeCtx(viewer2), viewer2, "v-r", craft.DecisionApproved, digestR)
+	require.ErrorIs(t, err, craft.ErrForbidden)
+	var afterViewer2 int64
+	require.NoError(t, db.Table("audit_logs").Where("action = ? AND outcome = ?", "craft.share_denied", "denied").Count(&afterViewer2).Error)
+	require.Equal(t, afterViewer+1, afterViewer2, "a different actor's refusal is still recorded")
 }

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback, useState } from 'react';
 
 // T11 (#128): sharing a restricted-source result is server authority this
 // panel only projects. The server derives the restricted contribution from
@@ -66,9 +66,12 @@ export function projectShareView(raw: unknown): CraftShareView | null {
   }
 
   // If the wire claims consent without a binding decision the panel stays
-  // private: authority is never inferred, only projected from a bound decision.
+  // private: authority is never inferred, only projected from a bound
+  // decision. The downgrade applies to RESTRICTED versions only — an
+  // unrestricted version is consented by construction and carries no
+  // decision, so downgrading it would mislabel a shareable version private.
   const effectiveStatus: CraftShareStatus =
-    status === 'consented' && decision?.decision !== 'approved' ? 'private' : (status as CraftShareStatus);
+    raw.restricted && status === 'consented' && decision?.decision !== 'approved' ? 'private' : (status as CraftShareStatus);
 
   return {
     versionId,
@@ -101,6 +104,7 @@ interface CraftShareLabels {
   decidedBy: string;
   expires: string;
   awaiting: string;
+  actionFailed: string;
 }
 
 function shareLabels(locale: 'zh' | 'en'): CraftShareLabels {
@@ -118,6 +122,7 @@ function shareLabels(locale: 'zh' | 'en'): CraftShareLabels {
       decidedBy: 'Decided by',
       expires: 'Expires',
       awaiting: 'Awaiting owner decision',
+      actionFailed: 'The share action failed. Try again.',
     };
   }
   return {
@@ -133,6 +138,7 @@ function shareLabels(locale: 'zh' | 'en'): CraftShareLabels {
     decidedBy: '决定人',
     expires: '有效期至',
     awaiting: '等待所有者决定',
+    actionFailed: '共享操作失败，请重试。',
   };
 }
 
@@ -144,6 +150,27 @@ export function CraftSharePanel({ locale, role, view, onDecide, onRevoke }: Craf
   const labels = shareLabels(locale);
   const isOwner = role === 'owner';
   const awaitingDecision = view.restricted && view.status === 'private';
+  // A declined decision is not final: the server keeps one decision row per
+  // task+version and a fresh decision upserts over it, so the owner can
+  // decide again at any time (F8).
+  const canDecide = view.restricted && (view.status === 'private' || view.status === 'declined');
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  // runShareAction awaits the host callback: a rejected decide/revoke
+  // becomes visible feedback here instead of an unhandled promise
+  // rejection that leaves the panel silently unchanged (F5).
+  const runShareAction = useCallback(async (action: () => void | Promise<void>) => {
+    setActionError(null);
+    setBusy(true);
+    try {
+      await action();
+    } catch {
+      setActionError(labels.actionFailed);
+    } finally {
+      setBusy(false);
+    }
+  }, [labels.actionFailed]);
 
   return <section aria-label={labels.heading} className="wk-craft-share" data-status={view.status} data-restricted={view.restricted}>
     <h4>{labels.heading}</h4>
@@ -158,12 +185,13 @@ export function CraftSharePanel({ locale, role, view, onDecide, onRevoke }: Craf
       {view.expiresAt ? <span className="wk-craft-share-expiry"> · {labels.expires}: {view.expiresAt}</span> : null}
     </p>}
     {awaitingDecision && !view.decision && <p className="wk-craft-share-awaiting">{labels.awaiting}</p>}
-    {isOwner && awaitingDecision && <div className="wk-craft-share-actions">
-      <button type="button" className="wk-craft-share-confirm" onClick={() => void onDecide('approved')}>{labels.confirm}</button>
-      <button type="button" className="wk-craft-share-decline" onClick={() => void onDecide('rejected')}>{labels.decline}</button>
+    {actionError && <p role="alert" className="wk-craft-share-error">{actionError}</p>}
+    {isOwner && canDecide && <div className="wk-craft-share-actions">
+      <button type="button" className="wk-craft-share-confirm" disabled={busy} onClick={() => void runShareAction(() => onDecide('approved'))}>{labels.confirm}</button>
+      <button type="button" className="wk-craft-share-decline" disabled={busy} onClick={() => void runShareAction(() => onDecide('rejected'))}>{labels.decline}</button>
     </div>}
     {isOwner && view.status === 'consented' && view.restricted && <div className="wk-craft-share-actions">
-      <button type="button" className="wk-craft-share-revoke" onClick={() => void onRevoke()}>{labels.revoke}</button>
+      <button type="button" className="wk-craft-share-revoke" disabled={busy} onClick={() => void runShareAction(onRevoke)}>{labels.revoke}</button>
     </div>}
   </section>;
 }

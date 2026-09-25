@@ -200,7 +200,13 @@ func (s *CraftShareService) view(ctx context.Context, scope craft.Scope, version
 	now := s.now()
 	state := craft.ShareStateOf(contribution, decision, now)
 	view := CraftShareView{Contribution: contribution, State: state}
-	if decision != nil && craft.DecisionBinds(decision.Decision, contribution) {
+	// Only a RESTRICTED contribution carries a meaningful decision
+	// projection. ShareStateOf reports non-restricted versions as
+	// consented unconditionally; projecting a bound historical rejected
+	// decision beside that would tell the client "consented + rejected"
+	// (with a misleading expires_at), and downstream guards that downgrade
+	// on decision!=approved would mislabel a shareable version private.
+	if contribution.Restricted && decision != nil && craft.DecisionBinds(decision.Decision, contribution) {
 		bound := decision.Decision
 		view.Decision = &bound
 		if state == craft.ShareStateConsented {
@@ -240,6 +246,7 @@ func (s *CraftShareService) DecideShare(ctx context.Context, scope craft.Scope, 
 	}
 	caller := types.CallerFromContext(ctx)
 	if caller.TenantID != scope.TenantID || caller.UserID != scope.UserID {
+		s.auditShare(ctx, scope, versionID, "craft.share_denied", "denied", map[string]string{"reason": "caller_identity_mismatch"})
 		return CraftShareView{}, craft.ErrForbidden
 	}
 	contribution, err := s.contribution(ctx, scope, versionID)
@@ -247,6 +254,10 @@ func (s *CraftShareService) DecideShare(ctx context.Context, scope craft.Scope, 
 		return CraftShareView{}, err
 	}
 	if seenDigest != contribution.EvidenceDigest {
+		// A digest mismatch is a replay signal (a decision recorded for
+		// OTHER evidence being replayed against this version): exactly the
+		// proven refusal the package audit contract names.
+		s.auditShare(ctx, scope, versionID, "craft.share_denied", "denied", map[string]string{"reason": "evidence_digest_mismatch"})
 		return CraftShareView{}, fmt.Errorf("%w: the decision binds other evidence than the version's current evidence", craft.ErrConflict)
 	}
 	now := s.now()
@@ -266,7 +277,31 @@ func (s *CraftShareService) DecideShare(ctx context.Context, scope craft.Scope, 
 	s.auditShare(ctx, scope, contribution.VersionID, "craft.share_decision_recorded", "success", map[string]string{
 		"decision": string(decision), "evidence_digest": contribution.EvidenceDigest,
 	})
-	return s.view(ctx, scope, versionID)
+	// The contribution was already derived above; composing the response
+	// view from it and the row just written skips a full re-read
+	// (versions.Get + files.GetFile + records.Load) on the hot path.
+	recorded := &craft.RecordedShareDecision{
+		Decision: craft.ShareDecision{
+			VersionID:      row.VersionID,
+			EvidenceDigest: row.EvidenceDigest,
+			OwnerID:        row.OwnerID,
+			Decision:       row.Decision,
+		},
+		DecidedAt: row.DecidedAt,
+	}
+	// The row was just upserted with revoked_at reset to NULL, so the
+	// recorded decision's RevokedAt stays zero (never revoked) by design.
+	state := craft.ShareStateOf(contribution, recorded, s.now())
+	out := CraftShareView{Contribution: contribution, State: state}
+	if contribution.Restricted {
+		bound := recorded.Decision
+		out.Decision = &bound
+		if state == craft.ShareStateConsented {
+			expires := recorded.DecidedAt.Add(craft.ShareDecisionTTL)
+			out.ExpiresAt = &expires
+		}
+	}
+	return out, nil
 }
 
 // RevokeShare ends a live consent: the persisted decision row is marked
@@ -279,6 +314,7 @@ func (s *CraftShareService) RevokeShare(ctx context.Context, scope craft.Scope, 
 	}
 	caller := types.CallerFromContext(ctx)
 	if caller.TenantID != scope.TenantID || caller.UserID != scope.UserID {
+		s.auditShare(ctx, scope, versionID, "craft.share_denied", "denied", map[string]string{"reason": "caller_identity_mismatch"})
 		return CraftShareView{}, craft.ErrForbidden
 	}
 	versionID = strings.TrimSpace(versionID)
@@ -322,7 +358,10 @@ func (s *CraftShareService) ShareAuthority(ctx context.Context, scope craft.Scop
 
 // auditShare records a durable sharing event into the shared audit trail.
 // The write failure is logged, never propagated: authority was already
-// decided and must not flip on the audit sink.
+// decided and must not flip on the audit sink. DENIAL rows carry the same
+// sliding-window dedup as craft_access.auditTaskDenial (shared
+// craftDenyDedupWindow): a probing client replaying the same denial must
+// not be able to flood audit_logs at request rate.
 func (s *CraftShareService) auditShare(ctx context.Context, scope craft.Scope, versionID, action, outcome string, details map[string]string) {
 	actor, full := craftAuditActorUserID(scope.UserID)
 	if details == nil {
@@ -335,10 +374,21 @@ func (s *CraftShareService) auditShare(ctx context.Context, scope craft.Scope, v
 	if err != nil {
 		raw = []byte(`{}`)
 	}
+	versionID = strings.TrimSpace(versionID)
+	if outcome == "denied" {
+		since := time.Now().Add(-craftDenyDedupWindow)
+		var recent int64
+		if err := s.db.WithContext(ctx).Model(&craftAccessAudit{}).
+			Where("tenant_id = ? AND actor_user_id = ? AND action = ? AND scope_id = ? AND target_id = ? AND outcome = ? AND created_at > ?",
+				scope.TenantID, actor, action, scope.SessionID, versionID, "denied", since).
+			Count(&recent).Error; err == nil && recent > 0 {
+			return
+		}
+	}
 	if err := s.db.WithContext(ctx).Create(&craftAccessAudit{
 		TenantID: scope.TenantID, ActorUserID: actor, Action: action,
 		ScopeType: "session", ScopeID: scope.SessionID, TargetType: "artifact_version",
-		TargetID: strings.TrimSpace(versionID), Outcome: outcome,
+		TargetID: versionID, Outcome: outcome,
 		Details: types.JSON(raw), CreatedAt: time.Now(),
 	}).Error; err != nil {
 		logger.ErrorWithFields(ctx, err, map[string]interface{}{"audit_action": action})
