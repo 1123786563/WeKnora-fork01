@@ -523,3 +523,96 @@ test('client 变化时连接缓存失效并按新 principal 重新拉取（OCR R
     document.body.replaceChildren();
   }
 });
+
+// OCR R2 F02：client 切换后旧 principal 在途的 connections/me 回包必须被
+// 代数守卫丢弃——否则旧「已授权」徽标经函数式 setConnections 落键覆盖新
+// 视图（报告核实 serviceId 不随 principal 变化，实际影响限于徽标错显）。
+test('client 切换后旧 principal 的迟到连接回包不覆盖新视图（OCR R2 F02）', async () => {
+  const captured: CapturedRequest[] = [];
+  let releaseOld: ((value: unknown) => void) | null = null;
+  const makeClient = (authorized: boolean) => ({
+    request: async (input: { method: string; path: string; body?: unknown }) => {
+      captured.push({ method: input.method, path: input.path, body: input.body });
+      if (input.method === 'GET' && input.path === '/api/v1/plugins/installations') {
+        return {
+          success: true,
+          data: [
+            { installation_id: 'inst-1', plugin_id: 'com.example.jira-todo', name: 'Jira 本周待办', version: '1.2.0', state: 'active', drift_state: 'none', requires_personal_auth: true, tool_count: 2 },
+          ],
+        };
+      }
+      if (input.method === 'GET' && input.path === '/api/v1/plugins/installations/inst-1/connections/me') {
+        if (releaseOld !== null) {
+          // 旧 client 的回包挂起，等新 client 的数据落地后再放行。
+          const release = releaseOld;
+          releaseOld = null;
+          await new Promise((resolve) => { releaseOld2 = resolve as (value: unknown) => void; void release; });
+          return connectionEnvelope('inst-1', 'authorized');
+        }
+        return connectionEnvelope('inst-1', authorized ? 'authorized' : 'unauthorized');
+      }
+      throw new Error(`unexpected request ${input.method} ${input.path}`);
+    },
+  });
+  let releaseOld2: ((value: unknown) => void) | null = null;
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  await act(async () => {
+    releaseOld = (() => undefined) as (value: unknown) => void; // 标记：首个 client 的请求走挂起分支
+    root.render(React.createElement(PluginsPanel, { client: makeClient(true) as never }));
+  });
+  try {
+    for (let i = 0; i < 4; i += 1) await act(async () => {});
+    // 切新 client（未授权态），旧回包仍挂起。
+    await act(async () => { root.render(React.createElement(PluginsPanel, { client: makeClient(false) as never })); });
+    for (let i = 0; i < 4; i += 1) await act(async () => {});
+    // 新 principal 的回包已落地（未授权）。
+    assert.match(container.innerHTML, /未授权/, 'the new principal sees the fresh unauthorized state');
+    // 放行旧 principal 的迟到回包——代数守卫必须丢弃它。
+    const release = releaseOld2;
+    releaseOld2 = null;
+    await act(async () => { (release as unknown as (v: unknown) => void)(undefined); });
+    for (let i = 0; i < 4; i += 1) await act(async () => {});
+    assert.match(container.innerHTML, /未授权/, 'the stale authorized response from the OLD principal must be dropped, not overwrite the new view');
+  } finally {
+    const release = releaseOld2;
+    releaseOld2 = null;
+    if (release) (release as unknown as (v: unknown) => void)(undefined);
+    await act(async () => root.unmount());
+    document.body.replaceChildren();
+  }
+});
+
+// OCR R2 F06：生产路径（无 initialInstallations 直出）挂载首拉期间不得闪现
+// 「暂无已安装插件」空态误报——加载完成前显示加载中。
+test('无直出数据时首拉期间显示加载中而非空态误报（OCR R2 F06）', async () => {
+  let releaseList: ((value: unknown) => void) | null = null;
+  const client = {
+    request: async (input: { method: string; path: string }) => {
+      if (input.method === 'GET' && input.path === '/api/v1/plugins/installations') {
+        await new Promise((resolve) => { releaseList = resolve as (value: unknown) => void; });
+        return { success: true, data: [] };
+      }
+      throw new Error(`unexpected request ${input.method} ${input.path}`);
+    },
+  };
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  await act(async () => { root.render(React.createElement(PluginsPanel, { client: client as never })); });
+  try {
+    for (let i = 0; i < 3; i += 1) await act(async () => {});
+    assert.match(container.innerHTML, /加载中/, 'the in-flight first load shows a loading state');
+    assert.doesNotMatch(container.innerHTML, /暂无已安装插件/, 'an in-flight list must NOT flash the empty state');
+    await act(async () => { (releaseList as unknown as (v: unknown) => void)(undefined); });
+    for (let i = 0; i < 3; i += 1) await act(async () => {});
+    assert.match(container.innerHTML, /暂无已安装插件/, 'an empty COMPLETED list shows the empty state');
+  } finally {
+    const release = releaseList;
+    releaseList = null;
+    if (release) (release as unknown as (v: unknown) => void)(undefined);
+    await act(async () => root.unmount());
+    document.body.replaceChildren();
+  }
+});

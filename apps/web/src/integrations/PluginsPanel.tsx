@@ -1,4 +1,5 @@
-import * as React from "react";
+// OCR R2 F07：删除死导入 import * as React（全文件无 React. 命名空间引用，
+// jsx: react-jsx 下 JSX 不依赖它）。
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { WeKnoraClient } from "@weknora/api-client";
 import { Button, Status } from "@weknora/ui";
@@ -56,8 +57,8 @@ type Props = {
 type ConnectionEntry = PluginMyConnection | "load-failed";
 type ConnectionMap = Partial<Record<string, ConnectionEntry>>;
 
-export function PluginsPanel({ client, initialInstallations = [] }: Props) {
-  const [installations, setInstallations] = useState<readonly PluginInstallationSummary[]>(initialInstallations);
+export function PluginsPanel({ client, initialInstallations }: Props) {
+  const [installations, setInstallations] = useState<readonly PluginInstallationSummary[]>(initialInstallations ?? []);
   const [error, setError] = useState<string | null>(null);
   const [connections, setConnections] = useState<ConnectionMap>({});
   const [pendingId, setPendingId] = useState<string | null>(null);
@@ -66,6 +67,16 @@ export function PluginsPanel({ client, initialInstallations = [] }: Props) {
   // 失败——失败落墓碑键后不再由 effect 重发，其他行的成功也不会放大成
   // 对失败行的重试；显式重试走 retryConnection 清墓碑）。
   const requestedRef = useRef<Set<string>>(new Set());
+  // OCR R2 F02：连接状态代数——client 切换时自增，在途回包凭旧代数丢弃。
+  const connectionEpochRef = useRef(0);
+  // OCR R2 F08：授权轮询的卸载终止标志——面板挂于 plugins tab 内容插槽
+  //（tab 切换即卸载），卸载后轮询不再发后台请求。
+  const aliveRef = useRef(true);
+  useEffect(() => () => { aliveRef.current = false; }, []);
+  // OCR R2 F06：列表加载完成标记——生产路径（未传 initialInstallations，即
+  // 无 SSR 直出）挂载首拉期间不闪现「暂无已安装插件」空态误报；直出路径
+  //（含空数组——服务端已确认空列表）直接视为已加载。
+  const [listLoaded, setListLoaded] = useState(initialInstallations !== undefined);
 
   // pluginsApi 稳定化（T08-OCR 同款：useMemo 只随 client 变化，避免 effect 反复重建）。
   const pluginsApi = useMemo(
@@ -80,6 +91,7 @@ export function PluginsPanel({ client, initialInstallations = [] }: Props) {
       .then((rows) => {
         if (cancelled) return;
         setInstallations(rows);
+        setListLoaded(true); // OCR R2 F06：首拉完成，空态判断自此有效。
         setError(null);
       })
       .catch((cause: unknown) => {
@@ -115,19 +127,33 @@ export function PluginsPanel({ client, initialInstallations = [] }: Props) {
   // 「已授权/已过期」徽标与 serviceId 原样残留展示在新 client 视图下。
   // 重置去重集与连接表，让新列表到位后按新 principal 重新拉取
   //（对照 PluginsSettingsPanel 的显式失效先例 T19-OCR1-F4/F1）。
+  // OCR R2 F03：跳过首跑——effects 按声明序运行，无条件重置会在挂载首帧
+  // 清掉第二个 effect 刚基于 initialInstallations 做的标记与请求，SSR/首
+  // 屏直出路径下每个需授权行的连接状态被请求两次。
+  const seenPluginsApiRef = useRef(pluginsApi);
   useEffect(() => {
+    if (seenPluginsApiRef.current === pluginsApi) return;
+    seenPluginsApiRef.current = pluginsApi;
     requestedRef.current = new Set();
     setConnections({});
+    // OCR R2 F02：代际自增——已在途的 getMyConnection 回包凭旧代数被丢弃，
+    // 旧 principal 的徽标不再覆盖新视图（先例 toolPolicyEpoch T19-OCR2-F1）。
+    connectionEpochRef.current += 1;
   }, [pluginsApi]);
 
   function loadConnection(installationId: string): Promise<PluginMyConnection | null> {
+    // OCR R2 F02：捕获发起时代数——client 切换（上面 effect 已自增）后旧
+    // principal 的迟到回包/迟到失败直接丢弃，不写进新视图。
+    const epoch = connectionEpochRef.current;
     return pluginsApi
       .getMyConnection(installationId)
       .then((next) => {
+        if (epoch !== connectionEpochRef.current) return null;
         setConnections((prev) => ({ ...prev, [next.installationId]: next }));
         return next;
       })
       .catch((cause: unknown) => {
+        if (epoch !== connectionEpochRef.current) return null;
         // 单行连接状态失败不打断整个目录（列表/其他行照常呈现），但落
         // 墓碑键让行内呈现失败态与重试入口（T12-OCR1-F4）。
         console.warn("plugin connection load failed:", cause);
@@ -167,6 +193,9 @@ export function PluginsPanel({ client, initialInstallations = [] }: Props) {
       let authorized = false;
       for (let attempt = 0; attempt < AUTH_POLL_ATTEMPTS; attempt += 1) {
         await new Promise((resolve) => window.setTimeout(resolve, AUTH_POLL_INTERVAL_MS));
+        // OCR R2 F08：面板随 tab 切换卸载后终止轮询——setState 虽 no-op，
+        // 但每 1.5s×40 的后台 getMyConnection 请求照发。
+        if (!aliveRef.current) break;
         const next = await loadConnection(connection.installationId);
         if (next?.authorized) {
           authorized = true;
@@ -199,15 +228,15 @@ export function PluginsPanel({ client, initialInstallations = [] }: Props) {
 
   return (
     <section className="grid gap-3" data-testid="plugins-discover" aria-label="空间插件">
-      <div>
-        <h2 className="m-0 mb-1 text-[18px] font-semibold leading-[normal] text-[rgb(0_0_0_/_90%)]">空间插件</h2>
-        <p className="wk-muted m-0 text-[13px] leading-[1.6] text-[rgb(0_0_0_/_60%)]">
-          本空间已安装插件的目录：Agent 仅可调用空间已接受版本中开放的工具，写入类工具默认关闭，需个人授权的工具在会话中按成员本人的授权调用。
-        </p>
-      </div>
+      {/* OCR R2 F04：标题/描述由共享页 section heading 渲染（page.tsx 的
+          HEADING_KEYS/DESCRIPTION_KEYS，五 locale 词条）——面板此前自带同名
+          h2+描述段造成双重渲染且文案分叉；「需个人授权」分句已并入
+          integrations.plugins.subtitle 词条。 */}
       {error ? <Status tone="error">{error}</Status> : null}
       {actionError ? <Status tone="error">{actionError}</Status> : null}
-      {installations.length === 0 && error === null ? (
+      {!listLoaded && error === null ? (
+        <Status>加载中…</Status>
+      ) : installations.length === 0 && error === null ? (
         <Status>暂无已安装插件</Status>
       ) : (
         <ul className="m-0 grid list-none gap-2 p-0">

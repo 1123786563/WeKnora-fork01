@@ -24,7 +24,7 @@ const FALLBACK_STRINGS: FallbackTable = {
     // 这三 key——在此回退层兜底，@weknora/i18n 词条落位后 formatMessage 先命中。
     'integrations.tabs.plugins': '插件',
     'integrations.plugins.title': '空间插件',
-    'integrations.plugins.subtitle': '本空间已安装的插件目录；Agent 仅可调用空间已接受版本中开放的工具，写入类工具默认关闭。',
+    'integrations.plugins.subtitle': '本空间已安装的插件目录；Agent 仅可调用空间已接受版本中开放的工具，写入类工具默认关闭，需个人授权的工具在会话中按成员本人的授权调用。',
     'common.close': '关闭',
     'integrations.selectAgentHint': '请先选择一个智能体',
     // Vue ApiIntegrationSettings.vue API 文档 row (tenant.api subtree).
@@ -76,7 +76,7 @@ const FALLBACK_STRINGS: FallbackTable = {
   'en-US': {
     'integrations.tabs.plugins': 'Plugins',
     'integrations.plugins.title': 'Workspace plugins',
-    'integrations.plugins.subtitle': 'Plugins installed in this workspace; agents can only call tools enabled in the accepted versions, and write tools are disabled by default.',
+    'integrations.plugins.subtitle': 'Plugins installed in this workspace; agents can only call tools enabled in the accepted versions, write tools are disabled by default, and tools requiring personal authorization are called per each member\'s own grant.',
     'tenant.api.docLabel': 'API Documentation',
     'tenant.api.docDescription': 'View complete API documentation and examples,',
     'tenant.api.openDoc': 'Open documentation',
@@ -127,7 +127,7 @@ const FALLBACK_STRINGS: FallbackTable = {
   'ja-JP': {
     'integrations.tabs.plugins': 'プラグイン',
     'integrations.plugins.title': 'ワークスペース プラグイン',
-    'integrations.plugins.subtitle': 'このワークスペースにインストールされたプラグイン。エージェントは承認済みバージョンで有効なツールのみ呼び出せます。書き込みツールは既定で無効です。',
+    'integrations.plugins.subtitle': 'このワークスペースにインストールされたプラグイン。エージェントは承認済みバージョンで有効なツールのみ呼び出せます。書き込みツールは既定で無効です。個人認証が必要なツールはメンバー本人の認可に基づいて呼び出されます。',
     'tenant.api.docLabel': 'APIドキュメント',
     'tenant.api.docDescription': 'APIの詳細なドキュメントとサンプルはこちら：',
     'tenant.api.openDoc': 'ドキュメントを開く',
@@ -178,7 +178,7 @@ const FALLBACK_STRINGS: FallbackTable = {
   'ko-KR': {
     'integrations.tabs.plugins': '플러그인',
     'integrations.plugins.title': '워크스페이스 플러그인',
-    'integrations.plugins.subtitle': '이 워크스페이스에 설치된 플러그인입니다. 에이전트는 승인된 버전에서 활성화된 도구만 호출할 수 있으며 쓰기 도구는 기본적으로 비활성화됩니다.',
+    'integrations.plugins.subtitle': '이 워크스페이스에 설치된 플러그인입니다. 에이전트는 승인된 버전에서 활성화된 도구만 호출할 수 있으며 쓰기 도구는 기본적으로 비활성화됩니다. 개인 인증이 필요한 도구는 각 멤버의 승인에 따라 호출됩니다.',
     'tenant.api.docLabel': 'API 문서',
     'tenant.api.docDescription': '전체 API 호출 문서 및 예시 보기, ',
     'tenant.api.openDoc': '문서 열기',
@@ -229,7 +229,7 @@ const FALLBACK_STRINGS: FallbackTable = {
   'ru-RU': {
     'integrations.tabs.plugins': 'Плагины',
     'integrations.plugins.title': 'Плагины рабочего пространства',
-    'integrations.plugins.subtitle': 'Плагины, установленные в этом пространстве; агент может вызывать только инструменты, включённые в принятых версиях, а инструменты записи по умолчанию отключены.',
+    'integrations.plugins.subtitle': 'Плагины, установленные в этом пространстве; агент может вызывать только инструменты, включённые в принятых версиях, а инструменты записи по умолчанию отключены; инструменты, требующие личной авторизации, вызываются с разрешения самого участника.',
     'tenant.api.docLabel': 'Документация API',
     'tenant.api.docDescription': 'Ознакомьтесь с полной документацией и примерами API,',
     'tenant.api.openDoc': 'Открыть документацию',
