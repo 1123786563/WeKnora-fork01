@@ -28,6 +28,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -378,6 +379,12 @@ type refreshEntry struct {
 	ExpiresAt time.Time
 }
 
+// credentialCheckFunc replaces oauthStub's in-table credential comparison:
+// the Jira-shaped stand-in (T13) uses it to verify the submitted credentials
+// against the fake Jira /rest/api/3/myself over real HTTP (same semantics as
+// the T04 example service's authorize page) before a one-time code is issued.
+type credentialCheckFunc func(username, password string) error
+
 // oauthStub is the in-memory authorization server: users gates the whole
 // endpoint set (nil = disabled); codes/tokens are one-time; access tokens
 // are deterministic "tok-<user>" so CallTool attribution is observable.
@@ -389,6 +396,11 @@ type oauthStub struct {
 	codes         map[string]issuedCode
 	tokens        map[string]tokenEntry
 	refreshTokens map[string]refreshEntry
+	// credentialCheck 非 nil 时（enableWithCheck），凭据验证以它为权威，
+	// users 仅标记端点集启用；sessionCredentials 记录各成员授权时提交的
+	// 凭据（member → password），供 Jira 形替身的工具执行取出站调用。
+	credentialCheck    credentialCheckFunc
+	sessionCredentials map[string]string
 }
 
 func (o *oauthStub) enable(users map[string]string) {
@@ -410,6 +422,20 @@ func (o *oauthStub) enable(users map[string]string) {
 	if o.refreshTokens == nil {
 		o.refreshTokens = map[string]refreshEntry{}
 	}
+	if o.sessionCredentials == nil {
+		o.sessionCredentials = map[string]string{}
+	}
+}
+
+// enableWithCheck turns on the endpoint set with an external credential
+// authority: authorization succeeds iff check accepts the submitted
+// (username, password) — the stand-in then records the credential for the
+// member's tool-side egress (sessionCredential).
+func (o *oauthStub) enableWithCheck(check credentialCheckFunc) {
+	o.enable(map[string]string{}) // 非 nil users 标记启用；权威在 check
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.credentialCheck = check
 }
 
 func (o *oauthStub) enabled() bool {
@@ -481,7 +507,10 @@ func (o *oauthStub) startAuthorization(req authzRequest) error {
 
 // submitCredentials consumes the pending state on successful credential
 // validation and mints a ONE-TIME code, returning the redirect location.
-// Credentials failure keeps the state (retry-able), mirroring T04.
+// Credentials failure keeps the state (retry-able), mirroring T04. When a
+// credentialCheck is configured (enableWithCheck) it is the authority;
+// otherwise the in-table users comparison applies. On success the submitted
+// credential is recorded in sessionCredentials for tool-side egress.
 func (o *oauthStub) submitCredentials(state, username, password string) (string, error) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
@@ -489,13 +518,23 @@ func (o *oauthStub) submitCredentials(state, username, password string) (string,
 	if !ok {
 		return "", fmt.Errorf("unknown or already-consumed state")
 	}
-	credential, known := o.users[username]
-	if !known || credential != password {
-		return "", fmt.Errorf("invalid credentials")
+	if o.credentialCheck != nil {
+		if err := o.credentialCheck(username, password); err != nil {
+			return "", err
+		}
+	} else {
+		credential, known := o.users[username]
+		if !known || credential != password {
+			return "", fmt.Errorf("invalid credentials")
+		}
 	}
 	delete(o.pendingAuths, state)
 	code := randomToken()
 	o.codes[code] = issuedCode{Request: req, Member: username, ExpiresAt: time.Now().Add(authCodeTTL)}
+	if o.sessionCredentials == nil {
+		o.sessionCredentials = map[string]string{}
+	}
+	o.sessionCredentials[username] = password
 	redirect, err := url.Parse(req.RedirectURI)
 	if err != nil {
 		return "", fmt.Errorf("registered redirect_uri is no longer parsable: %w", err)
@@ -505,6 +544,15 @@ func (o *oauthStub) submitCredentials(state, username, password string) (string,
 	q.Set("state", state)
 	redirect.RawQuery = q.Encode()
 	return redirect.String(), nil
+}
+
+// sessionCredential returns the credential a member submitted at
+// authorization time ("" when the member never authorized) — the Jira-shaped
+// stand-in's tool handler uses it as the egress credential.
+func (o *oauthStub) sessionCredential(member string) string {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.sessionCredentials[member]
 }
 
 // exchangeCode validates + consumes the one-time code（PKCE S256）and
@@ -741,4 +789,163 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(payload)
+}
+
+// ---------------------------------------------------------------------------
+// Jira 形替身（T13）：复刻 examples/plugins/jira-todo-mcp 的行为契约
+// ---------------------------------------------------------------------------
+
+const (
+	// JiraTodoToolName 与示例服务唯一工具同名（T04 契约）。
+	JiraTodoToolName = "search_my_week_issues"
+	// JiraTodoToolSchema 与示例服务 canonicalToolInputSchema 逐字一致：
+	// 无参数、拒绝一切额外属性——模型注入 token/jql/url/user_id 在服务端
+	// schema 层（additionalProperties:false）被拒。
+	JiraTodoToolSchema = `{"type":"object","properties":{},"additionalProperties":false}`
+	// jiraTodoDefaultTimeout 是替身工具出站 HTTP 客户端的缺省超时（与 T04
+	// jiraHTTPClient 的 30s 一致）。
+	jiraTodoDefaultTimeout = 30 * time.Second
+	// jiraTodoMyWeekJQL 与示例服务 jqlMyWeek（examples/plugins/jira-todo-
+	// mcp/jira.go）逐字一致：JQL 由替身服务端固定模板构造，绝不接受调用
+	// 方输入拼接。fake Jira 按同一语义过滤账本（未解决 + due 在本周内）。
+	jiraTodoMyWeekJQL = `assignee = currentUser() AND resolution = Unresolved AND due >= startOfWeek() AND due < startOfWeek("+1w") ORDER BY due ASC`
+)
+
+// JiraTodoOption 配置 Jira 形替身。
+type JiraTodoOption func(*jiraTodoConfig)
+
+type jiraTodoConfig struct {
+	timeout time.Duration
+}
+
+// WithJiraToolTimeout 覆盖替身工具出站 HTTP 客户端超时（缺省 30s；超时
+// 注入场景测试传 500ms，慢 fake Jira 在此被确定性切断——计划 Task 13
+// Step 3 的 Option JiraTimeout）。
+func WithJiraToolTimeout(d time.Duration) JiraTodoOption {
+	return func(c *jiraTodoConfig) { c.timeout = d }
+}
+
+// NewJiraTodoPlugin 返回未 Start 的 Jira 形替身：恰好一个工具
+// search_my_week_issues（目录公开、执行鉴权，与示例服务同契约）；授权
+// 凭据即成员 Jira 凭据（email + APIToken），经 fake Jira
+// /rest/api/3/myself 真实验证后才发一次性 code；工具执行经真实 HTTP 调
+// fake Jira 的 /rest/api/3/search/jql，输出行格式与示例服务 formatIssues
+// 一致（[{key}] {summary} · 状态 {status} · 截止 {due} · {base}/browse/{key}）。
+// HTTP ≥400 与超时都以携带语义的错误浮出，绝不伪装成空成功列表。
+func NewJiraTodoPlugin(t testing.TB, jira *FakeJira, opts ...JiraTodoOption) *Server {
+	t.Helper()
+	cfg := jiraTodoConfig{timeout: jiraTodoDefaultTimeout}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&cfg)
+		}
+	}
+	s := New()
+	s.PluginID = "jira-todo-mcp"
+	s.Name = "Jira 本周待办（测试替身）"
+	// 授权凭据权威在 fake Jira：/myself 验证通过才发码（T04 授权页同语义）。
+	s.oauth.enableWithCheck(func(username, password string) error {
+		return jira.VerifyCredentials(username, password)
+	})
+	s.SetTools([]Tool{{
+		Name:                 JiraTodoToolName,
+		Description:          "查询当前授权成员本周内未解决的 Jira 待办事项（测试替身，与示例服务同契约；工具不接受任何参数，JQL 由服务端固定）",
+		ReadOnly:             true,
+		RequiresPersonalAuth: true,
+		InputSchema:          JiraTodoToolSchema,
+		Call: func(member string) (string, error) {
+			apiToken := s.oauth.sessionCredential(member)
+			if apiToken == "" {
+				return "", fmt.Errorf("unauthorized: no jira credentials bound to member %s", member)
+			}
+			// member 即授权时提交的 Jira 邮箱：Basic(email:APIToken) 出站。
+			return searchFakeJiraWeek(jira.BaseURL(), member, apiToken, cfg.timeout)
+		},
+	}})
+	return s
+}
+
+// searchFakeJiraWeek 以成员 Jira 凭据（Basic 认证，与 T04 JiraClient 一致）
+// 经 SSRF-safe client 调 fake Jira 的固定 JQL 搜索并渲染输出行。错误浮出
+// 语义与 T04 jira.go 对齐：HTTP ≥400 携带状态码；超时（ctx deadline/
+// Client.Timeout）以 timeout 措辞包装。
+func searchFakeJiraWeek(baseURL, email, apiToken string, timeout time.Duration) (string, error) {
+	cfg := utils.DefaultSSRFSafeHTTPClientConfig()
+	cfg.Timeout = timeout
+	client := utils.NewSSRFSafeHTTPClient(cfg)
+	payload, err := json.Marshal(map[string]any{
+		"jql":        jiraTodoMyWeekJQL,
+		"fields":     []string{"summary", "status", "duedate"},
+		"maxResults": 100,
+	})
+	if err != nil {
+		return "", fmt.Errorf("encode jira search request: %w", err)
+	}
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost,
+		strings.TrimRight(baseURL, "/")+"/rest/api/3/search/jql", bytes.NewReader(payload))
+	if err != nil {
+		return "", fmt.Errorf("build jira request POST /rest/api/3/search/jql: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/json")
+	// Basic 认证只进请求头，不进任何日志。
+	req.Header.Set("Authorization", jiraBasicAuth(email, apiToken))
+	resp, err := client.Do(req)
+	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return "", fmt.Errorf("jira request POST /rest/api/3/search/jql timeout: %w", err)
+		}
+		return "", fmt.Errorf("jira request POST /rest/api/3/search/jql failed: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode >= http.StatusBadRequest {
+		return "", fmt.Errorf("jira POST /rest/api/3/search/jql returned HTTP %d", resp.StatusCode)
+	}
+	var result fakeJiraSearchResponse
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&result); err != nil {
+		return "", fmt.Errorf("decode jira /rest/api/3/search/jql response: %w", err)
+	}
+	return formatFakeJiraIssues(baseURL, result.Issues), nil
+}
+
+// fakeJiraSearchResponse 是 fake Jira 搜索响应的最小映射（字段结构与 T04
+// jiraSearchResponse 一致；fake 不分页，无 nextPageToken）。
+type fakeJiraSearchResponse struct {
+	Issues []fakeJiraSearchIssue `json:"issues"`
+}
+
+// fakeJiraSearchIssue 是搜索结果的单条事项（fields 白名单：summary/status/
+// duedate）。
+type fakeJiraSearchIssue struct {
+	Key    string `json:"key"`
+	Fields struct {
+		Summary string `json:"summary"`
+		Status  struct {
+			Name string `json:"name"`
+		} `json:"status"`
+		DueDate string `json:"duedate"`
+	} `json:"fields"`
+}
+
+// formatFakeJiraIssues 与示例服务 formatIssues（jira.go）同格式渲染：每行
+// [{key}] {summary} · 状态 {status} · 截止 {due} · {url}；空列表输出空
+// 字符串（空数组语义，而非错误）。
+func formatFakeJiraIssues(baseURL string, issues []fakeJiraSearchIssue) string {
+	lines := make([]string, 0, len(issues))
+	for _, issue := range issues {
+		var b strings.Builder
+		fmt.Fprintf(&b, "[%s]", issue.Key)
+		if issue.Fields.Summary != "" {
+			fmt.Fprintf(&b, " %s", issue.Fields.Summary)
+		}
+		if issue.Fields.Status.Name != "" {
+			fmt.Fprintf(&b, " · 状态 %s", issue.Fields.Status.Name)
+		}
+		if issue.Fields.DueDate != "" {
+			fmt.Fprintf(&b, " · 截止 %s", issue.Fields.DueDate)
+		}
+		fmt.Fprintf(&b, " · %s", strings.TrimRight(baseURL, "/")+"/browse/"+issue.Key)
+		lines = append(lines, b.String())
+	}
+	return strings.Join(lines, "\n")
 }
