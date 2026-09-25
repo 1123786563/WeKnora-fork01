@@ -907,3 +907,103 @@ test('deletion boundary decoder presents in-space sections, non-revocable extern
  assert.equal(decoded.retention[0]?.status, 'retained')
  assert.equal(decoded.inSpace[0]?.count, 2)
 })
+
+// T19 sourced preparations: generate/list/receipt follow the frozen backend
+// enums (internal/modules/career/preparation.go). The draft anchors to the
+// actually submitted version and cites the frozen snapshot plus confirmed
+// fact keys; a failed or in-flight generation answers its typed failure
+// state with an empty body — never a blank success product. Decoders reject
+// invented focuses, statuses or failure codes before they reach the UI.
+const preparationTs = '2026-09-26T07:30:00Z'
+const preparationAnchor = { submissionId: 'sub-1', materialId: 'mat /1', exportId: 'exp-1', version: 2, contentDigest: 'c'.repeat(64) }
+const preparationBody = { sections: [{ heading: '面试准备（草稿）：教育经历', content: '以下要点固定自实际投递版本与岗位快照。', claims: [{ claimId: 'claim-1', text: '本科在读', factKey: '学历', needsReview: false }] }] }
+const preparationReceipt = (extra: Record<string, unknown> = {}) => ({
+ kind: 'preparation_generated', requestId: 'prep-req /1', applicationId: 'app /1', preparationId: 'prep-1', focus: 'interview_prep', status: 'draft',
+ anchor: { ...preparationAnchor }, materialId: 'mat-draft-1', body: preparationBody, reviewRisks: [],
+ sources: { submittedVersion: { ...preparationAnchor }, snapshot: { opportunityId: 'opp /1', snapshotId: 'snap-1', snapshotSha256: 'a'.repeat(64) }, factKeys: ['学历'], profileRevision: 5 },
+ revision: 5, createdAt: preparationTs, ...extra,
+})
+const failedPreparation = (extra: Record<string, unknown> = {}) => preparationReceipt({
+ status: 'failed', materialId: undefined, body: { sections: null }, reviewRisks: [],
+ sources: { submittedVersion: { ...preparationAnchor }, snapshot: { opportunityId: '', snapshotId: 'snap-1', snapshotSha256: 'a'.repeat(64) }, factKeys: null, profileRevision: 5 },
+ failureCode: 'generation_failed', failureMessage: 'model unavailable', ...extra,
+})
+
+test('preparation client encodes generate, list and receipt recovery paths', async () => {
+ const calls: Array<{ method: string; path: string; body?: unknown }> = []
+ const api = createCareerApi(async (input) => {
+  calls.push({ method: input.method, path: input.path, ...(input.body !== undefined ? { body: input.body } : {}) })
+  return input.method === 'POST' ? preparationReceipt() : input.path.includes('/receipt?') ? preparationReceipt() : { preparations: [preparationReceipt()] }
+ })
+ assert.deepEqual(await api.generatePreparation({ requestId: 'prep-req /1', applicationId: 'app /1', focus: 'interview_prep', expectedRevision: 5 }), preparationReceipt())
+ assert.deepEqual(await api.generatePreparation({ requestId: 'prep-req-2', applicationId: 'app /1', focus: 'cover_letter', expectedRevision: 5 }), preparationReceipt())
+ assert.deepEqual(await api.applicationPreparations('app /1'), { preparations: [preparationReceipt()] })
+ assert.deepEqual(await api.preparationReceipt('prep-req /1'), preparationReceipt())
+ assert.deepEqual(calls, [
+  { method: 'POST', path: '/api/v1/career/applications/app%20%2F1/preparations', body: { requestId: 'prep-req /1', applicationId: 'app /1', focus: 'interview_prep', expectedRevision: 5 } },
+  { method: 'POST', path: '/api/v1/career/applications/app%20%2F1/preparations', body: { requestId: 'prep-req-2', applicationId: 'app /1', focus: 'cover_letter', expectedRevision: 5 } },
+  { method: 'GET', path: '/api/v1/career/applications/app%20%2F1/preparations' },
+  { method: 'GET', path: '/api/v1/career/preparations/receipt?requestId=prep-req%20%2F1' },
+ ])
+})
+
+test('preparation client refuses blank identifiers, invented focuses and negative revisions', async () => {
+ const refusing = createCareerApi(async () => { throw new Error('must not send invalid request') })
+ await assert.rejects(refusing.generatePreparation({ requestId: ' ', applicationId: 'app-1', focus: 'interview_prep', expectedRevision: 0 }), /requestId/)
+ await assert.rejects(refusing.generatePreparation({ requestId: 'p-1', applicationId: ' ', focus: 'interview_prep', expectedRevision: 0 }), /applicationId/)
+ await assert.rejects(refusing.generatePreparation({ requestId: 'p-1', applicationId: 'app-1', focus: 'thank_you_note', expectedRevision: 0 }), /focus/)
+ await assert.rejects(refusing.generatePreparation({ requestId: 'p-1', applicationId: 'app-1', focus: 'interview_prep', expectedRevision: -1 }), /revision/)
+ await assert.rejects(refusing.applicationPreparations(' '), /applicationId/)
+ await assert.rejects(refusing.preparationReceipt(' '), /requestId/)
+})
+
+test('preparation decoder rejects blank products that disagree with their status', async () => {
+ const inventors: Array<Record<string, unknown>> = [
+  preparationReceipt({ kind: 'material_edited' }),
+  preparationReceipt({ focus: 'thank_you_note' }),
+  preparationReceipt({ status: 'published' }),
+  // A draft without its materialized draft, an empty body, or a failure code
+  // is a blank success product — rejected before the UI can show it.
+  { ...preparationReceipt(), materialId: undefined },
+  preparationReceipt({ body: { sections: [] } }),
+  preparationReceipt({ body: { sections: null } }),
+  preparationReceipt({ failureCode: 'generation_failed', failureMessage: 'late failure' }),
+  preparationReceipt({ anchor: { ...preparationAnchor, version: 0 } }),
+  preparationReceipt({ anchor: { ...preparationAnchor, contentDigest: 'not-a-digest' } }),
+  preparationReceipt({ sources: { submittedVersion: { ...preparationAnchor }, snapshot: { opportunityId: '', snapshotId: 'snap-1', snapshotSha256: 'a'.repeat(64) }, factKeys: ['学历'], profileRevision: 5 } }),
+  preparationReceipt({ sources: { submittedVersion: { ...preparationAnchor }, snapshot: { opportunityId: 'opp /1', snapshotId: 'snap-1', snapshotSha256: 'zz' }, factKeys: ['学历'], profileRevision: 5 } }),
+  preparationReceipt({ sources: { submittedVersion: { ...preparationAnchor }, snapshot: { opportunityId: 'opp /1', snapshotId: 'snap-1', snapshotSha256: 'a'.repeat(64) }, factKeys: [' '], profileRevision: 5 } }),
+  preparationReceipt({ revision: -1 }),
+  preparationReceipt({ createdAt: 'yesterday' }),
+  // A failure state must stay typed: no failure code, an invented one, a
+  // materialized draft, a carried body, or review risks are all refused.
+  failedPreparation({ failureCode: undefined, failureMessage: undefined }),
+  failedPreparation({ failureCode: 'model_sleepy' }),
+  failedPreparation({ materialId: 'mat-draft-1' }),
+  failedPreparation({ body: preparationBody }),
+  failedPreparation({ reviewRisks: [{ code: 'needs_review', message: '缺实习经历' }] }),
+ ]
+ for (const payload of inventors) {
+  const api = createCareerApi(async () => payload)
+  await assert.rejects(api.generatePreparation({ requestId: 'prep-req /1', applicationId: 'app /1', focus: 'interview_prep', expectedRevision: 5 }), TypeError)
+ }
+})
+
+test('preparation decoder keeps the typed failure state decodable with its empty body and sources', async () => {
+ const api = createCareerApi(async () => failedPreparation())
+ const decoded = await api.preparationReceipt('prep-req /1')
+ assert.equal(decoded.status, 'failed')
+ assert.equal(decoded.failureCode, 'generation_failed')
+ assert.equal(decoded.failureMessage, 'model unavailable')
+ assert.deepEqual(decoded.body, { sections: [] })
+ assert.equal('materialId' in decoded, false)
+ assert.equal(decoded.anchor.version, 2)
+ assert.deepEqual(decoded.sources.factKeys, [])
+ // An interrupted generation row answers the in-flight state with no failure
+ // code — the request stays recoverable under the same id.
+ const inFlight = createCareerApi(async () => failedPreparation({ status: 'generating', failureCode: undefined, failureMessage: undefined }))
+ const decodedInFlight = await inFlight.preparationReceipt('prep-req /1')
+ assert.equal(decodedInFlight.status, 'generating')
+ assert.equal('failureCode' in decodedInFlight, false)
+ assert.deepEqual(decodedInFlight.body, { sections: [] })
+})

@@ -724,6 +724,106 @@ export function decodeSubmissionList(value: unknown): SubmissionList {
  return { submissions }
 }
 
+// Frozen preparation contract owned by the career backend (T19,
+// internal/modules/career/preparation.go). The cover letter and the
+// interview draft anchor to the version the user actually submitted, cite
+// the frozen snapshot and the confirmed fact keys, and materialize as a
+// material-domain draft that stays reviewable and revisable. A failed or
+// in-flight generation answers its typed failure state with an empty body —
+// never a blank success product. Decoders reject invented kinds, focuses,
+// statuses or failure codes, and any payload whose product disagrees with
+// its status, before they reach the UI.
+export type PreparationFocus = 'cover_letter' | 'interview_prep'
+export type PreparationKind = 'preparation_generated'
+export type PreparationStatus = 'draft' | 'generating' | 'failed'
+export type PreparationFailureCode = 'generation_failed' | 'claim_unconfirmed'
+export type PreparationAnchor = { submissionId: string; materialId: string; exportId: string; version: number; contentDigest: string }
+export type PreparationSnapshotRef = { opportunityId?: string; snapshotId?: string; snapshotSha256?: string }
+export type PreparationSources = { submittedVersion: PreparationAnchor; snapshot: PreparationSnapshotRef; factKeys: string[]; profileRevision: number }
+export type PreparationReceipt = { kind: PreparationKind; requestId: string; applicationId: string; preparationId: string; focus: PreparationFocus; status: PreparationStatus; anchor: PreparationAnchor; materialId?: string; body: MaterialBody; reviewRisks: MaterialReviewRisk[]; sources: PreparationSources; failureCode?: PreparationFailureCode; failureMessage?: string; revision: number; createdAt: string }
+export type GeneratePreparationInput = { requestId: string; applicationId: string; focus: PreparationFocus; expectedRevision: number }
+export type PreparationList = { preparations: PreparationReceipt[] }
+
+const preparationFocuses: PreparationFocus[] = ['cover_letter', 'interview_prep']
+const preparationStatuses: PreparationStatus[] = ['draft', 'generating', 'failed']
+const preparationFailureCodes: PreparationFailureCode[] = ['generation_failed', 'claim_unconfirmed']
+
+export function decodePreparationReceipt(value: unknown): PreparationReceipt {
+ const record = decodeRecord(value, 'invalid preparation receipt')
+ if (record.kind !== 'preparation_generated' || !preparationFocuses.includes(record.focus as PreparationFocus)
+  || !preparationStatuses.includes(record.status as PreparationStatus)
+  || !validIdentifier(record.requestId) || !validIdentifier(record.applicationId) || !validIdentifier(record.preparationId)
+  || !validTimestamp(record.createdAt) || !validRevision(record.revision)) throw new TypeError('invalid preparation receipt')
+ const anchorRecord = decodeRecord(record.anchor, 'invalid preparation anchor')
+ if (!validIdentifier(anchorRecord.submissionId) || !validIdentifier(anchorRecord.materialId) || !validIdentifier(anchorRecord.exportId)
+  || !validPositiveVersion(anchorRecord.version)
+  || typeof anchorRecord.contentDigest !== 'string' || !sha256Hex.test(anchorRecord.contentDigest)) throw new TypeError('invalid preparation anchor')
+ const anchor: PreparationAnchor = { submissionId: anchorRecord.submissionId as string, materialId: anchorRecord.materialId as string, exportId: anchorRecord.exportId as string, version: anchorRecord.version as number, contentDigest: anchorRecord.contentDigest as string }
+ const sourcesRecord = decodeRecord(record.sources, 'invalid preparation sources')
+ const submittedRecord = decodeRecord(sourcesRecord.submittedVersion, 'invalid preparation sources')
+ if (!validIdentifier(submittedRecord.submissionId) || !validIdentifier(submittedRecord.materialId) || !validIdentifier(submittedRecord.exportId)
+  || !validPositiveVersion(submittedRecord.version)
+  || typeof submittedRecord.contentDigest !== 'string' || !sha256Hex.test(submittedRecord.contentDigest)
+  || !validRevision(sourcesRecord.profileRevision)) throw new TypeError('invalid preparation sources')
+ const snapshotRecord = decodeRecord(sourcesRecord.snapshot, 'invalid preparation sources')
+ const draft = record.status === 'draft'
+ // The frozen snapshot is fully cited on a materialized draft; a failure or
+ // in-flight row carries only what the reservation persisted, and whatever
+ // it does carry must still be a well-formed digest.
+ if (draft && (!validIdentifier(snapshotRecord.opportunityId) || !validIdentifier(snapshotRecord.snapshotId)
+  || typeof snapshotRecord.snapshotSha256 !== 'string' || !sha256Hex.test(snapshotRecord.snapshotSha256))) throw new TypeError('invalid preparation sources')
+ if (!draft && (validIdentifier(snapshotRecord.opportunityId) || validIdentifier(snapshotRecord.snapshotId))
+  && (typeof snapshotRecord.snapshotSha256 !== 'string' || !sha256Hex.test(snapshotRecord.snapshotSha256))) throw new TypeError('invalid preparation sources')
+ // Fact keys are the confirmed citations of the draft; an interrupted row
+ // has none yet. Anything that is not a clean identifier list is invented.
+ const rawFactKeys: unknown = sourcesRecord.factKeys
+ const factKeys = rawFactKeys === null || rawFactKeys === undefined ? [] : Array.isArray(rawFactKeys) ? rawFactKeys : undefined
+ if (factKeys === undefined || factKeys.some((key) => !validIdentifier(key))) throw new TypeError('invalid preparation sources')
+ const risks = decodeMaterialRisks(record.reviewRisks)
+ // The product and its status are one fact: a draft carries its materialized
+ // draft and a full body; a failed or in-flight row stays empty and typed.
+ const hasMaterial = validIdentifier(record.materialId)
+ if (draft !== hasMaterial) throw new TypeError('invalid preparation receipt')
+ const failurePresent = record.failureCode !== undefined && record.failureCode !== null
+ if (draft && failurePresent) throw new TypeError('invalid preparation receipt')
+ if (record.status === 'failed' && !failurePresent) throw new TypeError('invalid preparation receipt')
+ if (failurePresent && !preparationFailureCodes.includes(record.failureCode as PreparationFailureCode)) throw new TypeError('invalid preparation receipt')
+ if (failurePresent && typeof record.failureMessage !== 'string') throw new TypeError('invalid preparation receipt')
+ if (!draft && risks.length > 0) throw new TypeError('invalid preparation receipt')
+ const bodyRecord = decodeRecord(record.body, 'invalid preparation receipt')
+ let body: MaterialBody
+ if (draft) {
+  if (!Array.isArray(bodyRecord.sections) || bodyRecord.sections.length === 0) throw new TypeError('invalid preparation receipt')
+  body = decodeMaterialBody(record.body)
+ } else {
+  if (bodyRecord.sections !== undefined && bodyRecord.sections !== null && (!Array.isArray(bodyRecord.sections) || bodyRecord.sections.length > 0)) throw new TypeError('invalid preparation receipt')
+  body = { sections: [] }
+ }
+ return {
+  kind: 'preparation_generated', requestId: record.requestId, applicationId: record.applicationId, preparationId: record.preparationId,
+  focus: record.focus as PreparationFocus, status: record.status as PreparationStatus, anchor,
+  ...(hasMaterial ? { materialId: record.materialId as string } : {}),
+  body, reviewRisks: risks,
+  sources: {
+   submittedVersion: { submissionId: submittedRecord.submissionId as string, materialId: submittedRecord.materialId as string, exportId: submittedRecord.exportId as string, version: submittedRecord.version as number, contentDigest: submittedRecord.contentDigest as string },
+   snapshot: {
+    ...(validIdentifier(snapshotRecord.opportunityId) ? { opportunityId: snapshotRecord.opportunityId as string } : {}),
+    ...(validIdentifier(snapshotRecord.snapshotId) ? { snapshotId: snapshotRecord.snapshotId as string } : {}),
+    ...(typeof snapshotRecord.snapshotSha256 === 'string' ? { snapshotSha256: snapshotRecord.snapshotSha256 as string } : {}),
+   },
+   factKeys: factKeys as string[], profileRevision: sourcesRecord.profileRevision as number,
+  },
+  ...(failurePresent ? { failureCode: record.failureCode as PreparationFailureCode, failureMessage: record.failureMessage as string } : {}),
+  revision: record.revision as number, createdAt: record.createdAt,
+ }
+}
+
+export function decodePreparationList(value: unknown): PreparationList {
+ const record = decodeRecord(value, 'invalid preparation list')
+ if (!Array.isArray(record.preparations)) throw new TypeError('invalid preparation list')
+ return { preparations: record.preparations.map(decodePreparationReceipt) }
+}
+
 // Frozen whole-space lifecycle contract owned by the career backend (T22,
 // internal/modules/career/career_export.go). The export package travels
 // inline (synchronous export) with a sha256 digest over the frozen archive;
@@ -1105,6 +1205,25 @@ export function createCareerApi(request: CareerRequest, binaryRequest?: CareerBi
   async submissionReceipt(requestId: string, signal?: AbortSignal): Promise<SubmissionReceipt> {
    if (!requestId.trim()) throw new TypeError('submission receipt requestId must not be empty')
    return decodeSubmissionReceipt(await request({ method: 'GET', path: `/api/v1/career/submissions/receipt?requestId=${encodeURIComponent(requestId)}`, ...(signal ? { signal } : {}) }))
+  },
+  // T19 sourced preparations: generation anchors to the actually submitted
+  // version (an unconfirmed submission answers the typed prompt state) and
+  // the draft materializes as a material-domain body the user reviews,
+  // revises and cites. Uncertain outcomes recover by replaying the same
+  // request ID through the receipt endpoint.
+  async generatePreparation(input: GeneratePreparationInput, signal?: AbortSignal): Promise<PreparationReceipt> {
+   if (!input.requestId.trim() || !input.applicationId.trim()) throw new TypeError('preparation requestId and applicationId must not be empty')
+   if (!preparationFocuses.includes(input.focus)) throw new TypeError('preparation focus must be cover_letter or interview_prep')
+   if (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0) throw new TypeError('preparation expected revision must be a non-negative integer')
+   return decodePreparationReceipt(await request({ method: 'POST', path: `/api/v1/career/applications/${encodeURIComponent(input.applicationId)}/preparations`, body: { requestId: input.requestId, applicationId: input.applicationId, focus: input.focus, expectedRevision: input.expectedRevision }, ...(signal ? { signal } : {}) }))
+  },
+  async applicationPreparations(applicationId: string, signal?: AbortSignal): Promise<PreparationList> {
+   if (!applicationId.trim()) throw new TypeError('preparation applicationId must not be empty')
+   return decodePreparationList(await request({ method: 'GET', path: `/api/v1/career/applications/${encodeURIComponent(applicationId)}/preparations`, ...(signal ? { signal } : {}) }))
+  },
+  async preparationReceipt(requestId: string, signal?: AbortSignal): Promise<PreparationReceipt> {
+   if (!requestId.trim()) throw new TypeError('preparation receipt requestId must not be empty')
+   return decodePreparationReceipt(await request({ method: 'GET', path: `/api/v1/career/preparations/receipt?requestId=${encodeURIComponent(requestId)}`, ...(signal ? { signal } : {}) }))
   },
   // T22 whole-space lifecycle: export packages, the pre-deletion boundary
   // explanation and complete deletion. Both writes carry a request ID and

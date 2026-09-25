@@ -1,0 +1,121 @@
+/* Career preparation drafts (T19). TDesign light theme tokens with the
+   #07c05f brand green for the generate/revise actions and the sourced draft
+   rows. Nothing here sends anything — the panel only generates, reviews and
+   revises sourced drafts. */
+.wk-preparation {
+  box-sizing: border-box;
+  width: min(100%, 960px);
+  margin: 16px auto;
+  padding: clamp(16px, 3vw, 24px);
+  border: 1px solid var(--td-component-border, #dcdcdc);
+  border-radius: 12px;
+  background: var(--td-bg-color-container, #fff);
+  color: var(--td-text-color-primary, #222);
+}
+.wk-preparation h3 { margin: 0; }
+.wk-preparation h4 { margin: 12px 0 4px; }
+.wk-preparation h5 { margin: 10px 0 4px; }
+.wk-preparation > p { margin: 6px 0 0; color: var(--td-text-color-secondary, #666); }
+.wk-preparation__notice {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--td-component-border, #e7e7e7);
+  border-left: 4px solid #07c05f;
+  border-radius: 8px;
+  background: var(--td-brand-color-light, #e8f8ef);
+}
+.wk-preparation__revision { color: var(--td-text-color-secondary, #666); }
+.wk-preparation__compose,
+.wk-preparation__edit {
+  margin: 14px 0 0;
+  padding: 12px 14px;
+  border: 1px solid var(--td-component-border, #e7e7e7);
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+}
+.wk-preparation__label { color: var(--td-text-color-primary, #222); font-weight: 500; }
+.wk-preparation select,
+.wk-preparation input,
+.wk-preparation textarea {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--td-component-border, #dcdcdc);
+  border-radius: 6px;
+  background: var(--td-bg-color-container, #fff);
+  color: var(--td-text-color-primary, #222);
+  font: inherit;
+}
+.wk-preparation textarea { min-height: 64px; resize: vertical; }
+.wk-preparation__hint { margin: 0; color: var(--td-text-color-secondary, #666); font-size: .88rem; }
+.wk-preparation__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.wk-preparation__actions button {
+  padding: 6px 14px;
+  border: 1px solid var(--td-component-border, #dcdcdc);
+  border-radius: 6px;
+  background: var(--td-bg-color-container, #fff);
+  color: var(--td-text-color-primary, #222);
+  cursor: pointer;
+}
+.wk-preparation__actions button:disabled { opacity: .5; cursor: not-allowed; }
+.wk-preparation__submit,
+.wk-preparation__revise {
+  border-color: #07c05f !important;
+  background: #07c05f !important;
+  color: #fff !important;
+}
+.wk-preparation__list {
+  margin: 16px 0 0;
+  padding: 0 0 0 18px;
+  list-style: none;
+}
+.wk-preparation__item {
+  margin: 12px 0 0;
+  padding: 12px 14px;
+  border: 1px solid var(--td-component-border, #e7e7e7);
+  border-left: 4px solid #07c05f;
+  border-radius: 8px;
+}
+.wk-preparation__item--failed {
+  border-left-color: var(--td-error-color, #d54941);
+  background: var(--td-bg-color-container-hover, #fafafa);
+}
+.wk-preparation__item-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  color: var(--td-text-color-secondary, #666);
+  font-size: .88rem;
+}
+.wk-preparation__anchor { margin: 8px 0 0; font-weight: 600; }
+.wk-preparation__failure {
+  margin: 8px 0 0;
+  color: var(--td-error-color, #d54941);
+}
+.wk-preparation__sources-line { margin: 6px 0 0; color: var(--td-text-color-secondary, #666); font-size: .88rem; }
+.wk-preparation__sources {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border: 1px dashed var(--td-component-border, #dcdcdc);
+  border-radius: 8px;
+  background: var(--td-bg-color-secondary-container, #f5f5f5);
+}
+.wk-preparation__sources h4 { margin: 0 0 6px; }
+.wk-preparation__sources ul { margin: 0; padding-left: 18px; color: var(--td-text-color-secondary, #555); font-size: .88rem; }
+.wk-preparation__section { margin: 10px 0 0; }
+.wk-preparation__section ul { margin: 4px 0 0; padding-left: 18px; }
+.wk-preparation__claim--needs-review {
+  color: var(--td-warning-color, #e37318);
+}
+.wk-preparation__claim-meta { margin: 2px 0 0; color: var(--td-text-color-secondary, #666); font-size: .82rem; }
+.wk-preparation__risks { margin: 8px 0 0; color: var(--td-warning-color, #e37318); font-size: .88rem; }
+.wk-preparation__message { margin: 10px 0 0; }
+.wk-preparation__message--error { color: var(--td-error-color, #d54941); }
+.wk-preparation__edit-section { display: grid; gap: 6px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--td-component-border, #eee); }
+.wk-preparation__edit-claim { margin-top: 6px; }

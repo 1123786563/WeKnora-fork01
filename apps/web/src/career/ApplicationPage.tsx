@@ -4,6 +4,7 @@ import type { ScopeController } from '@weknora/domain/scope'
 import type { EvaluationReceipt } from '../../../../packages/career-core/src/contracts.ts'
 import type { ApplicationReceipt, CreateApplicationInput } from '../../../../packages/api-client/src/career.ts'
 import { MaterialPage } from './MaterialPage.tsx'
+import { PreparationPage } from './PreparationPage.tsx'
 import { ProgressPage } from './ProgressPage.tsx'
 import { SubmissionPage } from './SubmissionPage.tsx'
 import './application.css'
@@ -61,6 +62,10 @@ export function ApplicationPage({ client, scopeController, opportunityId, snapsh
  // editor reports its resolved material so the panel can list the submittable
  // exports of exactly that material.
  const [submissionOpen, setSubmissionOpen] = useState(false)
+ // T19: the interview preparation panel of this application; it anchors to
+ // the actually submitted version and stays closed by default so the
+ // creation flow is unchanged.
+ const [preparationOpen, setPreparationOpen] = useState(false)
  const [careerMaterialId, setCareerMaterialId] = useState<string>()
  const restored = useRef(false)
  // After a reload the page-level evaluation history is gone; a restored
@@ -257,7 +262,7 @@ export function ApplicationPage({ client, scopeController, opportunityId, snapsh
     <p className={receipt.qualified ? 'wk-application__qualified' : 'wk-application__qualified wk-application__qualified--warned'}>{receipt.qualified ? '合格申请' : '不合格申请（显式继续，不计合格申请指标）'}</p>
     {receipt.warning ? <div className="wk-application__hard-warning" role="alert"><strong>硬性条件警示（常驻）</strong><p>评估 <code>{receipt.warning.evaluationId}</code> 结论不符合{receipt.warning.reasonCode ? `（原因 ${receipt.warning.reasonCode}）` : ''}。此警示在申请存续期间保持可见。</p></div> : null}
     <dl className="wk-application__pinned" aria-label="本次申请固定的证据"><div><dt>岗位</dt><dd>{receipt.pinnedEvidence.opportunityId}</dd></div><div><dt>快照</dt><dd>{receipt.pinnedEvidence.snapshotId}</dd></div><div><dt>评估</dt><dd>{receipt.pinnedEvidence.evaluationId}</dd></div><div><dt>档案修订</dt><dd>{receipt.pinnedEvidence.profileRevision}</dd></div><div><dt>评估结论</dt><dd>{evaluationStatusLabel(receipt.pinnedEvidence.evaluationStatus)}</dd></div><div><dt>批次</dt><dd>{receipt.pinnedEvidence.batchIdentity}</dd></div></dl>
-    <div className="wk-application__actions"><button type="button" onClick={startAnotherBatch}>为其他批次创建新申请</button><button type="button" onClick={() => setProgressOpen(!progressOpen)}>{progressOpen ? '收起申请进展时间线' : '查看申请进展时间线'}</button><button type="button" onClick={() => setSubmissionOpen(!submissionOpen)}>{submissionOpen ? '收起投递确认与回看' : '投递确认与回看'}</button></div>
+    <div className="wk-application__actions"><button type="button" onClick={startAnotherBatch}>为其他批次创建新申请</button><button type="button" onClick={() => setProgressOpen(!progressOpen)}>{progressOpen ? '收起申请进展时间线' : '查看申请进展时间线'}</button><button type="button" onClick={() => setSubmissionOpen(!submissionOpen)}>{submissionOpen ? '收起投递确认与回看' : '投递确认与回看'}</button><button type="button" onClick={() => setPreparationOpen(!preparationOpen)}>{preparationOpen ? '收起面试准备与来源' : '面试准备与来源'}</button></div>
    </div> : null}
    {/* T15: the application context opens the material editor pinned to the
        same frozen opportunity snapshot and profile revision. */}
@@ -269,6 +274,10 @@ export function ApplicationPage({ client, scopeController, opportunityId, snapsh
        bound material version reviewable; keyed by application so another
        batch's application never inherits the previous submission. */}
    {receipt && submissionOpen ? <SubmissionPage key={`submission-${receipt.applicationId}`} client={client} scopeController={scopeController} applicationId={receipt.applicationId} materialId={careerMaterialId} /> : null}
+   {/* T19: the sourced interview preparation of this application; keyed by
+       application so another batch's application never inherits the previous
+       preparation state. */}
+   {receipt && preparationOpen ? <PreparationPage key={`preparation-${receipt.applicationId}`} client={client} scopeController={scopeController} applicationId={receipt.applicationId} /> : null}
   </>}
  </section>
 }
