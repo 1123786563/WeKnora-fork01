@@ -578,6 +578,24 @@ test('parsePluginMyConnection rejects non-success envelopes, foreign states and 
   assert.throws(() => parsePluginMyConnection(badAuthorized), /authorized/);
 });
 
+test('parsePluginMyConnection tolerates an empty service_id from the confirm-interruption window', () => {
+  // T12-OCR1-F3 regression: server healing (plugin_install_service.go
+  // serviceIDByInstallation) resolves an orphan materialized service when one
+  // exists, but a confirm interrupted BEFORE CreateMCPService leaves no
+  // orphan to find — the endpoint still answers 200 with service_id "" and
+  // empty endpoint paths. That is a legal envelope: the row must degrade to
+  // a badge + disabled entries, never die as a parse error.
+  const envelope = myConnectionEnvelope();
+  envelope.data.service_id = '';
+  envelope.data.authorize_url_path = '';
+  envelope.data.revoke_path = '';
+  const value = parsePluginMyConnection(envelope);
+  assert.equal(value.serviceId, '');
+  assert.equal(value.state, 'unauthorized');
+  assert.equal(value.authorizeUrlPath, '');
+  assert.equal(value.revokePath, '');
+});
+
 test('createPluginsApi.getMyConnection GETs connections/me with the encoded id and rejects empty ids', async () => {
   const requests: ClientRequest[] = [];
   const api = createPluginsApi(async (input: ClientRequest) => {

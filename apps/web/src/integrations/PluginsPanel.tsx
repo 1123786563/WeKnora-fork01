@@ -1,5 +1,5 @@
 import * as React from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { WeKnoraClient } from "@weknora/api-client";
 import { Button, Status } from "@weknora/ui";
 // 单一来源解析器（T08）：与 PluginsSettingsPanel 同款深路径复用（生产先例
@@ -52,7 +52,9 @@ type Props = {
   initialInstallations?: readonly PluginInstallationSummary[];
 };
 
-type ConnectionMap = Partial<Record<string, PluginMyConnection>>;
+/** 'load-failed' 墓碑键：该行连接加载失败（T12-OCR1-F4——失败态可见，不静默缺失）。 */
+type ConnectionEntry = PluginMyConnection | "load-failed";
+type ConnectionMap = Partial<Record<string, ConnectionEntry>>;
 
 export function PluginsPanel({ client, initialInstallations = [] }: Props) {
   const [installations, setInstallations] = useState<readonly PluginInstallationSummary[]>(initialInstallations);
@@ -60,6 +62,10 @@ export function PluginsPanel({ client, initialInstallations = [] }: Props) {
   const [connections, setConnections] = useState<ConnectionMap>({});
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  // T12-OCR1-F4：本挂载周期内已发起过 connections/me 的 installationId（含
+  // 失败——失败落墓碑键后不再由 effect 重发，其他行的成功也不会放大成
+  // 对失败行的重试；显式重试走 retryConnection 清墓碑）。
+  const requestedRef = useRef<Set<string>>(new Set());
 
   // pluginsApi 稳定化（T08-OCR 同款：useMemo 只随 client 变化，避免 effect 反复重建）。
   const pluginsApi = useMemo(
@@ -91,35 +97,42 @@ export function PluginsPanel({ client, initialInstallations = [] }: Props) {
   }, [pluginsApi]);
 
   // 需个人授权的插件行拉取本人连接状态（GET connections/me，Viewer+）；
-  // 无 requires_personal_auth 的插件不发请求、不渲染授权区。
+  // 无 requires_personal_auth 的插件不发请求、不渲染授权区。去重由
+  // requestedRef 承担（T12-OCR1-F4）：effect 仅随列表变化跑，晚到的响应经
+  // 函数式 setState 落键（组件已卸载则为 no-op），无请求放大、无在途丢弃。
   useEffect(() => {
-    let cancelled = false;
     for (const row of installations) {
       if (!row.requiresPersonalAuth) continue;
-      if (connections[row.installationId] !== undefined) continue;
-      pluginsApi
-        .getMyConnection(row.installationId)
-        .then((connection) => {
-          if (cancelled) return;
-          setConnections((prev) => ({ ...prev, [connection.installationId]: connection }));
-        })
-        .catch((cause: unknown) => {
-          // 单行连接状态失败不打断整个目录（列表/其他行照常呈现）。
-          console.warn("plugin connection load failed:", cause);
-        });
+      if (requestedRef.current.has(row.installationId)) continue;
+      requestedRef.current.add(row.installationId);
+      void loadConnection(row.installationId);
     }
-    return () => {
-      cancelled = true;
-    };
-  }, [pluginsApi, installations, connections]);
+  }, [pluginsApi, installations]);
 
-  function applyConnection(next: PluginMyConnection) {
-    setConnections((prev) => ({ ...prev, [next.installationId]: next }));
-    return next;
+  function loadConnection(installationId: string): Promise<PluginMyConnection | null> {
+    return pluginsApi
+      .getMyConnection(installationId)
+      .then((next) => {
+        setConnections((prev) => ({ ...prev, [next.installationId]: next }));
+        return next;
+      })
+      .catch((cause: unknown) => {
+        // 单行连接状态失败不打断整个目录（列表/其他行照常呈现），但落
+        // 墓碑键让行内呈现失败态与重试入口（T12-OCR1-F4）。
+        console.warn("plugin connection load failed:", cause);
+        setConnections((prev) => ({ ...prev, [installationId]: "load-failed" }));
+        return null;
+      });
   }
 
-  function refreshConnection(installationId: string): Promise<PluginMyConnection> {
-    return pluginsApi.getMyConnection(installationId).then(applyConnection);
+  function retryConnection(installationId: string) {
+    if (pendingId !== null) return;
+    setPendingId(installationId);
+    requestedRef.current.delete(installationId);
+    requestedRef.current.add(installationId);
+    void loadConnection(installationId).finally(() => {
+      setPendingId(null);
+    });
   }
 
   /** 去授权：复用既有 mcp oauth authorize-url（物化 service_id）→ 弹窗 → 轮询至已授权。 */
@@ -135,12 +148,21 @@ export function PluginsPanel({ client, initialInstallations = [] }: Props) {
       });
       const popup = window.open(result.authorizationUrl, "weknora_mcp_oauth", "width=600,height=720");
       if (!popup) throw new Error("未能打开授权窗口，请检查浏览器弹窗设置");
+      // T12-OCR1-F5：对齐 McpSettingsPanel.startAuthorize 先例顺序——先刷新
+      // 先判 authorized 再判 popup.closed（用户授权完成后随手关弹窗落在
+      // 轮询间隔内时，最终刷新不得被吞掉）；循环因关窗或耗尽退出后兜底
+      // 一次最终刷新。
+      let authorized = false;
       for (let attempt = 0; attempt < AUTH_POLL_ATTEMPTS; attempt += 1) {
-        if (popup.closed) break;
         await new Promise((resolve) => window.setTimeout(resolve, AUTH_POLL_INTERVAL_MS));
-        const next = await refreshConnection(connection.installationId);
-        if (next.authorized) break;
+        const next = await loadConnection(connection.installationId);
+        if (next?.authorized) {
+          authorized = true;
+          break;
+        }
+        if (popup.closed) break;
       }
+      if (!authorized) await loadConnection(connection.installationId);
     } catch (cause) {
       setActionError(cause instanceof Error ? cause.message : "发起授权失败");
     } finally {
@@ -155,7 +177,7 @@ export function PluginsPanel({ client, initialInstallations = [] }: Props) {
     setActionError(null);
     try {
       await client.configuration.mcp.oauth.revoke(connection.serviceId);
-      await refreshConnection(connection.installationId);
+      await loadConnection(connection.installationId);
     } catch (cause) {
       setActionError(cause instanceof Error ? cause.message : "撤销授权失败");
     } finally {
@@ -194,10 +216,12 @@ export function PluginsPanel({ client, initialInstallations = [] }: Props) {
               {item.requiresPersonalAuth ? <span className={pluginBadgeInfo}>需个人授权</span> : null}
               <span className="text-[#66758b]">{item.toolCount} 个工具</span>
               <MemberConnectionControl
-                connection={connections[item.installationId]}
+                installationId={item.installationId}
+                entry={connections[item.installationId]}
                 pending={pendingId === item.installationId}
                 onAuthorize={authorizeConnection}
                 onRevoke={revokeConnection}
+                onRetry={retryConnection}
               />
             </li>
           ))}
@@ -213,23 +237,42 @@ export function PluginsPanel({ client, initialInstallations = [] }: Props) {
  * 描述「本人凭据」状态，非管理治理操作。
  */
 function MemberConnectionControl({
-  connection,
+  installationId,
+  entry,
   pending,
   onAuthorize,
   onRevoke,
+  onRetry,
 }: {
-  connection: PluginMyConnection | undefined;
+  installationId: string;
+  entry: ConnectionEntry | undefined;
   pending: boolean;
   onAuthorize: (connection: PluginMyConnection) => Promise<void>;
   onRevoke: (connection: PluginMyConnection) => Promise<void>;
+  onRetry: (installationId: string) => void;
 }) {
-  if (!connection) return null;
+  if (entry === undefined) return null;
+  if (entry === "load-failed") {
+    // T12-OCR1-F4：连接加载失败不再静默缺失——行内可见失败态 + 重试入口。
+    return (
+      <span className="flex flex-wrap items-center gap-2" data-testid="plugin-my-connection">
+        <span className={pluginBadgeMuted}>授权状态加载失败</span>
+        <Button type="button" className="h-7 rounded-[6px] px-3 text-[12px]" disabled={pending} onClick={() => onRetry(installationId)}>
+          重试
+        </Button>
+      </span>
+    );
+  }
+  const connection = entry;
   const badge =
     connection.state === "authorized"
       ? { className: pluginBadgeOk, label: "已授权" }
       : connection.state === "expired"
         ? { className: pluginBadgeWarn, label: "已过期" }
         : { className: pluginBadgeMuted, label: "未授权" };
+  // T12-OCR1-F3：service_id 空（confirm 中断窗口且无孤儿服务可自愈）时无
+  // OAuth 端点可指——徽标照常呈现，入口禁用而非发起注定失败的请求。
+  const noService = connection.serviceId === "";
   return (
     <span className="flex flex-wrap items-center gap-2" data-testid="plugin-my-connection">
       <span className={badge.className}>{badge.label}</span>
@@ -237,7 +280,8 @@ function MemberConnectionControl({
         <Button
           type="button"
           className="h-7 rounded-[6px] px-3 text-[12px]"
-          disabled={pending}
+          disabled={pending || noService}
+          title={noService ? "插件服务尚未就绪，请稍后重试" : undefined}
           onClick={() => void onRevoke(connection)}
         >
           撤销
@@ -246,7 +290,8 @@ function MemberConnectionControl({
         <Button
           type="button"
           className="h-7 rounded-[6px] px-3 text-[12px]"
-          disabled={pending}
+          disabled={pending || noService}
+          title={noService ? "插件服务尚未就绪，请稍后重试" : undefined}
           onClick={() => void onAuthorize(connection)}
         >
           去授权

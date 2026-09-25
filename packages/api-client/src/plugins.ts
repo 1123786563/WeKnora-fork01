@@ -508,8 +508,12 @@ function connectionState(value: unknown, path: string): 'authorized' | 'expired'
 /**
  * Strict parser for the personal connection envelope: identity, service
  * binding, three-state verdict and mapped endpoint paths. authorize_url_path /
- * revoke_path may legitimately be EMPTY (no-personal-auth plugins carry no
- * OAuth endpoints — T11 ruling), so only their type is enforced.
+ * revoke_path — and service_id — may legitimately be EMPTY: no-personal-auth
+ * plugins carry no OAuth endpoints (T11 ruling), and a confirm interrupted
+ * before the materialized service exists answers with service_id "" (no
+ * orphan for the server's healing lookup to resolve), so only types are
+ * enforced for those three fields. The panel degrades such a row to a badge
+ * plus disabled entries instead of losing it to a parse error.
  */
 export function parsePluginMyConnection(value: unknown): PluginMyConnection {
   const envelope = record(value, CONNECTION_PATH);
@@ -519,7 +523,10 @@ export function parsePluginMyConnection(value: unknown): PluginMyConnection {
     installationId: required(data.installation_id, `${CONNECTION_PATH}.data.installation_id`),
     pluginId: required(data.plugin_id, `${CONNECTION_PATH}.data.plugin_id`),
     name: required(data.name, `${CONNECTION_PATH}.data.name`),
-    serviceId: required(data.service_id, `${CONNECTION_PATH}.data.service_id`),
+    // T12-OCR1-F3: empty service_id = confirm-interruption window with no
+    // orphan service to heal from (plugin_install_service.go resolves one
+    // when it exists). Legal 200; only the type is enforced.
+    serviceId: optionalText(data.service_id, `${CONNECTION_PATH}.data.service_id`),
     requiresPersonalAuth: flag(data.requires_personal_auth, `${CONNECTION_PATH}.data.requires_personal_auth`),
     authorized: flag(data.authorized, `${CONNECTION_PATH}.data.authorized`),
     state: connectionState(data.state, `${CONNECTION_PATH}.data.state`),

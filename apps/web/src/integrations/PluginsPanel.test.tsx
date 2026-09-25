@@ -320,3 +320,152 @@ test('成员面板已授权态点击「撤销」：DELETE token 后刷新 connec
     document.body.replaceChildren();
   }
 });
+
+// ---- T12-OCR1 回归（F3 空服务窗口 / F4 请求放大与失败态 / F5 轮询顺序） ----
+
+function connectionEnvelopeVariant(
+  installationId: string,
+  state: 'authorized' | 'expired' | 'unauthorized',
+  overrides: Partial<Record<string, unknown>>,
+): unknown {
+  const envelope = connectionEnvelope(installationId, state) as { data: Record<string, unknown> };
+  Object.assign(envelope.data, overrides);
+  return envelope;
+}
+
+test('OCR1-F3：物化服务缺失（service_id 空）时行内按钮禁用且不发起授权请求', async () => {
+  const authorizeCalls: string[] = [];
+  const originalOpen = dom.window.open;
+  dom.window.open = (() => { throw new Error('window.open must not be called in this test'); }) as never;
+  const client = {
+    request: async (input: { method: string; path: string }) => {
+      if (input.method === 'GET' && input.path === '/api/v1/plugins/installations') {
+        return { success: true, data: [listEnvelopeWithAuthRows().data[0]] };
+      }
+      if (input.method === 'GET' && input.path === '/api/v1/plugins/installations/inst-1/connections/me') {
+        // confirm 在 CreateMCPService 之前中断：200 + 空 service_id + 空端点路径。
+        return connectionEnvelopeVariant('inst-1', 'unauthorized', { service_id: '', authorize_url_path: '', revoke_path: '' });
+      }
+      throw new Error(`unexpected request ${input.method} ${input.path}`);
+    },
+    configuration: { mcp: { oauth: {
+      authorizeUrl: async () => { authorizeCalls.push('called'); throw new Error('must not be called'); },
+      revoke: async () => { throw new Error('must not be called'); },
+    } } },
+  };
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  await act(async () => { root.render(React.createElement(PluginsPanel, { client: client as never })); });
+  try {
+    for (let i = 0; i < 6; i += 1) await act(async () => {});
+    // 徽标仍渲染三态（该行退化为状态展示，而非整行加载错误）。
+    assert.match(container.innerHTML, /未授权/);
+    const authorizeButton = findButton(container, '去授权');
+    assert.ok(authorizeButton, 'the authorize entry renders');
+    assert.ok(authorizeButton!.disabled, 'entries stay disabled without a materialized service_id');
+    await act(async () => { authorizeButton!.click(); });
+    assert.deepEqual(authorizeCalls, [], 'no authorize-url request fires for an empty service_id');
+  } finally {
+    await act(async () => { root.unmount(); });
+    document.body.replaceChildren();
+    dom.window.open = originalOpen;
+  }
+});
+
+test('OCR1-F4：连接加载失败行渲染失败态与重试入口，且不被其他行成功放大重发', async () => {
+  const connectionCalls: Record<string, number> = { 'inst-1': 0, 'inst-3': 0 };
+  let failInst3 = true;
+  const client = {
+    request: async (input: { method: string; path: string }) => {
+      if (input.method === 'GET' && input.path === '/api/v1/plugins/installations') return listEnvelopeWithAuthRows();
+      if (input.method === 'GET' && input.path === '/api/v1/plugins/installations/inst-1/connections/me') {
+        connectionCalls['inst-1']! += 1;
+        return connectionEnvelope('inst-1', 'authorized');
+      }
+      if (input.method === 'GET' && input.path === '/api/v1/plugins/installations/inst-3/connections/me') {
+        connectionCalls['inst-3']! += 1;
+        if (failInst3) throw new Error('connection temporarily unavailable');
+        return connectionEnvelope('inst-3', 'expired');
+      }
+      throw new Error(`unexpected request ${input.method} ${input.path}`);
+    },
+    configuration: { mcp: { oauth: noOauthClient() } },
+  };
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  await act(async () => { root.render(React.createElement(PluginsPanel, { client: client as never })); });
+  try {
+    // 多轮空转：给旧实现（deps 含 connections）足够机会把 inst-1 的成功落键
+    // 变成对失败行 inst-3 的放大重发。
+    for (let i = 0; i < 10; i += 1) await act(async () => {});
+    assert.equal(connectionCalls['inst-1'], 1, 'a loaded connection is fetched exactly once');
+    assert.equal(connectionCalls['inst-3'], 1, 'a failed connection is NOT re-fetched when other rows succeed');
+    // 失败行不再静默缺失：行内呈现失败态与重试入口。
+    const rows = Array.from(container.querySelectorAll('li'));
+    assert.match(rows[2]!.innerHTML, /授权状态加载失败/, 'the failed row surfaces a visible failure state');
+    const retryButton = findButton(rows[2] as HTMLElement, '重试');
+    assert.ok(retryButton, 'the failed row offers a retry entry');
+    // 重试成功：墓碑清除、连接重发一次、徽标渲染。
+    failInst3 = false;
+    await act(async () => { retryButton!.click(); });
+    for (let i = 0; i < 4; i += 1) await act(async () => {});
+    assert.equal(connectionCalls['inst-3'], 2, 'retry fires exactly one more request');
+    assert.match(rows[2]!.innerHTML, /已过期/, 'the retried row renders its connection badge');
+  } finally {
+    await act(async () => { root.unmount(); });
+    document.body.replaceChildren();
+  }
+});
+
+test('OCR1-F5：用户在弹窗完成授权后关闭弹窗——先刷新先判 authorized，徽标不滞留未授权', async () => {
+  const opened: string[] = [];
+  const originalOpen = dom.window.open;
+  let completedInPopup = false;
+  let connectionState: 'authorized' | 'unauthorized' = 'unauthorized';
+  dom.window.open = ((url: unknown) => {
+    opened.push(String(url));
+    // 用户在弹窗里完成授权（回调已入库）后随手关掉弹窗——落在下一次轮询间隔内。
+    completedInPopup = true;
+    return { closed: true } as never;
+  }) as never;
+  const client = {
+    request: async (input: { method: string; path: string }) => {
+      if (input.method === 'GET' && input.path === '/api/v1/plugins/installations') {
+        return { success: true, data: [listEnvelopeWithAuthRows().data[0]] };
+      }
+      if (input.method === 'GET' && input.path === '/api/v1/plugins/installations/inst-1/connections/me') {
+        if (completedInPopup) connectionState = 'authorized';
+        return connectionEnvelope('inst-1', connectionState);
+      }
+      throw new Error(`unexpected request ${input.method} ${input.path}`);
+    },
+    configuration: { mcp: { oauth: {
+      authorizeUrl: async () => ({ authorizationUrl: 'https://idp.test/authorize', authorizationAttempt: 'att-1' }),
+      revoke: async () => { throw new Error('revoke must not be called in this test'); },
+    } } },
+  };
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  await act(async () => { root.render(React.createElement(PluginsPanel, { client: client as never })); });
+  try {
+    for (let i = 0; i < 6; i += 1) await act(async () => {});
+    const authorizeButton = findButton(container, '去授权');
+    assert.ok(authorizeButton);
+    await act(async () => { authorizeButton!.click(); });
+    // 轮询首拍是真实 1500ms sleep——act 空转只 flush 微任务，需真实等待
+    // 一拍以上（覆盖 sleep + 刷新 + 兜底）。
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    for (let i = 0; i < 4; i += 1) await act(async () => {});
+    assert.deepEqual(opened, ['https://idp.test/authorize']);
+    // 先例顺序（McpSettingsPanel：先刷新先判 authorized 再判 popup.closed）下，
+    // 授权已完成的关窗不得吞掉最终刷新。
+    assert.match(container.innerHTML, /已授权/, 'the badge reflects the completed authorization despite the popup being closed');
+  } finally {
+    await act(async () => { root.unmount(); });
+    document.body.replaceChildren();
+    dom.window.open = originalOpen;
+  }
+});
