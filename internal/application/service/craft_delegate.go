@@ -304,6 +304,69 @@ func CraftActiveRunsQuery(db *gorm.DB) CraftRunActivity {
 	}
 }
 
+// MaterialPolicy returns the delegated-material execution policy (T03) for
+// one delegation's admitted inputs inside the given workspace root — the
+// local runtime uses /workspace, a RunView generation uses its own
+// deterministic /workspace/rv-<digest> directory. The policy never widens
+// what Delegate accepts: it only decides whether an observed execution
+// attempt targets uploaded input material (denied, audited, refused) or
+// generated Workspace/output code (allowed, audited as generated).
+func (s *CraftDelegateService) MaterialPolicy(workspaceRoot string, task craft.Task) (*CraftMaterialPolicy, error) {
+	if s == nil || s.store == nil {
+		return nil, fmt.Errorf("%w: delegation service is not assembled", craft.ErrInvalidInput)
+	}
+	if strings.TrimSpace(workspaceRoot) == "" {
+		return nil, fmt.Errorf("%w: material policy requires the workspace root", craft.ErrInvalidInput)
+	}
+	if strings.TrimSpace(task.WorkspaceID) == "" {
+		return nil, fmt.Errorf("%w: material policy requires the delegation workspace", craft.ErrInvalidInput)
+	}
+	policy, err := craft.NewInputExecutionPolicy(workspaceRoot, task.Inputs)
+	if err != nil {
+		return nil, err
+	}
+	return &CraftMaterialPolicy{
+		policy:      policy,
+		scope:       task.Scope,
+		workspaceID: task.WorkspaceID,
+		runID:       task.Fence.RunID,
+	}, nil
+}
+
+// CraftMaterialPolicy adapts the module execution-denial policy to one
+// delegation. ReviewExecution and AuditInputRead emit the O04-style audit
+// line (identities only, never payloads) and return the typed decision or
+// event so callers can persist and project it.
+type CraftMaterialPolicy struct {
+	policy      *craft.InputExecutionPolicy
+	scope       craft.Scope
+	workspaceID string
+	runID       string
+}
+
+// ReviewExecution decides one observed execution attempt and records the
+// distinct audit event: input.execute_denied for uploaded material,
+// generated.execute for allowed Workspace/output code.
+func (p *CraftMaterialPolicy) ReviewExecution(ctx context.Context, req craft.InputExecutionRequest) craft.InputExecutionDecision {
+	decision := p.policy.Review(req)
+	logger.Infof(ctx,
+		"[CraftMaterial] kind=%s allowed=%v reason=%s tenant=%d session=%s run=%s workspace=%s target=%s",
+		decision.AuditKind, decision.Allowed, decision.Reason,
+		p.scope.TenantID, p.scope.SessionID, p.runID, p.workspaceID, decision.Target)
+	return decision
+}
+
+// AuditInputRead records uploaded input material being used as data and
+// returns the typed event, so audit evidence distinguishes reading uploaded
+// code from executing generated code.
+func (p *CraftMaterialPolicy) AuditInputRead(ctx context.Context, in craft.Input) craft.InputAuditEvent {
+	event := craft.InputReadAuditEvent(in)
+	logger.Infof(ctx,
+		"[CraftMaterial] kind=%s tenant=%d session=%s run=%s workspace=%s ref=%s digest=%s",
+		event.Kind, p.scope.TenantID, p.scope.SessionID, p.runID, p.workspaceID, event.Target, event.Digest)
+	return event
+}
+
 // registerCraftDelegateTool opens the craft_delegate tool for exactly the
 // Craft+tRPC sessions: the session row must select the tRPC engine and a
 // Craft workspace must be bound to the authenticated scope. Builtin sessions
