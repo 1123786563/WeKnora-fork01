@@ -32,6 +32,7 @@ func RegisterCareerRoutes(r *gin.RouterGroup, h *career.Handler) {
 	g.POST("/searches", h.SearchOnce)
 	g.GET("/searches/receipt", h.SearchReceipt)
 	g.GET("/searches/:searchId", h.GetSearch)
+	g.GET("/usage/estimate", h.UsageEstimate)
 	g.POST("/rules", h.SetRule)
 	g.GET("/rules/receipt", h.RuleReceipt)
 	g.GET("/rules/:ruleId", h.GetRule)

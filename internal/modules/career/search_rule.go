@@ -541,7 +541,7 @@ func (o *Office) triggerRulePeriod(ctx context.Context, s Scope, rule searchRule
 		if o.searchQuotaGate == nil {
 			o.searchQuotaGate = passThroughSearchQuotaGate{}
 		}
-		if err := o.searchQuotaGate.AdmitSearch(ctx, s, rule.Query); err != nil {
+		if err := o.searchQuotaGate.AdmitSearch(ctx, s, requestID, rule.Query); err != nil {
 			if !errors.Is(err, ErrSearchQuotaRefused) {
 				return RuleRunSummary{}, err
 			}

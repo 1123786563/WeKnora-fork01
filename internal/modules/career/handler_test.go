@@ -3,6 +3,7 @@ package career
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -970,4 +971,44 @@ func TestCareerReminderHandlerWritesTodoWithFrozenNotice(t *testing.T) {
 	rec = invoke(http.MethodPost, "/api/v1/career/reminders", `{"requestId":"http-rem-1","sourceKind":"progress_event","sourceId":"no-such-event","expectedRevision":`+fmt.Sprint(view.Revision)+`}`, h.SetReminderHandler)
 	require.Equal(t, 409, rec.Code, rec.Body.String())
 	require.Contains(t, rec.Body.String(), "idempotency_conflict")
+}
+
+func TestCareerUsageEstimateHandlerContract(t *testing.T) {
+	o, _, ctx := newUsageSearchOffice(t, "owner", 105, 1)
+	require.NoError(t, o.ClaimSpace(ctx))
+	base := context.WithValue(context.Background(), types.UserIDContextKey, "owner")
+	base = context.WithValue(base, types.TenantIDContextKey, uint64(105))
+	h := &Handler{office: o, members: &memberListStub{members: []*types.TenantMember{{UserID: "owner", TenantID: 105, Role: types.TenantRoleOwner}}}}
+	request := func(target string) *httptest.ResponseRecorder {
+		gin.SetMode(gin.TestMode)
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request = httptest.NewRequest(http.MethodGet, target, nil).WithContext(base)
+		h.UsageEstimate(c)
+		return rec
+	}
+
+	// The estimate is a free read: cost, conditions, and live balance before
+	// any execution.
+	rec := request("/api/v1/career/usage/estimate?operation=search_once")
+	require.Equal(t, 200, rec.Code, rec.Body.String())
+	var view UsageEstimateView
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &view))
+	require.Equal(t, "usage_estimate", view.Kind)
+	require.Equal(t, UsageOperationSearchOnce, view.Operation)
+	require.EqualValues(t, 1, view.CostUnits)
+	require.NotEmpty(t, view.Conditions)
+	require.EqualValues(t, 1, view.LimitUnits)
+	require.True(t, view.WouldAdmit)
+
+	// An unknown operation is a typed refusal, never a fabricated estimate.
+	rec = request("/api/v1/career/usage/estimate?operation=bulk_evaluate")
+	require.Equal(t, 400, rec.Code, rec.Body.String())
+	require.Contains(t, rec.Body.String(), "invalid_request")
+
+	// An unavailable ledger maps to the typed 503, never a silent pass.
+	o.failUsageLedgerRead = func() error { return errors.New("ledger read failed") }
+	rec = request("/api/v1/career/usage/estimate?operation=search_once")
+	require.Equal(t, 503, rec.Code, rec.Body.String())
+	require.Contains(t, rec.Body.String(), "admission_unavailable")
 }

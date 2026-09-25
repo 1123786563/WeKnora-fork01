@@ -237,11 +237,15 @@ type Office struct {
 	// invoked for unapproved sources.
 	sourcePolicy    SourcePolicy
 	sourceTransport SourceTransport
-	// One-shot search seams (T11): the registry enumerates vetted searchable
-	// sources (production starts empty) and the quota gate is the only quota
-	// authority (production enforces nothing yet; the real ledger is T21).
+	// One-shot search seams (T11, upgraded by T21): the registry enumerates
+	// vetted searchable sources (production starts empty) and the quota gate
+	// is the only quota authority. Since T21 the production gate is the real
+	// usage ledger: reserve/settle/release by request ID with a frozen cost.
 	searchRegistry  SearchSourceRegistry
 	searchQuotaGate SearchQuotaGate
+	// searchQuotaLimit pins the monthly allowance (tests shrink it; the
+	// deployment overrides it through CAREER_SEARCH_QUOTA_LIMIT).
+	searchQuotaLimit int64
 	// Recurring search rule clock seam (T13): set_rule scheduling decisions
 	// read this injected clock; tests pin it, production reads the wall clock.
 	// Rule triggering itself is the explicit TriggerDueRules(ctx, now) seam —
@@ -259,6 +263,9 @@ type Office struct {
 	failSearchTerminalCommit     func() error
 	afterProgressEventPersist    func() error
 	afterSubmissionPersist       func() error
+	// failUsageLedgerRead (T21) injects an unreadable quota ledger: admission
+	// and estimates must then fail closed instead of executing first.
+	failUsageLedgerRead func() error
 	// Export rendering seams (T16): storage holds the rendered bytes under
 	// local:// object keys, the signing key mints short-lived download grants,
 	// and exportNow only makes expiry testable. failExportVerify injects a
@@ -287,7 +294,7 @@ func NewOffice(db *gorm.DB) (*Office, error) {
 	if db == nil {
 		return nil, errors.New("career database required")
 	}
-	models := []any{&profile{}, &space{}, &fact{}, &factVersion{}, &proposal{}, &change{}, &receipt{}, &sourceRevision{}, &opportunity{}, &opportunityObservation{}, &opportunitySnapshot{}, &opportunityReceipt{}, &evaluationRecord{}, &applicationRecord{}, &searchRecord{}, &searchResultRecord{}, &materialRecord{}, &materialVersionRecord{}, &materialReceiptRecord{}, &materialExportRecord{}, &progressEventRecord{}, &searchRuleRecord{}, &searchRuleReceiptRecord{}, &searchRuleRunRecord{}, &searchDiscoveryTodoRecord{}, &submissionRecord{}, &careerDataExportRecord{}, &careerDataDeletionRecord{}, &preparationRecord{}, &reminderRecord{}, &reminderReceiptRecord{}}
+	models := []any{&profile{}, &space{}, &fact{}, &factVersion{}, &proposal{}, &change{}, &receipt{}, &sourceRevision{}, &opportunity{}, &opportunityObservation{}, &opportunitySnapshot{}, &opportunityReceipt{}, &evaluationRecord{}, &applicationRecord{}, &searchRecord{}, &searchResultRecord{}, &materialRecord{}, &materialVersionRecord{}, &materialReceiptRecord{}, &materialExportRecord{}, &progressEventRecord{}, &searchRuleRecord{}, &searchRuleReceiptRecord{}, &searchRuleRunRecord{}, &searchDiscoveryTodoRecord{}, &submissionRecord{}, &careerDataExportRecord{}, &careerDataDeletionRecord{}, &preparationRecord{}, &reminderRecord{}, &reminderReceiptRecord{}, &usageReservationRecord{}}
 	if db.Dialector.Name() == "sqlite" {
 		present := 0
 		for _, model := range models {
@@ -320,14 +327,23 @@ func NewOffice(db *gorm.DB) (*Office, error) {
 		return nil, err
 	}
 	policy := SourcePolicy(emptySourcePolicy{})
-	return &Office{
+	limit, err := resolveSearchQuotaLimitFromEnv()
+	if err != nil {
+		return nil, err
+	}
+	office := &Office{
 		db:                   db,
 		sourcePolicy:         policy,
 		sourceTransport:      newCareerSourceTransport(policy, transportDialOptions{}),
 		searchRegistry:       emptySearchSourceRegistry{},
 		searchQuotaGate:      passThroughSearchQuotaGate{},
 		preparationGenerator: deterministicPreparationGenerator{},
-	}, nil
+		searchQuotaLimit:     limit,
+	}
+	// T21 upgrades the T11 pass-through into the real usage ledger: the
+	// production gate reserves, settles, and releases quota by request ID.
+	office.searchQuotaGate = searchUsageGate{office: office}
+	return office, nil
 }
 
 func validateSQLiteCareerSchema(db *gorm.DB) error {
@@ -363,6 +379,7 @@ func validateSQLiteCareerSchema(db *gorm.DB) error {
 		"career_preparations":             {"id", "tenant_id", "user_id", "application_id", "request_id", "fingerprint", "focus", "status", "submission_id", "submitted_material_id", "submitted_export_id", "submitted_version", "submitted_digest", "snapshot_id", "snapshot_sha256", "profile_revision", "material_id", "failure_code", "failure_message", "receipt_body", "created_at", "updated_at"},
 		"career_reminders":                {"id", "tenant_id", "user_id", "source_kind", "source_id", "application_id", "opportunity_id", "notice_key", "status", "request_id", "created_at", "updated_at"},
 		"career_reminder_receipts":        {"tenant_id", "user_id", "request_id", "fingerprint", "body", "created_at"},
+		"career_usage_reservations":       {"id", "tenant_id", "user_id", "operation", "request_id", "cost_units", "status", "period_start", "period_end", "lease_until", "created_at", "settled_at"},
 	}
 	for table, columns := range requiredColumns {
 		for _, column := range columns {
@@ -396,6 +413,7 @@ func validateSQLiteCareerSchema(db *gorm.DB) error {
 		"career_preparations":           {"tenant_id", "user_id", "request_id"},
 		"career_reminders":              {"tenant_id", "user_id", "source_kind", "source_id"},
 		"career_reminder_receipts":      {"tenant_id", "user_id", "request_id"},
+		"career_usage_reservations":     {"tenant_id", "user_id", "request_id"},
 	} {
 		if err := requireSQLiteUniqueConstraint(db, table, columns); err != nil {
 			return fmt.Errorf("incomplete Career SQLite schema: %w; apply database migrations before startup", err)

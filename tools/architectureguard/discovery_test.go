@@ -203,16 +203,18 @@ func TestFuncDeclNamesRecursive(t *testing.T) {
 // （POST exports + GET exports/receipt + GET deletions/boundary + POST
 // deletions + GET deletions/receipt）。历史 689 条 = 既有 686 条 + T19 Career
 // Preparation 3（POST applications/:applicationId/preparations + GET
-// applications/:applicationId/preparations + GET preparations/receipt）。当前
+// applications/:applicationId/preparations + GET preparations/receipt）。历史
 // 692 条 = 既有 689 条 + T20 Career Reminder 3（POST reminders + GET reminders
 // + GET reminders/receipt，站内待办权威、推送仅为提醒 seam 无独立路由）。
+// 当前 693 条 = 既有 692 条 + T21 Career Usage 1（GET usage/estimate，执行前
+// 额度预估端点，只读零额度）。
 // 日期说明见 docs/architecture/moves/README.md。
 
 const (
-	wantRouteLiteral  = 623
+	wantRouteLiteral  = 624
 	wantRouteAPIKey   = 69
 	wantRouteHandle   = 0
-	wantRouteTotal    = 692
+	wantRouteTotal    = 693
 	wantWorkersPerMix = 23
 	wantHooks         = 58
 )

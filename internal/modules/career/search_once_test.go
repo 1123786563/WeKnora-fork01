@@ -30,7 +30,7 @@ type fakeSearchQuotaGate struct {
 	calls   int
 }
 
-func (g *fakeSearchQuotaGate) AdmitSearch(context.Context, Scope, string) error {
+func (g *fakeSearchQuotaGate) AdmitSearch(context.Context, Scope, string, string) error {
 	g.calls++
 	if g.refused {
 		return ErrSearchQuotaRefused

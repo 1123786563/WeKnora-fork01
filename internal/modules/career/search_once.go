@@ -123,17 +123,21 @@ type emptySearchSourceRegistry struct{}
 
 func (emptySearchSourceRegistry) SearchSources() []VettedSearchSource { return nil }
 
-// SearchQuotaGate decides whether one one-shot search is admitted. The
-// production default enforces nothing because no quota ledger exists yet (the
-// real quota system is a separate task); it must never fabricate quota state.
-// A refusal is a typed error and leaves the request ID fully recoverable.
+// SearchQuotaGate decides whether one one-shot search is admitted. Since T21
+// the production implementation is the real usage ledger (see usage.go): it
+// reserves quota by request ID before execution and must never fabricate
+// quota state. A refusal is a typed error and leaves the request ID fully
+// recoverable. The request ID parameter is what makes admission idempotent —
+// the same request replayed or retried never reserves or charges twice.
 type SearchQuotaGate interface {
-	AdmitSearch(ctx context.Context, scope Scope, query string) error
+	AdmitSearch(ctx context.Context, scope Scope, requestID, query string) error
 }
 
 type passThroughSearchQuotaGate struct{}
 
-func (passThroughSearchQuotaGate) AdmitSearch(context.Context, Scope, string) error { return nil }
+func (passThroughSearchQuotaGate) AdmitSearch(context.Context, Scope, string, string) error {
+	return nil
+}
 
 // searchRecord is the durable one-shot search. The row starts as a bounded
 // claim before any network I/O and becomes terminal exactly once; the receipt
@@ -238,7 +242,7 @@ func (o *Office) SearchOnce(ctx context.Context, input SearchOnceInput) (SearchO
 	if o.searchQuotaGate == nil {
 		o.searchQuotaGate = passThroughSearchQuotaGate{}
 	}
-	if err = o.searchQuotaGate.AdmitSearch(ctx, s, input.Query); err != nil {
+	if err = o.searchQuotaGate.AdmitSearch(ctx, s, input.RequestID, input.Query); err != nil {
 		return SearchOnceReceipt{}, err
 	}
 

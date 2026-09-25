@@ -118,6 +118,9 @@ func writeError(c *gin.Context, e error) {
 	case errors.Is(e, ErrSearchQuotaRefused):
 		status = http.StatusTooManyRequests
 		code = "search_quota_refused"
+	case errors.Is(e, ErrAdmissionUnavailable):
+		status = http.StatusServiceUnavailable
+		code = "admission_unavailable"
 	case errors.Is(e, ErrMaterialNotFound), errors.Is(e, ErrMaterialVersionNotFound):
 		status = 404
 		code = "not_found"
@@ -605,6 +608,24 @@ func (h *Handler) GetSearch(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, receipt)
+}
+
+// UsageEstimate answers, before anything executes, what the next charged run
+// of one operation would consume and under which conditions, together with
+// the live balance of the current window. It is a free read-only projection:
+// an unreadable ledger is the typed 503 admission_unavailable (never
+// execute-first), and an unknown operation is the typed 400 invalid_request.
+func (h *Handler) UsageEstimate(c *gin.Context) {
+	ctx, ok := h.scope(c, false)
+	if !ok {
+		return
+	}
+	view, err := h.office.UsageEstimate(ctx, c.Query("operation"))
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, view)
 }
 
 const maxRuleBodyBytes = 16 * 1024
