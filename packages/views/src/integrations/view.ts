@@ -40,10 +40,18 @@ const HEADING_KEYS: Record<IntegrationKey, string> = {
   // the integrations page tab strip (page.tsx renders t('integrations.tabs.'
   // + key) for every INTEGRATION_SECTIONS entry) and the section heading —
   // resolved via integrationsT's FALLBACK_STRINGS (messages.ts, all five
-  // locales, T08-OCR1-F1). The SettingsPage sidebar label reads
-  // @weknora/i18n's formatMessage DIRECTLY, so it stays a raw-key handoff
-  // until that package owns integrations.tabs.plugins (same T03 precedent as
-  // the settings 'plugins' section label).
+  // locales, T08-OCR1-F1). Two known gaps OUTSIDE this package (T08-OCR2):
+  // ① SettingsPage.settingsSectionLabel (apps/web) reads @weknora/i18n's
+  // formatMessage DIRECTLY, so its sidebar shows the raw key for
+  // integration-plugins until that file (or the i18n package) lands a fix —
+  // its own T03 precedent at SettingsPage.tsx:701 hardcoded a literal
+  // fallback ('插件'/'Plugins') for the settings 'plugins' section, i.e. the
+  // precedent is a literal fallback, NOT a raw-key handoff; the equivalent
+  // line for integrationTab === 'plugins' belongs to the SettingsPage owner.
+  // ② The plugins tab body has no mount branch in page.tsx yet — wiring
+  // PluginsPanel (apps/web) into this shared views package needs a view-layer
+  // slot (packages must not import from apps/); carried by T12 per the plan
+  // index (PluginsPanel.tsx 成员发现/授权面板 T08/T12).
   plugins: 'integrations.plugins.title',
 };
 
