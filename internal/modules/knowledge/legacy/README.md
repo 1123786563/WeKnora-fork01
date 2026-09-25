@@ -5,7 +5,6 @@
 
 | 文件 | 导航标签 | Pass B 任务 |
 |---|---|---|
-| `internal/application/repository/chunk.go` | Chunk (application/repository) | `B-knowledge` |
 | `internal/application/repository/kbshare.go` | Kbshare (application/repository) | `B-knowledge` |
 | `internal/application/repository/knowledge.go` | Knowledge (application/repository) | `B-knowledge` |
 | `internal/application/repository/knowledge_span_repo.go` | Knowledge span repo (application/repository) | `B-knowledge` |
@@ -18,12 +17,8 @@
 | `internal/application/repository/semantic_scope_epoch.go` | Semantic scope epoch (application/repository) | `B-knowledge` |
 | `internal/application/repository/tag.go` | Tag (application/repository) | `B-knowledge` |
 | `internal/application/repository/wiki_page.go` | Wiki page (application/repository) | `B-knowledge` |
-| `internal/application/service/chunk.go` | Chunk (application/service) | `B-knowledge` |
-| `internal/application/service/chunk_write.go` | Chunk write (application/service) | `B-knowledge` |
-| `internal/application/service/extract.go` | Extract (application/service) | `B-knowledge` |
 | `internal/application/service/faq_clone_sync.go` | Faq clone sync (application/service) | `B-knowledge` |
 | `internal/application/service/graph.go` | Graph (application/service) | `B-knowledge` |
-| `internal/application/service/image_multimodal.go` | Image multimodal (application/service) | `B-knowledge` |
 | `internal/application/service/kb_activity.go` | Kb activity (application/service) | `B-knowledge` |
 | `internal/application/service/kbshare.go` | Kbshare (application/service) | `B-knowledge` |
 | `internal/application/service/knowledge.go` | Knowledge (application/service) | `B-knowledge` |
@@ -58,8 +53,6 @@
 | `internal/application/service/knowledgebase_search_results.go` | Knowledgebase search results (application/service) | `B-knowledge` |
 | `internal/application/service/knowledgebase_search_shared.go` | Knowledgebase search shared (application/service) | `B-knowledge` |
 | `internal/application/service/knowledgebase_search_storegroup.go` | Knowledgebase search storegroup (application/service) | `B-knowledge` |
-| `internal/application/service/ocr_sanitizer.go` | Ocr sanitizer (application/service) | `B-knowledge` |
-| `internal/application/service/parser_url_security.go` | Parser url security (application/service) | `B-knowledge` |
 | `internal/application/service/semantic_model.go` | Semantic model (application/service) | `B-knowledge` |
 | `internal/application/service/semantic_model_capability.go` | Semantic model capability (application/service) | `B-knowledge` |
 | `internal/application/service/semantic_model_policy.go` | Semantic model policy (application/service) | `B-knowledge` |
@@ -76,8 +69,6 @@
 | `internal/application/service/wiki_lint.go` | Wiki lint (application/service) | `B-knowledge` |
 | `internal/application/service/wiki_page.go` | Wiki page (application/service) | `B-knowledge` |
 | `internal/application/service/wiki_slug_handles.go` | Wiki slug handles (application/service) | `B-knowledge` |
-| `internal/handler/chunk.go` | Chunk (handler) | `B-knowledge` |
-| `internal/handler/chunker_debug.go` | Chunker debug (handler) | `B-knowledge` |
 | `internal/handler/faq.go` | Faq (handler) | `B-knowledge` |
 | `internal/handler/kb_access.go` | Kb access (handler) | `B-knowledge` |
 | `internal/handler/knowledge.go` | Knowledge (handler) | `B-knowledge` |
@@ -89,3 +80,7 @@
 | `internal/handler/tag.go` | Tag (handler) | `B-knowledge` |
 | `internal/handler/task_progress_auth.go` | Task progress auth (handler) | `B-knowledge` |
 | `internal/handler/wiki_page.go` | Wiki page (handler) | `B-knowledge` |
+| `internal/application/repository/chunk_ingest_shim.go` | Chunk ingest shim (application/repository) | `B-knowledge` |
+| `internal/application/service/chunk_ingest_shim.go` | Chunk ingest shim (application/service) | `B-knowledge` |
+| `internal/application/service/span_trace_seam_adapter.go` | Span trace seam adapter (application/service) | `B-knowledge` |
+| `internal/handler/chunk_ingest_shim.go` | Chunk ingest shim (handler) | `B-knowledge` |
