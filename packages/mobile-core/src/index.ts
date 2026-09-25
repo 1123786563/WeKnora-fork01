@@ -76,3 +76,9 @@ export type {
   EvidenceCitation, MaterialActResult, MaterialEntry, MaterialEntryKind, MaterialEvent, MaterialIndex,
   MaterialIntent, MaterialRef, MaterialView, PreviewVerdict, TaskMaterial, TaskMaterialHandle, TerminalLine,
 } from './material/types.ts';
+// —— T22 (#52) 代码交付只读投影 ——
+export { deliveryViewOf } from './delivery/delivery-view.ts';
+export type { DeliveryReceiptView, DeliveryRemoteRecord, DeliveryState } from './delivery/delivery-view.ts';
+export { createDeliveryReader, DeliveryReaderError } from './delivery/delivery-reader.ts';
+export type { DeliveryReader, DeliveryReaderErrorCode, DeliveryRemote } from './delivery/delivery-reader.ts';
+export { createScenarioDeliveryRemote } from './delivery/in-memory-delivery-remote.ts';

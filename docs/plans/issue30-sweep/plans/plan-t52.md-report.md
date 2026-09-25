@@ -512,3 +512,77 @@ $ pnpm --filter @weknora/mobile typecheck   # tsc --noEmit
 ## 6. 遗留与关注点
 
 - 无。变异验证（退回实现→红、恢复实现→绿）已双向证明该正面路径不可再被静默移除。
+
+---
+
+# Task 9 报告：mobile-core——交付投影与 scope-guard 读器（2026-09-25）
+
+## 1. 实现内容
+
+- Create：`packages/mobile-core/src/delivery/delivery-view.ts`——`DeliveryState` 六态、`DeliveryRemoteRecord`（与 contracts `CodeDeliveryRecord` 结构逐字一致，已对照 `packages/contracts/src/mobile/code-delivery.ts:7-27` 逐字段核实；mobile-core 不 import contracts，依赖方向约束成立）、`DeliveryReceiptView`、`deliveryViewOf`（`attention = prepared || pushed || unknown`，可选字段 undefined 时不产出键）。
+- Create：`packages/mobile-core/src/delivery/delivery-reader.ts`——`DeliveryRemote` 端口、`DeliveryReaderError`（`DELIVERY_SCOPE_CHANGED`/`DELIVERY_BACKEND`）、`createDeliveryReader` scope-guard 读器：无有效 lease 拒绝（fail-closed）、远端异常包装为 `DELIVERY_BACKEND`、结果在途 lease 失效丢弃迟到结果、`null`→`undefined`。
+- Create：`packages/mobile-core/src/delivery/in-memory-delivery-remote.ts`——`createScenarioDeliveryRemote` 场景 Adapter。
+- Modify：`packages/mobile-core/src/index.ts`——末尾追加 delivery 导出块（8 行，计划指定位置）。
+
+## 2. TDD 证据
+
+**RED**（先写测试，后实现）：
+
+```
+$ pnpm exec tsx --test packages/mobile-core/src/delivery/delivery-view.test.ts packages/mobile-core/src/delivery/delivery-reader.test.ts
+# code: 'ERR_MODULE_NOT_FOUND',
+#   url: 'file:///…/packages/mobile-core/src/delivery/delivery-view.ts'
+# tests 2 / # pass 0 / # fail 2
+```
+
+失败原因符合预期：被测模块尚不存在（计划 Step 2 预期「FAIL（模块不存在）」）。
+
+**GREEN**（实现后）：
+
+```
+$ pnpm exec tsx --test packages/mobile-core/src/delivery/delivery-view.test.ts packages/mobile-core/src/delivery/delivery-reader.test.ts
+# tests 7 / # pass 7 / # fail 0 / # skipped 0
+```
+
+7 个测试（view 3 + reader 4）全绿，输出干净无警告。
+
+## 3. 静态检查（与计划 Step 4 命令的偏差及理由）
+
+计划写 `pnpm --filter @weknora/mobile-core exec tsc --noEmit`，但 `packages/mobile-core` **无 tsconfig.json**（该包 package.json 无 typecheck script，仓库无 root tsconfig）——该命令按字面运行时 tsc 因无输入而打印帮助并退出 1（已实跑取证）。沿 Task 8 已确立的先例（本报告 Task 8 节：「packages 自身无 typecheck script；静态检查经 apps/mobile 的 tsc --noEmit 间接覆盖」）改用两条等价面，均实跑通过：
+
+```
+$ npx tsc --noEmit --strict --target es2022 --module esnext --moduleResolution bundler --allowImportingTsExtensions --skipLibCheck --types node packages/mobile-core/src/index.ts
+（无输出，退出码 0——直接类型检查 mobile-core 入口，覆盖全部 delivery 源文件）
+
+$ pnpm --filter @weknora/mobile typecheck
+> tsc --noEmit
+（无输出，退出码 0）
+```
+
+## 4. 回归（实跑）
+
+```
+$ pnpm exec tsx --test "packages/mobile-core/src/**/*.test.ts"
+# tests 244 / # pass 244 / # fail 0 / # skipped 0（含新增 7 个）
+```
+
+index.ts 为共享文件，mobile-core 全量回归无破坏。
+
+## 5. 文件清单（5 个）
+
+- Create：`packages/mobile-core/src/delivery/delivery-view.ts`
+- Create：`packages/mobile-core/src/delivery/delivery-reader.ts`
+- Create：`packages/mobile-core/src/delivery/in-memory-delivery-remote.ts`
+- Create：`packages/mobile-core/src/delivery/delivery-view.test.ts`
+- Create：`packages/mobile-core/src/delivery/delivery-reader.test.ts`
+- Modify：`packages/mobile-core/src/index.ts`（+8 行导出块）
+
+## 6. 自检发现与修正
+
+1. **计划代码笔误修正（行为零变化）**：计划原文 `in-memory-delivery-remote.ts` 从 `./delivery-reader.ts` 导入 `DeliveryRemoteRecord`，但该类型定义于 `./delivery-view.ts` 且 delivery-reader 未 re-export。tsx 运行时类型擦除不报错，`npx tsc --noEmit …` 直接检查抓到 `TS2724`。已改为从 `./delivery-view.ts` 导入类型——最小修正，接口签名与行为均不变（计划 Step 4 预期允许「与测试假设不符时对齐后复跑」）。
+2. 测试逐字采用计划文本；`RuntimeScopeLease`/`leaseActive`/`ScopeLease` 与 `runtime/scope-lease.ts:11-28`、`runtime/types.ts:17` 现行面一致，无需对齐调整。
+3. mobile-core 全目录 grep 无 `contracts`/`api-client` 实际 import（唯一命中为 delivery-view.ts:6-7 注释），「Screen 不接触 wire 行」与 §3 依赖方向约束满足。
+
+## 7. 遗留与关注点
+
+- `DeliveryRemoteRecord` 与 contracts `CodeDeliveryRecord` 的结构可赋值性将由 Task 10 接线时 `pnpm --filter @weknora/mobile typecheck` 首次实证（两文件已逐字段核对一致）。
