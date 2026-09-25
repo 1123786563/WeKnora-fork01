@@ -17,6 +17,7 @@ import (
 	"path"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/skills"
@@ -103,6 +104,14 @@ type WebPageLoadProbe interface {
 	ProbeWebPage(ctx context.Context, scope craft.Scope, candidate craft.Candidate) (reachable, loaded craft.CheckOutcome)
 }
 
+// VersionEvidenceSource reads one Run's immutable knowledge record (T05) for
+// evidence pinning. The production adapter is the same repository the
+// Workbench sources projection and the citation service read through, so the
+// pinned evidence, the citations and the Workbench observe identical facts.
+type VersionEvidenceSource interface {
+	Load(context.Context, craft.Scope, string) (craft.KnowledgeRecord, error)
+}
+
 // CraftArtifactService collects one delegation's workspace output into an
 // immutable, run-linked version.
 type CraftArtifactService struct {
@@ -117,6 +126,11 @@ type CraftArtifactService struct {
 	// webProbe supplies the externally observed reachability/page-load facts.
 	// Nil leaves both facts not_run and the promotion gate refuses.
 	webProbe WebPageLoadProbe
+	// runEvidence reads one Run's immutable knowledge record so promotion
+	// can pin it as the version's evidence member (T07). Nil keeps the
+	// recorded unpinned behavior; the evidence read then honestly answers
+	// ErrNotFound instead of reconstructing history.
+	runEvidence VersionEvidenceSource
 }
 
 // RunBoundSandboxArtifactSource identifies the verified generation it reads.
@@ -186,6 +200,22 @@ func (s *CraftArtifactService) WithWebPromotion(drafts craft.DraftHeadStore, pro
 		return s
 	}
 	s.drafts, s.webProbe = drafts, probe
+	return s
+}
+
+// WithVersionEvidence wires the T07 (#131) evidence pinning: promotion loads
+// the promoting Run's immutable knowledge record through source and pins it
+// as the promoted version's evidence member, in the same commit as the
+// version publish. source may be nil — promotion then keeps the recorded
+// unpinned behavior (fail-open only for unwired assemblies, mirroring the
+// optional citation gate); the historical read fails closed and answers
+// ErrNotFound rather than reconstructing from the Workspace or the current
+// knowledge base.
+func (s *CraftArtifactService) WithVersionEvidence(source VersionEvidenceSource) *CraftArtifactService {
+	if s == nil {
+		return s
+	}
+	s.runEvidence = source
 	return s
 }
 
@@ -285,13 +315,30 @@ func (s *CraftArtifactService) PromoteWebVersion(ctx context.Context, scope craf
 		)
 	}
 
-	published, err := s.versions.Publish(ctx, scope, craft.Version{
+	versionOut := craft.Version{
 		ID: versionID, WorkspaceID: candidate.WorkspaceID, RunID: candidate.RunID,
 		Kind: craft.KindWeb, Files: candidate.Files, Checks: craft.WebChecks(record),
-	})
-	if err != nil {
-		logger.Warnf(ctx, "[CraftArtifact] web promotion publish failed for run %s: %v", candidate.RunID, err)
-		return craft.Version{}, err
+	}
+	var published craft.Version
+	if s.runEvidence != nil {
+		// T07 (#131): the promotion must be able to PROVE the evidence it
+		// pins. The Run's record is loaded and server-side bound here — a
+		// record for another scope or an unpublished observation is not
+		// promotable evidence, and a Run without a recorded source
+		// observation cannot promote at all. The pin never re-reads the
+		// Workspace or the current knowledge state: the record IS what the
+		// Run used.
+		published, err = s.publishWithEvidence(ctx, scope, versionOut, candidate.RunID)
+		if err != nil {
+			logger.Warnf(ctx, "[CraftArtifact] web promotion evidence pinning refused for run %s: %v", candidate.RunID, err)
+			return craft.Version{}, err
+		}
+	} else {
+		published, err = s.versions.Publish(ctx, scope, versionOut)
+		if err != nil {
+			logger.Warnf(ctx, "[CraftArtifact] web promotion publish failed for run %s: %v", candidate.RunID, err)
+			return craft.Version{}, err
+		}
 	}
 	// The store persists the four checks; the returned projection carries the
 	// same evidence derived from them so callers (and the DTO) never have to.
@@ -300,6 +347,52 @@ func (s *CraftArtifactService) PromoteWebVersion(ctx context.Context, scope craf
 	logger.Infof(ctx, "[CraftArtifact] promoted web version %s for run %s at workspace revision %d",
 		published.ID, candidate.RunID, req.Revision)
 	return out, nil
+}
+
+// publishWithEvidence loads the promoting Run's immutable record, binds it
+// server-side to this scope and run, and publishes the version WITH its
+// evidence member in one store transaction. A store that cannot pin
+// evidence fails closed: an assembly that wired the evidence port but not
+// the evidence-capable store promotes nothing.
+func (s *CraftArtifactService) publishWithEvidence(ctx context.Context, scope craft.Scope, v craft.Version, runID string) (craft.Version, error) {
+	store, ok := s.versions.(craft.VersionEvidenceStore)
+	if !ok {
+		return craft.Version{}, fmt.Errorf("%w: the version store cannot pin evidence", craft.ErrUnsupported)
+	}
+	record, err := s.runEvidence.Load(ctx, scope, runID)
+	if err != nil {
+		return craft.Version{}, err
+	}
+	if record.Scope.TenantID != scope.TenantID || record.Scope.SessionID != scope.SessionID || record.RunID != runID {
+		return craft.Version{}, craft.ErrForbidden
+	}
+	if record.PublicationState != craft.KnowledgePublicationPublished {
+		return craft.Version{}, fmt.Errorf("%w: run %s source observation is %q, not published", craft.ErrConflict, runID, record.PublicationState)
+	}
+	evidence, err := craft.PinVersionEvidence(v.ID, record, time.Now().UTC())
+	if err != nil {
+		return craft.Version{}, err
+	}
+	return store.PublishWithEvidence(ctx, scope, v, evidence)
+}
+
+// VersionEvidence returns the evidence pinned to one published version
+// (T07, #131): the source refs, digests and acquisition times the
+// producing Run actually used. The read answers strictly the pinned
+// snapshot keyed by Version ID — never anything rebuilt from the mutable
+// Workspace, the current knowledge base or the Run's live record — and a
+// version promoted without evidence answers ErrNotFound. Opening a cited
+// source stays a separate, freshly authorized act (see the citation
+// service): pinned evidence preserves history, it grants no access.
+func (s *CraftArtifactService) VersionEvidence(ctx context.Context, scope craft.Scope, versionID string) (craft.VersionEvidence, error) {
+	if s == nil || s.versions == nil {
+		return craft.VersionEvidence{}, fmt.Errorf("%w: artifact service is not assembled", craft.ErrInvalidInput)
+	}
+	store, ok := s.versions.(craft.VersionEvidenceStore)
+	if !ok {
+		return craft.VersionEvidence{}, fmt.Errorf("%w: the version store cannot serve evidence", craft.ErrUnsupported)
+	}
+	return store.VersionEvidence(ctx, scope, versionID)
 }
 
 // SelectDefaultVersion projects the workspace's default preview version

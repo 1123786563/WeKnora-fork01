@@ -9,6 +9,7 @@ import (
 	"path"
 	"sort"
 	"strings"
+	"time"
 )
 
 // VersionIDPrefix marks every persisted version identity. The remainder of the
@@ -318,4 +319,148 @@ func hasArtifactFile(files []File, rel string) bool {
 		}
 	}
 	return false
+}
+
+// VersionEvidence is the T07 (#131) immutable source evidence pinned to one
+// artifact version at promotion time. It freezes WHAT the producing Run
+// actually used — the Run's recorded source facts (T05): each source's
+// durable ref, content digest and acquisition time, plus the accepted
+// package's request/package digests — so a later knowledge update, deletion
+// or revocation never rewrites the history an old version displays. It
+// grants no read authority of its own: opening a cited source always
+// re-authorizes against the CURRENT viewer's grant (T10).
+type VersionEvidence struct {
+	VersionID     string                  `json:"version_id"`
+	RunID         string                  `json:"run_id"`
+	RequestDigest string                  `json:"request_digest"`
+	PackageDigest string                  `json:"package_digest"`
+	AcquiredAt    time.Time               `json:"acquired_at"`
+	PinnedAt      time.Time               `json:"pinned_at"`
+	Sources       []KnowledgeSourceRecord `json:"sources"`
+	Empty         bool                    `json:"empty"`
+	Truncated     bool                    `json:"truncated"`
+}
+
+// PinVersionEvidence derives the evidence pinned to one version from the
+// Run's immutable knowledge record. The recorded source facts travel
+// verbatim — pinning never re-reads the Workspace, the knowledge base or any
+// mutable state — and the evidence-level acquisition time is the earliest
+// source observation (zero for an empty record, which has no acquisition to
+// fabricate). pinnedAt comes from the caller's clock and records when the
+// promotion froze the facts.
+func PinVersionEvidence(versionID string, record KnowledgeRecord, pinnedAt time.Time) (VersionEvidence, error) {
+	if pinnedAt.IsZero() {
+		return VersionEvidence{}, fmt.Errorf("%w: version evidence requires a pin time", ErrInvalidInput)
+	}
+	ev := VersionEvidence{
+		VersionID:     versionID,
+		RunID:         record.RunID,
+		RequestDigest: record.RequestDigest,
+		PackageDigest: record.PackageDigest,
+		PinnedAt:      pinnedAt,
+		Empty:         record.Empty,
+		Truncated:     record.Truncated,
+	}
+	if len(record.Sources) > 0 {
+		ev.Sources = append([]KnowledgeSourceRecord(nil), record.Sources...)
+		acquired := record.Sources[0].AcquiredAt
+		for _, source := range record.Sources[1:] {
+			if source.AcquiredAt.Before(acquired) {
+				acquired = source.AcquiredAt
+			}
+		}
+		ev.AcquiredAt = acquired
+	}
+	if err := ValidateVersionEvidence(ev); err != nil {
+		return VersionEvidence{}, err
+	}
+	return ev, nil
+}
+
+// ValidateVersionEvidence checks the structural invariants of one pinned
+// evidence snapshot: a well-formed version identity, the producing Run and
+// both package digests present, every recorded source carrying its ref,
+// digest and acquisition time, and the Empty flag agreeing with the sources.
+// Anything that could not have been observed is refused — evidence facts are
+// never filled in with guesses.
+func ValidateVersionEvidence(ev VersionEvidence) error {
+	if !ValidVersionID(ev.VersionID) {
+		return fmt.Errorf("%w: version evidence id %q", ErrInvalidInput, ev.VersionID)
+	}
+	if ev.RunID == "" {
+		return fmt.Errorf("%w: version evidence requires its producing run", ErrInvalidInput)
+	}
+	if ev.RequestDigest == "" || ev.PackageDigest == "" {
+		return fmt.Errorf("%w: version evidence requires the run's request and package digests", ErrInvalidInput)
+	}
+	if (len(ev.Sources) == 0) != ev.Empty {
+		return fmt.Errorf("%w: version evidence empty flag disagrees with its %d sources", ErrInvalidInput, len(ev.Sources))
+	}
+	for _, source := range ev.Sources {
+		if source.ID == "" || source.Ref == "" {
+			return fmt.Errorf("%w: recorded source %q lacks its id or ref", ErrInvalidInput, source.ID)
+		}
+		if !ValidSHA256(source.Digest) {
+			return fmt.Errorf("%w: recorded source %q has malformed digest", ErrInvalidInput, source.ID)
+		}
+		if source.AcquiredAt.IsZero() {
+			return fmt.Errorf("%w: recorded source %q lacks its acquisition time", ErrInvalidInput, source.ID)
+		}
+	}
+	if ev.AcquiredAt.IsZero() && !ev.Empty {
+		return fmt.Errorf("%w: version evidence with sources requires an acquisition time", ErrInvalidInput)
+	}
+	if !ev.AcquiredAt.IsZero() && ev.Empty {
+		return fmt.Errorf("%w: empty version evidence cannot carry an acquisition time", ErrInvalidInput)
+	}
+	if ev.PinnedAt.IsZero() {
+		return fmt.Errorf("%w: version evidence requires a pin time", ErrInvalidInput)
+	}
+	return nil
+}
+
+// VersionEvidenceDigest derives the integrity digest of one evidence
+// snapshot: the canonical JSON encoding of its facts. Identical facts always
+// derive the identical digest — a replayed promotion adopts the stored row —
+// while any changed fact changes the digest, so a store can refuse a
+// different evidence under an already-pinned version identity.
+func VersionEvidenceDigest(ev VersionEvidence) (string, error) {
+	if err := ValidateVersionEvidence(ev); err != nil {
+		return "", err
+	}
+	raw, err := json.Marshal(ev)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:]), nil
+}
+
+// ValidVersionID reports whether id is the persisted form of one version
+// identity: the "ver_" prefix followed by exactly 64 lowercase hex
+// characters.
+func ValidVersionID(id string) bool {
+	if !strings.HasPrefix(id, VersionIDPrefix) || len(id) != len(VersionIDPrefix)+64 {
+		return false
+	}
+	return ValidSHA256(strings.TrimPrefix(id, VersionIDPrefix))
+}
+
+// VersionEvidenceStore pins and reads the evidence members of immutable
+// versions (T07, #131). Implementations write the evidence in the SAME
+// commit that publishes the version — a version is never visible without
+// the evidence it was promoted with — and answer reads strictly from the
+// pinned snapshot keyed by Version ID. History is never reconstructed from
+// the mutable Workspace, the current knowledge base or the Run's live
+// record: a version that was promoted without evidence answers
+// ErrNotFound rather than a guess.
+type VersionEvidenceStore interface {
+	// PublishWithEvidence publishes one immutable version and pins ev as its
+	// evidence member in the same transaction. An identical replay adopts
+	// the stored rows; a different evidence under the same version identity
+	// is a conflict.
+	PublishWithEvidence(ctx context.Context, scope Scope, v Version, ev VersionEvidence) (Version, error)
+	// VersionEvidence returns the evidence pinned to one published version
+	// in the requesting scope.
+	VersionEvidence(ctx context.Context, scope Scope, versionID string) (VersionEvidence, error)
 }
