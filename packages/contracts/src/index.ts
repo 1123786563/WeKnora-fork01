@@ -728,3 +728,5 @@ export type { ReleaseSubmission, ReleaseReview, AgentRelease, TenantReleaseListi
 export { parseReleaseSubmissionResponse, parseReleaseReviewResponse, parseReleaseSubmissionListResponse, parseTenantReleaseListResponse } from './marketplace/tenant-releases.ts';
 export type { AgentAdoption, AgentAdoptionVariant, AvailableAgent } from './marketplace/agent-adoption.ts';
 export { parseAdoptionResponse, parseAdoptionListResponse, parseVariantResponse, parseAvailableAgentListResponse } from './marketplace/agent-adoption.ts';
+export type { VerifiedPublisher, PublicCatalogListing, PublicCatalogRelease, PublicReleaseSubmission, PublicReleaseReview, PublicIntroduction, PublicAdoption, AdoptPublicListingResult } from './marketplace/public-marketplace.ts';
+export { parseVerifiedPublisherResponse, parseVerifiedPublisherListResponse, parsePublicCatalogListResponse, parsePublicListingResponse, parsePublicSubmissionResponse, parsePublicSubmissionListResponse, parsePublicReviewResponse, parseAdoptPublicListingResponse } from './marketplace/public-marketplace.ts';
