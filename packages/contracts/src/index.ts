@@ -660,6 +660,8 @@ export {
 } from './mobile/interactions.ts';
 export { parseInteractionWithRun } from './mobile/interaction-inbox.ts';
 export type { InboxInteractionRecord } from './mobile/interaction-inbox.ts';
+export { parseCodeDeliveryRecord } from './mobile/code-delivery.ts';
+export type { CodeDeliveryRecord, CodeDeliveryState } from './mobile/code-delivery.ts';
 
 export type {
   ArtifactSummary,

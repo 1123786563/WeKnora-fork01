@@ -350,3 +350,97 @@ ok      github.com/Tencent/WeKnora/internal/modules/codedelivery        4.447s
 - `newCodeDeliveryService` 按计划稿返回 `(*CodeDeliveryService, error)`，实现体恒返回 nil error（dig 支持 error 返回，形状保留给未来装配失败路径）。
 - 容器装配的运行时验证由 `go build ./...`（dig provider 签名编译正确性）+ 路由挂载自检覆盖；完整 `BuildContainer` Invoke 需要 DB/Redis 等真实依赖，不在本地无环境可跑范围（计划 Step 4 即以 `go build ./...` 为容器接线的验证面）。
 - blocked-env：真实 GitHub 端到端依赖 env（`WEKNORA_GITHUB_TEST_TOKEN/_REPO`），本地缺 env，前序 Task 2 已按计划 skip，本任务未触碰该面，无伪造。
+
+---
+
+# Task 8 实施报告：contracts + api-client——交付读模型与授权通道远端（T22 #52，8/11）
+
+日期：2026-09-25 · Worktree：`.worktrees/issue30-sweep-t52`（分支 `codex/issue30-t52`）· 基线 HEAD：`c35610a41`（Task 7）
+
+## 1. 实现内容
+
+按计划 Task 8 交付移动面交付读模型的 wire 契约与授权通道远端（Task 9/10 的 Consumes）：
+
+| 文件 | 变更 | 内容 |
+|---|---|---|
+| `packages/contracts/src/mobile/code-delivery.ts` | 新增 | `CodeDeliveryState` 六态枚举（逐字镜像 Go `codedelivery.DeliveryState`）、`CodeDeliveryRecord` 追溯记录接口、`parseCodeDeliveryRecord` fail-closed 解析器（未知 state / 缺 identity 字段 / 非对象 → `ContractError`；空串回执字段 `commit_sha/pr_number/pr_url/remote_login/approver/failure` 折叠为键省略） |
+| `packages/contracts/src/index.ts` | 修改（+2 行，`parseInteractionWithRun` 导出块 `:661-662` 之后） | `parseCodeDeliveryRecord` + `CodeDeliveryRecord/CodeDeliveryState` 类型再导出 |
+| `packages/contracts/test/mobile-code-delivery.test.ts` | 新增 | 计划原文 3 个测试（delivered wire 解析 / prepared 可选回执省略 / 未知 state fail-closed） |
+| `packages/api-client/src/mobile/code-delivery.ts` | 新增 | `createMobileCodeDeliveryRemote`：构造期 `requireDeploymentOrigin` 强校验；`delivery(runId)` 走授权通道 `GET /api/v1/workbench/executions/:run_id/delivery`（runId `encodeURIComponent`），解 `{"success":true,"data":{"delivery":{…}}}` 信封并复用 contracts 解析器；404 `code_delivery_not_found` → `null`，其余失败照常 reject |
+| `packages/api-client/src/mobile/code-delivery.test.ts` | 新增 | 计划原文 3 个测试 + 自检补的 1 个（真实 ApiError 形状，见第 3 节） |
+| `packages/api-client/package.json` | 修改（+1 行） | exports 增 `"./mobile/code-delivery": "./src/mobile/code-delivery.ts"`（`./mobile/materials` 行后） |
+
+wire 形状核对：与 Task 7 冻结的 `codedelivery.DeliveryView` json tag（`internal/modules/codedelivery/service.go:345-365`：`id/task_id/run_id/state/repo/baseline_sha/branch/commit_sha/pr_number/pr_url/remote_login/action_id/action_state/digest/approver/failure/files/created_at/updated_at`）及读端点 `{"success":true,"data":{"delivery":view}}`、错误码 `code_delivery_not_found`（`internal/handler/session/workbench_delivery.go` 的 `GetDelivery`/`writeDeliveryError`）逐字一致。
+
+## 2. TDD 证据
+
+### RED
+
+```
+$ pnpm exec tsx --test packages/contracts/test/mobile-code-delivery.test.ts packages/api-client/src/mobile/code-delivery.test.ts
+# （worktree 先 pnpm install --prefer-offline，20.8s；此前 worktree 无 node_modules）
+# fail 2 —— 两文件均 ERR_MODULE_NOT_FOUND：
+#   code: 'ERR_MODULE_NOT_FOUND',
+#   url: 'file:///…worktrees/issue30-sweep-t52/packages/contracts/src/mobile/code-delivery.ts'
+# tests 2 / pass 0 / fail 2
+```
+
+失败原因即预期：`code-delivery.ts` 模块尚不存在。
+
+### GREEN
+
+实现后同一命令（计划 Step 4 指定命令，完整输出）：
+
+```
+$ pnpm exec tsx --test packages/contracts/test/mobile-code-delivery.test.ts packages/api-client/src/mobile/code-delivery.test.ts
+TAP version 13
+ok 1 - delivery() maps GET /workbench/executions/:run/delivery onto the record
+ok 2 - a 404 code_delivery_not_found maps to null, other failures reject
+ok 3 - origin is validated at construction
+ok 4 - a real ApiError-shaped 404 (top-level code, no body) also maps to null
+ok 5 - delivered wire parses into the traceability record
+ok 6 - prepared wire parses with optional receipts omitted
+ok 7 - unknown state fails closed
+1..7
+# tests 7 / # pass 7 / # fail 0 / # skipped 0
+```
+
+### 回归（本任务改了共享文件 `contracts/src/index.ts`，超出计划最低要求的实跑证据）
+
+```
+$ pnpm exec tsx --test packages/contracts/test/*.test.ts
+# tests 71 / pass 71 / fail 0（既有全部 contracts 测试 + 本任务新增 3 个）
+
+$ pnpm exec tsx --test "packages/api-client/src/mobile/*.test.ts"
+# tests 84 / pass 80 / fail 0 / skipped 4（4 个 skip 为既有 runtime 集成类，非本任务引入）
+
+$ pnpm --filter @weknora/mobile typecheck   # tsc --noEmit
+（无输出，退出码 0 —— 通过）
+```
+
+## 3. 自检发现（对计划代码的三处刻意修正，均不改变 wire 语义值）
+
+1. **`ContractError` 双参构造**：计划代码用单参 `new ContractError('…message…')`，但真实签名是 `constructor(path: string, message: string)`（`packages/contracts/src/index.ts:1-8`），且既有 mobile contracts 全部双参（如 `interaction-inbox.ts:16`）。单参会把最终 message 拼出 `"…: undefined"` 且 tsc 报缺参。已改双参（path 取 `code_delivery.<field>` 风格，对齐 `execution.ts` 惯例），message 语义保持计划原文；测试断言只检查 `ContractError` 类，不受影响。
+2. **`state` 类型收窄**：计划返回值把 `str()` 产出的 `string` 直接放入 `state: CodeDeliveryState` 字段。实跑 `pnpm --filter @weknora/mobile typecheck` 抓到 `TS2322`（`code-delivery.ts(62,65)`）。已改为 `STATES.has` 判定通过后 `as CodeDeliveryState` 收窄（fail-closed 行为不变：不在集合内先抛）。若不修，会在 Task 10 接线后阻断 mobile typecheck。
+3. **404 映射双形状判定**：计划 `isDeliveryNotFound` 只查 `error.body?.code`，与计划测试假件匹配；但生产授权通道（`apps/mobile/src/composition.ts:93-96` → `createWeKnoraClient(...).request`）抛 `ApiError`，其 `code` 在顶层（`packages/api-client/src/errors.ts:60`，`errorFromResult` 从响应体 `record.code` 解析），**没有** `.body` 属性——生产上「Run 可读但尚未准备交付」的正常 404 会误 reject，违背本任务 Interfaces 声明的契约「404 `code_delivery_not_found` → `null`」。已改为 `status === 404 && (code === 'code_delivery_not_found' || body?.code === 'code_delivery_not_found')` 双形状都识别，并追加第 4 个测试钉死真实 ApiError 形状（含「404 但 code 不同 → 仍 reject」反例）。计划原 3 个测试逐字保留且全绿。
+
+## 4. 检查覆盖说明
+
+- 计划命名检查命令（Step 2 RED / Step 4 GREEN）均在本 worktree 实跑，输出见上。
+- `pnpm --filter @weknora/mobile typecheck` 属计划 Tech Stack 段既有验证面（非本任务 Step 命令），作为共享文件改动回归证据实跑通过。
+- 未运行 Go 测试：本任务不触碰任何 Go 文件（Task 1-7 产物仅只读核对）。
+- `packages/contracts`、`packages/api-client` 自身无 typecheck script；静态检查经 `apps/mobile` 的 `tsc --noEmit`（经 workspace 依赖覆盖两包源码）间接覆盖。
+
+## 5. 文件清单（6 个，全部在计划授权范围内）
+
+- Create：`packages/contracts/src/mobile/code-delivery.ts`
+- Create：`packages/contracts/test/mobile-code-delivery.test.ts`
+- Modify：`packages/contracts/src/index.ts`（+2 行导出）
+- Create：`packages/api-client/src/mobile/code-delivery.ts`
+- Create：`packages/api-client/src/mobile/code-delivery.test.ts`
+- Modify：`packages/api-client/package.json`（+1 行 exports）
+
+## 6. 遗留与关注点
+
+- 无阻塞项。三处对计划代码的修正理由与证据已列第 3 节，供审查者复核。
+- Task 9（mobile-core）的 `DeliveryRemote` 结构需与本任务 `MobileCodeDeliveryRemote` 结构逐字一致（结构可赋值由 apps/mobile typecheck 证明）；Task 10 接线时 typecheck 将首次覆盖两接口的可赋值性。
