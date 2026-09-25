@@ -24,6 +24,34 @@ setIntegrationSpriteIconRenderer((name, size) => {
   const px = typeof size === 'number' ? `${size}px` : (size ?? '16px');
   return <TIcon name={name} size={px} />;
 });
+
+// B4：平台 logo 渲染器注入（frontend/src/assets/img/im/* 同源资产平移）——
+// @weknora/views 无资产依赖（台账 #23 同因），IM 向导 header/平台 select 前缀
+// 经此拿到与 Vue platformLogo() 同源的位图。
+import { setIntegrationPlatformLogoRenderer } from '@weknora/views/integrations/page';
+import wecomLogo from '../assets/img/im/wecom.svg';
+import feishuLogo from '../assets/img/im/feishu.svg';
+import larkLogo from '../assets/img/im/lark.svg';
+import slackLogo from '../assets/img/im/slack.svg';
+import telegramLogo from '../assets/img/im/telegram.svg';
+import dingtalkLogo from '../assets/img/im/dingtalk.svg';
+import mattermostLogo from '../assets/img/im/mattermost.svg';
+import wechatLogo from '../assets/img/im/wechat.svg';
+import qqbotLogo from '../assets/img/im/qqbot.png';
+import yunzhijiaLogo from '../assets/img/im/yunzhijia.svg';
+const IM_PLATFORM_LOGOS: Record<string, string> = {
+  wecom: wecomLogo,
+  feishu: feishuLogo,
+  lark: larkLogo,
+  slack: slackLogo,
+  telegram: telegramLogo,
+  dingtalk: dingtalkLogo,
+  mattermost: mattermostLogo,
+  wechat: wechatLogo,
+  qqbot: qqbotLogo,
+  yunzhijia: yunzhijiaLogo,
+};
+setIntegrationPlatformLogoRenderer((platform) => IM_PLATFORM_LOGOS[platform] ?? null);
 import { parseIntegrationTenantId } from './tenant.ts';
 import { ApiPlaygroundDrawer } from './ApiPlaygroundDrawer.tsx';
 import { EmbedPreviewModal } from './EmbedPreviewModal.tsx';

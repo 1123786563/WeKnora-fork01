@@ -40,7 +40,7 @@
   width: 100%;
   cursor: pointer;
   background-color: #ffffff;
-  color: color:inherit;
+  color: inherit;
 }
 
 .wk-vi-channel-card-clickable-class:hover {
@@ -61,7 +61,7 @@
 
 .wk-vi-channel-card-static-class {
   background-color: #ffffff;
-  color: color:inherit;
+  color: inherit;
 }
 
 .wk-vi-channel-card-add-class {
@@ -145,7 +145,7 @@
 .wk-vi-channel-card-title-add-class {
   font-size: 13px;
   font-weight: 500;
-  color: color:inherit;
+  color: inherit;
 }
 
 .wk-vi-channel-card-agent-class {
@@ -2396,4 +2396,397 @@
   border-color: #dce3ed;
   background-color: #ffffff;
   color: #506078;
+}
+
+/* ==== B4：抽屉族 SettingDrawer chrome 同构（Vue SettingDrawer.vue scoped+global
+   块原样平移；锚定三类抽屉 :class 家族，防与 settings.td.css 同名规则串染）。
+   Vue 源：.setting-drawer 全局块（header 14/18、body 16/18、footer 10/18）+
+   scoped 块（header-block/header/icon/title/subtitle/section/footer）。
+   IMChannelPanel.vue:72 / AgentEmbedChannelPanel.vue:70 / ApiIntegrationSettings.vue:462。 ==== */
+.t-drawer.setting-drawer .t-drawer__content {
+  min-width: 0;
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+.im-channel-drawer .t-drawer__header,
+.embed-channel-drawer .t-drawer__header,
+.api-key-create-drawer .t-drawer__header {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--td-component-stroke);
+}
+
+.im-channel-drawer .t-drawer__body,
+.embed-channel-drawer .t-drawer__body,
+.api-key-create-drawer .t-drawer__body {
+  padding: 16px 18px;
+}
+
+.im-channel-drawer .t-drawer__footer,
+.embed-channel-drawer .t-drawer__footer,
+.api-key-create-drawer .t-drawer__footer {
+  padding: 10px 18px;
+  border-top: 1px solid var(--td-component-stroke);
+  box-shadow: 0 -2px 8px rgba(15, 23, 42, 0.04);
+}
+
+.im-channel-drawer .setting-drawer__body,
+.embed-channel-drawer .setting-drawer__body,
+.api-key-create-drawer .setting-drawer__body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* —— header（SettingDrawer.vue scoped）—— */
+.im-channel-drawer .setting-drawer__header-block,
+.embed-channel-drawer .setting-drawer__header-block,
+.api-key-create-drawer .setting-drawer__header-block {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  gap: 8px;
+}
+
+.im-channel-drawer .setting-drawer__header,
+.embed-channel-drawer .setting-drawer__header,
+.api-key-create-drawer .setting-drawer__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  padding: 2px 0;
+}
+
+.im-channel-drawer .setting-drawer__header-icon,
+.embed-channel-drawer .setting-drawer__header-icon,
+.api-key-create-drawer .setting-drawer__header-icon {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(7, 192, 95, 0.1);
+  color: var(--td-brand-color);
+  font-size: 16px;
+  transition: background 0.2s ease;
+}
+
+.im-channel-drawer .setting-drawer__header-text,
+.embed-channel-drawer .setting-drawer__header-text,
+.api-key-create-drawer .setting-drawer__header-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
+  min-width: 0;
+}
+
+.im-channel-drawer .setting-drawer__header-actions,
+.embed-channel-drawer .setting-drawer__header-actions,
+.api-key-create-drawer .setting-drawer__header-actions {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+}
+
+.im-channel-drawer .setting-drawer__header-actions:empty,
+.embed-channel-drawer .setting-drawer__header-actions:empty,
+.api-key-create-drawer .setting-drawer__header-actions:empty {
+  display: none;
+}
+
+.im-channel-drawer .setting-drawer__title,
+.embed-channel-drawer .setting-drawer__title,
+.api-key-create-drawer .setting-drawer__title {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--td-text-color-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.im-channel-drawer .setting-drawer__subtitle,
+.embed-channel-drawer .setting-drawer__subtitle,
+.api-key-create-drawer .setting-drawer__subtitle {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--td-text-color-secondary);
+}
+
+/* —— footer（SettingDrawer.vue scoped）—— */
+.im-channel-drawer .setting-drawer__footer,
+.embed-channel-drawer .setting-drawer__footer,
+.api-key-create-drawer .setting-drawer__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+}
+
+.im-channel-drawer .setting-drawer__footer-left,
+.embed-channel-drawer .setting-drawer__footer-left,
+.api-key-create-drawer .setting-drawer__footer-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.im-channel-drawer .setting-drawer__footer-right,
+.embed-channel-drawer .setting-drawer__footer-right,
+.api-key-create-drawer .setting-drawer__footer-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+/* —— section + 绿杆标题（SettingDrawer.vue scoped :deep 块）—— */
+.im-channel-drawer .setting-drawer__body .setting-drawer__section,
+.embed-channel-drawer .setting-drawer__body .setting-drawer__section,
+.api-key-create-drawer .setting-drawer__body .setting-drawer__section {
+  padding: 12px 0 16px;
+  border-bottom: 1px solid var(--td-component-stroke);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.im-channel-drawer .setting-drawer__body .setting-drawer__section:first-child {
+  padding-top: 0;
+}
+
+.im-channel-drawer .setting-drawer__body .setting-drawer__section:last-child,
+.embed-channel-drawer .setting-drawer__body .setting-drawer__section:last-child,
+.api-key-create-drawer .setting-drawer__body .setting-drawer__section:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.im-channel-drawer .setting-drawer__body .setting-drawer__section-title,
+.embed-channel-drawer .setting-drawer__body .setting-drawer__section-title,
+.api-key-create-drawer .setting-drawer__body .setting-drawer__section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+  margin: 0 0 4px;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.im-channel-drawer .setting-drawer__body .setting-drawer__section-title::before,
+.embed-channel-drawer .setting-drawer__body .setting-drawer__section-title::before,
+.api-key-create-drawer .setting-drawer__body .setting-drawer__section-title::before {
+  content: '';
+  width: 3px;
+  height: 14px;
+  background: var(--td-brand-color);
+  border-radius: 2px;
+}
+
+/* —— im-steps 圆点步骤条（IMChannelPanel.vue:1123-1187 scoped 平移；类名保留
+   测试 seam .wk-im-step.is-active —— Vue 端同名 .im-steps/.im-step 家族）—— */
+.im-channel-drawer .wk-im-steps {
+  display: flex;
+  gap: 8px;
+  /* Vue：steps 与 section 是 .setting-drawer__body 兄弟（gap 4）+ margin 16；
+     React steps 在 form 内，补 4px 至同一 20px 节奏（浏览器双端实测）。 */
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--td-component-stroke);
+  padding-bottom: 12px;
+}
+
+/* Vue：section 外还有 .im-step-body 包裹，section 是其首子（padding-top 0
+   生效）；React section 在 form 内 steps 之后，同口径去首段 padding-top。 */
+.im-channel-drawer form .setting-drawer__section:first-of-type {
+  padding-top: 0;
+}
+
+.im-channel-drawer .wk-im-step {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--td-text-color-placeholder);
+}
+
+.im-channel-drawer .wk-im-step-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.im-channel-drawer .wk-im-step.is-active {
+  color: var(--td-brand-color);
+  font-weight: 500;
+}
+
+.im-channel-drawer .wk-im-step.is-done {
+  color: var(--td-text-color-secondary);
+  font-weight: 500;
+}
+
+.im-channel-drawer .wk-im-step-num {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid var(--td-component-stroke);
+  color: var(--td-text-color-placeholder);
+  background: transparent;
+}
+
+.im-channel-drawer .wk-im-step.is-active .wk-im-step-num {
+  background: var(--td-brand-color);
+  color: #fff;
+  border-color: var(--td-brand-color);
+}
+
+.im-channel-drawer .wk-im-step.is-done .wk-im-step-num {
+  background: var(--td-bg-color-secondarycontainer);
+  color: var(--td-brand-color);
+  border-color: var(--td-component-stroke);
+}
+
+/* —— form-item/form-label/form-desc（IMChannelPanel.vue:1222-1270 scoped 平移）—— */
+.im-channel-drawer .form-item {
+  margin-bottom: 0;
+}
+
+.im-channel-drawer .form-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--td-text-color-primary);
+  line-height: 1.4;
+}
+
+.im-channel-drawer .form-label.required::after {
+  content: '*';
+  color: var(--td-error-color);
+  margin-left: 4px;
+}
+
+.im-channel-drawer .form-desc {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--td-text-color-placeholder);
+}
+
+.im-channel-drawer .setting-drawer__section.im-drawer__section {
+  gap: 10px;
+  padding: 10px 0 14px;
+}
+
+/* —— header 平台 logo（IMChannelPanel.vue:1465-1473 全局块平移）—— */
+.im-channel-drawer .setting-drawer__header-icon:has(.drawer-platform-icon) {
+  background: var(--td-bg-color-container, #fff);
+  box-shadow: inset 0 0 0 1px var(--td-component-stroke);
+}
+
+.im-channel-drawer .drawer-platform-icon {
+  display: block;
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+}
+
+.im-platform-select-prefix {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+}
+
+/* —— 平台 select：TSelectLike 视觉层 + 原生 select 透明覆盖层 —— */
+.im-platform-select-wrap {
+  position: relative;
+}
+
+.im-platform-select-wrap .im-drawer-native-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+/* —— 绑定智能体原生 select 按 t-select 闭合态度量改造（Vue t-select 实测：
+   高 32px、1px stroke 边框、radius 6、14px 文本、右侧 fake-arrow）—— */
+.im-channel-drawer select.im-drawer-select {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  height: 32px;
+  border: 1px solid var(--td-component-border, var(--td-component-stroke));
+  border-radius: 6px;
+  background-color: var(--td-bg-color-container, #fff);
+  padding: 0 32px 0 12px;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--td-text-color-primary);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='M3.75 5.7998L7.99274 10.0425L12.2361 5.79921' stroke='black' stroke-opacity='0.9' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+}
+
+.im-channel-drawer select.im-drawer-select.is-empty {
+  color: var(--td-text-color-placeholder, rgba(0, 0, 0, 0.4));
+}
+
+.im-channel-drawer select.im-drawer-select:disabled {
+  cursor: not-allowed;
+  background-color: var(--td-bg-color-component-disabled, #eee);
+}
+
+/* B4：新 chrome 下清除旧栈表单卡片（.wk-vi-integration-form-class 的边框/
+   底色/内边距与 Vue SettingDrawer 无卡设计冲突；ImWizardPanel.vue 体直接
+   铺在 drawer body 上）。 */
+.im-channel-drawer .wk-vi-integration-form-class,
+.embed-channel-drawer .wk-vi-integration-form-class {
+  display: block;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  border-width: 0;
+  border-radius: 0;
+  background-color: transparent;
+}
+
+.im-channel-drawer .wk-vi-163 {
+  margin-top: 0 !important;
+}
+
+/* t-input 内层 input 不带边框（边框由 .t-input wrapper 承担，旧 input 规则
+   会造成双框）。 */
+.im-channel-drawer .t-input__inner,
+.embed-channel-drawer .t-input__inner {
+  border: 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
 }

@@ -395,7 +395,8 @@ export function IntegrationsPage({ embedded = false, embedChannels, imChannels, 
     setImStep(0);
     setImNameTouched(false);
     setImWarning('');
-    setImForm({ ...createImWizardForm(), targetAgentId: imForm.targetAgentId });
+    // Vue resetForm (IMChannelPanel.vue:995-1015)：name 预填 defaultChannelName('wecom')。
+    setImForm({ ...createImWizardForm(), targetAgentId: imForm.targetAgentId, name: imPlatformLabel('wecom', locale) });
     setImWizardOpen(true);
   };
   // Vue openDrawer/editChannel: prefill from the channel and keep its name.
@@ -838,7 +839,7 @@ function TButtonLike({ variant = 'outline', theme = 'default', size, disabled, o
   variant?: 'base' | 'outline' | 'text'; theme?: 'default' | 'primary' | 'danger'; size?: 'small'; disabled?: boolean; onClick?: () => void; children?: React.ReactNode; type?: 'button' | 'submit';
 }) {
   return <button type={type} disabled={disabled} onClick={onClick}
-    className={['t-button', `t-button--variant-${variant}`, `t-button--theme-${theme}`, 't-button--shape-rectangle', size === 'small' ? 't-size-s' : '', disabled ? 't-is-disabled' : ''].filter(Boolean).join(' ')}>
+    className={['t-button', `t-button--variant-${variant}`, `t-button--theme-${theme}`, 't-button--shape-rectangle', 'wk-button', size === 'small' ? 't-size-s' : '', disabled ? 't-is-disabled' : ''].filter(Boolean).join(' ')}>
     <span className="t-button__text">{children}</span>
   </button>;
 }
@@ -907,13 +908,19 @@ function TIconLike({ name, size = '16px' }: { name: string; size?: string }) {
 function SettingDrawerChrome({ className, width = '560px', headerIcon, title, subtitle, closeOnOverlayClick = true, onClose, footerLeft, footerRight, bodyChildren }: {
   className?: string; width?: string; headerIcon?: React.ReactNode; title: string; subtitle?: string; closeOnOverlayClick?: boolean; onClose: () => void; footerLeft?: React.ReactNode; footerRight?: React.ReactNode; bodyChildren: React.ReactNode;
 }) {
-  return <div className={'t-drawer t-drawer--right t-drawer--open setting-drawer wk-integration-drawer ' + (className ?? '')} role="dialog" aria-modal="true" aria-label={title} style={{ zIndex: 2500 }}>
+  return <div
+    className={'t-drawer t-drawer--right t-drawer--open setting-drawer ' + (className ?? '')}
+    role="dialog" aria-modal="true" aria-label={title} style={{ zIndex: 2500 }}
+    onClick={(event) => event.stopPropagation()}
+  >
     <div className="t-drawer__mask" onClick={closeOnOverlayClick ? onClose : undefined} />
-    <div className="t-drawer__content-wrapper t-drawer__content-wrapper--right" style={{ width }}>
+    {/* tdesign open 态只置 visibility，滑入位移由组件内联 transform 驱动——
+        同构层直接给 translateX(0) 定格在滑入完成态（截图稳态）。 */}
+    <div className="t-drawer__content-wrapper t-drawer__content-wrapper--right" style={{ width, transform: 'translateX(0)', visibility: 'visible' }}>
       <div className="t-drawer__header">
         <div className="setting-drawer__header-block">
           <div className="setting-drawer__header">
-            <div className="setting-drawer__header-icon">{headerIcon}</div>
+            {headerIcon ? <div className="setting-drawer__header-icon">{headerIcon}</div> : null}
             <div className="setting-drawer__header-text">
               <div className="setting-drawer__title">{title}</div>
               {subtitle ? <div className="setting-drawer__subtitle">{subtitle}</div> : null}
@@ -1097,12 +1104,9 @@ function ChannelListPanel({ variant, copy, locale, items, agents, agentFilter, o
         </div>
       </button> : null}
     </div>
-    {showCreate ? <div className={INTEGRATION_DRAWER_OVERLAY_CLASS} role="presentation" onClick={onToggleCreate}>
-      <aside className={INTEGRATION_DRAWER_CLASS_STEPS} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
-        <button className={INTEGRATION_DRAWER_CLOSE_CLASS} type="button" aria-label={t('common.close')} title={t('common.close')} onClick={onToggleCreate}>×</button>
-        {imCreateSlot ?? embedCreateSlot}
-      </aside>
-    </div> : null}
+    {/* B4：抽屉族换 SettingDrawer t-drawer 同构 chrome（Vue SettingDrawer.vue），
+        槽位自渲染完整抽屉；旧 aside+× 关闭钮随 Vue closeBtn 关闭删除。 */}
+    {showCreate ? imCreateSlot ?? embedCreateSlot : null}
   </div>;
 }
 
@@ -1173,46 +1177,75 @@ function ImWizardPanel({ locale, t, apiBaseUrl, agents = [], knowledgeBases = []
     </label>;
   };
   const bound = form.platform === 'wechat' && isWeChatBound(form.credentials);
-  return <form className={INTEGRATION_FORM_CLASS + ' wk-vi-163'} onSubmit={submit}>
-    {/* Vue drawerTitle (lines 685-690). */}
-    <h3>{isEditing ? (form.name.trim() || t('agentEditor.im.unnamed')) : t('agentEditor.im.addChannel')}</h3>
+  /* B4：Vue SettingDrawer 同构 chrome 化——title/subtitle/headerIcon/footer 由
+     drawer 状态派生（IMChannelPanel.vue:72-96）；body 保留 form 元素与测试
+     seam（form select / .wk-im-step.is-active / .wk-form-actions）。 */
+  const stepTitles = IM_WIZARD_STEPS.map((item) => t(item.titleKey));
+  const platformLogo = platformLogoRenderer ? platformLogoRenderer(form.platform) : null;
+  const isLastStep = step >= IM_WIZARD_STEPS.length - 1;
+  return <SettingDrawerChrome
+    className="im-channel-drawer"
+    width="560px"
+    closeOnOverlayClick
+    onClose={onCancel}
+    headerIcon={platformLogo
+      ? <img src={platformLogo} alt={imPlatformLabel(form.platform, locale)} className="drawer-platform-icon" />
+      : <TIconLike name="chat-message" />}
+    title={isEditing ? (form.name.trim() || t('agentEditor.im.unnamed')) : t('agentEditor.im.addChannel')}
+    subtitle={stepTitles[step] ?? ''}
+    footerLeft={step > 0 ? <TButtonLike variant="outline" onClick={onBack}>{t('integrations.wizard.back')}</TButtonLike> : undefined}
+    footerRight={<div className="wk-form-actions">
+      <TButtonLike variant="outline" onClick={onCancel}>{t('common.cancel')}</TButtonLike>
+      <TButtonLike variant="base" theme="primary" disabled={busy || !canSubmit} onClick={() => { if (isLastStep) onSave(); else onNext(); }}>{isLastStep ? t('common.save') : t('integrations.wizard.next')}</TButtonLike>
+    </div>}
+    bodyChildren={<form className={INTEGRATION_FORM_CLASS} onSubmit={submit}>
     <div className="wk-im-steps" role="list">
       {IM_WIZARD_STEPS.map((item, index) => (
         <span role="listitem" key={item.key} className={step === index ? 'wk-im-step is-active' : step > index ? 'wk-im-step is-done' : 'wk-im-step'}>
-          <span className="wk-im-step-num" aria-hidden="true" style={step > index ? { background: '#eff4ff' } : step === index ? { background: '#2e6de6', color: '#fff', borderColor: '#2e6de6' } : undefined}>{step > index ? '✓' : index + 1}</span>
+          <span className="wk-im-step-num" aria-hidden="true">{step > index ? '✓' : index + 1}</span>
           <span className="wk-im-step-title">{t(item.titleKey)}</span>
         </span>
       ))}
     </div>
     {warning ? <p className="wk-status wk-status-error wk-vi-12" role="alert">{warning}</p> : null}
 
-    {step === 0 ? <fieldset className="wk-im-step-body">
-      <legend className="wk-im-legend">{t('agentEditor.im.sectionChannel')}</legend>
+    {step === 0 ? <section className="setting-drawer__section im-drawer__section">
+      <h4 className="setting-drawer__section-title">{t('agentEditor.im.sectionChannel')}</h4>
       {/* Vue gates the bound agent via validateWizardStep (warning toast), not
           native required validation — keep the same semantics here. */}
-      <label>{t('integrations.boundAgent')}
-        {agents.length > 0
-          ? <select value={form.targetAgentId} onChange={(event) => patch({ targetAgentId: event.target.value })}>
-              <option value="" disabled>{t('integrations.selectAgentPlaceholder')}</option>
-              {agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
-            </select>
-          : <input value={form.targetAgentId} onChange={(event) => patch({ targetAgentId: event.target.value })} placeholder={t('integrations.selectAgentPlaceholder')} />}
-      </label>
-      <label>{t('agentEditor.im.platform')}
-        {/* Vue disables the platform select while editing (line 114). */}
-        <select value={form.platform} disabled={isEditing} onChange={(event) => onPlatformPicked(event.target.value)}>
-          {imPlatformOrder().map((key) => <option key={key} value={key}>{imPlatformLabel(key, locale)}</option>)}
-        </select>
-      </label>
-      <label>{t('agentEditor.im.channelName')}
-        <input value={form.name} onFocus={() => onNameTouched(true)} onChange={(event) => { onNameTouched(true); patch({ name: event.target.value }); }} placeholder={t('agentEditor.im.channelNamePlaceholder')} />
-      </label>
-      {!isEditing ? <p className="wk-muted wk-vi-3">{t('agentEditor.im.channelNameDefaultHint')}</p> : null}
+      <div className="form-item">
+        <label className="form-label required">{t('integrations.boundAgent')}</label>
+        <div className="agent-field-row">
+          {agents.length > 0
+            ? <select className={'im-drawer-select' + (form.targetAgentId ? '' : ' is-empty')} value={form.targetAgentId} onChange={(event) => patch({ targetAgentId: event.target.value })}>
+                <option value="" disabled>{t('integrations.selectAgentPlaceholder')}</option>
+                {agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
+              </select>
+            : <input value={form.targetAgentId} onChange={(event) => patch({ targetAgentId: event.target.value })} placeholder={t('integrations.selectAgentPlaceholder')} />}
+        </div>
+      </div>
+      <div className="form-item">
+        <label className="form-label required">{t('agentEditor.im.platform')}</label>
+        {/* Vue disables the platform select while editing (line 114). 视觉层
+            TSelectLike（t-select 实测 DOM）+ 原生 select 透明覆盖层保功能与
+            测试 seam（form select 首个仍是 agent select）。 */}
+        <div className="im-platform-select-wrap">
+          <TSelectLike value={imPlatformLabel(form.platform, locale)} prefixLogo={platformLogo ?? undefined} prefixAlt={imPlatformLabel(form.platform, locale)} />
+          <select className="im-drawer-native-overlay" value={form.platform} disabled={isEditing} onChange={(event) => onPlatformPicked(event.target.value)} aria-label={t('agentEditor.im.platform')}>
+            {imPlatformOrder().map((key) => <option key={key} value={key}>{imPlatformLabel(key, locale)}</option>)}
+          </select>
+        </div>
+      </div>
+      <div className="form-item">
+        <label className="form-label">{t('agentEditor.im.channelName')}</label>
+        <TInputLike value={form.name} placeholder={t('agentEditor.im.channelNamePlaceholder')} onFocus={() => onNameTouched(true)} onChange={(next) => { onNameTouched(true); patch({ name: next }); }} />
+        {!isEditing ? <p className="form-desc">{t('agentEditor.im.channelNameDefaultHint')}</p> : null}
+      </div>
       {isEditing ? <label className="wk-check-row wk-vi-44">
         <input type="checkbox" checked={editingEnabled} onChange={(event) => onEditingEnabled(event.target.checked)} />
         {t('agentEditor.im.enabled')}
       </label> : null}
-    </fieldset> : null}
+    </section> : null}
 
     {step === 1 ? <div className="wk-im-step-body">
       {/* Vue hides the access section for wechat (fixed longpoll/full, line 149). */}
@@ -1288,12 +1321,7 @@ function ImWizardPanel({ locale, t, apiBaseUrl, agents = [], knowledgeBases = []
       </div>}
     </fieldset> : null}
 
-    <div className="wk-form-actions">
-      {step > 0 ? <button className="wk-button wk-vi-4" type="button" onClick={onBack}>{t('integrations.wizard.back')}</button> : null}
-      <button className="wk-button wk-vi-4" type="submit" disabled={busy || !canSubmit}>{step < IM_WIZARD_STEPS.length - 1 ? t('integrations.wizard.next') : t('common.save')}</button>
-      <button className="wk-button wk-button--text wk-vi-48" type="button" onClick={onCancel}>{t('common.cancel')}</button>
-    </div>
-  </form>;
+    </form>} />;
 }
 
 // The embed wizard drawer (Vue AgentEmbedChannelPanel.vue SettingDrawer,
@@ -1365,9 +1393,23 @@ function EmbedWizardPanel({ t, apiBaseUrl, agents = [], title, form, onForm, onA
   const agentWebSearchEnabled = drawerAgent?.config?.web_search_enabled === true;
   const agentImageUploadEnabled = drawerAgent?.config?.image_upload_enabled === true;
   const secretPlaceholder = hasWebhookSecret ? t('embedPublish.webhookSecretKeep') : t('embedPublish.webhookSecretPlaceholder');
-  return <form className={INTEGRATION_FORM_CLASS + ' wk-embed-wizard wk-vi-163'} onSubmit={submit}>
-    {/* Vue drawerTitle (lines 567-576). */}
-    <h3>{title}</h3>
+  /* B4：embed 抽屉换 SettingDrawer 同构 chrome（Vue AgentEmbedChannelPanel.vue:70，
+     icon=code）；body 结构保持（embed 向导无面板扫描项，功能与测试 seam 不动）。 */
+  const isLastEmbedStep = step >= steps.length - 1;
+  return <SettingDrawerChrome
+    className="embed-channel-drawer"
+    width="560px"
+    closeOnOverlayClick
+    onClose={onCancel}
+    headerIcon={<TIconLike name="code" />}
+    title={title}
+    subtitle={t(steps[step]?.titleKey ?? '')}
+    footerLeft={step > 0 ? <TButtonLike variant="outline" onClick={onBack}>{t('integrations.wizard.back')}</TButtonLike> : undefined}
+    footerRight={canEdit ? <div className="wk-form-actions">
+      <TButtonLike variant="outline" onClick={onCancel}>{t('common.cancel')}</TButtonLike>
+      <TButtonLike variant="base" theme="primary" disabled={busy || !canSubmit} onClick={() => { if (isLastEmbedStep) onSave(); else onNext(); }}>{isLastEmbedStep ? t('common.save') : t('integrations.wizard.next')}</TButtonLike>
+    </div> : undefined}
+    bodyChildren={<form className={INTEGRATION_FORM_CLASS + ' wk-embed-wizard wk-vi-163'} onSubmit={submit}>
     <div className="wk-im-steps" role="list">
       {steps.map((item, index) => (
         <button role="listitem" key={item.key} type="button" className={step === index ? 'wk-embed-step is-active' : step > index ? 'wk-embed-step is-done' : 'wk-embed-step'} onClick={() => onGoTo(index)}>
@@ -1547,12 +1589,7 @@ function EmbedWizardPanel({ t, apiBaseUrl, agents = [], title, form, onForm, onA
       {!token ? <p className="wk-muted wk-vi-3">{t('embedPublish.channelKeyHint')}</p> : null}
     </fieldset> : null}
 
-    {canEdit ? <div className="wk-form-actions">
-      {step > 0 ? <button className="wk-button wk-vi-4" type="button" onClick={onBack}>{t('integrations.wizard.back')}</button> : null}
-      <button className="wk-button wk-vi-4" type="submit" disabled={busy || !canSubmit}>{step < steps.length - 1 ? t('integrations.wizard.next') : t('common.save')}</button>
-      <button className="wk-button wk-button--text wk-vi-48" type="button" onClick={onCancel}>{t('common.cancel')}</button>
-    </div> : null}
-  </form>;
+    </form>} />;
 }
 
 
