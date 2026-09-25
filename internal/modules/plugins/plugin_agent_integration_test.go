@@ -326,14 +326,18 @@ func TestEmptyAndErrorResultsSurfaceAsIs(t *testing.T) {
 	require.Contains(t, empty.Output, "(no text output)")
 	require.NotContains(t, empty.Output, "ok:", "no fabricated payload for an empty result")
 
-	// isError：Success=false，文案为远端原文（如实，不虚构成功）。
+	// 协议级 error 面（OCR R1 F14：替身忠实复刻示例服务的 (nil, err) 错误
+	// 面，不再是 isError=true 的成功结果）：Success=false，文案为远端原文
+	//（经 oauthAwareConnectError 包装但保留原文），如实不虚构成功。
 	failingDef := agentITDescribe(ctx, t, registry, service.ID, "failing_lookup")
 	failed := agentITCall(ctx, t, registry, failingDef.ToolRef, json.RawMessage(`{}`))
 	require.False(t, failed.Success)
 	require.Contains(t, failed.Error, "upstream jira unavailable: 503")
 
-	// 两次调用都真实到达远端（错误是远端工具错误面，非本地拦截）。
-	require.Equal(t, int64(2), remote.Calls())
+	// 两次调用都真实到达远端（错误是远端工具错误面，非本地拦截）。协议级
+	// error 在真实客户端链路上会断连重试一次（mcp_tool.go connectAndCall）
+	// ——错误调用因此计 2 次、合计 3 次；旧的 isError 形态不重试合计 2 次。
+	require.GreaterOrEqual(t, remote.Calls(), int64(2), "both calls reach the remote (the error call retries once over a fresh connection)")
 	require.Zero(t, remote.WriteCalls())
 }
 

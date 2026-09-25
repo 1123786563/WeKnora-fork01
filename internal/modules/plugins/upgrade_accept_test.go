@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -373,10 +374,11 @@ func TestAcceptUpgradeSwitchesSnapshotAndEndpoint(t *testing.T) {
 }
 
 // TestAcceptUpgradeIdempotentAndFingerprintGuard（计划 Step 1 用例 2）：
-//   a) 同 fingerprint 二次接受 → 成功返回、零写入（安装行深比较不变、
-//      UpdateInstallationAccepted 不再被调、物化服务不再 Update、策略行数不变）；
-//   b) 远端已再变（清单切 v3）后持旧 v2 指纹接受 → "candidate changed since
-//      preview" 拒绝且安装行/物化服务全部字段不变。
+//
+//	a) 同 fingerprint 二次接受 → 成功返回、零写入（安装行深比较不变、
+//	   UpdateInstallationAccepted 不再被调、物化服务不再 Update、策略行数不变）；
+//	b) 远端已再变（清单切 v3）后持旧 v2 指纹接受 → "candidate changed since
+//	   preview" 拒绝且安装行/物化服务全部字段不变。
 func TestAcceptUpgradeIdempotentAndFingerprintGuard(t *testing.T) {
 	const tenantID = uint64(9)
 	ctx := context.Background()
@@ -431,11 +433,12 @@ func TestAcceptUpgradeIdempotentAndFingerprintGuard(t *testing.T) {
 }
 
 // TestAcceptUpgradeFailureKeepsOldVersion（计划 Step 1 用例 3）：
-//   a) 远端不可达（清单 host 下线）→ 抓取失败、零写入、旧目录仍由守卫供给；
-//   b) 物化 URL 切换失败（第 1 次 Update 注入故障）→ 补偿回写保旧版：
-//      安装行回 v1、物化 URL 回 v1、守卫目录回 v1；
-//   c) 策略行写入失败（upsertErr 注入）→ 补偿回写保旧版（服务 URL 与
-//      安装行双双回 v1）。
+//
+//	a) 远端不可达（清单 host 下线）→ 抓取失败、零写入、旧目录仍由守卫供给；
+//	b) 物化 URL 切换失败（第 1 次 Update 注入故障）→ 补偿回写保旧版：
+//	   安装行回 v1、物化 URL 回 v1、守卫目录回 v1；
+//	c) 策略行写入失败（upsertErr 注入）→ 补偿回写保旧版（服务 URL 与
+//	   安装行双双回 v1）。
 func TestAcceptUpgradeFailureKeepsOldVersion(t *testing.T) {
 	const tenantID = uint64(9)
 	ctx := context.Background()
@@ -685,4 +688,31 @@ func TestAcceptUpgradeConcurrentSameInstallationSerializes(t *testing.T) {
 		"a concurrent accept of the SAME installation must make no progress while another accept is mid-flight (T16-OCR2-F1)")
 	require.NoError(t, <-bDone, "B completes once A has returned and released the serialization")
 	require.Equal(t, "2.0.0", s.innerRepo.installations[0].AcceptedVersion, "B's accept lands the upgrade")
+}
+
+// TestUpgradeCandidateEndpointLengthBounded（OCR R1 F45）：升级候选端点直
+// 接进入 endpoint_url（varchar(512)）与物化服务 URL——远端清单声明 >512
+// rune 且可正常解析的端点必须在指纹守卫前后、任何写入前被确定性拒绝
+// （ErrPluginVerifyFailed → 400），而非 PG 首写 value too long 被误报 500
+// 或 SQLite 静默落库越界数据。PreviewUpgrade 同口径。
+func TestUpgradeCandidateEndpointLengthBounded(t *testing.T) {
+	const tenantID = uint64(9)
+	s := newUpgradeAcceptStack(t, tenantID)
+
+	// v2 清单改写 transport.endpoint 为超长声明（scheme/host 合法，仅
+	// path 超长——url.Parse 成功，ValidateManifest 只查 scheme/host）。
+	v2Manifest, err := marshalManifest(s.remoteV2)
+	require.NoError(t, err)
+	var doc map[string]any
+	require.NoError(t, json.Unmarshal([]byte(v2Manifest), &doc))
+	transport, _ := doc["transport"].(map[string]any)
+	require.NotNil(t, transport, "manifest must carry a transport block")
+	transport["endpoint"] = "https://jira.example.com/" + strings.Repeat("a", 600)
+	rewritten, err := json.Marshal(doc)
+	require.NoError(t, err)
+	*s.manifestNext = rewritten
+
+	_, err = s.svc.PreviewUpgrade(context.Background(), tenantID, s.inst.ID)
+	require.ErrorIs(t, err, service.ErrPluginVerifyFailed, "oversized candidate endpoint must be a deterministic 4xx verdict, not a persistence fault")
+	require.Contains(t, err.Error(), "exceeds", "the rejection must name the length bound")
 }

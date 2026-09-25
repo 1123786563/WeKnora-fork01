@@ -62,7 +62,7 @@ type driftWrite struct {
 // 全部调用供断言。
 type driftRepo struct {
 	*upgradeAcceptRepo
-	driftWrites     []driftWrite
+	driftWrites    []driftWrite
 	updateDriftErr error
 	// conditionalWrites 记录 UpdateDriftIfToolsDigest 调用（T17-OCR1-F2：
 	// best-effort 置位走基线前校的条件写）；applied 标记条件命中与否。
@@ -267,7 +267,8 @@ func TestDiffLiveAgainstSnapshot(t *testing.T) {
 			{Name: "a", Description: "tool a", InputSchema: json.RawMessage(driftSchemaA2)},
 			{Name: "c", Description: "tool c", InputSchema: json.RawMessage(upgradeV2WriteSchema)},
 		}
-		detail := plugins.DiffLiveAgainstSnapshot(live, snap)
+		detail, err := plugins.DiffLiveAgainstSnapshot(live, snap)
+		require.NoError(t, err)
 		require.NotNil(t, detail)
 		require.Equal(t, []string{"c"}, detail.Added)
 		require.Equal(t, []string{"b"}, detail.Removed)
@@ -282,7 +283,8 @@ func TestDiffLiveAgainstSnapshot(t *testing.T) {
 			{Name: "a", Description: "tool a REWRITTEN", InputSchema: json.RawMessage(driftSchemaA)},
 			{Name: "b", Description: "tool b", InputSchema: json.RawMessage(upgradeV1SearchSchema)},
 		}
-		detail := plugins.DiffLiveAgainstSnapshot(live, snap)
+		detail, err := plugins.DiffLiveAgainstSnapshot(live, snap)
+		require.NoError(t, err)
 		require.NotNil(t, detail)
 		require.Empty(t, detail.Added)
 		require.Empty(t, detail.Removed)
@@ -296,13 +298,51 @@ func TestDiffLiveAgainstSnapshot(t *testing.T) {
 			{Name: "a", Description: "tool a", InputSchema: json.RawMessage(driftSchemaA)},
 			{Name: "b", Description: "tool b", InputSchema: json.RawMessage(upgradeV1SearchSchema)},
 		}
-		detail := plugins.DiffLiveAgainstSnapshot(live, snap)
+		detail, err := plugins.DiffLiveAgainstSnapshot(live, snap)
+		require.NoError(t, err)
 		require.NotNil(t, detail)
 		require.Empty(t, detail.Added)
 		require.Empty(t, detail.Removed)
 		require.Empty(t, detail.SchemaChanged)
 		require.Empty(t, detail.DescriptionChanged)
 		require.False(t, detail.HasDrift())
+	})
+}
+
+// TestDiffLiveAgainstSnapshotGatesUnvettedLiveDirectory（OCR R1 F15）：
+// Diff 是唯一直接消费未受限 live 目录的路径——超限（>1024）、重名、名字
+// 不过卫生规则的目录必须拒绝产出判定（返回 error），不得把恶意端点的海
+// 量名单/重复名 last-wins 持久化进 drift_detail 并回显管理员。
+func TestDiffLiveAgainstSnapshotGatesUnvettedLiveDirectory(t *testing.T) {
+	snap := []types.PluginToolSnapshot{
+		{Name: "a", Description: "tool a", InputSchemaDigest: plugins.ToolSchemaDigest([]byte(driftSchemaA))},
+	}
+
+	t.Run("oversized directory is refused", func(t *testing.T) {
+		live := make([]*types.MCPTool, 1025)
+		for i := range live {
+			live[i] = &types.MCPTool{Name: fmt.Sprintf("t%04d", i), InputSchema: json.RawMessage(`{}`)}
+		}
+		detail, err := plugins.DiffLiveAgainstSnapshot(live, snap)
+		require.Error(t, err, "an unvetted oversized directory must not yield a drift verdict")
+		require.Nil(t, detail)
+	})
+
+	t.Run("duplicate live names are refused", func(t *testing.T) {
+		live := []*types.MCPTool{
+			{Name: "dup", InputSchema: json.RawMessage(`{}`)},
+			{Name: "dup", InputSchema: json.RawMessage(`{"x":1}`)},
+		}
+		detail, err := plugins.DiffLiveAgainstSnapshot(live, snap)
+		require.Error(t, err)
+		require.Nil(t, detail)
+	})
+
+	t.Run("unhygienic live name is refused", func(t *testing.T) {
+		live := []*types.MCPTool{{Name: "bad\nname", InputSchema: json.RawMessage(`{}`)}}
+		detail, err := plugins.DiffLiveAgainstSnapshot(live, snap)
+		require.Error(t, err)
+		require.Nil(t, detail)
 	})
 }
 

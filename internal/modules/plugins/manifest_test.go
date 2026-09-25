@@ -277,3 +277,33 @@ func TestValidateManifestParseFailureMasksUserinfo(t *testing.T) {
 	require.NotContains(t, err.Error(), "s3cr3t", "credentials must not leak into the admin-visible error")
 	require.NotContains(t, err.Error(), "ci-bot:", "userinfo identity must not leak into the error")
 }
+
+// TestValidateManifestParseFailureKeepsReasonReadableWithoutUserinfo（OCR R1
+// F12）：无凭据端点（userinfoOf 返回空串）的 parse 失败分支，错误文本必须
+// 保持可读——strings.ReplaceAll(s, "", "REDACTED") 按 Go 语义会在每个 rune
+// 后各插一次 REDACTED，把最常见的坏端口诊断搅成乱码直达管理员 400 响应。
+func TestValidateManifestParseFailureKeepsReasonReadableWithoutUserinfo(t *testing.T) {
+	m := validManifest()
+	m.Transport.Endpoint = "https://jira.example.com:badport/mcp"
+	err := ValidateManifest(m)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "invalid transport endpoint")
+	require.Contains(t, err.Error(), "badport", "the original parse reason must stay readable")
+	require.Equal(t, 0, strings.Count(err.Error(), "REDACTED"),
+		"no userinfo on the endpoint means nothing to redact — empty-string replace must not corrupt the message")
+}
+
+// TestValidateNameRejectsPathSeparators（OCR R1 F16）：含 '/' 或 '%' 的名字
+// 可完整通过现有卫生规则进入快照，但策略端点 /tools/:tool_name/policy 按
+// 单段匹配（%2F 也会被还原），这类工具永不可寻址——逐工具治理被静默架空。
+// 名称里拒绝这两类字符使「快照内工具必然可经策略端点寻址」成为安装时不
+// 变量（同时覆盖 manifest 声明名与 live 目录名——两者共用 validateName）。
+func TestValidateNameRejectsPathSeparators(t *testing.T) {
+	for _, name := range []string{"foo/bar", "foo%2Fbar", "foo%bar", "/"} {
+		m := validManifest()
+		m.Tools[0].Name = name
+		err := ValidateManifest(m)
+		require.Error(t, err, "name %q must be rejected", name)
+		require.Contains(t, err.Error(), "must not contain", "the rejection must name the character class")
+	}
+}

@@ -128,7 +128,14 @@ func markDriftBestEffort(
 		// silent.
 		return
 	}
-	detail := plugins.DiffLiveAgainstSnapshot(live, inst.ToolsSnapshot)
+	detail, err := plugins.DiffLiveAgainstSnapshot(live, inst.ToolsSnapshot)
+	if err != nil {
+		// OCR R1 F15: an unvetted live directory cannot yield a drift
+		// verdict — the best-effort marker stays silent (same posture as the
+		// load-path failure above), never persists unvetted names.
+		logger.GetLogger(ctx).Errorf("plugin drift marker: cannot vet live directory for installation %s: %v", inst.ID, err)
+		return
+	}
 	if !detail.HasDrift() {
 		return
 	}
@@ -1119,6 +1126,15 @@ func (s *pluginService) PreviewUpgrade(
 			ErrPluginVerifyFailed, result.Manifest.PluginID, inst.PluginID)
 	}
 
+	// OCR R1 F45: the candidate endpoint enters the diff served to the admin
+	// (and, on the accept side, endpoint_url varchar(512) + the materialized
+	// service URL). ValidateManifest checks scheme/host but not length —
+	// bound it here so an oversized declaration is the mapped 4xx verdict
+	// instead of a PG value-too-long misreported as 500 on accept.
+	if err := validatePluginURLLength("plugin transport endpoint", result.Manifest.Transport.Endpoint); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrPluginVerifyFailed, err)
+	}
+
 	// Step 4: diff the ACCEPTED snapshot against the freshly verified
 	// candidate snapshot, then stamp the identity/version pair the pure
 	// function cannot know. No write happens anywhere — steps 1-4 are reads.
@@ -1223,6 +1239,16 @@ func (s *pluginService) AcceptUpgrade(
 	if result.IdentityFingerprint != candidateFingerprint {
 		return nil, fmt.Errorf("%w: remote candidate is %q now; run a new upgrade preview",
 			ErrUpgradeCandidateChanged, result.Manifest.Version)
+	}
+
+	// OCR R1 F45: bound the candidate endpoint BEFORE any write — it lands in
+	// endpoint_url (varchar(512)) and the materialized service URL. Without
+	// this a >512-rune declaration passes the fingerprint guard and PG fails
+	// the first write with value-too-long, misreporting deterministic input
+	// as ErrInstallationPersistFailed (500); SQLite would silently store the
+	// oversized value.
+	if err := validatePluginURLLength("plugin transport endpoint", result.Manifest.Transport.Endpoint); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrPluginVerifyFailed, err)
 	}
 
 	candidateVersion := result.Manifest.Version
@@ -1504,7 +1530,15 @@ func (s *pluginService) CheckDrift(
 		return nil, err
 	}
 
-	detail := plugins.DiffLiveAgainstSnapshot(live, inst.ToolsSnapshot)
+	detail, err := plugins.DiffLiveAgainstSnapshot(live, inst.ToolsSnapshot)
+	if err != nil {
+		// OCR R1 F15: the live directory failed the vetting gates (size cap/
+		// duplicates/hygiene) — a drift verdict cannot be minted from it.
+		// Deterministic 4xx (the endpoint's own declaration is the problem),
+		// zero writes.
+		logger.GetLogger(ctx).Errorf("plugin drift check: cannot vet live directory for installation %s: %v", inst.ID, err)
+		return nil, fmt.Errorf("%w: %v", ErrPluginVerifyFailed, err)
+	}
 	state := types.PluginDriftNone
 	var raw json.RawMessage
 	if detail.HasDrift() {

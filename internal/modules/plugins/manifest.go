@@ -55,6 +55,13 @@ const (
 	// (the manifest side is bounded by the 1MiB download cap).
 	maxLiveTools = 1024
 
+	// maxEndpointRunes mirrors the endpoint_url varchar(512) schema bound
+	// (OCR R1 F45): ValidateManifest enforces it so every manifest consumer
+	// rejects oversized endpoints deterministically instead of failing at
+	// the first DB write (PG value-too-long → misreported 500) or silently
+	// storing oversized data on SQLite.
+	maxEndpointRunes = 512
+
 	// maxEchoRunes bounds how much of an untrusted string is echoed back in
 	// a validation error before the remainder collapses into a count — a
 	// hostile manifest can carry near-1MiB fields past the length checks
@@ -157,7 +164,14 @@ func ValidateManifest(m *types.PluginManifest) error {
 			reason = uerr.Err
 		}
 		masked := maskEndpointCredentials(m.Transport.Endpoint)
-		maskedReason := strings.ReplaceAll(reason.Error(), userinfoOf(m.Transport.Endpoint), "REDACTED")
+		maskedReason := reason.Error()
+		// OCR R1 F12: userinfoOf returns "" for credential-free endpoints and
+		// strings.ReplaceAll(s, "", x) inserts x after EVERY rune — guard the
+		// replace so the most common malformed form (a bad port on a clean
+		// URL) keeps a readable message instead of "REDACTEDiREDACTEDn...".
+		if userinfo := userinfoOf(m.Transport.Endpoint); userinfo != "" {
+			maskedReason = strings.ReplaceAll(maskedReason, userinfo, "REDACTED")
+		}
 		return fmt.Errorf("invalid transport endpoint %s: %s", echoQuoted(masked), echoQuoted(maskedReason))
 	}
 	if endpoint.Scheme != "http" && endpoint.Scheme != "https" {
@@ -165,6 +179,15 @@ func ValidateManifest(m *types.PluginManifest) error {
 	}
 	if endpoint.Host == "" {
 		return fmt.Errorf("transport endpoint must include a host")
+	}
+	// OCR R1 F45: the endpoint lands in endpoint_url varchar(512) and the
+	// materialized service URL. Validating here covers EVERY consumer of a
+	// fetched/declared manifest (install preview, upgrade preview, upgrade
+	// accept) before any SSRF probe or write, so an oversized declaration is
+	// a deterministic 4xx (ErrPluginVerifyFailed via FetchAndVerify) rather
+	// than a PG value-too-long misreported as 500.
+	if utf8.RuneCountInString(m.Transport.Endpoint) > maxEndpointRunes {
+		return fmt.Errorf("transport endpoint exceeds %d characters", maxEndpointRunes)
 	}
 	// Reject userinfo-embedded credentials (https://user:pass@host/mcp):
 	// ValidateURLForSSRF never looks at u.User (Hostname() strips it), so
@@ -229,6 +252,16 @@ func validateName(where, name string, maxRunes int) error {
 		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) || unicode.Is(unicode.Co, r) ||
 			unicode.Is(unicode.Zl, r) || unicode.Is(unicode.Zp, r) {
 			return fmt.Errorf("%s must not contain control, format, private-use or line/paragraph separator characters (U+%04X)", where, r)
+		}
+		// OCR R1 F16: '/' and '%' are legal for the general Unicode hygiene
+		// above but break addressability — the per-tool policy endpoint
+		// /tools/:tool_name/policy matches ONE decoded path segment, so a
+		// snapshot tool named "a/b" (or smuggled "a%2Fb") can never be
+		// governed. Rejecting them here makes "every snapshot tool is
+		// addressable through the policy endpoint" an install-time invariant
+		// for both manifest-declared and live directory names.
+		if r == '/' || r == '%' {
+			return fmt.Errorf("%s must not contain path separator or percent characters (/ or %%; U+%04X) — per-tool policy endpoints address tools by a single URL path segment", where, r)
 		}
 	}
 	return nil

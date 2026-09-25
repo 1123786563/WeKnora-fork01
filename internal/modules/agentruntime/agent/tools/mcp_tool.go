@@ -572,6 +572,16 @@ func loadPluginDirectory(
 		)
 		return nil, "", filterErr
 	}
+	// OCR R1 F10: live server instructions are NOT part of the accepted
+	// snapshot baseline (PluginToolSnapshot has no such field) — a plugin
+	// developer can rewrite them AFTER the admin accepted the version,
+	// injecting arbitrary prompts into every member conversation. Same threat
+	// model as the description drift the filter above fail-closes on: plugin
+	// rows (snap != nil) must not pass live instructions through; manual
+	// services (snap == nil) keep them.
+	if snap != nil {
+		instructions = ""
+	}
 	if metadata != nil && metadata.Put != nil {
 		tenant, _ := types.TenantIDFromContext(loadCtx)
 		if persistErr := metadata.Put(loadCtx, tenant, service.ID, filtered, instructions); persistErr != nil {

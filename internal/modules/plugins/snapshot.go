@@ -334,9 +334,19 @@ func sortSnapshotDiff(added, removed []types.PluginToolSnapshot, changed []types
 //     (DescriptionChanged; without it a description-only drift would leave
 //     member conversations blocked while CheckDrift says "none");
 //   - every output list is sorted by name for deterministic serialization;
-//   - a nil detail is never returned — a no-drift comparison yields empty
-//     lists (HasDrift()==false), one shape end to end.
-func DiffLiveAgainstSnapshot(live []*types.MCPTool, snap []types.PluginToolSnapshot) *types.PluginDriftDetail {
+//   - a nil detail is never returned on success — a no-drift comparison
+//     yields empty lists (HasDrift()==false), one shape end to end;
+//   - the UNTRUSTED live directory is vetted first via the same
+//     ValidateLiveDirectoryForRebase gates (size cap, duplicate-name
+//     rejection, identifier hygiene — OCR R1 F15): drift's premise is that
+//     the endpoint may have turned hostile, so an oversized/duplicated/
+//     unhygienic directory yields (nil, err) and the caller treats it as
+//     "cannot produce a drift verdict" instead of persisting unvetted names
+//     into drift_detail.
+func DiffLiveAgainstSnapshot(live []*types.MCPTool, snap []types.PluginToolSnapshot) (*types.PluginDriftDetail, error) {
+	if err := ValidateLiveDirectoryForRebase(live); err != nil {
+		return nil, err
+	}
 	accepted := make(map[string]types.PluginToolSnapshot, len(snap))
 	for _, tool := range snap {
 		accepted[tool.Name] = tool
@@ -381,7 +391,7 @@ func DiffLiveAgainstSnapshot(live []*types.MCPTool, snap []types.PluginToolSnaps
 	sort.Strings(detail.Removed)
 	sort.Strings(detail.SchemaChanged)
 	sort.Strings(detail.DescriptionChanged)
-	return detail
+	return detail, nil
 }
 
 // ValidateLiveDirectoryForRebase vets an UNTRUSTED live directory before
