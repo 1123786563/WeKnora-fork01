@@ -745,3 +745,165 @@ test('submission client refuses blank identifiers, mismatched version markers an
  assert.equal(decoded.versionConfirmed, false)
  assert.equal('boundVersion' in decoded, false)
 })
+
+// T22 whole-space lifecycle (internal/modules/career/career_export.go): the
+// export package travels inline with a sha256 digest, and the deletion
+// receipt is only "deleted" when every step is done — a partial failure keeps
+// a recoverable state and never claims complete deletion. The boundary view
+// explains in-space deletions vs non-revocable external platform data and
+// the disclosed retention rows before any deletion executes.
+const lifecycleTs = '2026-09-25T10:30:00Z'
+const exportedFact = (key: string) => ({ key, value: `${key}值`, revision: 2, source: { kind: 'user', label: '本人确认' }, confirmation: { userId: 'owner-1', confirmedAt: lifecycleTs }, confirmedAt: lifecycleTs })
+const exportedProgressEvent = { eventId: 'evt-1', applicationId: 'app-1', seq: 1, eventType: 'submitted', note: '官网已投', occurredAt: lifecycleTs, source: { kind: 'user' }, confirmer: 'owner-1' }
+const exportReceipt = (extra: Record<string, unknown> = {}) => ({
+ kind: 'career_exported', requestId: 'exp-req /1', exportId: 'exp-1', revision: 4, status: 'complete', digest: 'a'.repeat(64), createdAt: lifecycleTs,
+ archive: {
+  profile: { revision: 4, facts: [exportedFact('学历')], proposals: [] },
+  factHistory: [exportedFact('学历'), exportedFact('毕业时间')],
+  opportunities: [{ opportunityId: 'opp /1', snapshots: [{ snapshotId: 'snap-1', status: 'needs_review', rawText: 'JD 原文', acquiredAt: lifecycleTs }] }],
+  applications: [{ applicationId: 'app-1', opportunityId: 'opp /1', snapshotId: 'snap-1', batchIdentity: 'batch-1', taskId: 'task-9', progressEvents: [exportedProgressEvent] }],
+  materials: [{ materialId: 'mat-1', opportunityId: 'opp /1', status: 'confirmed', versions: [{ version: 3, requestId: 'confirm-1', versionBody: '正文', createdAt: lifecycleTs }] }],
+  submissions: [{ submissionId: 'sub-1', applicationId: 'app-1', channel: 'web', occurredAt: lifecycleTs, versionConfirmed: true, materialId: 'mat-1', exportId: 'exp-1', version: 3, contentDigest: 'b'.repeat(64), note: '官网已投', confirmer: 'owner-1', createdAt: lifecycleTs }],
+ }, ...extra,
+})
+const boundaryView = () => ({
+ inSpace: [
+  { section: 'profile', description: '已确认的档案事实与待处理提案', count: 2 },
+  { section: 'materials', description: '材料草稿', count: 1 },
+ ],
+ external: [{ item: 'external_platform_submissions', description: '你在外部招聘平台完成的投递、沟通与账号操作不在本空间控制范围内，本系统无法撤回或修改。', revocable: false }],
+ retention: [{ holder: 'career_data_deletions', reason: '删除审计与可恢复状态（法定/技术保留）', status: 'retained' }],
+})
+const deletionSteps = () => ([
+ { name: 'revoke_material_exports', status: 'done' },
+ { name: 'purge_career_data', status: 'done' },
+ { name: 'remove_workbench_tasks', status: 'done' },
+ { name: 'finalize', status: 'done' },
+])
+const deletionReceipt = (extra: Record<string, unknown> = {}) => ({
+ kind: 'career_deleted', requestId: 'del-req /1', status: 'deleted', steps: deletionSteps(),
+ retention: [{ holder: 'career_data_deletions', reason: '删除审计与可恢复状态（法定/技术保留）', status: 'retained' }],
+ revision: 5, startedAt: lifecycleTs, completedAt: lifecycleTs, ...extra,
+})
+
+test('career lifecycle client encodes export, boundary, deletion and both receipt recoveries', async () => {
+ const calls: Array<{ method: string; path: string; body?: unknown }> = []
+ const api = createCareerApi(async (input) => {
+  calls.push({ method: input.method, path: input.path, ...(input.body !== undefined ? { body: input.body } : {}) })
+  if (input.path === '/api/v1/career/exports' || input.path.includes('/exports/receipt?')) return exportReceipt()
+  if (input.path === '/api/v1/career/deletions/boundary') return boundaryView()
+  return deletionReceipt()
+ })
+ assert.deepEqual(await api.exportCareer({ requestId: 'exp-req /1', expectedRevision: 4 }), exportReceipt())
+ assert.deepEqual(await api.careerExportReceipt('exp-req /1'), exportReceipt())
+ assert.deepEqual(await api.careerDeletionBoundary(), boundaryView())
+ assert.deepEqual(await api.deleteCareer({ requestId: 'del-req /1', expectedRevision: 4 }), deletionReceipt())
+ assert.deepEqual(await api.careerDeletionReceipt('del-req /1'), deletionReceipt())
+ assert.deepEqual(calls, [
+  { method: 'POST', path: '/api/v1/career/exports', body: { requestId: 'exp-req /1', expectedRevision: 4 } },
+  { method: 'GET', path: '/api/v1/career/exports/receipt?requestId=exp-req%20%2F1' },
+  { method: 'GET', path: '/api/v1/career/deletions/boundary' },
+  { method: 'POST', path: '/api/v1/career/deletions', body: { requestId: 'del-req /1', expectedRevision: 4 } },
+  { method: 'GET', path: '/api/v1/career/deletions/receipt?requestId=del-req%20%2F1' },
+ ])
+ // The inline archive keeps its frozen sections: profile, original job
+ // snapshots, application progress events, material versions and
+ // submission records.
+ const decoded = await api.careerExportReceipt('exp-req /1')
+ assert.equal(decoded.archive.profile.facts.length, 1)
+ assert.equal(decoded.archive.factHistory.length, 2)
+ assert.equal(decoded.archive.opportunities[0]?.snapshots.length, 1)
+ assert.equal(decoded.archive.applications[0]?.progressEvents.length, 1)
+ assert.equal(decoded.archive.materials[0]?.versions.length, 1)
+ assert.equal(decoded.archive.submissions.length, 1)
+ assert.equal(decoded.archive.applications[0]?.taskId, 'task-9')
+})
+
+test('career lifecycle client refuses blank identifiers, bad revisions and invented export payloads', async () => {
+ const refusing = createCareerApi(async () => { throw new Error('must not send invalid request') })
+ await assert.rejects(refusing.exportCareer({ requestId: ' ', expectedRevision: 0 }), /requestId/)
+ await assert.rejects(refusing.exportCareer({ requestId: 'e-1', expectedRevision: -1 }), /revision/)
+ await assert.rejects(refusing.careerExportReceipt(' '), /requestId/)
+ await assert.rejects(refusing.deleteCareer({ requestId: ' ', expectedRevision: 0 }), /requestId/)
+ await assert.rejects(refusing.deleteCareer({ requestId: 'd-1', expectedRevision: 1.5 }), /revision/)
+ await assert.rejects(refusing.careerDeletionReceipt(' '), /requestId/)
+ const exported = exportReceipt()
+ const exportInventors: Array<Record<string, unknown>> = [
+  { ...exported, kind: 'career_deleting' },
+  { ...exported, status: 'preparing' },
+  { ...exported, digest: 'not-a-digest' },
+  { ...exported, exportId: ' ' },
+  { ...exported, requestId: '' },
+  { ...exported, revision: -1 },
+  { ...exported, createdAt: 'soon' },
+  { ...exported, archive: 'missing' },
+  { ...exported, archive: { ...exported.archive, opportunities: 'none' } },
+  { ...exported, archive: { ...exported.archive, opportunities: [{ opportunityId: ' ', snapshots: [] }] } },
+  { ...exported, archive: { ...exported.archive, opportunities: [{ opportunityId: 'opp /1', snapshots: [{ snapshotId: 'snap-1', status: 'needs_review', rawText: 'JD', acquiredAt: 'whenever' }] }] } },
+  { ...exported, archive: { ...exported.archive, applications: [{ ...exported.archive.applications[0], progressEvents: [{ ...exportedProgressEvent, seq: 0 }] }] } },
+  { ...exported, archive: { ...exported.archive, applications: [{ ...exported.archive.applications[0], progressEvents: [{ ...exportedProgressEvent, eventId: ' ' }] }] } },
+  { ...exported, archive: { ...exported.archive, materials: [{ ...exported.archive.materials[0], versions: [{ version: 0, versionBody: '正文', createdAt: lifecycleTs }] }] } },
+  { ...exported, archive: { ...exported.archive, materials: [{ ...exported.archive.materials[0], materialId: ' ' }] } },
+  { ...exported, archive: { ...exported.archive, submissions: [{ ...exported.archive.submissions[0], contentDigest: 'not-a-digest' }] } },
+  { ...exported, archive: { ...exported.archive, profile: { ...exported.archive.profile, facts: [{ ...exportedFact('学历'), confirmedAt: 'nope' }] } } },
+  { ...exported, archive: { ...exported.archive, profile: { ...exported.archive.profile, facts: [{ ...exportedFact('学历'), source: { kind: '' } }] } } },
+  { ...exported, archive: { ...exported.archive, factHistory: [{ ...exportedFact('学历'), confirmation: { userId: ' ', confirmedAt: lifecycleTs } }] } },
+ ]
+ for (const payload of exportInventors) {
+  const api = createCareerApi(async () => payload)
+  await assert.rejects(api.careerExportReceipt('exp-req /1'), TypeError)
+ }
+})
+
+test('deletion decoders keep the truthful status contract: deleted means every step done, partial keeps a failed step', async () => {
+ // A receipt claiming "deleted" while a step failed — or "partial" without
+ // any failed step — is an invented payload and never reaches the UI.
+ const deletionInventors: Array<Record<string, unknown>> = [
+  { ...deletionReceipt(), kind: 'career_export' },
+  { ...deletionReceipt(), status: 'mostly_deleted' },
+  { ...deletionReceipt(), status: 'deleted', steps: deletionSteps().map((step, index) => index === 1 ? { ...step, status: 'failed' } : step) },
+  { ...deletionReceipt(), status: 'deleted', steps: deletionSteps().map((step, index) => index === 3 ? { ...step, status: 'pending' } : step) },
+  { ...deletionReceipt(), status: 'deleted', completedAt: undefined },
+  { ...deletionReceipt(), status: 'partial' },
+  { ...deletionReceipt(), status: 'partial', steps: deletionSteps() },
+  { ...deletionReceipt(), status: 'partial', completedAt: lifecycleTs },
+  { ...deletionReceipt(), steps: deletionSteps().map((step) => ({ ...step, name: 'format_disk' })) },
+  { ...deletionReceipt(), startedAt: 'whenever' },
+  { ...deletionReceipt(), revision: -1 },
+  { ...deletionReceipt(), retention: [{ holder: 'career_data_deletions', reason: '删除审计与可恢复状态（法定/技术保留）', status: 'purged' }] },
+  { ...deletionReceipt(), steps: deletionSteps(), status: 'deleting', completedAt: lifecycleTs },
+ ]
+ for (const payload of deletionInventors) {
+  const api = createCareerApi(async () => payload)
+  await assert.rejects(api.careerDeletionReceipt('del-req /1'), TypeError)
+ }
+ // A truthful partial receipt decodes with its failed step and detail.
+ const partial = deletionReceipt({ status: 'partial', completedAt: undefined, steps: deletionSteps().map((step, index) => index === 2 ? { ...step, status: 'failed', detail: 'workbench remover unavailable' } : step) })
+ const partialApi = createCareerApi(async () => partial)
+ const decodedPartial = await partialApi.careerDeletionReceipt('del-req /1')
+ assert.equal(decodedPartial.status, 'partial')
+ assert.equal(decodedPartial.steps[2]?.detail, 'workbench remover unavailable')
+ assert.equal('completedAt' in decodedPartial, false)
+})
+
+test('deletion boundary decoder presents in-space sections, non-revocable external data and retained rows', async () => {
+ const inventors: Array<Record<string, unknown>> = [
+  { ...boundaryView(), inSpace: 'none' },
+  { ...boundaryView(), inSpace: [{ section: 'profile', description: '已确认的档案事实与待处理提案', count: -1 }] },
+  { ...boundaryView(), inSpace: [{ section: ' ', description: '已确认的档案事实与待处理提案', count: 1 }] },
+  { ...boundaryView(), external: [{ item: 'external_platform_submissions', description: '描述', revocable: 'no' }] },
+  { ...boundaryView(), external: [{ item: ' ', description: '描述', revocable: false }] },
+  { ...boundaryView(), retention: [{ holder: 'career_data_deletions', reason: '删除审计', status: 'maybe' }] },
+  { inSpace: [] },
+  { external: [] },
+ ]
+ for (const payload of inventors) {
+  const api = createCareerApi(async () => payload)
+  await assert.rejects(api.careerDeletionBoundary(), TypeError)
+ }
+ const api = createCareerApi(async () => boundaryView())
+ const decoded = await api.careerDeletionBoundary()
+ assert.equal(decoded.external[0]?.revocable, false)
+ assert.equal(decoded.retention[0]?.status, 'retained')
+ assert.equal(decoded.inSpace[0]?.count, 2)
+})

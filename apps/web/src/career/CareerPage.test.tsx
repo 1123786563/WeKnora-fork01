@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
+import * as nodeModule from 'node:module'
 import test, { afterEach } from 'node:test'
 import * as React from 'react'
 import { act } from 'react'
@@ -7,6 +8,11 @@ import type { Root } from 'react-dom/client'
 import { createScopeController } from '@weknora/domain/scope'
 import type { WeKnoraClient } from '@weknora/api-client'
 import type { CareerAction, CareerReceipt, CareerView } from '../../../../packages/career-core/src/contracts.ts'
+
+// CareerPage now mounts the T22 export/deletion surface, which carries its
+// own stylesheet; resolve .css imports to a stub like the sibling page tests.
+const hooks = nodeModule as typeof nodeModule & { registerHooks?: (hooks: { resolve: (specifier: string, context: unknown, nextResolve: (specifier: string, context: unknown) => unknown) => unknown }) => void }
+if (hooks.registerHooks) hooks.registerHooks({ resolve: (specifier, context, nextResolve) => specifier.endsWith('.css') ? { shortCircuit: true, url: 'data:text/javascript,export default "stub"' } : nextResolve(specifier, context) })
 
 const { JSDOM } = createRequire(import.meta.url)('jsdom') as { JSDOM: new (html: string, options: { url: string }) => { window: Window & typeof globalThis } }
 const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://weknora.test/platform/career' })

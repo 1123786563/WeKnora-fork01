@@ -1,4 +1,4 @@
-import type { CareerAction, CareerChangeSet, CareerDocumentSource, CareerReceipt, CareerUpload, CareerView, Evaluation, EvaluationReceipt, OpportunityEvidence, OpportunityImportInput, OpportunityReceipt, OpportunitySource, OpportunityStatus } from '../../career-core/src/contracts.ts'
+import type { CareerAction, CareerChangeSet, CareerDocumentSource, CareerFact, CareerProposal, CareerReceipt, CareerSource, CareerUpload, CareerView, Evaluation, EvaluationReceipt, OpportunityEvidence, OpportunityImportInput, OpportunityReceipt, OpportunitySource, OpportunityStatus } from '../../career-core/src/contracts.ts'
 import { decodeCareerReceipt, decodeCareerSources, decodeCareerUpload, decodeEvaluation, decodeEvaluationReceipt, decodeOpportunityReceipt } from '../../career-core/src/contracts.ts'
 import type { ClientRequest } from './client.ts'
 
@@ -724,6 +724,174 @@ export function decodeSubmissionList(value: unknown): SubmissionList {
  return { submissions }
 }
 
+// Frozen whole-space lifecycle contract owned by the career backend (T22,
+// internal/modules/career/career_export.go). The export package travels
+// inline (synchronous export) with a sha256 digest over the frozen archive;
+// the deletion receipt only reports "deleted" after every step succeeded —
+// partial failures keep a recoverable state under the same request ID and
+// never claim complete deletion. The boundary view is the pre-deletion
+// explanation: in-space sections the system can delete, external platform
+// data it can never revoke, and the disclosed retention rows. Decoders
+// reject invented kinds, statuses, step names or archives before they reach
+// the UI.
+export type CareerExportStatus = 'complete'
+export type CareerDeletionStatus = 'deleting' | 'partial' | 'deleted'
+export type CareerDeletionStepStatus = 'pending' | 'done' | 'failed'
+export type CareerDeletionStepName = 'revoke_material_exports' | 'purge_career_data' | 'remove_workbench_tasks' | 'finalize'
+export type CareerRetentionStatus = 'retained'
+export type CareerRetentionItem = { holder: string; reason: string; status: CareerRetentionStatus }
+export type CareerExternalBoundaryItem = { item: string; description: string; revocable: boolean }
+export type CareerDeletionSection = { section: string; description: string; count: number }
+export type CareerDeletionBoundaryView = { inSpace: CareerDeletionSection[]; external: CareerExternalBoundaryItem[]; retention: CareerRetentionItem[] }
+export type CareerDeletionStep = { name: CareerDeletionStepName; status: CareerDeletionStepStatus; detail?: string }
+export type CareerDeletionReceipt = { kind: 'career_deleted'; requestId: string; status: CareerDeletionStatus; steps: CareerDeletionStep[]; retention: CareerRetentionItem[]; revision: number; startedAt: string; completedAt?: string }
+export type CareerExportInput = { requestId: string; expectedRevision: number }
+export type CareerDeletionInput = { requestId: string; expectedRevision: number }
+export type CareerExportSnapshot = { snapshotId: string; status: string; rawText: string; acquiredAt: string }
+export type CareerExportOpportunity = { opportunityId: string; snapshots: CareerExportSnapshot[] }
+export type CareerExportProgressEvent = { eventId: string; applicationId: string; seq: number; eventType: string; note?: string; occurredAt: string; correctsEventId?: string; source: CareerSource; confirmer: string }
+export type CareerExportApplication = { applicationId: string; opportunityId: string; snapshotId: string; batchIdentity: string; taskId?: string; progressEvents: CareerExportProgressEvent[] }
+export type CareerExportMaterialVersion = { version: number; requestId?: string; versionBody: string; createdAt: string }
+export type CareerExportMaterial = { materialId: string; opportunityId: string; status: string; versions: CareerExportMaterialVersion[] }
+export type CareerExportSubmission = { submissionId: string; applicationId: string; channel: string; occurredAt: string; versionConfirmed: boolean; materialId?: string; exportId?: string; version?: number; contentDigest?: string; note?: string; confirmer: string; createdAt: string }
+export type CareerExportArchive = { profile: CareerView; factHistory: CareerFact[]; opportunities: CareerExportOpportunity[]; applications: CareerExportApplication[]; materials: CareerExportMaterial[]; submissions: CareerExportSubmission[] }
+export type CareerExportReceipt = { kind: 'career_exported'; requestId: string; exportId: string; revision: number; status: CareerExportStatus; digest: string; archive: CareerExportArchive; createdAt: string }
+
+const careerExportStatuses: CareerExportStatus[] = ['complete']
+const careerDeletionStatuses: CareerDeletionStatus[] = ['deleting', 'partial', 'deleted']
+const careerDeletionStepStatuses: CareerDeletionStepStatus[] = ['pending', 'done', 'failed']
+const careerDeletionStepNames: CareerDeletionStepName[] = ['revoke_material_exports', 'purge_career_data', 'remove_workbench_tasks', 'finalize']
+const careerRetentionStatuses: CareerRetentionStatus[] = ['retained']
+const careerProposalStatuses = ['pending', 'confirmed', 'dismissed']
+
+// The exported profile reuses the career-core fact/proposal shapes; the
+// archive decoder re-validates them so a truncated or invented archive never
+// reaches the UI even though open()/list() cast their views.
+function decodeExportedSource(value: unknown): CareerSource {
+ const record = decodeRecord(value, 'invalid exported source')
+ if (typeof record.kind !== 'string' || !record.kind.trim() || !validOptionalString(record.label) || !validOptionalString(record.referenceId)) throw new TypeError('invalid exported source')
+ return { kind: record.kind, ...(typeof record.label === 'string' ? { label: record.label } : {}), ...(typeof record.referenceId === 'string' ? { referenceId: record.referenceId } : {}) }
+}
+
+function decodeExportedConfirmation(value: unknown): { userId: string; confirmedAt: string } {
+ const record = decodeRecord(value, 'invalid exported confirmation')
+ if (typeof record.userId !== 'string' || !record.userId.trim() || !validTimestamp(record.confirmedAt)) throw new TypeError('invalid exported confirmation')
+ return { userId: record.userId, confirmedAt: record.confirmedAt }
+}
+
+function decodeExportedFact(value: unknown): CareerFact {
+ const record = decodeRecord(value, 'invalid exported fact')
+ if (typeof record.key !== 'string' || !record.key.trim() || typeof record.value !== 'string' || !validRevision(record.revision) || !validTimestamp(record.confirmedAt)) throw new TypeError('invalid exported fact')
+ return { key: record.key, value: record.value, revision: record.revision, source: decodeExportedSource(record.source), confirmation: decodeExportedConfirmation(record.confirmation), confirmedAt: record.confirmedAt }
+}
+
+function decodeExportedProposal(value: unknown): CareerProposal {
+ const record = decodeRecord(value, 'invalid exported proposal')
+ if (typeof record.id !== 'string' || !record.id.trim() || typeof record.key !== 'string' || !record.key.trim() || typeof record.value !== 'string'
+  || !careerProposalStatuses.includes(record.status as CareerProposal['status']) || !validTimestamp(record.createdAt) || !validOptionalString(record.evidence)) throw new TypeError('invalid exported proposal')
+ const confirmation = record.confirmation === undefined ? undefined : decodeExportedConfirmation(record.confirmation)
+ const resolutionSource = record.resolutionSource === undefined ? undefined : decodeExportedSource(record.resolutionSource)
+ return { id: record.id, key: record.key, value: record.value, ...(typeof record.evidence === 'string' ? { evidence: record.evidence } : {}), source: decodeExportedSource(record.source), status: record.status as CareerProposal['status'], ...(validRevision(record.revision) ? { revision: record.revision } : {}), ...(confirmation ? { confirmation } : {}), ...(resolutionSource ? { resolutionSource } : {}), createdAt: record.createdAt }
+}
+
+function decodeExportedProfile(value: unknown): CareerView {
+ const record = decodeRecord(value, 'invalid exported profile')
+ if (!Array.isArray(record.facts) || !Array.isArray(record.proposals) || !validRevision(record.revision)) throw new TypeError('invalid exported profile')
+ return { revision: record.revision, facts: record.facts.map(decodeExportedFact), proposals: record.proposals.map(decodeExportedProposal) }
+}
+
+export function decodeCareerExportReceipt(value: unknown): CareerExportReceipt {
+ const record = decodeRecord(value, 'invalid career export receipt')
+ if (record.kind !== 'career_exported' || !validIdentifier(record.requestId) || !validIdentifier(record.exportId) || !validRevision(record.revision)
+  || !careerExportStatuses.includes(record.status as CareerExportStatus) || typeof record.digest !== 'string' || !sha256Hex.test(record.digest) || !validTimestamp(record.createdAt)) throw new TypeError('invalid career export receipt')
+ const archiveRecord = decodeRecord(record.archive, 'invalid career export archive')
+ if (!Array.isArray(archiveRecord.factHistory) || !Array.isArray(archiveRecord.opportunities) || !Array.isArray(archiveRecord.applications) || !Array.isArray(archiveRecord.materials) || !Array.isArray(archiveRecord.submissions)) throw new TypeError('invalid career export archive')
+ const opportunities = archiveRecord.opportunities.map((item) => {
+  const row = decodeRecord(item, 'invalid exported opportunity')
+  if (!validIdentifier(row.opportunityId) || !Array.isArray(row.snapshots)) throw new TypeError('invalid exported opportunity')
+  return { opportunityId: row.opportunityId, snapshots: row.snapshots.map((snapshot) => {
+   const snap = decodeRecord(snapshot, 'invalid exported snapshot')
+   if (!validIdentifier(snap.snapshotId) || typeof snap.status !== 'string' || !snap.status.trim() || typeof snap.rawText !== 'string' || !validTimestamp(snap.acquiredAt)) throw new TypeError('invalid exported snapshot')
+   return { snapshotId: snap.snapshotId, status: snap.status, rawText: snap.rawText, acquiredAt: snap.acquiredAt }
+  }) }
+ })
+ const applications = archiveRecord.applications.map((item) => {
+  const row = decodeRecord(item, 'invalid exported application')
+  if (!validIdentifier(row.applicationId) || !validIdentifier(row.opportunityId) || !validIdentifier(row.snapshotId) || !validIdentifier(row.batchIdentity)
+   || (row.taskId !== undefined && !validIdentifier(row.taskId)) || !Array.isArray(row.progressEvents)) throw new TypeError('invalid exported application')
+  return { applicationId: row.applicationId, opportunityId: row.opportunityId, snapshotId: row.snapshotId, batchIdentity: row.batchIdentity, ...(row.taskId !== undefined ? { taskId: row.taskId } : {}), progressEvents: row.progressEvents.map((event) => {
+   const entry = decodeRecord(event, 'invalid exported progress event')
+   if (!validIdentifier(entry.eventId) || !validIdentifier(entry.applicationId) || !validPositiveVersion(entry.seq) || typeof entry.eventType !== 'string' || !entry.eventType.trim()
+    || !validTimestamp(entry.occurredAt) || (entry.correctsEventId !== undefined && !validIdentifier(entry.correctsEventId)) || !validOptionalString(entry.note) || !validIdentifier(entry.confirmer)) throw new TypeError('invalid exported progress event')
+   return { eventId: entry.eventId, applicationId: entry.applicationId, seq: entry.seq, eventType: entry.eventType, ...(typeof entry.note === 'string' ? { note: entry.note } : {}), occurredAt: entry.occurredAt, ...(entry.correctsEventId !== undefined ? { correctsEventId: entry.correctsEventId } : {}), source: decodeExportedSource(entry.source), confirmer: entry.confirmer }
+  }) }
+ })
+ const materials = archiveRecord.materials.map((item) => {
+  const row = decodeRecord(item, 'invalid exported material')
+  if (!validIdentifier(row.materialId) || !validIdentifier(row.opportunityId) || typeof row.status !== 'string' || !row.status.trim() || !Array.isArray(row.versions)) throw new TypeError('invalid exported material')
+  return { materialId: row.materialId, opportunityId: row.opportunityId, status: row.status, versions: row.versions.map((version) => {
+   const entry = decodeRecord(version, 'invalid exported material version')
+   if (!validPositiveVersion(entry.version) || (entry.requestId !== undefined && !validIdentifier(entry.requestId)) || typeof entry.versionBody !== 'string' || !validTimestamp(entry.createdAt)) throw new TypeError('invalid exported material version')
+   return { version: entry.version, ...(entry.requestId !== undefined ? { requestId: entry.requestId } : {}), versionBody: entry.versionBody, createdAt: entry.createdAt }
+  }) }
+ })
+ const submissions = archiveRecord.submissions.map((item) => {
+  const row = decodeRecord(item, 'invalid exported submission')
+  if (!validIdentifier(row.submissionId) || !validIdentifier(row.applicationId) || typeof row.channel !== 'string' || !row.channel.trim() || !validTimestamp(row.occurredAt) || typeof row.versionConfirmed !== 'boolean'
+   || (row.materialId !== undefined && !validIdentifier(row.materialId)) || (row.exportId !== undefined && !validIdentifier(row.exportId)) || (row.version !== undefined && !validPositiveVersion(row.version))
+   || (row.contentDigest !== undefined && (typeof row.contentDigest !== 'string' || !sha256Hex.test(row.contentDigest))) || !validOptionalString(row.note) || !validIdentifier(row.confirmer) || !validTimestamp(row.createdAt)) throw new TypeError('invalid exported submission')
+  return { submissionId: row.submissionId, applicationId: row.applicationId, channel: row.channel, occurredAt: row.occurredAt, versionConfirmed: row.versionConfirmed, ...(row.materialId !== undefined ? { materialId: row.materialId } : {}), ...(row.exportId !== undefined ? { exportId: row.exportId } : {}), ...(row.version !== undefined ? { version: row.version } : {}), ...(row.contentDigest !== undefined ? { contentDigest: row.contentDigest } : {}), ...(typeof row.note === 'string' ? { note: row.note } : {}), confirmer: row.confirmer, createdAt: row.createdAt }
+ })
+ return { kind: 'career_exported', requestId: record.requestId, exportId: record.exportId, revision: record.revision as number, status: record.status as CareerExportStatus, digest: record.digest, archive: { profile: decodeExportedProfile(archiveRecord.profile), factHistory: archiveRecord.factHistory.map(decodeExportedFact), opportunities, applications, materials, submissions }, createdAt: record.createdAt }
+}
+
+function decodeRetentionItems(value: unknown): CareerRetentionItem[] {
+ if (!Array.isArray(value)) throw new TypeError('invalid career retention disclosure')
+ return value.map((item) => {
+  const row = decodeRecord(item, 'invalid career retention item')
+  if (!validIdentifier(row.holder) || typeof row.reason !== 'string' || !row.reason.trim() || !careerRetentionStatuses.includes(row.status as CareerRetentionStatus)) throw new TypeError('invalid career retention item')
+  return { holder: row.holder, reason: row.reason, status: row.status as CareerRetentionStatus }
+ })
+}
+
+export function decodeCareerDeletionBoundary(value: unknown): CareerDeletionBoundaryView {
+ const record = decodeRecord(value, 'invalid career deletion boundary')
+ if (!Array.isArray(record.inSpace) || !Array.isArray(record.external)) throw new TypeError('invalid career deletion boundary')
+ const inSpace = record.inSpace.map((item) => {
+  const row = decodeRecord(item, 'invalid career deletion section')
+  if (!validIdentifier(row.section) || typeof row.description !== 'string' || !row.description.trim() || !Number.isSafeInteger(row.count) || (row.count as number) < 0) throw new TypeError('invalid career deletion section')
+  return { section: row.section, description: row.description, count: row.count as number }
+ })
+ const external = record.external.map((item) => {
+  const row = decodeRecord(item, 'invalid career external boundary item')
+  if (!validIdentifier(row.item) || typeof row.description !== 'string' || !row.description.trim() || typeof row.revocable !== 'boolean') throw new TypeError('invalid career external boundary item')
+  return { item: row.item, description: row.description, revocable: row.revocable }
+ })
+ return { inSpace, external, retention: decodeRetentionItems(record.retention) }
+}
+
+export function decodeCareerDeletionReceipt(value: unknown): CareerDeletionReceipt {
+ const record = decodeRecord(value, 'invalid career deletion receipt')
+ if (record.kind !== 'career_deleted' || !validIdentifier(record.requestId) || !careerDeletionStatuses.includes(record.status as CareerDeletionStatus)
+  || !Array.isArray(record.steps) || !validRevision(record.revision) || !validTimestamp(record.startedAt)) throw new TypeError('invalid career deletion receipt')
+ const steps = record.steps.map((item) => {
+  const row = decodeRecord(item, 'invalid career deletion step')
+  if (!careerDeletionStepNames.includes(row.name as CareerDeletionStepName) || !careerDeletionStepStatuses.includes(row.status as CareerDeletionStepStatus) || !validOptionalString(row.detail)) throw new TypeError('invalid career deletion step')
+  return { name: row.name as CareerDeletionStepName, status: row.status as CareerDeletionStepStatus, ...(typeof row.detail === 'string' ? { detail: row.detail } : {}) }
+ })
+ const status = record.status as CareerDeletionStatus
+ const failed = steps.filter((step) => step.status === 'failed').length
+ const allDone = steps.length > 0 && steps.every((step) => step.status === 'done')
+ // The truthful status contract: only every-step-done may claim "deleted"
+ // (with a completion time), "partial" carries at least one failed step,
+ // and "deleting" is still in flight. Anything else is an invented payload.
+ if ((status === 'deleted') !== allDone) throw new TypeError('invalid career deletion receipt')
+ if (status === 'partial' && failed === 0) throw new TypeError('invalid career deletion receipt')
+ if (status !== 'deleted' && record.completedAt !== undefined) throw new TypeError('invalid career deletion receipt')
+ if (status === 'deleted' && !validTimestamp(record.completedAt)) throw new TypeError('invalid career deletion receipt')
+ return { kind: 'career_deleted', requestId: record.requestId, status, steps, retention: decodeRetentionItems(record.retention), revision: record.revision as number, startedAt: record.startedAt, ...(status === 'deleted' ? { completedAt: record.completedAt as string } : {}) }
+}
+
 
 export function createCareerApi(request: CareerRequest, binaryRequest?: CareerBinaryRequest) {
  return {
@@ -937,6 +1105,31 @@ export function createCareerApi(request: CareerRequest, binaryRequest?: CareerBi
   async submissionReceipt(requestId: string, signal?: AbortSignal): Promise<SubmissionReceipt> {
    if (!requestId.trim()) throw new TypeError('submission receipt requestId must not be empty')
    return decodeSubmissionReceipt(await request({ method: 'GET', path: `/api/v1/career/submissions/receipt?requestId=${encodeURIComponent(requestId)}`, ...(signal ? { signal } : {}) }))
+  },
+  // T22 whole-space lifecycle: export packages, the pre-deletion boundary
+  // explanation and complete deletion. Both writes carry a request ID and
+  // the pinned profile revision; uncertain outcomes are recovered by
+  // replaying the same request ID through the receipt endpoints.
+  async exportCareer(input: CareerExportInput, signal?: AbortSignal): Promise<CareerExportReceipt> {
+   if (!input.requestId.trim()) throw new TypeError('career export requestId must not be empty')
+   if (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0) throw new TypeError('career export expected revision must be a non-negative integer')
+   return decodeCareerExportReceipt(await request({ method: 'POST', path: '/api/v1/career/exports', body: { requestId: input.requestId, expectedRevision: input.expectedRevision }, ...(signal ? { signal } : {}) }))
+  },
+  async careerExportReceipt(requestId: string, signal?: AbortSignal): Promise<CareerExportReceipt> {
+   if (!requestId.trim()) throw new TypeError('career export receipt requestId must not be empty')
+   return decodeCareerExportReceipt(await request({ method: 'GET', path: `/api/v1/career/exports/receipt?requestId=${encodeURIComponent(requestId)}`, ...(signal ? { signal } : {}) }))
+  },
+  async careerDeletionBoundary(signal?: AbortSignal): Promise<CareerDeletionBoundaryView> {
+   return decodeCareerDeletionBoundary(await request({ method: 'GET', path: '/api/v1/career/deletions/boundary', ...(signal ? { signal } : {}) }))
+  },
+  async deleteCareer(input: CareerDeletionInput, signal?: AbortSignal): Promise<CareerDeletionReceipt> {
+   if (!input.requestId.trim()) throw new TypeError('career deletion requestId must not be empty')
+   if (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0) throw new TypeError('career deletion expected revision must be a non-negative integer')
+   return decodeCareerDeletionReceipt(await request({ method: 'POST', path: '/api/v1/career/deletions', body: { requestId: input.requestId, expectedRevision: input.expectedRevision }, ...(signal ? { signal } : {}) }))
+  },
+  async careerDeletionReceipt(requestId: string, signal?: AbortSignal): Promise<CareerDeletionReceipt> {
+   if (!requestId.trim()) throw new TypeError('career deletion receipt requestId must not be empty')
+   return decodeCareerDeletionReceipt(await request({ method: 'GET', path: `/api/v1/career/deletions/receipt?requestId=${encodeURIComponent(requestId)}`, ...(signal ? { signal } : {}) }))
   },
  }
 }
