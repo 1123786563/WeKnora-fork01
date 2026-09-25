@@ -76,6 +76,16 @@ func (c CraftArtifactConfig) withDefaults() CraftArtifactConfig {
 // facts that never happened are never fabricated here.
 type ArtifactEvidenceSource func(ctx context.Context, task craft.Task) craft.ArtifactEvidence
 
+// WebPageLoadProbe supplies T14's externally observed preview facts for one
+// private candidate: whether the controlled preview origin was reachable and
+// whether an actual browser loaded the page. The two facts are independent —
+// a probe that only answered the HTTP request reports reachability and
+// leaves the page load not_run, and no implementation may infer one from the
+// other. Facts that were not observed are reported not_run, never fabricated.
+type WebPageLoadProbe interface {
+	ProbeWebPage(ctx context.Context, scope craft.Scope, candidate craft.Candidate) (reachable, loaded craft.CheckOutcome)
+}
+
 // CraftArtifactService collects one delegation's workspace output into an
 // immutable, run-linked version.
 type CraftArtifactService struct {
@@ -85,6 +95,11 @@ type CraftArtifactService struct {
 	candidates craft.CandidateStore
 	evidence   ArtifactEvidenceSource
 	config     CraftArtifactConfig
+	// drafts owns the Workspace revision fence of the T15 promotion gate.
+	drafts craft.DraftHeadStore
+	// webProbe supplies the externally observed reachability/page-load facts.
+	// Nil leaves both facts not_run and the promotion gate refuses.
+	webProbe WebPageLoadProbe
 }
 
 // RunBoundSandboxArtifactSource identifies the verified generation it reads.
@@ -141,6 +156,139 @@ func NewCraftArtifactServiceWithCandidates(
 type stagedArtifact struct {
 	rel  string
 	data []byte
+}
+
+// WithWebPromotion wires the T15 four-check promotion dependencies: the
+// Workspace draft-head store that owns the revision fence and the externally
+// observed page probe. Both may be nil — promotion then fails closed: a
+// missing draft-head store refuses the whole promotion (the revision fence
+// cannot be verified), and a missing probe leaves both page facts not_run so
+// the gate refuses on the incomplete evidence.
+func (s *CraftArtifactService) WithWebPromotion(drafts craft.DraftHeadStore, probe WebPageLoadProbe) *CraftArtifactService {
+	if s == nil {
+		return s
+	}
+	s.drafts, s.webProbe = drafts, probe
+	return s
+}
+
+// PromoteWebVersion is T15's four-check release gate: promote one Run's
+// private web candidate to an immutable published version — eligible for the
+// default preview seat — only after build, entry, preview reachability and
+// actual page load each independently passed.
+//
+// The candidate's own collected evidence supplies the build and entry facts;
+// the probe supplies the two externally observed page facts. Any failed or
+// not-run fact refuses the promotion with ErrConflict, publishes nothing and
+// leaves the generated files a private Workspace draft — the prior default
+// version keeps the seat (see SelectDefaultVersion).
+//
+// Binding: the request must name the candidate's own Workspace and Run, and
+// carry the Workspace revision the candidate was captured at; the candidate
+// Version identity re-derives from the candidate's manifest. A stale
+// revision callback — the workspace advanced past it — is a conflict, and a
+// replayed identical callback adopts the already published version: the
+// identity derives from content, so duplicate callbacks cannot create
+// duplicate versions.
+func (s *CraftArtifactService) PromoteWebVersion(ctx context.Context, scope craft.Scope, req craft.WebPromotionRequest) (craft.Version, error) {
+	if s == nil || s.files == nil || s.versions == nil || s.candidates == nil {
+		return craft.Version{}, fmt.Errorf("%w: artifact service is not assembled for promotion", craft.ErrInvalidInput)
+	}
+	if scope.TenantID == 0 || scope.UserID == "" || scope.SessionID == "" {
+		return craft.Version{}, fmt.Errorf("%w: promotion requires a complete scope", craft.ErrInvalidInput)
+	}
+	if err := req.Validate(); err != nil {
+		return craft.Version{}, err
+	}
+	if s.drafts == nil {
+		return craft.Version{}, fmt.Errorf("%w: promotion requires the Workspace draft-head store (revision fence)", craft.ErrUnsupported)
+	}
+
+	// The candidate store's own scope ACL runs here: a foreign session does
+	// not see the candidate at all, a foreign owner is forbidden.
+	candidate, err := s.candidates.GetCandidate(ctx, scope, req.CandidateID)
+	if err != nil {
+		return craft.Version{}, err
+	}
+	if candidate.WorkspaceID != req.WorkspaceID || candidate.RunID != req.RunID {
+		return craft.Version{}, fmt.Errorf("%w: promotion request does not bind candidate %s", craft.ErrConflict, candidate.ID)
+	}
+	if candidate.Kind != craft.KindWeb {
+		return craft.Version{}, fmt.Errorf("%w: the four-check gate promotes web versions only, got kind %q", craft.ErrInvalidInput, candidate.Kind)
+	}
+
+	// Revision fence: the callback's revision must be the Workspace's current
+	// draft-head revision. A late callback for a superseded revision is a
+	// conflict, never a silent promotion of stale files.
+	head, err := s.drafts.Read(ctx, scope, candidate.WorkspaceID)
+	if err != nil {
+		return craft.Version{}, err
+	}
+	if head.Revision != req.Revision {
+		return craft.Version{}, fmt.Errorf("%w: stale workspace revision %d (head is %d) for run %s", craft.ErrConflict, req.Revision, head.Revision, candidate.RunID)
+	}
+
+	// The four facts, each from its own observation source.
+	evidence := craft.WebCheckEvidence{
+		Build: craft.WebBuildOutcome(candidate.Evidence),
+		Entry: craft.WebEntryOutcome(candidate.Kind, candidate.Files),
+	}
+	if s.webProbe != nil {
+		evidence.PreviewReachable, evidence.PageLoaded = s.webProbe.ProbeWebPage(ctx, scope, candidate)
+	} // a missing probe leaves both page facts not_run — the gate refuses below
+	if err := evidence.Validate(); err != nil {
+		return craft.Version{}, err
+	}
+	versionID := craft.VersionID(candidate.WorkspaceID, candidate.RunID, candidate.ManifestDigest)
+	record := craft.WebPromotionRecord{
+		RunID: candidate.RunID, Revision: req.Revision, VersionID: versionID,
+		WebCheckEvidence: evidence,
+	}
+	if !record.Promotable() {
+		return craft.Version{}, fmt.Errorf(
+			"%w: web promotion refused: build=%s entry=%s preview_reachable=%s page_loaded=%s (run %s, workspace revision %d, version %s)",
+			craft.ErrConflict, evidence.Build, evidence.Entry, evidence.PreviewReachable, evidence.PageLoaded,
+			record.RunID, record.Revision, record.VersionID,
+		)
+	}
+
+	published, err := s.versions.Publish(ctx, scope, craft.Version{
+		ID: versionID, WorkspaceID: candidate.WorkspaceID, RunID: candidate.RunID,
+		Kind: craft.KindWeb, Files: candidate.Files, Checks: craft.WebChecks(record),
+	})
+	if err != nil {
+		logger.Warnf(ctx, "[CraftArtifact] web promotion publish failed for run %s: %v", candidate.RunID, err)
+		return craft.Version{}, err
+	}
+	// The store persists the four checks; the returned projection carries the
+	// same evidence derived from them so callers (and the DTO) never have to.
+	out := published
+	out.WebEvidence = &evidence
+	logger.Infof(ctx, "[CraftArtifact] promoted web version %s for run %s at workspace revision %d",
+		published.ID, candidate.RunID, req.Revision)
+	return out, nil
+}
+
+// SelectDefaultVersion projects the workspace's default preview version
+// under the T15 policy: the newest published version whose four web checks
+// each independently passed. Versions with failed, not-run or missing facts
+// never take the seat, so a refused or unverified round keeps the prior
+// default exactly where it was.
+func (s *CraftArtifactService) SelectDefaultVersion(ctx context.Context, scope craft.Scope) (craft.Version, bool, error) {
+	if s == nil || s.versions == nil {
+		return craft.Version{}, false, fmt.Errorf("%w: artifact service is not assembled", craft.ErrInvalidInput)
+	}
+	versions, err := s.versions.List(ctx, scope)
+	if err != nil {
+		return craft.Version{}, false, err
+	}
+	selected, ok := craft.SelectDefaultVersion(versions)
+	if !ok {
+		return craft.Version{}, false, nil
+	}
+	evidence := craft.WebEvidenceFromChecks(selected.Checks)
+	selected.WebEvidence = &evidence
+	return selected, true, nil
 }
 
 // Collect reads the delegation's workspace output and publishes it as one
