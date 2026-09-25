@@ -1,136 +1,340 @@
 import type { ApiKey, WeKnoraClient } from '@weknora/api-client';
-import { Button as TButton, Checkbox as TCheckbox, Input as TInput } from 'tdesign-react';
 // T12c：t-alert warning + t-button(size small, variant outline, add icon)
 // 对齐 Vue PlatformAPIKeys.vue:8-18 / :31-37（sprite glyph 图标）。
-import { Alert, Button } from 'tdesign-react';
+// 批 3 终局：整面板按 Vue PlatformAPIKeys.vue 同构——列表表格 api-key-table
+// 家族 + 能力 chip inline/popup + popconfirm 删除 + SettingDrawer 创建抽屉
+// （api-key-create-drawer 家族，width 560/min480/max920/storageKey
+// setting-drawer:width:platform-api-key-create/closeOnOverlayClick false）+
+// 平台控制面/四空间能力分组 + 组全选/清空行。样式平移 settings.td.css §19。
+import { Alert, Button as TButton, Checkbox as TCheckbox, Dialog as TDialog, Input as TInput, Popconfirm as TPopconfirm, Popup as TPopup, Textarea as TTextarea } from 'tdesign-react';
 import { Icon as TIcon } from 'tdesign-icons-react';
-import { useEffect, useState } from 'react';
-import { shouldShowSwaggerDocs, swaggerDocsUrl } from '@weknora/views/integrations/swagger';
-import { resolveApiBaseUrl } from '../platform/api-base.ts';
+import { useState } from 'react';
+import { SettingDrawer } from './SettingDrawer.tsx';
 import { settingsT, useSettingsLocale } from './PortedSectionsPanel.tsx';
 
-const capabilities = ['system_tenants_read', 'system_tenants_manage', 'system_settings_read', 'system_settings_manage', 'system_runtime_read', 'system_runtime_manage', 'system_audit_read'];
-const CAPABILITY_LABELS: Record<string, Record<string, string>> = {
-  'zh-CN': { system_tenants_read: '查看空间', system_tenants_manage: '管理空间', system_settings_read: '查看系统设置', system_settings_manage: '管理系统设置', system_runtime_read: '查看运行时', system_runtime_manage: '管理运行时', system_audit_read: '查看审计日志' },
-  'en-US': { system_tenants_read: 'View tenants', system_tenants_manage: 'Manage tenants', system_settings_read: 'View system settings', system_settings_manage: 'Manage system settings', system_runtime_read: 'View runtime', system_runtime_manage: 'Manage runtime', system_audit_read: 'View audit log' },
-  'ja-JP': { system_tenants_read: 'テナントを表示', system_tenants_manage: 'テナントを管理', system_settings_read: 'システム設定を表示', system_settings_manage: 'システム設定を管理', system_runtime_read: 'ランタイムを表示', system_runtime_manage: 'ランタイムを管理', system_audit_read: '監査ログを表示' },
-  'ko-KR': { system_tenants_read: '테넌트 보기', system_tenants_manage: '테넌트 관리', system_settings_read: '시스템 설정 보기', system_settings_manage: '시스템 설정 관리', system_runtime_read: '런타임 보기', system_runtime_manage: '런타임 관리', system_audit_read: '감사 로그 보기' },
-  'ru-RU': { system_tenants_read: 'Просмотр тенантов', system_tenants_manage: 'Управление тенантами', system_settings_read: 'Просмотр системных настроек', system_settings_manage: 'Управление системными настройками', system_runtime_read: 'Просмотр среды выполнения', system_runtime_manage: 'Управление средой выполнения', system_audit_read: 'Просмотр журнала аудита' },
+/* 能力分组（frontend/src/config/apiKeyCapabilities.ts 同构）：
+ * SYSTEM 组（平台控制面）在前 + 四个空间能力组。labelKey/hintKey 直指
+ * packages/i18n settingsMessages 平移键。 */
+type CapabilityOption = { value: string; labelKey: string; hintKey: string };
+type CapabilityGroup = { key: string; labelKey: string; capabilities: CapabilityOption[] };
+
+const SPACE_CAPABILITY_VALUES = [
+  'retrieve', 'chat', 'read_agents', 'ingest', 'manage_kbs',
+  'message_history', 'manage_agents', 'manage_mcp_services',
+  'manage_datasources', 'manage_models', 'manage_vector_stores',
+  'manage_storage_backends', 'manage_web_search', 'manage_channels',
+  'run_evaluations', 'manage_members', 'manage_spaces',
+  'manage_tenant_settings',
+] as const;
+
+const SYSTEM_CAPABILITY_GROUP: CapabilityGroup = {
+  key: 'system',
+  labelKey: 'platformApiKeys.systemCapabilityGroup',
+  capabilities: [
+    { value: 'system_tenants_read', labelKey: 'platformApiKeys.capabilities.tenantsRead', hintKey: 'platformApiKeys.capabilityHints.tenantsRead' },
+    { value: 'system_tenants_manage', labelKey: 'platformApiKeys.capabilities.tenantsManage', hintKey: 'platformApiKeys.capabilityHints.tenantsManage' },
+    { value: 'system_settings_read', labelKey: 'platformApiKeys.capabilities.settingsRead', hintKey: 'platformApiKeys.capabilityHints.settingsRead' },
+    { value: 'system_settings_manage', labelKey: 'platformApiKeys.capabilities.settingsManage', hintKey: 'platformApiKeys.capabilityHints.settingsManage' },
+    { value: 'system_runtime_read', labelKey: 'platformApiKeys.capabilities.runtimeRead', hintKey: 'platformApiKeys.capabilityHints.runtimeRead' },
+    { value: 'system_runtime_manage', labelKey: 'platformApiKeys.capabilities.runtimeManage', hintKey: 'platformApiKeys.capabilityHints.runtimeManage' },
+    { value: 'system_audit_read', labelKey: 'platformApiKeys.capabilities.auditRead', hintKey: 'platformApiKeys.capabilityHints.auditRead' },
+  ],
 };
-// One-line semantic summary per capability (SP14 Task 2): the checkbox labels
-// above only translate the name, which told operators nothing about what a
-// checked capability actually grants to the platform key.
-const CAPABILITY_DESCRIPTIONS: Record<string, Record<string, string>> = {
-  'zh-CN': { system_tenants_read: '只读访问全部工作空间的列表与详情', system_tenants_manage: '创建、修改和删除工作空间', system_settings_read: '读取平台级系统设置', system_settings_manage: '修改平台级系统设置', system_runtime_read: '查看运行时队列与任务状态', system_runtime_manage: '取消任务等运行时管理操作', system_audit_read: '读取系统审计日志' },
-  'en-US': { system_tenants_read: 'Read-only access to every workspace list and detail', system_tenants_manage: 'Create, update and delete workspaces', system_settings_read: 'Read platform-level system settings', system_settings_manage: 'Change platform-level system settings', system_runtime_read: 'View runtime queues and task states', system_runtime_manage: 'Runtime management such as cancelling tasks', system_audit_read: 'Read the system audit log' },
-  'ja-JP': { system_tenants_read: 'すべてのワークスペースの一覧と詳細を読み取り専用で参照', system_tenants_manage: 'ワークスペースの作成・更新・削除', system_settings_read: 'プラットフォームシステム設定の読み取り', system_settings_manage: 'プラットフォームシステム設定の変更', system_runtime_read: 'ランタイムキューとタスク状態の閲覧', system_runtime_manage: 'タスクキャンセルなどのランタイム管理操作', system_audit_read: 'システム監査ログの読み取り' },
-  'ko-KR': { system_tenants_read: '모든 워크스페이스 목록과 세부 정보 읽기 전용 액세스', system_tenants_manage: '워크스페이스 생성·수정·삭제', system_settings_read: '플랫폼 시스템 설정 읽기', system_settings_manage: '플랫폼 시스템 설정 변경', system_runtime_read: '런타임 큐 및 작업 상태 보기', system_runtime_manage: '작업 취소 등 런타임 관리 작업', system_audit_read: '시스템 감사 로그 읽기' },
-  'ru-RU': { system_tenants_read: 'Доступ только для чтения ко всем рабочим пространствам', system_tenants_manage: 'Создание, изменение и удаление рабочих пространств', system_settings_read: 'Чтение системных настроек платформы', system_settings_manage: 'Изменение системных настроек платформы', system_runtime_read: 'Просмотр очередей среды выполнения и состояний задач', system_runtime_manage: 'Управление средой выполнения (отмена задач и т. п.)', system_audit_read: 'Чтение журнала аудита системы' },
+
+const SPACE_CAPABILITY_OPTION: Record<string, CapabilityOption> = {
+  retrieve: { value: 'retrieve', labelKey: 'integrations.api.capabilityRetrieve', hintKey: 'integrations.api.capabilityRetrieveHint' },
+  chat: { value: 'chat', labelKey: 'integrations.api.capabilityChat', hintKey: 'integrations.api.capabilityChatHint' },
+  read_agents: { value: 'read_agents', labelKey: 'integrations.api.capabilityReadAgents', hintKey: 'integrations.api.capabilityReadAgentsHint' },
+  ingest: { value: 'ingest', labelKey: 'integrations.api.capabilityIngest', hintKey: 'integrations.api.capabilityIngestHint' },
+  manage_kbs: { value: 'manage_kbs', labelKey: 'integrations.api.capabilityManageKbs', hintKey: 'integrations.api.capabilityManageKbsHint' },
+  message_history: { value: 'message_history', labelKey: 'integrations.api.capabilityMessageHistory', hintKey: 'integrations.api.capabilityMessageHistoryHint' },
+  manage_agents: { value: 'manage_agents', labelKey: 'integrations.api.capabilityManageAgents', hintKey: 'integrations.api.capabilityManageAgentsHint' },
+  manage_mcp_services: { value: 'manage_mcp_services', labelKey: 'integrations.api.capabilityManageMcpServices', hintKey: 'integrations.api.capabilityManageMcpServicesHint' },
+  manage_datasources: { value: 'manage_datasources', labelKey: 'integrations.api.capabilityManageDatasources', hintKey: 'integrations.api.capabilityManageDatasourcesHint' },
+  manage_models: { value: 'manage_models', labelKey: 'integrations.api.capabilityManageModels', hintKey: 'integrations.api.capabilityManageModelsHint' },
+  manage_vector_stores: { value: 'manage_vector_stores', labelKey: 'integrations.api.capabilityManageVectorStores', hintKey: 'integrations.api.capabilityManageVectorStoresHint' },
+  manage_storage_backends: { value: 'manage_storage_backends', labelKey: 'integrations.api.capabilityManageStorageBackends', hintKey: 'integrations.api.capabilityManageStorageBackendsHint' },
+  manage_web_search: { value: 'manage_web_search', labelKey: 'integrations.api.capabilityManageWebSearch', hintKey: 'integrations.api.capabilityManageWebSearchHint' },
+  manage_channels: { value: 'manage_channels', labelKey: 'integrations.api.capabilityManageChannels', hintKey: 'integrations.api.capabilityManageChannelsHint' },
+  run_evaluations: { value: 'run_evaluations', labelKey: 'integrations.api.capabilityRunEvaluations', hintKey: 'integrations.api.capabilityRunEvaluationsHint' },
+  manage_members: { value: 'manage_members', labelKey: 'integrations.api.capabilityManageMembers', hintKey: 'integrations.api.capabilityManageMembersHint' },
+  manage_spaces: { value: 'manage_spaces', labelKey: 'integrations.api.capabilityManageSpaces', hintKey: 'integrations.api.capabilityManageSpacesHint' },
+  manage_tenant_settings: { value: 'manage_tenant_settings', labelKey: 'integrations.api.capabilityManageTenantSettings', hintKey: 'integrations.api.capabilityManageTenantSettingsHint' },
 };
-const COPY: Record<string, Record<string, string>> = {
-  'zh-CN': { title: '平台 API Key', description: '为跨空间自动化创建平台级凭据；调用空间接口时通过 X-Tenant-ID 指定目标空间。', securityNotice: '平台 API Key 默认可选择任意空间。请只授予必要能力；密钥明文仅在创建时显示一次。', createTitle: '创建 API 密钥', name: '密钥名称', create: '创建平台 API Key', creating: '创建中...', validation: '请填写名称并至少选择一个权限', failed: '创建失败', created: '密钥已创建，请立即复制保存', copy: '复制密钥', copied: '已复制', copyFailed: '复制失败，请手动选择密钥', close: '关闭', empty: '暂无平台 API Key', revoke: '删除', revoked: '已撤销', revokeFailed: '撤销失败', never: '从未使用', nameHead: '名称', keyHead: '密钥', permissionsHead: '权限', lastUsedHead: '最近使用', createdHead: '创建时间', actionHead: '操作', apiDocs: 'API 文档' },
-  'en-US': { title: 'Platform API keys', description: 'Create and revoke API keys for system administrators.', createTitle: 'Create API key', name: 'Key name', create: 'Create', creating: 'Creating...', validation: 'Enter a name and select at least one permission', failed: 'Creation failed', created: 'Key created. Copy and save it now.', copy: 'Copy key', copied: 'Copied', copyFailed: 'Copy failed; select the key manually', close: 'Close', empty: 'No platform API keys', revoke: 'Revoke', revoked: 'Revoked', revokeFailed: 'Revocation failed', never: 'Never used', nameHead: 'Name', keyHead: 'Key', permissionsHead: 'Permissions', lastUsedHead: 'Last used', createdHead: 'Created', actionHead: 'Actions', apiDocs: 'API docs' },
-  'ja-JP': { title: 'プラットフォーム API キー', description: 'system-admin 用の API キーを作成・取り消しします。', createTitle: 'API キーを作成', name: 'キー名', create: '作成', creating: '作成中...', validation: '名前を入力し、権限を1つ以上選択してください', failed: '作成に失敗しました', created: 'キーを作成しました。今すぐコピーして保存してください。', copy: 'キーをコピー', copied: 'コピーしました', copyFailed: 'コピーに失敗しました。手動で選択してください', close: '閉じる', empty: 'プラットフォーム API キーはありません', revoke: '取り消す', revoked: '取り消しました', revokeFailed: '取り消しに失敗しました', never: '未使用', nameHead: '名前', keyHead: 'キー', permissionsHead: '権限', lastUsedHead: '最終使用', createdHead: '作成日時', actionHead: '操作', apiDocs: 'API ドキュメント' },
-  'ko-KR': { title: '플랫폼 API 키', description: 'system-admin용 API 키를 생성하고 취소합니다.', createTitle: 'API 키 생성', name: '키 이름', create: '생성', creating: '생성 중...', validation: '이름을 입력하고 권한을 하나 이상 선택하세요', failed: '생성 실패', created: '키가 생성되었습니다. 지금 복사해 저장하세요.', copy: '키 복사', copied: '복사됨', copyFailed: '복사 실패: 키를 수동으로 선택하세요', close: '닫기', empty: '플랫폼 API 키가 없습니다', revoke: '취소', revoked: '취소됨', revokeFailed: '취소 실패', never: '사용 안 함', nameHead: '이름', keyHead: '키', permissionsHead: '권한', lastUsedHead: '최근 사용', createdHead: '생성 시간', actionHead: '작업', apiDocs: 'API 문서' },
-  'ru-RU': { title: 'API-ключи платформы', description: 'Создание и отзыв API-ключей для системных администраторов.', createTitle: 'Создать API-ключ', name: 'Имя ключа', create: 'Создать', creating: 'Создание...', validation: 'Введите имя и выберите хотя бы одно разрешение', failed: 'Ошибка создания', created: 'Ключ создан. Скопируйте и сохраните его сейчас.', copy: 'Копировать ключ', copied: 'Скопировано', copyFailed: 'Не удалось скопировать, выберите ключ вручную', close: 'Закрыть', empty: 'Нет API-ключей платформы', revoke: 'Отозвать', revoked: 'Отозван', revokeFailed: 'Ошибка отзыва', never: 'Не использовался', nameHead: 'Имя', keyHead: 'Ключ', permissionsHead: 'Разрешения', lastUsedHead: 'Последнее использование', createdHead: 'Создан', actionHead: 'Действия', apiDocs: 'Документация API' },
-};
-function date(value: string | undefined, locale: string, never: string) { return value ? new Date(value).toLocaleString(locale, { hour12: false }) : never; }
+
+const SPACE_CAPABILITY_GROUPS: CapabilityGroup[] = [
+  {
+    key: 'knowledge',
+    labelKey: 'integrations.api.apiKeyCapabilityGroupKnowledge',
+    capabilities: ['retrieve', 'chat', 'ingest', 'manage_kbs', 'message_history'].map((v) => SPACE_CAPABILITY_OPTION[v]),
+  },
+  {
+    key: 'automation',
+    labelKey: 'integrations.api.apiKeyCapabilityGroupAutomation',
+    capabilities: ['read_agents', 'manage_agents', 'manage_mcp_services', 'manage_datasources'].map((v) => SPACE_CAPABILITY_OPTION[v]),
+  },
+  {
+    key: 'collaboration',
+    labelKey: 'integrations.api.apiKeyCapabilityGroupCollaboration',
+    capabilities: ['manage_members', 'manage_spaces'].map((v) => SPACE_CAPABILITY_OPTION[v]),
+  },
+  {
+    key: 'tenant',
+    labelKey: 'integrations.api.apiKeyCapabilityGroupTenant',
+    capabilities: ['manage_models', 'manage_vector_stores', 'manage_storage_backends', 'manage_web_search', 'manage_channels', 'run_evaluations', 'manage_tenant_settings'].map((v) => SPACE_CAPABILITY_OPTION[v]),
+  },
+];
+
+const PLATFORM_API_KEY_CAPABILITY_GROUPS: CapabilityGroup[] = [
+  SYSTEM_CAPABILITY_GROUP,
+  ...SPACE_CAPABILITY_GROUPS,
+];
+
+const ALL_CAPABILITIES: string[] = [
+  ...SPACE_CAPABILITY_VALUES,
+  ...SYSTEM_CAPABILITY_GROUP.capabilities.map((item) => item.value),
+];
+
+const VISIBLE_CAPABILITY_CHIP_COUNT = 4;
+
+// Vue formatDate（PlatformAPIKeys.vue:278-283）——YYYY-MM-DD HH:mm 手工 pad。
+function formatDate(value: string | undefined, neverLabel: string): string {
+  if (!value) return neverLabel;
+  const date = new Date(value);
+  const pad = (part: number) => String(part).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
 
 export function PlatformApiKeysPanel({ client, initialKeys }: { client: WeKnoraClient; initialKeys: ApiKey[] }) {
   const locale = useSettingsLocale();
   const t = settingsT(locale);
-  const copy = COPY[locale] ?? COPY['zh-CN'];
-  const capabilityLabels = CAPABILITY_LABELS[locale] ?? CAPABILITY_LABELS['zh-CN'];
-  const capabilityDescriptions = CAPABILITY_DESCRIPTIONS[locale] ?? CAPABILITY_DESCRIPTIONS['zh-CN'];
   const [keys, setKeys] = useState(initialKeys);
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState('');
-  const [selected, setSelected] = useState<string[]>([]);
-  const [token, setToken] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  // Vue selected 是 Record<capability, boolean>（PlatformAPIKeys.vue:231-236）。
+  const [selected, setSelected] = useState<Record<string, boolean>>(() =>
+    ALL_CAPABILITIES.reduce<Record<string, boolean>>((result, capability) => {
+      result[capability] = false;
+      return result;
+    }, {}));
+  const [token, setToken] = useState('');
+  const [tokenVisible, setTokenVisible] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  // SP14 Task 2 — the header "API 文档" link renders only when /system/info
-  // confirms swagger_enabled: release builds disable the route and older
-  // backends lack the field, so a failed probe keeps the link hidden.
-  const [swaggerEnabled, setSwaggerEnabled] = useState(false);
-  useEffect(() => {
-    let current = true;
-    void client.settings.system.info()
-      .then((info) => { if (current) setSwaggerEnabled(shouldShowSwaggerDocs(info.swagger_enabled)); })
-      .catch(() => { if (current) setSwaggerEnabled(false); });
-    return () => { current = false; };
-  }, [client]);
-  async function create() {
-    if (!name.trim() || selected.length === 0) { setMessage(copy.validation); return; }
-    setCreating(true); setMessage(null);
-    try { const created = await client.administration.apiKeys.create({ name: name.trim(), capabilities: selected }); setKeys((current) => [...current, created]); setToken(created.token ?? created.api_key); setCopied(false); setName(''); setSelected([]); }
-    catch (reason) { setMessage(reason instanceof Error ? reason.message : copy.failed); }
+  // Vue PlatformAPIKeys.vue 无 swagger/API 文档链接（React SP14 曾加，为
+  // 面板同构移除；如需恢复应先在 Vue 端补齐）。
+
+  function resetForm() {
+    setName('');
+    setSelected(ALL_CAPABILITIES.reduce<Record<string, boolean>>((result, capability) => {
+      result[capability] = false;
+      return result;
+    }, {}));
+  }
+
+  const [createDrawerVisible, setCreateDrawerVisible] = useState(false);
+
+  function openCreate() {
+    resetForm();
+    setCreateDrawerVisible(true);
+  }
+
+  function groupSelected(capabilities: CapabilityOption[]): boolean {
+    return capabilities.every((item) => selected[item.value]);
+  }
+
+  function toggleGroup(capabilities: CapabilityOption[]) {
+    const next = !groupSelected(capabilities);
+    setSelected((current) => {
+      const updated = { ...current };
+      capabilities.forEach((item) => { updated[item.value] = next; });
+      return updated;
+    });
+  }
+
+  function capabilityChips(key: ApiKey): { id: string; label: string }[] {
+    const chips: { id: string; label: string }[] = [];
+    const owned = key.capabilities ?? [];
+    for (const group of PLATFORM_API_KEY_CAPABILITY_GROUPS) {
+      for (const item of group.capabilities) {
+        if (owned.includes(item.value)) {
+          chips.push({ id: item.value, label: t(item.labelKey) });
+        }
+      }
+    }
+    return chips;
+  }
+
+  async function createKey() {
+    const capabilities = ALL_CAPABILITIES.filter((capability) => selected[capability]);
+    if (!name.trim()) { setMessage(t('platformApiKeys.nameRequired')); return; }
+    if (capabilities.length === 0) { setMessage(t('platformApiKeys.capabilityRequired')); return; }
+    setCreating(true);
+    setMessage(null);
+    try {
+      const created = await client.administration.apiKeys.create({ name: name.trim(), capabilities });
+      setToken(created.token ?? created.api_key ?? '');
+      setCreateDrawerVisible(false);
+      setTokenVisible(true);
+      setKeys((current) => [...current, created]);
+    }
+    catch (reason) { setMessage(reason instanceof Error ? reason.message : t('platformApiKeys.createFailed')); }
     finally { setCreating(false); }
   }
+
   async function revoke(key: ApiKey) {
-    try { await client.administration.apiKeys.revoke(key.id); setKeys((current) => current.filter((item) => item.id !== key.id)); setMessage(copy.revoked); }
-    catch (reason) { setMessage(reason instanceof Error ? reason.message : copy.revokeFailed); }
+    try { await client.administration.apiKeys.revoke(key.id); setKeys((current) => current.filter((item) => item.id !== key.id)); setMessage(t('platformApiKeys.deleteSuccess')); }
+    catch (reason) { setMessage(reason instanceof Error ? reason.message : t('platformApiKeys.deleteFailed')); }
   }
+
   async function copyToken() {
     if (!token) return;
-    try { await navigator.clipboard.writeText(token); setCopied(true); setMessage(null); }
-    catch { setCopied(false); setMessage(copy.copyFailed); }
+    try { await navigator.clipboard.writeText(token); setTokenVisible(false); }
+    catch { /* Vue copyWithToast 的失败分支不关弹窗；React 侧同样保留。 */ }
   }
-  const toggle = (value: string) => setSelected((current) => current.includes(value) ? current.filter((item) => item !== value) : [...current, value]);
-  const title = copy.title;
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const openCreate = () => { setName(''); setSelected([]); setDrawerOpen(true); };
-  async function createAndClose() {
-    await create();
-    if (!message) setDrawerOpen(false);
-  }
+
   return <section className="platform-api-keys">
     <header className="section-header">
-      <h2>{title}</h2>
-      <p className="section-description">{copy.description}</p>
+      <h2>{t('platformApiKeys.title')}</h2>
+      <p className="section-description">{t('platformApiKeys.description')}</p>
     </header>
-    <Alert theme="warning" message={copy.securityNotice} className="security-alert" operation={<TButton size="small" variant="outline" icon={<TIcon name="add" />} onClick={openCreate}>{copy.create}</TButton>} />
+
+    <Alert theme="warning" message={t('platformApiKeys.securityNotice')} className="security-alert" operation={<TButton size="small" variant="outline" icon={<TIcon name="add" />} onClick={openCreate}>{t('platformApiKeys.create')}</TButton>} />
     {message ? <p className="wk-api-key-message" role="status">{message}</p> : null}
-    {token ? <div className="pak-token-card" role="alert"><strong>{copy.created}</strong><code>{token}</code><div className="pak-token-actions"><TButton type="button" onClick={() => void copyToken()}>{copied ? copy.copied : copy.copy}</TButton><TButton type="button" onClick={() => setToken(null)}>{copy.close}</TButton></div></div> : null}
-    <section className="pak-keys-section">
-      {keys.length === 0 ? <div className="pak-keys-state pak-keys-state--empty">
-        <span>{copy.empty}</span>
-        <TButton size="small" variant="outline" icon={<TIcon name="add" />} onClick={openCreate}>{copy.create}</TButton>
-      </div> : <div className="pak-table-wrap"><table className="pak-table">
-        <thead><tr><th>{copy.nameHead}</th><th>{copy.keyHead}</th><th>{copy.permissionsHead}</th><th>{copy.lastUsedHead}</th><th>{copy.createdHead}</th><th className="pak-table__actions">{copy.actionHead}</th></tr></thead>
-        <tbody>{keys.map((key) => { const keyCapabilities = key.capabilities ?? []; return <tr key={key.id}>
-          <td><span className="pak-key-name">{key.name}</span></td>
-          <td><code className="pak-key-fingerprint">{key.api_key}</code></td>
-          <td><div className="pak-chips">{keyCapabilities.slice(0, 4).map((capability) => <span className="pak-chip" key={capability}>{capabilityLabels[capability] ?? capability}</span>)}{keyCapabilities.length > 4 ? <span className="pak-chip pak-chip--more">+{keyCapabilities.length - 4}</span> : null}</div></td>
-          <td>{date(key.last_used_at, locale, copy.never)}</td>
-          <td>{date(key.created_at, locale, copy.never)}</td>
-          <td className="pak-table__actions"><button type="button" className="pak-icon-btn" title={copy.revoke} aria-label={copy.revoke} onClick={() => void revoke(key)}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14" /></svg></button></td>
-        </tr>; })}</tbody>
+
+    <section className="keys-section">
+      {keys.length === 0 ? <div className="keys-state keys-state--empty">
+        <span>{t('platformApiKeys.empty')}</span>
+        <TButton size="small" variant="outline" icon={<TIcon name="add" />} onClick={openCreate}>{t('platformApiKeys.create')}</TButton>
+      </div> : <div className="api-key-table-wrap"><table className="api-key-table">
+        <thead><tr>
+          <th>{t('platformApiKeys.name')}</th>
+          <th>{t('platformApiKeys.key')}</th>
+          <th>{t('platformApiKeys.capability')}</th>
+          <th>{t('platformApiKeys.lastUsed')}</th>
+          <th>{t('platformApiKeys.createdAt')}</th>
+          <th className="api-key-table__actions-heading">{t('platformApiKeys.actions')}</th>
+        </tr></thead>
+        <tbody>{keys.map((key) => {
+          const chips = capabilityChips(key);
+          const visibleChips = chips.slice(0, VISIBLE_CAPABILITY_CHIP_COUNT);
+          const hiddenCount = Math.max(0, chips.length - VISIBLE_CAPABILITY_CHIP_COUNT);
+          return <tr key={key.id}>
+            <td><span className="api-key-name">{key.name}</span></td>
+            <td><code className="api-key-fingerprint">{key.api_key}</code></td>
+            <td className="api-key-table__capability-cell">
+              <div className="api-key-capability-inline">
+                {visibleChips.map((chip) => <span className="api-key-capability-chip" key={chip.id}>{chip.label}</span>)}
+                {hiddenCount > 0 ? <TPopup
+                  trigger="click"
+                  placement="bottom-left"
+                  destroyOnClose
+                  overlayClassName="platform-api-key-capability-popup-overlay"
+                  content={<div className="api-key-capability-popup">
+                    <div className="api-key-capability-popup__title">{t('platformApiKeys.capability')}</div>
+                    {PLATFORM_API_KEY_CAPABILITY_GROUPS.map((group) => {
+                      const labels = group.capabilities
+                        .filter((item) => (key.capabilities ?? []).includes(item.value))
+                        .map((item) => t(item.labelKey));
+                      if (labels.length === 0) return null;
+                      return <div className="api-key-capability-block" key={group.key}>
+                        <div className="api-key-capability-block__title">{t(group.labelKey)}</div>
+                        <div className="api-key-capability-block__chips">
+                          {labels.map((label, index) => <span className="api-key-capability-chip" key={group.key + ':' + index}>{label}</span>)}
+                        </div>
+                      </div>;
+                    })}
+                  </div>}
+                >
+                  <button type="button" className="api-key-capability-chip api-key-capability-chip--more" aria-label={t('platformApiKeys.viewAllCapabilities')}>
+                    {t('platformApiKeys.capabilityMore', { count: hiddenCount })}
+                  </button>
+                </TPopup> : null}
+              </div>
+            </td>
+            <td><span className="api-key-meta">{formatDate(key.last_used_at, t('platformApiKeys.never'))}</span></td>
+            <td><time className="api-key-date" dateTime={key.created_at}>{formatDate(key.created_at, t('platformApiKeys.never'))}</time></td>
+            <td>
+              <div className="api-key-table__actions">
+                <TPopconfirm
+                  content={t('platformApiKeys.deleteConfirm', { name: key.name })}
+                  confirmBtn={{ content: t('common.delete'), theme: 'danger' }}
+                  cancelBtn={{ content: t('common.cancel') }}
+                  placement="bottom-right"
+                  onConfirm={() => void revoke(key)}
+                >
+                  <TButton shape="square" variant="text" theme="danger" title={t('common.delete')} onClick={(event) => event.stopPropagation()}>
+                    <TIcon name="delete" />
+                  </TButton>
+                </TPopconfirm>
+              </div>
+            </td>
+          </tr>;
+        })}</tbody>
       </table></div>}
     </section>
-    {swaggerEnabled ? <a className="pak-docs-link" href={swaggerDocsUrl(resolveApiBaseUrl())} target="_blank" rel="noreferrer">{copy.apiDocs}</a> : null}
-    {drawerOpen ? <div className="pak-drawer" role="dialog" aria-modal="true" aria-label={copy.createTitle}>
-      <div className="rq-drawer-backdrop" onClick={() => setDrawerOpen(false)} />
-      <div className="pak-drawer-panel">
-        <header className="rq-drawer-head">
-          <div>
-            <h3>{copy.createTitle}</h3>
-            <p>{copy.description}</p>
+
+    {/* Vue SettingDrawer（PlatformAPIKeys.vue:129-144）——创建抽屉 */}
+    <SettingDrawer
+      visible={createDrawerVisible}
+      drawerClass="api-key-create-drawer"
+      title={t('platformApiKeys.create')}
+      description={t('platformApiKeys.createDescription')}
+      icon="secured"
+      width="560px"
+      minWidth={480}
+      maxWidth={920}
+      storageKey="setting-drawer:width:platform-api-key-create"
+      closeOnOverlayClick={false}
+      confirmText={t('platformApiKeys.create')}
+      confirmLoading={creating}
+      onVisibleChange={(visible) => { if (!visible) setCreateDrawerVisible(false); }}
+      onConfirm={() => void createKey()}
+    >
+      <div className="api-key-dialog">
+        <div className="api-key-dialog-row">
+          <div className="api-key-dialog-row__label">
+            <label>{t('platformApiKeys.name')}</label>
           </div>
-          <button type="button" aria-label={copy.close} onClick={() => setDrawerOpen(false)}>×</button>
-        </header>
-        <label className="pak-field"><span>{copy.name}</span><TInput value={name} onChange={(value) => setName(String(value))} disabled={creating} aria-label={copy.name} /></label>
-        <div className="pak-field"><span>{copy.permissionsHead}</span>
-          <div className="pak-cap-group">
-            <div className="pak-cap-group__title">平台控制面</div>
-            <div className="pak-cap-items">{capabilities.map((value) => <label key={value} className="pak-cap-item"><TCheckbox checked={selected.includes(value)} onChange={() => toggle(value)} disabled={creating} />{capabilityLabels[value] ?? value}<span className="pak-cap-item-desc">{capabilityDescriptions[value] ?? ''}</span></label>)}</div>
-          </div>
+          <TInput value={name} placeholder={t('platformApiKeys.namePlaceholder')} onChange={(value) => setName(String(value))} />
         </div>
-        <div className="pak-drawer-actions">
-          <TButton type="button" onClick={() => setDrawerOpen(false)}>{copy.close}</TButton>
-          <TButton type="button" loading={creating} onClick={() => void createAndClose()}>{creating ? copy.creating : copy.create}</TButton>
+
+        <div className="api-key-dialog-row">
+          <div className="api-key-dialog-row__label">
+            <label>{t('platformApiKeys.capability')}</label>
+          </div>
+          <p className="scope-hint">{t('platformApiKeys.capabilityHint')}</p>
+          <div className="api-key-capability-list">
+            {PLATFORM_API_KEY_CAPABILITY_GROUPS.map((group) => <div className="api-key-capability-group" key={group.key}>
+              <div className="api-key-capability-group__header">
+                <span>{t(group.labelKey)}</span>
+                <TButton size="small" variant="text" onClick={() => toggleGroup(group.capabilities)}>
+                  {groupSelected(group.capabilities) ? t('integrations.api.apiKeyCapabilityClearGroup') : t('integrations.api.apiKeyCapabilitySelectGroup')}
+                </TButton>
+              </div>
+              <div className="api-key-capability-group__items">
+                {group.capabilities.map((item) => <div className="api-key-capability-item" key={item.value}>
+                  <TCheckbox checked={selected[item.value]} onChange={(checked) => setSelected((current) => ({ ...current, [item.value]: Boolean(checked) }))}>{t(item.labelKey)}</TCheckbox>
+                  <p className="scope-hint">{t(item.hintKey)}</p>
+                </div>)}
+              </div>
+            </div>)}
+          </div>
         </div>
       </div>
-    </div> : null}
+    </SettingDrawer>
+
+    {/* Vue t-dialog（PlatformAPIKeys.vue:194-204）——创建成功 token 弹层 */}
+    <TDialog
+      visible={tokenVisible}
+      header={t('platformApiKeys.createdTitle')}
+      confirmBtn={{ content: t('platformApiKeys.copy'), theme: 'primary' }}
+      cancelBtn={null}
+      closeOnOverlayClick={false}
+      onConfirm={() => void copyToken()}
+      onClose={() => setTokenVisible(false)}
+    >
+      <p>{t('platformApiKeys.createdDescription')}</p>
+      <TTextarea readonly autosize value={token} />
+    </TDialog>
   </section>;
 }

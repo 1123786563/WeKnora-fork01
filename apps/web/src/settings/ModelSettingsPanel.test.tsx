@@ -159,13 +159,13 @@ async function submitForm(form: HTMLFormElement) {
 }
 // 添加磁贴的语义查询： localized add-model action（原 button.wk-model-card--add 钩子类已迁 Tailwind）
 function findAddTile(container: HTMLElement) {
-  return Array.from(container.querySelectorAll('button')).find((button) => (button.textContent ?? '').includes('添加模型')) ?? null;
+  return Array.from(document.body.querySelectorAll('button')).find((button) => (button.textContent ?? '').includes('添加模型')) ?? null;
 }
 async function openAddEditor(container: HTMLElement) {
   const add = findAddTile(container);
   assert.ok(add, 'the localized add-model action should render for admins');
   await click(add);
-  assert.ok(container.querySelector('.wk-model-editor'), 'the editor should open');
+  assert.ok(document.querySelector('.model-editor-drawer'), 'the editor should open');
 }
 
 test('model settings keeps the Vue read-only empty state for a viewer', () => {
@@ -243,7 +243,7 @@ test('add editor renders Vue sections, provider fallback and thinking defaults',
   const container = await mount(client, 'admin');
   await openAddEditor(container);
 
-  const text = container.textContent ?? '';
+  const text = document.body.textContent ?? '';
   assert.match(text, /添加模型/);
   assert.match(text, /配置用于对话的大语言模型/);
   assert.match(text, /模型类型/);
@@ -252,20 +252,20 @@ test('add editor renders Vue sections, provider fallback and thinking defaults',
   assert.match(text, /高级选项/);
 
   // Fallback provider catalogue localized per model.editor.providers.* (ModelEditorDialog.vue lines 505-646).
-  const providerSelect = modelOptionTrigger(container);
+  const providerSelect = modelOptionTrigger(document.body);
   await click(providerSelect);
-  const optionLabels = Array.from(container.querySelectorAll('[role="option"]')).map((option) => option.textContent ?? '');
+  const optionLabels = Array.from(document.body.querySelectorAll('[role="option"]')).map((option) => option.textContent ?? '');
   assert.ok(optionLabels.some((label) => label.includes('OpenAI')));
   assert.ok(optionLabels.some((label) => label.includes('阿里云 DashScope')));
   assert.ok(optionLabels.some((label) => label.includes('自定义 (OpenAI兼容接口)')));
 
   // Placeholders per type/source (ModelEditorDialog.vue getModelNamePlaceholder / getBaseUrlPlaceholder).
-  assert.ok(inputByPlaceholder(container, '例如：gpt-4, claude-3-opus'));
-  assert.ok(inputByPlaceholder(container, '例如：https://api.openai.com/v1'));
-  assert.ok(inputByPlaceholder(container, '例如：客服问答模型'));
+  assert.ok(inputByPlaceholder(document.body, '例如：gpt-4, claude-3-opus'));
+  assert.ok(inputByPlaceholder(document.body, '例如：https://api.openai.com/v1'));
+  assert.ok(inputByPlaceholder(document.body, '例如：客服问答模型'));
 
   // Thinking control defaults to the generic provider default (resetForm line 1143).
-  const thinkingSelect = modelOptionTrigger(container, 1);
+  const thinkingSelect = modelOptionTrigger(document.body, 1);
   assert.ok(thinkingSelect, 'chat + remote renders the thinking control select');
   assert.equal(thinkingSelect.value, 'chat_template_kwargs');
   // R484 G4 D4: Vue always shows the full form-desc below the select
@@ -273,8 +273,8 @@ test('add editor renders Vue sections, provider fallback and thinking defaults',
   assert.match(text, /决定智能体「思考模式」开\/关时如何写入 API。已尝试按厂商\/模型预选，若与实际情况不符请按 API 文档手动修改；选「不写入」时，智能体「思考模式」开关不生效。/);
 
   // Context window + concurrency placeholders/desc (ModelEditorDialog.vue lines 347-398).
-  assert.ok(inputByPlaceholder(container, '默认 200000'));
-  assert.ok(inputByPlaceholder(container, '0 表示使用全局默认'));
+  assert.ok(inputByPlaceholder(document.body, '默认 200000'));
+  assert.ok(inputByPlaceholder(document.body, '0 表示使用全局默认'));
   assert.match(text, /支持视觉\/多模态/);
 
   // Custom headers section (ModelEditorDialog.vue lines 285-306).
@@ -294,19 +294,19 @@ test('add editor matches the Vue provider trigger, thinking desc and footer butt
   await openAddEditor(container);
 
   // (1) Closed trigger shows the localized label only — no description text.
-  const providerTrigger = modelOptionTrigger(container);
+  const providerTrigger = modelOptionTrigger(document.body);
   const triggerText = providerTrigger.textContent ?? '';
   assert.ok(triggerText.includes('自定义 (OpenAI兼容接口)'), 'the provider label renders in the closed trigger');
   assert.equal(triggerText.includes('Generic API endpoint (OpenAI-compatible)'), false, 'the provider description must stay in the dropdown only');
 
   // (2) The thinking helper is the full thinkingControlDesc, not the hint.
-  const editorText = container.textContent ?? '';
+  const editorText = document.body.textContent ?? '';
   assert.match(editorText, /决定智能体「思考模式」开\/关时如何写入 API/);
 
   // (3) Footer order: 测试连接 → 取消 → 保存 like the Vue drawer footer.
   // S6：按钮换 tdesign Button；disabled 态渲染 div.t-button（台账 #7），断言
   // 从 button 标签收敛到 .t-button 类。
-  const footer = container.querySelector('.wk-model-editor .wk-list-actions:last-of-type') ?? container;
+  const footer = document.querySelector('.model-editor-drawer .setting-drawer__footer') ?? container;
   const footerButtons = Array.from(footer.querySelectorAll('.t-button')).map((button) => button.textContent ?? '');
   const testIndex = footerButtons.findIndex((label) => label.includes('测试连接'));
   const cancelIndex = footerButtons.findIndex((label) => label === '取消');
@@ -323,21 +323,21 @@ test('model provider and thinking selectors keep Vue two-line options and keyboa
   const container = await mount(client, 'admin');
   await openAddEditor(container);
 
-  const provider = modelOptionTrigger(container);
+  const provider = modelOptionTrigger(document.body);
   await click(provider);
-  assert.equal(container.querySelectorAll('select').length, 0, 'editor does not fall back to native select chrome');
-  assert.ok((container.querySelector('[role="option"]')?.textContent ?? '').includes('OpenAI'));
-  assert.ok(Array.from(container.querySelectorAll('[role="option"]')).some((option) => (option.textContent ?? '').includes('兼容')));
+  assert.equal(document.body.querySelectorAll('select').length, 0, 'editor does not fall back to native select chrome');
+  assert.ok((document.body.querySelector('[role="option"]')?.textContent ?? '').includes('OpenAI'));
+  assert.ok(Array.from(document.body.querySelectorAll('[role="option"]')).some((option) => (option.textContent ?? '').includes('兼容')));
   await pressKey(provider, 'ArrowDown');
   await pressKey(provider, 'Enter');
   assert.equal(provider.value, 'openai');
-  assert.equal(container.querySelector('[role="listbox"]'), null, 'selection closes the popup');
+  assert.equal(document.body.querySelector('[role="listbox"]'), null, 'selection closes the popup');
 
-  const thinking = modelOptionTrigger(container, 1);
+  const thinking = modelOptionTrigger(document.body, 1);
   await click(thinking);
-  assert.ok(Array.from(container.querySelectorAll('[role="option"]')).some((option) => (option.textContent ?? '').includes('思考')));
+  assert.ok(Array.from(document.body.querySelectorAll('[role="option"]')).some((option) => (option.textContent ?? '').includes('思考')));
   await pressKey(thinking, 'Escape');
-  assert.equal(container.querySelector('[role="listbox"]'), null, 'escape closes the popup');
+  assert.equal(document.body.querySelector('[role="listbox"]'), null, 'escape closes the popup');
 });
 
 test('switching provider autofills the default URL and re-syncs thinking control', async () => {
@@ -345,13 +345,13 @@ test('switching provider autofills the default URL and re-syncs thinking control
   const container = await mount(client, 'admin');
   await openAddEditor(container);
 
-  const providerSelect = modelOptionTrigger(container);
+  const providerSelect = modelOptionTrigger(document.body);
   await setSelect(providerSelect, 'openai');
-  const baseUrl = container.querySelector<HTMLInputElement>('input[type="url"]');
+  const baseUrl = document.body.querySelector<HTMLInputElement>('input[type="url"]');
   assert.ok(baseUrl);
   assert.equal(baseUrl.value, 'https://api.openai.com/v1');
 
-  const thinkingSelect = modelOptionTrigger(container, 1);
+  const thinkingSelect = modelOptionTrigger(document.body, 1);
   assert.equal(thinkingSelect.value, 'none', 'openai defaults to 不写入思考参数 (defaultThinkingControl)');
 
   await setSelect(providerSelect, 'aliyun');
@@ -363,20 +363,21 @@ test('embedding editor gates the dimension input behind the override toggle', as
   const container = await mount(client, 'admin');
   await openAddEditor(container);
 
-  const embeddingRadio = Array.from(container.querySelectorAll('[role="radio"]')).find((button) => button.textContent === 'Embedding');
+  const embeddingRadio = Array.from(document.body.querySelectorAll('[role="radio"]')).find((button) => button.textContent === 'Embedding');
   assert.ok(embeddingRadio);
   await click(embeddingRadio);
 
-  const text = container.textContent ?? '';
+  const text = document.body.textContent ?? '';
   assert.match(text, /向量维度/);
   assert.match(text, /自定义输出维度/);
-  const dimension = inputByPlaceholder(container, '例如：1536');
+  const dimension = inputByPlaceholder(document.body, '例如：1536');
   assert.ok(dimension);
   assert.ok(dimension.closest('.t-input-number'), 'advanced numeric fields use the tdesign input-number wrapper');
   assert.equal(dimension.disabled, true, 'dimension stays disabled until the override toggle is on (ModelEditorDialog.vue line 325)');
 
-  const overrideToggle = Array.from(container.querySelectorAll('[role="switch"]'))
-    .find((input) => input.getAttribute('aria-label')?.includes('自定义输出维度'));
+  // 批 3：Vue vision-toggle 无 aria-label（label.form-label 提供文本），
+  // 开关按 .vision-toggle 容器查找。
+  const overrideToggle = document.body.querySelector('.vision-toggle .t-switch');
   assert.ok(overrideToggle);
   assert.equal(overrideToggle.classList.contains('t-is-checked'), false, 'tdesign switch keeps the Vue off state');
   await click(overrideToggle);
@@ -392,30 +393,30 @@ test('rerank locks the source to remote and swaps in signed-rerank credential fi
   const container = await mount(client, 'admin');
   await openAddEditor(container);
 
-  const rerankRadio = Array.from(container.querySelectorAll('[role="radio"]')).find((button) => button.textContent === 'ReRank');
+  const rerankRadio = Array.from(document.body.querySelectorAll('[role="radio"]')).find((button) => button.textContent === 'ReRank');
   assert.ok(rerankRadio);
   await click(rerankRadio);
 
-  const text = container.textContent ?? '';
+  const text = document.body.textContent ?? '';
   assert.match(text, /Ollama 不支持 ReRank 模型，请使用远程接口配置/);
-  const localRadio = Array.from(container.querySelectorAll('[role="radio"]')).find((button) => button.textContent === 'Ollama');
+  const localRadio = Array.from(document.body.querySelectorAll('[role="radio"]')).find((button) => button.textContent === 'Ollama');
   assert.ok(localRadio);
   assert.equal((localRadio as HTMLButtonElement).disabled, true);
 
-  const providerSelect = modelOptionTrigger(container);
+  const providerSelect = modelOptionTrigger(document.body);
   await setSelect(providerSelect, 'lkeap');
 
   // Signed rerank prefill + credential labels (ModelEditorDialog.vue lines 1168-1173, 757-781).
-  assert.ok(inputByPlaceholder(container, '腾讯云 API 密钥 SecretId'));
-  assert.ok(inputByPlaceholder(container, '腾讯云 API 密钥 SecretKey'));
-  assert.match(container.textContent ?? '', /Rerank 使用腾讯云 API 签名（非 OpenAI API Key）。请在云 API 密钥控制台创建 SecretId\/SecretKey。/);
+  assert.ok(inputByPlaceholder(document.body, '腾讯云 API 密钥 SecretId'));
+  assert.ok(inputByPlaceholder(document.body, '腾讯云 API 密钥 SecretKey'));
+  assert.match(document.body.textContent ?? '', /Rerank 使用腾讯云 API 签名（非 OpenAI API Key）。请在云 API 密钥控制台创建 SecretId\/SecretKey。/);
   // LKEAP region field defaults to ap-guangzhou (ModelEditorDialog.vue lines 278-282).
-  const region = inputByPlaceholder(container, 'ap-guangzhou');
+  const region = inputByPlaceholder(document.body, 'ap-guangzhou');
   assert.ok(region);
   assert.equal(region.value, 'ap-guangzhou');
-  assert.match(container.textContent ?? '', /RunRerank 支持 ap-beijing、ap-guangzhou 等，默认 ap-guangzhou/);
+  assert.match(document.body.textContent ?? '', /RunRerank 支持 ap-beijing、ap-guangzhou 等，默认 ap-guangzhou/);
   // Recommended rerank model prefilled on provider pick.
-  const name = inputByPlaceholder(container, '例如：gpt-4, claude-3-opus');
+  const name = inputByPlaceholder(document.body, '例如：gpt-4, claude-3-opus');
   assert.ok(name);
   assert.equal(name.value, 'lke-reranker-base');
 });
@@ -425,18 +426,18 @@ test('weknoracloud provider gates editing on credential state', async () => {
   const unconfigured = makeClient({ providers: () => [wkcProvider], wkcStatus: { needs_reinit: false, has_models: false } });
   const container = await mount(unconfigured.client, 'admin');
   await openAddEditor(container);
-  const providerSelect = modelOptionTrigger(container);
+  const providerSelect = modelOptionTrigger(document.body);
   await setSelect(providerSelect, 'weknoracloud');
 
-  const text = container.textContent ?? '';
+  const text = document.body.textContent ?? '';
   assert.match(text, /尚未配置 WeKnoraCloud 凭证，请先填写 APPID 和 APPSECRET。/);
   assert.match(text, /前往设置中配置/);
   // Model name and confirm stay disabled until credentials exist (ModelEditorDialog.vue lines 4, 222).
-  const name = inputByPlaceholder(container, '例如：gpt-4, claude-3-opus');
+  const name = inputByPlaceholder(document.body, '例如：gpt-4, claude-3-opus');
   assert.ok(name);
   assert.equal(name.disabled, true);
   // S6：disabled 的 tdesign Button 渲染为 div.t-button.t-is-disabled（台账 #7）。
-  const submit = Array.from(container.querySelectorAll('.t-button')).find((button) => (button.textContent ?? '') === '保存');
+  const submit = Array.from(document.body.querySelectorAll('.t-button')).find((button) => (button.textContent ?? '') === '保存');
   assert.ok(submit);
   assert.equal(submit.classList.contains('t-is-disabled'), true);
 });
@@ -446,15 +447,15 @@ test('weknoracloud configured state unlocks the editor', async () => {
   const configured = makeClient({ providers: () => [wkcProvider], wkcStatus: { needs_reinit: false, has_models: true } });
   const container = await mount(configured.client, 'admin');
   await openAddEditor(container);
-  const providerSelect = modelOptionTrigger(container);
+  const providerSelect = modelOptionTrigger(document.body);
   await setSelect(providerSelect, 'weknoracloud');
   await act(async () => {});
 
-  assert.match(container.textContent ?? '', /WeKnoraCloud 凭证已配置。支持的模型可参考/);
-  const name = inputByPlaceholder(container, '例如：gpt-4, claude-3-opus');
+  assert.match(document.body.textContent ?? '', /WeKnoraCloud 凭证已配置。支持的模型可参考/);
+  const name = inputByPlaceholder(document.body, '例如：gpt-4, claude-3-opus');
   assert.ok(name);
   assert.equal(name.disabled, false);
-  const submit = Array.from(container.querySelectorAll('button')).find((button) => button.type === 'submit');
+  const submit = Array.from(document.body.querySelectorAll<HTMLButtonElement>('.setting-drawer__footer .t-button')).find((button) => (button.textContent ?? '') === '保存');
   assert.ok(submit);
   assert.equal(submit.disabled, false);
 });
@@ -464,7 +465,7 @@ test('unavailable Ollama disables the local source option', async () => {
   const container = await mount(client, 'admin');
   await openAddEditor(container);
   await act(async () => {});
-  const localRadio = Array.from(container.querySelectorAll('[role="radio"]')).find((button) => button.textContent === 'Ollama');
+  const localRadio = Array.from(document.body.querySelectorAll('[role="radio"]')).find((button) => button.textContent === 'Ollama');
   assert.ok(localRadio);
   assert.equal((localRadio as HTMLButtonElement).disabled, true);
 });
@@ -474,12 +475,12 @@ test('creating a model posts the Vue payload and shows the localized toast', asy
   const container = await mount(client, 'admin');
   await openAddEditor(container);
 
-  const providerSelect = modelOptionTrigger(container);
+  const providerSelect = modelOptionTrigger(document.body);
   await setSelect(providerSelect, 'openai');
-  const name = inputByPlaceholder(container, '例如：gpt-4, claude-3-opus');
+  const name = inputByPlaceholder(document.body, '例如：gpt-4, claude-3-opus');
   assert.ok(name);
   await setInput(name, 'gpt-4o-mini');
-  await submitForm(container.querySelector('form')!);
+  await submitForm(document.body.querySelector('form')!);
 
   assert.equal(calls.create.length, 1);
   assert.deepEqual(calls.create[0], {
@@ -495,28 +496,28 @@ test('creating a model posts the Vue payload and shows the localized toast', asy
       supports_vision: false,
     },
   });
-  assert.match(container.textContent ?? '', /模型已添加/);
-  assert.equal(container.querySelector('.wk-model-editor'), null, 'editor closes after save');
+  assert.match(document.body.textContent ?? '', /模型已添加/);
+  assert.equal(document.querySelector('.model-editor-drawer'), null, 'editor closes after save');
 });
 
 test('submit gating renders the exact Vue validation copy next to the actions', async () => {
   const { client, calls } = makeClient();
   const container = await mount(client, 'admin');
   await openAddEditor(container);
-  await submitForm(container.querySelector('form')!);
-  assert.match(container.textContent ?? '', /模型名称不能为空/);
+  await submitForm(document.body.querySelector('form')!);
+  assert.match(document.body.textContent ?? '', /模型名称不能为空/);
   assert.equal(calls.create.length, 0, 'invalid drafts never reach the API');
 
-  const embeddingRadio = Array.from(container.querySelectorAll('[role="radio"]')).find((button) => button.textContent === 'Embedding');
+  const embeddingRadio = Array.from(document.body.querySelectorAll('[role="radio"]')).find((button) => button.textContent === 'Embedding');
   assert.ok(embeddingRadio);
   await click(embeddingRadio);
-  const providerSelect = modelOptionTrigger(container);
+  const providerSelect = modelOptionTrigger(document.body);
   await setSelect(providerSelect, 'openai');
-  const name = inputByPlaceholder(container, '例如：gpt-4, claude-3-opus');
+  const name = inputByPlaceholder(document.body, '例如：gpt-4, claude-3-opus');
   assert.ok(name);
   await setInput(name, 'text-embedding-3-small');
-  await submitForm(container.querySelector('form')!);
-  assert.match(container.textContent ?? '', /Embedding 模型必须填写有效的向量维度（128-4096）/);
+  await submitForm(document.body.querySelector('form')!);
+  assert.match(document.body.textContent ?? '', /Embedding 模型必须填写有效的向量维度（128-4096）/);
   assert.equal(calls.create.length, 0);
 });
 
@@ -531,13 +532,13 @@ test('duplicate submit is blocked while a save is in flight', async () => {
   };
   const container = await mount(client, 'admin');
   await openAddEditor(container);
-  const providerSelect = modelOptionTrigger(container);
+  const providerSelect = modelOptionTrigger(document.body);
   await setSelect(providerSelect, 'openai');
-  const name = inputByPlaceholder(container, '例如：gpt-4, claude-3-opus');
+  const name = inputByPlaceholder(document.body, '例如：gpt-4, claude-3-opus');
   assert.ok(name);
   await setInput(name, 'gpt-4o-mini');
-  await submitForm(container.querySelector('form')!);
-  await submitForm(container.querySelector('form')!);
+  await submitForm(document.body.querySelector('form')!);
+  await submitForm(document.body.querySelector('form')!);
   assert.equal(calls.create.length, 1, 'busy flag blocks a second submit (ModelEditorDialog.vue saving guard)');
   await act(async () => release());
   assert.equal(calls.create.length, 1);
@@ -555,7 +556,7 @@ test('edit prefill restores stored fields and routes credentials through the sub
     credentials: { api_key: { configured: true }, app_secret: { configured: false } },
   } as never;
   const container = await mount(client, 'admin', [record]);
-  const more = container.querySelector('.model-card .model-card__more');
+  const more = document.body.querySelector('.model-card .model-card__more');
   assert.ok(more, 'the per-card ellipsis menu trigger renders');
   await click(more);
   // t-dropdown 弹层 portal 到 body（台账 #8：不透传 attrs，走 li 文本断言）。
@@ -563,20 +564,32 @@ test('edit prefill restores stored fields and routes credentials through the sub
   assert.ok(edit);
   await click(edit);
 
-  assert.match(container.textContent ?? '', /编辑模型/);
-  assert.match(container.textContent ?? '', /配置用于结果重排序的模型/);
-  const region = inputByPlaceholder(container, 'ap-guangzhou');
+  assert.match(document.body.textContent ?? '', /编辑模型/);
+  assert.match(document.body.textContent ?? '', /配置用于结果重排序的模型/);
+  const region = inputByPlaceholder(document.body, 'ap-guangzhou');
   assert.ok(region);
   assert.equal(region.value, 'ap-shanghai', 'stored extra_config.region prefills the region field');
-  // Edit mode swaps the create-mode API key input for credential subresource rows.
-  assert.ok(inputByPlaceholder(container, '腾讯云 API 密钥 SecretId'));
-  assert.equal(inputByPlaceholder(container, '输入 API Key'), null);
-  assert.ok(container.querySelector('span[title="configured"]'), 'configured api_key shows the indicator');
+  // Edit mode swaps the create-mode API key input for the CredentialResource
+  // card（批 3：configured 默认展示 faux-input 行；editing 态经「更换」进入，
+  // placeholder 走 credential.inputPlaceholder，与 Vue CredentialResource.vue
+  // :132 同构）。
+  assert.equal(inputByPlaceholder(document.body, '输入 API Key'), null);
+  assert.ok(document.body.querySelector('.credential-faux-input[title="已配置"]'), 'configured api_key shows the Vue faux-input indicator');
+  assert.ok(document.body.querySelector('.credential-row-label'), 'two-field signed rerank renders per-field row labels');
 
-  const secret = inputByPlaceholder(container, '腾讯云 API 密钥 SecretKey');
-  assert.ok(secret);
+  // editing 态：app_secret 未配置（fixture 仅 api_key configured），走
+  // .is-empty 行的「配置」进入 credential-edit（CredentialResource.vue:89-108）。
+  const secretRow = Array.from(document.body.querySelectorAll('.credential-row'))
+    .find((row) => (row.querySelector('.credential-row-label')?.textContent ?? '').includes('SecretKey'));
+  assert.ok(secretRow, 'the app_secret credential row renders its own label');
+  assert.ok(secretRow.querySelector('.credential-faux-input.is-empty'), 'unconfigured app_secret renders the empty faux row');
+  const replaceBtn = Array.from(secretRow.querySelectorAll('.credential-actions .t-button')).find((button) => (button.textContent ?? '') === '配置');
+  assert.ok(replaceBtn);
+  await click(replaceBtn);
+  const secret = secretRow.querySelector<HTMLInputElement>('input[type="password"]');
+  assert.ok(secret, 'editing state uses the shared credential placeholder');
   await setInput(secret, 'sk-new');
-  const credentialBlock = secret.closest('.form-item') ?? container;
+  const credentialBlock = secret.closest('.credential-resource') ?? document.body;
   const saveButtons = Array.from(credentialBlock.querySelectorAll('button')).filter((button) => button.textContent === '保存');
   const save = saveButtons[saveButtons.length - 1];
   assert.ok(save, 'the app_secret row has its own save action');
@@ -584,7 +597,7 @@ test('edit prefill restores stored fields and routes credentials through the sub
   assert.deepEqual(calls.credentialsPut, [{ id: 'rerank-1', body: { appSecret: 'sk-new' } }]);
 
   // Saving the model itself never embeds credentials (ModelSettings.vue lines 596-604).
-  const submit = Array.from(container.querySelectorAll('button')).find((button) => button.type === 'submit');
+  const submit = Array.from(document.body.querySelectorAll<HTMLButtonElement>('.setting-drawer__footer .t-button')).find((button) => (button.textContent ?? '') === '保存');
   assert.ok(submit);
   await click(submit);
   assert.equal(calls.update.length, 1);
@@ -607,13 +620,13 @@ test('connection test uses the per-type route and edit-mode modelId passthrough'
     credentials: { api_key: { configured: true } },
   } as never;
   const container = await mount(client, 'admin', [record]);
-  const more = container.querySelector('.model-card .model-card__more');
+  const more = document.body.querySelector('.model-card .model-card__more');
   assert.ok(more);
   await click(more);
   const edit = Array.from(document.body.querySelectorAll('.t-dropdown__item')).find((item) => (item.textContent ?? '').includes('编辑'));
   assert.ok(edit);
   await click(edit);
-  const test = Array.from(container.querySelectorAll('button')).find((button) => button.textContent === '测试连接');
+  const test = Array.from(document.body.querySelectorAll('button')).find((button) => button.textContent === '测试连接');
   assert.ok(test);
   await click(test);
   await act(async () => {});
@@ -627,7 +640,7 @@ test('connection test uses the per-type route and edit-mode modelId passthrough'
       customHeaders: undefined, apiKey: undefined,
     },
   );
-  assert.match(container.textContent ?? '', /连接成功/);
+  assert.match(document.body.textContent ?? '', /连接成功/);
 });
 
 // B1: the Vue section header is h2 模型配置 + subtitle with a single green
@@ -641,7 +654,7 @@ test('panel header keeps only the Vue title, subtitle and debug trigger', async 
     await act(async () => {
       root.render(<ModelSettingsPanel client={{} as never} role="admin" initialModels={[]} />);
     });
-    const heading = container.querySelector('.model-settings > .section-header');
+    const heading = document.body.querySelector('.model-settings > .section-header');
     assert.ok(heading, 'the panel renders its own Vue section-header');
     assert.equal(heading.querySelector('h2')?.textContent, '模型配置');
     assert.ok((heading.querySelector('.section-description')?.textContent ?? '').includes('管理不同类型的 AI 模型，支持 Ollama 本地模型和远程 API'));
@@ -663,8 +676,8 @@ test('model editor uses a Vue-style inner drawer overlay instead of an inline ca
   const { client } = makeClient();
   const container = await mount(client, 'admin');
   await openAddEditor(container);
-  assert.ok(container.querySelector('.wk-model-editor-overlay'), 'Vue SettingDrawer overlay is mounted');
-  assert.ok(container.querySelector('.wk-model-editor-drawer'), 'Vue editor drawer surface is mounted');
+  assert.ok(document.querySelector('.model-editor-drawer'), 'Vue SettingDrawer overlay is mounted');
+  assert.ok(document.querySelector('.setting-drawer__body'), 'Vue editor drawer surface is mounted');
 });
 
 // B2: Vue model-card markup — type badge, title, vendor·context subtitle,
@@ -676,7 +689,7 @@ test('model cards use the Vue card markup with a per-card action menu', async ()
     { id: 'm4', name: 'builtin-vlm', type: 'VLLM', source: 'remote', is_builtin: true, parameters: { provider: 'weknoracloud' } },
   ] as never);
   try {
-    const card = container.querySelector('.model-card');
+    const card = document.body.querySelector('.model-card');
     assert.ok(card, 'cards render the Vue model-card structure');
     assert.ok(card.querySelector('div[aria-label]'), 'type badge renders');
     assert.equal(card.querySelector('h3.model-card__title')?.textContent, 'gpt-4o');
@@ -689,7 +702,7 @@ test('model cards use the Vue card markup with a per-card action menu', async ()
     assert.ok((menu.textContent ?? '').includes('复制'));
     assert.ok(card.querySelector('.model-card__delete'), 'delete stays an affix action');
     // Builtin model: lock icon, no menu, no delete (ModelSettings.vue lines 741-749).
-    const builtin = Array.from(container.querySelectorAll('.model-card')).find((node) => (node.textContent ?? '').includes('builtin-vlm'));
+    const builtin = Array.from(document.body.querySelectorAll('.model-card')).find((node) => (node.textContent ?? '').includes('builtin-vlm'));
     assert.ok(builtin);
     assert.ok(builtin.querySelector('span[title]'), 'builtin cards show the lock');
     assert.equal(builtin.querySelector('.model-card__more'), null);
@@ -709,17 +722,17 @@ test('local source renders a keyboard-navigable Ollama combobox with a download 
   const { client } = makeClient({ ollamaModels: [{ name: 'qwen2.5:0.5b', size: 512 * 1024 * 1024 }] });
   const container = await mount(client, 'admin');
   await openAddEditor(container);
-  const localRadio = Array.from(container.querySelectorAll('[role="radio"]')).find((button) => button.textContent === 'Ollama');
+  const localRadio = Array.from(document.body.querySelectorAll('[role="radio"]')).find((button) => button.textContent === 'Ollama');
   assert.ok(localRadio);
   await click(localRadio);
   await act(async () => {});
 
-  const combobox = container.querySelector<HTMLInputElement>('input[role="combobox"]');
+  const combobox = document.body.querySelector<HTMLInputElement>('input[role="combobox"]');
   assert.ok(combobox, 'the local picker is an editable combobox input');
   assert.equal(combobox.getAttribute('role'), 'combobox');
   assert.equal(combobox.getAttribute('aria-expanded'), 'false');
   await setInput(combobox, 'qwe');
-  const listbox = container.querySelector('[role="listbox"]');
+  const listbox = document.body.querySelector('[role="listbox"]');
   assert.ok(listbox, 'typing opens the suggestion dropdown');
   assert.equal(combobox.getAttribute('aria-expanded'), 'true');
   const option = listbox.querySelector('[role="option"]');
@@ -737,16 +750,16 @@ test('local source renders a keyboard-navigable Ollama combobox with a download 
   assert.ok((listbox.querySelector('[role="option"][aria-selected="true"]')?.textContent ?? '').includes('qwen2.5:0.5b'), 'ArrowUp returns to the model row');
   await pressKey(combobox, 'Enter');
   assert.equal(combobox.value, 'qwen2.5:0.5b', 'Enter selects the highlighted suggestion');
-  assert.equal(container.querySelector('[role="listbox"]'), null, 'selection closes the dropdown');
+  assert.equal(document.body.querySelector('[role="listbox"]'), null, 'selection closes the dropdown');
 
   // Unknown keyword offers the Vue download option (ModelEditorDialog.vue line 124).
   await setInput(combobox, 'gemma3:1b');
-  const downloadOption = Array.from(container.querySelectorAll('[role="option"]')).find((option) => (option.textContent ?? '').includes('下载')) ?? null;
+  const downloadOption = Array.from(document.body.querySelectorAll('[role="option"]')).find((option) => (option.textContent ?? '').includes('下载')) ?? null;
   assert.ok(downloadOption);
   assert.ok((downloadOption.textContent ?? '').includes('下载: gemma3:1b'));
   await pressKey(combobox, 'Escape');
-  assert.equal(container.querySelector('[role="listbox"]'), null, 'Escape closes the dropdown');
-  const refresh = Array.from(container.querySelectorAll('button')).find((button) => button.textContent === '刷新列表');
+  assert.equal(document.body.querySelector('[role="listbox"]'), null, 'Escape closes the dropdown');
+  const refresh = Array.from(document.body.querySelectorAll('button')).find((button) => button.textContent === '刷新列表');
   assert.ok(refresh, 'the Vue refresh action stays next to the picker');
 });
 
@@ -756,13 +769,13 @@ test('name and base URL validate on blur with per-field Vue copy', async () => {
   const { client } = makeClient();
   const container = await mount(client, 'admin');
   await openAddEditor(container);
-  const providerSelect = modelOptionTrigger(container);
+  const providerSelect = modelOptionTrigger(document.body);
   await setSelect(providerSelect, 'openai');
 
-  const name = inputByPlaceholder(container, '例如：gpt-4, claude-3-opus')!;
+  const name = inputByPlaceholder(document.body, '例如：gpt-4, claude-3-opus')!;
   assert.ok(name);
   await blur(name);
-  let fieldError = name.closest('.form-item')?.querySelector('.wk-field-error');
+  let fieldError: Element | null = name.closest('.form-item')?.querySelector('.wk-field-error') ?? document.body.querySelector('.wk-field-error');
   assert.ok(fieldError, 'the name error renders next to the field');
   assert.equal(fieldError.textContent, '请输入模型名称');
 
@@ -771,26 +784,26 @@ test('name and base URL validate on blur with per-field Vue copy', async () => {
   // S6（台账 #12 先例）：tdesign Input 的 maxlength 走 JS 截断（两端输入都截到
   // 上限，>100 的 blur 规则分支在 Vue 侧同样不可达），断言收敛到截断行为。
   assert.equal(name.value.length, 100, 'maxlength truncates the model name to 100 characters');
-  fieldError = name.closest('.form-item')?.querySelector('.wk-field-error');
+  fieldError = name.closest('.form-item')?.querySelector('.wk-field-error') ?? null;
   assert.equal(fieldError ?? null, null);
 
-  const baseUrl = container.querySelector<HTMLInputElement>('input[type="url"]')!;
+  const baseUrl = document.body.querySelector<HTMLInputElement>('input[type="url"]')!;
   assert.ok(baseUrl);
   await setInput(baseUrl, '');
   await blur(baseUrl);
-  fieldError = baseUrl.closest('label')?.querySelector('.wk-field-error');
+  fieldError = baseUrl.closest('.form-item')?.querySelector('.wk-field-error') ?? null;
   assert.equal(fieldError?.textContent, '请输入 Base URL');
 
   await setInput(baseUrl, 'not-a-url');
   await blur(baseUrl);
-  fieldError = baseUrl.closest('label')?.querySelector('.wk-field-error');
+  fieldError = baseUrl.closest('.form-item')?.querySelector('.wk-field-error') ?? null;
   assert.equal(fieldError?.textContent, 'Base URL 格式不正确，请输入有效的 URL');
 
   await setInput(baseUrl, 'https://api.openai.com/v1');
   await blur(baseUrl);
   await setInput(name, 'gpt-4o-mini');
   await blur(name);
-  assert.equal(container.querySelector('.wk-field-error'), null, 'fixing a field clears its error');
+  assert.equal(document.body.querySelector('.wk-field-error'), null, 'fixing a field clears its error');
 });
 
 // B4c: ESC preserves the add draft for the next add open; explicit cancel
@@ -801,23 +814,23 @@ test('ESC keeps the add draft, cancel discards it', async () => {
   const container = await mount(client, 'admin');
 
   await openAddEditor(container);
-  const name = inputByPlaceholder(container, '例如：gpt-4, claude-3-opus')!;
+  const name = inputByPlaceholder(document.body, '例如：gpt-4, claude-3-opus')!;
   await setInput(name, 'my-drafted-model');
   await pressKey(document.body, 'Escape');
-  assert.equal(container.querySelector('.wk-model-editor'), null, 'ESC closes the editor');
+  assert.equal(document.querySelector('.model-editor-drawer'), null, 'ESC closes the editor');
 
   const add = findAddTile(container);
   assert.ok(add);
   await click(add);
-  const restored = inputByPlaceholder(container, '例如：gpt-4, claude-3-opus')!;
+  const restored = inputByPlaceholder(document.body, '例如：gpt-4, claude-3-opus')!;
   assert.equal(restored.value, 'my-drafted-model', 'the add draft is restored on reopen');
 
-  const cancel = Array.from(container.querySelectorAll('.wk-model-editor button')).find((button) => button.textContent === '取消');
+  const cancel = Array.from(document.querySelectorAll('.model-editor-drawer button')).find((button) => button.textContent === '取消');
   assert.ok(cancel);
   await click(cancel);
-  assert.equal(container.querySelector('.wk-model-editor'), null);
+  assert.equal(document.querySelector('.model-editor-drawer'), null);
   await click(add);
-  const fresh = inputByPlaceholder(container, '例如：gpt-4, claude-3-opus')!;
+  const fresh = inputByPlaceholder(document.body, '例如：gpt-4, claude-3-opus')!;
   assert.equal(fresh.value, '', 'cancel discards the draft (handleCancel resets the form)');
 });
 

@@ -210,6 +210,7 @@ React JSX 逐节点对照 Vue template：**标签、类名顺序、条件渲染�
 
 |   | （pilot 回填区） | | | |
 
+| 28 | Button `#icon` 槽 vs icon children；Select 触发器内联 fake-arrow + 字体栈 | t-button `#icon` 槽 → 独立 `.t-button__icon`（margin-right 8px，按钮宽 98）；t-select 触发器显示文本是 `.t-input__inner` input（继承全站字体栈 `-apple-system,"system-ui",...` + line-height 22px），箭头是内联 `svg.t-fake-arrow`（16×16 viewBox 0 0 16 16，`M3.75 5.7998L7.99274 10.0425L12.2361 5.79921` stroke black .9 width 1.3，非 t-icon glyph） | tdesign-react Button 把 icon children 并入 `.t-button__text`（无 8px margin，按钮宽 90、svg y 上偏 3px）；自研 trigger 若挂 `<button>` 会拿 UA 字体栈 Arial | **icon 槽判例（px-models-model-card 残差 72px 实证）**：①icon 必须走 `icon={...}` prop（等价 Vue `#icon` 槽），不得作 children——否则丢 `.t-button__icon` margin 且 svg 落入 text span 基线偏移；②自研 select 触发器文本 span 须显式 `font-family: inherit` + `line-height: 22px`（+1px 补偿）对齐 input 渲染；③fake-arrow svg 逐属性内联复刻（含 stroke-opacity 0.9）。执行=ModelOptionSelect.tsx chevron + Model/Mcp 面板 add-header/generate-usage 按钮（19-08-35 轮三项 0.00% 实证） |
 |   | （pilot 回填区） | | | |
 
 ### 已知跨域欠账（非页面平移差异，登记待归属域修复）
