@@ -139,6 +139,55 @@ func TestQueueNextWithoutRestartPortFailsClosed(t *testing.T) {
 	require.ErrorIs(t, err, ErrCapabilityUnavailable)
 }
 
+// TestQueueNextOnDurableRunSnapshotShapeFailsClosed：graph/tRPC Run 的
+// DurableRunSnapshot（internal/application/service/agent_run_graph.go:53-61）没有
+// agent_id 键，unmarshal 到 Restart 读取的准入映射会零值成功——json 无法区分
+// 「键缺失」与「空值」，unmarshal 无错证明不了这是 coordinator 准入的运行。
+// 守卫缺失时，同 owner 的终态 chat Run 会在 AdmissionCoordinator.Start（不校验
+// 空 AgentID）下准入一个 agent_id 为空的垃圾后续 Run 并占用真实会话槽
+// （ListOwnedExecutions 仅按 owner 过滤，垃圾 Run 已可触达 UI）。未知 schema
+// 一律 fail closed（mobile-module-seams §5.3）。
+func TestQueueNextOnDurableRunSnapshotShapeFailsClosed(t *testing.T) {
+	svc, coordinator, db := queueNextEnv(t)
+	ctx := queueNextContext()
+	first, err := coordinator.Start(ctx, StartInput{SessionID: "s1", AgentID: "a1", TargetID: "platform", RequestID: "r1", Text: "goal", BudgetUpper: 100})
+	require.NoError(t, err)
+	// 引擎侧既成事实：snapshot 被写成 graph DurableRunSnapshot 形态（无 agent_id
+	// 键）、父 Run 置终态、会话槽释放——queue_next 的全部前置门在这里都放行，
+	// 唯独快照形态不是准入映射。
+	durable := `{"version":1,"query":"chat goal","model_id":"m1","agent_config":{},"runtime":{}}`
+	require.NoError(t, db.Exec(`UPDATE agent_runs SET status = 'succeeded', revision = revision + 1, snapshot = ? WHERE run_id = ?`, durable, first.Key.RunID).Error)
+	require.NoError(t, db.Exec(`UPDATE sessions SET active_agent_run_id = NULL WHERE id = 's1'`).Error)
+	var revision int64
+	require.NoError(t, db.Raw(`SELECT revision FROM agent_runs WHERE run_id = ?`, first.Key.RunID).Scan(&revision).Error)
+
+	_, err = svc.Command(ctx, first.Key.RunID, contract.ExecutionCommand{Action: "queue_next", Text: "do the next thing", ExpectedRevision: revision, ExternalPendingID: "qid-durable"})
+	require.ErrorIs(t, err, agentruntime.ErrConflict)
+	var runs int64
+	require.NoError(t, db.Raw(`SELECT COUNT(*) FROM agent_runs WHERE session_id = 's1'`).Scan(&runs).Error)
+	require.EqualValues(t, 1, runs, "an unknown-schema snapshot must never admit a follow-up run into a real session slot")
+}
+
+// TestQueueNextOnExplicitEmptyAgentIDSnapshotFailsClosed：同一守卫的另一条路径
+// ——快照显式携带 agent_id 空串（同 owner 越权写入的形态）时同样拒绝。
+func TestQueueNextOnExplicitEmptyAgentIDSnapshotFailsClosed(t *testing.T) {
+	svc, coordinator, db := queueNextEnv(t)
+	ctx := queueNextContext()
+	first, err := coordinator.Start(ctx, StartInput{SessionID: "s1", AgentID: "a1", TargetID: "platform", RequestID: "r1", Text: "goal", BudgetUpper: 100})
+	require.NoError(t, err)
+	blank := `{"agent_id":"","target_id":"platform","workspace_ref":"w1","space_id":"","budget_upper":100}`
+	require.NoError(t, db.Exec(`UPDATE agent_runs SET status = 'canceled', revision = revision + 1, snapshot = ? WHERE run_id = ?`, blank, first.Key.RunID).Error)
+	require.NoError(t, db.Exec(`UPDATE sessions SET active_agent_run_id = NULL WHERE id = 's1'`).Error)
+	var revision int64
+	require.NoError(t, db.Raw(`SELECT revision FROM agent_runs WHERE run_id = ?`, first.Key.RunID).Scan(&revision).Error)
+
+	_, err = svc.Command(ctx, first.Key.RunID, contract.ExecutionCommand{Action: "queue_next", Text: "do the next thing", ExpectedRevision: revision, ExternalPendingID: "qid-blank"})
+	require.ErrorIs(t, err, agentruntime.ErrConflict)
+	var runs int64
+	require.NoError(t, db.Raw(`SELECT COUNT(*) FROM agent_runs WHERE session_id = 's1'`).Scan(&runs).Error)
+	require.EqualValues(t, 1, runs)
+}
+
 func queueNextContext() context.Context { return queueNextContextFor("u1") }
 
 func queueNextContextFor(actor string) context.Context {

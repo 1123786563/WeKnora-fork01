@@ -88,6 +88,16 @@ func (p *GormRunRestartPort) Restart(ctx context.Context, tenantID uint64, owner
 		// Not a coordinator-admitted run: fail closed instead of guessing.
 		return "", agentruntime.ErrConflict
 	}
+	// A graph/tRPC DurableRunSnapshot (no agent_id key) unmarshals cleanly into
+	// the struct above with every field zero-valued — json cannot distinguish
+	// "absent" from "empty", so success here proves nothing. AdmissionCoordinator
+	// .Start does not validate AgentID, and Restart inherits SessionID/owner from
+	// the row, so without this guard a terminal chat run of the same owner would
+	// admit a garbage follow-up run with an empty agent_id into a real session
+	// slot. Unknown schema fails closed (mobile-module-seams §5.3).
+	if strings.TrimSpace(parent.AgentID) == "" {
+		return "", agentruntime.ErrConflict
+	}
 	run, err := p.admission.Start(ctx, StartInput{
 		SessionID: row.SessionID, AgentID: parent.AgentID, TargetID: parent.TargetID,
 		WorkspaceRef: parent.WorkspaceRef, SpaceID: parent.SpaceID,

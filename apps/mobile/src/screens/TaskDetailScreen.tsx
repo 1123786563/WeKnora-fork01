@@ -23,6 +23,16 @@ const STOP_PHASE_COPY: Record<StopPhase, string> = {
   confirmed: '停止已确认：运行已取消',
   unknown: '停止结果未知：正在与服务端核对，核对完成前不能下达新指令',
 };
+/** 停止卡最终文案：「停止已确认：运行已取消」只有在模块未附加 note 时才可断言——
+ * stopProjection 在自然终态获胜（run ended as X before the stop landed）时返回
+ * confirmed+note，那次取消并未发生（Spec Story 23：停止不得隐藏后果）。带 note 的
+ * confirmed 用中性陈述 + 模块给的事实，绝不硬编码一次未发生的取消。 */
+function stopCardCopy(stop: NonNullable<TaskDetailView['stop']>): string {
+  if (stop.phase === 'confirmed' && stop.note !== undefined) {
+    return `停止流程已结束：${stop.note}`;
+  }
+  return STOP_PHASE_COPY[stop.phase];
+};
 const OUTCOME_COPY: Record<InterventionReceipt['outcome'], string> = {
   accepted: '已受理', parked: '已排队（等待当前 Run 结束后发出）', conflict: '状态冲突，请刷新后重试', unknown: '结果未知，核对中',
 };
@@ -70,7 +80,7 @@ export function TaskDetailScreen({ view, loading, error, onRefresh, onOpenMateri
         </View>
         {view.attention === 'required' && <Text>任务需要你的确认，请查看时间线中的审批条目。</Text>}
       </View>
-      {view.stop !== undefined && <Text>{STOP_PHASE_COPY[view.stop.phase]}</Text>}
+      {view.stop !== undefined && <Text>{stopCardCopy(view.stop)}</Text>}
       {onAct !== undefined && (
         <View>
           <Text>运行干预</Text>
