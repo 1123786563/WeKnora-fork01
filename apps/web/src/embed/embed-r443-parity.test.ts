@@ -47,6 +47,11 @@ const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'http:
 (globalThis as typeof globalThis & { window: unknown; document: unknown }).window = dom.window;
 (globalThis as typeof globalThis & { window: unknown; document: unknown }).document = dom.window.document;
 
+import * as React from 'react';
+// EmbedEntryPage.tsx JSX 走 classic 编译且无 React import 的模块按自由标识符落
+// globalThis.React 解析——挂全局（settings-error-ux 判例同款）。
+(Object.assign as (target: unknown, patch: Record<string, unknown>) => unknown)(globalThis, { React });
+
 const olderBatch = [
   { id: 'm3', role: 'assistant', content: 'older answer', created_at: '2024-01-01T10:00:00Z' },
   { id: 'm2', role: 'user', content: 'older question', created_at: '2024-01-01T09:59:00Z' },
