@@ -159,6 +159,13 @@ func (p *notificationProviderSpy) count() int {
 func seedDeliveryFixture(t *testing.T, deviceID string) (*repository.NotificationStore, *gorm.DB) {
 	t.Helper()
 	db := openAdmissionConcurrencyDB(t)
+	// Admissions are actor-fenced: AgentRunStore.Admit requires the acting
+	// principal to be an active tenant member, mirroring production (the same
+	// fixture repair T01 applied to the other admission fixtures).
+	now := time.Now()
+	require.NoError(t, db.Exec(`INSERT INTO tenant_members
+		(tenant_id, user_id, role, status, joined_at, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`, 1, "u1", "owner", "active", now, now, now).Error)
 	runs := repository.NewAgentRunStore(db)
 	_, err := runs.Admit(context.Background(), deliveryTestAdmission("delivery-run"))
 	require.NoError(t, err)
