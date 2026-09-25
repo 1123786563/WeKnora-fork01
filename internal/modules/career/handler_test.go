@@ -355,3 +355,99 @@ func TestCareerMaterialHTTPContract(t *testing.T) {
 	require.Equal(t, 404, missingRec.Code)
 	require.Contains(t, missingRec.Body.String(), "not_found")
 }
+
+func TestCareerProgressHTTPContract(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	office, err := NewOffice(db)
+	require.NoError(t, err)
+	scope := Scope{UserID: "progress-owner", TenantID: 98}
+	base := context.WithValue(context.Background(), types.UserIDContextKey, scope.UserID)
+	base = context.WithValue(base, types.TenantIDContextKey, scope.TenantID)
+	ctx := WithScope(base, scope)
+	require.NoError(t, office.ClaimSpace(ctx))
+
+	applicationID := seedProgressApplication(t, office, ctx, "仅限2027届。", "2027", "prog-http", "batch-a")
+	h := &Handler{office: office, members: &memberListStub{members: []*types.TenantMember{{UserID: scope.UserID, TenantID: scope.TenantID, Role: types.TenantRoleOwner}}}}
+	call := func(method, target, body string, params gin.Params) *httptest.ResponseRecorder {
+		gin.SetMode(gin.TestMode)
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		var reader io.Reader
+		if body != "" {
+			reader = strings.NewReader(body)
+		}
+		c.Request = httptest.NewRequest(method, target, reader).WithContext(base)
+		if body != "" {
+			c.Request.Header.Set("Content-Type", "application/json")
+		}
+		c.Params = params
+		switch {
+		case method == http.MethodPost && strings.HasSuffix(target, "/correct"):
+			h.CorrectProgress(c)
+		case method == http.MethodPost:
+			h.AppendProgress(c)
+		case strings.Contains(target, "/receipt"):
+			h.ProgressReceiptHandler(c)
+		default:
+			h.ApplicationProgress(c)
+		}
+		return rec
+	}
+
+	appendBody := func(requestID, eventType string, revision uint64) string {
+		return fmt.Sprintf(`{"requestId":%q,"eventType":%q,"note":"官网投递","occurredAt":"2026-09-20T10:00:00Z","source":{"kind":"manual"},"expectedRevision":%d}`,
+			requestID, eventType, revision)
+	}
+
+	// The append seam returns the frozen receipt with the authenticated
+	// confirmer; clients cannot inject provenance outside the whitelist.
+	rec := call(http.MethodPost, "/api/v1/career/applications/"+applicationID+"/progress",
+		fmt.Sprintf(`{"requestId":"prog-http-1","eventType":"submitted","source":{"kind":"resume_extraction"},"expectedRevision":0}`),
+		gin.Params{{Key: "applicationId", Value: applicationID}})
+	require.Equal(t, 400, rec.Code, rec.Body.String())
+	require.Contains(t, rec.Body.String(), "invalid_request")
+
+	rec = call(http.MethodPost, "/api/v1/career/applications/"+applicationID+"/progress", appendBody("prog-http-1", ProgressEventSubmitted, 0),
+		gin.Params{{Key: "applicationId", Value: applicationID}})
+	require.Equal(t, 200, rec.Code, rec.Body.String())
+	require.Contains(t, rec.Body.String(), `"kind":"progress_appended"`)
+	require.Contains(t, rec.Body.String(), `"confirmer":"progress-owner"`)
+	var appended ProgressReceipt
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &appended))
+	require.Equal(t, ProgressStageSubmitted, appended.Stage)
+
+	// A stale expected revision maps to the typed 409 with the current value.
+	rec = call(http.MethodPost, "/api/v1/career/applications/"+applicationID+"/progress", appendBody("prog-http-2", ProgressEventAssessment, 0),
+		gin.Params{{Key: "applicationId", Value: applicationID}})
+	require.Equal(t, 409, rec.Code, rec.Body.String())
+	require.Contains(t, rec.Body.String(), "revision_conflict")
+	require.Contains(t, rec.Body.String(), `"currentRevision":1`)
+
+	// The correction seam appends without overwriting.
+	correctBody := fmt.Sprintf(`{"requestId":"prog-http-c1","correctsEventId":%q,"eventType":"assessment","source":{"kind":"manual"},"expectedRevision":1}`, appended.EventID)
+	rec = call(http.MethodPost, "/api/v1/career/applications/"+applicationID+"/progress/correct", correctBody,
+		gin.Params{{Key: "applicationId", Value: applicationID}})
+	require.Equal(t, 200, rec.Code, rec.Body.String())
+	require.Contains(t, rec.Body.String(), `"kind":"progress_corrected"`)
+	require.Contains(t, rec.Body.String(), fmt.Sprintf(`"correctsEventId":%q`, appended.EventID))
+
+	// The view serves the full history plus the deterministic projection.
+	rec = call(http.MethodGet, "/api/v1/career/applications/"+applicationID+"/progress", "", gin.Params{{Key: "applicationId", Value: applicationID}})
+	require.Equal(t, 200, rec.Code, rec.Body.String())
+	require.Contains(t, rec.Body.String(), `"stage":"assessment"`)
+	require.Contains(t, rec.Body.String(), `"revision":2`)
+
+	// The receipt endpoint replays by request ID and 404s unknown requests.
+	rec = call(http.MethodGet, "/api/v1/career/progress/receipt?requestId=prog-http-1", "", nil)
+	require.Equal(t, 200, rec.Code, rec.Body.String())
+	require.Contains(t, rec.Body.String(), `"requestId":"prog-http-1"`)
+	rec = call(http.MethodGet, "/api/v1/career/progress/receipt?requestId=missing", "", nil)
+	require.Equal(t, 404, rec.Code, rec.Body.String())
+
+	// Another application of the same owner stays unchained.
+	rec = call(http.MethodGet, "/api/v1/career/applications/00000000-0000-0000-0000-000000000000/progress", "",
+		gin.Params{{Key: "applicationId", Value: "00000000-0000-0000-0000-000000000000"}})
+	require.Equal(t, 404, rec.Code, rec.Body.String())
+	require.Contains(t, rec.Body.String(), "not_found")
+}

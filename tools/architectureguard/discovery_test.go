@@ -185,17 +185,20 @@ func TestFuncDeclNamesRecursive(t *testing.T) {
 // 历史 647 条路由基线 = 既有 644 条 + T08 Opportunity 3；历史快照见
 // docs/architecture/moves/README.md。历史 659 条 = 既有 656 条 + T11 Career
 // Search 3（POST searches + GET searches/receipt + GET searches/:searchId，
-// 一次性同步执行无独立 reconcile 路由）。当前 666 条 = 既有 659 条 + T15
+// 一次性同步执行无独立 reconcile 路由）。历史 666 条 = 既有 659 条 + T15
 // Career Material 7（POST materials + POST materials/confirm + GET
 // materials/receipt + GET materials/:materialId + GET .../versions + GET
-// .../versions/:versionId + GET .../versions/:versionId/compare）。日期说明见
-// docs/architecture/moves/README.md。
+// .../versions/:versionId + GET .../versions/:versionId/compare）。当前 670
+// 条 = 既有 666 条 + T17 Career Progress 4（POST applications/:applicationId/
+// progress + POST .../progress/correct + GET applications/:applicationId/
+// progress + GET progress/receipt）。日期说明见 docs/architecture/moves/
+// README.md。
 
 const (
-	wantRouteLiteral  = 597
+	wantRouteLiteral  = 601
 	wantRouteAPIKey   = 69
 	wantRouteHandle   = 0
-	wantRouteTotal    = 666
+	wantRouteTotal    = 670
 	wantWorkersPerMix = 23
 	wantHooks         = 58
 )

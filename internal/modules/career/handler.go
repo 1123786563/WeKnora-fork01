@@ -113,6 +113,9 @@ func writeError(c *gin.Context, e error) {
 	case errors.Is(e, ErrMaterialClaimUnconfirmed):
 		status = 409
 		code = "material_claim_unconfirmed"
+	case errors.Is(e, ErrProgressEventNotFound):
+		status = 404
+		code = "not_found"
 	}
 	body := gin.H{"code": code, "message": e.Error()}
 	if errors.Is(e, ErrRevisionConflict) {
@@ -710,6 +713,140 @@ func (h *Handler) CompareMaterialVersions(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, comparison)
+}
+
+const maxProgressBodyBytes = 16 * 1024
+
+// progressClientSource whitelists the provenance an HTTP caller may claim:
+// only user entry (manual). Server-side imports claim their own enum value
+// inside the office, never through this seam.
+func progressClientSource(source Source) bool {
+	return (source.Kind == "manual" || source.Kind == "user") && source.ReferenceID == ""
+}
+
+func bindProgressApplication(c *gin.Context, bodyApplicationID string) (string, bool) {
+	applicationID := c.Param("applicationId")
+	if bodyApplicationID != "" && bodyApplicationID != applicationID {
+		writeError(c, ErrInvalidRequest)
+		return "", false
+	}
+	return applicationID, true
+}
+
+// AppendProgress appends one immutable progress event to the application named
+// in the path. The confirmer is the authenticated user; provenance outside the
+// manual whitelist is rejected.
+func (h *Handler) AppendProgress(c *gin.Context) {
+	ctx, ok := h.scope(c, false)
+	if !ok {
+		return
+	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxProgressBodyBytes)
+	decoder := json.NewDecoder(c.Request.Body)
+	decoder.DisallowUnknownFields()
+	var input AppendProgressInput
+	if err := decoder.Decode(&input); err != nil {
+		var maxBytesError *http.MaxBytesError
+		if errors.As(err, &maxBytesError) {
+			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": gin.H{"code": "request_too_large", "message": "progress request is too large"}})
+			return
+		}
+		writeError(c, ErrInvalidRequest)
+		return
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		writeError(c, ErrInvalidRequest)
+		return
+	}
+	if !progressClientSource(input.Source) {
+		writeError(c, ErrInvalidRequest)
+		return
+	}
+	input.Source = Source{Kind: "manual"}
+	applicationID, ok := bindProgressApplication(c, input.ApplicationID)
+	if !ok {
+		return
+	}
+	input.ApplicationID = applicationID
+	receipt, err := h.office.AppendProgress(ctx, input)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, receipt)
+}
+
+// CorrectProgress appends a correction event referencing the corrected event;
+// the original history row is never rewritten.
+func (h *Handler) CorrectProgress(c *gin.Context) {
+	ctx, ok := h.scope(c, false)
+	if !ok {
+		return
+	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxProgressBodyBytes)
+	decoder := json.NewDecoder(c.Request.Body)
+	decoder.DisallowUnknownFields()
+	var input CorrectProgressInput
+	if err := decoder.Decode(&input); err != nil {
+		var maxBytesError *http.MaxBytesError
+		if errors.As(err, &maxBytesError) {
+			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": gin.H{"code": "request_too_large", "message": "progress correction request is too large"}})
+			return
+		}
+		writeError(c, ErrInvalidRequest)
+		return
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		writeError(c, ErrInvalidRequest)
+		return
+	}
+	if !progressClientSource(input.Source) {
+		writeError(c, ErrInvalidRequest)
+		return
+	}
+	input.Source = Source{Kind: "manual"}
+	applicationID, ok := bindProgressApplication(c, input.ApplicationID)
+	if !ok {
+		return
+	}
+	input.ApplicationID = applicationID
+	receipt, err := h.office.CorrectProgress(ctx, input)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, receipt)
+}
+
+// ProgressReceiptHandler replays a stored progress receipt by request ID.
+func (h *Handler) ProgressReceiptHandler(c *gin.Context) {
+	ctx, ok := h.scope(c, false)
+	if !ok {
+		return
+	}
+	receipt, err := h.office.FindProgressReceipt(ctx, c.Query("requestId"))
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, receipt)
+}
+
+// ApplicationProgress serves the immutable event history of one application
+// plus the deterministic stage projection.
+func (h *Handler) ApplicationProgress(c *gin.Context) {
+	ctx, ok := h.scope(c, false)
+	if !ok {
+		return
+	}
+	view, err := h.office.ApplicationProgress(ctx, c.Param("applicationId"))
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, view)
 }
 
 func (h *Handler) Sources(c *gin.Context) {

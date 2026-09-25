@@ -39,4 +39,8 @@ func RegisterCareerRoutes(r *gin.RouterGroup, h *career.Handler) {
 	g.GET("/materials/:materialId/versions", h.ListMaterialVersions)
 	g.GET("/materials/:materialId/versions/:versionId", h.GetMaterialVersion)
 	g.GET("/materials/:materialId/versions/:versionId/compare", h.CompareMaterialVersions)
+	g.POST("/applications/:applicationId/progress", h.AppendProgress)
+	g.POST("/applications/:applicationId/progress/correct", h.CorrectProgress)
+	g.GET("/applications/:applicationId/progress", h.ApplicationProgress)
+	g.GET("/progress/receipt", h.ProgressReceiptHandler)
 }
