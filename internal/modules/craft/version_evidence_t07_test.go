@@ -2,9 +2,10 @@ package craft
 
 // T07 (#131) — version-pinned evidence domain rules. The evidence pinned to
 // one version freezes the producing Run's RECORDED source facts (source ref,
-// per-source digest, acquisition time); it validates fail-closed and its
-// digest is a pure function of the facts, so an identical replay of the same
-// promotion derives the identical evidence identity again.
+// per-source digest, acquisition time); it validates fail-closed. Its
+// integrity digest is a pure function of the canonical encoding (PinnedAt
+// included): byte-for-byte integrity of what a store persists, never a
+// replay-identity test — replay adoption compares the frozen facts.
 
 import (
 	"crypto/sha256"
@@ -154,4 +155,37 @@ func TestCraftT07ValidateVersionEvidenceFailsClosed(t *testing.T) {
 	require.True(t, emptyEvidence.Empty)
 	require.Zero(t, emptyEvidence.AcquiredAt, "an empty record has no acquisition time to fabricate")
 	require.NoError(t, ValidateVersionEvidence(emptyEvidence))
+}
+
+// TestCraftT07EncodeVersionEvidenceOwnsDigest pins the encoding contract
+// (T07 OCR fix): the digest is the SHA-256 of exactly the canonical bytes
+// EncodeVersionEvidence returns, the digest helper delegates to the same
+// encoding, and PinnedAt deliberately participates — a replayed promotion
+// (fresh PinnedAt, identical frozen facts) derives a different digest, so
+// replay adoption must compare facts, never digests.
+func TestCraftT07EncodeVersionEvidenceOwnsDigest(t *testing.T) {
+	scope := Scope{TenantID: 1, UserID: "u1", SessionID: "s1"}
+	t1 := time.Date(2026, 9, 25, 1, 2, 3, 0, time.UTC)
+	versionID := VersionID("ws-1", "run-1", t07Digest("manifest"))
+	record := t07RunRecord(scope, "run-1", t07SourceRecord("kc_a", t07Digest("a"), t1))
+	ev, err := PinVersionEvidence(versionID, record, t1.Add(time.Minute))
+	require.NoError(t, err)
+
+	raw, digest, err := EncodeVersionEvidence(ev)
+	require.NoError(t, err)
+	sum := sha256.Sum256(raw)
+	require.Equal(t, hex.EncodeToString(sum[:]), digest, "the digest is the SHA-256 of exactly the returned canonical bytes")
+	digestOnly, err := VersionEvidenceDigest(ev)
+	require.NoError(t, err)
+	require.Equal(t, digestOnly, digest, "VersionEvidenceDigest delegates to the same encoding")
+
+	// A replay re-pins at a fresh clock reading: identical frozen facts,
+	// different integrity digest — adoption compares facts (PinnedAt
+	// excluded), never this digest.
+	replay := ev
+	replay.PinnedAt = ev.PinnedAt.Add(time.Hour)
+	replayDigest, err := VersionEvidenceDigest(replay)
+	require.NoError(t, err)
+	require.NotEqual(t, digest, replayDigest, "PinnedAt deliberately participates in the integrity digest")
+	require.Equal(t, ev.Sources, replay.Sources, "the frozen facts themselves are identical")
 }

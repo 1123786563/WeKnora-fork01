@@ -204,14 +204,16 @@ func (s *CraftVersionStore) publish(ctx context.Context, scope craft.Scope, in c
 			return craft.Version{}, fmt.Errorf("%w: evidence binds version %s run %s, not the published version %s run %s",
 				craft.ErrInvalidInput, evidence.VersionID, evidence.RunID, in.ID, in.RunID)
 		}
-		raw, err := json.Marshal(*evidence)
+		// The canonical encoding and its digest come from the one domain
+		// function, so the stored bytes and the digest column can never
+		// disagree about what was pinned.
+		raw, digest, err := craft.EncodeVersionEvidence(*evidence)
 		if err != nil {
 			return craft.Version{}, err
 		}
-		sum := sha256.Sum256(raw)
 		evidenceRow = craftVersionEvidenceRow{
 			VersionID: in.ID, TenantID: scope.TenantID,
-			EvidenceJSON: string(raw), Digest: hex.EncodeToString(sum[:]),
+			EvidenceJSON: string(raw), Digest: digest,
 			AcquiredAt: evidence.AcquiredAt, PinnedAt: evidence.PinnedAt,
 		}
 	}
@@ -258,35 +260,42 @@ func (s *CraftVersionStore) publish(ctx context.Context, scope craft.Scope, in c
 					return e
 				}
 			}
-			if evidence != nil {
-				if e := insertCraftVersionEvidence(tx, evidenceRow); e != nil {
-					return e
-				}
-			}
-			out = in
-			return nil
-		}
-
-		// Lost the identity race (or this is a replay): only the identical
-		// publish may adopt the stored version.
-		stored, e := loadCraftVersion(tx, in.ID)
-		if e != nil {
-			return e
-		}
-		if !sameCraftVersion(stored, in) {
-			return fmt.Errorf("%w: version %s already published with different content", craft.ErrConflict, in.ID)
-		}
 		if evidence != nil {
-			// The version row already exists; the evidence must either be
-			// absent (a crash before this commit never happened — the rows
-			// share one transaction) or identical to what is being pinned.
-			if e := insertCraftVersionEvidence(tx, evidenceRow); e != nil {
+			// This transaction created the version row above, so its
+			// evidence member cannot pre-exist (the FK pins it to this
+			// version): a plain insert is the whole write.
+			if e := tx.Create(&evidenceRow).Error; e != nil {
 				return e
 			}
 		}
-		out = stored
+		out = in
 		return nil
-	})
+	}
+
+	// Lost the identity race (or this is a replay): only the identical
+	// publish may adopt the stored version.
+	stored, e := loadCraftVersion(tx, in.ID)
+	if e != nil {
+		return e
+	}
+	if !sameCraftVersion(stored, in) {
+		return fmt.Errorf("%w: version %s already published with different content", craft.ErrConflict, in.ID)
+	}
+	if evidence != nil {
+		// The version row pre-dates this call. It can only be without an
+		// evidence member when it was published by an earlier,
+		// evidence-less route (a pre-T07 deployment upgrade, or the
+		// evidence-less Publish paths still serving other collections):
+		// retro-pinning it would reconstruct history under a fresh
+		// PinnedAt, so the store refuses exactly like different content —
+		// only adoption of already-pinned identical evidence is allowed.
+		if e := adoptCraftVersionEvidence(tx, evidenceRow); e != nil {
+			return e
+		}
+	}
+	out = stored
+	return nil
+})
 	if err != nil {
 		return craft.Version{}, err
 	}
@@ -332,16 +341,19 @@ func sameCraftVersionEvidence(a, b craft.VersionEvidence) bool {
 // insertCraftVersionEvidence writes one evidence row; a racing identical
 // insert adopts the stored row, a different evidence under the same version
 // identity is a conflict and changes nothing.
-func insertCraftVersionEvidence(tx *gorm.DB, row craftVersionEvidenceRow) error {
-	created := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&row)
-	if created.Error != nil {
-		return created.Error
-	}
-	if created.RowsAffected == 1 {
-		return nil
-	}
+// adoptCraftVersionEvidence adopts the evidence already pinned to an
+// existing version row. A stored version WITHOUT an evidence member was
+// published by an earlier, evidence-less route (a pre-T07 deployment, or
+// the evidence-less Publish paths): retro-pinning it would reconstruct
+// history under a fresh PinnedAt, so it is refused like different content.
+// Identical frozen facts (PinnedAt excluded, exactly like the replay
+// adoption of the version row) adopt silently.
+func adoptCraftVersionEvidence(tx *gorm.DB, row craftVersionEvidenceRow) error {
 	var stored craftVersionEvidenceRow
 	if err := tx.Where("version_id = ?", row.VersionID).Take(&stored).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return fmt.Errorf("%w: version %s already published without evidence", craft.ErrConflict, row.VersionID)
+		}
 		return err
 	}
 	var pinned craft.VersionEvidence
@@ -396,6 +408,10 @@ func (s *CraftVersionStore) VersionEvidence(ctx context.Context, scope craft.Sco
 	if err != nil {
 		return craft.VersionEvidence{}, err
 	}
+	// Integrity check: the digest column must be the SHA-256 of exactly the
+	// stored bytes — the byte-for-byte contract craft.EncodeVersionEvidence
+	// established at write time. Hashing the RAW stored bytes (never a
+	// decode-then-re-encode) keeps byte-level tampering detectable.
 	sum := sha256.Sum256([]byte(evidenceRow.EvidenceJSON))
 	if hex.EncodeToString(sum[:]) != evidenceRow.Digest {
 		return craft.VersionEvidence{}, fmt.Errorf("%w: version %s evidence digest mismatch", craft.ErrConflict, versionID)

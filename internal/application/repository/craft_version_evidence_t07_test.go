@@ -188,3 +188,43 @@ func TestCraftT07EvidenceReadNeverReconstructs(t *testing.T) {
 	_, err = store.VersionEvidence(ctx, scope, craft.VersionID(ws.ID, "run-x", t07RepoDigest("never")))
 	require.ErrorIs(t, err, craft.ErrNotFound)
 }
+
+// TestCraftT07EvidencelessVersionIsNeverRetroPinned pins the T07 OCR fix:
+// a version published by an earlier, evidence-less route (a pre-T07
+// deployment upgrade, or the evidence-less Publish paths still serving
+// other collections) is never retro-pinned by a later PublishWithEvidence
+// — replayed promotion callbacks included. Retro-pinning would reconstruct
+// history under a fresh PinnedAt, so the write is refused like different
+// content and the read keeps its honest ErrNotFound.
+func TestCraftT07EvidencelessVersionIsNeverRetroPinned(t *testing.T) {
+	db := openCraftDB(t)
+	// The central migration (INT sqlite 000130) owns this schema on the
+	// migrated chain openCraftDB provides; asserting it exists beats
+	// re-AutoMigrating over it (GORM sqlite table-rebuild misparses the
+	// migration FOREIGN KEY clause as a column).
+	require.True(t, db.Migrator().HasTable(&craftVersionEvidenceRow{}), "central migration must create craft_version_evidence")
+	store := &CraftVersionStore{db: db}
+	ws := putCraftWorkspace(t, NewCraftStore(db))
+	scope := craftTestScope()
+	ctx := context.Background()
+	acquired := time.Date(2026, 9, 25, 1, 2, 3, 0, time.UTC)
+
+	files := []craft.File{craftTestFile(t, "index.html", "<h1>legacy</h1>")}
+	vID := craft.VersionID(ws.ID, "run-legacy", mustDigest(t, files))
+	v := craft.Version{ID: vID, WorkspaceID: ws.ID, RunID: "run-legacy", Kind: craft.KindWeb, Files: files}
+
+	// The evidence-less route this store still serves publishes without
+	// evidence — exactly the pre-T07 upgrade shape.
+	_, err := store.Publish(ctx, scope, v)
+	require.NoError(t, err)
+
+	// A later (replayed) promotion callback carrying evidence must NOT
+	// back-fill the historical row: it is refused like different content...
+	_, err = store.PublishWithEvidence(ctx, scope, v, t07EvidenceFor(t, vID, "run-legacy", acquired))
+	require.ErrorIs(t, err, craft.ErrConflict, "an evidence-less historical version is never retro-pinned")
+
+	// ...and the read keeps its honest not-found — history is never
+	// reconstructed under a fresh PinnedAt.
+	_, err = store.VersionEvidence(ctx, scope, vID)
+	require.ErrorIs(t, err, craft.ErrNotFound, "the evidence-less version stays evidence-less")
+}

@@ -419,21 +419,36 @@ func ValidateVersionEvidence(ev VersionEvidence) error {
 	return nil
 }
 
-// VersionEvidenceDigest derives the integrity digest of one evidence
-// snapshot: the canonical JSON encoding of its facts. Identical facts always
-// derive the identical digest — a replayed promotion adopts the stored row —
-// while any changed fact changes the digest, so a store can refuse a
-// different evidence under an already-pinned version identity.
-func VersionEvidenceDigest(ev VersionEvidence) (string, error) {
+// EncodeVersionEvidence returns one evidence snapshot's canonical JSON
+// encoding together with its integrity digest — the SHA-256 of exactly
+// those bytes. The digest deliberately covers the WHOLE serialized
+// snapshot, including PinnedAt: it is the byte-for-byte integrity of what
+// a store persists, never a replay-identity test. A replayed promotion
+// re-pins with a fresh PinnedAt and therefore derives a different digest;
+// replay adoption compares the frozen facts (PinnedAt excluded), never
+// this digest.
+func EncodeVersionEvidence(ev VersionEvidence) ([]byte, string, error) {
 	if err := ValidateVersionEvidence(ev); err != nil {
-		return "", err
+		return nil, "", err
 	}
 	raw, err := json.Marshal(ev)
 	if err != nil {
-		return "", err
+		return nil, "", err
 	}
 	sum := sha256.Sum256(raw)
-	return hex.EncodeToString(sum[:]), nil
+	return raw, hex.EncodeToString(sum[:]), nil
+}
+
+// VersionEvidenceDigest derives the integrity digest of one evidence
+// snapshot: the SHA-256 of its canonical JSON encoding, byte-for-byte what
+// a store persists (EncodeVersionEvidence owns the encoding). It covers
+// PinnedAt, so two replays of the same promotion derive different digests;
+// any changed fact changes it too, letting a store refuse a different
+// evidence under an already-pinned version identity. Replay adoption of
+// identical facts is decided by fact comparison, never by this digest.
+func VersionEvidenceDigest(ev VersionEvidence) (string, error) {
+	_, digest, err := EncodeVersionEvidence(ev)
+	return digest, err
 }
 
 // ValidVersionID reports whether id is the persisted form of one version
