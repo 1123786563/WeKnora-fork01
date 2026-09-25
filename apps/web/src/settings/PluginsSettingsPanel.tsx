@@ -185,6 +185,12 @@ export function PluginsSettingsPanel({ client, role }: Props) {
 
   useEffect(() => {
     let cancelled = false;
+    // client 变化（跨账号/工作区）触发的重载同步失效治理面（T19-OCR1-F4）：
+    // 旧 client 抓取的策略行不可再展示，行内开关也不得用新 client 对旧
+    // installationId 发 PUT。挂载首跑时 toolPolicy 本就是 null，此清空为
+    // 无操作；toggleState 等函数直调 refreshInstallations 不经本 effect，
+    // 不会误伤正常重载（安装停用/启用不改变策略行）。
+    setToolPolicy(null);
     void refreshInstallations(() => cancelled);
     return () => {
       cancelled = true;
@@ -296,8 +302,10 @@ export function PluginsSettingsPanel({ client, role }: Props) {
 
   // T19：展开/收起一个安装的工具治理面（GET .../tools——require_approval
   // 的权威确定值视图）。再次点击同一安装 = 收起；点其他安装 = 互斥切换。
+  // PUT 在途（policyToggleBusy）期间整体冻结——杜绝「旧安装的迟到回包
+  // （成功或失败）写进新展开面板」的错位窗口（T19-OCR1-F3）。
   async function toggleToolPolicyView(item: PluginInstallationSummary) {
-    if (!canEdit || toolPolicyBusyId !== null) return;
+    if (!canEdit || toolPolicyBusyId !== null || policyToggleBusy !== null) return;
     if (toolPolicy?.installationId === item.installationId) {
       setToolPolicy(null);
       return;
@@ -338,11 +346,15 @@ export function PluginsSettingsPanel({ client, role }: Props) {
         prev && prev.installationId === installationId ? { ...prev, rows, error: null } : prev);
     } catch (cause) {
       const message = apiErrorMessage(cause);
+      // 与成功分支同款 installationId 匹配（T19-OCR1-F3）：迟到失败只落在
+      // 发起安装的面板上——面板已被切换/失效时保持原状，不错位污染。
       if (message === null) {
         console.warn("plugin tool policy update failed:", cause);
-        setToolPolicy((prev) => (prev ? { ...prev, error: "工具策略更新失败，请重试" } : prev));
+        setToolPolicy((prev) =>
+          prev && prev.installationId === installationId ? { ...prev, error: "工具策略更新失败，请重试" } : prev);
       } else {
-        setToolPolicy((prev) => (prev ? { ...prev, error: message } : prev));
+        setToolPolicy((prev) =>
+          prev && prev.installationId === installationId ? { ...prev, error: message } : prev);
       }
     } finally {
       setPolicyToggleBusy(null);
@@ -509,7 +521,8 @@ export function PluginsSettingsPanel({ client, role }: Props) {
                     <Button
                       type="button"
                       loading={toolPolicyBusyId === item.installationId}
-                      disabled={toolPolicyBusyId !== null && toolPolicyBusyId !== item.installationId}
+                      disabled={(toolPolicyBusyId !== null && toolPolicyBusyId !== item.installationId)
+                        || policyToggleBusy !== null}
                       onClick={() => void toggleToolPolicyView(item)}
                     >
                       工具治理

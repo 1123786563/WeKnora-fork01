@@ -885,3 +885,104 @@ test('viewer 安装行无工具治理入口', async () => {
     await unmount(root);
   }
 });
+
+// ---- T19-OCR1-F3/F4：治理面状态污染与生命周期 ----
+
+const otherSummary = { ...jiraSummary, installation_id: 'inst-2', plugin_id: 'com.example.other', name: '其他插件', tool_count: 1 };
+
+test('T19-OCR1-F3 PUT 进行中其他安装的工具治理按钮禁用（互斥冻结，迟到失败不得污染新面板）', async () => {
+  let releasePut: ((value: unknown) => void) | undefined;
+  const { client } = stubClient(async (input) => {
+    if (input.method === 'GET' && input.path === '/api/v1/plugins/installations') {
+      return { success: true, data: [{ ...jiraSummary }, { ...otherSummary }] };
+    }
+    if (input.method === 'GET' && input.path === '/api/v1/plugins/installations/inst-1/tools') {
+      return { success: true, data: toolPolicyRows() };
+    }
+    if (input.method === 'PUT' && input.path === '/api/v1/plugins/installations/inst-1/tools/create_todo/policy') {
+      // 挂起 PUT：模拟在途请求，由测试手动放行。
+      await new Promise<unknown>((resolve) => { releasePut = resolve; });
+      throw new ApiError({ code: 'HTTP_503', message: 'late policy failure' });
+    }
+    throw new Error(`unexpected request ${input.method} ${input.path}`);
+  });
+  const root = await mount(React.createElement(PluginsSettingsPanel, { client, role: 'admin' }));
+  try {
+    await flushEffects();
+    const list = document.querySelector('[data-testid="plugin-installations"]') as ParentNode;
+    await act(async () => { findButtonByText(list, '工具治理')!.click(); });
+    await flushEffects();
+    const governance = document.querySelector('[data-testid="plugin-tool-policy"]') as ParentNode;
+    await act(async () => { switchByAriaLabel(governance, 'create_todo 成员审批')!.click(); });
+    await flushEffects();
+    // PUT 在途：另一安装的工具治理按钮必须禁用（互斥冻结）。
+    const otherGovernance = Array.from(list.querySelectorAll('button'))
+      .find((button) => (button.textContent ?? '').trim() === '工具治理'
+        && button.closest('li')?.textContent?.includes('其他插件')) as HTMLButtonElement | undefined;
+    assert.ok(otherGovernance, 'the other installation carries its governance button');
+    assert.equal(otherGovernance!.disabled, true, 'the other installation\'s governance button is frozen while a policy PUT is in flight');
+    // 放行 PUT → 失败回到本安装面板（错误归因到发起安装，不污染他人）。
+    releasePut!(undefined);
+    await flushEffects();
+    assert.match(
+      document.querySelector('[data-testid="plugin-tool-policy"]')?.textContent ?? '',
+      /late policy failure/, 'the late failure surfaces on the OWNING installation\'s panel');
+  } finally {
+    await unmount(root);
+  }
+});
+
+test('T19-OCR1-F4 client 变化重载安装列表时治理面同步失效（不残留旧 client 数据、迟到失败零污染）', async () => {
+  let releasePut: ((value: unknown) => void) | undefined;
+  const client1 = {
+    request: async (input: { method: string; path: string; body?: unknown }) => {
+      if (input.method === 'GET' && input.path === '/api/v1/plugins/installations') {
+        return { success: true, data: [{ ...jiraSummary }] };
+      }
+      if (input.method === 'GET' && input.path === '/api/v1/plugins/installations/inst-1/tools') {
+        return { success: true, data: toolPolicyRows() };
+      }
+      if (input.method === 'PUT' && input.path === '/api/v1/plugins/installations/inst-1/tools/create_todo/policy') {
+        await new Promise<unknown>((resolve) => { releasePut = resolve; });
+        throw new ApiError({ code: 'HTTP_503', message: 'late policy failure' });
+      }
+      throw new Error(`unexpected request ${input.method} ${input.path}`);
+    },
+  };
+  const client2 = {
+    request: async (input: { method: string; path: string }) => {
+      if (input.method === 'GET' && input.path === '/api/v1/plugins/installations') {
+        // 同一安装仍在列表（client 切换 ≠ 安装消失）：若治理面状态不失效，
+        // 旧行会继续渲染、开关会用新 client 对旧 installationId 发 PUT。
+        return { success: true, data: [{ ...jiraSummary }] };
+      }
+      throw new Error(`unexpected request ${input.method} ${input.path}`);
+    },
+  };
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => { root.render(React.createElement(PluginsSettingsPanel, { client: client1 as never, role: 'admin' })); });
+    await flushEffects();
+    const list = document.querySelector('[data-testid="plugin-installations"]') as ParentNode;
+    await act(async () => { findButtonByText(list, '工具治理')!.click(); });
+    await flushEffects();
+    assert.ok(document.querySelector('[data-testid="plugin-tool-policy"]'), 'the governance panel opens on the first client');
+    await act(async () => { switchByAriaLabel(document.querySelector('[data-testid="plugin-tool-policy"]') as ParentNode, 'create_todo 成员审批')!.click(); });
+    await flushEffects();
+    // 切换 client（跨账号/工作区）：effect 重载列表，治理面必须整体失效收起。
+    await act(async () => { root.render(React.createElement(PluginsSettingsPanel, { client: client2 as never, role: 'admin' })); });
+    await flushEffects();
+    assert.ok(!document.querySelector('[data-testid="plugin-tool-policy"]'),
+      'the governance panel collapses when the client change reloads the installation list — stale rows never survive a client switch');
+    // 迟到的 PUT 失败回到已失效的 null 状态：不渲染任何错误条（不复活面板）。
+    releasePut!(undefined);
+    await flushEffects();
+    assert.ok(!document.querySelector('[data-testid="plugin-tool-policy"]'), 'a late PUT failure must not resurrect the invalidated panel');
+    assert.match(document.querySelector('[data-testid="plugin-installations"]')?.textContent ?? '', /Jira 本周待办/, 'the reloaded list still renders the installation row');
+  } finally {
+    await act(async () => { root.unmount(); });
+    document.body.replaceChildren();
+  }
+});
