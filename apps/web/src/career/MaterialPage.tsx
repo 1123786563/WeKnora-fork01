@@ -75,6 +75,21 @@ export function MaterialPage({ client, scopeController, opportunityId, snapshotI
  const claimCounter = useRef(0)
  const restored = useRef(false)
  const dirty = savedBody === undefined || JSON.stringify(bodyFromEditable(sections)) !== JSON.stringify(savedBody)
+ // Review round 1 F1: a restored server draft can already contain claims in
+ // the local claim-N pattern. New placeholder IDs must continue past the
+ // restored maximum (and never collide with any existing claim ID at all) so
+ // React keys stay unique and the backend's per-body seenClaims check never
+ // rejects the next save with invalid_request.
+ const syncClaimCounter = (body: MaterialBody): void => {
+  for (const section of body.sections) for (const claim of section.claims) {
+   const match = claim.claimId.match(/^claim-(\d+)$/)
+   if (match) claimCounter.current = Math.max(claimCounter.current, Number(match[1]))
+  }
+ }
+ const nextClaimId = (existing: EditableSection[]): string => {
+  do { claimCounter.current += 1 } while (existing.some((section) => section.claims.some((claim) => claim.claimId === `claim-${claimCounter.current}`)))
+  return `claim-${claimCounter.current}`
+ }
 
  const clearPrivate = useCallback((notice: string, nextState: 'forbidden' | 'scope-changed' = 'forbidden') => {
   setAttempt(undefined); setView(undefined); setSavedBody(undefined); setSections([]); setPhase(nextState); setMessage(notice)
@@ -106,6 +121,7 @@ export function MaterialPage({ client, scopeController, opportunityId, snapshotI
 
  const acceptView = useCallback((next: MaterialView): void => {
   setView(next); setMaterialId(next.materialId); setSavedBody(next.body); setSections(editableFromBody(next.body))
+  syncClaimCounter(next.body)
  }, [])
  // A reload keeps the stored material readable straight from the URL: the
  // material ID is the durable pointer, nothing is replayed here.
@@ -153,7 +169,7 @@ export function MaterialPage({ client, scopeController, opportunityId, snapshotI
    const receipt: MaterialReceipt = await client.career.editMaterial(currentAttempt.input as EditMaterialInput, requestScope.signal)
    if (!scopeController.isCurrent(requestScope.scope)) return
    if (receipt.requestId !== currentAttempt.requestId || (currentAttempt.input.materialId !== undefined && receipt.materialId !== currentAttempt.input.materialId)) throw new TypeError('材料回执与本次请求不匹配')
-   setMaterialId(receipt.materialId); setSavedBody(receipt.body)
+   setMaterialId(receipt.materialId); setSavedBody(receipt.body); syncClaimCounter(receipt.body)
    const url = materialParamUrl(receipt.materialId)
    if (url) window.history.replaceState({}, document.title, url)
    await reloadView(receipt.materialId)
@@ -246,7 +262,7 @@ export function MaterialPage({ client, scopeController, opportunityId, snapshotI
    const receipt: MaterialReceipt = await client.career.materialReceipt(currentAttempt.requestId, requestScope.signal)
    if (!scopeController.isCurrent(requestScope.scope)) return
    if (receipt.requestId !== currentAttempt.requestId) throw new TypeError('材料回执与原请求编号不匹配')
-   setMaterialId(receipt.materialId); setSavedBody(receipt.body)
+   setMaterialId(receipt.materialId); setSavedBody(receipt.body); syncClaimCounter(receipt.body)
    const url = materialParamUrl(receipt.materialId)
    if (url) window.history.replaceState({}, document.title, url)
    await reloadView(receipt.materialId)
@@ -330,7 +346,7 @@ export function MaterialPage({ client, scopeController, opportunityId, snapshotI
       <button type="button" aria-label={`章节 ${sectionIndex + 1} 移除主张 ${claimIndex + 1}`} disabled={locked} onClick={() => updateSection(sectionIndex, { claims: section.claims.filter((_, index) => index !== claimIndex) })}>移除主张</button>
      </div>)}
      <div className="wk-material__actions">
-      <button type="button" aria-label={`章节 ${sectionIndex + 1} 添加缺失占位主张`} disabled={locked} onClick={() => { claimCounter.current += 1; updateSection(sectionIndex, { claims: [...section.claims, { claimId: `claim-${claimCounter.current}`, text: '', factKey: '', needsReview: true, reviewNote: '' }] }) }}>添加缺失占位主张</button>
+      <button type="button" aria-label={`章节 ${sectionIndex + 1} 添加缺失占位主张`} disabled={locked} onClick={() => updateSection(sectionIndex, { claims: [...section.claims, { claimId: nextClaimId(sections), text: '', factKey: '', needsReview: true, reviewNote: '' }] })}>添加缺失占位主张</button>
       <button type="button" aria-label={`移除章节 ${sectionIndex + 1}`} disabled={locked} onClick={() => setSections((current) => current.filter((_, index) => index !== sectionIndex))}>移除章节</button>
      </div>
     </fieldset>)}

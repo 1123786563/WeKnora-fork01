@@ -140,6 +140,36 @@ test('a stored material shows fact-linked claims, explicit missing placeholders 
  assert.match(versions, /V1/)
 })
 
+// Review round 1 F1 (high): after restoring a stored draft whose claims
+// already use the local claim-N pattern, adding another placeholder must
+// never reuse an existing claim ID (React key duplication and a backend
+// invalid_request refusal from validateMaterialShape's seenClaims check).
+test('adding a placeholder after restoring a stored draft never collides with existing claim IDs', async () => {
+ window.history.replaceState({}, '', '/platform/career/opportunities/opp%2F1?snapshotId=snapshot%20%3F1&material=mat-1')
+ const sent: MaterialBody[] = []
+ const restoredBody: MaterialBody = { sections: [{ heading: '教育经历', content: '计算机科学与技术本科', claims: [
+  { claimId: 'claim-1', text: '实习经历待补充', needsReview: true },
+  { claimId: 'claim-2', text: '毕业时间为 2026 年', factKey: '毕业时间', needsReview: false },
+ ] }] }
+ const career: CareerStub & { editMaterial: (input: any) => Promise<MaterialReceipt> } = {
+  open: async () => profileView,
+  material: async () => ({ ...materialView([1]), body: restoredBody }),
+  editMaterial: async (input: { requestId: string; body: MaterialBody }) => { sent.push(input.body); return { ...editedReceipt(input.requestId), body: input.body } },
+  confirmMaterial: async () => { throw new Error('not part of this test') },
+ }
+ const { container } = await mountMaterial(career)
+ await act(async () => { click(container.querySelector<HTMLButtonElement>('[aria-label="章节 1 添加缺失占位主张"]')!); await settle() })
+ const ids = [...container.querySelectorAll('.wk-material__claim-id code')].map((node) => node.textContent)
+ assert.equal(ids.length, 3)
+ assert.equal(new Set(ids).size, 3, `claim IDs stay unique across the restored draft and the new placeholder: ${ids.join(', ')}`)
+ assert.equal(ids[2], 'claim-3', 'the counter continues after the restored maximum instead of restarting at claim-1')
+ await act(async () => { setInput(container.querySelector<HTMLTextAreaElement>('[aria-label="章节 1 主张 3 内容"]')!, '证书待补充'); await settle() })
+ await act(async () => { click(byLabel(container, 'button', '保存草稿')); await settle(); await settle() })
+ assert.equal(sent.length, 1)
+ const savedIds = sent[0]?.sections[0]?.claims.map((claim) => claim.claimId)
+ assert.deepEqual(savedIds, ['claim-1', 'claim-2', 'claim-3'])
+})
+
 test('confirming publishes immutable versions and V1/V2 open side by side with the visible diff', async () => {
  const confirms: unknown[] = []
  const compares: string[][] = []
