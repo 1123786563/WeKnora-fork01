@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/mattn/go-sqlite3"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -55,6 +56,25 @@ var ErrAdmissionUnavailable = errors.New("career usage admission unavailable")
 // errLedgerState marks a stored reservation status outside the frozen
 // reserved/settled/released vocabulary — a corrupt ledger fails closed.
 var errLedgerState = errors.New("career usage reservation has an unknown status")
+
+// isUsageReservationInsertRace reports whether err is strictly a uniqueness
+// conflict on the (tenant, user, request) index — the only benign admission
+// insert failure, because it means another admission for the same request ID
+// committed first. It deliberately matches far less than the legacy receipt
+// race predicate: SQLite BUSY ("database is locked") must NOT match, or a
+// contended admission would report success with no ledger row (an uncounted
+// charged run); BUSY bubbles up to the busy-retry loop instead.
+func isUsageReservationInsertRace(err error) bool {
+	if errors.Is(err, gorm.ErrDuplicatedKey) {
+		return true
+	}
+	var sqliteErr sqlite3.Error
+	if errors.As(err, &sqliteErr) {
+		return sqliteErr.Code == sqlite3.ErrConstraint && sqliteErr.ExtendedCode == sqlite3.ErrConstraintUnique
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "unique constraint") || strings.Contains(message, "duplicate key")
+}
 
 // UsageEstimateView is the frozen pre-execution estimate: the cost that the
 // next charged run would consume, the conditions under which it is charged,
@@ -222,11 +242,19 @@ func (o *Office) admitSearchUsage(ctx context.Context, s Scope, requestID string
 			LeaseUntil: &lease, CreatedAt: now,
 		}
 		if err = tx.Create(&row).Error; err != nil {
-			if isReceiptRaceError(err) {
-				// A concurrent admission for the same request ID won the insert:
-				// the ledger already holds exactly one reservation for it.
-				return nil
+			if isUsageReservationInsertRace(err) {
+				// A uniqueness conflict means another admission for the same
+				// request ID committed first. Confirm the winner's row is
+				// durably visible inside this transaction before reporting
+				// success — never report an admission the ledger cannot back.
+				var winner usageReservationRecord
+				if lookupErr := tx.Where("tenant_id=? AND user_id=? AND request_id=?", s.TenantID, s.UserID, requestID).First(&winner).Error; lookupErr == nil {
+					return nil
+				}
 			}
+			// Anything else — including SQLite BUSY ("database is locked") —
+			// bubbles up: the busy-retry loop re-runs the transaction, and a
+			// genuine failure fails closed as admission unavailable.
 			return err
 		}
 		return nil

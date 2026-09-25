@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -560,6 +561,61 @@ func TestAdmissionIsAtomicUnderConcurrentRequests(t *testing.T) {
 		require.EqualValuesf(t, 1, usageReservationCount(t, o), "round %d: exactly one reservation row exists", round)
 
 		// The estimate agrees with the ledger after the race.
+		estimate, err := o.UsageEstimate(ctx, UsageOperationSearchOnce)
+		require.NoError(t, err)
+		require.EqualValuesf(t, 1, estimate.ReservedUnits+estimate.SettledUnits, "round %d: the ledger holds exactly one held unit", round)
+	}
+}
+
+// TestAdmissionIsAtomicOnFileBackedSQLite reproduces review F4: a file-backed
+// SQLite database (the supported deployment shape) reports writer contention
+// as "database is locked", which the admission insert must NOT mistake for a
+// same-request uniqueness race. A swallowed BUSY would report admission
+// success with no ledger row — an uncounted charged run.
+func TestAdmissionIsAtomicOnFileBackedSQLite(t *testing.T) {
+	for round := 0; round < 20; round++ {
+		path := filepath.Join(t.TempDir(), fmt.Sprintf("usage-file-race-%d.db", round))
+		db, err := gorm.Open(sqlite.Open(path), &gorm.Config{})
+		require.NoError(t, err)
+		o, err := NewOffice(db)
+		require.NoError(t, err)
+		o.SetSearchQuotaLimit(1)
+		policy := &stubSourcePolicy{approvedHosts: map[string]bool{"jobs.example.test": true}}
+		o.sourcePolicy = policy
+		o.sourceTransport = &scriptedTransport{policy: policy, scripts: map[string]scriptedFetch{}}
+		ctx := WithScope(context.Background(), Scope{UserID: "owner", TenantID: 206 + uint64(round)})
+		require.NoError(t, o.ClaimSpace(ctx))
+		s, err := getScope(ctx)
+		require.NoError(t, err)
+
+		const racers = 8
+		results := make([]error, racers)
+		var start sync.WaitGroup
+		start.Add(1)
+		var done sync.WaitGroup
+		for i := 0; i < racers; i++ {
+			done.Add(1)
+			go func(i int) {
+				defer done.Done()
+				start.Wait()
+				results[i] = o.admitSearchUsage(ctx, s, fmt.Sprintf("usage-file-race-%d", i))
+			}(i)
+		}
+		start.Done()
+		done.Wait()
+
+		admitted := 0
+		for _, result := range results {
+			switch {
+			case result == nil:
+				admitted++
+			case errors.Is(result, ErrSearchQuotaRefused):
+			default:
+				t.Fatalf("round %d: unexpected admission error: %v", round, result)
+			}
+		}
+		require.Equalf(t, 1, admitted, "round %d: every reported success must hold a ledger row — a one-unit limit admits exactly one", round)
+		require.EqualValuesf(t, 1, usageReservationCount(t, o), "round %d: exactly one reservation row exists", round)
 		estimate, err := o.UsageEstimate(ctx, UsageOperationSearchOnce)
 		require.NoError(t, err)
 		require.EqualValuesf(t, 1, estimate.ReservedUnits+estimate.SettledUnits, "round %d: the ledger holds exactly one held unit", round)
