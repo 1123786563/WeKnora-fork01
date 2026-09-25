@@ -632,11 +632,22 @@
   color: var(--td-text-color-secondary);
 }
 
-.wk-settings-drawer-root .user-profile .password-popup-inner {
+/* ==== 3b. UserProfile.vue unscoped 块（body 弹层，§2.5 原样平移不加前缀） ==== */
+/* t-popup 挂到 body，需全局样式；z-index 需高于设置全屏遮罩（2000）。 */
+/* 内层排版规则原在 §3 以 .wk-settings-drawer-root .user-profile 祖先前缀锚定，
+ * 但弹层经 t-popup portal 到 body 后祖先链断裂、规则失配——px-userprofile-
+ * change-password 真因（b1f440178 引入，早于 B3c；豁免 #27 判据被证伪回退为
+ * 工单）。改锚 overlay 类 .user-profile-password-popup-overlay（portal 后唯一
+ * 稳定锚点），值逐条对齐 UserProfile.vue:440-475 scoped 源。 */
+.user-profile-password-popup-overlay {
+  z-index: 3050 !important;
+}
+
+.user-profile-password-popup-overlay .password-popup-inner {
   max-width: 100%;
 }
 
-.wk-settings-drawer-root .user-profile .password-popup-title {
+.user-profile-password-popup-overlay .password-popup-title {
   font-size: 15px;
   font-weight: 600;
   color: var(--td-text-color-primary);
@@ -644,32 +655,26 @@
   line-height: 1.35;
 }
 
-.wk-settings-drawer-root .user-profile .password-popup-hint {
+.user-profile-password-popup-overlay .password-popup-hint {
   margin: 0 0 12px;
   font-size: 13px;
   line-height: 1.55;
   color: var(--td-text-color-secondary);
 }
 
-.wk-settings-drawer-root .user-profile .password-popup-form .t-form__item {
+.user-profile-password-popup-overlay .password-popup-form .t-form__item {
   margin-bottom: 14px;
 }
 
-.wk-settings-drawer-root .user-profile .password-popup-form .t-form__item:last-child {
+.user-profile-password-popup-overlay .password-popup-form .t-form__item:last-child {
   margin-bottom: 4px;
 }
 
-.wk-settings-drawer-root .user-profile .password-popup-footer {
+.user-profile-password-popup-overlay .password-popup-footer {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
   margin-top: 16px;
-}
-
-/* ==== 3b. UserProfile.vue unscoped 块（body 弹层，§2.5 原样平移不加前缀） ==== */
-/* t-popup 挂到 body，需全局样式；z-index 需高于设置全屏遮罩（2000）。 */
-.user-profile-password-popup-overlay {
-  z-index: 3050 !important;
 }
 
 .user-profile-password-popup-overlay .t-popup__content {
@@ -8421,4 +8426,173 @@
   justify-content: center;
   font-size: 16px;
   line-height: 1;
+}
+
+/* ==== 23. TenantMembers.vue scoped 块平移（settings-members 分区，
+   px-members-rbac-hint 收敛） ====
+ * frontend/src/views/settings/TenantMembers.vue:1782-1955 <style scoped>
+ * LESS 嵌套展开平移。hover 权限弹层经 t-popup overlayClassName
+ * permissions-popup-overlay portal 到 body（§3b 同款 body 弹层），规则锚
+ * overlay 类、禁用 .wk-settings-drawer-root 祖先前缀。此前本族规则于
+ * 72de117db 弃置后从未移植（DOM 780667f00/ebb2d12a2 落地）——豁免 #27 判据
+ * 被证伪回退为工单的真因。 */
+.permissions-popup-overlay .permissions-compact {
+  padding: 8px;
+}
+
+.permissions-popup-overlay .permissions-compact-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 16px;
+}
+
+.permissions-popup-overlay .permissions-compact-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+}
+
+.permissions-popup-overlay .permissions-compact-desc {
+  font-size: 13px;
+  color: var(--td-text-color-secondary);
+}
+
+.permissions-popup-overlay .permissions-compact-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.permissions-popup-overlay .perm-role-block {
+  border: 1px solid var(--td-component-stroke);
+  border-radius: 8px;
+  padding: 14px 16px;
+  background: var(--td-bg-color-container);
+  transition: all 0.2s ease;
+}
+
+.permissions-popup-overlay .perm-role-block.is-me {
+  border-color: var(--td-brand-color);
+  background: var(--td-brand-color-light);
+}
+
+.permissions-popup-overlay .perm-role-tag {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+  margin-bottom: 12px;
+}
+
+.permissions-popup-overlay .perm-role-tag .me-badge {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--td-brand-color);
+  padding: 2px 8px;
+  background: var(--td-brand-color-light);
+  border-radius: 4px;
+}
+
+.permissions-popup-overlay .perm-items {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.permissions-popup-overlay .perm-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.permissions-popup-overlay .perm-item .t-icon {
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.permissions-popup-overlay .perm-item.has {
+  color: var(--td-text-color-secondary);
+}
+
+.permissions-popup-overlay .perm-item.has .t-icon {
+  color: var(--td-brand-color);
+}
+
+.permissions-popup-overlay .perm-item.no {
+  color: var(--td-text-color-disabled);
+}
+
+.permissions-popup-overlay .perm-item.no .t-icon {
+  color: var(--td-text-color-disabled);
+}
+
+/* Hover 弹出层变体：压扁占位 + 2×2 角色块 + 内部滚动（Vue &.permissions-compact--popover） */
+.permissions-popup-overlay .permissions-compact--popover {
+  padding: 10px 12px;
+  margin: 0;
+  max-height: min(392px, calc(65vh - 8px));
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.permissions-popup-overlay .permissions-compact--popover .permissions-compact-header {
+  gap: 2px;
+  margin-bottom: 10px;
+}
+
+.permissions-popup-overlay .permissions-compact--popover .permissions-compact-title {
+  font-size: 13px;
+}
+
+.permissions-popup-overlay .permissions-compact--popover .permissions-compact-desc {
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.permissions-popup-overlay .permissions-compact--popover .permissions-compact-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.permissions-popup-overlay .permissions-compact--popover .perm-role-block {
+  padding: 8px 10px;
+  border-radius: 6px;
+}
+
+.permissions-popup-overlay .permissions-compact--popover .perm-role-tag {
+  font-size: 12px;
+  margin-bottom: 6px;
+  gap: 4px;
+}
+
+.permissions-popup-overlay .permissions-compact--popover .perm-role-tag .me-badge {
+  font-size: 10px;
+  padding: 1px 5px;
+}
+
+.permissions-popup-overlay .permissions-compact--popover .perm-items {
+  gap: 3px;
+}
+
+.permissions-popup-overlay .permissions-compact--popover .perm-item {
+  font-size: 11px;
+  line-height: 1.35;
+  gap: 4px;
+}
+
+.permissions-popup-overlay .permissions-compact--popover .perm-item .t-icon {
+  margin-top: 1px;
+  flex-shrink: 0;
+}
+
+@media (max-width: 480px) {
+  .permissions-popup-overlay .permissions-compact--popover .permissions-compact-grid {
+    grid-template-columns: 1fr;
+  }
 }
