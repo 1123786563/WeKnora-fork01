@@ -25,7 +25,7 @@
 | 5 | `go test -count=1 ./internal/modules/knowledge/...`（gate 2） | 0 | 17 包全 `ok`（ingest 2.433s、kbfreeze 2.142s、chunker/docparser/retriever*/searchutil/semantic） |
 | 6 | `make check-backend-architecture`（gate 3） | 0 | `architectureguard: literal=564 apiKeyRoute=69 handle=0 total=633 \| redis=23 lite=23 \| hooks=58 \| modules=16` + `OK (0 violations)` |
 | 7 | `make verify-module-moves`（gate 4） | 0 | `modulemove: OK (16 manifests verified)` |
-| 8 | `PASSB_BASE_SHA=$(git merge-base origin/main HEAD)` → `b1a3d6dd8`；`git diff --stat "$PASSB_BASE_SHA"...HEAD` | 0 | 97 files, +22136/−336（含 K1.0 基线对齐 merge 引入与 ib1/b0 世系先于分支点的内容，见 §4 拆分） |
+| 8 | `PASSB_BASE_SHA=$(git merge-base origin/main HEAD)` → `b1a3d6dd8`；`git diff --stat "$PASSB_BASE_SHA"...HEAD` | 0 | 98 files, +22252/−336（K1.7 复核会话 2026-09-25 实测更正——首记 97/+22136 有误；含 K1.0 基线对齐 merge 引入与 ib1/b0 世系先于分支点的内容，见 §4 拆分与 §9 复核） |
 | 9 | 镜像差集核验（python3 双向 comm + 逐条同序比对） | 0 | README 79 行 == knowledge.yaml legacy_files 79 行，双向差集空、顺序一致（§4 ocr-r1-f1） |
 
 ## 3. K1.7 差分双跑摘要（全文见 evidence）
@@ -36,9 +36,9 @@
 
 ## 4. 变更文件 vs 写权限逐条核对
 
-**口径**：`git diff --name-only 6bda27b1d..HEAD`（6bda27b1d=节点分支点，plan §1 实测 base）共 41 文件 = 本节点自写 37 + K1.0 基线对齐 merge（3ff5febbb，Ruling WAVE-DEP-BASELINE）引入 4（b2-k0 产物：20-knowledge-program.md、evidence/reports b2-k0 两件、kbfreeze/freeze_test.go——非本节点自写）。另 merge-base(origin/main)=b1a3d6dd8 口径的 97 文件差额属分支点前的 ib1/b0 世系提交（含 `tools/passbguard/passbguard` 二进制等），非本节点产物。
+**口径**：`git diff --name-only 6bda27b1d..HEAD`（6bda27b1d=节点分支点，plan §1 实测 base）共 42 文件 = 本节点自写 38 + K1.0 基线对齐 merge（3ff5febbb，Ruling WAVE-DEP-BASELINE）引入 4（b2-k0 产物：20-knowledge-program.md、evidence/reports b2-k0 两件、kbfreeze/freeze_test.go——非本节点自写；`git diff --name-only 3ff5febbb^1 3ff5febbb` 实测恰 4 文件，kbfreeze 包仅 freeze_test.go 一件）。另 merge-base(origin/main)=b1a3d6dd8 口径为 98 文件，其中 56 文件差额属分支点前的 ib1/b0 世系提交（passbguard 工具与 testdata、modulemove、DAG、他程序 plan/brief、Makefile 等，含 `tools/passbguard/passbguard` 二进制），非本节点产物（复核会话 comm 双向差集实测：42 节点侧 + 56 世系侧 = 98，两侧交集空）。首版误记 41/37/97，均差一或差读，已由 §9 复核会话勘误。
 
-37 自写文件逐条核对（差集为空）：
+38 自写文件逐条核对（差集为空；构成 22 ingest + 5 shim + 6 治理 + 4 文档 + 1 README）：
 
 | 文件（组） | 写权依据 |
 |---|---|
@@ -52,7 +52,7 @@
 | `docs/architecture/passb/briefs/b2-k-ingest.md`、`docs/architecture/evidence/passb/b2-k-ingest.md`、`docs/plans/passb/reports/b2-k-ingest.md`（本文件）、`docs/plans/passb/21-knowledge-ingest.md`（计划本体 741cdb517 落盘） | plan §4.1 新增表 + conventions §1.1 |
 | `internal/modules/knowledge/legacy/README.md` | **plan §4.2 禁改清单的登记例外**：OCR 工单 ocr-r1-f1（ocr-r1-legacy-readme-mirror，documentation·low）由协调者路由 K1.7 处置（ocr-context.md §六、K1.6 报告 §6-4）；本会话 commit fcb6bd449 删 9 已迁移行 + 补 4 过渡 shim 行，镜像核验 79==79 双向差集空且逐条同序 |
 
-**验收 5（宿主属主文件零触碰）**：上述 37 文件中无 rbac_lookups.go、temporary_document.go、K2/K3/K4 属主宿主文件、router/container/bootstrap、go.mod/sum、migration——成立。
+**验收 5（宿主属主文件零触碰）**：上述 38 文件中无 rbac_lookups.go、temporary_document.go、K2/K3/K4 属主宿主文件、router/container/bootstrap、go.mod/sum、migration——成立。
 
 ## 5. 未完成项与如实登记
 
@@ -85,3 +85,19 @@
 ## 8. 提交清单（节点分支，6bda27b1d..HEAD 共 28 commits）
 
 K1.0 对齐 merge 3ff5febbb + T0 fe8e5e459；K1.1 M2 2096b0cc5/M3 a603e37ea；K1.2 M2 afc0ee1eb/M3 635606502/ocr-r1-1 ec00305a3；K1.3 M2 5fc1bfbe8/M3 290157832/tshim-0002 0417f3952；K1.4 M2 450498c42/M3 1175b53cd/Brief eaa96e01d/fix1 a9cf368ed；K1.5 M2 38216e65d/M3 6c0bd6a0f/fix1 3feed3bce；K1.6 fc14f4c2e/253497b1f/8a6157b43；K1.7 README fcb6bd449 + 本 commit（差分证据与节点报告）。
+
+## 9. K1.7 复核（重派会话，2026-09-25，BASE=64d1b4dc7）
+
+K1.7 被调度方以 BASE=64d1b4dc7（首跑终 commit）重派；本会话对 K1.7 三 checkbox 全部检查独立复跑，并勘误首跑节点报告的计数错误（§2 #8、§4）：
+
+| # | 命令（本会话原文执行） | 退出码 | 关键输出 |
+|---|---|---|---|
+| R1 | `go test -count=1 -v ./internal/modules/knowledge/ingest/ -run '<T0 全清单 17 模式合并>`（与首跑同串） | 0 | `ok …ingest 1.440s`；`grep -c '^--- PASS'`=40、`grep -c '^    --- PASS'`=25、FAIL=0；顶层 40 名 `sort`+`diff` 与 T0 转录清单**逐名相同**（diff 空）；子用例分布 2+2+14+2+5=25 与 T0 一致；五锚点族全 PASS，ImageMultimodal Handle→Drop→Finalize 日志链 image_multimodal.go:187/:203/:724 逐行复现 |
+| R2 | `ls`（9 legacy 路径全列） | 1（预期） | 9 行全部 `No such file or directory` |
+| R3 | `go build ./...`（gate 1） | 0 | 仅既有 `ld: warning: ignoring duplicate libraries: '-lc++'` |
+| R4 | `go test -count=1 ./internal/modules/knowledge/...`（gate 2） | 0 | 17 有测试包全 `ok`（ingest 4.099s、kbfreeze 3.740s 等）+4 `[no test files]` |
+| R5 | `make check-backend-architecture`（gate 3） | 0 | `literal=564 apiKeyRoute=69 handle=0 total=633 \| redis=23 lite=23 \| hooks=58 \| modules=16`；`OK (0 violations)` |
+| R6 | `make verify-module-moves`（gate 4） | 0 | `modulemove: OK (16 manifests verified)` |
+| R7 | `PASSB_BASE_SHA=$(git merge-base origin/main HEAD)`→`b1a3d6dd8`；`git diff --stat/--name-only ...HEAD` | 0 | **98 files, +22252/−336**；`comm` 双向差集拆分 = 42 节点侧（6bda27b1d..HEAD）+ 56 分支点前 ib1/b0 世系，交集空；42 = 38 自写 + 4 K1.0 merge（`git diff --name-only 3ff5febbb^1 3ff5febbb` 恰 4 行）——与 §4 逐条核对结论一致，owned_files 差集空 |
+
+**复核结论**：K1.7 三 checkbox（差分双跑等价 / gates 四项 / evidence+报告落盘）在重跑下全部成立；首跑节点报告 §2 #8（97/+22136）与 §4（41/37）计数有误，本 commit 勘误为 98/+22252 与 42/38——纯粹计数勘误，逐条枚举与差集核对结论（无越权文件）不变。未复跑项如实声明：验收 6 的 `go test -count=1 ./internal/handler/ ./internal/application/...`（约 18 分钟全程）首跑已留痕（§2 #3），本会话未重跑；T0 旧位置侧不可复跑（9 文件已迁移，比对基准即 evidence 转录，符合 K1.7「以 K1.0 T0 用例清单为准」的语义）。
