@@ -142,6 +142,12 @@ func writeError(c *gin.Context, e error) {
 	case errors.Is(e, ErrExportNotSubmittable):
 		status = 409
 		code = "export_not_submittable"
+	case errors.Is(e, ErrPreparationVersionUnknown):
+		status = 409
+		code = "preparation_version_unknown"
+	case errors.Is(e, ErrPreparationGenerationFailed):
+		status = 500
+		code = "preparation_generation_failed"
 	case errors.Is(e, ErrExportGrantInvalid):
 		status = 404
 		code = "export_grant_invalid"
@@ -163,6 +169,13 @@ func writeError(c *gin.Context, e error) {
 		var unknown *OutcomeUnknownError
 		if errors.As(e, &unknown) {
 			body["requestId"] = unknown.RequestID
+		}
+	}
+	if errors.Is(e, ErrPreparationVersionUnknown) {
+		var prompt *PreparationVersionUnknownError
+		if errors.As(e, &prompt) {
+			body["applicationId"] = prompt.ApplicationID
+			body["submissionRecorded"] = prompt.SubmissionRecorded
 		}
 	}
 	c.JSON(status, gin.H{"error": body})
@@ -1148,6 +1161,78 @@ func (h *Handler) SubmissionReceiptHandler(c *gin.Context) {
 		return
 	}
 	receipt, err := h.office.FindSubmissionReceipt(ctx, c.Query("requestId"))
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, receipt)
+}
+
+const maxPreparationBodyBytes = 4 * 1024
+
+// GeneratePreparationHandler anchors to the application's actually
+// submitted version and composes the cover letter / interview draft. An
+// unconfirmed or missing submitted version answers the typed prompt state;
+// the composed draft is reviewable through the material seams.
+func (h *Handler) GeneratePreparationHandler(c *gin.Context) {
+	ctx, ok := h.scope(c, false)
+	if !ok {
+		return
+	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxPreparationBodyBytes)
+	decoder := json.NewDecoder(c.Request.Body)
+	decoder.DisallowUnknownFields()
+	var input GeneratePreparationInput
+	if err := decoder.Decode(&input); err != nil {
+		var maxBytesError *http.MaxBytesError
+		if errors.As(err, &maxBytesError) {
+			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": gin.H{"code": "request_too_large", "message": "preparation request is too large"}})
+			return
+		}
+		writeError(c, ErrInvalidRequest)
+		return
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		writeError(c, ErrInvalidRequest)
+		return
+	}
+	applicationID, ok := bindProgressApplication(c, input.ApplicationID)
+	if !ok {
+		return
+	}
+	input.ApplicationID = applicationID
+	receipt, err := h.office.GeneratePreparation(ctx, input)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, receipt)
+}
+
+// ApplicationPreparations serves the preparations of one application under
+// the authenticated scope, failed requests included.
+func (h *Handler) ApplicationPreparations(c *gin.Context) {
+	ctx, ok := h.scope(c, false)
+	if !ok {
+		return
+	}
+	preparations, err := h.office.ApplicationPreparations(ctx, c.Param("applicationId"))
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"preparations": preparations})
+}
+
+// PreparationReceiptHandler replays a stored preparation receipt by request
+// ID; a failed or interrupted generation answers its typed failure state.
+func (h *Handler) PreparationReceiptHandler(c *gin.Context) {
+	ctx, ok := h.scope(c, false)
+	if !ok {
+		return
+	}
+	receipt, err := h.office.FindPreparationReceipt(ctx, c.Query("requestId"))
 	if err != nil {
 		writeError(c, err)
 		return

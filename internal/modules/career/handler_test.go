@@ -818,3 +818,89 @@ func TestCareerExportDeletionHTTPContract(t *testing.T) {
 	rec = call(http.MethodGet, "/api/v1/career/deletions/receipt?requestId=missing", "", h.CareerDeletionReceiptHandler)
 	require.Equal(t, 404, rec.Code, rec.Body.String())
 }
+
+func TestCareerPreparationHandlersPromptReplayAndFailure(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	office, err := NewOffice(db)
+	require.NoError(t, err)
+	store := newMapExportStorage()
+	office.SetExportStorage(store)
+	office.SetExportSigningKey([]byte("0123456789abcdef0123456789abcdef"))
+	scope := Scope{UserID: "prep-owner", TenantID: 4711}
+	base := context.WithValue(context.Background(), types.UserIDContextKey, scope.UserID)
+	base = context.WithValue(base, types.TenantIDContextKey, scope.TenantID)
+	ctx := WithScope(base, scope)
+	require.NoError(t, office.ClaimSpace(ctx))
+	h := &Handler{office: office, members: &memberListStub{members: []*types.TenantMember{{UserID: scope.UserID, TenantID: scope.TenantID, Role: types.TenantRoleOwner}}}}
+	invoke := func(method, target string, body string, params gin.Params, dispatch func(*gin.Context)) *httptest.ResponseRecorder {
+		gin.SetMode(gin.TestMode)
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		var reader io.Reader
+		if body != "" {
+			reader = strings.NewReader(body)
+		}
+		c.Request = httptest.NewRequest(method, target, reader).WithContext(base)
+		if body != "" {
+			c.Request.Header.Set("Content-Type", "application/json")
+		}
+		c.Params = params
+		dispatch(c)
+		return rec
+	}
+
+	// Seed one application with a confirmed submitted version and one with
+	// the explicit unknown marker.
+	fx := seedSubmissionFixture(t, office, ctx, "prep")
+	_, err = office.RecordSubmission(ctx, RecordSubmissionInput{
+		RequestID: "prep-sub", ApplicationID: fx.ApplicationID, Channel: SubmissionChannelEmail,
+		MaterialID: fx.MaterialID, ExportID: fx.ExportID, ExpectedRevision: fx.Revision,
+	})
+	require.NoError(t, err)
+	unknownFx := seedSubmissionFixture(t, office, ctx, "prepunk")
+	_, err = office.RecordSubmission(ctx, RecordSubmissionInput{
+		RequestID: "prepunk-sub", ApplicationID: unknownFx.ApplicationID, Channel: SubmissionChannelWeb,
+		VersionUnknown: true, ExpectedRevision: unknownFx.Revision,
+	})
+	require.NoError(t, err)
+
+	// Unknown submitted version: the typed prompt state is visible, never a
+	// silent guess.
+	head, err := office.Open(ctx)
+	require.NoError(t, err)
+	body := fmt.Sprintf(`{"requestId":"prep-unk-1","focus":"cover_letter","expectedRevision":%d}`, head.Revision)
+	rec := invoke(http.MethodPost, "/api/v1/career/applications/"+unknownFx.ApplicationID+"/preparations", body,
+		gin.Params{{Key: "applicationId", Value: unknownFx.ApplicationID}}, h.GeneratePreparationHandler)
+	require.Equal(t, 409, rec.Code, rec.Body.String())
+	require.Contains(t, rec.Body.String(), "preparation_version_unknown")
+	require.Contains(t, rec.Body.String(), unknownFx.ApplicationID)
+
+	// Confirmed submitted version: generation answers the draft receipt.
+	body = fmt.Sprintf(`{"requestId":"prep-ok-1","focus":"interview_prep","expectedRevision":%d}`, head.Revision)
+	rec = invoke(http.MethodPost, "/api/v1/career/applications/"+fx.ApplicationID+"/preparations", body,
+		gin.Params{{Key: "applicationId", Value: fx.ApplicationID}}, h.GeneratePreparationHandler)
+	require.Equal(t, 200, rec.Code, rec.Body.String())
+	require.Contains(t, rec.Body.String(), `"kind":"preparation_generated"`)
+	require.Contains(t, rec.Body.String(), `"status":"draft"`)
+
+	// The receipt replays by request ID; a missing request ID is 404.
+	rec = invoke(http.MethodGet, "/api/v1/career/preparations/receipt?requestId=prep-ok-1", "", nil, h.PreparationReceiptHandler)
+	require.Equal(t, 200, rec.Code, rec.Body.String())
+	require.Contains(t, rec.Body.String(), `"requestId":"prep-ok-1"`)
+	rec = invoke(http.MethodGet, "/api/v1/career/preparations/receipt?requestId=missing", "", nil, h.PreparationReceiptHandler)
+	require.Equal(t, 404, rec.Code, rec.Body.String())
+
+	// The application listing includes the generated preparation.
+	rec = invoke(http.MethodGet, "/api/v1/career/applications/"+fx.ApplicationID+"/preparations", "",
+		gin.Params{{Key: "applicationId", Value: fx.ApplicationID}}, h.ApplicationPreparations)
+	require.Equal(t, 200, rec.Code, rec.Body.String())
+	require.Contains(t, rec.Body.String(), `"preparations"`)
+
+	// A changed intent under the same request ID is the typed 409.
+	changed := fmt.Sprintf(`{"requestId":"prep-ok-1","focus":"cover_letter","expectedRevision":%d}`, head.Revision)
+	rec = invoke(http.MethodPost, "/api/v1/career/applications/"+fx.ApplicationID+"/preparations", changed,
+		gin.Params{{Key: "applicationId", Value: fx.ApplicationID}}, h.GeneratePreparationHandler)
+	require.Equal(t, 409, rec.Code, rec.Body.String())
+	require.Contains(t, rec.Body.String(), "idempotency_conflict")
+}

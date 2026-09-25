@@ -272,13 +272,18 @@ type Office struct {
 	// failDeletionStep injects a sub-deletion failure for recovery tests.
 	applicationTaskRemover interfaces.CareerApplicationTaskProjectionRemover
 	failDeletionStep       func(step string) error
+	// Preparation generation seam (T19): the generator composes the cover
+	// letter / interview draft from durable evidence. Production wires the
+	// deterministic local composer — no external LLM dependency exists on
+	// the production path; tests inject fakes through the setter.
+	preparationGenerator PreparationGenerator
 }
 
 func NewOffice(db *gorm.DB) (*Office, error) {
 	if db == nil {
 		return nil, errors.New("career database required")
 	}
-	models := []any{&profile{}, &space{}, &fact{}, &factVersion{}, &proposal{}, &change{}, &receipt{}, &sourceRevision{}, &opportunity{}, &opportunityObservation{}, &opportunitySnapshot{}, &opportunityReceipt{}, &evaluationRecord{}, &applicationRecord{}, &searchRecord{}, &searchResultRecord{}, &materialRecord{}, &materialVersionRecord{}, &materialReceiptRecord{}, &materialExportRecord{}, &progressEventRecord{}, &searchRuleRecord{}, &searchRuleReceiptRecord{}, &searchRuleRunRecord{}, &searchDiscoveryTodoRecord{}, &submissionRecord{}, &careerDataExportRecord{}, &careerDataDeletionRecord{}}
+	models := []any{&profile{}, &space{}, &fact{}, &factVersion{}, &proposal{}, &change{}, &receipt{}, &sourceRevision{}, &opportunity{}, &opportunityObservation{}, &opportunitySnapshot{}, &opportunityReceipt{}, &evaluationRecord{}, &applicationRecord{}, &searchRecord{}, &searchResultRecord{}, &materialRecord{}, &materialVersionRecord{}, &materialReceiptRecord{}, &materialExportRecord{}, &progressEventRecord{}, &searchRuleRecord{}, &searchRuleReceiptRecord{}, &searchRuleRunRecord{}, &searchDiscoveryTodoRecord{}, &submissionRecord{}, &careerDataExportRecord{}, &careerDataDeletionRecord{}, &preparationRecord{}}
 	if db.Dialector.Name() == "sqlite" {
 		present := 0
 		for _, model := range models {
@@ -312,11 +317,12 @@ func NewOffice(db *gorm.DB) (*Office, error) {
 	}
 	policy := SourcePolicy(emptySourcePolicy{})
 	return &Office{
-		db:              db,
-		sourcePolicy:    policy,
-		sourceTransport: newCareerSourceTransport(policy, transportDialOptions{}),
-		searchRegistry:  emptySearchSourceRegistry{},
-		searchQuotaGate: passThroughSearchQuotaGate{},
+		db:                   db,
+		sourcePolicy:         policy,
+		sourceTransport:      newCareerSourceTransport(policy, transportDialOptions{}),
+		searchRegistry:       emptySearchSourceRegistry{},
+		searchQuotaGate:      passThroughSearchQuotaGate{},
+		preparationGenerator: deterministicPreparationGenerator{},
 	}, nil
 }
 
@@ -350,6 +356,7 @@ func validateSQLiteCareerSchema(db *gorm.DB) error {
 		"career_submissions":              {"id", "tenant_id", "user_id", "application_id", "request_id", "fingerprint", "channel", "occurred_at", "version_confirmed", "material_id", "export_id", "version", "content_digest", "note", "confirmer", "receipt_body", "created_at", "updated_at"},
 		"career_data_exports":             {"id", "tenant_id", "user_id", "request_id", "fingerprint", "revision", "digest", "archive_body", "receipt_body", "created_at"},
 		"career_data_deletions":           {"id", "tenant_id", "user_id", "request_id", "fingerprint", "expected_revision", "status", "state_body", "receipt_body", "created_at", "updated_at"},
+		"career_preparations":             {"id", "tenant_id", "user_id", "application_id", "request_id", "fingerprint", "focus", "status", "submission_id", "submitted_material_id", "submitted_export_id", "submitted_version", "submitted_digest", "snapshot_id", "snapshot_sha256", "profile_revision", "material_id", "failure_code", "failure_message", "receipt_body", "created_at", "updated_at"},
 	}
 	for table, columns := range requiredColumns {
 		for _, column := range columns {
@@ -380,6 +387,7 @@ func validateSQLiteCareerSchema(db *gorm.DB) error {
 		"career_submissions":            {"tenant_id", "user_id", "request_id"},
 		"career_data_exports":           {"tenant_id", "user_id", "request_id"},
 		"career_data_deletions":         {"tenant_id", "user_id", "request_id"},
+		"career_preparations":           {"tenant_id", "user_id", "request_id"},
 	} {
 		if err := requireSQLiteUniqueConstraint(db, table, columns); err != nil {
 			return fmt.Errorf("incomplete Career SQLite schema: %w; apply database migrations before startup", err)

@@ -204,10 +204,10 @@ func TestFuncDeclNamesRecursive(t *testing.T) {
 // deletions + GET deletions/receipt）。日期说明见 docs/architecture/moves/README.md。
 
 const (
-	wantRouteLiteral  = 617
+	wantRouteLiteral  = 620
 	wantRouteAPIKey   = 69
 	wantRouteHandle   = 0
-	wantRouteTotal    = 686
+	wantRouteTotal    = 689
 	wantWorkersPerMix = 23
 	wantHooks         = 58
 )
