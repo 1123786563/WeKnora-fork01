@@ -8,7 +8,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/Tencent/WeKnora/internal/application/service"
+	service "github.com/Tencent/WeKnora/internal/modules/knowledge/retrieval/app"
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/gin-gonic/gin"
 )

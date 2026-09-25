@@ -1,4 +1,4 @@
-package service
+package app
 
 import (
 	"context"
@@ -9,8 +9,16 @@ import (
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )
 
+// Pass B K2.5 R1 导出（docs/plans/passb/22-knowledge-retrieval.md §5.1）：原未导出名
+// withKBActivityTask/kbActivityTrigger/kbActivityAppendSampleTitles/
+// withKBActivitySuppressed/recordKBActivity 改为首字母大写导出，宿主 compat
+// internal/application/service/kbretrieval_passb_compat.go 留同名一行委托
+// （datasource/K3/K4 留守调用方零改动，ib2 直连后删除）。
+
 const (
-	auditScopeKnowledgeBase    = "knowledge_base"
+	// AuditScopeKnowledgeBase 为 KB 活动审计条的 ScopeType 常量；
+	// 导出供宿主 compat 常量别名与宿主特征化测试锚定（原未导出 auditScopeKnowledgeBase）。
+	AuditScopeKnowledgeBase  = "knowledge_base"
 	kbActivitySampleTitleLimit = 5
 )
 
@@ -22,9 +30,9 @@ type kbActivityTaskMetadata struct {
 type kbActivityTaskContextKey struct{}
 type kbActivitySuppressedContextKey struct{}
 
-// withKBActivityTask annotates a worker context with stable correlation fields
-// that recordKBActivity will add to each event produced by that task.
-func withKBActivityTask(ctx context.Context, taskID, trigger string) context.Context {
+// WithKBActivityTask annotates a worker context with stable correlation fields
+// that RecordKBActivity will add to each event produced by that task.
+func WithKBActivityTask(ctx context.Context, taskID, trigger string) context.Context {
 	if taskID == "" && trigger == "" {
 		return ctx
 	}
@@ -33,7 +41,7 @@ func withKBActivityTask(ctx context.Context, taskID, trigger string) context.Con
 	})
 }
 
-func kbActivityTrigger(ctx context.Context) string {
+func KBActivityTrigger(ctx context.Context) string {
 	if task, ok := ctx.Value(kbActivityTaskContextKey{}).(kbActivityTaskMetadata); ok && task.Trigger != "" {
 		return task.Trigger
 	}
@@ -43,10 +51,10 @@ func kbActivityTrigger(ctx context.Context) string {
 	return "system"
 }
 
-// kbActivityAppendSampleTitles adds a bounded, human-readable preview of batch
+// KBActivityAppendSampleTitles adds a bounded, human-readable preview of batch
 // mutations into activity details. The first sample is also mirrored as title so
 // list views can show what was affected without opening the drawer.
-func kbActivityAppendSampleTitles(details map[string]any, titles ...string) {
+func KBActivityAppendSampleTitles(details map[string]any, titles ...string) {
 	if details == nil {
 		return
 	}
@@ -81,18 +89,18 @@ func kbActivityAppendSampleTitles(details map[string]any, titles ...string) {
 	}
 }
 
-// withKBActivitySuppressed is used for high-volume child mutations inside a
+// WithKBActivitySuppressed is used for high-volume child mutations inside a
 // composite task. The task's bounded summary event remains visible, while one
 // sync run cannot flood the audit table with thousands of per-item rows.
-func withKBActivitySuppressed(ctx context.Context) context.Context {
+func WithKBActivitySuppressed(ctx context.Context) context.Context {
 	return context.WithValue(ctx, kbActivitySuppressedContextKey{}, true)
 }
 
-// recordKBActivity appends one bounded, non-secret activity summary to the
+// RecordKBActivity appends one bounded, non-secret activity summary to the
 // existing audit stream. It is deliberately best-effort, matching the audit
 // service's failure semantics: a temporary audit outage must not roll back a
 // completed business mutation.
-func recordKBActivity(
+func RecordKBActivity(
 	ctx context.Context,
 	audit interfaces.AuditLogService,
 	tenantID uint64,
@@ -164,7 +172,7 @@ func recordKBActivity(
 		ActorUserID: actorID,
 		ActorRole:   actorRole,
 		Action:      action,
-		ScopeType:   auditScopeKnowledgeBase,
+		ScopeType:   AuditScopeKnowledgeBase,
 		ScopeID:     kbID,
 		TargetType:  targetType,
 		TargetID:    targetID,
@@ -192,7 +200,7 @@ func RecordWikiContentActivity(
 	if count == 0 {
 		return
 	}
-	recordKBActivity(ctx, audit, tenantID, kbID, types.AuditActionWikiContentChanged,
+	RecordKBActivity(ctx, audit, tenantID, kbID, types.AuditActionWikiContentChanged,
 		"wiki", kbID, types.AuditOutcomeSuccess,
 		map[string]any{"count": count, "actions": actions})
 }

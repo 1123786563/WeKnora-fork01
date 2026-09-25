@@ -1,4 +1,4 @@
-package service
+package app
 
 import (
 	"context"
@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/config"
 	domain "github.com/Tencent/WeKnora/internal/modules/commercial"
+	repository "github.com/Tencent/WeKnora/internal/modules/knowledge/retrieval/app/repository"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/require"

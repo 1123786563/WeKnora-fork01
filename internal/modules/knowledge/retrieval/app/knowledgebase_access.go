@@ -1,4 +1,4 @@
-package service
+package app
 
 import (
 	"context"
@@ -11,16 +11,19 @@ import (
 
 // Service reads accept exact upstream grants. Otherwise cross-tenant reads
 // require a user and organization permission resolved for the original caller.
-func kbReadPermissions(ctx context.Context, shares access.KBShareLookup) *access.KBPermissions {
+// Pass B K2.4 R1 导出（22-knowledge-retrieval.md §5.1）：原未导出名
+// kbReadPermissions/resolveKBReadTenant/requireKBWrite/withKBWriteTenantInfo
+// 改为首字母大写导出，宿主 compat 留同名一行委托（ib2 直连后删除）。
+func KBReadPermissions(ctx context.Context, shares access.KBShareLookup) *access.KBPermissions {
 	if types.CallerFromContext(ctx).UserID == "" {
 		shares = nil
 	}
 	return access.NewKBPermissions(ctx, shares)
 }
 
-func resolveKBReadTenant(ctx context.Context, kb *types.KnowledgeBase, shares access.KBShareLookup) (uint64, error) {
+func ResolveKBReadTenant(ctx context.Context, kb *types.KnowledgeBase, shares access.KBShareLookup) (uint64, error) {
 	if kb != nil {
-		allowed, err := kbReadPermissions(ctx, shares).Check(kb.ID, kb.TenantID, types.OrgRoleViewer)
+		allowed, err := KBReadPermissions(ctx, shares).Check(kb.ID, kb.TenantID, types.OrgRoleViewer)
 		if err == nil && allowed {
 			return kb.TenantID, nil
 		}
@@ -28,31 +31,16 @@ func resolveKBReadTenant(ctx context.Context, kb *types.KnowledgeBase, shares ac
 	return 0, apperrors.NewForbiddenError("无权访问该知识库")
 }
 
-func requireKBWrite(ctx context.Context, kb *types.KnowledgeBase) (context.Context, error) {
+func RequireKBWrite(ctx context.Context, kb *types.KnowledgeBase) (context.Context, error) {
 	if err := access.RequireKBWrite(ctx, kb); err != nil {
 		return ctx, apperrors.NewForbiddenError("无权修改该知识库")
 	}
 	return types.WithExecutionTenant(ctx, kb.TenantID), nil
 }
 
-func (s *knowledgeService) writableFAQKnowledgeBase(
-	ctx context.Context,
-	kbID string,
-) (*types.KnowledgeBase, context.Context, error) {
-	kb, err := s.validateFAQKnowledgeBase(ctx, kbID)
-	if err != nil {
-		return nil, ctx, err
-	}
-	ctx, err = requireKBWrite(ctx, kb)
-	if err == nil {
-		ctx, err = withKBWriteTenantInfo(ctx, kb, s.tenantRepo)
-	}
-	return kb, ctx, err
-}
-
 // A shared KB mutation must also resolve models/index backends against its
 // owner. The authenticated caller remains unchanged when TenantInfo changes.
-func withKBWriteTenantInfo(
+func WithKBWriteTenantInfo(
 	ctx context.Context,
 	kb *types.KnowledgeBase,
 	tenants interfaces.TenantRepository,

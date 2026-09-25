@@ -1,4 +1,4 @@
-package service
+package app
 
 import "testing"
 
@@ -34,7 +34,7 @@ func TestResolveDeadSlug_HyphenVariation(t *testing.T) {
 	titleToSlug := map[string]string{
 		"上海中心大厦": "entity/shanghai-tower",
 	}
-	got, ok := resolveDeadSlug(
+	got, ok := ResolveDeadSlug(
 		"entity/shang-hai-tower",
 		"上海中心大厦",
 		live, titleToSlug,
@@ -51,7 +51,7 @@ func TestResolveDeadSlug_ExactMatchPasses(t *testing.T) {
 	live := map[string]struct{}{
 		"entity/foo": {},
 	}
-	got, ok := resolveDeadSlug("entity/foo", "", live, nil)
+	got, ok := ResolveDeadSlug("entity/foo", "", live, nil)
 	if !ok || got != "entity/foo" {
 		t.Errorf("expected pass-through for live slug, got (%q, %v)", got, ok)
 	}
@@ -68,7 +68,7 @@ func TestResolveDeadSlug_DisplayTextLookupPriority(t *testing.T) {
 	titleToSlug := map[string]string{
 		"Exact Match": "entity/exactmatch",
 	}
-	got, ok := resolveDeadSlug(
+	got, ok := ResolveDeadSlug(
 		"entity/exact-match-typo",
 		"Exact Match",
 		live, titleToSlug,
@@ -90,7 +90,7 @@ func TestResolveDeadSlug_DisplayTextStillRequiresLive(t *testing.T) {
 	titleToSlug := map[string]string{
 		"Title": "entity/dead-target",
 	}
-	if _, ok := resolveDeadSlug("entity/x", "Title", live, titleToSlug); ok {
+	if _, ok := ResolveDeadSlug("entity/x", "Title", live, titleToSlug); ok {
 		t.Fatal("must not return a slug that isn't in liveSlugs")
 	}
 }
@@ -101,7 +101,7 @@ func TestResolveDeadSlug_BigramFallback(t *testing.T) {
 	live := map[string]struct{}{
 		"entity/zhongguo-yinhang": {},
 	}
-	got, ok := resolveDeadSlug(
+	got, ok := ResolveDeadSlug(
 		"entity/zhongguo-yinghang", // h↔gh transposition typo
 		"",
 		live, nil,
@@ -122,16 +122,16 @@ func TestResolveDeadSlug_RejectsUnrelated(t *testing.T) {
 		"entity/bar": {},
 		"entity/baz": {},
 	}
-	if got, ok := resolveDeadSlug("entity/quuxasdf", "", live, nil); ok {
+	if got, ok := ResolveDeadSlug("entity/quuxasdf", "", live, nil); ok {
 		t.Errorf("expected no match for unrelated slug; got %q", got)
 	}
 }
 
 func TestResolveDeadSlug_EmptyInputs(t *testing.T) {
-	if _, ok := resolveDeadSlug("", "any", nil, nil); ok {
+	if _, ok := ResolveDeadSlug("", "any", nil, nil); ok {
 		t.Error("empty deadSlug must return false")
 	}
-	if _, ok := resolveDeadSlug("entity/foo", "", nil, nil); ok {
+	if _, ok := ResolveDeadSlug("entity/foo", "", nil, nil); ok {
 		t.Error("empty liveSlugs / titleToSlug must return false")
 	}
 }

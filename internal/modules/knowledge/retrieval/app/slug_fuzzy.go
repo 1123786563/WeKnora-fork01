@@ -1,4 +1,4 @@
-package service
+package app
 
 import (
 	"strings"
@@ -29,8 +29,11 @@ import (
 // stripDeadWikiLinks, which gives up and emits plain text.
 //
 // Cleanup callers (stripDeadWikiLinks, cleanDeadLinks) consult
-// resolveDeadSlug FIRST and only fall back to "strip to plain text"
+// ResolveDeadSlug FIRST and only fall back to "strip to plain text"
 // when no live candidate is close enough to be safe.
+// Pass B K2.4 R1 导出（22-knowledge-retrieval.md §5.1）：原未导出名
+// resolveDeadSlug 改为首字母大写导出，宿主 compat 留同名一行委托
+// （K3 wiki_ingest.go:1670 / wiki_page.go:1191 调用点零改动，ib2 直连后删除）。
 
 // slugResolveBigramThreshold is the minimum char-bigram Jaccard
 // similarity required for the bigram fallback to accept a candidate.
@@ -63,7 +66,7 @@ func normalizeSlugForCompare(slug string) string {
 	return slug
 }
 
-// resolveDeadSlug attempts to map a dead `[[slug]]` reference back to
+// ResolveDeadSlug attempts to map a dead `[[slug]]` reference back to
 // a live KB slug, using progressively more permissive heuristics:
 //
 //  1. Display-text reverse lookup. If the LLM emitted "[[bad-slug|上海
@@ -88,7 +91,7 @@ func normalizeSlugForCompare(slug string) string {
 // caller is also responsible for passing a `titleToSlug` map keyed
 // by exact (case-sensitive) page title and alias surface forms. Both
 // maps are consulted only — never mutated.
-func resolveDeadSlug(
+func ResolveDeadSlug(
 	deadSlug string,
 	displayText string,
 	liveSlugs map[string]struct{},

@@ -1,5 +1,8 @@
-# Pass B exception ledger — 111 条精确路径 import 例外的删除属主与期限（B0.2 生成 105 条
-# Pass A 行 + 6 条 Pass B K1 搬迁显形行，Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY；
+# Pass B exception ledger — 116 条精确路径 import 例外的删除属主与期限（B0.2 生成 105 条
+# Pass A 行 + 6 条 Pass B K1 搬迁显形行 + 5 条 Pass B K2 搬迁显形行，
+# Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY；K2 五行经 2026-09-25 基线对齐 merge
+# 由 exc-0106..0110 重编号为 exc-0112..0116（K1 已占 0106..0111；(from,to) 边键与
+# 五字段逐字不变，passbguard 以边为键）；
 # exc-id 跨并行分支独立续号，集成侧如撞号按 (from,to) 边键重排——passbguard 以边为键）。
 # 事实源：tools/architectureguard/check.go importExceptions 复合字面量（go/ast 解析，
 # F1 裁定）：from=ImporterFile、to=ImportedPath、reason 逐字复制；plan 按 importer
@@ -676,6 +679,39 @@ exceptions:
     plan: 21-knowledge-ingest
     remove_at: ib2
     reason: "搬迁显形横向耦合（Pass B 前宿主 internal/application/service 直连，plan 20 §7.4 合法消费清单；K1.4 搬迁后显形），Pass B 不改边界"
+
+# ---- Pass B K2 搬迁显形行（22-knowledge-retrieval K2.3/K2.4；基线对齐 merge 重编号
+# 0112..0116，原分支内 ID 0106..0110，映射见 merge commit 与 K4.0 报告）----
+  - id: exc-0112
+    from: internal/modules/knowledge/retrieval/app/semantic_model_capability.go
+    to: "github.com/Tencent/WeKnora/internal/modules/commercial"
+    plan: 22-knowledge-retrieval
+    remove_at: ib2
+    reason: "预存横向包耦合（Pass B 前均在 internal/application/service 下，K2.3 搬迁后显形），Pass B 不改边界"
+  - id: exc-0113
+    from: internal/modules/knowledge/retrieval/app/semantic_model_policy.go
+    to: "github.com/Tencent/WeKnora/internal/modules/commercial"
+    plan: 22-knowledge-retrieval
+    remove_at: ib2
+    reason: "预存横向包耦合（Pass B 前均在 internal/application/service 下，K2.3 搬迁后显形），Pass B 不改边界"
+  - id: exc-0114
+    from: internal/modules/knowledge/retrieval/app/knowledgebase_access.go
+    to: "github.com/Tencent/WeKnora/internal/modules/policy/access"
+    plan: 22-knowledge-retrieval
+    remove_at: ib2
+    reason: "预存横向包耦合（Pass B 前均在 internal/application/service 下，K2.4 搬迁后显形），Pass B 不改边界"
+  - id: exc-0115
+    from: internal/modules/knowledge/retrieval/app/graph.go
+    to: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
+    plan: 22-knowledge-retrieval
+    remove_at: ib2
+    reason: "预存横向包耦合（Pass B 前均在 internal/application/service 下，K2.4 搬迁后显形），Pass B 不改边界"
+  - id: exc-0116
+    from: internal/modules/knowledge/retrieval/app/graph.go
+    to: "github.com/Tencent/WeKnora/internal/modules/airesource/models/utils"
+    plan: 22-knowledge-retrieval
+    remove_at: ib2
+    reason: "预存横向包耦合（Pass B 前均在 internal/application/service 下，K2.4 搬迁后显形），Pass B 不改边界"
 
 # ----------------------------------------------------------------------------
 # 临时测试装置垫片台账（B5 清理范围）——Ruling 2026-09-24-TEST-SUPPORT-SHIM

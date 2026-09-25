@@ -100,25 +100,9 @@ legacy_files:
     reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
     navigation_label: Knowledgebase (application/repository)
     passb_task: B-knowledge
-  - path: internal/application/repository/semantic_model_invocation.go
-    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
-    navigation_label: Semantic model invocation (application/repository)
-    passb_task: B-knowledge
-  - path: internal/application/repository/semantic_model_policy.go
-    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
-    navigation_label: Semantic model policy (application/repository)
-    passb_task: B-knowledge
-  - path: internal/application/repository/semantic_outbox.go
-    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
-    navigation_label: Semantic outbox (application/repository)
-    passb_task: B-knowledge
-  - path: internal/application/repository/semantic_scope_epoch.go
-    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
-    navigation_label: Semantic scope epoch (application/repository)
-    passb_task: B-knowledge
-  - path: internal/application/repository/tag.go
-    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
-    navigation_label: Tag (application/repository)
+  - path: internal/application/repository/kbretrieval_passb_compat.go
+    reason: host compatibility aliases after retrieval repository files moved into module (Pass B)
+    navigation_label: Knowledge retrieval host compat (application/repository)
     passb_task: B-knowledge
   - path: internal/application/repository/wiki_page.go
     reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
@@ -128,17 +112,13 @@ legacy_files:
     reason: trapped in horizontal service package internal/application/service (Pass B file split)
     navigation_label: Faq clone sync (application/service)
     passb_task: B-knowledge
-  - path: internal/application/service/graph.go
-    reason: trapped in horizontal service package internal/application/service (Pass B file split)
-    navigation_label: Graph (application/service)
-    passb_task: B-knowledge
-  - path: internal/application/service/kb_activity.go
-    reason: trapped in horizontal service package internal/application/service (Pass B file split)
-    navigation_label: Kb activity (application/service)
-    passb_task: B-knowledge
   - path: internal/application/service/kbshare.go
     reason: trapped in horizontal service package internal/application/service (Pass B file split)
     navigation_label: Kbshare (application/service)
+    passb_task: B-knowledge
+  - path: internal/application/service/kbretrieval_passb_compat.go
+    reason: host compatibility aliases after semantic capability/policy/scope services moved into module (Pass B)
+    navigation_label: Knowledge retrieval host compat (application/service)
     passb_task: B-knowledge
   - path: internal/application/service/knowledge.go
     reason: trapped in horizontal service package internal/application/service (Pass B file split)
@@ -236,10 +216,6 @@ legacy_files:
     reason: trapped in horizontal service package internal/application/service (Pass B file split)
     navigation_label: Knowledgebase (application/service)
     passb_task: B-knowledge
-  - path: internal/application/service/knowledgebase_access.go
-    reason: trapped in horizontal service package internal/application/service (Pass B file split)
-    navigation_label: Knowledgebase access (application/service)
-    passb_task: B-knowledge
   - path: internal/application/service/knowledgebase_search.go
     reason: trapped in horizontal service package internal/application/service (Pass B file split)
     navigation_label: Knowledgebase search (application/service)
@@ -271,22 +247,6 @@ legacy_files:
   - path: internal/application/service/semantic_model.go
     reason: trapped in horizontal service package internal/application/service (Pass B file split)
     navigation_label: Semantic model (application/service)
-    passb_task: B-knowledge
-  - path: internal/application/service/semantic_model_capability.go
-    reason: trapped in horizontal service package internal/application/service (Pass B file split)
-    navigation_label: Semantic model capability (application/service)
-    passb_task: B-knowledge
-  - path: internal/application/service/semantic_model_policy.go
-    reason: trapped in horizontal service package internal/application/service (Pass B file split)
-    navigation_label: Semantic model policy (application/service)
-    passb_task: B-knowledge
-  - path: internal/application/service/semantic_scope.go
-    reason: trapped in horizontal service package internal/application/service (Pass B file split)
-    navigation_label: Semantic scope (application/service)
-    passb_task: B-knowledge
-  - path: internal/application/service/slug_fuzzy.go
-    reason: trapped in horizontal service package internal/application/service (Pass B file split)
-    navigation_label: Slug fuzzy (application/service)
     passb_task: B-knowledge
   - path: internal/application/service/tag.go
     reason: trapped in horizontal service package internal/application/service (Pass B file split)
@@ -340,6 +300,10 @@ legacy_files:
     reason: trapped in horizontal handler package internal/handler (Pass B file split)
     navigation_label: Kb access (handler)
     passb_task: B-knowledge
+  - path: internal/handler/kbretrieval_passb_compat.go
+    reason: host compatibility aliases after retrieval handlers moved into module (Pass B)
+    navigation_label: Knowledge retrieval host compat (handler)
+    passb_task: B-knowledge
   - path: internal/handler/knowledge.go
     reason: trapped in horizontal handler package internal/handler (Pass B file split)
     navigation_label: Knowledge (handler)
@@ -352,21 +316,9 @@ legacy_files:
     reason: trapped in horizontal handler package internal/handler (Pass B file split)
     navigation_label: Knowledgebase (handler)
     passb_task: B-knowledge
-  - path: internal/handler/semantic_internal.go
-    reason: trapped in horizontal handler package internal/handler (Pass B file split)
-    navigation_label: Semantic internal (handler)
-    passb_task: B-knowledge
-  - path: internal/handler/semantic_model_policy.go
-    reason: trapped in horizontal handler package internal/handler (Pass B file split)
-    navigation_label: Semantic model policy (handler)
-    passb_task: B-knowledge
   - path: internal/handler/session/wiki_fixer_scope.go
     reason: trapped in horizontal session handler package internal/handler/session (Pass B file split)
     navigation_label: Wiki fixer scope (handler/session)
-    passb_task: B-knowledge
-  - path: internal/handler/tag.go
-    reason: trapped in horizontal handler package internal/handler (Pass B file split)
-    navigation_label: Tag (handler)
     passb_task: B-knowledge
   - path: internal/handler/task_progress_auth.go
     reason: trapped in horizontal handler package internal/handler (Pass B file split)

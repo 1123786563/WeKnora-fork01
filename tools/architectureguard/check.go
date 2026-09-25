@@ -890,6 +890,46 @@ var importExceptions = []importException{
 			"plan 20 §7.4 合法消费清单；K1.4 搬迁后显形），Pass B 不改边界",
 		PassBTask: "B-knowledge",
 	},
+	// ---- Pass B 搬迁显形的预存横向包耦合：knowledge retrieval semantic 面消费 commercial
+	// 域类型（22-knowledge-retrieval K2.3 搬迁后显形；Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY）----
+	{
+		ImporterFile: "internal/modules/knowledge/retrieval/app/semantic_model_capability.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/commercial",
+		Reason: "预存横向包耦合（Pass B 前均在 internal/application/service 下，" +
+			"K2.3 搬迁后显形），Pass B 不改边界",
+		PassBTask: "B-knowledge",
+	},
+	{
+		ImporterFile: "internal/modules/knowledge/retrieval/app/semantic_model_policy.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/commercial",
+		Reason: "预存横向包耦合（Pass B 前均在 internal/application/service 下，" +
+			"K2.3 搬迁后显形），Pass B 不改边界",
+		PassBTask: "B-knowledge",
+	},
+	// ---- Pass B 搬迁显形的预存横向包耦合：knowledge retrieval K2.4（Ruling
+	// 2026-09-25-DEFERRED-FILE-SPLIT 收缩范围）access/graph 面消费 policy/airesource
+	// 内部包（22-knowledge-retrieval §5.6 种子表；Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY）----
+	{
+		ImporterFile: "internal/modules/knowledge/retrieval/app/knowledgebase_access.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/policy/access",
+		Reason: "预存横向包耦合（Pass B 前均在 internal/application/service 下，" +
+			"K2.4 搬迁后显形），Pass B 不改边界",
+		PassBTask: "B-knowledge",
+	},
+	{
+		ImporterFile: "internal/modules/knowledge/retrieval/app/graph.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat",
+		Reason: "预存横向包耦合（Pass B 前均在 internal/application/service 下，" +
+			"K2.4 搬迁后显形），Pass B 不改边界",
+		PassBTask: "B-knowledge",
+	},
+	{
+		ImporterFile: "internal/modules/knowledge/retrieval/app/graph.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/utils",
+		Reason: "预存横向包耦合（Pass B 前均在 internal/application/service 下，" +
+			"K2.4 搬迁后显形），Pass B 不改边界",
+		PassBTask: "B-knowledge",
+	},
 }
 
 // importExcepted 报告 (importerFile, importedPath) 是否命中一条精确豁免。
