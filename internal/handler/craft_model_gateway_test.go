@@ -615,6 +615,29 @@ type closeErrorGatewayBody struct {
 
 func (b *closeErrorGatewayBody) Close() error { return b.err }
 
+type failingGatewayRecorder struct{ err error }
+
+func (r *failingGatewayRecorder) RecordPhysicalCall(context.Context, service.PhysicalCall) (craft.UsageFact, error) {
+	return craft.UsageFact{}, r.err
+}
+
+// A usage-record failure must never leak the raw internal error string to the
+// API client. The response header stays an opaque marker plus durable
+// correlation identities; the detail itself goes only to the server log.
+func TestCraftGatewayUsageRecordErrorHeaderIsOpaqueWithCorrelationIdentity(t *testing.T) {
+	env := newCraftGatewayTestEnv(t)
+	credential, _ := issueCredentialOn(t, env, craftGatewayIssueBody)
+	env.gw.recorder = &failingGatewayRecorder{err: errors.New("sql: no such table craft_usage_facts in debian-prod-db-07")}
+	w := forwardWithActivityOn(t, env, credential, `{"model":"m1","messages":[]}`, "activity-opaque-record-error")
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	require.NotContains(t, w.Header().Get("X-Craft-Usage-Record-Error"), "no such table")
+	require.NotContains(t, w.Header().Get("X-Craft-Usage-Record-Error"), "debian-prod-db-07")
+	require.Equal(t, "usage_record_failed", w.Header().Get("X-Craft-Usage-Record-Error"))
+	require.NotEmpty(t, w.Header().Get("X-Craft-Usage-Record-Run-ID"), "durable run identity travels with the marker")
+	require.NotEmpty(t, w.Header().Get("X-Craft-Usage-Record-Attempt-ID"), "durable attempt identity travels with the marker")
+	require.Contains(t, w.Header().Get("X-Craft-Usage-Record-Call-ID"), "activity/", "durable call identity travels with the marker")
+}
+
 func TestCraftGatewayUsageRecordFailureUsesBoundedDetachedContextAndLogsIdentity(t *testing.T) {
 	env := newCraftGatewayTestEnv(t)
 	credential, _ := issueCredentialOn(t, env, craftGatewayIssueBody)

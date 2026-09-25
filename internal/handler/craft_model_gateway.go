@@ -676,14 +676,18 @@ func (g *CraftModelGateway) recordCall(c *gin.Context, payload craftCredentialPa
 	})
 	if err != nil {
 		// The response header is supplemental because a canceled caller may
-		// never observe it. Emit durable identities for operator reconciliation.
+		// never observe it. Emit durable identities for operator reconciliation;
+		// the raw error stays server-side only — clients get an opaque marker.
 		logger.ErrorWithFields(c.Request.Context(), err, logger.Fields{
 			"event":      "craft_model_gateway_usage_record_failed",
 			"run_id":     payload.RunID,
 			"call_id":    callID,
 			"attempt_id": attemptID,
 		})
-		c.Header("X-Craft-Usage-Record-Error", err.Error())
+		c.Header("X-Craft-Usage-Record-Error", "usage_record_failed")
+		c.Header("X-Craft-Usage-Record-Run-ID", payload.RunID)
+		c.Header("X-Craft-Usage-Record-Call-ID", callID)
+		c.Header("X-Craft-Usage-Record-Attempt-ID", attemptID)
 	}
 }
 
