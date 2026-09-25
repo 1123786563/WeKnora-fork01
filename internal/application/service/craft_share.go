@@ -187,17 +187,13 @@ func (s *CraftShareService) decision(ctx context.Context, scope craft.Scope, ver
 	return recorded, nil
 }
 
-// view assembles the externally visible consent summary.
-func (s *CraftShareService) view(ctx context.Context, scope craft.Scope, versionID string) (CraftShareView, error) {
-	contribution, err := s.contribution(ctx, scope, versionID)
-	if err != nil {
-		return CraftShareView{}, err
-	}
-	decision, err := s.decision(ctx, scope, versionID)
-	if err != nil {
-		return CraftShareView{}, err
-	}
-	now := s.now()
+// projectCraftShareView projects the externally visible consent summary
+// from a derived contribution and its latest recorded decision (nil when
+// none was ever persisted). Both the read path (view) and the decision
+// path (DecideShare) compose through this single projection: the immediate
+// decision response and the later persisted projection are the same code,
+// so gating, decision projection and TTL expiry can never drift apart.
+func projectCraftShareView(contribution craft.RestrictedContribution, decision *craft.RecordedShareDecision, now time.Time) CraftShareView {
 	state := craft.ShareStateOf(contribution, decision, now)
 	view := CraftShareView{Contribution: contribution, State: state}
 	// Only a RESTRICTED contribution carries a meaningful decision
@@ -214,7 +210,20 @@ func (s *CraftShareService) view(ctx context.Context, scope craft.Scope, version
 			view.ExpiresAt = &expires
 		}
 	}
-	return view, nil
+	return view
+}
+
+// view assembles the externally visible consent summary.
+func (s *CraftShareService) view(ctx context.Context, scope craft.Scope, versionID string) (CraftShareView, error) {
+	contribution, err := s.contribution(ctx, scope, versionID)
+	if err != nil {
+		return CraftShareView{}, err
+	}
+	decision, err := s.decision(ctx, scope, versionID)
+	if err != nil {
+		return CraftShareView{}, err
+	}
+	return projectCraftShareView(contribution, decision, s.now()), nil
 }
 
 // ShareView projects one version's consent summary to a task member
@@ -241,12 +250,12 @@ func (s *CraftShareService) DecideShare(ctx context.Context, scope craft.Scope, 
 		return CraftShareView{}, fmt.Errorf("%w: a share decision must state the evidence digest it binds", craft.ErrInvalidInput)
 	}
 	if err := craft.RequireTaskAccess(ctx, s.taskAccess, scope, craft.TaskShare); err != nil {
-		s.auditShare(ctx, scope, versionID, "craft.share_denied", "denied", map[string]string{"attempted_decision": string(decision)})
+		s.auditShare(ctx, scope, versionID, craftShareDenyActionTaskAccess, "denied", map[string]string{"attempted_decision": string(decision)})
 		return CraftShareView{}, err
 	}
 	caller := types.CallerFromContext(ctx)
 	if caller.TenantID != scope.TenantID || caller.UserID != scope.UserID {
-		s.auditShare(ctx, scope, versionID, "craft.share_denied", "denied", map[string]string{"reason": "caller_identity_mismatch"})
+		s.auditShare(ctx, scope, versionID, craftShareDenyActionCallerIdentity, "denied", map[string]string{"reason": "caller_identity_mismatch"})
 		return CraftShareView{}, craft.ErrForbidden
 	}
 	contribution, err := s.contribution(ctx, scope, versionID)
@@ -257,7 +266,7 @@ func (s *CraftShareService) DecideShare(ctx context.Context, scope craft.Scope, 
 		// A digest mismatch is a replay signal (a decision recorded for
 		// OTHER evidence being replayed against this version): exactly the
 		// proven refusal the package audit contract names.
-		s.auditShare(ctx, scope, versionID, "craft.share_denied", "denied", map[string]string{"reason": "evidence_digest_mismatch"})
+		s.auditShare(ctx, scope, versionID, craftShareDenyActionEvidenceDigest, "denied", map[string]string{"reason": "evidence_digest_mismatch"})
 		return CraftShareView{}, fmt.Errorf("%w: the decision binds other evidence than the version's current evidence", craft.ErrConflict)
 	}
 	now := s.now()
@@ -291,17 +300,9 @@ func (s *CraftShareService) DecideShare(ctx context.Context, scope craft.Scope, 
 	}
 	// The row was just upserted with revoked_at reset to NULL, so the
 	// recorded decision's RevokedAt stays zero (never revoked) by design.
-	state := craft.ShareStateOf(contribution, recorded, s.now())
-	out := CraftShareView{Contribution: contribution, State: state}
-	if contribution.Restricted {
-		bound := recorded.Decision
-		out.Decision = &bound
-		if state == craft.ShareStateConsented {
-			expires := recorded.DecidedAt.Add(craft.ShareDecisionTTL)
-			out.ExpiresAt = &expires
-		}
-	}
-	return out, nil
+	// The response projects through the same shared projection the read
+	// path uses, so it can never drift from the persisted view.
+	return projectCraftShareView(contribution, recorded, s.now()), nil
 }
 
 // RevokeShare ends a live consent: the persisted decision row is marked
@@ -309,12 +310,12 @@ func (s *CraftShareService) DecideShare(ctx context.Context, scope craft.Scope, 
 // Task Owner may revoke.
 func (s *CraftShareService) RevokeShare(ctx context.Context, scope craft.Scope, versionID string) (CraftShareView, error) {
 	if err := craft.RequireTaskAccess(ctx, s.taskAccess, scope, craft.TaskShare); err != nil {
-		s.auditShare(ctx, scope, versionID, "craft.share_denied", "denied", map[string]string{"attempted_decision": "revoke"})
+		s.auditShare(ctx, scope, versionID, craftShareDenyActionTaskAccess, "denied", map[string]string{"attempted_decision": "revoke"})
 		return CraftShareView{}, err
 	}
 	caller := types.CallerFromContext(ctx)
 	if caller.TenantID != scope.TenantID || caller.UserID != scope.UserID {
-		s.auditShare(ctx, scope, versionID, "craft.share_denied", "denied", map[string]string{"reason": "caller_identity_mismatch"})
+		s.auditShare(ctx, scope, versionID, craftShareDenyActionCallerIdentity, "denied", map[string]string{"reason": "caller_identity_mismatch"})
 		return CraftShareView{}, craft.ErrForbidden
 	}
 	versionID = strings.TrimSpace(versionID)
@@ -356,13 +357,38 @@ func (s *CraftShareService) ShareAuthority(ctx context.Context, scope craft.Scop
 	return contribution, craft.GrantsShareAuthority(contribution, decision, s.now()), nil
 }
 
+// The share denial audit actions fold the refusal REASON into the typed
+// action column. The reason is part of the dedup key: inside the window
+// only denials of the SAME reason collapse, so a proven refusal of another
+// reason — in particular the evidence-digest replay signal — always lands
+// its row ("every proven refusal is audited"). The typed-column discipline
+// mirrors auditTaskDenial: the probe never depends on JSON comparison
+// semantics. The vocabulary is finite and server-controlled; an unknown
+// denial action never reaches the audit sink.
+const (
+	craftShareDenyActionTaskAccess     = "craft.share_denied:task_access"
+	craftShareDenyActionCallerIdentity = "craft.share_denied:caller_identity"
+	craftShareDenyActionEvidenceDigest = "craft.share_denied:evidence_digest"
+)
+
+var craftShareDeniedActionVocabulary = map[string]bool{
+	craftShareDenyActionTaskAccess:     true,
+	craftShareDenyActionCallerIdentity: true,
+	craftShareDenyActionEvidenceDigest: true,
+}
+
 // auditShare records a durable sharing event into the shared audit trail.
 // The write failure is logged, never propagated: authority was already
 // decided and must not flip on the audit sink. DENIAL rows carry the same
 // sliding-window dedup as craft_access.auditTaskDenial (shared
-// craftDenyDedupWindow): a probing client replaying the same denial must
-// not be able to flood audit_logs at request rate.
+// craftDenyDedupWindow), keyed on the reason-carrying action: a probing
+// client replaying the same denial of the same reason must not be able to
+// flood audit_logs at request rate, while a refusal of another reason is
+// never swallowed by an earlier row.
 func (s *CraftShareService) auditShare(ctx context.Context, scope craft.Scope, versionID, action, outcome string, details map[string]string) {
+	if outcome == "denied" && !craftShareDeniedActionVocabulary[action] {
+		return
+	}
 	actor, full := craftAuditActorUserID(scope.UserID)
 	if details == nil {
 		details = map[string]string{}

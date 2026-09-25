@@ -175,7 +175,7 @@ func TestCraftT11Journey(t *testing.T) {
 	_, err = share.DecideShare(ownerCtx, owner, "v-1", craft.DecisionApproved, digest1)
 	require.ErrorIs(t, err, craft.ErrForbidden, "a revoked owner cannot consent")
 	var deniedAudits int64
-	require.NoError(t, f.db.Table("audit_logs").Where("action = ? AND outcome = ?", "craft.share_denied", "denied").Count(&deniedAudits).Error)
+	require.NoError(t, f.db.Table("audit_logs").Where("action LIKE ? AND outcome = ?", "craft.share_denied:%", "denied").Count(&deniedAudits).Error)
 	require.Equal(t, int64(3), deniedAudits, "each non-owner consent attempt is audited")
 	checker.roles["u-owner"] = craft.TaskRoleOwner
 
@@ -447,15 +447,16 @@ func TestCraftT11OCRShareRegressions(t *testing.T) {
 	require.ErrorIs(t, err, craft.ErrConflict)
 	denialDetails := func() []string {
 		var details []string
-		require.NoError(t, db.Table("audit_logs").Where("action = ? AND outcome = ?", "craft.share_denied", "denied").Order("id").Pluck("details", &details).Error)
+		require.NoError(t, db.Table("audit_logs").Where("action LIKE ? AND outcome = ?", "craft.share_denied:%", "denied").Order("id").Pluck("details", &details).Error)
 		return details
 	}
 	require.Contains(t, strings.Join(denialDetails(), "\n"), "evidence_digest_mismatch", "F2: the replay conflict is audited with its reason")
 
 	// --- F2b: a caller identity mismatch (decide and revoke) is audited too.
-	// (Decide targets v-own and revoke targets v-x: the dedup window keys on
-	// actor+action+scope+target, so distinct targets keep each refusal's row
-	// independent instead of collapsing into one.)
+	// (Both refusals share one reason: distinct targets keep their rows
+	// independent — a same-reason denial of the SAME tuple dedups by design,
+	// and the R3 section below pins that different reasons never swallow
+	// each other even on one tuple.)
 	_, err = share.DecideShare(mismatchCtx, scope, "v-own", craft.DecisionApproved, digestR)
 	require.ErrorIs(t, err, craft.ErrForbidden)
 	_, err = share.RevokeShare(mismatchCtx, scope, "v-x")
@@ -476,6 +477,7 @@ func TestCraftT11OCRShareRegressions(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, fresh.State, approved.State, "the composed response equals a fresh read")
 	require.Equal(t, fresh.Decision, approved.Decision)
+	require.Equal(t, fresh.ExpiresAt, approved.ExpiresAt, "R3: the TTL expiry projection is one shared projection on both paths")
 	require.Equal(t, before+2, gets, "only the fresh read adds a second derivation")
 
 	// --- the F1 guard did not over-suppress: a restricted version still
@@ -489,17 +491,39 @@ func TestCraftT11OCRShareRegressions(t *testing.T) {
 	// --- F4: a probing client replaying the same denial writes exactly one
 	// audit row inside the window, and a different actor is not swallowed.
 	var before4 int64
-	require.NoError(t, db.Table("audit_logs").Where("action = ? AND outcome = ?", "craft.share_denied", "denied").Count(&before4).Error)
+	require.NoError(t, db.Table("audit_logs").Where("action LIKE ? AND outcome = ?", "craft.share_denied:%", "denied").Count(&before4).Error)
 	for i := 0; i < 3; i++ {
 		_, err = share.DecideShare(craftKnowledgeCtx(viewer), viewer, "v-r", craft.DecisionApproved, digestR)
 		require.ErrorIs(t, err, craft.ErrForbidden)
 	}
 	var afterViewer int64
-	require.NoError(t, db.Table("audit_logs").Where("action = ? AND outcome = ?", "craft.share_denied", "denied").Count(&afterViewer).Error)
+	require.NoError(t, db.Table("audit_logs").Where("action LIKE ? AND outcome = ?", "craft.share_denied:%", "denied").Count(&afterViewer).Error)
 	require.Equal(t, before4+1, afterViewer, "F4: the same denial replayed three times writes exactly one row")
 	_, err = share.DecideShare(craftKnowledgeCtx(viewer2), viewer2, "v-r", craft.DecisionApproved, digestR)
 	require.ErrorIs(t, err, craft.ErrForbidden)
 	var afterViewer2 int64
-	require.NoError(t, db.Table("audit_logs").Where("action = ? AND outcome = ?", "craft.share_denied", "denied").Count(&afterViewer2).Error)
+	require.NoError(t, db.Table("audit_logs").Where("action LIKE ? AND outcome = ?", "craft.share_denied:%", "denied").Count(&afterViewer2).Error)
 	require.Equal(t, afterViewer+1, afterViewer2, "a different actor's refusal is still recorded")
+
+	// --- R3: different denial reasons never swallow each other inside the
+	// window on the SAME actor and version: the reason rides the typed
+	// action column, so the digest replay signal and a caller identity
+	// mismatch each land their own row (before the fix, whichever reason
+	// wrote first suppressed the other for 60s).
+	versions.byID["v-y"] = version("v-y", "run-r", shared.ID)
+	_, err = share.DecideShare(ownerCtx, scope, "v-y", craft.DecisionApproved, strings.Repeat("0", 64))
+	require.ErrorIs(t, err, craft.ErrConflict)
+	_, err = share.DecideShare(mismatchCtx, scope, "v-y", craft.DecisionApproved, digestR)
+	require.ErrorIs(t, err, craft.ErrForbidden)
+	denialsOf := func(action string) int64 {
+		var n int64
+		require.NoError(t, db.Table("audit_logs").Where("action = ? AND outcome = ? AND target_id = ?", action, "denied", "v-y").Count(&n).Error)
+		return n
+	}
+	require.Equal(t, int64(1), denialsOf("craft.share_denied:evidence_digest"), "R3: the replay signal lands even when another reason denied the same tuple first")
+	require.Equal(t, int64(1), denialsOf("craft.share_denied:caller_identity"), "R3: the identity refusal lands beside the replay signal on the same tuple")
+	// Replaying the SAME reason on the same tuple is still deduplicated.
+	_, err = share.DecideShare(ownerCtx, scope, "v-y", craft.DecisionApproved, strings.Repeat("0", 64))
+	require.ErrorIs(t, err, craft.ErrConflict)
+	require.Equal(t, int64(1), denialsOf("craft.share_denied:evidence_digest"), "replaying the same denial of the same reason still writes exactly one row")
 }
