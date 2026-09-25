@@ -1,0 +1,25 @@
+CREATE TABLE career_material_exports (
+  id TEXT PRIMARY KEY,
+  tenant_id INTEGER NOT NULL,
+  user_id TEXT NOT NULL,
+  material_id TEXT NOT NULL,
+  version INTEGER NOT NULL,
+  request_id TEXT NOT NULL,
+  fingerprint TEXT NOT NULL,
+  content_digest TEXT NOT NULL,
+  status TEXT NOT NULL,
+  pdf_object_key TEXT NOT NULL DEFAULT '',
+  pdf_digest TEXT NOT NULL DEFAULT '',
+  pdf_size INTEGER NOT NULL DEFAULT 0,
+  pdf_error TEXT NOT NULL DEFAULT '',
+  docx_object_key TEXT NOT NULL DEFAULT '',
+  docx_digest TEXT NOT NULL DEFAULT '',
+  docx_size INTEGER NOT NULL DEFAULT 0,
+  docx_error TEXT NOT NULL DEFAULT '',
+  revoked_at DATETIME NULL,
+  receipt_body TEXT NOT NULL,
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL,
+  UNIQUE (tenant_id, user_id, request_id)
+);
+CREATE INDEX idx_career_material_export_scope ON career_material_exports (tenant_id, user_id, material_id);

@@ -253,13 +253,21 @@ type Office struct {
 	failApplicationReadyUpdate   func() error
 	failSearchTerminalCommit     func() error
 	afterProgressEventPersist    func() error
+	// Export rendering seams (T16): storage holds the rendered bytes under
+	// local:// object keys, the signing key mints short-lived download grants,
+	// and exportNow only makes expiry testable. failExportVerify injects a
+	// verification failure for one format in error-path tests.
+	exportStorage    materialExportStorage
+	exportSigningKey []byte
+	exportNow        func() time.Time
+	failExportVerify func(format string) error
 }
 
 func NewOffice(db *gorm.DB) (*Office, error) {
 	if db == nil {
 		return nil, errors.New("career database required")
 	}
-	models := []any{&profile{}, &space{}, &fact{}, &factVersion{}, &proposal{}, &change{}, &receipt{}, &sourceRevision{}, &opportunity{}, &opportunityObservation{}, &opportunitySnapshot{}, &opportunityReceipt{}, &evaluationRecord{}, &applicationRecord{}, &searchRecord{}, &searchResultRecord{}, &materialRecord{}, &materialVersionRecord{}, &materialReceiptRecord{}, &progressEventRecord{}}
+	models := []any{&profile{}, &space{}, &fact{}, &factVersion{}, &proposal{}, &change{}, &receipt{}, &sourceRevision{}, &opportunity{}, &opportunityObservation{}, &opportunitySnapshot{}, &opportunityReceipt{}, &evaluationRecord{}, &applicationRecord{}, &searchRecord{}, &searchResultRecord{}, &materialRecord{}, &materialVersionRecord{}, &materialReceiptRecord{}, &materialExportRecord{}, &progressEventRecord{}}
 	if db.Dialector.Name() == "sqlite" {
 		present := 0
 		for _, model := range models {
@@ -322,6 +330,7 @@ func validateSQLiteCareerSchema(db *gorm.DB) error {
 		"career_materials":                {"id", "tenant_id", "user_id", "request_id", "fingerprint", "opportunity_id", "snapshot_id", "profile_revision", "evidence_body", "status", "draft_body", "failure_code", "failure_message", "version_count", "receipt_body", "created_at", "updated_at"},
 		"career_material_versions":        {"id", "tenant_id", "user_id", "material_id", "version", "request_id", "fingerprint", "evidence_body", "version_body", "receipt_body", "created_at"},
 		"career_material_receipts":        {"tenant_id", "user_id", "request_id", "fingerprint", "body", "created_at"},
+		"career_material_exports":         {"id", "tenant_id", "user_id", "material_id", "version", "request_id", "fingerprint", "content_digest", "status", "pdf_object_key", "pdf_digest", "pdf_size", "pdf_error", "docx_object_key", "docx_digest", "docx_size", "docx_error", "revoked_at", "receipt_body", "created_at", "updated_at"},
 		"career_progress_events":          {"id", "tenant_id", "user_id", "application_id", "seq", "kind", "event_type", "note", "occurred_at", "corrects_event_id", "source", "confirmer", "request_id", "fingerprint", "receipt_body", "created_at"},
 	}
 	for table, columns := range requiredColumns {
@@ -344,6 +353,7 @@ func validateSQLiteCareerSchema(db *gorm.DB) error {
 		"career_materials":            {"tenant_id", "user_id", "request_id"},
 		"career_material_versions":    {"tenant_id", "user_id", "material_id", "version"},
 		"career_material_receipts":    {"tenant_id", "user_id", "request_id"},
+		"career_material_exports":     {"tenant_id", "user_id", "request_id"},
 		"career_progress_events":      {"tenant_id", "user_id", "request_id"},
 	} {
 		if err := requireSQLiteUniqueConstraint(db, table, columns); err != nil {

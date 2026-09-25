@@ -448,6 +448,111 @@ func TestCareerProgressHTTPContract(t *testing.T) {
 	// Another application of the same owner stays unchained.
 	rec = call(http.MethodGet, "/api/v1/career/applications/00000000-0000-0000-0000-000000000000/progress", "",
 		gin.Params{{Key: "applicationId", Value: "00000000-0000-0000-0000-000000000000"}})
-	require.Equal(t, 404, rec.Code, rec.Body.String())
+	require.Equal(t, 404, rec.Code)
 	require.Contains(t, rec.Body.String(), "not_found")
+}
+
+func TestCareerMaterialExportHTTPContract(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	office, err := NewOffice(db)
+	require.NoError(t, err)
+	store := newMapExportStorage()
+	office.SetExportStorage(store)
+	office.SetExportSigningKey([]byte("0123456789abcdef0123456789abcdef"))
+	scope := Scope{UserID: "export-http-owner", TenantID: 99}
+	base := context.WithValue(context.Background(), types.UserIDContextKey, scope.UserID)
+	base = context.WithValue(base, types.TenantIDContextKey, scope.TenantID)
+	ctx := WithScope(base, scope)
+	require.NoError(t, office.ClaimSpace(ctx))
+
+	seed := seedMaterialEvidence(t, office, ctx, "2027", "export-http")
+	created, err := office.EditMaterial(ctx, editMaterialInput(seed, "export-http-edit", exportFixtureBody()))
+	require.NoError(t, err)
+	_, err = office.ConfirmMaterial(ctx, ConfirmMaterialInput{RequestID: "export-http-confirm", MaterialID: created.MaterialID, ExpectedRevision: seed.Revision})
+	require.NoError(t, err)
+
+	h := &Handler{office: office, members: &memberListStub{members: []*types.TenantMember{{UserID: scope.UserID, TenantID: scope.TenantID, Role: types.TenantRoleOwner}}}}
+	call := func(method, target, body string, params gin.Params) *httptest.ResponseRecorder {
+		gin.SetMode(gin.TestMode)
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		var reader io.Reader
+		if body != "" {
+			reader = strings.NewReader(body)
+		}
+		c.Request = httptest.NewRequest(method, target, reader).WithContext(base)
+		if body != "" {
+			c.Request.Header.Set("Content-Type", "application/json")
+		}
+		c.Params = params
+		switch {
+		case method == http.MethodPost && strings.HasSuffix(target, "/exports"):
+			h.PublishMaterialHandler(c)
+		case method == http.MethodGet && strings.HasSuffix(target, "/exports"):
+			h.ListMaterialExports(c)
+		case method == http.MethodPost && strings.HasSuffix(target, "/signed-url"):
+			h.MaterialExportSignedURL(c)
+		case method == http.MethodGet && strings.Contains(target, "/download?"):
+			h.DownloadMaterialExport(c)
+		case method == http.MethodDelete:
+			h.RevokeMaterialExport(c)
+		default:
+			t.Fatalf("unexpected call %s %s", method, target)
+		}
+		return rec
+	}
+	exportParams := func(exportID string) gin.Params {
+		return gin.Params{{Key: "materialId", Value: created.MaterialID}, {Key: "exportId", Value: exportID}}
+	}
+
+	// Publish renders and verifies both formats of the confirmed version.
+	rec := call(http.MethodPost, "/api/v1/career/materials/"+created.MaterialID+"/exports",
+		fmt.Sprintf(`{"requestId":"export-http-publish","version":1,"expectedRevision":%d}`, seed.Revision),
+		gin.Params{{Key: "materialId", Value: created.MaterialID}})
+	require.Equal(t, 200, rec.Code, rec.Body.String())
+	var receipt ExportReceipt
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &receipt))
+	require.Equal(t, ExportStatusSubmittable, receipt.Status)
+	require.True(t, receipt.Submittable)
+	require.Len(t, receipt.Files, 2)
+
+	// The list shows the export with its immutable binding.
+	rec = call(http.MethodGet, "/api/v1/career/materials/"+created.MaterialID+"/exports", "", gin.Params{{Key: "materialId", Value: created.MaterialID}})
+	require.Equal(t, 200, rec.Code)
+	var listed struct {
+		Exports []ExportReceipt `json:"exports"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &listed))
+	require.Len(t, listed.Exports, 1)
+
+	// The owner mints a short-lived grant and redeems the PDF bytes.
+	rec = call(http.MethodPost, "/api/v1/career/materials/"+created.MaterialID+"/exports/"+receipt.ExportID+"/signed-url",
+		`{"format":"pdf","ttlSeconds":300}`, exportParams(receipt.ExportID))
+	require.Equal(t, 200, rec.Code, rec.Body.String())
+	var grant ExportDownload
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &grant))
+	require.Equal(t, receipt.ExportID, grant.ExportID)
+	require.NotEmpty(t, grant.URL)
+
+	rec = call(http.MethodGet, grant.URL, "", exportParams(receipt.ExportID))
+	require.Equal(t, 200, rec.Code)
+	require.Equal(t, "application/pdf", rec.Header().Get("Content-Type"))
+	require.Equal(t, store.files[exportFile(receipt, ExportFormatPDF).ObjectKey], rec.Body.Bytes())
+
+	// Revocation makes the already-issued grant fail immediately.
+	rec = call(http.MethodDelete, "/api/v1/career/materials/"+created.MaterialID+"/exports/"+receipt.ExportID,
+		fmt.Sprintf(`{"requestId":"export-http-revoke","expectedRevision":%d}`, seed.Revision), exportParams(receipt.ExportID))
+	require.Equal(t, 200, rec.Code, rec.Body.String())
+	require.Contains(t, rec.Body.String(), ExportStatusRevoked)
+
+	rec = call(http.MethodGet, grant.URL, "", exportParams(receipt.ExportID))
+	require.Equal(t, 404, rec.Code)
+	require.Contains(t, rec.Body.String(), "export_grant_invalid")
+
+	// A revoked export no longer mints grants.
+	rec = call(http.MethodPost, "/api/v1/career/materials/"+created.MaterialID+"/exports/"+receipt.ExportID+"/signed-url",
+		`{"format":"pdf","ttlSeconds":300}`, exportParams(receipt.ExportID))
+	require.Equal(t, 409, rec.Code)
+	require.Contains(t, rec.Body.String(), "export_not_submittable")
 }

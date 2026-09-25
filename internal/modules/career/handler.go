@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -37,6 +38,12 @@ func NewHandler(db *gorm.DB, members interfaces.TenantMemberService, files inter
 		return nil, e
 	}
 	o.SetApplicationTaskLinker(linker)
+	if files != nil {
+		o.SetExportStorage(newFileExportStorage(files))
+	}
+	if key, keyErr := ExportSigningKeyFromEnv(); keyErr == nil {
+		o.SetExportSigningKey(key)
+	}
 	return &Handler{office: o, members: members, upload: NewUploadAdapter(files, catalog, reader)}, nil
 }
 func validateOwnerOnlyCareerTenant(userID string, tenantID uint64, members []*types.TenantMember) error {
@@ -116,6 +123,21 @@ func writeError(c *gin.Context, e error) {
 	case errors.Is(e, ErrProgressEventNotFound):
 		status = 404
 		code = "not_found"
+	case errors.Is(e, ErrExportNotFound):
+		status = 404
+		code = "not_found"
+	case errors.Is(e, ErrExportNotSubmittable):
+		status = 409
+		code = "export_not_submittable"
+	case errors.Is(e, ErrExportGrantInvalid):
+		status = 404
+		code = "export_grant_invalid"
+	case errors.Is(e, ErrExportStorageUnavailable):
+		status = 500
+		code = "export_storage_unavailable"
+	case errors.Is(e, ErrExportSigningKeyMissing):
+		status = http.StatusNotImplemented
+		code = "export_signing_key_missing"
 	}
 	body := gin.H{"code": code, "message": e.Error()}
 	if errors.Is(e, ErrRevisionConflict) {
@@ -713,6 +735,138 @@ func (h *Handler) CompareMaterialVersions(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, comparison)
+}
+
+const maxExportBodyBytes = 16 * 1024
+
+func decodeStrictJSON(c *gin.Context, target any) bool {
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxExportBodyBytes)
+	decoder := json.NewDecoder(c.Request.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
+		var maxBytesError *http.MaxBytesError
+		if errors.As(err, &maxBytesError) {
+			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": gin.H{"code": "request_too_large", "message": "material export request is too large"}})
+			return false
+		}
+		writeError(c, ErrInvalidRequest)
+		return false
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		writeError(c, ErrInvalidRequest)
+		return false
+	}
+	return true
+}
+
+// PublishMaterialHandler renders and verifies the PDF/DOCX pair of one
+// immutable material version. The material comes from the authenticated path;
+// only both-verified exports become submittable.
+func (h *Handler) PublishMaterialHandler(c *gin.Context) {
+	ctx, ok := h.scope(c, false)
+	if !ok {
+		return
+	}
+	var input PublishMaterialInput
+	if !decodeStrictJSON(c, &input) {
+		return
+	}
+	input.MaterialID = c.Param("materialId")
+	receipt, err := h.office.PublishMaterial(ctx, input)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, receipt)
+}
+
+// ListMaterialExports serves every export of one material under the
+// authenticated scope.
+func (h *Handler) ListMaterialExports(c *gin.Context) {
+	ctx, ok := h.scope(c, false)
+	if !ok {
+		return
+	}
+	exports, err := h.office.MaterialExports(ctx, c.Param("materialId"))
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	if exports == nil {
+		exports = []ExportReceipt{}
+	}
+	c.JSON(http.StatusOK, gin.H{"materialId": c.Param("materialId"), "exports": exports})
+}
+
+// MaterialExportSignedURL issues a short-lived download grant for one format
+// of a submittable export.
+func (h *Handler) MaterialExportSignedURL(c *gin.Context) {
+	ctx, ok := h.scope(c, false)
+	if !ok {
+		return
+	}
+	var req struct {
+		Format     string `json:"format"`
+		TTLSeconds int64  `json:"ttlSeconds"`
+	}
+	if !decodeStrictJSON(c, &req) {
+		return
+	}
+	if req.TTLSeconds <= 0 {
+		writeError(c, ErrInvalidRequest)
+		return
+	}
+	download, err := h.office.MaterialExportGrant(ctx, c.Param("materialId"), c.Param("exportId"), req.Format, time.Duration(req.TTLSeconds)*time.Second)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, download)
+}
+
+var exportContentTypes = map[string]string{
+	ExportFormatPDF:  "application/pdf",
+	ExportFormatDOCX: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+}
+
+// DownloadMaterialExport redeems a download grant and streams the stored
+// bytes; the durable export state is re-checked at redemption time.
+func (h *Handler) DownloadMaterialExport(c *gin.Context) {
+	ctx, ok := h.scope(c, false)
+	if !ok {
+		return
+	}
+	format := c.Query("format")
+	data, err := h.office.DownloadMaterialExport(ctx, c.Param("materialId"), c.Param("exportId"), format, c.Query("expires"), c.Query("signature"))
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	contentType := exportContentTypes[format]
+	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="career-material.%s"`, format))
+	c.Data(http.StatusOK, contentType, data)
+}
+
+// RevokeMaterialExport revokes one export; already-issued grants fail
+// immediately afterwards.
+func (h *Handler) RevokeMaterialExport(c *gin.Context) {
+	ctx, ok := h.scope(c, false)
+	if !ok {
+		return
+	}
+	var input RevokeMaterialExportInput
+	if !decodeStrictJSON(c, &input) {
+		return
+	}
+	input.MaterialID = c.Param("materialId")
+	input.ExportID = c.Param("exportId")
+	receipt, err := h.office.RevokeMaterialExport(ctx, input)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, receipt)
 }
 
 const maxProgressBodyBytes = 16 * 1024
