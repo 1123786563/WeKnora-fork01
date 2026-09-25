@@ -384,6 +384,83 @@ export function decodeMaterialComparison(value: unknown): MaterialVersionCompari
  return { materialId: record.materialId, baseline: decodeMaterialVersionView(record.baseline), target: decodeMaterialVersionView(record.target), changes: record.changes.map(decodeMaterialChange) }
 }
 
+// Frozen progress contract owned by the career backend (T17,
+// internal/modules/career/progress.go). The timeline is append-only: event
+// types and the seven-stage projection are closed enums and a correction
+// appends a referencing event instead of rewriting history. Decoders reject
+// invented kinds, stages, event types, or provenance before they reach the UI.
+export type ProgressStage = 'preparing' | 'pending_submission' | 'submitted' | 'assessment' | 'interview' | 'offer' | 'closed'
+export type ProgressEventType = 'pending_submission' | 'submitted' | 'assessment' | 'interview' | 'offer' | 'resubmitted' | 'rejected' | 'withdrawn' | 'retracted'
+export type ProgressKind = 'progress_appended' | 'progress_corrected'
+export type ProgressSourceKind = 'manual' | 'user' | 'system_import'
+export type ProgressSource = { kind: ProgressSourceKind; label?: string; referenceId?: string }
+export type ProgressReceipt = { kind: ProgressKind; requestId: string; applicationId: string; eventId: string; seq: number; revision: number; correctsEventId?: string; eventType: ProgressEventType; stage: ProgressStage; note?: string; occurredAt: string; source: ProgressSource; confirmer: string; createdAt: string }
+export type ProgressEventView = { eventId: string; seq: number; kind: ProgressKind; eventType: ProgressEventType; note?: string; occurredAt: string; source: ProgressSource; confirmer: string; correctsEventId?: string; corrected: boolean; requestId: string; createdAt: string }
+export type ProgressView = { applicationId: string; revision: number; stage: ProgressStage; events: ProgressEventView[] }
+// The server pins HTTP provenance to manual entry and overwrites the field
+// (internal/modules/career/handler.go progressClientSource); the client never
+// claims system_import, so the write inputs carry no source at all.
+export type AppendProgressInput = { requestId: string; applicationId: string; eventType: ProgressEventType; note?: string; occurredAt?: string; expectedRevision: number }
+export type CorrectProgressInput = AppendProgressInput & { correctsEventId: string }
+
+const progressStages: ProgressStage[] = ['preparing', 'pending_submission', 'submitted', 'assessment', 'interview', 'offer', 'closed']
+const progressEventTypes: ProgressEventType[] = ['pending_submission', 'submitted', 'assessment', 'interview', 'offer', 'resubmitted', 'rejected', 'withdrawn', 'retracted']
+const progressKinds: ProgressKind[] = ['progress_appended', 'progress_corrected']
+const progressSourceKinds: ProgressSourceKind[] = ['manual', 'user', 'system_import']
+
+function validPositiveSeq(value: unknown): value is number { return typeof value === 'number' && Number.isSafeInteger(value) && value > 0 }
+
+function decodeProgressSource(value: unknown): ProgressSource {
+ const record = decodeRecord(value, 'invalid progress source')
+ if (!progressSourceKinds.includes(record.kind as ProgressSourceKind) || !validOptionalString(record.label) || !validOptionalString(record.referenceId)) throw new TypeError('invalid progress source')
+ return { kind: record.kind as ProgressSourceKind, ...(typeof record.label === 'string' ? { label: record.label } : {}), ...(typeof record.referenceId === 'string' ? { referenceId: record.referenceId } : {}) }
+}
+
+export function decodeProgressReceipt(value: unknown): ProgressReceipt {
+ const record = decodeRecord(value, 'invalid progress receipt')
+ if (!progressKinds.includes(record.kind as ProgressKind) || !validIdentifier(record.requestId) || !validIdentifier(record.applicationId)
+  || !validIdentifier(record.eventId) || !validPositiveSeq(record.seq) || !validPositiveSeq(record.revision)
+  || !progressEventTypes.includes(record.eventType as ProgressEventType)
+  || !progressStages.includes(record.stage as ProgressStage)
+  || !validOptionalIdentifier(record.correctsEventId) || !validOptionalString(record.note)
+  || !validTimestamp(record.occurredAt) || !validIdentifier(record.confirmer) || !validTimestamp(record.createdAt)) throw new TypeError('invalid progress receipt')
+ // A correction receipt always names its target; an append never does.
+ if ((record.kind === 'progress_corrected') !== validIdentifier(record.correctsEventId)) throw new TypeError('invalid progress receipt')
+ return {
+  kind: record.kind as ProgressKind, requestId: record.requestId, applicationId: record.applicationId, eventId: record.eventId,
+  seq: record.seq as number, revision: record.revision as number,
+  ...(validIdentifier(record.correctsEventId) ? { correctsEventId: record.correctsEventId } : {}),
+  eventType: record.eventType as ProgressEventType, stage: record.stage as ProgressStage,
+  ...(typeof record.note === 'string' ? { note: record.note } : {}),
+  occurredAt: record.occurredAt, source: decodeProgressSource(record.source), confirmer: record.confirmer, createdAt: record.createdAt,
+ }
+}
+
+function decodeProgressEvent(value: unknown): ProgressEventView {
+ const record = decodeRecord(value, 'invalid progress event')
+ if (!validIdentifier(record.eventId) || !validPositiveSeq(record.seq) || !progressKinds.includes(record.kind as ProgressKind)
+  || !progressEventTypes.includes(record.eventType as ProgressEventType)
+  || !validOptionalString(record.note) || !validTimestamp(record.occurredAt) || !validIdentifier(record.confirmer)
+  || !validOptionalIdentifier(record.correctsEventId) || typeof record.corrected !== 'boolean'
+  || !validIdentifier(record.requestId) || !validTimestamp(record.createdAt)) throw new TypeError('invalid progress event')
+ if ((record.kind === 'progress_corrected') !== validIdentifier(record.correctsEventId)) throw new TypeError('invalid progress event')
+ return {
+  eventId: record.eventId, seq: record.seq as number, kind: record.kind as ProgressKind,
+  eventType: record.eventType as ProgressEventType,
+  ...(typeof record.note === 'string' ? { note: record.note } : {}),
+  occurredAt: record.occurredAt, source: decodeProgressSource(record.source), confirmer: record.confirmer,
+  ...(validIdentifier(record.correctsEventId) ? { correctsEventId: record.correctsEventId } : {}),
+  corrected: record.corrected, requestId: record.requestId, createdAt: record.createdAt,
+ }
+}
+
+export function decodeProgressView(value: unknown): ProgressView {
+ const record = decodeRecord(value, 'invalid progress view')
+ if (!validIdentifier(record.applicationId) || !validRevision(record.revision)
+  || !progressStages.includes(record.stage as ProgressStage) || !Array.isArray(record.events)) throw new TypeError('invalid progress view')
+ return { applicationId: record.applicationId, revision: record.revision as number, stage: record.stage as ProgressStage, events: record.events.map(decodeProgressEvent) }
+}
+
 export function createCareerApi(request: CareerRequest) {
  return {
   async open(signal?: AbortSignal): Promise<CareerView> { return await request({ method: 'GET', path: '/api/v1/career/open', ...(signal ? { signal } : {}) }) as CareerView },
@@ -499,6 +576,30 @@ export function createCareerApi(request: CareerRequest) {
    if (!materialId.trim()) throw new TypeError('material ID must not be empty')
    if (!Number.isSafeInteger(baseline) || baseline <= 0 || !Number.isSafeInteger(target) || target <= 0) throw new TypeError('material compare versions must be positive integers')
    return decodeMaterialComparison(await request({ method: 'GET', path: `/api/v1/career/materials/${encodeURIComponent(materialId)}/versions/${target}/compare?baseline=${baseline}`, ...(signal ? { signal } : {}) }))
+  },
+  async appendProgress(input: AppendProgressInput, signal?: AbortSignal): Promise<ProgressReceipt> {
+   if (!input.requestId.trim() || !input.applicationId.trim()) throw new TypeError('progress requestId and applicationId must not be empty')
+   if (!progressEventTypes.includes(input.eventType)) throw new TypeError('progress eventType must come from the frozen event vocabulary')
+   if (input.occurredAt !== undefined && !validTimestamp(input.occurredAt)) throw new TypeError('progress occurredAt must be an RFC3339 timestamp')
+   if (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0) throw new TypeError('progress expected revision must be a non-negative integer')
+   const body = { requestId: input.requestId, applicationId: input.applicationId, eventType: input.eventType, ...(input.note !== undefined ? { note: input.note } : {}), ...(input.occurredAt !== undefined ? { occurredAt: input.occurredAt } : {}), source: { kind: 'manual' }, expectedRevision: input.expectedRevision }
+   return decodeProgressReceipt(await request({ method: 'POST', path: `/api/v1/career/applications/${encodeURIComponent(input.applicationId)}/progress`, body, ...(signal ? { signal } : {}) }))
+  },
+  async correctProgress(input: CorrectProgressInput, signal?: AbortSignal): Promise<ProgressReceipt> {
+   if (!input.requestId.trim() || !input.applicationId.trim() || !input.correctsEventId.trim()) throw new TypeError('progress correct requestId, applicationId and correctsEventId must not be empty')
+   if (!progressEventTypes.includes(input.eventType)) throw new TypeError('progress eventType must come from the frozen event vocabulary')
+   if (input.occurredAt !== undefined && !validTimestamp(input.occurredAt)) throw new TypeError('progress occurredAt must be an RFC3339 timestamp')
+   if (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0) throw new TypeError('progress expected revision must be a non-negative integer')
+   const body = { requestId: input.requestId, applicationId: input.applicationId, correctsEventId: input.correctsEventId, eventType: input.eventType, ...(input.note !== undefined ? { note: input.note } : {}), ...(input.occurredAt !== undefined ? { occurredAt: input.occurredAt } : {}), source: { kind: 'manual' }, expectedRevision: input.expectedRevision }
+   return decodeProgressReceipt(await request({ method: 'POST', path: `/api/v1/career/applications/${encodeURIComponent(input.applicationId)}/progress/correct`, body, ...(signal ? { signal } : {}) }))
+  },
+  async applicationProgress(applicationId: string, signal?: AbortSignal): Promise<ProgressView> {
+   if (!applicationId.trim()) throw new TypeError('progress applicationId must not be empty')
+   return decodeProgressView(await request({ method: 'GET', path: `/api/v1/career/applications/${encodeURIComponent(applicationId)}/progress`, ...(signal ? { signal } : {}) }))
+  },
+  async progressReceipt(requestId: string, signal?: AbortSignal): Promise<ProgressReceipt> {
+   if (!requestId.trim()) throw new TypeError('progress receipt requestId must not be empty')
+   return decodeProgressReceipt(await request({ method: 'GET', path: `/api/v1/career/progress/receipt?requestId=${encodeURIComponent(requestId)}`, ...(signal ? { signal } : {}) }))
   },
  }
 }

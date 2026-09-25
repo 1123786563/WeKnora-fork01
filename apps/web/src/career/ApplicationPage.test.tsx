@@ -337,3 +337,21 @@ test('application styles keep TDesign light surfaces, brand green confirmations 
  assert.match(css, /@media \(max-width: 640px\)/)
  assert.match(css, /overflow-wrap: anywhere/)
 })
+
+test('the created application opens its own progress timeline on demand', async () => {
+ const reads: string[] = []
+ const career: CareerStub & { createApplication: (input: any) => Promise<ApplicationReceipt> } = {
+  open: async () => view,
+  createApplication: async (input: { requestId: string }) => ({ ...readyReceipt, requestId: input.requestId }),
+  applicationProgress: async (id: string) => { reads.push(id); return { applicationId: id, revision: 0, stage: 'preparing', events: [] } },
+ }
+ const { container } = await mountApplication(career)
+ await submitApplication(container, 'eval-eligible', '2026 秋招 A 批', career)
+ assert.ok(!container.querySelector('.wk-progress'), 'timeline stays closed until the user enters it')
+ await act(async () => { byLabel(container, 'button', '查看申请进展时间线').click(); await settle(); await settle() })
+ const timeline = container.querySelector('.wk-progress')
+ assert.ok(timeline, 'progress timeline opens from the application detail')
+ assert.deepEqual(reads, ['app-1'])
+ assert.match(timeline.textContent ?? '', /当前阶段/)
+ assert.match(timeline.textContent ?? '', /准备中/)
+})

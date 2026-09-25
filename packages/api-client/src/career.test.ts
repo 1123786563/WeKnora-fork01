@@ -398,3 +398,71 @@ test('material client refuses blank identifiers, invalid revisions, bodiless cre
   await assert.rejects(api.compareMaterialVersions('m-1', 1, 2), TypeError)
  }
 })
+
+// T17 progress timeline: append/correct/history/receipt follow the frozen
+// backend enums (internal/modules/career/progress.go). Decoders reject
+// invented kinds, stages, event types, or provenance before they reach the UI.
+const progressTs = '2026-09-25T08:00:00Z'
+const progressReceipt = (kind: 'progress_appended' | 'progress_corrected' = 'progress_appended') => ({ kind, requestId: 'p-req /1', applicationId: 'app /1', eventId: 'evt-2', seq: 2, revision: 2, ...(kind === 'progress_corrected' ? { correctsEventId: 'evt-1' } : {}), eventType: 'interview', stage: 'interview', note: '一面', occurredAt: progressTs, source: { kind: 'manual' }, confirmer: 'owner-1', createdAt: progressTs })
+const progressEvent = (seq: number, corrected = false) => ({ eventId: `evt-${seq}`, seq, kind: 'progress_appended', eventType: seq === 1 ? 'submitted' : 'interview', note: `事件 ${seq}`, occurredAt: progressTs, source: { kind: 'manual' }, confirmer: 'owner-1', corrected, requestId: `req-${seq}`, createdAt: progressTs })
+const progressView = () => ({ applicationId: 'app /1', revision: 2, stage: 'interview', events: [progressEvent(1), progressEvent(2)] })
+
+test('progress client encodes append, correct, history and receipt recovery paths', async () => {
+ const calls: Array<{ method: string; path: string; body?: unknown }> = []
+ const api = createCareerApi(async (input) => {
+  calls.push({ method: input.method, path: input.path, ...(input.body !== undefined ? { body: input.body } : {}) })
+  return input.method === 'GET' && !input.path.includes('/receipt?') ? progressView() : progressReceipt(input.path.endsWith('/progress/correct') ? 'progress_corrected' : 'progress_appended')
+ })
+ assert.deepEqual(await api.appendProgress({ requestId: 'p-req /1', applicationId: 'app /1', eventType: 'interview', note: '一面', expectedRevision: 1 }), progressReceipt())
+ assert.deepEqual(await api.correctProgress({ requestId: 'p-cor /1', applicationId: 'app /1', correctsEventId: 'evt-1', eventType: 'assessment', note: '实为测评', expectedRevision: 2 }), progressReceipt('progress_corrected'))
+ assert.deepEqual(await api.applicationProgress('app /1'), progressView())
+ assert.deepEqual(await api.progressReceipt('p-req /1'), progressReceipt())
+ assert.deepEqual(calls, [
+  { method: 'POST', path: '/api/v1/career/applications/app%20%2F1/progress', body: { requestId: 'p-req /1', applicationId: 'app /1', eventType: 'interview', note: '一面', source: { kind: 'manual' }, expectedRevision: 1 } },
+  { method: 'POST', path: '/api/v1/career/applications/app%20%2F1/progress/correct', body: { requestId: 'p-cor /1', applicationId: 'app /1', correctsEventId: 'evt-1', eventType: 'assessment', note: '实为测评', source: { kind: 'manual' }, expectedRevision: 2 } },
+  { method: 'GET', path: '/api/v1/career/applications/app%20%2F1/progress' },
+  { method: 'GET', path: '/api/v1/career/progress/receipt?requestId=p-req%20%2F1' },
+ ])
+})
+
+test('progress client refuses blank identifiers, invalid revisions and invented enums', async () => {
+ const refusing = createCareerApi(async () => { throw new Error('must not send invalid request') })
+ await assert.rejects(refusing.appendProgress({ requestId: ' ', applicationId: 'app-1', eventType: 'interview', expectedRevision: 0 }), /requestId/)
+ await assert.rejects(refusing.appendProgress({ requestId: 'p-1', applicationId: ' ', eventType: 'interview', expectedRevision: 0 }), /applicationId/)
+ await assert.rejects(refusing.appendProgress({ requestId: 'p-1', applicationId: 'app-1', eventType: 'ghost', expectedRevision: 0 }), /eventType/)
+ await assert.rejects(refusing.appendProgress({ requestId: 'p-1', applicationId: 'app-1', eventType: 'interview', occurredAt: 'just now', expectedRevision: 0 }), /occurredAt/)
+ await assert.rejects(refusing.appendProgress({ requestId: 'p-1', applicationId: 'app-1', eventType: 'interview', expectedRevision: -1 }), /revision/)
+ await assert.rejects(refusing.correctProgress({ requestId: 'p-1', applicationId: 'app-1', correctsEventId: ' ', eventType: 'interview', expectedRevision: 0 }), /correctsEventId/)
+ await assert.rejects(refusing.progressReceipt(' '), /requestId/)
+ await assert.rejects(refusing.applicationProgress(' '), /applicationId/)
+ const receiptInventors: Array<Record<string, unknown>> = [
+  { ...progressReceipt(), kind: 'progress_deleted' },
+  { ...progressReceipt(), eventType: 'ghost' },
+  { ...progressReceipt(), stage: 'ghost' },
+  { ...progressReceipt(), seq: 0 },
+  { ...progressReceipt(), revision: -1 },
+  { ...progressReceipt(), source: { kind: 'email_bot' } },
+  { ...progressReceipt(), occurredAt: 'just now' },
+  { ...progressReceipt(), confirmer: ' ' },
+  { ...progressReceipt(), kind: 'progress_corrected' },
+ ]
+ for (const payload of receiptInventors) {
+  const api = createCareerApi(async () => payload)
+  await assert.rejects(api.progressReceipt('p-req /1'), TypeError)
+ }
+ const viewInventors: Array<Record<string, unknown>> = [
+  { ...progressView(), stage: 'ghost' },
+  { ...progressView(), revision: 1.5 },
+  { ...progressView(), events: 'none' },
+  { ...progressView(), events: [{ ...progressEvent(1), eventType: 'ghost' }] },
+  { ...progressView(), events: [{ ...progressEvent(1), kind: 'progress_ghosted' }] },
+  { ...progressView(), events: [{ ...progressEvent(1), corrected: 'yes' }] },
+  { ...progressView(), events: [{ ...progressEvent(1), source: { kind: 'ghost' } }] },
+  { ...progressView(), events: [{ ...progressEvent(1), eventId: ' ' }] },
+  { ...progressView(), events: [{ ...progressEvent(1), kind: 'progress_corrected' }] },
+ ]
+ for (const payload of viewInventors) {
+  const api = createCareerApi(async () => payload)
+  await assert.rejects(api.applicationProgress('app /1'), TypeError)
+ }
+})
