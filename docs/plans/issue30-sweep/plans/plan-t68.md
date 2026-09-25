@@ -2195,10 +2195,10 @@ test('miniprogram office integration (opt-in, real deployment)', { skip: enabled
 - [ ] **Step 3: 运行（skip 路径即本地默认）**
 
 Run: `cd apps/miniprogram && node --experimental-transform-types --test tests/integration/miniprogram-office-integration.test.mjs`
-Expected: 1 skipped（skip reason 打印环境变量名）。**不得**在无凭据环境下出现 pass——伪造即违背 AC3。
+Expected: 1 skipped（真实部署证据测试；skip reason 打印环境变量名）+ 1 pass（部署 origin 守卫纯校验器回归，最终审查修复 F1 追加，非集成证据）。**不得**在无凭据环境下出现集成 pass——伪造即违背 AC3。
 
 Run: `cd apps/miniprogram && node --experimental-transform-types --test tests/*.test.mjs tests/integration/*.test.mjs`
-Expected: 全部 pass + 1 skipped。
+Expected: 全部 pass + 1 skipped（真实部署证据测试）。
 
 - [ ] **Step 4: Commit**
 
@@ -2220,7 +2220,7 @@ git commit -m "test(miniprogram): opt-in real-deployment integration evidence fo
 pnpm exec tsx --test packages/mobile-core/src/platform-purity.test.ts && cd apps/miniprogram && node --experimental-transform-types --test tests/*.test.mjs tests/integration/*.test.mjs && if npx tsc --noEmit 2>&1 | grep 'error TS' | grep -v 'features/account/pages.tsx'; then echo 'UNEXPECTED NEW TYPE ERRORS'; exit 1; fi
 ```
 
-Expected: mobile-core 纯度门 2 pass；apps/miniprogram 全部用例 pass（含 orchestrator 3 + office-assembly 11 + assembly 10 + platform-adapters 7 + office-views 5 + integration 1 skipped…以实际文件为准，0 fail）；tsc 无 account 页之外的新错误。
+Expected: mobile-core 纯度门 2 pass；apps/miniprogram 全部用例 pass（最终审查修复轮后实测：orchestrator 3 + office-assembly 11 + assembly 11 + platform-adapters 8 + office-views 5 + core 7 + transport 8 + integration 2（守卫 1 pass + 真实部署证据 1 skipped）＝55 tests／54 pass／1 skipped…以实际文件为准，0 fail）；tsc 无 account 页之外的新错误。
 
 - [ ] **Step 2: 验收标准逐条核对（执行者在交付说明中逐字回答）**
 

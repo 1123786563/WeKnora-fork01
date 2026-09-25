@@ -26,15 +26,17 @@ export function readStoredCredential(store: ValueStore, origin: string): StoredC
 /**
  * 一次性收养旧登录态（D7 语义迁移）：同 origin 的大小写变体收养首个有效 bearer 后清除；
  * 变体键一律移除，canonical 仅在为空时写入（canonical 已有凭据则只清变体、不覆盖）。
- * normalizeApiOrigin 不归一空白，尾随空白等畸形变体会被当作不同 origin 原样保留、
- * 不在此清除——畸形清理待 Task 3 重写 auth.ts 归一化时统一处置（审查修复轮 1 注记）。
+ * normalizeApiOrigin 不归一空白，故比较前先对键内 origin 折叠首尾空白（最终审查修复 F4）：
+ * 尾随空白等畸形变体与大小写变体同语义——收养+移除，不再原样残留本机。
  */
 export function adoptLegacyCredentials(store: ValueStore, origin: string): void {
   const canonical = credentialKeyOf(origin);
+  const normalizedOrigin = normalizeApiOrigin(origin);
   for (const key of store.keys?.() ?? []) {
     if (!key.startsWith(CREDENTIAL_KEY_PREFIX) || key === canonical) continue;
-    if (normalizeApiOrigin(key.slice(CREDENTIAL_KEY_PREFIX.length)) !== normalizeApiOrigin(origin)) continue;
-    const adopted = readStoredCredential(store, key.slice(CREDENTIAL_KEY_PREFIX.length));
+    const keyOrigin = key.slice(CREDENTIAL_KEY_PREFIX.length);
+    if (normalizeApiOrigin(keyOrigin.trim()) !== normalizedOrigin) continue;
+    const adopted = readStoredCredential(store, keyOrigin);
     if (adopted && readStoredCredential(store, origin) === undefined) {
       store.write(canonical, { token: adopted.token, refreshToken: adopted.refreshToken });
     }

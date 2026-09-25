@@ -1,68 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { registerHooks } from 'node:module';
-import { pathToFileURL } from 'node:url';
+// 平台边界替换与脚手架（hook/me/capabilities/backend/authRoutes/freshLogin/until）共享自
+// helpers/assembly-harness.mjs（最终审查修复 F5）；本文件只保留会话域场景本身。
+import { loadAssemblyHarness } from './helpers/assembly-harness.mjs';
 
-// 平台边界替换：真实 @tarojs/taro 在 Node 下因 webpack DefinePlugin 常量无法求值，
-// 用契约级替身承载 request/uploadFile/storage；其余全部为待提交真实源码。
-const stubURL = pathToFileURL(new URL('./helpers/taro-stub.mjs', import.meta.url).pathname).href;
-registerHooks({
-  resolve(specifier, context, nextResolve) {
-    if (specifier === '@tarojs/taro') return { url: stubURL, shortCircuit: true };
-    return nextResolve(specifier, context);
-  },
-});
-globalThis.__API_ORIGIN__ = 'https://api.example.test';
-const { stub } = await import('./helpers/taro-stub.mjs');
-const runtimeModule = await import('../src/services/runtime.ts');
-
-const ORIGIN = 'https://api.example.test';
-// activateTenant 的身份来自切换后的 me()（mobile-runtime.ts:416-429：switch-tenant → persist → authenticate），
-// 因此 me() 必须是有状态替身：activeTenant 随 switch-tenant 路由翻转。
-let activeTenant = 1;
-const me = () => ({ success: true, data: { user: { id: 'u1', username: 'Lin' }, tenant: { id: activeTenant, name: activeTenant === 1 ? 'Space' : 'Space 2' }, memberships: [
-  { tenant_id: 1, tenant_name: 'Space', role: 'owner' },
-  { tenant_id: 2, tenant_name: 'Space 2', role: '成员' },
-] } });
-// 与真实 wire 一致：GET /system/capabilities 返回标准 code/msg/data 信封（deployment_capabilities.go:151-155，
-// createMobileRuntimeRemote.deploymentCapabilities 按 root.code===0 解包）——非 auth 域的 {success,data} 信封。
-const capabilities = () => ({ code: 0, msg: 'success', data: { protocol_minimum: 1, protocol_maximum: 5 } });
-const settle = ms => new Promise(resolve => setTimeout(resolve, ms ?? 10));
-async function until(predicate, ms = 1500) { const end = Date.now() + ms; while (Date.now() < end) { if (predicate()) return true; await settle(5); } return predicate(); }
-
-/** 安装按 method+pathname 路由的假后端；route 返回 undefined 时挂起（等测试手动响应）。 */
-function backend(routes) {
-  stub.use(call => {
-    const method = call.options.method, path = new URL(call.options.url).pathname;
-    const exact = routes[`${method} ${path}`];
-    let fn = exact;
-    if (fn === undefined) {
-      // 以 '/' 结尾的键按前缀匹配，承载 :run_id / :request_id 路径参数。
-      const prefix = Object.keys(routes).filter(k => k.endsWith('/') && `${method} ${path}`.startsWith(k)).sort((a, b) => b.length - a.length)[0];
-      if (prefix) fn = routes[prefix];
-    }
-    if (fn === undefined) { call.options.fail({ errMsg: `no backend route for ${method} ${path}` }); return; }
-    fn(call);
-  });
-}
-/** 登录态前置路由：login → me → capabilities（Runtime authenticate 的真实三步）。 */
-function authRoutes(extra = {}) {
-  return {
-    'POST /api/v1/auth/login': call => stub.succeed(call, { data: { success: true, data: { token: 't1', refresh_token: 'r1' } } }),
-    'GET /api/v1/auth/me': call => stub.succeed(call, { data: me() }),
-    'GET /api/v1/system/capabilities': call => stub.succeed(call, { data: capabilities() }),
-    ...extra,
-  };
-}
-async function freshLogin(extraRoutes = {}) {
-  // 注意：stub.reset() 会连 storage 一起清空，而 MobileRuntime 每次授权请求都从凭据仓现读
-  // （sendWithCredential → credentialStore.read）——登录后绝不能再 reset，只按需重装路由 handler。
-  stub.reset();
-  backend(authRoutes(extraRoutes));
-  await runtimeModule.auth.login('u@example.test', 'pw');
-}
-const authorization = call => call.options.header.Authorization ?? call.options.header.authorization;
-const authKeys = () => [...stub.state.storage.keys()].filter(k => k.startsWith('wk:auth:'));
+const { stub, runtime: runtimeModule, harness } = await loadAssemblyHarness();
+const { me, backend, authRoutes, freshLogin, authorization, authKeys, until, setActiveTenant } = harness;
+const files = await import('../src/platform/files.ts');
 
 test('assembly: login through the real MobileRuntime stores exactly one credential and stamps scope', async () => {
   await freshLogin();
@@ -170,7 +114,7 @@ test('assembly: chatStream assembles SSE frames end-to-end through the authorize
 test('assembly: tenant switch rotates the scope and aborts in-flight subscriptions', async () => {
   await freshLogin({
     'POST /api/v1/auth/switch-tenant': call => {
-      activeTenant = 2; // 切换后 me() 返回新租户（activateTenant 以 me() 为身份权威）
+      setActiveTenant(2); // 切换后 me() 返回新租户（activateTenant 以 me() 为身份权威）
       stub.succeed(call, { data: { success: true, data: { token: 't3', refresh_token: 'r3', tenant: { id: 2, name: 'Space 2' }, memberships: [] } } });
     },
   });
@@ -211,4 +155,32 @@ test('assembly: logout revokes remotely best-effort, clears credentials and the 
   assert.equal(runtimeModule.auth.snapshot().phase, 'anonymous');
   assert.equal(runtimeModule.auth.credential().kind, 'anonymous');
   assert.equal([...stub.state.storage.keys()].filter(k => k.startsWith('wk:')).length, 0, 'private cache and credentials removed even when remote revocation fails');
+});
+
+// 最终审查修复 F2 回归：受保护下载通道的 token 必须经 currentBearerToken() 唯一入口铸造
+//（先授权 GET 触发 Runtime refresh-once，再「用时现读」），而非 auth.credential() 现读——
+// 后者在 token 过期未轮换时会拿着死 token 直连，一次性 401。
+test('assembly: the protected download channel mints its token through currentBearerToken — a stale token is refreshed before download', async () => {
+  await freshLogin(); // t1 落盘
+  // 重装路由（不 reset——凭据仓里的 t1 必须保留）：模拟 t1 已在服务端过期。
+  let refreshes = 0, downloadAuth = '';
+  backend(authRoutes({
+    'GET /api/v1/auth/me': call => {
+      if (authorization(call) === 'Bearer t1') { stub.succeed(call, { statusCode: 401, data: { success: false } }); return; }
+      stub.succeed(call, { data: me() });
+    },
+    'POST /api/v1/auth/refresh': call => { refreshes++; stub.succeed(call, { data: { success: true, access_token: 't2', refresh_token: 'r2' } }); },
+    'GET /api/v1/files/report': call => {
+      downloadAuth = authorization(call);
+      if (downloadAuth === 'Bearer t1') { stub.succeed(call, { statusCode: 401, data: { success: false } }); return; }
+      stub.succeed(call, { statusCode: 200, header: { 'content-type': 'application/pdf' }, data: new TextEncoder().encode('%PDF-1').buffer, tempFilePath: 'wxfile://tmp/report.pdf' });
+    },
+  }));
+  await files.openProtectedDocument('/api/v1/files/report', 'report.pdf');
+  assert.equal(refreshes, 1, 'the stale token is refreshed exactly once through the runtime single-flight');
+  assert.equal(downloadAuth, 'Bearer t2', 'the download header carries the rotated token, never the stale one');
+  assert.equal(stub.lastCall('downloadFile').options.header.Authorization, 'Bearer t2');
+  // 路径不可信 / 格式不许可仍在前置校验拒绝（不发起任何网络调用）。
+  await assert.rejects(files.openProtectedDocument('https://evil.example/file.pdf', 'a.pdf'), /不可信下载路径/);
+  await assert.rejects(files.openProtectedDocument('/api/v1/files/report', 'a.exe'), /授权 Web 工作台/);
 });

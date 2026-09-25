@@ -55,6 +55,8 @@ export const auth: TaroSessionFacade = createTaroSessionFacade({ runtime, origin
  * 平台直连通道（multipart 上传/二进制下载）取 token 的唯一入口：
  * 先走一次授权 GET（触发 Runtime 的 refresh-once 并把轮换落盘），再「用时现读」。
  * 永不缓存 token、永不再造第二条刷新路径。
+ * 消费方：client 的 sendBinary/sendMultipartFile 与 platform/files.ts 的受保护下载——
+ * 两条直连通道都必须经此铸造 token，不得绕行 auth.credential() 现读。
  */
 export async function currentBearerToken(): Promise<string> {
   await runtime.authorizedRequest({ method: 'GET', path: '/api/v1/auth/me' });

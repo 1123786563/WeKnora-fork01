@@ -1,59 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { registerHooks } from 'node:module';
-import { pathToFileURL } from 'node:url';
+import { readFileSync } from 'node:fs';
+// 平台边界替换与脚手架（hook/me/capabilities/backend/authRoutes/freshLogin/until）共享自
+// helpers/assembly-harness.mjs（最终审查修复 F5）；本文件只保留 Task Office 场景数据与场景本身。
+import { loadAssemblyHarness } from './helpers/assembly-harness.mjs';
 
-const stubURL = pathToFileURL(new URL('./helpers/taro-stub.mjs', import.meta.url).pathname).href;
-registerHooks({
-  resolve(specifier, context, nextResolve) {
-    if (specifier === '@tarojs/taro') return { url: stubURL, shortCircuit: true };
-    return nextResolve(specifier, context);
-  },
-});
-globalThis.__API_ORIGIN__ = 'https://api.example.test';
-const { stub } = await import('./helpers/taro-stub.mjs');
-const runtimeModule = await import('../src/services/runtime.ts');
-const office = await import('../src/services/mobile-office.ts');
+const { stub, runtime: runtimeModule, office, harness } = await loadAssemblyHarness({ withOffice: true });
+const { backend, authRoutes, freshLogin, settle, until, setActiveTenant } = harness;
 
 // activateTenant 以切换后的 me() 为身份权威（mobile-runtime.ts:426-429）：activeTenant 随路由翻转。
-let activeTenant = 1;
-const me = () => ({ success: true, data: { user: { id: 'u1', username: 'Lin' }, tenant: { id: activeTenant, name: activeTenant === 1 ? 'Space' : 'Space 2' }, memberships: [] } });
-// 与真实 wire 一致：GET /system/capabilities 返回标准 code/msg/data 信封（deployment_capabilities.go:151-155，
-// createMobileRuntimeRemote.deploymentCapabilities 按 root.code===0 解包）——非 auth 域的 {success,data} 信封。
-const capabilities = () => ({ code: 0, msg: 'success', data: { protocol_minimum: 1, protocol_maximum: 5 } });
 const runRow = (runId, sessionId, status, attention = 'none') => ({ run_id: runId, session_id: sessionId, title: `任务 ${runId}`, status, run_status: status, attention, created_at: '2026-09-24T00:00:00Z', updated_at: '2026-09-24T00:00:00Z' });
 // overview 行走 parseWorkbenchOverview.executionSummary（read-models.ts:118-129）：
 // run_status/execution_status/settlement_status 皆必填——与 list 行（parseExecutionItem 的 status/created_at）不同 wire 模型。
 const overviewRow = (runId, sessionId, status, attention = 'none') => ({ run_id: runId, session_id: sessionId, title: `任务 ${runId}`, run_status: status, execution_status: status, settlement_status: 'pending', attention, updated_at: '2026-09-24T01:00:00Z' });
 const execDto = (seq = 5) => ({ schema_version: 1, run_id: 'run-1', session_id: 's-1', revision: 3, driver: 'platform', run_status: 'running', execution_status: 'running', settlement_status: 'pending', seq, capabilities: {} });
 const execEvent = seq => ({ schema_version: 1, run_id: 'run-1', attempt_id: 'a-1', seq, type: 'progress', occurred_at: '2026-09-18T00:00:00Z', payload: { summary: 'working' } });
-
-function backend(routes) {
-  stub.use(call => {
-    const method = call.options.method, path = decodeURIComponent(new URL(call.options.url).pathname);
-    let fn = routes[`${method} ${path}`];
-    if (fn === undefined) {
-      const prefix = Object.keys(routes).filter(k => k.endsWith('/') && `${method} ${path}`.startsWith(k)).sort((a, b) => b.length - a.length)[0];
-      if (prefix) fn = routes[prefix];
-    }
-    if (fn === undefined && call.options.enableChunked) {
-      // SSE 路由未命中时挂起等待测试驱动
-      return;
-    }
-    if (fn === undefined) { call.options.fail({ errMsg: `no backend route for ${method} ${path}` }); return; }
-    fn(call);
-  });
-}
-const authRoutes = extra => ({
-  'POST /api/v1/auth/login': call => stub.succeed(call, { data: { success: true, data: { token: 't1', refresh_token: 'r1' } } }),
-  'GET /api/v1/auth/me': call => stub.succeed(call, { data: me() }),
-  'GET /api/v1/system/capabilities': call => stub.succeed(call, { data: capabilities() }),
-  ...extra,
-});
-async function freshLogin(extra = {}) { stub.reset(); backend(authRoutes(extra)); await runtimeModule.auth.login('u@example.test', 'pw'); }
-const authorization = call => call.options.header.authorization ?? call.options.header.Authorization;
-const settle = ms => new Promise(resolve => setTimeout(resolve, ms ?? 30));
-async function until(predicate, ms = 1500) { const end = Date.now() + ms; while (Date.now() < end) { if (predicate()) return true; await settle(10); } return predicate(); }
 
 const overviewRoutes = () => ({
   'GET /api/v1/workbench/overview': call => stub.succeed(call, { data: { success: true, data: {
@@ -247,7 +208,7 @@ test('scenario: material index + preview + terminal flow through TaskMaterial', 
 test('scenario: tenant switch revokes the old office lease — late reads fail closed (TASK_OFFICE_SCOPE_CHANGED)', async () => {
   await freshLogin({
     ...overviewRoutes(),
-    'POST /api/v1/auth/switch-tenant': call => { activeTenant = 2; stub.succeed(call, { data: { success: true, data: { token: 't3', refresh_token: 'r3', tenant: { id: 2, name: 'Space 2' }, memberships: [] } } }); },
+    'POST /api/v1/auth/switch-tenant': call => { setActiveTenant(2); stub.succeed(call, { data: { success: true, data: { token: 't3', refresh_token: 'r3', tenant: { id: 2, name: 'Space 2' }, memberships: [] } } }); },
   });
   const staleOffice = office.requireTaskOffice();
   await runtimeModule.auth.switchTenant(2);
@@ -255,6 +216,27 @@ test('scenario: tenant switch revokes the old office lease — late reads fail c
   const nextOffice = office.requireTaskOffice();
   const home = await nextOffice.home();
   assert.equal(home.running[0].runId, 'run-1', 'a fresh office for the new scope reads normally');
+});
+
+// 最终审查修复 F3 回归：materials 缓存只以 origin 为键（offices 为 origin::tenant），
+// 切租户复用同一 TaskMaterial 实例——安全边界在 handle 层逐操作 leaseActive fail closed。
+// 这里钉住：切租户后「旧 handle」的一切读必须拒绝；「新 open」携带新 lease 正常读取。
+test('scenario: after a tenant switch the cached TaskMaterial instance serves a fresh handle, while the stale handle fails closed (MATERIAL_SCOPE_CHANGED)', async () => {
+  await freshLogin({
+    'POST /api/v1/auth/switch-tenant': call => { setActiveTenant(2); stub.succeed(call, { data: { success: true, data: { token: 't3', refresh_token: 'r3', tenant: { id: 2, name: 'Space 2' }, memberships: [] } } }); },
+    'GET /api/v1/workbench/executions/run-1/artifacts': call => stub.succeed(call, { data: { success: true, data: { items: [], terminal: { available: false } } } }),
+  });
+  const staleHandle = office.openActiveMaterial();
+  assert.ok(staleHandle, 'material opens while the lease is active');
+  await runtimeModule.auth.switchTenant(2); // 旧 lease 被吊销
+  await assert.rejects(staleHandle.index({ runId: 'run-1' }), error => error.code === 'MATERIAL_SCOPE_CHANGED', 'every operation on the stale handle fails closed per-operation');
+  await assert.rejects(staleHandle.open({ kind: 'terminal', runId: 'run-1' }), error => error.code === 'MATERIAL_SCOPE_CHANGED', 'terminal reads are guarded too');
+  // 缓存实例按 origin 复用：新 open 以新 lease 通过，逐操作 guard 一致放行。
+  const freshHandle = office.openActiveMaterial();
+  assert.notEqual(freshHandle, staleHandle, 'a fresh handle is minted for the new lease');
+  const index = await freshHandle.index({ runId: 'run-1' });
+  assert.equal(index.materials.length, 0);
+  freshHandle.close('scenario-done');
 });
 
 test('scenario: resolveTaskForRun derives taskId from the authoritative run row (ADR-0004 task-is-session)', async () => {
@@ -265,7 +247,6 @@ test('scenario: resolveTaskForRun derives taskId from the authoritative run row 
   assert.deepEqual(resolved, { taskId: 's-1', runId: 'run-1' });
 });
 
-import { readFileSync } from 'node:fs';
 test('replace-dont-layer: execution/home pages reference the deep modules, never the deleted workbench controller', () => {
   const executionPages = readFileSync(new URL('../src/features/execution/pages.tsx', import.meta.url), 'utf8');
   const homePages = readFileSync(new URL('../src/features/home/pages.tsx', import.meta.url), 'utf8');

@@ -51,8 +51,25 @@ test('credential store: legacy bearer shape and host-case variants are adopted e
   credentialStore.adoptLegacyCredentials(store, 'https://api.example.test');
   assert.deepEqual(credentialStore.readStoredCredential(store, 'https://api.example.test'), { token: 'legacy', refreshToken: 'legacy-r' });
   assert.equal(store.keys().includes('wk:auth:https://API.example.test'), false, 'case variant removed after adoption');
-  assert.equal(store.keys().includes('wk:auth:https://api.example.test '), true, 'malformed trailing-space key stays: normalizeApiOrigin does not fold whitespace; cleanup defers to the Task 3 auth.ts rewrite');
+  assert.equal(store.keys().includes('wk:auth:https://api.example.test '), false, 'whitespace-malformed variant key is folded away, never left behind (final-review fix F4)');
   assert.deepEqual(credentialStore.readStoredCredential(store, 'https://other.example.test'), { token: 'other', refreshToken: 'other-r' }, 'other origin untouched');
+});
+
+// 最终审查修复 F4 回归：normalizeApiOrigin 不归一空白，尾随/前导空白畸形变体键原先被当作
+// 不同 origin 原样残留——收养比较前先折叠空白，畸形变体与大小写变体同语义（收养+移除）。
+test('credential store: whitespace-malformed variant keys are adopted and removed like any variant', () => {
+  const store = memoryStore();
+  store.write('wk:auth:https://api.example.test ', { kind: 'bearer', accessToken: 'ws', refreshToken: 'ws-r' });
+  credentialStore.adoptLegacyCredentials(store, 'https://api.example.test');
+  assert.deepEqual(credentialStore.readStoredCredential(store, 'https://api.example.test'), { token: 'ws', refreshToken: 'ws-r' }, 'valid credential under a whitespace-malformed key is adopted');
+  assert.equal(store.keys().includes('wk:auth:https://api.example.test '), false, 'malformed key removed after adoption');
+  // canonical 已有凭据时：畸形变体只移除、不覆盖（与大小写变体同一纪律）。
+  const store2 = memoryStore();
+  store2.write('wk:auth:https://api.example.test', { token: 'canonical', refreshToken: 'canonical-r' });
+  store2.write('wk:auth:https://api.example.test ', { kind: 'bearer', accessToken: 'stale', refreshToken: 'stale-r' });
+  credentialStore.adoptLegacyCredentials(store2, 'https://api.example.test');
+  assert.deepEqual(credentialStore.readStoredCredential(store2, 'https://api.example.test'), { token: 'canonical', refreshToken: 'canonical-r' }, 'canonical credential is never overwritten by a malformed variant');
+  assert.equal(store2.keys().includes('wk:auth:https://api.example.test '), false);
 });
 
 test('authorized stream channel: pre-stream non-2xx rejects with a real ApiError shape (runtime 401 retry depends on it)', async () => {

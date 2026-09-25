@@ -1,6 +1,6 @@
 // 微信/Taro 平台边界测试替身：只实现 src/platform 与 src/services 实际消费的
-// 契约（request/uploadFile 的 success/fail 回调 + RequestTask 生命周期、同步存储）。
-// 通过 tests/*.test.mjs 里的 module.registerHooks 把 '@tarojs/taro' 重定向到本文件，
+// 契约（request/uploadFile/downloadFile 的 success/fail 回调 + RequestTask 生命周期、同步存储、
+// 文件查看通道）。通过 tests/*.test.mjs 里的 module.registerHooks 把 '@tarojs/taro' 重定向到本文件，
 // 使真实源码（transport/storage/runtime/workbench）在 Node 中原样装配。
 const state = {
   storage: new Map(),
@@ -46,10 +46,19 @@ function dispatch(kind, options) {
 const Taro = {
   request(options) { return dispatch('request', options); },
   uploadFile(options) { return dispatch('uploadFile', options); },
+  downloadFile(options) { return dispatch('downloadFile', options); },
   getStorageSync(key) { return state.storage.has(key) ? state.storage.get(key) : ''; },
   setStorageSync(key, value) { state.storage.set(key, value); },
   removeStorageSync(key) { state.storage.delete(key); },
   getStorageInfoSync() { return { keys: [...state.storage.keys()] }; },
+  // 文件查看通道（platform/files.ts，Promise 风格调用）：小文件、可打开、临时文件可清理。
+  getFileInfo(options) {
+    return new Promise(resolve => queueMicrotask(() => { const result = { size: 5 }; options.success?.(result); resolve(result); }));
+  },
+  openDocument(options) {
+    return new Promise(resolve => queueMicrotask(() => { options.success?.({}); resolve({}); }));
+  },
+  getFileSystemManager() { return { unlinkSync() { /* temporary file cleanup is a no-op in the stub */ } }; },
 };
 
 // ---- 测试驱动面 ----
