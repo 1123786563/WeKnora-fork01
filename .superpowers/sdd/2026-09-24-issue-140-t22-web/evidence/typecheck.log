@@ -1,0 +1,3 @@
+
+> weknora-react-workspace@ typecheck:web /Users/wuyongjun/.codex/worktrees/issue-140-t22-web/WeKnora-fork01
+> pnpm --filter @weknora/web exec tsc -p tsconfig.json --noEmit

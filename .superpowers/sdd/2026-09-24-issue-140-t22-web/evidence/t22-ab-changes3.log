@@ -1,0 +1,72 @@
+✔ edit deep-link inputs select the requested section and highlight (538.010666ms)
+✔ read-only edit hides the save mutation control (116.258209ms)
+✔ personalization section renders the 16-type grid and dominant-side percent labels (166.741375ms)
+✔ subagents section renders the installed list, catalog cards, division chips and zh names (183.067709ms)
+✔ subagents nav item is gated by agent mode like tools/skills (169.493208ms)
+✔ subagents empty installed list shows the delegation-off hint (97.789292ms)
+✔ installing a catalog role patches config.subagents from the response and reaches the save payload (112.79175ms)
+✔ removing an installed role calls the endpoint, patches config and shows the hint when emptied (146.410417ms)
+✔ division chips and the search box filter the catalog client-side (87.535166ms)
+✔ test modal: intro disclaimer, all-answered submit gate, submit payload, apply writes persona_mbti (84.222834ms)
+✔ test modal: Escape closes only the dialog and the editor stays open (54.944458ms)
+DEBUG root: object HTMLDivElement qs: function
+✔ create mode renders the grouped section rail and the create footer button (42.875125ms)
+✔ editor close control uses the Vue close accessible name (40.834709ms)
+✔ empty submit shows per-field required errors, jumps sections and fires no request (326.02475ms)
+✔ valid create posts the Vue payload shape then shows the post-create hint (567.156584ms)
+✔ edit mode hydrates the agent and PUTs the merged config on save (153.84925ms)
+✔ Escape key, cancel button and overlay click all close without saving (109.687042ms)
+✔ KB selection: none clears knowledge_bases, selected renders groups and checkbox toggles (705.714292ms)
+✔ double-clicking save only submits once while the request is in flight (540.757209ms)
+✔ knowledge section renders the supported-file-types dropdown with the 7 Vue options (D8/P3-2) (349.323542ms)
+✔ knowledge section hides the file-types picker when the KB scope is none (D8) (65.621834ms)
+✔ skills section renders the manage-sandboxes link navigating to settings?sandbox (D11) (84.711375ms)
+✔ create rail registers suggestions/multimodal/mcp and the capability group (D1) (76.285ms)
+✔ suggestions section renders starters + follow-ups tabs with the Vue rows (D1) (175.696625ms)
+✔ multimodal section renders image/audio/timeout rows and gates on image_upload_enabled (D1) (295.20125ms)
+✔ mcp section renders scope radios, service checklist and auth timeout (D1) (171.427291ms)
+✔ create mode prefills name/description/system prompt from the rag-qa preset (D3) (77.301292ms)
+✔ create mode seeds the four RAG tools into the effective-tools preview (D10) (77.596791ms)
+✔ basic section offers the agent type dropdown in agent mode (D2) (91.665417ms)
+✔ switching agent type applies the preset and refreshes system-generated fields (D2) (266.834083ms)
+✔ quick-answer mode hides the agent type dropdown (D2) (43.32275ms)
+✔ create mode prefills chat/rerank models and rerank is required with a RAG KB (D5+D6) (86.118791ms)
+✔ rerank stays optional when no RAG kb is in scope (D6) (91.791ms)
+✔ prompts section lists the agent-mode placeholders and inserts on tag click (D4) (95.911834ms)
+✔ quick-answer prompts carry the system + context placeholder sets (D4) (129.982ms)
+✔ agent-mode system prompt exposes 恢复默认 + 使用模板 with all 7 yaml templates (D4 + R486 verify DIFF-A) (118.649416ms)
+✔ quick-answer system prompt keeps the bare textarea (template selector is agent-mode only) (100.723459ms)
+
+Interrupted while running:
+
+⚠ src/agents/agent-editor.test.tsx (src/agents/agent-editor.test.tsx:1:1)
+⚠ src/settings/GeneralPreferencesPanel.test.tsx (src/settings/GeneralPreferencesPanel.test.tsx:1:1)
+✖ src/agents/agent-editor.test.tsx (149955.977333ms)
+✔ Lite mode exposes Vue auto-update switch and persists it without dropping other settings (274.110291ms)
+✔ non-Lite GeneralSettings does not expose the desktop-only auto-update control (60.265666ms)
+✔ font size radio group: selection moves t-is-checked and persists (142.639958ms)
+✔ general preferences keeps four TDesign selects (language/theme/sans/mono) (44.424917ms)
+✔ applies persisted font preferences when the panel mounts (43.166583ms)
+✔ language change persists and shows the Vue success toast in the new locale (205.113916ms)
+✔ theme change shows the Vue common.success toast (129.762042ms)
+✔ font option labels follow the active locale (en-US Vue table) (167.087958ms)
+✔ font option labels follow the active locale (ja-JP Vue table) (46.906042ms)
+✔ font previews keep the Vue .font-preview anatomy (23.295584ms)
+✔ sans font change persists under WeKnora_{uid}_font_sans, never the flat key (93.951083ms)
+✔ mono font change persists under WeKnora_{uid}_font_mono, never the flat key (86.988209ms)
+✔ panel adopts legacy flat font keys at mount and never reads them back for user u2 (37.045834ms)
+ℹ tests 51
+ℹ suites 0
+ℹ pass 50
+ℹ fail 0
+ℹ cancelled 1
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 149961.131
+
+✖ failing tests:
+
+test at src/agents/agent-editor.test.tsx:1:1
+✖ src/agents/agent-editor.test.tsx (149955.977333ms)
+  'Promise resolution is still pending but the event loop has already resolved'
+exit=124
