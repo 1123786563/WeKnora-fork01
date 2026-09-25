@@ -304,6 +304,15 @@ var (
 	// mirrors the manual MCP endpoint's "require_approval or enabled is
 	// required".
 	ErrInstallationPolicyInvalid = errors.New("plugin tool policy requires enabled or require_approval")
+
+	// ErrInstallationServiceMissing (T18-OCR1-F4): the installation carries no
+	// resolvable materialized service row — the interrupted-uninstall dangling
+	// anchor (the cascade took the service row AND its policy rows; the
+	// installation row stayed) after the empty-service_id self-heal found
+	// nothing. There is no policy store to write against: a deterministic
+	// state rejection (the operator's path is uninstall/re-install), never a
+	// 5xx persistence fault.
+	ErrInstallationServiceMissing = errors.New("plugin installation has no materialized service for tool policies")
 )
 
 // installationDriftWriter is the narrow persistence capability the drift
@@ -1826,14 +1835,16 @@ func (s *pluginService) ListInstallationTools(
 // (T18) and returns the refreshed governance list. The tool must be in the
 // accepted snapshot — the snapshot is the membership authority, so a removed
 // tool's residual Enabled row is never addressable (and can never resurrect
-// the tool). The patch passes through to the shared
-// MCPToolApprovalService.SetPolicy unchanged: enabled and requireApproval are
-// independent nullable pointers of one patch (requireApproval takes effect
-// from T19's endpoint extension — the signature is final here). The shared
-// insert-default (a first row lands Enabled=true) never applies to write
-// tools in practice: install/upgrade/resolve write an explicit row for every
-// snapshot tool; a missing row on a write tool is an anomaly the admin's
-// explicit patch resolves in one write either way.
+// the tool). enabled and requireApproval are independent nullable pointers of
+// one patch passed through to the shared MCPToolApprovalService.SetPolicy
+// (requireApproval takes effect from T19's endpoint extension — the signature
+// is final here), with ONE plugin-domain guard on top (T18-OCR1-F1): the
+// shared repository's FIRST INSERT materializes any omitted field with its
+// default, and its enabled default is true — so a requireApproval-only patch
+// against a tool with NO row would silently arm a write tool's dispatch
+// eligibility. When enabled is nil and no row exists, the plugin-domain
+// default (enabled=ReadOnly) is materialized explicitly first; an existing
+// row keeps its verdict under a requireApproval-only patch.
 func (s *pluginService) SetInstallationToolPolicy(
 	ctx context.Context,
 	tenantID uint64,
@@ -1849,25 +1860,111 @@ func (s *pluginService) SetInstallationToolPolicy(
 		return nil, ErrInstallationNotFound
 	}
 
-	inSnapshot := false
-	for _, tool := range inst.ToolsSnapshot {
-		if tool.Name == toolName {
-			inSnapshot = true
+	var snapshotTool *types.PluginToolSnapshot
+	for i := range inst.ToolsSnapshot {
+		if inst.ToolsSnapshot[i].Name == toolName {
+			snapshotTool = &inst.ToolsSnapshot[i]
 			break
 		}
 	}
-	if !inSnapshot {
+	if snapshotTool == nil {
 		return nil, fmt.Errorf("%w: %q is not in the accepted snapshot", ErrInstallationToolNotFound, toolName)
 	}
 	if enabled == nil && requireApproval == nil {
 		return nil, ErrInstallationPolicyInvalid
 	}
-	if err := s.toolApprovalService.SetPolicy(ctx, tenantID, inst.ServiceID, toolName, requireApproval, enabled); err != nil {
+
+	// Resolve the policy store through the degraded-anchor guards
+	// (T18-OCR1-F4): the empty-service_id interrupt window self-heals via the
+	// mcp_services back-reference; a dangling anchor (service row gone) has
+	// no store to write against — a deterministic state rejection.
+	svc, rowsByTool, err := s.resolveInstallationPolicyStore(ctx, tenantID, inst)
+	if err != nil {
+		return nil, err
+	}
+	if svc == nil {
+		return nil, fmt.Errorf("%w: %q (uninstall and re-install to recover)", ErrInstallationServiceMissing, inst.PluginID)
+	}
+
+	// T18-OCR1-F1: a requireApproval-only patch on a MISSING row must not ride
+	// the shared insert default (enabled=true) — materialize the plugin-domain
+	// default explicitly.
+	enabledPatch := enabled
+	if enabledPatch == nil {
+		if _, exists := rowsByTool[toolName]; !exists {
+			materialized := snapshotTool.ReadOnly
+			enabledPatch = &materialized
+		}
+	}
+	if err := s.toolApprovalService.SetPolicy(ctx, tenantID, svc.ID, toolName, requireApproval, enabledPatch); err != nil {
 		logger.GetLogger(ctx).Errorf(
 			"failed to write tool policy for %s/%s: %v", inst.PluginID, toolName, err)
 		return nil, ErrInstallationPersistFailed
 	}
 	return s.installationToolPolicies(ctx, tenantID, inst)
+}
+
+// resolveInstallationPolicyStore resolves the policy-store face of ONE
+// installation for the governance surface (T18-OCR1-F4) — the two degraded
+// anchor shapes this file already knows (the T16-OCR1-F1 / T07-OCR1-F5
+// precedents) must not read as store faults here:
+//
+//   - Empty ServiceID (the confirm interrupt window, after
+//     CreateMCPService and before UpdateInstallationServiceID): self-heal
+//     through the mcp_services.plugin_installation_id back-reference — the
+//     orphan row and its install-time policy rows are reachable.
+//   - Dangling service_id (the interrupted uninstall: the cascade took the
+//     service row AND its derived policy rows; the installation row stayed):
+//     reads as "no explicit rows" — every snapshot tool falls back to its
+//     plugin-domain default, which is the TRUE fail-closed state of the
+//     cascade-gone rows, matching the detail view's svc==nil degradation.
+//
+// Returns the effective service row (nil = no policy store) and the explicit
+// rows keyed by tool name. Only real store faults surface as errors.
+func (s *pluginService) resolveInstallationPolicyStore(
+	ctx context.Context,
+	tenantID uint64,
+	inst *types.PluginInstallation,
+) (*types.MCPService, map[string]*types.MCPToolApproval, error) {
+	rowsByTool := map[string]*types.MCPToolApproval{}
+	serviceID := inst.ServiceID
+	if serviceID == "" {
+		resolved, err := s.serviceIDByInstallation(ctx, tenantID, inst.ID)
+		if err != nil {
+			logger.GetLogger(ctx).Errorf(
+				"failed to resolve orphan materialized service for installation %s: %v", inst.ID, err)
+			return nil, nil, ErrInstallationPersistFailed
+		}
+		if resolved != "" {
+			logger.GetLogger(ctx).Infof(
+				"tool policy store healing empty service_id anchor: installation %s resolves to orphan service %s", inst.ID, resolved)
+			serviceID = resolved
+		}
+	}
+	if serviceID == "" {
+		return nil, rowsByTool, nil
+	}
+	svc, err := s.mcpServiceRepo.GetByID(ctx, tenantID, serviceID)
+	if err != nil {
+		logger.GetLogger(ctx).Errorf(
+			"failed to load materialized service for installation %s: %v", inst.ID, err)
+		return nil, nil, ErrInstallationPersistFailed
+	}
+	if svc == nil {
+		// Dangling anchor: the service row and its policy rows are gone
+		// together — "no explicit rows" is the accurate reading, not a fault.
+		return nil, rowsByTool, nil
+	}
+	rows, err := s.toolApprovalService.ListByService(ctx, tenantID, svc.ID)
+	if err != nil {
+		logger.GetLogger(ctx).Errorf(
+			"failed to load tool policies for installation %s: %v", inst.ID, err)
+		return nil, nil, ErrInstallationPersistFailed
+	}
+	for _, row := range rows {
+		rowsByTool[row.ToolName] = row
+	}
+	return svc, rowsByTool, nil
 }
 
 // installationToolPolicies derives the governance rows of ONE installation:
@@ -1881,17 +1978,9 @@ func (s *pluginService) installationToolPolicies(
 	tenantID uint64,
 	inst *types.PluginInstallation,
 ) ([]interfaces.PluginInstallationToolPolicy, error) {
-	rowsByTool := map[string]*types.MCPToolApproval{}
-	if inst.ServiceID != "" {
-		rows, err := s.toolApprovalService.ListByService(ctx, tenantID, inst.ServiceID)
-		if err != nil {
-			logger.GetLogger(ctx).Errorf(
-				"failed to load tool policies for installation %s: %v", inst.ID, err)
-			return nil, ErrInstallationPersistFailed
-		}
-		for _, row := range rows {
-			rowsByTool[row.ToolName] = row
-		}
+	_, rowsByTool, err := s.resolveInstallationPolicyStore(ctx, tenantID, inst)
+	if err != nil {
+		return nil, err
 	}
 	out := make([]interfaces.PluginInstallationToolPolicy, 0, len(inst.ToolsSnapshot))
 	for _, tool := range inst.ToolsSnapshot {

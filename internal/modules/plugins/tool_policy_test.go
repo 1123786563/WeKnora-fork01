@@ -20,11 +20,18 @@ package plugins_test
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/Tencent/WeKnora/internal/application/service"
+	"github.com/Tencent/WeKnora/internal/handler"
 	"github.com/Tencent/WeKnora/internal/modules/plugins/plugintest"
+	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
 
@@ -172,4 +179,175 @@ func TestListInstallationToolsDropsRemovedSnapshotTools(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, view.Tools, 1)
 	require.Equal(t, "search", view.Tools[0].Name)
+}
+
+// TestSetInstallationToolPolicyRequireApprovalOnlyMaterializesDefault
+// （T18-OCR1-F1 回归）：requireApproval 单独 patch 一个**无策略行**的工具时，
+// 共享 UpsertPolicy 的首插默认会把省略的 enabled 落为 true——对写工具即
+// 「只设审批位就隐式启用派发资格」的 fail-open。修复后：无行工具先物化
+// 插件域默认（enabled=ReadOnly），既有行的 enabled 不受 requireApproval
+// 单独 patch 影响。
+func TestSetInstallationToolPolicyRequireApprovalOnlyMaterializesDefault(t *testing.T) {
+	const tenantID = uint64(11)
+	s := newUpgradeAcceptStackWithTools(t, tenantID, toolPolicyV1Tools(), toolPolicyV1Tools())
+	ctx := context.Background()
+
+	// 制造无行异常：直接删除写工具 write_probe 的安装期策略行。
+	delete(s.approvalRepo.rows, approvalKey(s.inst.ServiceID, "write_probe"))
+	require.NotContains(t, s.policyRows(t, tenantID), "write_probe")
+
+	// requireApproval 单独 patch 无行写工具 → 行必须落 enabled=false（插件域
+	// 默认物化），不得落入共享首插默认 enabled=true。
+	requireApproval := true
+	rows, err := s.svc.SetInstallationToolPolicy(ctx, tenantID, s.inst.ID, "write_probe", nil, &requireApproval)
+	require.NoError(t, err)
+	write := policyByName(rows)["write_probe"]
+	require.False(t, write.Enabled, "a requireApproval-only patch on a MISSING row must materialize the plugin default (write=disabled), never the shared insert default enabled=true")
+	require.True(t, write.RequireApproval)
+	require.Equal(t, interfaces.PluginWriteToolDisabledReason, write.DisabledReason)
+	row := s.policyRows(t, tenantID)["write_probe"]
+	require.NotNil(t, row)
+	require.False(t, row.Enabled, "the persisted row itself must carry enabled=false")
+
+	// 既有行不受影响：read_probe 行在场（Enabled=true），requireApproval 单独
+	// patch 只改审批位，不改启停。
+	rows, err = s.svc.SetInstallationToolPolicy(ctx, tenantID, s.inst.ID, "read_probe", nil, &requireApproval)
+	require.NoError(t, err)
+	read := policyByName(rows)["read_probe"]
+	require.True(t, read.Enabled, "an EXISTING row keeps its enabled verdict under a requireApproval-only patch")
+	require.True(t, read.RequireApproval)
+}
+
+// TestListInstallationToolsDegradedAnchors（T18-OCR1-F4 回归）：治理面对本
+// 文件已识别的两种降级锚状态不得误报 500 persist-failed——
+//   a) 悬空 service_id 锚（级联删掉服务行与策略行、安装行残留）：列表按
+//      无显式行渲染插件域默认值（真实且 fail-closed），策略写返回确定性
+//      状态错误（ErrInstallationServiceMissing）而非 5xx；
+//   b) 空 ServiceID 中断窗口且物化行仍在：经 mcp_services 反查自愈读行。
+func TestListInstallationToolsDegradedAnchors(t *testing.T) {
+	const tenantID = uint64(11)
+	ctx := context.Background()
+
+	t.Run("dangling service anchor renders defaults and rejects writes with a state error", func(t *testing.T) {
+		s := newUpgradeAcceptStackWithTools(t, tenantID, toolPolicyV1Tools(), toolPolicyV1Tools())
+
+		// 悬空锚：物化服务行消失（策略行随级联消失），安装行 service_id 残留。
+		s.mcpRepo.services = nil
+
+		rows, err := s.svc.ListInstallationTools(ctx, tenantID, s.inst.ID)
+		require.NoError(t, err, "a dangling anchor must not read as a store fault — the cascade-gone rows ARE the no-row default state")
+		byName := policyByName(rows)
+		require.True(t, byName["read_probe"].Enabled)
+		require.Empty(t, byName["read_probe"].DisabledReason)
+		require.False(t, byName["write_probe"].Enabled)
+		require.Equal(t, interfaces.PluginWriteToolDisabledReason, byName["write_probe"].DisabledReason)
+
+		enable := true
+		_, err = s.svc.SetInstallationToolPolicy(ctx, tenantID, s.inst.ID, "write_probe", &enable, nil)
+		require.ErrorIs(t, err, service.ErrInstallationServiceMissing,
+			"a policy write against a gone service row is a deterministic state error, not a 5xx persist fault")
+	})
+
+	t.Run("empty service_id window self-heals through the service back-reference", func(t *testing.T) {
+		s := newUpgradeAcceptStackWithTools(t, tenantID, toolPolicyV1Tools(), toolPolicyV1Tools())
+
+		// 中断窗口：安装行 service_id 为空而物化行已在（反查自愈）。
+		s.inst.ServiceID = ""
+
+		rows, err := s.svc.ListInstallationTools(ctx, tenantID, s.inst.ID)
+		require.NoError(t, err)
+		byName := policyByName(rows)
+		require.True(t, byName["read_probe"].Enabled, "the healed lookup must read the install-time rows")
+		require.False(t, byName["write_probe"].Enabled)
+		require.True(t, byName["write_probe"].RequireApproval == false)
+
+		// 写路径同样经自愈锚定到实际服务行。
+		enable := true
+		rows, err = s.svc.SetInstallationToolPolicy(ctx, tenantID, s.inst.ID, "write_probe", &enable, nil)
+		require.NoError(t, err)
+		require.True(t, policyByName(rows)["write_probe"].Enabled)
+	})
+}
+
+// TestInstallationToolsWireRequireApprovalShapes（T18-OCR1-F2 回归，handler
+// 边界）：治理面（GET .../tools）对 require_approval 给确定值；详情面
+// （GET .../installations/:id）不携带该键（详情视图契约无审批列——emit 一个
+// 硬编码 false 会与治理面/运行时审批门禁矛盾，误导管理决策）。
+func TestInstallationToolsWireRequireApprovalShapes(t *testing.T) {
+	const tenantID = uint64(11)
+	s := newUpgradeAcceptStackWithTools(t, tenantID, toolPolicyV1Tools(), toolPolicyV1Tools())
+
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(func(c *gin.Context) {
+		c.Set(types.TenantIDContextKey.String(), tenantID)
+		c.Set(types.UserIDContextKey.String(), "admin-1")
+		c.Next()
+	})
+	h := handler.NewPluginHandler(s.svc)
+	r.GET("/plugins/installations/:id", h.GetInstallation)
+	r.GET("/plugins/installations/:id/tools", h.ListInstallationTools)
+	r.PUT("/plugins/installations/:id/tools/:tool_name/policy", h.SetInstallationToolPolicy)
+
+	// do 返回成功 envelope 的 data 原文（PUT/GET tools 为数组，detail 为对象）。
+	do := func(method, path, body string) json.RawMessage {
+		t.Helper()
+		var req *http.Request
+		if body == "" {
+			req = httptest.NewRequest(method, path, nil)
+		} else {
+			req = httptest.NewRequest(method, path, strings.NewReader(body))
+		}
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+		var envelope struct {
+			Data json.RawMessage `json:"data"`
+		}
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &envelope))
+		return envelope.Data
+	}
+	toolRow := func(data json.RawMessage, name string) map[string]any {
+		t.Helper()
+		var asList []map[string]any
+		if err := json.Unmarshal(data, &asList); err == nil {
+			for _, row := range asList {
+				if row["name"] == name {
+					return row
+				}
+			}
+			t.Fatalf("tool %q not found in list payload", name)
+		}
+		var asObject struct {
+			Tools []map[string]any `json:"tools"`
+		}
+		require.NoError(t, json.Unmarshal(data, &asObject))
+		for _, row := range asObject.Tools {
+			if row["name"] == name {
+				return row
+			}
+		}
+		t.Fatalf("tool %q not found in tools payload", name)
+		return nil
+	}
+
+	// PUT require_approval=true（本端点今天就接受该位——F2 的矛盾根源）。
+	put := do(http.MethodPut, "/plugins/installations/"+s.inst.ID+"/tools/write_probe/policy",
+		`{"require_approval":true}`)
+	writeRow := toolRow(put, "write_probe")
+	require.Equal(t, true, writeRow["require_approval"], "the governance surface carries the CURRENT approval verdict as a definite value")
+	require.Equal(t, false, writeRow["enabled"], "the requireApproval-only patch keeps the disabled write tool disabled (F1)")
+
+	// GET .../tools：同形状确定值。
+	list := do(http.MethodGet, "/plugins/installations/"+s.inst.ID+"/tools", "")
+	writeList := toolRow(list, "write_probe")
+	require.Equal(t, true, writeList["require_approval"])
+
+	// GET .../installations/:id（详情面）：不携带 require_approval 键——不得
+	// 断言一个与真实行矛盾的确定值 false。
+	detail := do(http.MethodGet, "/plugins/installations/"+s.inst.ID, "")
+	detailWrite := toolRow(detail, "write_probe")
+	_, hasKey := detailWrite["require_approval"]
+	require.False(t, hasKey, "the detail payload must OMIT require_approval (unknown on this surface), never assert a contradictory false")
+	require.Equal(t, false, detailWrite["enabled"], "detail keeps Enabled as a definite value (T18 unification)")
 }

@@ -330,11 +330,12 @@ func (h *PluginHandler) GetInstallation(c *gin.Context) {
 // DEFINITE values (T18 unification), derived from the detail view's own
 // contract with no extra service call: the view's Enabled *bool resolves
 // (nil → Enabled=ReadOnly — the plugin-domain default over the missing row,
-// the plan's explicit unification rule), DisabledReason follows the
-// deterministic plugin-domain formula, and RequireApproval stays false —
-// the detail view's types contract carries no approval column; the tools
-// endpoint (GET .../tools) is the authoritative governance surface, and no
-// T18 plugin flow writes RequireApproval=true.
+// the plan's explicit unification rule) and DisabledReason follows the
+// deterministic plugin-domain formula. RequireApproval stays nil — OMITTED
+// (T18-OCR1-F2): the detail view's types contract carries no approval column,
+// the PUT endpoint accepts require_approval today, and a hard false would
+// contradict the governance list (GET .../tools) and the runtime approval
+// gate whenever an admin sets the flag.
 func installationResponseDTO(result *types.PluginInstallationResult) *dto.PluginInstallationResponse {
 	if result == nil {
 		return nil
@@ -358,7 +359,7 @@ func installationResponseDTO(result *types.PluginInstallationResult) *dto.Plugin
 			RequiresPersonalAuth: tool.RequiresPersonalAuth,
 			Scopes:               scopes,
 			Enabled:              enabled,
-			RequireApproval:      false,
+			RequireApproval:      nil, // omitted — see the doc comment above
 			DisabledReason:       reason,
 		})
 	}
@@ -378,10 +379,13 @@ func installationResponseDTO(result *types.PluginInstallationResult) *dto.Plugin
 }
 
 // installationToolDTO maps one governance row onto the wire DTO (scopes
-// copied, never aliased — one wire shape end to end).
+// copied, never aliased — one wire shape end to end). The governance surface
+// carries RequireApproval as a DEFINITE value (T18-OCR1-F2): this is the
+// authoritative approval view, unlike the detail payload which omits it.
 func installationToolDTO(row interfaces.PluginInstallationToolPolicy) dto.PluginInstallationTool {
 	scopes := make([]string, len(row.Scopes))
 	copy(scopes, row.Scopes)
+	requireApproval := row.RequireApproval
 	return dto.PluginInstallationTool{
 		Name:                 row.Name,
 		Description:          row.Description,
@@ -389,7 +393,7 @@ func installationToolDTO(row interfaces.PluginInstallationToolPolicy) dto.Plugin
 		RequiresPersonalAuth: row.RequiresPersonalAuth,
 		Scopes:               scopes,
 		Enabled:              row.Enabled,
-		RequireApproval:      row.RequireApproval,
+		RequireApproval:      &requireApproval,
 		DisabledReason:       row.DisabledReason,
 	}
 }
@@ -852,7 +856,12 @@ func mapPluginInstallationError(c *gin.Context, err error) {
 		// ErrUpgradeCandidateChanged (T16): the remote candidate moved on
 		// since the preview — a state conflict resolved by a fresh preview,
 		// not a malformed request (the fingerprint WAS the preview's own).
-		stderrors.Is(err, service.ErrUpgradeCandidateChanged):
+		// ErrInstallationServiceMissing (T18-OCR1-F4): the installation has no
+		// materialized service to hold tool policies — a state conflict
+		// resolved by uninstall/re-install, not a malformed request and not a
+		// server fault.
+		stderrors.Is(err, service.ErrUpgradeCandidateChanged),
+		stderrors.Is(err, service.ErrInstallationServiceMissing):
 		c.Error(errors.NewConflictError(err.Error()))
 	case stderrors.Is(err, plugins.ErrManifestFetchFailed):
 		logger.Error(c.Request.Context(), "Plugin manifest re-fetch failed on confirm", err)

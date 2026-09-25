@@ -52,11 +52,14 @@ type PluginInstallConfirmRequest struct {
 // PluginInstallationTool is one row of an installation's tool directory —
 // shared by the detail payload and the T18 governance surface
 // (GET .../tools, PUT .../tools/:tool_name/policy). The input schema itself
-// is never echoed — only metadata and the policy verdict as DEFINITE values
-// (T18 unification): Enabled resolves the detail view's unknowns (no explicit
-// row → Enabled=ReadOnly for snapshot tools), RequireApproval is the current
-// row verdict, DisabledReason is the deterministic plugin-domain copy for a
-// disabled write tool.
+// is never echoed — only metadata and the policy verdict. Enabled and
+// DisabledReason are DEFINITE values everywhere (T18 unification: no explicit
+// row → Enabled=ReadOnly for snapshot tools). RequireApproval is definite on
+// the governance surface only; the detail payload OMITS the key
+// (T18-OCR1-F2) — the detail view's contract carries no approval column, and
+// emitting a hard false there would contradict the governance list and the
+// runtime approval gate whenever an admin sets the flag (the PUT endpoint
+// accepts require_approval today).
 type PluginInstallationTool struct {
 	Name                 string   `json:"name"`
 	Description          string   `json:"description"`
@@ -64,7 +67,7 @@ type PluginInstallationTool struct {
 	RequiresPersonalAuth bool     `json:"requires_personal_auth"`
 	Scopes               []string `json:"scopes"`
 	Enabled              bool     `json:"enabled"`
-	RequireApproval      bool     `json:"require_approval"`
+	RequireApproval      *bool    `json:"require_approval,omitempty"`
 	DisabledReason       string   `json:"disabled_reason"`
 }
 
