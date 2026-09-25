@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Tencent/WeKnora/internal/types"
 )
@@ -310,6 +311,77 @@ func sortSnapshotDiff(added, removed []types.PluginToolSnapshot, changed []types
 	sort.Slice(added, func(i, j int) bool { return added[i].Name < added[j].Name })
 	sort.Slice(removed, func(i, j int) bool { return removed[i].Name < removed[j].Name })
 	sort.Slice(changed, func(i, j int) bool { return changed[i].Name < changed[j].Name })
+}
+
+// DiffLiveAgainstSnapshot computes how a plugin installation's LIVE endpoint
+// directory deviates from its ACCEPTED tools snapshot (T17): added tools
+// (live-only names), removed tools (snapshot-only names), schema changes and
+// description changes (same-name tools whose live values disagree with the
+// accepted ones). It is a PURE function — no network, no clock beyond the
+// CheckedAt stamp, no persistence; CheckDrift and ResolveDrift compose it
+// with the EndpointLister fetch (the accepted endpoint is the drift
+// authority, never the manifest — 总索引「安装后远端真相的统一口径」).
+//
+// Semantics (mirrors the T09 runtime guard, tools.FilterToolsBySnapshot, so
+// the persisted verdict never disagrees with what blocks member calls):
+//   - identity key is the tool NAME (live names are untrusted remote data but
+//     only feed string comparisons and the name-only detail — never schema
+//     text, per the plan's drift_detail hygiene constraint);
+//   - schema comparison is digest-based (ToolSchemaDigest over the live raw
+//     schema), the same convention the snapshot itself was minted with;
+//   - description comparison is exact — the runtime guard fail-closes on a
+//     post-install rewrite, so the drift record must carry it too
+//     (DescriptionChanged; without it a description-only drift would leave
+//     member conversations blocked while CheckDrift says "none");
+//   - every output list is sorted by name for deterministic serialization;
+//   - a nil detail is never returned — a no-drift comparison yields empty
+//     lists (HasDrift()==false), one shape end to end.
+func DiffLiveAgainstSnapshot(live []*types.MCPTool, snap []types.PluginToolSnapshot) *types.PluginDriftDetail {
+	accepted := make(map[string]types.PluginToolSnapshot, len(snap))
+	for _, tool := range snap {
+		accepted[tool.Name] = tool
+	}
+	liveNames := make(map[string]*types.MCPTool, len(live))
+	for _, tool := range live {
+		if tool == nil {
+			continue
+		}
+		liveNames[tool.Name] = tool
+	}
+
+	detail := &types.PluginDriftDetail{
+		Added:              []string{},
+		Removed:            []string{},
+		SchemaChanged:      []string{},
+		DescriptionChanged: []string{},
+		CheckedAt:          time.Now(),
+	}
+	for name, liveTool := range liveNames {
+		acceptedTool, ok := accepted[name]
+		if !ok {
+			// The tenant never accepted this capability — the drift record
+			// names it for review; the runtime guard drops it from Agent
+			// discovery.
+			detail.Added = append(detail.Added, name)
+			continue
+		}
+		if ToolSchemaDigest(liveTool.InputSchema) != acceptedTool.InputSchemaDigest {
+			detail.SchemaChanged = append(detail.SchemaChanged, name)
+		}
+		if liveTool.Description != acceptedTool.Description {
+			detail.DescriptionChanged = append(detail.DescriptionChanged, name)
+		}
+	}
+	for name := range accepted {
+		if _, ok := liveNames[name]; !ok {
+			detail.Removed = append(detail.Removed, name)
+		}
+	}
+	sort.Strings(detail.Added)
+	sort.Strings(detail.Removed)
+	sort.Strings(detail.SchemaChanged)
+	sort.Strings(detail.DescriptionChanged)
+	return detail
 }
 
 // ComparePluginVersions compares two weknora.plugin/1 version strings

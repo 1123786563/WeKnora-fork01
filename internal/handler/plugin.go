@@ -564,6 +564,127 @@ func (h *PluginHandler) AcceptUpgrade(c *gin.Context) {
 	})
 }
 
+// GetDrift godoc
+// @Summary      读取插件安装漂移状态
+// @Description  只读返回安装行已持久化的漂移状态（none/detected）、漂移明细（未检测过或无漂移时为空）与已接受快照的工具名基线；不触发远端核验，管理员刷新入口是 drift/check
+// @Tags         插件
+// @Produce      json
+// @Param        id   path  string  true  "安装 ID"
+// @Success      200  {object}  map[string]interface{}  "漂移视图"
+// @Failure      404  {object}  errors.AppError         "安装不存在"
+// @Failure      500  {object}  errors.AppError         "查询失败"
+// @Security     Bearer
+// @Router       /plugins/installations/{id}/drift [get]
+func (h *PluginHandler) GetDrift(c *gin.Context) {
+	ctx := c.Request.Context()
+	tenantID := c.GetUint64(types.TenantIDContextKey.String())
+	if tenantID == 0 {
+		logger.Error(ctx, "Tenant ID is empty")
+		c.Error(errors.NewBadRequestError("Workspace ID cannot be empty"))
+		return
+	}
+	resp, err := h.pluginService.GetDrift(ctx, tenantID, c.Param("id"))
+	if err != nil {
+		mapPluginInstallationError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    driftReportResponseDTO(resp),
+	})
+}
+
+// CheckDrift godoc
+// @Summary      触发插件漂移重核
+// @Description  管理员触发：直连安装行已接受端点实时 ListTools（不经清单重抓——清单可能已指向新版，漂移的定义是「已接受端点偏离已接受快照」），与已接受快照比对并持久化判定：有差异时 drift_state=detected 并落仅含工具名的漂移明细（新增/移除/schema 变/描述变），端点复原时重置 none 并清空明细；端点不可达时零写入拒绝
+// @Tags         插件
+// @Produce      json
+// @Param        id   path  string  true  "安装 ID"
+// @Success      200  {object}  map[string]interface{}  "重核后的漂移视图"
+// @Failure      404  {object}  errors.AppError         "安装不存在"
+// @Failure      500  {object}  errors.AppError         "持久化失败"
+// @Failure      503  {object}  errors.AppError         "已接受端点不可达（零写入）"
+// @Security     Bearer
+// @Router       /plugins/installations/{id}/drift/check [post]
+func (h *PluginHandler) CheckDrift(c *gin.Context) {
+	ctx := c.Request.Context()
+	tenantID := c.GetUint64(types.TenantIDContextKey.String())
+	if tenantID == 0 {
+		logger.Error(ctx, "Tenant ID is empty")
+		c.Error(errors.NewBadRequestError("Workspace ID cannot be empty"))
+		return
+	}
+	resp, err := h.pluginService.CheckDrift(ctx, tenantID, c.Param("id"))
+	if err != nil {
+		mapPluginInstallationError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    driftReportResponseDTO(resp),
+	})
+}
+
+// ResolveDrift godoc
+// @Summary      管理员复审接受当前远端目录为新快照
+// @Description  重核验通过后以已接受端点的当前目录重定基快照（版本号不变、端点不变、digest 重算、漂移清零）；新增工具因远端目录无法自证只读而保守按写落策略行 Enabled=false（既有行保持管理员既有决定），失败补偿回写保旧快照；远端不可达时拒绝且状态不变——绝不接受一个读不到的目录
+// @Tags         插件
+// @Produce      json
+// @Param        id   path  string  true  "安装 ID"
+// @Success      200  {object}  map[string]interface{}  "重定基后的安装"
+// @Failure      404  {object}  errors.AppError         "安装不存在"
+// @Failure      500  {object}  errors.AppError         "持久化或策略行写入失败（已补偿回旧快照）"
+// @Failure      503  {object}  errors.AppError         "已接受端点不可达（零写入，状态不变）"
+// @Security     Bearer
+// @Router       /plugins/installations/{id}/drift/resolve [post]
+func (h *PluginHandler) ResolveDrift(c *gin.Context) {
+	ctx := c.Request.Context()
+	tenantID := c.GetUint64(types.TenantIDContextKey.String())
+	if tenantID == 0 {
+		logger.Error(ctx, "Tenant ID is empty")
+		c.Error(errors.NewBadRequestError("Workspace ID cannot be empty"))
+		return
+	}
+	actorRaw, _ := c.Get(types.UserIDContextKey.String())
+	actorID, _ := actorRaw.(string)
+
+	resp, err := h.pluginService.ResolveDrift(ctx, tenantID, actorID, c.Param("id"))
+	if err != nil {
+		mapPluginInstallationError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    installationResponseDTO(resp),
+	})
+}
+
+// driftReportResponseDTO maps the types-layer drift report onto the HTTP DTO
+// (name lists defensively copied; nil detail stays nil — one wire shape).
+func driftReportResponseDTO(report *types.PluginDriftReport) *dto.PluginDriftReportResponse {
+	if report == nil {
+		return nil
+	}
+	out := &dto.PluginDriftReportResponse{
+		InstallationID:    report.InstallationID,
+		DriftState:        report.DriftState,
+		SnapshotToolNames: append([]string(nil), report.SnapshotToolNames...),
+	}
+	if report.Detail != nil {
+		out.Detail = &dto.PluginDriftDetailDTO{
+			Added:              append([]string(nil), report.Detail.Added...),
+			Removed:            append([]string(nil), report.Detail.Removed...),
+			SchemaChanged:      append([]string(nil), report.Detail.SchemaChanged...),
+			DescriptionChanged: append([]string(nil), report.Detail.DescriptionChanged...),
+			CheckedAt:          report.Detail.CheckedAt,
+		}
+	}
+	if out.SnapshotToolNames == nil {
+		out.SnapshotToolNames = []string{}
+	}
+	return out
+}
+
 // mapPluginConnectionError maps the connection view's service failures onto
 // HTTP verdicts: a foreign/absent installation is a flat 404 (no existence
 // leak); a missing principal context is 401; token-store faults are 5xx with
@@ -613,10 +734,18 @@ func mapPluginInstallationError(c *gin.Context, err error) {
 		c.Error(errors.NewServiceUnavailableError("插件清单抓取失败：清单服务不可达或返回异常状态，请稍后重试"))
 	case plugins.IsOAuthProtected(err):
 		c.Error(errors.NewBadRequestError(err.Error()))
+	case stderrors.Is(err, service.ErrDriftEndpointUnreachable):
+		// T17: the drift truth source (the ACCEPTED endpoint) is not
+		// observable right now — a verdict cannot be minted, zero writes
+		// happened. 503 with a fixed message; the driver/connection details
+		// stay server-side (same hygiene as the manifest fetch branch).
+		logger.Error(c.Request.Context(), "Plugin drift check: accepted endpoint unreachable", err)
+		c.Error(errors.NewServiceUnavailableError("插件漂移核验失败：已接受端点不可达，请稍后重试（本次未做任何变更）"))
 	case stderrors.Is(err, service.ErrPreviewPersistFailed),
 		stderrors.Is(err, service.ErrInstallationPersistFailed),
 		stderrors.Is(err, service.ErrInstallationMaterializeFailed),
-		stderrors.Is(err, service.ErrUpgradeWriterNotWired):
+		stderrors.Is(err, service.ErrUpgradeWriterNotWired),
+		stderrors.Is(err, service.ErrDriftPersistFailed):
 		// ErrPreviewPersistFailed joins the 5xx family (OCR round-1 R12 F02):
 		// step 1's GetPreview repo fault surfaces this sentinel and it was
 		// previously missing from the table — a server-side fault misread

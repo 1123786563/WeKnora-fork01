@@ -2,6 +2,10 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
@@ -12,6 +16,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/tools"
+	"github.com/Tencent/WeKnora/internal/modules/airesource/mcp"
 	"github.com/Tencent/WeKnora/internal/modules/plugins"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
@@ -57,6 +62,143 @@ func PluginSnapshotLookup(repo interfaces.PluginRepository) tools.PluginSnapshot
 			InstallationID: inst.ID,
 			Tools:          inst.ToolsSnapshot,
 		}, nil
+	}
+}
+
+// PluginSnapshotLookupWithDriftMarking wraps the T09 guard provider with the
+// T17 best-effort drift marker (plan 09 Architecture: "运行时目录加载检测到
+// 差异时 best-effort 置位……由 provider 闭包调用，失败仅日志"). Whenever the
+// guard resolves an installation whose persisted state is not yet "detected",
+// the provider LIVE-lists the accepted endpoint (the drift truth source —
+// never the manifest) and persists drift_state=detected + the name-only
+// detail when the directory deviates from the accepted snapshot. The whole
+// detection is BEST-EFFORT: any fault (endpoint unreachable, JSON encode,
+// persistence) is logged and swallowed — the provider's return contract is
+// exactly PluginSnapshotLookup's (snapshot or fail-closed repository error);
+// a detection failure must never block or fail a member's directory load.
+// Manual services resolve to (nil, nil) untouched — they have no drift
+// concept. A nil lister degrades to the plain lookup.
+//
+// Cost shape: the extra ListTools runs once per directory load while the row
+// is not yet marked detected (the T09 load path re-lists the endpoint live on
+// every load anyway, so this at most doubles a cost already being paid), and
+// never again once the state sticks — CheckDrift/ResolveDrift are the
+// authoritative transitions.
+func PluginSnapshotLookupWithDriftMarking(
+	repo interfaces.PluginRepository, lister plugins.EndpointLister,
+) tools.PluginSnapshotProvider {
+	if lister == nil {
+		return PluginSnapshotLookup(repo)
+	}
+	return func(ctx context.Context, tenantID uint64, serviceID string) (*tools.PluginRuntimeSnapshot, error) {
+		inst, err := repo.GetByServiceID(ctx, tenantID, serviceID)
+		if err != nil {
+			return nil, err
+		}
+		if inst == nil {
+			return nil, nil
+		}
+		if inst.DriftState != types.PluginDriftDetected {
+			markDriftBestEffort(ctx, repo, lister, tenantID, inst)
+		}
+		return &tools.PluginRuntimeSnapshot{
+			InstallationID: inst.ID,
+			Tools:          inst.ToolsSnapshot,
+		}, nil
+	}
+}
+
+// markDriftBestEffort runs the T17 runtime-side detection for one
+// installation: live-list the accepted endpoint, diff against the accepted
+// snapshot, and persist the detected verdict. Every failure is logged and
+// swallowed (best-effort by contract — see PluginSnapshotLookupWithDriftMarking).
+func markDriftBestEffort(
+	ctx context.Context,
+	repo interfaces.PluginRepository,
+	lister plugins.EndpointLister,
+	tenantID uint64,
+	inst *types.PluginInstallation,
+) {
+	listCtx, cancel := context.WithTimeout(ctx, driftMarkListTimeout)
+	defer cancel()
+	live, err := lister(listCtx, inst.TransportType, inst.EndpointURL)
+	if err != nil {
+		// Unreachable/deferred endpoints surface through CheckDrift (the
+		// admin lever) and the load path's own ListTools — the marker stays
+		// silent.
+		return
+	}
+	detail := plugins.DiffLiveAgainstSnapshot(live, inst.ToolsSnapshot)
+	if !detail.HasDrift() {
+		return
+	}
+	raw, err := json.Marshal(detail)
+	if err != nil {
+		logger.GetLogger(ctx).Errorf("plugin drift marker: failed to encode detail for installation %s: %v", inst.ID, err)
+		return
+	}
+	writer, ok := repo.(installationDriftWriter)
+	if !ok {
+		logger.GetLogger(ctx).Errorf(
+			"plugin drift marker: repository %T does not implement installationDriftWriter", repo)
+		return
+	}
+	if err := writer.UpdateDrift(ctx, tenantID, inst.ID, types.PluginDriftDetected, raw); err != nil {
+		logger.GetLogger(ctx).Errorf(
+			"plugin drift marker: failed to persist detected state for installation %s: %v", inst.ID, err)
+		return
+	}
+	logger.GetLogger(ctx).Infof(
+		"plugin drift detected at runtime: installation %s (tenant %d) added=%v removed=%v schema_changed=%v description_changed=%v",
+		inst.ID, tenantID, detail.Added, detail.Removed, detail.SchemaChanged, detail.DescriptionChanged)
+}
+
+// driftMarkListTimeout bounds the best-effort marker's LIVE ListTools: the
+// marker runs inside the directory-load path, and a slow endpoint must not
+// add unbounded latency to a member's session assembly (the authoritative
+// CheckDrift keeps its own handling).
+const driftMarkListTimeout = 10 * time.Second
+
+// NewManagerEndpointLister adapts the airesource MCPManager onto the plugins
+// EndpointLister seam for the runtime drift marker (T17): each call verifies
+// against a NONCE-EXCLUSIVE throwaway service identity (globally unique ID,
+// disconnected and evicted on return) so the marker's listing can never alias
+// or evict a live session's cached client. This is the service-package twin
+// of container.NewPluginMCPEndpointLister — internal/modules must not import
+// the container assembly, and agent_service (this package) needs the lister
+// at the provider wiring point without a constructor-signature change.
+func NewManagerEndpointLister(manager *mcp.MCPManager) plugins.EndpointLister {
+	return func(ctx context.Context, transportType, endpointURL string) ([]*types.MCPTool, error) {
+		if manager == nil {
+			return nil, fmt.Errorf("mcp manager is required")
+		}
+		var nonce [4]byte
+		if _, err := rand.Read(nonce[:]); err != nil {
+			return nil, fmt.Errorf("generate verification nonce: %w", err)
+		}
+		sum := sha256.Sum256([]byte(endpointURL))
+		serviceID := "plugin-drift-" + hex.EncodeToString(sum[:8]) + "-" + hex.EncodeToString(nonce[:])
+		verify := &types.MCPService{
+			ID:            serviceID,
+			Name:          "plugin-drift-verify",
+			Enabled:       true,
+			TransportType: types.MCPTransportType(transportType),
+			URL:           &endpointURL,
+		}
+		client, err := manager.GetOrCreateClient(ctx, verify)
+		if err != nil {
+			// Retire the nonce key on the error path too: a client that
+			// finishes connecting after this call returned would otherwise
+			// sit mounted under a globally unique key nothing references
+			// again (idle cleanup only removes !IsConnected entries).
+			_ = manager.CloseClient(verify.ID)
+			return nil, err
+		}
+		defer func() {
+			_ = client.Disconnect()
+			_ = manager.CloseClient(verify.ID)
+		}()
+		return client.ListTools(ctx)
 	}
 }
 
@@ -123,7 +265,36 @@ var (
 	// (production always injects the gorm repository). Fail loudly rather
 	// than reporting a misleading success or silently skipping persistence.
 	ErrUpgradeWriterNotWired = errors.New("plugin upgrade persistence is not wired")
+
+	// ErrDriftEndpointUnreachable (T17): the LIVE ListTools against the
+	// installation's ACCEPTED endpoint failed while checking or resolving
+	// drift — the remote truth source the drift verdict is defined over is
+	// not observable right now. Both CheckDrift and ResolveDrift surface it
+	// with ZERO writes: a verdict (or a rebase onto a "current" directory)
+	// must never be minted from an endpoint that cannot be read.
+	ErrDriftEndpointUnreachable = errors.New("plugin drift check: accepted endpoint unreachable")
+
+	// ErrDriftPersistFailed (T17): 5xx persistence fault on the drift path —
+	// the UpdateDrift capability write failed, or the injected repository
+	// does not implement the capability at all (a wiring fault; production
+	// always injects the gorm repository). Logged with the cause server-side;
+	// the caller sees the sentinel semantics only.
+	ErrDriftPersistFailed = errors.New("failed to persist plugin drift state")
 )
+
+// installationDriftWriter is the narrow persistence capability the drift
+// slice needs (T17): persisting a drift verdict (state + detail document,
+// nil clears) onto the installation row. The gorm pluginRepository implements
+// it. Consumed via a type assertion on the injected PluginRepository rather
+// than by extending that interface — the same additive-seam ruling as T16's
+// installationUpgradeWriter: the T06-era contract and its in-tree test fakes
+// predate the drift slice; repositories without the method fail LOUDLY here
+// (ErrDriftPersistFailed) instead of at compile time.
+type installationDriftWriter interface {
+	// UpdateDrift persists one installation's drift state and detail in one
+	// parameter-bound update; detail == nil clears the column.
+	UpdateDrift(ctx context.Context, tenantID uint64, id, state string, detail json.RawMessage) error
+}
 
 // upgradeAcceptMutexes serializes AcceptUpgrade per installation
 // (T16-OCR2-F1): the WHOLE accept — from the installation read through the
@@ -1191,6 +1362,342 @@ func (s *pluginService) AcceptUpgrade(
 	inst.EndpointURL = candidateEndpoint
 	inst.ToolsSnapshot = candidateSnapshot
 	inst.ToolsDigest = result.ToolsDigest
+	inst.DriftState = types.PluginDriftNone
+	inst.DriftDetail = nil
+	return s.installationResult(ctx, tenantID, inst)
+}
+
+// liveDirectoryFromAcceptedEndpoint fetches the LIVE tool directory from the
+// installation's ACCEPTED endpoint (T17 drift truth source — 总索引「安装后
+// 远端真相的统一口径」): the manifest may already point at a newer version,
+// and drift is DEFINED as "the accepted endpoint deviates from the accepted
+// snapshot", so the check must never re-fetch the manifest. Failures wrap
+// ErrDriftEndpointUnreachable: the drift verdict is minted from a live
+// observation or not at all.
+func (s *pluginService) liveDirectoryFromAcceptedEndpoint(
+	ctx context.Context, inst *types.PluginInstallation,
+) ([]*types.MCPTool, error) {
+	live, err := s.lister(ctx, inst.TransportType, inst.EndpointURL)
+	if err != nil {
+		logger.GetLogger(ctx).Errorf(
+			"plugin drift check: live ListTools against accepted endpoint %s failed: %v", inst.EndpointURL, err)
+		return nil, fmt.Errorf("%w: %v", ErrDriftEndpointUnreachable, err)
+	}
+	return live, nil
+}
+
+// snapshotToolNamesOf extracts the accepted snapshot's tool names (the
+// baseline the drift report shows next to the deviation).
+func snapshotToolNamesOf(snapshot []types.PluginToolSnapshot) []string {
+	names := make([]string, 0, len(snapshot))
+	for _, tool := range snapshot {
+		names = append(names, tool.Name)
+	}
+	return names
+}
+
+// parseDriftDetail decodes a persisted drift_detail document. A nil/empty
+// column decodes to nil (never detected/never checked both read as "no
+// detail"); a corrupt document logs and reads as nil too — the drift STATE on
+// the row stays authoritative, the detail is its human-readable annex.
+func parseDriftDetail(ctx context.Context, raw json.RawMessage) *types.PluginDriftDetail {
+	if len(raw) == 0 {
+		return nil
+	}
+	var detail types.PluginDriftDetail
+	if err := json.Unmarshal(raw, &detail); err != nil {
+		logger.GetLogger(ctx).Errorf("plugin drift detail is unparsable (%d bytes): %v", len(raw), err)
+		return nil
+	}
+	return &detail
+}
+
+// CheckDrift re-verifies ONE installation against its accepted endpoint and
+// persists the verdict (T17, GAP-6; Admin): a LIVE ListTools against
+// installation.EndpointURL (never via the manifest), DiffLiveAgainstSnapshot
+// against the accepted snapshot, then one UpdateDrift write —
+// drift_state=detected + the name-only detail document when any evidence
+// exists, drift_state=none + a cleared detail when the endpoint matches the
+// baseline again (drift is not a one-way ratchet; a healed endpoint heals the
+// row). The fetch happens BEFORE any write, so an unreachable endpoint
+// rejects with zero writes. A foreign tenant's installation ID is "not found".
+func (s *pluginService) CheckDrift(
+	ctx context.Context,
+	tenantID uint64,
+	installationID string,
+) (*types.PluginDriftReport, error) {
+	inst, err := s.pluginRepo.GetInstallation(ctx, tenantID, installationID)
+	if err != nil {
+		logger.GetLogger(ctx).Errorf("failed to load plugin installation: %v", err)
+		return nil, ErrInstallationPersistFailed
+	}
+	if inst == nil {
+		return nil, ErrInstallationNotFound
+	}
+
+	live, err := s.liveDirectoryFromAcceptedEndpoint(ctx, inst)
+	if err != nil {
+		return nil, err
+	}
+
+	detail := plugins.DiffLiveAgainstSnapshot(live, inst.ToolsSnapshot)
+	state := types.PluginDriftNone
+	var raw json.RawMessage
+	if detail.HasDrift() {
+		state = types.PluginDriftDetected
+		raw, err = json.Marshal(detail)
+		if err != nil {
+			logger.GetLogger(ctx).Errorf("failed to encode plugin drift detail: %v", err)
+			return nil, ErrDriftPersistFailed
+		}
+	}
+
+	writer, ok := s.pluginRepo.(installationDriftWriter)
+	if !ok {
+		logger.GetLogger(ctx).Errorf(
+			"plugin drift check: repository %T does not implement installationDriftWriter", s.pluginRepo)
+		return nil, ErrDriftPersistFailed
+	}
+	if err := writer.UpdateDrift(ctx, tenantID, installationID, state, raw); err != nil {
+		logger.GetLogger(ctx).Errorf("failed to persist plugin drift state: %v", err)
+		return nil, ErrDriftPersistFailed
+	}
+
+	report := &types.PluginDriftReport{
+		InstallationID:    inst.ID,
+		DriftState:        state,
+		SnapshotToolNames: snapshotToolNamesOf(inst.ToolsSnapshot),
+	}
+	if state == types.PluginDriftDetected {
+		report.Detail = detail
+	}
+	return report, nil
+}
+
+// GetDrift returns ONE installation's persisted drift view (T17; Viewer) —
+// a pure read: the row's current state (never-checked rows carry their
+// install-time default), its detail document when one exists, and the
+// accepted snapshot's tool names. It never re-fetches the endpoint — the
+// admin's refresh lever is CheckDrift. A foreign tenant's installation ID is
+// "not found".
+func (s *pluginService) GetDrift(
+	ctx context.Context,
+	tenantID uint64,
+	installationID string,
+) (*types.PluginDriftReport, error) {
+	inst, err := s.pluginRepo.GetInstallation(ctx, tenantID, installationID)
+	if err != nil {
+		logger.GetLogger(ctx).Errorf("failed to load plugin installation: %v", err)
+		return nil, ErrInstallationPersistFailed
+	}
+	if inst == nil {
+		return nil, ErrInstallationNotFound
+	}
+	return &types.PluginDriftReport{
+		InstallationID:    inst.ID,
+		DriftState:        inst.DriftState,
+		Detail:            parseDriftDetail(ctx, inst.DriftDetail),
+		SnapshotToolNames: snapshotToolNamesOf(inst.ToolsSnapshot),
+	}, nil
+}
+
+// rebaseSnapshotOnLive rebuilds the accepted snapshot FROM the live directory
+// (ResolveDrift's core): names, descriptions and schema digests come from the
+// LIVE endpoint (the values the runtime guard compares against, so the
+// rebased baseline matches what members will actually be served); the
+// governance classification (read-only / personal-auth / scopes) is a
+// manifest-declaration-domain field the live MCP directory does not carry, so
+// a SAME-NAME tool inherits its accepted classification while a NEW tool
+// lands the conservative default: ReadOnly=false, no personal auth, no scopes
+// — unable to self-certify read-only over ListTools, a new tool installs the
+// way a new WRITE tool does (Enabled=false policy row), and the admin can
+// widen it from the tool governance surface afterwards.
+func rebaseSnapshotOnLive(live []*types.MCPTool, accepted []types.PluginToolSnapshot) types.PluginPreviewTools {
+	classification := make(map[string]types.PluginToolSnapshot, len(accepted))
+	for _, tool := range accepted {
+		classification[tool.Name] = tool
+	}
+	rebased := make(types.PluginPreviewTools, 0, len(live))
+	for _, tool := range live {
+		if tool == nil {
+			continue
+		}
+		snap := types.PluginToolSnapshot{
+			Name:              tool.Name,
+			Description:       tool.Description,
+			InputSchemaDigest: plugins.ToolSchemaDigest(tool.InputSchema),
+			ReadOnly:          false,
+			Scopes:            []string{},
+		}
+		if prev, ok := classification[tool.Name]; ok {
+			snap.ReadOnly = prev.ReadOnly
+			snap.RequiresPersonalAuth = prev.RequiresPersonalAuth
+			scopes := make([]string, len(prev.Scopes))
+			copy(scopes, prev.Scopes)
+			snap.Scopes = scopes
+		}
+		rebased = append(rebased, snap)
+	}
+	return rebased
+}
+
+// ResolveDrift closes the drift review loop (T17, GAP-6; Admin): re-verify
+// the accepted endpoint LIVE, then accept the CURRENT remote directory as the
+// new verified snapshot — same version, same endpoint, new snapshot/digest,
+// drift reset to none. The flow:
+//
+//  1. Installation lookup (absent/foreign → one 404 verdict).
+//  2. Capability check: the repository must implement installationUpgradeWriter
+//     (the rebase persists through UpdateInstallationAccepted — which also
+//     resets drift, making the accepting write the drift-healing write; and
+//     compensates through DeleteInstallationToolPolicies).
+//  3. LIVE ListTools against installation.EndpointURL (never via the
+//     manifest). Unreachable → ErrDriftEndpointUnreachable with ZERO writes:
+//     an admin must not be able to "resolve" onto a directory that cannot be
+//     read; the drift state stays exactly as it was.
+//  4. Idempotency: when the row already carries this snapshot (digest equal)
+//     and no drift is pending, return the current installation with zero
+//     writes.
+//  5. Compensated write order (T16 pattern): installation row first
+//     (rebased snapshot + recomputed digest; version/endpoint pass through
+//     unchanged), then INCREMENTAL per-tool policy rows — only tools WITHOUT
+//     an existing row, each landing the install-time rule Enabled=ReadOnly
+//     (with rebaseSnapshotOnLive's conservative classification, a NEW tool is
+//     ReadOnly=false → disabled); existing rows keep the admin's verdicts.
+//     A failure after the installation write compensates by writing the
+//     memory-held old values back and deleting this call's new policy rows.
+//
+// The materialized MCP service row is NOT touched: the endpoint is unchanged
+// and same-name tools inherit their classification, so neither the URL nor
+// the OAuth baseline can move. Serialized against AcceptUpgrade by the shared
+// per-installation mutex — both rewrite the same row's snapshot.
+func (s *pluginService) ResolveDrift(
+	ctx context.Context,
+	tenantID uint64,
+	actorID, installationID string,
+) (*types.PluginInstallationResult, error) {
+	// Same per-installation serialization as AcceptUpgrade (T16-OCR2-F1):
+	// resolve and accept both rewrite the installation's snapshot/digest —
+	// interleaving them against a shared drift state would let one
+	// compensate the other's writes.
+	defer lockUpgradeAccept(installationID)()
+
+	// Step 1: installation within this tenant.
+	inst, err := s.pluginRepo.GetInstallation(ctx, tenantID, installationID)
+	if err != nil {
+		logger.GetLogger(ctx).Errorf("failed to load plugin installation: %v", err)
+		return nil, ErrInstallationPersistFailed
+	}
+	if inst == nil {
+		return nil, ErrInstallationNotFound
+	}
+
+	// Step 2: capability seam — the rebase persists (and compensates) through
+	// the T16 upgrade writer.
+	writer, ok := s.pluginRepo.(installationUpgradeWriter)
+	if !ok {
+		logger.GetLogger(ctx).Errorf(
+			"plugin drift resolve: repository %T does not implement installationUpgradeWriter", s.pluginRepo)
+		return nil, ErrUpgradeWriterNotWired
+	}
+
+	// Step 3: the remote truth the admin is accepting — the accepted
+	// endpoint's CURRENT directory. Unreachable → zero writes, state stays.
+	live, err := s.liveDirectoryFromAcceptedEndpoint(ctx, inst)
+	if err != nil {
+		return nil, err
+	}
+
+	rebased := rebaseSnapshotOnLive(live, inst.ToolsSnapshot)
+	rebasedDigest := plugins.SnapshotDigest(rebased)
+
+	// Step 4: idempotency — already rebased and clean → zero writes.
+	if inst.DriftState == types.PluginDriftNone && rebasedDigest == inst.ToolsDigest {
+		logger.GetLogger(ctx).Infof(
+			"plugin drift resolve: installation %s already carries the live directory as its snapshot — idempotent no-op (actor %s)",
+			installationID, actorID)
+		return s.installationResult(ctx, tenantID, inst)
+	}
+
+	// The materialized service row (policy-key target); a missing row leaves
+	// nothing to write policies against — the installation row stays
+	// authoritative (same reading as AcceptUpgrade's 7c guard).
+	var svc *types.MCPService
+	if inst.ServiceID != "" {
+		svc, err = s.mcpServiceRepo.GetByID(ctx, tenantID, inst.ServiceID)
+		if err != nil {
+			logger.GetLogger(ctx).Errorf("failed to load materialized service for drift resolve: %v", err)
+			return nil, ErrInstallationPersistFailed
+		}
+	}
+
+	// Memory-held old values — the compensation write-back source.
+	oldSnapshot := append(types.PluginPreviewTools(nil), inst.ToolsSnapshot...)
+	oldDigest := inst.ToolsDigest
+
+	// Step 5a: installation row first — the snapshot is the runtime
+	// authority; UpdateInstallationAccepted resets drift as part of the
+	// accepting write (version/endpoint pass through unchanged).
+	if err := writer.UpdateInstallationAccepted(ctx, tenantID, installationID,
+		inst.AcceptedVersion, inst.EndpointURL, rebased, rebasedDigest); err != nil {
+		logger.GetLogger(ctx).Errorf("failed to persist rebased snapshot for installation %s: %v", installationID, err)
+		return nil, ErrInstallationPersistFailed
+	}
+
+	// writtenPolicies accumulates the rows THIS resolve creates — the
+	// compensation delete set (T16-OCR1-F2 discipline).
+	var writtenPolicies []string
+	compensate := func(cause error) error {
+		compCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
+		defer cancel()
+		if len(writtenPolicies) > 0 {
+			if err := writer.DeleteInstallationToolPolicies(compCtx, tenantID, inst.ServiceID, writtenPolicies); err != nil {
+				logger.GetLogger(ctx).Errorf(
+					"plugin drift resolve compensation: failed to remove this resolve's new policy rows for %s (%v): %v",
+					inst.ServiceID, writtenPolicies, err)
+			}
+		}
+		if err := writer.UpdateInstallationAccepted(compCtx, tenantID, installationID,
+			inst.AcceptedVersion, inst.EndpointURL, oldSnapshot, oldDigest); err != nil {
+			logger.GetLogger(ctx).Errorf(
+				"plugin drift resolve compensation: failed to restore installation %s snapshot: %v", installationID, err)
+		}
+		return cause
+	}
+
+	// Step 5b: INCREMENTAL per-tool policy rows (guarded on svc != nil — with
+	// the service row gone there is nothing to key policies to, the same
+	// reading as AcceptUpgrade's 7c).
+	if svc != nil {
+		existing := map[string]bool{}
+		rows, err := s.toolApprovalService.ListByService(ctx, tenantID, inst.ServiceID)
+		if err != nil {
+			logger.GetLogger(ctx).Errorf("failed to load tool policies for drift resolve: %v", err)
+			return nil, compensate(ErrInstallationMaterializeFailed)
+		}
+		for _, row := range rows {
+			existing[row.ToolName] = true
+		}
+		for _, tool := range rebased {
+			if existing[tool.Name] {
+				continue
+			}
+			enabled := tool.ReadOnly
+			if err := s.toolApprovalService.SetPolicy(ctx, tenantID, inst.ServiceID, tool.Name, nil, &enabled); err != nil {
+				logger.GetLogger(ctx).Errorf(
+					"failed to write tool policy for %s/%s on drift resolve: %v", inst.PluginID, tool.Name, err)
+				return nil, compensate(ErrInstallationMaterializeFailed)
+			}
+			writtenPolicies = append(writtenPolicies, tool.Name)
+		}
+	}
+
+	logger.GetLogger(ctx).Infof(
+		"plugin drift resolved: installation %s (%s) rebased onto the live directory at version %s (actor %s)",
+		installationID, inst.PluginID, inst.AcceptedVersion, actorID)
+
+	inst.ToolsSnapshot = rebased
+	inst.ToolsDigest = rebasedDigest
 	inst.DriftState = types.PluginDriftNone
 	inst.DriftDetail = nil
 	return s.installationResult(ctx, tenantID, inst)

@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"time"
@@ -231,6 +232,35 @@ func (r *pluginRepository) UpdateInstallationAccepted(
 			"drift_state":      types.PluginDriftNone,
 			"drift_detail":     nil,
 			"updated_at":       time.Now(),
+		})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
+// UpdateDrift persists one installation's drift verdict in place (T17): the
+// state (none/detected) and the detail document (nil clears the column — a
+// healed check leaves no stale detail behind). It is consumed via the
+// service's installationDriftWriter capability seam (plugin_install_service.
+// go), the same pattern as UpdateInstallationAccepted: the T06-era
+// PluginRepository contract and its in-tree test fakes predate the drift
+// slice, and the write is additive — repositories without it fail LOUDLY at
+// the seam instead of at compile time. A zero-row update surfaces as
+// gorm.ErrRecordNotFound; all values are parameter-bound.
+func (r *pluginRepository) UpdateDrift(
+	ctx context.Context, tenantID uint64, id, state string, detail json.RawMessage,
+) error {
+	result := r.db.WithContext(ctx).
+		Model(&types.PluginInstallation{}).
+		Where("tenant_id = ? AND id = ?", tenantID, id).
+		Updates(map[string]interface{}{
+			"drift_state":  state,
+			"drift_detail": detail,
+			"updated_at":   time.Now(),
 		})
 	if result.Error != nil {
 		return result.Error

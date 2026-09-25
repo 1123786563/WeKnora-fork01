@@ -312,11 +312,22 @@ func (s *agentService) registerMCPTools(
 // accepted installation snapshot (manual services resolve to nil and keep
 // legacy behavior); without one (test assemblies) it returns nil, which the
 // tools layer reads as "no plugin era, unfiltered".
+//
+// T17: the production provider additionally marks drift best-effort —
+// whenever an unmarked installation's directory load resolves its snapshot,
+// the provider live-lists the accepted endpoint and persists
+// drift_state=detected on deviation (failures logged only, never blocking a
+// member's load). The agent-side consumption of the provider is unchanged
+// (T09 interface); only the wiring picks the drift-marking variant. Without
+// a manager (test assemblies) the plain lookup keeps T09 behavior.
 func (s *agentService) pluginSnapshotGuard() tools.PluginSnapshotProvider {
 	if s.pluginRepo == nil {
 		return nil
 	}
-	return PluginSnapshotLookup(s.pluginRepo)
+	if s.mcpManager == nil {
+		return PluginSnapshotLookup(s.pluginRepo)
+	}
+	return PluginSnapshotLookupWithDriftMarking(s.pluginRepo, NewManagerEndpointLister(s.mcpManager))
 }
 
 // registerOpenConnectorTool mounts the open-connector app action tool

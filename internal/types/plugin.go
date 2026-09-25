@@ -274,6 +274,48 @@ const (
 	PluginConnectionUnauthorized = "unauthorized"
 )
 
+// PluginDriftDetail is the persisted drift record of ONE installation (T17,
+// GAP-6): how the accepted endpoint's LIVE directory deviates from the
+// accepted tools snapshot, as CheckDrift computed it. It carries tool NAMES
+// (and the check timestamp) only — never remote schema text: the detail is
+// untrusted-remote-derived audit material, and only the names are actionable
+// for the admin review surface (plan 09 Global Constraints).
+//
+// DescriptionChanged is the fourth evidence dimension, aligned with the T09
+// runtime guard (tools.FilterToolsBySnapshot fail-closes on a post-install
+// description rewrite — it reaches the Agent-visible tool metadata surface):
+// without it, a description-only drift would leave member conversations
+// blocked while CheckDrift reports "none", breaking the review loop.
+type PluginDriftDetail struct {
+	Added              []string  `json:"added,omitempty"`
+	Removed            []string  `json:"removed,omitempty"`
+	SchemaChanged      []string  `json:"schema_changed,omitempty"`
+	DescriptionChanged []string  `json:"description_changed,omitempty"`
+	CheckedAt          time.Time `json:"checked_at"`
+}
+
+// HasDrift reports whether the detail carries ANY drift evidence — the
+// detected/none verdict a CheckDrift persists is exactly this predicate over
+// the live-vs-snapshot comparison, kept next to the record it governs.
+func (d *PluginDriftDetail) HasDrift() bool {
+	if d == nil {
+		return false
+	}
+	return len(d.Added) > 0 || len(d.Removed) > 0 || len(d.SchemaChanged) > 0 || len(d.DescriptionChanged) > 0
+}
+
+// PluginDriftReport is the drift view of one installation (T17): the
+// persisted state, the persisted detail (nil when none/never checked), and
+// the accepted snapshot's tool names so the admin can see the baseline the
+// live directory deviates from. Types-layer service contract; the handler
+// maps it onto its DTO.
+type PluginDriftReport struct {
+	InstallationID    string             `json:"installation_id"`
+	DriftState        string             `json:"drift_state"`
+	Detail            *PluginDriftDetail `json:"detail,omitempty"`
+	SnapshotToolNames []string           `json:"snapshot_tool_names"`
+}
+
 // PluginToolChange is one tool present in BOTH the accepted snapshot and the
 // candidate snapshot whose capability face moved between them (T14). The four
 // change flags are independent dimensions of the same diff row — schema

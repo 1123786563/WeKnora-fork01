@@ -151,4 +151,30 @@ type PluginService interface {
 	// same candidate accepted twice is idempotent (zero writes). actorID is
 	// the accepting admin (audit/log surface; the row keeps its creator).
 	AcceptUpgrade(ctx context.Context, tenantID uint64, actorID, installationID, candidateFingerprint string) (*types.PluginInstallationResult, error)
+
+	// CheckDrift re-verifies ONE installation against its accepted endpoint
+	// (T17, GAP-6; Admin): a LIVE ListTools against installation.EndpointURL
+	// — never via the manifest, which may already declare a newer version —
+	// diffed against the accepted tools snapshot, with the verdict persisted
+	// (drift_state=detected + a name-only detail document, or drift_state=
+	// none + a cleared detail when the endpoint matches the baseline again).
+	// An unreachable endpoint rejects with zero writes. A foreign tenant's
+	// installation ID is "not found".
+	CheckDrift(ctx context.Context, tenantID uint64, installationID string) (*types.PluginDriftReport, error)
+
+	// GetDrift returns ONE installation's persisted drift view (T17; Viewer):
+	// the row's current state (never-checked rows carry their install-time
+	// default), the persisted detail when one exists, and the accepted
+	// snapshot's tool names. A pure read — the refresh lever is CheckDrift.
+	// A foreign tenant's installation ID is "not found".
+	GetDrift(ctx context.Context, tenantID uint64, installationID string) (*types.PluginDriftReport, error)
+
+	// ResolveDrift closes the drift review loop (T17, GAP-6; Admin): re-verify
+	// the accepted endpoint LIVE, then accept the CURRENT remote directory as
+	// the new verified snapshot — same version, same endpoint, recomputed
+	// digest, drift reset to none; per-tool policy rows land incrementally
+	// (a NEW tool cannot self-certify read-only over ListTools and installs
+	// disabled; existing rows keep the admin's verdicts). An unreachable
+	// endpoint rejects with zero writes — the drift state stays as it was.
+	ResolveDrift(ctx context.Context, tenantID uint64, actorID, installationID string) (*types.PluginInstallationResult, error)
 }

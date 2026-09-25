@@ -38,6 +38,15 @@ func RegisterPluginRoutes(r *gin.RouterGroup, pluginHandler *handler.PluginHandl
 		// Admin-only like confirm — it rewrites the tenant's tool directory,
 		// the materialized service endpoint and per-tool policies.
 		pluginRoutes.POST("/installations/:id/upgrade-accept", g.Admin(), pluginHandler.AcceptUpgrade)
+		// Drift review loop (T17, GAP-6): the persisted drift state is part
+		// of WHAT is installed — every member can see whether an
+		// installation is drift-blocked (Viewer+ like the other discovery
+		// endpoints); re-checking and resolving are admin governance — one
+		// fetches an untrusted endpoint, the other rewrites the tenant's
+		// accepted snapshot. Same default-deny for API keys as the rest.
+		pluginRoutes.GET("/installations/:id/drift", g.Viewer(), pluginHandler.GetDrift)
+		pluginRoutes.POST("/installations/:id/drift/check", g.Admin(), pluginHandler.CheckDrift)
+		pluginRoutes.POST("/installations/:id/drift/resolve", g.Admin(), pluginHandler.ResolveDrift)
 		// Ops-only self-heal channel (rulings.md R4): removes a failed
 		// confirm's leftover rows. NOT a user-facing feature — the
 		// user-visible governance endpoint stays "disable" and the web UI

@@ -169,3 +169,29 @@ type PluginUpgradePreviewResponse struct {
 type PluginUpgradeAcceptRequest struct {
 	CandidateFingerprint string `json:"candidate_fingerprint" binding:"required"`
 }
+
+// PluginDriftDetailDTO is the deviation record of one drift check: tool NAME
+// lists per drift form (added/removed/schema-changed/description-changed) and
+// the check timestamp. The remote schema text itself is never included —
+// untrusted remote data does not reach the review surface, only the names an
+// admin acts on (plan 09 Global Constraints).
+type PluginDriftDetailDTO struct {
+	Added              []string  `json:"added"`
+	Removed            []string  `json:"removed"`
+	SchemaChanged      []string  `json:"schema_changed"`
+	DescriptionChanged []string  `json:"description_changed"`
+	CheckedAt          time.Time `json:"checked_at"`
+}
+
+// PluginDriftReportResponse is the payload of GET/POST
+// /plugins/installations/:id/drift(/{check,resolve}): the persisted drift
+// state, the persisted detail when one exists (nil when none/never checked),
+// and the accepted snapshot's tool names — the baseline the live directory
+// deviates from. No credentials ever appear here — by construction this type
+// has none.
+type PluginDriftReportResponse struct {
+	InstallationID    string               `json:"installation_id"`
+	DriftState        string               `json:"drift_state"`
+	Detail            *PluginDriftDetailDTO `json:"detail,omitempty"`
+	SnapshotToolNames []string             `json:"snapshot_tool_names"`
+}
