@@ -110,7 +110,31 @@ var (
 	// ErrConnectionPrincipalRequired (T11): the caller's principal context
 	// is missing/invalid — the connection view is inherently per-identity.
 	ErrConnectionPrincipalRequired = errors.New("principal context is required to query plugin connection status")
+
+	// ErrUpgradeCandidateChanged (T16): the candidate at the installation's
+	// long-lived manifest source no longer matches the fingerprint the admin
+	// previewed — the remote moved on between preview and accept. The accept
+	// is rejected with ZERO writes; the admin's path is a fresh preview.
+	ErrUpgradeCandidateChanged = errors.New("candidate changed since preview")
+
+	// ErrUpgradeWriterNotWired (T16): the injected plugin repository does not
+	// implement the installationUpgradeWriter capability — a wiring fault
+	// (production always injects the gorm repository). Fail loudly rather
+	// than reporting a misleading success or silently skipping persistence.
+	ErrUpgradeWriterNotWired = errors.New("plugin upgrade persistence is not wired")
 )
+
+// installationUpgradeWriter is the narrow persistence capability AcceptUpgrade
+// needs (T16): persisting an accepted upgrade (or its compensation write-back)
+// onto the installation row. The gorm pluginRepository implements it
+// (repository.UpdateInstallationAccepted). It is consumed via a type assertion
+// on the injected PluginRepository rather than by extending that interface:
+// the T06-era contract and its in-tree test fakes predate the upgrade slice,
+// and the upgrade write is one additive method — repositories without it fail
+// LOUDLY here (ErrUpgradeWriterNotWired) instead of at compile time.
+type installationUpgradeWriter interface {
+	UpdateInstallationAccepted(ctx context.Context, tenantID uint64, id, acceptedVersion, endpointURL string, toolsSnapshot types.PluginPreviewTools, toolsDigest string) error
+}
 
 // ConfirmInstallation implements the compensated seven-step confirm flow
 // (plan 03 Task 6 Step 4 ruling): preview lookup → expiry verdict →
@@ -850,4 +874,225 @@ func (s *pluginService) PreviewUpgrade(
 		CandidateFingerprint: result.IdentityFingerprint,
 		CandidateToolsDigest: result.ToolsDigest,
 	}, nil
+}
+
+// AcceptUpgrade switches the installation to the previewed candidate (T16,
+// plan 08 Task 16 Step 3). The flow:
+//
+//  1. Installation lookup (absent/foreign → one 404 verdict).
+//  2. Capability check: the repository must implement installationUpgradeWriter
+//     (a wiring fault fails loudly).
+//  3. Re-fetch + re-verify from installation.ManifestURL — the SAME source and
+//     error classification PreviewUpgrade uses (fetch faults keep the 503
+//     sentinel chain, OAuth-protected its marker, verification failures the
+//     4xx ErrPluginVerifyFailed).
+//  4. Identity guard (mirror of T14-OCR1-F1): the manifest must still declare
+//     the INSTALLED plugin — a wholesale swap to another plugin_id would write
+//     another plugin's snapshot into this row.
+//  5. Fingerprint guard: the fresh IdentityFingerprint must equal the
+//     candidateFingerprint the admin reviewed — anything else is
+//     ErrUpgradeCandidateChanged with zero writes (a new preview is the path).
+//  6. Idempotency: when the installation already carries the candidate
+//     (version + digest + endpoint equal AND the materialized service URL is
+//     in sync AND no drift is pending), return the current installation with
+//     ZERO writes — the sync clause keeps a half-compensated state retriable.
+//  7. Compensated write order: installation row (new snapshot/endpoint/
+//     version/digest + drift reset) → materialized service URL switch
+//     (UpdatedAt refresh recycles the manager's cached client) → INCREMENTAL
+//     policy rows (only tools WITHOUT an existing row; a NEW tool lands
+//     Enabled=ReadOnly — read exposed, write disabled; existing rows keep
+//     the admin's verdicts). Any failure after the installation write
+//     compensates by writing the memory-held OLD values back (service row
+//     first — the runtime-visible surface — then the installation row), so
+//     the old version stays callable from member conversations.
+func (s *pluginService) AcceptUpgrade(
+	ctx context.Context,
+	tenantID uint64,
+	actorID, installationID, candidateFingerprint string,
+) (*types.PluginInstallationResult, error) {
+	// Step 1: installation within this tenant (absent/foreign → one verdict).
+	inst, err := s.pluginRepo.GetInstallation(ctx, tenantID, installationID)
+	if err != nil {
+		logger.GetLogger(ctx).Errorf("failed to load plugin installation: %v", err)
+		return nil, ErrInstallationPersistFailed
+	}
+	if inst == nil {
+		return nil, ErrInstallationNotFound
+	}
+
+	// Step 2: capability seam (production always injects the gorm repository).
+	writer, ok := s.pluginRepo.(installationUpgradeWriter)
+	if !ok {
+		logger.GetLogger(ctx).Errorf(
+			"plugin upgrade accept: repository %T does not implement installationUpgradeWriter", s.pluginRepo)
+		return nil, ErrUpgradeWriterNotWired
+	}
+
+	// Step 3: re-fetch and re-verify the candidate from the long-lived
+	// manifest source — identical classification to PreviewUpgrade.
+	result, err := plugins.FetchAndVerify(ctx, inst.ManifestURL, s.lister)
+	if err != nil {
+		if errors.Is(err, plugins.ErrManifestFetchFailed) {
+			return nil, fmt.Errorf("candidate plugin unreachable: %w", err)
+		}
+		if plugins.IsOAuthProtected(err) {
+			return nil, err
+		}
+		return nil, fmt.Errorf("%w: %v", ErrPluginVerifyFailed, err)
+	}
+
+	// Step 4: identity guard (T14-OCR1-F1 mirror) — accepting another
+	// plugin's snapshot into this installation row would silently bypass the
+	// (tenant_id, plugin_id) uniqueness governance.
+	if result.Manifest.PluginID != inst.PluginID {
+		return nil, fmt.Errorf("%w: manifest now declares plugin %q, not the installed %q; uninstall and re-install instead",
+			ErrPluginVerifyFailed, result.Manifest.PluginID, inst.PluginID)
+	}
+
+	// Step 5: fingerprint guard — the admin accepted THIS fingerprint; a
+	// candidate that moved on is a different document. Zero writes on any
+	// rejection path above and here.
+	if result.IdentityFingerprint != candidateFingerprint {
+		return nil, fmt.Errorf("%w: remote candidate is %q now; run a new upgrade preview",
+			ErrUpgradeCandidateChanged, result.Manifest.Version)
+	}
+
+	candidateVersion := result.Manifest.Version
+	candidateEndpoint := result.Manifest.Transport.Endpoint
+	candidateSnapshot := types.PluginPreviewTools(result.Snapshot)
+
+	// The materialized service row (URL switch target); a missing row (svc ==
+	// nil, including an empty ServiceID) leaves nothing to sync — the
+	// installation row stays authoritative and the plugin is simply not
+	// serving until the row is healed (same reading as SetInstallationState).
+	var svc *types.MCPService
+	if inst.ServiceID != "" {
+		svc, err = s.mcpServiceRepo.GetByID(ctx, tenantID, inst.ServiceID)
+		if err != nil {
+			logger.GetLogger(ctx).Errorf("failed to load materialized service for upgrade: %v", err)
+			return nil, ErrInstallationPersistFailed
+		}
+	}
+
+	// Step 6: idempotency — the installation already carries exactly this
+	// candidate (version/digest/endpoint) with the service row in sync and no
+	// pending drift → return it with zero writes. The sync clause matters on
+	// the failure path: a half-compensated state (installation restored but
+	// service URL not) must NOT early-return — a retried accept walks the
+	// write path again and converges.
+	serviceInSync := svc == nil || (svc.URL != nil && *svc.URL == inst.EndpointURL)
+	if candidateVersion == inst.AcceptedVersion &&
+		result.ToolsDigest == inst.ToolsDigest &&
+		candidateEndpoint == inst.EndpointURL &&
+		inst.DriftState == types.PluginDriftNone &&
+		serviceInSync {
+		logger.GetLogger(ctx).Infof(
+			"plugin upgrade accept: installation %s already at candidate %s (fingerprint match) — idempotent no-op (actor %s)",
+			installationID, candidateVersion, actorID)
+		return s.installationResult(ctx, tenantID, inst)
+	}
+
+	// Memory-held old values — the compensation write-back source.
+	oldVersion := inst.AcceptedVersion
+	oldEndpoint := inst.EndpointURL
+	oldSnapshot := append(types.PluginPreviewTools(nil), inst.ToolsSnapshot...)
+	oldDigest := inst.ToolsDigest
+
+	// Step 7a: installation row first (the snapshot is the runtime authority;
+	// writing it before the service row means a later failure leaves the OLD
+	// runtime surface after compensation, never a new snapshot with no policy).
+	if err := writer.UpdateInstallationAccepted(ctx, tenantID, installationID,
+		candidateVersion, candidateEndpoint, candidateSnapshot, result.ToolsDigest); err != nil {
+		logger.GetLogger(ctx).Errorf("failed to persist accepted upgrade for installation %s: %v", installationID, err)
+		return nil, ErrInstallationPersistFailed
+	}
+
+	// compensate writes the OLD values back on a FRESH context (the request
+	// ctx may already be cancelled — R12 F14 discipline): the service row
+	// first (the runtime-visible endpoint), then the installation row (the
+	// snapshot authority last, so a failing compensation leaves the retriable
+	// "installation ahead, service behind" shape rather than the reverse).
+	compensate := func(cause error) error {
+		compCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
+		defer cancel()
+		if svc != nil {
+			old := oldEndpoint
+			svc.URL = &old
+			svc.UpdatedAt = time.Now()
+			if err := s.mcpServiceRepo.Update(compCtx, svc); err != nil {
+				logger.GetLogger(ctx).Errorf(
+					"plugin upgrade accept compensation: failed to restore materialized service URL for %s: %v", inst.ServiceID, err)
+			} else {
+				// Restored row moved — recycle any client cached at the
+				// candidate endpoint during the forward window.
+				s.closeServiceClient(compCtx, inst.ServiceID)
+			}
+		}
+		if err := writer.UpdateInstallationAccepted(compCtx, tenantID, installationID,
+			oldVersion, oldEndpoint, oldSnapshot, oldDigest); err != nil {
+			logger.GetLogger(ctx).Errorf(
+				"plugin upgrade accept compensation: failed to restore installation %s to %s: %v",
+				installationID, oldVersion, err)
+		}
+		return cause
+	}
+
+	// Step 7b: materialized service URL switch. Name/ID/PluginInstallationID
+	// stay put (session server_id stability — Global Constraints); the
+	// UpdatedAt refresh invalidates the manager's version-keyed client cache
+	// and the explicit close evicts any live connection at the old endpoint.
+	if svc != nil {
+		newEndpoint := candidateEndpoint
+		svc.URL = &newEndpoint
+		svc.UpdatedAt = time.Now()
+		if err := s.mcpServiceRepo.Update(ctx, svc); err != nil {
+			logger.GetLogger(ctx).Errorf(
+				"failed to switch materialized service URL for installation %s: %v", installationID, err)
+			return nil, compensate(ErrInstallationMaterializeFailed)
+		}
+		s.closeServiceClient(ctx, inst.ServiceID)
+	} else {
+		logger.GetLogger(ctx).Infof(
+			"plugin upgrade accept: installation %s has no materialized service row to sync (service_id empty or row gone)", installationID)
+	}
+
+	// Step 7c: INCREMENTAL per-tool policy rows. Tools already carrying a row
+	// (from install or a previous accept) keep the admin's verdicts — an
+	// upgrade never resets governance. A NEW tool lands the install-time
+	// rule: read tools exposed, WRITE TOOLS DISABLED (B5; full write-tool
+	// governance acceptance is T18's slice — this lands the rows).
+	if inst.ServiceID != "" {
+		existing := map[string]bool{}
+		rows, err := s.toolApprovalService.ListByService(ctx, tenantID, inst.ServiceID)
+		if err != nil {
+			logger.GetLogger(ctx).Errorf("failed to load tool policies for upgrade: %v", err)
+			return nil, compensate(ErrInstallationMaterializeFailed)
+		}
+		for _, row := range rows {
+			existing[row.ToolName] = true
+		}
+		for _, tool := range candidateSnapshot {
+			if existing[tool.Name] {
+				continue
+			}
+			enabled := tool.ReadOnly
+			if err := s.toolApprovalService.SetPolicy(ctx, tenantID, inst.ServiceID, tool.Name, nil, &enabled); err != nil {
+				logger.GetLogger(ctx).Errorf(
+					"failed to write tool policy for %s/%s on upgrade: %v", inst.PluginID, tool.Name, err)
+				return nil, compensate(ErrInstallationMaterializeFailed)
+			}
+		}
+	}
+
+	logger.GetLogger(ctx).Infof(
+		"plugin upgrade accepted: installation %s (%s) %s → %s (actor %s)",
+		installationID, inst.PluginID, oldVersion, candidateVersion, actorID)
+
+	inst.AcceptedVersion = candidateVersion
+	inst.EndpointURL = candidateEndpoint
+	inst.ToolsSnapshot = candidateSnapshot
+	inst.ToolsDigest = result.ToolsDigest
+	inst.DriftState = types.PluginDriftNone
+	inst.DriftDetail = nil
+	return s.installationResult(ctx, tenantID, inst)
 }

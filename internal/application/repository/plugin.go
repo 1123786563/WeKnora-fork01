@@ -205,6 +205,42 @@ func (r *pluginRepository) UpdateInstallationServiceID(ctx context.Context, tena
 	return nil
 }
 
+// UpdateInstallationAccepted persists an accepted upgrade in place (T16):
+// accepted_version, endpoint_url, tools_snapshot, tools_digest and the drift
+// reset (drift_state='none', drift_detail=NULL — accepting IS the drift
+// healing write). It is also the compensation write-back of the upgrade
+// flow: the service re-invokes it with the memory-held OLD values when a
+// later step (materialized service sync, policy increments) fails, which is
+// why every field is a parameter rather than a partial patch. Consumed via
+// the service's installationUpgradeWriter capability seam (plugin_install_
+// service.go) — the T06-era PluginRepository contract predates the upgrade
+// slice and is extended additively here rather than reshaped. A zero-row
+// update surfaces as gorm.ErrRecordNotFound; all values are parameter-bound.
+func (r *pluginRepository) UpdateInstallationAccepted(
+	ctx context.Context, tenantID uint64, id, acceptedVersion, endpointURL string,
+	toolsSnapshot types.PluginPreviewTools, toolsDigest string,
+) error {
+	result := r.db.WithContext(ctx).
+		Model(&types.PluginInstallation{}).
+		Where("tenant_id = ? AND id = ?", tenantID, id).
+		Updates(map[string]interface{}{
+			"accepted_version": acceptedVersion,
+			"endpoint_url":     endpointURL,
+			"tools_snapshot":   toolsSnapshot,
+			"tools_digest":     toolsDigest,
+			"drift_state":      types.PluginDriftNone,
+			"drift_detail":     nil,
+			"updated_at":       time.Now(),
+		})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
 // DeleteInstallation HARD-deletes (Unscoped) — this is the compensation
 // path of ConfirmInstallation: a failed materialization must free the
 // (tenant_id, plugin_id) unique slot. Installations carry no soft-delete

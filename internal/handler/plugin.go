@@ -518,6 +518,52 @@ func toolSnapshotDTO(tool types.PluginToolSnapshot) dto.PluginToolSnapshotDTO {
 	}
 }
 
+// AcceptUpgrade godoc
+// @Summary      接受插件候选版本升级
+// @Description  重抓安装行长期清单来源并核验：远端当前身份指纹必须等于预览时返回的候选指纹（防「预览后远端又变」），通过后切换已接受版本（安装行快照/端点/版本 + 漂移重置）、同步物化服务仅切 URL（Name/ID 不变）并为新增工具增量写策略行（只读启用/写停用，既有决定保留）；失败补偿回写保旧版；同指纹重复接受幂等
+// @Tags         插件
+// @Accept       json
+// @Produce      json
+// @Param        id       path  string                             true  "安装 ID"
+// @Param        request  body  dto.PluginUpgradeAcceptRequest     true  "预览返回的候选指纹"
+// @Success      200      {object}  map[string]interface{}         "切换后的安装"
+// @Failure      400      {object}  errors.AppError                "候选核验失败或请求非法"
+// @Failure      404      {object}  errors.AppError                "安装不存在"
+// @Failure      409      {object}  errors.AppError                "候选已变化（预览后远端又变，需重新预览）"
+// @Failure      500      {object}  errors.AppError                "持久化或物化失败（已补偿回旧版）"
+// @Failure      503      {object}  errors.AppError                "候选清单抓取失败（不可达）"
+// @Security     Bearer
+// @Router       /plugins/installations/{id}/upgrade-accept [post]
+func (h *PluginHandler) AcceptUpgrade(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	var req dto.PluginUpgradeAcceptRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		logger.Error(ctx, "Failed to parse plugin upgrade accept request", err)
+		c.Error(errors.NewBadRequestError(err.Error()))
+		return
+	}
+
+	tenantID := c.GetUint64(types.TenantIDContextKey.String())
+	if tenantID == 0 {
+		logger.Error(ctx, "Tenant ID is empty")
+		c.Error(errors.NewBadRequestError("Workspace ID cannot be empty"))
+		return
+	}
+	actorRaw, _ := c.Get(types.UserIDContextKey.String())
+	actorID, _ := actorRaw.(string)
+
+	resp, err := h.pluginService.AcceptUpgrade(ctx, tenantID, actorID, c.Param("id"), req.CandidateFingerprint)
+	if err != nil {
+		mapPluginInstallationError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    installationResponseDTO(resp),
+	})
+}
+
 // mapPluginConnectionError maps the connection view's service failures onto
 // HTTP verdicts: a foreign/absent installation is a flat 404 (no existence
 // leak); a missing principal context is 401; token-store faults are 5xx with
@@ -556,7 +602,11 @@ func mapPluginInstallationError(c *gin.Context, err error) {
 		stderrors.Is(err, service.ErrInstallationStateInvalid),
 		stderrors.Is(err, service.ErrPluginVerifyFailed):
 		c.Error(errors.NewBadRequestError(err.Error()))
-	case stderrors.Is(err, service.ErrPluginAlreadyInstalled):
+	case stderrors.Is(err, service.ErrPluginAlreadyInstalled),
+		// ErrUpgradeCandidateChanged (T16): the remote candidate moved on
+		// since the preview — a state conflict resolved by a fresh preview,
+		// not a malformed request (the fingerprint WAS the preview's own).
+		stderrors.Is(err, service.ErrUpgradeCandidateChanged):
 		c.Error(errors.NewConflictError(err.Error()))
 	case stderrors.Is(err, plugins.ErrManifestFetchFailed):
 		logger.Error(c.Request.Context(), "Plugin manifest re-fetch failed on confirm", err)
@@ -565,7 +615,8 @@ func mapPluginInstallationError(c *gin.Context, err error) {
 		c.Error(errors.NewBadRequestError(err.Error()))
 	case stderrors.Is(err, service.ErrPreviewPersistFailed),
 		stderrors.Is(err, service.ErrInstallationPersistFailed),
-		stderrors.Is(err, service.ErrInstallationMaterializeFailed):
+		stderrors.Is(err, service.ErrInstallationMaterializeFailed),
+		stderrors.Is(err, service.ErrUpgradeWriterNotWired):
 		// ErrPreviewPersistFailed joins the 5xx family (OCR round-1 R12 F02):
 		// step 1's GetPreview repo fault surfaces this sentinel and it was
 		// previously missing from the table — a server-side fault misread

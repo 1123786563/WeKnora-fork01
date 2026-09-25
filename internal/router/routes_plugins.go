@@ -34,6 +34,10 @@ func RegisterPluginRoutes(r *gin.RouterGroup, pluginHandler *handler.PluginHandl
 		// version. Admin-only governance like confirm — it makes WeKnora
 		// fetch an untrusted URL (same default-deny for API keys).
 		pluginRoutes.POST("/installations/:id/upgrade-preview", g.Admin(), pluginHandler.PreviewUpgrade)
+		// Upgrade accept (T16): switches the workspace's accepted version.
+		// Admin-only like confirm — it rewrites the tenant's tool directory,
+		// the materialized service endpoint and per-tool policies.
+		pluginRoutes.POST("/installations/:id/upgrade-accept", g.Admin(), pluginHandler.AcceptUpgrade)
 		// Ops-only self-heal channel (rulings.md R4): removes a failed
 		// confirm's leftover rows. NOT a user-facing feature — the
 		// user-visible governance endpoint stays "disable" and the web UI

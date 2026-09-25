@@ -133,4 +133,22 @@ type PluginService interface {
 	// is an admin decision) but the diff carries IsDowngrade=true. A foreign
 	// tenant's installation ID is "not found".
 	PreviewUpgrade(ctx context.Context, tenantID uint64, installationID string) (*types.PluginUpgradePreviewResult, error)
+
+	// AcceptUpgrade switches the installation to the candidate the admin
+	// previewed (T16): it re-fetches installation.ManifestURL and requires
+	// the fresh IdentityFingerprint to EQUAL candidateFingerprint (the value
+	// PreviewUpgrade returned — "previewed" is the only authority an accept
+	// can cite; a remote that moved on is ErrUpgradeCandidateChanged and the
+	// admin must run a new preview). The compensated write order (plan 08
+	// Task 16 Step 3): installation row first (accepted_version/endpoint_url/
+	// tools_snapshot/tools_digest + drift reset), then the materialized MCP
+	// service's URL switch (Name/ID/PluginInstallationID stay put — session
+	// server_id stability; UpdatedAt refresh recycles the manager's cached
+	// client), then INCREMENTAL per-tool policy rows (a NEW tool lands
+	// Enabled=ReadOnly; existing rows keep the admin's verdicts). Any
+	// failure after the installation write compensates by writing the
+	// memory-held old values back — the old version stays callable. The
+	// same candidate accepted twice is idempotent (zero writes). actorID is
+	// the accepting admin (audit/log surface; the row keeps its creator).
+	AcceptUpgrade(ctx context.Context, tenantID uint64, actorID, installationID, candidateFingerprint string) (*types.PluginInstallationResult, error)
 }

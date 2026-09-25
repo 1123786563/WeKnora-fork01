@@ -160,3 +160,12 @@ type PluginUpgradePreviewResponse struct {
 	CandidateFingerprint string               `json:"candidate_fingerprint"`
 	CandidateToolsDigest string               `json:"candidate_tools_digest"`
 }
+
+// PluginUpgradeAcceptRequest is the body of POST
+// /plugins/installations/:id/upgrade-accept: the candidate fingerprint the
+// admin reviewed in the upgrade preview. Accept re-verifies the remote against
+// EXACTLY this value — a candidate that moved on since the preview is
+// rejected with zero changes (a fresh preview is the path).
+type PluginUpgradeAcceptRequest struct {
+	CandidateFingerprint string `json:"candidate_fingerprint" binding:"required"`
+}
