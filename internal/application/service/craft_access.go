@@ -2,6 +2,9 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -133,6 +136,23 @@ func (s *CraftAccessService) knownTask(ctx context.Context, scope craft.Scope) b
 	return err == nil
 }
 
+// craftDenyDedupWindow mirrors the middleware LogDenied dedup: a probing
+// client must not be able to flood audit_logs through repeated denials of
+// the same task.
+const craftDenyDedupWindow = 1 * time.Minute
+
+// craftAuditActorUserID keeps an audit actor inside the audit_logs
+// actor_user_id VARCHAR(36) bound. Synthetic API-key principals
+// (api_external_user:<tenant>:<extid>) can exceed the column; the identity
+// is hashed into the column and the full form is returned for Details.
+func craftAuditActorUserID(actor string) (column string, full string) {
+	if len(actor) <= 36 {
+		return actor, ""
+	}
+	sum := sha256.Sum256([]byte(actor))
+	return "sha256:" + hex.EncodeToString(sum[:8]), actor
+}
+
 func (s *CraftAccessService) auditTaskDenial(ctx context.Context, scope craft.Scope, action craft.TaskAction) {
 	// TaskAction is externally reachable through application seams, so only
 	// persist the finite action vocabulary defined by the Craft contract.
@@ -141,10 +161,33 @@ func (s *CraftAccessService) auditTaskDenial(ctx context.Context, scope craft.Sc
 	default:
 		return
 	}
-	err := s.db.WithContext(ctx).Create(&craftAccessAudit{
-		TenantID: scope.TenantID, ActorUserID: scope.UserID, Action: "craft.access_denied",
-		ScopeType: "session", ScopeID: scope.SessionID, Outcome: "denied",
-		Details: types.JSON(fmt.Sprintf(`{"task_action":%q,"reason":"policy_denied"}`, action)), CreatedAt: time.Now(),
+	actor, fullActor := craftAuditActorUserID(scope.UserID)
+	details := map[string]string{"task_action": string(action), "reason": "policy_denied"}
+	if fullActor != "" {
+		details["actor_user_id_full"] = fullActor
+	}
+	raw, err := json.Marshal(details)
+	if err != nil {
+		raw = []byte(`{"reason":"policy_denied"}`)
+	}
+	// Dedup probe: skip the durable write when the same
+	// (tenant, actor, task, task-action) tuple already has a row in the
+	// trailing window; the typed TargetID column carries the task action so
+	// the probe never depends on JSON comparison semantics. A probe failure
+	// degrades to writing a duplicate — never to skipping the audit for a
+	// different reason.
+	since := time.Now().Add(-craftDenyDedupWindow)
+	var recent int64
+	if err := s.db.WithContext(ctx).Model(&craftAccessAudit{}).
+		Where("tenant_id = ? AND actor_user_id = ? AND action = ? AND scope_id = ? AND target_id = ? AND outcome = ? AND created_at > ?",
+			scope.TenantID, actor, "craft.access_denied", scope.SessionID, string(action), "denied", since).
+		Count(&recent).Error; err == nil && recent > 0 {
+		return
+	}
+	err = s.db.WithContext(ctx).Create(&craftAccessAudit{
+		TenantID: scope.TenantID, ActorUserID: actor, Action: "craft.access_denied",
+		ScopeType: "session", ScopeID: scope.SessionID, TargetType: "task_action", TargetID: string(action), Outcome: "denied",
+		Details: types.JSON(raw), CreatedAt: time.Now(),
 	}).Error
 	if err != nil {
 		logger.ErrorWithFields(ctx, err, map[string]interface{}{"audit_action": "craft.access_denied"})
@@ -207,7 +250,22 @@ func (s *CraftAccessService) Grant(ctx context.Context, scope craft.Scope, userI
 		if err := tx.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "tenant_id"}, {Name: "session_id"}, {Name: "user_id"}}, DoUpdates: clause.AssignmentColumns([]string{"membership_id", "role", "granted_by", "updated_at"})}).Create(&grant).Error; err != nil {
 			return err
 		}
-		return tx.Create(&craftAccessAudit{TenantID: scope.TenantID, ActorUserID: scope.UserID, Action: "craft.member_added", ScopeType: "session", ScopeID: scope.SessionID, TargetType: "task_member", TargetID: scope.SessionID, TargetUserID: userID, Outcome: "success", Details: types.JSON(fmt.Sprintf(`{"role":%q}`, role)), CreatedAt: time.Now()}).Error
+		// Both audit identity columns are VARCHAR(36); synthetic principals
+		// are hashed in and preserved in Details (see craftAuditActorUserID).
+		actor, actorFull := craftAuditActorUserID(scope.UserID)
+		target, targetFull := craftAuditActorUserID(userID)
+		details := map[string]string{"role": string(role)}
+		if actorFull != "" {
+			details["actor_user_id_full"] = actorFull
+		}
+		if targetFull != "" {
+			details["target_user_id_full"] = targetFull
+		}
+		raw, err := json.Marshal(details)
+		if err != nil {
+			raw = []byte(`{}`)
+		}
+		return tx.Create(&craftAccessAudit{TenantID: scope.TenantID, ActorUserID: actor, Action: "craft.member_added", ScopeType: "session", ScopeID: scope.SessionID, TargetType: "task_member", TargetID: scope.SessionID, TargetUserID: target, Outcome: "success", Details: types.JSON(raw), CreatedAt: time.Now()}).Error
 	})
 }
 
@@ -228,7 +286,22 @@ func (s *CraftAccessService) Revoke(ctx context.Context, scope craft.Scope, user
 		if result.RowsAffected == 0 {
 			return craft.ErrNotFound
 		}
-		return tx.Create(&craftAccessAudit{TenantID: scope.TenantID, ActorUserID: scope.UserID, Action: "craft.member_revoked", ScopeType: "session", ScopeID: scope.SessionID, TargetType: "task_member", TargetID: scope.SessionID, TargetUserID: userID, Outcome: "success", Details: types.JSON(`{}`), CreatedAt: time.Now()}).Error
+		// Same VARCHAR(36) identity bounds as member_added: hash synthetic
+		// principals in, preserve full forms in Details.
+		revokeActor, revokeActorFull := craftAuditActorUserID(scope.UserID)
+		revokeTarget, revokeTargetFull := craftAuditActorUserID(userID)
+		revokeDetails := map[string]string{}
+		if revokeActorFull != "" {
+			revokeDetails["actor_user_id_full"] = revokeActorFull
+		}
+		if revokeTargetFull != "" {
+			revokeDetails["target_user_id_full"] = revokeTargetFull
+		}
+		raw, err := json.Marshal(revokeDetails)
+		if err != nil {
+			raw = []byte(`{}`)
+		}
+		return tx.Create(&craftAccessAudit{TenantID: scope.TenantID, ActorUserID: revokeActor, Action: "craft.member_revoked", ScopeType: "session", ScopeID: scope.SessionID, TargetType: "task_member", TargetID: scope.SessionID, TargetUserID: revokeTarget, Outcome: "success", Details: types.JSON(raw), CreatedAt: time.Now()}).Error
 	})
 }
 

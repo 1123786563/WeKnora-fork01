@@ -65,7 +65,7 @@ test('Craft access projects Owner controls and keeps Viewer and Collaborator rea
     assert.equal(owner.container.querySelectorAll('button').length, 2);
     const longId = [...owner.container.querySelectorAll('li span')].find(item => item.textContent?.startsWith('viewer-with'));
     assert.ok(longId);
-    assert.match(longId.getAttribute('style') ?? '', /overflow-wrap:\s*anywhere/);
+    assert.equal(longId.className, 'wk-craft-access-member-id', 'long member ids wrap through the themed class, not inline styles');
   } finally { await owner.unmount(); }
 });
 

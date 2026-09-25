@@ -294,6 +294,12 @@ func (s *sessionService) GetSession(ctx context.Context, id string) (*types.Sess
 	if s.craftTaskAccess != nil {
 		registeredCraft, classifyErr := s.craftTaskAccess.IsCraftTask(ctx, tenantID, id)
 		if classifyErr != nil {
+			// Only semantic lookups (no such session / caller mismatch) map
+			// to the 404 this surface promises; infrastructure failures
+			// propagate so a database outage is not masked as "not found".
+			if !stderrors.Is(classifyErr, craft.ErrNotFound) && !stderrors.Is(classifyErr, craft.ErrForbidden) {
+				return nil, classifyErr
+			}
 			return nil, apperrors.ErrSessionNotFound
 		}
 		if registeredCraft {
@@ -313,7 +319,13 @@ func (s *sessionService) GetSession(ctx context.Context, id string) (*types.Sess
 			// Recheck registration after loading metadata so a concurrent
 			// deletion/deregistration cannot turn this into a generic read.
 			stillCraft, recheckErr := s.craftTaskAccess.IsCraftTask(ctx, tenantID, id)
-			if recheckErr != nil || !stillCraft {
+			if recheckErr != nil {
+				if !stderrors.Is(recheckErr, craft.ErrNotFound) && !stderrors.Is(recheckErr, craft.ErrForbidden) {
+					return nil, recheckErr
+				}
+				return nil, apperrors.ErrSessionNotFound
+			}
+			if !stillCraft {
 				return nil, apperrors.ErrSessionNotFound
 			}
 

@@ -113,14 +113,25 @@ func TestGetSessionCraftTaskCannotCrossTenant(t *testing.T) {
 	require.Empty(t, access.checks, "tenant-scoped classification must fail before TaskRead")
 }
 
-func TestGetSessionCraftTaskFailsClosedOnClassificationFailure(t *testing.T) {
-	access := &sessionCraftReadAccess{classifyErr: errors.New("registration lookup unavailable"), allowed: map[string]bool{"task-owner": true}}
-	svc, _, session := newCraftDirectReadService(t, access)
-
+func TestGetSessionCraftTaskClassificationErrorsSplitByKind(t *testing.T) {
+	// Semantic lookup answers (no such session / caller mismatch) keep the
+	// 404 the read surface promises; infrastructure failures propagate so a
+	// database outage is never masked as "session not found" (the OCR round
+	// corrected the earlier blanket flattening).
+	semantics := &sessionCraftReadAccess{classifyErr: craft.ErrNotFound, allowed: map[string]bool{"task-owner": true}}
+	svc, _, session := newCraftDirectReadService(t, semantics)
 	got, err := svc.GetSession(testSessionScopeContext(1, "task-owner"), session.ID)
 	require.ErrorIs(t, err, apperrors.ErrSessionNotFound)
 	require.Nil(t, got)
-	require.Empty(t, access.checks, "TaskRead must not run when classification is unknown")
+	require.Empty(t, semantics.checks, "TaskRead must not run when classification is unknown")
+
+	infra := &sessionCraftReadAccess{classifyErr: errors.New("registration lookup unavailable"), allowed: map[string]bool{"task-owner": true}}
+	svc, _, session = newCraftDirectReadService(t, infra)
+	got, err = svc.GetSession(testSessionScopeContext(1, "task-owner"), session.ID)
+	require.ErrorContains(t, err, "registration lookup unavailable")
+	require.NotErrorIs(t, err, apperrors.ErrSessionNotFound, "infrastructure failures must surface as themselves, not as a missing session")
+	require.Nil(t, got)
+	require.Empty(t, infra.checks)
 }
 
 func TestGetSessionCraftTaskFailsClosedWhenRegistrationChangesBeforeReturn(t *testing.T) {

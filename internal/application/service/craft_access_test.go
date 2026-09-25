@@ -247,24 +247,29 @@ func TestCraftAccessDenialAuditIsTenantScopedAndBounded(t *testing.T) {
 		require.Equal(t, "craft.access_denied", rows[i].Action)
 		require.Equal(t, "session", rows[i].ScopeType)
 		require.Equal(t, "task-1", rows[i].ScopeID)
+		require.Equal(t, "task_action", rows[i].TargetType)
+		require.Equal(t, action, rows[i].TargetID)
 		require.Equal(t, "denied", rows[i].Outcome)
 		require.JSONEq(t, `{"task_action":"`+action+`","reason":"policy_denied"}`, string(rows[i].Details))
 	}
 
-	// Identical checks are independent decisions; no time-window dedup may hide them.
+	// Identical denials inside the dedup window collapse to the first row —
+	// the same sliding-window contract as middleware LogDenied, so a probing
+	// client cannot flood audit_logs at request rate (OCR round correction
+	// of the earlier one-row-per-denial pin).
 	require.ErrorIs(t, svc.CheckTaskAccess(ctx, visible("admin"), craft.TaskRead), craft.ErrForbidden)
 	var count int64
 	require.NoError(t, db.Model(&craftAccessAudit{}).Where("action = ?", "craft.access_denied").Count(&count).Error)
-	require.EqualValues(t, 3, count)
+	require.EqualValues(t, 2, count, "a repeated identical denial within the window is deduped")
 	// Successful reads do not create denial rows; owner is always allowed.
 	require.NoError(t, svc.CheckTaskAccess(ctx, visible("owner"), craft.TaskRead))
 	require.NoError(t, svc.CheckTaskAccess(ctx, visible("viewer"), craft.TaskRead))
 	require.NoError(t, db.Model(&craftAccessAudit{}).Where("action = ?", "craft.access_denied").Count(&count).Error)
-	require.EqualValues(t, 3, count)
+	require.EqualValues(t, 2, count)
 	require.NoError(t, db.Exec(`UPDATE tenant_members SET status = 'inactive' WHERE tenant_id = 1 AND user_id = 'viewer'`).Error)
 	require.ErrorIs(t, svc.CheckTaskAccess(ctx, visible("viewer"), craft.TaskRead), craft.ErrForbidden)
 	require.NoError(t, db.Model(&craftAccessAudit{}).Where("action = ?", "craft.access_denied").Count(&count).Error)
-	require.EqualValues(t, 4, count, "stale tenant membership on an existing Task is audited")
+	require.EqualValues(t, 3, count, "stale membership is the first viewer/read denial — a new tuple, so it is audited")
 	require.NoError(t, db.Migrator().DropTable("audit_logs"))
 	require.ErrorIs(t, svc.CheckTaskAccess(ctx, visible("viewer"), craft.TaskRead), craft.ErrForbidden, "audit sink failure does not change a refusal into authorization or a new error")
 }
