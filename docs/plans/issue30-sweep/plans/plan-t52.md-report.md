@@ -724,3 +724,83 @@ $ pnpm --filter @weknora/mobile typecheck
 - 语义输入：`DELIVERY_BACKEND`（服务端/网络失败，可重试）与 `DELIVERY_SCOPE_CHANGED`（scope 切换，应静默丢弃迟到结果）大概率不应同文案；
 - 落地位置建议 Task 11（集成证据轮）或独立修复轮，先改计划 `plan-t52.md` 对应行再动实现。
 
+
+# Task 11 · 实施报告（集成证据 opt-in 契约 + 计划级验证，#52 task 11/11）
+
+## 1. 实现内容
+
+按 `plan-t52.md:4896-5074` 逐字交付两个新文件（worktree 根 `apps/mobile/src/`）：
+
+1. **`delivery-integration-smoke.ts`**（plan-t52.md:4950-5059 代码块逐字）：
+   - `DeliveryIntegrationConfig` / `DeliveryIntegrationEvidence` 类型逐字符合计划 Produces 契约（plan-t52.md:4904）；
+   - `deliveryIntegrationConfig(env)`：opt-in 语义自包含（缺 env → `skip`；非绝对 URL / 非 HTTPS 或带凭据或带 path/query/hash / 私网环回主机 → `invalid`），主机防线复用 `runtime-integration-smoke.ts:118` 导出的 `disallowedDeploymentHost`；
+   - `runDeliveryIntegration(config)`：真实 `fetch` transport + `createMobileRuntime` 装配（与 `material-integration-smoke.ts:55-69` 逐字同构）→ `signIn` → `createTaskOffice.tasks({})` → 遍历 `page.items[].runId` 调 Task 8 `createMobileCodeDeliveryRemote().delivery(runId)` 读取交付记录；**只读**——不发起 prepare/dispatch；任何异常 → `evidence.failure`，`finally` 恒 `runtime.dispose()`（从不 reject）；
+   - `emitDeliveryIntegrationEvidence`：JSON 行吐出，带 `kind: 'delivery-integration'` 标记。
+2. **`delivery-integration-smoke.test.ts`**（plan-t52.md:4910-4937 代码块逐字）：2 个契约用例（本地恒跑）；真实 HTTP 段 opt-in，无 `WEKNORA_MOBILE_TEST_*` env 时天然不跑。
+
+前置接口核实（实现前亲读）：`createMobileCodeDeliveryRemote`（`packages/api-client/src/mobile/code-delivery.ts:35`，`delivery(runId): Promise<CodeDeliveryRecord | null>`）；`CodeDeliveryRecord` 的 `state/commitSha/prUrl/approver/remoteLogin` 字段（`packages/contracts/src/mobile/code-delivery.ts:10-29`）与计划代码引用一致；`disallowedDeploymentHost`（`apps/mobile/src/runtime-integration-smoke.ts:118`）返回 `string | undefined`。均匹配，零适配。
+
+## 2. TDD 证据
+
+**RED**（Step 1-2）：先写测试后写实现。
+
+```
+$ pnpm --filter @weknora/mobile test
+test at src/delivery-integration-smoke.test.ts:1:1
+✖ src/delivery-integration-smoke.test.ts (871.941458ms)
+  'test failed'
+ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @weknora/mobile@0.0.0 test: `tsx --test 'src/**/*.test.ts*'`
+Exit status 1
+```
+
+失败原因即计划预期（plan-t52.md:4944「FAIL（模块不存在）」）。同轮 `pnpm --filter @weknora/mobile typecheck` 仅报两行 `TS2307: Cannot find module './delivery-integration-smoke.ts'`——失败根因唯一，无预存在错误。`app-smoke.test.tsx:214` 的元测试「`pnpm --filter @weknora/mobile typecheck` resolves the package」随 typecheck 失败而失败，属同一根因的传导，非额外回归。
+
+**GREEN**（Step 3-4）：按计划代码块逐字实现后：
+
+```
+$ pnpm --filter @weknora/mobile test
+✔ config is skipped without env and rejected on private hosts (2.931458ms)
+✔ config accepts a public https origin and evidence helpers are exported (2.978708ms)
+ℹ tests 158
+ℹ pass 153
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 5
+ℹ duration_ms 10790.480125
+
+$ pnpm --filter @weknora/mobile typecheck
+（无诊断输出，exit 0）
+```
+
+相对 Task 10 基线（156 tests / 151 pass / 0 fail / 5 skipped）：+2 tests = 本任务 2 个契约用例，151→153 pass，fail 恒 0，5 skipped（opt-in 真实段缺 env 天然跳过）不变。
+
+## 3. 计划级验证（plan-t52.md:5081，全部任务完成后在 worktree 根执行；本轮为 task 11/11，实跑全段）
+
+按计划命令逐段执行（等价于计划的单条 `&&` 链，每段 exit code 逐一记录）：
+
+| # | 命令 | 结果 |
+|---|---|---|
+| 1 | `go test ./internal/modules/codedelivery/... -count=1` | `ok …codedelivery 2.094s` + `ok …codedelivery/repository/codedelivery 0.799s`，exit 0 |
+| 2 | `go test ./internal/modules/appconnector/ -run 'TestRiskDeliver' -count=1` | `ok …appconnector 0.426s`，exit 0 |
+| 3 | `go test ./internal/handler/ -run 'TestGitHubOAuth' -count=1` | `ok …handler 1.831s`，exit 0 |
+| 4 | `go test ./internal/handler/session/ -run 'TestDelivery\|TestGetWorkbenchTerminalLog' -count=1` | `ok …handler/session 1.545s`，exit 0 |
+| 5 | `go build ./...` | exit 0（仅链接器 `ignoring duplicate libraries: '-lc++'` 警告，非错误） |
+| 6 | `pnpm exec tsx --test packages/contracts/test/mobile-code-delivery.test.ts packages/api-client/src/mobile/code-delivery.test.ts packages/mobile-core/src/delivery/delivery-view.test.ts packages/mobile-core/src/delivery/delivery-reader.test.ts` | `tests 14 / pass 14 / fail 0` |
+| 7 | `pnpm --filter @weknora/mobile test` | `tests 158 / pass 153 / fail 0 / skipped 5`，exit 0 |
+| 8 | `pnpm --filter @weknora/mobile typecheck` | 无诊断，exit 0 |
+
+blocked-env 声明（plan-t52.md:5087 口径）：本机无 `WEKNORA_GITHUB_TEST_TOKEN`/`WEKNORA_MOBILE_TEST_*`，真实 GitHub 端到端与移动真实部署证据以 skip 呈现（上述第 7 段 `skipped 5` + `﹣ live end-to-end … # missing WEKNORA_MOBILE_TEST_DEPLOYMENT_URL/EMAIL/PASSWORD`），未伪造通过；具备 env 的运行自动产出真实证据（`runDeliveryIntegration` 只读读面已就绪）。
+
+## 4. 文件清单与提交
+
+- 新增：`apps/mobile/src/delivery-integration-smoke.ts`、`apps/mobile/src/delivery-integration-smoke.test.ts`（均为任务授权文件）。
+- 提交：`48878abfa` `test(mobile): opt-in delivery integration evidence contract (T22 #52 task 11)`（2 files changed, 135 insertions）。
+- 本报告追加为文件末节，随后单独提交。
+
+## 5. 自检发现与关注点
+
+1. **Task 10 §5 提请的裁决未随本次 ask 下发**：「交付读取失败是否需要用户可见提示」报请人裁决项在本任务 prompt 中无结论；计划 Task 11 明文（plan-t52.md:4896-5074）亦不含该改动。我未擅自实现（那将违反「只修改任务授权文件」与「实现阶段不静默重设计」）。该项仍为**开放裁决**，交回控制方。
+2. **主机防线的 reason 用法与 material smoke 略有差别**：本文件按计划逐字对 `disallowedDeploymentHost` 返回值做 truthy 检查并返回固定 reason `'…host is disallowed (private/loopback/reserved)'`（plan-t52.md:4993-4995），而 material smoke（material-integration-smoke.ts:45-46）直接透传返回的 reason。计划注释明示「任一拒绝码都算 invalid」且测试不断言该 reason，行为面等价；属计划明文取舍，非缺陷。
+3. **RED 阶段 typecheck 元测试连带失败**：`app-smoke.test.tsx:214` 断言 typecheck exit 0，RED 时因新测试文件引用未创建模块而失败——同一根因传导，实现后恢复，非独立回归。
+4. **验证链分段执行**：计划级验证命令为一条 `&&` 链，我按段分别执行并逐段记录 exit code（见 §3 表）；前段失败不会掩盖后段（分段反而暴露更多），结果与单链等价，如实说明执行方式差异。
+5. **`go build ./...` 的 ld 警告**：`ignoring duplicate libraries: '-lc++'` 为 darwin 链接器预存在噪音，exit 0，与本 diff 无关。
