@@ -840,6 +840,21 @@ test('the task detail error chain maps codes to copy instead of leaking raw inte
   assert.match(tasks, /title="Details"/, '打开按钮文案与同屏英文统一（B2-F5）');
 });
 
+test('the offline interruption renders mapped copy and never the raw internal code (R1-F4)', async () => {
+  const { TaskDetailScreen } = await import('./screens/TaskDetailScreen.tsx');
+  const offlineView = {
+    taskId: 'task-1', runId: 'run-1', title: '季度竞品报告', lifecycle: 'active', runStatus: 'running',
+    attention: 'none', executionStatus: 'running', settlementStatus: 'pending', revision: 4,
+    cursor: 2, incomplete: false, connection: 'interrupted' as const,
+    interruption: { reason: 'offline' as const, message: '当前离线：以下为最近一次同步的加密缓存内容' },
+    timeline: [], duplicateSeqs: [],
+  };
+  const element = render(TaskDetailScreen as (props: unknown) => unknown, { view: offlineView, loading: false, onRefresh: () => undefined });
+  const texts = descendants(element).filter(({ type }) => type === 'Text').flatMap(({ props }) => props.children).join(' ');
+  assert.equal(texts.includes('当前离线'), true, "offline 原因必须映射为用户文案（当前渲染 'offline' 内部码）");
+  assert.equal(/·\s*offline/.test(texts), false, '不得直出 offline 内部码（app-smoke 红线 B2-F40/R1-F4）');
+});
+
 test('composition wires the knowledge QA remote into Task Office and /ask consumes the office only (T15)', async () => {
   const { readFileSync } = await import('node:fs');
   const { dirname, join } = await import('node:path');

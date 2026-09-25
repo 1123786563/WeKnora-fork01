@@ -28,6 +28,7 @@ export function interruptionNotice(reason: TaskInterruptionReason): string {
     'stream-ended-nonterminal': '连接在非终态结束，正在核对最新状态。',
     'persist-failed': '本机缓存写入失败；已提交的服务端状态不受影响。',
     'stream-unavailable': '当前部署未提供流式通道；只能整段刷新快照。',
+    'offline': '当前离线：以下为最近一次同步的缓存内容；联网后可手动重新同步。',
   };
   return copy[reason];
 }

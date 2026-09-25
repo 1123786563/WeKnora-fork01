@@ -18,7 +18,7 @@ export interface TaskDetailScreenProps {
 const CONNECTION_LABELS: Record<TaskDetailView['connection'], string> = { syncing: '同步中', live: '已连接', interrupted: '连接中断，可恢复', drained: '已同步' };
 const LIFECYCLE_LABELS: Record<TaskDetailView['lifecycle'], string> = { active: '进行中', completed: '已完成', canceled: '已取消', archived: '已归档' };
 /** interruption 原因 → 用户文案（B2-F40：不得直出内部码；Task 10 会为 'stream-unavailable' 追加条目）。 */
-const INTERRUPTION_COPY: Record<string, string> = { gap: '事件流出现缺口', 'cursor-expired': '同步游标过期', 'stream-error': '实时通道中断', 'stream-ended-nonterminal': '事件流提前结束', 'persist-failed': '本地保存失败', 'stream-unavailable': '此部署暂无实时通道，可手动刷新' };
+const INTERRUPTION_COPY: Record<string, string> = { gap: '事件流出现缺口', 'cursor-expired': '同步游标过期', 'stream-error': '实时通道中断', 'stream-ended-nonterminal': '事件流提前结束', 'persist-failed': '本地保存失败', 'stream-unavailable': '此部署暂无实时通道，可手动刷新', offline: '当前离线：展示最近一次同步的加密缓存内容' };
 /** 停止三态卡文案（Issue #37 AC1）：requested=202 已受理未观察终态；confirmed=已观察到取消；unknown=投递结果未知。 */
 const STOP_PHASE_COPY: Record<StopPhase, string> = {
   requested: '停止请求已发出，等待运行确认停止',
