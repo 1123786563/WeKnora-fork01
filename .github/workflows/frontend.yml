@@ -38,7 +38,10 @@ permissions:
   contents: read
 
 env:
-  NODE_VERSION: "24"
+  # OCR round-1 F09: 24 < the engines floor (node >=26) and the gate scripts'
+  # MIN_MAJOR — on ubuntu-latest the discovery then finds no eligible binary
+  # and `pnpm test:shared` fails deterministically. Align CI with the floor.
+  NODE_VERSION: "26"
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:

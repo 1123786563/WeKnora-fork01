@@ -2,66 +2,44 @@
 /**
  * Gate regression fix: run an arbitrary command through node >= 26.
  *
- * `pnpm run test:shared` executes tsx via the node resolved from PATH. When
- * the ambient PATH only offers node v22 (the shell default on this host),
- * react-dom's CJS interop breaks and three unrelated .tsx tests false-red
- * with `createRoot is not a function` (known v22 tsx/CJS issue recorded in
- * .superpowers/sdd/2026-09-23-issue-106/environment.md). Prefixing this
- * wrapper makes the script self-healing instead of PATH-sensitive.
+ * `pnpm run test:shared` (and `pnpm run test:craft:shared`, OCR round-1 F7 —
+ * the craft entry runs the same react-dom createRoot dynamic imports) executes
+ * tsx via the node resolved from PATH. When the ambient PATH only offers
+ * node v22 (the shell default on this host), react-dom's CJS interop breaks
+ * and unrelated .tsx tests false-red with `createRoot is not a function`
+ * (known v22 tsx/CJS issue; the reproduction notes live in the local
+ * workspace file .superpowers/sdd/2026-09-23-issue-106/environment.md, which
+ * is NOT committed to the repository — OCR round-1 F13). Prefixing this
+ * wrapper makes the entry self-healing instead of PATH-sensitive.
  *
  * Behavior:
  *   node scripts/run-with-node-gte26.mjs -- <command> [args...]
  *   - current node >= 26          -> shim to the current binary (so children
  *                                    resolve the same major even if PATH is odd)
- *   - current node <  26          -> discover a >=26 binary ($WEKNORA_NODE_BIN,
- *                                    homebrew, ~/.nvm) and shim to it
+ *   - current node <  26          -> discover a >=26 binary (override env,
+ *                                    platform prefixes, ~/.nvm, $PATH scan —
+ *                                    see scripts/lib/node-gte26.mjs, F09/F11)
+ *                                    and shim to it
  *   - no >=26 binary discoverable -> fail fast with an actionable message
+ *   - child exits non-zero / is killed by a signal / fails to spawn
+ *                                -> exit non-zero with a diagnostic (F08)
  *
- * Shim strategy mirrors scripts/run-gates.mjs: only a `node` symlink is
- * prepended to PATH so `pnpm` keeps resolving to the pinned version while
- * child processes (tsx, node --import tsx) resolve node >= 26.
+ * Shim strategy (scripts/lib/node-gte26.mjs): only a `node` symlink inside a
+ * mkdtempSync private directory (F10) is prepended to PATH so `pnpm` keeps
+ * resolving to the pinned version while child processes (tsx, node --import
+ * tsx) resolve node >= 26; SIGINT/SIGTERM clean the shim dir up (F12).
  */
-import { spawnSync, execFileSync } from "node:child_process";
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
-
-const MIN_MAJOR = 26;
-
-function majorOf(version) {
-  return Number.parseInt(String(version).trim().replace(/^v/, "").split(".")[0], 10) || 0;
-}
-
-function candidateBin(nodeBin) {
-  try {
-    const v = execFileSync(nodeBin, ["-v"], { encoding: "utf8" });
-    return majorOf(v) >= MIN_MAJOR ? { bin: nodeBin, version: v.trim() } : null;
-  } catch {
-    return null;
-  }
-}
-
-function findNodeGte26() {
-  const candidates = [];
-  if (process.env.WEKNORA_NODE_BIN) candidates.push(process.env.WEKNORA_NODE_BIN);
-  if (process.platform === "darwin") {
-    candidates.push("/opt/homebrew/bin/node", "/usr/local/bin/node");
-  }
-  const nvmDir = path.join(os.homedir(), ".nvm", "versions", "node");
-  if (fs.existsSync(nvmDir)) {
-    const nvmNodes = fs
-      .readdirSync(nvmDir)
-      .filter((d) => /^v\d+\./.test(d) && majorOf(d) >= MIN_MAJOR)
-      .sort((a, b) => majorOf(b) - majorOf(a) || a.localeCompare(b, undefined, { numeric: true }))
-      .map((d) => path.join(nvmDir, d, "bin", "node"));
-    candidates.push(...nvmNodes);
-  }
-  for (const bin of candidates) {
-    const hit = candidateBin(bin);
-    if (hit) return hit;
-  }
-  return null;
-}
+import { spawnSync } from "node:child_process";
+import {
+  MIN_MAJOR,
+  createNodeShim,
+  exitWithSpawnResult,
+  findNodeGte26,
+  installShimSignalCleanup,
+  joinShimPath,
+  majorOf,
+  removeNodeShim,
+} from "./lib/node-gte26.mjs";
 
 function main() {
   const dashDash = process.argv.indexOf("--");
@@ -80,7 +58,7 @@ function main() {
     if (!target) {
       console.error(
         `[with-node] node >= ${MIN_MAJOR} required (current ${process.version}); ` +
-          "no >=26 binary found via WEKNORA_NODE_BIN, homebrew, or ~/.nvm — install node 26 (e.g. brew install node@26 / nvm install 26)",
+          "no >=26 binary found via WEKNORA_NODE_BIN, platform prefixes, ~/.nvm, or $PATH — install node 26 (e.g. brew install node@26 / nvm install 26)",
       );
       process.exit(1);
     }
@@ -89,22 +67,15 @@ function main() {
     );
   }
 
-  // Per-pid shim dir avoids racing the fixed dir scripts/run-gates.mjs uses
-  // when both run concurrently.
-  const shimDir = path.join(os.tmpdir(), `weknora-node26-shim-${process.pid}`);
-  const shimNode = path.join(shimDir, "node");
-  fs.mkdirSync(shimDir, { recursive: true });
-  fs.rmSync(shimNode, { force: true });
-  fs.symlinkSync(target.bin, shimNode);
-  const env = { ...process.env, PATH: `${shimDir}:${process.env.PATH || ""}` };
+  const { shimDir } = createNodeShim(target.bin);
+  installShimSignalCleanup(shimDir);
+  // Platform-delimiter join (跨任务转交 T01-OCR1-F12): a hard-coded ':' broke
+  // PATH resolution on win32 even when the shim itself had succeeded.
+  const env = { ...process.env, PATH: joinShimPath(shimDir, process.env.PATH) };
 
   const result = spawnSync(command, args, { stdio: "inherit", env });
-  try {
-    fs.rmSync(shimDir, { recursive: true, force: true });
-  } catch {
-    /* best-effort cleanup */
-  }
-  process.exit(result.status ?? (result.error ? 1 : 0));
+  removeNodeShim(shimDir);
+  exitWithSpawnResult(result, "with-node");
 }
 
 main();
