@@ -142,7 +142,20 @@ export default function ProgressPreparationPage() {
       <Notice tone='warning'>有一次结果未知的准备生成（{pendingPreparation.requestId.slice(0, 10)}…）。请先用原请求对账，不会重复生成。</Notice>
       <Action secondary loading={recPrepBusy.busy} onClick={() => void recPrepBusy.run(async () => { await career.reconcilePendingPreparation(); setGenNotice('已对账到准备回执。'); void listBusy.run(loadPreparations); })}>用原请求对账准备</Action>
       {recPrepBusy.error && <Notice tone='danger'>{recPrepBusy.error} 对账被拒时说明该请求不存在或不属于当前空间；可再用原编号重试。</Notice>}
-      <Action secondary loading={retryPrepBusy.busy} onClick={() => void retryPrepBusy.run(async () => { await career.retryPendingPreparation(); setGenNotice('准备生成已恢复完成。'); void listBusy.run(loadPreparations); })}>用原请求编号重试准备生成</Action>
+      <Action secondary loading={retryPrepBusy.busy} onClick={() => void retryPrepBusy.run(async () => {
+        try {
+          await career.retryPendingPreparation();
+          setGenErrCode(undefined); setGenNotice('准备生成已恢复完成。');
+          void listBusy.run(loadPreparations);
+        } catch (error) {
+          if (career.isPreparationVersionUnknown(error)) {
+            // 与生成按钮同一 typed 提示态：恢复链路绝不静默改用最新材料版本。
+            setGenErrCode(career.PREPARATION_VERSION_UNKNOWN);
+            setGenNotice('未确认实际投递版本：此申请还没有已确认的投递版本，系统不会自行改用最新材料版本。请先在「申请与材料」页记录投递（绑定实际投递的版本，或显式选择未知口径），再从这里用原请求编号重试。');
+          }
+          throw error;
+        }
+      })}>用原请求编号重试准备生成</Action>
       {retryPrepBusy.error && <Notice tone='danger'>{retryPrepBusy.error} 重试沿用原请求编号，服务端幂等不会重复执行。</Notice>}
     </>}
     {pendingMaterial && <>
