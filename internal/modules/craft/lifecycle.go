@@ -228,3 +228,51 @@ func QuotaAllows(action string, sandboxOverLimit, storageOverLimit bool) bool {
 	}
 	return !sandboxOverLimit && !storageOverLimit
 }
+
+// T16 (#134): the durable Workspace writer lease. One Workspace admits at
+// most one writing Run at a time; the lease is a database row bound to the
+// Task (the session), the Workspace, the Run and the draft-head revision the
+// writer saw when it acquired. Read-only version/preview/download traffic
+// never touches it.
+
+// WriterLease is the durable projection of one Workspace's writer lease.
+type WriterLease struct {
+	// WorkspaceID is the leased Workspace.
+	WorkspaceID string
+	// TaskID is the Craft Task — by the frozen identity rule this equals the
+	// session id and is never a second aggregate id.
+	TaskID string
+	// RunID is the one Run allowed to write the Workspace while held.
+	RunID string
+	// Revision is the draft-head revision fenced at acquisition: every write
+	// and promotion of this Run is checked against it.
+	Revision int64
+}
+
+// WriterAcquisition is the answer of one writer-lease attempt: the frozen
+// T00 outcome projection plus the durable lease on acquisition and the
+// current holder on conflict.
+type WriterAcquisition struct {
+	Outcome WriterAcquireOutcome
+	// Lease is set exactly when Outcome.Status is WriterAcquired.
+	Lease *WriterLease
+	// Holder names the current holder when Outcome.Status is WriterConflict.
+	Holder *WriterLease
+}
+
+// Release bases the lease store accepts. Every basis except unknown is
+// re-verified against the authoritative run state inside the releasing
+// transaction; unknown retains the fence unconditionally.
+const (
+	// WriterReleaseVerifiedCompletion releases after the holder Run's
+	// terminal outcome and workspace effects were verified.
+	WriterReleaseVerifiedCompletion = "verified_completion"
+	// WriterReleaseConfirmedStop releases after a confirmed stop.
+	WriterReleaseConfirmedStop = "confirmed_stop"
+	// WriterReleaseAuthoritativeRecovery releases after an authoritative
+	// recovery inspected the durable run and workspace state.
+	WriterReleaseAuthoritativeRecovery = "authoritative_recovery"
+	// WriterReleaseUnknown is an outcome that could not be determined: it
+	// never releases the lease.
+	WriterReleaseUnknown = "unknown"
+)
