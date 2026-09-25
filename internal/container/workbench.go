@@ -127,7 +127,12 @@ func NewMobileDeviceStore(db *gorm.DB) *repository.MobileDeviceStore {
 }
 
 func NewMobileDeviceHandler(store *repository.MobileDeviceStore) *handler.MobileDeviceHandler {
-	return handler.NewMobileDeviceHandler(store, mobileEnvironment())
+	enterpriseApp := strings.TrimSpace(os.Getenv("MOBILE_ENTERPRISE_APP_ID"))
+	if enterpriseApp != "" && repository.ValidateMobileAppID(enterpriseApp) != nil {
+		enterpriseApp = "" // 非法声明 fail closed：仅 official 通道
+	}
+	return handler.NewMobileDeviceHandler(store, mobileEnvironment()).
+		WithMobileAppPolicy(handler.MobileAppPolicy{EnterpriseAppID: enterpriseApp})
 }
 
 // NewWorkbenchTaskStateHandler wires the task archive lifecycle to the same

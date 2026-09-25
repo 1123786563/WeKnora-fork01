@@ -1094,29 +1094,41 @@ func newUnavailableSemanticModelGateway(
 	return service.NewSemanticModelGateway(issuer, models, scope, service.NewSemanticModelBudgetAdapter(budget, gate, nil), invocations)
 }
 
-// newMobileNotificationProvider keeps push delivery behind a single
-// deployment-configured HTTP gateway. An empty endpoint is valid during local
-// development: the worker remains durable and fail-closed until the gateway
-// is configured.
+// newMobileNotificationProvider keeps push delivery behind deployment policy
+// (story 67): the standard client uses the single-deployment expo/gateway
+// selection with an optional blind-payload mode and an explicit disabled
+// mode; an enterprise-signed app (MOBILE_ENTERPRISE_APP_ID) gets its own
+// APNs/FCM lane routed by intent app identity. Unknown modes and partial
+// enterprise configuration fail closed rather than silently selecting a
+// different vendor.
 func newMobileNotificationProvider(cfg *config.Config, devices *repository.MobileDeviceStore) workbenchservice.NotificationProvider {
 	endpoint := strings.TrimSpace(os.Getenv("MOBILE_NOTIFICATION_PROVIDER_URL"))
-	providerKind := strings.TrimSpace(os.Getenv("MOBILE_NOTIFICATION_PROVIDER"))
+	providerKind := strings.ToLower(strings.TrimSpace(os.Getenv("MOBILE_NOTIFICATION_PROVIDER")))
 	accessToken := strings.TrimSpace(os.Getenv("MOBILE_NOTIFICATION_ACCESS_TOKEN"))
-	if endpoint == "" && cfg != nil && cfg.MobileNotification != nil {
-		endpoint = strings.TrimSpace(cfg.MobileNotification.ProviderURL)
-	}
-	if providerKind == "" && cfg != nil && cfg.MobileNotification != nil {
-		providerKind = strings.TrimSpace(cfg.MobileNotification.Provider)
+	if cfg != nil && cfg.MobileNotification != nil {
+		if endpoint == "" {
+			endpoint = strings.TrimSpace(cfg.MobileNotification.ProviderURL)
+		}
+		if providerKind == "" {
+			providerKind = strings.ToLower(strings.TrimSpace(cfg.MobileNotification.Provider))
+		}
 		if accessToken == "" {
 			accessToken = strings.TrimSpace(cfg.MobileNotification.AccessToken)
 		}
 	}
-	if strings.EqualFold(providerKind, "expo") {
-		return workbenchservice.NewPushNotificationProvider(pushnotification.NewExpoProvider(endpoint, accessToken), func(ctx context.Context, d repository.NotificationDelivery) (string, error) {
+	blind := false
+	if cfg != nil && cfg.MobileNotification != nil && strings.EqualFold(strings.TrimSpace(cfg.MobileNotification.Payload), "blind") {
+		blind = true
+	}
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("MOBILE_NOTIFICATION_PAYLOAD")), "blind") {
+		blind = true
+	}
+	resolveFor := func(appID string) func(ctx context.Context, d repository.NotificationDelivery) (string, error) {
+		return func(ctx context.Context, d repository.NotificationDelivery) (string, error) {
 			if devices == nil {
 				return "", errors.New("mobile_device_store_unavailable")
 			}
-			registration, err := devices.GetActiveForTenant(ctx, d.Intent.TenantID, d.Intent.OwnerID, d.Intent.DeviceID)
+			registration, err := devices.GetActiveForApp(ctx, d.Intent.TenantID, d.Intent.OwnerID, d.Intent.DeviceID, appID)
 			if err != nil {
 				return "", err
 			}
@@ -1125,15 +1137,71 @@ func newMobileNotificationProvider(cfg *config.Config, devices *repository.Mobil
 				return "", errors.New("mobile_device_token_decryption_not_configured")
 			}
 			return secutils.DecryptAESGCM(registration.TokenCiphertext, key)
-		})
+		}
 	}
-	if providerKind != "" && !strings.EqualFold(providerKind, "gateway") && !strings.EqualFold(providerKind, "http") {
-		return workbenchservice.NewHTTPNotificationProvider("")
+	// 最终修复批次（审查发现 1）：official 通道与 APNs/FCM 分支共用同一 host
+	// 防线。空 endpoint 不受影响——gateway 空值保留既有「未配置」fail-closed
+	// 语义（mobile_notification_provider_unconfigured），expo 空值回落公网默认
+	// endpoint；仅「配置了 URL 但指向 loopback/私有/保留主机」时 fail closed
+	// 为 Disabled。校验保持在装配层，provider 层维持 scheme-only，不破坏
+	// httptest e2e（mobile_push_isolation_test.go 直连 provider 构造器）。
+	officialBlocked := endpoint != "" && workbenchservice.DisallowedPushEndpointHost(endpoint) != nil
+	var official workbenchservice.NotificationProvider
+	switch {
+	case providerKind == "disabled" || providerKind == "none":
+		official = workbenchservice.NewDisabledNotificationProvider()
+	case officialBlocked:
+		// 与 APNs/FCM 装配分支同裁决：禁用主机 fail closed 为 Disabled
+		// （mobile_notification_provider_disabled），而非静默投递到内网地址。
+		official = workbenchservice.NewDisabledNotificationProvider()
+	case strings.EqualFold(providerKind, "expo"):
+		official = workbenchservice.NewPushNotificationProviderWithOptions(pushnotification.NewExpoProvider(endpoint, accessToken), resolveFor(repository.MobileAppIDOfficial), workbenchservice.PushPayloadPolicy{Blind: blind})
+	case providerKind == "" || strings.EqualFold(providerKind, "gateway") || strings.EqualFold(providerKind, "http"):
+		official = workbenchservice.NewHTTPNotificationProviderWithPolicy(endpoint, blind)
+	default:
+		// 未知模式 fail-closed：即使配置了 URL 也不投递（container.go:1114-1116 既有语义）。
+		official = workbenchservice.NewHTTPNotificationProviderWithPolicy("", false)
 	}
-	// The gateway is the safe default and intentionally receives only the
-	// scoped device identity. Unknown modes fail closed rather than silently
-	// selecting a different vendor.
-	return workbenchservice.NewHTTPNotificationProvider(endpoint)
+	enterpriseApp := strings.TrimSpace(os.Getenv("MOBILE_ENTERPRISE_APP_ID"))
+	if enterpriseApp == "" || enterpriseApp == repository.MobileAppIDOfficial || repository.ValidateMobileAppID(enterpriseApp) != nil {
+		// 未声明或非法的企业 App id：只有 official 通道（fail closed）。
+		return official
+	}
+	var enterprise workbenchservice.NotificationProvider = workbenchservice.NewDisabledNotificationProvider()
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("MOBILE_ENTERPRISE_PUSH_PROVIDER"))) {
+	case "apns":
+		endpoint := strings.TrimSpace(os.Getenv("MOBILE_APNS_ENDPOINT"))
+		if endpoint == "" {
+			endpoint = "https://api.push.apple.com/3/device"
+		}
+		// 主控裁决（Task 2 fix round 1）：装配层对 APNs/FCM endpoint 补 host
+		// 校验（拒绝 loopback/私有/保留，对齐移动端 disallowedDeploymentHost），
+		// provider 层保持 scheme-only。校验失败 fail closed 为 Disabled。
+		if workbenchservice.DisallowedPushEndpointHost(endpoint) == nil {
+			if source, err := pushnotification.NewApnsP8TokenSource(os.Getenv("MOBILE_APNS_KEY_PATH"), os.Getenv("MOBILE_APNS_KEY_ID"), os.Getenv("MOBILE_APNS_TEAM_ID")); err == nil {
+				enterprise = workbenchservice.NewPushNotificationProviderWithOptions(
+					pushnotification.NewApnsProvider(endpoint, os.Getenv("MOBILE_APNS_TOPIC"), source),
+					resolveFor(enterpriseApp), workbenchservice.PushPayloadPolicy{Blind: blind})
+			}
+		}
+	case "fcm":
+		endpoint := strings.TrimSpace(os.Getenv("MOBILE_FCM_ENDPOINT"))
+		if endpoint == "" {
+			endpoint = "https://fcm.googleapis.com"
+		}
+		// tokenURL 由凭据文件提供（装配不注入自定义 tokenURL）；endpoint 的
+		// host 校验与 apns 分支同裁决。最终修复批次（审查发现 3）：凭据文件
+		// token_uri 回落是生产唯一路径，与 gateway host 校验一并补齐——解析后
+		// 的交换 URL 指向 loopback/私有/保留主机时同样 fail closed 不装配。
+		if workbenchservice.DisallowedPushEndpointHost(endpoint) == nil {
+			if source, err := pushnotification.NewFcmServiceAccountTokenSource(os.Getenv("MOBILE_FCM_CREDENTIALS_PATH"), "", nil); err == nil && workbenchservice.DisallowedPushEndpointHost(source.TokenURL()) == nil {
+				enterprise = workbenchservice.NewPushNotificationProviderWithOptions(
+					pushnotification.NewFcmProvider(endpoint, os.Getenv("MOBILE_FCM_PROJECT_ID"), source),
+					resolveFor(enterpriseApp), workbenchservice.PushPayloadPolicy{Blind: blind})
+			}
+		}
+	}
+	return workbenchservice.NewAppRoutingNotificationProvider(official, map[string]workbenchservice.NotificationProvider{enterpriseApp: enterprise})
 }
 
 func newMobileNotificationDeliveryWorker(store *repository.NotificationStore, provider workbenchservice.NotificationProvider, devices *repository.MobileDeviceStore, health *repository.NotificationProviderStateStore) *workbenchservice.NotificationDeliveryWorker {

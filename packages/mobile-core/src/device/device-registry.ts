@@ -10,11 +10,13 @@ import type { ScopeLease } from '../runtime/types.ts';
  * - 单飞：同一 registry 上的注册/撤销串行提交，并发接管不交错 epoch；
  * - scope 围栏：每次提交前与两步之间检查 lease（切租户/换部署/登出即拒，迟到结果不落地）。
  * token 经 authorizedRequest 通道传输，从不进入返回记录、视图或错误文本。
+ * appId（T37 #67）：设备注册携带所属 App（official 缺省 / enterprise:<slug>），逐层透传到 wire。
  */
 
 export type DevicePlatform = 'ios' | 'android';
 
 export interface DeviceRegistrationRecord {
+  appId: string;
   deviceId: string;
   platform: string;
   environment: string;
@@ -25,9 +27,9 @@ export interface DeviceRegistrationRecord {
 }
 
 export interface DeviceRemote {
-  issueIntent(deviceId: string): Promise<{ registrationIntent: string; scopeGeneration: number }>;
-  register(input: { deviceId: string; token: string; platform: string; registrationIntent: string }): Promise<DeviceRegistrationRecord>;
-  revoke(input: { deviceId: string; revision?: number }): Promise<void>;
+  issueIntent(deviceId: string, appId?: string): Promise<{ registrationIntent: string; scopeGeneration: number }>;
+  register(input: { deviceId: string; token: string; platform: string; registrationIntent: string; appId?: string }): Promise<DeviceRegistrationRecord>;
+  revoke(input: { deviceId: string; revision?: number; appId?: string }): Promise<void>;
   list(): Promise<DeviceRegistrationRecord[]>;
 }
 
@@ -51,14 +53,20 @@ export class DeviceError extends Error {
 }
 
 export interface DeviceRegistry {
-  register(input: { deviceId: string; token: string; platform: DevicePlatform }): Promise<DeviceRegistrationRecord>;
-  revoke(input: { deviceId: string; revision?: number }): Promise<void>;
+  register(input: { deviceId: string; token: string; platform: DevicePlatform; appId?: string }): Promise<DeviceRegistrationRecord>;
+  revoke(input: { deviceId: string; revision?: number; appId?: string }): Promise<void>;
   list(): Promise<DeviceRegistrationRecord[]>;
 }
 
 const deviceIdMaxLength = 128;
 /** 对齐服务端 token 上限（internal/handler/mobile_device.go:195）。 */
 const tokenMaxLength = 4096;
+
+const enterpriseAppIdPattern = /^enterprise:[a-z0-9][a-z0-9-]{0,31}$/;
+/** 与服务端 repository.ValidateMobileAppID 同字符集；official 恒合法。 */
+export function isValidDeviceAppId(appId: string): boolean {
+  return appId === 'official' || enterpriseAppIdPattern.test(appId);
+}
 
 function wireStatus(error: unknown): number | undefined {
   if (typeof error !== 'object' || error === null) return undefined;
@@ -93,10 +101,11 @@ export function createDeviceRegistry(ports: DevicePorts): DeviceRegistry {
     deviceId: string,
     token: string,
     platform: string,
+    appId: string,
   ): Promise<DeviceRegistrationRecord> => {
-    const intent = await ports.remote.issueIntent(deviceId);
+    const intent = await ports.remote.issueIntent(deviceId, appId);
     if (!leaseActive(lease)) throw new DeviceError('DEVICE_SCOPE_CHANGED');
-    const record = assertSoundRecord(await ports.remote.register({ deviceId, token, platform, registrationIntent: intent.registrationIntent }));
+    const record = assertSoundRecord(await ports.remote.register({ deviceId, token, platform, registrationIntent: intent.registrationIntent, appId }));
     if (!leaseActive(lease)) throw new DeviceError('DEVICE_SCOPE_CHANGED'); // 迟到成功不越 scope 原样返回（B3-F50）
     return record;
   };
@@ -105,20 +114,22 @@ export function createDeviceRegistry(ports: DevicePorts): DeviceRegistry {
       const deviceId = typeof input.deviceId === 'string' ? input.deviceId.trim() : '';
       const token = typeof input.token === 'string' ? input.token.trim() : '';
       const platform = input.platform;
+      const appId = input.appId === undefined || input.appId.trim() === '' ? 'official' : input.appId.trim();
       if (deviceId === '' || deviceId.length > deviceIdMaxLength) return Promise.reject(new DeviceError('DEVICE_INVALID_INPUT'));
       if (token === '' || token.length > tokenMaxLength) return Promise.reject(new DeviceError('DEVICE_INVALID_INPUT'));
       if (platform !== 'ios' && platform !== 'android') return Promise.reject(new DeviceError('DEVICE_INVALID_INPUT'));
+      if (!isValidDeviceAppId(appId)) return Promise.reject(new DeviceError('DEVICE_INVALID_INPUT'));
       return serialized(async () => {
         const lease = requireLease();
         try {
-          return await attemptRegister(lease, deviceId, token, platform);
+          return await attemptRegister(lease, deviceId, token, platform, appId);
         } catch (error) {
           if (error instanceof DeviceError) throw error;
           if (wireStatus(error) !== 409) throw new DeviceError('DEVICE_BACKEND', { cause: error });
           if (!leaseActive(lease)) throw new DeviceError('DEVICE_SCOPE_CHANGED');
           try {
             // intent 过期/并发（409）：恰好重取一次新 intent 再试（Review Focus #4：重试有界）
-            return await attemptRegister(lease, deviceId, token, platform);
+            return await attemptRegister(lease, deviceId, token, platform, appId);
           } catch (retryError) {
             if (retryError instanceof DeviceError) throw retryError;
             if (wireStatus(retryError) === 409) throw new DeviceError('DEVICE_CONFLICT', { cause: retryError });
@@ -129,6 +140,7 @@ export function createDeviceRegistry(ports: DevicePorts): DeviceRegistry {
     },
     revoke(input) {
       const deviceId = typeof input.deviceId === 'string' ? input.deviceId.trim() : '';
+      const appId = input.appId;
       if (deviceId === '' || deviceId.length > deviceIdMaxLength) return Promise.reject(new DeviceError('DEVICE_INVALID_INPUT'));
       if (input.revision !== undefined && (!Number.isSafeInteger(input.revision) || input.revision <= 0)) {
         return Promise.reject(new DeviceError('DEVICE_INVALID_INPUT'));
@@ -136,7 +148,7 @@ export function createDeviceRegistry(ports: DevicePorts): DeviceRegistry {
       return serialized(async (): Promise<void> => {
         requireLease();
         try {
-          await ports.remote.revoke({ deviceId, ...(input.revision === undefined ? {} : { revision: input.revision }) });
+          await ports.remote.revoke({ deviceId, ...(input.revision === undefined ? {} : { revision: input.revision }), ...(appId === undefined ? {} : { appId }) });
         } catch (error) {
           if (error instanceof DeviceError) throw error;
           if (wireStatus(error) === 409) throw new DeviceError('DEVICE_CONFLICT', { cause: error }); // B3-F5：与 register 的冲突路径对称

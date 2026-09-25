@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"os"
 	"strconv"
@@ -30,26 +31,48 @@ type MobileTokenSealer func(token string) (string, error)
 // the same tenant/owner-scoped contract without bypassing handler checks.
 type MobileDeviceStore interface {
 	Bind(context.Context, repository.DeviceRegistration) error
-	CurrentScopeGeneration(context.Context, uint64, string, string) (int64, error)
-	RevokeForTenant(context.Context, uint64, string, string, int64) error
-	GetActiveForTenant(context.Context, uint64, string, string) (repository.DeviceRegistration, error)
+	CurrentScopeGenerationForApp(context.Context, uint64, string, string, string) (int64, error)
+	RevokeForApp(context.Context, uint64, string, string, string, int64) error
+	GetActiveForApp(context.Context, uint64, string, string, string) (repository.DeviceRegistration, error)
 	ListActiveForTenant(context.Context, uint64, string, string) ([]repository.DeviceRegistration, error)
-	MarkPresence(context.Context, uint64, string, string, int64) error
-	GetPresence(context.Context, uint64, string, string, int64) (repository.DeviceRegistration, error)
-	SetPresence(context.Context, uint64, string, string, int64) (repository.DeviceRegistration, error)
-	DeletePresence(context.Context, uint64, string, string, int64) error
+	MarkPresenceForApp(context.Context, uint64, string, string, string, int64) error
+	GetPresenceForApp(context.Context, uint64, string, string, string, int64) (repository.DeviceRegistration, error)
+	SetPresenceForApp(context.Context, uint64, string, string, string, int64) (repository.DeviceRegistration, error)
+	DeletePresenceForApp(context.Context, uint64, string, string, string, int64) error
 }
 
 type MobileDeviceHandler struct {
 	store       MobileDeviceStore
 	environment string
 	seal        MobileTokenSealer
+	appPolicy   MobileAppPolicy
+}
+
+// MobileAppPolicy is the deployment app allowlist (story 67): the official app
+// is always registrable; exactly one enterprise app id may be declared. A
+// zero value admits the official app only.
+type MobileAppPolicy struct{ EnterpriseAppID string }
+
+func (h *MobileDeviceHandler) WithMobileAppPolicy(policy MobileAppPolicy) *MobileDeviceHandler {
+	h.appPolicy = policy
+	return h
+}
+
+func (h *MobileDeviceHandler) appAllowed(appID string) bool {
+	if appID == repository.MobileAppIDOfficial {
+		return true
+	}
+	if repository.ValidateMobileAppID(appID) != nil {
+		return false
+	}
+	return appID == strings.TrimSpace(h.appPolicy.EnterpriseAppID)
 }
 
 type mobileRegistrationIntent struct {
 	Tenant uint64 `json:"tenant"`
 	Owner  string `json:"owner"`
 	Device string `json:"device"`
+	AppID  string `json:"app"`
 	Epoch  int64  `json:"epoch"`
 	Nonce  string `json:"nonce"`
 	Expiry int64  `json:"expiry"`
@@ -62,6 +85,9 @@ func encodeRegistrationIntent(in mobileRegistrationIntent) (string, error) {
 	if len(key) < 16 {
 		return "", errors.New("mobile registration intent signing is not configured")
 	}
+	if in.AppID == "" {
+		in.AppID = repository.MobileAppIDOfficial
+	}
 	raw, err := json.Marshal(in)
 	if err != nil {
 		return "", err
@@ -71,7 +97,7 @@ func encodeRegistrationIntent(in mobileRegistrationIntent) (string, error) {
 	return base64.RawURLEncoding.EncodeToString(raw) + "." + hex.EncodeToString(mac.Sum(nil)), nil
 }
 
-func verifyRegistrationIntent(value string, tenant uint64, owner, device string, current int64) (int64, error) {
+func verifyRegistrationIntent(value string, tenant uint64, owner, device, appID string, current int64) (int64, error) {
 	key := registrationIntentKey()
 	if len(key) < 16 {
 		return 0, repository.ErrMobileDeviceInvalid
@@ -94,7 +120,7 @@ func verifyRegistrationIntent(value string, tenant uint64, owner, device string,
 		return 0, repository.ErrMobileDeviceRevision
 	}
 	var in mobileRegistrationIntent
-	if json.Unmarshal(raw, &in) != nil || in.Tenant != tenant || in.Owner != owner || in.Device != device || in.Epoch != current+1 || in.Expiry < time.Now().Unix() || in.Nonce == "" {
+	if json.Unmarshal(raw, &in) != nil || in.Tenant != tenant || in.Owner != owner || in.Device != device || in.AppID != appID || in.Epoch != current+1 || in.Expiry < time.Now().Unix() || in.Nonce == "" {
 		return 0, repository.ErrMobileDeviceRevision
 	}
 	return in.Epoch, nil
@@ -117,6 +143,7 @@ func NewMobileDeviceHandlerWithSealer(store MobileDeviceStore, environment strin
 type mobileDeviceRequest struct {
 	Token              string `json:"token"`
 	Platform           string `json:"platform"`
+	AppID              string `json:"app_id,omitempty"`
 	SpaceID            string `json:"space_id,omitempty"`
 	Revision           int64  `json:"revision,omitempty"`
 	ScopeGeneration    int64  `json:"scope_generation,omitempty"`
@@ -141,7 +168,19 @@ func (h *MobileDeviceHandler) IssueIntent(c *gin.Context) {
 		c.AbortWithStatus(http.StatusBadRequest)
 		return
 	}
-	current, err := h.store.CurrentScopeGeneration(c.Request.Context(), tenant, owner, device)
+	var body struct {
+		AppID string `json:"app_id"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil && !errors.Is(err, io.EOF) {
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+	appID := repository.NormalizeMobileAppID(body.AppID)
+	if !h.appAllowed(appID) {
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+	current, err := h.store.CurrentScopeGenerationForApp(c.Request.Context(), tenant, owner, device, appID)
 	if err != nil {
 		h.writeStoreError(c, err)
 		return
@@ -151,12 +190,12 @@ func (h *MobileDeviceHandler) IssueIntent(c *gin.Context) {
 		c.AbortWithStatus(http.StatusServiceUnavailable)
 		return
 	}
-	intent, err := encodeRegistrationIntent(mobileRegistrationIntent{Tenant: tenant, Owner: owner, Device: device, Epoch: current + 1, Nonce: base64.RawURLEncoding.EncodeToString(nonce), Expiry: time.Now().Add(5 * time.Minute).Unix()})
+	intent, err := encodeRegistrationIntent(mobileRegistrationIntent{Tenant: tenant, Owner: owner, Device: device, AppID: appID, Epoch: current + 1, Nonce: base64.RawURLEncoding.EncodeToString(nonce), Expiry: time.Now().Add(5 * time.Minute).Unix()})
 	if err != nil {
 		c.AbortWithStatus(http.StatusServiceUnavailable)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"registration_intent": intent, "scope_generation": current + 1}})
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"registration_intent": intent, "scope_generation": current + 1, "app_id": appID}})
 }
 
 func mobileCaller(c *gin.Context) (uint64, string, bool) {
@@ -192,6 +231,11 @@ func (h *MobileDeviceHandler) Register(c *gin.Context) {
 	}
 	req.Token = strings.TrimSpace(req.Token)
 	req.Platform = strings.ToLower(strings.TrimSpace(req.Platform))
+	req.AppID = repository.NormalizeMobileAppID(req.AppID)
+	if !h.appAllowed(req.AppID) {
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
 	if req.Token == "" || len(req.Token) > 4096 || (req.Platform != "ios" && req.Platform != "android") || req.Revision < 0 || req.ScopeGeneration < 0 {
 		c.AbortWithStatus(http.StatusBadRequest)
 		return
@@ -200,12 +244,12 @@ func (h *MobileDeviceHandler) Register(c *gin.Context) {
 		c.AbortWithStatus(http.StatusBadRequest)
 		return
 	}
-	current, err := h.store.CurrentScopeGeneration(c.Request.Context(), tenant, owner, strings.TrimSpace(c.Param("id")))
+	current, err := h.store.CurrentScopeGenerationForApp(c.Request.Context(), tenant, owner, strings.TrimSpace(c.Param("id")), req.AppID)
 	if err != nil {
 		h.writeStoreError(c, err)
 		return
 	}
-	epoch, err := verifyRegistrationIntent(strings.TrimSpace(req.RegistrationIntent), tenant, owner, strings.TrimSpace(c.Param("id")), current)
+	epoch, err := verifyRegistrationIntent(strings.TrimSpace(req.RegistrationIntent), tenant, owner, strings.TrimSpace(c.Param("id")), req.AppID, current)
 	if err != nil {
 		h.writeStoreError(c, err)
 		return
@@ -217,7 +261,7 @@ func (h *MobileDeviceHandler) Register(c *gin.Context) {
 	}
 	row := repository.DeviceRegistration{
 		TenantID: tenant, SpaceID: strings.TrimSpace(req.SpaceID), DeviceID: strings.TrimSpace(c.Param("id")),
-		OwnerID: owner, Environment: h.environment, Platform: req.Platform,
+		OwnerID: owner, Environment: h.environment, AppID: req.AppID, Platform: req.Platform,
 		TokenCiphertext: ciphertext, TokenHash: repository.DeviceTokenHash(req.Token),
 		Revision: req.Revision, ScopeGeneration: epoch,
 	}
@@ -229,14 +273,14 @@ func (h *MobileDeviceHandler) Register(c *gin.Context) {
 		h.writeStoreError(c, err)
 		return
 	}
-	active, err := h.store.GetActiveForTenant(c.Request.Context(), tenant, owner, row.DeviceID)
+	active, err := h.store.GetActiveForApp(c.Request.Context(), tenant, owner, row.DeviceID, req.AppID)
 	if err != nil {
 		h.writeStoreError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{
 		"device_id": active.DeviceID, "environment": active.Environment, "platform": active.Platform,
-		"scope_generation": active.ScopeGeneration, "revision": active.Revision,
+		"scope_generation": active.ScopeGeneration, "revision": active.Revision, "app_id": active.AppID,
 	}})
 }
 
@@ -248,6 +292,11 @@ func (h *MobileDeviceHandler) Revoke(c *gin.Context) {
 	}
 	if h == nil || h.store == nil {
 		c.AbortWithStatus(http.StatusServiceUnavailable)
+		return
+	}
+	appID := repository.NormalizeMobileAppID(c.Query("app_id"))
+	if !h.appAllowed(appID) {
+		c.AbortWithStatus(http.StatusBadRequest)
 		return
 	}
 	revision := int64(0)
@@ -267,11 +316,11 @@ func (h *MobileDeviceHandler) Revoke(c *gin.Context) {
 		}
 		revision = parsed
 	}
-	if err := h.store.RevokeForTenant(c.Request.Context(), tenant, owner, strings.TrimSpace(c.Param("id")), revision); err != nil {
+	if err := h.store.RevokeForApp(c.Request.Context(), tenant, owner, strings.TrimSpace(c.Param("id")), appID, revision); err != nil {
 		h.writeStoreError(c, err)
 		return
 	}
-	if epoch, err := h.store.CurrentScopeGeneration(c.Request.Context(), tenant, owner, strings.TrimSpace(c.Param("id"))); err == nil {
+	if epoch, err := h.store.CurrentScopeGenerationForApp(c.Request.Context(), tenant, owner, strings.TrimSpace(c.Param("id")), appID); err == nil {
 		c.Header("X-Mobile-Scope-Generation", strconv.FormatInt(epoch, 10))
 	}
 	c.Status(http.StatusNoContent)
@@ -283,6 +332,11 @@ func (h *MobileDeviceHandler) Presence(c *gin.Context) {
 		c.AbortWithStatus(http.StatusUnauthorized)
 		return
 	}
+	appID := repository.NormalizeMobileAppID(c.Query("app_id"))
+	if !h.appAllowed(appID) {
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
 	revision := int64(0)
 	if raw := strings.TrimSpace(c.Query("revision")); raw != "" {
 		parsed, err := strconv.ParseInt(raw, 10, 64)
@@ -292,7 +346,7 @@ func (h *MobileDeviceHandler) Presence(c *gin.Context) {
 		}
 		revision = parsed
 	}
-	if err := h.store.MarkPresence(c.Request.Context(), tenant, owner, strings.TrimSpace(c.Param("id")), revision); err != nil {
+	if err := h.store.MarkPresenceForApp(c.Request.Context(), tenant, owner, strings.TrimSpace(c.Param("id")), appID, revision); err != nil {
 		h.writeStoreError(c, err)
 		return
 	}
@@ -315,6 +369,7 @@ func presenceJSON(c *gin.Context, row repository.DeviceRegistration) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{
 		"device_id": row.DeviceID, "environment": row.Environment, "platform": row.Platform,
 		"scope_generation": row.ScopeGeneration, "revision": row.Revision, "last_seen_at": row.LastSeenAt,
+		"app_id": row.AppID,
 	}})
 }
 
@@ -326,12 +381,17 @@ func (h *MobileDeviceHandler) GetPresence(c *gin.Context) {
 		c.AbortWithStatus(http.StatusUnauthorized)
 		return
 	}
+	appID := repository.NormalizeMobileAppID(c.Query("app_id"))
+	if !h.appAllowed(appID) {
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
 	revision, valid := parsePresenceRevision(c)
 	if !valid {
 		c.AbortWithStatus(http.StatusBadRequest)
 		return
 	}
-	row, err := h.store.GetPresence(c.Request.Context(), tenant, owner, strings.TrimSpace(c.Param("id")), revision)
+	row, err := h.store.GetPresenceForApp(c.Request.Context(), tenant, owner, strings.TrimSpace(c.Param("id")), appID, revision)
 	if err != nil {
 		h.writeStoreError(c, err)
 		return
@@ -345,12 +405,17 @@ func (h *MobileDeviceHandler) PutPresence(c *gin.Context) {
 		c.AbortWithStatus(http.StatusUnauthorized)
 		return
 	}
+	appID := repository.NormalizeMobileAppID(c.Query("app_id"))
+	if !h.appAllowed(appID) {
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
 	revision, valid := parsePresenceRevision(c)
 	if !valid {
 		c.AbortWithStatus(http.StatusBadRequest)
 		return
 	}
-	row, err := h.store.SetPresence(c.Request.Context(), tenant, owner, strings.TrimSpace(c.Param("id")), revision)
+	row, err := h.store.SetPresenceForApp(c.Request.Context(), tenant, owner, strings.TrimSpace(c.Param("id")), appID, revision)
 	if err != nil {
 		h.writeStoreError(c, err)
 		return
@@ -364,12 +429,17 @@ func (h *MobileDeviceHandler) DeletePresence(c *gin.Context) {
 		c.AbortWithStatus(http.StatusUnauthorized)
 		return
 	}
+	appID := repository.NormalizeMobileAppID(c.Query("app_id"))
+	if !h.appAllowed(appID) {
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
 	revision, valid := parsePresenceRevision(c)
 	if !valid {
 		c.AbortWithStatus(http.StatusBadRequest)
 		return
 	}
-	if err := h.store.DeletePresence(c.Request.Context(), tenant, owner, strings.TrimSpace(c.Param("id")), revision); err != nil {
+	if err := h.store.DeletePresenceForApp(c.Request.Context(), tenant, owner, strings.TrimSpace(c.Param("id")), appID, revision); err != nil {
 		h.writeStoreError(c, err)
 		return
 	}

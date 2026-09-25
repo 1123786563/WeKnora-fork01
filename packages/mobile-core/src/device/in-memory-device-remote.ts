@@ -27,39 +27,44 @@ export function createScenarioDeviceRemote(): ScenarioDeviceRemote {
   let epoch = 0;
   let conflicts = 0;
   let intents = 0;
+  // 同 device 双 App 互不覆盖：行键按 app 维度隔离（appId 缺省归 official）。
+  const rowKey = (appId: string | undefined, deviceId: string): string => `${appId ?? 'official'}:${deviceId}`;
   return {
     remote: {
-      async issueIntent(deviceId) {
+      async issueIntent(deviceId, appId) {
         intents += 1;
         epoch += 1;
-        return { registrationIntent: `intent:${deviceId}:${epoch}`, scopeGeneration: epoch };
+        return { registrationIntent: `intent:${appId ?? 'official'}:${deviceId}:${epoch}`, scopeGeneration: epoch };
       },
       async register(input) {
         if (conflicts > 0) {
           conflicts -= 1;
           throw wireError(409, 'registration intent is stale');
         }
-        if (input.registrationIntent !== `intent:${input.deviceId}:${epoch}`) {
+        if (input.registrationIntent !== `intent:${input.appId ?? 'official'}:${input.deviceId}:${epoch}`) {
           throw wireError(409, 'registration intent is stale');
         }
-        const existing = rows.get(input.deviceId);
+        const key = rowKey(input.appId, input.deviceId);
+        const existing = rows.get(key);
         const record: DeviceRegistrationRecord = {
+          appId: input.appId ?? 'official',
           deviceId: input.deviceId,
           platform: input.platform,
           environment: 'development',
           revision: (existing?.revision ?? 0) + 1,
           scopeGeneration: epoch,
         };
-        rows.set(input.deviceId, record);
+        rows.set(key, record);
         return { ...record };
       },
       async revoke(input) {
-        const row = rows.get(input.deviceId);
+        const key = rowKey(input.appId, input.deviceId);
+        const row = rows.get(key);
         if (row === undefined) throw wireError(404, 'mobile device not found');
         if (input.revision !== undefined && input.revision !== row.revision) {
           throw wireError(409, 'mobile device revision conflict');
         }
-        rows.delete(input.deviceId);
+        rows.delete(key);
       },
       async list() {
         return [...rows.values()].map((row) => ({ ...row }));

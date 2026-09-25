@@ -19,6 +19,47 @@ var (
 	ErrMobileDeviceInvalid  = errors.New("invalid mobile device registration")
 )
 
+// MobileAppIDOfficial is the standard client app identity. Enterprise
+// self-built builds register under "enterprise:<slug>" declared by the
+// deployment (MOBILE_ENTERPRISE_APP_ID); registrations under any other app
+// id are rejected at the HTTP boundary.
+const MobileAppIDOfficial = "official"
+
+var ErrMobileDeviceInvalidApp = errors.New("invalid mobile app id")
+
+// ValidateMobileAppID accepts exactly "official" or "enterprise:<slug>"
+// where slug is 1-32 chars of [a-z0-9-] and must not start with '-'.
+func ValidateMobileAppID(appID string) error {
+	if appID == MobileAppIDOfficial {
+		return nil
+	}
+	slug, ok := strings.CutPrefix(appID, "enterprise:")
+	if !ok || len(slug) < 1 || len(slug) > 32 {
+		return ErrMobileDeviceInvalidApp
+	}
+	for i := 0; i < len(slug); i++ {
+		c := slug[i]
+		if c >= 'a' && c <= 'z' || c >= '0' && c <= '9' {
+			continue
+		}
+		if c == '-' && i > 0 {
+			continue
+		}
+		return ErrMobileDeviceInvalidApp
+	}
+	return nil
+}
+
+// NormalizeMobileAppID maps absent input to the official app. It does NOT
+// make invalid values valid: callers still run ValidateMobileAppID.
+func NormalizeMobileAppID(appID string) string {
+	trimmed := strings.TrimSpace(appID)
+	if trimmed == "" {
+		return MobileAppIDOfficial
+	}
+	return trimmed
+}
+
 // DeviceTokenHash returns the non-reversible lookup key for a push token. The
 // token itself is sealed by the HTTP boundary before it reaches this store.
 func DeviceTokenHash(token string) string {
@@ -36,6 +77,7 @@ type DeviceRegistration struct {
 	DeviceID        string     `json:"device_id"`
 	OwnerID         string     `json:"owner_id"`
 	Environment     string     `json:"environment"`
+	AppID           string     `json:"app_id"`
 	Platform        string     `json:"platform"`
 	TokenCiphertext string     `json:"-"`
 	TokenHash       string     `json:"-"`
@@ -50,6 +92,7 @@ type mobileDeviceRow struct {
 	OwnerID         string     `gorm:"primaryKey;type:varchar(512)"`
 	DeviceID        string     `gorm:"primaryKey;type:varchar(128)"`
 	Environment     string     `gorm:"primaryKey;type:varchar(32)"`
+	AppID           string     `gorm:"primaryKey;type:varchar(64)"`
 	SpaceID         string     `gorm:"type:varchar(128);not null;default:''"`
 	Platform        string     `gorm:"type:varchar(16);not null"`
 	TokenCiphertext string     `gorm:"type:text;not null"`
@@ -67,7 +110,7 @@ func (mobileDeviceRow) TableName() string { return "mobile_devices" }
 func (r mobileDeviceRow) registration() DeviceRegistration {
 	return DeviceRegistration{
 		TenantID: r.TenantID, SpaceID: r.SpaceID, DeviceID: r.DeviceID,
-		OwnerID: r.OwnerID, Environment: r.Environment, Platform: r.Platform,
+		OwnerID: r.OwnerID, Environment: r.Environment, AppID: r.AppID, Platform: r.Platform,
 		TokenCiphertext: r.TokenCiphertext, TokenHash: r.TokenHash,
 		Revision: r.Revision, ScopeGeneration: r.ScopeGeneration,
 		RevokedAt: r.RevokedAt, LastSeenAt: r.LastSeenAt,
@@ -87,11 +130,21 @@ type MobileDeviceStore struct {
 // caller must obtain a fresh server-signed registration intent before it can
 // bind that identity again.
 func (s *MobileDeviceStore) CurrentScopeGeneration(ctx context.Context, tenant uint64, owner, device string) (int64, error) {
+	return s.CurrentScopeGenerationForApp(ctx, tenant, owner, device, MobileAppIDOfficial)
+}
+
+// CurrentScopeGenerationForApp is the app-scoped variant of
+// CurrentScopeGeneration: official and enterprise registrations of the same
+// physical device keep independent epochs.
+func (s *MobileDeviceStore) CurrentScopeGenerationForApp(ctx context.Context, tenant uint64, owner, device, appID string) (int64, error) {
 	if s == nil || s.db == nil || tenant == 0 || strings.TrimSpace(owner) == "" || strings.TrimSpace(device) == "" {
 		return 0, ErrMobileDeviceInvalid
 	}
+	if err := ValidateMobileAppID(NormalizeMobileAppID(appID)); err != nil {
+		return 0, err
+	}
 	var row mobileDeviceRow
-	err := s.scoped(s.db.WithContext(ctx), tenant, owner, device).Order("scope_generation DESC").Take(&row).Error
+	err := s.scoped(s.db.WithContext(ctx), tenant, owner, device, appID).Order("scope_generation DESC").Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return 0, nil
 	}
@@ -112,14 +165,17 @@ func (s *MobileDeviceStore) validate(in DeviceRegistration) error {
 		strings.TrimSpace(in.Platform) == "" || in.Revision < 0 || in.ScopeGeneration < 0 {
 		return ErrMobileDeviceInvalid
 	}
+	if err := ValidateMobileAppID(NormalizeMobileAppID(in.AppID)); err != nil {
+		return err
+	}
 	if in.Platform != "ios" && in.Platform != "android" {
 		return ErrMobileDeviceInvalid
 	}
 	return nil
 }
 
-func (s *MobileDeviceStore) scoped(db *gorm.DB, tenantID uint64, ownerID, deviceID string) *gorm.DB {
-	q := db.Where("environment = ? AND owner_id = ? AND device_id = ?", s.environment, ownerID, deviceID)
+func (s *MobileDeviceStore) scoped(db *gorm.DB, tenantID uint64, ownerID, deviceID, appID string) *gorm.DB {
+	q := db.Where("environment = ? AND owner_id = ? AND device_id = ? AND app_id = ?", s.environment, ownerID, deviceID, NormalizeMobileAppID(appID))
 	if tenantID != 0 {
 		q = q.Where("tenant_id = ?", tenantID)
 	}
@@ -136,6 +192,7 @@ func (s *MobileDeviceStore) Bind(ctx context.Context, in DeviceRegistration) err
 		// plaintext token so rotations remain exclusive across ciphertexts.
 		in.TokenHash = DeviceTokenHash(in.TokenCiphertext)
 	}
+	in.AppID = NormalizeMobileAppID(in.AppID)
 	if err := s.validate(in); err != nil {
 		return err
 	}
@@ -157,7 +214,7 @@ func (s *MobileDeviceStore) Bind(ctx context.Context, in DeviceRegistration) err
 func (s *MobileDeviceStore) bindOnce(ctx context.Context, in DeviceRegistration) error {
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var existing mobileDeviceRow
-		err := s.scoped(tx, in.TenantID, in.OwnerID, in.DeviceID).
+		err := s.scoped(tx, in.TenantID, in.OwnerID, in.DeviceID, in.AppID).
 			Clauses(clause.Locking{Strength: "UPDATE"}).Take(&existing).Error
 		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 			return err
@@ -196,7 +253,7 @@ func (s *MobileDeviceStore) bindOnce(ctx context.Context, in DeviceRegistration)
 		// Token ownership is exclusive within an app environment. This query is
 		// intentionally by hash only; plaintext tokens never enter SQL or logs.
 		var sameToken []mobileDeviceRow
-		if err := tx.Where("environment = ? AND token_hash = ? AND revoked_at IS NULL", s.environment, in.TokenHash).
+		if err := tx.Where("environment = ? AND app_id = ? AND token_hash = ? AND revoked_at IS NULL", s.environment, in.AppID, in.TokenHash).
 			Clauses(clause.Locking{Strength: "UPDATE"}).Find(&sameToken).Error; err != nil {
 			return err
 		}
@@ -205,8 +262,8 @@ func (s *MobileDeviceStore) bindOnce(ctx context.Context, in DeviceRegistration)
 			if row.TenantID == in.TenantID && row.OwnerID == in.OwnerID && row.DeviceID == in.DeviceID {
 				continue
 			}
-			if err := tx.Model(&mobileDeviceRow{}).Where("tenant_id = ? AND owner_id = ? AND device_id = ? AND environment = ? AND revision = ? AND revoked_at IS NULL",
-				row.TenantID, row.OwnerID, row.DeviceID, s.environment, row.Revision).
+			if err := tx.Model(&mobileDeviceRow{}).Where("tenant_id = ? AND owner_id = ? AND device_id = ? AND environment = ? AND app_id = ? AND revision = ? AND revoked_at IS NULL",
+				row.TenantID, row.OwnerID, row.DeviceID, s.environment, row.AppID, row.Revision).
 				Updates(map[string]any{"revoked_at": now, "revision": row.Revision + 1, "scope_generation": row.ScopeGeneration + 1, "updated_at": now}).Error; err != nil {
 				return err
 			}
@@ -217,8 +274,8 @@ func (s *MobileDeviceStore) bindOnce(ctx context.Context, in DeviceRegistration)
 			if existing.Revision == 0 {
 				next = 1
 			}
-			return tx.Model(&mobileDeviceRow{}).Where("tenant_id = ? AND owner_id = ? AND device_id = ? AND environment = ? AND revision = ?",
-				existing.TenantID, existing.OwnerID, existing.DeviceID, existing.Environment, existing.Revision).
+			return tx.Model(&mobileDeviceRow{}).Where("tenant_id = ? AND owner_id = ? AND device_id = ? AND environment = ? AND app_id = ? AND revision = ?",
+				existing.TenantID, existing.OwnerID, existing.DeviceID, existing.Environment, existing.AppID, existing.Revision).
 				Updates(map[string]any{
 					"space_id": in.SpaceID, "platform": in.Platform, "token_ciphertext": in.TokenCiphertext,
 					"token_hash": in.TokenHash, "revision": next, "scope_generation": in.ScopeGeneration,
@@ -237,7 +294,7 @@ func (s *MobileDeviceStore) bindOnce(ctx context.Context, in DeviceRegistration)
 			revision = 1
 		}
 		row := mobileDeviceRow{TenantID: in.TenantID, OwnerID: in.OwnerID, DeviceID: in.DeviceID,
-			Environment: s.environment, SpaceID: in.SpaceID, Platform: in.Platform,
+			Environment: s.environment, AppID: in.AppID, SpaceID: in.SpaceID, Platform: in.Platform,
 			TokenCiphertext: in.TokenCiphertext, TokenHash: in.TokenHash, Revision: revision,
 			ScopeGeneration: in.ScopeGeneration, CreatedAt: now, UpdatedAt: now}
 		return tx.Create(&row).Error
@@ -256,12 +313,26 @@ func (s *MobileDeviceStore) RevokeForTenant(ctx context.Context, tenant uint64, 
 }
 
 func (s *MobileDeviceStore) revoke(ctx context.Context, tenant uint64, owner, device string, revision int64) error {
+	return s.revokeForApp(ctx, tenant, owner, device, MobileAppIDOfficial, revision)
+}
+
+// RevokeForApp revokes only the registration bound to one app id: logging out
+// of the official app must not invalidate an enterprise binding (or vice
+// versa) even when both share the same physical device id.
+func (s *MobileDeviceStore) RevokeForApp(ctx context.Context, tenant uint64, owner, device, appID string, revision int64) error {
+	return s.revokeForApp(ctx, tenant, owner, device, appID, revision)
+}
+
+func (s *MobileDeviceStore) revokeForApp(ctx context.Context, tenant uint64, owner, device, appID string, revision int64) error {
 	if s == nil || s.db == nil || s.environment == "" || strings.TrimSpace(owner) == "" || strings.TrimSpace(device) == "" {
 		return ErrMobileDeviceInvalid
 	}
+	if err := ValidateMobileAppID(NormalizeMobileAppID(appID)); err != nil {
+		return err
+	}
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var row mobileDeviceRow
-		q := s.scoped(tx, tenant, owner, device).Clauses(clause.Locking{Strength: "UPDATE"})
+		q := s.scoped(tx, tenant, owner, device, appID).Clauses(clause.Locking{Strength: "UPDATE"})
 		if err := q.Take(&row).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return ErrMobileDeviceNotFound
@@ -278,7 +349,7 @@ func (s *MobileDeviceStore) revoke(ctx context.Context, tenant uint64, owner, de
 			return ErrMobileDeviceRevision
 		}
 		now := time.Now().UTC()
-		if updated := s.scoped(tx.Model(&mobileDeviceRow{}), tenant, owner, device).Where("revision = ? AND revoked_at IS NULL", row.Revision).
+		if updated := s.scoped(tx.Model(&mobileDeviceRow{}), tenant, owner, device, appID).Where("revision = ? AND revoked_at IS NULL", row.Revision).
 			Updates(map[string]any{"revoked_at": now, "revision": row.Revision + 1, "scope_generation": row.ScopeGeneration + 1, "updated_at": now}); updated.Error != nil {
 			return updated.Error
 		} else if updated.RowsAffected != 1 {
@@ -303,11 +374,18 @@ func (s *MobileDeviceStore) ListActiveForTenant(ctx context.Context, tenant uint
 }
 
 func (s *MobileDeviceStore) GetActiveForTenant(ctx context.Context, tenant uint64, owner, device string) (DeviceRegistration, error) {
+	return s.GetActiveForApp(ctx, tenant, owner, device, MobileAppIDOfficial)
+}
+
+func (s *MobileDeviceStore) GetActiveForApp(ctx context.Context, tenant uint64, owner, device, appID string) (DeviceRegistration, error) {
 	if tenant == 0 || strings.TrimSpace(owner) == "" || strings.TrimSpace(device) == "" {
 		return DeviceRegistration{}, ErrMobileDeviceInvalid
 	}
+	if err := ValidateMobileAppID(NormalizeMobileAppID(appID)); err != nil {
+		return DeviceRegistration{}, err
+	}
 	var row mobileDeviceRow
-	err := s.scoped(s.db.WithContext(ctx), tenant, owner, device).Where("revoked_at IS NULL").Take(&row).Error
+	err := s.scoped(s.db.WithContext(ctx), tenant, owner, device, appID).Where("revoked_at IS NULL").Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return DeviceRegistration{}, ErrMobileDeviceNotFound
 	}
@@ -338,7 +416,9 @@ func (s *MobileDeviceStore) list(ctx context.Context, tenant uint64, owner strin
 
 // RevokeBeforeScopeGeneration is used on account/space switches. It advances
 // every older active binding atomically, so delayed token-refresh requests
-// cannot resurrect a previous authenticated scope.
+// cannot resurrect a previous authenticated scope. The predicate deliberately
+// has no app_id filter: the scope epoch belongs to the owner, so switching
+// accounts/spaces revokes that owner's devices across every app at once.
 func (s *MobileDeviceStore) RevokeBeforeScopeGeneration(ctx context.Context, tenant uint64, owner string, generation int64) error {
 	if tenant == 0 || strings.TrimSpace(owner) == "" || generation < 0 {
 		return ErrMobileDeviceInvalid
@@ -367,10 +447,18 @@ func (s *MobileDeviceStore) RevokeBeforeScopeGeneration(ctx context.Context, ten
 }
 
 func (s *MobileDeviceStore) MarkPresence(ctx context.Context, tenant uint64, owner, device string, revision int64) error {
+	return s.MarkPresenceForApp(ctx, tenant, owner, device, MobileAppIDOfficial, revision)
+}
+
+func (s *MobileDeviceStore) MarkPresenceForApp(ctx context.Context, tenant uint64, owner, device, appID string, revision int64) error {
 	if tenant == 0 || strings.TrimSpace(owner) == "" || strings.TrimSpace(device) == "" {
 		return ErrMobileDeviceInvalid
 	}
-	q := s.db.WithContext(ctx).Table("mobile_devices").Where("tenant_id = ? AND environment = ? AND owner_id = ? AND device_id = ? AND revoked_at IS NULL", tenant, s.environment, owner, device)
+	if err := ValidateMobileAppID(NormalizeMobileAppID(appID)); err != nil {
+		return err
+	}
+	appID = NormalizeMobileAppID(appID)
+	q := s.db.WithContext(ctx).Table("mobile_devices").Where("tenant_id = ? AND environment = ? AND owner_id = ? AND device_id = ? AND app_id = ? AND revoked_at IS NULL", tenant, s.environment, owner, device, appID)
 	if revision > 0 {
 		var current mobileDeviceRow
 		if err := q.Take(&current).Error; err != nil {
@@ -384,7 +472,7 @@ func (s *MobileDeviceStore) MarkPresence(ctx context.Context, tenant uint64, own
 		}
 	}
 	now := time.Now().UTC()
-	result := s.db.WithContext(ctx).Exec("UPDATE mobile_devices SET last_seen_at = ?, updated_at = ? WHERE tenant_id = ? AND environment = ? AND owner_id = ? AND device_id = ? AND revoked_at IS NULL", now, now, tenant, s.environment, owner, device)
+	result := s.db.WithContext(ctx).Exec("UPDATE mobile_devices SET last_seen_at = ?, updated_at = ? WHERE tenant_id = ? AND environment = ? AND owner_id = ? AND device_id = ? AND app_id = ? AND revoked_at IS NULL", now, now, tenant, s.environment, owner, device, appID)
 	if result.Error != nil {
 		return result.Error
 	}
@@ -398,7 +486,11 @@ func (s *MobileDeviceStore) MarkPresence(ctx context.Context, tenant uint64, own
 // ciphertext or token hashes and remains scoped by tenant, owner, environment
 // and (when supplied) expected revision.
 func (s *MobileDeviceStore) GetPresence(ctx context.Context, tenant uint64, owner, device string, revision int64) (DeviceRegistration, error) {
-	row, err := s.GetActiveForTenant(ctx, tenant, owner, device)
+	return s.GetPresenceForApp(ctx, tenant, owner, device, MobileAppIDOfficial, revision)
+}
+
+func (s *MobileDeviceStore) GetPresenceForApp(ctx context.Context, tenant uint64, owner, device, appID string, revision int64) (DeviceRegistration, error) {
+	row, err := s.GetActiveForApp(ctx, tenant, owner, device, appID)
 	if err != nil {
 		return DeviceRegistration{}, err
 	}
@@ -409,17 +501,29 @@ func (s *MobileDeviceStore) GetPresence(ctx context.Context, tenant uint64, owne
 }
 
 func (s *MobileDeviceStore) SetPresence(ctx context.Context, tenant uint64, owner, device string, revision int64) (DeviceRegistration, error) {
-	if err := s.MarkPresence(ctx, tenant, owner, device, revision); err != nil {
+	return s.SetPresenceForApp(ctx, tenant, owner, device, MobileAppIDOfficial, revision)
+}
+
+func (s *MobileDeviceStore) SetPresenceForApp(ctx context.Context, tenant uint64, owner, device, appID string, revision int64) (DeviceRegistration, error) {
+	if err := s.MarkPresenceForApp(ctx, tenant, owner, device, appID, revision); err != nil {
 		return DeviceRegistration{}, err
 	}
-	return s.GetPresence(ctx, tenant, owner, device, revision)
+	return s.GetPresenceForApp(ctx, tenant, owner, device, appID, revision)
 }
 
 func (s *MobileDeviceStore) DeletePresence(ctx context.Context, tenant uint64, owner, device string, revision int64) error {
+	return s.DeletePresenceForApp(ctx, tenant, owner, device, MobileAppIDOfficial, revision)
+}
+
+func (s *MobileDeviceStore) DeletePresenceForApp(ctx context.Context, tenant uint64, owner, device, appID string, revision int64) error {
 	if tenant == 0 || strings.TrimSpace(owner) == "" || strings.TrimSpace(device) == "" {
 		return ErrMobileDeviceInvalid
 	}
-	q := s.db.WithContext(ctx).Table("mobile_devices").Where("tenant_id = ? AND environment = ? AND owner_id = ? AND device_id = ? AND revoked_at IS NULL", tenant, s.environment, owner, device)
+	if err := ValidateMobileAppID(NormalizeMobileAppID(appID)); err != nil {
+		return err
+	}
+	appID = NormalizeMobileAppID(appID)
+	q := s.db.WithContext(ctx).Table("mobile_devices").Where("tenant_id = ? AND environment = ? AND owner_id = ? AND device_id = ? AND app_id = ? AND revoked_at IS NULL", tenant, s.environment, owner, device, appID)
 	if revision > 0 {
 		var current mobileDeviceRow
 		if err := q.Take(&current).Error; err != nil {
@@ -433,7 +537,7 @@ func (s *MobileDeviceStore) DeletePresence(ctx context.Context, tenant uint64, o
 		}
 	}
 	now := time.Now().UTC()
-	result := s.db.WithContext(ctx).Exec("UPDATE mobile_devices SET last_seen_at = NULL, updated_at = ? WHERE tenant_id = ? AND environment = ? AND owner_id = ? AND device_id = ? AND revoked_at IS NULL", now, tenant, s.environment, owner, device)
+	result := s.db.WithContext(ctx).Exec("UPDATE mobile_devices SET last_seen_at = NULL, updated_at = ? WHERE tenant_id = ? AND environment = ? AND owner_id = ? AND device_id = ? AND app_id = ? AND revoked_at IS NULL", now, tenant, s.environment, owner, device, appID)
 	if result.Error != nil {
 		return result.Error
 	}
