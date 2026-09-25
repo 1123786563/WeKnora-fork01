@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/url"
 	"regexp"
+	"strings"
 	"unicode"
 	"unicode/utf8"
 
@@ -145,12 +146,19 @@ func ValidateManifest(m *types.PluginManifest) error {
 		// fixed-size message family (OCR round-1 F3, review-measured 900KB):
 		// parseHost's `invalid port %q after host` embeds everything after
 		// the authority's last colon — bound it with echoQuoted too.
+		//
+		// The echoed endpoint is masked FIRST (OCR round-1 R12 F03): a
+		// malformed URL like https://ci-bot:s3cr3t@host:badport/ fails url.Parse
+		// BEFORE the userinfo rejection below, so the raw echo would leak the
+		// very credentials the well-formed path deliberately hides.
 		reason := err
 		var uerr *url.Error
 		if errors.As(err, &uerr) {
 			reason = uerr.Err
 		}
-		return fmt.Errorf("invalid transport endpoint %s: %s", echoQuoted(m.Transport.Endpoint), echoQuoted(reason.Error()))
+		masked := maskEndpointCredentials(m.Transport.Endpoint)
+		maskedReason := strings.ReplaceAll(reason.Error(), userinfoOf(m.Transport.Endpoint), "REDACTED")
+		return fmt.Errorf("invalid transport endpoint %s: %s", echoQuoted(masked), echoQuoted(maskedReason))
 	}
 	if endpoint.Scheme != "http" && endpoint.Scheme != "https" {
 		return fmt.Errorf("transport endpoint scheme must be http or https, got %s", echoQuoted(endpoint.Scheme))
@@ -375,4 +383,46 @@ func IdentityFingerprint(pluginID, version, endpoint string, toolsDigest string)
 	h.Write([]byte{0})
 	h.Write([]byte(toolsDigest))
 	return hex.EncodeToString(h.Sum(nil))
+}
+
+// userinfoOf extracts the raw "user[:pass]@" prefix of a URL's authority, or
+// "" when the URL has none (no scheme delimiter, no '@', or a malformed tail
+// where the split is ambiguous — failing open to "" makes the caller's
+// masking a no-op, never a panic or a wrong redaction).
+func userinfoOf(rawURL string) string {
+	schemeEnd := strings.Index(rawURL, "://")
+	rest := rawURL
+	if schemeEnd >= 0 {
+		rest = rawURL[schemeEnd+3:]
+	}
+	authority := rest
+	if slash := strings.Index(rest, "/"); slash >= 0 {
+		authority = rest[:slash]
+	}
+	if at := strings.LastIndex(authority, "@"); at > 0 {
+		return authority[:at+1]
+	}
+	return ""
+}
+
+// maskEndpointCredentials replaces any userinfo in a URL's authority with
+// "REDACTED@" before the URL is echoed into an admin-visible error (OCR
+// round-1 R12 F03): a malformed URL fails url.Parse before the userinfo
+// rejection fires, so the raw echo would leak the very credentials the
+// well-formed path deliberately hides.
+func maskEndpointCredentials(rawURL string) string {
+	schemeEnd := strings.Index(rawURL, "://")
+	prefix, rest := "", rawURL
+	if schemeEnd >= 0 {
+		prefix, rest = rawURL[:schemeEnd+3], rawURL[schemeEnd+3:]
+	}
+	authority, tail := rest, ""
+	if slash := strings.Index(rest, "/"); slash >= 0 {
+		authority, tail = rest[:slash], rest[slash:]
+	}
+	at := strings.LastIndex(authority, "@")
+	if at <= 0 {
+		return rawURL
+	}
+	return prefix + "REDACTED@" + authority[at+1:] + tail
 }

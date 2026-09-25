@@ -37,12 +37,11 @@ func TestValidateNameRejectsSeparatorsAndPrivateUse(t *testing.T) {
 
 func validManifest() *types.PluginManifest {
 	return &types.PluginManifest{
-		Protocol:  "weknora.plugin/1",
-		PluginID:  "com.example.jira-todo",
-		Version:   "1.2.0",
-		Name:      "Jira 本周待办",
-		Transport: types.PluginTransport{Type: "http-streamable", Endpoint: "https://plugins.example.com/jira-todo/v1.2.0/mcp"},
-		Auth:      &types.PluginAuth{PersonalOAuth: true},
+		Protocol: "weknora.plugin/1",
+		PluginID: "com.example.jira-todo",
+		Version:  "1.2.0",
+		Name:     "Jira 本周待办", Transport: types.PluginTransport{Type: "http-streamable", Endpoint: "https://plugins.example.com/jira-todo/v1.2.0/mcp"},
+		Auth: &types.PluginAuth{PersonalOAuth: true},
 		Tools: []types.PluginToolDecl{{
 			Name: "search_my_week_issues", ReadOnly: true, RequiresPersonalAuth: true,
 			InputSchemaDigest: ToolSchemaDigest([]byte(declaredNoArgSchema)),
@@ -263,4 +262,18 @@ func TestManifestContentDigestIgnoresUnknownAndEmptyOptionalFields(t *testing.T)
 	var parsed types.PluginManifest
 	require.NoError(t, json.Unmarshal(extended, &parsed))
 	require.Equal(t, ManifestContentDigest(base), ManifestContentDigest(&parsed))
+}
+
+// TestValidateManifestParseFailureMasksUserinfo（OCR 一轮 R12-E F03）：
+// parse 失败分支回显 endpoint 前，authority 中的 userinfo 凭据必须脱敏
+// ——格式非法的 URL 不得泄露格式合法 URL 被刻意静默隐藏的凭据。
+func TestValidateManifestParseFailureMasksUserinfo(t *testing.T) {
+	m := validManifest()
+	m.Transport.Endpoint = "https://ci-bot:s3cr3t@jira.example.com:badport/mcp"
+	err := ValidateManifest(m)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "invalid transport endpoint")
+	require.Contains(t, err.Error(), "REDACTED@")
+	require.NotContains(t, err.Error(), "s3cr3t", "credentials must not leak into the admin-visible error")
+	require.NotContains(t, err.Error(), "ci-bot:", "userinfo identity must not leak into the error")
 }
