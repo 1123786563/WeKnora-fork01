@@ -7,7 +7,9 @@ import type { Root } from 'react-dom/client';
 import type { WeKnoraClient } from '@weknora/api-client';
 
 const hooks = nodeModule as typeof nodeModule & { registerHooks?: (hooks: { resolve: (specifier: string, context: unknown, nextResolve: (specifier: string, context: unknown) => unknown) => unknown }) => void };
-if (hooks.registerHooks) hooks.registerHooks({ resolve: (specifier, context, nextResolve) => specifier.endsWith('.css') ? { shortCircuit: true, url: 'data:text/javascript,export default {}' } : nextResolve(specifier, context) });
+// B4 起 integration-api section 注入平台 logo（../assets/img/im/*.{svg,png}）——
+// 资产扩展名与 css 同款短路（7edec47b3 integrations 域同款；node:test 直跑无 vite 资产管线）。
+if (hooks.registerHooks) hooks.registerHooks({ resolve: (specifier, context, nextResolve) => /\.(css|svg|png)$/.test(specifier) ? { shortCircuit: true, url: 'data:text/javascript,export default {}' } : nextResolve(specifier, context) });
 
 const { JSDOM } = nodeModule.createRequire(import.meta.url)('jsdom') as { JSDOM: new (html: string, options: { url: string }) => { window: Window & typeof globalThis } };
 const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://weknora.test/platform/settings' });
