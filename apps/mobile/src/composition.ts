@@ -36,6 +36,9 @@ import { ReadOnlyScreen } from './screens/ReadOnlyScreen.tsx';
 import type { ScopedStore } from '@weknora/mobile-core';
 import { createNativeRequestId } from './adapters/request-id.ts';
 import { createNativeSecureIntentLog } from './adapters/intent-log.ts';
+import { resolveWeKnoraAppId } from './app-id.ts';
+import { createNativeAppStateLifecycle } from './adapters/app-state.ts';
+import { createForegroundSyncLoop } from './foreground-sync.ts';
 
 /** App 生命周期单例：Runtime 撤销 scope 时 revoke 的就是这把 vault（#32）。 */
 const nativeScopedVault = createNativeScopedVaultIfAvailable();
@@ -229,6 +232,7 @@ export async function registerActiveDeviceIfPossible(
       deviceId,
       token,
       platform: nativeDevicePlatform(),
+      appId: resolveWeKnoraAppId(typeof process !== 'undefined' ? process.env.EXPO_PUBLIC_WEKNORA_APP_ID : undefined),
     });
     return 'registered';
   } catch {
@@ -367,6 +371,22 @@ export function MobileApp() {
         .catch(() => undefined); // 失败：surface 下次变化再试（直至会话上限）
     });
     return unsubscribe;
+  }, [activeRuntime]);
+  // T37（#67 AC2）：关闭推送网关/无推送时，回前台即向权威服务端同步（通知 Inbox
+  // page() 权威重投影）。scope 每次事件重新解析；失败包含（下次前台再试）。
+  useEffect(() => {
+    const stop = createForegroundSyncLoop({
+      lifecycle: createNativeAppStateLifecycle(),
+      resolveSync: () => {
+        const snap = activeRuntime.snapshot();
+        if (snap.surface !== 'authorized' || !snap.deployment) return undefined;
+        const origin = snap.deployment.origin;
+        const tenantId = snap.identity?.activeTenantId ?? '';
+        const inbox = notificationInboxFor(activeRuntime, origin, tenantId);
+        return () => inbox.page().then(() => undefined, () => undefined);
+      },
+    }).start();
+    return stop;
   }, [activeRuntime]);
   const snapshot = useSyncExternalStore(activeRuntime.subscribe, activeRuntime.snapshot, activeRuntime.snapshot);
   // registry 内容只在 surface/origin 变化的发布中变化：依赖收窄，tenant 切换等发布不再重复读安全存储。
