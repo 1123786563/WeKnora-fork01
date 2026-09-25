@@ -18,10 +18,12 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"html"
+	stdhtml "html"
 	"regexp"
 	"strings"
 	"unicode/utf8"
+
+	"golang.org/x/net/html"
 )
 
 // WebCitationsPath is the fixed output-relative location of the web citation
@@ -191,11 +193,49 @@ func WebCitationsDigest(m WebCitationManifest) (string, error) {
 	return hex.EncodeToString(sum[:]), nil
 }
 
-var (
-	webCitationMarkerRe    = regexp.MustCompile(`data-craft-citation="([^"]*)"`)
-	webCitationInferenceRe = regexp.MustCompile(`data-craft-inference(?:="[^"]*")?`)
-	webCitationMixedAttrRe = regexp.MustCompile(`data-craft-(?:citation|inference)[^>]*data-craft-(?:citation|inference)`)
-)
+// webCitationMarkerAudit is the structured result of walking the entry HTML
+// as real markup: citation markers and inference markers counted ONLY on
+// element attributes. Comments, raw text inside script/style, and attribute
+// values of unrelated elements can never satisfy a marker.
+type webCitationMarkerAudit struct {
+	citations   map[string]int // citation id → number of elements carrying it
+	inferences  int            // elements carrying the inference marker
+	mixedMarker bool           // one element carrying both markers
+}
+
+// auditWebCitationMarkers tokenizes the (model-generated, untrusted) entry
+// HTML and reads the marker attributes from element start tags only. The
+// previous text-level regexes matched the marker strings anywhere — a hidden
+// comment could satisfy "declared facts must be rendered" and the inference
+// count, and [^>]* chopping let a mixed-marker element slip through.
+func auditWebCitationMarkers(entryHTML string) webCitationMarkerAudit {
+	audit := webCitationMarkerAudit{citations: map[string]int{}}
+	tokenizer := html.NewTokenizer(strings.NewReader(entryHTML))
+	for {
+		switch tokenizer.Next() {
+		case html.ErrorToken:
+			return audit
+		case html.StartTagToken, html.SelfClosingTagToken:
+			hasCitation := false
+			hasInference := false
+			for _, attr := range tokenizer.Token().Attr {
+				switch attr.Key {
+				case WebCitationFactMarkerAttr:
+					hasCitation = true
+					audit.citations[attr.Val]++
+				case WebCitationInferenceMarkerAttr:
+					hasInference = true
+				}
+			}
+			if hasInference {
+				audit.inferences++
+			}
+			if hasCitation && hasInference {
+				audit.mixedMarker = true
+			}
+		}
+	}
+}
 
 // ValidateWebCitationView binds the rendered page to its manifest:
 //
@@ -207,11 +247,16 @@ var (
 //     marker;
 //   - no single element may carry both markers: inference is never
 //     presented as a source fact.
+//
+// Markers are read structurally — from element attributes of a real HTML
+// tokenization — so comments, script/style text and unrelated attribute
+// payloads cannot fake marker presence.
 func ValidateWebCitationView(entryHTML string, m WebCitationManifest) error {
 	if err := validateWebCitationShape(m); err != nil {
 		return err
 	}
-	if webCitationMixedAttrRe.MatchString(entryHTML) {
+	audit := auditWebCitationMarkers(entryHTML)
+	if audit.mixedMarker {
 		return fmt.Errorf("%w: an inference element must never carry a source citation marker", ErrInvalidInput)
 	}
 	declared := make(map[string]struct{}, len(m.Entries))
@@ -223,20 +268,17 @@ func ValidateWebCitationView(entryHTML string, m WebCitationManifest) error {
 			inferences++
 		}
 	}
-	rendered := make(map[string]struct{})
-	for _, match := range webCitationMarkerRe.FindAllStringSubmatch(entryHTML, -1) {
-		id := match[1]
+	for id := range audit.citations {
 		if _, ok := declared[id]; !ok {
 			return fmt.Errorf("%w: citation %q is rendered in the page but not declared in the citation manifest", ErrInvalidInput, id)
 		}
-		rendered[id] = struct{}{}
 	}
 	for id := range declared {
-		if _, ok := rendered[id]; !ok {
+		if audit.citations[id] == 0 {
 			return fmt.Errorf("%w: fact citation %q must appear in the page's citation view", ErrInvalidInput, id)
 		}
 	}
-	if len(webCitationInferenceRe.FindAllString(entryHTML, -1)) < inferences {
+	if audit.inferences < inferences {
 		return fmt.Errorf("%w: every inference entry must appear in the page's citation view with the explicit inference marker", ErrInvalidInput)
 	}
 	return nil
@@ -299,7 +341,7 @@ func RenderWebCitationView(m WebCitationManifest) (string, error) {
 			b.WriteString(`">`)
 			b.WriteString(labels.fact)
 			b.WriteString(` `)
-			b.WriteString(html.EscapeString(entry.Claim))
+			b.WriteString(stdhtml.EscapeString(entry.Claim))
 			b.WriteString(`</a></li>`)
 		case WebCitationInference:
 			b.WriteString(`<li class="craft-citation-inference" `)
@@ -307,7 +349,7 @@ func RenderWebCitationView(m WebCitationManifest) (string, error) {
 			b.WriteString(`="true">`)
 			b.WriteString(labels.inference)
 			b.WriteString(` `)
-			b.WriteString(html.EscapeString(entry.Claim))
+			b.WriteString(stdhtml.EscapeString(entry.Claim))
 			b.WriteString(`</li>`)
 		}
 	}
