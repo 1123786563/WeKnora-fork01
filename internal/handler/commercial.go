@@ -289,7 +289,7 @@ func orderWire(o commercialsvc.OrderView) gin.H {
 	case commercial.OrderStateFulfilled:
 		payment, fulfillment = "paid", "fulfilled"
 	}
-	return gin.H{
+	w := gin.H{
 		"id":             o.ID,
 		"quote_id":       o.QuoteID,
 		"state":          o.State,
@@ -302,6 +302,12 @@ func orderWire(o commercialsvc.OrderView) gin.H {
 		"checkout_error": o.CheckoutError,
 		"version":        o.Version,
 	}
+	// (R2-27) the closed degradation marker rides along when set — the
+	// raw persistence error stays in the server log, never on the wire.
+	if o.CheckoutLinkDegraded {
+		w["checkout_link_degraded"] = true
+	}
+	return w
 }
 
 // Plans lists published catalog rows only; drafts and archived
@@ -448,6 +454,10 @@ func (h *CommercialHandler) Purchase(c *gin.Context) {
 		// (R1-V14) The order is durably pending but the channel call failed:
 		// mirror POST /orders and answer 202 — the client recovers through
 		// GET /commercial/orders/:id instead of reading a clean creation.
+		// (R2-27) CheckoutError now means CHANNEL failure only: a checkout
+		// whose link persistence degraded (CheckoutLinkDegraded) answers the
+		// clean 201 below — the channel call succeeded and the client holds
+		// a working link.
 		c.JSON(http.StatusAccepted, gin.H{"success": true, "data": purchaseWire(view)})
 	case err == nil:
 		c.JSON(http.StatusCreated, gin.H{"success": true, "data": purchaseWire(view)})

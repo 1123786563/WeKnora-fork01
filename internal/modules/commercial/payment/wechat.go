@@ -177,6 +177,14 @@ func NewWechatProvider(cfg WechatConfig) (*WechatProvider, error) {
 // code must go through NewWechatProvider so keys come only from
 // configured references.
 func newWechatProvider(cfg WechatConfig, platformKeys map[string]*rsa.PublicKey, apiv3Key []byte) *WechatProvider {
+	// (R2-19) NewSSRFSafeTransport does not set Proxy: building the client
+	// through it silently dropped ProxyFromEnvironment, so proxy-only
+	// egress deployments (HTTP_PROXY/HTTPS_PROXY) lost gateway reachability
+	// the default-Transport client used to have. Compose via
+	// NewSSRFSafeHTTPClientWithTransport and re-attach the environment
+	// proxy — the SSRF dial/validation layers stay intact.
+	channelTransport := secutils.NewSSRFSafeTransport(secutils.SSRFSafeHTTPClientConfig{})
+	channelTransport.Proxy = http.ProxyFromEnvironment
 	return &WechatProvider{
 		cfg:          cfg,
 		platformKeys: platformKeys,
@@ -188,10 +196,10 @@ func newWechatProvider(cfg WechatConfig, platformKeys map[string]*rsa.PublicKey,
 		// redirect loop), while the SSRFSafe transport pins the DNS answer
 		// at DIAL time — closing the validate-then-dial rebinding window a
 		// default Transport leaves open (it re-resolves independently).
-		client: secutils.NewSSRFSafeHTTPClient(secutils.SSRFSafeHTTPClientConfig{
+		client: secutils.NewSSRFSafeHTTPClientWithTransport(secutils.SSRFSafeHTTPClientConfig{
 			Timeout:      cfg.timeout(),
 			MaxRedirects: 10,
-		}),
+		}, channelTransport),
 		now: time.Now,
 	}
 }

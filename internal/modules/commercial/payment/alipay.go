@@ -192,6 +192,14 @@ func NewAlipayProvider(cfg AlipayConfig) (*AlipayProvider, error) {
 	if err != nil {
 		return nil, fmt.Errorf("alipay public key: %w", err)
 	}
+	// (R2-17) NewSSRFSafeTransport does not set Proxy: building the client
+	// through it silently dropped ProxyFromEnvironment, so proxy-only
+	// egress deployments (HTTP_PROXY/HTTPS_PROXY) lost gateway reachability
+	// the default-Transport client used to have. Compose via
+	// NewSSRFSafeHTTPClientWithTransport and re-attach the environment
+	// proxy — the SSRF dial/validation layers stay intact.
+	channelTransport := secutils.NewSSRFSafeTransport(secutils.SSRFSafeHTTPClientConfig{})
+	channelTransport.Proxy = http.ProxyFromEnvironment
 	return &AlipayProvider{
 		cfg:          cfg,
 		alipayPubKey: pub,
@@ -202,10 +210,10 @@ func NewAlipayProvider(cfg AlipayConfig) (*AlipayProvider, error) {
 		// redirect loop), while the SSRFSafe transport pins the DNS answer
 		// at DIAL time — closing the validate-then-dial rebinding window a
 		// default Transport leaves open (it re-resolves independently).
-		client: secutils.NewSSRFSafeHTTPClient(secutils.SSRFSafeHTTPClientConfig{
+		client: secutils.NewSSRFSafeHTTPClientWithTransport(secutils.SSRFSafeHTTPClientConfig{
 			Timeout:      cfg.timeout(),
 			MaxRedirects: 10,
-		}),
+		}, channelTransport),
 		now: time.Now,
 	}, nil
 }

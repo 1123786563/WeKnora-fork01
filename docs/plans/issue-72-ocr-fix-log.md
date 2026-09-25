@@ -1014,3 +1014,195 @@ R1-24 只改"生产姿态（PM token 为空）"分支——#81 flow 验证当时
 
 - 提交 message 前缀：`issue-72(ocr-1):`（按本批 ask 指定）
 
+---
+
+# Issue #72 — OCR 第 2 轮修复记录（ocr-r2，6 组 findings）
+
+- 日期：2026-09-25
+- worktree：`.worktrees/issue72-lago`（分支 `codex/issue-72-lago`）
+- 修复基线：findings 审查 `a2986794a`（R1 修复提交，findings 证据原文确认其已落地）；
+  RED 在 `0c6409f75`（其上的 findings 记录提交，代码态相同）复现。
+- 修复人：修复员（dynamic workflow subagent）
+- 范围：OCR-R2-26（high）、R2-28（high）、R2-01/R2-17+19/R2-21/R2-27（medium），
+  6 组全部修复，0 项 deferred。顺带修复一处与本批无关的预存测试 flake
+  （见「顺带修复」）。
+
+## 总则
+
+- 每个行为级 finding 先在基线真实运行复现旧行为（RED），再在修复版验证（GREEN）；
+  R2-01 以源码级 RED（基线无 409 映射表）+ 修复版测试通过记录。
+- 安全约束核对：本轮未新增出站请求与 URL 拼接（R2-17/19 是恢复既有
+  ProxyFromEnvironment，SSRF 拨号/逐跳校验层不动）；新增 SQL 均为参数绑定
+  或静态 DDL（部分唯一索引 DDL 无外部输入）；无凭据字面量。
+
+## 逐条 Ruling 与处置
+
+### OCR-R2-26（high）三段读-判-写无原子性，双 pending 渠道单仍可并发产生 — 已修复
+
+- Ruling：finding 成立。R1-22 的 GetOrderByQuote → CurrentPendingPurchaseOrder →
+  CreateOrder 三段独立执行，数据库唯一性只在 quote_id 维度——两张不同新报价
+  并发 POST 时双方前置 SELECT 都能通过（彼时对方订单未提交），各自成功开单，
+  同一 gating invoice 两张 pending 可付渠道单，两个回调独立确认即双重扣款。
+  采用 fixHint 首选：数据库层部分唯一索引 + 插入冲突作为回放触发（与
+  ErrQuoteAlreadyUsed 同构）。fixHint 提到的"匹配键锚定购买身份"以
+  tenant 维度索引实现（一个租户一个购买身份，#81 单购买模型——tenant 级
+  唯一比 plan/订阅锚更严且正确）。
+- 处置：
+  - NewOrderService 装配点 AutoMigrate 后建部分唯一索引
+    `uq_purchase_pending_per_tenant ON commercial_orders (tenant_id) WHERE
+    kind='purchase' AND state='pending' AND channel_failed=0`（sqlite/pg 同语法；
+    持有不变量前重复数据的存量部署在装配时显式失败而非静默继续）。
+  - `createOrderTx` 的插入冲突识别（sqlite 列面 "UNIQUE constraint failed …
+    tenant_id" / pg 索引名）→ 新哨兵 `ErrPurchasePendingExists`（仅 purchase
+    kind；quote_id 冲突形态不误判）。
+  - purchase.go 第 8 步：CreateOrder 返回哨兵时经
+    `CurrentPayablePendingOrder`（不限价面的回读——索引已证明该租户存在
+    可付 pending）verbatim 重放胜者订单，绝不开第二张渠道单。
+- RED 证据：基线（0c6409f75）上同租户两张不同 quote 的可付 pending
+  CreateOrder **全部成功**（"baseline allows TWO concurrent payable pending
+  orders (no partial unique index / no sentinel)"）。
+- 回归测试：`TestPartialPendingIndexRejectsSecondPayableOrder`（第二张撞哨兵；
+  quote_id 冲突不误判；channel_failed 死单/终态单不占槽）、
+  `TestCurrentPendingPurchaseOrderReturnsNewestPayablePending`（含
+  CurrentPayablePendingOrder 回读面）、service 层
+  `TestConcurrentFreshQuoteConflictReplaysWinner`（胜者中间态：订单已提交但
+  链接未持久化——前置价面+可付检查必然漏掉、索引拒绝——败者重放胜者、
+  渠道 createCalls==0）。
+
+### OCR-R2-28（high）「pending」≠「可支付」，渠道失败死单永久卡死购买 — 已修复
+
+- Ruling：finding 成立。渠道 Create 失败分支（openOrder CheckoutError）留下
+  pending 死单：checkout_url 空、渠道大概率从未见单、状态机无 failed 迁移
+  （唯一出 pending 路径是 ConfirmPayment）——此后每次新报价 POST 都被这张
+  死单挡住（R1-22 重放它），客户端拿不到任何支付入口，只能人工修库。
+  采用 fixHint 的"在行上持久化渠道失败标记"形态（显式列比"checkout_url
+  为空"判据更精确——R2-27 的持久化降级单渠道实际成功，不应归入死单），
+  与 R2-26 索引条件联动（channel_failed=0）一并闭环。
+- 处置：
+  - `OrderRow` 新增 `channel_failed` 列（AutoMigrate 原位补列）；
+    `MarkChannelFailed`（pending 行置位，参数绑定）。
+  - openOrder 渠道失败分支：持久化 channel_failed 标记（标记丢失仅记日志——
+    行为不变量由索引与回读条件共同保证，标记失败不应吞掉既有的
+    CheckoutError 应答契约）。
+  - 部分唯一索引条件含 `channel_failed=0`（死单不占 pending 槽）；
+    `CurrentPendingPurchaseOrder` 重放条件收紧为
+    `channel_failed=0 AND checkout_url<>''`（仅可付单作为支付入口重放）。
+  - 迟到渠道确认边界（Create 超时但渠道侧实际建单）：死单仍 pending，
+    回调/恢复照常 ConfirmPayment 付款——与 fixHint"先 Query 确认未知再放行"
+    的差异（不引入 service 层对 provider 的直接依赖）以注释如实记录。
+- RED 证据：基线 `TestChannelFailedOrderDoesNotBlockFreshQuote` FAIL
+  （渠道失败后新报价被死单挡住，无法开出新可付单）。
+- 回归测试：上述 service 测试（渠道失败 → 新报价成功开出新可付单，
+  createCalls==2，两单 ID 不同）+ repository
+  `TestCurrentPendingPurchaseOrderReturnsNewestPayablePending`（channel_failed/
+  无链接单不入选）。
+
+### OCR-R2-27（medium·安全）持久化降级复用渠道失败标记并透 %v 原文 — 已修复
+
+- Ruling：finding 成立。SetCheckoutURL 失败时 openOrder 把 gorm 错误以
+  `fmt.Sprintf("...%v", err)` 塞进 CheckoutError：(1) SQL/驱动细节经
+  orderWire 序列化到公共边界，违背链路其余分支的闭合词汇姿态；(2) 渠道
+  调用实际成功、链接有效，但非空 CheckoutError 让 handler 降 202——一次
+  成功下单被误判渠道失败。按 fixHint：独立降级标记 + 闭合外显 + 原始错误
+  进日志 + 202 仅对渠道失败。
+- 处置：OrderView 新增 `CheckoutLinkDegraded bool`（json
+  checkout_link_degraded，闭合布尔标记）；openOrder 持久化失败分支改为
+  `log.Printf` 记原始错误 + 置位标记（CheckoutError 保持空）；handler 的
+  202 判定不变（其条件 CheckoutError!="" 现在天然只对渠道失败成立），
+  orderWire 携带 checkout_link_degraded。
+- RED 证据：基线运行（sqlite 触发器 RAISE(ABORT) 确定性构造 UPDATE 失败）
+  → view.Order.CheckoutError = "checkout_url persistence failed for
+  ord_…: test block"（原始错误文本直达视图）。
+- 回归测试：`TestCheckoutLinkDegradedIsSeparateFromChannelFailure`
+  （err==nil、CheckoutURL 非空、CheckoutLinkDegraded==true、
+  CheckoutError==""——202 触发条件不满足）。
+
+### OCR-R2-17/19（medium）SSRFSafe 客户端切换静默丢环境代理 — 已修复
+
+- Ruling：finding 成立（R1-14/17 修复引入的回归）。原 `&http.Client{Timeout}`
+  Transport 为 nil → DefaultTransport 带 ProxyFromEnvironment；
+  NewSSRFSafeTransport 不设 Proxy 字段——仅代理出网的部署从可达退化为直连
+  超时，且 IsSystemProxy 拨号旁路成为死代码。按 fixHint：
+  NewSSRFSafeHTTPClientWithTransport + transport.Proxy 复挂。
+- 处置：alipay/wechat 构造改为
+  `transport := secutils.NewSSRFSafeTransport(...); transport.Proxy =
+  http.ProxyFromEnvironment; client :=
+  secutils.NewSSRFSafeHTTPClientWithTransport(cfg, transport)`（SSRF 拨号/
+  逐跳校验/跳数上限层保持不变）。
+- RED 证据：基线 `TestChannelTransportKeepsEnvironmentProxy` FAIL
+  （"base transport must carry the environment proxy"）。
+- 回归测试：该测试（两渠道 client：SSRFValidatingRoundTripper 包装 +
+  Base 为 *http.Transport 且 Proxy 非空 + DialContext 在位）；既有
+  redirect-loop/出站 SSRF 测试全量通过（R1-14 行为不回归）。
+
+### OCR-R2-21（medium）parsePurchaseView 未知 reason 令牌整体抛错 — 已修复
+
+- Ruling：finding 成立。reason 是建议性字段，后端先发版新增令牌时整份
+  PurchaseView 解析失败——POST 路径用户直接看到 'invalid purchase (reason)'
+  原文。按 fixHint：未知令牌按缺席忽略，state 保持严格。
+- 处置：contracts `parsePurchaseView` 的 reason 分支改为
+  `typeof==='string' && !=='' && PURCHASE_REASONS.has(...)` 才写入（未知/
+  非串一律缺席，不再 throw）；注释记录 advisory 语义。
+- RED 证据：基线 contracts 测试 1 fail（未知 reason 抛 'invalid purchase
+  (reason)'）。
+- 回归测试：contracts 测试三断言（未知令牌按缺席、已知令牌保留、state
+  严格校验不放松）。
+
+### OCR-R2-01（medium）409/500 错误族英文机器令牌原文展示 — 已修复
+
+- Ruling：finding 成立。R1-24 只覆盖 503 reason 令牌；同一 POST 的 409/500
+  族（"quote expired"、invoice_quote_mismatch、…）无 reason 无 code，
+  closedReason undefined 时 error.message 原文展示——报价过期是真实可达路径。
+  按 fixHint：message 令牌映射 + 未命中给统一中文兜底。
+- 处置：CheckoutPage 新增 `PURCHASE_CONFLICT_MESSAGES`（9 个后端闭合令牌 →
+  中文）与 `purchaseErrorText(error)`（503 reason 令牌 → 409/500 message
+  令牌 → 服务端错误统一兜底「购买未能创建，请稍后重试」；非服务端错误
+  保留原始 message）；catch 分支改用它。
+- RED 证据（源码级）：基线 CheckoutPage.tsx 无任何 409 令牌映射
+  （grep purchaseConflictMessage/PURCHASE_CONFLICT_MESSAGES = 0），catch
+  回退 error.message 原文；完整 RED worktree 因 node_modules 未安装无法
+  跑 jsdom（已如实记录，行为由修复版测试锁定）。
+- 回归测试：`a 409 purchase conflict maps its message token to the Chinese
+  copy`（「报价已过期」且不出现 "quote expired"）、
+  `an unmapped server error falls back to the closed Chinese copy`（兜底
+  中文且不出现未知令牌原文）。
+
+## 顺带修复（与本批 findings 无关的预存 flake）
+
+- `providers_env.go::alipayConfigFromEnv`：required 集合由 map 遍历改为
+  slice 固定序——部分配置错误的点名变量此前随 map 迭代顺序随机
+  （基线 0c6409f75 实测 5 次内复现 FAIL），`TestProvidersFromEnvRejects-
+  PartialAlipay` 因此偶发红。修复后 15 轮全量稳定通过；错误消息格式
+  同步收紧（点名完整变量名）。
+
+## 测试与重放证据（全部在本轮实际执行）
+
+| 检查 | 命令 | 结果 |
+|---|---|---|
+| RED（R2-26） | 基线双 pending CreateOrder | 两张全部成功（无索引/哨兵） |
+| RED（R2-27） | 基线触发器构造 UPDATE 失败 | CheckoutError 携带 %v 原文直达视图 |
+| RED（R2-28） | 基线 TestChannelFailedOrderDoesNotBlockFreshQuote | FAIL（死单挡新报价） |
+| RED（R2-17/19） | 基线 TestChannelTransportKeepsEnvironmentProxy | FAIL（Proxy nil） |
+| RED（R2-21） | 基线 contracts 新测试 | 1 fail（未知 reason 抛错） |
+| RED（R2-01） | 基线 grep 409 映射 | 0 命中（error.message 原文展示） |
+| 全仓编译 | `go build ./internal/...` | 通过 |
+| commercial + handler 全量 | `go test ./internal/modules/commercial/... ./internal/handler/ -count=1` | 8 包全 ok |
+| payment 包稳定性 | `go test ./internal/modules/commercial/payment/ -count=1` ×15 轮 | 15/15 ok（flake 修复后） |
+| TS 单测 | `npx tsx --test` errors/CheckoutPage/contracts/commercial | CheckoutPage 7/7、contracts 21/21、errors 6/6 |
+| 四副本重放 | `python3 docs/plans/<dir>/verify_{ac_assertions,db_watch}.py` | AC ALL PASS ×4、DB-WATCH PASS ×4（本轮无 Python 改动，确认无回归） |
+| 微信 stub 往返 | POST 127.0.0.1:8291 native | code_url 正常下发（渠道契约面） |
+
+### 重放说明（全链路真实流程未重放）
+
+本批 R2-26/R2-28/R2-01/R2-27/R2-17+19 改变已验证用户流程（购买幂等/错误面/
+渠道传输）的行为面，按 ask 应重放 flow-evidence 可重放脚本；与前三轮同因
+不可行（8091 为其他会话旧构建进程、Stripe key 不在本环境）。已执行：四副本
+AC 断言 + DB-WATCH 重放全过（本轮无 Python 侧改动，确认无回归）、微信
+stub 下单往返正常；行为等价性由分层回归覆盖（repository 索引/哨兵、service
+冲突回放与死单让路、handler/contracts/页面映射、渠道 transport 结构 +
+redirect-loop 行为）。
+
+## 提交
+
+- 提交 message 前缀：`issue-72(ocr-2):`（按本批 ask 指定）
+

@@ -232,7 +232,9 @@ func (s *PurchaseService) Purchase(ctx context.Context, tenantID uint64, quoteID
 	// below. Resolve the purchase's existing PENDING order first and answer
 	// it verbatim (the match gate above already proved the quote buys the
 	// same plan at the same frozen face, so the replayed order IS this
-	// purchase's order).
+	// purchase's order). (R2-28) Only a PAYABLE pending order is replayed:
+	// a channel-failed or link-less pending order is not a payment entry
+	// and does not block this checkout.
 	if existing, perr := s.orders.orders.CurrentPendingPurchaseOrder(ctx, tenantID, p.AmountFen, p.Currency); perr == nil {
 		ov := orderViewFromRow(existing)
 		return s.purchaseView(p, snap, pub, &ov), nil
@@ -246,6 +248,20 @@ func (s *PurchaseService) Purchase(ctx context.Context, tenantID uint64, quoteID
 		existing, gerr := s.orders.orders.GetOrderByQuote(ctx, tenantID, quoteID)
 		if gerr != nil {
 			return PurchaseView{}, repocommercial.ErrQuoteAlreadyUsed
+		}
+		ovExisting := orderViewFromRow(existing)
+		return s.purchaseView(p, snap, pub, &ovExisting), nil
+	}
+	if errors.Is(err, repocommercial.ErrPurchasePendingExists) {
+		// (R2-26) The database-level pending invariant rejected this insert:
+		// a concurrent checkout of the SAME purchase (fresh-quote race,
+		// re-quote speed-run) committed its order first. Answer the winner's
+		// order verbatim — never a second channel request. The loosened
+		// conflict read needs no price-face match: the index already proved
+		// a payable pending order for this tenant exists.
+		existing, gerr := s.orders.orders.CurrentPayablePendingOrder(ctx, tenantID)
+		if gerr != nil {
+			return PurchaseView{}, err
 		}
 		ovExisting := orderViewFromRow(existing)
 		return s.purchaseView(p, snap, pub, &ovExisting), nil

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	domain "github.com/Tencent/WeKnora/internal/modules/commercial"
@@ -97,6 +98,21 @@ func NewOrderService(db *gorm.DB, providers map[string]payment.Provider) (*Order
 	}
 	if err := db.AutoMigrate(&repocommercial.OrderRow{}, &repocommercial.Subscription{}); err != nil {
 		return nil, err
+	}
+	// (R2-26) Database-level invariant: at most ONE payable (not
+	// channel-failed) pending purchase order per tenant. The purchase
+	// path's read-decide-write only narrowed the race window — two
+	// concurrent POSTs with two fresh quotes could both pass the pre-checks
+	// and commit; the partial unique index closes the gap at insert time
+	// (loser answers ErrPurchasePendingExists and replays the winner, the
+	// ErrQuoteAlreadyUsed shape). A deployment holding pre-invariant
+	// duplicates fails HERE loudly (the index cannot be created) instead of
+	// silently continuing without the invariant. SQLite and PostgreSQL
+	// share this partial-index syntax.
+	if err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS uq_purchase_pending_per_tenant
+		ON commercial_orders (tenant_id)
+		WHERE kind = 'purchase' AND state = 'pending' AND channel_failed = 0`).Error; err != nil {
+		return nil, fmt.Errorf("commercial pending-purchase invariant: %w", err)
 	}
 	return &OrderService{
 		quotes:    repocommercial.NewCatalogStore(db),
@@ -221,16 +237,21 @@ func (s *OrderService) CreateQuote(ctx context.Context, tenantID uint64, planKey
 // was durably opened: the pending order stays recoverable through
 // GetOrder/RecoverOrderStatus, and the write answer still carries the
 // operation ID and state as the product contract requires.
+// CheckoutLinkDegraded (R2-27) marks a DIFFERENT posture: the channel call
+// succeeded and the answer carries a working CheckoutURL, but persisting
+// the link for later replays failed (closed marker, raw error in the server
+// log only) — the answer itself stays a clean success.
 type OrderView struct {
-	ID            string `json:"id"`
-	QuoteID       string `json:"quote_id"`
-	State         string `json:"state"`
-	AmountFen     int64  `json:"amount_fen"`
-	Currency      string `json:"currency"`
-	Provider      string `json:"provider,omitempty"`
-	CheckoutURL   string `json:"checkout_url,omitempty"`
-	CheckoutError string `json:"checkout_error,omitempty"`
-	Version       int64  `json:"version"`
+	ID                   string `json:"id"`
+	QuoteID              string `json:"quote_id"`
+	State                string `json:"state"`
+	AmountFen            int64  `json:"amount_fen"`
+	Currency             string `json:"currency"`
+	Provider             string `json:"provider,omitempty"`
+	CheckoutURL          string `json:"checkout_url,omitempty"`
+	CheckoutError        string `json:"checkout_error,omitempty"`
+	CheckoutLinkDegraded bool   `json:"checkout_link_degraded,omitempty"`
+	Version              int64  `json:"version"`
 }
 
 // CreateOrder consumes the quote and opens one pending order with one
@@ -339,10 +360,16 @@ func (s *OrderService) openOrder(ctx context.Context, tenantID uint64, q repocom
 	})
 	if err != nil {
 		// The channel call failed (or timed out into StateUnknown): the
-		// pending order and attempt REMAIN, the quote is consumed, and the
-		// response still carries the operation ID + state so recovery goes
-		// through GetOrder — never through a second checkout of the same
-		// quote.
+		// pending order and attempt REMAIN (channel-failed — see
+		// MarkChannelFailed below), the quote is consumed, and the response
+		// still carries the operation ID + state so recovery goes through
+		// GetOrder — never through a second checkout of the same quote.
+		// (R2-28) The channel failure is ALSO persisted on the row: the
+		// channel-failed pending order is not a payable entry and must not
+		// block a fresh quote's checkout.
+		if ferr := s.orders.MarkChannelFailed(ctx, id); ferr != nil {
+			log.Printf("commercial: channel-failed mark lost for order %s: %v", id, ferr)
+		}
 		return OrderView{ID: id, QuoteID: q.ID, State: domain.OrderStatePending,
 			AmountFen: amountFen, Currency: "CNY", Provider: providerName, Version: 1,
 			CheckoutError: fmt.Sprintf("channel checkout failed for %s: %v", id, err)}, nil
@@ -356,10 +383,15 @@ func (s *OrderService) openOrder(ctx context.Context, tenantID uint64, q repocom
 	// entry to an already-consumed quote, and a client that lost it (timeout,
 	// refresh) had no way back to the checkout. A persistence failure does
 	// NOT undo the answer: the write-answer contract still holds (the client
-	// gets the link this once); the failure is surfaced through CheckoutError
-	// so the degraded replay is visible instead of silent.
+	// gets the link this once).
+	// (R2-27) The degradation is its OWN closed marker — NOT the channel
+	// failure's CheckoutError: the channel call SUCCEEDED here (the client
+	// holds a working link), so the handler must answer a clean 201, never
+	// the channel-failure 202; and the raw error (SQL/driver detail) stays
+	// in the server log, never on the wire.
 	if err := s.orders.SetCheckoutURL(ctx, id, res.CheckoutURL); err != nil {
-		view.CheckoutError = fmt.Sprintf("checkout_url persistence failed for %s: %v", id, err)
+		log.Printf("commercial: checkout_url persistence failed for order %s: %v", id, err)
+		view.CheckoutLinkDegraded = true
 	}
 	return view, nil
 }

@@ -308,6 +308,19 @@ test('parsePurchaseView rejects raw provider states', () => {
   assert.throws(() => parsePurchaseView({ state: 'awaiting_payment', amount_fen: 9900 })); // 非数字串
 });
 
+// (R2-21) reason 是建议性闭合令牌：后端先于前端发版新增令牌（滚动升级/版本
+// 漂移）时按缺席忽略——整份视图不得解析失败（POST 路径会把 'invalid purchase
+// (reason)' 原文展示给用户）；state 保持严格（渲染必需）。
+test('parsePurchaseView ignores an unknown reason token instead of failing the whole view', () => {
+  const v = parsePurchaseView({ state: 'absent', reason: 'new_future_token' });
+  assert.equal(v.state, 'absent');
+  assert.equal(v.reason, undefined);
+  const known = parsePurchaseView({ state: 'absent', reason: 'unreachable' });
+  assert.equal(known.reason, 'unreachable');
+  // state 校验保持严格：渲染必需字段。
+  assert.throws(() => parsePurchaseView({ state: 'weird_state' }));
+});
+
 test('parseQuoteView passes through frozen line items', () => {
   const q = parseQuoteView({ id: 'qt_1', amount_fen: '9900', credit_delta: '9900000',
     expires_at: '2026-09-23T12:00:00Z', currency: 'CNY',

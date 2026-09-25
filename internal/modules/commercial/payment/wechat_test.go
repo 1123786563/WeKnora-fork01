@@ -315,3 +315,35 @@ func TestChannelClientsCapRedirectLoop(t *testing.T) {
 		}
 	}
 }
+
+// TestChannelTransportKeepsEnvironmentProxy（R2-17/R2-19）：切换到共享
+// SSRFSafe 客户端时静默丢了 ProxyFromEnvironment（NewSSRFSafeTransport 不设
+// Proxy 字段，而默认 Transport 带环境代理）——仅允许代理出网的部署会从「经
+// 代理可达」退化为「直连超时」。两个渠道的 transport 现在都显式挂回环境
+// 代理（SSRF 拨号/校验层保持不变）。
+func TestChannelTransportKeepsEnvironmentProxy(t *testing.T) {
+	assertProxy := func(name string, client *http.Client) {
+		t.Helper()
+		if client == nil || client.Transport == nil {
+			t.Fatalf("%s: client/transport missing", name)
+		}
+		rt, ok := client.Transport.(*secutils.SSRFValidatingRoundTripper)
+		if !ok {
+			t.Fatalf("%s: transport must be the SSRF-validating wrapper, got %T", name, client.Transport)
+		}
+		tr, ok := rt.Base.(*http.Transport)
+		if !ok {
+			t.Fatalf("%s: base transport must be *http.Transport, got %T", name, rt.Base)
+		}
+		if tr.Proxy == nil {
+			t.Fatalf("%s: base transport must carry the environment proxy (R2-17/R2-19 regression)", name)
+		}
+		if tr.DialContext == nil {
+			t.Fatalf("%s: the SSRF-safe dial layer must stay mounted", name)
+		}
+	}
+	wechat := newWechatProvider(WechatConfig{AppID: "wx-test", MchID: "1900000001"}, nil, nil)
+	assertProxy("wechat", wechat.client)
+	alipay, _, _ := alipayNotifyFixture(t)
+	assertProxy("alipay", alipay.client)
+}

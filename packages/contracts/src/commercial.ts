@@ -197,9 +197,12 @@ export function parsePurchaseView(value:unknown):PurchaseView {
     out.amount_fen = digitString(v.amount_fen,'amount_fen','purchase');
   }
   if(v.currency!==undefined&&v.currency!=='') out.currency = nonEmptyString(v.currency,'currency','purchase');
-  if(v.reason!==undefined&&v.reason!=='') {
-    if(typeof v.reason!=='string'||!PURCHASE_REASONS.has(v.reason)) throw new Error('invalid purchase (reason)');
-    out.reason = v.reason;
-  }
+  // (R2-21) reason is ADVISORY closed-vocabulary metadata: a backend ahead
+  // of the frontend (rolling upgrade, version drift) may emit a newer
+  // token — an unknown token is ignored as if absent (the state stays
+  // strictly validated; it is render-required and MUST fail loudly),
+  // never a whole-view parse failure that would surface 'invalid purchase
+  // (reason)' to the user.
+  if(typeof v.reason==='string'&&v.reason!==''&&PURCHASE_REASONS.has(v.reason)) out.reason=v.reason;
   return out;
 }

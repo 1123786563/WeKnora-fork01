@@ -128,6 +128,59 @@ test('a 503 purchase failure with a closed reason token maps to the Chinese mess
   await act(async () => { root?.unmount(); });
 });
 
+// R2-01：409/500 错误族不带 reason 令牌、只有 message 上的英文机器令牌——
+// 页面按 message 令牌映射中文；未命中的服务端错误给统一中文兜底，英文机器
+// 令牌不原文展示（spec L210 页面词汇稳定）。
+test('a 409 purchase conflict maps its message token to the Chinese copy', async () => {
+  const { ApiError } = await import('@weknora/api-client');
+  const expired = new ApiError({ status: 409, code: 'HTTP_409', message: 'quote expired' });
+  const client = {
+    commercial: {
+      quote: async () => quote,
+      purchase: async () => { throw expired; },
+      getOrder: async () => order,
+    },
+  };
+  const { CheckoutPage } = await import('./CheckoutPage.tsx');
+  const { createScopeController } = await import('@weknora/domain/scope');
+  const scopeController = createScopeController({ origin: '', userId: 'user-1', tenantId: '45' });
+  let root: Root | undefined;
+  await act(async () => {
+    root = createRoot(document.body.appendChild(document.createElement('div')));
+    root.render(React.createElement(CheckoutPage, { client: client as never, scopeController, orderId: '' }));
+  });
+  await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+  const text = document.body.textContent ?? '';
+  assert.match(text, /报价已过期/);
+  assert.doesNotMatch(text, /quote expired/);
+  await act(async () => { root?.unmount(); });
+});
+
+test('an unmapped server error falls back to the closed Chinese copy, never the raw token', async () => {
+  const { ApiError } = await import('@weknora/api-client');
+  const unmapped = new ApiError({ status: 409, code: 'HTTP_409', message: 'some_future_conflict_token' });
+  const client = {
+    commercial: {
+      quote: async () => quote,
+      purchase: async () => { throw unmapped; },
+      getOrder: async () => order,
+    },
+  };
+  const { CheckoutPage } = await import('./CheckoutPage.tsx');
+  const { createScopeController } = await import('@weknora/domain/scope');
+  const scopeController = createScopeController({ origin: '', userId: 'user-1', tenantId: '46' });
+  let root: Root | undefined;
+  await act(async () => {
+    root = createRoot(document.body.appendChild(document.createElement('div')));
+    root.render(React.createElement(CheckoutPage, { client: client as never, scopeController, orderId: '' }));
+  });
+  await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+  const text = document.body.textContent ?? '';
+  assert.match(text, /购买未能创建，请稍后重试/);
+  assert.doesNotMatch(text, /some_future_conflict_token/);
+  await act(async () => { root?.unmount(); });
+});
+
 // R1-V12：已支付的订单不再显示「待付款（权益未开通）」标签（付款后回访/轮询
 // 更新后不得误导重复支付）。
 test('a paid order no longer shows the awaiting-payment label', async () => {

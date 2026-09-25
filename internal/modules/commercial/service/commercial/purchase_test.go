@@ -316,6 +316,112 @@ func TestPurchaseSecondQuoteReplaysExistingPendingOrder(t *testing.T) {
 	}
 }
 
+// TestConcurrentFreshQuoteConflictReplaysWinner（R2-26）：前置读-判-写只缩小
+// 竞态窗口——两张新报价并发 POST 时双方前置 SELECT 都可能未命中对方的未提交
+// 单。数据库层部分唯一索引在插入时兜住不变量：败者拿到
+// ErrPurchasePendingExists 并回放胜者的订单（与 ErrQuoteAlreadyUsed 同构），
+// 绝不产生第二张可付渠道单。
+func TestConcurrentFreshQuoteConflictReplaysWinner(t *testing.T) {
+	svc, fake, cp, db := newPurchaseTestEnv(t)
+	purchaseSeedPlan(t, svc.plans, "pro", 9900)
+	// 权威面：租户 46 的 awaiting 购买（9900 冻结面）。
+	if _, err := fake.SubmitCommand(context.Background(), commercial.Command{
+		Kind: commercial.CommandKindCreatePurchaseSubscription,
+		Key: commercial.CreatePurchaseSubscriptionCommandKey(
+			commercial.ExternalPurchaseSubscriptionID(46), commercial.DeterministicPlanCode("pro", 1)),
+		Actor: "test", Reason: "purchase",
+		Payload: commercial.CreatePurchaseSubscriptionPayload{
+			TenantID: 46, ExternalCustomerID: commercial.ExternalCustomerID(46),
+			ExternalPurchaseSubscriptionID: commercial.ExternalPurchaseSubscriptionID(46),
+			PlanCode:                       commercial.DeterministicPlanCode("pro", 1),
+			AmountFen:                      9900, Currency: commercial.CurrencyCNY,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// 「并发胜者」中间态：订单行已提交（pending、channel_failed=0——索引槽
+	// 已被占），但渠道链接尚未持久化（checkout_url 空）——前置
+	// CurrentPendingPurchaseOrder 的可付条件（URL 非空）恰好漏掉它，构造出
+	// 前置 SELECT 放行、索引拒绝的竞态形态。
+	if err := db.Exec(`INSERT INTO commercial_orders (id, tenant_id, quote_id, kind, amount_fen, currency, state, version, created_at, checkout_url)
+		VALUES ('ord_winner', 46, 'qt_winner', 'purchase', 9900, 'CNY', 'pending', 1, ?, '')`,
+		time.Now().UTC().Format(time.RFC3339Nano)).Error; err != nil {
+		t.Fatal(err)
+	}
+	q := purchaseQuote(t, svc.orders, 46, "pro")
+	view, err := svc.Purchase(context.Background(), 46, q.ID, "wechat", "a", "WeKnora Space 46")
+	if err != nil {
+		t.Fatalf("conflict must resolve by replay, got %v", err)
+	}
+	if view.Order == nil || view.Order.ID != "ord_winner" {
+		t.Fatalf("the index loser must replay the winner's order, got %+v", view.Order)
+	}
+	if n := len(cp.createCalls); n != 0 {
+		t.Fatalf("conflict must NEVER open a second channel request, creates=%d", n)
+	}
+}
+
+// TestChannelFailedOrderDoesNotBlockFreshQuote（R2-28）：渠道 Create 失败留下
+// 的 pending 死单（无 checkout_url、channel_failed 标记）不是支付入口也不挡
+// 新报价——一次瞬时网关故障后，用户用新报价重试必须能拿到新的可付渠道单，
+// 而不是被永久卡死在无链接的死单上。
+func TestChannelFailedOrderDoesNotBlockFreshQuote(t *testing.T) {
+	svc, _, cp, _ := newPurchaseTestEnv(t)
+	purchaseSeedPlan(t, svc.plans, "pro", 9900)
+	q1 := purchaseQuote(t, svc.orders, 47, "pro")
+	cp.createErr = errors.New("channel timeout")
+	first, err := svc.Purchase(context.Background(), 47, q1.ID, "wechat", "a", "WeKnora Space 47")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Order == nil || first.Order.CheckoutError == "" || first.Order.CheckoutURL != "" {
+		t.Fatalf("first attempt must be the channel-failure posture, got %+v", first.Order)
+	}
+	// 瞬时故障恢复：新报价重试。
+	cp.createErr = nil
+	q2 := purchaseQuote(t, svc.orders, 47, "pro")
+	second, err := svc.Purchase(context.Background(), 47, q2.ID, "wechat", "a", "WeKnora Space 47")
+	if err != nil {
+		t.Fatalf("a fresh quote must not be blocked by the dead order: %v", err)
+	}
+	if second.Order == nil || second.Order.ID == first.Order.ID || second.Order.CheckoutURL == "" {
+		t.Fatalf("fresh quote must open a NEW payable order, first=%v second=%+v", first.Order.ID, second.Order)
+	}
+	if n := len(cp.createCalls); n != 2 {
+		t.Fatalf("channel creates = %d, want 2 (failed first, fresh second)", n)
+	}
+}
+
+// TestCheckoutLinkDegradedIsSeparateFromChannelFailure（R2-27）：checkout_url
+// 持久化失败时渠道调用实际已成功（客户端拿到有效链接）——降级必须是独立
+// 标记（CheckoutLinkDegraded），绝不能复用渠道失败的 CheckoutError（那会让
+// handler 把一次成功下单误判为渠道失败降 202，并把 SQL 细节透到边界）。
+func TestCheckoutLinkDegradedIsSeparateFromChannelFailure(t *testing.T) {
+	svc, _, _, db := newPurchaseTestEnv(t)
+	purchaseSeedPlan(t, svc.plans, "pro", 9900)
+	// 让 SetCheckoutURL 的 UPDATE 确定性失败：BEFORE UPDATE OF checkout_url
+	// 触发器 ABORT（OpenOrder 的 INSERT 不受影响——渠道调用前订单已落库）。
+	if err := db.Exec(`CREATE TRIGGER block_url_persist BEFORE UPDATE OF checkout_url ON commercial_orders
+		BEGIN SELECT RAISE(ABORT, 'test block'); END`).Error; err != nil {
+		t.Fatal(err)
+	}
+	q := purchaseQuote(t, svc.orders, 48, "pro")
+	view, err := svc.Purchase(context.Background(), 48, q.ID, "wechat", "a", "WeKnora Space 48")
+	if err != nil {
+		t.Fatalf("the channel call succeeded — the answer must stay a clean success, got %v", err)
+	}
+	if view.Order == nil || view.Order.CheckoutURL == "" {
+		t.Fatalf("the client must still hold the working link, got %+v", view.Order)
+	}
+	if !view.Order.CheckoutLinkDegraded {
+		t.Fatalf("the degradation must be its OWN marker, got %+v", view.Order)
+	}
+	if view.Order.CheckoutError != "" {
+		t.Fatalf("persistence degradation must NOT reuse the channel-failure CheckoutError (202 trigger), got %q",
+			view.Order.CheckoutError)
+	}
+}
+
 // (R1-V03) 权威面已 active/canceled 时新报价不得再开渠道订单（active 二次扣款
 // 无门控发票、canceled 的门控发票永远无法结算）；同一 quote 的既有订单重放
 // 保持放行（付款后 POST 重演返回已付订单）。

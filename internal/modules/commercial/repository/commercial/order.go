@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	domain "github.com/Tencent/WeKnora/internal/modules/commercial"
@@ -17,6 +18,11 @@ var (
 	ErrInvalidOrderState      = errors.New("invalid_order_state")
 	ErrInvalidPaymentAttempt  = errors.New("invalid_payment_attempt")
 	ErrPaymentAttemptNotFound = errors.New("payment_attempt_not_found")
+	// ErrPurchasePendingExists (R2-26): the partial unique index rejected a
+	// second concurrent payable purchase order for the same tenant — the
+	// caller replays the existing pending order (the ErrQuoteAlreadyUsed
+	// shape, one purchase identity ahead).
+	ErrPurchasePendingExists = errors.New("purchase_pending_exists")
 )
 
 // Payment attempt lifecycle states: an attempt is registered pending and
@@ -58,6 +64,14 @@ type OrderRow struct {
 	// quote. Empty when the channel call failed (the CheckoutError posture)
 	// or never made; never fabricated.
 	CheckoutURL string `gorm:"column:checkout_url"`
+	// ChannelFailed (R2-28): the channel Create call FAILED for this order
+	// (gateway 5xx / transport timeout) — the order stays pending for the
+	// recovery paths but is NOT a payable entry (no checkout link exists,
+	// the channel most likely never saw the order), so it must neither be
+	// replayed as a payment entry nor block a fresh quote's checkout (the
+	// partial pending-uniqueness index excludes it). A late channel
+	// confirmation still pays it through the standard ConfirmPayment path.
+	ChannelFailed bool `gorm:"column:channel_failed;not null;default:false"`
 }
 
 func (OrderRow) TableName() string { return "commercial_orders" }
@@ -131,7 +145,34 @@ func createOrderTx(tx *gorm.DB, row OrderRow) error {
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return err
 	}
-	return tx.Create(&row).Error
+	if err := tx.Create(&row).Error; err != nil {
+		// (R2-26) The partial unique index uq_purchase_pending_per_tenant
+		// makes "one payable pending purchase order per tenant" a DATABASE
+		// invariant: a concurrent checkout's insert loses here (both
+		// pre-checks passed before the winner committed). SQLite reports
+		// "UNIQUE constraint failed: commercial_orders.tenant_id" (column
+		// face — the quote_id index reports quote_id instead), PostgreSQL
+		// names the index itself.
+		if row.Kind == domain.OrderKindPurchase && isPendingPurchaseConflict(err) {
+			return ErrPurchasePendingExists
+		}
+		return err
+	}
+	return nil
+}
+
+// isPendingPurchaseConflict matches the partial pending-uniqueness index
+// violation (R2-26) across the two supported drivers. The quote_id unique
+// index is the OTHER conflict shape and deliberately does not match.
+func isPendingPurchaseConflict(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	if strings.Contains(msg, "uq_purchase_pending_per_tenant") {
+		return true
+	}
+	return strings.Contains(msg, "UNIQUE constraint failed") && strings.Contains(msg, "tenant_id")
 }
 
 // OpenOrderCommand is the SINGLE input from which the order row and its
@@ -270,21 +311,25 @@ func (s *OrderStore) CurrentPurchaseOrder(ctx context.Context, tenantID uint64, 
 	return OrderRow{}, ErrOrderNotFound
 }
 
-// CurrentPendingPurchaseOrder returns the NEWEST still-PENDING purchase
-// order at the held purchase's frozen price face (R1-22): at most ONE
-// payable channel order may exist per purchase, so a checkout under a
-// fresh quote must replay the existing pending order instead of opening a
-// second concurrent channel order for the same gating invoice (two payable
-// orders would double-charge the same subscription — each callback
-// confirms independently). No pending order reports ErrOrderNotFound.
+// CurrentPendingPurchaseOrder returns the NEWEST still-PENDING, PAYABLE
+// purchase order at the held purchase's frozen price face (R1-22, R2-28):
+// at most ONE payable channel order may exist per purchase, so a checkout
+// under a fresh quote must replay the existing pending order instead of
+// opening a second concurrent channel order for the same gating invoice
+// (two payable orders would double-charge the same subscription — each
+// callback confirms independently). Payable (R2-28) means the channel
+// Create SUCCEEDED: channel-failed orders carry no checkout link and are
+// not replayed as payment entries, and an empty checkout_url (persistence
+// degraded, R2-27) is not a payment entry either. No payable pending order
+// reports ErrOrderNotFound.
 func (s *OrderStore) CurrentPendingPurchaseOrder(ctx context.Context, tenantID uint64, amountFen int64, currency string) (OrderRow, error) {
 	if tenantID == 0 {
 		return OrderRow{}, ErrOrderNotFound
 	}
 	var row OrderRow
 	err := s.db.WithContext(ctx).
-		Where("tenant_id = ? AND kind = ? AND amount_fen = ? AND currency = ? AND state = ?",
-			tenantID, domain.OrderKindPurchase, amountFen, currency, domain.OrderStatePending).
+		Where("tenant_id = ? AND kind = ? AND amount_fen = ? AND currency = ? AND state = ? AND channel_failed = ? AND checkout_url <> ''",
+			tenantID, domain.OrderKindPurchase, amountFen, currency, domain.OrderStatePending, false).
 		Order("created_at DESC, id ASC").First(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return OrderRow{}, ErrOrderNotFound
@@ -293,6 +338,52 @@ func (s *OrderStore) CurrentPendingPurchaseOrder(ctx context.Context, tenantID u
 		return OrderRow{}, err
 	}
 	return row, nil
+}
+
+// CurrentPayablePendingOrder returns the tenant's NEWEST payable pending
+// purchase order WITHOUT the price-face filter (R2-26): it is the conflict
+// replay read — the partial unique index just proved such an order exists,
+// so the price face would only risk a read mismatch (the concurrent winner
+// consumed a quote of the SAME purchase, hence the same frozen face, but
+// the looser read keeps the replay unconditional on matching keys).
+func (s *OrderStore) CurrentPayablePendingOrder(ctx context.Context, tenantID uint64) (OrderRow, error) {
+	if tenantID == 0 {
+		return OrderRow{}, ErrOrderNotFound
+	}
+	var row OrderRow
+	err := s.db.WithContext(ctx).
+		Where("tenant_id = ? AND kind = ? AND state = ? AND channel_failed = ?",
+			tenantID, domain.OrderKindPurchase, domain.OrderStatePending, false).
+		Order("created_at DESC, id ASC").First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return OrderRow{}, ErrOrderNotFound
+	}
+	if err != nil {
+		return OrderRow{}, err
+	}
+	return row, nil
+}
+
+// MarkChannelFailed persists the channel-Create failure on the order row
+// (R2-28): the order stays pending (the recovery paths and a late channel
+// confirmation still work) but is marked NOT payable — no checkout link
+// exists, the channel most likely never saw the order. The partial
+// pending-uniqueness index excludes channel-failed rows, so a fresh quote's
+// checkout is never blocked by a dead order.
+func (s *OrderStore) MarkChannelFailed(ctx context.Context, orderID string) error {
+	if orderID == "" {
+		return ErrInvalidOrderRow
+	}
+	res := s.db.WithContext(ctx).Model(&OrderRow{}).
+		Where("id = ? AND state = ?", orderID, domain.OrderStatePending).
+		Update("channel_failed", true)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return ErrOrderNotFound
+	}
+	return nil
 }
 
 // FirstPendingAttempt returns the oldest still-pending attempt of an order —

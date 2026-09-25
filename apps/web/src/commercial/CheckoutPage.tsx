@@ -62,6 +62,43 @@ export function purchaseReasonMessage(reason: unknown): string | undefined {
   }
 }
 
+// R2-01：POST /purchases 的 409/500 错误族不带 reason 令牌，只有 message 上的
+// 闭合机器令牌（"quote expired"、"invoice_quote_mismatch"、…）——按 message
+// 令牌映射中文文案；服务端错误（4xx/5xx ApiError）未命中已知令牌时给统一
+// 中文兜底，绝不把英文机器令牌原文展示给用户（spec L210：页面词汇稳定，
+// 不含平台词汇）。
+const PURCHASE_CONFLICT_MESSAGES: Record<string, string> = {
+  'quote expired': '报价已过期，请重新获取报价',
+  'invoice_quote_mismatch': '订单金额与报价不一致，请重新发起购买',
+  'purchase_plan_conflict': '购买套餐已发生变更，请重新发起购买',
+  'purchase_not_awaiting_payment': '当前购买状态不支持重复支付',
+  'quote already used': '报价已被使用，请重新获取报价',
+  'subscription changed since the quote was cut; please re-quote': '订阅已变更，请重新获取报价',
+  'quote predates the purchase freeze; please re-quote': '报价已过期，请重新获取报价',
+  'this plan version is not purchasable yet; please re-quote later': '该套餐版本暂不可购，请稍后重试',
+  'purchase failed': '购买未能创建，请稍后重试',
+};
+const PURCHASE_ERROR_FALLBACK = '购买未能创建，请稍后重试';
+
+export function purchaseConflictMessage(message: string | undefined): string | undefined {
+  if (message === undefined) return undefined;
+  return PURCHASE_CONFLICT_MESSAGES[message];
+}
+
+// error→展示文案（R2-01）：reason 令牌优先（503 信封），其次 message 令牌
+// （409/500 族）；服务端 ApiError 未命中任何已知令牌时给统一中文兜底——
+// 非服务端错误（网络层等）保留原始 message。
+export function purchaseErrorText(error: unknown): string {
+  if (error instanceof ApiError) {
+    const closedReason = purchaseReasonMessage((error.details as { reason?: unknown } | undefined)?.reason);
+    if (closedReason !== undefined) return closedReason;
+    const conflict = purchaseConflictMessage(error.message);
+    if (conflict !== undefined) return conflict;
+    if (error.status !== undefined && error.status >= 400) return PURCHASE_ERROR_FALLBACK;
+  }
+  return error instanceof Error ? error.message : 'Unable to open checkout';
+}
+
 interface CheckoutPageProps {
   client: WeKnoraClient;
   scopeController: ReturnType<typeof createScopeController>;
@@ -118,16 +155,10 @@ export function CheckoutPage({ client, scopeController, orderId }: CheckoutPageP
         }
       } catch (error) {
         if (!active || !scopeController.isCurrent(currentScope.scope)) return;
-        // R1-24：POST /purchases 的平台故障以 503 + 顶层闭合 reason 令牌回答，
-        // ApiError.details.reason 携带它——优先映射闭合文案，而不是把英文
-        // 原始 message（"purchase temporarily unavailable"）直接展示给用户。
-        const closedReason = error instanceof ApiError
-          ? purchaseReasonMessage((error.details as { reason?: unknown } | undefined)?.reason)
-          : undefined;
-        setState({
-          status: 'error',
-          message: closedReason ?? (error instanceof Error ? error.message : 'Unable to open checkout'),
-        });
+        // R1-24/R2-01：POST /purchases 的失败面按闭合令牌映射（503 reason、
+        // 409/500 message 令牌、统一中文兜底）——英文机器令牌/原始 message
+        // 不直接展示给用户（spec L210）。
+        setState({ status: 'error', message: purchaseErrorText(error) });
       }
     }
 

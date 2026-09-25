@@ -265,11 +265,16 @@ func TestOrderQuoteConsumableByExactlyOneOrder(t *testing.T) {
 }
 
 // insertCreatedAtOrder 以参数绑定落一张指定 created_at 的购买单（R1-20 测试
-// 的可控时间锚；order ids 故意用字典序与时间序相反的构造）。
-func insertCreatedAtOrder(t *testing.T, db *gorm.DB, id, state, createdAt string) {
+// 的可控时间锚；order ids 故意用字典序与时间序相反的构造）。payable=true 时
+// 带非空 checkout_url 且非 channel_failed（R2-28 的可付形态）。
+func insertCreatedAtOrder(t *testing.T, db *gorm.DB, id, state, createdAt string, payable bool) {
 	t.Helper()
-	if err := db.Exec(`INSERT INTO commercial_orders (id, tenant_id, quote_id, kind, amount_fen, currency, state, version, created_at)
-		VALUES (?, 7, ?, 'purchase', 100, 'CNY', ?, 1, ?)`, id, "qt_"+id, state, createdAt).Error; err != nil {
+	url := ""
+	if payable {
+		url = "https://pay.example/" + id
+	}
+	if err := db.Exec(`INSERT INTO commercial_orders (id, tenant_id, quote_id, kind, amount_fen, currency, state, version, created_at, checkout_url)
+		VALUES (?, 7, ?, 'purchase', 100, 'CNY', ?, 1, ?, ?)`, id, "qt_"+id, state, createdAt, url).Error; err != nil {
 		t.Fatal(err)
 	}
 }
@@ -282,15 +287,15 @@ func TestCurrentPurchaseOrderPrefersNewestByCreatedAt(t *testing.T) {
 	s, db := testOrderStore(t)
 	ctx := context.Background()
 	// 字典序最 OLD 的行时间最新——id ASC 会选错。
-	insertCreatedAtOrder(t, db, "ord_0000newest", "pending", "2026-06-01T00:00:00Z")
-	insertCreatedAtOrder(t, db, "ord_0001mid", "paid", "2026-03-01T00:00:00Z")
-	insertCreatedAtOrder(t, db, "ord_0002oldest", "paid", "2026-01-01T00:00:00Z")
+	insertCreatedAtOrder(t, db, "ord_0000newest", "pending", "2026-06-01T00:00:00Z", true)
+	insertCreatedAtOrder(t, db, "ord_0001mid", "paid", "2026-03-01T00:00:00Z", true)
+	insertCreatedAtOrder(t, db, "ord_0002oldest", "paid", "2026-01-01T00:00:00Z", true)
 	row, err := s.CurrentPurchaseOrder(ctx, 7, 100, "CNY")
 	if err != nil || row.ID != "ord_0000newest" {
 		t.Fatalf("newest pending must win, got %+v err=%v", row, err)
 	}
 	// 双 pending：created_at 最新者胜（id 序随机）。
-	insertCreatedAtOrder(t, db, "ord_0003newerpending", "pending", "2026-07-01T00:00:00Z")
+	insertCreatedAtOrder(t, db, "ord_0003newerpending", "pending", "2026-07-01T00:00:00Z", true)
 	row, err = s.CurrentPurchaseOrder(ctx, 7, 100, "CNY")
 	if err != nil || row.ID != "ord_0003newerpending" {
 		t.Fatalf("newest of two pendings must win, got %+v err=%v", row, err)
@@ -310,25 +315,96 @@ func TestCurrentPurchaseOrderPrefersNewestByCreatedAt(t *testing.T) {
 	}
 }
 
-// TestCurrentPendingPurchaseOrderReturnsNewestPending（R1-22）：一个购买至多
-// 一张可支付渠道订单——仅 pending、created_at 最新优先；无 pending 报
-// ErrOrderNotFound（历史终态单不得被当作可支付入口重放）。
-func TestCurrentPendingPurchaseOrderReturnsNewestPending(t *testing.T) {
+// TestCurrentPendingPurchaseOrderReturnsNewestPayablePending（R1-22/R2-28）：
+// 重放面只认「可付」pending——渠道创建成功（checkout_url 非空）且未被标记
+// 渠道失败；channel_failed 死单与无链接 pending 不作为支付入口重放，无 match
+// 报 ErrOrderNotFound。
+func TestCurrentPendingPurchaseOrderReturnsNewestPayablePending(t *testing.T) {
 	s, db := testOrderStore(t)
 	ctx := context.Background()
-	insertCreatedAtOrder(t, db, "ord_0000oldpending", "pending", "2026-01-01T00:00:00Z")
-	insertCreatedAtOrder(t, db, "ord_0001paid", "paid", "2026-06-01T00:00:00Z")
-	insertCreatedAtOrder(t, db, "ord_0002newpending", "pending", "2026-07-01T00:00:00Z")
+	insertCreatedAtOrder(t, db, "ord_0000oldpending", "pending", "2026-01-01T00:00:00Z", true)
+	insertCreatedAtOrder(t, db, "ord_0001paid", "paid", "2026-06-01T00:00:00Z", true)
+	insertCreatedAtOrder(t, db, "ord_0002newpending", "pending", "2026-07-01T00:00:00Z", true)
 	row, err := s.CurrentPendingPurchaseOrder(ctx, 7, 100, "CNY")
 	if err != nil || row.ID != "ord_0002newpending" {
-		t.Fatalf("newest pending must win over paid and older pending, got %+v err=%v", row, err)
+		t.Fatalf("newest payable pending must win over paid and older pending, got %+v err=%v", row, err)
 	}
-	if err := db.Exec(`UPDATE commercial_orders SET state = 'paid' WHERE state = ?`,
-		domain.OrderStatePending).Error; err != nil {
+	// channel-failed 死单：仍是 pending 但不可付——不入选。
+	if err := db.Exec(`UPDATE commercial_orders SET channel_failed = 1 WHERE id = ?`,
+		"ord_0002newpending").Error; err != nil {
+		t.Fatal(err)
+	}
+	row, err = s.CurrentPendingPurchaseOrder(ctx, 7, 100, "CNY")
+	if err != nil || row.ID != "ord_0000oldpending" {
+		t.Fatalf("channel-failed pending must be skipped, got %+v err=%v", row, err)
+	}
+	// 无链接 pending（持久化降级形态）：同样不是支付入口。
+	if err := db.Exec(`UPDATE commercial_orders SET checkout_url = ''`).Error; err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.CurrentPendingPurchaseOrder(ctx, 7, 100, "CNY"); !errors.Is(err, ErrOrderNotFound) {
-		t.Fatalf("no pending order must be ErrOrderNotFound, got %v", err)
+		t.Fatalf("no PAYABLE pending order must be ErrOrderNotFound, got %v", err)
+	}
+	// CurrentPayablePendingOrder（R2-26 冲突回读）：不限价面，可付 pending
+	// 最新优先——含无链接但渠道成功的降级单（索引仍在保护它）。
+	insertCreatedAtOrder(t, db, "ord_0004degraded", "pending", "2026-08-01T00:00:00Z", false)
+	if err := db.Exec(`UPDATE commercial_orders SET checkout_url = 'https://pay.example/kept' WHERE id = ?`,
+		"ord_0004degraded").Error; err != nil {
+		t.Fatal(err)
+	}
+	pr, err := s.CurrentPayablePendingOrder(ctx, 7)
+	if err != nil || pr.ID != "ord_0004degraded" {
+		t.Fatalf("conflict replay read must return the newest payable pending, got %+v err=%v", pr, err)
+	}
+}
+
+// TestPartialPendingIndexRejectsSecondPayableOrder（R2-26）：数据库层不变量
+// ——同租户至多一张可付 pending 购买单。两张不同 quote 的并发形态（前置
+// SELECT 均未命中彼时对方的未提交单）由部分唯一索引在插入时兜住：第二张
+// 撞索引报 ErrPurchasePendingExists（与 ErrQuoteAlreadyUsed 同构的回放触发）；
+// channel_failed 死单不占 pending 槽。
+func TestPartialPendingIndexRejectsSecondPayableOrder(t *testing.T) {
+	s, db := testOrderStore(t)
+	ctx := context.Background()
+	// (testOrderStore 的 AutoMigrate 不含索引——服务装配点建。)
+	if err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS uq_purchase_pending_per_tenant
+		ON commercial_orders (tenant_id)
+		WHERE kind = 'purchase' AND state = 'pending' AND channel_failed = 0`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CreateOrder(ctx, OrderRow{ID: "o1", TenantID: 7, QuoteID: "q1",
+		AmountFen: 100, Currency: "CNY", CheckoutURL: "https://pay.example/o1"}); err != nil {
+		t.Fatal(err)
+	}
+	err := s.CreateOrder(ctx, OrderRow{ID: "o2", TenantID: 7, QuoteID: "q2",
+		AmountFen: 100, Currency: "CNY", CheckoutURL: "https://pay.example/o2"})
+	if !errors.Is(err, ErrPurchasePendingExists) {
+		t.Fatalf("second concurrent payable pending must hit the partial index, got %v", err)
+	}
+	// quote_id 唯一索引的冲突形态不误判为 pending 冲突（同 quote 第二张）。
+	err = s.CreateOrder(ctx, OrderRow{ID: "o3", TenantID: 8, QuoteID: "q1",
+		AmountFen: 100, Currency: "CNY"})
+	if errors.Is(err, ErrPurchasePendingExists) {
+		t.Fatalf("quote_id conflict must NOT map to the pending sentinel, got %v", err)
+	}
+	if err == nil {
+		t.Fatal("quote reuse must still fail")
+	}
+	// channel_failed 死单让出 pending 槽：新单可插入。
+	if err := db.Exec(`UPDATE commercial_orders SET channel_failed = 1 WHERE id = 'o1'`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CreateOrder(ctx, OrderRow{ID: "o4", TenantID: 7, QuoteID: "q4",
+		AmountFen: 100, Currency: "CNY"}); err != nil {
+		t.Fatalf("a channel-failed dead order must not block a fresh payable order: %v", err)
+	}
+	// 终态单同样不占槽。
+	if err := db.Exec(`UPDATE commercial_orders SET state = 'paid', channel_failed = 0 WHERE id = 'o4'`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CreateOrder(ctx, OrderRow{ID: "o5", TenantID: 7, QuoteID: "q5",
+		AmountFen: 100, Currency: "CNY"}); err != nil {
+		t.Fatalf("a paid order must not block a fresh payable order: %v", err)
 	}
 }
 
