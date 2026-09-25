@@ -4,19 +4,17 @@
 package plugins
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/url"
 	"regexp"
 	"unicode"
 	"unicode/utf8"
 
 	"github.com/Tencent/WeKnora/internal/types"
+	"github.com/Tencent/WeKnora/internal/utils"
 )
 
 const (
@@ -280,65 +278,32 @@ func validateScopes(scopes []string, where string) error {
 	return nil
 }
 
+// The canonical-JSON digest contract lives in the platform package
+// internal/utils (issue #106 gate regression fix): agentruntime's runtime
+// drift guard re-digests live tool schemas with the EXACT install-side
+// algorithm, and a module-to-module import is forbidden by
+// architectureguard — so the shared seam sits in the platform layer both
+// modules may import (composition-root/shared-platform pattern, cf. 7d30d6fe6).
+// The wrappers below keep this package's public API and protocol entry
+// points (manifest developers are told to reproduce digests via
+// plugins.ToolSchemaDigest/ManifestContentDigest) unchanged.
+
 // CanonicalJSON re-encodes v into the canonical form used by every
-// weknora.plugin/1 digest. The exact algorithm — this is the protocol
-// contract, pinned here because plugin developers must reproduce it to
-// precompute input_schema_digest/content_digest:
-//
-//  1. decode the JSON document;
-//  2. object keys are sorted (byte-wise, ascending); arrays keep their order;
-//  3. all insignificant whitespace between tokens is dropped;
-//  4. number literals are preserved VERBATIM — "1", "1.0" and "1e2" are
-//     different canonical documents. This is NOT RFC 8785 (JCS), which
-//     normalizes numbers to ECMAScript form: JSON.stringify(1.0)==="1" would
-//     collide with our "1.0". Reproduce digests with this Go package's
-//     ToolSchemaDigest/ManifestContentDigest, or an implementation that
-//     sorts keys, drops whitespace and keeps number literals unchanged.
-//  5. strings are emitted WITHOUT Go's default HTML escaping: '<', '>' and
-//     '&' appear literally, never as \u003c/\u003e/\u0026 (JSON.stringify and
-//     most non-Go serializers behave the same way). EXCEPTION: U+2028 and
-//     U+2029 (LINE/PARAGRAPH SEPARATOR) are ALWAYS emitted as \u2028/\u2029 —
-//     Go's encoder escapes them unconditionally (JSONSP compatibility) and
-//     SetEscapeHTML(false) does not change that, while JSON.stringify
-//     (ES2019+) keeps them literal. Non-Go reimplementations MUST escape
-//     these two code points or digests over documents containing them will
-//     disagree (locked by TestCanonicalJSONAlwaysEscapesLineSeparators).
+// weknora.plugin/1 digest. Algorithm contract: see utils.CanonicalJSON
+// (sorted keys, dropped whitespace, verbatim number literals — NOT JCS;
+// U+2028/U+2029 always escaped).
 func CanonicalJSON(v any) []byte {
-	raw, err := json.Marshal(v)
-	if err != nil {
-		return nil
-	}
-	return canonicalizeJSON(raw)
+	return utils.CanonicalJSON(v)
 }
 
-// canonicalizeJSON canonicalizes an already-encoded JSON document. Trailing
-// non-whitespace content makes the input invalid JSON and yields nil — the
-// same strict semantics as json.Unmarshal (json.Decoder.Decode alone would
-// happily digest only the first value).
+// canonicalizeJSON canonicalizes an already-encoded JSON document; trailing
+// non-whitespace content yields nil (see utils.CanonicalizeJSON).
 func canonicalizeJSON(raw []byte) []byte {
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.UseNumber()
-	var parsed any
-	if err := dec.Decode(&parsed); err != nil {
-		return nil
-	}
-	if _, err := dec.Token(); err != io.EOF {
-		return nil // trailing garbage: reject the whole document
-	}
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetEscapeHTML(false)
-	if err := enc.Encode(parsed); err != nil {
-		return nil
-	}
-	// json.Encoder.Encode appends a trailing newline; it is not part of the
-	// canonical form.
-	return bytes.TrimRight(buf.Bytes(), "\n")
+	return utils.CanonicalizeJSON(raw)
 }
 
 func sha256Hex(data []byte) string {
-	sum := sha256.Sum256(data)
-	return hex.EncodeToString(sum[:])
+	return utils.SHA256Hex(data)
 }
 
 // ToolSchemaDigest returns the canonical-JSON SHA-256 of a tool input schema,
@@ -348,14 +313,7 @@ func sha256Hex(data []byte) string {
 // — see CanonicalJSON). Empty or invalid JSON (including trailing garbage)
 // yields "" so it can never accidentally equal a declared digest.
 func ToolSchemaDigest(schema []byte) string {
-	if len(schema) == 0 {
-		return ""
-	}
-	canonical := canonicalizeJSON(schema)
-	if canonical == nil {
-		return ""
-	}
-	return sha256Hex(canonical)
+	return utils.ToolSchemaDigest(schema)
 }
 
 // ManifestContentDigest digests the manifest's semantic content with the

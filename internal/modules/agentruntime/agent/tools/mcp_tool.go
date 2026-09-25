@@ -14,8 +14,8 @@ import (
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/approval"
 	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/mcp"
-	"github.com/Tencent/WeKnora/internal/modules/plugins"
 	"github.com/Tencent/WeKnora/internal/types"
+	"github.com/Tencent/WeKnora/internal/utils"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
@@ -634,7 +634,10 @@ func FilterToolsBySnapshot(snap *PluginRuntimeSnapshot, defs []*types.MCPTool) (
 			// capability, so the Agent must not discover it.
 			continue
 		}
-		if plugins.ToolSchemaDigest(def.InputSchema) != tool.InputSchemaDigest {
+		// Digest via the platform contract (utils.ToolSchemaDigest — the same
+		// implementation plugins persists at accept time); importing the
+		// plugins module here would be a forbidden cross-module import.
+		if utils.ToolSchemaDigest(def.InputSchema) != tool.InputSchemaDigest {
 			return nil, fmt.Errorf("%w: tool %q schema changed", ErrPluginDrift, def.Name)
 		}
 		if def.Description != tool.Description {

@@ -44,7 +44,8 @@ type PluginToolDecl struct {
 	// convention as OCSchemaDigest/MCPConfigFingerprint. Canonical form:
 	// object keys sorted, no insignificant whitespace, number literals kept
 	// VERBATIM (1, 1.0, 1e2 are different documents — NOT RFC 8785 JCS; see
-	// plugins.CanonicalJSON). It is only used for consistency checks against
+	// utils.CanonicalJSON, the platform-layer digest contract the plugins
+	// module wraps). It is only used for consistency checks against
 	// the LIVE ListTools result — the authoritative snapshot digest is always
 	// recomputed from the live endpoint.
 	InputSchemaDigest string `json:"input_schema_digest"`
