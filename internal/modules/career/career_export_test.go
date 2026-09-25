@@ -231,6 +231,16 @@ func TestDeleteCareerRemovesCareerDataAndWorkbenchProjection(t *testing.T) {
 	o.SetApplicationTaskRemover(remover)
 	fx := seedExportChain(t, o, ctx, "remove")
 
+	// T19 的准备记录也属于 Career 域数据，必须随完整删除一起清除（集成修复 F1）。
+	require.NoError(t, db.Exec(`INSERT INTO career_preparations
+		(id, tenant_id, user_id, application_id, request_id, fingerprint, focus, status,
+		 submission_id, submitted_material_id, submitted_export_id, submitted_version, submitted_digest,
+		 snapshot_id, snapshot_sha256, profile_revision, material_id, failure_code, failure_message,
+		 receipt_body, created_at, updated_at)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		"prep-1", uint64(1951), "owner-1", "app-any", "prep-req-1", "fp", "cover_letter", "succeeded",
+		"", "", "", 0, "", "", "", 0, "", "", "", "{}", "2026-09-26 00:00:00", "2026-09-26 00:00:00").Error)
+
 	receipt, err := o.DeleteCareer(ctx, CareerDeletionInput{RequestID: "delete-1", ExpectedRevision: fx.Revision})
 	require.NoError(t, err)
 	require.Equal(t, DeletionStatusDeleted, receipt.Status)
@@ -244,7 +254,8 @@ func TestDeleteCareerRemovesCareerDataAndWorkbenchProjection(t *testing.T) {
 		"career_searches", "career_search_results", "career_materials", "career_material_versions",
 		"career_material_receipts", "career_material_exports", "career_progress_events",
 		"career_search_rules", "career_search_rule_receipts", "career_search_rule_runs",
-		"career_search_discovery_todos", "career_submissions", "career_receipts", "career_data_exports",
+		"career_search_discovery_todos", "career_submissions", "career_preparations",
+		"career_receipts", "career_data_exports",
 	} {
 		require.Zerof(t, countScopeRows(t, db, table), "%s must be empty after deletion", table)
 	}

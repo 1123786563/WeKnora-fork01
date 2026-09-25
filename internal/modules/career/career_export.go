@@ -616,6 +616,7 @@ var careerPurgeTables = []string{
 	"career_search_rule_runs",
 	"career_search_discovery_todos",
 	"career_submissions",
+	"career_preparations",
 	"career_data_exports",
 }
 
