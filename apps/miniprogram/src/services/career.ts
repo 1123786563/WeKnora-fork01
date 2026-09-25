@@ -203,31 +203,33 @@ export async function evaluateOpportunity(opportunityId: string, snapshotId: str
 }
 
 export interface ApplicationIntentInput { opportunityId: string; snapshotId: string; evaluationId: string; batchIdentity: string; continueDespiteHardFailure: boolean }
-interface StoredIntent<T> { requestId: string; input: T }
+interface StoredIntent<T> { requestId: string; input: T; expectedRevision?: number }
 function intentKey(kind: string): string { return `${CAREER_STORE_PREFIX}${kind}:${scopeKey(auth.scope.capture())}`; }
 function readIntent<T>(key: string): StoredIntent<T> | null {
   const value = store.read(key);
   if (!value || typeof value !== 'object') return null;
-  const parsed = value as { requestId?: unknown; input?: unknown };
+  const parsed = value as { requestId?: unknown; input?: unknown; expectedRevision?: unknown };
   if (typeof parsed.requestId !== 'string' || !parsed.requestId || typeof parsed.input !== 'object' || !parsed.input) return null;
-  return { requestId: parsed.requestId, input: parsed.input as T };
+  const expectedRevision = typeof parsed.expectedRevision === 'number' && Number.isSafeInteger(parsed.expectedRevision) && parsed.expectedRevision >= 0 ? parsed.expectedRevision : undefined;
+  return { requestId: parsed.requestId, input: parsed.input as T, ...(expectedRevision !== undefined ? { expectedRevision } : {}) };
 }
 /** 空间切换/AUTH_REQUIRED 是确定失败：旧作用域的响应不能为新作用域留恢复意图。 */
 function definiteLocalFailure(error: unknown): boolean { return /SCOPE_CHANGED|AUTH_REQUIRED/i.test(`${(error as Error)?.message ?? ''} ${(error as { code?: unknown })?.code ?? ''}`); }
-/** 写入 + 未知结果恢复：ambiguous 失败把 intent（含重放所需原始内容）存进受控存储，
- * 用原 requestId 对账/重发。空间切换（含其引发的请求取消）是本地确定失败：旧作用域
- * 的响应不能为新作用域留恢复意图，直接按 SCOPE_CHANGED 抛出。 */
-async function writeRecoverable<T>(kind: string, describe: string, input: unknown, send: (id: string) => Promise<unknown>): Promise<T> {
+/** 写入 + 未知结果恢复。expectedRevision 在发送前捕获并随 intent 持久化：服务端幂等
+ * 指纹是全量请求体（含 expectedRevision），安全重发必须逐字节重放原始值——desk 修订
+ * 前进后用当前值重发必然 ErrIdempotencyConflict，恢复死路。 */
+async function writeRecoverable<T>(kind: string, describe: string, input: unknown, send: (id: string, expected: number) => Promise<unknown>): Promise<T> {
   const id = newRequestId();
+  const expected = revision();
   const stamp = auth.scope.capture();
   try {
-    return await send(id) as T;
+    return await send(id, expected) as T;
   } catch (error) {
     if (ambiguous(error) && !auth.scope.isCurrent(stamp)) {
       throw Object.assign(new Error('SCOPE_CHANGED'), { cause: error });
     }
     if (ambiguous(error)) {
-      store.write(intentKey(kind), { requestId: id, input });
+      store.write(intentKey(kind), { requestId: id, input, expectedRevision: expected });
       throw Object.assign(new Error(`${describe}结果未知：请用原请求对账后再试`, { cause: error }), { code: 'outcome_unknown', requestId: id });
     }
     throw error;
@@ -240,12 +242,13 @@ async function reconcileIntent<T>(kind: string, describe: string, fetch: (id: st
   store.remove(intentKey(kind));
   return receipt as T;
 }
-async function retryIntent<T>(kind: string, describe: string, resend: (id: string) => Promise<unknown>): Promise<T> {
+async function retryIntent<T>(kind: string, describe: string, resend: (id: string, expected: number) => Promise<unknown>): Promise<T> {
   const pending = readIntent<Record<string, unknown>>(intentKey(kind));
   if (!pending) throw new Error(`没有待恢复的${describe}`);
+  const expected = pending.expectedRevision ?? revision();
   const stamp = auth.scope.capture();
   try {
-    const receipt = await resend(pending.requestId);
+    const receipt = await resend(pending.requestId, expected);
     store.remove(intentKey(kind));
     return receipt as T;
   } catch (error) {
@@ -259,8 +262,8 @@ async function retryIntent<T>(kind: string, describe: string, resend: (id: strin
 export async function createApplication(input: ApplicationIntentInput): Promise<ApplicationReceipt> {
   if (!input.opportunityId.trim() || !input.snapshotId.trim() || !input.evaluationId.trim() || !input.batchIdentity.trim()) throw new Error('申请缺少岗位、评估或批次信息');
   const batch = input.batchIdentity.trim();
-  return writeRecoverable<ApplicationReceipt>('application', '申请创建', input, async id =>
-    decodeApplicationReceipt(await client.request({ method: 'POST', path: '/api/v1/career/applications', body: { requestId: id, opportunityId: input.opportunityId.trim(), snapshotId: input.snapshotId.trim(), evaluationId: input.evaluationId.trim(), batchIdentity: batch, continueDespiteHardFailure: input.continueDespiteHardFailure, expectedRevision: revision() } })));
+  return writeRecoverable<ApplicationReceipt>('application', '申请创建', input, async (id, expected) =>
+    decodeApplicationReceipt(await client.request({ method: 'POST', path: '/api/v1/career/applications', body: { requestId: id, opportunityId: input.opportunityId.trim(), snapshotId: input.snapshotId.trim(), evaluationId: input.evaluationId.trim(), batchIdentity: batch, continueDespiteHardFailure: input.continueDespiteHardFailure, expectedRevision: expected } })));
 }
 export function pendingApplication(): StoredIntent<ApplicationIntentInput> | null { return readIntent<ApplicationIntentInput>(intentKey('application')); }
 export async function reconcilePendingApplication(): Promise<ApplicationReceipt> {
@@ -270,8 +273,8 @@ export async function reconcilePendingApplication(): Promise<ApplicationReceipt>
 export async function retryPendingApplication(): Promise<ApplicationReceipt> {
   const pending = pendingApplication();
   if (!pending) throw new Error('没有待恢复的申请');
-  return retryIntent<ApplicationReceipt>('application', '申请', async id =>
-    decodeApplicationReceipt(await client.request({ method: 'POST', path: '/api/v1/career/applications', body: { requestId: id, ...pending.input, expectedRevision: revision() } })));
+  return retryIntent<ApplicationReceipt>('application', '申请', async (id, expected) =>
+    decodeApplicationReceipt(await client.request({ method: 'POST', path: '/api/v1/career/applications', body: { requestId: id, opportunityId: pending.input.opportunityId.trim(), snapshotId: pending.input.snapshotId.trim(), evaluationId: pending.input.evaluationId.trim(), batchIdentity: pending.input.batchIdentity.trim(), continueDespiteHardFailure: pending.input.continueDespiteHardFailure, expectedRevision: expected } })));
 }
 export async function getApplication(applicationId: string): Promise<ApplicationReceipt> {
   if (!applicationId.trim()) throw new Error('缺少申请编号');
@@ -285,32 +288,50 @@ export async function reconcileApplicationLink(requestId: string): Promise<Appli
 
 // —— 材料（T15 合同）：同一结构化正文，确认生成不可变新版本，不覆盖旧版 ——
 export interface EditMaterialIntent { materialId?: string; opportunityId?: string; snapshotId?: string; body: MaterialBody }
-function materialRequestBody(id: string, intent: EditMaterialIntent): Record<string, unknown> {
-  if (intent.materialId?.trim()) return { requestId: id, materialId: intent.materialId.trim(), body: intent.body, expectedRevision: revision() };
-  if (intent.opportunityId?.trim() && intent.snapshotId?.trim()) return { requestId: id, opportunityId: intent.opportunityId.trim(), snapshotId: intent.snapshotId.trim(), body: intent.body, expectedRevision: revision() };
+/** 可编辑小节：claims 原样保留（本端不编辑主张，也绝不丢弃 Web 端建立的主张）。 */
+export interface EditableMaterialSection { heading: string; content: string; claims: MaterialBody['sections'][number]['claims'] }
+/** 读取视图 → 可编辑模型：全部小节与 claims 进入编辑态（Web MaterialPage 同语义）。 */
+export function editableFromBody(body: MaterialBody): EditableMaterialSection[] {
+  return body.sections.map(section => ({ heading: section.heading, content: section.content, claims: section.claims }));
+}
+/** 可编辑模型 → 提交正文：往返不丢节不丢主张；空白小节被剔除，全空拒绝提交。 */
+export function bodyFromEditable(sections: EditableMaterialSection[]): MaterialBody {
+  const usable = sections.filter(section => section.heading.trim() || section.content.trim());
+  if (!usable.length) throw Object.assign(new Error('材料正文至少需要一个小节'), { code: 'material_body_empty', recoverable: true });
+  return { sections: usable.map(section => ({ heading: section.heading.trim() || '未命名小节', content: section.content, claims: section.claims })) };
+}
+function materialRequestBody(id: string, intent: EditMaterialIntent, expected: number): Record<string, unknown> {
+  if (intent.materialId?.trim()) return { requestId: id, materialId: intent.materialId.trim(), body: intent.body, expectedRevision: expected };
+  if (intent.opportunityId?.trim() && intent.snapshotId?.trim()) return { requestId: id, opportunityId: intent.opportunityId.trim(), snapshotId: intent.snapshotId.trim(), body: intent.body, expectedRevision: expected };
   throw new Error('材料编辑缺少岗位证据或材料编号');
 }
 export async function editMaterial(intent: EditMaterialIntent): Promise<MaterialReceipt> {
-  materialRequestBody(newRequestId(), intent); // 先做参数校验，再进入可恢复写入
-  return writeRecoverable<MaterialReceipt>('material', '材料编辑', { ...intent, body: intent.body }, async id =>
-    decodeMaterialReceipt(await client.request({ method: 'POST', path: '/api/v1/career/materials', body: materialRequestBody(id, intent) })));
+  materialRequestBody(newRequestId(), intent, revision()); // 先做参数校验，再进入可恢复写入
+  return writeRecoverable<MaterialReceipt>('material', '材料编辑', { op: 'edit' as const, ...intent }, async (id, expected) =>
+    decodeMaterialReceipt(await client.request({ method: 'POST', path: '/api/v1/career/materials', body: materialRequestBody(id, intent, expected) })));
 }
 export async function confirmMaterial(materialId: string): Promise<MaterialReceipt> {
   if (!materialId.trim()) throw new Error('缺少材料编号');
-  return writeRecoverable<MaterialReceipt>('material', '材料确认', { materialId: materialId.trim() }, async id =>
-    decodeMaterialReceipt(await client.request({ method: 'POST', path: '/api/v1/career/materials/confirm', body: { requestId: id, materialId: materialId.trim(), expectedRevision: revision() } })));
+  return writeRecoverable<MaterialReceipt>('material', '材料确认', { op: 'confirm' as const, materialId: materialId.trim() }, async (id, expected) =>
+    decodeMaterialReceipt(await client.request({ method: 'POST', path: '/api/v1/career/materials/confirm', body: { requestId: id, materialId: materialId.trim(), expectedRevision: expected } })));
 }
 export function pendingMaterialWrite(): StoredIntent<Record<string, unknown>> | null { return readIntent<Record<string, unknown>>(intentKey('material')); }
 export async function reconcilePendingMaterial(): Promise<MaterialReceipt> {
   return reconcileIntent<MaterialReceipt>('material', '材料写入', async id =>
     decodeMaterialReceipt(await client.request({ method: 'GET', path: `/api/v1/career/materials/receipt?requestId=${encodeURIComponent(id)}` })));
 }
+/** 安全重发按 intent 记录的写入种类重放同端点同内容（edit 绝不重放成 confirm）。 */
 export async function retryPendingMaterial(): Promise<MaterialReceipt> {
   const pending = pendingMaterialWrite();
   if (!pending) throw new Error('没有待恢复的材料写入');
-  const stored = pending.input as { materialId?: unknown };
-  return retryIntent<MaterialReceipt>('material', '材料写入', async id =>
-    decodeMaterialReceipt(await client.request({ method: 'POST', path: '/api/v1/career/materials/confirm', body: { requestId: id, materialId: String(stored.materialId ?? ''), expectedRevision: revision() } })));
+  const stored = pending.input as { op?: 'edit' | 'confirm'; materialId?: unknown; opportunityId?: unknown; snapshotId?: unknown; body?: unknown };
+  return retryIntent<MaterialReceipt>('material', '材料写入', async (id, expected) => {
+    if (stored.op === 'edit') {
+      const intent: EditMaterialIntent = { ...(stored.materialId !== undefined ? { materialId: String(stored.materialId) } : {}), ...(stored.opportunityId !== undefined ? { opportunityId: String(stored.opportunityId) } : {}), ...(stored.snapshotId !== undefined ? { snapshotId: String(stored.snapshotId) } : {}), body: stored.body as MaterialBody };
+      return decodeMaterialReceipt(await client.request({ method: 'POST', path: '/api/v1/career/materials', body: materialRequestBody(id, intent, expected) }));
+    }
+    return decodeMaterialReceipt(await client.request({ method: 'POST', path: '/api/v1/career/materials/confirm', body: { requestId: id, materialId: String(stored.materialId ?? ''), expectedRevision: expected } }));
+  });
 }
 export async function material(materialId: string): Promise<MaterialView> {
   if (!materialId.trim()) throw new Error('缺少材料编号');
@@ -324,8 +345,8 @@ export async function materialVersions(materialId: string): Promise<MaterialVers
 // —— 导出（T16 合同）：发布双格式；下载走 signed-url → 认证兑付；过期授权重取 ——
 export async function publishMaterial(materialId: string, version: number): Promise<MaterialExportReceipt> {
   if (!materialId.trim() || !Number.isSafeInteger(version) || version <= 0) throw new Error('发布需要材料编号与确认版本');
-  return writeRecoverable<MaterialExportReceipt>('export', '材料发布', { materialId: materialId.trim(), version }, async id =>
-    decodeMaterialExportReceipt(await client.request({ method: 'POST', path: `/api/v1/career/materials/${encodeURIComponent(materialId.trim())}/exports`, body: { requestId: id, version, expectedRevision: revision() } })));
+  return writeRecoverable<MaterialExportReceipt>('export', '材料发布', { materialId: materialId.trim(), version }, async (id, expected) =>
+    decodeMaterialExportReceipt(await client.request({ method: 'POST', path: `/api/v1/career/materials/${encodeURIComponent(materialId.trim())}/exports`, body: { requestId: id, version, expectedRevision: expected } })));
 }
 export async function listMaterialExports(materialId: string): Promise<MaterialExportList> {
   if (!materialId.trim()) throw new Error('缺少材料编号');
@@ -352,8 +373,35 @@ export async function openMaterialExport(materialId: string, exportId: string, f
 }
 
 // —— 本人投递（T18 合同）：只记录用户声明的渠道/时间/版本绑定或显式未知 ——
+
+/** 版本未选择与显式未知是两回事：一申请一记录不可逆，未选择必须阻断而非推断。 */
+export const SUBMISSION_VERSION_UNKNOWN_CHOICE = '__unknown__';
+export type SubmissionVersionChoice = { status: 'unselected' } | { status: 'unknown' } | { status: 'bound'; materialId: string; exportId: string };
+export function resolveSubmissionVersion(choice: string, submittable: { exportId: string; materialId: string }[]): SubmissionVersionChoice {
+  if (!choice) return { status: 'unselected' };
+  if (choice === SUBMISSION_VERSION_UNKNOWN_CHOICE) return { status: 'unknown' };
+  const found = submittable.find(entry => entry.exportId === choice);
+  return found ? { status: 'bound', materialId: found.materialId, exportId: found.exportId } : { status: 'unselected' };
+}
+
+/** 声明时间严格解析（平台无关）：只接受 YYYY-MM-DD[ ]HH:mm[:ss] 本地时间；空=交给
+ * 服务端盖确认时间；格式不符/日期滚动一律 invalid——绝不静默丢弃用户的声明。 */
+const DECLARED_TIME_PATTERN = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?$/;
+export type DeclaredTime = { status: 'empty' } | { status: 'invalid' } | { status: 'ok'; iso: string };
+export function parseDeclaredOccurredAt(value: string): DeclaredTime {
+  const trimmed = value.trim();
+  if (!trimmed) return { status: 'empty' };
+  const match = trimmed.match(DECLARED_TIME_PATTERN);
+  if (!match) return { status: 'invalid' };
+  const [, year, month, day, hour, minute, second] = match;
+  const date = new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), second ? Number(second) : 0);
+  // 分量回读校验：iOS JSC 与 V8 都会把 2026-02-31 滚成 3 月，必须显式拒绝。
+  if (date.getFullYear() !== Number(year) || date.getMonth() !== Number(month) - 1 || date.getDate() !== Number(day) || date.getHours() !== Number(hour) || date.getMinutes() !== Number(minute)) return { status: 'invalid' };
+  return { status: 'ok', iso: date.toISOString() };
+}
+
 export interface RecordSubmissionIntent { applicationId: string; channel: SubmissionChannel; occurredAt?: string; materialId?: string; exportId?: string; versionUnknown: boolean; note?: string }
-function submissionRequestBody(id: string, input: RecordSubmissionIntent): Record<string, unknown> {
+function submissionRequestBody(id: string, input: RecordSubmissionIntent, expected: number): Record<string, unknown> {
   if (!input.applicationId.trim() || !['email', 'web', 'other'].includes(input.channel)) throw new Error('投递确认缺少申请或渠道');
   // 显式未知独占：不携带任何版本绑定；确认版本则必须双标识齐全。
   if (input.versionUnknown && (input.materialId !== undefined || input.exportId !== undefined)) throw new Error('版本未知声明不能同时携带版本绑定');
@@ -365,13 +413,13 @@ function submissionRequestBody(id: string, input: RecordSubmissionIntent): Recor
     ...(input.exportId?.trim() ? { exportId: input.exportId.trim() } : {}),
     versionUnknown: input.versionUnknown,
     ...(input.note?.trim() ? { note: input.note.trim() } : {}),
-    expectedRevision: revision(),
+    expectedRevision: expected,
   };
 }
 export async function recordSubmission(input: RecordSubmissionIntent): Promise<SubmissionReceipt> {
-  submissionRequestBody(newRequestId(), input); // 先校验，再进入可恢复写入
-  return writeRecoverable<SubmissionReceipt>('submission', '投递确认', input, async id =>
-    decodeSubmissionReceipt(await client.request({ method: 'POST', path: `/api/v1/career/applications/${encodeURIComponent(input.applicationId.trim())}/submissions`, body: submissionRequestBody(id, input) })));
+  submissionRequestBody(newRequestId(), input, revision()); // 先校验，再进入可恢复写入
+  return writeRecoverable<SubmissionReceipt>('submission', '投递确认', input, async (id, expected) =>
+    decodeSubmissionReceipt(await client.request({ method: 'POST', path: `/api/v1/career/applications/${encodeURIComponent(input.applicationId.trim())}/submissions`, body: submissionRequestBody(id, input, expected) })));
 }
 export function pendingSubmission(): StoredIntent<RecordSubmissionIntent> | null { return readIntent<RecordSubmissionIntent>(intentKey('submission')); }
 export async function reconcilePendingSubmission(): Promise<SubmissionReceipt> {
@@ -381,8 +429,8 @@ export async function reconcilePendingSubmission(): Promise<SubmissionReceipt> {
 export async function retryPendingSubmission(): Promise<SubmissionReceipt> {
   const pending = pendingSubmission();
   if (!pending) throw new Error('没有待恢复的投递确认');
-  return retryIntent<SubmissionReceipt>('submission', '投递确认', async id =>
-    decodeSubmissionReceipt(await client.request({ method: 'POST', path: `/api/v1/career/applications/${encodeURIComponent(pending.input.applicationId)}/submissions`, body: submissionRequestBody(id, pending.input) })));
+  return retryIntent<SubmissionReceipt>('submission', '投递确认', async (id, expected) =>
+    decodeSubmissionReceipt(await client.request({ method: 'POST', path: `/api/v1/career/applications/${encodeURIComponent(pending.input.applicationId)}/submissions`, body: submissionRequestBody(id, pending.input, expected) })));
 }
 export async function listSubmissions(applicationId: string): Promise<SubmissionList> {
   if (!applicationId.trim()) throw new Error('缺少申请编号');

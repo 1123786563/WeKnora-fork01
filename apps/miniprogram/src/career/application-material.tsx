@@ -42,8 +42,8 @@ export default function ApplicationMaterialPage() {
   const [appErrCode, setAppErrCode] = useState<string>();
   const [materialId, setMaterialId] = useState('');
   const [material, setMaterial] = useState<MaterialView>();
-  const [sectionHeading, setSectionHeading] = useState('基本情况');
-  const [sectionContent, setSectionContent] = useState('');
+  // F4：多节全量编辑模型——读取时载入全部小节与 claims，保存原样回传（绝不静默丢弃）。
+  const [sections, setSections] = useState<career.EditableMaterialSection[]>([]);
   const [confirmedVersion, setConfirmedVersion] = useState<number>();
   const [exports, setExports] = useState<MaterialExportReceipt[]>();
   const [checks, setChecks] = useState<ExportOpenRecord[]>([]);
@@ -161,29 +161,34 @@ export default function ApplicationMaterialPage() {
       <Action secondary loading={matLoadBusy.busy} onClick={() => void matLoadBusy.run(async () => {
         const view = await career.material(materialId);
         setMaterial(view);
-        setSectionHeading(view.body.sections[0]?.heading ?? sectionHeading);
+        // F4：全量载入编辑态——每个小节与全部 claims 进入编辑模型，保存原样回传。
+        setSections(career.editableFromBody(view.body));
         // 同源语义：版本在 Web 或本端确认过即可管理发布/下载/投递绑定。
         if (view.versionCount > 0) setExports((await career.listMaterialExports(materialId)).exports);
       })}>读取材料</Action>
       {matLoadBusy.error && <Notice tone='danger'>{matLoadBusy.error} 若材料不属于当前空间或不存在，会如实提示；不会用演示数据代替。</Notice>}
       {material && <>
         <Text className='wk-muted wk-small'>状态 {material.status} · 已确认版本 {material.versionCount} 个（修改只新增版本，不覆盖旧版）</Text>
-        {material.body.sections.map((section, index) => <View key={`${section.heading}-${index}`} className='wk-listrow'>
-          <View className='wk-grow'><Text className='wk-row-title'>{section.heading}</Text><Text className='wk-muted wk-small'>{section.content.slice(0, 80)}{section.content.length > 80 ? '…' : ''}</Text></View>
-        </View>)}
         {!!material.reviewRisks.length && <Notice tone='warning'>待核风险（如实展示，不虚构）：{material.reviewRisks.map(risk => risk.message).join('；')}</Notice>}
         <Text className='wk-muted wk-small'>版本历史：{material.versions.map(version => `V${version.version}`).join(' · ')}</Text>
       </>}
-      <Field label='小节标题' value={sectionHeading} onChange={setSectionHeading} placeholder='例如：教育背景' />
-      <Field label='小节内容' value={sectionContent} onChange={setSectionContent} multiline placeholder='这一节要写的内容' />
+      <Text className='wk-h3'>小节编辑（保存时全部小节与主张原样提交，不会丢弃）</Text>
+      {sections.map((section, index) => <View key={`section-${index}`} className='wk-listrow'>
+        <View className='wk-grow'>
+          <Field label={`第 ${index + 1} 节标题`} value={section.heading} onChange={value => setSections(previous => previous.map((item, at) => at === index ? { ...item, heading: value } : item))} placeholder='例如：教育背景' />
+          <Field label='内容' value={section.content} onChange={value => setSections(previous => previous.map((item, at) => at === index ? { ...item, content: value } : item))} multiline placeholder='这一节要写的内容' />
+          <Text className='wk-muted wk-small'>主张 {section.claims.length} 条（本端不改主张，保存时原样保留）</Text>
+          <Action secondary onClick={() => setSections(previous => previous.filter((_, at) => at !== index))}>删除本节</Action>
+        </View>
+      </View>)}
+      <Action secondary onClick={() => setSections(previous => [...previous, { heading: '', content: '', claims: [] }])}>添加小节</Action>
       <View className='wk-between'><View className='wk-tdesign-scope'>
         <t-button block size='large' theme='primary' ariaLabel='保存材料草稿' customStyle={tdesignButtonStyle} loading={matEditBusy.busy} onTap={() => void matEditBusy.run(async () => {
-          const body = { sections: [{ heading: sectionHeading.trim() || '未命名小节', content: sectionContent, claims: [] }] };
+          const body = career.bodyFromEditable(sections);
           const receipt = material
             ? await career.editMaterial({ materialId, body })
             : await career.editMaterial({ opportunityId: application?.pinnedEvidence.opportunityId ?? opportunityId, snapshotId: application?.pinnedEvidence.snapshotId ?? snapshotId, body });
           setMaterialId(receipt.materialId);
-          setSectionContent('');
           setMaterial(await career.material(receipt.materialId));
         })}>保存草稿</t-button>
       </View></View>
@@ -236,26 +241,37 @@ export default function ApplicationMaterialPage() {
       <Text className='wk-h3'>投递确认（本人完成，产品只记录）</Text>
       <Notice tone='info'>投递由你本人在招聘平台完成；这里只记录你声明的渠道、时间与版本绑定，不会自动提交、发送邮件或填写任何表单。</Notice>
       {CHANNELS.map(option => <Text key={option.value} className='wk-small' onClick={() => setChannel(option.value)}>{channel === option.value ? '● ' : '○ '}{option.label}</Text>)}
-      <Field label='声明投递时间（留空即记录确认时间）' value={occurredAt} onChange={setOccurredAt} placeholder='例如 2026-09-25 20:00' />
+      <Field label='声明投递时间（格式 2026-09-25 20:00；留空即记录确认时间）' value={occurredAt} onChange={setOccurredAt} placeholder='2026-09-25 20:00' />
       <Text className='wk-h3'>投递版本</Text>
       {(exports ?? []).filter(exportReceipt => exportReceipt.submittable).map(exportReceipt => <Text key={exportReceipt.exportId} className='wk-small' onClick={() => setVersionChoice(exportReceipt.exportId)}>{versionChoice === exportReceipt.exportId ? '● ' : '○ '}可提交导出 V{exportReceipt.version}（{exportReceipt.exportId.slice(0, 10)}…）</Text>)}
-      <Text className='wk-small' onClick={() => setVersionChoice('__unknown__')}>{versionChoice === '__unknown__' ? '● ' : '○ '}版本未知（显式声明，不绑定材料版本）</Text>
+      <Text className='wk-small' onClick={() => setVersionChoice(career.SUBMISSION_VERSION_UNKNOWN_CHOICE)}>{versionChoice === career.SUBMISSION_VERSION_UNKNOWN_CHOICE ? '● ' : '○ '}版本未知（显式声明，不绑定材料版本）</Text>
       <Field label='备注（可选）' value={note} onChange={setNote} placeholder='例如：官网已投递，附职位链接' />
+      {/* F1：未选择≠显式未知。一申请一记录不可逆，漏选必须阻断而不是被推断。 */}
+      {!versionChoice && <Notice tone='warning'>请先在上面选择投递版本，或显式选择「版本未知」——未选择不会被当作版本未知提交。</Notice>}
       <View className='wk-between'><View className='wk-tdesign-scope'>
         <t-button block size='large' theme='primary' ariaLabel='记录投递确认' customStyle={tdesignButtonStyle} loading={submitBusy.busy} onTap={() => void submitBusy.run(async () => {
           try {
-            const chosen = (exports ?? []).find(exportReceipt => exportReceipt.exportId === versionChoice);
-            const occurred = occurredAt.trim() ? new Date(occurredAt) : undefined;
+            const choice = career.resolveSubmissionVersion(versionChoice, (exports ?? []).filter(exportReceipt => exportReceipt.submittable));
+            if (choice.status === 'unselected') {
+              setSubErrCode('submission_version_unselected');
+              throw Object.assign(new Error('请先选择投递版本，或显式声明「版本未知」'), { code: 'submission_version_unselected' });
+            }
+            // F5：声明时间严格解析——无效输入阻断提交，绝不静默回退为确认时间。
+            const declared = career.parseDeclaredOccurredAt(occurredAt);
+            if (declared.status === 'invalid') {
+              setSubErrCode('declared_time_invalid');
+              throw Object.assign(new Error('声明投递时间无法识别（示例 2026-09-25 20:00）：请改正或留空（留空记录确认时间）'), { code: 'declared_time_invalid' });
+            }
             await career.recordSubmission({
               applicationId: application.applicationId, channel,
-              ...(occurred !== undefined && !Number.isNaN(occurred.getTime()) ? { occurredAt: occurred.toISOString() } : {}),
-              ...(chosen ? { materialId: chosen.materialId, exportId: chosen.exportId } : {}),
-              versionUnknown: !chosen,
+              ...(declared.status === 'ok' ? { occurredAt: declared.iso } : {}),
+              ...(choice.status === 'bound' ? { materialId: choice.materialId, exportId: choice.exportId } : {}),
+              versionUnknown: choice.status === 'unknown',
               ...(note.trim() ? { note } : {}),
             });
             setSubErrCode(undefined);
             await loadSubmissions(application.applicationId);
-          } catch (error) { setSubErrCode(typedCode(error)); throw error; }
+          } catch (error) { const code = typedCode(error); if (code) setSubErrCode(code); throw error; }
         })}>记录投递</t-button>
       </View></View>
       {submitBusy.error && <Notice tone={subErrCode === 'submission_already_confirmed' ? 'warning' : 'danger'}>{submitBusy.error}{subErrCode === 'submission_already_confirmed' ? ' 此申请已有一次投递确认记录，不可重复确认。' : ''}</Notice>}

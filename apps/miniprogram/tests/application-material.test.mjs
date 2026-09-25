@@ -408,3 +408,116 @@ test('H3: link_state linking reconciles through the original request id', async 
   const reconcileCall = careerCall('/link/reconcile')[0];
   assert.deepEqual(reconcileCall.options.data, { requestId: 'srv-app' }, 'link reconciliation replays the original request id');
 });
+
+// ---- 评审修复轮（F1-F5）：显式选择、原始指纹重放、正文往返、时间严格解析 ----
+
+test('S1: an unselected version is never inferred as the explicit unknown (F1)', () => {
+  const submittable = [{ exportId: 'exp-1', materialId: 'mat-1' }];
+  assert.deepEqual(career.resolveSubmissionVersion('', submittable), { status: 'unselected' }, 'empty choice blocks the write');
+  assert.deepEqual(career.resolveSubmissionVersion(career.SUBMISSION_VERSION_UNKNOWN_CHOICE, submittable), { status: 'unknown' }, 'the unknown marker must be explicitly picked');
+  assert.deepEqual(career.resolveSubmissionVersion('exp-1', submittable), { status: 'bound', materialId: 'mat-1', exportId: 'exp-1' });
+  assert.deepEqual(career.resolveSubmissionVersion('gone', submittable), { status: 'unselected' }, 'a vanished export id is unselected, not silently unknown');
+});
+
+test('D4: a safe resend replays the original expected revision, not the current desk revision (F3)', async () => {
+  let postFails = true; let serverRevision = 3; let posts = 0;
+  await freshLogin({
+    'GET /api/v1/career/open': call => stub.succeed(call, { data: { revision: serverRevision, facts: [], proposals: [] } }),
+    'GET /api/v1/career/list': call => stub.succeed(call, { data: { revision: serverRevision, facts: [], proposals: [] } }),
+    'POST /api/v1/career/applications': call => { posts++; if (postFails) stub.fail(call, 'request:fail timeout'); else stub.succeed(call, { data: application() }); },
+    'GET /api/v1/career/applications/receipt': call => stub.succeed(call, { statusCode: 404, data: { error: { code: 'not_found', message: 'no receipt yet' } } }),
+  });
+  await career.loadCareer();
+  const failed = await career.createApplication({ opportunityId: 'opp-1', snapshotId: 'snap-1', evaluationId: 'ev-1', batchIdentity: '批', continueDespiteHardFailure: false }).catch(error => error);
+  assert.equal(errorCode(failed), 'outcome_unknown');
+  const pending = career.pendingApplication();
+  assert.ok(pending, 'intent persisted');
+  assert.equal(pending.expectedRevision, 3, 'the intent stores the fingerprint-bound original revision');
+  serverRevision = 8; // meanwhile the profile moved on (web-side confirm)
+  await career.refreshCareer();
+  assert.equal(career.careerDesk().snapshot.revision, 8, 'desk advanced before the resend');
+  postFails = false;
+  const receipt = await career.retryPendingApplication();
+  assert.equal(receipt.applicationId, 'app-1');
+  const bodies = careerCall('/applications').filter(c => new URL(c.options.url).pathname === '/api/v1/career/applications').map(c => c.options.data);
+  assert.equal(bodies.length, 2, 'one failed attempt plus one safe resend');
+  assert.equal(bodies[1].expectedRevision, 3, 'the resend replays the original revision so the server fingerprint matches');
+  assert.equal(bodies[1].requestId, bodies[0].requestId, 'the resend replays the original request id');
+  assert.equal(career.pendingApplication(), null, 'a successful resend clears the intent');
+});
+
+test('D2b: an edit-intent safe resend replays the original edit body, never a confirm (F2)', async () => {
+  let postFails = true; let serverRevision = 3;
+  const editedBody = { sections: [{ heading: '教育背景', content: '本科（评审轮）', claims: [{ claimId: 'c1', text: '本科学历', needsReview: false }] }, { heading: '技能', content: 'TypeScript', claims: [] }] };
+  await freshLogin({
+    'GET /api/v1/career/open': call => stub.succeed(call, { data: { revision: serverRevision, facts: [], proposals: [] } }),
+    'GET /api/v1/career/list': call => stub.succeed(call, { data: { revision: serverRevision, facts: [], proposals: [] } }),
+    'POST /api/v1/career/materials': call => { if (postFails) stub.fail(call, 'request:fail network'); else stub.succeed(call, { data: materialReceipt({ body: editedBody }) }); },
+    'GET /api/v1/career/materials/receipt': call => stub.succeed(call, { statusCode: 404, data: { error: { code: 'not_found', message: 'no receipt yet' } } }),
+  });
+  await career.loadCareer();
+  const failed = await career.editMaterial({ materialId: 'mat-1', body: editedBody }).catch(error => error);
+  assert.equal(errorCode(failed), 'outcome_unknown');
+  const pending = career.pendingMaterialWrite();
+  assert.equal(pending.input.op, 'edit', 'the intent records which write kind it was');
+  assert.equal(pending.expectedRevision, 3);
+  serverRevision = 9;
+  await career.refreshCareer();
+  postFails = false;
+  const receipt = await career.retryPendingMaterial();
+  assert.equal(receipt.materialId, 'mat-1');
+  const editPosts = stub.state.calls.filter(c => new URL(c.options.url).pathname === '/api/v1/career/materials' && (c.options.method ?? 'GET') === 'POST').map(c => c.options.data);
+  assert.equal(editPosts.length, 2, 'one failed edit plus one safe resend to the same endpoint');
+  assert.deepEqual(editPosts[1], { requestId: editPosts[0].requestId, materialId: 'mat-1', body: editedBody, expectedRevision: 3 }, 'the resend replays the original edit body and revision byte-for-byte');
+  const confirmPosts = stub.state.calls.filter(c => new URL(c.options.url).pathname === '/api/v1/career/materials/confirm');
+  assert.equal(confirmPosts.length, 0, 'an edit intent must never be resent as a confirm');
+  assert.equal(career.pendingMaterialWrite(), null);
+});
+
+test('D3b: a submission safe resend replays the original declared body and revision (F3)', async () => {
+  let postFails = true; let serverRevision = 3;
+  await freshLogin({
+    'GET /api/v1/career/open': call => stub.succeed(call, { data: { revision: serverRevision, facts: [], proposals: [] } }),
+    'GET /api/v1/career/list': call => stub.succeed(call, { data: { revision: serverRevision, facts: [], proposals: [] } }),
+    'POST /api/v1/career/applications/app-1/submissions': call => { if (postFails) stub.fail(call, 'request:fail timeout'); else stub.succeed(call, { data: submission() }); },
+    'GET /api/v1/career/submissions/receipt': call => stub.succeed(call, { statusCode: 404, data: { error: { code: 'not_found', message: 'no receipt yet' } } }),
+  });
+  await career.loadCareer();
+  const failed = await career.recordSubmission({ applicationId: 'app-1', channel: 'web', materialId: 'mat-1', exportId: 'exp-1', versionUnknown: false, note: '官网已投' }).catch(error => error);
+  assert.equal(errorCode(failed), 'outcome_unknown');
+  serverRevision = 6;
+  await career.refreshCareer();
+  postFails = false;
+  const receipt = await career.retryPendingSubmission();
+  assert.equal(receipt.submissionId, 'sub-1');
+  const bodies = stub.state.calls.filter(c => new URL(c.options.url).pathname === '/api/v1/career/applications/app-1/submissions').map(c => c.options.data);
+  assert.equal(bodies.length, 2);
+  assert.equal(bodies[1].expectedRevision, 3, 'the resend replays the original revision');
+  assert.deepEqual(bodies[1], bodies[0], 'the resent body is byte-for-byte the original one');
+});
+
+test('M1: the editable body round-trips every section and claim — nothing is silently dropped (F4)', () => {
+  const webBody = { sections: [
+    { heading: '教育背景', content: '本科，2026 届毕业。', claims: [{ claimId: 'c1', text: '本科学历', needsReview: false }] },
+    { heading: '技能', content: 'TypeScript、分布式系统。', claims: [{ claimId: 'c2', text: '技能主张', needsReview: true, reviewNote: '待核对' }] },
+  ] };
+  assert.deepEqual(career.bodyFromEditable(career.editableFromBody(webBody)), webBody, 'a read-then-save round-trip preserves sections and claims verbatim');
+  const appended = career.editableFromBody(webBody);
+  appended.push({ heading: ' 项目经历 ', content: '小程序求职工作台。', claims: [] });
+  const next = career.bodyFromEditable(appended);
+  assert.equal(next.sections.length, 3, 'a new section appends instead of replacing the body');
+  assert.deepEqual(next.sections[0].claims, webBody.sections[0].claims, 'existing claims ride along untouched');
+  assert.equal(next.sections[2].heading, '项目经历', 'headings are trimmed but preserved');
+  assert.throws(() => career.bodyFromEditable([{ heading: '  ', content: '   ', claims: [] }]), error => error.code === 'material_body_empty');
+});
+
+test('T1: a declared time is parsed strictly — invalid input is never silently dropped (F5)', () => {
+  assert.deepEqual(career.parseDeclaredOccurredAt('  '), { status: 'empty' }, 'blank leaves the server to stamp the confirmation time');
+  const ok = career.parseDeclaredOccurredAt('2026-09-25 20:00');
+  assert.equal(ok.status, 'ok');
+  assert.ok(!Number.isNaN(Date.parse(ok.iso)), 'the iso form parses everywhere');
+  assert.equal(career.parseDeclaredOccurredAt('2026-09-25T20:30:15').status, 'ok', 'the T form with seconds is accepted');
+  assert.equal(career.parseDeclaredOccurredAt('2026-02-31 20:00').status, 'invalid', 'rolled-over dates are rejected, not normalized');
+  assert.equal(career.parseDeclaredOccurredAt('不是时间').status, 'invalid');
+  assert.equal(career.parseDeclaredOccurredAt('2026-09-25').status, 'invalid', 'date-only is rejected: a claimed time needs minutes');
+});
