@@ -37,4 +37,12 @@ test('the integration runner is total: failures still yield evidence, never a re
   const source = readFileSync(join(here, 'task-intervention-integration-smoke.ts'), 'utf8');
   assert.match(source, /catch \(error\)/);
   assert.match(source, /finally\s*\{/);
+  // 修复轮 F9-1：queue-next 投递结果 unknown 时，绑定的旧 Run 恒为终态，观察它无法揭示
+  // 新 Run 的重准入命运——源码不得把 unknown 经 resync 洗白成 admitted（绝不伪造通过）。
+  assert.doesNotMatch(source, /outcome === 'unknown'[\s\S]{0,400}TERMINAL_STATUSES\.has\(reconciled\.runStatus\)[\s\S]{0,80}\? 'admitted'/, 'queue-next unknown 不得经旧 Run 终态洗白成 admitted');
+  // 修复轮 F9-2：stop 投递结果 unknown 且核对未观察到 canceled 时，按 resolveUnknownStop
+  // 的快照规则（task-intent.ts：非 canceled ⇒ 取消 CAS 不可能已落地 ⇒ 未落地），如实落
+  // requested-only，绝不捏造一次从未观察到的 CAS 拒绝（conflict）。
+  assert.doesNotMatch(source, /'unknown-then-reconciled' : 'conflict'/, 'stop unknown 核对未 canceled 不得捏造 conflict');
+  assert.match(source, /'unknown-then-reconciled' : 'requested-only'/, 'stop unknown 核对未 canceled 如实落 requested-only');
 });

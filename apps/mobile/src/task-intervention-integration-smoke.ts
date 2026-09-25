@@ -123,7 +123,9 @@ export async function runTaskInterventionIntegration(config: Extract<TaskInterve
         if (stopPhaseAfterAck === 'unknown') {
           // 投递结果未知：以真实 resync 核对（AC2 核对路径必须真实走通）。
           const reconciled = await handle.resync();
-          evidence.stop = reconciled.runStatus === 'canceled' ? 'unknown-then-reconciled' : 'conflict';
+          // resolveUnknownStop（task-intent.ts）快照规则：非 canceled ⇒ 取消 CAS 不可能已
+          // 落地（未落地）——如实落 requested-only，绝不捏造从未观察到的 CAS 拒绝（F9-2）。
+          evidence.stop = reconciled.runStatus === 'canceled' ? 'unknown-then-reconciled' : 'requested-only';
         } else {
           let confirmed = false;
           for (let attempt = 0; attempt < 10 && !confirmed; attempt += 1) {
@@ -139,10 +141,9 @@ export async function runTaskInterventionIntegration(config: Extract<TaskInterve
         const restart = await handle.act({ kind: 'queue-next', text: '集成验证：重启' });
         evidence.queueNext = restart.outcome === 'accepted' ? 'admitted' : restart.outcome === 'conflict' ? 'conflict' : 'unknown';
         if (restart.nextRunId !== undefined) evidence.nextRunId = restart.nextRunId;
-        if (restart.outcome === 'unknown') {
-          const reconciled = await handle.resync(); // 核对后重试一次仍失败则如实记录
-          evidence.queueNext = reconciled.runStatus === 'canceled' || TERMINAL_STATUSES.has(reconciled.runStatus) ? 'admitted' : 'unknown';
-        }
+        // 投递结果 unknown 时（F9-1）：绑定的旧 Run 恒为终态，观察 resync 无法揭示新 Run
+        // 的重准入命运（nextRunId 仅随 202 ack 携带，unknown 时无核对源）——如实保持上一行
+        // 映射的 'unknown'，绝不洗白成 admitted。
       } else {
         evidence.queueNext = 'skipped';
       }
