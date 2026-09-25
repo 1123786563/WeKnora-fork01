@@ -76,6 +76,45 @@
 - `go build ./...` → 退出码 0。
 - （完整命令原文与输出见 K2.7 任务报告 `.superpowers/sdd/passb/b2-k-retrieval/K2.7-report.md`；节点 gates 四项在 K2.8 Step 2 统一执行。）
 
-## 4. 高风险差分（§7.3，K2.8 落盘）
+## 4. 高风险差分（§7.3 四面，K2.8 Step 1 执行，2026-09-25）
 
-（待 K2.8 Step 1 执行后补全：TypeIndexDelete tag 侧、HybridSearch/融合/FAQ 混排/分组、KB 活动审计流、KB 读权限/租户解析四面双跑。）
+### 4.1 双跑方法与 T0/T1 定义（spec §14.3 同输入双跑）
+
+- **T0（旧实现特征化基线）**：K2.1 Step 3 用例级台账（2026-09-24 采集，时点=基线对齐 merge f6bb35751 后、K2.2 首个搬迁前，全部生产文件仍在宿主原位）——包级 `ok`（repository 285.210s / service 220.151s / handler 3.907s / knowledge 模块树全 ok）+ 全量 verbose 逐用例输出（`go test -count=1 -v ./internal/application/repository/`、`go test -count=1 -v ./internal/application/service/ ./internal/handler/`，两命令退出码 0，RUN 709+3580、FAIL 0）。原始文件：`.superpowers/sdd/passb/b2-k-retrieval/K2.1-t0-{test-output,verbose-repository,verbose-service-handler}.txt`（主 checkout git-ignored 会话区）。
+- **T1（搬迁后同用例）**：2026-09-25，分支 HEAD=bc7aac9fa（K2.7 后；K2.8 采证时点），15 个生产文件已物理落位 `internal/modules/knowledge/retrieval/app{,/repository,/handler}`、宿主 compat 3 文件在册。
+- **比对口径**：两侧 verbose 输出经同一 awk 两遍提取（`name / verdict / 子用例计数`，子用例行晚于父行故 END 汇出）→ `sort -u` → `diff`。**判据：diff 为空 = 逐用例 verdict 与子用例计数完全一致**。
+
+### 4.2 T1 命令台账（原文 + 退出码）
+
+| # | 命令 | 退出码 | 关键输出 |
+|---|---|---|---|
+| 1 | `go test -count=1 -v -run '<95 用例联合 pattern（§7.3 四面锚定函数名 alternation）>' ./internal/application/service/` | 0 | `ok ...internal/application/service 96.827s`；顶层 PASS 92、FAIL/SKIP 0（宿主面：面 1 write_access、面 3 全部、面 4 全部 + 面 2 的 38 用例） |
+| 2 | `go test -count=1 -v -run 'TestTagDeletionNeverIgnoresInvalidExclusions' ./internal/modules/knowledge/retrieval/app/handler/` | 0 | `--- PASS: TestTagDeletionNeverIgnoresInvalidExclusions (0.00s)`（6 子用例）；`ok ... 2.230s` |
+| 3 | `go test -count=1 -v -run 'TestSemanticScopeEpoch' ./internal/modules/knowledge/retrieval/app/repository/` | 0 | 3 用例全 PASS（Fanout/AtomicFailures/UserUnion）；`ok ... 6.338s` |
+| 4 | `go test -count=1 -v -run 'TestResolveKBReadTenantPreservesServiceBoundary' ./internal/application/service/` | 0 | `--- PASS`；`ok ... 2.461s`（补跑：#1 pattern 漏列此名，单独补齐后并入比对） |
+| 5 | `go test -count=1 -v -run '<61 函数 pattern：由面 2 的 7 个测试文件 grep "^func Test" 生成全量 alternation>' ./internal/application/service/` | 0 | 61/61 顶层 PASS、FAIL/SKIP 0；`ok ... 3.438s`（面 2 全文件覆盖补强，超出计划「7+5+4 命中」锚定口径） |
+
+T1 verbose 原始输出：`.superpowers/sdd/passb/b2-k-retrieval/K2.8-t1-{service-verbose,module-handler,module-repository,extra,face2-full}.txt`。
+
+### 4.3 逐面比对结论（锚定用例清单 → 双跑 → 等价判据）
+
+| 面（§7.3 行） | 锚定用例（顶层函数数） | T1 实现路径 | T0 | T1 | 比对 |
+|---|---|---|---|---|---|
+| 1. `TypeIndexDelete` tag 侧索引清理 | `knowledge_write_access_test.go` 10 + `tag_delete_test.go` 1（6 子用例）+ `semantic_scope_epoch_test.go` 3 = **14** | write_access 留宿主零改动（tag.go 推迟）；tag_delete 在落位 handler 包直跑；epoch 在落位 repository 包直跑 | 14 PASS | 14 PASS | **逐用例一致**（子用例计数一致） |
+| 2. HybridSearch/融合/FAQ 混排/分组 | fanout 35 + fusion 5 + matchcount 2 + budget 3 + pr3 7 + dimension 2 + task_cancel 7 = **61**（7 文件全量） | 7 生产文件均 K2.4 推迟留宿主**零改动**（`git diff` 空，节点报告 §5），用例跑宿主原实现 | 61 PASS（子用例 21） | 61 PASS（子用例 21） | **逐用例一致**；等价性由零改动 + 同结果双保险 |
+| 3. KB 活动审计流 | `kb_activity_test.go` 7 + `knowledge_shared_access_test.go` 4 = **11** | kb_activity.go 已落位 `app`，宿主测试经 compat 5 个一行委托 + 常量别名**直达新实现**；shared_access 主体 knowledge.go（K4）留宿主 | 11 PASS | 11 PASS | **逐用例一致**（K2.5 窗口 11/11 首跑复核通过） |
+| 4. KB 读权限/租户解析 | `knowledge_caller_scope_test.go` 3 + `knowledge_shared_storage_failure_test.go` 1 + `semantic_scope_test.go` 15 + `semantic_scope_mutation_test.go` 13 = **32** | knowledgebase_access.go 已落位（测试经 compat 委托）；semantic_scope.go 已落位（测试经 type 别名 + R1 字段导出 `Knowledge`/`Shares` 白盒直达新实现） | 32 PASS | 32 PASS | **逐用例一致** |
+
+**总比对**：118 顶层用例（含 105 子用例计数），`diff` 为空——T0 与 T1 verdict、子用例计数**完全一致，零差异**（差分失败数为 0，无「只修新实现」事项触发）。提取/比对中间产物：`K2.8-{t0,t1}-{extracted,face2-extracted,final}.txt`、锚定名单 `K2.8-anchor-names.txt`、`K2.8-face2-names.txt`。
+
+### 4.4 面 2 推迟件的差分口径说明（如实）
+
+§7.3 面 2 的 7 个生产文件（knowledgebase.go、knowledgebase_search*.go ×6）按 Ruling 2026-09-25-DEFERRED-FILE-SPLIT 推迟（K2.4 报告 §3），本窗口 T1 跑的是**宿主零改动原实现**（等价性=代码零改动+结果一致双保险）；ib2/后续补迁任务执行同一 §4.1 方法（T0=本节 T1 输出）再跑搬迁后差分。面 1 的 tag.go（service）同理（write_access 10 用例锚定推迟件行为）。已搬迁文件的差分（kb_activity、knowledgebase_access、semantic_scope、tag handler、epoch repo）**已闭环**。
+
+## 5. 临时测试装置垫片（B5 清理范围）台账（Ruling 2026-09-24-TEST-SUPPORT-SHIM）
+
+| 垫片文件 | 服务的留守测试（属主） | 最小符号 | 登记窗 | remove_at |
+|---|---|---|---|---|
+| `internal/application/repository/kbretrieval_passb_compat_test.go` | `internal/application/repository/knowledge_tag_test.go`（24-knowledge-process 属主，:219 构造/:241 调用随迁未导出类型 `knowledgeTagRepository`） | `type knowledgeTagRepository struct{ db *gorm.DB }` + `BatchCountReferences` 方法委托 `kbretrieval.NewKnowledgeTagRepository(r.db)`（不复制实现） | K2.2（commit 34176d899） | **ib2**（先到先删，最迟 B5） |
+
+ib2 处置：knowledge_tag_test.go 随 K4 迁移或直连改写后，本垫片与 manifest 登记行同 commit 删除；B5 复核清零。
