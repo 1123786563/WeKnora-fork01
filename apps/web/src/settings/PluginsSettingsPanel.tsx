@@ -11,6 +11,9 @@ import {
   createPluginsApi,
   type PluginInstallationSummary,
   type PluginPreviewResult,
+  type PluginUpgradePreview,
+  type PluginUpgradeToolChange,
+  type PluginUpgradeToolSnapshot,
 } from "../../../../packages/api-client/src/plugins.ts";
 
 /**
@@ -47,6 +50,78 @@ function apiErrorMessage(cause: unknown): string | null {
   return cause instanceof Error && cause.name === "ApiError" ? cause.message : null;
 }
 
+/** 升级差异面板的挂载状态：记录来源安装行，重开/切换互斥渲染。 */
+type UpgradePreviewState = {
+  installationId: string;
+  pluginName: string;
+  result: PluginUpgradePreview;
+};
+
+/** 变更理由徽标：四维独立（schema/scope/读写分类/授权面），仅渲染命中的维度。 */
+function changeReasonBadges(change: PluginUpgradeToolChange): React.ReactNode {
+  const badges: string[] = [];
+  if (change.schemaChanged) badges.push("schema 变更");
+  if (change.scopeChanged) badges.push("scope 变更");
+  if (change.readWriteClassChanged) badges.push("读写分类变更");
+  if (change.personalAuthChanged) badges.push("授权面变更");
+  return badges.map((label) => (
+    <span key={label} className={pluginBadgeWarn}>
+      {label}
+    </span>
+  ));
+}
+
+/** 快照列紧凑摘要：scopes · 只读/写入 · 授权面（供变更行现版/候选版对照）。 */
+function snapshotSummary(snapshot: PluginUpgradeToolSnapshot): string {
+  const parts = [
+    snapshot.scopes.length > 0 ? snapshot.scopes.join(" ") : "无 scope",
+    snapshot.readOnly ? "只读" : "写入",
+    snapshot.requiresPersonalAuth ? "需个人授权" : "无需授权",
+  ];
+  return parts.join(" · ");
+}
+
+/** 新增/移除工具表（同一行结构，标题与数据不同）。 */
+function DiffToolTable({ caption, rows }: { caption: string; rows: readonly PluginUpgradeToolSnapshot[] }) {
+  return (
+    <div className="overflow-x-auto">
+      <h4 className="m-0 mb-1 text-[13px] font-medium">{caption}（{rows.length}）</h4>
+      <table className="w-full border-collapse text-left text-[13px] leading-[20px]">
+        <thead>
+          <tr className="border-b border-[#eef1f5] text-[12px] text-[#66758b]">
+            <th className="py-1 pr-3 font-medium">工具</th>
+            <th className="py-1 pr-3 font-medium">说明</th>
+            <th className="py-1 pr-3 font-medium">分类</th>
+            <th className="py-1 pr-3 font-medium">授权</th>
+            <th className="py-1 font-medium">Scopes</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((tool) => (
+            <tr key={tool.name} className="border-b border-[#f3f5f8] align-top last:border-b-0">
+              <td className="py-2 pr-3 font-medium [overflow-wrap:anywhere]">{tool.name}</td>
+              <td className="py-2 pr-3 text-[#66758b] [overflow-wrap:anywhere]">{tool.description}</td>
+              <td className="py-2 pr-3">
+                <span className={tool.readOnly ? pluginBadgeOk : pluginBadgeWarn}>{tool.readOnly ? "只读" : "写入"}</span>
+              </td>
+              <td className="py-2 pr-3">
+                {tool.requiresPersonalAuth ? (
+                  <span className={pluginBadgeInfo}>需个人授权</span>
+                ) : (
+                  <span className={pluginBadgeMuted}>无需授权</span>
+                )}
+              </td>
+              <td className="py-2 text-[#66758b] [overflow-wrap:anywhere]">
+                {tool.scopes.length > 0 ? tool.scopes.join(" ") : "—"}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 type Props = {
   client: WeKnoraClient;
   role: "viewer" | "admin" | "owner" | "system-admin";
@@ -64,6 +139,11 @@ export function PluginsSettingsPanel({ client, role }: Props) {
   const [installations, setInstallations] = useState<readonly PluginInstallationSummary[]>([]);
   const [listError, setListError] = useState<string | null>(null);
   const [actionBusyId, setActionBusyId] = useState<string | null>(null);
+  // T15（Issue #114）：升级差异预览是只读操作——状态独立于停用/启用，失败只
+  // 落错误条，安装行与已接受版本零变化（服务端 PreviewUpgrade 不写任何安装）。
+  const [upgradePreview, setUpgradePreview] = useState<UpgradePreviewState | null>(null);
+  const [upgradeBusyId, setUpgradeBusyId] = useState<string | null>(null);
+  const [upgradeError, setUpgradeError] = useState<{ pluginName: string; message: string } | null>(null);
 
   // useMemo 稳定 pluginsApi（T08-OCR1-F4）：client.request 是纯传输包装，
   // 稳定引用让 refreshInstallations 的 useCallback 依赖完整（exhaustive-deps）。
@@ -175,6 +255,30 @@ export function PluginsSettingsPanel({ client, role }: Props) {
     } finally {
       setActionBusyId(null);
     }  }
+
+  async function checkUpgrade(item: PluginInstallationSummary) {
+    if (!canEdit || upgradeBusyId !== null) return;
+    setUpgradeBusyId(item.installationId);
+    setUpgradeError(null);
+    try {
+      const result = await pluginsApi.previewUpgrade(item.installationId);
+      // 只读预览成功即替换面板（重复点击 = 幂等重读，结果不累积）。
+      setUpgradePreview({ installationId: item.installationId, pluginName: item.name, result });
+    } catch (cause) {
+      // 候选不可达/核验失败：错误条定位来源安装行，面板不残留，安装列表不动。
+      // message 存纯文案（渲染层统一「升级预览失败（插件名）：」前缀，不再双拼）。
+      setUpgradePreview(null);
+      const message = apiErrorMessage(cause);
+      if (message === null) {
+        console.warn("plugin upgrade preview failed:", cause);
+        setUpgradeError({ pluginName: item.name, message: "候选不可达或核验未通过，请稍后重试" });
+      } else {
+        setUpgradeError({ pluginName: item.name, message });
+      }
+    } finally {
+      setUpgradeBusyId(null);
+    }
+  }
 
   return (
     <section className="grid gap-4" data-testid="plugins-settings">
@@ -300,6 +404,13 @@ export function PluginsSettingsPanel({ client, role }: Props) {
             各自表述，不再固定拼接「加载失败」前缀）；失败 ≠ 空——空态仅在
             无错误且无数据时呈现，失败时只留错误横幅（T08-OCR1-F7）。 */}
         {listError ? <Status tone="error">{listError}</Status> : null}
+        {/* 升级预览错误条（T15）：定位来源安装行的只读失败——候选不可达/核验
+            不符只报错，不触碰安装行与已接受版本（列表不变形）。 */}
+        {upgradeError ? (
+          <div data-testid="plugin-upgrade-error">
+            <Status tone="error">升级预览失败（{upgradeError.pluginName}）：{upgradeError.message}</Status>
+          </div>
+        ) : null}
         {installations.length === 0 ? (
           listError === null ? <Status>暂无已安装插件</Status> : null
         ) : (
@@ -325,7 +436,14 @@ export function PluginsSettingsPanel({ client, role }: Props) {
                 {item.requiresPersonalAuth ? <span className={pluginBadgeInfo}>需个人授权</span> : null}
                 <span className="text-[#66758b]">{item.toolCount} 个工具</span>
                 {canEdit ? (
-                  <span className="ml-auto">
+                  <span className="ml-auto flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      loading={upgradeBusyId === item.installationId}
+                      onClick={() => void checkUpgrade(item)}
+                    >
+                      检查升级
+                    </Button>
                     <Button
                       type="button"
                       loading={actionBusyId === item.installationId}
@@ -340,6 +458,86 @@ export function PluginsSettingsPanel({ client, role }: Props) {
           </ul>
         )}
       </section>
+      {/* T15（Issue #114）：五维差异预览面板——只读，不提供接受入口（接受升级
+          属后续切片）；渲染版本对（含降级标注）、端点变化行、新增/移除/变更
+          工具表与四个独立变更理由徽标（schema/scope/读写分类/授权面）。 */}
+      {upgradePreview ? (
+        <article
+          data-testid="plugin-upgrade-preview"
+          className="min-w-0 overflow-hidden rounded-[10px] border border-[#dce3ed] bg-white"
+        >
+          <div className="flex flex-wrap items-center gap-2 border-b border-[#eef1f5] p-3">
+            <h3 className="m-0 text-[15px] font-semibold leading-[21px]">升级差异预览 · {upgradePreview.pluginName}</h3>
+            {upgradePreview.result.diff.isDowngrade ? (
+              <span className={pluginBadgeWarn}>降级</span>
+            ) : (
+              <span className={pluginBadgeInfo}>升级</span>
+            )}
+            <span className="ml-auto flex flex-wrap items-center gap-2 text-[13px]">
+              <code className="text-[rgb(0_0_0_/_90%)]">{upgradePreview.result.diff.currentVersion}</code>
+              <span className="text-[#66758b]">→</span>
+              <code className="text-[rgb(0_0_0_/_90%)]">{upgradePreview.result.diff.candidateVersion}</code>
+              <Button type="button" onClick={() => setUpgradePreview(null)}>
+                关闭
+              </Button>
+            </span>
+          </div>
+          <div className="grid gap-2 p-3 text-[13px] leading-[20px]">
+            <div className="flex flex-wrap items-center gap-2">
+              {upgradePreview.result.diff.endpointChanged ? (
+                <span className={pluginBadgeWarn}>端点已变化</span>
+              ) : (
+                <span className={pluginBadgeMuted}>端点未变化</span>
+              )}
+              <code className="min-w-0 [overflow-wrap:anywhere] text-[#66758b]">{upgradePreview.result.diff.currentEndpoint}</code>
+              {upgradePreview.result.diff.endpointChanged ? (
+                <>
+                  <span className="text-[#66758b]">→</span>
+                  <code className="min-w-0 [overflow-wrap:anywhere] text-[rgb(0_0_0_/_90%)]">{upgradePreview.result.diff.candidateEndpoint}</code>
+                </>
+              ) : null}
+            </div>
+          </div>
+          <div className="grid gap-3 border-t border-[#eef1f5] p-3">
+            <DiffToolTable caption="新增工具" rows={upgradePreview.result.diff.addedTools} />
+            <DiffToolTable caption="移除工具" rows={upgradePreview.result.diff.removedTools} />
+            <div className="overflow-x-auto">
+              <h4 className="m-0 mb-1 text-[13px] font-medium">变更工具（{upgradePreview.result.diff.changedTools.length}）</h4>
+              <table className="w-full border-collapse text-left text-[13px] leading-[20px]">
+                <thead>
+                  <tr className="border-b border-[#eef1f5] text-[12px] text-[#66758b]">
+                    <th className="py-1 pr-3 font-medium">工具</th>
+                    <th className="py-1 pr-3 font-medium">变更理由</th>
+                    <th className="py-1 pr-3 font-medium">现版</th>
+                    <th className="py-1 font-medium">候选版</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {upgradePreview.result.diff.changedTools.map((change) => (
+                    <tr key={change.name} className="border-b border-[#f3f5f8] align-top last:border-b-0">
+                      <td className="py-2 pr-3 font-medium [overflow-wrap:anywhere]">{change.name}</td>
+                      <td className="flex flex-wrap gap-1 py-2 pr-3">{changeReasonBadges(change)}</td>
+                      <td className="py-2 pr-3 text-[#66758b] [overflow-wrap:anywhere]">{snapshotSummary(change.current)}</td>
+                      <td className="py-2 text-[#66758b] [overflow-wrap:anywhere]">{snapshotSummary(change.candidate)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="grid gap-1 text-[12px] leading-[18px] text-[#66758b]">
+              <span className="min-w-0 [overflow-wrap:anywhere]">
+                候选身份指纹 <code className="text-[rgb(0_0_0_/_90%)]">{upgradePreview.result.candidateFingerprint}</code>
+              </span>
+              <span className="min-w-0 [overflow-wrap:anywhere]">
+                候选工具目录摘要 <code className="text-[rgb(0_0_0_/_90%)]">{upgradePreview.result.candidateToolsDigest}</code>
+              </span>
+            </div>
+            <p className="wk-muted m-0 text-[12px] leading-[18px] text-[#66758b]">
+              预览为只读操作：在管理员另行确认接受前，本空间继续使用当前已接受版本；候选端点不可达或清单核验不符时预览直接失败，不影响已安装插件。
+            </p>
+          </div>
+        </article>
+      ) : null}
     </section>
   );
 }

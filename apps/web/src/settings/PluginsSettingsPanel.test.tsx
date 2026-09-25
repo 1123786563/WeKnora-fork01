@@ -431,3 +431,212 @@ test('停用失败（非 ApiError）文案为状态变更失败而非误报加�
     await unmount(root);
   }
 });
+
+// ---- T15（Issue #114）：安装行「检查升级」→ 五维差异预览面板 ----
+
+function upgradePreviewEnvelope(options?: { isDowngrade?: boolean; endpointChanged?: boolean }): unknown {
+  const isDowngrade = options?.isDowngrade ?? true;
+  const endpointChanged = options?.endpointChanged ?? true;
+  return {
+    success: true,
+    data: {
+      diff: {
+        plugin_id: 'com.example.jira-todo',
+        current_version: '1.2.0',
+        candidate_version: isDowngrade ? '1.1.0' : '1.3.0',
+        is_downgrade: isDowngrade,
+        endpoint_changed: endpointChanged,
+        current_endpoint: 'https://plugins.example.com/jira-todo/v1.2.0/mcp',
+        candidate_endpoint: 'https://plugins.example.com/jira-todo/v1.3.0/mcp',
+        added_tools: [
+          { name: 'added_tool', description: '候选新增', input_schema_digest: 'd'.repeat(64), read_only: true, requires_personal_auth: false, scopes: ['read:jira-work'] },
+        ],
+        removed_tools: [
+          { name: 'removed_tool', description: '候选移除', input_schema_digest: 'e'.repeat(64), read_only: false, requires_personal_auth: true, scopes: null },
+        ],
+        changed_tools: [
+          {
+            name: 'changed_tool',
+            schema_changed: true,
+            scope_changed: true,
+            read_write_class_changed: true,
+            personal_auth_changed: true,
+            current: { name: 'changed_tool', description: '现版', input_schema_digest: 'a'.repeat(64), read_only: true, requires_personal_auth: false, scopes: ['read:jira-work'] },
+            candidate: { name: 'changed_tool', description: '候选版', input_schema_digest: 'b'.repeat(64), read_only: false, requires_personal_auth: true, scopes: ['read:jira-work', 'write:jira-work'] },
+          },
+        ],
+      },
+      candidate_fingerprint: 'f'.repeat(64),
+      candidate_tools_digest: '0'.repeat(64),
+    },
+  };
+}
+
+test('管理员安装行有检查升级按钮：点击请求 upgrade-preview 并渲染五维差异面板（含降级标注）', async () => {
+  const { client, captured } = stubClient(async (input) => {
+    if (input.method === 'GET' && input.path === '/api/v1/plugins/installations') {
+      return { success: true, data: [{ ...jiraSummary }] };
+    }
+    if (input.method === 'POST' && input.path === '/api/v1/plugins/installations/inst-1/upgrade-preview') {
+      return upgradePreviewEnvelope();
+    }
+    throw new Error(`unexpected request ${input.method} ${input.path}`);
+  });
+  const root = await mount(React.createElement(PluginsSettingsPanel, { client, role: 'admin' }));
+  try {
+    await flushEffects();
+    const list = document.querySelector('[data-testid="plugin-installations"]') as ParentNode;
+    const checkButton = findButtonByText(list, '检查升级');
+    assert.ok(checkButton, 'the admin installation row carries a check-upgrade button');
+    await act(async () => { checkButton!.click(); });
+    await flushEffects();
+    const previewRequests = captured.filter((entry) => entry.method === 'POST' && entry.path === '/api/v1/plugins/installations/inst-1/upgrade-preview');
+    assert.equal(previewRequests.length, 1, 'one upgrade-preview request fires');
+    const panel = document.querySelector('[data-testid="plugin-upgrade-preview"]');
+    assert.ok(panel, 'the upgrade diff panel renders');
+    const text = panel?.textContent ?? '';
+    // 维度 1：版本对 + 降级标注。
+    assert.match(text, /1\.2\.0/, 'the current version renders');
+    assert.match(text, /1\.1\.0/, 'the candidate version renders');
+    assert.match(text, /降级/, 'the downgrade carries an explicit badge');
+    // 维度 2：端点变化行。
+    assert.match(text, /端点/, 'the endpoint dimension renders');
+    assert.match(text, /https:\/\/plugins\.example\.com\/jira-todo\/v1\.2\.0\/mcp/, 'the current endpoint renders');
+    assert.match(text, /https:\/\/plugins\.example\.com\/jira-todo\/v1\.3\.0\/mcp/, 'the candidate endpoint renders');
+    // 维度 3/4：新增与移除工具表。
+    assert.match(text, /added_tool/, 'an added tool row renders');
+    assert.match(text, /removed_tool/, 'a removed tool row renders');
+    // 维度 5：变更工具 + 四个变更理由徽标（schema/scope/读写分类/授权面）。
+    assert.match(text, /changed_tool/, 'a changed tool row renders');
+    assert.match(text, /schema 变更/, 'the schema-change reason badge renders');
+    assert.match(text, /scope 变更/, 'the scope-change reason badge renders');
+    assert.match(text, /读写分类变更/, 'the read/write-class reason badge renders');
+    assert.match(text, /授权面变更/, 'the personal-auth reason badge renders');
+    // 候选身份（指纹/摘要）帮助管理员核对将要接受的目录。
+    assert.match(text, /f{64}/, 'the candidate identity fingerprint renders');
+    // 预览不切换版本：安装列表的已接受版本保持 1.2.0。
+    const listText = document.querySelector('[data-testid="plugin-installations"]')?.textContent ?? '';
+    assert.match(listText, /1\.2\.0/, 'the accepted version in the installed list is untouched by a read-only preview');
+  } finally {
+    await unmount(root);
+  }
+});
+
+test('升级方向的预览不渲染降级徽标', async () => {
+  const { client } = stubClient(async (input) => {
+    if (input.method === 'GET' && input.path === '/api/v1/plugins/installations') {
+      return { success: true, data: [{ ...jiraSummary }] };
+    }
+    if (input.method === 'POST' && input.path === '/api/v1/plugins/installations/inst-1/upgrade-preview') {
+      return upgradePreviewEnvelope({ isDowngrade: false });
+    }
+    throw new Error(`unexpected request ${input.method} ${input.path}`);
+  });
+  const root = await mount(React.createElement(PluginsSettingsPanel, { client, role: 'admin' }));
+  try {
+    await flushEffects();
+    const checkButton = findButtonByText(document.querySelector('[data-testid="plugin-installations"]') as ParentNode, '检查升级');
+    assert.ok(checkButton);
+    await act(async () => { checkButton!.click(); });
+    await flushEffects();
+    const panel = document.querySelector('[data-testid="plugin-upgrade-preview"]');
+    assert.ok(panel, 'the panel still renders for an upgrade-direction diff');
+    const text = panel?.textContent ?? '';
+    assert.match(text, /1\.3\.0/, 'the candidate version renders');
+    assert.ok(!text.includes('降级'), 'no downgrade badge renders when the candidate is newer');
+  } finally {
+    await unmount(root);
+  }
+});
+
+test('候选不可达时显示错误条（后端 ApiError 原文透传）且安装列表不变形', async () => {
+  const { client } = stubClient(async (input) => {
+    if (input.method === 'GET' && input.path === '/api/v1/plugins/installations') {
+      return { success: true, data: [{ ...jiraSummary }] };
+    }
+    if (input.method === 'POST' && input.path === '/api/v1/plugins/installations/inst-1/upgrade-preview') {
+      throw new ApiError({ code: 'HTTP_503', message: 'candidate manifest unreachable: 候选清单抓取失败' });
+    }
+    throw new Error(`unexpected request ${input.method} ${input.path}`);
+  });
+  const root = await mount(React.createElement(PluginsSettingsPanel, { client, role: 'admin' }));
+  try {
+    await flushEffects();
+    const list = document.querySelector('[data-testid="plugin-installations"]') as ParentNode;
+    const checkButton = findButtonByText(list, '检查升级');
+    assert.ok(checkButton);
+    await act(async () => { checkButton!.click(); });
+    await flushEffects();
+    const errorBanner = document.querySelector('[data-testid="plugin-upgrade-error"]');
+    assert.ok(errorBanner, 'the unreachable-candidate error banner renders');
+    assert.match(errorBanner?.textContent ?? '', /候选清单抓取失败/, 'the backend message passes through verbatim');
+    // T08-OCR1-F3 同类防护：前缀只由渲染层拼一次，文案不得自我重复。
+    assert.equal(
+      (errorBanner?.textContent ?? '').indexOf('升级预览失败'),
+      (errorBanner?.textContent ?? '').lastIndexOf('升级预览失败'),
+      'no duplicated 升级预览失败 prefix',
+    );
+    assert.ok(!document.querySelector('[data-testid="plugin-upgrade-preview"]'), 'no diff panel leaks after a failed preview');
+    // 安装列表不变形：行内容、版本徽标与既有治理按钮全部保持。
+    const listText = list.textContent ?? '';
+    assert.match(listText, /Jira 本周待办/, 'the installation row stays rendered');
+    assert.match(listText, /1\.2\.0/, 'the accepted version badge stays');
+    assert.match(listText, /启用中/, 'the state badge stays');
+    assert.ok(findButtonByText(list, '停用'), 'the disable governance button stays');
+    assert.ok(!listText.includes('暂无已安装插件'), 'the empty state must not replace the intact list');
+  } finally {
+    await unmount(root);
+  }
+});
+
+test('非 ApiError 的升级预览失败呈现统一中文文案（console.warn 留痕）', async () => {
+  const warnings: unknown[][] = [];
+  const originalWarn = console.warn;
+  console.warn = (...args: unknown[]) => { warnings.push(args); };
+  const { client } = stubClient(async (input) => {
+    if (input.method === 'GET' && input.path === '/api/v1/plugins/installations') {
+      return { success: true, data: [{ ...jiraSummary }] };
+    }
+    if (input.method === 'POST' && input.path === '/api/v1/plugins/installations/inst-1/upgrade-preview') {
+      throw new Error('fetch failed');
+    }
+    throw new Error(`unexpected request ${input.method} ${input.path}`);
+  });
+  const root = await mount(React.createElement(PluginsSettingsPanel, { client, role: 'admin' }));
+  try {
+    await flushEffects();
+    const checkButton = findButtonByText(document.querySelector('[data-testid="plugin-installations"]') as ParentNode, '检查升级');
+    assert.ok(checkButton);
+    await act(async () => { checkButton!.click(); });
+    await flushEffects();
+    const errorBanner = document.querySelector('[data-testid="plugin-upgrade-error"]');
+    assert.ok(errorBanner, 'the error banner renders');
+    assert.match(errorBanner?.textContent ?? '', /升级预览失败/, 'a non-ApiError failure gets the unified Chinese copy');
+    assert.equal(
+      (errorBanner?.textContent ?? '').indexOf('升级预览失败'),
+      (errorBanner?.textContent ?? '').lastIndexOf('升级预览失败'),
+      'no duplicated prefix from the storage/render split',
+    );
+    assert.ok(warnings.length >= 1, 'the raw cause is preserved in console.warn');
+  } finally {
+    console.warn = originalWarn;
+    await unmount(root);
+  }
+});
+
+test('viewer 安装行无检查升级按钮（registry minRole=admin 治理动作）', async () => {
+  const { client } = stubClient(async (input) => {
+    if (input.method === 'GET' && input.path === '/api/v1/plugins/installations') {
+      return { success: true, data: [{ ...jiraSummary }] };
+    }
+    throw new Error(`unexpected request ${input.method} ${input.path}`);
+  });
+  const root = await mount(React.createElement(PluginsSettingsPanel, { client, role: 'viewer' }));
+  try {
+    await flushEffects();
+    assert.ok(!findButtonByText(document, '检查升级'), 'viewer must not see the check-upgrade action');
+    assert.ok(!document.querySelector('[data-testid="plugin-upgrade-preview"]'), 'no diff panel renders for a viewer');
+  } finally {
+    await unmount(root);
+  }
+});

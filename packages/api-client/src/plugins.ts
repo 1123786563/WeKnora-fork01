@@ -124,6 +124,12 @@ export interface PluginsApi {
   getInstallation(installationId: string, signal?: AbortSignal): Promise<PluginInstallation>;
   /** POST disable/enable for one installation (Admin); state is 'active' | 'disabled'. */
   setInstallationState(installationId: string, state: 'active' | 'disabled', signal?: AbortSignal): Promise<PluginInstallation>;
+  /**
+   * POST the bodyless read-only upgrade-preview (Admin): re-fetches the
+   * installation's manifest source, verifies the candidate and resolves to the
+   * five-dimension diff. The accepted version never changes server-side.
+   */
+  previewUpgrade(installationId: string, signal?: AbortSignal): Promise<PluginUpgradePreview>;
 }
 
 /** Build the plugins domain API over the shared client request transport. */
@@ -171,6 +177,15 @@ export function createPluginsApi(request: (input: ClientRequest) => Promise<unkn
       return parsePluginInstallation(await request({
         method: 'POST',
         path: `${INSTALLATIONS_PATH}/${encodeURIComponent(id)}/${state === 'disabled' ? 'disable' : 'enable'}`,
+        ...(signal === undefined ? {} : { signal }),
+      }));
+    },
+    async previewUpgrade(installationId: string, signal?: AbortSignal): Promise<PluginUpgradePreview> {
+      const id = installationId.trim();
+      if (id === '') throw new Error('installationId must not be empty');
+      return parsePluginUpgradePreview(await request({
+        method: 'POST',
+        path: `${INSTALLATIONS_PATH}/${encodeURIComponent(id)}/upgrade-preview`,
         ...(signal === undefined ? {} : { signal }),
       }));
     },
@@ -314,4 +329,112 @@ export function parsePluginInstallations(value: unknown): PluginInstallationSumm
       toolCount: toolCount(row.tool_count, `${INSTALLATIONS_PATH}.data[${index}].tool_count`),
     };
   });
+}
+
+// ---- T15: upgrade-preview envelope (dto.PluginUpgradePreviewResponse, Issue #114;
+// handler internal/handler/plugin.go PreviewUpgrade; five-dimension diff DTOs above it) ----
+
+/** One tool snapshot row inside an upgrade-preview diff (dto.PluginToolSnapshotDTO). */
+export interface PluginUpgradeToolSnapshot {
+  readonly name: string;
+  readonly description: string;
+  readonly inputSchemaDigest: string;
+  readonly readOnly: boolean;
+  readonly requiresPersonalAuth: boolean;
+  readonly scopes: readonly string[];
+}
+
+/**
+ * One changed tool with the four independent change-reason badges the admin
+ * reviews separately: schema / scope / 读写分类 / 授权面
+ * (dto.PluginToolChangeDTO), plus before/after snapshots for drill-down.
+ */
+export interface PluginUpgradeToolChange {
+  readonly name: string;
+  readonly schemaChanged: boolean;
+  readonly scopeChanged: boolean;
+  readonly readWriteClassChanged: boolean;
+  readonly personalAuthChanged: boolean;
+  readonly current: PluginUpgradeToolSnapshot;
+  readonly candidate: PluginUpgradeToolSnapshot;
+}
+
+/** Five-dimension version diff (dto.PluginVersionDiffDTO) in camelCase. */
+export interface PluginVersionDiff {
+  readonly pluginId: string;
+  readonly currentVersion: string;
+  readonly candidateVersion: string;
+  readonly isDowngrade: boolean;
+  readonly endpointChanged: boolean;
+  readonly currentEndpoint: string;
+  readonly candidateEndpoint: string;
+  readonly addedTools: readonly PluginUpgradeToolSnapshot[];
+  readonly removedTools: readonly PluginUpgradeToolSnapshot[];
+  readonly changedTools: readonly PluginUpgradeToolChange[];
+}
+
+/** Upgrade-preview payload (dto.PluginUpgradePreviewResponse) in camelCase. */
+export interface PluginUpgradePreview {
+  readonly diff: PluginVersionDiff;
+  readonly candidateFingerprint: string;
+  readonly candidateToolsDigest: string;
+}
+
+const UPGRADE_PREVIEW_PATH = `${INSTALLATIONS_PATH}/:id/upgrade-preview`;
+
+function parseUpgradeToolSnapshot(value: unknown, path: string): PluginUpgradeToolSnapshot {
+  const row = record(value, path);
+  return {
+    name: required(row.name, `${path}.name`),
+    description: optionalText(row.description, `${path}.description`),
+    inputSchemaDigest: optionalText(row.input_schema_digest, `${path}.input_schema_digest`),
+    readOnly: flag(row.read_only, `${path}.read_only`),
+    requiresPersonalAuth: flag(row.requires_personal_auth, `${path}.requires_personal_auth`),
+    scopes: scopeList(row.scopes, `${path}.scopes`),
+  };
+}
+
+/**
+ * Strict parser for the upgrade-preview envelope: the five-dimension diff
+ * (version pair with the downgrade flag, endpoint pair, added/removed/changed
+ * tool rows) plus the candidate identity the tenant WOULD accept. Metadata
+ * only — schema digests cross the wire, never schema text.
+ */
+export function parsePluginUpgradePreview(value: unknown): PluginUpgradePreview {
+  const envelope = record(value, UPGRADE_PREVIEW_PATH);
+  if (envelope.success !== true) throw new Error(`${UPGRADE_PREVIEW_PATH}.success must be true`);
+  const data = record(envelope.data, `${UPGRADE_PREVIEW_PATH}.data`);
+  const rawDiff = record(data.diff, `${UPGRADE_PREVIEW_PATH}.data.diff`);
+  for (const key of ['added_tools', 'removed_tools', 'changed_tools'] as const) {
+    if (!Array.isArray(rawDiff[key])) throw new Error(`${UPGRADE_PREVIEW_PATH}.data.diff.${key} must be an array`);
+  }
+  return {
+    diff: {
+      pluginId: required(rawDiff.plugin_id, `${UPGRADE_PREVIEW_PATH}.data.diff.plugin_id`),
+      currentVersion: required(rawDiff.current_version, `${UPGRADE_PREVIEW_PATH}.data.diff.current_version`),
+      candidateVersion: required(rawDiff.candidate_version, `${UPGRADE_PREVIEW_PATH}.data.diff.candidate_version`),
+      isDowngrade: flag(rawDiff.is_downgrade, `${UPGRADE_PREVIEW_PATH}.data.diff.is_downgrade`),
+      endpointChanged: flag(rawDiff.endpoint_changed, `${UPGRADE_PREVIEW_PATH}.data.diff.endpoint_changed`),
+      currentEndpoint: required(rawDiff.current_endpoint, `${UPGRADE_PREVIEW_PATH}.data.diff.current_endpoint`),
+      candidateEndpoint: required(rawDiff.candidate_endpoint, `${UPGRADE_PREVIEW_PATH}.data.diff.candidate_endpoint`),
+      addedTools: (rawDiff.added_tools as unknown[]).map((item, index) =>
+        parseUpgradeToolSnapshot(item, `${UPGRADE_PREVIEW_PATH}.data.diff.added_tools[${index}]`)),
+      removedTools: (rawDiff.removed_tools as unknown[]).map((item, index) =>
+        parseUpgradeToolSnapshot(item, `${UPGRADE_PREVIEW_PATH}.data.diff.removed_tools[${index}]`)),
+      changedTools: (rawDiff.changed_tools as unknown[]).map((item, index) => {
+        const row = record(item, `${UPGRADE_PREVIEW_PATH}.data.diff.changed_tools[${index}]`);
+        return {
+          name: required(row.name, `${UPGRADE_PREVIEW_PATH}.data.diff.changed_tools[${index}].name`),
+          schemaChanged: flag(row.schema_changed, `${UPGRADE_PREVIEW_PATH}.data.diff.changed_tools[${index}].schema_changed`),
+          scopeChanged: flag(row.scope_changed, `${UPGRADE_PREVIEW_PATH}.data.diff.changed_tools[${index}].scope_changed`),
+          readWriteClassChanged: flag(row.read_write_class_changed, `${UPGRADE_PREVIEW_PATH}.data.diff.changed_tools[${index}].read_write_class_changed`),
+          personalAuthChanged: flag(row.personal_auth_changed, `${UPGRADE_PREVIEW_PATH}.data.diff.changed_tools[${index}].personal_auth_changed`),
+          current: parseUpgradeToolSnapshot(row.current, `${UPGRADE_PREVIEW_PATH}.data.diff.changed_tools[${index}].current`),
+          candidate: parseUpgradeToolSnapshot(row.candidate, `${UPGRADE_PREVIEW_PATH}.data.diff.changed_tools[${index}].candidate`),
+        };
+      }),
+    },
+    candidateFingerprint: required(data.candidate_fingerprint, `${UPGRADE_PREVIEW_PATH}.data.candidate_fingerprint`),
+    candidateToolsDigest: required(data.candidate_tools_digest, `${UPGRADE_PREVIEW_PATH}.data.candidate_tools_digest`),
+  };
 }
