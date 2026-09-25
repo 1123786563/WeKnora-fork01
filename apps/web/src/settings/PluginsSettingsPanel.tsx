@@ -194,17 +194,27 @@ export function PluginsSettingsPanel({ client, role }: Props) {
   // 稳定引用让 refreshInstallations 的 useCallback 依赖完整（exhaustive-deps）。
   const pluginsApi = useMemo(() => createPluginsApi((input) => client.request(input)), [client]);
 
+  // OCR R2 F12：安装列表代数——client 变化时自增。refreshInstallations 的
+  // 五处动作驱动直调（confirm/toggle/accept/driftCheck/driftResolve）此前
+  // 不传 isStale：旧 client 闭包里的动作完成时用旧 pluginsApi 发列表 GET
+  // 且无陈旧丢弃，迟到响应可覆盖新 effect 已落地的新空间列表。函数内部
+  // 默认绑定代数比对——直调与 effect 调用同一套陈旧性防护。
+  const installationsEpoch = useRef(0);
+
   // isStale 供 effect 的 cancelled 清理模式使用：client 变化触发重跑时，
   // 旧请求的迟到响应/迟到失败不再覆盖新 client 的列表状态（对齐 PluginsPanel）。
+  // 未显式传入时默认按代数判定（OCR R2 F12）。
   const refreshInstallations = React.useCallback(
     async (isStale?: () => boolean) => {
+      const epoch = installationsEpoch.current;
+      const stale = isStale ?? (() => epoch !== installationsEpoch.current);
       try {
         const rows = await pluginsApi.listInstallations();
-        if (isStale?.()) return;
+        if (stale()) return;
         setInstallations(rows);
         setListError(null);
       } catch (cause) {
-        if (isStale?.()) return;
+        if (stale()) return;
         const message = apiErrorMessage(cause);
         if (message === null) {
           console.warn("plugin installations load failed:", cause);
@@ -228,14 +238,19 @@ export function PluginsSettingsPanel({ client, role }: Props) {
     // preview（含可消费 previewId）与 upgradePreview 留存会让「确认安装/
     // 接受升级」以新 client POST 旧空间的 previewId/fingerprint；confirmError
     // /upgradeError/driftView 同属旧 client 视图的悬挂横幅。
+    // OCR R2 F14：error（预览失败横幅）同为 client-bound 悬挂态，一并清。
     setToolPolicy(null);
     setPreview(null);
+    setError(null);
     setConfirmError(null);
     setUpgradePreview(null);
     setUpgradeError(null);
     setDriftView(null);
     // 代数自增（T19-OCR2-F1）：已在途的 GET 的迟到回包凭旧代数被丢弃。
+    // OCR R2 F12：列表代数同步自增——动作直调的 refreshInstallations 在
+    // client 切换后凭旧代数丢弃迟到的列表回包。
     toolPolicyEpoch.current += 1;
+    installationsEpoch.current += 1;
     void refreshInstallations(() => cancelled);
     return () => {
       cancelled = true;
@@ -333,9 +348,10 @@ export function PluginsSettingsPanel({ client, role }: Props) {
       // 只读预览成功即替换面板（重复点击 = 幂等重读，结果不累积）。
       setUpgradePreview({ installationId: item.installationId, pluginName: item.name, result });
     } catch (cause) {
-      // 候选不可达/核验失败：错误条定位来源安装行，面板不残留，安装列表不动。
-      // message 存纯文案（渲染层统一「升级预览失败（插件名）：」前缀，不再双拼）。
-      setUpgradePreview(null);
+      // 候选不可达/核验失败：错误条定位来源安装行，安装列表不动。OCR R2
+      // F13：面板撤除同样只作用于来源安装行——A 的差异面板已展开、对 B 点
+      // 「检查升级」失败时不得误撤 A 的面板。
+      setUpgradePreview((prev) => (prev?.installationId === item.installationId ? null : prev));
       const message = apiErrorMessage(cause);
       if (message === null) {
         console.warn("plugin upgrade preview failed:", cause);
@@ -360,6 +376,10 @@ export function PluginsSettingsPanel({ client, role }: Props) {
         upgradePreview.result.candidateFingerprint,
       );
       setUpgradePreview(null);
+      // OCR R2 F10：接受升级切换了已接受快照（工具集/digest/默认启停都可能
+      // 变化）——同安装已展开的工具治理面基于旧快照，行内开关按旧行取反
+      // 发 PUT 会对已移除工具吃 404、新工具不可见，一并失效。
+      setToolPolicy(null);
       await refreshInstallations();
     } catch (cause) {
       const message = apiErrorMessage(cause);
@@ -425,6 +445,10 @@ export function PluginsSettingsPanel({ client, role }: Props) {
       const report = await pluginsApi.getDrift(driftView.installationId);
       setDriftView((prev) =>
         prev && prev.installationId === driftView.installationId ? { ...prev, busy: null, report, error: null } : prev);
+      // OCR R2 F11：重定基以当前目录 REBASE 快照（新增工具保守默认停用、
+      // 可能移除工具）——与接受升级同款，同安装已展开的工具治理面基于重定
+      // 基前旧快照，一并失效。
+      setToolPolicy(null);
       await refreshInstallations();
     } catch (cause) {
       const message = apiErrorMessage(cause);

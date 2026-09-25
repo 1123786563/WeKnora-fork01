@@ -794,6 +794,87 @@ test('管理员展开工具治理：GET tools 渲染策略行与双开关初始�
   }
 });
 
+// OCR R2 F10：接受升级切换已接受快照——同安装已展开的工具治理面基于旧快
+// 照（行内开关按旧行取反发 PUT 对已移除工具吃 404、新工具不可见），成功
+// 后必须一并失效。
+test('OCR R2 F10：接受升级成功后同安装的工具治理面一并失效', async () => {
+  const { client } = stubClient(async (input) => {
+    if (input.method === 'GET' && input.path === '/api/v1/plugins/installations') {
+      return { success: true, data: [{ ...jiraSummary }] };
+    }
+    if (input.method === 'GET' && input.path === '/api/v1/plugins/installations/inst-1/tools') {
+      return { success: true, data: toolPolicyRows() };
+    }
+    if (input.method === 'POST' && input.path === '/api/v1/plugins/installations/inst-1/upgrade-preview') {
+      return upgradePreviewEnvelope({ isDowngrade: false });
+    }
+    if (input.method === 'POST' && input.path === '/api/v1/plugins/installations/inst-1/upgrade-accept') {
+      return {
+        success: true,
+        data: {
+          installation_id: 'inst-1', plugin_id: 'com.example.jira-todo', name: 'Jira 本周待办', description: '',
+          version: '1.3.0', state: 'active', drift_state: 'none', transport_type: 'http-streamable',
+          endpoint_url: 'https://plugins.example.com/jira-todo/v1.3.0/mcp', service_id: 'svc-1', tools: [],
+        },
+      };
+    }
+    throw new Error(`unexpected request ${input.method} ${input.path}`);
+  });
+  const root = await mount(React.createElement(PluginsSettingsPanel, { client, role: 'admin' }));
+  try {
+    await flushEffects();
+    const list = document.querySelector('[data-testid="plugin-installations"]') as ParentNode;
+    await act(async () => { findButtonByText(list, '工具治理')!.click(); });
+    await flushEffects();
+    assert.ok(document.querySelector('[data-testid="plugin-tool-policy"]'), 'the governance surface is expanded first');
+    await act(async () => { findButtonByText(list, '检查升级')!.click(); });
+    await flushEffects();
+    const panel = document.querySelector('[data-testid="plugin-upgrade-preview"]');
+    assert.ok(panel, 'the diff panel renders');
+    await act(async () => { findButtonByText(panel as ParentNode, '接受升级')!.click(); });
+    await flushEffects();
+    assert.equal(document.querySelector('[data-testid="plugin-tool-policy"]'), null,
+      'the governance surface based on the OLD snapshot must be invalidated with the accept');
+  } finally {
+    await unmount(root);
+  }
+});
+
+// OCR R2 F13：B 安装的检查升级失败不得误撤 A 安装已展开的差异面板——面板
+// 撤除与错误条一样按来源安装行定位。
+test('OCR R2 F13：对 B 检查升级失败不误撤 A 已展开的差异面板', async () => {
+  const secondSummary = { ...jiraSummary, installation_id: 'inst-2', plugin_id: 'com.example.weather', name: '天气查询', version: '0.3.1' };
+  const { client } = stubClient(async (input) => {
+    if (input.method === 'GET' && input.path === '/api/v1/plugins/installations') {
+      return { success: true, data: [{ ...jiraSummary }, secondSummary] };
+    }
+    if (input.method === 'POST' && input.path === '/api/v1/plugins/installations/inst-1/upgrade-preview') {
+      return upgradePreviewEnvelope({ isDowngrade: false });
+    }
+    if (input.method === 'POST' && input.path === '/api/v1/plugins/installations/inst-2/upgrade-preview') {
+      throw new Error('candidate unreachable');
+    }
+    throw new Error(`unexpected request ${input.method} ${input.path}`);
+  });
+  const root = await mount(React.createElement(PluginsSettingsPanel, { client, role: 'admin' }));
+  try {
+    await flushEffects();
+    const list = document.querySelector('[data-testid="plugin-installations"]') as ParentNode;
+    const rows = Array.from(list.querySelectorAll('li')) as HTMLElement[];
+    const rowA = rows.find((row) => row.textContent?.includes('Jira 本周待办'));
+    const rowB = rows.find((row) => row.textContent?.includes('天气查询'));
+    await act(async () => { findButtonByText(rowA as ParentNode, '检查升级')!.click(); });
+    await flushEffects();
+    assert.ok(document.querySelector('[data-testid="plugin-upgrade-preview"]'), "A's diff panel renders");
+    await act(async () => { findButtonByText(rowB as ParentNode, '检查升级')!.click(); });
+    await flushEffects();
+    assert.ok(document.querySelector('[data-testid="plugin-upgrade-preview"]'),
+      "B's failed preview must NOT dismiss A's already-expanded panel");
+  } finally {
+    await unmount(root);
+  }
+});
+
 test('点击写工具启用开关：PUT policy 只带 enabled 且治理行刷新', async () => {
   const rows = toolPolicyRows();
   const { client, captured } = stubClient(async (input) => {
