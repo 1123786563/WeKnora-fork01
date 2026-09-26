@@ -331,3 +331,45 @@ func WriterLeaseTakeover(held *WriterLease, facts WriterRunFacts) bool {
 	}
 	return WriterLeaseReleasable(facts)
 }
+
+// T17 (#136): the durable stop intent. A member's stop request and the
+// confirmed cancellation are two separate durable facts: the accepted HTTP
+// stop only records that the member ASKED to stop (requested) — the Run row
+// stays nonterminal and the writer fence stays; the terminal "canceled"
+// status is written only after an authoritative confirmation (confirmed);
+// and an outcome that could not be determined stays unknown, which is never
+// a release condition for the fence and never permission for a promotion.
+
+// StopIntent is the persisted stop-intent record of one Run, projected with
+// the frozen T00 stop-outcome vocabulary.
+type StopIntent struct {
+	RunID string
+	// Status is requested (the member asked; the executor may still run),
+	// confirmed (an authoritative observation confirmed the cancellation) or
+	// unknown (the abort outcome could not be determined).
+	Status StopOutcomeStatus
+}
+
+// Validate pins the stop-intent shape: a Run identity plus one of the three
+// frozen T00 stop-outcome statuses.
+func (i StopIntent) Validate() error {
+	return fmt.Errorf("%w: stop intent validation is not implemented yet (T17 RED stub)", ErrInvalidInput)
+}
+
+// StopIntentOutcome maps one authoritative executor observation onto the
+// stop-outcome vocabulary: only an observed abort on an idle session is a
+// confirmed cancellation; anything else observed stays requested (the stop
+// is still in flight). An observation that cannot be read at all is the
+// caller's unknown — never a confirmation.
+func StopIntentOutcome(o Observation) StopOutcomeStatus {
+	return StopUnknown
+}
+
+// StopIntentMayWriteRunTerminal reports whether the durable stop state of a
+// Run permits writing the terminal canceled status on the Run row. Only a
+// confirmed stop does: requested and unknown are nonterminal — the accepted
+// HTTP response must never terminalize the Run, and the writer fence and
+// the promotion gate stay in force until the authoritative outcome.
+func StopIntentMayWriteRunTerminal(status StopOutcomeStatus) bool {
+	return false
+}

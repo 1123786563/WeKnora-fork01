@@ -21,9 +21,12 @@ import (
 // production CraftControlService one.
 
 type stopFakeAPI struct {
-	stopErr   error
-	stopGot   service.CraftStopRequest
-	stopReply service.CraftStopStatus
+	stopErr          error
+	stopGot          service.CraftStopRequest
+	stopReply        service.CraftStopStatus
+	stopCalls        int
+	delegationReply  service.CraftStopStatus
+	delegationGotRun string
 }
 
 func (f *stopFakeAPI) ListInteractions(context.Context, craft.Scope, string) ([]service.CraftInteractionRecord, error) {
@@ -35,12 +38,14 @@ func (f *stopFakeAPI) Decide(context.Context, service.CraftDecisionRequest) (ser
 }
 
 func (f *stopFakeAPI) Stop(_ context.Context, req service.CraftStopRequest) (service.CraftStopStatus, error) {
+	f.stopCalls++
 	f.stopGot = req
 	return f.stopReply, f.stopErr
 }
 
-func (f *stopFakeAPI) DelegationStatus(context.Context, craft.Scope, agentruntime.RunKey, string) (service.CraftStopStatus, error) {
-	return service.CraftStopStatus{Phase: "stopping"}, nil
+func (f *stopFakeAPI) DelegationStatus(_ context.Context, _ craft.Scope, key agentruntime.RunKey, _ string) (service.CraftStopStatus, error) {
+	f.delegationGotRun = key.RunID
+	return f.delegationReply, nil
 }
 
 // stopTestRouter mounts the two stop routes behind the production-shaped
@@ -95,11 +100,45 @@ func TestStopCraftRunRejectsMissingTaskID(t *testing.T) {
 }
 
 func TestGetCraftDelegationStatusIsReadOnlyPoll(t *testing.T) {
-	r := stopTestRouter(&stopFakeAPI{})
+	r := stopTestRouter(&stopFakeAPI{delegationReply: service.CraftStopStatus{Phase: "stopping"}})
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/sessions/s1/craft/runs/run_1/delegations/dlg_1/status", nil)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"phase":"stopping"`) {
 		t.Fatalf("expected 200 with the polled phase, got %d %s", w.Code, w.Body.String())
+	}
+}
+
+// T17 (#136): a repeated stop over HTTP answers the same durable phase —
+// the entrance replays the persisted stop intent instead of rejecting or
+// re-classifying it — and the read-only status poll a page refresh runs
+// reports the persisted phase for the same run.
+func TestStopCraftRunRepeatedStopIsIdempotentAcrossRefresh(t *testing.T) {
+	api := &stopFakeAPI{stopReply: service.CraftStopStatus{Phase: "stopping", Note: "abort accepted, still running"}}
+	r := stopTestRouter(api)
+	post := func() int {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/s1/craft/runs/run_1/stop", strings.NewReader(`{"task_id":"dlg_1"}`))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"phase":"stopping"`) {
+			t.Fatalf("expected 200 with the honest stopping phase, got %d %s", w.Code, w.Body.String())
+		}
+		return w.Code
+	}
+	if first, second := post(), post(); first != second || api.stopCalls != 2 {
+		t.Fatalf("repeated stops must replay the same durable answer: codes %d/%d, calls %d", first, second, api.stopCalls)
+	}
+	// The refresh poll: a NEW request after the page reload reads the same
+	// persisted run state without re-issuing a stop.
+	api.delegationReply = service.CraftStopStatus{Phase: "stopping"}
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/sessions/s1/craft/runs/run_1/delegations/dlg_1/status", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"phase":"stopping"`) {
+		t.Fatalf("expected the refresh poll to report the persisted stopping phase, got %d %s", w.Code, w.Body.String())
+	}
+	if api.delegationGotRun != "run_1" || api.stopCalls != 2 {
+		t.Fatalf("the poll must read run_1 read-only without another stop: run %q, stops %d", api.delegationGotRun, api.stopCalls)
 	}
 }

@@ -22,3 +22,20 @@ export function CraftStatusNotice({ kind, children }: { kind: CraftNoticeKind; c
     </CraftNotice>
   );
 }
+
+// T17 (#136): the stop-outcome notice vocabulary. The three durable stop
+// outcomes of a Run (the frozen T00 CraftStopOutcome) each carry their own
+// member-facing sentence — the accepted stop is NEVER announced as stopped,
+// and an unobservable abort outcome is never announced as confirmed.
+export type CraftStopOutcomeStatus = 'requested' | 'confirmed' | 'unknown';
+
+const STOP_OUTCOME_NOTICE_TEXT: Record<CraftStopOutcomeStatus, string> = {
+  requested: '已请求停止，正在等待执行器确认…',
+  confirmed: '已停止',
+  unknown: '停止结果不明，等待核对',
+};
+
+/** The workbench banner for one Run's durable stop outcome. */
+export function CraftStopNotice(_props: { outcome: CraftStopOutcomeStatus }): ReactNode {
+  return null; // T17 RED stub
+}

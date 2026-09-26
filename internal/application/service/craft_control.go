@@ -122,6 +122,28 @@ type CraftStopStatus struct {
 	Phase  string
 	Result *craft.Result
 	Note   string
+	// Outcome is the T17 (#136) frozen stop-outcome projection (T00 DTO):
+	// requested (the member asked; the executor may still run), confirmed
+	// (an authoritative observation confirmed the cancellation) and unknown
+	// (the abort outcome could not be determined). The phase keeps its R06
+	// vocabulary for existing clients; the outcome is the distinct,
+	// non-collapsible answer for "did it actually stop".
+	Outcome craft.StopOutcome
+}
+
+// CraftStopIntentStore is the T17 (#136) durable stop-intent seam: the
+// member's stop request persists as its own durable fact (requested) BEFORE
+// any executor abort is requested, and only an authoritative confirmation
+// moves it to confirmed. Rows are idempotent by Run identity; a replay of
+// the same Run never downgrades a confirmed stop. A nil seam keeps the
+// pre-T17 stop ordering (the run cancel intent first) — the fail-closed
+// degrade, exactly like the T16 nil lease seam.
+type CraftStopIntentStore interface {
+	// PutStopIntent persists (or replays) one Run's stop intent; it is
+	// called before Abort on every stop journey.
+	PutStopIntent(context.Context, craft.Scope, craft.StopIntent) (craft.StopIntent, error)
+	// GetStopIntent reads one Run's durable stop intent.
+	GetStopIntent(context.Context, craft.Scope, string) (craft.StopIntent, error)
 }
 
 // CraftControlService drives the minimal R06 interaction and stop surface:
@@ -136,6 +158,7 @@ type CraftControlService struct {
 	executor     atomic.Pointer[craft.Executor] // post-construction injection (wireCraftInteractionRegistrar)
 	interactions CraftInteractionStore
 	reply        CraftOpenCodeReplier
+	stopIntents  CraftStopIntentStore // post-construction injection (T17)
 }
 
 // NewCraftControlService assembles the control service. A nil interaction
@@ -172,6 +195,16 @@ func (s *CraftControlService) currentExecutor() craft.Executor {
 		return *held
 	}
 	return nil
+}
+
+// SetStopIntents installs the T17 (#136) durable stop-intent store
+// post-construction (the production store is wired by the container). Nil
+// keeps the pre-T17 stop ordering (the run cancel intent first).
+func (s *CraftControlService) SetStopIntents(store CraftStopIntentStore) {
+	if s == nil || store == nil {
+		return
+	}
+	s.stopIntents = store
 }
 
 // craftControlContext derives the server-side budget context: values are
