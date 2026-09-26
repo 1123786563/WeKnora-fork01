@@ -335,6 +335,20 @@ func (o *Office) EditMaterial(ctx context.Context, input EditMaterialInput) (Mat
 		}
 		now := time.Now().UTC()
 		if input.MaterialID == "" {
+			// The same request ID may not also own a material from another
+			// seam (a finalized preparation writes career_materials directly,
+			// without a career_material_receipts row): the unique index on
+			// career_materials.request_id would otherwise surface as an
+			// untyped 500. Refuse it as the typed 409 idempotency conflict.
+			var occupied materialRecord
+			e = tx.Where("tenant_id=? AND user_id=? AND request_id=?", s.TenantID, s.UserID, input.RequestID).
+				First(&occupied).Error
+			if e == nil {
+				return ErrIdempotencyConflict
+			}
+			if !errors.Is(e, gorm.ErrRecordNotFound) {
+				return e
+			}
 			var snapshot opportunitySnapshot
 			e = tx.Where("tenant_id=? AND user_id=? AND opportunity_id=? AND id=?",
 				s.TenantID, s.UserID, input.OpportunityID, input.SnapshotID).First(&snapshot).Error

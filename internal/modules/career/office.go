@@ -574,7 +574,10 @@ func (o *Office) propose(ctx context.Context, k, v, r string, rev uint64, src So
 		return out, e
 	}
 	k = strings.TrimSpace(k)
-	if k == "" || r == "" || src.Kind == "" {
+	// career_proposals.key and career_facts.key are VARCHAR(128): a longer
+	// key would fail on PostgreSQL with an untyped "value too long" instead
+	// of a 400 invalid request (SQLite silently accepts it).
+	if k == "" || len(k) > 128 || r == "" || src.Kind == "" {
 		return out, ErrInvalidRequest
 	}
 	pid := uuid.NewString()
@@ -600,7 +603,7 @@ func (o *Office) confirm(ctx context.Context, pid, k, v, r string, rev uint64, s
 	if e = o.requireSpace(ctx, s); e != nil {
 		return out, e
 	}
-	if r == "" || confirmationSrc.Kind == "" || (pid == "" && (strings.TrimSpace(k) == "" || src.Kind == "")) {
+	if r == "" || confirmationSrc.Kind == "" || (pid == "" && (strings.TrimSpace(k) == "" || len(k) > 128 || src.Kind == "")) {
 		return out, ErrInvalidRequest
 	}
 	return o.mutate(ctx, s, "confirmed", r, rev, []any{"confirm", pid, k, v, rev, src, confirmationSrc}, func(tx *gorm.DB, next uint64) (Receipt, error) {
@@ -683,6 +686,15 @@ func (o *Office) dismiss(ctx context.Context, pid, r string, rev uint64, src Sou
 	}, &Change{Kind: "dismissed"})
 }
 func (o *Office) mutate(ctx context.Context, s Scope, kind, r string, rev uint64, fpInput any, apply func(*gorm.DB, uint64) (Receipt, error), event *Change) (Receipt, error) {
+	// Common throat for every profile write: career_receipts.request_id is
+	// VARCHAR(128), so an oversized ID must be refused as invalid_request
+	// here instead of surfacing a dialect-dependent 500 on PostgreSQL.
+	// Trimming normalizes replay: one client-supplied request ID maps to one
+	// durable receipt whatever padding it carried.
+	r = strings.TrimSpace(r)
+	if r == "" || len(r) > 128 {
+		return Receipt{}, ErrInvalidRequest
+	}
 	fb, _ := json.Marshal(fpInput)
 	hash := sha256.Sum256(fb)
 	fp := hex.EncodeToString(hash[:])

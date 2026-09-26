@@ -4,6 +4,7 @@ import (
 	"context"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
@@ -442,4 +443,25 @@ func TestMaterialScopeRejectsOtherTenantAndOwner(t *testing.T) {
 	var materialRows int64
 	require.NoError(t, db.Table("career_materials").Count(&materialRows).Error)
 	require.EqualValues(t, 1, materialRows)
+}
+
+// A finalized preparation owns its request ID in career_materials without
+// leaving a career_material_receipts row: the edit_material creation path
+// must refuse that occupied request as the typed 409 idempotency conflict
+// instead of surfacing the raw unique-index failure as a 500 (ocr1-144).
+func TestEditMaterialRefusesRequestIDOwnedByAnotherSeam(t *testing.T) {
+	o, db, ctx := newMaterialOffice(t, "owner-1", 1804)
+	seed := seedMaterialEvidence(t, o, ctx, "2027", "occupy")
+
+	now := time.Now().UTC()
+	require.NoError(t, db.Create(&materialRecord{
+		ID: "11111111-2222-4333-8444-555555555555", TenantID: 1804, UserID: "owner-1",
+		RequestID: "shared-1", Fingerprint: "preparation-fingerprint",
+		OpportunityID: seed.OpportunityID, SnapshotID: seed.SnapshotID, ProfileRevision: seed.Revision,
+		EvidenceBody: "{}", DraftBody: "{}", ReceiptBody: "{}",
+		Status: MaterialStatusDraft, CreatedAt: now, UpdatedAt: now,
+	}).Error)
+
+	_, err := o.EditMaterial(ctx, editMaterialInput(seed, "shared-1", materialBody(graduated("c1"))))
+	require.ErrorIs(t, err, ErrIdempotencyConflict)
 }

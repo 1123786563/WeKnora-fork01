@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -782,9 +783,25 @@ func preparationLead(focus string) (heading, lead string) {
 		"本求职信草稿固定自实际投递版本与岗位快照，仅引用已确认事实；缺失信息以待补充占位呈现，由本人审阅补充，不代为承诺。"
 }
 
+// truncatePreparationHeading bounds a composed heading to the material
+// section byte budget without ever splitting a multi-byte rune: the lead
+// string is Chinese and source headings routinely carry CJK text, so a raw
+// byte slice lands mid-character and json.Marshal would persist the U+FFFD
+// replacement into a heading that is frozen into immutable versions.
 func truncatePreparationHeading(heading string) string {
 	if len(heading) <= maxMaterialHeadingBytes {
 		return heading
 	}
-	return heading[:maxMaterialHeadingBytes]
+	var truncated strings.Builder
+	for _, r := range heading {
+		size := utf8.RuneLen(r)
+		if size < 0 {
+			size = utf8.UTFMax // an invalid sequence encodes as U+FFFD
+		}
+		if truncated.Len()+size > maxMaterialHeadingBytes {
+			break
+		}
+		truncated.WriteRune(r)
+	}
+	return truncated.String()
 }

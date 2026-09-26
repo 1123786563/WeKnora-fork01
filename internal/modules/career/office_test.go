@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -401,4 +402,41 @@ func TestCareerFactsStayIsolatedAcrossUsersAndTenants(t *testing.T) {
 	otherView, err := o.Open(other)
 	require.NoError(t, err)
 	require.Len(t, otherView.Facts, 1)
+}
+
+// Oversized keys and request IDs must be refused as invalid_request before
+// any write: career_proposals.key, career_facts.key and
+// career_receipts.request_id are VARCHAR(128), and an oversized value would
+// otherwise surface as an untyped 500 on PostgreSQL while SQLite silently
+// accepts it (dialect divergence, ocr1-145).
+func TestProfileActionsRefuseOversizedKeysAndRequestIDs(t *testing.T) {
+	o, ctx := testOffice(t)
+	longKey := strings.Repeat("k", 129)
+	longRequestID := strings.Repeat("r", 129)
+
+	_, err := o.Propose(ctx, longKey, "Go", "len-1", 0, Source{Kind: "manual"})
+	require.ErrorIs(t, err, ErrInvalidRequest)
+	_, err = o.Propose(ctx, "skill.go", "Go", longRequestID, 0, Source{Kind: "manual"})
+	require.ErrorIs(t, err, ErrInvalidRequest)
+
+	view, err := o.Open(ctx)
+	require.NoError(t, err)
+	_, err = o.Confirm(ctx, longKey, "Go", "len-2", view.Revision, Source{Kind: "manual"})
+	require.ErrorIs(t, err, ErrInvalidRequest)
+	_, err = o.Confirm(ctx, "skill.go", "Go", longRequestID, view.Revision, Source{Kind: "manual"})
+	require.ErrorIs(t, err, ErrInvalidRequest)
+
+	// Boundary values stay accepted.
+	edgeKey := strings.Repeat("k", 128)
+	edgeRequestID := strings.Repeat("r", 128)
+	_, err = o.Propose(ctx, edgeKey, "Go", edgeRequestID, 0, Source{Kind: "manual"})
+	require.NoError(t, err)
+
+	// Padded request IDs normalize to one durable receipt (TrimSpace throat).
+	padded, err := o.Confirm(ctx, "skill.go", "Go", " padded-1 ", 1, Source{Kind: "manual"})
+	require.NoError(t, err)
+	require.Equal(t, "padded-1", padded.RequestID)
+	replayed, err := o.Confirm(ctx, "skill.go", "Go", "padded-1", 1, Source{Kind: "manual"})
+	require.NoError(t, err)
+	require.Equal(t, padded.Revision, replayed.Revision)
 }

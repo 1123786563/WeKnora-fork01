@@ -2,8 +2,11 @@ package career
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -464,4 +467,22 @@ func reviewRiskCode(claim MaterialClaim) string {
 		return MaterialRiskMissingPlaceholder
 	}
 	return MaterialRiskNeedsReview
+}
+
+// The composed heading mixes a Chinese lead with CJK content: a raw
+// heading[:256] byte cut splits a multi-byte rune and json.Marshal would
+// persist U+FFFD into a heading frozen into immutable versions (ocr1-146).
+func TestTruncatePreparationHeadingNeverSplitsRunes(t *testing.T) {
+	heading := "面试准备（草稿）：" + strings.Repeat("深", 120)
+	require.Greater(t, len(heading), maxMaterialHeadingBytes)
+
+	truncated := truncatePreparationHeading(heading)
+	require.LessOrEqual(t, len(truncated), maxMaterialHeadingBytes)
+	require.True(t, utf8.ValidString(truncated), "truncation must stay on rune boundaries")
+	require.NotEqual(t, heading[:maxMaterialHeadingBytes], truncated, "byte slicing would have split a rune")
+	require.True(t, strings.HasPrefix(heading, truncated), "truncation keeps the longest valid prefix")
+
+	encoded, err := json.Marshal(truncated)
+	require.NoError(t, err)
+	require.NotContains(t, string(encoded), "\ufffd", "no replacement character may be persisted")
 }
