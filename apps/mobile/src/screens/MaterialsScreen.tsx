@@ -13,6 +13,7 @@ export interface MaterialsScreenProps {
   onOpenEvidence(): void;
   onDownload(materialId: string): void;
   onShare(materialId: string): void;
+  onOpenResearch?(): void;
   onRefresh(): void;
   onBack(): void;
 }
@@ -20,12 +21,13 @@ export interface MaterialsScreenProps {
 const KIND_LABELS = { artifact: '产物', diff: '变更', 'test-report': '测试报告' } as const;
 
 /** 材料屏：索引列表 + 视图面板。终端恒只读（无输入控件）；不支持/大文件给下载与分享路径。 */
-export function MaterialsScreen({ index, view, loading, error, grant, onOpenMaterial, onOpenTerminal, onOpenEvidence, onDownload, onShare, onRefresh, onBack }: MaterialsScreenProps) {
+export function MaterialsScreen({ index, view, loading, error, grant, onOpenMaterial, onOpenTerminal, onOpenEvidence, onDownload, onShare, onOpenResearch, onRefresh, onBack }: MaterialsScreenProps) {
   return (
     <ScrollView>
       <Button title="返回任务" onPress={onBack} />
       <Text>任务材料</Text>
       <Button title="刷新材料" onPress={onRefresh} disabled={loading} />
+      {onOpenResearch !== undefined && <Text onPress={onOpenResearch} testID="materials-open-research">研究与批注 →</Text>}
       {index === undefined
         ? <Text>{loading ? '正在读取材料索引…' : '尚无材料索引'}</Text>
         : (
