@@ -288,3 +288,22 @@ func RegisterWorkbenchDeliveryRoutes(r *gin.RouterGroup, h *session.WorkbenchDel
 	writes.POST("/:run_id/delivery/:delivery_id/dispatch", h.DispatchDelivery)
 	writes.POST("/:run_id/delivery/:delivery_id/resolve", h.ResolveDeliveryUnknown)
 }
+
+// RegisterWorkbenchResearchRoutes exposes the T17 (#47) read-only research
+// delegation surface and the version-pinned annotation surface. Delegation
+// writes are owner-only; the annotation write re-gates on the resolved task
+// role (owner or collaborator, TaskRoleCanRun); both reads reuse the strict
+// owner + task-grant fallback predicate. Same Viewer/API-key boundary as the
+// other workbench lanes.
+func RegisterWorkbenchResearchRoutes(r *gin.RouterGroup, h *session.WorkbenchResearchHandler, g *rbacGuards) {
+	if h == nil || g == nil {
+		return
+	}
+	reads := g.apiKeyGroup(r.Group("/workbench/executions", g.Viewer(), workbenchReadGate(g.cfg)), apiKeyChat(apiKeyFullAccess()))
+	reads.GET("/:run_id/research", h.ListResearch)
+	reads.GET("/:run_id/annotations", h.ListAnnotations)
+	writes := g.apiKeyGroup(r.Group("/workbench/executions", g.Viewer()), apiKeyChat(apiKeyFullAccess()))
+	writes.POST("/:run_id/research", h.DelegateResearch)
+	writes.POST("/:run_id/research/:delegation_id/summary", h.CompleteResearch)
+	writes.POST("/:run_id/annotations", h.AnnotateMaterial)
+}
