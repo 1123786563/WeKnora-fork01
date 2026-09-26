@@ -964,3 +964,146 @@ ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnect
 - blocked-env 声明沿用计划总则：真实 Notion 凭据验收本地不可运行；本任务为服务层单测（契约双打 dispatch 脚本化），无需凭据，无 skip。
 - Task 3 R5 报告 §4 第 3 条「归 Task 4」的两项（排除项执行侧永不派发 + AC1 执行面腿）已由本任务 `TestPlanExecuteSkipsUnapprovedItemFailClosed`/`TestPlanExecuteRefusesUnapprovedOrForeignDigest`/`TestPlanApproveExcludesItemNeverApprovesIt`+`Execute` 排除分支闭环。
 
+---
+
+# T21 #51 Task 5 实施报告：HTTP 面——handler、路由与容器接线
+
+- **执行者**：实现员-t51-任务5（subagent-driven-development 实现员，TDD）
+- **Worktree**：`/Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue30-sweep-t51`（分支 `codex/issue30-t51`）
+- **提交**：`60d783afb` `feat(appconnector): action-plans HTTP 面 + 路由 + 容器双输出接线（T21 #51 Task 5）`
+- **状态**：DONE_WITH_CONCERNS（预存在跨任务项 F2 未收口，与本任务 diff 无因果，见 §7）
+
+---
+
+## 1. 实现内容
+
+按计划 Task 5 逐字落地，6 文件 +453/-2：
+
+`internal/handler/app_connector_action_plan.go`（新建，271 行）：
+
+- `AppActionPlanHandler{db *gorm.DB; plans *plan.Service}` + `NewAppActionPlanHandler(db)` + `SetActionPlanService(s *plan.Service)`（`app_connector_action_plan.go:27-45`）——nil-service fail-closed，与 #48 兄弟 handler 同判例
+- `RequireActionCapabilityForWrites()`（`:48-54`）：`appRequireWriteCapability(appconnector.CanDriveActionWrites, "FORBIDDEN_ACTION_WRITE", ...)` 复用既有写门（GET/HEAD/OPTIONS 天然放行，`app_connector.go:60`）
+- 四端点：`FormActionPlan`（201 PlanView）、`ApproveActionPlan`（200 PlanView，审批谓词=发起者或 owner/admin，`row.ActorID != userID && !CanDriveActionWrites(role)` → 403 `ACTION_APPROVAL_FORBIDDEN`）、`ExecuteActionPlan`（200 ExecuteOutcome，执行面 AC1 digest 核对下沉 `plan.Service.Execute`）、`GetActionPlan`（200 PlanStatus）
+- `planByID`（`:70-79`）：`Where("tenant_id = ? AND id = ?")` 参数绑定，跨租户与不存在统一 404 `ACTION_PLAN_NOT_FOUND`——零存在性泄漏（Review Focus #5 wire 腿）
+- `failForm`（`:194-218`）：formation 侧沿用 #48 publish 哨兵全表（`ARTIFACT_VERSION_NOT_ACCESSIBLE`/`PUBLISH_UNSUPPORTED_ARTIFACT`/`PUBLISH_CONTENT_TOO_LARGE`/`PUBLISH_EMPTY_CONTENT`/`PUBLISH_DESTINATION_OUT_OF_SCOPE`/`PUBLISH_DESTINATION_UNREADABLE`/`PUBLISH_UPDATE_TARGET_NOT_PUBLISHED`）
+- `failPlan`（`:220-246`）：`ACTION_PLAN_NOT_FOUND`(404)/`ACTION_PLAN_DIGEST_MISMATCH`(409，AC1 wire 腿)/`ACTION_PLAN_STATE_CONFLICT`(409)/`ACTION_DIGEST_MISMATCH`(409)/`ACTION_STATE_CONFLICT`(409)/`OC_DISPATCH_NOT_CONFIGURED`(503)；消息全静态，上游错误文本与 Provider 细节不过 wire
+
+`internal/router/routes_app_action_plan.go`（新建，26 行）：`RegisterAppActionPlanRoutes(r, h)`——nil handler 静默返回（镜像 #48）；组级挂 `RequireActionCapabilityForWrites()`；四路由 `POST ""`、`POST /:id/approve`、`POST /:id/execute`、`GET /:id`。不在 API-key 路由授权器声明（`/api/v1` 门对 X-API-Key 主 体默认拒绝，与 #48 注释同语义）。
+
+`internal/router/router.go`（修改 2 处）：`RouterParams` 增 `AppActionPlanHandler *handler.AppActionPlanHandler`（`AppNotionPublishHandler` 之后，:150-153）；注册点在 `RegisterAppNotionPublishRoutes`（:440）后追加 `RegisterAppActionPlanRoutes(v1, params.AppActionPlanHandler)`。
+
+`internal/container/notion_publish.go`（修改 3 处）：import 增 `plan` 包；`newNotionPublishHandler` 签名扩为双输出 `(*handler.AppNotionPublishHandler, *handler.AppActionPlanHandler, error)`；尾部构造 `planSvc := plan.NewService(repoappconn.NewPlanStore(db), store, actions, svc)`——与 publish 服务共用同一 `ActionService` 实例（`actions`）与同一 `ActionStoreSource`（`store`），A03 权威零分叉。`container.go:1013` 的 `container.Provide(newNotionPublishHandler)` 调用点零改动（dig 原生多输出）。
+
+测试（计划逐字）：`internal/handler/app_connector_action_plan_test.go`（2 测试）+ `internal/router/routes_app_action_plan_test.go`（2 测试）。
+
+## 2. 测试命令与完整输出
+
+### RED（实现前）
+
+```
+$ go test ./internal/handler/ -run TestActionPlan -count=1
+# github.com/Tencent/WeKnora/internal/handler [github.com/Tencent/WeKnora/internal/handler.test]
+internal/handler/app_connector_action_plan_test.go:32:44: undefined: AppActionPlanHandler
+internal/handler/app_connector_action_plan_test.go:67:7: undefined: NewAppActionPlanHandler
+internal/handler/app_connector_action_plan_test.go:94:7: undefined: NewAppActionPlanHandler
+FAIL	github.com/Tencent/WeKnora/internal/handler [build failed]
+```
+
+与计划 Step 2 预期逐字一致（`AppActionPlanHandler` 未定义）。
+
+### GREEN（计划 Step 4 命令，verbose 取证）
+
+```
+$ go test ./internal/handler/ -run TestActionPlan -count=1 -v
+=== RUN   TestActionPlanHandlerFailClosedWithoutService
+--- PASS: TestActionPlanHandlerFailClosedWithoutService (0.01s)
+=== RUN   TestActionPlanHandlerValidationAndNotFound
+--- PASS: TestActionPlanHandlerValidationAndNotFound (0.00s)
+PASS
+ok  	github.com/Tencent/WeKnora/internal/handler	4.120s
+
+$ go test ./internal/router/ -run TestActionPlanRoutes -count=1 -v
+=== RUN   TestActionPlanRoutesNilHandlerRegistersSilently
+--- PASS: TestActionPlanRoutesNilHandlerRegistersSilently (0.00s)
+=== RUN   TestActionPlanRoutesRegisterWithHandler
+--- PASS: TestActionPlanRoutesRegisterWithHandler (0.00s)
+PASS
+ok  	github.com/Tencent/WeKnora/internal/router	2.214s
+```
+
+handler 2 + router 2，4/4 PASS。
+
+### 计划 Step 6 全量检查（接线后）
+
+```
+$ go build ./...
+（exit 0；仅预存在链接器警告：ld: warning: ignoring duplicate libraries: '-lc++' ×2）
+
+$ go test ./internal/handler/ -run 'TestActionPlan' -count=1 -v
+--- PASS: TestActionPlanHandlerFailClosedWithoutService (0.01s)
+--- PASS: TestActionPlanHandlerValidationAndNotFound (0.01s)
+ok  	github.com/Tencent/WeKnora/internal/handler	12.471s
+
+$ go test ./internal/router/ -run TestActionPlanRoutes -count=1 -v
+--- PASS: TestActionPlanRoutesNilHandlerRegistersSilently (0.00s)
+--- PASS: TestActionPlanRoutesRegisterWithHandler (0.00s)
+ok  	github.com/Tencent/WeKnora/internal/router	18.960s
+
+$ go vet ./internal/container/ ./internal/router/ ./internal/handler/
+VET-CLEAN（exit 0，零输出）
+```
+
+### 额外回归（超出 ask 的自检）
+
+```
+$ go test ./internal/modules/appconnector/... -count=1
+ok  github.com/Tencent/WeKnora/internal/modules/appconnector	                            2.727s
+ok  github.com/Tencent/WeKnora/internal/modules/appconnector/connectorcontrol	            16.060s
+ok  github.com/Tencent/WeKnora/internal/modules/appconnector/openconnector	                2.546s
+ok  github.com/Tencent/WeKnora/internal/modules/appconnector/plan	                        11.169s
+ok  github.com/Tencent/WeKnora/internal/modules/appconnector/publish	                    11.037s
+ok  github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector	    4.483s
+ok  github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector	        13.940s
+```
+
+前置 Task 1-4 全部测试（含 TestPlanExecute*/TestPlanStatus*/TestPlanApproveRecoveryExclusionFrozen）零回归。
+
+## 3. 额外回归中发现的预存在失败（非本任务因果，证据在案）
+
+额外跑了 `go test ./internal/handler/ -run 'TestNotionPublish' -count=1`（#48 e2e，属 Task 6 验证面），3 个 e2e FAIL：
+
+```
+--- FAIL: TestNotionPublishEndToEndCreateApprovePublishReceipt (0.03s)
+--- FAIL: TestNotionPublishEndToEndUpdateConflict (0.03s)
+--- FAIL: TestNotionPublishEndToEndUnknownReconcilesRemoteFirst (0.04s)
+Error: Received unexpected error:
+    failed to open source, "file:///…/migrations/sqlite": duplicate migration file: 000114_public_agent_marketplace.down.sql
+```
+
+归因证据链：
+1. `git status --short`（实跑）：本任务改动仅 `internal/container/notion_publish.go`、`internal/router/router.go` 与 4 个新文件——`migrations/` 零触碰，golang-migrate 读到的目录内容与 HEAD 完全一致；
+2. 目录实跑 `ls migrations/sqlite/ | grep -E "00011[4-9]"`：`000114_mobile_device_app.*` 与 `000114_public_agent_marketplace.*` 并存（versioned `000193` 同理双占），且 `000119_app_action_plans.*`（Task 1 已落）在场——即本分支 Task 0（public_agent_marketplace 重编 000118/000197）未执行；
+3. `git log --all | grep 重编`：存在的重编提交（`4b36054fe`/`bba8ce8db`/`34849775b`）均属其他分支（T20 #53、T17 #47、plan-t62，挪的是 mobile_device_app），本分支历史无 Task 0 提交；
+4. Task 4 报告 F2 已在案定性与裁决：「跨任务协调项，非 Task 3/4 缺陷」「本修复轮不动 migrations/**；需编排方授权执行者完成 Task 0」——本任务遵守同一裁决，不越权代做。
+
+结论：该失败是 Task 0 未收口的预存在波级问题（计划 Tech Stack 节预判的原样复现），与本任务 diff 无因果；Task 6 的 AC3 e2e 在 Task 0 完成前不可运行（同 Task 4 报告 F2 结论）。
+
+## 4. 接线完整性核查（dig 双输出）
+
+- `grep NewAppActionPlanHandler` 全仓（非测试）：唯二命中=定义（`app_connector_action_plan.go:28`）+ 双输出构造器内调用（`notion_publish.go:58`）——`*handler.AppActionPlanHandler` 全仓唯一 Provide 点，无双提供 panic 风险；
+- `RouterParams` 由 dig 经 `container.Provide(router.NewRouter)`（`container.go:1068`）运行时解析，新字段由双输出构造器自动注入；
+- `go build ./...` exit 0 + `go vet` 三包干净（上方完整输出）。
+
+## 5. 计划未列的偏差
+
+无。计划 Task 5 的 Files/Interfaces/测试代码逐字落地；无占位遗留（本任务无占位义务）。
+
+## 6. 自检发现（findings）
+
+- F1（info）：`ApproveActionPlan` 的 501 fail-closed 检查位于审批谓词（403）之后——即 nil-service 时先做 403 谓词再 501。这是计划实现原文的顺序（计划 :2063-2093 逐字落地），测试未覆盖该顺序组合，行为无安全缺口（403 谓词不写任何状态，501 仍兜底），如实记录不擅改。
+- F2（跨任务，非本任务阻塞）：见 §3——Task 0 未在本分支执行，migrations 双占（sqlite 000114/versioned 000193）仍在；118/197 槽位实核空闲（`ls` 输出无 000118/000197 文件），Task 0 可按计划原文执行。**需编排方授权执行者完成 Task 0，否则 Task 6 AC3 全量迁移 e2e 不可运行。**
+
+## 7. 范围边界
+
+- 未触碰：`migrations/**`、`internal/database/migration.go`（Task 0 授权面）、`publish/**`、`service/appconnector/**`、既有 `/apps/notion-publish/*` 与 `/apps/actions/*` 端点（#48/A03 冻结面）；
+- blocked-env：真实 Notion 多操作验收（NOTION_TOKEN 门控）本地不可运行，维持计划总则声明，零伪造证据；AC3 本地替代证据归 Task 6（且其全量迁移 e2e 受 §3/F2 前置约束）。
