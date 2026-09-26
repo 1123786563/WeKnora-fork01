@@ -143,6 +143,10 @@ type RouterParams struct {
 	// receipt) — its own handler so the frozen action lifecycle handlers
 	// stay untouched.
 	AppNotionPublishHandler *handler.AppNotionPublishHandler
+	// T21 (#51): the multi-action Action Plan surface (form / approve
+	// with exclusions / ordered execute / per-item projection) — its own
+	// handler over the same publish seam authority.
+	AppActionPlanHandler *handler.AppActionPlanHandler
 }
 
 // NewRouter 创建新的路由
@@ -434,6 +438,7 @@ func NewRouter(params RouterParams) *gin.Engine {
 			params.AppSyncHandler,
 			params.AppActionHandler)
 		RegisterAppNotionPublishRoutes(v1, params.AppNotionPublishHandler)
+		RegisterAppActionPlanRoutes(v1, params.AppActionPlanHandler)
 		RegisterChunkerDebugRoutes(v1, rbacGuards)
 
 		// Fail fast if any declared API-key policy points at a route
