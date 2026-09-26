@@ -6,7 +6,7 @@
 - `b2-k0`（K0 冻结，§5–§7、§8 Task K0.1–K0.3、§13 历史记录的属主；**已 done+approved**，head=`5bcb798621b856f7ff6497986c7ca79dba8c338e`）；
 - `b2-k-integration`（K5 集成，§8 Task K5.1–K5.3 及本修订新增段落的属主；DAG `depends_on=[b2-k-process, b2-k-wikifaq]`，`task_ids=[K5.1,K5.2,K5.3]`，gates=`go build ./...` / `go test ./internal/modules/knowledge/...` / `make check-backend-architecture` / `make check-passb-readiness` / `make verify-module-moves`）。
 
-**修订记录：** 2026-09-23 b2-k0 初版（K0.1–K0.3 + K5 概要任务）→ 2026-09-23/24 审校与根因分析轮 → 2026-09-26 b2-k-integration 修订轮（K1–K4 已交付真实 seam，§8 K5.1–K5.3 由概要展开为零上下文可执行详案；K0 属主段落原样保留）→ **2026-09-26 R1 审校修订轮（本版）：五条 findings 逐条实测处置——P-K5-7 readiness 门禁预裁定（基线 218 条诊断实测）、PASSB_BASE_SHA=ALIGN_SHA 裁定（210 文件陷阱）、P-K5-2 双路径判据（merge-tree 预演）、骨架示意签名差异处置、module.go 包注释按 passbguard facade 形态契约重写（module_test.go 原稿复核合法未改；均经干净副本模拟实测）；详见 §13 R1 条目。**
+**修订记录：** 2026-09-23 b2-k0 初版（K0.1–K0.3 + K5 概要任务）→ 2026-09-23/24 审校与根因分析轮 → 2026-09-26 b2-k-integration 修订轮（K1–K4 已交付真实 seam，§8 K5.1–K5.3 由概要展开为零上下文可执行详案；K0 属主段落原样保留）→ 2026-09-26 R1 审校修订轮（五条 findings 逐条实测处置——P-K5-7 readiness 门禁预裁定（基线 218 条诊断实测）、PASSB_BASE_SHA=ALIGN_SHA 裁定（210 文件陷阱）、P-K5-2 双路径判据（merge-tree 预演）、骨架示意签名差异处置、module.go 包注释按 passbguard facade 形态契约重写（module_test.go 原稿复核合法未改；均经干净副本模拟实测）；详见 §13 R1 条目）→ **2026-09-26 K5.1 任务级 OCR 根因分析 replan 轮（本版）：OCR 两跑不完整（限流 429）根因登记 + 重试选区裁定（净改动 4 文件）+ Dependencies「其余 5 组」计数勘误溯源（详见 §13 对应条目）。**
 
 **Goal:** 冻结知识子程序（K0–K5）的共享类型归属与跨 plan 未导出符号联动裁定（K0，已完成）；使 K1/K2/K3 并行、K4 串行完成 84 个 legacy 文件的搬迁与差分（K1–K4，已完成/在收口）；最后 K5 完成**模块门面五操作实装、装配切换 Integration Brief、18 条别名删除、例外/shim 收口核对与差分汇总门禁**。
 
@@ -120,6 +120,7 @@ IB2（29-core-capability-integration，contracts.yaml knowledge 契约区状态�
 | `docs/architecture/passb/briefs/b2-k-integration.md`（新建） | DAG b2-k-integration owned_files 第 2 项 |
 | `docs/architecture/evidence/passb/b2-k-integration.md`、`docs/plans/passb/reports/b2-k-integration.md`（新建） | conventions §1.1；DAG evidence_paths |
 | 基线对齐 merge commits（`codex/passb-b2-k-process` → 本分支） | Ruling WAVE-DEP-BASELINE |
+| `docs/plans/passb/20-knowledge-program.md`（本文件，限 K5 属主段落的计划修订轮：审校修复/根因分析/replan 等 docs-only commit） | 本文件即 DAG 两节点共同 `plan_path`，b2-k-integration 为 §8 K5.1–K5.3 及修订新增段落属主（本文件头注 ：5-7）；分支在案先例：0805a084a（计划初版）、c30cb90ee（R1 审校修订）、37b081b7e（K5.1 OCR 根因分析 replan）；K5.3 Step 2 / §12 #3 差集检查据此放行本文件（**仅限 docs 修订 commit，不得夹带任何生产代码**） |
 
 **K5 禁改（违者节点失败，conventions §1.2/§3）：**
 
@@ -368,8 +369,11 @@ type Dependencies struct {
 	KnowledgeAutoTag     interfaces.TaskHandler // dig name "knowledgeAutoTag"
 	WikiIngest           interfaces.TaskHandler // dig name "wikiIngest"
 
-	// 路由块 handler 供给面（7 个；§7.1 全表中已落位模块包的组，其余 5 组
-	// handler 为 K2/K4 宿主推迟件，ib2/补迁窗后增补字段——装配面扩展，非契约变更）。
+	// 路由块 handler 供给面（7 个；§7.1 全表 11 项中已落位模块包的组，其余
+	// 4 项为宿主推迟件：3 组 handler（RegisterKnowledgeRoutes/
+	// RegisterKnowledgeBaseRoutes/RegisterKnowledgeBaseActivityRoutes）+
+	// serveKBScopedFiles 文件服务面（非 handler 供给，无字段）；ib2/补迁窗后
+	// 增补字段——装配面扩展，非契约变更）。
 	Chunk               *ingest.ChunkHandler                     // RegisterChunkRoutes（routes_knowledge.go:28）
 	ChunkerDebug        gin.HandlerFunc                          // RegisterChunkerDebugRoutes（:18）；生产值 ingest.PreviewChunking（chunker_debug.go:123）
 	WikiPage            *wiki.WikiPageHandler                    // RegisterWikiPageRoutes（:309）
@@ -911,3 +915,10 @@ git diff "$PASSB_BASE_SHA"...HEAD --name-only | sort    # 与 §4 K5 可写清�
   - **模拟实测（计划代码块逐字落盘至干净副本全量实跑）**：**真实缺陷一处已修**——module.go 原包注释 0 处满足 passbguard facade 形态契约（check.go:312-325 facadeOpRE + 三计数句式，`git show HEAD` 原版 grep 实证），按原注释跑 passbguard 新增 **8 条 contract-facade-{shape,count}-drift**；§8 K5.1 代码块包注释已按契约重写（11/18/1），修正后实测新增恰 3 条预登记 consumer-unrecorded、消失 0 条。**一处撤回**——首轮模拟曾报 module_test.go drift 断言 printf「4 动词 3 实参」vet 失败，经 `grep -n` 对照已提交计划原文为 3 动词 3 实参（合法），该失败系本轮模拟转录笔误而非计划缺陷，计划测试代码块保持原样；以计划原版测试行复跑 `go test ./internal/modules/knowledge/ -count=1 -v` = **exit 0、5 测试全 PASS**。其余实测：`go build ./...` exit 0；kbfreeze exit 0（2 测试）；`make check-backend-architecture` exit 0（**total=633：literal=564+apiKeyRoute=69**、redis=23 lite=23、hooks=58、modules=16）；`make verify-module-moves` exit 0（16 manifests verified）；基线 218 条中 knowledge.\* unrecorded 类已有 41 条（K1–K4 模块文件在列——3 条新增属同类形态）。
   - **bootstrap 契约行号修正**：WorkerRegistry workers.go:12 / WorkerSink.RegisterTaskHandler :21-22 / NewWorkerRegistry :28 / Register :39（already-registered 错误语义=测试重复登记拒绝断言依据）/ TaskTypes :57 / VerifyWorkerParity :70（原稿 :50-52/:74-95 不准）。
   - **P-K5-5 复核**：Makefile 三目标实读 :250（verify-module-moves）/ :255（check-backend-architecture）/ :262（check-passb-readiness），计划行号正确。
+- **K5.1 任务级 OCR 根因分析轮（2026-09-26，根因分析员；两跑不完整后 replan，本条为重试指引的事实源）**：
+  - **失败形态（实测留档）**：`ocr-r1.txt`（14:58）"Review partially complete: 13 finding(s); **22 of 80** selected item(s) failed"；`ocr-r1-a2.txt`（15:21）"Review partially complete: 10 finding(s); **40 of 80** selected item(s) failed"——第 2 跑劣于第 1 跑。两跑重试报告均显示几乎所有批次 LLM 请求遭 HTTP 429 限流（第 1 跑 42/181 请求受影响、3 个永久失败；第 2 跑 21/167 受影响、12 个永久失败，多批次 6 连 429 后放弃）。
+  - **根因裁定**：①**外部诱因**=OCR LLM 供给方持续限流（同日本仓先例：b2-k-process 节点级 OCR 03:20/03:35 两跑不完整→03:39 BLOCKED→11:15 复跑完整通过并 0/0 裁定——限流窗口是时间性的，非永久阻断）；②**放大器（可处置部分）**=审区选区 80 项取自 157 文件审查包 `K5.1-review-pkg.md`（区间 BASE c30cb90ee→HEAD a623cef55，本会话 `git diff --name-only | wc -l`=157），其中 **K5.1 净改动仅 4 文件**（ALIGN_SHA b9c09f524..HEAD：module.go/module_test.go/README.md/briefs/b2-k-integration.md），其余 153 文件全部是 P-K5-2 基线对齐 merge 带入的 K1–K4 终态产物——四前置节点均已 done+approved 且各自拥有完整 OCR/审查链，ocr-context.md §2 明示「勿计入 K5.1 findings」；海量非本任务文件把 LLM 请求数推高至必然长时间暴露于限流窗。
+  - **本轮修订①（缺陷溯源修复）**：§8 K5.1 代码块 Dependencies「其余 5 组 handler」计数错误勘误（7+5=12 与 §7.1 冻结 11 项矛盾；正确口径=其余 **4 项**：3 组宿主 handler + serveKBScopedFiles 文件服务面，与 Brief (a)「7 即时切换 + 3 随推迟件 + 1 零动作」分解一致）。该错误系 ocr-r1-a2 唯一落在 K5.1 净面上的 finding（documentation·medium，module.go:64-65）经本会话 grep 实证并溯源至本计划代码块 ：371（实施者逐字转录所致）。**module.go:64-65 同句勘误归 OCR 修复轮执行（本轮不实施代码）**；修正安全性依据：passbguard facade 形态契约（check.go:312-326 facadeOpRE/三计数句正则）只扫 module.go 包注释，此为 struct 字段注释、不匹配任何冻结正则，修正零 drift 风险。
+  - **本轮修订②（重试指引，约束后续 OCR 轮）**：任务级 OCR 重试选区**限定 K5.1 净改动 4 文件**（b9c09f524..a623cef55），排除对齐产物 153 文件（已由各属主节点 OCR 链覆盖，重复审查无信息增益且是本次限流失败的放大器）；重试须避开限流窗——第 2 跑（15:21）劣于第 1 跑（14:58）证明背靠背重试无效，建议间隔 ≥2 小时或观察供给方恢复后再试；选区缩至 4 文件后请求数降至个位数，配合 ocr 内建重试可大幅提高完整输出概率。两跑已提取的 K1–K4 文件 findings（ingest/wiki/process 等）全部不在 K5.1 义务面（属各属主节点/ib2），不得据此判 K5.1 失败或扩大 K5.1 写权去修。
+  - **本轮修订③（§4 可写清单补登）**：新增「本文件（限 K5 属主段落的计划修订轮 docs-only commit）」行——本轮 replan commit（37b081b7e）与既有先例（0805a084a/c30cb90ee，两者位于 ALIGN_SHA 之前故未触发）不同、落在 ALIGN_SHA..HEAD 区间内，若不补登则 K5.3 Step 2 / §12 #3 差集检查会因治理性计划修订而自设失败；补登依据=DAG `plan_path` 属主与头注 :5-7（本文件即本节点计划文档）。
+  - **判定**：replan（非 blocked）——K5.1 实施本体已完成且五 gates 输出在案（K5.1-report §4/§7：净 diff 恰 4 文件、与 §4 可写清单差集为空）；失败面在审查步骤，其中可处置部分（选区缩窄）本轮已裁定、唯一净面 finding 已溯源并指定修复归属，不可控部分（供给方限流）有时间性解除先例。
