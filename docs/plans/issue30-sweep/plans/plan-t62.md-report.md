@@ -191,3 +191,73 @@ ok  	github.com/Tencent/WeKnora/internal/router	43.581s
 
 - 本轮实测复跑了端到端三测试与计划级全链（输出如上），独立复核了首轮报告声称的结果形态（三测试 PASS、全链 exit 0）。
 - Task 0-4 生产代码仍不在本任务 diff 范围内，其正确性由上述全链测试覆盖，同意在后续全分支合并审查中复核。
+
+---
+
+# 收口验证轮报告（2026-09-26，修复轮 1 之后的第 6/6 任务重派发）
+
+**状态：DONE**
+**本轮提交：仅本报告文件（docs 记录）；生产代码与测试代码零改动**
+
+## 本轮性质
+
+本轮是修复轮 1（`2032e0c42`）之后对 Task 5（计划第 6/6 任务）的收口验证：任务描述给定的前置接口「修复后的 forge 断言组（合法 metadata + unknown field 归因断言 + honest 201 对照）」已由 `2032e0c42` 完整产出，交付物 `internal/router/routes_agent_fork_lineage_test.go`（327 行）在位且与两轮报告一致。本轮职责为真实运行计划 Task 5 全部指定验证命令并如实报告终态；验证全绿，无实现缺口，故无新 RED→GREEN 周期（TDD 的 RED→GREEN 已由首轮两处修正与修复轮 1 的 forge 归因断言真实完成，见上文两轮报告）。
+
+## 交付物核对（开工时逐项实读）
+
+- `internal/router/routes_agent_fork_lineage_test.go`（327 行）：
+  - forge 归因闭环断言在位：`:194-218`（完整合法 `forgedMetadata` + 400 + 响应点名 `json: unknown field \"fork_source_release_id\"` + 同 body 去掉伪造字段 honest 201 对照）——Review Focus 3 的 HTTP 层钉死不再是恒真断言；
+  - 首轮两处修正仍在位：`:124-135`（`submitForkVersionRaw` metadata 含 `capability_requirements`）、`:282-291`（fork Release 落派生 agent 自有 listing 的注释与 `NotEqual` 断言）、`:306/:315/:323`（公共提升用 fork submission 自身 `listing_id`）；
+  - 三个测试函数齐全：`TestAgentForkLineageMappingEditsAreNotForks`（AC1）、`TestAgentForkLineageRedistributionForbiddenRejectsSubmission`（AC2 租户 lane）、`TestAgentForkLineagePublicSubmissionLicenseGate`（AC2 公共 lane）。
+- worktree `.worktrees/issue30-sweep-t62` 的实际分支名为 `codex/issue30-t62`；工作区在开工与收尾时均 `git status --porcelain` 干净，开工时 HEAD = `638435601`。
+
+## 测试命令与完整输出（全部于本会话真实运行）
+
+### Task 5 Step 2（计划指定命令）
+
+```
+$ go test ./internal/router/ -run 'TestAgentForkLineage' -count=1 -v
+=== RUN   TestAgentForkLineageMappingEditsAreNotForks
+--- PASS: TestAgentForkLineageMappingEditsAreNotForks (1.72s)
+=== RUN   TestAgentForkLineageRedistributionForbiddenRejectsSubmission
+--- PASS: TestAgentForkLineageRedistributionForbiddenRejectsSubmission (2.21s)
+=== RUN   TestAgentForkLineagePublicSubmissionLicenseGate
+--- PASS: TestAgentForkLineagePublicSubmissionLicenseGate (2.35s)
+PASS
+ok  	github.com/Tencent/WeKnora/internal/router	8.505s
+```
+
+### Task 5 Step 3（计划指定命令）
+
+```
+$ go test ./internal/router/ -run 'TestTenantAgent|TestPublicMarketplace|TestAvailableAgents' -count=1
+ok  	github.com/Tencent/WeKnora/internal/router	17.988s
+（exit=0）
+```
+
+### 计划级验证命令全链（计划「计划级验证命令」一节）
+
+```
+$ go build ./... \
+  && go test ./internal/application/service/ -run 'TestAgentForkLineageMigration|TestSubmitReleaseLineageVerdict|TestSubmitReleaseRedistributionGate|TestRegisterLicense' -count=1 \
+  && go test ./internal/application/repository/ -run 'TestFindDerivation|TestLicenseUpsertGetAndList' -count=1 \
+  && go test ./internal/modules/agentruntime/agent/experts/ -count=1 \
+  && go test ./internal/router/ -run 'TestAgentForkLineage|TestTenantAgentAdoption|TestTenantAgentMarketplace|TestTenantAgentVariant|TestPublicMarketplace|TestAvailableAgents' -count=1
+# github.com/Tencent/WeKnora/cmd/desktop
+ld: warning: ignoring duplicate libraries: '-lc++'
+# github.com/Tencent/WeKnora/cmd/server
+ld: warning: ignoring duplicate libraries: '-lc++'
+ok  	github.com/Tencent/WeKnora/internal/application/service	6.345s
+ok  	github.com/Tencent/WeKnora/internal/application/repository	1.325s
+ok  	github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/experts	1.470s
+ok  	github.com/Tencent/WeKnora/internal/router	23.418s
+chain-exit=0
+```
+
+（`ld` 警告为既有环境噪音非错误，与前两轮一致；`-count=1` 保证全部测试逻辑重新执行，时长缩短为构建缓存复用。）
+
+## 自检发现
+
+1. **无新缺陷、无新改动需求**：三组验证命令全绿，AC1（`is_fork=false` 不误判）、AC2 两条 lane（409 fail closed / 翻转 live 放行 / 恢复 201）、Review Focus 3（forge 400 归因 + honest 201 对照）、Review Focus 4（原始内容无 lineage + 既有回归零漂移）的钉死证据全部在真实 HTTP 层成立。
+2. **未运行项**：无——计划 Task 5 的 Step 2/3 与计划级验证命令均已在本会话实际执行；未运行的只有计划外的全仓 `go test ./...`（计划明示以定向 `-run` 规避全量 flaky 套件，非本任务验收项）。
+3. **约束遵守**：本轮零生产代码、零测试代码改动；未触碰 `internal/container/`、TS 全部与他人文件；未推送远端；未撤销任何前序轮次修改。
