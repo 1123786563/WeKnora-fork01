@@ -22,6 +22,7 @@
       "expo-router",
       "expo-secure-store",
       "expo-web-browser",
+      ["expo-audio", { "microphonePermission": "WeKnora uses the microphone for voice dictation and live voice sessions." }],
       "./plugins/ios-xcode27"
     ]
   }
