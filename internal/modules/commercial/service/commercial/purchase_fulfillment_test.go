@@ -320,6 +320,87 @@ func TestPurchaseGrantPeriodTakesActivationMonth(t *testing.T) {
 	}
 }
 
+// ---- code-review round 1, R82-1: the D7 total budget actually bites ----
+
+// TestPurchaseFulfillBudgetExceededTurnsAttention: once the event's
+// cumulative drain passes exhaust the total budget (attempt_count ×
+// (drainInterval+firstPass) ≥ budget), a still-unactivated purchase must
+// surface attention — no grant, no endless first-pass observation — and
+// the paid order stays recoverable (never fabricated).
+func TestPurchaseFulfillBudgetExceededTurnsAttention(t *testing.T) {
+	purchaser, _, fake, db, store := setupPurchaseFulfillment(t)
+	const tenant = uint64(68)
+	seedPaidPurchase(t, store, db, tenant, "ord-68", "weknora-pro", "pub-pro-b1", 9900)
+	// The gated purchase exists but NEVER activates.
+	if _, err := fake.SubmitCommand(context.Background(), domain.Command{
+		Kind:  domain.CommandKindCreatePurchaseSubscription,
+		Key:   domain.CreatePurchaseSubscriptionCommandKey(domain.ExternalPurchaseSubscriptionID(tenant), "pub-pro-b1"),
+		Actor: "test", Reason: "purchase",
+		Payload: domain.CreatePurchaseSubscriptionPayload{
+			TenantID: tenant, ExternalCustomerID: domain.ExternalCustomerID(tenant),
+			ExternalPurchaseSubscriptionID: domain.ExternalPurchaseSubscriptionID(tenant),
+			PlanCode: "pub-pro-b1", AmountFen: 9900, Currency: domain.CurrencyCNY,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	events := fulfillEvents(t, db)
+	if len(events) != 1 {
+		t.Fatalf("one fulfill event expected, got %d", len(events))
+	}
+	// Past the cap: 40 passes × (30s+15s) = 30min ≥ the 10min budget.
+	over := events[0]
+	over.AttemptCount = 40
+	start := time.Now()
+	if err := purchaser.Fulfill(context.Background(), over); err != nil {
+		t.Fatalf("over-budget pass must land attention cleanly, got %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > 10*time.Second {
+		t.Fatalf("the budget path must not burn a first-pass window, took %s", elapsed)
+	}
+	if n := len(fake.Wallets()); n != 0 {
+		t.Fatalf("an over-budget unactivated purchase must never grant, wallets=%d", n)
+	}
+	if state := orderState(t, db, "ord-68"); state != domain.OrderStatePaid {
+		t.Fatalf("the order stays paid (recoverable), got %q", state)
+	}
+	recs := fulfillmentRecords(t, db, "ord-68")
+	if len(recs) != 1 || recs[0].State != domain.FulfillmentStateAttention {
+		t.Fatalf("the total budget must surface attention, got %+v", recs)
+	}
+}
+
+// TestPurchaseFulfillBudgetRecoveryWhenActive: past the budget BUT the
+// authority HAS activated (the operator fixed the webhook leg late) — the
+// cheap snapshot probe keeps the recovery path open and fulfillment
+// proceeds normally.
+func TestPurchaseFulfillBudgetRecoveryWhenActive(t *testing.T) {
+	purchaser, _, fake, db, store := setupPurchaseFulfillment(t)
+	const tenant = uint64(69)
+	seedPaidPurchase(t, store, db, tenant, "ord-69", "weknora-pro", "pub-pro-b2", 9900)
+	primeFakePurchaseWithFees(t, fake, tenant, "pub-pro-b2", 9900)
+	// The operator fixed the webhook leg late: the authority IS active now
+	// (the fake's deterministic settle would also do it, but the budget
+	// path must succeed WITHOUT another settle drive).
+	fake.ActivatePurchase(domain.ExternalPurchaseSubscriptionID(tenant))
+	events := fulfillEvents(t, db)
+	over := events[0]
+	over.AttemptCount = 40 // past the budget, but the authority IS active
+	if err := purchaser.Fulfill(context.Background(), over); err != nil {
+		t.Fatalf("recovery past the budget must fulfill, got %v", err)
+	}
+	if state := orderState(t, db, "ord-69"); state != domain.OrderStateFulfilled {
+		t.Fatalf("an activated purchase fulfills past the budget, got %q", state)
+	}
+	if n := len(fake.Wallets()); n != 1 {
+		t.Fatalf("the grant lands exactly once on recovery, wallets=%d", n)
+	}
+	recs := fulfillmentRecords(t, db, "ord-69")
+	if len(recs) != 1 || recs[0].State != domain.FulfillmentStateApplied {
+		t.Fatalf("the terminal applied record wins, got %+v", recs)
+	}
+}
+
 func TestPaidAwaitingActivationSynthesized(t *testing.T) {
 	// D3: the coordinator composes paid_awaiting_activation — a local paid
 	// order + an authority snapshot still awaiting payment.

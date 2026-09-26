@@ -100,3 +100,13 @@
 1. 浏览器 UI 断言（Playwright 三脚本实测）未跑（R-19）——脚本已 OCR 修复并 env 参数化，复验轮以 `FLOW82_*` env 起链即可。
 2. 终审第 9 条残余（带 checkout_url 的废弃 pending 单超时回收）与第 10 条 cancel 命令 → #84/#92（生命周期票，需渠道关单/terminate 契约实证）。
 3. Stripe 结算款生产手续费/风控对冲 → R-4 生产前回议项。
+
+
+## 代码审查第 1 轮处置（2026-09-26）
+
+| # | 级别 | 问题 | 处置 | 验证 |
+|---|---|---|---|---|
+| R82-1 | medium | D7 总预算（settleObserveTotalBudget=10min 后转 attention）未实现：budget 字段只赋值不读；observeActivation 注释声称 attempt_count 治理但代码从不读；ErrPlatformUnconfigured 也恒 nil 保持 pending——激活永不落地时事件无限重放、已付款订单停留 paid_awaiting_activation 且无告警面 | **已修**：Fulfill 入口实现 overBudget 门（`attempt_count × (drainInterval 30s + firstPass 15s) ≥ budget` 即 D7 的累计轮次治理，attempt_count 是 drain 循环已在递增的持久计数）；超限→单次快照探测未 active 则 markActivationState(attention) 并停止驱动（事件留 pending、订单留 paid，可恢复）；快照已 active 则照常履约（恢复路径）；误导注释改为指向真实治理位置；unreachable/unconfigured 的可重试 nil 语义保留——预算到点由该门兜底转 attention | `TestPurchaseFulfillBudgetExceededTurnsAttention`（40 轮超限→attention、零 grant、≤10s 快速返回、订单留 paid）+ `TestPurchaseFulfillBudgetRecoveryWhenActive`（超限但 authority 已 active→fulfilled+恰 1 grant+applied 覆盖）双绿 |
+| R82-2 | medium | 计划 Task 7 承诺的 `ErrQuoteNotFound→404 "quote not found"` 分支未补：不存在/失效的 quote_id 落 default 答 500，客户端输入错误被误分类为服务器错误 | **已修**：Purchase handler switch 补 `case errors.Is(err, repocommercial.ErrQuoteNotFound): 404 "quote not found"`（ErrQuoteTenantMismatch 404 之后、ErrPlanNotFound 404 之前的同族位） | `TestPurchaseHandlerAnswersNotFoundOnMissingQuote`（missing quote→404+closed token）绿 |
+
+修复后全量回归：`go test ./internal/modules/commercial/... ./internal/handler/ ./internal/router/ ./internal/container/ -count=1` → **10 包全 ok**；`make check-backend-architecture` → OK (0 violations)。

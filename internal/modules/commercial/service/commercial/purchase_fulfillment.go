@@ -29,6 +29,9 @@ const (
 	settleObserveTick        = 3 * time.Second
 	settleObserveFirstPass   = 15 * time.Second
 	settleObserveTotalBudget = 10 * time.Minute
+	// fulfillmentDrainInterval mirrors FulfillmentService's background pass
+	// cadence (the unit of the D7 total-budget pass math).
+	fulfillmentDrainInterval = 30 * time.Second
 )
 
 // PurchaseFulfiller orchestrates the α dual-track fulfillment of one PAID
@@ -48,6 +51,10 @@ type PurchaseFulfiller struct {
 	tick      time.Duration
 	firstPass time.Duration
 	budget    time.Duration
+	// drainInterval is the FulfillmentService pass cadence (30s): one
+	// drain pass costs roughly interval+firstPass of wall clock, the unit
+	// the total-budget pass math uses.
+	drainInterval time.Duration
 }
 
 // NewPurchaseFulfiller validates the wiring: a nil platform is a
@@ -61,13 +68,14 @@ func NewPurchaseFulfiller(db *gorm.DB, platform domain.CommercialPlatform, _ *Bi
 		return nil, errors.New("purchase fulfiller requires a commercial platform")
 	}
 	return &PurchaseFulfiller{
-		db:        db,
-		orders:    repocommercial.NewOrderStore(db),
-		platform:  platform,
-		now:       time.Now,
-		tick:      settleObserveTick,
-		firstPass: settleObserveFirstPass,
-		budget:    settleObserveTotalBudget,
+		db:            db,
+		orders:        repocommercial.NewOrderStore(db),
+		platform:      platform,
+		now:           time.Now,
+		tick:          settleObserveTick,
+		firstPass:     settleObserveFirstPass,
+		budget:        settleObserveTotalBudget,
+		drainInterval: fulfillmentDrainInterval,
 	}, nil
 }
 
@@ -114,6 +122,24 @@ func (p *PurchaseFulfiller) Fulfill(ctx context.Context, ev repocommercial.Outbo
 		return fmt.Errorf("purchase publication %s v%d: %w", snap.PlanKey, snap.PlanVersion, err)
 	}
 
+	// (D7 total budget) A paid order whose activation never lands (dead
+	// webhook leg, permanently unconfigured settle instrument, authority
+	// outage...) must NOT spin forever: once the event's cumulative drain
+	// passes exhaust the budget, surface attention (the operations face)
+	// and stop driving. ONE cheap snapshot read keeps the recovery path
+	// open — if the authority HAS activated, fulfillment proceeds.
+	if p.overBudget(&ev) {
+		snap, serr := p.platform.ReadSnapshot(ctx, domain.SnapshotQuery{
+			Kind: domain.SnapshotKindPurchase, TenantID: order.TenantID,
+		})
+		if serr != nil || snap.Purchase == nil ||
+			snap.Purchase.State != domain.PurchaseStateActive {
+			return p.markActivationState(ctx, order.ID, order.TenantID, domain.FulfillmentStateAttention)
+		}
+		// Active: fall through — the observation loop below returns
+		// immediately and the grant path proceeds.
+	}
+
 	// The verified channel transaction is the settle idempotency anchor.
 	attempt, err := p.succeededAttempt(ctx, order.ID)
 	if err != nil {
@@ -123,8 +149,8 @@ func (p *PurchaseFulfiller) Fulfill(ctx context.Context, ev repocommercial.Outbo
 	// ② The settle rail (provider rails only; activation is the built-in
 	// webhook chain's, D2').
 	if _, err := p.platform.SubmitCommand(ctx, domain.Command{
-		Kind: domain.CommandKindSettlePurchasePayment,
-		Key:  domain.SettlePurchasePaymentCommandKey(domain.ExternalPurchaseSubscriptionID(order.TenantID), attempt),
+		Kind:  domain.CommandKindSettlePurchasePayment,
+		Key:   domain.SettlePurchasePaymentCommandKey(domain.ExternalPurchaseSubscriptionID(order.TenantID), attempt),
 		Actor: "fulfiller", Reason: "purchase settle",
 		Payload: domain.SettlePurchasePaymentPayload{
 			TenantID:                       order.TenantID,
@@ -258,12 +284,26 @@ func (p *PurchaseFulfiller) succeededAttempt(ctx context.Context, orderID string
 	return *att.ProviderTransactionID, nil
 }
 
+// overBudget reports whether the event's cumulative drain passes have
+// exhausted the D7 total budget (each pass costs roughly one drain interval
+// plus one first-pass observation window). attempt_count is the durable,
+// crash-surviving pass counter the drain loop already increments.
+func (p *PurchaseFulfiller) overBudget(ev *repocommercial.OutboxEvent) bool {
+	if p.budget <= 0 || ev == nil {
+		return false
+	}
+	perPass := p.drainInterval + p.firstPass
+	if perPass <= 0 {
+		return false
+	}
+	return time.Duration(ev.AttemptCount)*perPass >= p.budget
+}
+
 // observeActivation watches the authority snapshot for the webhook-driven
-// activation within the FIRST-PASS window only (D7): done or not, this
-// returns — the event goes back to pending and the next drain pass replays.
-// The cumulative budget is tracked by attempt_count on the outbox event
-// (each drain pass increments it); when it exceeds the pass budget the
-// composition surfaces attention instead of spinning forever.
+// activation within the FIRST-PASS window only: done or not, this returns —
+// the event goes back to pending and the next drain pass replays. The
+// cumulative TOTAL budget (attention past the cap) is enforced at Fulfill's
+// entry via the outbox event's attempt_count — NOT here.
 func (p *PurchaseFulfiller) observeActivation(ctx context.Context, tenantID uint64) (bool, string, error) {
 	deadline := time.Now().Add(p.firstPass)
 	for {
