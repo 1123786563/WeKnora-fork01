@@ -69,6 +69,16 @@ func (s *AgentRunStore) ReadEvents(ctx context.Context, key agentruntime.RunKey,
 	if q.Error != nil {
 		return nil, q.Error
 	}
+	// T18 (#137) gap rule: the retained window must not carry a hole in
+	// front of the page either. A retention trim (or any store repair) that
+	// removed a middle event would otherwise silently skip the missing seqs
+	// and deliver a later one as if it were next — the reconnecting client
+	// must instead be told to reload the authoritative snapshot, exactly like
+	// a trimmed window head. The rule is the same one the head check above
+	// already applies, asserted on the first row the query actually returns.
+	if len(rows) > 0 && rows[0].Seq > after+1 {
+		return nil, agentruntime.ErrCursorExpired
+	}
 	out := make([]agentruntime.RunEvent, 0, len(rows))
 	for _, r := range rows {
 		out = append(out, agentruntime.RunEvent{Seq: r.Seq, AttemptID: r.AttemptID, Type: r.EventType, Payload: json.RawMessage(r.Payload)})
