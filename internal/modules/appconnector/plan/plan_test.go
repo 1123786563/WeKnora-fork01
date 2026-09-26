@@ -584,6 +584,59 @@ func TestPlanExecuteSkipsUnapprovedItemFailClosed(t *testing.T) {
 	}
 }
 
+// TestPlanExecuteSkipsInFlightItemsOwnedByLiveWriter pins the
+// queued/dispatched→skipped_in_flight branch directly（终审 Finding 2 的
+// 直接覆盖腿）: an item another live writer already owns（queued 或
+// dispatched）never re-dispatches, keeps its state untouched, and does
+// not stop the pass（authorized 控制腿照常执行，逐项独立）.
+func TestPlanExecuteSkipsInFlightItemsOwnedByLiveWriter(t *testing.T) {
+	e := newPlanSvcEnv(t)
+	pv, err := e.svc.FormPlan(context.Background(), FormInput{TenantID: 7, ActorID: "user-a",
+		Items: []ItemInput{item("Doc A"), item("Doc B"), item("Doc C")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.dispatch.outcomes[pv.Items[2].ActionID] = appconnectorsvc.DispatchOutcome{
+		Status: appconn.ActionSucceeded, ProviderResult: okReceipt("page-c")}
+	e.approveAll(t, pv)
+	// Simulate the in-flight window: a concurrent writer queued item 1
+	// and has already dispatched item 2.
+	if err := e.store.SetActionState(context.Background(), pv.Items[0].ActionID,
+		appconn.ActionAuthorized, appconn.ActionQueued); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.store.SetActionState(context.Background(), pv.Items[1].ActionID,
+		appconn.ActionAuthorized, appconn.ActionDispatched); err != nil {
+		t.Fatal(err)
+	}
+	out, err := e.svc.Execute(context.Background(), 7, pv.ID, pv.Digest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Items[0].Disposition != ItemSkippedInFlight || out.Items[0].ActionState != appconn.ActionQueued {
+		t.Fatalf("queued item must be skipped in flight: %+v", out.Items[0])
+	}
+	if out.Items[1].Disposition != ItemSkippedInFlight || out.Items[1].ActionState != appconn.ActionDispatched {
+		t.Fatalf("dispatched item must be skipped in flight: %+v", out.Items[1])
+	}
+	if out.Items[2].Disposition != ItemExecuted || out.Items[2].ActionState != appconn.ActionSucceeded {
+		t.Fatalf("in-flight items must not stop the pass: %+v", out.Items[2])
+	}
+	if e.dispatch.calls[pv.Items[0].ActionID] != 0 || e.dispatch.calls[pv.Items[1].ActionID] != 0 {
+		t.Fatalf("in-flight items must never be re-dispatched: %v", e.dispatch.calls)
+	}
+	// The plan pass must not mutate the live writer's state machine.
+	for i, want := range []string{appconn.ActionQueued, appconn.ActionDispatched, appconn.ActionSucceeded} {
+		row, err := e.store.FindAction(context.Background(), pv.Items[i].ActionID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if row.State != want {
+			t.Fatalf("item %d state mutated by plan pass: got %s want %s", i+1, row.State, want)
+		}
+	}
+}
+
 // TestPlanStatusProjectsPerItemResults: the durable projection — plan
 // identity, the frozen exclusion set, and each item's authoritative
 // action state + receipt.

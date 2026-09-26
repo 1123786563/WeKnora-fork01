@@ -2887,10 +2887,11 @@ git commit -m "test(appconnector): 多操作计划 AC1/AC2/排除单项 端到�
 在 worktree 根 `/Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue30-sweep` 执行：
 
 ```bash
-go build ./... && go test ./internal/database/ -count=1 && go test ./internal/modules/appconnector/... -count=1 && go test ./internal/handler/ -run 'TestActionPlan|TestNotionPublish|TestAppPublications' -count=1 && go test ./internal/router/ -run TestActionPlanRoutes -count=1
+go build ./... && go test ./internal/database/ -count=1 && go test ./internal/modules/appconnector/... -count=1 && go test ./internal/handler/ -run 'TestActionPlan|TestAppActionPlans|TestNotionPublish|TestAppPublications' -count=1 && go test ./internal/router/ -run TestActionPlanRoutes -count=1
 ```
 
 覆盖：迁移轨道装载（database 包）+ plan/repository/publish/service 全部单测（appconnector 树 7 包）+ handler 层全部本计划测试与 #48 零回归 + router 层路由守卫/存在性。不触碰全量 flaky 套件。
+（终审 Finding 1 修订：handler 段正则原为 `'TestActionPlan|TestNotionPublish|TestAppPublications'`，实测不匹配迁移对齐测试 `TestAppActionPlansTablesExistAfterMigrations`——该测试此前仅由 `go test ./internal/modules/appconnector/...` 与 Task 6 Step 3 的 `'TestActionPlanEndToEnd|TestAppActionPlansTables'` 覆盖，计划级门控未直跑；现补 `TestAppActionPlans` 分支使其纳入计划级门控。Task 6 Step 4/5 的历史命令保持原样，其实跑证据已入册。）
 
 ## 交付边界（如实声明）
 
