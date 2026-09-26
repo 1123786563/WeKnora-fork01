@@ -163,13 +163,17 @@ type settleHarness struct {
 }
 
 func newSettleHarness(t *testing.T, subStatus string, intents []stripeIntentRec) *settleHarness {
+	return newSettleHarnessForTenant(t, 41, subStatus, intents)
+}
+
+func newSettleHarnessForTenant(t *testing.T, tenant uint64, subStatus string, intents []stripeIntentRec) *settleHarness {
 	t.Helper()
 	lago := newPurchaseStub()
-	ext := commercial.ExternalCustomerID(41)
+	ext := commercial.ExternalCustomerID(tenant)
 	lago.mu.Lock()
-	lago.planAmount = map[string]int64{"weknora-pro-v1": 9900}
+	lago.planAmount = map[string]int64{"weknora-pro-v1": 9900, "weknora-contract-v1": 9900}
 	lago.subs = []purchaseSubRec{{
-		ExternalID: commercial.ExternalPurchaseSubscriptionID(41), ExternalCustomer: ext,
+		ExternalID: commercial.ExternalPurchaseSubscriptionID(tenant), ExternalCustomer: ext,
 		PlanCode: "weknora-pro-v1", AmountFen: 9900, Currency: "CNY", Status: subStatus,
 	}}
 	lago.customer[ext] = map[string]any{
