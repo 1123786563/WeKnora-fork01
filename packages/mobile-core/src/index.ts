@@ -114,3 +114,13 @@ export type {
 } from './voice/dictation.ts';
 export { createScenarioDictationTranscriber, createScriptedDictationCapture } from './voice/in-memory-dictation.ts';
 export type { ScenarioDictationTranscriber, ScriptedDictationCapture, ScriptedDictationCaptureOptions } from './voice/in-memory-dictation.ts';
+
+// —— T27 (#57) Task 内实时语音会话（Voice Room，module-seams §8）——
+export { createVoiceRoom, VoiceRoomError, VOICE_ROOM_MAX_AUDIO_BYTES, VOICE_ROOM_MAX_SECONDS } from './voice-room/voice-room.ts';
+export type {
+  VoiceAudioDisposition, VoiceHandle, VoiceRoom, VoiceRoomErrorCode, VoiceRoomNoticeReason,
+  VoiceRoomPhase, VoiceRoomPorts, VoiceRoomState, VoiceSessionEndReceipt, VoiceSessionGrant,
+  VoiceSessionPort, VoiceSteerIntent, VoiceTurnTranscriptionPort, VoiceTurnView,
+} from './voice-room/voice-room.ts';
+export { createScriptedVoiceSession } from './voice-room/in-memory-voice-session.ts';
+export type { ScriptedVoiceSession } from './voice-room/in-memory-voice-session.ts';
