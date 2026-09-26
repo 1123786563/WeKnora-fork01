@@ -535,6 +535,47 @@ func TestFeishuDocxAdapterReadOnlyCapabilityRefused(t *testing.T) {
 	fake.mu.Unlock()
 }
 
+// TestFeishuDocxAdapterQueryUpdateReconcilesWithoutProgress pins the
+// update-branch reconciliation anchor: when the FIRST append batch's
+// reply is lost, executeUpdate never persists progress — the approved
+// snapshot's document_id is the only reconciliation target available,
+// and it IS the authority (FormPlan's update gate binds it to a
+// document this connection previously published). Query must use it
+// instead of parking unknown.
+func TestFeishuDocxAdapterQueryUpdateReconcilesWithoutProgress(t *testing.T) {
+	fake := newFakeFeishuDocx("secret_test_token")
+	ad, progress := docAdapter(t, fake, []string{FeishuCapabilityWriteDocx}, 0)
+	fake.mu.Lock()
+	fake.nextID++
+	fake.docs["doc-q"] = &fakeFeishuDoc{id: "doc-q", revision: 1}
+	fake.dropAppendAt = 1
+	fake.mu.Unlock()
+	blocks, _ := FeishuTextBlocks("追加内容")
+	args, _ := json.Marshal(map[string]any{"document_id": "doc-q", "expected_revision": "1", "title": "T", "blocks": blocks})
+	a := Action{ID: "act-q", TenantID: 7, ActorID: "u1", ConnectionID: "c1", Version: "feishu/v1",
+		Target: "doc-q", Risk: RiskWrite, Args: args}
+
+	// The append lands REMOTELY but its reply is lost → unknown, and
+	// being the FIRST batch, no checkpoint was ever persisted.
+	out, _ := ad.Execute(context.Background(), a)
+	require.Equal(t, ActionUnknown, out.State)
+	require.Empty(t, progress[a.ID].DocumentID, "the lost first batch leaves NO persisted checkpoint")
+
+	// Reconcile reads the remote through the approved snapshot's
+	// document id — the content IS there (recorded before the drop) —
+	// and settles success WITHOUT re-sending.
+	fake.mu.Lock()
+	appendsBefore := fake.appendCalls
+	fake.mu.Unlock()
+	q, err := ad.Query(context.Background(), a)
+	require.NoError(t, err)
+	require.Equal(t, ActionSucceeded, q.State, "the approved snapshot's document id reconciles a checkpoint-less update")
+	require.Equal(t, "doc-q", q.ExternalID)
+	fake.mu.Lock()
+	require.Equal(t, appendsBefore, fake.appendCalls, "reconcile must not re-send")
+	fake.mu.Unlock()
+}
+
 func TestFeishuDocxAdapterQueryReconcilesByContent(t *testing.T) {
 	fake := newFakeFeishuDocx("secret_test_token")
 	ad, _ := docAdapter(t, fake, []string{FeishuCapabilityWriteDocx}, 2)

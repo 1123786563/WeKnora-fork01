@@ -637,9 +637,14 @@ func (m *FeishuDocxAdapter) executeUpdate(ctx context.Context, a Action) (Action
 }
 
 // Query is the reconciliation entry point for an unknown outcome.
-// Without a persisted document id it stays honestly unknown (Feishu has
-// no reliable create-confirmation search; a title match is never proof).
-// With one, it reconciles via the reliable document read + the FULL
+// Without any reconciliation anchor it stays honestly unknown (Feishu
+// has no reliable create-confirmation search; a title match is never
+// proof). The anchor is the persisted checkpoint's document id when one
+// exists; for updates the APPROVED snapshot's document_id is an equal
+// authority (the plan's update gate binds it to a document this
+// connection previously published) and covers the case where the FIRST
+// batch's reply was lost so no checkpoint was ever persisted. With an
+// anchor, Query reconciles via the reliable document read + the FULL
 // paginated children read, comparing the text_run CONTENT sequences —
 // provider blocks carry server-side fields the snapshot bytes never do.
 func (m *FeishuDocxAdapter) Query(ctx context.Context, a Action) (ActionResult, error) {
@@ -647,14 +652,15 @@ func (m *FeishuDocxAdapter) Query(ctx context.Context, a Action) (ActionResult, 
 		return ActionResult{State: ActionFailed}, err
 	}
 	progress := m.loadProgress(a)
-	if progress.DocumentID == "" {
-		return ActionResult{State: ActionUnknown}, fmt.Errorf("feishu_query_unverifiable: no persisted document id")
-	}
+	documentID := progress.DocumentID
 	var want []string
 	if IsFeishuDocUpdateArgs(a.Args) {
 		snap, err := ParseFeishuDocUpdateSnapshot(a.Args)
 		if err != nil {
 			return ActionResult{State: ActionUnknown}, err
+		}
+		if documentID == "" {
+			documentID = snap.DocumentID
 		}
 		for _, b := range snap.Blocks {
 			contents, err := feishuDocBlockContents([]byte("[" + string(b) + "]"))
@@ -676,11 +682,14 @@ func (m *FeishuDocxAdapter) Query(ctx context.Context, a Action) (ActionResult, 
 			want = append(want, contents...)
 		}
 	}
+	if documentID == "" {
+		return ActionResult{State: ActionUnknown}, fmt.Errorf("feishu_query_unverifiable: no persisted document id")
+	}
 	// The document must still exist.
-	if _, gerr := ReadFeishuDocumentVersion(ctx, m.Policy, m.Token, progress.DocumentID); gerr != nil {
+	if _, gerr := ReadFeishuDocumentVersion(ctx, m.Policy, m.Token, documentID); gerr != nil {
 		return ActionResult{State: ActionUnknown}, gerr
 	}
-	kids, kerr := m.readAllChildren(ctx, progress.DocumentID)
+	kids, kerr := m.readAllChildren(ctx, documentID)
 	if kerr != nil {
 		return ActionResult{State: ActionUnknown}, kerr
 	}
@@ -691,11 +700,11 @@ func (m *FeishuDocxAdapter) Query(ctx context.Context, a Action) (ActionResult, 
 	if !containsPrefix(got, want) {
 		return ActionResult{State: ActionUnknown}, fmt.Errorf("feishu_query_unverifiable: %d of %d approved paragraphs present in order", len(got), len(want))
 	}
-	raw, rerr := m.do(ctx, http.MethodGet, m.targetURL(fmt.Sprintf(FeishuDocumentGetFormat, urlPathEscape(progress.DocumentID)), nil), nil)
+	raw, rerr := m.do(ctx, http.MethodGet, m.targetURL(fmt.Sprintf(FeishuDocumentGetFormat, urlPathEscape(documentID)), nil), nil)
 	if rerr != nil {
-		return ActionResult{State: ActionUnknown, ExternalID: progress.DocumentID}, rerr
+		return ActionResult{State: ActionUnknown, ExternalID: documentID}, rerr
 	}
-	return ActionResult{State: ActionSucceeded, ExternalID: progress.DocumentID, Output: json.RawMessage(raw)}, nil
+	return ActionResult{State: ActionSucceeded, ExternalID: documentID, Output: json.RawMessage(raw)}, nil
 }
 
 // containsPrefix reports whether want appears in got as one contiguous
