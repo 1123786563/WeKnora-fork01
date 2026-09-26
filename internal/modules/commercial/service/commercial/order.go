@@ -116,9 +116,15 @@ func NewOrderService(db *gorm.DB, providers map[string]payment.Provider) (*Order
 	// checkouts). created_at is backfilled for rows created before the
 	// column existed (NULL/zero on PostgreSQL sorts NULLS FIRST and would
 	// shadow every newer row). Parameter-bound; no external input.
+	// (OCR r4) The backfill is scoped to PRE-INVARIANT rows ONLY: a
+	// created_at IS NULL/zero row predates the column (the legacy
+	// pipeline); every row the new pipeline writes carries created_at, so
+	// a restart while a fresh checkout is mid-landing (order created,
+	// checkout_url not yet written) never gets swept here.
 	if err := db.Exec(`UPDATE commercial_orders SET channel_failed = true
 		WHERE kind = 'purchase' AND state = 'pending' AND channel_failed = false
-		AND (checkout_url IS NULL OR checkout_url = '')`).Error; err != nil {
+		AND (checkout_url IS NULL OR checkout_url = '')
+		AND (created_at IS NULL OR created_at < '1970-01-02 00:00:00')`).Error; err != nil {
 		return nil, fmt.Errorf("commercial pending-purchase backfill: %w", err)
 	}
 	if err := db.Exec(`UPDATE commercial_orders SET created_at = ?

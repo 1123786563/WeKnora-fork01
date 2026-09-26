@@ -383,9 +383,12 @@ func TestLinkLessPendingOrderDoesNotBlockFreshQuote(t *testing.T) {
 		t.Fatal(err)
 	}
 	// link-less 残留（channel_failed=0、URL 空——迁移前存量行/降级残留形态）。
+	// (OCR r4) The sweep is time-scoped: residue older than SweepStaleAge
+	// releases the slot; a FRESH link-less row (its checkout still
+	// mid-landing) must NOT be swept — covered by the ordering test below.
 	if err := db.Exec(`INSERT INTO commercial_orders (id, tenant_id, quote_id, kind, amount_fen, currency, state, version, created_at, checkout_url, channel_failed)
 		VALUES ('ord_zombie', 49, 'qt_zombie', 'purchase', 9900, 'CNY', 'pending', 1, ?, '', 0)`,
-		time.Now().UTC().Format(time.RFC3339Nano)).Error; err != nil {
+		time.Now().UTC().Add(-repocommercial.SweepStaleAge - time.Minute)).Error; err != nil {
 		t.Fatal(err)
 	}
 	q := purchaseQuote(t, svc.orders, 49, "pro")

@@ -324,6 +324,14 @@ func (s *PurchaseService) PurchaseStatus(ctx context.Context, tenantID uint64) (
 		if row, err := s.orders.orders.CurrentPurchaseOrder(ctx, tenantID, p.AmountFen, p.Currency); err == nil {
 			ov := orderViewFromRow(row)
 			out.Order = &ov
+			// (#82 D3) paid_awaiting_activation is a COORDINATOR-COMPOSED
+			// product state: a locally PAID order while the authority has
+			// not yet been observed active. It never comes from an authority
+			// read — only this synthesis produces it.
+			if p.State == domain.PurchaseStateAwaitingPayment &&
+				row.State == domain.OrderStatePaid {
+				out.State = domain.PurchaseStatePaidAwaitingActivation
+			}
 		}
 	}
 	return out, nil

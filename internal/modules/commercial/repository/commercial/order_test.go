@@ -10,6 +10,7 @@ import (
 	domain "github.com/Tencent/WeKnora/internal/modules/commercial"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	"time"
 )
 
 // testOrderStore mirrors the account_test.go SQLite setup. A single pooled
@@ -430,6 +431,16 @@ func TestSweepStaleLinklessPendingReleasesTheSlot(t *testing.T) {
 	if err := s.CreateOrder(ctx, OrderRow{ID: "z2", TenantID: 7, QuoteID: "zq2",
 		AmountFen: 100, Currency: "CNY"}); !errors.Is(err, ErrPurchasePendingExists) {
 		t.Fatalf("the link-less residue occupies the slot, got %v", err)
+	}
+	// (OCR r4) The sweep is time-scoped: a FRESH link-less row (its checkout
+	// may still be mid-landing) is NOT swept — prove that first, then age
+	// the residue past the sweep window and sweep again.
+	if swept, err := s.SweepStaleLinklessPending(ctx, 7); err != nil || swept != 0 {
+		t.Fatalf("a fresh link-less row must NOT be swept, swept=%d err=%v", swept, err)
+	}
+	if err := db.Exec(`UPDATE commercial_orders SET created_at = ? WHERE id = 'z1'`,
+		time.Now().UTC().Add(-SweepStaleAge-time.Minute)).Error; err != nil {
+		t.Fatal(err)
 	}
 	swept, err := s.SweepStaleLinklessPending(ctx, 7)
 	if err != nil || swept != 1 {

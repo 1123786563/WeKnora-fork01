@@ -400,15 +400,24 @@ func (s *OrderStore) MarkChannelFailed(ctx context.Context, orderID string) erro
 // so a fresh quote's checkout can proceed. Parameter-bound; returns the
 // number of rows swept.
 func (s *OrderStore) SweepStaleLinklessPending(ctx context.Context, tenantID uint64) (int64, error) {
+	// (OCR r4) Time-scoped: only rows OLDER than the sweep age are stale —
+	// a just-created order whose checkout link is still mid-landing must
+	// never be swept out from under its own checkout.
+	staleBefore := time.Now().UTC().Add(-SweepStaleAge)
 	res := s.db.WithContext(ctx).Model(&OrderRow{}).
-		Where("tenant_id = ? AND kind = ? AND state = ? AND channel_failed = ? AND (checkout_url IS NULL OR checkout_url = '')",
-			tenantID, domain.OrderKindPurchase, domain.OrderStatePending, false).
+		Where("tenant_id = ? AND kind = ? AND state = ? AND channel_failed = ? AND (checkout_url IS NULL OR checkout_url = '') AND created_at < ?",
+			tenantID, domain.OrderKindPurchase, domain.OrderStatePending, false, staleBefore).
 		Update("channel_failed", true)
 	if res.Error != nil {
 		return 0, res.Error
 	}
 	return res.RowsAffected, nil
 }
+
+// SweepStaleAge is the age at which a link-less pending purchase row counts
+// as sweepable residue (OCR r4: a fresh checkout's persist window is
+// seconds; anything still link-less after this is degraded residue).
+const SweepStaleAge = 15 * time.Minute
 
 // FirstPendingAttempt returns the oldest still-pending attempt of an order —
 // the identifier payment recovery re-queries the channel with. An order with

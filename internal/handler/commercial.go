@@ -531,7 +531,10 @@ func (h *CommercialHandler) PurchaseStatus(c *gin.Context) {
 	case errors.Is(err, commercialsvc.ErrQuoteTenantMismatch):
 		c.JSON(http.StatusNotFound, gin.H{"error": "purchase not found for this tenant"})
 	default:
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		// (OCR r4) A residual failure here is server-side (storage), never
+		// a client fault: 500 with a closed message, never raw error text.
+		log.Printf("commercial: purchase status failed for tenant %d: %v", tenantID, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "purchase status failed"})
 	}
 }
 
