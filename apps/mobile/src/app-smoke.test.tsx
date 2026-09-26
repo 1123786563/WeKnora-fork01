@@ -1395,7 +1395,7 @@ test('the task detail screen renders the code delivery receipt section with hone
   const section = render(sectionElement!.type as (props: unknown) => unknown, sectionElement!.props);
   const text = JSON.stringify(section);
   assert.ok(text.includes('代码交付'), 'delivery section is present');
-  assert.ok(text.includes('已推送，等待草稿 PR 恢复'), 'pushed state uses honest copy');
+  assert.ok(text.includes('已推送，等待草稿 PR/MR 恢复'), 'pushed state uses honest copy');
   assert.ok(text.includes('octocat/hello'), 'repo is shown');
   assert.ok(text.includes('c1f0'), 'commit sha is shown');
   // 无交付时不渲染区块。

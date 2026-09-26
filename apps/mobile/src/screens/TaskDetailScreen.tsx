@@ -39,17 +39,18 @@ const OUTCOME_COPY: Record<InterventionReceipt['outcome'], string> = {
   accepted: '已受理', parked: '已排队（等待当前 Run 结束后发出）', conflict: '状态冲突，请刷新后重试', unknown: '结果未知，核对中',
 };
 
-/** 交付六态的如实中文文案：不粉饰部分完成（pushed）与不可观测（unknown）。 */
+/** 交付六态的如实中文文案：不粉饰部分完成（pushed）与不可观测（unknown）。
+ * PR/MR 中性措辞：GitLab 草稿 MR 与 GitHub 草稿 PR 经同一统一回执呈现（T24 #54）。 */
 export const DELIVERY_STATE_COPY: Record<DeliveryState, string> = {
   prepared: '待审批：审阅 Diff 与候选提交后在行动收件箱批准',
   dispatched: '交付进行中：正在推送任务分支',
-  pushed: '已推送，等待草稿 PR 恢复',
-  delivered: '草稿 PR 已创建',
+  pushed: '已推送，等待草稿 PR/MR 恢复',
+  delivered: '草稿 PR/MR 已创建',
   failed: '交付失败',
   unknown: '远端结果待确认',
 };
 
-/** 交付回执区块：只读呈现服务端落账的追溯字段（仓库/分支/提交/PR/远端身份/批准人）。 */
+/** 交付回执区块：只读呈现服务端落账的追溯字段（仓库/分支/提交/PR·MR/远端身份/批准人）。 */
 function DeliveryReceiptSection({ delivery }: { delivery: DeliveryReceiptView }) {
   return (
     <View style={{ marginTop: 16, padding: 12, borderWidth: 1, borderColor: '#ccc', borderRadius: 8 }}>
@@ -58,7 +59,7 @@ function DeliveryReceiptSection({ delivery }: { delivery: DeliveryReceiptView })
       <Text numberOfLines={1}>仓库：{delivery.repo}</Text>
       <Text numberOfLines={1}>分支：{delivery.branch}</Text>
       {delivery.commitSha !== undefined ? <Text numberOfLines={1}>提交：{delivery.commitSha.slice(0, 12)}</Text> : null}
-      {delivery.prUrl !== undefined ? <Text numberOfLines={1}>PR：{delivery.prUrl}</Text> : null}
+      {delivery.prUrl !== undefined ? <Text numberOfLines={1}>PR/MR：{delivery.prUrl}</Text> : null}
       {delivery.remoteLogin !== undefined ? <Text numberOfLines={1}>远端身份：{delivery.remoteLogin}</Text> : null}
       {delivery.approver !== undefined ? <Text numberOfLines={1}>批准人：{delivery.approver}</Text> : null}
     </View>
