@@ -320,8 +320,124 @@ func (s *Service) Approve(ctx context.Context, tenantID uint64, planID, actor st
 	return s.view(ctx, tenantID, planID)
 }
 
-// Execute runs one ordered pass over an approved plan. IMPLEMENT IN TASK 4.
-// Status returns the durable plan projection. IMPLEMENT IN TASK 4.
+// Execute runs one ordered pass over an APPROVED plan whose digest the
+// caller presents (AC1 holds at execute time too). Per item, in seq
+// order:
+//
+//   - excluded → recorded excluded, never dispatched;
+//   - succeeded → skipped_succeeded: the confirmed outcome is carried,
+//     the dispatch count stays untouched (AC2 — 部分成功只恢复确认未完成
+//     的动作, never a re-run);
+//   - authorized → dispatched through the publish pipeline (the resume
+//     case: approved but not yet sent);
+//   - awaiting_approval → skipped_unapproved (fail closed: no dispatch);
+//   - queued/dispatched → skipped_in_flight (a live writer owns it — the
+//     single-action approval count + state CAS are the deeper guards);
+//   - failed/unknown → settled (confirmed outcomes of their own kind; a
+//     re-send needs a NEW plan — re-preparing changes the content and the
+//     AC1 digest with it).
+//
+// A failed or unknown item does NOT stop the pass: items are independent
+// external effects and every one records its own result (CONTEXT.md:
+// 执行结果仍逐项持久记录). Later passes are idempotent.
+func (s *Service) Execute(ctx context.Context, tenantID uint64, planID, digest string) (ExecuteOutcome, error) {
+	row, err := s.plans.FindPlan(ctx, tenantID, planID)
+	if err != nil {
+		return ExecuteOutcome{}, err
+	}
+	if row.Digest != digest {
+		return ExecuteOutcome{}, fmt.Errorf("%w: execute digest does not match plan content %s", ErrPlanDigestMismatch, planID)
+	}
+	if row.State != PlanStateAuthorized {
+		return ExecuteOutcome{}, fmt.Errorf("%w: plan is %s, execute requires authorized", ErrPlanState, row.State)
+	}
+	items, err := s.plans.ListPlanItems(ctx, tenantID, planID)
+	if err != nil {
+		return ExecuteOutcome{}, err
+	}
+	excluded, err := parseExclusions(row.ExcludedJSON)
+	if err != nil {
+		return ExecuteOutcome{}, err
+	}
+	exSet := map[int]bool{}
+	for _, seq := range excluded {
+		exSet[seq] = true
+	}
+	out := ExecuteOutcome{PlanID: planID, Digest: row.Digest, Items: []ItemOutcome{}}
+	for _, item := range items {
+		action, aerr := s.actions.FindAction(ctx, item.ActionID)
+		if aerr != nil {
+			return ExecuteOutcome{}, aerr
+		}
+		oc := ItemOutcome{Seq: item.Seq, ActionID: item.ActionID, ActionState: action.State}
+		switch {
+		case exSet[item.Seq]:
+			oc.Disposition = ItemExcluded
+		case action.State == appconn.ActionSucceeded:
+			oc.Disposition = ItemSkippedSucceeded
+		case action.State == appconn.ActionAuthorized:
+			exec, xerr := s.publish.Execute(ctx, tenantID, item.ActionID)
+			if xerr != nil {
+				return ExecuteOutcome{}, xerr
+			}
+			oc.Disposition = ItemExecuted
+			oc.ActionState = exec.ActionState
+			oc.Conflict = exec.Conflict
+			oc.Publication = exec.Receipt
+		case action.State == appconn.ActionAwaitingApproval:
+			oc.Disposition = ItemSkippedUnapproved
+		case action.State == appconn.ActionQueued || action.State == appconn.ActionDispatched:
+			oc.Disposition = ItemSkippedInFlight
+		default: // failed / unknown: confirmed outcomes of their own kind
+			oc.Disposition = ItemSettled
+		}
+		if oc.Disposition != ItemExecuted {
+			// Project the durable receipt for display; items without a
+			// publication row carry an empty view.
+			if rcpt, rerr := s.publish.Receipt(ctx, tenantID, item.ActionID); rerr == nil {
+				oc.Publication = rcpt
+			}
+		}
+		out.Items = append(out.Items, oc)
+	}
+	return out, nil
+}
+
+// Status returns the durable plan projection: plan identity, the frozen
+// exclusion set, and each item's authoritative action state + receipt.
+// There is no stored terminal plan state — completion is projected from
+// the items.
+func (s *Service) Status(ctx context.Context, tenantID uint64, planID string) (PlanStatus, error) {
+	st, err := s.view(ctx, tenantID, planID)
+	if err != nil {
+		return PlanStatus{}, err
+	}
+	row, err := s.plans.FindPlan(ctx, tenantID, planID)
+	if err != nil {
+		return PlanStatus{}, err
+	}
+	excluded, err := parseExclusions(row.ExcludedJSON)
+	if err != nil {
+		return PlanStatus{}, err
+	}
+	items, err := s.plans.ListPlanItems(ctx, tenantID, planID)
+	if err != nil {
+		return PlanStatus{}, err
+	}
+	outcomes := make([]ItemOutcome, 0, len(items))
+	for _, item := range items {
+		action, aerr := s.actions.FindAction(ctx, item.ActionID)
+		if aerr != nil {
+			return PlanStatus{}, aerr
+		}
+		oc := ItemOutcome{Seq: item.Seq, ActionID: item.ActionID, ActionState: action.State}
+		if rcpt, rerr := s.publish.Receipt(ctx, tenantID, item.ActionID); rerr == nil {
+			oc.Publication = rcpt
+		}
+		outcomes = append(outcomes, oc)
+	}
+	return PlanStatus{PlanView: st, Excluded: excluded, Outcomes: outcomes}, nil
+}
 
 // normalizeExclusions validates the caller's exclusion seqs: within
 // 1..n, no duplicates; nil means approve everything. The result is

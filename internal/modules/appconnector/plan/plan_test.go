@@ -457,3 +457,188 @@ func TestPlanApproveConcurrentDistinctExclusionsSingleWinner(t *testing.T) {
 		}
 	}
 }
+
+// TestPlanExecuteRunsIncludedItemsInOrderAndSettlesReceipts: one pass
+// runs every included authorized item in seq order and each item
+// settles its own published receipt.
+func TestPlanExecuteRunsIncludedItemsInOrderAndSettlesReceipts(t *testing.T) {
+	e := newPlanSvcEnv(t)
+	pv := e.formTwo(t)
+	e.dispatch.outcomes[pv.Items[0].ActionID] = appconnectorsvc.DispatchOutcome{
+		Status: appconn.ActionSucceeded, ProviderResult: okReceipt("page-a")}
+	e.dispatch.outcomes[pv.Items[1].ActionID] = appconnectorsvc.DispatchOutcome{
+		Status: appconn.ActionSucceeded, ProviderResult: okReceipt("page-b")}
+	e.approveAll(t, pv)
+	out, err := e.svc.Execute(context.Background(), 7, pv.ID, pv.Digest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Items) != 2 || out.Items[0].Seq != 1 || out.Items[1].Seq != 2 {
+		t.Fatalf("outcomes must be ordered: %+v", out.Items)
+	}
+	for i, oc := range out.Items {
+		if oc.Disposition != ItemExecuted || oc.ActionState != appconn.ActionSucceeded {
+			t.Fatalf("item %d must execute to success: %+v", i+1, oc)
+		}
+		if oc.Publication.State != "published" || oc.Publication.ExternalID == "" || oc.Publication.ExternalVersion == "" {
+			t.Fatalf("receipt must settle published with external version: %+v", oc.Publication)
+		}
+	}
+	if e.dispatch.calls[pv.Items[0].ActionID] != 1 || e.dispatch.calls[pv.Items[1].ActionID] != 1 {
+		t.Fatalf("each item dispatched exactly once: %v", e.dispatch.calls)
+	}
+}
+
+// TestPlanExecuteSkipsConfirmedOutcomesOnResume is the AC2 core: a
+// second pass over a partially-successful plan re-dispatches NOTHING
+// already confirmed (succeeded/failed/unknown) — the dispatch counts
+// prove it.
+func TestPlanExecuteSkipsConfirmedOutcomesOnResume(t *testing.T) {
+	e := newPlanSvcEnv(t)
+	pv, err := e.svc.FormPlan(context.Background(), FormInput{TenantID: 7, ActorID: "user-a",
+		Items: []ItemInput{item("Doc A"), item("Doc B"), item("Doc C")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.dispatch.outcomes[pv.Items[0].ActionID] = appconnectorsvc.DispatchOutcome{
+		Status: appconn.ActionSucceeded, ProviderResult: okReceipt("page-a")}
+	e.dispatch.outcomes[pv.Items[1].ActionID] = appconnectorsvc.DispatchOutcome{
+		Status: appconn.ActionFailed, ProviderResult: publish.PublishVersionConflictResult + ": expected v1 remote v2"}
+	e.dispatch.errs[pv.Items[2].ActionID] = errors.New("transport lost")
+	e.approveAll(t, pv)
+	out, err := e.svc.Execute(context.Background(), 7, pv.ID, pv.Digest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Items[0].Disposition != ItemExecuted || out.Items[0].ActionState != appconn.ActionSucceeded {
+		t.Fatalf("item 1: %+v", out.Items[0])
+	}
+	if out.Items[1].Disposition != ItemExecuted || out.Items[1].ActionState != appconn.ActionFailed || !out.Items[1].Conflict {
+		t.Fatalf("item 2 must record the conflict failure: %+v", out.Items[1])
+	}
+	if out.Items[2].Disposition != ItemExecuted || out.Items[2].ActionState != appconn.ActionUnknown {
+		t.Fatalf("item 3 must park unknown: %+v", out.Items[2])
+	}
+	// Resume with the SAME digest: zero new dispatches anywhere.
+	out2, err := e.svc.Execute(context.Background(), 7, pv.ID, pv.Digest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out2.Items[0].Disposition != ItemSkippedSucceeded {
+		t.Fatalf("AC2: succeeded item must be skipped, got %+v", out2.Items[0])
+	}
+	if out2.Items[1].Disposition != ItemSettled || out2.Items[1].ActionState != appconn.ActionFailed {
+		t.Fatalf("failed item must stay settled, never re-dispatched: %+v", out2.Items[1])
+	}
+	if out2.Items[2].Disposition != ItemSettled || out2.Items[2].ActionState != appconn.ActionUnknown {
+		t.Fatalf("unknown item must stay parked: %+v", out2.Items[2])
+	}
+	for _, it := range pv.Items {
+		if e.dispatch.calls[it.ActionID] != 1 {
+			t.Fatalf("AC2: item %s dispatched %d times, want exactly 1", it.ActionID, e.dispatch.calls[it.ActionID])
+		}
+	}
+}
+
+// TestPlanExecuteRefusesUnapprovedOrForeignDigest: the plan-level gates —
+// an awaiting_approval plan never executes; a foreign digest never
+// executes (AC1 at execute time); a missing plan is not-found.
+func TestPlanExecuteRefusesUnapprovedOrForeignDigest(t *testing.T) {
+	e := newPlanSvcEnv(t)
+	pv := e.formTwo(t)
+	if _, err := e.svc.Execute(context.Background(), 7, pv.ID, pv.Digest); !errors.Is(err, ErrPlanState) {
+		t.Fatalf("unapproved plan must not execute, got %v", err)
+	}
+	e.approveAll(t, pv)
+	if _, err := e.svc.Execute(context.Background(), 7, pv.ID, "stale-digest"); !errors.Is(err, ErrPlanDigestMismatch) {
+		t.Fatalf("execute with foreign digest must be refused, got %v", err)
+	}
+	if _, err := e.svc.Execute(context.Background(), 7, "plan-x", pv.Digest); !errors.Is(err, repoappconn.ErrPlanNotFound) {
+		t.Fatalf("unknown plan must be not-found, got %v", err)
+	}
+}
+
+// TestPlanExecuteSkipsUnapprovedItemFailClosed: an included item whose
+// single-item approval is absent (partial-approve window) is never
+// dispatched by the plan pass.
+func TestPlanExecuteSkipsUnapprovedItemFailClosed(t *testing.T) {
+	e := newPlanSvcEnv(t)
+	pv := e.formTwo(t)
+	e.dispatch.outcomes[pv.Items[0].ActionID] = appconnectorsvc.DispatchOutcome{
+		Status: appconn.ActionSucceeded, ProviderResult: okReceipt("page-a")}
+	e.approveAll(t, pv)
+	// Simulate the partial-approval window: item 2 back to awaiting.
+	if err := e.store.SetActionState(context.Background(), pv.Items[1].ActionID,
+		appconn.ActionAuthorized, appconn.ActionAwaitingApproval); err != nil {
+		t.Fatal(err)
+	}
+	out, err := e.svc.Execute(context.Background(), 7, pv.ID, pv.Digest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Items[1].Disposition != ItemSkippedUnapproved {
+		t.Fatalf("unapproved item must be skipped fail-closed: %+v", out.Items[1])
+	}
+	if e.dispatch.calls[pv.Items[1].ActionID] != 0 {
+		t.Fatalf("unapproved item dispatched: %v", e.dispatch.calls)
+	}
+}
+
+// TestPlanStatusProjectsPerItemResults: the durable projection — plan
+// identity, the frozen exclusion set, and each item's authoritative
+// action state + receipt.
+func TestPlanStatusProjectsPerItemResults(t *testing.T) {
+	e := newPlanSvcEnv(t)
+	pv, err := e.svc.FormPlan(context.Background(), FormInput{TenantID: 7, ActorID: "user-a",
+		Items: []ItemInput{item("Doc A"), item("Doc B")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.dispatch.outcomes[pv.Items[0].ActionID] = appconnectorsvc.DispatchOutcome{
+		Status: appconn.ActionSucceeded, ProviderResult: okReceipt("page-a")}
+	if _, err := e.svc.Approve(context.Background(), 7, pv.ID, "user-a",
+		ApproveInput{Digest: pv.Digest, ExcludeSeqs: []int{2}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.svc.Execute(context.Background(), 7, pv.ID, pv.Digest); err != nil {
+		t.Fatal(err)
+	}
+	st, err := e.svc.Status(context.Background(), 7, pv.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.ID != pv.ID || st.State != PlanStateAuthorized || len(st.Excluded) != 1 || st.Excluded[0] != 2 {
+		t.Fatalf("plan projection: %+v excluded=%v", st.PlanView, st.Excluded)
+	}
+	if len(st.Outcomes) != 2 {
+		t.Fatalf("per-item outcomes: %+v", st.Outcomes)
+	}
+	if st.Outcomes[0].ActionState != appconn.ActionSucceeded || st.Outcomes[0].Publication.State != "published" {
+		t.Fatalf("item 1 projection: %+v", st.Outcomes[0])
+	}
+	if st.Outcomes[1].ActionState != appconn.ActionAwaitingApproval {
+		t.Fatalf("excluded item projects its untouched action state: %+v", st.Outcomes[1])
+	}
+}
+
+// TestPlanApproveRecoveryExclusionFrozen: after execution started the
+// recorded exclusion set is frozen — a different set is a state
+// conflict; the same-set re-approve stays legal (recovery path).
+// （Review Focus 3 的排除集冻结腿；依赖本任务的 Execute，故归此。）
+func TestPlanApproveRecoveryExclusionFrozen(t *testing.T) {
+	e := newPlanSvcEnv(t)
+	pv := e.formTwo(t)
+	e.approveAll(t, pv)
+	e.dispatch.outcomes[pv.Items[0].ActionID] = appconnectorsvc.DispatchOutcome{
+		Status: appconn.ActionSucceeded, ProviderResult: okReceipt("page-1")}
+	if _, err := e.svc.Execute(context.Background(), 7, pv.ID, pv.Digest); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.svc.Approve(context.Background(), 7, pv.ID, "user-a",
+		ApproveInput{Digest: pv.Digest, ExcludeSeqs: []int{2}}); !errors.Is(err, ErrPlanState) {
+		t.Fatalf("exclusion rewrite after execution must be refused, got %v", err)
+	}
+	if _, err := e.svc.Approve(context.Background(), 7, pv.ID, "user-a", ApproveInput{Digest: pv.Digest}); err != nil {
+		t.Fatalf("idempotent re-approve refused: %v", err)
+	}
+}
