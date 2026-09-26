@@ -139,6 +139,9 @@ type RouterParams struct {
 	AppConnectionHandler   *handler.AppConnectionHandler
 	AppSyncHandler         *handler.AppSyncHandler
 	AppActionHandler       *handler.AppActionHandler
+	// T23 (#53): per-actor grants on SPACE connections (nil handler skips
+	// registration — same nil-guard convention as the Notion publish one).
+	AppConnectionGrantHandler *handler.AppConnectionGrantHandler
 	// T18 (#48): the Notion publish closed loop (plan formation through
 	// receipt) — its own handler so the frozen action lifecycle handlers
 	// stay untouched.
@@ -433,6 +436,7 @@ func NewRouter(params RouterParams) *gin.Engine {
 			params.AppConnectionHandler,
 			params.AppSyncHandler,
 			params.AppActionHandler)
+		RegisterAppConnectionGrantRoutes(v1, params.AppConnectionGrantHandler)
 		RegisterAppNotionPublishRoutes(v1, params.AppNotionPublishHandler)
 		RegisterChunkerDebugRoutes(v1, rbacGuards)
 
