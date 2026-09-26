@@ -311,6 +311,16 @@ func (o *Office) ReconcileOpportunities(ctx context.Context, input ReconcileInpu
 				Update("opportunity_id", input.TargetID).Error; err != nil {
 				return err
 			}
+			// One job and batch admits exactly one application: the merged
+			// pair is one job now, so earlier application rows migrate onto
+			// the merge target to keep both the uniqueness check and the
+			// database constraint meaningful. Pinned evidence bodies inside
+			// those rows are never rewritten.
+			if err := tx.Model(&applicationRecord{}).
+				Where("tenant_id=? AND user_id=? AND opportunity_id=?", s.TenantID, s.UserID, input.CandidateID).
+				Updates(map[string]any{"opportunity_id": input.TargetID, "updated_at": time.Now().UTC()}).Error; err != nil {
+				return err
+			}
 		}
 		now := time.Now().UTC()
 		receipt = ReconcileReceipt{

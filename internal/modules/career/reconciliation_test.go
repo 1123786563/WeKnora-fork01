@@ -340,11 +340,50 @@ func TestReconcileOldApplicationsStillShowOldSnapshots(t *testing.T) {
 	require.Equal(t, duplicate.OpportunityID, legacy.OpportunityID)
 
 	// Re-evaluating the pinned snapshot under the old opportunity ID keeps
-	// working instead of 404.
-	_, err = o.EvaluateOpportunity(ctx, EvaluateInput{
+	// working instead of 404, and the evaluation lands on the canonical
+	// owner so it stays usable for application creation.
+	reEvaluation, err := o.EvaluateOpportunity(ctx, EvaluateInput{
 		RequestID: "rec-app-re-eval", OpportunityID: seed.OpportunityID, SnapshotID: seed.SnapshotID,
 	})
 	require.NoError(t, err)
+	require.Equal(t, duplicate.OpportunityID, reEvaluation.OpportunityID, "a re-evaluation belongs to the canonical owner")
+
+	// The merged-away application row migrates onto the merge target so the
+	// one-job-one-batch uniqueness keeps holding across merges, while the
+	// stored receipt keeps the pre-merge pinned reference (history intact).
+	var migrated applicationRecord
+	require.NoError(t, db.Where("id = ?", application.ApplicationID).First(&migrated).Error)
+	require.Equal(t, duplicate.OpportunityID, migrated.OpportunityID)
+	stillPinned, err := o.Application(ctx, application.ApplicationID)
+	require.NoError(t, err)
+	require.Equal(t, seed.OpportunityID, stillPinned.PinnedEvidence.OpportunityID, "the pinned evidence body is never rewritten")
+
+	// Creating another application for the same job and batch — evaluated on
+	// the canonical target's own snapshot — is refused: one job and batch
+	// admits exactly one application even across merges.
+	duplicateEvaluation, err := o.EvaluateOpportunity(ctx, EvaluateInput{
+		RequestID: "rec-app-dup-eval", OpportunityID: duplicate.OpportunityID, SnapshotID: duplicate.SnapshotID,
+	})
+	require.NoError(t, err)
+	_, err = o.CreateApplication(ctx, CreateApplicationInput{
+		RequestID: "rec-app-same-batch", OpportunityID: duplicate.OpportunityID, SnapshotID: duplicate.SnapshotID,
+		EvaluationID: duplicateEvaluation.EvaluationID, BatchIdentity: "2027-autumn", ExpectedRevision: seed.Revision,
+	})
+	require.ErrorIs(t, err, ErrApplicationConflict, "same job and batch must not admit a second application across a merge")
+
+	// A different batch still creates a fresh application through the old
+	// opportunity ID — the pre-merge reference stays a usable path, not a
+	// dead end (the evaluation above was created under the old ID).
+	second, err := o.CreateApplication(ctx, CreateApplicationInput{
+		RequestID: "rec-app-new-batch", OpportunityID: seed.OpportunityID, SnapshotID: seed.SnapshotID,
+		EvaluationID: reEvaluation.EvaluationID, BatchIdentity: "2028-spring", ExpectedRevision: seed.Revision,
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, second.ApplicationID)
+	require.Equal(t, duplicate.OpportunityID, second.PinnedEvidence.OpportunityID, "new applications pin the canonical owner")
+	var applications int64
+	require.NoError(t, db.Model(&applicationRecord{}).Where("opportunity_id = ?", duplicate.OpportunityID).Count(&applications).Error)
+	require.EqualValues(t, 2, applications, "both application rows live under the canonical owner")
 
 	// Appending a user JD through the old opportunity ID joins the merge
 	// target's history (canonical owner), not an orphaned pre-merge record.

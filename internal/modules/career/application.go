@@ -136,6 +136,9 @@ func (o *Office) CreateApplication(ctx context.Context, input CreateApplicationI
 	fingerprint := hex.EncodeToString(intentSum[:])
 
 	var receipt ApplicationReceipt
+	// resolvedOpportunityID is filled inside the transaction with the
+	// snapshot's canonical owner; post-transaction fallbacks reuse it.
+	resolvedOpportunityID := input.OpportunityID
 	err = o.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		// Exact replay precedes every side effect: a stored request ID with the
 		// same fingerprint returns the stored state, different content conflicts.
@@ -153,16 +156,25 @@ func (o *Office) CreateApplication(ctx context.Context, input CreateApplicationI
 			return e
 		}
 
+		// Resolve the opportunity through the merge chain first: after a
+		// reconciliation merged the input ID away, its snapshots, evaluations,
+		// and applications live under the canonical owner (T12).
+		resolvedOpportunityID = canonicalOpportunityID(tx, scope, input.OpportunityID)
+
 		var snapshot opportunitySnapshot
 		e = tx.Where("tenant_id=? AND user_id=? AND opportunity_id=? AND id=?",
 			scope.TenantID, scope.UserID, input.OpportunityID, input.SnapshotID).First(&snapshot).Error
+		if errors.Is(e, gorm.ErrRecordNotFound) && resolvedOpportunityID != input.OpportunityID {
+			e = tx.Where("tenant_id=? AND user_id=? AND opportunity_id=? AND id=?",
+				scope.TenantID, scope.UserID, resolvedOpportunityID, input.SnapshotID).First(&snapshot).Error
+		}
 		if errors.Is(e, gorm.ErrRecordNotFound) {
 			return ErrOpportunityNotFound
 		}
 		if e != nil {
 			return e
 		}
-
+		resolvedOpportunityID = snapshot.OpportunityID
 		var evaluation evaluationRecord
 		e = tx.Where("tenant_id=? AND user_id=? AND id=?", scope.TenantID, scope.UserID, input.EvaluationID).
 			First(&evaluation).Error
@@ -172,7 +184,7 @@ func (o *Office) CreateApplication(ctx context.Context, input CreateApplicationI
 		if e != nil {
 			return e
 		}
-		if evaluation.OpportunityID != input.OpportunityID || evaluation.SnapshotID != input.SnapshotID {
+		if evaluation.OpportunityID != snapshot.OpportunityID || evaluation.SnapshotID != input.SnapshotID {
 			return ErrInvalidRequest
 		}
 
@@ -204,9 +216,12 @@ func (o *Office) CreateApplication(ctx context.Context, input CreateApplicationI
 			warning = applicationHardWarning(input.EvaluationID, evaluation.EvaluationBody)
 		}
 
+		// One job and batch admits exactly one application. The check runs
+		// against the canonical owner because merges migrate earlier
+		// application rows onto the merge target.
 		var sameBatch applicationRecord
 		e = tx.Where("tenant_id=? AND user_id=? AND opportunity_id=? AND batch_identity=?",
-			scope.TenantID, scope.UserID, input.OpportunityID, input.BatchIdentity).
+			scope.TenantID, scope.UserID, snapshot.OpportunityID, input.BatchIdentity).
 			First(&sameBatch).Error
 		if e == nil {
 			return ErrApplicationConflict
@@ -217,7 +232,7 @@ func (o *Office) CreateApplication(ctx context.Context, input CreateApplicationI
 
 		applicationID := uuid.NewString()
 		pin := ApplicationEvidencePin{
-			OpportunityID:    input.OpportunityID,
+			OpportunityID:    snapshot.OpportunityID,
 			SnapshotID:       input.SnapshotID,
 			EvaluationID:     input.EvaluationID,
 			ProfileRevision:  head.Revision,
@@ -252,7 +267,10 @@ func (o *Office) CreateApplication(ctx context.Context, input CreateApplicationI
 		record := applicationRecord{
 			ID: applicationID, TenantID: scope.TenantID, UserID: scope.UserID,
 			RequestID: input.RequestID, Fingerprint: fingerprint,
-			OpportunityID: input.OpportunityID, SnapshotID: input.SnapshotID,
+			// The row belongs to the canonical owner so the one-job-one-batch
+			// uniqueness holds across merges; the pinned evidence above keeps
+			// the reference the caller actually used.
+			OpportunityID: snapshot.OpportunityID, SnapshotID: input.SnapshotID,
 			EvaluationID: input.EvaluationID, ProfileRevision: head.Revision,
 			EvidenceBody: string(evidenceBody), BatchIdentity: input.BatchIdentity,
 			ContinueDespiteHardFailure: input.ContinueDespiteHardFailure,
@@ -287,7 +305,7 @@ func (o *Office) CreateApplication(ctx context.Context, input CreateApplicationI
 			var occupied applicationRecord
 			if e := o.db.WithContext(ctx).
 				Where("tenant_id=? AND user_id=? AND opportunity_id=? AND batch_identity=?",
-					scope.TenantID, scope.UserID, input.OpportunityID, input.BatchIdentity).
+					scope.TenantID, scope.UserID, resolvedOpportunityID, input.BatchIdentity).
 				First(&occupied).Error; e == nil {
 				return ApplicationReceipt{}, ErrApplicationConflict
 			}
@@ -308,7 +326,7 @@ func (o *Office) CreateApplication(ctx context.Context, input CreateApplicationI
 	link, ensureErr := o.linker.EnsureCareerApplicationTask(ctx, scope.TenantID, scope.UserID, interfaces.CareerApplicationTaskIntent{
 		ApplicationID: receipt.ApplicationID,
 		RequestID:     input.RequestID,
-		Title:         applicationTaskTitle(input.OpportunityID),
+		Title:         applicationTaskTitle(resolvedOpportunityID),
 	})
 	if ensureErr == nil {
 		updated, updateErr := o.updateApplicationLink(ctx, scope, input.RequestID, ApplicationLinkStateReady, link)

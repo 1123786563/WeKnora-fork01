@@ -191,6 +191,13 @@ func (o *Office) EvaluateOpportunity(ctx context.Context, input EvaluateInput) (
 		if err != nil {
 			return err
 		}
+		// The evaluation is new evidence and belongs to the snapshot's
+		// canonical owner. After a merge re-parented this snapshot, the
+		// evaluation must land on the merge target so downstream application
+		// creation (which compares evaluation.OpportunityID) stays usable.
+		// The request fingerprint above was computed from the original input
+		// and stays stable for replays.
+		input.OpportunityID = snapshot.OpportunityID
 
 		facts, err := confirmedFactsAtRevision(tx, scope, pinnedRevision)
 		if err != nil {
