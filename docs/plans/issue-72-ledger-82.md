@@ -110,3 +110,39 @@
 | R82-2 | medium | 计划 Task 7 承诺的 `ErrQuoteNotFound→404 "quote not found"` 分支未补：不存在/失效的 quote_id 落 default 答 500，客户端输入错误被误分类为服务器错误 | **已修**：Purchase handler switch 补 `case errors.Is(err, repocommercial.ErrQuoteNotFound): 404 "quote not found"`（ErrQuoteTenantMismatch 404 之后、ErrPlanNotFound 404 之前的同族位） | `TestPurchaseHandlerAnswersNotFoundOnMissingQuote`（missing quote→404+closed token）绿 |
 
 修复后全量回归：`go test ./internal/modules/commercial/... ./internal/handler/ ./internal/router/ ./internal/container/ -count=1` → **10 包全 ok**；`make check-backend-architecture` → OK (0 violations)。
+
+## 真实流程验证失败修复（flowfix-82，2026-09-27）
+
+验证环境（Issue #82 复验轮）：集成分支 worktree（codex/issue-72-lago @ 4de51f8c0 构建），Lago v1.53.0 栈 :48889、后端 :8093（sqlite data/issue82-r4verify.db）、前端 vite :5194、支付宝回环 stub :8294。失败三项 F-1/F-2/F-3 的定位、修复与复验如下；修复提交 `c5a1917bb`。
+
+### R-20（F-1，高）settle 幂等键跨 PaymentIntent 碰撞 → 激活窗口内 fulfillment 误标 attention
+
+- **根因（systematic-debugging 实读）**：`settlePurchasePayment` 步骤 (ii) 把「unsettled 候选非空」当作「settle 未完成」——`hasSettledGatingIntent` 幂等窗口只在 intents 为空时触发（lago_settlement.go 修复前 :104-116）。Lago v1.53 gated create + 首 confirm 3DS 失败固有留下**两笔** unsettled gating PI（requires_payment_method 的 pi_3UJxpK + requires_action 的 pi_3UJxpV，同 `metadata.lago_invoice_id`）：第一轮 settle 按 latestIntent 驱动最新 PI#2 → succeeded（幂等键 `cmd.Key+:update/:confirm` 绑定到 PI#2 的 endpoint）；第二轮重放时残留 PI#1 仍满足定位谓词 → 同键打到**不同 endpoint** → Stripe 400 idempotency_error → `ErrPlatformInvalidResponse` → `markActivationState(attention)`（purchase_fulfillment.go:171，attempt=2 起每 30s 一条警告共 19 次）。后果 (a) settle-vs-finalize 窗口内 fulfillment 误标 (b) 幂等窗口被残留 PI 短路 (c) 若幂等键未碰撞则确认 PI#1 = **第二笔真实扣款**风险面。
+- **修复（采纳验证报告首选方向：幂等判定绑定 invoice 身份，而非掺 intent id——掺 intent id 会令每笔 PI 各得一键，反而放大 (c)）**：`stripeListUnsettledIntents`+`hasSettledGatingIntent` 合并为单次 `stripeListGatingIntents`（一次列表读同时回答 unsettled 候选与已 succeeded 的 invoice 身份集，窗口探测少一次 GET）；`latestIntent` 解析出的候选 invoice 已 ∈ succeeded 集 → 直接幂等回执（残留兄弟 PI 不再被驱动/重键）；intents 为空 + succeeded 集非空的原 t10 窗口语义保留。tie/created 不可解析仍 fail-closed 不变。
+- **回归锁定**：`TestLagoSettleResidualSiblingIntentReplaysIdempotently`（残留兄弟+同 invoice succeeded → 幂等回执、仅 1 次只读列表、零写调用）、`TestLagoSettleDrivesWhenSucceededInvoiceDiffers`（invoice 不同 → 照常驱动，防过触发）；`TestLagoSettleSettledWindowReplaysIdempotently` 随合并读改为断言 1 次 GET。已在本会话实跑 PASS。
+- **边界披露**：不主动 cancel 残留 PI（多一笔 provider 写反而引入选错对象的风险）；残留 PI 永久停留 requires_payment_method，不影响后续购买（新一轮 settle 的 latest 候选 invoice 不同于旧 succeeded 集 → 正常驱动，负向对照测试锁定）。
+
+### R-21（F-2，中）readCustomerFeatures 路由在 pinned v1.53 不存在 → Entitlement 权益面恒缺失
+
+- **根因**：`readCustomerFeatures` 调 `GET /api/v1/customers/{id}/entitlements`（lago.go 修复前 :1071）——验证轮容器内 routes 实读证实 pinned v1.53 无此嵌套路由（恒 404）→ `readBenefitsSnapshot` 静默吞错 → Benefits.Features 恒空。**单测 stub 实现了这条不存在路由（lago_subscription_test.go walletsStub），故漏测**；Lago 侧 entitlement 事实已物化，仅产品读取路径失配。
+- **修复**：改走 v1.53 实际挂载的 `/api/v1/subscriptions/:external_id/entitlements`（验证轮经此路径实证读到 advanced_models），对两条 WeKnora 订阅身份（base `-sub` + purchase `-purchase`）各读一次取**并集**；某腿 404 = 该订阅尚不存在 → 贡献空、不报错。解析保持双形状容错（feature_code / 嵌套 feature.code）。
+- **回归锁定**：`TestLagoBenefitsFeaturesReadSubscriptionEntitlementRoutes`（并集 + 断言请求走 subscriptions 路由、customers 嵌套路由零调用）、`TestLagoBenefitsFeaturesTolerateMissingPurchaseLeg`（purchase 腿 404 → base 特性照答、不伪造）；walletsStub 的 customers-entitlements 分支移除、新增 `/api/v1/subscriptions/` 真实形状路由（purchaseEntitlements 空 = 404 建模「无购买订阅」）。lago_integration 购买测试 Phase3 断言同步改 subscriptions 路由（原 customers 路径 404 断言在真实栈恒真、空洞）。
+- **未跑披露**：`-tags lago_integration` 集成测试本轮未在真实栈复跑（验证轮栈已拆除）；已通过 `go vet -tags lago_integration` 编译门。
+
+### R-22（F-3，低/环境披露）test:web 与 typecheck:web 全量失败 —— 判定成立，非 #82 引入，不改代码
+
+- **复验（node v26.4.0，满足根 package.json engines ">=26"；本机默认 v22.22.3）**：web 全量 `node --import tsx --test` **2305/2305 PASS**（报告所列 ~18+ Vue 消息/文档类失败在 node26 下全部不复现 → 环境致败获证）；商业面子集 22/22 PASS。
+- **typecheck 残留**：node26 下 `tsc -p tsconfig.json --noEmit` 仍有 5 错（mermaid.ts ×2、PlatformShell.tsx ×2、DevMarkdownPage.tsx ×1）——与报告所列同文件；`git log` 证实三文件最后改动 89e17fb6a（全域 UI 对齐轮，远早于 #82 merge 4de51f8c0，且 #82 仅触碰 commercial 文件）→ **预存缺陷、非本票引入**，按「只改问题相关文件」不在本轮修复，建议开独立票清偿。
+
+### flowfix-82 回归清单（本会话实跑）
+
+| 检查 | 命令 | 结果 |
+|---|---|---|
+| commercialplatform 全包 | `go test ./internal/modules/commercial/commercialplatform/ -count=1` | ok（77.5s） |
+| 定向新/邻接用例 | `go test -run 'TestLagoSettle…|TestLagoBenefitsFeatures…' -v` | 12/12 PASS（含 4 个新增） |
+| 10 包回归 | `go test ./internal/modules/commercial/... ./internal/handler/ ./internal/router/ ./internal/container/ -count=1` | 全 ok |
+| 架构门 | `make check-backend-architecture` / `make verify-module-moves` | 0 violations / 16 manifests OK |
+| 集成编译门 | `go vet -tags lago_integration ./internal/modules/commercial/commercialplatform/` | clean |
+| web 全量（node26） | `node --import tsx --test 'src/**/*.test.ts' 'src/**/*.test.tsx'` | 2305/2305 PASS |
+| web 商业面（node26） | `npx tsx --test 'src/commercial/**/*.test.ts(x)'` | 22/22 PASS |
+| 安全红线自查 | diff 审查 | 无新增 SQL/凭据/外呼 host；外呼沿用既有 S1 host 校验路径 |
