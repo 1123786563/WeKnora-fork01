@@ -445,12 +445,24 @@ func (s *pluginService) ConfirmInstallation(
 	}
 
 	// Step 3: (tenant, plugin) uniqueness — re-install is the upgrade path.
+	// B+A 裁决 #1 同族（ConfirmInstallation 同理）：确认写序为 安装行 →
+	// 物化+绑定 → 策略行 → 消费预览；策略行写完前被硬杀（无补偿运行）的
+	// 落库形态 = 安装行已在预览内容上（digest/版本/端点全等）+ 策略行缺失
+	// + 预览未消费。对这一形态的同内容重试必须落入增量补齐（行完备时保持
+	// 既有 already-installed 判定——完整安装上的重复确认不是崩溃窗口）。
 	if existing, err := s.pluginRepo.GetInstallationByTenantPlugin(ctx, tenantID, preview.PluginID); err != nil {
 		logger.GetLogger(ctx).Errorf("failed to load existing plugin installation: %v", err)
 		return nil, ErrInstallationPersistFailed
 	} else if existing != nil {
-		return nil, fmt.Errorf("%w: %q is already at version %s; use the upgrade path",
-			ErrPluginAlreadyInstalled, preview.PluginID, existing.AcceptedVersion)
+		if existing.ToolsDigest != preview.ToolsDigest ||
+			existing.AcceptedVersion != preview.Version ||
+			existing.EndpointURL != preview.EndpointURL {
+			return nil, fmt.Errorf("%w: %q is already at version %s; use the upgrade path",
+				ErrPluginAlreadyInstalled, preview.PluginID, existing.AcceptedVersion)
+		}
+		// 内容全等的既有行：崩溃窗口重试（或同内容新预览确认，落库状态
+		// 不可区分）→ 尝试补齐；行已完备时维持 409 判定。
+		return s.completeCrashedConfirm(ctx, tenantID, preview, existing)
 	}
 
 	// Step 4: re-fetch and re-verify the remote. The admin reviewed THIS
@@ -564,6 +576,108 @@ func (s *pluginService) ConfirmInstallation(
 	}
 
 	return s.installationResult(ctx, tenantID, installation)
+}
+
+// completeCrashedConfirm heals the crash-window shape of a prior confirm of
+// the SAME preview content (B+A 裁决 #1, ConfirmInstallation 同族): the prior
+// attempt died between CreateInstallation and the policy loop (a hard kill —
+// no compensation ran), leaving the row half-installed while the preview
+// stayed unconsumed. The heal:
+//   - rebinds an empty service_id anchor through the plugin_installation_id
+//     reverse lookup (same anchor discipline as UninstallInstallation's
+//     self-heal); an unresolvable anchor keeps the already-installed verdict —
+//     no materialized row means nothing is serving (fail-closed), and
+//     uninstall + re-confirm is the documented path;
+//   - INCREMENTALLY fills the missing per-tool rows from the preview's
+//     reviewed declarations (read exposed, WRITE TOOLS DISABLED — B5) —
+//     existing verdicts are never touched; when the rows are already
+//     complete the established duplicate-content 409 verdict stands;
+//   - consumes the preview so the retry is terminal ("already consumed" from
+//     a racing retry of the same preview reads as success — everything the
+//     admin asked for has landed).
+func (s *pluginService) completeCrashedConfirm(
+	ctx context.Context,
+	tenantID uint64,
+	preview *types.PluginPreview,
+	inst *types.PluginInstallation,
+) (*types.PluginInstallationResult, error) {
+	alreadyInstalled := func() error {
+		return fmt.Errorf("%w: %q is already at version %s; use the upgrade path",
+			ErrPluginAlreadyInstalled, preview.PluginID, inst.AcceptedVersion)
+	}
+
+	// Anchor heal: the crash between CreateMCPService and the service_id bind
+	// leaves the materialized row orphaned-but-findable.
+	if inst.ServiceID == "" {
+		resolved, err := s.serviceIDByInstallation(ctx, tenantID, inst.ID)
+		if err != nil {
+			logger.GetLogger(ctx).Errorf(
+				"confirm heal: failed to resolve orphan materialized service for installation %s: %v", inst.ID, err)
+			return nil, ErrInstallationPersistFailed
+		}
+		if resolved == "" {
+			// No materialized row at all: nothing serves, nothing to key
+			// policy rows to — fail-closed shape, not the fail-open window.
+			return nil, alreadyInstalled()
+		}
+		if err := s.pluginRepo.UpdateInstallationServiceID(ctx, tenantID, inst.ID, resolved); err != nil {
+			logger.GetLogger(ctx).Errorf(
+				"confirm heal: failed to rebind materialized service %s to installation %s: %v", resolved, inst.ID, err)
+			return nil, ErrInstallationPersistFailed
+		}
+		inst.ServiceID = resolved
+		logger.GetLogger(ctx).Infof(
+			"confirm heal: rebound installation %s to orphan materialized service %s", inst.ID, resolved)
+	}
+
+	// Incremental rows — only tools WITHOUT an existing row land the
+	// install-time verdict; a complete row set means this is NOT the crash
+	// window and the duplicate-content verdict stands.
+	rows, err := s.toolApprovalService.ListByService(ctx, tenantID, inst.ServiceID)
+	if err != nil {
+		logger.GetLogger(ctx).Errorf(
+			"confirm heal: failed to load tool policies for installation %s: %v", inst.ID, err)
+		return nil, ErrInstallationMaterializeFailed
+	}
+	existing := map[string]bool{}
+	for _, row := range rows {
+		existing[row.ToolName] = true
+	}
+	wrote := false
+	for _, tool := range preview.ToolsSnapshot {
+		if existing[tool.Name] {
+			continue
+		}
+		enabled := tool.ReadOnly
+		if err := s.toolApprovalService.SetPolicy(ctx, tenantID, inst.ServiceID, tool.Name, nil, &enabled); err != nil {
+			logger.GetLogger(ctx).Errorf(
+				"confirm heal: failed to write tool policy for %s/%s: %v", inst.PluginID, tool.Name, err)
+			return nil, ErrInstallationMaterializeFailed
+		}
+		wrote = true
+	}
+	if !wrote {
+		return nil, alreadyInstalled()
+	}
+
+	// Consume the preview: terminal for retries of this preview. A racing
+	// retry that already consumed it means everything has landed — success.
+	if err := s.pluginRepo.MarkPreviewConsumed(ctx, tenantID, preview.ID); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			if rerr := s.reclassifyPreviewMiss(ctx, tenantID, preview.ID); rerr != nil && !errors.Is(rerr, ErrPreviewAlreadyConsumed) {
+				// 过期中途（4xx 判决如实上抛——行已补齐，重试将收敛到
+				// already-installed 的既有判定）；已消费=并发重试已收敛=成功。
+				return nil, rerr
+			}
+		} else {
+			logger.GetLogger(ctx).Errorf("failed to consume plugin preview in confirm heal: %v", err)
+			return nil, ErrInstallationPersistFailed
+		}
+	}
+	logger.GetLogger(ctx).Infof(
+		"plugin installation heal: completed crashed confirm of %s (installation %s, actor-reviewed preview content)",
+		preview.PluginID, inst.ID)
+	return s.installationResult(ctx, tenantID, inst)
 }
 
 // reclassifyPreviewMiss disambiguates a MarkPreviewConsumed zero-row update
@@ -1300,16 +1414,38 @@ func (s *pluginService) AcceptUpgrade(
 	// the failure path: a half-compensated state (installation restored but
 	// service URL not) must NOT early-return — a retried accept walks the
 	// write path again and converges.
+	//
+	// B+A 裁决 #1：短路前必须校验候选快照每工具都有显式策略行。快照落库
+	// （7a）后策略行写完（7c）前被硬杀的窗口里，重试会命中本短路零写入，
+	// 缺策略行的写工具按运行时门默认启用（MCPToolApproval 缺行=启用），
+	// 触碰「新增写工具默认关闭」边界——行缺失时落入写路径：7a 重写同值
+	// 无害，7c 只补缺行（既有行保留管理员裁决）。svc == nil（服务行不在，
+	// 无行可键）维持原零写入读法。
 	serviceInSync := svc == nil || (svc.URL != nil && *svc.URL == inst.EndpointURL)
 	if candidateVersion == inst.AcceptedVersion &&
 		result.ToolsDigest == inst.ToolsDigest &&
 		candidateEndpoint == inst.EndpointURL &&
 		inst.DriftState == types.PluginDriftNone &&
 		serviceInSync {
+		policiesComplete := true
+		if svc != nil {
+			var err error
+			policiesComplete, err = s.installationPolicyRowsComplete(ctx, tenantID, inst.ServiceID, candidateSnapshot)
+			if err != nil {
+				logger.GetLogger(ctx).Errorf(
+					"failed to load tool policies for upgrade idempotency check on %s: %v", installationID, err)
+				return nil, ErrInstallationMaterializeFailed
+			}
+		}
+		if policiesComplete {
+			logger.GetLogger(ctx).Infof(
+				"plugin upgrade accept: installation %s already at candidate %s (fingerprint match) — idempotent no-op (actor %s)",
+				installationID, candidateVersion, actorID)
+			return s.installationResult(ctx, tenantID, inst)
+		}
 		logger.GetLogger(ctx).Infof(
-			"plugin upgrade accept: installation %s already at candidate %s (fingerprint match) — idempotent no-op (actor %s)",
+			"plugin upgrade accept: installation %s carries candidate %s with incomplete tool policy rows (crashed accept window) — completing (actor %s)",
 			installationID, candidateVersion, actorID)
-		return s.installationResult(ctx, tenantID, inst)
 	}
 
 	// Memory-held old values — the compensation write-back source.
@@ -1500,6 +1636,37 @@ func snapshotToolNamesOf(snapshot []types.PluginToolSnapshot) []string {
 		names = append(names, tool.Name)
 	}
 	return names
+}
+
+// installationPolicyRowsComplete reports whether every tool of the snapshot
+// carries an explicit per-tool policy row keyed to the materialized service
+// (B+A 裁决 #1). MCPToolApproval treats a MISSING row as enabled for
+// backwards compatibility, so the idempotent short-circuits of the upgrade/
+// drift accept paths must not zero-write over a snapshot whose rows were
+// killed mid-write (hard crash between the snapshot write and the policy
+// loop): a write tool without a row would ride the runtime gate's
+// default-enabled verdict — the exact inversion of B5's
+// "new write tools land disabled".
+func (s *pluginService) installationPolicyRowsComplete(
+	ctx context.Context,
+	tenantID uint64,
+	serviceID string,
+	snapshot types.PluginPreviewTools,
+) (bool, error) {
+	rows, err := s.toolApprovalService.ListByService(ctx, tenantID, serviceID)
+	if err != nil {
+		return false, err
+	}
+	present := make(map[string]struct{}, len(rows))
+	for _, row := range rows {
+		present[row.ToolName] = struct{}{}
+	}
+	for _, tool := range snapshot {
+		if _, ok := present[tool.Name]; !ok {
+			return false, nil
+		}
+	}
+	return true, nil
 }
 
 // parseDriftDetail decodes a persisted drift_detail document. A nil/empty
@@ -1754,17 +1921,10 @@ func (s *pluginService) ResolveDrift(
 	rebased := rebaseSnapshotOnLive(live, inst.ToolsSnapshot)
 	rebasedDigest := plugins.SnapshotDigest(rebased)
 
-	// Step 4: idempotency — already rebased and clean → zero writes.
-	if inst.DriftState == types.PluginDriftNone && rebasedDigest == inst.ToolsDigest {
-		logger.GetLogger(ctx).Infof(
-			"plugin drift resolve: installation %s already carries the live directory as its snapshot — idempotent no-op (actor %s)",
-			installationID, actorID)
-		return s.installationResult(ctx, tenantID, inst)
-	}
-
 	// The materialized service row (policy-key target); a missing row leaves
 	// nothing to write policies against — the installation row stays
-	// authoritative (same reading as AcceptUpgrade's 7c guard).
+	// authoritative (same reading as AcceptUpgrade's 7c guard). Loaded before
+	// the step-4 short-circuit: the completeness check below needs it.
 	var svc *types.MCPService
 	if inst.ServiceID != "" {
 		svc, err = s.mcpServiceRepo.GetByID(ctx, tenantID, inst.ServiceID)
@@ -1772,6 +1932,33 @@ func (s *pluginService) ResolveDrift(
 			logger.GetLogger(ctx).Errorf("failed to load materialized service for drift resolve: %v", err)
 			return nil, ErrInstallationPersistFailed
 		}
+	}
+
+	// Step 4: idempotency — already rebased and clean → zero writes. B+A 裁决
+	// #1 同族：短路前校验 rebased 快照每工具都有显式策略行——5a 落库、5b
+	// 写行中途被硬杀的窗口里，重试不得零写入放行缺行写工具（缺行=运行时
+	// 门默认启用）；行缺失时落入写路径增量补齐（5a 重写同值无害）。svc ==
+	// nil（无行可键）维持原零写入读法。
+	if inst.DriftState == types.PluginDriftNone && rebasedDigest == inst.ToolsDigest {
+		policiesComplete := true
+		if svc != nil {
+			var checkErr error
+			policiesComplete, checkErr = s.installationPolicyRowsComplete(ctx, tenantID, inst.ServiceID, rebased)
+			if checkErr != nil {
+				logger.GetLogger(ctx).Errorf(
+					"failed to load tool policies for drift resolve idempotency check on %s: %v", installationID, checkErr)
+				return nil, ErrInstallationMaterializeFailed
+			}
+		}
+		if policiesComplete {
+			logger.GetLogger(ctx).Infof(
+				"plugin drift resolve: installation %s already carries the live directory as its snapshot — idempotent no-op (actor %s)",
+				installationID, actorID)
+			return s.installationResult(ctx, tenantID, inst)
+		}
+		logger.GetLogger(ctx).Infof(
+			"plugin drift resolve: installation %s already rebased but tool policy rows are incomplete (crashed resolve window) — completing (actor %s)",
+			installationID, actorID)
 	}
 
 	// Memory-held old values — the compensation write-back source. The drift

@@ -487,6 +487,41 @@ func TestResolveDriftRebasesSnapshot(t *testing.T) {
 	require.Len(t, s.pluginRepo.driftWrites, driftWritesBefore)
 }
 
+// TestResolveDriftIdempotentShortCircuitCompletesMissingPolicyRows（B+A
+// 裁决 #1 同族）：resolve 的幂等短路（漂移 none + rebased digest 相等 → 零
+// 写入）与 AcceptUpgrade 同款崩溃窗口——5a 快照落库后 5b 策略行写完前被
+// 硬杀，重试命中短路零写入，缺行写工具按运行时门默认启用。短路前必须校验
+// rebased 快照每工具都有显式策略行，缺失则落入增量补齐。
+func TestResolveDriftIdempotentShortCircuitCompletesMissingPolicyRows(t *testing.T) {
+	const tenantID = uint64(11)
+	s := newDriftStack(t, tenantID)
+	ctx := context.Background()
+
+	// 漂移（新增 c + w）后 resolve：快照 [a,c,w]、c/w 行落地。
+	s.remote.SetTools([]plugintest.Tool{
+		{Name: "a", Description: "tool a", ReadOnly: true, InputSchema: driftSchemaA},
+		{Name: "c", Description: "tool c", ReadOnly: true, InputSchema: upgradeV2WriteSchema},
+		{Name: "w", Description: "write w", ReadOnly: false, InputSchema: upgradeV2WriteSchema},
+	})
+	_, err := s.svc.ResolveDrift(ctx, tenantID, "admin-1", s.inst.ID)
+	require.NoError(t, err)
+
+	// 崩溃窗口等价形态：5a 已落、5b 中途硬杀——删除写工具 w 的行。
+	require.NoError(t, s.pluginRepo.DeleteInstallationToolPolicies(ctx, tenantID, s.inst.ServiceID, []string{"w"}))
+	require.NotContains(t, s.policyRows(t, tenantID), "w", "fixture: the crash window leaves the write tool without a policy row")
+
+	// 重试 resolve：不得短路零写入放行——缺行落入增量补齐。
+	retried, err := s.svc.ResolveDrift(ctx, tenantID, "admin-1", s.inst.ID)
+	require.NoError(t, err)
+	require.Equal(t, types.PluginDriftNone, retried.DriftState)
+
+	policies := s.policyRows(t, tenantID)
+	require.Contains(t, policies, "w",
+		"the retried resolve must complete the missing policy row instead of idempotently no-op'ing")
+	require.False(t, policies["w"].Enabled, "the completed write-tool row must land disabled, not ride the runtime gate's default-enabled verdict")
+	require.True(t, policies["a"].Enabled, "the completion is incremental — the existing verdict stays")
+}
+
 // TestResolveDriftRejectsWhenEndpointBroken（计划 Step 1 用例 4）：远端
 // 不可达时 resolve 拒绝（不接受一个无法核验的目录为新快照）且快照/漂移
 // 状态不变。

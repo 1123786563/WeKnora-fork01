@@ -432,6 +432,40 @@ func TestAcceptUpgradeIdempotentAndFingerprintGuard(t *testing.T) {
 	})
 }
 
+// TestAcceptUpgradeIdempotentShortCircuitCompletesMissingPolicyRows（B+A
+// 裁决 #1）：崩溃窗口 fail-open——快照落库（7a）后策略行写完（7c）前被硬杀，
+// 重试接受命中幂等短路（版本/digest/端点/漂移/服务行全匹配）零写入，缺失
+// 策略行的写工具按运行时门默认启用（MCPToolApproval「缺行视为启用」），
+// 触碰「新增写工具默认关闭」边界。短路前必须校验候选快照每工具都有显式
+// 策略行，缺失则落入增量补齐（7a 重写同值无害，7c 只补缺行）。
+func TestAcceptUpgradeIdempotentShortCircuitCompletesMissingPolicyRows(t *testing.T) {
+	const tenantID = uint64(9)
+	s := newUpgradeAcceptStack(t, tenantID)
+	ctx := context.Background()
+
+	resp := s.previewV2(t, tenantID)
+	_, err := s.svc.AcceptUpgrade(ctx, tenantID, "admin-1", s.inst.ID, resp.CandidateFingerprint)
+	require.NoError(t, err)
+
+	// 崩溃窗口等价形态：安装行已在候选上（7a 已落）、7c 写策略行中途被硬杀
+	// ——直接删除本轮新落的写工具 create_issue 行。
+	require.NoError(t, s.pluginRepo.DeleteInstallationToolPolicies(ctx, tenantID, s.inst.ServiceID, []string{"create_issue"}))
+	require.NotContains(t, s.policyRows(t, tenantID), "create_issue", "fixture: the crash window leaves the write tool without a policy row")
+
+	// 同指纹重试：不得幂等零写入放行——缺行必须落入增量补齐。
+	retried, err := s.svc.AcceptUpgrade(ctx, tenantID, "admin-1", s.inst.ID, resp.CandidateFingerprint)
+	require.NoError(t, err)
+	require.Equal(t, "2.0.0", retried.Version)
+
+	rows := s.policyRows(t, tenantID)
+	require.Contains(t, rows, "create_issue",
+		"the retried accept must complete the missing policy row instead of idempotently no-op'ing")
+	require.False(t, rows["create_issue"].Enabled,
+		"the completed write-tool row must land disabled (B5 default-off) — missing rows ride the runtime gate's default-enabled verdict")
+	// 既有行保留管理员裁决：只读 search 仍启用。
+	require.True(t, rows["search"].Enabled, "the completion must be incremental — existing verdicts stay")
+}
+
 // TestAcceptUpgradeFailureKeepsOldVersion（计划 Step 1 用例 3）：
 //
 //	a) 远端不可达（清单 host 下线）→ 抓取失败、零写入、旧目录仍由守卫供给；

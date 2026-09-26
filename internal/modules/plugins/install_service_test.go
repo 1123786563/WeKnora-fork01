@@ -672,6 +672,77 @@ func TestConfirmInstallationIdempotent(t *testing.T) {
 	require.Len(t, s.mcpRepo.services, 1)
 }
 
+// TestConfirmInstallationHealsCrashedPolicyRows（B+A 裁决 #1 同族——
+// ConfirmInstallation 同理）：确认写序为 安装行 → 物化+绑定 → 策略行 →
+// 消费预览；策略行写完前被硬杀（无补偿运行）时，落库形态 = 安装行已在
+// 预览内容上（digest/版本/端点相等）+ 策略行缺失 + 预览未消费。重试确认
+// 此前一律 409「走升级路径」，而升级路径的幂等短路（B+A #1）修复前同样
+// 零写入——写工具按运行时门默认启用。同内容重试必须落入增量补齐。
+// 行完备时保持既有 409 判定（TestConfirmInstallationIdempotent 已钉）。
+func TestConfirmInstallationHealsCrashedPolicyRows(t *testing.T) {
+	s := newInstallTestStack(t, 7)
+	_, err := s.confirm(t, 7, s.previewID)
+	require.NoError(t, err)
+
+	// 崩溃窗口等价形态：删除写工具 create_issue 行 + 新造同内容未消费预览
+	// （与「首装中途硬杀后重试」在落库状态上不可区分）。
+	inst := s.pluginRepo.installations[0]
+	delete(s.approvalRepo.rows, approvalKey(inst.ServiceID, "create_issue"))
+	fresh, err := s.svc.PreviewFromManifest(context.Background(), 7, "admin-1", s.pluginRepo.previews[0].ManifestURL)
+	require.NoError(t, err)
+
+	healed, err := s.confirm(t, 7, fresh.PreviewID)
+	require.NoError(t, err,
+		"a same-content confirm retry against a half-installed row must complete the missing rows, not bounce with already-installed")
+	require.Equal(t, inst.ID, healed.InstallationID, "the heal reuses the existing installation row — no second row")
+	require.Len(t, s.pluginRepo.installations, 1)
+
+	row, ok := s.approvalRepo.rows[approvalKey(inst.ServiceID, "create_issue")]
+	require.True(t, ok, "the crashed policy row must be completed by the retry")
+	require.False(t, row.Enabled, "the healed write-tool row lands disabled (B5), never the runtime gate default")
+
+	// 预览被消费：重试收敛终态（再确认同一预览 → already consumed）。
+	for _, p := range s.pluginRepo.previews {
+		if p.ID == fresh.PreviewID {
+			require.NotNil(t, p.ConsumedAt, "the healing retry must consume the preview")
+		}
+	}
+	_, err = s.confirm(t, 7, fresh.PreviewID)
+	require.ErrorIs(t, err, service.ErrPreviewAlreadyConsumed)
+}
+
+// TestConfirmInstallationHealsCrashedServiceBinding（B+A 裁决 #1 同族，
+// 绑定窗口变体）：物化行已建、service_id 绑定落库前被硬杀——重试确认
+// 必须经反查自愈绑定（UninstallInstallation 的自愈锚同款）后增量补齐
+// 全部策略行。反查无行（物化前被杀）保持 409（fail-closed，无暴露面）。
+func TestConfirmInstallationHealsCrashedServiceBinding(t *testing.T) {
+	s := newInstallTestStack(t, 7)
+	_, err := s.confirm(t, 7, s.previewID)
+	require.NoError(t, err)
+
+	// 崩溃窗口等价形态：绑定未落（service_id 空）+ 策略行全缺 + 未消费
+	// 同内容预览——物化行经 plugin_installation_id 反查可寻。
+	inst := s.pluginRepo.installations[0]
+	serviceID := inst.ServiceID
+	inst.ServiceID = ""
+	require.Len(t, s.approvalRepo.rows, 2)
+	s.approvalRepo.rows = map[string]*types.MCPToolApproval{}
+	fresh, err := s.svc.PreviewFromManifest(context.Background(), 7, "admin-1", s.pluginRepo.previews[0].ManifestURL)
+	require.NoError(t, err)
+
+	healed, err := s.confirm(t, 7, fresh.PreviewID)
+	require.NoError(t, err)
+	require.Equal(t, serviceID, s.pluginRepo.installations[0].ServiceID,
+		"the heal must rebind the installation to the orphan materialized service via the reverse lookup")
+	require.Len(t, s.pluginRepo.installations, 1)
+	require.Len(t, s.mcpRepo.services, 1, "no second materialized row is created")
+
+	require.Len(t, s.approvalRepo.rows, 2, "all crashed-missing rows are completed")
+	require.True(t, s.approvalRepo.rows[approvalKey(serviceID, "search_my_week_issues")].Enabled)
+	require.False(t, s.approvalRepo.rows[approvalKey(serviceID, "create_issue")].Enabled)
+	_ = healed
+}
+
 func TestConfirmInstallationCompensatesOnMaterializeFailure(t *testing.T) {
 	s := newInstallTestStack(t, 7)
 	// 物化失败：mcp_services Create 报错。
