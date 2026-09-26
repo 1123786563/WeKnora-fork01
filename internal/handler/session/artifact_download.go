@@ -810,7 +810,8 @@ func (h *CraftExportHandler) DownloadCraftExportBundle(c *gin.Context) {
 		// passes forward-slash relative-path validation but older or custom
 		// extractors can resolve it as an absolute target outside the
 		// extraction directory. Refuse it before the 200 head is written.
-		if first := member.Path; len(first) >= 2 && first[0] >= 'a' && first[0] <= 'z' && first[1] == ':' {
+		if first := member.Path; len(first) >= 2 && first[1] == ':' &&
+			((first[0] >= 'a' && first[0] <= 'z') || (first[0] >= 'A' && first[0] <= 'Z')) {
 			abortDownload("craft export bundle member %q uses a drive-letter path", member.Path)
 			continue
 		}

@@ -169,6 +169,12 @@ func DecodeWebCitationManifest(data []byte) (WebCitationManifest, error) {
 	if err := decoder.Decode(&m); err != nil {
 		return WebCitationManifest{}, fmt.Errorf("%w: web citation manifest decode: %v", ErrInvalidInput, err)
 	}
+	if decoder.More() {
+		// Trailing content after the first JSON document ({...}garbage, or a
+		// second shadow document) is refused: the manifest is untrusted
+		// model output and strictness here is part of that contract.
+		return WebCitationManifest{}, fmt.Errorf("%w: web citation manifest has trailing data", ErrInvalidInput)
+	}
 	if m.Entries == nil {
 		return WebCitationManifest{}, fmt.Errorf("%w: web citation manifest carries no entries field", ErrInvalidInput)
 	}

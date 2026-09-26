@@ -121,7 +121,17 @@ func (s *CraftShareService) contribution(ctx context.Context, scope craft.Scope,
 	if scope.TenantID == 0 || scope.UserID == "" || scope.SessionID == "" || strings.TrimSpace(versionID) == "" {
 		return craft.RestrictedContribution{}, fmt.Errorf("%w: incomplete share request", craft.ErrInvalidInput)
 	}
-	version, err := s.versions.Get(ctx, scope, strings.TrimSpace(versionID))
+	// The only assembled VersionStore (repository.NewCraftVersionStore)
+	// authorizes against the workspace OWNER: members who passed
+	// RequireTaskAccess would still 403 under their own scope. Read with
+	// the task owner's scope — the caller-facing TaskRead/TaskShare gates
+	// ran before this point, and the owner scope is the store's authority
+	// axis, not a privilege grant.
+	ownerScope, err := s.taskOwnerScope(ctx, scope)
+	if err != nil {
+		return craft.RestrictedContribution{}, err
+	}
+	version, err := s.versions.Get(ctx, ownerScope, strings.TrimSpace(versionID))
 	if err != nil {
 		return craft.RestrictedContribution{}, err
 	}
@@ -136,8 +146,13 @@ func (s *CraftShareService) contribution(ctx context.Context, scope craft.Scope,
 		if err != nil {
 			return craft.RestrictedContribution{}, err
 		}
-		raw, err := io.ReadAll(reader)
+		// Bounded read like every other GetFile consumer: the manifest's
+		// recorded size caps a corrupted or mis-shelved object.
+		raw, err := io.ReadAll(io.LimitReader(reader, file.Bytes+1))
 		reader.Close()
+		if int64(len(raw)) > file.Bytes {
+			return craft.RestrictedContribution{}, fmt.Errorf("%w: citations manifest exceeds its recorded size", craft.ErrConflict)
+		}
 		if err != nil {
 			return craft.RestrictedContribution{}, err
 		}
@@ -158,6 +173,25 @@ func (s *CraftShareService) contribution(ctx context.Context, scope craft.Scope,
 		return craft.RestrictedContribution{}, craft.ErrConflict
 	}
 	return craft.RestrictedContributionFrom(version.ID, manifest, record)
+}
+
+// taskOwnerScope resolves the durable owner scope of a task's session: the
+// sessions row's user_id is the workspace owner the version store authorizes
+// against. It grants nothing — the caller already passed the task gates.
+func (s *CraftShareService) taskOwnerScope(ctx context.Context, scope craft.Scope) (craft.Scope, error) {
+	var owner string
+	err := s.db.WithContext(ctx).Table("sessions").Select("user_id").
+		Where("tenant_id = ? AND id = ?", scope.TenantID, scope.SessionID).Take(&owner).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return craft.Scope{}, craft.ErrNotFound
+	}
+	if err != nil {
+		return craft.Scope{}, err
+	}
+	if owner == "" {
+		return craft.Scope{}, craft.ErrNotFound
+	}
+	return craft.Scope{TenantID: scope.TenantID, UserID: owner, SessionID: scope.SessionID}, nil
 }
 
 // decision loads the latest persisted decision row for one task+version.

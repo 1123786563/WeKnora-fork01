@@ -556,7 +556,10 @@ func (g *CraftModelGateway) Forward(c *gin.Context) {
 				"craft_run_id": payload.RunID, "craft_call_id": callID, "craft_attempt_id": attemptID,
 			})
 		}
-		appFail(c, http.StatusBadGateway, "UPSTREAM_ERROR", "the upstream model request failed with an unknown activity outcome")
+		// The charge-start journal resolved Unknown: the send MAY have left.
+		// The machine-readable code must say so — the egress adapter keys
+		// its parked/resolved decision off this code.
+		appFail(c, http.StatusBadGateway, "ACTIVITY_UNRESOLVED", "the upstream model request failed with an unknown activity outcome")
 		return
 	}
 	if resp.Body == nil {
@@ -582,12 +585,26 @@ func (g *CraftModelGateway) Forward(c *gin.Context) {
 			failure = errors.Join(failure, errors.New("upstream response body exceeds maximum size"))
 		}
 		resolveErr := attempt.Resolve(c.Request.Context(), service.CraftChargeStartUnknown)
-		appFail(c, http.StatusBadGateway, "ACTIVITY_UNRESOLVED", errors.Join(failure, resolveErr).Error())
+		if resolveErr != nil {
+			logger.ErrorWithFields(c.Request.Context(), resolveErr, map[string]any{
+				"craft_run_id": payload.RunID, "craft_call_id": callID, "craft_attempt_id": attemptID,
+			})
+		}
+		// Upstream transport errors can quote internal IP:port topology and
+		// resolve errors can quote SQL — both stay in the server log; the
+		// client gets the opaque code and a fixed sentence.
+		logger.ErrorWithFields(c.Request.Context(), failure, map[string]any{
+			"craft_run_id": payload.RunID, "craft_call_id": callID, "craft_attempt_id": attemptID,
+		})
+		appFail(c, http.StatusBadGateway, "ACTIVITY_UNRESOLVED", "the upstream response could not be read and the activity outcome is unknown")
 		return
 	}
 	if err := attempt.Resolve(c.Request.Context(), service.CraftChargeStartStarted); err != nil {
 		g.recordCall(c, payload, callID, attemptID, model, nil)
-		appFail(c, http.StatusBadGateway, "ACTIVITY_UNRESOLVED", err.Error())
+		logger.ErrorWithFields(c.Request.Context(), err, map[string]any{
+			"craft_run_id": payload.RunID, "craft_call_id": callID, "craft_attempt_id": attemptID,
+		})
+		appFail(c, http.StatusBadGateway, "ACTIVITY_UNRESOLVED", "the activity started but its record could not be persisted; reconciliation required")
 		return
 	}
 	g.recordCall(c, payload, callID, attemptID, model, craftParseUsage(respBody))
@@ -729,7 +746,13 @@ func (g *CraftModelGateway) failBudget(c *gin.Context, err error, admission bool
 	case errors.Is(err, craft.ErrGrantExhausted), errors.Is(err, craft.ErrBudgetDenied):
 		appFail(c, status, "BUDGET_STOPPED", "model call blocked by budget: "+err.Error())
 	default:
-		appFail(c, http.StatusInternalServerError, "BUDGET_GATE_FAILED", err.Error())
+		// Infrastructure failures (GORM/driver errors may quote SQL or
+		// internal DB topology) log server-side; the client sees only the
+		// opaque code and a fixed sentence.
+		logger.ErrorWithFields(c.Request.Context(), err, map[string]any{
+			"craft_grant_id": c.GetString("craft_grant_id"),
+		})
+		appFail(c, http.StatusInternalServerError, "BUDGET_GATE_FAILED", "the budget gate could not be consulted; retry or contact the operator")
 	}
 }
 

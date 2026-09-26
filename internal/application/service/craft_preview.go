@@ -254,6 +254,16 @@ func NewCraftPreviewService(
 		panic(fmt.Sprintf("craft: preview origin %q must be a distinct https origin from app origin %q",
 			config.PreviewOrigin, config.AppOrigin))
 	}
+	if config.AppOrigin != "" && config.PreviewOrigin != "" &&
+		previewBareHostname(config.AppOrigin) != "" &&
+		strings.EqualFold(previewBareHostname(config.AppOrigin), previewBareHostname(config.PreviewOrigin)) {
+		// Host-only cookies are shared across PORTS: a preview origin that
+		// differs from the app origin only by port spelling (or by port at
+		// all) is not an isolation boundary for the unauthenticated preview
+		// routes.
+		panic(fmt.Sprintf("craft: preview origin %q shares host %q with app origin %q; the preview origin must live on a distinct hostname",
+			config.PreviewOrigin, previewBareHostname(config.PreviewOrigin), config.AppOrigin))
+	}
 	return &CraftPreviewService{
 		versions:     versions,
 		files:        files,
@@ -304,7 +314,34 @@ func (s *CraftPreviewService) AcceptsPreviewHost(host string) bool {
 	}
 	// Normalize both sides: the config side may omit the default port while
 	// the request carries it (or vice versa).
-	return strings.EqualFold(trimDefaultPort(host, u.Scheme), trimDefaultPort(u.Host, u.Scheme))
+	if !strings.EqualFold(trimDefaultPort(host, u.Scheme), trimDefaultPort(u.Host, u.Scheme)) {
+		return false
+	}
+	// Bare-hostname overlap guard: a request on the APP origin's hostname
+	// (whatever port spelling) must never reach the unauthenticated preview
+	// routes — Host-only session cookies follow the hostname, not the port.
+	if app, err := url.Parse(s.config.AppOrigin); err == nil && app.Host != "" {
+		requestBare := previewBareHostname("https://" + host)
+		if strings.EqualFold(requestBare, previewBareHostname(s.config.AppOrigin)) &&
+			!strings.EqualFold(previewBareHostname(s.config.PreviewOrigin), previewBareHostname(s.config.AppOrigin)) {
+			return false
+		}
+	}
+	return true
+}
+
+// previewBareHostname reduces an origin (or host:port) to its bare hostname:
+// default port trimmed, any remaining port split off, IPv6 brackets removed.
+func previewBareHostname(origin string) string {
+	u, err := url.Parse(origin)
+	if err != nil || u.Host == "" {
+		return ""
+	}
+	host := trimDefaultPort(u.Host, u.Scheme)
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	return strings.Trim(host, "[]")
 }
 
 // Issue mints one redemption ticket for a published version after the full

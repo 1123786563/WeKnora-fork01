@@ -55,6 +55,25 @@ func TestInputCodePolicyDeniesAttachedFlagValues(t *testing.T) {
 	}
 }
 
+func TestInputCodePolicyDeniesFindExecForwarding(t *testing.T) {
+	policy := newT03Policy(t)
+	cases := [][]string{
+		{"find", ".", "-type", "f", "-name", "*.py", "-exec", "python3", "{}", ";"},
+		{"find", ".", "-execdir", "python3", "{}", "+"},
+	}
+	for _, command := range cases {
+		decision := policy.Review(InputExecutionRequest{Command: command, WorkingDir: "/workspace"})
+		if decision.Allowed || decision.Reason != "exec_forward" {
+			t.Fatalf("find -exec forwarding must be denied: %v -> %+v", command, decision)
+		}
+	}
+	// Plain find (no execution forwarding) stays allowed.
+	plain := policy.Review(InputExecutionRequest{Command: []string{"find", ".", "-name", "x"}, WorkingDir: "/workspace"})
+	if !plain.Allowed {
+		t.Fatalf("plain find must stay allowed: %+v", plain)
+	}
+}
+
 func TestInputCodePolicyKeepsLegitimateShapesAllowed(t *testing.T) {
 	policy := newT03Policy(t)
 	script := t03ScriptPath()

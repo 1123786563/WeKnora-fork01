@@ -54,9 +54,20 @@ type CraftEgressAttemptJournal struct {
 	file       *os.File
 	nextOrd    int64
 	unresolved map[string]CraftEgressAttemptRecord // requestDigest -> unresolved attempt
-	resolved   map[string]bool                     // requestDigest -> has resolved attempt
-	now        func() time.Time
+	// ordinals preserves attemptID -> ordinal across resolves (the
+	// unresolved index alone deletes entries on definitive outcomes, which
+	// used to make a late second Resolve fall back to nextOrd and collide
+	// ordinals with the next Allocate).
+	ordinals map[string]int64
+	records  int64
+	now      func() time.Time
 }
+
+// maxCraftEgressJournalRecords bounds the append-only journal from
+// unbounded growth (a sandboxed client can append at fsync rate with fresh
+// body fingerprints). Past the cap, allocation fails closed (503) instead of
+// silently consuming the host disk and replay memory.
+const maxCraftEgressJournalRecords = 1 << 20
 
 func OpenCraftEgressAttemptJournal(path string) (*CraftEgressAttemptJournal, error) {
 	if path == "" {
@@ -72,7 +83,7 @@ func OpenCraftEgressAttemptJournal(path string) (*CraftEgressAttemptJournal, err
 		return nil, fmt.Errorf("craftegress: journal open: %w", err)
 	}
 	journal := &CraftEgressAttemptJournal{path: path, file: file, nextOrd: 1,
-		unresolved: make(map[string]CraftEgressAttemptRecord), resolved: make(map[string]bool),
+		unresolved: make(map[string]CraftEgressAttemptRecord), ordinals: make(map[string]int64),
 		now: time.Now}
 	if err := journal.replay(); err != nil {
 		_ = file.Close()
@@ -117,17 +128,16 @@ func (j *CraftEgressAttemptJournal) replay() error {
 			return fmt.Errorf("craftegress: journal record unreadable at byte %d", offset)
 		}
 		states[record.AttemptID] = record
+		j.ordinals[record.AttemptID] = record.Ordinal
+		j.records++
 		if record.Ordinal >= j.nextOrd {
 			j.nextOrd = record.Ordinal + 1
 		}
 		offset += len(line) + 1
 	}
 	for _, record := range states {
-		switch record.State {
-		case CraftEgressAttemptUnresolved:
+		if record.State == CraftEgressAttemptUnresolved {
 			j.unresolved[record.RequestDigest] = record
-		case CraftEgressAttemptResolved:
-			j.resolved[record.RequestDigest] = true
 		}
 	}
 	// A complete final record whose trailing newline was lost would make the
@@ -155,6 +165,9 @@ func (j *CraftEgressAttemptJournal) AllocateIfNotParked(requestDigest string) (C
 	if parked, ok := j.unresolved[requestDigest]; ok {
 		return parked, false, nil
 	}
+	if j.records >= maxCraftEgressJournalRecords {
+		return CraftEgressAttemptRecord{}, false, fmt.Errorf("craftegress: attempt journal reached its record cap %d", maxCraftEgressJournalRecords)
+	}
 	record := CraftEgressAttemptRecord{
 		Ordinal:       j.nextOrd,
 		AttemptID:     mintCraftEgressAttemptID(j.nextOrd),
@@ -166,6 +179,8 @@ func (j *CraftEgressAttemptJournal) AllocateIfNotParked(requestDigest string) (C
 		return CraftEgressAttemptRecord{}, false, err
 	}
 	j.nextOrd++
+	j.records++
+	j.ordinals[record.AttemptID] = record.Ordinal
 	j.unresolved[requestDigest] = record
 	return record, true, nil
 }
@@ -203,23 +218,26 @@ func (j *CraftEgressAttemptJournal) Resolve(attemptID, requestDigest string, gat
 	}
 	if definitive {
 		delete(j.unresolved, requestDigest)
-		j.resolved[requestDigest] = true
 	}
 	return nil
 }
 
 func (j *CraftEgressAttemptJournal) ordinalLocked(attemptID string) int64 {
-	// Transitions reuse the attempt's original ordinal when known; a foreign
-	// id cannot occur because only Allocate minted ids reach this path.
-	for _, record := range j.unresolved {
-		if record.AttemptID == attemptID {
-			return record.Ordinal
-		}
+	// The dedicated ordinal index survives definitive resolves; a miss (a
+	// foreign id) returns 0 rather than nextOrd, which used to collide the
+	// transition record with the NEXT Allocate's ordinal.
+	if ordinal, ok := j.ordinals[attemptID]; ok {
+		return ordinal
 	}
-	return j.nextOrd
+	return 0
 }
 
 func (j *CraftEgressAttemptJournal) appendLocked(record CraftEgressAttemptRecord) error {
+	if j.file == nil {
+		// In-flight handlers can outlive the shutdown budget and reach here
+		// after Close; a nil dereference panic serves nobody.
+		return fmt.Errorf("craftegress: journal is closed")
+	}
 	encoded, err := json.Marshal(record)
 	if err != nil {
 		return fmt.Errorf("craftegress: journal encode: %w", err)

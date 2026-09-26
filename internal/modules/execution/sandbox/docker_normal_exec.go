@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/moby/moby/client"
 )
 
@@ -291,7 +292,15 @@ func (c *DockerNormalExecClient) StartAttachedExecOnce(
 			result := dockerNormalExecInputResult{}
 			closer, ok := attached.Conn.(interface{ CloseWrite() error })
 			if !ok {
-				result.err = errors.New("Docker hijacked stream does not support stdin half-close")
+				// A TLS-hijacked remote daemon connection has no
+				// CloseWrite. Degrade like the legacy streamExec path: skip
+				// the half-close (the server reads stdin to EOF on detach)
+				// instead of failing an attach that already consumed the
+				// durable send claim.
+				logger.Warnf(ctx, "[DockerNormalExec] stream does not support stdin half-close; skipping CloseWrite")
+				written, writeErr := io.Copy(attached.Conn, bytes.NewReader(stdin))
+				result.bytes = written
+				result.err = writeErr
 				inputChannel <- result
 				return
 			}

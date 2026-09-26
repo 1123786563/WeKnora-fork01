@@ -339,7 +339,9 @@ func (s *CraftBudgetService) StartBinding(ctx context.Context, grantID, activity
 	resolveCtx, resolveDone := context.WithTimeout(context.WithoutCancel(ctx), craftChargeStartResolveTimeout)
 	defer resolveDone()
 	if resolveErr := s.resolveCraftChargeStart(resolveCtx, journal, outcome); resolveErr != nil {
-		return outcome, resolveErr
+		// Join like BeginBinding: the caller must see BOTH the external
+		// callback failure and the persistence failure.
+		return outcome, errors.Join(startErr, resolveErr)
 	}
 	return outcome, startErr
 }
@@ -1244,7 +1246,10 @@ func (s *CraftBudgetService) BudgetPause(ctx context.Context, scope craft.Scope,
 	}
 	var grant CraftBudgetGrantRow
 	if err := s.db.WithContext(ctx).Where("tenant_id = ? AND run_id = ?", scope.TenantID, runID).Take(&grant).Error; err != nil {
-		return craft.BudgetPause{}, craft.ErrNotFound
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return craft.BudgetPause{}, craft.ErrNotFound
+		}
+		return craft.BudgetPause{}, err
 	}
 	var run struct{ Status, WaitReason string }
 	err := s.db.WithContext(ctx).Table("agent_runs").Select("status, wait_reason").
@@ -1299,7 +1304,10 @@ func (s *CraftBudgetService) ExtendAndResume(ctx context.Context, scope craft.Sc
 	}
 	var grant CraftBudgetGrantRow
 	if err := s.db.WithContext(ctx).Where("tenant_id = ? AND run_id = ?", scope.TenantID, runID).Take(&grant).Error; err != nil {
-		return craft.ErrNotFound
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return craft.ErrNotFound
+		}
+		return err
 	}
 	if _, err := s.BudgetPause(ctx, scope, runID); err != nil {
 		return err

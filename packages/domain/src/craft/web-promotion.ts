@@ -17,13 +17,19 @@ export interface WebVersionEvidenceFact {
   webEvidence: WebCheckEvidenceFact | null;
   /**
    * Optional ordering witness (creation timestamp of the version, newest
-   * wins). When callers supply it, the picker no longer depends on their
-   * array order alone: the seat goes to the NEWEST ready version even if the
-   * list arrives shuffled, which is exactly what #107's "the newest version
-   * passing the four checks becomes the default" requires.
+   * wins). NOTE ON DATA PROVENANCE: CraftVersionView (and the contracts
+   * package as a whole) carries NO timestamp field today and version ids are
+   * content digests, not time-ordered — so until the frozen contract gains
+   * a timestamp member, the newest-first ARRAY ORDER (server-side
+   * created_at DESC) remains the only ordering source that actually fires.
+   * The createdAt branch below is the ready consumer for that future field;
+   * callers must keep passing a newest-first list until then.
    */
   createdAt?: string;
 }
+
+/** The passed outcome literal, shared by every four-check comparison. */
+const PASSED_OUTCOME = 'passed';
 
 /**
  * A promotion is ready only when all four facts independently passed. A
@@ -33,10 +39,10 @@ export interface WebVersionEvidenceFact {
 export function webCheckEvidenceReady(evidence: WebCheckEvidenceFact | null): boolean {
   if (evidence === null) return false;
   return (
-    evidence.build === 'passed' &&
-    evidence.entry === 'passed' &&
-    evidence.preview_reachable === 'passed' &&
-    evidence.page_loaded === 'passed'
+    evidence.build === PASSED_OUTCOME &&
+    evidence.entry === PASSED_OUTCOME &&
+    evidence.preview_reachable === PASSED_OUTCOME &&
+    evidence.page_loaded === PASSED_OUTCOME
   );
 }
 

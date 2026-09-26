@@ -92,6 +92,9 @@ func NewCraftEgressAdapter(config CraftEgressAdapterConfig) (*CraftEgressAdapter
 	if err != nil {
 		return nil, err
 	}
+	if config.Now != nil {
+		journal.now = config.Now
+	}
 	maxBody := config.MaxBodyBytes
 	if maxBody <= 0 {
 		maxBody = craftEgressDefaultMaxBodyBytes
@@ -304,5 +307,14 @@ func gatewayReportsActivityUnresolved(status int, body []byte) bool {
 	if err := json.Unmarshal(body, &envelope); err != nil {
 		return false
 	}
-	return envelope.Error.Code == "ACTIVITY_UNRESOLVED"
+	// The gateway marks an unknown-outcome send with ACTIVITY_UNRESOLVED.
+	// Its failed-forward path historically answered UPSTREAM_ERROR while the
+	// charge-start journal recorded Unknown — that pairing is equally an
+	// unknown outcome (the send MAY have left), so it parks too; resolving
+	// it would mint a fresh identity on retry and bill twice.
+	switch envelope.Error.Code {
+	case "ACTIVITY_UNRESOLVED", "UPSTREAM_ERROR":
+		return true
+	}
+	return false
 }

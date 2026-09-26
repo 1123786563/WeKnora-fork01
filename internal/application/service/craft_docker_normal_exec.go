@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
+	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/modules/craft"
 	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
 )
@@ -60,9 +61,15 @@ type CraftDockerNormalExecService struct {
 // attach is logged so a deployment that forgot to wire the security gate
 // is observable in its logs.
 func (s *CraftDockerNormalExecService) WithExecutionPolicy(policy CraftExecutionPolicyGate) *CraftDockerNormalExecService {
-	if s != nil && policy != nil {
-		s.policy = policy
+	if s == nil {
+		return s
 	}
+	if policy == nil {
+		logger.Warnf(context.Background(), "[CraftDockerNormalExec] T03 execution gate NOT attached: the uploaded-material execution policy is nil (unwired assembly)")
+		return s
+	}
+	s.policy = policy
+	logger.Infof(context.Background(), "[CraftDockerNormalExec] T03 execution gate attached")
 	return s
 }
 

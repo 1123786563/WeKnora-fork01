@@ -1,1117 +1,1084 @@
-Review complete: 62 finding(s) across 92 selected item(s).
+Review complete: 56 finding(s) across 94 selected item(s).
 
-─── apps/web/vite.config.ts:79-79 ───
-[maintainability · low] 新增的 `@weknora/domain/craft/web-promotion` 别名当前在整个仓库尚无生产消费者：apps/web 与
-apps/desktop 的源码均未 import 该 specifier，仅有 `packages/domain/src/craft/web-promotion.test.ts`
-以相对路径引用该模块。同样的映射也同步新增于 `apps/desktop/vite.config.ts`、`apps/web/tsconfig.json` 及
-`packages/domain/package.json` 的 exports。若这是为后续 lane（版本提升/默认版本
-UI）预铺的配置则无碍；若最终没有消费方落地，建议一并清理这四处映射，避免成为死配置。
+─── docker/craft/web/build.py:75-75 ───
+[security · high] EVENT_ATTR_RE 存在两个具体绕过，且它是内联脚本的最后防线：(1) `[^>]*?` 无法跨越带引号属性值中的 `>`——`<img src="a>b"
+onerror="alert(1)">` 中 `onerror` 位于引号内 `>` 之后，正则永远够不到，而浏览器把 `src="a>b"` 解析为单一属性值后 onerror 照常执行；(2)
+HTML 允许用 `/` 作标签/属性分隔符——`<img/onerror=alert(1)>` 在 `onerror` 前没有空白，`\s` 匹配失败。html 片段未经转义直接拼入
+index.html，而预览响应的 CSP 是 `script-src 'self'
+'unsafe-inline'`（internal/application/service/craft_preview.go:664），明确放行内联事件处理器，因此绕过即构成预览 origin
+上的存储型 XSS，违反本模块"拒绝任何形态脚本执行"的自述契约。建议放弃用单个正则识别属性位置，改用 stdlib html.parser 对每个解码变体做结构性筛查：遍历所有
+start-tag，凡携带名称以 `on` 开头的属性、或标签名属于 base/iframe/object/embed/form/script/meta 即拒绝（这同时天然覆盖 `/` 分隔与引号内
+`>` 的解析语义）。
+
+- EVENT_ATTR_RE = re.compile(r"""<[a-zA-Z][^>]*?\son[a-z]+\s*=""", re.IGNORECASE)
++ # 用 stdlib 解析器替代正则做结构性筛查（对 render_html 的每个解码变体执行）：
++ from html.parser import HTMLParser
++ 
++ class _HandlerScreen(HTMLParser):
++     def __init__(self):
++         super().__init__(convert_charrefs=False)
++         self.violation = None
++     def handle_starttag(self, tag, attrs):
++         if tag.lower() in {"base", "iframe", "object", "embed", "form", "script", "meta"} \
++                 or any(name.lower().startswith("on") for name, _ in attrs):
++             self.violation = tag
++ 
++ def screen_inline_handlers(candidate: str) -> None:
++     parser = _HandlerScreen()
++     parser.feed(candidate)
++     parser.close()
++     if parser.violation is not None:
++         raise BuildError(EXIT_CONTENT, "inline event handler or embedding tag")
+
+
+─── docker/craft/web/build.py:303-303 ───
+[security · medium] 变体闭包在达到 64 上限时 fail-open：`while queue and len(variants) < 64` 退出后未检查 queue
+是否仍非空，剩余未探索的变体不经过任何 denylist 即放行。分段 html 是不可信 Agent 产出，攻击者可用超过 64 层的嵌套实体（如重复 `&amp;` 包裹
+`url(//evil)`）或相互独立的实体/CSS 转义组合把浏览器最终解码形态推到 BFS 前沿之外，使 EXTERNAL_URL_RE/CSS_FETCH_RE
+等全部筛查对真实执行形态失效。BFS 每层变体数按解码器组合增长，64 个名额在深度约 6 处即耗尽，截断并非不可达路径。应在达到上限且队列仍有待探索变体时直接拒绝构建（fail-closed）。
+
+-     while queue and len(variants) < 64:
++     while queue:
++         if len(variants) >= 64:
++             raise BuildError(EXIT_CONTENT, "html section {!r} exceeds the decode-variant budget".format(heading))
++         candidate = queue.pop(0)
+
+
+─── internal/container/craft_web_build.go:295-295 ───
+[security · medium] 构建日志的可信度假设不成立：build-log.json 位于 Agent 可写的 output 树内，且按
+skills/craft-web-build/SKILL.md:99 的流程，build.py 由 Agent 在沙箱内运行、`--runtime-digest` 直接随委派 prompt
+下发，toolchain_digest/template_sha256 在镜像内（/opt/craft/web，chmod 0555）世界可读。因此 Agent 可以完全不运行
+build.py、手写携带脚本的 index.html，再按已公开的摘要伪造一份 exit_code=0 的 build-log.json，通过 ParseCraftWebBuildLog
+与本函数的全部一致性校验，令 W01 构建检查（版本晋级门禁的必要条件）在未经过任何 render_html 筛查的情况下通过。函数注释宣称的"the build ran and its REAL
+exit status is the fact"实际是 Agent 自证而非平台观测事实。建议将退出状态绑定到服务端可独立观测的通道：例如从委派执行的 shell_exec
+工具调用结果（服务端记录）读取 build.py 的真实退出码并与日志交叉校验，或由宿主侧 wrapper 在 Agent 不可写路径落盘/签名日志，或采集时在受控环境对 staged
+content.json 确定性重渲染并与 index.html 比对。
 
 
 
-─── cmd/craft-egress-adapter/main.go:64-66 ───
-[maintainability · low] ListenAndServe 失败时在 goroutine 内 log.Fatalf（触发 os.Exit），会跳过 defer 的
-adapter.Close()，journal 文件句柄不落闭。虽然每条记录均已 fsync、无数据损失，退出路径仍不干净。建议把错误经 channel 传回主流程，由主流程在 defer
-Close() 生效后再 Fatal/退出。
+─── internal/container/craft_web_build.go:316-316 ───
+[bug · low] 导出函数直接解引用 `*log.ExitCode` 而未判 nil。字段被刻意声明为指针以区分"缺失 exit_code"与"真实 0"（见 CraftWebBuildLog
+注释），但该防御只存在于 ParseCraftWebBuildLog 中；任何未经过 Parse 而直接构造 CraftWebBuildLog
+调用本导出函数的使用方（例如未来的测试或另一装配点）传入缺失 exit_code 的日志即触发 nil 指针 panic。作为导出 API 应在此补一次防御并返回 ErrInvalidInput。
 
-+ 	serveErr := make(chan error, 1)
-+ 	go func() {
-+ 		log.Printf("craft-egress-adapter: listening on %s, gateway %s", listen, gatewayURL)
-  		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-- 			log.Fatalf("craft-egress-adapter: %v", err)
-+ 			serveErr <- err
++ 	if log.ExitCode == nil {
++ 		return craft.ArtifactEvidence{}, fmt.Errorf("%w: craft web build log is missing its exit code", craft.ErrInvalidInput)
++ 	}
+  	return craft.ArtifactEvidence{BuildRan: true, BuildExitCode: *log.ExitCode}, nil
+
+
+─── cmd/craft-egress-adapter/main.go:52-59 ───
+[bug · medium] 环境变量覆盖接受任意正值且无下限守卫。adapter.go 注释明确钉死不变式：适配器转发预算必须 ≥ 网关 ForwardTimeout（默认 5 分钟）+1
+分钟余量，否则慢生成会在适配器侧被中止、attempt 停留 unknown-outcome 永久 parked，同指纹重试在网关 ACTIVITY_UNRESOLVED 409
+上死锁直至人工对账。当前不变式仅靠两处注释维系，运维一旦配置如
+60s（误以为模型调用很快）即静默触发该死锁。建议对低于网关默认预算（DefaultForwardTimeout()-time.Minute）的配置至少输出显著警告或直接拒绝。
+
+- 	forwardTimeout := craftegress.DefaultForwardTimeout()
+- 	if raw := strings.TrimSpace(os.Getenv("CRAFT_EGRESS_FORWARD_TIMEOUT")); raw != "" {
+  		parsed, err := time.ParseDuration(raw)
+  		if err != nil || parsed <= 0 {
+  			log.Fatalf("craft-egress-adapter: CRAFT_EGRESS_FORWARD_TIMEOUT must be a positive duration, got %q", raw)
   		}
-+ 	}()
-+ 	// 主流程 select：收到 serveErr 时打印并由 defer Close() 收尾后再退出
-
-
-─── docker/craft/web/build.py:292-297 ───
-[security · high] 净化变体集合不完整，存在"实体解码 × CSS 反斜杠转义"组合绕过，且声明的不动点循环是死代码：(1) decoded 初始值就是
-variants[1]，`while decoded not in variants` 首次求值即为 False，循环体永不执行——注释声称的"Decode entities to a fixed
-point"实际从未发生；(2) css_unescape 只作用于原始片段，从未应用于任何实体解码后的变体（实体解码也从未应用于 CSS 解码结果）。绕过示例：`<div
-style="&#92;75 rl&#40;&#92;2f&#92;2fevil&#46;example&#41;">` —— raw 只含实体（全过）、unescape×1 得 `\75
-rl(\2f\2fevil.example)`（无字面 `//`、无字面 `url(`、无 `://`，全过）、css_unescape(raw) 无字面反斜杠等于原串（过）；浏览器却按"HTML
-属性实体解码→CSS tokenizer 转义解码"求值出 `url(//evil.example)` 外联 fetch。预览源虽有 CSP 兜底（craft_preview.go
-PreviewCSP：img-src 'self'、style-src 'self'、connect-src 'none'），但网页作品源码包可下载，用户本地 file:// 打开时无 CSP，CSS
-url() 信标即外传（泄露查看者 IP/UA），违背本文件"an encoded javascript:/url( smuggle must be refused exactly like its
-literal form"的自身安全契约。建议以两个解码器的闭包（不动点）生成完整变体集后再逐个筛查。
-
--     variants = [fragment, html_mod.unescape(fragment), css_unescape(fragment)]
--     decoded = html_mod.unescape(fragment)
--     while decoded not in variants:
--         variants.append(decoded)
--         decoded = html_mod.unescape(decoded)
--     for candidate in variants:
-+     seen = {fragment}
-+     frontier = [fragment]
-+     while frontier:
-+         current = frontier.pop()
-+         for candidate in (html_mod.unescape(current), css_unescape(current)):
-+             if candidate not in seen:
-+                 seen.add(candidate)
-+                 frontier.append(candidate)
-+     for candidate in sorted(seen):
-
-
-─── docker/craft/web/build.py:271-272 ───
-[bug · medium] 非 ASCII（中文）标题生成重复的 filter id：safe_heading 把纯中文标题整体折叠为空串，统一回退到
-craft-filter-table，多个中文标题表格产生重复 DOM id（非法 HTML）。craft-web.js 的 bindTable 用 table 的 aria-labelledby 取
-id 再 document.getElementById——重复 id
-时永远只返回第一个输入框，导致：后续每张表都把监听挂到第一个输入框（第一个框同时过滤多张表），而各表自己的筛选输入框完全失效。本项目默认 lang 为
-zh-CN、标题通常为中文，属主路径功能性缺陷。建议在 id 中编入 section 序号（调用点 load_content 中改为 render_table(heading,
-section["table"], len(rendered)) 传入序号）。
-
-      safe_heading = re.sub(r"[^a-zA-Z0-9-]+", "-", heading).strip("-").lower()
--     filter_id = "craft-filter-{}".format(safe_heading or "table")
-+     filter_id = "craft-filter-{}{}".format(section_index, ("-" + safe_heading) if safe_heading else "")
-
-
-─── docker/craft/web/build.py:73-73 ───
-[bug · low] EVENT_ATTR_RE 的 `\bon[a-z]+\s*=` 会误伤正文里以 on 开头的普通单词后跟等号的文本：如 "only =
-3"、"once=1"、"online=enabled" 均匹配（\b 在词首成立，[a-z]+ 吃掉剩余字母，\s* 允许空格），导致合法 html 片段被误判为"inline event
-handler attribute"而整段拒绝（EXIT_CONTENT，fail-closed 误报，agent
-只能换措辞重试）。建议把匹配锚定到标签内部的属性位置（标签名后经空白分隔的属性），避免匹配纯文本；顺带修正错误文案 "a inline event handler attribute" → "an
-inline ..."。
-
-- EVENT_ATTR_RE = re.compile(r"""\bon[a-z]+\s*=""", re.IGNORECASE)
-+ EVENT_ATTR_RE = re.compile(r"""<[a-zA-Z][^>]*?\son[a-z]+\s*=""", re.IGNORECASE | re.DOTALL)
-
-
-─── docker/craft/web/deps/craft-web.js:12-13 ───
-[documentation · low] 注释与 build.py 实现不符：注释称"build.py 在筛选输入框上输出 aria-controls"，实际 build.py 的
-render_table 输出的是表格元素上的 aria-labelledby="<filter_id>" 指回输入框（输入框自身只有 aria-label="筛选表格行"，并无
-aria-controls）。绑定功能不受影响（getElementById 仍能取到），但注释会误导后续维护者去改错属性；另外以 aria-labelledby 指向一个搜索输入框属 ARIA
-语义误用（labelledby 应引用标题/标签，表格与控件的关联宜用 aria-describedby 或以 section 标题作 labelledby）。建议按实际输出来修正注释（并可选修正
-ARIA 模式）。
-
--     // Explicit pairing: build.py emits aria-controls on the filter input so
--     // the binding survives template insertions between the two nodes.
-+     // Explicit pairing: build.py stamps aria-labelledby="<filter-id>" on the
-+     // table pointing back at the filter input's id, so the binding survives
-+     // template insertions between the two nodes.
-
-
-─── internal/application/repository/agent_run_lifecycle.go:121-121 ───
-[bug · high] DeleteSessionRuns 回归：ids 查询（`Where("tenant_id=? AND session_id=?")`）不过滤运行状态，而新复用的
-cancelRunTx 对 `succeeded`/`failed` 状态返回
-`agentruntime.ErrConflict`，会中止整个删除事务。任何包含已完成（succeeded）或失败（failed）Run 的会话——即几乎所有正常使用过的会话——经 handler
-的 fenceSessionRuns → DeleteSessionRuns 删除时都会永久失败。旧实现是对每个 Run 无条件置 canceled，删除总能成功；现有测试仅覆盖 canceled
-Run 的幂等路径（agent_run_lifecycle_test.go:36-43），未覆盖 succeeded/failed。建议在 Pluck 中排除终态运行（canceled Run 仍经
-cancelRunTx 幂等返回 nil，不受影响）：
-
-+ 		var ids []string
-+ 		if err := tx.Table("agent_runs").Where("tenant_id=? AND session_id=? AND status NOT IN ('succeeded','failed')", tenantID, sessionID).Pluck("run_id", &ids).Error; err != nil {
-+ 			return err
+- 		forwardTimeout = parsed
++ 		if parsed < craftegress.DefaultForwardTimeout()-time.Minute {
++ 			log.Printf("craft-egress-adapter: WARNING: CRAFT_EGRESS_FORWARD_TIMEOUT=%s is below the gateway's default 5-minute forward budget; slow generations will park their activity IDs (409 retry wedge) until manual reconciliation", parsed)
+- 	}
 + 		}
-+ 		for _, id := range ids {
-  			if err := s.cancelRunTx(tx, agentruntime.RunKey{TenantID: tenantID, RunID: id}, "session_deleted"); err != nil {
-+ 				return err
++ 		forwardTimeout = parsed
+
+
+─── internal/modules/craftegress/adapter.go:48-50 ───
+[bug · low] CraftEgressAdapterConfig.Now 字段被静默忽略：NewCraftEgressAdapter 通过
+OpenCraftEgressAttemptJournal(config.JournalPath) 打开 journal，从未把 config.Now 传入（journal.now 固定
+time.Now），声称的测试时钟注入实际不生效。建议在打开 journal 后接入该钩子，或删除该字段以免误导。
+
+- 	MaxBodyBytes   int64
+- 	ForwardTimeout time.Duration
+- 	Now            func() time.Time
++ 	journal, err := OpenCraftEgressAttemptJournal(config.JournalPath)
++ 	if err != nil {
++ 		return nil, err
++ 	}
++ 	if config.Now != nil {
++ 		journal.now = config.Now // 同包内直接接线，保证测试时钟注入生效
++ 	}
+
+
+─── internal/modules/craftegress/journal.go:222-223 ───
+[bug · low] appendLocked 未防御 Close 后调用：Close() 将 j.file 置 nil，而 ServeHTTP 只检查 a.journal != nil
+覆盖不到该状态。main 的 Shutdown 预算仅 10 秒，在途转发最长 6 分钟；Shutdown 超时返回后 deferred adapter.Close() 先于进程退出执行，仍在途的
+handler 随后调用 Resolve→appendLocked 会对 nil *os.File 解引用 panic（被 net/http 逐连接 recover，表现为连接中断）。建议在
+appendLocked 开头判 j.file == nil 并返回错误，让调用方复用既有的 503 journal-unavailable 语义。
+
+  func (j *CraftEgressAttemptJournal) appendLocked(record CraftEgressAttemptRecord) error {
++ 	if j.file == nil {
++ 		return fmt.Errorf("craftegress: journal closed")
++ 	}
+  	encoded, err := json.Marshal(record)
+
+
+─── internal/modules/craftegress/journal.go:211-220 ───
+[bug · low] ordinalLocked 的兜底路径会制造撞号：两个并发同指纹请求共享同一 parked 身任（AllocateIfNotParked 的设计行为），第一个
+definitive Resolve 把记录从 unresolved 删除后，第二个 Resolve 在表中找不到该 attemptID，兜底返回 j.nextOrd 且不自增——该转移记录的
+ordinal 与下一条 Allocate 铸造的记录完全相同，且同一 attemptID 被追加重复的 resolved 转移，损害 journal
+的审计可读性（身份唯一性因随机熵后缀不受影响）。建议维护 attemptID→ordinal 的专用映射（Allocate 与 replay 时填充，不随 unresolved 删除），查表未命中返回
+0。
+
++ // 在结构体增加 ordinals map[string]int64，Allocate/replay 时写入；
+  func (j *CraftEgressAttemptJournal) ordinalLocked(attemptID string) int64 {
+- 	// Transitions reuse the attempt's original ordinal when known; a foreign
+- 	// id cannot occur because only Allocate minted ids reach this path.
+- 	for _, record := range j.unresolved {
+- 		if record.AttemptID == attemptID {
+- 			return record.Ordinal
+- 		}
++ 	if ordinal, ok := j.ordinals[attemptID]; ok {
++ 		return ordinal
+  	}
+- 	return j.nextOrd
++ 	return 0 // 未知 id：写入 0 而非 nextOrd，避免与后续铸造记录撞号
+  }
+
+
+─── internal/modules/craftegress/journal.go:84-88 ───
+[performance · low] journal 无记录数/大小上限与压缩机制，replay 将整个文件读入内存。铸造发生在转发之前且不依赖网关往返：沙箱内客户端可用每次唯一的 body
+指纹（发起后立即断开）以 fsync 速率持续追加记录，Run 生命周期内磁盘占用与重启回放内存无界增长。虽有每 Run 隔离与 fsync 速率的自然约束，仍建议增加记录数上限或在重启回放时基于
+resolved 状态滚动压缩（保留每个指纹最新状态即可）。
+
+
+
+─── internal/modules/craftegress/target.go:56-62 ───
+[security · low] rejectPrivateIP 未覆盖两类非路由地址：受限广播 255.255.255.255（不在 224.0.0.0/4 多播段内，IsGlobalUnicast
+为 false）与共享地址空间 100.64.0.0/10（CGNAT 段，Go 的 IsPrivate 不包含，云内网/内部负载均衡常见）。启动 DNS 校验与拨号时 Control
+复检共用该函数，两类检查存在同样残留。建议追加 !ip.IsGlobalUnicast()（严格收紧，不误伤公网）并显式判定 100.64.0.0/10。
+
+  func rejectPrivateIP(ip net.IP) error {
+- 	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() ||
+- 		ip.IsInterfaceLocalMulticast() || ip.IsMulticast() || ip.IsUnspecified() {
++ 	shared := false
++ 	if ip4 := ip.To4(); ip4 != nil && ip4[0] == 100 && ip4[1]&0xC0 == 0x40 {
++ 		shared = true // 100.64.0.0/10 shared/CGNAT
++ 	}
++ 	if shared || !ip.IsGlobalUnicast() || ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() ||
++ 		ip.IsLinkLocalMulticast() || ip.IsInterfaceLocalMulticast() || ip.IsMulticast() || ip.IsUnspecified() {
+  		return fmt.Errorf("craftegress: gateway host %s is loopback/private/reserved; set the explicit private-target opt-in for local deployments", ip)
+  	}
+  	return nil
+  }
+
+
+─── internal/application/repository/craft_docker_normal_input.go:144-146 ───
+[bug · medium] 瞬时 DB 错误被吞并为持久冲突：此处在同一事务内刚通过 lockDockerNormalInputRun 的 no-op UPDATE 确认了 agent_runs
+行存在，因此这里的 Take 失败几乎不可能是 ErrRecordNotFound，而只会是基础设施类错误（连接中断、statement timeout、ctx 取消、序列化中止）。把它们与
+SessionID 不匹配一并返回 ErrCraftDockerNormalInputConflict（包装 craft.ErrConflict），调用链（PrepareNormal →
+prepareOrRecover）会将其按"持久身份冲突"处理：触发 ResumeBoundNormal 补救后原样上抛，Agent
+工具层看到的是不可重放的终态冲突而非可重试的临时故障，错误分类与重试语义被破坏。对比同变更中 craft_docker_output.go 的 Open 已正确区分 NotFound→Conflict
+与其他错误→dockerOutputDBError。建议拆分判断：
+
+- 		if err := tx.Table("agent_runs").Select("session_id, revision").Where("tenant_id = ? AND run_id = ?", key.TenantID, key.RunID).Take(&run).Error; err != nil || run.SessionID != request.TaskID {
++ 		if err := tx.Table("agent_runs").Select("session_id, revision").Where("tenant_id = ? AND run_id = ?", key.TenantID, key.RunID).Take(&run).Error; err != nil {
++ 			if errors.Is(err, gorm.ErrRecordNotFound) {
++ 				return ErrCraftDockerNormalInputConflict
 + 			}
++ 			return dockerOutputDBError(err)
 + 		}
++ 		if run.SessionID != request.TaskID {
+  			return ErrCraftDockerNormalInputConflict
+  		}
 
 
-─── internal/application/repository/craft_docker_normal_input.go:96-98 ───
-[bug · low] 首次 Stage 一个格式非法的请求（命令/参数含 NUL、env 键含 '='、stdin 未启用却非空、超时/输出上限越界等）会返回包装 craft.ErrConflict
-的 "conflicts with durable
-identity"，而此时根本不存在可冲突的持久身份。调用方与运维排障无法区分"请求本身非法（应修正输入、重试无意义）"与"持久身份/回放分歧（状态竞争）"，错误文本也会误导定位方向。建议对
-!validCraftDockerNormalInput 的分支返回 craft.ErrInvalidInput 系错误，把 Conflict 保留给真实存在的 prior 行/日志/Run
-校验失败路径。
+─── internal/application/repository/craft_docker_normal_input.go:169-172 ───
+[bug · medium] 与上一处同源：journal Take 的任意错误（含瞬时故障/ctx 取消）被统一归类为 ErrCraftDockerNormalInputConflict。只有
+ErrRecordNotFound（journal 缺失或不属于该活动）才是真正的持久冲突语义；其他错误应作为基础设施错误传播，否则调用方会把可重试的 DB 抖动当作不可恢复的身份冲突放弃操作。
 
-- 	if r == nil || r.db == nil || !validCraftDockerNormalInput(request) {
-+ 	if r == nil || r.db == nil {
+  		if err := tx.Table("craft_charge_start_journal").Select("state, protocol, provider, send_claimed_at, run_revision").Where(
+  			"tenant_id = ? AND run_id = ? AND activity_key = ?", key.TenantID, key.RunID, key.ActivityKey).Take(&journal).Error; err != nil {
++ 			if errors.Is(err, gorm.ErrRecordNotFound) {
+- 			return ErrCraftDockerNormalInputConflict
++ 				return ErrCraftDockerNormalInputConflict
++ 			}
++ 			return dockerOutputDBError(err)
+  		}
+
+
+─── internal/application/repository/craft_docker_normal_input.go:210-212 ───
+[bug · medium] Read 同样把 agent_runs Take 的任意错误与 SessionID 不匹配合并为 Conflict。Read 是
+BindDockerNormalExecReceipt/ClaimDockerNormalExecSend 的前置路径，DB 抖动会让绑定/领取被误判为持久冲突并上抛为终态错误，误导 Agent
+对该活动的处置（放弃而非重试）。建议同 Stage：NotFound 与 SessionID 不匹配返回 Conflict，其余错误经 dockerOutputDBError 传播。
+
+- 	if err := r.db.WithContext(ctx).Table("agent_runs").Select("session_id").Where("tenant_id = ? AND run_id = ?", key.TenantID, key.RunID).Take(&run).Error; err != nil || run.SessionID != row.TaskID {
++ 	if err := r.db.WithContext(ctx).Table("agent_runs").Select("session_id").Where("tenant_id = ? AND run_id = ?", key.TenantID, key.RunID).Take(&run).Error; err != nil {
++ 		if errors.Is(err, gorm.ErrRecordNotFound) {
++ 			return CraftDockerStagedNormalInput{}, ErrCraftDockerNormalInputConflict
++ 		}
++ 		return CraftDockerStagedNormalInput{}, dockerOutputDBError(err)
++ 	}
++ 	if run.SessionID != row.TaskID {
   		return CraftDockerStagedNormalInput{}, ErrCraftDockerNormalInputConflict
+  	}
+
+
+─── internal/application/repository/craft_docker_normal_input.go:222-225 ───
+[maintainability · low] normal input 链路（Stage/Read/Bind/Claim）的基础设施错误统一复用
+dockerOutputDBError，被包装为输出域哨兵 ErrCraftDockerOutputUnavailable（"durable Docker output is
+unavailable"）。输入暂存/回执绑定失败会被日志与按哨兵分支的上层误读为"输出存储不可用"，跨域哨兵误导诊断与监控归因（craft_docker_send_claim.go 的
+normalInputExists 也是同款用法）。建议为 normal input 定义专属的 Unavailable 包装哨兵，或抽出域中立的 DB 错误包装供两域共用。
+
+
+
+─── internal/application/repository/craft_docker_normal_input.go:115-117 ───
+[bug · low] len(plain) != canonicalSize 意味着 craftDockerNormalCanonicalJSONSize 与 encoding/json
+的实际输出不一致，属于内部不变量破坏（计算器缺陷），却被归类为调用方输入超限（ErrCraftDockerNormalInputTooLarge）。一旦触发，排障方向会被引向"用户输入过大"而非计算器
+回归。建议为该分支使用独立的内部错误哨兵（或至少 Corrupt 类别），仅将真实的 len(plain) > MaxCraftDockerNormalRequestBytes 归为
+TooLarge。
+
+
+
+─── internal/application/repository/craft_docker_send_claim.go:237-241 ───
+[maintainability · low] 两处错误契约问题：1) 用 == 直接比较 gorm.ErrRecordNotFound 而非 errors.Is，若 gorm
+层未来改为包装哨兵会静默失效；2) 非 NotFound 的 DB 错误未经 dockerOutputDBError
+包装直接返回，与同包其他仓储的契约不一致（bindDockerExecReceipt/claimDockerExecSend 事务内与 result.Error 的裸返回同理），调用方
+errors.Is/As 判断可能失真。建议改用 errors.Is 并统一包装基础设施错误（需补充 errors import）。
+
+  	err := r.db.WithContext(ctx).Where("tenant_id = ? AND run_id = ? AND activity_key = ?", key.TenantID, key.RunID, key.ActivityKey).Take(&row).Error
+- 	if err == gorm.ErrRecordNotFound {
++ 	if errors.Is(err, gorm.ErrRecordNotFound) {
+  		return craftDockerSendClaimRow{}, craftDockerSendConflict("operation not found")
+  	}
+- 	return row, err
++ 	if err != nil {
++ 		return craftDockerSendClaimRow{}, dockerOutputDBError(err)
 + 	}
-+ 	if !validCraftDockerNormalInput(request) {
-+ 		return CraftDockerStagedNormalInput{}, fmt.Errorf("%w: invalid Docker normal input request", craft.ErrInvalidInput)
++ 	return row, nil
+
+
+─── internal/modules/craftegress/adapter.go:295-308 ───
+[bug · high] unknown-outcome 判定与网关实际 502 语义不匹配：网关 Forward
+在"绑定已开始但物理转发失败"路径（internal/handler/craft_model_gateway.go:547-560，g.forward 返回错误、attempted=true）返回
+502 + code "UPSTREAM_ERROR"，同时将 charge-start 以 CraftChargeStartUnknown 落账（消息文本即 "the upstream model
+request failed with an unknown activity outcome"）。本函数只认 "ACTIVITY_UNRESOLVED"，导致 ServeHTTP
+把该实际未知结局的响应判为 definitive 并 unpark 指纹；同逻辑请求重试随即铸造全新 activity 身份并发起第二次物理发送——正是本文件注释自警的 "a definitive
+resolve of an actually-unknown send would mint a fresh identity on retry and bill the same logical
+request twice"，且旧 unresolved 绑定被绕过 409 对账路径、只能人工清理。注释列举的 "failed forward → ACTIVITY_UNRESOLVED"
+与网关实现不符（initiation timeout 与 lost response 两条路径确实带该 code，唯独 failed-forward 用
+UPSTREAM_ERROR）。建议：首选在网关侧把该路径的 code 改为 ACTIVITY_UNRESOLVED（与其消息语义一致）；若需在本侧保守兜底，可对 502 的
+UPSTREAM_ERROR 一并视为 unresolved（DefinitelyNotStarted 的 !attempted 路径复用同 ID 重试可重新 BeginBinding，parking
+它是安全的）。
+
+  func gatewayReportsActivityUnresolved(status int, body []byte) bool {
+  	if status != http.StatusConflict && status != http.StatusBadGateway {
+  		return false
   	}
-
-
-─── internal/application/repository/craft_docker_output.go:410-413 ───
-[bug · low] 该函数最后 `return tx.Error` 在走到时恒为 nil（此前所有失败的语句都已提前 return err），即：当 append 的锁 UPDATE 匹配 0
-行、但操作行存在且未 seal、未 truncated 时，append 会返回 (0, nil) —— 把一次未提交的 chunk 上报为成功且
-sequence=0，属于静默丢数据的回落路径。当前该状态按 WHERE `sealed_at IS NULL` 的语义不可达（匹配 0 行时行要么不存在→NotFound，要么已
-seal→Sealed，均已被上方分支覆盖），但任何后续对锁 WHERE 条件或状态列的修改都会让这条潜在路径变成真实缺陷。建议返回非 nil 哨兵（如
-ErrCraftDockerOutputUnavailable）兜底，而不是透传本事务此刻必为 nil 的 tx.Error。
-
-  	if op.Truncated {
-  		return ErrCraftDockerOutputQuota
+  	var envelope struct {
+  		Error struct {
+  			Code string `json:"code"`
+  		} `json:"error"`
   	}
-- 	return tx.Error
-+ 	return ErrCraftDockerOutputUnavailable
-
-
-─── internal/application/repository/craft_preview_check.go:70-74 ───
-[maintainability · low] 通道接受 WebCheckNotRun 作为可写结果构成契约陷阱：缺失行在 WebEvidenceFromChecks 中已等价于
-not_run（release.go:108-114 注释明确 "Absent entries ... derive not_run"），因此写入一条显式 not_run
-行没有任何语义收益；但不可变规则（同名校验不同状态即 ErrConflict）会使该检查名永久无法再记录真实的 passed/failed 观察——版本 web gate
-被卡死，只能重新收集发版。本轮 container.go:531 的 dig.As 装配注释明确预期 T14/T20 探针写入者使用此通道，而 T15 报告设想的 "先发布（page
-load=not_run）后探测" 序列恰好会触发该陷阱。建议从可写结果中移除 WebCheckNotRun（或在注释中显式警告写入 not_run
-会永久阻断该名字的后续实测结果），避免未来探针写入者按直觉先写占位 not_run。
-
-  	switch outcome {
-- 	case craft.WebCheckPassed, craft.WebCheckFailed, craft.WebCheckNotRun:
-+ 	case craft.WebCheckPassed, craft.WebCheckFailed:
-  	default:
-- 		return craft.Version{}, fmt.Errorf("%w: unknown web check outcome %q", craft.ErrInvalidInput, string(outcome))
-+ 		// not_run is not writable: an absent row already derives not_run
-+ 		// (WebEvidenceFromChecks), and a recorded not_run row would
-+ 		// permanently conflict-block the name's later real observation
-+ 		// under the immutability rule.
-+ 		return craft.Version{}, fmt.Errorf("%w: web probe facts record observed outcomes only, got %q", craft.ErrInvalidInput, string(outcome))
+  	if err := json.Unmarshal(body, &envelope); err != nil {
+  		return false
   	}
-
-
-─── internal/application/repository/craft_version.go:414-417 ───
-[bug · medium] VersionEvidence 读路径把存储完整性故障统一包装为 craft.ErrConflict:digest 不匹配、JSON 损坏、VersionID
-绑定不符都是服务端数据损坏事件,而 handler 的 craftHTTPError(internal/handler/session/craft.go:252)将 ErrConflict 映射为
-409 Conflict。客户端收到 409 会误以为这是可通过重试或调整请求解决的冲突,监控/审计也无法把完整性事件与真实的发布冲突区分开。建议为完整性故障引入独立哨兵(如
-craft.ErrCorruptEvidence,映射为 500 类服务端错误),仅让真正的发布冲突沿用 ErrConflict;同时 json.Unmarshal 的两处错误建议用 %w 而非 %v
-包装,保留底层解码错误身份便于排障。
-
-  	sum := sha256.Sum256([]byte(evidenceRow.EvidenceJSON))
-  	if hex.EncodeToString(sum[:]) != evidenceRow.Digest {
-- 		return craft.VersionEvidence{}, fmt.Errorf("%w: version %s evidence digest mismatch", craft.ErrConflict, versionID)
-+ 		return craft.VersionEvidence{}, fmt.Errorf("%w: version %s evidence digest mismatch", craft.ErrCorruptEvidence, versionID)
-  	}
-
-
-─── internal/application/repository/craft_version.go:362-365 ───
-[security · low] adoptCraftVersionEvidence 对存量行(stored)直接 Unmarshal 后比对冻结事实,却没有像 VersionEvidence
-读路径那样先校验 stored.Digest 与存储字节一致:一行 evidence_json
-被篡改但冻结事实恰好与重放一致的存量行,在重放发布时会被静默采纳(验证通过、事务提交成功),而同一行在读路径会因 digest 不匹配被拒绝——同一份数据在写侧与读侧的完整性判定不一致,削弱了
-digest 列作为防篡改凭证的契约。建议在 Unmarshal stored 前先做与读路径相同的 sha256(stored.EvidenceJSON) == stored.Digest
-校验,不一致即拒绝采纳。
-
-+ 	if sum := sha256.Sum256([]byte(stored.EvidenceJSON)); hex.EncodeToString(sum[:]) != stored.Digest {
-+ 		return fmt.Errorf("craft: version %s stored evidence digest mismatch", row.VersionID)
+- 	return envelope.Error.Code == "ACTIVITY_UNRESOLVED"
++ 	switch envelope.Error.Code {
++ 	case "ACTIVITY_UNRESOLVED":
++ 		return true
++ 	// The gateway's failed-forward path (forward error after the binding
++ 	// started) resolves its charge start as Unknown while labelling the 502
++ 	// UPSTREAM_ERROR; that send's outcome is unknown all the same.
++ 	case "UPSTREAM_ERROR":
++ 		return status == http.StatusBadGateway
 + 	}
-  	var storedEvidence craft.VersionEvidence
-  	if err := json.Unmarshal([]byte(stored.EvidenceJSON), &storedEvidence); err != nil {
-  		return fmt.Errorf("craft: decode stored evidence for version %s: %w", row.VersionID, err)
++ 	return false
+  }
+
+
+─── internal/modules/craftegress/journal.go:56-57 ───
+[maintainability · low] resolved 索引只写不读：replay()（j.resolved[record.RequestDigest] = true）与
+Resolve()（j.resolved[requestDigest] = true）均写入该 map，但全仓库（含测试）没有任何读取点；"指纹已 resolved → 下次同指纹是全新
+attempt" 的语义实际由"不在 unresolved 中"隐式实现。这是无消费方的死状态，且随 distinct
+指纹数量单调增长（与已确认的日志无界增长发现叠加）。建议删除该字段及两处写入，或明确接入其预期用途（例如作为将来 replay 压缩时保留每指纹最新状态的依据）。
+
+  	unresolved map[string]CraftEgressAttemptRecord // requestDigest -> unresolved attempt
+- 	resolved   map[string]bool                     // requestDigest -> has resolved attempt
+
+
+─── internal/application/service/craft_preview.go:297-308 ───
+[security · high] AcceptsPreviewHost 的默认端口归一化与上游 PreviewOriginAllowed
+的源相异校验不一致，导致同主机配置可绕过源隔离。PreviewOriginAllowed（及构造器 panic 守卫）按裸字符串比较 scheme://host：当
+AppOrigin=https://app.example.com:443 而
+PreviewOrigin=https://app.example.com（或反向拼写）时，两串不等被判为"不同源"，构造器不 panic、Enabled()=true；但
+AcceptsPreviewHost 两侧经 trimDefaultPort 归一后均为 app.example.com——请求打在主产品 Host
+上即匹配通过，挂在共享路由、位于全局鉴权中间件之前的免鉴权 /p/:cap/*filepath 在主源激活。后果正是该门禁注释要阻止的：模型生成的预览页脚本与主应用同源，可携带 Host-only
+会话 Cookie 访问主应用接口。同类变体：PreviewOrigin=https://app.example.com:8443 与裸 443 主源按 RFC 是不同源（守卫放行），但 Cookie
+按域不按端口共享，Secure Cookie 仍会发往
+https://app.example.com:8443，同源隔离同样失效。建议在归一化一侧补齐主机名重叠拒绝（比较剥离任意端口后的裸主机名，IPv6 保留/去括号后比较）。
+
+  func (s *CraftPreviewService) AcceptsPreviewHost(host string) bool {
+  	if !s.Enabled() {
+  		return false
   	}
-
-
-─── internal/application/repository/craft_workspace.go:600-602 ───
-[bug · low] 跨会话可见性语义与同文件读路径不一致：lockCraftWriterWorkspace 对 SessionID 不匹配返回 ErrForbidden
-并在消息中回显该工作区绑定的 session ID，而同一变更中 GetWriterLease（以及既有 GetWorkspace 的"另一会话不可见"约定）对同一情形返回
-ErrNotFound。本函数自己的注释也声称 "cross-session workspaces do not exist for the caller"，行为却在导出的 store
-接缝上泄露存在性与绑定会话号。虽然服务层门面（AcquireWriter 先经 GetWorkspace 按会话解析）使该路径当前不可达，仍建议统一为 NotFound 以自洽注释并匹配读路径约定。
-
-  	if ws.SessionID != scope.SessionID {
-- 		return craftWorkspaceRow{}, fmt.Errorf("%w: workspace %s is bound to session %s", craft.ErrForbidden, ws.ID, ws.SessionID)
-+ 		// Cross-session workspaces do not exist for the caller — keep the
-+ 		// invisibility contract of GetWorkspace/GetWriterLease.
-+ 		return craftWorkspaceRow{}, fmt.Errorf("%w: workspace %s", craft.ErrNotFound, workspaceID)
+  	u, err := url.Parse(s.config.PreviewOrigin)
+  	if err != nil {
+  		return false
   	}
-
-
-─── internal/application/service/craft_access.go:159-163 ───
-[maintainability · low] 动作词表 switch 与 internal/modules/craft/web_contracts.go 中 RequireTaskAccess 的
-switch 重复枚举同一组 TaskAction。当前 craft 包恰好只定义 5
-个动作（TaskRead/TaskWrite/TaskShare/TaskOpenSource/TaskPreview），尚无遗漏；但若未来新增动作（如 export/archive
-相关），AllowsTaskAction 与 RequireTaskAccess 更新后，这里的 default
-分支会静默跳过拒绝审计（无错误、无编译期强制同步），造成安全审计覆盖的不一致漂移。建议在 craft 包导出单一有效性谓词（如 func (a TaskAction) Valid() bool），两处
-switch 统一改用该谓词，使词表只有一个权威定义。
-
-- 	switch action {
-- 	case craft.TaskRead, craft.TaskWrite, craft.TaskShare, craft.TaskOpenSource, craft.TaskPreview:
-- 	default:
-+ 	// craft.TaskActionValid 由 craft 包统一维护动作词表（见 web_contracts.go
-+ 	// RequireTaskAccess 同步改造），避免两处 switch 漂移导致新动作拒绝静默不落审计。
-+ 	if !action.Valid() {
-  		return
-  	}
-
-
-─── internal/application/service/craft_artifacts.go:299-301 ───
-[bug · medium] probe 缺失时页面两项检查事实是 CheckOutcome 零值空串 ""，而非注释声称的 not_run。CheckOutcome.valid() 只接受
-passed/failed/not_run 三值，因此 evidence.Validate() 会以 ErrInvalidInput（"invalid web check
-outcome"）拒绝晋升，而不是注释四处（本行内注释、webProbe 字段注释、WithWebPromotion 注释、craft_runtime.go:232-234 装配注释 "exactly
-the recorded contract"）描述的 not_run → Promotable()==false → ErrConflict 路径。对外契约随之错位：HTTP 层
-craftShareHTTPError 将 ErrInvalidInput 映射为 400 而非 409，且客户端拿不到逐项
-build/entry/preview_reachable/page_loaded 结果的错误信息。注意当前生产装配（craft_runtime.go:241 显式传 probe=nil，T14
-live gate 未闭合）走的就是这条路径。建议显式初始化为 not_run，使零值语义与声明契约一致。
-
-+ 	evidence := craft.WebCheckEvidence{
-+ 		Build:            craft.WebBuildOutcome(candidate.Evidence),
-+ 		Entry:            craft.WebEntryOutcome(candidate.Kind, candidate.Files),
-+ 		PreviewReachable: craft.WebCheckNotRun,
-+ 		PageLoaded:       craft.WebCheckNotRun,
+- 	// Normalize both sides: the config side may omit the default port while
+- 	// the request carries it (or vice versa).
+- 	return strings.EqualFold(trimDefaultPort(host, u.Scheme), trimDefaultPort(u.Host, u.Scheme))
++ 	normalized := trimDefaultPort(u.Host, u.Scheme)
++ 	// The app origin never redeems. PreviewOriginAllowed compares raw
++ 	// scheme://host strings, so https://app.tld:443 vs https://app.tld (or a
++ 	// non-default port on the same hostname) pass that guard while sharing
++ 	// one host-scoped cookie jar with the main site — refuse the overlap
++ 	// here, where both sides normalize to bare hostnames.
++ 	if app, err := url.Parse(s.config.AppOrigin); err == nil && app.Host != "" {
++ 		if previewBareHostname(normalized) == previewBareHostname(app.Host) {
++ 			return false
++ 		}
 + 	}
-  	if s.webProbe != nil {
-  		evidence.PreviewReachable, evidence.PageLoaded = s.webProbe.ProbeWebPage(ctx, scope, candidate)
-  	} // a missing probe leaves both page facts not_run — the gate refuses below
++ 	return strings.EqualFold(trimDefaultPort(host, u.Scheme), normalized)
++ }
++ 
++ // previewBareHostname reduces an authority to its bare hostname: strip any
++ // port (default or not) and IPv6 brackets, so host-scoped cookie overlap is
++ // detected regardless of port spelling.
++ func previewBareHostname(authority string) string {
++ 	h := strings.TrimSpace(authority)
++ 	if inner, _, err := net.SplitHostPort(h); err == nil {
++ 		h = inner
++ 	}
++ 	return strings.ToLower(strings.TrimSuffix(strings.TrimPrefix(h, "["), "]"))
+  }
 
 
-─── internal/application/service/craft_budget.go:325-328 ───
-[bug · high] StartBinding 在外部回调返回后直接用调用者的 ctx 写 journal 结果。当父 ctx 已被取消（客户端断开、停止运行、进程停机）时：boundedCtx
-会随之取消，outcome 被强制改为 Unknown，随后 resolveCraftChargeStart(ctx,...) 会因 ctx 已取消立即失败——journal 永久停留在
-state='intent'，且返回给调用方的是 resolveErr（context.Canceled），丢失了 startErr 与已观测到的 outcome。后果：该 activity 重放被
-'activity start already attempted; reconcile before retry' 拒绝，且 agent_runs 的 lease 恢复扫描（NOT EXISTS
-... j.state IN ('intent','unknown')）会一直排除该 Run，需人工 reconcile。同函数 pre-start 分支用了
-context.Background()，craftChargeStartAttempt.Resolve 也专门用 context.WithoutCancel +
-craftChargeStartResolveTimeout，唯独这条主路径漏了 detach，应保持一致。
+─── internal/application/repository/craft_docker_normal_input.go:344-345 ───
+[bug · medium] craftDockerJSONQuotedStringSize 对 \b(0x08) 和 \f(0x0C) 的转义长度计算错误：Go encoding/json
+的字符串编码器只对 \\、\"、\t、\n、\r 使用 2 字节短转义，\b 和 \f 与其他 <0x20 控制字符一样输出 \u0008/\u000c（6 字节，encode.go
+注释明确："This encodes bytes < 0x20 except for \t, \n and \r"）。此处按 2 字节计，每处出现低估 4
+字节。后果：请求任一字符串字段（Command 参数、Environment 键值、User、WorkingDir 等）含 U+0008/U+000C
+时（validCraftDockerNormalInput 只禁 \x00，允许这两者），Stage 中 craftDockerNormalCanonicalJSONSize 与
+json.Marshal 实际输出必然不一致，合法请求 100% 被 len(plain) != canonicalSize 分支拒绝，且被归为
+ErrCraftDockerNormalInputTooLarge（哪怕请求只有几百字节，严重误导排障方向）；decryptCraftDockerNormalInput 的同一校验也会将其误判为
+Corrupt。建议将 \b、\f 从 2 字节 case 移除，由 r < 0x20 分支（6 字节）覆盖：case r == '"' || r == '\\' || r == '\n' || r
+== '\r' || r == '\t': size += 2。该计算器目前无测试覆盖，建议补充与 json.Marshal 逐字节对比的用例（含 \b/\f/<>/&/U+2028/无效
+UTF-8）。
 
-- 	if resolveErr := s.resolveCraftChargeStart(ctx, journal, outcome); resolveErr != nil {
-+ 	resolveCtx, resolveCancel := context.WithTimeout(context.WithoutCancel(ctx), craftChargeStartResolveTimeout)
-+ 	defer resolveCancel()
-+ 	if resolveErr := s.resolveCraftChargeStart(resolveCtx, journal, outcome); resolveErr != nil {
-  		return outcome, resolveErr
+- 	case r == '"' || r == '\\' || r == '\b' || r == '\f' || r == '\n' || r == '\r' || r == '\t':
++ 	case r == '"' || r == '\\' || r == '\n' || r == '\r' || r == '\t':
+  		size += 2
+
+
+─── internal/modules/craft/input_code.go:98-98 ───
+[documentation · low] Reason 枚举注释与实现漂移：Review() 的 InterpreterScanInconclusive 分支会产出
+`wrapper_shape`（p.deny("wrapper_shape", ...)），但该字段注释声明的稳定机器码枚举（input_target | interpreter_input |
+shell_input | input_symlink | input_identity）未收录它。Reason
+是下游审计/分析依赖的稳定标识，注释即契约，建议补齐枚举，避免消费方按注释穷举时漏掉该拒绝原因。
+
+- 	Reason    string // input_target | interpreter_input | shell_input | input_symlink | input_identity
++ 	Reason    string // input_target | interpreter_input | shell_input | input_symlink | input_identity | wrapper_shape
+
+
+─── packages/views/src/craft/sources.tsx:257-257 ───
+[maintainability · low] 引用事实列表项使用 key={index}：条目自身有天然稳定标识 citationId（同一 JSX 中 data-craft-citation
+已使用）。清单内容随交付物 manifest 变化时（如服务端补发/过滤条目），索引键会导致 React 复用错误的 DOM/状态。建议事实项改用
+key={entry.citationId}；inference 条目无稳定 id，维持 inference-${index} 即可。
+
+-                 <li key={index} className="wk-craft-citation-fact" data-craft-citation={entry.citationId}>
++                 <li key={entry.citationId} className="wk-craft-citation-fact" data-craft-citation={entry.citationId}>
+
+
+─── internal/application/service/craft_budget.go:825-830 ───
+[bug · medium] AuthorizeSandbox 的序列分配循环对任意 Create 错误一律 continue，未像同文件新增的
+prepareCraftChargeStartWithProtocol 那样先用 isUniqueViolation(err) 判别。连接中断、ctx 已取消、死锁等真实数据库错误会被静默重试 16
+次（craftCallSeqAttempts），最终误报为 "sandbox call sequence
+contention"（ErrConflict），既掩盖根因又放大失败延迟。建议仅对唯一索引冲突重试，其余错误立即返回。
+
+  			if err := s.db.WithContext(ctx).Create(&call).Error; err != nil {
+- 				// A concurrent sandbox authorization took this sequence slot;
++ 				// Only a unique-index loss means a concurrent sandbox authorization
++ 				// took this sequence slot; any other database failure must surface
++ 				// immediately instead of being retried into a misleading conflict.
++ 				if !isUniqueViolation(err) {
++ 					return err
++ 				}
+  				// re-read the fresh maximum and retry with the next one.
+  				continue
+  			}
+  			allocated = true
+
+
+─── internal/application/service/craft_budget.go:341-344 ───
+[maintainability · low] StartBinding 在 resolveCraftChargeStart 失败时返回 resolveErr 并丢弃
+startErr（外部回调的原始错误），而 BeginBinding 的对应路径已使用 errors.Join(err, resolveErr)
+合并两个错误。此处不一致导致调用方排障时无法感知外部回调失败原因，建议同样合并：return outcome, errors.Join(startErr, resolveErr)。
+
+  	if resolveErr := s.resolveCraftChargeStart(resolveCtx, journal, outcome); resolveErr != nil {
+- 		return outcome, resolveErr
++ 		return outcome, errors.Join(startErr, resolveErr)
   	}
   	return outcome, startErr
 
 
-─── internal/application/service/craft_budget.go:636-638 ───
-[bug · low] Admit 的收尾三步中，EnsureTaskBudget 是 OnConflict DoNothing 的幂等写，RenewTaskBudgetDeadline
-是条件幂等更新，但 AttachChildRun 内部是 'First 查不到则 Create' 的检查-后-写，且 Create 未带 OnConflict。两个并发的同 Run
-Admit（客户端重试/双发 credential 请求是常态）都可能在彼此提交前读到 child 行不存在并各自 Create，其中一个以裸的主键冲突错误失败，使 Admit
-从并发幂等变为可能返回非领域错误。建议在 Admit 层把唯一冲突视为幂等成功（冲突后复查 RootRunID 匹配即可返回 nil），或让 AttachChildRun 的 Create 采用
-OnConflict{DoNothing} 后复查。
+─── packages/views/src/craft/usage.tsx:18-19 ───
+[style · low] 新增的 React 默认导入在文件内没有任何 React.* 命名空间使用（已全文检索确认），且 apps/web 与 apps/desktop 的 tsconfig
+均配置 jsx: "react-jsx"，JSX 转换不依赖显式 React 导入。该默认导入属死代码，建议移除，仅保留 type { CraftRunView } 导入。
+
+- import React, { useCallback, useEffect, useState } from 'react';
++ import { useCallback, useEffect, useState } from 'react';
+  import type { CraftRunView } from '@weknora/contracts';
 
 
+─── internal/handler/session/artifact_download.go:813-816 ───
+[security · high] 盘符兜底只匹配小写 a–z，`C:/evil`（大写盘符）可绕过。核证：真正的模块级校验
+craft.ValidateArtifactPath（version.go:148-167）只拒绝反斜杠/NUL、前导 "/"、空/./..元素与凭据名，对首段 "C:" 完全放行——即该
+handler 检查是下载路径上唯一的盘符防线，而它漏掉了大写。结果：一个被污染/恶意的沙箱输出可把 `C:/evil` 成员发布进版本（发布侧 ManifestDigest 同样走
+ValidateArtifactPath，不拦截），导出时该名字原样写入 zip，在 Windows 资源管理器或旧式解压器中解析为驱动器根下的绝对目标，逃逸出解压目录（zip-slip
+变体）。archive.go 自己的 isDriveLetter 就是双大小写实现，此处应保持一致；更优做法是把盘符拒绝下沉到 ValidateExportBundleMembers（见对
+export_manifest.go 的同轮意见），使拒绝发生在写出 200 头之前——本检查位于 member 循环内，已在响应头发出之后，与注释 "Refuse it before the 200
+head is written" 的声明不符。
 
-─── internal/application/service/craft_budget.go:750-755 ───
-[bug · high] AuthorizeSandbox 对同一 run 的第二个不同 activity 必然失败：AuthorizeCall 的 fresh 分支（第 726-730 行）创建的行
-DelegationID/ModelID/Funding 均为空串且 CallSeq 恒为 0，而持久唯一索引 uq_craft_budget_calls_seq (tenant_id,
-run_id, delegation_id, model_id, funding,
-call_seq)（migrations/sqlite/000048、versioned/000128）会使第二个不同的 "sandbox/<activityID>" 在 INSERT
-时以裸唯一约束错误失败。现有测试只重复了同一个 activity id（幂等路径），掩盖了该问题。建议为 sandbox 调用分配独立的 binding facet 和按 run 单调的 seq（参照
-extension marker 的做法），否则每个 run 最多只能授权一个 sandbox activity，且错误不是领域错误。
-
-  func (s *CraftBudgetService) AuthorizeSandbox(ctx context.Context, grantID, activityID string) error {
-  	if activityID == "" || len(activityID) > 256 {
-  		return fmt.Errorf("%w: invalid sandbox activity identity", craft.ErrInvalidInput)
-  	}
-+ 	// 在 AuthorizeCall 的 fresh 分支为 sandbox 命名空间分配独立 facet 与单调 seq，
-+ 	// 例如 ModelID="__craft_sandbox__"、Funding=commercial.FundingPlatform、
-+ 	// CallSeq=该 facet 下 MAX(call_seq)+1，避免多条 (run,'','','',0) 行
-+ 	// 触发 uq_craft_budget_calls_seq 唯一冲突。
-  	return s.AuthorizeCall(ctx, grantID, "sandbox/"+activityID)
-  }
-
-
-─── internal/application/service/craft_budget.go:1040-1045 ───
-[bug · high] 同一 run 第二次以相同 extraCalls（不同 key）扩展会永久失败：两个 marker 的 (tenant_id, run_id,
-delegation_id='', model_id='__craft_budget_extension__', funding=platform, call_seq=-extraCalls)
-完全相同，命中唯一索引 uq_craft_budget_calls_seq，INSERT 失败回滚；随后按 call_key 的补救重读也找不到该行（key
-不同），最终返回裸唯一约束错误。更严重的是时序：Extend 中 ExtendTaskLimit 已先提交（G4 限额已提高），而 call cap 未提高；用同一 key
-重放会再次走到同样的冲突，无法修复——用户第二次"+N 次调用"的加预算请求永远无法完成。建议让 marker 的唯一元组按 key 区分（例如 ModelID 内嵌 key，或改用按 run
-递增的负序列并把 extraCalls 记在别处）。
-
-  		marker := CraftBudgetCallRow{
-  			TenantID: grant.TenantID, CallKey: callKey, GrantID: grant.GrantID,
-- 			RunID: grant.RunID, ModelID: "__craft_budget_extension__",
-+ 			RunID: grant.RunID, ModelID: fmt.Sprintf("__craft_budget_extension__/%s", key),
-  			Funding: commercial.FundingPlatform, CallSeq: -int64(extraCalls), CallID: callID,
-  			CreatedAt: s.now(),
+- 		if first := member.Path; len(first) >= 2 && first[0] >= 'a' && first[0] <= 'z' && first[1] == ':' {
++ 		if first := member.Path; len(first) >= 2 && first[1] == ':' &&
++ 			((first[0] >= 'a' && first[0] <= 'z') || (first[0] >= 'A' && first[0] <= 'Z')) {
+  			abortDownload("craft export bundle member %q uses a drive-letter path", member.Path)
+  			continue
   		}
 
 
-─── internal/application/service/craft_budget.go:375-380 ───
-[bug · medium] prepareCraftChargeStartWithProtocol 用 MAX(call_seq)+1 分配序列但没有任何重试：AuthorizeBinding
-对同样的竞争有 craftCallSeqAttempts=16 轮重试（依赖唯一索引作为最终仲裁），而这里两个并发 charge start 若 binding facets 相同（同
-model/funding，docker 协调器并行发送时很常见）会读到相同 MAX、计算出相同 seq，败者的整个事务以裸唯一索引错误失败——journal
-未写入、活动未启动，调用方拿到的是非领域、未标注可重试的错误。建议像 AuthorizeBinding 一样在唯一冲突时做有界重读重试。
+─── internal/modules/craft/export_manifest.go:271-277 ───
+[security · medium] 建议在 ValidateExportBundleMembers 中直接拒绝盘符首段（大小写两种形态），使该拒绝成为打包前的服务端防线而非 handler 在
+200 头之后的兜底。核证：本函数调用的 ValidateArtifactPath（version.go:148-167）对首段 "C:"/"c:" 均不拒绝（它只查反斜杠/NUL、前导
+"/"、空/./..元素与凭据名），因此 `C:/evil` 这类成员能通过本函数进入 DownloadCraftExportBundle 的 member 循环；同文件 archive.go 的
+ValidateArchiveEntryPath 已用双大小写的 isDriveLetter
+拒绝同一形态，本模块的两处路径校验口径不一致。在此处补齐后，恶意成员在任何字节被打包、任何响应头写出之前即被整体拒绝，与函数 docstring "refuses the whole bundle
+before any byte is packaged" 的承诺一致（handler 侧建议同步修复其小写-only 匹配，作为纵深防御）。
 
-- 		var seq int64
-- 		if err := tx.Model(&CraftBudgetCallRow{}).Where("tenant_id = ? AND run_id = ? AND delegation_id = ? AND model_id = ? AND funding = ?", row.TenantID, row.RunID, b.DelegationID, b.ModelID, b.Funding).Select("COALESCE(MAX(call_seq),0)").Scan(&seq).Error; err != nil {
-- 			return err
-+ 	// 参照 AuthorizeBinding：对 call_seq 唯一冲突做有界重试
-+ 	for attempt := 0; attempt < craftCallSeqAttempts; attempt++ {
-+ 		// 事务内重读 MAX(call_seq)+1 并插入；
-+ 		// 若 Create 命中 uq_craft_budget_calls_seq 冲突则回滚本轮并 continue 重试，
-+ 		// 而不是把裸唯一索引错误直接返回给调用方。
-- 		}
-+ 	}
-- 		seq++
-- 		callID := "activity/" + activityID
-
-
-─── internal/application/service/craft_budget.go:300-306 ───
-[bug · medium] 此处（以及 BeginBinding 中相同的 context.Background() 解析）没有像 CraftChargeStartAttempt.Resolve
-那样用 craftChargeStartResolveTimeout 包裹：这是一个在 ctx 已取消路径上执行的无界数据库写。若数据库劣化/挂起，BeginBinding/StartBinding
-会在请求路径上无限期阻塞，journal 停留在 intent 且调用方拿不到任何返回。代码自身已在 Resolve 中确立了"解析写入必须带 5s 超时"的纪律，这两处内联解析应保持一致。
-
-  	journal := preparation.journal
-  	if err := ctx.Err(); err != nil {
-- 		if resolveErr := s.resolveCraftChargeStart(context.Background(), journal, CraftChargeStartDefinitelyNotStarted); resolveErr != nil {
-+ 		resolveCtx, cancel := context.WithTimeout(context.Background(), craftChargeStartResolveTimeout)
-+ 		defer cancel()
-+ 		if resolveErr := s.resolveCraftChargeStart(resolveCtx, journal, CraftChargeStartDefinitelyNotStarted); resolveErr != nil {
-  			return CraftChargeStartUnknown, resolveErr
-  		}
-  		return CraftChargeStartDefinitelyNotStarted, err
-  	}
-
-
-─── internal/application/service/craft_budget.go:1150-1154 ───
-[bug · low] err != nil 与"未处于预算暂停"被合并返回 ErrNotFound，把真实的数据库故障（连接断开、超时等）伪装成"暂停不存在"的领域结论；上一处 grant 的
-Take 错误同样被无条件折叠为 ErrNotFound（第 1146-1148 行）。ExtendAndResume 依赖 BudgetPause 做前置校验，DB
-瞬时故障会让用户收到"无此暂停"而非可重试的 infrastructure 错误。建议区分 gorm.ErrRecordNotFound 与其他错误。
-
-  	err := s.db.WithContext(ctx).Table("agent_runs").Select("status, wait_reason").
-  		Where("tenant_id = ? AND session_id = ? AND run_id = ?", scope.TenantID, scope.SessionID, runID).Take(&run).Error
-- 	if err != nil || run.Status != "waiting_user" || run.WaitReason != craftBudgetWaitReason {
-+ 	if err != nil {
-+ 		if errors.Is(err, gorm.ErrRecordNotFound) {
-+ 			return craft.BudgetPause{}, craft.ErrNotFound
+  	for _, member := range files {
+  		if err := ValidateArtifactPath(member.Path); err != nil {
+  			return err
 + 		}
-+ 		return craft.BudgetPause{}, err
-+ 	}
-+ 	if run.Status != "waiting_user" || run.WaitReason != craftBudgetWaitReason {
-  		return craft.BudgetPause{}, craft.ErrNotFound
-  	}
++ 		if first := member.Path; len(first) >= 2 && first[1] == ':' &&
++ 			((first[0] >= 'a' && first[0] <= 'z') || (first[0] >= 'A' && first[0] <= 'Z')) {
++ 			return fmt.Errorf("%w: bundle member %q uses a drive-letter path", ErrInvalidInput, member.Path)
+  		}
+  		if reserved[member.Path] {
+  			return fmt.Errorf("%w: bundle member %q collides with a fixed bundle document", ErrInvalidInput, member.Path)
+  		}
 
 
-─── internal/application/service/craft_docker_normal_exec.go:205-209 ───
-[performance · low] s.started 只增不减：每次 StartEvidence 成功后写入
-normalStartEvidenceKey(receipt)（provider\x00container\x00exec），observeClaimed
-读取它作为正向启动证据，但条目在整个进程生命周期内永不清除（全文件无 delete）。该服务按设计是长生命周期的命令面（构造一次、跨 Execute 复用；装配计划 T10/T19/T20
-落地后即为进程级单例），每个 normal exec 都会永久遗留一个 key，随执行次数无界增长。建议：在观察到达终态（succeeded/failed）后删除对应 key——终态之后
-startEvidence 不再影响 ObserveAttachedExec 的判定语义；或改用带容量上限/时间戳清扫的结构。
+─── internal/application/service/craft_archive.go:183-185 ───
+[bug · high] cleanup 预算启动时机错误，超时路径失败时已上传对象将静默泄漏。核证：cleanupCtx 在成员上传循环（最多 20 次 Take + SaveBytes，累计可达
+MaxArchiveExpandedBytes=100MiB）与发布事务之前创建，预算 30s（craftInputCleanupBudget，craft_inputs.go:30）与整个请求的
+30s 提取预算（MaxArchiveExtractDuration）等长——当失败正是注释自述的最常见形态（ctx 超时/取消，例如对象后端慢导致在 30s 死线附近失败）时，rollback 里的
+Count+DeleteFile 只剩接近 0 的预算，立即 context deadline exceeded，全部已存储对象泄漏；且 `_ = s.files.DeleteFile(...)`
+把删除错误完全丢弃，连告警日志都没有。同 diff 组的 craft_inputs.go:196-218 对完全相同的陷阱已修复并在注释中写明缘由（"The budget starts HERE,
+not when the upload loop began… would expire the Count/DeleteFile calls below immediately and
+silently leak every stored object"），本新文件复刻了旧缺陷。修复：把 WithTimeout 移入 rollback 闭包内启动，并对 DeleteFile 失败记
+Warnf（需补 logger import）。
 
-
-
-─── internal/application/service/craft_docker_restricted_exec.go:300-304 ───
-[performance · low] s.running 同样只增不减：grantID+activityID 一旦被观察到 Running
-即写入，终态后仍保留，进程内无任何删除路径。长生命周期服务下每个受限 exec 遗留一个 key，无界增长。注意清理需保留"曾经 Running"的语义（用于把终态零/缺失退出码从 unknown
-归因为失败），建议仅在对应 receipt 到达终态观察（Observe 返回 Succeeded/Failed）之后才删除该 key。
-
-
-
-─── internal/application/service/craft_inputs.go:195-197 ───
-[bug · medium] cleanupCtx 的 30s 预算从进入上传循环之前就开始计时，随后的所有 s.files.SaveBytes（对象存储写入，每文件一次）与 DB
-事务的耗时都会预扣这份预算；一旦上传阶段本身接近或超过 30s（多文件/大对象/慢后端——恰是注释所述 wedged backend 场景），rollback 里的 Count 与
-DeleteFile 会因 cleanupCtx 已到期立即失败，本轮已写入对象全部静默泄漏（DeleteFile 错误被 `_ =` 丢弃且无任何日志）。预算应只覆盖清理动作本身：把
-WithTimeout 移入 rollback 内部按需创建，才符合注释"限定清理而非钉死请求"的意图。另建议对 DeleteFile 失败至少记一条日志，为泄漏留下观测点。
-
-  	created := make([]string, 0, len(uploads))
 + 	rollback := func() {
-+ 		// The budget covers the rollback only: start the clock here so the
-+ 		// upload/DB phase cannot pre-consume it.
++ 		// 预算必须在 rollback 内启动（对齐 craft_inputs.go 的同款修复）：
++ 		// 上传循环与发布事务消耗预启动预算后，超时驱动的失败会让
++ 		// Count/DeleteFile 立即到期，静默泄漏全部已存储对象。
 - 	cleanupCtx, cleanupDone := context.WithTimeout(context.WithoutCancel(ctx), craftInputCleanupBudget)
 + 		cleanupCtx, cleanupDone := context.WithTimeout(context.WithoutCancel(ctx), craftInputCleanupBudget)
 - 	defer cleanupDone()
 + 		defer cleanupDone()
-+ 		seen := make(map[string]struct{}, len(created))
-+ 		// ... existing cleanup body, logging DeleteFile failures ...
+- 	rollback := func() {
+
+
+─── internal/modules/craft/archive.go:260-265 ───
+[performance · medium] zip 中央目录的内存物化发生在任何条目上限生效之前，与模块声称的内存上限推理不符。核证：zip.NewReader 返回前会完整解析中央目录并物化整个
+reader.File 切片；MaxInputBytes=20MiB 的输入在纯最小条目（每条中央记录 ≥46 字节）下可携带约 45 万个条目，先分配约 45 万个 zip.File 结构（含
+Name 字符串，约百 MB 量级瞬时内存，约为输入体积的 5 倍以上），然后才在迭代第 21 项时被 reserveEntry 的 MaxArchiveEntries=20
+拒绝。reserveEntry 的注释只论证了 seen 集合内存有界（"a malicious central directory can name hundreds of thousands of
+directory entries…memory stays bounded by the same constant"），恰好漏掉了 reader.File
+本身；ExtractArchive/ExpandArchive 文档中 "memory is bounded because members are buffered only up to the
+cumulative expanded-byte ceiling" 的声明对该向量不成立。注意：NewReader 之后检查无法避免已发生的分配，只能避免后续处理；彻底规避需在调用 NewReader
+前解析尾部 EOCD 的条目计数字段做预检。至少应在 NewReader 后立即按条目数快速失败（用宽裕常量做分配合理性上限，保留逐条目的精确语义，不改变现有接受行为），并修正文档声明。
+
+  func extractZipArchive(data []byte) ([]ArchiveMember, error) {
+  	reader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+  	if err != nil {
+  		return nil, fmt.Errorf("%w: malformed zip container: %v", ErrInvalidInput, err)
 + 	}
++ 	// NewReader 已物化整个中央目录；至少立即按条目数快速失败，
++ 	// 避免继续为海量条目做逐项处理（真正的分配上限需在 NewReader
++ 	// 前预解析 EOCD 条目计数）。宽裕常量仅作 sanity cap，逐条目的
++ 	// 精确上限仍由 reserveEntry 执行。
++ 	if len(reader.File) > maxZipCentralEntries {
++ 		return nil, fmt.Errorf("%w: zip central directory lists %d entries over the sanity cap %d",
++ 			ErrInvalidInput, len(reader.File), maxZipCentralEntries)
+  	}
+  	budget := newArchiveBudget(int64(len(data)))
 
 
-─── internal/application/service/craft_preview.go:340-343 ───
-[performance · medium] 每个 grant 冻结整份 manifest 清单破坏了 maxCraftPreviewGrants 注释承诺的内存上界：修复前单个 grant 是
-O(1) 常量大小，上限 65536 个 grant 约束的是常数级内存；现在每次 Issue 都为该版本的全部 version.Files 新建一张 map 并存入票据表（Open
-兑换虽共享同一引用，但反复 Issue 同一版本会各自复制一份），最坏情况驻留内存变为 65536 × manifest 大小（几百文件的 manifest 即可达数 GB），"runaway
-issuer" 恰是该 cap 注释明确防御的威胁模型。而 lookup 在两道门之后本来就会重新加载不可变版本并逐文件比对 rel（版本不可变，重取即权威），这张 per-grant map 仅用于
-404 短路。建议改为按 versionID 内驻共享一份不可变快照（随 grant 表一同清理），或直接依赖 lookup 已有的重取校验、grant 只保留 versionID，使 grant
-恢复 O(1) 大小。
+─── internal/application/service/craft_docker_normal_exec.go:62-67 ───
+[security · medium] 注释宣称 "The attach is logged so a deployment that forgot to wire the security gate
+is observable in its logs"，但函数体没有任何 logger 调用；且 `policy != nil` 守卫使 nil 闸门注入成为静默 no-op。第 1 轮
+OCR（docs/plans/craft-107-ocr-t03.md:157-162）明确要求注入时输出启动日志使"安全特性未接线"可检测——本修复只添加了承诺日志的注释而未实现日志。全库检索确认
+NewCraftDockerNormalExecService/WithExecutionPolicy 目前仅测试调用、生产装配点尚不存在：一旦后续装配 PR 遗漏挂接 T03
+闸门（#122，"上传代码仅作数据不执行"），无编译错误、无日志可发现，安全审查将被静默绕过。建议：attach 成功与 policy==nil 两个分支均落一条日志（或改由构造参数强制注入）。
 
-- 	allowedFiles := make(map[string]struct{}, len(version.Files))
-- 	for _, file := range version.Files {
-- 		allowedFiles[file.Path] = struct{}{}
-- 	}
-+ 	// Grant 保持 O(1)：lookup 已对不可变版本重新加载并按 manifest 校验 rel，
-+ 	// 404 短路可复用按 versionID 内驻共享的不可变快照，而非逐 grant 复制。
-+ 	// craftPreviewGrant{scope: scope, versionID: version.ID, expiresAt: expiresAt}
-+ 	// 并在 lookup 中通过共享快照（或重取的 version.Files）完成 allowlist 预检。
-
-
-─── internal/application/service/craft_session.go:93-99 ───
-[documentation · low] 该类型别名的契约注释与实际调用点行为矛盾：注释说"an error degrades to the legacy newest-version rule
-at the call site"，但 View（craft_session.go:499-514）在 selector 出错时是保守降级——座位留空并 Warnf，绝不回退 newest
-版本（调用点注释也明确写了这一点，且这正是 #130 的要求）。这是导出 seam 的契约描述，T15 selector 的实现方/后续维护者按此注释会误以为存在 newest-version
-兜底。应把注释改为与实现一致的"错误时座位留空（保守降级）"。
-
-  // DefaultVersionSelector resolves a scope's default preview version under
-  // the T15 (#130) promotion policy: the newest published web version whose
-  // four independent checks each passed. The boolean reports whether any
-- // version qualified; an error degrades to the legacy newest-version rule
-- // at the call site (the seat is a projection, never an authorization
-- // boundary).
-+ // version qualified; an error degrades conservatively at the call site —
-+ // the seat stays empty rather than falling back to the newest version
-+ // (the seat is a projection, never an authorization boundary).
-  type DefaultVersionSelector = func(ctx context.Context, scope craft.Scope) (craft.Version, bool, error)
+  func (s *CraftDockerNormalExecService) WithExecutionPolicy(policy CraftExecutionPolicyGate) *CraftDockerNormalExecService {
+- 	if s != nil && policy != nil {
++ 	if s == nil {
++ 		return s
++ 	}
++ 	if policy != nil {
+  		s.policy = policy
++ 		return s
+  	}
++ 	logger.Warnf(context.Background(), "[CraftDockerNormalExec] T03 execution policy gate NOT attached; uploaded-material screening is inactive")
+  	return s
+  }
 
 
-─── internal/application/service/session.go:305-309 ───
-[bug · medium] CheckTaskAccess 的基础设施错误被映射为 404，与本函数上方注释声明的契约自相矛盾。CraftAccessService.CheckTaskAccess
-→ Role → s.session()/activeMemberID()/grant First 查询都可能返回原始 gorm DB 错误（见
-craft_access.go:97-115）；此处任何错误一律转为 apperrors.ErrSessionNotFound，意味着一次数据库抖动会让有权的 Owner/Collaborator 把
-Craft 会话读成"不存在"，而同函数中 IsCraftTask 的三处调用（296-304、321-327）都特意区分了语义错误与 infra 错误并向上传播（"a database outage
-is not masked as not found"）。虽然 fail-closed 无安全风险，但破坏了刚声明的可观测性契约，且 404 会误导客户端与监控放弃重试。建议按同样方式区分
-ErrNotFound/ErrForbidden 与其余错误。
+─── internal/application/service/craft_docker_restricted_exec.go:58-63 ───
+[security · medium] 与 craft_docker_normal_exec.go 相同的模式：注释宣称 "The attach is logged so a deployment
+that forgot to wire the security gate is observable in its logs"，但函数体没有 logger 调用，且 `policy != nil`
+守卫使 nil 注入静默失效。第 1 轮 OCR 裁决要求注入时输出启动日志使未接线可检测；当前生产装配点不存在，后续装配 PR 遗漏挂接时该受限发送面将无任何可观测信号。建议与 normal
+exec 服务同修：attach 与 nil 两个分支均落日志。
 
-  		if registeredCraft {
-  			scope := craft.Scope{TenantID: tenantID, UserID: userID, SessionID: id}
-  			if accessErr := s.craftTaskAccess.CheckTaskAccess(ctx, scope, craft.TaskRead); accessErr != nil {
-+ 				if !stderrors.Is(accessErr, craft.ErrNotFound) && !stderrors.Is(accessErr, craft.ErrForbidden) {
-+ 					return nil, accessErr
-+ 				}
-  				return nil, apperrors.ErrSessionNotFound
-  			}
-
-
-─── internal/container/container.go:531-531 ───
-[maintainability · medium] dig.As 并不会同时注册具体类型：dig v1.19 的 As 语义是"以指定接口类型替换构造函数结果的注册类型"，即使用
-dig.As(new(craft.PreviewCheckStore)) 后容器里只有 craft.PreviewCheckStore
-可解析，*repository.CraftPreviewCheckStore 不再可注入。而 newCraftPreviewCheckStoreConcrete
-的注释（container.go:2609-2613）声称"dig.As registers it under the frozen craft.PreviewCheckStore interface
-too ... the T14/T20 probe writer can resolve the concrete type"——这与 DI 框架实际行为相反：未来 T14/T20 探针写入方一旦以
-*repository.CraftPreviewCheckStore 为参数 Invoke，must() 将在启动时直接
-panic。当前虽无消费者解析具体类型（暂不触发），但该接线的既定目标（具体类型可解析）并未达成。建议改为双注册：
-
-- 	must(container.Provide(newCraftPreviewCheckStoreConcrete, dig.As(new(craft.PreviewCheckStore))))
-+ 	must(container.Provide(newCraftPreviewCheckStoreConcrete))
-+ 	must(container.Provide(func(store *repository.CraftPreviewCheckStore) craft.PreviewCheckStore { return store }))
+  func (s *CraftDockerRestrictedExec) WithExecutionPolicy(policy CraftExecutionPolicyGate) *CraftDockerRestrictedExec {
+- 	if s != nil && policy != nil {
++ 	if s == nil {
++ 		return s
++ 	}
++ 	if policy != nil {
+  		s.policy = policy
++ 		return s
+  	}
++ 	logger.Warnf(context.Background(), "[CraftDockerRestrictedExec] T03 execution policy gate NOT attached; uploaded-material screening is inactive")
+  	return s
+  }
 
 
-─── internal/container/craft_runtime.go:220-225 ───
-[bug · high] runView 证据链的 inner 用错了：这里的 inner 是第 175 行已经用 craftSessionBuildLogReader(source,
-outputDir)（legacy 共享 workDir 指针）包装过的 evidence。craftWebBuildEvidenceSource 在 run-bound 日志读取失败（含
-material seam 未接线时返回的 fs.ErrNotExist）、JSON 被拒或工具链不匹配时，会原样返回 inner 的证据——即 legacy 共享树中陈旧
-build-log.json 的 BuildRan/BuildExitCode 会被带进本 Run 的 CollectCandidate → craft.BuildChecks，直接影响 T15
-四检晋升门的 build 检查。这违反了本处注释自己声明的契约（"绝不读 legacy 共享树/未观测"，即上一轮 ledger 记录的 HIGH #5 修复目标）。修复：在 legacy
-包装之前保存 preview-only 证据，runView 路线以它为 inner，使 run-bound 日志缺失时 build 事实保持 unobserved。
+─── internal/application/service/craft_docker_restricted_exec.go:187-188 ───
+[performance · medium] Wait 以固定 20ms ticker 轮询，且每轮 s.Observe 都触发 coordinator.Observe（loadGrant 一次 DB
+查询 + journal 一次 DB 查询）再加一次 Docker daemon HTTP ExecInspect（docker_restricted_exec.go:123），即约 150
+次网络/DB 往返每秒每等待者，持续整个 maxWait；30s 等待约 4500 次 DB 查询 + 1500 次 inspect。仓库 DB 轮询惯例为
+100-500ms（agent_run.go 250ms、qa.go 500ms），且此处无退避。建议：采用递增退避（如首个 1s 内 20ms，之后升至
+200ms+）或直接提高基准间隔；grant/journal 的 durable 重读若为撤销检测所需可保留，但频率应随退避下降。
 
-- 		runViewEvidence = craftWebBuildEvidenceSource(evidence, func(ctx context.Context, task craft.Task) ([]byte, error) {
-+ 	// 在 legacy 包装之前保留 preview-only 证据：RunView 路线的 inner 绝不能
-+ 	// 含 legacy build-log reader，否则 run-bound 日志缺失时会回落到共享树。
-+ 	previewEvidence := evidence
-+ 	if toolchainDir := strings.TrimSpace(os.Getenv(craftWebToolchainDirEnv)); toolchainDir != "" {
-+ 		pin, pinErr := LoadCraftWebToolchainPin(toolchainDir)
-+ 		if pinErr != nil {
-+ 			return nil, fmt.Errorf("craft web toolchain pin %s: %w", toolchainDir, pinErr)
+- 	ticker := time.NewTicker(20 * time.Millisecond)
++ // Escalating poll interval: responsive at first, then back off to avoid
++ // 50Hz DB+inspect pressure over long waits.
++ interval := 20 * time.Millisecond
++ afterFast := time.After(time.Second)
++ ticker := time.NewTicker(interval)
+- 	defer ticker.Stop()
++ defer ticker.Stop()
++ // in the select:
++ // case <-afterFast:
++ // 	ticker.Reset(200 * time.Millisecond)
+
+
+─── internal/modules/craft/input_code.go:409-415 ───
+[security · high] 非解释器分支仅做路径 containment 筛查，未拒绝 find 的执行转发标志，存在词法干净的绕过路径：`find . -type f -name
+'*.py' -exec python3 {} \;`（或 `-execdir`、`-exec sh {} +`）的 argv 中没有任何指向 inputs 树的 token——`-exec` 经
+flagValueCandidates 只产生 exec/xec/ec/c 等不落树的假值候选，`python3`、`{}`、`;` 均为普通操作数——策略放行（Allowed=true，审计为
+generated.execute）；运行时 find 遍历 workspace 根必然覆盖 <root>/inputs 只读树，将上传文件路径填入 `{}`
+交给解释器执行上传字节，违反本文件声明的硬边界（"no interpreter, shell, copy, link or alias path may execute the uploaded
+bytes"）。与 glob/xargs-stdin 等依赖 adapter 证据契约兜底的残余风险不同，这条路径是纯 argv 形式、无
+stdin、无运行时展开依赖，策略层自身即可封堵。建议在操作数筛查中对任意命令出现 `-exec`/`-execdir`（含 `-execdir{}` 附着形式）时按不可审查的执行转发直接
+fail-closed 拒绝，语义与 shell 分支一致。
+
++ 		// Execution-forwarding flags are unreviewable: find -exec/-execdir
++ 		// fills its {} with paths enumerated at RUN time (including the
++ 		// read-only tree), so a lexically clean argv still executes uploaded
++ 		// bytes. Fail closed like the shell branch.
++ 		for _, arg := range req.Command[1:] {
++ 			if arg == "-exec" || arg == "-execdir" || strings.HasPrefix(arg, "-execdir") || (strings.HasPrefix(arg, "-exec") && len(arg) > len("-exec") && arg[len("-exec")] == '{') {
++ 				return p.deny("input_target", arg, "")
++ 			}
 + 		}
-+ 		pin.RuntimeDigest = runtimeDigest
-+ 		evidence = craftWebBuildEvidenceSource(evidence, craftSessionBuildLogReader(source, outputDir), pin)
-+ 	}
-+ 	...
-+ 	runViewEvidence := previewEvidence
-+ 	if toolchainDir != "" {
-+ 		runViewEvidence = craftWebBuildEvidenceSource(previewEvidence, func(ctx context.Context, task craft.Task) ([]byte, error) {
-  			if runViewLogReader == nil {
-  				return nil, fs.ErrNotExist
-  			}
-  			return runViewLogReader(ctx, task)
-  		}, runViewPin)
-+ 	}
+  		if !readOnlyCommands[path.Base(req.Command[0])] {
+  			for _, arg := range req.Command[1:] {
+  				for _, token := range shellTokens(arg) {
+  					if abs := p.canonical(req.WorkingDir, token); p.withinInputs(abs) {
+  						return p.deny("input_target", abs, "")
+  					}
+  				}
 
 
-─── internal/container/craft_runtime.go:212-216 ───
-[maintainability · low] toolchain pin 被从磁盘重复加载：第 167-175 行已经 LoadCraftWebToolchainPin 同一目录并设置了
-RuntimeDigest，这里再次加载同一 env 变量（本函数内该 env 共读取 3 次）。两次加载完全冗余，且若启动瞬间目录内容被替换，legacy 路线与 runView 路线会拿到不同的
-pin。建议提取局部变量 toolchainDir 并复用第一次加载的 pin（可与上一条意见的 previewEvidence 重构一并处理）。
+─── internal/application/service/craft_budget.go:1245-1248 ───
+[bug · low] BudgetPause 的 grant 读取把任意错误（含瞬时数据库故障）统一折叠为 craft.ErrNotFound，而紧随其后的 run
+查询注释已明确声明相反纪律："数据库失败不是'无此暂停'的领域结论，应向上传播以便调用方重试"。瞬时 DB 故障会让 API 对确实处于暂停的 Run 返回"暂停不存在"（通常映射 404），且
+ExtendAndResume 以 BudgetPause 成功为恢复前置，同样会被误导为 NotFound 而非可重试错误。建议与非授权路径一致地区分 NotFound 与其他错误。
 
-- 	if strings.TrimSpace(os.Getenv(craftWebToolchainDirEnv)) != "" {
-- 		runViewPin, pinErr := LoadCraftWebToolchainPin(strings.TrimSpace(os.Getenv(craftWebToolchainDirEnv)))
-+ 	toolchainDir := strings.TrimSpace(os.Getenv(craftWebToolchainDirEnv))
-+ 	var webPin *CraftWebToolchainPin
-+ 	if toolchainDir != "" {
-+ 		pin, pinErr := LoadCraftWebToolchainPin(toolchainDir)
-  		if pinErr != nil {
-- 			return nil, fmt.Errorf("craft web toolchain pin %s: %w", os.Getenv(craftWebToolchainDirEnv), pinErr)
-+ 			return nil, fmt.Errorf("craft web toolchain pin %s: %w", toolchainDir, pinErr)
-  		}
-
-
-─── internal/container/craft_runtime.go:289-289 ───
-[maintainability · low] runViewBuildLogReader 字段只写不读：全仓库（含生产代码与测试）没有任何读取点，实际生效的 late-bind
-路径是闭包捕获的局部变量 runViewLogReader。这个死字段会误导后续维护者以为 RunView 构建日志 seam 已通过该字段接通（例如 T20
-消费方）。建议删除该字段及其赋值，或在接入其预期消费方时再引入。
-
-- 	runtime.runViewBuildLogReader = runViewLogReader
-+ 	// 删除该字段赋值及 localCraftRuntime.runViewBuildLogReader 字段声明：
-+ 	// evidence 链已通过闭包捕获的 runViewLogReader 完成 late-bind。
-
-
-─── internal/container/craft_runtime.go:286-287 ───
-[bug · high] runView
-构建日志读取器永远无法成功：runBoundCraftArtifactSource.ReadSessionFile（craft_runtime.go:2111）强制要求目标文件已通过同一 source
-实例的 ListSessionFiles 完成枚举（`expected, ok := s.listed[rel]; if !ok ... { return ErrConflict
-}`），而这里每次调用都 newRunBoundCraftArtifactSource 新建实例后直接 ReadSessionFile，从未先 ListSessionFiles，因此必然返回
-"artifact was not listed from the bound RunView"（ErrConflict，而非 fs.ErrNotExist）。后果：T04 (#123)
-RunView 路线的 BuildRan/BuildExitCode 证据永远读不到本 Run 的 output/build-log.json，craftWebBuildEvidenceSource
-对非 ErrNotExist 错误只记一条 Warn 并回落到 inner 证据（即已确认发现 1 中的 legacy 共享树陈旧日志）——构建事实被静默替代，且每次证据评估都产生一条
-ErrConflict 噪声日志。这是与发现 1 不同的独立根因（即使 inner 修正为 preview-only，本读取器仍结构性失效）。建议先 List 再 Read，并将"日志不存在"映射为
-fs.ErrNotExist 以保持 inner 回落语义：
-
-+ 		entries, err := source.ListSessionFiles(ctx, task.Scope.SessionID, craftLocalOutputDir)
-+ 		if err != nil {
-+ 			return nil, err
+  	var grant CraftBudgetGrantRow
+  	if err := s.db.WithContext(ctx).Where("tenant_id = ? AND run_id = ?", scope.TenantID, runID).Take(&grant).Error; err != nil {
++ 		if errors.Is(err, gorm.ErrRecordNotFound) {
+- 		return craft.BudgetPause{}, craft.ErrNotFound
++ 			return craft.BudgetPause{}, craft.ErrNotFound
 + 		}
-  		logPath := path.Clean(craftLocalOutputDir + "/" + craftWebBuildLogName)
-+ 		listed := false
-+ 		for _, entry := range entries {
-+ 			if entry.Path == logPath && entry.Type == sandbox.RemoteEntryFile {
-+ 				listed = true
++ 		return craft.BudgetPause{}, err
+  	}
+
+
+─── internal/application/service/craft_budget.go:1300-1306 ───
+[bug · low] ExtendAndResume 的 grant 读取存在与 BudgetPause 相同的错误折叠：任意数据库错误（连接中断、超时）都被当作 craft.ErrNotFound
+返回，管理员对一个确实暂停中的 Run 发起"增加预算并恢复"会得到"未找到"而非可重试的 5xx，掩盖了瞬时故障并可能误导排障方向。建议同样区分 gorm.ErrRecordNotFound
+与其他错误。
+
+  	var grant CraftBudgetGrantRow
+  	if err := s.db.WithContext(ctx).Where("tenant_id = ? AND run_id = ?", scope.TenantID, runID).Take(&grant).Error; err != nil {
++ 		if errors.Is(err, gorm.ErrRecordNotFound) {
+- 		return craft.ErrNotFound
++ 			return craft.ErrNotFound
++ 		}
++ 		return err
+  	}
+  	if _, err := s.BudgetPause(ctx, scope, runID); err != nil {
+  		return err
+  	}
+
+
+─── internal/application/service/craft_archive.go:197-197 ───
+[maintainability · low] rollback 中 DeleteFile 的失败被 `_ =` 完全静默丢弃，无任何日志。同一提交里姊妹路径 craft_inputs.go 的
+AcceptInputRound rollback 已把完全相同的模式升级为记录 Warnf（其注释明确指出 "the errors were previously discarded
+outright" 会导致对象静默泄漏、只能等 O03 兜底回收）。归档扩展路径沿用了旧模式：对象回滚失败（对象后端瞬时故障、ref 被并发关联等）零可观测性，泄漏既不出现在日志也无指标，运维无法与
+confirmed finding 中超时泄漏路径区分归因。建议与 AcceptInputRound 对齐，记录删除失败日志。
+
+- 			_ = s.files.DeleteFile(cleanupCtx, createdRef)
++ 			if err := s.files.DeleteFile(cleanupCtx, createdRef); err != nil {
++ 				logger.Warnf(cleanupCtx, "[CraftArchive] rollback delete failed for ref %s (object may leak until reclamation): %v", createdRef, err)
++ 			}
++ // 并补充 import "github.com/Tencent/WeKnora/internal/logger"
+
+
+─── internal/modules/craft/citation.go:167-171 ───
+[bug · low] 严格解码未拒绝尾随数据：json.Decoder.Decode 只消费输入中的第一个 JSON
+值，`{"schema":1,"entries":[…]}\n{"schema":2,…}` 或 `{…}garbage`
+会静默按第一个值通过，尾随的第二个文档/垃圾被丢弃。这与函数自身的严格契约（DisallowUnknownFields —— "unknown fields are rejected rather
+than silently dropped"）不一致：citations.json 是模型生成的不可信输入，其原始字节会原样进入不可变版本，模型可用尾随内容夹带一份绕过结构审计的影子
+manifest。建议在 Decode 成功后要求输入流已耗尽（decoder.More() 为 false，或再 Decode 一个哑值必须得到 io.EOF），使严格解码闭合。
+
+- 	decoder := json.NewDecoder(bytes.NewReader(data))
+- 	decoder.DisallowUnknownFields()
+  	if err := decoder.Decode(&m); err != nil {
+  		return WebCitationManifest{}, fmt.Errorf("%w: web citation manifest decode: %v", ErrInvalidInput, err)
++ 	}
++ 	if decoder.More() {
++ 		return WebCitationManifest{}, fmt.Errorf("%w: web citation manifest carries trailing data", ErrInvalidInput)
+  	}
+
+
+─── internal/container/craft_lifecycle.go:56-59 ───
+[maintainability · low] 该 Warn 日志与实际行为不符：bindings 为 nil 时，下方 service.NewCraftLifecycle 会在
+CraftLifecycleConfig.Bindings 为 nil 的校验处直接返回错误（service/craft_lifecycle.go:200-203 "craft: lifecycle
+requires db, store, bindings, ..."），newCraftLifecycleService 随即返回 nil, lerr，DI
+解析失败（启动中止）——并不是日志所称的"清扫保持惰性但仍继续运行"。该路径仅在共享单例构建失败（如 WEKNORA_REDIS_NAMESPACE 含非法字符导致
+NewRedisSessionSandboxBindingStore 报错、sandbox.go:116 返回
+nil）时可达，届时运维会先看到这条具有误导性的日志、再遭遇与之矛盾的启动失败。行为本身是更严格的 fail-closed（正确），建议修正日志文案以反映真实后果，避免误导排障。
+
+  	if bindings == nil {
+  		logger.Warnf(context.Background(),
+- 			"[CraftLifecycle] shared binding store unavailable; lifecycle binding sweep stays inert (fail-closed)")
++ 			"[CraftLifecycle] shared binding store unavailable; lifecycle assembly will fail closed (nil bindings are rejected by NewCraftLifecycle)")
+  	}
+
+
+─── internal/application/service/craft_docker_normal_exec.go:205-209 ───
+[performance · low] started map 只在 terminal 进程观察时删除 key,但存在可达的永久驻留路径:StartAttachedExecOnce 返回
+startErr(如 attach 网络错误)且 Observation.State 为 Running/Unknown 时 key 被置位;此后若调用者不再 replay(Execute 返回
+RemoteOperationUnknown 后上层放弃),或后续 observeClaimed 的 ObserveAttachedExec 持续失败(容器被删除导致 ExecInspect 永久
+404、daemon 长期不可达),该 exec 永远不会产生 terminal 观察,key 便永久驻留。这与注释声明的意图("the long-lived service must not
+retain one key per exec forever")不符——该意图目前只在 terminal 路径实现。长生命周期服务在系统性故障期间(每次失败 Execute 泄漏一个
+key)会无界累积。建议为 started 增加容量上限(超限时丢弃最旧/全部 evidence,代价只是跨 replay 的 terminal 归因退化为
+Unknown,与进程重启后的既有语义一致),或记录时间戳做 TTL 清理。
+
+- 	if outcome.StartEvidence {
++ const normalStartEvidenceMaxEntries = 4096
++ 
++ func (s *CraftDockerNormalExecService) markStartEvidence(key string) {
+- 		s.mu.Lock()
++ 	s.mu.Lock()
++ 	defer s.mu.Unlock()
++ 	if s.started == nil {
++ 		s.started = make(map[string]bool)
++ 	}
++ 	if len(s.started) >= normalStartEvidenceMaxEntries {
++ 		// Bound growth: entries whose exec can never reach a terminal
++ 		// observation (deleted container, unreachable daemon) would stay
++ 		// forever. Dropping evidence only degrades cross-replay terminal
++ 		// attribution to Unknown, the same as a process restart.
++ 		for k := range s.started {
++ 			delete(s.started, k)
++ 			if len(s.started) < normalStartEvidenceMaxEntries/2 {
 + 				break
 + 			}
 + 		}
-+ 		if !listed {
-+ 			return nil, fs.ErrNotExist
++ 	}
+- 		s.started[key] = true
++ 	s.started[key] = true
+- 		s.mu.Unlock()
+- 	}
++ }
++ 
++ // 使用:
++ // if outcome.StartEvidence {
++ // 	s.markStartEvidence(key)
++ // }
+
+
+─── internal/application/service/craft_docker_restricted_exec.go:311-314 ───
+[performance · low] running map 与 normal exec 的 started map 存在同样的无界驻留缺陷:running[key] 只在 terminal
+观察(Succeeded/Failed)时删除,而注释明确 Unknown 观察会保留 flag。可达的永久驻留场景:exec 曾被观察到 Running 后容器被删除,此后
+ObserveOutputlessExec 对该 receipt 持续返回 404 错误 → Observe 提前 return unknown, err,state 永远到不了 terminal
+分支,key 永久驻留。Craft 沙箱容器属短生命周期资源,删除是常态操作,长生命周期服务中每个这类 exec 泄漏一个 key(grantID+activityID 字符串)。建议与 normal
+exec 服务的 started map 一致地增加容量上限或 TTL——丢弃该 flag 只会让 "was Running" 归因退化为 Unknown(与进程重启后既有语义一致),安全方向不变。
+
++ const outputlessRunningMaxEntries = 4096
++ 
++ func (s *CraftDockerRestrictedExec) markRunning(key string) {
+- 		s.mu.Lock()
++ 	s.mu.Lock()
+- 		delete(s.running, key)
+- 		s.mu.Unlock()
++ 	defer s.mu.Unlock()
++ 	if s.running == nil {
++ 		s.running = make(map[string]bool)
++ 	}
++ 	if len(s.running) >= outputlessRunningMaxEntries {
++ 		// Bound growth: a container deleted after a Running observation
++ 		// can never produce a terminal read, so its key would stay
++ 		// forever. Losing the flag only degrades attribution to Unknown,
++ 		// the same as a process restart.
++ 		for k := range s.running {
++ 			delete(s.running, k)
++ 			if len(s.running) < outputlessRunningMaxEntries/2 {
++ 				break
++ 			}
 + 		}
-  		return source.ReadSessionFile(ctx, task.Scope.SessionID, logPath)
++ 	}
++ 	s.running[key] = true
+- 	}
++ }
++ 
++ // 使用(替换 Observe 中的 s.running[key] = true):
++ // if observed.State == sandbox.DockerOutputlessRunning {
++ // 	s.markRunning(key)
++ // }
 
 
-─── internal/handler/craft_model_gateway.go:529-535 ───
-[security · low] 错误信息暴露不一致：本 diff 中 recordCall 已明确改为不向客户端透出原始错误（"the raw error stays server-side
-only — clients get an opaque marker"），但 Forward 的 ACTIVITY_UNRESOLVED/UPSTREAM_ERROR 响应仍把
-resolveErr（resolveCraftChargeStart 底层为 gorm Updates，错误文本可能包含 SQL/表名等数据库内部细节）与网络错误 errors.Join
-后原文返回给调用方（各 resolve 失败分支同样如此，包括 !attempted 分支的 resolveErr.Error()）。建议与 recordCall 保持同一策略：服务端 logger
-记录细节并附带 run/call/attempt 标识，客户端仅返回固定文案。
+─── internal/application/service/craft_share.go:139-140 ───
+[performance · low] io.ReadAll 对版本内 citations.json 对象无上限读取：本仓库所有 GetFile 读取均以 io.LimitReader 封顶（如
+craft_snapshot.go:408 用记录的 o.Bytes+1，craft_run_capture.go:283 用 MaxFileBytes+1），而此处 craft.File 本身携带
+Bytes int64 却未使用。虽然捕获侧有 MaxFileBytes、准入侧有清单校验约束正常路径大小，但对象存储损坏或 Ref 错位时这是请求路径上的无界内存读取点，建议按同一惯例用
+file.Bytes+1 封顶。
 
-  	if initiationExpired {
-  		closeGatewayResponse(resp)
-  		g.recordCall(c, payload, callID, attemptID, model, nil)
+- 		raw, err := io.ReadAll(reader)
++ 		raw, err := io.ReadAll(io.LimitReader(reader, file.Bytes+1))
+  		reader.Close()
+
+
+─── internal/application/service/craft_delegate.go:402-405 ───
+[security · low] decision.Target 经 %s 直接拼入 Info 日志，但 Target
+是"匹配到的规范路径或摘要"：其路径成分可源自上传材料（ValidateInputName 只拒绝
+`/`、`\`、NUL，不拒绝换行等控制字符），沙箱内观察到的执行目标文件名也可含换行。logger.Infof 直接透传 logrus（无控制字符清洗），攻击者可用换行伪造后续日志行（log
+forging）。审计行 writeAuditRow 经 json.Marshal 已安全，建议对这两处日志字段做单行化（如 %q 或清洗控制字符）。
+
+  	logger.Infof(ctx,
+- 		"[CraftMaterial] kind=%s allowed=%v reason=%s tenant=%d session=%s run=%s workspace=%s target=%s",
++ 		"[CraftMaterial] kind=%s allowed=%v reason=%s tenant=%d session=%s run=%s workspace=%s target=%q",
+  		decision.AuditKind, decision.Allowed, decision.Reason,
+  		p.scope.TenantID, p.scope.SessionID, p.runID, p.workspaceID, decision.Target)
+
+
+─── internal/application/service/craft_delegate.go:419-421 ───
+[security · low] event.Target = in.Ref，而 ValidateInputManifest 对 Ref
+仅做非空校验（strings.TrimSpace(in.Ref) != ""），成员可声明含换行/ANSI 转义序列的 Ref 并经 %s 注入 Info 日志行，造成日志伪造/解析污染。该文件自身的
+WarnWithFields 注释也指出审计相关事件宜用结构化字段而非自由文本。建议改用 %q 或对 Ref 做控制字符清洗。
+
+  	logger.Infof(ctx,
+- 		"[CraftMaterial] kind=%s tenant=%d session=%s run=%s workspace=%s ref=%s digest=%s",
++ 		"[CraftMaterial] kind=%s tenant=%d session=%s run=%s workspace=%s ref=%q digest=%s",
+  		event.Kind, p.scope.TenantID, p.scope.SessionID, p.runID, p.workspaceID, event.Target, event.Digest)
+
+
+─── internal/application/service/craft_share.go:124-127 ───
+[bug · high] 成员读取路径在生产装配下会整体 403。contribution 以调用者 scope 调用 versions.Get，但容器注入的唯一 craft.VersionStore
+实现（container.go:530 → repository.NewCraftVersionStore）在
+authorizeCraftVersion（internal/application/repository/craft_version.go:110）强制 ws.OwnerID ==
+scope.UserID，而 craft workspace 固定属于 session owner（craft_session.go:348 ownerScopeOf 的注释明确『the
+workspace always belongs to the session owner』，且 craft_session.go:1096 读版本时特意改用
+ownerScopeOf(session)）。结果是：collaborator/viewer 通过 RequireTaskAccess(TaskRead) 后，versions.Get 直接返回
+ErrForbidden → 403，本文件声明的契约 "ShareView projects one version's consent summary to a task member (a
+TaskRead fact)"、CraftShareView "projected to members" 以及 ShareAuthority（T13/T20 成员侧查询门）在生产装配下只有
+owner 本人可用。服务测试与 HTTP 测试均使用忽略 scope 的桩 Store（craft_share_test.go t11VersionStore、handler
+t11HTTPVersionStore），掩盖了该 ACL 冲突。建议：TaskRead 校验通过后按任务 owner 的 scope 读取版本——在 CraftShareConfig 增加
+session-owner 解析端口（sessions.user_id），或在 craft_share_wiring.go 注入一个先解析 ownerScope 再转发的版本读取适配器，与
+session service 的读法保持一致；并补一条真实 store 下成员读取的用例。
+
+- 	version, err := s.versions.Get(ctx, scope, strings.TrimSpace(versionID))
++ 	// TaskRead 已通过；workspace/version 持久层属于 session owner
++ 	// （authorizeCraftVersion 是 owner-only ACL），按 owner scope 读取，
++ 	// 与 craft_session.go 的 ownerScopeOf 读法一致。
++ 	ownerScope, err := s.ownerScopeOfTask(ctx, scope)
++ 	if err != nil {
++ 		return craft.RestrictedContribution{}, err
++ 	}
++ 	version, err := s.versions.Get(ctx, ownerScope, strings.TrimSpace(versionID))
+  	if err != nil {
+  		return craft.RestrictedContribution{}, err
+  	}
+
+
+─── packages/views/src/craft/craft.css:160-161 ───
+[maintainability · low] share.tsx 中 `<span className="wk-craft-share-expiry">` 用于渲染有效期，但
+craft.css（及全仓样式）没有任何 .wk-craft-share-expiry
+规则；同面板的其余类名（version/digest/state/notice/awaiting/decision/error/actions/confirm/decline/revoke）均有对应规
+则，符合本文件『All static styling lives here』的纪律。补一条最小规则或去掉该类名，避免悬空样式钩子。
+
+  .wk-craft-share-notice, .wk-craft-share-awaiting, .wk-craft-share-decision { color: var(--craft-secondary-text); margin: 0; }
+  .wk-craft-share-decision code { overflow-wrap: anywhere; }
++ .wk-craft-share-expiry { color: var(--craft-secondary-text); }
+
+
+─── internal/modules/execution/sandbox/docker_normal_exec.go:292-297 ───
+[bug · medium] StdinEnabled 的常规 exec 在 TLS 远程 Docker daemon 配置下必然失败:租户 Docker 配置支持
+TLSCertPath(internal/modules/execution/sandbox/docker_engine.go:200-213,配 *tls.Conn 的 hijacked 连接),而
+tls.Conn 不实现 CloseWrite(),该类型断言在 TLS 场景恒为 false,导致所有带 stdin 的执行在写入 stdin 前直接报错。对比旧路径
+streamExec(docker_remote_client.go:765-769)将 CloseWrite 作为可选降级("if ok"
+才半关闭),此处将其升级为硬性门槛属于行为回归。且失败发生在 ExecAttach 已成功(命令已在容器内启动等待 stdin)、durable send claim
+已消耗之后,用户侧表现为命令执行失败并烧掉一次预算 claim。建议参照 streamExec 的做法:CloseWrite 不可用时降级跳过半关闭(io.Copy 写完后依赖 closeStream
+关闭写端使容器侧 stdin 收到 EOF),或至少在 CreateAttachedExec 阶段按 endpoint scheme 显式拒绝 StdinEnabled
+请求并给出明确错误,避免启动后的中间态。
+
+  			closer, ok := attached.Conn.(interface{ CloseWrite() error })
+  			if !ok {
+- 				result.err = errors.New("Docker hijacked stream does not support stdin half-close")
+- 				inputChannel <- result
+- 				return
++ 				// TLS-backed hijacked conns (*tls.Conn) have no CloseWrite.
++ 				// Degrade like streamExec instead of failing every StdinEnabled
++ 				// exec: skip the half-close and let closeStream end the write
++ 				// side so the container sees stdin EOF on connection teardown.
++ 				logger.Warnf(startCtx, "[docker-normal-exec] hijacked stream lacks CloseWrite; relying on stream close for stdin EOF")
+  			}
+
+
+─── internal/modules/execution/sandbox/remote_operation.go:58-63 ───
+[maintainability · low] RemoteOperationError 的 Error() 无论 State 取值如何都固定输出 "remote operation outcome
+unknown: " 前缀,而同类型的 Is() 却严格只在 State == RemoteOperationUnknown 时才匹配
+ErrRemoteOperationUnknown——错误消息与状态语义自相矛盾。当前所有构造点(craft_docker_normal_exec.go:410、craft_docker_restri
+cted_exec.go:272/276 及本文件 unknownOperationError)State 均为 Unknown,尚无实际错误输出失真;但该类型携带 State
+字段的目的就是允许适配器表达非 Unknown 状态(如 Failed),一旦有构造点使用,日志与告警归因将系统性误导排障。建议让前缀跟随 State。
+
+  func (e *RemoteOperationError) Error() string {
+- 	if e == nil || e.Err == nil {
++ 	if e == nil {
+  		return ErrRemoteOperationUnknown.Error()
+  	}
+- 	return fmt.Sprintf("%s: %v", ErrRemoteOperationUnknown, e.Err)
++ 	prefix := ErrRemoteOperationUnknown.Error()
++ 	if e.State != "" && e.State != RemoteOperationUnknown {
++ 		prefix = fmt.Sprintf("remote operation %s", e.State)
++ 	}
++ 	if e.Err == nil {
++ 		return prefix
++ 	}
++ 	return fmt.Sprintf("%s: %v", prefix, e.Err)
+  }
+
+
+─── internal/handler/craft_model_gateway.go:584-586 ───
+[security · medium] 信息泄漏 + 破坏本文件自述的脱敏纪律：appFail 将 message 原样写入 HTTP 响应体（app_connector.go:32-34），此处
+errors.Join(failure, resolveErr).Error() 把 readErr/closeErr（上游网络错误，典型形式如 `read tcp
+10.x.x.x:port->...` 可暴露内网 IP/端口与上游拓扑）以及 resolveErr（GORM/DB 错误，可能引用表名/SQL，正如 523-525 行注释自述 "which may
+quote SQL or table names"）原样返回给客户端。同函数 521-529 行与 recordCall
+都明确执行"客户端只得不透明码、细节留服务端日志"的纪律，此分支却反其道而行；且它是唯一没有 logger.ErrorWithFields 记录 Resolve
+失败的路径——客户端可见、服务端反而无日志。建议：failure 与 resolveErr 均记入服务端日志（带 run/call/attempt 身份），客户端仅返回固定文案。
+
   		resolveErr := attempt.Resolve(c.Request.Context(), service.CraftChargeStartUnknown)
-- 		appFail(c, http.StatusBadGateway, "ACTIVITY_UNRESOLVED", errors.Join(forwardErr, resolveErr).Error())
+- 		appFail(c, http.StatusBadGateway, "ACTIVITY_UNRESOLVED", errors.Join(failure, resolveErr).Error())
 + 		if resolveErr != nil {
-+ 			logger.ErrorWithFields(c.Request.Context(), resolveErr, logger.Fields{
-+ 				"event": "craft_model_gateway_charge_resolve_failed", "run_id": payload.RunID, "call_id": callID,
++ 			logger.ErrorWithFields(c.Request.Context(), resolveErr, map[string]any{
++ 				"craft_run_id": payload.RunID, "craft_call_id": callID, "craft_attempt_id": attemptID,
 + 			})
 + 		}
-+ 		appFail(c, http.StatusBadGateway, "ACTIVITY_UNRESOLVED", "charge start outcome could not be recorded; reconcile the activity before retry")
++ 		logger.ErrorWithFields(c.Request.Context(), failure, map[string]any{
++ 			"craft_run_id": payload.RunID, "craft_call_id": callID, "craft_attempt_id": attemptID,
++ 		})
++ 		appFail(c, http.StatusBadGateway, "ACTIVITY_UNRESOLVED", "the upstream response could not be read completely and the activity outcome is unknown")
+  		return
+
+
+─── internal/handler/craft_model_gateway.go:588-592 ───
+[security · medium] 同类泄漏：Resolve(CraftChargeStartStarted) 的错误原文直接作为 appFail 的 message 返回客户端。该错误可能是
+GORM 底层错误（DB 细节）或 resolveCraftChargeStart 的冲突包装文本，均属服务端内部信息；此处同样缺少 logger.ErrorWithFields 服务端记录，与
+521-529 行、535-545 行等兄弟分支的处理不一致。建议与上一处一并按"细节进日志、客户端收不透明文案"的既定纪律修复。
+
+  	if err := attempt.Resolve(c.Request.Context(), service.CraftChargeStartStarted); err != nil {
++ 		logger.ErrorWithFields(c.Request.Context(), err, map[string]any{
++ 			"craft_run_id": payload.RunID, "craft_call_id": callID, "craft_attempt_id": attemptID,
++ 		})
+  		g.recordCall(c, payload, callID, attemptID, model, nil)
+- 		appFail(c, http.StatusBadGateway, "ACTIVITY_UNRESOLVED", err.Error())
++ 		appFail(c, http.StatusBadGateway, "ACTIVITY_UNRESOLVED", "the activity outcome could not be recorded")
   		return
   	}
 
 
-─── internal/handler/session/artifact_download.go:814-814 ───
-[security · low] zip 条目名完全依赖服务层 ValidateExportBundleMembers/ValidateArtifactPath 的路径校验。该规则拒绝
-".."、"."、前导 "/"、反斜杠与 NUL，但不拒绝 Windows 盘符前缀："C:/evil.html" 的首元素 "c:" 是合法路径分量（非空、非点元素、无反斜杠、不以 "/"
-开头），可以通过收集门进入版本并在本行成为 zip 条目名。带盘符前缀的条目是 zip-slip 的已知变体（OWASP Unzip 风险之一）：多数现代解压器（7-Zip、Windows
-Explorer、Python>=3.6）会清洗或视为相对路径，但部分旧解压工具/自写解包逻辑会将其写到目标目录之外。建议在写出 200 响应头之前对流内所有 member.Path
-做防御性拒绝（首元素形如单 ASCII 字母+冒号），或推动在 ValidateArtifactPath 中补上该规则，使导出打包对路径逃逸形态的拒绝与收集门保持同等完备。
+─── apps/web/vite.config.ts:115-115 ───
+[bug · medium] 新增的 '@weknora/views/craft/access' 子路径别名未同步到 apps/desktop/vite.config.ts。桌面端配置第 56-58
+行注释明确要求 craft 子路径 alias 与 apps/web 保持 lockstep：因对象键 alias 按前缀匹配，'@weknora/views'（index.ts）会把
+'@weknora/views/craft/access' 重写为 '<index.ts>/craft/access'，rollup 将报 ENOTDIR 解析失败。当前尚无导入方所以未立即暴露，但
+access.tsx（本轮 +81 行）由共享 craft 工作台引用在即，届时桌面端构建将确定性失败。建议在 apps/desktop/vite.config.ts 的 craft
+组（interaction 之后）补齐同一条目；若 access 为 web 独有功能，请在 desktop 侧注释说明豁免原因。
 
-- 		entry, createErr := zipWriter.CreateHeader(&zip.FileHeader{Name: member.Path, Method: zip.Deflate})
-+ 	// before writing the 200 head: refuse drive-letter prefixed members (zip-slip variant)
-+ 	for _, member := range bundle.Version.Files {
-+ 		if elem := member.Path; len(elem) >= 2 && elem[1] == ':' &&
-+ 			((elem[0] >= 'a' && elem[0] <= 'z') || (elem[0] >= 'A' && elem[0] <= 'Z')) {
-+ 			craftShareHTTPError(c, fmt.Errorf("%w: member %q uses a drive-letter path", craft.ErrConflict, member.Path))
-+ 			return
-+ 		}
-+ 	}
-+ 	for _, member := range bundle.Version.Files {
++ // apps/desktop/vite.config.ts craft 组内同步补齐：
++       '@weknora/views/craft/interaction': fileURLToPath(new URL('../../packages/views/src/craft/interaction.tsx', import.meta.url)),
+        '@weknora/views/craft/access': fileURLToPath(new URL('../../packages/views/src/craft/access.tsx', import.meta.url)),
 
 
-─── internal/handler/session/artifact_download.go:777-780 ───
-[bug · high] 中途失败契约在当前路由装配下不成立：该路由经 RegisterCraftSessionRoutes→featureRoutes.Mount(sessions) 挂在主
-engine 上，而主 engine 全局注册了
-middleware.Recovery()（internal/router/router.go:172）。internal/middleware/recovery.go 会 recover 所有
-panic（不识别 http.ErrAbortHandler 哨兵），随即调用 c.AbortWithStatusJSON(500,...)——此时 200 头与部分 zip 字节已写出（gin
-responseWriter.Written()==true，WriteHeaderNow 为空操作），500 JSON 体被追加到已流出的截断 zip 之后，panic 被吞掉后 handler
-链正常返回、net/http 干净终结 chunked 响应。客户端最终拿到的是"成功"完成的 200 下载：缺少 central directory 的截断 zip + 尾部
-{"error":"Internal Server Error","message":"http.abort"}——恰是注释声明要杜绝的降级交付，digest
-不匹配/成员读取失败等所有中止路径全部失效。注释引用的"craftegress precedent"并不存在：craftegress 生产代码未用此模式，仅测试模拟。建议二选一：(1) 首选在
-middleware.Recovery 中对 http.ErrAbortHandler 直接 re-panic（net/http 对该哨兵会静默断连，HTTP/1.1 与 HTTP/2
-均生效）；(2) 在本 handler 内沿用仓内 T01 "write-then-cut" 先例 hijack 后立即关连接（gin 的 c.Writer 实现了 http.Hijacker，见
-sandbox_terminal_ws.go:192 的 WS 升级用法），hijack 失败再回退 panic。另注：artifact_export_abort_t12_test.go 只断言
-handler 直接 panic，未覆盖中间件链，故该缺陷未被测试暴露。
+─── packages/domain/src/craft/web-promotion.ts:35-40 ───
+[maintainability · low] 业务字面量 'passed' 在 webCheckEvidenceReady 内重复硬编码 4 次。契约侧已有
+CRAFT_WEB_CHECK_OUTCOMES 常量联合类型（'passed' | 'failed' |
+'not_run'），此处拼写漂移只会被类型检查部分兜底（字符串写错会编译报错，但语义取值变更需改四处）。建议提取具名常量并锚定 CraftWebCheckOutcome
+类型，后续若新增检查项（如安全头检查）也可复用。
 
-  	abortDownload := func(format string, args ...any) {
-  		logger.Warnf(c.Request.Context(), format, args...)
-+ 		// middleware.Recovery 会吞掉 http.ErrAbortHandler 并在已开始的 200
-+ 		// 响应后追加 500 JSON、正常收尾——必须自行切断传输（T01 write-then-cut）。
-+ 		if hij, ok := c.Writer.(http.Hijacker); ok {
-+ 			if conn, _, herr := hij.Hijack(); herr == nil {
-+ 				_ = conn.Close()
-+ 				return
-+ 			}
-+ 		}
-  		panic(http.ErrAbortHandler)
-  	}
-
-
-─── internal/modules/craft/archive.go:180-184 ───
-[performance · medium] reserveEntry 对目录条目(及 tar 的 TypeXHeader/TypeXGlobalHeader
-元数据条目)没有任何条目总数上限:MaxArchiveEntries 只在 readMember(常规文件)中检查。归档输入受 MaxInputBytes(20 MiB)约束,但一个恶意 zip
-的中央目录每条目最少约 78 字节,可塞入约 25–40 万个目录条目;zip.NewReader 解析出的 File 结构、seen map 的 canonical 路径键与
-ValidateArchiveEntryPath 的处理合计造成约 4–7 倍于输入的内存放大(单请求峰值可达数十至上百 MB,并发可叠加),且消耗发生在 30 秒预算检查点之前的纯 CPU
-阶段。这与文件头注释的声明不符:"memory is bounded because members are buffered only up to the cumulative
-expanded-byte ceiling" —— 该上限只覆盖成员内容缓冲,不覆盖目录条目的解析结构与路径集合。建议在 reserveEntry 中对 seen 集合总大小(文件+目录)施加与
-MaxArchiveEntries 一致或邻近的硬上限,使总解析开销与条目数同受控。
-
-  func (b *archiveBudget) reserveEntry(name string) (string, error) {
-+ 	if len(b.seen) >= MaxArchiveEntries {
-+ 		return "", fmt.Errorf("%w: archive holds more than %d entries across files and directories", ErrInvalidInput, MaxArchiveEntries)
-+ 	}
-  	canonical, err := ValidateArchiveEntryPath(name)
-  	if err != nil {
-  		return "", err
-  	}
-
-
-─── internal/modules/craft/input_code.go:446-448 ───
-[security · high] InterpreterPrefix 对携带选项的 wrapper 会误判为"非解释器"，导致内联程序文本逃逸审查：switch 只处理
-env/timeout/xargs 的选项跳过，`nice -n 5 …`、`setsid -w …`、`time -p …`、`stdbuf -oL …` 会在下一个 token（如
-"-n"）处因既非解释器也非 wrapper 而返回 false；`env -iu VAR …`（组合短标志不消耗 -u 的值操作数）与 `timeout -k 5 10 …`（timeout
-在标志后只消耗一个操作数）同样失效。此后 Review 退入非解释器分支：`-c`/`-e` 等内联程序不再被 carriesProgramTextFlag 直接拒绝，只剩 shellTokens
-词法筛选——而 shellTokens 剥掉引号后，`'in'+'puts/x.py'` 变成 `in+puts/x.py`，无法命中
-withinInputs。服务端适配器（CraftDelegateExecutionPolicy）明确无法提供文件目标摘要/ResolvedTargetPath 证据，因此形如 `nice -n 5
-python3 -c "exec(open('in'+'puts/x.py').read())"`（WorkingDir=/workspace，上传材料位于
-/workspace/inputs/x.py）会得到 Allowed=true——上传代码被执行，破坏 T03 "上传材料只读、绝不执行"的核心不变量，也违背 wrapperCommands
-注释"wrapping launcher 无法走私上传脚本"的承诺。建议：为其余 wrapper 增加默认分支跳过前导选项（值型选项如 nice -n N 连值一起跳过）、让 env
-组合短标志按尾字符 u/S 消耗值操作数；更稳妥的方向是当 wrapper 操作数结构无法被结论性解析时按解释器形态失败关闭（走程序文本拒绝），而非静默降级到词法分支。
-
-  		offset++
-  		switch base {
-  		case "env":
-+ 		// ... existing env/timeout/xargs cases ...
-+ 		default:
-+ 			// nice/setsid/time/stdbuf: skip their leading flags; value-taking
-+ 			// flags (nice -n N) consume their operand too. A wrapper whose
-+ 			// operand structure cannot be conclusively parsed must fail closed
-+ 			// (treat as interpreter-shaped) instead of degrading to the
-+ 			// lexical-only non-interpreter branch.
-+ 			for offset < len(command) && strings.HasPrefix(command[offset], "-") && command[offset] != "-" {
-+ 				flag := command[offset]
-+ 				offset++
-+ 				if base == "nice" && flag == "-n" && offset < len(command) {
-+ 					offset++
-+ 				}
-+ 			}
-+ 		}
-
-
-─── internal/modules/craft/input_code.go:336-348 ───
-[security · high] `=` 附值的选项（`--flag=value` / `-fvalue`）绕过全部词法审查层，上传代码可经启动钩子执行：
-
-1. 解释器分支的标志循环对任何 `-` 开头的操作数在未命中短标志程序文本检查后直接 `continue`（L336-348），`--require=inputs/<digest>/x.js`
-的附值部分从不进入 canonical/withinInputs 筛查——而 2b 环境层注释（L267-273）明确把 "NODE_OPTIONS --require"
-列为同类启动钩子威胁，argv 上的等价形式却未被覆盖。具体绕过：`node --require=inputs/<digest>/x.js /workspace/app/main.js`（node
-启动即执行上传字节，判 Allowed）、`bash --init-file=inputs/<digest>/x.sh`；
-2. 非解释器分支（L378-386）虽筛查操作数 token，但 `make -finputs/<digest>/Makefile` 作为整 token 规范化成
-`/workspace/-finputs/...`，永不命中 inputs 树，make 会执行上传 Makefile 中的命令；
-3. 同根因：长形式程序文本选项（`--eval`/`--print`/`--execute`）不像 `-c/-e/-r` 那样被拒，`node
---eval='require("in"+"puts/x.js")'` 的附值形式同样完全逃逸（分离形式仅靠子 token 筛查部分兜底）。
-
-测试（input_code_test.go）传入原始 argv，无任何 `=value` 归一化层兜底。建议：对含 `=` 的 token 追加筛查 `=`
-之后的子串（短标志可类推标志字母后的后缀），并把已知长形式程序文本选项纳入拒绝清单——筛查只增不减，与 shellTokens "只能增加被筛查 token" 的设计一致。
-
-  				if strings.HasPrefix(arg, "-") {
-- 					// Program-text options are unreviewable by construction
-- 					// (their payload is code, not a screenable path):
-- 					// -c/-e/-r inline programs (python3 -c, node -e, php
-- 					// -r, perl -e, ruby -e/-r, awk -e), including combined
-- 					// short groups (-cexec(...), -lc "...") and python -m
-- 					// module indirection. Long options and the bare "-"
-- 					// stdin marker are not program text.
-  					if arg != "-" && !strings.HasPrefix(arg, "--") && carriesProgramTextFlag(arg) {
-  						return p.deny("interpreter_input", arg, "")
-+ 					}
-+ 					// --flag=value / -fvalue: the attached value must be
-+ 					// screened too (node --require=inputs/x.js executes the
-+ 					// uploaded bytes at startup, exactly like NODE_OPTIONS).
-+ 					if eq := strings.Index(arg, "="); eq >= 0 {
-+ 						for _, token := range shellTokens(arg[eq+1:]) {
-+ 							for _, segment := range strings.Split(token, ":") {
-+ 								if abs := p.canonical(req.WorkingDir, segment); p.withinInputs(abs) {
-+ 									return p.deny("input_target", abs, "")
-+ 								}
-+ 							}
-+ 						}
-  					}
-  					continue
-  				}
-
-
-─── internal/modules/craft/version.go:457-462 ───
-[maintainability · low] ValidVersionID 与同包既有 preview.go:82 的 IsVersionID 语义完全相同(均为 VersionIDPrefix
-前缀 + 恰好 64 个小写 hex 字符),构成同包内的重复实现。当前两者行为一致无用户可见影响,但一旦前缀/长度/大小写规则在一处调整而另一处遗漏,release.go 的
-WebPromotionRecord.Validate(用 IsVersionID)与证据/导出路径(用 ValidVersionID)将对同一 version id
-给出不同答案,出现"晋升请求校验通过但证据校验拒绝"的边界分歧。建议收敛为单一实现:ValidVersionID 直接委托 IsVersionID(或反之删除其一)。
-
-  func ValidVersionID(id string) bool {
-- 	if !strings.HasPrefix(id, VersionIDPrefix) || len(id) != len(VersionIDPrefix)+64 {
-- 		return false
-- 	}
-- 	return ValidSHA256(strings.TrimPrefix(id, VersionIDPrefix))
-+ 	return IsVersionID(id)
-  }
-
-
-─── internal/modules/craftegress/adapter.go:21-22 ───
-[bug · high] 默认转发超时与对端网关预算错配，长生成模型调用会被永久卡死。http.Client.Timeout
-覆盖"建连+等待响应头+读完整响应体"全程，而本链路对端网关（internal/handler/craft_model_gateway.go L167-169）ForwardTimeout 默认 5
-分钟且自身全量缓冲（io.ReadAll 后一次性 c.Data）——即网关为非流式长生成明确预留 5 分钟。适配器在 120s 处中断后走 unknown-outcome 路径：attempt 永久
-parked，同指纹重试复用同一 ID 必触发网关 BeginBinding 冲突 409 ACTIVITY_UNRESOLVED，该次调用进入需人工对账才能解开的死锁。且
-cmd/craft-egress-adapter 未暴露任何超时 env 覆盖，生产只能吃到这个 120s 默认值。建议默认对齐（≥ 网关 5min），并在注释/部署文档中写明两端口径必须联动。
-
-  	craftEgressDefaultMaxBodyBytes = 16 << 20
-- 	craftEgressDefaultTimeout      = 120 * time.Second
-+ 	// 必须不低于网关 ForwardTimeout 预算（internal/handler/craft_model_gateway.go 默认 5min），
-+ 	// 否则长生成在适配器侧中断后 attempt 永久 parked，重试必撞网关 409。
-+ 	craftEgressDefaultTimeout = 5 * time.Minute
-
-
-─── internal/modules/craftegress/adapter.go:83-86 ───
-[security · medium] 启动期一次性 host 校验与运行期拨号存在 TOCTOU：ValidateGatewayTarget 仅在进程启动时做一次 DNS
-解析并拒绝私网/环回（cmd/craft-egress-adapter/main.go 调用），而运行期转发使用 http.DefaultTransport，每个请求独立重新解析网关主机，且未设置
-CheckRedirect。网关域名的 DNS 记录在启动校验之后变化（rebinding/短 TTL 切换）即可让后续携带 Bearer
-执行凭据的物理发送落到内网或云元数据地址，启动期校验被绕过。建议为默认 transport 做请求期钉死：自定义 DialContext（或在 Control 钩子中）对连接实际使用的 IP 复用
-rejectPrivateIP 复核，并用 CheckRedirect 拒绝重定向或对重定向目标重跑校验。
-
-  	transport := config.Transport
-  	if transport == nil {
-- 		transport = http.DefaultTransport
-+ 		base := http.DefaultTransport.(*http.Transport).Clone()
-+ 		base.DialContext = pinnedGatewayDial(target.Hostname()) // 连接期对实际 IP 复核 rejectPrivateIP
-+ 		base.CheckRedirect = func(req *http.Request, via []*http.Request) error {
-+ 			return http.ErrUseLastResponse // 或对重定向目标重跑 ValidateGatewayTarget
-+ 		}
-+ 		transport = base
-  	}
-
-
-─── internal/modules/craftegress/adapter.go:125-127 ───
-[bug · medium] Reuse 与 Allocate 是两次独立加锁的 check-then-act：适配器以单一共享 Handler 挂在 http.Server
-上，并发到达的两个相同指纹（同 method/path/body）请求可同时判定无可复用记录而各自 Allocate，铸造两个身份，unresolved[digest]
-只保留后写者。后续危害：先铸身份的 Resolve 按 digest（而非 attemptID）删除 map 项会误删另一身份的 parked 记录；ordinalLocked 找不到该
-attemptID 时回退 nextOrd 产生错误 ordinal；replay 时两条同 digest 的 unresolved 记录按 map 遍历序随机决定谁覆盖谁。破坏"同一指纹至多一个
-parked 身份"的协议不变量。建议在 journal 内提供单锁原子原语（判定+铸造一步完成），ServeHTTP 只调用它。
-
-- 		record, reusable := a.journal.Reuse(digest)
-- 		if !reusable {
-- 			allocated, err := a.journal.Allocate(digest)
-+ 		record, err := a.journal.AllocateIfNotParked(digest)
-+ 		if err != nil {
-+ 			http.Error(w, "egress attempt journal unavailable", http.StatusServiceUnavailable)
-+ 			return
-+ 		}
-+ // journal.go 内：
-+ // func (j *CraftEgressAttemptJournal) AllocateIfNotParked(digest string) (CraftEgressAttemptRecord, error) {
-+ // 	j.mu.Lock(); defer j.mu.Unlock()
-+ // 	if record, ok := j.unresolved[digest]; ok { return record, nil }
-+ // 	... // 单次临界区内完成铸造+落盘
-+ // }
-
-
-─── internal/modules/craftegress/adapter.go:175-175 ───
-[bug · medium] 仅凭 resp.StatusCode == 409 判定"网关冲突→parked"会把上游 409 透传误判为 ACTIVITY_UNRESOLVED。网关的 409
-有两个来源：自身 BeginBinding 冲突（appFail 409 code=ACTIVITY_UNRESOLVED，craft_model_gateway.go
-L508-510）和上游模型服务状态码原样透传（Forward 末尾 c.Data(resp.StatusCode, ...)）。若上游返回 409（部分 OpenAI
-兼容代理用于并发/冲突场景），网关侧已 attempt.Resolve(ChargeStartStarted) 视为终局，适配器却将身份 parked；此后同指纹重试复用该 ID 必触发网关真
-409，活动被永久卡死。建议区分二者：解析响应体的 appFail code（仅 ACTIVITY_UNRESOLVED 才 non-definitive），或由网关为透传响应加显式标记头。
-
-- 		definitive := resp.StatusCode != http.StatusConflict
-+ 		definitive := resp.StatusCode != http.StatusConflict || !isGatewayActivityUnresolved(responseBody)
-+ // isGatewayActivityUnresolved 解析网关 appFail 响应体的 code 字段，仅 code=="ACTIVITY_UNRESOLVED" 视为停靠信号；
-+ // 上游透传的 409 走终局 Resolve，避免与网关自身冲突语义混淆。
-
-
-─── internal/modules/craftegress/adapter.go:227-227 ───
-[bug · low] 指纹未包含 r.URL.RawQuery，而 targetURL 会把查询串原样拼进转发 URL：同 path+body、不同 query 的两个逻辑请求会共享并复用同一
-parked 身份，活动归因错配。当前网关两条路由都不读 query，暂无实际影响，但适配器是通用转发器，后续出现带 query 的端点会静默串号。建议把 RawQuery 纳入指纹前缀。
-
-- func craftEgressRequestDigest(method, path string, body []byte) string {
-+ func craftEgressRequestDigest(method, path, rawQuery string, body []byte) string {
-+ 	digest := sha256.Sum256(append([]byte(strconv.Itoa(len(path))+"\x00"+method+"\x00"+path+"\x00"+rawQuery+"\x00"), body...))
-+ 	return hex.EncodeToString(digest[:])
-+ }
-
-
-─── internal/modules/craftegress/adapter.go:173-175 ───
-[bug · high] 仅凭 HTTP 409 判定 parked 漏掉了网关表达"结果未知"的另一类响应：internal/handler/craft_model_gateway.go 的
-Forward 在 initiation 超时（L533）、转发失败/无响应（L543，Resolve(CraftChargeStartUnknown)）、上游 body
-读取中断或超限（L564）、attempt.Resolve(Started) 落库失败（L569）等场景返回 502 + body
-error.code=ACTIVITY_UNRESOLVED（appFail 结构为 {"error":{"code":...}}），网关侧均将 charge-start 记为
-Unknown/已发生。适配器把这些完整到达的 502 视为 definitive 并 Resolve 落盘，客户端随后重试同一逻辑请求（同 digest）时 Reuse 落空、mint 全新
-activityID——新身份构成新的 activity key，与旧 binding 无冲突，BeginBinding 直接放行，同一逻辑请求被物理发送两次并各自计费（双扣），违背本包文档承诺的
-"reuses that identity after an unknown outcome"。这与已确认的"上游 409 透传被误判 parked"是同一行判定的相反方向缺陷：一个过度
-parked，一个漏 parked。建议解析网关响应 body 的 error.code，凡 code=ACTIVITY_UNRESOLVED（无论 409 还是 502）一律保持
-unresolved/parked，交由上层 reconcile；可顺带推动网关把 L543 的 Unknown 场景与 L526 的 DefinitelyNotStarted 场景用不同 code
-区分。
-
-- 		// A gateway conflict (ACTIVITY_UNRESOLVED) parks rather than resolves:
-- 		// the durable attempt stays reusable until reconciliation.
-- 		definitive := resp.StatusCode != http.StatusConflict
-+ 		// 网关对"结果未知"有两类表达：409 冲突，以及 502 + body
-+ 		// error.code=ACTIVITY_UNRESOLVED（Unknown 结局）。两类都保持
-+ 		// parked，等待上层 reconcile，避免同指纹重试 mint 新身份造成双发。
-+ 		definitive := resp.StatusCode != http.StatusConflict &&
-+ 			!craftEgressBodyDeclaresOutcomeUnknown(responseBody)
-
-
-─── internal/modules/craftegress/journal.go:98-101 ───
-[bug · medium] replay 对任何 Unmarshal 失败的行直接返回错误，撕裂尾行会永久 brick 适配器启动。appendLocked 的单次 file.Write
-在崩溃/断电时可能只落盘半行（Write 部分成功后返回错误时同样已写入部分字节），重启后 replay 命中该行即 json.Unmarshal 失败 →
-OpenCraftEgressAttemptJournal 构造失败 → cmd 侧 log.Fatal，该 Run 的全部模型出流量被阻断，只能人工修复 journal 文件。append-only
-journal 的惯例是：仅容忍并截断末尾不完整行，中间行损坏才报错。建议在 scanner 循环中记录是否已到文件末尾（或改用 io.ReadAll
-后按行切分），对最后一条不完整记录截断文件并继续。
-
-  		var record CraftEgressAttemptRecord
-  		if err := json.Unmarshal(line, &record); err != nil {
-+ 			if atEOF { // 末尾撕裂行：截断后继续，仅中间损坏才拒绝启动
-+ 				return j.truncateTornTail(offset)
-+ 			}
-  			return fmt.Errorf("craftegress: journal record unreadable: %w", err)
-  		}
-
-
-─── internal/modules/craftegress/journal.go:161-167 ───
-[bug · medium] Resolve 在 appendLocked 持久化之前就变更内存状态（delete unresolved / 标记 resolved），与 Allocate 的
-fail-closed 顺序（append 成功后才更新内存）不一致。当 appendLocked 因磁盘满/IO 错误失败时：当前进程内该 digest 的 attempt 已从
-unresolved 删除，Reuse 落空 → 下次同 digest 请求 Allocate 新身份；而 journal 落盘记录仍是 unresolved，进程重启 replay 后同一
-digest 又回到"可复用"。同一次失败在进程内外产生相反语义。同时 adapter.go 调用点的注释 "a failed resolution record leaves the attempt
-reusable, which reconciles safely on the next pass" 与此处的实际行为相反（失败后内存中恰恰不可复用）。具体危害场景：网关侧已
-attempt.Resolve(Started)（物理调用已计费）而适配器 journal 的 resolve 落盘失败，重启后 replay 出 unresolved → 复用旧 ID → 网关
-BeginBinding 必然 409，attempt 永久 parked。建议调整为与 Allocate 相同的顺序：先 appendLocked 成功，再更新内存 map。
-
-  	if definitive {
-  		state = CraftEgressAttemptResolved
-  		resolvedNano = j.now().UnixNano()
-+ 	}
-+ 	if err := j.appendLocked(CraftEgressAttemptRecord{
-+ 		Ordinal: j.ordinalLocked(attemptID), AttemptID: attemptID, RequestDigest: requestDigest,
-+ 		State: state, GatewayStatus: gatewayStatus, CreatedNano: j.now().UnixNano(), ResolvedNano: resolvedNano,
-+ 	}); err != nil {
-+ 		return err // 持久化失败时内存保持 unresolved，与 Allocate 的 fail-closed 顺序一致
-+ 	}
-+ 	if definitive {
-  		delete(j.unresolved, requestDigest)
-  		j.resolved[requestDigest] = true
-  	}
-- 	return j.appendLocked(CraftEgressAttemptRecord{
-+ 	return nil
-
-
-─── internal/modules/execution/sandbox/docker_exec_events.go:126-142 ───
-[bug · medium] 接收循环未用 comma-ok 检测 Messages 通道关闭，且 `err == nil → continue` 不是终止条件。moby client 的
-EventsResult 契约是"Messages 在 API 流结束时关闭"：若客户端以关闭 Messages（而不投递非 nil 错误到 Err）或以 nil 错误通知流结束，本循环将忙转并持续向
-batch 追加零值 events.Message——CPU 空转 + 无界内存增长（在 resolveTerminalDuration 的 3s 窗口内足以 OOM）。代码自身的 `err ==
-nil` 分支说明作者预期 nil 可能到达，但该分支与关闭的 Messages 组合恰是永不终止的状态。建议对 Messages 使用 `case msg, ok :=
-<-result.Messages`，将通道关闭与 nil Err 均视为流终止并进入配对结算。
-
-- 	for {
-+ 	messagesOpen := true
-+ 	for messagesOpen {
-  		select {
-  		case <-ctx.Done():
-  			return unavailable, DockerExecEventPairUnavailable, ctx.Err()
-- 		case err := <-result.Err:
-- 			if err == nil {
-- 				continue
-- 			}
-- 			if isDockerEventStreamEOF(err) {
-+ 		case err, ok := <-result.Err:
-+ 			if !ok || err == nil || isDockerEventStreamEOF(err) {
-  				pair, status := pairDockerExecEvents(batch, receipt.ContainerID, receipt.ExecID)
-  				return pair, status, nil
-  			}
-  			return unavailable, DockerExecEventPairUnavailable, dockerError("RestrictedExecEvents", err)
-- 		case msg := <-result.Messages:
-+ 		case msg, ok := <-result.Messages:
-+ 			if !ok {
-+ 				messagesOpen = false
-+ 				continue
-+ 			}
-  			batch = append(batch, msg)
-  		}
-  	}
-+ 	pair, status := pairDockerExecEvents(batch, receipt.ContainerID, receipt.ExecID)
-+ 	return pair, status, nil
-
-
-─── internal/modules/execution/sandbox/docker_exec_events.go:108-110 ───
-[test · medium] 对 *client.Client 的 Events 方法做运行时接口断言，但整个仓库没有任何编译期或测试期证据钉住该签名与所依赖的 moby/moby/client
-v0.5.1 一致：dockerEngineAPI 刻意不包含 Events，本文件也没有类似 docker_normal_exec.go 末尾 `var _
-DockerNormalExecEngine = (*client.Client)(nil)` 的静态断言，而 ObserveExecEventPair 的守护进程路径完全无测试覆盖。若 v0.5.1
-的 Events 实际返回 (EventsResult, error) 双值，此断言对真实客户端永不成立，整条"权威时长证据"路径会静默退化为 unsupported（调用方
-craft_docker_restricted_exec.go 对 err/status 一律降级为
-unavailable，无任何告警）。建议增加包级编译期断言（一行即可让签名漂移在构建期暴露），并补一条针对真实回放终止行为的集成/契约测试。
-
-- 	streamer, ok := api.(interface {
-+ var _ interface {
-- 		Events(ctx context.Context, options client.EventsListOptions) client.EventsResult
-+ 	Events(ctx context.Context, options client.EventsListOptions) client.EventsResult
-- 	})
-+ } = (*client.Client)(nil)
-
-
-─── internal/modules/execution/sandbox/docker_exec_events.go:149-154 ───
-[bug · low] 以错误文本包含 "EOF" 判定干净回放结束过于宽泛：`io.ErrUnexpectedEOF` 的文本是 "unexpected EOF"，json.Decoder
-在事件流被截断（半条 JSON）时恰恰返回它；任何错误消息中恰好含 "EOF" 的真实网络错误也会被误判。误判后果是把传输失败吞成"干净结束 + 无错误的
-unavailable"，与该文件"explicitly indeterminate, never a guess"的证据原则相悖，且排障时无线索。建议改用 `errors.Is(err,
-io.EOF)` 精确匹配（该客户端的 EOF 经 %w 包装时同样成立）。
-
-  func isDockerEventStreamEOF(err error) bool {
-- 	if err == nil {
-- 		return false
-- 	}
-- 	return strings.Contains(err.Error(), "EOF")
-+ 	return errors.Is(err, io.EOF)
-  }
-
-
-─── packages/domain/src/craft/web-promotion.ts:41-43 ───
-[maintainability · medium] defaultPreviewVersion 的 newest-first 前置条件完全依赖调用方约定：WebVersionEvidenceFact
-只含 id 与 webEvidence，没有任何可排序字段（时间戳/序号），因此函数自身（乃至任何防御性检查）都无法验证传入顺序。一旦未来接线时调用方传入乱序或方向相反的数组，会静默返回一个较旧的
-ready 版本占据默认席位，直接违反 #107 "最新通过四检查的版本才成为默认"的核心规则。目前全仓库唯一消费方是 web-promotion.test.ts（T15
-报告将前端接线标注为可选），风险将在接线时兑现。建议让规则自身具备顺序无关性：在 fact 中携带可排序事实（如 createdAt/sequence）并在函数内取最大值，而非信任调用方排序。
-
-+ export interface WebVersionEvidenceFact {
-+   id: string;
-+   createdAt: string; // 可排序事实，使规则自身可判定"最新"而非信任调用方排序
-+   webEvidence: WebCheckEvidenceFact | null;
-+ }
++ import type { CraftWebCheckOutcome, CraftVersionView } from '@weknora/contracts';
 + 
-  export function defaultPreviewVersion(
-    versions: readonly WebVersionEvidenceFact[],
-  ): WebVersionEvidenceFact | null {
-+   let newestReady: WebVersionEvidenceFact | null = null;
-+   for (const version of versions) {
-+     if (!webCheckEvidenceReady(version.webEvidence)) continue;
-+     if (newestReady === null || version.createdAt > newestReady.createdAt) newestReady = version;
-+   }
-+   return newestReady;
++ const PASSED_OUTCOME: CraftWebCheckOutcome = 'passed';
++ 
++ export function webCheckEvidenceReady(evidence: WebCheckEvidenceFact | null): boolean {
++   if (evidence === null) return false;
+    return (
+-     evidence.build === 'passed' &&
+-     evidence.entry === 'passed' &&
+-     evidence.preview_reachable === 'passed' &&
+-     evidence.page_loaded === 'passed'
++     evidence.build === PASSED_OUTCOME &&
++     evidence.entry === PASSED_OUTCOME &&
++     evidence.preview_reachable === PASSED_OUTCOME &&
++     evidence.page_loaded === PASSED_OUTCOME
+    );
 + }
 
 
-─── packages/views/src/craft/access.tsx:102-102 ───
-[maintainability · low] 反馈段落同时输出 data-state={feedback.kind} 和 data-kind={feedback.kind} 两个值完全相同的属性，但
-craft.css 中 .wk-craft-access-feedback 的样式选择器只消费
-[data-kind='error'/'success']（craft.css:144-146），access.test.tsx 与 apps 层也没有任何对 data-state
-的引用。同一状态有两个数据源属死属性，且与本项目其他 craft
-组件（.wk-craft-chip[data-state=...]、.wk-craft-preview-state[data-state=...]）统一用 data-state
-的惯例不一致，后续维护者容易改错一个。建议删掉未被引用的属性，或将 CSS 选择器统一到 data-state 并删除 data-kind，二选一保持单一来源。
+─── packages/domain/src/craft/web-promotion.ts:61-66 ───
+[test · low] defaultPreviewVersion 的 createdAt 排序见证分支（Date.parse 比较、单侧 NaN
+回退数组顺序、相等时间戳保留先者）是本模块最复杂、且注释明确承诺的 #107 "newest wins" 自强制逻辑，但 web-promotion.test.ts 的全部用例均未传入
+createdAt，该分支当前零覆盖——例如把 '>' 误改为 '>=' 或破坏 NaN 回退语义都不会被任何测试捕获。建议补充：乱序 + createdAt 时最新者胜出、单侧缺失
+createdAt 时回退数组顺序、相等时间戳保留先者等用例；接线时也需与调用方约定 createdAt 统一使用后端 RFC3339 格式，避免 Date.parse 依实现解析非标准格式。
 
--     {feedback && <p role={feedback.kind === 'error' ? 'alert' : 'status'} aria-live={feedback.kind === 'error' ? 'assertive' : 'polite'} aria-atomic="true" data-state={feedback.kind} className="wk-craft-access-feedback" data-kind={feedback.kind}>{feedback.message}</p>}
-+     {feedback && <p role={feedback.kind === 'error' ? 'alert' : 'status'} aria-live={feedback.kind === 'error' ? 'assertive' : 'polite'} aria-atomic="true" className="wk-craft-access-feedback" data-kind={feedback.kind}>{feedback.message}</p>}
-
-
-─── packages/views/src/craft/share.tsx:10-17 ───
-[maintainability · low] @weknora/contracts 已冻结导出形状完全相同的
-CraftShareDecision（web-artifact.ts:18：version_id/evidence_digest/owner_id/decision）与
-CraftDecisionStatus（'approved' | 'rejected' | 'unknown'，与本地 CraftShareDecisionKind
-逐值一致）。此处本地重复声明会与冻结契约发生静默漂移——同 lane 的 web-promotion.ts 遵循的是
-NonNullable<CraftVersionView['web_evidence']> 从契约派生的模式。手写 fail-closed 解析（返回 null
-而非抛错）保留是合理的，但类型应直接复用契约导出；同理 locale 可复用 presentation.ts 的 CraftLocale，expiresAt 展示可用既有 formatDateTime
-而非渲染原始 ISO 串（兄弟组件 files.tsx/preview.tsx 均如此）。
-
-- export type CraftShareDecisionKind = 'approved' | 'rejected' | 'unknown';
-+ import type { CraftDecisionStatus, CraftShareDecision } from '@weknora/contracts';
-  
-- export interface CraftShareDecision {
--   version_id: string;
--   evidence_digest: string;
--   owner_id: string;
--   decision: CraftShareDecisionKind;
-- }
-+ export type CraftShareDecisionKind = CraftDecisionStatus;
-+ export type CraftShareDecisionFact = CraftShareDecision; // 复用冻结契约类型，避免本地副本漂移
+-     const versionTime = Date.parse(version.createdAt ?? '');
+-     const bestTime = Date.parse(best.createdAt ?? '');
+-     if (!Number.isNaN(versionTime) && !Number.isNaN(bestTime)) {
+-       if (versionTime > bestTime) best = version;
+-       continue;
+-     }
++ // web-promotion.test.ts 建议补充：
++ test('createdAt witness overrides array order among ready versions', () => {
++   const shuffled = [
++     { id: 'ver_old', webEvidence: all, createdAt: '2026-01-01T00:00:00Z' },
++     { id: 'ver_new', webEvidence: all, createdAt: '2026-02-01T00:00:00Z' },
++   ];
++   assert.equal(defaultPreviewVersion(shuffled)?.id, 'ver_new');
++ });
++ 
++ test('missing createdAt on one side falls back to newest-first array order', () => {
++   const withoutWitness = { id: 'ver_first', webEvidence: all };
++   const withWitness = { id: 'ver_second', webEvidence: all, createdAt: '2026-02-01T00:00:00Z' };
++   assert.equal(defaultPreviewVersion([withoutWitness, withWitness])?.id, 'ver_first');
++ });
 
 
-─── packages/views/src/craft/share.tsx:175-175 ───
-[maintainability · medium] 面板使用的十余个 wk-craft-share-*
-类名（wk-craft-share、-summary、-version、-digest、-state、-notice、-decision、-expiry、-awaiting、-error、-actio
-ns、-confirm、-decline、-revoke）在全仓库任何 CSS 文件中均无定义——本变更同时交付的 craft.css 是该 lane 的指定样式表（其新增注释自述 "All
-static styling lives here"），却只补齐了 wk-craft-access-* 系列。兄弟面板（sources.tsx 用 wk-craft-table、access.tsx
-用 wk-craft-access-*）的类名均有样式，share 面板将成为唯一以浏览器默认样式交付的例外（span 无布局、按钮无间距、错误态无着色）。建议在 craft.css 中按既有
-token 模式补齐 share 系列样式。
+─── packages/domain/src/craft/web-promotion.ts:19-25 ───
+[maintainability · low] createdAt 排序见证当前无任何数据来源：本模块锚定的 CraftVersionView（乃至整个
+packages/contracts）不含时间戳字段，后端版本 ID 也是内容摘要（craft.VersionID = 'ver_'+sha256，非时间有序），因此任何从契约构建 facts
+的调用方都无法提供 createdAt——defaultPreviewVersion 的 Date.parse 自强制分支在生产路径不可达，注释承诺的 "the seat goes to the
+NEWEST ready version even if the list arrives shuffled ... which is exactly what #107 requires"
+在现有数据形态下无法兑现，排序实际仍完全依赖 newest-first 数组顺序（由服务端 created_at DESC, id ASC 保证，但该保证未在契约类型上表达）。与已确认的 #3
+互补：该分支不仅零测试覆盖，也无真实数据可触发。建议在注释中明示 createdAt
+需等待契约补充版本时间戳字段（或改为契约可携带的单调序号），并写明在此之前数组顺序（服务端排序契约）是唯一生效的排序依据，避免后续接入方按注释假设乱序安全而静默选错默认版本。
 
--   return <section aria-label={labels.heading} className="wk-craft-share" data-status={view.status} data-restricted={view.restricted}>
-+ /* craft.css 中补充（示例） */
-+ .wk-craft-share { border: 1px solid var(--craft-line); border-radius: 8px; background: var(--craft-surface); display: grid; gap: 0.6rem; padding: 0.75rem 0.9rem; }
-+ .wk-craft-share-summary { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; margin: 0; }
-+ .wk-craft-share-summary code { font-family: ui-monospace, monospace; font-size: 0.78rem; overflow-wrap: anywhere; }
-+ .wk-craft-share-state[data-state='consented'] { color: var(--craft-success-text); }
-+ .wk-craft-share-state[data-state='declined'] { color: var(--craft-danger); }
-+ .wk-craft-share-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
-+ .wk-craft-share-error { border: 1px solid var(--craft-danger); border-radius: 8px; color: var(--craft-danger); padding: 0.6rem 0.8rem; margin: 0; }
-
-
-─── packages/views/src/craft/share.tsx:149-149 ───
-[maintainability · low] CraftSharePanel 与 projectShareView 目前唯一的消费方是 share.test.tsx：宿主 workbench.tsx
-中没有任何 share 相关引用，本次变更的其余视图（access/sources/usage）也未导入。而服务端的 GET share / POST decision / POST
-revocation 端点已随本变更交付（internal/handler/session/craft_share.go）。若后续 ticket 未接线，T11 的同意 UI
-将整体不可达。需在合并前确认接线计划已排期，或在本变更中同步接入工作台。
+     * Optional ordering witness (creation timestamp of the version, newest
+-    * wins). When callers supply it, the picker no longer depends on their
+-    * array order alone: the seat goes to the NEWEST ready version even if the
+-    * list arrives shuffled, which is exactly what #107's "the newest version
+-    * passing the four checks becomes the default" requires.
++    * wins). NOTE: CraftVersionView carries no timestamp today and version ids
++    * are content digests, so callers cannot supply this until the contract
++    * exposes one; until then the newest-first server order
++    * (created_at DESC, id ASC) is the only effective ordering contract.
+     */
+    createdAt?: string;
 
 
+─── internal/handler/craft_model_gateway.go:507-514 ───
+[security · medium] 信息泄漏（与已确认两处同族的新调用点）：BeginBinding 的非冲突失败经 failBudget 默认分支（本文件 731-732 行）以
+`appFail(..., "BUDGET_GATE_FAILED", err.Error())` 原样返回错误文本。BeginBinding 的错误来源包括
+loadGrant/prepareCraftChargeStart 的裸 GORM/驱动错误（可含 SQL 片段、表名，如 `dial tcp 10.x.x.x:5432` 暴露内网 DB
+拓扑），以及 craft_budget.go:220 `errors.Join(err, resolveErr)` 中的 resolveErr（GORM
+错误）。这违反本文件自述的脱敏纪律（523-525 行注释、699-701 行注释）。建议：该分支同样按"细节进
+logger.ErrorWithFields、客户端收不透明文案"处理，与已确认两处一并在本轮修复。
 
-─── packages/views/src/craft/sources.tsx:158-160 ───
-[maintainability · low] 用类型谓词替代 `entry as CraftCitationFact` 断言：filter
-之后编译器即可自动收窄，避免手写断言与联合类型后续演化脱节（例如新增第三种 kind 时断言仍会静默编译通过）。
-
-    const citedIds = new Set<string>(
--     (props.citations ?? []).filter((entry) => entry.kind === 'fact').map((entry) => (entry as CraftCitationFact).citationId),
-+     (props.citations ?? [])
-+       .filter((entry): entry is CraftCitationFact => entry.kind === 'fact')
-+       .map((entry) => entry.citationId),
-    );
-
-
-─── packages/views/src/craft/sources.tsx:250-250 ───
-[maintainability · low] citations 列表使用 key={index}（inference 分支同样）：清单刷新/重排时会复用错位 DOM 与状态。fact 项有唯一
-citationId 可作稳定 key；若同一 citationId 可能重复出现，可组合 `fact-${entry.citationId}-${index}` 保证唯一性，inference 项用
-`inference-` 前缀区分。
-
--                 <li key={index} className="wk-craft-citation-fact" data-craft-citation={entry.citationId}>
-+                 <li key={`fact-${entry.citationId}-${index}`} className="wk-craft-citation-fact" data-craft-citation={entry.citationId}>
-
-
-─── packages/views/src/craft/usage.tsx:177-180 ───
-[maintainability · low] CraftBudgetPauseNotice 将中文文案硬编码在组件内，而同文件的 CraftUsagePanel 已建立 strings
-注入模式（CraftUsageStrings + CRAFT_USAGE_STRINGS_ZH 默认值），新组件绕过了该机制，后续做本地化/文案统一时会被遗漏。建议沿用同文件的 strings
-prop 模式。另外按钮渲染了 canExtend 但 onRequestExtension 缺失时仅靠 disabled 兜底，建议在 canExtend 为 true
-且无回调时直接不渲染按钮，语义更清晰。
+  	if err != nil {
+  		if errors.Is(err, craft.ErrConflict) {
+  			appFail(c, http.StatusConflict, "ACTIVITY_UNRESOLVED", "this model activity was already attempted; reconcile before retry")
++ 			return
++ 		}
++ 		if !isCraftBudgetRefusal(err) { // 已知 ErrGrantRevoked/ErrGrantExpired/ErrGrantExhausted/ErrBudgetDenied 之外的错误一律脱敏
++ 			logger.ErrorWithFields(c.Request.Context(), err, map[string]any{
++ 				"craft_run_id": payload.RunID, "craft_activity_id": activityID,
++ 			})
++ 			appFail(c, http.StatusInternalServerError, "BUDGET_GATE_FAILED", "the budget coordinator failed to authorize this activity")
+  			return
+  		}
+  		g.failBudget(c, err, false)
+  		return
+  	}
 
 
+─── internal/modules/execution/sandbox/docker_restricted_exec.go:68-72 ───
+[bug · low] CreateOutputlessExec 缺少与 CreateAttachedExec 相同的 Timeout 上界校验。normal 路径在
+docker_normal_exec.go 中显式拒绝 `timeout > time.Duration(1<<62)`(防溢出/荒谬值),而受限路径对 req.Timeout 只做 `<=0`
+归一后就直接传入 dockerExecCommand。由于受限 exec 是 detached 启动:StartOutputlessExec 的 rpcTimeout 只覆盖 start
+RPC、服务层 Wait 的 maxWait 只约束轮询退出而进程继续运行,容器内唯一的硬终止手段就是 wrapper 的 `timeout -s KILL <seconds>`;一个超大或损坏的
+Timeout 会让该保护退化为近似永不生效,进程将无限消耗容器 CPU/内存,直到空闲回收器兜底。建议补齐同款上界拒绝以保持两个 provider 的输入契约一致。
 
-─── internal/application/service/craft_share.go:403-405 ───
-[maintainability · low] auditShare 的拒绝去重窗口起点与审计行 CreatedAt 直接使用 time.Now()，绕过了服务注入的 s.now()
-时钟。CraftShareService 的其余时间判定（DecideShare/RevokeShare/ShareAuthority/view 的 TTL 判断）均走
-s.now()，唯独审计路径使用墙钟，导致注入假时钟的测试无法确定性断言去重窗口行为（假时钟下写入的 CreatedAt 是真实时间，窗口比较失真）。同仓 T12 的平行实现
-auditExport（craft_export.go:292-307）已经过 OCR 修正统一为 now := s.now()（见 docs/plans/craft-107-ocr-t12.md
-的同款修正），此处应保持一致。
-
-  	versionID = strings.TrimSpace(versionID)
-+ 	now := s.now()
-  	if outcome == "denied" {
-- 		since := time.Now().Add(-craftDenyDedupWindow)
-+ 		since := now.Add(-craftDenyDedupWindow)
-
-
-─── internal/application/service/craft_share.go:417-418 ───
-[maintainability · low] 审计行 CreatedAt 同样应使用注入时钟（与上面 since 的修正配套，对齐 craft_export.go:307 的 CreatedAt:
-now 写法）。
-
-  		TargetID: versionID, Outcome: outcome,
-- 		Details: types.JSON(raw), CreatedAt: time.Now(),
-+ 		Details: types.JSON(raw), CreatedAt: now,
-
-
-─── internal/application/service/craft_share.go:332-334 ───
-[bug · low] RevokeShare 在撤销已持久化提交(Updates 成功且审计已写)之后,才通过 s.view 重新派生响应视图。s.view 依赖 versions.Get +
-files.GetFile + records.Load 三次读取,任一瞬时故障(如文件存储 5xx)或记录摘要损坏(Load 的 digest mismatch → ErrConflict →
-409)都会让 RevokeShare 对一个已经生效的撤销返回错误响应。客户端会把非 2xx
-理解为"撤销失败",但实际上同意已被撤销——对撤回同意这一安全敏感操作,不应把已提交的状态变更报成失败(虽然重试幂等、方向上是保守的,但仍会误导调用方)。建议与 DecideShare
-的响应组装方式对齐:在更新前先派生 contribution(fail-closed),更新成功后用 decision 行在本地投影响应,避免提交后再做远程读取。
-
-+ 	versionID = strings.TrimSpace(versionID)
-+ 	// Derive the contribution BEFORE the row update so a revocation that
-+ 	// commits is never reported through a post-commit evidence re-read.
-+ 	contribution, err := s.contribution(ctx, scope, versionID)
-+ 	if err != nil {
-+ 		return CraftShareView{}, err
+  	timeout := req.Timeout
+  	if timeout <= 0 {
+  		timeout = DefaultTimeout
 + 	}
-+ 	now := s.now()
-+ 	result := s.db.WithContext(ctx).
-+ 		Where("tenant_id = ? AND session_id = ? AND version_id = ? AND revoked_at IS NULL", scope.TenantID, scope.SessionID, versionID).
-+ 		Updates(&craftShareDecisionRow{RevokedAt: &now, UpdatedAt: now})
-+ 	if result.Error != nil {
-+ 		return CraftShareView{}, result.Error
-+ 	}
-+ 	if result.RowsAffected > 0 {
-+ 		s.auditShare(ctx, scope, versionID, "craft.share_revoked", "success", nil)
-+ 	}
-  	// No live row (never decided, or already revoked): revocation is
-- 	// idempotent and the view simply reports the resulting state.
-- 	return s.view(ctx, scope, versionID)
-+ 	// idempotent; project the resulting state from the row just read.
-+ 	decision, err := s.decision(ctx, scope, versionID)
-+ 	if err != nil {
-+ 		return CraftShareView{}, err
-+ 	}
-+ 	return projectCraftShareView(contribution, decision, s.now()), nil
++ 	if timeout > time.Duration(1<<62) {
++ 		return DockerOutputlessExecReceipt{}, dockerInvalidRequest("RestrictedExec", "timeout is out of range")
+  	}
+  	created, err := c.api.ExecCreate(ctx, id, client.ExecCreateOptions{
 
+
+─── internal/modules/execution/sandbox/docker_restricted_exec.go:103-108 ───
+[maintainability · low] StartOutputlessExec 对 ExecStart 的方法集断言只有运行时检查,没有像 docker_exec_events.go
+顶部那样加编译期钉子(其注释明确说明:客户端升级改变签名时应让构建在此处失败,而不是运行时断言静默降级为 unsupported)。当前若 moby client 升级调整了 ExecStart
+签名,编译仍能通过,所有受限 exec 会在生产运行时以 "restricted Docker ExecStart unsupported" 全量失败,而这恰是 events
+文件同批变更刻意防住的场景。建议补一个包级编译期断言保持两处策略一致。
+
++ // Compile-time pin mirroring docker_exec_events.go: a client upgrade that
++ // changes the ExecStart signature must break the build here instead of
++ // silently disabling every restricted exec at runtime.
++ var _ interface {
++ 	ExecStart(context.Context, string, client.ExecStartOptions) (client.ExecStartResult, error)
++ } = (*client.Client)(nil)
++ 
++ // (在 StartOutputlessExec 中)
+  	starter, ok := api.(interface {
+  		ExecStart(context.Context, string, client.ExecStartOptions) (client.ExecStartResult, error)
+  	})
+  	if !ok {
+  		return fmt.Errorf("restricted Docker ExecStart unsupported")
+  	}
+
+
+LLM retry report summary: 11 of 700 requests affected -- 11 requests recovered after retry
+
+Core review (11 requests):
+- internal/application/repository/craft_version.go,internal/application/repository/craft_workspace.go,internal/application/service/craft_inputs.go,internal/application/service/craft_source_open.go,internal/application/service/craft_workspace.go,internal/modules/craft/contracts.go,internal/modules/craft/input_code.go,internal/modules/craft/version.go,packages/views/src/craft/sources.tsx: rate limited (HTTP 429) -> rate limited (HTTP 429) -> succeeded
+- internal/application/repository/craft_version.go,internal/application/repository/craft_workspace.go,internal/application/service/craft_inputs.go,internal/application/service/craft_source_open.go,internal/application/service/craft_workspace.go,internal/modules/craft/contracts.go,internal/modules/craft/input_code.go,internal/modules/craft/version.go,packages/views/src/craft/sources.tsx: rate limited (HTTP 429) -> rate limited (HTTP 429) -> succeeded
+- internal/application/service/craft_access.go,internal/application/service/craft_session.go,internal/application/service/session.go,internal/container/craft_access_wiring.go,internal/modules/workbench/service/workbench/interaction.go,packages/views/src/craft/access.tsx: rate limited (HTTP 429) -> rate limited (HTTP 429) -> rate limited (HTTP 429) -> rate limited (HTTP 429) -> succeeded
+- internal/application/service/craft_archive.go,internal/application/service/craft_artifacts.go,internal/application/service/craft_citations.go,internal/application/service/craft_export.go,internal/container/craft_export_wiring.go,internal/handler/session/artifact_download.go,internal/modules/craft/archive.go,internal/modules/craft/citation.go,internal/modules/craft/export_manifest.go: rate limited (HTTP 429) -> rate limited (HTTP 429) -> succeeded
+- internal/application/service/craft_budget.go,internal/modules/commercial/repository/commercial/budget_reservation.go,internal/modules/commercial/repository/commercial/budget_task.go,packages/views/src/craft/usage.tsx: rate limited (HTTP 429) -> succeeded
+- ... and 6 more
+
+Per-attempt detail: --format json (retry_report).

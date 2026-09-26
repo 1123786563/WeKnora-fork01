@@ -122,8 +122,8 @@ func TestAdapterParksOnlyOnActivityUnresolvedCode(t *testing.T) {
 		"a 409 without the ACTIVITY_UNRESOLVED code is a definitive upstream outcome")
 
 	plain502 := driveAdapterOnce(t, http.StatusBadGateway, `{"error":{"code":"UPSTREAM_ERROR"}}`)
-	require.Equal(t, CraftEgressAttemptResolved, plain502.State,
-		"a 502 with a non-unresolved code resolves")
+	require.Equal(t, CraftEgressAttemptUnresolved, plain502.State,
+		"a gateway-originated 502 UPSTREAM_ERROR pairs with a charge-start Unknown and parks (round-3 contract)")
 }
 
 var _ = context.Background

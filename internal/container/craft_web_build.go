@@ -313,6 +313,11 @@ func CraftWebBuildEvidence(log CraftWebBuildLog, pin CraftWebToolchainPin) (craf
 	if pin.RuntimeDigest != "" && log.RuntimeDigest != pin.RuntimeDigest {
 		return craft.ArtifactEvidence{}, fmt.Errorf("%w: build log names runtime %s, deployment runs %s", craft.ErrConflict, log.RuntimeDigest, pin.RuntimeDigest)
 	}
+	if log.ExitCode == nil {
+		// Parse guarantees a non-nil pointer for canonical logs; a caller
+		// that constructed the struct directly must not panic here.
+		return craft.ArtifactEvidence{}, fmt.Errorf("%w: build log carries no exit code", craft.ErrConflict)
+	}
 	return craft.ArtifactEvidence{BuildRan: true, BuildExitCode: *log.ExitCode}, nil
 }
 

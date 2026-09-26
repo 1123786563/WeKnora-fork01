@@ -59,6 +59,18 @@ func (e *RemoteOperationError) Error() string {
 	if e == nil || e.Err == nil {
 		return ErrRemoteOperationUnknown.Error()
 	}
+	// The prefix mirrors the carried State so the message never claims
+	// "unknown" for a succeeded/failed/running operation.
+	switch e.State {
+	case RemoteOperationSucceeded:
+		return fmt.Sprintf("remote operation succeeded: %v", e.Err)
+	case RemoteOperationFailed:
+		return fmt.Sprintf("remote operation failed: %v", e.Err)
+	case RemoteOperationRunning:
+		return fmt.Sprintf("remote operation running: %v", e.Err)
+	case RemoteOperationPending:
+		return fmt.Sprintf("remote operation pending: %v", e.Err)
+	}
 	return fmt.Sprintf("%s: %v", ErrRemoteOperationUnknown, e.Err)
 }
 

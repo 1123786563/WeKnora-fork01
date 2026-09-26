@@ -14,6 +14,7 @@ package craft
 // fresh authorization (T10) — the manifest itself grants no access.
 
 import (
+	"strings"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -271,6 +272,14 @@ func ValidateExportBundleMembers(files []File) error {
 	for _, member := range files {
 		if err := ValidateArtifactPath(member.Path); err != nil {
 			return err
+		}
+		if first := strings.SplitN(member.Path, "/", 2)[0]; len(first) == 2 && first[1] == ':' &&
+			((first[0] >= 'a' && first[0] <= 'z') || (first[0] >= 'A' && first[0] <= 'Z')) {
+			// Windows drive-letter first segment (both cases): a zip-slip
+			// variant that older extractors resolve as an absolute target
+			// outside the extraction directory. Refused BEFORE any byte is
+			// packaged, unlike a handler-side post-head check.
+			return fmt.Errorf("%w: bundle member %q uses a drive-letter path", ErrInvalidInput, member.Path)
 		}
 		if reserved[member.Path] {
 			return fmt.Errorf("%w: bundle member %q collides with a fixed bundle document", ErrInvalidInput, member.Path)

@@ -95,7 +95,7 @@ type InputExecutionRequest struct {
 // Reason is a stable machine code, empty when allowed.
 type InputExecutionDecision struct {
 	Allowed   bool
-	Reason    string // input_target | interpreter_input | shell_input | input_symlink | input_identity
+	Reason    string // input_target | interpreter_input | shell_input | input_symlink | input_identity | wrapper_shape | exec_forward
 	AuditKind string
 	Target    string // canonical path or digest identity that matched
 	Digest    string
@@ -295,6 +295,12 @@ func (p *InputExecutionPolicy) Review(req InputExecutionRequest) InputExecutionD
 				return p.deny("shell_input", abs, "")
 			}
 		}
+	} else if hasExecForwardFlag(req.Command) {
+		// find -exec / -execdir forwards arbitrary files to an interpreter
+		// at RUNTIME ({} is filled with paths from the whole workspace,
+		// including the read-only inputs tree): the argv itself is lexically
+		// clean, so no path containment can catch it. Fail closed.
+		return p.deny("exec_forward", strings.Join(req.Command, " "), "")
 	} else if status, offset := InterpreterPrefixStatus(req.Command); status != InterpreterScanNone {
 		if status == InterpreterScanInconclusive {
 			// Fail closed: the wrapper's option structure could not be
@@ -743,6 +749,17 @@ func (p *InputExecutionPolicy) deny(reason, target, digest string) InputExecutio
 		Digest:    digest,
 		Err:       fmt.Errorf("%w: %s matched %s", ErrExecutionDenied, reason, target),
 	}
+}
+
+// hasExecForwardFlag reports whether any argv token is find's execution
+// forwarding flag (separate or =-attached forms).
+func hasExecForwardFlag(command []string) bool {
+	for _, arg := range command {
+		if arg == "-exec" || arg == "-execdir" || strings.HasPrefix(arg, "-exec=") || strings.HasPrefix(arg, "-execdir=") {
+			return true
+		}
+	}
+	return false
 }
 
 // carriesProgramTextFlag reports whether a short-option group (already

@@ -175,3 +175,43 @@ func (previewCountingChecker) CheckPreviewNoEgress(context.Context, craft.Scope)
 	previewCountingCheckerCalls++
 	return nil
 }
+
+
+// TestCraftPreviewOriginPortSpellingOverlapIsRefused is the round-3 OCR
+// security regression: a preview origin that differs from the app origin
+// only by default-port spelling (https://app:443 vs https://app) used to
+// pass the raw-string distinctness check while trimDefaultPort made the
+// hosts equal — putting the unauthenticated preview routes on the app
+// origin. The constructor must refuse the shared hostname outright.
+func TestCraftPreviewOriginPortSpellingOverlapIsRefused(t *testing.T) {
+	require.Panics(t, func() {
+		NewCraftPreviewService(previewNoopVersions{}, previewNoopFiles{}, nil, CraftPreviewConfig{
+			AppOrigin:     "https://app.example.test",
+			PreviewOrigin: "https://app.example.test:443",
+			AccessChecker: &previewCountingAccess{allowed: true},
+		})
+	}, "a preview origin sharing the app hostname must abort assembly")
+	require.Panics(t, func() {
+		NewCraftPreviewService(previewNoopVersions{}, previewNoopFiles{}, nil, CraftPreviewConfig{
+			AppOrigin:     "https://app.example.test:8443",
+			PreviewOrigin: "https://app.example.test:443",
+			AccessChecker: &previewCountingAccess{allowed: true},
+		})
+	}, "port-only separation shares Host-only cookies and must abort assembly")
+}
+
+// TestCraftPreviewAcceptsHostNeverServesTheAppHostname guards the serving
+// side: even a legitimately distinct preview origin never answers a request
+// whose host is the APP origin's hostname.
+func TestCraftPreviewAcceptsHostNeverServesTheAppHostname(t *testing.T) {
+	svc := NewCraftPreviewService(previewNoopVersions{}, previewNoopFiles{}, nil, CraftPreviewConfig{
+		AppOrigin:     "https://app.example.test:443",
+		PreviewOrigin: "https://preview.example.test",
+		AccessChecker: &previewCountingAccess{allowed: true},
+	})
+	require.True(t, svc.Enabled())
+	require.True(t, svc.AcceptsPreviewHost("preview.example.test"))
+	require.False(t, svc.AcceptsPreviewHost("app.example.test"),
+		"the app hostname must never reach unauthenticated preview routes")
+	require.False(t, svc.AcceptsPreviewHost("app.example.test:443"))
+}

@@ -254,7 +254,7 @@ export function CraftSources(props: CraftSourcesProps) {
               const revoked = props.revokedCitationIds?.includes(entry.citationId) ?? false;
               const openable = row !== undefined && !revoked;
               return (
-                <li key={index} className="wk-craft-citation-fact" data-craft-citation={entry.citationId}>
+                <li key={`fact-${entry.citationId}-${index}`} className="wk-craft-citation-fact" data-craft-citation={entry.citationId}>
                   <span className="wk-craft-fact-label">{labels.factLabel}</span> {entry.claim}{' '}
                   {openable && row ? (
                     <Button

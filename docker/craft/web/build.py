@@ -31,6 +31,7 @@ import argparse
 import hashlib
 import html as html_mod
 import json
+from html.parser import HTMLParser
 import os
 import re
 import shutil
@@ -73,6 +74,34 @@ EMBED_TAG_RE = re.compile(r"<\s*(base|iframe|object|embed|form|script|meta)\b", 
 # a tag opening so ordinary prose ("only = 3", "once=1", "online=enabled")
 # is not mistaken for an inline handler.
 EVENT_ATTR_RE = re.compile(r"""<[a-zA-Z][^>]*?\son[a-z]+\s*=""", re.IGNORECASE)
+
+
+class _EventAttrScanner(HTMLParser):
+    """Structural on*-attribute scanner (the regex above stays as a cheap
+    pre-filter). HTMLParser handles quoted attribute values containing ">",
+    "/" as the tag/attribute separator (<img/onerror=...>) and entity
+    decoding — exactly the shapes the regex misses."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.violation = ""
+
+    def handle_starttag(self, tag, attrs):
+        for name, _value in attrs:
+            if name.lower().startswith("on"):
+                self.violation = "inline event handler attribute {!r}".format(name)
+                return
+
+
+def fragment_has_event_attrs(fragment: str) -> bool:
+    scanner = _EventAttrScanner()
+    try:
+        scanner.feed(fragment)
+        scanner.close()
+    except Exception:
+        # Unparseable markup is refused by the structural scanner: fail closed.
+        return True
+    return bool(scanner.violation)
 
 
 class BuildError(Exception):
@@ -307,6 +336,11 @@ def render_html(heading: str, fragment: str) -> str:
         variants.append(candidate)
         queue.append(html_mod.unescape(candidate))
         queue.append(css_unescape(candidate))
+    if queue:
+        # Fail closed: unexplored variants must never bypass the denylists —
+        # deeply nested entities could otherwise push the browser-decoded
+        # form past the search frontier.
+        raise BuildError(EXIT_CONTENT, "html section {!r} nests too many encodings for the sanitizer".format(heading))
     for candidate in variants:
         for pattern, why in (
             (EXTERNAL_URL_RE, "external URL"),
@@ -314,10 +348,11 @@ def render_html(heading: str, fragment: str) -> str:
             (ACTIVE_DATA_RE, "active data/javascript URI"),
             (CSS_FETCH_RE, "css url()/@import fetch"),
             (EMBED_TAG_RE, "embedding/script/navigation tag"),
-            (EVENT_ATTR_RE, "inline event handler attribute"),
         ):
             if pattern.search(candidate):
                 raise BuildError(EXIT_CONTENT, "html section {!r} contains a {}: offline local assets only".format(heading, why))
+        if fragment_has_event_attrs(candidate):
+            raise BuildError(EXIT_CONTENT, "html section {!r} contains an {}: offline local assets only".format(heading, "inline event handler attribute"))
     return "<h2>{}</h2>{}".format(html_mod.escape(heading), fragment)
 
 

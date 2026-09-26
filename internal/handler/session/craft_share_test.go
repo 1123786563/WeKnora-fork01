@@ -82,6 +82,10 @@ func TestCraftT11ShareHTTPJourney(t *testing.T) {
 	require.NoError(t, err)
 	// The decision row's production migration belongs to central assembly
 	// (T20); the seam test mirrors the durable schema it persists into.
+	require.NoError(t, db.Exec(`CREATE TABLE IF NOT EXISTS sessions (id text PRIMARY KEY, tenant_id integer, user_id text)`).Error)
+	require.NoError(t, db.Exec(`INSERT OR REPLACE INTO sessions (id, tenant_id, user_id) VALUES ('session-t11', 1, 'owner')`).Error)
+	require.NoError(t, db.Exec(`CREATE TABLE IF NOT EXISTS sessions (id text PRIMARY KEY, tenant_id integer, user_id text)`).Error)
+	require.NoError(t, db.Exec(`INSERT OR REPLACE INTO sessions (id, tenant_id, user_id) VALUES ('session-t11', 1, 'owner')`).Error)
 	require.NoError(t, db.Exec(`CREATE TABLE IF NOT EXISTS craft_share_decisions (tenant_id integer, session_id text, version_id text, evidence_digest text, owner_id text, decision text, decided_at datetime, revoked_at datetime, created_at datetime, updated_at datetime, PRIMARY KEY (tenant_id, session_id, version_id))`).Error)
 	require.NoError(t, db.Exec(`CREATE TABLE IF NOT EXISTS audit_logs (id integer primary key autoincrement, tenant_id integer, actor_user_id text, action text, scope_type text, scope_id text, target_type text, target_id text, target_user_id text, outcome text, details text, created_at datetime)`).Error)
 
@@ -102,7 +106,7 @@ func TestCraftT11ShareHTTPJourney(t *testing.T) {
 	files := t11HTTPFiles{objects: map[string][]byte{"obj-v1": manifest}}
 	versions := t11HTTPVersionStore{byID: map[string]craft.Version{
 		"v-1": {ID: "v-1", WorkspaceID: "ws", RunID: "run-t11", Kind: craft.KindWeb,
-			Files: []craft.File{{Path: craft.WebCitationsPath, Ref: "obj-v1", SHA256: "sha", MIME: "application/json", Bytes: 64}}},
+			Files: []craft.File{{Path: craft.WebCitationsPath, Ref: "obj-v1", SHA256: "sha", MIME: "application/json", Bytes: 4096}}},
 	}}
 	checker := &t11HTTPChecker{roles: map[string]craft.TaskRole{
 		"owner": craft.TaskRoleOwner, "viewer": craft.TaskRoleViewer,
@@ -236,6 +240,8 @@ func TestCraftT11ShareDecisionBodyGuards(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	db, err := gorm.Open(sqlite.Open("file:craft107_t11_guards?mode=memory&cache=shared"), &gorm.Config{})
 	require.NoError(t, err)
+	require.NoError(t, db.Exec(`CREATE TABLE IF NOT EXISTS sessions (id text PRIMARY KEY, tenant_id integer, user_id text)`).Error)
+	require.NoError(t, db.Exec(`INSERT OR REPLACE INTO sessions (id, tenant_id, user_id) VALUES ('session-t11', 1, 'owner')`).Error)
 	require.NoError(t, db.Exec(`CREATE TABLE IF NOT EXISTS craft_share_decisions (tenant_id integer, session_id text, version_id text, evidence_digest text, owner_id text, decision text, decided_at datetime, revoked_at datetime, created_at datetime, updated_at datetime, PRIMARY KEY (tenant_id, session_id, version_id))`).Error)
 	require.NoError(t, db.Exec(`CREATE TABLE IF NOT EXISTS audit_logs (id integer primary key autoincrement, tenant_id integer, actor_user_id text, action text, scope_type text, scope_id text, target_type text, target_id text, target_user_id text, outcome text, details text, created_at datetime)`).Error)
 
@@ -254,7 +260,7 @@ func TestCraftT11ShareDecisionBodyGuards(t *testing.T) {
 	files := t11HTTPFiles{objects: map[string][]byte{"obj-v1": manifest}}
 	versions := t11HTTPVersionStore{byID: map[string]craft.Version{
 		"v-1": {ID: "v-1", WorkspaceID: "ws", RunID: "run-t11", Kind: craft.KindWeb,
-			Files: []craft.File{{Path: craft.WebCitationsPath, Ref: "obj-v1", SHA256: "sha", MIME: "application/json", Bytes: 64}}},
+			Files: []craft.File{{Path: craft.WebCitationsPath, Ref: "obj-v1", SHA256: "sha", MIME: "application/json", Bytes: 4096}}},
 	}}
 	checker := &t11HTTPChecker{roles: map[string]craft.TaskRole{"owner": craft.TaskRoleOwner, "viewer": craft.TaskRoleViewer}}
 	share, err := service.NewCraftShareService(service.CraftShareConfig{

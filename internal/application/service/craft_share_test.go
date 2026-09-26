@@ -79,6 +79,8 @@ func TestCraftT11Journey(t *testing.T) {
 	f.seedKnowledge(t, "k-shared", "kb-shared", 7, "Shared Region Sales")
 	f.seedChunk("kb-shared", "k-shared", "c-shared", "shared library source excerpt")
 	require.NoError(t, f.db.AutoMigrate(&repository.CraftKnowledgeRecordRow{}, &craftShareDecisionRow{}))
+	require.NoError(t, f.db.Exec(`CREATE TABLE IF NOT EXISTS sessions (id text PRIMARY KEY, tenant_id integer, user_id text)`).Error)
+	require.NoError(t, f.db.Exec(`INSERT OR REPLACE INTO sessions (id, tenant_id, user_id) VALUES ('s-craft', 1, 'u-owner')`).Error)
 	require.NoError(t, f.db.Exec(`CREATE TABLE audit_logs (id integer primary key autoincrement, tenant_id integer, actor_user_id text, action text, scope_type text, scope_id text, target_type text, target_id text, target_user_id text, outcome text, details text, created_at datetime)`).Error)
 	records := repository.NewCraftKnowledgeRecordRepository(f.db)
 
@@ -136,7 +138,7 @@ func TestCraftT11Journey(t *testing.T) {
 	version := func(id, runID string, citationIDs ...string) craft.Version {
 		ref := "obj-" + id
 		files.objects[ref] = manifestBytes(citationIDs...)
-		return craft.Version{ID: id, WorkspaceID: "ws-t11", RunID: runID, Kind: craft.KindWeb, Files: []craft.File{{Path: craft.WebCitationsPath, Ref: ref, SHA256: "sha", MIME: "application/json", Bytes: 64}}}
+		return craft.Version{ID: id, WorkspaceID: "ws-t11", RunID: runID, Kind: craft.KindWeb, Files: []craft.File{{Path: craft.WebCitationsPath, Ref: ref, SHA256: "sha", MIME: "application/json", Bytes: 4096}}}
 	}
 	versions := t11VersionStore{byID: map[string]craft.Version{}}
 	versions.byID["v-1"] = version("v-1", "run-t11", sharedID, ownID)
@@ -371,6 +373,8 @@ func (s t11CountingVersions) Get(ctx context.Context, scope craft.Scope, id stri
 func TestCraftT11OCRShareRegressions(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open("file:craft107_t11_ocr?mode=memory&cache=shared"), &gorm.Config{})
 	require.NoError(t, err)
+	require.NoError(t, db.Exec(`CREATE TABLE IF NOT EXISTS sessions (id text PRIMARY KEY, tenant_id integer, user_id text)`).Error)
+	require.NoError(t, db.Exec(`INSERT OR REPLACE INTO sessions (id, tenant_id, user_id) VALUES ('s-craft', 1, 'u-owner')`).Error)
 	require.NoError(t, db.Exec(`CREATE TABLE audit_logs (id integer primary key autoincrement, tenant_id integer, actor_user_id text, action text, scope_type text, scope_id text, target_type text, target_id text, target_user_id text, outcome text, details text, created_at datetime)`).Error)
 	require.NoError(t, db.AutoMigrate(&craftShareDecisionRow{}))
 
@@ -400,7 +404,7 @@ func TestCraftT11OCRShareRegressions(t *testing.T) {
 	version := func(id, runID string, citationIDs ...string) craft.Version {
 		ref := "obj-" + id
 		files.objects[ref] = manifestBytes(citationIDs...)
-		return craft.Version{ID: id, WorkspaceID: "ws-t11", RunID: runID, Kind: craft.KindWeb, Files: []craft.File{{Path: craft.WebCitationsPath, Ref: ref, SHA256: "sha", MIME: "application/json", Bytes: 64}}}
+		return craft.Version{ID: id, WorkspaceID: "ws-t11", RunID: runID, Kind: craft.KindWeb, Files: []craft.File{{Path: craft.WebCitationsPath, Ref: ref, SHA256: "sha", MIME: "application/json", Bytes: 4096}}}
 	}
 	versions := t11VersionStore{byID: map[string]craft.Version{}}
 	versions.byID["v-r"] = version("v-r", "run-r", shared.ID, own.ID)

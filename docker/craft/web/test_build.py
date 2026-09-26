@@ -52,6 +52,19 @@ class BuildSanitizerTests(unittest.TestCase):
         out = self.build.render_html("正文", "<p>only = 3, once=1, online=enabled</p>")
         self.assertIn("only = 3", out)
 
+    def test_quoted_gt_and_slash_separator_bypasses_are_refused(self):
+        # <img src="a>b" onerror=...> — the regex cannot cross a quoted ">".
+        with self.assertRaisesRegex(self.build.BuildError, "inline event handler"):
+            self.build.render_html("引号内gt", '<img src="a>b" onerror="alert(1)">')
+        # <img/onerror=...> — "/" is a valid tag/attribute separator.
+        with self.assertRaisesRegex(self.build.BuildError, "inline event handler"):
+            self.build.render_html("斜杠分隔", "<img/onerror=alert(1)>")
+
+    def test_variant_cap_fails_closed(self):
+        nested = "&amp;" * 80 + "url(//evil.example)"
+        with self.assertRaises(self.build.BuildError):
+            self.build.render_html("深度嵌套", "<p>" + nested + "</p>")
+
     def test_real_inline_handler_is_refused(self):
         with self.assertRaisesRegex(self.build.BuildError, "inline event handler"):
             self.build.render_html("真实内联", '<img src="x.png" onerror="alert(1)">')

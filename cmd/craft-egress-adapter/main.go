@@ -55,6 +55,13 @@ func main() {
 		if err != nil || parsed <= 0 {
 			log.Fatalf("craft-egress-adapter: CRAFT_EGRESS_FORWARD_TIMEOUT must be a positive duration, got %q", raw)
 		}
+		// An adapter budget BELOW the gateway's forward budget aborts slow
+		// generations mid-flight, parks the attempt as unknown-outcome and
+		// deadlocks same-fingerprint retries on ACTIVITY_UNRESOLVED. Refuse
+		// such configurations loudly instead of silently.
+		if parsed < craftegress.DefaultForwardTimeout() {
+			log.Fatalf("craft-egress-adapter: CRAFT_EGRESS_FORWARD_TIMEOUT (%s) must be >= the gateway-aligned default (%s); raise the gateway budget together, not the adapter alone", parsed, craftegress.DefaultForwardTimeout())
+		}
 		forwardTimeout = parsed
 	}
 	adapter, err := craftegress.NewCraftEgressAdapter(craftegress.CraftEgressAdapterConfig{

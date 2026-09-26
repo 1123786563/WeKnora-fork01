@@ -400,7 +400,7 @@ func (p *CraftMaterialPolicy) writeAuditRow(ctx context.Context, kind string, ou
 func (p *CraftMaterialPolicy) ReviewExecution(ctx context.Context, req craft.InputExecutionRequest) craft.InputExecutionDecision {
 	decision := p.policy.Review(req)
 	logger.Infof(ctx,
-		"[CraftMaterial] kind=%s allowed=%v reason=%s tenant=%d session=%s run=%s workspace=%s target=%s",
+		"[CraftMaterial] kind=%s allowed=%v reason=%s tenant=%d session=%s run=%s workspace=%s target=%q",
 		decision.AuditKind, decision.Allowed, decision.Reason,
 		p.scope.TenantID, p.scope.SessionID, p.runID, p.workspaceID, decision.Target)
 	if decision.Allowed {
@@ -417,7 +417,7 @@ func (p *CraftMaterialPolicy) ReviewExecution(ctx context.Context, req craft.Inp
 func (p *CraftMaterialPolicy) AuditInputRead(ctx context.Context, in craft.Input) craft.InputAuditEvent {
 	event := craft.InputReadAuditEvent(in)
 	logger.Infof(ctx,
-		"[CraftMaterial] kind=%s tenant=%d session=%s run=%s workspace=%s ref=%s digest=%s",
+		"[CraftMaterial] kind=%s tenant=%d session=%s run=%s workspace=%s ref=%q digest=%s",
 		event.Kind, p.scope.TenantID, p.scope.SessionID, p.runID, p.workspaceID, event.Target, event.Digest)
 	p.writeAuditRow(ctx, event.Kind, types.AuditOutcomeSuccess, event.Target, event.Digest, "")
 	return event

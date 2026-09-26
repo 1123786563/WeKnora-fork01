@@ -33,6 +33,7 @@ var (
 	ErrCraftDockerNormalInputCorrupt        = errors.New("Docker normal input failed integrity or decryption check")
 	ErrCraftDockerNormalInputTooLarge       = errors.New("Docker normal input exceeds the durable request size limit")
 	ErrCraftDockerNormalInputInvalid        = fmt.Errorf("Docker normal input request shape is invalid: %w", craft.ErrInvalidInput)
+	ErrCraftDockerNormalInputUnavailable    = errors.New("Docker normal input store is unavailable")
 )
 
 type CraftDockerNormalInputRequest struct {
@@ -93,6 +94,21 @@ func NewCraftDockerNormalInputRepository(db *gorm.DB) *CraftDockerNormalInputRep
 // Stage creates the encrypted request before any Docker create call. Replaying
 // an exact canonical request is idempotent; a changed request cannot inherit
 // the operation's admission/hold.
+// dockerNormalInputDBError wraps infrastructure failures of the normal-input
+// chain with the INPUT-domain unavailable sentinel (not the output-domain
+// one) so diagnostics are not misread as output-store outages.
+func dockerNormalInputDBError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, ErrCraftDockerNormalInputConflict) || errors.Is(err, ErrCraftDockerNormalInputNotFound) ||
+		errors.Is(err, ErrCraftDockerNormalInputTooLarge) || errors.Is(err, ErrCraftDockerNormalInputInvalid) ||
+		errors.Is(err, ErrCraftDockerNormalInputCorrupt) || errors.Is(err, ErrCraftDockerNormalInputKeyUnavailable) {
+		return err
+	}
+	return fmt.Errorf("%w: %v", ErrCraftDockerNormalInputUnavailable, err)
+}
+
 func (r *CraftDockerNormalInputRepository) Stage(ctx context.Context, request CraftDockerNormalInputRequest) (CraftDockerStagedNormalInput, error) {
 	if r == nil || r.db == nil {
 		return CraftDockerStagedNormalInput{}, ErrCraftDockerNormalInputConflict
@@ -112,7 +128,12 @@ func (r *CraftDockerNormalInputRepository) Stage(ctx context.Context, request Cr
 	if err != nil {
 		return CraftDockerStagedNormalInput{}, err
 	}
-	if int64(len(plain)) != canonicalSize || int64(len(plain)) > MaxCraftDockerNormalRequestBytes {
+	if int64(len(plain)) != canonicalSize {
+		// The size calculator's internal invariant broke — that is a
+		// calculator regression, not user input being too large.
+		return CraftDockerStagedNormalInput{}, fmt.Errorf("%w: canonical size calculator disagrees with json.Marshal", ErrCraftDockerNormalInputCorrupt)
+	}
+	if int64(len(plain)) > MaxCraftDockerNormalRequestBytes {
 		return CraftDockerStagedNormalInput{}, ErrCraftDockerNormalInputTooLarge
 	}
 	keyBytes := utils.GetAESKey()
@@ -141,7 +162,13 @@ func (r *CraftDockerNormalInputRepository) Stage(ctx context.Context, request Cr
 			SessionID string
 			Revision  int64
 		}
-		if err := tx.Table("agent_runs").Select("session_id, revision").Where("tenant_id = ? AND run_id = ?", key.TenantID, key.RunID).Take(&run).Error; err != nil || run.SessionID != request.TaskID {
+		if err := tx.Table("agent_runs").Select("session_id, revision").Where("tenant_id = ? AND run_id = ?", key.TenantID, key.RunID).Take(&run).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrCraftDockerNormalInputConflict
+			}
+			return dockerNormalInputDBError(err)
+		}
+		if run.SessionID != request.TaskID {
 			return ErrCraftDockerNormalInputConflict
 		}
 		var prior craftDockerNormalInputRow
@@ -157,7 +184,7 @@ func (r *CraftDockerNormalInputRepository) Stage(ctx context.Context, request Cr
 			return nil
 		}
 		if !errors.Is(lookup.Error, gorm.ErrRecordNotFound) {
-			return dockerOutputDBError(lookup.Error)
+			return dockerNormalInputDBError(lookup.Error)
 		}
 		var journal struct {
 			State         string
@@ -168,14 +195,17 @@ func (r *CraftDockerNormalInputRepository) Stage(ctx context.Context, request Cr
 		}
 		if err := tx.Table("craft_charge_start_journal").Select("state, protocol, provider, send_claimed_at, run_revision").Where(
 			"tenant_id = ? AND run_id = ? AND activity_key = ?", key.TenantID, key.RunID, key.ActivityKey).Take(&journal).Error; err != nil {
-			return ErrCraftDockerNormalInputConflict
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrCraftDockerNormalInputConflict
+			}
+			return dockerNormalInputDBError(err)
 		}
 		if journal.State != "intent" || journal.Protocol == nil || *journal.Protocol != "docker_coordinator" || journal.Provider != nil || journal.SendClaimedAt != nil || journal.RunRevision != run.Revision {
 			return ErrCraftDockerNormalInputConflict
 		}
 		created := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&row)
 		if created.Error != nil {
-			return dockerOutputDBError(created.Error)
+			return dockerNormalInputDBError(created.Error)
 		}
 		return nil
 	})
@@ -207,7 +237,13 @@ func (r *CraftDockerNormalInputRepository) Read(ctx context.Context, key CraftCh
 		return CraftDockerStagedNormalInput{}, err
 	}
 	var run struct{ SessionID string }
-	if err := r.db.WithContext(ctx).Table("agent_runs").Select("session_id").Where("tenant_id = ? AND run_id = ?", key.TenantID, key.RunID).Take(&run).Error; err != nil || run.SessionID != row.TaskID {
+	if err := r.db.WithContext(ctx).Table("agent_runs").Select("session_id").Where("tenant_id = ? AND run_id = ?", key.TenantID, key.RunID).Take(&run).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return CraftDockerStagedNormalInput{}, ErrCraftDockerNormalInputConflict
+		}
+		return CraftDockerStagedNormalInput{}, dockerNormalInputDBError(err)
+	}
+	if run.SessionID != row.TaskID {
 		return CraftDockerStagedNormalInput{}, ErrCraftDockerNormalInputConflict
 	}
 	return decryptCraftDockerNormalInput(row)
@@ -220,7 +256,7 @@ func (r *CraftDockerNormalInputRepository) load(ctx context.Context, key CraftCh
 		return craftDockerNormalInputRow{}, ErrCraftDockerNormalInputNotFound
 	}
 	if err != nil {
-		return craftDockerNormalInputRow{}, dockerOutputDBError(err)
+		return craftDockerNormalInputRow{}, dockerNormalInputDBError(err)
 	}
 	return row, nil
 }
@@ -341,7 +377,9 @@ func craftDockerJSONQuotedStringSize(value string) int64 {
 		switch {
 		case width == 1 && r == utf8.RuneError:
 			size += 6 // encoding/json emits the escaped replacement sequence \\ufffd
-		case r == '"' || r == '\\' || r == '\b' || r == '\f' || r == '\n' || r == '\r' || r == '\t':
+		case r == '"' || r == '\\' || r == '\n' || r == '\r' || r == '\t':
+			// encoding/json emits \b and \f as the 6-byte \u0008/\u000c
+			// escapes; only \" \\ \n \r \t use the 2-byte short form.
 			size += 2
 		case r < 0x20 || r == '<' || r == '>' || r == '&' || r == '\u2028' || r == '\u2029':
 			size += 6
@@ -361,14 +399,14 @@ func normalSHA256(bytes []byte) string {
 func lockDockerNormalInputRun(db *gorm.DB, ctx context.Context, key CraftChargeStartKey) error {
 	locked := db.WithContext(ctx).Table("agent_runs").Where("tenant_id = ? AND run_id = ?", key.TenantID, key.RunID).UpdateColumn("revision", gorm.Expr("revision"))
 	if locked.Error != nil {
-		return dockerOutputDBError(locked.Error)
+		return dockerNormalInputDBError(locked.Error)
 	}
 	if locked.RowsAffected != 1 {
 		return ErrCraftDockerNormalInputConflict
 	}
 	var run struct{ Status string }
 	if err := db.WithContext(ctx).Table("agent_runs").Select("status").Where("tenant_id = ? AND run_id = ?", key.TenantID, key.RunID).Take(&run).Error; err != nil {
-		return dockerOutputDBError(err)
+		return dockerNormalInputDBError(err)
 	}
 	if run.Status != "queued" && run.Status != "running" && run.Status != "recovering" {
 		return ErrCraftDockerNormalInputConflict
@@ -399,7 +437,7 @@ func (r *CraftDockerSendClaimRepository) BindDockerNormalExecReceipt(ctx context
 			"receipt_stdin_enabled": receipt.StdinEnabled, "receipt_stdin_byte_count": receipt.StdinByteCount,
 			"receipt_stdin_sha256": receipt.StdinSHA256, "receipt_timeout_ms": receipt.TimeoutMillis})
 	if result.Error != nil {
-		return dockerOutputDBError(result.Error)
+		return dockerNormalInputDBError(result.Error)
 	}
 	affected = result.RowsAffected
 	if affected == 1 {

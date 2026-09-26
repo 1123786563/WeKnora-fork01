@@ -16,6 +16,8 @@
 //     those model calls); nothing anywhere renders an amount — money comes
 //     only from the commercial view.
 import React, { useCallback, useEffect, useState } from 'react';
+// NOTE: the default React import is REQUIRED by the tsx node --test runner
+// (classic JSX runtime), even though apps use jsx: react-jsx.
 import type { CraftRunView } from '@weknora/contracts';
 import {
   asOfLabel, fundingNote, usageLabel, usageRows,

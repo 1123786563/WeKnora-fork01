@@ -8,6 +8,7 @@ import (
 	"time"
 
 	repository "github.com/Tencent/WeKnora/internal/application/repository"
+	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
 )
 
@@ -56,9 +57,15 @@ type CraftDockerRestrictedExec struct {
 // is logged so a deployment that forgot to wire the security gate is
 // observable in its logs.
 func (s *CraftDockerRestrictedExec) WithExecutionPolicy(policy CraftExecutionPolicyGate) *CraftDockerRestrictedExec {
-	if s != nil && policy != nil {
-		s.policy = policy
+	if s == nil {
+		return s
 	}
+	if policy == nil {
+		logger.Warnf(context.Background(), "[CraftDockerRestrictedExec] T03 execution gate NOT attached: the uploaded-material execution policy is nil (unwired assembly)")
+		return s
+	}
+	s.policy = policy
+	logger.Infof(context.Background(), "[CraftDockerRestrictedExec] T03 execution gate attached")
 	return s
 }
 
@@ -184,7 +191,11 @@ func (s *CraftDockerRestrictedExec) Wait(ctx context.Context, grantID, activityI
 		return unknown, sandbox.ErrRemoteOperationUnknown
 	}
 	unknown.Receipt = *durable.Receipt
-	ticker := time.NewTicker(20 * time.Millisecond)
+	// Exponential backoff 20ms→200ms: each round costs two DB queries plus
+	// a Docker inspect, so a fixed 20ms ticker hammers both backends (~150
+	// round trips per second per waiter) for the whole wait window.
+	interval := 20 * time.Millisecond
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
 		if err := waitCtx.Err(); err != nil {
@@ -208,6 +219,13 @@ func (s *CraftDockerRestrictedExec) Wait(ctx context.Context, grantID, activityI
 			return result, nil
 		case sandbox.DockerOutputlessUnknown:
 			// Unknown is not terminal proof. Continue until the caller's bound.
+		}
+		if interval < 200*time.Millisecond {
+			interval *= 2
+			if interval > 200*time.Millisecond {
+				interval = 200 * time.Millisecond
+			}
+			ticker.Reset(interval)
 		}
 		select {
 		case <-waitCtx.Done():
