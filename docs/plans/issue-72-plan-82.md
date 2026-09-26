@@ -4,13 +4,13 @@
 
 **Goal:** 让一次经渠道验签的支付宝付款，按 R-4 裁决的 α 双轨道（渠道真实收款 + WeKnora 驱动 Stripe Provider gated 结算扣款 → Lago 内建 webhook finalize → active）恰好一次激活 payment-gated 订阅：渠道回调只入账一次、Outbox 重放与响应丢失不重复履约，产品状态按「待付款 → 已付款待激活 → 已生效」稳定呈现，激活后套餐 Entitlement 与首期套餐 Credits 到账，并留存关联 Invoice/Payment/Subscription/Credits 的真实栈证据（支付宝侧为本地 RSA stub 协议往返，已披露边界，不伪造沙箱证据）。
 
-**Architecture:** 沿用 #81 冻结的 additive seam 模式。seam 新增命令 `settle_purchase_payment`：读 authority 订阅快照（active 即幂等返回）→ Stripe 侧按 customer+`metadata.lago_invoice_id` 定位挂死的 gating PaymentIntent（t10 P1' 实证）→ attach 结算 pm → 对该 PI `update payment_method + confirm`（off-session 同步扣款）→ 激活由 Lago **内建** webhook 链（`POST /webhooks/stripe/:org_id` → `PaymentIntentSucceededService` → payment succeeded → `handle_payment_gated_activation` → invoice finalized + subscription active）完成，WeKnora 不触碰任何 Lago 状态写入。服务层把 `OrderKindPurchase` 的 fulfill 事件从旧 gateway 路由到新 `PurchaseFulfiller`：settle 触发 → 观察 purchase 快照 active → finalized 行项目复核（proration 剪裁判据修订）→ 本地投影切换 → 以购买身份发放首期套餐 Credits（独立钱包名+独立 meta 键）。产品态新增协调层合成的 `paid_awaiting_activation`（订单 paid + authority 未观察到 active）。恰好一次由三层合力：渠道层 ConfirmPayment 幂等单事务（既有）→ outbox `fulfill:<order>` 唯一键（既有）→ Lago 侧 payments 部分唯一索引 + `ResolveService` no-op 除非订阅仍 incomplete 且 invoice 仍 open（t02 实证）。同时清偿终审 OCR round-4 购买/订单/回调链路全部有效 findings（双重扣款竞态、SSRF Lago 侧出站校验、错误分类、凭据字面量 env 化等）。
+**Architecture:** 沿用 #81 冻结的 additive seam 模式。seam 新增命令 `settle_purchase_payment`：读 authority 订阅快照（active 即幂等返回）→ Stripe 侧按 customer + unsettled PI + `metadata.lago_invoice_id` 定位挂死的 gating PaymentIntent（t10 P1' 实证，实测形态 `requires_payment_method`）→ 多笔取 created 最新、歧义 fail-closed → attach 结算 pm → 对该 PI `update payment_method + confirm`（off-session 同步扣款）→ 激活由 Lago **内建** webhook 链（`POST /webhooks/stripe/:org_id` → `PaymentIntentSucceededService` → payment succeeded → `handle_payment_gated_activation` → invoice finalized + subscription active）完成，WeKnora 不触碰任何 Lago 状态写入。服务层把 `OrderKindPurchase` 的 fulfill 事件从旧 gateway 路由到新 `PurchaseFulfiller`：settle 触发 → 短窗跨轮观察 purchase 快照 active（不阻塞共享 drain）→ finalized 行项目复核（proration 剪裁判据修订）→ 本地投影切换 → 以激活月周期身份发放首期套餐 Credits（独立钱包名+独立 meta 键）。产品态新增协调层合成的 `paid_awaiting_activation`（订单 paid + authority 未观察到 active）。恰好一次由三层合力：渠道层 ConfirmPayment 幂等单事务（既有）→ outbox `fulfill:<order>` 唯一键（既有）→ Lago 侧 payments 部分唯一索引 + `ResolveService` no-op 除非订阅仍 incomplete 且 invoice 仍 open（t02 实证）。同时按 R-4 附带授权清偿**两个口径**的 OCR 遗留：① round-4 购买/订单/回调链路 findings（双重扣款竞态、SSRF Lago 侧出站校验、错误分类、凭据字面量 env 化等，Task 7/8/10）；② final report §9.4 对账的终审 6 项开放 findings（Task 10 第 4 条 + Task 11 第 6/7/9/11 条与第 10 条最小面）。前端补渠道选择器使支付宝链可经浏览器下单。
 
 **Tech Stack:** Go（gin + gorm，SQLite/PostgreSQL 双方言）、pinned Lago Community v1.53.0（`getlago/lago-api@591ae900`，digest 锁定 compose，栈 `weknora-lago-82flow` 实测在跑：48889 API healthy / 48890 front）、Stripe TEST 作受支持 provider 轨道（凭据仅 `~/.zcode/issue72-stripe.env` source 注入）、React+Vite 前端（apps/web）、TypeScript 共享契约（packages/contracts、packages/api-client）、Playwright 真实浏览器验证。
 
 **Spec:** `docs/specs/2026-09-20-lago-billing-migration-design.md`（"Quotes, payments, and fulfillment" L118-127、"Public product states" L167-171、"Local persistence and state projection" L159-165、"Behavior and contract matrix" #5 L218 / #20 L233）；决策依据 `docs/migrations/lago/t02-payment-activation/DECISION.md`（§3 provider 轨道、§5 裁决记录）、`docs/plans/issue-72-user-rulings.md` R-1/R-3/R-4、`docs/adr/0012-lago-as-commercial-billing-authority.md`（含 2026-09-23 修订）、ADR-0014（seam 冻结）、`docs/plans/issue-72-flow-evidence-82/README.md`（三缺陷已修状态 + 两个观察项）。
 
-**修订历史：** 第 1/2 轮计划（D2=cancel intent+切 pm+`retry_payment`）已被 t10 证伪并随 `e0364d196` revert（git 历史 `e0364d196^` 可查）；本版为 R-4 裁决（2026-09-26，`9393ce0da`）授权的重做版，吸收集成分支 flowfix 修复（`7324eb054`：回调 Auth 白名单 / `MerchantID()` 商户身份 / 客户绑定 upsert）与终审 OCR round-4 findings 修复范围。基线：集成分支 `codex/issue-72-lago` @ `f50c705074`（本 worktree 已 fast-forward 合并，无冲突）。
+**修订历史：** 第 1/2 轮计划（D2=cancel intent+切 pm+`retry_payment`）已被 t10 证伪并随 `e0364d196` revert（git 历史 `e0364d196^` 可查）；本版为 R-4 裁决（2026-09-26，`9393ce0da`）授权的重做版，吸收集成分支 flowfix 修复（`7324eb054`：回调 Auth 白名单 / `MerchantID()` 商户身份 / 客户绑定 upsert）与终审 OCR findings 修复范围（round-4 链路口径 + final report §9.4 六项开放口径，双口径显式分列）。基线：集成分支 `codex/issue-72-lago` @ `f50c705074`（本 worktree 已 fast-forward 合并，无冲突）。**计划审查第 1 轮（12 findings：3 high/4 medium/5 low）已全部处置**——H1 渠道选择器（Task 8）、H2 定位谓词按 t10 实测形态修订+P-A 处置（D2'/Task 1）、H3 终审 6 项入 Task 10/11、M4 短窗跨轮观察（D7/Task 7）、M5 多笔消歧（D2'/Task 5）、M6 purchaseStatus 数据源（Task 8）、M7 period 取激活月（D4/Task 7）、L8-L12 逐点修正（lago.go 归属/env 统一/ESM 命令/playwright 1.63.0/Task 10 清单补齐）。
 
 ---
 
@@ -35,27 +35,27 @@
 - **F2（运行时，t02-duplicates.json）**：重复探测无害——同 external_id 再 POST 订阅 422；对已支付 invoice `retry_payment` 405 `invalid_status`；manual 403；最终状态 byte-identical。
 - **F3【t10 证伪】**：gating invoice 隐藏窗口（open/closed ∈ INVISIBLE_STATUS）内 `POST /api/v1/invoices/{id}/retry_payment` → 404 `invoice_not_found`（t10-trigger-p2.json）。**禁止据此设计触发**。
 - **F4【t10 证伪】**：挂死窗口内 `GET /api/v1/payments?external_customer_id=` → 200 `payments: []`（payment 行仅落 authority DB，`visible_payable_condition` 过滤）。**禁止据此定位 invoice**。
-- **F5（运行时，t10 P1' PASS）**：Stripe 侧 `GET /v1/payment_intents?customer=` 可找到 unsettled intent，且每笔 Lago provider payment 的 PI 携带 `metadata.lago_invoice_id`（pinned `Invoices::Payments::CreateService` 打的 metadata）——**这是受支持的 provider 侧定位器**。
+- **F5（运行时，t10 P1' PASS）**：Stripe 侧 `GET /v1/payment_intents?customer=` 可找到 unsettled intent，且每笔 Lago provider payment 的 PI 携带 `metadata.lago_invoice_id`（pinned `Invoices::Payments::CreateService` 打的 metadata）——**这是受支持的 provider 侧定位器**。t10 唯一实测的挂死 PI 形态：`intent_status == "requires_payment_method"`、`unsettled: 1`（t10-payment-probe-p1.json observed.stripe_intents）。
 - **F6（运行时，t10 P2a/P2b PASS）**：Stripe 侧 cancel 挂死 intent 200；attach 结算 pm + 设 customer default 200。
-- **F7（运行时，#81 flow evidence）**：`pm_card_threeDSecure2Required` 作下单 pm → 收款停 `requires_action`、Lago payment=processing、gating invoice 保持 open、订阅保持 incomplete——**稳定待付款窗口**；`timeout_hours:0` 下不自动取消。
+- **F7（运行时，#81 flow evidence；状态分层澄清）**：`pm_card_threeDSecure2Required` 作下单 pm → **Lago payments 行**状态 `requires_action`、payment=processing、gating invoice 保持 open、订阅保持 incomplete——**稳定待付款窗口**；`timeout_hours:0` 下不自动取消。注意：这是 Lago 侧行状态；**Stripe PI 侧**该窗口的唯一实测形态是 `requires_payment_method`（F5）。两层状态不同词——定位谓词只认 PI 的 unsettled（D2'），不得混用 Lago 行状态词。
 - **F8（源码核实，本会话经 raw.githubusercontent 实取 pinned 591ae900）**：挂死 payment 的推进**只有 webhook 一条路**——`Invoices::Payments::CreateService`：`if processing_payment ... return result.payment ...` 注释原文 "Status will be updated via webhooks"。
 - **F9（源码核实，本会话实取）**：Stripe webhook 接收链 `POST /webhooks/stripe/:organization_id`（config/routes.rb:67）→ `WebhooksController#stripe` → `InboundWebhooks::CreateService` → `ValidateIncomingWebhookService` 以 `Stripe::Webhook::Signature.verify_header(payload, signature, provider.webhook_secret)` 验签 → 落库 + `ProcessJob`；`payment_intent.succeeded` → `PaymentProviders::Stripe::Webhooks::PaymentIntentSucceededService` → `update_payment_status!("succeeded")` → payment 行 succeeded →（t02 源码链）invoice `payment_status: succeeded` → `handle_payment_gated_activation` → `Payment::ResolveJob` → invoice **finalized** + subscription **active**。
 - **F10（源码核实，本会话实取）**：`RegisterWebhookService` 在 provider 注册时 `Stripe::WebhookEndpoint.create`（URL 基于 `LAGO_API_URL`）并把 Stripe 返回的 `secret` 存 `payment_providers.webhook_secret`。本地栈 Stripe 云端无法投递回环 URL → **本地验证需 harness 用 DB 中真实 secret 对真实 PI 事件计算 `Stripe-Signature` 投递到 `/webhooks/stripe/:org_id`**（传输腿替身；事件体=Stripe API 读回的真实 PI 对象，签名=真实 secret 的真实 HMAC，接收与处理链 100% Lago 内建）。
 - **F11（本会话实读代码）**：`grant_included_credits` 钱包身份两层匹配 `byName(MonthlyWalletName)`+`byMeta(meta[tenant]==ext && meta[period]==period)`（lago.go/fake.go）——购买发放必须用独立钱包名+独立 meta 键，否则与 Base 月度批次撞身份触发 `grant content conflict`。
 - **F12（运行时，flow-evidence-82 观察项）**：gating invoice 首期金额可能被 Lago calendar proration 剪裁（实测 9/25 下单、周期对齐 9/30 → `total_amount_cents=1980` ≠ plan 9900）。**判据修订输入**（D6'）。
-- **F13（本会话实跑）**：合并基线 `go build ./...` exit 0（仅 ld 重复库告警）；`go test ./internal/modules/commercial/commercialplatform/ ./internal/modules/commercial/service/commercial/ ./internal/handler/ ./internal/router/ -count=1` → **4 包全 ok**（72.0s/1.6s/3.2s/6.1s）。`npx playwright --version` → 1.60.0（实测）。
+- **F13（本会话实跑）**：合并基线 `go build ./...` exit 0（仅 ld 重复库告警）；`go test ./internal/modules/commercial/commercialplatform/ ./internal/modules/commercial/service/commercial/ ./internal/handler/ ./internal/router/ -count=1` → **4 包全 ok**（72.0s/1.6s/3.2s/6.1s）。`npx playwright --version` → **1.63.0**（计划轮与审查轮两会话实测一致；任务简报所记 1.60.0 已过时，以实测为准）。
 - **F14（本会话实测）**：`docker ps` —— `weknora-lago-82flow` 栈正在运行（api 127.0.0.1:48889 healthy、front 48890，44 分钟前启动，seed org `WeKnora Issue82 Flow` + Stripe provider `weknora-stripe` 已注册）；WeKnora dev 容器 postgres:5432/redis:6379/docreader:50051 在跑。端口占用实测：48889/48890/50051/5432/6379 等；**:5272/:5273 当前未占用但为其他会话保留，禁用**；:8080/:8084/:8091/:8092/:5183/:5192 为既往验证口径，避开。
 - **F15（本会话实读）**：flowfix 三缺陷已在基线修复：回调匿名可达（`noAuthAPI` 白名单 + `internal/router/commercial_callback_public_test.go`）；`payment.Provider.MerchantID()`（provider.go:97）+ openOrder 注册 attempt 用商户身份；客户绑定走 collection POST upsert（lago_purchase.go:301-376）。终审 OCR round-4 购买/订单/回调链路 findings **全部未修**（实核：commercial.go 无 `ErrQuoteNotFound` 分支、order.go:119 回填无 `created_at IS NULL` 限定）。
 
 ## 设计决策记录（本计划定稿，执行者按此实现）
 
 - **D1 并存口径（R-4 的机制落点）**：支付宝渠道是**收款事实**通道（spec L123）；Lago Payment 是**激活结算事实**，由 Stripe Provider 在 authority 内部创建。WeKnora 协调层关联两者：可信渠道付款事实（ConfirmPayment 落账 + outbox 事件）→ `settle_purchase_payment` 驱动 Stripe 侧 gated PI 扣款 → Lago 内建 webhook finalize → 观察 purchase 快照 active 才开放履约。下单时 gated create 不动（#81 形状，R-3 付款前匹配防线保留）。
-- **D2' 激活触发机制（替换被证伪的 D2）**：settle 命令算法——(i) 读 purchase 快照：active → 幂等回执、零出站；(ii) Stripe 侧 `GET /v1/payment_intents?customer={pcid}` 定位 `status==requires_action` 且 `metadata.lago_invoice_id` 非空的 gating PI（F5）；(iii) attach 结算 pm（新 env `WEKNORA_COMMERCIAL_STRIPE_SETTLE_PM_TOKEN`，如 `pm_card_visa`）得 clone id，设 customer default；(iv) `POST /v1/payment_intents/{pi}` update `payment_method` → `POST /v1/payment_intents/{pi}/confirm` → succeeded（off-session 同步扣款，与 F1 的 confirm 语义同类）；(v) 激活交还 Lago 内建 webhook 链（F9），WeKnora 不再调用任何 Lago 写 API。**步骤 (iv) 的「requires_action PI 可 update payment_method + confirm」未经运行时实证——Task 1（t11 探针）第一判据；若实证失败，按升级条款停止 Task 5+ 并升级，不实施替代猜测路径。**
+- **D2' 激活触发机制（替换被证伪的 D2）**：settle 命令算法——(i) 读 purchase 快照：active → 幂等回执、零出站；(ii) Stripe 侧 `GET /v1/payment_intents?customer={pcid}` 定位 gating PI：谓词 = `status` 属 unsettled 形态（**`requires_payment_method`（t10 唯一实测形态，F5）或 `requires_action`，二者任一；`succeeded`/`canceled` 排除**）且 `metadata.lago_invoice_id` 非空；**多笔消歧**：候选 >1 时取 `created` 最新的一笔（当前购买的 gating PI 必然最后创建；历史失败/取消购买残留更早），`created` 并列或解析异常 → fail-closed `ErrPlatformInvalidResponse`，绝不盲扣；(iii) attach 结算 pm（新 env `WEKNORA_COMMERCIAL_STRIPE_SETTLE_PM_TOKEN`，如 `pm_card_visa`）得 clone id，设 customer default；(iv) `POST /v1/payment_intents/{pi}` update `payment_method` → `POST /v1/payment_intents/{pi}/confirm` → succeeded（off-session 同步扣款，与 F1 的 confirm 语义同类；对 `requires_payment_method` PI 是 Stripe 标准形态）；(v) 激活交还 Lago 内建 webhook 链（F9），WeKnora 不再调用任何 Lago 写 API。**步骤 (iv) 的「挂死 PI 可 update payment_method + confirm」未经运行时实证——Task 1（t11 探针）第一判据；若 P-A/P-C/P-E 任一 FAIL，按升级条款停止 Task 5+ 并升级，不实施替代猜测路径。**
 - **D3 产品三态**：`paid_awaiting_activation` 是**协调层合成态**（本地订单 paid + authority 快照非 active），永不来自 authority 观察。常量落点唯一：`internal/modules/commercial/purchase_command.go`（`PurchaseState*` 权威集同区，:106-116 之后），注释注明 coordinator-composed；`service/commercial/purchase.go` 仅消费。seam 的 authority 观察集不变——`readPurchaseSnapshot` 永不产出该值。authority canceled + 本地 paid = `canceled` 呈现 + fulfillment `attention`（异常付款面留给 #84，本票只保证不扩大权益）。
-- **D4 套餐首期 Credits 发放身份**：命令键 `GrantCreditsCommandKey(ExternalPurchaseSubscriptionID(t), period)`（独立键族）；钱包名 `PurchaseWalletName(t) = ExternalPurchaseSubscriptionID(t)+"-"+period`；钱包 meta 写 `tenant` + 新键 `purchase_period`（**不写** `period` 键，F11 防撞 Base 批次）。`GrantIncludedCreditsPayload` additive 可选 `WalletName string`（空 = 现行 `MonthlyWalletName`，既有调用零改动）。
+- **D4 套餐首期 Credits 发放身份**：命令键 `GrantCreditsCommandKey(ExternalPurchaseSubscriptionID(t), period)`（独立键族）；钱包名 `PurchaseWalletName(t) = ExternalPurchaseSubscriptionID(t)+"-"+period`；钱包 meta 写 `tenant` + 新键 `purchase_period`（**不写** `period` 键，F11 防撞 Base 批次）。`GrantIncludedCreditsPayload` additive 可选 `WalletName string`（空 = 现行 `MonthlyWalletName`，既有调用零改动）。**period/ExpiresAt 取激活时刻，不取下单时刻**：fulfiller 在观察到 `PurchaseStateActive` 之后取 `period = now(UTC) "YYYY-MM"`、`ExpiresAt = PeriodEnd(period)`——月末 23:35 下单、次月 00:05 激活的合法序列下，首期 Credits 属激活月周期、`ExpiresAt` 恒在未来（`GrantIncludedCreditsPayload.Validate` 强制 `ExpiresAt == PeriodEnd(Period)` 且 `> now`，subscription_command.go:117-128——若用下单月 period 必然跨月拒绝，已付款用户会落 refused，恰破坏「已付款待激活」承诺）。命令键含 period 仍幂等：同一订单的 fulfill 重放在同一次激活观察后取同一 period；跨月重放的极端由 `purchase_activation` FulfillmentRecord 唯一键兜底（先到先得，后到 no-op）。
 - **D5 旧 gateway 路由**：`FulfillmentService.fulfillEvent` 对 `row.Kind == domain.OrderKindPurchase` 分流到注入的 `*PurchaseFulfiller`（fulfillment.go:280 `OrderKindUpgrade` 分流点之后的对称位置）；top-up/upgrade 路径一行不动。
 - **D6' 行项目复核判据（proration 修订，flow-evidence 观察项输入）**：finalized 后 `PurchaseSnapshot.InvoiceFees` 必须恰 1 条 `Kind=="subscription"` 行，且满足 `0 < fee.AmountFen == invoice.total_amount_cents ≤ Purchase.AmountFen`（proration 只会剪小，F12），同时该 invoice `payment_status=="succeeded"`；金额精确相等断言（旧 D6 的 `==AmountFen`）改为**订单面额一致性独立判据**：渠道收款金额 == 报价 PriceFen == 订单 AmountFen（渠道层，`ConfirmPayment` 既有校验）。proration 差额（fee < 订单面额）记入证据披露（T02 §5 输入），不阻断履约、不据此扩权。复核失败 → fulfillment `refused`（权益不发放，事实保留，#84 面）。
-- **D7 恰好一次的三层台账**：渠道层 `ConfirmPayment` 幂等单事务（repository/commercial/order.go:531 既有）；outbox `fulfill:<order>` 唯一键（既有）；settle/grant 命令确定性幂等身份 + Lago 侧 payments 部分唯一索引 + `ResolveService` no-op（F1/F2）。`FulfillmentRecord`（fulfillment.go:41-58）扩展一行 `purchase_activation` 承载 settle→grant 的外部回执。
+- **D7 恰好一次的三层台账与 drain 非阻塞**：渠道层 `ConfirmPayment` 幂等单事务（repository/commercial/order.go:531 既有）；outbox `fulfill:<order>` 唯一键（既有）；settle/grant 命令确定性幂等身份 + Lago 侧 payments 部分唯一索引 + `ResolveService` no-op（F1/F2）。`FulfillmentRecord`（fulfillment.go:41-58）扩展一行 `purchase_activation` 承载 settle→grant 的外部回执。**观察策略必须不阻塞共享 drain**：`FulfillmentService.Recover` 是串行逐事件同步 `fulfillEvent`（fulfillment.go:181-184），单 goroutine 30s interval（:185-213）——purchase 事件内的 active 观察窗因此取**短窗跨轮**：首轮 `settleObserveFirstPass = 15s`（5×3s tick），未达 active 则事件保持 pending、本轮返回 nil 让 drain 继续其他租户的 top-up/upgrade 事件，下一轮 interval 重放（settle 已幂等、零二次扣款）；总预算 `settleObserveTotalBudget = 10min`（40 轮）后转 `attention`。绝不在 fulfillEvent 内做 90s 级长轮询。
 - **D8 webhook 投递替身边界**：产品代码**绝不**投递/伪造 webhook（GC-3）；仅验证 harness（Task 10 的 `deliver_stripe_webhook.py`）在本地栈替代「Stripe 云端 → 回环 Lago」这一传输腿——事件体从 Stripe API 读回的真实 PI 对象构造，签名用 Lago DB 中该 provider 的真实 `webhook_secret` 计算，接收端是 Lago 真实路由与内建处理链。生产形态下该腿由 Stripe 自身完成（F10），harness 不进任何产品路径。
 
 ## Review Focus（spec 隐含但无任务测试会咬人的输入类；每条注明归属测试）
@@ -74,7 +74,7 @@
 - Modify: `internal/modules/commercial/purchase_command.go`（`PurchaseStatePaidAwaitingActivation` 常量，D3 落点）
 - Modify: `internal/modules/commercial/subscription_command.go`（`GrantIncludedCreditsPayload.WalletName` 可选字段 + `PurchaseWalletName` + `purchase_period` meta 常量）
 - Modify: `internal/modules/commercial/commercialplatform/fake.go`（settle 分支 + grant walletName/meta 区分；`ActivatePurchase`/`SetPurchaseInvoiceFees` 钩子已存在）
-- Modify: `internal/modules/commercial/commercialplatform/lago.go`（SubmitCommand 分发 settle）
+- Modify: `internal/modules/commercial/commercialplatform/lago.go`（SubmitCommand 分发 settle——Task 5；`configured()`（lago.go:275-280）入口对 BaseURL 补 `validateOutboundHost` 校验 + loopback 旁路——Task 8）
 - Create: `internal/modules/commercial/commercialplatform/lago_settlement.go` + `lago_settlement_test.go`——Task 5
 - Modify: `internal/modules/commercial/commercialplatform/lago_purchase.go`（`readPurchaseInvoiceFees` 真实实现 + OCR：错误分类/429/单标签 host/S1 Lago 侧校验）——Task 4/8
 - Modify: `internal/modules/commercial/commercialplatform/config.go`（`WEKNORA_COMMERCIAL_STRIPE_SETTLE_PM_TOKEN` + 出站校验 dev 旁路开关）
@@ -87,10 +87,14 @@
 - Modify: `internal/handler/payment_callbacks.go`（无签名变化；Task 7 测试消费）
 - Modify: `internal/container/container.go`（PurchaseFulfiller Provide + dig 注入）
 - Modify: `packages/contracts/src/commercial.ts`（`paid_awaiting_activation` 入集 + currency null 守卫）+ `packages/contracts/test/commercial.test.ts`
-- Modify: `apps/web/src/commercial/CheckoutPage.tsx` / `BillingPage.tsx`（三态呈现 + OCR 前端 findings）
+- Modify: `apps/web/src/commercial/CheckoutPage.tsx`（**渠道选择器**：提交体 `provider: 'wechat'` 硬编码（:156）参数化为用户可选（支付宝/微信 单选，默认支付宝——本票主链），purchase 调用传所选值；轮询叠加 `client.commercial.purchaseStatus()` 作为三态数据源；三态呈现 + OCR 前端三点）——Task 8
+- Modify: `apps/web/src/commercial/BillingPage.tsx`（三态呈现）
+- Modify: `apps/web/src/commercial/order-state.ts`（若三态文案集中于此则改此；否则随两页）
 - Create: `internal/modules/commercial/commercialplatform/lago_settlement_integration_test.go`（lago_integration tag）——Task 9
-- Create: `docs/plans/issue-72-flow-evidence-82/`（追加 settle 链证据：`settle-run.txt`、`deliver_stripe_webhook.py`、`lago-four-objects-after-settle.txt`、截图）——Task 10
-- Modify: `docs/plans/issue-72-flow-evidence-82/browser_*.mjs` + stub 脚本（OCR evidence findings 修复）——Task 10
+- Create: `docs/plans/issue-72-flow-evidence-82/settle-evidence/`（`settle-run.txt`、`deliver_stripe_webhook.py`、`lago-four-objects-after-settle.txt`、截图）——Task 10
+- Modify: `docs/plans/issue-72-flow-evidence-82/browser_*.mjs` + stub 脚本（OCR evidence findings 修复：凭据 env 化、waitForSelector、fileURLToPath、try/catch、`_lib.mjs`、`WEB`/`¥99.00` env 参数化、`browser_paid_face_82.mjs:38` 冗余条件、KEY_DIR、Endpoints）——Task 10
+- Modify: `docs/plans/issue-72-flow-evidence-74/verify_ac_assertions.py` + `docs/plans/issue-72-ocr{1,2,3}-replay/verify_ac_assertions.py`（终审第 4 条：AC1 重放断言补 charge-failure endgame 两形态，同病同修四副本）+ `docs/plans/issue-72-flow-evidence-81/wechat_pay_stub.py`（docstring 503→202 修正，终审同病同修）——Task 10
+- Modify: `internal/modules/commercial/service/commercial/purchase.go`（终审第 11 条：消歧探针去 AwaitingPayment 限制）+ `internal/modules/commercial/commercialplatform/lago_purchase.go`（终审第 7 条：found/422 恢复分支 Status 检查 + 第 6 条：PM 轮询预算从 ctx 派生）+ `internal/modules/commercial/service/commercial/purchase.go`（终审第 9 条：PurchaseStatus 订单投影加 plan 关联校验）+ `internal/modules/commercial/service/commercial/order.go`（终审第 10 条最小面：ErrInvoiceQuoteMismatch 路径写 attention 审计行）——Task 11
 
 ---
 
@@ -136,13 +140,13 @@ Expected: 首跑 FAIL（`sign_stripe_event` 未定义）→ 实现 `fixtures.py`
 
 - [ ] **Step 3: 实现 `phases.py` 的 `phase_settle_trigger`（五判据）**
 
-按 D2' 算法：(P-A) 复用 t10 gated-3DS 阶段建挂死订阅 → Stripe 侧列出 customer 的 requires_action PI 且带 `metadata.lago_invoice_id`；(P-B) attach `LAB_SETTLE_PM`（env 注入，如 pm_card_visa）+ 设 default；(P-C) `update payment_method` + `confirm`，断言返回 `status=="succeeded"`；(P-D) 从 Lago DB 读 `payment_providers.webhook_secret`，用真实 PI 对象构造 `payment_intent.succeeded` 事件并签名投递 `POST :48889/webhooks/stripe/{org_id}`，断言 HTTP 200 且 `inbound_webhooks` 表落库；(P-E) 轮询（≤120s）断言 `subscription active` + invoice `finalized`/`payment_status succeeded`（API status[]=finalized 可见）+ payments succeeded==1 + entitlements 200；随后重复投递同一事件，断言四对象状态 byte-identical（no-op）。
+按 D2' 算法：(P-A) 复用 t10 gated-3DS 阶段建挂死订阅 → Stripe 侧列出 customer 的 unsettled PI（`status ∈ {requires_payment_method, requires_action}`）且带 `metadata.lago_invoice_id`——**记录实测到的 PI 状态词**（t10 唯一实测形态 `requires_payment_method`，F5；本判据接受两种 unsettled 形态，但把实际形态写入证据，供 Task 5 测试对齐）；(P-B) attach `LAB_SETTLE_PM`（env 注入，如 pm_card_visa）+ 设 default；(P-C) `update payment_method` + `confirm`，断言返回 `status=="succeeded"`；(P-D) 从 Lago DB 读 `payment_providers.webhook_secret`，用真实 PI 对象构造 `payment_intent.succeeded` 事件并签名投递 `POST :48889/webhooks/stripe/{org_id}`，断言 HTTP 200 且 `inbound_webhooks` 表落库；(P-E) 轮询（≤120s）断言 `subscription active` + invoice `finalized`/`payment_status succeeded`（API status[]=finalized 可见）+ payments succeeded==1 + entitlements 200；随后重复投递同一事件，断言四对象状态 byte-identical（no-op）。
 lab.env.example 只写变量名与占位 `__SET_IN_SHELL__`（凭据纪律）。
 
 - [ ] **Step 4: 实跑探针并留证**
 
 Run: `cd deploy/lago-lab/payment-settle-trigger && source ~/.zcode/issue72-stripe.env && ./lab.sh init && ./lab.sh up && python3 run_lab.py`（复用 82flow 栈或独立 project `weknora-lago-t11`，端口避开 5272/5273）
-Expected: 五判据全 PASS，证据落 `evidence/t11-*.json`。**若 P-C 或 P-E FAIL：停止，写 DECISION.md 记录证伪细节，直接执行 Step 6 升级，不得继续 Task 2+ 的 settle 面**（Task 2/3/4 与机制无关，可独立继续）。
+Expected: 五判据全 PASS，证据落 `evidence/t11-*.json`。**若 P-A（定位判据本身失配——两种 unsettled 形态都不可定位）、P-C（挂死 PI 不可 update+confirm）或 P-E（webhook 后 Lago 不 finalize）任一 FAIL：停止，写 DECISION.md 记录证伪细节，直接执行 Step 6 升级，不得继续 Task 5+ 的 settle 面**（Task 2/3/4/11 与机制无关，可独立继续；P-B/P-D 失败优先按环境问题排查后重跑一次再定）。
 
 - [ ] **Step 5: 写 `docs/migrations/lago/t11-payment-settle-trigger/DECISION.md` + README**
 
@@ -273,7 +277,7 @@ func TestFakeGrantPurchaseWalletNoMonthlyCollision(t *testing.T) { // (d)：同 
 **Interfaces:**
 - Consumes: Task 2 Produces；`readPurchaseSnapshot(ctx, tenantID)`（lago_purchase.go:458）；`validateOutboundHost`/`providerOutboundClient`（lago_purchase.go:78/176）；`providerOutboundCall`（:585，**需扩展方法参数**——新增 `providerOutboundRequest(ctx, method, path, form, idempotencyKey string)`，原 POST 函数改为薄包装，既有调用零改动）；`providerAttachDefaultPaymentMethod`（:620）；customer 的 provider id（`customerProviderBound` :422 读到的 `provider_customer_id`——settle 需先 GET customer 取 pcid）。
 - Produces: `func (a *LagoAdapter) settlePurchasePayment(ctx context.Context, cmd commercial.Command) (commercial.CommandReceipt, error)`——D2' 五步算法；错误分类全走闭合 sentinel（Stripe 429/5xx → `ErrPlatformUnreachable`；4xx → `ErrPlatformInvalidResponse`；`StripeSettlePmToken==""` → `ErrPlatformUnconfigured: no settle payment method configured` fail-closed）；成功回执 `{Key: cmd.Key, ExternalID: payload.ExternalPurchaseSubscriptionID, RecordedAt: now}`；**不等待 active**（观察归 Task 7 fulfiller）。
-- 任务级 Produces（供 Task 7/9/10）：settle 幂等语义——同 Key 重放在 adapter 内不自持久化（无本地状态），幂等由「快照已 active → 零出站返回回执」+「Stripe PI 已 succeeded 时 update/confirm 幂等（Stripe Idempotency-Key = cmd.Key）」共同保证。
+- 任务级 Produces（供 Task 7/9/10）：settle 幂等语义——同 Key 重放在 adapter 内不自持久化（无本地状态），幂等由「快照已 active → 零出站返回回执」+「Stripe Idempotency-Key = cmd.Key」共同保证。
 
 - [ ] **Step 1: 写失败测试**（httptest 伪 Stripe 状态机 + 伪 Lago 快照）：
 
@@ -283,16 +287,23 @@ func TestLagoSettleAlreadyActiveNoOutbound(t *testing.T) { // Review-Focus 2
     // 回执 ExternalID==extSubID；err==nil
 }
 func TestLagoSettleDrivesProviderRails(t *testing.T) {
-    // Stripe stub 序列: GET /v1/payment_intents?customer=cus_x → 1 条 requires_action+metadata.lago_invoice_id
+    // Stripe stub 序列: GET /v1/payment_intents?customer=cus_x → 1 条 unsettled PI
+    //   （status 用 t11 实测形态：requires_payment_method（F5 默认）；requires_action 作表驱动第二形态）
+    //   且 metadata.lago_invoice_id 非空
     //   POST /v1/payment_methods/pm_settle/attach → {id:"pm_clone"}
     //   POST /v1/customers/cus_x (default) → 200
     //   POST /v1/payment_intents/pi_1 (payment_method=pm_clone) → 200
     //   POST /v1/payment_intents/pi_1/confirm → {status:"succeeded"}
     // Lago stub: state=incomplete → 断言五次调用顺序与 Idempotency-Key==cmd.Key（attach/default 之外）
 }
+func TestLagoSettlePicksLatestUnsettledIntent(t *testing.T) { // Medium 消歧
+    // Stripe stub: 2 条 unsettled+metadata PI（created 新旧各一）→ 断言 update/confirm 只打 created 最新的一笔
+}
+func TestLagoSettleAmbiguousIntentsFailClosed(t *testing.T) { // created 并列/解析异常 → ErrPlatformInvalidResponse，零扣款
+}
 func TestLagoSettleFailsClosedWithoutSettlePm(t *testing.T) { // ErrPlatformUnconfigured
 }
-func TestLagoSettleNoStuckIntentInvalidResponse(t *testing.T) { // GET 空/无 metadata → invalid_response，不再发起扣款
+func TestLagoSettleNoStuckIntentInvalidResponse(t *testing.T) { // GET 空/无 metadata/全部终态 → invalid_response，不再发起扣款
 }
 func TestLagoSettleClassifiesStripe429Unreachable(t *testing.T) { // confirm 返回 429 → ErrPlatformUnreachable
 }
@@ -338,9 +349,9 @@ func TestLagoSettleClassifiesStripe429Unreachable(t *testing.T) { // confirm 返
 - Consumes: Task 2/3/5/6 Produces；`ConfirmPayment`/`OutboxKindFulfill`（repository/commercial/order.go:37/531）；`FulfillmentRecord`/`fulfillmentRecordPending`（fulfillment.go:31/41）；`domain.OrderKindPurchase`（order.go:19）；`OrderStatePending/OrderStatePaid`（domain 既有）。
 - Produces:
   - `type PurchaseFulfiller struct` + `func NewPurchaseFulfiller(db *gorm.DB, platform domain.CommercialPlatform, accounts *BillingAccountService) (*PurchaseFulfiller, error)`（nil platform → error，容器 blocked-env 显式传 nil FulfillmentService purchaser）
-  - `func (p *PurchaseFulfiller) Fulfill(ctx context.Context, ev repocommercial.OutboxEvent, rec *FulfillmentRecord) error`——编排：① 重读订单（paid 才继续）；② `SubmitCommand(SettlePurchasePayment)`（幂等键绑 `fact.Transaction`，payload 从订单+quote 派生）；③ 有界轮询 `ReadSnapshot`（`settleObserveBudget = 90s`，tick 3s，t11 P-E 实测内）至 `PurchaseStateActive`；canceled → `attention`；超时 → `pending`（下一轮 drain 重放，settle 已幂等）；④ `InvoiceFees` D6' 复核（恰 1 条 subscription 行 + `0 < fee == invoice.total ≤ 订单.AmountFen` + `InvoicePaymentStatus=="succeeded"`；失败 → `refused`）；⑤ `SubmitCommand(GrantIncludedCredits{WalletName: PurchaseWalletName, meta purchase_period})`；⑥ 写 `FulfillmentRecord{Key: "purchase_activation:" + orderID}` external receipt + `MarkFulfilled`。
+  - `func (p *PurchaseFulfiller) Fulfill(ctx context.Context, ev repocommercial.OutboxEvent, rec *FulfillmentRecord) error`——编排：① 重读订单（paid 才继续）；② `SubmitCommand(SettlePurchasePayment)`（幂等键绑 `fact.Transaction`，payload 从订单+quote 派生）；③ **短窗跨轮观察**（D7）：首轮 `settleObserveFirstPass = 15s`（5×3s tick）内轮询 `ReadSnapshot` 至 `PurchaseStateActive`；达到 → 继续；canceled → `attention`；15s 未达 → 事件保持 `pending`、返回 nil（drain 继续下一事件，下一轮 30s interval 重放，settle 已幂等零二次扣款）；累计 `settleObserveTotalBudget = 10min` 未达 → `attention`；④ `InvoiceFees` D6' 复核（恰 1 条 subscription 行 + `0 < fee == invoice.total ≤ 订单.AmountFen` + `InvoicePaymentStatus=="succeeded"`；失败 → `refused`）；⑤ `SubmitCommand(GrantIncludedCredits{WalletName: PurchaseWalletName(t, period), meta purchase_period})`——**period 取激活观察时刻的 UTC "YYYY-MM"、ExpiresAt=PeriodEnd(period)**（D4：跨月边界首期 Credits 属激活月周期，Validate 恒可过）；⑥ 写 `FulfillmentRecord{Key: "purchase_activation:" + orderID}` external receipt + `MarkFulfilled`。
   - `PurchaseStatus` 合成：authority 观察为 `PurchaseStateAwaitingPayment` 且本地存在 `State == OrderStatePaid` 的购买订单时，`out.State = PurchaseStatePaidAwaitingActivation`（D3：永不来自 authority 观察）。
-- Review-Focus 测试名（全部落 `purchase_fulfillment_test.go`，sqlite 内存库 + fake adapter）：`TestPurchaseFulfillOverPaymentNoSecondBenefit`（第二笔不同 txn 的成功回调：ConfirmPayment 幂等拒绝后不产生第二个 outbox 事件——渠道层既有，此处断言 fulfill 只跑一次、settle 命令恰 1 次）、`TestPurchaseFulfillCrashReplayConverges`（settle 已执行后进程崩溃模拟：直接调 Fulfill 两次，settle 恰 1 次出站、grant 恰 1 次、终态 fulfilled）、`TestPurchaseFulfillCanceledStaysClosed`、`TestSyncReturnCannotConfirmPurchase`（alipay_test.go 恢复）、`TestPaidAwaitingActivationSynthesized`（fake: incomplete + 订单 paid → PurchaseStatus 输出合成态；active 后输出 active）。
+- Review-Focus 测试名（全部落 `purchase_fulfillment_test.go`，sqlite 内存库 + fake adapter）：`TestPurchaseFulfillOverPaymentNoSecondBenefit`（第二笔不同 txn 的成功回调：ConfirmPayment 幂等拒绝后不产生第二个 outbox 事件——渠道层既有，此处断言 fulfill 只跑一次、settle 命令恰 1 次）、`TestPurchaseFulfillCrashReplayConverges`（settle 已执行后进程崩溃模拟：直接调 Fulfill 两次，settle 恰 1 次出站、grant 恰 1 次、终态 fulfilled）、`TestPurchaseFulfillCanceledStaysClosed`、`TestPurchaseFulfillShortWindowDoesNotBlockDrain`（首个 purchase 事件观察窗 15s 未达 active 时，Fulfill 在 ≤20s 内返回 nil 且事件仍 pending；同轮第二个（top-up）事件可继续处理——防 90s 阻塞回归）、`TestPurchaseGrantPeriodTakesActivationMonth`（fake 时钟：下单 8 月末、激活 9 月初 → grant 命令 payload `Period=="2026-09"`、`ExpiresAt==PeriodEnd("2026-09")`）、`TestSyncReturnCannotConfirmPurchase`（alipay_test.go 恢复）、`TestPaidAwaitingActivationSynthesized`（fake: incomplete + 订单 paid → PurchaseStatus 输出合成态；active 后输出 active）。
 
 - [ ] **Step 1: 写失败测试**（上述 5 测试，RED 断言合成态常量与编排终态）。
 - [ ] **Step 2:** `go test ./internal/modules/commercial/service/commercial/ ./internal/modules/commercial/payment/ -count=1 -run 'TestPurchaseFulfill|TestPaidAwaiting|TestSyncReturnCannotConfirm'` → FAIL。
@@ -351,22 +362,26 @@ func TestLagoSettleClassifiesStripe429Unreachable(t *testing.T) { // confirm 返
 
 ---
 
-### Task 8: Lago 适配器安全/错误分类 OCR 清偿 + 契约与前端三态呈现
+### Task 8: Lago 适配器安全/错误分类 OCR 清偿 + 渠道选择器 + 契约与前端三态呈现
 
 **Files:**
-- Modify: `internal/modules/commercial/commercialplatform/lago_purchase.go`（OCR:250 结构性 `no_default_payment_method`（`StripeAPIKey=="" || StripePmToken==""`）→ `ErrPlatformUnconfigured`；OCR:552 `status == http.StatusTooManyRequests` 并入 unreachable（两处分类点）；OCR:148 `isPlausibleHostname` 要求 ≥2 标签；OCR:337 `configured()` 入口对 `BaseURL` `validateOutboundHost`，dev/test 环回由新 env `WEKNORA_COMMERCIAL_OUTBOUND_ALLOW_LOOPBACK=true` 显式豁免（默认拒绝，豁免仅在 `a.do` 与 provider 出站入口校验处放行 `127.0.0.1`/`localhost` host，日志一行警告））
+- Modify: `internal/modules/commercial/commercialplatform/lago_purchase.go`（OCR:250 结构性 `no_default_payment_method`（`StripeAPIKey=="" || StripePmToken==""`）→ `ErrPlatformUnconfigured`；OCR:552 `status == http.StatusTooManyRequests` 并入 unreachable（两处分类点）；OCR:148 `isPlausibleHostname` 要求 ≥2 标签）
+- Modify: `internal/modules/commercial/commercialplatform/lago.go`（`configured()`（lago.go:275-280，**注意函数在 lago.go 而非 lago_purchase.go**）入口对 `BaseURL` 补 `validateOutboundHost` 校验，dev/test 环回由新 env `WEKNORA_COMMERCIAL_OUTBOUND_ALLOW_LOOPBACK=true` 显式豁免（默认拒绝，豁免仅在 `a.do` 与 provider 出站入口校验处放行 `127.0.0.1`/`localhost` host，日志一行警告））
 - Modify: `internal/modules/commercial/commercialplatform/config.go`（旁路 env + 文档注释：仅限本地 stub 验证，生产必须关闭）
 - Modify: `packages/contracts/src/commercial.ts`（`PURCHASE_STATES` 增 `'paid_awaiting_activation'`；:199 `v.currency!==null` 守卫；`PurchaseView.state` 类型注释同步闭合集）
 - Modify: `packages/contracts/test/commercial.test.ts`（合成态 parse 接受 + currency null 不炸）
-- Modify: `apps/web/src/commercial/CheckoutPage.tsx`（:258 区域——`state.order.payment==='pending'` 显示「待付款（权益未开通）」改为按 purchase 状态三态：`awaiting_payment`→待付款（权益未开通）/`paid_awaiting_activation`→已付款，权益处理中/`active`→权益已生效；OCR:164 setState 补 `active && scopeController.isCurrent` 守卫；OCR:153 重试按钮文案改「重试（同一报价服务端幂等；报价失效时自动重新报价）」；OCR:269 `checkoutHref` 提取局部常量单一来源）
+- Modify: `apps/web/src/commercial/CheckoutPage.tsx`：
+  - **渠道选择器（审查 H1）**：提交体 `{ quote_id, provider: 'wechat' }`（CheckoutPage.tsx:156）的 provider 字面量参数化——页面增加「支付渠道」单选控件（支付宝 / 微信，默认**支付宝**——本票主链），state 存所选 provider，purchase 调用传 `provider: selectedProvider`；渠道不可用时（后端 `ProviderConfigured` false → 503 令牌）按钮禁用并提示；微信路径行为不回退（#81 已验收形状由表驱动用例锁定）。
+  - **三态数据源（审查 M6）**：`refreshOrder` 轮询（:194-207 只拉 `getOrder`→OrderView，拿不到 purchase 状态）叠加 `client.commercial.purchaseStatus()`（BillingPage.tsx:83 既有模式）并行拉取，以 `purchase.state` 驱动三态（`awaiting_payment`→「待付款（权益未开通）」/`paid_awaiting_activation`→「已付款，权益处理中」/`active`→「权益已生效」），`order.payment` 保留为渠道面兜底；purchaseStatus 失败静默降级（不阻塞订单轮询）。
+  - OCR:164 setState 补 `active && scopeController.isCurrent` 守卫；OCR:153 重试按钮文案改「重试（同一报价服务端幂等；报价失效时自动重新报价）」；OCR:269 `checkoutHref` 提取局部常量单一来源。
 - Modify: `apps/web/src/commercial/BillingPage.tsx`（:117 区域——套餐行三态：`awaiting_payment`→待付款（权益未开放）/`paid_awaiting_activation`→已付款待激活/`active`→已生效）
 - Modify: `apps/web/src/commercial/order-state.ts`（若三态文案集中于此则改此；否则随两页）
 
 **Interfaces:**
-- Consumes: Task 7 的合成态（wire 上 `purchase.state`）；contracts `parsePurchaseView`（commercial.ts:177-190）。
-- Produces: 前端三态呈现 + 契约闭合集扩展（`PurchaseState = 'awaiting_payment'|'paid_awaiting_activation'|'active'|'absent'|'canceled'`）——Task 10 浏览器断言消费「待付款（权益未开通）/已付款，权益处理中/权益已生效」三文案。
+- Consumes: Task 7 的合成态（wire 上 `purchase.state`）；contracts `parsePurchaseView`（commercial.ts:177-190）；api-client `client.commercial.purchase(body: {quote_id, provider})`（provider 参数既有，后端 `ProviderConfigured` 校验链既有）。
+- Produces: 前端**渠道可选** checkout + 三态呈现 + 契约闭合集扩展（`PurchaseState = 'awaiting_payment'|'paid_awaiting_activation'|'active'|'absent'|'canceled'`）——Task 10 浏览器断言消费「选支付宝」操作与「待付款（权益未开通）/已付款，权益处理中/权益已生效」三文案。
 
-- [ ] **Step 1: RED**——`pnpm --filter @weknora/contracts test`（`paid_awaiting_activation` parse 目前抛错）+ apps/web 单测（CheckoutPage 三态渲染——按 `apps/web/src/commercial/*.test.tsx` 既有模式新增用例）。Expected: FAIL。
+- [ ] **Step 1: RED**——`pnpm --filter @weknora/contracts test`（`paid_awaiting_activation` parse 目前抛错）+ apps/web 单测（按 `apps/web/src/commercial/*.test.ts(x)` 既有模式新增：① CheckoutPage 三态渲染三用例（purchaseStatus 各 state 驱动三文案）；② **渠道选择器用例**——默认选中支付宝、提交体 provider==所选值（mock client 断言 `purchase` 调用参数 `provider:'alipay'`）、切微信后提交体 `provider:'wechat'`（锁定 #81 既有形状）。Expected: FAIL（当前硬编码 'wechat'、无 purchaseStatus 消费）。
 - [ ] **Step 2: GREEN 实现**（Go 侧四点 + 契约 + 两页 + 文案）。
 - [ ] **Step 3:** `pnpm test:shared && pnpm typecheck:web && pnpm typecheck:shared && pnpm test:web` → 全 PASS。
 - [ ] **Step 4:** `go test ./internal/modules/commercial/commercialplatform/ -count=1` → PASS（含新分类测试：`TestSettleClassifies429`（Task 5 已含）、`TestConfiguredRejectsPrivateBaseURL`、`TestOutboundHostRejectsSingleLabel`、`TestNoDefaultPmTerminalWhenUnconfigured`——RED 先行于各自实现）。
@@ -380,8 +395,8 @@ func TestLagoSettleClassifiesStripe429Unreachable(t *testing.T) { // confirm 返
 - Create: `internal/modules/commercial/commercialplatform/lago_settlement_integration_test.go`
 
 **Interfaces:**
-- Consumes: `//go:build lago_integration` 惯例 + `LAGO_INTEGRATION_*` env 门控（照 `lago_benefits_integration_test.go` 既有 harness：LAGO_INTEGRATION_BASE_URL/API_KEY + 本票新增 `LAGO_INTEGRATION_STRIPE_KEY`/`LAGO_INTEGRATION_STRIPE_SETTLE_PM`/`LAGO_INTEGRATION_WEBHOOK_SECRET_HELPER`（可执行命令或 psql DSN，从 Lago DB 取 webhook_secret 的方式在文件头注释固定为 `LAGO_INTEGRATION_WEBHOOK_SECRET` env 直读——由外层 lab shell 从 DB 取出注入，测试自身不连 Lago DB））。
-- Produces: `TestLagoIntegrationSettleActivatesGatedSubscription`——真实栈全链：ensure customer+binding（3DS pm env）→ gated create → 等 requires_action（Stripe 侧真实读）→ settle → 投递真实事件（`deliverWebhookEvent` 测试内 helper，用 env secret 签名 POST `/webhooks/stripe/{org}`；org id 经 `LAGO_INTEGRATION_ORG_ID` env）→ 轮询 `ReadSnapshot` active + `InvoiceFees` D6' 断言。缺任一 env → `t.Skip("lago integration env not configured")`（skip≠pass，证据责任在 Task 10）。
+- Consumes: `//go:build lago_integration` 惯例 + `LAGO_INTEGRATION_*` env 门控（照 `lago_benefits_integration_test.go` 既有 harness：`LAGO_INTEGRATION_BASE_URL`/`LAGO_INTEGRATION_API_KEY` + 本票新增 `LAGO_INTEGRATION_STRIPE_KEY`（Stripe TEST key，仅环境注入）、`LAGO_INTEGRATION_STRIPE_SETTLE_PM`（结算 pm token）、`LAGO_INTEGRATION_WEBHOOK_SECRET`（**Lago provider 的 webhook secret，统一由此 env 直读**——由外层 lab shell 从 Lago DB 取出注入（获取命令见 Task 10 拓扑），测试自身绝不连 Lago DB）、`LAGO_INTEGRATION_ORG_ID`（webhook URL 段））。
+- Produces: `TestLagoIntegrationSettleActivatesGatedSubscription`——真实栈全链：ensure customer+binding（3DS pm env）→ gated create → 等 unsettled PI（Stripe 侧真实读，状态形态记录）→ settle → 投递真实事件（`deliverWebhookEvent` 测试内 helper，用 env secret 签名 POST `/webhooks/stripe/{LAGO_INTEGRATION_ORG_ID}`）→ 轮询 `ReadSnapshot` active + `InvoiceFees` D6' 断言。缺任一 env → `t.Skip("lago integration env not configured")`（skip≠pass，证据责任在 Task 10）。
 
 - [ ] **Step 1: 写测试**（单条大测试 + 3 个负控子测试：settle 幂等重放零二次扣款/重复 webhook no-op/canceled 不激活）。
 - [ ] **Step 2:** `go test ./internal/modules/commercial/commercialplatform/ -tags lago_integration -count=1 -run TestLagoIntegrationSettle -v`（无 env）→ SKIP（确认门控正确）。
@@ -394,9 +409,11 @@ func TestLagoSettleClassifiesStripe429Unreachable(t *testing.T) { // confirm 返
 
 **Files:**
 - Create: `docs/plans/issue-72-flow-evidence-82/settle-evidence/`（新证据子目录：`deliver_stripe_webhook.py`、`settle-run.txt`、`lago-four-objects-after-settle.txt`、`browser-*.png`、`api-*.json`）
-- Modify: `docs/plans/issue-72-flow-evidence-82/browser_flow_82.mjs` / `browser_sync_face_82.mjs` / `browser_paid_face_82.mjs`（OCR：三脚本凭据改必需 env `FLOW82_EMAIL(_B/_D)`/`FLOW82_PASSWORD(_B/_D)` 无源码兜底、`waitForTimeout` → `waitForSelector` 目标文案、`fileURLToPath` 截图目录、try/catch 输出 RESULT、共享 `_lib.mjs`）
-- Modify: `docs/plans/issue-72-flow-evidence-82/alipay_gateway_stub.py` / `alipay_sandbox_notify.py`（OCR:`KEY_DIR = os.path.dirname(os.path.abspath(__file__))`）
+- Modify: `docs/plans/issue-72-flow-evidence-82/browser_flow_82.mjs` / `browser_sync_face_82.mjs` / `browser_paid_face_82.mjs`（OCR 全量清偿：三脚本凭据改必需 env `FLOW82_EMAIL(_B/_D)`/`FLOW82_PASSWORD(_B/_D)` **无源码兜底**；`waitForTimeout` → `waitForSelector` 目标文案；`fileURLToPath` 截图目录；try/catch 输出 RESULT 后非零退出；共享 `_lib.mjs` 抽取登录/骨架；**`WEB` 端口与 `¥99.00` 业务数字 env 参数化（`FLOW82_WEB`/`FLOW82_EXPECT_CNY`，OCR round-4 browser_flow_82.mjs:12 finding）**；`browser_paid_face_82.mjs:38` 冗余条件 `!body.includes('权益已生效') &&` 删除（被后半完全覆盖）；渠道相关 stub 端口 env 化）
+- Modify: `docs/plans/issue-72-flow-evidence-82/alipay_gateway_stub.py` / `alipay_sandbox_notify.py`（OCR:`KEY_DIR = os.path.dirname(os.path.abspath(__file__))` + `import os` 顶部化）
 - Modify: `docs/plans/issue-72-flow-evidence-82/wechat_pay_stub.py`（OCR: "Endpooints"→"Endpoints"；端口 env 化）
+- Modify: `docs/plans/issue-72-flow-evidence-81/wechat_pay_stub.py`（**同病同修**：docstring 503 描述修正为 202+checkout_error 实际链路——OCR round-4 medium finding；一行注释改动，不触碰 #81 证据本体）
+- Modify: `docs/plans/issue-72-flow-evidence-74/verify_ac_assertions.py` + `docs/plans/issue-72-ocr{1,2,3}-replay/verify_ac_assertions.py`（**终审第 4 条（同病同修四副本）**：不可见分支的 `recheck_subscription_status` 断言接受 charge-failure endgame 两形态（`canceled(payment_failed)`/invoice closed-failed 不再误判 FAIL）；else 分支同理放宽 `invoice_status=="open"`）
 - Modify: `docs/plans/issue-72-flow-evidence-82/README.md`（追加 settle 链验证记录）
 - Modify: `docs/plans/issue-72-ledger-82.md`（收尾判定）
 - Modify: `docs/testing/` 惯例文档（若需登记新 harness，按 `docs/testing/craft/web-acceptance.md` 体例）
@@ -405,11 +422,42 @@ func TestLagoSettleClassifiesStripe429Unreachable(t *testing.T) { // confirm 返
 - Consumes: 全部前置 Task；「真实流程验证方案」章节的拓扑与判据。
 - Produces: 端到端证据包（Issue AC1-AC4 判定输入）+ Ledger 收尾记录。
 
-- [ ] **Step 1: 先修 evidence 脚本 OCR findings**（RED：`node -e "require('./browser_flow_82.mjs')"` 缺 env 时 exit 2——OCR 建议的报错行为；`python3 -m unittest` 无，脚本用 `python3 -c "import alipay_gateway_stub"` 冒烟）。
+- [ ] **Step 1: 先修 evidence 脚本 OCR findings**（RED：`cd docs/plans/issue-72-flow-evidence-82 && node browser_flow_82.mjs; echo "exit=$?"`——.mjs 是 ESM，直接执行断言「缺 env 时 stderr 提示 + exit 2」（不是 `node -e require(...)`，那会 ERR_REQUIRE_ESM）；`python3 -c "import alipay_gateway_stub"` 冒烟 KEY_DIR 修复；`verify_ac_assertions.py` 用既有 t02 证据重放断言 endgame 放宽不误判）。
 - [ ] **Step 2: 按「真实流程验证方案」执行全链，产出证据文件与截图。**
 - [ ] **Step 3: 四对象证据核验**（`lago-four-objects-after-settle.txt`：Invoice finalized + Payment succeeded + Subscription active + Wallet transactions 含 purchase wallet——AC4 沙箱残余如实标注）。
-- [ ] **Step 4: 回归 + 红线自查**（命令与预期见验证方案判据 (k)/(l)）。
+- [ ] **Step 4: 回归 + 红线自查**（命令与预期见验证方案通过判据 (e) 红线自查 / (f) Go 回归 / (g) 前端回归 / (h) T9 集成）。
 - [ ] **Step 5: 更新 README/Ledger，Commit** `git commit -m "issue-72(#82): (task10) real-flow settle evidence + OCR r4 evidence-script hygiene + docs"`。
+
+---
+
+### Task 11: 终审 OCR 6 项开放 findings 清偿（R-4 附带授权口径：final report §9.4 对账表 4 全量 + 2 部分残留）
+
+> 范围声明：R-4 附带授权「吸收……最终终审 OCR findings 修复范围」，issue-72-issues-inventory.md L134 具体化为 §9.4 对账的 6 项开放 findings（与本计划 Task 7/8/10 清偿的 round-4 链路 findings 是**两个不重叠口径**，后者来自终审报告 ac8402204 的 50 findings）。第 4 条（证据脚本）已在 Task 10 承接；本 Task 清偿后端 4 项（第 6/7/9/11 条）并对第 10 条做最小面处置与显式移交。
+
+**Files:**
+- Modify: `internal/modules/commercial/commercialplatform/lago_purchase.go`（第 7 条：`createPurchaseSubscription` found 分支与 422 恢复分支补 Status 检查；第 6 条：`waitForPaymentMethodSync` 的 deadline 从 ctx 剩余预算派生）
+- Modify: `internal/modules/commercial/service/commercial/purchase.go`（第 11 条：消歧探针去 AwaitingPayment 限制；第 9 条：PurchaseStatus 订单投影加 plan 关联校验；第 10 条最小面：ErrInvoiceQuoteMismatch 路径写 attention 审计行）
+
+**Interfaces:**
+- Consumes: `readSubscriptionByIdentity` 返回的 `sub.Status`（lago.go 既有 struct）；`purchase.go:178-184` 消歧探针；`PurchaseStatus` 的 `CurrentPurchaseOrder(ctx, tenantID, amountFen, currency)` 投影（purchase.go:324）。
+- Produces:
+  - **第 7 条**：seam found/422 恢复分支语义收紧——`found` 且 `sub.Status ∈ {canceled, terminated}` → `ErrPlatformInvalidResponse: purchase subscription terminal`（终局购买身份不再谎报 create 成功，堵住「canceled 订阅重放 → 匹配门过 → 返回 pending 死单链接」路径）；`active` + 同 plan 保持成功回执（R1-V03 已付订单 verbatim 重放语义不破坏——该路径在服务层步骤 8 的 existing-order replay，先于任何新单创建）；`incomplete` + 同 plan 保持成功回执（幂等重放）。
+  - **第 11 条**：`purchase.go:178-184` 消歧探针条件由 `held.State == PurchaseStateAwaitingPayment && held.PlanCode != pub.PlanCode` 放宽为 `held.PlanCode != pub.PlanCode`（active+异 plan 的确定性冲突也答 `ErrPurchasePlanConflict` 409，不再落 `ErrPurchaseUnavailable` 503）。
+  - **第 9 条（部分残留收尾）**：`PurchaseStatus` 投影前校验候选订单 quote 的 plan 与快照 publication 的 PlanKey 一致（经 `orders.QuoteSnapshotForTenant` 或 OrderRow.QuoteID→quote.plan_key；不一致的历史单不投影为当前购买——同价不同 plan 撞投影面关闭）。**带 checkout_url 的废弃 pending 单超时回收**显式移交 #84（渠道关单 CloseOrder 生命周期面，本票新增回收会引入未经实证的关单语义），移交记录写入 Ledger。
+  - **第 10 条（最小面处置）**：`Purchase` 命中 `ErrInvoiceQuoteMismatch`/`ErrPurchaseNotAwaiting` 时（权威侧留下 awaiting/终局订阅）写一行 attention 审计（复用 fulfillment attention 词汇的本地审计表或日志——不自动 cancel：购买取消命令 `CommandKindCancelPurchaseSubscription` 需实证 Lago terminate 契约，超出本票 seam 冻结范围，移交 #84/#92 生命周期票，Ledger 记录移交）。
+  - **第 6 条（部分残留收尾）**：`waitForPaymentMethodSync` 的 `deadline` 改为 `min(pmSyncWait, ctx.Deadline() 剩余 - 1s guard)`——轮询窗口与命令预算一致，极端时序不再名义/实际漂移。
+
+- [ ] **Step 1: RED 测试**（`lago_purchase_test.go` + `purchase_test.go` 新增）：
+  - `TestLagoPurchaseCreateReplayCanceledFailsClosed`（伪 Lago：found + canceled → `ErrPlatformInvalidResponse`，服务层不再得到成功回执）
+  - `TestLagoPurchaseCreateReplayActiveStillReplays`（found + active + 同 plan → 成功回执——回归锁定 R1-V03）
+  - `TestPurchaseDisambiguationCoversActiveConflict`（快照 active+异 plan → `ErrPurchasePlanConflict` 而非 `ErrPurchaseUnavailable`）
+  - `TestPurchaseStatusSkipsForeignPlanOrder`（历史同价不同 plan 订单不被投影为当前购买）
+  - `TestPurchaseMismatchWritesAttentionAudit`（mismatch 路径后审计行/日志存在）
+  - `TestPaymentMethodSyncDeadlineDerivedFromCtx`（ctx 剩余 3s 时轮询在 ≤3s 内让位，不烧满 pmSyncWait）
+  Run: `go test ./internal/modules/commercial/commercialplatform/ ./internal/modules/commercial/service/commercial/ -count=1 -run 'TestLagoPurchaseCreateReplay|TestPurchaseDisambiguation|TestPurchaseStatusSkips|TestPurchaseMismatchWrites|TestPaymentMethodSyncDeadline'` → Expected FAIL。
+- [ ] **Step 2: GREEN 实现**（三处修改按上述 Produces 语义；cancel 移交与 #84 回收移交写 Ledger）。
+- [ ] **Step 3:** 同命令 → PASS；`go test ./internal/modules/commercial/... ./internal/handler/ -count=1` 全量 PASS。
+- [ ] **Step 4:** Commit `git commit -m "issue-72(#82): (task11) final-audit OCR open findings 6/7/9/11 + minimal-10 + ctx-budget 6 — R-4 authorized scope"`。
 
 ---
 
@@ -424,7 +472,9 @@ func TestLagoSettleClassifiesStripe429Unreachable(t *testing.T) { // confirm 返
 | AC3b Outbox 重放/响应丢失不重复履约 | T5/T6/T7 | `TestLagoSettleAlreadyActiveNoOutbound`、`TestFakeSettleActivatesOnceThenIdempotent`、`TestPurchaseFulfillCrashReplayConverges`、contract settle 腿；T9 负控子测试 |
 | AC4 真实支付宝证据关联 Invoice/Payment/Subscription/Credits | T1/T9/T10 | t11 五判据；T9 集成测试；`lago-four-objects-after-settle.txt` + `settle-run.txt`；沙箱残余披露（README + Ledger） |
 | AC4'（spec L125）受支持 Provider、禁本地强制 active | T5/T8 | settle 只触 Stripe API + webhook 内建链（代码红线 grep「无本地 active 直写」）；`TestLagoSettleFailsClosedWithoutSettlePm` |
-| GC：OCR r4 有效 findings 清偿 | T7/T8/T10 | 各 Step 1 RED 测试 + 修改点清单（见 File Structure） |
+| GC-a：OCR round-4 购买/订单/回调链路 findings 清偿（ac8402204 口径） | T7/T8/T10 | 各 Step 1 RED 测试 + 修改点清单（见 File Structure） |
+| GC-b：终审 6 项开放 findings 清偿（final report §9.4 对账口径，R-4 附带授权） | T10（第 4 条证据脚本）/ T11（第 6/7/9/11 条 + 第 10 条最小面） | T11 Step 1 六个 RED 测试 + T10 verify_ac_assertions 重放；第 9 条超时回收与第 10 条 cancel 命令显式移交 #84/#92（Ledger 记录） |
+| 渠道可选 checkout（支付宝浏览器链前提） | T8 | 渠道选择器用例（默认支付宝/提交体 provider 参数化/微信形状锁定）；T10 步骤 2 实测 |
 | 行项目复核（R-3 强制条件③/T09 条件③） | T4/T7 | `TestLagoReadPurchaseInvoiceFees*` + D6' 复核路径（`refused` 分支测试） |
 
 ## Spec 行为矩阵覆盖对照（#82 分片）
@@ -436,7 +486,7 @@ func TestLagoSettleClassifiesStripe429Unreachable(t *testing.T) { // confirm 返
 
 ## Out of scope（#82 明确不做）
 
-- 微信渠道接入（#83）；异常付款完整面（partial/multiple-success 处置，#84）；充值 Credits（#85）；套餐批次分解与月度到期（#86）；升级/降级（#92-93）；Stripe 结算款的生产手续费/风控对冲设计（R-4 错误代价，生产前回议项）；支付宝真实沙箱凭据补采（环境阻塞，披露不伪造）。
+- 微信渠道接入（#83）；异常付款完整面（partial/multiple-success 处置，#84）；充值 Credits（#85）；套餐批次分解与月度到期（#86）；升级/降级（#92-93）；Stripe 结算款的生产手续费/风控对冲设计（R-4 错误代价，生产前回议项）；支付宝真实沙箱凭据补采（环境阻塞，披露不伪造）；**终审第 9 条残余面（带 checkout_url 的废弃 pending 单超时回收）与第 10 条 cancel 命令**（均需渠道关单/terminate 契约实证，属生命周期票 #84/#92，Task 11 显式移交并记 Ledger）。
 
 ---
 
@@ -451,14 +501,14 @@ func TestLagoSettleClassifiesStripe429Unreachable(t *testing.T) { // confirm 返
 | WeKnora 前端 | localhost:5194 | `VITE_DEV_PROXY_TARGET=http://127.0.0.1:8093 pnpm --filter @weknora/web exec vite --port 5194` |
 | 支付宝网关 stub | 127.0.0.1:8294 | 复用 `docs/plans/issue-72-flow-evidence-82/alipay_gateway_stub.py`（本地 RSA 密钥对，OCR 修复后），端口 env 化为 8294 |
 | webhook 投递器 | — | `settle-evidence/deliver_stripe_webhook.py`：从 Stripe API 读回真实 PI → 构造 `payment_intent.succeeded` → 用 Lago DB `webhook_secret`（`docker exec weknora-lago-82flow-db-1 psql -U lago -tAc "select webhook_secret from payment_providers where code='weknora-stripe'"`）计算 `Stripe-Signature` → `POST :48889/webhooks/stripe/{org_id}`（org_id 从 `select id from organizations` 取）。D8 边界：替身仅此传输腿 |
-| Playwright | headless chromium | `npx playwright --version` 实测 1.60.0；`apps/web` devDependencies 含 @playwright/test；驱动脚本为本目录 `.mjs`（chromium.launch 直连，无需 CRAFT_* env） |
+| Playwright | headless chromium | `npx playwright --version` 实测 1.63.0；`apps/web` devDependencies 含 @playwright/test；驱动脚本为本目录 `.mjs`（chromium.launch 直连，无需 CRAFT_* env） |
 
 **种子数据**：sqlite 全新库（后端首启自迁移）；两租户经真实 API 注册：`settle-a@verify.local`（浏览器主角）`settle-b@verify.local`（API 主角，plan_publish grant）；Plan `weknora-pro-v1`（9900 分 CNY monthly 无 charges，`api-01-draft`/`api-02-publish` 复用既有脚本形状）。凭据全部 `FLOW82_EMAIL*/FLOW82_PASSWORD*` env 注入（无源码字面量）。
 
 **执行序列（浏览器链 + API 链 + 权威核验，全部真实服务）**
 
 1. **发布 Plan → Lago 落库**：`POST /api/v1/commercial/plans/draft` + `/publish`（b 租户 JWT）→ 断言 200 + receipt `publish_plan_version:pro:1`；`curl :48889/api/v1/plans`（Bearer LAGO_ORG_API_KEY）含 `weknora-pro-v1` → `api-01/02-*.json`。
-2. **浏览器下单 →「待付款」**：Playwright headless（脚本 `browser_flow_82.mjs` 修复版）：goto `http://localhost:5194/auth`（env 凭据登录）→ `/platform/billing/checkout?plan=weknora-pro-v1` → 选支付宝 → 提交 → 断言「等待付款」+「待付款（权益未开通）」+ 报价明细 ¥99.00 + 订单号 → 截图 `settle-evidence/01-checkout-awaiting-payment.png`；`/platform/billing` 断言「待付款（权益未开放）」→ `02-billing-awaiting-payment.png`。
+2. **浏览器下单 →「待付款」**：Playwright headless（脚本 `browser_flow_82.mjs` 修复版）：goto `http://localhost:5194/auth`（env 凭据登录）→ `/platform/billing/checkout?plan=weknora-pro-v1` → **在「支付渠道」单选控件选「支付宝」（Task 8 交付；默认即支付宝，显式选择一步以锁定 UI 行为）** → 提交（断言提交体 provider==alipay，脚本侧由请求拦截或后端 attempt 行 provider 判定）→ 断言「等待付款」+「待付款（权益未开通）」+ 报价明细 ¥99.00（`FLOW82_EXPECT_CNY` 参数化）+ 订单号 → 截图 `settle-evidence/01-checkout-awaiting-payment.png`；`/platform/billing` 断言「待付款（权益未开放）」→ `02-billing-awaiting-payment.png`。
 3. **Lago gated 形状核验**：`curl :48889/api/v1/subscriptions?external_id=weknora-tenant-1-purchase&status[]=incomplete` → incomplete + activation_rules；DB 直查 invoice `status=5(open)` → `lago-gated-before-settle.txt`。
 4. **支付宝 stub 付款 + 同步返回面（AC2）**：`alipay_sandbox_notify.py` 造同源签名 notify（TRADE_SUCCESS 9900）→ 先访问 checkout 同步回跳 URL 刷新 → 断言仍「待付款（权益未开放）」、全页无「已付款/已生效」→ `03-sync-return-no-confirmation.png`（`browser_sync_face_82.mjs`）。
 5. **可信回调 → 订单 paid →「已付款待激活」**：`POST /api/v1/commercial/callbacks/alipay`（stub 签名体）→ 200 `success`；GET `/api/v1/commercial/purchase`（a 租户 JWT）→ `state=paid_awaiting_activation`；浏览器 checkout 轮询页断言「已付款，权益处理中」且无「已生效」→ `04-paid-awaiting-activation.png`。
