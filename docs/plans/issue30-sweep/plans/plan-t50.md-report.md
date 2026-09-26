@@ -419,3 +419,117 @@ fbab6bd4d feat(publish): confluence bridge - dispatcher/resolver routing + produ
 
 - 无阻塞。Task 6 可依计划消费：`ConfluenceVersionConflictResult` / `ConfluenceBridge`（`ActionDispatcher`+`UnknownResolver` 双实现）/ `ReadConfluencePageVersion` / `NewDBConfluenceScopeSource` / `NewConfluencePolicyProvider` / `NewConfluenceCredentialTokenSource`，签名逐字与计划 Produces 一致。
 - 提请审查注意：两处计划勘误（§4.1 编译错误、§4.2 唯一索引夹具冲突）均为计划文本客观缺陷，修正不改变任何断言语义；如审查者倾向保留计划原文，需同步修订计划文本，否则测试不可编译/不可通过。
+
+---
+
+# Task 6/10 报告——publish 包：`ConfluencePublishService`（FormPlan/Execute/Reconcile/回执 settle）
+
+任务定位：plan-t50.md:3109-3723（Task 6）
+执行 worktree：`/Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue30-sweep-t50`（分支 `codex/issue30-t50`，基线 HEAD `2bc22045d` 即 Task 5 报告提交）。
+本报告由实现员子代理撰写，仅覆盖 Task 6 授权文件。
+
+## 1. 实现内容
+
+按计划 Task 6 逐字实现，两个新增文件（工作区零其他改动，未触碰任何他人文件）：
+
+- **`internal/modules/appconnector/publish/confluence.go`**：
+  - `ConfluenceRemoteReader` 接口：`ReadConfluencePageVersion(ctx, connectionID, pageID) (string, error)`——计划期预读端口，由 Task 5 的 `*ConfluenceBridge` 满足（`confluence_bridge.go:187` 同签名）。
+  - `ConfluencePublishService` 七字段结构（`actions`/`store`/`pubs`/`artifacts`/`content`/`remote`/`scopes`）与 `NewConfluencePublishService` 构造器，签名逐字等于计划 Produces。
+  - `FormPlan`：输入校验（租户/actor/connection/session/version id/title 非空、parent 与 page 恰择一）→ `ConfluenceScope` 解析 + `AppID != "confluence"` 拒绝（`appIDConfluence`）→ update 目的地权威规则（`LatestPublishedByDestination` 无既往回执即 `ErrPublishUpdateTargetNotPublished` fail-closed）→ create 父页面白名单（`scope.ApprovedParents`，不在名单 `ErrPublishDestinationOutOfScope`）→ Artifact 版本读取（不可读 `ErrPublishArtifactNotReady`、MIME 不可发布 `ErrPublishUnsupportedArtifact`、超 `MaxPublishArtifactBytes` `ErrPublishContentTooLarge`）→ `ConfluenceStorageBody` 确定性正文投影（空正文透传 `ErrPublishEmptyContent`）→ **AC1 计划期外部版本预读**（读失败/空版本一律 `ErrPublishDestinationUnreadable`，绝不把「读不到」当「可写」）→ 组装快照 bytes（update 四字段含 `expected_version`=预读值；create 三字段）→ `actions.Prepare`（Version `"confluence/v1"`、`RiskWrite`、`AuthVersion` 严格绑定）→ `CreatePublication`（Provider `"confluence"`、`PublicationPlanned`、绑定 ExpectedVersion/ArtifactVersionID/ArtifactDigest；失败时 prepared action 留在 awaiting_approval 成孤儿计划，绝不伪造回执）→ 返回 `PublishPlanView`（digest/fence 来自权威 action 行）。
+  - `Execute`：`actions.Execute`，`ErrDispatchUnknown` 非错误（unknown 停车是诚实结局，不是失败），随后 `project` 从 action 行权威状态 settle 回执。
+  - `Reconcile`：`actions.ResolveUnknown`（对账只查 provider，绝不重发写），随后同 `project`。
+  - `Receipt`：`FindByAction` → `publicationView` 投影。
+  - `project`：跨租户 action id 一律 `repoappconn.ErrActionNotFound`（不泄漏存在性）；`Conflict` 判定 = `ProviderResult` 前缀 `ConfluenceVersionConflictResult`（Task 5 产物常量）；Succeeded→解析 `appconn.ParseConfluencePageReceipt` settle `PublicationPublished`（外部 id/version 来自 provider 自身回执）；Failed→settle `PublicationFailed`；Unknown→settle `PublicationUnknown`；settle 生命周期冲突（`ErrPublicationConflict`）幂等容忍。
+  - 复用零修改：`PublishPlanInput`/`PublishPlanView`/`PublishArtifactView`/`PublishExecuteOutcome`/`PublishReceiptView`/`publicationView`/`publishableMIME`/`MaxPublishArtifactBytes`/全部 `ErrPublish*` 哨兵（plan.go/blocks.go）、`ConfluenceStorageBody`（confluence_blocks.go）、`ConfluenceScopeSource`/`ConfluenceVersionConflictResult`（confluence_bridge.go）——与计划 Interfaces 声明一致，既有文件零改动。
+
+- **`internal/modules/appconnector/publish/confluence_test.go`**（计划 Step 1 测试逐字）：11 个测试函数——FormPlan 8 个（create 绑定基线版本+快照存储体+回执行、父越界 fail-closed、目的地不可读拒绝成计划、update 无既往回执拒绝、update 绑定预读 expected_version、非 Confluence 连接拒绝、坏输入 4 例、空 artifact 拒绝）+ Execute 2 个（create 发布成功 settle published 回执含外部 id/version、update 冲突 settle failed 回执且 **puts==0**）+ Reconcile 1 个（丢回复→unknown 停车→盲重发布被 `ErrActionState` 结构性拒绝→Reconcile 从远端判 succeeded 且 **puts 计数不增长**）。
+
+## 2. TDD 证据（实跑命令与完整输出）
+
+### RED（Step 2）
+
+命令：
+
+```
+go test ./internal/modules/appconnector/publish/ -run 'TestConfluenceFormPlan|TestConfluenceExecute|TestConfluenceReconcile' -count=1
+```
+
+输出（与计划 Step 2 预期 `undefined: NewConfluencePublishService` 形态一致）：
+
+```
+# github.com/Tencent/WeKnora/internal/modules/appconnector/publish [github.com/Tencent/WeKnora/internal/modules/appconnector/publish.test]
+internal/modules/appconnector/publish/confluence_test.go:36:9: undefined: ConfluencePublishService
+internal/modules/appconnector/publish/confluence_test.go:60:9: undefined: NewConfluencePublishService
+FAIL	github.com/Tencent/WeKnora/internal/modules/appconnector/publish [build failed]
+FAIL
+```
+
+### GREEN（Step 4）
+
+同一命令，11/11 PASS：
+
+```
+=== RUN   TestConfluenceFormPlanCreateBindsBaselineVersion
+--- PASS: TestConfluenceFormPlanCreateBindsBaselineVersion (0.00s)
+=== RUN   TestConfluenceFormPlanCreateParentOutOfScopeFailsClosed
+--- PASS: TestConfluenceFormPlanCreateParentOutOfScopeFailsClosed (0.00s)
+=== RUN   TestConfluenceFormPlanDestinationUnreadable
+--- PASS: TestConfluenceFormPlanDestinationUnreadable (0.00s)
+=== RUN   TestConfluenceFormPlanUpdateRequiresPriorPublishedReceipt
+--- PASS: TestConfluenceFormPlanUpdateRequiresPriorPublishedReceipt (0.00s)
+=== RUN   TestConfluenceFormPlanUpdateBindsExpectedVersion
+--- PASS: TestConfluenceFormPlanUpdateBindsExpectedVersion (0.00s)
+=== RUN   TestConfluenceFormPlanRejectsNotConfluenceConnection
+--- PASS: TestConfluenceFormPlanRejectsNotConfluenceConnection (0.00s)
+=== RUN   TestConfluenceFormPlanRejectsBadInputs
+--- PASS: TestConfluenceFormPlanRejectsBadInputs (0.00s)
+=== RUN   TestConfluenceFormPlanRejectsEmptyArtifact
+--- PASS: TestConfluenceFormPlanRejectsEmptyArtifact (0.00s)
+=== RUN   TestConfluenceExecuteCreatePublishesAndSettlesReceipt
+--- PASS: TestConfluenceExecuteCreatePublishesAndSettlesReceipt (0.01s)
+=== RUN   TestConfluenceExecuteUpdateConflictSettlesFailedReceipt
+--- PASS: TestConfluenceExecuteUpdateConflictSettlesFailedReceipt (0.00s)
+=== RUN   TestConfluenceReconcileResolvesUnknownWithoutRedispatch
+--- PASS: TestConfluenceReconcileResolvesUnknownWithoutRedispatch (0.00s)
+PASS
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/publish	1.388s
+```
+
+（运行中出现的 gorm `record not found` 日志是 `FindByAction` 查无此行时的正常 debug 输出——测试故意的负路径与首次查询，非错误。）
+
+### 回归与构建
+
+```
+go test ./internal/modules/appconnector/... -count=1
+```
+
+```
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector	0.174s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/connectorcontrol	1.534s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/openconnector	0.192s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/publish	1.231s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector	0.510s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector	3.012s
+```
+
+```
+go build ./...   # BUILD OK（仅既有的 cmd/desktop、cmd/server ld duplicate-libraries 警告，与本任务无关）
+gofmt -l <两个新文件>   # 无输出（格式合规）
+go vet ./internal/modules/appconnector/publish/   # VET OK
+```
+
+## 3. 提交
+
+- `5f21c7783` `feat(publish): confluence publish service - form/execute/reconcile/settle (T20 #50)`（2 files changed, 568 insertions：`confluence.go` + `confluence_test.go`，均为新增；提交后 `git status --short` 干净）。
+
+## 4. 自检发现
+
+1. **实现与计划文本逐字一致，仅一处被动跟随的既有事实**：计划实现模板中 `Conflict` 判定用 `ConfluenceVersionConflictResult`——该常量实际定义在 Task 5 的 `confluence_bridge.go:20`（`"confluence_version_conflict"`），与 Notion 模板的 `PublishVersionConflictResult`（dispatcher.go:20，`"notion_version_conflict"`）对称，直接可用，无需新定义。签名全部逐字等于计划 Produces。
+2. **计划测试代码与 Task 5 既有测试辅助完全咬合**：`cfWireFake`（`puts`/`mu`/`dropNextWrite` 字段、`addPage(id, spaceID, title, version)`、`bump(id)`）、`cfWirePolicy`、`cfFakeScopes`、`cfFakeTokens`、`cfCred`、`cfScope`、`fakePolicies`、`fakeArtifacts`、`fakeContent`、`passGuard`、`openPlanDB` 全部复用既有测试文件定义，零重复定义；`cfRemote`/`cfScopeOK`/`cfPlanEnv` 为本测试文件新增，无命名冲突。测试断言 `<p>hello</p>\n<p>world</p>` 与 Task 4 `ConfluenceStorageBody` 实际输出逐字符一致（撰写前已实读 confluence_blocks.go:23-49 核实）。
+3. **Review Focus 覆盖**（plan-t50.md:58-64 中归属 Task 6 的三项全部落地）：①TOCTOU 漂移（第 1 类）→ `TestConfluenceExecuteUpdateConflictSettlesFailedReceipt`（conflict 标记 + failed 回执 + puts==0）；②版本令牌缺失当可写（第 2 类）→ `TestConfluenceFormPlanDestinationUnreadable`（预读失败拒绝成计划）；③盲重试（第 3 类）→ `TestConfluenceReconcileResolvesUnknownWithoutRedispatch`（unknown 结构性拒绝再发布 + 对账不重发）；另覆盖第 5 类错接（`TestConfluenceFormPlanRejectsNotConfluenceConnection`）。
+4. **一处措辞级观察（非缺陷，不改代码）**：`FormPlan` 对 create 的父页面预读失败与 update 相同返回 `ErrPublishDestinationUnreadable`——这是计划模板的原样语义（create 预读是「审阅目的地的基线记录」而非强制门，但读不到同样拒绝成计划，fail-closed 方向正确），与计划 Task 6 文字描述一致，无需偏离。
+5. **零迁移、零 TS、零共享文件改动**：本任务仅 2 个新增文件，`plan.go`/`dispatcher.go`/`confluence_bridge.go`/路由/容器全部未触碰；无空提交。
+
+## 5. 遗留/交接
+
+- 无阻塞。Task 7（HTTP 面）可依计划消费：`NewConfluencePublishService(actions, store, pubs, artifacts, content, remote, scopes)`、`FormPlan`/`Execute`/`Reconcile`/`Receipt` 四方法签名逐字与计划 Produces 一致；`remote` 注 `*ConfluenceBridge`、`scopes` 注 `NewDBConfluenceScopeSource(db)`（均 Task 5 产物）。
