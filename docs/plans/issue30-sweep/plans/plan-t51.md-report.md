@@ -1163,3 +1163,48 @@ ok  	github.com/Tencent/WeKnora/internal/router	4.981s
 
 - Task 5 交付面（handler/路由/接线/4 测试）本轮零改动、零回归。
 - **需编排方收口**：授权 Task 0 执行者按计划原文执行迁移去重重编（sqlite 000114→000118、versioned 000193→000197、migration.go :29-33 与 :123 联动）——槽位已核实空闲（§1.4）；完成后 Task 6 的 AC3 全量迁移 e2e 方可运行。
+
+---
+
+# Task 5 修复轮 2 报告（findings 与修复轮 1 逐字相同——F2 跨任务项复核现状未变，本轮复跑取证 + 槽位增量核查，仍待编排方收口）
+
+- **执行者**：实现员-t51-任务5（修复轮 2/5）
+- **基线**：`1b4a1bf3c`（修复轮 1 入册）→ 本轮 docs 提交见文末
+- **定性**：唯一 finding 与修复轮 1 逐字相同（Task 0 未执行的跨任务预存在项，非 Task 5 缺陷）。依 Task 4 报告 F2 既有裁决不代做 migrations/**；本轮全部动作为实跑复核取证，零代码改动。
+
+## 1. F2 复跑（本轮实跑，现状与修复轮 1 完全一致）
+
+1. 双占仍在：`ls migrations/sqlite/ | grep -E "^000114"` → `000114_mobile_device_app.{up,down}.sql` × `000114_public_agent_marketplace.{up,down}.sql` 并存；versioned 同构（`000193_mobile_device_app.*` × `000193_public_agent_marketplace.*`）。
+2. 门控常量未改：`grep` 实跑 `internal/database/migration.go:33` 仍为 `const sqliteAdoptionFKRelaxationMigrationVersion = 114`，`:123` 探测串仍指 `000114_public_agent_marketplace.up.sql`。
+3. `go test ./internal/handler/ -run 'TestNotionPublish' -count=1` 复跑：3 个 `--- FAIL`（CreateApprovePublishReceipt / UpdateConflict / UnknownReconcilesRemoteFirst），报错均 `duplicate migration file: 000114_public_agent_marketplace.down.sql`——与 finding 逐字一致。
+4. **槽位增量核查（本轮新增价值：防同批兄弟计划瞬时落盘占用，Task 4 报告曾记录该现象）**：
+   ```
+   $ ls migrations/sqlite/ | grep -E "^000118"   → 无输出（exit 1，无占用）
+   $ ls migrations/versioned/ | grep -E "^000197" → 无输出（exit 1，无占用）
+   ```
+   sqlite 000118 / versioned 000197 仍空闲，Task 0 可按计划原文执行、无需顺延。
+
+## 2. 待核实项（4 项与修复轮 1 相同，逐项维持）
+
+1. dig 运行时装配：维持未冒烟（`BuildContainer` 仅 cmd/server、cmd/desktop main 调用，需真实 config/DB/redis 环境；本 ask 未授权起 server 或新增验证文件）。静态+编译证据链不变（build exit 0、vet 三包干净、`*handler.AppActionPlanHandler` 全仓唯一 Provide 点、dig v1.19.0 多输出框架原生能力）。
+2. Task 6 e2e 不存在（Task 6 授权面）且受 F2 阻断——无法验证，如实声明。
+3. 真实 Notion blocked-env 维持计划总则声明，零伪造。
+4. `go test ./internal/database/ -count=1` 未运行（Task 0 未发生无可验证对象）——应由 Task 0 执行者收口时运行。
+
+## 3. 修复轮回归（本任务在案测试复跑，零回归）
+
+```
+$ go test ./internal/handler/ -run 'TestActionPlan' -count=1 -v
+--- PASS: TestActionPlanHandlerFailClosedWithoutService (0.01s)
+--- PASS: TestActionPlanHandlerValidationAndNotFound (0.00s)
+ok  	github.com/Tencent/WeKnora/internal/handler	2.304s
+
+$ go test ./internal/router/ -run TestActionPlanRoutes -count=1 -v
+--- PASS: TestActionPlanRoutesNilHandlerRegistersSilently (0.00s)
+--- PASS: TestActionPlanRoutesRegisterWithHandler (0.00s)
+ok  	github.com/Tencent/WeKnora/internal/router	3.330s
+```
+
+## 4. 结论
+
+Task 5 交付面零改动、零回归。F2 仍为唯一未决项且其修复者非本任务：**需编排方授权执行者完成 Task 0**（sqlite 000114→000118、versioned 000193→000197、migration.go :29-33 注释与 :33 常量、:123 探测串、sqlite up 文件自引用注释五处联动——槽位本轮再证空闲）。完成后 Task 6 的 AC3 全量迁移 e2e 方可运行。
