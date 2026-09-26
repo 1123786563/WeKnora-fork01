@@ -969,3 +969,141 @@ func TestTmpDeliveryCollabCrossTenantIsolated(t *testing.T) {
 	require.Contains(t, w.Body.String(), "run_not_found")
 }
 ```
+
+---
+
+# Task 0 集成 + 全量收口报告（#53，任务 5/5）
+
+- **分支**：`codex/issue30-t53`（worktree `/Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue30-sweep-t53`）
+- **集成提交**：`4b36054fe` `fix(migrations): renumber mobile_device_app to 000197/000118 — dedupe with public_agent_marketplace (#53 task 0)`
+- **正式测试文件**：`delivery_collaboration_http_test.go` 自 `376b64280` 起零触碰（`git status` 收口后干净）
+- **状态**：DONE_WITH_CONCERNS（Task 0 集成完成，报告第五节三条收口命令全部真实执行；两条如实记录的例外见第三节——均经 base 对照/分片取证证明与本次集成零因果，处置留主控）
+
+## 一、实现内容
+
+按前置接口「集成 Task 0 后按报告第五节命令即收口」执行：
+
+1. **Task 0 等价修复集成**：`git cherry-pick --no-commit codex/issue30-t61 的 96e579ad0`（T31 #61 task 0）——4 个迁移文件纯 rename（`000114_mobile_device_app.*`→`000118_*`、`000193_mobile_device_app.*`→`000197_*`）+ 5 个测试文件 11 处引用更新。pick 前实测 5 个测试文件与 `96e579ad0^` 逐一零 diff（`git diff 96e579ad0^ <file>` 均空），pick 零冲突。
+2. **补齐 plan Task 0 Step 2 的注释同步**（96e579ad0 是纯 rename 未含此步，实测确认）：`migrations/versioned/000197_mobile_device_app.up.sql` 行 1 `（同 sqlite 000114`→`000118`；`000197_mobile_device_app.down.sql` 行 1 `sqlite 000114`→`000118`、行 3 `回滚卡死在 000193`→`000197`。DDL 一字未动（diff 仅注释 3 行）。sqlite 两个文件无版本号自引用，与 plan 判定一致不改。
+3. 单提交 `4b36054fe`（9 files，+14/-14；sqlite 两文件 similarity 100%，versioned 两文件 96%/90%）。
+
+**授权边界声明**：本任务修改范围 = Task 0 授权文件（4 个迁移文件 + 5 个 mobile 测试引用文件）+ 报告文件；`container.go`/`router.go`/正式 e2e 测试文件零触碰；未撤销任何他人修改（cherry-pick 是纯新增集成，前置报告引用的 `96e579ad0` 原样进入本分支历史）；未派发子代理；未推送远端。
+
+## 二、验证证据（全部本 session 真实运行）
+
+### 1. 基线红（集成前，`12e5bc75c` 工作区）
+
+```
+$ go test ./internal/database/ -count=1
+ERROR ... migration.go:134 ... failed to open source, "file://migrations/sqlite":
+duplicate migration file: 000114_public_agent_marketplace.down.sql
+FAIL	github.com/Tencent/WeKnora/internal/database	12.602s
+```
+
+### 2. plan Task 0 Step 2/3 自检（三项 grep 全部无残留）
+
+```
+$ grep -rn "000114\|000193" migrations/versioned/000197_mobile_device_app.{up,down}.sql migrations/sqlite/000118_mobile_device_app.{up,down}.sql   # exit=1
+$ grep -rn "000114_mobile_device_app\|000193_mobile_device_app" --include="*.go" .                                                                  # exit=1
+$ grep -rn "000114_mobile_device_app\|000193_mobile_device_app" migrations/                                                                          # exit=1
+```
+
+### 3. plan Task 0 Step 4 验证链（五项全过）
+
+```
+$ go build ./...                          → BUILD-OK（仅既有 ld duplicate libraries warning）
+$ go test ./internal/database/ -count=1   → ok 16.691s   ← 基线红 10 失败全部转绿
+$ go test ./internal/application/repository/ -run 'TestMobileDevice|TestValidateMobileAppID|TestBindIsolatesOfficialAndEnterprise|TestTokenExclusivityIsPerApp|TestNotificationIntentFanOutPerApp|TestClaimJoinsAppID|TestMobilePush' -count=1
+                                          → ok 5.467s
+$ go test ./internal/handler/ -run 'TestMobileDeviceHandler' -count=1
+                                          → ok 2.024s
+$ go test ./internal/modules/workbench/service/workbench/ -run 'TestPushPayloadPolicy|TestHTTPNotificationProvider|TestAppRouting|TestDisabledNotificationProvider|TestDisallowed' -count=1
+                                          → ok 1.442s
+```
+
+### 4. 收口命令 1（Task 4 报告第五节 1）——3/3 PASS
+
+```
+$ go test ./internal/application/repository/ -run 'TestDeliveryCollaboration' -count=1 -v
+=== RUN   TestDeliveryCollaborationEndToEndAC1PersonalLoopAndAttribution
+--- PASS: TestDeliveryCollaborationEndToEndAC1PersonalLoopAndAttribution (2.09s)
+=== RUN   TestDeliveryCollaborationEndToEndAC2CollaboratorCannotInheritPersonalConnection
+--- PASS: TestDeliveryCollaborationEndToEndAC2CollaboratorCannotInheritPersonalConnection (3.74s)
+=== RUN   TestDeliveryCollaborationEndToEndCrossTenantIsolated
+--- PASS: TestDeliveryCollaborationEndToEndCrossTenantIsolated (4.61s)
+PASS
+ok  	github.com/Tencent/WeKnora/internal/application/repository	13.768s
+```
+
+**正式 e2e 文件（`376b64280`，零修改）在仓库内首次真实转绿**：AC1（personal 全链 200 + space 403 `code_delivery_forbidden` + 归因三元组 initiator/approver/remote_login + `NotContains(deliveryToken)`）、AC2（协作者读 200/写 404/无 grant 读 404）、跨租户 404 `run_not_found`。Task 2 报告的 GREEN B（去重副本）、Task 4 报告的双轮一次性验证（3/3 × 2）至此由仓库内正式运行取代。
+
+### 5. 收口命令 2（Task 4 报告第五节 2）——PASS
+
+```
+$ go test ./internal/modules/appconnector/repository/appconnector/ -run TestSpaceConnectionGrantStore -count=1 -v
+=== RUN   TestSpaceConnectionGrantStoreUpsertListRevoke
+--- PASS: TestSpaceConnectionGrantStoreUpsertListRevoke (3.79s)
+PASS
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector	4.542s
+```
+
+Task 2 报告遗留的阻塞项（store × 全量迁移轨）收口。
+
+### 6. 收口命令 3（Task 4 报告第五节 3）——六组包结果
+
+```
+$ go build ./... && go test ./internal/database/ ./internal/modules/codedelivery/ ./internal/modules/appconnector/... ./internal/handler/ ./internal/application/repository/ ./internal/modules/workbench/service/workbench/ -count=1
+ok  internal/database                                        28.295s
+ok  internal/modules/codedelivery                             3.838s
+ok  internal/modules/appconnector                             1.584s
+ok  internal/modules/appconnector/connectorcontrol            3.877s
+ok  internal/modules/appconnector/openconnector               1.655s
+ok  internal/modules/appconnector/publish                     2.939s
+ok  internal/modules/appconnector/repository/appconnector     3.609s
+ok  internal/modules/appconnector/service/appconnector        4.234s
+ok  internal/handler                                         14.481s
+FAIL internal/application/repository                         602.644s   ← panic: test timed out after 10m0s（零测试级失败）
+FAIL internal/modules/workbench/service/workbench           106.529s   ← 1 个失败（第三节 1）
+```
+
+两组包的结果补全取证：
+
+- **application/repository（超时处置）**：panic 现场仅 1 个 3s 测试在跑（`TestNativeCommit…`）——非单测卡死，是该包 **557 个测试**（`go test -list '.*' | grep -c ^Test` 实测 557）在修复轨道上首次全部真实运行、每个测试全量迁移建库（实测单测 4–48s）的总墙钟超过 go test 默认 10m；`-timeout=30m` 补跑同样打爆（`panic: test timed out after 30m0s`，1805.650s，零测试级失败）。**分片完整取证**：557 名单按字母序 `split -l 93` 均分 6 片并行跑（`-run '^Name1$|^Name2$|…'` 锚定，`-timeout=45m`），**6 片全部 `ok`（440s/1747s/1837s/1858s/2092s/2175s），零 `--- FAIL`**；六片测试名合并 `sort` 后与 `go test -list` 原名单 `diff` 完全一致（覆盖完备性核对通过）。即：该包 557/557 全部 PASS——单次整跑受 go test 单进程墙钟限制不可行，分片等价覆盖。
+- **workbench（失败处置）**：见第三节 1。
+
+## 三、两个如实记录的例外（均与本次集成零因果）
+
+### 1. workbench 包 1 个失败：`TestNotificationDeliveryRejectsResolvedInteractionAfterClaim`——迁移修复后新暴露的既有测试缺陷，非回归
+
+**现象**：`notification_delivery_test.go:489` `require.EqualValues(t, 1, res.RowsAffected)` 期望 1 实际 0——测试硬编码的 5 段 intent id（`'1:delivery-event-interaction-device:u1:interaction-device:dev'`，行 488）在表里命中 0 行。
+
+**根因**：`NotificationStore.Enqueue` 经 `notificationID`（`internal/application/repository/mobile_notification.go:185-186`）生成 **6 段** id（`tenant:event:owner:device:env:appID`，AppID 经 `NormalizeMobileAppID` 补 `official`）。fixture（`seedDeliveryFixture`，行 159-174）的 Enqueue 落库 6 段 id，测试 UPDATE 条件仍是 5 段 → 永远命中 0 行。该测试 2026-09-22 由 `61e9fa0e7` 引入，此后全量迁移轨一直被 duplicate migration 挡死（Task 4 报告记录的 base 27 个 workbench 失败之一），从未真实运行过——**这是挂起的 Task 0 掩盖的既有测试/代码不一致，迁移修复才让它第一次跑到断言**。
+
+**零因果证据（三点）**：
+1. base 对照（临时 detached worktree `/tmp/t53t5-base-check` checkout `12e5bc75c`，跑后已 `git worktree remove --force` 清理）：base 上同测试 FAIL 于 `duplicate migration file: 000114_public_agent_marketplace.down.sql`（`admission_concurrency_test.go:176`）——base 也是红，仅失败面具不同；
+2. 本任务提交影响面 `git diff 12e5bc75c..HEAD --stat -- internal/application/repository/mobile_notification.go` 为空，`notification_delivery_test.go` 不在 Task 0 授权 5 文件内；
+3. 迁移改名仅影响执行顺序（000118 移到 000115-117 之后），实测 `000115/000116/000117` up 迁移均不引用 `mobile_devices`/`mobile_notification_intents`（grep exit=1），DDL 终态不变。
+
+**处置**：不修。`notification_delivery_test.go` 不在本任务授权文件清单内（Task 0 授权仅 mobile 5 文件 + 迁移 rename），修复属改他人测试（硬编码 id 补第 6 段 `:official`），留主控裁决。
+
+### 2. application/repository 包单次整跑超时——非缺陷，分片取证 557/557 ok
+
+见第二节 6：10m/30m 两次 panic 均零测试级失败、panic 时活跃测试仅 3s/9s（无卡死）；分片并行 6 片全部 ok，覆盖与名单 diff 一致。Task 4 报告「325 个既有失败全部转绿」的预期在本包成立（286 个 duplicate-migration 失败全部转为真实运行且 PASS）。
+
+## 四、本轮收口结论对照（报告第五节三条命令逐条）
+
+| # | 命令（Task 4 报告第五节） | 预期 | 实测 |
+|---|---|---|---|
+| 1 | `go test ./internal/application/repository/ -run 'TestDeliveryCollaboration' -count=1 -v` | 3/3 PASS | **3/3 PASS** ✓ |
+| 2 | `go test ./internal/modules/appconnector/repository/appconnector/ -run TestSpaceConnectionGrantStore -count=1` | 全绿 | **PASS** ✓ |
+| 3 | `go build ./... && go test <六组包> -count=1` | 六组包全绿 | build ok；database/codedelivery/appconnector×6/handler **五组全绿** ✓；application/repository 557/557 PASS（分片取证，单次整跑墙钟超限）；workbench 26/27 转绿 + **1 个非回归既有失败**（第三节 1，留主控） |
+
+AC1/AC2/AC3 的 e2e 证据链至此在仓库内闭环：AC1 = 收口 1（space 403 / personal 全链 200 / 归因三元组 / 无凭据泄漏）+ Task 2 `TestSpaceGrantNeverOpensPersonalConnection`（包级全绿见收口 3 appconnector 六包 ok）；AC2 = 收口 1 第二测；AC3 = 全链 HTTP + 真实迁移 sqlite + 真实 handler/service/store（GitHub 唯一替身，论证不变）。
+
+## 五、自检发现
+
+- **TDD 形态如实声明**：本任务无生产代码新增，TDD 落点是「基线红→修复转绿」的迁移轨道修复验证（基线红为本 session 实跑，见第二节 1）与既有测试套的真实转绿，非 RED→GREEN 实现循环。
+- 96e579ad0 集成方式为 cherry-pick（保留等价修复来源），并补齐其未含的 plan Step 2 注释同步——补齐部分经 diff 核实仅注释 3 行、DDL 零变化。
+- 临时产物清理：`/tmp/t53t5-base-check` worktree 已 `git worktree remove --force`（`git worktree list` 复核该条目为 0）；`/tmp/t53-shards/`、`/tmp/t53-apprepo-tests.txt`、`/tmp/t53-task5-*.log` 为仓库外运行证据存档，未入库；仓库工作区 `git status` 干净。
+- 全量六组包重跑的完整输出存档：`/tmp/t53-task5-fullrun.log`（首轮，含 10m panic 现场）与 `/tmp/t53-task5-apprepo-full.log`（30m 补跑）；六分片日志 `/tmp/t53-shards/part_a{a..f}.log`。
+- 唯一遗留（超出本任务授权）：`TestNotificationDeliveryRejectsResolvedInteractionAfterClaim` 的 5 段→6 段 id 修正，留主控裁决（一行 fixture/断言修正，属他人测试文件）。
