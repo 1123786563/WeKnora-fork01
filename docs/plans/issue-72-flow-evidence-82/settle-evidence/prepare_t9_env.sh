@@ -1,0 +1,138 @@
+#!/usr/bin/env bash
+# Task 9 real-stack env preparation (t11 lab stack): registers the
+# weknora-stripe provider (the adapter binding's hardcoded code), mints a
+# REAL Stripe-generated webhook secret through the same Stripe API
+# RegisterWebhookService uses (public-format placeholder URL — the local
+# stack's loopback LAGO_API_URL is refused by Stripe, t11 DECISION.md
+# boundary), stores it through the Lago model layer, and exports the
+# LAGO_INTEGRATION_* family for the tagged test.
+#
+# Usage: source settle-evidence/prepare_t9_env.sh <lab-dir>
+#   <lab-dir> defaults to deploy/lago-lab/payment-settle-trigger
+set -euo pipefail
+
+LAB_DIR="${1:-deploy/lago-lab/payment-settle-trigger}"
+REPO_DIR="$(pwd)"
+ENV_FILE="$REPO_DIR/$LAB_DIR/lab.env"
+COMPOSE_FILE="$REPO_DIR/deploy/lago/compose.yaml"
+PROJECT="weknora-lago-t11"
+
+[ -f "$ENV_FILE" ] || { echo "missing $ENV_FILE (run lab.sh init)" >&2; return 1 2>/dev/null || exit 1; }
+
+env_value() { grep -E "^$1=" "$ENV_FILE" | tail -n 1 | sed 's/^[^=]*=//; s/^"//; s/"$//'; }
+
+export LAGO_INTEGRATION_BASE_URL="$(env_value LAGO_API_URL)"
+export LAGO_INTEGRATION_API_KEY="$(env_value LAGO_ORG_API_KEY)"
+export LAGO_INTEGRATION_STRIPE_SETTLE_PM="${LAGO_INTEGRATION_STRIPE_SETTLE_PM:-pm_card_visa}"
+export LAGO_INTEGRATION_GATE_PM="${LAGO_INTEGRATION_GATE_PM:-pm_card_threeDSecure2Required}"
+export LAGO_INTEGRATION_ORG_ID="$(docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" -p "$PROJECT" exec -T db psql -U lago -tAc 'select id from organizations order by created_at limit 1' | tr -d '[:space:]')"
+
+# The Stripe key must already be exported in the shell (source-only
+# discipline: never written anywhere).
+[ -n "${STRIPE_SECRET_KEY:-}" ] || { echo "STRIPE_SECRET_KEY not exported (source the operator env first)" >&2; return 1 2>/dev/null || exit 1; }
+export LAGO_INTEGRATION_STRIPE_KEY="$STRIPE_SECRET_KEY"
+
+# Register weknora-stripe if the org does not hold it yet.
+python3 - "$ENV_FILE" <<'PY'
+import json, os, sys, urllib.request
+def load_env(path):
+    out = {}
+    for line in open(path):
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line: continue
+        k, _, v = line.partition("=")
+        out[k.strip()] = v.strip().strip('"')
+    return out
+env = load_env(sys.argv[1])
+base, email, password = env["LAGO_API_URL"], env["LAGO_ORG_USER_EMAIL"], env["LAGO_ORG_USER_PASSWORD"]
+def gql(query, variables, token=None, org=None):
+    headers = {"Content-Type": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    if org:
+        headers["x-lago-organization"] = org
+    req = urllib.request.Request(base + "/graphql",
+        data=json.dumps({"query": query, "variables": variables}).encode(),
+        headers=headers, method="POST")
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    with opener.open(req, timeout=30) as r:
+        return json.loads(r.read().decode())
+login = gql("mutation($e:String!,$p:String!){loginUser(input:{email:$e,password:$p}){token}}",
+            {"e": email, "p": password})
+token = login["data"]["loginUser"]["token"]
+# v1.53.0 scopes GraphQL by the x-lago-organization header (the t10 lab's
+# RunContext precedent): resolve the operator org's lago_id once via REST.
+org_req = urllib.request.Request(base + "/api/v1/organizations",
+    headers={"Authorization": "Bearer " + env["LAGO_ORG_API_KEY"]})
+with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(org_req, timeout=30) as r:
+    org_id = json.loads(r.read().decode())["organization"]["lago_id"]
+existing = gql('{ paymentProviders(limit: 50) { collection { ... on StripeProvider { code } } } }', {}, token, org_id)
+codes = [c["code"] for c in (existing["data"]["paymentProviders"] or {}).get("collection") or []]
+if "weknora-stripe" not in codes:
+    add = gql('mutation($input: AddStripePaymentProviderInput!){addStripePaymentProvider(input:$input){id code}}',
+              {"input": {"code": "weknora-stripe", "name": "WeKnora Stripe T9",
+                         "secretKey": os.environ["STRIPE_SECRET_KEY"]}}, token, org_id)
+    got = (add.get("data") or {}).get("addStripePaymentProvider")
+    if not got:
+        print("provider registration failed:", json.dumps(add)[:300]); sys.exit(1)
+    print("registered provider weknora-stripe")
+else:
+    print("provider weknora-stripe already present")
+PY
+
+# The provider's STORED webhook secret is authoritative when present (an
+# earlier run minted it); only mint a new one when the provider holds none.
+# Stripe caps test webhook endpoints at 16, so stale weknora mint leftovers
+# are pruned first. The local-stack boundary: the loopback LAGO_API_URL is
+# refused by Stripe's own webhook registration, so the harness mints the
+# secret through the same Stripe API and stores it via the MODEL layer
+# (never SQL) — t11 DECISION.md, D8 spirit.
+STORED_FILE=$(mktemp)
+docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" -p "$PROJECT" exec -T api bin/rails runner \
+  "s = PaymentProviders::StripeProvider.where(deleted_at: nil).find_by(code: 'weknora-stripe').try(:webhook_secret).to_s; print '__T9SECRET__' + s" \
+  > "$STORED_FILE" 2>/dev/null
+STORED=$(sed -n 's/.*__T9SECRET__//p' "$STORED_FILE")
+rm -f "$STORED_FILE"
+if [ -n "$STORED" ]; then
+  export LAGO_INTEGRATION_WEBHOOK_SECRET="$STORED"
+  echo "reusing the provider's stored webhook secret"
+else
+  SECRET=$(python3 - <<'PY'
+import base64, json, os, sys, urllib.parse, urllib.request
+key = os.environ["STRIPE_SECRET_KEY"]
+auth = "Basic " + base64.b64encode((key + ":").encode()).decode()
+opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+with opener.open(urllib.request.Request("https://api.stripe.com/v1/webhook_endpoints?limit=100",
+                                        headers={"Authorization": auth}), timeout=30) as r:
+    rows = json.loads(r.read().decode()).get("data", [])
+pruned = 0
+for row in rows:
+    if "weknora" in str(row.get("description", "")):
+        opener.open(urllib.request.Request("https://api.stripe.com/v1/webhook_endpoints/" + row["id"],
+                                           headers={"Authorization": auth}, method="DELETE"),
+                    timeout=30).read()
+        pruned += 1
+print(f"pruned {pruned} stale endpoint(s)", file=sys.stderr)
+form = urllib.parse.urlencode({
+    "url": "https://lago-t9-local.invalid/webhooks/stripe/t9",
+    "enabled_events[]": "payment_intent.succeeded",
+    "description": "weknora t9 integration secret-mint stand-in (harness-delivered)",
+}).encode()
+req = urllib.request.Request("https://api.stripe.com/v1/webhook_endpoints", data=form,
+    headers={"Authorization": auth, "Content-Type": "application/x-www-form-urlencoded"}, method="POST")
+with opener.open(req, timeout=30) as r:
+    body = json.loads(r.read().decode())
+print(body["secret"])
+print("minted endpoint " + body["id"], file=sys.stderr)
+PY
+  )
+  if [ -z "$SECRET" ]; then
+    echo "secret mint failed" >&2
+    return 1 2>/dev/null || exit 1
+  fi
+  export LAGO_INTEGRATION_WEBHOOK_SECRET="$SECRET"
+  docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" -p "$PROJECT" exec -T \
+    -e WSECRET="$SECRET" api bin/rails runner \
+    "PaymentProviders::StripeProvider.where(deleted_at: nil).find_by(code: 'weknora-stripe').update!(webhook_secret: ENV['WSECRET'])" >/dev/null
+fi
+echo "t9 env ready (base=$LAGO_INTEGRATION_BASE_URL org=$LAGO_INTEGRATION_ORG_ID)"

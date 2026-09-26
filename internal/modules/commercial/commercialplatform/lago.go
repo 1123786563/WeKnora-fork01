@@ -278,6 +278,15 @@ func (a *LagoAdapter) configured() error {
 	if a.cfg.BaseURL == "" || a.cfg.APIKey == "" {
 		return commercial.ErrPlatformUnconfigured
 	}
+	// (OCR r4 / S1) The authority egress itself is host-validated BEFORE
+	// any request is built — a hostile or misconfigured BaseURL pointing
+	// at loopback/private/reserved space can never leave this process. The
+	// explicit dev-only bypass admits loopback hosts for local stub
+	// verification (WEKNORA_COMMERCIAL_OUTBOUND_ALLOW_LOOPBACK=true);
+	// everything else still runs the full policy.
+	if err := validateOutboundHostWithBypass(a.cfg.BaseURL, a.cfg.OutboundAllowLoopback); err != nil {
+		return fmt.Errorf("%w: authority base url violates the outbound host policy", commercial.ErrPlatformUnconfigured)
+	}
 	return nil
 }
 

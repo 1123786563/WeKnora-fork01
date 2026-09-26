@@ -188,6 +188,12 @@ func isPlausibleHostname(host string) bool {
 			return false
 		}
 	}
+	if len(labels) < 2 {
+		// (OCR r4) A single-label name is not an FQDN — intranet-style
+		// single labels refuse here rather than riding the named-host
+		// allowance.
+		return false
+	}
 	tld := labels[len(labels)-1]
 	return tld[0] >= 'a' && tld[0] <= 'z'
 }
@@ -250,6 +256,14 @@ func (a *LagoAdapter) createPurchaseSubscription(ctx context.Context, cmd commer
 			// plan code is a definitive conflict — the late caller re-quotes.
 			return commercial.CommandReceipt{}, fmt.Errorf("%w: purchase plan conflict", commercial.ErrPlatformInvalidResponse)
 		}
+		// (OCR final audit 7) A TERMINAL held purchase never answers a
+		// success receipt: a canceled/terminated identity would mint a dead
+		// checkout link the channel can never settle. active/incomplete on
+		// the SAME plan keep the R1-V03 verbatim-replay semantics.
+		switch sub.Status {
+		case "canceled", "terminated":
+			return commercial.CommandReceipt{}, fmt.Errorf("%w: purchase subscription terminal", commercial.ErrPlatformInvalidResponse)
+		}
 		// Identity replay: same purchase + same plan → the same receipt,
 		// never a second subscription or a second gating invoice (F7).
 		return receipt, nil
@@ -274,6 +288,15 @@ func (a *LagoAdapter) createPurchaseSubscription(ctx context.Context, cmd commer
 		return receipt, nil
 	case status == http.StatusUnprocessableEntity &&
 		strings.Contains(string(respBody), "no_default_payment_method"):
+		// (OCR r4) STRUCTURAL posture first: with no provider key or no
+		// payment-method token configured, no import can EVER land — the
+		// retryable classification would loop forever on a wiring gap, so
+		// the adapter fails closed unconfigured instead.
+		if a.cfg.StripeAPIKey == "" || a.cfg.StripePmToken == "" {
+			return commercial.CommandReceipt{}, fmt.Errorf(
+				"%w: no settle-able default payment method without provider key/pm token",
+				commercial.ErrPlatformUnconfigured)
+		}
 		// (R1-12) The authority's payment-method import had not landed when
 		// the gated create ran (the bounded sync wait above is the primary
 		// absorber). The replay's bound short-circuit does NOT re-wait, so
@@ -393,7 +416,7 @@ func (a *LagoAdapter) ensureProviderBinding(ctx context.Context, externalCustome
 		// F2: the org has no registered provider — configuration, not a
 		// transient failure; fail closed and stop the purchase.
 		return fmt.Errorf("%w: no provider registered", commercial.ErrPlatformUnconfigured)
-	case status >= 500:
+	case status == http.StatusTooManyRequests || status >= 500:
 		return fmt.Errorf("%w: provider binding unavailable", commercial.ErrPlatformUnreachable)
 	default:
 		return fmt.Errorf("%w: provider binding rejected", commercial.ErrPlatformInvalidResponse)
@@ -405,7 +428,16 @@ func (a *LagoAdapter) ensureProviderBinding(ctx context.Context, externalCustome
 // (F11, bounded). An exhausted budget is the closed indeterminate
 // unreachable — the purchase replays safely by identity.
 func (a *LagoAdapter) waitForPaymentMethodSync(ctx context.Context, externalCustomerID string) error {
+	// (OCR final audit 6) The poll budget derives from the CALLER's
+	// remaining deadline: min(pmSyncWait, ctx budget - 1s guard), so a
+	// request already near its budget never nominally polls past the
+	// caller's own cancellation.
 	deadline := time.Now().Add(pmSyncWait)
+	if d, ok := ctx.Deadline(); ok {
+		if guarded := d.Add(-time.Second); guarded.Before(deadline) {
+			deadline = guarded
+		}
+	}
 	for {
 		status, body, err := a.do(ctx, http.MethodGet,
 			"/api/v1/customers/"+url.PathEscape(externalCustomerID)+"/payment_methods", nil)
@@ -420,7 +452,7 @@ func (a *LagoAdapter) waitForPaymentMethodSync(ctx context.Context, externalCust
 			if err := json.Unmarshal(body, &parsed); err == nil && len(parsed.PaymentMethods) > 0 {
 				return nil
 			}
-		case status >= 500:
+		case status == http.StatusTooManyRequests || status >= 500:
 			return fmt.Errorf("%w: payment method read unavailable", commercial.ErrPlatformUnreachable)
 		default:
 			return fmt.Errorf("%w: payment method read rejected", commercial.ErrPlatformInvalidResponse)
@@ -454,7 +486,7 @@ func (a *LagoAdapter) customerProviderBound(ctx context.Context, externalCustome
 	case status == http.StatusNotFound:
 		return false, false, nil
 	case status >= 200 && status < 300:
-	case status >= 500:
+	case status == http.StatusTooManyRequests || status >= 500:
 		return false, false, fmt.Errorf("%w: binding read unavailable", commercial.ErrPlatformUnreachable)
 	default:
 		return false, false, fmt.Errorf("%w: binding read rejected", commercial.ErrPlatformInvalidResponse)
@@ -546,6 +578,8 @@ func (a *LagoAdapter) readPurchaseSnapshot(ctx context.Context, tenantID uint64)
 // (the gating invoice); zero = awaiting semantics (empty); two or more is a
 // data anomaly (invalid response — the caller surfaces it, never guesses).
 func (a *LagoAdapter) readPurchaseInvoiceFees(ctx context.Context, tenantID uint64) ([]commercial.InvoiceLineSnapshot, string, error) {
+	// Locate by the visible-finalized index (the pinned runtime keeps the
+	// open gating invoice invisible, t09 F3-F5)…
 	status, body, err := a.do(ctx, http.MethodGet,
 		"/api/v1/invoices?external_customer_id="+url.PathEscape(commercial.ExternalCustomerID(tenantID))+
 			"&status[]=finalized", nil)
@@ -555,8 +589,34 @@ func (a *LagoAdapter) readPurchaseInvoiceFees(ctx context.Context, tenantID uint
 	if status != http.StatusOK {
 		return nil, "", fmt.Errorf("%w: invoice index answered HTTP %d", commercial.ErrPlatformInvalidResponse, status)
 	}
-	var parsed struct {
+	var index struct {
 		Invoices []struct {
+			LagoID        string `json:"lago_id"`
+			PaymentStatus string `json:"payment_status"`
+		} `json:"invoices"`
+	}
+	if err := json.Unmarshal(body, &index); err != nil {
+		return nil, "", fmt.Errorf("%w: invoice index body malformed", commercial.ErrPlatformInvalidResponse)
+	}
+	if len(index.Invoices) == 0 {
+		return nil, "", nil // awaiting semantics: no finalized invoice visible yet
+	}
+	if len(index.Invoices) > 1 {
+		return nil, "", fmt.Errorf("%w: multiple finalized purchase invoices", commercial.ErrPlatformInvalidResponse)
+	}
+	// …then read the SINGLE invoice (t9 integration evidence: the pinned
+	// runtime's INDEX answer carries no fees; only the single-invoice read
+	// does — the same shape Lago's own front consumes).
+	status, body, err = a.do(ctx, http.MethodGet,
+		"/api/v1/invoices/"+url.PathEscape(index.Invoices[0].LagoID), nil)
+	if err != nil {
+		return nil, "", err
+	}
+	if status != http.StatusOK {
+		return nil, "", fmt.Errorf("%w: invoice read answered HTTP %d", commercial.ErrPlatformInvalidResponse, status)
+	}
+	var parsed struct {
+		Invoice struct {
 			PaymentStatus string `json:"payment_status"`
 			Fees          []struct {
 				AmountCents int64 `json:"amount_cents"` // integer minor units, never float (GC-6)
@@ -565,20 +625,13 @@ func (a *LagoAdapter) readPurchaseInvoiceFees(ctx context.Context, tenantID uint
 					Name string `json:"name"`
 				} `json:"item"`
 			} `json:"fees"`
-		} `json:"invoices"`
+		} `json:"invoice"`
 	}
 	if err := json.Unmarshal(body, &parsed); err != nil {
-		return nil, "", fmt.Errorf("%w: invoice index body malformed", commercial.ErrPlatformInvalidResponse)
+		return nil, "", fmt.Errorf("%w: invoice body malformed", commercial.ErrPlatformInvalidResponse)
 	}
-	if len(parsed.Invoices) == 0 {
-		return nil, "", nil // awaiting semantics: no finalized invoice visible yet
-	}
-	if len(parsed.Invoices) > 1 {
-		return nil, "", fmt.Errorf("%w: multiple finalized purchase invoices", commercial.ErrPlatformInvalidResponse)
-	}
-	invoice := parsed.Invoices[0]
-	fees := make([]commercial.InvoiceLineSnapshot, 0, len(invoice.Fees))
-	for _, fee := range invoice.Fees {
+	fees := make([]commercial.InvoiceLineSnapshot, 0, len(parsed.Invoice.Fees))
+	for _, fee := range parsed.Invoice.Fees {
 		if fee.Item.Type != "subscription" {
 			continue
 		}
@@ -588,7 +641,7 @@ func (a *LagoAdapter) readPurchaseInvoiceFees(ctx context.Context, tenantID uint
 			AmountFen: fee.AmountCents,
 		})
 	}
-	return fees, invoice.PaymentStatus, nil
+	return fees, parsed.Invoice.PaymentStatus, nil
 }
 
 // deriveProviderCustomerID resolves the provider-side customer id AND its

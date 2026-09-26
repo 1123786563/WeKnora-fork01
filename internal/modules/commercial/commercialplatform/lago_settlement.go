@@ -122,9 +122,15 @@ func (a *LagoAdapter) settlePurchasePayment(ctx context.Context, cmd commercial.
 	}
 
 	// (iv) Update the intent's payment method, then confirm off-session.
+	// The provider idempotency identities DERIVE from the command key with
+	// per-endpoint suffixes: Stripe binds a key to its first request's
+	// endpoint forever (one key across update AND confirm answers 400
+	// idempotency_error — t9 integration evidence), so each rail call keys
+	// as "<cmd.Key>:update" / "<cmd.Key>:confirm" (still deterministic per
+	// settle drive: a replay of the same command replays the same pair).
 	updateStatus, _, err := a.providerOutboundRequest(ctx, http.MethodPost,
 		"/v1/payment_intents/"+url.PathEscape(intent.ID),
-		"payment_method="+url.QueryEscape(attachedID), cmd.Key)
+		"payment_method="+url.QueryEscape(attachedID), cmd.Key+":update")
 	if err != nil {
 		return commercial.CommandReceipt{}, err
 	}
@@ -132,7 +138,7 @@ func (a *LagoAdapter) settlePurchasePayment(ctx context.Context, cmd commercial.
 		return commercial.CommandReceipt{}, err
 	}
 	confirmStatus, confirmBody, err := a.providerOutboundRequest(ctx, http.MethodPost,
-		"/v1/payment_intents/"+url.PathEscape(intent.ID)+"/confirm", "", cmd.Key)
+		"/v1/payment_intents/"+url.PathEscape(intent.ID)+"/confirm", "", cmd.Key+":confirm")
 	if err != nil {
 		return commercial.CommandReceipt{}, err
 	}

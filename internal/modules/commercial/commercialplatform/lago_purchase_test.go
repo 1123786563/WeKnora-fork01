@@ -181,6 +181,25 @@ func newPurchaseStub() *purchaseStub {
 		s.mu.Unlock()
 		respond(w, r, &s.requests, &s.mu, http.StatusOK, purchaseInvoicesJSON(out), nil)
 	})
+	mux.HandleFunc("/api/v1/invoices/", func(w http.ResponseWriter, r *http.Request) {
+		// The single-invoice read (fees ride ONLY here — the pinned index
+		// answer carries none, t9 evidence).
+		s.mu.Lock()
+		id := strings.TrimPrefix(r.URL.Path, "/api/v1/invoices/")
+		var found *purchaseInvoiceRec
+		for i := range s.invoices {
+			if s.invoices[i].LagoID == id {
+				found = &s.invoices[i]
+				break
+			}
+		}
+		s.mu.Unlock()
+		if found == nil {
+			respond(w, r, &s.requests, &s.mu, http.StatusNotFound, "{}", nil)
+			return
+		}
+		respond(w, r, &s.requests, &s.mu, http.StatusOK, purchaseInvoiceDetailJSON(*found), nil)
+	})
 	mux.HandleFunc("/api/v1/subscriptions", func(w http.ResponseWriter, r *http.Request) {
 		blob, _ := io.ReadAll(io.LimitReader(r.Body, 1<<20))
 		switch r.Method {
@@ -276,19 +295,29 @@ type purchaseInvoiceRec struct {
 }
 
 func purchaseInvoicesJSON(rows []purchaseInvoiceRec) string {
+	// The pinned runtime's INDEX answer carries NO fees (t9 integration
+	// evidence): fees only ride the single-invoice read below.
 	out := make([]string, 0, len(rows))
 	for _, inv := range rows {
-		fees := "[]"
-		if inv.SubscriptionFee != nil {
-			fees = fmt.Sprintf(
-				`[{"amount_cents":%d,"amount_currency":"USD","item":{"type":"subscription","name":%q,"code":"sub-fee"}}]`,
-				inv.SubscriptionFee.AmountCents, inv.SubscriptionFee.Name)
-		}
 		out = append(out, fmt.Sprintf(
-			`{"lago_id":%q,"external_customer_id":%q,"status":"finalized","payment_status":%q,"invoice_type":"subscription","fees":%s}`,
-			inv.LagoID, inv.ExternalCust, inv.PaymentStatus, fees))
+			`{"lago_id":%q,"external_customer_id":%q,"status":"finalized","payment_status":%q,"invoice_type":"subscription","fees":[]}`,
+			inv.LagoID, inv.ExternalCust, inv.PaymentStatus))
 	}
 	return `{"invoices":[` + strings.Join(out, ",") + `]}`
+}
+
+// purchaseInvoiceDetailJSON answers the SINGLE-invoice read with the fee
+// rows (the index never carries them).
+func purchaseInvoiceDetailJSON(inv purchaseInvoiceRec) string {
+	fees := "[]"
+	if inv.SubscriptionFee != nil {
+		fees = fmt.Sprintf(
+			`[{"amount_cents":%d,"amount_currency":"USD","item":{"type":"subscription","name":%q,"code":"sub-fee"}}]`,
+			inv.SubscriptionFee.AmountCents, inv.SubscriptionFee.Name)
+	}
+	return fmt.Sprintf(
+		`{"invoice":{"lago_id":%q,"external_customer_id":%q,"status":"finalized","payment_status":%q,"invoice_type":"subscription","fees":%s}}`,
+		inv.LagoID, inv.ExternalCust, inv.PaymentStatus, fees)
 }
 
 func (s *purchaseStub) server(t *testing.T) *httptest.Server {
@@ -345,9 +374,11 @@ func (s *purchaseStub) countCustomerPuts() int {
 // secret-for-test-only constant (never a real credential shape).
 func purchaseAdapterWithPrefix(t *testing.T, srv *httptest.Server) *LagoAdapter {
 	t.Helper()
+	// OutboundAllowLoopback: the stub rides an httptest loopback origin —
+	// the explicit dev-only S1 bypass (production never sets it).
 	return NewLagoAdapter(Config{
 		Provider: ProviderLago, BaseURL: srv.URL, APIKey: testAPIKey, Release: "v1.53.0",
-		ProviderCustomerPrefix: "cus-dev",
+		ProviderCustomerPrefix: "cus-dev", OutboundAllowLoopback: true,
 	})
 }
 
@@ -458,7 +489,7 @@ func TestLagoCreatePurchaseDifferentPlanIsConflict(t *testing.T) {
 func TestLagoCreatePurchaseFailsClosedWithoutBindingSource(t *testing.T) {
 	stub := newPurchaseStub()
 	srv := stub.server(t)
-	a := NewLagoAdapter(Config{Provider: ProviderLago, BaseURL: srv.URL, APIKey: testAPIKey, Release: "v1.53.0"})
+	a := NewLagoAdapter(Config{Provider: ProviderLago, BaseURL: srv.URL, APIKey: testAPIKey, Release: "v1.53.0", OutboundAllowLoopback: true})
 	_, err := a.SubmitCommand(context.Background(), purchaseCmd(25, "weknora-pro-v1", 9900))
 	if !errors.Is(err, commercial.ErrPlatformUnconfigured) {
 		t.Fatalf("no stripe key and no prefix must fail closed unconfigured, got %v", err)
@@ -645,7 +676,7 @@ func TestLagoPaymentMethodSyncCancellationIsNotUnreachable(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 		cancel()
 	}()
-	a := NewLagoAdapter(Config{Provider: ProviderLago, BaseURL: srv.URL, APIKey: testAPIKey, Release: "v1.53.0"})
+	a := NewLagoAdapter(Config{Provider: ProviderLago, BaseURL: srv.URL, APIKey: testAPIKey, Release: "v1.53.0", OutboundAllowLoopback: true})
 	oldWait, oldTick := pmSyncWait, pmSyncTick
 	pmSyncWait, pmSyncTick = 10*time.Second, 500*time.Millisecond
 	t.Cleanup(func() { pmSyncWait, pmSyncTick = oldWait, oldTick })
@@ -697,13 +728,39 @@ func TestLagoGatedCreateNoDefaultPaymentMethodIsRetryable(t *testing.T) {
 	stub.rejectCreateNoDefaultPM = true
 	stub.mu.Unlock()
 	srv := stub.server(t)
+	// (R1-12) With a provider key AND a payment-method token configured,
+	// the 422 is TRANSIENT import lag — retryable unreachable, never a
+	// terminal verdict.
 	a := purchaseAdapterWithPrefix(t, srv)
+	a.cfg.StripeAPIKey = "sk-test-shape-for-stub-only"
+	a.cfg.StripePmToken = "pm_test_canary"
+	// The provider customer exists (no outbound create in this test — the
+	// seam-level function injection is the established pattern).
+	a.deriveProviderCustomer = func(_ context.Context, externalCustomerID string) (string, providerCustomerSource, error) {
+		return "cus-stub-" + externalCustomerID, providerCustomerAPI, nil
+	}
 	_, err := a.SubmitCommand(context.Background(), purchaseCmd(32, "weknora-pro-v1", 9900))
 	if !errors.Is(err, commercial.ErrPlatformUnreachable) {
 		t.Fatalf("import-not-landed 422 must be retryable unreachable, got %v", err)
 	}
 	if errors.Is(err, commercial.ErrPlatformInvalidResponse) {
 		t.Fatalf("import-not-landed 422 must NOT be a terminal verdict, got %v", err)
+	}
+}
+
+// TestLagoNoDefaultPmTerminalWhenUnconfigured (OCR r4): with NO provider
+// key/payment-method token, the same 422 is STRUCTURAL — no import can
+// ever land, so the adapter fails closed unconfigured instead of looping
+// a retryable verdict on a wiring gap.
+func TestLagoNoDefaultPmTerminalWhenUnconfigured(t *testing.T) {
+	stub := newPurchaseStub()
+	stub.mu.Lock()
+	stub.rejectCreateNoDefaultPM = true
+	stub.mu.Unlock()
+	a := purchaseAdapterWithPrefix(t, stub.server(t))
+	_, err := a.SubmitCommand(context.Background(), purchaseCmd(33, "weknora-pro-v1", 9900))
+	if !errors.Is(err, commercial.ErrPlatformUnconfigured) {
+		t.Fatalf("structural no_default_payment_method must fail closed unconfigured, got %v", err)
 	}
 }
 
@@ -809,6 +866,75 @@ func TestLagoPurchaseSnapshotMapsClosedStates(t *testing.T) {
 	snap, err = a.ReadSnapshot(context.Background(), commercial.SnapshotQuery{Kind: commercial.SnapshotKindPurchase, TenantID: 26})
 	if err != nil || snap.Purchase.State != commercial.PurchaseStateActive {
 		t.Fatalf("active expected, got %+v err=%v", snap.Purchase, err)
+	}
+}
+
+// ---- #82 Task 11: final-audit OCR open findings 7/6 (seam semantics) ----
+
+// Finding 7: a found (replayed) purchase subscription in a TERMINAL state
+// must fail closed — never a success receipt that mints a dead checkout.
+func TestLagoPurchaseCreateReplayCanceledFailsClosed(t *testing.T) {
+	stub := newPurchaseStub()
+	stub.mu.Lock()
+	stub.planAmount = map[string]int64{"weknora-pro-v1": 9900}
+	ext := commercial.ExternalCustomerID(34)
+	stub.subs = []purchaseSubRec{{
+		ExternalID: commercial.ExternalPurchaseSubscriptionID(34), ExternalCustomer: ext,
+		PlanCode: "weknora-pro-v1", AmountFen: 9900, Currency: "CNY", Status: "canceled",
+	}}
+	stub.mu.Unlock()
+	a := purchaseAdapterWithPrefix(t, stub.server(t))
+	_, err := a.SubmitCommand(context.Background(), purchaseCmd(34, "weknora-pro-v1", 9900))
+	if !errors.Is(err, commercial.ErrPlatformInvalidResponse) {
+		t.Fatalf("a canceled purchase replay must fail closed, got %v", err)
+	}
+}
+
+// Finding 7 (regression lock): the R1-V03 verbatim-replay semantics stay —
+// an ACTIVE held purchase on the SAME plan still answers a success receipt.
+func TestLagoPurchaseCreateReplayActiveStillReplays(t *testing.T) {
+	stub := newPurchaseStub()
+	stub.mu.Lock()
+	stub.planAmount = map[string]int64{"weknora-pro-v1": 9900}
+	ext := commercial.ExternalCustomerID(35)
+	stub.subs = []purchaseSubRec{{
+		ExternalID: commercial.ExternalPurchaseSubscriptionID(35), ExternalCustomer: ext,
+		PlanCode: "weknora-pro-v1", AmountFen: 9900, Currency: "CNY", Status: "active",
+	}}
+	stub.mu.Unlock()
+	a := purchaseAdapterWithPrefix(t, stub.server(t))
+	if _, err := a.SubmitCommand(context.Background(), purchaseCmd(35, "weknora-pro-v1", 9900)); err != nil {
+		t.Fatalf("an active same-plan replay must keep the R1-V03 receipt semantics: %v", err)
+	}
+}
+
+// Finding 6: the PM-sync poll budget derives from the CALLER's remaining
+// context deadline (min(pmSyncWait, ctx budget - guard)), so a request near
+// its budget never nominally polls past the caller's cancellation.
+func TestPaymentMethodSyncDeadlineDerivedFromCtx(t *testing.T) {
+	stub := newPurchaseStub()
+	srv := stub.server(t)
+	a := purchaseAdapterWithPrefix(t, srv)
+	a.cfg.StripePmToken = "pm_test_canary"
+	a.deriveProviderCustomer = func(_ context.Context, externalCustomerID string) (string, providerCustomerSource, error) {
+		return "cus-real-" + externalCustomerID, providerCustomerAPI, nil
+	}
+	stub.mu.Lock()
+	stub.pmAlwaysEmpty = true // the poll can never succeed; only the budget ends it
+	stub.mu.Unlock()
+	oldWait, oldTick := pmSyncWait, pmSyncTick
+	pmSyncWait, pmSyncTick = 30*time.Second, 50*time.Millisecond
+	t.Cleanup(func() { pmSyncWait, pmSyncTick = oldWait, oldTick })
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	start := time.Now()
+	_, err := a.SubmitCommand(ctx, purchaseCmd(36, "weknora-pro-v1", 9900))
+	elapsed := time.Since(start)
+	if elapsed > 5*time.Second {
+		t.Fatalf("the sync poll must yield to the caller budget in ~3s, took %s", elapsed)
+	}
+	if err == nil {
+		t.Fatal("an always-empty import must eventually fail")
 	}
 }
 

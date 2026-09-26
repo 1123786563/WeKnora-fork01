@@ -586,3 +586,114 @@ func TestPurchaseCorruptPlanDefinitionIsNotALegacyQuote(t *testing.T) {
 		t.Fatal("a corrupt definition must NOT be reported as a legacy snapshot (re-quote trap)")
 	}
 }
+
+// ---- #82 Task 11: final-audit OCR open findings 11/9/10 (service layer) ----
+
+// Finding 11: the disambiguation probe must cover the ACTIVE conflict too —
+// an active held purchase on a DIFFERENT plan is a deterministic conflict
+// (409), not an unavailable 503.
+func TestPurchaseDisambiguationCoversActiveConflict(t *testing.T) {
+	svc, fake, _, _ := newPurchaseTestEnv(t)
+	purchaseSeedPlan(t, svc.plans, "pro", 9900)
+	// An ACTIVE purchase held on a different plan than the one being bought.
+	other := commercial.DeterministicPlanCode("pro", 1) + "-x"
+	if _, err := fake.SubmitCommand(context.Background(), commercial.Command{
+		Kind: commercial.CommandKindCreatePurchaseSubscription,
+		Key:  commercial.CreatePurchaseSubscriptionCommandKey(commercial.ExternalPurchaseSubscriptionID(81), other),
+		Payload: commercial.CreatePurchaseSubscriptionPayload{
+			TenantID: 81, ExternalCustomerID: commercial.ExternalCustomerID(81),
+			ExternalPurchaseSubscriptionID: commercial.ExternalPurchaseSubscriptionID(81),
+			PlanCode: other, AmountFen: 9900, Currency: commercial.CurrencyCNY,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	fake.ActivatePurchase(commercial.ExternalPurchaseSubscriptionID(81))
+	// A held plan code that never matches makes the create submit fail with
+	// the plan-conflict sentinel the probe re-reads.
+	q := purchaseQuote(t, svc.orders, 81, "pro")
+	_, err := svc.Purchase(context.Background(), 81, q.ID, "wechat", "a", "Space 81")
+	if !errors.Is(err, ErrPurchasePlanConflict) {
+		t.Fatalf("active foreign-plan conflict must answer ErrPurchasePlanConflict, got %v", err)
+	}
+}
+
+// Finding 9: a historical same-price order on a DIFFERENT plan is never
+// projected as the current purchase.
+func TestPurchaseStatusSkipsForeignPlanOrder(t *testing.T) {
+	svc, fake, _, db := newPurchaseTestEnv(t)
+	purchaseSeedPlan(t, svc.plans, "pro", 9900)
+	purchaseSeedPlan(t, svc.plans, "pro-max", 29900)
+	if _, err := fake.SubmitCommand(context.Background(), commercial.Command{
+		Kind: commercial.CommandKindCreatePurchaseSubscription,
+		Key:  commercial.CreatePurchaseSubscriptionCommandKey(commercial.ExternalPurchaseSubscriptionID(82), commercial.DeterministicPlanCode("pro", 1)),
+		Payload: commercial.CreatePurchaseSubscriptionPayload{
+			TenantID: 82, ExternalCustomerID: commercial.ExternalCustomerID(82),
+			ExternalPurchaseSubscriptionID: commercial.ExternalPurchaseSubscriptionID(82),
+			PlanCode: commercial.DeterministicPlanCode("pro", 1),
+			AmountFen: 9900, Currency: commercial.CurrencyCNY,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// A historical PAID order at the same price face but on plan "max".
+	if err := db.Create(&repocommercial.QuoteRow{
+		ID: "q-foreign", TenantID: 82, SubscriptionVersion: 1,
+		SnapshotJSON: `{"plan_key":"pro-max","plan_version":1,"price_fen":9900,"credits_micro":9900000,"currency":"CNY","line_items":[{"kind":"subscription_fee","name":"pro-max","amount_fen":9900}]}`,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(`INSERT INTO commercial_orders (id, tenant_id, quote_id, kind, amount_fen, currency, state, version, created_at, channel_failed)
+		VALUES ('ord_foreign', 82, 'q-foreign', 'purchase', 9900, 'CNY', 'paid', 1, ?, 0)`,
+		time.Now().UTC().Add(-time.Hour)).Error; err != nil {
+		t.Fatal(err)
+	}
+	view, err := svc.PurchaseStatus(context.Background(), 82)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.State != commercial.PurchaseStateAwaitingPayment {
+		t.Fatalf("the foreign-plan paid order must not compose paid_awaiting_activation, got %q", view.State)
+	}
+	if view.Order != nil && view.Order.ID == "ord_foreign" {
+		t.Fatalf("the foreign-plan order must not be projected as the current purchase")
+	}
+}
+
+// Finding 10 (minimal face): a mismatched purchase attempt leaves an
+// attention audit trail (the closed-token audit sink fires).
+func TestPurchaseMismatchWritesAttentionAudit(t *testing.T) {
+	audits := make([][2]string, 0, 2)
+	oldAudit := purchaseAudit
+	purchaseAudit = func(tenantID uint64, quoteID, token string) {
+		audits = append(audits, [2]string{quoteID, token})
+	}
+	t.Cleanup(func() { purchaseAudit = oldAudit })
+	svc, fake, _, _ := newPurchaseTestEnv(t)
+	purchaseSeedPlan(t, svc.plans, "pro", 9900)
+	// The authority holds a DIFFERENT price face than the quote: the match
+	// gate (AC2) refuses with ErrInvoiceQuoteMismatch — the audit must fire.
+	if _, err := fake.SubmitCommand(context.Background(), commercial.Command{
+		Kind: commercial.CommandKindCreatePurchaseSubscription,
+		Key:  commercial.CreatePurchaseSubscriptionCommandKey(commercial.ExternalPurchaseSubscriptionID(83), commercial.DeterministicPlanCode("pro", 1)),
+		Payload: commercial.CreatePurchaseSubscriptionPayload{
+			TenantID: 83, ExternalCustomerID: commercial.ExternalCustomerID(83),
+			ExternalPurchaseSubscriptionID: commercial.ExternalPurchaseSubscriptionID(83),
+			PlanCode: commercial.DeterministicPlanCode("pro", 1),
+			AmountFen: 12345, Currency: commercial.CurrencyCNY,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	q := purchaseQuote(t, svc.orders, 83, "pro")
+	_, err := svc.Purchase(context.Background(), 83, q.ID, "wechat", "a", "Space 83")
+	if !errors.Is(err, ErrInvoiceQuoteMismatch) && !errors.Is(err, ErrPurchaseNotAwaiting) {
+		t.Fatalf("the mismatch face must answer a closed sentinel, got %v", err)
+	}
+	if len(audits) < 1 {
+		t.Fatalf("an attention audit must fire for the mismatched purchase (found %d)", len(audits))
+	}
+	if audits[0][1] != "invoice_quote_mismatch" && audits[0][1] != "purchase_not_awaiting" {
+		t.Fatalf("the audit must carry the closed token, got %q", audits[0][1])
+	}
+}

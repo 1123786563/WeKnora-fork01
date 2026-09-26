@@ -263,9 +263,16 @@ func TestLagoSettleDrivesProviderRails(t *testing.T) {
 			idems[req.Method+" "+req.Path] = req.Idem
 		}
 	}
+	// The idempotency identities DERIVE from the command key with
+	// per-endpoint suffixes (Stripe binds a key to one endpoint forever —
+	// one key across update+confirm answers 400, t9 evidence).
 	for _, path := range []string{"POST /v1/payment_intents/pi_1", "POST /v1/payment_intents/pi_1/confirm"} {
-		if idems[path] != cmd.Key {
-			t.Fatalf("%s must carry Idempotency-Key == cmd key, got %q", path, idems[path])
+		suffix := ":update"
+		if strings.HasSuffix(path, "/confirm") {
+			suffix = ":confirm"
+		}
+		if idems[path] != cmd.Key+suffix {
+			t.Fatalf("%s must carry Idempotency-Key == cmd key%s, got %q", path, suffix, idems[path])
 		}
 	}
 }
