@@ -11,6 +11,15 @@ import { createTranslator, useAppLocale } from "../i18n.ts";
 // OCR 终局 F02：badge 样式收敛到插件面板共享模块（三面板单一来源）——
 // 本面板原 mcpBadge* 四常量与之逐字相同，改引共享常量、视觉零变化。
 import { pluginBadgeInfo, pluginBadgeMuted, pluginBadgeOk, pluginBadgeWarn } from "../plugins/ui.ts";
+// OCR 终局第 2 轮 f01/f02：OAuth 回调路径与弹窗/轮询常量收敛共享模块
+// （startAuthorize 的内联魔数 40/1500 与弹窗串改引常量，值不变）。
+import {
+  MCP_OAUTH_CALLBACK_PATH,
+  MCP_OAUTH_POLL_ATTEMPTS,
+  MCP_OAUTH_POLL_INTERVAL_MS,
+  MCP_OAUTH_POPUP_FEATURES,
+  MCP_OAUTH_POPUP_NAME,
+} from "../plugins/oauth.ts";
 
 /* Tailwind utilities migrated from the deleted .wk-mcp-* rules in styles.css
    (see docs/plans/tailwind-shadcn-conventions.md). Values encode the effective
@@ -835,17 +844,17 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
     setError(null);
     try {
       const result = await client.configuration.mcp.oauth.authorizeUrl(savedId, {
-        redirectURI: window.location.origin + "/api/v1/mcp-oauth/callback",
+        redirectURI: window.location.origin + MCP_OAUTH_CALLBACK_PATH,
         frontendRedirect: window.location.href,
       });
       const popup = window.open(
         result.authorizationUrl,
-        "weknora_mcp_oauth",
-        "width=600,height=720",
+        MCP_OAUTH_POPUP_NAME,
+        MCP_OAUTH_POPUP_FEATURES,
       );
       if (!popup) throw new Error(t("mcpServiceDialog.toasts.updateFailed"));
-      for (let attempt = 0; attempt < 40; attempt += 1) {
-        await new Promise((resolve) => window.setTimeout(resolve, 1500));
+      for (let attempt = 0; attempt < MCP_OAUTH_POLL_ATTEMPTS; attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, MCP_OAUTH_POLL_INTERVAL_MS));
         const next = await client.configuration.mcp.oauth.status(
           savedId,
           result.authorizationAttempt,

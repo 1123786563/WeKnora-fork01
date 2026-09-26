@@ -6,6 +6,8 @@ import { chatDraftKey } from '@weknora/domain/chat/draft';
 import { initialChatStreamState, reduceChatStream, type ChatApproval } from '@weknora/domain/chat/reducer';
 import { appendMessages, hasOlderMessages, sessionGroups, sessionPageCount } from '@weknora/domain/chat/session-state';
 import { readStoredGroupMode, storeGroupMode } from '@weknora/domain/chat/session-grouping';
+// OCR 终局第 2 轮 f01：OAuth 回调路径收敛共享模块（原内嵌字面量四处副本之一）。
+import { MCP_OAUTH_CALLBACK_PATH } from '../plugins/oauth.ts';
 import { ChatPage, splitLiveThinking } from '@weknora/views/chat/page';
 import { ChatHeader, SandboxHeaderToggle } from './chat-header.tsx';
 import './chat.td.css';
@@ -1364,7 +1366,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
 
   async function authorizeOAuth(pendingId: string, serviceId: string): Promise<void> {
     const authorization = await client.configuration.mcp.oauth.authorizeUrl(serviceId, {
-      redirectURI: `${window.location.origin}/api/v1/mcp-oauth/callback`,
+      redirectURI: `${window.location.origin}${MCP_OAUTH_CALLBACK_PATH}`,
       frontendRedirect: `${window.location.origin}/`,
     }, scope.signal);
     if (!authorization.authorizationUrl || !authorization.authorizationAttempt) throw new Error('MCP authorization could not be started.');

@@ -19,6 +19,15 @@ import {
   pluginBadgeOk,
   pluginBadgeWarn,
 } from "../plugins/ui.ts";
+// OCR 终局第 2 轮 f01/f02：OAuth 回调路径与弹窗/轮询常量收敛共享模块
+// （与 McpSettingsPanel/ConfigurationEditor/ChatRoutePage 单一来源）。
+import {
+  MCP_OAUTH_CALLBACK_PATH,
+  MCP_OAUTH_POLL_ATTEMPTS,
+  MCP_OAUTH_POLL_INTERVAL_MS,
+  MCP_OAUTH_POPUP_FEATURES,
+  MCP_OAUTH_POPUP_NAME,
+} from "../plugins/oauth.ts";
 
 /**
  * 成员插件发现面板（Issue #110 / 计划 T08；T12 增补成员个人授权/撤销入口）。
@@ -46,9 +55,8 @@ import {
  * PluginsSettingsPanel；locale 词条文件不在 T12 文件所有权内）。
  */
 
-/** 弹窗授权后的状态轮询节奏（McpSettingsPanel startAuthorize 同款常量）。 */
-const AUTH_POLL_INTERVAL_MS = 1500;
-const AUTH_POLL_ATTEMPTS = 40;
+/** 弹窗授权后的状态轮询节奏（McpSettingsPanel startAuthorize 同款常量；
+ * 值自 OCR 终局第 2 轮 f02 起收敛于 plugins/oauth.ts）。 */
 
 type Props = {
   client: WeKnoraClient;
@@ -185,18 +193,18 @@ export function PluginsPanel({ client, initialInstallations }: Props) {
     try {
       if (typeof window === "undefined") return;
       const result = await client.configuration.mcp.oauth.authorizeUrl(connection.serviceId, {
-        redirectURI: window.location.origin + "/api/v1/mcp-oauth/callback",
+        redirectURI: window.location.origin + MCP_OAUTH_CALLBACK_PATH,
         frontendRedirect: window.location.href,
       });
-      const popup = window.open(result.authorizationUrl, "weknora_mcp_oauth", "width=600,height=720");
+      const popup = window.open(result.authorizationUrl, MCP_OAUTH_POPUP_NAME, MCP_OAUTH_POPUP_FEATURES);
       if (!popup) throw new Error("未能打开授权窗口，请检查浏览器弹窗设置");
       // T12-OCR1-F5：对齐 McpSettingsPanel.startAuthorize 先例顺序——先刷新
       // 先判 authorized 再判 popup.closed（用户授权完成后随手关弹窗落在
       // 轮询间隔内时，最终刷新不得被吞掉）；循环因关窗或耗尽退出后兜底
       // 一次最终刷新。
       let authorized = false;
-      for (let attempt = 0; attempt < AUTH_POLL_ATTEMPTS; attempt += 1) {
-        await new Promise((resolve) => window.setTimeout(resolve, AUTH_POLL_INTERVAL_MS));
+      for (let attempt = 0; attempt < MCP_OAUTH_POLL_ATTEMPTS; attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, MCP_OAUTH_POLL_INTERVAL_MS));
         // OCR R2 F08：面板随 tab 切换卸载后终止轮询——setState 虽 no-op，
         // 但每 1.5s×40 的后台 getMyConnection 请求照发。
         if (!aliveRef.current) break;
