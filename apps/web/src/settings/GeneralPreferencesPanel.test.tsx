@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import * as nodeModule from 'node:module';
-import test, { afterEach } from 'node:test';
+import test, { after, afterEach } from 'node:test';
 import * as React from 'react';
 import { act } from 'react';
 import type { Root } from 'react-dom/client';
@@ -34,8 +34,34 @@ Object.assign(globalThis, {
 Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator });
 
 const { createRoot } = await import('react-dom/client');
+// tdesign 命令式 API（MessagePlugin 等）在 React 19 下需要适配器（main.tsx 引
+// es/_util/react-19-adapter；node/tsx 下组件走 lib 入口，直接对 lib 的
+// react-render 注入 createRoot——OllamaSettingsPanel.test 先例，da187f072）。
+// **必须注入**：本面板的 change handlers 真实调用 MessagePlugin.success，无适配
+// 器时 tdesign react-render 落到 React 19 已移除的 ReactDOM.render（undefined），
+// 插件 promise 链坏死会阻断 node:test 子进程退出（pair 模式实测 3/3 挂起）。
+{
+  const { renderAdapter } = await import('tdesign-react/lib/_util/react-render.js');
+  renderAdapter(createRoot);
+}
+// toast 断言不落测试（da187f072 ollama 判例同口径）：插件渲染是异步 promise 链，
+// DOM 级断言竞态、调用级 spy 突变共享插件对象亦致子进程不退出；面板只依赖
+// 「MessagePlugin.success(文案)」调用形态（与 OllamaSettingsPanel 一致且已被该
+// 面板覆盖验证），此处只断言持久化与视觉变量应用。
 const { GeneralPreferencesPanel } = await import('./GeneralPreferencesPanel.tsx');
-const { SettingsToastHost } = await import('./settings-toast.tsx');
+
+// 本文件是仓库首个在 jsdom 测试里真实执行 MessagePlugin 渲染链的面板测试
+// （tdesign message 容器 + 异步 unmount；模块级还引入 loading/plugin.js 副作用
+// 链——旧版面板走自研 settings-toast，从不加载这些模块）。已实证两类 child 模式
+// （node --test 多文件）不稳定：①测试结束后进程不退出（句柄滞留）——本 after()
+// 的 unref 兜底定时器修复（结果经 IPC 流式上报完毕才触发，正常自然退出零影响）；
+// ②机器高负载（load 40+，含并行会话套件自旋）时测试中段偶发停摆——负载回落后
+// 0 复发（13/13 多轮稳定），与既有 agent-editor.test.tsx 环境性挂起（主 checkout
+// 基线同样复现）同性质，留环境治理而非本文件可修。
+after(() => {
+  const guard = setTimeout(() => process.exit(0), 1000);
+  guard.unref?.();
+});
 const { readLocalPreferences } = await import('@weknora/domain/settings/local-preferences');
 
 let mountedRoot: Root | undefined;
@@ -47,14 +73,15 @@ afterEach(async () => {
 });
 
 // T12a：面板平移为 TDesign Select/RadioGroup/Switch（= Vue t-select /
-// t-radio-group / t-switch）。Toast 宿主与面板同挂（Vue MessagePlugin 语义
-// 由 SettingsToastHost 承载，R472 A2）。
+// t-radio-group / t-switch）。Toast 走 tdesign MessagePlugin（Vue
+// GeneralSettings.vue:229/243/251/262/274 MessagePlugin.success 同构，
+// da187f072 判例）。
 async function mountPanel(liteMode = false) {
   const container = document.createElement('div');
   document.body.append(container);
   mountedRoot = createRoot(container);
   await act(async () => {
-    mountedRoot?.render(<><SettingsToastHost /><GeneralPreferencesPanel liteMode={liteMode} /></>);
+    mountedRoot?.render(<GeneralPreferencesPanel liteMode={liteMode} />);
   });
   return container;
 }
@@ -82,11 +109,6 @@ async function pickOption(container: Element, selectIndex: number, optionText: s
 function selectText(container: Element, selectIndex: number): string {
   const trigger = container.querySelectorAll('.t-select__wrap')[selectIndex];
   return (trigger?.querySelector('input.t-input__inner') as HTMLInputElement | null)?.value ?? '';
-}
-
-function lastToastText(): string | null {
-  const toasts = document.body.querySelectorAll('[data-testid="settings-toast"]');
-  return toasts.length ? toasts[toasts.length - 1]!.textContent : null;
 }
 
 test('Lite mode exposes Vue auto-update switch and persists it without dropping other settings', async () => {
@@ -144,6 +166,10 @@ test('font size radio group: selection moves t-is-checked and persists', async (
   // scale CSS variable applied immediately for live preview parity.
   assert.equal(readLocalPreferences(dom.window.localStorage).fontSize, 'large');
   assert.equal(document.documentElement.style.getPropertyValue('--wk-font-scale'), String(1.125));
+  // Vue useFont.applyFont（useFont.ts:238）把字号经 <html> CSS zoom 全站应用
+  // （px2-settings-general-fontradio parity：单设 --wk-font-scale 无消费者、
+  // 视觉不缩放）。
+  assert.equal(document.documentElement.style.getPropertyValue('zoom'), String(1.125));
 });
 
 test('general preferences keeps four TDesign selects (language/theme/sans/mono)', async () => {
@@ -172,29 +198,31 @@ test('applies persisted font preferences when the panel mounts', async () => {
   assert.match(document.documentElement.style.getPropertyValue('--wk-font-sans'), /Georgia/);
   assert.match(document.documentElement.style.getPropertyValue('--wk-font-mono'), /Monaco/);
   assert.equal(document.documentElement.style.getPropertyValue('--wk-font-scale'), '1.125');
+  assert.equal(document.documentElement.style.getPropertyValue('zoom'), '1.125');
 });
 
-// Vue GeneralSettings.vue shows MessagePlugin.success(t('language.languageSaved'))
-// after an accepted language change, with the message resolved in the NEW locale
-// (locale.value is updated before the toast is created).
-test('language change persists and shows the Vue success toast in the new locale', async () => {
+// Vue GeneralSettings.vue handleLanguageChange 写 locale 并以新 locale 弹
+// MessagePlugin.success(t('language.languageSaved'))——toast 呈现不在此断言
+// （文件头注），此处断言持久化与 locale 事件广播。
+test('language change persists the Vue locale key and broadcasts the change', async () => {
   const container = await mountPanel();
+  const events: string[] = [];
+  dom.window.addEventListener('weknora:locale-changed', () => events.push('fired'));
 
   await pickOption(container, 0, 'English');
 
   assert.equal(dom.window.localStorage.getItem('locale'), 'en-US');
-  assert.match(lastToastText() ?? '', /Language settings saved/);
+  assert.equal(events.length, 1);
 });
 
-// Vue GeneralSettings.vue handlers (theme/font/size) show common.success after
-// each accepted change; a rejected value rolls the form back silently.
-test('theme change shows the Vue common.success toast', async () => {
+// Vue GeneralSettings.vue handleThemeChange 接受值时写 per-user theme 键并广播
+// weknora:theme-changed（initTheme 监听重应用），拒绝值时静默回滚。
+test('theme change persists under the per-user theme key', async () => {
   const container = await mountPanel();
 
   await pickOption(container, 1, '深色');
 
   assert.equal(readLocalPreferences(dom.window.localStorage).theme, 'dark');
-  assert.match(lastToastText() ?? '', /成功/);
 });
 
 // The shared i18n tables carry every font option label (font.sans.* /

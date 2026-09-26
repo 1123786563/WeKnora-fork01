@@ -392,8 +392,13 @@ const ALL_PAGES = [
   // 常规设置字号分段控件（小/正常/大 t-radio-button 三段双端同构，
   // GeneralSettings.vue:114-121；localStorage-only（preferenceStorage.ts:69
   // safeSetItem），无服务端写。点击后全 run 后续页大字号渲染（双端同改、parity
-  // 不破），故置于本块倒数第二）
-  { id: 'px2-settings-general-fontradio', path: '/platform/settings?section=general', settle: 2000,
+  // 不破），故置于本块倒数第二。postSettle 3500：双端点击均弹
+  // MessagePlugin.success t-message（3000ms 自动消失，Vue GeneralSettings.vue:274
+  // / React GeneralPreferencesPanel.tsx da187f072 判例同构），而扫描器先点 vue 再点
+  // react、vue 截图恒晚一个 action+steady 周期——vue toast 必已消失而 react toast
+  // 仍在场，构成确定性瞬态差；3500ms 让双端 toast 都过期后再截图（px2-kb-settings-nav
+  // postSettle 先例同款处置）。
+  { id: 'px2-settings-general-fontradio', path: '/platform/settings?section=general', settle: 2000, postSettle: 3500,
     actions: [{ clickCss: ['.t-radio-button:has-text("大")'], clickText: ['大'] }] },
   // —— chat 域：会话侧栏折叠（menu.vue:22 .sidebar-toggle / React PlatformShell.tsx:1087
   // 同名类同 localStorage 键 sidebar_collapsed；纯壳态无服务端写。点击后全 run 后续
