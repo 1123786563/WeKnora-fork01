@@ -312,3 +312,102 @@ test('E3: a revision conflict on deletion is typed with the current revision', a
   assert.equal(refused.currentRevision, 11, 'the current revision travels for the reload affordance');
   assert.equal(career.pendingSpaceDeletion(), null, 'a definite refusal leaves no pending intent');
 });
+
+// —— 修复轮 M1：主按钮门控对齐 Web ExportDeletionPage（unknown/对账中封锁防重复防竞态）。
+// Web 语义（apps/web/src/career/ExportDeletionPage.tsx）：
+//   exportBlocked = exportPhase busy || unknown
+//   deletionBlocked = deletionPhase busy || unknown || exportBlocked
+//   导出按钮 disabled = exportBlocked || revision 未读取
+//   删除按钮 disabled = deletionBlocked || revision 未读取 || 无边界 || 未知悉 || 已删除
+//   知悉勾选 disabled = deletionBlocked
+// 小程序页面把同一组可观察输入交给 lifecycleGating 计算（页面与测试同源同函数）。
+const pageGatingFromServiceState = (over = {}) => {
+  const { lifecycleGating } = lifecycleGatingModule;
+  if (!lifecycleGating) throw new Error('lifecycleGating 模块未创建（M1 行为缺失）');
+  return lifecycleGating({
+    exportBusy: false,
+    exportUnknown: career.pendingSpaceExport() !== null,
+    deletionBusy: false,
+    deletionUnknown: career.pendingSpaceDeletion() !== null,
+    revisionLoaded: true,
+    boundaryShown: true,
+    acknowledged: true,
+    deleted: false,
+    ...over,
+  });
+};
+const lifecycleGatingModule = {};
+
+test('M1: an unknown export outcome blocks both main actions and the acknowledgement until reconciled', async () => {
+  Object.assign(lifecycleGatingModule, await import('../src/career/export-deletion.gating.ts'));
+  let postFails = true;
+  await freshLogin({
+    'POST /api/v1/career/exports': call => { if (postFails) stub.fail(call, 'request:fail timeout'); else stub.succeed(call, { data: exportReceipt() }); },
+    'GET /api/v1/career/exports/receipt': call => stub.succeed(call, { data: exportReceipt() }),
+  });
+  await career.loadCareer();
+  await assert.rejects(career.exportWholeSpace(), error => error.code === 'outcome_unknown');
+  assert.ok(career.pendingSpaceExport(), 'the unknown export intent is persisted');
+  // 发起后中断（结果未知）：即使边界/知悉/修订全部就绪，两个主按钮与知悉勾选都封锁。
+  const unknown = pageGatingFromServiceState();
+  assert.equal(unknown.exportDisabled, true, '发起导出主按钮在结果未知期间禁用（Web exportBlocked）');
+  assert.equal(unknown.deletionDisabled, true, '发起完整删除主按钮被导出未决联动封锁（Web deletionBlocked ⊇ exportBlocked）');
+  assert.equal(unknown.acknowledgeDisabled, true, '知悉勾选在未决期间禁用（Web ack disabled={deletionBlocked}）');
+  // 「重新对账」动作用原请求编号把结果落定；成功后 intent 清除、门控恢复。
+  const receipt = await career.reconcilePendingSpaceExport();
+  assert.equal(receipt.exportId, 'exp-space-1');
+  assert.equal(career.pendingSpaceExport(), null);
+  const recovered = pageGatingFromServiceState();
+  assert.equal(recovered.exportDisabled, false, '对账成功后导出主按钮恢复可用');
+  assert.equal(recovered.deletionDisabled, false, '对账成功后删除主按钮恢复可用');
+  assert.equal(recovered.acknowledgeDisabled, false, '对账成功后知悉勾选恢复可用');
+});
+
+test('M1: an unknown deletion blocks the delete main action; a reported partial does not (Web unknown ≠ error)', async () => {
+  Object.assign(lifecycleGatingModule, await import('../src/career/export-deletion.gating.ts'));
+  let postFails = true;
+  await freshLogin({
+    'POST /api/v1/career/deletions': call => { if (postFails) stub.fail(call, 'request:fail timeout'); else stub.succeed(call, { data: partialReceipt() }); },
+  });
+  await career.loadCareer();
+  await assert.rejects(career.deleteWholeSpace(), error => error.code === 'outcome_unknown');
+  assert.ok(career.pendingSpaceDeletion(), 'the unknown deletion intent is persisted');
+  const unknown = pageGatingFromServiceState();
+  assert.equal(unknown.deletionDisabled, true, '删除结果未知期间删除主按钮禁用（Web deletionPhase unknown）');
+  assert.equal(unknown.acknowledgeDisabled, true, '删除结果未知期间知悉勾选禁用');
+  // 部分失败是已呈报的确定回执（Web phase=error，不按 unknown 封锁）：intent 保留供恢复，
+  // 但页面持有 partial 回执时主按钮不因 unknown 被封锁——恢复走原编号重试入口。
+  postFails = false;
+  const receipt = await career.retryPendingSpaceDeletion();
+  assert.equal(receipt.status, 'partial');
+  assert.ok(career.pendingSpaceDeletion(), 'a partial deletion keeps the recoverable intent');
+  const partial = pageGatingFromServiceState({ deletionUnknown: career.pendingSpaceDeletion() !== null && receipt.status !== 'partial' });
+  assert.equal(partial.deletionDisabled, false, 'a reported partial is not an unknown outcome (Web partial keeps the main action open)');
+  // deleted 终态：主按钮封锁（不可再次发起）。
+  const deleted = pageGatingFromServiceState({ deletionUnknown: false, deleted: true });
+  assert.equal(deleted.deletionDisabled, true, 'after a complete deletion the main action stays closed');
+});
+
+test('M1: in-flight runs (发起/对账/重试) block the main actions; export busy additionally blocks deletion', async () => {
+  Object.assign(lifecycleGatingModule, await import('../src/career/export-deletion.gating.ts'));
+  const { lifecycleGating } = lifecycleGatingModule;
+  const ready = { exportBusy: false, exportUnknown: false, deletionBusy: false, deletionUnknown: false, revisionLoaded: true, boundaryShown: true, acknowledged: true, deleted: false };
+  const exportBusy = lifecycleGating({ ...ready, exportBusy: true });
+  assert.equal(exportBusy.exportDisabled, true, '发起导出进行中禁用主按钮（Web busy）');
+  assert.equal(exportBusy.deletionDisabled, true, '导出进行中联动封锁删除（deletionBlocked ⊇ exportBlocked）');
+  const reconciling = lifecycleGating({ ...ready, exportBusy: true, exportUnknown: true });
+  assert.equal(reconciling.acknowledgeDisabled, true, '对账期间知悉勾选禁用');
+  const deletionBusy = lifecycleGating({ ...ready, deletionBusy: true });
+  assert.equal(deletionBusy.deletionDisabled, true, '删除发起/对账/重试进行中禁用删除主按钮');
+  assert.equal(deletionBusy.acknowledgeDisabled, true, '删除进行中知悉勾选禁用');
+  const noRevision = lifecycleGating({ ...ready, revisionLoaded: false });
+  assert.equal(noRevision.exportDisabled, true, '修订未读取时导出不可发起');
+  assert.equal(noRevision.deletionDisabled, true, '修订未读取时删除不可发起');
+  const noBoundary = lifecycleGating({ ...ready, boundaryShown: false });
+  assert.equal(noBoundary.deletionDisabled, true, '未呈现边界清单时删除不可发起');
+  const notAcked = lifecycleGating({ ...ready, acknowledged: false });
+  assert.equal(notAcked.deletionDisabled, true, '未勾选知悉时删除不可发起');
+  const idle = lifecycleGating(ready);
+  assert.equal(idle.exportDisabled, false, '空闲且修订就绪时导出可发起');
+  assert.equal(idle.deletionDisabled, false, '空闲且边界/知悉/修订就绪时删除可发起');
+});

@@ -4,6 +4,7 @@ import { Text, View } from '@tarojs/components';
 import { Screen, Card, Action, Notice, Badge, DataBoundary, useData, useAction, useSession, confirmAction } from '../components/ui.tsx';
 import * as career from '../services/career.ts';
 import { spaceExportPayload, saveSpaceExportPackage, copySpaceExportToClipboard, type SpaceExportSaveRecord } from '../adapters/career-platform.ts';
+import { lifecycleGating } from './export-deletion.gating.ts';
 import type { CareerExportReceipt, CareerDeletionBoundaryView, CareerDeletionReceipt } from '../../../../packages/api-client/src/career.ts';
 import { formatTime, formatBytes } from '../core/format.ts';
 import { logout } from '../services/runtime.ts';
@@ -52,6 +53,20 @@ export default function ExportDeletionPage() {
   const pendingDeletion = career.pendingSpaceDeletion();
   const revision = desk.data?.revision;
   const deleted = deletion?.status === 'deleted';
+
+  // 修复轮 M1：主按钮门控对齐 Web ExportDeletionPage——结果未知（intent 存续）与
+  // 发起/对账/重试进行中都封锁主操作（防重复发起与竞态）；导出未决联动封锁删除与
+  // 知悉勾选；partial 是已呈报的确定回执（Web phase=error），不按 unknown 封锁。
+  const gating = lifecycleGating({
+    exportBusy: exportBusy.busy || recExportBusy.busy || retryExportBusy.busy,
+    exportUnknown: pendingExport !== null,
+    deletionBusy: deletionBusy.busy || recDelBusy.busy || retryDelBusy.busy,
+    deletionUnknown: pendingDeletion !== null && deletion?.status !== 'partial',
+    revisionLoaded: revision !== undefined,
+    boundaryShown: boundary !== undefined,
+    acknowledged,
+    deleted,
+  });
 
   const acceptExport = (receipt: CareerExportReceipt): void => {
     setExported(receipt);
@@ -120,7 +135,8 @@ export default function ExportDeletionPage() {
     <Card>
       <Text className='wk-h3'>导出数据</Text>
       <View className='wk-between'><View className='wk-tdesign-scope'>
-        <t-button block size='large' theme='primary' ariaLabel='发起导出' customStyle={tdesignButtonStyle} loading={exportBusy.busy} disabled={revision === undefined} onTap={() => void exportBusy.run(async () => {
+        <t-button block size='large' theme='primary' ariaLabel='发起导出' customStyle={tdesignButtonStyle} loading={exportBusy.busy} disabled={gating.exportDisabled} onTap={() => void exportBusy.run(async () => {
+          if (gating.exportDisabled) return; // 防重入（Web runExport busy/unknown 守卫）
           try {
             acceptExport(await career.exportWholeSpace());
             setExpErrCode(undefined);
@@ -165,12 +181,13 @@ export default function ExportDeletionPage() {
         {boundary.external.map(item => <Text key={item.item} className='wk-muted wk-small'>{item.description}{item.revocable ? '' : '（不可撤回）'}</Text>)}
         <Text className='wk-small'>保留范围与状态</Text>
         {boundary.retention.map(item => <Text key={item.holder} className='wk-muted wk-small'>{item.holder}：{item.reason}（{item.status}）</Text>)}
-        <View className='wk-listrow' onClick={() => setAcknowledged(!acknowledged)}>
+        <View className='wk-listrow' onClick={() => { if (!gating.acknowledgeDisabled) setAcknowledged(!acknowledged); }}>
           <View className='wk-grow'><Text className={acknowledged ? 'wk-row-title' : 'wk-muted'}>{acknowledged ? '☑' : '☐'} 我已知悉外部平台资料不可撤回、保留范围如上，并理解完整删除不可恢复。</Text></View>
         </View>
       </Card>}
       <View className='wk-between'><View className='wk-tdesign-scope'>
-        <t-button block size='large' theme='primary' ariaLabel='发起完整删除' customStyle={tdesignButtonStyle} loading={deletionBusy.busy} disabled={!boundary || !acknowledged || revision === undefined || deleted} onTap={() => void deletionBusy.run(async () => {
+        <t-button block size='large' theme='primary' ariaLabel='发起完整删除' customStyle={tdesignButtonStyle} loading={deletionBusy.busy} disabled={gating.deletionDisabled} onTap={() => void deletionBusy.run(async () => {
+          if (gating.deletionDisabled) return; // 防重入（Web runDeletion busy/unknown 守卫）
           const confirmed = await confirmAction('确认完整删除？', '空间内求职数据将被删除且不可恢复；外部平台的投递与已发出的副本不受本系统控制。');
           if (!confirmed) return;
           try {
