@@ -2,9 +2,14 @@ package appconnector
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 )
@@ -418,4 +423,449 @@ func feishuDocBlocksField(field json.RawMessage) ([]json.RawMessage, error) {
 		out = append(out, n)
 	}
 	return out, nil
+}
+
+// FeishuDocxAdapter executes ONE approved docx publication against the
+// FE-PUB-01 reviewed contract, routed through the A04 outbound policy.
+// Outcome semantics mirror the Notion family exactly (the service layer
+// above cannot tell the providers apart — AC1):
+//
+//   - pre-read failures (update branch) are definitive FAILED — a GET
+//     can never have produced the write;
+//   - every write-step transport failure / 5xx / unparseable reply is
+//     ErrFeishuPublishOutcomeUnknown — the effect may exist remotely;
+//   - Query reconciles ONLY via the reliable document read + children
+//     read; a fresh create is never the recovery for an unknown create.
+type FeishuDocxAdapter struct {
+	// Policy is the admin-reviewed outbound contract (A04).
+	Policy HTTPPolicy
+	// Token returns the connection's Feishu credential (Bearer).
+	Token func(ctx context.Context) (string, error)
+	// ConnectionCapabilities reports the connection's reviewed scopes;
+	// the write_docx capability is required (AC2).
+	ConnectionCapabilities func(ctx context.Context, a Action) ([]string, error)
+	// Recheck re-validates the A03 approval right before outbound calls.
+	Recheck func(ctx context.Context, a Action) error
+	// LoadProgress / SaveProgress persist the FE-03 recovery record.
+	LoadProgress func(a Action) FeishuDocProgress
+	SaveProgress func(a Action, p FeishuDocProgress) error
+	// MaxBatch caps children per append request (test hook; 0 = the
+	// documented FeishuDocAppendBatchLimit, never above it).
+	MaxBatch int
+}
+
+var _ Adapter = (*FeishuDocxAdapter)(nil)
+
+func (m *FeishuDocxAdapter) configError() error {
+	if m.Policy.Host == "" || m.Policy.Scheme == "" {
+		return fmt.Errorf("%w: no reviewed outbound policy", ErrFeishuPublishNotConfigured)
+	}
+	if m.Token == nil {
+		return fmt.Errorf("%w: no token source", ErrFeishuPublishNotConfigured)
+	}
+	return nil
+}
+
+func (m *FeishuDocxAdapter) requireWriteCapability(ctx context.Context, a Action) error {
+	if m.ConnectionCapabilities == nil {
+		return fmt.Errorf("%w: no capability source", ErrFeishuPublishMissingCapability)
+	}
+	caps, err := m.ConnectionCapabilities(ctx, a)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrFeishuPublishMissingCapability, err)
+	}
+	for _, c := range caps {
+		if c == FeishuCapabilityWriteDocx {
+			return nil
+		}
+	}
+	return fmt.Errorf("%w: connection lacks %s", ErrFeishuPublishMissingCapability, FeishuCapabilityWriteDocx)
+}
+
+func (m *FeishuDocxAdapter) loadProgress(a Action) FeishuDocProgress {
+	if m.LoadProgress == nil {
+		return FeishuDocProgress{}
+	}
+	return m.LoadProgress(a)
+}
+
+func (m *FeishuDocxAdapter) storeProgress(a Action, p FeishuDocProgress) error {
+	if m.SaveProgress == nil {
+		return nil
+	}
+	if err := m.SaveProgress(a, p); err != nil {
+		return fmt.Errorf("%w: persisting progress: %v", ErrFeishuPublishOutcomeUnknown, err)
+	}
+	return nil
+}
+
+func (m *FeishuDocxAdapter) batchSize() int {
+	if m.MaxBatch > 0 && m.MaxBatch < FeishuDocAppendBatchLimit {
+		return m.MaxBatch
+	}
+	return FeishuDocAppendBatchLimit
+}
+
+// Execute routes on the approved snapshot's shape (AC1 lives BELOW this
+// point only).
+func (m *FeishuDocxAdapter) Execute(ctx context.Context, a Action) (ActionResult, error) {
+	if err := m.configError(); err != nil {
+		return ActionResult{State: ActionFailed}, err
+	}
+	if m.Recheck != nil {
+		if err := m.Recheck(ctx, a); err != nil {
+			return ActionResult{State: ActionAwaitingApproval}, fmt.Errorf("approval revoked: %v", err)
+		}
+	}
+	if IsFeishuDocUpdateArgs(a.Args) {
+		return m.executeUpdate(ctx, a)
+	}
+	return m.executeCreate(ctx, a)
+}
+
+func (m *FeishuDocxAdapter) executeCreate(ctx context.Context, a Action) (ActionResult, error) {
+	snap, err := ParseFeishuDocCreateSnapshot(a.Args)
+	if err != nil {
+		return ActionResult{State: ActionFailed}, err
+	}
+	if err := m.requireWriteCapability(ctx, a); err != nil {
+		return ActionResult{State: ActionFailed}, err
+	}
+	progress := m.loadProgress(a)
+	docID := progress.DocumentID
+	done := progress.BlocksDone
+	var output json.RawMessage
+	if docID == "" {
+		body, _ := json.Marshal(map[string]string{"folder_token": snap.ParentFolder})
+		raw, cerr := m.do(ctx, http.MethodPost, m.targetURL(FeishuDocumentCreatePath, nil), body)
+		if cerr != nil {
+			state := ActionFailed
+			if errors.Is(cerr, ErrFeishuPublishOutcomeUnknown) {
+				// Unknown create: NO document id is persisted, NO second
+				// create may follow; reconciliation happens via Query.
+				state = ActionUnknown
+			}
+			return ActionResult{State: state}, cerr
+		}
+		v, verr := ParseFeishuDocumentVersion(raw)
+		if verr != nil {
+			return ActionResult{State: ActionUnknown}, verr
+		}
+		docID = v.DocumentID
+		done = 0
+		output = json.RawMessage(raw)
+		// The REAL document id is persisted the moment the provider
+		// confirms the create — BEFORE any content step.
+		if serr := m.storeProgress(a, FeishuDocProgress{DocumentID: docID, BlocksDone: 0}); serr != nil {
+			return ActionResult{State: ActionUnknown}, serr
+		}
+	}
+	for done < len(snap.Blocks) {
+		end := done + m.batchSize()
+		if end > len(snap.Blocks) {
+			end = len(snap.Blocks)
+		}
+		if aerr := m.appendChildren(ctx, docID, snap.Blocks[done:end]); aerr != nil {
+			state := ActionFailed
+			if errors.Is(aerr, ErrFeishuPublishOutcomeUnknown) {
+				state = ActionUnknown
+			}
+			return ActionResult{State: state, ExternalID: docID}, aerr
+		}
+		done = end
+		if serr := m.storeProgress(a, FeishuDocProgress{DocumentID: docID, BlocksDone: done}); serr != nil {
+			return ActionResult{State: ActionUnknown, ExternalID: docID}, serr
+		}
+	}
+	return ActionResult{State: ActionSucceeded, ExternalID: docID, Output: output}, nil
+}
+
+func (m *FeishuDocxAdapter) executeUpdate(ctx context.Context, a Action) (ActionResult, error) {
+	snap, err := ParseFeishuDocUpdateSnapshot(a.Args)
+	if err != nil {
+		return ActionResult{State: ActionFailed}, err
+	}
+	if err := m.requireWriteCapability(ctx, a); err != nil {
+		return ActionResult{State: ActionFailed}, err
+	}
+	// AC1: read the external current revision FIRST — an unreadable
+	// pre-read is a definitive failure with zero writes.
+	ver, gerr := ReadFeishuDocumentVersion(ctx, m.Policy, m.Token, snap.DocumentID)
+	if gerr != nil {
+		return ActionResult{State: ActionFailed}, gerr
+	}
+	if cerr := DetectFeishuRevisionConflict(snap.ExpectedRevision, ver.RevisionID); cerr != nil {
+		return ActionResult{State: ActionFailed}, cerr
+	}
+	docID := snap.DocumentID
+	progress := m.loadProgress(a)
+	blocksDone := 0
+	if progress.DocumentID == docID && progress.BlocksDone >= 0 && progress.BlocksDone <= len(snap.Blocks) {
+		blocksDone = progress.BlocksDone
+	}
+	for blocksDone < len(snap.Blocks) {
+		end := blocksDone + m.batchSize()
+		if end > len(snap.Blocks) {
+			end = len(snap.Blocks)
+		}
+		if aerr := m.appendChildren(ctx, docID, snap.Blocks[blocksDone:end]); aerr != nil {
+			state := ActionFailed
+			if errors.Is(aerr, ErrFeishuPublishOutcomeUnknown) {
+				state = ActionUnknown
+			}
+			return ActionResult{State: state, ExternalID: docID}, aerr
+		}
+		blocksDone = end
+		if serr := m.storeProgress(a, FeishuDocProgress{DocumentID: docID, BlocksDone: blocksDone}); serr != nil {
+			return ActionResult{State: ActionUnknown, ExternalID: docID}, serr
+		}
+	}
+	// Reliable read-back: the payload carrying the document id + the
+	// revision THIS publish produced is the receipt basis. A lost
+	// read-back parks unknown — the writes already landed.
+	raw, ferr := m.do(ctx, http.MethodGet, m.targetURL(fmt.Sprintf(FeishuDocumentGetFormat, urlPathEscape(docID)), nil), nil)
+	if ferr != nil {
+		return ActionResult{State: ActionUnknown, ExternalID: docID}, ferr
+	}
+	// The read-back must parse as a REAL document id + revision — the
+	// parsed value itself is not needed here (the raw envelope is the
+	// output evidence), but an unparseable read-back parks unknown.
+	if _, perr := ParseFeishuDocumentVersion(raw); perr != nil {
+		return ActionResult{State: ActionUnknown, ExternalID: docID}, perr
+	}
+	return ActionResult{State: ActionSucceeded, ExternalID: docID, Output: json.RawMessage(raw)}, nil
+}
+
+// Query is the reconciliation entry point for an unknown outcome.
+// Without a persisted document id it stays honestly unknown (Feishu has
+// no reliable create-confirmation search; a title match is never proof).
+// With one, it reconciles via the reliable document read + the FULL
+// paginated children read, comparing the text_run CONTENT sequences —
+// provider blocks carry server-side fields the snapshot bytes never do.
+func (m *FeishuDocxAdapter) Query(ctx context.Context, a Action) (ActionResult, error) {
+	if err := m.configError(); err != nil {
+		return ActionResult{State: ActionFailed}, err
+	}
+	progress := m.loadProgress(a)
+	if progress.DocumentID == "" {
+		return ActionResult{State: ActionUnknown}, fmt.Errorf("feishu_query_unverifiable: no persisted document id")
+	}
+	var want []string
+	if IsFeishuDocUpdateArgs(a.Args) {
+		snap, err := ParseFeishuDocUpdateSnapshot(a.Args)
+		if err != nil {
+			return ActionResult{State: ActionUnknown}, err
+		}
+		for _, b := range snap.Blocks {
+			contents, err := feishuDocBlockContents([]byte("[" + string(b) + "]"))
+			if err != nil {
+				return ActionResult{State: ActionUnknown}, err
+			}
+			want = append(want, contents...)
+		}
+	} else {
+		snap, err := ParseFeishuDocCreateSnapshot(a.Args)
+		if err != nil {
+			return ActionResult{State: ActionUnknown}, err
+		}
+		for _, b := range snap.Blocks {
+			contents, err := feishuDocBlockContents([]byte("[" + string(b) + "]"))
+			if err != nil {
+				return ActionResult{State: ActionUnknown}, err
+			}
+			want = append(want, contents...)
+		}
+	}
+	// The document must still exist.
+	if _, gerr := ReadFeishuDocumentVersion(ctx, m.Policy, m.Token, progress.DocumentID); gerr != nil {
+		return ActionResult{State: ActionUnknown}, gerr
+	}
+	kids, kerr := m.readAllChildren(ctx, progress.DocumentID)
+	if kerr != nil {
+		return ActionResult{State: ActionUnknown}, kerr
+	}
+	got, gerr := feishuDocBlockContents(kids)
+	if gerr != nil {
+		return ActionResult{State: ActionUnknown}, gerr
+	}
+	if !containsPrefix(got, want) {
+		return ActionResult{State: ActionUnknown}, fmt.Errorf("feishu_query_unverifiable: %d of %d approved paragraphs present in order", len(got), len(want))
+	}
+	raw, rerr := m.do(ctx, http.MethodGet, m.targetURL(fmt.Sprintf(FeishuDocumentGetFormat, urlPathEscape(progress.DocumentID)), nil), nil)
+	if rerr != nil {
+		return ActionResult{State: ActionUnknown, ExternalID: progress.DocumentID}, rerr
+	}
+	return ActionResult{State: ActionSucceeded, ExternalID: progress.DocumentID, Output: json.RawMessage(raw)}, nil
+}
+
+// containsPrefix reports whether want appears in got as one contiguous
+// run starting at any offset (external collaborators may have appended
+// their own paragraphs before or after ours) — the semantic counterpart
+// of notionBlocksContained (notion_update.go:375-397).
+func containsPrefix(got, want []string) bool {
+	if len(want) == 0 {
+		return true
+	}
+	if len(got) < len(want) {
+		return false
+	}
+	for start := 0; start+len(want) <= len(got); start++ {
+		match := true
+		for i := range want {
+			if got[start+i] != want[i] {
+				match = false
+				break
+			}
+		}
+		if match {
+			return true
+		}
+	}
+	return false
+}
+
+func urlPathEscape(s string) string { return url.PathEscape(s) }
+
+// appendChildren performs one recoverable append step of the REMAINING
+// blocks (index -1 = append at the document end).
+func (m *FeishuDocxAdapter) appendChildren(ctx context.Context, docID string, blocks []json.RawMessage) error {
+	body, err := json.Marshal(map[string]any{"children": blocks, "index": -1})
+	if err != nil {
+		return err
+	}
+	u := m.targetURL(fmt.Sprintf(FeishuDocumentChildrenFormat, urlPathEscape(docID), urlPathEscape(docID)), nil)
+	raw, err := m.do(ctx, http.MethodPost, u, body)
+	if err != nil {
+		return err
+	}
+	var env feishuDocEnvelope
+	if err := json.Unmarshal(raw, &env); err != nil {
+		return fmt.Errorf("%w: %v", ErrFeishuPublishOutcomeUnknown, err)
+	}
+	if env.Code != 0 {
+		return fmt.Errorf("feishu_provider_error: code=%d msg=%s", env.Code, env.Msg)
+	}
+	return nil
+}
+
+// readAllChildren walks the paginated children list to the end — a
+// reconciliation that reads only the first page would miscount committed
+// blocks (Review Focus 3).
+func (m *FeishuDocxAdapter) readAllChildren(ctx context.Context, docID string) ([]byte, error) {
+	pageToken := ""
+	var all []json.RawMessage
+	for {
+		path := fmt.Sprintf(FeishuDocumentChildrenFormat, urlPathEscape(docID), urlPathEscape(docID))
+		var query url.Values
+		if pageToken != "" {
+			query = url.Values{"page_token": {pageToken}}
+		}
+		raw, err := m.do(ctx, http.MethodGet, m.targetURL(path, query), nil)
+		if err != nil {
+			return nil, err
+		}
+		var page struct {
+			Code int `json:"code"`
+			Data struct {
+				Items     []json.RawMessage `json:"items"`
+				PageToken string            `json:"page_token"`
+				HasMore   bool              `json:"has_more"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(raw, &page); err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrFeishuPublishOutcomeUnknown, err)
+		}
+		if page.Code != 0 {
+			return nil, fmt.Errorf("feishu_provider_error: code=%d", page.Code)
+		}
+		all = append(all, page.Data.Items...)
+		if !page.Data.HasMore || page.Data.PageToken == "" {
+			break
+		}
+		pageToken = page.Data.PageToken
+	}
+	return json.Marshal(all)
+}
+
+// do performs ONE policy-validated request through the A04 client — the
+// same request/redirect re-validation as every adapter in this package
+// (same shape as FeishuSendAdapter.do, feishu_send.go:242). Transport
+// failures wrap ErrFeishuPublishOutcomeUnknown; provider 4xx is a
+// definitive provider error; 5xx is unknown.
+func (m *FeishuDocxAdapter) do(ctx context.Context, method string, u *url.URL, body []byte) ([]byte, error) {
+	if err := m.Policy.ValidateRequest(method, u); err != nil {
+		return nil, err // policy denial: the request never leaves
+	}
+	tok, err := m.Token(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var rd io.Reader
+	if body != nil {
+		rd = bytes.NewReader(body)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, u.String(), rd)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+tok)
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json; charset=utf-8")
+	}
+	resp, err := m.Policy.NewClient().Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrFeishuPublishOutcomeUnknown, err)
+	}
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrFeishuPublishOutcomeUnknown, err)
+	}
+	if resp.StatusCode >= 500 {
+		return nil, fmt.Errorf("%w: status=%d", ErrFeishuPublishOutcomeUnknown, resp.StatusCode)
+	}
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, fmt.Errorf("%w: status=404", ErrFeishuPublishNotFound)
+	}
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("feishu_provider_error: status=%d body=%s", resp.StatusCode, truncateForLog(raw))
+	}
+	return raw, nil
+}
+
+// targetURL mirrors FeishuSendAdapter.targetURL (feishu_send.go:220):
+// the reviewed scheme/host/port plus the exact path and — when present —
+// the query as RawQuery (the children pagination page_token must travel
+// as a REAL query parameter, never as escaped path text).
+func (m *FeishuDocxAdapter) targetURL(path string, query url.Values) *url.URL {
+	host := m.Policy.Host
+	if m.Policy.Port != "" {
+		host = net.JoinHostPort(host, m.Policy.Port)
+	}
+	u := &url.URL{Scheme: m.Policy.Scheme, Host: host, Path: path}
+	if query != nil {
+		u.RawQuery = query.Encode()
+	}
+	return u
+}
+
+func truncateForLog(raw []byte) string {
+	s := string(raw)
+	if len(s) > 200 {
+		s = s[:200]
+	}
+	return s
+}
+
+// ReadFeishuDocumentVersion performs a one-off version read through the
+// given reviewed policy and token source — the plan-formation pre-read
+// shared by the publish seam (the counterpart of ReadNotionPageVersion,
+// notion_update.go:507+). It performs no write.
+func ReadFeishuDocumentVersion(ctx context.Context, policy HTTPPolicy, token func(context.Context) (string, error), documentID string) (FeishuDocVersion, error) {
+	probe := &FeishuDocxAdapter{Policy: policy, Token: token}
+	raw, err := probe.do(ctx, http.MethodGet, probe.targetURL(fmt.Sprintf(FeishuDocumentGetFormat, urlPathEscape(documentID)), nil), nil)
+	if err != nil {
+		return FeishuDocVersion{}, err
+	}
+	return ParseFeishuDocumentVersion(raw)
 }
