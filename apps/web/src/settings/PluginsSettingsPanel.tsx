@@ -17,6 +17,15 @@ import {
   type PluginUpgradeToolChange,
   type PluginUpgradeToolSnapshot,
 } from "../../../../packages/api-client/src/plugins.ts";
+// OCR 终局 F02：badge 样式与 ApiError 错误口径收敛到插件面板共享模块
+// （与 PluginsPanel/McpSettingsPanel 单一来源），本面板不再留副本。
+import {
+  apiErrorMessage,
+  pluginBadgeInfo,
+  pluginBadgeMuted,
+  pluginBadgeOk,
+  pluginBadgeWarn,
+} from "../plugins/ui.ts";
 
 /**
  * 管理端插件面板（Issue #108/#110 / 计划 T03 + T08）。
@@ -35,12 +44,6 @@ import {
  * createTranslator，此处所有权受限暂不跟随）。
  */
 
-/* Tailwind utilities（McpSettingsPanel mcpBadge* 同款视觉）。 */
-const pluginBadgeOk = "rounded-full px-2 py-[0.1rem] text-[.72rem] bg-[#ecfdf3] text-[#137333]";
-const pluginBadgeInfo = "rounded-full px-2 py-[0.1rem] text-[.72rem] bg-[#e8f1ff] text-[#2e6de6]";
-const pluginBadgeWarn = "rounded-full px-2 py-[0.1rem] text-[.72rem] bg-[#fffaeb] text-[#b54708]";
-const pluginBadgeMuted = "rounded-full px-2 py-[0.1rem] text-[.72rem] bg-[#f2f4f8] text-[#66758b]";
-
 /** 预览有效期本地化；非法时间串原样回显（不猜测远端数据语义）。 */
 export function formatPreviewExpiry(expiresAt: string, locale = "zh-CN"): string {
   const date = new Date(expiresAt);
@@ -58,11 +61,6 @@ function DriftNameList({ caption, names, tone }: { caption: string; names: reado
       ))}
     </div>
   );
-}
-
-/** ApiError（后端/网络拒绝）原文透传；其余错误统一中文并 console.warn 留痕。 */
-function apiErrorMessage(cause: unknown): string | null {
-  return cause instanceof Error && cause.name === "ApiError" ? cause.message : null;
 }
 
 /** 升级差异面板的挂载状态：记录来源安装与插件名，重开/切换互斥渲染。

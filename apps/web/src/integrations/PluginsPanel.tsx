@@ -10,6 +10,15 @@ import {
   type PluginInstallationSummary,
   type PluginMyConnection,
 } from "../../../../packages/api-client/src/plugins.ts";
+// OCR 终局 F02：badge 样式与 ApiError 错误口径收敛到插件面板共享模块
+// （与 PluginsSettingsPanel/McpSettingsPanel 单一来源），面板不再留副本。
+import {
+  apiErrorMessage,
+  pluginBadgeInfo,
+  pluginBadgeMuted,
+  pluginBadgeOk,
+  pluginBadgeWarn,
+} from "../plugins/ui.ts";
 
 /**
  * 成员插件发现面板（Issue #110 / 计划 T08；T12 增补成员个人授权/撤销入口）。
@@ -36,12 +45,6 @@ import {
  * i18n 说明：直书中文字面量（同 T08 口径），迁移随 T20 统一处理（先例
  * PluginsSettingsPanel；locale 词条文件不在 T12 文件所有权内）。
  */
-
-/* Tailwind utilities（PluginsSettingsPanel 同款视觉）。 */
-const pluginBadgeOk = "rounded-full px-2 py-[0.1rem] text-[.72rem] bg-[#ecfdf3] text-[#137333]";
-const pluginBadgeInfo = "rounded-full px-2 py-[0.1rem] text-[.72rem] bg-[#e8f1ff] text-[#2e6de6]";
-const pluginBadgeWarn = "rounded-full px-2 py-[0.1rem] text-[.72rem] bg-[#fffaeb] text-[#b54708]";
-const pluginBadgeMuted = "rounded-full px-2 py-[0.1rem] text-[.72rem] bg-[#f2f4f8] text-[#66758b]";
 
 /** 弹窗授权后的状态轮询节奏（McpSettingsPanel startAuthorize 同款常量）。 */
 const AUTH_POLL_INTERVAL_MS = 1500;
@@ -96,8 +99,9 @@ export function PluginsPanel({ client, initialInstallations }: Props) {
       })
       .catch((cause: unknown) => {
         if (cancelled) return;
-        if (cause instanceof Error && cause.name === "ApiError") {
-          setError(cause.message);
+        const message = apiErrorMessage(cause);
+        if (message !== null) {
+          setError(message);
         } else {
           console.warn("plugin discoveries load failed:", cause);
           setError("空间插件目录加载失败");

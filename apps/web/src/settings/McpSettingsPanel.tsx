@@ -8,6 +8,9 @@ import { EmptyState } from "./EmptyState.tsx";
 import { pushSettingsToast } from "./settings-toast.tsx";
 import { roleAtLeast } from "@weknora/views/settings/registry";
 import { createTranslator, useAppLocale } from "../i18n.ts";
+// OCR 终局 F02：badge 样式收敛到插件面板共享模块（三面板单一来源）——
+// 本面板原 mcpBadge* 四常量与之逐字相同，改引共享常量、视觉零变化。
+import { pluginBadgeInfo, pluginBadgeMuted, pluginBadgeOk, pluginBadgeWarn } from "../plugins/ui.ts";
 
 /* Tailwind utilities migrated from the deleted .wk-mcp-* rules in styles.css
    (see docs/plans/tailwind-shadcn-conventions.md). Values encode the effective
@@ -21,10 +24,6 @@ const mcpType = "shrink-0 text-[11px] leading-[18px] text-[#66758b]";
 const mcpStatus = "inline-flex items-center gap-[5px] whitespace-nowrap cursor-pointer rounded-[6px] border-0 bg-transparent px-1 py-0.5 [font:inherit] text-[12px] leading-[18px] text-[#66758b] hover:bg-[#f3f5f8] disabled:cursor-wait";
 const mcpSourceOptions = "inline-flex items-center gap-1 rounded-[8px] border border-[#dce3ed] bg-[#f2f4f8] p-[3px]";
 const mcpSourceOption = "inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-[6px] border border-transparent bg-transparent px-3 py-[5px] text-[13px] leading-none text-[#66758b] hover:bg-[#f3f5f8] hover:text-[rgb(0_0_0_/_90%)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#07c05f]";
-const mcpBadgeOk = "rounded-full px-2 py-[0.1rem] text-[.72rem] bg-[#ecfdf3] text-[#137333]";
-const mcpBadgeInfo = "rounded-full px-2 py-[0.1rem] text-[.72rem] bg-[#e8f1ff] text-[#2e6de6]";
-const mcpBadgeWarn = "rounded-full px-2 py-[0.1rem] text-[.72rem] bg-[#fffaeb] text-[#b54708]";
-const mcpBadgeMuted = "rounded-full px-2 py-[0.1rem] text-[.72rem] bg-[#f2f4f8] text-[#66758b]";
 
 function McpCardIcon({ name, size = 14 }: { name: "tools" | "edit" | "delete" | "add" | "chevron-right" | "error"; size?: number }) {
   const paths = {
@@ -591,7 +590,7 @@ function McpOAuthControl({
     <div className="wk-mcp-oauth grid gap-2">
       <label>{t("mcpServiceDialog.oauthAuthorization")}</label>
       <div className="wk-mcp-oauth-status flex flex-wrap items-center gap-2">
-        <span className={oauth?.authorized ? mcpBadgeOk : oauth?.state === "refreshable" ? mcpBadgeInfo : mcpBadgeWarn}>
+        <span className={oauth?.authorized ? pluginBadgeOk : oauth?.state === "refreshable" ? pluginBadgeInfo : pluginBadgeWarn}>
           {oauth?.authorized ? t("mcpServiceDialog.oauthAuthorized") : oauth?.state === "refreshable" ? t("mcpServiceDialog.oauthRefreshable") : t("mcpServiceDialog.oauthUnauthorized")}
         </span>
         <Button
@@ -1012,7 +1011,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                   <h3 className="m-0 overflow-hidden text-ellipsis whitespace-nowrap text-[15px] font-semibold leading-[21px]">{draft.id ? t("mcpServiceDialog.editTitle") : t("mcpServiceDialog.addTitle")}</h3>
                   <p className="wk-muted text-muted m-0 flex items-center gap-2 text-[12px] leading-[18px]">
                     {draft.transportType === "http-streamable" ? "HTTP Streamable" : "SSE"}
-                    <span className={draft.enabled ? mcpBadgeOk : mcpBadgeMuted}>
+                    <span className={draft.enabled ? pluginBadgeOk : pluginBadgeMuted}>
                       {draft.enabled ? t("mcpSettings.enabled") : t("mcpSettings.disabled")}
                     </span>
                   </p>
