@@ -588,6 +588,17 @@ func (s *CraftArtifactService) stageAndUpload(
 		if total > s.config.MaxTotalBytes {
 			return nil, fmt.Errorf("%w: round read %d bytes over the %d total cap", craft.ErrInvalidInput, total, s.config.MaxTotalBytes)
 		}
+		// Server-side web screen (round-3 build-log trust fix): whatever the
+		// (Agent-writable, digest-public) build log claims, a staged HTML
+		// member carrying script/navigation/egress shapes refuses the whole
+		// round BEFORE any byte is uploaded — the sandboxed render_html
+		// screening is no longer the only line of defense.
+		if kind == craft.KindWeb && craftScreenWebMemberIsHTML(rel) {
+			if err := craftScreenWebHTMLMember(rel, data); err != nil {
+				logger.Warnf(ctx, "[CraftArtifact] server-side web screen rejected member %q of run %s: %v", rel, task.Fence.RunID, err)
+				return nil, err
+			}
+		}
 		staged = append(staged, stagedArtifact{rel: rel, data: data})
 	}
 	sort.Slice(staged, func(i, j int) bool { return staged[i].rel < staged[j].rel })
