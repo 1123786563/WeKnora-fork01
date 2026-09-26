@@ -6,6 +6,7 @@ import type { ChatSession, createWeKnoraClient } from '@weknora/api-client';
 import { sessionGroups } from '@weknora/domain/chat/session-state';
 import { GlobalCommandPalette } from './GlobalCommandPalette.tsx';
 import { SessionSidebarList, SessionSidebarShellContext, type SessionGroupView, type SessionSourceOption } from '../../../../packages/views/src/chat/session-sidebar.tsx';
+import { ChatSidebarCollapsedContext } from '../../../../packages/views/src/chat/page.tsx';
 import { resolveChatCopy } from '../../../../packages/views/src/chat/chat-copy.ts';
 import { chatSessionIdFromPath, SHELL_SESSION_ROUTE_EVENT } from '../chat/session-route.ts';
 import { ContextualGuideHost } from '../../../../packages/views/src/guides/ContextualGuide.tsx';
@@ -1351,7 +1352,12 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
           full-height full-width treatment（max-width:none!important 保持压过
           styles.css unlayered 的 .wk-page--std / 1180px 宽版页规则）。 */}
       <div className="plat-shell__outlet wk-shell-5">
-        <SessionSidebarShellContext.Provider value={true}>{children}</SessionSidebarShellContext.Provider>
+        <SessionSidebarShellContext.Provider value={true}>
+          {/* Vue chat/index.vue:4 根 :class 'is-sidebar-collapsed'（uiStore
+              .sidebarCollapsed）：壳层折叠态下发到 .chat 根（chat.td.css:34
+              折叠态 max-width:calc(100vw - 60px)）。 */}
+          <ChatSidebarCollapsedContext.Provider value={collapsed}>{children}</ChatSidebarCollapsedContext.Provider>
+        </SessionSidebarShellContext.Provider>
       </div>
       <GlobalCommandPalette
         open={paletteOpen}

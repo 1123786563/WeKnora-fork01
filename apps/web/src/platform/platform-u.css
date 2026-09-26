@@ -592,8 +592,10 @@
   /* Vue views/platform/index.vue .main 是 height:100%（:239），不是 100vh——
      <html> 带 zoom 缩放（useFont 字号机制）时 100vh 按未缩放视口求值再放大，
      大字号下壳撑到 810px 把 .menu_bottom 推出视口（px2-settings-general-fontradio
-     取证：Vue aside 720 / React aside 810）。改为 Vue 同款 height:100%，配合
-     styles.css 的 html/body/#root 高度链（Vue App.vue:290-308 平移）。 */
+     取证：Vue aside 720 / React aside 810；pp2/chat 同证：px2-chat-sidebar-
+     collapse 大字号实证，ancestor 链 html/body/#app 100% 已由 styles.css 补
+     #root，zoom=1 时两值等价）。改为 Vue 同款 height:100%，配合 styles.css 的
+     html/body/#root 高度链（Vue App.vue:290-308 平移）。 */
   height: 100%;
   min-width: 600px;
   background-color: #fff;

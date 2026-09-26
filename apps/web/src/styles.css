@@ -35,8 +35,17 @@ body { margin: 0; min-width: 320px; background: var(--wk-color-page, #eee);
    React 壳链只能靠 100vh 撑高（.wk-shell-1 旧值），而 <html> 带 zoom（useFont
    字号机制，px2-settings-general-fontradio）时 100vh 按未缩放视口求值再放大，
    大字号下 .menu_bottom 被推出视口（Vue 720 / React 810 取证见 platform-u.css
-   .wk-shell-1 注）。height:100% 链按缩放后 ICB 求值，zoom 态与 Vue 一致。 */
+   .wk-shell-1 注）。height:100% 链按缩放后 ICB 求值，zoom 态与 Vue 一致
+   （pp2/chat 同证：px2-chat-sidebar-collapse 大字号态 React 壳 100vh 溢出
+   90px，Vue menu.vue:1187-1190 注释明言此坑）。 */
 html, body, #root { width: 100%; height: 100%; margin: 0; padding: 0; }
+/* Vue App.vue:310-316 #app 同款独立合成层：isolation/translateZ/backface。
+   zoom（字号档位）下文本光栅在「独立合成层」与「共享图层直接绘制」两条
+   路径 AA 不同（台账 #22 家族）——px2-chat-sidebar-collapse 大字号态实证：
+   DOM 几何/字符级 Range rect 千分位全同，残差 2192px 全部来自字形光栅
+   AA；补 translateZ(0) 后对齐 Vue 光栅路径。zoom=1 时两路径渲染一致，
+   已收敛页面不受影响。 */
+#root { isolation: isolate; transform: translateZ(0); backface-visibility: hidden; }
 /* .wk-muted deleted: every consumer carries the text-muted utility (or an
    overriding variant) since the family migrated off this file. */
 /* S7 壳层回收（判例同 S6 wk-list 集中回收）：.wk-page 标准版（960px 居中）
