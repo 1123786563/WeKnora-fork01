@@ -433,6 +433,19 @@ func IdentityFingerprint(pluginID, version, endpoint string, toolsDigest string)
 	return hex.EncodeToString(h.Sum(nil))
 }
 
+// authorityEnd returns the offset at which a URL's authority terminates in
+// rest: the first '/', '?' or '#' after the scheme delimiter (RFC 3986 §3.2),
+// or len(rest) when none follows. B+A 裁决 #5：只按 '/' 截断会把 query/
+// fragment 里的内容并进 authority——query 内 '@' 被当 userinfo（掩码把
+// host+query 整段吞成 "REDACTED@evil"、userinfoOf 对无凭据 URL 误报），
+// LastIndex('@') 落在 query 时掩码输出丢失 host 与 query。
+func authorityEnd(rest string) int {
+	if end := strings.IndexAny(rest, "/?#"); end >= 0 {
+		return end
+	}
+	return len(rest)
+}
+
 // userinfoOf extracts the raw "user[:pass]@" prefix of a URL's authority, or
 // "" when the URL has none (no scheme delimiter, no '@', or a malformed tail
 // where the split is ambiguous — failing open to "" makes the caller's
@@ -448,10 +461,7 @@ func userinfoOf(rawURL string) string {
 		// would be missed exactly on the inputs that fail url.Parse.
 		rest = rest[2:]
 	}
-	authority := rest
-	if slash := strings.Index(rest, "/"); slash >= 0 {
-		authority = rest[:slash]
-	}
+	authority := rest[:authorityEnd(rest)]
 	if at := strings.LastIndex(authority, "@"); at > 0 {
 		return authority[:at+1]
 	}
@@ -468,13 +478,13 @@ func maskEndpointCredentials(rawURL string) string {
 	if schemeEnd := strings.Index(rawURL, "://"); schemeEnd >= 0 {
 		prefix, rest = rawURL[:schemeEnd+3], rawURL[schemeEnd+3:]
 	} else if strings.HasPrefix(rest, "//") {
-		// OCR R2 F33: protocol-relative URLs — see userinfoOf.
-		rest = rest[2:]
+		// OCR R2 F33: protocol-relative URLs — see userinfoOf. The "//" is a
+		// retained prefix（B+A 裁决 #5 残余）：置空会使掩码输出退化成相对
+		// 引用形态，管理员在 400 回显里看到的端点语义失真。
+		prefix, rest = "//", rest[2:]
 	}
-	authority, tail := rest, ""
-	if slash := strings.Index(rest, "/"); slash >= 0 {
-		authority, tail = rest[:slash], rest[slash:]
-	}
+	end := authorityEnd(rest)
+	authority, tail := rest[:end], rest[end:]
 	at := strings.LastIndex(authority, "@")
 	if at <= 0 {
 		return rawURL

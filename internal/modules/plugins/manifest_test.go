@@ -330,3 +330,37 @@ func TestValidateManifestParseFailureMasksProtocolRelativeUserinfo(t *testing.T)
 	require.Contains(t, err.Error(), "REDACTED@")
 	require.NotContains(t, err.Error(), "user:pass", "protocol-relative credentials must not leak into the admin-visible error")
 }
+
+// TestUserinfoAndMaskTerminateAuthorityAtQueryAndFragment（B+A 裁决 #5）：
+// RFC 3986 §3.2 规定 authority 终止于其后的首个 '/'、'?' 或 '#'——
+// userinfoOf/maskEndpointCredentials 只按 '/' 截断时：
+//   - "https://host?redirect=user:pass@evil" 的 query 内 '@' 被当 authority
+//     userinfo——掩码把 host+query 整段吞成 "REDACTED@evil"（失真回显进
+//     400）、userinfoOf 对无凭据 URL 误报非空；
+//   - 真实 userinfo 且 query 含 '@' 时 LastIndex 取到 query 里的 '@'，
+//     掩码输出丢失 host 与 query（"REDACTED@b"）。
+// 协议相对前导 "//" 在掩码输出中同样不得丢失（R2 F33 残余——prefix 置空
+// 使回显退化为相对引用形态）。
+func TestUserinfoAndMaskTerminateAuthorityAtQueryAndFragment(t *testing.T) {
+	// query 内 '@'、authority 无凭据 → 掩码必须原样返回、userinfoOf 不误报。
+	require.Equal(t, "https://host?redirect=user:pass@evil.example",
+		maskEndpointCredentials("https://host?redirect=user:pass@evil.example"),
+		"an '@' inside the query is not authority userinfo — masking must not swallow the host and query")
+	require.Equal(t, "", userinfoOf("https://host?redirect=user:pass@evil.example"),
+		"userinfoOf must not report credentials for an '@' that lives in the query")
+
+	// 真实 userinfo + query 内 '@' → 精确掩码 userinfo，保留 host 与完整 query。
+	require.Equal(t, "https://REDACTED@host?x=a@b",
+		maskEndpointCredentials("https://user:pass@host?x=a@b"))
+	require.Equal(t, "user:pass@", userinfoOf("https://user:pass@host?x=a@b"))
+
+	// '#' 同样终止 authority：掩码保留 host 与 fragment。
+	require.Equal(t, "https://REDACTED@host#f/x",
+		maskEndpointCredentials("https://user:pass@host#f/x"))
+	require.Equal(t, "user:pass@", userinfoOf("https://user:pass@host#f"))
+
+	// 协议相对前导 "//" 不丢：输出保持协议相对形态。
+	require.Equal(t, "//REDACTED@host:1/mcp",
+		maskEndpointCredentials("//user:pass@host:1/mcp"))
+	require.Equal(t, "user:pass@", userinfoOf("//user:pass@host:1?next=/x"))
+}
