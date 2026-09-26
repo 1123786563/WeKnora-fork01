@@ -118,6 +118,48 @@ func TestConfluenceUpdateServerHappyPath(t *testing.T) {
 	if puts != 1 {
 		t.Fatalf("puts=%d", puts)
 	}
+	// The Server/DC PUT must carry the documented nested body.storage
+	// shape (the same wire the create adapter and the real instance use):
+	// the approved storage must actually LAND on the remote page.
+	fake.mu.Lock()
+	p := fake.pages["page-9"]
+	fake.mu.Unlock()
+	if p.title != "v2" || p.storage != "<p>srv</p>" || p.version != 6 {
+		t.Fatalf("remote page drift: %+v", p)
+	}
+}
+
+func TestConfluenceUpdateServerQueryResolvesAfterDroppedReply(t *testing.T) {
+	fake := newFakeConfluence("cf-user@example.test", "secret_cf_token")
+	fake.addPage("page-9", "42", "ENG", "old title", 5)
+	srv := fake.server(t)
+	ad := &ConfluenceUpdateAdapter{
+		Policy: cfPolicyOf(srv, ""), Credential: cfCredential,
+		Edition: EditionServer, ConnectionCapabilities: cfCaps(ConfluenceCapabilityWrite),
+	}
+	fake.mu.Lock()
+	fake.dropNextWrite = true
+	fake.mu.Unlock()
+	act := cfUpdateAction(cfUpdateArgs("page-9", "5", "v2", "<p>srv</p>"))
+	if out, _ := ad.Execute(context.Background(), act); out.State != ActionUnknown {
+		t.Fatalf("setup: unknown expected, got %s", out.State)
+	}
+	// The Server/DC write-read loop must agree on the nested body.storage
+	// shape: the reconciliation read sees exactly the approved storage the
+	// PUT applied, so the unknown resolves WITHOUT any new write.
+	_, putsBefore, _ := fake.stats()
+	q, qerr := ad.Query(context.Background(), act)
+	if qerr != nil || q.State != ActionSucceeded || q.ExternalID != "page-9" {
+		t.Fatalf("server query must resolve from the remote state: %+v %v", q, qerr)
+	}
+	rcpt, rerr := ParseConfluencePageReceipt(q.Output)
+	if rerr != nil || rcpt.ExternalVersion != "6" {
+		t.Fatalf("server query receipt drift: %+v %v", rcpt, rerr)
+	}
+	_, putsAfter, _ := fake.stats()
+	if putsAfter != putsBefore {
+		t.Fatalf("query must not re-send: puts %d -> %d", putsBefore, putsAfter)
+	}
 }
 
 func TestConfluenceUpdateConflictZeroWrites(t *testing.T) {

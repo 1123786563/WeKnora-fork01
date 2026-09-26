@@ -81,11 +81,14 @@ type confluenceCloudUpdateRequest struct {
 }
 
 type confluenceServerUpdateRequest struct {
-	Type    string                      `json:"type"`
-	ID      string                      `json:"id"`
-	Title   string                      `json:"title"`
-	Body    confluenceServerStorageBody `json:"body"`
-	Version confluenceVersionRef        `json:"version"`
+	Type  string `json:"type"`
+	ID    string `json:"id"`
+	Title string `json:"title"`
+	// Body carries the Server/DC content in the documented nested
+	// body.storage.{value,representation} shape (confluenceServerBodyRef) —
+	// the same wire the create adapter and the fake double encode.
+	Body    confluenceServerBodyRef `json:"body"`
+	Version confluenceVersionRef    `json:"version"`
 }
 
 // confluenceNextVersion parses the approved expected version and returns
@@ -174,7 +177,7 @@ func (m *ConfluenceUpdateAdapter) putPage(ctx context.Context, edition string, s
 	if edition == EditionServer {
 		body, err = json.Marshal(confluenceServerUpdateRequest{
 			Type: "page", ID: snap.PageID, Title: snap.Title,
-			Body:    confluenceServerStorageBody{Value: snap.Storage, Representation: "storage"},
+			Body:    confluenceServerBodyRef{Storage: confluenceServerStorageBody{Value: snap.Storage, Representation: "storage"}},
 			Version: confluenceVersionRef{Number: next},
 		})
 		u = confluenceTargetURL(m.Policy, m.APIBasePath, ConfluenceServerContentPath+"/"+url.PathEscape(snap.PageID), "")
