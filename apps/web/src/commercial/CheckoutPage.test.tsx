@@ -42,6 +42,7 @@ test('checkout renders frozen quote line items and submits a purchase', async ()
         calls.push(input);
         return { state: 'awaiting_payment', order, plan_key: 'pro', plan_version: 1, amount_fen: '9900', currency: 'CNY' };
       },
+      purchaseStatus: async () => ({ state: 'absent' }),
       getOrder: async () => order,
     },
   };
@@ -49,6 +50,7 @@ test('checkout renders frozen quote line items and submits a purchase', async ()
   const { createScopeController } = await import('@weknora/domain/scope');
   const scopeController = createScopeController({ origin: '', userId: 'user-1', tenantId: '31' });
   let root: Root | undefined;
+  document.body.innerHTML = ''; // isolate each test's DOM face
   await act(async () => {
     root = createRoot(document.body.appendChild(document.createElement('div')));
     root.render(React.createElement(CheckoutPage, { client: client as never, scopeController, orderId: '' }));
@@ -61,7 +63,9 @@ test('checkout renders frozen quote line items and submits a purchase', async ()
   assert.match(text, /待付款/);                          // 产品状态（AC3）
   assert.equal(calls.length, 1);                        // 提交恰好一次购买
   assert.equal(calls[0]?.quote_id, 'qt_1');
-  assert.equal(calls[0]?.provider, 'wechat');
+  assert.equal(calls[0]?.provider, 'alipay');           // (审查 H1) 默认渠道=支付宝（#82 主链）
+  assert.match(text, /支付宝/);                          // 渠道选择器可见
+  assert.match(text, /微信支付/);
   // 支付跳转链接（审查 F2：渠道请求创建后用户必须有支付入口）。
   const payLink = document.querySelector('a[href="https://pay.example/qr"]');
   assert.ok(payLink, 'checkout must render the payment link from checkout_url');
@@ -77,6 +81,7 @@ test('purchase without an order shows the closed failure message and never queri
     commercial: {
       quote: async () => quote,
       purchase: async () => ({ state: 'absent', reason: 'unreachable' }),
+      purchaseStatus: async () => ({ state: 'absent' }),
       getOrder: async (id: string) => { getOrderCalls.push(id); return order; },
     },
   };
@@ -84,6 +89,7 @@ test('purchase without an order shows the closed failure message and never queri
   const { createScopeController } = await import('@weknora/domain/scope');
   const scopeController = createScopeController({ origin: '', userId: 'user-1', tenantId: '41' });
   let root: Root | undefined;
+  document.body.innerHTML = ''; // isolate each test's DOM face
   await act(async () => {
     root = createRoot(document.body.appendChild(document.createElement('div')));
     root.render(React.createElement(CheckoutPage, { client: client as never, scopeController, orderId: '' }));
@@ -110,6 +116,7 @@ test('a 503 purchase failure with a closed reason token maps to the Chinese mess
     commercial: {
       quote: async () => quote,
       purchase: async () => { throw failure; },
+      purchaseStatus: async () => ({ state: 'absent' }),
       getOrder: async () => order,
     },
   };
@@ -117,6 +124,7 @@ test('a 503 purchase failure with a closed reason token maps to the Chinese mess
   const { createScopeController } = await import('@weknora/domain/scope');
   const scopeController = createScopeController({ origin: '', userId: 'user-1', tenantId: '43' });
   let root: Root | undefined;
+  document.body.innerHTML = ''; // isolate each test's DOM face
   await act(async () => {
     root = createRoot(document.body.appendChild(document.createElement('div')));
     root.render(React.createElement(CheckoutPage, { client: client as never, scopeController, orderId: '' }));
@@ -138,6 +146,7 @@ test('a 409 purchase conflict maps its message token to the Chinese copy', async
     commercial: {
       quote: async () => quote,
       purchase: async () => { throw expired; },
+      purchaseStatus: async () => ({ state: 'absent' }),
       getOrder: async () => order,
     },
   };
@@ -145,6 +154,7 @@ test('a 409 purchase conflict maps its message token to the Chinese copy', async
   const { createScopeController } = await import('@weknora/domain/scope');
   const scopeController = createScopeController({ origin: '', userId: 'user-1', tenantId: '45' });
   let root: Root | undefined;
+  document.body.innerHTML = ''; // isolate each test's DOM face
   await act(async () => {
     root = createRoot(document.body.appendChild(document.createElement('div')));
     root.render(React.createElement(CheckoutPage, { client: client as never, scopeController, orderId: '' }));
@@ -163,6 +173,7 @@ test('an unmapped server error falls back to the closed Chinese copy, never the 
     commercial: {
       quote: async () => quote,
       purchase: async () => { throw unmapped; },
+      purchaseStatus: async () => ({ state: 'absent' }),
       getOrder: async () => order,
     },
   };
@@ -170,6 +181,7 @@ test('an unmapped server error falls back to the closed Chinese copy, never the 
   const { createScopeController } = await import('@weknora/domain/scope');
   const scopeController = createScopeController({ origin: '', userId: 'user-1', tenantId: '46' });
   let root: Root | undefined;
+  document.body.innerHTML = ''; // isolate each test's DOM face
   await act(async () => {
     root = createRoot(document.body.appendChild(document.createElement('div')));
     root.render(React.createElement(CheckoutPage, { client: client as never, scopeController, orderId: '' }));
@@ -196,6 +208,7 @@ test('a quote-level conflict retry re-cuts a fresh quote', async () => {
         if (purchaseCalls === 1) throw expired;
         return { state: 'awaiting_payment', order, plan_key: 'pro', plan_version: 1, amount_fen: '9900', currency: 'CNY' };
       },
+      purchaseStatus: async () => ({ state: 'absent' }),
       getOrder: async () => order,
     },
   };
@@ -203,6 +216,7 @@ test('a quote-level conflict retry re-cuts a fresh quote', async () => {
   const { createScopeController } = await import('@weknora/domain/scope');
   const scopeController = createScopeController({ origin: '', userId: 'user-1', tenantId: '47' });
   let root: Root | undefined;
+  document.body.innerHTML = ''; // isolate each test's DOM face
   await act(async () => {
     root = createRoot(document.body.appendChild(document.createElement('div')));
     root.render(React.createElement(CheckoutPage, { client: client as never, scopeController, orderId: '' }));
@@ -234,6 +248,7 @@ test('a link-less pending order offers a restart-checkout way out', async () => 
         if (purchaseCalls === 1) return { state: 'awaiting_payment', order: deadOrder, plan_key: 'pro', plan_version: 1, amount_fen: '9900', currency: 'CNY' };
         return { state: 'awaiting_payment', order, plan_key: 'pro', plan_version: 1, amount_fen: '9900', currency: 'CNY' };
       },
+      purchaseStatus: async () => ({ state: 'awaiting_payment' }),
       getOrder: async () => deadOrder,
     },
   };
@@ -241,6 +256,7 @@ test('a link-less pending order offers a restart-checkout way out', async () => 
   const { createScopeController } = await import('@weknora/domain/scope');
   const scopeController = createScopeController({ origin: '', userId: 'user-1', tenantId: '48' });
   let root: Root | undefined;
+  document.body.innerHTML = ''; // isolate each test's DOM face
   await act(async () => {
     root = createRoot(document.body.appendChild(document.createElement('div')));
     root.render(React.createElement(CheckoutPage, { client: client as never, scopeController, orderId: '' }));
@@ -266,6 +282,7 @@ test('a network-layer error renders the closed Chinese copy', async () => {
     commercial: {
       quote: async () => quote,
       purchase: async () => { throw new TypeError('Failed to fetch'); },
+      purchaseStatus: async () => ({ state: 'absent' }),
       getOrder: async () => order,
     },
   };
@@ -273,6 +290,7 @@ test('a network-layer error renders the closed Chinese copy', async () => {
   const { createScopeController } = await import('@weknora/domain/scope');
   const scopeController = createScopeController({ origin: '', userId: 'user-1', tenantId: '49' });
   let root: Root | undefined;
+  document.body.innerHTML = ''; // isolate each test's DOM face
   await act(async () => {
     root = createRoot(document.body.appendChild(document.createElement('div')));
     root.render(React.createElement(CheckoutPage, { client: client as never, scopeController, orderId: '' }));
@@ -284,6 +302,75 @@ test('a network-layer error renders the closed Chinese copy', async () => {
   await act(async () => { root?.unmount(); });
 });
 
+// (审查 H1) 渠道选择器：默认支付宝；切到微信后提交体 provider=='wechat'
+// （#81 既有形状由表驱动锁定）。
+test('the channel selector defaults to alipay and submits the selected provider', async () => {
+  const calls: Array<{ quote_id: string; provider: string }> = [];
+  const client = {
+    commercial: {
+      quote: async () => quote,
+      purchase: async (input: { quote_id: string; provider: string }) => {
+        calls.push(input);
+        return { state: 'awaiting_payment', order, plan_key: 'pro', plan_version: 1, amount_fen: '9900', currency: 'CNY' };
+      },
+      purchaseStatus: async () => ({ state: 'awaiting_payment' }),
+      getOrder: async () => order,
+    },
+  };
+  const { CheckoutPage } = await import('./CheckoutPage.tsx');
+  const { createScopeController } = await import('@weknora/domain/scope');
+  const scopeController = createScopeController({ origin: '', userId: 'user-1', tenantId: '71' });
+  let root: Root | undefined;
+  document.body.innerHTML = ''; // isolate each test's DOM face
+  await act(async () => {
+    root = createRoot(document.body.appendChild(document.createElement('div')));
+    root.render(React.createElement(CheckoutPage, { client: client as never, scopeController, orderId: '' }));
+  });
+  await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+  assert.equal(calls[0]?.provider, 'alipay');
+  // 切到微信并点「重新发起支付」：新订单的提交体 provider=='wechat'。
+  const wechatRadio = document.querySelector<HTMLInputElement>('input[value="wechat"]');
+  assert.ok(wechatRadio, 'the wechat radio must render');
+  await act(async () => { wechatRadio?.click(); });
+  const restart = [...document.querySelectorAll('button')].find((b) => b.textContent?.includes('改用微信支付重新发起支付'));
+  assert.ok(restart, 'the switch-channel re-submit entry must appear once the radio changes');
+  assert.ok(restart, 'a restart/retry button must exist');
+  await act(async () => { restart?.click(); });
+  await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+  assert.equal(calls[calls.length - 1]?.provider, 'wechat', 'the wechat selection must ride the next submit');
+  await act(async () => { root?.unmount(); });
+});
+
+// (#82 AC1) 三态数据源是 purchase 投影：paid_awaiting_activation →「已付款，
+// 权益处理中」；active →「权益已生效」。
+test('the three-state face rides the purchase projection', async () => {
+  for (const [purchaseState, want] of [
+    ['paid_awaiting_activation', '已付款，权益处理中'],
+    ['active', '权益已生效'],
+    ['awaiting_payment', '待付款（权益未开通）'],
+  ] as const) {
+    const client = {
+      commercial: {
+        quote: async () => quote,
+        purchase: async () => ({ state: purchaseState, order, plan_key: 'pro', plan_version: 1, amount_fen: '9900', currency: 'CNY' }),
+        purchaseStatus: async () => ({ state: purchaseState }),
+        getOrder: async () => order,
+      },
+    };
+    const { CheckoutPage } = await import('./CheckoutPage.tsx');
+    const { createScopeController } = await import('@weknora/domain/scope');
+    const scopeController = createScopeController({ origin: '', userId: 'user-1', tenantId: '72' });
+    let root: Root | undefined;
+    await act(async () => {
+      root = createRoot(document.body.appendChild(document.createElement('div')));
+      root.render(React.createElement(CheckoutPage, { client: client as never, scopeController, orderId: '' }));
+    });
+    await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+    assert.match(document.body.textContent ?? '', new RegExp(want));
+    await act(async () => { root?.unmount(); });
+  }
+});
+
 // R1-V12：已支付的订单不再显示「待付款（权益未开通）」标签（付款后回访/轮询
 // 更新后不得误导重复支付）。
 test('a paid order no longer shows the awaiting-payment label', async () => {
@@ -291,7 +378,8 @@ test('a paid order no longer shows the awaiting-payment label', async () => {
   const client = {
     commercial: {
       quote: async () => quote,
-      purchase: async () => ({ state: 'awaiting_payment', order: paidOrder, plan_key: 'pro', plan_version: 1, amount_fen: '9900', currency: 'CNY' }),
+      purchase: async () => ({ state: 'paid_awaiting_activation', order: paidOrder, plan_key: 'pro', plan_version: 1, amount_fen: '9900', currency: 'CNY' }),
+      purchaseStatus: async () => ({ state: 'paid_awaiting_activation' }),
       getOrder: async () => paidOrder,
     },
   };
@@ -299,6 +387,7 @@ test('a paid order no longer shows the awaiting-payment label', async () => {
   const { createScopeController } = await import('@weknora/domain/scope');
   const scopeController = createScopeController({ origin: '', userId: 'user-1', tenantId: '51' });
   let root: Root | undefined;
+  document.body.innerHTML = ''; // isolate each test's DOM face
   await act(async () => {
     root = createRoot(document.body.appendChild(document.createElement('div')));
     root.render(React.createElement(CheckoutPage, { client: client as never, scopeController, orderId: '' }));
@@ -317,6 +406,7 @@ test('a javascript-scheme checkout_url is never rendered as a link', async () =>
     commercial: {
       quote: async () => quote,
       purchase: async () => ({ state: 'awaiting_payment', order: evilOrder, plan_key: 'pro', plan_version: 1, amount_fen: '9900', currency: 'CNY' }),
+      purchaseStatus: async () => ({ state: 'awaiting_payment' }),
       getOrder: async () => evilOrder,
     },
   };
@@ -324,6 +414,7 @@ test('a javascript-scheme checkout_url is never rendered as a link', async () =>
   const { createScopeController } = await import('@weknora/domain/scope');
   const scopeController = createScopeController({ origin: '', userId: 'user-1', tenantId: '61' });
   let root: Root | undefined;
+  document.body.innerHTML = ''; // isolate each test's DOM face
   await act(async () => {
     root = createRoot(document.body.appendChild(document.createElement('div')));
     root.render(React.createElement(CheckoutPage, { client: client as never, scopeController, orderId: '' }));
