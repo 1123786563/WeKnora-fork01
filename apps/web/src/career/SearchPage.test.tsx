@@ -49,8 +49,24 @@ function render(element: React.ReactNode): HTMLDivElement {
   host = document.createElement('div'); document.body.append(host); root = createRoot(host); act(() => root!.render(element)); return host
 }
 type CareerStubs = Record<string, (...args: any[]) => unknown>
+// T21: the pre-execution estimate is part of the page's read path, so the
+// shared mount helper injects a live admitting estimate by default; tests
+// that exercise the usage gate override usageEstimate explicitly.
+const admittingEstimate = () => ({
+  kind: 'usage_estimate' as const, operation: 'search_once' as const, costUnits: 1,
+  conditions: [
+    '额度在执行前预占：每个 search_once（含规则触发的周期 Run）执行前预占 1 个单位，并在执行前向你展示本预估',
+    '预占以 requestId 幂等：同一 requestId 重放或重试不会重复预占或收费',
+    '预占在搜索终态后结算；已预占但从未执行的请求在租约过期后自动释放，不占余额',
+    '额度按 UTC 自然月重置；本期额度耗尽时只阻止新的收费 Run，既有档案、申请、评估与搜索记录永远可读',
+    '付费状态不改变岗位排序或资格判定：评估与排序输入不含任何付费维度',
+  ],
+  periodStart: '2026-09-01T00:00:00Z', periodEnd: '2026-10-01T00:00:00Z',
+  limitUnits: 50, reservedUnits: 0, settledUnits: 0, remainingUnits: 50, wouldAdmit: true,
+})
 async function mountSearch(career: CareerStubs, scopeController = createScopeController({ origin: 'https://weknora.test', userId: 'u-1', tenantId: 't-1' })) {
-  const container = render(React.createElement(CareerSearchPage, { client: { career } as unknown as WeKnoraClient, scopeController }))
+  const stubs: CareerStubs = { usageEstimate: async () => admittingEstimate(), ...career }
+  const container = render(React.createElement(CareerSearchPage, { client: { career: stubs } as unknown as WeKnoraClient, scopeController }))
   await act(async () => { await new Promise((resolve) => setImmediate(resolve)) })
   return { container, scopeController }
 }
@@ -278,4 +294,79 @@ test('offers no continuous-search control of any kind', async () => {
   assert.match(container.textContent ?? '', /一次性/)
   const ruleControls = container.querySelectorAll('input[type="checkbox"], input[type="radio"], [role="switch"], [role="checkbox"]')
   assert.equal(ruleControls.length, 0)
+})
+
+test('shows the pre-execution estimate before any charged run, including the paid-tier neutrality line', async () => {
+  const { container } = await mountSearch({ open: async () => view(3) })
+  const panel = container.querySelector('[aria-label="额度预估"]')!
+  assert.match(panel.textContent ?? '', /将消耗 1 个额度单位/)
+  assert.match(panel.textContent ?? '', /本期剩余 50 \/ 50 个额度单位/)
+  assert.match(panel.textContent ?? '', /额度在执行前预占/)
+  assert.match(panel.textContent ?? '', /同一 requestId 重放或重试不会重复预占或收费/)
+  assert.match(panel.textContent ?? '', /付费状态不改变岗位排序或资格判定/)
+})
+
+test('an unreadable estimate closes the charged path: the reason is shown and no search is sent', async () => {
+  const searches: SearchCall[] = []
+  const { container } = await mountSearch({
+    open: async () => view(3),
+    usageEstimate: async () => { throw Object.assign(new Error('career usage admission unavailable'), { code: 'admission_unavailable' }) },
+    searchOnce: async (input: SearchCall) => { searches.push(input); return { ...completedReceipt, requestId: input.requestId } },
+  })
+  const panel = container.querySelector('[aria-label="额度预估"]')!
+  assert.match(panel.querySelector('[role="alert"]')?.textContent ?? '', /额度预估暂不可用/)
+  assert.match(panel.textContent ?? '', /不会先执行后补报/)
+  const textarea = container.querySelector<HTMLTextAreaElement>('[aria-label="找岗指令"]')!
+  await act(async () => { setInput(textarea, '上海 前端 实习'); await settle() })
+  const submit = submitControl(container)
+  assert.ok(submit.classList.contains('t-is-disabled') || (submit as HTMLButtonElement).disabled === true)
+  await act(async () => { submit.click(); await settle() })
+  assert.equal(searches.length, 0)
+})
+
+test('an exhausted window blocks the next charged run while the page keeps its readable surfaces', async () => {
+  const searches: SearchCall[] = []
+  const { container } = await mountSearch({
+    open: async () => view(3),
+    usageEstimate: async () => ({ ...admittingEstimate(), reservedUnits: 0, settledUnits: 50, remainingUnits: 0, wouldAdmit: false }),
+    searchOnce: async (input: SearchCall) => { searches.push(input); return { ...completedReceipt, requestId: input.requestId } },
+  })
+  const panel = container.querySelector('[aria-label="额度预估"]')!
+  assert.match(panel.querySelector('[role="alert"]')?.textContent ?? '', /本期额度已耗尽/)
+  assert.match(panel.textContent ?? '', /新的收费找岗已被阻止/)
+  assert.match(panel.textContent ?? '', /既有档案、申请、评估与搜索记录仍可完整读取/)
+  const textarea = container.querySelector<HTMLTextAreaElement>('[aria-label="找岗指令"]')!
+  await act(async () => { setInput(textarea, '上海 前端 实习'); await settle() })
+  const submit = submitControl(container)
+  assert.ok(submit.classList.contains('t-is-disabled') || (submit as HTMLButtonElement).disabled === true)
+  await act(async () => { submit.click(); await settle() })
+  assert.equal(searches.length, 0)
+})
+
+test('a terminal receipt and a quota refusal both refresh the live estimate; replay keeps the original request ID', async () => {
+  const searches: SearchCall[] = []
+  const estimateReads: number[] = []
+  let read = 0
+  let first = true
+  const { container } = await mountSearch({
+    open: async () => view(3),
+    usageEstimate: async () => { read += 1; estimateReads.push(read); return read <= 1 ? admittingEstimate() : { ...admittingEstimate(), settledUnits: 50, remainingUnits: 0, wouldAdmit: false } },
+    searchOnce: async (input: SearchCall) => {
+      searches.push(input)
+      if (first) { first = false; throw Object.assign(new Error('quota refused'), { code: 'search_quota_refused' }) }
+      return { ...completedReceipt, requestId: input.requestId }
+    },
+  })
+  await submitQuery(container, '上海 前端 实习')
+  assert.ok(estimateReads.length >= 2, `estimate refreshed after the refusal (reads: ${estimateReads.length})`)
+  const panel = container.querySelector('[aria-label="额度预估"]')!
+  assert.match(panel.textContent ?? '', /本期剩余 0 \/ 50 个额度单位/)
+  const originalId = searches[0]?.requestId
+  await act(async () => { byLabel(container, 'button', '稍后用原请求编号重试').click(); await settle() })
+  assert.equal(searches.length, 2)
+  assert.equal(searches[1]?.requestId, originalId)
+  assert.ok(container.querySelector('[aria-label="找岗结果"]'))
+  // A terminal receipt refreshes the estimate again — the panel never shows
+  // a stale balance after a charged run.
+  assert.ok(estimateReads.length >= 3, `estimate refreshed after the terminal receipt (reads: ${estimateReads.length})`)
 })

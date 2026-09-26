@@ -5,6 +5,7 @@ import type { ScopeController } from '@weknora/domain/scope'
 import type { SearchFailureCode, SearchOnceReceipt, SearchQualification, SearchUncertainty, SearchResultRow } from '../../../../packages/api-client/src/career.ts'
 import type { OpportunityURLImportReceipt } from '../../../../packages/api-client/src/career.ts'
 import { opportunityEvidencePath } from './OpportunityPage.tsx'
+import { CareerUsagePanel, useCareerUsageEstimate, usageAllowsChargedRun } from './UsagePanel.tsx'
 import './search.css'
 
 // T11 one-shot search page. Every observable enum is the frozen backend
@@ -65,6 +66,9 @@ function writeHistory(storage: Storage | undefined, key: string, entries: Histor
 
 export function CareerSearchPage({ client, scopeController }: { client: WeKnoraClient; scopeController: ScopeController }): ReactNode {
  const scope = scopeController.current().scope
+ // T21: the pre-execution usage estimate is a live read on the page; a
+ // charged run may only start from a live, admitting estimate.
+ const usage = useCareerUsageEstimate(client, scopeController)
  const [viewPhase, setViewPhase] = useState<ViewPhase>('loading')
  const [revision, setRevision] = useState<number>()
  const [viewError, setViewError] = useState<TypedError>()
@@ -136,13 +140,16 @@ export function CareerSearchPage({ client, scopeController }: { client: WeKnoraC
 
  const acceptReceipt = useCallback((next: SearchOnceReceipt, storageKey: string): void => {
   setReceipt(next); setPhase('terminal'); setError(undefined); setNotice('')
+  // A terminal charged run moved the ledger; the estimate panel must never
+  // show a stale balance afterwards.
+  usage.reload()
   setHistoryEntries((current) => {
    const entry: HistoryEntry = { searchId: next.searchId, requestId: next.requestId, query: next.query, status: next.status, checkedAt: next.checkedAt }
    const merged = [entry, ...current.filter((item) => item.searchId !== next.searchId)].slice(0, 8)
    writeHistory(typeof window === 'undefined' ? undefined : window.localStorage, storageKey, merged)
    return merged
   })
- }, [])
+ }, [usage.reload])
 
  const send = useCallback(async (next: Attempt): Promise<void> => {
   const requestScope = scopeController.current()
@@ -167,7 +174,7 @@ export function CareerSearchPage({ client, scopeController }: { client: WeKnoraC
     } catch { /* the conflict panel keeps the server-reported currentRevision */ }
     return
    }
-   if (parsed.code === 'search_quota_refused') { setError(parsed); setPhase('idle'); setNotice(''); return }
+   if (parsed.code === 'search_quota_refused') { setError(parsed); setPhase('idle'); setNotice(''); usage.reload(); return }
    if (['invalid_request', 'idempotency_conflict', 'request_too_large', 'PAYLOAD_TOO_LARGE'].includes(parsed.code ?? '')) {
     setError(parsed); setPhase('idle'); setAttempt(undefined); setNotice(parsed.code === 'invalid_request' ? '指令未被接受，请调整后重新发起一次找岗。' : '本次请求与已保存的找岗内容不一致，已放弃；请开始一次新的找岗。')
     return
@@ -175,7 +182,7 @@ export function CareerSearchPage({ client, scopeController }: { client: WeKnoraC
    if (isUncertainOutcome(cause)) { setPhase('unknown'); setNotice(''); return }
    setError(parsed); setPhase('idle'); setNotice('')
   }
- }, [acceptReceipt, clearForScopeChange, client, scopeController])
+  }, [acceptReceipt, clearForScopeChange, client, scopeController, usage.reload])
 
  const submit = (event: FormEvent): void => {
   event.preventDefault()
@@ -266,13 +273,14 @@ export function CareerSearchPage({ client, scopeController }: { client: WeKnoraC
   {viewPhase === 'error' ? <Card bordered><div role="alert"><strong>暂时无法打开求职空间</strong><p>{viewError?.text}</p></div><Button variant="outline" onClick={() => void load()}>重新读取</Button></Card> : null}
   {viewPhase === 'scope-changed' ? <Card bordered><p>{notice}</p><Button variant="outline" onClick={() => void load()}>重新读取</Button></Card> : null}
   {viewPhase === 'ready' ? <>
+   <CareerUsagePanel usage={usage.state} onRetry={usage.reload} />
    <Card bordered className="wk-career-search__compose">
     <h2>找岗指令</h2>
     <form onSubmit={submit}>
      <label htmlFor="career-search-query">用一句话描述要找的岗位</label>
      <textarea id="career-search-query" aria-label="找岗指令" value={draft} placeholder="例如：上海 前端开发 实习" disabled={busy || attempt !== undefined} onChange={(event) => setDraft(event.currentTarget.value)} rows={3} />
      <div className="wk-career-search__actions">
-      <Button type="submit" disabled={busy || attempt !== undefined || !draft.trim() || revision === undefined} loading={busy}>{attempt && phase === 'terminal' ? '已找岗（一次性）' : '找岗（一次性）'}</Button>
+      <Button type="submit" disabled={busy || attempt !== undefined || !draft.trim() || revision === undefined || !usageAllowsChargedRun(usage.state)} loading={busy}>{attempt && phase === 'terminal' ? '已找岗（一次性）' : '找岗（一次性）'}</Button>
       {attempt && phase === 'terminal' ? <Button variant="outline" onClick={startNewSearch}>开始新的一次找岗</Button> : null}
      </div>
     </form>

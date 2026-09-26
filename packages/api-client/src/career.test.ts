@@ -1109,3 +1109,69 @@ test('reminder list decoder accepts the empty inbox and the discovery shape', as
   await assert.rejects(api.reminders(), TypeError)
  }
 })
+
+// T21: usage admission client — GET /usage/estimate?operation=search_once is
+// the free read-only projection the UI must show before any charged run. The
+// decoder keeps the frozen contract strict: exactly the search_once
+// operation, one-unit cost, verbatim conditions, UTC-month period window,
+// non-negative ledger counters and the wouldAdmit admission verdict. The
+// client never recomputes the balance; typed refusals (search_quota_refused
+// 429, admission_unavailable 503) pass through as transport ApiErrors.
+const usageConditions = [
+ '额度在执行前预占：每个 search_once（含规则触发的周期 Run）执行前预占 1 个单位，并在执行前向你展示本预估',
+ '预占以 requestId 幂等：同一 requestId 重放或重试不会重复预占或收费',
+ '预占在搜索终态后结算；已预占但从未执行的请求在租约过期后自动释放，不占余额',
+ '额度按 UTC 自然月重置；本期额度耗尽时只阻止新的收费 Run，既有档案、申请、评估与搜索记录永远可读',
+ '付费状态不改变岗位排序或资格判定：评估与排序输入不含任何付费维度',
+]
+const usageEstimate = {
+ kind: 'usage_estimate', operation: 'search_once', costUnits: 1, conditions: usageConditions,
+ periodStart: '2026-09-01T00:00:00Z', periodEnd: '2026-10-01T00:00:00Z',
+ limitUnits: 50, reservedUnits: 1, settledUnits: 2, remainingUnits: 47, wouldAdmit: true,
+}
+
+test('usage estimate client encodes the estimate route and decodes the frozen projection verbatim', async () => {
+ const calls: Array<{ method: string; path: string }> = []
+ const api = createCareerApi(async (input) => {
+  calls.push({ method: input.method, path: input.path })
+  return usageEstimate
+ })
+ const decoded = await api.usageEstimate('search_once')
+ assert.deepEqual(decoded, usageEstimate)
+ assert.deepEqual(calls, [{ method: 'GET', path: '/api/v1/career/usage/estimate?operation=search_once' }])
+ const spent = createCareerApi(async () => ({ ...usageEstimate, reservedUnits: 0, settledUnits: 50, remainingUnits: 0, wouldAdmit: false }))
+ const refused = await spent.usageEstimate('search_once')
+ assert.equal(refused.wouldAdmit, false)
+ assert.equal(refused.remainingUnits, 0)
+ assert.deepEqual(refused.conditions, usageConditions)
+})
+
+test('usage estimate client refuses operations outside the frozen vocabulary', async () => {
+ const refusing = createCareerApi(async () => { throw new Error('must not send invalid request') })
+ await assert.rejects(refusing.usageEstimate(' '), /operation/)
+ await assert.rejects(refusing.usageEstimate('rule_trigger' as 'search_once'), /operation/)
+})
+
+test('usage estimate decoder rejects invented kinds, broken windows and negative ledgers', async () => {
+ const inventors: Array<Record<string, unknown>> = [
+  { ...usageEstimate, kind: 'usage_guess' },
+  { ...usageEstimate, operation: 'rule_trigger' },
+  { ...usageEstimate, costUnits: 0 },
+  { ...usageEstimate, costUnits: 1.5 },
+  { ...usageEstimate, conditions: [] },
+  { ...usageEstimate, conditions: [''] },
+  { ...usageEstimate, conditions: 'free' },
+  { ...usageEstimate, periodStart: 'September' },
+  { ...usageEstimate, periodEnd: undefined },
+  { ...usageEstimate, limitUnits: 0 },
+  { ...usageEstimate, reservedUnits: -1 },
+  { ...usageEstimate, settledUnits: 'two' },
+  { ...usageEstimate, remainingUnits: 1.5 },
+  { ...usageEstimate, wouldAdmit: 'yes' },
+  {},
+ ]
+ for (const payload of inventors) {
+  const api = createCareerApi(async () => payload)
+  await assert.rejects(api.usageEstimate('search_once'), TypeError)
+ }
+})

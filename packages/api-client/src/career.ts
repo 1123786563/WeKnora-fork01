@@ -303,6 +303,57 @@ export function decodeSearchOnceReceipt(value: unknown): SearchOnceReceipt {
  }
 }
 
+// Frozen usage admission contract (T21, internal/modules/career/usage.go).
+// Exactly one operation is charged — a search_once run, including every
+// period a recurring rule triggers. The estimate is a free read-only
+// projection of what the next charged run would consume, under which frozen
+// conditions, and the live balance of the current UTC calendar-month window.
+// The client displays it verbatim and never recomputes the balance; an
+// unreadable ledger surfaces as the typed admission_unavailable refusal
+// (fail-closed, never execute-first) and an exhausted window as
+// wouldAdmit=false plus the search_quota_refused refusal on the charged act.
+export type UsageOperation = 'search_once'
+export type UsageEstimateView = {
+ kind: 'usage_estimate'
+ operation: UsageOperation
+ costUnits: number
+ conditions: string[]
+ periodStart: string
+ periodEnd: string
+ limitUnits: number
+ reservedUnits: number
+ settledUnits: number
+ remainingUnits: number
+ wouldAdmit: boolean
+}
+
+function decodeUsageConditions(value: unknown): string[] {
+ if (!Array.isArray(value) || value.length === 0) throw new TypeError('invalid usage estimate')
+ const conditions = value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+ if (conditions.length !== value.length) throw new TypeError('invalid usage estimate')
+ return conditions
+}
+
+export function decodeUsageEstimateView(value: unknown): UsageEstimateView {
+ const record = decodeRecord(value, 'invalid usage estimate')
+ if (record.kind !== 'usage_estimate' || record.operation !== 'search_once'
+  || !Number.isSafeInteger(record.costUnits) || Number(record.costUnits) < 1
+  || !validTimestamp(record.periodStart) || !validTimestamp(record.periodEnd)
+  || !Number.isSafeInteger(record.limitUnits) || Number(record.limitUnits) < 1
+  || !Number.isSafeInteger(record.reservedUnits) || Number(record.reservedUnits) < 0
+  || !Number.isSafeInteger(record.settledUnits) || Number(record.settledUnits) < 0
+  || !Number.isSafeInteger(record.remainingUnits)
+  || typeof record.wouldAdmit !== 'boolean') throw new TypeError('invalid usage estimate')
+ return {
+  kind: 'usage_estimate', operation: 'search_once', costUnits: record.costUnits as number,
+  conditions: decodeUsageConditions(record.conditions),
+  periodStart: record.periodStart, periodEnd: record.periodEnd,
+  limitUnits: record.limitUnits as number, reservedUnits: record.reservedUnits as number,
+  settledUnits: record.settledUnits as number, remainingUnits: record.remainingUnits as number,
+  wouldAdmit: record.wouldAdmit,
+ }
+}
+
 function decodeApplicationPin(value: unknown): ApplicationEvidencePin {
  const record = decodeRecord(value, 'invalid application pinned evidence')
  if (!validIdentifier(record.opportunityId) || !validIdentifier(record.snapshotId) || !validIdentifier(record.evaluationId)
@@ -1164,6 +1215,10 @@ export function createCareerApi(request: CareerRequest, binaryRequest?: CareerBi
   async search(searchId: string, signal?: AbortSignal): Promise<SearchOnceReceipt> {
    if (!searchId.trim()) throw new TypeError('search ID must not be empty')
    return decodeSearchOnceReceipt(await request({ method: 'GET', path: `/api/v1/career/searches/${encodeURIComponent(searchId)}`, ...(signal ? { signal } : {}) }))
+  },
+  async usageEstimate(operation: UsageOperation, signal?: AbortSignal): Promise<UsageEstimateView> {
+   if (operation !== 'search_once' || operation.trim() !== operation) throw new TypeError('usage operation must be search_once')
+   return decodeUsageEstimateView(await request({ method: 'GET', path: `/api/v1/career/usage/estimate?operation=${encodeURIComponent(operation)}`, ...(signal ? { signal } : {}) }))
   },
   async setRule(input: SetRuleInput, signal?: AbortSignal): Promise<SetRuleReceipt> {
    if (!input.requestId.trim() || !input.query.trim()) throw new TypeError('rule requestId and query must not be empty')

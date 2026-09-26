@@ -3,6 +3,7 @@ import { Button, Card } from 'tdesign-react'
 import type { WeKnoraClient } from '@weknora/api-client'
 import type { ScopeController } from '@weknora/domain/scope'
 import type { RuleRunView, RuleStatus, RuleTodoView, RuleView, SetRuleReceipt } from '../../../../packages/api-client/src/career.ts'
+import { CareerUsagePanel, useCareerUsageEstimate } from './UsagePanel.tsx'
 import './rule.css'
 
 // T13 recurring search rule page. The rule is the only continuous search
@@ -53,6 +54,10 @@ function readStoredRuleId(storage: Storage | undefined, key: string): string | u
 
 export function CareerRulePage({ client, scopeController }: { client: WeKnoraClient; scopeController: ScopeController }): ReactNode {
  const scope = scopeController.current().scope
+ // T21: every rule trigger is one charged search_once, so the quota
+ // estimate is shown before enabling; enabling requires a live estimate
+ // (fail-closed, no enable-first-report-later path).
+ const usage = useCareerUsageEstimate(client, scopeController)
  const [viewPhase, setViewPhase] = useState<ViewPhase>('loading')
  const [revision, setRevision] = useState<number>()
  const [viewError, setViewError] = useState<TypedError>()
@@ -138,8 +143,12 @@ export function CareerRulePage({ client, scopeController }: { client: WeKnoraCli
   setReceipt(next); setPhase('idle'); setError(undefined); setNotice(''); setAttempt(undefined)
   const activeScope = scopeController.current().scope
   try { window.localStorage.setItem(ruleIdKey(activeScope.userId, activeScope.tenantId), next.ruleId) } catch { /* private mode */ }
+  // A saved rule (especially an enabled one) changes what the next charged
+  // run would consume; re-read the live estimate instead of showing a
+  // stale balance.
+  usage.reload()
   void refreshRuns(next.ruleId)
- }, [refreshRuns])
+ }, [refreshRuns, usage.reload])
 
  const send = useCallback(async (next: Attempt): Promise<void> => {
   const requestScope = scopeController.current()
@@ -174,12 +183,18 @@ export function CareerRulePage({ client, scopeController }: { client: WeKnoraCli
 
  const intervalNumber = Number(draft.interval)
  const intervalValid = Number.isSafeInteger(intervalNumber) && intervalNumber >= 1 && intervalNumber <= 43200
+ // T21: enabling is the charged path — every trigger is one search_once —
+ // so it requires a live estimate. Paused/disabled configuration stays
+ // open: those states can never trigger a charged run. An exhausted window
+ // does not block the write itself; each trigger is then visibly blocked
+ // (blocked_no_quota), which the estimate panel states up front.
+ const enableRequiresEstimate = draft.status === 'enabled' && usage.state.phase !== 'ready'
  // An existing rule (created here or restored from the stored reference) is
  // updated under its rule ID; a fresh save without one creates a new rule.
  const existingRuleId = receipt?.ruleId ?? ruleView?.ruleId
  const submit = (event: FormEvent): void => {
   event.preventDefault()
-  if (phase === 'busy' || !draft.query.trim() || !intervalValid || revision === undefined) return
+  if (phase === 'busy' || !draft.query.trim() || !intervalValid || revision === undefined || enableRequiresEstimate) return
   const next: Attempt = { requestId: makeId(), ...(existingRuleId ? { ruleId: existingRuleId } : {}), query: draft.query.trim(), intervalMinutes: intervalNumber, status: draft.status, expectedRevision: revision }
   setAttempt(next)
   void send(next)
@@ -224,6 +239,7 @@ export function CareerRulePage({ client, scopeController }: { client: WeKnoraCli
   {viewPhase === 'error' ? <Card bordered><div role="alert"><strong>暂时无法打开求职空间</strong><p>{viewError?.text}</p></div><Button variant="outline" onClick={() => void load()}>重新读取</Button></Card> : null}
   {viewPhase === 'scope-changed' ? <Card bordered><p>{notice}</p><Button variant="outline" onClick={() => void load()}>重新读取</Button></Card> : null}
   {viewPhase === 'ready' ? <>
+   <CareerUsagePanel usage={usage.state} onRetry={usage.reload} />
    <Card bordered className="wk-career-rule__compose">
     <h2>规则内容</h2>
     <form onSubmit={submit}>
@@ -238,9 +254,9 @@ export function CareerRulePage({ client, scopeController }: { client: WeKnoraCli
       <label><input type="radio" name="career-rule-status" value="enabled" checked={draft.status === 'enabled'} disabled={busy} onChange={() => setDraft((current) => ({ ...current, status: 'enabled' }))} />启用（按间隔自动触发）</label>
      </fieldset>
      <div className="wk-career-rule__actions">
-      <Button type="submit" disabled={busy || !draft.query.trim() || !intervalValid || revision === undefined} loading={busy}>保存规则</Button>
+      <Button type="submit" disabled={busy || !draft.query.trim() || !intervalValid || revision === undefined || enableRequiresEstimate} loading={busy}>保存规则</Button>
      </div>
-     <p className="wk-career-rule__form-note">保存会创建新规则或更新现有规则；创建时默认为停用，不会开始运行。启用、暂停、停用都由你在本页显式操作。</p>
+     <p className="wk-career-rule__form-note">保存会创建新规则或更新现有规则；创建时默认为停用，不会开始运行。启用、暂停、停用都由你在本页显式操作。{enableRequiresEstimate ? '启用需要先取得可用的额度预估；预估恢复前不能启用（不会先执行后补报）。' : ''}</p>
     </form>
     {notice && phase !== 'unknown' ? <p aria-live="polite" className="wk-career-rule__notice">{notice}</p> : null}
    </Card>

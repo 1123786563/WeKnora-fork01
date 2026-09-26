@@ -50,8 +50,24 @@ function render(element: React.ReactNode): HTMLDivElement {
  host = document.createElement('div'); document.body.append(host); root = createRoot(host); act(() => root!.render(element)); return host
 }
 type CareerStubs = Record<string, (...args: any[]) => unknown>
+// T21: enabling a rule is a charged path (every trigger is one search_once),
+// so the page reads the pre-execution estimate; the shared helper injects a
+// live admitting estimate by default and usage tests override it.
+const admittingEstimate = () => ({
+ kind: 'usage_estimate' as const, operation: 'search_once' as const, costUnits: 1,
+ conditions: [
+  '额度在执行前预占：每个 search_once（含规则触发的周期 Run）执行前预占 1 个单位，并在执行前向你展示本预估',
+  '预占以 requestId 幂等：同一 requestId 重放或重试不会重复预占或收费',
+  '预占在搜索终态后结算；已预占但从未执行的请求在租约过期后自动释放，不占余额',
+  '额度按 UTC 自然月重置；本期额度耗尽时只阻止新的收费 Run，既有档案、申请、评估与搜索记录永远可读',
+  '付费状态不改变岗位排序或资格判定：评估与排序输入不含任何付费维度',
+ ],
+ periodStart: '2026-09-01T00:00:00Z', periodEnd: '2026-10-01T00:00:00Z',
+ limitUnits: 50, reservedUnits: 0, settledUnits: 0, remainingUnits: 50, wouldAdmit: true,
+})
 async function mountRules(career: CareerStubs, scopeController = createScopeController({ origin: 'https://weknora.test', userId: 'u-1', tenantId: 't-1' })) {
- const container = render(React.createElement(CareerRulePage, { client: { career } as unknown as WeKnoraClient, scopeController }))
+ const stubs: CareerStubs = { usageEstimate: async () => admittingEstimate(), ...career }
+ const container = render(React.createElement(CareerRulePage, { client: { career: stubs } as unknown as WeKnoraClient, scopeController }))
  await act(async () => { await new Promise((resolve) => setImmediate(resolve)) })
  return { container, scopeController }
 }
@@ -273,4 +289,61 @@ test('cross-scope denial shows the forbidden state and a scope switch clears cac
  assert.match(live.container.textContent ?? '', /空间已切换/)
  assert.equal(live.container.querySelector('[aria-label="规则状态"]'), null)
  assert.equal(window.localStorage.getItem('weknora:career:rule-id:u-1:t-1'), null)
+})
+
+test('enabling requires a live estimate; an unreadable estimate closes the enable path but not configuration', async () => {
+ const writes: RuleWrite[] = []
+ const { container } = await mountRules({
+  open: async () => view(5),
+  usageEstimate: async () => { throw Object.assign(new Error('career usage admission unavailable'), { code: 'admission_unavailable' }) },
+  setRule: async (input: RuleWrite) => { writes.push(input); return { ...createdDisabled, requestId: input.requestId } },
+  getRule: async () => ruleView(),
+ })
+ const panel = container.querySelector('[aria-label="额度预估"]')!
+ assert.match(panel.querySelector('[role="alert"]')?.textContent ?? '', /额度预估暂不可用/)
+ assert.match(panel.textContent ?? '', /不会先执行后补报/)
+ // Enabling is the charged path: with no live estimate there is no
+ // enable-first-report-later path. Configuring a disabled rule stays open
+ // because a disabled rule can never trigger a charged run.
+ const queryBox = container.querySelector<HTMLTextAreaElement>('[aria-label="找岗条件"]')!
+ const intervalBox = container.querySelector<HTMLInputElement>('[aria-label="触发间隔（分钟）"]')!
+ await act(async () => {
+  setInput(queryBox, '上海 前端 实习')
+  setInput(intervalBox, '1440')
+  container.querySelector<HTMLInputElement>('input[type="radio"][value="enabled"]')!.click()
+ })
+ // TDesign renders a disabled Button as a div with t-is-disabled; locate
+ // the submit control by its type attribute (same as the search page).
+ const save = [...container.querySelectorAll<HTMLElement>('[type="submit"]')].find((item) => item.textContent?.includes('保存规则'))!
+ assert.ok(save, 'save control exists')
+ assert.ok(save.classList.contains('t-is-disabled') || (save as HTMLButtonElement).disabled === true)
+ await act(async () => { save.click(); await settle() })
+ assert.equal(writes.length, 0)
+ await saveRule(container, '上海 前端 实习', '1440', 'disabled')
+ assert.equal(writes.length, 1)
+ assert.equal(writes[0]?.status, 'disabled')
+})
+
+test('an exhausted window shows the blocked-trigger overage state while enabling stays honest', async () => {
+ const writes: RuleWrite[] = []
+ const estimateReads: number[] = []
+ let read = 0
+ const { container } = await mountRules({
+  open: async () => view(5),
+  usageEstimate: async () => { read += 1; estimateReads.push(read); return { ...admittingEstimate(), settledUnits: 50, remainingUnits: 0, wouldAdmit: false } },
+  setRule: async (input: RuleWrite) => { writes.push(input); return input.status === 'enabled' ? { ...enabledReceipt, requestId: input.requestId } : { ...createdDisabled, requestId: input.requestId } },
+  getRule: async () => ruleView(),
+ })
+ const panel = container.querySelector('[aria-label="额度预估"]')!
+ assert.match(panel.querySelector('[role="alert"]')?.textContent ?? '', /本期额度已耗尽/)
+ assert.match(panel.textContent ?? '', /新的收费找岗已被阻止/)
+ assert.match(panel.textContent ?? '', /既有档案、申请、评估与搜索记录仍可完整读取/)
+ // Enabling stays possible (the backend admits the write; every trigger is
+ // then visibly blocked as blocked_no_quota) — the honest presentation is
+ // the overage state plus the visible blocked run records.
+ await saveRule(container, '上海 前端 实习', '1440', 'enabled')
+ assert.equal(writes.length, 1)
+ assert.equal(writes[0]?.status, 'enabled')
+ assert.ok(container.querySelector('[aria-label="下次运行计划"]'))
+ assert.ok(estimateReads.length >= 2, `estimate refreshed after the write (reads: ${estimateReads.length})`)
 })
