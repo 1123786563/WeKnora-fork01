@@ -3,6 +3,7 @@
 > 实施方式：superpowers:executing-plans / subagent-driven-development，按任务逐个执行，一个任务一个 commit（conventions §4）。
 > 节点：`b2-datasource`（DAG `docs/plans/passb/execution-dag.json`，phase=B2，role=work，execution_mode=serial，depends_on=`[ib1, b2-k-integration]`）。
 > 本计划由「计划撰写-b2-datasource」于 2026-09-27 在 worktree `codex/passb-b2-datasource`（分支 HEAD `74f454527`，**K 生产分支尚未合入的集成谱系**）撰写；文中全部代码坐标、符号签名、命令输出均为该树实读/实跑结果。**实施前必须完成 §0.1 P-2 基线对齐 merge（Ruling 2026-09-24-WAVE-DEP-BASELINE），对齐后行号按当时树复核**（本节点 4 个 legacy 文件不在任何 K 节点 owned_files 内，其行号预期稳定；5 符号定义方位置随 K 合并变化，已在 §2.2 标注对齐后复验点）。
+> **R1 修订**（2026-09-27，「计划修订-b2-datasource-R1」按审校 findings 5 项在本 worktree 同分支完成，修订时分支 HEAD `b76d0fb8b`）：① 补全 repository 侧 2 个关联测试文件随迁（`datasource_repo_test.go` 6 用例 + `datasource_repo_synclog_test.go` 4 用例，framework:29），基线口径 105→**115** 用例；② 全部特征化/差分 `-run` 模式重写并本分支实跑验证（service 85 / repo 10 / handler 20 / purge 单独 9 顶层用例）；③ §2.1 消费面全集补 router 三处（router.go:118-119/:408、router_api_key_capabilities_test.go:353）；④ §2.3 无环论证更正——K 分支无 `app/knowledgebase.go`、modules 内零 datasource 反向 import 边；⑤ 行号漂移修正（DataSourceService struct :30、import :18/:21、syncBindingStore :46、dataSourceBindingCleaner :823、module.go 22 行、routes_infra 签名 :301-306、purge_test 引用行）。
 
 ## 0. Spec 与事实源指针
 
@@ -49,12 +50,13 @@
 | # | legacy 文件 | destination（ownership-matrix :164/:842/:1808/:1814 冻结） | 体量（本分支实测） |
 |---|---|---|---|
 | 1 | `internal/application/repository/datasource_repo.go` | `internal/modules/datasource/repository/datasource_repo.go`（package repository） | 505 行：`DataSourceRepository`（:14）+`NewDataSourceRepository`（:19）+`AppDataSourceBindingRow`（:156）+`SyncLogRepository`（:264）+`NewSyncLogRepository`（:269） |
-| 2 | `internal/application/service/datasource_service.go` | `internal/modules/datasource/service/datasource_service.go`（package service） | 112,510 字节 / 62 func（:54 `NewDataSourceService`… :2654 `sweepStaleSubtree`；哨兵 `ErrReindexDuplicateRequest` :1157、`ErrSyncLogNotFound` :1353；常量 `dataSourcePurgeBatchSize=200` :816；窄接口 `dataSourceBindingCleaner` :818；`SyncSpaceStateResolver` :83） |
+| 2 | `internal/application/service/datasource_service.go` | `internal/modules/datasource/service/datasource_service.go`（package service） | 112,510 字节 / 62 func（:54 `NewDataSourceService`… :2654 `sweepStaleSubtree`；哨兵 `ErrReindexDuplicateRequest` :1157、`ErrSyncLogNotFound` :1353；常量 `dataSourcePurgeBatchSize=200` :816；窄接口 `dataSourceBindingCleaner` :823；`SyncSpaceStateResolver` :83） |
 | 3 | `internal/handler/datasource.go` | `internal/modules/datasource/handler/datasource.go`（package handler） | 24,525 字节：`DataSourceHandler`（:19）+`NewDataSourceHandler`（:25）+20 方法/3 请求类型 |
 | 4 | `internal/handler/datasource_credentials.go` | `internal/modules/datasource/handler/datasource_credentials.go` | 4,123 字节：`DataSourceCredentialsHandler`（:23）+`NewDataSourceCredentialsHandler`（:28）+Put/DeleteField |
 
-随迁测试（framework:29；分类依据 §2.4）：
+随迁测试（framework:29 每搬一个生产文件随迁其 `_test.go`；分类依据 §2.4；**R1 修订补全 repository 侧 2 文件**——随迁 17 文件 + 留守 1 文件 = 18 文件 / **115 用例**）：
 
+- **repository 侧 2 文件 → `internal/modules/datasource/repository/`**：`datasource_repo_test.go`（6 用例：TestDataSourceRepository×5 + TestSyncLogRepositoryUpdateResultClearsErrorMessage，全名清单见 §5 T1 Step 2 模式；构造器引用 :25/:56/:86/:114/:135/:172）、`datasource_repo_synclog_test.go`（4 用例 TestSyncLogLifecycle×4；构造器引用 :17/:46/:69/:114）——共享 helper `setupDataSourceRepoTestDB`（定义于 datasource_repo_test.go:15），仅引同包导出构造器，零宿主未导出符号 → **纯随迁零改写**（package repository 同名包，构造器直接解析到模块包，import 零修正）。
 - **service 侧 11 文件 → `internal/modules/datasource/service/`**：`datasource_cancel_enqueue_test.go`（6 用例）、`datasource_credential_refresh_test.go`（4）、`datasource_credential_refresh_trigger_test.go`（14）、`datasource_delete_sqlite_test.go`（3）、`datasource_reindex_test.go`（8）、`datasource_result_cap_test.go`（3）、`datasource_service_test.go`（16）、`datasource_stream_test.go`（6）、`datasource_sweep_wiring_test.go`（7）、`datasource_sync_cancel_test.go`（7）、`datasource_sync_heartbeat_test.go`（2）——合计 76 用例随迁。
 - **handler 侧 4 文件 → `internal/modules/datasource/handler/`**：`datasource_test.go`（9；`stubDataSourceService` 定义处 :17）、`datasource_documents_count_test.go`（6；`newOwnedKBStub`/`stubKBServiceForDS` 定义处 :30）、`datasource_reindex_test.go`（4）、`datasource_credentials_test.go`（1；`newCredentialsTestRouter` 定义处 :22）——helper 全部定义于本组 4 文件内（grep 实测），**自包含可纯随迁**。
 - **留守宿主 1 文件（不随迁，B2-DS.3 同 commit 重写构造点）**：`internal/application/service/datasource_purge_test.go`（9 用例）——`:225` 白盒构造 `&knowledgeService{}`（K4 属主类型，推迟批留守），迁移不可行；K4 计划 §3.3 已登记其归属「→ 26-datasource/ib2」。
@@ -63,8 +65,8 @@
 
 **范围外（一律不动）**：
 
-- `internal/router/router.go`、`internal/router/routes_infra.go`（:297 `RegisterDataSourceRoutes` 形参经 handler compat 别名继续解析）、`internal/router/task.go`（:295/:314）、`internal/router/sync_task.go`（:160-161）、`internal/router/task_inspector.go`（:100）、`internal/container/**`（:77-87 import、:309-310/:632-637/:760/:857 Provide/Invoke、:2311 `initConnectorRegistry`、:2362-2380 `injectDataSourceTaskInspector`/`startDataSourceScheduler`）、`internal/bootstrap/**`——全部集成工程师独占（conventions §3）。
-- `internal/modules/datasource/module.go`（26 行零逻辑骨架，passbguard 冻结其注释形态：五操作 `//\t` 声明 + 计数句式 1/2/2；**门面实现归 IB2**——contracts.yaml datasource.facade + 27-appconnector §1 先例 + 13-execution §2 先例；本节点零触碰）。
+- `internal/router/router.go`、`internal/router/routes_infra.go`（:301 `RegisterDataSourceRoutes` 形参经 handler compat 别名继续解析）、`internal/router/task.go`（:295/:314）、`internal/router/sync_task.go`（:160-161）、`internal/router/task_inspector.go`（:100）、`internal/container/**`（:77-87 import、:309-310/:632-637/:760/:857 Provide/Invoke、:2311 `initConnectorRegistry`、:2362-2380 `injectDataSourceTaskInspector`/`startDataSourceScheduler`）、`internal/bootstrap/**`——全部集成工程师独占（conventions §3）。
+- `internal/modules/datasource/module.go`（22 行零逻辑骨架，passbguard 冻结其注释形态：五操作 `//\t` 声明 + 计数句式 1/2/2；**门面实现归 IB2**——contracts.yaml datasource.facade + 27-appconnector §1 先例 + 13-execution §2 先例；本节点零触碰）。
 - K 系列属主文件：`internal/modules/knowledge/**`、宿主 `internal/application/service/{kb_activity*,kbretrieval_passb_compat,knowledge_delete_plan,knowledge*,wiki*,tag*,kbshare*}.go`、`internal/application/repository/knowledge*.go`（compat 仅消费其编译产物，不改一字）。
 - appconnector 属主：`internal/modules/appconnector/**`（service 文件消费其导出面 `appconnector.SyncBindingStore`/`BindingState`）；policy 属主：`internal/modules/policy/access`（消费 `access.WithKBTaskWrite`）。
 - `internal/types/**`（含 interfaces/datasource.go 22 方法端口——**非 contracts.yaml 冻结契约，但为稳定共享端口，零改动**）、`internal/handler/dto`（platform 包，check.go:89 `platformPackageDirs` 整包豁免，模块 handler 继续导入不改）、migration 编号、`go.mod`/`go.sum`、生产 SQL、既有迁移文件、`cmd/desktop`、`docreader`、`client`。
@@ -81,12 +83,15 @@
 | 同上 | `handler.NewDataSourceCredentialsHandler` / `handler.NewDataSourceHandler`（dig Provide） | :760 / :857 | handler compat **var 别名** |
 | 同上 | `svc.(*service.DataSourceService)` 类型断言（injectDataSourceTaskInspector） | :2368 | service compat **type 别名**（别名保型同一性，断言继续成立） |
 | 同上 | `*datasource.ConnectorRegistry` / `*datasource.Scheduler` / 11 个 connector import | :77-87、:632、:2311-2380 | 模块根包既有导出，**零改动** |
-| `internal/router/routes_infra.go` | `RegisterDataSourceRoutes(r, handler *handler.DataSourceHandler, credHandler *handler.DataSourceCredentialsHandler, g *rbacGuards)` 形参类型 | :297-302 | handler compat **type 别名**（路由体/RBAC guard 零改动，633 计数不动） |
+| `internal/router/routes_infra.go` | `RegisterDataSourceRoutes(r, handler *handler.DataSourceHandler, credHandler *handler.DataSourceCredentialsHandler, g *rbacGuards)` 形参类型 | 签名 :301-306（形参类型 :303-304） | handler compat **type 别名**（路由体/RBAC guard 零改动，633 计数不动） |
+| `internal/router/router.go`（R1 修订补列） | `RouterParams` 结构体字段 `DataSourceHandler *handler.DataSourceHandler` / `DataSourceCredentialsHandler *handler.DataSourceCredentialsHandler` 与消费行 `RegisterDataSourceRoutes(v1, params.DataSourceHandler, params.DataSourceCredentialsHandler, rbacGuards)` | :118-119 / :408 | handler compat **type 别名**（字段类型与实参零改动） |
+| `internal/router/router_api_key_capabilities_test.go`（R1 修订补列） | `RegisterDataSourceRoutes(v1, &handler.DataSourceHandler{}, &handler.DataSourceCredentialsHandler{}, g)` | :353 | 同上（test-only，零改动自证） |
 | `internal/router/task.go` / `sync_task.go` / `task_inspector.go` | `params.DataSourceService.ProcessSync` / `.ProcessDataSourcePurge`（接口方法值）；`types.TypeDataSourceSync/Purge` 常量集 | task.go:295/:314、sync_task.go:160-161、task_inspector.go:100 | 经 `interfaces.DataSourceService` 接口 + `internal/types` 常量，**零改动** |
-| 宿主留守测试 `datasource_purge_test.go` | `NewDataSourceRepository`/`NewSyncLogRepository`/`repository.AppDataSourceBindingRow`/`datasource.NewScheduler` | :142 起、:216/:221 | repo compat var+type 别名；`datasource.NewScheduler` 为模块既有导出 |
+| 宿主留守测试 `datasource_purge_test.go` | `NewDataSourceRepository`/`NewSyncLogRepository`/`repository.AppDataSourceBindingRow`/`datasource.NewScheduler` | 构造器 :142/:143、`AppDataSourceBindingRow` :139/:215/:219、`datasource.NewScheduler` :239 | repo compat var+type 别名；`datasource.NewScheduler` 为模块既有导出 |
 | `internal/modules/appconnector/service/appconnector/sync_test.go` | `interfaces.DataSourceService`（接口形态） | （grep 实测，test-only） | 接口零改动，天然兼容 |
+| `internal/application/service/knowledgebase.go`、`knowledgebase_delete_datasource_test.go`（R1 修订补列） | `interfaces.DataSourceRepository` / `interfaces.SyncLogRepository`（接口端口类型标注/`var _` 断言） | knowledgebase.go:50-51/:73-74；test :75/:114 | **零改动**——经 `internal/types/interfaces` 端口解析，非宿主 repository 包符号 |
 
-宿主包内无其他消费者（grep `NewDataSourceService|DataSourceService{}|service.DataSourceService` internal/ 全量实测：仅 container.go、本组测试、appconnector sync_test.go 三类）。哨兵 `service.ErrReindexDuplicateRequest`/`service.ErrSyncLogNotFound` 的宿主消费者仅 `internal/handler/datasource.go:525/:761` 与随迁测试（`datasource_test.go:364`、`datasource_reindex_test.go:126`、`datasource_sync_cancel_test.go:117/:119`）——**全部随本节点迁移，宿主无需 var 别名**（shim 最小化）。
+宿主消费面全集以全量 sweep 实测封闭（R1 修订，本分支 HEAD）：`grep -rn "DataSourceHandler|DataSourceCredentialsHandler|NewDataSourceService|service.DataSourceService|NewDataSourceRepository|NewSyncLogRepository|AppDataSourceBindingRow|DataSourceRepository|SyncLogRepository"` 于 `internal/{router,container,handler,application,bootstrap}` + `cmd`（剔除本组 4 legacy 文件与其测试）——命中仅上表所列 router 三文件（routes_infra.go/router.go/router_api_key_capabilities_test.go）、container.go 五处、interfaces 端口标注两类（knowledgebase.go、knowledgebase_delete_datasource_test.go）、appconnector sync_test.go，别无其他。哨兵 `service.ErrReindexDuplicateRequest`/`service.ErrSyncLogNotFound` 的宿主消费者仅 `internal/handler/datasource.go:525/:761` 与随迁测试（`datasource_test.go:364`、`datasource_reindex_test.go:126`、`datasource_sync_cancel_test.go:117/:119`）——**全部随本节点迁移，宿主无需 var 别名**（shim 最小化）。
 
 ### 2.2 datasource→knowledge 5 符号 24 调用点（DAG ppc pair #1；本会话双向 grep 实证）
 
@@ -109,12 +114,14 @@ architectureguard forbidden-import 仅扫 `internal/modules/**` 文件对 `inter
 | # | importer（落位后） | imported | 现消费点（base 行号） | 用途 |
 |---|---|---|---|---|
 | 1 | `internal/modules/datasource/service/datasource_service.go` | `internal/modules/knowledge/retrieval/app` | 新增 import（24 调用点直连，§2.2） | knowledge 活动端口（K2 导出面） |
-| 2 | 同上 | `internal/modules/appconnector` | :15 import；`syncBindingStore appconnector.SyncBindingStore`（:48）、`SyncSpaceStateResolver.SpaceBindingState(...) *appconnector.BindingState`（:83-86） | A07 scoped-sync 绑定存储 |
-| 3 | 同上 | `internal/modules/policy/access` | :16 import；`access.WithKBTaskWrite(ctx, kb, ds.TenantID)`（:1440，全文件唯一调用） | KB 写入任务上下文门控 |
+| 2 | 同上 | `internal/modules/appconnector` | :18 import；`syncBindingStore appconnector.SyncBindingStore`（:46）、`SyncSpaceStateResolver.SpaceBindingState(...) *appconnector.BindingState`（:83-86） | A07 scoped-sync 绑定存储 |
+| 3 | 同上 | `internal/modules/policy/access` | :21 import；`access.WithKBTaskWrite(ctx, kb, ds.TenantID)`（:1440，全文件唯一调用） | KB 写入任务上下文门控 |
 
-同模块导入（`internal/modules/datasource` 根包 `ConnectorRegistry`/`Scheduler`、`connector/ima` 哨兵 `ima.ErrTargetedRefetchUnsupported` :1808）owner==datasource 不触发判定。横向导入（`internal/logger`、`internal/tracing/langfuse`、`internal/types`、`internal/utils`、`internal/handler/dto`）不在判定域。handler 侧：`internal/application/service` import（哨兵错误）随两文件同时迁移消亡，改为同模块 `internal/modules/datasource/service` 导入（合法）。**无 import 环**：datasource/service → knowledge/retrieval/app ↔ datasource（root，K2 已登记例外 app/knowledgebase.go:15）为两文件级有向边，无包级环（`go build ./...` 实证）。
+同模块导入（`internal/modules/datasource` 根包 `ConnectorRegistry`/`Scheduler`、`connector/ima` 哨兵 `ima.ErrTargetedRefetchUnsupported` :1808）owner==datasource 不触发判定。横向导入（`internal/logger`、`internal/tracing/langfuse`、`internal/types`、`internal/utils`、`internal/handler/dto`）不在判定域。handler 侧：`internal/application/service` import（哨兵错误）随两文件同时迁移消亡，改为同模块 `internal/modules/datasource/service` 导入（合法）。**无 import 环**（R1 修订更正——原文「K2 已登记例外 app/knowledgebase.go:15」为不实引用，该文件不存在）：对齐目标分支 `codex/passb-b2-k-integration` 实测（`git ls-tree --name-only codex/passb-b2-k-integration -- internal/modules/knowledge/retrieval/app/` 列 14 项，无 knowledgebase.go，实为 kb_activity.go、knowledgebase_access.go、graph.go、audit_actor_seam.go、semantic_*×5、slug_fuzzy*×2、handler/、repository/；`git grep -l "internal/modules/datasource" codex/passb-b2-k-integration -- internal/modules` 剔除 datasource 模块自身后**零命中**）——modules 内不存在任何指向 datasource 的反向 import 边，datasource/service → knowledge/retrieval/app 为**单向**文件级有向边，无包级环（`go build ./...` 实证）。K2 已登记的 retrieval/app 例外实为 5 条（K 分支 ledger exc-0112..0116 / check.go :987-:1021：semantic_model_capability.go→commercial、semantic_model_policy.go→commercial、knowledgebase_access.go→policy/access、graph.go→airesource/models/chat、graph.go→airesource/models/utils），无一指向 datasource，与本节点新增 3 条例外无交叠。
 
-### 2.4 测试夹具分类（16 文件 / 105 用例逐文件实测）
+### 2.4 测试夹具分类（18 文件 / 115 用例逐文件实测；R1 修订补全 repository 侧 2 文件）
+
+- **repository 侧 2 文件（纯随迁零改写）**：`datasource_repo_test.go`（6）+ `datasource_repo_synclog_test.go`（4）经逐行核验仅引同包导出构造器（`NewDataSourceRepository`/`NewSyncLogRepository`）与自有共享 helper `setupDataSourceRepoTestDB`（datasource_repo_test.go:15，两文件共享），无任何宿主未导出符号、无 repo 生产文件内部方法白盒——git mv 后同名包 `package repository` 内构造器直接解析到模块包自身，**零 import 修正零改写**（此前漏列为计划缺陷，R1 补全）。同目录 `knowledge_datasource_test.go`/`knowledge_datasource_external_id_test.go` 不引用本组构造器（grep 实测零命中），属 K 属主文件，不在本节点范围。
 
 - **随迁判定依据**：service 侧 11 文件对宿主符号的引用经 grep 逐文件核验，仅为 ①`&DataSourceService{knowledgeService: ks}` 白盒复合字面量（字段名，非 K4 类型标注——`grep -n "knowledgeService" ` 实测 :460-:756 等 21 处全为字段名；K4 计划 Step 4 同结论「经接口形态，compat var 别名即可保护，确认无 *knowledgeService 类型标注」）②`NewDataSourceRepository`/`NewSyncLogRepository`（本节点 repo 构造器，随迁后改 import 模块路径）③`applyFetchedItem` 白盒方法（:1927 定义，reindex 1/result_cap 5/service_test 1/sweep_wiring 3 处调用——必须同包，**构成随迁必要性**）。复合字面量设未导出字段只能在定义包内合法（Go 语言规则），留守不可行。
 - **留守判定依据**：`datasource_purge_test.go` `:225` `knowledgeService := &knowledgeService{repo:…, kbService:…, tenantRepo:…, chunkRepo:…, graphEngine:…}`（K4 属主未导出类型的白盒复合字面量，字段全未导出）——无法迁出宿主；其 9 用例是 purge 级联（drain/墓碑/批次边界取消/孤儿 tag/app_datasource_bindings 清理）的**唯一覆盖**（全仓 `grep -ln PurgeDataSourceDocuments *_test.go` 仅命中此文件），必须保活。留守重写点：`:243` 与 `:467` 两处 `&DataSourceService{…}` 白盒字面量 → 改经 compat `NewDataSourceService` 构造（§4.3）；`:469` `f.svc.knowledgeService` 未导出字段读 → fixture 持有 `f.ks` 字段引用。
@@ -135,6 +142,7 @@ internal/modules/datasource/          # 既有（Pass A）：connector.go、sche
                                       # filename.go、httpclient.go、connector/**、module.go(禁改)、
                                       # README.md(回填)、legacy/README.md(回填)
   repository/datasource_repo.go       # 新增（B2-DS.2 git mv）
+  repository/*_test.go ×2             # 随迁（B2-DS.2 同 commit git mv，纯随迁零改写）
   service/datasource_service.go       # 新增（B2-DS.3 git mv + 24 调用点改写 + seam）
   service/*_test.go ×11               # 随迁
   handler/datasource.go               # 新增（B2-DS.4 git mv）
@@ -186,7 +194,7 @@ var (
 )
 ```
 
-（`var` 别名保函数值可作 dig Provide；`AppDataSourceBindingRow` 别名保护留守 purge_test :216/:221 复合字面量——字段全导出，跨包合法。gorm import 若未直接使用则省略。）
+（`var` 别名保函数值可作 dig Provide；`AppDataSourceBindingRow` 别名保护留守 purge_test :139/:215/:219 复合字面量——字段全导出，跨包合法。gorm import 若未直接使用则省略。repo 侧 2 个测试文件随 B2-DS.2 同 commit 迁至模块包后，宿主 repository 包**无测试消费者**，本 compat 服务面=container.go:309/:310 + 留守 purge_test :142/:143——R1 修订口径。）
 
 **(b) `internal/application/service/datasource_passb_compat.go`**（B2-DS.3）：
 
@@ -241,8 +249,10 @@ func NewDataSourceService(
 package handler
 
 // Pass B 过渡 shim（26-datasource）：datasource.go / datasource_credentials.go
-// 已物理迁移至 internal/modules/datasource/handler。本文件为 routes_infra.go:297-302
-// 形参类型与 container.go:760/:857 dig Provide 提供 type/var 别名，路由体零改动。
+// 已物理迁移至 internal/modules/datasource/handler。本文件为 routes_infra.go:301-306
+// （形参 :303-304）、router.go:118-119（RouterParams 字段）/:408（消费行）、
+// router_api_key_capabilities_test.go:353 与 container.go:760/:857 dig Provide
+// 提供 type/var 别名，router 侧零改动。
 // 删除点：ib2 集成屏障直连后（Brief 指令）。
 
 import (
@@ -270,7 +280,8 @@ var (
 3. **cleanup seam**（:885 唯一 K4 推迟符号）：
 
 ```go
-// struct 新增字段（DataSourceService 定义 :33-52 区段末尾）：
+// struct 新增字段（DataSourceService 定义 :30-52 区段末尾——type 行 :30、
+// 闭合 } :52；:33 为 knowledgeService 字段行，非 struct 起点）：
 	// knowledgeCleanup mirrors host withKnowledgeCleanup (knowledge_delete_plan.go:22,
 	// K4 deferred batch — unexported). Wired by the host compat constructor
 	// (datasource_passb_compat.go) to the same function the pre-migration code
@@ -304,7 +315,7 @@ func (s *DataSourceService) SetKnowledgeCleanup(fn func(ctx context.Context, ten
 
 ### 4.4 公共可观察行为与兼容要求（不变式清单）
 
-1. **HTTP 面**：633 路由、方法、路径、RBAC/APIKey 门、状态码映射零变化——`RegisterDataSourceRoutes`（routes_infra.go:297）经 handler compat type 别名解析到同一实现；本节点零 router 改动。
+1. **HTTP 面**：633 路由、方法、路径、RBAC/APIKey 门、状态码映射零变化——`RegisterDataSourceRoutes`（routes_infra.go:301）经 handler compat type 别名解析到同一实现；本节点零 router 改动。
 2. **Worker 面**：`TypeDataSourceSync`/`TypeDataSourcePurge` 双栈注册（task.go:295/:314 asynq mux + sync_task.go:160-161 Lite executor）经 `params.DataSourceService` 接口方法值——接口与注册行零改动；redis=23 lite=23 奇偶不变。
 3. **生命周期面**：`injectDataSourceTaskInspector`（container.go:636→:2362）经 compat type 别名断言继续命中；`startDataSourceScheduler`（:637→:2373）模块 Scheduler 零改动；58 挂点计数不变。
 4. **审计活动流**：`app.RecordKBActivity` 与宿主旧 `recordKBActivity` 为 K2 R1 裁定的同一实现体（kb_activity.go 已随 K2 整体迁至 app 包，宿主 compat 为一行委托），17 调用点的入参/时机/outcome 逐字不变——purge_test `purgeAuditSink.findByAction` 断言即为等价证据。
@@ -319,37 +330,49 @@ func (s *DataSourceService) SetKnowledgeCleanup(fn func(ctx context.Context, ten
 ### T1 — B2-DS.1 前置核验 + 基线对齐 + 特征化基线【commit: `test(passb): b2-datasource 前置核验与特征化基线`】
 
 - [ ] **Step 1**：逐条执行 §0.1 P-1..P-6，每条命令原文+退出码入报告；P-2 按 Case A/B 完成对齐 merge 并登记 `ALIGN_SHA`（merge commit 本身即基线对齐产物，Ruling WAVE-DEP-BASELINE；`git log --oneline -3` 留档）。
-- [ ] **Step 2 特征化基线（conventions §1.4 搬迁类先特征化；复用现有 105 用例，不新写）**：
+- [ ] **Step 2 特征化基线（conventions §1.4 搬迁类先特征化；复用现有 115 用例，不新写；R1 修订：模式全部经本分支实跑验证）**。计数口径：顶层用例 = `-v` 输出中不含 `/` 的 `=== RUN` 行（子测试行含 `/`，不计入用例数）。
 
 ```bash
-go test -count=1 ./internal/application/service/ -run 'TestDeleteDataSource|TestPurge|TestSetTaskInspector|TestPauseDataSource|TestManualSync|TestProcessSync|TestRefreshDataSourceCredential|TestIncrementAppDataSourceBindingAuthVersion|TestCursorAuthVersionStale|TestReindex|TestCancelSyncLog|TestStream|TestSync|TestDataSource' -v 2>&1 | tail -20
-# 预期：datasource 16 文件 105 用例全 PASS（基线树绿色）；逐用例清单（PASS/FAIL/SKIP+原因）写入
-#   evidence §基线；出现 FAIL 即停，按 conventions §5 上报（不得继续搬迁）
-go test -count=1 ./internal/handler/ -run 'TestDataSource|TestCountDocuments|TestReindex|TestCredentials' -v 2>&1 | tail -5
-# 预期：handler 侧 20 用例全 PASS（与上一命令合计 105 用例基线）
+# ① service 侧（11 随迁文件 + purge 留守文件 = 85 顶层用例；本分支实跑 85/85 ok）
+go test -count=1 ./internal/application/service/ -run 'TestDeleteDataSourceH|TestDeleteDataSourceP|TestDeleteDataSourceW|TestDeleteKnowledgeBaseCleansUpSQLiteDataSources|TestSetTaskInspector|TestPauseDataSource|TestManualSync|TestRefreshDataSourceCredential|TestProcessSync|TestIncrementAppDataSourceBindingAuthVersion|TestCursorAuthVersionStale|TestReindexItems|TestApplyFetchedItem|TestAllFetchedItemsFailedError|TestIngestItem|TestStream|TestSyncHeartbeat|TestCancelSyncLog|TestCheckpoint|TestCheckCancelRequested|TestPurgeWorker|TestProcessDataSourcePurge|TestDataSourceService|TestDataSourcePurgeQueueTopology|TestCountDataSourceDocumentsScopesToTenantKbDataSource' -v 2>&1 | tail -20
+# 预期：85 顶层用例全 PASS；逐用例清单（PASS/FAIL/SKIP+原因）写入 evidence §基线；出现 FAIL 即停，按 conventions §5 上报（不得继续搬迁）
+#   模式设计说明（勿「简化」）：裸 TestDeleteDataSource/TestDataSource/TestSync/TestDeleteKnowledgeBase 前缀会碰撞 K 属主
+#   留守用例——TestDeleteDataSourcesForKnowledgeBase(ContinuesOnDeleteError)（knowledgebase_delete_datasource_test.go）、
+#   TestDataSourceTagCreationReceivesOnlyItsTaskKBGrant（knowledge_write_access_test.go）、
+#   TestSyncEditedChunkImagesDisablesAndRestoresImageChildren（chunk_edit_parent_test.go）、
+#   TestDeleteKnowledgeBaseForwardsDataSourceTaskScope|...CancelsQueuedTasksBestEffort（knowledgebase_task_cancel_test.go）
+#   ——故用 TestDeleteDataSourceH|P|W 收窄（K 属主复数形为 ...DataSources...，H/P/W 后缀必不匹配）。
+# ② repository 侧（2 文件 10 顶层用例；本分支实跑 10/10 ok，2.667s）
+go test -count=1 ./internal/application/repository/ -run 'TestDataSourceRepository|TestSyncLogRepository|TestSyncLogLifecycle' -v 2>&1 | tail -5
+# 预期：10 顶层用例全 PASS（TestDataSourceRepository×5|TestSyncLogRepository×1|TestSyncLogLifecycle×4；R1 补全）
+# ③ handler 侧（4 文件 20 顶层用例；本分支实跑 ok，29 RUN 行 = 20 顶层 + 9 子测试[Delete_PurgeDocumentsParamMatrix×4、ManualSync_ForceFullBodyMatrix×5]）
+go test -count=1 ./internal/handler/ -run 'TestDataSource' -v 2>&1 | tail -5
+# 预期：20 顶层用例全 PASS（handler 包内 TestDataSource 前缀无碰撞，全量 grep 实测）
 go test -count=1 ./internal/modules/datasource/...   # 预期：全 ok（模块既有面基线）
 ```
 
-- [ ] **Step 3 覆盖面核对（高风险差分锚点定位）**：确认以下行为均有既有用例锚定（grep 用例名实证，无则**在宿主新写最小特征化测试并随 B2-DS.3 随迁**——本会话核对结论：全覆盖，预期零新增）：purge drain 跨批（`TestPurgeWorkerDrainsAcrossBatches`）、ctx 取消批次边界（`TestPurgeWorkerStopsBetweenBatchesWhenContextCanceled`）、墓碑/硬删（`TestDeleteDataSourcePurgeEnqueuesTaskAndWorkerDrainsDocuments`）、孤儿 tag（`TestPurgeWorkerRemovesOrphanAutoTag`）、不 purge 保留（`TestDeleteDataSourceWithoutPurgeKeepsDocuments`）、绑定清理 + 兄弟行存活（:355-:356 `bindingRows` 断言）、硬取消顺序/无 inspector 降级（`TestDeleteDataSourceHardCancelsQueuedSyncTasksBeforeSweep`/`...WithoutInspectorDegradesToSweep`/`TestPauseDataSourceCancelsRunningAndQueuedSyncs`）、asynq TaskID 记录与 force-full 载荷（`TestManualSyncRecordsAsynqTaskID`/`...PassesForceFullToPayload`）、租户隔离 404（sync_cancel :117-:119 `ErrSyncLogNotFound` 双断言）、心跳（sync_heartbeat 2 用例）、凭据轮换/auth-version 游标（credential_refresh* 18 用例）。
+- 合计 **115 用例基线**（85 + 10 + 20），与 §1 随迁/留守清单一一对应。
+
+- [ ] **Step 3 覆盖面核对（高风险差分锚点定位）**：确认以下行为均有既有用例锚定（grep 用例名实证，无则**在宿主新写最小特征化测试并随 B2-DS.3 随迁**——本会话核对结论：全覆盖，预期零新增）：purge drain 跨批（`TestPurgeWorkerDrainsAcrossBatches`）、ctx 取消批次边界（`TestPurgeWorkerStopsBetweenBatchesWhenContextCanceled`）、墓碑/硬删（`TestDeleteDataSourcePurgeEnqueuesTaskAndWorkerDrainsDocuments`）、孤儿 tag（`TestPurgeWorkerRemovesOrphanAutoTag`）、不 purge 保留（`TestDeleteDataSourceWithoutPurgeKeepsDocuments`）、绑定清理 + 兄弟行存活（:355-:356 `bindingRows` 断言）、硬取消顺序/无 inspector 降级（`TestDeleteDataSourceHardCancelsQueuedSyncTasksBeforeSweep`/`...WithoutInspectorDegradesToSweep`/`TestPauseDataSourceCancelsRunningAndQueuedSyncs`）、asynq TaskID 记录与 force-full 载荷（`TestManualSyncRecordsAsynqTaskID`/`...PassesForceFullToPayload`）、租户隔离 404（sync_cancel :117-:119 `ErrSyncLogNotFound` 双断言）、心跳（sync_heartbeat 2 用例 + repo 侧 `TestSyncLogLifecycleUpdateHeartbeat`）、SyncLog cancel 标志/stall 窗口（repo 侧 `TestSyncLogLifecycleRequestCancel`/`...HasRunningSyncExcludesStalledRuns`——R1 补全的 repo 10 用例即 worker 状态机底层语义锚点）、凭据轮换/auth-version 游标（credential_refresh* 18 用例）。
 - **产出**：`docs/architecture/evidence/passb/b2-datasource.md` 骨架 + §前置核验 + §特征化基线（用例清单+命令+退出码）。
-- **验收**：P-1..P-6 全绿留档；105 用例基线清单落盘；ALIGN_SHA 登记。
+- **验收**：P-1..P-6 全绿留档；**115 用例**基线清单落盘；ALIGN_SHA 登记。
 
 ### T2 — B2-DS.2 repository 搬迁 + 宿主 compat + 行级收口【commit: `refactor(datasource): passb B2-DS.2 repository 迁入模块与宿主 compat`】
 
-- [ ] **Step 1**：`git mv internal/application/repository/datasource_repo.go internal/modules/datasource/repository/datasource_repo.go`（目录新建；package repository；文件体零改动——imports 均为 gorm/types/interfaces，无宿主符号）。
+- [ ] **Step 1**：`git mv internal/application/repository/datasource_repo.go internal/modules/datasource/repository/datasource_repo.go`（目录新建；package repository；文件体零改动——imports 均为 gorm/types/interfaces，无宿主符号）；**同 commit `git mv internal/application/repository/datasource_repo_test.go internal/application/repository/datasource_repo_synclog_test.go internal/modules/datasource/repository/`**（framework:29 随迁；纯随迁零改写——同名包 + 导出构造器 + 自有 helper `setupDataSourceRepoTestDB`，R1 修订补全）。
 - [ ] **Step 2**：落盘 §4.1(a) compat 文件。
 - [ ] **Step 3 行级收口（同 commit，Ruling LEGACY-ROW-OWNERSHIP）**：`docs/architecture/moves/datasource.yaml` 删 legacy_files 行 `internal/application/repository/datasource_repo.go`（:55-:58）+ 增 shim 行；`docs/architecture/passb/ownership-matrix.yaml` 删 :164-:168 行 + 增 shim 行（§4.1 成对格式）。
 - [ ] **Step 4 验证**：
 
 ```bash
 go build ./...                                    # 预期：退出码 0
-go test -count=1 ./internal/modules/datasource/repository/   # 预期：ok（无测试文件则为 [no test files]，合法）
+go test -count=1 ./internal/modules/datasource/repository/   # 预期：ok，10 顶层用例全 PASS（T1 repo 基线同模式复跑；R1 修订后不再是无测试包）
 go test -count=1 ./internal/application/service/ -run 'TestDeleteDataSourceWithoutPurgeKeepsDocuments|TestProcessSync'   # 预期：PASS（留守测试经 compat 编译运行）
 make verify-module-moves                          # 预期：OK (16 manifests verified)（行集增删成对）
 git diff --summary HEAD~1..HEAD | grep -c rename  # 预期：≥1（git 识别 rename）
 ```
 
-- **验收**：`git diff --name-only HEAD~1` ⊆ {datasource_repo.go 新旧路径、repo compat、datasource.yaml、ownership-matrix.yaml、（空目录清理）}。
+- **验收**：`git diff --name-only HEAD~1` ⊆ {datasource_repo.go 新旧路径、datasource_repo_test.go 新旧路径、datasource_repo_synclog_test.go 新旧路径、repo compat、datasource.yaml、ownership-matrix.yaml、（空目录清理）}。
 
 ### T3 — B2-DS.3 service 搬迁：kbActivity 直连 23 行 + cleanup seam + 11 测试随迁 + purge_test 重写【commit: `refactor(datasource): passb B2-DS.3 service 迁入模块（kbActivity 直连 + cleanup seam）`】
 
@@ -363,7 +386,7 @@ git diff --summary HEAD~1..HEAD | grep -c rename  # 预期：≥1（git 识别 r
 go build ./...     # 预期：退出码 0（module→module import 编译合法，guard 判定独立于编译）
 go vet ./internal/modules/datasource/...   # 预期：退出码 0
 go test -count=1 ./internal/modules/datasource/service/   # 预期：76 用例全 PASS（与 T1 基线逐用例一致）
-go test -count=1 ./internal/application/service/ -run 'TestDeleteDataSourcePurge|TestPurgeWorker|TestDeleteDataSourceWithoutPurge' -v   # 预期：9 用例全 PASS（purge_test 经 compat+seam 等价）
+go test -count=1 ./internal/application/service/ -run 'TestDeleteDataSourcePurge|TestDeleteDataSourceWithoutPurge|TestPurgeWorker|TestProcessDataSourcePurge|TestDataSourcePurgeQueueTopology|TestCountDataSourceDocumentsScopesToTenantKbDataSource' -v   # 预期：purge_test 9 顶层用例全 PASS（模式本分支实跑=9；R1 修订——原 3-alternates 模式漏 TestProcessDataSourcePurgeRejectsInvalidPayload/TestDataSourcePurgeQueueTopology/TestCountDataSourceDocumentsScopesToTenantKbDataSource 三例）
 make check-backend-architecture 2>&1 | grep forbidden-import   # 预期：恰 3 条（§2.3 三对；B2-DS.5 登记后归零——此为登机的先决证据，非节点失败）
 ```
 
@@ -380,8 +403,8 @@ make check-backend-architecture 2>&1 | grep forbidden-import   # 预期：恰 3 
 ```bash
 go build ./...                                                        # 预期：退出码 0
 go test -count=1 ./internal/modules/datasource/...                    # 预期：全 ok（service 76 + handler 20 + 既有模块面）
-go test -count=1 ./internal/handler/ -run 'TestDataSource|TestCountDocuments|TestReindex' 2>&1 | tail -3   # 预期：[no test files] 或全 PASS——datasource 用例已随迁，宿主残留零（grep 复证）
-grep -rn "DataSourceHandler\|DataSourceCredentialsHandler" internal/router/ internal/container/ | grep -v "_test" | wc -l   # 预期：≥4（消费点仍指向 handler.* 别名，零改动自证）
+go test -count=1 ./internal/handler/ -run 'TestDataSource' -v 2>&1 | grep -c "^=== RUN"   # 预期：0（datasource 20 用例已随迁；宿主 handler 包 TestDataSource 前缀仅本组使用，全量 grep 实测，零残留自证）
+grep -rn "DataSourceHandler\|DataSourceCredentialsHandler" internal/router/ internal/container/ | grep -v "_test" | wc -l   # 预期：≥6（routes_infra:303-304、router.go:118-119/:408、container:760/:857——消费点仍指向 handler.* 别名，零改动自证）
 ```
 
 - **验收**：宿主 `internal/handler/` 零 datasource 残留（`ls internal/handler/datasource*` 仅剩 compat 一件）。
@@ -413,23 +436,23 @@ go run ./tools/architectureguard 2>&1 | tail -3   # 预期：无例外诊断新�
 - [ ] **Step 1 新旧同用例双跑**（conventions §6 四要素：用例清单、双跑输出、比对结论、命令与退出码）：
 
 ```bash
-# 新实现（模块包）
+# 新实现（模块包：repository 10 + service 76 + handler 20 + 既有模块面）
 go test -count=1 ./internal/modules/datasource/... -v 2>&1 | tee /tmp/ds-new.txt
-# 旧锚点（留守 purge_test——经 compat 装配运行同一实现，兼作 compat/seam 接线等价证据）
-go test -count=1 ./internal/application/service/ -run 'TestDeleteDataSourcePurge|TestPurgeWorker|TestDeleteDataSourceWithoutPurge' -v 2>&1 | tee /tmp/ds-old-anchor.txt
+# 旧锚点（留守 purge_test——经 compat 装配运行同一实现，兼作 compat/seam 接线等价证据；模式=R1 修订后 9 顶层用例全模式，本分支实跑=9）
+go test -count=1 ./internal/application/service/ -run 'TestDeleteDataSourcePurge|TestDeleteDataSourceWithoutPurge|TestPurgeWorker|TestProcessDataSourcePurge|TestDataSourcePurgeQueueTopology|TestCountDataSourceDocumentsScopesToTenantKbDataSource' -v 2>&1 | tee /tmp/ds-old-anchor.txt
 ```
 
-- [ ] **Step 2 逐用例比对**：105 用例 T1 基线清单 vs Step 1 结果——**PASS/FAIL/SKIP 逐用例一致**为通过判据（差分失败只能修正新实现，conventions §6；本节点为纯搬迁+机械改写，预期零偏差）。高风险两面的专门登记：
+- [ ] **Step 2 逐用例比对**：**115 用例** T1 基线清单 vs Step 1 结果——**PASS/FAIL/SKIP 逐用例一致**为通过判据（差分失败只能修正新实现，conventions §6；本节点为纯搬迁+机械改写，预期零偏差）。高风险两面的专门登记：
   - **knowledge 删除/purge 级联**（framework §14.3）：purge 9 用例（drain/墓碑/取消边界/孤儿 tag/绑定清理/兄弟行存活）——绑定清理断言（:355-:356）同时证明 `:885` seam 接线与迁移前 `withKnowledgeCleanup` 直引等价；
   - **Worker 状态机/取消/重试/幂等**（framework §14.3）：cancel_enqueue 6（硬取消顺序、降级、TaskID、force-full）+ sync_cancel 7（租户隔离、取消标志）+ sync_heartbeat 2 + stream 6；
   - **审计活动流**：purgeAuditSink.findByAction + service_test 内 audit 断言（17 直连改写点的行为面）。
 - [ ] **Step 3 evidence 定稿**：`docs/architecture/evidence/passb/b2-datasource.md` 补 §差分（四面×四要素）、§计数基线（105→105+3 例外行登记；633/23+23/58/537 三方一致复核记录——`make check-backend-architecture` 输出 + manifest 发现值对照）、§别名（B2-DS.6 指针）。
-- **验收**：差分四要素齐备；105 用例零偏差登记；任一偏差未归因即节点不完成。
+- **验收**：差分四要素齐备；**115 用例**零偏差登记；任一偏差未归因即节点不完成。
 
 ### T8 — B2-DS.8 Integration Brief + 实施报告 + 节点门禁收口【commit: `docs(passb): b2-datasource Brief、报告与节点门禁收口`】
 
 - [ ] **Step 1 Brief**（`docs/architecture/passb/briefs/b2-datasource.md`，交付 IB2）：
-  - **(a) 装配直连切换申请**：container.go :309/:310/:633/:760/:857 五处 Provide 与 :2368 断言、routes_infra.go:297-302 形参切到模块路径（`repository.`→`dsrepo.`、`service.NewDataSourceService`→`dsservice.NewDataSourceService`（**切换后必须补接 `SetKnowledgeCleanup`（见 (b)）或等待 K4 补迁窗直连**）、`handler.*`→`dshandler.*`）；切换后删 3 个 compat 文件 + manifest/matrix 3 shim 行（同 commit）。
+  - **(a) 装配直连切换申请**：container.go :309/:310/:633/:760/:857 五处 Provide 与 :2368 断言、routes_infra.go:301-306（形参 :303-304）与 router.go:118-119（RouterParams 字段）/:408（消费行）及 router_api_key_capabilities_test.go:353 的 `handler.*` 引用一并切到模块路径（`repository.`→`dsrepo.`、`service.NewDataSourceService`→`dsservice.NewDataSourceService`（**切换后必须补接 `SetKnowledgeCleanup`（见 (b)）或等待 K4 补迁窗直连**）、`handler.*`→`dshandler.*`）；切换后删 3 个 compat 文件 + manifest/matrix 3 shim 行（同 commit）。
   - **(b) cleanup seam 终局**：K4 补迁窗导出 `withKnowledgeCleanup`（24 计划 §5.3 蓝本）后，`:885` 改直连 `app.WithKnowledgeCleanup`（或 K 面裁定的最终门面位）+ 删 `SetKnowledgeCleanup`/字段 + 删 compat 内接线；若 IB2 先于补迁窗切换装配，IB2 须在 container 侧以等价闭包接线（与 Ruling CYCLE-FORCED-COMPOSITION 的 Brief 点名口径衔接）。
   - **(c) 3 条例外行收口编排**：remove_at=ib2；收口前置=knowledge 根门面暴露活动端口或经 ADR 修订（K2 Brief §7 同族裁定——app/knowledgebase.go→datasource 例外与本节点 datasource→app 例外在 ib2 一并裁决方向）。
   - **(d) 门面实装申请**：`datasource.facade` 五操作按 K5.1 同法实装（真实 seam：`RegisterWorkers` 双栈 2 类型=ProcessSync/ProcessDataSourcePurge 接口方法值；`Start`=startDataSourceScheduler 等价入口；`RegisterRoutes`=RegisterDataSourceRoutes 形参供给；Dependencies 字段从 container Invoke 面推导——IB2 时点实装，不在本节点）。
@@ -447,7 +470,7 @@ git diff "$PASSB_BASE_SHA"...HEAD --name-only | sort          # 与 §3 写入�
 
 ```bash
 go build ./...                                            # 预期：退出码 0
-go test -count=1 ./internal/modules/datasource/...        # 预期：全 PASS（service 76 + handler 20 + 既有 connector/scheduler/根包）
+go test -count=1 ./internal/modules/datasource/...        # 预期：全 PASS（repository 10 + service 76 + handler 20 + 既有 connector/scheduler/根包）
 make check-backend-architecture                           # 预期：total=633 | redis=23 lite=23 | hooks=58 | modules=16、OK (0 violations)
 make verify-module-moves                                  # 预期：OK (16 manifests verified)
 ```
@@ -483,7 +506,7 @@ make verify-module-moves                                  # 预期：OK (16 mani
 2. `git diff "$ALIGN_SHA"...HEAD --name-only` 与 §3 写入所有权求差集为空（conventions §1.2）。
 3. 4 个 legacy 文件物理落位 3 个 destination 包，`git diff --summary` 识别 rename，除 §4.2/§4.3/§5 T4 Step 1 列明的机械改写外函数体零变化（reviewer 抽查 ≥10 函数）。
 4. 24 调用点对账：17+2+1+3 直连 `app.*` + 1 seam（`grep` 清单与 §2.2 表一致）；purge_test 9 用例经 compat+seam 全 PASS（seam 等价性证据）。
-5. 105 用例 T1 基线 vs T7 终态逐用例一致（差分四要素在 evidence）。
+5. **115 用例** T1 基线 vs T7 终态逐用例一致（差分四要素在 evidence；其中 repository 10 用例经 T2 随迁后在新包内同名同断言复跑——R1 修订口径）。
 6. manifest/matrix：4 legacy 行删、12 alias 行删、3 shim 行成对增——`make verify-module-moves` 绿（16 manifests）。
 7. 3 条 importExceptions 数据行 + ledger 3 行（id 顺延、owner=26-datasource、remove_at=ib2）；`make check-backend-architecture` `OK (0 violations)` 且 633/23+23/58/16 不变。
 8. 宿主零业务残留：`internal/application/service/datasource_service.go` 等 4 旧路径不存在；宿主仅余 3 compat + 留守 purge_test；`internal/handler/dto` 等 platform 导入不改。
@@ -498,10 +521,11 @@ make verify-module-moves                                  # 预期：OK (16 mani
 - **预期升级点 3**：留守 purge_test 在 K4 补迁窗时点（非本节点）宿主 knowledgeService 消亡而断链 → 属 K4 Brief (f) 已登记义务，本节点仅在 Brief (e) 复述，不代处置。
 - 契约签名变化（contracts.yaml 四 datasource 契约）→ ADR/Spec 修订 + 串行契约任务（framework:26）。
 
-## 11. 计划自检记录（撰写者已执行）
+## 11. 计划自检记录（撰写者已执行；R1 修订者复核并增补）
 
 - **Spec 覆盖**：§5.9/§5.18/§6.2（不直接写 Knowledge 表——purge 经 `knowledgeService.DeleteKnowledgeList` 端口，:885 仅附上下文）→ §1/§2.2/§4.4；§12 Pass B 循环 → §5 T1→T7；§13 提交隔离 → 一任务一 commit + 同 commit 行级收口；§14.3 差分 → §6；§11 B2/IB2 → §0.2/§7。
-- **无占位符/TBD**：全部文件路径、行号、签名为本分支 HEAD `74f454527` 实读（§0 头注声明对齐后复核点）；无发明接口——`app.*` 4 符号签名取自 20 计划 §6.2 组 B 冻结表 + 22 计划 :76-:80 导出面表 + k-process 分支 `retrieval/app/kb_activity.go` 实读；seam 签名逐字照录 `knowledge_delete_plan.go:22`。
-- **类型一致**：compat wrapper 11 参签名与 `datasource_service.go:54-66` 逐参一致；`SetKnowledgeCleanup` 与 seam 字段/调用点三方同签名；repo/handler 别名与定义处一致（`:19`/`:269`/`:25`/`:28`）。
-- **跨任务接口一致**：T3 产出的 `SetKnowledgeCleanup` 被 T3 的 compat wrapper 消费；T5 的例外行 importer 路径=T3 落位路径；T8 Brief (a) 的切换点=T2/T3/T4 的 compat 覆盖面（§2.1 表）；T7 差分锚点=T1 基线清单。
-- **事实偏差如实登记**：DAG notes「b2-k-integration 同时覆盖 K2 与 K4」vs K4 推迟现实 → §0.2.2 + §10 升级点 1。
+- **无占位符/TBD**：全部文件路径、行号、签名为本分支 HEAD `74f454527` 实读（§0 头注声明对齐后复核点）；R1 修订所涉全部行号/清单于修订时分支 HEAD `b76d0fb8b` 重读复核；无发明接口——`app.*` 4 符号签名取自 20 计划 §6.2 组 B 冻结表 + 22 计划 :76-:80 导出面表 + k-process 分支 `retrieval/app/kb_activity.go` 实读；seam 签名逐字照录 `knowledge_delete_plan.go:22`。
+- **类型一致**：compat wrapper 10 参签名与 `datasource_service.go:54-66` 逐参一致（struct :30-52 十个接口/指针字段一一对应；R1 勘误：原文「11 参」计数有误）；`SetKnowledgeCleanup` 与 seam 字段/调用点三方同签名；repo/handler 别名与定义处一致（`:19`/`:269`/`:25`/`:28`，R1 复验）。
+- **跨任务接口一致**：T2 产出的 repo 10 用例随迁 = T1 repo 基线（10 顶层用例同模式）；T3 产出的 `SetKnowledgeCleanup` 被 T3 的 compat wrapper 消费；T5 的例外行 importer 路径=T3 落位路径；T8 Brief (a) 的切换点=T2/T3/T4 的 compat 覆盖面（§2.1 表，R1 补 router 三行）；T7 差分锚点=T1 基线清单（115 用例）。
+- **R1 修订实测留痕**（2026-09-27，worktree 分支 HEAD `b76d0fb8b`）：①service 25-alternates 模式实跑 = 85 顶层用例、0 FAIL（36.1s）；②repo 模式实跑 = 10 用例 ok；③handler `TestDataSource` 模式实跑 = 20 顶层 + 9 子测试 ok；④purge 6-alternates 模式实跑 = 9 顶层；⑤K 分支反向边 grep 零命中 + retrieval/app 14 项清单（无 knowledgebase.go）+ exc-0112..0116 五条例外 ImportedPath 逐一读出；⑥§2.1 全集 sweep 命令与命中清单（见 §2.1 正文）。
+- **事实偏差如实登记**：DAG notes「b2-k-integration 同时覆盖 K2 与 K4」vs K4 推迟现实 → §0.2.2 + §10 升级点 1；R1 勘误（原文不实引用/漏列）→ §0 头注 R1 修订条 + §2.3 无环论证更正 + §1/§2.4 repo 测试补全。
