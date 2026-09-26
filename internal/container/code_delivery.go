@@ -9,6 +9,7 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/handler/session"
+	appconnectorrepo "github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector"
 	appconnectorsvc "github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector"
 	"github.com/Tencent/WeKnora/internal/modules/codedelivery"
 	deliveryrepo "github.com/Tencent/WeKnora/internal/modules/codedelivery/repository/codedelivery"
@@ -115,14 +116,18 @@ func newCodeDeliveryService(
 	store := deliveryrepo.NewDeliveryStore(db)
 	creds := appconnectorsvc.NewCredentialResolver(connections)
 	factory := codedelivery.NewGitHubClientFactory(nil, codedelivery.GitHubAPIBaseURL)
+	gitlabFactory := codedelivery.NewGitLabClientFactory(nil, codedelivery.GitLabAPIBaseURL)
+	providers := appconnectorrepo.NewInstallationStore(db)
 	dispatcher := codedelivery.NewDeliveryDispatcher(codedelivery.DispatcherDeps{
-		Connections: connections, Creds: creds, Guard: guard, GitHub: factory,
-		Workspace: workspace, Store: store, ActionRows: actionStore, Runs: runs,
+		Connections: connections, Creds: creds, Guard: guard,
+		GitHub: factory, GitLab: gitlabFactory, Workspace: workspace, Store: store,
+		ActionRows: actionStore, Runs: runs,
 	})
 	actions := appconnectorsvc.NewActionService(actionStore, guard, nil, dispatcher, dispatcher)
 	return codedelivery.NewCodeDeliveryService(codedelivery.CodeDeliveryDeps{
 		Store: store, Actions: actions, ActionRows: actionStore,
-		Connections: connections, Creds: creds, GitHub: factory,
+		Connections: connections, Creds: creds,
+		GitHub: factory, GitLab: gitlabFactory, Providers: providers,
 		Workspace: workspace, Runs: runs, Dispatcher: dispatcher,
 	}), nil
 }

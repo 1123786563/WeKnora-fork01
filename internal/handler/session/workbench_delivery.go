@@ -226,6 +226,10 @@ func writeDeliveryError(c *gin.Context, err error) {
 	case errors.Is(err, codedelivery.ErrDeliveryDispatchRejected):
 		// 可证未出网的前置门拒绝（审批已消费）：409，重试须重新 Prepare。
 		c.JSON(http.StatusConflict, gin.H{"success": false, "code": "code_delivery_dispatch_rejected", "error": "the delivery was refused before any remote call; prepare a new delivery to retry"})
+	case errors.Is(err, codedelivery.ErrUnsupportedProvider):
+		// 连接背后的安装 app 不是代码平台（T24 #54）：可证未出网的输入类
+		// 错误，400 固定码，不落 5xx。
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "code": "code_delivery_unsupported_provider", "error": "the connection is not a code platform connection"})
 	default:
 		var apiErr *codedelivery.GitHubAPIError
 		if errors.As(err, &apiErr) {
