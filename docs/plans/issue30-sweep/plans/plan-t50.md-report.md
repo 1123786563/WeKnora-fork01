@@ -219,3 +219,90 @@ ok  	github.com/Tencent/WeKnora/internal/modules/appconnector	0.501s
 - **真实 Confluence Server/DC 实例对平铺 PUT 的实际行为**：仍属 blocked-env（无凭据），本环境无法实跑；修复的依据是三方代码事实闭合（同包 create 实现 + 其 documented nested shape 注释 + fake 双打解析）与官方文档形状一致，实例级终裁留给 Task 9 有凭据运行。
 - **Cloud 版式零改动**：`confluenceCloudUpdateRequest` 的平铺 `body.{representation,value}` 即 Cloud v2 契约形状，未触碰；`TestConfluenceUpdateCloudHappyPath` 等 Cloud 测试全绿。
 - **提交时 Mimosa hook 再次提示扫描未得完整结论（scanner_enobufs）**：与首轮相同，未宣称项目安全状态。
+
+---
+
+# Task 4/10 报告——publish 包：Artifact 文本→Confluence storage 正文纯投影
+
+日期：2026-09-26
+任务定位：plan-t50.md:2164-2312（Task 4）
+
+## 1. 实现内容
+
+- **Create** `internal/modules/appconnector/publish/confluence_blocks.go`：`func ConfluenceStorageBody(text string) (string, error)`——纯文本 → Confluence storage 格式（XHTML）正文的确定性纯投影：按空行切段、每段 trim + HTML 转义、`<p>` 包裹并以换行分隔；段内单个换行原样保留；空内容 → `ErrPublishEmptyContent`，段落超限 → `ErrPublishContentTooLarge`（复用同包 `blocks.go:18,25,28` 既有 `MaxPublishBlocks=500`/两哨兵，零修改复用）。
+- **Create** `internal/modules/appconnector/publish/confluence_blocks_test.go`：计划 Step 1 逐字给定的 7 个测试（段落/CRLF 归一/HTML 转义/段内换行保留/空内容/超限/确定性）。
+
+## 2. TDD 证据
+
+### Step 2 RED（写实现前实跑）
+
+```
+$ go test ./internal/modules/appconnector/publish/ -run 'TestConfluenceStorageBody' -count=1
+internal/modules/appconnector/publish/confluence_blocks_test.go:10:14: undefined: ConfluenceStorageBody
+... （7 处 undefined: ConfluenceStorageBody）
+FAIL github.com/Tencent/WeKnora/internal/modules/appconnector/publish [build failed]
+```
+
+与计划 Step 2 Expected（「FAIL，`undefined: ConfluenceStorageBody`」）一致。
+
+### Step 4 GREEN（最终实跑，完整输出）
+
+```
+$ go test ./internal/modules/appconnector/publish/ -run 'TestConfluenceStorageBody' -count=1 -v
+=== RUN   TestConfluenceStorageBodyParagraphs
+--- PASS: TestConfluenceStorageBodyParagraphs (0.00s)
+=== RUN   TestConfluenceStorageBodyNormalizesCRLF
+--- PASS: TestConfluenceStorageBodyNormalizesCRLF (0.00s)
+=== RUN   TestConfluenceStorageBodyEscapesHTML
+--- PASS: TestConfluenceStorageBodyEscapesHTML (0.00s)
+=== RUN   TestConfluenceStorageBodyKeepsSingleNewlineInsideParagraph
+--- PASS: TestConfluenceStorageBodyKeepsSingleNewlineInsideParagraph (0.00s)
+=== RUN   TestConfluenceStorageBodyEmpty
+--- PASS: TestConfluenceStorageBodyEmpty (0.00s)
+=== RUN   TestConfluenceStorageBodyTooLarge
+--- PASS: TestConfluenceStorageBodyTooLarge (0.00s)
+=== RUN   TestConfluenceStorageBodyDeterministic
+--- PASS: TestConfluenceStorageBodyDeterministic (0.00s)
+PASS
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/publish	1.371s
+```
+
+7/7 通过。
+
+## 3. 自检发现（重要：计划内部矛盾一处，已按测试裁决）
+
+**plan-t50.md 自带的 Task 4 验收测试与 Task 4 模板实现互相矛盾（too-large 边界）：**
+
+- 计划逐字测试（plan-t50.md:2229-2234）`TestConfluenceStorageBodyTooLarge` 输入 `strings.Repeat("p\n\n", MaxPublishBlocks)`，期待 `ErrPublishContentTooLarge`，注释明写「MaxPublishBlocks+1 paragraphs」（=501 段）。
+- 计划模板实现（plan-t50.md:2285-2286）以**滤空后段落计数**判定（`len(paragraphs) > MaxPublishBlocks`）。该输入 raw split parts=501（500 个 `"p"` + 1 个尾部空串，`strings.Split` 保留尾部空串），滤空后恰 500，永不触发。
+- 实证（python3 同语义 split 计数；Bash 写 Go 探针文件被 Mimosa hook 拒绝，改用等价字符串实证）：`raw parts=501, non-empty paragraphs=500`——测试注释的 501 与 raw parts 计数一致。
+
+**裁决**：计划 Step 4 要求测试通过；依据计划 Global Constraints「Tests target observable behavior」与仓库 TDD 原则，测试是行为契约，模板实现服从测试。最终实现：容量判定用 **raw split 段数**（`len(parts) > MaxPublishBlocks`，含尾部分隔空段），渲染输出仍只含非空段，全空 → `ErrPublishEmptyContent`。已在 `confluence_blocks.go` 函数注释中明示该边界语义。
+
+**下游安全核查**：grep 计划全文，下游消费仅 Task 6（plan-t50.md:3586 `storage, berr := ConfluenceStorageBody(string(content))`），Consumes 仅声明签名逐字（plan-t50.md:2172），不依赖边界计数细节，修正不影响 Task 6 契约。与前置 Task 3 修复轮先例一致（计划模板与事实矛盾时以可观察行为为准，提交 2b1691753）。
+
+另：计划模板 `import "errors"` 未使用（模板笔误，编译失败），已移除；错误包裹用 `fmt.Errorf("%w: ...")`。
+
+## 4. 回归验证（本任务实跑）
+
+| 检查 | 命令 | 结果 |
+|---|---|---|
+| 全树回归 | `go test ./internal/modules/appconnector/... -count=1` | 6 个包全部 `ok`（appconnector 0.545s / connectorcontrol 3.904s / openconnector 2.797s / publish 3.950s / repository/appconnector 3.477s / service/appconnector 4.781s） |
+| go vet | `go vet ./internal/modules/appconnector/publish/` | 通过（零输出） |
+| 全仓构建 | `go build ./...` | BUILD-OK（仅 linker 无害告警 `ignoring duplicate libraries: '-lc++'`，环境既有） |
+
+前置接口保持：appconnector 包（Task 1-3 confluence 适配器族）全部 ok。
+
+## 5. 提交
+
+```
+e405abbab feat(publish): confluence storage body pure projection (T20 #50)
+2 files changed, 113 insertions(+)
+```
+
+提交前 `git status --short` 仅两个 `??` 新文件（本任务授权文件），未触碰他人/其他任务文件；未推送远端。
+
+## 6. 遗留/交接
+
+- 无阻塞。Task 5（`ConfluenceBridge`）可依计划继续；Task 6 消费的 `ConfluenceStorageBody` 签名不变。
+- 提请审查注意：本任务对计划模板有一处已记录的实现偏差（too-large 计数语义，见第 3 节）；如审查者倾向保留模板原实现，则必须同时修改计划自带的验收测试——二者不可兼得。
