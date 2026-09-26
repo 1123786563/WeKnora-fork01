@@ -227,8 +227,12 @@ func (p *PurchaseFulfiller) Fulfill(ctx context.Context, ev repocommercial.Outbo
 		State:       domain.FulfillmentStateApplied,
 		LeaseUntil:  p.now(),
 	}
+	// The terminal APPLIED record overwrites an earlier transient attention
+	// marker (the settle-vs-finalize window may have parked attention on the
+	// same unique key before the webhook landed — the final fact wins).
 	if err := p.db.WithContext(ctx).Clauses(clause.OnConflict{
-		DoNothing: true,
+		Columns:   []clause.Column{{Name: "key"}},
+		DoUpdates: clause.AssignmentColumns([]string{"state", "external_id", "expires_at", "credits", "plan_ref"}),
 	}).Create(&rec).Error; err != nil {
 		return err
 	}

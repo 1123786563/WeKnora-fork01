@@ -7,10 +7,18 @@ import { createRequire } from 'node:module';
 const require = createRequire(new URL('../../../apps/web/package.json', import.meta.url));
 const { chromium } = require('@playwright/test');
 
-const WEB = 'http://localhost:5192';
-const EV = new URL('.', import.meta.url).pathname;
+// (OCR r4) origin parameterized (FLOW82_WEB); credentials env-REQUIRED.
+const WEB = process.env.FLOW82_WEB ?? 'http://localhost:5192';
+const EV = fileURLToPath(new URL('.', import.meta.url));
 const ORDER = process.argv[2];
 if (!ORDER) { console.error('usage: node browser_sync_face_82.mjs <orderId>'); process.exit(2); }
+import { fileURLToPath } from 'node:url';
+const EMAIL = process.env.FLOW82_EMAIL_B ?? process.env.FLOW82_EMAIL ?? '';
+const PASSWORD = process.env.FLOW82_PASSWORD_B ?? process.env.FLOW82_PASSWORD ?? '';
+if (!EMAIL || !PASSWORD) {
+  console.error('missing required env: FLOW82_EMAIL(_B) / FLOW82_PASSWORD(_B)');
+  process.exit(2);
+}
 
 const results = [];
 const note = (step, ok, detail) => {
@@ -23,14 +31,15 @@ try {
   const page = await (await browser.newContext()).newPage();
   page.setDefaultTimeout(30000);
   await page.goto(`${WEB}/login`);
-  await page.fill('#auth-email', 'issue82-flow-b@verify.local');
+  await page.fill('#auth-email', EMAIL);
   await page.fill('#auth-password', 'issue82-Flow-Pw-b');
   await page.locator('form[aria-label="Login form"] button[type="submit"]').click();
   await page.waitForURL((u) => !u.pathname.startsWith('/login'), { timeout: 30000 });
 
   await page.goto(`${WEB}/platform/billing/checkout?order=${ORDER}`);
   await page.waitForSelector('text=订单结算', { timeout: 30000 });
-  await page.waitForTimeout(4000); // let one poll tick land (3s interval)
+  // (OCR r4) waitForTimeout replaced by waiting for the target copy.
+  await page.waitForSelector('text=待付款', { timeout: 30000 });
   const body = await page.locator('main').innerText();
   note('sync-face-no-advance', body.includes('等待付款') && body.includes('待付款（权益未开通）'),
     'checkout replay of the SAME order still reads 等待付款/待付款（权益未开通）— no confirmation from the sync face');

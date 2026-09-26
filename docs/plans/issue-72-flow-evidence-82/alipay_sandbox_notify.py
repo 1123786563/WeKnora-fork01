@@ -24,10 +24,13 @@ Usage:
 """
 import argparse
 import base64
+import os
 import subprocess
 from urllib.parse import urlencode
 
-KEY_DIR = __file__.rsplit("/", 1)[0]
+# (OCR r4) KEY_DIR overridable: the local-only key pair may live outside
+# the repo (never committed); default stays beside this script.
+KEY_DIR = os.environ.get("FLOW82_KEY_DIR") or os.path.dirname(os.path.abspath(__file__))
 ALIPAY_KEY = f"{KEY_DIR}/alipay_verify_local.pem"
 
 

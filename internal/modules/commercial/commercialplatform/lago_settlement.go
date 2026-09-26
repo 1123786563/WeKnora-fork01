@@ -102,6 +102,15 @@ func (a *LagoAdapter) settlePurchasePayment(ctx context.Context, cmd commercial.
 		return commercial.CommandReceipt{}, err
 	}
 	if len(intents) == 0 {
+		// (t10 flow evidence) The settle-vs-finalize WINDOW: an earlier
+		// settle drive already confirmed the gating intent and the built-in
+		// webhook chain has not finalized the authority yet. A succeeded
+		// intent carrying the invoice identity means exactly that — the
+		// settle is DONE, the receipt replays idempotently (never a second
+		// charge, never a data-anomaly error that would park the order).
+		if a.hasSettledGatingIntent(ctx, providerCustomerID) {
+			return receipt, nil
+		}
 		return commercial.CommandReceipt{}, fmt.Errorf(
 			"%w: no unsettled gating intent carries the invoice identity", commercial.ErrPlatformInvalidResponse)
 	}
@@ -216,6 +225,34 @@ func (a *LagoAdapter) stripeListUnsettledIntents(ctx context.Context, providerCu
 		})
 	}
 	return out, nil
+}
+
+// hasSettledGatingIntent reports whether the customer carries a SUCCEEDED
+// PaymentIntent stamped with the Lago invoice identity — the settle-already-
+// driven, webhook-pending window (t10 flow evidence).
+func (a *LagoAdapter) hasSettledGatingIntent(ctx context.Context, providerCustomerID string) bool {
+	status, body, err := a.providerOutboundRequest(ctx, http.MethodGet,
+		"/v1/payment_intents?customer="+url.QueryEscape(providerCustomerID)+"&limit=20", "", "")
+	if err != nil || status != http.StatusOK {
+		return false
+	}
+	var parsed struct {
+		Data []struct {
+			Status   string `json:"status"`
+			Metadata struct {
+				LagoInvoiceID string `json:"lago_invoice_id"`
+			} `json:"metadata"`
+		} `json:"data"`
+	}
+	if json.Unmarshal(body, &parsed) != nil {
+		return false
+	}
+	for _, row := range parsed.Data {
+		if row.Status == "succeeded" && row.Metadata.LagoInvoiceID != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // latestIntent resolves the disambiguation rule (D2' step ii): the current

@@ -9,7 +9,7 @@ browser checkout flow (CheckoutPage submits provider='wechat') can run the
 full purchase chain (gated subscription -> match gate -> channel order)
 end-to-end without real channel credentials.
 
-Endpooints implemented (only what the adapter calls):
+Endpoints implemented (only what the adapter calls):
   POST /v3/pay/transactions/native          -> {"code_url": "weixin://wxpay/bizpayurl?pr=..."}
   GET  /v3/pay/transactions/out-trade-no/*  -> {"trade_state": "NOTPAY", ...}
 

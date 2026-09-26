@@ -332,8 +332,7 @@ func TestLagoSettleFailsClosedWithoutSettlePm(t *testing.T) {
 func TestLagoSettleNoStuckIntentInvalidResponse(t *testing.T) {
 	cases := [][]stripeIntentRec{
 		{}, // empty
-		{{ID: "pi_done", Customer: "cus_stripe_1", Status: "succeeded", Created: 1000, LagoInvID: "inv_x"}},    // terminal only
-		{{ID: "pi_metaless", Customer: "cus_stripe_1", Status: "requires_payment_method", Created: 1000}},      // no invoice metadata
+		{{ID: "pi_metaless", Customer: "cus_stripe_1", Status: "requires_payment_method", Created: 1000}}, // no invoice metadata
 	}
 	for i, intents := range cases {
 		h := newSettleHarness(t, "incomplete", intents)
@@ -341,8 +340,40 @@ func TestLagoSettleNoStuckIntentInvalidResponse(t *testing.T) {
 		if !errors.Is(err, commercial.ErrPlatformInvalidResponse) {
 			t.Fatalf("case %d: no stuck intent must fail closed invalid_response, got %v", i, err)
 		}
-		if n := h.stripe.requestCount(); n > 1 {
-			t.Fatalf("case %d: no charge may fire, got %v", i, h.stripe.paths())
+		// Reads only: the unsettled list + the settle-window probe. No
+		// charge-bearing call may fire.
+		for _, path := range h.stripe.paths() {
+			if strings.Contains(path, "attach") || strings.Contains(path, "confirm") ||
+				strings.Contains(path, "POST /v1/payment_intents/pi") {
+				t.Fatalf("case %d: no charge may fire, got %v", i, h.stripe.paths())
+			}
+		}
+	}
+}
+
+// (t10 flow evidence) The settle-vs-finalize WINDOW: an earlier settle
+// drive confirmed the gating intent (succeeded + invoice identity) while
+// the webhook chain has not activated the authority yet — a replay must
+// answer the idempotent receipt, never a second charge, never an error.
+func TestLagoSettleSettledWindowReplaysIdempotently(t *testing.T) {
+	intents := []stripeIntentRec{{
+		ID: "pi_done", Customer: "cus_stripe_1", Status: "succeeded", Created: 1000, LagoInvID: "inv_x",
+	}}
+	h := newSettleHarness(t, "incomplete", intents)
+	receipt, err := h.adapter.SubmitCommand(context.Background(), settleCmd(41, "txn-1"))
+	if err != nil {
+		t.Fatalf("the settled window must replay idempotently, got %v", err)
+	}
+	if receipt.ExternalID != commercial.ExternalPurchaseSubscriptionID(41) {
+		t.Fatalf("receipt identity = %q", receipt.ExternalID)
+	}
+	paths := h.stripe.paths()
+	if len(paths) != 2 { // the unsettled list + the settled-window probe, READS only
+		t.Fatalf("the settled window must make no writes, got %v", paths)
+	}
+	for _, p := range paths {
+		if !strings.HasPrefix(p, "GET /v1/payment_intents") {
+			t.Fatalf("the settled window must make no writes, got %v", paths)
 		}
 	}
 }

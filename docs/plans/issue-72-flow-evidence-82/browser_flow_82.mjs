@@ -9,10 +9,19 @@ import { createRequire } from 'node:module';
 const require = createRequire(new URL('../../../apps/web/package.json', import.meta.url));
 const { chromium } = require('@playwright/test');
 
-const WEB = 'http://localhost:5192';
-const EV = new URL('.', import.meta.url).pathname;
-const EMAIL = process.env.FLOW82_EMAIL ?? 'issue82-flow-a@verify.local';
-const PASSWORD = process.env.FLOW82_PASSWORD ?? 'issue82-Flow-Pw-a';
+import { fileURLToPath } from 'node:url';
+// (OCR r4) Every credential is env-REQUIRED (no source-code fallback), the
+// web origin and the expected CNY face are parameterized (FLOW82_WEB /
+// FLOW82_EXPECT_CNY), and the evidence dir resolves via fileURLToPath.
+const WEB = process.env.FLOW82_WEB ?? 'http://localhost:5192';
+const EV = fileURLToPath(new URL('.', import.meta.url));
+const EMAIL = process.env.FLOW82_EMAIL ?? '';
+const PASSWORD = process.env.FLOW82_PASSWORD ?? '';
+if (!EMAIL || !PASSWORD) {
+  console.error('missing required env: FLOW82_EMAIL / FLOW82_PASSWORD (no source-code fallback)');
+  process.exit(2);
+}
+const EXPECT_CNY = process.env.FLOW82_EXPECT_CNY ?? '¥99.00';
 
 const results = [];
 const note = (step, ok, detail) => {
@@ -39,13 +48,13 @@ try {
   // The page auto-creates the order; wait for the awaiting-payment status.
   await page.waitForSelector('text=待付款', { timeout: 60000 });
   const body = await page.locator('main').innerText();
-  const hasQuote = body.includes('报价明细') && body.includes('¥99.00');
+  const hasQuote = body.includes('报价明细') && body.includes(EXPECT_CNY);
   // CheckoutPage 的 Status 文案是「待付款（权益未开通）」（权益未开**通**，
   // CheckoutPage.tsx:176）；BillingPage 的套餐行文案是「待付款（权益未开
   // 放）」（BillingPage.tsx:117）——两处词汇不同，断言各自精确匹配。
   note('checkout-awaiting-payment', body.includes('待付款（权益未开通）') && body.includes('等待付款'),
     `order status: 等待付款 + 待付款（权益未开通）`);
-  note('checkout-quote-details', hasQuote, `quote block: 报价明细 + ¥99.00 line`);
+  note('checkout-quote-details', hasQuote, `quote block: 报价明细 + ${EXPECT_CNY} line`);
   const orderLine = body.split('\n').find((l) => l.includes('ord_')) ?? '';
   note('checkout-order-id', /ord_[0-9a-f]+/.test(orderLine), orderLine.trim());
   await page.screenshot({ path: `${EV}01-checkout-awaiting-payment.png`, fullPage: true });
@@ -53,7 +62,8 @@ try {
   // --- billing page: plan row awaiting payment ---
   await page.goto(`${WEB}/platform/billing`);
   await page.waitForSelector('main', { timeout: 30000 });
-  await page.waitForTimeout(1500); // purchase status fetch settles
+  // (OCR r4) waitForTimeout replaced by waiting for the target copy itself.
+  await page.waitForSelector('text=待付款', { timeout: 30000 });
   const billingBody = await page.locator('main').innerText();
   note('billing-awaiting-payment', billingBody.includes('待付款（权益未开放）'),
     `billing plan row: ${billingBody.split('\n').find((l) => l.includes('待付款')) ?? '(absent)'}`);
