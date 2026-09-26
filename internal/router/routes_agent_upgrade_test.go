@@ -273,7 +273,11 @@ func TestAgentUpgradeProposalLifecycleKeepsOldVariantsAndTasks(t *testing.T) {
 	require.NoError(t, json.Unmarshal(adopted.Body.Bytes(), &adoptionBody))
 	oldVariantID, oldAgentID := publishUpgradeVariant(t, r, adoptionBody.Data.ID, "Sales Assistant", "gpt-x", "kb-sales")
 
-	// 记录旧世界：旧本地 agent 行已入库（新 Release 落地前后逐字段比对）。
+	// 记录旧世界：快照旧本地 agent 整行（v2 落地前），供下方「此刻」与
+	// 「终局」两处整行逐字段比对（require.Equal 深比较，含 Config 与全部
+	// 列）；wire 面不变另由真实 GET /api/v1/agents + available-agents +
+	// 旧 Variant 行断言共同承载（最终审查 minor：原注释称逐字段比对但仅
+	// 存在性加载，此处补齐行级直证）。
 	var oldAgent types.CustomAgent
 	require.NoError(t, db.Where("tenant_id = ? AND id = ?", uint64(1), oldAgentID).First(&oldAgent).Error)
 
@@ -421,6 +425,11 @@ func TestAgentUpgradeProposalLifecycleKeepsOldVariantsAndTasks(t *testing.T) {
 	require.Len(t, availableBody.Data, 1, "草稿不进入移动可用面")
 	require.Equal(t, oldAgentID, availableBody.Data[0].AgentID)
 
+	// 「此刻」行级直证：accept 落地后旧 agent 整行与 v2 前快照逐字段相等。
+	var oldAgentNow types.CustomAgent
+	require.NoError(t, db.Where("tenant_id = ? AND id = ?", uint64(1), oldAgentID).First(&oldAgentNow).Error)
+	require.Equal(t, oldAgent, oldAgentNow, "旧本地 agent 行整行逐字段不变（此刻）")
+
 	// ---- 各 Variant 可独立重新映射、测试和发布（accept 产生的 v2 草稿走
 	// #59 既有流程：重新映射 → 测试 → 发布）----
 	newAgentID := mapTestPublishUpgradeVariant(t, r, acceptBody.Data.Variant.ID, "gpt-new", "kb-new")
@@ -431,6 +440,11 @@ func TestAgentUpgradeProposalLifecycleKeepsOldVariantsAndTasks(t *testing.T) {
 	require.True(t, found)
 	require.Equal(t, "Be useful.", prompt, "旧 agent 行为逐字节不变")
 	require.Equal(t, "gpt-x", modelID)
+	// 终局行级直证：升级 Variant 全流程发布后，旧 agent 整行与 v2 前快照
+	// 逐字段相等（require.Equal 深比较，含 Config/时间戳/软删除位）。
+	var oldAgentFinal types.CustomAgent
+	require.NoError(t, db.Where("tenant_id = ? AND id = ?", uint64(1), oldAgentID).First(&oldAgentFinal).Error)
+	require.Equal(t, oldAgent, oldAgentFinal, "旧本地 agent 行整行逐字段不变（终局）")
 	found, newPrompt, _ := agentsRowByName(t, r, "Sales Assistant v1.1")
 	require.True(t, found)
 	require.Equal(t, "Be extra useful and cite sources.", newPrompt, "新 agent 承载新版本行为")

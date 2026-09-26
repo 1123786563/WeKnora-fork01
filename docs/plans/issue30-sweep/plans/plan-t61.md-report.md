@@ -194,3 +194,44 @@ ok  	github.com/Tencent/WeKnora/internal/router	168.024s               （含 Te
 ### 修复轮结论
 
 代码零改动；报告两处号段改正 + 顺延偏差记录入册；计划级验证全链（含 handler/workbench 回归段）六段实跑全绿。
+
+---
+
+## 修复轮 2/5（最终审查 minor 之三，2026-09-26）
+
+### 审查问题（minor）
+
+> Task 4 服务测试两处增强偏差未入册：引入台账测试补 public 父表 FK 陪衬脚手架（计划直插台账行会被真实迁移流 FK 拒绝）、损坏 release 测试补「恢复 active」修复计划版空真缺陷；两处均为更强验证，但 Task 1-5 报告被共享报告路径覆盖，偏差记录丢失。
+
+### 偏差记录补账：Task 4 服务测试两处增强偏差（对照计划 Task 4 Step 1 原文）
+
+Task 2-5 报告写入共用报告路径后被依次覆盖（见本报告头部说明与修复轮 1/5 第 4 条），本节按计划原文与已提交代码逐字比对补账。两处偏差均为**测试相对计划的增强**（更强验证），生产代码零偏差；实现员已在测试文件内留有偏差说明注释，本轮为账面记录补全。
+
+**偏差 A：引入台账测试补 public 父表 FK 陪衬脚手架**（`internal/application/service/agent_upgrade_test.go:217-278`，偏差说明注释 `:224-230`）。
+
+- 计划原文（plan-t61.md Task 4 Step 1，`TestAgentUpgradeServiceCoversIntroducedLedgerUpgrades`）：直接 `db.Create(&types.TenantIntroducedReleaseEntity{... PublicListingID: "pub-listing-1", PublicReleaseID: "public-rel-1" ...})` 两次 + 直接建 Adoption 行——引用的 `public_marketplace_listings`/`public_agent_releases` 父行**不存在**，且两份 Release 内容只存于台账行自身。
+- 实际障碍（本轮实读核实）：服务测试 DB 由 `openAgentVersionServiceTestDB`（`internal/application/service/agent_version_test.go:31-59`）装载真实 sqlite 迁移流，DSN 含 `_foreign_keys=on`（`:39`）；`migrations/sqlite/000114_public_agent_marketplace.up.sql:100-101` 给 `tenant_introduced_releases` 挂 `FOREIGN KEY (public_release_id) REFERENCES public_agent_releases(id)` 与 `FOREIGN KEY (public_listing_id) REFERENCES public_marketplace_listings(id)`，`public_agent_releases` 再挂 `submission_id → public_release_submissions`（`:75-76`），`public_release_submissions` 再挂 `(publisher_tenant_id, source_release_id) → agent_releases(tenant_id, id)`（`:49-50`）。按计划直插台账行将触发 `FOREIGN KEY constraint failed`，计划版测试在真实迁移流上无法 GREEN。
+- 实际实现（更强验证）：两份 tenant 侧 Release 改走真实发布流 `publishUpgradeServiceRelease`（取得真实 `agent_releases` 行，满足 FK 链最底端）；再补 `PublicMarketplaceListingEntity`（1 行）+ `PublicReleaseSubmissionEntity`/`PublicAgentReleaseEntity`（各 2 行）作为 FK 陪衬脚手架。断言集与计划完全一致（listing/from/to/semantic_version/diff.Behavior 长度 3），父行内容不参与断言——服务回退只读 `tenant_introduced_releases`，陪衬行不放大验证范围也不掩盖回退路径。
+
+**偏差 B：损坏 Release 测试补「恢复 active」修复计划版空真缺陷**（同文件 `:342-374`，偏差说明注释 `:356-358`）。
+
+- 计划原文（`TestAgentUpgradeServiceSkipsInactiveAdoptionsAndCorruptReleases`）：先把 Adoption 置 `ended` 并断言空列表，**随后直接**损坏 to-Release bundle 断言空列表、再修复断言建议出现。
+- 缺陷：`ended` 过滤本就使 reconcile 对该 Adoption 跳过（`agent_upgrade.go` reconcileProposals 的 active 过滤），后两段「空列表 / 建议出现」的期望与状态过滤下的必然结果相同——损坏段与修复段**不可区分于空真**，未实际到达 release 解码路径（计划 Review Focus 5 声称钉住的 fail-closed 行为未被该计划版测试触达）。
+- 实际实现（更强验证）：在 ended 断言与损坏段之间把 Adoption 恢复 `active`（`:359-360`），使损坏段的空列表只能由 fail-closed 跳过解释、修复段 `healed=1` 只能由恢复后的正常物化解释——两段各自由不同原因产生，缺陷修复路径真实覆盖。
+
+### 回归覆盖测试（本轮实跑）
+
+两处偏差代码自 Task 4 提交（`0a5af2af2`）起即在工作树上，本轮验证其为 GREEN 且未被本轮其余修复破坏：
+
+```
+go test ./internal/application/service/ -run 'TestAgentUpgradeServiceCoversIntroducedLedgerUpgrades|TestAgentUpgradeServiceSkipsInactiveAdoptionsAndCorruptReleases' -count=1 -v
+→ --- PASS: TestAgentUpgradeServiceCoversIntroducedLedgerUpgrades
+→ --- PASS: TestAgentUpgradeServiceSkipsInactiveAdoptionsAndCorruptReleases
+→ ok  	github.com/Tencent/WeKnora/internal/application/service
+```
+
+（完整命令输出含其余同批修复的测试，见 `.superpowers/sdd/t61/final-fix-report.md`。）
+
+### 修复轮 2/5 结论
+
+代码零改动（本节仅针对 finding 2 的账面补全）；Task 4 两处增强偏差经逐字对照计划原文后入册，FK 链与 foreign_keys=on 前提均为本轮实读核实。

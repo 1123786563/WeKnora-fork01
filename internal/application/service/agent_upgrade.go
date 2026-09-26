@@ -118,6 +118,20 @@ func (s *AgentUpgradeService) AcceptUpgradeProposal(ctx context.Context, tenantI
 	// 接受 = 以新 Release 创建一个新的草稿 Variant（spec §9）。随后走 #59
 	// 既有 mapping/test/publish 流程；本方法绝不触碰其他 Variant 或既有
 	// 本地 Agent Version。
+	//
+	// 已知非事务窗口（计划自身的显式设计，最终审查 minor 已契约化）：
+	// CreateVariant 先于 CAS TransitionProposal 落库。并发双 accept 的 CAS
+	// 败者收到 ErrAgentUpgradeStateConflict（HTTP 409），但其已创建的草稿
+	// Variant 留存为「孤儿草稿」。该孤儿被如下不变量约束为良性：
+	//   1. state 停留 draft、固定在 proposal 的 to_release——不进入
+	//      available-agents（PublishedAvailableAgents 只读 published）；
+	//   2. proposal.accepted_variant_id 只指向 CAS 赢家的草稿，孤儿不被
+	//      任何终态行引用；建议保持 accepted 终态、不因孤儿复活；
+	//   3. spec §9 允许升级草稿共存，管理员可经 #59 既有流程处置或搁置。
+	// TestAgentUpgradeServiceAcceptRaceLoserLeavesBenignOrphanDraft 钉死
+	// 这些不变量。若未来要求「败者草稿必须回收」，应在 repository 层新增
+	// 事务原语（CreateVariant+CAS 同事务）并升级计划，而非在本服务层静默
+	// 补删。
 	variant, err := s.repo.CreateVariant(ctx, &types.AgentAdoptionVariantEntity{
 		TenantID: tenantID, AdoptionID: row.AdoptionID, ReleaseID: row.ToReleaseID,
 		Name: input.Name, State: AgentVariantStateDraft, CreatedBy: actorID,

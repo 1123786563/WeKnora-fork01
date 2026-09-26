@@ -277,6 +277,68 @@ func TestAgentUpgradeServiceCoversIntroducedLedgerUpgrades(t *testing.T) {
 	require.Len(t, p.Diff.Behavior, 3, "引入链与本地链共用同一差异计算")
 }
 
+// TestAgentUpgradeServiceAcceptRaceLoserLeavesBenignOrphanDraft pins the
+// documented accept race window (final review finding: CreateVariant runs
+// before the CAS TransitionProposal, so a concurrent double-accept loser's
+// draft persists as an "orphan"). The design is deliberate — this test
+// proves the orphan stays BENIGN instead of pretending the window cannot
+// happen: state=draft pinned to to_release, absent from the available-agents
+// surface, unreferenced by the proposal's accepted_variant_id, and the
+// proposal keeps its accepted terminal state (no resurrection). If a future
+// requirement demands orphan reclamation, that belongs in a repository-level
+// transactional primitive, not a silent service-side delete.
+func TestAgentUpgradeServiceAcceptRaceLoserLeavesBenignOrphanDraft(t *testing.T) {
+	svc, db := newAgentUpgradeServiceForTest(t)
+	repo := repository.NewAgentUpgradeRepository(db)
+	listingID, v1 := publishUpgradeServiceRelease(t, db, 1, "1.0.0", upgradeManifestV1, upgradeLockV1, upgradeBundleV1)
+	adoption := adoptUpgradeRelease(t, db, listingID, v1)
+	_, v2 := publishUpgradeServiceRelease(t, db, 2, "1.1.0", upgradeManifestV2, upgradeLockV2, upgradeBundleV2)
+	ctx := context.Background()
+
+	proposals, err := svc.ListUpgradeProposals(ctx, 1)
+	require.NoError(t, err)
+	require.Len(t, proposals, 1)
+	proposalID := proposals[0].ID
+
+	// 竞态败者：其 CreateVariant 先于双方 CAS 落库（与生产调用序列同形）。
+	loserDraft, err := repo.CreateVariant(ctx, &types.AgentAdoptionVariantEntity{
+		TenantID: uint64(1), AdoptionID: adoption.ID, ReleaseID: v2,
+		Name: "Race loser draft", State: AgentVariantStateDraft, CreatedBy: "admin-b",
+	})
+	require.NoError(t, err)
+
+	// CAS 赢家：服务 accept 正常收敛 accepted 终态，accepted_variant_id
+	// 指向赢家自己的草稿。
+	winnerVariant, accepted, err := svc.AcceptUpgradeProposal(ctx, 1, "admin-a", proposalID, interfaces.UpgradeVariantInput{Name: "Sales v1.1"})
+	require.NoError(t, err)
+	require.Equal(t, AgentUpgradeProposalStateAccepted, accepted.State)
+	require.Equal(t, winnerVariant.ID, accepted.AcceptedVariantID)
+
+	// 败者的 CAS 重放（accept）收到显式冲突——冲突但不重复终态落库。
+	_, _, err = svc.AcceptUpgradeProposal(ctx, 1, "admin-b", proposalID, interfaces.UpgradeVariantInput{Name: "Sales v1.1 too"})
+	require.ErrorIs(t, err, ErrAgentUpgradeStateConflict)
+
+	// 孤儿草稿良性不变量 1：state 停留 draft、固定 to_release，
+	// 且不被终态行的 accepted_variant_id 引用。
+	var loserRow types.AgentAdoptionVariantEntity
+	require.NoError(t, db.Where("tenant_id = ? AND id = ?", uint64(1), loserDraft.ID).First(&loserRow).Error)
+	require.Equal(t, AgentVariantStateDraft, loserRow.State, "孤儿草稿不自行离开 draft")
+	require.Equal(t, v2, loserRow.ReleaseID, "孤儿草稿固定在 to_release")
+	require.NotEqual(t, accepted.AcceptedVariantID, loserRow.ID)
+
+	// 孤儿草稿良性不变量 2：不进入 available-agents 面（published 专属）。
+	available, err := repository.NewAgentAdoptionRepository(db).PublishedAvailableAgents(ctx, 1)
+	require.NoError(t, err)
+	require.Empty(t, available, "draft（含孤儿）不进入 available-agents 面")
+
+	// 孤儿草稿良性不变量 3：建议保持 accepted 终态，不因孤儿复活。
+	after, err := svc.ListUpgradeProposals(ctx, 1)
+	require.NoError(t, err)
+	require.Len(t, after, 1)
+	require.Equal(t, AgentUpgradeProposalStateAccepted, after[0].State)
+	require.Equal(t, winnerVariant.ID, after[0].AcceptedVariantID)
+}
+
 func TestAgentUpgradeServiceSkipsInactiveAdoptionsAndCorruptReleases(t *testing.T) {
 	svc, db := newAgentUpgradeServiceForTest(t)
 	listingID, v1 := publishUpgradeServiceRelease(t, db, 1, "1.0.0", upgradeManifestV1, upgradeLockV1, upgradeBundleV1)
