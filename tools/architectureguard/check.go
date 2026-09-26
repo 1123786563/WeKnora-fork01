@@ -105,6 +105,97 @@ type importException struct {
 // 前缀或子串匹配；一条豁免只压制该精确 file→package 对的 forbidden-import。
 var importExceptions = []importException{
 	{
+		ImporterFile: "internal/modules/knowledge/wiki/wiki_fixer_scope.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/policy/access",
+		Reason: "预存横向包耦合（Pass B 前宿主 internal/handler|service 直引；" +
+			"23-knowledge-wikifaq 搬迁后显形），Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY 登记",
+		PassBTask: "B-knowledge",
+	},
+	{
+		ImporterFile: "internal/modules/knowledge/wiki/wiki_ingest.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent",
+		Reason: "预存横向包耦合（Pass B 前宿主 internal/handler|service 直引；" +
+			"23-knowledge-wikifaq 搬迁后显形），Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY 登记",
+		PassBTask: "B-knowledge",
+	},
+	{
+		ImporterFile: "internal/modules/knowledge/wiki/wiki_ingest.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat",
+		Reason: "预存横向包耦合（Pass B 前宿主 internal/handler|service 直引；" +
+			"23-knowledge-wikifaq 搬迁后显形），Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY 登记",
+		PassBTask: "B-knowledge",
+	},
+	{
+		ImporterFile: "internal/modules/knowledge/wiki/wiki_ingest_batch.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent",
+		Reason: "预存横向包耦合（Pass B 前宿主 internal/handler|service 直引；" +
+			"23-knowledge-wikifaq 搬迁后显形），Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY 登记",
+		PassBTask: "B-knowledge",
+	},
+	{
+		ImporterFile: "internal/modules/knowledge/wiki/wiki_ingest_batch.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat",
+		Reason: "预存横向包耦合（Pass B 前宿主 internal/handler|service 直引；" +
+			"23-knowledge-wikifaq 搬迁后显形），Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY 登记",
+		PassBTask: "B-knowledge",
+	},
+	{
+		ImporterFile: "internal/modules/knowledge/wiki/wiki_ingest_cite.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent",
+		Reason: "预存横向包耦合（Pass B 前宿主 internal/handler|service 直引；" +
+			"23-knowledge-wikifaq 搬迁后显形），Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY 登记",
+		PassBTask: "B-knowledge",
+	},
+	{
+		ImporterFile: "internal/modules/knowledge/wiki/wiki_ingest_cite.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/agentruntime/modelcontext",
+		Reason: "预存横向包耦合（Pass B 前宿主 internal/handler|service 直引；" +
+			"23-knowledge-wikifaq 搬迁后显形），Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY 登记",
+		PassBTask: "B-knowledge",
+	},
+	{
+		ImporterFile: "internal/modules/knowledge/wiki/wiki_ingest_cite.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat",
+		Reason: "预存横向包耦合（Pass B 前宿主 internal/handler|service 直引；" +
+			"23-knowledge-wikifaq 搬迁后显形），Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY 登记",
+		PassBTask: "B-knowledge",
+	},
+	{
+		ImporterFile: "internal/modules/knowledge/wiki/wiki_ingest_taxonomy.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent",
+		Reason: "预存横向包耦合（Pass B 前宿主 internal/handler|service 直引；" +
+			"23-knowledge-wikifaq 搬迁后显形），Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY 登记",
+		PassBTask: "B-knowledge",
+	},
+	{
+		ImporterFile: "internal/modules/knowledge/wiki/wiki_ingest_taxonomy.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat",
+		Reason: "预存横向包耦合（Pass B 前宿主 internal/handler|service 直引；" +
+			"23-knowledge-wikifaq 搬迁后显形），Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY 登记",
+		PassBTask: "B-knowledge",
+	},
+	{
+		ImporterFile: "internal/modules/knowledge/wiki/wiki_slug_handles.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/agentruntime/modelcontext",
+		Reason: "预存横向包耦合（Pass B 前宿主 internal/handler|service 直引；" +
+			"23-knowledge-wikifaq 搬迁后显形），Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY 登记",
+		PassBTask: "B-knowledge",
+	},
+	{
+		ImporterFile: "internal/modules/knowledge/faq/knowledge_faq_import.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/embedding",
+		Reason: "预存横向包耦合（Pass B 前宿主 internal/application/service 直引；" +
+			"23-knowledge-wikifaq K3.2 搬迁后显形），Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY 登记",
+		PassBTask: "B-knowledge",
+	},
+	{
+		ImporterFile: "internal/modules/knowledge/faq/knowledge_faq_import.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/policy/access",
+		Reason: "预存横向包耦合（Pass B 前宿主 internal/application/service 直引；" +
+			"23-knowledge-wikifaq K3.2 搬迁后显形），Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY 登记",
+		PassBTask: "B-knowledge",
+	},
+	{
 		ImporterFile: "internal/modules/appconnector/service/appconnector/oc_recovery.go",
 		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial",
 		Reason: "预存横向包耦合（Pass A 前双方均在 internal/application/service 下，" +
@@ -843,6 +934,110 @@ var importExceptions = []importException{
 		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
 			"batch-a4 搬迁后显形），Pass A 不改边界",
 		PassBTask: "B-workbench",
+	},
+	// ---- Pass B 搬迁显形的预存横向包耦合：knowledge ingest K1（21-knowledge-ingest
+	// §7.2 实测集 = E1/E2/E4/E5/E6 + seams.go→chat；E3（agentruntime/agent/tools）经
+	// K1.3 import 环裁决改走消费侧 seam 后不再 import，无需登记——Ruling
+	// 2026-09-24-IMPORT-EXCEPTION-REGISTRY；airesource 行属 plan 20 §7.4 合法消费清单）----
+	{
+		ImporterFile: "internal/modules/knowledge/ingest/extract.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat",
+		Reason: "搬迁显形横向耦合（Pass B 前宿主 internal/application/service 直连，" +
+			"plan 20 §7.4 合法消费清单；K1.3 搬迁后显形），Pass B 不改边界",
+		PassBTask: "B-knowledge",
+	},
+	{
+		ImporterFile: "internal/modules/knowledge/ingest/extract.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/embedding",
+		Reason: "搬迁显形横向耦合（Pass B 前宿主 internal/application/service 直连，" +
+			"plan 20 §7.4 合法消费清单；K1.3 搬迁后显形），Pass B 不改边界",
+		PassBTask: "B-knowledge",
+	},
+	{
+		ImporterFile: "internal/modules/knowledge/ingest/extract.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/policy/access",
+		Reason: "搬迁显形横向耦合（Pass B 前宿主 internal/application/service 直连 " +
+			"policy 公开包，随文件纯移动；K1.3 搬迁后显形），Pass B 不改边界",
+		PassBTask: "B-knowledge",
+	},
+	{
+		ImporterFile: "internal/modules/knowledge/ingest/seams.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat",
+		Reason: "搬迁显形横向耦合（原 service/extract.go 直连 chat，K1.3 消费侧 seam " +
+			"具体化后由 seams.go 承载 chat.Chat 类型签名，plan 21 §6.3），Pass B 不改边界",
+		PassBTask: "B-knowledge",
+	},
+	{
+		ImporterFile: "internal/modules/knowledge/ingest/image_multimodal.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/utils/ollama",
+		Reason: "搬迁显形横向耦合（Pass B 前宿主 internal/application/service 直连，" +
+			"plan 20 §7.4 合法消费清单；K1.4 搬迁后显形），Pass B 不改边界",
+		PassBTask: "B-knowledge",
+	},
+	{
+		ImporterFile: "internal/modules/knowledge/ingest/image_multimodal.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/vlm",
+		Reason: "搬迁显形横向耦合（Pass B 前宿主 internal/application/service 直连，" +
+			"plan 20 §7.4 合法消费清单；K1.4 搬迁后显形），Pass B 不改边界",
+		PassBTask: "B-knowledge",
+	},
+	// ---- Pass B 搬迁显形的预存横向包耦合：knowledge retrieval semantic 面消费 commercial
+	// 域类型（22-knowledge-retrieval K2.3 搬迁后显形；Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY）----
+	{
+		ImporterFile: "internal/modules/knowledge/retrieval/app/semantic_model_capability.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/commercial",
+		Reason: "预存横向包耦合（Pass B 前均在 internal/application/service 下，" +
+			"K2.3 搬迁后显形），Pass B 不改边界",
+		PassBTask: "B-knowledge",
+	},
+	{
+		ImporterFile: "internal/modules/knowledge/retrieval/app/semantic_model_policy.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/commercial",
+		Reason: "预存横向包耦合（Pass B 前均在 internal/application/service 下，" +
+			"K2.3 搬迁后显形），Pass B 不改边界",
+		PassBTask: "B-knowledge",
+	},
+	// ---- Pass B 搬迁显形的预存横向包耦合：knowledge retrieval K2.4（Ruling
+	// 2026-09-25-DEFERRED-FILE-SPLIT 收缩范围）access/graph 面消费 policy/airesource
+	// 内部包（22-knowledge-retrieval §5.6 种子表；Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY）----
+	{
+		ImporterFile: "internal/modules/knowledge/retrieval/app/knowledgebase_access.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/policy/access",
+		Reason: "预存横向包耦合（Pass B 前均在 internal/application/service 下，" +
+			"K2.4 搬迁后显形），Pass B 不改边界",
+		PassBTask: "B-knowledge",
+	},
+	{
+		ImporterFile: "internal/modules/knowledge/retrieval/app/graph.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat",
+		Reason: "预存横向包耦合（Pass B 前均在 internal/application/service 下，" +
+			"K2.4 搬迁后显形），Pass B 不改边界",
+		PassBTask: "B-knowledge",
+	},
+	{
+		ImporterFile: "internal/modules/knowledge/retrieval/app/graph.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/utils",
+		Reason: "预存横向包耦合（Pass B 前均在 internal/application/service 下，" +
+			"K2.4 搬迁后显形），Pass B 不改边界",
+		PassBTask: "B-knowledge",
+	},
+	// ---- Pass B 搬迁显形的预存横向包耦合：knowledge process K4 handler/write 面消费
+	// policy 内部包（24-knowledge-process §5.5 种子表多退少补：种子 3 对横向包目标不在
+	// forbidden-import 判定面（仅 internal/modules/ 前缀）零诊断退回，本 2 对实测诊断补录；
+	// Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY）----
+	{
+		ImporterFile: "internal/modules/knowledge/process/handler/kb_access.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/policy/access",
+		Reason: "预存横向包耦合（Pass B 前宿主 internal/handler 直引；" +
+			"24-knowledge-process K4.3 搬迁后显形），Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY 登记",
+		PassBTask: "B-knowledge",
+	},
+	{
+		ImporterFile: "internal/modules/knowledge/process/knowledge_write.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/policy/access",
+		Reason: "预存横向包耦合（Pass B 前宿主 internal/application/service 直引；" +
+			"24-knowledge-process K4.2 搬迁后显形），Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY 登记",
+		PassBTask: "B-knowledge",
 	},
 }
 
