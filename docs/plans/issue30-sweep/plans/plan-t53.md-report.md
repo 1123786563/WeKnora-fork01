@@ -478,3 +478,92 @@ func TestTmpA02GuardDigResolution(t *testing.T) {
 	}
 }
 ```
+
+---
+
+# 修复轮 1/5 报告（Task 3 审查发现处置）
+
+## 一、两项发现处置结论
+
+| # | 发现 | 处置 |
+|---|---|---|
+| 1 | 集成门禁：挂起的 Task 0 令 Step 6 无法全绿（审查员实测 HEAD 三包 14 个既有失败，与本报告基线逐一相同；Task 2 遗留项同因仍红） | **维持非本 diff 缺陷判定，零代码变更**。审查员已独立复跑证实；本轮我补上了缺失的 base 直接运行证据（base `febb8d2cc` 临时 worktree 复跑，名单 14/14 逐一相同，见本轮证据 1）。集成 `codex/issue30-t61`（96e579ad0）后主控必须按第六节序列重跑收口——该声明不变。 |
+| 2 | 计划 Step 5(c) 缺口修复正确：`f5dd64d66` 的 Provide 行是生产启动必要条件（审查员静态复核 dig paramSingle 语义确认） | **无需进一步修改**。审查员结论与我的实证（附录 B 两阶段）一致。 |
+
+**本轮代码变更：零**（报告文件除外）。本轮工作为补证据、关待核实项、维持状态声明。
+
+## 二、本轮新增证据（全部为本 session 真实运行）
+
+### 1. 待核实项 1 已关闭：base（`febb8d2cc`）三包失败名单直接运行比对（逐一相同）
+
+沿用 Task 2 修复轮先例：临时 detached worktree 检出 base 提交（不含本任务任何改动），跑完即清理：
+
+```
+$ git worktree add --detach /tmp/t53t3-base-check febb8d2cc
+HEAD is now at febb8d2cc docs(issue30-sweep): plan-t53 task2 实施报告（…）
+
+$ cd /tmp/t53t3-base-check && go test ./internal/router/ ./internal/container/ ./internal/handler/ -count=1
+--- FAIL ×14（router 9 / container 1 / handler 4）
+```
+
+HEAD 同命令复跑后剔除耗时后缀严格 diff：
+
+```
+$ diff <(sed -E 's/ \([0-9.]+s\)$//' base 名单) <(sed -E 's/ \([0-9.]+s\)$//' HEAD 名单)
+NAMES-IDENTICAL(14/14)   ← diff 无输出
+```
+
+base 上根因抽验（与 HEAD 同因）：
+
+```
+failed to open source, "file:///tmp/t53t3-base-check/migrations/sqlite": duplicate migration file: 000114_public_agent_marketplace.down.sql
+```
+
+清理复核：`git worktree remove --force /tmp/t53t3-base-check` 后 `git worktree list` 中该条目为 0。
+
+### 2. 待核实项 3 部分关闭：附录 A/B 第二轮独立复跑（重建→跑→删）
+
+按报告附录 A/B 原文重建两份一次性测试文件并重跑（与首轮完全独立）：
+
+```
+$ go test ./internal/router/ -run TestTmpGrantRoutesMountOnProductionShape -count=1 -v
+--- PASS: TestTmpGrantRoutesMountOnProductionShape (0.00s)
+ok  	github.com/Tencent/WeKnora/internal/router	4.287s
+
+$ go test ./internal/container/ -run TestTmpA02GuardDigResolution -count=1 -v
+a02_guard_dig_tmpverify_test.go:46: phase1 (no provider): … missing type: *appconnector.SpaceConnectionGrantStore
+--- PASS: TestTmpA02GuardDigResolution (0.00s)
+ok  	github.com/Tencent/WeKnora/internal/container	3.749s
+```
+
+两文件重跑后即删，`git status` 复核干净（仅报告文件待提交）。至此附录 A 有三个独立来源（我首轮、我本轮、审查员同版 gin 复刻 11 路由）、附录 B 有两个独立来源（我两轮）+ 审查员静态复核。
+
+### 3. HEAD 回归重跑（与提交时状态一致）
+
+```
+$ go test ./internal/handler/ -run TestAppConnectionGrant -count=1
+ok  	github.com/Tencent/WeKnora/internal/handler	1.882s
+
+$ go test ./internal/modules/appconnector/... -count=1
+ok（appconnector / connectorcontrol / openconnector / publish / service/appconnector 五包）
+--- FAIL: TestSpaceConnectionGrantStoreUpsertListRevoke   ← 唯一失败，Task 2 遗留阻塞项，同因（duplicate migration）
+FAIL	repository/appconnector
+
+$ go build ./... ; echo exit=$?
+exit=0
+```
+
+## 三、待核实项逐项回应
+
+| # | 待核实项 | 本轮处置 |
+|---|---|---|
+| 1 | base 三包失败名单与改动后逐一相同（未检出 base 复跑） | **已关闭**：base `febb8d2cc` 临时 detached worktree 直接运行，14/14 名单逐一相同、根因同因（本轮证据 1）。 |
+| 2 | TDD RED 先于实现的时序（单提交不可复验） | **维持如实声明**：RED 运行（`undefined: NewAppConnectionGrantHandler` 编译失败）发生于实现文件写入之前、提交之前，属本 session 真实时序；单提交粒度下 git 无法复验先后。审查员已确认错误文本与预期编译形态一致。不再有可补的客观证据。 |
+| 3 | 附录 A/B 一次性测试无法原样重放 | **部分关闭**：本轮按附录原文第二次独立运行，双双 PASS（本轮证据 2）；文件可随时按附录重建重放（复现命令：将附录内容存为对应路径 → `go test ./internal/router/ -run TestTmpGrantRoutesMountOnProductionShape -count=1 -v` 与 `go test ./internal/container/ -run TestTmpA02GuardDigResolution -count=1 -v` → 删除文件）。 |
+| 4 | Task 2 GREEN B 与集成后全绿预期 | **主控职责，维持原状**：须待集成 96e579ad0 后按第六节序列重跑方可关闭；我无权合并。 |
+
+## 四、本轮变更清单
+
+- 代码：**零变更**（两项发现均无需代码修改：发现 1 属 Task 0 范围、发现 2 已由 f5dd64d66 修复并获审查确认）。
+- 报告：本文件追加修复轮章节，随本报告一并提交（docs commit）。
+- 临时产物：base 临时 worktree（`/tmp/t53t3-base-check`）与两份一次性测试文件——均已清理/删除，工作区复核干净。
