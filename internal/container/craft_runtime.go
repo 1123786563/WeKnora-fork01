@@ -253,17 +253,17 @@ func newCraftRuntimeExecutor(
 	// through to the durable run event stream.
 	emit := craftRunEventEmitter(runs)
 	runtime := &localCraftRuntime{
-		db:                db,
-		client:            client,
-		store:             store,
-		files:             files,
-		artifacts:         artifacts,
-		runViewArtifacts:  runViewArtifacts,
-		emit:              emit,
-		outputDir:         outputDir,
-		runtimeDigest:     runtimeDigest,
-		sessionsRoot:      filepath.Join(workDir, "ws"),
-		workDir:           workDir,
+		db:               db,
+		client:           client,
+		store:            store,
+		files:            files,
+		artifacts:        artifacts,
+		runViewArtifacts: runViewArtifacts,
+		emit:             emit,
+		outputDir:        outputDir,
+		runtimeDigest:    runtimeDigest,
+		sessionsRoot:     filepath.Join(workDir, "ws"),
+		workDir:          workDir,
 	}
 	// The RunView build-log reader resolves the task's own verified
 	// generation output through the same run-bound artifact source the
@@ -301,17 +301,17 @@ func newCraftRuntimeExecutor(
 // the sub-prompt with the session workspace, execute through the R04
 // executor, then publish the finished output as an immutable version.
 type localCraftRuntime struct {
-	db               *gorm.DB
-	client           *opencode.Client
-	store            craft.Store
-	files            interfaces.FileService
-	inner            craft.Executor
-	artifacts        *service.CraftArtifactService
+	db        *gorm.DB
+	client    *opencode.Client
+	store     craft.Store
+	files     interfaces.FileService
+	inner     craft.Executor
+	artifacts *service.CraftArtifactService
 	// runViewArtifacts is the Run-bound candidate service with the RunView
 	// OutputDir pinned to craftLocalOutputDir, independent of the
 	// deployment-wide CRAFT_OPENCODE_OUTPUT_DIR that configures the legacy
 	// session-wide publication route on artifacts.
-	runViewArtifacts  *service.CraftArtifactService
+	runViewArtifacts *service.CraftArtifactService
 	// runViewBuildLogReader reads THIS Run's verified-generation
 	// output/build-log.json for the T04 build evidence on the RunView
 	// candidate route (never the legacy shared tree).

@@ -36,10 +36,10 @@ func t07SourceRecord(id, digest string, acquired time.Time) KnowledgeSourceRecor
 func t07RunRecord(scope Scope, runID string, sources ...KnowledgeSourceRecord) KnowledgeRecord {
 	return KnowledgeRecord{
 		Scope: scope, RunID: runID,
-		RequestDigest: t07Digest("req-" + runID),
-		PackageDigest: t07Digest("pkg-" + runID),
+		RequestDigest:    t07Digest("req-" + runID),
+		PackageDigest:    t07Digest("pkg-" + runID),
 		PublicationState: KnowledgePublicationPublished,
-		Sources: sources,
+		Sources:          sources,
 	}
 }
 

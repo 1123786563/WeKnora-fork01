@@ -337,7 +337,9 @@ func (t11RecordsStub) Load(context.Context, craft.Scope, string) (craft.Knowledg
 }
 
 // t11FixedRecords serves the recorded knowledge record per Run.
-type t11FixedRecords struct{ byRun map[string]craft.KnowledgeRecord }
+type t11FixedRecords struct {
+	byRun map[string]craft.KnowledgeRecord
+}
 
 func (r t11FixedRecords) Load(_ context.Context, _ craft.Scope, runID string) (craft.KnowledgeRecord, error) {
 	record, ok := r.byRun[runID]

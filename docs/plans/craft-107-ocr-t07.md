@@ -1,21 +1,15 @@
-Review complete: 2 finding(s) across 5 selected item(s).
+# T07 OCR 报告（第 2 次运行）
 
-─── internal/application/repository/craft_version.go:280-285 ───
-[bug · medium] “已存在”分支无条件补插证据行，打破了本变更自身声明的固定语义。注释的推理“absent ⇒ 崩溃提交从未发生（行同事务）”忽略了两个真实可达的先发布路径：(1)
-部署升级——本变更合入前用无证据 Publish 发布的历史版本，在升级后收到重放晋升回调（PromoteWebVersion 注释明确承诺 "a replayed identical
-callback adopts the already published version"）会走到此分支并被事后补插证据；(2) 同一存储上 CollectForKind 仍走无证据
-Publish。补插后这些“晋升时未固定证据”的版本从“读取答 ErrNotFound”变为携带证据，且 PinnedAt 记录的是重放时刻而非原始晋升时刻，与
-VersionEvidenceStore 接口及 VersionEvidence 读取方法自述的 "a version that was promoted without evidence
-answers ErrNotFound / history is never reconstructed" 不变量直接矛盾。建议：仅在版本行与证据行确认同事务引入（例如行内记录发布代次，或仅允许
-adopt 已有证据、对无证据的历史行保持 ErrNotFound）时才允许写入，否则将补插限制为显式运维/迁移动作。
+范围说明：ask 给定线性范围 1c1468641^..cfad7ba71 为 T07 的 5 个连续提交。前 3 个第 1 轮已审（2 条 findings：已存在分支无条件补插证据行 [medium]、VersionEvidenceDigest 未用+注释矛盾 [low]），已由 9d939cbb0 全实修复（仅 adopt 不补插+ErrConflict、EncodeVersionEvidence 单源+注释修正），cfad7ba71 为豁免复核（无代码变更仅入册）。本轮审查第 1 轮之后的增量段 --from 0efa67697 --to cfad7ba71（含全部修复 diff，6 文件中 2 个非测试源码被审）。
 
+## 本轮：--from 0efa67697 --to cfad7ba71
 
+Review complete: 2 finding(s) across 2 selected item(s).
 
-─── internal/modules/craft/version.go:422-427 ───
-[maintainability · low] VersionEvidenceDigest 存在两个问题：(1) 生产代码未使用它——CraftVersionStore.publish 内联了相同的
-json.Marshal+sha256 计算，两处摘要逻辑并存，未来任一侧引入规范化（字段排序、时间精度截断）即产生分歧；(2) 注释与实现矛盾——digest 覆盖了 PinnedAt，而重放晋升的
-PinnedAt 必然不同，因此“Identical facts always derive the identical digest — a replayed promotion adopts
-the stored row”并不成立；仓储层的重放采纳实际依赖 sameCraftVersionEvidence（刻意排除 PinnedAt），而非
-digest。若后续有人按此注释的承诺把存储端比对改到该函数上，幂等重放会被错误拒绝。建议：仓储层复用该领域函数（或在函数内对 PinnedAt 做明确取舍），并修正注释使其与实际摘要口径一致。
+─── internal/application/repository/craft_version.go:263-273 ───
+[style · low] 本次重构把 publish 闭包内这一段整体少缩进了一层：evidence 插入块及其闭合、`out = in; return nil` 位于 `if created.RowsAffected == 1` 分支内却与该分支语句同层，其后的采纳路径与闭包收尾也各浅一层。括号计数仍匹配、语义未变（evidence 插入仍在创建分支内），但文件已不符合 gofmt，`gofmt -l` / 格式化 CI 会失败。建议对整个文件跑一次 gofmt 后再提交。【经实跑证实：gofmt -l internal/application/repository/craft_version.go 列出该文件】
 
+─── internal/application/repository/craft_version.go:210-216 ───
+[maintainability · low] 此处 `raw, digest, err := craft.EncodeVersionEvidence(*evidence)` 在块内遮蔽了外层由 prepareCraftVersion 返回的 manifest digest（旧代码用 sum 命名无遮蔽），而外层 digest 随后仍用于 row 的 ManifestHash。当前语义正确，但同一函数内两种语义不同的摘要共用一个名字，且叠加缩进错位，后续维护极易取错变量。建议改名为 evidenceDigest 消除遮蔽。
 
+第 1 轮 2 条 findings 的修复经重审确认无回归，新暴露 2 条修复引入的 low 级问题（gofmt 缩进、变量遮蔽命名），均已实跑/抽查证实。

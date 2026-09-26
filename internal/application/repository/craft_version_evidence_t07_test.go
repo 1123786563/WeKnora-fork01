@@ -25,8 +25,8 @@ func t07EvidenceFor(t *testing.T, versionID, runID string, acquired time.Time) c
 	scope := craftTestScope()
 	record := craft.KnowledgeRecord{
 		Scope: scope, RunID: runID,
-		RequestDigest: t07RepoDigest("req-" + runID),
-		PackageDigest: t07RepoDigest("pkg-" + runID),
+		RequestDigest:    t07RepoDigest("req-" + runID),
+		PackageDigest:    t07RepoDigest("pkg-" + runID),
 		PublicationState: craft.KnowledgePublicationPublished,
 		Sources: []craft.KnowledgeSourceRecord{{
 			ID: "kc_" + runID, Ref: craft.KnowledgeRef("kb-a", "k-a", "c-"+runID),

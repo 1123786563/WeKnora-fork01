@@ -206,14 +206,16 @@ func (s *CraftVersionStore) publish(ctx context.Context, scope craft.Scope, in c
 		}
 		// The canonical encoding and its digest come from the one domain
 		// function, so the stored bytes and the digest column can never
-		// disagree about what was pinned.
-		raw, digest, err := craft.EncodeVersionEvidence(*evidence)
+		// disagree about what was pinned. (evidenceDigest, not digest: the
+		// outer digest is the version's manifest hash and stays in use
+		// below.)
+		raw, evidenceDigest, err := craft.EncodeVersionEvidence(*evidence)
 		if err != nil {
 			return craft.Version{}, err
 		}
 		evidenceRow = craftVersionEvidenceRow{
 			VersionID: in.ID, TenantID: scope.TenantID,
-			EvidenceJSON: string(raw), Digest: digest,
+			EvidenceJSON: string(raw), Digest: evidenceDigest,
 			AcquiredAt: evidence.AcquiredAt, PinnedAt: evidence.PinnedAt,
 		}
 	}
@@ -260,42 +262,42 @@ func (s *CraftVersionStore) publish(ctx context.Context, scope craft.Scope, in c
 					return e
 				}
 			}
+			if evidence != nil {
+				// This transaction created the version row above, so its
+				// evidence member cannot pre-exist (the FK pins it to this
+				// version): a plain insert is the whole write.
+				if e := tx.Create(&evidenceRow).Error; e != nil {
+					return e
+				}
+			}
+			out = in
+			return nil
+		}
+
+		// Lost the identity race (or this is a replay): only the identical
+		// publish may adopt the stored version.
+		stored, e := loadCraftVersion(tx, in.ID)
+		if e != nil {
+			return e
+		}
+		if !sameCraftVersion(stored, in) {
+			return fmt.Errorf("%w: version %s already published with different content", craft.ErrConflict, in.ID)
+		}
 		if evidence != nil {
-			// This transaction created the version row above, so its
-			// evidence member cannot pre-exist (the FK pins it to this
-			// version): a plain insert is the whole write.
-			if e := tx.Create(&evidenceRow).Error; e != nil {
+			// The version row pre-dates this call. It can only be without an
+			// evidence member when it was published by an earlier,
+			// evidence-less route (a pre-T07 deployment upgrade, or the
+			// evidence-less Publish paths still serving other collections):
+			// retro-pinning it would reconstruct history under a fresh
+			// PinnedAt, so the store refuses exactly like different content —
+			// only adoption of already-pinned identical evidence is allowed.
+			if e := adoptCraftVersionEvidence(tx, evidenceRow); e != nil {
 				return e
 			}
 		}
-		out = in
+		out = stored
 		return nil
-	}
-
-	// Lost the identity race (or this is a replay): only the identical
-	// publish may adopt the stored version.
-	stored, e := loadCraftVersion(tx, in.ID)
-	if e != nil {
-		return e
-	}
-	if !sameCraftVersion(stored, in) {
-		return fmt.Errorf("%w: version %s already published with different content", craft.ErrConflict, in.ID)
-	}
-	if evidence != nil {
-		// The version row pre-dates this call. It can only be without an
-		// evidence member when it was published by an earlier,
-		// evidence-less route (a pre-T07 deployment upgrade, or the
-		// evidence-less Publish paths still serving other collections):
-		// retro-pinning it would reconstruct history under a fresh
-		// PinnedAt, so the store refuses exactly like different content —
-		// only adoption of already-pinned identical evidence is allowed.
-		if e := adoptCraftVersionEvidence(tx, evidenceRow); e != nil {
-			return e
-		}
-	}
-	out = stored
-	return nil
-})
+	})
 	if err != nil {
 		return craft.Version{}, err
 	}
