@@ -1,13 +1,16 @@
 import Taro from '@tarojs/taro';
 import type { NativeFileSource } from '@weknora/api-client';
-import type { MaterialBody } from '../../../../packages/api-client/src/career.ts';
+import type { MaterialBody, RuleStatus, SetRuleReceipt, RuleView, UsageEstimateView, ReminderReceipt, ReminderList, ReminderSourceKind } from '../../../../packages/api-client/src/career.ts';
+import { decodeSetRuleReceipt, decodeRuleView, decodeUsageEstimateView, decodeReminderReceipt, decodeReminderList } from '../../../../packages/api-client/src/career.ts';
+import type { CareerReceipt } from '../../../../packages/career-core/src/contracts.ts';
+import { decodeCareerReceipt } from '../../../../packages/career-core/src/contracts.ts';
 import { storage } from '../platform/storage.ts';
 import { chooseDocument } from '../platform/files.ts';
 import { requestId } from '../core/intent.ts';
 import type { ValueStore } from '../core/intent.ts';
 // T26 导出兑付下载与 T06 files.ts 同源：认证凭据与可信 origin 只来自 runtime 单例。
 // runtime 不反向依赖本适配器，无环。
-import { auth, apiOrigin } from '../services/runtime.ts';
+import { auth, apiOrigin, client } from '../services/runtime.ts';
 import { scopeKey } from '../core/scope.ts';
 
 // T24 小程序 Career 平台适配器：分享、文件、受控存储三个本端能力 seam。
@@ -408,3 +411,212 @@ export function recoverEmptyClaims(sections: PreparationDraftSection[], server: 
     return { heading: section.heading, content: section.content, claims: at >= 0 ? unconsumed.splice(at, 1)[0].claims : [] };
   });
 }
+
+// ---- T30 持续规则、额度与提醒：与 Web 同版本的服务层 + wx.requestSubscribeMessage 原生例外 ----
+// 规则（T13 冻结合同）：POST /rules、GET /rules/receipt、GET /rules/:id；写入一律
+// requestId + expectedRevision（档案头修订——与 Web RulePage 同一 CAS 域，同一版本
+// 读写）；修改后下次运行计划（nextDueAt）由服务端按新条件重新排程，本端只呈现。
+// 额度（T21）：GET /usage/estimate 是只读预估，前端如实展示（含触发条件原文）绝不
+// 重算；超额只阻新收费动作（typed 429 search_quota_refused），档案/申请/时间线等
+// 历史读取永不受影响。提醒（T20）：POST/GET /reminders 正文为服务端冻结隐私模板
+// （progress_updated / discovery_found 两个字面量，零公司/岗位/面试细节），退订
+// （notifications.push=unsubscribed）只停推送，站内待办永读。
+// 订阅消息 = wx.requestSubscribeMessage（平台原生 API——已记录的原生能力例外，不在
+// TDesign 组件域）：原生载荷只携带模板 id；拒绝/不可用如实呈现并回落站内待办；
+// 本端绝不声称“已送达”——送达是服务端后续推送的事实，回执里的 push 报告也只是
+// response-only 的尽力通知结果。
+
+/** T30 写入 intent 的受控存储（按 scope 隔离；登出 clearPrivateCache 一并清除）。 */
+const t30Store = createControlledStore();
+function t30Key(kind: string): string {
+  return `${CAREER_STORE_PREFIX}${kind}:${scopeKey(auth.scope.capture())}`;
+}
+/** 与 services/career.ts 同一判据的本地副本（该文件不在 T30 所有权内）：确定失败
+ * （typed 拒绝/4xx）不进恢复链；歧义失败（超时/网络/5xx）才保留 intent 供对账。 */
+function t30Ambiguous(error: unknown): boolean {
+  const code = (error as { code?: unknown })?.code;
+  if (typeof code === 'string') {
+    if (['TIMEOUT', 'NETWORK_ERROR', 'CANCELLED', 'outcome_unknown'].includes(code)) return true;
+    if (['forbidden', 'revision_conflict', 'idempotency_conflict', 'invalid_request', 'not_found', 'proposal_resolved', 'search_quota_refused'].includes(code)) return false;
+  }
+  const status = (error as { status?: unknown })?.status;
+  return typeof status !== 'number' || status >= 500;
+}
+async function t30Recoverable<T>(kind: string, describe: string, input: unknown, send: (id: string) => Promise<T>, reuseId?: string): Promise<T> {
+  const id = reuseId ?? requestId();
+  const stamp = auth.scope.capture();
+  try {
+    return await send(id);
+  } catch (error) {
+    if (t30Ambiguous(error) && !auth.scope.isCurrent(stamp)) throw Object.assign(new Error('SCOPE_CHANGED'), { cause: error });
+    if (t30Ambiguous(error)) {
+      t30Store.write(t30Key(kind), { requestId: id, input });
+      throw Object.assign(new Error(`${describe}结果未知：请用原请求对账后再试`, { cause: error }), { code: 'outcome_unknown', requestId: id });
+    }
+    throw error;
+  }
+}
+function t30Intent<T>(kind: string): { requestId: string; input: T } | null {
+  const value = t30Store.read(t30Key(kind));
+  if (!value || typeof value !== 'object') return null;
+  const parsed = value as { requestId?: unknown; input?: unknown };
+  if (typeof parsed.requestId !== 'string' || !parsed.requestId || typeof parsed.input !== 'object' || !parsed.input) return null;
+  return { requestId: parsed.requestId, input: parsed.input as T };
+}
+function t30Clear(kind: string): void { t30Store.remove(t30Key(kind)); }
+
+// —— 规则（与 Web 同版本读写）——
+export interface RuleWriteInput { ruleId?: string; query: string; intervalMinutes: number; status: RuleStatus; expectedRevision: number }
+function ruleRequestBody(id: string, input: RuleWriteInput): Record<string, unknown> {
+  const query = input.query.trim();
+  if (!query) throw Object.assign(new Error('请先填写找岗条件'), { code: 'invalid_request', recoverable: true });
+  if (!Number.isSafeInteger(input.intervalMinutes) || input.intervalMinutes < 1 || input.intervalMinutes > 43200) throw Object.assign(new Error('触发间隔需为 1–43200 的整数分钟'), { code: 'invalid_request', recoverable: true });
+  if (!['enabled', 'paused', 'disabled'].includes(input.status)) throw Object.assign(new Error('无效的规则状态'), { code: 'invalid_request', recoverable: true });
+  if (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0) throw Object.assign(new Error('缺少档案修订'), { code: 'invalid_request', recoverable: true });
+  return { requestId: id, query, intervalMinutes: input.intervalMinutes, status: input.status, expectedRevision: input.expectedRevision, ...(input.ruleId?.trim() ? { ruleId: input.ruleId.trim() } : {}) };
+}
+function acceptRuleReceipt(receipt: SetRuleReceipt): void {
+  // 已保存规则（尤其启用中）会改变下一次收费运行的消耗口径——规则引用落受控存储，
+  // 下次进入按同一 ruleId 读回同一版本（与 Web localStorage 引用同语义）。
+  t30Store.write(t30Key('rule-id'), receipt.ruleId);
+}
+/** 保存（创建或更新）规则：POST /rules 冻结合同；结果未知保留 intent 供原 requestId 对账。 */
+export async function saveRule(input: RuleWriteInput): Promise<SetRuleReceipt> {
+  ruleRequestBody(requestId(), input); // 先做参数校验，再进入可恢复写入
+  return t30Recoverable<SetRuleReceipt>('rule-write', '规则保存', input, async id => {
+    const receipt = decodeSetRuleReceipt(await client.request({ method: 'POST', path: '/api/v1/career/rules', body: ruleRequestBody(id, input) }));
+    acceptRuleReceipt(receipt);
+    return receipt;
+  });
+}
+export function pendingRuleWrite(): { requestId: string; input: RuleWriteInput } | null { return t30Intent<RuleWriteInput>('rule-write'); }
+/** 用原 requestId 读取服务端持久回执（只读，不二次写入）。 */
+export async function reconcilePendingRule(): Promise<SetRuleReceipt> {
+  const pending = pendingRuleWrite();
+  if (!pending) throw new Error('没有待对账的规则保存');
+  const receipt = decodeSetRuleReceipt(await client.request({ method: 'GET', path: `/api/v1/career/rules/receipt?requestId=${encodeURIComponent(pending.requestId)}` }));
+  t30Clear('rule-write'); acceptRuleReceipt(receipt);
+  return receipt;
+}
+/** 对账确认服务端无记录（404）后的安全重发：同 requestId + 原 expectedRevision 逐字节重放。 */
+export async function retryPendingRule(): Promise<SetRuleReceipt> {
+  const pending = pendingRuleWrite();
+  if (!pending) throw new Error('没有待恢复的规则保存');
+  return t30Recoverable<SetRuleReceipt>('rule-write', '规则保存', pending.input, async id => {
+    const receipt = decodeSetRuleReceipt(await client.request({ method: 'POST', path: '/api/v1/career/rules', body: ruleRequestBody(id, pending.input) }));
+    t30Clear('rule-write'); acceptRuleReceipt(receipt);
+    return receipt;
+  }, pending.requestId);
+}
+/** 当前作用域保存过的规则引用（未保存过返回 undefined——绝不用演示规则顶替）。 */
+export function readStoredRuleId(): string | undefined {
+  const value = t30Store.read(t30Key('rule-id'));
+  return typeof value === 'string' && value.trim() ? value : undefined;
+}
+/** 读取规则当前版本（含下次运行计划、执行历史、发现待办）：GET /rules/:id。 */
+export async function readRule(ruleId: string): Promise<RuleView> {
+  if (!ruleId.trim()) throw Object.assign(new Error('缺少规则编号'), { code: 'invalid_request', recoverable: true });
+  return decodeRuleView(await client.request({ method: 'GET', path: `/api/v1/career/rules/${encodeURIComponent(ruleId.trim())}` }));
+}
+
+// —— 额度（执行前只读预估）——
+/** GET /usage/estimate?operation=search_once：后端冻结数字与触发条件原文，本端不重算。 */
+export async function fetchUsageEstimate(): Promise<UsageEstimateView> {
+  return decodeUsageEstimateView(await client.request({ method: 'GET', path: '/api/v1/career/usage/estimate?operation=search_once' }));
+}
+
+// —— 提醒（站内待办收件箱 + 登记 + 推送退订）——
+export interface ReminderWriteInput { sourceKind: ReminderSourceKind; sourceId: string; expectedRevision: number }
+/** 站内待办列表：正文是服务端冻结隐私模板字面量，原样呈现。 */
+export async function fetchReminders(): Promise<ReminderList> {
+  return decodeReminderList(await client.request({ method: 'GET', path: '/api/v1/career/reminders' }));
+}
+/** 为一个来源事件登记待办（POST /reminders 冻结合同）；同一来源只保留一条（deduplicated）。 */
+export async function createReminder(input: ReminderWriteInput): Promise<ReminderReceipt> {
+  if (!input.sourceId.trim()) throw Object.assign(new Error('请先填写来源事件编号'), { code: 'invalid_request', recoverable: true });
+  return t30Recoverable<ReminderReceipt>('reminder-write', '待办登记', input, async id =>
+    decodeReminderReceipt(await client.request({ method: 'POST', path: '/api/v1/career/reminders', body: { requestId: id, sourceKind: input.sourceKind, sourceId: input.sourceId.trim(), expectedRevision: input.expectedRevision } })));
+}
+export function pendingReminderWrite(): { requestId: string; input: ReminderWriteInput } | null { return t30Intent<ReminderWriteInput>('reminder-write'); }
+export async function reconcilePendingReminder(): Promise<ReminderReceipt> {
+  const pending = pendingReminderWrite();
+  if (!pending) throw new Error('没有待对账的待办登记');
+  const receipt = decodeReminderReceipt(await client.request({ method: 'GET', path: `/api/v1/career/reminders/receipt?requestId=${encodeURIComponent(pending.requestId)}` }));
+  t30Clear('reminder-write');
+  return receipt;
+}
+export async function retryPendingReminder(): Promise<ReminderReceipt> {
+  const pending = pendingReminderWrite();
+  if (!pending) throw new Error('没有待恢复的待办登记');
+  return t30Recoverable<ReminderReceipt>('reminder-write', '待办登记', pending.input, async id => {
+    const receipt = decodeReminderReceipt(await client.request({ method: 'POST', path: '/api/v1/career/reminders', body: { requestId: id, sourceKind: pending.input.sourceKind, sourceId: pending.input.sourceId.trim(), expectedRevision: pending.input.expectedRevision } }));
+    t30Clear('reminder-write');
+    return receipt;
+  }, pending.requestId);
+}
+/** 推送订阅事实键（服务端 reminder.go 冻结常量的本端镜像）。 */
+export const REMINDER_PUSH_FACT_KEY = 'notifications.push';
+/** 退订/重新订阅推送（档案 confirm 事实写）：退订只停推送，站内待办仍可读。 */
+export async function setPushSubscription(value: 'subscribed' | 'unsubscribed', expectedRevision: number): Promise<CareerReceipt> {
+  return decodeCareerReceipt(await client.request({
+    method: 'POST', path: '/api/v1/career/act',
+    body: { action: 'confirm', key: REMINDER_PUSH_FACT_KEY, value, source: { kind: 'user', label: '微信小程序' }, requestId: requestId(), expectedRevision },
+  }));
+}
+
+// —— 订阅消息（wx.requestSubscribeMessage 原生例外 seam）——
+/** 本构建已配置的订阅消息模板 id（微信公众平台申请，与 appid 绑定）。空数组 = 未
+ * 配置：如实按“不可用”呈现并回落站内待办，绝不把未配置伪装成已订阅。 */
+export const REMINDER_SUBSCRIBE_TEMPLATE_IDS: string[] = [];
+/** 订阅请求注入 seam（测试与真实运行时共用）：默认调 wx.requestSubscribeMessage。 */
+export type SubscribeInvoke = (options: { tmplIds: string[]; success: (res: Record<string, unknown>) => void; fail: (error: { errMsg: string }) => void }) => void;
+function defaultSubscribeInvoke(): SubscribeInvoke | undefined {
+  const wxApi = (globalThis as { wx?: { requestSubscribeMessage?: SubscribeInvoke } }).wx;
+  return wxApi?.requestSubscribeMessage;
+}
+/** 一次订阅请求的如实结果：accepted 只代表本次授权，绝不代表已送达。 */
+export interface SubscriptionRequestOutcome {
+  status: 'accepted' | 'rejected' | 'unavailable';
+  reason?: 'no_templates' | 'api_unavailable' | 'request_failed' | 'main_switch_off';
+  templateIds: string[];
+  /** 每个模板的授权结果（accept/reject/ban/filter，微信原样词汇）。 */
+  results?: Record<string, string>;
+  /** 不可用/失败时的原生 errMsg（如实呈现环境限制）。 */
+  errMsg?: string;
+  /** 本端永不声称送达：送达是服务端后续推送的事实。 */
+  delivered: false;
+}
+export interface ReminderSubscriptionDeps { templateIds?: string[]; invoke?: SubscribeInvoke }
+/**
+ * 请求订阅消息授权：原生载荷只有模板 id（零敏感细节——正文口径在后端冻结隐私模板，
+ * 本端不拼接任何公司/岗位/面试内容）。用户拒绝、主开关关闭、API 不可用（模拟器/
+ * 未配置模板）都如实返回，由 UI 回落站内待办并声明限制——不伪造任何“已送达”。
+ */
+export function requestReminderSubscription(deps: ReminderSubscriptionDeps = {}): Promise<SubscriptionRequestOutcome> {
+  const templateIds = (deps.templateIds ?? REMINDER_SUBSCRIBE_TEMPLATE_IDS).filter(id => typeof id === 'string' && id.trim());
+  const base = { templateIds, delivered: false as const };
+  if (templateIds.length === 0) return Promise.resolve({ ...base, status: 'unavailable', reason: 'no_templates' });
+  const invoke = deps.invoke ?? defaultSubscribeInvoke();
+  if (!invoke) return Promise.resolve({ ...base, status: 'unavailable', reason: 'api_unavailable' });
+  return new Promise<SubscriptionRequestOutcome>(resolve => {
+    invoke({
+      tmplIds: templateIds,
+      success: res => {
+        const results: Record<string, string> = {};
+        for (const id of templateIds) { const value = (res as Record<string, unknown>)[id]; if (typeof value === 'string') results[id] = value; }
+        const values = Object.values(results);
+        if (values.length > 0 && values.every(value => value === 'accept')) resolve({ ...base, status: 'accepted', results });
+        else resolve({ ...base, status: 'rejected', results });
+      },
+      fail: error => {
+        const message = error?.errMsg ?? '';
+        // 主开关关闭（用户在设置里整体拒绝订阅）按“拒绝”呈现；其余失败（模板无效、
+        // 模拟器不支持等）按“不可用”如实呈现并保留 errMsg。
+        if (/main\s*switch|20004/i.test(message)) resolve({ ...base, status: 'rejected', reason: 'main_switch_off', errMsg: message });
+        else resolve({ ...base, status: 'unavailable', reason: 'request_failed', errMsg: message });
+      },
+    });
+  });
+}
+/** 订阅消息口径说明（页面隐私文案）：与后端冻结隐私模板一致的提醒语义。 */
+export const REMINDER_PUSH_PRIVACY_NOTE = '订阅消息只提醒「有更新」，正文为平台固定的隐私文案，不含公司、岗位或面试细节；完整事实始终在站内待办里。';
