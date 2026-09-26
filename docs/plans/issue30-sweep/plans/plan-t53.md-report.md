@@ -1107,3 +1107,71 @@ AC1/AC2/AC3 的 e2e 证据链至此在仓库内闭环：AC1 = 收口 1（space 4
 - 临时产物清理：`/tmp/t53t5-base-check` worktree 已 `git worktree remove --force`（`git worktree list` 复核该条目为 0）；`/tmp/t53-shards/`、`/tmp/t53-apprepo-tests.txt`、`/tmp/t53-task5-*.log` 为仓库外运行证据存档，未入库；仓库工作区 `git status` 干净。
 - 全量六组包重跑的完整输出存档：`/tmp/t53-task5-fullrun.log`（首轮，含 10m panic 现场）与 `/tmp/t53-task5-apprepo-full.log`（30m 补跑）；六分片日志 `/tmp/t53-shards/part_a{a..f}.log`。
 - 唯一遗留（超出本任务授权）：`TestNotificationDeliveryRejectsResolvedInteractionAfterClaim` 的 5 段→6 段 id 修正，留主控裁决（一行 fixture/断言修正，属他人测试文件）。
+
+---
+
+# 修复轮 1/5 报告（任务 5/5 审查发现处置）
+
+## 一、审查发现处置结论
+
+唯一发现（important）：「workbench 包 `TestNotificationDeliveryRejectsResolvedInteractionAfterClaim` 在 HEAD 持续红——根因为 notification_delivery_test.go:488 硬编码 5 段 intent id vs `notificationID`（mobile_notification.go:186）生成 6 段（含 AppID），UPDATE 永远命中 0 行；审查员独立验证零因果三点全部成立；主控决策：修测试」。
+
+**处置：已按主控决策修复，1 文件 +4/-1，单行语义修复**：
+
+`internal/modules/workbench/service/workbench/notification_delivery_test.go:487` 的 UPDATE 条件补第 6 段——`"1:delivery-event-interaction-device:u1:interaction-device:dev"` → `"1:delivery-event-interaction-device:u1:interaction-device:dev:official"`，并加 3 行注释钉住 id 形状来源（6 段 = tenant:event:owner:device:env:appID，fixture 的 Enqueue 把缺席 AppID 归一化为 official）。SET 子句与全部断言零改动。
+
+**现场依据（本 session 复核）**：`NormalizeMobileAppID`（`internal/application/repository/mobile_device.go:55-61`）把空串映射为 `MobileAppIDOfficial`（`:26` = `"official"`）；`notificationID`（`internal/application/repository/mobile_notification.go:185-186`）6 段 Sprintf。fixture `seedDeliveryFixture`（notification_delivery_test.go:159-174）的 `NotificationIntent` 未设 AppID。
+
+## 二、修复轮测试证据（全部本 session 真实运行）
+
+### 1. RED（修复前，HEAD=`47518e5e5`）
+
+```
+$ go test ./internal/modules/workbench/service/workbench/ -run 'TestNotificationDeliveryRejectsResolvedInteractionAfterClaim' -count=1
+--- FAIL: TestNotificationDeliveryRejectsResolvedInteractionAfterClaim (3.40s)
+    notification_delivery_test.go:489:
+        Error: Not equal:
+            expected: int(1)
+            actual  : int64(0)
+FAIL	github.com/Tencent/WeKnora/internal/modules/workbench/service/workbench	6.628s
+```
+
+（与审查员亲测复现逐字一致；此测试为既有红测试，修复轮 RED=运行它，GREEN=最小修复后转绿。）
+
+### 2. GREEN（修复后单测）
+
+```
+$ go test ./internal/modules/workbench/service/workbench/ -run 'TestNotificationDeliveryRejectsResolvedInteractionAfterClaim' -count=1 -v
+=== RUN   TestNotificationDeliveryRejectsResolvedInteractionAfterClaim
+--- PASS: TestNotificationDeliveryRejectsResolvedInteractionAfterClaim (1.65s)
+PASS
+ok  	github.com/Tencent/WeKnora/internal/modules/workbench/service/workbench	3.064s
+```
+
+### 3. 回归：workbench 全包（首轮收口 26/27 → 本轮 27/27）
+
+```
+$ go test ./internal/modules/workbench/service/workbench/ -count=1 -timeout=15m
+ok  	github.com/Tencent/WeKnora/internal/modules/workbench/service/workbench	133.009s
+```
+
+零失败。上轮收口报告第三节 1 的「非回归既有失败」就此收口——**任务 5/5 收口结论第三节表格中 workbench 的唯一例外项已消除，六组包全绿预期完整达成**（database/codedelivery/appconnector×6/handler 五组见上轮收口证据；application/repository 557/557 分片取证见上轮，本轮未复跑，审查待核实项 1 的采信说明维持）。
+
+### 4. 编译对齐
+
+```
+$ go vet ./internal/modules/workbench/...
+VET-OK
+```
+
+## 三、本轮变更清单
+
+- 代码：`internal/modules/workbench/service/workbench/notification_delivery_test.go` 1 文件 +4/-1（测试 fixture 数据修复，无生产代码变更；主控修复轮 ask 授权处置该 finding，file 字段即本文件）。
+- 报告：本文件追加修复轮章节。
+- 其余：零触碰（未撤销任何他人修改；未派发子代理；未推送远端；工作区提交后干净）。
+
+## 四、自检发现
+
+- 修复语义：审查员方案（id 补第 6 段 `:official`）逐字采纳；补充的 3 行注释把 id 形状契约（6 段 + official 归一化）钉在测试现场，防止后续漂移复发。
+- 回归面评估：仅测试文件内一行数据 + 注释，无跨包引用（测试代码不进生产构建）；workbench 全包 27/27 与 vet 双重覆盖。
+- 待核实项回应：557 分片存档日志（`/tmp/t53-shards/part_a{a..f}.log`）未复跑——维持上轮声明与审查员的合理性采信；TDD 时序声明、base 325 名单 diff、blocked-env 真实 GitHub 门控四项均维持上轮状态，本轮无新增可补证据。
