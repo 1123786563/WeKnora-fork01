@@ -493,3 +493,77 @@ $ grep -n "sqliteAdoptionFKRelaxationMigrationVersion = " internal/database/migr
 ```
 1c6779c7c fix(appconnector): pin exclusion-set freeze into ApprovePlan CAS, closing concurrent TOCTOU (ruling via escalation)
 ```
+
+---
+
+# 修复轮 3 报告（findings 第三次逐字重复——F1 修复持续在案，本轮复跑取证）
+
+- **执行者**：实现员-t51-任务3（resumed with findings，修复轮 3/5）
+- **提交**：本修复轮零代码改动（无需新修复）；报告追加单独入册
+- **状态**：DONE（F1 已按修复轮 1 主控裁决修复并提交在案 `1c6779c7c`；本轮实核 + 复跑全绿）
+
+## 本轮 findings 判定：与修复轮 1/2 逐字重复（第三次），非新发现
+
+两个 findings 与待核实项列表与修复轮 1、2 的 ask 逐字相同。行号证据再次成立：findings 仍引用 `repository/appconnector/plan.go:117-122`「允许 state IN {awaiting,authorized}」的旧 CAS 形态——本轮实核 HEAD：
+
+```
+$ git log --oneline -3
+72723074a docs(appconnector): Task 3 修复轮 2 报告入册…
+ad888565f docs(appconnector): Task 3 修复轮 1 报告入册…
+1c6779c7c fix(appconnector): pin exclusion-set freeze into ApprovePlan CAS, closing concurrent TOCTOU (ruling via escalation)
+
+$ grep -n "state = ? OR excluded_json = ?" internal/modules/appconnector/repository/appconnector/plan.go
+129:		Where("tenant_id = ? AND id = ? AND digest = ? AND (state = ? OR excluded_json = ?)",
+$ grep -n "state IN ?" internal/modules/appconnector/repository/appconnector/plan.go
+（无命中——findings 描述的旧 CAS 形态在 HEAD 不存在）
+```
+
+findings 所述 TOCTOU 窗口（CAS 不钉 excluded_json、后写者覆写、可批准先前被排除项）自修复轮 1 起在 HEAD 已不存在。依据修复轮 1 裁决（ledger `plan-t51.md-ledger.md`）与修复轮 2 的同一判定，本轮不重复修复——重复改动只引入回归风险。
+
+## F1 修复持续在案的复跑证据（全部本 ask 实跑）
+
+```
+$ go test ./internal/modules/appconnector/repository/appconnector/ -run TestPlanApprove -count=1 -race
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector	1.336s
+（含 --- PASS: TestPlanApproveBindsDigestAndExclusions / TestPlanApproveCASPinsExclusionSetOnReapproval）
+
+$ go test ./internal/modules/appconnector/plan/ -run TestPlanApprove -count=1 -race
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/plan	3.063s
+（含 --- PASS: TestPlanApproveConcurrentDistinctExclusionsSingleWinner）
+
+$ go test ./internal/modules/appconnector/plan/ -count=1 -v
+--- PASS: TestPlanDigestBindsSetOrderAndContent (0.00s)
+--- PASS: TestPlanFormBuildsOrderedDigestBoundPlan (0.01s)
+--- PASS: TestPlanFormMidItemFailureLeavesNoPlanRow (0.03s)
+--- PASS: TestPlanFormRejectsInvalidInput (0.00s)
+--- PASS: TestPlanApproveWholeApprovesEveryIncludedItem (0.00s)
+--- PASS: TestPlanApproveExcludesItemNeverApprovesIt (0.00s)
+--- PASS: TestPlanApproveRejectsForeignDigest (0.00s)
+--- PASS: TestPlanApproveRejectsBadExclusions (0.00s)
+--- PASS: TestPlanApproveConcurrentDistinctExclusionsSingleWinner (0.10s)
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/plan	1.167s
+
+$ go test ./internal/modules/appconnector/... -count=1 → 7 包全 ok
+（appconnector 0.159s | connectorcontrol 2.151s | openconnector 0.192s | plan 1.952s
+  | publish 1.973s | repository/appconnector 0.691s | service/appconnector 3.238s）
+
+$ go build ./... → BUILD_EXIT=0
+```
+
+## 待核实项 1 的本轮复核
+
+「上轮证据未独立复跑」——本 ask 第三次复跑确认：plan 包 9/9 `--- PASS`、7 包回归 ok、build exit 0（上方完整输出）。待核实项 2-5（审批谓词归 Task 5、执行侧保证与 AC1 执行面腿归 Task 4、blocked-env、RecoveryExclusionFrozen 归 Task 4 Step 1）依旧无法从本 diff 验证，维持声明，零伪造证据。
+
+## F2（Task 0 未执行）本轮复核：现状未变，仍待编排方收口
+
+```
+$ ls migrations/sqlite/ | grep -cE "^000114_"  → 4（双占仍在）
+$ grep -n "sqliteAdoptionFKRelaxationMigrationVersion = " internal/database/migration.go
+33:const sqliteAdoptionFKRelaxationMigrationVersion = 114
+```
+
+按审查定性（跨任务协调项，非 Task 3 缺陷）与修复轮 1 裁决执行要求 5，本修复轮不动 migrations/**；仍需编排方授权执行者完成 Task 0（118/197 空闲，可按计划原文执行），否则 Task 6 的 AC3 全量迁移 e2e 不可运行。
+
+## 给编排方的显式提示（连续三轮相同 findings）
+
+F1 的修复自 commit `1c6779c7c` 起在 HEAD 在案且有裁决背书（ledger `plan-t51.md-ledger.md`）、三轮复跑全绿；F2 的修复权在编排方（需授权 Task 0 执行者）。若后续修复轮仍收到这两条 findings，请编排方核对审查器读入的 HEAD 是否滞后于本分支（`72723074a`），或确认 Task 0 的执行安排——本实现员侧无进一步可修复项。
