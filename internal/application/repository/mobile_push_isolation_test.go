@@ -58,13 +58,13 @@ func newPushIsolationEnv(t *testing.T) *pushIsolationEnv {
 	dsn := "file:" + filepath.Join(t.TempDir(), "push-isolation.db") + "?_busy_timeout=5000"
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
 	require.NoError(t, err)
-	// 顺序固定：000058 → 000059 → 000060 → 000114（000114 的重建段 INSERT...SELECT
+	// 顺序固定：000058 → 000059 → 000060 → 000118（000118 的重建段 INSERT...SELECT
 	// 依赖前序迁移建出的 mobile_devices 与 mobile_notification_intents）。
 	for _, file := range []string{
 		"migrations/sqlite/000058_mobile_devices.up.sql",
 		"migrations/sqlite/000059_mobile_notifications.up.sql",
 		"migrations/sqlite/000060_mobile_notification_delivery.up.sql",
-		"migrations/sqlite/000114_mobile_device_app.up.sql",
+		"migrations/sqlite/000118_mobile_device_app.up.sql",
 	} {
 		raw, err := os.ReadFile(filepath.Join(root, file))
 		require.NoError(t, err, file)
