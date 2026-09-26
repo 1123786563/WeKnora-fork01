@@ -301,6 +301,16 @@ func (s *CraftDockerRestrictedExec) Observe(ctx context.Context, grantID, activi
 		s.mu.Lock()
 		s.running[key] = true
 		s.mu.Unlock()
+	} else if observed.State == sandbox.DockerOutputlessSucceeded || observed.State == sandbox.DockerOutputlessFailed {
+		// TERMINAL observation only: the "was Running" attribution (a
+		// terminal zero/missing exit code reads as failure, not unknown) has
+		// served its purpose for this receipt and the long-lived service
+		// must not accumulate one key per exec forever. An Unknown
+		// observation deliberately KEEPS the flag — attribution is still
+		// pending for a later terminal read.
+		s.mu.Lock()
+		delete(s.running, key)
+		s.mu.Unlock()
 	}
 	return observed, nil
 }

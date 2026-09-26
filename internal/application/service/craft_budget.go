@@ -355,8 +355,28 @@ func (s *CraftBudgetService) prepareCraftDockerChargeStart(ctx context.Context, 
 
 func (s *CraftBudgetService) prepareCraftChargeStartWithProtocol(ctx context.Context, row CraftBudgetGrantRow, activityID string, b CraftCallBinding, protocol *string) (craftChargeStartPreparation, error) {
 	callKey := CraftCallKey("activity/" + activityID)
-	var preparation craftChargeStartPreparation
-	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	// Bounded whole-transaction retry on the per-binding sequence slot:
+	// two concurrent charge starts with identical facets can read the same
+	// MAX(call_seq) and race the INSERT (a failed statement aborts the
+	// transaction on PostgreSQL, so the retry must restart the transaction,
+	// not continue inside it). The unique index remains the final
+	// arbiter — same discipline as AuthorizeBinding's sequence loop.
+	for attempt := 0; attempt < craftCallSeqAttempts; attempt++ {
+		preparation := craftChargeStartPreparation{}
+		err := s.prepareCraftChargeStartTx(ctx, row, activityID, b, protocol, callKey, &preparation)
+		if err != nil && isUniqueViolation(err) {
+			continue
+		}
+		if err != nil {
+			return craftChargeStartPreparation{}, err
+		}
+		return preparation, nil
+	}
+	return craftChargeStartPreparation{}, fmt.Errorf("%w: charge start call sequence contention on grant %s", craft.ErrConflict, row.GrantID)
+}
+
+func (s *CraftBudgetService) prepareCraftChargeStartTx(ctx context.Context, row CraftBudgetGrantRow, activityID string, b CraftCallBinding, protocol *string, callKey string, preparation *craftChargeStartPreparation) error {
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		run, err := lockCraftRun(tx, ctx, row)
 		if err != nil {
 			return err
@@ -428,10 +448,6 @@ func (s *CraftBudgetService) prepareCraftChargeStartWithProtocol(ctx context.Con
 		preparation.status = craftChargeStartPrepared
 		return nil
 	})
-	if err != nil {
-		return craftChargeStartPreparation{}, err
-	}
-	return preparation, nil
 }
 
 // PauseRunForBudget orders a durable budget pause against StartBinding using

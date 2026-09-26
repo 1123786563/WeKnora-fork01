@@ -207,6 +207,15 @@ func (s *CraftDockerNormalExecService) Execute(ctx context.Context, grantID, act
 		s.started[key] = true
 		s.mu.Unlock()
 	}
+	// A terminal process observation closes this receipt's start-evidence
+	// window: later observations of an already-terminal receipt no longer
+	// need the flag, and the long-lived service must not retain one key per
+	// exec forever.
+	if state := outcome.Observation.State; state == sandbox.DockerNormalExecProcessSucceeded || state == sandbox.DockerNormalExecProcessFailed {
+		s.mu.Lock()
+		delete(s.started, key)
+		s.mu.Unlock()
+	}
 	result := CraftDockerNormalExecResult{
 		Receipt: receipt, Process: outcome.Observation, Transport: outcome.Transport,
 		StartEvidence: outcome.StartEvidence,
@@ -314,12 +323,20 @@ func (s *CraftDockerNormalExecService) observeClaimed(ctx context.Context, grant
 		return s.unknownResult(ctx, activityID, receipt, err)
 	}
 	startEvidence := false
+	key := normalStartEvidenceKey(receipt)
 	s.mu.Lock()
-	startEvidence = s.started[normalStartEvidenceKey(receipt)]
+	startEvidence = s.started[key]
 	s.mu.Unlock()
 	observeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), craftDockerNormalObserveTimeout)
 	process, observeErr := s.provider.ObserveAttachedExec(observeCtx, normalProviderReceipt(receipt), startEvidence)
 	cancel()
+	if process.State == sandbox.DockerNormalExecProcessSucceeded || process.State == sandbox.DockerNormalExecProcessFailed {
+		// Terminal observation: drop the start-evidence key (same retention
+		// rule as the start path) so recovered receipts stop accumulating.
+		s.mu.Lock()
+		delete(s.started, key)
+		s.mu.Unlock()
+	}
 	result := CraftDockerNormalExecResult{Receipt: receipt, Process: process, Transport: sandbox.DockerNormalExecTransportUnavailable, StartEvidence: startEvidence}
 	result.Output, result.Cursor, _ = s.readOutput(context.WithoutCancel(ctx), normalOutputScope(request, receipt))
 	if result.Output.Sealed {
