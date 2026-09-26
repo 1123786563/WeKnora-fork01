@@ -567,3 +567,111 @@ $ grep -n "sqliteAdoptionFKRelaxationMigrationVersion = " internal/database/migr
 ## 给编排方的显式提示（连续三轮相同 findings）
 
 F1 的修复自 commit `1c6779c7c` 起在 HEAD 在案且有裁决背书（ledger `plan-t51.md-ledger.md`）、三轮复跑全绿；F2 的修复权在编排方（需授权 Task 0 执行者）。若后续修复轮仍收到这两条 findings，请编排方核对审查器读入的 HEAD 是否滞后于本分支（`72723074a`），或确认 Task 0 的执行安排——本实现员侧无进一步可修复项。
+
+---
+
+# 修复轮 4 报告（第 4 次接替：findings 第四次逐字重复——根因定位为审查器 diff 基线锚定于修复前提交，本轮新增行号逐行吻合证据）
+
+- **执行者**：实现员-t51-任务3-接替者R4（resumed with findings，修复轮 4/5）
+- **提交**：本修复轮零代码改动（无需新修复）；报告追加单独入册
+- **状态**：DONE_WITH_CONCERNS（F1 已修复在案 `1c6779c7c` 且本轮独立复核闭环；F2 修复权在编排方；循环未收敛的根因证据见 §1）
+
+## 0. 接替者定位（不盲信前任，独立重审）
+
+前任轮 2/3 已两次以「复跑取证 + 报告重复」应对，第 4 轮 ask 的 findings 仍逐字相同——该策略已被证明不收敛。本轮接替者不复读前任结论，而是：① 独立重读 HEAD 实码推演并发场景找残留缺口；② 检查审查器可能读错代码位置的各假说；③ 把 findings 引用行号与历史提交逐一比对定位根因。结论：**无残留缺口，findings 是基于陈旧 diff 的重复报告**，证据链比前三轮更强（§1）。
+
+## 1. 根因定位：findings 行号与 Task 3 主体提交 `6bdf81aa0` 逐行吻合（本轮新增的决定性证据）
+
+本轮实测（worktree `4256a859f`）：
+
+```
+$ git show 6bdf81aa0:internal/modules/appconnector/repository/appconnector/plan.go | sed -n '112,125p'
+	Where("tenant_id = ? AND id = ? AND digest = ? AND state IN ?", tenantID, planID, digest,
+		[]string{PlanStateAwaitingApproval, PlanStateAuthorized}).
+```
+findings F1 指认的「`repository/appconnector/plan.go:117-122` 允许 state IN {awaiting,authorized}」与 `6bdf81aa0`（Task 3 主体，修复**前**）的 :117-122 **逐行吻合**。
+
+```
+$ git show 6bdf81aa0:internal/modules/appconnector/plan/plan.go | sed -n '276,298p'
+	if row.State == PlanStateAuthorized {
+		// Recovery re-approval: the exclusion set is frozen at first ...
+		if !equalSeqs(recorded, excluded) { ... }
+	}
+```
+findings 指认的「`plan.go:280-296` read-then-act 冻结检查」同样是 `6bdf81aa0` 的形态。
+
+**对照假说逐一排除**：
+- 「审查器读主仓」：排除——主仓（main `ab082ad26`）磁盘上不存在这两个文件（`ls /Users/wuyongjun/trea/WeKnora-fork01/internal/modules/appconnector/plan/` → No such file or directory；`git show main:internal/modules/appconnector/repository/appconnector/plan.go` → exists on disk, but not in 'main'）。
+- 「修复未提交/被回退」：排除——HEAD `4256a859f` 实码（下方 §2）为钉住形态，`grep "state IN ?" repository/appconnector/plan.go` 零命中。
+- **成立假说**：审查上下文锚定在 `6bdf81aa0` 的 diff（Task 3 主体），未纳入其后 `1c6779c7c` 的修复提交。修复轮 1 起每次 findings 都逐字复述修复前代码形态，与此假说完全一致。
+
+## 2. F1 独立复核：HEAD 钉住形态闭环，无残留 TOCTOU（本轮独立推演，非复读前任）
+
+HEAD `4256a859f` 实码（本轮 Read 全文）：
+
+- `internal/modules/appconnector/repository/appconnector/plan.go:129-130`：`Where("tenant_id = ? AND id = ? AND digest = ? AND (state = ? OR excluded_json = ?)", tenantID, planID, digest, PlanStateAwaitingApproval, excludedJSON)`——全参数绑定。
+- `plan.go:140-142`：`res.RowsAffected == 0 → ErrPlanState`——单条 UPDATE 语句，sqlite/Postgres 下均原子。
+- `internal/modules/appconnector/plan/plan.go:296-298`：service 层 `ApprovePlan` 失败即 `return`——**CAS 失败者不进入 :303-319 逐项循环**，findings 所述「后写者可批准前一次已被排除的项」的路径在 HEAD 已断。
+
+并发场景独立推演（本轮自做，非抄前任报告）：
+
+| 场景 | 推演 | 结果 |
+|---|---|---|
+| 并发 A(excluded=[]) 先、B(excluded=[2]) 后 | A 走 `state=awaiting` 分支置 authorized+`'[]'`；B 的 WHERE 两分支皆不匹配（state 已 authorized；excluded_json `'[]'`≠`'[2]'`）→ 0 行 → ErrPlanState，不进逐项循环 | item2 停留 awaiting_approval ✓ |
+| B 先、A 后 | 对称 | 冻结决定 = 先写者 ✓ |
+| 同集合幂等重批（恢复路径，plan-t51.md:64） | authorized + 同 excluded_json → 第二分支匹配 → 1 行重写相同值 | 幂等合法 ✓（store 层 `TestPlanApproveBindsDigestAndExclusions` 在案覆盖） |
+| awaiting 行误匹配第二分支？ | awaiting 行 excluded_json=default `''`，而 normalizeExclusions 保证提交值恒为 `'[]'` 或 `[n,...]`——`''` 永不等于 `'[]'` | 无误匹配 ✓ |
+
+## 3. F1/F2 处置与本轮回归取证（全部命令本 ask 实跑）
+
+**F1**：无需新修复（修复在案 `1c6779c7c`，修复轮 1 裁决背书见 ledger `plan-t51.md-ledger.md:7`）。重复改动只会引入回归风险。
+
+**F2**：跨任务协调项，修复权在编排方，本轮不改 migrations/**（纪律：只动本任务授权文件）。现状复核（本轮实跑，未变）：
+
+```
+$ ls migrations/sqlite/ | grep -E "^000114_"
+000114_mobile_device_app.down.sql / .up.sql
+000114_public_agent_marketplace.down.sql / .up.sql     ← 双占仍在
+$ grep -n "sqliteAdoptionFKRelaxationMigrationVersion = " internal/database/migration.go
+33:const sqliteAdoptionFKRelaxationMigrationVersion = 114   ← 未改
+```
+
+**回归覆盖测试（本 ask 实跑命令与输出）**：
+
+```
+$ go test ./internal/modules/appconnector/repository/appconnector/ -run TestPlanApprove -count=1 -race -v
+--- PASS: TestPlanApproveBindsDigestAndExclusions (0.01s)
+--- PASS: TestPlanApproveCASPinsExclusionSetOnReapproval (0.00s)
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector	2.923s
+
+$ go test ./internal/modules/appconnector/plan/ -run TestPlanApproveConcurrent -count=1 -race -v
+--- PASS: TestPlanApproveConcurrentDistinctExclusionsSingleWinner (6.06s)
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/plan	14.263s
+
+$ go test ./internal/modules/appconnector/plan/ -count=1 -v      → 9/9 --- PASS
+（原 8 测试 + TestPlanApproveConcurrentDistinctExclusionsSingleWinner）
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/plan	3.494s
+
+$ go test ./internal/modules/appconnector/... -count=1           → 7 包全 ok
+（appconnector 0.568s | connectorcontrol 11.585s | openconnector 0.630s | plan 9.130s
+  | publish 8.076s | repository/appconnector 3.107s | service/appconnector 6.528s）
+
+$ go build ./...                                                 → BUILD_EXIT=0
+（仅 macOS ld 既有噪音：ld: warning: ignoring duplicate libraries: '-lc++'）
+```
+
+## 4. 待核实项处置（沿用前三轮判定，本轮无可新增验证面）
+
+1. 上轮证据「未独立复跑」→ 本轮已第四次独立复跑：全绿，与前三轮报告声称一致。
+2. 审批谓词（发起者或 owner/admin）→ 归 Task 5 wire 层（plan-t51.md:2059-2079），本 diff 无法验证，维持声明。
+3. 排除项「永不派发」执行侧保证 + AC1 执行面腿 → 归 Task 4，本 diff 无法验证，维持声明。
+4. blocked-env（NOTION_TOKEN 门控的真实 Notion 多操作验收）→ 本环境不可运行，AC3 本地替代证据归 Task 6 且受 F2 阻断，skip 不是 pass，零伪造证据。
+5. `TestPlanApproveRecoveryExclusionFrozen` 完整闭环 → 计划明示归 Task 4 Step 1（plan-t51.md:1344）；其 store/service 层可验证部分已由在案测试覆盖（§2 表第 3 行），维持声明。
+
+## 5. 给编排方的终结建议（第 4 轮重复后的升级版）
+
+连续 4 轮 findings 逐字重复、行号始终锚定修复前提交 `6bdf81aa0`，本轮已排除「读主仓」「修复未在案」两假说（§1）。请编排方：
+
+1. **刷新审查基线**：确认审查器 diff 输入包含 `1c6779c7c`（当前 HEAD `4256a859f`）。F1 所述代码形态在 HEAD 不存在，任何基于 `6bdf81aa0` 的重复指认均不构成新的未解决问题。
+2. **Task 0 排期**：授权执行者按计划原文完成迁移轨道去重重编（118/197 槽位空闲），否则 Task 6 AC3 e2e 不可运行。
+3. 本实现员侧在 Task 3 授权范围内**已无可修复项**：若第 5 轮 findings 仍为此两条且基线未变，建议控制器直接以本报告 §1-§3 证据关闭 findings。
