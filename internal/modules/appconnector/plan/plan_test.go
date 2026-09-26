@@ -301,3 +301,100 @@ func TestPlanFormRejectsInvalidInput(t *testing.T) {
 		t.Fatalf("missing tenant refused, got %v", err)
 	}
 }
+
+func (e *planSvcEnv) approveAll(t *testing.T, pv PlanView) {
+	t.Helper()
+	if _, err := e.svc.Approve(context.Background(), 7, pv.ID, "user-a", ApproveInput{Digest: pv.Digest}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestPlanApproveWholeApprovesEveryIncludedItem: the whole-plan decision
+// approves every included item with its own digest-bound A03 approval.
+func TestPlanApproveWholeApprovesEveryIncludedItem(t *testing.T) {
+	e := newPlanSvcEnv(t)
+	pv := e.formTwo(t)
+	e.approveAll(t, pv)
+	for _, it := range pv.Items {
+		row, err := e.store.FindAction(context.Background(), it.ActionID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if row.State != appconn.ActionAuthorized {
+			t.Fatalf("included item %s must be authorized, got %s", it.ActionID, row.State)
+		}
+	}
+	got, _ := e.plans.FindPlan(context.Background(), 7, pv.ID)
+	if got.State != PlanStateAuthorized || got.ApprovedBy != "user-a" || got.ApprovedAt == nil {
+		t.Fatalf("plan approval must be recorded: %+v", got)
+	}
+}
+
+// TestPlanApproveExcludesItemNeverApprovesIt (排除单项): the excluded
+// item stays awaiting_approval forever and can never be dispatched by
+// this plan; the exclusion is recorded on the plan row.
+func TestPlanApproveExcludesItemNeverApprovesIt(t *testing.T) {
+	e := newPlanSvcEnv(t)
+	pv := e.formTwo(t)
+	if _, err := e.svc.Approve(context.Background(), 7, pv.ID, "user-a",
+		ApproveInput{Digest: pv.Digest, ExcludeSeqs: []int{2}}); err != nil {
+		t.Fatal(err)
+	}
+	first, _ := e.store.FindAction(context.Background(), pv.Items[0].ActionID)
+	second, _ := e.store.FindAction(context.Background(), pv.Items[1].ActionID)
+	if first.State != appconn.ActionAuthorized {
+		t.Fatalf("included item must be authorized, got %s", first.State)
+	}
+	if second.State != appconn.ActionAwaitingApproval {
+		t.Fatalf("excluded item must stay awaiting_approval, got %s", second.State)
+	}
+	got, _ := e.plans.FindPlan(context.Background(), 7, pv.ID)
+	if got.ExcludedJSON != "[2]" {
+		t.Fatalf("exclusion must be recorded on the plan row: %q", got.ExcludedJSON)
+	}
+}
+
+// TestPlanApproveRejectsForeignDigest is the AC1 approval-side anchor: a
+// digest issued for DIFFERENT plan content (here: another plan's digest —
+// 计划内容变化) authorizes nothing, and a refusal moves nothing.
+func TestPlanApproveRejectsForeignDigest(t *testing.T) {
+	e := newPlanSvcEnv(t)
+	p1 := e.formTwo(t)
+	// A second plan over the same connection/version but CHANGED content
+	// (different titles → different items → different digests).
+	p2, err := e.svc.FormPlan(context.Background(), FormInput{TenantID: 7, ActorID: "user-a",
+		Items: []ItemInput{item("Doc A v2"), item("Doc B v2")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p1.Digest == p2.Digest {
+		t.Fatal("计划内容变化必须产生新 plan digest")
+	}
+	// The OLD digest must not approve the NEW content — the plan-level
+	// mirror of TestApprovalLifecycleHappyPath's per-action refusal.
+	if _, err := e.svc.Approve(context.Background(), 7, p2.ID, "user-a", ApproveInput{Digest: p1.Digest}); !errors.Is(err, ErrPlanDigestMismatch) {
+		t.Fatalf("old plan digest approved new content: %v", err)
+	}
+	if _, err := e.svc.Approve(context.Background(), 7, p1.ID, "user-a", ApproveInput{Digest: "deadbeef"}); !errors.Is(err, ErrPlanDigestMismatch) {
+		t.Fatalf("wrong digest accepted: %v", err)
+	}
+	for _, pv := range []PlanView{p1, p2} {
+		got, _ := e.plans.FindPlan(context.Background(), 7, pv.ID)
+		if got.State != PlanStateAwaitingApproval {
+			t.Fatalf("refused approve must not move state: %s", got.State)
+		}
+	}
+}
+
+func TestPlanApproveRejectsBadExclusions(t *testing.T) {
+	e := newPlanSvcEnv(t)
+	pv := e.formTwo(t)
+	if _, err := e.svc.Approve(context.Background(), 7, pv.ID, "user-a",
+		ApproveInput{Digest: pv.Digest, ExcludeSeqs: []int{3}}); !errors.Is(err, ErrPlanInvalidInput) {
+		t.Fatalf("out-of-range exclude seq refused, got %v", err)
+	}
+	if _, err := e.svc.Approve(context.Background(), 7, pv.ID, "user-a",
+		ApproveInput{Digest: pv.Digest, ExcludeSeqs: []int{1, 1}}); !errors.Is(err, ErrPlanInvalidInput) {
+		t.Fatalf("duplicate exclude seq refused, got %v", err)
+	}
+}

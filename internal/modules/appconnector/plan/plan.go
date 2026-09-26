@@ -249,7 +249,77 @@ func (s *Service) FormPlan(ctx context.Context, in FormInput) (PlanView, error) 
 	return PlanView{ID: planID, State: PlanStateAwaitingApproval, Digest: digest, Items: views}, nil
 }
 
-// Approve records the owner's whole-plan decision. IMPLEMENT IN TASK 3.
+// Approve records the owner's whole-plan decision: the digest must match
+// the plan's CURRENT content (AC1 — a digest issued for different content
+// is refused, never migrated), the exclusion set is recorded on the plan
+// row, and every INCLUDED still-awaiting item receives its own
+// digest-bound A03 approval. Excluded items are never approved and never
+// dispatched. Re-approval is the recovery path: the exclusion set is
+// frozen at first approval (a different set after approval is a state
+// conflict), already-authorized items are idempotent no-ops, and items
+// still awaiting approval (a prior partial approve) are approved now.
+func (s *Service) Approve(ctx context.Context, tenantID uint64, planID, actor string, in ApproveInput) (PlanView, error) {
+	if actor == "" || in.Digest == "" {
+		return PlanView{}, fmt.Errorf("%w: actor and digest are required", ErrPlanInvalidInput)
+	}
+	row, err := s.plans.FindPlan(ctx, tenantID, planID)
+	if err != nil {
+		return PlanView{}, err
+	}
+	if row.Digest != in.Digest {
+		return PlanView{}, fmt.Errorf("%w: approval digest does not match plan content %s", ErrPlanDigestMismatch, planID)
+	}
+	items, err := s.plans.ListPlanItems(ctx, tenantID, planID)
+	if err != nil {
+		return PlanView{}, err
+	}
+	excluded, err := normalizeExclusions(in.ExcludeSeqs, len(items))
+	if err != nil {
+		return PlanView{}, err
+	}
+	if row.State == PlanStateAuthorized {
+		// Recovery re-approval: the exclusion set is frozen at first
+		// approval — a different set after approval is a state conflict,
+		// never a silent rewrite.
+		recorded, perr := parseExclusions(row.ExcludedJSON)
+		if perr != nil {
+			return PlanView{}, perr
+		}
+		if !equalSeqs(recorded, excluded) {
+			return PlanView{}, fmt.Errorf("%w: plan already approved with exclusions %v", ErrPlanState, recorded)
+		}
+	}
+	excludedJSON, err := json.Marshal(excluded)
+	if err != nil {
+		return PlanView{}, err
+	}
+	if err := s.plans.ApprovePlan(ctx, tenantID, planID, in.Digest, actor, string(excludedJSON), time.Now().UTC()); err != nil {
+		return PlanView{}, err
+	}
+	exSet := map[int]bool{}
+	for _, seq := range excluded {
+		exSet[seq] = true
+	}
+	for _, item := range items {
+		if exSet[item.Seq] {
+			continue // 排除单项：永不批准、永不派发
+		}
+		action, aerr := s.actions.FindAction(ctx, item.ActionID)
+		if aerr != nil {
+			return PlanView{}, aerr
+		}
+		if action.State != appconn.ActionAwaitingApproval {
+			// authorized: already approved (idempotent); queued/dispatched/
+			// terminal: settled — an approval is no longer applicable.
+			continue
+		}
+		if aerr := s.approver.Approve(ctx, item.ActionID, actor, action.ArgsDigest); aerr != nil {
+			return PlanView{}, aerr
+		}
+	}
+	return s.view(ctx, tenantID, planID)
+}
+
 // Execute runs one ordered pass over an approved plan. IMPLEMENT IN TASK 4.
 // Status returns the durable plan projection. IMPLEMENT IN TASK 4.
 
@@ -316,6 +386,3 @@ func (s *Service) view(ctx context.Context, tenantID uint64, planID string) (Pla
 	}
 	return PlanView{ID: row.ID, State: row.State, Digest: row.Digest, Items: views}, nil
 }
-
-var _ = appconn.ActionAwaitingApproval // used from Task 3 onward
-var _ = time.Now                       // used from Task 3 onward
