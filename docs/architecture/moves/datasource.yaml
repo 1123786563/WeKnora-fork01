@@ -52,9 +52,9 @@ alias_obligations:
   - old_import_path: internal/datasource/connector/yuque
     passb_task: B-datasource
 legacy_files:
-  - path: internal/application/repository/datasource_repo.go
-    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
-    navigation_label: Datasource repo (application/repository)
+  - path: internal/application/repository/datasource_passb_compat.go
+    reason: Pass B 过渡 shim，ib2 同 commit 随文件删行
+    navigation_label: Datasource host compat (application/repository)
     passb_task: B-datasource
   - path: internal/application/service/datasource_service.go
     reason: trapped in horizontal service package internal/application/service (Pass B file split)
