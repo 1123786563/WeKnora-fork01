@@ -32,11 +32,11 @@
 
 | id | 基线% | 备注 |
 |---|---|---|
-| px2-settings-models-tab | 0.005 | 模型类型过滤 tab 全部→对话（.model-type-tabs，ModelSettings.vue:38） |
-| px2-settings-sandbox-tab | 0.001 | 沙箱类型过滤 tab（SandboxSettings.vue:59） |
-| px2-settings-mymemory-tab | 0 | 记忆状态过滤 tab 生效中→待确认（MemorySettings.vue:154；注意挂 mymemory 分区） |
-| px2-settings-systemglobal-tab | 0.001 | 系统设置分区 tab 账户与访问→空间默认值（SystemSettings.vue:69；settings-system 分区是 SystemInfo 无 tab） |
-| px2-settings-general-fontradio | 25.519 | 字号分段控件 正常→大；**全页弥散型差异**（3×3 全区域 6.4%~36.6%）。代码级候选归因：字号应用机制异构——Vue `useFont.setFontSize→applyFont()`（frontend/src/composables/useFont.ts:260-266）全站缩放，React `applyFontCssVariables` 只设 `--wk-font-scale` CSS 变量（apps/web/src/settings/GeneralPreferencesPanel.tsx:132-136），React 端消费面不足则视觉不缩放；另 React 点击后 `pushSettingsToast('成功')`（同文件 :219）而 Vue GeneralSettings 无 toast，提示呈现亦异构（判例 #27 da187f072 同族，该修复未覆盖此处）。待工单像素级归因 |
+| px2-settings-models-tab | 0.005 | 模型类型过滤 tab 全部→对话（.model-type-tabs，ModelSettings.vue:38）。**终值 0.005（pp2/settings 批次收敛后复核恒定）**= #16 play-circle 图标 28px（静态存量豁免）+ #29 指示条边缘 AA 14px（新判例，决定性实验同值 left 替换后 0px） |
+| px2-settings-sandbox-tab | 0.001 | 沙箱类型过滤 tab（SandboxSettings.vue:59）。**终值 0.001** = #29 指示条边缘 AA 12px（y244-246 x424-551，单灰阶级） |
+| px2-settings-mymemory-tab | 0 | 记忆状态过滤 tab 生效中→待确认（MemorySettings.vue:154；注意挂 mymemory 分区）。复核 0（第 2 tab offset 落整数相位，#29 不显形） |
+| px2-settings-systemglobal-tab | 0.001 | 系统设置分区 tab 账户与访问→空间默认值（SystemSettings.vue:69；settings-system 分区是 SystemInfo 无 tab）。**终值 0.001** = #29 指示条边缘 AA 13px（y176-178 x456-571） |
+| px2-settings-general-fontradio | 25.519→**5.066** | 字号分段控件 正常→大。**已修（pp2/settings 批次）**，三项根因逐个收敛：①字号应用机制异构——React 新增 `apps/web/src/font.ts`（initFont boot + applyFontSizeZoom，Vue useFont.ts:216-238 平移：`<html>` CSS zoom 全站缩放；原 `--wk-font-scale` 变量全仓无消费者、视觉不缩放），GeneralPreferencesPanel.applyFontCssVariables 接线 + main.tsx boot 调用；②toast 呈现异构——本面板 5 处 pushSettingsToast（右上角自研）换 tdesign-react MessagePlugin.success（Vue GeneralSettings.vue:229-274 同构，da187f072 判例族此前未覆盖此处）；③扫描瞬态——双端点击均弹 3000ms t-message 而扫描器 vue 截图恒晚一个 action+steady 周期（vue toast 必过期、react 必在场），扫描项加 postSettle 3500 让双端 toast 都过期（px2-kb-settings-nav 先例）；④连带修复——`.wk-shell-1` height:100vh 在 zoom 态按未缩放视口求值（720→810）把 .menu_bottom 推出视口，换 Vue .main 同款 height:100% + styles.css 补 html/body/#root 高度链（Vue App.vue:291-297 平移；静态页复扫零回归）。**残值 5.066 = settings-general 静态 5.439（SP14 React-only 套餐卡）的缩放态传导**，决定性实验：React 藏卡+双端回滚顶后点击态截图 diff **0.000%**（DOM 探针：卡仅 React 存在 h=104.75，其余 .settings-group 行几何逐字段一致 855×96.44/155.09/133.05，双端 zoom 均 1.125） |
 
 ### system 域（1 项）
 
@@ -48,7 +48,7 @@
 
 | id | 基线% | 备注 |
 |---|---|---|
-| px2-chat-sidebar-collapse | 16.06 | 会话侧栏折叠（.sidebar-toggle：Vue menu.vue:22 / React PlatformShell.tsx:1087 同名类同 `sidebar_collapsed` localStorage 键）；diff 集中顶带（3×3：上中 43.9%/上右 38.6%）——折叠态 rail/头部区渲染差异待工单归因 |
+| px2-chat-sidebar-collapse | 16.06 | 会话侧栏折叠（.sidebar-toggle：Vue menu.vue:22 / React PlatformShell.tsx:1087 同名类同 `sidebar_collapsed` localStorage 键）；diff 集中顶带（3×3：上中 43.9%/上右 38.6%）——折叠态 rail/头部区渲染差异待工单归因。**【2026-09-26 pp2/settings 批次注】**本项排在 fontradio 之后，基线 16.06 含「Vue 已 zoom 1.125 / React 未 zoom」的错配分量；fontradio 修复（React 补 `<html>` zoom 机制）后复扫 **9.094**（run 05-45-02，双端同 zoom 的真值，仍 >1% 留工单池，归 chat 域） |
 
 ## 序内污染声明（重验须知）
 
