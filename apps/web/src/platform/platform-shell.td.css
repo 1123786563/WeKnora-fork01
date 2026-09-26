@@ -1078,12 +1078,18 @@ html[theme-mode="dark"] .aside_box .menu_item_active .menu_icon img.icon {
   position: relative;
   width: 100%;
 }
-.user-menu--collapsed .user-button {
+/* 折叠态变体用同元素双类（.user-menu.user-menu--collapsed，0,3,0）模拟
+   Vue scoped 编译产物 `.user-menu--collapsed .user-button[data-v]` 的特异性
+   层级（attr 加成）：若单写 .user-menu--collapsed 前缀则与下方主体
+   .user-menu .user-button 平手 (0,2,0)，且主体声明在后会覆盖折叠态
+   padding:6px 3px → user-button 高 40px vs Vue 36px（px2-chat-sidebar-
+   collapse 实证：rail 底部 302px 残差即此）。 */
+.user-menu.user-menu--collapsed .user-button {
   justify-content: center;
   padding: 6px 3px;
   gap: 0;
 }
-.user-menu--collapsed .user-dropdown {
+.user-menu.user-menu--collapsed .user-dropdown {
   left: calc(100% + 8px);
   bottom: 0;
   right: auto;

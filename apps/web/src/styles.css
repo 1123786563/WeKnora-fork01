@@ -31,6 +31,19 @@ body { margin: 0; min-width: 320px; background: var(--wk-color-page, #eee);
      currentColor 与未带字号组件文本继承 body，缺这两条时 spike 图标区不坍缩。 */
   font-size: 14px;
   color: var(--td-text-color-primary); }
+/* Vue App.vue:293-296 `body,html,#app { height:100% }` 同款高度链（React 侧
+   多一层 #root）。zoom=1 时与视口等值；字号档位放大（html zoom 1.125）时
+   100% 正确、100vh 会按未缩放视口评估再被放大（Vue menu.vue:1187-1190 注释
+   明言此坑）——px2-chat-sidebar-collapse 实证：React 壳 100vh 在「大」字号下
+   rail 高 810px 溢出 90px，Vue 端 100% 链恒 720。 */
+html, body, #root { height: 100%; }
+/* Vue App.vue:310-316 #app 同款独立合成层：isolation/translateZ/backface。
+   zoom（字号档位）下文本光栅在「独立合成层」与「共享图层直接绘制」两条
+   路径 AA 不同（台账 #22 家族）——px2-chat-sidebar-collapse 大字号态实证：
+   DOM 几何/字符级 Range rect 千分位全同，残差 2192px 全部来自字形光栅
+   AA；补 translateZ(0) 后对齐 Vue 光栅路径。zoom=1 时两路径渲染一致，
+   已收敛页面不受影响。 */
+#root { isolation: isolate; transform: translateZ(0); backface-visibility: hidden; }
 /* .wk-muted deleted: every consumer carries the text-muted utility (or an
    overriding variant) since the family migrated off this file. */
 /* S7 壳层回收（判例同 S6 wk-list 集中回收）：.wk-page 标准版（960px 居中）

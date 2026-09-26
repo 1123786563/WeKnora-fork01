@@ -11,6 +11,7 @@ import { createBrowserTransport } from './platform/http.ts';
 import { readStoredLocale } from './i18n.ts';
 import { createBrowserCredentialAdapter, persistBrowserCredential } from './platform/credentials.ts';
 import { initTheme } from './theme.ts';
+import { initFontPreferences } from './settings/GeneralPreferencesPanel.tsx';
 import { TDesignLocaleProvider } from './tdesign-locale.tsx';
 import { createWebScopeRuntime } from './platform/scope-runtime.ts';
 import { installNavigationObserver } from './platform/navigation.ts';
@@ -107,6 +108,9 @@ client = createWeKnoraClient({
 // The embed entry forces light mode instead (frontend/embed.html sets
 // theme-mode="light" before the app boots).
 if (currentRoute.kind !== 'embed') initTheme();
+// Vue main.ts:27 initFont() parity：启动即恢复持久化字体偏好（font_sans /
+// font_mono / font_size→html zoom）。embed 入口与 initTheme 同侧跳过。
+if (currentRoute.kind !== 'embed') initFontPreferences();
 
 const root = createRoot(document.getElementById('root')!);
 

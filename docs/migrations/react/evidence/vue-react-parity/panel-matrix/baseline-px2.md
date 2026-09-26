@@ -48,7 +48,7 @@
 
 | id | 基线% | 备注 |
 |---|---|---|
-| px2-chat-sidebar-collapse | 16.06 | 会话侧栏折叠（.sidebar-toggle：Vue menu.vue:22 / React PlatformShell.tsx:1087 同名类同 `sidebar_collapsed` localStorage 键）；diff 集中顶带（3×3：上中 43.9%/上右 38.6%）——折叠态 rail/头部区渲染差异待工单归因 |
+| px2-chat-sidebar-collapse | 16.06 → **0.238（豁免，台账 #29）** | 会话侧栏折叠（.sidebar-toggle：Vue menu.vue:22 / React PlatformShell.tsx:1087 同名类同 `sidebar_collapsed` localStorage 键）。【2026-09-26 工单收敛】四项前置缺陷修复：①React 字号 zoom 机制缺失（`--wk-font-scale` 全仓零消费，Vue useFont html zoom 1.125 下 rail 67.5px vs React 60px）→applyFontCssVariables 补 zoom+main.tsx initFontPreferences 启动恢复；②`.wk-shell-1` 100vh 在 zoom 下溢出 90px→height:100% 高度链（#root 补 html,body,#root 100%）；③`.chat` 缺 `is-sidebar-collapsed` 类（Vue index.vue:4 同款，折叠后主区卡 1020px）→ChatSidebarCollapsedContext 通道；④composer chip 盒模型 border-box 30px→Vue 同构 content-box 28px+2×.5px border（0.25px zoom 乘法差经 clientHeight 取整放大成 scrollTop 1px 错位）。16.06→0.238（run 05-19-53）。残余 0.238%＝zoom 1.125 下个别文本行基线光栅 snapping 差（引擎 relayout 增量路径，无页面 seam，像素级+代码级取证见台账 #29）。顺带：px2-settings-general-fontradio 25.519→7.663（zoom 机制修复的红利，余量归该工单） |
 
 ## 序内污染声明（重验须知）
 

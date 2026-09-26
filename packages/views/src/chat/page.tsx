@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { ChatMessage, ChatSession, FeedbackRating, MessageSuggestionSet } from '@weknora/contracts';
 import { shouldShowTypingIndicator } from '@weknora/domain/chat/session-state';
@@ -94,6 +94,15 @@ export interface ChatTerminalView {
   status: string;
   output: string;
 }
+
+/**
+ * Vue index.vue:4 根 :class `'is-sidebar-collapsed': uiStore.sidebarCollapsed`
+ * 的 React 通道：折叠态由宿主壳（apps/web PlatformShell，localStorage
+ * `sidebar_collapsed`）持有，经本 Context 下发；.chat.is-sidebar-collapsed 的
+ * max-width:calc(100vw - 60px) 规则已平移在 chat.td.css:34。默认 false 与
+ * Vue uiStore 初值（localStorage 非 'true'）一致。
+ */
+export const ChatSidebarCollapsedContext = createContext(false);
 
 export interface ChatPageProps {
   sessions: readonly ChatSession[];
@@ -506,6 +515,8 @@ function TerminalPanel(props: { copy: ChatCopyTable } & Pick<ChatPageProps, 'ter
 }
 
 export function ChatPage(props: ChatPageProps) {
+  // Vue index.vue:4 — 根 :class 绑定 uiStore.sidebarCollapsed（壳层折叠态）。
+  const sidebarCollapsed = useContext(ChatSidebarCollapsedContext);
   // Chat copy resolves per locale: explicit prop wins, otherwise the app
   // convention (localStorage 'locale' set by the language switch, then
   // navigator.language). The switch dispatches 'weknora:locale-changed'
@@ -687,6 +698,7 @@ export function ChatPage(props: ChatPageProps) {
   if (props.selectedSessionId) {
     return <div
       className={'chat'
+        + (sidebarCollapsed ? ' is-sidebar-collapsed' : '')
         + (referencesOpen ? ' has-references-panel' : '')
         + (terminalOpen ? ' has-sandbox-panel' : '')}
       style={{ '--sandbox-panel-width': `${sandboxWidth}px` } as React.CSSProperties}>

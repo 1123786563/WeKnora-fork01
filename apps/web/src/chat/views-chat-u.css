@@ -823,10 +823,16 @@
 .wk-vc-composer-15 {
   position: relative;
   display: inline-flex;
-  /* Vue .control-btn 同款 border-box（button UA 自带；div 化后需显式，否则
-     0.5px 边框外撑 2px 把 shell 撑高——px-chat-agent-selector 实证）。 */
-  box-sizing: border-box;
-  height: 30px;
+  /* Vue .control-btn 同款盒模型：content-box + height 28px + .5px 边框
+     （Input-field.vue:3213 .control-btn 无 box-sizing 覆盖＝content-box，
+     :3242 .agent-mode-btn { height:28px; border:.5px solid }）。此前曾写成
+     border-box 30px（zoom=1 时渲染同为 30px 掩盖了结构差）——但 html zoom
+     （字号档位）按盒模型原值做乘法：Vue (28+2×0.889)×1.125=33.5 vs
+     border-box 30×1.125=33.75，0.25px 差经 clientHeight 取整放大成
+     scrollTop 1px 错位、消息列整体错行（px2-chat-sidebar-collapse 大字号
+     态实证）。Tailwind preflight 全局 border-box，须显式回归 content-box。 */
+  box-sizing: content-box;
+  height: 28px;
   cursor: pointer;
   align-items: center;
   gap: 4px;

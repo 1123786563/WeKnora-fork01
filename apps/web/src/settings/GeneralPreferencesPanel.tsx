@@ -134,6 +134,28 @@ function applyFontCssVariables(sans: string, mono: string, size: FontSize): void
   root.style.setProperty('--wk-font-sans', SANS_STACKS[sans] ?? SANS_STACKS.system!);
   root.style.setProperty('--wk-font-mono', MONO_STACKS[mono] ?? MONO_STACKS.system!);
   root.style.setProperty('--wk-font-scale', String(FONT_SCALES[size]));
+  // Vue useFont.applyFont（frontend/src/composables/useFont.ts:239-241）把字号档位
+  // 以 `zoom` 合成到整棵文档——CSS 变量方案（--app-font-scale + calc）曾在 Vue 端
+  // 试过并放弃：calc 只在消费点生效，用户只看到部分 UI 缩放（useFont.ts:225-231
+  // 注释原话）。React 端此前只设 --wk-font-scale 且全仓库零消费（px2 复盘实证：
+  // 「大」字号点击后 Vue rail 60px×1.125=67.5px，React rail 停留 60px，px2-chat-
+  // sidebar-collapse 16.06% 的主带即此底差），对齐 Vue 改为 html zoom 全文档合成。
+  root.style.setProperty('zoom', String(FONT_SCALES[size]));
+}
+
+/** Vue main.ts:27 initFont() parity：启动即恢复持久化字体偏好（含字号 zoom）。 */
+export function initFontPreferences(): void {
+  let sans = 'system';
+  let mono = 'system';
+  let size: FontSize = 'normal';
+  try {
+    sans = readUserPreference(window.localStorage, 'font_sans') ?? 'system';
+    mono = readUserPreference(window.localStorage, 'font_mono') ?? 'system';
+    size = readLocalPreferences(window.localStorage).fontSize;
+  } catch {
+    // Vue useFont falls back to defaults when storage is corrupt/unavailable.
+  }
+  applyFontCssVariables(sans, mono, size);
 }
 
 export function GeneralPreferencesPanel({ liteMode = false, client }: { liteMode?: boolean; client?: WeKnoraClient }) {
