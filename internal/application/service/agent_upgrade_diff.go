@@ -2,18 +2,12 @@ package service
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"sort"
 	"strings"
 
 	"github.com/Tencent/WeKnora/internal/types"
 )
-
-// ErrAgentUpgradeInvalidInput marks a diff request whose releases are
-// missing (nil). 临时哨兵：Task 4 落盘 agent_upgrade.go 哨兵组时移入该文件并从此处删除
-// （plan-t61.md Task 3 Step 4 授权的过渡形态）。
-var ErrAgentUpgradeInvalidInput = errors.New("invalid agent upgrade proposal request")
 
 // diffUpgradeBundles computes the four review dimensions (behavior /
 // dependencies / security / license — Issue #61 AC2) between the currently
