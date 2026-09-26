@@ -28,8 +28,9 @@ const note = (step, ok, detail) => {
 };
 
 const browser = await chromium.launch();
+let page;
 try {
-  const page = await (await browser.newContext()).newPage();
+  page = await (await browser.newContext()).newPage();
   page.setDefaultTimeout(45000);
   page.on('request', (req) => {
     if (req.method() === 'POST' && req.url().includes('/api/v1/commercial/purchases')) {
@@ -79,6 +80,16 @@ try {
 
   writeFileSync(`${EV}order-info.json`, JSON.stringify({ orderId, checkoutHref, purchases }, null, 2));
   console.log('ORDER ' + orderId);
+} catch (err) {
+  // (A-03) Infrastructure failure (login refused, a selector timeout — the exact
+  // failure shapes a re-verification must capture) lands as an explicit FAIL
+  // note: the RESULT summary still prints and the exit code is non-zero, so
+  // downstream readers can tell an assertion failure from an infrastructure
+  // one instead of seeing no evidence line at all.
+  note('script-error', false, String(err));
+  if (page) {
+    try { await page.screenshot({ path: `${EV}02-billing-script-error.png`, fullPage: true }); } catch { /* best effort */ }
+  }
 } finally {
   await browser.close();
 }

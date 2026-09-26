@@ -275,6 +275,38 @@ func TestNewPlatformSelectsAdapterByProvider(t *testing.T) {
 	}
 }
 
+// TestNewPlatformRefusesLoopbackBypassForProductionAuthority (A-27 / F98):
+// the dev-only loopback egress bypass is enforced by MORE than a comment —
+// combined with an authority BaseURL pointing at a REAL (non-loopback)
+// host it refuses to build the platform at startup, so a dev env copied
+// into production fails loudly instead of silently opening the S1
+// loopback face. A loopback BaseURL (the local-stub shape) and an EMPTY
+// BaseURL (blocked-env, no authority egress) both stay legal.
+func TestNewPlatformRefusesLoopbackBypassForProductionAuthority(t *testing.T) {
+	for _, base := range []string{
+		"https://lago.eu.example.com",   // production-shaped authority
+		"http://10.0.0.5:3000",          // explicit non-loopback internal host
+		"https://api.stripe.com",        // any real host refuses
+	} {
+		if _, err := NewPlatform(Config{Provider: ProviderLago, BaseURL: base, OutboundAllowLoopback: true}); err == nil {
+			t.Fatalf("bypass + non-loopback authority %q must refuse to build", base)
+		}
+	}
+	for _, base := range []string{
+		"http://127.0.0.1:48889", // the local-stub verification shape
+		"http://localhost:3000",  // localhost name form
+		"",                       // blocked-env: no authority egress to bypass
+	} {
+		if _, err := NewPlatform(Config{Provider: ProviderLago, BaseURL: base, OutboundAllowLoopback: true}); err != nil {
+			t.Fatalf("bypass + loopback/empty authority %q must stay legal, got %v", base, err)
+		}
+	}
+	// Without the bypass nothing changes for any posture.
+	if _, err := NewPlatform(Config{Provider: ProviderLago, BaseURL: "https://lago.eu.example.com"}); err != nil {
+		t.Fatalf("no bypass + production authority must stay legal, got %v", err)
+	}
+}
+
 // customersStub stands in for the Lago customers API surface (the #73
 // runtime-proven contract: POST /api/v1/customers with
 // {"customer":{"external_id","name"}} echoes customer.external_id; Bearer

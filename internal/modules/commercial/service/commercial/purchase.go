@@ -241,7 +241,19 @@ func (s *PurchaseService) Purchase(ctx context.Context, tenantID uint64, quoteID
 	// purchase's order). (R2-28) Only a PAYABLE pending order is replayed:
 	// a channel-failed or link-less pending order is not a payment entry
 	// and does not block this checkout.
+	// (A-21 / F90) The price face alone does NOT prove ownership: the match
+	// gate proved THIS quote buys plan P — not that the pending order's OWN
+	// quote bought P. A legacy same-price order on a different plan (the
+	// old POST /commercial/orders face during a republish window) must not
+	// be replayed as this purchase's payment entry — its CheckoutURL would
+	// settle the OLD plan's quote. The replay requires the existing
+	// order's frozen quote to have bought the SAME plan as this purchase
+	// (quoteBoughtPlan failing closed to "" never matches a non-empty
+	// snap.PlanKey).
 	if existing, perr := s.orders.orders.CurrentPendingPurchaseOrder(ctx, tenantID, p.AmountFen, p.Currency); perr == nil {
+		if quoteBoughtPlan(ctx, s.orders, tenantID, existing.QuoteID) != snap.PlanKey {
+			return PurchaseView{}, ErrPurchasePlanConflict
+		}
 		ov := orderViewFromRow(existing)
 		return s.purchaseView(p, snap, pub, &ov), nil
 	} else if !errors.Is(perr, repocommercial.ErrOrderNotFound) {
@@ -265,8 +277,17 @@ func (s *PurchaseService) Purchase(ctx context.Context, tenantID uint64, quoteID
 		// order verbatim — never a second channel request. The loosened
 		// conflict read needs no price-face match: the index already proved
 		// a payable pending order for this tenant exists.
+		// (A-21 / F105) No price-face match, but the SAME plan-ownership
+		// proof as the replay branch above: the winner's frozen quote must
+		// have bought THIS purchase's plan, else the conflict is a legacy
+		// same-price foreign-plan order holding the slot — surfacing the
+		// plan conflict (the caller re-quotes), never replaying a payment
+		// entry that settles another plan's quote.
 		existing, gerr := s.orders.orders.CurrentPayablePendingOrder(ctx, tenantID)
 		if gerr == nil {
+			if quoteBoughtPlan(ctx, s.orders, tenantID, existing.QuoteID) != snap.PlanKey {
+				return PurchaseView{}, ErrPurchasePlanConflict
+			}
 			ovExisting := orderViewFromRow(existing)
 			return s.purchaseView(p, snap, pub, &ovExisting), nil
 		}
@@ -326,9 +347,26 @@ func (s *PurchaseService) PurchaseStatus(ctx context.Context, tenantID uint64) (
 		return PurchaseView{State: domain.PurchaseStateAbsent}, nil
 	}
 	out := PurchaseView{State: p.State, AmountFen: p.AmountFen, Currency: p.Currency}
-	if pub, err := s.plans.FindPublicationByCode(ctx, p.PlanCode); err == nil {
+	// (A-28 / F104) ONE publication read serves both the plan projection and
+	// the order-ownership proof below — the second FindPublicationByCode this
+	// path used to make (per poll!) is gone, and pubErr is SHARED: a failed
+	// read means the plan face cannot be PROVEN, in which case the order
+	// projection is skipped entirely (both sides unprovable ⇒ no projection
+	// — the "" == "" vacuous match that would otherwise project a foreign
+	// historical order, even synthesizing paid_awaiting_activation for it,
+	// is structurally impossible now).
+	pub, pubErr := s.plans.FindPublicationByCode(ctx, p.PlanCode)
+	if pubErr == nil {
 		out.PlanKey = pub.PlanKey
 		out.PlanVersion = pub.Version
+	} else {
+		// (A-28) A failed publication read degrades this projection SILENTLY
+		// no longer: the plan face and the order ownership are both
+		// unprovable, the order projection is skipped — leave one Warn so a
+		// permanently missing publication row (migration gap, DB outage) is
+		// diagnosable from the log instead of surfacing as "state without
+		// plan_key".
+		logger.Warnf(ctx, "[CommercialPurchase] publication read failed for plan code %q: %v", p.PlanCode, pubErr)
 	}
 	// (R1-V02) Only an order that BELONGS to the current purchase is
 	// projected: purchase-kind at the held purchase's frozen price face.
@@ -337,17 +375,13 @@ func (s *PurchaseService) PurchaseStatus(ctx context.Context, tenantID uint64) (
 	// historical purchases — taking its rows[0] projected an arbitrary old
 	// order as the current purchase state. An absent purchase attaches no
 	// order at all.
-	if p.State != domain.PurchaseStateAbsent {
+	if p.State != domain.PurchaseStateAbsent && pubErr == nil {
 		// (OCR final audit 9) Only an order whose frozen quote bought THIS
 		// purchase's plan is projectable: a historical same-price order on
 		// a different plan (pro-max at the pro price face during a
 		// republish window) must never shadow the current purchase.
-		wantPlanKey := ""
-		if pub, err := s.plans.FindPublicationByCode(ctx, p.PlanCode); err == nil {
-			wantPlanKey = pub.PlanKey
-		}
 		if row, err := s.orders.orders.CurrentPurchaseOrder(ctx, tenantID, p.AmountFen, p.Currency); err == nil &&
-			quoteBoughtPlan(ctx, s.orders, tenantID, row.QuoteID) == wantPlanKey {
+			quoteBoughtPlan(ctx, s.orders, tenantID, row.QuoteID) == pub.PlanKey {
 			ov := orderViewFromRow(row)
 			out.Order = &ov
 			// (#82 D3) paid_awaiting_activation is a COORDINATOR-COMPOSED

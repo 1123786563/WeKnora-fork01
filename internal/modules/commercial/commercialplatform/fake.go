@@ -109,6 +109,10 @@ type FakeAdapter struct {
 	customers   map[string]FakeCustomer
 	receipts    map[string]commercial.CommandReceipt
 	failSubmits error
+	// failReadSnapshots (A-31/A-32 test hook): when set, purchase-kind
+	// snapshot reads answer this error — the transient/definitive error
+	// classification the fulfiller tests drive.
+	failReadSnapshots error
 	commands    map[string]fakeCommand
 	creates     []commercial.Command
 	// T08 state (#80): a real in-memory subscription + wallet authority.
@@ -320,6 +324,15 @@ func (f *FakeAdapter) FailSubmitsWith(err error) {
 	f.failSubmits = err
 }
 
+// FailPurchaseSnapshotsWith makes every PURCHASE-kind snapshot read answer
+// the injected error (nil clears it) — the fulfiller's error-classification
+// test seam (unreachable vs invalid response).
+func (f *FakeAdapter) FailPurchaseSnapshotsWith(err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.failReadSnapshots = err
+}
+
 // Customers returns the stored authority-side customers sorted by external
 // id — the identity assertion surface for concurrency tests (count and
 // identity must be exactly one per tenant).
@@ -347,6 +360,14 @@ func (f *FakeAdapter) Commands() []commercial.Command {
 // account truth from the customer store; unknown kinds fail closed
 // unsupported.
 func (f *FakeAdapter) ReadSnapshot(_ context.Context, query commercial.SnapshotQuery) (commercial.Snapshot, error) {
+	if query.Kind == commercial.SnapshotKindPurchase {
+		f.mu.Lock()
+		injected := f.failReadSnapshots
+		f.mu.Unlock()
+		if injected != nil {
+			return commercial.Snapshot{}, injected
+		}
+	}
 	switch query.Kind {
 	case commercial.SnapshotKindReadiness:
 		f.mu.Lock()

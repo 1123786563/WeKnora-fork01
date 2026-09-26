@@ -832,3 +832,74 @@ func TestEnsureBenefitsConcurrentFirstGrantExactlyOnePost(t *testing.T) {
 		t.Fatalf("one registry row expected, got %d", n)
 	}
 }
+
+// TestEffectiveFeaturesStalePurchaseEntitlementNotMaterialized（A-22 / F92）：
+// authority 的 entitlement 读是 base 与 purchase 两腿的无状态过滤并集——
+// canceled 购买的 entitlement 可能残留到懒清理窗口。购买 plan 定义已知的
+// codes 只在购买 ACTIVE 时从 authority 物化腿进来；非 ACTIVE 购买（canceled）
+// 的 plan 定义 codes 必须从物化中剔除，未付款/已取消者不得凭残留 entitlement
+// 保留付费特性。
+func TestEffectiveFeaturesStalePurchaseEntitlementNotMaterialized(t *testing.T) {
+	fake := commercialplatform.NewFakeAdapter()
+	fake.SetBasePlanFeatures(map[string]bool{"api_access": true, "advanced_models": false})
+	svc, _, db := newBenefitsService(t, fake)
+	// 本地发布 pro 计划（定义 advanced_models=true）。
+	proDef := domain.PlanVersion{Key: "pro", Version: 1, Price: 99_00, Monthly: 9_900_000,
+		Features: map[string]bool{"advanced_models": true}, Currency: domain.CurrencyCNY}
+	proJSON, err := json.Marshal(proDef)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&repocommercial.PlanRow{PlanKey: "pro", Version: 1,
+		DefinitionJSON: string(proJSON), State: domain.PlanStatePublished}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&repocommercial.PublicationRow{
+		CommandKey: domain.PublishCommandKey("pro", 1), PlanKey: "pro", Version: 1,
+		PlanCode: domain.DeterministicPlanCode("pro", 1), ReceiptJSON: "{}",
+		PublishedBy: "test", PublishedAt: time.Now().UTC(),
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	const tenant = uint64(522)
+	ext := domain.ExternalPurchaseSubscriptionID(tenant)
+	// CANCELED 购买（懒清理窗口内 authority 仍带着 entitlement）。
+	if _, err := fake.SubmitCommand(ctx, domain.Command{
+		Kind:  domain.CommandKindCreatePurchaseSubscription,
+		Key:   domain.CreatePurchaseSubscriptionCommandKey(ext, domain.DeterministicPlanCode("pro", 1)),
+		Actor: "test", Reason: "purchase",
+		Payload: domain.CreatePurchaseSubscriptionPayload{
+			TenantID: tenant, ExternalCustomerID: domain.ExternalCustomerID(tenant),
+			ExternalPurchaseSubscriptionID: ext, PlanCode: domain.DeterministicPlanCode("pro", 1),
+			AmountFen: 99_00, Currency: domain.CurrencyCNY,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	fake.CancelPurchase(ext)
+	base := map[string]bool{"api_access": true, "advanced_models": false}
+	// 模拟 authority 懒清理窗口的残留 entitlement（购买腿仍带着 code）。
+	staleEntitled := map[string]bool{"advanced_models": true}
+	out := svc.effectiveFeatures(ctx, tenant, base, staleEntitled)
+	if out["advanced_models"] {
+		t.Fatalf("a CANCELED purchase's plan-defined code must NOT materialize from the stale authority entitlement leg, got %+v", out)
+	}
+	if !out["api_access"] {
+		t.Fatalf("base features must answer regardless, got %+v", out)
+	}
+	// 对照组：authority 物化一个本地无定义的 code 仍然生效（未知 code 的
+	// 物化语义保留——只剔除非 ACTIVE 购买 plan 定义的 codes）。
+	out2 := svc.effectiveFeatures(ctx, tenant, base, map[string]bool{"brand_new_code": true})
+	if !out2["brand_new_code"] {
+		t.Fatalf("an authority-materialized code no definition knows must still answer true, got %+v", out2)
+	}
+	// 对照组二：ACTIVE 购买时同 code 经定义腿正常 OR 上来（CancelPurchase
+	// 后的 settle 会被 fake 按终态拒绝——直接 ActivatePurchase 表达「权威
+	// 已激活」姿态，隔离 settle 细节）。
+	fake.ActivatePurchase(ext)
+	out3 := svc.effectiveFeatures(ctx, tenant, base, staleEntitled)
+	if !out3["advanced_models"] {
+		t.Fatalf("an ACTIVE purchase's plan definition must OR advanced_models TRUE, got %+v", out3)
+	}
+}

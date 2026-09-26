@@ -125,6 +125,22 @@ func (a *LagoAdapter) settlePurchasePayment(ctx context.Context, cmd commercial.
 	if err != nil {
 		return commercial.CommandReceipt{}, err
 	}
+	// (A-16 / F84) Amount guard, proration aware: the resolved intent's
+	// amount must not EXCEED the command payload's frozen quote amount and
+	// must be positive — the created-latest heuristic alone must NEVER
+	// decide which PaymentIntent receives a real charge. A strictly-equal
+	// check would be WRONG on the real stack: the gating PaymentIntent
+	// carries the PRORATED first-period invoice amount (live 82flow
+	// evidence: a 9900-fen plan gated on a 1650 intent mid-month), the same
+	// "smaller than the order face, never larger, never zero" discipline
+	// the D6' line-item re-check enforces. An intent LARGER than the
+	// frozen quote (or a zero amount) is a wrong-object/malformed shape
+	// and fails closed before any charge-bearing call.
+	if intent.Amount <= 0 || intent.Amount > payload.AmountFen {
+		return commercial.CommandReceipt{}, fmt.Errorf(
+			"%w: gating intent amount %d is not within the frozen quote face (1..%d)",
+			commercial.ErrPlatformInvalidResponse, intent.Amount, payload.AmountFen)
+	}
 	// (F-1 flow evidence) Invoice-bound settle idempotency: a failed 3DS
 	// confirm leaves a RESIDUAL sibling PaymentIntent for the SAME invoice
 	// (requires_payment_method, pm stripped) next to the one this command
@@ -143,11 +159,15 @@ func (a *LagoAdapter) settlePurchasePayment(ctx context.Context, cmd commercial.
 
 	// (iii) Attach the settle payment method and promote it to default.
 	// An unconfigured token fails closed BEFORE any charge-bearing call.
+	// (A-18) The attach/default rail calls carry DETERMINISTIC idempotency
+	// keys derived from the command key (the same discipline as
+	// update/confirm): a replay of the same settle drive replays the same
+	// pair, so a lost response can never double-attach.
 	if a.cfg.StripeSettlePmToken == "" {
 		return commercial.CommandReceipt{}, fmt.Errorf(
 			"%w: no settle payment method configured", commercial.ErrPlatformUnconfigured)
 	}
-	attachedID, err := a.stripeAttachSettlePaymentMethod(ctx, providerCustomerID, a.cfg.StripeSettlePmToken)
+	attachedID, err := a.stripeAttachSettlePaymentMethod(ctx, providerCustomerID, a.cfg.StripeSettlePmToken, cmd.Key)
 	if err != nil {
 		return commercial.CommandReceipt{}, err
 	}
@@ -189,8 +209,17 @@ func (a *LagoAdapter) settlePurchasePayment(ctx context.Context, cmd commercial.
 	return receipt, nil
 }
 
-// settleRequestTimeout bounds the whole settle drive (five outbound calls).
-const settleRequestTimeout = outboundProviderTimeout * 4
+// settleRequestTimeout bounds the whole settle drive. (A-18 / F86) The
+// budget covers the chain it actually runs, item by item (the
+// purchaseRequestTimeout discipline): THREE authority reads
+// (readPurchaseSnapshot — itself bounded by subscriptionRequestTimeout
+// including its invoice index + per-invoice GETs — customerProviderBound and
+// boundProviderCustomerID) plus FIVE provider round trips (intent list,
+// attach, set-default, intent update, confirm), each bounded by
+// outboundProviderTimeout. A budget below the sum expires mid-confirm on a
+// slow provider, wrapping a transport error as unreachable and re-driving a
+// half-completed leg (pm attached, default rewritten).
+const settleRequestTimeout = 5*outboundProviderTimeout + 3*subscriptionRequestTimeout
 
 // stripeIntent is one PaymentIntent row from the provider list (only the
 // fields the locator needs).
@@ -198,62 +227,88 @@ type stripeIntent struct {
 	ID      string
 	Status  string
 	Created int64
+	// Amount is the intent's amount in the provider's minor units — the
+	// charge-bearing face the settle must freeze against the payload's
+	// frozen quote amount (A-16).
+	Amount int64
 	// LagoInvoiceID is metadata.lago_invoice_id — the pinned provider
 	// payment-create stamps it on every gating payment (F5).
 	LagoInvoiceID string
 }
 
-// stripeListGatingIntents lists the customer's PaymentIntents ONCE and
-// splits the answer into the two settle faces: the unsettled candidates
-// (D2' step ii locator predicate) and the invoice identities already
-// carried to succeeded (the invoice-bound settle idempotency window —
-// F-1: the residual sibling of a settled invoice must never be driven).
+// stripeListPageBudget bounds the intent list pagination below (A-17): the
+// correctness-critical read may be PAGED to completeness but never runaway.
+const stripeListPageBudget = 10
+
+// stripeListGatingIntents lists the customer's PaymentIntents (paged to
+// completeness) and splits the answer into the two settle faces: the
+// unsettled candidates (D2' step ii locator predicate) and the invoice
+// identities already carried to succeeded (the invoice-bound settle
+// idempotency window — F-1: the residual sibling of a settled invoice must
+// never be driven). (A-17 / F85) The list answers BOTH the unsettled
+// candidate location AND the settled-invoice idempotency window — a
+// correctness-critical read that must never be silently truncated by a page
+// boundary: has_more is consumed via starting_after until the provider
+// answers a final page, bounded by stripeListPageBudget (beyond is an
+// explicit fail-closed error, never a quiet cut).
 func (a *LagoAdapter) stripeListGatingIntents(ctx context.Context, providerCustomerID string) ([]stripeIntent, map[string]bool, error) {
-	status, body, err := a.providerOutboundRequest(ctx, http.MethodGet,
-		"/v1/payment_intents?customer="+url.QueryEscape(providerCustomerID)+"&limit=20", "", "")
-	if err != nil {
-		return nil, nil, err
-	}
-	if err := classifyStripeStatus(status, "payment intent list"); err != nil {
-		return nil, nil, err
-	}
-	var parsed struct {
-		Data []struct {
-			ID       string `json:"id"`
-			Status   string `json:"status"`
-			Created  int64  `json:"created"`
-			Metadata struct {
-				LagoInvoiceID string `json:"lago_invoice_id"`
-			} `json:"metadata"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal(body, &parsed); err != nil {
-		return nil, nil, fmt.Errorf("%w: payment intent list malformed", commercial.ErrPlatformInvalidResponse)
-	}
-	unsettled := make([]stripeIntent, 0, len(parsed.Data))
+	unsettled := make([]stripeIntent, 0, 8)
 	settled := make(map[string]bool)
-	for _, row := range parsed.Data {
-		if row.Metadata.LagoInvoiceID == "" {
-			continue
+	startingAfter := ""
+	for page := 0; page < stripeListPageBudget; page++ {
+		path := "/v1/payment_intents?customer=" + url.QueryEscape(providerCustomerID) + "&limit=100"
+		if startingAfter != "" {
+			path += "&starting_after=" + url.QueryEscape(startingAfter)
 		}
-		if row.Status == "succeeded" {
-			settled[row.Metadata.LagoInvoiceID] = true
-			continue
+		status, body, err := a.providerOutboundRequest(ctx, http.MethodGet, path, "", "")
+		if err != nil {
+			return nil, nil, err
 		}
-		switch row.Status {
-		case "requires_payment_method", "requires_action":
-		default:
-			continue // canceled/processing… are not the stuck gate
+		if err := classifyStripeStatus(status, "payment intent list"); err != nil {
+			return nil, nil, err
 		}
-		if row.Created <= 0 {
-			return nil, nil, fmt.Errorf("%w: payment intent created unparsable", commercial.ErrPlatformInvalidResponse)
+		var parsed struct {
+			Data []struct {
+				ID       string `json:"id"`
+				Status   string `json:"status"`
+				Created  int64  `json:"created"`
+				Amount   int64  `json:"amount"`
+				Metadata struct {
+					LagoInvoiceID string `json:"lago_invoice_id"`
+				} `json:"metadata"`
+			} `json:"data"`
+			HasMore bool `json:"has_more"`
 		}
-		unsettled = append(unsettled, stripeIntent{
-			ID: row.ID, Status: row.Status, Created: row.Created,
-			LagoInvoiceID: row.Metadata.LagoInvoiceID,
-		})
+		if err := json.Unmarshal(body, &parsed); err != nil {
+			return nil, nil, fmt.Errorf("%w: payment intent list malformed", commercial.ErrPlatformInvalidResponse)
+		}
+		for _, row := range parsed.Data {
+			if row.Metadata.LagoInvoiceID == "" {
+				continue
+			}
+			if row.Status == "succeeded" {
+				settled[row.Metadata.LagoInvoiceID] = true
+				continue
+			}
+			switch row.Status {
+			case "requires_payment_method", "requires_action":
+			default:
+				continue // canceled/processing… are not the stuck gate
+			}
+			if row.Created <= 0 {
+				return nil, nil, fmt.Errorf("%w: payment intent created unparsable", commercial.ErrPlatformInvalidResponse)
+			}
+			unsettled = append(unsettled, stripeIntent{
+				ID: row.ID, Status: row.Status, Created: row.Created, Amount: row.Amount,
+				LagoInvoiceID: row.Metadata.LagoInvoiceID,
+			})
+		}
+		if !parsed.HasMore || len(parsed.Data) == 0 {
+			return unsettled, settled, nil
+		}
+		startingAfter = parsed.Data[len(parsed.Data)-1].ID
 	}
-	return unsettled, settled, nil
+	return nil, nil, fmt.Errorf("%w: payment intent list exceeded the page budget", commercial.ErrPlatformInvalidResponse)
 }
 
 // latestIntent resolves the disambiguation rule (D2' step ii): the current
@@ -279,11 +334,14 @@ func latestIntent(intents []stripeIntent) (stripeIntent, error) {
 
 // stripeAttachSettlePaymentMethod attaches the settle token and promotes
 // the CLONED id to the customer default (the provider clones on attach —
-// the default update must reference the clone, F6/t02 evidence).
-func (a *LagoAdapter) stripeAttachSettlePaymentMethod(ctx context.Context, providerCustomerID, pmToken string) (string, error) {
+// the default update must reference the clone, F6/t02 evidence). (A-18)
+// keyBase is the settle command's key; both rail calls derive deterministic
+// idempotency keys from it (":attach" / ":default") so a replay of the same
+// drive replays the same pair — a lost response never double-attaches.
+func (a *LagoAdapter) stripeAttachSettlePaymentMethod(ctx context.Context, providerCustomerID, pmToken, keyBase string) (string, error) {
 	attachStatus, attachBody, err := a.providerOutboundRequest(ctx, http.MethodPost,
 		"/v1/payment_methods/"+url.PathEscape(pmToken)+"/attach",
-		"customer="+url.QueryEscape(providerCustomerID), "")
+		"customer="+url.QueryEscape(providerCustomerID), keyBase+":attach")
 	if err != nil {
 		return "", err
 	}
@@ -298,7 +356,7 @@ func (a *LagoAdapter) stripeAttachSettlePaymentMethod(ctx context.Context, provi
 	}
 	defaultStatus, _, err := a.providerOutboundRequest(ctx, http.MethodPost,
 		"/v1/customers/"+url.PathEscape(providerCustomerID),
-		"invoice_settings[default_payment_method]="+url.QueryEscape(attached.ID), "")
+		"invoice_settings[default_payment_method]="+url.QueryEscape(attached.ID), keyBase+":default")
 	if err != nil {
 		return "", err
 	}
@@ -354,9 +412,27 @@ func (a *LagoAdapter) providerOutboundRequest(ctx context.Context, method, path,
 		return 0, nil, fmt.Errorf("%w: outbound provider call not reachable", commercial.ErrPlatformUnreachable)
 	}
 	defer resp.Body.Close()
-	data, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+	// (A-19 / F87) A 2xx whose body dies mid-stream (connection reset) is a
+	// TRANSIENT transport failure — surfacing it as a truncated JSON would
+	// misclassify downstream as malformed (the definitive invalid-response
+	// sentinel) and park the order instead of retrying. A body that exceeds
+	// the cap is a definitive oversized-response error, never a quiet cut
+	// that only later fails the JSON parse.
+	limited := io.LimitReader(resp.Body, maxProviderBodyBytes+1)
+	data, err := io.ReadAll(limited)
+	if err != nil {
+		return 0, nil, fmt.Errorf("%w: outbound provider response body read failed", commercial.ErrPlatformUnreachable)
+	}
+	if int64(len(data)) > maxProviderBodyBytes {
+		return 0, nil, fmt.Errorf("%w: provider response body exceeds %d bytes", commercial.ErrPlatformInvalidResponse, maxProviderBodyBytes)
+	}
 	return resp.StatusCode, data, nil
 }
+
+// maxProviderBodyBytes caps one provider response body (64 KiB — an intent
+// list page or a single object fits far below; anything larger is not a
+// shape this seam ever consumes).
+const maxProviderBodyBytes = 64 << 10
 
 // boundProviderCustomerID reads the provider_customer_id off the
 // authority's customer binding (the Stripe cus_… identity).

@@ -48,16 +48,30 @@ if o.get("invoice_api_visible") is False:
     # documented branch: invoice API-invisible; AC1 on core observation held.
     # (final-audit 4) The recheck accepts the charge-failure ENDGAME too:
     # the gate may have lapsed to canceled(payment_failed) inside the
-    # window — incomplete OR canceled are both honest gate outcomes.
+    # window — incomplete OR the canceled endgame are both honest gate
+    # outcomes.
+    # (A-15) The canceled endgame's REACHABLE evidence shape: the recheck
+    # reads the subscription through the ?status= filtered query and a
+    # canceled subscription 404s there — the harness records recheck as
+    # None and the PASS fact rides on cancellation_reason ==
+    # "payment_failed" (the harness's own endgame PASS condition). The
+    # literal "canceled" recheck value was UNREACHABLE; demanding it would
+    # mis-fail every legitimate canceled-endgame evidence.
     check("AC1 invoice branch: gate held across window",
-          o.get("recheck_subscription_status") in ("incomplete", "canceled"))
+          o.get("recheck_subscription_status") == "incomplete"
+          or (o.get("recheck_subscription_status") is None
+              and o.get("cancellation_reason") == "payment_failed"))
 else:
-    # (final-audit 4) invoice_status open OR the closed-failed endgame;
-    # a pending payment status only pairs with the open shape.
+    # (final-audit 4) invoice_status open OR the visible failed/closed
+    # endgame; a pending payment status only pairs with the open shape.
+    # (A-15) The authority records the visible endgame invoice_status as
+    # the single literal "failed"/"closed" (nothing in the repo produces
+    # a composite); the old "closed-failed" literal was produced by no
+    # code path and mis-failed every failed-endgame evidence.
     check("AC1 invoice open/pending/numberless",
           (o.get("invoice_status") == "open" and o.get("invoice_payment_status") == "pending"
            and not o.get("invoice_number"))
-          or o.get("invoice_status") == "closed-failed")
+          or o.get("invoice_status") in ("failed", "closed"))
     check("AC1 <=1 non-succeeded payment",
           o.get("payments_non_succeeded_count", 99) <= 1)
 

@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Tencent/WeKnora/internal/logger"
 	domain "github.com/Tencent/WeKnora/internal/modules/commercial"
 	repocommercial "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
 
@@ -547,17 +548,51 @@ func (s *BenefitsService) refreshAndCollect(ctx context.Context, tenantID uint64
 // when the tenant's purchase is ACTIVE and its plan's definition says so;
 // authority entitlement materialization adds codes no local definition
 // knows. A purchase read failure is NOT surfaced here (the benefits face
-// must not break on the purchase leg) — the base truth answers alone.
+// must not break on the purchase leg) — the base truth answers alone —
+// but every swallowed leg failure leaves ONE Warn line (A-23 / F93: an
+// ACTIVE paying tenant silently degraded to base features on a transient
+// snapshot/publication failure is otherwise undiagnosable).
 func (s *BenefitsService) effectiveFeatures(ctx context.Context, tenantID uint64, baseFeatures, entitled map[string]bool) map[string]bool {
 	out := make(map[string]bool, len(baseFeatures)+len(entitled))
 	for code, on := range baseFeatures {
 		out[code] = on
 	}
+	// (A-22 / F92) Authority materialization guard: the entitlement read is
+	// a UNION of the base and purchase legs with NO status filter — a
+	// canceled purchase's entitlement can linger through the authority's
+	// lazy-cleanup window. Codes the purchase's plan DEFINES are only ever
+	// materialized from the authority leg while the purchase is ACTIVE; a
+	// non-active purchase (canceled) contributes its known codes to a
+	// staleness set that the materialization loop below refuses — an
+	// unpaid/canceled purchaser must not keep paid features through a
+	// stale entitlement row. Codes the definition read cannot prove stay
+	// untouched (fail-open on the GUARD itself, the same posture as the
+	// feature face below).
+	purchaseState, purchasePlanCode := "", ""
 	if psnap, err := s.platform.ReadSnapshot(ctx, domain.SnapshotQuery{
 		Kind: domain.SnapshotKindPurchase, TenantID: tenantID,
-	}); err == nil && psnap.Purchase != nil &&
-		psnap.Purchase.State == domain.PurchaseStateActive && psnap.Purchase.PlanCode != "" {
-		if pub, pubErr := s.plans.FindPublicationByCode(ctx, psnap.Purchase.PlanCode); pubErr == nil {
+	}); err == nil && psnap.Purchase != nil {
+		purchaseState = psnap.Purchase.State
+		purchasePlanCode = psnap.Purchase.PlanCode
+	} else if err != nil {
+		logger.Warnf(ctx, "[CommercialBenefits] purchase snapshot read failed for tenant %d: %v", tenantID, err)
+	}
+	stalePurchaseCodes := make(map[string]bool)
+	if purchasePlanCode != "" && purchaseState != domain.PurchaseStateActive {
+		if pub, pubErr := s.plans.FindPublicationByCode(ctx, purchasePlanCode); pubErr == nil {
+			if definition, defErr := s.definitionOf(ctx, pub.PlanKey, pub.Version); defErr == nil {
+				for code := range definition.Features {
+					stalePurchaseCodes[code] = true
+				}
+			} else {
+				logger.Warnf(ctx, "[CommercialBenefits] purchase plan definition read failed for tenant %d plan %s: %v", tenantID, purchasePlanCode, defErr)
+			}
+		} else {
+			logger.Warnf(ctx, "[CommercialBenefits] purchase publication read failed for tenant %d plan code %s: %v", tenantID, purchasePlanCode, pubErr)
+		}
+	}
+	if purchaseState == domain.PurchaseStateActive && purchasePlanCode != "" {
+		if pub, pubErr := s.plans.FindPublicationByCode(ctx, purchasePlanCode); pubErr == nil {
 			if definition, defErr := s.definitionOf(ctx, pub.PlanKey, pub.Version); defErr == nil {
 				for code, on := range definition.Features {
 					if on {
@@ -566,10 +601,17 @@ func (s *BenefitsService) effectiveFeatures(ctx context.Context, tenantID uint64
 						out[code] = false
 					}
 				}
+			} else {
+				logger.Warnf(ctx, "[CommercialBenefits] purchase plan definition read failed for tenant %d plan %s: %v", tenantID, purchasePlanCode, defErr)
 			}
+		} else {
+			logger.Warnf(ctx, "[CommercialBenefits] purchase publication read failed for tenant %d plan code %s: %v", tenantID, purchasePlanCode, pubErr)
 		}
 	}
 	for code := range entitled {
+		if stalePurchaseCodes[code] {
+			continue // a stale authority leg of a non-active purchase (A-22)
+		}
 		if _, known := out[code]; !known {
 			out[code] = true // authority materialization of a code no definition knows
 		}

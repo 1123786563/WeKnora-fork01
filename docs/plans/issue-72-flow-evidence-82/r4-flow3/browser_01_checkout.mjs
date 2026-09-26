@@ -18,8 +18,9 @@ const purchases = [];
 const note = (step, ok, detail) => { results.push({ step, ok, detail }); console.log(`${ok ? 'PASS' : 'FAIL'} | ${step} | ${detail}`); };
 
 const browser = await chromium.launch();
+let page;
 try {
-  const page = await (await browser.newContext()).newPage();
+  page = await (await browser.newContext()).newPage();
   page.setDefaultTimeout(45000);
   page.on('request', (req) => {
     if (req.method() === 'POST' && req.url().includes('/api/v1/commercial/purchases')) {
@@ -63,6 +64,14 @@ try {
 
   writeFileSync(`${EV}order-info.json`, JSON.stringify({ orderId, checkoutHref, purchases }, null, 2));
   console.log('ORDER ' + orderId);
+} catch (err) {
+  // (A-03) Infrastructure failure → explicit FAIL note; the RESULT summary
+  // still prints so an assertion failure is distinguishable from a script
+  // infrastructure failure.
+  note('script-error', false, String(err));
+  if (page) {
+    try { await page.screenshot({ path: `${EV}02-billing-script-error.png`, fullPage: true }); } catch { /* best effort */ }
+  }
 } finally { await browser.close(); }
 console.log('RESULT ' + JSON.stringify(results));
 process.exit(results.every((r) => r.ok) ? 0 : 1);

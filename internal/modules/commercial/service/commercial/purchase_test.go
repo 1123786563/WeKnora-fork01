@@ -340,10 +340,13 @@ func TestConcurrentFreshQuoteConflictReplaysWinner(t *testing.T) {
 		t.Fatal(err)
 	}
 	// 「并发胜者」：同价面、链接已持久化的可付 pending（占住索引槽；价面与
-	// 新 quote 相同——match gate 放行，冲突由索引裁决）。
+	// 新 quote 相同——match gate 放行，冲突由索引裁决）。(A-21) 胜者订单的
+	// quote 必须真实存在且冻结计划与本次购买一致——重放分支现在校验计划归
+	// 属（quoteBoughtPlan），裸 quote_id 会被判为异计划冲突而拒绝重放。
+	winnerQuote := purchaseQuote(t, svc.orders, 46, "pro")
 	if err := db.Exec(`INSERT INTO commercial_orders (id, tenant_id, quote_id, kind, amount_fen, currency, state, version, created_at, checkout_url)
-		VALUES ('ord_winner', 46, 'qt_winner', 'purchase', 9900, 'CNY', 'pending', 1, ?, 'https://pay.example/winner')`,
-		time.Now().UTC().Format(time.RFC3339Nano)).Error; err != nil {
+		VALUES ('ord_winner', 46, ?, 'purchase', 9900, 'CNY', 'pending', 1, ?, 'https://pay.example/winner')`,
+		winnerQuote.ID, time.Now().UTC().Format(time.RFC3339Nano)).Error; err != nil {
 		t.Fatal(err)
 	}
 	q := purchaseQuote(t, svc.orders, 46, "pro")
@@ -695,5 +698,113 @@ func TestPurchaseMismatchWritesAttentionAudit(t *testing.T) {
 	}
 	if audits[0][1] != "invoice_quote_mismatch" && audits[0][1] != "purchase_not_awaiting" {
 		t.Fatalf("the audit must carry the closed token, got %q", audits[0][1])
+	}
+}
+
+// TestPurchaseReplayRejectsForeignPlanPendingOrder（A-21 / F90）：价面匹配
+// 不证明归属——重放分支必须校验既有 pending 订单自己的 quote 买的计划与本次
+// 购买一致。旧 POST /commercial/orders 面开出的同价异计划 pending 单（如
+// republish 窗口的 pro-max@pro 价面）不得被当作本次 pro 购买的支付入口重放
+// ——其 CheckoutURL 结算的会是旧计划的 quote。
+func TestPurchaseReplayRejectsForeignPlanPendingOrder(t *testing.T) {
+	svc, fake, cp, db := newPurchaseTestEnv(t)
+	purchaseSeedPlan(t, svc.plans, "pro", 9900)
+	// 权威面：租户 52 awaiting 的 pro 购买（9900 冻结面）。
+	if _, err := fake.SubmitCommand(context.Background(), commercial.Command{
+		Kind: commercial.CommandKindCreatePurchaseSubscription,
+		Key: commercial.CreatePurchaseSubscriptionCommandKey(
+			commercial.ExternalPurchaseSubscriptionID(52), commercial.DeterministicPlanCode("pro", 1)),
+		Actor: "test", Reason: "purchase",
+		Payload: commercial.CreatePurchaseSubscriptionPayload{
+			TenantID: 52, ExternalCustomerID: commercial.ExternalCustomerID(52),
+			ExternalPurchaseSubscriptionID: commercial.ExternalPurchaseSubscriptionID(52),
+			PlanCode:                       commercial.DeterministicPlanCode("pro", 1),
+			AmountFen:                      9900, Currency: commercial.CurrencyCNY,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// 一张「旧订单面」遗留的同价异计划 pending 单（OCR final audit 9 的
+	// republish 窗口形状：pro-max 曾按 pro 的价面 9900 售出）。其 quote 冻
+	// 结的是 pro-max——手工造行，绕过发布阶梯（该订单面本就先于 Purchase
+	// 流程存在）。
+	if err := db.Create(&repocommercial.QuoteRow{
+		ID: "qt_foreign", TenantID: 52, SubscriptionVersion: 1,
+		SnapshotJSON: mustJSON(t, map[string]any{
+			"plan_key": "pro-max", "plan_version": int64(1), "price_fen": int64(9900),
+			"credits_micro": int64(9_900_000), "currency": commercial.CurrencyCNY,
+			"line_items": []map[string]any{{"kind": "subscription_fee", "name": "pro-max", "amount_fen": 9900}},
+		}),
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(`INSERT INTO commercial_orders (id, tenant_id, quote_id, kind, amount_fen, currency, state, version, created_at, checkout_url)
+		VALUES ('ord_foreign', 52, 'qt_foreign', 'purchase', 9900, 'CNY', 'pending', 1, ?, 'https://pay.example/foreign')`,
+		time.Now().UTC().Format(time.RFC3339Nano)).Error; err != nil {
+		t.Fatal(err)
+	}
+	q := purchaseQuote(t, svc.orders, 52, "pro")
+	_, err := svc.Purchase(context.Background(), 52, q.ID, "wechat", "a", "WeKnora Space 52")
+	if !errors.Is(err, ErrPurchasePlanConflict) {
+		t.Fatalf("a same-price pending order whose quote bought ANOTHER plan must surface the plan conflict, never replay its checkout entry, got %v", err)
+	}
+	if n := len(cp.createCalls); n != 0 {
+		t.Fatalf("the foreign order's payment entry must never be replayed as this purchase's answer, channel creates=%d", n)
+	}
+}
+
+// TestPurchaseStatusSkipsProjectionWhenPublicationUnreadable（A-28 / F104）：
+// 计划一致性校验的两侧都不可证明（publication 读失败 + quoteBoughtPlan 默认
+// ""）时绝不投影订单——旧行为的 "" == "" 空串匹配会把异计划历史订单投影成
+// 当前购买（甚至合成 paid_awaiting_activation）。publication 持续缺失时投影
+// 永久跳过（可从日志排查），而不是静默降级为假匹配。
+func TestPurchaseStatusSkipsProjectionWhenPublicationUnreadable(t *testing.T) {
+	svc, fake, _, db := newPurchaseTestEnv(t)
+	purchaseSeedPlan(t, svc.plans, "pro", 9900)
+	const tenant = uint64(53)
+	// 权威 awaiting + 一张本地已支付订单（价面一致、quote 冻结 pro）。
+	if _, err := fake.SubmitCommand(context.Background(), commercial.Command{
+		Kind: commercial.CommandKindCreatePurchaseSubscription,
+		Key: commercial.CreatePurchaseSubscriptionCommandKey(
+			commercial.ExternalPurchaseSubscriptionID(tenant), commercial.DeterministicPlanCode("pro", 1)),
+		Actor: "test", Reason: "purchase",
+		Payload: commercial.CreatePurchaseSubscriptionPayload{
+			TenantID: tenant, ExternalCustomerID: commercial.ExternalCustomerID(tenant),
+			ExternalPurchaseSubscriptionID: commercial.ExternalPurchaseSubscriptionID(tenant),
+			PlanCode:                       commercial.DeterministicPlanCode("pro", 1),
+			AmountFen:                      9900, Currency: commercial.CurrencyCNY,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	q := purchaseQuote(t, svc.orders, tenant, "pro")
+	if _, err := svc.Purchase(context.Background(), tenant, q.ID, "wechat", "a", "WeKnora Space 53"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(`UPDATE commercial_orders SET state = 'paid' WHERE tenant_id = ?`, tenant).Error; err != nil {
+		t.Fatal(err)
+	}
+	// 基线：publication 可读时 awaiting+paid 合成 paid_awaiting_activation。
+	base, err := svc.PurchaseStatus(context.Background(), tenant)
+	if err != nil || base.Order == nil || base.State != commercial.PurchaseStatePaidAwaitingActivation {
+		t.Fatalf("baseline projection must synthesize paid_awaiting_activation, got %+v err=%v", base, err)
+	}
+	// publication 行消失（迁移缺口/DB 故障的持久形状）：订单投影整体跳过。
+	if err := db.Exec(`DELETE FROM commercial_plan_publications WHERE plan_code = ?`,
+		commercial.DeterministicPlanCode("pro", 1)).Error; err != nil {
+		t.Fatal(err)
+	}
+	degraded, err := svc.PurchaseStatus(context.Background(), tenant)
+	if err != nil {
+		t.Fatalf("a failed publication read must degrade the projection, not fail the endpoint: %v", err)
+	}
+	if degraded.Order != nil {
+		t.Fatalf("with the plan face unprovable the order must NOT project (the vacuous \"\"==\"\" match), got %+v", degraded.Order)
+	}
+	if degraded.PlanKey != "" || degraded.PlanVersion != 0 {
+		t.Fatalf("the plan face must stay empty when the publication read fails, got %+v", degraded)
+	}
+	if degraded.State != commercial.PurchaseStateAwaitingPayment {
+		t.Fatalf("the authority state still answers honestly, got %q", degraded.State)
 	}
 }

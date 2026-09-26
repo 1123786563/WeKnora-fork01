@@ -24,8 +24,9 @@ const note = (step, ok, detail) => {
 };
 
 const browser = await chromium.launch();
+let page;
 try {
-  const page = await (await browser.newContext()).newPage();
+  page = await (await browser.newContext()).newPage();
   page.setDefaultTimeout(45000);
   await page.goto(`${WEB}/login`);
   await page.fill('#auth-email', EMAIL);
@@ -48,6 +49,16 @@ try {
   note('billing-active-face', billing.includes('已生效'),
     `billing plan row: ${billing.split('\n').find((l) => l.includes('已生效')) ?? '(absent)'}`);
   await page.screenshot({ path: `${EV}07-billing-active.png`, fullPage: true });
+} catch (err) {
+  // (A-03) Infrastructure failure (login refused, a selector timeout — the exact
+  // failure shapes a re-verification must capture) lands as an explicit FAIL
+  // note: the RESULT summary still prints and the exit code is non-zero, so
+  // downstream readers can tell an assertion failure from an infrastructure
+  // one instead of seeing no evidence line at all.
+  note('script-error', false, String(err));
+  if (page) {
+    try { await page.screenshot({ path: `${EV}07-billing-script-error.png`, fullPage: true }); } catch { /* best effort */ }
+  }
 } finally {
   await browser.close();
 }

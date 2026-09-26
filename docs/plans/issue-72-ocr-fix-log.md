@@ -1413,3 +1413,74 @@ redirect-loop 行为）。
 
 - 提交 message 前缀：`issue-72(ocr-3):`（按本批 ask 指定）
 
+
+---
+
+## 批次 ocr-82-1（Issue #82 增量 OCR 有效 findings，2026-09-27）
+
+修复员批次：32 个有效 findings（A-01~A-34，无 A-05）一次连贯处理，全部根因修复，无 deferred。安全红线自查：无新增凭据字面量（A-01 反向消除了一处）；服务端出站仍仅 http/https 且 host 校验在前（A-19/A-27 强化）；SQL 无拼接新增（A-08 以白名单收紧了既有 sqlite3 CLI 插值面）。
+
+### Go 生产代码（internal/modules/commercial/…）
+
+- **A-16（lago_settlement.go）**：gating intent 金额守卫。**活栈重放抓回首版回归**：fixHint 的强等校验（intent.Amount == payload.AmountFen）被真实 proration 击穿（82flow 栈 9900 冻结价的 gating intent 本月按比例为 1650）→ settle 全量 fail closed 落 attention。终版为 proration-aware 上界守卫（`1 ≤ amount ≤ payload.AmountFen`，对齐 D6' 的「小于面额、绝不大于、绝不归零」纪律），超面额/零额仍 fail closed 于任何扣款调用之前。
+- **A-17**：intent list 分页消费（limit=100 + starting_after/has_more，页预算 10，超限显式 fail closed）。
+- **A-18**：settleRequestTimeout 按链路逐项求和（3×Lago 读 + 5×Stripe 往返 = 120s）；attach/default 派生确定性 Idempotency-Key（`:attach`/`:default`）。
+- **A-19**：providerOutboundRequest 的 ReadAll 错误 → ErrPlatformUnreachable（瞬态重试）；超 64KiB → InvalidResponse（显式超限报错）。
+- **A-24+A-26（lago_purchase.go）**：readPurchaseInvoiceFees 选定策略改为「newest-first 首个 succeeded 匹配即返回（fallback 最新匹配）」——续期发票（t02-duplicates 实录：购买后数分钟即出具 renewal invoice，同 external_subscription_id）与重购复用身份使 matches≥2 成为常态，旧的「两张即数据异常」会在首月后永久打碎购买快照；首个 succeeded 匹配即 break 同时消除 N+1 全量遍历（open 的 renewal 不遮蔽已结算 gating 事实）。
+- **A-25**：invoice index/detail 两读面 429/5xx → ErrPlatformUnreachable（与文件内其它读路径纪律对齐），其余非 200 保持 InvalidResponse。
+- **A-34**：422 no_default_payment_method 分支对 bound-but-PM-less 客户重驱动 attach+sync（经注入 seam `reAttachDefaultPM`/`syncPaymentMethods`，幂等）后再答可重试 Unreachable——消除「配置齐全但该租户从未附加 PM」的永久死循环。
+- **A-20（repository/order.go）**：createOrderTx 的 insert 竞态败者补 isQuoteUniqueConflict（SQLite 列面/PG 索引名双形状）→ ErrQuoteAlreadyUsed，purchase.go 的幂等重放分支在 insert 竞态下可达。
+- **A-29**：CurrentPurchaseOrder 的 pending 偏好对齐可付谓词（`pending && !channel_failed`；终态回退 rows[0] 保留——死单遮蔽 paid 单的合成窗口恢复）。
+- **A-30**：CreatedAt 统一 UTC 归一（含零值显式填充防 gorm 本地时区自动填充）——SQLite 文本词法比较下的排序/清扫门不失真。
+- **A-21（service/purchase.go）**：两处订单重放（CurrentPendingPurchaseOrder 与 ErrPurchasePendingExists 的 CurrentPayablePendingOrder 分支）读 existing.QuoteID 经 quoteBoughtPlan 比对 snap.PlanKey，异计划同价单 → ErrPurchasePlanConflict，绝不重放旧计划 quote 的 CheckoutURL。
+- **A-28**：PurchaseStatus 复用一次 FindPublicationByCode（消除轮询端点的重复查询）；pubErr 非空时跳过订单投影（双侧不可证明即不投影——结构性消除 ""=="" 空串假匹配），失败留一条 Warn。
+- **A-22（benefits.go）**：非 ACTIVE 购买（canceled）的 plan 定义已知 codes 从 authority 物化腿剔除（懒清理窗口的残留 entitlement 不得保留付费特性）；ACTIVE 腿与未知 code 物化语义不变。
+- **A-23**：effectiveFeatures 三处吞掉的错误（ReadSnapshot/FindPublicationByCode/definitionOf）各留一条含 tenantID 的 Warn。
+- **A-31**：预算耗尽分支的 ReadSnapshot 失败分流——unreachable/unconfigured 保持 pending（return nil），仅确定性失败/非 active 落 attention。
+- **A-32**：observeActivation 与 D6' 复核的快照错误经 settleSnapshotFailure 分流（ctx 取消上抛排水终止；瞬态 → nil 保持 pending；确定性 → attention + nil 绝不中断共享排水 pass）。
+- **A-33**：markActivationState 的 Warn 以 RowsAffected==1 门控（卡死事件不再每 30s 刷一条、每天 ~2880 条）。
+- **A-27（config.go）**：NewPlatform 对 loopback bypass 加启动守卫——bypass=true 且 BaseURL 指向非 loopback 主机（生产姿态）即 fail fast；loopback/空 BaseURL（lab/blocked-env 姿态）保持合法。活栈验证：82flow lab 姿态（bypass=true + http://127.0.0.1:48889）启动成功。
+
+### Python harness（deploy/lago-lab/payment-settle-trigger/phases.py）
+
+- **A-06**：删除 sys.path.insert(0, _PA_DIR)，clients 经 importlib 别名（pa_clients）加载（与 fixtures.py 的 pa_fixtures 同构）——bare import fixtures 恒解析本目录。
+- **A-07**：lago_db_query 包 try except (OSError, subprocess.SubprocessError)（TimeoutExpired 是 SubprocessError 非 OSError）返回 None；四个 phase 兜底扩为 (OSError, clients.LabError)。
+- **A-11**：Stripe customer id 在 create 返回即刻登记 ctx.state["stripe_customer_id"]；phase_cleanup 兜底读取（state.get("stripe_customer_id") or customer.get(...)）——早失败路径不再泄漏 cus_…。
+
+### 证据/验收脚本（docs/plans/）
+
+- **A-01**：browser_paid_face_82.mjs 密码字面量 → PASSWORD env 变量。
+- **A-04**：同脚本 billing 否定断言前先正向等待 `text=已付款待激活`（对齐 r4-flow/browser_03 纪律），消除结构选择器窗口期的 vacuous PASS。
+- **A-02**：三份 browser_02_sync_face.mjs 的手动刷新循环——点击计数（refreshClicked==3 记 note，失败即 FAIL note 说明前置未执行），恢复被删的 DOM 级 click 原因注释。
+- **A-12**：同三份补 order-identity 断言（body 含目标订单号；?order= 接线回归会渲染新 quote 订单同面全 PASS）。
+- **A-03**：9 个取证脚本统一补 catch（note script-error + 失败截图 + RESULT 照常输出 + 非零退出）。
+- **A-08**：三份 seed.sh 的 UID_B 插值前 UUID 白名单校验（sqlite3 CLI 无参数绑定），TOKEN_A/TOKEN_B 非空非 null 校验。
+- **A-09**：publish 前读 Lago 9900 计划基线，断言严格递增（不变的非零计数=历史残留，诚实 FAIL）。
+- **A-10**：PAD_COUNT 默认值改各轮正确值（r4-flow2=8、r4-flow3=10；**r4-flow 维持 6**——r4-flow2 头注释自证「round 1 used 1..6」，r4-flow 即 round 1，其 L3 头注释「Registers 6 placeholder tenants」自洽；finding 「三份均遗留 6」对 r4-flow 的判定与脚本自身证据不符，按证据裁决并在注释写明取值依据）。
+- **A-13**：reg_expect() 包装——注册 2xx 断言（409 显式容忍并注明重跑语义），非 2xx fail-fast。
+- **A-14**：draft jq -e 断言（success/plan_key/version）+ .data.version 驱动 publish URL 与 receipt 断言。
+- **A-15**：四份 verify_ac_assertions.py 终态放宽修正——invisible 分支接受 recheck=="incomplete" 或（recheck is None 且 cancellation_reason=="payment_failed"）；可见分支接受 invoice_status in ("failed","closed")。四份副本对各自归档证据重放 ALL PASS ×4。
+
+### 回归测试（新增/改写）
+
+- 新增：TestLagoSettleAmountGuardFailsClosed / TestLagoSettleProratedIntentStillSettles（A-16）、TestLagoSettleIntentListPaginatesToCompletion（A-17）、TestLagoSettleAttachRailDerivesIdempotencyKeys（A-18）、TestLagoSettleTruncatedBodyIsUnreachable / TestLagoSettleOversizedBodyIsInvalidResponse（A-19）、TestLagoReadPurchaseInvoiceFeesTwoFinalizedAnswersNewestSucceeded / TestLagoReadPurchaseInvoiceFeesOpenRenewalDoesNotShadowGating（A-24/26 改写原 FailsClosed）、TestLagoInvoiceFacesClassifyTransient5xxUnreachable / TestLagoInvoiceFacesKeepDefinitive4xxInvalidResponse（A-25）、TestNewPlatformRefusesLoopbackBypassForProductionAuthority（A-27）、TestCurrentPurchaseOrderSkipsChannelFailedPending（A-29）、TestCreateOrderNormalizesCreatedAtToUTC（A-30）、TestIsQuoteUniqueConflictClassifier（A-20）、TestPurchaseReplayRejectsForeignPlanPendingOrder（A-21）、TestPurchaseStatusSkipsProjectionWhenPublicationUnreadable（A-28）、TestEffectiveFeaturesStalePurchaseEntitlementNotMaterialized（A-22）、TestPurchaseFulfillBudgetTransientSnapshotErrorKeepsPending / TestPurchaseFulfillDefinitiveSnapshotErrorLandsAttentionWithoutAborting / TestPurchaseFulfillObservationTransientErrorKeepsPending（A-31/32）；FakeAdapter 补 FailPurchaseSnapshotsWith 注入 seam；既有 422 测试补注入（A-34）；并发胜者测试改用真实 quote 行（A-21 前置）。
+
+### 测试与重放证据（全部在本轮实际执行）
+
+| 检查 | 命令 | 结果 |
+|---|---|---|
+| 全仓构建 | `go build ./...` | 通过 |
+| commercial 全量 | `go test ./internal/modules/commercial/... -count=1` | 7 包全 ok |
+| harness 离线 | `python3 -m unittest test_phases -v`（payment-settle-trigger） | 26 tests OK |
+| 验收重放 ×4 | `python3 verify_ac_assertions.py`（ocr1/2/3-replay、flow-evidence-74 各自归档证据） | RESULT: ALL PASS ×4 |
+| 取证脚本语法 | `node --check`（13 个 .mjs）/ `bash -n`（3 份 seed.sh） | 全通过 |
+| **活栈全链重放** | seed.sh → quote → purchase(201+checkout_url) → 签名 notify(200) → paid_awaiting_activation → settle（真实 Stripe，gating intent 1650 proration → succeeded）→ webhook(200) → active+fulfilled（attention→applied 自愈）→ webhook 重投 no-op | 全过；证据 `docs/plans/issue-72-flow-evidence-82/ocr82fix-replay/`（README + seed 副本） |
+| 全量 internal | `go test ./internal/... -count=1` | 126+ 包 ok；application/repository、application/service 两包各 ~605s 达 go test 默认超时 FAIL（与 commercial 无 import 依赖；单独放宽超时复跑结果见下） |
+
+### 活栈重放中发现并修正的回归
+
+A-16 首版（fixHint 强等校验）在真实 proration 场景把 settle 打死——活栈重放抓到（intent 1650 vs 冻结价 9900 → InvalidResponse → attention，intent 不推进），当日修正为上界守卫并重放验证成功。这是「行为有变必须重放」要求的直接收益。
+
+### 提交
+
+- 提交 message 前缀：`issue-72(ocr-82-1):`（按本批 ask 指定）

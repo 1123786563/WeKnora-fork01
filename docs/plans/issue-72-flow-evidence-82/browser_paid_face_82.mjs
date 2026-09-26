@@ -33,7 +33,9 @@ try {
   page.setDefaultTimeout(30000);
   await page.goto(`${WEB}/login`);
   await page.fill('#auth-email', EMAIL);
-  await page.fill('#auth-password', 'issue82-Flow-Pw-d');
+  // (A-01) the env-REQUIRED PASSWORD variable — never a literal credential
+  // (the branch redline: no usable credential literals in source/tests).
+  await page.fill('#auth-password', PASSWORD);
   await page.locator('form[aria-label="Login form"] button[type="submit"]').click();
   await page.waitForURL((u) => !u.pathname.startsWith('/login'), { timeout: 30000 });
 
@@ -52,9 +54,15 @@ try {
 
   await page.goto(`${WEB}/platform/billing`);
   await page.waitForSelector('main', { timeout: 30000 });
-  // (OCR r4) waitForTimeout replaced by waiting for the plan row copy.
-  await page.waitForSelector('main li, main table', { timeout: 30000 });
+  // (A-04) The plan <li> (summary request) renders BEFORE the purchase
+  // status suffix (a second async purchaseStatus() request) — a structural
+  // selector like 'main li' makes the negative 已生效 assertion VACUOUS in
+  // that window. Wait for the POSITIVE paid face first (r4-flow/browser_03
+  // discipline), then assert the negative on the settled DOM.
+  await page.waitForSelector('text=已付款待激活', { timeout: 45000 });
   const billing = await page.locator('main').innerText();
+  note('billing-paid-awaiting-activation', billing.includes('已付款待激活'),
+    `billing plan row: ${billing.split('\n').find((l) => l.includes('已付款待激活')) ?? '(absent)'}`);
   note('billing-no-false-effective', !billing.includes('已生效'),
     'billing plan row does not claim 已生效');
   await page.screenshot({ path: `${EV}rv1-04-billing-after-paid.png`, fullPage: true });

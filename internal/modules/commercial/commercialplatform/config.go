@@ -2,8 +2,11 @@ package commercialplatform
 
 import (
 	"fmt"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
+	"strings"
 
 	commercial "github.com/Tencent/WeKnora/internal/modules/commercial"
 )
@@ -129,6 +132,19 @@ func newPlatformFromEnv(getenv func(string) string) (commercial.CommercialPlatfo
 // NewPlatform selects the adapter from cfg.Provider: ""/lago build the Lago
 // adapter, fake builds the deterministic fake, anything else errors.
 func NewPlatform(cfg Config) (commercial.CommercialPlatform, error) {
+	// (A-27 / F98) The loopback egress bypass is a dev/test-only affordance
+	// enforced by MORE than the "production never sets it" comment: a
+	// production posture (the authority BaseURL pointing at a REAL, non-
+	// loopback host) combined with the bypass refuses to build the platform
+	// at startup. The bypass therefore only ever exists alongside a
+	// loopback/localhost authority (the local-stub verification shape) — a
+	// dev env copied into production fails loudly instead of silently
+	// opening the S1 loopback face.
+	if cfg.OutboundAllowLoopback {
+		if err := guardLoopbackBypassPosture(cfg); err != nil {
+			return nil, err
+		}
+	}
 	switch cfg.Provider {
 	case "", ProviderLago:
 		return NewLagoAdapter(cfg), nil
@@ -138,4 +154,36 @@ func NewPlatform(cfg Config) (commercial.CommercialPlatform, error) {
 		return nil, fmt.Errorf("unsupported commercial platform provider %q (want %q or %q)",
 			cfg.Provider, ProviderLago, ProviderFake)
 	}
+}
+
+// guardLoopbackBypassPosture enforces the dev-only posture of the loopback
+// bypass (A-27): with the bypass on, an explicitly configured authority
+// BaseURL must be a loopback/localhost host. An empty BaseURL stays legal
+// (the blocked-env posture — no authority egress exists to bypass; the
+// provider egress keeps its full runtime host policy either way).
+func guardLoopbackBypassPosture(cfg Config) error {
+	if cfg.BaseURL != "" && !outboundHostIsLoopback(cfg.BaseURL) {
+		return fmt.Errorf("commercial loopback bypass (%s=true) requires a loopback %s, got %q — "+
+			"the bypass is dev/test-only and refuses to start against a production authority",
+			EnvOutboundAllowLoopback, EnvBaseURL, cfg.BaseURL)
+	}
+	return nil
+}
+
+// outboundHostIsLoopback reports whether the URL's host is an explicit
+// localhost/loopback target (the only authority shape the dev bypass
+// admits; shared with the runtime egress policy's bypass branch).
+func outboundHostIsLoopback(rawURL string) bool {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return false
+	}
+	host := parsed.Hostname()
+	if strings.EqualFold(host, "localhost") || strings.HasSuffix(strings.ToLower(host), ".localhost") {
+		return true
+	}
+	if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+		return true
+	}
+	return false
 }

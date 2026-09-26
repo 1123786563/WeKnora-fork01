@@ -134,9 +134,19 @@ func createOrderTx(tx *gorm.DB, row OrderRow) error {
 	}
 	// (R1-20) creation timestamp: the deterministic recency anchor. Tests
 	// may pre-set it; the store never overwrites a caller-provided value.
+	// (A-30 / F110) Whatever the source, the instant is NORMALIZED to UTC
+	// before it lands: the SQLite driver stores time.Time as text and the
+	// recency ORDER BY / sweep age gate compare that text LEXICALLY, so a
+	// local-offset rendering (+08:00) would sort behind UTC rows of the
+	// same instant and push the sweep gate across a day boundary (or, on a
+	// negative offset, sweep a just-created order immediately). Normalizing
+	// changes the RENDERING only — never the instant itself. The zero value
+	// is filled explicitly (a zero CreatedAt would otherwise be auto-filled
+	// by gorm in the SERVER's local zone, re-introducing the skew).
 	if row.CreatedAt.IsZero() {
-		row.CreatedAt = time.Now().UTC()
+		row.CreatedAt = time.Now()
 	}
+	row.CreatedAt = row.CreatedAt.UTC()
 	var existing OrderRow
 	err := tx.Where("quote_id = ?", row.QuoteID).First(&existing).Error
 	if err == nil {
@@ -156,6 +166,16 @@ func createOrderTx(tx *gorm.DB, row OrderRow) error {
 		if row.Kind == domain.OrderKindPurchase && isPendingPurchaseConflict(err) {
 			return ErrPurchasePendingExists
 		}
+		// (A-20 / F89) The quote face of the same race: two concurrent
+		// checkouts on the SAME quote both pass the First pre-check above
+		// and the loser's insert hits the quote_id unique INDEX here — the
+		// sentinel translation the service's replay branch
+		// (errors.Is(err, ErrQuoteAlreadyUsed)) exists for. Without it the
+		// loser surfaces a raw driver error (an unmapped 500) instead of
+		// the idempotent replay of the winner's order.
+		if isQuoteUniqueConflict(err) {
+			return ErrQuoteAlreadyUsed
+		}
 		return err
 	}
 	return nil
@@ -173,6 +193,23 @@ func isPendingPurchaseConflict(err error) bool {
 		return true
 	}
 	return strings.Contains(msg, "UNIQUE constraint failed") && strings.Contains(msg, "tenant_id")
+}
+
+// isQuoteUniqueConflict matches the quote_id unique index violation (A-20)
+// across the two supported drivers: SQLite reports the column face
+// ("UNIQUE constraint failed: commercial_orders.quote_id"), PostgreSQL
+// names the index (idx_commercial_orders.quote_id — the gorm default for
+// the uniqueIndex tag). The pending-uniqueness shape deliberately does not
+// match (it reports tenant_id).
+func isQuoteUniqueConflict(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	if strings.Contains(msg, "UNIQUE constraint failed") && strings.Contains(msg, "commercial_orders.quote_id") {
+		return true
+	}
+	return strings.Contains(msg, "idx_commercial_orders.quote_id")
 }
 
 // OpenOrderCommand is the SINGLE input from which the order row and its
@@ -301,7 +338,14 @@ func (s *OrderStore) CurrentPurchaseOrder(ctx context.Context, tenantID uint64, 
 		return OrderRow{}, err
 	}
 	for _, row := range rows {
-		if row.State == domain.OrderStatePending {
+		// (A-29 / F109) A channel-failed pending row is a DEAD payment
+		// entry (R2-28 — no checkout link exists, it is neither payable nor
+		// replayable): it must never win the pending preference and shadow a
+		// real paid order of the same price face (the caller would project a
+		// permanently-pending dead order and MISS the paid_awaiting_activation
+		// synthesis window). The pending preference carries the SAME payable
+		// predicate as CurrentPendingPurchaseOrder.
+		if row.State == domain.OrderStatePending && !row.ChannelFailed {
 			return row, nil
 		}
 	}

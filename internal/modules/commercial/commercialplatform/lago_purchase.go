@@ -297,13 +297,29 @@ func (a *LagoAdapter) createPurchaseSubscription(ctx context.Context, cmd commer
 				"%w: no settle-able default payment method without provider key/pm token",
 				commercial.ErrPlatformUnconfigured)
 		}
-		// (R1-12) The authority's payment-method import had not landed when
-		// the gated create ran (the bounded sync wait above is the primary
-		// absorber). The replay's bound short-circuit does NOT re-wait, so
-		// escalating this transient import lag to a terminal verdict would
-		// permanently lose the sync window — classify it as the retryable
-		// unreachable instead: the import keeps progressing server-side and
-		// the next attempt's create succeeds.
+		// (A-34 / F118) A configured PROCESS does not prove THIS customer
+		// ever got a default payment method: a binding created while the
+		// token was empty (production posture skips attach/sync) leaves the
+		// customer bound but PM-less, and ensureProviderBinding's bound
+		// short-circuit never re-runs the attach after the operator adds
+		// the token — the 422 would then loop forever mislabeled as a
+		// transient unreachable. Re-drive the attach HERE (idempotent:
+		// re-attaching the same pm and re-setting the same default are
+		// no-ops on the provider), then re-sync the import, and only then
+		// answer the retryable sentinel — the next attempt's create
+		// succeeds because the import now has something to land. Both legs
+		// ride the injected seams (the established test pattern) so a
+		// bound-but-PM-less customer is drivable under stubs.
+		pcid, cerr := a.boundProviderCustomerID(ctx, payload.ExternalCustomerID)
+		if cerr != nil {
+			return commercial.CommandReceipt{}, cerr
+		}
+		if aerr := a.reAttachDefaultPM(ctx, pcid, a.cfg.StripePmToken); aerr != nil {
+			return commercial.CommandReceipt{}, aerr
+		}
+		if serr := a.syncPaymentMethods(ctx, payload.ExternalCustomerID); serr != nil {
+			return commercial.CommandReceipt{}, serr
+		}
 		return commercial.CommandReceipt{}, fmt.Errorf(
 			"%w: default payment method not imported yet", commercial.ErrPlatformUnreachable)
 	case status == http.StatusUnprocessableEntity:
@@ -576,26 +592,37 @@ func (a *LagoAdapter) readPurchaseSnapshot(ctx context.Context, tenantID uint64)
 //
 // Location predicate (F-5 flow evidence): the customer's finalized index
 // lists EVERY finalized subscription invoice — the Base plan's monthly
-// 0-amount invoices included — and the pinned v1.53 exposes NO
-// subscription filter on the index (both candidate params answered the
-// full set on the live stack). The PURCHASE gating invoice is therefore
-// identified on the single-invoice read by its fee lines' subscription
-// identity (fees→subscription: fee.external_subscription_id), never by
-// the index row count.
+// 0-amount invoices included — and the pinned v1.53 exposes NO subscription
+// filter on the index (both candidate params answered the full set on the
+// live stack). The PURCHASE gating invoice is therefore identified on the
+// single-invoice read by its fee lines' subscription identity
+// (fees→subscription: fee.external_subscription_id), never by the index row
+// count.
 //
-// Fail-closed shape: exactly ONE finalized invoice carrying a purchase
-// subscription fee is expected (the gating invoice); zero = awaiting
-// semantics (empty); two or more is a data anomaly (invalid response —
-// the caller surfaces it, never guesses).
+// Selection rule (A-24 / F95): the index is newest-first, and MORE THAN ONE
+// finalized invoice may legitimately carry a purchase subscription fee —
+// the authority's own recurring billing issues a renewal invoice (same
+// external_subscription_id) at every monthly boundary of the purchase
+// subscription (t02-duplicates lab evidence: a renewal invoice was issued
+// minutes after the 200), and a repurchase reuses the same external
+// subscription identity with its own gating invoice. "two or more matches
+// is a data anomaly" is therefore WRONG — it would permanently break the
+// snapshot a month after the first successful payment. The GATING answer
+// the callers need is: the NEWEST invoice whose payment_status is
+// "succeeded" (an active purchase necessarily settled its gating invoice;
+// a later still-open renewal never shadows it), falling back to the newest
+// match of any payment_status (the defensive shape — an active purchase
+// always has a succeeded one). The iteration stops at the first succeeded
+// match (A-26 / F97: the read stops early instead of walking the whole
+// finalized history every refresh).
 func (a *LagoAdapter) readPurchaseInvoiceFees(ctx context.Context, tenantID uint64) ([]commercial.InvoiceLineSnapshot, string, error) {
 	purchaseSubscriptionID := commercial.ExternalPurchaseSubscriptionID(tenantID)
 	ids, err := a.finalizedInvoiceIDs(ctx, tenantID)
 	if err != nil {
 		return nil, "", err
 	}
-	var fees []commercial.InvoiceLineSnapshot
-	var paymentStatus string
-	matches := 0
+	var fallbackFees []commercial.InvoiceLineSnapshot
+	var fallbackStatus string
 	for _, id := range ids {
 		// …read the single invoice (t9 integration evidence: the pinned
 		// runtime's INDEX answer carries no fees; only the single-invoice
@@ -603,6 +630,12 @@ func (a *LagoAdapter) readPurchaseInvoiceFees(ctx context.Context, tenantID uint
 		status, body, err := a.do(ctx, http.MethodGet, "/api/v1/invoices/"+url.PathEscape(id), nil)
 		if err != nil {
 			return nil, "", err
+		}
+		// (A-25 / F96) A transient authority failure (429/5xx) is
+		// unreachable — retryable — never the definitive invalid-response
+		// sentinel that would park a settle replay in attention.
+		if status == http.StatusTooManyRequests || status >= 500 {
+			return nil, "", fmt.Errorf("%w: invoice read unavailable (HTTP %d)", commercial.ErrPlatformUnreachable, status)
 		}
 		if status != http.StatusOK {
 			return nil, "", fmt.Errorf("%w: invoice read answered HTTP %d", commercial.ErrPlatformInvalidResponse, status)
@@ -637,16 +670,18 @@ func (a *LagoAdapter) readPurchaseInvoiceFees(ctx context.Context, tenantID uint
 		if len(lines) == 0 {
 			continue // this finalized invoice bills no purchase subscription fee
 		}
-		matches++
-		fees, paymentStatus = lines, parsed.Invoice.PaymentStatus
+		if parsed.Invoice.PaymentStatus == "succeeded" {
+			// The newest succeeded purchase invoice IS the gating answer.
+			return lines, parsed.Invoice.PaymentStatus, nil
+		}
+		if fallbackFees == nil {
+			fallbackFees, fallbackStatus = lines, parsed.Invoice.PaymentStatus
+		}
 	}
-	switch {
-	case matches == 0:
-		return nil, "", nil // awaiting semantics: no finalized purchase invoice visible yet
-	case matches > 1:
-		return nil, "", fmt.Errorf("%w: multiple finalized purchase invoices", commercial.ErrPlatformInvalidResponse)
+	if fallbackFees != nil {
+		return fallbackFees, fallbackStatus, nil
 	}
-	return fees, paymentStatus, nil
+	return nil, "", nil // awaiting semantics: no finalized purchase invoice visible yet
 }
 
 // finalizedInvoiceIDs pages through the customer's VISIBLE finalized
@@ -666,6 +701,12 @@ func (a *LagoAdapter) finalizedInvoiceIDs(ctx context.Context, tenantID uint64) 
 				"&status[]=finalized&per_page="+strconv.Itoa(perPage)+"&page="+strconv.Itoa(page), nil)
 		if err != nil {
 			return nil, err
+		}
+		// (A-25 / F96) The index read follows the same transient/definitive
+		// split as every other read path in this file: a 429/5xx is a
+		// retryable unreachability, never the definitive sentinel.
+		if status == http.StatusTooManyRequests || status >= 500 {
+			return nil, fmt.Errorf("%w: invoice index unavailable (HTTP %d)", commercial.ErrPlatformUnreachable, status)
 		}
 		if status != http.StatusOK {
 			return nil, fmt.Errorf("%w: invoice index answered HTTP %d", commercial.ErrPlatformInvalidResponse, status)

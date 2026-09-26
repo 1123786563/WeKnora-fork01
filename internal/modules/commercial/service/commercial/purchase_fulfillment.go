@@ -128,11 +128,21 @@ func (p *PurchaseFulfiller) Fulfill(ctx context.Context, ev repocommercial.Outbo
 	// passes exhaust the budget, surface attention (the operations face)
 	// and stop driving. ONE cheap snapshot read keeps the recovery path
 	// open — if the authority HAS activated, fulfillment proceeds.
+	// (A-31 / F114) The budget-exhausted probe's OWN failure is classified,
+	// never blanket-attention: a transient unreachable/unconfigured read
+	// (429/5xx/network blip — exactly the errors steps ②/⑤ treat as
+	// return-nil-pending) keeps the event pending, so a blip landing on the
+	// first over-budget pass cannot mint a terminal attention record (an
+	// operator refunding on it while the authority later activates would
+	// open the refund+grant double-win window).
 	if p.overBudget(&ev) {
 		snap, serr := p.platform.ReadSnapshot(ctx, domain.SnapshotQuery{
 			Kind: domain.SnapshotKindPurchase, TenantID: order.TenantID,
 		})
-		if serr != nil || snap.Purchase == nil ||
+		if serr != nil {
+			return p.settleSnapshotFailure(ctx, order, serr)
+		}
+		if snap.Purchase == nil ||
 			snap.Purchase.State != domain.PurchaseStateActive {
 			return p.markActivationState(ctx, order.ID, order.TenantID, domain.FulfillmentStateAttention)
 		}
@@ -175,9 +185,14 @@ func (p *PurchaseFulfiller) Fulfill(ctx context.Context, ev repocommercial.Outbo
 	// drain with a long poll — the first pass watches briefly, then hands
 	// the event back to pending; replays converge because settle is
 	// idempotent. The total budget bounds the composition before attention.
+	// (A-32 / F115) A snapshot failure here is CLASSIFIED, never re-raised
+	// raw: an error return from this point used to abort the whole shared
+	// drain pass (fulfillment.go Recover stops at the batch's FIRST error),
+	// starving every later event — including ordinary top-up orders — and a
+	// deterministic invalid-response would re-fail every pass forever.
 	active, state, err := p.observeActivation(ctx, order.TenantID)
 	if err != nil {
-		return err
+		return p.settleSnapshotFailure(ctx, order, err)
 	}
 	if state == domain.PurchaseStateCanceled {
 		// Authority canceled + local paid: benefits never open (honest
@@ -195,7 +210,8 @@ func (p *PurchaseFulfiller) Fulfill(ctx context.Context, ev repocommercial.Outbo
 		Kind: domain.SnapshotKindPurchase, TenantID: order.TenantID,
 	})
 	if err != nil {
-		return err
+		// (A-32) Same classification as ③: the shared drain keeps moving.
+		return p.settleSnapshotFailure(ctx, order, err)
 	}
 	if psnap.Purchase == nil ||
 		len(psnap.Purchase.InvoiceFees) != 1 ||
@@ -333,8 +349,33 @@ func (p *PurchaseFulfiller) observeActivation(ctx context.Context, tenantID uint
 	}
 }
 
+// settleSnapshotFailure maps ONE authority snapshot failure onto the
+// drain-safe posture (A-32 / F115): the shared drain pass must never be
+// aborted by a purchase event's authority read. context cancellation is
+// the pass's own end (shutdown) and still propagates; transient platform
+// failures (unreachable/unconfigured — the same sentinel split as steps
+// ②/⑤) keep the event pending for the next pass; every DETERMINISTIC
+// failure (invalid response — e.g. a malformed authority answer) lands the
+// terminal attention record and returns nil, the file's established
+// contract for a definitive purchase failure (never an error, never a
+// grant).
+func (p *PurchaseFulfiller) settleSnapshotFailure(ctx context.Context, order domain.Order, err error) error {
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return err // the drain pass itself is ending: propagate
+	}
+	if errors.Is(err, domain.ErrPlatformUnreachable) || errors.Is(err, domain.ErrPlatformUnconfigured) {
+		return nil // transient: the event stays pending, the next pass re-drives
+	}
+	return p.markActivationState(ctx, order.ID, order.TenantID, domain.FulfillmentStateAttention)
+}
+
 // markActivationState lands the purchase_activation record in a terminal
 // non-grant state (attention/refused) — benefits never open, facts stay.
+// (A-33 / F116) The Warn fires only on the FIRST landing of the record
+// (RowsAffected == 1 under the OnConflict DoNothing): an event parked in
+// attention replays on every 30s drain pass, and an unconditional log
+// would emit the same line ~2880×/day per stuck order. The record itself
+// still stays exactly-once — only the log is gated.
 func (p *PurchaseFulfiller) markActivationState(ctx context.Context, orderID string, tenantID uint64, state string) error {
 	rec := FulfillmentRecord{
 		Key:         domain.FulfillmentKey(orderID, benefitKindPurchaseActivation),
@@ -348,11 +389,14 @@ func (p *PurchaseFulfiller) markActivationState(ctx context.Context, orderID str
 		State:       state,
 		LeaseUntil:  p.now(),
 	}
-	if err := p.db.WithContext(ctx).Clauses(clause.OnConflict{
+	res := p.db.WithContext(ctx).Clauses(clause.OnConflict{
 		DoNothing: true,
-	}).Create(&rec).Error; err != nil {
-		return err
+	}).Create(&rec)
+	if res.Error != nil {
+		return res.Error
 	}
-	logger.Warnf(ctx, "[CommercialFulfillment] purchase %s activation landed %s", orderID, state)
+	if res.RowsAffected == 1 {
+		logger.Warnf(ctx, "[CommercialFulfillment] purchase %s activation landed %s", orderID, state)
+	}
 	return nil
 }

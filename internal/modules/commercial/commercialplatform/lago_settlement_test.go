@@ -23,11 +23,12 @@ import (
 // stripeIntentRec is one PaymentIntent row the Stripe stub answers on the
 // customer list.
 type stripeIntentRec struct {
-	ID         string
-	Customer   string
-	Status     string
-	Created    int64
-	LagoInvID  string // metadata.lago_invoice_id ("" = absent)
+	ID        string
+	Customer  string
+	Status    string
+	Created   int64
+	LagoInvID string // metadata.lago_invoice_id ("" = absent)
+	Amount    int64  // the charge face; 0 renders as 9900 (the frozen quote every existing settle test uses — A-16 mismatch tests set an explicit value)
 }
 
 // settleReq records one settle-rail call (path + the Idempotency-Key when
@@ -43,12 +44,21 @@ type settleStripeStub struct {
 	requests []settleReq
 	intents  []stripeIntentRec
 	// scripted responses (0 = default success shapes)
-	attachStatus   int
-	defaultStatus  int
-	updateStatus   int
-	confirmStatus  int
+	attachStatus        int
+	defaultStatus       int
+	updateStatus        int
+	confirmStatus       int
 	confirmIntentStatus string // the status field in the confirm body ("" = succeeded)
-	mux            *http.ServeMux
+	// page1Count > 0 splits the intent list into pages of that size with
+	// has_more + starting_after cursor semantics (A-17 pagination tests).
+	page1Count int
+	// hijackListBody answers the intent list with a TRUNCATED body: 2xx
+	// headers arrive, the body dies mid-stream (A-19).
+	hijackListBody bool
+	// oversizeListBody answers the intent list with a body beyond the
+	// provider body cap (A-19).
+	oversizeListBody bool
+	mux              *http.ServeMux
 }
 
 func newSettleStripeStub() *settleStripeStub {
@@ -59,22 +69,68 @@ func newSettleStripeStub() *settleStripeStub {
 		s.mu.Lock()
 		s.requests = append(s.requests, settleReq{Method: r.Method, Path: r.URL.Path})
 		cust := r.URL.Query().Get("customer")
-		out := []string{}
+		pageSize, hijack, oversize := s.page1Count, s.hijackListBody, s.oversizeListBody
+		rows := make([]stripeIntentRec, 0, len(s.intents))
 		for _, it := range s.intents {
 			if it.Customer == cust {
-				out = append(out, fmt.Sprintf(
-					`{"id":%q,"status":%q,"created":%d,"metadata":{"lago_invoice_id":%q}}`,
-					it.ID, it.Status, it.Created, it.LagoInvID))
+				rows = append(rows, it)
 			}
 		}
 		s.mu.Unlock()
-		body := `{"data":[` + strings.Join(out, ",") + `]}`
+		if hijack {
+			// (A-19) 2xx headers, then the connection dies mid-body.
+			if hj, ok := w.(http.Hijacker); ok {
+				if conn, _, err := hj.Hijack(); err == nil {
+					_, _ = conn.Write([]byte("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 400\r\n\r\n{\"data\":["))
+					_ = conn.Close()
+				}
+			}
+			return
+		}
+		if oversize {
+			w.WriteHeader(http.StatusOK)
+			chunk := strings.Repeat("x", 4096)
+			for i := 0; i < 17; i++ { // 17*4096 = 69632 > the 64 KiB cap
+				_, _ = w.Write([]byte(chunk))
+			}
+			return
+		}
+		// (A-17) starting_after cursor pagination with has_more, mirroring
+		// the provider's real list contract.
+		start := 0
+		if cursor := r.URL.Query().Get("starting_after"); cursor != "" {
+			for i, it := range rows {
+				if it.ID == cursor {
+					start = i + 1
+					break
+				}
+			}
+		}
+		end := len(rows)
+		if pageSize > 0 && start+pageSize < end {
+			end = start + pageSize
+		}
+		out := []string{}
+		for _, it := range rows[start:end] {
+			amount := it.Amount
+			if amount == 0 {
+				amount = 9900 // the frozen quote face every existing settle test settles
+			}
+			if amount < 0 {
+				amount = 0 // explicit zero-amount intent (negative = sentinel in the rec)
+			}
+			out = append(out, fmt.Sprintf(
+				`{"id":%q,"status":%q,"created":%d,"amount":%d,"metadata":{"lago_invoice_id":%q}}`,
+				it.ID, it.Status, it.Created, amount, it.LagoInvID))
+		}
+		hasMore := end < len(rows)
+		body := `{"data":[` + strings.Join(out, ",") + `],"has_more":` + fmt.Sprintf("%v", hasMore) + `}`
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(body))
 	})
 	mux.HandleFunc("/v1/payment_methods/", func(w http.ResponseWriter, r *http.Request) {
 		s.mu.Lock()
-		s.requests = append(s.requests, settleReq{Method: r.Method, Path: r.URL.Path})
+		s.requests = append(s.requests, settleReq{Method: r.Method, Path: r.URL.Path, Idem: r.Header.Get("Idempotency-Key")})
 		status := s.attachStatus
 		s.mu.Unlock()
 		if status == 0 {
@@ -86,7 +142,7 @@ func newSettleStripeStub() *settleStripeStub {
 	mux.HandleFunc("/v1/customers/", func(w http.ResponseWriter, r *http.Request) {
 		// POST /v1/customers/{id} — the default-payment-method update.
 		s.mu.Lock()
-		s.requests = append(s.requests, settleReq{Method: r.Method, Path: r.URL.Path})
+		s.requests = append(s.requests, settleReq{Method: r.Method, Path: r.URL.Path, Idem: r.Header.Get("Idempotency-Key")})
 		status := s.defaultStatus
 		s.mu.Unlock()
 		if status == 0 {
@@ -157,8 +213,8 @@ func (s *settleStripeStub) paths() []string {
 // settleHarness wires a Lago purchaseStub (subscription truth + customer
 // binding) with a Stripe stub (the settle rails) into one adapter.
 type settleHarness struct {
-	lago   *purchaseStub
-	stripe *settleStripeStub
+	lago    *purchaseStub
+	stripe  *settleStripeStub
 	adapter *LagoAdapter
 }
 
@@ -179,7 +235,7 @@ func newSettleHarnessForTenant(t *testing.T, tenant uint64, subStatus string, in
 	lago.customer[ext] = map[string]any{
 		"external_id": ext, "name": "settle tenant",
 		"billing_configuration": map[string]any{
-			"provider_customer_id": "cus_stripe_1",
+			"provider_customer_id":  "cus_stripe_1",
 			"payment_provider_code": "weknora-stripe",
 		},
 	}
@@ -204,7 +260,7 @@ func settleCmd(tenant uint64, txn string) commercial.Command {
 		Payload: commercial.SettlePurchasePaymentPayload{
 			TenantID: tenant, ExternalCustomerID: commercial.ExternalCustomerID(tenant),
 			ExternalPurchaseSubscriptionID: commercial.ExternalPurchaseSubscriptionID(tenant),
-			PlanCode: "weknora-pro-v1", ChannelTransaction: txn, AmountFen: 9900, Currency: commercial.CurrencyCNY,
+			PlanCode:                       "weknora-pro-v1", ChannelTransaction: txn, AmountFen: 9900, Currency: commercial.CurrencyCNY,
 		},
 	}
 }
@@ -439,5 +495,156 @@ func TestLagoSettleClassifiesStripe429Unreachable(t *testing.T) {
 	_, err := h.adapter.SubmitCommand(context.Background(), settleCmd(41, "txn-1"))
 	if !errors.Is(err, commercial.ErrPlatformUnreachable) {
 		t.Fatalf("provider 429 must classify unreachable (retryable), got %v", err)
+	}
+}
+
+// TestLagoSettleAmountGuardFailsClosed (A-16 / F84): the resolved gating
+// intent's amount must stay WITHIN the frozen quote face (1..payload, the
+// proration-aware guard — the live 82flow stack gates a 9900-fen plan on a
+// 1650 mid-month prorated intent). An intent LARGER than the frozen quote
+// (a wrong-object shape) or a zero amount fails closed BEFORE any
+// charge-bearing call.
+func TestLagoSettleAmountGuardFailsClosed(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		amount int64
+	}{
+		{"larger than frozen quote", 9999},
+		{"zero amount", -1}, // the stub renders a negative sentinel as amount 0
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			intents := []stripeIntentRec{
+				{ID: "pi_foreign", Customer: "cus_stripe_1", Status: "requires_payment_method",
+					Created: 2000, LagoInvID: "inv_other", Amount: tc.amount},
+			}
+			h := newSettleHarness(t, "incomplete", intents)
+			_, err := h.adapter.SubmitCommand(context.Background(), settleCmd(41, "txn-amt"))
+			if !errors.Is(err, commercial.ErrPlatformInvalidResponse) {
+				t.Fatalf("an intent outside the frozen quote face must fail closed invalid_response, got %v", err)
+			}
+			if !strings.Contains(err.Error(), "amount") {
+				t.Fatalf("the failure must name the amount guard, got %v", err)
+			}
+			// Fail-closed happens BEFORE the attach/update/confirm rails:
+			// only the list call (plus the authority reads) happened —
+			// never a charge.
+			for _, p := range h.stripe.paths() {
+				if strings.Contains(p, "attach") || strings.Contains(p, "/confirm") ||
+					strings.HasPrefix(p, "POST /v1/payment_intents/") {
+					t.Fatalf("an out-of-face intent must never reach the charge rails, saw %q (all: %v)", p, h.stripe.paths())
+				}
+			}
+		})
+	}
+}
+
+// TestLagoSettleProratedIntentStillSettles (A-16): the prorated gating
+// intent (amount BELOW the frozen quote — the live-stack 1650-of-9900
+// shape) settles normally; the guard never blocks a legitimate proration.
+func TestLagoSettleProratedIntentStillSettles(t *testing.T) {
+	intents := []stripeIntentRec{
+		{ID: "pi_prorated", Customer: "cus_stripe_1", Status: "requires_payment_method",
+			Created: 2000, LagoInvID: "inv_gating", Amount: 1650},
+	}
+	h := newSettleHarness(t, "incomplete", intents)
+	if _, err := h.adapter.SubmitCommand(context.Background(), settleCmd(41, "txn-pror")); err != nil {
+		t.Fatalf("a prorated gating intent (1650 of a 9900 frozen face) must settle, got %v", err)
+	}
+	paths := h.stripe.paths()
+	drove := false
+	for _, p := range paths {
+		if p == "POST /v1/payment_intents/pi_prorated/confirm" {
+			drove = true
+		}
+	}
+	if !drove {
+		t.Fatalf("the prorated gating intent must be driven to confirm, calls: %v", paths)
+	}
+}
+
+// TestLagoSettleIntentListPaginatesToCompletion (A-17 / F85): the locator
+// list is correctness-critical (unsettled candidates AND the settled
+// idempotency window) — it must consume has_more/starting_after pages to
+// completion instead of silently truncating at a page boundary.
+func TestLagoSettleIntentListPaginatesToCompletion(t *testing.T) {
+	// The gating intent is the NEWEST (created 2000) and lands on page 2
+	// when the page size is 1; the settled older intent rides page 1.
+	intents := []stripeIntentRec{
+		{ID: "pi_new", Customer: "cus_stripe_1", Status: "requires_payment_method",
+			Created: 2000, LagoInvID: "inv_gating"},
+		{ID: "pi_old_settled", Customer: "cus_stripe_1", Status: "succeeded",
+			Created: 1000, LagoInvID: "inv_gating"},
+	}
+	h := newSettleHarness(t, "incomplete", intents)
+	h.stripe.page1Count = 1
+	if _, err := h.adapter.SubmitCommand(context.Background(), settleCmd(41, "txn-page")); err != nil {
+		t.Fatalf("a gating intent on a later page must still be found and driven: %v", err)
+	}
+	listCalls := 0
+	h.stripe.mu.Lock()
+	for _, req := range h.stripe.requests {
+		if req.Method == http.MethodGet && req.Path == "/v1/payment_intents" {
+			listCalls++
+		}
+	}
+	h.stripe.mu.Unlock()
+	if listCalls != 2 {
+		t.Fatalf("the list read must page to completion (2 pages at page size 1), got %d list calls", listCalls)
+	}
+}
+
+// TestLagoSettleAttachRailDerivesIdempotencyKeys (A-18 / F86): the attach
+// and set-default rail calls carry DETERMINISTIC idempotency keys derived
+// from the command key, so a lost response can never double-attach.
+func TestLagoSettleAttachRailDerivesIdempotencyKeys(t *testing.T) {
+	intents := []stripeIntentRec{{
+		ID: "pi_1", Customer: "cus_stripe_1", Status: "requires_payment_method",
+		Created: 1000, LagoInvID: "inv_gating",
+	}}
+	h := newSettleHarness(t, "incomplete", intents)
+	cmd := settleCmd(41, "txn-idem")
+	if _, err := h.adapter.SubmitCommand(context.Background(), cmd); err != nil {
+		t.Fatalf("settle: %v", err)
+	}
+	h.stripe.mu.Lock()
+	defer h.stripe.mu.Unlock()
+	idems := map[string]string{}
+	for _, req := range h.stripe.requests {
+		if req.Idem != "" {
+			idems[req.Method+" "+req.Path] = req.Idem
+		}
+	}
+	for path, suffix := range map[string]string{
+		"POST /v1/payment_methods/pm_settle/attach": ":attach",
+		"POST /v1/customers/cus_stripe_1":           ":default",
+	} {
+		if idems[path] != cmd.Key+suffix {
+			t.Fatalf("%s must carry Idempotency-Key == cmd key%s, got %q", path, suffix, idems[path])
+		}
+	}
+}
+
+// TestLagoSettleTruncatedBodyIsUnreachable (A-19 / F87): a 2xx whose body
+// dies mid-stream is a TRANSIENT transport failure — surfacing it as
+// truncated JSON would misclassify downstream as the definitive
+// invalid-response sentinel and park the order instead of retrying.
+func TestLagoSettleTruncatedBodyIsUnreachable(t *testing.T) {
+	h := newSettleHarness(t, "incomplete", nil)
+	h.stripe.hijackListBody = true
+	_, err := h.adapter.SubmitCommand(context.Background(), settleCmd(41, "txn-trunc"))
+	if !errors.Is(err, commercial.ErrPlatformUnreachable) {
+		t.Fatalf("a mid-stream body cut must classify unreachable (retryable), got %v", err)
+	}
+}
+
+// TestLagoSettleOversizedBodyIsInvalidResponse (A-19): a body beyond the
+// provider cap is a definitive oversized-response error — an explicit
+// verdict, never a quiet truncation that only later fails the JSON parse.
+func TestLagoSettleOversizedBodyIsInvalidResponse(t *testing.T) {
+	h := newSettleHarness(t, "incomplete", nil)
+	h.stripe.oversizeListBody = true
+	_, err := h.adapter.SubmitCommand(context.Background(), settleCmd(41, "txn-big"))
+	if !errors.Is(err, commercial.ErrPlatformInvalidResponse) {
+		t.Fatalf("an oversized provider body must classify invalid_response, got %v", err)
 	}
 }

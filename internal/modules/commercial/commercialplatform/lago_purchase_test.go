@@ -68,6 +68,10 @@ type purchaseStub struct {
 	// created.
 	rejectCreateNoDefaultPM bool
 	invoices                []purchaseInvoiceRec // the finalized-stage visible set
+	// invoiceIndexStatus / invoiceDetailStatus script a NON-2xx answer on the
+	// corresponding face (0 = the normal 200) — the A-25 transient tests.
+	invoiceIndexStatus  int
+	invoiceDetailStatus int
 	mux                     *http.ServeMux // assembled by newPurchaseStub
 }
 
@@ -158,6 +162,12 @@ func newPurchaseStub() *purchaseStub {
 		// status[]=finalized; the RawQuery is recorded for the assertion
 		// face, the rows answer the stub's set (visible finalized only).
 		s.mu.Lock()
+		if s.invoiceIndexStatus != 0 {
+			code := s.invoiceIndexStatus
+			s.mu.Unlock()
+			respond(w, r, &s.requests, &s.mu, code, "{}", nil)
+			return
+		}
 		s.rawQueries = append(s.rawQueries, r.URL.RawQuery)
 		q := r.URL.Query()
 		want := q.Get("external_customer_id")
@@ -185,6 +195,12 @@ func newPurchaseStub() *purchaseStub {
 		// The single-invoice read (fees ride ONLY here — the pinned index
 		// answer carries none, t9 evidence).
 		s.mu.Lock()
+		if s.invoiceDetailStatus != 0 {
+			code := s.invoiceDetailStatus
+			s.mu.Unlock()
+			respond(w, r, &s.requests, &s.mu, code, "{}", nil)
+			return
+		}
 		id := strings.TrimPrefix(r.URL.Path, "/api/v1/invoices/")
 		var found *purchaseInvoiceRec
 		for i := range s.invoices {
@@ -750,6 +766,11 @@ func TestLagoGatedCreateNoDefaultPaymentMethodIsRetryable(t *testing.T) {
 	a.deriveProviderCustomer = func(_ context.Context, externalCustomerID string) (string, providerCustomerSource, error) {
 		return "cus-stub-" + externalCustomerID, providerCustomerAPI, nil
 	}
+	// (A-34) The 422 recovery leg re-drives attach+sync through the
+	// injected seams — stubbed here (the customer is bound; the stub has
+	// no provider endpoint to attach against).
+	a.reAttachDefaultPM = func(context.Context, string, string) error { return nil }
+	a.syncPaymentMethods = func(context.Context, string) error { return nil }
 	_, err := a.SubmitCommand(context.Background(), purchaseCmd(32, "weknora-pro-v1", 9900))
 	if !errors.Is(err, commercial.ErrPlatformUnreachable) {
 		t.Fatalf("import-not-landed 422 must be retryable unreachable, got %v", err)
@@ -1026,15 +1047,68 @@ func TestLagoReadPurchaseInvoiceFeesZeroFinalizedIsEmpty(t *testing.T) {
 	}
 }
 
-func TestLagoReadPurchaseInvoiceFeesTwoFinalizedFailsClosed(t *testing.T) {
+// (A-24 / F95) Two-or-more finalized purchase invoices is NOT a data
+// anomaly: the authority's recurring billing issues a renewal invoice (the
+// SAME external_subscription_id) at every monthly boundary of the purchase
+// subscription (t02-duplicates lab evidence recorded one minutes after the
+// 200), and a repurchase reuses the identity too. The read answers the
+// NEWEST succeeded match and STOPS there (A-26): the snapshot keeps
+// working a month after the first payment instead of permanently failing
+// invalid_response, and the hot path does not walk the whole finalized
+// history on every refresh.
+func TestLagoReadPurchaseInvoiceFeesTwoFinalizedAnswersNewestSucceeded(t *testing.T) {
+	// Index order is newest-first: the renewal (this month) precedes the
+	// original gating invoice.
 	invoices := []purchaseInvoiceRec{
-		{LagoID: "inv_a", ExternalCust: commercial.ExternalCustomerID(31), PaymentStatus: "succeeded", SubscriptionFee: feeLine("Pro plan", 1980)},
-		{LagoID: "inv_b", ExternalCust: commercial.ExternalCustomerID(31), PaymentStatus: "succeeded", SubscriptionFee: feeLine("Pro plan", 9900)},
+		{LagoID: "inv_renewal", ExternalCust: commercial.ExternalCustomerID(31), PaymentStatus: "succeeded", SubscriptionFee: feeLine("Pro plan", 9900)},
+		{LagoID: "inv_gating", ExternalCust: commercial.ExternalCustomerID(31), PaymentStatus: "succeeded", SubscriptionFee: feeLine("Pro plan", 1980)},
+	}
+	stub, a := activePurchaseStub(t, invoices)
+	snap, err := a.ReadSnapshot(context.Background(), commercial.SnapshotQuery{Kind: commercial.SnapshotKindPurchase, TenantID: 31})
+	if err != nil {
+		t.Fatalf("a renewal invoice beside the settled gating invoice must NOT fail the snapshot (recurring billing is normal), got %v", err)
+	}
+	if len(snap.Purchase.InvoiceFees) != 1 || snap.Purchase.InvoiceFees[0].AmountFen != 9900 {
+		t.Fatalf("the NEWEST succeeded purchase invoice must answer, got %+v", snap.Purchase.InvoiceFees)
+	}
+	if snap.Purchase.InvoicePaymentStatus != "succeeded" {
+		t.Fatalf("payment status must ride the answered invoice, got %q", snap.Purchase.InvoicePaymentStatus)
+	}
+	// (A-26) The iteration stops at the first succeeded match — the older
+	// gating invoice behind it is not detail-read.
+	stub.mu.Lock()
+	detailReads := 0
+	for _, req := range stub.requests {
+		if req.Method == http.MethodGet && strings.HasPrefix(req.Path, "/api/v1/invoices/") {
+			detailReads++
+		}
+	}
+	stub.mu.Unlock()
+	if detailReads != 1 {
+		t.Fatalf("the read must stop at the newest succeeded match (early exit), got %d detail reads", detailReads)
+	}
+}
+
+// (A-24 defensive shape) A still-OPEN renewal invoice (finalized but
+// payment_status pending — the fresh billing cycle before the subscription
+// charge lands) must not shadow the settled gating fact: the read answers
+// the newest SUCCEEDED match, falling back to the newest match only when
+// no succeeded one exists.
+func TestLagoReadPurchaseInvoiceFeesOpenRenewalDoesNotShadowGating(t *testing.T) {
+	invoices := []purchaseInvoiceRec{
+		{LagoID: "inv_renewal", ExternalCust: commercial.ExternalCustomerID(31), PaymentStatus: "pending", SubscriptionFee: feeLine("Pro plan", 9900)},
+		{LagoID: "inv_gating", ExternalCust: commercial.ExternalCustomerID(31), PaymentStatus: "succeeded", SubscriptionFee: feeLine("Pro plan", 1980)},
 	}
 	_, a := activePurchaseStub(t, invoices)
-	_, err := a.ReadSnapshot(context.Background(), commercial.SnapshotQuery{Kind: commercial.SnapshotKindPurchase, TenantID: 31})
-	if !errors.Is(err, commercial.ErrPlatformInvalidResponse) {
-		t.Fatalf("two finalized purchase invoices must fail closed (data anomaly), got %v", err)
+	snap, err := a.ReadSnapshot(context.Background(), commercial.SnapshotQuery{Kind: commercial.SnapshotKindPurchase, TenantID: 31})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snap.Purchase.InvoiceFees) != 1 || snap.Purchase.InvoiceFees[0].AmountFen != 1980 {
+		t.Fatalf("the newest SUCCEEDED match (the settled gating invoice) must answer despite a newer pending renewal, got %+v", snap.Purchase.InvoiceFees)
+	}
+	if snap.Purchase.InvoicePaymentStatus != "succeeded" {
+		t.Fatalf("payment status must ride the settled gating invoice, got %q", snap.Purchase.InvoicePaymentStatus)
 	}
 }
 
@@ -1096,5 +1170,53 @@ func TestLagoReadPurchaseInvoiceFeesNoSubscriptionLineAnswersEmpty(t *testing.T)
 	}
 	if len(snap.Purchase.InvoiceFees) != 0 {
 		t.Fatalf("no subscription fee line = empty fees (the D6' review refuses downstream), got %+v", snap.Purchase.InvoiceFees)
+	}
+}
+
+// TestLagoInvoiceFacesClassifyTransient5xxUnreachable (A-25 / F96): both
+// invoice faces (the finalized index and the single-invoice detail read)
+// must split transient from definitive the way every other read path in
+// this file already does — 429/5xx is the RETRYABLE unreachable, never the
+// definitive invalid_response that would park a settle replay in attention.
+func TestLagoInvoiceFacesClassifyTransient5xxUnreachable(t *testing.T) {
+	invoices := []purchaseInvoiceRec{
+		{LagoID: "inv_a", ExternalCust: commercial.ExternalCustomerID(31), PaymentStatus: "succeeded", SubscriptionFee: feeLine("Pro plan", 1980)},
+	}
+	for _, tc := range []struct {
+		name   string
+		inject func(*purchaseStub)
+	}{
+		{"index 502", func(s *purchaseStub) { s.invoiceIndexStatus = 502 }},
+		{"index 429", func(s *purchaseStub) { s.invoiceIndexStatus = 429 }},
+		{"detail 503", func(s *purchaseStub) { s.invoiceDetailStatus = 503 }},
+		{"detail 429", func(s *purchaseStub) { s.invoiceDetailStatus = 429 }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			stub, a := activePurchaseStub(t, invoices)
+			stub.mu.Lock()
+			tc.inject(stub)
+			stub.mu.Unlock()
+			_, err := a.ReadSnapshot(context.Background(), commercial.SnapshotQuery{Kind: commercial.SnapshotKindPurchase, TenantID: 31})
+			if !errors.Is(err, commercial.ErrPlatformUnreachable) {
+				t.Fatalf("a transient %s must classify unreachable (retryable), got %v", tc.name, err)
+			}
+			if errors.Is(err, commercial.ErrPlatformInvalidResponse) {
+				t.Fatalf("a transient %s must NOT be the definitive sentinel, got %v", tc.name, err)
+			}
+		})
+	}
+}
+
+// TestLagoInvoiceFacesKeepDefinitive4xxInvalidResponse (A-25): a
+// non-transient non-200 (e.g. 404 on the index) keeps the definitive
+// invalid_response classification — only 429/5xx moved.
+func TestLagoInvoiceFacesKeepDefinitive4xxInvalidResponse(t *testing.T) {
+	stub, a := activePurchaseStub(t, nil)
+	stub.mu.Lock()
+	stub.invoiceIndexStatus = http.StatusNotFound
+	stub.mu.Unlock()
+	_, err := a.ReadSnapshot(context.Background(), commercial.SnapshotQuery{Kind: commercial.SnapshotKindPurchase, TenantID: 31})
+	if !errors.Is(err, commercial.ErrPlatformInvalidResponse) {
+		t.Fatalf("a definitive 404 index answer must stay invalid_response, got %v", err)
 	}
 }

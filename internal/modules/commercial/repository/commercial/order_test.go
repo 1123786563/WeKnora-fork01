@@ -516,3 +516,92 @@ func TestPaymentConfirmRejectsUnregisteredOrMismatchedMerchant(t *testing.T) {
 		t.Fatalf("fact on missing order: %v", err)
 	}
 }
+
+// TestCurrentPurchaseOrderSkipsChannelFailedPending（A-29 / F109）：R2-28
+// 之后 pending 不再等价于活的支付入口——channel_failed 死单不得赢得 pending
+// 偏好并遮蔽同价面的已支付订单（否则 PurchaseStatus 会把永久 pending 的死单
+// 投影为当前购买，恰好错过 awaiting+paid 的 paid_awaiting_activation 合成窗口）。
+func TestCurrentPurchaseOrderSkipsChannelFailedPending(t *testing.T) {
+	s, db := testOrderStore(t)
+	ctx := context.Background()
+	// finding 场景：渠道失败留下较旧的 channel_failed pending 死单（无链接）
+	// ……
+	if err := db.Exec(`INSERT INTO commercial_orders (id, tenant_id, quote_id, kind, amount_fen, currency, state, version, created_at, channel_failed)
+		VALUES ('ord_dead_old', 7, 'qt_dead', 'purchase', 100, 'CNY', 'pending', 1, '2026-03-01T00:00:00Z', 1)`).Error; err != nil {
+		t.Fatal(err)
+	}
+	// ……换新 quote 的订单经回调支付成功（更晚 created_at）。
+	insertCreatedAtOrder(t, db, "ord_paid_new", "paid", "2026-07-01T00:00:00Z", false)
+	row, err := s.CurrentPurchaseOrder(ctx, 7, 100, "CNY")
+	if err != nil || row.ID != "ord_paid_new" {
+		t.Fatalf("a channel-failed dead pending must never shadow the paid order of the same face (paid_awaiting_activation window), got %+v err=%v", row, err)
+	}
+	// 可付 pending 依旧优先于更旧的 channel_failed 死单。
+	insertCreatedAtOrder(t, db, "ord_live_pending", "pending", "2026-02-01T00:00:00Z", true)
+	row, err = s.CurrentPurchaseOrder(ctx, 7, 100, "CNY")
+	if err != nil || row.ID != "ord_live_pending" {
+		t.Fatalf("a payable pending must still win the pending preference, got %+v err=%v", row, err)
+	}
+}
+
+// TestCreateOrderNormalizesCreatedAtToUTC（A-30 / F110）：SQLite 驱动以文本
+// 存储 time.Time 且排序/清扫门按词法比较——本地时区渲染（+08:00）会排到同刻
+// UTC 行之后、把清扫年龄门推过日边界（负偏移时区甚至立即清掉刚建的单）。
+// createOrderTx 必须把任何来源的 CreatedAt 归一成 UTC 渲染（时刻不变）。
+func TestCreateOrderNormalizesCreatedAtToUTC(t *testing.T) {
+	s, db := testOrderStore(t)
+	// +08:00 本地墙钟（与 UTC 相差 8 小时的同一时刻语义下取一个明确值）。
+	local := time.Date(2026, 6, 1, 12, 0, 0, 0, time.FixedZone("CST", 8*3600))
+	if err := s.CreateOrder(context.Background(), OrderRow{
+		ID: "ord_tz", TenantID: 7, QuoteID: "qt_tz", AmountFen: 100, Currency: "CNY", CreatedAt: local,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var row OrderRow
+	if err := db.Where("id = ?", "ord_tz").First(&row).Error; err != nil {
+		t.Fatal(err)
+	}
+	if got := row.CreatedAt; got.Location() != time.UTC {
+		t.Fatalf("created_at must be stored in its UTC rendering, got %v (loc=%v)", got, got.Location())
+	}
+	if got, want := row.CreatedAt.Unix(), local.Unix(); got != want {
+		t.Fatalf("normalization must not move the instant: stored=%d original=%d", got, want)
+	}
+	// 零值 CreatedAt 也必须以 UTC 落库（否则 gorm 自动填充会用服务器本地时区）。
+	if err := s.CreateOrder(context.Background(), OrderRow{
+		ID: "ord_zero", TenantID: 7, QuoteID: "qt_zero", AmountFen: 100, Currency: "CNY",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var zero OrderRow
+	if err := db.Where("id = ?", "ord_zero").First(&zero).Error; err != nil {
+		t.Fatal(err)
+	}
+	if zero.CreatedAt.Location() != time.UTC || zero.CreatedAt.IsZero() {
+		t.Fatalf("a zero CreatedAt must be auto-filled in UTC, got %v", zero.CreatedAt)
+	}
+}
+
+// TestIsQuoteUniqueConflictClassifier（A-20 / F89）：quote_id 唯一索引冲突的
+// 双驱动消息形状（SQLite 列面 / PostgreSQL 索引名）必须翻成
+// ErrQuoteAlreadyUsed——并发双结账的 insert 竞态败者靠该映射走幂等重放分支，
+// 而不是收到未映射的裸驱动错误。pending 唯一性形状（tenant_id 面）不得误匹配。
+func TestIsQuoteUniqueConflictClassifier(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"sqlite column face", errors.New("UNIQUE constraint failed: commercial_orders.quote_id"), true},
+		{"postgres index name", errors.New(`duplicate key value violates unique constraint "idx_commercial_orders.quote_id"`), true},
+		{"pending-uniqueness index (pg)", errors.New(`duplicate key value violates unique constraint "uq_purchase_pending_per_tenant"`), false},
+		{"pending-uniqueness (sqlite tenant face)", errors.New("UNIQUE constraint failed: commercial_orders.tenant_id"), false},
+		{"unrelated", errors.New("no such table: commercial_orders"), false},
+		{"nil", nil, false},
+	}
+	for _, tc := range cases {
+		if got := isQuoteUniqueConflict(tc.err); got != tc.want {
+			t.Fatalf("%s: isQuoteUniqueConflict = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}

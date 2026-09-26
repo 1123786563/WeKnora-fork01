@@ -3,6 +3,7 @@ package commercial
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"regexp"
 	"strings"
 	"testing"
@@ -463,5 +464,108 @@ func TestPaidAwaitingActivationSynthesized(t *testing.T) {
 	}
 	if view.State != domain.PurchaseStateActive {
 		t.Fatalf("active authority must surface active, got %q", view.State)
+	}
+}
+
+// TestPurchaseFulfillBudgetTransientSnapshotErrorKeepsPending（A-31 / F114）：
+// 预算耗尽分支的快照探测失败必须分流——瞬时（unreachable/unconfigured）错误
+// 保持 pending（return nil），与步骤②/⑤ 的处理一致；一笔恰好落在首个超预算
+// pass 上的 429/网络抖动不得铸成终态 attention 记录（运营据其退款后权威再激
+// 活会打开退款+发放双得窗口）。
+func TestPurchaseFulfillBudgetTransientSnapshotErrorKeepsPending(t *testing.T) {
+	purchaser, _, fake, db, store := setupPurchaseFulfillment(t)
+	const tenant = uint64(81)
+	seedPaidPurchase(t, store, db, tenant, "ord-81", "weknora-pro", "pub-pro-b31", 9900)
+	// 权威面存在（awaiting）但注入瞬时读失败。
+	if _, err := fake.SubmitCommand(context.Background(), domain.Command{
+		Kind:  domain.CommandKindCreatePurchaseSubscription,
+		Key:   domain.CreatePurchaseSubscriptionCommandKey(domain.ExternalPurchaseSubscriptionID(tenant), "pub-pro-b31"),
+		Actor: "test", Reason: "purchase",
+		Payload: domain.CreatePurchaseSubscriptionPayload{
+			TenantID: tenant, ExternalCustomerID: domain.ExternalCustomerID(tenant),
+			ExternalPurchaseSubscriptionID: domain.ExternalPurchaseSubscriptionID(tenant),
+			PlanCode: "pub-pro-b31", AmountFen: 9900, Currency: domain.CurrencyCNY,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	fake.FailPurchaseSnapshotsWith(fmt.Errorf("%w: lab blip", domain.ErrPlatformUnreachable))
+	events := fulfillEvents(t, db)
+	over := events[0]
+	over.AttemptCount = 40 // past the D7 budget
+	if err := purchaser.Fulfill(context.Background(), over); err != nil {
+		t.Fatalf("a transient snapshot blip on the over-budget probe must keep the event pending (nil), got %v", err)
+	}
+	if recs := fulfillmentRecords(t, db, "ord-81"); len(recs) != 0 {
+		t.Fatalf("a transient probe failure must NOT mint a terminal attention record, got %+v", recs)
+	}
+	if state := orderState(t, db, "ord-81"); state != domain.OrderStatePaid {
+		t.Fatalf("the order stays paid (recoverable), got %q", state)
+	}
+}
+
+// TestPurchaseFulfillDefinitiveSnapshotErrorLandsAttentionWithoutAborting（A-32
+// / F115）：预算耗尽后、settle 后观察窗与 D6' 复核的确定性（invalid_response）
+// 快照失败落 attention 且返回 nil——绝不作为 error 中断共享排水 pass（Recover
+// 对批内第一个 error 直接终止整轮，后续所有事件会饿死）。
+func TestPurchaseFulfillDefinitiveSnapshotErrorLandsAttentionWithoutAborting(t *testing.T) {
+	purchaser, _, fake, db, store := setupPurchaseFulfillment(t)
+	const tenant = uint64(82)
+	seedPaidPurchase(t, store, db, tenant, "ord-82", "weknora-pro", "pub-pro-b32", 9900)
+	// 权威面存在（awaiting）——settle（fake 内部不走 ReadSnapshot）会成功，
+	// 随后的 observeActivation 读快照拿到确定性失败。
+	if _, err := fake.SubmitCommand(context.Background(), domain.Command{
+		Kind:  domain.CommandKindCreatePurchaseSubscription,
+		Key:   domain.CreatePurchaseSubscriptionCommandKey(domain.ExternalPurchaseSubscriptionID(tenant), "pub-pro-b32"),
+		Actor: "test", Reason: "purchase",
+		Payload: domain.CreatePurchaseSubscriptionPayload{
+			TenantID: tenant, ExternalCustomerID: domain.ExternalCustomerID(tenant),
+			ExternalPurchaseSubscriptionID: domain.ExternalPurchaseSubscriptionID(tenant),
+			PlanCode: "pub-pro-b32", AmountFen: 9900, Currency: domain.CurrencyCNY,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	fake.FailPurchaseSnapshotsWith(fmt.Errorf("%w: multiple finalized purchase invoices", domain.ErrPlatformInvalidResponse))
+	events := fulfillEvents(t, db)
+	ev := events[0]
+	if err := purchaser.Fulfill(context.Background(), ev); err != nil {
+		t.Fatalf("a DEFINITIVE snapshot failure must land attention and return nil (never abort the shared drain), got %v", err)
+	}
+	recs := fulfillmentRecords(t, db, "ord-82")
+	if len(recs) != 1 || recs[0].State != domain.FulfillmentStateAttention {
+		t.Fatalf("a definitive snapshot failure must land the attention record, got %+v", recs)
+	}
+	if n := len(fake.Wallets()); n != 0 {
+		t.Fatalf("a definitive failure never grants, wallets=%d", n)
+	}
+}
+
+// TestPurchaseFulfillObservationTransientErrorKeepsPending（A-32）：观察窗
+// （settle 之后的激活观察）的瞬时快照失败保持 pending——与确定性失败的
+// attention 分流对照。
+func TestPurchaseFulfillObservationTransientErrorKeepsPending(t *testing.T) {
+	purchaser, _, fake, db, store := setupPurchaseFulfillment(t)
+	const tenant = uint64(83)
+	seedPaidPurchase(t, store, db, tenant, "ord-83", "weknora-pro", "pub-pro-b33", 9900)
+	if _, err := fake.SubmitCommand(context.Background(), domain.Command{
+		Kind:  domain.CommandKindCreatePurchaseSubscription,
+		Key:   domain.CreatePurchaseSubscriptionCommandKey(domain.ExternalPurchaseSubscriptionID(tenant), "pub-pro-b33"),
+		Actor: "test", Reason: "purchase",
+		Payload: domain.CreatePurchaseSubscriptionPayload{
+			TenantID: tenant, ExternalCustomerID: domain.ExternalCustomerID(tenant),
+			ExternalPurchaseSubscriptionID: domain.ExternalPurchaseSubscriptionID(tenant),
+			PlanCode: "pub-pro-b33", AmountFen: 9900, Currency: domain.CurrencyCNY,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	fake.FailPurchaseSnapshotsWith(fmt.Errorf("%w: authority rebooting", domain.ErrPlatformUnreachable))
+	events := fulfillEvents(t, db)
+	if err := purchaser.Fulfill(context.Background(), events[0]); err != nil {
+		t.Fatalf("a transient observation failure must keep the event pending (nil return), got %v", err)
+	}
+	if recs := fulfillmentRecords(t, db, "ord-83"); len(recs) != 0 {
+		t.Fatalf("a transient observation failure must not land any terminal record, got %+v", recs)
 	}
 }

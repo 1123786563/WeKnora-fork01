@@ -76,6 +76,12 @@ type LagoAdapter struct {
 	// loopback, so the provider side cannot be stubbed over HTTP locally).
 	deriveProviderCustomer func(context.Context, string) (string, providerCustomerSource, error)
 	syncPaymentMethods     func(context.Context, string) error
+	// reAttachDefaultPM re-drives the configured default payment method
+	// onto a BOUND provider customer (A-34: the 422 no_default_payment_
+	// method recovery leg — a binding created while the token was empty
+	// never got the attach; the bound short-circuit never re-runs it).
+	// Same injection pattern as the two above.
+	reAttachDefaultPM func(context.Context, string, string) error
 }
 
 // NewLagoAdapter builds the adapter. Construction succeeds unconfigured on
@@ -89,6 +95,7 @@ func NewLagoAdapter(cfg Config) *LagoAdapter {
 	a := &LagoAdapter{cfg: cfg, client: client}
 	a.deriveProviderCustomer = a.deriveProviderCustomerID
 	a.syncPaymentMethods = a.waitForPaymentMethodSync
+	a.reAttachDefaultPM = a.providerAttachDefaultPaymentMethod
 	return a
 }
 

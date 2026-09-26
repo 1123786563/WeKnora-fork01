@@ -41,9 +41,9 @@ is a ``fail`` with the last observed state attached.
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import subprocess
-import sys
 import time
 import urllib.error
 import urllib.request
@@ -51,12 +51,22 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+# (A-06 / F17) The payment-activation lab's clients, loaded READ-ONLY under
+# an explicit alias -- the same discipline this directory's fixtures.py
+# already uses (pa_fixtures). No sys.path.insert(0, _PA_DIR) happens here:
+# mutating the import search path INVERTED the module binding whenever this
+# file was imported by anything other than run_lab.py (REPL/pytest/a future
+# tool), making the bare name ``fixtures`` resolve to payment-activation's
+# same-named module. With the alias, the bare ``import fixtures`` below
+# always resolves through the normal search order to THIS directory's
+# module, and clients stays the explicitly-aliased pa implementation.
 _PA_DIR = Path(__file__).resolve().parent.parent / "payment-activation"
-if str(_PA_DIR) not in sys.path:
-    sys.path.insert(0, str(_PA_DIR))
+_clients_spec = importlib.util.spec_from_file_location(
+    "pa_clients", _PA_DIR / "clients.py")
+clients = importlib.util.module_from_spec(_clients_spec)
+_clients_spec.loader.exec_module(clients)
 
-import clients  # noqa: E402  (payment-activation clients, read-only)
-import fixtures  # noqa: E402  (THIS directory's payloads shadow pa's fixtures)
+import fixtures  # noqa: E402  (THIS directory's payloads, bound by name)
 
 _REPO_DIR = Path(__file__).resolve().parents[3]
 _COMPOSE_FILE = _REPO_DIR / "deploy" / "lago" / "compose.yaml"
@@ -237,8 +247,17 @@ class RunContext:
             command += ["--env-file", str(self.lab_env)]
         command += ["-p", self.compose_project,
                     "exec", "-T", "db", "psql", "-U", "lago", "-tAc", sql]
-        result = subprocess.run(command, capture_output=True, text=True,
-                                timeout=30)
+        # (A-07 / F52) A docker/psql subprocess failure is an ENVIRONMENT
+        # gap (docker down, container name drift, subprocess timeout --
+        # TimeoutExpired is a SubprocessError, NOT an OSError), not a
+        # contract verdict: answer None and let the caller's own
+        # before/after logic decide instead of escaping into the harness's
+        # unexpected_error bucket.
+        try:
+            result = subprocess.run(command, capture_output=True, text=True,
+                                    timeout=30)
+        except (OSError, subprocess.SubprocessError):
+            return None
         output = (result.stdout or "").strip().splitlines()
         return output[0].strip() if output else None
 
@@ -419,7 +438,7 @@ def phase_gated_3ds(ctx):
             fixtures.add_stripe_provider_variables(
                 f"{ctx.prefix}-stripe", STRIPE_PROVIDER_NAME, ctx.stripe_key),
         )
-    except OSError as error:
+    except (OSError, clients.LabError) as error:
         return _blocked(ctx, "gated_3ds",
                         f"Lago API unreachable ({error.__class__.__name__})", expected)
     provider = ((gbody or {}).get("data") or {}).get("addStripePaymentProvider") \
@@ -441,12 +460,19 @@ def phase_gated_3ds(ctx):
         ctx.state["plan_code"] = ctx.plan_code
 
         # 3. Stripe customer A with the 3DS challenge card as default pm.
+        # (A-11 / F51) The provider customer id is registered in ctx.state
+        # THE MOMENT it exists -- every earlier failure path (attach raises
+        # LabError, the Lago create below is rejected, a transport error in
+        # between) still leaves phase_cleanup able to delete the cus_…
+        # instead of leaking it (the cleanup contract: every lab object
+        # created this run is deleted).
         ext = ctx.customer_external_id()
         stripe_customer = ctx.stripe.create_customer(
             description=f"{ext} (3DS challenge card)",
             metadata={"run": ctx.run_id, "lab": "t11"},
         )
         stripe_customer_id = stripe_customer["id"]
+        ctx.state["stripe_customer_id"] = stripe_customer_id
         attached_pm = ctx.stripe.attach_payment_method(GATED_PM, stripe_customer_id)
         ctx.stripe.set_default_payment_method(stripe_customer_id, attached_pm["id"])
 
@@ -485,7 +511,7 @@ def phase_gated_3ds(ctx):
                            {"error": "gated create rejected or not incomplete",
                             "create_status": ss, "subscription_status": sub_status},
                            FAIL, evidence={"create_response": sb})
-    except OSError as error:
+    except (OSError, clients.LabError) as error:
         return _blocked(ctx, "gated_3ds",
                         f"transport error ({error.__class__.__name__})", expected)
 
@@ -560,7 +586,7 @@ def phase_settle_probe(ctx):
             "invoice_lago_id": invoice_id,
             "locator": "stripe_intent_metadata",
         }
-    except OSError as error:
+    except (OSError, clients.LabError) as error:
         return _blocked(ctx, "settle_probe",
                         f"transport error ({error.__class__.__name__})", expected)
     return _report(ctx, "settle_probe", expected, observed, PASS)
@@ -735,7 +761,7 @@ def phase_settle_trigger(ctx):
             return _report(ctx, "settle_trigger", expected, observed, FAIL)
         ctx.state["activated"] = True
         ctx.state["invoice"] = snapshot_two.get("invoice")
-    except OSError as error:
+    except (OSError, clients.LabError) as error:
         return _blocked(ctx, "settle_trigger",
                         f"transport error ({error.__class__.__name__})", expected)
     return _report(ctx, "settle_trigger", expected, observed, PASS)
@@ -771,7 +797,13 @@ def phase_cleanup(ctx):
         if not deleted:
             record("subscription", sub_ext, "failed", last_status)
 
+    # (A-11 / F51) The stripe customer id is read with a FALLBACK: an early
+    # failure between the provider create and the Lago create left only
+    # state["stripe_customer_id"] (no "customer" mapping) -- the cus_… must
+    # still be deleted, never leaked.
     customer = state.get("customer")
+    stripe_customer_id = state.get("stripe_customer_id") or \
+        (customer or {}).get("stripe_customer_id")
     if customer:
         try:
             status, _body = ctx.lago.delete(
@@ -780,10 +812,10 @@ def phase_cleanup(ctx):
                    "deleted" if _ok(status) else "failed", status)
         except OSError:
             record("customer", customer["external_id"], "failed", None)
-        if ctx.stripe:
-            deleted = ctx.stripe.delete_customer(customer["stripe_customer_id"])
-            record("stripe_customer", customer["stripe_customer_id"],
-                   "deleted" if deleted else "failed", 200 if deleted else None)
+    if stripe_customer_id and ctx.stripe:
+        deleted = ctx.stripe.delete_customer(stripe_customer_id)
+        record("stripe_customer", stripe_customer_id,
+               "deleted" if deleted else "failed", 200 if deleted else None)
 
     if state.get("plan_code"):
         try:

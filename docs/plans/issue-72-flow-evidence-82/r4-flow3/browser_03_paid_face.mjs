@@ -16,8 +16,9 @@ const results = [];
 const note = (step, ok, detail) => { results.push({ step, ok, detail }); console.log(`${ok ? 'PASS' : 'FAIL'} | ${step} | ${detail}`); };
 
 const browser = await chromium.launch();
+let page;
 try {
-  const page = await (await browser.newContext()).newPage();
+  page = await (await browser.newContext()).newPage();
   page.setDefaultTimeout(45000);
   await page.goto(`${WEB}/login`);
   await page.fill('#auth-email', EMAIL);
@@ -38,6 +39,14 @@ try {
   note('billing-paid-awaiting-activation', billing.includes('已付款待激活') && !billing.includes('已生效'),
     `billing row: ${billing.split('\n').find((l) => l.includes('已付款待激活')) ?? '(absent)'}`);
   await page.screenshot({ path: `${EV}05-billing-paid-awaiting-activation.png`, fullPage: true });
+} catch (err) {
+  // (A-03) Infrastructure failure → explicit FAIL note; the RESULT summary
+  // still prints so an assertion failure is distinguishable from a script
+  // infrastructure failure.
+  note('script-error', false, String(err));
+  if (page) {
+    try { await page.screenshot({ path: `${EV}05-billing-script-error.png`, fullPage: true }); } catch { /* best effort */ }
+  }
 } finally { await browser.close(); }
 console.log('RESULT ' + JSON.stringify(results));
 process.exit(results.every((r) => r.ok) ? 0 : 1);
