@@ -12,6 +12,7 @@ package container
 
 import (
 	"context"
+	stderrors "errors"
 	"fmt"
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
@@ -20,7 +21,6 @@ import (
 	"github.com/Tencent/WeKnora/internal/modules/craft"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 // craftMemberVersionReader adapts the version store's owner-only ACL
@@ -38,17 +38,24 @@ type craftMemberVersionReader struct {
 }
 
 // ownerScopeOf resolves the task (tenant + session) and owning user one
-// version belongs to, under a read lock so the read is consistent.
+// version belongs to. Version rows are immutable once published, so a plain
+// read is the consistent read; only a missing row hides the version (404)
+// while any other database failure propagates as itself — a transient
+// outage must not masquerade as "version does not exist" (the
+// CraftAccessService.session precedent: NotFound maps, the rest travels).
 func (r craftMemberVersionReader) ownerScopeOf(ctx context.Context, tenantID uint64, versionID string) (craft.Scope, error) {
 	var version struct {
 		TenantID    uint64
 		WorkspaceID string
 	}
-	err := r.db.WithContext(ctx).Clauses(clause.Locking{Strength: "UPDATE"}).
+	err := r.db.WithContext(ctx).
 		Table("craft_versions").Select("tenant_id, workspace_id").
 		Where("id = ?", versionID).Take(&version).Error
-	if err != nil {
+	if stderrors.Is(err, gorm.ErrRecordNotFound) {
 		return craft.Scope{}, craft.ErrNotFound
+	}
+	if err != nil {
+		return craft.Scope{}, err
 	}
 	if version.TenantID != tenantID {
 		return craft.Scope{}, craft.ErrNotFound
@@ -60,7 +67,10 @@ func (r craftMemberVersionReader) ownerScopeOf(ctx context.Context, tenantID uin
 	}
 	if err := r.db.WithContext(ctx).Table("craft_workspaces").Select("tenant_id, session_id, owner_id").
 		Where("id = ?", version.WorkspaceID).Take(&workspace).Error; err != nil {
-		return craft.Scope{}, craft.ErrNotFound
+		if stderrors.Is(err, gorm.ErrRecordNotFound) {
+			return craft.Scope{}, craft.ErrNotFound
+		}
+		return craft.Scope{}, err
 	}
 	return craft.Scope{TenantID: workspace.TenantID, UserID: workspace.OwnerID, SessionID: workspace.SessionID}, nil
 }
@@ -117,14 +127,14 @@ func craftExportTitles(knowledge interfaces.KnowledgeService) service.CraftExpor
 
 // newCraftExportService assembles the T12 bundle export. Versions and
 // evidence flow through the member-level adapter over the SAME concrete
-// store every other craft surface reads; files are the shared file
-// service; task access is the persistent CraftAccessService so every
-// describe/download re-checks current Task membership. Failures refuse
-// application setup closed.
+// store every other craft surface reads; task access is the persistent
+// CraftAccessService so every describe/download re-checks current Task
+// membership. Member bytes never flow through the service — the download
+// surface streams them through its own file reader (registered alongside).
+// Failures refuse application setup closed.
 func newCraftExportService(
 	db *gorm.DB,
 	versions craft.VersionStore,
-	files interfaces.FileService,
 	knowledge interfaces.KnowledgeService,
 	access *service.CraftAccessService,
 ) (*service.CraftExportService, error) {
@@ -134,7 +144,7 @@ func newCraftExportService(
 	}
 	member := craftMemberVersionReader{db: db, store: concrete}
 	return service.NewCraftExportService(service.CraftExportConfig{
-		DB: db, Versions: member, Evidence: member, Files: files,
+		DB: db, Versions: member, Evidence: member,
 		Titles: craftExportTitles(knowledge), TaskAccess: access,
 	})
 }

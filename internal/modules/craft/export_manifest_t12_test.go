@@ -17,6 +17,7 @@ package craft
 //   - bundle member paths are re-validated defensively: traversal, absolute
 //     and credential-shaped members are refused before any byte is packaged.
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -252,6 +253,61 @@ func TestCraftT12BundleMemberGuards(t *testing.T) {
 	mixed = append(mixed, File{Path: "../escape.txt", SHA256: t12SHA("x")})
 	if err := ValidateExportBundleMembers(mixed); err == nil {
 		t.Fatal("a bundle with one hostile member must be refused wholesale")
+	}
+}
+
+// TestCraftT12ReservedBundleDocumentsAreRefused pins the OCR fix: the three
+// flat bundle documents own their names — a member colliding with one would
+// duplicate a zip entry whose unpack order is undefined, so validation
+// refuses the collision outright.
+func TestCraftT12ReservedBundleDocumentsAreRefused(t *testing.T) {
+	for _, reserved := range []string{BundleManifestPath, BundleSourcesPath, BundleBuildPath} {
+		members := []File{
+			{Path: "index.html", SHA256: t12SHA("index"), Bytes: 1},
+			{Path: reserved, SHA256: t12SHA(reserved), Bytes: 1},
+		}
+		if err := ValidateExportBundleMembers(members); err == nil {
+			t.Fatalf("member colliding with the reserved bundle document %q must be refused", reserved)
+		}
+	}
+}
+
+// TestCraftT12EmptyEvidenceKeepsOriginsNonNil pins the OCR fix: EMPTY
+// pinned evidence is a first-class validated state, and every member's
+// Origins must stay a non-nil (empty) slice — the T00 frozen consumer
+// contract rejects nil Origins, and the JSON must read [] not null.
+func TestCraftT12EmptyEvidenceKeepsOriginsNonNil(t *testing.T) {
+	pinned := time.Date(2026, 9, 25, 1, 2, 3, 0, time.UTC)
+	evidence := VersionEvidence{
+		VersionID: "ver_" + strings.Repeat("1", 64), RunID: "run-empty",
+		RequestDigest: t12SHA("req"), PackageDigest: t12SHA("pkg"),
+		Empty: true, PinnedAt: pinned,
+	}
+	version := Version{
+		ID: evidence.VersionID, RunID: "run-empty", Kind: KindWeb,
+		Files: []File{{Path: "index.html", SHA256: t12SHA("index"), Bytes: 1}},
+	}
+	manifest, err := BuildExportManifest(version, evidence, 1)
+	if err != nil {
+		t.Fatalf("empty evidence must build a manifest: %v", err)
+	}
+	for _, file := range manifest.Files {
+		if file.Origins == nil {
+			t.Fatalf("member %q carries a nil origins vector: the frozen consumer contract rejects it", file.Path)
+		}
+		if len(file.Origins) != 0 {
+			t.Fatalf("member %q must carry zero origins for empty evidence", file.Path)
+		}
+	}
+	if err := manifest.Validate(); err != nil {
+		t.Fatalf("an empty-evidence manifest must satisfy the frozen contract: %v", err)
+	}
+	raw, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(raw, []byte(`"origins":null`)) {
+		t.Fatal("the wire manifest must serialize empty origins as [], never null")
 	}
 }
 

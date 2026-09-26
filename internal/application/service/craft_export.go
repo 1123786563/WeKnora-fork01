@@ -56,12 +56,13 @@ type CraftExportFileReader interface {
 type CraftExportTitleSource func(ctx context.Context, tenantID uint64, knowledgeIDs []string) (map[string]string, error)
 
 // CraftExportConfig assembles the export service. Every port except Titles
-// is required and the service fails closed without it.
+// is required and the service fails closed without it. Member BYTES never
+// flow through the service: the HTTP download surface streams them through
+// its own CraftExportFileReader keyed by the version's durable refs.
 type CraftExportConfig struct {
 	DB         *gorm.DB
 	Versions   CraftExportVersionReader
 	Evidence   CraftExportEvidenceReader
-	Files      CraftExportFileReader
 	Titles     CraftExportTitleSource
 	TaskAccess craft.TaskAccessChecker
 	Now        func() time.Time
@@ -72,7 +73,6 @@ type CraftExportService struct {
 	db         *gorm.DB
 	versions   CraftExportVersionReader
 	evidence   CraftExportEvidenceReader
-	files      CraftExportFileReader
 	titles     CraftExportTitleSource
 	taskAccess craft.TaskAccessChecker
 	now        func() time.Time
@@ -83,15 +83,15 @@ func NewCraftExportService(cfg CraftExportConfig) (*CraftExportService, error) {
 	if cfg.DB == nil {
 		return nil, fmt.Errorf("craft: export service requires the database")
 	}
-	if cfg.Versions == nil || cfg.Evidence == nil || cfg.Files == nil || cfg.TaskAccess == nil {
-		return nil, fmt.Errorf("craft: export service requires versions, evidence, files and task access")
+	if cfg.Versions == nil || cfg.Evidence == nil || cfg.TaskAccess == nil {
+		return nil, fmt.Errorf("craft: export service requires versions, evidence and task access")
 	}
 	now := cfg.Now
 	if now == nil {
 		now = time.Now
 	}
 	return &CraftExportService{
-		db: cfg.DB, versions: cfg.Versions, evidence: cfg.Evidence, files: cfg.Files,
+		db: cfg.DB, versions: cfg.Versions, evidence: cfg.Evidence,
 		titles: cfg.Titles, taskAccess: cfg.TaskAccess, now: now,
 	}, nil
 }
@@ -99,21 +99,31 @@ func NewCraftExportService(cfg CraftExportConfig) (*CraftExportService, error) {
 // CraftExportBundle is the complete bundle projection handed to the HTTP
 // surface: the immutable version (members + build checks), the export
 // manifest (digest included) and the citation/source manifest. The member
-// BYTES stream separately through CraftExportFileReader keyed by the
-// version's durable refs.
+// BYTES stream separately through the handler's CraftExportFileReader
+// keyed by the version's durable refs.
 type CraftExportBundle struct {
 	Version          craft.Version
 	Manifest         craft.ExportManifest
 	CitationManifest craft.BundleCitationManifest
 }
 
+// CraftExportCheck is the wire projection of one verification inside
+// build.json: snake_case keys, the exact shape the describe endpoint
+// projects for the same checks (craft.Check itself carries no json tags).
+type CraftExportCheck struct {
+	Name   string `json:"name"`
+	Status string `json:"status"`
+	Detail string `json:"detail"`
+}
+
 // BundleBuildDocument is the build.json payload riding every bundle: the
-// version's kind and its independently recorded checks, verbatim.
+// version's kind and its independently recorded checks, projected to the
+// shared wire key shape.
 type BundleBuildDocument struct {
-	VersionID string        `json:"version_id"`
-	RunID     string        `json:"run_id"`
-	Kind      string        `json:"kind"`
-	Checks    []craft.Check `json:"checks"`
+	VersionID string             `json:"version_id"`
+	RunID     string             `json:"run_id"`
+	Kind      string             `json:"kind"`
+	Checks    []CraftExportCheck `json:"checks"`
 }
 
 // The export denial audit actions fold the refusal REASON into the typed
@@ -249,9 +259,14 @@ func (s *CraftExportService) resolveTitles(ctx context.Context, tenantID uint64,
 	return titles
 }
 
-// BundleBuildDocument projects the bundle's build.json payload.
+// BundleBuildDocument projects the bundle's build.json payload (checks in
+// the shared snake_case wire shape).
 func (b CraftExportBundle) BundleBuildDocument() BundleBuildDocument {
-	return BundleBuildDocument{VersionID: b.Version.ID, RunID: b.Version.RunID, Kind: b.Version.Kind, Checks: b.Version.Checks}
+	checks := make([]CraftExportCheck, 0, len(b.Version.Checks))
+	for _, check := range b.Version.Checks {
+		checks = append(checks, CraftExportCheck{Name: check.Name, Status: check.Status, Detail: check.Detail})
+	}
+	return BundleBuildDocument{VersionID: b.Version.ID, RunID: b.Version.RunID, Kind: b.Version.Kind, Checks: checks}
 }
 
 // auditExport records a durable export event into the shared audit trail
@@ -274,8 +289,9 @@ func (s *CraftExportService) auditExport(ctx context.Context, scope craft.Scope,
 		raw = []byte(`{}`)
 	}
 	versionID = strings.TrimSpace(versionID)
+	now := s.now()
 	if outcome == "denied" {
-		since := time.Now().Add(-craftDenyDedupWindow)
+		since := now.Add(-craftDenyDedupWindow)
 		var recent int64
 		if err := s.db.WithContext(ctx).Model(&craftAccessAudit{}).
 			Where("tenant_id = ? AND actor_user_id = ? AND action = ? AND scope_id = ? AND target_id = ? AND outcome = ? AND created_at > ?",
@@ -288,7 +304,7 @@ func (s *CraftExportService) auditExport(ctx context.Context, scope craft.Scope,
 		TenantID: scope.TenantID, ActorUserID: actor, Action: action,
 		ScopeType: "session", ScopeID: scope.SessionID, TargetType: "artifact_version",
 		TargetID: versionID, Outcome: outcome,
-		Details: types.JSON(raw), CreatedAt: time.Now(),
+		Details: types.JSON(raw), CreatedAt: now,
 	}).Error; err != nil {
 		logger.ErrorWithFields(ctx, err, map[string]interface{}{"audit_action": action})
 	}

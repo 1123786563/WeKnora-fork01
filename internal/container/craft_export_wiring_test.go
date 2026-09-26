@@ -110,6 +110,16 @@ func TestCraftExportMemberAdapterServesSameTaskMembers(t *testing.T) {
 
 	_, err = member.Get(ctx, viewer, "ver_"+t12Hex("missing"))
 	require.ErrorIs(t, err, craft.ErrNotFound, "a missing version answers 404")
+
+	// A transient database failure propagates as itself — it must not
+	// masquerade as a missing version (the CraftAccessService.session
+	// precedent: NotFound maps, the rest travels for a 503).
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	require.NoError(t, sqlDB.Close())
+	_, err = member.Get(ctx, viewer, versionID)
+	require.Error(t, err, "a closed database is an error")
+	require.NotErrorIs(t, err, craft.ErrNotFound, "a transient failure is never a 404")
 }
 
 // TestCraftExportFeatureAssemblyRegistersRoutes pins the T12 central
@@ -124,7 +134,7 @@ func TestCraftExportFeatureAssemblyRegistersRoutes(t *testing.T) {
 
 	store, ok := repository.NewCraftVersionStore(db).(*repository.CraftVersionStore)
 	require.True(t, ok)
-	exportSvc, err := newCraftExportService(db, store, exportStubFiles{}, exportStubKnowledge{}, &service.CraftAccessService{})
+	exportSvc, err := newCraftExportService(db, store, exportStubKnowledge{}, &service.CraftAccessService{})
 	require.NoError(t, err)
 	require.NotNil(t, exportSvc)
 
@@ -148,6 +158,6 @@ func TestCraftExportFeatureAssemblyRegistersRoutes(t *testing.T) {
 
 	// The assembly refuses a non-concrete version store (a stub must never
 	// silently serve bundles).
-	_, err = newCraftExportService(db, shareStubVersions{}, exportStubFiles{}, exportStubKnowledge{}, &service.CraftAccessService{})
+	_, err = newCraftExportService(db, shareStubVersions{}, exportStubKnowledge{}, &service.CraftAccessService{})
 	require.Error(t, err, "the export service requires the concrete craft version store")
 }

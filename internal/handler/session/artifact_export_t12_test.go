@@ -103,8 +103,8 @@ func TestCraftT12ExportDownloadHTTPJourney(t *testing.T) {
 	version := craft.Version{
 		ID: evidence.VersionID, WorkspaceID: "ws-t12", RunID: "run-t12", Kind: craft.KindWeb,
 		Files: []craft.File{
-			{Path: "index.html", Ref: "obj-index", SHA256: sha256Hex("index"), MIME: "text/html", Bytes: 8},
-			{Path: "citations.json", Ref: "obj-cit", SHA256: sha256Hex("citations"), MIME: "application/json", Bytes: 8},
+			{Path: "index.html", Ref: "obj-index", SHA256: sha256Hex("<h1>t12</h1>"), MIME: "text/html", Bytes: 12},
+			{Path: "citations.json", Ref: "obj-cit", SHA256: sha256Hex(`{"schema":1}`), MIME: "application/json", Bytes: 13},
 		},
 		Checks: []craft.Check{{Name: craft.CheckBuild, Status: craft.CheckPassed, Detail: "build exited 0"}},
 	}
@@ -117,7 +117,7 @@ func TestCraftT12ExportDownloadHTTPJourney(t *testing.T) {
 		"owner": craft.TaskRoleOwner, "viewer": craft.TaskRoleViewer,
 	}}
 	exportSvc, err := service.NewCraftExportService(service.CraftExportConfig{
-		DB: db, Versions: versions, Evidence: versions, Files: files,
+		DB: db, Versions: versions, Evidence: versions,
 		Titles: func(_ context.Context, _ uint64, ids []string) (map[string]string, error) {
 			out := map[string]string{}
 			for _, id := range ids {

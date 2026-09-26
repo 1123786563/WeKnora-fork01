@@ -23,10 +23,10 @@ import (
 )
 
 // Fixed documents every bundle carries beside the version's own members.
-// The names are part of the bundle contract: they never collide with a
-// member without the collection gate's path validation noticing first
-// (members are canonical output-relative paths; these three are flat
-// reserved names the packager owns).
+// The names are part of the bundle contract and are RESERVED:
+// ValidateExportBundleMembers refuses any member path that collides with
+// one (these three are flat reserved names the packager owns), so a bundle
+// never carries duplicate entries whose unpack order would be undefined.
 const (
 	// BundleManifestPath is the machine-readable export manifest inside the
 	// bundle: member digests plus knowledge origins and its own canonical
@@ -167,7 +167,11 @@ func BuildExportManifest(version Version, evidence VersionEvidence, tenantID uin
 			// version manifest), and restricted DERIVED exports are T13's
 			// consent-governed surface.
 			Restricted: false,
-			Origins:    append([]ExportOriginRef(nil), origins...),
+			// Non-nil even when the pinned evidence is empty (a
+			// first-class validated state): the T00 frozen consumer
+			// contract rejects a nil Origins slice, so every member carries
+			// an empty — never nil — origins vector.
+			Origins: append([]ExportOriginRef{}, origins...),
 		})
 	}
 	manifest := ExportManifest{VersionID: version.ID, Files: files}
@@ -254,10 +258,22 @@ func ExportManifestDigest(m ExportManifest) (string, error) {
 // publish time; this defensive pass refuses a corrupted store row (a
 // traversal, an absolute path, a credential-shaped member) BEFORE any byte
 // is packaged, and a single hostile member poisons the whole bundle.
+// The three flat bundle documents are RESERVED names: a member colliding
+// with one would duplicate a zip entry (unpackers disagree about the
+// winner), so the manifest-to-package correspondence stays deterministic
+// only if the collision is refused outright.
 func ValidateExportBundleMembers(files []File) error {
+	reserved := map[string]bool{
+		BundleManifestPath: true,
+		BundleSourcesPath:  true,
+		BundleBuildPath:    true,
+	}
 	for _, member := range files {
 		if err := ValidateArtifactPath(member.Path); err != nil {
 			return err
+		}
+		if reserved[member.Path] {
+			return fmt.Errorf("%w: bundle member %q collides with a fixed bundle document", ErrInvalidInput, member.Path)
 		}
 		if !ValidSHA256(member.SHA256) {
 			return fmt.Errorf("%w: bundle member %q has a malformed digest", ErrInvalidInput, member.Path)

@@ -3,6 +3,8 @@ package session
 import (
 	"archive/zip"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	stderrors "errors"
 	"io"
@@ -766,49 +768,72 @@ func (h *CraftExportHandler) DownloadCraftExportBundle(c *gin.Context) {
 	c.Header("Cache-Control", "private, no-store")
 	c.Status(http.StatusOK)
 
+	// Mid-stream failure contract: the manifest inside this zip declares
+	// the exact member list and their content digests, so a silently
+	// truncated-but-valid zip would deliver a "successful" download whose
+	// bytes disagree with the manifest. Any failure after the 200 head is
+	// sent therefore aborts the connection (the craftegress precedent):
+	// the client sees a broken transfer instead of a degraded bundle.
+	abortDownload := func(format string, args ...any) {
+		logger.Warnf(c.Request.Context(), format, args...)
+		panic(http.ErrAbortHandler)
+	}
+
 	zipWriter := zip.NewWriter(c.Writer)
 	writeDoc := func(path string, payload []byte) {
 		entry, err := zipWriter.CreateHeader(&zip.FileHeader{Name: path, Method: zip.Deflate})
 		if err != nil {
-			logger.Warnf(c.Request.Context(), "craft export bundle document %s create failed: %v", path, err)
+			abortDownload("craft export bundle document %s create failed: %v", path, err)
 			return
 		}
 		if _, err := entry.Write(payload); err != nil {
-			logger.Warnf(c.Request.Context(), "craft export bundle document %s stream failed: %v", path, err)
+			abortDownload("craft export bundle document %s stream failed: %v", path, err)
 		}
 	}
 	manifestJSON, merr := json.Marshal(bundle.Manifest)
-	if merr == nil {
-		writeDoc(craft.BundleManifestPath, manifestJSON)
+	if merr != nil {
+		abortDownload("craft export bundle manifest encode failed: %v", merr)
 	}
+	writeDoc(craft.BundleManifestPath, manifestJSON)
 	sourcesJSON, serr := json.Marshal(bundle.CitationManifest)
-	if serr == nil {
-		writeDoc(craft.BundleSourcesPath, sourcesJSON)
+	if serr != nil {
+		abortDownload("craft export bundle sources encode failed: %v", serr)
 	}
+	writeDoc(craft.BundleSourcesPath, sourcesJSON)
 	buildJSON, berr := json.Marshal(bundle.BundleBuildDocument())
-	if berr == nil {
-		writeDoc(craft.BundleBuildPath, buildJSON)
+	if berr != nil {
+		abortDownload("craft export bundle build document encode failed: %v", berr)
 	}
+	writeDoc(craft.BundleBuildPath, buildJSON)
 	for _, member := range bundle.Version.Files {
 		reader, err := h.files.GetFile(c.Request.Context(), member.Ref)
 		if err != nil {
-			logger.Warnf(c.Request.Context(), "craft export bundle member %s read failed: %v", member.Path, err)
-			break
+			abortDownload("craft export bundle member %s read failed: %v", member.Path, err)
+			continue
 		}
 		entry, createErr := zipWriter.CreateHeader(&zip.FileHeader{Name: member.Path, Method: zip.Deflate})
 		if createErr != nil {
 			reader.Close()
-			logger.Warnf(c.Request.Context(), "craft export bundle member %s create failed: %v", member.Path, createErr)
-			break
+			abortDownload("craft export bundle member %s create failed: %v", member.Path, createErr)
+			continue
 		}
-		_, copyErr := io.Copy(entry, reader)
+		// The manifest's digest claim is verified against the ACTUAL bytes
+		// as they stream: a corrupted object or a swapped ref truncates the
+		// download instead of shipping bytes that disagree with the
+		// manifest.
+		hasher := sha256.New()
+		_, copyErr := io.Copy(io.MultiWriter(entry, hasher), reader)
 		reader.Close()
 		if copyErr != nil {
-			logger.Warnf(c.Request.Context(), "craft export bundle member %s stream failed: %v", member.Path, copyErr)
-			break
+			abortDownload("craft export bundle member %s stream failed: %v", member.Path, copyErr)
+			continue
+		}
+		if streamed := hex.EncodeToString(hasher.Sum(nil)); streamed != member.SHA256 {
+			abortDownload("craft export bundle member %s digest mismatch: manifest %s, streamed %s",
+				member.Path, member.SHA256, streamed)
 		}
 	}
 	if err := zipWriter.Close(); err != nil {
-		logger.Warnf(c.Request.Context(), "craft export bundle finalize failed for version %s: %v", bundle.Version.ID, err)
+		abortDownload("craft export bundle finalize failed for version %s: %v", bundle.Version.ID, err)
 	}
 }

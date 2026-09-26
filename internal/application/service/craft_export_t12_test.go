@@ -108,7 +108,7 @@ func TestCraftT12Journey(t *testing.T) {
 		return out, nil
 	}
 	exportSvc, err := NewCraftExportService(CraftExportConfig{
-		DB: db, Versions: versionStore, Evidence: t12MemberEvidenceStore{inner: versionStore}, Files: filesSvc,
+		DB: db, Versions: versionStore, Evidence: t12MemberEvidenceStore{inner: versionStore},
 		Titles: titles, TaskAccess: checker,
 		Now: func() time.Time { return time.Date(2026, 9, 26, 9, 0, 0, 0, time.UTC) },
 	})
@@ -308,7 +308,6 @@ func (s t12MemberEvidenceStore) VersionEvidence(ctx context.Context, scope craft
 func TestCraftT12ExportJourneyStabilityGuard(t *testing.T) {
 	ctx := context.Background()
 	scope := craft.Scope{TenantID: 1, UserID: "u-owner", SessionID: "s-t12b"}
-	filesSvc := newDirBackedFileService(t)
 	versionStore := newT07EvidenceVersionStore()
 	db, err := gorm.Open(sqlite.Open("file:craft107_t12_stab?mode=memory&cache=shared"), &gorm.Config{})
 	require.NoError(t, err)
@@ -339,7 +338,7 @@ func TestCraftT12ExportJourneyStabilityGuard(t *testing.T) {
 	require.NoError(t, err)
 
 	svc, err := NewCraftExportService(CraftExportConfig{
-		DB: db, Versions: versionStore, Evidence: versionStore, Files: filesSvc,
+		DB: db, Versions: versionStore, Evidence: versionStore,
 		TaskAccess: &t10RoleChecker{roles: map[string]craft.TaskRole{"u-owner": craft.TaskRoleOwner}},
 		Now:        func() time.Time { return time.Date(2026, 9, 26, 9, 0, 0, 0, time.UTC) },
 	})
