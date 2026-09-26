@@ -146,3 +146,97 @@ ok  	github.com/Tencent/WeKnora/internal/modules/codedelivery	0.969s
 - **Task 4 容器接线尽快落地**：接线落地前，部署本 commit 的生产装配点（`container.go:276` 路径）交付功能整体不可用（HTTP 500 `code_delivery_failed`）。方向为 fail-closed（可证未出网的拒绝，无数据/权限风险），但功能不可用窗口真实存在；`Providers==nil` 行为已被回归测试钉死，接线后无需改此测试。
 - HTTP 400 `code_delivery_unsupported_provider` 映射属 Task 4（`workbench_delivery.go`）。
 - Mimosa hook scanner_enobufs 的扫描台账需主控核实（本任务无法从 diff 验证 hook 行为）。
+
+---
+
+# T24 #54 Task 3 实现报告：GitLab 交付编排语义测试（部分完成/unknown/迭代收敛/删除/护栏次序/A02）
+
+- worktree：`.worktrees/issue30-sweep-t54`（分支 `codex/issue30-t54`，起点 HEAD `ec0fa381d` = Task 2 及修复轮 1/5 已提交，工作树干净）
+- 授权文件仅 `internal/modules/codedelivery/service_gitlab_test.go`；未触碰任务外文件；无子代理；未推送远端。
+
+## 一、实现内容
+
+按计划 Task 3 Step 1，在 `internal/modules/codedelivery/service_gitlab_test.go` 末尾**逐字追加**六个语义验收测试（计划 1814-1957 行），覆盖 Review Focus 2/3/4/5 与 CONTEXT.md 迭代语义：
+
+1. `TestGitLabPrepareRefusesProtectedBranchWithZeroRemoteWrites`（Review Focus 5 护栏次序）：目标分支=默认分支 `main` → `ErrProtectedBranch`；模拟器 `protectPattern("weknora/task/*")` 追加通配模式后，`TaskBranchOf("s-stable")` 同样被拒（GitLab 通配匹配发生在适配器本地，差异隐藏）；`POST /repository/commits` 与 `POST /merge_requests` 计数为零、零违规。
+2. `TestGitLabPartialPushMRFailureRecoversWithoutRepush`（Review Focus 2 部分完成）：`failNextMRCreation()` 下派发 → `pushed` 且提交 SHA 已落账（读回的远端 head）；二次派发 MR-only 恢复 → `delivered`，前后调用计数证明 commits POST 不变、merge_requests 恰 +1。
+3. `TestGitLabUnknownOutcomeResolvesFromRemoteFacts`（Review Focus 4 不可观测）：`blackoutAfterCommitCreate()` 后派发 → `unknown`（ActionState 同为 `unknown`）；`liftBlackout()` 后 `ResolveDeliveryUnknown` 以远端事实收敛为 `pushed`（分支已收敛、MR 缺席）；随后 MR-only 派发完成 `delivered`。
+4. `TestGitLabSecondDeliveryConvergesTaskBranchAndReusesMR`（迭代收敛）：批准后工作区再变 → 新 Prepare 新 digest → 新批准 → 二次交付；收敛不变量（tip 树恰=基线树+批准变更，`BranchTree` 2 项断言）、祖先链（`ParentOf(second) == [first]`，永不 force）、草稿 MR 同 source branch 复用（PRNumber 恒等）。
+5. `TestGitLabDeliveryAppliesDeletionActions`（删除型交付）：工作区缺基线文件 `main.go` → commits API delete action；tip 树收敛为「基线 − 删除 + 新增」（`require.Len(tip, 1)` 且无 `main.go`）。
+6. `TestGitLabDispatchFailsClosedWhenConnectionUnusable`（Review Focus 3 A02 面）：`membersDrop(f, "u1")` 后派发被拒且零 commits/MR 调用。
+
+追加前逐项核实了测试引用的全部符号在当前树真实存在：夹具字段 `gitlab`/`github`/`actions`/`db`/`root`（`service_prepare_test.go:85-96`）、`newDeliveryFixture` 已装配 GitLab 工厂 + `Providers`（`service_prepare_test.go:118-146`）、`dispatchInput`/`firstDelivery`（`service_dispatch_test.go:36/:40`）、`membersDrop`（`service_prepare_test.go:158`）、`PrepareInput.Branch` 字段（`service.go:155`）、`ResolveDeliveryUnknown`（`service.go:375`）、`DeliveryPushed/DeliveryUnknown/DeliveryDelivered`（`delivery.go:26-29`）、`ErrProtectedBranch`（`delivery.go:33`）、模拟器方法 `protectPattern`/`failNextMRCreation`/`blackoutAfterCommitCreate`/`liftBlackout`/`BranchTree`/`ParentOf`（`gitlab_wire_test.go`）。
+
+## 二、TDD 证据（计划 Step 2 的判定式 RED）
+
+本任务为**纯测试追加**，计划 Step 2 明文：`本任务为纯测试追加——若全部直接 PASS，说明 Task 1/2 实现已覆盖语义（合法结果，记录于提交信息）；任何 FAIL 均为适配器/编排缺陷，按 RED→GREEN 修复后重跑`。
+
+**命令**（计划指定）：`go test ./internal/modules/codedelivery/ -count=1 -run 'TestGitLab' -v`
+
+**输出**（判定：六个新测试全部直接 PASS = 合法结果，Task 1/2 实现已覆盖全部语义；无 RED 失败态可观察，Step 3 修复缺陷不适用）：
+
+```
+=== RUN   TestGitLabClientAgainstRealGitLab
+    gitlab_real_test.go:18: WEKNORA_GITLAB_TEST_TOKEN/WEKNORA_GITLAB_TEST_PROJECT not set (blocked-env)
+--- SKIP: TestGitLabClientAgainstRealGitLab (0.00s)
+=== RUN   TestGitLabClientWireChainConvergesBranchAndDraftMR
+--- PASS: TestGitLabClientWireChainConvergesBranchAndDraftMR (0.01s)
+=== RUN   TestGitLabClientClassifiesDefiniteVsUnobservable
+--- PASS: TestGitLabClientClassifiesDefiniteVsUnobservable (0.00s)
+=== RUN   TestGitLabDeliveryE2E_RecordsTraceableReceipts
+--- PASS: TestGitLabDeliveryE2E_RecordsTraceableReceipts (0.05s)
+=== RUN   TestGitLabMaterializeBaselineWritesFixedTree
+--- PASS: TestGitLabMaterializeBaselineWritesFixedTree (0.01s)
+=== RUN   TestGitLabUnsupportedProviderFailsClosed
+--- PASS: TestGitLabUnsupportedProviderFailsClosed (0.01s)
+=== RUN   TestGitLabTamperedSnapshotNeverReachesGitLab
+--- PASS: TestGitLabTamperedSnapshotNeverReachesGitLab (0.02s)
+=== RUN   TestGitLabPrepareRefusesProtectedBranchWithZeroRemoteWrites
+--- PASS: TestGitLabPrepareRefusesProtectedBranchWithZeroRemoteWrites (0.02s)
+=== RUN   TestGitLabPartialPushMRFailureRecoversWithoutRepush
+--- PASS: TestGitLabPartialPushMRFailureRecoversWithoutRepush (0.03s)
+=== RUN   TestGitLabUnknownOutcomeResolvesFromRemoteFacts
+--- PASS: TestGitLabUnknownOutcomeResolvesFromRemoteFacts (0.04s)
+=== RUN   TestGitLabSecondDeliveryConvergesTaskBranchAndReusesMR
+--- PASS: TestGitLabSecondDeliveryConvergesTaskBranchAndReusesMR (0.08s)
+=== RUN   TestGitLabDeliveryAppliesDeletionActions
+--- PASS: TestGitLabDeliveryAppliesDeletionActions (0.04s)
+=== RUN   TestGitLabDispatchFailsClosedWhenConnectionUnusable
+--- PASS: TestGitLabDispatchFailsClosedWhenConnectionUnusable (0.02s)
+PASS
+ok  	github.com/Tencent/WeKnora/internal/modules/codedelivery	1.902s
+```
+
+（`TestGitLabClientAgainstRealGitLab` 为 env 门控 blocked-env 真实平台测试，本地无凭据按设计 skip，不伪造通过。）
+
+## 三、计划 Step 4 全量检查（实跑）
+
+**命令**：`go test ./internal/modules/codedelivery/ -count=1`
+
+**输出**：
+
+```
+ok  	github.com/Tencent/WeKnora/internal/modules/codedelivery	3.843s
+```
+
+全量 `-v` 统计（实跑 `grep -c "^--- PASS"` / `grep -c "^--- FAIL"`）：**43 PASS / 0 FAIL / 2 SKIP**（Task 2 修复轮为 37 PASS + 本任务 6 个新测试 = 43；SKIP 为 `TestGitLabClientAgainstRealGitLab`、`TestGitHubClientAgainstRealGitHub` 两个 env 门控真实平台测试）。
+
+**附带静态检查**（非计划要求，自行取证）：`go vet ./internal/modules/codedelivery/` → 无输出（干净）。
+
+## 四、提交
+
+- `0754eb9da` `test(codedelivery): GitLab delivery orchestration semantics — partial completion, unknown resolution, branch convergence, deletions, guardrails, A02 (T24 #54 task 3)`
+- 变更范围：`internal/modules/codedelivery/service_gitlab_test.go` 1 file changed, 145 insertions(+)
+- 提交信息按计划 Step 2 要求记录了「全部直接 PASS」判定与 blocked-env skip 说明。
+
+## 五、自检发现（模板 Completeness/Quality/Discipline/Testing）
+
+1. **判定式 RED 的如实记录**：本任务无传统「先失败后通过」的 RED 输出——六个测试在追加后首跑即全绿。这是计划 Step 2 显式认可的合法结果（语义面是对 Task 1/2 已交付实现的验收钉），已按要求记录于提交信息与本报告；未伪造任何失败输出。
+2. **测试逐字采用计划文本**：六测试的断言、注释、结构均与计划 1814-1957 行逐字一致，未自行增删断言（避免「顺手加强」越出计划授权语义）。
+3. **报告文件为追加而非覆盖**：本节按既有惯例（Task 2 修复轮先例）追加至 `plan-t54.md-report.md` 末尾，未动 Task 1/2 已有报告内容。
+4. **模板路径偏差说明**：任务给定的模板路径 `superpowers/6.4.1/...` 不存在（find 实证），实际存在于 `superpowers/6.4.2/skills/subagent-driven-development/implementer-prompt.md`，已按 6.4.2 版契约执行（内容与 6.4.1 版声明契约一致）。
+5. **测试输出无杂音**：`-run 'TestGitLab'` 与全量 verbose 输出中除两个设计内 skip 日志外无任何 warning/noise。
+
+## 六、无遗留事项
+
+- 本任务 Produces 无新符号（纯语义验收面），无缺陷修复，无跨任务遗留。
