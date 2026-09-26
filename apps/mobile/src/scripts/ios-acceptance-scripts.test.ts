@@ -41,3 +41,19 @@ test('the acceptance probe script installs before probing and records the no-cre
   assert.match(script, /revoke microphone/, '麦克风拒权探针（AC2 permission-denied）');
   assert.match(script, /NSException\|SIGTRAP/, '日志崩溃筛查必须覆盖 NSException/SIGTRAP 口径（B4 同款）');
 });
+
+test('the unauthorized push probe tolerates system rejection and archives the outcome honestly (Task 6 live-run fix)', () => {
+  const script = scriptOf('ios-acceptance-run.sh');
+  assert.match(
+    script,
+    /if ! xcrun simctl push/,
+    '未授权源上系统拒绝投递（Task 6 实跑：UNErrorDomain 2003），set -e 不得在此中止整条管线——崩溃由日志门判定，不由投递成败判定',
+  );
+  assert.match(script, /push-error\.txt/, '投递拒绝的错误输出必须留档 push-error.txt（诚实证据，不得静默吞掉）');
+  assert.match(script, /PUSH_DELIVERY_REJECTED/, '投递被拒必须打印显式标记，供验收报告如实引用');
+  assert.match(
+    script,
+    /06-push-unauthorized-fail-closed\.png/,
+    '截图名不得预设「已送达」——包外无法证实应用侧是否收到帧，可证事实是 fail-closed 存活',
+  );
+});

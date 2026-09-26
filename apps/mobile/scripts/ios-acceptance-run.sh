@@ -41,16 +41,23 @@ probe_deep_link "weknora://tasks" "03-deeplink-tasks-unauthorized.png"
 probe_deep_link "weknora://ask" "04-deeplink-ask-unauthorized.png"
 probe_deep_link "weknora://tasks/detail?taskId=1&runId=1" "05-deeplink-detail-unauthorized.png"
 
-# 3) 未授权推送投递（本地模拟 APNs 帧真机语义）：投递后进程必须仍在（崩溃由第 5 步日志门兜底）
+# 3) 未授权推送投递（本地模拟 APNs 帧真机语义）：投递后进程必须仍在（崩溃由第 5 步日志门兜底）。
+#    Task 6 实跑修订：未授权源上系统会拒绝投递（UNErrorDomain 2003 「Repository could not
+#    save notification. Source is not authorized.」——未授权源不得落通知库，这本身是 fail-closed
+#    行为），首次实跑曾以非零退出在 set -e 下中止整条管线。故投递命令允许失败：错误留档
+#    push-error.txt 并打印显式标记；包外无法证实应用侧是否收到帧，授权到达路径归 blocked-env
+#    （无 APNs 凭据，见 t39-acceptance.md），截图只证明 fail-closed 存活。
 cat > "$OUT/push-payload.json" <<'JSON'
 {
   "Simulator Target Bundle": "com.weknora.mobile",
   "aps": { "alert": { "title": "WeKnora", "body": "acceptance probe" }, "sound": "default" }
 }
 JSON
-xcrun simctl push "$UDID" "$BUNDLE" "$OUT/push-payload.json"
+if ! xcrun simctl push "$UDID" "$BUNDLE" "$OUT/push-payload.json" 2> "$OUT/push-error.txt"; then
+  echo "PUSH_DELIVERY_REJECTED=source-not-authorized (see push-error.txt)"
+fi
 sleep 2
-xcrun simctl io "$UDID" screenshot "$OUT/06-push-delivered-unauthorized.png" >/dev/null
+xcrun simctl io "$UDID" screenshot "$OUT/06-push-unauthorized-fail-closed.png" >/dev/null
 xcrun simctl spawn "$UDID" launchctl list 2>/dev/null | grep "$BUNDLE" > "$OUT/push-process-alive.txt" || true
 
 # 4) 麦克风拒权探针（AC2 permission-denied）：显式 revoke（iOS 会终止运行中的应用）→ 重启必须存活
