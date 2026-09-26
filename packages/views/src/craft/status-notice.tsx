@@ -36,6 +36,7 @@ const STOP_OUTCOME_NOTICE_TEXT: Record<CraftStopOutcomeStatus, string> = {
 };
 
 /** The workbench banner for one Run's durable stop outcome. */
-export function CraftStopNotice(_props: { outcome: CraftStopOutcomeStatus }): ReactNode {
-  return null; // T17 RED stub
+export function CraftStopNotice({ outcome }: { outcome: CraftStopOutcomeStatus }) {
+  const kind: CraftNoticeKind = outcome === 'unknown' ? 'unknown' : 'canceled';
+  return <CraftNotice kind={kind}>{STOP_OUTCOME_NOTICE_TEXT[outcome]}</CraftNotice>;
 }

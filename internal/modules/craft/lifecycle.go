@@ -353,7 +353,13 @@ type StopIntent struct {
 // Validate pins the stop-intent shape: a Run identity plus one of the three
 // frozen T00 stop-outcome statuses.
 func (i StopIntent) Validate() error {
-	return fmt.Errorf("%w: stop intent validation is not implemented yet (T17 RED stub)", ErrInvalidInput)
+	if i.RunID == "" {
+		return fmt.Errorf("%w: stop intent requires a run id", ErrInvalidInput)
+	}
+	if i.Status != StopRequested && i.Status != StopConfirmed && i.Status != StopUnknown {
+		return fmt.Errorf("%w: stop intent status %q is not one of requested|confirmed|unknown", ErrInvalidInput, i.Status)
+	}
+	return nil
 }
 
 // StopIntentOutcome maps one authoritative executor observation onto the
@@ -362,7 +368,10 @@ func (i StopIntent) Validate() error {
 // is still in flight). An observation that cannot be read at all is the
 // caller's unknown — never a confirmation.
 func StopIntentOutcome(o Observation) StopOutcomeStatus {
-	return StopUnknown
+	if o.Aborted && o.Idle {
+		return StopConfirmed
+	}
+	return StopRequested
 }
 
 // StopIntentMayWriteRunTerminal reports whether the durable stop state of a
@@ -371,5 +380,5 @@ func StopIntentOutcome(o Observation) StopOutcomeStatus {
 // HTTP response must never terminalize the Run, and the writer fence and
 // the promotion gate stay in force until the authoritative outcome.
 func StopIntentMayWriteRunTerminal(status StopOutcomeStatus) bool {
-	return false
+	return status == StopConfirmed
 }

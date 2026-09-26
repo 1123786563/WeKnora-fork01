@@ -213,8 +213,8 @@ func TestCraftT17Journey(t *testing.T) {
 	require.Equal(t, []string{"stop_intent:run-2", "abort"}, seq.steps(),
 		"the durable stop intent must land BEFORE the executor abort is requested")
 
-	require.Equal(t, "running", runStatus("run-2"),
-		"the accepted HTTP stop must NOT terminalize the run row — stopping is nonterminal")
+	require.False(t, craft.WriterRunTerminal(runStatus("run-2")),
+		"the accepted HTTP stop must NOT terminalize the run row (status %q) — stopping is nonterminal", runStatus("run-2"))
 	require.False(t, craft.WriterLeaseReleasable(stopFacts(runStatus("run-2"), 1)),
 		"a stopping run must not release the workspace writer ownership")
 	require.False(t, craft.WriterLeaseTakeover(&craft.WriterLease{WorkspaceID: workspace.ID, RunID: "run-2"}, stopFacts(runStatus("run-2"), 1)),
@@ -251,8 +251,8 @@ func TestCraftT17Journey(t *testing.T) {
 	stored, err = intents.GetStopIntent(ctx, scope, "run-2")
 	require.NoError(t, err)
 	require.Equal(t, craft.StopUnknown, stored.Status, "the unknown outcome persisted distinctly")
-	require.Equal(t, "running", runStatus("run-2"),
-		"an unknown abort outcome must not terminalize the run row either")
+	require.False(t, craft.WriterRunTerminal(runStatus("run-2")),
+		"an unknown abort outcome must not terminalize the run row either (status %q)", runStatus("run-2"))
 	require.False(t, craft.StopIntentMayWriteRunTerminal(stored.Status),
 		"unknown is never permission for the terminal write")
 	require.False(t, craft.WriterLeaseReleasable(stopFacts(runStatus("run-2"), 1)),

@@ -446,12 +446,30 @@ func stopPhaseForResult(result craft.Result) string {
 	}
 }
 
-// Stop stops one delegated execution with the mandated ordering: the main
-// run cancel intent is written first (which also blocks every new dispatch
-// under the run fence), the runtime abort is requested second, and only an
-// observation confirming the abort on an idle session reports "canceled" —
-// everything else stays "stopping". A normal completion that arrived first
-// is preserved with its original result and never re-classified.
+// durableStopOutcome projects the frozen T00 stop outcome of one Run: the
+// persisted stop intent is the authority; without a persisted intent (the
+// pre-T17 assemblies) the just-observed fallback stands.
+func (s *CraftControlService) durableStopOutcome(ctx context.Context, scope craft.Scope, runID string, fallback craft.StopOutcomeStatus) craft.StopOutcome {
+	if s.stopIntents != nil {
+		if intent, err := s.stopIntents.GetStopIntent(ctx, scope, runID); err == nil {
+			return craft.StopOutcome{RunID: runID, Status: intent.Status}
+		}
+	}
+	return craft.StopOutcome{RunID: runID, Status: fallback}
+}
+
+// Stop stops one delegated execution with the mandated ordering. T17 (#136)
+// durable path (a stop-intent store is wired): the member's stop intent
+// persists as its own durable fact BEFORE the executor abort is requested;
+// the accepted answer keeps the Run nonterminal ("stopping" — the writer
+// fence and the promotion gate stay in force); an abort whose outcome
+// cannot be observed persists and answers unknown; and only the
+// authoritative confirmation (observed abort on an idle session) writes the
+// terminal canceled status and the confirmed intent. Repeated stops replay
+// the durable answer. A normal completion that arrived first is preserved
+// with its original result and never re-classified. The pre-T17 path (no
+// stop-intent store) keeps the R06 ordering: the run cancel intent first,
+// then abort, then verify.
 func (s *CraftControlService) Stop(ctx context.Context, req CraftStopRequest) (CraftStopStatus, error) {
 	if s == nil || s.runs == nil {
 		return CraftStopStatus{}, fmt.Errorf("%w: control service is not assembled", craft.ErrInvalidInput)
@@ -473,26 +491,52 @@ func (s *CraftControlService) Stop(ctx context.Context, req CraftStopRequest) (C
 	}
 	switch run.Status {
 	case "succeeded":
-		return CraftStopStatus{Phase: "completed", Note: "run already completed normally; nothing to stop"}, nil
+		return CraftStopStatus{Phase: "completed", Note: "run already completed normally; nothing to stop",
+			Outcome: s.durableStopOutcome(detachCtx, req.Scope, req.RunKey.RunID, craft.StopRequested)}, nil
 	case "failed":
-		return CraftStopStatus{Phase: "failed", Note: "run already failed; nothing to stop"}, nil
+		return CraftStopStatus{Phase: "failed", Note: "run already failed; nothing to stop",
+			Outcome: s.durableStopOutcome(detachCtx, req.Scope, req.RunKey.RunID, craft.StopRequested)}, nil
 	}
-
-	// 1. Durable cancel intent on the main run. A canceled run fails every
-	//    fenced write, which is what blocks new dispatch.
-	if err := s.runs.Cancel(detachCtx, req.RunKey); err != nil {
-		if errors.Is(err, agentruntime.ErrConflict) {
-			again, getErr := s.runs.Get(detachCtx, req.RunKey)
-			if getErr == nil {
-				switch again.Status {
-				case "succeeded":
-					return CraftStopStatus{Phase: "completed", Note: "run completed normally before the stop landed"}, nil
-				case "failed":
-					return CraftStopStatus{Phase: "failed", Note: "run failed before the stop landed"}, nil
+	if s.stopIntents != nil {
+		// A canceled run row is the authoritative terminal fact (the CAS ran
+		// in an earlier stop or crashed between the CAS and the confirmed
+		// marker): the repeated stop replays the confirmed answer and never
+		// aborts again.
+		if run.Status == "canceled" {
+			return CraftStopStatus{Phase: "canceled",
+				Note:    "stop already confirmed; replaying the durable answer",
+				Outcome: craft.StopOutcome{RunID: req.RunKey.RunID, Status: craft.StopConfirmed}}, nil
+		}
+		if intent, ierr := s.stopIntents.GetStopIntent(detachCtx, req.Scope, req.RunKey.RunID); ierr == nil &&
+			intent.Status == craft.StopConfirmed {
+			return CraftStopStatus{Phase: "canceled",
+				Note:    "stop already confirmed; replaying the durable answer",
+				Outcome: craft.StopOutcome{RunID: req.RunKey.RunID, Status: craft.StopConfirmed}}, nil
+		}
+		// 1. The stop intent persists BEFORE anything is aborted: an accepted
+		//    stop survives every later failure.
+		if _, err := s.stopIntents.PutStopIntent(detachCtx, req.Scope, craft.StopIntent{
+			RunID: req.RunKey.RunID, Status: craft.StopRequested,
+		}); err != nil {
+			return CraftStopStatus{}, err
+		}
+	} else {
+		// Pre-T17 ordering: the durable run cancel intent first — a canceled
+		// run fails every fenced write, which is what blocks new dispatch.
+		if err := s.runs.Cancel(detachCtx, req.RunKey); err != nil {
+			if errors.Is(err, agentruntime.ErrConflict) {
+				again, getErr := s.runs.Get(detachCtx, req.RunKey)
+				if getErr == nil {
+					switch again.Status {
+					case "succeeded":
+						return CraftStopStatus{Phase: "completed", Note: "run completed normally before the stop landed"}, nil
+					case "failed":
+						return CraftStopStatus{Phase: "failed", Note: "run failed before the stop landed"}, nil
+					}
 				}
 			}
+			return CraftStopStatus{}, err
 		}
-		return CraftStopStatus{}, err
 	}
 
 	// 2. A delegation that already settled keeps its result: the stop raced
@@ -502,6 +546,7 @@ func (s *CraftControlService) Stop(ctx context.Context, req CraftStopRequest) (C
 			return CraftStopStatus{
 				Phase: stopPhaseForResult(result), Result: &result,
 				Note: "delegation already settled before the stop; the original result is preserved",
+				Outcome: s.durableStopOutcome(detachCtx, req.Scope, req.RunKey.RunID, craft.StopRequested),
 			}, nil
 		} else if !errors.Is(err, craft.ErrNotFound) {
 			return CraftStopStatus{}, err
@@ -517,6 +562,7 @@ func (s *CraftControlService) Stop(ctx context.Context, req CraftStopRequest) (C
 				return CraftStopStatus{
 					Phase: "stopping",
 					Note:  "cancel intent recorded; the delegation record is unavailable for abort",
+					Outcome: s.durableStopOutcome(detachCtx, req.Scope, req.RunKey.RunID, craft.StopRequested),
 				}, nil
 			}
 			return CraftStopStatus{}, err
@@ -534,13 +580,29 @@ func (s *CraftControlService) Stop(ctx context.Context, req CraftStopRequest) (C
 		return CraftStopStatus{
 			Phase: "stopping",
 			Note:  "cancel intent recorded; no executor is available to abort the sub-execution",
+			Outcome: s.durableStopOutcome(detachCtx, req.Scope, req.RunKey.RunID, craft.StopRequested),
 		}, nil
 	}
 	observation, err := exec.Observe(detachCtx, task)
 	if err != nil {
+		// The abort outcome could not be observed: that is the distinct
+		// durable unknown — never a confirmation, and the run stays
+		// nonterminal with the fence retained.
+		if s.stopIntents != nil {
+			if _, uerr := s.stopIntents.PutStopIntent(detachCtx, req.Scope, craft.StopIntent{
+				RunID: req.RunKey.RunID, Status: craft.StopUnknown,
+			}); uerr == nil {
+				return CraftStopStatus{
+					Phase: "stopping",
+					Note:  fmt.Sprintf("stop intent recorded and abort requested; the abort outcome is unknown: %v%s", err, abortNote), //nolint:lll // 一行诊断信息
+					Outcome: craft.StopOutcome{RunID: req.RunKey.RunID, Status: craft.StopUnknown},
+				}, nil
+			}
+		}
 		return CraftStopStatus{
 			Phase: "stopping",
 			Note:  fmt.Sprintf("cancel intent recorded and abort requested; remote state unverified: %v%s", err, abortNote), //nolint:lll // 预存长行,import 修复入 range
+			Outcome: s.durableStopOutcome(detachCtx, req.Scope, req.RunKey.RunID, craft.StopRequested),
 		}, nil
 	}
 	// The completion may have landed inside the abort window.
@@ -549,6 +611,7 @@ func (s *CraftControlService) Stop(ctx context.Context, req CraftStopRequest) (C
 			return CraftStopStatus{
 				Phase: stopPhaseForResult(result), Result: &result,
 				Note: "the delegation completed normally while the stop was in flight; the original result is preserved",
+				Outcome: s.durableStopOutcome(detachCtx, req.Scope, req.RunKey.RunID, craft.StopRequested),
 			}, nil
 		}
 	}
@@ -556,6 +619,7 @@ func (s *CraftControlService) Stop(ctx context.Context, req CraftStopRequest) (C
 		return CraftStopStatus{
 			Phase: "completed",
 			Note:  "the sub-execution completed normally; the cancellation raced and lost",
+			Outcome: s.durableStopOutcome(detachCtx, req.Scope, req.RunKey.RunID, craft.StopRequested),
 		}, nil
 	}
 	phase := craft.StopStatus(true, observation)
@@ -564,6 +628,54 @@ func (s *CraftControlService) Stop(ctx context.Context, req CraftStopRequest) (C
 			Phase: phase,
 			Note: "cancel intent recorded and abort requested; the runtime has not confirmed the abort yet" +
 				abortNote,
+			Outcome: s.durableStopOutcome(detachCtx, req.Scope, req.RunKey.RunID, craft.StopRequested),
+		}, nil
+	}
+	// The authoritative confirmation: observed abort on an idle session.
+	if s.stopIntents != nil {
+		// The terminal canceled status is written only NOW — after the
+		// confirmation — so the accepted stop never terminalized the run.
+		if err := s.runs.Cancel(detachCtx, req.RunKey); err != nil {
+			if errors.Is(err, agentruntime.ErrConflict) {
+				again, getErr := s.runs.Get(detachCtx, req.RunKey)
+				if getErr == nil {
+					switch again.Status {
+					case "succeeded":
+						return CraftStopStatus{Phase: "completed",
+							Note:    "run completed normally before the confirmed stop landed",
+							Outcome: s.durableStopOutcome(detachCtx, req.Scope, req.RunKey.RunID, craft.StopRequested)}, nil
+					case "failed":
+						return CraftStopStatus{Phase: "failed",
+							Note:    "run failed before the confirmed stop landed",
+							Outcome: s.durableStopOutcome(detachCtx, req.Scope, req.RunKey.RunID, craft.StopRequested)}, nil
+					case "canceled":
+						// The CAS already ran (an earlier stop crashed between
+						// the CAS and the confirmed marker): the durable
+						// answer is confirmed either way.
+						return CraftStopStatus{
+							Phase:   "canceled",
+							Note:    "stop already confirmed; replaying the durable answer",
+							Outcome: craft.StopOutcome{RunID: req.RunKey.RunID, Status: craft.StopConfirmed},
+						}, nil
+					}
+				}
+			}
+			// The terminal write failed: the intent honestly stays requested
+			// — the fence is retained and a later stop retries.
+			return CraftStopStatus{}, err
+		}
+		if _, merr := s.stopIntents.PutStopIntent(detachCtx, req.Scope, craft.StopIntent{
+			RunID: req.RunKey.RunID, Status: craft.StopConfirmed,
+		}); merr != nil {
+			return CraftStopStatus{
+				Phase: "canceled",
+				Note:  fmt.Sprintf("cancellation confirmed; the confirmed-stop marker did not persist: %v", merr),
+				Outcome: craft.StopOutcome{RunID: req.RunKey.RunID, Status: craft.StopConfirmed},
+			}, nil
+		}
+		return CraftStopStatus{
+			Phase:   "canceled",
+			Outcome: craft.StopOutcome{RunID: req.RunKey.RunID, Status: craft.StopConfirmed},
 		}, nil
 	}
 	return CraftStopStatus{Phase: phase}, nil
@@ -572,7 +684,10 @@ func (s *CraftControlService) Stop(ctx context.Context, req CraftStopRequest) (C
 // DelegationStatus is the read-only verification path a client polls after
 // a stop answered "stopping". It never writes a cancel intent and never
 // aborts — in particular a canceled subscription context (browser
-// disconnect) cannot mutate anything.
+// disconnect) cannot mutate anything. With the T17 (#136) stop-intent store
+// wired, the poll reconstructs the stop state from the PERSISTED intent (a
+// page refresh reads the same durable facts) and projects the frozen T00
+// outcome alongside the honest phase.
 func (s *CraftControlService) DelegationStatus(
 	ctx context.Context, scope craft.Scope, key agentruntime.RunKey, taskID string,
 ) (CraftStopStatus, error) {
@@ -588,21 +703,56 @@ func (s *CraftControlService) DelegationStatus(
 			craft.ErrForbidden, key.RunID)
 	}
 	requested := run.Status == "canceled"
+	if s.stopIntents != nil {
+		intent, ierr := s.stopIntents.GetStopIntent(ctx, scope, key.RunID)
+		switch {
+		case ierr == nil && intent.Status == craft.StopConfirmed:
+			// The persisted confirmation answers before anything is even
+			// observed: a refresh replays the durable fact.
+			return CraftStopStatus{
+				Phase:   "canceled",
+				Outcome: craft.StopOutcome{RunID: key.RunID, Status: craft.StopConfirmed},
+			}, nil
+		case ierr == nil && run.Status != "canceled":
+			// The persisted intent (requested, or an unresolved unknown) is
+			// what tells the poll the member asked to stop: the T17 run row
+			// stays nonterminal until the confirmation, so the stopping
+			// status cannot come from the run row alone.
+			requested = true
+		}
+	}
 	if s.store != nil && taskID != "" {
 		if result, err := s.store.GetResult(ctx, scope, taskID); err == nil {
-			return CraftStopStatus{Phase: stopPhaseForResult(result), Result: &result}, nil
+			return CraftStopStatus{Phase: stopPhaseForResult(result), Result: &result,
+				Outcome: s.durableStopOutcome(ctx, scope, key.RunID, craft.StopRequested)}, nil
 		}
 		task, err := s.store.GetTask(ctx, scope, taskID)
 		if exec := s.currentExecutor(); err == nil && exec != nil {
 			observation, oerr := exec.Observe(ctx, task)
 			if oerr != nil {
+				// A persisted unknown is honest on the poll surface too: the
+				// refresh reads the durable fact instead of an error.
+				if s.stopIntents != nil {
+					if intent, ierr := s.stopIntents.GetStopIntent(ctx, scope, key.RunID); ierr == nil &&
+						intent.Status == craft.StopUnknown {
+						return CraftStopStatus{
+							Phase:   "stopping",
+							Note:    fmt.Sprintf("the abort outcome is unknown and awaits reconciliation: %v", oerr),
+							Outcome: craft.StopOutcome{RunID: key.RunID, Status: craft.StopUnknown},
+						}, nil
+					}
+				}
 				return CraftStopStatus{}, oerr
 			}
 			if opencode.Completed(observation) {
-				return CraftStopStatus{Phase: "completed"}, nil
+				return CraftStopStatus{Phase: "completed",
+					Outcome: s.durableStopOutcome(ctx, scope, key.RunID, craft.StopRequested)}, nil
 			}
-			return CraftStopStatus{Phase: craft.StopStatus(requested, observation)}, nil
+			phase := craft.StopStatus(requested, observation)
+			return CraftStopStatus{Phase: phase,
+				Outcome: s.durableStopOutcome(ctx, scope, key.RunID, craft.StopIntentOutcome(observation))}, nil
 		}
 	}
-	return CraftStopStatus{Phase: craft.StopStatus(requested, craft.Observation{})}, nil
+	return CraftStopStatus{Phase: craft.StopStatus(requested, craft.Observation{}),
+		Outcome: s.durableStopOutcome(ctx, scope, key.RunID, craft.StopRequested)}, nil
 }
