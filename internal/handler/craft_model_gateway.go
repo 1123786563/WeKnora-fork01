@@ -520,7 +520,13 @@ func (g *CraftModelGateway) Forward(c *gin.Context) {
 	if !attempted {
 		resolveErr := attempt.Resolve(c.Request.Context(), service.CraftChargeStartDefinitelyNotStarted)
 		if resolveErr != nil {
-			appFail(c, http.StatusBadGateway, "ACTIVITY_UNRESOLVED", resolveErr.Error())
+			// The client sees only the opaque code; the detail (which may
+			// quote SQL or table names) stays in the server log, exactly
+			// like recordCall's redaction discipline.
+			logger.ErrorWithFields(c.Request.Context(), resolveErr, map[string]any{
+				"craft_run_id": payload.RunID, "craft_call_id": callID, "craft_attempt_id": attemptID,
+			})
+			appFail(c, http.StatusBadGateway, "ACTIVITY_UNRESOLVED", "the activity outcome could not be recorded")
 			return
 		}
 		appFail(c, http.StatusBadGateway, "UPSTREAM_ERROR", forwardErr.Error())
@@ -530,7 +536,12 @@ func (g *CraftModelGateway) Forward(c *gin.Context) {
 		closeGatewayResponse(resp)
 		g.recordCall(c, payload, callID, attemptID, model, nil)
 		resolveErr := attempt.Resolve(c.Request.Context(), service.CraftChargeStartUnknown)
-		appFail(c, http.StatusBadGateway, "ACTIVITY_UNRESOLVED", errors.Join(forwardErr, resolveErr).Error())
+		if resolveErr != nil {
+			logger.ErrorWithFields(c.Request.Context(), resolveErr, map[string]any{
+				"craft_run_id": payload.RunID, "craft_call_id": callID, "craft_attempt_id": attemptID,
+			})
+		}
+		appFail(c, http.StatusBadGateway, "ACTIVITY_UNRESOLVED", "the activity start outcome is unknown and requires reconciliation")
 		return
 	}
 	if forwardErr != nil || resp == nil {
@@ -540,13 +551,23 @@ func (g *CraftModelGateway) Forward(c *gin.Context) {
 			forwardErr = errors.New("model transport returned no response")
 		}
 		resolveErr := attempt.Resolve(c.Request.Context(), service.CraftChargeStartUnknown)
-		appFail(c, http.StatusBadGateway, "UPSTREAM_ERROR", errors.Join(forwardErr, resolveErr).Error())
+		if resolveErr != nil {
+			logger.ErrorWithFields(c.Request.Context(), resolveErr, map[string]any{
+				"craft_run_id": payload.RunID, "craft_call_id": callID, "craft_attempt_id": attemptID,
+			})
+		}
+		appFail(c, http.StatusBadGateway, "UPSTREAM_ERROR", "the upstream model request failed with an unknown activity outcome")
 		return
 	}
 	if resp.Body == nil {
 		g.recordCall(c, payload, callID, attemptID, model, nil)
 		resolveErr := attempt.Resolve(c.Request.Context(), service.CraftChargeStartUnknown)
-		appFail(c, http.StatusBadGateway, "ACTIVITY_UNRESOLVED", errors.Join(errors.New("upstream response body is missing"), resolveErr).Error())
+		if resolveErr != nil {
+			logger.ErrorWithFields(c.Request.Context(), resolveErr, map[string]any{
+				"craft_run_id": payload.RunID, "craft_call_id": callID, "craft_attempt_id": attemptID,
+			})
+		}
+		appFail(c, http.StatusBadGateway, "ACTIVITY_UNRESOLVED", "the upstream response body is missing and the activity outcome is unknown")
 		return
 	}
 	respBody, readErr := io.ReadAll(io.LimitReader(resp.Body, craftMaxForwardBody+1))

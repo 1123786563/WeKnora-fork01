@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -294,7 +295,16 @@ func (p *InputExecutionPolicy) Review(req InputExecutionRequest) InputExecutionD
 				return p.deny("shell_input", abs, "")
 			}
 		}
-	} else if interpreter, offset := InterpreterPrefix(req.Command); interpreter {
+	} else if status, offset := InterpreterPrefixStatus(req.Command); status != InterpreterScanNone {
+		if status == InterpreterScanInconclusive {
+			// Fail closed: the wrapper's option structure could not be
+			// parsed conclusively (unknown flag arity, combined short
+			// options, an operand shape we do not model). Guessing here
+			// would silently drop the rest of the line into the weaker
+			// non-interpreter lexical branch, where inline program-text
+			// flags are no longer refused.
+			return p.deny("wrapper_shape", strings.Join(req.Command, " "), "")
+		}
 		// The wrapper prefix consumed by InterpreterPrefix is itself
 		// screened: env assignments (env BASH_ENV=<inputs>/x.sh bash gen.sh)
 		// are startup hooks exactly like Environment entries and must not
@@ -339,10 +349,31 @@ func (p *InputExecutionPolicy) Review(req InputExecutionRequest) InputExecutionD
 					// -c/-e/-r inline programs (python3 -c, node -e, php
 					// -r, perl -e, ruby -e/-r, awk -e), including combined
 					// short groups (-cexec(...), -lc "...") and python -m
-					// module indirection. Long options and the bare "-"
-					// stdin marker are not program text.
+					// module indirection. The long forms (--eval=,
+					// --print=, --execute=, --require=, --init-file=, ...)
+					// are program text or startup hooks exactly the same
+					// way, whatever value syntax they use.
 					if arg != "-" && !strings.HasPrefix(arg, "--") && carriesProgramTextFlag(arg) {
 						return p.deny("interpreter_input", arg, "")
+					}
+					if strings.HasPrefix(arg, "--") {
+						name := strings.TrimPrefix(arg, "--")
+						if eq := strings.IndexByte(name, '='); eq >= 0 {
+							name = name[:eq]
+						}
+						if longProgramTextOptions[name] {
+							return p.deny("interpreter_input", arg, "")
+						}
+					}
+					// An attached value is still a value: --flag=inputs/x,
+					// -finputs/x and every short-flag suffix must be
+					// screened against the tree, or a startup hook
+					// (node --require=inputs/x.js) rides the flag token
+					// itself past every layer.
+					for _, value := range flagValueCandidates(arg) {
+						if abs := p.canonical(req.WorkingDir, value); p.withinInputs(abs) {
+							return p.deny("interpreter_input", abs, "")
+						}
 					}
 					continue
 				}
@@ -380,6 +411,16 @@ func (p *InputExecutionPolicy) Review(req InputExecutionRequest) InputExecutionD
 				for _, token := range shellTokens(arg) {
 					if abs := p.canonical(req.WorkingDir, token); p.withinInputs(abs) {
 						return p.deny("input_target", abs, "")
+					}
+				}
+				// Flag-attached values are operands too: make -finputs/x
+				// and --file=inputs/x must not slip past the containment
+				// rule on token-shape grounds.
+				if strings.HasPrefix(arg, "-") && arg != "-" {
+					for _, value := range flagValueCandidates(arg) {
+						if abs := p.canonical(req.WorkingDir, value); p.withinInputs(abs) {
+							return p.deny("input_target", abs, "")
+						}
 					}
 				}
 			}
@@ -426,29 +467,95 @@ var readOnlyCommands = map[string]bool{
 	"sort": true, "uniq": true, "cut": true, "tr": true,
 }
 
+// InterpreterPrefixStatus classifies the outcome of the wrapper-aware
+// interpreter scan: a plain non-interpreter command, an interpreter with the
+// operand offset, or an inconclusive wrapper whose option structure the
+// scanner cannot conclusively parse (the policy then fails closed instead of
+// degrading to the weaker non-interpreter screening).
+type InterpreterScanStatus int
+
+const (
+	InterpreterScanNone InterpreterScanStatus = iota
+	InterpreterScanInterpreter
+	InterpreterScanInconclusive
+)
+
 // InterpreterPrefix reports whether the argv launches an interpreter that
 // executes a following path argument, and the offset where its operands
-// start. It is wrapper-aware (timeout/env/nohup/xargs/nice/stdbuf/setsid/
-// time, with env assignments and the timeout duration skipped) and tolerant
-// of version-suffixed interpreter names (python3.11, php8.2, lua5.4,
-// tclsh8.6, mawk ...). It is exported so server-side adapters can reuse the
-// same detection for their own evidence assembly (shell -c detection,
-// stdin-program forms).
+// start. See InterpreterPrefixStatus for the tri-state form the policy uses.
 func InterpreterPrefix(command []string) (bool, int) {
+	status, offset := InterpreterPrefixStatus(command)
+	return status == InterpreterScanInterpreter, offset
+}
+
+// longProgramTextOption lists long options whose value is program text or a
+// startup hook: unreviewable by construction, exactly like -c/-e/-r/-m.
+var longProgramTextOptions = map[string]bool{
+	"eval": true, "print": true, "execute": true, "exec": true,
+	"require": true, "include": true, "import": true,
+	"init-file": true, "rcfile": true, "exrc": true, "lua": true,
+}
+
+// flagValueCandidates returns every substring of a flag token that could be
+// an attached value: the part after the first '=', plus each short-flag
+// suffix (-finputs/x → inputs/x). Only candidates that resolve inside the
+// screened tree matter, so over-generation is safe (it can only add denies).
+func flagValueCandidates(arg string) []string {
+	var out []string
+	if arg == "" || arg == "-" {
+		return nil
+	}
+	if eq := strings.IndexByte(arg, '='); eq >= 0 && eq+1 < len(arg) {
+		out = append(out, arg[eq+1:])
+	}
+	if !strings.HasPrefix(arg, "--") {
+		// Every short-flag suffix participates: the flag's letter count is
+		// unknowable from the token alone, and only a suffix that resolves
+		// inside the screened tree produces a denial anyway.
+		for i := 1; i < len(arg); i++ {
+			if arg[i] == '=' || arg[i] == '-' {
+				continue
+			}
+			out = append(out, arg[i:])
+		}
+	}
+	return out
+}
+
+// wrapperValueFlags lists each wrapper's short flags that consume one value
+// operand; every other short flag is valueless. Anything outside these tables
+// (unknown short flags, long options other than "--") makes the scan
+// inconclusive: guessing the arity would silently misplace the real program.
+var wrapperValueFlags = map[string]map[string]bool{
+	"timeout": {"-k": true, "-s": true},
+	"env":     {"-u": true, "-S": true},
+	"nice":    {"-n": true},
+	"time":    {"-o": true, "-f": true},
+	"xargs":   {"-I": true, "-D": true, "-E": true, "-n": true, "-P": true, "-s": true},
+	"stdbuf":  {"-i": true, "-o": true, "-e": true},
+	"setsid":  {},
+}
+
+// InterpreterPrefixStatus scans past wrapper launchers with their option
+// grammar modeled per wrapper (timeout/env/nohup/xargs/nice/stdbuf/setsid/
+// time), tolerant of version-suffixed interpreter names (python3.11, php8.2,
+// lua5.4, tclsh8.6, mawk ...). It is exported so server-side adapters reuse
+// the same detection for their own evidence assembly.
+func InterpreterPrefixStatus(command []string) (InterpreterScanStatus, int) {
 	for offset := 0; offset < len(command); {
 		base := path.Base(command[offset])
 		if isInterpreterName(base) {
-			return true, offset + 1
+			return InterpreterScanInterpreter, offset + 1
 		}
 		if !wrapperCommands[base] {
-			return false, 0
+			return InterpreterScanNone, 0
 		}
 		offset++
+		valueFlags := wrapperValueFlags[base]
 		switch base {
 		case "env":
-			// Skip VAR=value assignments and env's own flags (-i, -u NAME,
-			// -S ...) before the real program; a flag-bearing env used to
-			// hide the interpreter must not defeat detection.
+			// Skip VAR=value assignments and env's own flags; a flag-bearing
+			// env used to hide the interpreter must not defeat detection.
 			for offset < len(command) {
 				next := command[offset]
 				if strings.Contains(next, "=") && !strings.HasPrefix(next, "-") {
@@ -456,32 +563,157 @@ func InterpreterPrefix(command []string) (bool, int) {
 					continue
 				}
 				if strings.HasPrefix(next, "-") && next != "-" {
-					offset++
-					if next == "-u" || next == "-S" {
-						// These flags consume one value operand.
+					if next == "--" {
+						offset++
+						break
+					}
+					if valueFlags[next] {
+						offset++
 						if offset < len(command) {
 							offset++
 						}
+						continue
 					}
-					continue
+					if strings.HasPrefix(next, "--") {
+						if strings.Contains(next, "=") {
+							offset++
+							continue
+						}
+						return InterpreterScanInconclusive, 0
+					}
+					// Short group: every letter before the last must be the
+					// known valueless 'i'; a value-taking letter ('u', 'S')
+					// is only conclusive as the LAST letter, where it
+					// consumes one following operand (-iu F, -S "x"). Any
+					// other letter makes the arity unknowable — refuse the
+					// guess (the policy fails closed).
+					group := next[1:]
+					if group == "" {
+						offset++
+						continue
+					}
+					for i := 0; i < len(group)-1; i++ {
+						if group[i] != 'i' {
+							return InterpreterScanInconclusive, 0
+						}
+					}
+					switch group[len(group)-1] {
+					case 'i':
+						offset++
+						continue
+					case 'u', 'S':
+						offset++
+						if offset < len(command) {
+							offset++
+						}
+						continue
+					default:
+						return InterpreterScanInconclusive, 0
+					}
 				}
 				break
 			}
 		case "timeout":
-			// timeout consumes its duration operand (and optional flags).
-			for offset < len(command) && strings.HasPrefix(command[offset], "-") {
+			for offset < len(command) {
+				next := command[offset]
+				if next == "--" {
+					offset++
+					break
+				}
+				if !strings.HasPrefix(next, "-") {
+					// The mandatory duration operand.
+					offset++
+					break
+				}
+				if valueFlags[next] {
+					offset++
+					if offset < len(command) {
+						offset++
+					}
+					continue
+				}
+				if strings.Contains(next, "=") {
+					offset++
+					continue
+				}
+				if len(next) > 2 && valueFlags[next[:2]] {
+					offset++
+					continue
+				}
+				if len(next) == 2 || strings.HasPrefix(next, "--") {
+					return InterpreterScanInconclusive, 0
+				}
 				offset++
 			}
-			if offset < len(command) {
+		case "nice":
+			for offset < len(command) {
+				next := command[offset]
+				if next == "--" {
+					offset++
+					break
+				}
+				if !strings.HasPrefix(next, "-") {
+					// Optional numeric priority operand.
+					if _, err := strconv.Atoi(strings.TrimPrefix(next, "+")); err == nil {
+						offset++
+					}
+					break
+				}
+				if valueFlags[next] {
+					offset++
+					if offset < len(command) {
+						offset++
+					}
+					continue
+				}
+				if strings.Contains(next, "=") {
+					offset++
+					continue
+				}
+				if len(next) > 2 && valueFlags[next[:2]] {
+					offset++
+					continue
+				}
+				if len(next) == 2 || strings.HasPrefix(next, "--") {
+					return InterpreterScanInconclusive, 0
+				}
 				offset++
 			}
-		case "xargs":
-			for offset < len(command) && strings.HasPrefix(command[offset], "-") {
+		default:
+			// xargs / stdbuf / setsid / time / nohup: modeled value flags,
+			// everything else inconclusive.
+			for offset < len(command) {
+				next := command[offset]
+				if next == "--" {
+					offset++
+					break
+				}
+				if !strings.HasPrefix(next, "-") {
+					break
+				}
+				if valueFlags[next] {
+					offset++
+					if offset < len(command) {
+						offset++
+					}
+					continue
+				}
+				if strings.Contains(next, "=") {
+					offset++
+					continue
+				}
+				if len(next) > 2 && valueFlags[next[:2]] {
+					offset++
+					continue
+				}
+				if len(next) == 2 || strings.HasPrefix(next, "--") {
+					return InterpreterScanInconclusive, 0
+				}
 				offset++
 			}
 		}
 	}
-	return false, 0
+	return InterpreterScanNone, 0
 }
 
 // isInterpreterName matches an interpreter basename exactly or with a

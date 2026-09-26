@@ -69,8 +69,10 @@ EMBED_TAG_RE = re.compile(r"<\s*(base|iframe|object|embed|form|script|meta)\b", 
 # classic <img src=x onerror=...>, whose src does not match the absolute
 # reference pattern at all), and svg-embedded script bodies. Staged
 # fragments are untrusted agent output, so script execution of any shape is
-# refused, not just network egress.
-EVENT_ATTR_RE = re.compile(r"""\bon[a-z]+\s*=""", re.IGNORECASE)
+# refused, not just network egress. Anchored to an attribute position inside
+# a tag opening so ordinary prose ("only = 3", "once=1", "online=enabled")
+# is not mistaken for an inline handler.
+EVENT_ATTR_RE = re.compile(r"""<[a-zA-Z][^>]*?\son[a-z]+\s*=""", re.IGNORECASE)
 
 
 class BuildError(Exception):
@@ -256,7 +258,7 @@ def pin_from_lock(toolchain_dir: str) -> dict:
         return {"toolchain_digest": "", "template_version": "", "template_sha256": ""}
 
 
-def render_table(heading: str, table) -> str:
+def render_table(heading: str, table, index: int) -> str:
     if not isinstance(table, dict):
         raise BuildError(EXIT_CONTENT, "table section {!r} is not an object".format(heading))
     columns = table.get("columns", [])
@@ -265,14 +267,16 @@ def render_table(heading: str, table) -> str:
         raise BuildError(EXIT_CONTENT, "table section {!r} has non-string columns".format(heading))
     if not isinstance(rows, list) or not all(isinstance(r, list) and all(isinstance(c, str) for c in r) for r in rows):
         raise BuildError(EXIT_CONTENT, "table section {!r} has non-string rows".format(heading))
-    # The filter id doubles as the explicit pairing contract: the table's
-    # aria-labelledby points back at it, so the runtime script binds by
-    # reference instead of positional adjacency.
+    # The section index keeps ids unique when the sanitized heading collapses
+    # to the same slug (pure-CJK headings sanitize to the empty fallback, and
+    # duplicate DOM ids would bind every table's filter to the first input).
     safe_heading = re.sub(r"[^a-zA-Z0-9-]+", "-", heading).strip("-").lower()
-    filter_id = "craft-filter-{}".format(safe_heading or "table")
+    suffix = safe_heading or "table"
+    filter_id = "craft-filter-{}-{}".format(index, suffix)
+    table_id = "craft-table-{}-{}".format(index, suffix)
     parts = ["<h2>{}</h2>".format(html_mod.escape(heading))]
-    parts.append('<input id="{}" class="craft-filter" type="search" placeholder="筛选行…" aria-label="筛选表格行">'.format(filter_id))
-    parts.append('<table class="craft-table" aria-labelledby="{}">'.format(filter_id))
+    parts.append('<input id="{}" class="craft-filter" type="search" placeholder="筛选行…" aria-label="筛选表格行" aria-controls="{}">'.format(filter_id, table_id))
+    parts.append('<table id="{}" class="craft-table" aria-labelledby="{}">'.format(table_id, filter_id))
     parts.append("<thead><tr>{}</tr></thead>".format("".join("<th>{}</th>".format(html_mod.escape(c)) for c in columns)))
     parts.append("<tbody>")
     for row in rows:
@@ -286,14 +290,23 @@ def render_html(heading: str, fragment: str) -> str:
         raise BuildError(EXIT_CONTENT, "html section {!r} is empty".format(heading))
     # Browsers decode HTML character entities (&#106;, &colon;, \75 rl CSS
     # escapes) BEFORE the URL parser and DOM act, while the denylist below
-    # sees raw bytes. Decode entities to a fixed point and CSS-style escapes
-    # once, then screen every variant: an encoded javascript:/url( smuggle
-    # must be refused exactly like its literal form.
-    variants = [fragment, html_mod.unescape(fragment), css_unescape(fragment)]
-    decoded = html_mod.unescape(fragment)
-    while decoded not in variants:
-        variants.append(decoded)
-        decoded = html_mod.unescape(decoded)
+    # sees raw bytes. Decode BOTH decoders to a fixed point over their
+    # composition, then screen every variant: an encoded smuggle —
+    # &#92;75 rl&#40;&#92;2f&#92;2fevil&#46;example&#41; hides url(//…) behind
+    # entity-encoded CSS escapes that neither single-pass decoder exposes,
+    # so entity-then-CSS (and CSS-then-entity) products must be in the set.
+    # The closure is bounded: both decoders shrink their own input space, so
+    # the loop terminates long before the cap; the cap only guards
+    # pathological non-convergence.
+    variants = []
+    queue = [fragment]
+    while queue and len(variants) < 64:
+        candidate = queue.pop(0)
+        if candidate in variants:
+            continue
+        variants.append(candidate)
+        queue.append(html_mod.unescape(candidate))
+        queue.append(css_unescape(candidate))
     for candidate in variants:
         for pattern, why in (
             (EXTERNAL_URL_RE, "external URL"),
@@ -345,14 +358,14 @@ def load_content(input_dir: str) -> dict:
     if not isinstance(sections, list) or not sections:
         raise BuildError(EXIT_CONTENT, "content.json requires a non-empty sections list")
     rendered = []
-    for section in sections:
+    for section_index, section in enumerate(sections):
         if not isinstance(section, dict):
             raise BuildError(EXIT_CONTENT, "every section must be an object")
         heading = section.get("heading")
         if not isinstance(heading, str) or not heading.strip():
             raise BuildError(EXIT_CONTENT, "every section requires a heading")
         if "table" in section and "html" not in section:
-            rendered.append(render_table(heading, section["table"]))
+            rendered.append(render_table(heading, section["table"], section_index))
         elif "html" in section and "table" not in section:
             rendered.append(render_html(heading, section["html"]))
         else:

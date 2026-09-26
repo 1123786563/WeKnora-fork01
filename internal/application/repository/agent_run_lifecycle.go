@@ -114,7 +114,13 @@ func (s *AgentRunStore) DeleteSessionRuns(ctx context.Context, tenantID uint64, 
 	}
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var ids []string
-		if err := tx.Table("agent_runs").Where("tenant_id=? AND session_id=?", tenantID, sessionID).Pluck("run_id", &ids).Error; err != nil {
+		// Only non-terminal runs are cancelled here: cancelRunTx refuses
+		// succeeded/failed runs (their settlement and retention facts must
+		// survive), and a session that merely completed work must stay
+		// deletable. Canceled runs are the idempotent no-op below.
+		if err := tx.Table("agent_runs").
+			Where("tenant_id=? AND session_id=? AND status NOT IN ('succeeded','failed')", tenantID, sessionID).
+			Pluck("run_id", &ids).Error; err != nil {
 			return err
 		}
 		for _, id := range ids {

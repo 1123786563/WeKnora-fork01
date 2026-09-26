@@ -164,14 +164,23 @@ func newCraftRuntimeExecutor(
 	// deployment's pinned toolchain. Unset keeps the preview-only evidence
 	// (default-off, like the rest of this assembly); set-but-invalid refuses
 	// the whole assembly rather than trusting an unverifiable toolchain.
-	if toolchainDir := strings.TrimSpace(os.Getenv(craftWebToolchainDirEnv)); toolchainDir != "" {
-		pin, pinErr := LoadCraftWebToolchainPin(toolchainDir)
+	//
+	// previewOnly is captured BEFORE the legacy wrapping: the RunView
+	// route's evidence must never fall through to the legacy shared-tree
+	// build-log reader, whose stale delegation exit status would silently
+	// pollute THIS Run's promotion checks.
+	previewOnly := evidence
+	webToolchainDir := strings.TrimSpace(os.Getenv(craftWebToolchainDirEnv))
+	var webToolchainPin *CraftWebToolchainPin
+	if webToolchainDir != "" {
+		pin, pinErr := LoadCraftWebToolchainPin(webToolchainDir)
 		if pinErr != nil {
-			return nil, fmt.Errorf("craft web toolchain pin %s: %w", toolchainDir, pinErr)
+			return nil, fmt.Errorf("craft web toolchain pin %s: %w", webToolchainDir, pinErr)
 		}
 		// The deployment's own runtime identity joins the pin: a log naming
 		// any other runtime is foreign even when the toolchain pins match.
 		pin.RuntimeDigest = runtimeDigest
+		webToolchainPin = &pin
 		evidence = craftWebBuildEvidenceSource(evidence, craftSessionBuildLogReader(source, outputDir), pin)
 	}
 	// The candidate store backs the R4 Task3 Run-bound collection: successful
@@ -209,15 +218,15 @@ func newCraftRuntimeExecutor(
 	// foreign tree.
 	runViewEvidence := evidence
 	var runViewLogReader func(context.Context, craft.Task) ([]byte, error)
-	if strings.TrimSpace(os.Getenv(craftWebToolchainDirEnv)) != "" {
-		runViewPin, pinErr := LoadCraftWebToolchainPin(strings.TrimSpace(os.Getenv(craftWebToolchainDirEnv)))
-		if pinErr != nil {
-			return nil, fmt.Errorf("craft web toolchain pin %s: %w", os.Getenv(craftWebToolchainDirEnv), pinErr)
-		}
-		runViewPin.RuntimeDigest = runtimeDigest
-		// Late-bound: the reader closure is assigned after the runtime is
-		// constructed (it needs the runtime's material seam).
-		runViewEvidence = craftWebBuildEvidenceSource(evidence, func(ctx context.Context, task craft.Task) ([]byte, error) {
+	if webToolchainPin != nil {
+		runViewPin := *webToolchainPin
+		// The RunView route's evidence inner is the PREVIEW-ONLY source
+		// (captured before the legacy wrapping): when this Run's own log
+		// read fails or is rejected, the build fact degrades to unobserved —
+		// it must never fall back to the legacy shared workDir tree, whose
+		// stale build-log.json would fold a foreign delegation's exit status
+		// into THIS Run's T15 promotion checks.
+		runViewEvidence = craftWebBuildEvidenceSource(previewOnly, func(ctx context.Context, task craft.Task) ([]byte, error) {
 			if runViewLogReader == nil {
 				return nil, fs.ErrNotExist
 			}
@@ -283,10 +292,28 @@ func newCraftRuntimeExecutor(
 		if err != nil {
 			return nil, err
 		}
-		logPath := path.Clean(craftLocalOutputDir + "/" + craftWebBuildLogName)
-		return source.ReadSessionFile(ctx, task.Scope.SessionID, logPath)
+		// The run-bound source only serves files its own bounded walk listed
+		// (identity-checked, no-follow). List first and map "absent" to
+		// fs.ErrNotExist — the evidence collector treats that as
+		// unobserved, while a raw read would surface as a generic conflict
+		// and (worse) could be misread as a screening rejection.
+		entries, err := source.ListSessionFiles(ctx, task.Scope.SessionID, craftLocalOutputDir)
+		if err != nil {
+			return nil, err
+		}
+		logName := craftWebBuildLogName
+		present := false
+		for _, entry := range entries {
+			if entry.Type == sandbox.RemoteEntryFile && path.Base(entry.Path) == logName {
+				present = true
+				break
+			}
+		}
+		if !present {
+			return nil, fs.ErrNotExist
+		}
+		return source.ReadSessionFile(ctx, task.Scope.SessionID, path.Clean(craftLocalOutputDir+"/"+logName))
 	}
-	runtime.runViewBuildLogReader = runViewLogReader
 	runtime.inner = opencode.NewExecutor(client, store,
 		func(ctx context.Context, task craft.Task, kind string, data json.RawMessage) error {
 			return runtime.emit(ctx, task, kind, data)
@@ -312,13 +339,9 @@ type localCraftRuntime struct {
 	// deployment-wide CRAFT_OPENCODE_OUTPUT_DIR that configures the legacy
 	// session-wide publication route on artifacts.
 	runViewArtifacts *service.CraftArtifactService
-	// runViewBuildLogReader reads THIS Run's verified-generation
-	// output/build-log.json for the T04 build evidence on the RunView
-	// candidate route (never the legacy shared tree).
-	runViewBuildLogReader func(ctx context.Context, task craft.Task) ([]byte, error)
-	emit                  func(context.Context, craft.Task, string, json.RawMessage) error
-	workDir               string
-	outputDir             string
+	emit             func(context.Context, craft.Task, string, json.RawMessage) error
+	workDir          string
+	outputDir        string
 	runtimeDigest         string
 	sessionsRoot          string
 	materialResolver      func(context.Context, craft.Task) (CraftRunViewMaterialHandle, error)

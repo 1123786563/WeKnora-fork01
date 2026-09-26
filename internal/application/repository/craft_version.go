@@ -355,13 +355,19 @@ func adoptCraftVersionEvidence(tx *gorm.DB, row craftVersionEvidenceRow) error {
 		}
 		return err
 	}
+	// Integrity parity with the read path: verify the stored bytes against
+	// their digest BEFORE adopting them, so a tampered row whose decoded
+	// facts happen to match the pinned replay cannot be silently adopted.
+	if sum := sha256.Sum256([]byte(stored.EvidenceJSON)); hex.EncodeToString(sum[:]) != stored.Digest {
+		return fmt.Errorf("%w: stored evidence for version %s fails its integrity digest", craft.ErrCorruptEvidence, row.VersionID)
+	}
 	var pinned craft.VersionEvidence
 	if err := json.Unmarshal([]byte(row.EvidenceJSON), &pinned); err != nil {
 		return err
 	}
 	var storedEvidence craft.VersionEvidence
 	if err := json.Unmarshal([]byte(stored.EvidenceJSON), &storedEvidence); err != nil {
-		return fmt.Errorf("craft: decode stored evidence for version %s: %w", row.VersionID, err)
+		return fmt.Errorf("%w: corrupt stored evidence for version %s: %v", craft.ErrCorruptEvidence, row.VersionID, err)
 	}
 	if !sameCraftVersionEvidence(storedEvidence, pinned) {
 		return fmt.Errorf("%w: version %s already pinned different evidence", craft.ErrConflict, row.VersionID)
@@ -413,17 +419,17 @@ func (s *CraftVersionStore) VersionEvidence(ctx context.Context, scope craft.Sco
 	// decode-then-re-encode) keeps byte-level tampering detectable.
 	sum := sha256.Sum256([]byte(evidenceRow.EvidenceJSON))
 	if hex.EncodeToString(sum[:]) != evidenceRow.Digest {
-		return craft.VersionEvidence{}, fmt.Errorf("%w: version %s evidence digest mismatch", craft.ErrConflict, versionID)
+		return craft.VersionEvidence{}, fmt.Errorf("%w: version %s evidence digest mismatch", craft.ErrCorruptEvidence, versionID)
 	}
 	var ev craft.VersionEvidence
 	if err := json.Unmarshal([]byte(evidenceRow.EvidenceJSON), &ev); err != nil {
-		return craft.VersionEvidence{}, fmt.Errorf("%w: corrupt version %s evidence: %v", craft.ErrConflict, versionID, err)
+		return craft.VersionEvidence{}, fmt.Errorf("%w: corrupt version %s evidence: %v", craft.ErrCorruptEvidence, versionID, err)
 	}
 	if ev.VersionID != versionID {
 		return craft.VersionEvidence{}, fmt.Errorf("%w: version %s evidence binds %s", craft.ErrConflict, versionID, ev.VersionID)
 	}
 	if err := craft.ValidateVersionEvidence(ev); err != nil {
-		return craft.VersionEvidence{}, fmt.Errorf("%w: corrupt version %s evidence: %v", craft.ErrConflict, versionID, err)
+		return craft.VersionEvidence{}, fmt.Errorf("%w: corrupt version %s evidence: %v", craft.ErrCorruptEvidence, versionID, err)
 	}
 	return ev, nil
 }

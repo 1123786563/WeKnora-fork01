@@ -2,13 +2,23 @@ package sandbox
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
 	"github.com/moby/moby/api/types/events"
 	"github.com/moby/moby/client"
 )
+
+// Compile-time pin of the *client.Client events API this observer relies on:
+// if a client upgrade changes the Events signature or the EventsResult
+// channel contract, the build breaks here instead of the runtime assertion
+// silently degrading the authoritative-duration path to "unsupported".
+var _ interface {
+	Events(ctx context.Context, options client.EventsListOptions) client.EventsResult
+} = (*client.Client)(nil)
 
 // DockerExecEventPair is the daemon-authored timing evidence for exactly one
 // Docker exec. The timestamps come from the daemon event stream, never from
@@ -127,7 +137,13 @@ func (c *DockerRemoteClient) ObserveExecEventPair(ctx context.Context, receipt D
 		select {
 		case <-ctx.Done():
 			return unavailable, DockerExecEventPairUnavailable, ctx.Err()
-		case err := <-result.Err:
+		case err, ok := <-result.Err:
+			if !ok {
+				// The error half of the stream ended without a terminal
+				// error: treat it as stream end, like an EOF on Err.
+				pair, status := pairDockerExecEvents(batch, receipt.ContainerID, receipt.ExecID)
+				return pair, status, nil
+			}
 			if err == nil {
 				continue
 			}
@@ -136,7 +152,14 @@ func (c *DockerRemoteClient) ObserveExecEventPair(ctx context.Context, receipt D
 				return pair, status, nil
 			}
 			return unavailable, DockerExecEventPairUnavailable, dockerError("RestrictedExecEvents", err)
-		case msg := <-result.Messages:
+		case msg, ok := <-result.Messages:
+			if !ok {
+				// Messages closes when the daemon ends the event stream; a
+				// closed channel without comma-ok would busy-loop here and
+				// grow the batch without bound.
+				pair, status := pairDockerExecEvents(batch, receipt.ContainerID, receipt.ExecID)
+				return pair, status, nil
+			}
 			batch = append(batch, msg)
 		}
 	}
@@ -146,9 +169,11 @@ func formatDockerEventTimestamp(t time.Time) string {
 	return fmt.Sprintf("%d.%09d", t.Unix(), t.Nanosecond())
 }
 
+// isDockerEventStreamEOF matches ONLY the clean-stream-end sentinel: a
+// substring match on "EOF" would also swallow io.ErrUnexpectedEOF ("unexpected
+// EOF"), which is exactly what a json.Decoder returns on a TRUNCATED event
+// stream — a transport failure that must surface, never masquerade as a clean
+// end.
 func isDockerEventStreamEOF(err error) bool {
-	if err == nil {
-		return false
-	}
-	return strings.Contains(err.Error(), "EOF")
+	return errors.Is(err, io.EOF)
 }

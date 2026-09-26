@@ -144,3 +144,23 @@
 .wk-craft-access-feedback { margin: 0.6rem 0 0; }
 .wk-craft-access-feedback[data-kind='error'] { color: var(--craft-danger); }
 .wk-craft-access-feedback[data-kind='success'] { color: var(--craft-success-text); }
+
+/* T11 (#128): the share panel. Same token system as the sibling panels so
+   the consent summary ships with real layout, spacing and error coloring
+   instead of browser defaults. */
+.wk-craft-share { display: grid; gap: 0.6rem; min-width: 0; }
+.wk-craft-share h4 { margin: 0; }
+.wk-craft-share-summary { align-items: baseline; display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; margin: 0; min-width: 0; }
+.wk-craft-share-version code, .wk-craft-share-digest code { overflow-wrap: anywhere; }
+.wk-craft-share-digest code { font-size: 0.85em; }
+.wk-craft-share-state { font-weight: 600; }
+.wk-craft-share-state[data-state='consented'] { color: var(--craft-success-text); }
+.wk-craft-share-state[data-state='declined'] { color: var(--craft-danger); }
+.wk-craft-share-state[data-state='private'] { color: var(--craft-secondary-text); }
+.wk-craft-share-notice, .wk-craft-share-awaiting, .wk-craft-share-decision { color: var(--craft-secondary-text); margin: 0; }
+.wk-craft-share-decision code { overflow-wrap: anywhere; }
+.wk-craft-share-error { color: var(--craft-danger); margin: 0; }
+.wk-craft-share-actions { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+.wk-craft-share-confirm { background: var(--craft-brand); border: none; border-radius: 6px; color: var(--craft-brand-contrast, #fff); cursor: pointer; padding: 0.45rem 0.9rem; }
+.wk-craft-share-confirm:disabled, .wk-craft-share-decline:disabled, .wk-craft-share-revoke:disabled { cursor: default; opacity: 0.6; }
+.wk-craft-share-decline, .wk-craft-share-revoke { background: var(--craft-canvas); border: 1px solid var(--craft-line); border-radius: 6px; color: var(--craft-ink); cursor: pointer; padding: 0.45rem 0.9rem; }

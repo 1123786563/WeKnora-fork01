@@ -9,8 +9,10 @@
   }
 
   function bindTable(table) {
-    // Explicit pairing: build.py emits aria-controls on the filter input so
-    // the binding survives template insertions between the two nodes.
+    // Explicit pairing: build.py emits aria-labelledby on the table pointing
+    // back at the filter input's id (and aria-controls on the input pointing
+    // at the table), so the binding survives template insertions between the
+    // two nodes.
     const inputId = table.getAttribute("aria-labelledby");
     let input = null;
     if (inputId !== null && inputId !== "") {

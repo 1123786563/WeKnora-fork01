@@ -9,13 +9,13 @@
 package craftegress
 
 import (
-	"bufio"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -82,33 +82,45 @@ func OpenCraftEgressAttemptJournal(path string) (*CraftEgressAttemptJournal, err
 }
 
 func (j *CraftEgressAttemptJournal) replay() error {
-	reader, err := os.Open(j.path)
+	data, err := os.ReadFile(j.path)
 	if err != nil {
 		return fmt.Errorf("craftegress: journal replay: %w", err)
 	}
-	defer func() { _ = reader.Close() }()
 	states := make(map[string]CraftEgressAttemptRecord) // attemptID -> latest record
-	scanner := bufio.NewScanner(reader)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-	for scanner.Scan() {
-		line := scanner.Bytes()
-		if len(line) == 0 {
+	offset := 0
+	lines := strings.Split(string(data), "\n")
+	for index, line := range lines {
+		if offset > len(data) {
+			return fmt.Errorf("craftegress: journal replay offset overshot")
+		}
+		if line == "" {
+			if index == len(lines)-1 {
+				break // trailing newline
+			}
+			offset += 1
 			continue
 		}
 		var record CraftEgressAttemptRecord
-		if err := json.Unmarshal(line, &record); err != nil {
-			return fmt.Errorf("craftegress: journal record unreadable: %w", err)
-		}
-		if record.AttemptID == "" || record.RequestDigest == "" || record.Ordinal <= 0 {
-			return fmt.Errorf("craftegress: journal record incomplete")
+		if err := json.Unmarshal([]byte(line), &record); err != nil || record.AttemptID == "" || record.RequestDigest == "" || record.Ordinal <= 0 {
+			// A crash between Write and the newline hitting the disk can
+			// leave ONE torn record at the very end of the append-only
+			// journal. Only that trailing fragment is tolerated (and
+			// truncated away): an unreadable line in the middle means real
+			// corruption and refuses to start rather than silently
+			// rewriting history.
+			if index == len(lines)-1 {
+				if truncateErr := j.file.Truncate(int64(offset)); truncateErr != nil {
+					return fmt.Errorf("craftegress: journal torn tail truncate: %w", truncateErr)
+				}
+				break
+			}
+			return fmt.Errorf("craftegress: journal record unreadable at byte %d", offset)
 		}
 		states[record.AttemptID] = record
 		if record.Ordinal >= j.nextOrd {
 			j.nextOrd = record.Ordinal + 1
 		}
-	}
-	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("craftegress: journal replay: %w", err)
+		offset += len(line) + 1
 	}
 	for _, record := range states {
 		switch record.State {
@@ -118,15 +130,31 @@ func (j *CraftEgressAttemptJournal) replay() error {
 			j.resolved[record.RequestDigest] = true
 		}
 	}
+	// A complete final record whose trailing newline was lost would make the
+	// next append concatenate onto it; restore the separator explicitly.
+	if len(data) > 0 && data[len(data)-1] != '\n' {
+		if _, err := j.file.Write([]byte("\n")); err != nil {
+			return fmt.Errorf("craftegress: journal newline restore: %w", err)
+		}
+		if err := j.file.Sync(); err != nil {
+			return fmt.Errorf("craftegress: journal newline restore fsync: %w", err)
+		}
+	}
 	return nil
 }
 
-// Allocate mints the next opaque identity for a fingerprint that has no
-// unresolved attempt, persisting the unresolved record BEFORE returning. The
-// caller may only forward after this commit succeeded.
-func (j *CraftEgressAttemptJournal) Allocate(requestDigest string) (CraftEgressAttemptRecord, error) {
+// AllocateIfNotParked atomically returns the parked (unresolved) attempt for
+// a fingerprint, minting and durably persisting a new one only when none is
+// parked. The single-lock check-and-mint is what preserves the protocol
+// invariant "at most one parked identity per fingerprint": separate Reuse and
+// Allocate calls would let two concurrent same-fingerprint requests each mint
+// an identity and corrupt the parked index.
+func (j *CraftEgressAttemptJournal) AllocateIfNotParked(requestDigest string) (CraftEgressAttemptRecord, bool, error) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
+	if parked, ok := j.unresolved[requestDigest]; ok {
+		return parked, false, nil
+	}
 	record := CraftEgressAttemptRecord{
 		Ordinal:       j.nextOrd,
 		AttemptID:     mintCraftEgressAttemptID(j.nextOrd),
@@ -135,11 +163,11 @@ func (j *CraftEgressAttemptJournal) Allocate(requestDigest string) (CraftEgressA
 		CreatedNano:   j.now().UnixNano(),
 	}
 	if err := j.appendLocked(record); err != nil {
-		return CraftEgressAttemptRecord{}, err
+		return CraftEgressAttemptRecord{}, false, err
 	}
 	j.nextOrd++
 	j.unresolved[requestDigest] = record
-	return record, nil
+	return record, true, nil
 }
 
 // Reuse returns the durable unresolved attempt for a fingerprint. ok=false
@@ -151,8 +179,13 @@ func (j *CraftEgressAttemptJournal) Reuse(requestDigest string) (CraftEgressAtte
 	return record, ok
 }
 
-// Resolve durably records a definitive outcome for one attempt. A gateway 409
-// keeps the attempt unresolved (parked) and only records the observed status.
+// Resolve durably records a definitive outcome for one attempt. A gateway
+// conflict (ACTIVITY_UNRESOLVED) keeps the attempt unresolved (parked) and
+// only records the observed status. The durable append commits BEFORE the
+// in-memory index changes, mirroring Allocate's fail-closed ordering: if the
+// append fails, the process still holds the old state and a restarted
+// replay cannot resurrect an identity the journal never recorded as
+// resolved.
 func (j *CraftEgressAttemptJournal) Resolve(attemptID, requestDigest string, gatewayStatus int, definitive bool) error {
 	j.mu.Lock()
 	defer j.mu.Unlock()
@@ -161,13 +194,18 @@ func (j *CraftEgressAttemptJournal) Resolve(attemptID, requestDigest string, gat
 	if definitive {
 		state = CraftEgressAttemptResolved
 		resolvedNano = j.now().UnixNano()
+	}
+	if err := j.appendLocked(CraftEgressAttemptRecord{
+		Ordinal: j.ordinalLocked(attemptID), AttemptID: attemptID, RequestDigest: requestDigest,
+		State: state, GatewayStatus: gatewayStatus, CreatedNano: j.now().UnixNano(), ResolvedNano: resolvedNano,
+	}); err != nil {
+		return err
+	}
+	if definitive {
 		delete(j.unresolved, requestDigest)
 		j.resolved[requestDigest] = true
 	}
-	return j.appendLocked(CraftEgressAttemptRecord{
-		Ordinal: j.ordinalLocked(attemptID), AttemptID: attemptID, RequestDigest: requestDigest,
-		State: state, GatewayStatus: gatewayStatus, CreatedNano: j.now().UnixNano(), ResolvedNano: resolvedNano,
-	})
+	return nil
 }
 
 func (j *CraftEgressAttemptJournal) ordinalLocked(attemptID string) int64 {

@@ -15,6 +15,14 @@ export type WebCheckEvidenceFact = NonNullable<CraftVersionView['web_evidence']>
 export interface WebVersionEvidenceFact {
   id: string;
   webEvidence: WebCheckEvidenceFact | null;
+  /**
+   * Optional ordering witness (creation timestamp of the version, newest
+   * wins). When callers supply it, the picker no longer depends on their
+   * array order alone: the seat goes to the NEWEST ready version even if the
+   * list arrives shuffled, which is exactly what #107's "the newest version
+   * passing the four checks becomes the default" requires.
+   */
+  createdAt?: string;
 }
 
 /**
@@ -33,16 +41,31 @@ export function webCheckEvidenceReady(evidence: WebCheckEvidenceFact | null): bo
 }
 
 /**
- * Picks the default preview version from newest-first versions: the newest
- * four-check ready one. A newer version that is not ready never displaces
- * the prior default — it stays out of the seat until its page actually
- * loaded.
+ * Picks the default preview version: the newest four-check ready one. The
+ * documented precondition is a newest-first list; when facts carry createdAt
+ * the function enforces the rule itself (max createdAt among ready facts)
+ * instead of trusting caller order. A newer version that is not ready never
+ * displaces the prior default — it stays out of the seat until its page
+ * actually loaded.
  */
 export function defaultPreviewVersion(
   versions: readonly WebVersionEvidenceFact[],
 ): WebVersionEvidenceFact | null {
+  let best: WebVersionEvidenceFact | null = null;
   for (const version of versions) {
-    if (webCheckEvidenceReady(version.webEvidence)) return version;
+    if (!webCheckEvidenceReady(version.webEvidence)) continue;
+    if (best === null) {
+      best = version;
+      continue;
+    }
+    const versionTime = Date.parse(version.createdAt ?? '');
+    const bestTime = Date.parse(best.createdAt ?? '');
+    if (!Number.isNaN(versionTime) && !Number.isNaN(bestTime)) {
+      if (versionTime > bestTime) best = version;
+      continue;
+    }
+    // Without comparable createdAt witnesses the newest-first array order
+    // remains the ordering contract.
   }
-  return null;
+  return best;
 }

@@ -99,6 +99,6 @@ export function CraftAccess({ role, members, onGrant, onRevoke }: CraftAccessPro
       </select></label>
       <button type="submit" disabled={isPending}>{pendingAction === 'grant' ? 'Adding…' : 'Add member'}</button>
     </form>}
-    {feedback && <p role={feedback.kind === 'error' ? 'alert' : 'status'} aria-live={feedback.kind === 'error' ? 'assertive' : 'polite'} aria-atomic="true" data-state={feedback.kind} className="wk-craft-access-feedback" data-kind={feedback.kind}>{feedback.message}</p>}
+    {feedback && <p role={feedback.kind === 'error' ? 'alert' : 'status'} aria-live={feedback.kind === 'error' ? 'assertive' : 'polite'} aria-atomic="true" className="wk-craft-access-feedback" data-kind={feedback.kind}>{feedback.message}</p>}
   </section>;
 }

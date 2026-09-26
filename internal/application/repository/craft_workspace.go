@@ -598,7 +598,10 @@ func lockCraftWriterWorkspace(tx *gorm.DB, scope craft.Scope, workspaceID string
 		return craftWorkspaceRow{}, err
 	}
 	if ws.SessionID != scope.SessionID {
-		return craftWorkspaceRow{}, fmt.Errorf("%w: workspace %s is bound to session %s", craft.ErrForbidden, ws.ID, ws.SessionID)
+		// Cross-session workspaces are invisible on this surface, matching
+		// GetWriterLease/GetWorkspace: the exported store seam must not leak
+		// the binding session's existence.
+		return craftWorkspaceRow{}, fmt.Errorf("%w: workspace %s", craft.ErrNotFound, workspaceID)
 	}
 	if ws.OwnerID != scope.UserID {
 		return craftWorkspaceRow{}, fmt.Errorf("%w: workspace owned by %s", craft.ErrForbidden, ws.OwnerID)

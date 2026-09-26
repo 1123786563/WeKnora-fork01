@@ -152,11 +152,18 @@ function sourceLabels(locale: CraftLocale): SourceLabels {
   };
 }
 
+// isCraftCitationFact narrows the citation union without a silent cast: a
+// new citation kind added to the union fails HERE at compile time instead of
+// sliding through an `as` assertion.
+function isCraftCitationFact(entry: { kind: string }): entry is CraftCitationFact {
+  return entry.kind === 'fact';
+}
+
 export function CraftSources(props: CraftSourcesProps) {
   const base = craftStrings(props.locale);
   const labels = sourceLabels(props.locale);
   const citedIds = new Set<string>(
-    (props.citations ?? []).filter((entry) => entry.kind === 'fact').map((entry) => (entry as CraftCitationFact).citationId),
+    (props.citations ?? []).filter(isCraftCitationFact).map((entry) => entry.citationId),
   );
 
   return (
@@ -238,7 +245,7 @@ export function CraftSources(props: CraftSourcesProps) {
             {props.citations.map((entry, index) => {
               if (entry.kind === 'inference') {
                 return (
-                  <li key={index} className="wk-craft-citation-inference" data-craft-inference="true">
+                  <li key={`inference-${index}`} className="wk-craft-citation-inference" data-craft-inference="true">
                     <span className="wk-craft-inference-label">{labels.inferenceLabel}</span> {entry.claim}
                   </li>
                 );

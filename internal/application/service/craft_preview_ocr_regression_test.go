@@ -114,8 +114,9 @@ func TestCraftPreviewLookupAnswersOutsideAllowlistBeforeIO(t *testing.T) {
 	granted.mu.Lock()
 	granted.caps["capdigest"] = craftPreviewGrant{
 		scope: scope, versionID: "v1", expiresAt: granted.config.Now().Add(time.Minute),
-		files: map[string]struct{}{"index.html": {}},
 	}
+	// The shared per-version allowlist cache backs the O(1) 404 door.
+	granted.versionFiles["v1"] = map[string]struct{}{"index.html": {}}
 	granted.mu.Unlock()
 
 	_, _, _, err := granted.lookup(context.Background(), "capdigest", "favicon.ico")

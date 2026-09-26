@@ -453,12 +453,11 @@ func VersionEvidenceDigest(ev VersionEvidence) (string, error) {
 
 // ValidVersionID reports whether id is the persisted form of one version
 // identity: the "ver_" prefix followed by exactly 64 lowercase hex
-// characters.
+// characters. It delegates to IsVersionID (preview.go) so the rule has ONE
+// implementation: promotion validation and evidence/export validation can
+// never drift apart when one of them is adjusted.
 func ValidVersionID(id string) bool {
-	if !strings.HasPrefix(id, VersionIDPrefix) || len(id) != len(VersionIDPrefix)+64 {
-		return false
-	}
-	return ValidSHA256(strings.TrimPrefix(id, VersionIDPrefix))
+	return IsVersionID(id)
 }
 
 // VersionEvidenceStore pins and reads the evidence members of immutable

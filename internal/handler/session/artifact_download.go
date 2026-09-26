@@ -806,6 +806,14 @@ func (h *CraftExportHandler) DownloadCraftExportBundle(c *gin.Context) {
 	}
 	writeDoc(craft.BundleBuildPath, buildJSON)
 	for _, member := range bundle.Version.Files {
+		// zip-slip variant: a Windows drive-letter first segment (c:/evil)
+		// passes forward-slash relative-path validation but older or custom
+		// extractors can resolve it as an absolute target outside the
+		// extraction directory. Refuse it before the 200 head is written.
+		if first := member.Path; len(first) >= 2 && first[0] >= 'a' && first[0] <= 'z' && first[1] == ':' {
+			abortDownload("craft export bundle member %q uses a drive-letter path", member.Path)
+			continue
+		}
 		reader, err := h.files.GetFile(c.Request.Context(), member.Ref)
 		if err != nil {
 			abortDownload("craft export bundle member %s read failed: %v", member.Path, err)

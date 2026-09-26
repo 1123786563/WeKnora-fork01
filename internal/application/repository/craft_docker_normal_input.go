@@ -32,6 +32,7 @@ var (
 	ErrCraftDockerNormalInputKeyUnavailable = errors.New("Docker normal input encryption requires a valid SYSTEM_AES_KEY")
 	ErrCraftDockerNormalInputCorrupt        = errors.New("Docker normal input failed integrity or decryption check")
 	ErrCraftDockerNormalInputTooLarge       = errors.New("Docker normal input exceeds the durable request size limit")
+	ErrCraftDockerNormalInputInvalid        = fmt.Errorf("Docker normal input request shape is invalid: %w", craft.ErrInvalidInput)
 )
 
 type CraftDockerNormalInputRequest struct {
@@ -93,8 +94,14 @@ func NewCraftDockerNormalInputRepository(db *gorm.DB) *CraftDockerNormalInputRep
 // an exact canonical request is idempotent; a changed request cannot inherit
 // the operation's admission/hold.
 func (r *CraftDockerNormalInputRepository) Stage(ctx context.Context, request CraftDockerNormalInputRequest) (CraftDockerStagedNormalInput, error) {
-	if r == nil || r.db == nil || !validCraftDockerNormalInput(request) {
+	if r == nil || r.db == nil {
 		return CraftDockerStagedNormalInput{}, ErrCraftDockerNormalInputConflict
+	}
+	if !validCraftDockerNormalInput(request) {
+		// A malformed request (NUL bytes, env keys containing '=', out-of-range
+		// timeout) conflicts with nothing: no durable identity exists yet.
+		// The input-class error keeps callers from hunting a phantom conflict.
+		return CraftDockerStagedNormalInput{}, fmt.Errorf("%w: %s", ErrCraftDockerNormalInputInvalid, "normal input request shape is invalid")
 	}
 	canonicalSize := craftDockerNormalCanonicalJSONSize(request)
 	if canonicalSize > MaxCraftDockerNormalRequestBytes {

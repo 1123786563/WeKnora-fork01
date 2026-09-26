@@ -298,7 +298,13 @@ func (s *CraftArtifactService) PromoteWebVersion(ctx context.Context, scope craf
 	}
 	if s.webProbe != nil {
 		evidence.PreviewReachable, evidence.PageLoaded = s.webProbe.ProbeWebPage(ctx, scope, candidate)
-	} // a missing probe leaves both page facts not_run — the gate refuses below
+	} else {
+		// Explicit not_run (not the zero-value empty string): a missing
+		// probe means unobserved, and Validate/Promotable treat not_run as
+		// a legitimate refusal rather than a malformed outcome.
+		evidence.PreviewReachable = craft.WebCheckNotRun
+		evidence.PageLoaded = craft.WebCheckNotRun
+	}
 	if err := evidence.Validate(); err != nil {
 		return craft.Version{}, err
 	}

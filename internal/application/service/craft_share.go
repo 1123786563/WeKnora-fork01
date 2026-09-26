@@ -319,6 +319,13 @@ func (s *CraftShareService) RevokeShare(ctx context.Context, scope craft.Scope, 
 		return CraftShareView{}, craft.ErrForbidden
 	}
 	versionID = strings.TrimSpace(versionID)
+	// Derive the contribution BEFORE any mutation: a transient read failure
+	// must not leave a persisted revocation that is reported to the caller
+	// as a failed revoke.
+	contribution, err := s.contribution(ctx, scope, versionID)
+	if err != nil {
+		return CraftShareView{}, err
+	}
 	now := s.now()
 	result := s.db.WithContext(ctx).
 		Where("tenant_id = ? AND session_id = ? AND version_id = ? AND revoked_at IS NULL", scope.TenantID, scope.SessionID, versionID).
@@ -329,9 +336,20 @@ func (s *CraftShareService) RevokeShare(ctx context.Context, scope craft.Scope, 
 	if result.RowsAffected > 0 {
 		s.auditShare(ctx, scope, versionID, "craft.share_revoked", "success", nil)
 	}
-	// No live row (never decided, or already revoked): revocation is
-	// idempotent and the view simply reports the resulting state.
-	return s.view(ctx, scope, versionID)
+	// One single-row decision read projects the response from the
+	// pre-derived immutable contribution. If that confirming read fails
+	// after a durable revocation, the error says the revocation PERSISTED
+	// instead of masquerading as a failed revoke; with no live row the
+	// revocation is idempotent and the projection reports the current
+	// state (never decided, or already revoked).
+	decisionRow, derr := s.decision(ctx, scope, versionID)
+	if derr != nil {
+		if result.RowsAffected > 0 {
+			return CraftShareView{}, fmt.Errorf("%w: revocation persisted for version %s but the confirming read failed: %v", craft.ErrConflict, versionID, derr)
+		}
+		return CraftShareView{}, derr
+	}
+	return projectCraftShareView(contribution, decisionRow, now), nil
 }
 
 // ShareAuthority is the gate downstream sharing surfaces (T13 export, T20
@@ -401,8 +419,13 @@ func (s *CraftShareService) auditShare(ctx context.Context, scope craft.Scope, v
 		raw = []byte(`{}`)
 	}
 	versionID = strings.TrimSpace(versionID)
+	// The injected clock keeps the deny-dedup window and the audit row's
+	// CreatedAt deterministic under fake-clock tests, exactly like every
+	// other time judgment in this service (and like auditExport's fixed
+	// clock in the T12 lane).
+	now := s.now()
 	if outcome == "denied" {
-		since := time.Now().Add(-craftDenyDedupWindow)
+		since := now.Add(-craftDenyDedupWindow)
 		var recent int64
 		if err := s.db.WithContext(ctx).Model(&craftAccessAudit{}).
 			Where("tenant_id = ? AND actor_user_id = ? AND action = ? AND scope_id = ? AND target_id = ? AND outcome = ? AND created_at > ?",
@@ -415,7 +438,7 @@ func (s *CraftShareService) auditShare(ctx context.Context, scope craft.Scope, v
 		TenantID: scope.TenantID, ActorUserID: actor, Action: action,
 		ScopeType: "session", ScopeID: scope.SessionID, TargetType: "artifact_version",
 		TargetID: versionID, Outcome: outcome,
-		Details: types.JSON(raw), CreatedAt: time.Now(),
+		Details: types.JSON(raw), CreatedAt: now,
 	}).Error; err != nil {
 		logger.ErrorWithFields(ctx, err, map[string]interface{}{"audit_action": action})
 	}

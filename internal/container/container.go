@@ -528,7 +528,12 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// uninstantiated: the executor above fails closed, which is the recorded
 	// assembly boundary (craft runtime deployment task).
 	must(container.Provide(repository.NewCraftVersionStore))
-	must(container.Provide(newCraftPreviewCheckStoreConcrete, dig.As(new(craft.PreviewCheckStore))))
+	// Dual registration: dig v1.19's As REPLACES the registered type with
+	// the interface (it does not register both), so the concrete constructor
+	// stays resolvable for the T14/T20 probe writer while the adapter below
+	// satisfies the frozen craft.PreviewCheckStore seam for consumers.
+	must(container.Provide(newCraftPreviewCheckStoreConcrete))
+	must(container.Provide(func(store *repository.CraftPreviewCheckStore) craft.PreviewCheckStore { return store }))
 	must(container.Provide(newCraftPreviewService))
 	must(container.Provide(newCraftSessionService))
 	must(container.Provide(newCraftDefaultVersionSelector))
@@ -2607,10 +2612,10 @@ func newCraftDefaultVersionSelector(executor craft.Executor) service.DefaultVers
 }
 
 // newCraftPreviewCheckStoreConcrete constructs the concrete preview-check
-// store. dig.As registers it under the frozen craft.PreviewCheckStore
-// interface too, so existing interface consumers are unchanged while the
-// T14/T20 probe writer can resolve the concrete type for the T15
-// UpdateWebProbeCheck fact channel.
+// store. It is registered BOTH as its concrete type (the T14/T20 probe
+// writer resolves it for the T15 UpdateWebProbeCheck fact channel) and,
+// through a separate adapter provider, under the frozen
+// craft.PreviewCheckStore interface for existing interface consumers.
 func newCraftPreviewCheckStoreConcrete(db *gorm.DB) *repository.CraftPreviewCheckStore {
 	return repository.NewCraftPreviewCheckStoreConcrete(db)
 }

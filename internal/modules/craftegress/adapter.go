@@ -3,12 +3,15 @@ package craftegress
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -19,8 +22,20 @@ const craftModelActivityHeader = "X-Craft-Activity-ID"
 
 const (
 	craftEgressDefaultMaxBodyBytes = 16 << 20
-	craftEgressDefaultTimeout      = 120 * time.Second
+	// craftEgressDefaultTimeout must stay AT OR ABOVE the Craft model
+	// gateway's own forward budget (ForwardTimeout default 5 minutes in
+	// internal/handler/craft_model_gateway.go): a shorter adapter timeout
+	// would abort slow-but-legitimate generations mid-flight, park the
+	// attempt as unknown-outcome, and deadlock same-fingerprint retries on
+	// the gateway's ACTIVITY_UNRESOLVED 409 until manual reconciliation.
+	// The one-minute headroom absorbs buffering between the two hops.
+	craftEgressDefaultTimeout = 6 * time.Minute
 )
+
+// DefaultForwardTimeout exposes the adapter's default forward budget so
+// operators tooling around cmd/craft-egress-adapter share one source of
+// truth with the gateway-budget linkage documented above.
+func DefaultForwardTimeout() time.Duration { return craftEgressDefaultTimeout }
 
 // CraftEgressAdapterConfig assembles the per-Run egress adapter. The gateway
 // base URL is operator configuration (never client input) and must be http or
@@ -33,9 +48,14 @@ type CraftEgressAdapterConfig struct {
 	MaxBodyBytes   int64
 	ForwardTimeout time.Duration
 	Now            func() time.Time
-	// Transport is optional (tests inject one); production uses the default
-	// client bound to ForwardTimeout.
+	// Transport is optional (tests inject one); production uses a hardened
+	// default transport bound to ForwardTimeout.
 	Transport http.RoundTripper
+	// AllowPrivateTarget mirrors ValidateGatewayTarget's flag for the
+	// RUNTIME dial check: when false, every actually-dialed gateway IP is
+	// re-validated against the private/loopback/reserved ranges at connect
+	// time, closing the startup-DNS vs runtime-DNS rebinding window.
+	AllowPrivateTarget bool
 }
 
 // CraftEgressAdapter is the runtime-side producer of per-physical-attempt
@@ -82,14 +102,49 @@ func NewCraftEgressAdapter(config CraftEgressAdapterConfig) (*CraftEgressAdapter
 	}
 	transport := config.Transport
 	if transport == nil {
-		transport = http.DefaultTransport
+		dialer := &net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}
+		// Connect-time host re-validation: the startup
+		// ValidateGatewayTarget DNS answer is stale the moment a short TTL
+		// expires, and every request dials fresh. Rejecting the
+		// actually-connected IP keeps Bearer-bearing forwards off
+		// loopback/private/cloud-metadata targets under rebinding.
+		if !config.AllowPrivateTarget {
+			dialer.Control = func(network, address string, _ syscall.RawConn) error {
+				host, _, err := net.SplitHostPort(address)
+				if err != nil {
+					return fmt.Errorf("craftegress: dial address %q: %w", address, err)
+				}
+				ip := net.ParseIP(host)
+				if ip == nil {
+					return fmt.Errorf("craftegress: dial address %q is not an IP", address)
+				}
+				return rejectPrivateIP(ip)
+			}
+		}
+		transport = &http.Transport{
+			Proxy:                 nil,
+			DialContext:           dialer.DialContext,
+			ForceAttemptHTTP2:     true,
+			MaxIdleConns:          100,
+			IdleConnTimeout:       90 * time.Second,
+			TLSHandshakeTimeout:   10 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
+		}
 	}
 	return &CraftEgressAdapter{
 		gateway:    target,
 		credential: config.Credential,
 		journal:    journal,
-		client:     &http.Client{Transport: transport, Timeout: timeout},
-		maxBody:    maxBody,
+		client: &http.Client{
+			Transport: transport,
+			Timeout:   timeout,
+			// The gateway is the only configured endpoint; a redirect would
+			// move a credentialed forward elsewhere by definition.
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return fmt.Errorf("craftegress: gateway redirect refused")
+			},
+		},
+		maxBody: maxBody,
 	}, nil
 }
 
@@ -121,16 +176,14 @@ func (a *CraftEgressAdapter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	attemptID := ""
 	if r.Method == http.MethodPost && len(body) > 0 {
-		digest := craftEgressRequestDigest(r.Method, r.URL.Path, body)
-		record, reusable := a.journal.Reuse(digest)
-		if !reusable {
-			allocated, err := a.journal.Allocate(digest)
-			if err != nil {
-				// No durable identity, no physical send. Ever.
-				http.Error(w, "egress attempt journal unavailable", http.StatusServiceUnavailable)
-				return
-			}
-			record = allocated
+		digest := craftEgressRequestDigest(r.Method, r.URL.Path, r.URL.RawQuery, body)
+		// Single-lock check-and-mint: two concurrent same-fingerprint
+		// requests must never each mint an identity.
+		record, _, err := a.journal.AllocateIfNotParked(digest)
+		if err != nil {
+			// No durable identity, no physical send. Ever.
+			http.Error(w, "egress attempt journal unavailable", http.StatusServiceUnavailable)
+			return
 		}
 		attemptID = record.AttemptID
 	}
@@ -161,7 +214,7 @@ func (a *CraftEgressAdapter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	responseBody, readErr := io.ReadAll(io.LimitReader(resp.Body, a.maxBody+1))
 	if readErr != nil || int64(len(responseBody)) > a.maxBody {
 		if attemptID != "" {
-			digest := craftEgressRequestDigest(r.Method, r.URL.Path, body)
+			digest := craftEgressRequestDigest(r.Method, r.URL.Path, r.URL.RawQuery, body)
 			_ = a.journal.Resolve(attemptID, digest, resp.StatusCode, false)
 			w.Header().Set(craftModelActivityHeader, attemptID)
 		}
@@ -169,10 +222,15 @@ func (a *CraftEgressAdapter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if attemptID != "" {
-		digest := craftEgressRequestDigest(r.Method, r.URL.Path, body)
-		// A gateway conflict (ACTIVITY_UNRESOLVED) parks rather than resolves:
-		// the durable attempt stays reusable until reconciliation.
-		definitive := resp.StatusCode != http.StatusConflict
+		digest := craftEgressRequestDigest(r.Method, r.URL.Path, r.URL.RawQuery, body)
+		// The gateway marks an unknown-outcome send with the machine-readable
+		// appFail code ACTIVITY_UNRESOLVED — on 409 (its own binding
+		// conflict) and on 502 (initiation timeout, failed forward, lost
+		// response). Only that code parks; a bare status (an upstream 409
+		// passed through verbatim) is definitive, and a definitive resolve
+		// of an actually-unknown send would mint a fresh identity on retry
+		// and bill the same logical request twice.
+		definitive := !gatewayReportsActivityUnresolved(resp.StatusCode, responseBody)
 		if err := a.journal.Resolve(attemptID, digest, resp.StatusCode, definitive); err != nil {
 			// The response was observed; a failed resolution record leaves the
 			// attempt reusable, which reconciles safely on the next pass.
@@ -221,10 +279,30 @@ func (a *CraftEgressAdapter) targetURL(w http.ResponseWriter, r *http.Request) (
 }
 
 // craftEgressRequestDigest fingerprints one logical provider request so an
-// unknown-outcome retry can be correlated back to its parked attempt. This
+// unknown-outcome retry can be correlated back to its parked attempt. The
+// query string participates: two requests that differ only by query are
+// different logical requests and must never share a parked identity. This
 // correlation is bookkeeping for reuse; identity itself is always the
 // journal-minted opaque id.
-func craftEgressRequestDigest(method, path string, body []byte) string {
-	digest := sha256.Sum256(append([]byte(strconv.Itoa(len(path))+"\x00"+method+"\x00"+path+"\x00"), body...))
+func craftEgressRequestDigest(method, path, rawQuery string, body []byte) string {
+	digest := sha256.Sum256(append([]byte(strconv.Itoa(len(path))+"\x00"+method+"\x00"+path+"\x00"+strconv.Itoa(len(rawQuery))+"\x00"+rawQuery+"\x00"), body...))
 	return hex.EncodeToString(digest[:])
+}
+
+// gatewayReportsActivityUnresolved parses the gateway's application error
+// envelope and reports whether this response is an explicit
+// unknown-outcome signal, regardless of HTTP status.
+func gatewayReportsActivityUnresolved(status int, body []byte) bool {
+	if status != http.StatusConflict && status != http.StatusBadGateway {
+		return false
+	}
+	var envelope struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		return false
+	}
+	return envelope.Error.Code == "ACTIVITY_UNRESOLVED"
 }

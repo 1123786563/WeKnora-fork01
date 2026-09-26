@@ -93,9 +93,9 @@ func (e *ActiveRunConflict) Unwrap() error { return craft.ErrBusy }
 // DefaultVersionSelector resolves a scope's default preview version under
 // the T15 (#130) promotion policy: the newest published web version whose
 // four independent checks each passed. The boolean reports whether any
-// version qualified; an error degrades to the legacy newest-version rule
-// at the call site (the seat is a projection, never an authorization
-// boundary).
+// version qualified; an error degrades CONSERVATIVELY at the call site —
+// the default seat stays EMPTY (never a legacy newest-version fallback),
+// exactly like the View projection in this file.
 type DefaultVersionSelector = func(ctx context.Context, scope craft.Scope) (craft.Version, bool, error)
 
 // CraftSessionConfig assembles the craft session service.

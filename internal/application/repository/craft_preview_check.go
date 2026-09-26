@@ -68,7 +68,14 @@ func (s *CraftPreviewCheckStore) UpdateWebProbeCheck(ctx context.Context, scope 
 		return craft.Version{}, fmt.Errorf("%w: channel updates only the %q/%q checks, got %q", craft.ErrInvalidInput, craft.CheckPreviewReachable, craft.CheckPageLoad, name)
 	}
 	switch outcome {
-	case craft.WebCheckPassed, craft.WebCheckFailed, craft.WebCheckNotRun:
+	case craft.WebCheckPassed, craft.WebCheckFailed:
+	case craft.WebCheckNotRun:
+		// Writing an explicit not_run row is a contract trap: the row is
+		// immutable once written, so the check name could never again record
+		// a REAL observation, while a missing row already means not_run in
+		// WebEvidenceFromChecks. Producers that could not observe simply do
+		// not write.
+		return craft.Version{}, fmt.Errorf("%w: the probe channel records observations only; not_run is the absent-row state, got %q", craft.ErrInvalidInput, string(outcome))
 	default:
 		return craft.Version{}, fmt.Errorf("%w: unknown web check outcome %q", craft.ErrInvalidInput, string(outcome))
 	}

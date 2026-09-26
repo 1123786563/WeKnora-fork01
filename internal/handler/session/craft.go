@@ -251,6 +251,10 @@ func craftHTTPError(c *gin.Context, err error) {
 		c.Error(apperrors.NewNotFoundError(err.Error()))
 	case stderrors.Is(err, craft.ErrConflict):
 		c.Error(apperrors.NewConflictError(err.Error()))
+	case stderrors.Is(err, craft.ErrCorruptEvidence):
+		// Storage integrity failure, not a client conflict: 500-class so
+		// monitoring separates corruption from retryable publication races.
+		c.Error(apperrors.NewInternalServerError(err.Error()))
 	case stderrors.Is(err, craft.ErrBusy):
 		var conflict *service.ActiveRunConflict
 		detail := gin.H{"code": "run_active", "message": err.Error()}

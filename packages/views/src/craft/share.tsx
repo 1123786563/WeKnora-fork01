@@ -1,4 +1,6 @@
 import React, { useCallback, useState } from 'react';
+import type { CraftShareDecision as CraftShareDecisionContract } from '@weknora/contracts';
+import { formatDateTime } from './presentation.ts';
 
 // T11 (#128): sharing a restricted-source result is server authority this
 // panel only projects. The server derives the restricted contribution from
@@ -9,12 +11,9 @@ export type CraftShareStatus = 'private' | 'consented' | 'declined';
 export type CraftShareRole = 'owner' | 'collaborator' | 'viewer';
 export type CraftShareDecisionKind = 'approved' | 'rejected' | 'unknown';
 
-export interface CraftShareDecision {
-  version_id: string;
-  evidence_digest: string;
-  owner_id: string;
-  decision: CraftShareDecisionKind;
-}
+// The decision shape is the FROZEN @weknora/contracts export; the panel
+// only adds the 'unknown' parse residual on top of it.
+export type CraftShareDecision = CraftShareDecisionContract & { decision: CraftShareDecisionKind };
 
 export interface CraftShareView {
   versionId: string;
@@ -182,7 +181,7 @@ export function CraftSharePanel({ locale, role, view, onDecide, onRevoke }: Craf
     <p className="wk-craft-share-notice">{view.restricted ? labels.restricted : labels.unrestricted}</p>
     {view.decision && view.status !== 'private' && <p className="wk-craft-share-decision">
       {labels.decidedBy}: <code>{view.decision.owner_id}</code>
-      {view.expiresAt ? <span className="wk-craft-share-expiry"> · {labels.expires}: {view.expiresAt}</span> : null}
+      {view.expiresAt ? <span className="wk-craft-share-expiry"> · {labels.expires}: {formatDateTime(view.expiresAt, locale)}</span> : null}
     </p>}
     {awaitingDecision && !view.decision && <p className="wk-craft-share-awaiting">{labels.awaiting}</p>}
     {actionError && <p role="alert" className="wk-craft-share-error">{actionError}</p>}

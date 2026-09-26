@@ -213,7 +213,6 @@ func (c CraftPreviewConfig) withDefaults() CraftPreviewConfig {
 type craftPreviewGrant struct {
 	scope     craft.Scope
 	versionID string
-	files     map[string]struct{}
 	expiresAt time.Time
 }
 
@@ -227,6 +226,12 @@ type CraftPreviewService struct {
 	mu      sync.Mutex
 	tickets map[string]craftPreviewGrant // digest → grant
 	caps    map[string]craftPreviewGrant // digest → grant
+	// versionFiles caches ONE shared allowlist per immutable version id.
+	// Grants reference their version instead of freezing a private copy of
+	// the manifest: the grant tables stay bounded by maxCraftPreviewGrants
+	// times an O(1) reference, while the allowlists are bounded by the
+	// number of DISTINCT published versions actually previewed.
+	versionFiles map[string]map[string]struct{}
 }
 
 // NewCraftPreviewService assembles the preview service. versions and files
@@ -250,12 +255,13 @@ func NewCraftPreviewService(
 			config.PreviewOrigin, config.AppOrigin))
 	}
 	return &CraftPreviewService{
-		versions: versions,
-		files:    files,
-		checks:   checks,
-		config:   config,
-		tickets:  map[string]craftPreviewGrant{},
-		caps:     map[string]craftPreviewGrant{},
+		versions:     versions,
+		files:        files,
+		checks:       checks,
+		config:       config,
+		tickets:      map[string]craftPreviewGrant{},
+		caps:         map[string]craftPreviewGrant{},
+		versionFiles: map[string]map[string]struct{}{},
 	}
 }
 
@@ -337,10 +343,7 @@ func (s *CraftPreviewService) Issue(ctx context.Context, scope craft.Scope, vers
 	if !ok {
 		return craft.PreviewTicket{}, fmt.Errorf("%w: kind %q has no entry file", craft.ErrUnsupported, version.Kind)
 	}
-	allowedFiles := make(map[string]struct{}, len(version.Files))
-	for _, file := range version.Files {
-		allowedFiles[file.Path] = struct{}{}
-	}
+	allowedFiles := s.sharedVersionFiles(version.ID, version.Files)
 	if _, ok := allowedFiles[entry]; !ok {
 		return craft.PreviewTicket{}, fmt.Errorf("%w: entry is absent from version manifest", craft.ErrNotFound)
 	}
@@ -351,7 +354,7 @@ func (s *CraftPreviewService) Issue(ctx context.Context, scope craft.Scope, vers
 	}
 	now := s.config.Now()
 	expiresAt := now.Add(s.config.TTL)
-	if err := s.putTicket(digest, craftPreviewGrant{scope: scope, versionID: version.ID, files: allowedFiles, expiresAt: expiresAt}); err != nil {
+	if err := s.putTicket(digest, craftPreviewGrant{scope: scope, versionID: version.ID, expiresAt: expiresAt}); err != nil {
 		return craft.PreviewTicket{}, err
 	}
 	base := strings.TrimSuffix(s.config.PreviewOrigin, "/")
@@ -414,7 +417,7 @@ func (s *CraftPreviewService) Open(ctx context.Context, token, requestPath strin
 			return PreviewOpen{}, err
 		}
 		expiresAt := s.config.Now().Add(s.config.TTL)
-		if err := s.putCapability(capDigest, craftPreviewGrant{scope: grant.scope, versionID: grant.versionID, files: grant.files, expiresAt: expiresAt}); err != nil {
+		if err := s.putCapability(capDigest, craftPreviewGrant{scope: grant.scope, versionID: grant.versionID, expiresAt: expiresAt}); err != nil {
 			return PreviewOpen{}, err
 		}
 		return PreviewOpen{Redirect: "/" + craft.PreviewPathSegment + "/" + capToken + "/" + rel}, nil
@@ -469,8 +472,10 @@ func (s *CraftPreviewService) lookup(ctx context.Context, digest, rel string) (c
 	// config load + live container inspect). Authorized manifest paths
 	// still run both doors before any byte is served — the order change
 	// only short-circuits guaranteed-404 requests.
-	if _, ok := grant.files[rel]; !ok {
-		return craft.File{}, craft.Scope{}, craftPreviewGrant{}, fmt.Errorf("%w: file is outside preview capability", craft.ErrNotFound)
+	if allowlist, cached := s.sharedVersionAllowlist(grant.versionID); cached {
+		if _, ok := allowlist[rel]; !ok {
+			return craft.File{}, craft.Scope{}, craftPreviewGrant{}, fmt.Errorf("%w: file is outside preview capability", craft.ErrNotFound)
+		}
 	}
 	if err := craft.RequireTaskAccess(ctx, s.config.AccessChecker, grant.scope, craft.TaskPreview); err != nil {
 		return craft.File{}, craft.Scope{}, craftPreviewGrant{}, err
@@ -509,6 +514,38 @@ func (s *CraftPreviewService) openReader(ctx context.Context, grant craftPreview
 		return nil, fmt.Errorf("craft: open preview object: %w", err)
 	}
 	return newBoundedReadCloser(reader, file.Bytes), nil
+}
+
+// maxCraftPreviewVersionCache bounds the shared per-version allowlist cache;
+// beyond it new versions simply skip the O(1) 404 short-circuit and pay the
+// full per-read validation path.
+const maxCraftPreviewVersionCache = 1 << 12
+
+// sharedVersionFiles returns the shared allowlist for one immutable version,
+// populating the cache on first use. Versions are immutable, so one map is
+// safely shared by every grant, ticket and capability of that version.
+func (s *CraftPreviewService) sharedVersionFiles(versionID string, files []craft.File) map[string]struct{} {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if cached, ok := s.versionFiles[versionID]; ok {
+		return cached
+	}
+	allowlist := make(map[string]struct{}, len(files))
+	for _, file := range files {
+		allowlist[file.Path] = struct{}{}
+	}
+	if len(s.versionFiles) < maxCraftPreviewVersionCache {
+		s.versionFiles[versionID] = allowlist
+	}
+	return allowlist
+}
+
+// sharedVersionAllowlist reports the cached allowlist for a version, if any.
+func (s *CraftPreviewService) sharedVersionAllowlist(versionID string) (map[string]struct{}, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cached, ok := s.versionFiles[versionID]
+	return cached, ok
 }
 
 // putTicket stores one ticket grant, purging expired entries first.

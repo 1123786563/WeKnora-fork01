@@ -123,6 +123,10 @@ export function createSessionCraftUsageClient(
 
 export interface CraftUsageStrings {
   title: string;
+  pauseTitle: string;
+  pauseCanExtend: string;
+  pauseContactOwner: string;
+  pauseRequestExtension: string;
   refresh: string;
   refreshing: string;
   loadFailed: string;
@@ -138,6 +142,10 @@ export interface CraftUsageStrings {
 
 export const CRAFT_USAGE_STRINGS_ZH: CraftUsageStrings = {
   title: '用量与执行诊断',
+  pauseTitle: '预算已用尽，运行已暂停',
+  pauseCanExtend: '申请增加预算后可安全恢复运行。',
+  pauseContactOwner: '联系 Task Owner 或账单管理员处理预算后恢复运行。',
+  pauseRequestExtension: '申请增加预算',
   refresh: '刷新',
   refreshing: '刷新中…',
   loadFailed: '用量数据读取失败',
@@ -171,17 +179,18 @@ export interface CraftBudgetPauseNoticeProps {
   /** Projected by the server's current Task owner/billing-admin check. */
   canExtend: boolean;
   onRequestExtension?: (runId: string) => void;
+  strings?: CraftUsageStrings;
 }
 
 /** Budget state is actionable without disclosing Credits, balances or keys. */
-export function CraftBudgetPauseNotice({ pause, canExtend, onRequestExtension }: CraftBudgetPauseNoticeProps) {
+export function CraftBudgetPauseNotice({ pause, canExtend, onRequestExtension, strings = CRAFT_USAGE_STRINGS_ZH }: CraftBudgetPauseNoticeProps) {
   return (
     <aside role="status" data-testid="craft-budget-pause">
-      <strong>预算已用尽，运行已暂停</strong>
-      <p>{canExtend ? '申请增加预算后可安全恢复运行。' : '联系 Task Owner 或账单管理员处理预算后恢复运行。'}</p>
+      <strong>{strings.pauseTitle}</strong>
+      <p>{canExtend ? strings.pauseCanExtend : strings.pauseContactOwner}</p>
       {canExtend ? (
         <button type="button" onClick={() => onRequestExtension?.(pause.run_id)} disabled={!onRequestExtension}>
-          申请增加预算
+          {strings.pauseRequestExtension}
         </button>
       ) : null}
     </aside>
