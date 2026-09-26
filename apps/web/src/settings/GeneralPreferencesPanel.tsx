@@ -5,9 +5,12 @@ import { formatMessage, isLocale, type Locale } from '@weknora/i18n';
 import { readLocalPreferences, writeLocalPreferences, readUserPreference, writeUserPreference, migratePreferencesIntoUser, isValidTheme, isValidFontSize, type ThemeMode, type FontSize } from '@weknora/domain/settings/local-preferences';
 // TDesign 同构迁移（T12a）：GeneralSettings.vue 的 t-select / t-radio-group
 // （t-radio-button）/ t-switch 按组件映射表直译（playbook §1 #4/#6/#7）。
-import { Button, Radio, RadioGroup, Select, Switch } from 'tdesign-react';
-import { pushSettingsToast } from './settings-toast.tsx';
+import { Button, MessagePlugin, Radio, RadioGroup, Select, Switch } from 'tdesign-react';
 import { navigate } from '../platform/navigation.ts';
+// 字号应用机制（Vue useFont.ts:216-238 parity）：缩放经 <html> 的 CSS zoom
+// 全站生效——--wk-font-scale 变量无消费者，单设变量视觉不缩放
+// （px2-settings-general-fontradio 25.519% 基线根因）。
+import { applyFontSizeZoom, FONT_SCALES } from '../font.ts';
 
 /**
  * SP14 Task 1 — 套餐卡片文案组装（纯函数）。合同修复后的真实形状：
@@ -53,12 +56,11 @@ const MONO_STACKS: Record<string, string> = {
   menlo: 'Menlo, Monaco, Consolas, "Courier New", monospace',
   monaco: 'Monaco, Menlo, Consolas, "Courier New", monospace',
   consolas: 'Consolas, "Courier New", Menlo, Monaco, monospace',
-  cascadia: '"Cascadia Code", "Cascadia Mono", Consolas, "Courier New", monospace',
-  'dejavu-mono': '"DejaVu Sans Mono", "Liberation Mono", Menlo, Consolas, monospace',
+  cascadia: '"Cascadia Code", "Cascadia Mono", Consolas, monospace',
+  'dejavu-mono': '"DejaVu Mono", "Liberation Mono", Menlo, Consolas, monospace',
   'liberation-mono': '"Liberation Mono", "DejaVu Sans Mono", Menlo, Consolas, monospace',
   monospace: 'monospace',
 };
-const FONT_SCALES: Record<FontSize, number> = { small: 0.875, normal: 1, large: 1.125 };
 
 function detectPlatform(): 'mac' | 'windows' | 'linux' {
   const ua = window.navigator.userAgent;
@@ -134,6 +136,8 @@ function applyFontCssVariables(sans: string, mono: string, size: FontSize): void
   root.style.setProperty('--wk-font-sans', SANS_STACKS[sans] ?? SANS_STACKS.system!);
   root.style.setProperty('--wk-font-mono', MONO_STACKS[mono] ?? MONO_STACKS.system!);
   root.style.setProperty('--wk-font-scale', String(FONT_SCALES[size]));
+  // Vue useFont.applyFont（useFont.ts:238）同款：字号经 <html> zoom 全站缩放。
+  applyFontSizeZoom(size);
 }
 
 export function GeneralPreferencesPanel({ liteMode = false, client }: { liteMode?: boolean; client?: WeKnoraClient }) {
@@ -192,9 +196,10 @@ export function GeneralPreferencesPanel({ liteMode = false, client }: { liteMode
   }, [client]);
 
   // Vue GeneralSettings.vue closes each accepted preference change with a
-  // MessagePlugin.success（language.languageSaved / common.success，右上角
-  // 3s 自动消失）；React 侧等价物 = pushSettingsToast 命令式 toast（壳层
-  // SettingsToastHost 渲染，R472 A2），不再渲染内联 notice 行。
+  // MessagePlugin.success（language.languageSaved / common.success，顶部居中
+  // t-message 3s 自动消失）。#27 回退判例（da187f072）同族：本面板原走自研
+  // wk-settings-toast 右上角，与 Vue t-message 异构（px2-settings-general-
+  // fontradio 扫描暴露），换 tdesign-react MessagePlugin 同构。
   function handleLanguageChange(next: string) {
     if (!isLocale(next)) return;
     setLocale(next);
@@ -202,33 +207,33 @@ export function GeneralPreferencesPanel({ liteMode = false, client }: { liteMode
     window.dispatchEvent(new window.Event('weknora:locale-changed'));
     // Vue resolves the toast after locale.value updates, so the message uses
     // the NEW locale.
-    pushSettingsToast(formatMessage(next, 'language.languageSaved'), 'success');
+    void MessagePlugin.success(formatMessage(next, 'language.languageSaved'));
   }
   function handleThemeChange(next: string) {
     if (!isValidTheme(next)) return;
     setTheme(next);
     writeLocalPreferences(window.localStorage, { theme: next });
     window.dispatchEvent(new window.Event('weknora:theme-changed'));
-    pushSettingsToast(formatMessage(locale, 'common.success'), 'success');
+    void MessagePlugin.success(formatMessage(locale, 'common.success'));
   }
   function handleFontSizeChange(next: string) {
     if (!isValidFontSize(next)) return;
     setFontSize(next as FontSize);
     writeLocalPreferences(window.localStorage, { fontSize: next as FontSize });
     applyFontCssVariables(sansFont, monoFont, next as FontSize);
-    pushSettingsToast(formatMessage(locale, 'common.success'), 'success');
+    void MessagePlugin.success(formatMessage(locale, 'common.success'));
   }
   function handleSansFontChange(next: string) {
     setSansFont(next);
     writeUserPreference(window.localStorage, 'font_sans', next);
     applyFontCssVariables(next, monoFont, fontSize);
-    pushSettingsToast(formatMessage(locale, 'common.success'), 'success');
+    void MessagePlugin.success(formatMessage(locale, 'common.success'));
   }
   function handleMonoFontChange(next: string) {
     setMonoFont(next);
     writeUserPreference(window.localStorage, 'font_mono', next);
     applyFontCssVariables(sansFont, next, fontSize);
-    pushSettingsToast(formatMessage(locale, 'common.success'), 'success');
+    void MessagePlugin.success(formatMessage(locale, 'common.success'));
   }
 
   function handleAutoCheckUpdateChange(enabled: boolean) {

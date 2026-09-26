@@ -31,6 +31,12 @@ body { margin: 0; min-width: 320px; background: var(--wk-color-page, #eee);
      currentColor 与未带字号组件文本继承 body，缺这两条时 spike 图标区不坍缩。 */
   font-size: 14px;
   color: var(--td-text-color-primary); }
+/* Vue App.vue:291-297 body/html/#app 高度链平移（width/height 100%）。缺失时
+   React 壳链只能靠 100vh 撑高（.wk-shell-1 旧值），而 <html> 带 zoom（useFont
+   字号机制，px2-settings-general-fontradio）时 100vh 按未缩放视口求值再放大，
+   大字号下 .menu_bottom 被推出视口（Vue 720 / React 810 取证见 platform-u.css
+   .wk-shell-1 注）。height:100% 链按缩放后 ICB 求值，zoom 态与 Vue 一致。 */
+html, body, #root { width: 100%; height: 100%; margin: 0; padding: 0; }
 /* .wk-muted deleted: every consumer carries the text-muted utility (or an
    overriding variant) since the family migrated off this file. */
 /* S7 壳层回收（判例同 S6 wk-list 集中回收）：.wk-page 标准版（960px 居中）
