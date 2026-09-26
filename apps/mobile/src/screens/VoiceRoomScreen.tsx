@@ -8,6 +8,7 @@ export interface VoiceRoomScreenProps {
   onEndTurn?(): void;
   onEditTranscript?(text: string): void;
   onConfirmTranscript?(): void;
+  onRetrySubmit?(): void;
   onDiscardTurn?(): void;
   onResume?(): void;
   onLeave?(): void;
@@ -15,7 +16,7 @@ export interface VoiceRoomScreenProps {
 
 /** 绑定 Task 的 Voice Room 屏（module-seams §10）：只见 VoiceRoomViewState + 回调，
  * 不见 wire、request id、turnId。已确认文字作为语音交互记录常驻可见（CONTEXT.md:339）。 */
-export function VoiceRoomScreen({ state, onBeginTurn, onEndTurn, onEditTranscript, onConfirmTranscript, onDiscardTurn, onResume, onLeave }: VoiceRoomScreenProps) {
+export function VoiceRoomScreen({ state, onBeginTurn, onEndTurn, onEditTranscript, onConfirmTranscript, onRetrySubmit, onDiscardTurn, onResume, onLeave }: VoiceRoomScreenProps) {
   if (state === undefined) {
     return (
       <View>
@@ -46,7 +47,12 @@ export function VoiceRoomScreen({ state, onBeginTurn, onEndTurn, onEditTranscrip
           <Button title="放弃本轮" onPress={() => { onDiscardTurn?.(); }} />
         </View>
       )}
-      {state.lastSubmitError !== undefined && <Text>{state.lastSubmitError}</Text>}
+      {state.lastSubmitError !== undefined && (
+        <View>
+          <Text>{state.lastSubmitError}</Text>
+          <Button title="重试写入任务" disabled={state.submitting === true} onPress={() => { onRetrySubmit?.(); }} />
+        </View>
+      )}
 
       {(state.turns.filter((turn) => turn.state === 'confirmed')).length > 0 && <Text>已确认的文字（写入任务）</Text>}
       {[...state.turns].reverse().map((turn) => (

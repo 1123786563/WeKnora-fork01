@@ -48,10 +48,10 @@ export interface VoiceRoomIntegrationEvidence {
   turn: 'transcribed' | 'charging-unconfigured' | 'failed';
   /** 确认文字经 act(steer) 的真实回执（无活动 Run 或无转写时 skipped，不伪造）。 */
   confirmSteer: 'accepted' | 'conflict' | 'unknown' | 'skipped-no-transcript' | 'failed';
-  /** AC1：leave 的服务端结束事实。 */
-  disconnect: 'ended-settled' | 'ended-unsettled' | 'failed';
-  /** AC1：恢复以新会话开启。 */
-  resume: 'new-session' | 'failed';
+  /** AC1：leave 的服务端结束事实（分支未行使该动作时如实标 not-exercised，不冒充真实回执）。 */
+  disconnect: 'ended-settled' | 'ended-unsettled' | 'not-exercised' | 'failed';
+  /** AC1：恢复以新会话开启（分支未行使该动作时如实标 not-exercised）。 */
+  resume: 'new-session' | 'not-exercised' | 'failed';
   /** AC1：原始音频处置回调真实发生（scripted 捕获 + disposition 观察）。 */
   rawAudioDiscarded: boolean;
   /** AC2：语音通道零决定能力（确认只产 steer + 句柄无决定方法的结构断言）。 */
@@ -81,12 +81,28 @@ const decisionShapedKeys = (handle: VoiceHandle): string[] =>
   Object.keys(handle).filter((key) => /decide|approv|interaction|command/i.test(key));
 
 /**
+ * charging-unconfigured（诚实 503）分支的证据落点：此路径从未执行 leave()/resume()——
+ * 无会话可结（leave 无从结算）、resume 必再次 503——AC1 两字段以 not-exercised 如实标注，
+ * 不冒充真实回执（字段契约必须与真实动作对齐）。
+ */
+export function markChargingUnconfigured(evidence: VoiceRoomIntegrationEvidence, handle: VoiceHandle): VoiceRoomIntegrationEvidence {
+  evidence.turn = 'charging-unconfigured';
+  evidence.confirmSteer = 'skipped-no-transcript';
+  evidence.disconnect = 'not-exercised';
+  evidence.resume = 'not-exercised';
+  evidence.voiceNeverDecided = decisionShapedKeys(handle).length === 0;
+  evidence.errorReason = 'deployment has no voice pricing configured (honest 503); AC1 leave/resume not exercised';
+  return evidence;
+}
+
+/**
  * 真实端到端（AC3 live）：生产 JSON transport + Runtime 授权通道 + 具体 Remote Adapter +
  * Voice Room 模块 + 真实 Task Office。真实 start 一个 Task（WEKNORA_MOBILE_TEST_START_TASK=1
  * 门控；未门控时以探针 taskId 验证无 Run 的会话/转写/结束/恢复路径），scripted 捕获 + 真实
  * 转写，确认文字经真实 act(steer)。每一步如实记录，失败落 errorReason，绝不伪造通过。
  * 诚实性要点：(1) confirmTranscript 只能消费一次——先取意图再断言再提交；(2) 未配置语音
- * 计价的部署以一次裸 open 的错误码如实区分（503 → charging-unconfigured），不伪造转写成功。
+ * 计价的部署以一次裸 open 的错误码如实区分（503 → charging-unconfigured），不伪造转写成功；
+ * (3) charging-unconfigured 分支的 AC1 字段如实标 not-exercised（见 markChargingUnconfigured）。
  */
 export async function runVoiceRoomIntegration(config: Extract<VoiceRoomIntegrationConfig, { enabled: true }>): Promise<VoiceRoomIntegrationEvidence> {
   const evidence: VoiceRoomIntegrationEvidence = {
@@ -206,13 +222,7 @@ export async function runVoiceRoomIntegration(config: Extract<VoiceRoomIntegrati
       } catch (error) {
         const code = (error as { code?: string }).code;
         if (code === 'VOICE_CHARGING_UNCONFIGURED') {
-          evidence.turn = 'charging-unconfigured';
-          evidence.confirmSteer = 'skipped-no-transcript';
-          evidence.disconnect = 'ended-settled';
-          evidence.resume = 'new-session';
-          evidence.voiceNeverDecided = decisionShapedKeys(handle).length === 0;
-          evidence.errorReason = 'deployment has no voice pricing configured (honest 503)';
-          return evidence;
+          return markChargingUnconfigured(evidence, handle);
         }
         evidence.errorReason = `voice session failed (${code ?? 'unknown'})`;
         return evidence;

@@ -44,6 +44,8 @@ export interface VoiceRoomController {
   endTurn(): Promise<void>;
   editTranscript(text: string): void;
   confirmTranscript(): Promise<void>;
+  /** act 失败后的重试入口：同一条已确认文字经宿主 act 通道再提交（服务端 act 幂等）；不回滚轮次。 */
+  retrySubmit(): Promise<void>;
   discardTurn(): void;
   resume(): Promise<void>;
   leave(): Promise<void>;
@@ -73,6 +75,19 @@ export function createVoiceRoomController(ports: VoiceRoomControllerPorts): Voic
     if (!disposed) publish({ submitting: state.submitting, lastSubmitError: state.lastSubmitError, ...next });
   });
   const pendingId = (): string | undefined => ports.handle.state().pendingTurnId;
+  // 最近一次 act 失败的意图：重试入口的凭据（成功提交或 dispose 前一直保留）。
+  let lastFailedIntent: { kind: 'steer'; text: string } | undefined;
+  const submitIntent = async (intent: { kind: 'steer'; text: string }): Promise<void> => {
+    publish({ ...state, submitting: true, lastSubmitError: undefined });
+    try {
+      await ports.onConfirmIntent(intent);
+      lastFailedIntent = undefined;
+      publish({ ...state, submitting: false });
+    } catch (failure) {
+      lastFailedIntent = intent;
+      publish({ ...state, submitting: false, lastSubmitError: submitMessageOf(failure) });
+    }
+  };
   return {
     state: () => state,
     subscribe(listener) {
@@ -97,13 +112,11 @@ export function createVoiceRoomController(ports: VoiceRoomControllerPorts): Voic
       if (id === undefined || state.submitting === true) return;
       const intent = ports.handle.confirmTranscript(id);
       if (intent === undefined) return;
-      publish({ ...state, submitting: true, lastSubmitError: undefined });
-      try {
-        await ports.onConfirmIntent(intent);
-        publish({ ...state, submitting: false });
-      } catch (failure) {
-        publish({ ...state, submitting: false, lastSubmitError: submitMessageOf(failure) });
-      }
+      await submitIntent(intent);
+    },
+    async retrySubmit() {
+      if (state.submitting === true || lastFailedIntent === undefined) return;
+      await submitIntent(lastFailedIntent);
     },
     discardTurn() {
       const id = pendingId();

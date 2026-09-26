@@ -54,6 +54,7 @@ export function VoiceRoomRouteLifecycle({ taskId, runId }: { taskId: string; run
       onEndTurn={() => { void controllerRef.current?.endTurn(); }}
       onEditTranscript={(text) => { controllerRef.current?.editTranscript(text); }}
       onConfirmTranscript={() => { void controllerRef.current?.confirmTranscript(); }}
+      onRetrySubmit={() => { void controllerRef.current?.retrySubmit(); }}
       onDiscardTurn={() => { controllerRef.current?.discardTurn(); }}
       onResume={() => { void controllerRef.current?.resume(); }}
       onLeave={() => { void controllerRef.current?.leave().then(() => { router.back(); }, () => { router.back(); }); }}
@@ -66,8 +67,13 @@ export default function VoiceRoomRoute() {
   const params = useLocalSearchParams<{ taskId?: string; runId?: string }>();
   const taskId = String(params.taskId ?? '');
   const runId = params.runId === undefined ? undefined : String(params.runId);
+  // 缺 taskId 的深链：文案归因于缺参数（引导从任务详情页进入），不误报为登录问题。
   if (taskId === '') {
-    return <VoiceRoomScreen state={undefined} />;
+    return (
+      <VoiceRoomScreen
+        state={{ phase: 'idle', taskId: '', turns: [], lastSubmitError: '链接缺少 taskId：语音房需从任务详情页进入。' }}
+      />
+    );
   }
   return <VoiceRoomRouteLifecycle taskId={taskId} runId={runId} />;
 }

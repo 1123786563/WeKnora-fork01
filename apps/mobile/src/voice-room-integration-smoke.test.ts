@@ -45,7 +45,36 @@ test('live voice room end to end: open → turn → confirm steer → leave sett
     assert.equal(evidence.disconnect, 'ended-settled', 'AC1：leave 的服务端结算如实落到 settled');
     assert.equal(evidence.resume, 'new-session', 'AC1：恢复以新会话开启');
   }
+  if (evidence.turn === 'charging-unconfigured') {
+    assert.equal(evidence.disconnect, 'not-exercised', 'AC1 未行使如实标注（503 分支无会话可结）');
+    assert.equal(evidence.resume, 'not-exercised', 'AC1 未行使如实标注（503 分支 resume 必再失败）');
+  }
   assert.doesNotMatch(JSON.stringify(evidence), /short-lived-secret|password|email/i, '证据不含凭据');
+});
+
+test('charging-unconfigured branch marks AC1 fields not-exercised instead of fake leave/resume receipts', async () => {
+  const { markChargingUnconfigured } = await loadMod();
+  type VoiceRoomIntegrationEvidence = import('./voice-room-integration-smoke.ts').VoiceRoomIntegrationEvidence;
+  type VoiceHandle = import('@weknora/mobile-core').VoiceHandle;
+  const base: VoiceRoomIntegrationEvidence = {
+    deploymentOrigin: 'https://weknora.example.test',
+    sessionOpened: false,
+    taskBound: false,
+    turn: 'failed',
+    confirmSteer: 'failed',
+    disconnect: 'failed',
+    resume: 'failed',
+    rawAudioDiscarded: false,
+    voiceNeverDecided: false,
+    timestamp: '2026-09-26T00:00:00.000Z',
+  };
+  const marked = markChargingUnconfigured(base, {} as VoiceHandle);
+  assert.equal(marked.turn, 'charging-unconfigured', '503 分支如实记 charging-unconfigured');
+  assert.equal(marked.confirmSteer, 'skipped-no-transcript', '无转写可确认，如实 skipped');
+  assert.equal(marked.disconnect, 'not-exercised', '该分支从未 leave()（无会话可结）：AC1 事实未行使，不冒充 ended-settled');
+  assert.equal(marked.resume, 'not-exercised', '该分支从未 resume()（必再 503）：AC1 事实未行使，不冒充 new-session');
+  assert.equal(marked.voiceNeverDecided, true, '句柄无决定方法的 AC2 结构断言保留');
+  assert.match(marked.errorReason ?? '', /not exercised/, 'errorReason 如实披露 AC1 未行使');
 });
 
 test('the integration runner is total: a failing transport still yields evidence, not a rejection', async () => {
