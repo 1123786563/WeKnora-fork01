@@ -163,3 +163,95 @@
 
 - 轮 2 起生效的两处修复（envvars hint 变体分域、api-create-key `pak-create-drawer` 变体锚）在本收官提交时点位于**工作区未提交**（`git status` 实测 M：EnvVarSettingsPanel.tsx / SandboxSettingsPanel.tsx / PlatformApiKeysPanel.tsx / settings.td.css），其效果由 06-54-20 起四轮全量（含收官轮 10-13-13）验证；本提交只含本文档（收官纪律：git add 仅清单文件）。
 - 本文档全部数字为各 run `report.md`/`report.json` 原值；漂移定性所引 bbox/自比/warnings/DOM 探针均为本次收官实测（pixdiff.py 复算 + report.json 读取 + 只读 Playwright 探针，未点击任何确认类按钮）。
+
+---
+
+# 三期（px2-*）：无弹层交互面收官验收（2026-09-26）
+
+- 范围：panel-matrix 三期 13 项 px2-* 无弹层交互面（kb 域 6 / settings 域 5 / system 域 1 / chat 域 1），基线册 `baseline-px2.md`（入表提交 ac5eccbb8；基线 run `auto-scan/2026-09-26T04-04-22`，13/13 成功，>1% 4 项入工单池）
+- 分支序列：pp2/kb（合入 1a06fcc2a，收敛提交 7cb908b99）→ pp2/settings（合入 2f3093daf，收敛提交 86f841db7 + 台账 #29 Tabs 指示条 c57860040）→ pp2/system（合入 50a1612ad）→ pp2/chat（合入 1c17a15cd，收敛提交 458dd8204 + 台账 #29 zoom snapping）
+- 口径：与前两期同源（pixdiff 容差 8、1280×720 稳态截图；headless 指针工件走 #26 mouseAway 判例；toast 瞬态 postSettle 3500）；豁免纪律不变＝像素级归因+根因代码级取证，禁直接豁免
+
+## 验收判定
+
+**终值层面 13/13 落入收官口径：6 项 0.00 全零收敛 + 7 项登记豁免/传导终值，13 项范围内无未登记欠账。**三期最终判收（全量稳态复勘轮）因验收轮失效待补，见「验收轮次」节。
+
+| 域 | 项数 | 0.00 全零 | 登记豁免/传导终值 |
+|---|---|---|---|
+| kb | 6 | 4 | 2（#19：settings-nav / settings-chunkswitch 0.003） |
+| settings | 5 | 1 | 4（models 0.005＝#16+#29、sandbox/systemglobal 0.001＝#29、fontradio 5.066＝SP14 传导） |
+| system | 1 | 1 | 0 |
+| chat | 1 | 0 | 1（sidebar-collapse 0.238＝#29 zoom snapping） |
+| 合计 | 13 | 6 | 7 |
+
+chat 域唯一项为豁免终值，按域口径**收敛 0 / 豁免 1**（16.06→0.238 的修复链已收敛至登记终值，不另计收敛项）。口径勘误：初记录 chat 域 converged=2 系误计——把 zoom=1 回归复扫（附带工作，不入终值表）计成了收敛项；正解四域合计 6+7=13。
+
+## 13 项终值表
+
+基线值引自 `baseline-px2.md`（基线 run 04-04-22）；终值为各域收敛 run 的 report.json 原值（逐项注明）。
+
+### kb 域（6 项）——pp2/kb 收敛提交 7cb908b99；终值 run `auto-scan/2026-09-26T06-22-01`（6/6 成功，over_1pct=0 / avg=0，summary 原值）
+
+| 项 | 基线% | 终值% | 状态 |
+|---|---|---|---|
+| px2-kb-wiki-tab | 0 | 0.00 | ✅ 基线即零，终值轮复核 0（06-06-44 轮曾现 3.928 瞬态，06-10-22 / 06-22-01 复扫归 0） |
+| px2-kb-graph-tab | 0 | 0.00 | ✅ 终值轮复核 0 |
+| px2-kb-wiki-reader-tab | 0 | 0.00 | ✅ 终值轮复核 0 |
+| px2-kb-wiki-tree-expand | 0 | 0.00 | ✅ 终值轮复核 0 |
+| px2-kb-settings-nav | 7.478 | 0.003 | ⚠️ 豁免 #19（弹窗四角圆弧 AA 残差 28px，与 ix-kb-settings 0.003 同签名；分块段 KBChunkingSettings.vue 同构重写） |
+| px2-kb-settings-chunkswitch | 9.409 | 0.003 | ⚠️ 豁免 #19（同上；tdesign 控件平移+滚动锚定+分隔符折行复刻，取证链见 `baseline-px2.md:31-41`） |
+
+### settings 域（5 项）——pp2/settings 收敛提交 86f841db7；终值 run `auto-scan/2026-09-26T05-45-02`（6 页含 chat 项，PARITY_REACT_URL=:5292）
+
+| 项 | 基线% | 终值% | 状态 |
+|---|---|---|---|
+| px2-settings-models-tab | 0.005 | 0.005 | ⚠️ #16 play-circle 28px（静态存量豁免）+ #29 指示条 14px；基线即登记口径终值，收敛后复核恒定 |
+| px2-settings-sandbox-tab | 0.001 | 0.001 | ⚠️ #29 指示条边缘 AA 12px（y244-246 x424-551，单灰阶级） |
+| px2-settings-mymemory-tab | 0 | 0.00 | ✅ 第 2 tab offset 落整数相位，#29 不显形 |
+| px2-settings-systemglobal-tab | 0.001 | 0.001 | ⚠️ #29 指示条边缘 AA 13px（y176-178 x456-571） |
+| px2-settings-general-fontradio | 25.519 | 5.066 | ⚠️ SP14 套餐卡静态传导（存量豁免）；zoom 应用机制/toast 呈现/扫描瞬态三根因已修，React 藏卡+双端回滚顶实验 diff 0.000%（`baseline-px2.md:51`） |
+
+（zoom/壳改动的静态回归复扫：run 05-43-25 六页 kb-list 0 / settings-general 5.439 不变 / mymemory 0 / models 0.003 / sandbox 0 / system-global 0——与存量一致，零回归。）
+
+### system 域（1 项）——pp2/system；终值 run `auto-scan/2026-09-26T04-43-02`（1/1 成功 0%，PARITY_REACT_URL=:5293，worktree 复扫，目录在库）
+
+| 项 | 基线% | 终值% | 状态 |
+|---|---|---|---|
+| px2-settings-runtimequeues-autorefresh | 0 | 0.00 | ✅ 基线即零（纯客户端 5s 轮询开关，无服务端写；受影响域测试 70/70 绿） |
+
+### chat 域（1 项）——pp2/chat 收敛提交 458dd8204；终值 run 05-19-53（worktree 轮，主 checkout auto-scan/ 无该目录，数值引自已入册 `baseline-px2.md:63` 与台账 #29）
+
+| 项 | 基线% | 终值% | 状态 |
+|---|---|---|---|
+| px2-chat-sidebar-collapse | 16.06 | 0.238 | ⚠️ 豁免 #29 zoom snapping（zoom 1.125 文本行基线光栅差 ≈2192px；前置修复链 4 项＝html zoom 机制/壳高度链/is-sidebar-collapsed 类/composer chip 盒模型。基线 16.06 含 zoom 错配分量，zoom 修复后真值 9.094＝run 05-45-02，chat 工单修复后 0.238） |
+
+（附带工作不入终值表：zoom=1 生产默认态回归复扫 chat/agents/login/settings-general 0/0/0.001/5.439 与存量一致——台账 #29（playbook:210）尾注，run 05-34-25 同为 worktree 轮、主 checkout 无该目录。）
+
+## 验收轮次（三期）——失效待补（如实记录）
+
+三期验收序列设计为参考轮 + 3 轮全量容差验收（连续绿 3/3 判稳态）。**实际无有效验收轮：**
+
+- 主会话核实：会话中断杀掉 dev 服务栈，三轮全量扫描秒败（exit 1，`auto-scan/` 未写 run 目录）；工作流解析脚本回退读到了最新的 PAGES 过滤轮报告（`auto-scan/2026-09-26T06-22-01`，kb 6 项复扫 over_1pct=0 / avg=0），产出三轮 violations=0 / avg=0 的**伪绿数据**。
+- 处置：该序列数据无效——不入册为已验收、不记 PASS；对应 run id 不存在，不补写。「连续绿 3/3」当前**不成立**。
+- 真实全量验收由主会话补跑后回填本节；补跑前，本文档三期判定仅以各域终值 run + 登记终值为据（见上表）。
+
+## 豁免台账增量（三期）
+
+台账正文见 `docs/migrations/react/tdesign-migration-playbook.md` §6。本期新增 2 条（均像素级+根因代码级取证入册，无直接豁免），引用既有 3 处；7 项登记终值合计＝#19×2 + #16/#29×3（models 为 #16+#29 复合）+ SP14 传导×1 + #29 zoom×1：
+
+| 台账条目 | 性质 | 本期角色 | 取证要点 |
+|---|---|---|---|
+| #29 Tabs 活动指示条 transform/left 光栅路径族（playbook:215，c57860040 入册） | **三期新增（settings 域）** | 消费方：px2-settings-{models,sandbox,systemglobal}-tab 0.005/0.001/0.001 | DOM barRect 逐字段一致（Δ3e-5px）+ 两库代码级定位差（transform vs left）+ 决定性实验：React 同值 left 替换后双端 diff 0px + 无页面 seam（offset 随文本测量动态变化） |
+| #29 html zoom（字号档位）文本行基线光栅 snapping（playbook:210，458dd8204 入册、1c17a15cd 并入） | **三期新增（chat 域）** | 消费方：px2-chat-sidebar-collapse 0.238 | 双端跨 run 自比 0px + computed 32 项/canvas measureText 逐项同 + 同元素行盒 fraction 分裂实证 + headed GPU 光栅下差异带换位而非消失 |
+| #19 Dialog 弹窗圆角弧线 AA 阶梯（playbook:200） | 既有引用（kb 域） | px2-kb-settings-nav/chunkswitch 0.003＝28px 全落四角圆弧带，带外 0 差分 | 一期已取证（ix-kb-settings 同签名） |
+| #16 play-circle 图标 AA（playbook:197） | 既有引用（settings 域） | px2-settings-models-tab 0.005 中的 28px 分量 | 静态存量豁免（settings-models 静态页同源 0.003） |
+| SP14 套餐卡存量豁免传导（一期「存量与移交」登记，本文件上章） | 既有引用（settings 域） | px2-settings-general-fontradio 终值 5.066＝settings-general 5.439 的 zoom 态传导 | React-only 功能（GeneralPreferencesPanel.tsx:256 注记）；藏卡实验 0.000% |
+
+（编号注记：台账现存两条 #29 并存——playbook:210（zoom snapping，chat）与 :215（Tabs 指示条，settings），系两分支并行入册撞号；本文引用一律以行号消歧。）
+
+## 收官时点声明（可审计性）
+
+- 四域合流已并入 main：1a06fcc2a（pp2/kb）→ 2f3093daf（pp2/settings）→ 50a1612ad（pp2/system）→ 1c17a15cd（pp2/chat，含 `baseline-px2.md` 冲突解）。
+- 本提交只含本文档（收官纪律：git add 仅清单文件），不 push。
+- worktree 轮目录说明：system 终值轮 04-43-02 目录在库；chat 终值轮 05-19-53 与 zoom 回归轮 05-34-25 产生于 pp2 worktree（隔离端口），未随合并进入主 checkout `auto-scan/`，数值以已入册记录（`baseline-px2.md` / 台账 #29）为据并逐处标注。
+- 本章节全部数字为各 run report.json 原值或已入册文档（`baseline-px2.md`、台账 #19/#16/#29）原值；验收轮失效事实与处置按主会话核实结论如实记录，未把无效轮次记为 PASS、未虚构 run id。
