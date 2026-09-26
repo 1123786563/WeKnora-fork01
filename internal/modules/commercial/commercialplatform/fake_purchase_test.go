@@ -170,6 +170,25 @@ func TestFakeGrantPurchaseWalletNoMonthlyCollision(t *testing.T) { // (d)
 	if len(wallets) != 2 {
 		t.Fatalf("two grants with distinct wallet names must persist TWO wallets, got %d", len(wallets))
 	}
+	// (F-4) BOTH batches answer the benefits face for the same period —
+	// the purchase wallet joins the monthly batch, never hidden.
+	snap, err := f.ReadSnapshot(context.Background(), commercial.SnapshotQuery{
+		Kind: commercial.SnapshotKindBenefits, TenantID: tenant,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snap.Benefits.Batches) != 2 {
+		t.Fatalf("the monthly AND purchase batches must both answer, got %+v", snap.Benefits.Batches)
+	}
+	for _, batch := range snap.Benefits.Batches {
+		if batch.Period != period {
+			t.Fatalf("both batches belong to %s, got %+v", period, snap.Benefits.Batches)
+		}
+	}
+	if snap.Benefits.BalanceMicro != monthly.CreditsMicro+purchase.CreditsMicro {
+		t.Fatalf("balance must carry both wallets, got %d", snap.Benefits.BalanceMicro)
+	}
 }
 
 func periodEndOrFatal(t *testing.T, period string) (end time.Time) {

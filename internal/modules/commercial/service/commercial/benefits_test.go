@@ -2,6 +2,7 @@ package commercial
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sync"
 	"testing"
@@ -168,6 +169,192 @@ func TestEnsureBenefitsHappyChain(t *testing.T) {
 	}
 	if _, taskLimit, hasTasks := broker.counter(benefitsTenant, "concurrent_tasks"); !hasTasks || taskLimit != 2 {
 		t.Fatalf("concurrent_tasks counter missing/wrong")
+	}
+}
+
+// (F-4 flow evidence) The purchase first-period batch joins the credits
+// view: the PurchaseFulfiller's grant rides its OWN wallet identity (D4)
+// and bypasses this coordinator's registry — the activation month's batch
+// line must aggregate BOTH wallets' balances (SUM, never an arbitrary
+// last-write overwrite) and the total must carry the purchase credits.
+func TestEnsureBenefitsPurchaseBatchJoinsCreditsView(t *testing.T) {
+	fake := commercialplatform.NewFakeAdapter()
+	fake.SetBasePlanFeatures(map[string]bool{"api_access": true})
+	svc, _, _ := newBenefitsService(t, fake)
+	svc.SetNow(septemberClock())
+	tenant := uint64(502)
+	if _, err := svc.EnsureBenefits(context.Background(), tenant, "Purchase Space", "user-1"); err != nil {
+		t.Fatalf("EnsureBenefits: %v", err)
+	}
+	// The fulfiller's purchase grant for the activation month: own key
+	// family, own deterministic wallet name (the PurchaseFulfiller path).
+	period := "2026-09"
+	purchaseMicro := int64(9_900_000)
+	end, err := domain.PeriodEnd(period)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fake.SubmitCommand(context.Background(), domain.Command{
+		Kind:  domain.CommandKindGrantIncludedCredits,
+		Key:   domain.SettlePurchasePaymentCommandKey(domain.ExternalPurchaseSubscriptionID(tenant), "txn-1") + ":grant",
+		Actor: "fulfiller", Reason: "purchase first period",
+		Payload: domain.GrantIncludedCreditsPayload{
+			TenantID: tenant, ExternalCustomerID: domain.ExternalCustomerID(tenant),
+			Period: period, CreditsMicro: purchaseMicro, ExpiresAt: end,
+			WalletName: domain.PurchaseWalletName(tenant, period),
+		},
+	}); err != nil {
+		t.Fatalf("purchase grant: %v", err)
+	}
+	status, err := svc.EnsureBenefits(context.Background(), tenant, "Purchase Space", "user-1")
+	if err != nil {
+		t.Fatalf("re-ensure: %v", err)
+	}
+	if status.Credits == nil {
+		t.Fatalf("credits view must answer, got nil")
+	}
+	want := BasePlanSeedIncludedCreditsMicro + purchaseMicro
+	if status.Credits.BalanceMicro != want {
+		t.Fatalf("balance must carry base + purchase, got %d want %d", status.Credits.BalanceMicro, want)
+	}
+	found := false
+	for _, batch := range status.Credits.Batches {
+		if batch.Period == period {
+			found = true
+			if batch.BalanceMicro != want {
+				t.Fatalf("the activation month's line must aggregate BOTH wallets, got %d want %d", batch.BalanceMicro, want)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("the activation month's batch must be present, got %+v", status.Credits.Batches)
+	}
+}
+
+// (F-4) A purchase batch whose activation month has NO registry row (the
+// tenant never visited billing that month — the purchase grant rides the
+// fulfiller, not this coordinator) still answers the view honestly from
+// the authority snapshot.
+func TestRefreshProjectionUnionsSnapshotOnlyPurchasePeriod(t *testing.T) {
+	fake := commercialplatform.NewFakeAdapter()
+	svc, _, _ := newBenefitsService(t, fake)
+	svc.SetNow(septemberClock())
+	tenant := uint64(503)
+	period := "2026-09"
+	purchaseMicro := int64(9_900_000)
+	end, err := domain.PeriodEnd(period)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fake.SubmitCommand(context.Background(), domain.Command{
+		Kind:  domain.CommandKindGrantIncludedCredits,
+		Key:   domain.SettlePurchasePaymentCommandKey(domain.ExternalPurchaseSubscriptionID(tenant), "txn-1") + ":grant",
+		Actor: "fulfiller", Reason: "purchase first period",
+		Payload: domain.GrantIncludedCreditsPayload{
+			TenantID: tenant, ExternalCustomerID: domain.ExternalCustomerID(tenant),
+			Period: period, CreditsMicro: purchaseMicro, ExpiresAt: end,
+			WalletName: domain.PurchaseWalletName(tenant, period),
+		},
+	}); err != nil {
+		t.Fatalf("purchase grant: %v", err)
+	}
+	_, batches, _, err := svc.refreshAndCollect(context.Background(), tenant)
+	if err != nil {
+		t.Fatalf("refreshAndCollect: %v", err)
+	}
+	found := false
+	for _, batch := range batches {
+		if batch.Period == period {
+			found = true
+			if batch.BalanceMicro != purchaseMicro {
+				t.Fatalf("the snapshot-only purchase batch must answer its balance, got %+v", batches)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("a registry-less purchase period must join the view, got %+v", batches)
+	}
+}
+
+// (F-2' value semantics) The definitions are the VALUE truth: entitlement
+// existence alone would over-claim a base-only tenant (the publish leg
+// attaches entitlements for false-valued codes too on the pinned
+// authority). A base-only tenant keeps advanced_models FALSE; an ACTIVE
+// purchase ORs its plan's definition on top — the purchaser's
+// advanced_models answers TRUE.
+func TestBenefitsFeaturesPurchaseFaceORsPurchasePlanDefinition(t *testing.T) {
+	fake := commercialplatform.NewFakeAdapter()
+	fake.SetBasePlanFeatures(map[string]bool{"api_access": true, "advanced_models": false, "priority_support": false})
+	svc, _, db := newBenefitsService(t, fake)
+	svc.SetNow(septemberClock())
+	// Publish the pro plan locally (definition + publication rows).
+	proDef := domain.PlanVersion{Key: "pro", Version: 1, Price: 99_00, Monthly: 9_900_000,
+		Features: map[string]bool{"advanced_models": true}, Currency: domain.CurrencyCNY}
+	proJSON, err := json.Marshal(proDef)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&repocommercial.PlanRow{PlanKey: "pro", Version: 1,
+		DefinitionJSON: string(proJSON), State: domain.PlanStatePublished}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&repocommercial.PublicationRow{
+		CommandKey: domain.PublishCommandKey("pro", 1), PlanKey: "pro", Version: 1,
+		PlanCode: domain.DeterministicPlanCode("pro", 1), ReceiptJSON: "{}",
+		PublishedBy: "test", PublishedAt: time.Now().UTC(),
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	tenant := uint64(504)
+	// Base-only first: advanced_models must stay FALSE.
+	status, err := svc.EnsureBenefits(ctx, tenant, "OR Space", "user-1")
+	if err != nil {
+		t.Fatalf("EnsureBenefits (base-only): %v", err)
+	}
+	if status.Plan == nil || status.Plan.Features["advanced_models"] {
+		t.Fatalf("base-only tenant must keep advanced_models FALSE, got %+v", status.Plan.Features)
+	}
+	if !status.Plan.Features["api_access"] {
+		t.Fatalf("base features must answer, got %+v", status.Plan.Features)
+	}
+	// The purchase chain on the fake: create + settle → ACTIVE.
+	if _, err := fake.SubmitCommand(ctx, domain.Command{
+		Kind:  domain.CommandKindCreatePurchaseSubscription,
+		Key:   domain.CreatePurchaseSubscriptionCommandKey(domain.ExternalPurchaseSubscriptionID(tenant), domain.DeterministicPlanCode("pro", 1)),
+		Actor: "test", Reason: "purchase",
+		Payload: domain.CreatePurchaseSubscriptionPayload{
+			TenantID: tenant, ExternalCustomerID: domain.ExternalCustomerID(tenant),
+			ExternalPurchaseSubscriptionID: domain.ExternalPurchaseSubscriptionID(tenant),
+			PlanCode: domain.DeterministicPlanCode("pro", 1), AmountFen: 99_00, Currency: domain.CurrencyCNY,
+		},
+	}); err != nil {
+		t.Fatalf("purchase create: %v", err)
+	}
+	if _, err := fake.SubmitCommand(ctx, domain.Command{
+		Kind:  domain.CommandKindSettlePurchasePayment,
+		Key:   domain.SettlePurchasePaymentCommandKey(domain.ExternalPurchaseSubscriptionID(tenant), "txn-or-1"),
+		Actor: "test", Reason: "settle",
+		Payload: domain.SettlePurchasePaymentPayload{
+			TenantID: tenant, ExternalCustomerID: domain.ExternalCustomerID(tenant),
+			ExternalPurchaseSubscriptionID: domain.ExternalPurchaseSubscriptionID(tenant),
+			PlanCode: domain.DeterministicPlanCode("pro", 1),
+			ChannelTransaction: "txn-or-1", AmountFen: 99_00, Currency: domain.CurrencyCNY,
+		},
+	}); err != nil {
+		t.Fatalf("settle: %v", err)
+	}
+	// The purchaser's face: advanced_models TRUE (the purchase plan's
+	// definition ORs on top), api_access still TRUE.
+	status2, err := svc.EnsureBenefits(ctx, tenant, "OR Space", "user-1")
+	if err != nil {
+		t.Fatalf("EnsureBenefits (purchaser): %v", err)
+	}
+	if status2.Plan == nil || !status2.Plan.Features["advanced_models"] {
+		t.Fatalf("an active purchase must OR advanced_models TRUE, got %+v", status2.Plan.Features)
+	}
+	if !status2.Plan.Features["api_access"] || status2.Plan.Features["priority_support"] {
+		t.Fatalf("the base booleans must hold otherwise, got %+v", status2.Plan.Features)
 	}
 }
 

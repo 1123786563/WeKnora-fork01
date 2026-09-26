@@ -1041,10 +1041,23 @@ func (a *LagoAdapter) readBenefitsSnapshot(ctx context.Context, tenantID uint64)
 		meta := w.meta()
 		period := meta[commercial.WalletMetaPeriod]
 		if period == "" {
-			// Deterministic-name fallback: "<ext-customer>-<YYYY-MM>".
-			if suffix, ok := strings.CutPrefix(w.Name, extCustomer+"-"); ok {
-				if _, err := commercial.PeriodEnd(suffix); err == nil {
-					period = suffix
+			// A PURCHASE first-period batch carries its own meta key (D4:
+			// deliberately distinct so the two grant families never alias).
+			period = meta[commercial.WalletMetaPurchasePeriod]
+		}
+		if period == "" {
+			// Deterministic-name fallback, both wallet families:
+			// "<ext>-<YYYY-MM>" (monthly) and "<ext>-purchase-<YYYY-MM>"
+			// (purchase — the longer, more specific prefix first).
+			for _, prefix := range []string{
+				commercial.ExternalPurchaseSubscriptionID(tenantID) + "-",
+				extCustomer + "-",
+			} {
+				if suffix, ok := strings.CutPrefix(w.Name, prefix); ok {
+					if _, err := commercial.PeriodEnd(suffix); err == nil {
+						period = suffix
+						break
+					}
 				}
 			}
 		}
@@ -1096,8 +1109,13 @@ func (a *LagoAdapter) readCustomerFeatures(ctx context.Context, tenantID uint64)
 		}
 		var parsed struct {
 			Entitlements []struct {
-				FeatureCode string `json:"feature_code"`
-				Feature     *struct {
+				// The pinned v1.53 answers the feature code in `code`
+				// ({"entitlements":[{"code":…,"name":…}]} — F-2' live-stack
+				// evidence); feature_code / nested feature.code are
+				// tolerated shapes, never assumed.
+				Code         string `json:"code"`
+				FeatureCode  string `json:"feature_code"`
+				Feature      *struct {
 					Code string `json:"code"`
 				} `json:"feature"`
 			} `json:"entitlements"`
@@ -1106,7 +1124,10 @@ func (a *LagoAdapter) readCustomerFeatures(ctx context.Context, tenantID uint64)
 			return nil, fmt.Errorf("%w: entitlement read malformed", commercial.ErrPlatformInvalidResponse)
 		}
 		for _, e := range parsed.Entitlements {
-			code := e.FeatureCode
+			code := e.Code
+			if code == "" {
+				code = e.FeatureCode
+			}
 			if code == "" && e.Feature != nil {
 				code = e.Feature.Code
 			}

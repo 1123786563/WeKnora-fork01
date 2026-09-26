@@ -198,7 +198,8 @@ func newPurchaseStub() *purchaseStub {
 			respond(w, r, &s.requests, &s.mu, http.StatusNotFound, "{}", nil)
 			return
 		}
-		respond(w, r, &s.requests, &s.mu, http.StatusOK, purchaseInvoiceDetailJSON(*found), nil)
+		respond(w, r, &s.requests, &s.mu, http.StatusOK,
+			purchaseInvoiceDetailJSON(*found, commercial.ExternalPurchaseSubscriptionID(31)), nil)
 	})
 	mux.HandleFunc("/api/v1/subscriptions", func(w http.ResponseWriter, r *http.Request) {
 		blob, _ := io.ReadAll(io.LimitReader(r.Body, 1<<20))
@@ -292,6 +293,11 @@ type purchaseInvoiceRec struct {
 	ExternalCust   string
 	PaymentStatus  string
 	SubscriptionFee *struct{ Name string; AmountCents int64 } // nil = no subscription line
+	// FeeSubscriptionID is the fee line's external_subscription_id — the
+	// F-5 fees→subscription location predicate. Empty defaults to the
+	// PURCHASE subscription (the historical tests' intent); a Base-plan
+	// invoice sets the "-sub" identity.
+	FeeSubscriptionID string
 }
 
 func purchaseInvoicesJSON(rows []purchaseInvoiceRec) string {
@@ -303,17 +309,22 @@ func purchaseInvoicesJSON(rows []purchaseInvoiceRec) string {
 			`{"lago_id":%q,"external_customer_id":%q,"status":"finalized","payment_status":%q,"invoice_type":"subscription","fees":[]}`,
 			inv.LagoID, inv.ExternalCust, inv.PaymentStatus))
 	}
-	return `{"invoices":[` + strings.Join(out, ",") + `]}`
+	return `{"invoices":[` + strings.Join(out, ",") + `]}` // no meta.next_page: single page
 }
 
 // purchaseInvoiceDetailJSON answers the SINGLE-invoice read with the fee
-// rows (the index never carries them).
-func purchaseInvoiceDetailJSON(inv purchaseInvoiceRec) string {
+// rows (the index never carries them). Each fee carries the v1.53
+// external_subscription_id (the F-5 location predicate's real shape).
+func purchaseInvoiceDetailJSON(inv purchaseInvoiceRec, purchaseSubscriptionID string) string {
 	fees := "[]"
 	if inv.SubscriptionFee != nil {
+		subID := inv.FeeSubscriptionID
+		if subID == "" {
+			subID = purchaseSubscriptionID
+		}
 		fees = fmt.Sprintf(
-			`[{"amount_cents":%d,"amount_currency":"USD","item":{"type":"subscription","name":%q,"code":"sub-fee"}}]`,
-			inv.SubscriptionFee.AmountCents, inv.SubscriptionFee.Name)
+			`[{"amount_cents":%d,"amount_currency":"USD","external_subscription_id":%q,"item":{"type":"subscription","name":%q,"code":"sub-fee"}}]`,
+			inv.SubscriptionFee.AmountCents, subID, inv.SubscriptionFee.Name)
 	}
 	return fmt.Sprintf(
 		`{"invoice":{"lago_id":%q,"external_customer_id":%q,"status":"finalized","payment_status":%q,"invoice_type":"subscription","fees":%s}}`,
@@ -1024,6 +1035,52 @@ func TestLagoReadPurchaseInvoiceFeesTwoFinalizedFailsClosed(t *testing.T) {
 	_, err := a.ReadSnapshot(context.Background(), commercial.SnapshotQuery{Kind: commercial.SnapshotKindPurchase, TenantID: 31})
 	if !errors.Is(err, commercial.ErrPlatformInvalidResponse) {
 		t.Fatalf("two finalized purchase invoices must fail closed (data anomaly), got %v", err)
+	}
+}
+
+// (F-5 flow evidence) The Base plan's own finalized invoices (the lazy
+// onboarding's 0-amount monthly line, "-sub" identity) sit on the SAME
+// customer index — the purchase projection must locate the gating invoice
+// by its fee lines' subscription identity, never by the index row count.
+func TestLagoReadPurchaseInvoiceFeesIgnoresBaseSubscriptionInvoices(t *testing.T) {
+	invoices := []purchaseInvoiceRec{
+		{
+			LagoID: "inv_base", ExternalCust: commercial.ExternalCustomerID(31),
+			PaymentStatus: "succeeded", SubscriptionFee: feeLine("Base Plan", 0),
+			FeeSubscriptionID: commercial.ExternalSubscriptionID(31),
+		},
+		{
+			LagoID: "inv_gating", ExternalCust: commercial.ExternalCustomerID(31),
+			PaymentStatus: "succeeded", SubscriptionFee: feeLine("Pro plan", 1650),
+		},
+	}
+	stub, a := activePurchaseStub(t, invoices)
+	snap, err := a.ReadSnapshot(context.Background(), commercial.SnapshotQuery{Kind: commercial.SnapshotKindPurchase, TenantID: 31})
+	if err != nil {
+		t.Fatalf("a Base finalized invoice beside the gating invoice must not collapse the purchase face, got %v", err)
+	}
+	if snap.Purchase.State != commercial.PurchaseStateActive {
+		t.Fatalf("state = %q", snap.Purchase.State)
+	}
+	if len(snap.Purchase.InvoiceFees) != 1 ||
+		snap.Purchase.InvoiceFees[0].Name != "Pro plan" || snap.Purchase.InvoiceFees[0].AmountFen != 1650 {
+		t.Fatalf("exactly the PURCHASE subscription's fee line must answer, got %+v", snap.Purchase.InvoiceFees)
+	}
+	if snap.Purchase.InvoicePaymentStatus != "succeeded" {
+		t.Fatalf("payment status must ride the gating invoice, got %q", snap.Purchase.InvoicePaymentStatus)
+	}
+	// Both invoices were detail-read (the fees→subscription predicate runs
+	// on the single-invoice read — the index carries no fees).
+	stub.mu.Lock()
+	detailReads := 0
+	for _, req := range stub.requests {
+		if req.Method == http.MethodGet && strings.HasPrefix(req.Path, "/api/v1/invoices/") {
+			detailReads++
+		}
+	}
+	stub.mu.Unlock()
+	if detailReads != 2 {
+		t.Fatalf("every finalized invoice must be inspected once (fees→subscription), got %d detail reads", detailReads)
 	}
 }
 

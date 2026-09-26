@@ -242,7 +242,9 @@ type walletsStub struct {
 func newWalletsStubBuilder() *walletsStub {
 	s := &walletsStub{
 		createStatuses: []int{http.StatusCreated},
-		entitlements:   `{"entitlements":[{"feature_code":"api_access","value":"base"}]}`,
+		// The PINNED v1.53 entitlement shape (F-2' live-stack evidence):
+		// the feature code rides `code`, not feature_code/feature.code.
+		entitlements: `{"entitlements":[{"code":"api_access","name":"api_access"}]}`,
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/wallets", func(w http.ResponseWriter, r *http.Request) {
@@ -833,8 +835,10 @@ func TestLagoBenefitsFeaturesReadSubscriptionEntitlementRoutes(t *testing.T) {
 	stub := newCombinedStub(t)
 	stub.wallets.entitlementCustomer = commercial.ExternalCustomerID(subTenant)
 	stub.wallets.mu.Lock()
-	stub.wallets.entitlements = `{"entitlements":[{"feature_code":"api_access"}]}`
-	stub.wallets.purchaseEntitlements = `{"entitlements":[{"feature_code":"advanced_models"}]}`
+	// Both legs in the PINNED v1.53 shape (F-2' evidence): {"entitlements":
+	// [{"code":…}]}.
+	stub.wallets.entitlements = `{"entitlements":[{"code":"api_access"}]}`
+	stub.wallets.purchaseEntitlements = `{"entitlements":[{"code":"advanced_models"}]}`
 	stub.wallets.mu.Unlock()
 	snap, err := subAdapter(stub.url()).ReadSnapshot(context.Background(), commercial.SnapshotQuery{
 		Kind: commercial.SnapshotKindBenefits, TenantID: subTenant,
@@ -865,6 +869,86 @@ func TestLagoBenefitsFeaturesReadSubscriptionEntitlementRoutes(t *testing.T) {
 	}
 	if sawAbsentRoute {
 		t.Fatalf("the customers-nested entitlements route must never be called (absent on pinned v1.53)")
+	}
+}
+
+// (F-2') The parser answers the pinned v1.53 `code` shape FIRST and keeps
+// tolerating the older/newer shapes (feature_code, nested feature.code)
+// — never assumed, never required.
+func TestLagoBenefitsFeaturesParseToleratedShapes(t *testing.T) {
+	shapes := []string{
+		`{"entitlements":[{"code":"feat_code"}]}`,           // pinned v1.53 (live-stack evidence)
+		`{"entitlements":[{"feature_code":"feat_feature"}]}`, // tolerated
+		`{"entitlements":[{"feature":{"code":"feat_nested"}}]}`, // tolerated
+	}
+	for i, body := range shapes {
+		stub := newCombinedStub(t)
+		stub.wallets.entitlementCustomer = commercial.ExternalCustomerID(subTenant)
+		stub.wallets.mu.Lock()
+		stub.wallets.entitlements = body
+		stub.wallets.mu.Unlock()
+		snap, err := subAdapter(stub.url()).ReadSnapshot(context.Background(), commercial.SnapshotQuery{
+			Kind: commercial.SnapshotKindBenefits, TenantID: subTenant,
+		})
+		if err != nil {
+			t.Fatalf("shape %d: %v", i, err)
+		}
+		if len(snap.Benefits.Features) != 1 {
+			t.Fatalf("shape %d: exactly one feature must parse, got %+v", i, snap.Benefits.Features)
+		}
+		if !snap.Benefits.Features["feat_code"] && !snap.Benefits.Features["feat_feature"] && !snap.Benefits.Features["feat_nested"] {
+			t.Fatalf("shape %d: feature code must parse, got %+v", i, snap.Benefits.Features)
+		}
+	}
+}
+
+// (F-4 flow evidence) The PURCHASE first-period wallet (its own
+// deterministic name "<ext>-purchase-<YYYY-MM>" and meta key
+// weknora_purchase_period — D4) joins the benefits batches beside the
+// base monthly wallet of the SAME period: both batches answer, the
+// balance carries both.
+func TestLagoBenefitsSnapshotIncludesPurchaseBatch(t *testing.T) {
+	stub := newCombinedStub(t)
+	base := stubWallet{
+		LagoID: "lago-wallet-base", Customer: commercial.ExternalCustomerID(subTenant),
+		Name: commercial.MonthlyWalletName(subTenant, "2099-01"), Status: "active",
+		GrantedCents: 100, BalanceCents: 100,
+		ExpiresAt: "2099-02-01T00:00:00Z",
+		Metadata: map[string]string{
+			commercial.WalletMetaTenant: commercial.ExternalCustomerID(subTenant),
+			commercial.WalletMetaPeriod: "2099-01",
+		},
+	}
+	purchase := stubWallet{
+		LagoID: "lago-wallet-purchase", Customer: commercial.ExternalCustomerID(subTenant),
+		Name: commercial.PurchaseWalletName(subTenant, "2099-01"), Status: "active",
+		GrantedCents: 990, BalanceCents: 990,
+		ExpiresAt: "2099-02-01T00:00:00Z",
+		Metadata: map[string]string{
+			commercial.WalletMetaTenant:         commercial.ExternalCustomerID(subTenant),
+			commercial.WalletMetaPurchasePeriod: "2099-01",
+		},
+	}
+	stub.wallets.mu.Lock()
+	stub.wallets.wallets = []stubWallet{base, purchase}
+	stub.wallets.mu.Unlock()
+	snap, err := subAdapter(stub.url()).ReadSnapshot(context.Background(), commercial.SnapshotQuery{
+		Kind: commercial.SnapshotKindBenefits, TenantID: subTenant,
+	})
+	if err != nil {
+		t.Fatalf("benefits snapshot: %v", err)
+	}
+	b := snap.Benefits
+	if len(b.Batches) != 2 {
+		t.Fatalf("the base AND purchase batches must both answer for the same period, got %+v", b.Batches)
+	}
+	for _, batch := range b.Batches {
+		if batch.Period != "2099-01" {
+			t.Fatalf("both batches belong to the activation month, got %+v", b.Batches)
+		}
+	}
+	if b.BalanceMicro != commercial.CentsToMicro(100)+commercial.CentsToMicro(990) {
+		t.Fatalf("balance must carry both wallets, got %d", b.BalanceMicro)
 	}
 }
 

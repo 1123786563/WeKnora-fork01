@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 
@@ -442,19 +443,20 @@ func (s *BenefitsService) refreshAndCollect(ctx context.Context, tenantID uint64
 		return repocommercial.BenefitsRow{}, nil, "", err
 	}
 
-	// Features and limits come from the LOCAL definition (the authority's
-	// entitlement surface may lag or differ — the publication's definition
-	// is the product truth); the snapshot's feature map wins when present.
+	// Features and limits come from the LOCAL definitions (the publication
+	// definitions are the VALUE truth — the pinned authority's entitlement
+	// surface carries no boolean value and the publish leg attaches
+	// entitlements for false-valued codes too, so entitlement EXISTENCE
+	// alone would over-claim a base-only tenant, F-2'). The purchase face
+	// ORs the ACTIVE purchase plan's definition on top (#82: a purchaser's
+	// advanced_models must answer true); authority entitlement
+	// materialization only ADDS codes no local definition knows.
 	if row.PlanKey != "" {
 		definition, defErr := s.definitionOf(ctx, row.PlanKey, row.PlanVersion)
 		switch {
 		case defErr == nil:
 			row.LimitsJSON = encodeJSONIntMap(definition.Limits)
-			if len(b.Features) > 0 {
-				row.FeaturesJSON = encodeJSONBoolMap(b.Features)
-			} else {
-				row.FeaturesJSON = encodeJSONBoolMap(definition.Features)
-			}
+			row.FeaturesJSON = encodeJSONBoolMap(s.effectiveFeatures(ctx, tenantID, definition.Features, b.Features))
 		default:
 			if len(b.Features) > 0 {
 				row.FeaturesJSON = encodeJSONBoolMap(b.Features)
@@ -487,24 +489,92 @@ func (s *BenefitsService) refreshAndCollect(ctx context.Context, tenantID uint64
 
 	// The expiry overlay: registry truth decides spendability. An expired
 	// batch reports ZERO even while the authority still lists the wallet
-	// active (the lazy-termination window — E1).
+	// active (the lazy-termination window — E1). Balances aggregate by
+	// period ACROSS grant families (F-4): the purchase first-period wallet
+	// (#82 D4 — its own deterministic name and meta key) shares the
+	// activation month with the base monthly batch; the month's line
+	// answers the SUM, never an arbitrary last-write overwrite.
 	all, err := s.store.ListBatches(ctx, tenantID)
 	if err != nil {
 		return repocommercial.BenefitsRow{}, nil, "", err
 	}
 	balances := make(map[string]int64, len(b.Batches))
+	expires := make(map[string]time.Time, len(b.Batches))
 	for _, batch := range b.Batches {
-		balances[batch.Period] = batch.BalanceMicro
+		balances[batch.Period] += batch.BalanceMicro
+		if batch.ExpiresAt.After(expires[batch.Period]) {
+			expires[batch.Period] = batch.ExpiresAt
+		}
 	}
 	batches := make([]BatchView, 0, len(all))
+	seen := make(map[string]bool, len(all))
 	for _, a := range all {
+		seen[a.Period] = true
 		balance := int64(0)
 		if a.ExpiresAt.After(now) {
 			balance = balances[a.Period] // absent from the snapshot (terminated) = 0
 		}
 		batches = append(batches, BatchView{Period: a.Period, BalanceMicro: balance, ExpiresAt: a.ExpiresAt})
 	}
+	// Snapshot-only periods (F-4): the purchase grant rides the fulfiller,
+	// not this coordinator's registry — a purchase activated in a month
+	// the tenant never visited billing leaves no registry row. Those
+	// authority-truth batches join the view honestly (same expiry
+	// overlay), oldest-period-first for a deterministic answer.
+	var missing []string
+	for period := range balances {
+		if !seen[period] {
+			missing = append(missing, period)
+		}
+	}
+	sort.Strings(missing)
+	for _, period := range missing {
+		balance := int64(0)
+		if expires[period].After(now) {
+			balance = balances[period]
+		}
+		batches = append(batches, BatchView{Period: period, BalanceMicro: balance, ExpiresAt: expires[period]})
+	}
 	return row, batches, reason, nil
+}
+
+// effectiveFeatures resolves the tenant's EFFECTIVE feature face (F-2'):
+// the publication definitions are the VALUE truth (the pinned authority's
+// entitlement surface carries no boolean value — the publish leg attaches
+// entitlements for false-valued feature codes too, so entitlement
+// EXISTENCE alone would over-claim a base-only tenant). A code answers
+// true when the Base definition says so, or — the #82 purchase face —
+// when the tenant's purchase is ACTIVE and its plan's definition says so;
+// authority entitlement materialization adds codes no local definition
+// knows. A purchase read failure is NOT surfaced here (the benefits face
+// must not break on the purchase leg) — the base truth answers alone.
+func (s *BenefitsService) effectiveFeatures(ctx context.Context, tenantID uint64, baseFeatures, entitled map[string]bool) map[string]bool {
+	out := make(map[string]bool, len(baseFeatures)+len(entitled))
+	for code, on := range baseFeatures {
+		out[code] = on
+	}
+	if psnap, err := s.platform.ReadSnapshot(ctx, domain.SnapshotQuery{
+		Kind: domain.SnapshotKindPurchase, TenantID: tenantID,
+	}); err == nil && psnap.Purchase != nil &&
+		psnap.Purchase.State == domain.PurchaseStateActive && psnap.Purchase.PlanCode != "" {
+		if pub, pubErr := s.plans.FindPublicationByCode(ctx, psnap.Purchase.PlanCode); pubErr == nil {
+			if definition, defErr := s.definitionOf(ctx, pub.PlanKey, pub.Version); defErr == nil {
+				for code, on := range definition.Features {
+					if on {
+						out[code] = true
+					} else if _, known := out[code]; !known {
+						out[code] = false
+					}
+				}
+			}
+		}
+	}
+	for code := range entitled {
+		if _, known := out[code]; !known {
+			out[code] = true // authority materialization of a code no definition knows
+		}
+	}
+	return out
 }
 
 // definitionOf decodes the plan version's stored definition (the product

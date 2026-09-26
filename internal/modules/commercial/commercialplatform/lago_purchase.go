@@ -574,74 +574,123 @@ func (a *LagoAdapter) readPurchaseSnapshot(ctx context.Context, tenantID uint64)
 // the pinned authority version keeps open invoices invisible to every API
 // path (t09 evidence F3-F5) and an invisible line is never fabricated.
 //
-// Fail-closed shape: exactly ONE finalized purchase invoice is expected
-// (the gating invoice); zero = awaiting semantics (empty); two or more is a
-// data anomaly (invalid response — the caller surfaces it, never guesses).
+// Location predicate (F-5 flow evidence): the customer's finalized index
+// lists EVERY finalized subscription invoice — the Base plan's monthly
+// 0-amount invoices included — and the pinned v1.53 exposes NO
+// subscription filter on the index (both candidate params answered the
+// full set on the live stack). The PURCHASE gating invoice is therefore
+// identified on the single-invoice read by its fee lines' subscription
+// identity (fees→subscription: fee.external_subscription_id), never by
+// the index row count.
+//
+// Fail-closed shape: exactly ONE finalized invoice carrying a purchase
+// subscription fee is expected (the gating invoice); zero = awaiting
+// semantics (empty); two or more is a data anomaly (invalid response —
+// the caller surfaces it, never guesses).
 func (a *LagoAdapter) readPurchaseInvoiceFees(ctx context.Context, tenantID uint64) ([]commercial.InvoiceLineSnapshot, string, error) {
-	// Locate by the visible-finalized index (the pinned runtime keeps the
-	// open gating invoice invisible, t09 F3-F5)…
-	status, body, err := a.do(ctx, http.MethodGet,
-		"/api/v1/invoices?external_customer_id="+url.PathEscape(commercial.ExternalCustomerID(tenantID))+
-			"&status[]=finalized", nil)
+	purchaseSubscriptionID := commercial.ExternalPurchaseSubscriptionID(tenantID)
+	ids, err := a.finalizedInvoiceIDs(ctx, tenantID)
 	if err != nil {
 		return nil, "", err
 	}
-	if status != http.StatusOK {
-		return nil, "", fmt.Errorf("%w: invoice index answered HTTP %d", commercial.ErrPlatformInvalidResponse, status)
+	var fees []commercial.InvoiceLineSnapshot
+	var paymentStatus string
+	matches := 0
+	for _, id := range ids {
+		// …read the single invoice (t9 integration evidence: the pinned
+		// runtime's INDEX answer carries no fees; only the single-invoice
+		// read does — the same shape Lago's own front consumes).
+		status, body, err := a.do(ctx, http.MethodGet, "/api/v1/invoices/"+url.PathEscape(id), nil)
+		if err != nil {
+			return nil, "", err
+		}
+		if status != http.StatusOK {
+			return nil, "", fmt.Errorf("%w: invoice read answered HTTP %d", commercial.ErrPlatformInvalidResponse, status)
+		}
+		var parsed struct {
+			Invoice struct {
+				PaymentStatus string `json:"payment_status"`
+				Fees          []struct {
+					AmountCents int64  `json:"amount_cents"` // integer minor units, never float (GC-6)
+					Item        struct {
+						Type string `json:"type"`
+						Name string `json:"name"`
+					} `json:"item"`
+					ExternalSubscriptionID string `json:"external_subscription_id"`
+				} `json:"fees"`
+			} `json:"invoice"`
+		}
+		if err := json.Unmarshal(body, &parsed); err != nil {
+			return nil, "", fmt.Errorf("%w: invoice body malformed", commercial.ErrPlatformInvalidResponse)
+		}
+		lines := make([]commercial.InvoiceLineSnapshot, 0, len(parsed.Invoice.Fees))
+		for _, fee := range parsed.Invoice.Fees {
+			if fee.Item.Type != "subscription" || fee.ExternalSubscriptionID != purchaseSubscriptionID {
+				continue // a Base (or foreign) subscription's line — never the purchase gate
+			}
+			lines = append(lines, commercial.InvoiceLineSnapshot{
+				Kind:      "subscription_fee", // the closed port word, never the provider's raw type
+				Name:      fee.Item.Name,
+				AmountFen: fee.AmountCents,
+			})
+		}
+		if len(lines) == 0 {
+			continue // this finalized invoice bills no purchase subscription fee
+		}
+		matches++
+		fees, paymentStatus = lines, parsed.Invoice.PaymentStatus
 	}
-	var index struct {
-		Invoices []struct {
-			LagoID        string `json:"lago_id"`
-			PaymentStatus string `json:"payment_status"`
-		} `json:"invoices"`
-	}
-	if err := json.Unmarshal(body, &index); err != nil {
-		return nil, "", fmt.Errorf("%w: invoice index body malformed", commercial.ErrPlatformInvalidResponse)
-	}
-	if len(index.Invoices) == 0 {
-		return nil, "", nil // awaiting semantics: no finalized invoice visible yet
-	}
-	if len(index.Invoices) > 1 {
+	switch {
+	case matches == 0:
+		return nil, "", nil // awaiting semantics: no finalized purchase invoice visible yet
+	case matches > 1:
 		return nil, "", fmt.Errorf("%w: multiple finalized purchase invoices", commercial.ErrPlatformInvalidResponse)
 	}
-	// …then read the SINGLE invoice (t9 integration evidence: the pinned
-	// runtime's INDEX answer carries no fees; only the single-invoice read
-	// does — the same shape Lago's own front consumes).
-	status, body, err = a.do(ctx, http.MethodGet,
-		"/api/v1/invoices/"+url.PathEscape(index.Invoices[0].LagoID), nil)
-	if err != nil {
-		return nil, "", err
-	}
-	if status != http.StatusOK {
-		return nil, "", fmt.Errorf("%w: invoice read answered HTTP %d", commercial.ErrPlatformInvalidResponse, status)
-	}
-	var parsed struct {
-		Invoice struct {
-			PaymentStatus string `json:"payment_status"`
-			Fees          []struct {
-				AmountCents int64 `json:"amount_cents"` // integer minor units, never float (GC-6)
-				Item        struct {
-					Type string `json:"type"`
-					Name string `json:"name"`
-				} `json:"item"`
-			} `json:"fees"`
-		} `json:"invoice"`
-	}
-	if err := json.Unmarshal(body, &parsed); err != nil {
-		return nil, "", fmt.Errorf("%w: invoice body malformed", commercial.ErrPlatformInvalidResponse)
-	}
-	fees := make([]commercial.InvoiceLineSnapshot, 0, len(parsed.Invoice.Fees))
-	for _, fee := range parsed.Invoice.Fees {
-		if fee.Item.Type != "subscription" {
-			continue
+	return fees, paymentStatus, nil
+}
+
+// finalizedInvoiceIDs pages through the customer's VISIBLE finalized
+// invoice index (newest first per the authority's convention) and answers
+// the lago_ids. The page budget bounds a runaway iteration (a tenant with
+// a very long invoice history) — exhausting it fails closed instead of
+// silently truncating.
+func (a *LagoAdapter) finalizedInvoiceIDs(ctx context.Context, tenantID uint64) ([]string, error) {
+	const (
+		perPage    = 100
+		pageBudget = 10 // 1000 finalized invoices — beyond is an anomaly, never silent
+	)
+	ids := make([]string, 0, 8)
+	for page := 1; page <= pageBudget; page++ {
+		status, body, err := a.do(ctx, http.MethodGet,
+			"/api/v1/invoices?external_customer_id="+url.PathEscape(commercial.ExternalCustomerID(tenantID))+
+				"&status[]=finalized&per_page="+strconv.Itoa(perPage)+"&page="+strconv.Itoa(page), nil)
+		if err != nil {
+			return nil, err
 		}
-		fees = append(fees, commercial.InvoiceLineSnapshot{
-			Kind:      "subscription_fee", // the closed port word, never the provider's raw type
-			Name:      fee.Item.Name,
-			AmountFen: fee.AmountCents,
-		})
+		if status != http.StatusOK {
+			return nil, fmt.Errorf("%w: invoice index answered HTTP %d", commercial.ErrPlatformInvalidResponse, status)
+		}
+		var index struct {
+			Invoices []struct {
+				LagoID string `json:"lago_id"`
+			} `json:"invoices"`
+			Meta struct {
+				NextPage *int `json:"next_page"`
+			} `json:"meta"`
+		}
+		if err := json.Unmarshal(body, &index); err != nil {
+			return nil, fmt.Errorf("%w: invoice index body malformed", commercial.ErrPlatformInvalidResponse)
+		}
+		for _, inv := range index.Invoices {
+			if inv.LagoID != "" {
+				ids = append(ids, inv.LagoID)
+			}
+		}
+		if index.Meta.NextPage == nil {
+			return ids, nil
+		}
 	}
-	return fees, parsed.Invoice.PaymentStatus, nil
+	return nil, fmt.Errorf("%w: finalized invoice index exceeded the page budget", commercial.ErrPlatformInvalidResponse)
 }
 
 // deriveProviderCustomerID resolves the provider-side customer id AND its

@@ -463,17 +463,21 @@ func (f *FakeAdapter) ReadSnapshot(_ context.Context, query commercial.SnapshotQ
 }
 
 // fakeWalletPeriod extracts the calendar period from a deterministic wallet
-// name "<ext-customer>-<YYYY-MM>" (non-WeKnora-named wallets — future
-// top-ups — carry no period).
+// name — BOTH grant families (F-4): "<ext-customer>-<YYYY-MM>" (monthly)
+// and "<ext-customer>-purchase-<YYYY-MM>" (the #82 D4 purchase first-period
+// batch). Non-WeKnora-named wallets — future top-ups — carry no period.
 func fakeWalletPeriod(extCustomer, name string) (string, bool) {
-	suffix, ok := strings.CutPrefix(name, extCustomer+"-")
-	if !ok || len(suffix) != 7 {
-		return "", false
+	for _, prefix := range []string{extCustomer + "-purchase-", extCustomer + "-"} {
+		suffix, ok := strings.CutPrefix(name, prefix)
+		if !ok || len(suffix) != 7 {
+			continue
+		}
+		if _, err := commercial.PeriodEnd(suffix); err != nil {
+			continue
+		}
+		return suffix, true
 	}
-	if _, err := commercial.PeriodEnd(suffix); err != nil {
-		return "", false
-	}
-	return suffix, true
+	return "", false
 }
 
 // SubmitCommand applies the enabled command families. ensure_customer (the
