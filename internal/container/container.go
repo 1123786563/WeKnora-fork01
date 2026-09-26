@@ -1011,6 +1011,9 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// (bridge dispatcher + resolver), publish service and HTTP handler.
 	// The frozen OC-armed action service above is untouched.
 	must(container.Provide(newNotionPublishHandler))
+	// T19 (#49): the Feishu publish closed loop — same wiring shape, the
+	// provider difference is the FeishuProfile + Feishu bridge.
+	must(container.Provide(newFeishuPublishHandler))
 	must(container.Invoke(startOCRecoveryRunner))
 	// A02 app OAuth registrations for the first-batch providers. Client
 	// registrations come from env (WEKNORA_APP_OAUTH_<APP>_CLIENT_ID / _SECRET);
