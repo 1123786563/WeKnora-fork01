@@ -3,6 +3,8 @@ module: knowledge
 description: 知识库、文档、Chunk、Tag、FAQ、Wiki、graph、检索、语义索引（§5.2/§5.18）
 move_packages:
   []
+alias_obligations:
+  []
 legacy_files:
   - path: internal/application/repository/kbshare.go
     reason: trapped in horizontal repository package internal/application/repository (Pass B file split)

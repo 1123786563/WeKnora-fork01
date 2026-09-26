@@ -78,6 +78,8 @@ alias 双侧奇偶以 manifest↔matrix 行集对照为键（check.go:167-206 �
 
 manifest 出册 commit：`a29abf40e`（refactor(passb) 同窗补齐，+3/-91）。
 
+**OCR 修复轮 R1（2026-09-26）**：`alias_obligations:` 键行补回（`  []` 空列表两行，identity.yaml:6-7 形态）——46447494a 整键删除偏离 16 份 manifest 统一形态（唯一缺键），出册后语义不变仅对齐 schema；验收 `make verify-module-moves` exit 0（16 manifests verified）、16/16 键在位、YAML 合法、passbguard 快照 diff 仍恰 3 条。详见 `.superpowers/sdd/passb/b2-k-integration/ocr-fix-r1-report.md`。
+
 
 ## §例外/shim 收口核对（K5.2 Step 3，只读盘点 — ib2 删除批输入）
 
