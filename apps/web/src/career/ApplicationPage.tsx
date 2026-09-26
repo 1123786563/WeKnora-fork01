@@ -7,6 +7,7 @@ import { MaterialPage } from './MaterialPage.tsx'
 import { PreparationPage } from './PreparationPage.tsx'
 import { ProgressPage } from './ProgressPage.tsx'
 import { SubmissionPage } from './SubmissionPage.tsx'
+import { opportunityEvidencePath } from './OpportunityPage.tsx'
 import './application.css'
 
 type ApplicationPhase = 'idle' | 'busy' | 'created' | 'unknown' | 'error' | 'forbidden' | 'scope-changed'
@@ -261,7 +262,7 @@ export function ApplicationPage({ client, scopeController, opportunityId, snapsh
     {receipt.linkState !== 'ready' && message && phase === 'created' ? <p className="wk-application__message">{message}</p> : null}
     <p className={receipt.qualified ? 'wk-application__qualified' : 'wk-application__qualified wk-application__qualified--warned'}>{receipt.qualified ? '合格申请' : '不合格申请（显式继续，不计合格申请指标）'}</p>
     {receipt.warning ? <div className="wk-application__hard-warning" role="alert"><strong>硬性条件警示（常驻）</strong><p>评估 <code>{receipt.warning.evaluationId}</code> 结论不符合{receipt.warning.reasonCode ? `（原因 ${receipt.warning.reasonCode}）` : ''}。此警示在申请存续期间保持可见。</p></div> : null}
-    <dl className="wk-application__pinned" aria-label="本次申请固定的证据"><div><dt>岗位</dt><dd>{receipt.pinnedEvidence.opportunityId}</dd></div><div><dt>快照</dt><dd>{receipt.pinnedEvidence.snapshotId}</dd></div><div><dt>评估</dt><dd>{receipt.pinnedEvidence.evaluationId}</dd></div><div><dt>档案修订</dt><dd>{receipt.pinnedEvidence.profileRevision}</dd></div><div><dt>评估结论</dt><dd>{evaluationStatusLabel(receipt.pinnedEvidence.evaluationStatus)}</dd></div><div><dt>批次</dt><dd>{receipt.pinnedEvidence.batchIdentity}</dd></div></dl>
+    <dl className="wk-application__pinned" aria-label="本次申请固定的证据"><div><dt>岗位</dt><dd>{receipt.pinnedEvidence.opportunityId}</dd></div><div><dt>快照</dt><dd><a href={opportunityEvidencePath(receipt.pinnedEvidence.opportunityId, receipt.pinnedEvidence.snapshotId)}>{receipt.pinnedEvidence.snapshotId}</a>（固定不变，旧申请始终展示此旧快照）</dd></div><div><dt>评估</dt><dd>{receipt.pinnedEvidence.evaluationId}</dd></div><div><dt>档案修订</dt><dd>{receipt.pinnedEvidence.profileRevision}</dd></div><div><dt>评估结论</dt><dd>{evaluationStatusLabel(receipt.pinnedEvidence.evaluationStatus)}</dd></div><div><dt>批次</dt><dd>{receipt.pinnedEvidence.batchIdentity}</dd></div></dl>
     <div className="wk-application__actions"><button type="button" onClick={startAnotherBatch}>为其他批次创建新申请</button><button type="button" onClick={() => setProgressOpen(!progressOpen)}>{progressOpen ? '收起申请进展时间线' : '查看申请进展时间线'}</button><button type="button" onClick={() => setSubmissionOpen(!submissionOpen)}>{submissionOpen ? '收起投递确认与回看' : '投递确认与回看'}</button><button type="button" onClick={() => setPreparationOpen(!preparationOpen)}>{preparationOpen ? '收起面试准备与来源' : '面试准备与来源'}</button></div>
    </div> : null}
    {/* T15: the application context opens the material editor pinned to the

@@ -120,6 +120,105 @@ export function decodeOpportunityEvidencePage(value: unknown): OpportunityEviden
  }
 }
 
+// Frozen reconciliation contract owned by the career backend (T12,
+// internal/modules/career/reconciliation.go). A pair of records merges only
+// when the identity quadruple — posting code, company, location, and batch —
+// is fully known and pairwise equal; anything short stays side by side with an
+// explicit suspected-duplicate hint that never merges anything by itself. The
+// receipt also discloses the batches whose pre-existing applications stayed on
+// the merged-away record (honest history). Decoders reject invented decisions
+// or evidence shapes before they reach the UI.
+export type ReconcileDecision = 'merged' | 'side_by_side'
+export type ReconcileIdentityEvidence = { jobCode: string; title?: string; company?: string; location?: string; batch?: string; sourceRef?: string; snapshotId?: string }
+export type ReconcileInput = { requestId: string; targetId: string; candidateId: string }
+export type ReconcileReceipt = { kind: 'opportunities_reconciled'; requestId: string; decision: ReconcileDecision; targetId: string; candidateId: string; suspectedDuplicate: boolean; evidence: { target: ReconcileIdentityEvidence; candidate: ReconcileIdentityEvidence }; conflictingBatches?: string[]; createdAt: string }
+export type ReconciliationList = { reconciliations: ReconcileReceipt[] }
+// The server-side status projection: annotations are computed by comparing
+// later observations against earlier snapshots, the stale window keeps the
+// last successful check when the latest recheck failed, and mergedInto names
+// where an opportunity's immutable history went after a merge.
+export type OpportunityAnnotation = 'expired' | 'delisted' | 'requirements_changed'
+export type OpportunityStatusView = { opportunityId: string; annotations: OpportunityAnnotation[]; stale: boolean; lastCheckedAt: string; lastHealthyAt: string; observations: OpportunityObservation[]; mergedInto?: string }
+// Honest coverage disclosure: the vetted registry (production starts empty)
+// plus the sources and cities this space actually observed. Nothing invented.
+export type ObservedSourceCoverage = { sourceKind: string; label: string; observations: number; lastCheckedAt: string }
+export type CareerCoverageView = { configuredSources: SearchSourceCoverage[]; observedSources: ObservedSourceCoverage[]; observedCities: string[] }
+
+const reconcileDecisions: ReconcileDecision[] = ['merged', 'side_by_side']
+const opportunityAnnotations: OpportunityAnnotation[] = ['expired', 'delisted', 'requirements_changed']
+
+function decodeReconcileIdentityEvidence(value: unknown, message: string): ReconcileIdentityEvidence {
+ const record = decodeRecord(value, message)
+ // jobCode is always emitted (empty means "no decidable code"); every other
+ // dimension is omitempty — absent means no known evidence, never a guess.
+ if (typeof record.jobCode !== 'string' || !validOptionalString(record.title) || !validOptionalString(record.company) || !validOptionalString(record.location) || !validOptionalString(record.batch) || !validOptionalString(record.sourceRef) || !validOptionalString(record.snapshotId)) throw new TypeError(message)
+ return {
+  jobCode: record.jobCode,
+  ...(typeof record.title === 'string' ? { title: record.title } : {}),
+  ...(typeof record.company === 'string' ? { company: record.company } : {}),
+  ...(typeof record.location === 'string' ? { location: record.location } : {}),
+  ...(typeof record.batch === 'string' ? { batch: record.batch } : {}),
+  ...(typeof record.sourceRef === 'string' ? { sourceRef: record.sourceRef } : {}),
+  ...(typeof record.snapshotId === 'string' ? { snapshotId: record.snapshotId } : {}),
+ }
+}
+
+export function decodeReconcileReceipt(value: unknown): ReconcileReceipt {
+ const record = decodeRecord(value, 'invalid reconciliation receipt')
+ const evidence = decodeRecord(record.evidence, 'invalid reconciliation receipt')
+ const batches: unknown = record.conflictingBatches
+ if (record.kind !== 'opportunities_reconciled' || !validIdentifier(record.requestId)
+  || !reconcileDecisions.includes(record.decision as ReconcileDecision)
+  || !validIdentifier(record.targetId) || !validIdentifier(record.candidateId)
+  || typeof record.suspectedDuplicate !== 'boolean' || !validTimestamp(record.createdAt)
+  || (batches !== undefined && (!Array.isArray(batches) || batches.some((batch) => !validIdentifier(batch))))) throw new TypeError('invalid reconciliation receipt')
+ // Frozen backend coherence: the suspected-duplicate hint only applies to
+ // uncertain pairs; a merged pair is a confirmed identity, never a suspicion.
+ if (record.decision === 'merged' && record.suspectedDuplicate) throw new TypeError('invalid reconciliation receipt')
+ return {
+  kind: 'opportunities_reconciled', requestId: record.requestId, decision: record.decision as ReconcileDecision,
+  targetId: record.targetId, candidateId: record.candidateId, suspectedDuplicate: record.suspectedDuplicate,
+  evidence: { target: decodeReconcileIdentityEvidence(evidence.target, 'invalid reconciliation receipt'), candidate: decodeReconcileIdentityEvidence(evidence.candidate, 'invalid reconciliation receipt') },
+  ...(Array.isArray(batches) && batches.length > 0 ? { conflictingBatches: batches as string[] } : {}),
+  createdAt: record.createdAt,
+ }
+}
+
+export function decodeReconciliationList(value: unknown): ReconciliationList {
+ const record = decodeRecord(value, 'invalid reconciliation list')
+ if (!Array.isArray(record.reconciliations)) throw new TypeError('invalid reconciliation list')
+ return { reconciliations: record.reconciliations.map(decodeReconcileReceipt) }
+}
+
+export function decodeOpportunityStatusView(value: unknown): OpportunityStatusView {
+ const record = decodeRecord(value, 'invalid opportunity status view')
+ const mergedInto: unknown = record.mergedInto
+ if (!validIdentifier(record.opportunityId) || !Array.isArray(record.annotations) || record.annotations.some((annotation) => !opportunityAnnotations.includes(annotation as OpportunityAnnotation))
+  || typeof record.stale !== 'boolean' || !validTimestamp(record.lastCheckedAt) || !validTimestamp(record.lastHealthyAt)
+  || !Array.isArray(record.observations) || !validOptionalIdentifier(mergedInto)) throw new TypeError('invalid opportunity status view')
+ return {
+  opportunityId: record.opportunityId, annotations: record.annotations as OpportunityAnnotation[], stale: record.stale,
+  lastCheckedAt: record.lastCheckedAt, lastHealthyAt: record.lastHealthyAt,
+  observations: record.observations.map(decodeOpportunityObservation),
+  ...(validIdentifier(mergedInto) ? { mergedInto: mergedInto as string } : {}),
+ }
+}
+
+function decodeObservedSourceCoverage(value: unknown): ObservedSourceCoverage {
+ const record = decodeRecord(value, 'invalid observed source coverage')
+ // The backend always emits the label (empty when the observer sent none) and
+ // counts every stored observation row; a non-positive or fractional ledger
+ // is an invented payload.
+ if (!validIdentifier(record.sourceKind) || typeof record.label !== 'string' || !validPositiveVersion(record.observations) || !validTimestamp(record.lastCheckedAt)) throw new TypeError('invalid observed source coverage')
+ return { sourceKind: record.sourceKind, label: record.label, observations: record.observations as number, lastCheckedAt: record.lastCheckedAt }
+}
+
+export function decodeCareerCoverageView(value: unknown): CareerCoverageView {
+ const record = decodeRecord(value, 'invalid career coverage view')
+ if (!Array.isArray(record.configuredSources) || !Array.isArray(record.observedSources) || !Array.isArray(record.observedCities) || record.observedCities.some((city) => !validIdentifier(city))) throw new TypeError('invalid career coverage view')
+ return { configuredSources: record.configuredSources.map(decodeSearchSourceCoverage), observedSources: record.observedSources.map(decodeObservedSourceCoverage), observedCities: record.observedCities as string[] }
+}
+
 const applicationLinkStates: ApplicationLinkState[] = ['linking', 'ready', 'link_failed']
 const applicationEvaluationStatuses: ApplicationEvaluationStatus[] = ['eligible', 'ineligible', 'unknown']
 const applicationWarningKeys = ['evaluationId', 'evaluationStatus', 'hardRuleId', 'reasonCode']
@@ -1174,6 +1273,26 @@ export function createCareerApi(request: CareerRequest, binaryRequest?: CareerBi
   async opportunityEvidence(opportunityId: string, snapshotId: string, signal?: AbortSignal): Promise<OpportunityEvidence> {
    if (!opportunityId.trim() || !snapshotId.trim()) throw new TypeError('opportunity evidence IDs must not be empty')
    return decodeOpportunityEvidencePage(await request({ method: 'GET', path: `/api/v1/career/opportunities/${encodeURIComponent(opportunityId)}?snapshotId=${encodeURIComponent(snapshotId)}`, ...(signal ? { signal } : {}) }))
+  },
+  async opportunityStatus(opportunityId: string, signal?: AbortSignal): Promise<OpportunityStatusView> {
+   if (!opportunityId.trim()) throw new TypeError('opportunity status opportunityId must not be empty')
+   return decodeOpportunityStatusView(await request({ method: 'GET', path: `/api/v1/career/opportunities/${encodeURIComponent(opportunityId)}/status`, ...(signal ? { signal } : {}) }))
+  },
+  async opportunityReconciliations(opportunityId: string, signal?: AbortSignal): Promise<ReconciliationList> {
+   if (!opportunityId.trim()) throw new TypeError('opportunity reconciliations opportunityId must not be empty')
+   return decodeReconciliationList(await request({ method: 'GET', path: `/api/v1/career/opportunities/${encodeURIComponent(opportunityId)}/reconciliations`, ...(signal ? { signal } : {}) }))
+  },
+  async reconcileOpportunities(input: ReconcileInput, signal?: AbortSignal): Promise<ReconcileReceipt> {
+   if (!input.requestId.trim() || !input.targetId.trim() || !input.candidateId.trim()) throw new TypeError('reconciliation request identifiers must not be empty')
+   if (input.targetId === input.candidateId) throw new TypeError('reconciliation target and candidate must be different records')
+   return decodeReconcileReceipt(await request({ method: 'POST', path: '/api/v1/career/opportunities/reconcile', body: { requestId: input.requestId, targetId: input.targetId, candidateId: input.candidateId }, ...(signal ? { signal } : {}) }))
+  },
+  async reconciliationReceipt(requestId: string, signal?: AbortSignal): Promise<ReconcileReceipt> {
+   if (!requestId.trim()) throw new TypeError('reconciliation receipt requestId must not be empty')
+   return decodeReconcileReceipt(await request({ method: 'GET', path: `/api/v1/career/reconciliations/receipt?requestId=${encodeURIComponent(requestId)}`, ...(signal ? { signal } : {}) }))
+  },
+  async careerCoverage(signal?: AbortSignal): Promise<CareerCoverageView> {
+   return decodeCareerCoverageView(await request({ method: 'GET', path: '/api/v1/career/coverage', ...(signal ? { signal } : {}) }))
   },
   async evaluateOpportunity(input: { requestId: string; opportunityId: string; snapshotId: string; profileRevision?: number }, signal?: AbortSignal): Promise<EvaluationReceipt> {
    if (!input.requestId.trim() || !input.opportunityId.trim() || !input.snapshotId.trim() || (input.profileRevision !== undefined && (!Number.isSafeInteger(input.profileRevision) || input.profileRevision < 0))) throw new TypeError('evaluation request identifiers and revision must be valid')

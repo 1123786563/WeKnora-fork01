@@ -5,6 +5,7 @@ import type { ScopeController } from '@weknora/domain/scope'
 import type { SearchFailureCode, SearchOnceReceipt, SearchQualification, SearchUncertainty, SearchResultRow } from '../../../../packages/api-client/src/career.ts'
 import type { OpportunityURLImportReceipt } from '../../../../packages/api-client/src/career.ts'
 import { opportunityEvidencePath } from './OpportunityPage.tsx'
+import { CareerCoveragePanel } from './reconciliation.tsx'
 import { CareerUsagePanel, useCareerUsageEstimate, usageAllowsChargedRun } from './UsagePanel.tsx'
 import './search.css'
 
@@ -331,6 +332,7 @@ export function CareerSearchPage({ client, scopeController }: { client: WeKnoraC
     </ul>
     <p>历史按当前身份与空间保存；点击用原搜索编号重新读取，不会发起新的搜索。</p>
    </section></Card> : null}
+   <CareerCoveragePanel client={client} scopeController={scopeController} />
   </> : null}
  </main>
 }

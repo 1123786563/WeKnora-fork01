@@ -1175,3 +1175,167 @@ test('usage estimate decoder rejects invented kinds, broken windows and negative
   await assert.rejects(api.usageEstimate('search_once'), TypeError)
  }
 })
+
+// T12 frozen reconciliation contract (internal/modules/career/reconciliation.go):
+// a merge needs the full identity quadruple on both sides; an uncertain pair
+// stays side by side with an explicit suspected-duplicate hint and the receipt
+// discloses conflicting batches that keep their pre-existing applications.
+const reconcileWireReceipt = {
+ kind: 'opportunities_reconciled', requestId: 'request 1', decision: 'side_by_side',
+ targetId: 'opportunity/1', candidateId: 'opportunity/2', suspectedDuplicate: true,
+ evidence: {
+  target: { jobCode: 'job-a1', title: '前端工程师', company: '示例公司', location: '上海', batch: '2026 秋招', sourceRef: 'https://example.test/a', snapshotId: 'snapshot-1' },
+  candidate: { jobCode: '', title: '前端工程师', company: '示例公司' },
+ },
+ createdAt: '2026-09-26T02:03:04Z',
+}
+const reconcileDecodedReceipt = {
+ kind: 'opportunities_reconciled' as const, requestId: 'request 1', decision: 'side_by_side' as const,
+ targetId: 'opportunity/1', candidateId: 'opportunity/2', suspectedDuplicate: true,
+ evidence: {
+  target: { jobCode: 'job-a1', title: '前端工程师', company: '示例公司', location: '上海', batch: '2026 秋招', sourceRef: 'https://example.test/a', snapshotId: 'snapshot-1' },
+  candidate: { jobCode: '', title: '前端工程师', company: '示例公司' },
+ },
+ createdAt: '2026-09-26T02:03:04Z',
+}
+
+test('reconciliation client encodes the three frozen routes and decodes receipts verbatim', async () => {
+ const calls: Array<{ method: string; path: string; body?: unknown }> = []
+ const api = createCareerApi(async (input) => {
+  calls.push({ method: input.method, path: input.path, ...(input.body !== undefined ? { body: input.body } : {}) })
+  return input.path.endsWith('/reconciliations') ? { reconciliations: [reconcileWireReceipt] } : reconcileWireReceipt
+ })
+ const list = await api.opportunityReconciliations('opportunity/1')
+ assert.deepEqual(list, { reconciliations: [reconcileDecodedReceipt] })
+ const receipt = await api.reconcileOpportunities({ requestId: 'request 1', targetId: 'opportunity/1', candidateId: 'opportunity/2' })
+ assert.deepEqual(receipt, reconcileDecodedReceipt)
+ const replay = await api.reconciliationReceipt('request 1')
+ assert.deepEqual(replay, reconcileDecodedReceipt)
+ assert.deepEqual(calls, [
+  { method: 'GET', path: '/api/v1/career/opportunities/opportunity%2F1/reconciliations' },
+  { method: 'POST', path: '/api/v1/career/opportunities/reconcile', body: { requestId: 'request 1', targetId: 'opportunity/1', candidateId: 'opportunity/2' } },
+  { method: 'GET', path: '/api/v1/career/reconciliations/receipt?requestId=request%201' },
+ ])
+ // A merge receipt carries the frozen conflicting-batches disclosure verbatim.
+ const mergedWire = { ...reconcileWireReceipt, decision: 'merged', suspectedDuplicate: false, conflictingBatches: ['2026 秋招'] }
+ const mergedApi = createCareerApi(async () => mergedWire)
+ const merged = await mergedApi.reconciliationReceipt('request 1')
+ assert.deepEqual(merged, { ...reconcileDecodedReceipt, decision: 'merged', suspectedDuplicate: false, conflictingBatches: ['2026 秋招'] })
+})
+
+test('reconciliation client validates identifiers before anything is sent', async () => {
+ const refusing = createCareerApi(async () => { throw new Error('must not send invalid request') })
+ await assert.rejects(refusing.reconcileOpportunities({ requestId: ' ', targetId: 'a', candidateId: 'b' }), TypeError)
+ await assert.rejects(refusing.reconcileOpportunities({ requestId: 'r', targetId: '', candidateId: 'b' }), TypeError)
+ await assert.rejects(refusing.reconcileOpportunities({ requestId: 'r', targetId: 'a', candidateId: ' ' }), TypeError)
+ await assert.rejects(refusing.reconcileOpportunities({ requestId: 'r', targetId: 'same', candidateId: 'same' }), TypeError)
+ await assert.rejects(refusing.opportunityReconciliations(' '), TypeError)
+ await assert.rejects(refusing.reconciliationReceipt(''), TypeError)
+})
+
+test('reconciliation decoder rejects invented decisions and broken receipts', async () => {
+ const inventors: Array<Record<string, unknown>> = [
+  { ...reconcileWireReceipt, kind: 'opportunities_merged' },
+  { ...reconcileWireReceipt, decision: 'auto_merged' },
+  { ...reconcileWireReceipt, suspectedDuplicate: 'yes' },
+  { ...reconcileWireReceipt, evidence: { target: reconcileWireReceipt.evidence.target } },
+  { ...reconcileWireReceipt, createdAt: 'yesterday' },
+  { ...reconcileWireReceipt, conflictingBatches: '2026 秋招' },
+  { ...reconcileWireReceipt, conflictingBatches: [''] },
+  { ...reconcileWireReceipt, targetId: '' },
+  {},
+ ]
+ for (const payload of inventors) {
+  const api = createCareerApi(async () => payload)
+  await assert.rejects(api.reconciliationReceipt('request 1'), TypeError)
+ }
+ const listApi = createCareerApi(async () => ({ reconciliations: 'none' }))
+ await assert.rejects(listApi.opportunityReconciliations('opportunity/1'), TypeError)
+})
+
+const statusObservation = {
+ observationId: 'observation-1', snapshotId: 'snapshot-1', source: { kind: 'url', label: '招聘页面', referenceId: 'https://example.test/a' },
+ sourceStatus: 'fetch_failed', needsUserJD: false, acquiredAt: '2026-09-26T02:03:04Z',
+}
+
+test('opportunity status client decodes the frozen projection with annotations and stale window', async () => {
+ const calls: Array<{ method: string; path: string }> = []
+ const api = createCareerApi(async (input) => {
+  calls.push({ method: input.method, path: input.path })
+  return {
+   opportunityId: 'opportunity/1', annotations: ['requirements_changed', 'delisted'], stale: true,
+   lastCheckedAt: '2026-09-26T02:03:04Z', lastHealthyAt: '2026-09-25T02:03:04Z',
+   observations: [statusObservation], mergedInto: 'opportunity/0',
+  }
+ })
+ const status = await api.opportunityStatus('opportunity/1')
+ assert.deepEqual(status, {
+  opportunityId: 'opportunity/1', annotations: ['requirements_changed', 'delisted'], stale: true,
+  lastCheckedAt: '2026-09-26T02:03:04Z', lastHealthyAt: '2026-09-25T02:03:04Z',
+  observations: [{ observationId: 'observation-1', snapshotId: 'snapshot-1', source: { kind: 'url', label: '招聘页面', referenceId: 'https://example.test/a' }, sourceStatus: 'fetch_failed', needsUserJD: false, acquiredAt: '2026-09-26T02:03:04Z' }],
+  mergedInto: 'opportunity/0',
+ })
+ assert.deepEqual(calls, [{ method: 'GET', path: '/api/v1/career/opportunities/opportunity%2F1/status' }])
+ // No observations yet: the backend emits the Go zero timestamps; the client
+ // accepts them verbatim instead of inventing a fresher check time.
+ const empty = await createCareerApi(async () => ({ opportunityId: 'opportunity/1', annotations: [], stale: false, lastCheckedAt: '0001-01-01T00:00:00Z', lastHealthyAt: '0001-01-01T00:00:00Z', observations: [] })).opportunityStatus('opportunity/1')
+ assert.deepEqual(empty, { opportunityId: 'opportunity/1', annotations: [], stale: false, lastCheckedAt: '0001-01-01T00:00:00Z', lastHealthyAt: '0001-01-01T00:00:00Z', observations: [] })
+})
+
+test('opportunity status decoder rejects invented annotations and broken views', async () => {
+ const base = { opportunityId: 'opportunity/1', annotations: [], stale: false, lastCheckedAt: '2026-09-26T02:03:04Z', lastHealthyAt: '2026-09-26T02:03:04Z', observations: [] }
+ const inventors: Array<Record<string, unknown>> = [
+  { ...base, annotations: ['deleted'] },
+  { ...base, annotations: 'expired' },
+  { ...base, stale: 'yes' },
+  { ...base, lastCheckedAt: 'today' },
+  { ...base, observations: 'none' },
+  { ...base, mergedInto: '' },
+  {},
+ ]
+ for (const payload of inventors) {
+  const api = createCareerApi(async () => payload)
+  await assert.rejects(api.opportunityStatus('opportunity/1'), TypeError)
+ }
+})
+
+test('career coverage client decodes configured and observed coverage honestly', async () => {
+ const calls: Array<{ method: string; path: string }> = []
+ const api = createCareerApi(async (input) => {
+  calls.push({ method: input.method, path: input.path })
+  return {
+   configuredSources: [{ sourceId: 's1', label: '已核验来源', accessMethods: ['http'], cities: ['上海'], available: true }],
+   observedSources: [{ sourceKind: 'url', label: '招聘页面', observations: 2, lastCheckedAt: '2026-09-26T02:03:04Z' }],
+   observedCities: ['上海'],
+  }
+ })
+ const coverage = await api.careerCoverage()
+ assert.deepEqual(coverage, {
+  configuredSources: [{ sourceId: 's1', label: '已核验来源', accessMethods: ['http'], cities: ['上海'], available: true }],
+  observedSources: [{ sourceKind: 'url', label: '招聘页面', observations: 2, lastCheckedAt: '2026-09-26T02:03:04Z' }],
+  observedCities: ['上海'],
+ })
+ assert.deepEqual(calls, [{ method: 'GET', path: '/api/v1/career/coverage' }])
+ // Production starts with an empty registry: empty lists decode verbatim so
+ // the UI can state "no vetted sources" instead of guessing.
+ const empty = await createCareerApi(async () => ({ configuredSources: [], observedSources: [], observedCities: [] })).careerCoverage()
+ assert.deepEqual(empty, { configuredSources: [], observedSources: [], observedCities: [] })
+})
+
+test('career coverage decoder rejects invented ledgers', async () => {
+ const honest = { configuredSources: [], observedSources: [{ sourceKind: 'url', label: '', observations: 1, lastCheckedAt: '2026-09-26T02:03:04Z' }], observedCities: [] }
+ const inventors: Array<Record<string, unknown>> = [
+  { ...honest, observedCities: '上海' },
+  { ...honest, observedCities: [''] },
+  { ...honest, observedSources: [{ ...honest.observedSources[0], observations: 0 }] },
+  { ...honest, observedSources: [{ ...honest.observedSources[0], observations: 1.5 }] },
+  { ...honest, observedSources: [{ ...honest.observedSources[0], lastCheckedAt: 'now' }] },
+  { ...honest, observedSources: [{ ...honest.observedSources[0], sourceKind: '' }] },
+  { ...honest, configuredSources: [{ sourceId: 's1', label: '来源', accessMethods: [], cities: [], available: 'yes' }] },
+  {},
+ ]
+ for (const payload of inventors) {
+  const api = createCareerApi(async () => payload)
+  await assert.rejects(api.careerCoverage(), TypeError)
+ }
+})

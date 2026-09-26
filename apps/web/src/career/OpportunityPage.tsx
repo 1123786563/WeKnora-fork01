@@ -4,6 +4,7 @@ import type { ScopeController } from '@weknora/domain/scope'
 import type { Evaluation, EvaluationReceipt, OpportunityEvidence, OpportunityImportInput, OpportunityReceipt } from '../../../../packages/career-core/src/contracts.ts'
 import type { OpportunityCompleteness, OpportunityFailureCode, OpportunityObservation, OpportunitySourceStatus, OpportunityURLImportReceipt } from '../../../../packages/api-client/src/career.ts'
 import { ApplicationPage } from './ApplicationPage.tsx'
+import { OpportunityStatusPanel } from './reconciliation.tsx'
 
 type Attempt = OpportunityImportInput & { opportunityId?: string; priorObservationId?: string }
 type URLAttempt = { requestId: string; url: string; attemptedAt: string }
@@ -407,6 +408,7 @@ export function OpportunityEvidencePage({ client, scopeController, opportunityId
  const source = [currentEvidence.source.label, currentEvidence.source.referenceId].filter((value): value is string => Boolean(value)).join(' · ') || currentEvidence.source.kind
  return <main className="wk-page wk-opportunity-evidence"><header className="wk-header"><div><p className="wk-opportunity-import__eyebrow">Career · 职位证据</p><h1>{currentEvidence.status === 'needs_review' ? '已保存，待确认' : '已保存的职位证据'}</h1><p>此页面显示固定快照的原始内容和当前可确认的信息。</p></div><a href="/platform/creatChat">返回对话</a></header>
   <section className="wk-opportunity-evidence__meta" aria-label="来源信息"><dl><div><dt>来源</dt><dd>{source}</dd></div><div><dt>采集时间</dt><dd><time dateTime={currentEvidence.acquiredAt}>{currentEvidence.acquiredAt}</time></dd></div><div><dt>状态</dt><dd>{currentEvidence.status === 'needs_review' ? '待确认' : '已保存'}</dd></div><div><dt>快照编号</dt><dd><code>{currentEvidence.snapshotId}</code></dd></div></dl></section>
+  <OpportunityStatusPanel client={client} scopeController={scopeController} opportunityId={currentEvidence.opportunityId} />
   <EvaluationAction key={JSON.stringify([currentEvidence.opportunityId, currentEvidence.snapshotId])} client={client} scopeController={scopeController} opportunityId={currentEvidence.opportunityId} snapshotId={currentEvidence.snapshotId} onReceipts={trackEvaluations} />
   <ApplicationPage key={`application-${currentEvidence.opportunityId}-${currentEvidence.snapshotId}`} client={client} scopeController={scopeController} opportunityId={currentEvidence.opportunityId} snapshotId={currentEvidence.snapshotId} evaluations={evaluationReceipts} batchHint={currentEvidence.extracted.batch} />
   {currentEvidence.status === 'needs_review' ? <p className="wk-opportunity-evidence__notice" role="status">职位描述已保存为证据，提取字段仍需核对。</p> : null}
