@@ -114,6 +114,15 @@ const (
 	// PurchaseStateCanceled: the purchase was canceled (payment failed,
 	// timeout, or explicit cancel).
 	PurchaseStateCanceled = "canceled"
+	// PurchaseStatePaidAwaitingActivation is a COORDINATOR-COMPOSED product
+	// state (design decision D3, #82): the local order is paid but the
+	// authority snapshot has not yet been observed active. It is NEVER
+	// produced by readPurchaseSnapshot / any authority read — only the
+	// service layer synthesizes it (local paid order + authority
+	// awaiting_payment). Constant lives here next to the authority-truth set
+	// so the wire vocabulary stays in ONE place; the seam's observed set is
+	// unchanged.
+	PurchaseStatePaidAwaitingActivation = "paid_awaiting_activation"
 )
 
 // InvoiceLineSnapshot is one invoice line inside a purchase snapshot
