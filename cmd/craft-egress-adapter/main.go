@@ -87,16 +87,23 @@ func main() {
 	}()
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+	serveFailed := false
 	select {
 	case <-stop:
 	case err := <-serveErr:
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Printf("craft-egress-adapter: serve: %v", err)
+			serveFailed = true
 		}
 	}
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		log.Printf("craft-egress-adapter: shutdown: %v", err)
+	}
+	if serveFailed {
+		// Exit NON-zero: K8s onFailure restarts only non-zero exits, and
+		// alerting treats zero as healthy — a bind failure must be visible.
+		os.Exit(1)
 	}
 }

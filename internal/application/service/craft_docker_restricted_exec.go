@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -102,7 +103,10 @@ func (s *CraftDockerRestrictedExec) Start(ctx context.Context, grantID, activity
 	// T03 (#122): uploaded code stays data. Screen the command before the
 	// durable send is prepared; a denial returns the member-visible refusal
 	// and nothing is created, bound or sent.
-	if s.policy != nil {
+	if s.policy == nil {
+		return CraftDockerOutputlessResult{}, errors.New("restricted Docker exec refused: T03 execution policy gate is not assembled (fail-closed)")
+	}
+	{
 		if err := s.policy.ReviewOutputlessExec(ctx, binding, request); err != nil {
 			return CraftDockerOutputlessResult{}, err
 		}
@@ -129,7 +133,10 @@ func (s *CraftDockerRestrictedExec) Start(ctx context.Context, grantID, activity
 // command through recovery — an unreviewable command is never sent, from
 // either path.
 func (s *CraftDockerRestrictedExec) ResumeBound(ctx context.Context, grantID, activityID string) (CraftDockerOutputlessResult, error) {
-	if s.policy != nil {
+	if s.policy == nil {
+		return CraftDockerOutputlessResult{}, errors.New("restricted Docker exec refused: T03 execution policy gate is not assembled (fail-closed)")
+	}
+	{
 		if err := s.policy.ReviewOutputlessExec(ctx, CraftCallBinding{}, CraftDockerOutputlessRequest{}); err != nil {
 			return CraftDockerOutputlessResult{}, err
 		}

@@ -239,7 +239,7 @@ func (r *CraftDockerSendClaimRepository) load(ctx context.Context, key CraftChar
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return craftDockerSendClaimRow{}, craftDockerSendConflict("operation not found")
 	}
-	return row, dockerOutputDBError(err)
+	return row, dockerNormalInputDBError(err)
 }
 
 func validateCraftDockerSendIdentity(key CraftChargeStartKey, receipt DockerExecReceipt) error {

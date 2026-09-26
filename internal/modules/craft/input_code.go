@@ -275,8 +275,14 @@ func (p *InputExecutionPolicy) Review(req InputExecutionRequest) InputExecutionD
 	for _, value := range req.Environment {
 		for _, token := range shellTokens(value) {
 			for _, segment := range strings.Split(token, ":") {
-				if abs := p.canonical(req.WorkingDir, segment); p.withinInputs(abs) {
-					return p.deny("input_target", abs, "")
+				candidates := append([]string{segment}, flagValueCandidates(segment)...)
+				for _, candidate := range candidates {
+					if stripped, ok := stripEnvAssignment(candidate); ok {
+						candidate = stripped
+					}
+					if abs := p.canonical(req.WorkingDir, candidate); p.withinInputs(abs) {
+						return p.deny("input_target", abs, "")
+					}
 				}
 			}
 		}
@@ -291,11 +297,19 @@ func (p *InputExecutionPolicy) Review(req InputExecutionRequest) InputExecutionD
 			return p.deny("shell_input", p.canonical(req.WorkingDir, req.TargetPath), "")
 		}
 		for _, token := range shellTokens(req.CommandText) {
-			if abs := p.canonical(req.WorkingDir, token); p.withinInputs(abs) {
-				return p.deny("shell_input", abs, "")
+			for _, segment := range strings.Split(token, ":") {
+				candidates := append([]string{segment}, flagValueCandidates(segment)...)
+				for _, candidate := range candidates {
+					if stripped, ok := stripEnvAssignment(candidate); ok {
+						candidate = stripped
+					}
+					if abs := p.canonical(req.WorkingDir, candidate); p.withinInputs(abs) {
+						return p.deny("shell_input", abs, "")
+					}
+				}
 			}
 		}
-	} else if hasExecForwardFlag(req.Command) {
+	} else if hasExecForwardFlag(req.Command) || hasStdinPlaceholder(req.Command) {
 		// find -exec / -execdir forwards arbitrary files to an interpreter
 		// at RUNTIME ({} is filled with paths from the whole workspace,
 		// including the read-only inputs tree): the argv itself is lexically
@@ -348,12 +362,22 @@ func (p *InputExecutionPolicy) Review(req InputExecutionRequest) InputExecutionD
 		// command (bash -c "python3 <path>" smuggling).
 		scriptSeen := false
 		pendingRun := false
+		// programFileNext marks that the previous option token was a
+		// separated-form program-file flag whose VALUE operand follows.
+		programFileNext := false
 		for _, arg := range rest {
 			if !scriptSeen {
 				// run subcommands (deno run x.ts, bun run x.js) shift the
 				// executed file one operand later; remember and keep
 				// treating the remainder as the option/operand region.
 				if arg == "run" && !pendingRun {
+					// "run" itself can BE the uploaded script when the
+					// working dir points inside the tree (python3 run with
+					// an uploaded extension-less file named run): screen it
+					// before shifting.
+					if abs := p.canonical(req.WorkingDir, arg); p.withinInputs(abs) {
+						return p.deny("interpreter_input", abs, "")
+					}
 					pendingRun = true
 					continue
 				}
@@ -404,6 +428,41 @@ func (p *InputExecutionPolicy) Review(req InputExecutionRequest) InputExecutionD
 					}
 				}
 				continue
+			}
+			// The post-script region is NOT safe to skip wholesale:
+			//  - OPTION values: awk -f executes EVERY -f program in order,
+			//    php -B/-F/-R/-E run their file arguments — an option naming
+			//    tree material in ANY position is a program/hook, so every
+			//    flag-attached value is screened.
+			//  - POSITIONAL operands stay data for most interpreters
+			//    (python3 gen.py <input> is a read), EXCEPT the php family
+			//    where a positional after -S is a router script executed
+			//    per request.
+			if strings.HasPrefix(arg, "-") {
+				for _, value := range flagValueCandidates(arg) {
+					if stripped, ok := stripEnvAssignment(value); ok {
+						value = stripped
+					}
+					if abs := p.canonical(req.WorkingDir, value); p.withinInputs(abs) {
+						return p.deny("interpreter_input", abs, "")
+					}
+				}
+				programFileNext = programFileFlag(arg)
+				continue
+			}
+			if programFileNext {
+				// Separated-form program-file flag (awk -f PROG, php -F/-B/-R/-E
+				// PROG): the NEXT operand is a program file, not data.
+				programFileNext = false
+				if abs := p.canonical(req.WorkingDir, arg); p.withinInputs(abs) {
+					return p.deny("interpreter_input", abs, "")
+				}
+				continue
+			}
+			if isPHPFamily(path.Base(req.Command[interpreterOffset(req.Command)])) {
+				if abs := p.canonical(req.WorkingDir, arg); p.withinInputs(abs) {
+					return p.deny("interpreter_input", abs, "")
+				}
 			}
 			if !strings.ContainsAny(arg, " \t\n") {
 				continue // pure data operand: the script reads it, no execution
@@ -522,7 +581,14 @@ func flagValueCandidates(arg string) []string {
 		return nil
 	}
 	if eq := strings.IndexByte(arg, '='); eq >= 0 && eq+1 < len(arg) {
-		out = append(out, arg[eq+1:])
+		value := arg[eq+1:]
+		out = append(out, value)
+		// The value may itself carry a VAR= assignment prefix
+		// (env --split-string=BASH_ENV=inputs/x): strip it so the ASSIGNED
+		// path is what gets screened.
+		if stripped, ok := stripEnvAssignment(value); ok {
+			out = append(out, stripped)
+		}
 	}
 	if !strings.HasPrefix(arg, "--") {
 		// Every short-flag suffix participates: the flag's letter count is
@@ -550,6 +616,7 @@ var wrapperValueFlags = map[string]map[string]bool{
 	"xargs":   {"-I": true, "-D": true, "-E": true, "-n": true, "-P": true, "-s": true},
 	"stdbuf":  {"-i": true, "-o": true, "-e": true},
 	"setsid":  {},
+	"nohup":   {},
 }
 
 // InterpreterPrefixStatus scans past wrapper launchers with their option
@@ -763,6 +830,52 @@ func (p *InputExecutionPolicy) deny(reason, target, digest string) InputExecutio
 
 // hasExecForwardFlag reports whether any argv token is find's execution
 // forwarding flag (separate or =-attached forms).
+// programFileFlag reports whether an option token selects a PROGRAM FILE in
+// a multi-program interpreter family: awk/mawk/gawk -f/--file, php -B/-F/-R/-E
+// (both attached and bare separated forms).
+func programFileFlag(arg string) bool {
+	switch arg {
+	case "-f", "-F", "-B", "-R", "-E":
+		return true
+	}
+	return strings.HasPrefix(arg, "--file=") || arg == "--file"
+}
+
+// isPHPFamily reports whether the interpreter is php (any version suffix):
+// a POSITIONAL operand after php -S is a router script executed per request,
+// unlike the plain data operands of most interpreters.
+func isPHPFamily(base string) bool {
+	return base == "php" || strings.HasPrefix(base, "php")
+}
+
+// interpreterOffset returns the index of the interpreter itself (0 when no
+// wrapper preceded it).
+func interpreterOffset(command []string) int {
+	for offset := 0; offset < len(command); offset++ {
+		base := path.Base(command[offset])
+		if isInterpreterName(base) {
+			return offset
+		}
+		if !wrapperCommands[base] {
+			return 0
+		}
+	}
+	return 0
+}
+
+// hasStdinPlaceholder reports whether any argv token carries the xargs
+// replace-str placeholder {}: at runtime each stdin line is substituted into
+// it and executed as the wrapped command's operand — a stdin-content
+// forwarder exactly like find -exec.
+func hasStdinPlaceholder(command []string) bool {
+	for _, arg := range command {
+		if strings.Contains(arg, "{}") {
+			return true
+		}
+	}
+	return false
+}
+
 func hasExecForwardFlag(command []string) bool {
 	for _, arg := range command {
 		if arg == "-exec" || arg == "-execdir" || strings.HasPrefix(arg, "-exec=") || strings.HasPrefix(arg, "-execdir=") {
@@ -812,6 +925,17 @@ func shellTokens(commandText string) []string {
 		fields[i] = strings.TrimPrefix(f, envAssignment(f))
 	}
 	return fields
+}
+
+// stripEnvAssignment removes a leading VAR= prefix from a flag VALUE
+// candidate: "BASH_ENV=inputs/x" screens the assigned path, not the
+// concatenation with WorkingDir that never lands inside the tree.
+func stripEnvAssignment(value string) (string, bool) {
+	prefix := envAssignment(value)
+	if prefix == "" {
+		return value, false
+	}
+	return value[len(prefix):], true
 }
 
 // envAssignment returns the leading VAR= prefix of a token, if any, so the

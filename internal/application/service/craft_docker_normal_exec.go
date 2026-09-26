@@ -144,7 +144,13 @@ func (s *CraftDockerNormalExecService) Execute(ctx context.Context, grantID, act
 	// T03 (#122): uploaded code stays data. Screen the staged command
 	// against the Run's admitted input manifest before anything is created,
 	// bound, claimed or sent; a denial returns the member-visible refusal.
-	if s.policy != nil {
+	if s.policy == nil {
+		// Fail-closed: an unwired T03 gate must never fall through to the
+		// legacy allow-everything behavior — the upload-execute invariant
+		// (#122) is the whole point of this command face.
+		return CraftDockerNormalExecResult{}, fmt.Errorf("%w: T03 execution policy gate is not assembled", craft.ErrForbidden)
+	}
+	{
 		if err := s.policy.ReviewNormalExec(ctx, request); err != nil {
 			return CraftDockerNormalExecResult{}, err
 		}

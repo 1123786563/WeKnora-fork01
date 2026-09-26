@@ -178,6 +178,7 @@ func TestCraftDockerNormalExecComposesOneClaimedAttachAndDurableOutput(t *testin
 	inputs := repository.NewCraftDockerNormalInputRepository(budget.db)
 	service, err := NewCraftDockerNormalExecService(coordinator, inputs, provider, output)
 	require.NoError(t, err)
+	service.WithExecutionPolicy(&permissiveExecPolicyGate{})
 
 	result, err := service.Execute(context.Background(), grantID, request.ActivityKey,
 		CraftCallBinding{ModelID: "model-normal", Funding: commercial.FundingPlatform}, normalExecTestHandle{id: "container-normal-service"}, request)
@@ -218,6 +219,7 @@ func TestCraftDockerNormalExecProjectionOnSQLiteAndIsolatedPostgres(t *testing.T
 		require.NoError(t, err)
 		executor, err := NewCraftDockerNormalExecService(coordinator, repository.NewCraftDockerNormalInputRepository(budget.db), provider, output)
 		require.NoError(t, err)
+		executor.WithExecutionPolicy(&permissiveExecPolicyGate{})
 		result, err := executor.Execute(context.Background(), grantID, activity,
 			CraftCallBinding{ModelID: "model-normal-db", Funding: commercial.FundingPlatform}, normalExecTestHandle{id: "container-normal-service"}, request)
 		require.NoError(t, err)
@@ -244,6 +246,7 @@ func TestCraftDockerNormalExecPreservesEnabledEmptyStdinIdentity(t *testing.T) {
 	require.NoError(t, err)
 	service, err := NewCraftDockerNormalExecService(coordinator, repository.NewCraftDockerNormalInputRepository(budget.db), provider, output)
 	require.NoError(t, err)
+	service.WithExecutionPolicy(&permissiveExecPolicyGate{})
 	result, err := service.Execute(context.Background(), grantID, request.ActivityKey,
 		CraftCallBinding{ModelID: "model-normal", Funding: commercial.FundingPlatform}, normalExecTestHandle{id: "container-normal-service"}, request)
 	require.NoError(t, err)
@@ -274,6 +277,7 @@ func TestCraftDockerNormalExecResumesExactBoundReceiptWithoutCreate(t *testing.T
 	require.NoError(t, err)
 	service, err := NewCraftDockerNormalExecService(coordinator, repository.NewCraftDockerNormalInputRepository(budget.db), provider, output)
 	require.NoError(t, err)
+	service.WithExecutionPolicy(&permissiveExecPolicyGate{})
 	result, err := service.Execute(context.Background(), grantID, request.ActivityKey, binding, normalExecTestHandle{id: "container-normal-service"}, request)
 	require.NoError(t, err)
 	require.Equal(t, storedReceipt, result.Receipt)
@@ -294,6 +298,7 @@ func TestCraftDockerNormalExecAttachResponseLossIsUnknownAndNeverResent(t *testi
 	require.NoError(t, err)
 	service, err := NewCraftDockerNormalExecService(coordinator, repository.NewCraftDockerNormalInputRepository(budget.db), provider, output)
 	require.NoError(t, err)
+	service.WithExecutionPolicy(&permissiveExecPolicyGate{})
 	binding := CraftCallBinding{ModelID: "model-normal", Funding: commercial.FundingPlatform}
 	handle := normalExecTestHandle{id: "container-normal-service"}
 	first, err := service.Execute(context.Background(), grantID, request.ActivityKey, binding, handle, request)
@@ -368,6 +373,7 @@ func TestCraftDockerNormalExecDisposableNoEgressMarkerOnce(t *testing.T) {
 	counted := &countedNormalExecProvider{inner: docker}
 	service, err := NewCraftDockerNormalExecService(coordinator, repository.NewCraftDockerNormalInputRepository(budget.db), counted, output)
 	require.NoError(t, err)
+	service.WithExecutionPolicy(&permissiveExecPolicyGate{})
 	markerPath := "/tmp/craft-t19-normal-once-" + uuid.NewString()
 	script := fmt.Sprintf("set -eu; test ! -e '%s'; printf x > '%s'; test \"$(wc -c < '%s')\" -eq 1; printf marker-once", markerPath, markerPath, markerPath)
 	request := repository.CraftDockerNormalInputRequest{
@@ -422,6 +428,7 @@ func TestCraftDockerNormalExecClaimedReplayIsObservationOnlyAndInputBound(t *tes
 	require.NoError(t, err)
 	service, err := NewCraftDockerNormalExecService(coordinator, repository.NewCraftDockerNormalInputRepository(budget.db), provider, output)
 	require.NoError(t, err)
+	service.WithExecutionPolicy(&permissiveExecPolicyGate{})
 	binding := CraftCallBinding{ModelID: "model-normal", Funding: commercial.FundingPlatform}
 	handle := normalExecTestHandle{id: "container-normal-service"}
 	_, err = service.Execute(context.Background(), grantID, request.ActivityKey, binding, handle, request)
@@ -447,6 +454,7 @@ func TestCraftDockerNormalExecClaimedReplayIsObservationOnlyAndInputBound(t *tes
 
 	restarted, err := NewCraftDockerNormalExecService(coordinator, repository.NewCraftDockerNormalInputRepository(budget.db), provider, output)
 	require.NoError(t, err)
+	restarted.WithExecutionPolicy(&permissiveExecPolicyGate{})
 	restartedResult, err := restarted.Execute(context.Background(), grantID, request.ActivityKey, binding, handle, request)
 	require.Error(t, err)
 	require.True(t, sandbox.IsRemoteOperationUnknown(err))
@@ -466,6 +474,7 @@ func TestCraftDockerNormalExecCancellationAfterClaimLeavesUnknownWithoutAttach(t
 	require.NoError(t, err)
 	service, err := NewCraftDockerNormalExecService(coordinator, repository.NewCraftDockerNormalInputRepository(budget.db), provider, output)
 	require.NoError(t, err)
+	service.WithExecutionPolicy(&permissiveExecPolicyGate{})
 	defer cancel()
 	_, err = service.Execute(ctx, grantID, request.ActivityKey,
 		CraftCallBinding{ModelID: "model-normal", Funding: commercial.FundingPlatform}, normalExecTestHandle{id: "container-normal-service"}, request)
@@ -483,6 +492,7 @@ func TestCraftDockerNormalExecSinkOpenFailureCannotAttach(t *testing.T) {
 	require.NoError(t, err)
 	service, err := NewCraftDockerNormalExecService(coordinator, repository.NewCraftDockerNormalInputRepository(budget.db), provider, output)
 	require.NoError(t, err)
+	service.WithExecutionPolicy(&permissiveExecPolicyGate{})
 	result, err := service.Execute(context.Background(), grantID, request.ActivityKey,
 		CraftCallBinding{ModelID: "model-normal", Funding: commercial.FundingPlatform}, normalExecTestHandle{id: "container-normal-service"}, request)
 	require.Error(t, err)
@@ -504,6 +514,7 @@ func TestCraftDockerNormalExecOutputSealFailureCannotReportComplete(t *testing.T
 	require.NoError(t, err)
 	service, err := NewCraftDockerNormalExecService(coordinator, repository.NewCraftDockerNormalInputRepository(budget.db), provider, output)
 	require.NoError(t, err)
+	service.WithExecutionPolicy(&permissiveExecPolicyGate{})
 	result, err := service.Execute(context.Background(), grantID, request.ActivityKey,
 		CraftCallBinding{ModelID: "model-normal", Funding: commercial.FundingPlatform}, normalExecTestHandle{id: "container-normal-service"}, request)
 	require.Error(t, err)
@@ -527,6 +538,7 @@ func TestCraftDockerNormalExecRequestOutputQuotaMarksOutputPartial(t *testing.T)
 	require.NoError(t, err)
 	service, err := NewCraftDockerNormalExecService(coordinator, repository.NewCraftDockerNormalInputRepository(budget.db), provider, output)
 	require.NoError(t, err)
+	service.WithExecutionPolicy(&permissiveExecPolicyGate{})
 	result, err := service.Execute(context.Background(), grantID, request.ActivityKey,
 		CraftCallBinding{ModelID: "model-normal", Funding: commercial.FundingPlatform}, normalExecTestHandle{id: "container-normal-service"}, request)
 	require.Error(t, err)

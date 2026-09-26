@@ -197,7 +197,9 @@ func (c *DockerNormalExecClient) CreateAttachedExec(ctx context.Context, handle 
 		ContainerID: containerID, ExecID: created.ID, StdinEnabled: request.StdinEnabled,
 		StdinBytes: int64(len(req.Stdin)), StdinSHA256: fmt.Sprintf("%x", sha256.Sum256([]byte(req.Stdin))), Timeout: timeout,
 	}
-	inspected, err := c.api.ExecInspect(rpcCtx, receipt.ExecID, client.ExecInspectOptions{})
+	inspectCtx, inspectCancel := context.WithTimeout(ctx, c.rpcTimeout)
+	inspected, err := c.api.ExecInspect(inspectCtx, receipt.ExecID, client.ExecInspectOptions{})
+	inspectCancel()
 	if err != nil {
 		return DockerNormalExecReceipt{}, dockerError("NormalExecCreateInspect", err)
 	}
@@ -443,9 +445,11 @@ func (c *DockerNormalExecClient) ObserveAttachedExec(ctx context.Context, receip
 }
 
 func (c *DockerNormalExecClient) inspectRaw(ctx context.Context, receipt DockerNormalExecReceipt) (client.ExecInspectResult, error) {
-	rpcCtx, cancel := context.WithTimeout(ctx, c.rpcTimeout)
-	defer cancel()
-	inspected, err := c.api.ExecInspect(rpcCtx, receipt.ExecID, client.ExecInspectOptions{})
+	// Every inspect gets its OWN timeout budget (never a residual slice of
+	// a caller's already-consumed deadline).
+	inspectCtx, inspectCancel := context.WithTimeout(ctx, c.rpcTimeout)
+	defer inspectCancel()
+	inspected, err := c.api.ExecInspect(inspectCtx, receipt.ExecID, client.ExecInspectOptions{})
 	if err != nil {
 		return client.ExecInspectResult{}, dockerError("NormalExecInspect", err)
 	}

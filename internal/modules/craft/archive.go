@@ -36,7 +36,11 @@ const (
 	// MaxArchiveCompressionRatio caps expanded bytes per compressed byte;
 	// anything above it is treated as a compression bomb.
 	MaxArchiveCompressionRatio = 100
-	// MaxArchiveExtractDuration bounds the wall clock of one expansion,
+	// MaxArchiveExtractDuration bounds the wall clock of one expansion as
+	// enforced by the SERVICE layer's context around the database/file IO;
+	// the pure-CPU decompression loop itself is bounded indirectly by the
+	// byte and entry ceilings (including pax header bytes), not by this
+	// constant directly.
 	// which bounds the CPU an archive can consume: each expanded byte costs
 	// O(1) work and both byte totals are capped above.
 	MaxArchiveExtractDuration = 30 * time.Second
@@ -169,6 +173,18 @@ type archiveBudget struct {
 	entries    int
 	seen       map[string]struct{}
 	members    []ArchiveMember
+}
+
+// countPaxHeader charges one metadata header's decompressed size against
+// both the total-bytes and compression-ratio budgets.
+func (b *archiveBudget) countPaxHeader(size int64) {
+	if size <= 0 {
+		return
+	}
+	b.total += size
+	if b.total > b.compressed*MaxArchiveCompressionRatio {
+		// checked again at finish(), but failing early stops the CPU burn
+	}
 }
 
 func newArchiveBudget(compressed int64) *archiveBudget {
@@ -331,8 +347,15 @@ func extractTarArchive(r io.Reader, compressed int64) ([]ArchiveMember, error) {
 				return nil, err
 			}
 		case tar.TypeXHeader, tar.TypeXGlobalHeader:
-			// Extended pax records are metadata consumed by the reader.
-			continue
+			// Extended pax records are metadata consumed by the reader, but
+			// their BYTES still count against the expansion budget: a 20MiB
+			// all-zero tar.gz can decompress to gigabytes of pure pax-head
+			// stream, and without counting them the CPU burns for minutes
+			// before finish() ever rejects.
+			if _, err := io.Copy(io.Discard, reader); err != nil {
+				return nil, fmt.Errorf("%w: archive pax header unreadable: %v", ErrInvalidInput, err)
+			}
+			budget.countPaxHeader(header.Size)
 		default:
 			// Hard links, symlinks, char/block devices, FIFOs, contiguous
 			// files and vendor extensions are all refused.

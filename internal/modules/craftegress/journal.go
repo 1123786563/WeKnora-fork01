@@ -220,6 +220,7 @@ func (j *CraftEgressAttemptJournal) Resolve(attemptID, requestDigest string, gat
 	}); err != nil {
 		return err
 	}
+	j.records++
 	if definitive {
 		// Guard the one-parked-identity invariant: only the holder of the
 		// CURRENT parked id may unpark the digest (a late duplicate resolve
@@ -227,28 +228,14 @@ func (j *CraftEgressAttemptJournal) Resolve(attemptID, requestDigest string, gat
 		if parked, ok := j.unresolved[requestDigest]; ok && parked.AttemptID == attemptID {
 			delete(j.unresolved, requestDigest)
 		}
-	} else if parked, ok := j.unresolved[requestDigest]; !ok || parked.AttemptID == attemptID {
-		// An unknown-outcome observation on this journal's own parked id
-		// must be reflected in the in-memory index too: without the
-		// backfill, a racing definitive resolve followed by this unknown
-		// append leaves memory empty while the disk still holds an
-		// unresolved record — the next same-digest request would mint a
-		// second identity and replay would pick between two at random.
-		for _, record := range j.unresolved {
-			if record.AttemptID == attemptID {
-				j.unresolved[requestDigest] = record
-				break
-			}
-		}
-		if !ok {
-			// The id was already unparked in memory (a definitive resolve
-			// won the race) but the disk now carries a NEW unresolved tail:
-			// restore the parked entry from the record being appended.
-			j.unresolved[requestDigest] = CraftEgressAttemptRecord{
-				Ordinal: j.ordinalLocked(attemptID), AttemptID: attemptID, RequestDigest: requestDigest,
-				State: CraftEgressAttemptUnresolved, CreatedNano: j.now().UnixNano(),
-			}
-		}
+	} else if parked, ok := j.unresolved[requestDigest]; ok && parked.AttemptID == attemptID {
+		// Backfill ONLY when this journal's parked id is still the CURRENT
+		// holder for the digest: an unknown observation on an id that a
+		// racing definitive resolve already unparked must NOT resurrect it
+		// (that parks a gateway-finalized identity forever — the 409 loop).
+		// The appended record remains on disk as a reconciliation trail,
+		// but the in-memory index follows the durable latest state.
+		_ = parked
 	}
 	return nil
 }
@@ -268,6 +255,13 @@ func (j *CraftEgressAttemptJournal) appendLocked(record CraftEgressAttemptRecord
 	// would refuse the whole journal (self-poisoning) — refuse at write time.
 	if record.Ordinal <= 0 {
 		return fmt.Errorf("craftegress: journal record ordinal must be positive, got %d", record.Ordinal)
+	}
+	// The record cap bounds Resolve-side growth too: a persistently failing
+	// gateway drives an unlimited unknown-resolve retry loop on an already
+	// parked fingerprint, and without this check the cap only stopped NEW
+	// allocations.
+	if j.records >= maxCraftEgressJournalRecords {
+		return fmt.Errorf("craftegress: attempt journal reached its record cap %d", maxCraftEgressJournalRecords)
 	}
 	if j.file == nil {
 		// In-flight handlers can outlive the shutdown budget and reach here

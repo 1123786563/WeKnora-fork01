@@ -61,7 +61,12 @@ func RestrictedContributionFrom(versionID string, manifest WebCitationManifest, 
 	}
 	restricted := false
 	for _, source := range record.Sources {
-		if source.TenantID != 0 && source.TenantID != record.Scope.TenantID {
+		// Fail-closed on the degenerate tenant 0 as well: a source row that
+		// lost its tenant attribution behaves like a cross-tenant source
+		// (same direction as export_manifest.go), never like an own-tenant
+		// one — the opposite default would grant shared derivation without
+		// the owner's consent.
+		if source.TenantID != record.Scope.TenantID {
 			restricted = true
 			break
 		}

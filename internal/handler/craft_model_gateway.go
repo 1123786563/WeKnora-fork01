@@ -601,12 +601,8 @@ func (g *CraftModelGateway) Forward(c *gin.Context) {
 		if len(respBody) > craftMaxForwardBody {
 			failure = errors.Join(failure, errors.New("upstream response body exceeds maximum size"))
 		}
-		resolveErr := attempt.Resolve(c.Request.Context(), service.CraftChargeStartUnknown)
-		if resolveErr != nil {
-			logger.ErrorWithFields(c.Request.Context(), resolveErr, map[string]any{
-				"craft_run_id": payload.RunID, "craft_call_id": callID, "craft_attempt_id": attemptID,
-			})
-		}
+		// (The Started resolution above already fixed the durable outcome;
+		// a second, contradictory Unknown resolve here is dead residue.)
 		// Upstream transport errors can quote internal IP:port topology and
 		// resolve errors can quote SQL — both stay in the server log; the
 		// client gets the opaque code and a fixed sentence.
@@ -660,11 +656,19 @@ func (g *CraftModelGateway) forwardWithinInitiation(attempt service.CraftChargeS
 	stopDeadline()
 	attempt.CancelInitiation()
 	if initiationExpired {
-		cancelRequest()
-		if err == nil {
-			err = context.DeadlineExceeded
+		// err == nil proves the deadline callback never cancelled the
+		// request (responseHeadersReturned=true skips it): a fully
+		// successful response must NOT be rewritten into a phantom
+		// DeadlineExceeded — that would Resolve Unknown and park an
+		// activity whose physical call demonstrably completed.
+		if err != nil || resp == nil {
+			cancelRequest()
+			if err == nil {
+				err = context.DeadlineExceeded
+			}
+			return resp, err, true, true, cancelRequest
 		}
-		return resp, err, true, true, cancelRequest
+		return resp, err, true, false, cancelRequest
 	}
 	return resp, err, true, false, cancelRequest
 }

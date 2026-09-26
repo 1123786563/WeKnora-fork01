@@ -7,7 +7,7 @@
 // which re-resolves it through the EXISTING resource permission chain on
 // every click — a share revoked after the run immediately yields the
 // permission error instead of replaying a cached link.
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Button } from '@weknora/ui';
 import { craftStrings, formatBytes, type CraftLocale } from './presentation.ts';
 
@@ -164,8 +164,13 @@ function isCraftCitationFact(entry: { kind: string }): entry is CraftCitationFac
 export function CraftSources(props: CraftSourcesProps) {
   const base = craftStrings(props.locale);
   const labels = sourceLabels(props.locale);
-  const citedIds = new Set<string>(
-    (props.citations ?? []).filter(isCraftCitationFact).map((entry) => entry.citationId),
+  const sourcesByCitation = useMemo(() => {
+    const map = new Map(props.sources.map((source) => [source.citationId, source]));
+    return map;
+  }, [props.sources]);
+  const citedIds = useMemo(
+    () => new Set<string>((props.citations ?? []).filter(isCraftCitationFact).map((entry) => entry.citationId)),
+    [props.citations],
   );
 
   return (
@@ -252,7 +257,7 @@ export function CraftSources(props: CraftSourcesProps) {
                   </li>
                 );
               }
-              const row = props.sources.find((source) => source.citationId === entry.citationId);
+              const row = sourcesByCitation.get(entry.citationId);
               const revoked = props.revokedCitationIds?.includes(entry.citationId) ?? false;
               const openable = row !== undefined && !revoked;
               return (

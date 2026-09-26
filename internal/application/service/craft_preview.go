@@ -571,11 +571,15 @@ func (s *CraftPreviewService) requireFreshPreviewDoors(ctx context.Context, scop
 	if err := s.requireNoEgress(ctx, scope); err != nil {
 		return err
 	}
+	// Timestamp AFTER the expensive door: the door itself can take up to
+	// 30s (live Docker inspect) while the TTL is 2s — stamping before it
+	// would expire the entry at insert time exactly in the slow-daemon
+	// scenario the cache exists for.
 	s.mu.Lock()
 	if len(s.doorCache) > 1024 {
 		s.doorCache = make(map[craft.Scope]craftPreviewDoorResult)
 	}
-	s.doorCache[scope] = craftPreviewDoorResult{ok: true, at: now}
+	s.doorCache[scope] = craftPreviewDoorResult{ok: true, at: s.config.Now()}
 	s.mu.Unlock()
 	return nil
 }

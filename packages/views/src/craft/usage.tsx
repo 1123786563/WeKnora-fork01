@@ -181,11 +181,11 @@ export interface CraftBudgetPauseNoticeProps {
   /** Projected by the server's current Task owner/billing-admin check. */
   canExtend: boolean;
   onRequestExtension?: (runId: string) => void;
-  strings?: CraftUsageStrings;
+  strings?: Pick<CraftUsageStrings, 'pauseTitle' | 'pauseCanExtend' | 'pauseContactOwner' | 'pauseRequestExtension'>;
 }
 
 /** Budget state is actionable without disclosing Credits, balances or keys. */
-export function CraftBudgetPauseNotice({ pause, canExtend, onRequestExtension, strings = CRAFT_USAGE_STRINGS_ZH }: Omit<CraftBudgetPauseNoticeProps, 'strings'> & { strings?: Pick<CraftUsageStrings, 'pauseTitle' | 'pauseCanExtend' | 'pauseContactOwner' | 'pauseRequestExtension'> }) {
+export function CraftBudgetPauseNotice({ pause, canExtend, onRequestExtension, strings = CRAFT_USAGE_STRINGS_ZH }: CraftBudgetPauseNoticeProps) {
   return (
     <aside role="status" data-testid="craft-budget-pause">
       <strong>{strings.pauseTitle}</strong>

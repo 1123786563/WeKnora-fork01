@@ -168,6 +168,8 @@
 
 /* T14 round-3: the sources panel's citation list matches the sibling panels'
    concentrated styling (was browser defaults). */
+.wk-craft-citations { display: grid; gap: 0.6rem; }
+.wk-craft-citations h4 { margin: 0; }
 .wk-craft-citation-list { display: grid; gap: 0.4rem; list-style: none; margin: 0; padding: 0; }
 .wk-craft-citation-list li { min-width: 0; overflow-wrap: anywhere; }
 .wk-craft-citation-fact .wk-craft-fact-label, .wk-craft-citation-inference .wk-craft-inference-label { color: var(--craft-secondary-text); font-size: 0.85em; margin-right: 0.25rem; }

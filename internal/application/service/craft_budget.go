@@ -401,9 +401,23 @@ func (s *CraftBudgetService) prepareCraftChargeStartTx(ctx context.Context, row 
 		if previousErr == nil {
 			// A DEFINITELY-not-started attempt is a clean slate: nothing was
 			// physically sent, so the activity may restart instead of
-			// deadlocking every retry on a phantom conflict.
+			// deadlocking every retry on a phantom conflict. The same-key
+			// ledger call row AND its reservation must be cleared in the
+			// SAME transaction, or the re-insert collides on the primary
+			// key and the "restart" never actually works.
 			if err := tx.Where("tenant_id = ? AND run_id = ? AND activity_key = ?", row.TenantID, row.RunID, activityID).
 				Delete(&CraftChargeStartJournalRow{}).Error; err != nil {
+				return err
+			}
+			if err := tx.Where("tenant_id = ? AND call_key = ?", row.TenantID, callKey).
+				Delete(&CraftBudgetCallRow{}).Error; err != nil {
+				return err
+			}
+			// Clear the dispatched reservation row in the SAME transaction:
+			// ReserveInTx only replays idempotently in the held state, so a
+			// leftover dispatched row blocks the restart's re-reserve.
+			if err := tx.Where("tenant_id = ? AND reservation_key = ?", row.TenantID, callKey).
+				Delete(&repocommercial.ReservationRow{}).Error; err != nil {
 				return err
 			}
 		} else if !errors.Is(previousErr, gorm.ErrRecordNotFound) {
@@ -1264,10 +1278,10 @@ func (s *CraftBudgetService) BudgetPause(ctx context.Context, scope craft.Scope,
 	var run struct{ Status, WaitReason string }
 	err := s.db.WithContext(ctx).Table("agent_runs").Select("status, wait_reason").
 		Where("tenant_id = ? AND session_id = ? AND run_id = ?", scope.TenantID, scope.SessionID, runID).Take(&run).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return craft.BudgetPause{}, craft.ErrNotFound
+	}
 	if err != nil {
-		// A database failure is not the domain conclusion "no such pause":
-		// propagate it so callers can retry instead of telling the user the
-		// pause never existed.
 		return craft.BudgetPause{}, err
 	}
 	if run.Status != "waiting_user" || run.WaitReason != craftBudgetWaitReason {
@@ -1283,7 +1297,7 @@ func (s *CraftBudgetService) BudgetPause(ctx context.Context, scope craft.Scope,
 func (s *CraftBudgetService) authorizeBudgetActor(ctx context.Context, scope craft.Scope) error {
 	var session struct{ UserID string }
 	err := s.db.WithContext(ctx).Table("sessions").Select("user_id").
-		Where("tenant_id = ? AND id = ?", scope.TenantID, scope.SessionID).Take(&session).Error
+		Where("tenant_id = ? AND id = ? AND deleted_at IS NULL", scope.TenantID, scope.SessionID).Take(&session).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return craft.ErrNotFound
 	}
@@ -1295,7 +1309,8 @@ func (s *CraftBudgetService) authorizeBudgetActor(ctx context.Context, scope cra
 	}
 	var member struct{ Role, Status string }
 	err = s.db.WithContext(ctx).Table("tenant_members").Select("role, status").
-		Where("tenant_id = ? AND user_id = ?", scope.TenantID, scope.UserID).Take(&member).Error
+		Where("tenant_id = ? AND user_id = ? AND deleted_at IS NULL", scope.TenantID, scope.UserID).
+		Order("id ASC").Take(&member).Error
 	if err == nil && member.Status == "active" && (member.Role == "admin" || member.Role == "owner") {
 		return nil
 	}

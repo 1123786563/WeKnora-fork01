@@ -13,6 +13,7 @@
 package craft
 
 import (
+	"io"
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
@@ -173,6 +174,12 @@ func DecodeWebCitationManifest(data []byte) (WebCitationManifest, error) {
 		// Trailing content after the first JSON document ({...}garbage, or a
 		// second shadow document) is refused: the manifest is untrusted
 		// model output and strictness here is part of that contract.
+		return WebCitationManifest{}, fmt.Errorf("%w: web citation manifest has trailing data", ErrInvalidInput)
+	}
+	// decoder.More() misses stray closing brackets ({...}}, {...]): decode
+	// once more and demand the EXACT end of stream.
+	var extra json.RawMessage
+	if err := decoder.Decode(&extra); err != io.EOF {
 		return WebCitationManifest{}, fmt.Errorf("%w: web citation manifest has trailing data", ErrInvalidInput)
 	}
 	if m.Entries == nil {

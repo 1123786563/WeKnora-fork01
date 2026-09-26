@@ -29,6 +29,7 @@ func TestCraftDockerNormalExecReleasesStartEvidenceAfterTerminalOutcome(t *testi
 	require.NoError(t, err)
 	service, err := NewCraftDockerNormalExecService(coordinator, repository.NewCraftDockerNormalInputRepository(budget.db), provider, output)
 	require.NoError(t, err)
+	service.WithExecutionPolicy(&permissiveExecPolicyGate{})
 
 	result, err := service.Execute(context.Background(), grantID, request.ActivityKey,
 		CraftCallBinding{ModelID: "model-normal", Funding: commercial.FundingPlatform}, normalExecTestHandle{id: "container-normal-evict"}, request)
@@ -61,6 +62,7 @@ func TestCraftDockerRestrictedObserveReleasesRunningFlagAtTerminalOnly(t *testin
 
 	service, err := NewCraftDockerRestrictedExec(coordinator, fake, time.Second)
 	require.NoError(t, err)
+	service.WithExecutionPolicy(&permissiveExecPolicyGate{})
 	key := grantID + "\x00" + "activity-running-evict"
 
 	// An UNKNOWN observation must retain the attribution flag.
@@ -116,3 +118,11 @@ func TestCraftChargeStartSequenceContentionIsBoundedDomainConflict(t *testing.T)
 	require.ErrorIs(t, err, craft.ErrConflict,
 		"sequence contention must surface as the bounded domain conflict, not a raw constraint error")
 }
+
+// permissiveExecPolicyGate is the TEST-ONLY gate that admits everything:
+// production faces are now fail-closed without a real gate, so every test
+// construction must explicitly opt in.
+type permissiveExecPolicyGate struct{}
+
+func (permissiveExecPolicyGate) ReviewNormalExec(context.Context, repository.CraftDockerNormalInputRequest) error { return nil }
+func (permissiveExecPolicyGate) ReviewOutputlessExec(context.Context, CraftCallBinding, CraftDockerOutputlessRequest) error { return nil }

@@ -74,6 +74,52 @@ func TestInputCodePolicyDeniesFindExecForwarding(t *testing.T) {
 	}
 }
 
+func TestInputCodePolicyDeniesRound5SmugglingShapes(t *testing.T) {
+	policy := newT03Policy(t)
+	script := t03ScriptPath()
+	cases := [][]string{
+		// awk executes EVERY -f program in order.
+		{"awk", "-f", "gen.awk", "-f", script},
+		{"awk", "--file=" + script, "data"},
+		// php router / per-request program files.
+		{"php", "-S", "127.0.0.1:8080", script},
+		{"php", "-B", "gen.php", "-F", script},
+		// env --split-string attaches a VAR= startup hook value.
+		{"env", "--split-string=BASH_ENV=" + script, "bash", "gen.sh"},
+		// xargs stdin-content forwarder.
+		{"xargs", "-I{}", "bash", "{}"},
+		// "run" itself is the uploaded script when cwd sits in the tree.
+		// (covered structurally: run shifts only after its own screening)
+	}
+	for _, command := range cases {
+		decision := policy.Review(InputExecutionRequest{Command: command, WorkingDir: "/workspace"})
+		if decision.Allowed {
+			t.Fatalf("round-5 smuggling shape must be denied: %v -> %+v", command, decision)
+		}
+	}
+	// Data operand after a generated script stays a READ (python semantics).
+	data := policy.Review(InputExecutionRequest{Command: []string{"python3", "/workspace/app/main.py", script}, WorkingDir: "/workspace"})
+	if !data.Allowed {
+		t.Fatalf("positional data operand after a clean script is a read: %+v", data)
+	}
+}
+
+func TestInputCodePolicyDeniesEnvironmentAttachedHooks(t *testing.T) {
+	policy := newT03Policy(t)
+	script := t03ScriptPath()
+	env := map[string]string{
+		"NODE_OPTIONS": "--require=" + script,
+		"RUBYOPT":      "-r" + script,
+		"PERL5OPT":     "-I" + t03PythonDigest[:8],
+	}
+	decision := policy.Review(InputExecutionRequest{
+		Command: []string{"node", "gen.js"}, WorkingDir: "/workspace", Environment: env,
+	})
+	if decision.Allowed {
+		t.Fatalf("environment-attached startup hooks must be denied: %+v", decision)
+	}
+}
+
 func TestInputCodePolicyKeepsLegitimateShapesAllowed(t *testing.T) {
 	policy := newT03Policy(t)
 	script := t03ScriptPath()

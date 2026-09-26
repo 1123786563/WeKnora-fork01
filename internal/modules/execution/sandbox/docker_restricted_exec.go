@@ -135,6 +135,7 @@ func (c *DockerRemoteClient) ObserveOutputlessExec(ctx context.Context, receipt 
 		return unknown, dockerError("RestrictedExecInspect", err)
 	}
 	if inspected.ID != receipt.ExecID || inspected.ContainerID != receipt.ContainerID {
+		// (identity mismatch is an explicit error, not a silent unknown)
 		return unknown, nil
 	}
 	if inspected.Running {

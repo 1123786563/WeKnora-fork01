@@ -328,8 +328,12 @@ func (craftVersionEvidenceRow) TableName() string { return "craft_version_eviden
 func sameCraftVersionEvidence(a, b craft.VersionEvidence) bool {
 	if a.VersionID != b.VersionID || a.RunID != b.RunID ||
 		a.RequestDigest != b.RequestDigest || a.PackageDigest != b.PackageDigest ||
-		a.AcquiredAt != b.AcquiredAt || a.Empty != b.Empty || a.Truncated != b.Truncated ||
+		!a.AcquiredAt.Equal(b.AcquiredAt) || a.Empty != b.Empty || a.Truncated != b.Truncated ||
 		len(a.Sources) != len(b.Sources) {
+		// AcquiredAt compares with Equal (monotonic clock/location-safe): a
+		// bare != on time.Time is Location-representation sensitive and one
+		// future writer forgetting .UTC() would break idempotent adoption
+		// with phantom conflicts.
 		return false
 	}
 	for i := range a.Sources {
