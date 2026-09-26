@@ -1107,3 +1107,59 @@ Error: Received unexpected error:
 
 - 未触碰：`migrations/**`、`internal/database/migration.go`（Task 0 授权面）、`publish/**`、`service/appconnector/**`、既有 `/apps/notion-publish/*` 与 `/apps/actions/*` 端点（#48/A03 冻结面）；
 - blocked-env：真实 Notion 多操作验收（NOTION_TOKEN 门控）本地不可运行，维持计划总则声明，零伪造证据；AC3 本地替代证据归 Task 6（且其全量迁移 e2e 受 §3/F2 前置约束）。
+
+---
+
+# Task 5 修复轮 1 报告（findings 复核：唯一 finding 为跨任务预存在项 F2，按既定裁决不代做，本轮复跑取证 + 待核实项逐项回应）
+
+- **执行者**：实现员-t51-任务5（修复轮 1/5）
+- **基线**：`521c16f62`（Task 5 docs 入册）→ 本轮 docs 提交见文末
+- **findings 处理定性**：唯一 finding（important）= Task 0 未执行（跨任务预存在项，非 Task 5 缺陷）。依 Task 4 报告 F2 既有裁决——「跨任务协调项……本修复轮不动 migrations/**；需编排方授权执行者完成 Task 0」——本轮零代码改动，全部动作为实跑复核取证。
+
+## 1. F2 复核（本轮实跑，现状未变）
+
+1. 双占仍在（`ls migrations/sqlite/ | grep -E "00011[4-9]"` 实跑输出）：
+   ```
+   000114_mobile_device_app.down.sql / .up.sql
+   000114_public_agent_marketplace.down.sql / .up.sql   ← 双占
+   000115_app_publications / 000116_task_compliance / 000117_code_deliveries
+   000119_app_action_plans（Task 1 已落，在场）
+   ```
+   versioned 同构：`000193_mobile_device_app.*` × `000193_public_agent_marketplace.*` 双占，`000194/195/196` 在场，`000198_app_action_plans`（Task 1 已落）在场。
+2. 门控常量未改（`grep` 实跑）：`internal/database/migration.go:33` 仍为 `const sqliteAdoptionFKRelaxationMigrationVersion = 114`，`:123` 探测串仍指 `000114_public_agent_marketplace.up.sql`。
+3. `go test ./internal/handler/ -run 'TestNotionPublish' -count=1` 复跑（本轮实跑）：
+   ```
+   --- FAIL: TestNotionPublishEndToEndCreateApprovePublishReceipt (0.09s)
+   --- FAIL: TestNotionPublishEndToEndUpdateConflict (0.04s)
+   --- FAIL: TestNotionPublishEndToEndUnknownReconcilesRemoteFirst (0.21s)
+   failed to open source, "file:///…/migrations/sqlite": duplicate migration file: 000114_public_agent_marketplace.down.sql
+   ```
+   与审查 finding 报错逐字一致。
+4. 槽位复核（本轮实跑）：sqlite `000118` 无任何文件、versioned `000197` 无任何文件——**Task 0 可按计划原文执行**。审查所指 `000118_mcp_oauth_binding_states` 仅占 versioned 轨道的 000118 号段（本轮 `ls migrations/versioned/ | grep -E "000118|000119"` 证实其在场），与本计划 Task 0 目标号（sqlite 000118 / versioned 000197）不同段不冲突；sqlite 000119 亦无文件占用（Task 1 新表已用 sqlite 000119 落位，编号顺延条款不触发）。
+5. Task 5 提交零触碰证据（`git show --stat 60d783afb` 实跑）：仅 6 个授权文件（container/notion_publish.go、router/router.go、handler×2、router×2），migrations/** 零命中。
+
+## 2. 待核实项逐项回应（本轮实际动作与结论）
+
+1. **dig 运行时装配**：维持未冒烟。核实的边界：`BuildContainer`（`internal/container/container.go:150`）仅被 `cmd/server/main.go:59` 与 `cmd/desktop/main.go:181` 调用，完整 Invoke 依赖 `config.LoadConfig`/`initDatabase`/`initRedisClient` 等真实基础设施；container 包 23 个既有测试均为单元级（无整容器 Invoke 先例），本 ask 未授权起 server 或新增验证文件。在案证据维持：`go build ./...` exit 0（双输出签名编译期自证 `RouterParams` 注入面匹配）+ `go vet` 三包干净 + `*handler.AppActionPlanHandler` 全仓唯一 Provide 点（`grep NewAppActionPlanHandler` 实核）+ `newNotionPublishHandler` 为仓库首个多输出 dig 构造器（本轮 grep 实核无先例），dig v1.19.0（`go.mod:79`）多输出为框架原生能力。运行时冒烟留待有环境的验证面（如 Task 6 e2e 或部署冒烟）。
+2. **Task 6 e2e 不存在**：属实，`app_connector_action_plan_e2e_test.go` 属 Task 6 授权面，本 ask 不含；且其全量迁移前置受 F2 阻断（§1.3 复跑在案）。无法验证，如实声明。
+3. **真实 Notion blocked-env**：属实，维持计划总则声明（NOTION_TOKEN/NOTION_PARENT_PAGE_ID 本环境不存在），零伪造。
+4. **Task 0 落地后的 `go test ./internal/database/ -count=1`**：未运行（Task 0 未发生，无可验证对象）；Task 0 由编排方授权执行者完成后应跑该命令收口。
+
+## 3. 修复轮回归（本任务在案测试复跑，零回归）
+
+```
+$ go test ./internal/handler/ -run 'TestActionPlan' -count=1 -v
+--- PASS: TestActionPlanHandlerFailClosedWithoutService (0.10s)
+--- PASS: TestActionPlanHandlerValidationAndNotFound (0.01s)
+ok  	github.com/Tencent/WeKnora/internal/handler	10.225s
+
+$ go test ./internal/router/ -run TestActionPlanRoutes -count=1 -v
+--- PASS: TestActionPlanRoutesNilHandlerRegistersSilently (0.00s)
+--- PASS: TestActionPlanRoutesRegisterWithHandler (0.00s)
+ok  	github.com/Tencent/WeKnora/internal/router	4.981s
+```
+
+## 4. 结论与移交
+
+- Task 5 交付面（handler/路由/接线/4 测试）本轮零改动、零回归。
+- **需编排方收口**：授权 Task 0 执行者按计划原文执行迁移去重重编（sqlite 000114→000118、versioned 000193→000197、migration.go :29-33 与 :123 联动）——槽位已核实空闲（§1.4）；完成后 Task 6 的 AC3 全量迁移 e2e 方可运行。
