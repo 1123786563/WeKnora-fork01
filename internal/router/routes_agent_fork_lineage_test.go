@@ -191,13 +191,31 @@ func TestAgentForkLineageMappingEditsAreNotForks(t *testing.T) {
 	require.Contains(t, string(mapping.Data.Manifest), `"lineage"`)
 	require.Contains(t, string(mapping.Data.Manifest), `"is_fork":false`)
 
-	// 伪造 lineage 的请求体 → strict decode 400（Review Focus 3）。
+	// 伪造 lineage 的请求体 → strict decode 400（Review Focus 3）。归因闭环
+	// （修复轮 #62-R1）：metadata 完整合法（experts 的 manifest 校验不会独立
+	// 拒绝它——若缺 DisallowUnknownFields，该 body 会被 decode 放行并成功
+	// 提交），因此 400 只能来自 strict decode；响应消息点名 unknown field，
+	// 同 body 去掉伪造字段后 201，进一步钉死 400 归因于伪造字段本身。
+	forgedMetadata := map[string]any{
+		"semantic_version": "2.0.5", "display_name": "Derived helper", "summary": "Derived",
+		"supported_languages": []string{"en"}, "use_cases": []string{"support"},
+		"capability_requirements":    []string{"model", "knowledge"},
+		"minimum_weknora_capability": "1", "license_id": "MIT",
+	}
 	forge := publicCall(r, 1, false, http.MethodPost, "/api/v1/marketplace/tenant/release-submissions", "admin", "admin", map[string]any{
 		"agent_version_id":       mappingVersionID,
-		"metadata":               map[string]any{},
+		"metadata":               forgedMetadata,
 		"fork_source_release_id": "fake",
 	})
-	require.Equal(t, http.StatusBadRequest, forge.Code)
+	require.Equal(t, http.StatusBadRequest, forge.Code, forge.Body.String())
+	// 响应体是 JSON，错误消息内的引号被序列化为 \"（反斜杠+引号）。
+	require.Contains(t, forge.Body.String(), "json: unknown field \\\"fork_source_release_id\\\"", "400 归因于 strict decode 拒绝伪造的 lineage 字段")
+	// 对照：同一 body 去掉伪造字段 → 201（证明除伪造字段外请求完全合法，
+	// 上面的 400 不可能由空/非法 metadata 等其他校验产生）。
+	honest := publicCall(r, 1, false, http.MethodPost, "/api/v1/marketplace/tenant/release-submissions", "admin", "admin", map[string]any{
+		"agent_version_id": mappingVersionID, "metadata": forgedMetadata,
+	})
+	require.Equal(t, http.StatusCreated, honest.Code, honest.Body.String())
 
 	// 对照：修改可移植核心 → is_fork=true。
 	_, forkVersionID := seedForkChain(t, r, listingID, "Be portable, but sharper.")
