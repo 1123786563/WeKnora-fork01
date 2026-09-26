@@ -794,3 +794,173 @@ $ go build ./...   → BUILD_EXIT=0（仅 macOS ld 既有噪音：duplicate libr
 1. **刷新审查基线**：审查器 diff 输入必须包含 `1c6779c7c`（当前 HEAD 链）。基于 `6bdf81aa0` 的 F1 重复指认不构成新的未解决问题——其建议的修复已在 HEAD，且有变异验证背书。
 2. **Task 0 排期**：授权执行者按计划原文完成迁移轨道去重重编，否则 Task 6 AC3 e2e 不可运行（F2，第 5 次记录）。
 3. 本实现员在 Task 3 授权范围内**已无可修复项**：若后续仍收到此两条 findings 且基线未变，请控制器直接以本报告 §1-§3 证据关闭 findings——第 6 轮再接替只会重复本轮工作。
+
+---
+
+# T21 #51 Task 4 实施报告：plan 包——Execute 与 Status（AC2 部分成功恢复）
+
+- **执行者**：实现员-t51-任务4（subagent-driven-development 实现员，TDD）
+- **Worktree**：`/Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue30-sweep-t51`（分支 `codex/issue30-t51`）
+- **任务定位**：Issue #51 实施计划 7 任务中的第 4/7 个（`docs/plans/issue30-sweep/plans/plan-t51.md` 行 1450-1790）
+- **提交**：`828b9428c` feat(appconnector): plan Execute/Status——部分成功恢复 AC2（T21 #51 Task 4）
+- **状态**：DONE
+- **前置接口消费确认**：Task 3 的 `Approve`（HEAD 修复形态 `1c6779c7c`）零改动直接消费；本提交 diff 证实对 plan.go 的改动仅为替换原 `plan.go:323-324` 两行占位注释。
+
+---
+
+## 1. 实现内容
+
+### 1.1 生产代码：`internal/modules/appconnector/plan/plan.go`
+
+把 Task 2 落下的两个占位注释（原 `plan.go:323-324`）替换为真实实现，与计划 Task 4 Step 3 给定代码逐字一致：
+
+- **`Execute(ctx, tenantID, planID, digest) (ExecuteOutcome, error)`**——一次有序执行趟：
+  - 前置门（顺序固定）：`FindPlan` 跨租户统一 not-found → digest 不匹配 `ErrPlanDigestMismatch`（AC1 执行面）→ 计划非 `authorized` 拒绝 `ErrPlanState`（未批准计划永不执行）。
+  - 逐项按 seq 升序分派 disposition：
+
+    | 动作行状态 | disposition | 语义 |
+    |---|---|---|
+    | 排除集命中 | `excluded` | 永不派发 |
+    | `succeeded` | `skipped_succeeded` | AC2：已确认结果零重发 |
+    | `authorized` | `executed` | 唯一派发路径（恢复窗口），走 `publish.Execute` |
+    | `awaiting_approval` | `skipped_unapproved` | fail closed，零派发 |
+    | `queued`/`dispatched` | `skipped_in_flight` | 活跃写者持有 |
+    | `failed`/`unknown` | `settled` | 确认终态绝不重派（重发需新计划→AC1） |
+
+  - 一项失败/未知**不阻断**后续项（逐项独立外部副作用，CONTEXT.md「执行结果仍逐项持久记录」）。
+  - 非 executed 项做 `publish.Receipt` 投影（无 publication 行的项容忍为空视图，`if rerr == nil`）。
+
+- **`Status(ctx, tenantID, planID) (PlanStatus, error)`**——持久投影：计划身份（复用 Task 3 的 `view`）+ 冻结排除集（`parseExclusions`）+ 逐项权威动作状态与回执。行动行是唯一权威，计划层只投影，无存储终态。
+
+### 1.2 测试：`internal/modules/appconnector/plan/plan_test.go`（追加 185 行）
+
+六个测试逐字来自计划 Task 4 Step 1：
+
+1. `TestPlanExecuteRunsIncludedItemsInOrderAndSettlesReceipts`——一趟执行：逐项有序、各项结算 published 回执、每项恰好派发 1 次。
+2. `TestPlanExecuteSkipsConfirmedOutcomesOnResume`——**AC2 核心（Review Focus 1）**：[成功/失败(版本冲突)/未知(传输丢失)] 三项部分成功后，同 digest 恢复趟 `skipped_succeeded`/`settled`/`settled`，dispatch 计数断言每项全程恰好 1 次。
+3. `TestPlanExecuteRefusesUnapprovedOrForeignDigest`——未批准计划拒绝执行（`ErrPlanState`）、异源 digest 拒绝（AC1 执行面，Review Focus 2 的执行腿）、未知计划 not-found。
+4. `TestPlanExecuteSkipsUnapprovedItemFailClosed`——partial-approve 窗口（单项批准缺失）该项 `skipped_unapproved` 零派发（Review Focus 4）。
+5. `TestPlanStatusProjectsPerItemResults`——投影：计划身份 + 冻结排除集 `[2]` + 逐项权威状态与回执。
+6. `TestPlanApproveRecoveryExclusionFrozen`——执行开始后排除集冻结：改集 `ErrPlanState`，同集重批合法（恢复路径）。Review Focus 3 的排除集冻结腿（按计划 plan-t51.md:1629 归入本任务）。
+
+**前置接口在开工前逐一核对**，与计划 Consumes 描述一致：
+
+- `ActionStore.SetActionState(ctx, id, from, to string) error`（`repository/appconnector/action.go:149`）
+- `DispatchOutcome{Status, ProviderResult, ExecutionID}`（`service/appconnector/action.go:110`）
+- `publish.PublishVersionConflictResult = "notion_version_conflict"`（`publish/dispatcher.go:20`）
+- `appconn` 状态常量七个（`appconnector/action.go:38-44`）
+- `NotionPublishService.Execute`（`publish/plan.go:252`）/ `.Receipt`（`publish/plan.go:271`）/ `PublishExecuteOutcome{ActionState, Conflict, Receipt}`（`publish/plan.go:98`）
+
+## 2. TDD 证据
+
+### RED（实现前，实跑输出原样）
+
+命令：
+
+```
+go test ./internal/modules/appconnector/plan/ -run 'TestPlanExecute|TestPlanStatus|TestPlanApproveRecovery' -count=1
+```
+
+输出：
+
+```
+# github.com/Tencent/WeKnora/internal/modules/appconnector/plan [github.com/Tencent/WeKnora/internal/modules/appconnector/plan.test]
+internal/modules/appconnector/plan/plan_test.go:472:20: e.svc.Execute undefined (type *Service has no field or method Execute)
+internal/modules/appconnector/plan/plan_test.go:509:20: e.svc.Execute undefined (type *Service has no field or method Execute)
+internal/modules/appconnector/plan/plan_test.go:523:21: e.svc.Execute undefined (type *Service has no field or method Execute)
+internal/modules/appconnector/plan/plan_test.go:549:21: e.svc.Execute undefined (type *Service has no field or method Execute)
+internal/modules/appconnector/plan/plan_test.go:553:21: e.svc.Execute undefined (type *Service has no field or method Execute)
+internal/modules/appconnector/plan/plan_test.go:556:21: e.svc.Execute undefined (type *Service has no field or method Execute)
+internal/modules/appconnector/plan/plan_test.go:575:20: e.svc.Execute undefined (type *Service has no field or method Execute)
+internal/modules/appconnector/plan/plan_test.go:603:21: e.svc.Execute undefined (type *Service has no field or method Execute)
+internal/modules/appconnector/plan/plan_test.go:606:19: e.svc.Status undefined (type *Service has no field or method Status)
+internal/modules/appconnector/plan/plan_test.go:634:21: e.svc.Execute undefined (type *Service has no field or method Execute)
+internal/modules/appconnector/plan/plan_test.go:634:21: too many errors
+FAIL	github.com/Tencent/WeKnora/internal/modules/appconnector/plan [build failed]
+```
+
+失败原因符合预期：`Execute`/`Status` 尚未定义（占位注释仍在）。
+
+### GREEN（实现后，实跑输出原样）
+
+命令：
+
+```
+go test ./internal/modules/appconnector/plan/ -count=1 -v
+```
+
+输出（`--- PASS` 全列表；gorm SQL trace 噪音略，见 §4.1）：
+
+```
+--- PASS: TestPlanDigestBindsSetOrderAndContent (0.00s)
+--- PASS: TestPlanFormBuildsOrderedDigestBoundPlan (0.01s)
+--- PASS: TestPlanFormMidItemFailureLeavesNoPlanRow (0.02s)
+--- PASS: TestPlanFormRejectsInvalidInput (0.00s)
+--- PASS: TestPlanApproveWholeApprovesEveryIncludedItem (0.00s)
+--- PASS: TestPlanApproveExcludesItemNeverApprovesIt (0.01s)
+--- PASS: TestPlanApproveRejectsForeignDigest (0.01s)
+--- PASS: TestPlanApproveRejectsBadExclusions (0.01s)
+--- PASS: TestPlanApproveConcurrentDistinctExclusionsSingleWinner (0.16s)
+--- PASS: TestPlanExecuteRunsIncludedItemsInOrderAndSettlesReceipts (0.01s)
+--- PASS: TestPlanExecuteSkipsConfirmedOutcomesOnResume (0.01s)
+--- PASS: TestPlanExecuteRefusesUnapprovedOrForeignDigest (0.00s)
+--- PASS: TestPlanExecuteSkipsUnapprovedItemFailClosed (0.01s)
+--- PASS: TestPlanStatusProjectsPerItemResults (0.00s)
+--- PASS: TestPlanApproveRecoveryExclusionFrozen (0.02s)
+PASS
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/plan	2.267s
+```
+
+15/15 PASS（9 个既有 + 6 个本任务新增）。
+
+### 全包回归（计划 Task 4 Step 4 的验证命令，实跑输出原样）
+
+命令：
+
+```
+go build ./... && go test ./internal/modules/appconnector/... -count=1
+```
+
+输出：
+
+```
+# github.com/Tencent/WeKnora/cmd/server
+ld: warning: ignoring duplicate libraries: '-lc++'
+# github.com/Tencent/WeKnora/cmd/desktop
+ld: warning: ignoring duplicate libraries: '-lc++'
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector	0.385s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/connectorcontrol	2.882s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/openconnector	0.495s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/plan	1.643s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/publish	2.113s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector	0.760s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector	3.573s
+```
+
+7 个包全部 ok（appconnector root/connectorcontrol/openconnector/plan/publish/repository/service），与计划 Step 4 Expected 一致。`ld: warning` 为 macOS 链接器对 cgo 重复库的系统告警（`go build` 退出码 0），与本次代码无关。
+
+## 3. 提交
+
+```
+828b9428c feat(appconnector): plan Execute/Status——部分成功恢复 AC2（T21 #51 Task 4）
+ internal/modules/appconnector/plan/plan.go      | 120 ++++++++++++++-
+ internal/modules/appconnector/plan/plan_test.go | 185 ++++++++++++++++++++
+ 2 files changed, 303 insertions(+), 2 deletions(-)
+```
+
+改动范围 = 本任务授权的两个文件，零溢出；提交后 `git status` 干净。
+
+## 4. 自检发现
+
+1. **gorm SQL trace 噪音（非缺陷）**：`-v` 输出中 `publication.go:79 record not found` 是 `Execute`/`Status` 对无 publication 行的项做 `Receipt` 探测的 gorm 日志（代码按计划用 `if rerr == nil` 容忍为空视图）；非测试失败，非本任务引入。如需纯净输出可另调 gorm logger 级别，不在本任务授权范围。
+2. **占位卫兵残留核查**：Task 2 在 plan.go 尾部落了 `var _ = appconn.ActionAwaitingApproval` / `var _ = time.Now` 占位卫兵，计划（plan-t51.md:1434）要求 Task 3 删除——本任务开工前核实当前 HEAD 无残留，无需处理。
+3. **Execute 中 `s.actions.FindAction` 出错会中断整趟**：与计划给定实现逐字一致（action 行丢失属数据完整性故障，fail fast 优于静默跳过——计划裁定，未擅改）。
+4. **报告契约核对**：对照 `implementer-prompt.md`（6.4.2 版；ask 给的 6.4.1 路径不存在，插件缓存实际只有 6.4.2）——本报告含实现内容/TDD 证据/测试命令与完整输出/文件变更/自检发现；短契约见 `submit_result`。
+5. **报告文件为累积式**：本报告追加在 Task 2/Task 3（五轮修复）报告之后，未删改前序内容。
+
+## 5. 边界与后续
+
+- 本任务未触碰 Task 5（HTTP 面）/Task 6（e2e）的任何文件；Task 6 的 `TestActionPlanEndToEndPartialSuccessResumesUnfinishedOnly` 将在本任务的 AC2 语义之上做全链验证。
+- blocked-env 声明沿用计划总则：真实 Notion 凭据验收本地不可运行；本任务为服务层单测（契约双打 dispatch 脚本化），无需凭据，无 skip。
+- Task 3 R5 报告 §4 第 3 条「归 Task 4」的两项（排除项执行侧永不派发 + AC1 执行面腿）已由本任务 `TestPlanExecuteSkipsUnapprovedItemFailClosed`/`TestPlanExecuteRefusesUnapprovedOrForeignDigest`/`TestPlanApproveExcludesItemNeverApprovesIt`+`Execute` 排除分支闭环。
+
