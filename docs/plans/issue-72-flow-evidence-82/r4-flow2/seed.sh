@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
 # Issue #82 R-4 re-verification seed (integration worktree backend :8093).
-# Registers 6 placeholder tenants (their Lago identities weknora-tenant-1..6
-# are already occupied on the 82flow stack by earlier rounds — placeholders
-# absorb those ids so the protagonists land on fresh Lago identities), then
-# the two protagonists: settle-r4-a@verify.local (browser face) and
-# settle-r4-b@verify.local (plan publisher). Grants b the platform-scope
-# plan_publish capability, drafts+publishes plan `pro` v1 and asserts the
-# publication landed in Lago (:48889).
+# Round 2 (post-fix re-verification): FLOW82_PAD_COUNT placeholders absorb
+# the Lago tenant ids earlier rounds already occupy on the 82flow stack
+# (round 1 used 1..6, round 2 uses 1..8), then the two protagonists
+# ({FLOW82_EMAIL_PREFIX}-a = browser face, -b = plan publisher). Grants b
+# the platform-scope plan_publish capability, drafts+publishes plan `pro` v1
+# and asserts the publication landed in Lago (:48889).
 #
 # Credentials are env-injected (no literals in source): FLOW82_R4_PW.
 set -euo pipefail
