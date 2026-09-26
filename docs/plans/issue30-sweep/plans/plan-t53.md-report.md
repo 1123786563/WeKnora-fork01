@@ -200,3 +200,281 @@ rm internal/modules/appconnector/repository/appconnector/space_grant_tmpverify_t
 - 代码：**零变更**（审查发现无需代码修改）。
 - 报告：本文件追加修复轮章节；随本报告一并提交（docs commit）。
 - 临时产物：两次 /tmp detached worktree、一次性测试文件——均已清理/删除，工作区复核干净。
+
+---
+
+# Task 3 实施报告：空间连接 grant 管理端点 + router/container 生产接线（#53，任务 3/5）
+
+- **分支**：`codex/issue30-t53`（worktree `/Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue30-sweep-t53`）
+- **提交**：
+  - `e6dd975b6` `feat(appconnector): manage space-connection grants over HTTP and wire the real grant store into the A02 guard (#53 task 3)`（5 文件，+320/−5）
+  - `f5dd64d66` `fix(container): provide the space-grant store to dig — the #53 task-3 guard closure takes it, startup would fail with missing type otherwise`（1 文件，+6；计划缺口的必要补线，见偏差 4）
+- **状态**：DONE_WITH_CONCERNS（交付物完整且提交；仓库内三包既有失败集合保持不变，集成 Task 0 后重跑收口，见第四/五/六节）
+
+## 一、实现内容
+
+全部按计划 Task 3 文件清单交付（5/5）：
+
+| 文件 | 内容 |
+|---|---|
+| `internal/handler/app_connection_grants.go`（新建） | `AppConnectionGrantHandler`：`grantScope`（appTenantScope + `appconnector.CanManageConnections`，非管理 403 `SPACE_GRANT_FORBIDDEN` 且先于任何读行）、`loadSpaceConnection`（tenant 绑定查询；跨租户/缺失统一 404 `CONNECTION_NOT_FOUND`；personal 连接 400 `SPACE_GRANT_NOT_APPLICABLE`——AC1）、`requireActiveMember`（`TenantMemberRepository.Get` miss/非 active → 400 `GRANTEE_NOT_ACTIVE_MEMBER`）；`Grant`/`Revoke`/`List` 三方法，全部 SQL 经 gorm 参数绑定 |
+| `internal/handler/app_connection_grants_test.go`（新建） | 2 个 handler 测试：生命周期（owner 授予 201→贡献者管理 403→list→撤销幂等→撤销后即时收敛）与拒绝面（personal 拒授/跨租户 404/非 active 成员拒授） |
+| `internal/router/routes_app_connectors.go` | 文件末尾追加 `RegisterAppConnectionGrantRoutes`（nil-guard 跳过；POST/GET `/apps/connections/:id/grants` + DELETE `/:grantee_id`） |
+| `internal/router/router.go` | `RouterParams` 在 `AppActionHandler` 后加 `AppConnectionGrantHandler` 字段（带两行注释，见偏差 2）；`RegisterAppConnectorRoutes(v1, ...)` 调用块后加一行 `RegisterAppConnectionGrantRoutes(v1, params.AppConnectionGrantHandler)` |
+| `internal/container/container.go` | `:956` 后加 `must(container.Provide(handler.NewAppConnectionGrantHandler))`；`:979-986` 过时注释末句按计划替换；guard 闭包加 `grants *repoappconn.SpaceConnectionGrantStore` 形参、`nil` → 真实 store；**另补计划遗漏的** `must(container.Provide(repoappconn.NewSpaceConnectionGrantStore))`（偏差 4，提交 `f5dd64d66`） |
+
+前置接口逐项现场核实（均与计划一致）：`appTenantScope`（`app_connector.go:45-54`）、`appFail`（`:32`）、`CanManageConnections`（`access.go:33`，owner/admin）、`TenantRole` 四值（`types/tenant_member.go:19-32`）、`TenantMemberRepository.Get` miss 返回 `(nil, nil)`（`interfaces/tenant_member.go:23`）、`repository.NewTenantMemberRepository`（`tenant_member.go:35`）、`InstallationRow`/`ConnectionRow` 字段（`install.go:37-62`）、Task 2 的 `SpaceConnectionGrantStore` 四方法签名（`space_grant.go:38-72`）、上下文键类型断言（`context_helpers.go:26/66/149`：uint64/string/TenantRole）。
+
+## 二、与计划的四处偏差（均有现场证据）
+
+1. **计划测试夹具笔误**：计划第 671-672 行的 `ConnectionRow` 字面量把 `TenantID: 7` 写了两次，Go 结构体字面量不允许重复字段名——首跑 RED 即暴露（`duplicate field name TenantID in struct literal`）。删除每行中重复的一个（值相同，语义零变化）。
+2. **router.go 新增字段带注释**：计划说"加一行"字段；实际加字段 + 两行注释（对齐该结构体既有字段的注释风格与 nil-guard 惯例）。纯注释差异。
+3. **计划 Step 6 的前提在当前基线不成立**：计划称"若注册冲突会在 `go test ./internal/router/` 挂载时即时 panic 暴露"——实测 router 包全部 9 个测试在 fixture 的 `m.Up()`（`routes_agent_marketplace_test.go:361`）即因 duplicate migration 失败，**未执行到路由挂载**，gin 静态段 `oauth/callback` 与参数段 `:id` 共存未被任何现存测试检验。用一次性测试（task 2 GREEN B 先例，跑完即删）直接检验：按生产注册顺序挂载，4 条路由全部在场、无 panic——**PASS**（证据见第三节；文件内容存档于附录 A）。
+4. **计划 Step 5(c) 漏掉 dig provider（真实生产缺口，已修复）**：闭包新形参 `grants *repoappconn.SpaceConnectionGrantStore` 需要 dig 里有对应 provider，而 Task 2 提交未触碰 container.go、计划的 container 编辑清单也只有两处。若按计划字面执行，`A02Guard`（被 `code_delivery.go:108`、`open_connector.go:608,644`、`notion_publish.go:31` 生产消费）在容器启动时解析失败。用一次性 dig 测试实证（附录 B）：无 provider 时 `missing type: *appconnector.SpaceConnectionGrantStore`；补 `must(container.Provide(repoappconn.NewSpaceConnectionGrantStore))` 后解析成功。修复即提交 `f5dd64d66`。当前没有任何绿色测试覆盖 BuildContainer（container 包唯一测试被迁移问题挡住），此缺口靠现场推演+实证捕获。
+
+## 三、TDD 证据（命令与完整输出）
+
+### RED（Step 2，实现前）
+
+首跑（计划逐字夹具，暴露偏差 1）：
+
+```
+$ go test ./internal/handler/ -run TestAppConnectionGrant -count=1
+# github.com/Tencent/WeKnora/internal/handler [github.com/Tencent/WeKnora/internal/handler.test]
+internal/handler/app_connection_grants_test.go:38:253: duplicate field name TenantID in struct literal
+internal/handler/app_connection_grants_test.go:39: duplicate field name TenantID in struct literal
+internal/handler/app_connection_grants_test.go:52:7: undefined: NewAppConnectionGrantHandler
+FAIL	github.com/Tencent/WeKnora/internal/handler [build failed]
+FAIL
+```
+
+修正夹具后纯 RED，与计划 Step 2 预期逐字一致：
+
+```
+$ go test ./internal/handler/ -run TestAppConnectionGrant -count=1
+# github.com/Tencent/WeKnora/internal/handler [github.com/Tencent/WeKnora/internal/handler.test]
+internal/handler/app_connection_grants_test.go:52:7: undefined: NewAppConnectionGrantHandler
+FAIL	github.com/Tencent/WeKnora/internal/handler [build failed]
+FAIL
+```
+
+### GREEN（Step 4，实现后）
+
+```
+$ go test ./internal/handler/ -run TestAppConnectionGrant -count=1 -v
+=== RUN   TestAppConnectionGrantLifecycleOwnerAdmitsMemberRefuses
+--- PASS: TestAppConnectionGrantLifecycleOwnerAdmitsMemberRefuses (0.00s)
+=== RUN   TestAppConnectionGrantRefusesPersonalConnectionAndForeignTargets
+--- PASS: TestAppConnectionGrantRefusesPersonalConnectionAndForeignTargets (0.00s)
+PASS
+ok  	github.com/Tencent/WeKnora/internal/handler	2.498s
+```
+
+### 补充证据 1：gin 路由挂载共存（一次性测试，PASS 后即删）
+
+```
+$ go test ./internal/router/ -run TestTmpGrantRoutesMountOnProductionShape -count=1 -v
+=== RUN   TestTmpGrantRoutesMountOnProductionShape
+--- PASS: TestTmpGrantRoutesMountOnProductionShape (0.00s)
+PASS
+ok  	github.com/Tencent/WeKnora/internal/router	2.278s
+```
+
+（gin v1.12.0，`go.mod:23`。静态 `oauth/callback` 与参数 `:id/grants` 同树共存 + 4 条路由在场断言。文件内容存档附录 A。）
+
+### 补充证据 2：dig 缺口实证（一次性测试，两阶段，PASS 后即删）
+
+```
+$ go test ./internal/container/ -run TestTmpA02GuardDigResolution -count=1 -v
+=== RUN   TestTmpA02GuardDigResolution
+    a02_guard_dig_tmpverify_test.go:46: phase1 (no provider): could not build arguments for function ... failed to build appconnector.A02Guard: ... missing type: *appconnector.SpaceConnectionGrantStore
+--- PASS: TestTmpA02GuardDigResolution (0.00s)
+PASS
+ok  	github.com/Tencent/WeKnora/internal/container	4.676s
+```
+
+phase1 证明计划字面执行会启动失败；补 Provide 行后 phase2 解析成功。文件内容存档附录 B。
+
+### 构建与全链验证（Step 6）
+
+```
+$ go build ./... ; echo exit=$?
+exit=0        ← 唯一输出为既有 ld: warning: ignoring duplicate libraries: '-lc++'，与本改动无关
+
+$ go test ./internal/router/ ./internal/container/ ./internal/handler/ -count=1   # 改动后
+--- FAIL ×14（router 9 / container 1 / handler 4，名单与基线逐一相同，见第四节）
+
+$ gofmt -l（5 个触碰文件）
+无输出
+```
+
+## 四、基线红直接证据（本 session 改动前直接运行）
+
+**改动前三包运行**（我在写任何代码之前执行）：
+
+```
+$ go test ./internal/router/ ./internal/container/ ./internal/handler/ -count=1
+--- FAIL: TestPublicMarketplaceAdoptRejectsTamperedPublicRelease        ← router（共 9 个 marketplace 系）
+--- FAIL: TestPublicMarketplaceCatalogAndAdoptAuthorization
+--- FAIL: TestPublicMarketplaceCrossTenantEndToEndAndPrivacy
+--- FAIL: TestPublicMarketplacePublisherVerificationAndSubmissionAuthorization
+--- FAIL: TestPublicMarketplaceReviewAuthorization
+--- FAIL: TestTenantAgentAdoptionPublishesIndependentVariantsIntoMobileAvailableAgents
+--- FAIL: TestTenantAgentAdoptionRoutesAndAuthorization
+--- FAIL: TestTenantAgentMarketplaceLifecycleAndAuthorization
+--- FAIL: TestTenantAgentVariantCapabilityMappingAndTestGate
+--- FAIL: TestWireCraftInteractionRegistrarRegistersPendingInteractions  ← container（1 个）
+--- FAIL: TestAppPublicationsTableExistsAfterMigrations                  ← handler（共 4 个）
+--- FAIL: TestNotionPublishEndToEndCreateApprovePublishReceipt
+--- FAIL: TestNotionPublishEndToEndUnknownReconcilesRemoteFirst
+--- FAIL: TestNotionPublishEndToEndUpdateConflict
+FAIL（三包）
+```
+
+**根因样例（三包各一例，原文）**——全部同一既有根因 `duplicate migration file: 000114_public_agent_marketplace.down.sql`（即挂起的 Task 0）：
+
+```
+handler:  internal/handler/app_connector_notion_publish_e2e_test.go:77:
+          failed to open source, "file:///…migrations/sqlite": duplicate migration file: 000114_public_agent_marketplace.down.sql
+router:   internal/router/routes_public_marketplace_test.go:204（经 routes_agent_marketplace_test.go:361 的 m.Up()）：
+          failed to open source, "file:///…migrations/sqlite": duplicate migration file: 000114_public_agent_marketplace.down.sql
+container: TestWireCraftInteractionRegistrarRegistersPendingInteractions:
+          failed to open source, "file:/…migrations/sqlite": duplicate migration file: 000114_public_agent_marketplace.down.sql
+```
+
+**经典基线红（`internal/database`）本 session 直接运行**：
+
+```
+$ go test ./internal/database/ -count=1
+ERROR[] migration.go:134[RunMigrationsWithOptions] | Failed to create sqlite migrate instance: failed to open source, "file://migrations/sqlite": duplicate migration file: 000114_public_agent_marketplace.down.sql
+--- FAIL: TestSQLiteMigrationsIncludeAutoTagConfig
+--- FAIL: TestSQLiteMigrationsCreateVersionedSchema
+FAIL	github.com/Tencent/WeKnora/internal/database
+```
+
+**结论**：三包 14 个失败 + `internal/database` 红全部是 base 提交既有的 Task 0 范围问题，先于我的任何改动存在；我的改动前后失败名单逐一相同（第三节改动后运行 ×14 vs 本节基线 ×14），零新增失败。
+
+## 五、仓库内 GREEN 状态声明（消除任何误读）
+
+- 计划 Step 2（RED）：**达成**——`undefined: NewAppConnectionGrantHandler` 编译失败，实现前运行。
+- 计划 Step 4（handler 新测试 GREEN）：**达成**——2/2 PASS，仓库内。
+- 计划 Step 6（`go build ./...` + 三包全绿）：**部分达成**——build exit 0；三包测试因 14 个**既有**失败（唯一根因：挂起的 Task 0）不能全绿，**本分支不声称 Step 6 全绿**。可声明的是更强的保守事实：改动前后失败名单逐一相同，新测试全绿，零新增失败，零回归。
+- 关联回归：`go test ./internal/modules/appconnector/... -count=1` 改动后运行——除 Task 2 已报告的被阻塞项 `TestSpaceConnectionGrantStoreUpsertListRevoke`（同一 duplicate migration 根因）外全部 `ok`，含 3 个 authorizer 集成测试所在的 service 包。
+- **集成 `codex/issue30-t61`（96e579ad0 的 Task 0 等价修复）后，主控必须按第六节序列重跑**；此前任何集成级 GREEN 声明无效。
+
+## 六、GREEN B 复现命令序列（任何人可复验，供集成后验证消费）
+
+```bash
+cd /Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue30-sweep-t53
+# 前提：Task 0 等价修复（codex/issue30-t61 的 96e579ad0：000114→000118 / 000193→000197）已集成进本分支
+
+# 1) 计划 Step 6 命令原样重跑——预期三包全绿（14 个既有失败全部转绿）
+go build ./... && go test ./internal/router/ ./internal/container/ ./internal/handler/ -count=1
+
+# 2) 本任务新测试——预期 2/2 PASS
+go test ./internal/handler/ -run TestAppConnectionGrant -count=1 -v
+
+# 3) Task 2 遗留阻塞项一并收口——预期全绿（含 TestSpaceConnectionGrantStoreUpsertListRevoke）
+go test ./internal/modules/appconnector/... ./internal/database/ ./internal/application/repository/ -count=1
+```
+
+说明：第三节两份一次性证据（路由挂载、dig 解析）不依赖迁移轨、已在仓库内 PASS，集成后无需重跑；其文件内容存档于附录，如需独立复验可按附录重建临时文件后运行。
+
+## 七、自检发现
+
+- 完整性：计划 Task 3 文件清单 5/5 交付；Task 2 的 Produces（`NewSpaceConnectionGrantStore` 四方法 + `SpaceConnectionGrantRow`）被 handler/container 按签名逐字消费。
+- 纪律：仅改动 5 个授权文件；`access.go` 谓词编码零触碰；router/container 均为单点插入；未派发任何子代理；未推送远端；两份一次性测试文件删除后 `git status` 干净（仅报告文件待提交）。
+- 参数绑定：handler 全部 SQL 经 gorm `Where("tenant_id = ? AND id = ?", ...)` 参数化，无字符串拼接。
+- 安全面：身份只取自 `appTenantScope`（认证上下文），响应体只含 connection_id/grantee_id/granted_by/created_at，无凭据字段；非管理者在读取任何行之前被 403。
+- API-key 词表：新路由不进 authorizer 词表，与 `/apps/*` 家族一致；`assertAPIKeyPoliciesMatchRoutes`（`rbac.go:410-435`）只检查"已声明 policy → 已注册路由"方向，新增路由不影响其断言（现场读码核实）。
+- 测试真实性：所有 PASS/FAIL 均为本 session 真实运行输出；一次性验证如实标注为补充手段并给出复现路径，不冒充计划测试。
+
+## 附录 A：一次性路由挂载测试内容（`internal/router/routes_grant_mount_tmpverify_test.go`，跑后即删）
+
+```go
+package router
+
+import (
+	"net/http"
+	"testing"
+
+	"github.com/Tencent/WeKnora/internal/handler"
+	"github.com/gin-gonic/gin"
+)
+
+func TestTmpGrantRoutesMountOnProductionShape(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	v1 := r.Group("/api/v1")
+	// 生产注册顺序（routes_app_connectors.go）：先静态 oauth 回调腿，
+	// 再同一 /apps/connections 子树下的 grant 路由（"oauth" 静态段与
+	// ":id" 参数段为兄弟节点）。
+	v1.GET("/apps/connections/oauth/callback", func(c *gin.Context) { c.Status(http.StatusOK) })
+	RegisterAppConnectionGrantRoutes(v1, handler.NewAppConnectionGrantHandler(nil))
+
+	want := map[string]bool{
+		"POST /api/v1/apps/connections/:id/grants":               false,
+		"GET /api/v1/apps/connections/:id/grants":                false,
+		"DELETE /api/v1/apps/connections/:id/grants/:grantee_id": false,
+		"GET /api/v1/apps/connections/oauth/callback":            false,
+	}
+	for _, rt := range r.Routes() {
+		if _, ok := want[rt.Method+" "+rt.Path]; ok {
+			want[rt.Method+" "+rt.Path] = true
+		}
+	}
+	for k, seen := range want {
+		if !seen {
+			t.Fatalf("route missing after mount: %s", k)
+		}
+	}
+}
+```
+
+## 附录 B：一次性 dig 缺口验证测试内容（`internal/container/a02_guard_dig_tmpverify_test.go`，跑后即删）
+
+```go
+package container
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/Tencent/WeKnora/internal/application/repository"
+	repoappconn "github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector"
+	appconnectorsvc "github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector"
+	"go.uber.org/dig"
+	"gorm.io/gorm"
+)
+
+func tmpGuardContainer(t *testing.T, provideStore bool) error {
+	t.Helper()
+	c := dig.New()
+	must(c.Provide(func() *gorm.DB { return &gorm.DB{} }))
+	must(c.Provide(repository.NewMCPOAuthBindingStore, dig.As(new(appconnectorsvc.ConnectionCredentialSource))))
+	must(c.Provide(repoappconn.NewOCStore))
+	must(c.Provide(repoappconn.NewInstallationStore))
+	if provideStore {
+		must(c.Provide(repoappconn.NewSpaceConnectionGrantStore))
+	}
+	// #53 task-3 闭包，与 container.go 逐字一致。
+	must(c.Provide(func(src appconnectorsvc.ConnectionCredentialSource,
+		installs *repoappconn.InstallationStore, grants *repoappconn.SpaceConnectionGrantStore,
+		oc *repoappconn.OCStore,
+	) appconnectorsvc.A02Guard {
+		return appconnectorsvc.NewOCSubjectGuard(src, appconnectorsvc.NewInstallationStateSource(installs), grants, oc)
+	}))
+	return c.Invoke(func(g appconnectorsvc.A02Guard) { _ = g })
+}
+
+func TestTmpA02GuardDigResolution(t *testing.T) {
+	err := tmpGuardContainer(t, false)
+	if err == nil || !strings.Contains(err.Error(), "missing type") {
+		t.Fatalf("phase1: expected missing-type failure without the store provider, got %v", err)
+	}
+	t.Logf("phase1 (no provider): %v", err)
+	if err := tmpGuardContainer(t, true); err != nil {
+		t.Fatalf("phase2: with the store provider the guard must resolve, got %v", err)
+	}
+}
+```
