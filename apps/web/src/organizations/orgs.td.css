@@ -766,7 +766,7 @@
   color: rgba(7, 192, 95, 0.55);
 }
 
-.org-card .card-header {
+.org-list-container .org-card .card-header {
   position: relative;
   z-index: 2;
   margin-bottom: 6px;
@@ -777,19 +777,19 @@
   line-height: 22px;
 }
 
-.org-card .card-content {
+.org-list-container .org-card .card-content {
   position: relative;
   z-index: 1;
   margin-bottom: 6px;
 }
 
-.org-card .card-bottom {
+.org-list-container .org-card .card-bottom {
   position: relative;
   z-index: 1;
   padding-top: 6px;
 }
 
-.org-card .card-description {
+.org-list-container .org-card .card-description {
   font-size: 12px;
   line-height: 17px;
 }
@@ -806,7 +806,7 @@
 }
 
 /* 卡片装饰：协作网络图形 */
-.card-decoration {
+.org-list-container .card-decoration {
   position: absolute;
   top: 8px;
   right: 14px;
@@ -818,13 +818,13 @@
   transition: color 0.3s ease;
 }
 
-.card-decoration .card-deco-svg {
+.org-list-container .card-decoration .card-deco-svg {
   display: block;
   width: 56px;
   height: 40px;
 }
 
-.card-header {
+.org-list-container .card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -833,7 +833,7 @@
   z-index: 2;
 }
 
-.card-header-left {
+.org-list-container .card-header-left {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -841,14 +841,14 @@
   min-width: 0;
 }
 
-.org-avatar {
+.org-list-container .org-avatar {
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
 }
 
-.card-title-block {
+.org-list-container .card-title-block {
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -856,7 +856,7 @@
   min-width: 0;
 }
 
-.card-title {
+.org-list-container .card-title {
   color: var(--td-text-color-primary);
   font-family: var(--app-font-family);
   font-size: 15px;
@@ -868,7 +868,7 @@
   white-space: nowrap;
 }
 
-.more-wrap {
+.org-list-container .more-wrap {
   display: flex;
   width: 28px;
   height: 28px;
@@ -885,23 +885,23 @@
   opacity: 0.6;
 }
 
-.more-wrap:hover {
+.org-list-container .more-wrap:hover {
   background: var(--td-bg-color-container-hover);
   opacity: 1 !important;
 }
 
-.more-wrap.active-more {
+.org-list-container .more-wrap.active-more {
   background: var(--td-bg-color-container-hover);
   opacity: 1 !important;
 }
 
-.more-wrap .more-icon {
+.org-list-container .more-wrap .more-icon {
   width: 16px;
   height: 16px;
 }
 
 /* 与知识库卡片内容区一致 */
-.card-content {
+.org-list-container .card-content {
   flex: 1;
   min-height: 0;
   margin-bottom: 8px;
@@ -912,7 +912,7 @@
 }
 
 /* 三个列表卡片统一：描述字体 */
-.card-description {
+.org-list-container .card-description {
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -925,7 +925,7 @@
   line-height: 18px;
 }
 
-.card-bottom {
+.org-list-container .card-bottom {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -934,7 +934,7 @@
   border-top: .5px solid var(--td-component-stroke);
 }
 
-.bottom-left {
+.org-list-container .bottom-left {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -942,13 +942,13 @@
   min-width: 0;
 }
 
-.feature-badges {
+.org-list-container .feature-badges {
   display: flex;
   align-items: center;
   gap: 4px;
 }
 
-.feature-badge {
+.org-list-container .feature-badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -963,46 +963,46 @@
   transition: background 0.2s ease;
 }
 
-.feature-badge .t-icon {
+.org-list-container .feature-badge .t-icon {
   flex-shrink: 0;
 }
 
-.feature-badge .badge-count {
+.org-list-container .feature-badge .badge-count {
   line-height: 1;
 }
 
-.feature-badge.stat-member {
+.org-list-container .feature-badge.stat-member {
   background: rgba(100, 116, 139, 0.08);
   color: var(--td-text-color-secondary);
 }
 
-.feature-badge.stat-member .t-icon {
+.org-list-container .feature-badge.stat-member .t-icon {
   color: var(--td-text-color-secondary);
 }
 
-.feature-badge.stat-member:hover {
+.org-list-container .feature-badge.stat-member:hover {
   background: rgba(100, 116, 139, 0.12);
 }
 
-.feature-badge.stat-kb {
+.org-list-container .feature-badge.stat-kb {
   background: rgba(7, 192, 95, 0.08);
   color: var(--td-brand-color);
 }
 
-.feature-badge.stat-kb .t-icon {
+.org-list-container .feature-badge.stat-kb .t-icon {
   color: var(--td-brand-color);
 }
 
-.feature-badge.stat-kb:hover {
+.org-list-container .feature-badge.stat-kb:hover {
   background: rgba(7, 192, 95, 0.12);
 }
 
-.feature-badge.stat-agent {
+.org-list-container .feature-badge.stat-agent {
   background: rgba(124, 77, 255, 0.08);
   color: var(--td-brand-color);
 }
 
-.feature-badge.stat-agent .stat-agent-icon {
+.org-list-container .feature-badge.stat-agent .stat-agent-icon {
   width: 14px;
   height: 14px;
   flex-shrink: 0;
@@ -1010,12 +1010,12 @@
   filter: brightness(0) saturate(100%) invert(48%) sepia(79%) saturate(2476%) hue-rotate(236deg);
 }
 
-.feature-badge.stat-agent:hover {
+.org-list-container .feature-badge.stat-agent:hover {
   background: rgba(124, 77, 255, 0.12);
 }
 
 /* 待审核角标：与 feature-badge 同高 */
-.pending-requests-badge {
+.org-list-container .pending-requests-badge {
   display: inline-flex;
   align-items: center;
   height: 22px;
@@ -1028,13 +1028,13 @@
   white-space: nowrap;
 }
 
-.bottom-right {
+.org-list-container .bottom-right {
   display: flex;
   align-items: center;
   flex-shrink: 0;
 }
 
-.relation-role-tag {
+.org-list-container .relation-role-tag {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -1048,48 +1048,48 @@
   color: var(--td-text-color-secondary);
 }
 
-.relation-role-tag .t-icon {
+.org-list-container .relation-role-tag .t-icon {
   flex-shrink: 0;
   color: var(--td-text-color-secondary);
 }
 
-.relation-role-tag.owner {
+.org-list-container .relation-role-tag.owner {
   background: rgba(124, 77, 255, 0.1);
   color: var(--td-brand-color);
 }
 
-.relation-role-tag.owner .t-icon {
+.org-list-container .relation-role-tag.owner .t-icon {
   color: var(--td-brand-color);
 }
 
-.relation-role-tag.admin {
+.org-list-container .relation-role-tag.admin {
   background: rgba(7, 192, 95, 0.12);
   color: var(--td-brand-color);
 }
 
-.relation-role-tag.admin .t-icon {
+.org-list-container .relation-role-tag.admin .t-icon {
   color: var(--td-brand-color);
 }
 
-.relation-role-tag.editor {
+.org-list-container .relation-role-tag.editor {
   background: rgba(7, 192, 95, 0.08);
   color: var(--td-brand-color);
 }
 
-.relation-role-tag.editor .t-icon {
+.org-list-container .relation-role-tag.editor .t-icon {
   color: var(--td-brand-color);
 }
 
-.relation-role-tag.viewer {
+.org-list-container .relation-role-tag.viewer {
   background: rgba(107, 114, 128, 0.08);
   color: var(--td-text-color-secondary);
 }
 
-.relation-role-tag.viewer .t-icon {
+.org-list-container .relation-role-tag.viewer .t-icon {
   color: var(--td-text-color-secondary);
 }
 
-.empty-state {
+.org-list-container .empty-state {
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -1098,13 +1098,13 @@
   padding: 60px 20px;
 }
 
-.empty-state .empty-img {
+.org-list-container .empty-state .empty-img {
   width: 162px;
   height: 162px;
   margin-bottom: 20px;
 }
 
-.empty-state .empty-txt {
+.org-list-container .empty-state .empty-txt {
   color: var(--td-text-color-placeholder);
   font-family: var(--app-font-family);
   font-size: 16px;
@@ -1113,7 +1113,7 @@
   margin-bottom: 8px;
 }
 
-.empty-state .empty-desc {
+.org-list-container .empty-state .empty-desc {
   color: var(--td-text-color-disabled);
   font-family: var(--app-font-family);
   font-size: 14px;
@@ -1122,7 +1122,7 @@
   margin-bottom: 0;
 }
 
-.empty-state .empty-state-actions {
+.org-list-container .empty-state .empty-state-actions {
   display: flex;
   align-items: center;
   gap: 12px;

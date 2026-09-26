@@ -14,7 +14,7 @@ import './knowledge-u.css';
 import '../documents/documents.td.css';
 import { computeSupportedFileTypes, computeUnsupportedFileTypes } from '../documents/page-chrome.ts';
 import { KnowledgeSettingsPage, type KnowledgeSettingsSectionKey } from '../knowledge-settings/KnowledgeSettingsPage.tsx';
-import { canUploadKnowledgeDocuments, kbWikiTabFallbackPath, resolveKBSurfaceTabs, type KBSurfaceKB, type KBSurfaceMe, type KBSurfaceTab } from './permissions.ts';
+import { computeKBPermissions, kbWikiTabFallbackPath, resolveKBSurfaceTabs, type KBSurfaceKB, type KBSurfaceMe, type KBSurfaceTab } from './permissions.ts';
 import { useKbDetailGuideTrigger } from '../../../../packages/views/src/guides/use-kb-detail-guide-trigger.ts';
 
 /* 静态 per-type 语义类（原 .wk-graph-legend-dot.is-* / .wk-knowledge-graph-node.is-*；
@@ -82,7 +82,12 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
       .then(([kb, me, list, engines]) => {
         if (!active) return;
         setKbMeta(kb as KBSurfaceKB);
-        setCanManage(canUploadKnowledgeDocuments(kb as KBSurfaceKB, me as KBSurfaceMe | null));
+        // canManage gates the settings entry and the settings page role
+        // (admin vs viewer): shared editors can upload documents but must
+        // not enter KB management — computeKBPermissions is the centralized
+        // gate (canUploadKnowledgeDocuments answers a different question and
+        // wrongly admitted editors here).
+        setCanManage(computeKBPermissions(kb as KBSurfaceKB, me as KBSurfaceMe | null).canManage);
         setKbList((list as { id: unknown; name: unknown }[]).map((item) => ({ id: String(item.id), name: String(item.name) })));
         setParserEngines((engines.data ?? []) as { Name: string; FileTypes?: string[]; Available?: boolean }[]);
       })

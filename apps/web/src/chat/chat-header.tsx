@@ -185,7 +185,7 @@ export function ChatHeader(props: ChatHeaderProps) {
           content={
             <div className="chat-header-menu" onClick={(event) => event.stopPropagation()}>
               {menuMode === 'menu' ? <>
-                {props.onTogglePin ? <button type="button" className="chat-header-menu__item" data-menu-action="pin" onClick={() => { setMenuVisible(false); props.onTogglePin!(Boolean(props.isPinned)); }}>
+                {props.onTogglePin ? <button type="button" className="chat-header-menu__item" data-menu-action="pin" onClick={() => { setMenuVisible(false); props.onTogglePin!(!props.isPinned); }}>
                   <TIcon className="chat-header-menu__icon" name={props.isPinned ? 'pin-filled' : 'pin'} />
                   <span>{props.isPinned ? copy.unpin : copy.pin}</span>
                 </button> : null}

@@ -5,27 +5,20 @@ import type { Evaluation, EvaluationReceipt, OpportunityEvidence, OpportunityImp
 import type { OpportunityCompleteness, OpportunityFailureCode, OpportunityObservation, OpportunitySourceStatus, OpportunityURLImportReceipt } from '../../../../packages/api-client/src/career.ts'
 import { ApplicationPage } from './ApplicationPage.tsx'
 import { OpportunityStatusPanel } from './reconciliation.tsx'
+import { errorDetails, isUncertainWrite, newRequestId } from './protocol.ts'
 
 type Attempt = OpportunityImportInput & { opportunityId?: string; priorObservationId?: string }
 type URLAttempt = { requestId: string; url: string; attemptedAt: string }
 type URLImportState = 'idle' | 'busy' | 'unknown' | 'observed' | 'error'
 type ImportState = 'idle' | 'busy' | 'unknown' | 'saved' | 'error' | 'forbidden' | 'scope-changed'
-const newRequestId = (): string => typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+// A receipt that does not match the request it answers is a definite protocol
+// error, unlike a network TypeError (a failed fetch), which leaves the write
+// outcome genuinely unknown and must route into receipt recovery.
+class ReceiptMismatchError extends Error {}
 // Frozen backend enums rendered verbatim: no frontend-invented status, completeness, or failure code ever reaches the user.
 const sourceStatusLabels: Record<OpportunitySourceStatus, string> = { complete: '来源完整', partial: '内容不完整', login_required: '需要登录', blocked: '访问受限', not_found: '页面不存在', timed_out: '抓取超时', fetch_failed: '抓取失败', policy_unverified: '来源未核验' }
 const completenessLabels: Record<OpportunityCompleteness, string> = { complete: '完整', incomplete: '不完整', unknown: '未知' }
 const failureReasons: Record<OpportunityFailureCode, string> = { login_required: '目标站点要求登录', access_blocked: '目标站点拒绝访问', not_found: '目标页面不存在', timeout: '抓取超时', source_unverified: '该来源尚未通过核验', unsupported_content: '不支持的内容类型', empty_content: '页面没有可用正文', response_too_large: '响应超过大小上限', network_error: '网络错误', redirect_disallowed: '重定向不在允许范围内' }
-function errorDetails(cause: unknown): { code?: string; requestId?: string; status?: number; message: string } {
- const error = cause as { code?: string; requestId?: string; status?: number; message?: string }
- return { code: error?.code, requestId: error?.requestId, status: error?.status, message: error?.message || '请求未完成' }
-}
-function isUncertainWrite(cause: unknown): boolean {
- const error = errorDetails(cause)
- if (error.code === 'TIMEOUT' || error.code === 'outcome_unknown') return true
- if (['forbidden', 'invalid_request', 'idempotency_conflict', 'request_too_large', 'PAYLOAD_TOO_LARGE', 'not_found', 'unauthorized'].includes(error.code ?? '')) return false
- if (error.status !== undefined) return error.status >= 500 || error.status < 400
- return true
-}
 export function opportunityEvidencePath(opportunityId: string, snapshotId: string): string {
  return `/platform/career/opportunities/${encodeURIComponent(opportunityId)}?snapshotId=${encodeURIComponent(snapshotId)}`
 }
@@ -81,7 +74,7 @@ export function OpportunityImportPanel({ client, scopeController }: { client: We
  }, [clearPrivate, scopeController, scope.scope.generation])
 
  const acceptReceipt = (next: OpportunityReceipt, expected: Attempt): void => {
-  if (!sameReceipt(next, expected)) throw new TypeError('服务返回的请求编号与本次导入不匹配')
+  if (!sameReceipt(next, expected)) throw new ReceiptMismatchError('服务返回的请求编号与本次导入不匹配')
   currentReceipt.current = next
   setReceipt(next); setState('saved'); setMessage('')
  }
@@ -102,7 +95,7 @@ export function OpportunityImportPanel({ client, scopeController }: { client: We
   try {
    const next = await client.career.importUrl({ requestId: currentAttempt.requestId, url: currentAttempt.url }, requestScope.signal)
    if (!scopeController.isCurrent(requestScope.scope)) return
-   if (next.requestId !== currentAttempt.requestId) throw new TypeError('服务返回的请求编号与本次链接导入不匹配')
+   if (next.requestId !== currentAttempt.requestId) throw new ReceiptMismatchError('服务返回的请求编号与本次链接导入不匹配')
    setUrlReceipt(next); setUrlState('observed'); setUrlMessage('')
   } catch (cause) {
    if (!scopeController.isCurrent(requestScope.scope)) return
@@ -112,6 +105,14 @@ export function OpportunityImportPanel({ client, scopeController }: { client: We
     setUrlState('error')
     setUrlAttempt(undefined)
     setUrlMessage(parsed.code === 'PAYLOAD_TOO_LARGE' || parsed.code === 'request_too_large' ? '链接请求超过服务端允许的大小，请缩短后重新导入。' : `链接未被接受：${parsed.message}`)
+    return
+   }
+   // A receipt answering a different request is a definite protocol error; it
+   // must not be narrated as an uncertain write that recovers by retry.
+   if (cause instanceof ReceiptMismatchError) {
+    setUrlState('error')
+    setUrlAttempt(undefined)
+    setUrlMessage(`链接导入未完成：${cause.message}`)
     return
    }
    setUrlState('unknown')
@@ -150,6 +151,14 @@ export function OpportunityImportPanel({ client, scopeController }: { client: We
     setMessage(parsed.code === 'idempotency_conflict' ? '请求编号已对应其他内容，服务器拒绝了本次提交。请检查内容后使用新的请求重新保存。' : parsed.code === 'PAYLOAD_TOO_LARGE' || parsed.code === 'request_too_large' ? '职位描述超过服务端允许的大小，请缩短后重新保存。' : `职位描述未被接受：${parsed.message}`)
     return
    }
+   // A receipt answering a different request is a definite protocol error; it
+   // must not be narrated as an uncertain write that recovers by retry.
+   if (cause instanceof ReceiptMismatchError) {
+    setState('error')
+    setAttempt(undefined)
+    setMessage(`职位保存未完成：${cause.message}，已放弃本次结果。请重新保存。`)
+    return
+   }
    setState('unknown')
    setMessage(parsed.code === 'outcome_unknown' ? '服务器暂时无法确认是否已保存。请查询原请求回执，或使用同一编号安全重试。' : '网络未能确认保存结果。请查询原请求回执，或使用同一编号安全重试。')
   }
@@ -175,6 +184,7 @@ export function OpportunityImportPanel({ client, scopeController }: { client: We
    if (!scopeController.isCurrent(requestScope.scope)) return
    const parsed = errorDetails(cause)
    if (parsed.code === 'forbidden') { clearPrivate('当前空间不可访问，已清除职位描述。'); return }
+   if (cause instanceof ReceiptMismatchError) { setState('error'); setAttempt(undefined); setMessage(`回执查询未完成：${cause.message}，已放弃本次结果。请重新保存。`); return }
    setState('unknown')
    setMessage(parsed.code === 'not_found' ? '尚未找到回执。可以继续查询，或使用原请求编号重试同一份内容。' : '回执暂时无法读取。原请求编号和内容已保留，可稍后重试查询。')
   }

@@ -149,8 +149,24 @@ export function PreparationPage({ client, scopeController, applicationId }: { cl
  const refresh = (): void => setReload((value) => value + 1)
  const acceptReceipt = (next: PreparationReceipt, expected: GenerateAttempt): void => {
   if (next.requestId !== expected.requestId || next.applicationId !== applicationId || next.focus !== expected.focus) throw new ReceiptMismatchError('准备回执与本次请求不匹配')
-  setAttempt(undefined); setWritePhase('idle'); setFocus('')
-  setMessage('准备草稿已生成：正文与来源链已呈现，可审阅并修订。系统不会自动发送任何内容。')
+  if (next.status === 'draft') {
+   setAttempt(undefined); setWritePhase('idle'); setFocus('')
+   setMessage('准备草稿已生成：正文与来源链已呈现，可审阅并修订。系统不会自动发送任何内容。')
+   refresh()
+   return
+  }
+  // FindPreparationReceipt also answers with the durable row of a failed or
+  // still-generating attempt: only status 'draft' is a success product. A
+  // failed receipt is definite, a generating one is undecided — both keep the
+  // same request number recoverable and never narrate success.
+  if (next.status === 'failed') {
+   setWritePhase('error')
+   setMessage(`生成失败（${next.failureCode ?? '未提供代码'}）：${next.failureMessage ?? '生成未完成'}。已保留本次请求（原请求编号 ${next.requestId}），可用原请求编号重试；不会留下空白成功产物。`)
+   refresh()
+   return
+  }
+  setWritePhase('unknown')
+  setMessage(`生成仍在进行（原请求编号 ${next.requestId}）。请稍后用原请求编号查询回执，或用同一编号重试；不会自动更换请求编号。`)
   refresh()
  }
  const runGenerate = async (fixed?: GenerateAttempt): Promise<void> => {

@@ -186,7 +186,8 @@
   border-color: transparent;
   padding-inline: 4px;
   font-size: 12px;
-  line-height: 5;
+  /* 旧栈 text-xs leading-5 → 1.25rem=20px（曾误译为无单位 5） */
+  line-height: 20px;
 }
 
 .wk-apps-26 {

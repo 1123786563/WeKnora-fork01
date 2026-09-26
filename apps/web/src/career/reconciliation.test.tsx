@@ -278,3 +278,37 @@ test('a restored application links its pinned evidence to the permanently openab
  assert.ok(snapshotLink, 'pinned snapshot opens its fixed evidence page')
  assert.match(snapshotLink.textContent ?? '', /snapshot-1/)
 })
+
+test('a scope switch clears the whole reconcile surface: receipt, attempt, and candidate draft never leak into the new space', async () => {
+ const merged: ReconcileReceipt = {
+  kind: 'opportunities_reconciled', requestId: 'reconcile-scope', decision: 'merged', targetId: 'opp/1', candidateId: 'opp/2', suspectedDuplicate: false,
+  evidence: {
+   target: { jobCode: '12345', title: '前端工程师', company: '示例公司', location: '上海', batch: '2026 秋招' },
+   candidate: { jobCode: '12345', title: '前端工程师', company: '示例公司', location: '上海', batch: '2026 秋招' },
+  },
+  createdAt: '2026-09-26T11:00:00Z',
+ }
+ const controller = scopeController()
+ const sent: { requestId: string; targetId: string; candidateId: string }[] = []
+ const container = render(React.createElement(OpportunityStatusPanel, { client: { career: {
+  opportunityStatus: async () => staleStatus,
+  opportunityReconciliations: async () => ({ reconciliations: [] }),
+  reconcileOpportunities: async (input: { requestId: string; targetId: string; candidateId: string }) => { sent.push(input); return { ...merged, requestId: input.requestId } },
+ } } as unknown as WeKnoraClient, scopeController: controller, opportunityId: 'opp/1' }))
+ await act(async () => { await settle() })
+ await act(async () => { setInput(container.querySelector<HTMLInputElement>('[aria-label="候选记录编号"]')!, 'opp/2') })
+ await act(async () => { byLabel(container, 'button', '对账判定').click(); await settle() })
+ assert.match(container.textContent ?? '', /已合并/)
+ assert.ok(container.querySelector('.wk-reconciliation__receipt'), 'receipt rendered in the original space')
+ // Switching identity resets the whole reconcile surface together with the
+ // read state: the old-space receipt must not render again, and no kept
+ // attempt may replay the old reconcile request against the new space.
+ await act(async () => { controller.switchScope('https://weknora.test', 'u-2', 't-2'); await settle(); await settle() })
+ assert.ok(container.querySelector('[aria-label="候选记录编号"]'), 'panel reloaded for the new space')
+ assert.equal(container.querySelector('.wk-reconciliation__receipt'), null, 'old-space receipt no longer rendered')
+ assert.equal(container.querySelector<HTMLInputElement>('[aria-label="候选记录编号"]')?.value, '', 'candidate draft cleared')
+ await act(async () => { setInput(container.querySelector<HTMLInputElement>('[aria-label="候选记录编号"]')!, 'opp/9') })
+ await act(async () => { byLabel(container, 'button', '对账判定').click(); await settle() })
+ assert.equal(sent.length, 2)
+ assert.notEqual(sent[1]?.requestId, sent[0]?.requestId, 'the new space reconciles under a fresh request ID, never the leaked one')
+})

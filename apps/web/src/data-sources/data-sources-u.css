@@ -42,7 +42,8 @@
 
 .wk-ds-3 {
   font-size: 12px;
-  line-height: 5;
+  /* 旧栈 text-xs leading-5 → 1.25rem=20px（曾误译为无单位 5） */
+  line-height: 20px;
   /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
   color: rgba(0, 0, 0, 0.6);
 }

@@ -224,6 +224,12 @@ test('an unknown write outcome recovers through the original request ID without 
  const unknownPanel = container.querySelector('[role="status"]')!
  assert.match(unknownPanel.textContent ?? '', /保存结果暂时未知/)
  assert.match(unknownPanel.textContent ?? '', new RegExp(originalId))
+ // The unknown outcome recovers only under the original request ID, so the
+ // compose form stays locked exactly like busy — a new submit here would
+ // mint a fresh request ID and abandon that recovery path.
+ assert.equal(container.querySelector<HTMLTextAreaElement>('[aria-label="找岗条件"]')?.disabled, true)
+ assert.equal(container.querySelector<HTMLInputElement>('[aria-label="触发间隔（分钟）"]')?.disabled, true)
+ assert.equal(container.querySelector<HTMLInputElement>('input[type="radio"][value="enabled"]')?.disabled, true)
  await act(async () => { byLabel(container, 'button', '查询回执').click(); await settle() })
  assert.deepEqual(receiptReads, [originalId])
  assert.match(container.textContent ?? '', /暂未找到回执/)
@@ -272,6 +278,28 @@ test('a stored rule that is no longer visible is reported and the stale referenc
  assert.ok(container.querySelector('[aria-label="找岗条件"]'))
 })
 
+test('a transient stored-rule read failure is surfaced and saving stays blocked until the reference resolves', async () => {
+ window.localStorage.setItem('weknora:career:rule-id:u-1:t-1', 'rule-1')
+ let fails = true
+ const { container } = await mountRules({
+  open: async () => view(3),
+  getRule: async () => { if (fails) throw new Error('gateway 503'); return ruleView() },
+ })
+ // The stored reference is unresolved, so a save now would silently mint a
+ // second rule; the page must say so and keep the write path closed.
+ assert.match(container.textContent ?? '', /已保存规则暂时无法读取/)
+ assert.match(container.textContent ?? '', /保存会新建一条规则/)
+ const blocked = [...container.querySelectorAll<HTMLElement>('[type="submit"]')].find((item) => item.textContent?.includes('保存规则'))!
+ assert.ok(blocked.classList.contains('t-is-disabled') || (blocked as HTMLButtonElement).disabled === true)
+ assert.equal(container.querySelector<HTMLTextAreaElement>('[aria-label="找岗条件"]')?.disabled, true)
+ // A successful re-read resolves the reference and reopens the write path.
+ fails = false
+ await act(async () => { byLabel(container, 'button', '重新读取').click(); await settle() })
+ assert.doesNotMatch(container.textContent ?? '', /已保存规则暂时无法读取/)
+ const open = [...container.querySelectorAll<HTMLElement>('[type="submit"]')].find((item) => item.textContent?.includes('保存规则'))!
+ assert.ok(!(open.classList.contains('t-is-disabled') || (open as HTMLButtonElement).disabled === true))
+})
+
 test('cross-scope denial shows the forbidden state and a scope switch clears cached rule state', async () => {
  const forbiddenPage = await mountRules({ open: async () => { throw Object.assign(new Error('forbidden'), { code: 'forbidden' }) } })
  assert.match(forbiddenPage.container.textContent ?? '', /当前空间不可访问/)
@@ -288,7 +316,12 @@ test('cross-scope denial shows the forbidden state and a scope switch clears cac
  await act(async () => { live.scopeController.switchScope('https://weknora.test', 'u-2', 't-2'); await settle() })
  assert.match(live.container.textContent ?? '', /空间已切换/)
  assert.equal(live.container.querySelector('[aria-label="规则状态"]'), null)
- assert.equal(window.localStorage.getItem('weknora:career:rule-id:u-1:t-1'), null)
+ // The rule-id key is isolated per identity, so a scope switch clears only
+ // in-memory state. Deleting the outgoing user's key here (the old behavior)
+ // made their next visit save a brand-new rule while the old enabled rule
+ // kept charging; the reference is dropped only on a server not_found.
+ assert.equal(window.localStorage.getItem('weknora:career:rule-id:u-1:t-1'), 'rule-1')
+ assert.equal(window.localStorage.getItem('weknora:career:rule-id:u-2:t-2'), null)
 })
 
 test('enabling requires a live estimate; an unreadable estimate closes the enable path but not configuration', async () => {

@@ -518,7 +518,8 @@
   background-color: #b42318;
   padding-inline: 4px;
   font-size: 11px;
-  line-height: 5;
+  /* 旧栈 leading-5 → 1.25rem=20px（曾误译为无单位 5） */
+  line-height: 20px;
   color: #fff;
 }
 

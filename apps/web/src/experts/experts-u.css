@@ -59,6 +59,16 @@
   color: #07c05f;
 }
 
+/* 迁移前 XP_TAB 的 aria-selected:border-accent / bg-accent-wash /
+   text-accent 三联与基类同处 utilities layer，属性选择器特异性 (0,2,0)
+   高于单类 (0,1,0)，选中页签实际渲染绿描边+accent-wash 底+绿字——并非死样式，
+   此处语义化承接（T15 勘误之勘误）。 */
+.wk-exp-xp-tab[aria-selected="true"] {
+  border-color: #07c05f;
+  background-color: rgba(7, 192, 95, 0.08);
+  color: #07c05f;
+}
+
 .wk-exp-xp-grid {
   display: grid;
   grid-template-columns: repeat(1, minmax(0, 1fr));
@@ -718,7 +728,8 @@
   margin-bottom: 8px;
   font-size: 16px;
   font-weight: 600;
-  line-height: 6;
+  /* 旧栈 leading-6 → 1.5rem=24px（曾误译为无单位 6） */
+  line-height: 24px;
 }
 
 .wk-exp-38 {
@@ -817,9 +828,10 @@
   background-color: #ffffff;
 }
 
-/* T15 勘误：原 aria-selected:* 三联 utility 为死样式——layered utilities 恒输
-   unlayered 的 .wk-exp-xp-tab 基类（选中态实际渲染=基类白底灰描边，仅 :hover
-   变绿）。语义化时不补规则，保持生效值不变。 */
+/* 旧 T15 勘误注释（断言 aria-selected:* 为死样式）有误：迁移前基类与
+   aria-selected:* 三联同为 utilities layer 内单类/属性选择器，属性选择器
+   (0,2,0) 恒胜单类 (0,1,0)，选中页签渲染绿描边+accent-wash 底+绿字。
+   规则已在文件头 .wk-exp-xp-tab[aria-selected="true"] 处补齐承接。 */
 /* 原 placeholder:text-[rgba(23,26,29,0.35)]。 */
 .wk-exp-xp-input::placeholder,
 .wk-exp-xp-textarea::placeholder { color: rgba(23, 26, 29, 0.35); }

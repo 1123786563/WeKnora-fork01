@@ -1066,8 +1066,11 @@ test('reminder decoder keeps only the frozen privacy notice bodies and the close
   reminderReceipt({ kind: 'reminder_updated' }),
   reminderReceipt({ status: 'notified' }),
   reminderReceipt({ sourceKind: 'progress_event', applicationId: undefined }),
+  reminderReceipt({ sourceKind: 'progress_event', opportunityId: undefined }),
+  reminderReceipt({ sourceKind: 'discovery', sourceId: 'todo /1', applicationId: undefined, noticeKey: 'discovery_found', notice: '持续找岗有新发现，请登录查看。' }),
   reminderView({ notice: '高级后端工程师岗位有更新。' }),
   reminderView({ noticeKey: 'interview_scheduled' }),
+  reminderView({ sourceKind: 'discovery', applicationId: undefined, noticeKey: 'discovery_found', notice: '持续找岗有新发现，请登录查看。' }),
   { reminders: [reminderView({ notice: undefined })] },
  ]
  for (const payload of inventors) {

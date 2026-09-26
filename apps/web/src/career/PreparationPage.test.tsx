@@ -216,6 +216,27 @@ test('a generation failure keeps the request recoverable and never shows a blank
  assert.ok(!byLabelOrNull(container, 'button', '查询准备回执'), 'recovery state cleared after the receipt replay')
 })
 
+test('a receipt lookup that answers with a failed row never narrates success', async () => {
+ // FindPreparationReceipt replays the durable row even when the attempt
+ // failed: only status draft is a success product, so the recovery state
+ // must stay open with the typed failure instead of the success copy.
+ const sent: Array<{ requestId: string }> = []
+ let stored: PreparationReceipt[] = []
+ const career: CareerStub = {
+  open: async () => ({ revision: 5 }),
+  applicationPreparations: async () => ({ preparations: stored }),
+  generatePreparation: async (input: { requestId: string }) => { sent.push(input); throw Object.assign(new Error('写入结果未知'), { code: 'outcome_unknown', requestId: input.requestId }) },
+  preparationReceipt: async (requestId: string) => { stored = [draft({ requestId, status: 'failed', materialId: undefined, body: { sections: [] }, reviewRisks: [], failureCode: 'generation_failed', failureMessage: '模型暂时不可用' })]; return stored[0] },
+ }
+ const container = await mountPreparation(career)
+ await act(async () => { choose(container.querySelector<HTMLSelectElement>('[aria-label="准备焦点"]')!, 'interview_prep'); await settle() })
+ await act(async () => { click(byLabel(container, 'button', '生成准备草稿')); await settle(); await settle() })
+ await act(async () => { click(byLabel(container, 'button', '查询准备回执')); await settle(); await settle() })
+ assert.doesNotMatch(container.textContent ?? '', /准备草稿已生成/)
+ assert.match(container.textContent ?? '', /生成失败/)
+ assert.ok(byLabelOrNull(container, 'button', '用原请求编号重试'), 'the failed row stays recoverable under the original request ID')
+})
+
 test('retrying an unknown generation reuses the same request id, and so does a typed failure', async () => {
  const sent: Array<{ requestId: string }> = []
  let failures = 1

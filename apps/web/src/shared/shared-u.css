@@ -171,7 +171,9 @@
 }
 .wk-shared-main { padding-block: 40px; }
 
-.wk-shared-1 {
+/* 元信息 dl 的 gap 平移原与标题段 .wk-shared-1 同名碰撞（dl 因此吃到
+ * font-weight:600 被渲染成粗体）——拆为独立语义类名。 */
+.wk-shared-meta-gap {
   column-gap: 16px;
   row-gap: 4px;
 }

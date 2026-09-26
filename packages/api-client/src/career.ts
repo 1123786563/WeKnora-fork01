@@ -1021,11 +1021,14 @@ function decodeReminderPush(value: unknown): ReminderPushReport {
 
 function decodeReminderIds(record: Record<string, unknown>, message: string): { applicationId?: string; opportunityId?: string } {
  const hasApplication = validIdentifier(record.applicationId)
+ const hasOpportunity = validIdentifier(record.opportunityId)
  // resolveReminderSource freezes the shape: a progress-event todo always
- // pins its application (and its opportunity), a discovery todo pins
+ // pins both its application and its opportunity, a discovery todo pins
  // neither. Anything else is an invented payload.
- if ((record.sourceKind === 'progress_event') !== hasApplication) throw new TypeError(message)
- return { ...(hasApplication ? { applicationId: record.applicationId as string } : {}), ...(validIdentifier(record.opportunityId) ? { opportunityId: record.opportunityId as string } : {}) }
+ if (record.sourceKind === 'progress_event') {
+  if (!hasApplication || !hasOpportunity) throw new TypeError(message)
+ } else if (hasApplication || hasOpportunity) throw new TypeError(message)
+ return { ...(hasApplication ? { applicationId: record.applicationId as string } : {}), ...(hasOpportunity ? { opportunityId: record.opportunityId as string } : {}) }
 }
 
 export function decodeReminderReceipt(value: unknown): ReminderReceipt {

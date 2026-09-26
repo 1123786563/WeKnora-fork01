@@ -4,6 +4,7 @@ import type { ScopeController } from '@weknora/domain/scope'
 import type { OpportunityEvidence } from '../../../../packages/career-core/src/contracts.ts'
 import type { CareerCoverageView, OpportunityAnnotation, OpportunityObservation, OpportunitySourceStatus, OpportunityStatusView, ReconcileIdentityEvidence, ReconcileReceipt } from '../../../../packages/api-client/src/career.ts'
 import { opportunityEvidencePath } from './OpportunityPage.tsx'
+import { errorDetails, isUncertainWrite, newRequestId } from './protocol.ts'
 import './reconciliation.css'
 
 // T12 Web surface: the frozen reconciliation contract rendered honestly.
@@ -12,22 +13,9 @@ import './reconciliation.css'
 // a failed recheck keeps the last successful observation with an explicit
 // stale window instead of discarding anything.
 
-const newRequestId = (): string => typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`
 const annotationLabels: Record<OpportunityAnnotation, string> = { expired: '已过期', delisted: '已下架', requirements_changed: '要求已变化' }
 const sourceStatusLabels: Record<OpportunitySourceStatus, string> = { complete: '来源完整', partial: '内容不完整', login_required: '需要登录', blocked: '访问受限', not_found: '页面不存在', timed_out: '抓取超时', fetch_failed: '抓取失败', policy_unverified: '来源未核验' }
 const diffFields: Array<[string, keyof OpportunityEvidence['extracted']]> = [['职位名称', 'title'], ['公司', 'company'], ['地点', 'location'], ['招聘批次', 'batch'], ['要求', 'requirements']]
-
-function errorDetails(cause: unknown): { code?: string; message: string } {
- if (cause && typeof cause === 'object' && 'code' in cause) {
-  const parsed = cause as { code?: unknown; message?: unknown }
-  return { code: typeof parsed.code === 'string' ? parsed.code : undefined, message: typeof parsed.message === 'string' ? parsed.message : '请求未完成' }
- }
- return { message: '请求未完成' }
-}
-function isUncertainWrite(cause: unknown): boolean {
- const parsed = errorDetails(cause)
- return parsed.code === 'outcome_unknown' || parsed.code === 'TIMEOUT' || parsed.code === 'network_error' || parsed.code === undefined
-}
 function observationLink(observation: OpportunityObservation): string {
  return observation.source.referenceId ?? observation.submittedUrl ?? observation.finalUrl ?? ''
 }
@@ -72,7 +60,17 @@ export function OpportunityStatusPanel({ client, scopeController, opportunityId 
  useEffect(() => {
   const requestScope = scopeController.current()
   let active = true
-  const clearForScopeChange = () => { active = false; setStatus(undefined); setHistory(undefined); setPhase('scope-changed') }
+  // A scope switch must clear the whole reconcile surface, not just the read
+  // state: the receipt carries batch identity evidence of the outgoing space,
+  // and a kept attempt would replay the old reconcile request against the new
+  // space under its original request ID.
+  const clearForScopeChange = () => {
+   active = false
+   setStatus(undefined); setHistory(undefined); setPhase('scope-changed')
+   setReceipt(undefined); setAttempt(undefined)
+   setCandidateDraft(''); setReconcilePhase('idle'); setReconcileMessage('')
+   setDiffPhase('idle'); setOldEvidence(undefined); setNewEvidence(undefined)
+  }
   setStatus(undefined); setHistory(undefined)
   if (!opportunityId.trim()) { setPhase('error'); return () => { active = false } }
   setPhase('loading')
@@ -134,7 +132,11 @@ export function OpportunityStatusPanel({ client, scopeController, opportunityId 
    const parsed = errorDetails(cause)
    if (parsed.code === 'forbidden') { setReceipt(undefined); setAttempt(undefined); setReconcilePhase('error'); setReconcileMessage('当前空间不可访问此对账，已清除结果。'); return }
    if (parsed.code === 'idempotency_conflict') { setReconcilePhase('error'); setReconcileMessage('请求编号已对应其他对账内容，服务器拒绝了本次判定。请更换新的请求编号重试。'); return }
-   if (parsed.code === 'invalid_request' || parsed.code === 'opportunity_not_found') { setReconcilePhase('error'); setReconcileMessage(`对账请求未被接受：${parsed.message}`); return }
+   // The backend maps ErrOpportunityNotFound into the unified `not_found`
+   // code (internal/modules/career/handler.go writeError); there is no
+   // `opportunity_not_found` wire code.
+   if (parsed.code === 'invalid_request') { setReconcilePhase('error'); setReconcileMessage(`对账请求未被接受：${parsed.message}`); return }
+   if (parsed.code === 'not_found') { setReconcilePhase('error'); setReconcileMessage('对账的岗位记录不存在（可能不属于当前空间）。请检查目标与候选记录编号。'); return }
    if (isUncertainWrite(cause)) { setReconcilePhase('unknown'); setReconcileMessage('暂时无法确认对账结果。请先查询原请求回执，再决定是否使用同一编号重试。'); return }
    setReconcilePhase('error'); setReconcileMessage('对账未完成，请检查记录编号后重试。')
   }

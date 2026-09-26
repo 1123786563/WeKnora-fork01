@@ -373,6 +373,31 @@ test('graph header mirrors the Vue KB page chrome: breadcrumb, tab row, info/set
   assert.equal(subtitle?.textContent, '支持点击或拖拽上传，多格式文档自动解析并智能分块，快速构建可检索的知识库');
 });
 
+// OCR r1 high-18：设置入口与设置页角色走集中式 canManage 门控
+// （computeKBPermissions，editor 不含）——canUploadKnowledgeDocuments 回答的
+// 是“能否上传文档”（editor 可以），此前被误用作 canManage，共享 editor 得以
+// 以 admin 角色进入 KB 设置面板。
+test('a shared editor views the graph but gets no KB settings entry (canManage gate)', async () => {
+  const client = graphClient() as WeKnoraClient & {
+    auth: { me: () => Promise<unknown> };
+    knowledgeBases: { settings: { get: () => Promise<Record<string, unknown>> } };
+  };
+  client.auth.me = async () => ({ user: { id: 'u-editor' } });
+  client.knowledgeBases.settings.get = async () => ({
+    id: 'kb-1',
+    name: 'Wiki图谱fixture',
+    type: 'document',
+    description: '共享 editor 测试库',
+    created_at: '2026-01-02T03:04:05Z',
+    my_permission: 'editor',
+    indexing_strategy: { wiki_enabled: true, graph_enabled: true },
+    chunking_config: {},
+  });
+  const container = await mount(client);
+  assert.ok(container.querySelector('h2.document-breadcrumb'), 'graph renders for a shared editor');
+  assert.equal(container.querySelector('.kb-settings-button'), null, 'shared editors do not get the KB settings entry');
+});
+
 test('graph header collapses to the plain 文档 crumb when wiki is disabled (Vue non-wiki branch)', async () => {
   // R432: the wiki gate is strict — a graph-enabled KB with the wiki off gets
   // no tab row either (Vue gates the whole row on isWiki, KnowledgeBase.vue:89,

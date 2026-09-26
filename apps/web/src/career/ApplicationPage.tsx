@@ -17,6 +17,10 @@ const newRequestId = (): string => typeof crypto !== 'undefined' && 'randomUUID'
 // link state or evaluation status the career backend did not send.
 const evaluationStatusLabel = (status: EvaluationReceipt['status']): string => status === 'ineligible' ? '不符合' : status === 'eligible' ? '符合已识别条件' : '待确认'
 const linkStateLabels: Record<ApplicationReceipt['linkState'], string> = { linking: 'Task 关联中（未就绪，可恢复）', ready: 'Task 已就绪', link_failed: 'Task 关联失败' }
+// A receipt that does not match the request it answers is a definite protocol
+// error, unlike a network TypeError (a failed fetch), which leaves the write
+// outcome genuinely unknown and must route into receipt recovery.
+class ReceiptMismatchError extends Error {}
 
 function errorDetails(cause: unknown): { code?: string; requestId?: string; currentRevision?: number; status?: number; message: string } {
  const error = cause as { code?: string; requestId?: string; currentRevision?: number; status?: number; message?: string }
@@ -141,7 +145,7 @@ export function ApplicationPage({ client, scopeController, opportunityId, snapsh
   if (next.requestId !== expected.requestId
    || next.pinnedEvidence.opportunityId !== expected.input.opportunityId
    || next.pinnedEvidence.snapshotId !== expected.input.snapshotId
-   || next.pinnedEvidence.evaluationId !== expected.input.evaluationId) throw new TypeError('申请回执与本次固定证据不匹配')
+   || next.pinnedEvidence.evaluationId !== expected.input.evaluationId) throw new ReceiptMismatchError('申请回执与本次固定证据不匹配')
   setReceipt(next); setPhase('created'); setMessage('')
   const url = applicationParamUrl(next.applicationId)
   if (url) window.history.replaceState({}, document.title, url)
@@ -188,6 +192,11 @@ export function ApplicationPage({ client, scopeController, opportunityId, snapsh
     setMessage(parsed.code === 'idempotency_conflict' ? '请求编号已对应其他内容，服务器拒绝了本次提交。请检查后重新提交。' : parsed.code === 'not_found' ? '所选评估或岗位快照不存在（可能不属于当前空间）。请重新评估后再申请。' : `申请未被接受：${parsed.message}`)
     return
    }
+   if (cause instanceof ReceiptMismatchError) {
+    setAttempt(undefined); setPhase('error')
+    setMessage(`申请未完成：${cause.message}，已放弃本次结果。请重新提交。`)
+    return
+   }
    if (!isUncertainWrite(cause)) {
     setAttempt(undefined); setPhase('error')
     setMessage(`申请未完成：${parsed.message}`)
@@ -210,6 +219,7 @@ export function ApplicationPage({ client, scopeController, opportunityId, snapsh
    if (!scopeController.isCurrent(requestScope.scope)) return
    const parsed = errorDetails(cause)
    if (parsed.code === 'forbidden') { clearPrivate('当前空间不可访问此申请，已清除申请内容。'); return }
+   if (cause instanceof ReceiptMismatchError) { setAttempt(undefined); setPhase('error'); setMessage(`申请回执查询未完成：${cause.message}，已放弃本次结果。请重新提交。`); return }
    setPhase('unknown')
    setMessage(parsed.code === 'not_found' ? '尚未找到申请回执。可以继续查询，或使用原请求编号重试同一份申请。' : '申请回执暂时无法读取。原请求编号已保留，可稍后重试查询。')
   }
@@ -222,7 +232,7 @@ export function ApplicationPage({ client, scopeController, opportunityId, snapsh
   try {
    const next = await client.career.reconcileApplicationLink(requestId, requestScope.signal)
    if (!scopeController.isCurrent(requestScope.scope)) return
-   if (next.requestId !== requestId) throw new TypeError('对账回执与原请求编号不匹配')
+   if (next.requestId !== requestId) throw new ReceiptMismatchError('对账回执与原请求编号不匹配')
    setReceipt(next); setMessage(next.linkState === 'ready' ? '' : next.linkState === 'linking' ? 'Task 尚未建立：申请保留关联中状态，可稍后再对账。' : 'Task 关联仍为失败。申请与固定证据已保留，可再次对账。')
   } catch (cause) {
    if (!scopeController.isCurrent(requestScope.scope)) return

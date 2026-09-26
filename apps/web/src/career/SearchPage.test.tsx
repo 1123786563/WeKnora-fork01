@@ -370,3 +370,52 @@ test('a terminal receipt and a quota refusal both refresh the live estimate; rep
   // a stale balance after a charged run.
   assert.ok(estimateReads.length >= 3, `estimate refreshed after the terminal receipt (reads: ${estimateReads.length})`)
 })
+
+test('an uncertain result-row import keeps one request ID per row and retries under it', async () => {
+  const imports: Array<{ requestId: string; url: string }> = []
+  let failOnce = true
+  const { container } = await mountSearch({
+    open: async () => view(2),
+    searchOnce: async (input: SearchCall) => ({ ...completedReceipt, requestId: input.requestId }),
+    importUrl: async (input: { requestId: string; url: string }) => {
+      imports.push(input)
+      if (failOnce) { failOnce = false; throw new TypeError('fetch dropped') }
+      return importReceipt
+    },
+  })
+  await submitQuery(container, '上海 前端 实习')
+  await act(async () => { byLabel(container, 'button', '导入为岗位证据').click(); await settle() })
+  assert.equal(imports.length, 1)
+  const originalId = imports[0]?.requestId
+  // An unknown durable outcome must be narrated as unknown — not as a plain
+  // failure the user would retry with a fresh request ID.
+  assert.match(container.textContent ?? '', /导入结果暂时未知/)
+  assert.match(container.textContent ?? '', /不会生成第二条岗位证据/)
+  await act(async () => { byLabel(container, 'button', '用原请求编号重试导入').click(); await settle() })
+  assert.equal(imports.length, 2)
+  assert.equal(imports[1]?.requestId, originalId, 'retry reuses the row request ID, never a fresh one')
+  const evidence = byLabel(container, 'a', '查看岗位证据') as HTMLAnchorElement
+  assert.equal(evidence.getAttribute('href'), '/platform/career/opportunities/opp-9?snapshotId=snap%20%3F9')
+})
+
+test('a definite quota refusal still lets the user start a fresh search instead of locking the page', async () => {
+  const searches: SearchCall[] = []
+  let refused = true
+  const { container } = await mountSearch({
+    open: async () => view(3),
+    searchOnce: async (input: SearchCall) => {
+      searches.push(input)
+      if (refused) { refused = false; throw Object.assign(new Error('quota refused'), { code: 'search_quota_refused' }) }
+      return { ...completedReceipt, requestId: input.requestId }
+    },
+  })
+  await submitQuery(container, '找岗')
+  assert.match(container.textContent ?? '', /找岗额度受限/)
+  // The same-number retry stays available, but a definite refusal must not
+  // lock the user into replaying the same instruction forever.
+  await act(async () => { byLabel(container, 'button', '开始新的一次找岗').click(); await settle() })
+  await submitQuery(container, '新的一次找岗')
+  assert.equal(searches.length, 2)
+  assert.notEqual(searches[1]?.requestId, searches[0]?.requestId)
+  assert.ok(container.querySelector('[aria-label="找岗结果"]'))
+})

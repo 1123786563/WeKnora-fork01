@@ -80,7 +80,7 @@ export function CareerSearchPage({ client, scopeController }: { client: WeKnoraC
  const [notice, setNotice] = useState('')
  const [error, setError] = useState<TypedError>()
  const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>([])
- const [imports, setImports] = useState<Record<string, { receipt?: OpportunityURLImportReceipt; error?: string; busy?: boolean }>>({})
+ const [imports, setImports] = useState<Record<string, { requestId?: string; receipt?: OpportunityURLImportReceipt; error?: string; uncertain?: boolean; busy?: boolean }>>({})
  const historyAutoLoaded = useRef(false)
  const pendingImports = useRef(new Set<string>())
 
@@ -245,18 +245,28 @@ export function CareerSearchPage({ client, scopeController }: { client: WeKnoraC
  }
  const importResult = async (row: SearchResultRow): Promise<void> => {
   if (pendingImports.current.has(row.resultId)) return
+  // The backend claims URL imports by (tenant, user, request_id): one result
+  // row keeps one request ID across retries, so an uncertain failure can
+  // never mint a second evidence row for the same link.
+  const requestId = imports[row.resultId]?.requestId ?? makeId()
   pendingImports.current.add(row.resultId)
   const requestScope = scopeController.current()
-  setImports((current) => ({ ...current, [row.resultId]: { busy: true } }))
+  setImports((current) => ({ ...current, [row.resultId]: { ...current[row.resultId], requestId, busy: true, error: undefined, uncertain: undefined } }))
   try {
-   const imported = await client.career.importUrl({ requestId: makeId(), url: row.link }, requestScope.signal)
+   const imported = await client.career.importUrl({ requestId, url: row.link }, requestScope.signal)
    if (!scopeController.isCurrent(requestScope.scope)) return
-   setImports((current) => ({ ...current, [row.resultId]: { receipt: imported } }))
+   setImports((current) => ({ ...current, [row.resultId]: { ...current[row.resultId], busy: false, receipt: imported } }))
   } catch (cause) {
    if (!scopeController.isCurrent(requestScope.scope)) return
    const parsed = errorDetails(cause)
    if (parsed.code === 'forbidden') { clearForScopeChange('当前空间不可访问，已清除本次找岗状态。'); return }
-   setImports((current) => ({ ...current, [row.resultId]: { error: parsed.text } }))
+   if (isUncertainOutcome(cause)) {
+    // Unknown durable outcome: keep the request number so the retry under it
+    // can only ever reach the same evidence row, never a duplicate.
+    setImports((current) => ({ ...current, [row.resultId]: { ...current[row.resultId], busy: false, uncertain: true } }))
+    return
+   }
+   setImports((current) => ({ ...current, [row.resultId]: { ...current[row.resultId], busy: false, error: parsed.text } }))
   } finally {
    pendingImports.current.delete(row.resultId)
   }
@@ -289,8 +299,8 @@ export function CareerSearchPage({ client, scopeController }: { client: WeKnoraC
    </Card>
    {phase === 'unknown' && attempt ? <Card bordered><div role="status"><strong>找岗结果暂时未知</strong><p>保留了本次指令。请求编号 {attempt.requestId}。请先查询持久回执；查无回执后只能用同一请求编号重试，重试不会创建新的搜索。</p><div className="wk-career-search__actions"><Button disabled={busy} loading={busy} onClick={() => void queryReceipt()}>查询回执</Button><Button variant="outline" disabled={busy} onClick={retrySameAttempt}>用原请求编号重试</Button></div></div></Card> : null}
    {error ? <Card bordered><div role="alert"><strong>{error.code === 'revision_conflict' ? '档案已更新' : error.code === 'search_quota_refused' ? '找岗额度受限' : '找岗未成功'}</strong><p>{error.text}{error.currentRevision !== undefined ? `（当前修订 ${error.currentRevision}）` : ''}</p></div>
-    {error.code === 'revision_conflict' ? <div className="wk-career-search__actions"><Button disabled={busy} onClick={retryWithCurrentRevision}>按当前修订重试（原请求编号）</Button></div> : null}
-    {error.code === 'search_quota_refused' ? <div className="wk-career-search__actions"><Button disabled={busy} onClick={retrySameAttempt}>稍后用原请求编号重试</Button></div> : null}
+    {error.code === 'revision_conflict' ? <div className="wk-career-search__actions"><Button disabled={busy} onClick={retryWithCurrentRevision}>按当前修订重试（原请求编号）</Button><Button variant="outline" disabled={busy} onClick={startNewSearch}>开始新的一次找岗</Button></div> : null}
+    {error.code === 'search_quota_refused' ? <div className="wk-career-search__actions"><Button disabled={busy} onClick={retrySameAttempt}>稍后用原请求编号重试</Button><Button variant="outline" disabled={busy} onClick={startNewSearch}>开始新的一次找岗</Button></div> : null}
    </Card> : null}
    {receipt ? <Card bordered className="wk-career-search__receipt">
     <div className="wk-career-search__receipt-head">
@@ -316,8 +326,9 @@ export function CareerSearchPage({ client, scopeController }: { client: WeKnoraC
         <span>不确定性 {uncertaintyLabels[row.uncertainty]}</span>
        </div>
        <div className="wk-career-search__row-actions">
-        <Button size="small" variant="outline" disabled={imports[row.resultId]?.busy} onClick={() => void importResult(row)}>导入为岗位证据</Button>
+        <Button size="small" variant="outline" disabled={imports[row.resultId]?.busy} onClick={() => void importResult(row)}>{imports[row.resultId]?.uncertain ? '用原请求编号重试导入' : '导入为岗位证据'}</Button>
         {imports[row.resultId]?.receipt ? <a href={opportunityEvidencePath(imports[row.resultId]!.receipt!.opportunityId, imports[row.resultId]!.receipt!.snapshotId)}>查看岗位证据</a> : null}
+        {imports[row.resultId]?.uncertain ? <span role="status">导入结果暂时未知：可稍后重试，将复用原请求编号，不会生成第二条岗位证据。</span> : null}
         {imports[row.resultId]?.error ? <span role="alert">导入未成功：{imports[row.resultId]?.error}</span> : null}
        </div>
        <p className="wk-career-search__row-note">原始链接只作为出处展示，点击在浏览器打开；导入后才会作为岗位证据保存。</p>

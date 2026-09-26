@@ -95,6 +95,8 @@ export function LoginPage({ client, onAuthenticated, apiBaseUrl, initialError, i
   // 一次性测量会定格在中间值（实测 586≠600），必须观察后续尺寸变化到稳定。
   const [slideWidth, setSlideWidth] = useState(0);
   const swiperRef = useRef<HTMLDivElement>(null);
+  // submit 在途锁：Enter(onEnter)+表单隐式提交(onSubmit)双路径并发防护。
+  const submitInFlight = useRef(false);
   useEffect(() => {
     const el = swiperRef.current;
     if (!el) return;
@@ -178,6 +180,10 @@ export function LoginPage({ client, onAuthenticated, apiBaseUrl, initialError, i
 
   async function submit(event?: { preventDefault?: () => void }) {
     event?.preventDefault?.();
+    // Enter 触发 tdesign Input 的 onEnter，同时原生表单隐式提交也会走
+    // onSubmit——两条路径叠加会连发两次 login/register（第二次注册报“用户已存在”）。
+    // 在途期间用 ref 挡住第二次进入；setState 异步，靠 state 判定会漏。
+    if (submitInFlight.current) return;
     setMessage('');
     if (mode === 'register') {
       const errors = validateRegister({ username, email, password, confirmPassword }, complexPasswordEnabled);
@@ -188,6 +194,7 @@ export function LoginPage({ client, onAuthenticated, apiBaseUrl, initialError, i
       setFieldErrors(errors);
       if (Object.keys(errors).length) { setState('error'); return; }
     }
+    submitInFlight.current = true;
     setState('loading');
     try {
       if (mode === 'register' && inviteToken) {
@@ -224,6 +231,8 @@ export function LoginPage({ client, onAuthenticated, apiBaseUrl, initialError, i
       const text = error instanceof Error ? error.message : mode === 'register' ? t('auth.registerFailed') : t('auth.loginError');
       setMessage(text);
       showToast('error', text);
+    } finally {
+      submitInFlight.current = false;
     }
   }
 

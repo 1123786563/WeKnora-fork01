@@ -187,7 +187,7 @@ export function ActionApproval({ client, actionId, prepare, canDrive = false }: 
                     aria-label="编辑操作内容 JSON"
                     value={draftContent}
                     rows={4}
-                    onChange={(value) => setDraftContent(String(value))}
+                    onChange={(event) => setDraftContent(event.currentTarget.value)}
                   />
                   <TButton type="button" aria-label="以编辑后的内容重新准备" disabled={busy} onClick={() => void reprepare()}>重新准备内容</TButton>
                 </div>

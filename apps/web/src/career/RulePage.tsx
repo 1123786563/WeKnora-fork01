@@ -65,22 +65,27 @@ export function CareerRulePage({ client, scopeController }: { client: WeKnoraCli
  const [attempt, setAttempt] = useState<Attempt>()
  const [receipt, setReceipt] = useState<SetRuleReceipt>()
  const [ruleView, setRuleView] = useState<RuleView>()
+ const [storedRuleUnreadable, setStoredRuleUnreadable] = useState<TypedError>()
  const [phase, setPhase] = useState<Phase>('idle')
  const [notice, setNotice] = useState('')
  const [error, setError] = useState<TypedError>()
  const loadedForScope = useRef<string | undefined>(undefined)
 
  const clearForScopeChange = useCallback((message: string): void => {
-  const activeScope = scopeController.current().scope
-  try { window.localStorage.removeItem(ruleIdKey(activeScope.userId, activeScope.tenantId)) } catch { /* private mode */ }
-  setDraft({ query: '', interval: '1440', status: 'disabled' }); setAttempt(undefined); setReceipt(undefined); setRuleView(undefined)
+  // Memory only. The rule-id key is already isolated per userId/tenantId, and
+  // the abort listener fires while current() still reports the outgoing
+  // identity (scope.advance aborts before installing the new scope), so a
+  // removeItem here would delete the outgoing user's own stored reference and
+  // make their next save silently mint a second rule. The stored reference is
+  // only dropped on a server-confirmed not_found in load().
+  setDraft({ query: '', interval: '1440', status: 'disabled' }); setAttempt(undefined); setReceipt(undefined); setRuleView(undefined); setStoredRuleUnreadable(undefined)
   setPhase('idle'); setNotice(message); setError(undefined)
   setRevision(undefined); setViewPhase('scope-changed'); setViewError(undefined)
  }, [scopeController])
 
  const load = useCallback(async (): Promise<void> => {
   const requestScope = scopeController.current()
-  setViewPhase('loading'); setViewError(undefined)
+  setViewPhase('loading'); setViewError(undefined); setStoredRuleUnreadable(undefined)
   try {
    const view = await client.career.open(requestScope.signal)
    if (!scopeController.isCurrent(requestScope.scope)) return
@@ -92,7 +97,7 @@ export function CareerRulePage({ client, scopeController }: { client: WeKnoraCli
    try {
     const stored = await client.career.getRule(storedRuleId, requestScope.signal)
     if (!scopeController.isCurrent(requestScope.scope)) return
-    setRuleView(stored)
+    setRuleView(stored); setStoredRuleUnreadable(undefined)
     setDraft({ query: stored.query, interval: String(stored.intervalMinutes), status: stored.status })
    } catch (cause) {
     if (!scopeController.isCurrent(requestScope.scope)) return
@@ -103,7 +108,15 @@ export function CareerRulePage({ client, scopeController }: { client: WeKnoraCli
      // instead of claiming a rule we cannot show.
      try { storage?.removeItem(ruleIdKey(requestScope.scope.userId, requestScope.scope.tenantId)) } catch { /* private mode */ }
      setNotice('这条规则在服务端已不可见，已清除本地引用。可重新创建一条规则。')
+     return
     }
+    // Any other failure (e.g. a transient 5xx) leaves the stored rule
+    // unresolved: ruleView stays undefined, so a save now would silently
+    // mint a second rule (the backend enforces no one-rule-per-user limit
+    // here and an old enabled rule would keep charging). Surface it and
+    // block the write until the reference resolves by re-reading.
+    setStoredRuleUnreadable(parsed)
+    setNotice(`读取已保存规则未成功：${parsed.text}。此时保存会新建一条规则；请先重新读取成功后再保存，避免出现双重规则。`)
    }
   } catch (cause) {
    if (!scopeController.isCurrent(requestScope.scope)) return
@@ -194,7 +207,7 @@ export function CareerRulePage({ client, scopeController }: { client: WeKnoraCli
  const existingRuleId = receipt?.ruleId ?? ruleView?.ruleId
  const submit = (event: FormEvent): void => {
   event.preventDefault()
-  if (phase === 'busy' || !draft.query.trim() || !intervalValid || revision === undefined || enableRequiresEstimate) return
+  if (composeLocked || !draft.query.trim() || !intervalValid || revision === undefined || enableRequiresEstimate) return
   const next: Attempt = { requestId: makeId(), ...(existingRuleId ? { ruleId: existingRuleId } : {}), query: draft.query.trim(), intervalMinutes: intervalNumber, status: draft.status, expectedRevision: revision }
   setAttempt(next)
   void send(next)
@@ -225,6 +238,12 @@ export function CareerRulePage({ client, scopeController }: { client: WeKnoraCli
  }
 
  const busy = phase === 'busy'
+ // An unknown write outcome recovers only under the original request ID, so
+ // the compose form must stay locked exactly like busy — editing and
+ // submitting a new attempt here would mint a fresh request ID and break
+ // that recovery contract. A stored rule whose reference cannot be resolved
+ // locks the form too (saving then would mint a second rule).
+ const composeLocked = phase === 'busy' || phase === 'unknown' || storedRuleUnreadable !== undefined
  // The latest write receipt is the authoritative live configuration; the
  // stored rule view backs it up on a fresh load and carries run history.
  const live = receipt ?? ruleView
@@ -239,22 +258,23 @@ export function CareerRulePage({ client, scopeController }: { client: WeKnoraCli
   {viewPhase === 'error' ? <Card bordered><div role="alert"><strong>暂时无法打开求职空间</strong><p>{viewError?.text}</p></div><Button variant="outline" onClick={() => void load()}>重新读取</Button></Card> : null}
   {viewPhase === 'scope-changed' ? <Card bordered><p>{notice}</p><Button variant="outline" onClick={() => void load()}>重新读取</Button></Card> : null}
   {viewPhase === 'ready' ? <>
+   {storedRuleUnreadable ? <Card bordered><div role="alert"><strong>已保存规则暂时无法读取</strong><p>本地记录的规则编号无法读取（{storedRuleUnreadable.text}）。在重新读取成功前，保存会新建一条规则、可能造成重复的启用规则，因此保存已暂时停用。</p></div><Button variant="outline" onClick={() => void load()}>重新读取</Button></Card> : null}
    <CareerUsagePanel usage={usage.state} onRetry={usage.reload} />
    <Card bordered className="wk-career-rule__compose">
     <h2>规则内容</h2>
     <form onSubmit={submit}>
      <label htmlFor="career-rule-query">找岗条件（一句话描述要持续找的岗位）</label>
-     <textarea id="career-rule-query" aria-label="找岗条件" value={draft.query} placeholder="例如：上海 前端开发 实习" disabled={busy} onChange={(event) => { const value = event.currentTarget.value; setDraft((current) => ({ ...current, query: value })) }} rows={3} />
+     <textarea id="career-rule-query" aria-label="找岗条件" value={draft.query} placeholder="例如：上海 前端开发 实习" disabled={composeLocked} onChange={(event) => { const value = event.currentTarget.value; setDraft((current) => ({ ...current, query: value })) }} rows={3} />
      <label htmlFor="career-rule-interval">触发间隔（分钟，1–43200，即最长 30 天）</label>
-     <input id="career-rule-interval" aria-label="触发间隔（分钟）" type="number" min={1} max={43200} step={1} value={draft.interval} disabled={busy} onChange={(event) => { const value = event.currentTarget.value; setDraft((current) => ({ ...current, interval: value })) }} />
+     <input id="career-rule-interval" aria-label="触发间隔（分钟）" type="number" min={1} max={43200} step={1} value={draft.interval} disabled={composeLocked} onChange={(event) => { const value = event.currentTarget.value; setDraft((current) => ({ ...current, interval: value })) }} />
      <fieldset className="wk-career-rule__status-field">
       <legend>规则状态（默认不开启）</legend>
-      <label><input type="radio" name="career-rule-status" value="disabled" checked={draft.status === 'disabled'} disabled={busy} onChange={() => setDraft((current) => ({ ...current, status: 'disabled' }))} />停用（不运行）</label>
-      <label><input type="radio" name="career-rule-status" value="paused" checked={draft.status === 'paused'} disabled={busy} onChange={() => setDraft((current) => ({ ...current, status: 'paused' }))} />暂停（取消下一次触发，恢复后顺延）</label>
-      <label><input type="radio" name="career-rule-status" value="enabled" checked={draft.status === 'enabled'} disabled={busy} onChange={() => setDraft((current) => ({ ...current, status: 'enabled' }))} />启用（按间隔自动触发）</label>
+      <label><input type="radio" name="career-rule-status" value="disabled" checked={draft.status === 'disabled'} disabled={composeLocked} onChange={() => setDraft((current) => ({ ...current, status: 'disabled' }))} />停用（不运行）</label>
+      <label><input type="radio" name="career-rule-status" value="paused" checked={draft.status === 'paused'} disabled={composeLocked} onChange={() => setDraft((current) => ({ ...current, status: 'paused' }))} />暂停（取消下一次触发，恢复后顺延）</label>
+      <label><input type="radio" name="career-rule-status" value="enabled" checked={draft.status === 'enabled'} disabled={composeLocked} onChange={() => setDraft((current) => ({ ...current, status: 'enabled' }))} />启用（按间隔自动触发）</label>
      </fieldset>
      <div className="wk-career-rule__actions">
-      <Button type="submit" disabled={busy || !draft.query.trim() || !intervalValid || revision === undefined || enableRequiresEstimate} loading={busy}>保存规则</Button>
+      <Button type="submit" disabled={composeLocked || !draft.query.trim() || !intervalValid || revision === undefined || enableRequiresEstimate} loading={busy}>保存规则</Button>
      </div>
      <p className="wk-career-rule__form-note">保存会创建新规则或更新现有规则；创建时默认为停用，不会开始运行。启用、暂停、停用都由你在本页显式操作。{enableRequiresEstimate ? '启用需要先取得可用的额度预估；预估恢复前不能启用（不会先执行后补报）。' : ''}</p>
     </form>
