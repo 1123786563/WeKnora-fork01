@@ -655,13 +655,25 @@ func (o *Office) claimImportURLRequest(ctx context.Context, s Scope, requestID, 
 				return nil
 			}
 			// An expired claim is taken over so a crashed fetch cannot strand
-			// the request ID forever.
+			// the request ID forever. The UPDATE carries a compare-and-swap on
+			// the exact body that was read: under READ COMMITTED the previous
+			// owner may commit its terminal receipt between this transaction's
+			// read and write, and an unconditional UPDATE would destroy that
+			// receipt (and duplicate the opportunity). RowsAffected != 1 means
+			// the body moved — degrade to the in-flight waiter path instead.
 			takeover, err := claimJSON()
 			if err != nil {
 				return err
 			}
-			if err = tx.Model(&opportunityReceipt{}).Where("tenant_id=? AND user_id=? AND request_id=?", s.TenantID, s.UserID, requestID).Update("body", takeover).Error; err != nil {
-				return err
+			res := tx.Model(&opportunityReceipt{}).
+				Where("tenant_id=? AND user_id=? AND request_id=? AND body=?", s.TenantID, s.UserID, requestID, existing.Body).
+				Update("body", takeover)
+			if res.Error != nil {
+				return res.Error
+			}
+			if res.RowsAffected != 1 {
+				outcome.state = importClaimInFlight
+				return nil
 			}
 			outcome.state, outcome.token = importClaimProceed, token
 			return nil

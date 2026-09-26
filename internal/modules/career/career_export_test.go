@@ -443,3 +443,124 @@ func TestExportDeletionScopeRejectsOtherTenantAndOwner(t *testing.T) {
 	require.Equal(t, int64(1), countScopeRows(t, db, "career_applications"))
 	require.Equal(t, fx.Revision, view.Revision)
 }
+
+// ---- OCR round 1 fixes ---------------------------------------------------
+
+// fakeSourceUploadReleaser stands in for the UploadAdapter release seam so
+// the purge step can be observed without a file backend.
+type fakeSourceUploadReleaser struct {
+	calls []string
+	fail  error
+}
+
+func (f *fakeSourceUploadReleaser) Release(_ context.Context, reference, sourceID string) error {
+	f.calls = append(f.calls, reference+"|"+sourceID)
+	return f.fail
+}
+
+// TestDeleteCareerRemovesExportObjectsAndReleasesSourceUploads pins the
+// physical side of delete_career: rendered export objects are deleted from
+// storage (not just revoked in the DB) and uploaded source originals are
+// released through the catalog seam before their locator rows are purged.
+func TestDeleteCareerRemovesExportObjectsAndReleasesSourceUploads(t *testing.T) {
+	o, db, ctx := newCareerExportOffice(t, "owner-1", 1951)
+	store := newMapExportStorage()
+	o.SetExportStorage(store)
+	fx := seedExportChain(t, o, ctx, "purge-files")
+	require.Len(t, store.files, 2, "the seeded submittable export holds a PDF and a DOCX object")
+
+	releaser := &fakeSourceUploadReleaser{}
+	o.SetSourceUploadReleaser(releaser)
+	require.NoError(t, db.Exec(`INSERT INTO career_source_revisions
+		(id, tenant_id, user_id, revision, file_name, mime_type, size, digest, request_id,
+		 resource_ref, status, created_at)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+		"src-1", uint64(1951), "owner-1", 1, "resume.pdf", "application/pdf", 10, "digest", "src-req-1",
+		"local://1951/career_source_src-1.pdf", "ready", "2026-09-26 00:00:00").Error)
+	o.SetApplicationTaskRemover(&fakeCareerTaskRemover{})
+
+	receipt, err := o.DeleteCareer(ctx, CareerDeletionInput{RequestID: "delete-1", ExpectedRevision: fx.Revision})
+	require.NoError(t, err)
+	require.Equal(t, DeletionStatusDeleted, receipt.Status)
+
+	require.Empty(t, store.files, "physical export objects must not outlive the deleted space")
+	require.Len(t, releaser.calls, 1, "every uploaded source with a resource ref is released exactly once")
+	require.Equal(t, "local://1951/career_source_src-1.pdf|src-1", releaser.calls[0])
+	require.Zerof(t, countScopeRows(t, db, "career_source_revisions"), "source rows are purged after release")
+}
+
+// TestFindCareerDeletionDuringExecutionWindowReportsInProgress pins the
+// executing window: a deleting record still carrying the initial "{}" body
+// must replay as a truthful in-progress receipt, never as an empty success.
+func TestFindCareerDeletionDuringExecutionWindowReportsInProgress(t *testing.T) {
+	o, db, ctx := newCareerExportOffice(t, "owner-1", 1951)
+	fx := seedExportChain(t, o, ctx, "inprogress")
+	require.NoError(t, db.Create(&careerDataDeletionRecord{
+		ID: "del-inprogress", TenantID: 1951, UserID: "owner-1",
+		RequestID: "delete-live", Fingerprint: "fp", ExpectedRevision: fx.Revision,
+		Status: DeletionStatusDeleting, StateBody: string(mustJSON(newDeletionExecution())), ReceiptBody: "{}",
+		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+	}).Error)
+
+	receipt, err := o.FindCareerDeletion(ctx, "delete-live")
+	require.NoError(t, err)
+	require.Equal(t, DeletionStatusDeleting, receipt.Status)
+	require.Equal(t, CareerKindDeleted, receipt.Kind)
+	require.Equal(t, "delete-live", receipt.RequestID)
+	require.Equal(t, fx.Revision, receipt.Revision)
+	require.Nil(t, receipt.CompletedAt)
+	require.NotEmpty(t, receipt.Retention)
+	require.Len(t, receipt.Steps, 4)
+	for _, step := range receipt.Steps {
+		require.Equal(t, DeletionStepStatusPending, step.Status, "durable state shows nothing completed yet")
+	}
+}
+
+// TestExportCareerArchiveCarriesPreparationsSearchRulesAndReminders pins the
+// completeness contract: every section the purge destroys — preparations,
+// periodic search rules, reminders — travels in the one complete export.
+func TestExportCareerArchiveCarriesPreparationsSearchRulesAndReminders(t *testing.T) {
+	o, db, ctx := newCareerExportOffice(t, "owner-1", 1951)
+	seedExportChain(t, o, ctx, "full-archive")
+
+	require.NoError(t, db.Exec(`INSERT INTO career_preparations
+		(id, tenant_id, user_id, application_id, request_id, fingerprint, focus, status,
+		 submission_id, submitted_material_id, submitted_export_id, submitted_version, submitted_digest,
+		 snapshot_id, snapshot_sha256, profile_revision, material_id, failure_code, failure_message,
+		 receipt_body, created_at, updated_at)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		"prep-export-1", uint64(1951), "owner-1", "app-any", "prep-req-9", "fp", "cover_letter", "succeeded",
+		"", "", "", 0, "", "", "", 0, "", "", "", "{}", "2026-09-26 00:00:00", "2026-09-26 00:00:00").Error)
+	require.NoError(t, db.Exec(`INSERT INTO career_search_rules
+		(tenant_id, user_id, id, query, interval_minutes, status, revision, last_period, next_due_at, created_at, updated_at)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+		uint64(1951), "owner-1", "rule-export-1", "Go 后端", 720, "active", 3, 1,
+		"2026-09-27 00:00:00", "2026-09-26 00:00:00", "2026-09-26 00:00:00").Error)
+	require.NoError(t, db.Exec(`INSERT INTO career_reminders
+		(id, tenant_id, user_id, source_kind, source_id, application_id, opportunity_id, notice_key, status, request_id, created_at, updated_at)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+		"rem-export-1", uint64(1951), "owner-1", "search_rule", "rule-export-1", "", "", "period_done", "open",
+		"rem-req-9", "2026-09-26 00:00:00", "2026-09-26 00:00:00").Error)
+
+	view, err := o.Open(ctx)
+	require.NoError(t, err)
+	receipt, err := o.ExportCareer(ctx, CareerExportInput{RequestID: "export-full", ExpectedRevision: view.Revision})
+	require.NoError(t, err)
+
+	require.Len(t, receipt.Archive.Preparations, 1)
+	require.Equal(t, "prep-export-1", receipt.Archive.Preparations[0].PreparationID)
+	require.Equal(t, "cover_letter", receipt.Archive.Preparations[0].Focus)
+	require.Len(t, receipt.Archive.SearchRules, 1)
+	require.Equal(t, "rule-export-1", receipt.Archive.SearchRules[0].RuleID)
+	require.Equal(t, uint64(720), receipt.Archive.SearchRules[0].IntervalMinutes)
+	require.Equal(t, uint64(3), receipt.Archive.SearchRules[0].Revision)
+	require.Len(t, receipt.Archive.Reminders, 1)
+	require.Equal(t, "rem-export-1", receipt.Archive.Reminders[0].ReminderID)
+	require.Equal(t, "search_rule", receipt.Archive.Reminders[0].SourceKind)
+
+	// The archive digest still verifies over the extended payload.
+	payload, err := json.Marshal(receipt.Archive)
+	require.NoError(t, err)
+	sum := sha256.Sum256(payload)
+	require.Equal(t, hex.EncodeToString(sum[:]), receipt.Digest)
+}

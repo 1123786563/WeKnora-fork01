@@ -1090,3 +1090,29 @@ func TestCareerReconcileHandlerContract(t *testing.T) {
 	require.Equal(t, 200, rec.Code, rec.Body.String())
 	require.Contains(t, rec.Body.String(), `"merged"`)
 }
+
+// OCR r1 fix: the Act endpoint is the only small JSON write without a body
+// limit; an oversized body must answer 413 instead of being fully buffered.
+func TestCareerActRejectsOversizedBodyWith413(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	office, err := NewOffice(db)
+	require.NoError(t, err)
+	scope := Scope{UserID: "u1", TenantID: 7}
+	baseCtx := context.WithValue(context.Background(), types.UserIDContextKey, scope.UserID)
+	baseCtx = context.WithValue(baseCtx, types.TenantIDContextKey, scope.TenantID)
+	require.NoError(t, office.ClaimSpace(WithScope(baseCtx, scope)))
+	h := &Handler{office: office, members: &memberListStub{members: []*types.TenantMember{{UserID: "u1", TenantID: 7, Role: types.TenantRoleOwner}}}}
+
+	huge := `{"action":"propose","key":"education.school","value":"` + strings.Repeat("x", 32*1024) + `","requestId":"too-big-1"}`
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest("POST", "/api/v1/career/act", strings.NewReader(huge)).WithContext(baseCtx)
+	h.Act(c)
+	require.Equal(t, http.StatusRequestEntityTooLarge, recorder.Code, recorder.Body.String())
+
+	view, err := office.Open(WithScope(baseCtx, scope))
+	require.NoError(t, err)
+	require.Empty(t, view.Proposals, "an oversized act must never reach the office")
+}

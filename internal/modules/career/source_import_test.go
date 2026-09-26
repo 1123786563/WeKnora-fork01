@@ -16,6 +16,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/gin-gonic/gin"
@@ -651,4 +652,59 @@ func transportTestDialer(t *testing.T, hostTargets map[string]string) transportD
 		return nil, fmt.Errorf("no test listener for %s", port)
 	}
 	return transportDialOptions{LookupIPs: lookupIPs, DialContext: dialContext}
+}
+
+// TestImportURLExpiredClaimTakeoverGuardsTerminalReceipt pins the takeover
+// contract for an expired claim: the new owner wins through the body-CAS
+// UPDATE (RowsAffected==1 with a fresh token and lease), and the previous
+// owner's commit under the old token is rejected as a lost claim — the
+// terminal receipt can never be overwritten by a takeover.
+func TestImportURLExpiredClaimTakeoverGuardsTerminalReceipt(t *testing.T) {
+	o, ctx := newSourceImportOffice(t, "owner", 81)
+	s := Scope{UserID: "owner", TenantID: 81}
+	requestID := "url-cas-1"
+	rawURL := "https://jobs.example.com/posting/cas"
+
+	fingerprintInput, err := json.Marshal([]any{"import_url", requestID, rawURL})
+	require.NoError(t, err)
+	fingerprintSum := sha256.Sum256(fingerprintInput)
+	fingerprint := hex.EncodeToString(fingerprintSum[:])
+
+	expired := time.Now().UTC().Add(-2 * time.Minute)
+	expiredBody, err := json.Marshal(importURLClaimBody{Kind: sourceImportClaimKind, ClaimToken: "old-token", LeaseUntil: expired})
+	require.NoError(t, err)
+	require.NoError(t, o.db.Create(&opportunityReceipt{
+		TenantID: s.TenantID, UserID: s.UserID, RequestID: requestID,
+		Fingerprint: fingerprint, Body: string(expiredBody), CreatedAt: expired,
+	}).Error)
+
+	// The takeover must go through the CAS UPDATE: it only lands when the
+	// read body is still the one being replaced.
+	outcome, err := o.claimImportURLRequest(ctx, s, requestID, fingerprint)
+	require.NoError(t, err)
+	require.Equal(t, importClaimProceed, outcome.state)
+	require.NotEmpty(t, outcome.token)
+	require.NotEqual(t, "old-token", outcome.token)
+
+	var row opportunityReceipt
+	require.NoError(t, o.db.Where("tenant_id=? AND user_id=? AND request_id=?", s.TenantID, s.UserID, requestID).First(&row).Error)
+	var claim importURLClaimBody
+	require.NoError(t, json.Unmarshal([]byte(row.Body), &claim))
+	require.Equal(t, outcome.token, claim.ClaimToken)
+	require.True(t, claim.LeaseUntil.After(time.Now().UTC()), "the takeover installs a fresh lease")
+
+	// The expired previous owner can no longer commit: its token is gone, so
+	// the observation commit refuses (reconciling to an unknown outcome) and
+	// never touches the live claim.
+	_, err = o.commitImportURLObservation(ctx, s, requestID, fingerprint, "old-token",
+		urlSourceEvidence{sourceStatus: SourceStatusComplete, completeness: CompletenessComplete, text: "text"}, rawURL)
+	var unknown *OutcomeUnknownError
+	require.ErrorAs(t, err, &unknown, "a lost claim reconciles to an unknown outcome, never a second observation")
+	require.NoError(t, json.Unmarshal([]byte(row.Body), &claim))
+	require.Equal(t, outcome.token, claim.ClaimToken, "the failed commit leaves the live claim untouched")
+
+	// Nothing was duplicated while the claim was lost.
+	var opportunities int64
+	require.NoError(t, o.db.Model(&opportunity{}).Where("tenant_id=? AND user_id=?", s.TenantID, s.UserID).Count(&opportunities).Error)
+	require.Zerof(t, opportunities, "a lost claim must not create a second opportunity")
 }

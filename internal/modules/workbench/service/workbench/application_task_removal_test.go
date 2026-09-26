@@ -56,3 +56,36 @@ func TestRemoveCareerApplicationTaskProjectionsIsScopedAndIdempotent(t *testing.
 	require.NoError(t, err)
 	require.Empty(t, again)
 }
+
+// OCR r1 fix: the removal reads the mapping table INSIDE the deletion
+// transaction and drives the session/run/mapping deletes from it via
+// subqueries, so every mapping visible to the transaction is fully removed
+// in one call — a mapping that a pre-transaction snapshot would have missed
+// (the pre-fix shape orphaned exactly those) is covered too.
+func TestRemoveCareerApplicationTaskProjectionsClearsEveryMappingInOneCall(t *testing.T) {
+	db := openApplicationTaskDB(t)
+	coordinator := NewApplicationTaskCoordinator(db)
+	ctx := context.Background()
+
+	first, err := coordinator.EnsureCareerApplicationTask(ctx, 701, "owner-1", applicationTaskIntent())
+	require.NoError(t, err)
+	lateIntent := applicationTaskIntent()
+	lateIntent.ApplicationID = "11111111-2222-3333-4444-555555555555"
+	lateIntent.RequestID = "late-committed-request"
+	late, err := coordinator.EnsureCareerApplicationTask(ctx, 701, "owner-1", lateIntent)
+	require.NoError(t, err)
+
+	removed, err := coordinator.RemoveCareerApplicationTaskProjections(ctx, 701, "owner-1")
+	require.NoError(t, err)
+	require.Len(t, removed, 2)
+
+	for _, link := range []interfaces.CareerApplicationTaskLink{first, late} {
+		var mappings, sessions, runs int64
+		require.NoError(t, db.Table("workbench_application_tasks").Where("task_id = ?", link.TaskID).Count(&mappings).Error)
+		require.NoError(t, db.Table("sessions").Where("id = ?", link.TaskID).Count(&sessions).Error)
+		require.NoError(t, db.Table("agent_runs").Where("session_id = ?", link.TaskID).Count(&runs).Error)
+		require.Zerof(t, mappings, "mapping for %s must be gone", link.TaskID)
+		require.Zerof(t, sessions, "session for %s must be gone", link.TaskID)
+		require.Zerof(t, runs, "agent run for %s must be gone", link.TaskID)
+	}
+}

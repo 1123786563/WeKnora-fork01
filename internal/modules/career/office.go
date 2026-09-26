@@ -279,6 +279,9 @@ type Office struct {
 	// failDeletionStep injects a sub-deletion failure for recovery tests.
 	applicationTaskRemover interfaces.CareerApplicationTaskProjectionRemover
 	failDeletionStep       func(step string) error
+	// sourceUploadReleaser releases uploaded source originals (catalog
+	// binding + physical object) before the purge step clears their rows.
+	sourceUploadReleaser careerSourceUploadReleaser
 	// Preparation generation seam (T19): the generator composes the cover
 	// letter / interview draft from durable evidence. Production wires the
 	// deterministic local composer — no external LLM dependency exists on

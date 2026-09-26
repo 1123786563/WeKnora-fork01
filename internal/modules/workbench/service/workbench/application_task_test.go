@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -487,12 +488,14 @@ func execMigrationFile(db *sql.DB, path string) error {
 	return nil
 }
 
-// Step-0 debt from the T14 subtask-1 review: exhausting all retry attempts
-// on a persistent creation race must surface the typed conflict instead of
-// leaking the raw unique/lock error, and the race classification may only
-// match the marker classes the fix-r1 plan allows.
-func TestEnsureApplicationTaskRetryExhaustionReturnsTypedConflict(t *testing.T) {
-	coordinator := NewApplicationTaskCoordinator(nil)
+// Step-0 debt from the T14 subtask-1 review, revised by the OCR r1 fix: an
+// exhausted race budget is NOT a definite conflict — a twin request may have
+// committed after the last attempt. The recovery Find resolves whatever
+// landed; with nothing durable the caller receives the typed undecided
+// sentinel (never the raw lock error) so Career keeps its linking state.
+func TestEnsureApplicationTaskRetryExhaustionIsUndecidedWithoutDurableTask(t *testing.T) {
+	db := openApplicationTaskDB(t)
+	coordinator := NewApplicationTaskCoordinator(db)
 	calls := 0
 	once := func(context.Context, uint64, string, interfaces.CareerApplicationTaskIntent) (interfaces.CareerApplicationTaskLink, error) {
 		calls++
@@ -503,9 +506,48 @@ func TestEnsureApplicationTaskRetryExhaustionReturnsTypedConflict(t *testing.T) 
 	)
 	require.Empty(t, link.TaskID)
 	require.Empty(t, link.RunID)
-	require.ErrorIs(t, err, ErrApplicationTaskConflict)
+	require.ErrorIs(t, err, ErrApplicationTaskUndecided)
+	require.NotErrorIs(t, err, ErrApplicationTaskConflict, "an exhausted race is undecided, not a definite conflict")
 	require.NotEqual(t, "database is locked", err.Error(), "raw race error must not leak to the caller")
 	require.Equal(t, 3, calls, "the bounded retry budget must stay at three attempts")
+}
+
+// When the racing twin's commit lands before the recovery Find, the
+// exhausted retry resolves to the durable task instead of reporting
+// undecided.
+func TestEnsureApplicationTaskRetryExhaustionRecoversDurableTwin(t *testing.T) {
+	db := openApplicationTaskDB(t)
+	coordinator := NewApplicationTaskCoordinator(db)
+	ctx := context.Background()
+	ensured, err := coordinator.EnsureCareerApplicationTask(ctx, 701, "owner-1", applicationTaskIntent())
+	require.NoError(t, err)
+
+	once := func(context.Context, uint64, string, interfaces.CareerApplicationTaskIntent) (interfaces.CareerApplicationTaskLink, error) {
+		return interfaces.CareerApplicationTaskLink{}, errors.New("database is locked")
+	}
+	link, err := coordinator.ensureWithRetry(ctx, 701, "owner-1", applicationTaskIntent(), once)
+	require.NoError(t, err)
+	require.Equal(t, ensured.TaskID, link.TaskID)
+	require.Equal(t, ensured.RunID, link.RunID)
+}
+
+// Pure input-validation failures carry their own sentinel so Career can
+// answer 400 instead of a 409 conflict for an intent that was never written.
+func TestApplicationTaskValidationFailuresAreInvalidNotConflict(t *testing.T) {
+	_, _, _, err := normalizeApplicationTaskScope(1, "owner", strings.Repeat("r", 65))
+	require.ErrorIs(t, err, ErrApplicationTaskInvalid)
+	require.NotErrorIs(t, err, ErrApplicationTaskConflict)
+
+	intent := applicationTaskIntent()
+	intent.ApplicationID = "not-a-uuid"
+	_, err = normalizeApplicationTaskIntent(1, "owner", intent)
+	require.ErrorIs(t, err, ErrApplicationTaskInvalid)
+	require.NotErrorIs(t, err, ErrApplicationTaskConflict)
+
+	intent = applicationTaskIntent()
+	intent.Title = ""
+	_, err = normalizeApplicationTaskIntent(1, "owner", intent)
+	require.ErrorIs(t, err, ErrApplicationTaskInvalid)
 }
 
 func TestEnsureApplicationTaskNonRaceErrorIsReturnedAsIs(t *testing.T) {

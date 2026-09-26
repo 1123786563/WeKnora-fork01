@@ -42,6 +42,11 @@ func (m *mapExportStorage) ReadExport(_ context.Context, objectKey string) ([]by
 	return append([]byte(nil), data...), nil
 }
 
+func (m *mapExportStorage) DeleteExport(_ context.Context, objectKey string) error {
+	delete(m.files, objectKey)
+	return nil
+}
+
 func itoa(v uint64) string {
 	if v == 0 {
 		return "0"
@@ -491,4 +496,36 @@ func readStoredExport(t *testing.T, o *Office, ctx context.Context, receipt Expo
 	data, err := o.exportStorage.ReadExport(ctx, file.ObjectKey)
 	require.NoError(t, err)
 	return data
+}
+
+// TestPublishMaterialFailureAndReplayLeaveNoOrphanObjects pins the storage
+// gap: objects written before the durable transaction must be compensated
+// away whenever that transaction fails or resolves to a replayed receipt —
+// only committed exports keep their bytes.
+func TestPublishMaterialFailureAndReplayLeaveNoOrphanObjects(t *testing.T) {
+	o, store, ctx := newExportOffice(t, "export-owner", 1941)
+	seed := seedMaterialEvidence(t, o, ctx, "2027", "orphan")
+
+	created, err := o.EditMaterial(ctx, editMaterialInput(seed, "orphan-edit", exportFixtureBody()))
+	require.NoError(t, err)
+	_, err = o.ConfirmMaterial(ctx, ConfirmMaterialInput{RequestID: "orphan-confirm", MaterialID: created.MaterialID, ExpectedRevision: seed.Revision})
+	require.NoError(t, err)
+
+	// A stale expected revision fails inside the transaction AFTER the two
+	// objects were written; the compensating delete must remove them again.
+	_, err = o.PublishMaterial(ctx, PublishMaterialInput{RequestID: "orphan-stale", MaterialID: created.MaterialID, Version: 1, ExpectedRevision: seed.Revision + 5})
+	require.ErrorIs(t, err, ErrRevisionConflict)
+	require.Empty(t, store.files, "a failed publish must not leave orphan objects behind")
+
+	// A successful publish persists exactly its own two objects.
+	receipt, err := o.PublishMaterial(ctx, PublishMaterialInput{RequestID: "orphan-ok", MaterialID: created.MaterialID, Version: 1, ExpectedRevision: seed.Revision})
+	require.NoError(t, err)
+	require.Len(t, store.files, 2)
+
+	// Exact replay of the same request ID resolves to the stored receipt;
+	// the objects written by the replay attempt are compensated away.
+	replayed, err := o.PublishMaterial(ctx, PublishMaterialInput{RequestID: "orphan-ok", MaterialID: created.MaterialID, Version: 1, ExpectedRevision: seed.Revision})
+	require.NoError(t, err)
+	require.Equal(t, receipt.ExportID, replayed.ExportID)
+	require.Len(t, store.files, 2, "replay must not duplicate stored objects")
 }

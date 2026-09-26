@@ -15,11 +15,14 @@ import (
 )
 
 const (
-	OpportunityStored       = "stored"
-	OpportunityNeedsReview  = "needs_review"
-	maxJDTextBytes          = 1024 * 1024
-	maxJDRequestBodyBytes   = 6*maxJDTextBytes + 64*1024
-	opportunityLookupWindow = 350 * time.Millisecond
+	OpportunityStored      = "stored"
+	OpportunityNeedsReview = "needs_review"
+	maxJDTextBytes         = 1024 * 1024
+	maxJDRequestBodyBytes  = 6*maxJDTextBytes + 64*1024
+	// maxProfileActionBodyBytes bounds the profile Act body the same way the
+	// other small JSON write endpoints are bounded (16KB).
+	maxProfileActionBodyBytes = 16 * 1024
+	opportunityLookupWindow   = 350 * time.Millisecond
 )
 
 var ErrOpportunityNotFound = errors.New("career opportunity evidence not found")

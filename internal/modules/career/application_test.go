@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
@@ -523,4 +524,95 @@ func TestApplicationRevisionConflictDoesNotCreateSideEffects(t *testing.T) {
 	require.Equal(t, int64(1), evaluations)
 	require.Equal(t, int64(1), snapshots)
 	require.Equal(t, int64(1), observations)
+}
+
+// ---- OCR round 1 fixes ---------------------------------------------------
+
+// TestCreateApplicationRejectsRequestIDsBeyondWorkbenchWidth pins the
+// alignment with the durable Workbench projection: request IDs of 65..128
+// characters can never be linked (the projection columns are VARCHAR(64)),
+// so they are rejected as invalid requests before any row is committed.
+func TestCreateApplicationRejectsRequestIDsBeyondWorkbenchWidth(t *testing.T) {
+	o, db, ctx := newApplicationOffice(t, "owner-1", 1712)
+	seed := seedApplicationEvaluation(t, o, ctx, "仅限2027届。", "2027", "width")
+	linker := &fakeCareerApplicationLinker{}
+	o.SetApplicationTaskLinker(linker)
+
+	longRequest := strings.Repeat("r", maxApplicationRequestIDLen+1)
+	_, err := o.CreateApplication(ctx, applicationInput(seed, longRequest, "batch-2027-a"))
+	require.ErrorIs(t, err, ErrInvalidRequest)
+	require.Empty(t, readApplicationRows(t, db))
+	ensureCalls, _ := linker.calls()
+	require.Zero(t, ensureCalls, "the linker is never reached with an unrepresentable request ID")
+
+	// A 64-character request ID is the exact durable ceiling and must work.
+	fitted := strings.Repeat("a", maxApplicationRequestIDLen)
+	receipt, err := o.CreateApplication(ctx, applicationInput(seed, fitted, "batch-2027-a"))
+	require.NoError(t, err)
+	require.Equal(t, ApplicationLinkStateReady, receipt.LinkState)
+}
+
+// TestCreateApplicationUndecidedLinkerKeepsLinkingState pins the undecided
+// outcome: when the linker exhausts its race budget without a durable task,
+// Career keeps link_state=linking (a later replay reconciles) instead of
+// terminally failing a request whose task may already be ready.
+func TestCreateApplicationUndecidedLinkerKeepsLinkingState(t *testing.T) {
+	o, db, ctx := newApplicationOffice(t, "owner-1", 1713)
+	seed := seedApplicationEvaluation(t, o, ctx, "仅限2027届。", "2027", "undecided")
+	linker := &fakeCareerApplicationLinker{ensureErr: interfaces.ErrCareerApplicationTaskUndecided}
+	o.SetApplicationTaskLinker(linker)
+
+	_, err := o.CreateApplication(ctx, applicationInput(seed, "undecided-1", "batch-2027-a"))
+	var unknown *OutcomeUnknownError
+	require.ErrorAs(t, err, &unknown)
+
+	rows := readApplicationRows(t, db)
+	require.Len(t, rows, 1)
+	stored, err := o.FindApplicationReceipt(ctx, "undecided-1")
+	require.NoError(t, err)
+	require.Equal(t, ApplicationLinkStateLinking, stored.LinkState, "an undecided link stays linking for reconciliation")
+	require.NotErrorIs(t, err, ErrApplicationConflict)
+}
+
+// TestCreateApplicationSQLiteBusyConvergesToOutcomeUnknown pins the busy
+// branch: when concurrent creation hits SQLite writer-lock contention, the
+// replay/occupied lookups see nothing (the transaction rolled back) and the
+// caller must get the typed outcome_unknown — never a raw "database is
+// locked" 500 — and the same request ID stays safely retryable.
+func TestCreateApplicationSQLiteBusyConvergesToOutcomeUnknown(t *testing.T) {
+	dsn := fmt.Sprintf("file:career-app-busy-%s?mode=memory&cache=shared&_busy_timeout=150", strings.ReplaceAll(uuid.NewString(), "-", ""))
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
+	require.NoError(t, err)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	sqlDB.SetMaxOpenConns(4)
+	o, err := NewOffice(db)
+	require.NoError(t, err)
+	ctx := WithScope(context.Background(), Scope{UserID: "owner-1", TenantID: 1714})
+	require.NoError(t, o.ClaimSpace(ctx))
+	seed := seedApplicationEvaluation(t, o, ctx, "仅限2027届。", "2027", "busy")
+	o.SetApplicationTaskLinker(&fakeCareerApplicationLinker{})
+
+	// Hold the SQLite writer reservation on a dedicated pooled connection so
+	// the application transaction hits SQLITE_BUSY after the short timeout.
+	blocker, err := sqlDB.Conn(ctx)
+	require.NoError(t, err)
+	_, err = blocker.ExecContext(ctx, "BEGIN IMMEDIATE")
+	require.NoError(t, err)
+
+	_, err = o.CreateApplication(ctx, applicationInput(seed, "busy-1", "batch-2027-a"))
+	var unknown *OutcomeUnknownError
+	require.ErrorAs(t, err, &unknown, "lock contention must converge to the typed unknown outcome, got: %v", err)
+	require.Equal(t, "busy-1", unknown.RequestID)
+
+	// Release the writer: the same request ID retries cleanly to a linked
+	// application — the busy branch never left partial state behind.
+	_, err = blocker.ExecContext(ctx, "ROLLBACK")
+	require.NoError(t, err)
+	require.NoError(t, blocker.Close())
+
+	receipt, err := o.CreateApplication(ctx, applicationInput(seed, "busy-1", "batch-2027-a"))
+	require.NoError(t, err)
+	require.Equal(t, ApplicationLinkStateReady, receipt.LinkState)
+	require.Len(t, readApplicationRows(t, db), 1)
 }

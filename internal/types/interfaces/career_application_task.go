@@ -14,9 +14,18 @@ import (
 //   - ErrCareerApplicationTaskNotFound reports that no durable task exists
 //     (yet) for the request ID. The creation outcome is undecided, so
 //     callers must keep their recovering state instead of failing hard.
+//   - ErrCareerApplicationTaskInvalid is a pure input-validation failure:
+//     nothing was written, nothing ever will be under this intent, and the
+//     caller should surface an invalid request rather than a conflict.
+//   - ErrCareerApplicationTaskUndecided means creation raced until the
+//     bounded retry budget ran out and no durable task was found afterwards.
+//     The outcome is still open: callers must keep their recovering state
+//     and reconcile instead of terminally failing.
 var (
-	ErrCareerApplicationTaskConflict = errors.New("career application task conflict")
-	ErrCareerApplicationTaskNotFound = errors.New("career application task not found")
+	ErrCareerApplicationTaskConflict  = errors.New("career application task conflict")
+	ErrCareerApplicationTaskNotFound  = errors.New("career application task not found")
+	ErrCareerApplicationTaskInvalid   = errors.New("career application task invalid request")
+	ErrCareerApplicationTaskUndecided = errors.New("career application task undecided")
 )
 
 type CareerApplicationTaskIntent struct {

@@ -88,6 +88,19 @@ func (o *Office) SetApplicationTaskRemover(remover interfaces.CareerApplicationT
 	o.applicationTaskRemover = remover
 }
 
+// careerSourceUploadReleaser releases one uploaded source's catalog binding
+// and physical object. The UploadAdapter implements it; keeping it narrow
+// lets deletion tests run without the file backend.
+type careerSourceUploadReleaser interface {
+	Release(ctx context.Context, reference, sourceID string) error
+}
+
+// SetSourceUploadReleaser binds the uploaded-source release seam used by the
+// purge step so uploaded originals do not outlive their locator rows.
+func (o *Office) SetSourceUploadReleaser(releaser careerSourceUploadReleaser) {
+	o.sourceUploadReleaser = releaser
+}
+
 // ---- Export (export_career) ----
 
 // CareerExportInput is the closed export intent.
@@ -165,9 +178,46 @@ type CareerExportSubmission struct {
 	CreatedAt        time.Time `json:"createdAt"`
 }
 
+// CareerExportPreparation is one preparation draft receipt record.
+type CareerExportPreparation struct {
+	PreparationID string    `json:"preparationId"`
+	ApplicationID string    `json:"applicationId"`
+	RequestID     string    `json:"requestId"`
+	Focus         string    `json:"focus"`
+	Status        string    `json:"status"`
+	FailureCode   string    `json:"failureCode,omitempty"`
+	CreatedAt     time.Time `json:"createdAt"`
+}
+
+// CareerExportSearchRule is one periodic search rule.
+type CareerExportSearchRule struct {
+	RuleID          string     `json:"ruleId"`
+	Query           string     `json:"query"`
+	IntervalMinutes uint64     `json:"intervalMinutes"`
+	Status          string     `json:"status"`
+	Revision        uint64     `json:"revision"`
+	LastPeriod      uint64     `json:"lastPeriod"`
+	NextDueAt       *time.Time `json:"nextDueAt,omitempty"`
+	CreatedAt       time.Time  `json:"createdAt"`
+}
+
+// CareerExportReminder is one in-space reminder row.
+type CareerExportReminder struct {
+	ReminderID    string    `json:"reminderId"`
+	SourceKind    string    `json:"sourceKind"`
+	SourceID      string    `json:"sourceId"`
+	ApplicationID string    `json:"applicationId,omitempty"`
+	OpportunityID string    `json:"opportunityId,omitempty"`
+	NoticeKey     string    `json:"noticeKey"`
+	Status        string    `json:"status"`
+	CreatedAt     time.Time `json:"createdAt"`
+}
+
 // CareerExportArchive is the frozen structure of one complete export
 // package: profile, original job snapshots, application events, material
-// versions, and submission records.
+// versions, submission records, preparation drafts, periodic search rules,
+// and reminders. Deletion purges every one of these sections, so the export
+// must carry all of them or the data would be destroyed unrecoverably.
 type CareerExportArchive struct {
 	Profile       View                      `json:"profile"`
 	FactHistory   []Fact                    `json:"factHistory"`
@@ -175,6 +225,9 @@ type CareerExportArchive struct {
 	Applications  []CareerExportApplication `json:"applications"`
 	Materials     []CareerExportMaterial    `json:"materials"`
 	Submissions   []CareerExportSubmission  `json:"submissions"`
+	Preparations  []CareerExportPreparation `json:"preparations"`
+	SearchRules   []CareerExportSearchRule  `json:"searchRules"`
+	Reminders     []CareerExportReminder    `json:"reminders"`
 }
 
 // CareerExportReceipt is the export receipt: the archive travels inline
@@ -332,6 +385,9 @@ func buildCareerExportArchive(tx *gorm.DB, s Scope) (CareerExportArchive, error)
 		Applications:  []CareerExportApplication{},
 		Materials:     []CareerExportMaterial{},
 		Submissions:   []CareerExportSubmission{},
+		Preparations:  []CareerExportPreparation{},
+		SearchRules:   []CareerExportSearchRule{},
+		Reminders:     []CareerExportReminder{},
 	}
 	var head profile
 	if err := tx.Where("tenant_id=? AND user_id=?", s.TenantID, s.UserID).First(&head).Error; err != nil {
@@ -445,6 +501,42 @@ func buildCareerExportArchive(tx *gorm.DB, s Scope) (CareerExportArchive, error)
 			CreatedAt: sub.CreatedAt,
 		})
 	}
+
+	var preparations []preparationRecord
+	if err := tx.Where("tenant_id=? AND user_id=?", s.TenantID, s.UserID).Order("created_at,id").Find(&preparations).Error; err != nil {
+		return archive, err
+	}
+	for _, prep := range preparations {
+		archive.Preparations = append(archive.Preparations, CareerExportPreparation{
+			PreparationID: prep.ID, ApplicationID: prep.ApplicationID, RequestID: prep.RequestID,
+			Focus: prep.Focus, Status: prep.Status, FailureCode: prep.FailureCode,
+			CreatedAt: prep.CreatedAt,
+		})
+	}
+
+	var searchRules []searchRuleRecord
+	if err := tx.Where("tenant_id=? AND user_id=?", s.TenantID, s.UserID).Order("created_at,id").Find(&searchRules).Error; err != nil {
+		return archive, err
+	}
+	for _, rule := range searchRules {
+		archive.SearchRules = append(archive.SearchRules, CareerExportSearchRule{
+			RuleID: rule.ID, Query: rule.Query, IntervalMinutes: rule.IntervalMinutes,
+			Status: rule.Status, Revision: rule.Revision, LastPeriod: rule.LastPeriod,
+			NextDueAt: rule.NextDueAt, CreatedAt: rule.CreatedAt,
+		})
+	}
+
+	var reminders []reminderRecord
+	if err := tx.Where("tenant_id=? AND user_id=?", s.TenantID, s.UserID).Order("created_at,id").Find(&reminders).Error; err != nil {
+		return archive, err
+	}
+	for _, rem := range reminders {
+		archive.Reminders = append(archive.Reminders, CareerExportReminder{
+			ReminderID: rem.ID, SourceKind: rem.SourceKind, SourceID: rem.SourceID,
+			ApplicationID: rem.ApplicationID, OpportunityID: rem.OpportunityID,
+			NoticeKey: rem.NoticeKey, Status: rem.Status, CreatedAt: rem.CreatedAt,
+		})
+	}
 	return archive, nil
 }
 
@@ -538,9 +630,10 @@ func (o *Office) CareerDeletionBoundary(ctx context.Context) (CareerDeletionBoun
 			{Section: "material_versions", Description: "材料的不可变版本", Count: sectionCount("career_material_versions", "")},
 			{Section: "material_exports", Description: "材料导出与下载授权", Count: sectionCount("career_material_exports", "")},
 			{Section: "submissions", Description: "你确认的投递记录", Count: sectionCount("career_submissions", "")},
+			{Section: "preparations", Description: "投递准备稿（随完整导出携带后删除）", Count: sectionCount("career_preparations", "")},
 			{Section: "searches", Description: "一次性搜索记录", Count: sectionCount("career_searches", "")},
-			{Section: "search_rules", Description: "周期搜索规则", Count: sectionCount("career_search_rules", "")},
-			{Section: "reminders", Description: "站内待办与提醒回执（推送仅为提醒渠道，不含公司、岗位或面试细节）", Count: sectionCount("career_reminders", "")},
+			{Section: "search_rules", Description: "周期搜索规则（随完整导出携带后删除）", Count: sectionCount("career_search_rules", "")},
+			{Section: "reminders", Description: "站内待办与提醒回执（推送仅为提醒渠道，不含公司、岗位或面试细节；随完整导出携带后删除）", Count: sectionCount("career_reminders", "")},
 			{Section: "usage_reservations", Description: "搜索额度预占与结算记录（额度账本，删除后随空间一并清空）", Count: sectionCount("career_usage_reservations", "")},
 			{Section: "reconciliations", Description: "岗位去重与合并的决策记录（含合并证据，随删除一并清除）", Count: sectionCount("career_reconciliations", "")},
 			{Section: "workbench_tasks", Description: "Workbench 侧申请任务投影（经删除端口移除）", Count: sectionCount("career_applications", "task_id <> ''")},
@@ -761,6 +854,27 @@ func (o *Office) FindCareerDeletion(ctx context.Context, requestID string) (Care
 	if err != nil {
 		return CareerDeletionReceipt{}, err
 	}
+	// A record still in the executing window carries the initial "{}" body.
+	// Decoding it would present an empty (status-less) receipt as success;
+	// instead the durable deletion state is synthesized into a truthful
+	// in-progress receipt. Terminal records (deleted/partial) always carry
+	// their real receipt and replay directly.
+	if record.Status == DeletionStatusDeleting && record.ReceiptBody == "{}" {
+		receipt := CareerDeletionReceipt{
+			Kind:      CareerKindDeleted,
+			RequestID: record.RequestID,
+			Status:    DeletionStatusDeleting,
+			Steps:     newDeletionExecution().Steps,
+			Retention: careerDeletionRetention(),
+			Revision:  record.ExpectedRevision,
+			StartedAt: record.CreatedAt,
+		}
+		var execution deletionExecution
+		if json.Unmarshal([]byte(record.StateBody), &execution) == nil && execution.Steps != nil {
+			receipt.Steps = execution.Steps
+		}
+		return receipt, nil
+	}
 	return decodeCareerDeletionReceipt(record.ReceiptBody)
 }
 
@@ -822,13 +936,58 @@ func (o *Office) runDeletionSteps(ctx context.Context, s Scope, requestID string
 	return ""
 }
 
+// deletionRevokeExports revokes every material export under the scope AND
+// removes its physical objects. The objects are deleted first: the purge
+// step afterwards clears the export rows, so any file left behind would be
+// unreachable and remain on disk forever. DeleteExport is idempotent, so a
+// retry after a partial object failure never wedges on earlier progress.
 func (o *Office) deletionRevokeExports(ctx context.Context, s Scope) error {
+	var rows []materialExportRecord
+	if err := o.db.WithContext(ctx).
+		Where("tenant_id=? AND user_id=? AND status<>?", s.TenantID, s.UserID, ExportStatusRevoked).
+		Find(&rows).Error; err != nil {
+		return err
+	}
+	if o.exportStorage != nil {
+		for _, row := range rows {
+			for _, key := range []string{row.PDFObjectKey, row.DOCXObjectKey} {
+				if key == "" {
+					continue
+				}
+				if err := o.exportStorage.DeleteExport(ctx, key); err != nil {
+					return fmt.Errorf("delete career material export object %s: %w", key, err)
+				}
+			}
+		}
+	}
 	return o.db.WithContext(ctx).Model(&materialExportRecord{}).
 		Where("tenant_id=? AND user_id=? AND status<>?", s.TenantID, s.UserID, ExportStatusRevoked).
 		Updates(map[string]any{"status": ExportStatusRevoked, "revoked_at": time.Now().UTC(), "updated_at": time.Now().UTC()}).Error
 }
 
+// deletionPurgeCareerData first releases every uploaded source through the
+// catalog seam (binding + physical object) and then clears the Career rows.
+// Each source's ref is blanked right after a successful release so a retry
+// after a mid-step failure never releases the same resource twice.
 func (o *Office) deletionPurgeCareerData(ctx context.Context, s Scope) error {
+	if o.sourceUploadReleaser != nil {
+		var sources []sourceRevision
+		if err := o.db.WithContext(ctx).
+			Where("tenant_id=? AND user_id=? AND resource_ref<>''", s.TenantID, s.UserID).
+			Find(&sources).Error; err != nil {
+			return err
+		}
+		for _, src := range sources {
+			if err := o.sourceUploadReleaser.Release(ctx, src.ResourceRef, src.ID); err != nil {
+				return fmt.Errorf("release career source %s: %w", src.ID, err)
+			}
+			if err := o.db.WithContext(ctx).Model(&sourceRevision{}).
+				Where("tenant_id=? AND user_id=? AND id=? AND resource_ref=?", s.TenantID, s.UserID, src.ID, src.ResourceRef).
+				Update("resource_ref", "").Error; err != nil {
+				return err
+			}
+		}
+	}
 	return o.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		for _, table := range careerPurgeTables {
 			if err := tx.Table(table).

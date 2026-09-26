@@ -23,8 +23,10 @@ const careerApplicationTaskOrigin = "career_application"
 // Career can classify definite rejections without importing Workbench. The
 // aliases keep the in-package sentinels (and their messages) stable.
 var (
-	ErrApplicationTaskNotFound = interfaces.ErrCareerApplicationTaskNotFound
-	ErrApplicationTaskConflict = interfaces.ErrCareerApplicationTaskConflict
+	ErrApplicationTaskNotFound  = interfaces.ErrCareerApplicationTaskNotFound
+	ErrApplicationTaskConflict  = interfaces.ErrCareerApplicationTaskConflict
+	ErrApplicationTaskInvalid   = interfaces.ErrCareerApplicationTaskInvalid
+	ErrApplicationTaskUndecided = interfaces.ErrCareerApplicationTaskUndecided
 )
 
 var _ interfaces.CareerApplicationTaskLinker = (*ApplicationTaskCoordinator)(nil)
@@ -88,8 +90,12 @@ func (c *ApplicationTaskCoordinator) EnsureCareerApplicationTask(
 
 // ensureWithRetry retries only errors attributable to concurrent request
 // creation. When the bounded budget is exhausted while the error is still a
-// race, the caller receives the typed ErrApplicationTaskConflict (wrapping
-// the last race evidence) instead of the raw unique/lock error.
+// race, the outcome is NOT a definite conflict: a twin request may have
+// committed between the last attempt and now. A recovery Find resolves the
+// commits that landed; when nothing durable exists the caller receives the
+// typed ErrApplicationTaskUndecided (wrapping the last race evidence) so it
+// keeps its recovering state instead of terminally failing a request ID
+// whose task may already be ready.
 func (c *ApplicationTaskCoordinator) ensureWithRetry(
 	ctx context.Context,
 	tenantID uint64,
@@ -116,9 +122,14 @@ func (c *ApplicationTaskCoordinator) ensureWithRetry(
 		case <-time.After(applicationTaskRetryPause(attempt)):
 		}
 	}
+	if link, err := c.FindCareerApplicationTask(ctx, tenantID, ownerID, intent.RequestID); err == nil {
+		return link, nil
+	} else if !errors.Is(err, ErrApplicationTaskNotFound) {
+		return interfaces.CareerApplicationTaskLink{}, err
+	}
 	return interfaces.CareerApplicationTaskLink{}, fmt.Errorf(
 		"%w: creation still racing after %d attempts: %v",
-		ErrApplicationTaskConflict, applicationTaskMaxAttempts, lastRace,
+		ErrApplicationTaskUndecided, applicationTaskMaxAttempts, lastRace,
 	)
 }
 
@@ -293,24 +304,29 @@ func normalizeApplicationTaskIntent(
 	intent.ApplicationID = strings.TrimSpace(intent.ApplicationID)
 	parsedApplicationID, err := uuid.Parse(intent.ApplicationID)
 	if err != nil {
-		return intent, fmt.Errorf("%w: application id must be a UUID", ErrApplicationTaskConflict)
+		return intent, fmt.Errorf("%w: application id must be a UUID", ErrApplicationTaskInvalid)
 	}
 	intent.ApplicationID = parsedApplicationID.String()
 	intent.Title = strings.Join(strings.Fields(intent.Title), " ")
 	if intent.Title == "" || len(intent.Title) > 255 {
-		return intent, fmt.Errorf("%w: title must be 1 to 255 characters", ErrApplicationTaskConflict)
+		return intent, fmt.Errorf("%w: title must be 1 to 255 characters", ErrApplicationTaskInvalid)
 	}
 	return intent, nil
 }
 
+// normalizeApplicationTaskScope validates the durable request-ID width. The
+// 64-character ceiling matches the physical column width of
+// workbench_application_tasks.origin_request_id and agent_runs.request_id;
+// Career enforces the same limit up front so a valid Career request can
+// never reach this seam only to fail deterministically.
 func normalizeApplicationTaskScope(tenantID uint64, ownerID, requestID string) (uint64, string, string, error) {
 	ownerID = strings.TrimSpace(ownerID)
 	requestID = strings.TrimSpace(requestID)
 	if tenantID == 0 || ownerID == "" || len(ownerID) > 512 {
-		return 0, "", "", fmt.Errorf("%w: tenant and owner are required", ErrApplicationTaskConflict)
+		return 0, "", "", fmt.Errorf("%w: tenant and owner are required", ErrApplicationTaskInvalid)
 	}
 	if requestID == "" || len(requestID) > 64 {
-		return 0, "", "", fmt.Errorf("%w: request id must be 1 to 64 characters", ErrApplicationTaskConflict)
+		return 0, "", "", fmt.Errorf("%w: request id must be 1 to 64 characters", ErrApplicationTaskInvalid)
 	}
 	return tenantID, ownerID, requestID, nil
 }

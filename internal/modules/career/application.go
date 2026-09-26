@@ -25,6 +25,13 @@ const (
 	ApplicationLinkStateFailed  = "link_failed"
 )
 
+// maxApplicationRequestIDLen matches the Workbench durable projection width
+// (workbench_application_tasks.origin_request_id and agent_runs.request_id
+// are VARCHAR(64)): a longer request ID can never be linked, so it is
+// rejected as an invalid request up front instead of deterministically
+// failing after the application row is committed.
+const maxApplicationRequestIDLen = 64
+
 var (
 	ErrApplicationNotFound       = errors.New("career application not found")
 	ErrApplicationConflict       = errors.New("career application conflict")
@@ -120,7 +127,7 @@ func (o *Office) CreateApplication(ctx context.Context, input CreateApplicationI
 	input.SnapshotID = strings.TrimSpace(input.SnapshotID)
 	input.EvaluationID = strings.TrimSpace(input.EvaluationID)
 	input.BatchIdentity = canonicalApplicationBatchIdentity(input.BatchIdentity)
-	if input.RequestID == "" || len(input.RequestID) > 128 ||
+	if input.RequestID == "" || len(input.RequestID) > maxApplicationRequestIDLen ||
 		input.OpportunityID == "" || input.SnapshotID == "" || input.EvaluationID == "" ||
 		input.BatchIdentity == "" || len(input.BatchIdentity) > 255 {
 		return ApplicationReceipt{}, ErrInvalidRequest
@@ -310,6 +317,13 @@ func (o *Office) CreateApplication(ctx context.Context, input CreateApplicationI
 				return ApplicationReceipt{}, ErrApplicationConflict
 			}
 		}
+		if isSQLiteBusy(err) {
+			// A writer-lock failure rolled the whole transaction back and the
+			// replay/occupied lookups above cannot see a committed row, so the
+			// outcome is unknown but retry-safe: the same request ID replays
+			// idempotently instead of surfacing a raw "database is locked".
+			return ApplicationReceipt{}, &OutcomeUnknownError{RequestID: input.RequestID}
+		}
 		if ctx.Err() != nil {
 			return ApplicationReceipt{}, &OutcomeUnknownError{RequestID: input.RequestID}
 		}
@@ -341,6 +355,20 @@ func (o *Office) CreateApplication(ctx context.Context, input CreateApplicationI
 		}
 		return ApplicationReceipt{}, &OutcomeUnknownError{RequestID: input.RequestID}
 	}
+	if errors.Is(ensureErr, interfaces.ErrCareerApplicationTaskInvalid) {
+		// A pure input-validation rejection is deterministic: no task was (or
+		// ever will be) created for this intent, so the link is terminally
+		// failed and the client sees an invalid request, not a conflict.
+		if _, failErr := o.updateApplicationLink(ctx, scope, input.RequestID, ApplicationLinkStateFailed, interfaces.CareerApplicationTaskLink{}); failErr == nil {
+			return ApplicationReceipt{}, fmt.Errorf("%w: workbench rejected the task link: %v", ErrInvalidRequest, ensureErr)
+		}
+		return ApplicationReceipt{}, &OutcomeUnknownError{RequestID: input.RequestID}
+	}
+	// Anything else — including ErrCareerApplicationTaskUndecided after the
+	// linker's bounded race budget ran out — leaves the row in linking state:
+	// a replay of the same request ID re-enters the linker and reconciles
+	// against whatever became durable, instead of forking a terminal failure
+	// away from a task that may already be ready.
 	return ApplicationReceipt{}, &OutcomeUnknownError{RequestID: input.RequestID}
 }
 
@@ -357,7 +385,7 @@ func (o *Office) ReconcileApplicationLink(ctx context.Context, requestID string)
 		return ApplicationReceipt{}, err
 	}
 	requestID = strings.TrimSpace(requestID)
-	if requestID == "" || len(requestID) > 128 {
+	if requestID == "" || len(requestID) > maxApplicationRequestIDLen {
 		return ApplicationReceipt{}, ErrInvalidRequest
 	}
 	if o.linker == nil {

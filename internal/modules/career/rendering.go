@@ -12,6 +12,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
+	"log/slog"
 	"os"
 	"regexp"
 	"sort"
@@ -174,15 +176,36 @@ type materialExportRecord struct {
 func (materialExportRecord) TableName() string { return "career_material_exports" }
 
 // materialExportStorage is the narrow storage seam: object keys follow the
-// existing local:// pattern owned by the file service.
+// existing local:// pattern owned by the file service. DeleteExport is
+// idempotent: removing an already-missing object succeeds, because a retry
+// of a deletion step must never wedge on its own earlier progress.
 type materialExportStorage interface {
 	SaveExport(ctx context.Context, tenantID uint64, name string, data []byte) (string, error)
 	ReadExport(ctx context.Context, objectKey string) ([]byte, error)
+	DeleteExport(ctx context.Context, objectKey string) error
 }
 
 // SetExportStorage binds the export storage seam. Production wires the shared
 // file service; tests inject a hermetic store.
 func (o *Office) SetExportStorage(storage materialExportStorage) { o.exportStorage = storage }
+
+// cleanupOrphanExportObjects removes stored objects whose durable rows never
+// committed (conflict, replay, or failure). It is best effort by design: a
+// leaked object is recoverable garbage, and cleanup must never mask the
+// original error the caller is about to report.
+func (o *Office) cleanupOrphanExportObjects(ctx context.Context, keys ...string) {
+	if o.exportStorage == nil {
+		return
+	}
+	for _, key := range keys {
+		if key == "" {
+			continue
+		}
+		if err := o.exportStorage.DeleteExport(ctx, key); err != nil {
+			slog.Warn("career export object cleanup pending", "object_key", key, "error", err.Error())
+		}
+	}
+}
 
 // SetExportSigningKey binds the HMAC secret for download grants. Grants fail
 // closed while no key is configured.
@@ -208,6 +231,19 @@ func (f *fileServiceExportStorage) ReadExport(ctx context.Context, objectKey str
 	}
 	defer reader.Close()
 	return io.ReadAll(reader)
+}
+
+// DeleteExport physically removes one stored export object so a deletion or
+// a failed publish cannot leave resume-content bytes on disk forever. An
+// object that is already gone counts as deleted.
+func (f *fileServiceExportStorage) DeleteExport(ctx context.Context, objectKey string) error {
+	if err := f.files.DeleteFile(ctx, objectKey); err != nil {
+		if errors.Is(err, fs.ErrNotExist) || os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	return nil
 }
 
 // careerExportGrant is the authorization fact behind a short-lived export
@@ -1097,6 +1133,9 @@ func (o *Office) PublishMaterial(ctx context.Context, input PublishMaterialInput
 	}
 	docxKey, err := o.exportStorage.SaveExport(ctx, s.TenantID, "career_export_"+exportID+docxExportExtension, docxBytes)
 	if err != nil {
+		// The PDF object is already durable; without a compensating delete it
+		// would outlive every row that could ever reference it.
+		o.cleanupOrphanExportObjects(ctx, pdfKey)
 		return ExportReceipt{}, fmt.Errorf("store career material docx: %w", err)
 	}
 	pdfVerifyErr := o.verifyExportFormat(ExportFormatPDF, pdfBytes, view.Body)
@@ -1137,6 +1176,7 @@ func (o *Office) PublishMaterial(ctx context.Context, input PublishMaterialInput
 		receipt.FailureMessage = strings.TrimSpace(strings.TrimSpace(errorText(pdfVerifyErr)) + " " + errorText(docxVerifyErr))
 	}
 
+	persisted := false
 	err = o.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var stored materialReceiptRecord
 		e := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
@@ -1180,11 +1220,21 @@ func (o *Office) PublishMaterial(ctx context.Context, input PublishMaterialInput
 		}).Error; e != nil {
 			return e
 		}
-		return tx.Create(&materialReceiptRecord{
+		if e = tx.Create(&materialReceiptRecord{
 			TenantID: s.TenantID, UserID: s.UserID, RequestID: input.RequestID,
 			Fingerprint: fingerprint, Body: string(mustJSON(receipt)), CreatedAt: now,
-		}).Error
+		}).Error; e != nil {
+			return e
+		}
+		persisted = true
+		return nil
 	})
+	if !persisted {
+		// Conflict, replay, or DB failure: no durable row references the
+		// freshly written objects anymore, so they are compensated away
+		// instead of leaking resume content onto disk.
+		o.cleanupOrphanExportObjects(ctx, pdfKey, docxKey)
+	}
 	if err != nil {
 		if errors.Is(err, ErrIdempotencyConflict) || errors.Is(err, ErrInvalidRequest) ||
 			errors.Is(err, ErrMaterialNotFound) || errors.Is(err, ErrMaterialVersionNotFound) ||

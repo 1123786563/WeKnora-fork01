@@ -45,7 +45,11 @@ func NewHandler(db *gorm.DB, members interfaces.TenantMemberService, files inter
 	if key, keyErr := ExportSigningKeyFromEnv(); keyErr == nil {
 		o.SetExportSigningKey(key)
 	}
-	return &Handler{office: o, members: members, upload: NewUploadAdapter(files, catalog, reader)}, nil
+	upload := NewUploadAdapter(files, catalog, reader)
+	// Uploaded originals must be released through the catalog seam when the
+	// whole space is deleted; the purge step calls this before clearing rows.
+	o.SetSourceUploadReleaser(upload)
+	return &Handler{office: o, members: members, upload: upload}, nil
 }
 func validateOwnerOnlyCareerTenant(userID string, tenantID uint64, members []*types.TenantMember) error {
 	if userID == "" || tenantID == 0 || len(members) != 1 || members[0] == nil || members[0].UserID != userID || members[0].TenantID != tenantID || members[0].Role != types.TenantRoleOwner {
@@ -224,7 +228,13 @@ func (h *Handler) Act(c *gin.Context) {
 		ExpectedRevision uint64 `json:"expectedRevision"`
 		Source           Source `json:"source"`
 	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxProfileActionBodyBytes)
 	if e := c.ShouldBindJSON(&req); e != nil {
+		var maxBytesError *http.MaxBytesError
+		if errors.As(e, &maxBytesError) {
+			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": gin.H{"code": "request_too_large", "message": "profile action request is too large"}})
+			return
+		}
 		writeError(c, ErrInvalidRequest)
 		return
 	}
@@ -1547,11 +1557,7 @@ func (h *Handler) Sources(c *gin.Context) {
 		writeError(c, err)
 		return
 	}
-	for _, source := range v {
-		if cleanupErr := h.cleanupCatalogCandidates(ctx, source.ID); cleanupErr != nil {
-			slog.Warn("career catalog cleanup pending", "source_id", source.ID)
-		}
-	}
+	h.cleanupSourcesBounded(ctx, v)
 	if refreshed, refreshErr := h.office.ListSources(ctx); refreshErr == nil {
 		v = refreshed
 	}
@@ -1610,11 +1616,7 @@ func (h *Handler) Upload(c *gin.Context) {
 		return
 	}
 	if sources, listErr := h.office.ListSources(ctx); listErr == nil {
-		for _, source := range sources {
-			if cleanupErr := h.cleanupCatalogCandidates(ctx, source.ID); cleanupErr != nil {
-				slog.Warn("career catalog cleanup pending", "source_id", source.ID)
-			}
-		}
+		h.cleanupSourcesBounded(ctx, sources)
 	}
 	safeName, nameValid := secutils.ValidateInput(strings.TrimSpace(header.Filename))
 	if !nameValid {
@@ -1765,6 +1767,21 @@ func (h *Handler) Upload(c *gin.Context) {
 
 func (h *Handler) reconcileStaleSources(ctx context.Context) error {
 	return h.reconcileStaleSourcesExcept(ctx, "")
+}
+
+// cleanupSourcesBounded runs catalog cleanup for every source under ONE
+// detached context with a small shared budget, mirroring
+// reconcileStaleSourcesExcept: a stalled storage backend can never hold the
+// caller's request hostage, and the N sources share one bounded window
+// instead of one unbounded request context each.
+func (h *Handler) cleanupSourcesBounded(ctx context.Context, sources []CareerSource) {
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	for _, source := range sources {
+		if cleanupErr := h.cleanupCatalogCandidates(cleanupCtx, source.ID); cleanupErr != nil {
+			slog.Warn("career catalog cleanup pending", "source_id", source.ID)
+		}
+	}
 }
 
 func (h *Handler) reconcileStaleSourcesExcept(ctx context.Context, skipRequestID string) error {
