@@ -1208,3 +1208,43 @@ ok  	github.com/Tencent/WeKnora/internal/router	3.330s
 ## 4. 结论
 
 Task 5 交付面零改动、零回归。F2 仍为唯一未决项且其修复者非本任务：**需编排方授权执行者完成 Task 0**（sqlite 000114→000118、versioned 000193→000197、migration.go :29-33 注释与 :33 常量、:123 探测串、sqlite up 文件自引用注释五处联动——槽位本轮再证空闲）。完成后 Task 6 的 AC3 全量迁移 e2e 方可运行。
+
+---
+
+# Task 5 修复轮 3 报告（findings 第三次逐字重复——F2 跨任务项复核现状未变，本轮复跑取证，仍待编排方收口）
+
+- **执行者**：实现员-t51-任务5（修复轮 3/5）
+- **基线**：`8af01967a`（修复轮 2 入册）→ 本轮 docs 提交见文末
+- **定性**：唯一 finding 第三次逐字重复（Task 0 未执行的跨任务预存在项，非 Task 5 缺陷；Task 3 修复轮 2-5 曾以同模式处理同类重复 findings，均以复跑取证 + 不代做收口）。依 Task 4 报告 F2 既有裁决不代做 migrations/**，本轮零代码改动。
+
+## 1. F2 复跑（本轮实跑，现状与修复轮 1/2 完全一致）
+
+1. 双占仍在：sqlite `000114_mobile_device_app.{up,down}.sql` × `000114_public_agent_marketplace.{up,down}.sql` 并存；versioned `000193_mobile_device_app.*` × `000193_public_agent_marketplace.*` 并存（`ls` 实跑输出）。
+2. 门控常量未改：`internal/database/migration.go:33` 仍为 `const sqliteAdoptionFKRelaxationMigrationVersion = 114`（`grep` 实跑）。
+3. `go test ./internal/handler/ -run 'TestNotionPublish' -count=1` 复跑：`--- FAIL` 计数 = **3**（grep -c 实跑），报错仍为 `duplicate migration file: 000114_public_agent_marketplace.down.sql`（grep -m1 实跑）——与 finding 逐字一致。
+4. 槽位核查：sqlite `000118` 无文件、versioned `000197` 无文件（`ls | grep -E "^000118|^000193|^000197"` 输出仅含 000114/000193 双占对）——Task 0 可按计划原文执行。
+
+## 2. 待核实项（4 项，逐项维持前两轮结论，无新事实）
+
+1. dig 运行时装配维持未冒烟（需真实 config/DB/redis 环境，本 ask 未授权起 server；静态+编译证据链不变）。
+2. Task 6 e2e 不存在（Task 6 授权面）且受 F2 阻断——无法验证。
+3. 真实 Notion blocked-env 维持声明，零伪造。
+4. `go test ./internal/database/ -count=1` 未运行（Task 0 未发生无可验证对象）。
+
+## 3. 修复轮回归（本任务在案测试复跑，零回归）
+
+```
+$ go test ./internal/handler/ -run 'TestActionPlan' -count=1 -v
+--- PASS: TestActionPlanHandlerFailClosedWithoutService (0.01s)
+--- PASS: TestActionPlanHandlerValidationAndNotFound (0.00s)
+ok  	github.com/Tencent/WeKnora/internal/handler	2.679s
+
+$ go test ./internal/router/ -run TestActionPlanRoutes -count=1 -v
+--- PASS: TestActionPlanRoutesNilHandlerRegistersSilently (0.00s)
+--- PASS: TestActionPlanRoutesRegisterWithHandler (0.00s)
+ok  	github.com/Tencent/WeKnora/internal/router	5.555s
+```
+
+## 4. 结论
+
+Task 5 交付面零改动、零回归。F2 三轮复核结论稳定：其修复者非本任务——**需编排方授权执行者完成 Task 0**（sqlite 000114→000118、versioned 000193→000197、migration.go :29-33 与 :123 联动；槽位三轮均证空闲）。审查循环若继续把同一跨任务项发回实现员，建议编排方直接派发 Task 0 专项执行者以打破循环（Task 3 修复轮 1-5 的同类先例已证明重复回发不产生新事实）。
