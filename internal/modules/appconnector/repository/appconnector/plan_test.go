@@ -106,3 +106,29 @@ func TestPlanApproveBindsDigestAndExclusions(t *testing.T) {
 		t.Fatalf("idempotent re-approve must stay legal, got %v", err)
 	}
 }
+
+// TestPlanApproveCASPinsExclusionSetOnReapproval: the frozen exclusion
+// set is pinned INSIDE the approval CAS itself — an authorized plan can
+// only be re-approved with the SAME recorded exclusion set. A racing
+// approval carrying a DIFFERENT set (it read the row before the first
+// approval committed, so no service-layer check can see it) must find
+// ZERO CAS rows: first writer wins, the frozen decision is untouched.
+func TestPlanApproveCASPinsExclusionSetOnReapproval(t *testing.T) {
+	db := openPlanStoreDB(t)
+	store := NewPlanStore(db)
+	ctx := context.Background()
+	if err := store.CreatePlan(ctx, planRow("plan-1"), planItems(7, "plan-1", "act-1", "act-2")); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	if err := store.ApprovePlan(ctx, 7, "plan-1", "digest-plan-1", "boss", `[2]`, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.ApprovePlan(ctx, 7, "plan-1", "digest-plan-1", "boss", `[]`, now); !errors.Is(err, ErrPlanState) {
+		t.Fatalf("CAS must pin the recorded exclusion set — a different set after approval is zero rows, got %v", err)
+	}
+	got, _ := store.FindPlan(ctx, 7, "plan-1")
+	if got.ExcludedJSON != `[2]` || got.ApprovedBy != "boss" {
+		t.Fatalf("frozen decision must be untouched by the refused CAS: %+v", got)
+	}
+}

@@ -398,3 +398,62 @@ func TestPlanApproveRejectsBadExclusions(t *testing.T) {
 		t.Fatalf("duplicate exclude seq refused, got %v", err)
 	}
 }
+
+// TestPlanApproveConcurrentDistinctExclusionsSingleWinner: the store CAS
+// pins the exclusion-set freeze, so under TRUE concurrency two approvals
+// carrying DIFFERENT exclusion sets cannot both win — the first writer's
+// decision stands, the racing writer is refused, and the per-item outcome
+// always matches the recorded decision (the excluded item is never
+// approved, whoever writes last).
+func TestPlanApproveConcurrentDistinctExclusionsSingleWinner(t *testing.T) {
+	ctx := context.Background()
+	for round := 0; round < 20; round++ {
+		e := newPlanSvcEnv(t)
+		pv := e.formTwo(t)
+		errs := make(chan error, 2)
+		for _, seqs := range [][]int{nil, {2}} {
+			go func(seqs []int) {
+				_, err := e.svc.Approve(ctx, 7, pv.ID, "user-a", ApproveInput{Digest: pv.Digest, ExcludeSeqs: seqs})
+				errs <- err
+			}(seqs)
+		}
+		wins := 0
+		for i := 0; i < 2; i++ {
+			err := <-errs
+			if err == nil {
+				wins++
+				continue
+			}
+			if !errors.Is(err, ErrPlanState) && !errors.Is(err, repoappconn.ErrPlanState) {
+				t.Fatalf("round %d: racing approve must fail with a plan-state error, got %v", round, err)
+			}
+		}
+		if wins != 1 {
+			t.Fatalf("round %d: exactly one concurrent approval must win, got %d", round, wins)
+		}
+		final, err := e.plans.FindPlan(ctx, 7, pv.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if final.ExcludedJSON != "[]" && final.ExcludedJSON != "[2]" {
+			t.Fatalf("round %d: recorded set must be one of the contenders: %q", round, final.ExcludedJSON)
+		}
+		first, ferr := e.store.FindAction(ctx, pv.Items[0].ActionID)
+		if ferr != nil {
+			t.Fatal(ferr)
+		}
+		second, ferr := e.store.FindAction(ctx, pv.Items[1].ActionID)
+		if ferr != nil {
+			t.Fatal(ferr)
+		}
+		if final.ExcludedJSON == "[2]" {
+			if first.State != appconn.ActionAuthorized || second.State != appconn.ActionAwaitingApproval {
+				t.Fatalf("round %d: the excluded item 2 must stay awaiting_approval: %s/%s", round, first.State, second.State)
+			}
+		} else {
+			if first.State != appconn.ActionAuthorized || second.State != appconn.ActionAuthorized {
+				t.Fatalf("round %d: both included items must be authorized: %s/%s", round, first.State, second.State)
+			}
+		}
+	}
+}

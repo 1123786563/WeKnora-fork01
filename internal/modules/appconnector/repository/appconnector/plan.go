@@ -114,13 +114,20 @@ func (s *PlanStore) ListPlanItems(ctx context.Context, tenantID uint64, planID s
 // the row is still in an approvable state. Zero rows affected (foreign
 // digest or a lost race) is ErrPlanState — the service layer reads the
 // row first to give a foreign digest its own mismatch sentinel.
+//
+// The exclusion-set freeze (排除集首次批准后冻结) is pinned INSIDE the
+// CAS: a row already authorized can only be re-approved with the SAME
+// recorded excluded_json. A concurrent approval carrying a different set
+// (it read the row before the first approval committed) therefore finds
+// zero rows — first writer wins, the frozen decision is never silently
+// rewritten.
 func (s *PlanStore) ApprovePlan(ctx context.Context, tenantID uint64, planID, digest, actor, excludedJSON string, now time.Time) error {
 	if planID == "" || digest == "" || actor == "" {
 		return ErrPlanState
 	}
 	res := s.db.WithContext(ctx).Model(&ActionPlanRow{}).
-		Where("tenant_id = ? AND id = ? AND digest = ? AND state IN ?", tenantID, planID, digest,
-			[]string{PlanStateAwaitingApproval, PlanStateAuthorized}).
+		Where("tenant_id = ? AND id = ? AND digest = ? AND (state = ? OR excluded_json = ?)",
+			tenantID, planID, digest, PlanStateAwaitingApproval, excludedJSON).
 		Updates(map[string]interface{}{
 			"state":         PlanStateAuthorized,
 			"excluded_json": excludedJSON,
