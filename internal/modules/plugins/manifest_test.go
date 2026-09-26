@@ -339,6 +339,7 @@ func TestValidateManifestParseFailureMasksProtocolRelativeUserinfo(t *testing.T)
 //     400）、userinfoOf 对无凭据 URL 误报非空；
 //   - 真实 userinfo 且 query 含 '@' 时 LastIndex 取到 query 里的 '@'，
 //     掩码输出丢失 host 与 query（"REDACTED@b"）。
+//
 // 协议相对前导 "//" 在掩码输出中同样不得丢失（R2 F33 残余——prefix 置空
 // 使回显退化为相对引用形态）。
 func TestUserinfoAndMaskTerminateAuthorityAtQueryAndFragment(t *testing.T) {
