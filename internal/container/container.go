@@ -1077,6 +1077,12 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// stores and the persistent TaskAccess checker.
 	must(container.Provide(newCraftShareService))
 	must(container.Invoke(registerCraftShareFeature))
+	// T12 (#132): the version-bound source-bundle export (describe +
+	// download feature routes) over the member-level version/evidence
+	// adapter, the shared file service and the persistent TaskAccess
+	// checker.
+	must(container.Provide(newCraftExportService))
+	must(container.Invoke(registerCraftExportFeature))
 
 	// Router configuration
 	logger.Debugf(ctx, "[Container] Registering router and starting task server...")
