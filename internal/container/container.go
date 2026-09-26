@@ -289,6 +289,14 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(NewWorkbenchInboxHandler))
 	must(container.Provide(repository.NewWorkbenchTaskStateStore))
 	must(container.Provide(NewWorkbenchTaskStateHandler))
+	// T17 (#47) review round 1: NewWorkbenchTaskGrantsHandler (#42) was
+	// Provided without its *repository.TaskGrantStore — the provider stayed
+	// unbuildable, the optional RouterParams field resolved to nil, and the
+	// three /workbench/tasks/:task_id/grants routes never mounted. Providing
+	// the store makes the grants assembly (and the research handler's shared
+	// grant service) resolvable; TestTaskGrantsAndResearchHandlersBuildable
+	// pins this subset.
+	must(container.Provide(repository.NewTaskGrantStore))
 	must(container.Provide(NewWorkbenchTaskGrantsHandler))
 	must(container.Provide(NewTaskComplianceStore))
 	must(container.Provide(NewTaskComplianceService))

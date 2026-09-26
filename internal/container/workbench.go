@@ -223,19 +223,19 @@ func NewResearchSourceAuthorizer(db *gorm.DB) session.ResearchSourceAuthorizer {
 // first, #42 grant fallback second), annotations pin the current version
 // identity derived from message-bound artifacts.
 //
-// Wiring note (deviation from the plan's sketch, both dig-v1.19 facts
-// verified empirically): the provider returns ONLY the handler — dig rejects
-// a second constructor result of session.ResearchSourceAuthorizer at Provide
-// time ("already provided") once NewResearchSourceAuthorizer is provided,
-// which would panic the app at startup via must(). And the grant service is
-// constructed inline (same shape as NewWorkbenchTaskGrantsHandler) because
-// the container provides no *service.TaskGrantService — taking it as a
-// parameter would leave this provider unbuildable and the handler silently
-// nil (optional RouterParams field), so the research routes would never mount.
+// Wiring note (deviation from the plan's sketch, dig-v1.19 fact verified
+// empirically): the provider returns ONLY the handler — dig rejects a second
+// constructor result of session.ResearchSourceAuthorizer at Provide time
+// ("already provided") once NewResearchSourceAuthorizer is provided, which
+// would panic the app at startup via must(). The grant service is assembled
+// from the container-provided *repository.TaskGrantStore (review round 1
+// added that Provide; the #42 grants handler shares the same instance) so
+// both collaboration surfaces resolve through one durable store.
 func NewWorkbenchResearchHandler(
 	db *gorm.DB,
 	runs *repository.AgentRunStore,
 	messages interfaces.MessageService,
+	grants *repository.TaskGrantStore,
 	sessions interfaces.SessionRepository,
 	members interfaces.TenantMemberRepository,
 ) *session.WorkbenchResearchHandler {
@@ -244,6 +244,6 @@ func NewWorkbenchResearchHandler(
 		repository.NewTaskResearchStore(db),
 		repository.NewTaskAnnotationStore(db),
 		NewResearchSourceAuthorizer(db),
-		service.NewTaskGrantService(repository.NewTaskGrantStore(db), sessions, members),
+		service.NewTaskGrantService(grants, sessions, members),
 	)
 }

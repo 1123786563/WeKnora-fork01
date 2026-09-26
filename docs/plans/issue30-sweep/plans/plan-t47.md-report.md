@@ -134,3 +134,61 @@ ok  github.com/Tencent/WeKnora/internal/application/repository   5.644s   （Tas
 
 - 代码 + 报告：`git add` 上述 6 个 Go 文件与本报告后一次提交（SHA 见 submit_result）。
 - 提交信息：`feat(workbench): read-only research delegation and version-pinned annotation endpoints (T17 #47 task 2)`
+
+---
+
+# 修复轮 1/5 报告（审查发现：TaskGrantStore 全仓零 Provide → grants 路由静默不挂载）
+
+> 主控裁决：Task 2 自检发现第 1 条的装配缺口定为 important，由本任务修复轮独立修复。审查引用位置（container.go:292 Provide、workbench.go:147-157 store 参数、router.go:71 optional 字段、routes_workbench.go:233-236 nil early-return）均逐一核实属实。
+
+## R1. 修复内容（TDD：RED → GREEN）
+
+**RED（先写失败测试）**：新建 `internal/container/task_grant_wiring_test.go`，仿既有 `retrieve_registry_wiring_test.go` 的「小 dig 容器 + 内存 sqlite + Invoke 断言」pin 装配先例。测试以**非 optional** 的 `dig.In` 参数结构请求 `*session.WorkbenchTaskGrantsHandler` 与 `*session.WorkbenchResearchHandler`（生产 RouterParams 两字段都是 `optional:"true"`，会把不可构建静默成 nil——测试有意去掉 optionality，让缺失 provider 变成响亮失败）。实跑（不含修复行）：
+
+```
+$ go test ./internal/container/ -run TestTaskGrantsAndResearchHandlersBuildable -count=1
+--- FAIL: TestTaskGrantsAndResearchHandlersBuildable (0.00s)
+    task_grant_wiring_test.go:74: container could not build the workbench collaboration handlers: could not build arguments for function ...task_grant_wiring_test.go:65: failed to build *session.WorkbenchTaskGrantsHandler: missing dependencies for function ...NewWorkbenchTaskGrantsHandler (workbench.go:150): missing type: *repository.TaskGrantStore
+FAIL	github.com/Tencent/WeKnora/internal/container	5.030s
+```
+
+失败根因与审查发现逐字对应：`missing type: *repository.TaskGrantStore`。
+
+**GREEN（最小修复，3 处）**：
+1. `internal/container/container.go` —— 在 `must(container.Provide(NewWorkbenchTaskGrantsHandler))` 之前新增 `must(container.Provide(repository.NewTaskGrantStore))`（含注释说明根因与 pin 测试名）。这一行同时修复两件事：#42 的 grants 三路由（`POST|GET /workbench/tasks/:task_id/grants`、`DELETE /:task_id/grants/:grantee_id`，routes_workbench.go:238-240）从「静默不挂载」恢复为真实挂载；本任务 research provider 的 grant service 依赖可解析。
+2. `internal/container/workbench.go` —— `NewWorkbenchResearchHandler` 收敛为注入 `grants *repository.TaskGrantStore`（与 `NewWorkbenchTaskGrantsHandler` 同款参数形态），共享同一 store 实例，消除此前内联 `repository.NewTaskGrantStore(db)` 的双实例构造；函数注释同步改写（原「容器无 TaskGrantStore Provide 故内联」的偏差 2 说明更新为收敛后形态；偏差 1 的单返回值说明保留，仍然成立）。
+3. `internal/container/task_grant_wiring_test.go` —— 提供集补上 `provide(repository.NewTaskGrantStore)`（与生产提供集镜像），并把该子集 pin 住：今后任何人删掉生产 Provide 行导致装配退化时，此测试虽不能直接红（它自带提供集），但 container 包内该子图与生产行为的一致性由注释锚定；真正防止回归的是本测试对「两 handler 必须可构建且非 nil」的持续断言。
+
+## R2. 修复后测试与回归（全部实跑取证）
+
+```
+$ go test ./internal/container/ -run TestTaskGrantsAndResearchHandlersBuildable -count=1 -v
+PASS
+ok  	github.com/Tencent/WeKnora/internal/container	8.322s
+
+$ gofmt -l internal/container/{task_grant_wiring_test.go,container.go,workbench.go}
+（无输出，全部已格式化）
+
+$ go build ./...
+（exit=0；仅既有 cmd/desktop、cmd/server 的 ld: warning 噪音）
+
+$ go vet ./internal/router/ ./internal/container/
+（无输出，vet_ok）
+
+$ go test ./internal/container/ ./internal/router/ -count=1
+ok  	github.com/Tencent/WeKnora/internal/container	10.828s
+ok  	github.com/Tencent/WeKnora/internal/router	35.150s
+
+$ go test ./internal/handler/session/ -run 'TestDelegateResearch|TestListResearch|TestCompleteResearch|TestAnnotateMaterial|TestListAnnotations' -count=1
+ok  	github.com/Tencent/WeKnora/internal/handler/session	1.999s
+```
+
+## R3. 行为变化声明（供主控与后续审查知悉）
+
+1. **生产行为变化（即审查要求的目标行为）**：修复后 `RouterParams.WorkbenchTaskGrantsHandler` 在完整容器装配下非 nil，`RegisterWorkbenchTaskGrantRoutes` 真实执行——#42 的三条 grants 路由从「从未挂载」变为挂载。gin 通配符安全：`/workbench/tasks` 组的 archive（routes_workbench.go:221）、grants（:237）、compliance purge（:270）各 verb 树统一 `:task_id` 命名（grants DELETE 树的 `:grantee_id` 为更深层唯一名），router 包全量测试 35.150s 全绿佐证真实 engine 注册无冲突。
+2. grants 路由挂载后的请求面行为由既有 `internal/handler/session/workbench_task_grants_test.go` 等覆盖（owner-only 写、跨租户统一 404），本次修复只恢复装配，不改任何 handler/service/store 语义。
+3. `NewWorkbenchResearchHandler` 签名从 `(db, runs, messages, sessions, members)` 变为 `(db, runs, messages, grants, sessions, members)`——该函数是 Task 2 本轮新引入的容器私有装配，无外部调用方受影响（全仓 `go build ./...` exit=0 佐证）。
+
+## R4. 提交
+
+- 修复轮提交：`internal/container/container.go` + `internal/container/workbench.go` + `internal/container/task_grant_wiring_test.go` + 本报告追加，一次提交（SHA 见 submit_result）。
