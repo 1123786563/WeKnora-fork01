@@ -1283,7 +1283,7 @@
      "verify-module-moves"
     ]
    ],
-   "notes": "K4 在 ingest/retrieval 契约稳定后串行执行（framework:118-119）；worker 注册行禁改（与 conversation-queryhistory.md:39-42 义务 3 同律，本会话验证）。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-retrieval 阻塞；解除条件：修复并 done b2-k-retrieval 后恢复。 BLOCKED（2026-09-25 16:10）：调度方指令——Error: 计划 docs/plans/passb/24-knowledge-process.md 审校 2 轮未通过（conventions §5 上报摘要；节点 14:55 派发后尚无任务产出——task_ids 空、实现 worktree 未建）。解除条件：修复后恢复。 K4.0 SDD 审查通过（2026-09-25 19:51 登记；报告 .superpowers/sdd/passb/b2-k-process/K4.0-report.md，19:26 版 21,177 字节；产出 3 个基线对齐 merge commits：41cc45071（K1）/6bb284e4a（K2）/5fbd4d789（K3），无独立 commit——计划规定台账随 K4.5 报告提交；P2 四冲突文件机械处置含 exception-ledger 重编号 105→129、P2 尾门禁与 P1/P3/P4 前置核验全过、PRE_MERGE_SHA=b650e2040 与派发 BASE 一致）；进入任务级 OCR；task_status 未建立（SDD 通过≠task done，沿 K1.x 先例，收口待调度方指令）。 K4.1 SDD 审查通过（2026-09-25 22:41 登记；报告 .superpowers/sdd/passb/b2-k-process/K4.1-report.md，22:26 版 10,045 字节；产出 1 commit：3665fff5c（收缩迁移——Mimosa DDL 拦截 escalate 后协调者裁定按 Ruling 2026-09-25-DEFERRED-FILE-SPLIT 收缩：模块侧 4 生产副本（宿主原件保留）+ 2 自洽测试 R100 迁移、11 测试推迟（3 拦截 + 8 setupKnowledgeTestDB 闭包）、hook 放行问题升级用户决定；BASE=5c3131e60）；进入任务级 OCR；task_status K4.1 未登记（SDD 通过≠task done，沿 K1.x/K4.0 先例，收口待调度方指令）。 K4.2 修复第 1/5 轮完成（2026-09-26 00:47 登记，blocking: false）：产出链 2 commits——ff5ae6d21（23:56 K4.2 standalone service facet 收缩迁移：write/index-content/task-options 3 文件+1 自洽测试入 internal/modules/knowledge/process、7 符号导出、requireKBWrite 直连 kbretrieval、宿主 compat 8 行委托、span_tracker+housekeeping 推迟[Mimosa DDL 块]、manifest 391→389）+ fbd40129b（00:33 K4.2-R 修复——审查 finding：task_options_test 迁移补全/宿主副本清除，门禁复跑绿）；报告 K4.2-report.md（00:33 版 17,726 字节）；修复循环进行中（1/5 轮，无 blocking 项），task_status K4.2 未登记——收口待 SDD+任务级 OCR 双通过与调度方指令。 K4.2 SDD 审查通过（2026-09-26 00:50 登记；报告 .superpowers/sdd/passb/b2-k-process/K4.2-report.md，00:33 版 17,726 字节；产出链 2 commits：ff5ae6d21（主迁移）+ fbd40129b（K4.2-R 修复第 1 轮）；时序倒置补齐——SDD 审查实际发生于修复轮之前，其登记指令晚于 00:48 修复轮条目到达（沿 K1.4 06:55 先例）；进入任务级 OCR；task_status K4.2 未登记（SDD 通过≠task done，收口待调度方指令）。 K4.3 SDD 审查通过（2026-09-26 01:35 登记；报告 .superpowers/sdd/passb/b2-k-process/K4.3-report.md，01:21 版 15,365 字节；产出 1 commit：34418f700（原案全量执行无收缩——handler 层 2 生产文件+1 随迁测试物理落位、M3 导出改名 5 符号、R2 直连 1 点、宿主 compat 5 行委托、manifest/matrix −2+1、wantPerModule 77→76、evidence 389→388；无 DDL 拦截、git mv 仍被 Mimosa 全局阻断→Write+rm 两步同 commit 闭环 R82/R85/R86）；BASE=fbd40129b）；进入任务级 OCR；task_status K4.3 未登记（SDD 通过≠task done，收口待调度方指令）。 K4.4 SDD 审查通过（2026-09-26 02:08 登记；报告 .superpowers/sdd/passb/b2-k-process/K4.4-report.md，02:01 版 10,215 字节；产出 1 commit：60ef71061（跨模块 import 豁免登记——Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY，BASE..HEAD 唯一 commit，计划规定的独立 commit 形态）；BASE=34418f700）；进入任务级 OCR；task_status K4.4 未登记（SDD 通过≠task done，收口待调度方指令）。 K4.5 SDD 审查通过（2026-09-26 02:50 登记；报告 .superpowers/sdd/passb/b2-k-process/K4.5-report.md，02:41 版 8,609 字节；产出 1 commit：6bfd3b605（收口任务——差分 evidence/Integration Brief/节点报告三产物 309 行、零生产代码改动；差分四面 T0/T1 双跑 75 唯一用例全 PASS 用例名集合 IDENTICAL；BASE=60ef71061）；evidence/briefs/reports 三路径就此产出（reviews 除外——节点级审查产物）；进入任务级 OCR；task_status K4.5 未登记（SDD 通过≠task done，收口待调度方指令） BLOCKED（2026-09-26 03:39）：调度方指令——Error: OCR 两次尝试输出均不完整（截断/请求失败），不视为通过（节点级 OCR 轮——任务 K4.0–K4.5 6/6 done 后的节点收口审查，产物 ocr-r1.txt@03:20 / ocr-r1-a2.txt@03:35）。解除条件：修复后恢复。",
+   "notes": "K4 在 ingest/retrieval 契约稳定后串行执行（framework:118-119）；worker 注册行禁改（与 conversation-queryhistory.md:39-42 义务 3 同律，本会话验证）。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-retrieval 阻塞；解除条件：修复并 done b2-k-retrieval 后恢复。 BLOCKED（2026-09-25 16:10）：调度方指令——Error: 计划 docs/plans/passb/24-knowledge-process.md 审校 2 轮未通过（conventions §5 上报摘要；节点 14:55 派发后尚无任务产出——task_ids 空、实现 worktree 未建）。解除条件：修复后恢复。 K4.0 SDD 审查通过（2026-09-25 19:51 登记；报告 .superpowers/sdd/passb/b2-k-process/K4.0-report.md，19:26 版 21,177 字节；产出 3 个基线对齐 merge commits：41cc45071（K1）/6bb284e4a（K2）/5fbd4d789（K3），无独立 commit——计划规定台账随 K4.5 报告提交；P2 四冲突文件机械处置含 exception-ledger 重编号 105→129、P2 尾门禁与 P1/P3/P4 前置核验全过、PRE_MERGE_SHA=b650e2040 与派发 BASE 一致）；进入任务级 OCR；task_status 未建立（SDD 通过≠task done，沿 K1.x 先例，收口待调度方指令）。 K4.1 SDD 审查通过（2026-09-25 22:41 登记；报告 .superpowers/sdd/passb/b2-k-process/K4.1-report.md，22:26 版 10,045 字节；产出 1 commit：3665fff5c（收缩迁移——Mimosa DDL 拦截 escalate 后协调者裁定按 Ruling 2026-09-25-DEFERRED-FILE-SPLIT 收缩：模块侧 4 生产副本（宿主原件保留）+ 2 自洽测试 R100 迁移、11 测试推迟（3 拦截 + 8 setupKnowledgeTestDB 闭包）、hook 放行问题升级用户决定；BASE=5c3131e60）；进入任务级 OCR；task_status K4.1 未登记（SDD 通过≠task done，沿 K1.x/K4.0 先例，收口待调度方指令）。 K4.2 修复第 1/5 轮完成（2026-09-26 00:47 登记，blocking: false）：产出链 2 commits——ff5ae6d21（23:56 K4.2 standalone service facet 收缩迁移：write/index-content/task-options 3 文件+1 自洽测试入 internal/modules/knowledge/process、7 符号导出、requireKBWrite 直连 kbretrieval、宿主 compat 8 行委托、span_tracker+housekeeping 推迟[Mimosa DDL 块]、manifest 391→389）+ fbd40129b（00:33 K4.2-R 修复——审查 finding：task_options_test 迁移补全/宿主副本清除，门禁复跑绿）；报告 K4.2-report.md（00:33 版 17,726 字节）；修复循环进行中（1/5 轮，无 blocking 项），task_status K4.2 未登记——收口待 SDD+任务级 OCR 双通过与调度方指令。 K4.2 SDD 审查通过（2026-09-26 00:50 登记；报告 .superpowers/sdd/passb/b2-k-process/K4.2-report.md，00:33 版 17,726 字节；产出链 2 commits：ff5ae6d21（主迁移）+ fbd40129b（K4.2-R 修复第 1 轮）；时序倒置补齐——SDD 审查实际发生于修复轮之前，其登记指令晚于 00:48 修复轮条目到达（沿 K1.4 06:55 先例）；进入任务级 OCR；task_status K4.2 未登记（SDD 通过≠task done，收口待调度方指令）。 K4.3 SDD 审查通过（2026-09-26 01:35 登记；报告 .superpowers/sdd/passb/b2-k-process/K4.3-report.md，01:21 版 15,365 字节；产出 1 commit：34418f700（原案全量执行无收缩——handler 层 2 生产文件+1 随迁测试物理落位、M3 导出改名 5 符号、R2 直连 1 点、宿主 compat 5 行委托、manifest/matrix −2+1、wantPerModule 77→76、evidence 389→388；无 DDL 拦截、git mv 仍被 Mimosa 全局阻断→Write+rm 两步同 commit 闭环 R82/R85/R86）；BASE=fbd40129b）；进入任务级 OCR；task_status K4.3 未登记（SDD 通过≠task done，收口待调度方指令）。 K4.4 SDD 审查通过（2026-09-26 02:08 登记；报告 .superpowers/sdd/passb/b2-k-process/K4.4-report.md，02:01 版 10,215 字节；产出 1 commit：60ef71061（跨模块 import 豁免登记——Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY，BASE..HEAD 唯一 commit，计划规定的独立 commit 形态）；BASE=34418f700）；进入任务级 OCR；task_status K4.4 未登记（SDD 通过≠task done，收口待调度方指令）。 K4.5 SDD 审查通过（2026-09-26 02:50 登记；报告 .superpowers/sdd/passb/b2-k-process/K4.5-report.md，02:41 版 8,609 字节；产出 1 commit：6bfd3b605（收口任务——差分 evidence/Integration Brief/节点报告三产物 309 行、零生产代码改动；差分四面 T0/T1 双跑 75 唯一用例全 PASS 用例名集合 IDENTICAL；BASE=60ef71061）；evidence/briefs/reports 三路径就此产出（reviews 除外——节点级审查产物）；进入任务级 OCR；task_status K4.5 未登记（SDD 通过≠task done，收口待调度方指令） BLOCKED（2026-09-26 03:39）：调度方指令——Error: OCR 两次尝试输出均不完整（截断/请求失败），不视为通过（节点级 OCR 轮——任务 K4.0–K4.5 6/6 done 后的节点收口审查，产物 ocr-r1.txt@03:20 / ocr-r1-a2.txt@03:35）。解除条件：修复后恢复。 env_unblock 补迁完成（2026-09-26 04:28 登记；用户 2026-09-26 批准）：实现分支独立 commit 6a30da80e（04:27:15，parent=6bfd3b605）以 git mv 完成 env_unblock 3 对映射补迁——internal/application/repository/ 下 3 个 knowledge_*_test.go（tag/finalize/span_repo）→ internal/modules/knowledge/process/repository/ 同名落位，R100×3（3 files changed / 0 insertions / 0 deletions，逐字节等价），即 K4.1 轮 3 个 Mimosa DDL 拦截推迟件（K4.1-report.md:14,20）经用户放行闭合（commit 口径 Ruling ENV-BLOCKED-DEFERRED closure）。依赖其编译闭包的推迟件可由实施者常规通道续迁：8 个 setupKnowledgeTestDB 依赖测试（定义于 knowledge_finalize_test.go，K4.1-report.md:19,96）与垫片消费者清零项（knowledge_tag_test.go:219，K4.1-report.md:50）。env_unblock 数组保留作映射事实源；status=in_progress / base/head=null / review_status=pending / task_status 6/6 done / ocr_tail_base=6bfd3b605 / ocr_covered 均不动——新 commit 是否纳入增量审范围归调度方。 门禁裁决（2026-09-26 04:33 登记；调度方指令文本于第 (3) 点『go test』处截断、重跑命令与结果以调度方原文为准）：节点门禁 go test ./internal/modules/knowledge/... 于 internal/modules/knowledge/process/repository 包编译失败——真实回归，非已知 flake。管家本会话实证：(a) knowledgeTagRepository 全包仅 knowledge_tag_test.go:219 使用处一次、无任何定义；包内非测试代码仅 knowledgeRepository（knowledge.go:46）与 knowledgeSpanRepository（knowledge_span_repo.go:49），knowledge_tag.go 方法全挂 *knowledgeRepository（:15/:57/:120/:152）；(b) 测试 :241 tagRepo.BatchCountReferences 包内非测试代码不存在，TestBatchCountReferences_ScopedToKnowledgeBase（:216）系针对未实现 API 写入的测试——全树补充口径：真实 API 定义于 K2 retrieval（retrieval/app/repository/tag.go:175 挂 knowledgeTagRepository，:174 注释），宿主侧兼容垫片 kbretrieval_passb_compat_test.go:21/:24 定义同名同法（:7 注释明言 tag.go 已物理迁移至 retrieval）且未随迁；(c) 编译级复跑 go test -count=1 -run '^$' ./internal/modules/knowledge/process/repository/ 实测 EXIT=1 [build failed]（undefined: knowledgeTagRepository @:219）。根因链：env_unblock 补迁 commit 6a30da80e R100 逐字节搬迁未携带垫片/未适配引用；宿主侧 knowledge_tag_test.go 已删（本会话 ls 实测不存在）——K4.1-report.md:50 垫片消费者清零项宿主侧就地成立，模块侧断链待修复。修复归实施者回归修复轮（未启动）；status=in_progress 维持（调度方未下达 blocked）、review_status=pending 维持。 BLOCKED（2026-09-26 04:35）：调度方指令——Error: 门禁真实失败（go test ./internal/modules/knowledge/...）：go test ./internal/modules/knowledge/... — internal/modules/knowledge/process/repository [build failed]: knowledge_tag_test.go:219:14: undefined: knowledgeTagRepository（04:33 裁决：真实回归，非已知 flake）。解除条件：修复后恢复。",
    "ocr_covered": [
     {
      "base": "a57c43a6f92a54615a309b5b6b9f7e32aac874b3",
@@ -1318,21 +1318,7 @@
     "K4.4": "done",
     "K4.5": "done"
    },
-   "ocr_tail_base": "6bfd3b60584e51c6287bb1b724ba3eb3b7947b2b",
-   "env_unblock": [
-    {
-     "from": "internal/application/repository/knowledge_tag_test.go",
-     "to": "internal/modules/knowledge/process/repository/knowledge_tag_test.go"
-    },
-    {
-     "from": "internal/application/repository/knowledge_finalize_test.go",
-     "to": "internal/modules/knowledge/process/repository/knowledge_finalize_test.go"
-    },
-    {
-     "from": "internal/application/repository/knowledge_span_repo_test.go",
-     "to": "internal/modules/knowledge/process/repository/knowledge_span_repo_test.go"
-    }
-   ]
+   "ocr_tail_base": "6bfd3b60584e51c6287bb1b724ba3eb3b7947b2b"
   },
   {
    "id": "b2-k-integration",
@@ -1878,7 +1864,7 @@
     "catalog version/install 不变式、sync/action 行为差分证据"
    ],
    "execution_mode": "serial",
-   "status": "pending",
+   "status": "blocked",
    "base_sha": null,
    "head_sha": null,
    "review_status": "pending",
@@ -1917,7 +1903,21 @@
      "golangci-lint run --new-from-rev=\"$PASSB_BASE_SHA\" ./..."
     ]
    ],
-   "notes": "集成顺序与删除纪律按 framework:152；只删 IB2 属主例外。R0 前置检查（30 计划）：engine/protocol 所有权按 freeze:193-196 复核后方可派发 b3-r-*。计数奇偶三方一致（F5）。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-retrieval 阻塞；解除条件：修复并 done b2-k-retrieval 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-process 阻塞；解除条件：修复并 done b2-k-process 后恢复。 BLOCKED（2026-09-26）：前置 b2-k-process 阻塞；解除条件：修复并 done b2-k-process 后恢复。"
+   "notes": "集成顺序与删除纪律按 framework:152；只删 IB2 属主例外。R0 前置检查（30 计划）：engine/protocol 所有权按 freeze:193-196 复核后方可派发 b3-r-*。计数奇偶三方一致（F5）。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-retrieval 阻塞；解除条件：修复并 done b2-k-retrieval 后恢复。 BLOCKED（2026-09-25）：前置 b2-ac-market 阻塞；解除条件：修复并 done b2-ac-market 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-process 阻塞；解除条件：修复并 done b2-k-process 后恢复。 BLOCKED（2026-09-26）：前置 b2-k-process 阻塞；解除条件：修复并 done b2-k-process 后恢复。",
+   "env_unblock": [
+    {
+     "from": "internal/application/repository/knowledge_tag_test.go",
+     "to": "internal/modules/knowledge/process/repository/knowledge_tag_test.go"
+    },
+    {
+     "from": "internal/application/repository/knowledge_finalize_test.go",
+     "to": "internal/modules/knowledge/process/repository/knowledge_finalize_test.go"
+    },
+    {
+     "from": "internal/application/repository/knowledge_span_repo_test.go",
+     "to": "internal/modules/knowledge/process/repository/knowledge_span_repo_test.go"
+    }
+   ]
   },
   {
    "id": "b3-r-memory",
