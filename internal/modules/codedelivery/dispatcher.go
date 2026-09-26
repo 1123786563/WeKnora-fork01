@@ -19,10 +19,21 @@ type DispatcherDeps struct {
 	Creds       appconnectorsvc.CredentialResolver
 	Guard       appconnectorsvc.A02Guard
 	GitHub      GitHubClientFactory
+	GitLab      CodePlatformClientFactory
 	Workspace   WorkspaceFileSource
 	Store       *deliveryrepo.DeliveryStore
 	ActionRows  appconnectorsvc.ActionStoreSource
 	Runs        RunReader
+}
+
+// clientForTarget routes the approved action's platform target to its
+// adapter — the ONLY platform switch on the dispatch face (T24 #54).
+func (d *DeliveryDispatcher) clientForTarget(target, token string, repo RepoRef) (CodePlatformClient, error) {
+	provider, err := ProviderOfTarget(target)
+	if err != nil {
+		return nil, err
+	}
+	return clientForPlatform(d.deps.GitHub, d.deps.GitLab, provider, token, repo)
 }
 
 // DeliveryDispatcher implements the A03 ActionDispatcher and UnknownResolver
@@ -55,11 +66,15 @@ func (d *DeliveryDispatcher) Dispatch(ctx context.Context, snap appconnectorsvc.
 	if err != nil {
 		return appconnectorsvc.DispatchOutcome{}, fmt.Errorf("%w: credential: %v", appconnectorsvc.ErrDispatchNotStarted, err)
 	}
+	// 平台路由是前置门（T24 #54）：未知目标/未接线适配器在此拒绝，零远端调用。
+	client, err := d.clientForTarget(snap.Target, token, material.Repo)
+	if err != nil {
+		return appconnectorsvc.DispatchOutcome{}, fmt.Errorf("%w: %v", appconnectorsvc.ErrDispatchNotStarted, err)
+	}
 	row, err := d.findByAction(ctx, snap.TenantID, snap.ID)
 	if err != nil {
 		return appconnectorsvc.DispatchOutcome{}, fmt.Errorf("%w: delivery row: %v", appconnectorsvc.ErrDispatchNotStarted, err)
 	}
-	client := d.deps.GitHub(token, material.Repo)
 	return d.deliver(ctx, snap, material, row, client, false)
 }
 
@@ -92,7 +107,11 @@ func (d *DeliveryDispatcher) RecoverPullRequest(ctx context.Context, tenantID ui
 	if err != nil {
 		return err
 	}
-	_, err = d.deliver(ctx, snap, material, row, d.deps.GitHub(token, material.Repo), true)
+	client, err := d.clientForTarget(snap.Target, token, material.Repo)
+	if err != nil {
+		return err
+	}
+	_, err = d.deliver(ctx, snap, material, row, client, true)
 	return err
 }
 
@@ -162,10 +181,21 @@ func (d *DeliveryDispatcher) deliver(ctx context.Context, snap appconnectorsvc.A
 		if cerr != nil {
 			return appconnectorsvc.DispatchOutcome{}, cerr
 		}
-		if err := d.deps.Store.RecordReceipts(ctx, snap.TenantID, row.ID, deliveryrepo.ReceiptUpdate{CommitSHA: commitSHA}); err != nil {
+		if err := client.EnsureBranch(ctx, material.Branch, commitSHA); err != nil {
 			return appconnectorsvc.DispatchOutcome{}, err
 		}
-		if err := client.EnsureBranch(ctx, material.Branch, commitSHA); err != nil {
+		// 权威回执以远端为准（T24 #54）：推送后读回分支现 head——GitHub 上
+		// 它等于 CreateCommit 的结果；GitLab 的 commits API 由服务端定 sha，
+		// 本地占位值绝不进入台账。
+		head, pushed, herr := client.BranchHead(ctx, material.Branch)
+		if herr != nil {
+			return appconnectorsvc.DispatchOutcome{}, herr
+		}
+		if !pushed {
+			return appconnectorsvc.DispatchOutcome{}, fmt.Errorf("%w: branch %s absent after push", ErrGitHubTransport, material.Branch)
+		}
+		commitSHA = head
+		if err := d.deps.Store.RecordReceipts(ctx, snap.TenantID, row.ID, deliveryrepo.ReceiptUpdate{CommitSHA: commitSHA}); err != nil {
 			return appconnectorsvc.DispatchOutcome{}, err
 		}
 		if err := d.deps.Store.TransitionState(ctx, snap.TenantID, row.ID,
@@ -233,7 +263,10 @@ func (d *DeliveryDispatcher) QueryProvider(ctx context.Context, snap appconnecto
 	if err != nil {
 		return appconnectorsvc.DispatchOutcome{}, err
 	}
-	client := d.deps.GitHub(token, material.Repo)
+	client, err := d.clientForTarget(snap.Target, token, material.Repo)
+	if err != nil {
+		return appconnectorsvc.DispatchOutcome{}, fmt.Errorf("%w: %v", appconnectorsvc.ErrDispatchUnknown, err)
+	}
 	head := material.Repo.Owner + ":" + material.Branch
 	if receipt, rerr := client.PullRequestForHead(ctx, head); rerr == nil && receipt != nil {
 		if err := d.deps.Store.RecordReceipts(ctx, snap.TenantID, row.ID, deliveryrepo.ReceiptUpdate{

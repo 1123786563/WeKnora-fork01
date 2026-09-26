@@ -51,9 +51,15 @@ type CodeDeliveryDeps struct {
 	ActionRows  appconnectorsvc.ActionStoreSource
 	Connections ConnectionReader
 	Creds       appconnectorsvc.CredentialResolver
-	GitHub      GitHubClientFactory
-	Workspace   WorkspaceFileSource
-	Runs        RunReader
+	// GitHub 与 GitLab 是统一 seam 背后的两个平台适配器（T24 #54）；缺失
+	// 的适配器让对应平台在 prepare 面即 fail closed。
+	GitHub GitHubClientFactory
+	GitLab CodePlatformClientFactory
+	// Providers 把连接解析到其安装 app id（=平台名）。生产实现是
+	// appconnectorrepo.InstallationStore；nil 一律 fail closed。
+	Providers ProviderSource
+	Workspace WorkspaceFileSource
+	Runs      RunReader
 	// Dispatcher executes approved deliveries and recovers pushed ones
 	// (Task 6). Nil keeps the prepare-only wiring usable; a dispatch on a
 	// pushed row without it fails closed.
@@ -87,18 +93,25 @@ type BaselineReceipt struct {
 // workspace (User Story 41: execution starts from a reproducible state).
 // Owner-only: the caller must own the run AND the personal connection.
 func (s *CodeDeliveryService) MaterializeBaseline(ctx context.Context, in BaselineInput) (BaselineReceipt, error) {
-	sessionID, err := s.authorize(ctx, in.TenantID, in.CallerID, in.RunID, in.ConnectionID)
+	sessionID, conn, err := s.authorize(ctx, in.TenantID, in.CallerID, in.RunID, in.ConnectionID)
 	if err != nil {
 		return BaselineReceipt{}, err
 	}
 	if !baselineSHALegal(in.BaselineSHA) {
 		return BaselineReceipt{}, fmt.Errorf("%w: %q", ErrInvalidBaselineSHA, in.BaselineSHA)
 	}
+	provider, err := s.platformProvider(ctx, conn)
+	if err != nil {
+		return BaselineReceipt{}, err
+	}
 	token, err := s.tokenFor(ctx, in.ConnectionID)
 	if err != nil {
 		return BaselineReceipt{}, err
 	}
-	client := s.deps.GitHub(token, in.Repo)
+	client, err := s.clientFor(provider, token, in.Repo)
+	if err != nil {
+		return BaselineReceipt{}, err
+	}
 	tree, err := s.baselineTree(ctx, client, in.BaselineSHA)
 	if err != nil {
 		return BaselineReceipt{}, err
@@ -143,7 +156,7 @@ type PrepareInput struct {
 // anchors it as an A03 action (risk=deliver → always awaiting_approval), and
 // persists the traceability row. AC1 guardrails run BEFORE any GitHub write.
 func (s *CodeDeliveryService) PrepareDelivery(ctx context.Context, in PrepareInput) (DeliveryView, error) {
-	sessionID, err := s.authorize(ctx, in.TenantID, in.CallerID, in.RunID, in.ConnectionID)
+	sessionID, conn, err := s.authorize(ctx, in.TenantID, in.CallerID, in.RunID, in.ConnectionID)
 	if err != nil {
 		return DeliveryView{}, err
 	}
@@ -153,11 +166,18 @@ func (s *CodeDeliveryService) PrepareDelivery(ctx context.Context, in PrepareInp
 	if !baselineSHALegal(in.BaselineSHA) {
 		return DeliveryView{}, fmt.Errorf("%w: %q", ErrInvalidBaselineSHA, in.BaselineSHA)
 	}
+	provider, err := s.platformProvider(ctx, conn)
+	if err != nil {
+		return DeliveryView{}, err
+	}
 	token, terr := s.tokenFor(ctx, in.ConnectionID)
 	if terr != nil {
 		return DeliveryView{}, terr
 	}
-	client := s.deps.GitHub(token, in.Repo)
+	client, err := s.clientFor(provider, token, in.Repo)
+	if err != nil {
+		return DeliveryView{}, err
+	}
 	// 护栏 1（顺序有意为之）：先判「目标是否撞默认分支/远端 protected」再验
 	// 任务分支前缀白名单——任何形状的分支（包括误填 "main"）都必须先撞上
 	// 保护分支拒绝（AC1 的第一道闸），前缀白名单是第二道。
@@ -214,13 +234,10 @@ func (s *CodeDeliveryService) PrepareDelivery(ctx context.Context, in PrepareInp
 	}
 	// 锚定 A03：digest 绑定 repo/基线/分支/文件清单/提交信息/PR 标题 + 连接
 	// 版本；内容变化=新 digest=旧批准失效（immutable approval anchor）。
-	conn, err := s.deps.Connections.FindConnectionByID(ctx, in.ConnectionID)
-	if err != nil {
-		return DeliveryView{}, err
-	}
+	// conn 已由 authorize 装载（T24 #54：authorize 返回连接供提供者解析）。
 	actionID, err := s.deps.Actions.Prepare(ctx, appconnector.Action{
 		TenantID: in.TenantID, ActorID: in.CallerID, ConnectionID: in.ConnectionID,
-		Target: DeliveryActionTarget, Risk: appconnector.RiskDeliver,
+		Target: DeliveryTargetOf(provider), Risk: appconnector.RiskDeliver,
 		AuthVersion: conn.AuthVersion, Args: args,
 	})
 	if err != nil {
@@ -428,22 +445,44 @@ func (s *CodeDeliveryService) viewOf(ctx context.Context, row deliveryrepo.Deliv
 
 // authorize is the shared owner-only predicate: caller owns the run AND uses
 // their own personal connection (CONTEXT.md 个人连接只能由其所有者使用).
-// It returns the run's sessionID (= taskID, ADR-0004); the service keeps no
-// mutable state.
-func (s *CodeDeliveryService) authorize(ctx context.Context, tenantID uint64, callerID, runID, connectionID string) (string, error) {
+// It returns the run's sessionID (= taskID, ADR-0004) and the loaded
+// connection (provider resolution needs its installation); the service keeps
+// no mutable state.
+func (s *CodeDeliveryService) authorize(ctx context.Context, tenantID uint64, callerID, runID, connectionID string) (string, appconnector.Connection, error) {
 	run, err := s.deps.Runs.GetOwnedRun(ctx, tenantID, callerID, runID)
 	if err != nil || run.SessionID == "" {
-		return "", fmt.Errorf("%w: run %s", ErrNotDeliveryOwner, runID)
+		return "", appconnector.Connection{}, fmt.Errorf("%w: run %s", ErrNotDeliveryOwner, runID)
 	}
 	conn, err := s.deps.Connections.FindConnectionByID(ctx, connectionID)
 	if err != nil {
-		return "", err
+		return "", appconnector.Connection{}, err
 	}
 	if conn.Kind != appconnector.ConnectionKindPersonal || conn.OwnerID != callerID ||
 		conn.TenantID != tenantID || conn.State != appconnector.ConnectionActive {
-		return "", ErrConnectionNotUsable
+		return "", appconnector.Connection{}, ErrConnectionNotUsable
 	}
-	return run.SessionID, nil
+	return run.SessionID, conn, nil
+}
+
+// platformProvider resolves the delivery platform from the connection's
+// installation app id — server-side authority, never client input (T24 #54).
+func (s *CodeDeliveryService) platformProvider(ctx context.Context, conn appconnector.Connection) (string, error) {
+	if s.deps.Providers == nil {
+		return "", fmt.Errorf("%w: provider source not wired", ErrUnsupportedProvider)
+	}
+	inst, err := s.deps.Providers.GetInstallationByID(ctx, conn.TenantID, conn.InstallationID)
+	if err != nil {
+		return "", err
+	}
+	if inst.AppID != ProviderGitHub && inst.AppID != ProviderGitLab {
+		return "", fmt.Errorf("%w: connection app %q is not a code platform", ErrUnsupportedProvider, inst.AppID)
+	}
+	return inst.AppID, nil
+}
+
+// clientFor picks the platform adapter hidden behind the unified seam.
+func (s *CodeDeliveryService) clientFor(provider, token string, repo RepoRef) (CodePlatformClient, error) {
+	return clientForPlatform(s.deps.GitHub, s.deps.GitLab, provider, token, repo)
 }
 
 // tokenFor resolves the delivery token AFTER the permission chain (the
