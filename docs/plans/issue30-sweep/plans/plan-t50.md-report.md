@@ -635,3 +635,161 @@ EXIT=0
 
 - 无阻塞。Task 8（E2E）可依计划消费：`AppConfluencePublishHandler` + `NewAppConfluencePublishHandler(db)` + `SetConfluencePublishService(*publish.ConfluencePublishService)` + 四端点方法与 `RegisterAppConfluencePublishRoutes(r, h)`，签名逐字如计划 Produces（plan-t50.md:3738-3744）。
 
+# Task 8/10 报告——E2E 最高稳定 Interface 证据（生产迁移 + 全链 + 契约双打）
+
+> 任务：Issue #50 实施计划（`docs/plans/issue30-sweep/plans/plan-t50.md:4247-4792`）Task 8。
+> 执行 worktree：`/Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue30-sweep-t50`（分支 `codex/issue30-t50`）。
+> 本报告由实现员子代理撰写，覆盖 Task 8 授权文件（1 个 E2E 测试文件）+ 计划 Task 0 幂等配方的条件性执行（见 §3，授权依据：plan-t50.md:85-152 的幂等设计与 DUPLICATE-PRESENT 分支）。
+
+## 1. 实现内容
+
+**新建 1 个文件：`internal/handler/app_connector_confluence_publish_e2e_test.go`**（513 行）——计划 Step 1 代码逐字落盘，含：
+
+1. **`openConfluencePublishE2EDB`**：生产 sqlite 迁移双轨全量加载（golang-migrate `migrations/sqlite`，范式与 `openNotionPublishE2EDB`（app_connector_notion_publish_e2e_test.go:53-71）逐行同形）——AC3「生产迁移库」的证据基础。
+2. **`e2eConfluence` 契约双打**：本地实现官方 Cloud v2 页面契约（`GET/POST/PUT /wiki/api/v2/pages`，HTTP Basic 认证 + `version.number` 单调门 `req.Version.Number != p.version+1 → 409`），文件头与双打注释明示「NOT the real-provider acceptance，真实 Provider 证据留在 CONFLUENCE_*-gated 的 Task 9」——`bump()` 模拟 AC1 审批窗口内的外部协作者编辑，`dropNextPut` 模拟 AC2 的写回复丢失（写效果已落、结局不可观察）。
+3. **`newConfluencePublishE2E` 全真组合**：真实 `ActionService`（第三个实例，`NewActionService(store, &e2ePassGuard{}, nil, bridge, bridge)`，同一 `ActionStore` 权威）/`PublicationStore`/`ConfluenceBridge`（真实 `DBConfluenceScopeSource` 读回双打回填的 `installations.config_json.base_url` + 真实 `ConfluenceCredentialTokenSource`→`CredentialResolver`→`MCPOAuthBindingStore` 凭据链）/`ConfluencePublishService`/gin 处理器/既有审批端点 `POST /apps/actions/:id/approve`；**唯一被替换的是 Confluence 网络端点**，出站策略走 `http_policy.go:63-66` 明示的 loopback 测试钩子。可复用助手 `e2ePolicyProvider`/`e2ePassGuard`/`e2eLocalContent`（Notion E2E 测试文件）零修改复用。
+4. **三个 E2E 测试**：`TestConfluencePublishEndToEndCreateApprovePublishReceipt`（AC3 全链：form 201→approve 200→publish 200 succeeded→回执 external_id/external_version="1"→GET 回执查询→远端页面 storage 断言 `"<p>first para.</p>\n<p>second para.</p>"`）、`TestConfluencePublishEndToEndUpdateConflict`（AC1：外部 bump 后 publish 409 `PUBLISH_VERSION_CONFLICT` 且 fake PUT 计数零变化）、`TestConfluencePublishEndToEndUnknownReconcilesRemoteFirst`（AC2：丢回复→200 unknown 停车→盲重 publish 409 且 PUT 计数不变→reconcile 远端读回 settle succeeded/published 且不重发）。
+
+**对计划文本的一处编译笔误修正（1 个 token，语义等同）**：计划 Step 1 的 `e2eConfluence` POST 分支写 `parent, ok := e.pages[req.ParentID]`（plan-t50.md:4411）——Task 2 的 `fakeConfluence` 中该 `parent` 被 `parent.spaceKey` 消费（plan-t50.md:718），而 E2E 双打的 `spaceID` 取自请求体，`parent` 变量无消费点，照抄编译失败（`declared and not used`，实跑见 §2 第一跑）。修正为 `_, ok := e.pages[req.ParentID]`：存在性检查（父页面不存在→400）逐字保留。
+
+**计划 Task 0 幂等配方的条件性执行**（详见 §3）：E2E 首跑暴露迁移轨道双占回归，按 plan-t50.md:103-152 的 DUPLICATE-PRESENT 配方执行 git mv ×4 + 5 个测试文件 7 处钉住路径改串（与兄弟分支已验证先例 `893e316c7` 完全同配方），独立提交 `60bf99af3`。
+
+## 2. 测试命令与完整输出（TDD 证据）
+
+### 第一跑（落盘后原样编译）：计划笔误如实暴露
+
+命令：`go test ./internal/handler/ -run 'TestConfluencePublishEndToEnd' -count=1`
+
+```
+# github.com/Tencent/WeKnora/internal/handler [github.com/Tencent/WeKnora/internal/handler.test]
+internal/handler/app_connector_confluence_publish_e2e_test.go:151:3: declared and not used: parent
+FAIL	github.com/Tencent/WeKnora/internal/handler [build failed]
+FAIL
+```
+
+### 第二跑（笔误修正后）：迁移轨道双占回归暴露（Task 0 预警场景）
+
+命令：`go test ./internal/handler/ -run 'TestConfluencePublishEndToEnd' -count=1 -v`
+
+```
+=== RUN   TestConfluencePublishEndToEndCreateApprovePublishReceipt
+    app_connector_confluence_publish_e2e_test.go:379:
+        	Error Trace:	.../internal/handler/app_connector_confluence_publish_e2e_test.go:65
+        	            				.../internal/handler/app_connector_confluence_publish_e2e_test.go:230
+        	            				.../internal/handler/app_connector_confluence_publish_e2e_test.go:379
+        	Error:      	Received unexpected error:
+        	            	failed to open source, "file:///Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue30-sweep-t50/migrations/sqlite": duplicate migration file: 000114_public_agent_marketplace.down.sql
+--- FAIL: TestConfluencePublishEndToEndCreateApprovePublishReceipt (0.03s)
+=== RUN   TestConfluencePublishEndToEndUpdateConflict
+        [... 同一 duplicate migration file 错误，Error Trace :426 ...]
+--- FAIL: TestConfluencePublishEndToEndUpdateConflict (0.01s)
+=== RUN   TestConfluencePublishEndToEndUnknownReconcilesRemoteFirst
+        [... 同一 duplicate migration file 错误，Error Trace :468 ...]
+--- FAIL: TestConfluencePublishEndToEndUnknownReconcilesRemoteFirst (0.01s)
+FAIL
+FAIL	github.com/Tencent/WeKnora/internal/handler	8.371s
+FAIL
+```
+
+### Task 0 配方执行与验证（GREEN 前置，配方 Step 4 原命令）
+
+配方落盘后——双轨唯一性断言（plan-t50.md:140）：
+
+```
+$ test -z "$(ls migrations/sqlite | grep -oE '^[0-9]{6}' | sort | uniq -c | awk '$1 > 2')" && test -z "$(ls migrations/versioned | grep -oE '^[0-9]{6}' | sort | uniq -c | awk '$1 > 2')" && echo "migration versions unique on both tracks"
+migration versions unique on both tracks
+```
+
+旧编号零残留（`grep -rn "000114_mobile_device_app\|000193_mobile_device_app" internal/ migrations/` → `0`）+ 新文件就位（`000118_mobile_device_app.{up,down}.sql`、`000197_mobile_device_app.{up,down}.sql`）。
+
+轨道可装载直接证据（配方 Step 4 命令）：`go test ./internal/handler/ -run 'TestNotionPublishEndToEndCreateApprovePublishReceipt' -count=1` → `ok github.com/Tencent/WeKnora/internal/handler 7.142s`。
+
+### GREEN（Task 8 Step 2 计划原命令，-v）
+
+命令：`go test ./internal/handler/ -run 'TestConfluencePublishEndToEnd' -count=1 -v`
+
+```
+=== RUN   TestConfluencePublishEndToEndCreateApprovePublishReceipt
+INFO [2026-09-26 20:31:54.935] [] local.go:112[GetFile] | Getting file: artifact-versions/7/run-1/bbbb…
+--- PASS: TestConfluencePublishEndToEndCreateApprovePublishReceipt (4.51s)
+=== RUN   TestConfluencePublishEndToEndUpdateConflict
+--- PASS: TestConfluencePublishEndToEndUpdateConflict (10.78s)
+=== RUN   TestConfluencePublishEndToEndUnknownReconcilesRemoteFirst
+--- PASS: TestConfluencePublishEndToEndUnknownReconcilesRemoteFirst (6.12s)
+PASS
+ok  	github.com/Tencent/WeKnora/internal/handler	25.889s
+```
+
+（INFO 行为真实 `file.NewLocalFileService` 读 Artifact 字节的生产日志。）
+
+### 全链复跑（Task 8 Step 3 计划原命令，含 #48 回归）
+
+命令：`go test ./internal/handler/ -run 'TestConfluencePublishEndToEnd|TestNotionPublishEndToEnd|TestAppPublicationsTable' -count=1 -v`
+
+```
+=== RUN   TestConfluencePublishEndToEndCreateApprovePublishReceipt
+--- PASS: TestConfluencePublishEndToEndCreateApprovePublishReceipt (11.53s)
+=== RUN   TestConfluencePublishEndToEndUpdateConflict
+--- PASS: TestConfluencePublishEndToEndUpdateConflict (5.09s)
+=== RUN   TestConfluencePublishEndToEndUnknownReconcilesRemoteFirst
+--- PASS: TestConfluencePublishEndToEndUnknownReconcilesRemoteFirst (5.50s)
+=== RUN   TestAppPublicationsTableExistsAfterMigrations
+--- PASS: TestAppPublicationsTableExistsAfterMigrations (4.13s)
+=== RUN   TestNotionPublishEndToEndCreateApprovePublishReceipt
+--- PASS: TestNotionPublishEndToEndCreateApprovePublishReceipt (4.17s)
+=== RUN   TestNotionPublishEndToEndUpdateConflict
+--- PASS: TestNotionPublishEndToEndUpdateConflict (4.62s)
+=== RUN   TestNotionPublishEndToEndUnknownReconcilesRemoteFirst
+--- PASS: TestNotionPublishEndToEndUnknownReconcilesRemoteFirst (11.64s)
+PASS
+ok  	github.com/Tencent/WeKnora/internal/handler	53.304s
+```
+
+Notion 与 Confluence 两套发布闭环在同一包内并存全绿——发布 seam 双实例互不干扰的计划预期（plan-t50.md:4784）成立。
+
+### Task 0 改串波及面回归 + 全仓编译（自检加测）
+
+命令与输出：
+
+```
+$ go test ./internal/application/repository/ -run 'MobileDeviceApp|MobilePushIsolation|MobileDevice' -count=1
+ok  	github.com/Tencent/WeKnora/internal/application/repository	15.034s
+$ go test ./internal/handler/ -run 'TestMobileDevice' -count=1
+ok  	github.com/Tencent/WeKnora/internal/handler	2.220s
+$ go build ./...
+[仅 cmd/desktop、cmd/server 两条既有 ld: warning: ignoring duplicate libraries: '-lc++']
+BUILD OK
+```
+
+`internal/modules/workbench/service/workbench/` 包整体 FAIL，其中 1 个失败经实锤为**预存失败、与本任务无关**（见 §5 发现 3）；该包其余测试（含 Task 0 改串文件的同包测试）PASS。
+
+## 3. 计划 Task 0 幂等配方的条件性执行（本任务授权范围内的必要前置）
+
+**事实链**（全部本会话实跑/实读）：
+
+1. E2E 首跑三测全部 `duplicate migration file: 000114_public_agent_marketplace.down.sql`（见 §2 第二跑）。
+2. 轨道实测：sqlite 轨 `000114` 出现 4 个文件（`mobile_device_app` ×2 + `public_agent_marketplace` ×2），versioned 轨 `000193` 同样 4 个——计划 plan-t50.md:143 描述的双占形态逐字复现。
+3. 归属核查：`git log --oneline -- migrations/sqlite/000114_mobile_device_app.up.sql` 在本分支仅见创建提交 `fb9037710`（#67 原始迁移），**本分支从未执行过重编**；四个 dedupe 提交（`893e316c7`/`bba8ce8db`/`34849775b`/`96e579ad0`）都在兄弟分支（`git branch --contains 893e316c7` → 仅 `codex/issue30-t49`；`git merge-base --is-ancestor 893e316c7 HEAD` → 否）。即本分支基底含双占，双占直到 Task 8（首个全量加载生产迁移的 Confluence 测试）才在本分支暴露。
+4. 处置：按计划 Task 0 的幂等设计（plan-t50.md:101「轨道健康则纯验证，双占则执行该配方」）执行 DUPLICATE-PRESENT 分支——`git mv` ×4（sqlite `000114_mobile_device_app.*` → `000118_*`，versioned `000193_*` → `000197_*`；两号均为当时轨道最大号 000117/000196 之后的下一可用号且未被占用）+ 5 个测试文件 7 处完整文件名字符串替换（`mobile_device_app_test.go:37,188,189`、`mobile_push_isolation_test.go:67`、`mobile_device_test.go:31`、`handler/mobile_device_test.go:33`、`notification_app_policy_test.go:50`；与先例 `893e316c7` 的 diff 逐字同形，注释中裸编号不动）。sed 批量写 .go 被 Mimosa hook 拒绝，改用 Edit 工具逐处替换（hook 合规）。
+5. 验证：双轨唯一性断言 + Notion E2E（§2「Task 0 配方执行与验证」）+ 改串波及面回归，全部通过后独立提交。
+
+## 4. 提交
+
+- `60bf99af3` `fix(migrations): renumber mobile_device_app to 000118/000197 - resolve duplicate-version chain breakage with public_agent_marketplace (B5 #50 prerequisite)`（Task 0 Step 5 计划原文提交信息；9 files changed, 7 insertions(+), 7 deletions(-)，4 个 rename 100% 相似）。
+- `d9160580e` `test(appconnector): confluence publish end-to-end evidence on production migrations (T20 #50)`（Task 8 Step 4 计划原文提交信息；1 file changed, 513 insertions(+)）。
+- 提交后 `git status --short` 干净；未推送远端；冻结面零触碰（#48 产物、`newOCArmedActionService`、知识库只读连接器 `internal/modules/datasource/connector/confluence/` 均不在 diff 中）。
+
+## 5. 自检发现
+
+1. **计划笔误 A（已最小修正）**：E2E 双打 POST 分支 `parent, ok := …` 的 `parent` 无消费点导致编译失败（§2 第一跑实锤），修正为 `_, ok :=`；存在性检查语义逐字保留。除此之外测试代码与计划 Step 1 逐字一致。
+2. **波级事实（重要，供集成方知悉）**：本分支 HEAD 在本任务前从未含任何 mobile_device_app 重编提交，双占随基线携带；本任务按 Task 0 幂等配方在本分支补齐（`60bf99af3`，占 sqlite `000118`/versioned `000197`）。兄弟分支已有四处同号 dedupe（`893e316c7` 等），合并时若发生同号竞争，按计划 plan-t50.md:120 约定「整体顺延为下一可用编号，文件内容零变化」机械消解。
+3. **预存失败（与本任务无关，实锤）**：`go test ./internal/modules/workbench/service/workbench/ -count=1` 中 `TestNotificationDeliveryRejectsResolvedInteractionAfterClaim` FAIL（`notification_delivery_test.go:489`，`expected: int(1) actual: int64(0)`）。排除链：该文件零引用 migrations（`grep -c migrations` → 0，测试用手工 `CREATE TABLE` 建库，不经迁移轨道）；`git diff HEAD` 对该文件为零改动；在**本任务任何改动之前**的 HEAD（`9058406e0`）建临时 worktree（`git worktree add /tmp/wt-pre-t8 9058406e0`）实跑同一测试同样 FAIL。结论：预存失败，非本任务引入；验证后临时 worktree 已 `git worktree remove --force` 清理。该失败不影响本任务任何验证结论，留待其归属计划处理。
+4. **Review Focus 覆盖**（plan-t50.md:60-63 归属 Task 8 的项）：第 1 类 TOCTOU→`TestConfluencePublishEndToEndUpdateConflict`（409 且 fake PUT 计数零变化）；第 3 类传输失败盲重试→`TestConfluencePublishEndToEndUnknownReconcilesRemoteFirst`（unknown 停车、结构性拒绝二次 dispatch、reconcile 只读 settle、全程 PUT 计数仅 +1）；AC3 最高稳定 Interface→create 全链测试（生产迁移库 + 全真链 + 双打注释明示 NOT real-provider acceptance）。
+5. **blocked-env 边界如实声明**：本任务证据是 AC3 的**本地最高稳定 Interface 替代证据**（plan-t50.md:44 的定义）；真实 Confluence 站点 + 真实 token + 真实 version.number 推进的验收属 Task 9，本环境 SKIP 且未被伪造。
+6. 未做的事：无。Task 8 的 Files 清单恰为 1 个测试文件；Task 0 条件配方属计划前置授权且已独立提交留痕。
+
+## 6. 遗留/交接
+
+- 无阻塞。Task 9（真实受控集成证据，blocked-env opt-in）可直接开始：本任务已验证全链在生产迁移库上的行为，`confluence_publish_real_test.go` 只需把双打换成真实 `CONFLUENCE_BASE_URL`/`CONFLUENCE_EMAIL`/`CONFLUENCE_API_TOKEN`/`CONFLUENCE_PARENT_PAGE_ID` 注入。
+- 迁移轨道提示：本分支现在自洽（双轨唯一、E2E 可装载）；若后续 merge 兄弟分支的同号 dedupe（000118/000197），属同名同内容 rename/rename，机械消解即可。
+
