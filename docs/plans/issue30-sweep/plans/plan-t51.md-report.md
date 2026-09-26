@@ -1248,3 +1248,102 @@ ok  	github.com/Tencent/WeKnora/internal/router	5.555s
 ## 4. 结论
 
 Task 5 交付面零改动、零回归。F2 三轮复核结论稳定：其修复者非本任务——**需编排方授权执行者完成 Task 0**（sqlite 000114→000118、versioned 000193→000197、migration.go :29-33 与 :123 联动；槽位三轮均证空闲）。审查循环若继续把同一跨任务项发回实现员，建议编排方直接派发 Task 0 专项执行者以打破循环（Task 3 修复轮 1-5 的同类先例已证明重复回发不产生新事实）。
+
+---
+
+# Task 5 修复轮 4 报告（R4 接替：经 escalation 取得 Task 0 执行授权——finding 根因修复落地，duplicate migration 故障在本分支消除）
+
+- **执行者**：实现员-t51-任务5-接替者R4（resumed with findings，修复轮 4/5）
+- **提交**：`e760c9255` `fix(migrations): dedupe mobile_device_app to 000118/000197 (wave-level prerequisite, unified with sibling branches, ruling via escalation)`（Task 0 重编本体）；ledger 与本报告另入册
+- **状态**：DONE（唯一 finding 的根因修复已提交；全量回归 + 预存在失败归因在案，零伪造）
+
+## 0. 本轮定性：不复读前任，走授权机制破循环
+
+唯一 finding 第 4 次逐字重复（Task 0 未执行的跨任务预存在项）。前三轮「复跑取证 + 不代做」已被证明不收敛。本轮接替者按仓库先例（Task 3 F1 同款机制）**escalate 请裁决**，获得主控明确授权：**由本轮实现员直接执行 Task 0，且方案改写**——重编对象由计划原文的 `public_agent_marketplace` 改为 `mobile_device_app`（sqlite 000114→000118、versioned 000193→000197），与兄弟分支（t49/t53/t61/t62/t47）统一；理由：若按 t51 原文挪 marketplace 到 000118，将与兄弟分支已落地的 mobile_device_app→000118 在集成时主动制造新双占（主控全局占用表优先于计划原文）。ruling 行已逐字入 ledger（`plan-t51.md-ledger.md` Task 5 修复轮 4 节）。
+
+## 1. 实现内容（提交 `e760c9255`，9 files, +17/−17）
+
+1. **git mv 四个迁移文件**：sqlite `000114_mobile_device_app.{up,down}.sql → 000118_*`、versioned `000193_mobile_device_app.{up,down}.sql → 000197_*`（sqlite 两侧 similarity 100%，内容零改动）。
+2. **versioned 两文件头注释同步**（与兄弟分支模板一致）：up 头「同 sqlite 000114 语义」→ 000118；down 头「与 sqlite 000114 down 对称」→ 000118、「回滚卡死在 000193」→ 000197。
+3. **5 个 mobile_device 系测试文件引用同步**（7 处路径字符串 + 4 处注释提及）：handler 包 mobile_device_test、app repository 包 mobile_device_test / mobile_push_isolation_test / mobile_device_app_test、workbench 包 notification_app_policy_test。
+4. **零触碰**：internal/database/migration.go（:33 门控常量 114 与 :123 探测串指向 marketplace 文件——marketplace 原号不动即零联动，规避计划原文的六处联动风险面）、marketplace 四文件（其 sqlite up 头「SQLite twin of versioned migration 000193.」仍正确，伴生 versioned 000193 未动）、本计划已落位的 000119/000198。
+5. **与兄弟分支模板逐字节一致**：`git diff --cached 34849775b -- <9 路径>` → 空输出 exit 0（34849775b 为 plan-t62 分支同款 Task 0 代执行提交，stat 亦逐行一致：9 files, +17/−17）。
+
+## 2. 测试命令与完整输出（全部本 ask 实跑）
+
+### RED 基线（改动前，finding 复现）
+
+```
+$ go test ./internal/handler/ -run 'TestNotionPublish' -count=1
+--- FAIL: TestNotionPublishEndToEndCreateApprovePublishReceipt (0.16s)
+--- FAIL: TestNotionPublishEndToEndUpdateConflict (0.01s)
+--- FAIL: TestNotionPublishEndToEndUnknownReconcilesRemoteFirst (0.01s)
+	failed to open source, "file://…/migrations/sqlite": duplicate migration file: 000114_public_agent_marketplace.down.sql
+FAIL	github.com/Tencent/WeKnora/internal/handler	2.179s
+
+$ go test ./internal/database/ -count=1   （节选，多处同因失败）
+failed to create sqlite migrate instance: failed to open source, "file://migrations/sqlite": duplicate migration file: 000114_public_agent_marketplace.down.sql
+--- FAIL: TestExecutionTargetSQLiteFullMigrationDownUp / TestWorkbenchSQLiteDownRefusesPaseo 等
+FAIL	github.com/Tencent/WeKnora/internal/database	3.687s
+```
+
+### GREEN（重编后）
+
+```
+$ go build ./…                                            → BUILD_EXIT=0（仅 macOS ld 既有噪音）
+$ go test ./internal/database/ -count=1                   → ok 18.688s   ★Task 0 生效标志：FAIL→ok
+$ go test ./internal/handler/ -run 'TestNotionPublish|TestAppPublicationsTableExists' -count=1 -v
+--- PASS: TestAppPublicationsTableExistsAfterMigrations (1.55s)
+--- PASS: TestNotionPublishEndToEndCreateApprovePublishReceipt (2.34s)   ★3 FAIL→PASS
+--- PASS: TestNotionPublishEndToEndUpdateConflict (1.44s)                ★
+--- PASS: TestNotionPublishEndToEndUnknownReconcilesRemoteFirst (2.16s)  ★
+--- PASS: TestNotionPublishPlanGates / TestNotionPublishActionLookupIsTenantScoped
+ok  github.com/Tencent/WeKnora/internal/handler	9.514s
+   —— #48 三个 e2e 现在真实运行在生产全量 sqlite 迁移轨道上（Task 6 AC3 e2e 的前置解除）
+
+$ go test ./internal/handler/ ./internal/router/ -count=1
+ok  …/internal/handler	13.961s    （含 TestActionPlan×2 + TestNotionPublish 全家）
+ok  …/internal/router	23.502s    （含 TestActionPlanRoutes×2）
+
+$ go test ./internal/modules/appconnector/... -count=1    → 7 包全 ok
+（appconnector 0.432s | connectorcontrol 2.205s | openconnector 0.427s | plan 1.634s
+  | publish 1.725s | repository/appconnector 1.435s | service/appconnector 2.286s）
+  —— 前置 Task 1-4 全部交付（TestPlanExecute*/TestPlanStatus*/TestPlanApprove*）零回归
+
+$ go test ./internal/modules/workbench/service/workbench/ -count=1 -skip 'TestNotificationDeliveryRejectsResolvedInteractionAfterClaim'
+ok  …/workbench	14.682s   （除 1 个预存在失败外全绿，见 §3）
+
+$ go test ./internal/application/repository/ -run 'TestMobileDevice|TestMobilePush|TestValidateMobileAppID|TestBindIsolates|TestTokenExclusivity|TestNotificationIntentFanOut|TestClaimJoinsAppID|TestMobileDeviceAppDown' -count=1
+ok  …/repository	2.229s    （被改 4 测试文件的全部测试）
+
+$ go test ./internal/application/repository/ ./internal/modules/workbench/... -count=1 -failfast
+ok  …/repository	440.667s  （该包全部测试通过）
+workbench 首失败见 §3
+
+$ go vet ./internal/handler/ ./internal/application/repository/ ./internal/modules/workbench/service/workbench/ ./internal/container/ ./internal/router/
+VET_OK（exit 0）
+```
+
+## 3. 回归中发现的预存在失败（归因铁证：HEAD 基线复现，与本轮改动零因果）
+
+- `TestNotificationDeliveryRejectsResolvedInteractionAfterClaim`（workbench 包 notification_delivery_test.go:489，assert Not equal）：
+  - 本轮单跑 `-count=3` 3/3 确定性失败；该文件对 migrations/与本轮 9 文件**零引用**（grep 实证）；
+  - **HEAD 基线复现**：`git worktree add /tmp/t51-head-baseline 0a778861d`（本轮改动前的 HEAD）后同测试 `--- FAIL` → **预存在缺陷，非本轮因果**（临时 worktree 已清理）。
+  - 需编排方/后续任务单独立案，不在本任务授权面（该文件非本改文件）。
+- app repository 包首轮全包 FAIL(601.5s) 为 go test 默认 10 分钟超时假象（三包并发编译运行挤压）；`-failfast` 复跑 440.667s **全绿 ok**——非代码失败。
+
+## 4. 自检发现
+
+1. **部署运维交接注记（如实记录，决策层已定）**：存量 sqlite 库若停格在旧版 000114（=旧 mobile_device_app 已应用），重编后新 000118 会被当作未应用迁移再跑一次——up 文件为整表重建（CREATE 临时表→INSERT...SELECT→DROP→RENAME，数据保留）可安全重放；versioned(PostgreSQL) 轨道的 000197（ALTER ADD COLUMN）对停格在旧 000193 的存量库重放会因列已存在失败，需迁移运维按常规重编流程处理。该风险面为兄弟分支同款配方 + 主控裁决（「与其余分支统一」）的整体承接，测试/本地开发库不受影响（迁移历史随库文件走）。
+2. **git add 插曲**：`.gitignore:96` 的 `migrations/` 规则对显式路径 `git add` 触发 ignored-advice（exit 1）；实际四个文件均为已跟踪文件且暂存区已含全部改动（先前的 `git add -A` 已入），`git diff --cached --stat` 核验（9 files, +17/−17）后直接提交，无内容缺失。
+3. **Mimosa hook**：commit 时 `scanner_enobufs`（扫描器资源不足，完整审计未跑成），按兼容策略放行；本轮不宣称任何安全扫描结论；无新增 SQL 查询（纯文件重编+引用同步），无新增凭据。
+4. **dig 运行时装配（待核实项 1）维持声明**：TestNotionPublish e2e 转绿不经过 dig 容器（e2e 手工装配 handler 链）；BuildContainer 完整 Invoke 需真实 config/DB/redis（internal/container/container.go:150，仅 cmd/server、cmd/desktop main 调用）。在案证据不变：build exit 0 + vet 五包干净（本轮扩至含 app repository/workbench）+ `*handler.AppActionPlanHandler` 全仓唯一 Provide 点 + dig v1.19.0 多输出为框架原生能力。运行时冒烟留待 Task 6 e2e 或部署冒烟。
+5. **Task 6 e2e（待核实项 2）**：app_connector_action_plan_e2e_test.go 属 Task 6 授权面，本 ask 不含；**其全量迁移前置已由本轮解除**（TestNotionPublish e2e 于全量迁移轨道实跑 PASS 即证）。
+6. **真实 Notion blocked-env（待核实项 3）**：维持计划总则声明（NOTION_TOKEN/NOTION_PARENT_PAGE_ID 本环境不存在），skip 不是 pass，零伪造。
+7. **`go test ./internal/database/ -count=1`（待核实项 4）**：本轮已实跑 → **ok 18.688s**——此前各轮「Task 0 未发生无可验证对象」的声明就此闭环。
+
+## 5. 给编排方的移交
+
+1. **Task 0 已在本分支收口**（`e760c9255`，与兄弟分支统一配方）：迁移轨道可装载，Task 6 的 AC3 全量迁移 e2e 前置解除，可派发 Task 6。
+2. workbench 预存在失败 `TestNotificationDeliveryRejectsResolvedInteractionAfterClaim`（§3，HEAD 基线复现）建议单独立案，勿再回流至 #51 任务面。
+3. 本任务（Task 5）交付面（handler/路由/容器接线 + 4 测试）经四轮在案，本轮零改动零回归。
