@@ -169,6 +169,8 @@ func (a *LagoAdapter) SubmitCommand(ctx context.Context, cmd commercial.Command)
 		return a.grantIncludedCredits(ctx, cmd)
 	case commercial.CommandKindCreatePurchaseSubscription:
 		return a.createPurchaseSubscription(ctx, cmd)
+	case commercial.CommandKindSettlePurchasePayment:
+		return a.settlePurchasePayment(ctx, cmd)
 	default:
 		return commercial.CommandReceipt{}, commercial.ErrPlatformUnsupported
 	}

@@ -2,11 +2,9 @@ package commercialplatform
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -75,6 +73,33 @@ const outboundProviderTimeout = 15 * time.Second
 // link-local or another reserved range. It validates BEFORE the request is
 // built, so a hostile configuration can never point the egress at internal
 // infrastructure.
+// validateOutboundHostWithBypass is the S1 check with the explicit dev-only
+// loopback exemption (#82 Task 8): when allowed, ONLY loopback/localhost
+// hosts skip the reserved-range refusal (local stub verification); every
+// other host still runs the full policy. Production never sets the bypass.
+func validateOutboundHostWithBypass(rawURL string, allowLoopback bool) error {
+	if !allowLoopback {
+		return validateOutboundHost(rawURL)
+	}
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("outbound url invalid")
+	}
+	switch parsed.Scheme {
+	case "http", "https":
+	default:
+		return fmt.Errorf("outbound scheme %q not allowed", parsed.Scheme)
+	}
+	host := parsed.Hostname()
+	if strings.EqualFold(host, "localhost") || strings.HasSuffix(strings.ToLower(host), ".localhost") {
+		return nil
+	}
+	if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+		return nil
+	}
+	return validateOutboundHost(rawURL)
+}
+
 func validateOutboundHost(rawURL string) error {
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
@@ -626,32 +651,10 @@ func (a *LagoAdapter) providerCreateCustomer(ctx context.Context, externalCustom
 
 // providerOutboundCall issues one pre-validated POST to the provider API
 // (S1 host check inside) with the credential ONLY in the Authorization
-// header.
+// header. A thin wrapper over providerOutboundRequest (the settle rail
+// generalized the method; every existing caller stays POST-only).
 func (a *LagoAdapter) providerOutboundCall(ctx context.Context, path, form string, idempotencyKey string) (int, []byte, error) {
-	base := a.cfg.StripeAPIBase
-	if base == "" {
-		base = outboundProviderHost
-	}
-	if err := validateOutboundHost(base); err != nil {
-		return 0, nil, fmt.Errorf("%w: outbound host policy violation", commercial.ErrPlatformUnconfigured)
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		strings.TrimSuffix(base, "/")+path, strings.NewReader(form))
-	if err != nil {
-		return 0, nil, fmt.Errorf("%w: outbound request invalid", commercial.ErrPlatformUnconfigured)
-	}
-	req.Header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(a.cfg.StripeAPIKey+":")))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	if idempotencyKey != "" {
-		req.Header.Set("Idempotency-Key", idempotencyKey)
-	}
-	resp, err := providerOutboundClient().Do(req)
-	if err != nil {
-		return 0, nil, fmt.Errorf("%w: outbound provider call not reachable", commercial.ErrPlatformUnreachable)
-	}
-	defer resp.Body.Close()
-	data, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
-	return resp.StatusCode, data, nil
+	return a.providerOutboundRequest(ctx, http.MethodPost, path, form, idempotencyKey)
 }
 
 // providerAttachDefaultPaymentMethod attaches the payment-method token to
