@@ -595,3 +595,144 @@ Task 6 是纯测试载体任务，计划未定义 RED 步骤（Step 2 直接是 
 
 - 计划 Task 6 全部 4 个 Step 终态：Step 1 ✅（载体入库 `1d1c8ddbb`）· Step 2 ✅（SKIP 可复现，本会话留证）· Step 3 ✅（vet 零输出，本会话留证）· Step 4 ✅（代码提交在库）+ 本报告入库（收尾）。
 - 真实飞书 API 正向闭环证据：本环境**未运行、未验证**——无凭据，永不伪造；`FEISHU_APP_ID`/`FEISHU_APP_SECRET`/`FEISHU_TEST_FOLDER_TOKEN` 就绪环境的 opt-in 运行即产生该证据。
+
+---
+
+# Task 7: 计划级验证收尾（本会话实际运行）
+
+**任务性质（如实）**：Task 7 是纯验证收尾任务——计划 Files 一节明确「无新文件（全量验证 + 收尾提交）」，无新代码故无 TDD RED/GREEN 环节；计划级验证命令（testCommand）本身就是本任务的交付物。以下每条命令均为本会话在 worktree `/Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue30-sweep-t49`（分支 `codex/issue30-t49`）原样运行并粘贴完整输出，无替代、无缩水。
+
+## 1. 验证内容
+
+逐字执行计划「Task 7 Step 1: 全量验证」的 6 条命令 + 「Step 2: 重复提交兜底」的工作树检查，并补一项 SKIP 语义复核（计划 testCommand 括号声明的预期：真实凭据未设置时真实 Provider 测试 SKIP 属预期）。
+
+## 2. 验证命令与完整输出（本会话实际运行）
+
+### 2.1 构建 + 静态检查（计划 Step 1 第 1 条）
+
+```
+$ go build ./... && go vet ./internal/modules/appconnector/... ./internal/handler/ ./internal/router/ ./internal/container/ && echo "BUILD_VET_OK"
+# github.com/Tencent/WeKnora/cmd/server
+ld: warning: ignoring duplicate libraries: '-lc++'
+# github.com/Tencent/WeKnora/cmd/desktop
+ld: warning: ignoring duplicate libraries: '-lc++'
+BUILD_VET_OK
+```
+
+**判定**：build 通过；`go vet` 自身零输出（两行 `ld: warning: ignoring duplicate libraries` 是 macOS 链接器对 `-lc++` 重复链接的告警，出自 `go build` 环节而非 vet，非 vet 发现）。符合 Expected「全部 ok；go vet 无输出」。
+
+### 2.2 全量迁移轨道（计划 Step 1 第 2 条）
+
+```
+$ go test ./internal/database/ -count=1 2>&1 | tail -5
+ok  	github.com/Tencent/WeKnora/internal/database	60.371s
+```
+
+Task 0 重编（sqlite 000118 / versioned 000197）后的全量迁移轨道可装载。
+
+### 2.3 appconnector 全部子包（计划 Step 1 第 3 条）
+
+```
+$ go test ./internal/modules/appconnector/... -count=1 2>&1 | tail -10
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector	3.657s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/connectorcontrol	5.248s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/openconnector	0.243s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/publish	5.708s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector	0.810s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector	7.871s
+```
+
+6 个子包全 ok（合同层/Adapter/publish 服务层/仓储/服务/连接控制/开放连接）。
+
+### 2.4 handler 发布面（计划 Step 1 第 4 条，-v 逐项）
+
+```
+$ go test ./internal/handler/ -run 'FeishuPublish|NotionPublish|TestAppPublicationsTableExists' -count=1 -v 2>&1 | grep -E "^(=== RUN|--- (PASS|FAIL|SKIP)|PASS|FAIL|ok)" | head -60
+=== RUN   TestFeishuPublishEndToEndCreateApprovePublishReceipt
+--- PASS: TestFeishuPublishEndToEndCreateApprovePublishReceipt (9.66s)
+=== RUN   TestFeishuPublishEndToEndUpdateRevisionConflict
+--- PASS: TestFeishuPublishEndToEndUpdateRevisionConflict (10.31s)
+=== RUN   TestFeishuPublishEndToEndUnknownReconcilesRemoteFirst
+--- PASS: TestFeishuPublishEndToEndUnknownReconcilesRemoteFirst (7.03s)
+=== RUN   TestFeishuPublishEndToEndReadOnlyScopeCannotPublish
+--- PASS: TestFeishuPublishEndToEndReadOnlyScopeCannotPublish (8.03s)
+=== RUN   TestFeishuPublishPlanGates
+--- PASS: TestFeishuPublishPlanGates (0.13s)
+=== RUN   TestFeishuPublishActionLookupIsTenantScoped
+--- PASS: TestFeishuPublishActionLookupIsTenantScoped (0.00s)
+=== RUN   TestAppPublicationsTableExistsAfterMigrations
+--- PASS: TestAppPublicationsTableExistsAfterMigrations (3.48s)
+=== RUN   TestNotionPublishEndToEndCreateApprovePublishReceipt
+--- PASS: TestNotionPublishEndToEndCreateApprovePublishReceipt (5.14s)
+=== RUN   TestNotionPublishEndToEndUpdateConflict
+--- PASS: TestNotionPublishEndToEndUpdateConflict (3.26s)
+=== RUN   TestNotionPublishEndToEndUnknownReconcilesRemoteFirst
+--- PASS: TestNotionPublishEndToEndUnknownReconcilesRemoteFirst (2.14s)
+=== RUN   TestNotionPublishPlanGates
+--- PASS: TestNotionPublishPlanGates (0.00s)
+=== RUN   TestNotionPublishActionLookupIsTenantScoped
+--- PASS: TestNotionPublishActionLookupIsTenantScoped (0.00s)
+PASS
+ok  	github.com/Tencent/WeKnora/internal/handler	56.787s
+```
+
+12 项全 PASS、零 FAIL、零 SKIP：飞书 E2E 4 项（AC1 创建审批发布回执 / 409 版本冲突零写 / unknown→核对零重发 / AC2 只读 fail closed）+ 飞书 HTTP 门 2 项 + #48 迁移表 1 项 + Notion 既有 4 项（零回归）。AC1/AC2/AC3 三条验收的 E2E 证据均在本轮复跑留证。
+
+### 2.5 移动设备迁移引用回归（计划 Step 1 第 5 条）
+
+```
+$ go test ./internal/application/repository/ -run 'MobileDevice|MobilePush' -count=1 2>&1 | tail -3
+ok  	github.com/Tencent/WeKnora/internal/application/repository	5.217s
+```
+
+Task 0 重编波及的 4 个测试文件引用更新后零回归。
+
+### 2.6 workbench 通知策略回归（计划 Step 1 第 6 条）
+
+```
+$ go test ./internal/modules/workbench/service/workbench/ -run 'TestPushPayloadPolicyBlindStripsKind|TestHTTPNotificationProviderBlindOmitsKind|TestAppRoutingProviderDispatchesByApp|TestDisabledNotificationProviderPausesDurablyWithoutRetryStorm|TestAppRoutingProviderRevokesOnlyOwnAppRegistration' -count=1 2>&1 | tail -3
+ok  	github.com/Tencent/WeKnora/internal/modules/workbench/service/workbench	3.804s
+```
+
+Task 0 重编波及的第 5 个测试文件所属包零回归。
+
+### 2.7 重复提交兜底（计划 Step 2）
+
+```
+$ git status --short
+（无输出——工作树 clean）
+```
+
+Task 0–6 全部产出已在 HEAD（`041134224`…`5c8a39d0b` 共 9 个计划提交），无本计划范围内未提交文件，无需兜底提交。
+
+### 2.8 SKIP 语义复核（补充证据，计划 testCommand 括号声明的预期）
+
+```
+$ go test ./internal/modules/appconnector/ -run 'TestFeishuRealPublishLoop' -count=1 -v 2>&1 | tail -6
+=== RUN   TestFeishuRealPublishLoop
+    feishu_publish_real_test.go:34: feishu real credentials not configured (FEISHU_APP_ID/FEISHU_APP_SECRET/FEISHU_TEST_FOLDER_TOKEN in artifacts/connector-real/feishu-publish.env); skip is not a pass — T19 real-provider evidence stays blocked-env
+--- SKIP: TestFeishuRealPublishLoop (0.00s)
+PASS
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector	0.124s
+$ echo "FEISHU_APP_ID=${FEISHU_APP_ID:-<unset>} FEISHU_APP_SECRET=${FEISHU_APP_SECRET:-<unset>} FEISHU_TEST_FOLDER_TOKEN=${FEISHU_TEST_FOLDER_TOKEN:-<unset>}"
+FEISHU_APP_ID=<unset> FEISHU_APP_SECRET=<unset> FEISHU_TEST_FOLDER_TOKEN=<unset>
+```
+
+三凭据变量实测均未设置，`TestFeishuRealPublishLoop` 如实 SKIP（skip 消息自带「skip is not a pass」声明）——与计划声明一致，不冒充真实集成证据。
+
+## 3. TDD 说明（如实）
+
+Task 7 无新代码、无新测试文件（计划 Files：「无新文件」），TDD RED/GREEN 不适用于本任务；本任务的「测试」即上述 8 项验证命令本身，全部为本会话实际运行的真实输出。
+
+## 4. 自检发现
+
+1. **`ld: warning: ignoring duplicate libraries: '-lc++'`**：`go build ./...` 环节的 macOS 链接器告警（cmd/server、cmd/desktop 两处），非本计划引入（与本仓库既有构建行为一致），非 vet 发现，不构成失败；如实记录不掩盖。
+2. **耗时量级**：`internal/database`（60.4s）与 `internal/handler`（56.8s）为两条重命令（全量迁移装载 + 全迁移 sqlite E2E），单次运行通过，未隐藏任何重跑。
+3. **真实 Provider 正向闭环证据**：本环境仍为 blocked-env（三凭据未设置，实测留证于 2.8）——本计划对该验收项的诚实终态不变：opt-in 证据载体已入库（Task 6，`1d1c8ddbb`），凭据就绪环境运行即产生正向证据。
+4. **兜底提交**：Step 2 实测工作树 clean，本任务自身无代码提交；唯二入库动作是本报告文件的追加（见下方提交记录）。
+
+## 5. Task 7 结论
+
+计划级验证命令（testCommand）全绿：build ✅ · vet 零输出 ✅ · database ok ✅ · appconnector/... 6 包 ok ✅ · handler 发布面 12 项 PASS ✅ · application/repository ok ✅ · workbench ok ✅ · 工作树 clean 无兜底提交 ✅ · blocked-env SKIP 如实 ✅。
+
+**计划 Task 0–7 全部完成；#49「T19 飞书文档发布端到端闭环」实现收尾。**
