@@ -24,3 +24,12 @@
 - **强制条件**：① t09 DECISION.md 完整留痕；② Ledger 记 Ruling 含错误代价；③ 付款时完整 line-item 复核必须是 #81 的显式 Produces 接口、后续 Issue Consumes 强制引用（防止付款前不比对演变为永远不比对）；④ 本偏差仅限此一条，不得外溢为其他 spec 条款先例。
 - **错误代价**：若裁决错误且 line items 在付款前存在真实篡改面，代价是付款前防线弱化——由付款后复核与 #84 异常付款验收兜底暴露。
 - **owner 权利**：本偏差全程可否决——全部成果在集成分支 codex/issue-72-lago（未合并未推送），叫停即回退。
+## R-4 ｜ 2026-09-26 ｜ #82 D2 激活链重议 = 选项 α 双轨道
+
+- **决定**：渠道收款（支付宝/微信真实收款）+ 权威结算轨道（WeKnora 收到渠道回调后驱动 Stripe Provider gated 结算扣款，经 Lago 内建生命周期完成激活——复用 #74 实证链路；t10 已证伪 retry_payment 路径）。
+- **依据**：t10 实证 pinned Lago v1.53.0 的 retry_payment 对 open invoice 返回 404（deploy/lago-lab/payment-trigger/evidence/）；#74 实证 gated flow→finalize→active 为当前版本唯一可行激活机制；与 R-1（T02=②Provider）内在一致，spec/ADR 零改动。
+- **已披露边界（owner 知悉）**：支付宝渠道证据为本地 RSA stub（证明协议往返+验签），真实沙箱钱包付款证据未取得（无 ALIPAY_* 凭据），不得伪造沙箱证据。
+- **错误代价**：若 Stripe 结算轨道在生产产生不可接受的手续费/风控，需回议（可用 0 额度/即时退款抵消设计）。
+- **附带授权**：#82 重做（吸收集成分支 flowfix 修复与最终终审 OCR findings 修复范围）。
+
+---
