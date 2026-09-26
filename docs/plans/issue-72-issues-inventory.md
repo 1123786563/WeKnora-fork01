@@ -1,7 +1,7 @@
 # Issue #72 子 Issue 清单（Lago 计费迁移）
 
-> 生成：2026-09-23（同日第四次修订：按 DAG 审查修复——裁决留痕补录、证据引用修正、98→101 业务边、6 条调度约束边、行号与统计口径勘误）｜ 分支：`codex/issue-72-lago`
-> 来源：33 个子 Issue（#73–#105）逐票调查结果（代码证据为调查会话实查/实跑）；GitHub 状态第三次修订会话经 `gh issue list --state all` 全量复测：#73/75/76/77/78/79/80 CLOSED（7 票），#74 及 #81–#105 OPEN（26 票）。
+> 生成：2026-09-23（同日第四次修订：按 DAG 审查修复——裁决留痕补录、证据引用修正、98→101 业务边、6 条调度约束边、行号与传递口径勘误）｜ **2026-09-26 第五次修订**（批次 2 执行结果+R-4 裁决落地：#81 todo→done、#82 就绪判定移交、R-4 双轨道入库）｜ 分支：`codex/issue-72-lago`
+> 来源：33 个子 Issue（#73–#105）逐票调查结果（代码证据为调查会话实查/实跑）；GitHub 状态**第五次修订会话**经 `gh issue list --state all` 全量复测：#73/75/76/77/78/79/80 CLOSED（7 票），#72/#74 及 #81–#105 OPEN（27 票）——与最终报告 §2.4 一致（#74/#81 完成但 GitHub 关票滞后，见 §3 治理项）。
 > 父 Issue：[#72](https://github.com/1123786563/WeKnora-fork01/issues/72)（Lago 替换 OpenMeter 迁移 Spec 总票）——只提供总体目标与验收，**不计入 DAG 节点**；33 个子 Issue 均为 #72 直接子票，层级树退化为单层（无嵌套父子）。
 > 状态口径：`done`=已有完成证据不重新实施；`blocked`=依赖缺失（外部输入或前置未决），保留原因；`todo`=待实施（前置未齐属正常排期，不算 blocked）。
 
@@ -17,8 +17,8 @@
 | #78 | Lago06 空间独立 Lago Customer | CLOSED | **done** | 三层幂等+租户隔离，6 组测试实跑通过 |
 | #79 | Lago07 发布不可变 Plan Version | CLOSED | **done** | 六轴校验+DB trigger 不可变，5 包测试实跑 |
 | #80 | Lago08 Base Plan 权益与月度额度 | CLOSED | **done** | 懒链+配额 guard+迁移 000183，9 测试实跑 |
-| #81 | Lago09 Quote→待付款 Invoice | OPEN | **todo** | 三前置全满足（#74 done、#78/#79 done），T02 已裁决② |
-| #82 | Lago10 支付宝恰好一次激活 | OPEN | **todo** | T02 已裁决②；待 #81 交付可激活实体 |
+| #81 | Lago09 Quote→待付款 Invoice | OPEN | **done** | 批次 2 实施完成：merge `e26a90d61`+三通道流程验证 9 组断言全过+OCR passed-r2（GitHub 关票滞后） |
+| #82 | Lago10 支付宝恰好一次激活 | OPEN | **todo** | 第一轮被 t10 证伪后 revert；**R-4 双轨道裁决+重做授权，当前唯一可开工**（前置 #74/#81 全 done） |
 | #83 | Lago11 微信复用激活流程 | OPEN | todo | 渠道层已实现，Lago 激活链路复用待 #82 |
 | #84 | Lago12 异常付款不扩大权益 | OPEN | todo | 本地校验已有，Lago Payment 路径待 #82/#83；#85 后串行（调度） |
 | #85 | Lago13 购买 Credits 付款到账 | OPEN | **todo** | 75-a2 已裁决选项 B（协调层承载），待 #82/#83 |
@@ -43,7 +43,11 @@
 | #104 | Lago32 备份恢复+商业对账 | OPEN | todo | 工具链/演练全缺，待 #102/#103 |
 | #105 | Lago33 切换 Lago 移除 OpenMeter | OPEN | todo | 收官票，9 个 blocker 全 OPEN |
 
-统计：done 8 ｜ blocked 0 ｜ todo 25（合计 33）。
+统计：done 9 ｜ blocked 0 ｜ todo 24（合计 33）。
+
+状态变更记录（第五次修订，2026-09-26，两组）：
+1. **#81：todo → done（批次 2 实施交付）**。`git log` 实查：12 个 TDD 提交（Task 1-12，`1079a11ad`→`f7c3b3532`）+ 代码审查修复（F1/F2=`69fd9b16d`、F8=`bf01c3d71`）→ merge `e26a90d61` 入集成分支；流程验证=三通道（Playwright 无头真实浏览器真实登录渲染断言 + curl 真实 API 链路 + Lago DB psql 直查），`issue-72-flow-evidence-81/`（20 个 git 跟踪文件）README 9 组断言全 ✅（含过期 quote 409、金额漂移 409 不拉起渠道两组负对照）；增量 OCR r1#2 37 findings → 修复 4 项 → **r2=0 findings passed-r2**（`900041bb0`，台账 `issue-72-ocr-ledger.md`）；编排器结果 JSON 记「已完成」（final report §13）。本会话复验：`service/commercial/purchase.go`+`purchase_test.go` 在 HEAD，`CommandKindCreatePurchaseSubscription` 接线于 `fake.go:644`/`lago.go:170`。残留（不重开验收）：GitHub 关票（编排侧）、终审 OCR 6 项开放 findings 中 #81 收尾面（R-4 已划入 #82 重做范围）。实施依据含 **R-3**（spec L121 付款前 line-item 比对=选项 A 批准偏差：付款前权威订阅面硬校验+付款时 `PurchaseSnapshot.InvoiceFees` 完整复核，四条强制条件见 `issue-72-user-rulings.md`）。
+2. **#82：保持 todo，就绪判定由 #81 移交 #82（R-4 落地）**。第一轮实现（7 个 Task 提交→merge `8cfc91975`）经真实流程验证 3 轮未过——t10 契约探针（`ca04d7da7`，run `6f45ed2f`）证伪其 D2 结算触发链（P1：stuck 3DS 收款使 gating invoice 转 INVISIBLE、payments 查询 200 空列表；P2d：`retry_payment` 对隐藏发票 404），激活后半链不可达 → 按裁定 revert `e0364d196`（34 文件 −3724 行；实现保留分支 `codex/issue-72-lago-82`）。**R-4（2026-09-26）**解除 T02 §5 重议：激活链=**选项 α 双轨道**（渠道收款+WeKnora 收到渠道回调后驱动 Stripe Provider gated 结算扣款，复用 #74 实证 gated flow→finalize→active；与 R-1 内在一致、spec/ADR 零改动），**附带授权 #82 重做**（吸收 flowfix 三缺陷修复〔回调白名单/Provider.MerchantID()/客户绑定 upsert〕与终审 OCR 6 项开放 findings 修复范围）；已披露边界=支付宝渠道证据为本地 RSA stub、真实沙箱钱包付款证据未取得（无 ALIPAY_* 凭据，不得伪造）。前置 #74（done）/#81（done）全满足 → **当前唯一可立即开工节点**。
 
 状态变更记录：
 - **第三次修订（2026-09-23）三组**：
@@ -123,20 +127,20 @@
 - 处理决定：**done**——遗留（concurrent_tasks 执法、manual/passage guard 缺口、前端展示）已显式移交 OPEN 的 #87/#88/#100。
 
 ### issue-81 ｜ [Lago 09] 从 Quote 创建待付款 Invoice 和 incomplete Subscription
-- URL: https://github.com/1123786563/WeKnora-fork01/issues/81 ｜ 父节点: #72 ｜ GitHub: OPEN
+- URL: https://github.com/1123786563/WeKnora-fork01/issues/81 ｜ 父节点: #72 ｜ GitHub: OPEN（完成已验证，关票待编排侧执行）
 - 需求依据：账单管理员 Checkout 选定 Plan Version 获得有效 Quote；系统创建 Lago incomplete Subscription 与待付款 Invoice，Quote 与 Invoice 逐项匹配（版本/币种/总额/行项）后才创建 Channel Payment Order；付款前 Entitlement 不开放；过期/并发变更/重试不产生重复。
-- 实现现状：未实现（核心交付零代码，无 lago-81 账本）。可复用基础：#80 幂等订阅创建算法（lago.go:587-637，subscriptionIndexStatuses 显式含 incomplete）、本地 CreateQuote/CreateOrder/Quote.ValidateForUse、前端 CheckoutPage。缺口：payment-gated 订阅命令（ensure_subscription 是免费 Base Plan，lago.go:685-686 不带 activation_rules）、Lago Invoice 创建与 Quote↔Invoice 匹配、待付款产品状态、旧本地商业表退役。
-- 验收标准：①Quote 固定版本/金额/权益/行项/过期 ②不一致不创建支付请求 ③待付款且 Entitlement 未开放 ④过期/并发/重试不重复。
-- 依赖：前置 #74（**done**，T02 裁决②已补录留痕）/#78（done）/#79（done）——**三前置全部满足，当前唯一可立即开工节点**；下游 #82。
-- 处理决定：**todo**（第三次修订由 blocked 改判）——T02 三选一已裁决为选项②（受支持 Provider，Stripe TEST 已在 #74 实证），裁决记录已补录 `DECISION.md` §5 末；按选项②实施：payment-gated incomplete Subscription 走 Lago 支持的外部 Provider 通道，禁止本地强制 active。
+- 实现现状：**已实现并验证（批次 2 实施交付，2026-09-23~24）**。交付面：`CommandKindCreatePurchaseSubscription` 命令+`PurchaseSnapshot`（含 `InvoiceFees []InvoiceLineSnapshot`，为 #82/#84 显式接口——R-3 强制条件③）、`service/commercial/purchase.go`（本会话复验在 HEAD）、`commercialplatform/{lago_purchase.go,fake.go:644,lago.go:170}`、Checkout 冻结面（版本/CNY/权益/单行订阅费/+30min 过期）、`GET /purchase` 待付款状态（entitlements 404 保持）。实施依据 **R-3**：spec L121 付款前全项 line-item 匹配在 pinned v1.53.0 源码级实证不可实现（open invoice 对全部 API 不可见，计划 F3-F5），批准偏差=付款前权威订阅面硬校验（plan code/CNY/整数总额）+无 charges 切片单行推导+付款时完整复核。验证：三通道流程验证（Playwright 真实浏览器+真实 API+Lago DB 直查）9 组断言全 ✅ 含两组负对照（过期 quote 409、金额漂移 409 不拉起渠道）；增量 OCR r2=0 findings passed-r2；真实栈集成测试 `TestLagoPurchaseIntegration` PASS（真 Stripe TEST 3DS 卡制造稳定待付款窗口）。
+- 验收标准：①Quote 固定版本/金额/权益/行项/过期（R-3 偏差口径） ②不一致不创建支付请求 ③待付款且 Entitlement 未开放 ④过期/并发/重试不重复。
+- 依赖：前置 #74/#78/#79（全 done，已满足）；下游 #82。
+- 处理决定：**done**（第五次修订由 todo 改判）——四条验收在 R-3 批准偏差口径下全部有真实链路证据；residual（关票、OCR 终审 6 项开放 findings 中 #81 收尾面）不重开验收，后者已由 R-4 划入 #82 重做范围。
 
 ### issue-82 ｜ [Lago 10] 支付宝付款后恰好一次激活套餐
 - URL: https://github.com/1123786563/WeKnora-fork01/issues/82 ｜ 父节点: #72 ｜ GitHub: OPEN
 - 需求依据：可信 Payment Fact 写入 Lago，仅当 Subscription 观察为 active 才开放 Entitlement 与套餐 Credits；状态『待付款→已付款待激活→已生效』；同步返回页不确认付款；重复回调/Outbox 重放/响应丢失不重复履约；真实支付宝沙箱证据关联四对象。
-- 实现现状：部分实现（仅渠道侧与读侧）：`payment/alipay.go` Verify（验签/app_id/seller_id/金额）+VerifySyncReturn 永不确认（AC2 渠道层满足）、`handler/payment_callbacks.go` 回调入口、`repository/commercial/order.go` ConfirmPayment 单事务（版本守卫/幂等/晚成功审计）、outbox 存储原语、benefits 快照仅 active 开放。缺口：record_payment 类 Lago 命令（seam 无）、payment-gated 订阅创建、三态映射（契约仍 pending|paid|closed）、恰好一次激活编排、支付宝沙箱证据目录。
-- 验收标准：①三态依次呈现 ②同步返回页不能确认 ③重复回调/重放/响应丢失不重复履约 ④真实沙箱证据关联 Invoice/Payment/Subscription/Credits。
-- 依赖：前置 #74（**done**，裁决②）/#81（todo）；下游 #83/#84/#85/#93/#95。
-- 处理决定：**todo**（第三次修订由 blocked 改判）——录入通道已裁决为选项②受支持 Provider；前置对象（待付款 Invoice+incomplete Subscription）由 #81 交付后即可开工。
+- 实现现状：**渠道侧/读侧+第一轮激活链实现已交付，激活链本体待按 R-4 重做**。已有并保留在 HEAD：`payment/alipay.go` Verify/VerifySyncReturn（AC2 渠道层）、回调入口（flowfix 修复后匿名可达+验签 fail-closed）、`ConfirmPayment` 单事务幂等（版本守卫/晚成功审计）、outbox 原语、benefits 仅 active 开放、#81 交付的购买链（Quote→incomplete Subscription→gating Invoice→渠道订单）。第一轮激活链（settle_purchase_payment 命令+伪确定性结算+purchase wallet，merge `8cfc91975`）被 t10 证伪（D2 结算触发链：stuck 3DS 使 gating invoice INVISIBLE、payments 查询空、`retry_payment` 404）→ revert `e0364d196`，实现保留分支 `codex/issue-72-lago-82`（含 t10 探针 lab、777 行计划、185 行账本，可回收资产）。**重做范围（R-4，2026-09-26）**：双轨道激活——渠道收款（支付宝/微信）+ WeKnora 收到渠道回调后驱动 Stripe Provider gated 结算扣款（复用 #74 实证 gated flow→finalize→active）；吸收 flowfix 三缺陷修复与终审 OCR 6 项开放 findings（final report §9.4：身份重放不查 Status/孤儿 awaiting 订阅无回收/消歧条件限 AwaitingPayment/CurrentPurchaseOrder 宽泛匹配/PM 轮询预算/AC1 断言 endgame 等）；三态映射（`paid_awaiting_activation` 全仓仍 0 命中）与恰好一次激活编排为剩余核心。
+- 验收标准：①三态依次呈现 ②同步返回页不能确认 ③重复回调/重放/响应丢失不重复履约 ④真实沙箱证据关联 Invoice/Payment/Subscription/Credits（**已披露边界**：无 ALIPAY_* 凭据，R-4 owner 知悉以 stub 协议往返+验签证据带残余，不得伪造）。
+- 依赖：前置 #74（done，R-1+R-4）/#81（done）——**全部满足，当前唯一可立即开工节点**；下游 #83/#84/#85/#93/#95（传递 23 票）。
+- 处理决定：**todo**——第一轮 revert 后 R-4 已给齐激活链设计与重做授权；按双轨道实施，Stripe TEST 密钥复用 `~/.zcode/issue72-stripe.env`（仅测试凭据）。
 
 ### issue-83 ｜ [Lago 11] 微信付款复用同一激活流程
 - URL: https://github.com/1123786563/WeKnora-fork01/issues/83 ｜ 父节点: #72 ｜ GitHub: OPEN
@@ -325,6 +329,8 @@
 ## 3. 外部依赖核查（范围外，不纳入 DAG 节点）
 
 - **#30（移动 AI Office Spec，OPEN）**：成果部分已在基线——`docs/specs/2026-09-20-mobile-ai-office-design.md`、`mobile-module-seams.md`、`apps/mobile`、`packages/mobile-core`、`tests/mobile-v2`、`deploy/mobile-workbench` 均在当前 main；issue30-sweep worktree 分支 `codex/issue30-mobile-office` 仅领先 1 个 docs 提交（16dddb2d5，未合并）。与 Lago 迁移**无代码耦合**，仅 CONTEXT.md 移动/账单权限语义与 Billing API provider-neutral 契约存在交集。结论：仅记录，不建节点、不加依赖边。
-- **#74 外部输入（已全部闭合且留痕）**：①Stripe TEST 密钥——已提供（`~/.zcode/issue72-stripe.env`，仅测试凭据）且已被 #74 实施轮消费（run 3dc51207 九阶段全 pass）；②T02 三选项——已裁决为**选项②（受支持 Provider）**，裁决记录已补录 `docs/migrations/lago/t02-payment-activation/DECISION.md` §5 末（2026-09-23，出处=编排任务指令转述的用户裁决，final report §9.3 的"待确认"记录已被取代）。
-- **#75-a2 设计决策（已闭合且留痕）**：已裁决为**选项 B**（批次状态机由 WeKnora 协调层承载、Lago Wallet 交易仅在到账时刻幂等创建）；ADR-0012 修订（`552d98d12`）的裁决内容自始在案，出处确认注记已于第四次修订补录至 `docs/adr/0012-lago-as-commercial-billing-authority.md`；汇总留痕见 `docs/plans/issue-72-ledger-74.md`「后续裁决记录」节。
-- gh CLI 可用（第三次修订会话 `gh issue list --state all` 全量复测 72–105 号状态）；`docs/plans/ledgers/` 现存 lago-78/79/80 + 本 worktree 的 issue-72-ledger-74（`ls` 实查）。
+- **用户裁决全集（`docs/plans/issue-72-user-rulings.md`，均入库有约束力）**：**R-1**（2026-09-23）T02 付款激活通道=选项②受支持 Provider（Stripe TEST 已在 #74 实证）；**R-2**（2026-09-23）75-a2 充值批次并发模型=选项 B 协调层承载（Lago Wallet 交易到账时刻幂等创建，ADR-0012 修订 `552d98d12`）；**R-3**（2026-09-23）#81 spec L121 付款前 line-item 比对=选项 A 批准偏差（付款前权威订阅面硬校验+付款时 InvoiceFees 完整复核，四条强制条件）；**R-4**（2026-09-26）#82 激活链重议=**选项 α 双轨道**（渠道收款+WeKnora 驱动 Stripe Provider gated 结算，复用 #74 实证链路；t10 已证伪 retry_payment），附带授权 #82 重做，已披露支付宝沙箱凭据缺失边界。
+- **仍开放的外部输入（均已披露/有归属，不构成 DAG blocked）**：①支付宝沙箱凭据（ALIPAY_*）与微信真实受控环境凭据——未提供；R-4 明示 stub 证据+披露边界、不得伪造，#82 AC4 带残余，#83/#97 实施时再行安排；②AGPL 法务结论——缺失，属 **#101 票内交付物**（#103 的法律前置门经 101→103 依赖边表达）；③生产基础设施目标环境（Helm/K8s、独立 PG/Redis/对象存储）——#103 实施时需要，届时不可得再转 blocked-env。
+- **治理项（不阻塞任何边）**：①#74/#81 GitHub 关票（第五次修订会话 `gh issue list` 复测均仍 OPEN；#82 保持 OPEN）；②终审 OCR 6 项开放 findings（final report §9.4 对账）+批次 1 轮 4 遗留（§9.5）+批次 2 轮 4 low（§9.6）——R-4 已将前者的修复范围划入 #82 重做；③分支 `codex/issue-72-lago-82` 去留（含可回收设计资产，建议保留至 #82 重做复用后由用户决定，final report D7）。
+- **与编排下发指令的一处事实冲突及裁决（留痕）**：第五次修订收到的下发指令仍载「#74 判 todo，剩余交付=用真实密钥重跑 run_lab.py 收集 AC1-AC3 运行时证据」——该前提对应 2026-09-23 调查快照。集成分支证据（第三次修订记录+第五次修订会话复验：`docs/migrations/lago/t02-payment-activation/t02-{gating,activation,retries}.json` root status=pass、ledger-74 AC1-AC4 全 pass、F1 主 Agent 裁决接受、revert `e0364d196` 未触及 #74 契约修复）证明该交付已完成。按构建规则「已有完成证据的节点 status=done，不重新实施」，**维持 #74=done**。
+- gh CLI 可用（第五次修订会话 `gh issue list --state all` 全量复测 72–105 号状态）；`docs/plans/ledgers/` 现存 lago-78/79/80 + 本 worktree 的 issue-72-ledger-74/81（`ls` 实查）。
