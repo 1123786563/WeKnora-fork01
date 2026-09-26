@@ -28,3 +28,9 @@ weknora-tenant-1-2026-09|0
 fulfilled
 applied|weknora-tenant-2-2026-09
 2
+
+=== Tenant 3 rerun after the R-17/R-18 fixes (purchase wallet identity, 2026-09-26T14:41:32Z) ===
+local: state=active, order=fulfilled, record=applied external_id=weknora-tenant-3-purchase-2026-09
+lago wallet: weknora-tenant-3-purchase-2026-09 (purchase batch identity — NOT the monthly name)
+invoice: 0114b7b0-b28e-4ef6-b972-b70d8676a36d succeeded WEK-ED5E-018-001
+payments succeeded count: 1

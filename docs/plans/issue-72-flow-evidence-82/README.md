@@ -86,6 +86,30 @@ EOF
 node browser_flow_82.mjs && node browser_sync_face_82.mjs ord_98bb65420987f6fe
 ```
 
+## Settle 链验证记录（R-4 双轨道重做轮，2026-09-26）
+
+前次冻结后按 R-4 裁决重做（t11 探针 P-A..P-E 全 PASS → settle 链落地），
+本目录 `settle-evidence/` 与真实栈（weknora-lago-t11 :48895）完成：
+
+- **t11 机制探针**：`docs/migrations/lago/t11-payment-settle-trigger/`（五判据
+  全 PASS；D2' step (iv)——挂死 PI update pm + off-session confirm→succeeded——
+  实证；webhook_secret 本地边界与 harness 替身见其 DECISION.md）。
+- **T9 集成测试**：`settle-evidence/t9-integration-run.txt`（gated create→
+  settle→真实 PI 事件投递→active+D6' 行项目复核→重放 no-op，真实栈 PASS 非
+  skip）。
+- **端到端 API 链**（真后端 :8093 + 支付宝回环 stub + t11 栈）：发布 plan→
+  浏览器同款 API 下单（支付宝）→precreate→同步面不推进→签名回调 success→
+  订单 paid、purchase 态 **paid_awaiting_activation**→outbox drain 驱动
+  settle→webhook 投递→**active + fulfilled + 购买钱包（weknora-tenant-3-
+  purchase-2026-09）applied 回执**；重复回调 success 且 fulfill 事件不增。
+  四对象证据：`settle-evidence/lago-four-objects-after-settle.txt`
+  （subscription active / invoice finalized+numbered+succeeded、fee 1650=
+  proration 剪裁 F12 实证 / payments 恰 1 succeeded / purchase 钱包批次）。
+- **披露不变**：`ac4-sandbox-credentials-unavailable`——支付宝侧仍为本地
+  RSA stub（协议往返+验签证明），非真实沙箱钱包付款证据；浏览器 UI 面
+  （Playwright 断言）本轮未实跑（jsdom 单测 12/12 覆盖三态与渠道选择器
+  逻辑），留给复验轮。
+
 ## 结论
 
 已落地面达成（步骤 1-3 + 步骤 4 同步面 + 验签面 + 回归 + 红线）；**回调入账与激活链不可达**（缺陷 2/3 实证阻断 + D2 冻结）——Issue #82 用户流程「可信异步回调写入 Lago Payment 后订单与 Billing 页变已生效，Credits/Entitlement 到账且重复回调只入账一次，后台 Lago 可查关联 Invoice/Payment/active Subscription」**整体未达成**，待缺陷修复与 T02 §5 重议后的修订版计划承接。
