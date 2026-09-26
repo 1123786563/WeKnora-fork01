@@ -28,9 +28,13 @@ func (stubTaskHandler) Handle(ctx context.Context, t *asynq.Task) error { return
 // 方法值创建与登记（bootstrap.WorkerRegistry.Register 以 any 承载 handler、
 // 不调用），永不调用服务方法。语义依据：Go 方法值创建不解引用嵌入的 nil
 // 接口（2026-09-26 已以独立 go test 实证，见 20 计划 §13 自检记录）。
-type stubKnowledgeService struct{ interfaces.KnowledgeService }
-type stubKnowledgeBaseService struct{ interfaces.KnowledgeBaseService }
-type stubKnowledgeTagService struct{ interfaces.KnowledgeTagService }
+type (
+	stubKnowledgeService     struct{ interfaces.KnowledgeService }
+	stubKnowledgeBaseService struct {
+		interfaces.KnowledgeBaseService
+	}
+	stubKnowledgeTagService struct{ interfaces.KnowledgeTagService }
+)
 
 // knowledgeWorkerTypes 是 18 个 knowledge 任务类型的期望清单
 // （knowledge.yaml integration_points.workers / contracts.yaml:1893）。
