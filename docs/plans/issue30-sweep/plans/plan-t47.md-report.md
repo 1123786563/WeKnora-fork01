@@ -569,3 +569,79 @@ tsc-exit=0   （零类型错误）
 
 - 代码提交：`257b50e2e` `feat(mobile-core): task research deep module with offline annotation drafts (T17 #47 task 6)`（5 文件 +574 行：research/ 四文件新建、index.ts 追加导出块）。
 - 报告追加：本 T6 章节，随后的 docs 提交（SHA 见 submit_result）。
+
+---
+
+# T7：apps/mobile——ResearchScreen、/tasks/research 路由与 composition 接线（实现员报告）
+
+执行者：T7 实现员（subagent）；worktree：`.worktrees/issue30-sweep-t47`（分支 `codex/issue30-t47`，起点 HEAD `68434694b`）。
+授权文件：`apps/mobile/src/research-view.ts`、`apps/mobile/src/research-view.test.ts`、`apps/mobile/src/screens/ResearchScreen.tsx`、`apps/mobile/src/app/tasks/research.tsx`（新建）；`apps/mobile/src/composition.ts`、`apps/mobile/src/screens/MaterialsScreen.tsx`、`apps/mobile/src/app/tasks/materials.tsx`（修改）。7 个文件全部与计划 File 地图逐字一致，无越权改动。
+
+## T7.1 实现内容
+
+- **`apps/mobile/src/research-view.ts`**（新建，逐字按计划）：`ResearchViewState`（loading/delegations/annotations/materials/pendingDrafts/error/notice）、`RESEARCH_ERROR_COPY`（`Record<ResearchErrorCode, string>` 全 8 码文案表——键类型为 mobile-core 的 `ResearchErrorCode`，新码缺文案即类型错，与 materials-view B3-F55 同款穷尽性手法）、`createResearchController(handle, { runId, materials? })`。控制器 `load()` 用 `Promise.all` 聚合委派/批注/离线草稿计数（pendingDrafts 按 `runId` 过滤，读取失败回退 0），materials 投影仅当注入了 `materials()` 才加载（失败包含为 undefined）；`annotate` 按 receipt.status 区分在线已记录/离线加密草稿双文案；`flushDrafts` 按 conflict 计数给诚实文案；`requestRevision` 透传修订纪律参数（materialId/baseVersion/note/action/expectedRevision）；`dispose` 以 `handle.close('research-route-unmount')` 关闭句柄。
+- **`apps/mobile/src/screens/ResearchScreen.tsx`**（新建，逐字按计划）：演示态研究屏，只消费 `ResearchViewState` + 回调 props；委派表单、委派投影（状态/objective/来源/summary）、材料列表点选自动填充 materialId+baseVersion（版本身份从材料索引取得，用户手填错版本会得到服务端 409 → `RESEARCH_CONFLICT` 文案）、批注表单与批注投影、修订请求表单（steer/queue_next 通道切换 + expectedRevision）。文件不 import `@weknora/contracts` / `@weknora/api-client`（测试源级断言钉死）。
+- **`apps/mobile/src/app/tasks/research.tsx`**（新建，逐字按计划）：`ResearchRouteLifecycle`（effect 内 `activeTaskResearch().open({ lease })` 开句柄、卸载即 dispose，与 materials.tsx 同款生命周期宿主模式；materials 投影经 `activeTaskMaterial().open({ lease }).index({ runId })` 取材料索引用于批注表单版本身份点选）+ 默认导出 Expo Router 文件路由 `/tasks/research?runId=..`。路由文件不 import api-client，只经 composition 工厂取模块。
+- **`apps/mobile/src/composition.ts`**（两处最小改动，逐字按计划）：import 区末尾（foreground-sync 之后）追加 `createTaskResearch`/`ResearchDraftsPort`/`TaskResearch` 类型与 `createMobileResearchRemote`（`@weknora/api-client/mobile/research`）导入；文件末尾（`completeNativeOidcCallback` 之后）追加 `taskResearchFor`（`cachePut(taskResearches, deploymentScopeKey(origin, tenantId))` 记忆化，同 taskMaterialFor 模式——remote 经 `activeRuntime.authorizedRequest`，`gate: nativeOfflineGate`，draftsPort 适配 `openScopedDraftStore()` 的 Scoped Vault drafts 命名空间：put 失败抛 `RESEARCH_DRAFT_UNAVAILABLE`、list 对 JSON.parse 失败行跳过、无 vault 时 undefined 由模块内 fail closed）与导出 `activeTaskResearch(): TaskResearch | undefined`（无授权面 undefined，同 activeTaskMaterial 口径）。lease 不在端口持有——唯一来源是路由处 `research.open({ lease })`。
+- **`apps/mobile/src/screens/MaterialsScreen.tsx`**（最小 diff）：`MaterialsScreenProps` 增可选 `onOpenResearch?(): void`；「刷新材料」按钮旁增入口行（仅当 prop 存在渲染，`testID: 'materials-open-research'`）。计划片段以 `createElement` 书写，本文件既有风格是 JSX——按同文件 JSX 风格落地（语义逐字等价：条件渲染 + onPress + testID + 「研究与批注 →」文案）。
+- **`apps/mobile/src/app/tasks/materials.tsx`**（一行）：`MaterialsScreen` 调用处传入 `onOpenResearch={runId.trim() === '' ? undefined : () => router.push(\`/tasks/research?runId=${encodeURIComponent(runId)}\`)}`。
+
+## T7.2 TDD 过程与测试命令完整输出（全部本会话实跑）
+
+### RED（计划 Step 2）
+
+```
+$ pnpm --filter @weknora/mobile exec tsx --test src/research-view.test.ts
+Error: Cannot find module './research-view.ts'
+✖ src/research-view.test.ts (13060.410959ms)
+ℹ tests 1 / ℹ pass 0 / ℹ fail 1
+ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL Command failed with exit code 1: tsx --test src/research-view.test.ts
+```
+
+失败形态为 `./research-view.ts` 不存在（模块解析失败），与计划 Step 2 预期逐字一致。
+
+### GREEN + typecheck + 回归（计划 Step 4 原样串联命令，最终证据）
+
+```
+$ pnpm --filter @weknora/mobile exec tsx --test src/research-view.test.ts && \
+  pnpm --filter @weknora/mobile typecheck && \
+  pnpm --filter @weknora/mobile exec tsx --test src/materials-view.test.ts
+✔ controller loads delegations, annotations and pending drafts (2.586875ms)
+✔ controller annotate records online and drafts offline with honest copy (52.810208ms)
+✔ research route and composition wiring stay at the Interface boundary (6.384167ms)
+ℹ tests 3 / ℹ pass 3 / ℹ fail 0
+
+> @weknora/mobile@0.0.0 typecheck … > tsc --noEmit        （零输出 = 通过）
+
+✔ the controller loads the index, opens views and records grants (18.181416ms)
+✔ material error codes map to user copy, never raw internals (1.315584ms)
+✔ dispose closes the handle exactly once (1.666166ms)
+✔ MATERIAL_ERROR_COPY covers every MaterialErrorCode (exhaustiveness) (0.281833ms)
+✔ a slower stale open does not overwrite a newer state (generation token) (0.353792ms)
+ℹ tests 5 / ℹ pass 5 / ℹ fail 0
+```
+
+三段全绿：research-view 3/3、typecheck 干净、materials-view 回归 5/5。
+
+### 补充自检（计划外，非计划命令替代）
+
+```
+$ pnpm --filter @weknora/mobile exec tsx --test src/app-smoke.test.tsx
+ℹ tests 66 / ℹ pass 66 / ℹ fail 0
+```
+
+改动触及 `composition.ts` / `MaterialsScreen.tsx` / `materials.tsx`，app-smoke 是它们的行为级回归面（66 项全过）。
+
+## T7.3 自检发现（供主控/后续任务知悉）
+
+- **Consumes 对接核实（执行前逐项亲眼核实）**：mobile-core `index.ts:117-126` 导出 `ResearchError`/`createTaskResearch`/`ResearchErrorCode` 与 `TaskResearchHandle`/`ResearchAnnotationDraft` 等全部类型；`api-client` `./mobile/research` 存在 `createMobileResearchRemote`；`MaterialEntry` 含 `materialId`/`version`；`TaskMaterialHandle.index({ runId })` 返回 `{ materials }`；composition 既有 `cachePut`（:153-160）/`deploymentScopeKey`（:166-168）/`runtime()`/`activeMobileRuntime()`/`activeTaskMaterial`（:309-314）/`openScopedDraftStore`（:65-73）/`nativeOfflineGate`。测试 stub 对 `TaskResearchHandle` 的 10 方法结构逐字可赋值（typecheck 证明）。
+- **边界确认**：路由/Screen 零 wire 导入（测试源级断言 3/3）；composition 是唯一 join api-client 的位置（module-seams §3/§10）；lease 唯一来源是路由 `open({ lease })`；离线批注草稿 id `research-ann-<n>` 命中 vault `DRAFT_ID_PATTERN` 白名单；draftsPort 无 vault 时 undefined → 模块内 `RESEARCH_DRAFT_UNAVAILABLE` fail closed，不静默丢批注。
+- **计划微偏差（语义等价，如实声明）**：MaterialsScreen 入口行按该文件既有 JSX 风格书写（计划片段为 createElement 形态），渲染条件/testID/文案逐字一致；`research.tsx` 保留计划原样双导出（默认路由 + `ResearchRouteLifecycle` 具名宿主），JSX 与同目录 `materials.tsx` 同款可用。
+- **依赖对接**：`activeTaskResearch()` 与 `/tasks/research?runId=..` 路由即 Task 8 `research-integration-smoke` 的消费面；`expectedRevision` 在演示屏由用户手输（详情页可见），真实集成证据在 Task 8 由测试自取权威值。
+- **未运行的检查**：iOS/Android 真机渲染、Expo bundler 构建不在本任务范围（与既有各屏同口径，无独立可跑命令）；端到端真实 HTTP 属 Task 8（AC3）。
+- **无越权改动**：提交前 `git status --short` 仅列 7 个授权文件（3 修改 + 4 新建）；未触碰他人文件；未派发任何子代理；未推送远端。
+
+## T7.4 提交
+
+- 代码提交：`57cea7469` `feat(mobile): research and annotation screen with /tasks/research route (T17 #47 task 7)`（7 文件 +407/-1）。
+- 报告追加：本 T7 章节，随后的 docs 提交（SHA 见 submit_result）。
