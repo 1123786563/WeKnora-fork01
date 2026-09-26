@@ -82,6 +82,10 @@ type AgentReleaseManifest struct {
 	ReleaseMetadata
 	// Source is the immutable AgentVersion the bundle was projected from.
 	Source AgentReleaseSource `json:"source"`
+	// Lineage is set exactly for derived Releases; omitted (and therefore
+	// digest-neutral) for original Releases, so pre-#62 submission bytes
+	// never change.
+	Lineage *AgentReleaseLineage `json:"lineage,omitempty"`
 }
 
 // AgentReleaseDependency is one locked dependency of a Release: a
@@ -155,4 +159,20 @@ type AgentReleaseBundle struct {
 	Bytes []byte `json:"-"`
 	// SHA256 is the lowercase hex SHA-256 digest over Bytes.
 	SHA256 string `json:"-"`
+}
+
+// AgentReleaseLineage records, inside the Release digest boundary, where a
+// derived Release came from and whether the portable core was modified
+// (spec §5「来源 Listing、Release、Fork lineage 和修改说明」, §6, §9).
+// Original (non-derived) Releases carry no lineage section at all.
+type AgentReleaseLineage struct {
+	// SourceListingID is the adopted Listing the derivation started from.
+	SourceListingID string `json:"source_listing_id"`
+	// SourceReleaseID is the pinned source Release.
+	SourceReleaseID string `json:"source_release_id"`
+	// IsFork reports the fork verdict: true exactly when the submitted
+	// portable core differs from the source Release's publish-pipeline
+	// projection (spec §9「修改 portable core 时创建 Agent Fork」). Local
+	// capability mapping changes never flip this flag.
+	IsFork bool `json:"is_fork"`
 }
