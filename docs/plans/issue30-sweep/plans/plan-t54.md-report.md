@@ -380,3 +380,28 @@ h.SetAppOAuthProviders(providers)
 
 - **Task 5 派发确认**（审查项行动项原文）：Task 5（`TaskDetailScreen.tsx` 3 字符串 + 1 注释、`app-smoke.test.tsx:1398` 文案钉）尚未实施，请主控确认派发正交实现员或在集成期处置。其计划文本（plan-t54.md 2161-2217 行）自包含可直接派发。
 - 计划级验证命令的移动面两段（`pnpm --filter @weknora/mobile test/typecheck`）继续留待 Task 5 实施 + 集成期干净树执行（上轮待核实项 4，本轮维持）。
+
+---
+
+# T24 #54 Task 4 修复轮 2/5 报告
+
+## 审查发现与处置（主控裁决关闭）
+
+修复轮 2/5 转发的 finding 与修复轮 1/5 逐字相同（「Task 5 未实施」，自定性「计划级缺口、非 Task 4 实现缺陷」）。本轮开工时重新核实：分支顶部仍为 `b64fca997`（无任何新提交），`TaskDetailScreen.tsx:46-47` 仍旧 PR 文案、`:61` 标签行仍为 `PR：{delivery.prUrl}`、`app-smoke.test.tsx:1398` 文案钉未改（sed 实读）——发现事实仍成立。
+
+**主控裁决（via escalation）**：该项为**超前范围审查项**——Task 5 是本计划任务序列 1-5 的后续任务，任务循环尚未走到 5，「未实施」是时序使然而非缺陷；审查项自定性也承认非 Task 4 实现缺陷（实为跨任务超前审查，SDD ⚠️ 类）。实现员修复轮 1 的 DONE_WITH_CONCERNS 上报方向正确，是编排转发把时序使然变成了空转的修复轮 2。裁决要点：
+
+1. 该项以本裁决关闭：**不修**，不再消耗修复轮处理它；Task 5 将由任务循环在 Task 4 收口后正常派发实施。
+2. Task 4 按 **DONE** 正常收口。
+3. 异常兜底条款（已写入 Ledger）：若任务循环全部结束后 Task 5 仍未被派发（planner tasks 数组漏项），届时当期实现员升级，主控授权按 `plan-t54.md:2161-2217` 逐字补施。
+4. Ledger 追加 ruling 行：见新建 `docs/plans/issue30-sweep/plans/plan-t54.md-ledger.md`（「Task 4: Ruling — 修复轮转发的『Task 5 未实施』为超前范围审查项……（主控裁决 via escalation）」，含兜底条款全文）。
+
+## 修复轮其余事项
+
+本轮 findings 数组仅此一项，无其余 Task 4 侧 finding。待核实项四条的处置维持修复轮 1/5 报告结论：①RED 复核限制如实声明（单提交含测试+实现，不回退重放）；②env 拾取循环已实读 `container.go:1019-1031` 补强代码路径证据；③blocked-env 维持如实 skip；④移动面全量验证留待 Task 5 实施 + 集成期干净树。
+
+## 修复轮 2 变更范围
+
+- 新建 `docs/plans/issue30-sweep/plans/plan-t54.md-ledger.md`（ruling 行 + 兜底条款，裁决第 3/4 条执行）。
+- 本报告追加本节。
+- **零代码改动**：裁决第 1 条明示该项不修；Task 4 授权文件自上轮验证后零改动（`git status` 实证干净）。
