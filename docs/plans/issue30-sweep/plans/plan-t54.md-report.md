@@ -330,3 +330,53 @@ PASS
 3. **容器接线类型正确性以 `go build ./...` 为证**：`appconnectorrepo.NewInstallationStore(db)` 满足 `ProviderSource`（`GetInstallationByID(ctx, tenantID, installationID)`）由编译通过背书；本轮未新增单测钉容器装配（计划未要求）。
 4. **零迁移/零 schema 变更**遵守：本任务未触任何迁移文件，未用全量迁移轨道。
 5. **测试输出无杂音**：除既有 GIN debug 横幅与 ld warning 外无 warning/noise。
+
+---
+
+# T24 #54 Task 4 修复轮 1/5 报告
+
+## 审查发现与处置
+
+**发现（important）**：Task 5（移动面文案中性化）在整个 T54 计划中尚未实施——审查者自定性为「【计划级缺口，非 Task 4 实现缺陷】」，行动项为「需主控确认 Task 5 是待派发还是遗漏」。
+
+**事实核实（本轮实跑/实读，全部成立）**：
+1. 当前分支 `git log --oneline`（f54ed2502 → 3655ce5a7）仅含 task 1-4 与各自 docs 提交，**无 task 5 提交**；`git log --all --oneline --grep="task 5" --grep="#54" -i` 唯一 "Task 5" 命中为 `2bc22045d`（T20 #50 confluence bridge，属其他计划）。
+2. `apps/mobile/src/screens/TaskDetailScreen.tsx:46-47` 仍为 `pushed: '已推送，等待草稿 PR 恢复'` / `delivered: '草稿 PR 已创建'`（sed 实读 40-64 行）；区块标签行仍为 `PR：{delivery.prUrl}`、区块注释仍写「PR/远端身份」（未中性化）——与计划 Task 5 Step 3 的目标原文逐字对应，确认目标态未落地。
+3. `apps/mobile/src/app-smoke.test.tsx:1398` 文案钉仍为 `assert.ok(text.includes('已推送，等待草稿 PR 恢复'), 'pushed state uses honest copy')`（sed 实读 1394-1402 行）。
+4. `git log --oneline -- <两个移动面文件>` 最近的触碰均为其他计划的旧提交（0dcadd708/adea98594 等），本计划从未写入过这两个文件。
+
+**处置**：**本任务不实施 Task 5**。理由：
+- 本任务（Task 4）授权文件清单为 `app_connector_oauth.go`、`workbench_delivery.go`、`workbench_delivery_test.go`、`container/code_delivery.go`、`app_connector_oauth_gitlab_test.go`——Task 5 的两个移动面文件不在其中，任务约束「只修改本任务授权文件」禁止越界实施；
+- 审查发现本身要求的是主控决策（派发 Task 5 给正交实现员，或确认遗漏），而非 Task 4 侧代码修复——Task 4 授权范围内无任何可修复缺陷；
+- 计划差异记录 9 已实证同批并行写入移动面会造成全量验证瞬时失败，本任务抢写 Task 5 文件会与主控排期的 Task 5 派发构成并发冲突风险。
+
+Task 5 实施后计划级验收（AC1 读面：PR/MR 中性文案）方完整；移动面全量验证（`pnpm --filter @weknora/mobile test/typecheck`）按上轮「待核实项 4」继续留待 Task 5 实施 + 集成期干净树执行。
+
+## 待核实项补强（本轮实读取证）
+
+**生产 env 拾取循环**（上轮引用计划自述，本轮亲自实读 `internal/container/container.go:1015-1031`）：
+
+```go
+providers := handler.DefaultAppOAuthProviderConfigs()
+for appID := range providers {
+    prefix := "WEKNORA_APP_OAUTH_" + strings.ToUpper(appID) + "_"
+    providers[appID] = handler.AppOAuthProviderConfig{
+        ... ClientID: os.Getenv(prefix + "CLIENT_ID"),
+        ... ClientSecret: os.Getenv(prefix + "CLIENT_SECRET"),
+    }
+}
+h.SetAppOAuthProviders(providers)
+```
+
+循环遍历 `DefaultAppOAuthProviderConfigs()`（`app_connector_oauth.go:66-72` 从 `appOAuthDefaults` 派生）全键，本轮该 map 已含 `"gitlab"` 键 ⇒ `WEKNORA_APP_OAUTH_GITLAB_CLIENT_ID/_SECRET` 前缀拼接路径成立，**gitlab 零额外接线的代码路径实证**。真实 env 拾取行为仍属部署运行时（本地无该 env），维持 blocked-env 如实声明。
+
+**RED 复核限制**（如实）：Task 4 的 RED 输出无法从最终树重放——`e55ed9ac0` 单提交同时含测试与实现，树本身不保留实现前状态。佐证仅限：报告 RED 节的两段失败形态（端点表缺键断言 / 分类表 expected 400 actual 500）与未实现状态的代码事实逐点吻合 + git 时间线（测试文件与实现同提交）。本轮未用 stash/回退重放 RED（避免对已提交树做回退操作）。
+
+## 修复轮测试命令与输出
+
+本修复轮**零代码改动**（审查项无可修复的 Task 4 缺陷），故无新增回归测试；上轮 GREEN 全量证据（`go test ./internal/handler/ -run 'TestGitLabOAuth'` / `session -run 'TestDelivery'` / `go build ./...`）仍然有效——本轮 `git status` 实证工作树中无任何 Go 文件改动，最终树与上轮验证时逐字节一致。
+
+## 遗留给主控的事项
+
+- **Task 5 派发确认**（审查项行动项原文）：Task 5（`TaskDetailScreen.tsx` 3 字符串 + 1 注释、`app-smoke.test.tsx:1398` 文案钉）尚未实施，请主控确认派发正交实现员或在集成期处置。其计划文本（plan-t54.md 2161-2217 行）自包含可直接派发。
+- 计划级验证命令的移动面两段（`pnpm --filter @weknora/mobile test/typecheck`）继续留待 Task 5 实施 + 集成期干净树执行（上轮待核实项 4，本轮维持）。
