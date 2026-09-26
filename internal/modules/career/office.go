@@ -288,13 +288,16 @@ type Office struct {
 	// in-station todos. Production wires nil — the todo row alone is the
 	// authoritative reminder fact; tests inject fakes through the setter.
 	reminderNotifier ReminderNotifier
+	// failReconcileCommit (T12) injects a post-decision failure inside the
+	// reconciliation transaction so unknown-outcome recovery is testable.
+	failReconcileCommit func() error
 }
 
 func NewOffice(db *gorm.DB) (*Office, error) {
 	if db == nil {
 		return nil, errors.New("career database required")
 	}
-	models := []any{&profile{}, &space{}, &fact{}, &factVersion{}, &proposal{}, &change{}, &receipt{}, &sourceRevision{}, &opportunity{}, &opportunityObservation{}, &opportunitySnapshot{}, &opportunityReceipt{}, &evaluationRecord{}, &applicationRecord{}, &searchRecord{}, &searchResultRecord{}, &materialRecord{}, &materialVersionRecord{}, &materialReceiptRecord{}, &materialExportRecord{}, &progressEventRecord{}, &searchRuleRecord{}, &searchRuleReceiptRecord{}, &searchRuleRunRecord{}, &searchDiscoveryTodoRecord{}, &submissionRecord{}, &careerDataExportRecord{}, &careerDataDeletionRecord{}, &preparationRecord{}, &reminderRecord{}, &reminderReceiptRecord{}, &usageReservationRecord{}}
+	models := []any{&profile{}, &space{}, &fact{}, &factVersion{}, &proposal{}, &change{}, &receipt{}, &sourceRevision{}, &opportunity{}, &opportunityObservation{}, &opportunitySnapshot{}, &opportunityReceipt{}, &evaluationRecord{}, &applicationRecord{}, &searchRecord{}, &searchResultRecord{}, &materialRecord{}, &materialVersionRecord{}, &materialReceiptRecord{}, &materialExportRecord{}, &progressEventRecord{}, &searchRuleRecord{}, &searchRuleReceiptRecord{}, &searchRuleRunRecord{}, &searchDiscoveryTodoRecord{}, &submissionRecord{}, &careerDataExportRecord{}, &careerDataDeletionRecord{}, &preparationRecord{}, &reminderRecord{}, &reminderReceiptRecord{}, &usageReservationRecord{}, &reconciliationRecord{}}
 	if db.Dialector.Name() == "sqlite" {
 		present := 0
 		for _, model := range models {
@@ -380,6 +383,7 @@ func validateSQLiteCareerSchema(db *gorm.DB) error {
 		"career_reminders":                {"id", "tenant_id", "user_id", "source_kind", "source_id", "application_id", "opportunity_id", "notice_key", "status", "request_id", "created_at", "updated_at"},
 		"career_reminder_receipts":        {"tenant_id", "user_id", "request_id", "fingerprint", "body", "created_at"},
 		"career_usage_reservations":       {"id", "tenant_id", "user_id", "operation", "request_id", "cost_units", "status", "period_start", "period_end", "lease_until", "created_at", "settled_at"},
+		"career_reconciliations":          {"id", "tenant_id", "user_id", "request_id", "fingerprint", "decision", "target_id", "candidate_id", "evidence_body", "receipt_body", "created_at"},
 	}
 	for table, columns := range requiredColumns {
 		for _, column := range columns {
@@ -414,6 +418,7 @@ func validateSQLiteCareerSchema(db *gorm.DB) error {
 		"career_reminders":              {"tenant_id", "user_id", "source_kind", "source_id"},
 		"career_reminder_receipts":      {"tenant_id", "user_id", "request_id"},
 		"career_usage_reservations":     {"tenant_id", "user_id", "request_id"},
+		"career_reconciliations":        {"tenant_id", "user_id", "request_id"},
 	} {
 		if err := requireSQLiteUniqueConstraint(db, table, columns); err != nil {
 			return fmt.Errorf("incomplete Career SQLite schema: %w; apply database migrations before startup", err)

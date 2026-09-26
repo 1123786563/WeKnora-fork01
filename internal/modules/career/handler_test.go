@@ -1012,3 +1012,81 @@ func TestCareerUsageEstimateHandlerContract(t *testing.T) {
 	require.Equal(t, 503, rec.Code, rec.Body.String())
 	require.Contains(t, rec.Body.String(), "admission_unavailable")
 }
+
+func TestCareerReconcileHandlerContract(t *testing.T) {
+	o, ctx := newSourceImportOffice(t, "owner", 131)
+	base := context.WithValue(context.Background(), types.UserIDContextKey, "owner")
+	base = context.WithValue(base, types.TenantIDContextKey, uint64(131))
+	h := &Handler{office: o, members: &memberListStub{members: []*types.TenantMember{{UserID: "owner", TenantID: 131, Role: types.TenantRoleOwner}}}}
+
+	o.opportunityExtractor = func(string) (OpportunityFields, error) {
+		return knownFields("平台后端工程师", "示例科技", "杭州", "2027届秋招", "本科及以上学历"), nil
+	}
+	first, err := o.ImportJD(ctx, ImportJDInput{RequestID: "handler-rec-1", RawText: "岗位 A\n工作职责：\n负责服务\n任职要求：\n本科", SourceReference: "https://jobs.example.com/postings/1001"})
+	require.NoError(t, err)
+	second, err := o.ImportJD(ctx, ImportJDInput{RequestID: "handler-rec-2", RawText: "岗位 B\n工作职责：\n负责服务\n任职要求：\n本科", SourceReference: "https://other.example.net/jobs/1001"})
+	require.NoError(t, err)
+
+	post := func(body string) *httptest.ResponseRecorder {
+		gin.SetMode(gin.TestMode)
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/career/opportunities/reconcile", strings.NewReader(body)).WithContext(base)
+		h.ReconcileOpportunities(c)
+		return rec
+	}
+
+	body := fmt.Sprintf(`{"requestId":"handler-rec-req","targetId":%q,"candidateId":%q}`, first.OpportunityID, second.OpportunityID)
+	rec := post(body)
+	require.Equal(t, 200, rec.Code, rec.Body.String())
+	var receipt ReconcileReceipt
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &receipt))
+	require.Equal(t, ReconcileDecisionMerged, receipt.Decision)
+
+	// Unknown fields and malformed bodies are refused.
+	rec = post(`{"requestId":"handler-rec-bad","targetId":"x","candidateId":"y","unexpected":true}`)
+	require.Equal(t, 400, rec.Code, rec.Body.String())
+
+	// Status reads carry the merged projection.
+	gin.SetMode(gin.TestMode)
+	rec = httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/career/opportunities/"+second.OpportunityID+"/status", nil).WithContext(base)
+	c.Params = gin.Params{{Key: "opportunityId", Value: second.OpportunityID}}
+	h.OpportunityStatus(c)
+	require.Equal(t, 200, rec.Code, rec.Body.String())
+	var status OpportunityStatusView
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &status))
+	require.Equal(t, first.OpportunityID, status.MergedInto)
+
+	// An unknown opportunity maps to the typed 404.
+	gin.SetMode(gin.TestMode)
+	rec = httptest.NewRecorder()
+	c, _ = gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/career/opportunities/missing/status", nil).WithContext(base)
+	c.Params = gin.Params{{Key: "opportunityId", Value: "missing"}}
+	h.OpportunityStatus(c)
+	require.Equal(t, 404, rec.Code, rec.Body.String())
+	require.Contains(t, rec.Body.String(), "not_found")
+
+	// The coverage read is available on the authenticated scope.
+	gin.SetMode(gin.TestMode)
+	rec = httptest.NewRecorder()
+	c, _ = gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/career/coverage", nil).WithContext(base)
+	h.SourceCoverage(c)
+	require.Equal(t, 200, rec.Code, rec.Body.String())
+	var coverage CareerCoverageView
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &coverage))
+	require.Empty(t, coverage.ConfiguredSources, "production starts with no vetted source")
+	require.Len(t, coverage.ObservedSources, 1)
+
+	// The reconciliation receipt replays by request ID.
+	gin.SetMode(gin.TestMode)
+	rec = httptest.NewRecorder()
+	c, _ = gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/career/reconciliations/receipt?requestId=handler-rec-req", nil).WithContext(base)
+	h.ReconciliationReceipt(c)
+	require.Equal(t, 200, rec.Code, rec.Body.String())
+	require.Contains(t, rec.Body.String(), `"merged"`)
+}

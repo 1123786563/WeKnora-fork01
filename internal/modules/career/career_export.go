@@ -542,6 +542,7 @@ func (o *Office) CareerDeletionBoundary(ctx context.Context) (CareerDeletionBoun
 			{Section: "search_rules", Description: "周期搜索规则", Count: sectionCount("career_search_rules", "")},
 			{Section: "reminders", Description: "站内待办与提醒回执（推送仅为提醒渠道，不含公司、岗位或面试细节）", Count: sectionCount("career_reminders", "")},
 			{Section: "usage_reservations", Description: "搜索额度预占与结算记录（额度账本，删除后随空间一并清空）", Count: sectionCount("career_usage_reservations", "")},
+			{Section: "reconciliations", Description: "岗位去重与合并的决策记录（含合并证据，随删除一并清除）", Count: sectionCount("career_reconciliations", "")},
 			{Section: "workbench_tasks", Description: "Workbench 侧申请任务投影（经删除端口移除）", Count: sectionCount("career_applications", "task_id <> ''")},
 		},
 		External:  careerDeletionExternalBoundary(),
@@ -622,6 +623,7 @@ var careerPurgeTables = []string{
 	"career_reminders",
 	"career_reminder_receipts",
 	"career_usage_reservations",
+	"career_reconciliations",
 	"career_data_exports",
 }
 

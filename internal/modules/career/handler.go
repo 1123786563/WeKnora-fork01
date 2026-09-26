@@ -396,6 +396,105 @@ func (h *Handler) OpportunityReceipt(c *gin.Context) {
 	c.JSON(http.StatusOK, receipt)
 }
 
+const maxReconcileBodyBytes = 4 * 1024
+
+// ReconcileOpportunities decides one duplicate pair under the frozen identity
+// evidence rules: a sufficient posting-code/company/location/batch match
+// merges the candidate into the target; an uncertain pair stays side by side
+// with an explicit suspected-duplicate flag. The decision is durable per
+// request ID and never deletes an original observation.
+func (h *Handler) ReconcileOpportunities(c *gin.Context) {
+	ctx, ok := h.scope(c, false)
+	if !ok {
+		return
+	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxReconcileBodyBytes)
+	decoder := json.NewDecoder(c.Request.Body)
+	decoder.DisallowUnknownFields()
+	var input ReconcileInput
+	if err := decoder.Decode(&input); err != nil {
+		var maxBytesError *http.MaxBytesError
+		if errors.As(err, &maxBytesError) {
+			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": gin.H{"code": "request_too_large", "message": "reconciliation request is too large"}})
+			return
+		}
+		writeError(c, ErrInvalidRequest)
+		return
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		writeError(c, ErrInvalidRequest)
+		return
+	}
+	receipt, err := h.office.ReconcileOpportunities(ctx, input)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, receipt)
+}
+
+// OpportunityStatus projects one opportunity's explicit status: expiry,
+// delisting, and requirement-change annotations plus the stale window of the
+// last successful source check and the full immutable observation history.
+func (h *Handler) OpportunityStatus(c *gin.Context) {
+	ctx, ok := h.scope(c, false)
+	if !ok {
+		return
+	}
+	status, err := h.office.OpportunityStatus(ctx, c.Param("opportunityId"))
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, status)
+}
+
+// OpportunityReconciliationsHandler lists the durable reconciliation
+// decisions that involved one opportunity.
+func (h *Handler) OpportunityReconciliationsHandler(c *gin.Context) {
+	ctx, ok := h.scope(c, false)
+	if !ok {
+		return
+	}
+	decisions, err := h.office.OpportunityReconciliations(ctx, c.Param("opportunityId"))
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"reconciliations": decisions})
+}
+
+// ReconciliationReceipt replays a stored reconciliation decision by request ID.
+func (h *Handler) ReconciliationReceipt(c *gin.Context) {
+	ctx, ok := h.scope(c, false)
+	if !ok {
+		return
+	}
+	receipt, err := h.office.FindReconciliationReceipt(ctx, c.Query("requestId"))
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, receipt)
+}
+
+// SourceCoverage discloses the honest coverage facts of this space: the
+// vetted source registry (production starts empty) plus the sources and
+// cities actually observed. Nothing is invented here.
+func (h *Handler) SourceCoverage(c *gin.Context) {
+	ctx, ok := h.scope(c, false)
+	if !ok {
+		return
+	}
+	coverage, err := h.office.SourceCoverage(ctx)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, coverage)
+}
+
 // EvaluateOpportunity creates an immutable evaluation from a fixed JD snapshot
 // and the current or explicitly pinned confirmed profile revision.
 func (h *Handler) EvaluateOpportunity(c *gin.Context) {
