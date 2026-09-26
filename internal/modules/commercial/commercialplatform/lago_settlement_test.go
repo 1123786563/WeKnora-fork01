@@ -340,8 +340,9 @@ func TestLagoSettleNoStuckIntentInvalidResponse(t *testing.T) {
 		if !errors.Is(err, commercial.ErrPlatformInvalidResponse) {
 			t.Fatalf("case %d: no stuck intent must fail closed invalid_response, got %v", i, err)
 		}
-		// Reads only: the unsettled list + the settle-window probe. No
-		// charge-bearing call may fire.
+		// Reads only: the single gating list (unsettled candidates AND the
+		// settled-invoice window in one read — F-1). No charge-bearing
+		// call may fire.
 		for _, path := range h.stripe.paths() {
 			if strings.Contains(path, "attach") || strings.Contains(path, "confirm") ||
 				strings.Contains(path, "POST /v1/payment_intents/pi") {
@@ -368,13 +369,62 @@ func TestLagoSettleSettledWindowReplaysIdempotently(t *testing.T) {
 		t.Fatalf("receipt identity = %q", receipt.ExternalID)
 	}
 	paths := h.stripe.paths()
-	if len(paths) != 2 { // the unsettled list + the settled-window probe, READS only
+	if len(paths) != 1 { // ONE locator list: unsettled candidates + settled window in a single read
 		t.Fatalf("the settled window must make no writes, got %v", paths)
 	}
 	for _, p := range paths {
 		if !strings.HasPrefix(p, "GET /v1/payment_intents") {
 			t.Fatalf("the settled window must make no writes, got %v", paths)
 		}
+	}
+}
+
+// (F-1 flow evidence) The residual sibling: a failed 3DS confirm leaves an
+// unsettled PaymentIntent for the SAME invoice next to the one this
+// command already drove to succeeded. The replay must answer the
+// idempotent receipt — never re-key "<cmd.Key>:update" onto the sibling
+// (Stripe keys are endpoint-bound → 400 idempotency_error → mislabeled
+// attention) and never confirm the sibling (a real second charge).
+func TestLagoSettleResidualSiblingIntentReplaysIdempotently(t *testing.T) {
+	intents := []stripeIntentRec{
+		{ID: "pi_sibling", Customer: "cus_stripe_1", Status: "requires_payment_method", Created: 900, LagoInvID: "inv_gating"},
+		{ID: "pi_done", Customer: "cus_stripe_1", Status: "succeeded", Created: 1000, LagoInvID: "inv_gating"},
+	}
+	h := newSettleHarness(t, "incomplete", intents)
+	receipt, err := h.adapter.SubmitCommand(context.Background(), settleCmd(41, "txn-1"))
+	if err != nil {
+		t.Fatalf("a residual sibling of a settled invoice must replay idempotently, got %v", err)
+	}
+	if receipt.ExternalID != commercial.ExternalPurchaseSubscriptionID(41) {
+		t.Fatalf("receipt identity = %q", receipt.ExternalID)
+	}
+	paths := h.stripe.paths()
+	if len(paths) != 1 || paths[0] != "GET /v1/payment_intents" {
+		t.Fatalf("the residual-sibling replay must be READS only (one locator list), got %v", paths)
+	}
+}
+
+// The invoice-bound idempotency must not over-trigger: an unsettled
+// candidate gating a DIFFERENT invoice than every succeeded one is a live
+// gate — the settle drives it.
+func TestLagoSettleDrivesWhenSucceededInvoiceDiffers(t *testing.T) {
+	intents := []stripeIntentRec{
+		{ID: "pi_gating", Customer: "cus_stripe_1", Status: "requires_payment_method", Created: 900, LagoInvID: "inv_current"},
+		{ID: "pi_past", Customer: "cus_stripe_1", Status: "succeeded", Created: 1000, LagoInvID: "inv_past"},
+	}
+	h := newSettleHarness(t, "incomplete", intents)
+	if _, err := h.adapter.SubmitCommand(context.Background(), settleCmd(41, "txn-1")); err != nil {
+		t.Fatal(err)
+	}
+	paths := h.stripe.paths()
+	drove := false
+	for _, p := range paths {
+		if strings.Contains(p, "pi_gating") {
+			drove = true
+		}
+	}
+	if !drove || len(paths) != 5 {
+		t.Fatalf("the current gating intent must be driven (5 calls), got %v", paths)
 	}
 }
 

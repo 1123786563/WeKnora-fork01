@@ -1026,7 +1026,7 @@ func (a *LagoAdapter) readBenefitsSnapshot(ctx context.Context, tenantID uint64)
 	// Entitlements read (features keyed by code — T02 fact). A missing or
 	// unparseable entitlement surface leaves Features nil — the service
 	// falls back to the publication definition (documented branch).
-	if features, err := a.readCustomerFeatures(ctx, extCustomer); err == nil && len(features) > 0 {
+	if features, err := a.readCustomerFeatures(ctx, tenantID); err == nil && len(features) > 0 {
 		b.Features = features
 	}
 	wallets, err := a.listCustomerWallets(ctx, extCustomer)
@@ -1065,39 +1065,54 @@ func (a *LagoAdapter) readBenefitsSnapshot(ctx context.Context, tenantID uint64)
 }
 
 // readCustomerFeatures reads the customer's attached entitlements into the
-// closed feature map.
-func (a *LagoAdapter) readCustomerFeatures(ctx context.Context, externalCustomerID string) (map[string]bool, error) {
-	status, body, err := a.do(ctx, http.MethodGet,
-		"/api/v1/customers/"+url.PathEscape(externalCustomerID)+"/entitlements", nil)
-	if err != nil {
-		return nil, err
-	}
-	switch {
-	case status >= 200 && status < 300:
-	case status >= 500:
-		return nil, fmt.Errorf("%w: entitlement read unavailable", commercial.ErrPlatformUnreachable)
-	default:
-		return nil, fmt.Errorf("%w: entitlement read rejected", commercial.ErrPlatformInvalidResponse)
-	}
-	var parsed struct {
-		Entitlements []struct {
-			FeatureCode string `json:"feature_code"`
-			Feature     *struct {
-				Code string `json:"code"`
-			} `json:"feature"`
-		} `json:"entitlements"`
-	}
-	if err := json.Unmarshal(body, &parsed); err != nil {
-		return nil, fmt.Errorf("%w: entitlement read malformed", commercial.ErrPlatformInvalidResponse)
-	}
+// closed feature map. The pinned v1.53 exposes NO customer-nested
+// entitlements route (F-2 flow evidence: GET /api/v1/customers/:id/
+// entitlements answers 404 on the pinned release — the entitlements index
+// rides the subscription routes only: /api/v1/subscriptions/:external_id/
+// entitlements), so the feature face is the UNION over both WeKnora
+// subscription identities — the Base Plan "-sub" and the purchase
+// "-purchase". A 404 on one leg means that subscription does not exist
+// (yet): the leg contributes nothing, never an error.
+func (a *LagoAdapter) readCustomerFeatures(ctx context.Context, tenantID uint64) (map[string]bool, error) {
 	features := make(map[string]bool)
-	for _, e := range parsed.Entitlements {
-		code := e.FeatureCode
-		if code == "" && e.Feature != nil {
-			code = e.Feature.Code
+	for _, externalSubscriptionID := range []string{
+		commercial.ExternalSubscriptionID(tenantID),
+		commercial.ExternalPurchaseSubscriptionID(tenantID),
+	} {
+		status, body, err := a.do(ctx, http.MethodGet,
+			"/api/v1/subscriptions/"+url.PathEscape(externalSubscriptionID)+"/entitlements", nil)
+		if err != nil {
+			return nil, err
 		}
-		if code != "" {
-			features[code] = true
+		if status == http.StatusNotFound {
+			continue // that subscription does not exist (yet) — no entitlements
+		}
+		switch {
+		case status >= 200 && status < 300:
+		case status >= 500:
+			return nil, fmt.Errorf("%w: entitlement read unavailable", commercial.ErrPlatformUnreachable)
+		default:
+			return nil, fmt.Errorf("%w: entitlement read rejected", commercial.ErrPlatformInvalidResponse)
+		}
+		var parsed struct {
+			Entitlements []struct {
+				FeatureCode string `json:"feature_code"`
+				Feature     *struct {
+					Code string `json:"code"`
+				} `json:"feature"`
+			} `json:"entitlements"`
+		}
+		if err := json.Unmarshal(body, &parsed); err != nil {
+			return nil, fmt.Errorf("%w: entitlement read malformed", commercial.ErrPlatformInvalidResponse)
+		}
+		for _, e := range parsed.Entitlements {
+			code := e.FeatureCode
+			if code == "" && e.Feature != nil {
+				code = e.Feature.Code
+			}
+			if code != "" {
+				features[code] = true
+			}
 		}
 	}
 	return features, nil

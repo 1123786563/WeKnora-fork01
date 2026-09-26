@@ -229,7 +229,8 @@ type walletsStub struct {
 	createStatuses []int  // scripted statuses; a 422 answers wallet_limit_reached
 	limitExhausted bool   // every POST answers the limit 422
 	settleRounds   int    // initial wallet GETs answering an unsettled balance
-	entitlements   string // scripted entitlements body
+	entitlements   string // scripted entitlements body (the BASE "-sub" leg)
+	purchaseEntitlements string // scripted purchase-leg body ("" = 404 — no purchase subscription yet)
 	// entitlementCustomer scopes the scripted entitlements to ONE customer
 	// (per-customer truth; empty = all customers — the direct stub tests).
 	entitlementCustomer string
@@ -312,11 +313,43 @@ func newWalletsStubBuilder() *walletsStub {
 		s.mu.Unlock()
 		respond(w, r, &s.requests, &s.mu, status, resp, nil)
 	})
+	mux.HandleFunc("/api/v1/subscriptions/", func(w http.ResponseWriter, r *http.Request) {
+		// GET /api/v1/subscriptions/{external_id}/entitlements — the ONLY
+		// entitlements index the pinned v1.53 exposes (F-2 flow evidence:
+		// the customers-nested route answers 404 on the real release, so
+		// the stub models the real route shape, never the absent one).
+		rest := strings.TrimPrefix(r.URL.Path, "/api/v1/subscriptions/")
+		externalID, subpath, _ := strings.Cut(rest, "/")
+		if subpath != "entitlements" || r.Method != http.MethodGet {
+			http.NotFound(w, r)
+			return
+		}
+		// Map the WeKnora subscription identities back to the customer for
+		// the per-customer scoping the stub models.
+		customer := externalID
+		for _, suffix := range []string{"-sub", "-purchase"} {
+			if strings.HasSuffix(externalID, suffix) {
+				customer = strings.TrimSuffix(externalID, suffix)
+				break
+			}
+		}
+		s.mu.Lock()
+		body, code := s.entitlements, http.StatusOK
+		switch {
+		case s.entitlementCustomer != "" && customer != s.entitlementCustomer:
+			body = `{"entitlements":[]}` // per-customer truth: no entitlements attached
+		case strings.HasSuffix(externalID, "-purchase") && s.purchaseEntitlements == "":
+			code = http.StatusNotFound // no purchase subscription (yet)
+		case strings.HasSuffix(externalID, "-purchase"):
+			body = s.purchaseEntitlements
+		}
+		s.mu.Unlock()
+		respond(w, r, &s.requests, &s.mu, code, body, nil)
+	})
 	mux.HandleFunc("/api/v1/customers/", func(w http.ResponseWriter, r *http.Request) {
 		rest := strings.TrimPrefix(r.URL.Path, "/api/v1/customers/")
 		customer, subpath, _ := strings.Cut(rest, "/")
-		switch {
-		case subpath == "wallets" && r.Method == http.MethodGet:
+		if subpath == "wallets" && r.Method == http.MethodGet {
 			s.mu.Lock()
 			out := make([]stubWallet, 0, len(s.wallets))
 			for _, w := range s.wallets {
@@ -330,17 +363,9 @@ func newWalletsStubBuilder() *walletsStub {
 				items = append(items, walletJSON(w))
 			}
 			respond(w, r, &s.requests, &s.mu, http.StatusOK, `{"wallets":[`+strings.Join(items, ",")+`],"meta":{"next_page":null}}`, nil)
-		case subpath == "entitlements" && r.Method == http.MethodGet:
-			s.mu.Lock()
-			body := s.entitlements
-			if s.entitlementCustomer != "" && customer != s.entitlementCustomer {
-				body = `{"entitlements":[]}` // per-customer truth: no entitlements attached
-			}
-			s.mu.Unlock()
-			respond(w, r, &s.requests, &s.mu, http.StatusOK, body, nil)
-		default:
-			http.NotFound(w, r)
+			return
 		}
+		http.NotFound(w, r)
 	})
 	s.handler = mux
 	return s
@@ -399,6 +424,10 @@ func newCombinedStub(t *testing.T) *combinedStub {
 	c := &combinedStub{subs: newSubscriptionsStubBuilder(), wallets: newWalletsStubBuilder()}
 	mux := http.NewServeMux()
 	mux.Handle("/api/v1/subscriptions", c.subs.handler)
+	// The subscription SUB-paths the wallets stub owns: the v1.53
+	// entitlements index (F-2 — the customers-nested route does not exist
+	// on the pinned release).
+	mux.Handle("/api/v1/subscriptions/", c.wallets.handler)
 	mux.Handle("/api/v1/wallets", c.wallets.handler)
 	mux.Handle("/api/v1/wallets/", c.wallets.handler)
 	mux.Handle("/api/v1/customers/", c.wallets.handler)
@@ -790,6 +819,72 @@ func TestLagoBenefitsSnapshot(t *testing.T) {
 	if other.Benefits == nil || other.Benefits.SubscriptionState != commercial.SubscriptionStatePending ||
 		other.Benefits.BalanceMicro != 0 || len(other.Benefits.Batches) != 0 {
 		t.Fatalf("untouched tenant must answer pending/zero honestly, got %+v", other.Benefits)
+	}
+}
+
+// (F-2 flow evidence) The entitlements read rides the v1.53 SUBSCRIPTION
+// routes — the pinned release exposes NO customer-nested entitlements
+// route (the old GET /api/v1/customers/:id/entitlements answered 404 on
+// the real stack, leaving Benefits.Features permanently empty). The
+// feature face is the UNION over the base "-sub" and purchase "-purchase"
+// identities, and a 404 purchase leg (no purchase yet) contributes
+// nothing.
+func TestLagoBenefitsFeaturesReadSubscriptionEntitlementRoutes(t *testing.T) {
+	stub := newCombinedStub(t)
+	stub.wallets.entitlementCustomer = commercial.ExternalCustomerID(subTenant)
+	stub.wallets.mu.Lock()
+	stub.wallets.entitlements = `{"entitlements":[{"feature_code":"api_access"}]}`
+	stub.wallets.purchaseEntitlements = `{"entitlements":[{"feature_code":"advanced_models"}]}`
+	stub.wallets.mu.Unlock()
+	snap, err := subAdapter(stub.url()).ReadSnapshot(context.Background(), commercial.SnapshotQuery{
+		Kind: commercial.SnapshotKindBenefits, TenantID: subTenant,
+	})
+	if err != nil {
+		t.Fatalf("benefits snapshot: %v", err)
+	}
+	if !snap.Benefits.Features["api_access"] || !snap.Benefits.Features["advanced_models"] {
+		t.Fatalf("features must union BOTH subscription legs, got %+v", snap.Benefits.Features)
+	}
+	// The read rode the subscription entitlements routes — never the
+	// customers-nested route the pinned release does not expose.
+	stub.wallets.mu.Lock()
+	defer stub.wallets.mu.Unlock()
+	sawBase, sawPurchase, sawAbsentRoute := false, false, false
+	for _, req := range stub.wallets.requests {
+		switch {
+		case req.Method == http.MethodGet && req.Path == "/api/v1/subscriptions/"+commercial.ExternalSubscriptionID(subTenant)+"/entitlements":
+			sawBase = true
+		case req.Method == http.MethodGet && req.Path == "/api/v1/subscriptions/"+commercial.ExternalPurchaseSubscriptionID(subTenant)+"/entitlements":
+			sawPurchase = true
+		case strings.HasPrefix(req.Path, "/api/v1/customers/") && strings.HasSuffix(req.Path, "/entitlements"):
+			sawAbsentRoute = true
+		}
+	}
+	if !sawBase || !sawPurchase {
+		t.Fatalf("both subscription entitlement legs must be read, base=%v purchase=%v (requests: %+v)", sawBase, sawPurchase, stub.wallets.requests)
+	}
+	if sawAbsentRoute {
+		t.Fatalf("the customers-nested entitlements route must never be called (absent on pinned v1.53)")
+	}
+}
+
+// The 404 purchase leg (no purchase subscription yet) must contribute
+// nothing — the base features still answer, never an error.
+func TestLagoBenefitsFeaturesTolerateMissingPurchaseLeg(t *testing.T) {
+	stub := newCombinedStub(t)
+	stub.wallets.entitlementCustomer = commercial.ExternalCustomerID(subTenant)
+	// purchaseEntitlements stays "" — the stub answers the purchase leg 404.
+	snap, err := subAdapter(stub.url()).ReadSnapshot(context.Background(), commercial.SnapshotQuery{
+		Kind: commercial.SnapshotKindBenefits, TenantID: subTenant,
+	})
+	if err != nil {
+		t.Fatalf("a missing purchase leg must not fail the snapshot, got %v", err)
+	}
+	if !snap.Benefits.Features["api_access"] {
+		t.Fatalf("base features must still answer, got %+v", snap.Benefits.Features)
+	}
+	if snap.Benefits.Features["advanced_models"] {
+		t.Fatalf("no purchase entitlements may be fabricated, got %+v", snap.Benefits.Features)
 	}
 }
 

@@ -32,7 +32,12 @@ import (
 //	      observed shape — or requires_action) carrying a non-empty
 //	      metadata.lago_invoice_id; more than one candidate resolves to the
 //	      LATEST created (the current purchase's gating intent is always the
-//	      most recent); ties or unparsable created values fail closed;
+//	      most recent); ties or unparsable created values fail closed. The
+//	      same read collects the invoice identities already carried to
+//	      succeeded: when the invoice the resolved candidate gates is
+//	      already succeeded, the settle replays idempotently (F-1 — the
+//	      residual sibling of a settled invoice is never driven, never
+//	      re-keyed, never a second charge);
 //	(iii) attach the configured settle pm (clone id) and set it as the
 //	      customer default;
 //	(iv)  POST /v1/payment_intents/{pi} (payment_method=…) then
@@ -96,8 +101,10 @@ func (a *LagoAdapter) settlePurchasePayment(ctx context.Context, cmd commercial.
 		return commercial.CommandReceipt{}, err
 	}
 
-	// (ii) Locate the stuck gating intent on the provider rails.
-	intents, err := a.stripeListUnsettledIntents(ctx, providerCustomerID)
+	// (ii) Locate the stuck gating intent on the provider rails. ONE list
+	// read answers both faces: the unsettled candidates AND the invoice
+	// identities already carried to succeeded (the settle-driven window).
+	intents, settledInvoices, err := a.stripeListGatingIntents(ctx, providerCustomerID)
 	if err != nil {
 		return commercial.CommandReceipt{}, err
 	}
@@ -108,7 +115,7 @@ func (a *LagoAdapter) settlePurchasePayment(ctx context.Context, cmd commercial.
 		// intent carrying the invoice identity means exactly that — the
 		// settle is DONE, the receipt replays idempotently (never a second
 		// charge, never a data-anomaly error that would park the order).
-		if a.hasSettledGatingIntent(ctx, providerCustomerID) {
+		if len(settledInvoices) > 0 {
 			return receipt, nil
 		}
 		return commercial.CommandReceipt{}, fmt.Errorf(
@@ -117,6 +124,21 @@ func (a *LagoAdapter) settlePurchasePayment(ctx context.Context, cmd commercial.
 	intent, err := latestIntent(intents)
 	if err != nil {
 		return commercial.CommandReceipt{}, err
+	}
+	// (F-1 flow evidence) Invoice-bound settle idempotency: a failed 3DS
+	// confirm leaves a RESIDUAL sibling PaymentIntent for the SAME invoice
+	// (requires_payment_method, pm stripped) next to the one this command
+	// already drove to succeeded, so "unsettled candidates remain" is NOT
+	// proof the settle is undone. Re-keying "<cmd.Key>:update" onto that
+	// sibling both collides on Stripe (a key is bound to its first
+	// endpoint forever → 400 idempotency_error, mislabeled attention) and,
+	// absent the collision, would confirm a SECOND intent for the invoice
+	// — a real second charge. The INVOICE identity is the settle
+	// idempotency fact: the gating invoice of the intent this drive
+	// resolves is already carried to succeeded → the settle is DONE, the
+	// receipt replays idempotently.
+	if settledInvoices[intent.LagoInvoiceID] {
+		return receipt, nil
 	}
 
 	// (iii) Attach the settle payment method and promote it to default.
@@ -181,17 +203,19 @@ type stripeIntent struct {
 	LagoInvoiceID string
 }
 
-// stripeListUnsettledIntents lists the customer's PaymentIntents and keeps
-// the unsettled ones carrying the Lago invoice identity (D2' step ii
-// locator predicate).
-func (a *LagoAdapter) stripeListUnsettledIntents(ctx context.Context, providerCustomerID string) ([]stripeIntent, error) {
+// stripeListGatingIntents lists the customer's PaymentIntents ONCE and
+// splits the answer into the two settle faces: the unsettled candidates
+// (D2' step ii locator predicate) and the invoice identities already
+// carried to succeeded (the invoice-bound settle idempotency window —
+// F-1: the residual sibling of a settled invoice must never be driven).
+func (a *LagoAdapter) stripeListGatingIntents(ctx context.Context, providerCustomerID string) ([]stripeIntent, map[string]bool, error) {
 	status, body, err := a.providerOutboundRequest(ctx, http.MethodGet,
 		"/v1/payment_intents?customer="+url.QueryEscape(providerCustomerID)+"&limit=20", "", "")
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if err := classifyStripeStatus(status, "payment intent list"); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	var parsed struct {
 		Data []struct {
@@ -204,55 +228,32 @@ func (a *LagoAdapter) stripeListUnsettledIntents(ctx context.Context, providerCu
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(body, &parsed); err != nil {
-		return nil, fmt.Errorf("%w: payment intent list malformed", commercial.ErrPlatformInvalidResponse)
+		return nil, nil, fmt.Errorf("%w: payment intent list malformed", commercial.ErrPlatformInvalidResponse)
 	}
-	out := make([]stripeIntent, 0, len(parsed.Data))
+	unsettled := make([]stripeIntent, 0, len(parsed.Data))
+	settled := make(map[string]bool)
 	for _, row := range parsed.Data {
-		switch row.Status {
-		case "requires_payment_method", "requires_action":
-		default:
-			continue // succeeded/canceled/processing… are not the stuck gate
-		}
 		if row.Metadata.LagoInvoiceID == "" {
 			continue
 		}
-		if row.Created <= 0 {
-			return nil, fmt.Errorf("%w: payment intent created unparsable", commercial.ErrPlatformInvalidResponse)
+		if row.Status == "succeeded" {
+			settled[row.Metadata.LagoInvoiceID] = true
+			continue
 		}
-		out = append(out, stripeIntent{
+		switch row.Status {
+		case "requires_payment_method", "requires_action":
+		default:
+			continue // canceled/processing… are not the stuck gate
+		}
+		if row.Created <= 0 {
+			return nil, nil, fmt.Errorf("%w: payment intent created unparsable", commercial.ErrPlatformInvalidResponse)
+		}
+		unsettled = append(unsettled, stripeIntent{
 			ID: row.ID, Status: row.Status, Created: row.Created,
 			LagoInvoiceID: row.Metadata.LagoInvoiceID,
 		})
 	}
-	return out, nil
-}
-
-// hasSettledGatingIntent reports whether the customer carries a SUCCEEDED
-// PaymentIntent stamped with the Lago invoice identity — the settle-already-
-// driven, webhook-pending window (t10 flow evidence).
-func (a *LagoAdapter) hasSettledGatingIntent(ctx context.Context, providerCustomerID string) bool {
-	status, body, err := a.providerOutboundRequest(ctx, http.MethodGet,
-		"/v1/payment_intents?customer="+url.QueryEscape(providerCustomerID)+"&limit=20", "", "")
-	if err != nil || status != http.StatusOK {
-		return false
-	}
-	var parsed struct {
-		Data []struct {
-			Status   string `json:"status"`
-			Metadata struct {
-				LagoInvoiceID string `json:"lago_invoice_id"`
-			} `json:"metadata"`
-		} `json:"data"`
-	}
-	if json.Unmarshal(body, &parsed) != nil {
-		return false
-	}
-	for _, row := range parsed.Data {
-		if row.Status == "succeeded" && row.Metadata.LagoInvoiceID != "" {
-			return true
-		}
-	}
-	return false
+	return unsettled, settled, nil
 }
 
 // latestIntent resolves the disambiguation rule (D2' step ii): the current

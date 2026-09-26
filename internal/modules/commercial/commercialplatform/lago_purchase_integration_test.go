@@ -155,11 +155,14 @@ func TestLagoPurchaseIntegration(t *testing.T) {
 		t.Fatalf("awaiting-payment snapshot mismatch: %+v", purchase)
 	}
 
-	// Phase 3 (AC3): entitlements stay CLOSED while gated (F6).
+	// Phase 3 (AC3): entitlements stay CLOSED while gated (F6). Read
+	// through the v1.53 SUBSCRIPTION entitlements route — the pinned
+	// release exposes no customer-nested entitlements route (F-2), so the
+	// old customers-path assertion was vacuously 404 on the real stack.
 	status, body := rawIntegrationRequest(t, http.MethodGet, baseURL, apiKey,
-		fmt.Sprintf("/api/v1/customers/%s/entitlements", commercial.ExternalCustomerID(tenantA)), "")
-	if status != http.StatusNotFound || strings.Contains(body, "advanced_models") {
-		t.Fatalf("gated tenant must hold no entitlements (404), got %d %s", status, body)
+		fmt.Sprintf("/api/v1/subscriptions/%s/entitlements", commercial.ExternalPurchaseSubscriptionID(tenantA)), "")
+	if status == http.StatusOK && strings.Contains(body, "advanced_models") {
+		t.Fatalf("gated tenant must hold no purchase entitlements (status %d), got %s", status, body)
 	}
 
 	// Phase 4 (AC4): replay resolves by identity, exactly one subscription.
