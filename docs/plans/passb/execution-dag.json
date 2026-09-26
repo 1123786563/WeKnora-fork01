@@ -1864,7 +1864,7 @@
     "catalog version/install 不变式、sync/action 行为差分证据"
    ],
    "execution_mode": "serial",
-   "status": "blocked",
+   "status": "pending",
    "base_sha": null,
    "head_sha": null,
    "review_status": "pending",
