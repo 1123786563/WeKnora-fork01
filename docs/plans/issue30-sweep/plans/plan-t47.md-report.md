@@ -383,3 +383,100 @@ $ pnpm exec tsx --test packages/contracts/test/mobile-knowledge-evidence.test.ts
 - 代码提交：`a7e56dc80` `feat(contracts): research delegation and annotation wire contracts (T17 #47 task 4)`（3 文件：research.ts 新建 111 行、research.test.ts 新建 53 行、index.ts 追加 2 行）。
 - 报告追加：本 T4 章节，随后的 docs 提交（SHA 见 submit_result）。
 
+
+## T5.1 任务与交付物（实现员-t47-任务5）
+
+按 `plan-t47.md` Task 5（api-client——createMobileResearchRemote）实施，严格 RED→GREEN→验证→提交：
+
+**新建：**
+- `packages/api-client/src/mobile/research.ts` —— `createMobileResearchRemote`（计划逐字代码）：
+  - `ResearchRemote` 五方法：`delegate`（POST `/api/v1/workbench/executions/:runId/research`，body `{ objective, sources }`）、`list`（GET 同路径）、`complete`（POST `.../research/:delegationId/summary`，body `{ summary }`）、`annotate`（POST `.../annotations`，body `{ material_id, base_version, body }` snake wire）、`annotations`（GET 同路径）。
+  - 行类型 `ResearchDelegationRow` / `ResearchAnnotationRow`（camelCase 语义行，与计划 Produces 块逐字一致；与 mobile-core `ResearchBackendPort` 的结构一致性由 Task 7 apps/mobile typecheck 证明，本包不反向依赖 mobile-core）。
+  - 行投影经 Task 4 真实解析器 `parseResearchListResponse` / `parseAnnotationListResponse`（`@weknora/contracts` 根导出，index.ts:740），任何字段缺失/类型不符整体抛错——不部分渲染。
+  - 错误语义：`annotate` 的 `ApiError.status === 409` → `Error('RESEARCH_BASE_VERSION_CONFLICT')`；其余失败（非 2xx、畸形信封、传输失败）统一 `Error('RESEARCH_BACKEND')`；message 即裸错误码且 `.code` 属性同值（task-office.ts:256-266 范式）；catch 一律重抛（`rethrow` 返回 `never`），不会把 rejection 变 resolved。
+  - 构造期 `requireDeploymentOrigin` 强校验 origin；runId/delegationId 经 `encodeURIComponent` 进路径；不新建传输、不持有 token（授权通道 `request: (ClientRequest) => Promise<unknown>` 注入）。
+- `packages/api-client/src/mobile/research.test.ts` —— 5 个契约测试（计划原文逐字），请求替身捕获 `ClientRequest` 断言 `method` / 相对 `path` / `body`（materials.test.ts:27-52 同款形态）。
+
+**修改（追加一行，未动他人逻辑）：**
+- `packages/api-client/package.json` —— exports 表在 `"./mobile/code-delivery"` 行后追加 `"./mobile/research": "./src/mobile/research.ts"`（package.json:19）。
+
+**消费的前置接口（全部亲眼核实后才动工）：**
+- Task 4 产出：`packages/contracts/src/mobile/research.ts` 的两个解析器 + 根导出 `packages/contracts/src/index.ts:740-741`。
+- `ClientRequest`（`packages/api-client/src/client.ts:38-47`：`method`/`path`/`body` 可选字段）。
+- `ApiError`（`packages/api-client/src/errors.ts:24-38`：`status?: number` + `code: string`）。
+- `requireDeploymentOrigin`（`packages/api-client/src/mobile/deployment-origin.ts:7-17`）。
+
+## T5.2 TDD RED 证据
+
+Step 1 写测试（文件创建后）Step 2 实跑：
+
+```
+$ pnpm exec tsx --test packages/api-client/src/mobile/research.test.ts
+
+  code: 'ERR_MODULE_NOT_FOUND',
+  url: 'file:///Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue30-sweep-t47/packages/api-client/src/mobile/research.ts'
+}
+
+Node.js v26.7.0
+✖ packages/api-client/src/mobile/research.test.ts (1564.182625ms)
+ℹ tests 1
+ℹ pass 0
+ℹ fail 1
+```
+
+失败形态 = `ERR_MODULE_NOT_FOUND`（research.ts 不存在），与计划 Step 2「Expected: FAIL（模块不存在）」逐字一致。
+
+## T5.3 GREEN 与提交前验证（全部实跑）
+
+计划 Step 4 命令（新测试 + materials 回归）：
+
+```
+$ pnpm exec tsx --test packages/api-client/src/mobile/research.test.ts && pnpm exec tsx --test packages/api-client/src/mobile/materials.test.ts
+✔ delegate POSTs to the research endpoint and projects a semantic row (7.216083ms)
+✔ complete posts the summary to the delegation summary endpoint (0.465958ms)
+✔ list/annotations GET the run-scoped endpoints and map rows (6.4465ms)
+✔ annotate maps a 409 stale base version to RESEARCH_BASE_VERSION_CONFLICT (0.776541ms)
+✔ generic failures and malformed envelopes map to RESEARCH_BACKEND with the code attached (1.710334ms)
+ℹ tests 5  ℹ pass 5  ℹ fail 0  ℹ skipped 0
+✔ material remote maps the artifact list wire and degrades without the terminal flag (2.06175ms)
+✔ material remote posts signed-url with the numeric index and maps the grant (0.289416ms)
+✔ terminalLog reports undefined when the cursor did not advance (end of log) (0.2595ms)
+✔ material remote pages the terminal log with after/limit query facets (0.153208ms)
+✔ material remote projects evidence events from the run snapshot (0.326084ms)
+✔ material remote requires a credential-free absolute https origin (0.497625ms)
+ℹ tests 6  ℹ pass 6  ℹ fail 0  ℹ skipped 0
+```
+
+提交前包级全量（implementer 模板要求，非计划命令的替代——计划命令原样先跑过）：
+
+```
+$ pnpm exec tsx --test "packages/api-client/src/mobile/*.test.ts"
+ℹ tests 112
+ℹ pass 108
+ℹ fail 0
+ℹ skipped 4      # opt-in 集成用例（runtime/task-office integration，缺真实凭据显式 skip）
+ℹ duration_ms 9866.197791
+```
+
+定向类型检查（根 `typecheck:shared` 为固定文件列表不含新文件，故以同 flags 对新文件单独取证）：
+
+```
+$ pnpm exec tsc --noEmit --strict --skipLibCheck --target ES2022 --lib ES2022,DOM \
+    --module NodeNext --moduleResolution NodeNext --allowImportingTsExtensions \
+    packages/api-client/src/mobile/research.ts && echo "TYPECHECK OK"
+TYPECHECK OK
+```
+
+## T5.4 自检发现
+
+- 测试真实行为而非 mock 行为：wire 形态（method/path/body 键集）经捕获的 `ClientRequest` 断言；camelCase 投影一律经真实 contracts 解析器（替身只提供 wire 字节形态），畸形信封分支也走真实 `unwrap`。
+- `ResearchRemote.status` 类型为字面量 `'assigned' | 'completed'`（源自 contracts `ResearchStatusWire`），非宽化 `string`。
+- 依赖方向核对：api-client 不 import mobile-core（结构一致性留给 Task 7 的 apps/mobile typecheck，计划注释原文如此声明）；research.ts 对 contracts 仅依赖根导出，不深入包内部路径。
+- `getEnvelope` 中 RESEARCH_BACKEND 二次包装的短路判断按 `(error as { code?: unknown } | null)?.code` 判——unwrap 已 coded 的错误不再套壳，其余（含解析器裸 Error）包成 RESEARCH_BACKEND；5 个测试全部覆盖到这两条路径。
+- 无越权改动：`git status` 提交前仅 3 个授权文件；未触碰他人文件；未派发任何子代理；未推送远端。
+- 未运行 apps/mobile / mobile-core 侧任何测试（不在本任务授权范围）；Task 6/7 消费本适配器的结构可赋值性由后续任务验证。
+
+## T5.5 提交
+
+- 代码提交：`39799662b` `feat(api-client): mobile research remote adapter (T17 #47 task 5)`（3 文件：research.ts 新建 145 行、research.test.ts 新建 96 行、package.json 追加 1 行）。
+- 报告追加：本 T5 章节，随后的 docs 提交（SHA 见 submit_result）。
