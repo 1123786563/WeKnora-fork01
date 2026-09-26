@@ -192,3 +192,83 @@ ok  	github.com/Tencent/WeKnora/internal/handler/session	1.999s
 ## R4. 提交
 
 - 修复轮提交：`internal/container/container.go` + `internal/container/workbench.go` + `internal/container/task_grant_wiring_test.go` + 本报告追加，一次提交（SHA 见 submit_result）。
+
+---
+
+# Task 3 报告：Go 端到端证据——AC1/AC2 服务端全链
+
+> 执行者：实现员-t47-任务3（subagent-driven-development）。工作目录：`.worktrees/issue30-sweep-t47`，分支 `codex/issue30-t47`，起点 HEAD `979fce038`（Task 2 修复轮 1 之后，工作树干净）。
+
+## T3.1 任务与交付物
+
+按 `plan-t47.md` Task 3 实施。本任务无新实现，测试即交付：
+
+**新建（唯一授权文件）：**
+- `internal/application/repository/task_research_http_test.go` —— 三条 E2E 测试（计划正文写「四条 AC1×2+AC2×2」，实际为 3 个测试函数：`TestTaskResearchEndToEndParallelReadOnlyDelegations`、`TestTaskResearchEndToEndSourceOutsideTenantScope`、`TestTaskResearchEndToEndAnnotationVersionImmutability`，与计划代码块逐字一致）：
+  - 装配完全走真实链路：`openTaskGrantDB(t)`（全量 sqlite 迁移真实库）+ 真实 `AgentRunStore.Admit`（占住 r1 写槽）+ 真实 `TaskGrantStore.UpsertGrant`（u2 viewer / u3 collaborator grant 行）+ 真实 `TaskGrantService` / `TaskResearchStore` / `TaskAnnotationStore` / `MessageRepository` / `KnowledgeBaseRepository`，经真实 gin engine + httptest 全链，无任何 mock service。
+  - `researchGateAdapter` 镜像容器生产 gate（`container.researchSourceAuthorizer`，workbench.go:206-214）的租户绑定 KB 校验行为。
+  - AC1 证据：第二个写 admission 撞单写槽 `ErrRunActive`（既有语义对照）的同时，两个只读委派 201 共存；granted viewer u2 经真实 SQL JOIN 读到委派列表；owner CAS 完成摘要、重放 409；协作者 u3 写 grants 被 403（委派不放宽 task_grants 面）。
+  - AC1 证据（源越权）：不存在源与「存在于租户 2 的源」均在任何落库前被 400 `research_source_out_of_task_grant` 拒绝；租户 2 探测统一 404。
+  - AC2 证据：批注钉定当前版本身份（ContentHash 前 16 hex，`artifactVersionOf`）；写 Run 产出 m2 新版本后，携带过期 `base_version` 的批注 409 `annotation_base_version_conflict`；已批注 m1:0 的 version/digest 字节不变；批注列表只含 v1 身份。
+
+## T3.2 与计划代码的一处偏差（编译必然性，非设计变更）
+
+计划代码块中有一行 `readHandler := session.NewWorkbenchReadHandler(runs, repository.NewAgentRunSnapshotRepository(db)).WithGrantedRuns(runs)`，构造后从未使用——Go 对未使用的局部变量是编译错误（`declared and not used`），且 `NewWorkbenchReadHandler` 不在 Task 3 声明的 Interfaces/Consumes 清单（计划 1588 行）中，三条测试也不触达 read face。落盘时**删除该行**，其余逐字保留。同包先例 `task_collaboration_http_test.go:53-65` 中 readHandler 之所以合法，是因为它注册了 `GetWorkbenchExecution`/`GetWorkbenchSnapshot` 两条路由；本测试不需要 read face，注册未使用路由属于噪音，故选择删除而非补路由。
+
+## T3.3 测试命令与完整输出（全部实跑）
+
+**Step 2 主验证（计划指定命令）：**
+```
+$ go test ./internal/application/repository/ -run 'TestTaskResearchEndToEnd' -count=1 -v
+=== RUN   TestTaskResearchEndToEndParallelReadOnlyDelegations
+--- PASS: TestTaskResearchEndToEndParallelReadOnlyDelegations (2.25s)
+=== RUN   TestTaskResearchEndToEndSourceOutsideTenantScope
+--- PASS: TestTaskResearchEndToEndSourceOutsideTenantScope (1.81s)
+=== RUN   TestTaskResearchEndToEndAnnotationVersionImmutability
+--- PASS: TestTaskResearchEndToEndAnnotationVersionImmutability (1.74s)
+PASS
+ok  	github.com/Tencent/WeKnora/internal/application/repository	7.780s
+```
+
+**防伪检查（计划 Step 2 要求）：** 临时把 `TestTaskResearchEndToEndParallelReadOnlyDelegations` 循环内第二个委派源改为 `kb-secret`，实跑确认断言真实生效：
+```
+$ go test ./internal/application/repository/ -run 'TestTaskResearchEndToEndParallelReadOnlyDelegations' -count=1
+    Error:      	Not equal:
+    	            	expected: 201
+    	            	actual  : 400
+    	Messages:    只读委派 #2 必须与活跃写 Run 并行（AC1）: {"code":"research_source_out_of_task_grant","error":"research source is outside the task's tenant knowledge scope","success":false}
+FAIL
+FAIL	github.com/Tencent/WeKnora/internal/application/repository	3.120s
+```
+改回后复跑：3/3 PASS（`ok ... 8.000s`，输出同上形态）。防伪闭环：越权源确实被服务端在任何落库前拒绝。
+
+**Step 2 回归（计划指定命令）：**
+```
+$ go test ./internal/application/repository/ -run 'TestTaskCollaboration|TestTaskGrant' -count=1
+ok  	github.com/Tencent/WeKnora/internal/application/repository	9.893s
+
+$ go test ./internal/handler/session/ -run TestListWorkbenchArtifacts -count=1
+ok  	github.com/Tencent/WeKnora/internal/handler/session	2.662s
+```
+
+**提交前全量（实现员模板要求，触碰包全量套件 + vet）：**
+```
+$ go vet ./internal/application/repository/
+（无输出，VET_OK）
+
+$ go test ./internal/application/repository/ -count=1
+ok  	github.com/Tencent/WeKnora/internal/application/repository	509.541s
+```
+未跑整个仓库 `./...` 套件（唯一改动是 repository 包新增一个 _test.go 文件，不影响其它包编译产物；`./internal/handler/session/`、`./internal/container/` 等已由上面定点回归与 Task 2 轮全量覆盖）。
+
+## T3.4 自检发现
+
+1. 迁移号差异（非本任务造成）：task_research 两表迁移在本 worktree 实际为 sqlite `000121` / versioned `000201`（Task 0 代执行时按计划差异记录第 6 条「被同批其它计划先占则整体顺延，DDL 零变化」裁决），计划正文写的 000119/000198 号段已被占。E2E 经 `openTaskGrantDB` 装载真实迁移轨道，对号段无感知，测试只依赖表结构。
+2. `TestTaskResearchEndToEndParallelReadOnlyDelegations` 中两个委派的完成断言取 `list.Data.Items[0]`：列表按 `created_at ASC, id ASC` 排序，两次 POST 间隔毫秒级、id 为 uuid，`items[0]` 是哪一个不确定——但两个委派都是 assigned，断言（200 后重放 409）与顺序无关，属确定性断言。
+3. AC2 中 m1/m2 种子消息的 `created_at` 若同刻 tie，`GetSessionArtifactRefs` 的 `created_at ASC` 顺序不影响任何断言：长度断言与 `byID` 映射都与顺序无关。
+4. `Message.BeforeCreate` 无条件重生成 ID（message.go:509）——种子消息按计划要求走 `SkipHooks: true`，保住 (message_id, index) 材料寻址；实跑通过佐证该处理正确。
+
+## T3.5 提交
+
+- `internal/application/repository/task_research_http_test.go` + 本报告追加，一次提交（SHA 见 submit_result）。
+- 提交信息：`test(workbench): T17 research delegation and annotation version immutability E2E (T17 #47 task 3)`
