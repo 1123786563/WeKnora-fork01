@@ -1,0 +1,233 @@
+/* KBChunkingSettings.vue scoped 块平移（frontend/src/views/knowledge/
+ * settings/KBChunkingSettings.vue:397-679，非 embedded 布局——scoped 根类
+ * .kb-chunking-settings 即全局唯一锚，§2.2 规则：根规则不加前缀，嵌套选择器
+ * 逐级挂根类；embedded 变体块 Vue 端无消费方（唯一挂载点
+ * KnowledgeBaseEditorModal.vue:270 未传 embedded），不平移。
+ * 组件 tdesign 控件（Select/Slider/Switch/InputNumber）的 DOM 由库生成，
+ * 与 Vue tdesign 同族自然对齐（playbook §3.1）。 */
+
+.kb-chunking-settings {
+  width: 100%;
+}
+
+.kb-chunking-settings .section-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  /* Stick to the top of the scrollable section so the section title remains
+     visible while the user scrolls through a long form. Negative top and
+     matching negative margins compensate for content-wrapper's padding
+     (24px 32px) so the sticky band visually spans the full width when stuck. */
+  position: sticky;
+  top: -24px;
+  z-index: 5;
+  background: var(--td-bg-color-container);
+  padding: 24px 32px 12px 32px;
+  margin: -24px -32px 16px -32px;
+  border-bottom: 1px solid var(--td-component-stroke);
+}
+
+.kb-chunking-settings .section-header .section-header-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.kb-chunking-settings .section-header h2 {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+  margin: 0 0 6px 0;
+}
+
+.kb-chunking-settings .section-header .section-description {
+  font-size: 14px;
+  color: var(--td-text-color-secondary);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.kb-chunking-settings .settings-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.kb-chunking-settings .setting-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--td-component-stroke);
+}
+
+.kb-chunking-settings .setting-row:last-child {
+  border-bottom: none;
+}
+
+.kb-chunking-settings .setting-row.disabled {
+  opacity: 0.5;
+}
+
+.kb-chunking-settings .strategy-info-panel {
+  margin: 0 0 16px 0;
+  padding: 10px 14px;
+  background: var(--td-bg-color-container-hover);
+  border-left: 3px solid var(--td-brand-color);
+  border-radius: 0 4px 4px 0;
+  font-size: 13px;
+  color: var(--td-text-color-secondary);
+  line-height: 1.5;
+}
+
+.kb-chunking-settings .strategy-info-panel p {
+  margin: 0;
+  word-break: break-word;
+}
+
+.kb-chunking-settings .strategy-info-panel strong {
+  color: var(--td-text-color-primary);
+}
+
+.kb-chunking-settings .setting-info {
+  flex: 0 0 40%;
+  max-width: 40%;
+  padding-right: 24px;
+}
+
+.kb-chunking-settings .setting-info label {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--td-text-color-primary);
+  display: block;
+  margin-bottom: 4px;
+}
+
+.kb-chunking-settings .setting-info .desc {
+  font-size: 13px;
+  color: var(--td-text-color-secondary);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.kb-chunking-settings .setting-info .warn {
+  font-size: 12px;
+  color: var(--td-warning-color);
+  margin: 4px 0 0 0;
+  line-height: 1.4;
+}
+
+.kb-chunking-settings .setting-control {
+  flex: 0 0 55%;
+  max-width: 55%;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+/* Strategy row stacks the picker above the test trigger so the action has
+   room to breathe without competing with the select for horizontal space.
+   Both children stay right-aligned under the section's right column. */
+.kb-chunking-settings .strategy-control {
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.kb-chunking-settings .slider-container {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  justify-content: flex-end;
+}
+
+.kb-chunking-settings .value-display {
+  font-size: 14px;
+  color: var(--td-text-color-primary);
+  font-weight: 500;
+  min-width: 80px;
+  text-align: right;
+}
+
+.kb-chunking-settings .advanced-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 16px 0 8px 0;
+  margin: 0;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--td-text-color-secondary);
+  user-select: none;
+}
+
+.kb-chunking-settings .advanced-toggle:hover {
+  color: var(--td-text-color-primary);
+}
+
+.kb-chunking-settings .advanced-toggle:focus-visible {
+  outline: 2px solid var(--td-brand-color-focus);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.kb-chunking-settings .toggle-arrow {
+  font-size: 16px;
+  transition: transform 0.15s ease;
+}
+
+.kb-chunking-settings .toggle-arrow.open {
+  transform: rotate(90deg);
+}
+
+.kb-chunking-settings .advanced-section {
+  /* Visually grouped via the toggle above; avoid a left rule that hugs the
+     panel edge and looks detached from the rest of the form. */
+  margin-top: 4px;
+}
+
+/* —— 分隔符 t-select 空 input 的折行复刻（Vue config 回写后态）——
+ * vue-next tag-input 空 input 保留 inline width:auto（intrinsic ≈154px），
+ * KBChunkingSettings 的 config 回写（watch 置换数组）触发 tags 重排后 input
+ * 折到独立行、盒高 122→145（fixture 实测 828,375,154x22）。未回写时双端
+ * 均 122（Vue 内联 fit / React 0 宽）。tdesign-react TagInput 空 input 由库
+ * JS 恒写 inline width:0px——变更后（.kb-sep-relaid）以 !important 放开为
+ * auto（intrinsic 同宽）复刻折行；空 input 无描边/文字，视觉差仅盒高。 */
+.kb-chunking-settings .setting-row--separators .kb-sep-relaid .t-tag-input .t-input__inner {
+  width: auto !important;
+}
+
+/* —— KBChunkingDebug.vue scoped 块平移（frontend/src/views/knowledge/
+ * settings/KBChunkingDebug.vue:371-394 触发器段）——弹层 drawer 内部样式
+ * 留在 KnowledgeSettingsPage.css（.kb-chunking-debug-layer 族）。 */
+.kb-chunking-settings .kb-chunking-debug {
+  flex-shrink: 0;
+}
+
+/* TDesign's primary text-button renders a filled hover background that
+   looks out of place in this right-aligned slot — it reads as a floating
+   color block rather than a link. Strip the hover/focus/active surfaces
+   and just shift the text colour, giving the trigger a lightweight
+   "inline link" feel that matches the rest of the secondary actions. */
+.kb-chunking-settings .kb-chunking-debug .debug-trigger {
+  --td-bg-color-container-hover: transparent;
+  padding-left: 0;
+  padding-right: 0;
+  font-weight: 600;
+}
+
+.kb-chunking-settings .kb-chunking-debug .debug-trigger:hover,
+.kb-chunking-settings .kb-chunking-debug .debug-trigger:focus,
+.kb-chunking-settings .kb-chunking-debug .debug-trigger.t-is-active,
+.kb-chunking-settings .kb-chunking-debug .debug-trigger:active {
+  background-color: transparent !important;
+  color: var(--td-brand-color-hover);
+}
+
+.kb-chunking-settings .kb-chunking-debug .debug-trigger:active {
+  color: var(--td-brand-color-active);
+}

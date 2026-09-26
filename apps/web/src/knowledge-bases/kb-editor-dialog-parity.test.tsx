@@ -176,46 +176,48 @@ test('A1: the drawer chunking section mounts the shared Vue form — test trigge
   await mountEditDrawer(makeClient(), 'chunking');
   const drawer = document.body.querySelector('.wk-kb-editor-dialog');
   assert.ok(drawer, 'editor drawer rendered');
-  /* Task 11a：section 壳是 Vue v-show（DOM 常驻）——查询收敛到 chunking 段。 */
+  /* Task 11a：section 壳是 Vue v-show（DOM 常驻）——查询收敛到 chunking 段。
+     px2-kb-settings-*：共享表换 tdesign 控件（.kb-chunking-settings 类族 +
+     t-select/t-slider/t-switch/t-input-number，弹层断言按 .t-* DOM）。 */
   const section = drawer.querySelector('[data-editor-section="chunking"]');
   assert.ok(section, 'chunking section shell rendered');
+  assert.ok(section.querySelector('.kb-chunking-settings'), 'shared Vue-form shell (.kb-chunking-settings) mounted');
   // Bare number inputs are gone (the old implementation had 5+ type=number fields).
   assert.equal(section.querySelectorAll('input[type="number"]').length, 0, 'no bare number inputs on the collapsed section');
-  // Strategy select: placeholder + the four Vue strategies.
-  const strategySelect = section.querySelector<HTMLSelectElement>('select[aria-label="分块策略"]');
-  assert.ok(strategySelect, 'strategy select rendered');
+  // Strategy select: tdesign select（弹层选项经触发器点击后断言）。
+  const strategyWrap = section.querySelector('.strategy-control .t-select__wrap');
+  assert.ok(strategyWrap, 'strategy select rendered');
+  assert.equal((strategyWrap.querySelector('input') as HTMLInputElement)?.value, '', 'empty strategy shows the placeholder state');
+  await act(async () => { strategyWrap.querySelector('.t-input')!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); });
+  await act(async () => {});
+  const strategyOptions = Array.from(document.body.querySelectorAll('.t-select-option')).map((option) => (option.textContent ?? '').trim());
   assert.deepEqual(
-    Array.from(strategySelect.querySelectorAll('option')).map((option) => option.textContent),
-    ['选择分块策略（不填则按长度切分）', '自动', '按标题切分', '结构感知', '按长度切分'],
-    'strategy options mirror Vue (placeholder + auto/heading/heuristic/legacy)',
+    strategyOptions,
+    ['自动', '按标题切分', '结构感知', '按长度切分'],
+    'strategy options mirror Vue (auto/heading/heuristic/legacy；placeholder 只在触发器，弹层无占位行——Vue t-select 同款)',
   );
-  // Test trigger sits under the strategy picker (Vue strategy-control column).
-  const debugTrigger = section.querySelector<HTMLButtonElement>('.kb-chunking-debug-trigger');
+  // Test trigger sits under the strategy picker (Vue strategy-control column):
+  // tdesign Button + debug-trigger 类（px2 收敛后触发器不再是自研 button）。
+  const debugTrigger = section.querySelector<HTMLButtonElement>('.kb-chunking-debug .debug-trigger');
   assert.ok(debugTrigger, '测试分块效果 trigger rendered');
   assert.match(debugTrigger.textContent ?? '', /测试分块效果/);
-  // Size slider: 100-4000 range + live value display "512 字符".
-  const sizeSlider = section.querySelector<HTMLInputElement>('input[type="range"][aria-label="分块大小"]');
-  assert.ok(sizeSlider, 'chunk-size range slider rendered');
-  assert.equal(sizeSlider.min, '100');
-  assert.equal(sizeSlider.max, '4000');
-  assert.equal(sizeSlider.value, '512', 'hydrated chunk size');
+  // Size slider: tdesign slider + live value display "512 字符".
+  const sliders = Array.from(section.querySelectorAll('.t-slider'));
+  assert.equal(sliders.length, 2, 'size/overlap sliders rendered');
   assert.match(section.textContent ?? '', /512 字符/, 'live value display renders the character suffix');
-  // Overlap slider 0-500 with the 80-character display.
-  const overlapSlider = section.querySelector<HTMLInputElement>('input[type="range"][aria-label="分块重叠"]');
-  assert.ok(overlapSlider, 'chunk-overlap range slider rendered');
-  assert.equal(overlapSlider.max, '500');
+  // Overlap slider with the 80-character display.
   assert.match(section.textContent ?? '', /80 字符/, 'overlap value display renders');
-  // Separator chips field with the hydrated separators.
-  assert.ok(section.querySelector('.kb-separator-box input'), 'separator chips input rendered');
-  assert.ok(section.querySelectorAll('.kb-separator-chip').length >= 2, 'hydrated separators render as chips');
-  // Parent-child toggle renders as a checkbox row (not a bare number pair).
-  assert.ok(section.querySelector<HTMLInputElement>('input[type="checkbox"][aria-label="父子分块"]'), 'parent-child switch rendered');
+  // Separator chips field with the hydrated separators (tdesign t-tag chips).
+  assert.ok(section.querySelector('.setting-row--separators .t-select__wrap input'), 'separator chips input rendered');
+  assert.ok(section.querySelectorAll('.setting-row--separators .t-tag').length >= 2, 'hydrated separators render as chips');
+  // Parent-child toggle renders as a tdesign switch row (not a bare number pair).
+  assert.ok(section.querySelector('.setting-row--toggle .t-switch'), 'parent-child switch rendered');
   // Collapsed advanced toggle.
   const advancedToggle = Array.from(section.querySelectorAll('button')).find((button) => (button.textContent ?? '').includes('高级选项'));
   assert.ok(advancedToggle, '高级选项 fold toggle rendered');
   await act(async () => { advancedToggle?.click(); });
   await act(async () => {});
-  assert.ok(section.querySelector('input[type="number"][aria-label="每块 Token 上限"]'), 'token-limit input appears after expanding 高级选项');
+  assert.ok(section.querySelector('.advanced-section .t-input-number input'), 'token-limit input appears after expanding 高级选项');
 });
 
 test('A2: the drawer storage section mirrors KBStorageSettings — tagged options, no bare list, migrate hint and the 管理存储实例 entry', async () => {

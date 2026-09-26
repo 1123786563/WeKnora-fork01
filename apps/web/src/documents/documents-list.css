@@ -383,7 +383,11 @@
   position: absolute;
   top: 20px;
   right: 20px;
-  z-index: 5;
+  /* z-index 10 对齐 Vue .close-btn z-index:10（KnowledgeBaseEditorModal.vue
+     :1670）——分块段 sticky .section-header z-index:5（KBChunkingSettings.vue
+     :412）与旧值 5 同级时按 DOM 序被盖住关闭钮；Vue 关闭钮恒在其上（px2-
+     kb-settings-nav 关闭钮带 y74-105 全红实证）。 */
+  z-index: 10;
   justify-content: flex-end;
   padding: 0;
 }

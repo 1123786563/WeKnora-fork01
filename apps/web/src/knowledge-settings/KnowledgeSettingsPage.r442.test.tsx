@@ -29,6 +29,12 @@ Object.assign(globalThis, {
   HTMLButtonElement: dom.window.HTMLButtonElement,
   HTMLSelectElement: dom.window.HTMLSelectElement,
   HTMLTextAreaElement: dom.window.HTMLTextAreaElement,
+  // 分块段换 tdesign 控件（Select/Slider/Switch/InputNumber，弹层 Popup 系
+  // 需要 Element/Node/SVGElement/rAF —— SandboxSettingsPanel.test 同款先例）。
+  Element: dom.window.Element,
+  Node: dom.window.Node,
+  SVGElement: dom.window.SVGElement,
+  requestAnimationFrame: dom.window.requestAnimationFrame?.bind(dom.window) ?? ((cb: FrameRequestCallback) => setTimeout(cb, 16)),
   Event: dom.window.Event,
   CustomEvent: dom.window.CustomEvent,
   KeyboardEvent: dom.window.KeyboardEvent,
@@ -173,62 +179,63 @@ afterEach(async () => {
   document.body.innerHTML = '';
 });
 
-test('separators render as the Vue creatable tag chips with add/remove instead of a listbox', async () => {
+test('separators render as the Vue tdesign multiple-creatable select with add/remove chips', async () => {
   const calls: UiCalls = { requests: [], previews: [] };
   await renderPage(clientFor(calls));
   await openSection('chunking');
 
-  // The native multi-select listbox is gone; the control is the Vue chips field.
-  const listbox = [...document.body.querySelectorAll('select')].find((candidate) => candidate.getAttribute('aria-label') === 'Separators');
-  assert.ok(listbox === undefined, 'separators must not render as a native multi-select listbox anymore');
+  /* px2-kb-settings-*：分隔符控件换 tdesign Select（multiple+creatable+
+     filterable）——chips 是库渲染的 .t-tag（close 图标可移除），弹层选项
+     li.t-select-option（SandboxSettingsPanel.test 同款口径）。 */
+  const chipNodes = () => [...document.body.querySelectorAll<HTMLElement>('.setting-row--separators .t-tag')];
 
-  const chips = [...document.body.querySelectorAll<HTMLElement>('[data-separator-chip]')];
+  const chips = chipNodes();
   const chipText = chips.map((chip) => (chip.textContent ?? '').trim());
   assert.ok(chipText.some((value) => value.startsWith('Double newline')), `expected a chip for \\n\\n, got: ${JSON.stringify(chipText)}`);
   assert.ok(chipText.some((value) => value.startsWith('Single newline')), `expected a chip for \\n, got: ${JSON.stringify(chipText)}`);
 
-  // Every chip carries its remove button (Vue t-select tag close icon).
-  const removeButtons = chips.map((chip) => chip.querySelector('button'));
-  assert.ok(removeButtons.every((button) => button !== null), 'each chip exposes a remove button');
-  assert.ok(
-    removeButtons.every((button) => (button!.getAttribute('aria-label') ?? '').startsWith('Remove')),
-    'remove buttons carry an accessible Remove label',
-  );
+  // Every chip carries its close icon (Vue t-select tag close).
+  assert.ok(chips.every((chip) => chip.querySelector('.t-tag__icon-close')), 'each chip exposes a remove icon');
 
-  // Focus opens the preset dropdown listing the not-yet-selected separators.
-  const input = labeledControl('input', 'Separators') as HTMLInputElement;
-  assert.equal(input.tagName, 'INPUT', 'the control offers a text input for custom separators');
-  await act(async () => { input.focus(); });
-  const optionText = () => [...document.body.querySelectorAll('[role="option"]')].map((option) => (option.textContent ?? '').trim());
-  assert.ok(optionText().some((value) => value.startsWith('Chinese period')), `focused control lists the preset options, got: ${JSON.stringify(optionText())}`);
+  // The control is a tdesign select, not a native multi-select listbox.
+  const sepWrap = document.body.querySelector('.setting-row--separators .t-select__wrap');
+  assert.ok(sepWrap, 'the separators control is a tdesign select');
+  assert.ok(![...document.body.querySelectorAll('select')].some((candidate) => candidate.getAttribute('aria-label') === 'Separators'), 'no native multi-select listbox renders');
 
-  // Clicking a preset adds it (Vue dropdown option toggle).
-  const period = [...document.body.querySelectorAll('[role="option"]')].find((option) => (option.textContent ?? '').startsWith('Chinese period'));
+  // Opening the field lists the not-yet-selected preset separators
+  // (trigger 是内层 .t-input，jsdom 实证点 wrap 不开弹层).
+  const trigger = sepWrap.querySelector('.t-input') as HTMLElement;
+  await act(async () => { trigger.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); });
+  const optionText = () => [...document.body.querySelectorAll('.t-select-option')].map((option) => (option.textContent ?? '').trim());
+  assert.ok(optionText().some((value) => value.startsWith('Chinese period')), `the open field lists the preset options, got: ${JSON.stringify(optionText())}`);
+
+  // Clicking a preset adds it as a chip (Vue dropdown option toggle).
+  const period = [...document.body.querySelectorAll('.t-select-option')].find((option) => (option.textContent ?? '').startsWith('Chinese period'));
   assert.ok(period);
-  await act(async () => { period!.dispatchEvent(new dom.window.MouseEvent('mousedown', { bubbles: true, cancelable: true })); });
-  const chipsAfterPreset = [...document.body.querySelectorAll<HTMLElement>('[data-separator-chip]')];
-  assert.ok(chipsAfterPreset.some((chip) => (chip.textContent ?? '').startsWith('Chinese period')), 'the preset chip is added');
+  await act(async () => { period!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); });
+  assert.ok(chipNodes().some((chip) => (chip.textContent ?? '').startsWith('Chinese period')), 'the preset chip is added');
 
-  // Typing a custom separator and pressing Enter commits it as a chip.
+  // Typing a custom separator surfaces the creatable option (「创建 "++"」),
+  // clicking it commits the value as a chip.
+  const input = sepWrap.querySelector('input.t-input__inner') as HTMLInputElement;
+  assert.ok(input, 'the filterable control offers a text input for custom separators');
   await act(async () => { setNativeValue(input, '++'); });
-  await act(async () => { pressKey(input, 'Enter'); });
-  const chipsAfterCustom = [...document.body.querySelectorAll<HTMLElement>('[data-separator-chip]')];
-  assert.ok(chipsAfterCustom.some((chip) => (chip.textContent ?? '').includes('++')), 'the typed custom separator becomes a chip');
+  const createOption = [...document.body.querySelectorAll('.t-select-option')].find((option) => (option.textContent ?? '').trim() === '++');
+  assert.ok(createOption, `typing surfaces the creatable option, got: ${JSON.stringify(optionText())}`);
+  await act(async () => { createOption!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); });
+  assert.ok(chipNodes().some((chip) => (chip.textContent ?? '').includes('++')), `the typed custom separator becomes a chip, got: ${JSON.stringify(chipNodes().map((chip) => chip.textContent))}`);
 
-  // Esc clears the pending draft without committing it.
+  // Esc closes the popup without committing the pending draft.
   await act(async () => { setNativeValue(input, 'zz'); });
   await act(async () => { pressKey(input, 'Escape'); });
-  assert.equal(input.value, '', 'Escape clears the pending draft');
-  const chipsAfterEsc = [...document.body.querySelectorAll<HTMLElement>('[data-separator-chip]')];
-  assert.ok(!chipsAfterEsc.some((chip) => (chip.textContent ?? '').includes('zz')), 'Escape does not commit the draft');
+  assert.ok(!chipNodes().some((chip) => (chip.textContent ?? '').includes('zz')), 'Escape does not commit the draft');
 
   // Removing a chip drops the value from the draft.
-  const newlineChip = chipsAfterEsc.find((chip) => (chip.textContent ?? '').startsWith('Single newline'));
+  const newlineChip = chipNodes().find((chip) => (chip.textContent ?? '').startsWith('Single newline'));
   assert.ok(newlineChip);
-  const removeButton = newlineChip!.querySelector('button');
-  assert.ok(removeButton);
-  await act(async () => { removeButton!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); });
-  assert.ok(![...document.body.querySelectorAll('[data-separator-chip]')].some((chip) => (chip.textContent ?? '').startsWith('Single newline')), 'the chip disappears after its remove click');
+  const removeIcon = newlineChip!.querySelector('.t-tag__icon-close') as HTMLElement;
+  await act(async () => { removeIcon.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); });
+  assert.ok(!chipNodes().some((chip) => (chip.textContent ?? '').startsWith('Single newline')), 'the chip disappears after its remove click');
 
   // The draft reaches the save payload in Vue order.
   await clickSave();

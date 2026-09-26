@@ -147,101 +147,14 @@ body.wkbs-dialog-open .wk-dialog-backdrop {
   padding: 24px 32px;
 }
 
-/* R442 — Vue KBChunkingSettings separator control (multiple creatable
-   t-select): removable tag chips plus a preset dropdown under the input. */
-.kb-separator-field { position: relative; }
+/* R442 chips 字段与 debug 触发器旧样式已删（px2-kb-settings-*）：
+   分隔符控件换 tdesign Select（multiple+creatable+filterable，t-tag 芯片
+   DOM 由库生成），触发器换 tdesign Button + debug-trigger 类 ——两者样式
+   平移至 chunking.td.css；本文件保留 debug 抽屉内部（.kb-chunking-debug-
+   layer 族，不进扫描面）。 */
 
-.kb-separator-box {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  min-height: 36px;
-  padding: 4px 8px;
-  border: 1px solid var(--wk-color-border, #dce3ed);
-  border-radius: 6px;
-  background: var(--wk-color-surface, #fff);
-}
-
-.kb-separator-box input {
-  flex: 1;
-  min-width: 8rem;
-  border: none;
-  outline: none;
-  background: transparent;
-  font: inherit;
-  padding: 2px;
-}
-
-.kb-separator-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 4px 2px 8px;
-  border-radius: 4px;
-  background: var(--wk-color-surface-hover, #f3f5f9);
-  font-size: 13px;
-  line-height: 20px;
-  max-width: 100%;
-}
-
-.kb-separator-chip-remove {
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  padding: 0 4px;
-  font-size: 13px;
-  line-height: 1;
-  color: inherit;
-  border-radius: 3px;
-}
-
-.kb-separator-chip-remove:hover { background: rgba(120, 135, 155, 0.18); }
-
-.kb-separator-options {
-  position: absolute;
-  z-index: 20;
-  left: 0;
-  right: 0;
-  top: calc(100% + 4px);
-  display: grid;
-  gap: 2px;
-  padding: 4px;
-  max-height: 240px;
-  overflow-y: auto;
-  background: var(--wk-color-surface, #fff);
-  border: 1px solid var(--wk-color-border, #dce3ed);
-  border-radius: 6px;
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
-}
-
-.kb-separator-options button {
-  text-align: left;
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  padding: 6px 8px;
-  border-radius: 4px;
-  font: inherit;
-  font-size: 13px;
-}
-
-.kb-separator-options button:hover { background: var(--wk-color-surface-hover, #f3f5f9); }
-
-/* R442 — Vue KBChunkingDebug: inline text trigger plus the right drawer that
-   previews the chunker over a sample text. */
-.kb-chunking-debug-trigger {
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  padding: 0;
-  font: inherit;
-  font-weight: 600;
-  color: var(--wk-color-brand, #07c05f);
-}
-
-.kb-chunking-debug-trigger:hover { color: var(--wk-color-brand-hover, #06a852); }
-
+/* R442 — Vue KBChunkingDebug: the right drawer that previews the chunker
+   over a sample text. */
 .kb-chunking-debug-layer {
   position: fixed;
   inset: 0;

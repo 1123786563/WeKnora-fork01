@@ -1017,7 +1017,7 @@ export function KnowledgeSettingsPage({ knowledgeBase: providedKnowledgeBase, kn
           {/* Vue .settings-content */}
           <section className="wkbs-content" aria-labelledby="knowledge-settings-section-title">
             <div className="wkbs-content-wrapper">
-              {active ? (
+              {active && active.key !== 'chunking' ? (
                 <>
                   {/* Vue section-header: one section-title + section-description
                       per tab (KnowledgeBaseEditorModal.vue basic header / each
@@ -1028,6 +1028,10 @@ export function KnowledgeSettingsPage({ knowledgeBase: providedKnowledgeBase, kn
                   <p className="wk-muted" style={{ margin: '0 0 16px', fontSize: '14px', lineHeight: '22px' }}>{t(active.descriptionKey)}</p>
                 </>
               ) : null}
+              {/* chunking 分区例外：Vue KBChunkingSettings 自带 sticky
+                  .section-header（h2 + .section-description，border-bottom 带
+                  + 负 margin 补偿，KBChunkingSettings.vue:402-437），页级 h3+p
+                  不重复渲染（px2-kb-settings-nav 同构）。 */}
               {loadState === 'loading' ? <StatusComponent>Loading knowledge-base settings…</StatusComponent> : loadState === 'error' ? <StatusComponent tone="error">Unable to load knowledge-base settings.</StatusComponent> : active ? <SettingsSection summary={summary[active.key as keyof KnowledgeSettingsSummary]} section={active.key} graphExtract={graphExtract} modelId={editorPayload.llmModelId} client={client} knowledgeBase={currentKnowledgeBase} knowledgeBaseId={currentKnowledgeBase.id} knowledgeBaseName={currentKnowledgeBase.name} canManage={knowledgeSettingsCanEdit(role)} editorOptions={editorOptions} parserEngineRules={parserEngineRules} indexingLocked={indexingLocked} onParserEngineRules={setParserEngineRules} t={t} StatusComponent={StatusComponent} onGraphChange={setGraphExtract} editorPayload={editorPayload} editorDraft={editorDraft} onDraftChange={setEditorDraft} /> : isPortedKnowledgeSettingsSection(activeSection) ? <StatusComponent>No settings available.</StatusComponent> : (
                 // Vue renders this section fully; the React port has not migrated
                 // it yet — surface the shared notice instead of a fabricated editor.
@@ -1102,7 +1106,11 @@ function SettingsSection({ summary, section, graphExtract, modelId, client, know
   // option) with the localized label.
   const summaryLabel = summary ? localizedSummaryField(summary, 'label', t) : '';
   return (
-    <div style={{ display: 'grid', gap: '0.9rem' }}>
+    /* Vue 每个 section 挂在 .section 包装上（.section { margin-bottom: 32px }，
+       KnowledgeBaseEditorModal.vue:1796；chunking 非末节保留 32px 底距——影响
+       scrollHeight 与开关展开后的滚动锚定行程，px2-kb-settings-chunkswitch
+       实证：缺此 32px 时双端 scrollTop 229 vs 261 整体错位）。 */
+    <div style={{ display: 'grid', gap: '0.9rem', marginBottom: section === 'chunking' ? '32px' : undefined }}>
       {section === 'basic' ? (
         <BasicSettingsSection knowledgeBase={knowledgeBase} editorDraft={editorDraft} indexingLocked={indexingLocked} t={t} onDraftChange={onDraftChange} />
       ) : null}

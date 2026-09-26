@@ -19,14 +19,26 @@
 
 ### kb 域（6 项）
 
-| id | 基线% | 备注 |
-|---|---|---|
-| px2-kb-wiki-tab | 0 | 面包屑 tab 文档→Wiki（span.breadcrumb-tab 双端同构，KnowledgeBase.vue:2424-2438） |
-| px2-kb-graph-tab | 0 | 面包屑 tab 文档→图谱 |
-| px2-kb-wiki-reader-tab | 0 | wiki reader 头部 tab 知识→摘要（.wiki-tab：Vue div / React button 标签异构同名类） |
-| px2-kb-wiki-tree-expand | 0 | 目录树行点击展开（.wiki-directory-item；Vue WikiBrowser.vue:292 / React WikiPage.tsx:1249） |
-| px2-kb-settings-nav | 7.478 | KB 设置抽屉 nav→分块设置；diff 集中在中部内容区（3×3 区域分析：中 15.9%/右下 14.2%），抽屉壳与左侧 nav 基本同构——分块设置 section 内容差异待工单归因 |
-| px2-kb-settings-chunkswitch | 9.409 | 父子分块开关；**已知组件级异构**：Vue KBChunkingSettings.vue:113 是 t-switch，React chunkingSection.tsx:195-201 是 native `input[type=checkbox]`（aria-label=父子分块兜底命中）；diff 集中中部 24.8%（开关行+展开的父块参数行） |
+| id | 基线% | 终值% | 备注 |
+|---|---|---|---|
+| px2-kb-wiki-tab | 0 | 0 | 面包屑 tab 文档→Wiki（span.breadcrumb-tab 双端同构，KnowledgeBase.vue:2424-2438） |
+| px2-kb-graph-tab | 0 | 0 | 面包屑 tab 文档→图谱 |
+| px2-kb-wiki-reader-tab | 0 | 0 | wiki reader 头部 tab 知识→摘要（.wiki-tab：Vue div / React button 标签异构同名类） |
+| px2-kb-wiki-tree-expand | 0 | 0 | 目录树行点击展开（.wiki-directory-item；Vue WikiBrowser.vue:292 / React WikiPage.tsx:1249） |
+| px2-kb-settings-nav | 7.478 | **0.003（#19 豁免）** | KB 设置抽屉 nav→分块设置；**已收敛**（pp2/kb）：分块段换 KBChunkingSettings.vue 同构（chunkingSection.tsx 重写为 tdesign 控件 + chunking.td.css 平移 scoped 块）；终值 28px 全落弹窗四角圆弧（x140-147/1129-1139 × y54-61/655-665，灰阶 ±9~30），与台账 #19 取证盒（x140/1140，y54/666）同签名——#19 引擎栅格伪影豁免适用，内容区 0 差分（run 2026-09-26T06-22-01） |
+| px2-kb-settings-chunkswitch | 9.409 | **0.003（#19 豁免）** | 父子分块开关；**已收敛**（pp2/kb）：React 换 tdesign Switch（补 aria-label 维持 clickAria 命中链）；父/子块行、滚动锚定（Vue .section margin-bottom 32px 复刻进 scrollHeight）、分隔符空 input 折行（.kb-sep-relaid touched 态复刻 Vue config 回写后态）逐项对齐；终值与 nav 同为 #19 四角弧线残差（run 2026-09-26T06-22-01） |
+
+#### px2-kb-settings-nav / chunkswitch 收敛记录（2026-09-26，pp2/kb）
+
+- **根因**：React 分块段是原生控件实现（select/range/checkbox/number + inline-style 行布局），Vue 是 KBChunkingSettings.vue 的 tdesign 组件 + scoped 类族布局——中部内容区整体异构（基线 3×3 中 15.9%/右下 14.2% 即此）。
+- **修复**（apps/web/src/knowledge-settings/chunkingSection.tsx 重写 + chunking.td.css 新增 + KnowledgeSettingsPage.tsx/documents-list.css 局部）：
+  1. 布局类族平移：.kb-chunking-settings/.settings-group/.setting-row/.setting-info/.setting-control/.strategy-control/.slider-container/.value-display/.advanced-toggle/.section-header（sticky 带负 margin 补偿）——KnowledgeSettingsPage chunking 分区不再渲染页级 h3+p（Vue 由组件自带 header）。
+  2. 控件换 tdesign：Select（策略 280px/分隔符 multiple+creatable+filterable）、Slider（marks 数组）、Switch（补 aria-label=父子分块，clickAria 命中链恢复）、InputNumber（token limit）。
+  3. debug 触发器换 tdesign Button（icon 槽，台账 #28 判例）+ play-circle/chevron-right 用 Vue 组件内联 d 逐属性复刻（TIcon sprite 版 d 几何不同，环描边 AA 差 28px 实证）。
+  4. **滚动锚定**：Vue `.section { margin-bottom: 32px }`（KnowledgeBaseEditorModal.vue:1796）未复刻时开关展开后双端 scrollTop 229 vs 261 整体错位 32px——React chunking 分区补 marginBottom 32px 后 scrollHeight 一致、锚定行程一致。
+  5. **分隔符空 input 折行**：vue-next tag-input 空 input 保留 inline width:auto（intrinsic ≈154px），config 回写（watch 置换数组）触发 tags 重排后 input 折到独立行、盒高 122→145；tdesign-react TagInput 由库 JS 恒写 width:0px 不折行——React 以 touched 态（任一控件变更后）加 .kb-sep-relaid 放开 input 宽度复刻（空 input 无视觉面，仅盒高对齐）。
+  6. **关闭钮层级**：宿主 .wk-kb-settings-dialog .wk-dialog-header z-index 5→10 对齐 Vue .close-btn z-index:10（KnowledgeBaseEditorModal.vue:1670）——与分块段 sticky header（z-index 5，KBChunkingSettings.vue:412）同层级时按 DOM 序被盖住（y74-105 全红实证）。
+- **豁免引用**：台账 #19（Dialog 弹窗圆角弧线 AA 阶梯错位）——双项终值 0.003%（28px）全落四角圆弧带，与已豁免的 ix-kb-settings（同弹窗壳 0.003%≈31px）同签名；带外（内容区/关闭钮/控件区）0 差分。
 
 ### settings 域（5 项）
 

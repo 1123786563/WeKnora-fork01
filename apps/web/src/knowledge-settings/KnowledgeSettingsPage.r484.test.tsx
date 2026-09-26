@@ -291,7 +291,11 @@ test('each tab renders the Vue section title and description without the React e
   ];
   for (const [key, title, description] of cases) {
     await openSection(key);
-    const heading = document.body.querySelector('#knowledge-settings-section-title');
+    /* chunking 分区例外（px2-kb-settings-nav 同构）：Vue KBChunkingSettings
+       自带 .section-header h2，页级 h3 不渲染。 */
+    const heading = key === 'chunking'
+      ? document.body.querySelector('.kb-chunking-settings .section-header h2')
+      : document.body.querySelector('#knowledge-settings-section-title');
     assert.ok(heading, `${key} heading`);
     assert.equal((heading.textContent ?? '').trim(), title, `${key} renders the Vue section title`);
     assert.match(document.body.textContent ?? '', description, `${key} renders the Vue section description`);

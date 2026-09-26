@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import type { ChunkingPreviewResult, WeKnoraClient } from '@weknora/api-client';
+import { Button as TButton, InputNumber as TInputNumber, Select as TSelect, Slider as TSlider, Switch as TSwitch } from 'tdesign-react';
 import {
   CHILD_CHUNK_SIZE_RANGE,
   CHUNKING_LANGUAGE_LABEL_KEYS,
@@ -16,21 +17,29 @@ import {
 } from './editorSections.ts';
 import { CHUNKING_SAMPLES, DEFAULT_SAMPLE_ID } from './chunkingSamples.ts';
 import './KnowledgeSettingsPage.css';
+import './chunking.td.css';
 
-// Vue renders these with tdesign-icons-vue-next SVGs (ChevronRightIcon,
-// PlayCircleIcon, CloseIcon); text glyphs would leak into innerText.
+// Vue renders these with tdesign-icons-vue-next SVGs; text glyphs would leak
+// into innerText. The trigger icons moved to tdesign-icons-react (TIcon) with
+// the tdesign control swap; the drawer-internal chevron/close glyphs stay
+// inline (drawer 本体不进扫描面)。
+// play-circle 取组件内联 d 逐属性复刻（KBChunkingDebug.vue 用 tdesign-icons-
+// vue-next 的 PlayCircleIcon 组件——内联高精度 d，非 sprite；TIcon 的 sprite
+// use 版 d 几何不同，环描边 AA 差 28px，px2-kb-settings-nav y226-237 实证）。
+function PlayCircleGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" className="t-icon t-icon-play-circle" style={{ fill: 'none' }}>
+      <g id="play-circle">
+        <path fill="currentColor" d="M12 3C7.02944 3 3 7.02944 3 12C3 16.9706 7.02944 21 12 21C16.9706 21 21 16.9706 21 12C21 7.02944 16.9706 3 12 3ZM1 12C1 5.92487 5.92487 1 12 1C18.0751 1 23 5.92487 23 12C23 18.0751 18.0751 23 12 23C5.92487 23 1 18.0751 1 12Z" />
+        <path fill="currentColor" d="M18.25 12L8.5 17.6292L8.5 6.37085L18.25 12Z" />
+      </g>
+    </svg>
+  );
+}
 function ChevronGlyph({ open }: { open: boolean }) {
   return (
     <svg aria-hidden="true" focusable="false" viewBox="0 0 16 16" width="16" height="16" style={{ transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .2s', verticalAlign: '-3px' }}>
       <path fill="currentColor" d="M4.5 3.5L9.5 8l-5 4.5V3.5z" />
-    </svg>
-  );
-}
-function PlayCircleGlyph() {
-  return (
-    <svg aria-hidden="true" focusable="false" viewBox="0 0 16 16" width="16" height="16" style={{ verticalAlign: '-3px' }}>
-      <circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" strokeWidth="1.5" />
-      <path fill="currentColor" d="M6.5 5.2l4.4 2.8-4.4 2.8V5.2z" />
     </svg>
   );
 }
@@ -69,6 +78,8 @@ interface ChunkingSettingsFieldsProps {
   onPatch: (patch: Partial<ChunkingSplittingControls>) => void;
   client?: WeKnoraClient;
   t: ChunkingSectionTranslate;
+  /** 跳过 .section-header 段（宿主自带分区标题时用；Vue 同名 prop 语义）。 */
+  embedded?: boolean;
 }
 
 // Vue .setting-row layout: info column (label + desc) and control column.
@@ -90,12 +101,26 @@ export function EditorSettingRow({ label, description, alert, required, control 
   );
 }
 
-// Vue KBChunkingSettings: strategy select with the debug-drawer trigger beside
-// it, size/overlap sliders with the overlap warning, the separator chips field,
-// parent-child sliders, and a collapsed token/language panel.
-export function ChunkingSettingsFields({ splitting, onPatch, client, t }: ChunkingSettingsFieldsProps) {
+// Vue KBChunkingSettings（frontend/src/views/knowledge/settings/
+// KBChunkingSettings.vue 非嵌入式形态）：布局类族 .kb-chunking-settings /
+// .settings-group / .setting-row / .setting-info / .setting-control +
+// tdesign 控件（t-select / t-slider / t-switch / t-input-number）——样式平移
+// 在 chunking.td.css，控件 DOM 由 tdesign-react 生成与 Vue 同族对齐。
+// `embedded`（默认 false）供宿主自带分区标题的面复用：跳过 .section-header
+// 段（Vue 同名 prop 语义；Vue 端现无 embedded 消费方，其唯一挂载点
+// KnowledgeBaseEditorModal.vue:270 未传该 prop）。
+export function ChunkingSettingsFields({ splitting, onPatch, client, t, embedded = false }: ChunkingSettingsFieldsProps) {
   const [advancedOpen, setAdvancedOpen] = useState(false);
-  const set = onPatch;
+  // Vue watch(props.config)（KBChunkingSettings.vue:356-366）在任一控件变更
+  // 引发 config 回写后重排 t-select tags——分隔符空 input 在回写后取行内
+  // intrinsic 宽并折到独立行（盒高 122→145，fixture 实测）。React 的
+  // TagInput 空 input 由库 JS 恒写 width:0px 不折行；以 touched 态放开
+  // 宽度复刻「变更后折行」（下方 .kb-sep-relaid 规则）。
+  const [sepRelaid, setSepRelaid] = useState(false);
+  const set = (patch: Partial<ChunkingSplittingControls>) => {
+    setSepRelaid(true);
+    onPatch(patch);
+  };
   // R490 #13 (KBChunkingSettings.vue:267-270): the t-slider marks render as
   // tick labels under each track — the numeric tiers were the visible Vue-only
   // diff on the chunking section (100/1000/2000/4000, 0/250/500, …).
@@ -103,231 +128,157 @@ export function ChunkingSettingsFields({ splitting, onPatch, client, t }: Chunki
   const CHUNK_OVERLAP_MARKS = [0, 250, 500];
   const PARENT_CHUNK_SIZE_MARKS = [512, 2048, 4096, 8192];
   const CHILD_CHUNK_SIZE_MARKS = [64, 384, 1024, 2048];
-  const marksRow = (marks: number[]) => (
-    <div data-slider-marks="" style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: '#6b7280', lineHeight: 1.4 }}>
-      {marks.map((mark) => <span key={mark}>{mark}</span>)}
+  const separatorOptions = CHUNKING_SEPARATOR_VALUES.map((value) => ({ value, label: formatKnowledgeSettingsSeparatorLabel(value, t) }));
+  const languageOptions = CHUNKING_LANGUAGE_VALUES.map((value) => ({ value, label: t(CHUNKING_LANGUAGE_LABEL_KEYS[value]!) }));
+  // Vue selectStyle/sliderStyle（KBChunkingSettings.vue:264-265）：非 embedded
+  // 280px / 200px（embedded 100%——本组件 embedded 仅去 header，宽度沿用非
+  // embedded 值以保持行内布局不塌）。
+  const selectStyle = { width: '280px' } as const;
+  const sliderStyle = { width: '200px' } as const;
+  const sliderControl = (value: number, range: { min: number; max: number; step: number }, marks: number[], onChange: (next: number) => void) => (
+    <div className="slider-container">
+      <TSlider value={value} min={range.min} max={range.max} step={range.step} marks={marks} style={sliderStyle} onChange={(next) => onChange(Number(next))} />
+      <span className="value-display">{value} {t('knowledgeEditor.chunking.characters')}</span>
     </div>
   );
-  const slider = (labelKey: string, value: number, range: { min: number; max: number; step: number }, onChange: (next: number) => void, disabled?: boolean, marks?: number[]) => (
-    <div style={{ display: 'grid', gap: '0.25rem' }}>
-      <input
-        type="range"
-        aria-label={t(labelKey)}
-        min={range.min}
-        max={range.max}
-        step={range.step}
-        value={value}
-        disabled={disabled}
-        onChange={(event) => onChange(Number(event.target.value))}
-      />
-      {marks ? marksRow(marks) : null}
-      <span style={{ fontWeight: 500 }}>{value} {t('knowledgeEditor.chunking.characters')}</span>
+  const settingRow = (labelKey: string, descKey: string, control: ReactNode, extraClass?: string, warn?: boolean, controlClass?: string) => (
+    <div className={`setting-row${extraClass ? ` ${extraClass}` : ''}`}>
+      <div className="setting-info">
+        <label>{t(labelKey)}</label>
+        <p className="desc">{t(descKey)}</p>
+        {warn ? <p className="warn">{t('knowledgeEditor.chunking.overlapWarning')}</p> : null}
+      </div>
+      <div className={`setting-control${controlClass ? ` ${controlClass}` : ''}`}>{control}</div>
     </div>
-  );
-  const multiSelect = (labelKey: string, values: string[], options: Array<{ value: string; label: string }>, onChange: (next: string[]) => void, disabled?: boolean) => (
-    <select
-      multiple
-      aria-label={t(labelKey)}
-      value={values}
-      disabled={disabled}
-      onChange={(event) => onChange([...(event.target as HTMLSelectElement).selectedOptions].map((option) => option.value))}
-    >
-      {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-    </select>
   );
   const strategy = splitting.strategy;
   const strategyInfo = CHUNKING_STRATEGY_VALUES.includes(strategy as (typeof CHUNKING_STRATEGY_VALUES)[number])
     ? { label: t(`knowledgeEditor.chunking.strategies.${strategy}.label`), tooltip: t(`knowledgeEditor.chunking.strategies.${strategy}.tooltip`) }
     : null;
+  const advancedDisabled = isChunkingAdvancedDisabled(strategy);
   return (
-    <div>
-      <EditorSettingRow
-        label={t('knowledgeEditor.chunking.strategyLabel')}
-        description={t('knowledgeEditor.chunking.strategyDescription')}
-        control={(
-          <div style={{ display: 'grid', gap: '0.4rem', justifyItems: 'start' }}>
-            <select
-              aria-label={t('knowledgeEditor.chunking.strategyLabel')}
-              value={strategy}
-              onChange={(event) => set({ strategy: event.target.value })}
-            >
-              {/* Vue wk-select shows a placeholder for the not-set strategy
-                  (KBChunkingSettings.vue); a bare empty option rendered blank. */}
-              <option value="">{t('knowledgeEditor.chunking.strategyPlaceholder')}</option>
-              {CHUNKING_STRATEGY_VALUES.map((value) => <option key={value} value={value}>{t(`knowledgeEditor.chunking.strategies.${value}.label`)}</option>)}
-            </select>
-            {/* Vue sits the test trigger next to the strategy picker so users
-                discover it exactly when choosing a strategy. */}
-            <ChunkingDebugDrawer splitting={splitting} client={client} t={t} />
+    <div className="kb-chunking-settings">
+      {embedded ? null : (
+        <div className="section-header">
+          <div className="section-header-text">
+            <h2>{t('knowledgeEditor.chunking.title')}</h2>
+            <p className="section-description">{t('knowledgeEditor.chunking.description')}</p>
           </div>
-        )}
-      />
-      {strategyInfo ? (
-        <p className="wk-muted" style={{ margin: '0 0 0.6rem', borderLeft: '3px solid #07c05f', paddingLeft: '0.6rem' }}>
-          <strong>{strategyInfo.label}:</strong> {strategyInfo.tooltip}
-        </p>
-      ) : null}
-      <EditorSettingRow
-        label={t('knowledgeEditor.chunking.sizeLabel')}
-        description={t('knowledgeEditor.chunking.sizeDescription')}
-        control={slider('knowledgeEditor.chunking.sizeLabel', splitting.chunkSize, CHUNK_SIZE_RANGE, (next) => set({ chunkSize: next }), undefined, CHUNK_SIZE_MARKS)}
-      />
-      <EditorSettingRow
-        label={t('knowledgeEditor.chunking.overlapLabel')}
-        description={t('knowledgeEditor.chunking.overlapDescription')}
-        control={slider('knowledgeEditor.chunking.overlapLabel', splitting.chunkOverlap, CHUNK_OVERLAP_RANGE, (next) => set({ chunkOverlap: next }), undefined, CHUNK_OVERLAP_MARKS)}
-      />
-      {isChunkOverlapTooHigh(splitting.chunkSize, splitting.chunkOverlap) ? (
-        <p role="status" style={{ margin: 0, color: '#b54708', fontSize: '0.85rem' }}>{t('knowledgeEditor.chunking.overlapWarning')}</p>
-      ) : null}
-      <EditorSettingRow
-        label={t('knowledgeEditor.chunking.separatorsLabel')}
-        description={t('knowledgeEditor.chunking.separatorsDescription')}
-        control={(
-          <SeparatorChipsInput
-            values={splitting.separators}
-            t={t}
-            onChange={(next) => set({ separators: next })}
-          />
-        )}
-      />
-      <EditorSettingRow
-        label={t('knowledgeEditor.chunking.parentChildLabel')}
-        description={t('knowledgeEditor.chunking.parentChildDescription')}
-        control={(
-          <input
-            type="checkbox"
-            aria-label={t('knowledgeEditor.chunking.parentChildLabel')}
-            checked={splitting.enableParentChild}
-            onChange={(event) => set({ enableParentChild: event.target.checked })}
-          />
-        )}
-      />
-      {splitting.enableParentChild ? (
-        <>
-          <EditorSettingRow
-            label={t('knowledgeEditor.chunking.parentChunkSizeLabel')}
-            description={t('knowledgeEditor.chunking.parentChunkSizeDescription')}
-            control={slider('knowledgeEditor.chunking.parentChunkSizeLabel', splitting.parentChunkSize, PARENT_CHUNK_SIZE_RANGE, (next) => set({ parentChunkSize: next }), undefined, PARENT_CHUNK_SIZE_MARKS)}
-          />
-          <EditorSettingRow
-            label={t('knowledgeEditor.chunking.childChunkSizeLabel')}
-            description={t('knowledgeEditor.chunking.childChunkSizeDescription')}
-            control={slider('knowledgeEditor.chunking.childChunkSizeLabel', splitting.childChunkSize, CHILD_CHUNK_SIZE_RANGE, (next) => set({ childChunkSize: next }), undefined, CHILD_CHUNK_SIZE_MARKS)}
-          />
-        </>
-      ) : null}
-      <button type="button" style={{ background: 'transparent', border: 'none', padding: '0.6rem 0', cursor: 'pointer', fontWeight: 500, color: 'inherit' }} onClick={() => setAdvancedOpen((open) => !open)}>
-        <ChevronGlyph open={advancedOpen} /> {t('knowledgeEditor.chunking.advancedLabel')}
-      </button>
-      {advancedOpen ? (
-        <div>
-          <EditorSettingRow
-            label={t('knowledgeEditor.chunking.tokenLimitLabel')}
-            description={t('knowledgeEditor.chunking.tokenLimitDescription')}
-            control={(
-              <input
-                type="number"
-                aria-label={t('knowledgeEditor.chunking.tokenLimitLabel')}
-                min={TOKEN_LIMIT_RANGE.min}
-                max={TOKEN_LIMIT_RANGE.max}
-                step={TOKEN_LIMIT_RANGE.step}
-                value={splitting.tokenLimit}
-                disabled={isChunkingAdvancedDisabled(strategy)}
-                onChange={(event) => set({ tokenLimit: Number(event.target.value) })}
-              />
-            )}
-          />
-          <EditorSettingRow
-            label={t('knowledgeEditor.chunking.languagesLabel')}
-            description={t('knowledgeEditor.chunking.languagesDescription')}
-            control={multiSelect(
-              'knowledgeEditor.chunking.languagesLabel',
-              splitting.languages,
-              CHUNKING_LANGUAGE_VALUES.map((value) => ({ value, label: t(CHUNKING_LANGUAGE_LABEL_KEYS[value]!) })),
-              (next) => set({ languages: next }),
-              isChunkingAdvancedDisabled(strategy),
-            )}
-          />
         </div>
-      ) : null}
-    </div>
-  );
-}
-
-// Vue separator control (KBChunkingSettings.vue): a multiple + creatable +
-// filterable t-select. Selected values render as removable tag chips, the
-// input adds custom separators (Enter commits), the dropdown offers the preset
-// values filtered by the draft, Backspace on an empty input pops the last chip
-// and Esc clears the pending draft without committing it.
-export function SeparatorChipsInput({ values, onChange, t }: { values: string[]; onChange: (next: string[]) => void; t: ChunkingSectionTranslate }) {
-  const [draft, setDraft] = useState('');
-  const [open, setOpen] = useState(false);
-  const label = (value: string) => formatKnowledgeSettingsSeparatorLabel(value, t);
-  const addValue = (value: string) => {
-    if (value === '' || values.includes(value)) return;
-    onChange([...values, value]);
-  };
-  const removeValue = (value: string) => onChange(values.filter((item) => item !== value));
-  const commitDraft = () => {
-    addValue(draft.trim());
-    setDraft('');
-  };
-  const pending = CHUNKING_SEPARATOR_VALUES.filter((value) =>
-    !values.includes(value)
-    && (draft === '' || value.includes(draft) || label(value).toLowerCase().includes(draft.toLowerCase())));
-  return (
-    <div className="kb-separator-field">
-      <div className="kb-separator-box">
-        {values.map((value) => (
-          <span key={value} className="kb-separator-chip" data-separator-chip="">
-            {label(value)}
-            <button
-              type="button"
-              className="kb-separator-chip-remove"
-              aria-label={`${t('common.remove')}: ${label(value)}`}
-              onClick={() => removeValue(value)}
-            >
-              <CloseGlyph />
-            </button>
-          </span>
-        ))}
-        <input
-          aria-label={t('knowledgeEditor.chunking.separatorsLabel')}
-          placeholder={t('knowledgeEditor.chunking.separatorsPlaceholder')}
-          value={draft}
-          onChange={(event) => { setDraft(event.target.value); setOpen(true); }}
-          onFocus={() => setOpen(true)}
-          onBlur={() => setOpen(false)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') {
-              event.preventDefault();
-              commitDraft();
-            } else if (event.key === 'Backspace' && draft === '' && values.length > 0) {
-              removeValue(values[values.length - 1]!);
-            } else if (event.key === 'Escape') {
-              setDraft('');
-              setOpen(false);
-            }
-          }}
-        />
+      )}
+      <div className="settings-group">
+        {/* Strategy */}
+        {settingRow('knowledgeEditor.chunking.strategyLabel', 'knowledgeEditor.chunking.strategyDescription', (
+          <>
+            <TSelect
+              value={strategy}
+              options={CHUNKING_STRATEGY_VALUES.map((value) => ({ value, label: t(`knowledgeEditor.chunking.strategies.${value}.label`) }))}
+              placeholder={t('knowledgeEditor.chunking.strategyPlaceholder')}
+              clearable
+              style={selectStyle}
+              onChange={(value) => set({ strategy: String(value ?? '') })}
+            />
+            {/* Vue sits the test trigger right next to the strategy picker so
+                users discover it exactly when they're deciding which strategy
+                to use on their content. */}
+            <ChunkingDebugDrawer splitting={splitting} client={client} t={t} />
+          </>
+        ), undefined, undefined, 'strategy-control')}
+        {/* Strategy explanation panel */}
+        {strategyInfo ? (
+          <div className="strategy-info-panel">
+            <p>
+              <strong>{strategyInfo.label}:</strong> {strategyInfo.tooltip}
+            </p>
+          </div>
+        ) : null}
+        {/* Chunk Size */}
+        {settingRow('knowledgeEditor.chunking.sizeLabel', 'knowledgeEditor.chunking.sizeDescription', sliderControl(splitting.chunkSize, CHUNK_SIZE_RANGE, CHUNK_SIZE_MARKS, (next) => set({ chunkSize: next })))}
+        {/* Chunk Overlap */}
+        {settingRow('knowledgeEditor.chunking.overlapLabel', 'knowledgeEditor.chunking.overlapDescription', sliderControl(splitting.chunkOverlap, CHUNK_OVERLAP_RANGE, CHUNK_OVERLAP_MARKS, (next) => set({ chunkOverlap: next })), undefined, isChunkOverlapTooHigh(splitting.chunkSize, splitting.chunkOverlap))}
+        {/* Separators */}
+        {settingRow('knowledgeEditor.chunking.separatorsLabel', 'knowledgeEditor.chunking.separatorsDescription', (
+          <TSelect
+            className={sepRelaid ? 'kb-sep-relaid' : undefined}
+            value={splitting.separators}
+            options={separatorOptions}
+            multiple
+            creatable
+            filterable
+            placeholder={t('knowledgeEditor.chunking.separatorsPlaceholder')}
+            style={selectStyle}
+            onChange={(value) => set({ separators: (Array.isArray(value) ? value : []).map(String) })}
+          />
+        ), 'setting-row--separators')}
+        {/* Parent-Child Chunking */}
+        <div className="setting-row setting-row--toggle">
+          <div className="setting-info">
+            <label>{t('knowledgeEditor.chunking.parentChildLabel')}</label>
+            <p className="desc">{t('knowledgeEditor.chunking.parentChildDescription')}</p>
+          </div>
+          <div className="setting-control">
+            {/* Vue t-switch 是无标签 div（同款 DOM 差异见台账 #2）；React 根是
+                button，补 aria-label 供无障碍命名与扫描 clickAria 兜底
+                （px2-kb-settings-chunkswitch 双端命中链）。 */}
+            <TSwitch aria-label={t('knowledgeEditor.chunking.parentChildLabel')} value={splitting.enableParentChild} onChange={(value) => set({ enableParentChild: Boolean(value) })} />
+          </div>
+        </div>
+        {/* Parent Chunk Size */}
+        {splitting.enableParentChild ? settingRow('knowledgeEditor.chunking.parentChunkSizeLabel', 'knowledgeEditor.chunking.parentChunkSizeDescription', sliderControl(splitting.parentChunkSize, PARENT_CHUNK_SIZE_RANGE, PARENT_CHUNK_SIZE_MARKS, (next) => set({ parentChunkSize: next }))) : null}
+        {/* Child Chunk Size */}
+        {splitting.enableParentChild ? settingRow('knowledgeEditor.chunking.childChunkSizeLabel', 'knowledgeEditor.chunking.childChunkSizeDescription', sliderControl(splitting.childChunkSize, CHILD_CHUNK_SIZE_RANGE, CHILD_CHUNK_SIZE_MARKS, (next) => set({ childChunkSize: next }))) : null}
+        {/* Advanced section toggle */}
+        <button type="button" className="advanced-toggle" onClick={() => setAdvancedOpen((open) => !open)}>
+          {/* Vue KBChunkingSettings.vue:165-168 ChevronRightIcon 组件内联 d
+              （M9.5 17.5L15 12L9.5 6.5，square cap，宽 2）。 */}
+          <svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" className={`t-icon t-icon-chevron-right toggle-arrow${advancedOpen ? ' open' : ''}`} style={{ fill: 'none' }}>
+            <g id="chevron-right">
+              <path id="stroke1" stroke="currentColor" d="M9.5 17.5L15 12L9.5 6.5" strokeLinecap="square" strokeWidth="2" />
+            </g>
+          </svg>
+          <span>{t('knowledgeEditor.chunking.advancedLabel')}</span>
+        </button>
+        {advancedOpen ? (
+          <div className="advanced-section">
+            {/* Token Limit */}
+            <div className={`setting-row${advancedDisabled ? ' disabled' : ''}`}>
+              <div className="setting-info">
+                <label>{t('knowledgeEditor.chunking.tokenLimitLabel')}</label>
+                <p className="desc">{t('knowledgeEditor.chunking.tokenLimitDescription')}</p>
+              </div>
+              <div className="setting-control">
+                <TInputNumber
+                  value={splitting.tokenLimit}
+                  min={TOKEN_LIMIT_RANGE.min}
+                  max={TOKEN_LIMIT_RANGE.max}
+                  step={TOKEN_LIMIT_RANGE.step}
+                  disabled={advancedDisabled}
+                  style={{ width: '200px' }}
+                  onChange={(value) => set({ tokenLimit: Number(value) })}
+                />
+              </div>
+            </div>
+            {/* Languages */}
+            <div className={`setting-row${advancedDisabled ? ' disabled' : ''}`}>
+              <div className="setting-info">
+                <label>{t('knowledgeEditor.chunking.languagesLabel')}</label>
+                <p className="desc">{t('knowledgeEditor.chunking.languagesDescription')}</p>
+              </div>
+              <div className="setting-control">
+                <TSelect
+                  value={splitting.languages}
+                  options={languageOptions}
+                  multiple
+                  disabled={advancedDisabled}
+                  placeholder={t('knowledgeEditor.chunking.languagesPlaceholder')}
+                  style={selectStyle}
+                  onChange={(value) => set({ languages: (Array.isArray(value) ? value : []).map(String) })}
+                />
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
-      {open && pending.length > 0 ? (
-        <div className="kb-separator-options" role="listbox" aria-label={t('knowledgeEditor.chunking.separatorsLabel')}>
-          {pending.map((value) => (
-            <button
-              type="button"
-              key={value}
-              role="option"
-              aria-selected="false"
-              data-separator-option=""
-              onMouseDown={(event) => { event.preventDefault(); addValue(value); }}
-            >
-              {label(value)}
-            </button>
-          ))}
-        </div>
-      ) : null}
     </div>
   );
 }
@@ -418,9 +369,13 @@ export function ChunkingDebugDrawer({ splitting, client, t }: { splitting: Chunk
   const detectedLangs = profile && Array.isArray(profile.detected_langs) ? profile.detected_langs.filter((item): item is string => typeof item === 'string').join(', ') : '';
   return (
     <div className="kb-chunking-debug">
-      <button type="button" className="kb-chunking-debug-trigger" onClick={() => setOpen(true)}>
-        <PlayCircleGlyph /> {t('knowledgeEditor.chunking.debug.toggle')}
-      </button>
+      {/* Vue KBChunkingDebug.vue:10-19 t-button（variant=text theme=primary
+          size=medium class=debug-trigger + #icon 槽 play-circle）——icon 走
+          icon prop（台账 #28 icon 槽判例），glyph 用组件内联 d 复刻
+          （PlayCircleGlyph，非 TIcon sprite 版）。 */}
+      <TButton type="button" theme="primary" variant="text" size="medium" className="debug-trigger" icon={<PlayCircleGlyph />} onClick={() => setOpen(true)}>
+        {t('knowledgeEditor.chunking.debug.toggle')}
+      </TButton>
       {open ? (
         <div className="kb-chunking-debug-layer">
           <div className="kb-chunking-debug-overlay" onClick={() => setOpen(false)} />

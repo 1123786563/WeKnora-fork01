@@ -1850,7 +1850,7 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
 
                   {/* 分块设置（留守段：ChunkingSettingsFields 与 knowledge-settings 共享） */}
                   {type !== 'faq' ? sectionShell('chunking', editorSection === 'chunking', (
-                    <div className="wk-kbl-1"><div><h3 className="wk-kbl-2">{t('knowledgeEditor.chunking.title')}</h3><p className="wk-kbl-3">{t('knowledgeEditor.chunking.description')}</p></div><ChunkingSettingsFields splitting={editorConfig.chunkingConfig} onPatch={(patch) => setEditorConfig((current) => ({ ...current, chunkingConfig: { ...current.chunkingConfig, ...patch } }))} client={client} t={t} /></div>
+                    <div className="wk-kbl-1"><div><h3 className="wk-kbl-2">{t('knowledgeEditor.chunking.title')}</h3><p className="wk-kbl-3">{t('knowledgeEditor.chunking.description')}</p></div><ChunkingSettingsFields embedded splitting={editorConfig.chunkingConfig} onPatch={(patch) => setEditorConfig((current) => ({ ...current, chunkingConfig: { ...current.chunkingConfig, ...patch } }))} client={client} t={t} /></div>
                   )) : null}
 
                   {/* 多模态配置（留守段） */}
