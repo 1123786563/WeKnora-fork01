@@ -25,6 +25,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Tencent/WeKnora/internal/application/service"
 	"github.com/Tencent/WeKnora/internal/handler"
@@ -220,10 +221,11 @@ func TestSetInstallationToolPolicyRequireApprovalOnlyMaterializesDefault(t *test
 
 // TestListInstallationToolsDegradedAnchors（T18-OCR1-F4 回归）：治理面对本
 // 文件已识别的两种降级锚状态不得误报 500 persist-failed——
-//   a) 悬空 service_id 锚（级联删掉服务行与策略行、安装行残留）：列表按
-//      无显式行渲染插件域默认值（真实且 fail-closed），策略写返回确定性
-//      状态错误（ErrInstallationServiceMissing）而非 5xx；
-//   b) 空 ServiceID 中断窗口且物化行仍在：经 mcp_services 反查自愈读行。
+//
+//	a) 悬空 service_id 锚（级联删掉服务行与策略行、安装行残留）：列表按
+//	   无显式行渲染插件域默认值（真实且 fail-closed），策略写返回确定性
+//	   状态错误（ErrInstallationServiceMissing）而非 5xx；
+//	b) 空 ServiceID 中断窗口且物化行仍在：经 mcp_services 反查自愈读行。
 func TestListInstallationToolsDegradedAnchors(t *testing.T) {
 	const tenantID = uint64(11)
 	ctx := context.Background()
@@ -350,4 +352,53 @@ func TestInstallationToolsWireRequireApprovalShapes(t *testing.T) {
 	_, hasKey := detailWrite["require_approval"]
 	require.False(t, hasKey, "the detail payload must OMIT require_approval (unknown on this surface), never assert a contradictory false")
 	require.Equal(t, false, detailWrite["enabled"], "detail keeps Enabled as a definite value (T18 unification)")
+}
+
+// TestSetInstallationToolPolicyConcurrentAcceptSerializes（OCR 终局第 2 轮
+// f14）：SetInstallationToolPolicy 是插件安装服务里唯一缺 per-installation
+// 锁的策略写路径（其余 7 处写路径均持 lockUpgradeAccept）——它在
+// GetInstallation 快照成员校验（读）与 toolApprovalService.SetPolicy（写，
+// 仅校验服务存在）之间不持锁，经 PUT .../policy（Admin）暴露。与并发
+// AcceptUpgrade（同写策略行/安装行/物化行）交错时：级联/接受先行删改服务
+// 行后 PATCH 的 Upsert 撞已删行（伪 500），或本应被快照成员校验拒绝的
+// 请求成功落行。在 PATCH 的 UpsertPolicy 在途时（onUpsert 钩子）并发发起
+// 接受：接受在 PATCH 在途期间必须零进展；串行化后终态一致（安装 v2、
+// PATCH 的行裁决保留——接受路径 7c 只补缺行）。
+func TestSetInstallationToolPolicyConcurrentAcceptSerializes(t *testing.T) {
+	const tenantID = uint64(24)
+	s := newUpgradeAcceptStack(t, tenantID)
+	resp := s.previewV2(t, tenantID)
+	ctx := context.Background()
+
+	acceptDone := make(chan error, 1)
+	progressedDuringPatch := make(chan bool, 1)
+	s.approvalRepo.onUpsert = func() {
+		s.approvalRepo.onUpsert = nil // 只在 PATCH 的首个 upsert 触发一次
+		go func() {
+			_, err := s.svc.AcceptUpgrade(ctx, tenantID, "admin-1", s.inst.ID, resp.CandidateFingerprint)
+			acceptDone <- err
+		}()
+		select {
+		case <-acceptDone:
+			progressedDuringPatch <- true // 接受在 PATCH 在途期间完成 → 未串行化
+		case <-time.After(1500 * time.Millisecond):
+			progressedDuringPatch <- false // 接受全程被阻塞 → 串行化生效
+		}
+	}
+
+	disabled := false
+	_, err := s.svc.SetInstallationToolPolicy(ctx, tenantID, s.inst.ID, "search", &disabled, nil)
+	require.NoError(t, err, "the in-flight policy patch completes normally (its write holds the lock)")
+	require.False(t, <-progressedDuringPatch,
+		"a concurrent accept must make no progress while the policy patch is mid-flight (f14)")
+	require.NoError(t, <-acceptDone, "the serialized accept then completes normally")
+
+	// 终态：安装已切 v2；PATCH 的行裁决保留（接受路径 7c 只补缺行）。
+	inst := s.innerRepo.installations[0]
+	require.Equal(t, "2.0.0", inst.AcceptedVersion)
+	rows, err := s.svc.ListInstallationTools(ctx, tenantID, s.inst.ID)
+	require.NoError(t, err)
+	require.False(t, policyByName(rows)["search"].Enabled,
+		"the patch's verdict survives the serialized accept (existing rows keep the admin's verdicts)")
+	require.Len(t, rows, 3, "the accept's new tools land their install-time rows")
 }

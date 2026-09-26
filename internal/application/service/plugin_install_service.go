@@ -2218,6 +2218,16 @@ func (s *pluginService) SetInstallationToolPolicy(
 	installationID, toolName string,
 	enabled, requireApproval *bool,
 ) ([]interfaces.PluginInstallationToolPolicy, error) {
+	// OCR 终局第 2 轮 f14: the last unserialized policy write path. The
+	// snapshot-membership check reads the installation row and the SetPolicy
+	// write lands against its service — both race AcceptUpgrade/ResolveDrift/
+	// Uninstall's row rewrites and cascades (a mid-patch accept can flip the
+	// snapshot under the membership check, or a cascade can delete the service
+	// between check and write → spurious 5xx / a row the verdict was checked
+	// against no longer exists). Same per-installation lock as the other seven
+	// write paths; see upgradeAcceptMutexes.
+	defer lockUpgradeAccept(installationID)()
+
 	inst, err := s.pluginRepo.GetInstallation(ctx, tenantID, installationID)
 	if err != nil {
 		logger.GetLogger(ctx).Errorf("failed to load plugin installation: %v", err)
