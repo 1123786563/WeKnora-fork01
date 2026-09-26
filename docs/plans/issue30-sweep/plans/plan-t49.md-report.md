@@ -736,3 +736,105 @@ Task 7 无新代码、无新测试文件（计划 Files：「无新文件」）�
 计划级验证命令（testCommand）全绿：build ✅ · vet 零输出 ✅ · database ok ✅ · appconnector/... 6 包 ok ✅ · handler 发布面 12 项 PASS ✅ · application/repository ok ✅ · workbench ok ✅ · 工作树 clean 无兜底提交 ✅ · blocked-env SKIP 如实 ✅。
 
 **计划 Task 0–7 全部完成；#49「T19 飞书文档发布端到端闭环」实现收尾。**
+
+---
+
+# 任务 8（第 8/8 次派发）：计划级验证终态复跑留证（本会话实际运行）
+
+**派发状态说明（如实）**：本次派发为「Issue #49 实施计划的第 8/8 个任务」，前置接口声明「Task 7 计划级验证收尾已留证入册，#49 Task 0–7 全部完成」。经 git log（`041134224`…`36828e4a2`）与报告上文核实，计划 Task 0–7 的产出确已全部落库，本派发对应计划最后一个任务（Task 7 计划级验证收尾）的终态确认。因此本会话的工作是：**逐字复跑计划 testCommand 全部 6 条命令 + Step 2 兜底检查，取得本会话第一手证据**（检查只有实际运行过才算数），确认终态仍然全绿，无任何代码改动、无撤销他人修改。
+
+## 1. 本会话复跑的命令与完整输出（worktree `/Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue30-sweep-t49`，分支 `codex/issue30-t49`，HEAD `36828e4a2`）
+
+### 1.1 第 1 条：构建 + 静态检查
+
+```
+$ go build ./... && go vet ./internal/modules/appconnector/... ./internal/handler/ ./internal/router/ ./internal/container/ && echo "BUILD_VET_OK"
+# github.com/Tencent/WeKnora/cmd/desktop
+ld: warning: ignoring duplicate libraries: '-lc++'
+# github.com/Tencent/WeKnora/cmd/server
+ld: warning: ignoring duplicate libraries: '-lc++'
+BUILD_VET_OK
+```
+
+判定：build 通过；`go vet` 自身零输出（两行 `ld: warning` 出自 `go build` 环节的 macOS 链接器，非 vet 发现，与上一轮留证一致）。
+
+### 1.2 第 2 条：全量迁移轨道
+
+```
+$ go test ./internal/database/ -count=1
+ok  	github.com/Tencent/WeKnora/internal/database	29.941s
+```
+
+### 1.3 第 3 条：appconnector 全部子包
+
+```
+$ go test ./internal/modules/appconnector/... -count=1
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector	0.402s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/connectorcontrol	5.286s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/openconnector	0.425s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/publish	3.604s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector	0.879s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector	12.967s
+```
+
+### 1.4 第 4 条：handler 发布面
+
+```
+$ go test ./internal/handler/ -run 'FeishuPublish|NotionPublish|TestAppPublicationsTableExists' -count=1
+ok  	github.com/Tencent/WeKnora/internal/handler	16.953s
+```
+
+### 1.5 第 5 条：移动设备迁移引用回归
+
+```
+$ go test ./internal/application/repository/ -run 'MobileDevice|MobilePush' -count=1
+ok  	github.com/Tencent/WeKnora/internal/application/repository	3.459s
+```
+
+### 1.6 第 6 条：workbench 通知策略回归
+
+```
+$ go test ./internal/modules/workbench/service/workbench/ -run 'TestPushPayloadPolicyBlindStripsKind|TestHTTPNotificationProviderBlindOmitsKind|TestAppRoutingProviderDispatchesByApp|TestDisabledNotificationProviderPausesDurablyWithoutRetryStorm|TestAppRoutingProviderRevokesOnlyOwnAppRegistration' -count=1
+ok  	github.com/Tencent/WeKnora/internal/modules/workbench/service/workbench	1.698s
+```
+
+### 1.7 Step 2 兜底：工作树检查
+
+```
+$ git status --short
+（无输出）
+$ git log --oneline -1
+36828e4a2 docs(appconnector): T19 Task 7 计划级验证收尾——testCommand 全绿留证与工作树 clean 确认（#49）
+```
+
+工作树 clean，无本计划范围内未提交文件，无需兜底提交。
+
+### 1.8 SKIP 语义复核（补充）
+
+```
+$ echo "FEISHU_APP_ID=${FEISHU_APP_ID:-<unset>} FEISHU_APP_SECRET=${FEISHU_APP_SECRET:-<unset>} FEISHU_TEST_FOLDER_TOKEN=${FEISHU_TEST_FOLDER_TOKEN:-<unset>}"
+FEISHU_APP_ID=<unset> FEISHU_APP_SECRET=<unset> FEISHU_TEST_FOLDER_TOKEN=<unset>
+$ go test ./internal/modules/appconnector/ -run 'TestFeishuRealPublishLoop' -count=1 -v 2>&1 | tail -5
+=== RUN   TestFeishuRealPublishLoop
+    feishu_publish_real_test.go:34: feishu real credentials not configured (FEISHU_APP_ID/FEISHU_APP_SECRET/FEISHU_TEST_FOLDER_TOKEN in artifacts/connector-real/feishu-publish.env); skip is not a pass — T19 real-provider evidence stays blocked-env
+--- SKIP: TestFeishuRealPublishLoop (0.00s)
+PASS
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector	0.144s
+```
+
+三凭据实测未设置，真实 Provider 测试如实 SKIP（计划 testCommand 括号声明的预期行为），不冒充真实集成证据。
+
+## 2. TDD 说明（如实）
+
+本派发对应计划 Task 7（纯验证收尾，计划 Files：「无新文件」），无新代码、无新测试文件，TDD RED/GREEN 不适用；本会话唯一产出是本复跑留证章节（文档），上述 8 项命令输出全部为本会话原样粘贴。
+
+## 3. 自检发现
+
+1. **派发与落库状态的时序差异**：本派发（第 8/8）开始时计划 Task 0–7 已全部提交（HEAD `36828e4a2`），工作树 clean——即 Task 7 的验证与留证已由前一次派发完成。本会话未重复提交任何代码，仅以本会话亲手复跑的 6+2 条命令输出作为终态确认证据，追加本章节并入库。
+2. **全绿判定**：6 条命令全部 `ok`/通过，`go vet` 零输出；与上一轮 Task 7 留证结论一致，无回归、无波动。
+3. **真实 Provider 正向闭环证据**：本环境仍无凭据（1.8 实测留证），该验收项诚实终态不变——opt-in 载体已入库（`1d1c8ddbb`），凭据就绪环境运行即产生正向证据。
+4. **计划复选框未勾选**：plan-t49.md 中全部步骤复选框保持 `- [ ]`（37 处，`grep -c` 实测）——此前 0–7 各任务实现员均未改动计划文件复选框，本会话遵循同一惯例（计划文件是需求事实源，非本任务授权改动文件），完成状态以 git 提交与本报告为证。
+
+## 4. 任务 8 结论
+
+计划 testCommand 六条命令 + Step 2 兜底检查在本会话亲手复跑**全绿**；#49 计划 Task 0–7 全部完成且均已落库，工作树 clean。「T19 飞书文档发布端到端闭环」实现终态确认收尾。
