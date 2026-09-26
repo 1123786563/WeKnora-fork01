@@ -633,9 +633,27 @@ async function main() {
       // toLocaleTimeString 为同一字面量（渲染值确定性；系统时钟本身不受影响）。
       await authedPage.addInitScript(`if (new URLSearchParams(location.search).get('section') === 'runtime-queues') { const frozen = new Date(${scanClock}).toLocaleTimeString('zh-CN', { hour12: false }); Date.prototype.toLocaleTimeString = function () { return frozen; }; }`);
     }
-    // 免登录页（login/register 等）：全新 context，不注入任何会话
-    const anonVue = await (await browser.newContext()).newPage();
-    const anonReact = await (await browser.newContext()).newPage();
+    // 免登录页（login/register 等）：全新 context，不注入任何会话。
+    // 轮播冻结（三期验收 R25）：login/register 展示轮播 autoplay 4s（Vue Swiper
+    // 内部 setTimeout 链 + React 裸 setInterval），两端相位独立会落入不同 slide
+    // 造成整块假差异（实测 ~10% 恒定；相位对齐实验归 0.84%）。旧版轮询步进器
+    // 读的是 authed 页面对象（vuePage/reactPage）而非实际截图的 anon 页，从未
+    // 生效。改为 context 级拦截 3.5-4.5s 定时器，双端确定性停在 slide 0——
+    // anon context 仅服务 login/register 族页面，拦截范围天然受控（toast 3s、
+    // 轮询 5s 均在窗外）。
+    const anonVueCtx = await browser.newContext();
+    const anonReactCtx = await browser.newContext();
+    const CAROUSEL_FREEZE = `(() => {
+      const hit = (ms) => typeof ms === 'number' && ms >= 3500 && ms <= 4500;
+      const _si = window.setInterval.bind(window);
+      window.setInterval = (fn, ms, ...a) => hit(ms) ? 0 : _si(fn, ms, ...a);
+      const _st = window.setTimeout.bind(window);
+      window.setTimeout = (fn, ms, ...a) => hit(ms) ? 0 : _st(fn, ms, ...a);
+    })();`;
+    await anonVueCtx.addInitScript(CAROUSEL_FREEZE);
+    await anonReactCtx.addInitScript(CAROUSEL_FREEZE);
+    const anonVue = await anonVueCtx.newPage();
+    const anonReact = await anonReactCtx.newPage();
     const anonPages = { vue: anonVue, react: anonReact };
 
     for (const p of PAGES) {
@@ -646,29 +664,9 @@ async function main() {
       try {
         const shots = [];
         const warnings = [];
-        if (p.freezeCarousel) {
-          // login/register 展示轮播由 JS 定时器切换，两端相位独立会落入不同
-          // slide 造成整块假差异。轮询双端左半区特征文本，直到一致（≤15s）。
-          const readSlides = async (pg) => pg.evaluate(() => {
-            const out = [];
-            for (const e of document.querySelectorAll('body *')) {
-              if (e.children.length > 0) continue;
-              const r = e.getBoundingClientRect();
-              if (r.x > 700 || r.x < 300 || r.y < 150 || r.y > 650 || r.width === 0) continue;
-              const t = (e.textContent || '').trim().replace(/\s+/g, ' ');
-              if (t) out.push(t);
-            }
-            return out.sort().join('|');
-          }).catch(() => '');
-          const deadline = Date.now() + 15000;
-          let a = '', b2 = '';
-          while (Date.now() < deadline) {
-            a = await readSlides(vuePage);
-            b2 = await readSlides(reactPage);
-            if (a && a === b2) break;
-            await new Promise((r) => setTimeout(r, 700));
-          }
-        }
+        // 轮播定格由 anon context 级 initScript 完成（见 context 创建处注释），
+        // 此处不再步进；旧版 authed 页面文本轮询步进器已删除（读错页面对象，
+        // 从未对实际截图的 anon 页生效）。
         for (const [tag, page, base] of [['vue', vuePage, VUE], ['react', reactPage, REACT]]) {
           const active = p.auth === false ? anonPages[tag] : page;
           await active.goto(base + path, { waitUntil: 'domcontentloaded', timeout: 20000 });
