@@ -2213,9 +2213,9 @@ export function FAQPage({ client, knowledgeBaseId }: { client: WeKnoraClient; kn
       setTags(tagRows);
       const permissions = computeKBPermissions(kbRow as KBSurfaceKB, me as KBSurfaceMe | null);
       setCanContribute(permissions.canContribute);
-      setCanManage(permissions.canContribute);
+      setCanManage(permissions.canManage);
       setFaqGate((typeof kbRow?.type === 'string' ? kbRow.type : '') === 'faq' ? 'allowed' : 'blocked');
-    }).catch(() => { if (active) { setCanContribute(false); setFaqGate('allowed'); } });
+    }).catch(() => { if (active) { setCanContribute(false); setCanManage(false); setFaqGate('allowed'); } });
     return () => { active = false; };
   }, [client, knowledgeBaseId]);
 

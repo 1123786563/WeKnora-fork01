@@ -46,7 +46,7 @@
 .wk-kss-7 {
   position: absolute;
   right: 0;
-  top: calc(100%+4px);
+  top: calc(100% + 4px);
   z-index: 20;
   display: grid;
   max-width: 380px;

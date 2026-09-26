@@ -6,7 +6,7 @@ import { classifyKnowledgeBaseMetadataError, computeKBPermissions, kbTypeRedirec
 test('viewer role hides editing controls for a shared KB', () => {
   const kb = { id: 'kb-1', user_id: 'someone-else' };
   const viewer = { user: { id: 'u-2' }, memberships: [{ role: 'viewer' }] };
-  assert.deepEqual(computeKBPermissions(kb, viewer), { canContribute: false, viewerOnly: true });
+  assert.deepEqual(computeKBPermissions(kb, viewer), { canContribute: false, canManage: false, viewerOnly: true });
 });
 
 test('creator, system admin and contributor roles keep editing', () => {
@@ -31,11 +31,28 @@ test('tenant admin and contributor memberships can use an independently opened h
   assert.deepEqual(computeKBPermissions(
     { id: 'kb-1', user_id: 'owner-1' },
     { user: { id: 'u-9' }, memberships: [{ role: 'contributor' }] },
-  ), { canContribute: true, viewerOnly: false });
+  ), { canContribute: true, canManage: false, viewerOnly: false });
   assert.deepEqual(computeKBPermissions(
     { id: 'kb-1', user_id: 'owner-1' },
     { user: { id: 'u-9' }, memberships: [{ role: 'admin' }] },
-  ), { canContribute: true, viewerOnly: false });
+  ), { canContribute: true, canManage: false, viewerOnly: false });
+});
+
+test('canManage follows Vue canManageKB: owner/admin only, never every contributor (OCR R1-17)', () => {
+  // editor 可贡献但不可管理——canContribute 误用作 canManage 是授权回归根因。
+  const editor = computeKBPermissions({ id: 'kb-1', my_permission: 'editor' }, { user: { id: 'u-2' } });
+  assert.equal(editor.canContribute, true);
+  assert.equal(editor.canManage, false, 'editor contributes but cannot manage');
+  // 显式 KB owner/admin、creator、system admin 才可管理。
+  assert.equal(computeKBPermissions({ id: 'kb-1', my_permission: 'admin' }, { user: { id: 'u-2' } }).canManage, true);
+  assert.equal(computeKBPermissions({ id: 'kb-1', my_permission: 'owner' }, { user: { id: 'u-2' } }).canManage, true);
+  assert.equal(computeKBPermissions({ id: 'kb-1', creator_id: 'u-1' }, { user: { id: 'u-1' } }).canManage, true);
+  assert.equal(computeKBPermissions({ id: 'kb-1' }, { user: { id: 'u-9', role: 'system_admin' } }).canManage, true);
+  // viewer / 普通 contributor membership 不可管理。
+  assert.equal(computeKBPermissions({ id: 'kb-1', my_permission: 'viewer' }, { user: { id: 'u-2' } }).canManage, false);
+  const member = computeKBPermissions({ id: 'kb-1' }, { user: { id: 'u-2' }, memberships: [{ role: 'contributor' }] });
+  assert.equal(member.canContribute, true);
+  assert.equal(member.canManage, false, 'tenant contributor membership is write access, not KB management');
 });
 
 test('classifies KB metadata 403 separately from other metadata failures', () => {
@@ -50,10 +67,10 @@ test('classifies KB metadata 403 separately from other metadata failures', () =>
 });
 
 test('missing or incomplete capability evidence fails closed', () => {
-  assert.deepEqual(computeKBPermissions({ id: 'kb-1' }, null), { canContribute: false, viewerOnly: true });
-  assert.deepEqual(computeKBPermissions({ id: 'kb-1' }, { user: { id: 'u-1' } }), { canContribute: false, viewerOnly: true });
-  assert.deepEqual(computeKBPermissions({ id: 'kb-1' }, { user: { id: 'u-1' }, memberships: [] }), { canContribute: false, viewerOnly: true });
-  assert.deepEqual(computeKBPermissions({ id: 'kb-1' }, { user: { id: 'u-1' }, memberships: [{ role: 'unknown' }] }), { canContribute: false, viewerOnly: true });
+  assert.deepEqual(computeKBPermissions({ id: 'kb-1' }, null), { canContribute: false, canManage: false, viewerOnly: true });
+  assert.deepEqual(computeKBPermissions({ id: 'kb-1' }, { user: { id: 'u-1' } }), { canContribute: false, canManage: false, viewerOnly: true });
+  assert.deepEqual(computeKBPermissions({ id: 'kb-1' }, { user: { id: 'u-1' }, memberships: [] }), { canContribute: false, canManage: false, viewerOnly: true });
+  assert.deepEqual(computeKBPermissions({ id: 'kb-1' }, { user: { id: 'u-1' }, memberships: [{ role: 'unknown' }] }), { canContribute: false, canManage: false, viewerOnly: true });
 });
 
 test('faq-type KBs redirect to the FAQ route', () => {

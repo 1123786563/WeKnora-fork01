@@ -763,3 +763,7 @@
 }
 /* 同步结果指标 pill 等宽数字（原 tabular-nums）。 */
 .wk-ds-53 { font-variant-numeric: tabular-nums; }
+
+/* 手工段：Card 壳（theme utilities → 语义类；旧栈 line/line-soft→Vue var(--td-component-stroke)=#e7e7e7，
+   原唯一定义误置于懒加载的 knowledge-u.css，未访问知识图谱页时丢失——OCR R1-04/31 迁入本域） */
+.wk-dsui-card { border-radius: 8px; border: 1px solid #e7e7e7; background-color: #ffffff; padding: 16px; }

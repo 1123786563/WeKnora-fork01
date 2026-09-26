@@ -290,7 +290,7 @@
   grid-template-columns: 110px minmax(0, 1fr);
   gap: 12px;
   font-size: 12px;
-  line-height: 4;
+  line-height: 1rem;
 }
 
 .wk-kg-29 {
@@ -451,7 +451,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 12px;
-  line-height: 4;
+  line-height: 1rem;
   /* 旧栈 ink→Vue var(--td-text-color-primary)=rgba(0,0,0,.9) */
   color: rgba(0, 0, 0, 0.9);
 }
@@ -582,7 +582,7 @@
   margin-bottom: 16px;
   user-select: none;
   font-size: 12px;
-  line-height: 4;
+  line-height: 1rem;
   /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
   color: rgba(0, 0, 0, 0.6);
 }
@@ -697,6 +697,3 @@
 .wk-graph-arrow-stroke { stroke: #c0c4cc; }
 .wk-ds-self-start { justify-self: start; }
 
-/* 手工段：commercial/data-sources Card 壳（theme utilities → 语义类，configuration ui.tsx 同型） */
-  /* 旧栈 line/line-soft→Vue var(--td-component-stroke)=#e7e7e7 */
-.wk-cs-card, .wk-dsui-card { border-radius: 8px; border: 1px solid #e7e7e7; background-color: #ffffff; padding: 16px; }

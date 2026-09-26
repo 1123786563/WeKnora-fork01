@@ -45,10 +45,7 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  border-style-bottom: solid;
-  border-width-bottom: 1px;
-  border-style: solid;
-  border-color: #eef1f5;
+  border-bottom: 1px solid #eef1f5;
   padding-bottom: 14px;
 }
 

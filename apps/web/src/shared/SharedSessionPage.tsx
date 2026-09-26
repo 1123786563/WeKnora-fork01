@@ -101,7 +101,7 @@ export function SharedSessionPage({ client, token }: { client: WeKnoraClient; to
             return (
               <li key={message.id} className="wk-shared-13">
                 <div className="wk-shared-14">
-                  <span className={`wk-shared-18${ROLE_TONE[message.role]}`}>
+                  <span className={`wk-shared-18 ${ROLE_TONE[message.role]}`}>
                     {message.role === 'user' ? t('settings.queryHistory.roleUser') : message.role === 'assistant' ? t('settings.queryHistory.roleAssistant') : t('settings.queryHistory.roleSystem')}
                   </span>
                   {refs > 0 ? <span className="wk-shared-15">{t('settings.queryHistory.refCount', { n: refs })}</span> : null}

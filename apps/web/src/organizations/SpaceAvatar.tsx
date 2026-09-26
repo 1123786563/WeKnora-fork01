@@ -26,10 +26,10 @@ export function SpaceAvatar({ name, avatar, size = 'medium', className = '' }: {
     height: dimension,
     background: isEmoji ? 'linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%)' : `linear-gradient(135deg, ${from} 0%, ${to} 100%)`,
   };
-  return <span className={`wk-avatar-2${size === 'small' ? 'wk-avatar-3' : size === 'large' ? 'wk-avatar-4' : 'wk-avatar-5'} ${className}`} style={style} aria-hidden="true">
+  return <span className={`wk-avatar-2 ${size === 'small' ? 'wk-avatar-3' : size === 'large' ? 'wk-avatar-4' : 'wk-avatar-5'} ${className}`} style={style} aria-hidden="true">
     {isEmoji ? <span className={size === 'large' ? 'wk-avatar-10' : size === 'small' ? 'wk-avatar-11' : 'wk-avatar-12'}>{rawAvatar.slice(6).trim()}</span> : <>
       {size !== 'small' ? <svg className="wk-avatar-1" viewBox="0 0 56 40" preserveAspectRatio="xMaxYMax meet" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="10" cy="12" r="4" stroke="currentColor" strokeWidth="1.5" opacity="0.5" /><circle cx="28" cy="8" r="5" stroke="currentColor" strokeWidth="1.8" opacity="0.7" /><circle cx="46" cy="14" r="4" stroke="currentColor" strokeWidth="1.5" opacity="0.5" /><path d="M14 13 L24 10 M32 10 L42 13" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" opacity="0.4" /><circle cx="28" cy="28" r="6" stroke="currentColor" strokeWidth="1.2" opacity="0.35" /><path d="M28 14 L28 22 M20 18 L26 24 M36 18 L30 24" stroke="currentColor" strokeWidth="1" strokeLinecap="round" opacity="0.3" /></svg> : null}
-      <span className={`wk-avatar-6${size === 'large' ? 'wk-avatar-7' : size === 'small' ? 'wk-avatar-8' : 'wk-avatar-9'}`} style={{ textShadow: `0 1px 2px ${to}80, 0 0 8px ${from}30` }}>{letter}</span>
+      <span className={`wk-avatar-6 ${size === 'large' ? 'wk-avatar-7' : size === 'small' ? 'wk-avatar-8' : 'wk-avatar-9'}`} style={{ textShadow: `0 1px 2px ${to}80, 0 0 8px ${from}30` }}>{letter}</span>
     </>}
   </span>;
 }

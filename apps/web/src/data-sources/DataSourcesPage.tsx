@@ -426,7 +426,7 @@ export function DataSourcesPage({ client, knowledgeBaseId, canManage = false, em
     return connector ? [connector] : [];
   });
   const editorTitle = editing === null && createStep === 'type' ? t('dataSource.step.selectType') : editing ? t('dataSource.editTitle') : t('dataSource.createTitle');
-  const editorSurface = editing === undefined ? null : <Drawer visible header={editorTitle} onClose={() => setEditing(undefined)} size="640px" placement="right" className="wk-data-source-drawer">
+  const editorSurface = editing === undefined ? null : <Drawer visible footer={false} header={editorTitle} onClose={() => setEditing(undefined)} size="640px" placement="right" className="wk-data-source-drawer">
     {editing === null && createStep === 'type' ? <div className="wk-ds-1">
       {createTypes.map((type) => <button key={type.type} type="button" className="wk-ds-2" onClick={() => chooseCreateType(type.type)}><strong>{t(`dataSource.connector.${type.type}`)}</strong><span className="wk-ds-3">{t(`dataSource.connectorDesc.${type.type}`)}</span></button>)}
     </div> : <form className="wk-wiki-editor wk-ds-4" onSubmit={(event) => void save(event)}>

@@ -43,6 +43,11 @@ export function WkDialog({ open, title, children, onClose, closeLabel = 'Close',
   portal?: boolean;
 }) {
   const dialogRef = useRef<HTMLElement>(null);
+  // OCR R1-58: consumers pass inline arrow onClose; keeping it in the keydown
+  // effect deps re-ran cleanup (restoreRef.focus) on every parent render,
+  // yanking focus out of controlled inputs mid-keystroke. Read via ref.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
   const restoreRef = useRef<HTMLElement | null>(null);
   const titleId = useId();
   const [mounted, setMounted] = useState(false);
@@ -59,7 +64,7 @@ export function WkDialog({ open, title, children, onClose, closeLabel = 'Close',
         if (activeElement && !dialogRef.current?.contains(activeElement)) return;
         event.preventDefault();
         event.stopPropagation();
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (event.key !== 'Tab' || !dialogRef.current) return;
@@ -79,7 +84,7 @@ export function WkDialog({ open, title, children, onClose, closeLabel = 'Close',
       restoreRef.current?.focus();
       restoreRef.current = null;
     };
-  }, [onClose, open]);
+  }, [open]);
   if (!open) return null;
   const content = <div className="wk-dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section className={className ? `wk-dialog ${className}` : 'wk-dialog'} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} ref={dialogRef}><header className="wk-dialog-header"><h2 id={titleId}>{title}</h2><button className="wk-dialog-close" type="button" onClick={onClose} aria-label={closeLabel}>×</button></header><div className="wk-dialog-body">{children}</div></section></div>;
   return !portal || !mounted || typeof document === 'undefined' ? content : createPortal(content, document.body);
@@ -115,6 +120,9 @@ export function WkSheet({ open, title, children, onClose, closeLabel = 'Close', 
   const titleId = useId();
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
+  // OCR R1-59: same inline-onClose dep churn as WkDialog — read via ref.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
   const restoreRef = useRef<HTMLElement | null>(null);
   const resizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
   useEffect(() => {
@@ -160,7 +168,7 @@ export function WkSheet({ open, title, children, onClose, closeLabel = 'Close', 
         if (activeElement && !panelRef.current?.contains(activeElement)) return;
         event.preventDefault();
         event.stopPropagation();
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (event.key !== 'Tab' || !panelRef.current) return;
@@ -173,7 +181,7 @@ export function WkSheet({ open, title, children, onClose, closeLabel = 'Close', 
     };
     document.addEventListener('keydown', onKeyDown);
     return () => { document.removeEventListener('keydown', onKeyDown); restoreRef.current?.focus(); restoreRef.current = null; };
-  }, [onClose, open]);
+  }, [open]);
   if (!open) return null;
   const content = (
     <div className="wk-sheet-backdrop" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>

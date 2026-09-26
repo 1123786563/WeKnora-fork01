@@ -39,3 +39,7 @@
 
 /* T15 语义化：原 tabular-nums（用量数值单元格）。 */
 .wk-bill-usage-number-cell { font-variant-numeric: tabular-nums; }
+
+/* 手工段：Card 壳（theme utilities → 语义类；旧栈 line/line-soft→Vue var(--td-component-stroke)=#e7e7e7，
+   原唯一定义误置于懒加载的 knowledge-u.css，未访问知识图谱页时丢失——OCR R1-04/31 迁入本域） */
+.wk-cs-card { border-radius: 8px; border: 1px solid #e7e7e7; background-color: #ffffff; padding: 16px; }

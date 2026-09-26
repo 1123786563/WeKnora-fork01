@@ -14,7 +14,7 @@
   margin: 0;
   font-size: 20px;
   font-weight: 600;
-  line-height: 7;
+  line-height: 28px;
   color: rgba(0, 0, 0, 0.9);
 }
 
@@ -106,7 +106,7 @@
   /* Vue 弹层 .t-popup__content border: var(--td-component-stroke) */
   position: absolute;
   right: 0;
-  top: calc(100%+4px);
+  top: calc(100% + 4px);
   z-index: 20;
   display: grid;
   min-width: 180px;
@@ -136,7 +136,7 @@
   margin: 0;
   font-size: 20px;
   font-weight: 600;
-  line-height: 7;
+  line-height: 28px;
   color: rgba(0, 0, 0, 0.9);
 }
 
@@ -658,7 +658,7 @@
   margin: 0;
   font-size: 20px;
   font-weight: 600;
-  line-height: 7;
+  line-height: 28px;
   color: rgba(0, 0, 0, 0.9);
 }
 
@@ -672,7 +672,7 @@
 
 .wk-kbs-25 {
   width: 520px !important;
-  max-width: calc(100vw-2rem);
+  max-width: calc(100vw - 2rem);
 }
 
 .wk-kbs-26 {
