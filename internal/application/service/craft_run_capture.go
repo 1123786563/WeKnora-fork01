@@ -27,6 +27,7 @@ type QuiescentRunArtifactSource interface {
 type craftRunCaptureStore interface {
 	EnsurePending(context.Context, craft.Scope, string, string, string) (repository.CraftRunCapture, error)
 	BeginCapture(context.Context, repository.CraftRunCapture, string) (repository.CraftRunCapture, error)
+	ClaimForDrain(context.Context, repository.CraftRunCapture) (repository.CraftRunCapture, error)
 	RecoverPending(context.Context, int) ([]repository.CraftRunCapture, error)
 	RecoverPendingTick(context.Context, int) ([]repository.CraftRunCapture, error)
 	RecoverPendingForRun(context.Context, uint64, string) ([]repository.CraftRunCapture, error)
@@ -166,6 +167,16 @@ func (s *CraftRunCaptureService) capture(ctx context.Context, receipt repository
 		return craft.DraftHead{}, craft.ErrConflict
 	}
 	if receipt.State != "sealed" && receipt.State != "advanced" {
+		// Claim the receipt BEFORE the expensive quiescence/staging work: the
+		// freshness gate excludes CAPTURING receipts touched within the drain
+		// window, so the periodic ticker cannot concurrently redo this
+		// receipt while the drain walks the tree (previously the gate only
+		// fired after BeginCapture, leaving the whole pre-staging phase —
+		// two full sha256 walks plus a full read — unprotected).
+		claimed, claimErr := s.captures.ClaimForDrain(ctx, receipt)
+		if claimErr == nil {
+			receipt = claimed
+		}
 		if err := source.VerifyCraftCaptureQuiescent(ctx); err != nil {
 			_ = s.captures.MarkPendingError(ctx, receipt, err)
 			return craft.DraftHead{}, fmt.Errorf("%w: sandbox quiescence is unproven: %v", craft.ErrBusy, err)

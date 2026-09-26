@@ -599,6 +599,14 @@ func (s *CraftArtifactService) stageAndUpload(
 				return nil, err
 			}
 		}
+		// The template shell's script exemption is only honest when the
+		// referenced asset member itself matches the pinned digest.
+		if kind == craft.KindWeb {
+			if err := craftScreenVerifyPinnedAsset(rel, data); err != nil {
+				logger.Warnf(ctx, "[CraftArtifact] server-side web screen rejected member %q of run %s: %v", rel, task.Fence.RunID, err)
+				return nil, err
+			}
+		}
 		staged = append(staged, stagedArtifact{rel: rel, data: data})
 	}
 	sort.Slice(staged, func(i, j int) bool { return staged[i].rel < staged[j].rel })

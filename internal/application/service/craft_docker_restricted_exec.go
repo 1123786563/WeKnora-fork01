@@ -325,7 +325,9 @@ func (s *CraftDockerRestrictedExec) Observe(ctx context.Context, grantID, activi
 		// exec can never run. Converge to the failed terminal instead of an
 		// eternal Unknown; with prior Running evidence the honest answer
 		// stays Unknown (it may have produced effects before deletion).
-		if !previouslyRunning && (strings.Contains(err.Error(), "No such container") || strings.Contains(err.Error(), "No such exec")) {
+		var remoteErr *sandbox.RemoteError
+		isNotFound := errors.As(err, &remoteErr) && remoteErr.Kind == sandbox.RemoteErrorKindNotFound
+		if !previouslyRunning && (isNotFound || strings.Contains(err.Error(), "No such container") || strings.Contains(err.Error(), "No such exec")) {
 			return sandbox.DockerOutputlessExecObservation{State: sandbox.DockerOutputlessFailed, OutputAvailable: false}, nil
 		}
 		return unknown, err

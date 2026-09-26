@@ -254,6 +254,28 @@ func (s *CraftRunCaptureStore) EnsurePending(ctx context.Context, scope craft.Sc
 // BeginCapture durably records the exact path/hash/size manifest identity
 // before uploading objects. A retry after upload-before-seal may reread only
 // the same quiescent bytes; a changed manifest for the same Run conflicts.
+// ClaimForDrain atomically moves a pending receipt into the capturing
+// state (refreshing updated_at) WITHOUT pinning any manifest digest: the
+// freshness gate then excludes it from the periodic ticker for the whole
+// quiescence/staging phase, while the later BeginCapture with the real
+// digest stays idempotent.
+func (s *CraftRunCaptureStore) ClaimForDrain(ctx context.Context, receipt CraftRunCapture) (CraftRunCapture, error) {
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		res := tx.Model(&craftRunCaptureRow{}).
+			Where("tenant_id=? AND workspace_id=? AND run_id=? AND state = 'pending'", receipt.Scope.TenantID, receipt.WorkspaceID, receipt.RunID).
+			Updates(map[string]any{"state": "capturing", "last_error": "", "updated_at": time.Now()})
+		if res.Error != nil {
+			return res.Error
+		}
+		return nil
+	})
+	if err != nil {
+		return receipt, err
+	}
+	receipt.State = "capturing"
+	return receipt, nil
+}
+
 func (s *CraftRunCaptureStore) BeginCapture(ctx context.Context, receipt CraftRunCapture, digest string) (CraftRunCapture, error) {
 	if !craft.ValidSHA256(digest) {
 		return CraftRunCapture{}, fmt.Errorf("%w: empty capture attempt digest", craft.ErrInvalidInput)

@@ -1,6 +1,8 @@
 package service
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	stdhtml "html"
 	"regexp"
@@ -100,10 +102,36 @@ var craftScreenTemplateShellLiterals = []string{
 	`<script src="assets/craft-web.js"></script>`,
 }
 
+// craftScreenPinnedAssetDigest is the sha256 of the offline runtime asset
+// the pinned template references (assets/craft-web.js). An index.html may
+// claim the template shell literal, but the STAGED asset member itself must
+// byte-match the pinned digest — an Agent-planted replacement script with
+// a clean HTML page would otherwise execute on the preview origin.
+const craftScreenPinnedAssetDigest = "5b930dd96b33bf707653ed6c1b5dc294cb8a790ee7ba7b6adfd13d65a0130064"
+
+// craftScreenPinnedAssetPath is the output-relative member the template
+// shell references; its digest is verified per staged round.
+const craftScreenPinnedAssetPath = "assets/craft-web.js"
+
 // craftScreenControlChars matches the ASCII C0 controls plus DEL: browsers
 // strip these from URLs BEFORE scheme parsing (WHATWG URL Standard), so
 // "jav\tascript:" must be screened in its stripped form too.
 var craftScreenControlCharsRe = regexp.MustCompile("[\x00-\x1f\x7f]")
+
+// craftScreenVerifyPinnedAsset enforces the template-shell exemption's
+// other half: when an HTML member referenced the pinned script literal, the
+// staged assets/craft-web.js member must hash to the pinned digest. A
+// mismatched (planted) asset refuses the round.
+func craftScreenVerifyPinnedAsset(rel string, data []byte) error {
+	if rel != craftScreenPinnedAssetPath {
+		return nil
+	}
+	sum := sha256.Sum256(data)
+	if hex.EncodeToString(sum[:]) != craftScreenPinnedAssetDigest {
+		return fmt.Errorf("%w: staged %s does not match the pinned toolchain asset digest", craft.ErrInvalidInput, rel)
+	}
+	return nil
+}
 
 // craftScreenWebHTMLMember applies the full denylist to one staged HTML
 // member. A violation is a round-level ErrInvalidInput: nothing is uploaded.

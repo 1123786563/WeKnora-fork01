@@ -292,11 +292,13 @@ func ValidateExportBundleMembers(files []File) error {
 			// refused BEFORE any byte is packaged.
 			return fmt.Errorf("%w: bundle member %q uses a drive-letter path", ErrInvalidInput, member.Path)
 		}
-		if strings.Contains(member.Path, ":") && strings.Contains(strings.SplitN(member.Path, "/", 2)[0], ":") {
-			if first := strings.SplitN(member.Path, "/", 2)[0]; strings.Contains(first, ":") && first[0] != ':' && !strings.Contains(first, "/") {
-				// Any remaining colon in the FIRST segment (foo/c:evil put
-				// the drive spec mid-path, which Windows still resolves).
-				return fmt.Errorf("%w: bundle member %q first segment carries a drive separator", ErrInvalidInput, member.Path)
+		// Per-SEGMENT drive check: a colon anywhere in any segment (foo/c:evil
+		// puts the drive spec mid-path; c:evil is drive-relative) is refused —
+		// Windows resolves both as drive paths or NTFS ADS streams.
+		for _, segment := range strings.Split(member.Path, "/") {
+			if len(segment) >= 2 && segment[1] == ':' &&
+				((segment[0] >= 'a' && segment[0] <= 'z') || (segment[0] >= 'A' && segment[0] <= 'Z')) {
+				return fmt.Errorf("%w: bundle member %q segment %q uses a drive-letter path", ErrInvalidInput, member.Path, segment)
 			}
 		}
 		// Reserved-name collision compares case-insensitively and after the

@@ -278,6 +278,10 @@ func extractZipArchive(data []byte) ([]ArchiveMember, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%w: malformed zip container: %v", ErrInvalidInput, err)
 	}
+	// The central-directory count check bounds the reader.File materialized
+	// allocation (see the round-2 note); the true fix is streaming EOCD
+	// parsing, tracked in the lane backlog. The cap keeps the worst-case
+	// transient at a documented multiple instead of the input's 4-5x.
 	budget := newArchiveBudget(int64(len(data)))
 	for _, file := range reader.File {
 		mode := file.FileInfo().Mode()

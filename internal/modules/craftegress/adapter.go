@@ -1,6 +1,7 @@
 package craftegress
 
 import (
+	"github.com/Tencent/WeKnora/internal/logger"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -235,9 +236,12 @@ func (a *CraftEgressAdapter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// and bill the same logical request twice.
 		definitive := !gatewayReportsActivityUnresolved(resp.StatusCode, responseBody)
 		if err := a.journal.Resolve(attemptID, digest, resp.StatusCode, definitive); err != nil {
-			// The response was observed; a failed resolution record leaves the
-			// attempt reusable, which reconciles safely on the next pass.
-			_ = err
+			// A definitive resolve that failed to persist strands the parked
+			// identity (every same-fingerprint retry reuses it and hits the
+			// gateway's 409 forever) — that deadlock must at least be VISIBLE.
+			logger.ErrorWithFields(r.Context(), err, map[string]any{
+				"craft_attempt_id": attemptID, "definitive": definitive, "gateway_status": resp.StatusCode,
+			})
 		}
 	}
 	if contentType := resp.Header.Get("Content-Type"); contentType != "" {
