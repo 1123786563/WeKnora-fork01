@@ -1011,6 +1011,10 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// (bridge dispatcher + resolver), publish service and HTTP handler.
 	// The frozen OC-armed action service above is untouched.
 	must(container.Provide(newNotionPublishHandler))
+	// T20 (#50): the Confluence publish closed loop — same shape as the
+	// Notion publish wiring, its own dedicated ActionService instance
+	// (bridge dispatcher + resolver), frozen services untouched.
+	must(container.Provide(newConfluencePublishHandler))
 	must(container.Invoke(startOCRecoveryRunner))
 	// A02 app OAuth registrations for the first-batch providers. Client
 	// registrations come from env (WEKNORA_APP_OAUTH_<APP>_CLIENT_ID / _SECRET);
