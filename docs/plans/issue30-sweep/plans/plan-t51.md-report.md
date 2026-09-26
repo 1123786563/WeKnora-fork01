@@ -316,3 +316,109 @@ ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnect
 3. **gorm trace 红色 `record not found` 日志为预期路径噪音**：Approve 测试路径中 publish seam 的 `LatestPublishedByDestination` 探测返回 gorm.ErrRecordNotFound 时打 trace 日志；全部断言 `--- PASS`，非缺陷（与 Task 2 报告第 6.1 条同判）。
 4. **占位纪律**：Task 4 的 `// Execute ...`/`// Status ... IMPLEMENT IN TASK 4.` 占位注释仍在，Task 4 必须替换。
 5. 零字符串拼接 SQL（计划层仅经 gorm 参数绑定 store 方法），零新增凭据，测试 token 均为契约双打假值。
+
+---
+
+# 修复轮 1 报告（Task 3 审查发现修复）
+
+- **执行者**：实现员-t51-任务3（resumed with findings，修复轮 1/5）
+- **提交**：`1c6779c7c` `fix(appconnector): pin exclusion-set freeze into ApprovePlan CAS, closing concurrent TOCTOU (ruling via escalation)`；ledger：`docs/plans/issue30-sweep/plans/plan-t51.md-ledger.md`（新建，逐字记录裁决 ruling 行）
+- **状态**：DONE（F1 经主控裁决授权越界修复，RED→GREEN→并发回归在案；F2 按审查定性记录不修）
+
+## F1（important）：排除集冻结并发 TOCTOU——经裁决越界下沉至 store CAS
+
+**审查指认**：Approve 的冻结检查（`plan/plan.go:280` read-then-act）+ `PlanStore.ApprovePlan` CAS（`repository/appconnector/plan.go:117-122`，WHERE 允许 `state IN {awaiting,authorized}` 不钉 excluded_json）→ 两个并发 Approve 携不同 ExcludeSeqs 双双通过检查与 CAS，后写者覆写 excluded_json/approved_by/approved_at 并可批准前一次已被排除的项——「排除集首次批准后冻结」（plan-t51.md:64、Review Focus 3）并发失守。定性为 plan-mandated 设计缺口，建议「由计划所有者决定」。
+
+**处置**：本实现员核实属实后，因修复必须修改 Task 1 授权文件（超出本任务授权）且属已批准语义的实现策略下沉，escalate 请裁决。**主控裁决（via escalation）：授权越界修复**——理由：TOCTOU 击穿「排除项永不批准执行」审批完整性不变量（load-bearing，不能留到 Task 6）；本修复是一行 WHERE 条件+参数绑定的实现层强化，不改接口/schema/契约，无新设计成分（区别于 t59 延期案）。ruling 行已逐字入 ledger（`plan-t51.md-ledger.md`）。
+
+### 修复内容（最小变更：CAS WHERE 一处 + 注释；两个测试文件追加）
+
+1. `repository/appconnector/plan.go` ApprovePlan CAS WHERE：
+   - 原：`Where("tenant_id = ? AND id = ? AND digest = ? AND state IN ?", ..., []string{awaiting, authorized})`
+   - 改：`Where("tenant_id = ? AND id = ? AND digest = ? AND (state = ? OR excluded_json = ?)", tenantID, planID, digest, PlanStateAwaitingApproval, excludedJSON)`（全参数绑定，无拼接 SQL）
+   - 语义：首批（awaiting→authorized）无条件 CAS；authorized 重批必须携带与已记录集合一致的 excluded_json——并发后写者 0 行得 `ErrPlanState`，**先写者获胜**，冻结决定永不静默改写。方法注释补充钉住语义；其余逻辑零改动。
+2. `repository/appconnector/plan_test.go` 追加 `TestPlanApproveCASPinsExclusionSetOnReapproval`（确定性）：authorized+`[2]` 行用 `[]` 再 CAS → `ErrPlanState` 且行未被触碰。
+3. `plan/plan_test.go` 追加 `TestPlanApproveConcurrentDistinctExclusionsSingleWinner`（service 层真并发回归护栏）：20 轮，两 goroutine 并发 Approve（集合 nil vs `{2}`），断言恰好一个成功、失败者为 plan-state 错误、终态 excluded_json ∈ {`[]`,`[2]`}、逐项状态与记录集一致（`[2]` 获胜则 item2 停留 awaiting_approval——被排除项无论谁后写都永不批准）。
+
+### TDD 证据（全部本 ask 实跑）
+
+**RED**（store 层，修复前）：
+```
+$ go test ./internal/modules/appconnector/repository/appconnector/ -run TestPlanApproveCASPins -count=1 -v
+=== RUN   TestPlanApproveCASPinsExclusionSetOnReapproval
+    plan_test.go:128: CAS must pin the recorded exclusion set — a different set after approval is zero rows, got <nil>
+--- FAIL: TestPlanApproveCASPinsExclusionSetOnReapproval (0.00s)
+FAIL
+```
+`got <nil>` 即审查指认的直接证据：authorized 行被不同排除集成功覆写。
+
+**GREEN**（修复后）：
+```
+$ go test ./internal/modules/appconnector/repository/appconnector/ -run TestPlan -count=1 -v
+--- PASS: TestPlanCreateFindRoundTrip (0.01s)
+--- PASS: TestPlanApproveBindsDigestAndExclusions (0.00s)
+--- PASS: TestPlanApproveCASPinsExclusionSetOnReapproval (0.00s)
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector	0.650s
+$ go build ./...   → BUILD_OK（仅 macOS ld 既有噪音）
+```
+既有幂等重批断言（authorized + 同集合 `[2]` 重批合法，Task 1 测试 `:105`）保持 PASS——恢复路径不受钉住影响。
+
+**并发回归**（race detector 开启）：
+```
+$ go test ./internal/modules/appconnector/plan/ -run TestPlanApproveConcurrent -count=1 -race -v
+=== RUN   TestPlanApproveConcurrentDistinctExclusionsSingleWinner
+--- PASS: TestPlanApproveConcurrentDistinctExclusionsSingleWinner (1.15s)
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/plan	4.860s
+$ go test ./internal/modules/appconnector/plan/ ./internal/modules/appconnector/repository/appconnector/ -count=1 -race
+ok  .../plan	4.608s
+ok  .../repository/appconnector	2.148s
+```
+
+**全量回归**：
+```
+$ go build ./...   → exit 0
+$ go test ./internal/modules/appconnector/... -count=1
+ok  .../appconnector 0.497s | connectorcontrol 3.092s | openconnector 0.534s | plan 1.922s
+  | publish 2.526s | repository/appconnector 1.488s | service/appconnector 3.709s（7 包全 ok）
+```
+
+### 待核实项 1 复核（审查称上轮证据未独立复跑）
+
+本 ask 复跑确认上轮（Task 3 主体）证据属实：plan 包 8/8 `--- PASS`（`go test ./internal/modules/appconnector/plan/ -count=1 -v`）+ appconnector 7 包全 ok——与报告 `:236-301` 声称一致。
+
+## F2（important）：Task 0 未执行——跨任务协调项，本修复轮不修（按裁决执行要求 5）
+
+审查定性「跨任务协调项，非 Task 3 缺陷」，裁决确认「记入报告供主控/编排层收口」。本 ask 复核现状属实（Task 0 Step 0 命令实跑）：
+
+```
+$ ls migrations/sqlite/ | grep -E "000114|000118|000119"
+000114_mobile_device_app.down.sql / .up.sql
+000114_public_agent_marketplace.down.sql / .up.sql     ← 双占仍在
+000119_app_action_plans.down.sql / .up.sql             ← Task 1 已落位
+$ ls migrations/versioned/ | grep -E "000193|000197|000198"
+000193_mobile_device_app.* / 000193_public_agent_marketplace.*   ← 双占仍在
+000198_app_action_plans.*                               ← Task 1 已落位
+$ grep -n "sqliteAdoptionFKRelaxationMigrationVersion = " internal/database/migration.go
+33:const sqliteAdoptionFKRelaxationMigrationVersion = 114        ← 未改
+$ grep -n "000114_public_agent_marketplace" internal/database/migration.go
+123:		_, err = os.Stat("migrations/sqlite/000114_public_agent_marketplace.up.sql")  ← 未改
+```
+
+118/197 槽位仍空闲（目录核查无文件占用），Task 0 可按计划原文执行（Step 0 占用核查先跑）。**需编排方授权执行者完成 Task 0，否则 Task 6 的 AC3 全量迁移 e2e（`go test ./internal/handler/ -run TestNotionPublish`）不可运行。**
+
+## 其余待核实项处置（无法从本 diff 验证，如实声明）
+
+- 审批谓词（发起者或 owner/admin）→ 归 Task 5 wire 层，未验证。
+- 排除项「永不派发」执行侧保证 + AC1 执行面腿（`TestPlanExecuteRefusesUnapprovedOrForeignDigest`）→ 归 Task 4，未验证。
+- `TestPlanApproveRecoveryExclusionFrozen`（同 digest 幂等重批完整闭环）→ 计划明示归 Task 4 Step 1，未验证。
+- blocked-env：真实 Notion 多操作验收（NOTION_TOKEN 门控）本环境不可运行；AC3 本地替代证据归 Task 6 且受 F2 阻断——skip 不是 pass，本修复轮零伪造证据。
+- 并发测试的局限性声明：service 层并发测试在 sqlite 单连接（MaxOpenConns(1)）下 goroutine 交错受 DB 串行化约束，属「真 goroutine 并发、DB 操作串行化」的护栏；主杀伤力证据是 store 层确定性 RED（`got <nil>`）与 CAS 钉住语义本身。修复前该并发测试为间歇红（双双成功的交错出现即红），修复后 20 轮稳定绿。
+
+## 提交清单（修复轮 1）
+
+```
+1c6779c7c fix(appconnector): pin exclusion-set freeze into ApprovePlan CAS, closing concurrent TOCTOU (ruling via escalation)
+  4 files changed, 106 insertions(+), 2 deletions(-)
+  （repository/appconnector/plan.go + plan_test.go、plan/plan_test.go、plan-t51.md-ledger.md 新建）
+```
+提交后 `git status --short` 干净。
