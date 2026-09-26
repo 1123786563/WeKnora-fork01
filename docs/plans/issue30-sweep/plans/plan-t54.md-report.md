@@ -240,3 +240,93 @@ ok  	github.com/Tencent/WeKnora/internal/modules/codedelivery	3.843s
 ## 六、无遗留事项
 
 - 本任务 Produces 无新符号（纯语义验收面），无缺陷修复，无跨任务遗留。
+
+---
+
+# T24 #54 Task 4 实现报告：GitLab OAuth 注册、HTTP 错误映射与容器接线
+
+## 一、实现内容
+
+按计划 Task 4（plan-t54.md 1983-2157 行）逐字落地 5 个文件，全部为最小追加/替换：
+
+1. **`internal/handler/app_connector_oauth.go`**（3 处）：
+   - `appOAuthDefaults` 增 `"gitlab"` 条目（`https://gitlab.com/oauth/authorize` + `https://gitlab.com/oauth/token`，置于 `"github"` 条目后，`app_connector_oauth.go:61-64`）；
+   - `exchangeAppOAuthCode` switch 增 `case "gitlab"`（form-encoded client_id/client_secret/code/grant_type/redirect_uri + `Content-Type: application/x-www-form-urlencoded` + `Accept: application/json`，置于 github 块后，`app_connector_oauth.go:138-152`）；
+   - `appAuthorizeURL` switch 增 `case "gitlab"`（`response_type=code` + `scope=api read_user`，`app_connector_oauth.go:251-253`）。
+2. **`internal/handler/session/workbench_delivery.go`**：`writeDeliveryError` 在 `ErrDeliveryDispatchRejected` case 后增 `ErrUnsupportedProvider` → 400 `code_delivery_unsupported_provider`（`workbench_delivery.go:229-232`）。
+3. **`internal/handler/session/workbench_delivery_test.go`**：错误分类表 `{"dispatch rejected pre-send", ...}` 行后增 1 行 `{"unsupported provider", codedelivery.ErrUnsupportedProvider, http.StatusBadRequest, "code_delivery_unsupported_provider"}`（`workbench_delivery_test.go:200`）。
+4. **`internal/container/code_delivery.go`**：`newCodeDeliveryService` 装配替换——增 `gitlabFactory`（`NewGitLabClientFactory(nil, GitLabAPIBaseURL)`）、`providers`（`appconnectorrepo.NewInstallationStore(db)`）、`DispatcherDeps.GitLab`、`CodeDeliveryDeps.GitLab/Providers` 三处接线 + import `appconnectorrepo`（`code_delivery.go:119-121,123-125,128-132`）。生产容器从此同时接线两个平台适配器与 Providers 源。
+5. **新建 `internal/handler/app_connector_oauth_gitlab_test.go`**：两个测试（`TestGitLabOAuthRegistrationAndExchangeShape`——gitlab 在 `DefaultAppOAuthProviderConfigs`/`appOAuthDefaults` 端点表中 + httptest token 端点真实 HTTP 交换形状断言；`TestGitLabAuthorizeURLCarriesAPIScope`——authorize URL 携带 `scope=api read_user`/`response_type=code`/state/client_id），测试文本与计划 2000-2067 行逐字一致。
+
+`WEKNORA_APP_OAUTH_GITLAB_CLIENT_ID/_SECRET` 经既有 `container.go:1016-1030` env 自动拾取循环对 `appOAuthDefaults` 全键生效，零额外接线（计划 Interfaces 节声明，本轮未改动该循环，仅核实其存在）。
+
+## 二、TDD 证据
+
+**RED**（计划 Step 2 命令，实现前实跑）：
+
+```
+$ go test ./internal/handler/ -run 'TestGitLabOAuth' -count=1
+--- FAIL: TestGitLabOAuthRegistrationAndExchangeShape (0.00s)
+    app_connector_oauth_gitlab_test.go:19: Error: Should be true
+    Messages: gitlab must be a first-batch OAuth app
+FAIL  github.com/Tencent/WeKnora/internal/handler  3.985s
+
+$ go test ./internal/handler/session/ -run 'TestDeliveryErrorClassificationTable' -count=1
+--- FAIL: TestDeliveryErrorClassificationTable/unsupported_provider (0.00s)
+    workbench_delivery_test.go:215: Error: Not equal: expected: 400, actual: 500
+    Messages: unsupported provider: prepare status
+FAIL  github.com/Tencent/WeKnora/internal/handler/session  2.407s
+```
+
+失败原因符合预期：gitlab 尚不在端点表（`DefaultAppOAuthProviderConfigs` 无该键）；`ErrUnsupportedProvider` 尚无 HTTP 映射（落入 default 500）。注意 `-run 'TestGitLabOAuth'` 按 Go 未锚定子串匹配不命中 `TestGitLabAuthorizeURLCarriesAPIScope`（名字无 "OAuth"），该测试的 RED 由同文件同包编译+首测失败隐含覆盖，其 GREEN 见下方补充验证。
+
+**GREEN**（计划 Step 4 命令，实现后实跑）：
+
+```
+$ go test ./internal/handler/ -run 'TestGitLabOAuth' -count=1
+ok    github.com/Tencent/WeKnora/internal/handler  4.879s
+
+$ go test ./internal/handler/session/ -run 'TestDelivery' -count=1
+ok    github.com/Tencent/WeKnora/internal/handler/session  2.627s
+
+$ go build ./...
+（exit 0；仅既有 ld warning：ignoring duplicate libraries: '-lc++'，与本次改动无关）
+```
+
+**补充验证**（计划窄模式外的如实取证）：
+
+```
+$ go test ./internal/handler/ -run 'TestGitLab' -count=1 -v
+--- PASS: TestGitLabOAuthRegistrationAndExchangeShape (0.00s)
+--- PASS: TestGitLabAuthorizeURLCarriesAPIScope (0.00s)
+ok    github.com/Tencent/WeKnora/internal/handler  3.637s
+
+$ go test ./internal/handler/session/ -run 'TestDeliveryErrorClassificationTable' -count=1 -v
+    --- PASS: TestDeliveryErrorClassificationTable/invalid_material (0.00s)
+    --- PASS: TestDeliveryErrorClassificationTable/invalid_branch (0.00s)
+    --- PASS: TestDeliveryErrorClassificationTable/invalid_baseline (0.00s)
+    --- PASS: TestDeliveryErrorClassificationTable/invalid_repo_ref (0.00s)
+    --- PASS: TestDeliveryErrorClassificationTable/baseline_too_large (0.00s)
+    --- PASS: TestDeliveryErrorClassificationTable/dispatch_rejected_pre-send (0.00s)
+    --- PASS: TestDeliveryErrorClassificationTable/unsupported_provider (0.00s)
+    --- PASS: TestDeliveryErrorClassificationTable/request_build_failure (0.00s)
+    --- PASS: TestDeliveryErrorClassificationTable/provider_refused (0.00s)
+    --- PASS: TestDeliveryErrorClassificationTable/provider_unobservable (0.00s)
+    --- PASS: TestDeliveryErrorClassificationTable/unknown_failure (0.00s)
+PASS
+```
+
+## 三、提交
+
+- `e55ed9ac0` `feat(codedelivery): gitlab OAuth registration, unsupported-provider 400 mapping, container wiring (T24 #54 task 4)`
+- 变更范围：5 files changed, 102 insertions(+), 3 deletions(-)——与计划 Files 清单逐一对应，无越界文件。
+
+## 四、自检发现（模板 Completeness/Quality/Discipline/Testing）
+
+1. **计划行文与现实的两处出入（均如实记录，不阻塞）**：
+   - 计划级验证节称「session 包 `TestDelivery*` 六个测试」，实际 grep + `-run 'TestDelivery'` 实证为 **4 个顶层测试函数**（`workbench_delivery_test.go:97/133/162/187`；分类表含 11 个子测试）。本轮全 PASS，疑为计划作者写作口径差异（或计入后续任务）。未用更宽的 `-run 'Delivery'`（计划差异记录 8 明示其会命中装载全量迁移轨道的 `TestCraftInteractionDecideUnknownDeliveryStays202`，在预存在的 000114 撞号上必挂）。
+   - 计划 Step 2/4 的 `-run 'TestGitLabOAuth'` 模式按未锚定子串匹配**不会命中** `TestGitLabAuthorizeURLCarriesAPIScope`。计划期望两测 ok，故本轮以 `-run 'TestGitLab'`（宽一档、仍不触 `-run 'Delivery'` 禁区）补充取证，两测均 PASS。
+2. **gitlab 交换带 `grant_type` 而 github 不带**：逐字采用计划文本的结果（github 既有 case 无 grant_type，gitlab case 有）。测试断言 `grant_type=authorization_code` PASS，行为与计划一致；未「顺手」给 github 补 grant_type（越界修改）。
+3. **容器接线类型正确性以 `go build ./...` 为证**：`appconnectorrepo.NewInstallationStore(db)` 满足 `ProviderSource`（`GetInstallationByID(ctx, tenantID, installationID)`）由编译通过背书；本轮未新增单测钉容器装配（计划未要求）。
+4. **零迁移/零 schema 变更**遵守：本任务未触任何迁移文件，未用全量迁移轨道。
+5. **测试输出无杂音**：除既有 GIN debug 横幅与 ld warning 外无 warning/noise。
