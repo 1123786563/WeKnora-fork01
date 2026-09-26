@@ -150,6 +150,8 @@ export type {
   PublishedExpertView,
   PublishExpertInput,
 } from './market.ts';
+export { createUserFavoritesApi } from './user-favorites.ts';
+export type { UserFavoritesApi, UserFavorite, UserFavoriteResourceType } from './user-favorites.ts';
 export { createExecutionsApi, executionEventsRequest } from './mobile/executions.ts';
 export { createInteractionsApi } from './mobile/interactions.ts';
 export { createOverviewApi } from './mobile/overview.ts';

@@ -1401,7 +1401,7 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
                     { value: 'bridge', label: t('settings.sandbox.dockerNetworkBridge') },
                     { value: 'none', label: t('settings.sandbox.dockerNetworkNone') },
                   ]}
-                  onChange={(value) => setDocker({ network_mode: String(value) || undefined })} />
+                  onChange={(value) => setDocker({ network_mode: value == null || value === '' ? undefined : String(value) })} />
               </label>
             )}
             {form.backend === 'docker' ? <p className="wk-muted">{t('settings.sandbox.dockerNetworkModeHelp')}</p> : null}
@@ -1421,7 +1421,7 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
                       <label>{t('settings.sandbox.ruleScheme')}
                         <TSelect value={rule.scheme} clearable
                           options={[{ value: '', label: '—' }, { value: 'https', label: 'https' }, { value: 'http', label: 'http' }]}
-                          onChange={(value) => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, scheme: String(value) } : item) }))} />
+                          onChange={(value) => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, scheme: value == null ? '' : String(value) } : item) }))} />
                       </label>
                       <label>{t('settings.sandbox.ruleSni')}<TInput value={rule.sni} placeholder="api.example.com" onChange={(value) => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, sni: String(value) } : item) }))} /></label>
                       <label>{t('settings.sandbox.ruleHost')}<TInput value={rule.host} placeholder="api.example.com" onChange={(value) => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, host: String(value) } : item) }))} /></label>
@@ -1435,7 +1435,7 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
                       <label>{t('settings.sandbox.ruleAudit')}
                         <TSelect value={rule.audit} clearable
                           options={[{ value: '', label: '—' }, { value: 'metadata', label: 'metadata' }, { value: 'full', label: 'full' }, { value: 'none', label: 'none' }]}
-                          onChange={(value) => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, audit: String(value) } : item) }))} />
+                          onChange={(value) => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, audit: value == null ? '' : String(value) } : item) }))} />
                       </label>
                     </div>
                     {!rule.deny ? (

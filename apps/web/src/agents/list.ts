@@ -440,10 +440,10 @@ export function chatNavigationPath(agent: Pick<AgentCardModel, 'id' | 'sourceTen
 //
 // Recents mirror Vue useResourcePins storage byte-for-byte:
 // key `WeKnora_<userId>_[t<tenantId>_]resource_recents`, PinEntry[] {type,id,ts},
-// cap 30 — the same storage the Vue client writes. Favorites in Vue are
-// DB-backed (GET/POST /user/favorites) which the React api-client does not
-// expose yet; until then the agents slice persists them in localStorage under
-// the same per-(user, tenant) key shape (recorded parity gap).
+// cap 30 — the same storage the Vue client writes. Favorites are DB-backed
+// (GET/POST/DELETE /user/favorites) via client.userFavorites
+// (packages/api-client/src/user-favorites.ts); the localStorage helpers below
+// only mirror the last-known set so bare fakes and offline reads still hydrate.
 
 export interface PinEntry { type: 'kb' | 'agent'; id: string; ts: number }
 

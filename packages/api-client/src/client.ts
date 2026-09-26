@@ -17,6 +17,7 @@ import { createConfigurationApi } from './configuration.ts';
 import { createMbtiApi } from './mbti.ts';
 import { createExpertsApi } from './experts.ts';
 import { createSubagentsApi } from './subagents.ts';
+import { createUserFavoritesApi } from './user-favorites.ts';
 import { createMarketApi } from './market.ts';
 import { buildChatStreamRequest, consumeChatStream, consumeStreamResult, createServerSentEventParser, parseChatEvent } from './chat/stream.ts';
 import { createChatApprovalsApi } from './chat/approvals.ts';
@@ -298,6 +299,7 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
   const mbti = createMbtiApi(request);
   const experts = createExpertsApi(request);
   const subagents = createSubagentsApi(request);
+  const userFavorites = createUserFavoritesApi(request);
   const market = createMarketApi(request);
   const chatApprovals = createChatApprovalsApi(request);
   const chatSteer = createChatSteerApi(request);
@@ -426,6 +428,7 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
     mbti,
     experts,
     subagents,
+    userFavorites,
     market,
     chat: {
       approvals: chatApprovals,

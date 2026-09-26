@@ -212,8 +212,17 @@ export function MaterialPage({ client, scopeController, opportunityId, snapshotI
    setMaterialId(receipt.materialId); setSavedBody(receipt.body); syncClaimCounter(receipt.body)
    const url = materialParamUrl(receipt.materialId)
    if (url) window.history.replaceState({}, document.title, url)
-   await reloadView(receipt.materialId)
-   if (!scopeController.isCurrent(requestScope.scope)) return
+   // ocr1-072：写入已成功且回执已验证，只读回读失败不得落入下方未知写入
+   // 分支（「用原编号恢复」对一次已确认成功的写入是误导）。回读包进独立
+   // try/catch，失败仅提示回显暂时不可用。
+   try {
+    await reloadView(receipt.materialId)
+    if (!scopeController.isCurrent(requestScope.scope)) return
+   } catch {
+    if (!scopeController.isCurrent(requestScope.scope)) return
+    setPhase('idle'); setMessage(`草稿已保存（材料编号 ${receipt.materialId}）；内容回显暂时失败，可稍后重新打开。`)
+    return
+   }
    setPhase('idle'); setMessage(`草稿已保存（材料编号 ${receipt.materialId}）`)
   } catch (cause) {
    if (!scopeController.isCurrent(requestScope.scope)) return
@@ -260,8 +269,15 @@ export function MaterialPage({ client, scopeController, opportunityId, snapshotI
    const receipt: MaterialReceipt = await client.career.confirmMaterial(currentAttempt.input as ConfirmMaterialInput, requestScope.signal)
    if (!scopeController.isCurrent(requestScope.scope)) return
    if (receipt.requestId !== currentAttempt.requestId || receipt.materialId !== (currentAttempt.input as ConfirmMaterialInput).materialId || receipt.kind !== 'material_confirmed') throw new TypeError('材料回执与本次请求不匹配')
-   await reloadView(receipt.materialId)
-   if (!scopeController.isCurrent(requestScope.scope)) return
+   // ocr1-072 同款：confirm 写入成功后的回读失败不改变发布结果。
+   try {
+    await reloadView(receipt.materialId)
+    if (!scopeController.isCurrent(requestScope.scope)) return
+   } catch {
+    if (!scopeController.isCurrent(requestScope.scope)) return
+    setPhase('idle'); setMessage(`已发布不可变版本 V${receipt.version ?? ''}；内容回显暂时失败，可稍后重新打开。`)
+    return
+   }
    setPhase('idle'); setMessage(`已发布不可变版本 V${receipt.version ?? ''}`)
   } catch (cause) {
    if (!scopeController.isCurrent(requestScope.scope)) return

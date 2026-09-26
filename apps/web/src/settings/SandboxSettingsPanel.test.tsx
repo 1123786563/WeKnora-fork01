@@ -981,3 +981,53 @@ test('inventory rows render inert without onOpenSession so embeds stay click-saf
   assert.ok(container.querySelector('.wk-sandbox-inventory li strong[title="session-a"]'), 'the static row keeps the raw-id tooltip');
   assert.match(text, new RegExp(t('settings.sandbox.inventoryUntitledSession')));
 });
+
+// ocr1-022 回归：tdesign Select clearable 清空走 handleClear → onChange(null)，
+// 规范化缺失时 String(null)='null' 字面量会写进 docker.network_mode 出网配置。
+test('clearing the docker network_mode select saves undefined, not a "null" literal (ocr1-022)', async () => {
+  const updates: unknown[] = [];
+  const dockerRecord = {
+    id: 'sandbox-5',
+    name: 'Local docker',
+    sandbox_type: 'docker',
+    config: { sandbox_type: 'docker', docker: { image: 'wechatopenai/weknora-sandbox:main' } },
+    created_at: '2030-01-01T00:00:00Z',
+    updated_at: '2030-01-01T00:00:00Z',
+  } as never;
+  const { client } = makeClient(() => okCatalog([]), [dockerRecord]);
+  (client as unknown as { sandboxConfigurations: { update: (id: string, input: unknown) => Promise<unknown> } }).sandboxConfigurations.update = async (_id, input) => {
+    updates.push(input);
+    return {};
+  };
+  const container = await mount(client, { initialData: { items: [dockerRecord], workspaceScriptsDisabled: false } });
+  await openCardMenu(container, 'Local docker');
+  await clickMenuItem(t('common.edit'));
+  const editor = container.querySelector<HTMLElement>('[data-testid="sandbox-editor"]')!;
+  // docker 编辑流步骤为 connection+runtime；跳到 runtime 找网络分区。
+  const runtimeStep = Array.from(editor.querySelectorAll('nav .wk-sandbox-step'))[1] as HTMLButtonElement;
+  await act(async () => runtimeStep.click());
+  const modeLabel = Array.from(editor.querySelectorAll('label')).find((node) => (node.textContent ?? '').includes(t('settings.sandbox.dockerNetworkMode')));
+  assert.ok(modeLabel, 'the docker network mode select renders on the runtime step');
+  const modeTrigger = modeLabel.querySelector('.t-input') as HTMLElement;
+  assert.ok(modeTrigger, 'the network mode select trigger renders');
+  // 先选 none（写入路径），再清空（handleClear 的 null 回调路径）。
+  await click(modeTrigger);
+  const noneOption = Array.from(document.body.querySelectorAll('.t-select-option'))
+    .find((node) => (node.textContent ?? '').trim() === t('settings.sandbox.dockerNetworkNone'));
+  assert.ok(noneOption, 'the none option renders in the popup');
+  await click(noneOption);
+  // tdesign 清除图标 hover 才渲染（Input isShowClearIcon；TPopup hover 同款驱动）。
+  await act(async () => {
+    modeTrigger.dispatchEvent(new dom.window.MouseEvent('mouseenter', { bubbles: false }));
+    modeTrigger.dispatchEvent(new dom.window.MouseEvent('mouseover', { bubbles: true }));
+  });
+  const clearIcon = modeLabel.querySelector('.t-input__suffix-clear');
+  assert.ok(clearIcon, 'hovering the select renders the clear icon');
+  await click(clearIcon);
+  await submitEditor(editor);
+  assert.equal(updates.length, 1, 'save posts once');
+  const docker = (updates[0] as { config: { docker: { network_mode?: string } } }).config.docker;
+  assert.notEqual(docker.network_mode, 'null');
+  assert.notEqual(docker.network_mode, 'undefined');
+  assert.equal(docker.network_mode, undefined, 'clearing the select restores network_mode to unset');
+});

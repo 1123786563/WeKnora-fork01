@@ -140,6 +140,9 @@ const SKILL_DRAWER_SPECS = {
   add: { storageKey: 'setting-drawer:width:skill-catalog-add', defaultWidth: 680, minWidth: 560, maxWidth: 920 },
   install: { storageKey: 'setting-drawer:width:skill-catalog-install', defaultWidth: 560, minWidth: 480, maxWidth: 760 },
   manage: { storageKey: 'setting-drawer:width:skill-catalog-manage', defaultWidth: 680, minWidth: 560, maxWidth: 920 },
+  /* Vue SkillFilesDrawer.vue:64-67 自持宽度：key 'skill-files-drawer:width'，
+     默认 720 / 最小 480 / 上限 1200。 */
+  files: { storageKey: 'skill-files-drawer:width', defaultWidth: 720, minWidth: 480, maxWidth: 1200 },
 } satisfies Record<string, DrawerWidthSpec>;
 
 /** Vue SettingDrawer.vue:162-166 clampWidth. */
@@ -167,16 +170,15 @@ function readStoredDrawerWidth(spec: DrawerWidthSpec): number {
  * left edge, drags clamp to [minWidth, min(maxWidth, viewport)] and persist to
  * the same per-title localStorage keys Vue uses.
  */
-/* S6：抽屉换 tdesign Dialog（portal 到 body，脱离 DrawerShell 子树），宽度
-   改经 context 下发到 dialogClassName/width props（原 [&_.wk-dialog] 后代
-   选择器对 body portal 不成立）。 */
-const SkillDrawerWidthContext = React.createContext<{ width: number; resizing: boolean }>({ width: 680, resizing: false });
-function useSkillDrawerDialog(): { dialogClassName: string; width: string } {
-  const { width, resizing } = React.useContext(SkillDrawerWidthContext);
-  return { dialogClassName: 'wk-skill-drawer' + (resizing ? ' is-resizing' : ''), width: width + 'px' };
-}
+/* S6：抽屉换 tdesign Dialog（portal 到 body，脱离 React 子树），宽度经
+   children render-prop 下发到 dialogClassName/width props。原 context 方案的
+   消费点（渲染 DrawerShell 的组件本身与 CatalogFilesDialog）都在 Provider
+   之外，useContext 恒读默认值 680px，拖拽调宽从未生效（ocr1-023）；同时把
+   实时宽度以 --td-dialog-width 内联到包裹层，settings.td.css 的 resize 手柄
+   left calc 跟随对话框左缘（ocr1-122）。 */
+interface SkillDrawerDialogProps { dialogClassName: string; width: string }
 
-function DrawerShell({ open, spec, children }: { open: boolean; spec: DrawerWidthSpec; children: React.ReactNode }) {
+function DrawerShell({ open, spec, children }: { open: boolean; spec: DrawerWidthSpec; children: (dialog: SkillDrawerDialogProps) => React.ReactNode }) {
   const [width, setWidth] = useState(spec.defaultWidth);
   const [resizing, setResizing] = useState(false);
   const widthRef = useRef(width);
@@ -213,14 +215,13 @@ function DrawerShell({ open, spec, children }: { open: boolean; spec: DrawerWidt
     document.addEventListener('mouseup', onUp);
   }
 
-  return <SkillDrawerWidthContext.Provider value={{ width, resizing }}>
-    <div className="wk-settings-context-contents">
-      {children}
-      {open ? <div className="wk-skill-drawer-handle" role="presentation" onMouseDown={onHandleDown}>
-        <div className={'wk-skill-drawer-handle__bar' + (resizing ? ' is-active' : '')} />
-      </div> : null}
-    </div>
-  </SkillDrawerWidthContext.Provider>;
+  const dialog: SkillDrawerDialogProps = { dialogClassName: 'wk-skill-drawer' + (resizing ? ' is-resizing' : ''), width: width + 'px' };
+  return <div className="wk-settings-context-contents" style={{ '--td-dialog-width': `${width}px` } as React.CSSProperties}>
+    {children(dialog)}
+    {open ? <div className="wk-skill-drawer-handle" role="presentation" onMouseDown={onHandleDown}>
+      <div className={'wk-skill-drawer-handle__bar' + (resizing ? ' is-active' : '')} />
+    </div> : null}
+  </div>;
 }
 
 const INSTALLER_AGENT_ID = 'builtin-skill-installer';
@@ -869,7 +870,6 @@ function AddSkillWizard({ client, open, catalog, configs, installer, t, onClose,
   onToast: (tone: 'success' | 'warning' | 'error', message: string) => void;
   onManage: (record: SandboxConfigRecord, skillId: string, catalogName: string) => void;
 }) {
-  const drawerDialog = useSkillDrawerDialog();
   const [step, setStep] = useState(0);
   const [registeredId, setRegisteredId] = useState('');
   const [source, setSource] = useState('');
@@ -996,7 +996,7 @@ function AddSkillWizard({ client, open, catalog, configs, installer, t, onClose,
   }
 
   return <DrawerShell open={open} spec={SKILL_DRAWER_SPECS.add}>
-  <TDialog footer={false} visible={open} header={<DrawerTitle icon={<TIcon name={SKILL_ICON} size="16px" />} title={t('settings.skills.addSkill')} subtitle={stepDescription} />} {...drawerDialog} onClose={() => onClose(registeredId || undefined)}>
+  {(drawerDialog) => <TDialog footer={false} visible={open} header={<DrawerTitle icon={<TIcon name={SKILL_ICON} size="16px" />} title={t('settings.skills.addSkill')} subtitle={stepDescription} />} {...drawerDialog} onClose={() => onClose(registeredId || undefined)}>
     <nav className="skill-add-steps" aria-label={t('settings.skills.addProgress')}>
       {steps.map((title, index) => {
         const clickable = canJump(index);
@@ -1057,7 +1057,7 @@ function AddSkillWizard({ client, open, catalog, configs, installer, t, onClose,
       {step > 0 ? <TButton type="button" onClick={() => setStep((current) => Math.max(0, current - 1))}>{t('settings.sandbox.back')}</TButton> : null}
       <TButton type="button" loading={primaryLoading} disabled={primaryDisabled} onClick={() => void handlePrimary()}>{primaryText}</TButton>
     </div>
-  </TDialog>
+  </TDialog>}
   </DrawerShell>;
 }
 
@@ -1075,7 +1075,6 @@ function InstallSkillDialog({ client, open, item, configs, preselectConfigId, in
   onToast: (tone: 'success' | 'warning' | 'error', message: string) => void;
   onManage: (record: SandboxConfigRecord, skillId: string, catalogName: string) => void;
 }) {
-  const drawerDialog = useSkillDrawerDialog();
   const [targetIds, setTargetIds] = useState<string[]>([]);
   const [sessionIds, setSessionIds] = useState<string[]>([]);
   const [installing, setInstalling] = useState(false);
@@ -1125,7 +1124,7 @@ function InstallSkillDialog({ client, open, item, configs, preselectConfigId, in
   }
 
   return <DrawerShell open={open} spec={SKILL_DRAWER_SPECS.install}>
-  <TDialog footer={false} visible={open} header={<DrawerTitle icon={<TIcon name={SKILL_ICON} size="16px" />} title={t('settings.skills.installToSandbox')} subtitle={description} />} {...drawerDialog} onClose={onClose}>
+  {(drawerDialog) => <TDialog footer={false} visible={open} header={<DrawerTitle icon={<TIcon name={SKILL_ICON} size="16px" />} title={t('settings.skills.installToSandbox')} subtitle={description} />} {...drawerDialog} onClose={onClose}>
     {error ? <Status tone="error">{error}</Status> : null}
     <SandboxPickList client={client} item={item} configs={configs} mode="remaining" sessionIds={sessionIds} targetIds={targetIds}
       onToggle={(configId, checked) => setTargetIds((current) => (checked ? [...new Set([...current, configId])] : current.filter((id) => id !== configId)))} t={t}
@@ -1140,7 +1139,7 @@ function InstallSkillDialog({ client, open, item, configs, preselectConfigId, in
       <TButton type="button" onClick={onClose}>{t('common.cancel')}</TButton>
       <TButton type="button" loading={installing} disabled={confirmDisabled} onClick={() => void confirm()}>{confirmText}</TButton>
     </div>
-  </TDialog>
+  </TDialog>}
   </DrawerShell>;
 }
 
@@ -1392,7 +1391,6 @@ function ManageSkillDialog({ client, open, target, t, onClose, onChanged, onToas
   onChanged: () => void;
   onToast: (tone: 'success' | 'warning' | 'error', message: string) => void;
 }) {
-  const drawerDialog = useSkillDrawerDialog();
   const [skill, setSkill] = useState<InstalledSkill | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1585,7 +1583,7 @@ function ManageSkillDialog({ client, open, target, t, onClose, onChanged, onToas
 
   const errorLines = installErrorLines(skill?.error);
   return <DrawerShell open={open} spec={SKILL_DRAWER_SPECS.manage}>
-  <TDialog footer={false} visible={open} header={<DrawerTitle icon={<TIcon name={SKILL_ICON} size="16px" />} title={target?.catalogName ?? ''} subtitle={target ? t('settings.skills.manageDrawerDesc', { name: target.record.name }) : undefined} />} {...drawerDialog} onClose={onClose}>
+  {(drawerDialog) => <TDialog footer={false} visible={open} header={<DrawerTitle icon={<TIcon name={SKILL_ICON} size="16px" />} title={target?.catalogName ?? ''} subtitle={target ? t('settings.skills.manageDrawerDesc', { name: target.record.name }) : undefined} />} {...drawerDialog} onClose={onClose}>
     {loading ? <Status>{t('common.loading')}</Status> : null}
     {error ? <Status tone="error">{error}</Status> : null}
     {skill ? uninstallDone ? <div className="skill-manage__done">
@@ -1667,7 +1665,7 @@ function ManageSkillDialog({ client, open, target, t, onClose, onChanged, onToas
         />
       </section> : null}
     </> : !loading && !error ? <Status>{t('common.loading')}</Status> : null}
-  </TDialog>
+  </TDialog>}
   </DrawerShell>;
 }
 
@@ -1693,7 +1691,6 @@ function CatalogFilesDialog({ client, open, target, t, onClose }: {
   t: (key: string, values?: Record<string, string | number>) => string;
   onClose: () => void;
 }) {
-  const drawerDialog = useSkillDrawerDialog();
   const [nodes, setNodes] = useState<ReturnType<typeof buildSkillFileTree>>([]);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [selectedPath, setSelectedPath] = useState('');
@@ -1759,7 +1756,10 @@ function CatalogFilesDialog({ client, open, target, t, onClose }: {
     }
   }
 
-  return <TDialog footer={false} visible={open} header={target?.name ?? ''} onClose={onClose} {...drawerDialog}>
+  /* ocr1-023：CatalogFilesDialog 不在任何 DrawerShell 内（context 恒默认值），
+     改为复用 DrawerShell 自持宽度/手柄（Vue SkillFilesDrawer 自持 720/480/1200）。 */
+  return <DrawerShell open={open} spec={SKILL_DRAWER_SPECS.files}>
+  {(drawerDialog) => <TDialog footer={false} visible={open} header={target?.name ?? ''} onClose={onClose} {...drawerDialog}>
     <p className="wk-muted">{t('settings.sandbox.skillFilesTitle')}</p>
     {/* S6 Tailwind 收编：文件浏览器 utilities → settings.td.css .skill-files-* 家族。 */}
     <div className="skill-files-layout">
@@ -1806,5 +1806,6 @@ function CatalogFilesDialog({ client, open, target, t, onClose }: {
         </div>
       </section>
     </div>
-  </TDialog>;
+  </TDialog>}
+  </DrawerShell>;
 }

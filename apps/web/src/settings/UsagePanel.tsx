@@ -115,11 +115,11 @@ export function UsagePanel({ client, locale = 'zh-CN' }: { client: WeKnoraClient
       <div className="usage-filters">
         <label className="usage-filter">
           {t('settings.usage.rangeFrom')}
-          <input type="date" className="usage-input" value={fromInput} onChange={(value) => setFromInput(String(value))} />
+          <input type="date" className="usage-input" value={fromInput} onChange={(event) => setFromInput(event.target.value)} />
         </label>
         <label className="usage-filter">
           {t('settings.usage.rangeTo')}
-          <input type="date" className="usage-input" value={toInput} onChange={(value) => setToInput(String(value))} />
+          <input type="date" className="usage-input" value={toInput} onChange={(event) => setToInput(event.target.value)} />
         </label>
         <TButton type="button" onClick={applyRange}>{t('settings.usage.apply')}</TButton>
       </div>

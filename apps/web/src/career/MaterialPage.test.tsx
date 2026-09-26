@@ -562,3 +562,23 @@ test('export failures surface revision conflicts, clear on forbidden scope and r
  await act(async () => { click(refused.querySelector<HTMLButtonElement>('[aria-label="下载 DOCX exp-1"]')!); await settle(); await settle() })
  assert.match(refused.querySelector('[aria-label="导出 exp-1 下载状态"]')?.textContent ?? '', /下载授权已失效（导出可能已被撤销），本次下载被拒绝/)
 })
+
+// ocr1-072：写入成功且回执已验证后，只读回读（reloadView→client.career.material）
+// 失败不得落入未知写入分支——「用原请求编号恢复」对一次已确认成功的写入是误导。
+test('a read-back failure after a successful draft save reports saved-with-refresh-failure, not an unknown write', async () => {
+ const sent: unknown[] = []
+ const career: CareerStub = {
+  open: async () => profileView,
+  editMaterial: async (input: { requestId: string }) => { sent.push(input); return editedReceipt(input.requestId) },
+  // 写入成功后的回读持续 500。
+  material: async () => { throw Object.assign(new Error('transient 5xx'), { status: 500 }) },
+ }
+ const { container } = await mountMaterial(career)
+ await fillFirstSection(container, { factKey: '学历' })
+ await act(async () => { click(byLabel(container, 'button', '保存草稿')); await settle(); await settle() })
+ assert.equal(sent.length, 1, 'the edit write fired once')
+ assert.match(container.textContent ?? '', /草稿已保存（材料编号 mat-1）/, 'the save outcome is reported as saved')
+ assert.match(container.textContent ?? '', /内容回显暂时失败/, 'the read-back failure is called out separately')
+ assert.doesNotMatch(container.textContent ?? '', /暂时无法确认材料写入是否完成/, 'must NOT be classified as an unknown write')
+ assert.doesNotMatch(container.textContent ?? '', /原请求编号/, 'no receipt-recovery guidance for an already-confirmed write')
+})

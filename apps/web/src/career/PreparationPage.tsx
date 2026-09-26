@@ -261,14 +261,22 @@ export function PreparationPage({ client, scopeController, applicationId }: { cl
    const next = await client.career.editMaterial({ requestId: current.requestId, materialId: current.materialId, body: current.body, expectedRevision: current.expectedRevision }, requestScope.signal)
    if (!scopeController.isCurrent(requestScope.scope)) return
    if (next.requestId !== current.requestId || next.materialId !== current.materialId) throw new ReceiptMismatchError('材料回执与本次修订不匹配')
-   // Read the stored draft back from the material domain: the receipt above
-   // echoes the write, the material view is the durable truth.
-   const view = await client.career.material(current.materialId, requestScope.signal)
-   if (!scopeController.isCurrent(requestScope.scope)) return
-   if (view.materialId !== current.materialId) throw new ReceiptMismatchError('材料视图与本次修订不匹配')
+   // 写入已成功且回执已验证：关闭编辑会话，随后只读回读（material 视图是
+   // 持久化事实的展示来源）单独兜底——ocr1-075：回读失败不得落回下方共享
+   // catch 的「修订未保存/结果暂时未知」分支，也不得引导用原请求编号恢复
+   // （写入结果已确定，回读按 materialId 查询并不消费请求编号）。
    setReviseBusy(false); setEditing(undefined)
-   setRevised({ materialId: current.materialId, body: view.body })
-   setReviseMessage('修订已保存：材料草稿已更新（仍未确认成版本，可继续修订或到材料区确认）。来源链与锚定投递版本保持不变。')
+   try {
+    const view = await client.career.material(current.materialId, requestScope.signal)
+    if (!scopeController.isCurrent(requestScope.scope)) return
+    if (view.materialId !== current.materialId) throw new ReceiptMismatchError('材料视图与本次修订不匹配')
+    setRevised({ materialId: current.materialId, body: view.body })
+    setReviseMessage('修订已保存：材料草稿已更新（仍未确认成版本，可继续修订或到材料区确认）。来源链与锚定投递版本保持不变。')
+   } catch {
+    if (!scopeController.isCurrent(requestScope.scope)) return
+    setRevised({ materialId: current.materialId, body: next.body })
+    setReviseMessage('修订已保存：材料草稿已更新（仍未确认成版本，可继续修订或到材料区确认）；内容回显暂时失败，可稍后重新打开。')
+   }
    refresh()
   } catch (cause) {
    if (!scopeController.isCurrent(requestScope.scope)) return

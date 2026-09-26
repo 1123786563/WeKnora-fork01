@@ -6,7 +6,8 @@ const page = readFileSync(new URL('./DataSourcesPage.tsx', import.meta.url), 'ut
 
 test('keeps datasource editing in a body-level 640px drawer with a real isolated form', () => {
   assert.match(page, /import \{ createPortal \} from 'react-dom';/);
-  assert.match(page, /<Drawer visible header=\{editorTitle\}/);
+  // footer={false} 于 S5 评审后插入（无页脚的纯表单抽屉），断言随之更新。
+  assert.match(page, /<Drawer visible footer=\{false\} header=\{editorTitle\}/);
   assert.match(page, /size="640px"/);
   assert.match(page, /createPortal\(editorSurface, document\.body\)/);
   assert.match(page, /<form className="wk-wiki-editor wk-ds-4" onSubmit=\{\(event\) => void save\(event\)\}/);

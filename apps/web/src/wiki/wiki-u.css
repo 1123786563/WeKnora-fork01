@@ -308,7 +308,9 @@
 .wk-wiki-27 {
   display: flex;
   min-height: 0;
-  height: 100%;
+  /* ocr1-027：容器 .wiki-main-area 已改纵向 flex（documents.td.css），本类
+     不再用 height:100% 占满——改由 flex:1 1 0% 分配可用高度，后置的分页
+     nav 与版本历史 Card 留在同一可视列内，不被 overflow:hidden 裁掉。 */
   width: 100%;
   flex: 1 1 0%;
   align-items: stretch;

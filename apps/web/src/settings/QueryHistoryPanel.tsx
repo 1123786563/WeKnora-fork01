@@ -482,19 +482,19 @@ export function QueryHistoryPanel({ client, locale = 'zh-CN', role = 'owner' }: 
       <div className="qh-filters">
         <label className="qh-filter">
           {t('settings.queryHistory.filterUser')}
-          <input type="text" className="qh-input qh-input--text" value={userIdInput} onChange={(value) => setUserIdInput(String(value))} data-testid="query-history-user-input" />
+          <input type="text" className="qh-input qh-input--text" value={userIdInput} onChange={(event) => setUserIdInput(event.target.value)} data-testid="query-history-user-input" />
         </label>
         <label className="qh-filter">
           {t('settings.usage.rangeFrom')}
-          <input type="date" className="qh-input" value={fromInput} onChange={(value) => setFromInput(String(value))} />
+          <input type="date" className="qh-input" value={fromInput} onChange={(event) => setFromInput(event.target.value)} />
         </label>
         <label className="qh-filter">
           {t('settings.usage.rangeTo')}
-          <input type="date" className="qh-input" value={toInput} onChange={(value) => setToInput(String(value))} />
+          <input type="date" className="qh-input" value={toInput} onChange={(event) => setToInput(event.target.value)} />
         </label>
         <label className="qh-filter">
           {t('settings.queryHistory.filterFeedback')}
-          <select className="qh-input" value={feedbackInput} onChange={(value) => setFeedbackInput(String(value) as QueryHistoryFeedbackFilter)} data-testid="query-history-feedback-select">
+          <select className="qh-input" value={feedbackInput} onChange={(event) => setFeedbackInput(event.target.value as QueryHistoryFeedbackFilter)} data-testid="query-history-feedback-select">
             <option value="all">{t('settings.queryHistory.feedbackAll')}</option>
             <option value="like">{t('settings.queryHistory.feedbackLike')}</option>
             <option value="dislike">{t('settings.queryHistory.feedbackDislike')}</option>

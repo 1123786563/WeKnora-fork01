@@ -320,3 +320,33 @@ test('preparation styles keep TDesign light surfaces and the brand green confirm
  assert.match(css, /--td-bg-color-container/)
  assert.match(css, /#07c05f/)
 })
+
+// ocr1-075：editMaterial 成功且回执已验证后，材料域只读回读失败不得落回
+// 共享 catch——确定性回执失败被表述为「修订未保存」、不确定失败被引导用
+// 原请求编号恢复，两者对一次已确认成功的写入都是误导（回读按 materialId
+// 查询并不消费请求编号）。
+test('a material read-back failure after a saved revision reports saved-with-refresh-failure, not an unknown write', async () => {
+ const edits: Array<{ requestId: string }> = []
+ const career: CareerStub = {
+  open: async () => ({ revision: 5 }),
+  applicationPreparations: async () => ({ preparations: [draft()] }),
+  generatePreparation: async () => { throw new Error('no generation in this flow') },
+  editMaterial: async (input: { requestId: string; materialId?: string; body: unknown }) => {
+   edits.push(input)
+   return { kind: 'material_edited', requestId: input.requestId, materialId: input.materialId, status: 'draft', pinnedEvidence: { opportunityId: 'opp/1', snapshotId: 'snap-1', snapshotSha256: 'a'.repeat(64), profileRevision: 5 }, body: input.body, reviewRisks: [] }
+  },
+  // 写入成功后的回读持续 500。
+  material: async () => { throw Object.assign(new Error('transient 5xx'), { status: 500 }) },
+ }
+ const container = await mountPreparation(career)
+ const row = container.querySelector<HTMLElement>('[aria-label="准备列表"] > li')
+ assert.ok(row)
+ await act(async () => { click(row.querySelector<HTMLButtonElement>('[aria-label="修订草稿 mat-draft-1"]')!); await settle(); await settle() })
+ await act(async () => { click(byLabel(container, 'button', '保存修订')); await settle(); await settle() })
+ assert.equal(edits.length, 1, 'the edit write fired once')
+ assert.match(container.textContent ?? '', /修订已保存/, 'the revision outcome is reported as saved')
+ assert.match(container.textContent ?? '', /内容回显暂时失败/, 'the read-back failure is called out separately')
+ assert.doesNotMatch(container.textContent ?? '', /修订结果暂时未知/, 'must NOT be classified as an unknown write')
+ assert.doesNotMatch(container.textContent ?? '', /修订未保存/, 'must NOT be classified as a refused write')
+ assert.doesNotMatch(container.textContent ?? '', /原请求编号/, 'no receipt-recovery guidance for an already-confirmed write')
+})
