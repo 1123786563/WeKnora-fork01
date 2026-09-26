@@ -52,19 +52,44 @@ type agentReleaseEnvelope struct {
 }
 
 // BuildAgentReleaseBundle exports the immutable AgentVersion snapshot as a
-// canonical sanitized Release bundle. It is PURE: no disk, no network — the
-// submission flow (Task 4) persists the returned bytes by digest.
+// canonical sanitized Release bundle (T28 behavior, unchanged). Original
+// (non-derived) submissions take this path: the manifest carries no
+// lineage section and the bytes are identical to the pre-#62 exporter.
+// It is PURE: no disk, no network — the submission flow persists the
+// returned bytes by digest.
 //
 // input is the author-supplied Manifest metadata; lock is the
-// server-resolved Dependency Lock (resolution itself is Task 4's job — here
-// every entry is validated immutable, redistributable and licensed). The
-// returned bundle carries the normalized Manifest, the canonically ordered
-// lock, the allow-listed payload, the canonical envelope bytes and their
-// SHA-256 digest.
+// server-resolved Dependency Lock. The returned bundle carries the
+// normalized Manifest, the canonically ordered lock, the allow-listed
+// payload, the canonical envelope bytes and their SHA-256 digest.
 func BuildAgentReleaseBundle(
 	version types.AgentVersionSnapshot,
 	input types.ReleaseMetadata,
 	lock types.DependencyLock,
+) (types.AgentReleaseBundle, error) {
+	return buildAgentReleaseBundle(version, input, lock, nil)
+}
+
+// BuildAgentReleaseBundleWithLineage is the lineage-aware exporter
+// (T32 #62): lineage is embedded in the Manifest — inside the digest
+// boundary, so a fork's bytes differ from both the source release and the
+// lineage-free projection. A nil lineage produces exactly the legacy bytes.
+func BuildAgentReleaseBundleWithLineage(
+	version types.AgentVersionSnapshot,
+	input types.ReleaseMetadata,
+	lock types.DependencyLock,
+	lineage *types.AgentReleaseLineage,
+) (types.AgentReleaseBundle, error) {
+	return buildAgentReleaseBundle(version, input, lock, lineage)
+}
+
+// buildAgentReleaseBundle is the shared canonical exporter; lineage is nil
+// for original content.
+func buildAgentReleaseBundle(
+	version types.AgentVersionSnapshot,
+	input types.ReleaseMetadata,
+	lock types.DependencyLock,
+	lineage *types.AgentReleaseLineage,
 ) (types.AgentReleaseBundle, error) {
 	if version.Agent == nil {
 		return types.AgentReleaseBundle{}, fmt.Errorf("experts: release bundle: the agent snapshot is nil")
@@ -73,6 +98,7 @@ func BuildAgentReleaseBundle(
 	if err != nil {
 		return types.AgentReleaseBundle{}, err
 	}
+	manifest.Lineage = lineage
 	canonicalLock, err := canonicalDependencyLock(lock)
 	if err != nil {
 		return types.AgentReleaseBundle{}, err
@@ -98,6 +124,14 @@ func BuildAgentReleaseBundle(
 		Bytes:    raw,
 		SHA256:   hex.EncodeToString(sum[:]),
 	}, nil
+}
+
+// PortablePayloadOf projects a live agent onto the portable allow-list —
+// the exact projection a Release bundle's payload uses (T32 #62). The fork
+// verdict compares the submitted snapshot's payload against the source
+// Release's publish-pipeline baseline through this function.
+func PortablePayloadOf(agent *types.CustomAgent) (types.AgentReleasePayload, error) {
+	return releasePayload(agent)
 }
 
 // releaseManifest validates and normalizes the author-supplied metadata and

@@ -32,6 +32,10 @@ type AgentMarketplaceService interface {
 	ReviewSubmission(ctx context.Context, tenantID uint64, actorID, submissionID, expectedDigest string, decision types.AgentReleaseReviewDecision) (ReleaseReviewResult, error)
 	ListTenantCatalog(ctx context.Context, tenantID uint64) ([]TenantListingView, error)
 	GetRelease(ctx context.Context, tenantID uint64, releaseID string) (*types.AgentReleaseEntity, error)
+	// RegisterLicense records (or re-records) one deployment license term;
+	// re-registering is how a redistribution flip propagates (T32 #62).
+	RegisterLicense(ctx context.Context, actorID string, input LicenseInput) (types.AgentLicenseEntity, error)
+	ListLicenses(ctx context.Context) ([]types.AgentLicenseEntity, error)
 }
 
 type SubmitReleaseInput struct{ Metadata types.ReleaseMetadata }
@@ -49,4 +53,12 @@ type TenantListingView struct {
 type ReleaseReviewResult struct {
 	Review  *types.AgentReleaseReviewEntity `json:"review"`
 	Release *types.AgentReleaseEntity       `json:"release,omitempty"`
+}
+
+// LicenseInput registers one deployment license term. AllowsRedistribution
+// is the flag the fork re-submission gate consults (T32 #62).
+type LicenseInput struct {
+	ID                   string
+	Name                 string
+	AllowsRedistribution bool
 }
