@@ -133,6 +133,9 @@ func (r *fakeInstallMCPServiceRepo) Delete(_ context.Context, tenantID uint64, i
 type fakeInstallApprovalRepo struct {
 	rows      map[string]*types.MCPToolApproval
 	upsertErr error
+	// onUpsert 在首次 UpsertPolicy 调用时触发一次（OCR 终局 F10 并发串行化
+	// 测试的确认中途挂钩）；nil 时零影响。
+	onUpsert func()
 }
 
 func approvalKey(serviceID, toolName string) string { return serviceID + "|" + toolName }
@@ -162,6 +165,11 @@ func (r *fakeInstallApprovalRepo) IsEnabled(_ context.Context, tenantID uint64, 
 func (r *fakeInstallApprovalRepo) UpsertPolicy(_ context.Context, tenantID uint64, serviceID, toolName string, patch types.MCPToolPolicyPatch) error {
 	if r.upsertErr != nil {
 		return r.upsertErr
+	}
+	if r.onUpsert != nil {
+		hook := r.onUpsert
+		r.onUpsert = nil // 只触发一次
+		hook()
 	}
 	if r.rows == nil {
 		r.rows = map[string]*types.MCPToolApproval{}
@@ -741,6 +749,141 @@ func TestConfirmInstallationHealsCrashedServiceBinding(t *testing.T) {
 	require.True(t, s.approvalRepo.rows[approvalKey(serviceID, "search_my_week_issues")].Enabled)
 	require.False(t, s.approvalRepo.rows[approvalKey(serviceID, "create_issue")].Enabled)
 	_ = healed
+}
+
+// TestConfirmInstallationSetPolicyMidflightUninstallSerializes（OCR 终局
+// F10）：ConfirmInstallation 自 CreateInstallation（行对外可见）至
+// MarkPreviewConsumed 的物化/绑定/逐工具策略写序，必须与
+// UninstallInstallation 的级联删除（物化+策略行+安装行）按 per-installation
+// 锁串行化——交错时确认继续对已删 serviceID 写孤儿策略行、消费预览并返回
+// 成功（假成功：安装行已删）。在确认的首个策略行写入时（onUpsert 钩子）
+// 并发发起卸载：卸载在确认在途期间必须零进展；串行化后卸载级联清掉全部
+// 派生行，终态无孤儿。
+func TestConfirmInstallationSetPolicyMidflightUninstallSerializes(t *testing.T) {
+	const tenantID = uint64(21)
+	s := newInstallTestStack(t, tenantID)
+	ctx := context.Background()
+
+	uninstallDone := make(chan error, 1)
+	progressedDuringConfirm := make(chan bool, 1)
+	s.approvalRepo.onUpsert = func() {
+		instID := s.pluginRepo.installations[0].ID
+		go func() { uninstallDone <- s.svc.UninstallInstallation(ctx, tenantID, instID) }()
+		select {
+		case <-uninstallDone:
+			progressedDuringConfirm <- true // 卸载在确认在途期间完成 → 未串行化
+		case <-time.After(1500 * time.Millisecond):
+			progressedDuringConfirm <- false // 卸载全程被阻塞 → 串行化生效
+		}
+	}
+
+	_, err := s.confirm(t, tenantID, s.previewID)
+	require.NoError(t, err, "the in-flight confirm completes normally (its writes hold the lock)")
+	require.False(t, <-progressedDuringConfirm,
+		"a concurrent uninstall must make no progress while the confirm's policy writes are mid-flight (F10)")
+	require.NoError(t, <-uninstallDone, "the serialized uninstall then completes normally")
+
+	// 终态：卸载级联清掉物化服务+策略行+安装行——确认与卸载交错不落孤儿。
+	require.Empty(t, s.pluginRepo.installations)
+	require.Empty(t, s.mcpRepo.services)
+	require.Empty(t, s.approvalRepo.rows,
+		"no orphan policy rows may survive against the cascade-deleted service (F10)")
+}
+
+// TestConfirmHealConcurrentUninstallSerializes（OCR 终局 F10，
+// completeCrashedConfirm 面）：崩溃窗口补齐（回绑/增量补策略行/消费预览）
+// 与卸载级联是同族写序交错——补齐必须在 per-installation 锁内、且拿锁后
+// 复查安装行仍在（Step 3 读行与拿锁之间的间隙里并发卸载可能已删行）。
+// 在卸载的级联删除中途（onHardDelete 钩子）并发发起补齐：补齐在卸载
+// 在途期间必须零进展；卸载完成后复查失败 fail-closed（404 判决），零孤儿行。
+func TestConfirmHealConcurrentUninstallSerializes(t *testing.T) {
+	const tenantID = uint64(22)
+	s := newInstallTestStack(t, tenantID)
+	ctx := context.Background()
+	_, err := s.confirm(t, tenantID, s.previewID)
+	require.NoError(t, err)
+
+	// 崩溃窗口等价形态（同 TestConfirmInstallationHealsCrashedPolicyRows
+	// 手法）：删 create_issue 策略行 + 新造同内容未消费预览。
+	inst := s.pluginRepo.installations[0]
+	delete(s.approvalRepo.rows, approvalKey(inst.ServiceID, "create_issue"))
+	fresh, err := s.svc.PreviewFromManifest(ctx, tenantID, "admin-1", s.pluginRepo.previews[0].ManifestURL)
+	require.NoError(t, err)
+
+	healDone := make(chan error, 1)
+	progressedDuringUninstall := make(chan bool, 1)
+	s.pluginRepo.onHardDelete = func() {
+		go func() {
+			_, herr := s.confirm(t, tenantID, fresh.PreviewID)
+			healDone <- herr
+		}()
+		select {
+		case <-healDone:
+			progressedDuringUninstall <- true // 补齐在卸载在途期间完成 → 未串行化
+		case <-time.After(1500 * time.Millisecond):
+			progressedDuringUninstall <- false // 补齐全程被阻塞 → 串行化生效
+		}
+	}
+
+	require.NoError(t, s.svc.UninstallInstallation(ctx, tenantID, inst.ID))
+	require.False(t, <-progressedDuringUninstall,
+		"the crashed-confirm heal must make no progress while the uninstall cascade is mid-flight (F10)")
+	require.ErrorIs(t, <-healDone, service.ErrInstallationNotFound,
+		"after the uninstall completes, the heal's in-lock recheck must fail closed on the deleted row — never a false success")
+	require.Empty(t, s.approvalRepo.rows,
+		"no orphan policy rows may survive the heal/uninstall interleave (F10)")
+	require.Empty(t, s.pluginRepo.installations)
+}
+
+// TestUpgradeRejectsTransportTypeChange（OCR 终局 F13）：候选指纹不含
+// transport.type、PluginVersionDiff 无 transport 维度、接受写序（7a/7b）均
+// 不触碰 transport——sse→http-streamable 换协议升级一旦放行，安装行与物化
+// 行永远停留旧协议，运行时与 CheckDrift 按旧协议拨新端点（连接失败/永久
+// 端点不可达漂移），管理员在差异面看不到原因。升级预览与接受必须在
+// identity guard 同级对 transport 变化确定性拒绝（4xx，卸载重装路径），
+// 零写入。
+func TestUpgradeRejectsTransportTypeChange(t *testing.T) {
+	const tenantID = uint64(23)
+	s := newInstallTestStack(t, tenantID)
+	ctx := context.Background()
+	_, err := s.confirm(t, tenantID, s.previewID)
+	require.NoError(t, err)
+	inst := s.pluginRepo.installations[0]
+	require.Equal(t, "http-streamable", inst.TransportType)
+	serviceID := inst.ServiceID
+
+	// 候选：同 pluginID/同端点/同工具声明（指纹与既有安装全等）、新版本、
+	// transport 改 sse——mutableLister 不看 transport 参数，FetchAndVerify
+	// 自洽通过，恰好落在 transport guard 面。
+	s.manifest.Version = "1.3.0"
+	s.manifest.Transport.Type = "sse"
+	doc, err := json.Marshal(s.manifest)
+	require.NoError(t, err)
+	s.replaceManifest(doc)
+
+	_, err = s.svc.PreviewUpgrade(ctx, tenantID, inst.ID)
+	require.ErrorIs(t, err, service.ErrPluginVerifyFailed,
+		"a transport type change is not upgrade-carriable — preview must reject it deterministically (F13)")
+	require.Contains(t, err.Error(), "transport")
+	require.Contains(t, err.Error(), "uninstall and re-install")
+
+	// 接受面同款拒绝（guard 在指纹校验之前——transport 文案比
+	// candidate-changed 更有指导性）；指纹参数故意给陈旧值佐证顺序。
+	_, err = s.svc.AcceptUpgrade(ctx, tenantID, "admin-1", inst.ID, "stale-fingerprint")
+	require.ErrorIs(t, err, service.ErrPluginVerifyFailed,
+		"the accept face shares the transport verdict and reports it ahead of the fingerprint mismatch (F13)")
+	require.Contains(t, err.Error(), "transport")
+
+	// 零写入：安装行/物化行的 transport、版本、端点均保持安装时值。
+	after := s.pluginRepo.installations[0]
+	require.Equal(t, "http-streamable", after.TransportType)
+	require.Equal(t, "1.2.0", after.AcceptedVersion)
+	for _, svcRow := range s.mcpRepo.services {
+		if svcRow.ID == serviceID {
+			require.Equal(t, types.MCPTransportHTTPStreamable, svcRow.TransportType,
+				"the materialized service keeps the installed transport — no partial switch")
+		}
+	}
 }
 
 func TestConfirmInstallationCompensatesOnMaterializeFailure(t *testing.T) {

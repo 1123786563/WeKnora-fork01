@@ -83,7 +83,13 @@ func PluginSnapshotLookup(repo interfaces.PluginRepository) tools.PluginSnapshot
 // is not yet marked detected (the T09 load path re-lists the endpoint live on
 // every load anyway, so this at most doubles a cost already being paid), and
 // never again once the state sticks — CheckDrift/ResolveDrift are the
-// authoritative transitions.
+// authoritative transitions. For rows that STAY healthy the marker is
+// additionally throttled per installation (OCR 终局 F11): a healthy row would
+// otherwise re-run the nonce-exclusive handshake + live ListTools on EVERY
+// member directory load, serially ahead of the load path's own listing — a
+// standing 2× connection/ ListTools amplification against the third-party
+// endpoint and a worst-case +10s on session assembly. One probe per window is
+// plenty for a best-effort marker; the authoritative CheckDrift is untouched.
 func PluginSnapshotLookupWithDriftMarking(
 	repo interfaces.PluginRepository, lister plugins.EndpointLister,
 ) tools.PluginSnapshotProvider {
@@ -98,7 +104,7 @@ func PluginSnapshotLookupWithDriftMarking(
 		if inst == nil {
 			return nil, nil
 		}
-		if inst.DriftState != types.PluginDriftDetected {
+		if inst.DriftState != types.PluginDriftDetected && driftMarkDue(inst.ID) {
 			markDriftBestEffort(ctx, repo, lister, tenantID, inst)
 		}
 		return &tools.PluginRuntimeSnapshot{
@@ -106,6 +112,42 @@ func PluginSnapshotLookupWithDriftMarking(
 			Tools:          inst.ToolsSnapshot,
 		}, nil
 	}
+}
+
+// driftMarkCheckInterval is the per-installation throttle window for the
+// best-effort health probe above (var so tests can compress it). Detected
+// rows skip the probe entirely and are never throttled from anything.
+var driftMarkCheckInterval = 5 * time.Minute
+
+// driftMarkLastChecked records the last probe time per installation
+// (installationID → time.Time). Entries are never evicted — one timestamp per
+// installation that ever loaded a directory, negligible (the
+// upgradeAcceptMutexes precedent). In-process state like the mutex family:
+// multi-replica deployments throttle per replica, which a best-effort marker
+// accommodates.
+var driftMarkLastChecked sync.Map
+
+// driftMarkDue reports whether the healthy-row probe for installationID is
+// outside its throttle window, recording this probe attempt when it is. The
+// snapshot supply itself is NEVER throttled — only the extra live listing is.
+func driftMarkDue(installationID string) bool {
+	now := time.Now()
+	if v, ok := driftMarkLastChecked.Load(installationID); ok {
+		if last, ok := v.(time.Time); ok && now.Sub(last) < driftMarkCheckInterval {
+			return false
+		}
+	}
+	driftMarkLastChecked.Store(installationID, now)
+	return true
+}
+
+// SetDriftMarkCheckIntervalForTest overrides the marker's throttle window and
+// returns the restore func (test-only seam, the SnapshotSSRFWhitelistForTest
+// convention; production callers never touch it).
+func SetDriftMarkCheckIntervalForTest(d time.Duration) func() {
+	prev := driftMarkCheckInterval
+	driftMarkCheckInterval = d
+	return func() { driftMarkCheckInterval = prev }
 }
 
 // markDriftBestEffort runs the T17 runtime-side detection for one
@@ -511,6 +553,35 @@ func (s *pluginService) ConfirmInstallation(
 		return nil, ErrInstallationPersistFailed
 	}
 
+	// OCR 终局 F10: serialize every post-create write against
+	// uninstall/accept/state flips of the SAME installation. The row is
+	// visible to UninstallInstallation the moment CreateInstallation
+	// commits; without the per-installation mutex a concurrent uninstall's
+	// cascade (materialized service + policy rows + the installation row)
+	// interleaves with this flow's materialize/bind/policy/consume writes —
+	// on PG an FK violation forces the compensation path (the admin sees a
+	// spurious 500), on production SQLite (foreign_keys off) the rows land
+	// as permanent orphans, and a mid-policy uninstall lets the confirm
+	// consume the preview and return success against a deleted row. Same
+	// lock family as UninstallInstallation/AcceptUpgrade/ResolveDrift/
+	// CheckDrift/SetInstallationState; it does NOT span the Step-4 remote
+	// re-verification (keep the critical section to the write sequence).
+	unlockConfirm := lockUpgradeAccept(installation.ID)
+	defer unlockConfirm()
+
+	// In-lock recheck: the window between CreateInstallation's commit and
+	// this lock is enough for a concurrent uninstall to have deleted the row
+	// — nothing left to materialize onto. Fail closed instead of writing an
+	// orphan service + policy rows against a dead installation.
+	if current, err := s.pluginRepo.GetInstallation(ctx, tenantID, installation.ID); err != nil {
+		logger.GetLogger(ctx).Errorf("failed to recheck plugin installation %s after locking: %v", installation.ID, err)
+		return nil, ErrInstallationPersistFailed
+	} else if current == nil {
+		logger.GetLogger(ctx).Infof(
+			"plugin installation %s was uninstalled concurrently during confirm; aborting before materialization", installation.ID)
+		return nil, ErrInstallationNotFound
+	}
+
 	// Step 6: materialize the MCP service (reuses CreateMCPService's URL
 	// validation and default config) and bind it back.
 	endpoint := preview.EndpointURL
@@ -605,6 +676,26 @@ func (s *pluginService) completeCrashedConfirm(
 		return fmt.Errorf("%w: %q is already at version %s; use the upgrade path",
 			ErrPluginAlreadyInstalled, preview.PluginID, inst.AcceptedVersion)
 	}
+
+	// OCR 终局 F10: the heal's writes (rebind / incremental policy rows /
+	// preview consume) race the same uninstall cascade the confirm path
+	// serializes against — same per-installation lock. The in-lock recheck
+	// closes the gap between the caller's Step-3 read and this lock: a row
+	// deleted by a concurrent uninstall in that window must fail closed, not
+	// write orphan policy rows against the cascade-deleted service.
+	defer lockUpgradeAccept(inst.ID)()
+	current, err := s.pluginRepo.GetInstallation(ctx, tenantID, inst.ID)
+	if err != nil {
+		logger.GetLogger(ctx).Errorf(
+			"confirm heal: failed to recheck installation %s after locking: %v", inst.ID, err)
+		return nil, ErrInstallationPersistFailed
+	}
+	if current == nil {
+		logger.GetLogger(ctx).Infof(
+			"confirm heal: installation %s was uninstalled concurrently; failing closed", inst.ID)
+		return nil, ErrInstallationNotFound
+	}
+	inst = current
 
 	// Anchor heal: the crash between CreateMCPService and the service_id bind
 	// leaves the materialized row orphaned-but-findable.
@@ -1266,6 +1357,21 @@ func (s *pluginService) PreviewUpgrade(
 			ErrPluginVerifyFailed, result.Manifest.PluginID, inst.PluginID)
 	}
 
+	// OCR 终局 F13: a transport TYPE change is not upgrade-carriable. The
+	// identity fingerprint and this diff carry no transport dimension and
+	// neither accept write (7a/7b) persists one, so accepting an sse ↔
+	// http-streamable switch would leave the installation row (and every
+	// dialer keyed off it — the runtime lister, CheckDrift) on the OLD
+	// protocol against the NEW endpoint: connection failures / a permanent
+	// endpoint-unreachable drift whose cause the admin cannot see in the
+	// diff. Deterministic 4xx at the preview face; uninstall + re-install
+	// is the path. (The value is the manifest-validated short enum, not
+	// free text — safe to echo.)
+	if result.Manifest.Transport.Type != inst.TransportType {
+		return nil, fmt.Errorf("%w: candidate transport %q differs from the installed %q; uninstall and re-install instead",
+			ErrPluginVerifyFailed, result.Manifest.Transport.Type, inst.TransportType)
+	}
+
 	// OCR R1 F45: the candidate endpoint enters the diff served to the admin
 	// (and, on the accept side, endpoint_url varchar(512) + the materialized
 	// service URL). ValidateManifest checks scheme/host but not length —
@@ -1344,15 +1450,7 @@ func (s *pluginService) AcceptUpgrade(
 		return nil, ErrInstallationNotFound
 	}
 
-	// Step 2: capability seam (production always injects the gorm repository).
-	writer, ok := s.pluginRepo.(installationUpgradeWriter)
-	if !ok {
-		logger.GetLogger(ctx).Errorf(
-			"plugin upgrade accept: repository %T does not implement installationUpgradeWriter", s.pluginRepo)
-		return nil, ErrUpgradeWriterNotWired
-	}
-
-	// Step 3: re-fetch and re-verify the candidate from the long-lived
+	// Step 2: re-fetch and re-verify the candidate from the long-lived
 	// manifest source — identical classification to PreviewUpgrade.
 	result, err := plugins.FetchAndVerify(ctx, inst.ManifestURL, s.lister)
 	if err != nil {
@@ -1365,12 +1463,23 @@ func (s *pluginService) AcceptUpgrade(
 		return nil, fmt.Errorf("%w: %v", ErrPluginVerifyFailed, err)
 	}
 
-	// Step 4: identity guard (T14-OCR1-F1 mirror) — accepting another
+	// Step 3: identity guard (T14-OCR1-F1 mirror) — accepting another
 	// plugin's snapshot into this installation row would silently bypass the
 	// (tenant_id, plugin_id) uniqueness governance.
 	if result.Manifest.PluginID != inst.PluginID {
 		return nil, fmt.Errorf("%w: manifest now declares plugin %q, not the installed %q; uninstall and re-install instead",
 			ErrPluginVerifyFailed, result.Manifest.PluginID, inst.PluginID)
+	}
+
+	// OCR 终局 F13: transport type changes are not upgrade-carriable (the
+	// fingerprint has no transport dimension and no accept write persists
+	// one — see PreviewUpgrade's guard for the full rationale). Checked
+	// BEFORE the fingerprint guard: when both mismatch, the transport
+	// verdict is the actionable one (uninstall + re-install), while
+	// candidate-changed would misleadingly suggest a fresh preview suffices.
+	if result.Manifest.Transport.Type != inst.TransportType {
+		return nil, fmt.Errorf("%w: candidate transport %q differs from the installed %q; uninstall and re-install instead",
+			ErrPluginVerifyFailed, result.Manifest.Transport.Type, inst.TransportType)
 	}
 
 	// Step 5: fingerprint guard — the admin accepted THIS fingerprint; a
@@ -1389,6 +1498,17 @@ func (s *pluginService) AcceptUpgrade(
 	// oversized value.
 	if err := validatePluginURLLength("plugin transport endpoint", result.Manifest.Transport.Endpoint); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrPluginVerifyFailed, err)
+	}
+
+	// Capability seam (production always injects the gorm repository). Runs
+	// AFTER the read-only guards (identity/transport/fingerprint/length):
+	// those verdicts need no write capability, and a rejected candidate on an
+	// unwired stack should surface the content verdict, not the wiring fault.
+	writer, ok := s.pluginRepo.(installationUpgradeWriter)
+	if !ok {
+		logger.GetLogger(ctx).Errorf(
+			"plugin upgrade accept: repository %T does not implement installationUpgradeWriter", s.pluginRepo)
+		return nil, ErrUpgradeWriterNotWired
 	}
 
 	candidateVersion := result.Manifest.Version

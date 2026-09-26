@@ -746,3 +746,68 @@ func TestResolveDriftRejectsUnhygienicLiveDirectory(t *testing.T) {
 // upgrade_accept_test.go / install_service_test.go 同包提供）。
 var _ = upgradeV1SearchSchema
 var _ = time.Now
+
+// TestDriftMarkerThrottledPerInstallation（OCR 终局 F11）：健康安装
+// （drift_state=none）的 best-effort 漂移标记必须按 per-installation 时间门
+// 节流——标记条件只排除 detected，健康行每次成员目录加载都同步执行一次
+// 全新 nonce 排他客户端握手 + live ListTools（10s 上限），对每个健康插件的
+// 第三方端点连接数与 ListTools 调用量永久翻倍，且标记在
+// loadPluginDirectory 自身 live 加载之前串行执行、最坏为会话组装加 10s
+// 延迟。节流后：间隔内重复目录加载零新增 live 拨号（快照照常供给、成员
+// 目录零阻塞）；跨间隔恢复一次检查；健康路径零写。
+func TestDriftMarkerThrottledPerInstallation(t *testing.T) {
+	const tenantID = uint64(31)
+	// 轻量栈：手工安装行（http-streamable、快照 [a]、state=none）。
+	inner := &installPreviewRepo{}
+	mcpRepo := &upgradeAcceptMCPRepo{fakeInstallMCPServiceRepo: &fakeInstallMCPServiceRepo{}}
+	approvalRepo := &fakeInstallApprovalRepo{}
+	inner.mcpRepo = mcpRepo.fakeInstallMCPServiceRepo
+	inner.approvalRepo = approvalRepo
+	repo := &driftRepo{upgradeAcceptRepo: &upgradeAcceptRepo{
+		installPreviewRepo: inner, approvalRows: approvalRepo}}
+	inner.installations = []*types.PluginInstallation{{
+		ID: "inst-f11", TenantID: tenantID, PluginID: "com.example.f11",
+		ServiceID: "svc-f11", TransportType: "http-streamable",
+		EndpointURL: "http://127.0.0.1:1/mcp",
+		ToolsSnapshot: []types.PluginToolSnapshot{{
+			Name: "a", Description: "tool a", ReadOnly: true,
+			InputSchemaDigest: plugins.ToolSchemaDigest([]byte(driftSchemaA)),
+		}},
+		DriftState: types.PluginDriftNone,
+	}}
+
+	// live 目录与快照一致（健康形态）；计数 lister 观察健康检查次数。
+	liveCalls := 0
+	live := []*types.MCPTool{{Name: "a", Description: "tool a", InputSchema: json.RawMessage(driftSchemaA)}}
+	lister := func(context.Context, string, string) ([]*types.MCPTool, error) {
+		liveCalls++
+		return live, nil
+	}
+	guard := service.PluginSnapshotLookupWithDriftMarking(repo, lister)
+	ctx := context.Background()
+
+	// 压缩节流窗口（生产 driftMarkCheckInterval=5min）。
+	restore := service.SetDriftMarkCheckIntervalForTest(60 * time.Millisecond)
+	t.Cleanup(restore)
+
+	snap, err := guard(ctx, tenantID, "svc-f11")
+	require.NoError(t, err)
+	require.NotNil(t, snap, "the snapshot supply is never throttled")
+	require.Equal(t, 1, liveCalls, "the first directory load runs one health check")
+
+	snap, err = guard(ctx, tenantID, "svc-f11")
+	require.NoError(t, err)
+	require.NotNil(t, snap)
+	require.Equal(t, 1, liveCalls,
+		"a repeat directory load inside the window must not dial the endpoint again (F11: healthy plugins doubled their handshakes+ListTools on every load)")
+
+	time.Sleep(70 * time.Millisecond)
+	snap, err = guard(ctx, tenantID, "svc-f11")
+	require.NoError(t, err)
+	require.NotNil(t, snap)
+	require.Equal(t, 2, liveCalls, "one health check per window boundary")
+
+	// 健康路径零写：无漂移不落 detected。
+	require.Empty(t, repo.driftWrites)
+	require.Empty(t, repo.conditionalWrites)
+}
