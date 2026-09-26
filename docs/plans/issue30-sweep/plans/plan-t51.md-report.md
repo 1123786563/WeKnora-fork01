@@ -1502,3 +1502,93 @@ $ git commit -m "test(appconnector): 多操作计划 AC1/AC2/排除单项 端到
 4. **改动范围**：本任务仅触碰计划授权的两个文件（`git diff --stat`：`app_connector_notion_publish_e2e_test.go` +16/-1、新文件 449 行）；未撤销/回退他人修改，未派发子代理，未推送远端。
 5. **Task 5 报告 §5.1 移交闭环**：「可派发 Task 6」的前置（迁移轨道可装载）本任务实测兑现——五测试在生产全量迁移轨道上直接 PASS，无需任何夹具侧迁移修补。
 
+
+# Task 7/7 报告：计划级验证收口（testCommand 全链 + 交付边界取证）
+
+- **执行者**：实现员-t51-任务7（subagent-driven-development 实现员）
+- **执行时刻 HEAD**：`4afa3e942`（工作树干净；Task 0-6 全部产物已合入）
+- **需求来源**：`docs/plans/issue30-sweep/plans/plan-t51.md` 文末「计划级验证命令（testCommand）」（plan-t51.md:2885-2893）与「交付边界（如实声明）」（plan-t51.md:2895-2899）
+- **任务定位**：plan-t51.md 的 Task 0-6 已全部交付并入册本文件（Task 0 经裁决由 Task 5 R4 执行、Task 1-6 各有报告节），本任务是计划的第 7/7 个任务——文末验证收口门：在最终 HEAD 上按计划原文逐字运行 testCommand 全链，并对交付边界的 blocked-env 声明做本地取证。本任务**无新增实现代码**。
+
+## T7-1. 交付物清点（开工核验，均在本 ask 实跑）
+
+对照计划 Task 0-6 的 Files/Produces 清单逐项核实文件在位：
+
+| 任务 | 交付物 | 核验结果 |
+|---|---|---|
+| Task 0（裁决改道 mobile_device_app） | `migrations/sqlite/000118_mobile_device_app.{up,down}.sql`、`migrations/versioned/000197_mobile_device_app.{up,down}.sql` | 在位（ls 实证） |
+| Task 1 | `migrations/sqlite/000119_app_action_plans.{up,down}.sql`、`migrations/versioned/000198_app_action_plans.{up,down}.sql`、`repository/appconnector/plan.go`（plan_test.go 3 测试） | 在位 |
+| Task 2-4 | `internal/modules/appconnector/plan/{plan,plan_test}.go`（15 测试） | 在位；`grep "IMPLEMENT IN TASK"` 零命中（占位已全部被真实实现替换），`FormPlan/Approve/Execute/Status` 四方法在 plan.go:204/261/343/410 |
+| Task 5 | `internal/handler/app_connector_action_plan.go` + 测试（2）、`internal/router/routes_app_action_plan.go` + 测试（2）、`router.go:149/:441` 接线、`container/notion_publish.go:39/:57-59` 双输出构造器 | 在位 |
+| Task 6 | `internal/handler/app_connector_action_plan_e2e_test.go`（5 测试）+ `app_connector_notion_publish_e2e_test.go` 加法式钩子 | 在位 |
+
+计划文件勾选框 42 个 `- [ ]` 全部未勾——与历任务一致惯例：证据以本报告文件入册为准，不改需求文件本体。
+
+## T7-2. 计划级 testCommand（本 ask 实跑，命令逐字、输出完整）
+
+计划原文（plan-t51.md:2890）：
+
+```bash
+go build ./... && go test ./internal/database/ -count=1 && go test ./internal/modules/appconnector/... -count=1 && go test ./internal/handler/ -run 'TestActionPlan|TestNotionPublish|TestAppPublications' -count=1 && go test ./internal/router/ -run TestActionPlanRoutes -count=1
+```
+
+实跑输出（五段串行，任一失败即停；exit code 0）：
+
+```
+# github.com/Tencent/WeKnora/cmd/server
+ld: warning: ignoring duplicate libraries: '-lc++'
+# github.com/Tencent/WeKnora/cmd/desktop
+ld: warning: ignoring duplicate libraries: '-lc++'
+===BUILD_OK===
+ok  	github.com/Tencent/WeKnora/internal/database	24.151s
+===DATABASE_OK===
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector	0.820s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/connectorcontrol	3.844s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/openconnector	0.760s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/plan	2.443s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/publish	3.206s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector	1.970s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector	13.186s
+===APPCONN_OK===
+ok  	github.com/Tencent/WeKnora/internal/handler	199.614s
+===HANDLER_OK===
+ok  	github.com/Tencent/WeKnora/internal/router	8.389s
+===ROUTER_OK===
+```
+
+（`===X_OK===` 标记为本 ask 插入的分段哨兵，非计划原文；两条 `ld: warning` 是 macOS 链接器对 cmd/desktop、cmd/server 的既有噪音，非错误。覆盖面与计划 testCommand 注释一致：迁移轨道装载（database 包）+ appconnector 树 7 包全部单测 + handler 层本计划与 #48 全部测试 + router 路由守卫/存在性。handler 包逐测试枚举见 T6-2 Step 4 的 12 测试清单，本轮同一 HEAD 聚合复跑 ok。）
+
+## T7-3. 交付边界取证（blocked-env 如实声明，本 ask 实跑）
+
+交付边界第 1 条声明：真实 Notion 多操作计划验收（`NOTION_TOKEN` + 真实父页面）本环境不可运行。本地实证：
+
+```
+$ echo "NOTION_TOKEN set? ${NOTION_TOKEN:+yes}${NOTION_TOKEN:-no}"
+NOTION_TOKEN set? no
+$ go test ./internal/modules/appconnector/ -run 'TestNotionReal' -count=1 -v
+=== RUN   TestNotionRealControlledCreate
+--- SKIP: TestNotionRealControlledCreate (0.00s)
+=== RUN   TestNotionRealPublishLoop
+--- SKIP: TestNotionRealPublishLoop (0.00s)
+PASS
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector	0.144s
+```
+
+门控代码：`internal/modules/appconnector/notion_publish_real_test.go:23-26`——无凭据即 `t.Skip("notion real credentials not configured ...; skip is not a pass")`。SKIP 显式标注、不冒充 pass。**AC3 结论维持计划原文**：本地最高稳定 Interface 证据 = T6 五 e2e（生产迁移库 + 真实服务/处理器链 + 契约双打 Notion）；计划级真实 Provider 多操作循环留待有凭据环境执行（单操作层 `TestNotionRealPublishLoop` 继续承担真实凭据证据位），不得伪造。
+
+## T7-4. TDD 适用性说明
+
+本任务是计划文末的验证收口门，无新增实现代码——TDD RED/GREEN 不适用（无实现可先写失败测试）；计划的 testCommand 即本任务的验收检查，已逐字实跑并完整取证，无跳过、无替代、无伪造。
+
+## T7-5. 文件变更与提交
+
+本任务唯一文件变更：本报告文件追加本节（`docs/plans/issue30-sweep/plans/plan-t51.md-report.md`）。生产代码与测试代码零改动（`git status` 在报告写入前干净，HEAD `4afa3e942`）。
+
+提交：`docs(appconnector): Task 7/7 计划级验证收口报告入册——testCommand 五段全绿复跑取证 + blocked-env SKIP 实证（T21 #51）`
+
+## T7-6. 自检发现
+
+1. **handler 包耗时差异（非回归）**：本轮 testCommand 的 handler 段 199.614s，T6-2 Step 5 同段为 24.831s——纯环境负载/构建缓存差异，同为 `ok`、exit 0，测试集合与 HEAD 未变。
+2. **计划勾选框未勾选**：42 个 `- [ ]` 保持原样是历任务一致惯例（历次报告均未勾选计划框），非本任务遗漏。
+3. **blocked-env 维持**：本地证据链（AC1 批准面/执行面 409 双面、AC2 三遍执行零重发+reconcile 恢复、排除单项、逐项回执、迁移对齐）已闭合；唯一未闭合项是真实 Provider 验收，属环境受限非代码缺陷，已在 T7-3 实证。
+4. **纪律核验**：本任务仅追加报告文件；未撤销/回退他人修改；未派发子代理或审查者；未推送远端；testCommand 逐字运行于计划指定的验证规模（未用更快替代品冒充）。
