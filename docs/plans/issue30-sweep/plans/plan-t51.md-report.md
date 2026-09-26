@@ -422,3 +422,74 @@ $ grep -n "000114_public_agent_marketplace" internal/database/migration.go
   （repository/appconnector/plan.go + plan_test.go、plan/plan_test.go、plan-t51.md-ledger.md 新建）
 ```
 提交后 `git status --short` 干净。
+
+---
+
+# 修复轮 2 报告（findings 与修复轮 1 逐字相同——F1 已修复在案，本轮复跑取证）
+
+- **执行者**：实现员-t51-任务3（resumed with findings，修复轮 2/5）
+- **提交**：本修复轮零代码改动（无需新修复）；证据复核提交见下方
+- **状态**：DONE（F1 已按修复轮 1 的主控裁决修复并提交在案；本轮实核修复在 HEAD、全部测试复跑绿）
+
+## 本轮 findings 判定：与修复轮 1 逐字重复，非新发现
+
+本轮两个 findings 及待核实项列表与修复轮 1/5 的 ask **逐字相同**。决定性证据是行号：findings 仍引用 `repository/appconnector/plan.go:117-122` 的 CAS「允许 state IN {awaiting,authorized}」——而该位置在修复轮 1（commit `1c6779c7c`）已改为钉住形态（现 `:125-127`）。本轮实核 HEAD 实码：
+
+```
+$ sed -n '112,132p' internal/modules/appconnector/repository/appconnector/plan.go
+// The exclusion-set freeze (排除集首次批准后冻结) is pinned INSIDE the
+// CAS: a row already authorized can only be re-approved with the SAME
+// recorded excluded_json. ...
+	Where("tenant_id = ? AND id = ? AND digest = ? AND (state = ? OR excluded_json = ?)",
+		tenantID, planID, digest, PlanStateAwaitingApproval, excludedJSON).
+```
+
+findings 描述的 TOCTOU 窗口（CAS 不钉 excluded_json、后写者覆写）在 HEAD 已不存在。依据修复轮 1 裁决（ledger `plan-t51.md-ledger.md`：F1 授权越界下沉至 store CAS），F1 无需也不能重复修复；重复改动只会引入回归风险。
+
+## F1 修复在 HEAD 的复跑证据（全部本 ask 实跑）
+
+```
+$ go test ./internal/modules/appconnector/repository/appconnector/ -run TestPlanApprove -count=1 -race -v
+--- PASS: TestPlanApproveBindsDigestAndExclusions (0.01s)      ← 恢复路径幂等重批不受钉住影响
+--- PASS: TestPlanApproveCASPinsExclusionSetOnReapproval (0.00s) ← F1 钉住主测试
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector	4.256s
+
+$ go test ./internal/modules/appconnector/plan/ -run TestPlanApproveConcurrent -count=1 -race -v
+--- PASS: TestPlanApproveConcurrentDistinctExclusionsSingleWinner (2.06s) ← 并发不变量 20 轮
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/plan	6.993s
+
+$ go test ./internal/modules/appconnector/plan/ -count=1 -v   → 9 个 --- PASS（8 原 + 1 并发）
+$ go test ./internal/modules/appconnector/plan/ -count=1
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/plan	5.755s
+
+$ go test ./internal/modules/appconnector/... -count=1        → 7 包全 ok
+（appconnector 0.214s | connectorcontrol 3.829s | openconnector 0.244s | plan 2.623s
+  | publish 2.504s | repository/appconnector 0.507s | service/appconnector 4.989s）
+
+$ go build ./...                                              → exit 0
+```
+
+## 待核实项逐条复核（与本轮可验证范围）
+
+1. **上轮 RED/GREEN/回归为报告声称**——本 ask 复跑：plan 包 9/9 `--- PASS`、7 包回归 ok、build exit 0（上方输出），与报告声称一致 ✓
+2. **审批谓词归 Task 5 wire 层**——本 diff 无法验证，维持声明。
+3. **排除项执行侧保证 + AC1 执行面腿归 Task 4**——本 diff 无法验证，维持声明。
+4. **blocked-env（NOTION_TOKEN 门控）**——本环境不可运行，维持声明，零伪造证据。
+5. **`TestPlanApproveRecoveryExclusionFrozen` 归 Task 4 Step 1**——本 diff 无法验证，维持声明。注：同 digest 幂等重批的 store/service 两层行为已被 `TestPlanApproveBindsDigestAndExclusions:105`（store 层，钉住后仍 PASS）与修复轮 1 service 层测试覆盖其可验证部分，完整闭环仍待 Task 4。
+
+## F2（Task 0 未执行）本轮复核：现状未变，仍待编排方收口
+
+```
+$ ls migrations/sqlite/ | grep -cE "^000114_"  → 4（mobile_device_app × marketplace 双占仍在）
+$ grep -n "sqliteAdoptionFKRelaxationMigrationVersion = " internal/database/migration.go
+33:const sqliteAdoptionFKRelaxationMigrationVersion = 114
+```
+
+按修复轮 1 裁决执行要求 5 与审查定性（跨任务协调项，非 Task 3 缺陷），本修复轮不动 migrations/**；**需编排方授权执行者完成 Task 0**（118/197 空闲，可按计划原文执行），否则 Task 6 的 AC3 全量迁移 e2e 不可运行。
+
+## 提交清单（修复轮 2）
+
+零代码改动；报告追加单独入册（见 git log）。HEAD 仍为：
+```
+1c6779c7c fix(appconnector): pin exclusion-set freeze into ApprovePlan CAS, closing concurrent TOCTOU (ruling via escalation)
+```
