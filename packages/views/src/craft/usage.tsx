@@ -185,7 +185,7 @@ export interface CraftBudgetPauseNoticeProps {
 }
 
 /** Budget state is actionable without disclosing Credits, balances or keys. */
-export function CraftBudgetPauseNotice({ pause, canExtend, onRequestExtension, strings = CRAFT_USAGE_STRINGS_ZH }: CraftBudgetPauseNoticeProps) {
+export function CraftBudgetPauseNotice({ pause, canExtend, onRequestExtension, strings = CRAFT_USAGE_STRINGS_ZH }: Omit<CraftBudgetPauseNoticeProps, 'strings'> & { strings?: Pick<CraftUsageStrings, 'pauseTitle' | 'pauseCanExtend' | 'pauseContactOwner' | 'pauseRequestExtension'> }) {
   return (
     <aside role="status" data-testid="craft-budget-pause">
       <strong>{strings.pauseTitle}</strong>

@@ -529,7 +529,10 @@ func (g *CraftModelGateway) Forward(c *gin.Context) {
 			appFail(c, http.StatusBadGateway, "ACTIVITY_UNRESOLVED", "the activity outcome could not be recorded")
 			return
 		}
-		appFail(c, http.StatusBadGateway, "UPSTREAM_ERROR", forwardErr.Error())
+		// DefinitelyNotStarted resolved above — a definitive clean failure.
+		// UPSTREAM_ERROR (not ACTIVITY_UNRESOLVED) keeps the adapter from
+		// parking an id whose retry is provably safe.
+		appFail(c, http.StatusBadGateway, "UPSTREAM_ERROR", "the activity never started before the initiation deadline")
 		return
 	}
 	if initiationExpired {
@@ -563,20 +566,30 @@ func (g *CraftModelGateway) Forward(c *gin.Context) {
 		return
 	}
 	if resp.Body == nil {
-		g.recordCall(c, payload, callID, attemptID, model, nil)
-		resolveErr := attempt.Resolve(c.Request.Context(), service.CraftChargeStartUnknown)
-		if resolveErr != nil {
+		// Headers returned => the physical call started: resolve Started
+		// (deterministic) instead of parking the Run as unknown.
+		if resolveErr := attempt.Resolve(c.Request.Context(), service.CraftChargeStartStarted); resolveErr != nil {
 			logger.ErrorWithFields(c.Request.Context(), resolveErr, map[string]any{
 				"craft_run_id": payload.RunID, "craft_call_id": callID, "craft_attempt_id": attemptID,
 			})
 		}
-		appFail(c, http.StatusBadGateway, "ACTIVITY_UNRESOLVED", "the upstream response body is missing and the activity outcome is unknown")
+		g.recordCall(c, payload, callID, attemptID, model, nil)
+		appFail(c, http.StatusBadGateway, "UPSTREAM_ERROR", "the upstream response body is missing; the activity started and failed")
 		return
 	}
 	respBody, readErr := io.ReadAll(io.LimitReader(resp.Body, craftMaxForwardBody+1))
 	closeErr := resp.Body.Close()
 	if readErr != nil || len(respBody) == 0 || len(respBody) > craftMaxForwardBody || closeErr != nil {
-		g.recordCall(c, payload, callID, attemptID, model, nil)
+		// resp != nil here means the response HEADERS returned: the physical
+		// call factually started (and is recorded in the O01 ledger below),
+		// so the durable outcome is Started, not Unknown — an Unknown here
+		// would park the adapter id and exclude the Run from lease recovery.
+		if resolveErr := attempt.Resolve(c.Request.Context(), service.CraftChargeStartStarted); resolveErr != nil {
+			logger.ErrorWithFields(c.Request.Context(), resolveErr, map[string]any{
+				"craft_run_id": payload.RunID, "craft_call_id": callID, "craft_attempt_id": attemptID,
+			})
+		}
+		g.recordCall(c, payload, callID, attemptID, model, craftParseUsage(respBody))
 		failure := errors.Join(readErr, closeErr)
 		if len(respBody) == 0 && readErr == nil {
 			failure = errors.Join(failure, errors.New("upstream response body is empty"))
@@ -596,7 +609,7 @@ func (g *CraftModelGateway) Forward(c *gin.Context) {
 		logger.ErrorWithFields(c.Request.Context(), failure, map[string]any{
 			"craft_run_id": payload.RunID, "craft_call_id": callID, "craft_attempt_id": attemptID,
 		})
-		appFail(c, http.StatusBadGateway, "ACTIVITY_UNRESOLVED", "the upstream response could not be read and the activity outcome is unknown")
+		appFail(c, http.StatusBadGateway, "UPSTREAM_ERROR", "the upstream response could not be read; the activity started and failed")
 		return
 	}
 	if err := attempt.Resolve(c.Request.Context(), service.CraftChargeStartStarted); err != nil {

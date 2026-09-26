@@ -394,10 +394,20 @@ func (s *CraftBudgetService) prepareCraftChargeStartTx(ctx context.Context, row 
 			return craft.ErrForbidden
 		}
 		var previous CraftChargeStartJournalRow
-		if err := tx.Where("tenant_id = ? AND run_id = ? AND activity_key = ?", row.TenantID, row.RunID, activityID).Take(&previous).Error; err == nil {
+		previousErr := tx.Where("tenant_id = ? AND run_id = ? AND activity_key = ?", row.TenantID, row.RunID, activityID).Take(&previous).Error
+		if previousErr == nil && previous.State != "definitely_unstarted" {
 			return fmt.Errorf("%w: activity start already attempted; reconcile before retry", craft.ErrConflict)
-		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
-			return err
+		}
+		if previousErr == nil {
+			// A DEFINITELY-not-started attempt is a clean slate: nothing was
+			// physically sent, so the activity may restart instead of
+			// deadlocking every retry on a phantom conflict.
+			if err := tx.Where("tenant_id = ? AND run_id = ? AND activity_key = ?", row.TenantID, row.RunID, activityID).
+				Delete(&CraftChargeStartJournalRow{}).Error; err != nil {
+				return err
+			}
+		} else if !errors.Is(previousErr, gorm.ErrRecordNotFound) {
+			return previousErr
 		}
 		var used int64
 		if err := tx.Model(&CraftBudgetCallRow{}).Where("tenant_id = ? AND grant_id = ? AND call_seq >= 0", row.TenantID, row.GrantID).Count(&used).Error; err != nil {

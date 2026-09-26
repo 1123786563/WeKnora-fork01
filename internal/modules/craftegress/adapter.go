@@ -307,14 +307,11 @@ func gatewayReportsActivityUnresolved(status int, body []byte) bool {
 	if err := json.Unmarshal(body, &envelope); err != nil {
 		return false
 	}
-	// The gateway marks an unknown-outcome send with ACTIVITY_UNRESOLVED.
-	// Its failed-forward path historically answered UPSTREAM_ERROR while the
-	// charge-start journal recorded Unknown — that pairing is equally an
-	// unknown outcome (the send MAY have left), so it parks too; resolving
-	// it would mint a fresh identity on retry and bill twice.
-	switch envelope.Error.Code {
-	case "ACTIVITY_UNRESOLVED", "UPSTREAM_ERROR":
-		return true
-	}
-	return false
+	// The gateway marks an unknown-outcome send with ACTIVITY_UNRESOLVED —
+	// and ONLY that code: the remaining UPSTREAM_ERROR emitter is the
+	// initiation-expired path whose charge-start journal already resolved
+	// DefinitelyNotStarted (nothing was physically sent), a definitive
+	// outcome. Parking a definitive failure makes the same-fingerprint retry
+	// reuse the parked id and deadlock on the gateway's 409 forever.
+	return envelope.Error.Code == "ACTIVITY_UNRESOLVED"
 }

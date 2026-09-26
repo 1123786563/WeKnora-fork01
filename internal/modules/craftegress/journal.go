@@ -233,6 +233,11 @@ func (j *CraftEgressAttemptJournal) ordinalLocked(attemptID string) int64 {
 }
 
 func (j *CraftEgressAttemptJournal) appendLocked(record CraftEgressAttemptRecord) error {
+	// A non-positive ordinal replays as unreadable on the next start and
+	// would refuse the whole journal (self-poisoning) — refuse at write time.
+	if record.Ordinal <= 0 {
+		return fmt.Errorf("craftegress: journal record ordinal must be positive, got %d", record.Ordinal)
+	}
 	if j.file == nil {
 		// In-flight handlers can outlive the shutdown budget and reach here
 		// after Close; a nil dereference panic serves nobody.

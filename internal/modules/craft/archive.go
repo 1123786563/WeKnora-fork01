@@ -182,14 +182,14 @@ func (b *archiveBudget) reserveEntry(name string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	// The seen set itself is bounded: a malicious central directory can name
-	// hundreds of thousands of directory entries (~78 bytes each) under the
-	// compressed-size ceiling, and every canonicalized key plus map overhead
-	// would multiply memory before the per-file MaxArchiveEntries check in
-	// readMember ever runs. Reserving counts every entry, files and
-	// directories alike, so memory stays bounded by the same constant.
-	if len(b.seen) >= MaxArchiveEntries {
-		return "", fmt.Errorf("%w: archive exceeds the maximum entry count %d", ErrInvalidInput, MaxArchiveEntries)
+	// The seen set is bounded SEPARATELY from the regular-file budget:
+	// ordinary archives carry directory entries alongside their files
+	// (Finder zip -r, Windows "send to compressed folder"), so the total
+	// ceiling is a wide multiple of MaxArchiveEntries while regular-file
+	// accounting stays capped by readMember. A malicious central directory
+	// still cannot name hundreds of thousands of entries.
+	if len(b.seen) >= 10*MaxArchiveEntries {
+		return "", fmt.Errorf("%w: archive exceeds the maximum entry count %d", ErrInvalidInput, 10*MaxArchiveEntries)
 	}
 	if _, duplicate := b.seen[canonical]; duplicate {
 		return "", fmt.Errorf("%w: archive entries normalize to the duplicate path %q", ErrConflict, canonical)

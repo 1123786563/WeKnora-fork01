@@ -315,15 +315,23 @@ func (p *InputExecutionPolicy) Review(req InputExecutionRequest) InputExecutionD
 		// screened: env assignments (env BASH_ENV=<inputs>/x.sh bash gen.sh)
 		// are startup hooks exactly like Environment entries and must not
 		// ride along unscreened just because the interpreter was found.
-		for _, prefix := range req.Command[:offset] {
-			for _, token := range shellTokens(prefix) {
-				for _, segment := range strings.Split(token, ":") {
-					if abs := p.canonical(req.WorkingDir, segment); p.withinInputs(abs) {
-						return p.deny("input_target", abs, "")
-					}
+	for _, prefix := range req.Command[:offset] {
+		for _, token := range shellTokens(prefix) {
+			for _, segment := range strings.Split(token, ":") {
+				if abs := p.canonical(req.WorkingDir, segment); p.withinInputs(abs) {
+					return p.deny("input_target", abs, "")
 				}
 			}
 		}
+		// Wrapper long options with attached values (env
+		// --split-string=BASH_ENV=<inputs>/x.sh) are startup hooks exactly
+		// like assignments: the =-attached value is screened too.
+		for _, value := range flagValueCandidates(prefix) {
+			if abs := p.canonical(req.WorkingDir, value); p.withinInputs(abs) {
+				return p.deny("input_target", abs, "")
+			}
+		}
+	}
 		rest := req.Command[offset:]
 		// An interpreter reading its program from stdin executes whatever
 		// bytes arrive on stdin — deny the marker forms outright; the
@@ -435,12 +443,11 @@ func (p *InputExecutionPolicy) Review(req InputExecutionRequest) InputExecutionD
 			// Direct execution of the uploaded path itself.
 			return p.deny("input_target", abs, "")
 		}
-		// Read-only utilities and byte-copying commands (cp, mv) naming input
-		// material do not execute it here; the digest layer catches the
-		// copied bytes at their next execution WHEN the adapter supplies the
-		// target digest — a server-side adapter without container filesystem
-		// access documents that two-step copy/execute as a known residual
-		// instead (see the adapter's evidence contract).
+		// Byte-copying commands (cp, mv, dd, tee, install, rsync) are NOT in
+		// readOnlyCommands: their operands go through the full containment
+		// screening above, so naming inputs-tree paths is refused here
+		// outright. Only the narrow reader/inspector vocabulary may name
+		// input material as data.
 	}
 	// Explicit target path inside the tree even when the command shape did
 	// not match (defensive: adapters may fill TargetPath only).
@@ -470,7 +477,10 @@ var readOnlyCommands = map[string]bool{
 	"grep": true, "egrep": true, "fgrep": true, "wc": true,
 	"stat": true, "file": true, "ls": true, "du": true, "diff": true,
 	"md5sum": true, "sha1sum": true, "sha256sum": true, "sha512sum": true,
-	"sort": true, "uniq": true, "cut": true, "tr": true,
+	// sort is deliberately NOT here: GNU coreutils sort --compress-program=PROG
+	// executes PROG through sh -c, so its operands stay under the full
+	// flag-value and containment screening.
+	"uniq": true, "cut": true, "tr": true,
 }
 
 // InterpreterPrefixStatus classifies the outcome of the wrapper-aware

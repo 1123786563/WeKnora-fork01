@@ -4,6 +4,7 @@ import (
 	"fmt"
 	stdhtml "html"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/Tencent/WeKnora/internal/modules/craft"
@@ -54,26 +55,18 @@ func craftScreenHTMLVariants(fragment string) ([]string, error) {
 	for len(queue) > 0 && len(variants) < 64 {
 		candidate := queue[0]
 		queue = queue[1:]
-		if slicesContains(variants, candidate) {
+		if slices.Contains(variants, candidate) {
 			continue
 		}
 		variants = append(variants, candidate)
 		queue = append(queue, stdhtml.UnescapeString(candidate))
 		queue = append(queue, craftScreenCSSEscape(candidate))
+		queue = append(queue, craftScreenControlCharsRe.ReplaceAllString(candidate, ""))
 	}
 	if len(queue) > 0 {
 		return nil, fmt.Errorf("fragment nests too many encodings for the server-side screen")
 	}
 	return variants, nil
-}
-
-func slicesContains(haystack []string, needle string) bool {
-	for _, s := range haystack {
-		if s == needle {
-			return true
-		}
-	}
-	return false
 }
 
 // craftScreenHasEventAttrs structurally detects on* attributes with the real
@@ -95,10 +88,31 @@ func craftScreenHasEventAttrs(variant string) bool {
 	}
 }
 
+// craftScreenTemplateShellLiterals are the EXACT template constructs the
+// pinned template.html (toolchain.lock.json sha256-pinned, a trusted face)
+// contributes to every legitimate index.html: the two meta tags and the one
+// offline asset script reference. They are stripped BEFORE the full denylist
+// runs, so the screen denies INJECTED meta/script tags while legitimate
+// builds pass — the denylist itself never learns about them.
+var craftScreenTemplateShellLiterals = []string{
+	`<meta charset="utf-8">`,
+	`<meta name="viewport" content="width=device-width, initial-scale=1">`,
+	`<script src="assets/craft-web.js"></script>`,
+}
+
+// craftScreenControlChars matches the ASCII C0 controls plus DEL: browsers
+// strip these from URLs BEFORE scheme parsing (WHATWG URL Standard), so
+// "jav\tascript:" must be screened in its stripped form too.
+var craftScreenControlCharsRe = regexp.MustCompile("[\x00-\x1f\x7f]")
+
 // craftScreenWebHTMLMember applies the full denylist to one staged HTML
 // member. A violation is a round-level ErrInvalidInput: nothing is uploaded.
 func craftScreenWebHTMLMember(rel string, data []byte) error {
-	variants, err := craftScreenHTMLVariants(string(data))
+	page := string(data)
+	for _, literal := range craftScreenTemplateShellLiterals {
+		page = strings.ReplaceAll(page, literal, "")
+	}
+	variants, err := craftScreenHTMLVariants(page)
 	if err != nil {
 		return fmt.Errorf("%w: web member %q: %v", craft.ErrInvalidInput, rel, err)
 	}
@@ -118,12 +132,18 @@ func craftScreenWebHTMLMember(rel string, data []byte) error {
 			return fmt.Errorf("%w: web member %q contains an inline event handler attribute", craft.ErrInvalidInput, rel)
 		}
 	}
-	_ = craft.KindWeb
 	return nil
 }
 
 // craftScreenWebMemberReportsHTML reports whether a staged member is HTML.
 func craftScreenWebMemberIsHTML(rel string) bool {
 	lower := strings.ToLower(rel)
-	return strings.HasSuffix(lower, ".html") || strings.HasSuffix(lower, ".htm")
+	// Browsers parse and execute inline script/handlers in all of these when
+	// navigated directly — the screen must cover them, not just .html.
+	switch {
+	case strings.HasSuffix(lower, ".html"), strings.HasSuffix(lower, ".htm"),
+		strings.HasSuffix(lower, ".svg"), strings.HasSuffix(lower, ".xhtml"), strings.HasSuffix(lower, ".xht"):
+		return true
+	}
+	return false
 }

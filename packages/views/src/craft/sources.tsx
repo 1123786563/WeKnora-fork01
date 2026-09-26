@@ -152,9 +152,11 @@ function sourceLabels(locale: CraftLocale): SourceLabels {
   };
 }
 
-// isCraftCitationFact narrows the citation union without a silent cast: a
-// new citation kind added to the union fails HERE at compile time instead of
-// sliding through an `as` assertion.
+// isCraftCitationFact narrows the citation union without a silent cast.
+// NOTE: the parameter is deliberately typed { kind: string } so this is a
+// RUNTIME predicate, not a compile-time guarantee — new kinds stay excluded
+// from citedIds here; keep the RENDER branch (below) on the same predicate
+// when adding kinds, or the two sites drift.
 function isCraftCitationFact(entry: { kind: string }): entry is CraftCitationFact {
   return entry.kind === 'fact';
 }

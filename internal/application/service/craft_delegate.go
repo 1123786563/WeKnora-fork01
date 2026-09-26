@@ -375,15 +375,23 @@ func (p *CraftMaterialPolicy) writeAuditRow(ctx context.Context, kind string, ou
 	if p == nil || p.audit == nil {
 		return
 	}
-	details, err := json.Marshal(map[string]string{
+	detailMap := map[string]string{
 		"run": p.runID, "workspace": p.workspaceID,
 		"target": target, "digest": digest, "reason": reason,
-	})
+	}
+	auditActor, auditActorFull := craftAuditActorUserID(p.scope.UserID)
+	if auditActorFull != "" {
+		detailMap["actor_user_id_full"] = auditActorFull
+	}
+	details, err := json.Marshal(detailMap)
 	if err != nil {
 		return
 	}
 	entry := &types.AuditLog{
-		TenantID: p.scope.TenantID, ActorUserID: p.scope.UserID,
+		// Synthetic API-key principals (api_external_user:<tenant>:<extid>)
+		// can exceed the VARCHAR(36) audit column; the hashed short form
+		// keeps the row writable, matching craft_access.go's discipline.
+		TenantID: p.scope.TenantID, ActorUserID: auditActor,
 		Action: types.AuditAction(kind), Outcome: outcome,
 		ScopeType: "craft_run", ScopeID: p.runID,
 		TargetType: "craft_workspace", TargetID: p.workspaceID,

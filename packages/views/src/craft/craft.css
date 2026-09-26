@@ -162,6 +162,13 @@
 .wk-craft-share-expiry { color: var(--craft-secondary-text); font-size: 0.92em; }
 .wk-craft-share-error { color: var(--craft-danger); margin: 0; }
 .wk-craft-share-actions { display: flex; flex-wrap: wrap; gap: 0.75rem; }
-.wk-craft-share-confirm { background: var(--craft-brand); border: none; border-radius: 6px; color: var(--craft-brand-contrast, #fff); cursor: pointer; padding: 0.45rem 0.9rem; }
+.wk-craft-share-confirm { background: var(--craft-brand); border: none; border-radius: 6px; color: #fff; /* fixed contrast on the solid brand fill until a --craft-brand-contrast token is defined */ cursor: pointer; padding: 0.45rem 0.9rem; }
 .wk-craft-share-confirm:disabled, .wk-craft-share-decline:disabled, .wk-craft-share-revoke:disabled { cursor: default; opacity: 0.6; }
 .wk-craft-share-decline, .wk-craft-share-revoke { background: var(--craft-canvas); border: 1px solid var(--craft-line); border-radius: 6px; color: var(--craft-ink); cursor: pointer; padding: 0.45rem 0.9rem; }
+
+/* T14 round-3: the sources panel's citation list matches the sibling panels'
+   concentrated styling (was browser defaults). */
+.wk-craft-citation-list { display: grid; gap: 0.4rem; list-style: none; margin: 0; padding: 0; }
+.wk-craft-citation-list li { min-width: 0; overflow-wrap: anywhere; }
+.wk-craft-citation-fact .wk-craft-fact-label, .wk-craft-citation-inference .wk-craft-inference-label { color: var(--craft-secondary-text); font-size: 0.85em; margin-right: 0.25rem; }
+.wk-craft-citation-fact[data-craft-citation] { border-left: 2px solid var(--craft-line); padding-left: 0.5rem; }

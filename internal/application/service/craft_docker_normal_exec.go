@@ -373,6 +373,12 @@ func (s *CraftDockerNormalExecService) readOutput(ctx context.Context, scope rep
 	readCtx, cancel := context.WithTimeout(ctx, craftDockerNormalObserveTimeout)
 	defer cancel()
 	_, snapshot, err := s.output.ReadAfter(readCtx, scope, 0, 1)
+	if err != nil {
+		// A missing/unreadable operation row must NOT project as an open,
+		// growing empty stream: mark it unavailable like the sink/service
+		// ReadAfter wrappers in the same contract family.
+		snapshot.Unavailable = true
+	}
 	return snapshot, snapshot.NextSequence, err
 }
 

@@ -96,7 +96,11 @@ class _EventAttrScanner(HTMLParser):
 def fragment_has_event_attrs(fragment: str) -> bool:
     scanner = _EventAttrScanner()
     try:
-        scanner.feed(fragment)
+        # The trailing ">" sentinel forces CPython's HTMLParser to emit a
+        # starttag event for a DANGLING tag (<img src=x onerror=... with no
+        # closing ">"): without it, close() treats the remainder as data and
+        # the browser would close the tag with the NEXT ">" in the page.
+        scanner.feed(fragment + ">")
         scanner.close()
     except Exception:
         # Unparseable markup is refused by the structural scanner: fail closed.
@@ -336,6 +340,10 @@ def render_html(heading: str, fragment: str) -> str:
         variants.append(candidate)
         queue.append(html_mod.unescape(candidate))
         queue.append(css_unescape(candidate))
+        # Browser URL view: browsers strip ASCII C0 controls and DEL before
+        # scheme parsing (WHATWG URL), so "jav\tascript:" must be screened
+        # in its stripped form as well.
+        queue.append(re.sub(r"[\x00-\x1f\x7f]", "", candidate))
     if queue:
         # Fail closed: unexplored variants must never bypass the denylists —
         # deeply nested entities could otherwise push the browser-decoded
@@ -348,6 +356,7 @@ def render_html(heading: str, fragment: str) -> str:
             (ACTIVE_DATA_RE, "active data/javascript URI"),
             (CSS_FETCH_RE, "css url()/@import fetch"),
             (EMBED_TAG_RE, "embedding/script/navigation tag"),
+            (EVENT_ATTR_RE, "inline event handler attribute"),
         ):
             if pattern.search(candidate):
                 raise BuildError(EXIT_CONTENT, "html section {!r} contains a {}: offline local assets only".format(heading, why))
