@@ -244,8 +244,10 @@ type WriterLease struct {
 	TaskID string
 	// RunID is the one Run allowed to write the Workspace while held.
 	RunID string
-	// Revision is the draft-head revision fenced at acquisition: every write
-	// and promotion of this Run is checked against it.
+	// Revision is the draft-head revision fenced at acquisition. T16
+	// (#134) persists and projects it only: enforcing it against every
+	// write and promotion of the Run is the T20+ orchestration contract —
+	// the serialization this increment guarantees is the lease CAS itself.
 	Revision int64
 }
 
