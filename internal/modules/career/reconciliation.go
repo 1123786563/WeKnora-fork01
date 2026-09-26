@@ -90,7 +90,12 @@ type ReconcileReceipt struct {
 	CandidateID        string            `json:"candidateId"`
 	SuspectedDuplicate bool              `json:"suspectedDuplicate"`
 	Evidence           ReconcileEvidence `json:"evidence"`
-	CreatedAt          time.Time         `json:"createdAt"`
+	// ConflictingBatches discloses the batches for which both records already
+	// held an application at merge time. Those pre-existing rows stay on the
+	// merged-away record (honest history); one-job-one-batch still governs
+	// every new application on the canonical owner.
+	ConflictingBatches []string  `json:"conflictingBatches,omitempty"`
+	CreatedAt          time.Time `json:"createdAt"`
 }
 
 // OpportunityStatusView is the explicit status projection of one opportunity:
@@ -296,6 +301,7 @@ func (o *Office) ReconcileOpportunities(ctx context.Context, input ReconcileInpu
 		targetEvidence := collectIdentityEvidence(tx, s, input.TargetID)
 		candidateEvidence := collectIdentityEvidence(tx, s, input.CandidateID)
 		decision := ReconcileDecisionSideBySide
+		conflictingBatches := []string{}
 		if sufficientIdentityEvidence(targetEvidence, candidateEvidence) {
 			decision = ReconcileDecisionMerged
 			// Re-parent the candidate's immutable history. No observation,
@@ -316,8 +322,25 @@ func (o *Office) ReconcileOpportunities(ctx context.Context, input ReconcileInpu
 			// the merge target to keep both the uniqueness check and the
 			// database constraint meaningful. Pinned evidence bodies inside
 			// those rows are never rewritten.
+			//
+			// Carve-out: when both records already hold an application for
+			// the same batch (each was a distinct, legal job when created),
+			// migrating that row would collide with the one-job-one-batch
+			// unique index and strand the merge. Those conflicting rows stay
+			// on the merged-away record — honest history, still reachable
+			// through the merge chain — and the receipt discloses the batches.
+			targetBatches := tx.Model(&applicationRecord{}).
+				Select("batch_identity").
+				Where("tenant_id=? AND user_id=? AND opportunity_id=?", s.TenantID, s.UserID, input.TargetID)
 			if err := tx.Model(&applicationRecord{}).
-				Where("tenant_id=? AND user_id=? AND opportunity_id=?", s.TenantID, s.UserID, input.CandidateID).
+				Where("tenant_id=? AND user_id=? AND opportunity_id=? AND batch_identity IN (?)",
+					s.TenantID, s.UserID, input.CandidateID, targetBatches).
+				Pluck("batch_identity", &conflictingBatches).Error; err != nil {
+				return err
+			}
+			if err := tx.Model(&applicationRecord{}).
+				Where("tenant_id=? AND user_id=? AND opportunity_id=? AND batch_identity NOT IN (?)",
+					s.TenantID, s.UserID, input.CandidateID, targetBatches).
 				Updates(map[string]any{"opportunity_id": input.TargetID, "updated_at": time.Now().UTC()}).Error; err != nil {
 				return err
 			}
@@ -333,6 +356,7 @@ func (o *Office) ReconcileOpportunities(ctx context.Context, input ReconcileInpu
 			// merged pair is a confirmed identity, not a suspicion.
 			SuspectedDuplicate: decision == ReconcileDecisionSideBySide && suspectedDuplicate(targetEvidence, candidateEvidence),
 			Evidence:           ReconcileEvidence{Target: targetEvidence, Candidate: candidateEvidence},
+			ConflictingBatches: conflictingBatches,
 			CreatedAt:          now,
 		}
 		evidenceBody, err := json.Marshal(receipt.Evidence)

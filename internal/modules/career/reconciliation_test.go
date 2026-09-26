@@ -629,6 +629,85 @@ func TestReconciliationTableIncludedInDeletionPurgeAndBoundary(t *testing.T) {
 	require.Equal(t, 1, section.Count)
 }
 
+// ---- merge with pre-existing same-batch applications on both records -------
+
+func TestReconcileMergeWithDualSameBatchApplicationsKeepsHistoryReachable(t *testing.T) {
+	o, db, ctx := newApplicationOffice(t, "owner", 123)
+	fields := knownFields("平台后端工程师", "示例科技", "杭州", "2027届秋招", "本科及以上学历")
+	firstSeed := seedApplicationEvaluationWithFields(t, o, ctx, fields, "rec-dual-a")
+	secondSeed := seedApplicationEvaluationWithFields(t, o, ctx, fields, "rec-dual-b")
+
+	o.SetApplicationTaskLinker(&fakeCareerApplicationLinker{})
+	currentRevision := func() uint64 {
+		view, err := o.Open(ctx)
+		require.NoError(t, err)
+		return view.Revision
+	}
+	firstInput := CreateApplicationInput{
+		RequestID: "rec-dual-app-a", OpportunityID: firstSeed.OpportunityID, SnapshotID: firstSeed.SnapshotID,
+		EvaluationID: firstSeed.EvaluationID, BatchIdentity: "2027-autumn", ExpectedRevision: currentRevision(),
+	}
+	firstReceipt, err := o.CreateApplication(ctx, firstInput)
+	require.NoError(t, err)
+	secondInput := CreateApplicationInput{
+		RequestID: "rec-dual-app-b", OpportunityID: secondSeed.OpportunityID, SnapshotID: secondSeed.SnapshotID,
+		EvaluationID: secondSeed.EvaluationID, BatchIdentity: "2027-autumn", ExpectedRevision: currentRevision(),
+	}
+	secondReceipt, err := o.CreateApplication(ctx, secondInput)
+	require.NoError(t, err)
+
+	// Both records legitimately held a same-batch application while they were
+	// distinct jobs. The sufficient-evidence merge must still execute — not
+	// die on the one-job-one-batch unique index with an unclassified 500.
+	receipt, err := o.ReconcileOpportunities(ctx, ReconcileInput{
+		RequestID: "rec-dual-merge", TargetID: secondSeed.OpportunityID, CandidateID: firstSeed.OpportunityID,
+	})
+	require.NoError(t, err)
+	require.Equal(t, ReconcileDecisionMerged, receipt.Decision)
+	require.Equal(t, []string{"2027-autumn"}, receipt.ConflictingBatches, "the receipt discloses the conflicting batch")
+
+	// The decision is durable and recoverable by replay.
+	var decisions int64
+	require.NoError(t, db.Model(&reconciliationRecord{}).Count(&decisions).Error)
+	require.EqualValues(t, 1, decisions)
+
+	// The conflicting application row stays on the merged-away record —
+	// honest, reachable history; the non-conflicting one migrated.
+	var onTarget, onCandidate int64
+	require.NoError(t, db.Model(&applicationRecord{}).Where("opportunity_id = ?", secondSeed.OpportunityID).Count(&onTarget).Error)
+	require.EqualValues(t, 1, onTarget)
+	require.NoError(t, db.Model(&applicationRecord{}).Where("opportunity_id = ?", firstSeed.OpportunityID).Count(&onCandidate).Error)
+	require.EqualValues(t, 1, onCandidate)
+
+	// Both applications remain fully readable with their pinned evidence.
+	storedFirst, err := o.Application(ctx, firstReceipt.ApplicationID)
+	require.NoError(t, err)
+	require.Equal(t, firstSeed.SnapshotID, storedFirst.PinnedEvidence.SnapshotID)
+	storedSecond, err := o.Application(ctx, secondReceipt.ApplicationID)
+	require.NoError(t, err)
+	require.Equal(t, secondSeed.SnapshotID, storedSecond.PinnedEvidence.SnapshotID)
+
+	// A NEW same-batch application on the canonical owner is still refused:
+	// one job and batch admits exactly one application going forward.
+	duplicateEvaluation, err := o.EvaluateOpportunity(ctx, EvaluateInput{
+		RequestID: "rec-dual-eval", OpportunityID: secondSeed.OpportunityID, SnapshotID: secondSeed.SnapshotID,
+	})
+	require.NoError(t, err)
+	_, err = o.CreateApplication(ctx, CreateApplicationInput{
+		RequestID: "rec-dual-app-c", OpportunityID: secondSeed.OpportunityID, SnapshotID: secondSeed.SnapshotID,
+		EvaluationID: duplicateEvaluation.EvaluationID, BatchIdentity: "2027-autumn", ExpectedRevision: secondSeed.Revision,
+	})
+	require.ErrorIs(t, err, ErrApplicationConflict)
+
+	// A different batch on the canonical owner still creates freely.
+	third, err := o.CreateApplication(ctx, CreateApplicationInput{
+		RequestID: "rec-dual-app-d", OpportunityID: secondSeed.OpportunityID, SnapshotID: secondSeed.SnapshotID,
+		EvaluationID: duplicateEvaluation.EvaluationID, BatchIdentity: "2028-spring", ExpectedRevision: secondSeed.Revision,
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, third.ApplicationID)
+}
+
 // ---- scope ------------------------------------------------------------------
 
 func TestReconcileRejectsForeignAndMalformedRequests(t *testing.T) {
