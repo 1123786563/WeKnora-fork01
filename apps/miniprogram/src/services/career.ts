@@ -9,8 +9,9 @@ import type { ApplicationReceipt, MaterialReceipt, MaterialView, MaterialVersion
 import type { NativeFileSource } from '@weknora/api-client';
 import { requestId as newRequestId } from '../core/intent.ts';
 import { storage } from '../platform/storage.ts';
-import { scopeKey } from '../core/scope.ts';
-import { CAREER_STORE_PREFIX, createControlledStore, type SharedImportDraft, openExportedDocument, EXPORT_GRANT_EXPIRED, type ExportDownloadGrant, type ExportOpenRecord } from '../adapters/career-platform.ts';
+import type { ScopeStamp } from '../core/scope.ts';
+import { CAREER_STORE_PREFIX, createControlledStore, recoverableWrite, retryRecoverable, readStoredIntent, intentKeyFor, ambiguousOutcome, definiteLocalFailure, type StoredIntent } from './career-intent.ts';
+import { type SharedImportDraft, openExportedDocument, EXPORT_GRANT_EXPIRED, type ExportDownloadGrant, type ExportOpenRecord } from '../adapters/career-platform.ts';
 
 export { prepareSharedImport, careerPlatform, CAREER_STORE_PREFIX } from '../adapters/career-platform.ts';
 export type { SharedImportDraft, SharedEntry } from '../adapters/career-platform.ts';
@@ -106,37 +107,37 @@ function decodeSearchOutcome(value: unknown): SearchOutcome {
   };
 }
 
-interface PendingSearchIntent { requestId: string; query: string }
+interface PendingSearchIntent { requestId: string; query: string; expectedRevision?: number }
 const store = createControlledStore();
-const searchKey = (): string => `${CAREER_STORE_PREFIX}search:${scopeKey(auth.scope.capture())}`;
+const searchKey = (stamp: ScopeStamp = auth.scope.capture()): string => intentKeyFor('search', stamp);
 export function pendingSearch(): PendingSearchIntent | null {
   const value = store.read(searchKey());
   if (!value || typeof value !== 'object') return null;
-  const r = value as Record<string, unknown>;
+  const r = value as { requestId?: unknown; query?: unknown; expectedRevision?: unknown };
   if (typeof r.requestId !== 'string' || typeof r.query !== 'string') return null;
-  return { requestId: r.requestId, query: r.query };
-}
-function ambiguous(error: unknown): boolean {
-  const code = (error as { code?: unknown })?.code;
-  if (typeof code === 'string') {
-    if (['TIMEOUT', 'NETWORK_ERROR', 'CANCELLED', 'outcome_unknown'].includes(code)) return true;
-    if (['forbidden', 'revision_conflict', 'idempotency_conflict', 'invalid_request', 'not_found', 'proposal_resolved', 'search_quota_refused'].includes(code)) return false;
-  }
-  const status = (error as { status?: unknown })?.status;
-  return typeof status !== 'number' || status >= 500;
+  const expectedRevision = typeof r.expectedRevision === 'number' && Number.isSafeInteger(r.expectedRevision) && r.expectedRevision >= 0 ? r.expectedRevision : undefined;
+  return { requestId: r.requestId, query: r.query, ...(expectedRevision !== undefined ? { expectedRevision } : {}) };
 }
 function unknownOutcome(requestId: string, query: string, cause: unknown): Error {
   return Object.assign(new Error('搜索结果未知：请用原请求恢复后再试', { cause }), { code: 'outcome_unknown', requestId, query });
 }
-/** 一次性找岗：POST /searches 的冻结合同（requestId/query/expectedRevision，禁多余字段）。 */
+/** 一次性找岗：POST /searches 的冻结合同（requestId/query/expectedRevision，禁多余字段）。
+ *  expectedRevision 与作用域 stamp 都在发送前捕获（OCR high-7/high-8）：修订随 intent
+ *  持久化（安全重发逐字节重放）；intent 键按发送时 stamp 预铸，作用域在途切换时不落
+ *  intent——与 writeRecoverable 同一守卫，绝不把旧作用域的恢复意图铸到新作用域键下。 */
 export async function searchOnce(query: string): Promise<SearchOutcome> {
   const trimmed = query.trim();
   if (!trimmed) throw new Error('请先输入想找的岗位或要求');
   const id = newRequestId();
+  const expected = revision();
+  const stamp = auth.scope.capture();
   try {
-    return decodeSearchOutcome(await client.request({ method: 'POST', path: '/api/v1/career/searches', body: { requestId: id, query: trimmed, expectedRevision: revision() } }));
+    return decodeSearchOutcome(await client.request({ method: 'POST', path: '/api/v1/career/searches', body: { requestId: id, query: trimmed, expectedRevision: expected } }));
   } catch (error) {
-    if (ambiguous(error)) { store.write(searchKey(), { requestId: id, query: trimmed }); throw unknownOutcome(id, trimmed, error); }
+    if (ambiguousOutcome(error) && !auth.scope.isCurrent(stamp)) {
+      throw Object.assign(new Error('SCOPE_CHANGED'), { cause: error });
+    }
+    if (ambiguousOutcome(error)) { store.write(searchKey(stamp), { requestId: id, query: trimmed, expectedRevision: expected }); throw unknownOutcome(id, trimmed, error); }
     throw error;
   }
 }
@@ -155,16 +156,21 @@ export function isReceiptMissing(error: unknown): boolean {
   if (code === 'not_found') return true;
   return (error as { status?: unknown } | null | undefined)?.status === 404;
 }
-/** 对账确认服务端无记录（404）后的安全重试：同 request id 幂等重发。 */
+/** 对账确认服务端无记录（404）后的安全重试：同 request id 幂等重发——expectedRevision
+ *  逐字节重放 intent 持久化的原值（修订前进后用当前值重发必然 idempotency_conflict，
+ *  OCR high-8）；历史 intent 无修订记录时退回当前值兜底（与 retryIntent 同构）。 */
 export async function retryPendingSearch(): Promise<SearchOutcome> {
   const pending = pendingSearch();
   if (!pending) throw new Error('没有待恢复的搜索');
+  const expected = pending.expectedRevision ?? revision();
+  const stamp = auth.scope.capture();
   try {
-    const outcome = decodeSearchOutcome(await client.request({ method: 'POST', path: '/api/v1/career/searches', body: { requestId: pending.requestId, query: pending.query, expectedRevision: revision() } }));
+    const outcome = decodeSearchOutcome(await client.request({ method: 'POST', path: '/api/v1/career/searches', body: { requestId: pending.requestId, query: pending.query, expectedRevision: expected } }));
     store.remove(searchKey());
     return outcome;
   } catch (error) {
-    if (ambiguous(error)) throw unknownOutcome(pending.requestId, pending.query, error);
+    if (ambiguousOutcome(error) && (!auth.scope.isCurrent(stamp) || definiteLocalFailure(error))) throw Object.assign(new Error('SCOPE_CHANGED'), { cause: error });
+    if (ambiguousOutcome(error)) throw unknownOutcome(pending.requestId, pending.query, error);
     throw error;
   }
 }
@@ -204,38 +210,18 @@ export async function evaluateOpportunity(opportunityId: string, snapshotId: str
 }
 
 export interface ApplicationIntentInput { opportunityId: string; snapshotId: string; evaluationId: string; batchIdentity: string; continueDespiteHardFailure: boolean }
-interface StoredIntent<T> { requestId: string; input: T; expectedRevision?: number }
-function intentKey(kind: string): string { return `${CAREER_STORE_PREFIX}${kind}:${scopeKey(auth.scope.capture())}`; }
-function readIntent<T>(key: string): StoredIntent<T> | null {
-  const value = store.read(key);
-  if (!value || typeof value !== 'object') return null;
-  const parsed = value as { requestId?: unknown; input?: unknown; expectedRevision?: unknown };
-  if (typeof parsed.requestId !== 'string' || !parsed.requestId || typeof parsed.input !== 'object' || !parsed.input) return null;
-  const expectedRevision = typeof parsed.expectedRevision === 'number' && Number.isSafeInteger(parsed.expectedRevision) && parsed.expectedRevision >= 0 ? parsed.expectedRevision : undefined;
-  return { requestId: parsed.requestId, input: parsed.input as T, ...(expectedRevision !== undefined ? { expectedRevision } : {}) };
-}
-/** 空间切换/AUTH_REQUIRED 是确定失败：旧作用域的响应不能为新作用域留恢复意图。 */
-function definiteLocalFailure(error: unknown): boolean { return /SCOPE_CHANGED|AUTH_REQUIRED/i.test(`${(error as Error)?.message ?? ''} ${(error as { code?: unknown })?.code ?? ''}`); }
+export type { StoredIntent } from './career-intent.ts';
+// 恢复链机制（歧义判据/作用域 stamp 守卫/expectedRevision 持久化/安全重放）已抽到
+// career-intent.ts，与 T30 适配器共用一份实现（OCR med-39：此前两套副本已漂移出
+// high-7/high-8）。这里只保留薄封装：键按当前作用域铸（读取/对账语义）。
+const intentKey = (kind: string): string => intentKeyFor(kind, auth.scope.capture());
+function readIntent<T>(key: string): StoredIntent<T> | null { return readStoredIntent<T>(store, key); }
 /** 写入 + 未知结果恢复。expectedRevision 在发送前捕获并随 intent 持久化：服务端幂等
- * 指纹是全量请求体（含 expectedRevision），安全重发必须逐字节重放原始值——desk 修订
- * 前进后用当前值重发必然 ErrIdempotencyConflict，恢复死路。expectedOverride 供 CAS
- * 域不是档案修订的写入（T17 进展=每应用事件计数）显式传入读取到的域值。 */
+ *  指纹是全量请求体（含 expectedRevision），安全重发必须逐字节重放原始值——desk 修订
+ *  前进后用当前值重发必然 ErrIdempotencyConflict，恢复死路。expectedOverride 供 CAS
+ *  域不是档案修订的写入（T17 进展=每应用事件计数）显式传入读取到的域值。 */
 async function writeRecoverable<T>(kind: string, describe: string, input: unknown, send: (id: string, expected: number) => Promise<unknown>, expectedOverride?: number): Promise<T> {
-  const id = newRequestId();
-  const expected = expectedOverride ?? revision();
-  const stamp = auth.scope.capture();
-  try {
-    return await send(id, expected) as T;
-  } catch (error) {
-    if (ambiguous(error) && !auth.scope.isCurrent(stamp)) {
-      throw Object.assign(new Error('SCOPE_CHANGED'), { cause: error });
-    }
-    if (ambiguous(error)) {
-      store.write(intentKey(kind), { requestId: id, input, expectedRevision: expected });
-      throw Object.assign(new Error(`${describe}结果未知：请用原请求对账后再试`, { cause: error }), { code: 'outcome_unknown', requestId: id });
-    }
-    throw error;
-  }
+  return recoverableWrite<T>(store, { kind, describe, input, expected: expectedOverride ?? revision(), send: async (id, expected) => (await send(id, expected)) as T });
 }
 async function reconcileIntent<T>(kind: string, describe: string, fetch: (id: string) => Promise<unknown>): Promise<T> {
   const pending = readIntent<Record<string, unknown>>(intentKey(kind));
@@ -245,19 +231,7 @@ async function reconcileIntent<T>(kind: string, describe: string, fetch: (id: st
   return receipt as T;
 }
 async function retryIntent<T>(kind: string, describe: string, resend: (id: string, expected: number) => Promise<unknown>): Promise<T> {
-  const pending = readIntent<Record<string, unknown>>(intentKey(kind));
-  if (!pending) throw new Error(`没有待恢复的${describe}`);
-  const expected = pending.expectedRevision ?? revision();
-  const stamp = auth.scope.capture();
-  try {
-    const receipt = await resend(pending.requestId, expected);
-    store.remove(intentKey(kind));
-    return receipt as T;
-  } catch (error) {
-    if (ambiguous(error) && (!auth.scope.isCurrent(stamp) || definiteLocalFailure(error))) throw Object.assign(new Error('SCOPE_CHANGED'), { cause: error });
-    if (ambiguous(error)) throw Object.assign(new Error(`${describe}结果未知：请用原请求对账后再试`, { cause: error }), { code: 'outcome_unknown', requestId: pending.requestId });
-    throw error;
-  }
+  return retryRecoverable<T>(store, kind, describe, async (id, expected) => (await resend(id, expected)) as T, revision);
 }
 
 // —— 申请（T14 合同）：一岗一批一申请；硬条件不符必须显式继续 ——
@@ -576,10 +550,10 @@ export async function deleteWholeSpace(): Promise<CareerDeletionReceipt> {
     if (receipt.status !== 'deleted') store.write(intentKey('spaceDeletion'), { requestId: id, input: {}, expectedRevision: expected });
     return receipt;
   } catch (error) {
-    if (ambiguous(error) && !auth.scope.isCurrent(stamp)) {
+    if (ambiguousOutcome(error) && !auth.scope.isCurrent(stamp)) {
       throw Object.assign(new Error('SCOPE_CHANGED'), { cause: error });
     }
-    if (ambiguous(error)) {
+    if (ambiguousOutcome(error)) {
       store.write(intentKey('spaceDeletion'), { requestId: id, input: {}, expectedRevision: expected });
       throw Object.assign(new Error('删除结果未知：请用原请求对账后再试', { cause: error }), { code: 'outcome_unknown', requestId: id });
     }
@@ -604,8 +578,8 @@ export async function retryPendingSpaceDeletion(): Promise<CareerDeletionReceipt
     if (receipt.status === 'deleted') store.remove(intentKey('spaceDeletion'));
     return receipt;
   } catch (error) {
-    if (ambiguous(error) && (!auth.scope.isCurrent(stamp) || definiteLocalFailure(error))) throw Object.assign(new Error('SCOPE_CHANGED'), { cause: error });
-    if (ambiguous(error)) throw Object.assign(new Error('删除结果未知：请用原请求对账后再试', { cause: error }), { code: 'outcome_unknown', requestId: pending.requestId });
+    if (ambiguousOutcome(error) && (!auth.scope.isCurrent(stamp) || definiteLocalFailure(error))) throw Object.assign(new Error('SCOPE_CHANGED'), { cause: error });
+    if (ambiguousOutcome(error)) throw Object.assign(new Error('删除结果未知：请用原请求对账后再试', { cause: error }), { code: 'outcome_unknown', requestId: pending.requestId });
     throw error;
   }
 }

@@ -78,7 +78,17 @@ export default function ApplicationMaterialPage() {
     </>}
     {pendingMaterial && <>
       <Notice tone='warning'>有一次结果未知的材料写入（{pendingMaterial.requestId.slice(0, 10)}…）。</Notice>
-      <Action secondary loading={recoverMatBusy.busy} onClick={() => void recoverMatBusy.run(async () => { await career.reconcilePendingMaterial(); setMaterial(await career.material(materialId)); })}>用原请求对账材料</Action>
+      <Action secondary loading={recoverMatBusy.busy} onClick={() => void recoverMatBusy.run(async () => {
+        // 回执携带权威 materialId（新建材料写入失败未知时输入框仍为空）：以回执为准回读，
+        // 绝不用页面输入态读材料（OCR high-10）。
+        const receipt = await career.reconcilePendingMaterial();
+        setMaterialId(receipt.materialId);
+        const view = await career.material(receipt.materialId);
+        setMaterial(view);
+        setSections(career.editableFromBody(view.body));
+        setConfirmedVersion(undefined);
+        setExports(view.versionCount > 0 ? (await career.listMaterialExports(receipt.materialId)).exports : undefined);
+      })}>用原请求对账材料</Action>
       {recoverMatBusy.error && <Notice tone='danger'>{recoverMatBusy.error} 对账被拒时说明该请求不属于当前空间或不存在；intent 保留，可稍后再试。</Notice>}
     </>}
     {pendingSubmission && <>
@@ -130,6 +140,8 @@ export default function ApplicationMaterialPage() {
             setAppErrCode(undefined);
             setMaterialId('');
             setMaterial(undefined);
+            setSections([]);
+            setConfirmedVersion(undefined);
             setExports(undefined);
             setChecks([]);
             setSubmissions(undefined);
@@ -157,14 +169,26 @@ export default function ApplicationMaterialPage() {
 
     {(application || materialId) && <Card>
       <Text className='wk-h3'>结构化正文材料</Text>
-      <Field label='材料编号（创建后自动带入；重进页面可粘贴读取）' value={materialId} onChange={setMaterialId} placeholder='材料编号' />
+      <Field label='材料编号（创建后自动带入；重进页面可粘贴读取）' value={materialId} onChange={value => {
+        setMaterialId(value);
+        // 编号一旦改动，已读取的正文/版本/导出/校验即失效——绝不把 A 的 sections 写进
+        // B 名下（OCR high-11）。保存草稿成功后写入的编号走 setMaterialId 原始 setter，
+        // 不经过这里的失效逻辑。
+        setMaterial(undefined);
+        setSections([]);
+        setConfirmedVersion(undefined);
+        setExports(undefined);
+        setChecks([]);
+      }} placeholder='材料编号' />
       <Action secondary loading={matLoadBusy.busy} onClick={() => void matLoadBusy.run(async () => {
         const view = await career.material(materialId);
         setMaterial(view);
         // F4：全量载入编辑态——每个小节与全部 claims 进入编辑模型，保存原样回传。
         setSections(career.editableFromBody(view.body));
-        // 同源语义：版本在 Web 或本端确认过即可管理发布/下载/投递绑定。
-        if (view.versionCount > 0) setExports((await career.listMaterialExports(materialId)).exports);
+        // confirmedVersion 是“本端对这份材料确认过哪个版本”的状态，绝不跨材料残留
+        // （OCR med-46：A 的确认版本不得固化成 B 的不可变导出）。
+        setConfirmedVersion(undefined);
+        setExports(view.versionCount > 0 ? (await career.listMaterialExports(materialId)).exports : undefined);
       })}>读取材料</Action>
       {matLoadBusy.error && <Notice tone='danger'>{matLoadBusy.error} 若材料不属于当前空间或不存在，会如实提示；不会用演示数据代替。</Notice>}
       {material && <>

@@ -4,8 +4,8 @@ import { Text, View } from '@tarojs/components';
 import { Screen, Card, Action, Field, Notice, Badge, DataBoundary, useData, useAction, useSession } from '../components/ui.tsx';
 import * as career from '../services/career.ts';
 import {
-  saveRule, pendingRuleWrite, reconcilePendingRule, retryPendingRule, readStoredRuleId, readRule,
-  fetchUsageEstimate, fetchReminders, createReminder, pendingReminderWrite, reconcilePendingReminder, retryPendingReminder,
+  saveRule, pendingRuleWrite, reconcilePendingRule, retryPendingRule, abandonPendingRuleWrite, readStoredRuleId, readRule,
+  fetchUsageEstimate, fetchReminders, createReminder, pendingReminderWrite, reconcilePendingReminder, retryPendingReminder, abandonPendingReminderWrite,
   setPushSubscription, requestReminderSubscription, REMINDER_PUSH_PRIVACY_NOTE,
   type SubscriptionRequestOutcome, type RuleWriteInput,
 } from '../adapters/career-platform.ts';
@@ -81,10 +81,14 @@ export default function RulesUsageRemindersPage() {
     setRuleErrCode(undefined);
     const stored = readStoredRuleId();
     if (!stored) { setRuleNotice('本机还没有保存过的规则引用。保存第一条规则后，这里会按同一规则编号读回同一版本。'); setRuleView(undefined); return; }
-    const view = await readRule(stored);
-    setRuleView(view); setReceipt(undefined);
-    setQuery(view.query); setIntervalText(String(view.intervalMinutes)); setStatus(view.status);
-    setRuleNotice(`已读取规则 ${view.ruleId.slice(0, 10)}…（修订 ${view.revision}，与 Web 同一版本）。`);
+    // 读取失败也要分型（OCR med-40）：not_found/forbidden 的定制提示依赖 ruleErrCode
+    // 先落 state，再原样 rethrow 交给 useAction 呈现。
+    try {
+      const view = await readRule(stored);
+      setRuleView(view); setReceipt(undefined);
+      setQuery(view.query); setIntervalText(String(view.intervalMinutes)); setStatus(view.status);
+      setRuleNotice(`已读取规则 ${view.ruleId.slice(0, 10)}…（修订 ${view.revision}，与 Web 同一版本）。`);
+    } catch (error) { setRuleErrCode(typedCode(error)); throw error; }
   };
   const acceptRuleReceipt = (next: SetRuleReceipt): void => {
     setReceipt(next); setRuleErrCode(undefined); setRuleNotice('');
@@ -102,8 +106,13 @@ export default function RulesUsageRemindersPage() {
       <Notice tone='warning'>有一次结果未知的规则保存（{pendingRule.requestId.slice(0, 10)}…）。请先用原请求对账，不会写入第二条规则；对账无记录后可用原请求编号安全重发。</Notice>
       <Action secondary loading={recRuleBusy.busy} onClick={() => void recRuleBusy.run(async () => { acceptRuleReceipt(await reconcilePendingRule()); })}>用原请求对账规则保存</Action>
       {recRuleBusy.error && <Notice tone='danger'>{recRuleBusy.error} 对账被拒时说明该请求不存在或不属于当前空间；可再用原编号重试（幂等重放）。</Notice>}
-      <Action secondary loading={retryRuleBusy.busy} onClick={() => void retryRuleBusy.run(async () => { acceptRuleReceipt(await retryPendingRule()); })}>用原请求编号重试规则保存</Action>
-      {retryRuleBusy.error && <Notice tone='danger'>{retryRuleBusy.error} 重试沿用原请求编号与原档案修订，服务端幂等不会写入第二条规则。</Notice>}
+      <Action secondary loading={retryRuleBusy.busy} onClick={() => void retryRuleBusy.run(async () => {
+        try { acceptRuleReceipt(await retryPendingRule()); } catch (error) { setRuleErrCode(typedCode(error)); throw error; }
+      })}>用原请求编号重试规则保存</Action>
+      {retryRuleBusy.error && <Notice tone='danger'>{retryRuleBusy.error}{ruleErrCode === 'revision_conflict_abandoned' ? ' 本次恢复已结束（保存按钮恢复可用）。' : ' 重试沿用原请求编号与原档案修订，服务端幂等不会写入第二条规则。'}</Notice>}
+      {/* OCR high-12 出口：重试收到其它确定失败时恢复链可能无解，提供显式放弃——只清
+          本端 intent，不动服务端事实；若原保存实际已落地，按规则编号读回即可找回。 */}
+      <Action secondary onClick={() => { abandonPendingRuleWrite(); setRuleErrCode(undefined); setRuleNotice('已放弃本次恢复：保存按钮恢复可用。若原保存实际已生效，规则以服务端记录为准——可点「读回已保存的规则」找回，不会写出第二条规则。'); }}>放弃本次恢复（保存按钮恢复可用）</Action>
     </>}
     {pendingReminder && <>
       <Notice tone='warning'>有一次结果未知的待办登记（{pendingReminder.requestId.slice(0, 10)}…）。请先用原请求对账。</Notice>
@@ -111,6 +120,7 @@ export default function RulesUsageRemindersPage() {
       {recRemindBusy.error && <Notice tone='danger'>{recRemindBusy.error}</Notice>}
       <Action secondary loading={retryRemindBusy.busy} onClick={() => void retryRemindBusy.run(async () => { await retryPendingReminder(); setReminderNotice('待办登记已用原请求编号恢复完成。'); void inboxBusy.run(loadInbox); })}>用原请求编号重试待办登记</Action>
       {retryRemindBusy.error && <Notice tone='danger'>{retryRemindBusy.error}</Notice>}
+      <Action secondary onClick={() => { abandonPendingReminderWrite(); setReminderNotice('已放弃本次待办恢复：登记入口恢复可用。若原登记实际已生效，待办以服务端记录为准——刷新站内待办即可见。'); }}>放弃本次待办恢复</Action>
     </>}
 
     {/* —— 额度预估：执行前只读呈现（后端原文，不重算）—— */}

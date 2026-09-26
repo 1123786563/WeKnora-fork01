@@ -293,6 +293,52 @@ test('D7: a quota-refused safe resend keeps the typed code, the dedicated prompt
   assert.equal(career.pendingSearch()?.requestId, pending.requestId, 'a refused resend keeps the intent for later recovery');
 });
 
+// OCR high-7：作用域在途切换时，旧作用域的搜索失败绝不把恢复意图铸到新作用域键下
+// （存储未清也必须零 intent——断言看的是全部 wk:career:search:* 原始键，不是当前作用域读取）。
+test('D8: a scope change mid-search mints no recovery intent under any scope (seam: 空间切换)', async () => {
+  await freshLogin({
+    'GET /api/v1/career/open': call => stub.succeed(call, { data: { revision: 3, facts: [], proposals: [] } }),
+    'POST /api/v1/career/searches': () => {/* hangs until the test answers */},
+  });
+  await career.loadCareer();
+  const pending = career.searchOnce('Go 工程师');
+  await runtime.auth.clear(); // 登出使作用域失效（此处刻意不清 wk:career:* 存储）
+  stub.succeed(stub.lastCall('request'), { data: searchReceipt() });
+  await assert.rejects(pending, error => /SCOPE_CHANGED|cancelled/i.test(`${error.message} ${error.code ?? ''}`));
+  assert.equal(career.pendingSearch(), null, 'the new scope reads no intent');
+  assert.ok(
+    ![...stub.state.storage.keys()].some(key => key.startsWith('wk:career:search:')),
+    'no search intent is minted under ANY scope key — the stamp guard precedes the intent write',
+  );
+});
+
+// OCR high-8：安全重发必须逐字节重放发送前修订——intent 持久化 expectedRevision，
+// 档案修订前进后重放仍是原值（用当前值重发必然 idempotency_conflict）。
+test('D9: the safe resend replays the persisted original revision byte-for-byte', async () => {
+  let postFails = true; let serverRevision = 0;
+  await freshLogin({
+    'GET /api/v1/career/open': call => stub.succeed(call, { data: { revision: serverRevision, facts: [], proposals: [] } }),
+    'GET /api/v1/career/list': call => stub.succeed(call, { data: { revision: serverRevision, facts: [], proposals: [] } }),
+    'POST /api/v1/career/searches': call => { if (postFails) stub.fail(call, 'request:fail timeout'); else stub.succeed(call, { data: searchReceipt() }); },
+    'GET /api/v1/career/searches/receipt': call => stub.succeed(call, { statusCode: 404, data: { error: { code: 'not_found', message: 'no receipt yet' } } }),
+  });
+  await career.loadCareer();
+  await assert.rejects(career.searchOnce('Go 工程师'), error => error.code === 'outcome_unknown');
+  const pending = career.pendingSearch();
+  assert.equal(pending.expectedRevision, 0, 'the intent persists the revision the original send carried');
+  serverRevision = 9; // 期间档案修订前进
+  await career.refreshCareer();
+  assert.equal(career.careerDesk().snapshot.revision, 9);
+  postFails = false;
+  const recovered = await career.retryPendingSearch();
+  assert.equal(recovered.status, 'completed');
+  const bodies = stub.state.calls.filter(c => new URL(c.options.url).pathname === '/api/v1/career/searches' && (c.options.method ?? 'GET') === 'POST').map(call => call.options.data);
+  assert.equal(bodies.length, 2, 'one failed attempt plus one safe resend');
+  assert.equal(bodies[1].requestId, bodies[0].requestId, 'the resend replays the original request id');
+  assert.equal(bodies[1].expectedRevision, 0, 'the resend replays the ORIGINAL revision — the moved-on head (9) would hit idempotency_conflict');
+  assert.equal(career.pendingSearch(), null);
+});
+
 test('E1: share import previews verbatim before any network write, then submits the same payload', async () => {
   await freshLogin({
     'GET /api/v1/career/open': call => stub.succeed(call, { data: { revision: 0, facts: [], proposals: [] } }),

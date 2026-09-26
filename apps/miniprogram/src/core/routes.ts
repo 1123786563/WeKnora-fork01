@@ -17,6 +17,7 @@ export const ROUTES = {
   careerApply:{path:'career/application-material',title:'申请与材料',tab:false},
   careerLifecycle:{path:'career/export-deletion',title:'导出与删除',tab:false},
   careerProgress:{path:'career/progress-preparation',title:'申请进展与准备',tab:false},
+  careerRules:{path:'career/rules-usage-reminders',title:'持续找岗与提醒',tab:false},
   me:{path:'pages/me/index',title:'我的',tab:true},
   usage:{path:'subpackages/account/usage/index',title:'用量与套餐',tab:false},
   checkout:{path:'subpackages/account/checkout/index',title:'确认订单',tab:false},

@@ -193,6 +193,34 @@ test('A5: a scope change invalidates an in-flight rule write — nothing is appl
   assert.equal(platform.readStoredRuleId(), undefined, 'a stale response must not persist a rule reference for the wrong scope');
 });
 
+// OCR high-12：原请求未落地（对账 404）且修订已前进时，原样重放必收确定性
+// revision_conflict（服务端幂等回放先于 CAS）——此时可断定原写入从未落地，必须清
+// intent 解除保存封锁，而不是把用户锁死在“保存永久禁用、唯一清除路径是登出”。
+test('A6: a definite revision conflict on the replay proves the write never landed — the dead-end intent is cleared', async () => {
+  let postFails = true;
+  await freshLogin({
+    'POST /api/v1/career/rules': call => {
+      if (postFails) stub.fail(call, 'request:fail timeout');
+      else stub.succeed(call, { statusCode: 409, data: { error: { code: 'revision_conflict', message: 'stale view', currentRevision: 9 } } });
+    },
+    'GET /api/v1/career/rules/receipt': call => stub.succeed(call, { statusCode: 404, data: { error: { code: 'not_found', message: 'no receipt yet' } } }),
+  });
+  await career.loadCareer();
+  await assert.rejects(platform.saveRule({ query: '上海 前端开发 实习', intervalMinutes: 1440, status: 'enabled', expectedRevision: 3 }), error => error.code === 'outcome_unknown');
+  assert.ok(platform.pendingRuleWrite(), 'the unknown write is kept for recovery');
+  postFails = false;
+  await assert.rejects(platform.retryPendingRule(), error => error.code === 'revision_conflict_abandoned', 'a definite conflict on replay closes the dead-end recovery with an honest typed code');
+  assert.equal(platform.pendingRuleWrite(), null, 'the intent is cleared — the save button is unblocked without logging out');
+  // 显式放弃出口（其它确定失败卡死时的最后出口）：只清本端 intent，零网络写。
+  postFails = true;
+  await assert.rejects(platform.saveRule({ query: '重存规则', intervalMinutes: 60, status: 'paused', expectedRevision: 3 }), error => error.code === 'outcome_unknown');
+  assert.ok(platform.pendingRuleWrite());
+  const writesBeforeAbandon = ruleWrites().length;
+  platform.abandonPendingRuleWrite();
+  assert.equal(platform.pendingRuleWrite(), null, 'the explicit abandon escape clears the intent');
+  assert.equal(ruleWrites().length, writesBeforeAbandon, 'abandon performs no network write — server facts are untouched');
+});
+
 // ---- B 组：额度（执行前预估 + 超额只阻新收费 + 历史完整可访问 + 重复不二扣）----
 
 test('B1: the usage estimate is read from the frozen endpoint and displayed verbatim', async () => {

@@ -307,11 +307,31 @@ test('D1: switching accounts never shows the previous user preparation draft', a
   // 登出语义（runtime.logout = auth.logout + clearPrivateCache）：wk:career:* 一并清除。
   await logoutLikeRuntime();
   assert.ok(![...stub.state.storage.keys()].some(key => key.startsWith('wk:career:')), 'logout clears the career-controlled cache');
-  // 作用域键隔离第二层：即使缓存未被清除，B 的 scopeKey 也读不到 A 的草稿。
+  // 键隔离第二层的真实验证在 D1b（此处 freshLogin 的 stub.reset() 会清库，B 读到
+  // undefined 同时来自清库，不能单独证明键隔离）。
   await freshLogin(meB, {});
   assert.equal(platform.readPreparationDraft('app-1', 'interview_prep'), undefined, 'account B sees no trace of account A');
   platform.savePreparationDraft({ applicationId: 'app-1', focus: 'interview_prep', sections: [{ heading: '面试要点', content: 'B 的草稿' }] });
   assert.equal(platform.readPreparationDraft('app-1', 'interview_prep').sections[0].content, 'B 的草稿');
+});
+
+// OCR med-57：不清库、仅切作用域（与登录同一原语 scope.switchTo），比对 A/B 写入的
+// 原始受控键——红线“账号切换不残留上一用户草稿”由键隔离本身保障，非空验证。
+test('D1b: scope keys alone isolate drafts even when the cache survives (不清库、仅切作用域)', async () => {
+  await freshLogin(meA, {});
+  const keyA = platform.savePreparationDraft({ applicationId: 'app-1', focus: 'interview_prep', materialId: 'mat-9', sections: [{ heading: '面试要点', content: 'A 的私人草稿' }] });
+  assert.ok(keyA.startsWith('wk:career:prep-draft:'), 'drafts live in the controlled store');
+  // 缓存保留，只切作用域（模拟 clearPrivateCache 失效/遗漏的场景）。
+  const stampA = runtime.auth.scope.capture();
+  runtime.auth.scope.switchTo({ origin: stampA.origin, userId: 'u2', tenantId: '2' });
+  assert.equal(platform.readPreparationDraft('app-1', 'interview_prep'), undefined, 'B 的作用域键读不到 A 的草稿——隔离来自键本身，不是清库');
+  const keyB = platform.savePreparationDraft({ applicationId: 'app-1', focus: 'interview_prep', sections: [{ heading: '面试要点', content: 'B 的草稿' }] });
+  assert.notEqual(keyB, keyA, 'B writes a different scope key');
+  assert.equal(stub.state.storage.get(keyA)?.sections?.[0]?.content, 'A 的私人草稿', "A's raw key is not overwritten by B's write");
+  assert.equal(stub.state.storage.get(keyB)?.sections?.[0]?.content, 'B 的草稿');
+  // 切回 A：A 的草稿仍在（隔离是双向分流，不是删除）。
+  runtime.auth.scope.switchTo({ origin: stampA.origin, userId: stampA.userId, tenantId: stampA.tenantId });
+  assert.equal(platform.readPreparationDraft('app-1', 'interview_prep')?.sections?.[0]?.content, 'A 的私人草稿');
 });
 
 // ---- E/F 组：空间切换与跨租户 ----

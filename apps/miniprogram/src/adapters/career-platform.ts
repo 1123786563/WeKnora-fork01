@@ -4,14 +4,13 @@ import type { MaterialBody, RuleStatus, SetRuleReceipt, RuleView, UsageEstimateV
 import { decodeSetRuleReceipt, decodeRuleView, decodeUsageEstimateView, decodeReminderReceipt, decodeReminderList } from '../../../../packages/api-client/src/career.ts';
 import type { CareerReceipt } from '../../../../packages/career-core/src/contracts.ts';
 import { decodeCareerReceipt } from '../../../../packages/career-core/src/contracts.ts';
-import { storage } from '../platform/storage.ts';
 import { chooseDocument } from '../platform/files.ts';
 import { requestId } from '../core/intent.ts';
-import type { ValueStore } from '../core/intent.ts';
 // T26 导出兑付下载与 T06 files.ts 同源：认证凭据与可信 origin 只来自 runtime 单例。
-// runtime 不反向依赖本适配器，无环。
+// runtime 不反向依赖本适配器，无环。career-intent 同层依赖 runtime，无环。
 import { auth, apiOrigin, client } from '../services/runtime.ts';
 import { scopeKey } from '../core/scope.ts';
+import { CAREER_STORE_PREFIX, createControlledStore, intentKeyFor, readStoredIntent, recoverableWrite, retryRecoverable, type StoredIntent } from '../services/career-intent.ts';
 
 // T24 小程序 Career 平台适配器：分享、文件、受控存储三个本端能力 seam。
 // 全部依赖可注入（测试与真实运行时共用同一实现）；网络一律经 services/career.ts
@@ -20,8 +19,11 @@ import { scopeKey } from '../core/scope.ts';
 /** 分享入口 query 参数名（分享卡片 path 携带的 JD 原文）。 */
 export const SHARED_ENTRY_PARAM = 'jd';
 export const SHARED_ENTRY_SOURCE = '微信分享';
-/** 受控存储唯一前缀：登出 clearPrivateCache 只清 wk: 非 wk:auth: 键，本前缀随之清空。 */
-export const CAREER_STORE_PREFIX = 'wk:career:';
+/** 受控存储唯一前缀：登出 clearPrivateCache 只清 wk: 非 wk:auth: 键，本前缀随之清空。
+ *  定义移至 services/career-intent.ts（恢复链两域共用一份实现，OCR med-39），此处保留
+ *  导出兼容既有引用。 */
+export { CAREER_STORE_PREFIX, createControlledStore } from '../services/career-intent.ts';
+export type { ControlledCareerStore } from '../services/career-intent.ts';
 const PREVIEW_LIMIT = 160;
 
 export interface SharedEntry { text: string; sourceLabel: string }
@@ -73,16 +75,6 @@ export function prepareSharedImport(rawText: string, sourceLabel = SHARED_ENTRY_
     rawText: textValue, requestId: makeId(), sourceLabel,
     preview: { excerpt: textValue.length > PREVIEW_LIMIT ? `${textValue.slice(0, PREVIEW_LIMIT)}…` : textValue, fullLength: textValue.length },
   };
-}
-
-export interface ControlledCareerStore { read(key: string): unknown; write(key: string, value: unknown): void; remove(key: string): void }
-/** 受控存储：只接受 wk:career: 前缀内的键，登出时随 clearPrivateCache 一并清除。 */
-export function createControlledStore(store: ValueStore = storage): ControlledCareerStore {
-  const full = (key: string) => {
-    if (!key.startsWith(CAREER_STORE_PREFIX)) throw new Error(`career store key must be prefixed with ${CAREER_STORE_PREFIX}`);
-    return key;
-  };
-  return { read: key => store.read(full(key)), write: (key, value) => store.write(full(key), value), remove: key => store.remove(full(key)) };
 }
 
 // ---- T26 申请材料导出的本端文件 seam：sha256 校验 + 认证兑付下载 + 打开 ----
@@ -426,43 +418,13 @@ export function recoverEmptyClaims(sections: PreparationDraftSection[], server: 
 // 本端绝不声称“已送达”——送达是服务端后续推送的事实，回执里的 push 报告也只是
 // response-only 的尽力通知结果。
 
-/** T30 写入 intent 的受控存储（按 scope 隔离；登出 clearPrivateCache 一并清除）。 */
+/** T30 写入 intent 的受控存储（按 scope 隔离；登出 clearPrivateCache 一并清除）。
+ *  恢复链机制（歧义判据/作用域 stamp 守卫/expectedRevision 持久化/安全重放）已与
+ *  services/career.ts 合并到 career-intent.ts 共用一份实现（OCR med-39：此前两套
+ *  副本已漂移出 high-7/high-8）。此处只保留 T30 键位薄封装。 */
 const t30Store = createControlledStore();
-function t30Key(kind: string): string {
-  return `${CAREER_STORE_PREFIX}${kind}:${scopeKey(auth.scope.capture())}`;
-}
-/** 与 services/career.ts 同一判据的本地副本（该文件不在 T30 所有权内）：确定失败
- * （typed 拒绝/4xx）不进恢复链；歧义失败（超时/网络/5xx）才保留 intent 供对账。 */
-function t30Ambiguous(error: unknown): boolean {
-  const code = (error as { code?: unknown })?.code;
-  if (typeof code === 'string') {
-    if (['TIMEOUT', 'NETWORK_ERROR', 'CANCELLED', 'outcome_unknown'].includes(code)) return true;
-    if (['forbidden', 'revision_conflict', 'idempotency_conflict', 'invalid_request', 'not_found', 'proposal_resolved', 'search_quota_refused'].includes(code)) return false;
-  }
-  const status = (error as { status?: unknown })?.status;
-  return typeof status !== 'number' || status >= 500;
-}
-async function t30Recoverable<T>(kind: string, describe: string, input: unknown, send: (id: string) => Promise<T>, reuseId?: string): Promise<T> {
-  const id = reuseId ?? requestId();
-  const stamp = auth.scope.capture();
-  try {
-    return await send(id);
-  } catch (error) {
-    if (t30Ambiguous(error) && !auth.scope.isCurrent(stamp)) throw Object.assign(new Error('SCOPE_CHANGED'), { cause: error });
-    if (t30Ambiguous(error)) {
-      t30Store.write(t30Key(kind), { requestId: id, input });
-      throw Object.assign(new Error(`${describe}结果未知：请用原请求对账后再试`, { cause: error }), { code: 'outcome_unknown', requestId: id });
-    }
-    throw error;
-  }
-}
-function t30Intent<T>(kind: string): { requestId: string; input: T } | null {
-  const value = t30Store.read(t30Key(kind));
-  if (!value || typeof value !== 'object') return null;
-  const parsed = value as { requestId?: unknown; input?: unknown };
-  if (typeof parsed.requestId !== 'string' || !parsed.requestId || typeof parsed.input !== 'object' || !parsed.input) return null;
-  return { requestId: parsed.requestId, input: parsed.input as T };
-}
+const t30Key = (kind: string): string => intentKeyFor(kind, auth.scope.capture());
+function t30Intent<T>(kind: string): StoredIntent<T> | null { return readStoredIntent<T>(t30Store, t30Key(kind)); }
 function t30Clear(kind: string): void { t30Store.remove(t30Key(kind)); }
 
 // —— 规则（与 Web 同版本读写）——
@@ -483,13 +445,16 @@ function acceptRuleReceipt(receipt: SetRuleReceipt): void {
 /** 保存（创建或更新）规则：POST /rules 冻结合同；结果未知保留 intent 供原 requestId 对账。 */
 export async function saveRule(input: RuleWriteInput): Promise<SetRuleReceipt> {
   ruleRequestBody(requestId(), input); // 先做参数校验，再进入可恢复写入
-  return t30Recoverable<SetRuleReceipt>('rule-write', '规则保存', input, async id => {
-    const receipt = decodeSetRuleReceipt(await client.request({ method: 'POST', path: '/api/v1/career/rules', body: ruleRequestBody(id, input) }));
-    acceptRuleReceipt(receipt);
-    return receipt;
+  return recoverableWrite<SetRuleReceipt>(t30Store, {
+    kind: 'rule-write', describe: '规则保存', input, expected: input.expectedRevision,
+    send: async id => {
+      const receipt = decodeSetRuleReceipt(await client.request({ method: 'POST', path: '/api/v1/career/rules', body: ruleRequestBody(id, input) }));
+      acceptRuleReceipt(receipt);
+      return receipt;
+    },
   });
 }
-export function pendingRuleWrite(): { requestId: string; input: RuleWriteInput } | null { return t30Intent<RuleWriteInput>('rule-write'); }
+export function pendingRuleWrite(): StoredIntent<RuleWriteInput> | null { return t30Intent<RuleWriteInput>('rule-write'); }
 /** 用原 requestId 读取服务端持久回执（只读，不二次写入）。 */
 export async function reconcilePendingRule(): Promise<SetRuleReceipt> {
   const pending = pendingRuleWrite();
@@ -498,16 +463,30 @@ export async function reconcilePendingRule(): Promise<SetRuleReceipt> {
   t30Clear('rule-write'); acceptRuleReceipt(receipt);
   return receipt;
 }
-/** 对账确认服务端无记录（404）后的安全重发：同 requestId + 原 expectedRevision 逐字节重放。 */
+/** 对账确认服务端无记录（404）后的安全重发：同 requestId + 原 expectedRevision 逐字节重放。
+ *  重放收到确定性 revision_conflict 时可断定原请求从未落地（服务端幂等回放先于 CAS：
+ *  落地则同指纹回放直接成功）——恢复链已是死路，清 intent 解除保存封锁并如实提示按
+ *  当前修订重存（OCR high-12）；重试的其它确定失败保留 intent（对账/放弃出口仍可用）。 */
 export async function retryPendingRule(): Promise<SetRuleReceipt> {
   const pending = pendingRuleWrite();
   if (!pending) throw new Error('没有待恢复的规则保存');
-  return t30Recoverable<SetRuleReceipt>('rule-write', '规则保存', pending.input, async id => {
-    const receipt = decodeSetRuleReceipt(await client.request({ method: 'POST', path: '/api/v1/career/rules', body: ruleRequestBody(id, pending.input) }));
-    t30Clear('rule-write'); acceptRuleReceipt(receipt);
-    return receipt;
-  }, pending.requestId);
+  try {
+    return await retryRecoverable<SetRuleReceipt>(t30Store, 'rule-write', '规则保存', async (id, expected) => {
+      const receipt = decodeSetRuleReceipt(await client.request({ method: 'POST', path: '/api/v1/career/rules', body: ruleRequestBody(id, { ...pending.input, expectedRevision: expected }) }));
+      acceptRuleReceipt(receipt);
+      return receipt;
+    });
+  } catch (error) {
+    if ((error as { code?: unknown })?.code === 'revision_conflict') {
+      t30Clear('rule-write');
+      throw Object.assign(new Error('原规则保存已确认未写入（档案修订已前进）：本次恢复已结束，请按当前修订重新保存'), { code: 'revision_conflict_abandoned', cause: error });
+    }
+    throw error;
+  }
 }
+/** 显式放弃恢复（OCR high-12 最后出口）：只清本端 intent，不动任何服务端事实。若原
+ *  保存实际已落地，规则以服务端记录为准——可先「读回已保存的规则」或对账找回。 */
+export function abandonPendingRuleWrite(): void { t30Clear('rule-write'); }
 /** 当前作用域保存过的规则引用（未保存过返回 undefined——绝不用演示规则顶替）。 */
 export function readStoredRuleId(): string | undefined {
   const value = t30Store.read(t30Key('rule-id'));
@@ -534,10 +513,12 @@ export async function fetchReminders(): Promise<ReminderList> {
 /** 为一个来源事件登记待办（POST /reminders 冻结合同）；同一来源只保留一条（deduplicated）。 */
 export async function createReminder(input: ReminderWriteInput): Promise<ReminderReceipt> {
   if (!input.sourceId.trim()) throw Object.assign(new Error('请先填写来源事件编号'), { code: 'invalid_request', recoverable: true });
-  return t30Recoverable<ReminderReceipt>('reminder-write', '待办登记', input, async id =>
-    decodeReminderReceipt(await client.request({ method: 'POST', path: '/api/v1/career/reminders', body: { requestId: id, sourceKind: input.sourceKind, sourceId: input.sourceId.trim(), expectedRevision: input.expectedRevision } })));
+  return recoverableWrite<ReminderReceipt>(t30Store, {
+    kind: 'reminder-write', describe: '待办登记', input, expected: input.expectedRevision,
+    send: async id => decodeReminderReceipt(await client.request({ method: 'POST', path: '/api/v1/career/reminders', body: { requestId: id, sourceKind: input.sourceKind, sourceId: input.sourceId.trim(), expectedRevision: input.expectedRevision } })),
+  });
 }
-export function pendingReminderWrite(): { requestId: string; input: ReminderWriteInput } | null { return t30Intent<ReminderWriteInput>('reminder-write'); }
+export function pendingReminderWrite(): StoredIntent<ReminderWriteInput> | null { return t30Intent<ReminderWriteInput>('reminder-write'); }
 export async function reconcilePendingReminder(): Promise<ReminderReceipt> {
   const pending = pendingReminderWrite();
   if (!pending) throw new Error('没有待对账的待办登记');
@@ -548,12 +529,12 @@ export async function reconcilePendingReminder(): Promise<ReminderReceipt> {
 export async function retryPendingReminder(): Promise<ReminderReceipt> {
   const pending = pendingReminderWrite();
   if (!pending) throw new Error('没有待恢复的待办登记');
-  return t30Recoverable<ReminderReceipt>('reminder-write', '待办登记', pending.input, async id => {
-    const receipt = decodeReminderReceipt(await client.request({ method: 'POST', path: '/api/v1/career/reminders', body: { requestId: id, sourceKind: pending.input.sourceKind, sourceId: pending.input.sourceId.trim(), expectedRevision: pending.input.expectedRevision } }));
-    t30Clear('reminder-write');
-    return receipt;
-  }, pending.requestId);
+  return retryRecoverable<ReminderReceipt>(t30Store, 'reminder-write', '待办登记', async (id, expected) =>
+    decodeReminderReceipt(await client.request({ method: 'POST', path: '/api/v1/career/reminders', body: { requestId: id, sourceKind: pending.input.sourceKind, sourceId: pending.input.sourceId.trim(), expectedRevision: expected } })));
 }
+/** 显式放弃恢复（OCR high-12 同构出口）：只清本端 intent，登记入口恢复可用；若原登记
+ *  实际已落地，待办以服务端记录为准（收件箱刷新即可见）。 */
+export function abandonPendingReminderWrite(): void { t30Clear('reminder-write'); }
 /** 推送订阅事实键（服务端 reminder.go 冻结常量的本端镜像）。 */
 export const REMINDER_PUSH_FACT_KEY = 'notifications.push';
 /** 退订/重新订阅推送（档案 confirm 事实写）：退订只停推送，站内待办仍可读。 */

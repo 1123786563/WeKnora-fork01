@@ -166,6 +166,9 @@ export default function DiscoveryPage() {
     <Action secondary onClick={() => void navigate('careerProgress')}>查看申请进展与面试准备 ›</Action>
     {/* T32：全空间导出与完整删除的入口（页面可达，无死代码）。 */}
     <Action secondary onClick={() => void navigate('careerLifecycle')}>导出或完整删除你的求职数据 ›</Action>
+    {/* T30/T33：持续找岗规则、额度与提醒的入口（OCR high-9：该页此前在 app.config 注册
+        但无路由键、无任何导航指向，从 UI 完全不可达）。 */}
+    <Action secondary onClick={() => void navigate('careerRules')}>持续找岗规则、额度与提醒 ›</Action>
     <Notice tone='info'>资格冲突、来源状态与待核实项全部如实展示；结果未知时可随时用原请求对账，不会重复执行。</Notice>
   </Screen>;
 }
