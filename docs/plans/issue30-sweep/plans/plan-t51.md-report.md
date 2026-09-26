@@ -188,3 +188,131 @@ go build ./... → exit 0（仅 macOS ld 既有噪音）
 ### 附带更正
 
 上轮报告「待办提示」中占位行号笔误：实际占位在 `plan.go:252`（`// Approve ... IMPLEMENT IN TASK 3.`）与 `plan.go:253-254`（Execute/Status），非 `:262-264`（该行号来自变异前草稿）。Task 3/4 以 `grep -n "IMPLEMENT IN TASK" plan.go` 现查为准。
+
+---
+
+# Task 3 实施报告：plan 包——Approve（整体批准 / 排除单项 / AC1 批准面）
+
+- **执行者**：实现员-t51-任务3（subagent-driven-development 实现员，TDD）
+- **Worktree**：`/Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue30-sweep-t51`（分支 `codex/issue30-t51`）
+- **提交**：`6bdf81aa0` `feat(appconnector): plan Approve——整体批准/排除单项/AC1 批准面（T21 #51 Task 3）`
+- **状态**：DONE（RED→GREEN→提交，全部检查实跑取证）
+
+## 1. 实现内容
+
+严格按 `docs/plans/issue30-sweep/plans/plan-t51.md` Task 3 执行，仅动两个授权文件：
+
+### `internal/modules/appconnector/plan/plan.go`（修改）
+- 把占位注释 `// Approve records the owner's whole-plan decision. IMPLEMENT IN TASK 3.`（原 :252）替换为真实 `func (s *Service) Approve(ctx context.Context, tenantID uint64, planID, actor string, in ApproveInput) (PlanView, error)`，语义与计划逐字一致：
+  - 空 actor/digest → `ErrPlanInvalidInput`；
+  - `row.Digest != in.Digest` → `ErrPlanDigestMismatch`（AC1 批准面锚：拒绝且零写入）；
+  - `normalizeExclusions` 非法排除（越界/重复）→ `ErrPlanInvalidInput`；
+  - 已 authorized 时排除集冻结：`parseExclusions` + `equalSeqs`，不同集合 → `ErrPlanState`（排除集永不静默改写）；
+  - `PlanStore.ApprovePlan` CAS（digest + 状态∈{awaiting,authorized}）落 state/excluded_json/approved_by/approved_at；
+  - 逐项：被排除项 `continue`（永不批准永不派发）；非 `awaiting_approval` 状态项跳过（authorized 幂等、终态不适用）；仍 awaiting 的项经 `PlanApprover.Approve(ctx, id, actor, action.ArgsDigest)` 逐项 digest 绑定批准；
+  - 返回 `s.view(...)` 恢复后的 PlanView。
+- 删除文件尾部两行占位卫兵 `var _ = appconn.ActionAwaitingApproval` 与 `var _ = time.Now`（`appconn`/`time` 自本任务起被真实使用）。
+- `Execute`/`Status` 的 Task 4 占位注释保留不动（计划要求）。
+
+### `internal/modules/appconnector/plan/plan_test.go`（追加）
+追加计划 Task 3 Step 1 的测试代码（逐字）：`approveAll` helper + 4 个测试：
+1. `TestPlanApproveWholeApprovesEveryIncludedItem`——含项全部逐项 authorized + 计划行记录 approved_by/approved_at
+2. `TestPlanApproveExcludesItemNeverApprovesIt`（排除单项）——排除项停留 awaiting_approval + `[2]` 记录在计划行
+3. `TestPlanApproveRejectsForeignDigest`（AC1 批准面锚）——p1 旧 digest 不能批准 p2 新内容（内容变化→digest 必不同先断言）、`deadbeef` 拒绝、两次拒绝后两计划状态均停留 awaiting_approval（零写入）
+4. `TestPlanApproveRejectsBadExclusions`——越界 seq=3 / 重复 seq=[1,1] 均 `ErrPlanInvalidInput`
+
+计划标注 `TestPlanApproveRecoveryExclusionFrozen` 依赖 Task 4 的 Execute，归 Task 4 Step 1——本任务未添加，符合计划。
+
+## 2. 前置接口核验（开工前本 session 实跑核对）
+
+- `ActionService.Approve(ctx, id, actor, digest) error` 在 `internal/modules/appconnector/service/appconnector/action.go:284` ✓
+- `appconn.ActionAuthorized = "authorized"` 在 `internal/modules/appconnector/action.go:39` ✓
+- 前置接口就位：`planSvcEnv.db` 字段（plan_test.go:103）、`TestPlanFormMidItemFailureLeavesNoPlanRow` 两表按租户直接计数（plan_test.go:281-292）✓
+- Task 1 `PlanStore.ApprovePlan/FindPlan/ListPlanItems`（提交 `4276e36ac`）✓
+- 开工基线：`go test ./internal/modules/appconnector/plan/ -count=1` → `ok ... 2.150s`（Task 2 的 4 测试绿）
+
+## 3. TDD 证据（全部本 session 实跑）
+
+### RED（Step 2：追加测试后、实现前）
+
+命令：
+```
+go test ./internal/modules/appconnector/plan/ -run TestPlanApprove -count=1
+```
+输出：
+```
+internal/modules/appconnector/plan/plan_test.go:307:21: e.svc.Approve undefined (type *Service has no field or method Approve)
+internal/modules/appconnector/plan/plan_test.go:339:21: e.svc.Approve undefined (type *Service has no field or method Approve)
+internal/modules/appconnector/plan/plan_test.go:375:21: e.svc.Approve undefined (type *Service has no field or method Approve)
+internal/modules/appconnector/plan/plan_test.go:378:21: e.svc.Approve undefined (type *Service has no field or method Approve)
+internal/modules/appconnector/plan/plan_test.go:392:21: e.svc.Approve undefined (type *Service has no field or method Approve)
+internal/modules/appconnector/plan/plan_test.go:396:21: e.svc.Approve undefined (type *Service has no field or method Approve)
+FAIL	github.com/Tencent/WeKnora/internal/modules/appconnector/plan [build failed]
+```
+失败形态与计划 Step 2 预期（`e.svc.Approve` 未定义编译失败）一致。
+
+### GREEN（Step 4：最小实现后）
+
+命令：
+```
+go test ./internal/modules/appconnector/plan/ -count=1 -v
+```
+输出（测试清单）：
+```
+=== RUN   TestPlanDigestBindsSetOrderAndContent
+--- PASS: TestPlanDigestBindsSetOrderAndContent (0.00s)
+=== RUN   TestPlanFormBuildsOrderedDigestBoundPlan
+--- PASS: TestPlanFormBuildsOrderedDigestBoundPlan (0.00s)
+=== RUN   TestPlanFormMidItemFailureLeavesNoPlanRow
+--- PASS: TestPlanFormMidItemFailureLeavesNoPlanRow (0.00s)
+=== RUN   TestPlanFormRejectsInvalidInput
+--- PASS: TestPlanFormRejectsInvalidInput (0.00s)
+=== RUN   TestPlanApproveWholeApprovesEveryIncludedItem
+--- PASS: TestPlanApproveWholeApprovesEveryIncludedItem (0.00s)
+=== RUN   TestPlanApproveExcludesItemNeverApprovesIt
+--- PASS: TestPlanApproveExcludesItemNeverApprovesIt (0.00s)
+=== RUN   TestPlanApproveRejectsForeignDigest
+--- PASS: TestPlanApproveRejectsForeignDigest (0.00s)
+=== RUN   TestPlanApproveRejectsBadExclusions
+--- PASS: TestPlanApproveRejectsBadExclusions (0.00s)
+PASS
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/plan	3.987s
+```
+plan 包 8 测试全 PASS（Task 2 原 4 + Task 3 新 4）。
+
+命令：`go build ./...` → 退出码 0（仅 macOS ld 既有噪音：`ld: warning: ignoring duplicate libraries: '-lc++'`，cmd/server 与 cmd/desktop）。
+
+### 回归（超出计划 Step 4 的额外验证，本 ask 实跑）
+
+命令：
+```
+go test ./internal/modules/appconnector/... -count=1
+```
+输出：
+```
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector	0.636s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/connectorcontrol	3.726s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/openconnector	0.727s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/plan	2.743s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/publish	1.763s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector	2.672s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector	3.532s
+```
+7 包全绿。
+
+## 4. 文件变更
+
+| 文件 | 操作 | 说明 |
+|---|---|---|
+| `internal/modules/appconnector/plan/plan.go` | 修改 | 占位替换为真实 Approve；删除两行 `var _ =` 占位卫兵 |
+| `internal/modules/appconnector/plan/plan_test.go` | 追加 | approveAll helper + 4 个 Approve 测试 |
+
+提交：`6bdf81aa0`（2 files changed, 168 insertions(+), 4 deletions(-)），提交后 `git status --short` 干净。未触碰冻结面（`ActionRow`/`ActionService` 生命周期/`publish` 包/既有端点零改动）。
+
+## 5. 自检发现
+
+1. **【跨任务现状，非本任务阻塞】Task 0（迁移轨道去重重编）在本 worktree 未执行**：实核 `migrations/sqlite/` 仍同时存在 `000114_mobile_device_app.*` 与 `000114_public_agent_marketplace.*`（双占未修），`internal/database/migration.go:33` 门控常量仍为 `114`。本任务不依赖全量迁移轨道（plan 包测试走 AutoMigrate 内存库），故不受阻、且未越权代做；但 **Task 6 的 AC3 全量迁移 e2e（`go test ./internal/handler/ -run TestNotionPublish`）在 Task 0 完成前不可运行**——计划 Tech Stack 节记载该命令当前报 `duplicate migration file: 000114_public_agent_marketplace.down.sql`。请编排方确认 Task 0 由其授权执行者完成。
+2. **Review Focus 2（批准面腿）已覆盖**：`TestPlanApproveRejectsForeignDigest` 以两个真实计划钉死「计划内容变化→新 digest→旧 digest 拒批新内容」，并断言拒绝零状态迁移；执行面腿（`TestPlanExecuteRefusesUnapprovedOrForeignDigest`）归 Task 4。
+3. **gorm trace 红色 `record not found` 日志为预期路径噪音**：Approve 测试路径中 publish seam 的 `LatestPublishedByDestination` 探测返回 gorm.ErrRecordNotFound 时打 trace 日志；全部断言 `--- PASS`，非缺陷（与 Task 2 报告第 6.1 条同判）。
+4. **占位纪律**：Task 4 的 `// Execute ...`/`// Status ... IMPLEMENT IN TASK 4.` 占位注释仍在，Task 4 必须替换。
+5. 零字符串拼接 SQL（计划层仅经 gorm 参数绑定 store 方法），零新增凭据，测试 token 均为契约双打假值。
