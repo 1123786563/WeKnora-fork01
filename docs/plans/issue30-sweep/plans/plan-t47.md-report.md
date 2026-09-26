@@ -480,3 +480,92 @@ TYPECHECK OK
 
 - 代码提交：`39799662b` `feat(api-client): mobile research remote adapter (T17 #47 task 5)`（3 文件：research.ts 新建 145 行、research.test.ts 新建 96 行、package.json 追加 1 行）。
 - 报告追加：本 T5 章节，随后的 docs 提交（SHA 见 submit_result）。
+
+---
+
+# Task 6 报告：mobile-core——research 深模块（句柄、离线批注草稿、修订组合）
+
+- worktree：`/Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue30-sweep-t47`（分支 `codex/issue30-t47`）
+- 需求来源：`docs/plans/issue30-sweep/plans/plan-t47.md` Task 6（行 2426–3104）
+- 报告契约模板：任务指定 6.4.1 路径不存在；实读同内容 6.4.2 版
+  `/Users/wuyongjun/.codex/plugins/cache/openai-curated-remote/superpowers/6.4.2/skills/subagent-driven-development/implementer-prompt.md`
+
+## T6.1 任务与交付物
+
+按计划逐字落盘，全部位于任务授权文件清单内（5 文件，+574 行）：
+
+| 文件 | 内容 |
+|---|---|
+| `packages/mobile-core/src/research/types.ts`（新建） | `ResearchDelegationRow`/`ResearchAnnotationRow`（camelCase 语义行，与 Task 5 `ResearchRemote` 行结构逐字一致）、`ResearchBackendPort`（delegate/list/complete/annotate/annotations 5 方法）、`ResearchAnnotationDraft`/`ResearchDraftsPort`、`TaskResearchPorts`（remote 必选；commands/gate/drafts 可选并注明各自 fail-closed 语义）、`TaskResearch.open({lease})`、`TaskResearchHandle`（10 方法）、`ResearchAnnotationReceipt`/`ResearchRevisionInput`/`ResearchRevisionReceipt`/`ResearchEvent`/`ResearchStatus` |
+| `packages/mobile-core/src/research/task-research.ts`（新建） | `createTaskResearch(ports)` + `ResearchError`/`ResearchErrorCode`（8 码）。行为不变量（plan-t47.md:2481）全部钉死：每个异步方法入口 `check()`（closed 或 `!leaseActive(lease)` → `RESEARCH_SCOPE_CHANGED`，零网络）；delegate/annotate/requestRevision 输入校验在任何网络派发之前；离线批注落 `drafts.put`（id `research-ann-<n>` 符合 Scoped Vault 白名单 `^[A-Za-z0-9._-]{1,64}$`）+ `annotation-drafted` 事件；`backendFailure` 把 `RESEARCH_BASE_VERSION_CONFLICT` → `RESEARCH_CONFLICT`（`failureCode` 优先读 `Error.code`、回退 message，两种错误形态都覆盖）；requestRevision 组合确定性版本钉定文本 `请基于版本 ${baseVersion} 修订材料 ${materialId}：${note}` 委托 `TaskCommandPort`，`TASK_COMMAND_CONFLICT` → `RESEARCH_COMMAND_CONFLICT`、无 commands → `RESEARCH_COMMAND_UNAVAILABLE`；`flushAnnotationDrafts` 按序重放同 run 草稿：成功移除 + `draft-flushed` 事件、conflict 保留草稿标 `conflict`、其他失败标 `failed` 继续、每草稿重放前再 `check()`、`RESEARCH_SCOPE_CHANGED` 立即中止抛出；`close(reason)` 幂等 + `scope-closed` 事件 |
+| `packages/mobile-core/src/research/in-memory-research-remote.ts`（新建） | `createScenarioResearchRemote(script)` 场景 Adapter（module-seams §4.4/§7.3 同款）：脚本化委派/批注行、`conflictOnAnnotate` 冲突分支、`baseVersion==='stale'` 恒冲突、complete 未知 id 抛 `RESEARCH_NOT_FOUND`；头注释声明绝不冒充真实集成证据 |
+| `packages/mobile-core/src/research/task-research.test.ts`（新建） | 5 个 Interface 级测试（计划逐字 + 两处类型修正，见 T6.2） |
+| `packages/mobile-core/src/index.ts`（修改，末尾 +10 行） | barrel 导出：值 `ResearchError`/`createTaskResearch`/`createScenarioResearchRemote`，类型 `ResearchErrorCode` + types.ts 全部 13 个类型 + `ScenarioResearchRemoteScript` |
+
+平台纯净：模块只 import 包内相对路径（runtime/offline/task-office 类型），零 RN/DOM/transport 依赖。
+
+## T6.2 与计划的偏差（3 处，均为类型层面，运行时行为零变化）
+
+1. **测试夹具 `newLease()` 改经 `asScopeLease()`**。计划测试直接 `open({ lease: newLease() })` 传裸 `RuntimeScopeLease`；但 `ScopeLease` 是 branded 不透明类型（`runtime/types.ts:12-18`，`readonly [scopeLeaseBrand]: never`），裸类实例在严格 tsc 下不可赋值（TS2741）。仓库既有先例都经转换：`task-office.test.ts:15-16`（`lease: revocable.asScopeLease()` + 保留 revocable 引用做 revoke）、`task-material.test.ts:36`。因此 `newLease()` 签名改为 `{ lease: ScopeLease; revoke(): void }`，各测试点改用解构/`.lease`。运行时 `leaseActive` 以 `instanceof RuntimeScopeLease` 判定（`scope-lease.ts:26-28`），`asScopeLease()` 是同一对象原样出手，可撤销性与计划语义完全一致。
+2. **commands stub 的 `action` 参数改精确 union `'steer' | 'queue_next' | 'cancel'`**。计划的 `action: string` 使 stub 返回类型不可赋给 `TaskCommandPort`（TS2322）；对齐 `task-detail.test.ts:701-718` 的 `scriptedCommandPort` 先例。断言内容（`action === 'queue_next'`、钉定文本逐字相等）不变。
+3. **`task-research.ts` 增加 3 个类型 re-export**（`export type { ResearchBackendPort, ResearchDraftsPort, ResearchEvent } from './types.ts';`）。计划测试第 4 行从 `./task-research.ts` 以 `import type` 导入这三个类型，而计划实现代码只 import 未 re-export——tsx 擦除 type import 故测试仍绿，但类型层面 import 会失败。加 re-export 是满足计划测试导入要求的最小改动，与 index.ts 的 barrel 导出不冲突。
+
+## T6.3 TDD 过程与测试命令完整输出（全部本会话实跑）
+
+### RED（计划 Step 2）
+
+```
+$ pnpm exec tsx --test packages/mobile-core/src/research/task-research.test.ts
+# Error [ERR_MODULE_NOT_FOUND]: Cannot find module '.../packages/mobile-core/src/research/in-memory-research-remote.ts'
+#   imported from .../packages/mobile-core/src/research/task-research.test.ts
+not ok 1 - packages/mobile-core/src/research/task-research.test.ts
+# tests 1 / # pass 0 / # fail 1
+```
+
+失败形态为模块不存在（`ERR_MODULE_NOT_FOUND`），与计划 Step 2 预期（「FAIL（模块不存在）」）一致。
+
+### GREEN + 回归（计划 Step 4 原样串联命令，实现修正后复跑为最终证据）
+
+```
+$ pnpm exec tsx --test packages/mobile-core/src/research/task-research.test.ts && \
+  pnpm exec tsx --test packages/mobile-core/src/material/task-material.test.ts packages/mobile-core/src/task-office/task-office.test.ts
+ok 1 - delegate validates scope and input before any network dispatch
+ok 2 - annotations record, conflict-map and draft offline
+ok 3 - flush replays drafts in order; conflict keeps the draft; revocation aborts the rest
+ok 4 - requestRevision composes a version-pinned text over the command port
+ok 5 - closed handles reject every path with SCOPE_CHANGED and emit scope-closed
+# tests 5 / # pass 5 / # fail 0          ← research 新测试
+
+（material 16 项 + task-office 8 项，逐项 ok）
+# tests 24 / # pass 24 / # fail 0        ← material + task-office 回归
+```
+
+### 补充自检（计划外，非计划命令替代）
+
+```
+$ pnpm exec tsx --test packages/mobile-core/src/platform-purity.test.ts
+# tests 2 / # pass 2 / # fail 0
+
+$ pnpm exec tsc --noEmit --strict --skipLibCheck --target ES2022 --lib ES2022,DOM \
+    --module NodeNext --moduleResolution NodeNext --allowImportingTsExtensions --types node \
+    packages/mobile-core/src/research/types.ts packages/mobile-core/src/research/task-research.ts \
+    packages/mobile-core/src/research/in-memory-research-remote.ts \
+    packages/mobile-core/src/research/task-research.test.ts packages/mobile-core/src/index.ts
+tsc-exit=0   （零类型错误）
+```
+
+说明：最初一次裸 tsc（未带 `--types node`）报测试文件 `node:assert/strict`/`node:test` 找不到——是调用方式缺 `--types node` 所致，非代码问题；加参数并完成 T6.2 偏差 1/2 修正后归零（偏差 1 即该轮 tsc 的真实类型发现）。
+
+## T6.4 自检发现（供主控/后续任务知悉）
+
+- **Completeness**：Produces 契约（plan-t47.md:2439-2479）逐项核对——错误码 8 个、Port 5 方法、句柄 10 方法、receipt/event 类型、两个工厂签名逐字一致；行为不变量（plan-t47.md:2481）9 条全部有测试钉死（零网络断言靠计数 remote 与 `assert.rejects` 前后 `calls` 不变证明）。
+- **边界确认**：离线修订请求不做草稿（属 Run 命令，计划边界声明）——`requestRevision` 无任何草稿路径，fail closed，与 spec「Offline mode … prohibits Run commands」一致；离线批注草稿 id 过白名单校验（`research-ann-1` 长度 14，全合法字符）。
+- **Testing**：测试验证可观察行为（错误码、事件、草稿保留/移除、网络调用计数），非 mock 内部；`recordingDrafts` 用 `structuredClone` 防引用共享假阳性；输出 pristine。
+- **依赖对接**：`ResearchBackendPort` 与 Task 5 `ResearchRemote`（`packages/api-client/src/mobile/research.ts:38-44`）方法签名与行结构逐字同构，Task 7 composition 可直接把 `createMobileResearchRemote` 产物注入 `TaskResearchPorts.remote`（结构可赋值性由 Task 7 的 apps/mobile typecheck 最终证明，本模块不 import api-client，依赖方向不变）。
+- **无越权改动**：提交前 `git status` 仅 5 个授权文件；未触碰他人文件；未派发任何子代理；未推送远端。
+- **未运行的检查**：apps/mobile 侧 typecheck/e2e（属 Task 7/8 范围）；包级 `test:shared` 不含 mobile-core（脚本清单核实，根 `package.json:13`），故以计划指定范围 + 平台纯净性 + 严格 tsc 为准。
+
+## T6.5 提交
+
+- 代码提交：`257b50e2e` `feat(mobile-core): task research deep module with offline annotation drafts (T17 #47 task 6)`（5 文件 +574 行：research/ 四文件新建、index.ts 追加导出块）。
+- 报告追加：本 T6 章节，随后的 docs 提交（SHA 见 submit_result）。
