@@ -38,43 +38,6 @@ move_packages:
     to: internal/modules/knowledge/semantic
   - from: internal/searchutil
     to: internal/modules/knowledge/searchutil
-alias_obligations:
-  - old_import_path: internal/application/repository/retriever/doris
-    passb_task: B-knowledge
-  - old_import_path: internal/application/repository/retriever/elasticsearch
-    passb_task: B-knowledge
-  - old_import_path: internal/application/repository/retriever/elasticsearch/v7
-    passb_task: B-knowledge
-  - old_import_path: internal/application/repository/retriever/elasticsearch/v8
-    passb_task: B-knowledge
-  - old_import_path: internal/application/repository/retriever/milvus
-    passb_task: B-knowledge
-  - old_import_path: internal/application/repository/retriever/neo4j
-    passb_task: B-knowledge
-  - old_import_path: internal/application/repository/retriever/opensearch
-    passb_task: B-knowledge
-  - old_import_path: internal/application/repository/retriever/postgres
-    passb_task: B-knowledge
-  - old_import_path: internal/application/repository/retriever/qdrant
-    passb_task: B-knowledge
-  - old_import_path: internal/application/repository/retriever/sqlite
-    passb_task: B-knowledge
-  - old_import_path: internal/application/repository/retriever/tencentvectordb
-    passb_task: B-knowledge
-  - old_import_path: internal/application/repository/retriever/weaviate
-    passb_task: B-knowledge
-  - old_import_path: internal/application/service/retriever
-    passb_task: B-knowledge
-  - old_import_path: internal/infrastructure/chunker
-    passb_task: B-knowledge
-  - old_import_path: internal/infrastructure/docparser
-    passb_task: B-knowledge
-  - old_import_path: internal/infrastructure/docparser/anydoc
-    passb_task: B-knowledge
-  - old_import_path: internal/infrastructure/semantic
-    passb_task: B-knowledge
-  - old_import_path: internal/searchutil
-    passb_task: B-knowledge
 legacy_files:
   - path: internal/application/repository/kbshare.go
     reason: trapped in horizontal repository package internal/application/repository (Pass B file split)

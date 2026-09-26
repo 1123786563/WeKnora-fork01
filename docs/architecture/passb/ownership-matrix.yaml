@@ -2429,42 +2429,6 @@ aliases:
   - old_import_path: internal/application/repository/commercial
     plan: 12-commercial
     delete_barrier: ib1
-  - old_import_path: internal/application/repository/retriever/doris
-    plan: 20-knowledge-program
-    delete_barrier: ib2
-  - old_import_path: internal/application/repository/retriever/elasticsearch
-    plan: 20-knowledge-program
-    delete_barrier: ib2
-  - old_import_path: internal/application/repository/retriever/elasticsearch/v7
-    plan: 20-knowledge-program
-    delete_barrier: ib2
-  - old_import_path: internal/application/repository/retriever/elasticsearch/v8
-    plan: 20-knowledge-program
-    delete_barrier: ib2
-  - old_import_path: internal/application/repository/retriever/milvus
-    plan: 20-knowledge-program
-    delete_barrier: ib2
-  - old_import_path: internal/application/repository/retriever/neo4j
-    plan: 20-knowledge-program
-    delete_barrier: ib2
-  - old_import_path: internal/application/repository/retriever/opensearch
-    plan: 20-knowledge-program
-    delete_barrier: ib2
-  - old_import_path: internal/application/repository/retriever/postgres
-    plan: 20-knowledge-program
-    delete_barrier: ib2
-  - old_import_path: internal/application/repository/retriever/qdrant
-    plan: 20-knowledge-program
-    delete_barrier: ib2
-  - old_import_path: internal/application/repository/retriever/sqlite
-    plan: 20-knowledge-program
-    delete_barrier: ib2
-  - old_import_path: internal/application/repository/retriever/tencentvectordb
-    plan: 20-knowledge-program
-    delete_barrier: ib2
-  - old_import_path: internal/application/repository/retriever/weaviate
-    plan: 20-knowledge-program
-    delete_barrier: ib2
   - old_import_path: internal/application/service/appconnector
     plan: 27-appconnector
     delete_barrier: ib2
@@ -2480,9 +2444,6 @@ aliases:
   - old_import_path: internal/application/service/metric
     plan: 37-insights
     delete_barrier: ib3
-  - old_import_path: internal/application/service/retriever
-    plan: 20-knowledge-program
-    delete_barrier: ib2
   - old_import_path: internal/application/service/workbench
     plan: 40-workbench
     delete_barrier: ib4
@@ -2570,24 +2531,12 @@ aliases:
   - old_import_path: internal/im/yunzhijia
     plan: 36-channels
     delete_barrier: ib3
-  - old_import_path: internal/infrastructure/chunker
-    plan: 20-knowledge-program
-    delete_barrier: ib2
   - old_import_path: internal/infrastructure/commercialplatform
     plan: 12-commercial
     delete_barrier: ib1
-  - old_import_path: internal/infrastructure/docparser
-    plan: 20-knowledge-program
-    delete_barrier: ib2
-  - old_import_path: internal/infrastructure/docparser/anydoc
-    plan: 20-knowledge-program
-    delete_barrier: ib2
   - old_import_path: internal/infrastructure/openmeter
     plan: 12-commercial
     delete_barrier: ib1
-  - old_import_path: internal/infrastructure/semantic
-    plan: 20-knowledge-program
-    delete_barrier: ib2
   - old_import_path: internal/infrastructure/web_search
     plan: 11-airesource
     delete_barrier: ib1
@@ -2639,9 +2588,6 @@ aliases:
   - old_import_path: internal/sandbox
     plan: 13-execution
     delete_barrier: ib1
-  - old_import_path: internal/searchutil
-    plan: 20-knowledge-program
-    delete_barrier: ib2
   - old_import_path: internal/storageallowlist
     plan: 42-system-policy
     delete_barrier: ib4
