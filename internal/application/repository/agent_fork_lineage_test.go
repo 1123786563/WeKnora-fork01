@@ -126,3 +126,26 @@ func TestLicenseUpsertGetAndList(t *testing.T) {
 	require.Len(t, rows, 1)
 	require.Equal(t, "MIT", rows[0].ID)
 }
+
+// UpsertLicense 的 ErrAgentLicenseIDRequired 防御分支直接测试（终局审查
+// minor #3）：服务层 RegisterLicense 以 ErrAgentLicenseInvalid 拦截空 ID，
+// 但仓储层防御独立成立——nil 指针与空白 ID（TrimSpace 后为空）都必须在此
+// 被拒，不触达任何 SQL。
+func TestUpsertLicenseRejectsMissingID(t *testing.T) {
+	db := openForkLineageDB(t)
+	repo := NewAgentMarketplaceRepository(db)
+	ctx := context.Background()
+
+	nilRow, err := repo.UpsertLicense(ctx, nil)
+	require.Nil(t, nilRow)
+	require.ErrorIs(t, err, ErrAgentLicenseIDRequired)
+
+	blankRow, err := repo.UpsertLicense(ctx, &types.AgentLicenseEntity{ID: "   ", Name: "blank id"})
+	require.Nil(t, blankRow)
+	require.ErrorIs(t, err, ErrAgentLicenseIDRequired)
+
+	// 防御分支未落任何行：注册表仍为空。
+	rows, err := repo.ListLicenses(ctx)
+	require.NoError(t, err)
+	require.Empty(t, rows)
+}

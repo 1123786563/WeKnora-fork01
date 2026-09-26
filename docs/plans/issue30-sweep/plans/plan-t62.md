@@ -1744,12 +1744,17 @@ func seedForkChain(t *testing.T, r *gin.Engine, listingID, editedPrompt string) 
 }
 
 // submitForkVersionRaw 提交一个冻结版本，返回原始响应（供 409 断言）。
+// metadata 统一带 capability_requirements：源 listing 上的 release 必须声明
+// model/knowledge 需求，adoption 派生链的 capability-mapping 才能通过
+// （UpdateCapabilityMapping 拒绝 release 未声明的 capability）；fork 提交
+// 多带该字段无害。（终态回填：plan-t62.md-report.md 1.3 修正 2。）
 func submitForkVersionRaw(r *gin.Engine, role, actor, versionID, licenseID, version, notes string) *httptest.ResponseRecorder {
 	return publicCall(r, 1, false, http.MethodPost, "/api/v1/marketplace/tenant/release-submissions", role, actor, map[string]any{
 		"agent_version_id": versionID,
 		"metadata": map[string]any{
 			"semantic_version": version, "display_name": "Derived helper", "summary": "Derived",
 			"supported_languages": []string{"en"}, "use_cases": []string{"support"},
+			"capability_requirements":    []string{"model", "knowledge"},
 			"minimum_weknora_capability": "1", "license_id": licenseID,
 			"change_notes": notes,
 		},
@@ -1883,10 +1888,17 @@ func TestAgentForkLineagePublicSubmissionLicenseGate(t *testing.T) {
 	registerForkLicense(t, r, "MIT", true)
 	listingID, _ := publishAdoptionRelease(t, r)
 
-	// F1：fork 链 → 提交 → 审批（放行期）。
+	// F1：fork 链 → 提交 → 审批（放行期）。fork 提交的 SourceAgentID 是
+	// variant 发布的本地 agent，CreateSubmission 按 (tenant_id,
+	// source_agent_id) 复用 listing——fork Release 因此落在派生 agent 自己
+	// 的 listing（Fork 作为独立 Agent Definition 维护，CONTEXT.md:134），
+	// 而不是源 listing。公共提升必须用 fork submission 响应自身的
+	// listing_id；许可证门读的是 release 行的 lineage_license_id，不受影响。
+	// （终态回填：plan-t62.md-report.md 1.3 修正 1。）
 	_, forkOneVersion := seedForkChain(t, r, listingID, "Be portable, forked.")
 	forkOne := submitForkVersion(t, r, "admin", "admin", forkOneVersion, "MIT", "2.0.0", "forked once")
 	require.True(t, forkOne.Data.IsFork)
+	require.NotEqual(t, listingID, forkOne.Data.ListingID, "fork Release 属于派生 agent 自己的 listing")
 	forkOneReleaseID := approveForkSubmission(t, r, forkOne.Data.ID, forkOne.Data.BundleDigest)
 
 	// F2：第二条 fork 链（仍在放行期完成租户 lane 提交与审批）。
@@ -1901,7 +1913,7 @@ func TestAgentForkLineagePublicSubmissionLicenseGate(t *testing.T) {
 
 	// 放行期：F1 升公共提交 → 201。
 	promotedOne := publicCall(r, 1, false, http.MethodPost, "/api/v1/marketplace/public/release-submissions", "admin", "admin", map[string]any{
-		"source_listing_id": listingID, "release_id": forkOneReleaseID,
+		"source_listing_id": forkOne.Data.ListingID, "release_id": forkOneReleaseID,
 	})
 	require.Equal(t, http.StatusCreated, promotedOne.Code, promotedOne.Body.String())
 
@@ -1910,7 +1922,7 @@ func TestAgentForkLineagePublicSubmissionLicenseGate(t *testing.T) {
 
 	// F2 升公共提交 → 409（live 查询，历史放行不缓存）。
 	promotedTwo := publicCall(r, 1, false, http.MethodPost, "/api/v1/marketplace/public/release-submissions", "admin", "admin", map[string]any{
-		"source_listing_id": listingID, "release_id": forkTwoReleaseID,
+		"source_listing_id": forkTwo.Data.ListingID, "release_id": forkTwoReleaseID,
 	})
 	require.Equal(t, http.StatusConflict, promotedTwo.Code, promotedTwo.Body.String())
 	require.Contains(t, promotedTwo.Body.String(), "redistribution")
@@ -1918,7 +1930,7 @@ func TestAgentForkLineagePublicSubmissionLicenseGate(t *testing.T) {
 	// 恢复允许后，同一 F2 放行（被拒的尝试未落任何行，可重试）。
 	registerForkLicense(t, r, "MIT", true)
 	retried := publicCall(r, 1, false, http.MethodPost, "/api/v1/marketplace/public/release-submissions", "admin", "admin", map[string]any{
-		"source_listing_id": listingID, "release_id": forkTwoReleaseID,
+		"source_listing_id": forkTwo.Data.ListingID, "release_id": forkTwoReleaseID,
 	})
 	require.Equal(t, http.StatusCreated, retried.Code, retried.Body.String())
 }

@@ -324,3 +324,45 @@ func TestAgentForkLineagePublicSubmissionLicenseGate(t *testing.T) {
 	})
 	require.Equal(t, http.StatusCreated, retried.Code, retried.Body.String())
 }
+
+// AC2 边界语义钉死（终局审查 minor #2）：许可证在 Submission 提交后、审批
+// 前翻转为禁止时，租户 lane 审批（ReviewAndPublishTx）不复查许可证、仍发布
+// 该 Release——门在提交时点强制，审批时点不缓存也不复查（审批时点强制属
+// 后续增强，agent_marketplace.go ReviewAndPublishTx approved 分支注释）。
+// 门读的是源 release 清单的许可证（publishAdoptionRelease 清单用 "MIT"，
+// 与 Test 3 一致），因此翻转对象是 "MIT"。该 Release 升公共 lane 时被
+// live 门 409 拦截——「历史放行不缓存、lane 边界 live 再查」；恢复允许后
+// 同一 Release 重试放行。
+func TestAgentForkLineageLicenseFlipBeforeApprovePublishesButPublicLaneBlocks(t *testing.T) {
+	r, _, _ := newPublicMarketplaceTestApp(t)
+	registerForkLicense(t, r, "MIT", true)
+	listingID, _ := publishAdoptionRelease(t, r)
+
+	// 放行期提交 fork Submission（门在提交时点放行）。
+	_, forkVersionID := seedForkChain(t, r, listingID, "Be portable, forked mid-flight.")
+	submission := submitForkVersion(t, r, "admin", "admin", forkVersionID, "MIT", "4.0.0", "forked mid-flight")
+	require.True(t, submission.Data.IsFork)
+	require.NotEqual(t, listingID, submission.Data.ListingID, "fork Release 属于派生 agent 自己的 listing")
+
+	// 提交后、审批前：源清单许可证翻转为禁止。
+	registerForkLicense(t, r, "MIT", false)
+
+	// 审批不复查许可证 → 200 发布（审批时点强制属后续增强）。
+	releaseID := approveForkSubmission(t, r, submission.Data.ID, submission.Data.BundleDigest)
+
+	// 该 Release 升公共 lane → live 门 409 拦截（历史放行不缓存）。
+	verified := publicCall(r, 1, true, http.MethodPost, "/api/v1/marketplace/public/verified-publishers", "admin", "sysadmin", map[string]any{"tenant_id": 1})
+	require.Contains(t, []int{http.StatusOK, http.StatusCreated}, verified.Code, verified.Body.String())
+	blocked := publicCall(r, 1, false, http.MethodPost, "/api/v1/marketplace/public/release-submissions", "admin", "admin", map[string]any{
+		"source_listing_id": submission.Data.ListingID, "release_id": releaseID,
+	})
+	require.Equal(t, http.StatusConflict, blocked.Code, blocked.Body.String())
+	require.Contains(t, blocked.Body.String(), "redistribution")
+
+	// 恢复允许 → 同一 Release 重试放行（被拒尝试未落任何行，可重试）。
+	registerForkLicense(t, r, "MIT", true)
+	retried := publicCall(r, 1, false, http.MethodPost, "/api/v1/marketplace/public/release-submissions", "admin", "admin", map[string]any{
+		"source_listing_id": submission.Data.ListingID, "release_id": releaseID,
+	})
+	require.Equal(t, http.StatusCreated, retried.Code, retried.Body.String())
+}

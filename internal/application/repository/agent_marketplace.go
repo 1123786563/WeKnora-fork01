@@ -147,6 +147,15 @@ func (r *agentMarketplaceRepository) ReviewAndPublishTx(ctx context.Context, ten
 				return err
 			}
 			if decision.Decision == "approved" {
+				// The redistribution gate is enforced at Submission time
+				// (service resolveSubmissionLineage) and re-checked LIVE at
+				// every lane boundary (public lane SubmitPublicRelease reads
+				// release.LineageLicenseID); this approval deliberately does
+				// NOT re-check it — a flip between submit and approve still
+				// publishes here, and the released row is blocked from the
+				// public lane by the live gate. Approval-time enforcement is
+				// a follow-up enhancement. Pinned by the router test
+				// TestAgentForkLineageLicenseFlipBeforeApprove.
 				var max int
 				if err := tx.Model(&types.AgentReleaseEntity{}).Where("tenant_id = ? AND listing_id = ?", tenantID, submission.ListingID).Select("COALESCE(MAX(release_number), 0)").Scan(&max).Error; err != nil {
 					return err
