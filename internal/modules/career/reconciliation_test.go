@@ -68,6 +68,20 @@ func importURLComplete(t *testing.T, o *Office, transport *scriptedTransport, ct
 	return receipt
 }
 
+// importURLCompleteForOffice wires a stub policy and scripted transport onto
+// an office created elsewhere (e.g. the application fixture) and imports one
+// complete URL observation through the real chain.
+func importURLCompleteForOffice(t *testing.T, o *Office, ctx context.Context, requestID, rawURL string) ImportURLReceipt {
+	t.Helper()
+	policy := &stubSourcePolicy{approvedHosts: map[string]bool{
+		"jobs.example.com": true, "other.example.net": true,
+	}}
+	transport := &scriptedTransport{policy: policy, scripts: map[string]scriptedFetch{}}
+	o.sourcePolicy = policy
+	o.sourceTransport = transport
+	return importURLComplete(t, o, transport, ctx, requestID, rawURL)
+}
+
 // seedObservation inserts a raw observation+snapshot pair for state-comparison
 // scenarios the import chain cannot produce on demand (expiry markers,
 // requirement drift, failed rechecks on the same opportunity).
@@ -316,6 +330,46 @@ func TestReconcileOldApplicationsStillShowOldSnapshots(t *testing.T) {
 	candidateStatus, err := o.OpportunityStatus(ctx, seed.OpportunityID)
 	require.NoError(t, err)
 	require.Equal(t, duplicate.OpportunityID, candidateStatus.MergedInto)
+
+	// Pre-merge references keep resolving through the merge chain: the old
+	// opportunity ID + pinned snapshot ID still returns the untouched body,
+	// now attributed to the canonical owner.
+	legacy, err := o.OpportunityEvidence(ctx, seed.OpportunityID, seed.SnapshotID)
+	require.NoError(t, err)
+	require.Equal(t, appliedRaw, legacy.RawText)
+	require.Equal(t, duplicate.OpportunityID, legacy.OpportunityID)
+
+	// Re-evaluating the pinned snapshot under the old opportunity ID keeps
+	// working instead of 404.
+	_, err = o.EvaluateOpportunity(ctx, EvaluateInput{
+		RequestID: "rec-app-re-eval", OpportunityID: seed.OpportunityID, SnapshotID: seed.SnapshotID,
+	})
+	require.NoError(t, err)
+
+	// Appending a user JD through the old opportunity ID joins the merge
+	// target's history (canonical owner), not an orphaned pre-merge record.
+	// The prior URL observation moved to the target with the merge; resolving
+	// it under the old ID must go through the merge chain.
+	targetObservations, err := o.OpportunityObservations(ctx, duplicate.OpportunityID)
+	require.NoError(t, err)
+	var priorObservationID string
+	for _, observation := range targetObservations {
+		if observation.Source.Kind == "url" && observation.Source.ReferenceID == "https://jobs.example.com/postings/1001" {
+			priorObservationID = observation.ObservationID
+		}
+	}
+	require.NotEmpty(t, priorObservationID, "the merged history must carry the pre-merge URL observation")
+	o.opportunityExtractor = func(string) (OpportunityFields, error) { return fields, nil }
+	appended, err := o.ImportJD(ctx, ImportJDInput{
+		RequestID: "rec-app-append", RawText: "岗位 1001 补充\n工作职责：\n负责服务\n任职要求：\n本科",
+		SourceLabel: "Post-merge supplement", SourceReference: "https://jobs.example.com/postings/1001?after=merge",
+		OpportunityID: seed.OpportunityID, PriorObservationID: priorObservationID,
+	})
+	require.NoError(t, err)
+	require.Equal(t, duplicate.OpportunityID, appended.OpportunityID, "the append joins the canonical owner")
+	appendedObs, err := o.OpportunityObservations(ctx, duplicate.OpportunityID)
+	require.NoError(t, err)
+	require.Len(t, appendedObs, 4, "the merged history keeps growing on the target")
 }
 
 func seedApplicationEvaluationWithFields(t *testing.T, o *Office, ctx context.Context, fields OpportunityFields, seedID string) applicationSeed {
@@ -328,7 +382,16 @@ func seedApplicationEvaluationWithFields(t *testing.T, o *Office, ctx context.Co
 	require.NoError(t, err)
 	view, err = o.Open(ctx)
 	require.NoError(t, err)
-	job := importKnownJD(t, o, ctx, seedID+"-job", "https://jobs.example.com/postings/1001", fields)
+	// Seed the opportunity through the URL chain plus a known-fields user
+	// supplement, so it owns a URL observation for later append paths.
+	urlReceipt := importURLCompleteForOffice(t, o, ctx, seedID+"-url", "https://jobs.example.com/postings/1001")
+	o.opportunityExtractor = func(string) (OpportunityFields, error) { return fields, nil }
+	job, err := o.ImportJD(ctx, ImportJDInput{
+		RequestID: seedID + "-job", RawText: "岗位 1001\n工作职责：\n负责核心服务\n任职要求：\n本科及以上学历",
+		SourceLabel: "User supplement", SourceReference: "https://jobs.example.com/postings/1001",
+		OpportunityID: urlReceipt.OpportunityID, PriorObservationID: urlReceipt.ObservationID,
+	})
+	require.NoError(t, err)
 	evaluation, err := o.EvaluateOpportunity(ctx, EvaluateInput{
 		RequestID: seedID + "-eval", OpportunityID: job.OpportunityID, SnapshotID: job.SnapshotID,
 	})

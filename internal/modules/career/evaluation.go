@@ -170,13 +170,21 @@ func (o *Office) EvaluateOpportunity(ctx context.Context, input EvaluateInput) (
 		var snapshot opportunitySnapshot
 		err = tx.Where("tenant_id=? AND user_id=? AND opportunity_id=? AND id=?", scope.TenantID, scope.UserID, input.OpportunityID, input.SnapshotID).First(&snapshot).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// Pre-merge references keep resolving: a merged candidate's
+			// snapshots were re-parented onto the merge target, so retry
+			// through the merge chain (T12 reconciliation).
+			if canonical := canonicalOpportunityID(tx, scope, input.OpportunityID); canonical != "" && canonical != input.OpportunityID {
+				err = tx.Where("tenant_id=? AND user_id=? AND opportunity_id=? AND id=?", scope.TenantID, scope.UserID, canonical, input.SnapshotID).First(&snapshot).Error
+			}
+		}
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return ErrOpportunityNotFound
 		}
 		if err != nil {
 			return err
 		}
 		var observation opportunityObservation
-		err = tx.Where("tenant_id=? AND user_id=? AND opportunity_id=? AND id=?", scope.TenantID, scope.UserID, input.OpportunityID, snapshot.ObservationID).First(&observation).Error
+		err = tx.Where("tenant_id=? AND user_id=? AND opportunity_id=? AND id=?", scope.TenantID, scope.UserID, snapshot.OpportunityID, snapshot.ObservationID).First(&observation).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) || observation.SnapshotID != snapshot.ID {
 			return ErrOpportunityNotFound
 		}

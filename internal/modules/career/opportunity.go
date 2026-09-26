@@ -218,12 +218,21 @@ func (o *Office) ImportJD(ctx context.Context, input ImportJDInput) (Opportunity
 		// observation joins the same opportunity as a new immutable snapshot.
 		// The original URL observation is never rewritten or replaced.
 		oppID := uuid.NewString()
+		appending := false
 		if input.OpportunityID != "" || input.PriorObservationID != "" {
 			if input.OpportunityID == "" || input.PriorObservationID == "" {
 				return ErrInvalidRequest
 			}
 			var prior opportunityObservation
 			err := tx.Where("tenant_id=? AND user_id=? AND opportunity_id=? AND id=?", s.TenantID, s.UserID, input.OpportunityID, input.PriorObservationID).First(&prior).Error
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				// Pre-merge references keep resolving: a merged candidate's
+				// observations were re-parented onto the merge target, so
+				// retry through the merge chain (T12 reconciliation).
+				if canonical := canonicalOpportunityID(tx, s, input.OpportunityID); canonical != "" && canonical != input.OpportunityID {
+					err = tx.Where("tenant_id=? AND user_id=? AND opportunity_id=? AND id=?", s.TenantID, s.UserID, canonical, input.PriorObservationID).First(&prior).Error
+				}
+			}
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return ErrOpportunityNotFound
 			}
@@ -233,7 +242,10 @@ func (o *Office) ImportJD(ctx context.Context, input ImportJDInput) (Opportunity
 			if prior.SourceKind != "url" {
 				return ErrInvalidRequest
 			}
-			oppID = input.OpportunityID
+			// The append joins the observation's canonical owner, which may be
+			// the merge target after a reconciliation merged the input ID away.
+			oppID = prior.OpportunityID
+			appending = true
 		}
 		observationID, snapshotID := uuid.NewString(), uuid.NewString()
 		rawDigest := sha256.Sum256([]byte(input.RawText))
@@ -246,7 +258,7 @@ func (o *Office) ImportJD(ctx context.Context, input ImportJDInput) (Opportunity
 		// Once the first insert is attempted, a later database error may
 		// leave the caller uncertain about whether the transaction committed.
 		persistenceMayHaveCommitted = true
-		if oppID == input.OpportunityID {
+		if appending {
 			var existing opportunity
 			if err = tx.Where("tenant_id=? AND user_id=? AND id=?", s.TenantID, s.UserID, oppID).First(&existing).Error; err != nil {
 				return err
@@ -342,13 +354,21 @@ func (o *Office) OpportunityEvidence(ctx context.Context, opportunityID, snapsho
 	var row opportunitySnapshot
 	err = o.db.WithContext(ctx).Where("tenant_id=? AND user_id=? AND opportunity_id=? AND id=?", s.TenantID, s.UserID, opportunityID, snapshotID).First(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
+		// Pre-merge references keep resolving: a merged candidate's snapshots
+		// were re-parented onto the merge target, so retry through the merge
+		// chain before reporting not-found (T12 reconciliation).
+		if canonical := canonicalOpportunityID(o.db.WithContext(ctx), s, opportunityID); canonical != "" && canonical != opportunityID {
+			err = o.db.WithContext(ctx).Where("tenant_id=? AND user_id=? AND opportunity_id=? AND id=?", s.TenantID, s.UserID, canonical, snapshotID).First(&row).Error
+		}
+	}
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return OpportunityEvidence{}, ErrOpportunityNotFound
 	}
 	if err != nil {
 		return OpportunityEvidence{}, err
 	}
 	var observation opportunityObservation
-	err = o.db.WithContext(ctx).Where("tenant_id=? AND user_id=? AND opportunity_id=? AND id=?", s.TenantID, s.UserID, opportunityID, row.ObservationID).First(&observation).Error
+	err = o.db.WithContext(ctx).Where("tenant_id=? AND user_id=? AND opportunity_id=? AND id=?", s.TenantID, s.UserID, row.OpportunityID, row.ObservationID).First(&observation).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return OpportunityEvidence{}, ErrOpportunityNotFound
 	}
@@ -362,7 +382,7 @@ func (o *Office) OpportunityEvidence(ctx context.Context, opportunityID, snapsho
 	if err = json.Unmarshal([]byte(row.Extracted), &fields); err != nil {
 		return OpportunityEvidence{}, fmt.Errorf("decode opportunity extraction: %w", err)
 	}
-	return OpportunityEvidence{OpportunityID: opportunityID, ObservationID: observation.ID, SnapshotID: row.ID, RawText: row.RawText, RawSHA256: row.RawSHA256, Extracted: fields, Source: OpportunitySource{Kind: observation.SourceKind, Label: observation.SourceLabel, ReferenceID: observation.SourceRef}, AcquiredAt: row.AcquiredAt, Status: row.Status}, nil
+	return OpportunityEvidence{OpportunityID: row.OpportunityID, ObservationID: observation.ID, SnapshotID: row.ID, RawText: row.RawText, RawSHA256: row.RawSHA256, Extracted: fields, Source: OpportunitySource{Kind: observation.SourceKind, Label: observation.SourceLabel, ReferenceID: observation.SourceRef}, AcquiredAt: row.AcquiredAt, Status: row.Status}, nil
 }
 
 func (o *Office) FindOpportunityReceipt(ctx context.Context, requestID string) (OpportunityReceipt, error) {

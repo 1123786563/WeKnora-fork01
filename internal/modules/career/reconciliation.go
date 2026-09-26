@@ -459,6 +459,26 @@ func (o *Office) mergedInto(ctx context.Context, s Scope, opportunityID string) 
 	return row.TargetID
 }
 
+// canonicalOpportunityID resolves an opportunity ID through merged
+// reconciliation decisions (bounded hops, loop-safe) so pre-merge references
+// keep resolving after their observations and snapshots moved to the merge
+// target. It returns the input unchanged when no merge chain applies or the
+// lookup fails; callers then fall through to their ordinary not-found path.
+func canonicalOpportunityID(db *gorm.DB, scope Scope, opportunityID string) string {
+	current := opportunityID
+	for hop := 0; hop < 8; hop++ {
+		var row reconciliationRecord
+		err := db.Where("tenant_id=? AND user_id=? AND candidate_id=? AND decision=?",
+			scope.TenantID, scope.UserID, current, ReconcileDecisionMerged).
+			Order("created_at DESC, id DESC").First(&row).Error
+		if err != nil || row.TargetID == "" || row.TargetID == current {
+			return current
+		}
+		current = row.TargetID
+	}
+	return current
+}
+
 // OpportunityStatus projects the explicit status of one opportunity from its
 // immutable observation history: delisting, expiry, and requirement changes
 // are annotations computed by comparing later observations with earlier

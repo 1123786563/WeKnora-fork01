@@ -339,6 +339,15 @@ func (o *Office) EditMaterial(ctx context.Context, input EditMaterialInput) (Mat
 			e = tx.Where("tenant_id=? AND user_id=? AND opportunity_id=? AND id=?",
 				s.TenantID, s.UserID, input.OpportunityID, input.SnapshotID).First(&snapshot).Error
 			if errors.Is(e, gorm.ErrRecordNotFound) {
+				// Pre-merge references keep resolving: a merged candidate's
+				// snapshots were re-parented onto the merge target, so retry
+				// through the merge chain (T12 reconciliation).
+				if canonical := canonicalOpportunityID(tx, s, input.OpportunityID); canonical != "" && canonical != input.OpportunityID {
+					e = tx.Where("tenant_id=? AND user_id=? AND opportunity_id=? AND id=?",
+						s.TenantID, s.UserID, canonical, input.SnapshotID).First(&snapshot).Error
+				}
+			}
+			if errors.Is(e, gorm.ErrRecordNotFound) {
 				return ErrOpportunityNotFound
 			}
 			if e != nil {
