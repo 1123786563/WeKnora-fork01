@@ -496,29 +496,74 @@ func (a *LagoAdapter) readPurchaseSnapshot(ctx context.Context, tenantID uint64)
 		}
 		if p.State == commercial.PurchaseStateActive {
 			// Finalized-stage interface (D2 condition 3): the open stage
-			// answers empty (never fabricated); #82/#84 complete the real
+			// answers empty (never fabricated); #82 completes the real
 			// finalized-invoice read.
-			fees, err := a.readPurchaseInvoiceFees(ctx, tenantID)
+			fees, paymentStatus, err := a.readPurchaseInvoiceFees(ctx, tenantID)
 			if err != nil {
 				return commercial.Snapshot{}, err
 			}
 			p.InvoiceFees = fees
+			p.InvoicePaymentStatus = paymentStatus
 		}
 	}
 	return commercial.Snapshot{Kind: commercial.SnapshotKindPurchase, Purchase: p}, nil
 }
 
-// readPurchaseInvoiceFees is the finalized-stage invoice line read (#82/#84
-// interface, D2 condition 3): once the gating payment finalizes the invoice
-// (a VISIBLE status), the adapter fills the lines authoritatively. During
-// the awaiting-payment stage this answers empty — the pinned authority
-// version keeps open invoices invisible to every API path (t09 evidence
-// F3-F5) and an invisible line is never fabricated.
-func (a *LagoAdapter) readPurchaseInvoiceFees(ctx context.Context, tenantID uint64) ([]commercial.InvoiceLineSnapshot, error) {
-	// Finalized-line extraction lands with #82 (the first consumer) against
-	// the visible finalized invoice; the awaiting-payment stage can never
-	// reach here with visible lines.
-	return nil, nil
+// readPurchaseInvoiceFees is the finalized-stage invoice line read (#82
+// interface, D2 condition 3 / D6' review input): once the gating payment
+// finalizes the invoice (a VISIBLE status), the adapter fills the lines
+// authoritatively from the subscription fee rows and reports the invoice's
+// payment_status. During the awaiting-payment stage this answers empty —
+// the pinned authority version keeps open invoices invisible to every API
+// path (t09 evidence F3-F5) and an invisible line is never fabricated.
+//
+// Fail-closed shape: exactly ONE finalized purchase invoice is expected
+// (the gating invoice); zero = awaiting semantics (empty); two or more is a
+// data anomaly (invalid response — the caller surfaces it, never guesses).
+func (a *LagoAdapter) readPurchaseInvoiceFees(ctx context.Context, tenantID uint64) ([]commercial.InvoiceLineSnapshot, string, error) {
+	status, body, err := a.do(ctx, http.MethodGet,
+		"/api/v1/invoices?external_customer_id="+url.PathEscape(commercial.ExternalCustomerID(tenantID))+
+			"&status[]=finalized", nil)
+	if err != nil {
+		return nil, "", err
+	}
+	if status != http.StatusOK {
+		return nil, "", fmt.Errorf("%w: invoice index answered HTTP %d", commercial.ErrPlatformInvalidResponse, status)
+	}
+	var parsed struct {
+		Invoices []struct {
+			PaymentStatus string `json:"payment_status"`
+			Fees          []struct {
+				AmountCents int64 `json:"amount_cents"` // integer minor units, never float (GC-6)
+				Item        struct {
+					Type string `json:"type"`
+					Name string `json:"name"`
+				} `json:"item"`
+			} `json:"fees"`
+		} `json:"invoices"`
+	}
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return nil, "", fmt.Errorf("%w: invoice index body malformed", commercial.ErrPlatformInvalidResponse)
+	}
+	if len(parsed.Invoices) == 0 {
+		return nil, "", nil // awaiting semantics: no finalized invoice visible yet
+	}
+	if len(parsed.Invoices) > 1 {
+		return nil, "", fmt.Errorf("%w: multiple finalized purchase invoices", commercial.ErrPlatformInvalidResponse)
+	}
+	invoice := parsed.Invoices[0]
+	fees := make([]commercial.InvoiceLineSnapshot, 0, len(invoice.Fees))
+	for _, fee := range invoice.Fees {
+		if fee.Item.Type != "subscription" {
+			continue
+		}
+		fees = append(fees, commercial.InvoiceLineSnapshot{
+			Kind:      "subscription_fee", // the closed port word, never the provider's raw type
+			Name:      fee.Item.Name,
+			AmountFen: fee.AmountCents,
+		})
+	}
+	return fees, invoice.PaymentStatus, nil
 }
 
 // deriveProviderCustomerID resolves the provider-side customer id AND its

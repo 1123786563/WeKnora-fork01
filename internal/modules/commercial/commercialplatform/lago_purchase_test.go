@@ -67,6 +67,7 @@ type purchaseStub struct {
 	// landed yet, so the create is refused and NO subscription record is
 	// created.
 	rejectCreateNoDefaultPM bool
+	invoices                []purchaseInvoiceRec // the finalized-stage visible set
 	mux                     *http.ServeMux // assembled by newPurchaseStub
 }
 
@@ -152,6 +153,34 @@ func newPurchaseStub() *purchaseStub {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/customers", customers)  // collection endpoint (exact, no trailing slash)
 	mux.HandleFunc("/api/v1/customers/", customers) // single lookup subtree
+	mux.HandleFunc("/api/v1/invoices", func(w http.ResponseWriter, r *http.Request) {
+		// The finalized-stage read (Task 4): external_customer_id +
+		// status[]=finalized; the RawQuery is recorded for the assertion
+		// face, the rows answer the stub's set (visible finalized only).
+		s.mu.Lock()
+		s.rawQueries = append(s.rawQueries, r.URL.RawQuery)
+		q := r.URL.Query()
+		want := q.Get("external_customer_id")
+		statuses := q["status[]"]
+		out := []purchaseInvoiceRec{}
+		for _, inv := range s.invoices {
+			if inv.ExternalCust != want {
+				continue
+			}
+			matched := false
+			for _, st := range statuses {
+				if st == "finalized" {
+					matched = true
+				}
+			}
+			if len(statuses) > 0 && !matched {
+				continue
+			}
+			out = append(out, inv)
+		}
+		s.mu.Unlock()
+		respond(w, r, &s.requests, &s.mu, http.StatusOK, purchaseInvoicesJSON(out), nil)
+	})
 	mux.HandleFunc("/api/v1/subscriptions", func(w http.ResponseWriter, r *http.Request) {
 		blob, _ := io.ReadAll(io.LimitReader(r.Body, 1<<20))
 		switch r.Method {
@@ -234,6 +263,33 @@ func newPurchaseStub() *purchaseStub {
 
 // ServeHTTP exposes the stub as an http.Handler (server() mounts s.mux).
 func (s *purchaseStub) ServeHTTP(w http.ResponseWriter, r *http.Request) { s.mux.ServeHTTP(w, r) }
+
+// ---- finalized-invoice stub leg (#82 Task 4: readPurchaseInvoiceFees) ----
+
+// purchaseInvoiceRec is one finalized invoice the stub answers on the
+// invoices index (the status[]=finalized visible window).
+type purchaseInvoiceRec struct {
+	LagoID         string
+	ExternalCust   string
+	PaymentStatus  string
+	SubscriptionFee *struct{ Name string; AmountCents int64 } // nil = no subscription line
+}
+
+func purchaseInvoicesJSON(rows []purchaseInvoiceRec) string {
+	out := make([]string, 0, len(rows))
+	for _, inv := range rows {
+		fees := "[]"
+		if inv.SubscriptionFee != nil {
+			fees = fmt.Sprintf(
+				`[{"amount_cents":%d,"amount_currency":"USD","item":{"type":"subscription","name":%q,"code":"sub-fee"}}]`,
+				inv.SubscriptionFee.AmountCents, inv.SubscriptionFee.Name)
+		}
+		out = append(out, fmt.Sprintf(
+			`{"lago_id":%q,"external_customer_id":%q,"status":"finalized","payment_status":%q,"invoice_type":"subscription","fees":%s}`,
+			inv.LagoID, inv.ExternalCust, inv.PaymentStatus, fees))
+	}
+	return `{"invoices":[` + strings.Join(out, ",") + `]}`
+}
 
 func (s *purchaseStub) server(t *testing.T) *httptest.Server {
 	t.Helper()
@@ -753,5 +809,109 @@ func TestLagoPurchaseSnapshotMapsClosedStates(t *testing.T) {
 	snap, err = a.ReadSnapshot(context.Background(), commercial.SnapshotQuery{Kind: commercial.SnapshotKindPurchase, TenantID: 26})
 	if err != nil || snap.Purchase.State != commercial.PurchaseStateActive {
 		t.Fatalf("active expected, got %+v err=%v", snap.Purchase, err)
+	}
+}
+
+// ---- #82 Task 4: the finalized-stage invoice fees read ----
+
+// feeLine builds one subscription fee row for the stub's invoice records.
+func feeLine(name string, cents int64) *struct {
+	Name        string
+	AmountCents int64
+} {
+	return &struct {
+		Name        string
+		AmountCents int64
+	}{Name: name, AmountCents: cents}
+}
+
+func activePurchaseStub(t *testing.T, invoices []purchaseInvoiceRec) (*purchaseStub, *LagoAdapter) {
+	t.Helper()
+	stub := newPurchaseStub()
+	stub.mu.Lock()
+	stub.planAmount = map[string]int64{"weknora-pro-v1": 9900}
+	ext := commercial.ExternalCustomerID(31)
+	stub.subs = []purchaseSubRec{{
+		ExternalID: commercial.ExternalPurchaseSubscriptionID(31), ExternalCustomer: ext,
+		PlanCode: "weknora-pro-v1", AmountFen: 9900, Currency: "CNY", Status: "active",
+	}}
+	stub.invoices = invoices
+	stub.mu.Unlock()
+	return stub, purchaseAdapterWithPrefix(t, stub.server(t))
+}
+
+func TestLagoReadPurchaseInvoiceFeesMapsSubscriptionLine(t *testing.T) {
+	invoices := []purchaseInvoiceRec{{
+		LagoID: "inv_f1", ExternalCust: commercial.ExternalCustomerID(31),
+		PaymentStatus: "succeeded", SubscriptionFee: feeLine("Pro plan", 1980),
+	}}
+	stub, a := activePurchaseStub(t, invoices)
+	snap, err := a.ReadSnapshot(context.Background(), commercial.SnapshotQuery{Kind: commercial.SnapshotKindPurchase, TenantID: 31})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snap.Purchase.State != commercial.PurchaseStateActive {
+		t.Fatalf("state = %q", snap.Purchase.State)
+	}
+	if len(snap.Purchase.InvoiceFees) != 1 {
+		t.Fatalf("exactly one subscription fee line expected, got %+v", snap.Purchase.InvoiceFees)
+	}
+	fee := snap.Purchase.InvoiceFees[0]
+	if fee.Kind != "subscription_fee" || fee.Name != "Pro plan" || fee.AmountFen != 1980 {
+		t.Fatalf("fee mapping mismatch (closed port word + integer fen): %+v", fee)
+	}
+	if snap.Purchase.InvoicePaymentStatus != "succeeded" {
+		t.Fatalf("invoice payment_status must ride the snapshot, got %q", snap.Purchase.InvoicePaymentStatus)
+	}
+	// The read must scope by identity AND the visible finalized status.
+	stub.mu.Lock()
+	raw := ""
+	if len(stub.rawQueries) > 0 {
+		raw = stub.rawQueries[len(stub.rawQueries)-1]
+	}
+	stub.mu.Unlock()
+	if !strings.Contains(raw, "status%5B%5D=finalized") && !strings.Contains(raw, "status[]=finalized") {
+		t.Fatalf("invoice index must pass explicit status[]=finalized, raw = %q", raw)
+	}
+	if !strings.Contains(raw, commercial.ExternalCustomerID(31)) {
+		t.Fatalf("invoice index must scope by external_customer_id, raw = %q", raw)
+	}
+}
+
+func TestLagoReadPurchaseInvoiceFeesZeroFinalizedIsEmpty(t *testing.T) {
+	_, a := activePurchaseStub(t, nil)
+	snap, err := a.ReadSnapshot(context.Background(), commercial.SnapshotQuery{Kind: commercial.SnapshotKindPurchase, TenantID: 31})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snap.Purchase.InvoiceFees) != 0 || snap.Purchase.InvoicePaymentStatus != "" {
+		t.Fatalf("zero finalized invoices = empty fees + empty payment status (awaiting semantics), got %+v", snap.Purchase)
+	}
+}
+
+func TestLagoReadPurchaseInvoiceFeesTwoFinalizedFailsClosed(t *testing.T) {
+	invoices := []purchaseInvoiceRec{
+		{LagoID: "inv_a", ExternalCust: commercial.ExternalCustomerID(31), PaymentStatus: "succeeded", SubscriptionFee: feeLine("Pro plan", 1980)},
+		{LagoID: "inv_b", ExternalCust: commercial.ExternalCustomerID(31), PaymentStatus: "succeeded", SubscriptionFee: feeLine("Pro plan", 9900)},
+	}
+	_, a := activePurchaseStub(t, invoices)
+	_, err := a.ReadSnapshot(context.Background(), commercial.SnapshotQuery{Kind: commercial.SnapshotKindPurchase, TenantID: 31})
+	if !errors.Is(err, commercial.ErrPlatformInvalidResponse) {
+		t.Fatalf("two finalized purchase invoices must fail closed (data anomaly), got %v", err)
+	}
+}
+
+func TestLagoReadPurchaseInvoiceFeesNoSubscriptionLineAnswersEmpty(t *testing.T) {
+	invoices := []purchaseInvoiceRec{{
+		LagoID: "inv_c", ExternalCust: commercial.ExternalCustomerID(31),
+		PaymentStatus: "succeeded", SubscriptionFee: nil,
+	}}
+	_, a := activePurchaseStub(t, invoices)
+	snap, err := a.ReadSnapshot(context.Background(), commercial.SnapshotQuery{Kind: commercial.SnapshotKindPurchase, TenantID: 31})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snap.Purchase.InvoiceFees) != 0 {
+		t.Fatalf("no subscription fee line = empty fees (the D6' review refuses downstream), got %+v", snap.Purchase.InvoiceFees)
 	}
 }

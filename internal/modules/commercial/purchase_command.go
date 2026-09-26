@@ -150,5 +150,9 @@ type PurchaseSnapshot struct {
 	AmountFen   int64
 	Currency    string
 	InvoiceFees []InvoiceLineSnapshot // open stage: always empty; finalized: authoritative (D2 condition 3)
-	CheckedAt   time.Time
+	// InvoicePaymentStatus is the finalized gating invoice's payment_status
+	// as the authority reports it (#82 D6' review input: "succeeded" is part
+	// of the fulfillment re-check). Empty outside the finalized stage.
+	InvoicePaymentStatus string
+	CheckedAt            time.Time
 }
