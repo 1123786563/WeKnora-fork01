@@ -188,3 +188,26 @@ PASSB_BASE_SHA 采用值 = **ALIGN_SHA `b9c09f524`**（P-K5-2 登记；`git merg
 ## §K5.2 删除记录指针
 
 18 别名成对删行（manifest+matrix 同 commit `46447494a`）与出册补齐（`a29abf40e`/`8fc44d284`/`55e13524a`）、例外 30 行与 17 件 shim/垫片盘点、`convert_linked_test.go:19` 注释修正——全量记录见本文件 §别名 与 §例外/shim 收口核对 两章节（K5.2 落盘）；ib2 删除批输入 = K5.1 Brief (e)/(g)/(h)。
+
+## §K5.3 恢复重跑复核（2026-09-26 晚，world.run 超时阻断后恢复轮）
+
+**背景**：首轮 K5.3 已于 18:55 提交 `fa4d083af`（本文件 §差分汇总/§节点门禁/§计数奇偶 + 节点报告），19:12 工作流因 `world.run 'go' timed out after 600000ms` 阻断（阻断时点在提交与会话区产物写毕之后）。协调者以 BASE=`fa4d083af` 重派 K5.3；本轮恢复重跑全部步骤，验证分支终态与首轮记录一致。**超时根因实证**：本轮 `go build ./...` 冷/重负载下 wall 12:12.76（148s user/84s sys，31% cpu——机器高负载使单条 go 命令超出工作流 600s 上限），缓存暖后 `go test` 全树仅 1:52.97——阻断系环境时延而非仓库缺陷。
+
+**Step 1 复核**：四份 evidence 差分章节四要素抽核（ingest :6-120 命令/退出码表/用例清单/结论、retrieval §4.1-4.4、wikifaq §3.1-3.2、process §1.1）全部在位，与 §差分汇总 表一致；删除级联六文件（`service/knowledge_delete.go`、`service/knowledge_delete_plan.go`、`service/knowledgebase.go`、`handler/knowledge.go`、`repository/knowledge.go`、`container/recover_pending_wiki_tasks.go`）对 Pass-B 前基线 `b1a3d6dd8` `git diff --stat` 为空（exit 0 零输出，机械复核复跑）。
+
+**Step 2 gates 重跑（worktree HEAD=fa4d083af，树干净，计划原文命令逐字）**：
+
+| 命令 | 退出码 | 关键输出 |
+|---|---|---|
+| `go build ./...` | **0** | 仅 cmd/desktop、cmd/server `ld: warning: ignoring duplicate libraries: '-lc++'`（基线固有） |
+| `go test -count=1 ./internal/modules/knowledge/...` | **0** | 26 包 `ok` + 3 包 `[no test files]`（elasticsearch/neo4j/postgres）+ 0 FAIL（日志 /tmp/k53r2-gate-test.log） |
+| `make check-backend-architecture` | **0** | `literal=564 apiKeyRoute=69 handle=0 total=633 \| redis=23 lite=23 \| hooks=58 \| modules=16`；`OK (0 violations)` |
+| `make check-passb-readiness` | **2**（make 包装 go run 退出码 1，预裁定预期形态） | 诊断分布 `88 unrecorded + 42 file-missing + 33+33 legacy + 13 characterization + 10 legacy-missing + 1+1 event` = **221 = 218 基线 + 3 预登记** |
+| `make verify-module-moves` | **0** | `modulemove: OK (16 manifests verified)` |
+| `go run ./tools/passbguard -root . 2>&1 \| grep -v '^exit status' \| sort \| diff - /tmp/k5-readiness-baseline.txt` | 1（恰 3 行差集） | 差集 = P-K5-7 (ii) 预登记 3 条（`103d102`/`118d116`/`122d119`，全 `<` 新增侧，逐字与预登记一致）；**消失集为空**；当前 221 行 vs 基线 218 行（wc -l 实测） |
+
+**Step 3 计数奇偶重核**：guard 实测（上行 check-backend-architecture）633/23+23/58 == 台账 `pass-a-acceptance.md` :22-:25（633（564+69）/ 23+23 / 58 / 537）== 目录发现值 `find migrations -type f | wc -l` = **537**；三方一致，本节点零基线变更。
+
+**Step 4 差集重核（PASSB_BASE_SHA=ALIGN_SHA `b9c09f524`）**：`git diff --stat b9c09f524...HEAD` = 10 files, +867/-201；`--name-only | sort` 10 文件与 §4 K5 可写清单逐条吻合、**差集为空**；禁改 pattern（`^internal/(router\|container\|bootstrap)/`、`^go\.(mod\|sum)$`、`^migrations/`）grep 计数 **0**。
+
+**恢复轮结论**：六项 gate 输出与首轮记录逐项一致（含 make 包装退出码口径与 221=218+3 奇偶），分支终态无漂移；首轮 `fa4d083af` 结论维持——五 gates 按 P-K5-7 预裁定口径全过、差集为空、差分四要素齐备。

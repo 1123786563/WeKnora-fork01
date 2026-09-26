@@ -19,6 +19,10 @@
 
 K5.1/K5.2 命令台账：见 `.superpowers/sdd/passb/b2-k-integration/K5.1-report.md` §4/§7、`K5.2-report.md`（build/test/三 make/快照 diff 五 gates 分时点实跑）与 evidence §别名/§例外章节。
 
+### 1.1 K5.3 恢复重跑台账（2026-09-26 晚，world.run 超时阻断后恢复轮）
+
+首轮 K5.3 提交 `fa4d083af` 后工作流因 `world.run 'go' timed out after 600000ms` 阻断（超时根因=机器高负载下单条 go 命令 wall 12:12 超出上限，本轮 `go build` 实证；缓存暖后全树测试 1:52）。协调者 BASE=`fa4d083af` 重派，六项 gate 计划原文命令逐字重跑：`go build ./...`=0、`go test -count=1 ./internal/modules/knowledge/...`=0（26 ok+3 no-test+0 FAIL）、`make check-backend-architecture`=0（633/23+23/58/16，0 violations）、`make check-passb-readiness`=2（go run 层 1，221=218+3 预裁定奇偶）、`make verify-module-moves`=0（16 manifests）、passbguard 快照 diff=恰 3 条预登记新增/消失集空。计数三方一致（台账 :22-:25 + `find migrations`=537）与 §1.2 差集核对（10 文件、差集空、禁改计数 0）复跑通过。逐命令输出见 evidence §K5.3 恢复重跑复核。
+
 ## 2. 变更清单 vs owned_files（§4 K5 可写清单）逐条核对
 
 `git diff b9c09f524...HEAD --name-only | sort`（含 K5.3 收口 commit）：
@@ -66,7 +70,8 @@ K5.1/K5.2 命令台账：见 `.superpowers/sdd/passb/b2-k-integration/K5.1-repor
 | `a29abf40e` | K5.2 OCR | refactor(passb): manifest 三区同窗清空 |
 | `8fc44d284` | K5.2 OCR | docs(passb): 出册补齐证据留痕 |
 | `55e13524a` | K5.2 OCR-R1 | fix(passb): knowledge.yaml 补回 alias_obligations 空键行 |
-| （本 commit） | K5.3 | docs(passb): 差分与门禁证据（evidence §差分汇总/§节点门禁/§计数奇偶 + 本报告） |
+| `fa4d083af` | K5.3 | docs(passb): 差分与门禁证据（evidence §差分汇总/§节点门禁/§计数奇偶 + 本报告） |
+| （本 commit） | K5.3 恢复轮 | docs(passb): K5.3 恢复重跑门禁复核（超时阻断后重派，六 gate 复跑一致；evidence §K5.3 恢复重跑复核 + 本报告 §1.1） |
 
 ## 7. 未完成项 / 遗留（如实）
 
