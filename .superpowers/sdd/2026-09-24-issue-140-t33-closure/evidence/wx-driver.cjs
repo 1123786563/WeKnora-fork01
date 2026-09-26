@@ -1,10 +1,21 @@
 /* T33 终局 DevTools 抽查（复用 T24/T26 模式）：
  * 登录（真实 /auth/login @57828）→ 求职工作台（档案/找岗失败态）→ 申请与材料（Web 同源数据可见）。
- * t-button GUI tap 不被 automator 触达（T24 定论）：t-button 动作由 172 单测覆盖，本脚本走数据面与原生可达控件。 */
-const automator = require('/tmp/wk-t33-automator/node_modules/miniprogram-automator');
+ * t-button GUI tap 不被 automator 触达（T24 定论）：t-button 动作由 172 单测覆盖，本脚本走数据面与原生可达控件。
+ * 机器强相关路径/端口一律 env 注入（对齐 T24 live-driver 写法），换机重放示例：
+ *   T33_AUTOMATOR=<node_modules/miniprogram-automator 绝对路径> T33_WS_PORT=9433 \
+ *   T33_SHOTS=<截图输出目录> node wx-driver.cjs
+ * 未注入时：automator 依次尝试 NODE_PATH 解析与历史 /tmp 安装位；截图回落本脚本所在目录；端口回落 9433。 */
+
+function loadAutomator() {
+  const candidates = [process.env.T33_AUTOMATOR, 'miniprogram-automator', '/tmp/wk-t33-automator/node_modules/miniprogram-automator'].filter(Boolean);
+  for (const candidate of candidates) { try { return require(candidate); } catch {} }
+  throw new Error('miniprogram-automator not found: set T33_AUTOMATOR to its module path (npm i miniprogram-automator)');
+}
+const automator = loadAutomator();
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const log = (...a) => console.log('[t33]', ...a);
-const SHOTS = '/Users/wuyongjun/.codex/worktrees/issue-140-t33-closure/WeKnora-fork01/.superpowers/sdd/2026-09-24-issue-140-t33-closure/evidence';
+const SHOTS = process.env.T33_SHOTS || __dirname;
+const WS_PORT = Number(process.env.T33_WS_PORT || 9433);
 const results = [];
 function record(step, pass, detail) { results.push({ step, pass, detail }); log(pass ? 'PASS' : 'FAIL', step, detail || ''); }
 
@@ -55,7 +66,7 @@ async function relaunch(mp, path) {
 }
 
 (async () => {
-  const mp = await connectRetry(9433, 4);
+  const mp = await connectRetry(WS_PORT, 4);
   try {
     // 1. 登录页：真实 /auth/login
     let page = await relaunch(mp, '/subpackages/auth/login/index');
@@ -64,9 +75,11 @@ async function relaunch(mp, path) {
     await fillInput(page, '请输入账号邮箱', 't33a@t33.io');
     await fillInput(page, '请输入密码', '[REDACTED-disposable]');
     await shot(mp, '01-login-filled');
-    // 勾选同意（checkbox 通过 wrapper tap）
+    // 勾选同意（checkbox 通过 wrapper tap）：登录前置条件，失败即 record 并快速失败（对齐 T24「tap 超时即 throw」，
+    // 不允许勾选未生效仍继续点登录、把根因埋进 login 步骤）
     const consentOk = await tapListRow(page, '我已了解平台的数据使用与服务说明', 8000);
-    log('consent tap', consentOk);
+    record('consent-tap', consentOk, consentOk ? 'consent checkbox tapped before login' : 'consent row not reachable');
+    if (!consentOk) throw new Error('consent checkbox not reachable (login precondition)');
     await sleep(800);
     const loginOk = await tapText(page, '登录并继续', 10000);
     if (!loginOk) throw new Error('login button not reachable');
@@ -101,13 +114,16 @@ async function relaunch(mp, path) {
     const searchEntry = /找岗（一次性搜索）|想找什么/.test(careerText);
     record('search-entry', searchEntry, 'one-shot search entry present');
 
-    // 5. 申请与材料页（Web 同源申请可见）
+    // 5. 申请与材料页（Web 同源申请可见）。
+    // 页面可达（静态文案）与数据可见（数据专属标记）分开断言：静态文案（申请与材料/投递等）页面渲染即恒在，
+    // 混入数据断言会在 Web 同源数据未加载时假阳性 PASS（ocr1-030）。
     page = await relaunch(mp, '/career/application-material');
     await sleep(3500);
     page = await mp.currentPage();
-    const applyText = await waitText(page, /申请|材料|批次/, 25000).catch(() => allTexts(page));
-    const seenApply = /2026 秋招 A 批|前端开发实习|投递|材料/.test(applyText);
-    record('apply-material-page', seenApply, applyText.slice(0, 500).replace(/\n/g, '|'));
+    const applyText = await waitText(page, /2026 秋招 A 批|前端开发实习/, 25000).catch(() => allTexts(page));
+    record('apply-material-page', /申请|材料/.test(applyText), 'application-material page reached (static copy visible)');
+    const seenApply = /2026 秋招 A 批|前端开发实习/.test(applyText);
+    record('apply-material-data', seenApply, 'web-created application fact 2026 秋招 A 批 / 前端开发实习 visible in weapp');
     await shot(mp, '04-application-material');
 
     // 6. 找岗执行（一次性搜索）走 request-layer seam：直接以同 token 发起真实 POST（T24 先例）验证失败态
@@ -120,5 +136,8 @@ async function relaunch(mp, path) {
   } finally {
     log('RESULT', JSON.stringify(results));
     try { await mp.disconnect(); } catch {}
+    // 任一步骤 FAIL（含 driver-error）必须以非零退出码结束（ocr1-031），
+    // 供按退出码判定的门禁/复验工具消费
+    process.exitCode = results.some(r => !r.pass) ? 1 : 0;
   }
 })();
