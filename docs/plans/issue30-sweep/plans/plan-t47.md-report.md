@@ -702,3 +702,77 @@ $ pnpm --filter @weknora/mobile test
 
 - 代码提交：`8821bdf6d` `test(mobile): research integration evidence contract with opt-in real HTTP (T17 #47 task 8)`（2 文件 +163）。
 - 报告追加：本 T8 章节，随后的 docs 提交（SHA 见 submit_result）。
+
+---
+
+# T8 复核轮（实现员-t47-任务9，第 9/9 任务）
+
+## T8R.1 派发现状核实（本会话亲眼核实）
+
+按任务定位「第 9/9 个任务」= 计划任务结构表第 9 项 = **Task 8（apps/mobile opt-in 真实集成证据 AC3）**。派发时核实（git log + git status --short + 文件读取）：
+
+- Task 8 实现提交已存在：`8821bdf6d` `test(mobile): research integration evidence contract with opt-in real HTTP (T17 #47 task 8)`（2 文件 +163）。
+- Task 8 报告追加提交已存在：`3107a6511`（上方 T8.1–T8.4 章节）。
+- 工作区 clean（`git status --short` 零输出），无未提交改动、无本任务之外文件可动。
+
+**结论**：Task 8 已由前序实现员实例完整交付。本会话不重复实现（不撤销/不覆盖他人交付），转为**独立复核轮**：逐字比对交付物与计划 Produces 契约 + 亲自重跑计划 Step 4 全部验证命令。
+
+## T8R.2 交付物契约逐字比对（本会话实读）
+
+对照计划 Task 8 Produces（plan-t47.md:3638-3663），逐项核实 `apps/mobile/src/research-integration-smoke.ts`：
+
+| 契约项 | 核实位置 | 结果 |
+|---|---|---|
+| `ResearchIntegrationConfig` 双态（enabled true/false + disposition skip/invalid） | research-integration-smoke.ts:11-13 | 逐字一致 |
+| `ResearchIntegrationEvidence` 全字段（listed 四态 + delegation/annotation 计数 + `revision: 'not-dispatched'` 恒定 + commandTimestamp） | 同文件 :15-26 | 逐字一致 |
+| `researchIntegrationConfig`：缺凭据 skip；非 HTTPS / 带 path/query/凭据 origin invalid；`disallowedDeploymentHost` 主机防线 | 同文件 :29-46（防线 import 自 runtime-integration-smoke.ts:9） | 逐字一致 |
+| `runResearchIntegration`：真实 JSON transport + runtime.signIn 授权通道 + Task Office 列任务 + `createMobileResearchRemote` 委派/列表/批注 + `createMobileMaterialRemote` 取真实版本身份；委派被围栏拒记 `delegationCreated:false` + `delegation-rejected-by-scope-fence` 前缀；异常 → `listed:'failed'` 从不 reject；`finally` dispose | 同文件 :56-115 | 逐字一致 |
+| `emitResearchIntegrationEvidence`：JSONL，`kind:'research-integration'`，无凭据字段 | 同文件 :117-120 | 逐字一致 |
+| 修订请求恒 `'not-dispatched'`（不触发新 Run） | 同文件 :23（类型恒定）+ 测试 :38 断言 | 一致 |
+| 测试文件：计划 3 测试 + 第 4 个 opt-in 实跑测试（skip 门控） | research-integration-smoke.test.ts:5-30（计划 3 测试逐字）+ :32-43（opt-in） | 一致 |
+
+## T8R.3 验证命令重跑（全部本会话实跑，非转抄前轮输出）
+
+### ① 计划 Step 4 第一段——证据契约测试
+
+```
+$ pnpm --filter @weknora/mobile exec tsx --test src/research-integration-smoke.test.ts
+✔ researchIntegrationConfig skips without credentials and rejects non-public origins (1.525875ms)
+✔ runResearchIntegration without credentials reports an honest skip shape (0.266459ms)
+✔ evidence records never contain credential material (0.765843ms)
+﹣ runResearchIntegration executes against a real deployment when credentials are provided (0.26ms) # SKIP
+ℹ tests 4 / ℹ pass 3 / ℹ fail 0 / ℹ skipped 1
+```
+
+3 pass + 1 诚实 SKIP。与上一轮 GREEN 输出一致。
+
+### ② 计划 Step 4 第二段——typecheck
+
+```
+$ pnpm --filter @weknora/mobile typecheck
+> tsc --noEmit        （零输出）
+exit=0
+```
+
+### ③ 计划 Step 4 第三段——全应用回归
+
+```
+$ pnpm --filter @weknora/mobile test
+ℹ tests 233 / ℹ pass 221 / ℹ fail 0 / ℹ cancelled 0 / ℹ skipped 12
+```
+
+233 项全绿（0 fail）；12 个 skip 全部为 opt-in 真实 HTTP 用例缺凭据的诚实跳过（与本计划 Task 8 同模式的既有集成证据测试一致）。三项数字与上一轮（T8.2）完全一致，无回归漂移。
+
+## T8R.4 AC3 opt-in 真实 HTTP 证据（未产出，如实声明）
+
+本会话核实环境：`env | grep -c WEKNORA_MOBILE_TEST` → 0（无任何 opt-in 凭据）。计划 Step 4 的设凭据重跑命令**未运行**（无凭据可设，不伪造）：真实部署端到端 AC3 证据在本会话与上一轮均未产出，依赖具备环境时重跑 `research-integration-smoke.test.ts` 的 opt-in 测试自动产出。替代证据链（全部已提交并经本会话/前轮实跑）：Task 3 Go 真实迁移 E2E + Task 6 mobile-core Interface 场景 + Task 4/5 wire 契约 + Task 7 控制器/路由 + 本任务证据契约与全应用回归。
+
+## T8R.5 自检发现
+
+- **本会话零代码改动**：`git status --short` 在报告追加前仅将列本报告文件；未触碰任何源码/测试文件；未派发子代理；未推送远端。
+- **派发措辞观察（供主控知悉）**：派发单「前置接口」行描述的是 research-integration-smoke 三导出（`researchIntegrationConfig/runResearchIntegration/emitResearchIntegrationEvidence`）——与 Task 8 自身 Produces 逐字重合，疑为编排方复制错位或对已完成任务的重派。无论哪种，计划 9 个任务（Task 0–8）的代码与报告提交均已在树上，本复核轮确认全链有效。
+- **计划级验证命令未在本会话整体重跑**：计划「计划级验证命令」一节为整计划收口命令（含 Go 侧与三 TS 包），超出本任务（Task 8）授权范围；本会话只重跑 Task 8 Step 4 的三条命令。如需计划级收口，建议由主控或终局任务执行。
+
+## T8R.6 提交
+
+- 本轮仅追加本报告章节（docs 提交，SHA 见 submit_result）。代码零改动——Task 8 交付维持 `8821bdf6d` 原样。
