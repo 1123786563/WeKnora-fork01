@@ -567,3 +567,142 @@ exit=0
 - 代码：**零变更**（两项发现均无需代码修改：发现 1 属 Task 0 范围、发现 2 已由 f5dd64d66 修复并获审查确认）。
 - 报告：本文件追加修复轮章节，随本报告一并提交（docs commit）。
 - 临时产物：base 临时 worktree（`/tmp/t53t3-base-check`）与两份一次性测试文件——均已清理/删除，工作区复核干净。
+
+---
+
+# Task 4 实施报告：端到端证据——真实全链 httptest（AC1/AC2/AC3 + 归因三元组）（#53，任务 4/5）
+
+- **分支**：`codex/issue30-t53`（worktree `/Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue30-sweep-t53`）
+- **提交**：`376b64280` `test(delivery): end-to-end collaboration evidence over the real HTTP face — AC1/AC2/AC3 + traceability triple (#53 task 4)`（1 文件，+412）
+- **状态**：DONE_WITH_CONCERNS（交付物完整且提交；全链断言级 GREEN 由去重副本一次性验证证明；仓库内 GREEN 与 Task 2/3 同因被挂起的 Task 0 阻塞，集成后主控重跑收口，见第四/五节）
+
+## 一、实现内容
+
+计划 Task 4 文件清单 1/1 交付：`internal/application/repository/delivery_collaboration_http_test.go`（整个新文件，package `repository_test`，412 行）——3 个端到端测试：
+
+| 测试 | 证据 |
+|---|---|
+| `TestDeliveryCollaborationEndToEndAC1PersonalLoopAndAttribution` | owner 经 personal 连接的完整 baseline→edit→prepare→approve(真实 A03 HTTP)→dispatch→读回链全 200/201；同一 owner 用 space 连接交付被 403 `code_delivery_forbidden`（AC1：互不替代）；归因三元组 `"initiator":"u1"` / `"approver":"u1"` / `"remote_login":"octocat-remote"` + `pr_url` 同一读回断言；`require.NotContains(body, deliveryToken)`（归因面永不携带凭据） |
+| `TestDeliveryCollaborationEndToEndAC2CollaboratorCannotInheritPersonalConnection` | u3 成为协作者后：读交付 200（#42 granted-read 面），写面（baseline/prepare 经 owner 的 personal 连接）裸 404，无 grant 的 u4 读 404 `run_not_found`（AC2） |
+| `TestDeliveryCollaborationEndToEndCrossTenantIsolated` | tenant 2 主体探测 tenant 1 的 run：读面统一 404 `run_not_found` |
+
+被测系统全真实：gin 路由 + 真实 `WorkbenchDeliveryHandler`/`WorkbenchTaskGrantsHandler`/`AppActionHandler`（approve 走真实 HTTP 端点，digest/fence 从持久行读取）+ 真实 `CodeDeliveryService`/`ActionService`/`TaskGrantService` + 真实 gorm store + `openTaskGrantDB` 真实全量迁移 sqlite。唯一替身是 GitHub（进程外 provider，blocked-env）：httptest Server 按 `github_client.go` 现场 wire 契约应答（git-data 链 blobs→trees→commits→refs→draft PR + GET /user），`gitHubRestClient` 的全部真实 HTTP 代码在跑。mock 未触碰任何被测授权/归因组件（AC3 替身论证与计划一致）。
+
+**前置接口逐项现场核实**（均与计划一致）：`openTaskGrantDB`（`task_grant_store_test.go:27`，seed tenant 1/2 + u1–u5 + session s1 owner u1）、`taskGrantAdmission`（`task_grant_read_test.go:16`，run r1）、`NewWorkbenchDeliveryHandler(runs, granted, service)`（`workbench_delivery.go:34`）、`NewWorkbenchTaskGrantsHandler`（`workbench_task_grants.go:29`）、`NewTaskGrantService(grants, sessions, members)`（`task_grant.go:41`）、`CodeDeliveryDeps` 九字段（`service.go:48-61`）、`NewActionService(store, guard, gate, dispatcher, unknown)` gate 可 nil（`action.go:192`）、`DispatcherDeps` 八字段（`dispatcher.go:17-26`）、`NewGitHubClientFactory(httpClient, baseURL)`（`github_client.go:18`）、`NewLocalWorkspaceSource(root)`（`workspace_local.go:16`）、`NewSubjectGuard(src)` 单参（`oc_authorizer.go:82`）、`ConnectionCredentialSource` 4 方法 + `CredentialResolver.Resolve`（`credentials.go:61-66/21-23`——`deliveryCredentialSource` 实现 5 方法）、`NewAppActionHandler`/`SetActionService`/`ApproveAction`（`app_connector_action.go:35/43/211`）、六个 store 构造器、`appActionApproveInput{digest, expected_version}`（`:202-205`）、fence 列（action store `gorm:"column:fence"`）、workspace 布局（`WriteSessionWorkspaceFiles` 经 `resolve` 落盘 `wsRoot/octocat/hello/main.go`，与计划的编辑路径一致）、`authorize` personal-only（`service.go:435-447`）、`writeDeliveryError` 错误码表（`workbench_delivery.go:208-246`）。
+
+## 二、与计划的两处偏差（均有现场证据）
+
+1. **计划夹具笔误（同 Task 3 报告偏差 1 同款）**：计划第 1267-1268 行的 `ConnectionRow` 字面量把 `TenantID: 1` 写了两次——Go 结构体字面量不允许重复字段名（`duplicate field name TenantID in struct literal`）。删除每行中重复的一个（值相同，语义零变化）。
+2. **`deliveryBaseSHA` 字面量长度差 1（计划「40 hex chars」注释与字面量不符）**：计划给定的 `b00000000000000000000000000000000000000` 实测 **39 字符**（`printf '%s' ... | wc -c` = 39），不满足 `baselineSHALegal`（`service.go:514-516`，要求 `len==40`）。首跑一次性验证即暴露：baseline 返回 400，service 层真实错误 `code_delivery_invalid_baseline_sha: "b000..."`（一次性诊断测试 `TestTmpDiagBaselineFailure` 直接调 `svc.MaterializeBaseline` 取得，跑后即删）。修正为 40 字符（`b` + 39 个 `0`），保持计划「40 hex chars」的意图。此为测试夹具数据修正，未改动任何被测代码。
+
+## 三、TDD 证据（命令与完整输出）
+
+**TDD 形态如实声明**：本任务交付物是纯 e2e 测试文件（被测实现已由 Task 1–3 完成并提交），无生产代码变更，无传统 RED→GREEN。TDD 对本任务的落点是「测试先行验证」：先写文件、立即运行、以现场证据修正夹具后转绿。
+
+### 1. 仓库内首跑（实现后、现状分支）——被挂起的 Task 0 阻塞
+
+```
+$ go vet ./internal/application/repository/ ; echo exit=$?
+exit=0                          ← 测试代码与现场 API 编译对齐
+
+$ go test ./internal/application/repository/ -run 'TestDeliveryCollaboration' -count=1
+--- FAIL: TestDeliveryCollaborationEndToEndAC1PersonalLoopAndAttribution (0.02s)
+    ... task_grant_store_test.go:38 ... failed to open source, "file:///…migrations/sqlite":
+    duplicate migration file: 000114_public_agent_marketplace.down.sql
+--- FAIL: TestDeliveryCollaborationEndToEndAC2CollaboratorCannotInheritPersonalConnection (0.01s)
+    （同因）
+--- FAIL: TestDeliveryCollaborationEndToEndCrossTenantIsolated (0.01s)
+    （同因）
+FAIL	github.com/Tencent/WeKnora/internal/application/repository	5.400s
+```
+
+失败点在 `openTaskGrantDB` 的迁移源打开（`task_grant_store_test.go:38`），先于任何被测组件执行——与计划排查表预言一致（「`openTaskGrantDB` 报迁移错误 → Task 0 未完成」），与 Task 2 的 `TestSpaceConnectionGrantStoreUpsertListRevoke`、Task 3 的三包 14 失败同因。提交后收尾复跑结论相同。
+
+### 2. 一次性全链验证（GREEN 等价物，断言级，去重副本，PASS 后即删）
+
+沿用 Task 2/3 审查已接受的 GREEN B 先例（我无权代做 Task 0）：把 `migrations/sqlite` 复制到 `/tmp` 按 Task 0 方案去重，一次性测试文件 `delivery_collab_tmpverify_test.go` **直接复用正式文件的全部 helper 与方法**（同包；`githubStub`/`deliveryCredentialSource`/`deliveryCollabEnv` 及其 `do`/`prepareDelivery`/`approveThroughHTTP` 方法零复刻，仅 DB 打开器换成从 `T53_DELIVERY_MIGRATIONS` 读副本根、测试函数名加 `Tmp` 前缀、3 个测试体与正式逐字相同），对副本跑全链：
+
+```
+$ rm -rf /tmp/t53-delivery-track && cp -R migrations/sqlite /tmp/t53-delivery-track
+$ mv /tmp/t53-delivery-track/000114_mobile_device_app.up.sql /tmp/t53-delivery-track/000118_mobile_device_app.up.sql
+$ mv /tmp/t53-delivery-track/000114_mobile_device_app.down.sql /tmp/t53-delivery-track/000118_mobile_device_app.down.sql
+$ ls /tmp/t53-delivery-track | sed 's/_.*//' | sort | uniq -c | awk '$1 > 2'   # 无输出（无重复版本号）
+
+$ T53_DELIVERY_MIGRATIONS=/tmp/t53-delivery-track go test ./internal/application/repository/ -run 'TestTmpDeliveryCollab' -count=1 -v
+=== RUN   TestTmpDeliveryCollabAC1PersonalLoopAndAttribution
+--- PASS: TestTmpDeliveryCollabAC1PersonalLoopAndAttribution (9.30s)
+=== RUN   TestTmpDeliveryCollabAC2CollaboratorCannotInheritPersonalConnection
+--- PASS: TestTmpDeliveryCollabAC2CollaboratorCannotInheritPersonalConnection (14.73s)
+=== RUN   TestTmpDeliveryCollabCrossTenantIsolated
+--- PASS: TestTmpDeliveryCollabCrossTenantIsolated (12.48s)
+PASS
+ok  	github.com/Tencent/WeKnora/internal/application/repository	42.792s
+```
+
+这证明正式测试文件的**全部断言在真实全链上成立**（含 SHA 修正后的完整链路）；仓库内不能转绿的唯一原因是挂起的 Task 0。两份一次性文件（tmpverify + diag）已删除，`git status` 仅剩待提交文件（提交后复核干净）。
+
+### 3. AC3 完整性复核（Step 3，对照 issue-53.md 验收标准）
+
+1. 「个人与空间连接不能互相替代」→ 本任务 `…AC1PersonalLoopAndAttribution`（同一 owner：personal 全链 200、space 403 `code_delivery_forbidden`，拒绝发生在任何 GitHub 调用之前）+ Task 2 `TestSpaceGrantNeverOpensPersonalConnection`（服务级：grant 不外溢 personal）。
+2. 「Collaborator 不能继承 Owner 个人连接」→ 本任务 `…AC2CollaboratorCannotInheritPersonalConnection`（协作者读 200 / 写 404 / 无 grant 读 404）。
+3. 「端到端行为通过最高稳定 Interface 验证」→ 全链 HTTP + 真实迁移 sqlite + 真实 handler/service/store；GitHub 替身论证见测试文件头注释与计划替身论证节；归因三元组在同一读回中断言且无凭据泄漏。
+
+### 4. 计划级验证命令（Step 4）与 base 严格比对——零新增失败
+
+```
+$ go build ./... ; echo exit=$?
+exit=0                          ← 仅既有 ld: warning: ignoring duplicate libraries: '-lc++'
+```
+
+六组包全量测试（HEAD `376b64280` 与 base `5c8c89d00` 各一轮，后者用临时 detached worktree `/tmp/t53t4-base-check`，跑后已清理，`-count=1`，名单剔除耗时后缀严格 diff）：
+
+```
+HEAD: 328 失败 —— database 10 / appconnector repo 1 / handler 4 / application/repository 286 / workbench 27
+base: 325 失败 —— database 10 / appconnector repo 1 / handler 4 / application/repository 286 / workbench 27
+diff 唯一非耗时差异（HEAD 侧多出）：
+> --- FAIL: TestDeliveryCollaborationEndToEndAC1PersonalLoopAndAttribution
+> --- FAIL: TestDeliveryCollaborationEndToEndAC2CollaboratorCannotInheritPersonalConnection
+> --- FAIL: TestDeliveryCollaborationEndToEndCrossTenantIsolated
+既有失败逐一相同（325/325），零新增既有失败、零回归。
+```
+
+全绿的包：`internal/modules/codedelivery` ok；`internal/modules/appconnector` 五包 ok（除 Task 2 遗留的 `TestSpaceConnectionGrantStoreUpsertListRevoke` 外）。
+
+**基线红全量规模的新记录（供主控集成后收口预期）**：Task 2/3 报告只记录了 router/container/handler 三包 14 个失败与 store 测试 1 个；本轮 base 直接运行证实挂起的 Task 0 实际波及全部走全量迁移轨的测试，本轮六组包内共 **325 个既有失败**（`internal/database` 10、`internal/application/repository` 286、`internal/modules/workbench/service/workbench` 27、handler 4、repository/appconnector 1；`internal/router`/`internal/container` 不在本轮六包命令内，其 10 个沿用 Task 3 记录）。全部同因 `duplicate migration file: 000114_public_agent_marketplace.*`。
+
+## 四、仓库内 GREEN 状态声明（消除任何误读）
+
+- 计划 Step 1（写 e2e 文件）：**达成**（1/1 文件，含两处夹具修正，见第二节）。
+- 计划 Step 2（端到端测试 PASS）：**仓库内未达成，被挂起的 Task 0 阻塞**；断言级 GREEN 由第三节 2 的一次性去重副本验证证明（3/3 PASS，零 helper 复刻漂移）。
+- 计划 Step 4（build + 六组包全绿）：**部分达成**——build exit 0；`codedelivery`/`appconnector` 族全绿；其余失败全部为 base 既有（325/325 逐一相同），零新增失败。
+- **集成 `codex/issue30-t61`（96e579ad0）后，主控必须按第五节序列重跑**；此前任何集成级 GREEN 声明无效。
+
+## 五、GREEN 复现命令序列（任何人可复验，供集成后验证消费）
+
+```bash
+cd /Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue30-sweep-t53
+# 前提：Task 0 等价修复（96e579ad0：000114→000118 / 000193→000197）已集成进本分支
+
+# 1) 本任务新测试——预期 3/3 PASS（openTaskGrantDB 全轨可装载后）
+go test ./internal/application/repository/ -run 'TestDeliveryCollaboration' -count=1 -v
+
+# 2) Task 2 遗留阻塞项一并收口——预期全绿
+go test ./internal/modules/appconnector/repository/appconnector/ -run TestSpaceConnectionGrantStore -count=1
+
+# 3) 计划级全量——预期六组包全绿（本轮记录的 325 个既有失败全部转绿）
+go build ./... && go test ./internal/database/ ./internal/modules/codedelivery/ ./internal/modules/appconnector/... ./internal/handler/ ./internal/application/repository/ ./internal/modules/workbench/service/workbench/ -count=1
+```
+
+## 六、自检发现
+
+- 完整性：计划 Task 4 文件清单 1/1 交付；3 个测试 + GitHub stub + 凭据适配器 + 手动路由挂载与计划逐字一致（除第二节两处夹具修正）。
+- 纪律：仅创建授权文件（`delivery_collaboration_http_test.go`）；未触碰任何被测代码、fixture、router/container；一次性文件跑后即删；未派发任何子代理；未推送远端；临时 base worktree 已 `git worktree remove --force` 清理（`git worktree list` 复核该条目为 0）。
+- 替身面：GitHub 是唯一替身（进程外 + 凭据门控），其余全真实；stub 按 `github_client.go` 现场 wire 契约应答，认证头钉 `Bearer` token；`gitHubRestClient` 真实 HTTP 代码全程在跑。
+- 参数绑定：凭据适配器读生产 `connections` 表经 `Where("tenant_id = ? AND id = ?", ...)` 参数化。
+- 测试真实性：所有 PASS/FAIL 均为本 session 真实运行输出；一次性验证如实标注为补充手段并给出复现路径，不冒充计划测试的仓库内 GREEN。
+- **本任务的 TDD RED 形态如实声明**：无生产代码变更，无传统 RED；首跑暴露的是基线阻塞（duplicate migration）与计划夹具的 SHA 长度笔误（经一次性诊断实证后修正），而非断言先红后绿的实现循环。
+
+## 七、待核实项（留给审查/主控）
+
+1. **一次性验证仅报告为证**（同 Task 2 GREEN B 性质）：本轮一次性 e2e 验证未做第二独立复跑（本轮时间花在 base 全量比对上）。复现方式：按第三节 2 的命令重建副本与一次性文件（结构：复用正式文件全部 helper + env-aware DB 打开器 `T53_DELIVERY_MIGRATIONS`）。如审查要求，我可在修复轮把一次性文件全文存档为附录（同 Task 3 附录 A/B 惯例）。
+2. base 全量比对本身已直接运行（325/325 逐一相同），非推断。
