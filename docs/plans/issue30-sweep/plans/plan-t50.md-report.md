@@ -114,3 +114,108 @@ ok  	github.com/Tencent/WeKnora/internal/modules/appconnector	0.476s
 
 - Create: `internal/modules/appconnector/confluence_update.go`
 - Create: `internal/modules/appconnector/confluence_update_test.go`
+
+---
+
+# 修复轮 1/5 报告
+
+## 审查发现
+
+1 项（severity: important）：Server/DC update PUT wire body 用平铺 `confluenceServerStorageBody`（缺 `body.storage` 嵌套层），与同包 Server create（`confluence_create.go:108-120,284`，`confluenceServerBodyRef` 注释明示 documented nested shape）、fake 双打 server PUT handler 解析形状（`confluence_create_test.go:263-268,288`，解析 `req.Body.Storage.Value`）、官方 Server/DC 契约三方不一致；双打上 Server PUT 远端 storage 落空串，计划给定测试 `TestConfluenceUpdateServerHappyPath` 不断言远端 storage 故不可捕获；真实实例上审批 storage 正文不按契约写入且 Query 对账永久 unknown 停车。**主控已裁决修复**（本修复轮指令）。
+
+## 修复内容
+
+- `internal/modules/appconnector/confluence_update.go`：
+  - `confluenceServerUpdateRequest.Body` 字段类型 `confluenceServerStorageBody` → `confluenceServerBodyRef`（`confluence_create.go:111` 的嵌套 wrapper，`"body":{"storage":{"value","representation"}}`），并加注释明示与 create 适配器及 fake 双打同一 wire 形状。
+  - `putPage` Server 分支构造改为 `confluenceServerBodyRef{Storage: confluenceServerStorageBody{Value: snap.Storage, Representation: "storage"}}`。
+- `internal/modules/appconnector/confluence_update_test.go`（回归覆盖）：
+  - `TestConfluenceUpdateServerHappyPath` 末尾新增远端落盘断言（`p.title=="v2" && p.storage=="<p>srv</p>" && p.version==6`）——正是原测试缺失、使审查缺陷逃逸的断言。
+  - 新增 `TestConfluenceUpdateServerQueryResolvesAfterDroppedReply`：Server 版式丢回复→unknown→Query 只读对账成功（版本恰 +1、storage 对账一致、`putsBefore==putsAfter` 零重发）——覆盖审查指出的「对账永久 unknown 停车」在修复后的解除。
+
+## TDD 证据（修复轮）
+
+### RED（先加强测试，实跑确认在修复前失败）
+
+命令：
+
+```
+go test ./internal/modules/appconnector/ -run 'TestConfluenceUpdateServerHappyPath|TestConfluenceUpdateServerQueryResolvesAfterDroppedReply' -count=1 -v
+```
+
+输出（完整）：
+
+```
+=== RUN   TestConfluenceUpdateServerHappyPath
+    confluence_update_test.go:128: remote page drift: &{id:page-9 spaceID:42 spaceKey:ENG title:v2 storage: version:6}
+--- FAIL: TestConfluenceUpdateServerHappyPath (0.00s)
+=== RUN   TestConfluenceUpdateServerQueryResolvesAfterDroppedReply
+    confluence_update_test.go:153: server query must resolve from the remote state: {State:unknown ExternalID: Output:[]} confluence_query_unverifiable: remote content drifted from the approved snapshot
+--- FAIL: TestConfluenceUpdateServerQueryResolvesAfterDroppedReply (0.00s)
+FAIL
+FAIL	github.com/Tencent/WeKnora/internal/modules/appconnector	1.797s
+```
+
+失败原因即预期原因：平铺 PUT 使远端 `storage:` 落空串（首测），对账读回内容与审批快照不符致 unknown 停车（次测）——审查描述的两个后果均被测试复现。
+
+### GREEN（修复后）
+
+命令：
+
+```
+go test ./internal/modules/appconnector/ -run 'ConfluenceUpdate|TestReadConfluencePageVersion' -count=1 -v
+```
+
+输出（12/12 全 PASS，完整末段）：
+
+```
+=== RUN   TestParseConfluenceUpdateSnapshot
+--- PASS: TestParseConfluenceUpdateSnapshot (0.00s)
+=== RUN   TestIsConfluenceUpdateArgs
+--- PASS: TestIsConfluenceUpdateArgs (0.00s)
+=== RUN   TestConfluenceUpdateCloudHappyPath
+--- PASS: TestConfluenceUpdateCloudHappyPath (0.00s)
+=== RUN   TestConfluenceUpdateServerHappyPath
+--- PASS: TestConfluenceUpdateServerHappyPath (0.00s)
+=== RUN   TestConfluenceUpdateServerQueryResolvesAfterDroppedReply
+--- PASS: TestConfluenceUpdateServerQueryResolvesAfterDroppedReply (0.00s)
+=== RUN   TestConfluenceUpdateConflictZeroWrites
+--- PASS: TestConfluenceUpdateConflictZeroWrites (0.00s)
+=== RUN   TestConfluenceUpdatePreReadFailureIsFailedNotUnknown
+--- PASS: TestConfluenceUpdatePreReadFailureIsFailedNotUnknown (0.00s)
+=== RUN   TestConfluenceUpdateUnknownOnLostWriteReply
+--- PASS: TestConfluenceUpdateUnknownOnLostWriteReply (0.00s)
+=== RUN   TestConfluenceUpdateQueryResolvesAfterDroppedReply
+--- PASS: TestConfluenceUpdateQueryResolvesAfterDroppedReply (0.00s)
+=== RUN   TestConfluenceUpdateQueryStaysUnknownWhenContentDrifted
+--- PASS: TestConfluenceUpdateQueryStaysUnknownWhenContentDrifted (0.00s)
+=== RUN   TestConfluenceUpdateQueryStaysUnknownWhenVersionUnmoved
+--- PASS: TestConfluenceUpdateQueryStaysUnknownWhenVersionUnmoved (0.00s)
+=== RUN   TestReadConfluencePageVersion
+--- PASS: TestReadConfluencePageVersion (0.00s)
+PASS
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector	0.501s
+```
+
+## 提交前全量验证（修复轮实跑）
+
+| 检查 | 命令 | 结果 |
+|---|---|---|
+| 全包回归 | `go test ./internal/modules/appconnector/... -count=1` | 6 个包全部 `ok` |
+| gofmt | `gofmt -w internal/modules/appconnector/confluence_update.go` 后 `gofmt -l`（两文件） | 干净（无输出）；格式化后复跑聚焦测试 `ok` |
+| go vet | `go vet ./internal/modules/appconnector/` | 通过（`VET-OK`） |
+| 全仓构建 | `go build ./...` | exit 0（仅 linker 无害告警 `ignoring duplicate libraries: '-lc++'`） |
+
+## 提交
+
+```
+2b1691753 fix(appconnector): confluence server update PUT uses nested body.storage wire shape (T20 #50 review round 1)
+```
+
+`git status` 提交后干净；未推送远端。
+
+## 修复轮自检与待核实项回应
+
+- **修复后 Server 版式写-读闭环一致**：PUT 写入（嵌套 body.storage）与 GET 对账读回（`confluence_common.go` `confluencePageWire` 按 `body.storage.value` 嵌套解析）形状现在完全对称，`TestConfluenceUpdateServerQueryResolvesAfterDroppedReply` 以双打实跑证明。
+- **真实 Confluence Server/DC 实例对平铺 PUT 的实际行为**：仍属 blocked-env（无凭据），本环境无法实跑；修复的依据是三方代码事实闭合（同包 create 实现 + 其 documented nested shape 注释 + fake 双打解析）与官方文档形状一致，实例级终裁留给 Task 9 有凭据运行。
+- **Cloud 版式零改动**：`confluenceCloudUpdateRequest` 的平铺 `body.{representation,value}` 即 Cloud v2 契约形状，未触碰；`TestConfluenceUpdateCloudHappyPath` 等 Cloud 测试全绿。
+- **提交时 Mimosa hook 再次提示扫描未得完整结论（scanner_enobufs）**：与首轮相同，未宣称项目安全状态。
