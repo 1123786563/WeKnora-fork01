@@ -328,6 +328,78 @@ const ALL_PAGES = [
     actions: [{ clickText: ['创建账户'], clickCss: ['.register-cta__button'] }] },
   { id: 'px-register-register-confirm', path: '/register', auth: false, settle: 3200, freezeCarousel: true, syncAnimPhase: true, postSettle: 3200,
     actions: [{ clickText: ['创建账户'], clickCss: ['.register-cta__button'] }] },
+  // —— 三期：无弹层交互面（tab/分段/开关/折叠/树展开；id 规范 px2-<域>-<元素>）——
+  // 与前两期去重口径：视图切换器已由 ix-kb-listview（列表视图）+ px-kb-wiki-tab-wiki-treeview
+  // （树形视图）覆盖，网格为默认态点击无态变（探针实证 viewbtn-active 前后不变）不重复入表；
+  // 轮播指示点（login/register .swiper-pagination-bullet 双端 4 枚实证存在）因 autoplay 4s
+  // 相位双端独立、扫描器无 post-action 重同步机制，入表必假阳 → 列存疑不入表（见
+  // baseline-px2.md）。序内污染声明：fontradio/sidebar-collapse 点击写 localStorage
+  //（WeKnora_<uid>_fontsize / sidebar_collapsed，跨 goto 存续），置于本块最末，其后无
+  // authed 项；单页重验其前置项不受影响，重验 sidebar-collapse 需按 ALL_PAGES 顺序连同
+  // fontradio 一起过滤（PAGES 过滤保序）。全部项只切换不确认，无服务端写。
+  //
+  // —— kb 域：Wiki KB 面包屑 tab（文档/Wiki/图谱 三 tab 双端同构 span.breadcrumb-tab，
+  // KnowledgeBase.vue:2424-2438；静态项只扫 URL 态，本组补 tab 点击切换态）——
+  { id: 'px2-kb-wiki-tab', kind: 'kb', name: 'Wiki Parity Fixture',
+    actions: [{ clickCss: ['.breadcrumb-tab >> nth=1'], clickText: ['Wiki'] }] },
+  { id: 'px2-kb-graph-tab', kind: 'kb', name: 'Wiki Parity Fixture',
+    actions: [{ clickCss: ['.breadcrumb-tab >> nth=2'], clickText: ['图谱'] }] },
+  // wiki reader 头部 tab（知识/摘要 .wiki-tab：Vue div / React button 异构标签，
+  // 同名类；点击切 reader 视图，WikiBrowser doc-content 内联切换非弹层）
+  { id: 'px2-kb-wiki-reader-tab', kind: 'kb', name: 'Wiki Parity Fixture', suffix: '?tab=wiki', settle: 3500,
+    actions: [{ clickCss: ['.wiki-tab >> nth=1'], clickText: ['摘要'] }] },
+  // wiki 目录树行展开（.wiki-directory-item 行点击=toggleDirectory 懒加载子级，
+  // Vue WikiBrowser.vue:292 / React WikiPage.tsx:1249 同名类族；树节点展开代表）
+  { id: 'px2-kb-wiki-tree-expand', kind: 'kb', name: 'Wiki Parity Fixture', suffix: '?tab=wiki', settle: 3500,
+    actions: [{ clickCss: ['.wiki-directory-item >> nth=0'] }] },
+  // KB 设置抽屉内导航（ix-kb-settings 只开抽屉；本项补抽屉内 settings-nav 的
+  // nav-item 分区切换）。React 首开有秒级异步延迟（编辑器 chunk 懒加载），
+  // postSettle 3500 保证第二步选择器到场。
+  { id: 'px2-kb-settings-nav', kind: 'kb', name: 'Parity KB Demo', postSettle: 3500,
+    actions: [
+      { clickCss: ['.kb-settings-button'], clickAria: ['知识库设置', '设置'] },
+      { clickCss: ['.settings-nav .nav-item:has-text("分块设置")'], clickText: ['分块设置'] },
+    ] },
+  // 分块设置「父子分块」开关（KBChunkingSettings.vue:113 t-switch）——已知异构：
+  // React chunkingSection.tsx:195-201 是 native input[type=checkbox]（aria-label=
+  // 父子分块），clickAria 兜底命中 React、clickCss .t-switch 命中 Vue，本项即
+  // 暴露该组件级差异的扫描哨兵。表单态无保存按钮不落库。
+  { id: 'px2-kb-settings-chunkswitch', kind: 'kb', name: 'Parity KB Demo', postSettle: 3500,
+    actions: [
+      { clickCss: ['.kb-settings-button'], clickAria: ['知识库设置', '设置'] },
+      { clickCss: ['.settings-nav .nav-item:has-text("分块设置")'], clickText: ['分块设置'] },
+      { clickCss: ['.section .t-switch'], clickAria: ['父子分块'] },
+    ] },
+  // —— settings 域：t-tabs 内联过滤 tab（点击改列表过滤，纯客户端）——
+  // models 类型过滤（全部/对话/Embedding/…6 项双端同构，ModelSettings.vue:38）
+  { id: 'px2-settings-models-tab', path: '/platform/settings?section=models', settle: 2000,
+    actions: [{ clickCss: ['.model-type-tabs .t-tabs__nav-item >> nth=1'], clickText: ['对话'] }] },
+  // sandbox 类型过滤（SandboxSettings.vue:59）
+  { id: 'px2-settings-sandbox-tab', path: '/platform/settings?section=sandbox', settle: 2000,
+    actions: [{ clickCss: ['.sandbox-type-tabs .t-tabs__nav-item >> nth=1'] }] },
+  // mymemory 状态过滤（生效中/待确认/…6 项，MemorySettings.vue:154；注意挂在
+  // mymemory 分区而非 memory——memory 分区是 MemoryWorkspaceSettings）
+  { id: 'px2-settings-mymemory-tab', path: '/platform/settings?section=mymemory', settle: 2500,
+    actions: [{ clickCss: ['.status-tabs .t-tabs__nav-item >> nth=1'] }] },
+  // system-global 系统设置分区 tab（账户与访问/空间默认值/…4 项，
+  // SystemSettings.vue:69；settings-system 分区是 SystemInfo 无 tab）
+  { id: 'px2-settings-systemglobal-tab', path: '/platform/settings?section=system-global', settle: 2500,
+    actions: [{ clickCss: ['.settings-section-tabs .t-tabs__nav-item >> nth=1'] }] },
+  // runtime-queues 自动刷新开关（客户端 5s 轮询开关，无服务端写；clickAria 先行
+  // 因 React 该页有 2 个 switch，aria 唯一定位自动刷新；双端探针实证命中）
+  { id: 'px2-settings-runtimequeues-autorefresh', path: '/platform/settings?section=runtime-queues', settle: 2000,
+    actions: [{ clickAria: ['自动刷新'], clickCss: ['.t-switch'] }] },
+  // 常规设置字号分段控件（小/正常/大 t-radio-button 三段双端同构，
+  // GeneralSettings.vue:114-121；localStorage-only（preferenceStorage.ts:69
+  // safeSetItem），无服务端写。点击后全 run 后续页大字号渲染（双端同改、parity
+  // 不破），故置于本块倒数第二）
+  { id: 'px2-settings-general-fontradio', path: '/platform/settings?section=general', settle: 2000,
+    actions: [{ clickCss: ['.t-radio-button:has-text("大")'], clickText: ['大'] }] },
+  // —— chat 域：会话侧栏折叠（menu.vue:22 .sidebar-toggle / React PlatformShell.tsx:1087
+  // 同名类同 localStorage 键 sidebar_collapsed；纯壳态无服务端写。点击后全 run 后续
+  // 页折叠态渲染，置于 authed 项最末 + mouseAway 清 hover 工件（判例 #26 同族）——
+  { id: 'px2-chat-sidebar-collapse', kind: 'chat', name: '工具调用 Parity Fixture', mouseAway: true,
+    actions: [{ clickCss: ['.sidebar-toggle'] }] },
 ];
 const PAGES = PAGE_FILTER.length ? ALL_PAGES.filter(p => PAGE_FILTER.includes(p.id)) : ALL_PAGES;
 
