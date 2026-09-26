@@ -411,3 +411,96 @@ test('M1: in-flight runs (发起/对账/重试) block the main actions; export b
   assert.equal(idle.exportDisabled, false, '空闲且修订就绪时导出可发起');
   assert.equal(idle.deletionDisabled, false, '空闲且边界/知悉/修订就绪时删除可发起');
 });
+
+// —— 修复轮 2 F1：partial 确定回执后的恢复尝试以未决告终时，不得再按 partial 解锁——
+// Web 基准（apps/web/src/career/ExportDeletionPage.tsx:291-293 门控 + 267-268/286 置 unknown）：
+// runDeletion(fixed) uncertain → phase='unknown'（封锁）；lookupDeletionReceipt 失败 → phase='unknown'
+// （封锁）；definite 拒绝 → attempt 清除 phase='error'（不封锁）。页面用同一组 gating 帮助函数
+// 计算 deletionUnknown 输入与"恢复失败置未决"判定（export-deletion.tsx 与本测试同源同函数）。
+const fix2Gating = {};
+const pageDeletionUnknown = (recoveryUnresolved, inMemoryStatus) => {
+  const { deletionOutcomeUnknown } = fix2Gating;
+  if (!deletionOutcomeUnknown) throw new Error('deletionOutcomeUnknown 未创建（F1 行为缺失）');
+  return deletionOutcomeUnknown({ intentPresent: career.pendingSpaceDeletion() !== null, inMemoryStatus, recoveryUnresolved });
+};
+
+test('F1: a partial receipt followed by an ambiguous retry re-blocks the deletion main action until a definite receipt', async () => {
+  Object.assign(fix2Gating, await import('../src/career/export-deletion.gating.ts'));
+  const { lifecycleGating, deletionRecoveryUnresolvedAfter } = fix2Gating;
+  let attempts = 0;
+  await freshLogin({
+    'POST /api/v1/career/deletions': call => { attempts++; if (attempts === 1) stub.succeed(call, { data: partialReceipt() }); else stub.fail(call, 'request:fail timeout'); },
+    'GET /api/v1/career/deletions/receipt': call => stub.succeed(call, { data: partialReceipt() }),
+  });
+  await career.loadCareer();
+  const partial = await career.deleteWholeSpace();
+  assert.equal(partial.status, 'partial');
+  assert.ok(career.pendingSpaceDeletion(), 'partial keeps the recoverable intent');
+  // 恢复失败前：持有确定 partial 回执，不因 unknown 封锁（Web phase=error）。
+  assert.equal(pageDeletionUnknown(false, 'partial'), false);
+  // 重试以结果未知告终：intent 保留 + 页面置未决（deletionRecoveryUnresolvedAfter 判定）→
+  // 旧 partial 回执不再代表当前结果，主按钮与知悉回到 unknown 封锁。
+  const ambiguous = await career.retryPendingSpaceDeletion().catch(error => error);
+  assert.equal(errorCode(ambiguous), 'outcome_unknown');
+  assert.ok(career.pendingSpaceDeletion(), 'ambiguous retry keeps the intent');
+  const unresolvedFlag = deletionRecoveryUnresolvedAfter('retry', ambiguous, career.pendingSpaceDeletion() !== null);
+  assert.equal(unresolvedFlag, true, 'ambiguous retry raises the unresolved flag');
+  const unresolved = pageDeletionUnknown(unresolvedFlag, 'partial');
+  assert.equal(unresolved, true, 'stale partial receipt + unresolved recovery counts as unknown');
+  const blocked = lifecycleGating({ exportBusy: false, exportUnknown: false, deletionBusy: false, deletionUnknown: unresolved, revisionLoaded: true, boundaryShown: true, acknowledged: true, deleted: false });
+  assert.equal(blocked.deletionDisabled, true, 'deletion main action blocked');
+  assert.equal(blocked.acknowledgeDisabled, true, 'acknowledgement locked again');
+  // 对账拿到确定 partial 回执 → 未决清除 → 解锁（Web partial=error 不封锁）。
+  const definite = await career.reconcilePendingSpaceDeletion();
+  assert.equal(definite.status, 'partial');
+  const settled = pageDeletionUnknown(false, definite.status);
+  assert.equal(settled, false);
+  const recovered = lifecycleGating({ exportBusy: false, exportUnknown: false, deletionBusy: false, deletionUnknown: settled, revisionLoaded: true, boundaryShown: true, acknowledged: true, deleted: false });
+  assert.equal(recovered.deletionDisabled, false, 'a definite receipt settles the unknown and reopens the main action');
+});
+
+test('F1: a failed reconcile keeps the block until a definite receipt arrives (Web lookup failure → unknown)', async () => {
+  Object.assign(fix2Gating, await import('../src/career/export-deletion.gating.ts'));
+  const { deletionRecoveryUnresolvedAfter } = fix2Gating;
+  let receiptMissing = true;
+  await freshLogin({
+    'POST /api/v1/career/deletions': call => stub.succeed(call, { data: partialReceipt() }),
+    'GET /api/v1/career/deletions/receipt': call => { if (receiptMissing) notFound(call); else stub.succeed(call, { data: partialReceipt() }); },
+  });
+  await career.loadCareer();
+  const partial = await career.deleteWholeSpace();
+  assert.equal(partial.status, 'partial');
+  assert.equal(pageDeletionUnknown(false, 'partial'), false);
+  // 对账失败（回执暂不可读）：intent 保留，页面按 Web lookupDeletionReceipt catch → unknown 封锁。
+  const refused = await career.reconcilePendingSpaceDeletion().catch(error => error);
+  assert.equal(errorCode(refused), 'not_found');
+  assert.ok(career.pendingSpaceDeletion(), 'a missing receipt keeps the intent');
+  const flag = deletionRecoveryUnresolvedAfter('reconcile', refused, career.pendingSpaceDeletion() !== null);
+  assert.equal(flag, true, 'any reconcile failure (receipt unreadable) raises the unresolved flag');
+  assert.equal(pageDeletionUnknown(flag, 'partial'), true, 'deletion stays blocked while the receipt cannot be read');
+  // 回执可读后：确定 partial → 未决清除 → 解锁。
+  receiptMissing = false;
+  const definite = await career.reconcilePendingSpaceDeletion();
+  assert.equal(definite.status, 'partial');
+  assert.equal(pageDeletionUnknown(false, definite.status), false);
+});
+
+test('F1: a definite retry refusal and a scope-changed failure do not raise the unresolved block (Web definite → error phase)', async () => {
+  Object.assign(fix2Gating, await import('../src/career/export-deletion.gating.ts'));
+  const { deletionRecoveryUnresolvedAfter } = fix2Gating;
+  let attempts = 0;
+  await freshLogin({
+    'POST /api/v1/career/deletions': call => { attempts++; if (attempts === 1) stub.succeed(call, { data: partialReceipt() }); else stub.succeed(call, { statusCode: 409, data: { error: { code: 'revision_conflict', message: 'stale view', currentRevision: 9 } } }); },
+  });
+  await career.loadCareer();
+  const partial = await career.deleteWholeSpace();
+  assert.equal(partial.status, 'partial');
+  // definite 拒绝（非 ambiguous）：不置未决（Web runDeletion definite 分支清除 attempt 置 error）。
+  const refused = await career.retryPendingSpaceDeletion().catch(error => error);
+  assert.equal(errorCode(refused), 'revision_conflict');
+  assert.equal(deletionRecoveryUnresolvedAfter('retry', refused, career.pendingSpaceDeletion() !== null), false, 'definite refusal is not an unknown outcome');
+  assert.equal(pageDeletionUnknown(false, 'partial'), false);
+  // SCOPE_CHANGED / intent 已不在当前作用域：不置未决（无恢复入口时不制造封锁死局）。
+  assert.equal(deletionRecoveryUnresolvedAfter('retry', Object.assign(new Error('删除结果未知'), { code: 'outcome_unknown' }), false), false);
+  assert.equal(deletionRecoveryUnresolvedAfter('reconcile', new Error('request:fail timeout'), false), false);
+});

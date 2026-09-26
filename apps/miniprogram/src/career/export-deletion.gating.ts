@@ -41,3 +41,20 @@ export function lifecycleGating(input: LifecycleGatingInput): LifecycleGating {
     acknowledgeDisabled: deletionBlocked,
   };
 }
+
+// 修复轮 2 F1：partial 确定回执后的恢复尝试（对账/重试）以未决告终时，页面持有的旧
+// partial 回执不再代表当前结果——回到 unknown 封锁（Web ExportDeletionPage.tsx:267-268
+// runDeletion uncertain → phase='unknown'；:286 lookupDeletionReceipt 失败 → phase='unknown'）。
+/** 删除 unknown 门控输入：intent 存续且非已呈报 partial，或上次恢复尝试未决。 */
+export function deletionOutcomeUnknown(input: { intentPresent: boolean; inMemoryStatus?: string; recoveryUnresolved: boolean }): boolean {
+  return (input.intentPresent && input.inMemoryStatus !== 'partial') || input.recoveryUnresolved;
+}
+/** 恢复尝试失败后是否置未决：对账失败（intent 仍在）一律未决（Web lookup catch → unknown，
+ * 回执读不到=结果未落定）；重试仅 ambiguous（outcome_unknown）未决——definite 拒绝走 Web
+ * runDeletion 的 error 分支不封锁。intent 已不在当前作用域（SCOPE_CHANGED/终态清理）不置
+ * 未决，避免无恢复入口时制造封锁死局。 */
+export function deletionRecoveryUnresolvedAfter(kind: 'reconcile' | 'retry', error: unknown, intentStillPresent: boolean): boolean {
+  if (!intentStillPresent) return false;
+  if (kind === 'reconcile') return true;
+  return (error as { code?: unknown } | null | undefined)?.code === 'outcome_unknown';
+}

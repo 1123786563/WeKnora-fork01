@@ -4,7 +4,7 @@ import { Text, View } from '@tarojs/components';
 import { Screen, Card, Action, Notice, Badge, DataBoundary, useData, useAction, useSession, confirmAction } from '../components/ui.tsx';
 import * as career from '../services/career.ts';
 import { spaceExportPayload, saveSpaceExportPackage, copySpaceExportToClipboard, type SpaceExportSaveRecord } from '../adapters/career-platform.ts';
-import { lifecycleGating } from './export-deletion.gating.ts';
+import { lifecycleGating, deletionOutcomeUnknown, deletionRecoveryUnresolvedAfter } from './export-deletion.gating.ts';
 import type { CareerExportReceipt, CareerDeletionBoundaryView, CareerDeletionReceipt } from '../../../../packages/api-client/src/career.ts';
 import { formatTime, formatBytes } from '../core/format.ts';
 import { logout } from '../services/runtime.ts';
@@ -45,6 +45,10 @@ export default function ExportDeletionPage() {
   const [delErrCode, setDelErrCode] = useState<string>();
   const [verifyNotice, setVerifyNotice] = useState('');
   const [clearedKeys, setClearedKeys] = useState<string[]>();
+  // 修复轮 2 F1：partial 确定回执后的恢复尝试（对账/重试）以未决告终时，旧 partial 回执
+  // 不再代表当前结果——置位后删除主按钮与知悉回到 unknown 封锁，防止换新 requestId 重复
+  // 发起删除（Web runDeletion/lookupDeletionReceipt 失败 → phase='unknown'）。
+  const [delRecoveryUnresolved, setDelRecoveryUnresolved] = useState(false);
   // 终态化处理只做一次（同一删除 requestId 的收尾不重复执行）。
   const finalizedFor = useRef<string | undefined>(undefined);
 
@@ -61,7 +65,7 @@ export default function ExportDeletionPage() {
     exportBusy: exportBusy.busy || recExportBusy.busy || retryExportBusy.busy,
     exportUnknown: pendingExport !== null,
     deletionBusy: deletionBusy.busy || recDelBusy.busy || retryDelBusy.busy,
-    deletionUnknown: pendingDeletion !== null && deletion?.status !== 'partial',
+    deletionUnknown: deletionOutcomeUnknown({ intentPresent: pendingDeletion !== null, inMemoryStatus: deletion?.status, recoveryUnresolved: delRecoveryUnresolved }),
     revisionLoaded: revision !== undefined,
     boundaryShown: boundary !== undefined,
     acknowledged,
@@ -100,8 +104,20 @@ export default function ExportDeletionPage() {
   const acceptDeletion = (receipt: CareerDeletionReceipt): void => {
     setDeletion(receipt);
     setAcknowledged(false);
+    setDelRecoveryUnresolved(false); // 确定回执落定上次恢复尝试的未决（Web acceptDeletion）
     if (receipt.status === 'deleted') void finalizeAfterDeletion(receipt);
   };
+
+  // 恢复入口统一包装（修复轮 2 F1）：失败按 Web 语义置/清未决——对账失败（intent 仍在）
+  // 一律未决，重试仅 ambiguous 未决、definite 拒绝解除封锁；成功拿到确定回执即落定。
+  const reconcileDeletion = (): void => void recDelBusy.run(async () => {
+    try { acceptDeletion(await career.reconcilePendingSpaceDeletion()); }
+    catch (error) { setDelRecoveryUnresolved(deletionRecoveryUnresolvedAfter('reconcile', error, career.pendingSpaceDeletion() !== null)); throw error; }
+  });
+  const retryDeletion = (): void => void retryDelBusy.run(async () => {
+    try { acceptDeletion(await career.retryPendingSpaceDeletion()); }
+    catch (error) { setDelRecoveryUnresolved(deletionRecoveryUnresolvedAfter('retry', error, career.pendingSpaceDeletion() !== null)); throw error; }
+  });
 
   const snapshotTotal = exported ? exported.archive.opportunities.reduce((total, item) => total + item.snapshots.length, 0) : 0;
   const eventTotal = exported ? exported.archive.applications.reduce((total, item) => total + item.progressEvents.length, 0) : 0;
@@ -121,9 +137,9 @@ export default function ExportDeletionPage() {
     </>}
     {pendingDeletion && !deleted && <>
       <Notice tone='warning'>有一次未到终态的删除（{pendingDeletion.requestId.slice(0, 10)}…）。可用原请求对账最新状态，或用原编号重试恢复；不会发起新的删除。</Notice>
-      <Action secondary loading={recDelBusy.busy} onClick={() => void recDelBusy.run(async () => { acceptDeletion(await career.reconcilePendingSpaceDeletion()); })}>用原请求对账删除</Action>
+      <Action secondary loading={recDelBusy.busy} onClick={reconcileDeletion}>用原请求对账删除</Action>
       {recDelBusy.error && <Notice tone='danger'>{recDelBusy.error} 对账被拒时说明该请求不存在或不属于当前空间；intent 保留，可稍后再试。</Notice>}
-      <Action secondary danger loading={retryDelBusy.busy} onClick={() => void retryDelBusy.run(async () => { acceptDeletion(await career.retryPendingSpaceDeletion()); })}>用原请求编号重试删除</Action>
+      <Action secondary danger loading={retryDelBusy.busy} onClick={retryDeletion}>用原请求编号重试删除</Action>
       {retryDelBusy.error && <Notice tone='danger'>{retryDelBusy.error} 重试沿用原请求编号；服务端按步骤续跑，已完成步骤不会重复执行。</Notice>}
     </>}
 
@@ -218,7 +234,7 @@ export default function ExportDeletionPage() {
       {deletion.retention.map(item => <Text key={item.holder} className='wk-muted wk-small'>{item.holder}：{item.reason}（{item.status}）</Text>)}
       {deletion.status === 'partial' && <>
         <Notice tone='warning'>删除部分失败：未完全删除。失败步骤已列出，状态与审计已保留，可用原请求编号重试恢复；本页不会显示"已完全删除"。</Notice>
-        <Action secondary danger loading={retryDelBusy.busy} onClick={() => void retryDelBusy.run(async () => { acceptDeletion(await career.retryPendingSpaceDeletion()); })}>用原请求编号重试删除</Action>
+        <Action secondary danger loading={retryDelBusy.busy} onClick={retryDeletion}>用原请求编号重试删除</Action>
       </>}
       {deleted && <>
         <Notice tone='info'>空间已完全删除（完成于 {formatTime(deletion.completedAt)}）。保留范围已在上方披露。服务端数据已删除；重新登录同一微信账号不会恢复旧资料。</Notice>
