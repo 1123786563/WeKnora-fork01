@@ -25,12 +25,12 @@ func openMobileHandlerDB(t *testing.T) *gorm.DB {
 	require.NoError(t, err)
 	require.NoError(t, db.Exec(string(up)).Error)
 	// mobileDeviceRow 携带 AppID 后，旧 schema 库上的 INSERT 会缺 app_id 列；
-	// 000114 的 intents 重建段要求 mobile_notification_intents 已存在，
-	// 故必须 000059 → 000060 → 000114 三文件成组、顺序固定。
+	// 000118 的 intents 重建段要求 mobile_notification_intents 已存在，
+	// 故必须 000059 → 000060 → 000118 三文件成组、顺序固定。
 	for _, file := range []string{
 		"000059_mobile_notifications.up.sql",
 		"000060_mobile_notification_delivery.up.sql",
-		"000114_mobile_device_app.up.sql",
+		"000118_mobile_device_app.up.sql",
 	} {
 		upNext, err := os.ReadFile(filepath.Join("..", "..", "migrations", "sqlite", file))
 		require.NoError(t, err)

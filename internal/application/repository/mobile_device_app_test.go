@@ -19,7 +19,7 @@ import (
 // same pattern as mobile_device_test.go:25 / semantic_model_test.go:341 —
 // Mimosa injection rule false positive, ruled admissible.
 // openMobileAppDB 只执行本域迁移子集，顺序必须保持 000058（设备表）→ 000059/000060
-// （意图表原形 + 补列）→ 000114（两表重建加 App 维度）：000114 的重建段对
+// （意图表原形 + 补列）→ 000118（两表重建加 App 维度）：000118 的重建段对
 // mobile_devices 与 mobile_notification_intents 做 INSERT...SELECT，二者必须已存在。
 // 与 openMobileHandlerDB（internal/handler/mobile_device_test.go:20）同一聚焦模式：
 // 当前 HEAD 的全目录 migrator.Up() 因 #42/#59 同号 000112 双文件损坏，不可依赖。
@@ -34,7 +34,7 @@ func openMobileAppDB(t *testing.T) *gorm.DB {
 		"migrations/sqlite/000058_mobile_devices.up.sql",
 		"migrations/sqlite/000059_mobile_notifications.up.sql",
 		"migrations/sqlite/000060_mobile_notification_delivery.up.sql",
-		"migrations/sqlite/000114_mobile_device_app.up.sql",
+		"migrations/sqlite/000118_mobile_device_app.up.sql",
 	} {
 		migration, err := os.ReadFile(filepath.Join(root, file))
 		require.NoError(t, err, file)
@@ -176,7 +176,7 @@ func TestClaimJoinsAppIDSoRevokedAppDoesNotResurrect(t *testing.T) {
 // both down migrations must deterministically drop enterprise rows BEFORE the
 // pre-app unique/primary constraints are rebuilt. Without the DELETE, the
 // duplicate keys from dual-app rows fail the constraint rebuild and the
-// rollback is stuck at 000114 (sqlite) / 000193 (PostgreSQL).
+// rollback is stuck at 000118 (sqlite) / 000197 (PostgreSQL).
 func TestMobileDeviceAppDownMigrationsDeleteEnterpriseRows(t *testing.T) {
 	_, filename, _, ok := runtime.Caller(0)
 	require.True(t, ok)
@@ -185,8 +185,8 @@ func TestMobileDeviceAppDownMigrationsDeleteEnterpriseRows(t *testing.T) {
 		file          string
 		deviceRebuild string
 	}{
-		{file: "migrations/sqlite/000114_mobile_device_app.down.sql", deviceRebuild: "CREATE TABLE mobile_devices_rebuilt"},
-		{file: "migrations/versioned/000193_mobile_device_app.down.sql", deviceRebuild: "ADD PRIMARY KEY (tenant_id, owner_id, device_id, environment)"},
+		{file: "migrations/sqlite/000118_mobile_device_app.down.sql", deviceRebuild: "CREATE TABLE mobile_devices_rebuilt"},
+		{file: "migrations/versioned/000197_mobile_device_app.down.sql", deviceRebuild: "ADD PRIMARY KEY (tenant_id, owner_id, device_id, environment)"},
 	} {
 		script, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(tc.file)))
 		require.NoError(t, err, tc.file)
