@@ -55,6 +55,44 @@ func TestConfluenceStorageBodyTooLarge(t *testing.T) {
 	}
 }
 
+// TestConfluenceStorageBodyCrossProviderEdge pins the intentional cross-provider
+// divergence at the "exactly MaxPublishBlocks rendered paragraphs plus a
+// trailing blank-line separator" edge (T50 final-review finding): the same
+// input — Repeat("p\n\n", MaxPublishBlocks) — splits into
+// MaxPublishBlocks+1 raw parts, so Confluence refuses it (its gate counts
+// raw parts — fail-closed, see the ConfluenceStorageBody doc comment) while
+// Notion accepts exactly MaxPublishBlocks non-empty paragraphs. This
+// asymmetry is the deliberate fix for the Task 4 plan defect
+// (.superpowers/sdd/plan-t50/progress.md 【Task4 自洽——阻塞缺陷】); pinning
+// both sides keeps a future "harmonization" from silently loosening the
+// Confluence gate or silently tightening the Notion gate.
+func TestConfluenceStorageBodyCrossProviderEdge(t *testing.T) {
+	text := strings.Repeat("p\n\n", MaxPublishBlocks)
+
+	if _, err := ConfluenceStorageBody(text); !errors.Is(err, ErrPublishContentTooLarge) {
+		t.Fatalf("confluence must refuse MaxPublishBlocks+1 raw parts (fail-closed), got %v", err)
+	}
+	blocks, err := NotionParagraphBlocks(text)
+	if err != nil {
+		t.Fatalf("notion must accept exactly MaxPublishBlocks non-empty paragraphs, got %v", err)
+	}
+	if len(blocks) != MaxPublishBlocks {
+		t.Fatalf("notion block count drift: want %d, got %d", MaxPublishBlocks, len(blocks))
+	}
+
+	// The Confluence gate accepts exactly MaxPublishBlocks raw parts: one
+	// fewer repetition splits into exactly MaxPublishBlocks parts
+	// (MaxPublishBlocks-1 non-empty + the trailing empty one) and renders
+	// MaxPublishBlocks-1 <p> elements.
+	body, err := ConfluenceStorageBody(strings.Repeat("p\n\n", MaxPublishBlocks-1))
+	if err != nil {
+		t.Fatalf("exactly MaxPublishBlocks raw parts must pass the gate, got %v", err)
+	}
+	if got := strings.Count(body, "<p>"); got != MaxPublishBlocks-1 {
+		t.Fatalf("rendered paragraph drift: want %d <p> elements, got %d", MaxPublishBlocks-1, got)
+	}
+}
+
 func TestConfluenceStorageBodyDeterministic(t *testing.T) {
 	a, _ := ConfluenceStorageBody("x\n\ny\n\nz")
 	b, _ := ConfluenceStorageBody("x\n\ny\n\nz")

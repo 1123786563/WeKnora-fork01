@@ -287,6 +287,15 @@ func (m *ConfluenceUpdateAdapter) Query(ctx context.Context, a Action) (ActionRe
 	if cur.Title != snap.Title || cur.BodyStorage != snap.Storage {
 		return ActionResult{State: ActionUnknown}, fmt.Errorf("confluence_query_unverifiable: remote content drifted from the approved snapshot")
 	}
+	// The success output is a faithful local projection
+	// {"id","version":{"number"}} assembled from the remote page read this
+	// Query just validated (version == expected+1 above; title/storage
+	// equal to the approved snapshot) — not the raw reply of a PUT this
+	// query never issued. The settle path consumes exactly these two
+	// fields through ParseConfluencePageReceipt (publish/confluence.go),
+	// so the receipt wording in confluence_common.go ("read from the
+	// provider's own reply") holds field-for-field; only the carrier
+	// differs: a validated read replaces the lost write reply.
 	raw, _ := json.Marshal(map[string]any{"id": cur.PageID, "version": map[string]int{"number": next}})
 	return ActionResult{State: ActionSucceeded, ExternalID: cur.PageID, Output: json.RawMessage(raw)}, nil
 }

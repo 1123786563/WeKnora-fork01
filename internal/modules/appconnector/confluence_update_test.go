@@ -309,6 +309,53 @@ func TestConfluenceUpdateQueryStaysUnknownWhenVersionUnmoved(t *testing.T) {
 	}
 }
 
+// TestConfluenceUpdateQueryOutputIsReceiptProjection pins the exact
+// success-output shape the settle path consumes (T50 final-review
+// finding): a faithful local projection {"id","version":{"number":next}}
+// assembled from the remote read the query just validated — never the raw
+// reply of a PUT this query did not issue — and parseable by
+// ParseConfluencePageReceipt with no other fields.
+func TestConfluenceUpdateQueryOutputIsReceiptProjection(t *testing.T) {
+	fake := newFakeConfluence("cf-user@example.test", "secret_cf_token")
+	fake.addPage("page-9", "sp-1", "ENG", "old title", 3)
+	srv := fake.server(t)
+	ad := &ConfluenceUpdateAdapter{
+		Policy: cfPolicyOf(srv, ""), Credential: cfCredential,
+		Edition: EditionCloud, ConnectionCapabilities: cfCaps(ConfluenceCapabilityWrite),
+	}
+	fake.mu.Lock()
+	fake.dropNextWrite = true
+	fake.mu.Unlock()
+	act := cfUpdateAction(cfUpdateArgs("page-9", "3", "new title", "<p>next</p>"))
+	if out, _ := ad.Execute(context.Background(), act); out.State != ActionUnknown {
+		t.Fatalf("setup: unknown expected, got %s", out.State)
+	}
+	q, qerr := ad.Query(context.Background(), act)
+	if qerr != nil || q.State != ActionSucceeded {
+		t.Fatalf("setup: query must resolve, got %+v %v", q, qerr)
+	}
+	var proj map[string]any
+	if err := json.Unmarshal(q.Output, &proj); err != nil {
+		t.Fatalf("query output must be JSON: %v", err)
+	}
+	if len(proj) != 2 {
+		t.Fatalf("projection must carry exactly id+version, got %v", proj)
+	}
+	if proj["id"] != "page-9" {
+		t.Fatalf("projection id drift: %v", proj["id"])
+	}
+	ver, ok := proj["version"].(map[string]any)
+	if !ok || ver["number"] != float64(4) {
+		t.Fatalf("projection version drift: %v", proj["version"])
+	}
+	// The settle path (publish/confluence.go) consumes the projection
+	// through the receipt parser — it must keep parsing field-for-field.
+	rcpt, rerr := ParseConfluencePageReceipt(q.Output)
+	if rerr != nil || rcpt.ExternalID != "page-9" || rcpt.ExternalVersion != "4" {
+		t.Fatalf("settle receipt consumption drift: %+v %v", rcpt, rerr)
+	}
+}
+
 func TestReadConfluencePageVersion(t *testing.T) {
 	fake := newFakeConfluence("cf-user@example.test", "secret_cf_token")
 	fake.addPage("page-9", "sp-1", "ENG", "P", 4)
