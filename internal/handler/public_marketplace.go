@@ -188,6 +188,10 @@ func publicMarketplaceClientError(err error) error {
 		return apperrors.NewNotFoundError("public marketplace resource not found")
 	case stderrors.Is(err, marketservice.ErrPublicMarketplaceNotVerifiedPublisher):
 		return apperrors.NewForbiddenError("tenant is not a verified publisher")
+	case stderrors.Is(err, marketservice.ErrReleaseRedistributionForbidden):
+		// T32 #62 AC2: the refusal message names the source lineage license
+		// and why it refuses (409, reviewable).
+		return apperrors.NewConflictError(err.Error())
 	case stderrors.Is(err, marketservice.ErrPublicMarketplaceStaleDigest),
 		stderrors.Is(err, marketrepo.ErrPublicMarketplaceDigestMismatch),
 		stderrors.Is(err, marketrepo.ErrPublicMarketplaceReviewConflict),

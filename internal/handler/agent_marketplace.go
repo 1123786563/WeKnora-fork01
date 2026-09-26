@@ -54,19 +54,24 @@ type reviewAgentReleaseBody struct {
 }
 
 type marketplaceSubmissionResponse struct {
-	ID              string          `json:"id"`
-	TenantID        uint64          `json:"tenant_id"`
-	ListingID       string          `json:"listing_id"`
-	AgentVersionID  string          `json:"agent_version_id"`
-	SourceAgentID   string          `json:"source_agent_id"`
-	AuthorID        string          `json:"author_id"`
-	SemanticVersion string          `json:"semantic_version"`
-	BundleDigest    string          `json:"bundle_digest"`
-	Manifest        json.RawMessage `json:"manifest"`
-	DependencyLock  json.RawMessage `json:"dependency_lock"`
-	Payload         json.RawMessage `json:"payload"`
-	Status          string          `json:"status"`
-	CreatedAt       time.Time       `json:"created_at"`
+	ID                  string          `json:"id"`
+	TenantID            uint64          `json:"tenant_id"`
+	ListingID           string          `json:"listing_id"`
+	AgentVersionID      string          `json:"agent_version_id"`
+	SourceAgentID       string          `json:"source_agent_id"`
+	AuthorID            string          `json:"author_id"`
+	SemanticVersion     string          `json:"semantic_version"`
+	BundleDigest        string          `json:"bundle_digest"`
+	Manifest            json.RawMessage `json:"manifest"`
+	DependencyLock      json.RawMessage `json:"dependency_lock"`
+	Payload             json.RawMessage `json:"payload"`
+	Status              string          `json:"status"`
+	IsFork              bool            `json:"is_fork"`
+	ForkSourceListingID string          `json:"fork_source_listing_id,omitempty"`
+	ForkSourceReleaseID string          `json:"fork_source_release_id,omitempty"`
+	ForkNotes           string          `json:"fork_notes,omitempty"`
+	LineageLicenseID    string          `json:"lineage_license_id,omitempty"`
+	CreatedAt           time.Time       `json:"created_at"`
 }
 
 type marketplaceReviewResponse struct {
@@ -80,18 +85,23 @@ type marketplaceReviewResponse struct {
 }
 
 type marketplaceReleaseResponse struct {
-	ID              string          `json:"id"`
-	ListingID       string          `json:"listing_id"`
-	SubmissionID    string          `json:"submission_id"`
-	AgentVersionID  string          `json:"agent_version_id"`
-	SourceAgentID   string          `json:"source_agent_id"`
-	ReleaseNumber   int             `json:"release_number"`
-	SemanticVersion string          `json:"semantic_version"`
-	BundleDigest    string          `json:"bundle_digest"`
-	Manifest        json.RawMessage `json:"manifest"`
-	DependencyLock  json.RawMessage `json:"dependency_lock"`
-	PublishedBy     string          `json:"published_by"`
-	CreatedAt       time.Time       `json:"created_at"`
+	ID                  string          `json:"id"`
+	ListingID           string          `json:"listing_id"`
+	SubmissionID        string          `json:"submission_id"`
+	AgentVersionID      string          `json:"agent_version_id"`
+	SourceAgentID       string          `json:"source_agent_id"`
+	ReleaseNumber       int             `json:"release_number"`
+	SemanticVersion     string          `json:"semantic_version"`
+	BundleDigest        string          `json:"bundle_digest"`
+	Manifest            json.RawMessage `json:"manifest"`
+	DependencyLock      json.RawMessage `json:"dependency_lock"`
+	IsFork              bool            `json:"is_fork"`
+	ForkSourceListingID string          `json:"fork_source_listing_id,omitempty"`
+	ForkSourceReleaseID string          `json:"fork_source_release_id,omitempty"`
+	ForkNotes           string          `json:"fork_notes,omitempty"`
+	LineageLicenseID    string          `json:"lineage_license_id,omitempty"`
+	PublishedBy         string          `json:"published_by"`
+	CreatedAt           time.Time       `json:"created_at"`
 }
 
 type marketplaceListingResponse struct {
@@ -111,7 +121,7 @@ func marketplaceSubmissionDTO(row interfaces.ReleaseSubmissionView) marketplaceS
 		Payload json.RawMessage `json:"payload"`
 	}
 	_ = json.Unmarshal(row.Bundle, &envelope)
-	return marketplaceSubmissionResponse{ID: row.ID, TenantID: row.TenantID, ListingID: row.ListingID, AgentVersionID: row.AgentVersionID, SourceAgentID: row.SourceAgentID, AuthorID: row.AuthorID, SemanticVersion: row.SemanticVersion, BundleDigest: row.BundleDigest, Manifest: json.RawMessage(row.ManifestJSON), DependencyLock: json.RawMessage(row.DependencyLockJSON), Payload: envelope.Payload, Status: row.Status, CreatedAt: row.CreatedAt}
+	return marketplaceSubmissionResponse{ID: row.ID, TenantID: row.TenantID, ListingID: row.ListingID, AgentVersionID: row.AgentVersionID, SourceAgentID: row.SourceAgentID, AuthorID: row.AuthorID, SemanticVersion: row.SemanticVersion, BundleDigest: row.BundleDigest, Manifest: json.RawMessage(row.ManifestJSON), DependencyLock: json.RawMessage(row.DependencyLockJSON), Payload: envelope.Payload, Status: row.Status, IsFork: row.IsFork, ForkSourceListingID: row.ForkSourceListingID, ForkSourceReleaseID: row.ForkSourceReleaseID, ForkNotes: row.ForkNotes, LineageLicenseID: row.LineageLicenseID, CreatedAt: row.CreatedAt}
 }
 
 func marketplaceClientError(err error) error {
@@ -120,6 +130,10 @@ func marketplaceClientError(err error) error {
 		return apperrors.NewNotFoundError("release submission not found")
 	case stderrors.Is(err, marketrepo.ErrAgentMarketplaceDigestMismatch), stderrors.Is(err, marketservice.ErrAgentMarketplaceStaleDigest), stderrors.Is(err, marketrepo.ErrAgentMarketplacePointerConflict), stderrors.Is(err, marketrepo.ErrAgentMarketplaceReviewConflict):
 		return apperrors.NewConflictError("release submission changed; reload and review again")
+	case stderrors.Is(err, marketservice.ErrReleaseRedistributionForbidden):
+		// The refusal message IS the governance reason: it names the
+		// source license and why it refuses (409, reviewable).
+		return apperrors.NewConflictError(err.Error())
 	case stderrors.Is(err, marketservice.ErrAgentMarketplaceMissingDependency):
 		return apperrors.NewValidationError(err.Error())
 	case stderrors.Is(err, marketservice.ErrAgentMarketplaceInvalidInput), stderrors.Is(err, marketrepo.ErrAgentMarketplaceInvalidDecision), stderrors.Is(err, marketrepo.ErrAgentMarketplaceVersionAgentMismatch):
@@ -133,7 +147,7 @@ func marketplaceReleaseDTO(row *types.AgentReleaseEntity) *marketplaceReleaseRes
 	if row == nil {
 		return nil
 	}
-	return &marketplaceReleaseResponse{ID: row.ID, ListingID: row.ListingID, SubmissionID: row.SubmissionID, AgentVersionID: row.AgentVersionID, SourceAgentID: row.SourceAgentID, ReleaseNumber: row.ReleaseNumber, SemanticVersion: row.SemanticVersion, BundleDigest: row.BundleDigest, Manifest: json.RawMessage(row.ManifestJSON), DependencyLock: json.RawMessage(row.DependencyLockJSON), PublishedBy: row.PublishedBy, CreatedAt: row.CreatedAt}
+	return &marketplaceReleaseResponse{ID: row.ID, ListingID: row.ListingID, SubmissionID: row.SubmissionID, AgentVersionID: row.AgentVersionID, SourceAgentID: row.SourceAgentID, ReleaseNumber: row.ReleaseNumber, SemanticVersion: row.SemanticVersion, BundleDigest: row.BundleDigest, Manifest: json.RawMessage(row.ManifestJSON), DependencyLock: json.RawMessage(row.DependencyLockJSON), IsFork: row.IsFork, ForkSourceListingID: row.ForkSourceListingID, ForkSourceReleaseID: row.ForkSourceReleaseID, ForkNotes: row.ForkNotes, LineageLicenseID: row.LineageLicenseID, PublishedBy: row.PublishedBy, CreatedAt: row.CreatedAt}
 }
 
 func decodeAgentMarketplaceBody(r io.Reader, dst any) error {
@@ -223,6 +237,67 @@ func (h *AgentMarketplaceHandler) ListTenantCatalog(c *gin.Context) {
 	for _, view := range views {
 		row := view.AgentMarketplaceListingEntity
 		data = append(data, marketplaceListingResponse{ID: row.ID, TenantID: row.TenantID, SourceAgentID: row.SourceAgentID, DisplayName: row.DisplayName, Summary: row.Summary, State: row.State, CurrentReleaseID: row.CurrentReleaseID, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt})
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": data})
+}
+
+type registerLicenseBody struct {
+	ID                   string `json:"id"`
+	Name                 string `json:"name"`
+	AllowsRedistribution bool   `json:"allows_redistribution"`
+}
+
+type licenseResponse struct {
+	ID                   string    `json:"id"`
+	Name                 string    `json:"name"`
+	AllowsRedistribution bool      `json:"allows_redistribution"`
+	CreatedBy            string    `json:"created_by"`
+	CreatedAt            time.Time `json:"created_at"`
+	UpdatedAt            time.Time `json:"updated_at"`
+}
+
+func licenseDTO(row types.AgentLicenseEntity) licenseResponse {
+	return licenseResponse{ID: row.ID, Name: row.Name, AllowsRedistribution: row.AllowsRedistribution, CreatedBy: row.CreatedBy, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt}
+}
+
+// RegisterLicense records (or re-records) one deployment license term
+// (T32 #62). The redistribution gate reads this registry live.
+func (h *AgentMarketplaceHandler) RegisterLicense(c *gin.Context) {
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, agentMarketplaceMaxRequestBytes)
+	var body *registerLicenseBody
+	if err := decodeAgentMarketplaceBody(c.Request.Body, &body); err != nil {
+		invalidMarketplaceBody(c, err)
+		return
+	}
+	if body == nil || strings.TrimSpace(body.ID) == "" {
+		invalidMarketplaceBody(c, stderrors.New("id is required"))
+		return
+	}
+	actorID, _ := types.UserIDFromContext(c.Request.Context())
+	row, err := h.market.RegisterLicense(c.Request.Context(), actorID, interfaces.LicenseInput{
+		ID: body.ID, Name: body.Name, AllowsRedistribution: body.AllowsRedistribution,
+	})
+	if err != nil {
+		if stderrors.Is(err, marketservice.ErrAgentLicenseInvalid) {
+			_ = c.Error(apperrors.NewValidationError("invalid agent license request"))
+			return
+		}
+		_ = c.Error(err)
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"success": true, "data": licenseDTO(row)})
+}
+
+// ListLicenses returns the deployment license registry (Admin+).
+func (h *AgentMarketplaceHandler) ListLicenses(c *gin.Context) {
+	rows, err := h.market.ListLicenses(c.Request.Context())
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+	data := make([]licenseResponse, 0, len(rows))
+	for _, row := range rows {
+		data = append(data, licenseDTO(row))
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": data})
 }

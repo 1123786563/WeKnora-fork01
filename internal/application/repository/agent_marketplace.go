@@ -151,7 +151,7 @@ func (r *agentMarketplaceRepository) ReviewAndPublishTx(ctx context.Context, ten
 				if err := tx.Model(&types.AgentReleaseEntity{}).Where("tenant_id = ? AND listing_id = ?", tenantID, submission.ListingID).Select("COALESCE(MAX(release_number), 0)").Scan(&max).Error; err != nil {
 					return err
 				}
-				release = &types.AgentReleaseEntity{ID: uuid.NewString(), TenantID: tenantID, ListingID: submission.ListingID, SubmissionID: submission.ID, AgentVersionID: submission.AgentVersionID, SourceAgentID: submission.SourceAgentID, ReleaseNumber: max + 1, SemanticVersion: submission.SemanticVersion, BundleDigest: submission.BundleDigest, ManifestJSON: submission.ManifestJSON, DependencyLockJSON: submission.DependencyLockJSON, Bundle: append([]byte(nil), submission.Bundle...), PublishedBy: decision.ReviewerID, CreatedAt: time.Now().UTC()}
+				release = &types.AgentReleaseEntity{ID: uuid.NewString(), TenantID: tenantID, ListingID: submission.ListingID, SubmissionID: submission.ID, AgentVersionID: submission.AgentVersionID, SourceAgentID: submission.SourceAgentID, ReleaseNumber: max + 1, SemanticVersion: submission.SemanticVersion, BundleDigest: submission.BundleDigest, ManifestJSON: submission.ManifestJSON, DependencyLockJSON: submission.DependencyLockJSON, Bundle: append([]byte(nil), submission.Bundle...), IsFork: submission.IsFork, ForkSourceListingID: submission.ForkSourceListingID, ForkSourceReleaseID: submission.ForkSourceReleaseID, ForkNotes: submission.ForkNotes, LineageLicenseID: submission.LineageLicenseID, PublishedBy: decision.ReviewerID, CreatedAt: time.Now().UTC()}
 				if err := tx.Create(release).Error; err != nil {
 					return err
 				}

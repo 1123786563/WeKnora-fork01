@@ -31,6 +31,12 @@ func RegisterAgentMarketplaceRoutes(r *gin.RouterGroup, marketHandler *handler.A
 		apiKeyManageAgents(apiKeyFullAccess()), g.Admin(), marketHandler.ReviewSubmission)
 	tenantCatalog := g.apiKeyGroup(base.Group("/catalog"), apiKeyFullAccess())
 	tenantCatalog.GET("", g.Viewer(), marketHandler.ListTenantCatalog)
+
+	// T32 #62: the deployment license registry the fork re-submission gate
+	// consults. Admin+ (deployment governance domain).
+	licenses := g.apiKeyGroup(r.Group("/marketplace/licenses"), apiKeyFullAccess())
+	licenses.POST("", g.Admin(), marketHandler.RegisterLicense)
+	licenses.GET("", g.Admin(), marketHandler.ListLicenses)
 }
 
 type submissionVersionBody struct {
