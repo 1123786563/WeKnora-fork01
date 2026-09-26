@@ -158,3 +158,32 @@ func TestGitLabTamperedSnapshotNeverReachesGitLab(t *testing.T) {
 	after := snapshotGitLabCalls(f)
 	require.Equal(t, before, after, "篡改快照的派发必须零远端调用")
 }
+
+// 回归钉（审查修复轮 1）：提供者解析是服务端权威事实、绝不静默猜测——
+// Providers 未接线的部署（本任务与容器接线任务之间的中间态）对包括 GitHub
+// 在内的一切连接在 prepare 面一律 fail closed、零远端调用。零值是「无交付」
+// 现状而非 GitHub-only 降级；生产容器接线落地后本测试继续钉住 nil 语义。
+func TestUnwiredProvidersFailsClosedEvenForGitHub(t *testing.T) {
+	f := newDeliveryFixture(t, func(root string) {
+		dir := filepath.Join(root, "octocat/hello")
+		require.NoError(t, os.MkdirAll(dir, 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n\nfunc main() {}\n"), 0o644))
+	})
+	unwired := NewCodeDeliveryService(CodeDeliveryDeps{
+		Store: f.svc.deps.Store, Actions: f.svc.deps.Actions, ActionRows: f.svc.deps.ActionRows,
+		Connections: f.svc.deps.Connections, Creds: f.svc.deps.Creds,
+		GitHub: f.svc.deps.GitHub, GitLab: f.svc.deps.GitLab,
+		Workspace: f.svc.deps.Workspace, Runs: f.svc.deps.Runs,
+		Dispatcher: f.svc.deps.Dispatcher,
+	})
+	ctx := context.Background()
+
+	_, err := unwired.PrepareDelivery(ctx, prepareInput())
+	require.ErrorIs(t, err, ErrUnsupportedProvider)
+	_, err = unwired.MaterializeBaseline(ctx, baselineInput())
+	require.ErrorIs(t, err, ErrUnsupportedProvider)
+
+	require.Zero(t, f.github.Calls()["GET /repos"], "提供者拒绝必须发生在任何远端读之前")
+	require.Zero(t, f.github.Calls()["GET /branches"])
+	require.Zero(t, f.github.Calls()["POST /git/refs"])
+}

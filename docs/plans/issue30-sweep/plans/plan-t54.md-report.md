@@ -103,3 +103,46 @@ ok  	github.com/Tencent/WeKnora/internal/modules/codedelivery	1.925s
 2. **既有测试零断言改动**：夹具扩展后全部既有 GitHub 侧测试未改一行断言即通过——权威读回对 GitHub 语义恒等（CreateCommit 结果=分支 head），计划第 48 条「作者逐条核对断言」的声明在本次实跑中得到复现。
 3. **Task 3 依赖的派发语义已就位**：EnsureBranch → BranchHead 读回 → RecordReceipts(远端 head) 的顺序、`Dispatch` 前置门 parse → A02 → token → 平台路由 → row 的次序，均为 Task 3 语义测试（部分完成恢复/unknown 收敛/护栏次序）断言所依赖的形状，已按计划落定。
 4. **blocked-env 声明**：真实 GitLab 端到端（真实 OAuth/仓库）本地不可得，本任务证据链为「真实 sqlite + 真实 A03 ActionService/ocAuthorizer + httptest GitLab 模拟器真实 HTTP 字节 + 本地工作区」，符合计划验收标准 3 的本地可验证性说明；`TestGitLabClientAgainstRealGitLab` skip 未伪造。
+
+---
+
+# 修复轮 1/5 报告
+
+## 审查发现与处置
+
+**发现（important，`internal/modules/codedelivery/service.go:470`）**：容器未接 `Providers`/`GitLab`（`internal/container/code_delivery.go` 零接线，`container.go:276` 为生产活代码装配点），`platformProvider` 在 `Providers==nil` 时无差别 fail closed（`service.go:470-472` 亲读核实）——本 commit 单独部署时 GitHub 连接的 `PrepareDelivery`/`MaterializeBaseline` 同样被拒，HTTP 面落 500 `code_delivery_failed`（`workbench_delivery.go:243`，400 映射属 Task 4）。计划⑩「新字段零值 nil 是 GitHub-only 部署的合法现状」与计划② fail-closed 语义矛盾：零值实为「无交付」现状而非 GitHub-only 现状。
+
+**处置边界**：`internal/container/code_delivery.go` 是计划 Task 4 的授权文件、不在本任务授权清单，本修复轮**不越界接线容器**（审查发现自身判定「实现忠实逐字执行计划……最终集成树无此问题，主控需确保 Task 4 容器接线尽快落地」）。将 `Providers==nil` 降级为「默认 GitHub」绝不可行——提供者是服务端权威事实，静默猜测违反计划②的权威解析要求且是安全倒退。
+
+**落地修复（两件）**：
+
+1. **注释修正**（`internal/modules/codedelivery/service.go` `CodeDeliveryDeps.Providers` 字段注释）：删除「GitHub-only 合法现状」的错误语义，如实声明「Providers nil ⇒ prepare 面对包括 GitHub 在内的一切连接 fail closed（零值 =『无交付』现状，不是 GitHub-only 降级）。生产容器必须接线（Task 4）；未接线部署的交付功能整体不可用是本语义的有意结果」，并指向回归钉测试。
+2. **回归覆盖测试**（`internal/modules/codedelivery/service_gitlab_test.go` 追加 `TestUnwiredProvidersFailsClosedEvenForGitHub`）：以夹具 deps 复制一份 `Providers: nil`（其余字段同夹具）的服务实例，断言 GitHub 连接的 `PrepareDelivery` 与 `MaterializeBaseline` 均返回 `ErrUnsupportedProvider` 且零远端调用（`GET /repos`/`GET /branches`/`POST /git/refs` 计数全零）——把 Task 2→Task 4 之间的回归窗口从隐性行为变为显式契约；容器接线落地后本测试继续钉住 nil 语义。
+
+## 修复轮测试命令与输出（实跑）
+
+`go test ./internal/modules/codedelivery/ -count=1 -v -run 'TestUnwiredProviders'`：
+
+```
+=== RUN   TestUnwiredProvidersFailsClosedEvenForGitHub
+--- PASS: TestUnwiredProvidersFailsClosedEvenForGitHub (0.01s)
+PASS
+ok  	github.com/Tencent/WeKnora/internal/modules/codedelivery	0.969s
+```
+
+（该测试性质为回归钉：断言即当前行为，直接 PASS 是预期——若审查发现描述的 nil 行为不准确，此测试会 FAIL。）
+
+计划指定检查回归（`go test ./internal/modules/codedelivery/ -count=1`）：`ok  github.com/Tencent/WeKnora/internal/modules/codedelivery  1.375s`。全量 `-v` 统计：**37 PASS / 0 FAIL / 2 SKIP**（新增回归钉 1 个；SKIP 仍为两个 env 门控 blocked-env 测试）。
+
+## 待核实项的补强（本轮实跑取证）
+
+1. **ld 警告声明由推测变实证**：上一轮报告声明 `go build ./...` 的 cmd/desktop、cmd/server `ld: warning: ignoring duplicate libraries: '-lc++'` 「改动前即存在」但未对比。本轮以临时 detached worktree 在基线 commit f54ed2502 实跑 `go build ./...` → `grep -c "ld: warning"` = **2**；当前树（含本修复）同样 = **2**（`cmd/desktop`、`cmd/server` 各一处）。声明成立，临时 worktree 已 `git worktree remove` 清理（`git worktree list` 复核无残留）。
+2. **RED 证据无法从 diff 复核**：维持如实记录——Step 2 RED 输出（3 个 unknown field 编译错误）为当时实跑、非事后可复核项，报告原文保留；审查者「只能核对报告自述与夹具扩展位吻合」的表述准确。
+3. **Mimosa scanner_enobufs**：hook 行为本轮提交时再次出现与否以本轮 commit 的实际输出为准（见下），扫描台账核实仍需主控。
+4. **36→37 计数**：本轮 `grep -cE "^--- PASS"` 实跑 = 37（上轮为 36 + 本轮新增 1 个回归钉），与审查者「包级 ok、0 FAIL、恰 2 SKIP」的独立复跑一致。
+
+## 遗留给主控的事项
+
+- **Task 4 容器接线尽快落地**：接线落地前，部署本 commit 的生产装配点（`container.go:276` 路径）交付功能整体不可用（HTTP 500 `code_delivery_failed`）。方向为 fail-closed（可证未出网的拒绝，无数据/权限风险），但功能不可用窗口真实存在；`Providers==nil` 行为已被回归测试钉死，接线后无需改此测试。
+- HTTP 400 `code_delivery_unsupported_provider` 映射属 Task 4（`workbench_delivery.go`）。
+- Mimosa hook scanner_enobufs 的扫描台账需主控核实（本任务无法从 diff 验证 hook 行为）。

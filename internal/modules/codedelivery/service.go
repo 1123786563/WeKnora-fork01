@@ -56,7 +56,12 @@ type CodeDeliveryDeps struct {
 	GitHub GitHubClientFactory
 	GitLab CodePlatformClientFactory
 	// Providers 把连接解析到其安装 app id（=平台名）。生产实现是
-	// appconnectorrepo.InstallationStore；nil 一律 fail closed。
+	// appconnectorrepo.InstallationStore。提供者是服务端权威事实、绝不静默
+	// 猜测：Providers nil ⇒ prepare 面对包括 GitHub 在内的一切连接 fail
+	// closed（零值 =「无交付」现状，不是 GitHub-only 降级）。生产容器必须
+	// 接线（container/code_delivery.go，Task 4）；未接线部署的交付功能整体
+	// 不可用是本语义的有意结果（fail-closed 方向，回归测试钉死于
+	// TestUnwiredProvidersFailsClosedEvenForGitHub）。
 	Providers ProviderSource
 	Workspace WorkspaceFileSource
 	Runs      RunReader
