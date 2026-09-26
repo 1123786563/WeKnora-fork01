@@ -706,3 +706,266 @@ go build ./... && go test ./internal/database/ ./internal/modules/codedelivery/ 
 
 1. **一次性验证仅报告为证**（同 Task 2 GREEN B 性质）：本轮一次性 e2e 验证未做第二独立复跑（本轮时间花在 base 全量比对上）。复现方式：按第三节 2 的命令重建副本与一次性文件（结构：复用正式文件全部 helper + env-aware DB 打开器 `T53_DELIVERY_MIGRATIONS`）。如审查要求，我可在修复轮把一次性文件全文存档为附录（同 Task 3 附录 A/B 惯例）。
 2. base 全量比对本身已直接运行（325/325 逐一相同），非推断。
+
+---
+
+# 修复轮 1/5 报告（Task 4 审查发现处置）
+
+## 一、审查发现处置结论
+
+唯一发现（important）：「Task 4 的断言级 GREEN（一次性去重副本 e2e 3/3 PASS）仅有实现员单方报告为证：无第二独立复跑、未按 Task 3 附录 A/B 惯例存档一次性文件」。**处置：两项均本轮补齐，代码零变更**：
+
+| 缺口 | 处置 |
+|---|---|
+| 无第二独立复跑 | **已关闭**：按报告第三节 2 的复现序列重建 /tmp 去重副本与一次性文件（与首轮运行版本逐字一致，全文存档附录 C），**第二轮独立运行 3/3 PASS**（本轮证据 1）。至此一次性 e2e 验证有两个独立运行来源（首轮 + 本轮），与 Task 2 GREEN B 修复轮二跑的证据强度对齐。 |
+| 未存档一次性文件 | **已关闭**：一次性文件全文存档于**附录 C**（同 Task 3 附录 A/B 惯例），并附完整可复现命令序列（副本重建 → 文件重建 → 运行 → 删除）——审查者在只读约束下可随时按附录重建重放。 |
+
+审查发现同时确认的事实维持不变：仓库内正式测试在本分支因 base 既有 duplicate migration 阻塞无法转绿（审查员已独立复现 3/3 FAIL 于 `task_grant_store_test.go:38`）；集成 `codex/issue30-t61`（96e579ad0）后主控必须按报告第五节命令重跑正式测试收口，此前 AC1/AC2/AC3 的 e2e 证据链不闭环——该声明不变。
+
+## 二、本轮新增证据（全部为本 session 真实运行）
+
+### 1. 一次性 e2e 验证第二轮独立复跑（重建 → 跑 → 删，3/3 PASS）
+
+```
+$ cd /Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue30-sweep-t53
+$ rm -rf /tmp/t53-delivery-track && cp -R migrations/sqlite /tmp/t53-delivery-track
+$ mv /tmp/t53-delivery-track/000114_mobile_device_app.up.sql /tmp/t53-delivery-track/000118_mobile_device_app.up.sql
+$ mv /tmp/t53-delivery-track/000114_mobile_device_app.down.sql /tmp/t53-delivery-track/000118_mobile_device_app.down.sql
+$ ls /tmp/t53-delivery-track | sed 's/_.*//' | sort | uniq -c | awk '$1 > 2'   # 无输出（无重复版本号）
+$ # 按附录 C 原文重建 internal/application/repository/delivery_collab_tmpverify_test.go
+$ T53_DELIVERY_MIGRATIONS=/tmp/t53-delivery-track go test ./internal/application/repository/ -run 'TestTmpDeliveryCollab' -count=1 -v
+=== RUN   TestTmpDeliveryCollabAC1PersonalLoopAndAttribution
+--- PASS: TestTmpDeliveryCollabAC1PersonalLoopAndAttribution (9.74s)
+=== RUN   TestTmpDeliveryCollabAC2CollaboratorCannotInheritPersonalConnection
+--- PASS: TestTmpDeliveryCollabAC2CollaboratorCannotInheritPersonalConnection (9.93s)
+=== RUN   TestTmpDeliveryCollabCrossTenantIsolated
+--- PASS: TestTmpDeliveryCollabCrossTenantIsolated (13.72s)
+PASS
+ok  	github.com/Tencent/WeKnora/internal/application/repository	40.708s
+$ rm internal/application/repository/delivery_collab_tmpverify_test.go
+$ git status --short   # （空，工作区干净）
+```
+
+两轮运行对照（首轮 → 本轮，同一文件、同一副本方案）：9.30s/14.73s/12.48s → 9.74s/9.93s/13.72s，全部 PASS。
+
+### 2. 审查视图自取（审查待核实项 1）
+
+```
+$ git diff 5c8c89d00..376b64280 --stat
+ .../repository/delivery_collaboration_http_test.go | 412 +++++++++++++++++++++
+ 1 file changed, 412 insertions(+)
+```
+
+与报告第一节自述（1 文件 +412）一致；base/HEAD 取自报告第三节 4 自述并经 `git log` 交叉印证（`5c8c89d00` = Task 3 修复轮收口提交，`376b64280` = Task 4 测试提交）。
+
+## 三、待核实项逐项回应
+
+| # | 待核实项 | 本轮处置 |
+|---|---|---|
+| 1 | ask 未提供审查包（DIFF_FILE 为空） | **已回应**：自行运行 `git diff 5c8c89d00..376b64280 --stat` 取得审查视图（本轮证据 2），1 文件 +412，与报告自述一致。 |
+| 2 | 一次性 e2e 3/3 PASS 无法独立复验（文件已删且未存档，复现违反审查只读约束） | **已关闭缺口的大半**：附录 C 现存档一次性文件全文 + 完整复现命令序列，审查者可随时重建重放；本轮我方已按该序列完成**第二轮独立运行 PASS**（本轮证据 1）。仓库内正式测试转绿仍须主控集成 Task 0 后按第五节命令重跑——维持不变。 |
+| 3 | base 325/325 零新增失败比对仅报告为证 | **维持如实声明**：六组包全量 ×2（HEAD/base 临时 worktree）运行确有成本，审查员已独立证实核心机制（duplicate migration 为 base 既有、失败点/错误文本逐字一致）；325 个失败的全量名单未逐项复核，如实留为主控集成后重跑时自然收口（全绿预期覆盖全部 325 个）。 |
+| 4 | TDD 时序声明（无生产代码变更、无传统 RED、测试先行验证） | **维持如实声明**：交付物为纯 e2e 证据文件，被测实现已在 Task 1–3 提交；审查员确认其自洽。单提交粒度下 git 无法复验写入先后，不再有可补的客观证据。 |
+| 5 | 模板路径偏差（6.4.1 implementer-prompt.md / task-reviewer-prompt.md 不存在，实际使用 6.4.2） | **确认一致**：首轮我曾实测 `/Users/wuyongjun/.codex/plugins/cache/openai-curated-remote/superpowers/6.4.1/skills/subagent-driven-development/implementer-prompt.md` 不存在（Read 报 File does not exist），与审查员「目录仅有 6.4.2」的 ls 结果方向一致；报告契约按 ask 文本执行，未受影响。 |
+
+## 四、本轮变更清单
+
+- 代码：**零变更**（审查发现为证据补强缺口，无需代码修改；正式测试文件 `delivery_collaboration_http_test.go` 自 `376b64280` 起零触碰）。
+- 报告：本文件追加修复轮章节 + 附录 C（一次性文件全文存档），随本报告一并提交（docs commit）。
+- 临时产物：/tmp 去重副本与一次性测试文件——副本留存于 `/tmp/t53-delivery-track`（仓库外，供复现序列直接引用，同 Task 2 先例 `/tmp/t53-track`），一次性文件已删除；`git status` 复核干净；无残留临时 worktree（`git worktree list` 复核）。
+
+---
+
+## 附录 C：一次性 e2e 验证文件全文（`internal/application/repository/delivery_collab_tmpverify_test.go`，跑后即删）
+
+与首轮（第三节 2，3/3 PASS）及修复轮（本轮证据 1，3/3 PASS）两次运行的文件逐字一致。结构：**直接复用正式文件 `delivery_collaboration_http_test.go` 的全部 helper 与方法**（同包 `repository_test`：`githubStub`/`newGitHubStub`/`deliveryCredentialSource`/`newDeliveryCredentialSource`/`deliveryCollabEnv` 及其 `do`/`prepareDelivery`/`approveThroughHTTP` 方法零复刻），仅 DB 打开器换为 env-aware 变体、测试函数名加 `Tmp` 前缀、3 个测试体与正式逐字相同。
+
+完整复现命令序列（任何人可复验，包括只读审查者——重建/删除均限于其本地副本工作区）：
+
+```bash
+cd /Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue30-sweep-t53
+rm -rf /tmp/t53-delivery-track && cp -R migrations/sqlite /tmp/t53-delivery-track
+mv /tmp/t53-delivery-track/000114_mobile_device_app.up.sql /tmp/t53-delivery-track/000118_mobile_device_app.up.sql
+mv /tmp/t53-delivery-track/000114_mobile_device_app.down.sql /tmp/t53-delivery-track/000118_mobile_device_app.down.sql
+ls /tmp/t53-delivery-track | sed 's/_.*//' | sort | uniq -c | awk '$1 > 2'   # 应无输出
+# 将下方全文存为 internal/application/repository/delivery_collab_tmpverify_test.go
+T53_DELIVERY_MIGRATIONS=/tmp/t53-delivery-track go test ./internal/application/repository/ -run 'TestTmpDeliveryCollab' -count=1 -v
+rm internal/application/repository/delivery_collab_tmpverify_test.go
+```
+
+```go
+package repository_test
+
+// ONE-SHOT verification file (deleted after running, never committed).
+// Precedent: plan-t53 task2/task3 GREEN B — the repository's migrations/sqlite
+// track is duplicated (pending task 0), which blocks openTaskGrantDB in-repo.
+// This file re-runs the EXACT test bodies of
+// delivery_collaboration_http_test.go against a deduplicated copy of the
+// track (T53_DELIVERY_MIGRATIONS), reusing every helper, method and
+// assertion of the committed file verbatim — only the DB opener differs.
+
+import (
+	"context"
+	"database/sql"
+	"net/http"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/Tencent/WeKnora/internal/application/repository"
+	"github.com/Tencent/WeKnora/internal/application/service"
+	"github.com/Tencent/WeKnora/internal/handler"
+	"github.com/Tencent/WeKnora/internal/handler/session"
+	appconnector "github.com/Tencent/WeKnora/internal/modules/appconnector"
+	appconnectorrepo "github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector"
+	appconnectorsvc "github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector"
+	"github.com/Tencent/WeKnora/internal/modules/codedelivery"
+	deliveryrepo "github.com/Tencent/WeKnora/internal/modules/codedelivery/repository/codedelivery"
+	"github.com/Tencent/WeKnora/internal/types"
+	"github.com/gin-gonic/gin"
+	"github.com/golang-migrate/migrate/v4"
+	sqlite3migrate "github.com/golang-migrate/migrate/v4/database/sqlite3"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
+	_ "github.com/mattn/go-sqlite3"
+	"github.com/stretchr/testify/require"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
+)
+
+// openDeliveryTmpDB is openTaskGrantDB's twin with the migrations root read
+// from T53_DELIVERY_MIGRATIONS (the deduplicated /tmp copy).
+func openDeliveryTmpDB(t *testing.T) *gorm.DB {
+	t.Helper()
+	root := os.Getenv("T53_DELIVERY_MIGRATIONS")
+	require.NotEmpty(t, root, "T53_DELIVERY_MIGRATIONS must point at the deduplicated migrations/sqlite copy")
+	dsn := "file:" + filepath.Join(t.TempDir(), "delivery-tmp.db") + "?_foreign_keys=on&_busy_timeout=5000"
+	sqlDB, err := sql.Open("sqlite3", dsn)
+	require.NoError(t, err)
+	driver, err := sqlite3migrate.WithInstance(sqlDB, &sqlite3migrate.Config{NoTxWrap: true})
+	require.NoError(t, err)
+	migrator, err := migrate.NewWithDatabaseInstance("file://"+filepath.Clean(root), "sqlite3", driver)
+	require.NoError(t, err)
+	require.NoError(t, migrator.Up())
+	_, _ = migrator.Close()
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	require.NoError(t, err)
+	seedTaskGrantFixtures(t, db)
+	t.Cleanup(func() { conn, _ := db.DB(); _ = conn.Close() })
+	return db
+}
+
+func newTmpDeliveryCollabEnv(t *testing.T) *deliveryCollabEnv {
+	t.Helper()
+	db := openDeliveryTmpDB(t)
+
+	runs := repository.NewAgentRunStore(db)
+	_, err := runs.Admit(context.Background(), taskGrantAdmission())
+	require.NoError(t, err)
+
+	require.NoError(t, db.Create(&appconnectorrepo.InstallationRow{ID: "inst-gh", TenantID: 1, AppID: "github", AppVersion: "1", State: appconnector.InstallationActive, Version: 1}).Error)
+	require.NoError(t, db.Create(&appconnectorrepo.ConnectionRow{TenantID: 1, ID: "conn-gh", InstallationID: "inst-gh", Kind: appconnector.ConnectionKindPersonal, OwnerID: "u1", CredentialRef: "mcp:conn-gh:github", State: appconnector.ConnectionActive, AuthVersion: 1}).Error)
+	require.NoError(t, db.Create(&appconnectorrepo.ConnectionRow{TenantID: 1, ID: "conn-space", InstallationID: "inst-gh", Kind: appconnector.ConnectionKindSpace, OwnerID: "u1", CredentialRef: "mcp:conn-space:github", State: appconnector.ConnectionActive, AuthVersion: 1}).Error)
+
+	github := newGitHubStub(t)
+	wsRoot := t.TempDir()
+	workspace, err := codedelivery.NewLocalWorkspaceSource(wsRoot)
+	require.NoError(t, err)
+
+	actionStore := appconnectorrepo.NewActionStore(db)
+	store := deliveryrepo.NewDeliveryStore(db)
+	connections := newDeliveryCredentialSource(db)
+	guard := appconnectorsvc.NewSubjectGuard(connections)
+	factory := codedelivery.NewGitHubClientFactory(http.DefaultClient, github.srv.URL)
+	dispatcher := codedelivery.NewDeliveryDispatcher(codedelivery.DispatcherDeps{
+		Connections: connections, Creds: connections, Guard: guard,
+		GitHub: factory, Workspace: workspace, Store: store,
+		ActionRows: actionStore, Runs: runs,
+	})
+	actions := appconnectorsvc.NewActionService(actionStore, guard, nil, dispatcher, dispatcher)
+	svc := codedelivery.NewCodeDeliveryService(codedelivery.CodeDeliveryDeps{
+		Store: store, Actions: actions, ActionRows: actionStore,
+		Connections: connections, Creds: connections,
+		GitHub: factory, Workspace: workspace, Runs: runs,
+		Dispatcher: dispatcher,
+	})
+
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	v1 := r.Group("/api/v1")
+	grantsSvc := service.NewTaskGrantService(
+		repository.NewTaskGrantStore(db),
+		repository.NewSessionRepository(db),
+		repository.NewTenantMemberRepository(db),
+	)
+	v1.POST("/workbench/tasks/:task_id/grants", session.NewWorkbenchTaskGrantsHandler(grantsSvc).Grant)
+	deliveryHandler := session.NewWorkbenchDeliveryHandler(runs, runs, svc)
+	v1.GET("/workbench/executions/:run_id/delivery", deliveryHandler.GetDelivery)
+	v1.POST("/workbench/executions/:run_id/baseline", deliveryHandler.MaterializeBaseline)
+	v1.POST("/workbench/executions/:run_id/delivery", deliveryHandler.PrepareDelivery)
+	v1.POST("/workbench/executions/:run_id/delivery/:delivery_id/dispatch", deliveryHandler.DispatchDelivery)
+	actionHandler := handler.NewAppActionHandler(db)
+	actionHandler.SetActionService(actions)
+	v1.POST("/apps/actions/:id/approve", actionHandler.ApproveAction)
+	return &deliveryCollabEnv{db: db, engine: r, wsRoot: wsRoot}
+}
+
+func TestTmpDeliveryCollabAC1PersonalLoopAndAttribution(t *testing.T) {
+	env := newTmpDeliveryCollabEnv(t)
+	deliveryID, actionID, digest := env.prepareDelivery(t)
+
+	w := env.do(t, http.MethodPost, "/api/v1/workbench/executions/r1/delivery",
+		`{"connection_id":"conn-space","repo":"octocat/hello","baseline_sha":"`+deliveryBaseSHA+`","commit_message":"fix: greeting","pr_title":"WeKnora task s1"}`,
+		"u1", 1, types.TenantRoleContributor)
+	require.Equal(t, http.StatusForbidden, w.Code, w.Body.String())
+	require.Contains(t, w.Body.String(), "code_delivery_forbidden", "AC1: 空间连接不能替代个人连接")
+
+	env.approveThroughHTTP(t, actionID, digest)
+	w = env.do(t, http.MethodPost, "/api/v1/workbench/executions/r1/delivery/"+deliveryID+"/dispatch",
+		"", "u1", 1, types.TenantRoleContributor)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+
+	w = env.do(t, http.MethodGet, "/api/v1/workbench/executions/r1/delivery", "", "u1", 1, types.TenantRoleContributor)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	require.Contains(t, w.Body.String(), `"initiator":"u1"`, "发起成员（CONTEXT.md 代码平台连接）")
+	require.Contains(t, w.Body.String(), `"approver":"u1"`, "批准成员")
+	require.Contains(t, w.Body.String(), `"remote_login":"octocat-remote"`, "实际远端身份（provider GET /user）")
+	require.Contains(t, w.Body.String(), `"pr_url":"https://github.com/octocat/hello/pull/1"`)
+	require.NotContains(t, w.Body.String(), deliveryToken, "归因面永不携带凭据")
+}
+
+func TestTmpDeliveryCollabAC2CollaboratorCannotInheritPersonalConnection(t *testing.T) {
+	env := newTmpDeliveryCollabEnv(t)
+	deliveryID, _, _ := env.prepareDelivery(t)
+	require.NotEmpty(t, deliveryID)
+
+	w := env.do(t, http.MethodPost, "/api/v1/workbench/tasks/s1/grants",
+		`{"grantee_id":"u3","role":"collaborator"}`, "u1", 1, types.TenantRoleContributor)
+	require.Equal(t, http.StatusCreated, w.Code, w.Body.String())
+
+	w = env.do(t, http.MethodGet, "/api/v1/workbench/executions/r1/delivery", "", "u3", 1, types.TenantRoleContributor)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+
+	w = env.do(t, http.MethodPost, "/api/v1/workbench/executions/r1/baseline",
+		`{"connection_id":"conn-gh","repo":"octocat/hello","baseline_sha":"`+deliveryBaseSHA+`"}`,
+		"u3", 1, types.TenantRoleContributor)
+	require.Equal(t, http.StatusNotFound, w.Code)
+
+	w = env.do(t, http.MethodPost, "/api/v1/workbench/executions/r1/delivery",
+		`{"connection_id":"conn-gh","repo":"octocat/hello","baseline_sha":"`+deliveryBaseSHA+`","commit_message":"x","pr_title":"y"}`,
+		"u3", 1, types.TenantRoleContributor)
+	require.Equal(t, http.StatusNotFound, w.Code)
+
+	w = env.do(t, http.MethodGet, "/api/v1/workbench/executions/r1/delivery", "", "u4", 1, types.TenantRoleContributor)
+	require.Equal(t, http.StatusNotFound, w.Code)
+}
+
+func TestTmpDeliveryCollabCrossTenantIsolated(t *testing.T) {
+	env := newTmpDeliveryCollabEnv(t)
+	env.prepareDelivery(t)
+
+	w := env.do(t, http.MethodGet, "/api/v1/workbench/executions/r1/delivery", "", "outsider", 2, types.TenantRoleContributor)
+	require.Equal(t, http.StatusNotFound, w.Code)
+	require.Contains(t, w.Body.String(), "run_not_found")
+}
+```
