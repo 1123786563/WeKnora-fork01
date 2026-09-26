@@ -21,6 +21,7 @@ var (
 	ErrAgentMarketplaceInvalidDecision      = errors.New("invalid agent marketplace review decision")
 	ErrAgentMarketplaceReviewConflict       = errors.New("agent marketplace submission already has a review")
 	ErrAgentMarketplaceVersionAgentMismatch = errors.New("agent marketplace version does not belong to source agent")
+	ErrAgentLicenseIDRequired               = errors.New("agent marketplace license id is required")
 )
 
 const reviewAndPublishAttempts = 5
@@ -33,6 +34,14 @@ type AgentMarketplaceRepository interface {
 	GetRelease(context.Context, uint64, string) (*types.AgentReleaseEntity, error)
 	GetSubmission(context.Context, uint64, string) (*types.AgentReleaseSubmissionEntity, error)
 	GetReleaseBySubmission(context.Context, uint64, string) (*types.AgentReleaseEntity, error)
+	// FindDerivation resolves the adoption lineage of a variant-published
+	// local agent (T32 #62): nil when the agent is not derived from an
+	// adopted Release — original content has no lineage.
+	FindDerivation(context.Context, uint64, string) (*types.AgentForkDerivation, error)
+	// GetLicense returns the deployment license row, nil when unregistered.
+	GetLicense(context.Context, string) (*types.AgentLicenseEntity, error)
+	UpsertLicense(context.Context, *types.AgentLicenseEntity) (*types.AgentLicenseEntity, error)
+	ListLicenses(context.Context) ([]types.AgentLicenseEntity, error)
 	GetListing(context.Context, uint64, string) (*types.AgentMarketplaceListingEntity, error)
 }
 

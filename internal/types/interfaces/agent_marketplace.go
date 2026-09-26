@@ -13,6 +13,14 @@ type AgentMarketplaceRepository interface {
 	GetSubmission(ctx context.Context, tenantID uint64, submissionID string) (*types.AgentReleaseSubmissionEntity, error)
 	GetRelease(ctx context.Context, tenantID uint64, releaseID string) (*types.AgentReleaseEntity, error)
 	GetReleaseBySubmission(ctx context.Context, tenantID uint64, submissionID string) (*types.AgentReleaseEntity, error)
+	// FindDerivation resolves the adoption lineage of a variant-published
+	// local agent (T32 #62): nil when the agent is not derived from an
+	// adopted Release — original content has no lineage.
+	FindDerivation(context.Context, uint64, string) (*types.AgentForkDerivation, error)
+	// GetLicense returns the deployment license row, nil when unregistered.
+	GetLicense(context.Context, string) (*types.AgentLicenseEntity, error)
+	UpsertLicense(context.Context, *types.AgentLicenseEntity) (*types.AgentLicenseEntity, error)
+	ListLicenses(context.Context) ([]types.AgentLicenseEntity, error)
 	GetListing(ctx context.Context, tenantID uint64, listingID string) (*types.AgentMarketplaceListingEntity, error)
 }
 
