@@ -378,6 +378,7 @@ type DeliveryView struct {
 	ID          string `json:"id"`
 	TaskID      string `json:"task_id"`
 	RunID       string `json:"run_id"`
+	Initiator   string `json:"initiator"`
 	State       string `json:"state"`
 	Repo        string `json:"repo"`
 	BaselineSHA string `json:"baseline_sha"`
@@ -402,7 +403,7 @@ type DeliveryView struct {
 // own facts always surface.
 func (s *CodeDeliveryService) viewOf(ctx context.Context, row deliveryrepo.DeliveryRow) (DeliveryView, error) {
 	view := DeliveryView{
-		ID: row.ID, TaskID: row.TaskID, RunID: row.RunID, State: row.State,
+		ID: row.ID, TaskID: row.TaskID, RunID: row.RunID, Initiator: row.OwnerID, State: row.State,
 		Repo: row.Repo, BaselineSHA: row.BaselineSHA, Branch: row.Branch,
 		CommitSHA: row.CommitSHA, PRNumber: row.PRNumber, PRURL: row.PRURL,
 		RemoteLogin: row.RemoteLogin, ActionID: row.ActionID,

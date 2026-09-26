@@ -305,3 +305,17 @@ func TestStoreStateConstantsMirrorDeliveryState(t *testing.T) {
 	require.Equal(t, string(DeliveryFailed), deliveryrepo.StateFailed)
 	require.Equal(t, string(DeliveryUnknown), deliveryrepo.StateUnknown)
 }
+
+// TestDeliveryViewCarriesInitiatorAttribution pins the initiator leg of the
+// traceability triple (CONTEXT.md 代码平台连接: 每次远端写入记录发起成员、
+// 批准成员与实际远端身份). Approver/RemoteLogin already surface; the row's
+// OwnerID must reach the read face too.
+func TestDeliveryViewCarriesInitiatorAttribution(t *testing.T) {
+	f := newDeliveryFixture(t, nil)
+
+	view, err := f.svc.PrepareDelivery(context.Background(), prepareInput())
+
+	require.NoError(t, err)
+	require.Equal(t, "u1", view.Initiator,
+		"交付读面必须携带发起者（DeliveryRow.OwnerID 在 prepare 时已落库）")
+}
