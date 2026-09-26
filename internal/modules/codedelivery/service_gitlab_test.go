@@ -116,7 +116,10 @@ func TestGitLabMaterializeBaselineWritesFixedTree(t *testing.T) {
 }
 
 // Review Focus 1：连接背后的安装 app 不是代码平台 → 任何远端调用之前
-// fail closed；派发面对未知 target 同样拒绝（零远端调用）。
+// fail closed；派发面对未知 target 在前置门拒绝（终审修复：派发面拆成
+// 两条 leg 分别钉住 A02 门与平台路由门的拒绝点，均为零远端调用——原
+// leg 未设 ConnectionID 时实际由 A02 门拒绝，注释声称的平台路由分支由
+// 新 leg 真正触达；ProviderOfTarget 的解析面另有 TestDraftMRTitleAndProtectedGlob 单元钉）。
 func TestGitLabUnsupportedProviderFailsClosed(t *testing.T) {
 	f := newDeliveryFixture(t, func(root string) {
 		dir := filepath.Join(root, "octocat/hello")
@@ -139,10 +142,26 @@ func TestGitLabUnsupportedProviderFailsClosed(t *testing.T) {
 	require.Zero(t, f.gitlab.Calls()["GET /project"], "提供者拒绝必须发生在任何远端读之前")
 	require.Zero(t, f.gitlab.Calls()["GET /repository/tree"])
 
-	// 派发面：合法材料 + 未知 target → 前置门拒绝，零远端调用。
+	// 派发面 leg 1：合法材料 + 无连接快照（未设 ConnectionID）→ A02 门在
+	// 守卫的连接行查询处拒绝，零远端调用。错误链携带 "a02"（与 leg 2 的
+	// 平台路由拒绝可区分）。
+	before := snapshotGitLabCalls(f)
 	snap := appconnectorsvc.ActionSnapshot{ID: "act-x", TenantID: 7, ActorID: "u1", Target: "notion.deliver", Args: mustMaterialJSON(t)}
 	_, err = f.dispatcher.Dispatch(ctx, snap, "")
 	require.ErrorIs(t, err, appconnectorsvc.ErrDispatchNotStarted)
+	require.ErrorContains(t, err, "a02", "无连接快照必须由 A02 门拒绝")
+	require.Equal(t, before, snapshotGitLabCalls(f), "未知快照的派发必须零远端调用")
+
+	// 派发面 leg 2（终审修复：真正触达平台路由门）：合法材料 + 可用连接
+	// conn-notion（A02 与凭据解析均放行）+ 未知 target → ProviderOfTarget/
+	// clientForPlatform 在零远端调用处拒绝。错误链携带 unsupported_provider，
+	// 外来 target 永不触达任何适配器。
+	snap = appconnectorsvc.ActionSnapshot{ID: "act-x", TenantID: 7, ActorID: "u1",
+		ConnectionID: "conn-notion", AuthVersion: 1, Target: "notion.deliver", Args: mustMaterialJSON(t)}
+	_, err = f.dispatcher.Dispatch(ctx, snap, "")
+	require.ErrorIs(t, err, appconnectorsvc.ErrDispatchNotStarted)
+	require.ErrorContains(t, err, "code_delivery_unsupported_provider", "未知 target 必须由平台路由门拒绝而非 A02 门")
+	require.Equal(t, before, snapshotGitLabCalls(f), "外来 target 的派发必须零远端调用")
 	require.Zero(t, f.gitlab.Calls()["POST /repository/commits"])
 	require.Zero(t, f.gitlab.Calls()["POST /merge_requests"])
 }
