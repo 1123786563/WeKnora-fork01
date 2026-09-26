@@ -125,3 +125,66 @@ grep -B4 "plan: 2[1-4]-knowledge" docs/architecture/passb/exception-ledger.yaml 
 ### container.go:36-38 三行旧路径 import 改写申请
 
 已并入 K5.1 Brief (g)（`docs/architecture/passb/briefs/b2-k-integration.md:163`），本任务不重复登记。
+
+## §差分汇总（K5.3 Step 1 — K1-K4 差分证据复核与高风险四面登记，2026-09-26 实查）
+
+### 四份 evidence 差分章节四要素齐备性（conventions §6：用例清单 / 双跑输出 / 比对结论 / 命令与退出码）
+
+| 文件 | 差分章节 | 四要素核对结论 |
+|---|---|---|
+| `b2-k-ingest.md` | 「差分章节」:6-120 | **齐备**——T0 命令原文 :12-16 + 退出码表 :20-25；用例清单 40 顶层 + 25 子用例逐名转录 :27-83；K1.7 双跑输出（同清单单包重跑，`ok ... ingest 1.391s`，0 FAIL）:85-112；逐用例等价比对结论 :114-120 |
+| `b2-k-retrieval.md` | §4 高风险差分 :79-112 | **齐备**——T0/T1 定义与比对口径（awk 两遍提取 + `sort -u` + `diff`，判据=diff 空）:81-85；T1 命令台账 5 条（原文 + 退出码 0 + 关键输出）:87-97；四面逐面比对表 :99-108；面 2 推迟件差分口径说明 :110-112 |
+| `b2-k-wikifaq.md` | §3 四行终表 + hook 恢复手工差分 :128-154 | **齐备**——四行终表（锚定用例清单 / 双跑命令与结果 / 等价比对结论三列齐备）:132-137；hook 恢复 §3.2 逐项论证（临时 worktree 旧侧 vs HEAD 新侧，输出逐字节一致，3/3 PASS，exit 0）:139-143；T0 vs T1/T2 终态对照表 :145-154 |
+| `b2-k-process.md` | §1 高风险差分 :8-61 | **齐备**——三类分布口径（已随迁 / 成对推迟 / 宿主留守锚点）:10；T0 五条 + T1 八条命令台账（原文 + 退出码 + PASS/FAIL 计数）:16-39；逐用例集合比对（4 组 diff 全 IDENTICAL，75 唯一用例）:41-50；四面结论表 :52-61 |
+
+无缺项；四个差分章节均含命令原文与退出码、用例清单、双跑输出、比对结论四要素。
+
+### 计划 §10 高风险四面登记（已覆盖 / 随推迟批顺延）
+
+| 面（§10 表） | owner | 登记结论 | 依据 |
+|---|---|---|---|
+| 分块索引写入与 `knowledge.index.completed` | K1 | **已覆盖** | K1 evidence 双跑 40+25 用例逐名一致（TestCreateChunks_SQLite_SeqID* 4、TestImageMultimodalHandle* finalize-once 3 等）；K5.3 机械复核：`CreateChunks` service/repo 两函数体与 Pass-B 前基线（b1a3d6dd8）宿主原文**逐字节一致**（`sed` 区段提取 diff 空）；`ChunkStatusIndexed` 可见性消费面 `knowledgebase_search*.go` 对基线**零 diff** |
+| 索引清理 tag 侧与检索融合排序 | K2 | **已覆盖**（生产文件随推迟批顺延补迁） | K2 evidence §4.3 面 1（TypeIndexDelete tag 侧 14 用例 T0==T1）+ 面 2（HybridSearch/融合/FAQ 混排 61 用例，7 生产文件 K2.4 推迟留宿主零改动 + 双跑一致双保险）；补迁窗口差分义务在 K2 evidence §4.4 登记 |
+| Wiki/FAQ 摄取与恢复 | K3 | **已覆盖** | K3 evidence §3.1 行①②（wiki 132 / faq 8+15 顶层用例双跑）+ 行③ hook 恢复（`recoverPendingWikiTasks` 3 用例临时 worktree 双跑输出逐字节一致）；K5.3 机械复核：`internal/container/recover_pending_wiki_tasks.go` 对基线**零 diff** |
+| 删除级联与重试幂等 | K4 | **随推迟批顺延**（K4 plan §8.3 口径：删除级联/ProcessDocument/克隆迁移/后处理链四面登记顺延，Brief (h) 补迁窗口义务）+ 宿主零改动实证 | K5.3 机械复核：删除级联生产面六文件（`service/knowledge_delete.go`、`service/knowledge_delete_plan.go`、`service/knowledgebase.go`、`handler/knowledge.go`、`repository/knowledge.go`、`container/recover_pending_wiki_tasks.go`）对 Pass-B 前基线 b1a3d6dd8 `git diff --stat` **为空**（等价判据=删除计划先行序 / `knowledge.deletion.completed` 恰一次 / asynq 重试语义承载面零字节变化）；K4 evidence §1.2 ①已登记 `knowledge.processing.failed` producer（runSweep/housekeeping 对）随迁双跑顺延补迁窗 |
+
+### 事件 4 项 v1 producer 语义复核（计划 §7.3「K5.3 复核项」）
+
+| 事件 | producer（event-catalog :137/:147/:157/:168） | 复核结论 |
+|---|---|---|
+| `knowledge.processing.completed` | `CompleteProcessingWithoutSubtasks`（repository/knowledge.go） | 宿主原件对基线零 diff；K4.1 模块副本（process/repository/knowledge.go）同函数体与宿主**逐字节一致**（原子 promote ordering 不变）；锚点 `TestFinalizeSubtask_Concurrent_ExactlyOnePromote` 在 K4 evidence §1.2 ④ |
+| `knowledge.processing.failed` | `runSweep`（service/knowledge_housekeeping.go） | 宿主对基线**零 diff**（K4 成对推迟件）；K4 evidence §1.2 ① 10 用例留守对 T0==T1 全绿，随迁双跑顺延补迁窗 |
+| `knowledge.index.completed` | `CreateChunks`（service/chunk.go → ingest） | service/repo 两函数体与基线**逐字节一致**（见上表 K1 行）；K1 双跑 40+25 用例全 PASS |
+| `knowledge.deletion.completed` | `HardDeleteKnowledge`（repository/knowledge.go） | 宿主原件零 diff；模块副本同函数体**逐字节一致**（删除恰一次 ordering 不变） |
+
+metadata 键与 ordering 语义由函数体逐字节一致承载（producer 均为 in_process 直调/DB 状态跃迁，无独立事件载荷结构）——**K1-K4 搬迁未改四事件 producer 语义**。
+
+## §节点门禁（K5.3 Step 2 — DAG gates 全量实跑，2026-09-26，worktree 根）
+
+PASSB_BASE_SHA 采用值 = **ALIGN_SHA `b9c09f524`**（P-K5-2 登记；`git merge-base origin/main HEAD` 实测仍为 b1a3d6dd8，套用缺省公式将使 diff 含 K0-K4 全部 210 文件——K5.3 Step 2 裁定禁用，理由见计划 :792-801）。
+
+| 命令（原文） | 退出码 | 关键输出 |
+|---|---|---|
+| `go build ./...` | **0** | 仅 `ld: warning: ignoring duplicate libraries: '-lc++'`（cmd/desktop、cmd/server 链接噪音，K3/K4 evidence 同款基线固有） |
+| `go test -count=1 ./internal/modules/knowledge/...` | **0** | 26 包 `ok`（含 knowledge 根=K5.1 module_test、kbfreeze、ingest、retrieval/app×3、wiki、faq、process×3、retriever 11、chunker/docparser/anydoc/semantic/searchutil）+ 3 包 `[no test files]`（elasticsearch、neo4j、postgres）+ 0 FAIL（K4 时点 25 ok/4 no-test → knowledge 根补 module_test.go 后 26/3） |
+| `make check-backend-architecture` | **0** | `architectureguard: literal=564 apiKeyRoute=69 handle=0 total=633 \| redis=23 lite=23 \| hooks=58 \| modules=16`；`OK (0 violations)` |
+| `make check-passb-readiness` | **1**（make 包装退出码 2） | 基线 218 条既有诊断原样（P-K5-7 预裁定：修复面全部位于 K5 禁改清单，归零属 ib2）；快照比对见下 |
+| `make verify-module-moves` | **0** | `modulemove: OK (16 manifests verified)` |
+| `go run ./tools/passbguard -root . 2>&1 \| grep -v '^exit status' \| sort \| diff - /tmp/k5-readiness-baseline.txt` | diff 退出码 1（有差异，恰为预登记 3 行） | 差集**恰为 P-K5-7 (ii) 预登记 3 行** `contract-consumer-unrecorded: knowledge.{service,knowledge-base-service,tag-service}: production consumer internal/modules/knowledge/module.go references Knowledge{,Base,Tag}Service but is not recorded`（门面 Dependencies 引用三个冻结端口名的预期显形，consumers 登记在 contracts.yaml=K5 禁改）；**消失集为空**（(iii) 判据满足，18 别名删行/注释修正不触及 passbguard 诊断面——实测证实） |
+
+基线快照 `/tmp/k5-readiness-baseline.txt`（218 行，P-K5-7 时点录入，本任务开工在位未重录）；当前诊断 221 行 = 218 + 3 预登记。
+
+## §计数奇偶三方一致复核（K5.3 Step 3，conventions §8 / F5 口径）
+
+| 指标 | guard 实测 | `pass-a-acceptance.md` 台账 | manifests/目录发现值 | 一致 |
+|---|---|---|---|---|
+| 路由 | total=633（literal=564 + apiKeyRoute=69 + handle=0） | :22「633（564 literal + 69 apiKeyRoute）」 | architectureguard 扫描即发现面（`make check-backend-architecture` exit 0） | ✅ |
+| worker | redis=23 / lite=23 | :23「23 任务类型 + 6 池 / 23」 | 同上；18 knowledge worker 双栈各登记一次（K5.1 `TestRegisterWorkersDualStackParity` 18 类型精确集 + guard redis/lite 计数双证） | ✅ |
+| hooks | 58 | :24「58」 | 同上 | ✅ |
+| migrations | （guard 不扫 migrations） | :25「537 文件（270 assets）」 | `find migrations -type f \| wc -l` = **537**（versioned 346 + mysql/paradedb/sqlite 191） | ✅ |
+
+本节点零路由/worker/hook/migration 增删（`git diff "$ALIGN_SHA"...HEAD --name-only` 无任何 `internal/router/**`、`migrations/**` 文件）。
+
+## §K5.2 删除记录指针
+
+18 别名成对删行（manifest+matrix 同 commit `46447494a`）与出册补齐（`a29abf40e`/`8fc44d284`/`55e13524a`）、例外 30 行与 17 件 shim/垫片盘点、`convert_linked_test.go:19` 注释修正——全量记录见本文件 §别名 与 §例外/shim 收口核对 两章节（K5.2 落盘）；ib2 删除批输入 = K5.1 Brief (e)/(g)/(h)。
