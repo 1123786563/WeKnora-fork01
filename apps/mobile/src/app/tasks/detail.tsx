@@ -6,7 +6,7 @@ import { createTaskDetailController, TASK_OFFICE_ERROR_COPY, type TaskDetailCont
 import { TaskDetailScreen } from '../../screens/TaskDetailScreen.tsx';
 
 /** /tasks/detail 挂载生命周期宿主：handle 在 effect 内创建、卸载即 dispose——与 /resources 同一模式。 */
-export function TaskDetailRouteLifecycle({ taskId, runId, onOpenMaterials, onOpenBudget }: { taskId: string; runId: string; onOpenMaterials?: () => void; onOpenBudget?: () => void }) {
+export function TaskDetailRouteLifecycle({ taskId, runId, onOpenMaterials, onOpenBudget, onOpenVoiceRoom }: { taskId: string; runId: string; onOpenMaterials?: () => void; onOpenBudget?: () => void; onOpenVoiceRoom?: () => void }) {
   const [state, setState] = useState<TaskDetailViewState>({ loading: true });
   const [delivery, setDelivery] = useState<DeliveryReceiptView | undefined>(undefined);
   const controllerRef = useRef<TaskDetailController | undefined>(undefined);
@@ -47,7 +47,7 @@ export function TaskDetailRouteLifecycle({ taskId, runId, onOpenMaterials, onOpe
       controllerRef.current = undefined;
     };
   }, [taskId, runId]);
-  return <TaskDetailScreen view={state.view} loading={state.loading} error={state.error} onRefresh={() => { void controllerRef.current?.refresh(); }} onOpenMaterials={onOpenMaterials} onOpenBudget={onOpenBudget} delivery={delivery} onAct={controllerRef.current === undefined ? undefined : (intent) => controllerRef.current!.act(intent)} />;
+  return <TaskDetailScreen view={state.view} loading={state.loading} error={state.error} onRefresh={() => { void controllerRef.current?.refresh(); }} onOpenMaterials={onOpenMaterials} onOpenBudget={onOpenBudget} onOpenVoiceRoom={onOpenVoiceRoom} delivery={delivery} onAct={controllerRef.current === undefined ? undefined : (intent) => controllerRef.current!.act(intent)} />;
 }
 
 /** Expo Router 文件路由：/tasks/detail?taskId=..&runId=..。只消费 Task Office Interface。 */
@@ -59,6 +59,7 @@ export default function TaskDetailRoute() {
       runId={String(params.runId ?? '')}
       onOpenMaterials={() => { router.push({ pathname: '/tasks/materials', params: { runId: String(params.runId ?? '') } }); }}
       onOpenBudget={() => { router.push({ pathname: '/tasks/budget', params: { taskId: String(params.taskId ?? '') } }); }}
+      onOpenVoiceRoom={() => { router.push({ pathname: '/tasks/voice', params: { taskId: String(params.taskId ?? ''), runId: String(params.runId ?? '') } }); }}
     />
   );
 }

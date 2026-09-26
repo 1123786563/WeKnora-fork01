@@ -144,3 +144,18 @@ test('the screen renders state + callbacks only, and the view module never impor
   const { VoiceRoomScreen } = await import('./screens/VoiceRoomScreen.tsx');
   assert.equal(typeof VoiceRoomScreen, 'function');
 });
+
+test('the voice route is an Expo Router screen wired through composition only', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { dirname, join } = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  const here = dirname(fileURLToPath(import.meta.url));
+  const routeSource = readFileSync(join(here, 'app/tasks/voice.tsx'), 'utf8');
+  assert.match(routeSource, /activeVoiceRoom\(\)/, '路由经 activeVoiceRoom 取模块');
+  assert.match(routeSource, /activeTaskOffice\(\)/, '确认文字经既有 Task Office act 通道');
+  assert.doesNotMatch(routeSource, /@weknora\/api-client/, '路由不直接导入 wire');
+  const detailRoute = readFileSync(join(here, 'app/tasks/detail.tsx'), 'utf8');
+  assert.match(detailRoute, /onOpenVoiceRoom/, '详情路由提供语音房入口');
+  const detailScreen = readFileSync(join(here, 'screens/TaskDetailScreen.tsx'), 'utf8');
+  assert.match(detailScreen, /onOpenVoiceRoom/, '详情屏渲染语音房入口');
+});

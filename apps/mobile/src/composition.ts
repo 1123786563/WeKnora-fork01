@@ -34,6 +34,9 @@ import { createMobileInboxRemote } from '@weknora/api-client/mobile/inbox';
 import { createDictation } from '@weknora/mobile-core';
 import type { Dictation } from '@weknora/mobile-core';
 import { createMobileVoiceTranscriptionRemote } from '@weknora/api-client/mobile/voice';
+import { createMobileVoiceSessionRemote } from '@weknora/api-client/mobile/voice-sessions';
+import { createVoiceRoom } from '@weknora/mobile-core';
+import type { VoiceRoom } from '@weknora/mobile-core';
 import { createNativeDictationCaptureIfAvailable } from './adapters/dictation-capture.ts';
 import { createNativePushTokenIfAvailable } from './adapters/push-token.ts';
 import { createNativeDeviceIdentity, nativeDevicePlatform } from './adapters/device-identity.ts';
@@ -352,6 +355,40 @@ export function activeDictation(): Dictation | undefined {
   const snapshot = activeRuntime.snapshot();
   if (snapshot.surface !== 'authorized' || !snapshot.deployment || !snapshot.identity?.userId) return undefined;
   return dictationFor(activeRuntime, snapshot.deployment.origin, snapshot.identity.activeTenantId ?? '');
+}
+
+const voiceRooms = new Map<string, VoiceRoom>();
+
+/** Voice Room 按 deployment scope key 记忆化（同 dictationFor 模式）。会话 Remote 的 grant
+ * token 在此边界剥离（mobile-core VoiceSessionGrant 无 token 字段——media 凭据绝不进模块状态）；
+ * 无原生捕获 Adapter 时返回 undefined（fail closed，与听写同一闸门）。 */
+function voiceRoomFor(activeRuntime: MobileRuntime, origin: string, tenantId: string): VoiceRoom | undefined {
+  if (nativeDictationCapture === undefined) return undefined;
+  return cachePut(voiceRooms, deploymentScopeKey(origin, tenantId), () => {
+    const sessionRemote = createMobileVoiceSessionRemote({ origin, request: (input) => activeRuntime.authorizedRequest(input) });
+    return createVoiceRoom({
+      session: {
+        open: async (input) => {
+          const grant = await sessionRemote.open(input);
+          return { id: grant.id, expiresAt: grant.expiresAt, maxSeconds: grant.maxSeconds };
+        },
+        end: (sessionId) => sessionRemote.end(sessionId),
+      },
+      transcribe: createMobileVoiceTranscriptionRemote({ origin, request: (input) => activeRuntime.authorizedRequest(input) }),
+      capture: nativeDictationCapture,
+      newRequestId: createNativeRequestId(),
+      newSessionId: createNativeRequestId(),
+      lease: () => activeRuntime.scopeLease(),
+    });
+  });
+}
+
+/** /tasks/voice 路由经此取当前授权 scope 的语音房（无授权面或无原生捕获时 undefined）。 */
+export function activeVoiceRoom(): VoiceRoom | undefined {
+  const activeRuntime = runtime();
+  const snapshot = activeRuntime.snapshot();
+  if (snapshot.surface !== 'authorized' || !snapshot.deployment || !snapshot.identity?.userId) return undefined;
+  return voiceRoomFor(activeRuntime, snapshot.deployment.origin, snapshot.identity.activeTenantId ?? '');
 }
 
 /** Selects a visible surface only from the presentation-safe Runtime snapshot. */
