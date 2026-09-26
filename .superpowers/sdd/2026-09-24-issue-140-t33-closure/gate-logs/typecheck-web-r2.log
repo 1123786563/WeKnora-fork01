@@ -1,0 +1,6 @@
+ WARN  Unsupported engine: wanted: {"node":">=26"} (current: {"node":"v22.22.3","pnpm":"10.28.2"})
+
+> weknora-react-workspace@ typecheck:web /Users/wuyongjun/.codex/worktrees/issue-140-t33-closure/WeKnora-fork01
+> pnpm --filter @weknora/web exec tsc -p tsconfig.json --noEmit
+
+.                                        |  WARN  Unsupported engine: wanted: {"node":">=26"} (current: {"node":"v22.22.3","pnpm":"10.28.2"})

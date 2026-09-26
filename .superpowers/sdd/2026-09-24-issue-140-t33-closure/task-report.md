@@ -69,3 +69,39 @@
 ## 7. OCR 状态记录（不自行宣称）
 
 简报第 5 节：OCR 覆盖为主控侧流程（集成分支已有 OCR WIP 在跑）。本轮 validator 未运行 OCR，其状态以主控 Step 4 流程为准。
+
+## 5. 修复轮 r2（2026-09-27，fix-resume 1/5，HEAD 92718d338 之上）——两项 medium 闭环
+
+本节为 Wave-15 评审 2 medium 的修复记录；生产代码零改动（diff 仅 launch-matrix.md + 本目录证据/报告）。TDD RED→GREEN 不适用（纯验证文档修复，无生产/测试代码变更）；验证命令照跑见 §5.3。
+
+### 5.1 M1：§0 六个回执 ID 无入库证据 → 等价链路重跑全文落档
+
+- **缺口**：launch-matrix §0 引用的六个截断标识（提案回执 `d2e5d8bb…`、确认回执 `441a6c02…`、机会导入 requestId `c666ff58…`、导出正文摘要 `8a333f7f…`、PDF SHA-256 `a65d6bd4…`、Task(session) `ef1125b7…`）当轮响应原文未落档；当轮一次性 SQLite DB+一次性密钥已销毁，**原始 ID 响应体不可复现（如实标注，不虚报）**。
+- **补证**：同 worktree（HEAD `92718d338`）重开隔离 Lite 服务器（`go run ./cmd/server` @127.0.0.1:57828；DB_DRIVER=sqlite 一次性 DB `/tmp/wk-t33fix-20260927-004238/weknora.db`；STORAGE_TYPE=local 一次性目录；一次性 JWT/AES/`WEKNORA_CAREER_EXPORT_SIGNING_KEY`（≥32 字节 hex，符合 `rendering.go:66-82` 约束）；GIN_MODE=release）。python3 标准库探针（密码经环境变量传入）以全新一次性账号复走同一七步链+失败态，与 Web 前端同一 HTTP 契约（`routes_career.go`）。
+- **结果**：EXIT=0，17×HTTP 200。逐字响应原文（token/密码脱敏，refresh_token 一并脱敏）落档 **evidence/web-receipts-r2.txt**；PDF 落盘 **evidence/career-material-v1-r2.pdf**（`file`=PDF 1.7/1 页；`shasum -a 256`=`e74104c4e7b7c6ac0d00219d0c524acbe938f13e5248394e87ec92cb8193f849`，与导出回执 `files[pdf].fileDigest` 相等——自洽）。
+- **六 ID→r2 回执映射**（指针已更新入矩阵 §0.1）：提案→步 1b/1d（同 requestId 回执重放）；确认→步 1c（修订 0→1→2）；机会导入→步 2；正文摘要→步 5c `contentDigest`；PDF SHA→步 6b；Task(session)→步 4 `taskId`/`runId`。附加实证：步 8 一次真实 revision 冲突→**同 requestId 重试成功**（未知回执恢复语义）；步 7b 二次投递诚实拒绝 409 `submission_already_confirmed`；步 9 找岗诚实失败 `no_vetted_sources`（searchId 原文）。
+- 过程如实记录：探针迭代 5 次才全通（material CAS 语义=profile 头、channel 合法词汇=web、download URL 前缀、签名密钥 hex 长度、每轮新账号）；每次失败响应均真实服务器返回，最终成功轮全文落档。
+
+### 5.2 M2：分享导入/通知权限无矩阵专门格 → §2A 两表补齐
+
+- **缺口**：主计划 T33 验收明文要求「分享导入、PDF/DOCX 下载、通知权限、跨端同步与越权检查有可复现记录」，矩阵缺分享导入与通知权限专门格。
+- **补证（矩阵新增 §2A，两表分环境专门格，层级如实标注）**：
+  - **分享导入（§2A.1）**：微信=✅ T24「先核对后提交」（prepareSharedImport 零网络预览→confirm 提交；percent-encoding 修复 `09a414c8b`；E1/E2/P1-P4/P7+DevTools 两步）——证据层级一级=集成仓库归档 `wave-report-T24小程序.md`，本轮 r2 未重开 DevTools（修复简报允许路径：引用归档+本轮补充指针，如实标注层级）；Web=not-applicable（能力事实：无微信分享入口，等价入口粘贴 JD 已实证）；iOS/鸿蒙/Android=blocked（引 §1.2/§1.4/§1.5 依据）。
+  - **通知权限（§2A.2）**：微信=真机弹层 **blocked（如实）**（tourist appid 无模板可配，`REMINDER_SUBSCRIBE_TEMPLATE_IDS=[]`；模拟器内真实调用失败不弹层→页面如实 unavailable+站内回落，delivered 恒 false；拒绝路径由单测 C2 钉死非未实现）——一级=`wave-report-T30小程序.md`；Web=✅ 站内待办 T20 verified（隐私正文冻结模板、去重、退订后可读+重订阅、站内为事实源；live 4 项+HTTP 实证）——一级=`wave-report-T20-Web.md`；iOS/鸿蒙/Android=blocked（依据同上）。
+
+### 5.3 修复轮四门复跑（同 HEAD，零回归确认；gate-logs/）
+
+| 门 | 命令 | 结果 |
+| --- | --- | --- |
+| Go career | `go test ./internal/modules/career/... -count=1` | **ok 108.538s** exit=0（gate-logs/go-career-r2.log） |
+| Web 类型 | `pnpm typecheck:web` | **exit=0**（gate-logs/typecheck-web-r2.log） |
+| 小程序类型 | `pnpm --filter @weknora/miniprogram typecheck` | **exit 2：13 errors，全部 `features/account/pages.tsx` CommercialSummary 既有基线（该文件外 0）**——与 T30/T32 基线一致零新增（gate-logs/mp-typecheck-r2.log） |
+| 小程序测试 | `pnpm --filter @weknora/miniprogram test` | **tests 172 / pass 172 / fail 0 / skipped 0**（5 个 build-output 条件跳过项本轮实际执行通过；≥ 167+5 基线）（gate-logs/mp-test-r2.log） |
+| diff 卫生 | `git diff --check` | **exit=0** |
+
+### 5.4 本轮文件清单（均在本任务所有权内）
+
+- `docs/plans/issue-140/verification/launch-matrix.md`（§0.1 + §2A 两表 + 头部修复轮行；§2 标题在编辑中一度误删已恢复，结构复核 0/1/2/2A/3/4）
+- `evidence/web-receipts-r2.txt`（新）、`evidence/career-material-v1-r2.pdf`（新）
+- `gate-logs/go-career-r2.log`、`typecheck-web-r2.log`、`mp-typecheck-r2.log`、`mp-test-r2.log`（新）
+- 本报告追加节；隔离临时目录 `/tmp/wk-t33fix-20260927-004238`（仓库外，用后清理，一次性密钥未落盘）

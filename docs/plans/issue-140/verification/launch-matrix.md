@@ -1,6 +1,7 @@
 # 五环境真实闭环验收矩阵（T33/#172 终局验收）
 
 - 验收轮：2026-09-26（Asia/Shanghai），集成 HEAD **`d6b3e1bb5`**（本轮全部新跑证据均在该 HEAD 的独立 worktree `/Users/wuyongjun/.codex/worktrees/issue-140-t33-closure/WeKnora-fork01` 上取得）。
+- **修复轮 r2（2026-09-27，fix-resume 1/5）**：同 worktree 在 HEAD `92718d338` 上补两项 Wave-15 评审 medium——M1 §0 六个回执 ID 的响应原文落档（§0.1，evidence/web-receipts-r2.txt）；M2 分享导入/通知权限两列专门格（§2A）。生产代码零改动。
 - 验收链定义（主计划 Task 33）：同一档案 → 岗位 → 评估 → 申请 → 材料 → 本人投递 → 进展；失败恢复（scope 切换 / 未知回执 / 越权）逐环境取证。
 - 本轮新跑隔离拓扑：Lite 服务器 `127.0.0.1:57828`（SQLite 一次性 DB + 一次性密钥 + `WEKNORA_CAREER_EXPORT_SIGNING_KEY`），Vite `127.0.0.1:57829`（代理→57828），iOS TLS 终结代理 `127.0.0.1:57830`→57828，微信 DevTools `--auto-port 9433`。
 - 本轮证据目录：`.superpowers/sdd/2026-09-24-issue-140-t33-closure/evidence/`（相对本 worktree 根；下文以 `evidence/` 简写）。
@@ -24,6 +25,13 @@
 | 失败态 ② | 未配导出签名密钥时下载 → 诚实失败「career export signing key not configured」；补配重启（同 DB/JWT）后下载成功 | — | evidence/web-cross-tenant-probes.txt 附注 |
 
 越权（另一租户，HTTP 层）：`t33b@t33.io`（另一 Tenant 属主）读 A 的岗位快照→**404 not_found**、申请→**403 forbidden**、材料→**403 forbidden**、进展→**404**；B `/career/open`→200 仅空档案；匿名→**401**。证据：evidence/web-cross-tenant-probes.txt。
+
+### 0.1 修复轮 r2：§0 六个回执 ID 的响应原文落档（M1 闭环）
+
+- **缺口（如实）**：上表引用的六个截断标识（提案回执 `d2e5d8bb…`、确认回执 `441a6c02…`、机会导入 requestId `c666ff58…`、导出正文摘要 `8a333f7f…`、PDF SHA-256 `a65d6bd4…`、申请关联 Task(session) `ef1125b7…`）当轮只在浏览器会话与 network 日志（URL+status）中出现，**响应原文未落档**；当轮为一次性 SQLite DB + 一次性密钥，会话结束后已销毁，**原始 ID 的响应体不可复现**（如实标注，不虚报）。
+- **补证（等价链路重跑）**：2026-09-27 在同一 worktree（HEAD `92718d338`，与 d6b3e1bb5 同源含全部功能提交）重开隔离 Lite 服务器（`go run ./cmd/server` @127.0.0.1:57828，一次性 SQLite + 一次性 JWT/AES/导出签名密钥 + 一次性 local 存储目录），以全新一次性账号经真实 HTTP 契约（与 Web 前端同一 API 面）复走同一七步链 + 失败态。**全链 EXIT=0，17×HTTP 200**；每步请求/响应原文（token/密码脱敏）逐字落档 **evidence/web-receipts-r2.txt**；PDF 真实落盘 **evidence/career-material-v1-r2.pdf**（PDF 1.7，1 页，2211B，`file`+`shasum -a 256` 实测 `e74104c4…` 与导出回执 `files[pdf].fileDigest` 一致——自洽）。
+- **六 ID → r2 回执映射**：提案回执→r2 步 1b（kind=proposed）+步 1d 同 requestId 回执重放（对账实证）；确认回执→r2 步 1c（kind=confirmed，修订 0→1→2、确认事实 1 条）；机会导入→r2 步 2（opportunityId+snapshotId+requestId 原文）；导出正文摘要→r2 步 5c（`contentDigest`+双格式 `fileDigest`）；PDF SHA-256→r2 步 6b（sha256 与 5c fileDigest 相等）；Task(session)→r2 步 4（申请回执 `taskId`+`runId` 原文）。附加：一次性找岗失败态 searchId→r2 步 9（`no_vetted_sources` 诚实失败原文）；步 8 含一次真实的 revision 冲突→**同 requestId 重试成功**恢复实证；步 7b 二次投递诚实拒绝 `submission_already_confirmed`（409）。
+- §0 原表各行标识保持历史记录不动；本小节为矩阵对六 ID 的**指针更新**（原文以 r2 等价链路为准）。
 
 ## 1. 环境矩阵
 
@@ -86,6 +94,30 @@
 | scope 切换→旧响应失效 | T02 P4（switch-tenant 旧空间 404/空列表，HTTP seam）+Web 页面声明 | T02 #10 PASS（HTTP seam）；GUI 层不可构造（T02 R3 §10.2 如实） | T24 C3、T26 E1（单测+DevTools 数据面） | blocked | blocked |
 | 越权（跨租户/匿名） | 本轮 5 探针（403/404/401，evidence/web-cross-tenant-probes.txt） | 本轮 3 探针（200 属主/404 跨租户/401 匿名，evidence/ios-http-probes.txt） | T24 DevTools 实测（B 空档案/403）+本轮同服务器 HTTP 复证 | blocked | blocked |
 | 额度耗尽仍可读 | T21 Web（额度预估 50/50 展示+触发条件原文）；额度拒绝 429 typed 由 T21/T13 单测与 T24 F1 代理实证 | App 内不可达（D-iOS-1） | T30 规则/额度页 172 单测含覆盖 | blocked | blocked |
+
+## 2A. 专项能力专门格：分享导入 / 通知权限（修复轮 r2 补，M2 闭环）
+
+主计划 T33 验收明文要求「分享导入、PDF/DOCX 下载、通知权限、跨端同步与越权检查有可复现记录」。PDF/DOCX 下载见 §0 文件下载行 + §0.1 r2 步 5c/6b；跨端同步见 §1.3 本轮同源跨端实证；越权见 §0 越权行 + §2。本节补齐前两项的**分环境专门格**（每格注明证据层级：一级=集成仓库已入库归档报告，二级=本轮 r2 矩阵指针；本轮 r2 未重开微信 DevTools——按修复简报允许路径「引用 T24 归档+本轮补充指针，如实标注层级」）。
+
+### 2A.1 分享导入（微信分享卡片 → 小程序先核对后提交）
+
+| 环境 | 状态 | 记录 |
+| --- | --- | --- |
+| 微信小程序 | ✅ 已实现+DevTools 实测（一级归档） | T24「先核对后提交」：`prepareSharedImport` 纯本地预览（零网络）→ confirm 才提交原文；负载缺失→`share_payload_missing` 可恢复。DevTools 真实环境两步取证（发现并修复 query percent-encoding 缺陷，提交 `09a414c8b`）；单测 E1/E2/P1-P4/P7。证据（一级）：集成仓库 `.superpowers/sdd/2026-09-24-issue-140-implementation/wave-report-T24小程序.md`（提交 `d69c251a1`/`09a414c8b`）。（二级：本格指针，本轮 r2 未复跑 DevTools——如实标注） |
+| Web | — not-applicable（能力事实） | 分享导入是微信分享卡片进入小程序的场景能力；Web 端无微信分享入口，等价入口=对话页粘贴 JD 保存（§0 步 2 本轮已实证 request-id 幂等）。无「分享导入」可测，如实标注不适用 |
+| iOS | ❌ blocked（依据 §1.2） | App 内 Career 链不可达（D-iOS-1 + T05/T23/T25/T27/T29/T31 未实现），无分享导入实现面 |
+| 鸿蒙 / Android | ❌ blocked（依据 §1.4/§1.5） | 未验收环境，无实现/取证 |
+
+### 2A.2 通知权限（订阅授权弹层 / 站内待办）
+
+| 环境 | 状态 | 记录 |
+| --- | --- | --- |
+| 微信小程序 | ⚠️ 真机弹层 **blocked（如实）** + 模拟器语义已证（一级归档） | 订阅消息 `wx.requestSubscribeMessage` 为原生例外（Ruling）：载荷只带模板 id。真机授权弹层 **blocked**——tourist appid 无模板可配（`REMINDER_SUBSCRIBE_TEMPLATE_IDS=[]` 需公众平台与 appid 绑定申请），模拟器内 API 在场但未配模板真实调用失败不弹层→页面**如实 unavailable+errMsg+站内回落，绝不伪造已送达**（outcome.delivered 恒 false）；拒绝/主开关/不可用路径由单测 C2（injectable invoke）钉死，**非未实现**；「查看站内待办」live 读取成功（C2+live）。证据（一级）：`.superpowers/sdd/2026-09-24-issue-140-implementation/wave-report-T30小程序.md`「订阅消息原生探针」「真机验证 blocked」节 |
+| Web | ✅ 站内待办 T20 verified（一级归档） | Web 端通知形态=站内待办收件箱（无浏览器通知权限申请面）：隐私正文强制等于后端冻结模板字面量（任何插值正文在 UI 前被拒）；「推送只是提醒，站内待办才是事实源」横幅；重复触发去重（`(tenant,user,source_kind,source_id)` 唯一索引为事实源）；退订（写档案事实 `notifications.push=unsubscribed`，request-id+expected-revision）后待办仍可读+可重订阅；`delivery_failed` 时「待办已保存，以站内为准」。live 4 项检查（截图 01-04）+HTTP 层事件构造实证。证据（一级）：`.superpowers/sdd/2026-09-24-issue-140-implementation/wave-report-T20-Web.md`（T20 已 verified） |
+| iOS | ❌ blocked（依据 §1.2） | App 内链路不可达（D-iOS-1 + 移动 Career UI 六票未实现），无通知权限实现面（系统通知权限申请未实现） |
+| 鸿蒙 / Android | ❌ blocked（依据 §1.4/§1.5） | 未验收环境，无实现/取证 |
+
+
 
 ## 3. 终态裁决材料（供主控裁，不代裁）
 
