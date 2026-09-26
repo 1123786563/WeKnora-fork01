@@ -1722,3 +1722,223 @@ R2-F20、#6 R1-F45、#7 R1-F09、#8 R2-F18、#9 R1-F08——记录证据、无�
   - `pnpm run test:shared` → exit 0（tests 1024：pass 1023 / fail 0 /
     skipped 1）；
   - `pnpm run typecheck:shared` → exit 0（0 error）。
+
+---
+
+# OCR 终局第 1 轮修复批次计划（F 轮，2026-09-26）——5 项（F09/F10/F13/F11/F02）
+
+输入：OCR 终局第 1 轮 5 条有效发现（1 high + 4 medium，编号沿用报告）。
+原则不变：证据优先、TDD（RED→GREEN）、中文提交标注「OCR 终局修复」、
+范围仅本 worktree。处置前已逐行核对涉案代码（mcp_metadata.go 服务/handler
+两面、routes_infra.go:178、plugin_install_service.go 全部涉案方法、
+manifest.go IdentityFingerprint、repository/plugin.go UpdateInstallationAccepted、
+mcp_tool.go loadPluginDirectory、三个前端面板），5 条全部属实。
+
+## F-A（high·F09）metadata 三面缺插件物化守卫 → loadServiceForMetadata 入口守卫 + Put 通道裁决 [T06/T17 归属面]
+
+- 根因：POST /mcp-services/:id/metadata/refresh（Viewer+）对 OAuth 插件
+  物化行跳过 Admin 门槛（handler mcp_metadata.go:76 `!IsOAuth() && !mayWrite`），
+  RefreshMCPMetadata 直连 live 端点 Initialize+ListTools 并在 200 原样返回
+  完整目录——与 mcp_service.go 七处既有守卫（154/365/420/507/556/610/667）
+  所防的泄露（unaccepted capabilities / post-drift schemas 对 Viewer 暴露）
+  同型。成员经 connections/me 持有物化 serviceId 可直达该端点
+  （PluginsPanel.tsx authorizeUrl(connection.serviceId) 同源）。
+- 裁决（发现建议与既有行为的冲突消解）：发现建议在 loadServiceForMetadata
+  入口守卫——该入口同时服务 GetMCPMetadata/PersistMCPMetadata。其中
+  PersistMCPMetadata 被 agent_service.go:299 注入 tools.MCPMetadataIO.Put，
+  是 loadPluginDirectory（mcp_tool.go:585）「过滤后目录落库」
+  （T01-OCR2-F9）的运行时通道——守卫三面后该 Put 对插件行必失败（每次
+  目录加载一条 Warn）。两者物理上不可共存，裁决：**插件行的 metadata
+  缓存退役**——插件目录/说明的权威面是插件域 API（tools_snapshot +
+  GET installations/:id/tools），MCP metadata 域（缓存读写/显式刷新/
+  usage-instructions 生成经 Get）对插件行统一 ErrPluginManagedService 409；
+  loadPluginDirectory 对插件行（snap != nil）跳过 metadata.Put，消除守卫
+  后的必然 Warn 噪音；T01-OCR2-F9 测试断言同步为「插件行 Put 0 次」
+  （manual 服务缓存语义不变）。ListMCPMetadataSummaries（列表计数批量面）
+  不在守卫内——历史缓存计数无泄露面，卸载级联仍会清理。
+- 文件：internal/application/service/mcp_metadata.go（loadServiceForMetadata
+  GetByID 后补 `service.PluginInstallationID != nil → ErrPluginManagedService`，
+  三面一次覆盖）、internal/handler/mcp_metadata.go（mcpMetadataAppError 增
+  ErrPluginManagedService → 409 映射）、internal/modules/agentruntime/agent/
+  tools/mcp_tool.go（loadPluginDirectory 插件行跳过 Put + 注释记裁决）。
+- 回归测试（先 RED 后 GREEN）：
+  1. 服务层 TestMCPMetadataRejectsPluginManagedService（mcp_metadata_test.go：
+     OAuth 插件行 Refresh/Get/Persist 三面均 ErrorIs 哨兵、Refresh 不发起
+     live 连接——URL 指向不可达回环也返回哨兵而非连接错误；RED：现返回
+     nil/连接错误/nil）；
+  2. handler 层 TestMCPMetadataAppError 追加 ErrPluginManagedService → 409
+     （RED：现落 default 400/500）；
+  3. tools 层 TestRegisterMCPToolsPluginServiceLiveVerifiesAndPersistsFiltered
+     断言改述：插件行 Put 0 次（RED：现断言落库过滤后目录，跳过 Put 的
+     实现未落地时 persistedNames 仍非空——以先改断言后实现取得行为 RED）。
+- 完成条件：三处先 RED 后 GREEN；`go test ./internal/application/service/
+  ./internal/handler/ ./internal/modules/agentruntime/agent/tools/` 全绿。
+
+## F-B（medium·F10）确认/补齐流程游离在 lockUpgradeAccept 之外 → 两入口补锁 + 锁内复查 [T06]
+
+- 根因：ConfirmInstallation 自 CreateInstallation（行对外可见）至
+  MarkPreviewConsumed 的物化/绑定/逐工具 SetPolicy，与
+  completeCrashedConfirm 的回绑/增量补策略行/消费预览，均不持
+  per-installation 锁——与并发 UninstallInstallation（级联删物化+策略行+
+  安装行）交错时：PG FK 违约伪 500、生产 SQLite（foreign_keys off）孤儿
+  策略行、SetPolicy 中途卸载后确认方收到成功而安装行已删（假成功）。
+  既有 5 个持锁调用方（814/916/1335/1710/1874）防的正是同族交错。
+- 修复：ConfirmInstallation 在 CreateInstallation 成功后立即
+  lockUpgradeAccept(installation.ID)（defer 释放，覆盖 Step 6/7 全部写序），
+  并在锁内复查 GetInstallation——创建提交与取锁之间的窗口里并发卸载可
+  能已删行，复查 nil → ErrInstallationNotFound（不物化/不写策略/不消费
+  预览）；completeCrashedConfirm 入口取锁 + 同款锁内复查（Step 3 读
+  existing 与取锁之间的同族间隙）。锁不跨 Step 4 远程重验证（缩短临界区）。
+- 回归测试（先 RED 后 GREEN，install_service_test.go）：
+  1. TestConfirmInstallationSetPolicyMidflightUninstallSerializes——首个
+     SetPolicy 时（fakeInstallApprovalRepo 增 onUpsert 一次性钩子）并发
+     Uninstall 并观察：卸载在确认在途期间必须零进展（RED：立即完成且
+     确认继续对已删 serviceID 写孤儿策略行、返回成功）；终态（GREEN 串行
+     化后）物化/策略行/安装行全清、无孤儿行；
+  2. TestConfirmHealConcurrentUninstallSerializes——completeCrashedConfirm
+     增量补行中途（onHardDelete 钩子，卸载在途）并发 heal：heal 在卸载
+     完成前零进展（RED：对已删 serviceID 落孤儿行+假成功）；锁内复查使
+     heal 终态 ErrInstallationNotFound 且 approvalRepo 零孤儿行。
+- 完成条件：两测先 RED 后 GREEN；既有确认/heal/幂等测试不回归。
+
+## F-C（medium·F13）升级静默丢弃 transport 类型变化 → identity guard 同级确定性 4xx [T16]
+
+- 根因：候选指纹不含 transport.type（IdentityFingerprint = pluginID/
+  version/endpoint/toolsDigest）、PluginVersionDiff 无 transport 维度、7a
+  只写 version/endpoint/snapshot/digest、7b 只切 svc.URL/AuthConfig——
+  inst.TransportType 与物化 svc.TransportType 永远停留安装时旧值；插件
+  sse→http-streamable 升级通过指纹校验后，运行时与 CheckDrift
+  （liveDirectoryFromAcceptedEndpoint 按 inst.TransportType 拨号）均按旧
+  协议拨新端点：连接失败/永久 ErrDriftEndpointUnreachable，差异面看不到
+  原因。
+- 修复（发现两选项中取 guard 方案——确定性 4xx、零迁移）：PreviewUpgrade
+  与 AcceptUpgrade 在 identity guard 之后补 transport 一致性 guard：
+  `result.Manifest.Transport.Type != inst.TransportType → ErrPluginVerifyFailed`
+  （文案指明 candidate/installed 两侧 transport 与 uninstall and re-install
+  路径）。AcceptUpgrade 侧 guard 置于 fingerprint guard 之前（transport
+  变化即使指纹也不匹配时，transport 文案比 candidate-changed 更有指导性）。
+  PreviewUpgrade 侧同步（preview 阶段即拒，避免管理员审完 diff 才在
+  accept 被弹回）。指纹本身不改（端点+工具集+身份已是接受面全部语义，
+  transport 变化走拒绝而非接受）。
+- 回归测试（先 RED 后 GREEN，install_service_test.go）：
+  TestUpgradeRejectsTransportTypeChange——安装 http-streamable 后热替换
+  清单为同端点同工具同 pluginID 的新版本+transport.type=sse（mutableLister
+  忽略 transport 参数，FetchAndVerify 自洽通过；指纹与既有安装全等——
+  RED：preview/accept 均成功而非拒绝）；断言两面 ErrorIs
+  ErrPluginVerifyFailed 且文案含 transport 与 uninstall；安装行/物化行
+  transport 与端点零变化。
+- 完成条件：先 RED 后 GREEN；`go test ./internal/modules/plugins/` 全绿。
+
+## F-D（medium·F11）健康安装漂移标记无时间门 → 进程内 per-installation 节流 [T17]
+
+- 根因：PluginSnapshotLookupWithDriftMarking 对 DriftState != detected 的
+  行每次目录加载都同步 live ListTools（10s 上限、nonce 排他客户端握手），
+  且在 loadPluginDirectory 自身 live 加载之前串行执行——健康插件每次
+  目录加载握手+ListTools 恒定翻倍、最坏为会话组装加 10s 延迟；标记条件
+  只排除 detected，健康行永远停留 none，检测永不收敛。注释宣称的
+  "never again once the state sticks" 只对 detected 成立。
+- 修复（发现两选项中取时间门——改动面最小）：进程内
+  `driftMarkLastChecked sync.Map`（installationID → 上次检查时刻，条目
+  永不淘汰——对齐 upgradeAcceptMutexes 先例：每安装一条时间戳可忽略）+
+  `var driftMarkCheckInterval = 5 * time.Minute`（var 供测试改写）；健康行
+  的 live 检查按间隔节流（间隔内跳过标记，快照照常供给——成员目录零
+  阻塞零等待）。多副本部署每副本独立节流（best-effort 标记本就是进程内
+  语义）；CheckDrift（管理员权威面）不受节流影响。
+- 回归测试（先 RED 后 GREEN，drift_test.go）：
+  TestDriftMarkerThrottledPerInstallation——interval 改 60ms + 计数 lister
+  + 健康安装：首次调用 lister 1 次；间隔内第二次调用仍 1 次（RED：现 2
+  次）；跨间隔第三次 2 次；三段全走健康路径（无漂移零写）。
+- 完成条件：先 RED 后 GREEN；`go test ./internal/modules/plugins/` 全绿。
+
+## F-E（medium·F02）pluginBadge* 三份逐字拷贝 + ApiError 判定双份 → 抽共享模块 [T08 前端]
+
+- 根因：四组 badge class 串在 PluginsPanel.tsx:49-52、
+  PluginsSettingsPanel.tsx:39-42、McpSettingsPanel.tsx:24-27（mcpBadge*）
+  三处逐字相同；「ApiError 判定+中文兜底」在 PluginsSettingsPanel
+  apiErrorMessage 工具函数（63-65）与 PluginsPanel.tsx:99 内联重复——
+  视觉/错误口径调整需同步三处，易漂移。
+- 修复：新建 apps/web/src/plugins/ui.ts——导出 pluginBadgeOk/Info/Warn/
+  Muted 四常量与 apiErrorMessage(cause)（语义同 PluginsSettingsPanel 既有
+  函数：ApiError 原文透传，其余 null 由调用方兜底中文）；三个面板改
+  import（McpSettingsPanel 的 mcpBadge* 六处引用统一改名 pluginBadge*，
+  视觉零变化）；PluginsPanel.tsx:99 内联判定改调共享函数；两个插件面板
+  删除本地副本。
+- 回归测试：新增 apps/web/src/plugins/ui.test.ts（四常量值锁定防漂移 +
+  apiErrorMessage 三态：ApiError 透传/Error 非 ApiError → null/非 Error →
+  null，RED：模块不存在）；PluginsPanel.test / PluginsSettingsPanel.test /
+  McpSettingsPanel 相关测试回归；typecheck:web 0 error。
+- 完成条件：新测 RED（模块缺失）后 GREEN；三面板测试与 typecheck:web 绿。
+
+## F 轮完成条件（总）
+
+1. 上述 6 组回归测试（F-A 三层/F-B 两并发/F-C 两面/F-D 三段/F-E 新模块）
+   全部先 RED 后 GREEN（命令与输出记入本节完成记录）；
+2. 受影响包复跑全绿：`go test ./internal/application/service/ ./internal/
+   handler/ ./internal/modules/plugins/ ./internal/modules/agentruntime/
+   agent/tools/`；前端 `pnpm --filter @weknora/web test` 相关面板 +
+   `pnpm run typecheck:web`；
+3. `go build ./...` exit 0；改动文件 gofmt/vet 干净；
+4. 中文提交 3 个（F-A、F-B+F-C+F-D 同文件三处合一 [T06/T16/T17]、F-E
+   [T08 前端]），均标注「OCR 终局修复」；本节回填完成记录。
+
+### F 轮完成记录（2026-09-26）
+
+5 项全部修复，无剩余项。逐项 RED→GREEN 证据：
+
+- **F-A（F09）三面 RED**：服务层 `TestMCPMetadataRejectsPluginManagedService`
+  （mcp_metadata_test.go:180——Refresh 撞入连接路径返回 SSRF 校验错误而非
+  哨兵，证明无守卫时已开始 live 拨号）；handler
+  `TestMCPMetadataAppErrorMapsPluginManagedConflict`（mcp_metadata_test.go:41
+  期望 409 实际 400）；tools 层改述断言（mcp_plugin_guard_test.go:399
+  persistedNames 应空实际 [snapshot_tool]）。GREEN：loadServiceForMetadata
+  入口守卫（三面一次覆盖）+ mcpMetadataAppError 409 映射 +
+  loadPluginDirectory 插件行跳过 Put（snap == nil 条件）。
+- **F-B（F10）两并发 RED**：`TestConfirmInstallationSetPolicyMidflight-
+  UninstallSerializes`（RED：confirm 中途卸载零串行化，confirm 收到意外
+  错误——补偿路径伪错）；`TestConfirmHealConcurrentUninstallSerializes`
+  （RED：heal 在卸载在途期间完成=progressed true）。GREEN：
+  ConfirmInstallation CreateInstallation 后 `lockUpgradeAccept` + 锁内
+  GetInstallation 复查（行已删 → ErrInstallationNotFound，不物化零孤儿）；
+  completeCrashedConfirm 入口同款锁+复查；fakeInstallApprovalRepo 增
+  onUpsert 一次性钩子承载并发时序。
+- **F-C（F13）RED**：`TestUpgradeRejectsTransportTypeChange`（RED：preview
+  返回 nil 错误=现行放行 transport 变化）。GREEN：PreviewUpgrade 与
+  AcceptUpgrade 在 identity guard 后补 transport guard（accept 侧置于
+  fingerprint guard 前——transport 文案比 candidate-changed 更可行动）；
+  实施中一处顺序调整：AcceptUpgrade 的 writer 装配检查移到全部读校验
+  （identity/transport/fingerprint/长度）之后——纯读拒绝路径无需写装配，
+  无既有测试依赖其顺序（grep ErrUpgradeWriterNotWired 零测试引用）。
+- **F-D（F11）RED**：编译期 `undefined: service.SetDriftMarkCheckIntervalForTest`
+  → 行为 RED（间隔内第二次调用 liveCalls=2≠1）。GREEN：
+  driftMarkLastChecked（sync.Map，条目永不淘汰，upgradeAcceptMutexes 先例）
+  + driftMarkCheckInterval=5min（var）+ SetDriftMarkCheckIntervalForTest
+  测试 seam（SnapshotSSRFWhitelistForTest 惯例）；
+  `TestDriftMarkerThrottledPerInstallation` 三段断言（首次 1 次/间隔内
+  仍 1 次/跨间隔 2 次）+ 健康路径零写全过。
+- **F-E（F02）RED**：`ui.test.ts` ERR_MODULE_NOT_FOUND（模块不存在）。
+  GREEN：apps/web/src/plugins/ui.ts（四常量 + apiErrorMessage）+ 三面板
+  改 import（McpSettingsPanel 六处 mcpBadge* 引用统一改名，视觉零变化）；
+  ui.test 2/2、三面板 51/51、typecheck:web exit 0。
+
+门控（本轮真实运行）：
+- Go 四包全量：`go test ./internal/application/service/ ./internal/handler/
+  ./internal/modules/plugins/ ./internal/modules/agentruntime/agent/tools/
+  -count=1` → 全 ok（service 511s/plugins 11s/handler 4s/tools 31s）；
+- `go build ./...` exit 0；改动 9 个 Go 文件 gofmt 无输出、四包 go vet 干净；
+- 前端：typecheck:web exit 0；web 全量套 `pnpm --filter @weknora/web test`
+  exit 1——三个失败文件经 stash 基线对照全部实证固有（route.test.ts 的
+  .css ERR_UNKNOWN_FILE_EXTENSION、KnowledgeDocumentDetailPage.test.tsx 的
+  createPortal is not a function 在无本轮改动的基线上同样失败；
+  agent-editor.test.tsx 基线单跑 240s 超时 exit 124，全量时 25.7min SIGTERM
+  同形态），且依赖图零命中（不 import 本轮任何改动模块）；本轮相关
+  （plugins/ui、PluginsPanel、PluginsSettingsPanel、McpSettingsPanel 所在
+  测试）全绿。
+- 过程插曲（如实）：一次 shell cwd 被重置导致 web 套跑错目录（主
+  checkout，只读测试无写入），已 TaskStop 作废并在 worktree 重跑；stash
+  基线对照三次均确认 pop 恢复完整（git status 13 个改动文件不变）。
+- Mimosa 重扫（响应 commit hook scanner_enobufs，本轮真实运行）：normal
+  深度、focus 本轮 8 个改动源文件，scan-2026-09-26T07-50-03.769Z-
+  276d50cba6d7 completed（seal sha256:ca3c…e9d5），全仓 157 findings 经
+  findings.json 定位——聚焦 8 文件零命中（全部为仓库存量）。
+- 提交：4 个（f2f5ba297 F09 / d7bff114f F10+F13+F11 / d637647f2 F02 /
+  d645152b6 本文档），均标注「OCR 终局修复」。
