@@ -533,3 +533,105 @@ go vet ./internal/modules/appconnector/publish/   # VET OK
 ## 5. 遗留/交接
 
 - 无阻塞。Task 7（HTTP 面）可依计划消费：`NewConfluencePublishService(actions, store, pubs, artifacts, content, remote, scopes)`、`FormPlan`/`Execute`/`Reconcile`/`Receipt` 四方法签名逐字与计划 Produces 一致；`remote` 注 `*ConfluenceBridge`、`scopes` 注 `NewDBConfluenceScopeSource(db)`（均 Task 5 产物）。
+
+---
+
+# Task 7/10 报告——HTTP 面 `/apps/confluence-publish/*` 端点、路由注册与容器接线
+
+> 任务：Issue #50 实施计划（`docs/plans/issue30-sweep/plans/plan-t50.md:3726-4243`）Task 7。
+> 执行 worktree：`/Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue30-sweep-t50`（分支 `codex/issue30-t50`）。
+> 本报告由实现员子代理撰写，仅覆盖 Task 7 授权文件（3 个新建生产文件 + 1 个测试文件 + 2 处共享文件单点接线）。
+
+## 1. 实现内容
+
+全部按计划 Task 7 落位，TDD 顺序严格执行（RED→GREEN→提交）：
+
+**新建 4 个文件：**
+
+1. **`internal/handler/app_connector_confluence_publish.go`**（235 行）——`AppConfluencePublishHandler`，Produces 签名逐字：
+   - `NewAppConfluencePublishHandler(db *gorm.DB)`、`SetConfluencePublishService(s *publish.ConfluencePublishService)`（nil 服务时四端点一律 501 `PUBLISH_PIPELINE_NOT_CONFIGURED` fail-closed）、`RequireActionCapabilityForWrites()`（复用 `appRequireWriteCapability` + `appconnector.CanDriveActionWrites`，access.go:43）。
+   - `FormConfluencePublishPlan`（POST /plans，201）：`appTenantScope` → 入参校验（五必填 + `parent_page_id`/`page_id` 恰好其一，否则 400 `INVALID_REQUEST`）→ 个人连接 owner 谓词（403 `NOT_CONNECTION_OWNER`，同 `PrepareAction` 形态）→ `publish.ConfluencePublishService.FormPlan`。
+   - `PublishConfluenceAction`（POST /actions/:id/publish）：租户内 action 查找（跨租户与不存在统一 404 `ACTION_NOT_FOUND`，不泄漏存在性）→ `Execute` → `outcome.Conflict` 时 409 `PUBLISH_VERSION_CONFLICT`（AC1 的 HTTP 面）。
+   - `ReconcileConfluenceAction`（POST /actions/:id/reconcile）、`GetConfluencePublication`（GET /actions/:id）同谓词形态。
+   - `failConfluence`/`failConfluenceExecute` 错误映射：`publish.ErrPublish*` 九个 sentinel 与 `appconnectorsvc.ErrActionState`/`ErrNoDispatcher` → 精确状态码，与 Notion 兄弟实现（app_connector_notion_publish.go:199-232）同形。
+2. **`internal/router/routes_app_confluence_publish.go`**——`RegisterAppConfluencePublishRoutes`：`/apps/confluence-publish` 组挂写门 + 四条路由，与 `routes_app_notion_publish.go` 逐行同形（nil handler 直接返回）。
+3. **`internal/container/confluence_publish.go`**——dig 构造器 `newConfluencePublishHandler`：**第三个** `ActionService` 实例（同一 `ActionStore` 权威，`NewActionService(store, guard, gate, bridge, bridge)`）；bridge 三端口 `NewDBConfluenceScopeSource(db)` + `NewConfluencePolicyProvider(scopeSrc)` + `NewConfluenceCredentialTokenSource(NewCredentialResolver(creds))`；`NewConfluencePublishService(actions, store, pubs, versions, &tenantStorageArtifactContent{...}, bridge, scopeSrc)` 与 Task 6 实际签名（confluence.go:41-49，7 参）逐字对齐；冻结的 OC-armed 实例与 #48 Notion 发布实例零触碰（action.go:158-160 的 store 权威裁决）。`tenantStorageArtifactContent` 同包复用（notion_publish.go:59）零修改。
+4. **`internal/handler/app_connector_confluence_publish_test.go`**（126 行）——计划 Step 1 逐字：`TestConfluencePublishPlanGates`（未接线 501 / viewer 403 / 他人个人连接 403 `NOT_CONNECTION_OWNER` / 双目的地 400 / 未知连接 404）与 `TestConfluencePublishActionLookupIsTenantScoped`（同租户到 501 / 跨租户 publish 与 GET 均 404）。
+
+**修改 2 个共享文件（均单点最小接线）：**
+
+5. `internal/router/router.go`（+3/-1）：`RouterParams` 在 `AppNotionPublishHandler` 字段后增 1 字段 `AppConfluencePublishHandler *handler.AppConfluencePublishHandler`（gofmt 顺带对齐既有字段行的空格）；`RegisterAppNotionPublishRoutes(...)` 调用后增 1 行 `RegisterAppConfluencePublishRoutes(v1, params.AppConfluencePublishHandler)`。
+6. `internal/container/container.go`（+4/-0）：`must(container.Provide(newNotionPublishHandler))` 后按计划逐字插入 3 行注释 + `must(container.Provide(newConfluencePublishHandler))`。
+
+**开工前置核实（全部亲眼读源码确认）：** Task 6 产出 `ConfluencePublishService` 四方法与 `PublishExecuteOutcome.Conflict`（plan.go:98-102）；bridge 三构造器（confluence_bridge.go:89/216/285/315）；接线点 router.go:145/:436、container.go:1013 与计划行号一致；测试助手 `publishTestContext`（app_connector_notion_publish_test.go:26）同包复用。
+
+## 2. 测试命令与完整输出（TDD 证据）
+
+### RED
+
+先按计划原文落盘测试文件——计划 imports 抄自 Notion 测试文件（那里**定义**了 `publishTestContext`，其签名使用 `context`/`types`），本文件只**调用**它，出现两个未使用导入的编译错夹杂在目标失败中；删去这两个多余导入后 RED 纯净：
+
+命令：`go test ./internal/handler/ -run 'TestConfluencePublishPlanGates|TestConfluencePublishActionLookupIsTenantScoped' -count=1`
+
+```
+# github.com/Tencent/WeKnora/internal/handler [github.com/Tencent/WeKnora/internal/handler.test]
+internal/handler/app_connector_confluence_publish_test.go:22:66: undefined: AppConfluencePublishHandler
+internal/handler/app_connector_confluence_publish_test.go:36:7: undefined: NewAppConfluencePublishHandler
+FAIL	github.com/Tencent/WeKnora/internal/handler [build failed]
+FAIL
+```
+
+失败原因正确：实现尚不存在。
+
+### GREEN（Step 4 计划原命令）
+
+实现落盘后，命令：`go build ./... && go test ./internal/handler/ -run 'TestConfluencePublishPlanGates|TestConfluencePublishActionLookupIsTenantScoped|TestNotionPublishPlanGates' -count=1 -v`
+
+```
+=== RUN   TestConfluencePublishPlanGates
+--- PASS: TestConfluencePublishPlanGates (0.02s)
+=== RUN   TestConfluencePublishActionLookupIsTenantScoped
+--- PASS: TestConfluencePublishActionLookupIsTenantScoped (0.00s)
+=== RUN   TestNotionPublishPlanGates
+--- PASS: TestNotionPublishPlanGates (0.00s)
+PASS
+ok  	github.com/Tencent/WeKnora/internal/handler	3.204s
+```
+
+`go build ./...` 通过 = dig 构造器签名与注入依赖全部可解析（容器接线编译验证）；`TestNotionPublishPlanGates` 复跑 PASS = #48 面零回归。日志中 gorm `record not found` 行是 404 断言路径的正常查询日志（Notion 同形测试同样出现），非测试噪音。
+
+### 自检修正后在最终提交形态复跑
+
+自检发现 router.go 多插了 2 行注释（见发现 1），精简并 amend 后按 Step 4 原命令完整复跑：
+
+命令：`go build ./... && go test ./internal/handler/ -run 'TestConfluencePublishPlanGates|TestConfluencePublishActionLookupIsTenantScoped|TestNotionPublishPlanGates' -count=1`
+
+```
+# github.com/Tencent/WeKnora/cmd/desktop
+ld: warning: ignoring duplicate libraries: '-lc++'
+# github.com/Tencent/WeKnora/cmd/server
+ld: warning: ignoring duplicate libraries: '-lc++'
+ok  	github.com/Tencent/WeKnora/internal/handler	3.076s
+EXIT=0
+```
+
+（两条 `ld: warning` 为 `cmd/desktop`/`cmd/server` 既有链接告警，与本任务无关。）
+
+## 3. 提交
+
+- `89c8f710f` `feat(appconnector): /apps/confluence-publish endpoints, routes and container wiring (T20 #50)`（6 files changed, 440 insertions(+), 1 deletion(-)；前身 `a3f0cd540` 为本次 amend 前身，未推送远端；提交后 `git status --short` 干净）。
+- diff 范围核实（`git show --stat HEAD`）：恰为 Task 7 授权的 6 个文件；#48 产物（notion_create/update、publish/plan|dispatcher|blocks、routes_app_notion_publish.go、container/notion_publish.go）与知识库只读连接器零触碰，符合计划「编号协调与并行批次注意」约定。
+
+## 4. 自检发现
+
+1. **计划偏差 A（已修正并复验）**：router.go 计划原文是「插入一行字段」（plan-t50.md:4212-4216），我初版多加了 2 行注释；container.go 的 3 行注释块才是计划逐字给出的内容（plan-t50.md:4224-4231）。已精简回计划严格形态并 amend，复跑 Step 4 命令 PASS。
+2. **计划偏差 B（测试 imports，保留修正）**：计划测试代码 imports 含 `"context"` 与 `"github.com/Tencent/WeKnora/internal/types"`（plan-t50.md:3759-3772），本文件中二者未被使用——它们只被同包另一文件定义的 `publishTestContext` 签名使用，照抄会导致编译失败（首次实跑已复现）。删去这两个导入，功能零偏差。
+3. **前置接口核对**：ask 给出的 `NewConfluencePublishService(actions,store,pubs,artifacts,content,remote,scopes)` 7 参形态与计划 container 代码调用语义一致（`versions`→artifacts、`bridge`→remote、`scopeSrc`→scopes），与 Task 6 实际源码 confluence.go:41-49 完全吻合，无冲突。
+4. **Review Focus 覆盖**：plan-t50.md:64 归属 Task 7 的第 5 类（越权与错接）两项已落地——`TestConfluencePublishPlanGates`（viewer 写门 403、个人连接 owner 谓词 403）+ `TestConfluencePublishActionLookupIsTenantScoped`（跨租户统一 404 不泄漏存在性）。
+5. **未做的事**：Task 8 E2E 与真实 Provider 证据（Task 9）不属本任务；本任务测试是 HTTP 谓词门——计划定位即如此（测试文件头注释 plan-t50.md:3753-3757 明示 pipeline 本体由 service 层测试与 Task 8 覆盖）。
+6. 测试输出纯净（除既有 linker warning 与 404 断言路径的 gorm 日志）；无空提交、未推送远端。
+
+## 5. 遗留/交接
+
+- 无阻塞。Task 8（E2E）可依计划消费：`AppConfluencePublishHandler` + `NewAppConfluencePublishHandler(db)` + `SetConfluencePublishService(*publish.ConfluencePublishService)` + 四端点方法与 `RegisterAppConfluencePublishRoutes(r, h)`，签名逐字如计划 Produces（plan-t50.md:3738-3744）。
+
