@@ -1,4 +1,4 @@
--- T37 (#67): official 与 enterprise 自构建 App 的注册与令牌永不混用（同 sqlite 000114
+-- T37 (#67): official 与 enterprise 自构建 App 的注册与令牌永不混用（同 sqlite 000118
 -- 语义；PostgreSQL 具名约束直接 ALTER）。存量行归 official；升级瞬间仍 pending 的旧
 -- 5 段幂等 ID 行在重投影后以 6 段新 ID 再入队一次（at-least-once 容忍）。
 ALTER TABLE mobile_devices ADD COLUMN app_id VARCHAR(64) NOT NULL DEFAULT 'official';

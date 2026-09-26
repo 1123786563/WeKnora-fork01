@@ -33,7 +33,7 @@ func execMigrationFiles(t *testing.T, db *gorm.DB, root string, files ...string)
 }
 
 // openMobilePushPolicyDB 只执行本域迁移子集（差异记录第 4 条：全目录迁移在 HEAD 因
-// 同号 000112 损坏），顺序必须保持 000058 → 000059 → 000060 → 000114（000114 重建段
+// 同号 000112 损坏），顺序必须保持 000058 → 000059 → 000060 → 000118（000118 重建段
 // 依赖前两者建出的 mobile_devices 与 mobile_notification_intents），
 // 再建 provider_state 表与最小 agent_runs/agent_run_events。
 func openMobilePushPolicyDB(t *testing.T) *gorm.DB {
@@ -47,7 +47,7 @@ func openMobilePushPolicyDB(t *testing.T) *gorm.DB {
 		"migrations/sqlite/000058_mobile_devices.up.sql",
 		"migrations/sqlite/000059_mobile_notifications.up.sql",
 		"migrations/sqlite/000060_mobile_notification_delivery.up.sql",
-		"migrations/sqlite/000114_mobile_device_app.up.sql",
+		"migrations/sqlite/000118_mobile_device_app.up.sql",
 	)
 	require.NoError(t, db.Exec(`CREATE TABLE IF NOT EXISTS mobile_notification_provider_state (provider_key TEXT PRIMARY KEY, paused INTEGER NOT NULL DEFAULT 0, reason TEXT NOT NULL DEFAULT '', alert_count INTEGER NOT NULL DEFAULT 0, paused_at DATETIME, recovered_at DATETIME, updated_at DATETIME NOT NULL)`).Error)
 	require.NoError(t, db.Exec(`CREATE TABLE agent_runs (tenant_id INTEGER NOT NULL, run_id TEXT NOT NULL, owner_id TEXT NOT NULL, PRIMARY KEY (tenant_id, run_id))`).Error)
