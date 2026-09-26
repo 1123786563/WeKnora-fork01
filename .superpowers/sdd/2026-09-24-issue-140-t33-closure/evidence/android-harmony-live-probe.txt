@@ -1,0 +1,12 @@
+# T33 环境实勘 2026-09-26 21:35 (fresh probe this round)
+## Expo Android
+- adb 1.0.41 present at ~/Library/Android/sdk/platform-tools/adb (T02 #11 correction confirmed)
+- emulator binary present; AVDs: test36, test36-small
+- `adb devices` -> empty list (0 devices attached)
+- No .apk/.aab build artifact of apps/mobile exists (T01 gate probe: find apps/mobile -name '*.apk' -> none)
+- Android build/launch NOT attempted this round (out of T33 brief scope; brief pre-marks cell blocked)
+=> Android cell: BLOCKED (no attached device; no Android build of this app; prior tickets never validated Android)
+## HarmonyOS native
+- `command -v hdc hvigor ohpm` -> all absent; /Applications/DevEco-Studio.app absent
+- No .hap artifact; no RNOH/OH SDK config in apps/mobile (T01 gate doc verification/harmony-native-gate.md)
+=> HarmonyOS cell: BLOCKED (same evidence base as T01, re-confirmed live this round)

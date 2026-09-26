@@ -1,0 +1,28 @@
+=== typecheck gates start 2026-09-26 20:44:56 ===
+--- pnpm typecheck:web ---
+
+> weknora-react-workspace@ typecheck:web /Users/wuyongjun/.codex/worktrees/issue-140-t33-closure/WeKnora-fork01
+> pnpm --filter @weknora/web exec tsc -p tsconfig.json --noEmit
+
+exit=0
+--- pnpm --filter @weknora/mobile typecheck ---
+
+> @weknora/mobile@0.0.0 typecheck /Users/wuyongjun/.codex/worktrees/issue-140-t33-closure/WeKnora-fork01/apps/mobile
+> tsc --noEmit
+
+exit=0
+--- pnpm --filter @weknora/miniprogram typecheck ---
+src/features/account/pages.tsx(15,561): error TS2339: Property 'stale' does not exist on type 'CommercialSummary'.
+src/features/account/pages.tsx(15,797): error TS2339: Property 'paid_until' does not exist on type 'CommercialSummary'.
+src/features/account/pages.tsx(15,821): error TS2339: Property 'paid_until' does not exist on type 'CommercialSummary'.
+/Users/wuyongjun/.codex/worktrees/issue-140-t33-closure/WeKnora-fork01/apps/miniprogram:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @weknora/miniprogram@0.1.0 typecheck: `tsc --noEmit`
+Exit status 2
+exit=0
+--- pnpm --filter @weknora/miniprogram test (172 gate) ---
+ℹ tests 172
+ℹ pass 167
+ℹ fail 0
+ℹ skipped 5
+exit=0
+=== typecheck gates end 2026-09-26 20:46:05 ===

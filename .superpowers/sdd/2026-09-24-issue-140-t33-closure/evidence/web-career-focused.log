@@ -1,0 +1,474 @@
+✔ creates an application from the job card that pins snapshot, profile revision and evaluation, then shows the ready task (1959.989959ms)
+✔ hard-ineligible evaluation blocks by default, keeps the warning resident after explicit continuation, and shows qualified=false (388.530125ms)
+✔ linking state stays visibly unready and reconciles with the original request ID into ready (676.408167ms)
+✔ unknown create outcome recovers by the original request ID and an exact replay returns the one stored receipt (1167.240709ms)
+✔ revision conflict shows the current revision and a refreshed resubmit uses a new request ID (1541.124542ms)
+✔ link_failed renders the definite failure and reconciles again with the original request ID (601.46725ms)
+✔ same job and batch already has an application and the UI reports the definite conflict (503.076417ms)
+✔ cross-tenant forbidden application surfaces a clear inaccessible state and keeps no receipt (415.947458ms)
+✔ a page reload restores the stored application from the URL without creating anything (540.900708ms)
+✔ the same job applies to a different batch and a fresh request, while each receipt stays pinned (915.487625ms)
+✔ after a reload the stored application re-pins its evaluation so another batch can apply (714.280666ms)
+✔ without any evaluation the entry explains that the snapshot must be evaluated first (46.9465ms)
+✔ a created application opens the material editor on the same frozen evidence (606.280375ms)
+✔ scope switch clears the in-flight application state (31.664417ms)
+✔ application styles keep TDesign light surfaces, brand green confirmations and narrow-screen stacking (5.832375ms)
+✔ the created application opens its own progress timeline on demand (854.00425ms)
+✔ the created application opens the submission confirmation panel on demand (556.179833ms)
+✔ all mutation controls stay blocked until an unknown result is reconciled, then retry reuses the same action id (26947.589416ms)
+✔ same-scope forbidden refresh clears private facts and hides all mutation controls (1469.103167ms)
+✔ forbidden receipt after an ambiguous action hides cached facts in the mounted page (2324.892167ms)
+✔ resume upload renders six category review, exact evidence and confirmed facts stay separate (12583.974917ms)
+✔ failed resume upload preserves confirmed facts and offers a fresh attempt (6951.546959ms)
+✔ definitive upload rejections release the retained file so the user can start a fresh request (19536.156291ms)
+✔ known ready upload stays successful when source or profile refresh fails (12012.250417ms)
+✔ revision conflict refreshes and requires a deliberate new upload attempt (6540.739834ms)
+✔ ambiguous resume upload retains the original identity and processing prevents another claim (3697.075167ms)
+✔ same-name source history cannot resolve an unknown upload; exact replay keeps its original tuple (24429.762958ms)
+✔ forbidden source read invalidates an outstanding upload and fences its late response (7583.085333ms)
+✔ forbidden recovery source read does not write a late notice or retain the upload (6075.993583ms)
+An update to InboxPage inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to InboxPage inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to InboxPage inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to InboxPage inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to InboxPage inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to InboxPage inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to InboxPage inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to InboxPage inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to ExportDeletionPage inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to ExportDeletionPage inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to ExportDeletionPage inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to ExportDeletionPage inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to ExportDeletionPage inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to ExportDeletionPage inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to ExportDeletionPage inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to ExportDeletionPage inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+✔ scope switch clears resume source and upload state before old async response renders (2317.102458ms)
+Not implemented: navigation to another Document
+✔ the page exports the whole space, presents every frozen package section and downloads it as a file (1535.692583ms)
+✔ an uncertain export outcome keeps the original request id for receipt lookup and same-id retry (537.753791ms)
+✔ deletion first presents the in-space vs external boundary and requires explicit acknowledgement (433.311084ms)
+✔ a partial deletion keeps a recoverable state, discloses retention and never claims complete deletion (82.728208ms)
+✔ a completed deletion discloses retention, verifies the old export grant is unreadable and clears caches (994.402084ms)
+✔ revision conflicts on deletion surface the current revision and a re-read affordance (379.910583ms)
+✔ cross-tenant forbidden responses replace the panel with an access notice (661.324959ms)
+✔ inbox lists todos with only the frozen privacy notices and enters the authoritative application (2157.0085ms)
+An update to InboxPage inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to InboxPage inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to InboxPage inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to InboxPage inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+✔ a duplicate trigger reports the dedupe and never renders a second row (860.430958ms)
+An update to InboxPage inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to InboxPage inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+✔ a push delivery failure never loses the in-station todo (1148.314834ms)
+✔ unsubscribing stops push, keeps the todos readable and offers resubscription (597.467791ms)
+An update to InboxPage inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to InboxPage inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to InboxPage inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+✔ a revision conflict on the reminder write refreshes the pinned revision (824.271208ms)
+An update to InboxPage inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to InboxPage inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+✔ an unknown write outcome recovers through the receipt of the original request id (552.421084ms)
+An update to InboxPage inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to InboxPage inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+✔ cross-tenant reads answer a scoped error and missing sources answer a typed failure (573.457667ms)
+✔ creating a draft from the job card pins the frozen evidence and saves the structured body (740.633625ms)
+✔ a stored material shows fact-linked claims, explicit missing placeholders and the review risks (979.567167ms)
+✔ adding a placeholder after restoring a stored draft never collides with existing claim IDs (619.66ms)
+✔ confirming publishes immutable versions and V1/V2 open side by side with the visible diff (1200.488208ms)
+✔ an old immutable version opens read-only without any editable field (411.103334ms)
+✔ a claim-unconfirmed refusal keeps the local draft and the stored reason without publishing (738.733416ms)
+✔ an unknown write outcome recovers by the original request ID (162.71275ms)
+✔ a revision conflict shows the current revision and a refreshed resave uses a new request ID (259.22575ms)
+✔ cross-tenant forbidden load clears the editor and a missing material reports a clear error (847.825208ms)
+✔ a scope switch clears the in-flight material editing state (592.749459ms)
+✔ material styles keep TDesign light surfaces, brand green confirmations, side-by-side panes and narrow-screen stacking (39.560958ms)
+✔ publishing an immutable version renders the submittable export with the shared digest and the version binding (612.274584ms)
+✔ a single-format verification failure keeps the export staged with its error and never deliverable (694.497334ms)
+✔ a payload claiming submittable with an unverified format is never offered for delivery (519.611542ms)
+Not implemented: navigation to another Document
+✔ downloads redeem an authenticated grant and verify the SHA-256 digest before saving (445.848166ms)
+✔ a digest mismatch refuses to save the downloaded bytes and reports the mismatch (124.773209ms)
+✔ revoking invalidates one export immediately while the old-version export stays downloadable (129.332084ms)
+✔ an uncertain publish outcome recovers by replaying the original request id (203.789333ms)
+✔ export failures surface revision conflicts, clear on forbidden scope and report refused grants (387.980583ms)
+✔ pastes and imports inert JD text, then exposes a typed fixed-snapshot result link (845.279625ms)
+✔ saved intent cannot be submitted twice; starting a new draft creates a fresh attempt (665.655917ms)
+✔ ambiguous import recovers by the same request ID and retries exact same intent after no receipt (82.333542ms)
+✔ evidence page reload reads both fixed IDs and renders exact text and metadata as inert text (902.692834ms)
+✔ scope switch clears pasted text and fences a late import response (546.347417ms)
+✔ forbidden import clears the private JD instead of leaving a stale retry (52.758166ms)
+✔ idempotency conflict is a definite rejection and a corrected submission gets a new request ID (527.635541ms)
+✔ malformed evidence wire shows an error and reloads by the same fixed IDs (372.921042ms)
+✔ explicitly evaluates the pinned JD, prioritizes hard ineligible over soft matches, and links to stable detail (403.44775ms)
+✔ evaluation detail renders hard warning first, exact job and confirmed fact citations, unknown reasons and soft evidence without probability (257.062209ms)
+✔ matching graduation year stays a positive rule outcome without changing the fixed detail route (49.090166ms)
+✔ evaluation detail reload keeps the same evaluation ID and scope switch clears private result (103.763292ms)
+✔ saved evidence page can re-evaluate the same fixed snapshot after navigation and link a fresh result (322.533916ms)
+✔ old evaluation detail can create a distinct current-profile evaluation while retaining its historical conclusion (525.797667ms)
+✔ saved conversation result distinguishes an unknown evaluation receipt immediately (501.137709ms)
+✔ unknown evaluation outcome recovers through the original request receipt without duplicating intent (619.265208ms)
+✔ rapid repeated evaluation clicks issue only one request while pending (298.310042ms)
+✔ a late evaluation for JD A cannot appear beneath a new JD B or release B in flight (824.791167ms)
+✔ a late A receipt lookup cannot restore A evaluation after starting JD B (409.348292ms)
+✔ a late unknown A evaluation leaves JD B ready for a fresh evaluation (320.73825ms)
+✔ transient conversation evaluation timeout reconciles receipt then retries the same request ID (143.074625ms)
+✔ evaluation POST 403 clears an earlier saved JD, evaluation history, and pending intent (60.722583ms)
+✔ evaluation receipt lookup 403 clears an earlier saved JD and evaluation history (171.190166ms)
+✔ a late evaluation response after scope change cannot restore cleared conversation state (44.558125ms)
+✔ stable evidence evaluation timeout reuses the same intent after a not-found receipt (517.683917ms)
+✔ navigating the same evidence page from snapshot A to B clears A before B can evaluate (1029.406583ms)
+✔ navigating the same evaluation detail from A to B hides A status and provenance (31.738708ms)
+✔ evaluation detail marks missing profile as unknown and safely reports forbidden or malformed responses (31.625583ms)
+✔ malformed IDs never trigger evidence reads (12.88225ms)
+✔ narrow evaluation layout stacks fields and preserves wrapping for citations (9.744791ms)
+✔ imports a complete URL and renders typed status, submitted link, times, and an inert owner-scoped evidence link (66.856ms)
+✔ policy_unverified URL shows bounded reason and 需用户补充 JD without any hard-condition conclusion (20.927708ms)
+✔ login_required and timed_out URLs render typed statuses with bounded reasons (30.727875ms)
+✔ unknown URL POST outcome recovers through the same request ID (21.035333ms)
+✔ URL import 403 clears the submitted URL and any pasted draft without stale retry (275.43375ms)
+✔ scope switch during URL import clears the URL and fences a late receipt (68.762625ms)
+✔ unverified URL then pasted JD appends a new snapshot and keeps the original observation trace (54.458125ms)
+✔ job card opens an independent application wired to the evaluation created on the page (166.15675ms)
+✔ generating a draft anchors visibly to the actually submitted version and cites the source chain (2286.057292ms)
+✔ the page states it never sends anything and offers no send action (431.660167ms)
+✔ an unknown submitted version answers the typed prompt state without guessing a version (403.031417ms)
+✔ viewing the sources and revising the draft saves through the material edit seam (694.998333ms)
+✔ a generation failure keeps the request recoverable and never shows a blank success (761.515083ms)
+✔ retrying an unknown generation reuses the same request id, and so does a typed failure (582.751875ms)
+✔ a failed preparation row renders its typed failure state without a body (58.367ms)
+✔ a revision conflict surfaces the current revision and offers a re-read (51.782292ms)
+✔ a cross-tenant application shows a clear inaccessible state (39.301333ms)
+✔ preparation styles keep TDesign light surfaces and the brand green confirm action (4.963792ms)
+✔ the timeline lists events in order with source, confirmer, content and a prominent stage projection (1328.160583ms)
+✔ recording an interview event updates the projection and reopening shows the same stage (283.864084ms)
+✔ a correction keeps the original visible, marks it corrected and re-projects the stage (562.279584ms)
+✔ an unknown write recovers through the receipt lookup with the original request id (197.46225ms)
+✔ retrying an unknown write reuses the same request id and produces no second event (425.947583ms)
+✔ a network-failed write stays unknown and recovers by the original receipt (459.351042ms)
+✔ a revision conflict surfaces the current revision (260.752958ms)
+✔ a cross-tenant or missing application shows a clear error state (82.143958ms)
+✔ switching applications never mixes their timelines (206.888291ms)
+✔ progress styles keep TDesign light surfaces and the brand green projection (11.228ms)
+✔ creates a rule disabled by default and shows conditions, frequency and the backend estimate before enabling (29437.309583ms)
+✔ enabling schedules the next run; modifying the rule updates the displayed run plan (15609.32975ms)
+✔ pausing cancels the next trigger visibly and a paused plan defers on resume (7419.422541ms)
+✔ run history shows blocked statuses with their backend notes, never silent skips (913.833084ms)
+✔ discovery todos render one row per todo with the job link (405.180709ms)
+✔ an unknown write outcome recovers through the original request ID without a duplicate rule write (5219.038541ms)
+✔ revision conflict surfaces the current revision and retries the same request refreshed (3065.616125ms)
+✔ a stored rule that is no longer visible is reported and the stale reference cleared (64.573208ms)
+✔ cross-scope denial shows the forbidden state and a scope switch clears cached rule state (2209.620917ms)
+✔ enabling requires a live estimate; an unreadable estimate closes the enable path but not configuration (1308.394708ms)
+✔ an exhausted window shows the blocked-trigger overage state while enabling stays honest (3345.370959ms)
+✔ runs one search per instruction and renders truthful coverage with per-row evidence (28076.86125ms)
+✔ shows the honest empty-coverage failure without nationwide claims or demo rows (2364.657834ms)
+✔ recovers an unknown outcome through the original request ID without duplicating the search (14421.282833ms)
+✔ a terminal search is never duplicated; a fresh attempt gets a fresh request ID (4718.222041ms)
+✔ revision conflict surfaces the current revision and retries the same request under the refreshed revision (3398.32275ms)
+✔ quota refusal stays typed and recoverable with the same request ID (2676.069ms)
+✔ cross-scope denial clears the page and a scope switch clears cached search state (2304.641ms)
+✔ history survives reload and reopens the stored search by its search ID (3326.750208ms)
+✔ importing a result row opens the existing fixed evidence page without auto-fetching (1285.336875ms)
+✔ offers no continuous-search control of any kind (345.349416ms)
+✔ shows the pre-execution estimate before any charged run, including the paid-tier neutrality line (388.482042ms)
+✔ an unreadable estimate closes the charged path: the reason is shown and no search is sent (770.511ms)
+✔ an exhausted window blocks the next charged run while the page keeps its readable surfaces (444.239625ms)
+✔ a terminal receipt and a quota refusal both refresh the live estimate; replay keeps the original request ID (2442.749208ms)
+✔ the confirm form states the user confirms external submissions and never infers from downloads (1335.65225ms)
+✔ recording sends the confirmed channel, claimed time and bound export, then shows the record in the timeline (1313.148291ms)
+✔ clicking the bound version reference opens the read-only material version (649.47025ms)
+✔ an explicit unknown version records unconfirmed with no binding and renders the marker (573.920208ms)
+✔ a repeat confirmation is rejected with the typed conflict and never adds a second record (299.091208ms)
+✔ an unknown write recovers through the receipt lookup with the original request id (119.134792ms)
+✔ retrying an unknown write reuses the same request id (341.096375ms)
+✔ a revision conflict surfaces the current revision and offers a re-read (417.589416ms)
+✔ a cross-tenant application shows a clear inaccessible state (44.6195ms)
+✔ without submittable exports only the explicit unknown choice is offered (450.201125ms)
+✔ submission styles keep TDesign light surfaces and the brand green confirm action (5.390583ms)
+✔ shows the pre-execution estimate verbatim: cost, frozen conditions and the live monthly balance (3432.024208ms)
+✔ an exhausted window is the overage state: new charged runs are blocked, archives stay readable (279.231875ms)
+✔ an unreadable ledger is fail-closed: the typed reason is shown and no execute-first path is offered (381.446167ms)
+✔ a forbidden space shows the permission state with a retry, never a charged path (36.785709ms)
+✔ recovery: retrying a failed estimate re-reads the endpoint and shows the live balance again (69.207208ms)
+✔ a scope switch resets the estimate and re-reads under the new identity (45.483959ms)
+✔ status panel annotates requirement changes, keeps the stale window explicit, and preserves every original link, check time, and permanent snapshot link (1273.668458ms)
+✔ status panel renders the before/after snapshot diff of an updated JD with explicit change markers (241.896ms)
+✔ reconcile action displays a sufficient-evidence merge with the conflicting-batches disclosure and both identity quadruples (839.479416ms)
+✔ an uncertain pair stays side by side with the suspected-duplicate hint visible and nothing merged (625.921458ms)
+✔ an unknown reconcile outcome recovers through the original request receipt without resubmitting content (435.699375ms)
+✔ an idempotency conflict is surfaced as an error while the request stays reviewable (54.268916ms)
+✔ the merged-away record discloses where its history went (121.721291ms)
+✔ a never-successful check states that honestly instead of rendering the Go zero timestamp (144.85625ms)
+✔ the reconciliation history lists prior decisions with their times and pairs (135.070167ms)
+✔ coverage panel discloses configured and observed sources plus observed cities, with empty lists stated honestly (25.003208ms)
+✔ a restored application links its pinned evidence to the permanently openable old snapshot (171.022792ms)
+ℹ tests 174
+ℹ suites 0
+ℹ pass 174
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 448619.137333

@@ -1,0 +1,22 @@
+# T33 full test:web attempt — stuck-runner forensics
+Sat Sep 26 23:49:28 CST 2026
+runner: PID 41597 cwd=/Users/wuyongjun/.codex/worktrees/issue-140-t33-closure/WeKnora-fork01/apps/web
+41597   0.0 02:09:25 S   
+child test processes for this worktree at 3x4s snapshots: 0 (none)
+open src files: 0
+TCP connections: 0
+
+started 2026-09-26 21:39:47 under load 68.04/66.38/57.15 (cpu-contention-before-testweb.txt);
+kill -TERM issued at 23:49:28 after 2h09m with no progress (0% CPU, no children).
+
+## Buffered tail flushed on kill (real content, mirrored from gate-logs/testweb-full.log)
+ERR_ASSERTION deepStrictEqual: actual ['Bob', undefined, undefined] vs expected ['Bob', undefined]
+pnpm: ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL @weknora/web@0.0.0 test: node --import tsx --test --test-concurrency=4 ... Exit status 1 / ELIFECYCLE Command failed with exit code 1.
+(Note: capture piped through tail -12; the failing test NAME and file were lost to truncation.)
+
+## Follow-up isolation re-run (23:52)
+Candidate files containing the literal Bob (grep over apps/web/src test files): organizations page, tenant members panel, experts page, administration page.
+Re-ran all four together with --test-concurrency=4 -> tests 75 / pass 75 / fail 0.
+=> The assertion failure does NOT reproduce in isolation (including at concurrency 4).
+Honest classification: contention/ordering-dependent failure under load-68 full run; failing test identity unresolved.
+Full gate verdict this round: NOT PASSED — failed-under-contention / pending idle re-run (per brief fallback: ps forensics + focused gate 174/174 recorded).

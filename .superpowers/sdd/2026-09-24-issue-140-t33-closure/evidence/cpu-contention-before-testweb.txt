@@ -1,0 +1,13 @@
+# T33 CPU contention evidence (before full test:web attempt)
+Sat Sep 26 21:31:38 CST 2026
+21:31  up  6:52, 1 user, load averages: 54.15 56.49 49.39
+ncpu: 10
+top CPU processes:
+77.9% /Applications/Paseo.app/Contents/Frameworks/Paseo Helper (Renderer).app/Contents/MacOS/Paseo Helper 
+62.3% /Applications/Paseo.app/Contents/Frameworks/Paseo Helper (Renderer).app/Contents/MacOS/Paseo Helper 
+40.4% /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/Metadata.framework/Versions/
+38.6% /Library/Developer/CoreSimulator/Volumes/iOS_24A434/Library/Developer/CoreSimulator/Profiles/Runtime
+33.5% /Users/wuyongjun/.nvm/versions/node/v22.22.3/bin/node --require /Users/wuyongjun/trea/paseo/node_mod
+21.1% /System/Library/PrivateFrameworks/SiriInference.framework/Versions/A/siriinferenced
+18.2% /Library/Developer/CoreSimulator/Volumes/iOS_24A434/Library/Developer/CoreSimulator/Profiles/Runtime
+14.9% /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/dsymutil -f /

@@ -1,0 +1,33 @@
+170. [GET] http://127.0.0.1:57829/api/v1/auth/me => [200] OK
+325. [GET] http://127.0.0.1:57829/api/v1/me/invitations/pending-count => [200] OK
+326. [GET] http://127.0.0.1:57829/api/v1/auth/me => [200] OK
+327. [GET] http://127.0.0.1:57829/api/v1/system/info => [200] OK
+328. [GET] http://127.0.0.1:57829/api/v1/system/capabilities => [200] OK
+329. [GET] http://127.0.0.1:57829/api/v1/sessions?page=1&page_size=30&source=web => [200] OK
+342. [GET] http://127.0.0.1:57829/api/v1/sessions?page=1&page_size=30&source=web => [200] OK
+343. [GET] http://127.0.0.1:57829/api/v1/embed-channels => [200] OK
+344. [GET] http://127.0.0.1:57829/api/v1/im-channels => [200] OK
+345. [GET] http://127.0.0.1:57829/api/v1/sessions?page=1&page_size=1&source=api => [200] OK
+346. [GET] http://127.0.0.1:57829/api/v1/career/opportunities/3e57ca16-3037-4a13-9d98-4cc141a7b8ea?snapshotId=f0a759b5-b79d-46ff-9117-d53662a3f2fd => [200] OK
+347. [GET] http://127.0.0.1:57829/api/v1/career/opportunities/3e57ca16-3037-4a13-9d98-4cc141a7b8ea/status => [200] OK
+348. [GET] http://127.0.0.1:57829/api/v1/career/opportunities/3e57ca16-3037-4a13-9d98-4cc141a7b8ea/reconciliations => [200] OK
+349. [GET] http://127.0.0.1:57829/api/v1/career/open => [200] OK
+350. [GET] http://127.0.0.1:57829/api/v1/career/applications/de3fa49d-a0f3-47d0-b8f2-33c1a6182fd5 => [200] OK
+351. [GET] http://127.0.0.1:57829/api/v1/career/open => [200] OK
+352. [GET] http://127.0.0.1:57829/api/v1/career/materials/beb6dd4f-5286-40c4-8634-90af12fd9f95 => [200] OK
+353. [GET] http://127.0.0.1:57829/api/v1/career/materials/beb6dd4f-5286-40c4-8634-90af12fd9f95/exports => [200] OK
+354. [POST] http://127.0.0.1:57829/api/v1/career/materials/beb6dd4f-5286-40c4-8634-90af12fd9f95/exports/9a9eb655-b256-4654-bde1-935c407bef87/signed-url => [200] OK
+355. [GET] http://127.0.0.1:57829/api/v1/career/materials/beb6dd4f-5286-40c4-8634-90af12fd9f95/exports/9a9eb655-b256-4654-bde1-935c407bef87/download?format=pdf&expires=1790427992&signature=659bbe142ef0ae035f432f318e3c049a92ea8f15b6cf73e06830fbe229b7bf2c => [200] OK
+356. [GET] http://127.0.0.1:57829/api/v1/career/applications/de3fa49d-a0f3-47d0-b8f2-33c1a6182fd5/submissions => [200] OK
+357. [GET] http://127.0.0.1:57829/api/v1/career/open => [200] OK
+358. [GET] http://127.0.0.1:57829/api/v1/career/materials/beb6dd4f-5286-40c4-8634-90af12fd9f95/exports => [200] OK
+359. [POST] http://127.0.0.1:57829/api/v1/career/applications/de3fa49d-a0f3-47d0-b8f2-33c1a6182fd5/submissions => [200] OK
+360. [GET] http://127.0.0.1:57829/api/v1/career/applications/de3fa49d-a0f3-47d0-b8f2-33c1a6182fd5/submissions => [200] OK
+361. [GET] http://127.0.0.1:57829/api/v1/career/materials/beb6dd4f-5286-40c4-8634-90af12fd9f95/exports => [200] OK
+362. [GET] http://127.0.0.1:57829/api/v1/career/applications/de3fa49d-a0f3-47d0-b8f2-33c1a6182fd5/progress => [200] OK
+363. [POST] http://127.0.0.1:57829/api/v1/career/applications/de3fa49d-a0f3-47d0-b8f2-33c1a6182fd5/progress => [200] OK
+364. [GET] http://127.0.0.1:57829/api/v1/career/applications/de3fa49d-a0f3-47d0-b8f2-33c1a6182fd5/progress => [200] OK
+365. [GET] http://127.0.0.1:57829/api/v1/me/invitations/pending-count => [200] OK
+366. [GET] http://127.0.0.1:57829/api/v1/me/invitations/pending-count => [200] OK
+
+Note: 335 static requests not shown, run with "static" option to see them.

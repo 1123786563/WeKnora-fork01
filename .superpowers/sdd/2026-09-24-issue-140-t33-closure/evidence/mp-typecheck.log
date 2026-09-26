@@ -1,0 +1,20 @@
+
+> @weknora/miniprogram@0.1.0 typecheck /Users/wuyongjun/.codex/worktrees/issue-140-t33-closure/WeKnora-fork01/apps/miniprogram
+> tsc --noEmit
+
+src/features/account/pages.tsx(11,597): error TS2339: Property 'available' does not exist on type 'CommercialSummary'.
+src/features/account/pages.tsx(11,670): error TS2339: Property 'held' does not exist on type 'CommercialSummary'.
+src/features/account/pages.tsx(11,711): error TS2339: Property 'refund_locked' does not exist on type 'CommercialSummary'.
+src/features/account/pages.tsx(11,773): error TS2339: Property 'stale' does not exist on type 'CommercialSummary'.
+src/features/account/pages.tsx(11,807): error TS2339: Property 'as_of' does not exist on type 'CommercialSummary'.
+src/features/account/pages.tsx(15,110): error TS2339: Property 'plan_name' does not exist on type 'CommercialSummary'.
+src/features/account/pages.tsx(15,220): error TS2339: Property 'available' does not exist on type 'CommercialSummary'.
+src/features/account/pages.tsx(15,347): error TS2339: Property 'held' does not exist on type 'CommercialSummary'.
+src/features/account/pages.tsx(15,452): error TS2339: Property 'refund_locked' does not exist on type 'CommercialSummary'.
+src/features/account/pages.tsx(15,537): error TS2339: Property 'as_of' does not exist on type 'CommercialSummary'.
+src/features/account/pages.tsx(15,561): error TS2339: Property 'stale' does not exist on type 'CommercialSummary'.
+src/features/account/pages.tsx(15,797): error TS2339: Property 'paid_until' does not exist on type 'CommercialSummary'.
+src/features/account/pages.tsx(15,821): error TS2339: Property 'paid_until' does not exist on type 'CommercialSummary'.
+/Users/wuyongjun/.codex/worktrees/issue-140-t33-closure/WeKnora-fork01/apps/miniprogram:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @weknora/miniprogram@0.1.0 typecheck: `tsc --noEmit`
+Exit status 2

@@ -1,0 +1,22 @@
+=== go gate start 2026-09-26 20:29:09 ===
+--- go test ./internal/modules/career/... -count=1 ---
+ok  	github.com/Tencent/WeKnora/internal/modules/career	109.788s
+exit=0
+--- go test ./internal/modules/workbench/service/workbench/... -count=1 ---
+ok  	github.com/Tencent/WeKnora/internal/modules/workbench/service/workbench	230.787s
+exit=0
+--- go test ./internal/database/... -count=1 ---
+ok  	github.com/Tencent/WeKnora/internal/database	127.951s
+exit=0
+--- go test ./internal/router/... -count=1 ---
+ok  	github.com/Tencent/WeKnora/internal/router	5.895s
+exit=0
+--- go test ./tools/architectureguard/... -count=1 ---
+ok  	github.com/Tencent/WeKnora/tools/architectureguard	2.224s
+exit=0
+--- go test ./internal/handler/... -count=1 ---
+ok  	github.com/Tencent/WeKnora/internal/handler	4.517s
+ok  	github.com/Tencent/WeKnora/internal/handler/dto	2.116s
+ok  	github.com/Tencent/WeKnora/internal/handler/session	101.801s
+exit=0
+=== go gate end 2026-09-26 20:44:09 ===

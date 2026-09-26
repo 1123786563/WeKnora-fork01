@@ -1,0 +1,13 @@
+# T33 Web cross-tenant probes (2026-09-26, Lite 127.0.0.1:57828, SQLite disposable DB)
+# Owner A = t33a@t33.io (opportunity 3e57ca16-3037-4a13-9d98-4cc141a7b8ea / snapshot f0a759b5-b79d-46ff-9117-d53662a3f2fd /
+#   application de3fa49d-a0f3-47d0-b8f2-33c1a6182fd5 / material beb6dd4f-5286-40c4-8634-90af12fd9f95)
+# Intruder B = t33b@t33.io (registered 201, login 200, own token)
+B GET /api/v1/career/opportunities/3e57ca16-...?snapshotId=f0a759b5-...  -> 404 {"error":{"code":"not_found","message":"career opportunity evidence not found"}}
+B GET /api/v1/career/applications/de3fa49d-...                          -> 403 {"error":{"code":"forbidden","message":"career scope missing or not authorized"}}
+B GET /api/v1/career/materials/beb6dd4f-...                             -> 403 (same forbidden)
+B GET /api/v1/career/applications/de3fa49d-.../progress                 -> 404
+B GET /api/v1/career/open                                               -> 200 {"revision":0,"facts":[],"proposals":[]}  (B sees only own empty profile)
+anonymous GET /api/v1/career/open                                       -> 401
+# One-shot search honest failure (browser UI): "找岗未完成：暂无已核验来源，本次未抓取任何数据" searchId 936c6f6e-bd9f-43e2-acb1-17cce6ea256f
+# Material download honest failure before signing key configured: "下载未完成：career export signing key not configured"
+# After restart with WEKNORA_CAREER_EXPORT_SIGNING_KEY (same DB/JWT): PDF downloaded, SHA-256 a65d6bd4ebfcaddec8e198188e4bae0315581091c5710b7e8e500893724b9a3e matches page digest, file=PDF 1.7 1 page 2642 bytes
