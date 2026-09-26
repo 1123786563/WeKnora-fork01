@@ -11,6 +11,7 @@ import { EmptyState } from "./EmptyState.tsx";
 import { pushSettingsToast } from "./settings-toast.tsx";
 import { SettingDrawer } from "./SettingDrawer.tsx";
 import { roleAtLeast } from "@weknora/views/settings/registry";
+import { MCP_OAUTH_CALLBACK_PATH, MCP_OAUTH_POLL_ATTEMPTS, MCP_OAUTH_POLL_INTERVAL_MS, MCP_OAUTH_POPUP_FEATURES, MCP_OAUTH_POPUP_NAME } from "../plugins/oauth.ts";
 import { createTranslator, useAppLocale } from "../i18n.ts";
 
 /* S6 Tailwind 收编：原 .wk-mcp-* utility 串（migrated 1:1 from the deleted
@@ -830,17 +831,17 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
     setError(null);
     try {
       const result = await client.configuration.mcp.oauth.authorizeUrl(savedId, {
-        redirectURI: window.location.origin + "/api/v1/mcp-oauth/callback",
+        redirectURI: window.location.origin + MCP_OAUTH_CALLBACK_PATH,
         frontendRedirect: window.location.href,
       });
       const popup = window.open(
         result.authorizationUrl,
-        "weknora_mcp_oauth",
-        "width=600,height=720",
+        MCP_OAUTH_POPUP_NAME,
+        MCP_OAUTH_POPUP_FEATURES,
       );
       if (!popup) throw new Error(t("mcpServiceDialog.toasts.updateFailed"));
-      for (let attempt = 0; attempt < 40; attempt += 1) {
-        await new Promise((resolve) => window.setTimeout(resolve, 1500));
+      for (let attempt = 0; attempt < MCP_OAUTH_POLL_ATTEMPTS; attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, MCP_OAUTH_POLL_INTERVAL_MS));
         const next = await client.configuration.mcp.oauth.status(
           savedId,
           result.authorizationAttempt,

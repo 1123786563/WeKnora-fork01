@@ -117,3 +117,12 @@ test('im platform labels cover the Vue platform list with zh-CN names', () => {
   assert.equal(english.feishu, 'Feishu');
   assert.equal(english.wecom, 'WeCom');
 });
+
+// 跨任务转交 T08-OCR2-F5：plugins tab 内容面板必须有挂载点。packages/views
+// 不能反向 import apps/web 的 PluginsPanel，接线走 view 层插槽——page.tsx 需
+// 提供 pluginsSlot prop 并在 tab === 'plugins' 时渲染它。
+test('plugins tab body mounts through the view-layer plugins slot', () => {
+  const source = readFileSync(new URL('./page.tsx', import.meta.url), 'utf8');
+  assert.match(source, /pluginsSlot/, 'IntegrationsPageProps must expose a pluginsSlot');
+  assert.match(source, /tab === 'plugins'/, "a render branch keyed on tab === 'plugins' must exist");
+});

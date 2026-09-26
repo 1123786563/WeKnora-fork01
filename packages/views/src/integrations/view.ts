@@ -36,6 +36,18 @@ const HEADING_KEYS: Record<IntegrationKey, string> = {
   cli: 'integrations.cli.title',
   chrome: 'integrations.chrome.title',
   claw: 'integrations.claw.title',
+  // T08 (issue #110): member plugin discovery copy. CONSUMED IMMEDIATELY by
+  // the integrations page tab strip (page.tsx renders t('integrations.tabs.'
+  // + key) for every INTEGRATION_SECTIONS entry) and the section heading —
+  // resolved via integrationsT's FALLBACK_STRINGS (messages.ts, all five
+  // locales, T08-OCR1-F1). The two former gaps are CLOSED as of the OCR R1
+  // fix round: ① SettingsPage.settingsSectionLabel (apps/web) now carries a
+  // literal '插件'/'Plugins' fallback for integrationTab === 'plugins'
+  // (its own T03 precedent, placed above the formatMessage branch);
+  // ② the plugins tab body mounts through IntegrationsPage's pluginsSlot —
+  // page.tsx renders it on tab === 'plugins' and IntegrationsRoutePage
+  // (apps/web) passes the PluginsPanel through it.
+  plugins: 'integrations.plugins.title',
 };
 
 const DESCRIPTION_KEYS: Record<IntegrationKey, string> = {
@@ -45,6 +57,7 @@ const DESCRIPTION_KEYS: Record<IntegrationKey, string> = {
   cli: 'integrations.cli.subtitle',
   chrome: 'integrations.chrome.subtitle',
   claw: 'integrations.claw.subtitle',
+  plugins: 'integrations.plugins.subtitle',
 };
 
 interface ChannelListKeys {

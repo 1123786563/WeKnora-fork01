@@ -55,6 +55,10 @@ setIntegrationPlatformLogoRenderer((platform) => IM_PLATFORM_LOGOS[platform] ?? 
 import { parseIntegrationTenantId } from './tenant.ts';
 import { ApiPlaygroundDrawer } from './ApiPlaygroundDrawer.tsx';
 import { EmbedPreviewModal } from './EmbedPreviewModal.tsx';
+// 跨任务转交 T08-OCR2-F5：成员插件发现面板（T08 建成、T12 增授权入口）经
+// 共享页的 pluginsSlot 挂载——面板自管数据（挂载即 GET /plugins/installations），
+// 与本页各 tab 独立拉取的口径一致。
+import { PluginsPanel } from './PluginsPanel.tsx';
 import { resolveApiBaseUrl } from '../platform/api-base.ts';
 import { integrationsLocale, integrationsT } from '../../../../packages/views/src/integrations/messages.ts';
 
@@ -256,7 +260,7 @@ export function IntegrationsRoutePage({ client, tenantId, activeTab, activeAgent
   return <>
     {embedPreviewNotice ? <p className="wk-status wk-status-error wk-irp-1" role="alert">{embedPreviewNotice}</p> : null}
     <EmbedPreviewModal open={embedPreview !== null} channelId={embedPreview?.channelId ?? ''} token={embedPreview?.token ?? ''} title={embedPreview?.title} apiBaseUrl={window.location.origin} locale={embedPreview?.locale} refreshKey={embedPreview?.refreshKey} onClose={() => setEmbedPreview(null)} />
-    <IntegrationsPage embedded={embedded} initialTab={tab} activeTab={tab} onTabChange={(nextTab) => { setTab(nextTab); setRequestedTab(nextTab); onTabChange?.(nextTab); }} embedChannels={visibleEmbedChannels} imChannels={visibleImChannels} apiKeys={apiKeys} apiKeysLoading={apiKeysLoading} apiBaseUrl={apiBaseUrl} swaggerEnabled={swaggerEnabled} loading={loading} error={error} onReload={reload} onOpenEmbed={(channel) => void openEmbed(channel)} onOpenApiPlayground={() => { playgroundTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; setApiPlaygroundOpen(true); }} actions={actions} agents={agents} knowledgeBases={knowledgeBases} canEdit={canEdit} />
+    <IntegrationsPage embedded={embedded} initialTab={tab} activeTab={tab} onTabChange={(nextTab) => { setTab(nextTab); setRequestedTab(nextTab); onTabChange?.(nextTab); }} embedChannels={visibleEmbedChannels} imChannels={visibleImChannels} apiKeys={apiKeys} apiKeysLoading={apiKeysLoading} apiBaseUrl={apiBaseUrl} swaggerEnabled={swaggerEnabled} loading={loading} error={error} onReload={reload} onOpenEmbed={(channel) => void openEmbed(channel)} onOpenApiPlayground={() => { playgroundTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; setApiPlaygroundOpen(true); }} actions={actions} agents={agents} knowledgeBases={knowledgeBases} canEdit={canEdit} pluginsSlot={<PluginsPanel client={client} />} />
     <ApiPlaygroundDrawer open={apiPlaygroundOpen} onClose={() => setApiPlaygroundOpen(false)} apiKey={playgroundApiKey || apiKeys.find((key) => key.api_key)?.api_key || ''} mode={principal?.mode ?? 'tenant'} agents={agents.map((agent) => ({ id: agent.id, name: agent.name }))} agentsLoading={agentsLoading} agentsError={agentsError || undefined} apiBaseUrl={apiBaseUrl} mintToken={actions.onCreatePrincipalTestToken} t={(key, values) => integrationsT(currentIntegrationsLocale(), key, values)} />
   </>;
 }

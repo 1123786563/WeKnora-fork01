@@ -18,13 +18,23 @@
  *
  * Usage: pnpm gates
  */
-import { execFileSync, spawnSync } from "node:child_process";
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
+import { spawnSync } from "node:child_process";
+import {
+  MIN_MAJOR,
+  createNodeShim,
+  exitWithSpawnResult,
+  findNodeGte26,
+  installShimSignalCleanup,
+  majorOf,
+  removeNodeShim,
+  shimEnv,
+} from "./lib/node-gte26.mjs";
 
-const MIN_MAJOR = 26;
 const GATES = [
+  // R1-F17: the shim/discovery plumbing this runner itself depends on must be
+  // self-tested before any gate rides on it (previously the suite only ran
+  // when invoked by hand — node --test itself needs node >= 18, not 26).
+  ["node-gte26-selftest", "pnpm run test:node-gte26"],
   ["test:shared", "pnpm run test:shared"],
   ["typecheck:shared", "pnpm run typecheck:shared"],
   ["test:web", "pnpm run test:web"],
@@ -33,65 +43,33 @@ const GATES = [
   ["build:web", "pnpm run build:web"],
 ];
 
-function majorOf(version) {
-  return Number.parseInt(String(version).trim().replace(/^v/, "").split(".")[0], 10) || 0;
-}
-
-function candidateBin(nodeBin) {
-  try {
-    const v = execFileSync(nodeBin, ["-v"], { encoding: "utf8" });
-    return majorOf(v) >= MIN_MAJOR ? { bin: nodeBin, version: v.trim() } : null;
-  } catch {
-    return null;
-  }
-}
-
-function findNodeGte26() {
-  const candidates = [];
-  if (process.env.WEKNORA_NODE_BIN) candidates.push(process.env.WEKNORA_NODE_BIN);
-  if (process.platform === "darwin") {
-    candidates.push("/opt/homebrew/bin/node", "/usr/local/bin/node");
-  }
-  const nvmDir = path.join(os.homedir(), ".nvm", "versions", "node");
-  if (fs.existsSync(nvmDir)) {
-    const nvmNodes = fs
-      .readdirSync(nvmDir)
-      .filter((d) => /^v\d+\./.test(d) && majorOf(d) >= MIN_MAJOR)
-      .sort((a, b) => majorOf(b) - majorOf(a) || a.localeCompare(b, undefined, { numeric: true }))
-      .map((d) => path.join(nvmDir, d, "bin", "node"));
-    candidates.push(...nvmNodes);
-  }
-  for (const bin of candidates) {
-    const hit = candidateBin(bin);
-    if (hit) return hit;
-  }
-  return null;
-}
+// majorOf/candidateBin/findNodeGte26 moved to scripts/lib/node-gte26.mjs
+// (OCR round-1 F11: the duplicated copies had drifted into a copy-paste
+// contract — the CI Linux discovery gap, F09, lived in both).
 
 function reexecWith(node) {
   // Prepend a shim dir containing ONLY a `node` symlink to the >=26 binary.
   // Prepending the whole bin dir (e.g. /opt/homebrew/bin) would also shadow
   // `pnpm` with a different major (v11 vs the pinned 10.28.2) and corepack
   // refuses the mismatch — observed in the R476 smoke test.
-  const shimDir = path.join(os.tmpdir(), "weknora-gates-node-shim");
-  const shimNode = path.join(shimDir, "node");
-  fs.mkdirSync(shimDir, { recursive: true });
-  try {
-    fs.rmSync(shimNode, { force: true });
-  } catch {
-    /* ignore */
-  }
-  fs.symlinkSync(node.bin, shimNode);
-  const env = {
-    ...process.env,
-    PATH: `${shimDir}:${process.env.PATH || ""}`,
-  };
+  //
+  // The shim dir comes from the shared module (OCR round-1 F10/F11): the
+  // previous FIXED name `weknora-gates-node-shim` under the shared tmpdir was
+  // predictable and pre-creatable by another local user (CWE-377/426) — and
+  // racing concurrent runs. mkdtempSync is private and unique per run.
+  const { shimDir, shimNode } = createNodeShim(node.bin);
+  installShimSignalCleanup(shimDir);
+  // shimEnv (R1-F30): case-insensitive PATH overwrite — a naive spread would
+  // materialize both `Path` (old) and `PATH` (new) on win32 and the re-exec'd
+  // child would honor the old value, silently dropping the shim.
+  const env = shimEnv(shimDir);
   console.error(`[gates] current node ${process.version} < ${MIN_MAJOR}; re-exec via ${node.bin} (${node.version})`);
   const result = spawnSync(shimNode, [process.argv[1], ...process.argv.slice(2)], {
     stdio: "inherit",
     env,
   });
-  process.exit(result.status ?? (result.error ? 1 : 0));
+  removeNodeShim(shimDir);
+  exitWithSpawnResult(result, "gates");
 }
 
 function main() {
@@ -100,7 +78,7 @@ function main() {
     if (!node) {
       console.error(
         `[gates] node >= ${MIN_MAJOR} required (current ${process.version}); ` +
-          "no >=26 binary found via WEKNORA_NODE_BIN, homebrew, or ~/.nvm — install node 26 (e.g. brew install node@26 / nvm install 26)",
+          "no >=26 binary found via WEKNORA_NODE_BIN, platform prefixes, ~/.nvm, or $PATH — install node 26 (e.g. brew install node@26 / nvm install 26)",
       );
       process.exit(1);
     }

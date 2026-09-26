@@ -320,7 +320,7 @@ func TestAgentRunToolCallProjectsDurableRunID(t *testing.T) {
 	metadata := &agenttools.MCPMetadataIO{Get: func(context.Context, uint64, string) (*types.MCPMetadata, error) {
 		return &types.MCPMetadata{Tools: []*types.MCPTool{{Name: "get_order", Description: "lookup order", InputSchema: json.RawMessage(`{"type":"object","properties":{"id":{"type":"string"}},"required":["id"]}`)}}}, nil
 	}}
-	_, err = agenttools.RegisterMCPTools(ctx, registry, []*types.MCPService{service}, manager, gate, 0, nil, metadata)
+	_, err = agenttools.RegisterMCPTools(ctx, registry, []*types.MCPService{service}, manager, gate, 0, nil, metadata, nil)
 	require.NoError(t, err)
 	registry.PrepareMCPTools(ctx)
 	describeResult, err := registry.ExecuteTool(ctx, agenttools.ToolDiscoverMCPTools, json.RawMessage(`{"mode":"describe","server_id":"orders","tool_name":"get_order"}`))

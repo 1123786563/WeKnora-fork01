@@ -300,3 +300,35 @@ func parseIPForTest(t *testing.T, s string) net.IP {
 	}
 	return ip
 }
+
+// TestSnapshotSSRFWhitelistForTestRestoresPriorState locks the snapshot/
+// restore semantics: a test that narrows the whitelist via
+// SetSSRFWhitelistFromRaw must be able to RESTORE the pre-test state, not
+// merely clear it. This is the regression behind the internal/container
+// -count>=2 failures: plugin tests paired Set with ResetSSRFWhitelistForTest,
+// which wipes the package TestMain whitelist ("127.0.0.1,::1,localhost") —
+// alphabetically-later engine tests then failed with
+// "hostname 127.0.0.1 is restricted" on the second round.
+func TestSnapshotSSRFWhitelistForTestRestoresPriorState(t *testing.T) {
+	restoreOuter := SnapshotSSRFWhitelistForTest()
+	t.Cleanup(restoreOuter)
+
+	SetSSRFWhitelistFromRaw("127.0.0.1,::1,localhost")
+	restore := SnapshotSSRFWhitelistForTest()
+
+	SetSSRFWhitelistFromRaw("127.0.0.1")
+	if !IsSSRFWhitelisted("127.0.0.1") {
+		t.Fatal("narrowed whitelist must still admit 127.0.0.1")
+	}
+	if IsSSRFWhitelisted("::1") {
+		t.Fatal("narrowed whitelist must not admit ::1")
+	}
+
+	restore()
+	if !IsSSRFWhitelisted("::1") {
+		t.Fatal("restore must reinstate the pre-snapshot whitelist (::1), not clear it — clearing is ResetSSRFWhitelistForTest's contract")
+	}
+	if !IsSSRFWhitelisted("127.0.0.1") {
+		t.Fatal("restore must reinstate the pre-snapshot whitelist (127.0.0.1)")
+	}
+}

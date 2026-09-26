@@ -82,7 +82,7 @@ func TestMCPProxyHTTPApprovalArgumentsAndImages(t *testing.T) {
 	ctx := catalogTestContext()
 	registry := NewToolRegistry()
 	gate := &proxyApprovalGate{}
-	_, err := RegisterMCPTools(ctx, registry, []*types.MCPService{service}, manager, gate, 0, nil, nil)
+	_, err := RegisterMCPTools(ctx, registry, []*types.MCPService{service}, manager, gate, 0, nil, nil, nil)
 	require.NoError(t, err)
 	require.Zero(t, requests.Load())
 	discoverPage(ctx, t, registry, map[string]any{"mode": "list_servers"})

@@ -1,0 +1,221 @@
+package plugins
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"time"
+
+	"github.com/Tencent/WeKnora/internal/types"
+	"github.com/Tencent/WeKnora/internal/utils"
+)
+
+// ErrOAuthProtectedEndpoint is the sentinel for "the plugin's MCP endpoint
+// cannot be verified because it demands OAuth authorization" — the endpoint
+// answered the handshake with a 401 advertising RFC 9728 protected-resource
+// metadata. The production adapter (internal/container's
+// NewPluginMCPEndpointLister) wraps the MCP layer's OAuthRequiredError into
+// this sentinel while keeping the underlying cause, so both identities
+// survive. A preview must fail loudly here — there is no such thing as a
+// half-verified preview.
+var ErrOAuthProtectedEndpoint = errors.New("plugin endpoint requires OAuth authorization")
+
+// ErrManifestFetchFailed marks manifest download faults that are SERVER-side
+// network problems (DNS failure, egress timeout, proxy errors, upstream 5xx,
+// transient throttling/timeout answers 429/408) rather than deterministic
+// rejections of the admin's input — the handler maps it onto 5xx without
+// echoing the transport detail (which can carry internal proxy addresses
+// when HTTP(S)_PROXY is configured) (跨任务转交 T01-R2-F2).
+// Deterministic 4xx answers (404 wrong path / 401 auth-gated / 410 gone)
+// are deliberately NOT sentinelled: retrying can never succeed
+// (OCR T01-OCR2-F7, boundary refined by OCR T01-OCR3-F1).
+var ErrManifestFetchFailed = errors.New("manifest fetch failed")
+
+// IsOAuthProtected reports whether err (or anything it wraps) carries the
+// ErrOAuthProtectedEndpoint sentinel, i.e. the production adapter recognized
+// the MCP layer's OAuthRequiredError during verification.
+func IsOAuthProtected(err error) bool {
+	return errors.Is(err, ErrOAuthProtectedEndpoint)
+}
+
+// EndpointLister performs a LIVE ListTools against a plugin's MCP endpoint.
+// It is a seam: production uses internal/container's
+// NewPluginMCPEndpointLister over the airesource MCPManager (modules must not
+// import each other — the composition root is the only legal glue point);
+// tests substitute fakes to assert zero-call guarantees. Adapters that hit an
+// OAuth-protected endpoint MUST wrap the error with ErrOAuthProtectedEndpoint.
+type EndpointLister func(ctx context.Context, transportType string, endpointURL string) ([]*types.MCPTool, error)
+
+// boundedEchoError keeps an error's full identity chain (Unwrap) while
+// bounding its Error() text. The OAuth pass-through branch needs both: the
+// handler classifies the fault with errors.Is/As on the sentinel and the
+// underlying *mcp.OAuthRequiredError, while the chain's message comes from
+// the mcp-go SDK failure path and is remote-controlled unbounded text
+// ("tens of MB within the 30s timeout") that would otherwise land verbatim
+// in the admin-facing 400 body. %.512s gives it the same bounded-echo rune
+// budget as every other untrusted echo in this file (OCR T01-OCR1-F14).
+type boundedEchoError struct {
+	err     error
+	bounded string
+}
+
+func (e *boundedEchoError) Error() string { return e.bounded }
+func (e *boundedEchoError) Unwrap() error { return e.err }
+
+// maxManifestBytes bounds the manifest download (1 MiB): an untrusted URL
+// must not be able to make WeKnora buffer arbitrary amounts of data. It is a
+// security boundary, so it is a compile-time constant — nothing (tests
+// included) can relax it at runtime.
+const maxManifestBytes = 1 << 20
+
+// FetchResult is the verified outcome of FetchAndVerify: the parsed manifest,
+// the live tool directory it was checked against, and the authoritative
+// snapshot derived from the live data.
+type FetchResult struct {
+	Manifest            *types.PluginManifest
+	LiveTools           []*types.MCPTool
+	Snapshot            []types.PluginToolSnapshot
+	ToolsDigest         string
+	IdentityFingerprint string
+}
+
+// FetchAndVerify downloads a weknora.plugin/1 manifest and verifies that its
+// declared tool directory matches the LIVE endpoint. Order of operations is
+// security-relevant: both the manifest URL and the manifest-declared endpoint
+// must pass SSRF validation BEFORE any request is sent to them.
+func FetchAndVerify(ctx context.Context, manifestURL string, lister EndpointLister) (*FetchResult, error) {
+	// 0) Required-parameter gate, BEFORE any network I/O: a nil lister is a
+	// programming error and must fail fast instead of downloading first.
+	if lister == nil {
+		return nil, fmt.Errorf("endpoint lister is required")
+	}
+	// 1) SSRF gate on the manifest URL: http/https only, and reject
+	// localhost/loopback/private/reserved targets before any dial. The gate
+	// never inspects userinfo (Hostname() strips it), so a URL embedding
+	// credentials (https://user:pass@host/manifest.json) is refused here
+	// first — mirroring ValidateManifest's transport-endpoint rule
+	// (T01-R1-F3): the stdlib http client would otherwise send them as a
+	// Basic Auth header to the host, and the credential-bearing URL would
+	// be persisted into plugin_previews.manifest_url. The message does not
+	// echo the URL, which contains the credentials (OCR T01-R3-F2).
+	if u, err := url.Parse(manifestURL); err != nil {
+		return nil, fmt.Errorf("invalid manifest URL: %w", err)
+	} else if u.User != nil {
+		return nil, fmt.Errorf("manifest URL must not embed userinfo credentials")
+	}
+	if err := utils.ValidateURLForSSRF(manifestURL); err != nil {
+		return nil, fmt.Errorf("manifest URL rejected: %w", err)
+	}
+	// 2) Fetch with the SSRF-safe client, size- and time-bounded.
+	body, err := fetchLimited(ctx, manifestURL)
+	if err != nil {
+		return nil, err
+	}
+	// 3) Parse and validate the protocol document.
+	var manifest types.PluginManifest
+	if err := json.Unmarshal(body, &manifest); err != nil {
+		return nil, fmt.Errorf("invalid manifest JSON: %w", err)
+	}
+	if err := ValidateManifest(&manifest); err != nil {
+		return nil, err
+	}
+	if manifest.ContentDigest != "" && manifest.ContentDigest != ManifestContentDigest(&manifest) {
+		return nil, fmt.Errorf("manifest content_digest mismatch")
+	}
+	// 4) SSRF gate on the manifest-declared endpoint, then live verification.
+	if err := utils.ValidateURLForSSRF(manifest.Transport.Endpoint); err != nil {
+		return nil, fmt.Errorf("plugin endpoint rejected: %w", err)
+	}
+	live, err := lister(ctx, manifest.Transport.Type, manifest.Transport.Endpoint)
+	if err != nil {
+		if IsOAuthProtected(err) {
+			// The adapter already wrapped the MCP layer's OAuthRequiredError
+			// with the sentinel via double %w (both identities preserved).
+			// Pass the IDENTITY through, but bound the Error() echo: the
+			// chain's text is remote-controlled and unbounded (see below),
+			// and the handler concatenates it into the admin-facing 400
+			// body (OCR T01-OCR1-F14). Unwrap keeps errors.Is/As working —
+			// TestFetchAndVerifyPreservesOAuthErrorChain and
+			// TestFetchAndVerifyBoundsOAuthErrorEcho lock both halves.
+			return nil, &boundedEchoError{err: err, bounded: fmt.Sprintf("%.512s", err.Error())}
+		}
+		// The adapter surfaces the remote MCP server's JSON-RPC
+		// error.message verbatim, unbounded (tens of MB within the 30s
+		// timeout) — bound the echo before it reaches the admin-facing 400
+		// response (OCR T01-R4-F6). The OAuth sentinel branch above keeps
+		// its identity-preserving pass-through by contract; nothing
+		// downstream consumes this branch's error identity (verified: no
+		// errors.Is/As on "plugin endpoint verification failed" anywhere in
+		// internal/).
+		return nil, fmt.Errorf("plugin endpoint verification failed: %.512s", err)
+	}
+	snapshot, toolsDigest, err := BuildVerifiedSnapshot(&manifest, live)
+	if err != nil {
+		return nil, err
+	}
+	return &FetchResult{
+		Manifest:            &manifest,
+		LiveTools:           live,
+		Snapshot:            snapshot,
+		ToolsDigest:         toolsDigest,
+		IdentityFingerprint: IdentityFingerprint(manifest.PluginID, manifest.Version, manifest.Transport.Endpoint, toolsDigest),
+	}, nil
+}
+
+// fetchLimited downloads at most maxManifestBytes over the SSRF-safe client.
+// Only 2xx is accepted; redirects are re-validated by the client itself.
+func fetchLimited(ctx context.Context, manifestURL string) ([]byte, error) {
+	client := utils.NewSSRFSafeHTTPClient(utils.SSRFSafeHTTPClientConfig{
+		Timeout:           15 * time.Second,
+		MaxRedirects:      5,
+		DisableKeepAlives: true,
+	})
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, manifestURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("invalid manifest URL: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+	resp, err := client.Do(req)
+	if err != nil {
+		// *url.Error embeds the LAST request URL verbatim — on a redirect
+		// policy/hop-limit rejection that is the attacker-controlled
+		// Location target, NOT bounded by maxManifestBytes. Bound the echo
+		// (OCR T01-R4-F4); %.512s truncates by runes, so the worst case
+		// stays a few KB. The sentinel lets the handler classify the fault
+		// as server-side (跨任务转交 T01-R2-F2).
+		return nil, fmt.Errorf("%w: %.512s", ErrManifestFetchFailed, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		if resp.StatusCode >= http.StatusInternalServerError ||
+			resp.StatusCode == http.StatusTooManyRequests ||
+			resp.StatusCode == http.StatusRequestTimeout {
+			// Upstream 5xx IS a server-side fault — inside the sentinel's
+			// contract (handler → 503 + "retry later"). So are the two
+			// TRANSIENT 4xx answers: 429 throttling (the window passes,
+			// often signalled via Retry-After) and 408 request timeout —
+			// retrying CAN succeed, they are load conditions on the
+			// server, not the admin's wrong input (OCR T01-OCR3-F1).
+			return nil, fmt.Errorf("%w: unexpected status %d", ErrManifestFetchFailed, resp.StatusCode)
+		}
+		// A deterministic 4xx answer (wrong path → 404, auth-gated
+		// manifest → 401, gone → 410) is a DETERMINISTIC rejection of the
+		// admin's input: retrying can never succeed, so it must NOT wear
+		// the server-side-fault sentinel — a plain error (bounded, no
+		// untrusted echo: the status is an int) falls through to the
+		// handler's 400 branch (OCR T01-OCR2-F7).
+		return nil, fmt.Errorf("manifest endpoint answered status %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, int64(maxManifestBytes)+1))
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrManifestFetchFailed, err)
+	}
+	if len(body) > maxManifestBytes {
+		return nil, fmt.Errorf("manifest exceeds %d bytes", maxManifestBytes)
+	}
+	return body, nil
+}

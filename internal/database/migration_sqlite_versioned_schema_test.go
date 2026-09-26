@@ -41,6 +41,8 @@ var versionedSQLiteTables = []string{
 	"agent_release_submissions",
 	"agent_release_reviews",
 	"agent_releases",
+	"plugin_previews",      // 000110 twin of versioned 000189 (issue #108)
+	"plugin_installations", // 000111 twin of versioned 000190 (issue #110)
 }
 
 // versionedSQLiteColumns maps each existing table to the columns that the
@@ -54,6 +56,11 @@ var versionedSQLiteColumns = map[string][]string{
 	"embed_channels":     {"allow_memory"},                   // 000060
 	"mcp_oauth_tokens":   {"principal_type", "principal_id"}, // 000064
 	"mcp_tool_approvals": {"enabled"},                        // 000091
+	"mcp_services":       {"plugin_installation_id"},         // 000190
+	// 000111 twin of versioned 000190 (issue #110): manifest_url is the
+	// long-lived upgrade source (T14/T16 re-fetch from it) — pinned here so
+	// the column set is frozen once, never re-altered by later tasks.
+	"plugin_installations": {"manifest_url", "accepted_version", "endpoint_url", "tools_digest", "service_id", "drift_state", "state"}, // 000111
 	"tenant_skills": {
 		"catalog_id", "install_session_id", "install_message_id", "envs",
 	}, // 000086-000090
@@ -423,4 +430,66 @@ func copySQLiteMigrationsV4(t *testing.T, repoRoot string) string {
 		require.NoError(t, os.WriteFile(filepath.Join(destDir, name), data, 0o600))
 	}
 	return dest
+}
+
+// TestPluginInstallationsSQLiteDownCleansDerivedRowsKeepsManual（评审修复
+// 轮发现 2）：000111 twin 的 down 必须与 PG 000190 down 同口径清理插件
+// 派生行——mcp_tool_approvals / mcp_oauth_tokens / mcp_oauth_clients 都按
+// service_id 键控，而生产 SQLite DSN 不开 foreign_keys（mattn/go-sqlite3
+// 默认 OFF，container 的 migrateDSN 无 _foreign_keys=on），FK 声明不兜底，
+// 漏清任何一张都会在 DELETE mcp_services 后留下永不消亡的孤儿行。手工
+// 服务（plugin_installation_id NULL）与其派生行原样保留（GAP-3 回退安全）。
+func TestPluginInstallationsSQLiteDownCleansDerivedRowsKeepsManual(t *testing.T) {
+	repoRoot := sqliteRepoRoot(t)
+	chdirAndRestore(t, repoRoot)
+	dbPath := filepath.Join(t.TempDir(), "plugin-install-down.db")
+	require.NoError(t, RunMigrationsWithOptions("sqlite3://unused", MigrationOptions{SQLiteDBPath: dbPath}))
+	db := openSQLiteDB(t, dbPath)
+	db.SetMaxOpenConns(1)
+
+	// 一行手工服务 + 一行插件物化服务（回指 plugin_installations）。
+	_, err := db.Exec("INSERT INTO mcp_services (id, tenant_id, name, transport_type, enabled) VALUES (?, 1, 'manual-svc', 'http', 1)", "svc-manual")
+	require.NoError(t, err)
+	_, err = db.Exec("INSERT INTO mcp_services (id, tenant_id, name, transport_type, enabled, plugin_installation_id) VALUES (?, 1, 'plugin:com.example.p', 'http', 1, ?)",
+		"svc-plugin", "inst-plugin-1")
+	require.NoError(t, err)
+	_, err = db.Exec("INSERT INTO plugin_installations (id, tenant_id, plugin_id, name, manifest_url, accepted_version, transport_type, endpoint_url, tools_snapshot, tools_digest, service_id, drift_state, state, created_by) VALUES (?, 1, 'com.example.p', 'P', 'https://x.example.com/m.json', '1.0.0', 'http-streamable', 'https://x.example.com/mcp', '[]', 'digest', 'svc-plugin', 'none', 'active', 'admin')",
+		"inst-plugin-1")
+	require.NoError(t, err)
+	// 双方派生行：逐工具审批 + 成员个人 OAuth token + 动态客户端注册。
+	for _, svc := range []string{"svc-manual", "svc-plugin"} {
+		_, err = db.Exec("INSERT INTO mcp_tool_approvals (id, tenant_id, service_id, tool_name) VALUES (?, 1, ?, 'tool-a')", "appr-"+svc, svc)
+		require.NoError(t, err)
+		_, err = db.Exec("INSERT INTO mcp_oauth_tokens (id, tenant_id, user_id, service_id, principal_type, principal_id, access_token) VALUES (?, 1, 'user-1', ?, 'user', 'user-1', 'tok')",
+			"tok-"+svc, svc)
+		require.NoError(t, err)
+		_, err = db.Exec("INSERT INTO mcp_oauth_clients (id, tenant_id, service_id, client_id) VALUES (?, 1, ?, 'cid')", "cli-"+svc, svc)
+		require.NoError(t, err)
+	}
+
+	// 回退一步 = 执行 000111.down（只回插件安装族，不动更早迁移）。
+	require.NoError(t, runWorkbenchSQLiteMigrationSteps(repoRoot, dbPath, -1))
+
+	// 表与列已删。
+	require.False(t, sqliteTableExists(t, db, "plugin_installations"))
+	require.False(t, sqliteColumnExists(t, db, "mcp_services", "plugin_installation_id"))
+	// 插件物化服务与其全部派生行清空；手工服务与其派生行原样保留。
+	// （每表一条字面量 SQL、参数一律 ? 绑定。）
+	var n int
+	require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM mcp_services WHERE id = ?", "svc-plugin").Scan(&n))
+	require.Equal(t, 0, n, "plugin-materialized service must be removed by the down migration")
+	require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM mcp_services WHERE id = ?", "svc-manual").Scan(&n))
+	require.Equal(t, 1, n, "manual service must survive the down migration")
+	require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM mcp_tool_approvals WHERE service_id = ?", "svc-plugin").Scan(&n))
+	require.Equal(t, 0, n, "plugin-derived approval rows must be removed")
+	require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM mcp_oauth_tokens WHERE service_id = ?", "svc-plugin").Scan(&n))
+	require.Equal(t, 0, n, "member OAuth token rows keyed to the removed service must be cascade-cleaned (FK is OFF in production DSNs)")
+	require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM mcp_oauth_clients WHERE service_id = ?", "svc-plugin").Scan(&n))
+	require.Equal(t, 0, n, "dynamic-client rows keyed to the removed service must be cascade-cleaned")
+	require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM mcp_tool_approvals WHERE service_id = ?", "svc-manual").Scan(&n))
+	require.Equal(t, 1, n, "manual approval rows must survive")
+	require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM mcp_oauth_tokens WHERE service_id = ?", "svc-manual").Scan(&n))
+	require.Equal(t, 1, n, "manual OAuth token rows must survive")
+	require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM mcp_oauth_clients WHERE service_id = ?", "svc-manual").Scan(&n))
+	require.Equal(t, 1, n, "manual OAuth client rows must survive")
 }

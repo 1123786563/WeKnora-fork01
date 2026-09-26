@@ -5,6 +5,8 @@ import { Card, Status } from './ui.tsx';
 import { configurationPayload, type ConfigurationDraft, type ConfigurationSectionKey } from './surface.ts';
 import { configurationDraftFromRecord, credentialInput, credentialStatusAfterClear, newConfigurationDraft, savedConfigurationId } from './editor.ts';
 import './config-u.css';
+// OCR 终局第 2 轮 f01：OAuth 回调路径收敛共享模块（原内嵌字面量四处副本之一）。
+import { MCP_OAUTH_CALLBACK_PATH } from '../plugins/oauth.ts';
 
 type EditableSection = Exclude<ConfigurationSectionKey, 'skills'>;
 
@@ -72,7 +74,7 @@ export function ConfigurationEditor({ client, section, record, onSaved, onCancel
   async function authorizeMcp() {
     if (!draft.id) return; setBusy(true); setError(null);
     try {
-      const result = await client.configuration.mcp.oauth.authorizeUrl(draft.id, { redirectURI: `${window.location.origin}/api/v1/mcp-oauth/callback`, frontendRedirect: window.location.href });
+      const result = await client.configuration.mcp.oauth.authorizeUrl(draft.id, { redirectURI: `${window.location.origin}${MCP_OAUTH_CALLBACK_PATH}`, frontendRedirect: window.location.href });
       window.location.assign(result.authorizationUrl);
     } catch (cause) { setError(errorMessage(cause)); setBusy(false); }
   }

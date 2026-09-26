@@ -101,6 +101,7 @@ import (
 	sqliteRetrieverRepo "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/sqlite"
 	tencentVectorDBRepo "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/tencentvectordb"
 	weaviateRepo "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/weaviate"
+	"github.com/Tencent/WeKnora/internal/modules/plugins"
 	"github.com/Tencent/WeKnora/internal/modules/policy/storageallowlist"
 	pushnotification "github.com/Tencent/WeKnora/internal/modules/workbench/notification"
 	workbenchservice "github.com/Tencent/WeKnora/internal/modules/workbench/service/workbench"
@@ -289,6 +290,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewMCPServiceRepository))
 	must(container.Provide(repository.NewMCPToolApprovalRepository))
 	must(container.Provide(repository.NewMCPOAuthRepository))
+	must(container.Provide(repository.NewPluginRepository))
 	must(container.Provide(repository.NewTenantSandboxConfigRepository))
 	must(container.Provide(repository.NewTenantSkillRepository))
 	must(container.Provide(repository.NewTenantSubagentRepository))
@@ -317,6 +319,18 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	logger.Debugf(ctx, "[Container] Registering MCP manager...")
 	must(container.Provide(mcp.NewMCPManager))
 	must(container.Provide(mcp.NewOAuthManager))
+	// Plugin endpoint verification goes through the production MCP client
+	// stack; the adapter lives here in the composition root (modules must not
+	// import each other) — see internal/container/plugin_lister.go.
+	must(container.Provide(func(manager *mcp.MCPManager) plugins.EndpointLister {
+		return NewPluginMCPEndpointLister(manager)
+	}))
+	// Plugin install/state/uninstall flows close the manager's cached MCP
+	// clients when a materialized service row is hard-deleted or flipped
+	// (T06-OCR1-F7/F13) — same composition-root seam pattern as the lister.
+	must(container.Provide(func(manager *mcp.MCPManager) service.MCPClientCloser {
+		return func(serviceID string) { _ = manager.CloseClient(serviceID) }
+	}))
 
 	// Sandbox manager fallback is disabled; executable backends are resolved
 	// from named workspace configurations.
@@ -417,6 +431,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(service.NewMessageSuggestionService))
 	must(container.Provide(service.NewMCPServiceService))
 	must(container.Provide(service.NewMCPToolApprovalService))
+	must(container.Provide(service.NewPluginService))
 	must(container.Provide(service.NewCustomAgentService))
 	must(container.Provide(func() interfaces.ReleaseDependencyResolver { return tenantReleaseDependencyResolver{} }))
 	must(container.Provide(func(agents interfaces.CustomAgentService, versions repository.AgentVersionRepository) interfaces.AgentVersionService {
@@ -755,6 +770,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(handler.NewMCPServiceHandler))
 	must(container.Provide(handler.NewMCPCredentialsHandler))
 	must(container.Provide(handler.NewMCPOAuthHandler))
+	must(container.Provide(handler.NewPluginHandler))
 	must(container.Provide(handler.NewModelCredentialsHandler))
 	must(container.Provide(handler.NewWebSearchProviderCredentialsHandler))
 	must(container.Provide(handler.NewDataSourceCredentialsHandler))

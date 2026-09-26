@@ -30,6 +30,8 @@ const CloudSettingsPanel = lazy(() => import('./CloudSettingsPanel.tsx').then((m
 const EnvVarSettingsPanel = lazy(() => import('./EnvVarSettingsPanel.tsx').then((m) => ({ default: m.EnvVarSettingsPanel })));
 import { LiveSectionsPanel, PortedSectionsPanel, readInitialLocale, settingsT } from './PortedSectionsPanel.tsx';
 const McpSettingsPanel = lazy(() => import('./McpSettingsPanel.tsx').then((m) => ({ default: m.McpSettingsPanel })));
+// Issue #108 T03 — 插件清单预览面板（管理员粘贴清单 URL → 核验预览卡）。
+const PluginsSettingsPanel = lazy(() => import('./PluginsSettingsPanel.tsx').then((m) => ({ default: m.PluginsSettingsPanel })));
 const ModelSettingsPanel = lazy(() => import('./ModelSettingsPanel.tsx').then((m) => ({ default: m.ModelSettingsPanel })));
 const SandboxSettingsPanel = lazy(() => import('./SandboxSettingsPanel.tsx').then((m) => ({ default: m.SandboxSettingsPanel })));
 const SkillSettingsPanel = lazy(() => import('./SkillSettingsPanel.tsx').then((m) => ({ default: m.SkillSettingsPanel })));
@@ -161,6 +163,9 @@ export async function readSettingsSection(client: WeKnoraClient, key: string, te
     case 'models': return client.configuration.models.list();
     case 'members': return client.identity.tenants.members.list(tenantId, { pageSize: 50 });
     case 'mcp': return client.configuration.mcp.list();
+    // Issue #108 T03 — 插件面板无壳层预载：预览数据由管理员提交清单 URL
+    // 后经 POST /plugins/installations/preview 拉取（parser 先例：面板自持）。
+    case 'plugins': return Promise.resolve(null);
     case 'skills': return client.configuration.skills.list();
     case 'sandbox': return client.sandboxConfigurations.list();
     case 'system-global': return client.administration.settings.list();
@@ -450,6 +455,10 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
     const mcpPanel = key === 'mcp'
       ? <McpSettingsPanel client={client} role={role} initialServices={key in payloadCache ? (Array.isArray(sectionPayload) ? sectionPayload as never : []) : undefined} />
       : null;
+    // Issue #108 T03 — 插件预览面板：无预载载荷，提交清单 URL 后自拉。
+    const pluginsPanel = key === 'plugins'
+      ? <PluginsSettingsPanel client={client} role={role} />
+      : null;
     const modelPanel = key === 'models'
       ? <ModelSettingsPanel client={client} role={role} initialModels={Array.isArray(sectionPayload) ? sectionPayload as never : []} initialSubSection={initialSubSection ?? undefined} />
       : null;
@@ -469,7 +478,7 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
     const membersPanel = key === 'members'
       ? <TenantMembersPanel client={client} tenantId={tenantId} role={role} initialMembers={key in payloadCache ? sectionPayload as never : undefined} />
       : null;
-    const portedPanel = key === 'mcp' ? mcpPanel : key === 'models' ? modelPanel : key === 'sandbox' ? sandboxPanel : key === 'skills' ? skillPanel : key === 'members' ? membersPanel : key === 'runtime-queues' ? runtimeQueuesPanel : key === 'system-global' ? systemGlobalPanel : key === 'platform-api-keys' ? platformApiKeysPanel : key === 'system-audit-log' ? systemAuditPanel : PARTIALLY_PORTED_SECTIONS.has(key)
+    const portedPanel = key === 'plugins' ? pluginsPanel : key === 'mcp' ? mcpPanel : key === 'models' ? modelPanel : key === 'sandbox' ? sandboxPanel : key === 'skills' ? skillPanel : key === 'members' ? membersPanel : key === 'runtime-queues' ? runtimeQueuesPanel : key === 'system-global' ? systemGlobalPanel : key === 'platform-api-keys' ? platformApiKeysPanel : key === 'system-audit-log' ? systemAuditPanel : PARTIALLY_PORTED_SECTIONS.has(key)
       ? (key === 'sandbox'
           ? <PortedSectionsPanel section={key} />
           : <LiveSectionsPanel client={client} section={key} payload={sectionPayload} />)
@@ -517,7 +526,7 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
               Vue Settings.vue:88-94 renders ONLY the role-denied block when
               canSeeSection fails (the section component, and with it its
               h2/description, never mounts). */}
-          {key !== 'general' && key !== 'models' && key !== 'members' && key !== 'memory' && key !== 'mymemory' && key !== 'mcp' && key !== 'skills' && key !== 'envvars' && key !== 'system-global' && key !== 'weknoracloud' && key !== 'system-audit-log' ? (
+          {key !== 'general' && key !== 'models' && key !== 'members' && key !== 'memory' && key !== 'mymemory' && key !== 'mcp' && key !== 'plugins' && key !== 'skills' && key !== 'envvars' && key !== 'system-global' && key !== 'weknoracloud' && key !== 'system-audit-log' ? (
             /* Vue panels own their section-header (TenantInfo.vue:682-697 et
                al.): 20px/600 h2 with an 8px gap, 14px/1.5 secondary
                description, then a bare 32px margin — no divider line. */
@@ -624,7 +633,7 @@ const NAV_GROUP_DEFS: ReadonlyArray<{ key: string; labelKey: string; sections: r
   { key: 'workspace', labelKey: 'settings.navGroups.workspace', sections: ['tenant', 'members', 'chathistory', 'memory'] },
   { key: 'models_runtime', labelKey: 'settings.navGroups.modelsRuntime', sections: ['models', 'ollama', 'weknoracloud'] },
   { key: 'integrations', labelKey: 'integrations.title', sections: INTEGRATION_SECTIONS.map((item) => `integration-${item.key}`) },
-  { key: 'data_extensions', labelKey: 'settings.navGroups.dataExtensions', sections: ['vectorstore', 'parser', 'storage', 'sandbox', 'skills', 'websearch', 'mcp'] },
+  { key: 'data_extensions', labelKey: 'settings.navGroups.dataExtensions', sections: ['vectorstore', 'parser', 'storage', 'sandbox', 'skills', 'websearch', 'mcp', 'plugins'] },
   { key: 'system_administration', labelKey: 'settings.navGroups.systemAdministration', sections: ['system-global', 'runtime-queues', 'platform-api-keys', 'system-audit-log'] },
   { key: 'platform', labelKey: 'settings.navGroups.platform', sections: ['system'] },
 ];
@@ -691,7 +700,17 @@ export interface SettingsNavGroupView {
 
 export function settingsSectionLabel(locale: Locale, key: string): string {
   const integrationTab = integrationTabForSection(key);
+  // 跨任务转交 T08-OCR1-F1（T08-OCR2-F6 同指认的缺口①）：integrations 页新
+  // 增的 plugins tab 让侧边栏多出 integration-plugins 分区，而 @weknora/i18n
+  // 主表（generated/integrations.ts，Vue locales 逐字移植）没有
+  // integrations.tabs.plugins 词条——formatMessage 缺 key 回显 key 本身，全员
+  // 侧边栏会露出裸 key。比照下方 T03 先例做直译兜底，i18n 词条落位后迁回。
+  if (integrationTab === 'plugins') return locale === 'zh-CN' ? '插件' : 'Plugins';
   if (integrationTab) return formatMessage(locale, `integrations.tabs.${integrationTab}`);
+  // Issue #108 T03 — plugins 分区标签直译：packages/i18n 不在本任务文件所有权
+  // 内（无 settings.plugins* key，formatMessage 缺 key 会回显 key 本身），
+  // 待 i18n key 落位后迁入 SECTION_LABEL_KEYS。
+  if (key === 'plugins') return locale === 'zh-CN' ? '插件' : 'Plugins';
   const labelKey = SECTION_LABEL_KEYS[key];
   if (labelKey) return formatMessage(locale, labelKey);
   return settingsSectionMeta(key)?.title ?? key;
@@ -716,6 +735,7 @@ const NAV_ICON_NAMES: Record<string, string> = {
   // SKILL_ICON（frontend/src/types/mention.ts:4）
   skills: 'system-code',
   mcp: 'tools',
+  plugins: 'extension',
   system: 'info-circle',
   'system-global': 'server',
   'runtime-queues': 'queue',

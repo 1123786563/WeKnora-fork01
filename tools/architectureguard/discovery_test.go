@@ -181,13 +181,19 @@ func TestFuncDeclNamesRecursive(t *testing.T) {
 // 实测（代码为事实源）：564 literal + 69 + 0 = 633 —— 文档的 line-sweep 在
 // routes_knowledge.go 少数 1 个 GET（该文件在 f4acb2154 基线修正时即为 90 处调用，
 // 文档表记 89；全仓仅 GET 222 vs 文档 221 一处之差，其余方法全部吻合）。
+// issue #106 routes_plugins.go：首轮门控修复（dfc295b4e）时仅 1 条
+// /plugins/installations/preview（565 literal + 69 + 0 = 634）；其后 T06-T19
+// 治理端点落地，现共 15 条（全部 literal、全部 default-deny X-API-Key，apiKeyRoute
+// 不变）：confirm/disable/enable/upgrade-preview/upgrade-accept/drift×3/
+// tools×2/DELETE installations/:id/列表/详情/connections/me —— +14 条：
+// 579 literal + 69 + 0 = 648。
 // worker 23+23 两侧一致；hooks 58。 ----
 
 const (
-	wantRouteLiteral  = 564
+	wantRouteLiteral  = 579
 	wantRouteAPIKey   = 69
 	wantRouteHandle   = 0
-	wantRouteTotal    = 633
+	wantRouteTotal    = 648
 	wantWorkersPerMix = 23
 	wantHooks         = 58
 )

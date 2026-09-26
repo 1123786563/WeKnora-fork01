@@ -159,6 +159,14 @@ export interface IntegrationsPageProps {
    * and false (release build) both hide the entry (SP14 Task 2 dangling-link fix).
    */
   swaggerEnabled?: boolean;
+  /**
+   * plugins tab 的内容面板挂载插槽（跨任务转交 T08-OCR2-F5）。packages/views
+   * 不能反向 import apps/web 的 PluginsPanel（依赖方向 apps/web ->
+   * packages/views），面板由 apps/web 的集成路由页经此插槽传入
+   *（IntegrationsRoutePage 已接线）；仅当某个复用方未传插槽时，该 tab 才
+   * 只渲染 heading+description。
+   */
+  pluginsSlot?: React.ReactNode;
 }
 
 function initialLocale(): Locale {
@@ -170,7 +178,7 @@ function initialLocale(): Locale {
   }
 }
 
-export function IntegrationsPage({ embedded = false, embedChannels, imChannels, apiBaseUrl, apiKeys = [], apiKeysLoading = false, activeTab, onTabChange, initialTab = 'embed', loading = false, error, onReload, onOpenEmbed, onOpenApiPlayground, actions = {}, locale: localeProp, agents = [], knowledgeBases = [], canEdit = true, swaggerEnabled }: IntegrationsPageProps) {
+export function IntegrationsPage({ embedded = false, embedChannels, imChannels, apiBaseUrl, apiKeys = [], apiKeysLoading = false, activeTab, onTabChange, initialTab = 'embed', loading = false, error, onReload, onOpenEmbed, onOpenApiPlayground, actions = {}, locale: localeProp, agents = [], knowledgeBases = [], canEdit = true, swaggerEnabled, pluginsSlot }: IntegrationsPageProps) {
   const [locale, setLocale] = useState<Locale>(localeProp ?? initialLocale());
   useEffect(() => { if (localeProp) setLocale(localeProp); }, [localeProp]);
   const t = (key: string, values?: Record<string, string | number>) => integrationsT(locale, key, values);
@@ -627,6 +635,10 @@ export function IntegrationsPage({ embedded = false, embedChannels, imChannels, 
           /> : null}
         /> : null}
         {!loading && !error && tab === 'api' ? <ApiIntegrationPanel apiBaseUrl={apiBaseUrl} swaggerEnabled={swaggerEnabled} actions={actions} principalMode={principalMode} setPrincipalMode={setPrincipalMode} requireDirectHeader={requireDirectHeader} setRequireDirectHeader={setRequireDirectHeader} hmacSecret={hmacSecret} setHmacSecret={setHmacSecret} externalUserId={externalUserId} setExternalUserId={setExternalUserId} principalToken={principalToken} onSavePrincipal={savePrincipal} onCreatePrincipalToken={createPrincipalToken} apiKey={apiKey} setApiKey={setApiKey} sessionId={sessionId} setSessionId={setSessionId} playgroundPath={playgroundPath} setPlaygroundPath={setPlaygroundPath} playgroundBody={playgroundBody} setPlaygroundBody={setPlaygroundBody} playgroundOutput={playgroundOutput} onRunPlayground={runPlayground} busy={busy} apiKeys={apiKeys} apiKeysLoading={apiKeysLoading} freshApiKeyId={freshApiKeyId} knowledgeBases={knowledgeBases} showApiKeyForm={showApiKeyForm} setShowApiKeyForm={setShowApiKeyForm} onCreateApiKey={createApiKey} onRevokeApiKey={revokeApiKey} onCopyApiKey={(key) => { void navigator.clipboard.writeText(key.api_key).catch(() => undefined); }} onOpenApiPlayground={onOpenApiPlayground} t={t} /> : null}
+        {/* 跨任务转交 T08-OCR2-F5：plugins tab 内容经 view 层插槽挂载——面板
+            本体在 apps/web/src/integrations/PluginsPanel.tsx（成员只读发现面，
+            T08/T12 建成），由集成路由页传入，避免 packages/views 反向依赖 apps。 */}
+        {!loading && !error && tab === 'plugins' ? pluginsSlot ?? null : null}
         {!loading && !error && section.external ? <ExternalLandingPanel tab={tab} locale={locale} externalUrl={section.externalUrl} apiBaseUrl={apiBaseUrl} onOpenApiSettings={() => setTab('api')} t={t} /> : null}
       </section>
     </main>

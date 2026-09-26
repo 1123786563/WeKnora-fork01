@@ -1,0 +1,782 @@
+import type { ClientRequest } from './client.ts';
+
+/**
+ * Plugin preview + installation API — Issue #108/#110 manifest preview,
+ * confirm-install, discovery list and enable/disable governance
+ * (internal/handler/plugin.go; response DTOs internal/handler/dto/plugin.go).
+ *
+ * T08: confirmInstallation/listInstallations/getInstallation/setInstallationState
+ * join previewInstallation here as the SINGLE source of the wire-format parsers
+ * (the settings panel's former mirror copy was deleted in favour of this
+ * module — deep-path import precedent SandboxSettingsPanel.tsx). Mounting the
+ * domain on WeKnoraClient itself (client.plugins via index.ts) stays deferred
+ * to a later slice that owns client.ts/index.ts wiring; panels construct the
+ * API from the client's exposed `request` transport.
+ */
+
+/** One verified tool row of the admin preview table (dto.PluginPreviewTool). */
+export interface PluginPreviewTool {
+  readonly name: string;
+  readonly description: string;
+  readonly readOnly: boolean;
+  readonly requiresPersonalAuth: boolean;
+  readonly scopes: readonly string[];
+}
+
+/** Verified preview payload (dto.PluginPreviewResponse) in camelCase. */
+export interface PluginPreviewResult {
+  readonly previewId: string;
+  readonly pluginId: string;
+  readonly version: string;
+  readonly name: string;
+  readonly description: string;
+  readonly transportType: string;
+  readonly endpointUrl: string;
+  readonly tools: readonly PluginPreviewTool[];
+  readonly identityFingerprint: string;
+  readonly expiresAt: string;
+}
+
+const PREVIEW_PATH = '/api/v1/plugins/installations/preview';
+
+type RecordValue = Record<string, unknown>;
+
+function record(value: unknown, path: string): RecordValue {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) throw new Error(`${path} must be an object`);
+  return value as RecordValue;
+}
+
+function required(value: unknown, path: string): string {
+  if (typeof value !== 'string' || value.trim() === '') throw new Error(`${path} must be a non-empty string`);
+  return value;
+}
+
+function optionalText(value: unknown, path: string): string {
+  // dto.PluginPreviewResponse.Description has no omitempty; the manifest
+  // protocol allows an empty description, so "" is valid — only the type is
+  // enforced here.
+  if (typeof value !== 'string') throw new Error(`${path} must be a string`);
+  return value;
+}
+
+function flag(value: unknown, path: string): boolean {
+  if (typeof value !== 'boolean') throw new Error(`${path} must be a boolean`);
+  return value;
+}
+
+function scopeList(value: unknown, path: string): string[] {
+  // Go nil slices serialize as JSON null; a verified tool may declare none.
+  if (value === null || value === undefined) return [];
+  if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) throw new Error(`${path} must be a string array`);
+  return value as string[];
+}
+
+function parsePreviewTool(value: unknown, path: string): PluginPreviewTool {
+  const row = record(value, path);
+  return {
+    name: required(row.name, `${path}.name`),
+    description: optionalText(row.description, `${path}.description`),
+    readOnly: flag(row.read_only, `${path}.read_only`),
+    requiresPersonalAuth: flag(row.requires_personal_auth, `${path}.requires_personal_auth`),
+    scopes: scopeList(row.scopes, `${path}.scopes`),
+  };
+}
+
+/**
+ * Strict parser for the plugin preview envelope: rejects non-success
+ * envelopes and any missing/malformed preview field before untrusted remote
+ * data reaches caller code. The tool table intentionally carries metadata
+ * only — the input schema itself never crosses the wire (the backend rejects
+ * the whole preview on a digest mismatch), so no schema text can flow in here.
+ */
+export function parsePluginPreview(value: unknown): PluginPreviewResult {
+  const envelope = record(value, PREVIEW_PATH);
+  if (envelope.success !== true) throw new Error(`${PREVIEW_PATH}.success must be true`);
+  const data = record(envelope.data, `${PREVIEW_PATH}.data`);
+  const transportType = required(data.transport_type, `${PREVIEW_PATH}.data.transport_type`);
+  if (transportType !== 'http-streamable' && transportType !== 'sse') {
+    throw new Error(`${PREVIEW_PATH}.data.transport_type is invalid`);
+  }
+  const tools = data.tools;
+  if (!Array.isArray(tools)) throw new Error(`${PREVIEW_PATH}.data.tools must be an array`);
+  return {
+    previewId: required(data.preview_id, `${PREVIEW_PATH}.data.preview_id`),
+    pluginId: required(data.plugin_id, `${PREVIEW_PATH}.data.plugin_id`),
+    version: required(data.version, `${PREVIEW_PATH}.data.version`),
+    name: required(data.name, `${PREVIEW_PATH}.data.name`),
+    description: optionalText(data.description, `${PREVIEW_PATH}.data.description`),
+    transportType,
+    endpointUrl: required(data.endpoint_url, `${PREVIEW_PATH}.data.endpoint_url`),
+    tools: tools.map((item, index) => parsePreviewTool(item, `${PREVIEW_PATH}.data.tools[${index}]`)),
+    identityFingerprint: required(data.identity_fingerprint, `${PREVIEW_PATH}.data.identity_fingerprint`),
+    expiresAt: required(data.expires_at, `${PREVIEW_PATH}.data.expires_at`),
+  };
+}
+
+export interface PluginsApi {
+  /** POST the admin-pasted manifest URL; resolves to the verified preview. */
+  previewInstallation(manifestUrl: string, signal?: AbortSignal): Promise<PluginPreviewResult>;
+  /** POST the reviewed preview id; consumes the preview and installs the pinned version (Admin). */
+  confirmInstallation(previewId: string, signal?: AbortSignal): Promise<PluginInstallation>;
+  /** GET the tenant's installed plugins (Viewer+ discovery, tenant-scoped server-side). */
+  listInstallations(signal?: AbortSignal): Promise<PluginInstallationSummary[]>;
+  /** GET one installation's full view (Viewer+; foreign-tenant ids read as errors server-side). */
+  getInstallation(installationId: string, signal?: AbortSignal): Promise<PluginInstallation>;
+  /** POST disable/enable for one installation (Admin); state is 'active' | 'disabled'. */
+  setInstallationState(installationId: string, state: 'active' | 'disabled', signal?: AbortSignal): Promise<PluginInstallation>;
+  /**
+   * POST the bodyless read-only upgrade-preview (Admin): re-fetches the
+   * installation's manifest source, verifies the candidate and resolves to the
+   * five-dimension diff. The accepted version never changes server-side.
+   */
+  previewUpgrade(installationId: string, signal?: AbortSignal): Promise<PluginUpgradePreview>;
+  /**
+   * POST the upgrade accept (Admin, OCR R1 F19): switches the installation to
+   * the previewed candidate — {candidate_fingerprint} binds the accept to the
+   * exact diff the admin reviewed (a candidate that moved on is rejected
+   * server-side with 409). Resolves to the refreshed installation.
+   */
+  acceptUpgrade(installationId: string, candidateFingerprint: string, signal?: AbortSignal): Promise<PluginInstallation>;
+  /**
+   * GET the persisted drift report (Viewer+, OCR R1 F23): drift state, the
+   * persisted detail when one exists and the accepted snapshot's tool names.
+   */
+  getDrift(installationId: string, signal?: AbortSignal): Promise<PluginDriftReport>;
+  /** POST an on-demand drift re-check (Admin, OCR R1 F23): live endpoint re-verified against the accepted snapshot. */
+  checkDrift(installationId: string, signal?: AbortSignal): Promise<PluginDriftReport>;
+  /**
+   * POST the drift resolution (Admin, OCR R1 F23): re-verify and REBASE the
+   * accepted snapshot onto the live directory (version/endpoint unchanged,
+   * digest recomputed, drift cleared; tools new to the directory land
+   * conservatively as write-class Enabled=false). An unreachable endpoint is
+   * refused with zero writes.
+   */
+  resolveDrift(installationId: string, signal?: AbortSignal): Promise<PluginDriftReport>;
+  /**
+   * GET the member's personal connection view of one installation (Viewer+):
+   * the three-state OAuth verdict plus the legacy MCP OAuth endpoint paths
+   * mapped onto the materialized service_id. Never carries token material.
+   */
+  getMyConnection(installationId: string, signal?: AbortSignal): Promise<PluginMyConnection>;
+  /**
+   * GET one installation's tool governance list (Viewer+): every snapshot
+   * tool with DEFINITE enabled / require_approval / disabled_reason verdicts
+   * (the authoritative approval view — the detail payload omits require_approval).
+   */
+  listInstallationTools(installationId: string, signal?: AbortSignal): Promise<PluginToolPolicyRow[]>;
+  /**
+   * PUT one tool's policy patch (Admin): {enabled?, require_approval?} —
+   * omitted fields keep their values, at least one per patch. Resolves to the
+   * refreshed governance list.
+   */
+  setInstallationToolPolicy(
+    installationId: string,
+    toolName: string,
+    patch: PluginToolPolicyPatch,
+    signal?: AbortSignal,
+  ): Promise<PluginToolPolicyRow[]>;
+}
+
+/** Build the plugins domain API over the shared client request transport. */
+export function createPluginsApi(request: (input: ClientRequest) => Promise<unknown>): PluginsApi {
+  return {
+    async previewInstallation(manifestUrl: string, signal?: AbortSignal): Promise<PluginPreviewResult> {
+      const url = manifestUrl.trim();
+      if (url === '') throw new Error('manifestUrl must not be empty');
+      return parsePluginPreview(await request({
+        method: 'POST',
+        path: PREVIEW_PATH,
+        body: { manifest_url: url },
+        ...(signal === undefined ? {} : { signal }),
+      }));
+    },
+    async confirmInstallation(previewId: string, signal?: AbortSignal): Promise<PluginInstallation> {
+      const id = previewId.trim();
+      if (id === '') throw new Error('previewId must not be empty');
+      return parsePluginInstallation(await request({
+        method: 'POST',
+        path: INSTALLATIONS_PATH,
+        body: { preview_id: id },
+        ...(signal === undefined ? {} : { signal }),
+      }));
+    },
+    async listInstallations(signal?: AbortSignal): Promise<PluginInstallationSummary[]> {
+      return parsePluginInstallations(await request({
+        method: 'GET',
+        path: INSTALLATIONS_PATH,
+        ...(signal === undefined ? {} : { signal }),
+      }));
+    },
+    async getInstallation(installationId: string, signal?: AbortSignal): Promise<PluginInstallation> {
+      const id = installationId.trim();
+      if (id === '') throw new Error('installationId must not be empty');
+      return parsePluginInstallation(await request({
+        method: 'GET',
+        path: `${INSTALLATIONS_PATH}/${encodeURIComponent(id)}`,
+        ...(signal === undefined ? {} : { signal }),
+      }));
+    },
+    async setInstallationState(installationId: string, state: 'active' | 'disabled', signal?: AbortSignal): Promise<PluginInstallation> {
+      const id = installationId.trim();
+      if (id === '') throw new Error('installationId must not be empty');
+      return parsePluginInstallation(await request({
+        method: 'POST',
+        path: `${INSTALLATIONS_PATH}/${encodeURIComponent(id)}/${state === 'disabled' ? 'disable' : 'enable'}`,
+        ...(signal === undefined ? {} : { signal }),
+      }));
+    },
+    async previewUpgrade(installationId: string, signal?: AbortSignal): Promise<PluginUpgradePreview> {
+      const id = installationId.trim();
+      if (id === '') throw new Error('installationId must not be empty');
+      return parsePluginUpgradePreview(await request({
+        method: 'POST',
+        path: `${INSTALLATIONS_PATH}/${encodeURIComponent(id)}/upgrade-preview`,
+        ...(signal === undefined ? {} : { signal }),
+      }));
+    },
+    async acceptUpgrade(installationId: string, candidateFingerprint: string, signal?: AbortSignal): Promise<PluginInstallation> {
+      const id = installationId.trim();
+      if (id === '') throw new Error('installationId must not be empty');
+      const fingerprint = candidateFingerprint.trim();
+      if (fingerprint === '') throw new Error('candidateFingerprint must not be empty');
+      return parsePluginInstallation(await request({
+        method: 'POST',
+        path: `${INSTALLATIONS_PATH}/${encodeURIComponent(id)}/upgrade-accept`,
+        body: { candidate_fingerprint: fingerprint },
+        ...(signal === undefined ? {} : { signal }),
+      }));
+    },
+    async getDrift(installationId: string, signal?: AbortSignal): Promise<PluginDriftReport> {
+      const id = installationId.trim();
+      if (id === '') throw new Error('installationId must not be empty');
+      return parsePluginDriftReport(await request({
+        method: 'GET',
+        path: `${INSTALLATIONS_PATH}/${encodeURIComponent(id)}/drift`,
+        ...(signal === undefined ? {} : { signal }),
+      }));
+    },
+    async checkDrift(installationId: string, signal?: AbortSignal): Promise<PluginDriftReport> {
+      const id = installationId.trim();
+      if (id === '') throw new Error('installationId must not be empty');
+      return parsePluginDriftReport(await request({
+        method: 'POST',
+        path: `${INSTALLATIONS_PATH}/${encodeURIComponent(id)}/drift/check`,
+        ...(signal === undefined ? {} : { signal }),
+      }));
+    },
+    async resolveDrift(installationId: string, signal?: AbortSignal): Promise<PluginDriftReport> {
+      const id = installationId.trim();
+      if (id === '') throw new Error('installationId must not be empty');
+      return parsePluginDriftReport(await request({
+        method: 'POST',
+        path: `${INSTALLATIONS_PATH}/${encodeURIComponent(id)}/drift/resolve`,
+        ...(signal === undefined ? {} : { signal }),
+      }));
+    },
+    async getMyConnection(installationId: string, signal?: AbortSignal): Promise<PluginMyConnection> {
+      const id = installationId.trim();
+      if (id === '') throw new Error('installationId must not be empty');
+      return parsePluginMyConnection(await request({
+        method: 'GET',
+        path: `${INSTALLATIONS_PATH}/${encodeURIComponent(id)}/connections/me`,
+        ...(signal === undefined ? {} : { signal }),
+      }));
+    },
+    async listInstallationTools(installationId: string, signal?: AbortSignal): Promise<PluginToolPolicyRow[]> {
+      const id = installationId.trim();
+      if (id === '') throw new Error('installationId must not be empty');
+      return parsePluginToolPolicyRows(await request({
+        method: 'GET',
+        path: `${INSTALLATIONS_PATH}/${encodeURIComponent(id)}/tools`,
+        ...(signal === undefined ? {} : { signal }),
+      }));
+    },
+    async setInstallationToolPolicy(
+      installationId: string,
+      toolName: string,
+      patch: PluginToolPolicyPatch,
+      signal?: AbortSignal,
+    ): Promise<PluginToolPolicyRow[]> {
+      const id = installationId.trim();
+      if (id === '') throw new Error('installationId must not be empty');
+      const tool = toolName.trim();
+      if (tool === '') throw new Error('toolName must not be empty');
+      // 客户端前置镜像服务端 400（"enabled or require_approval is required"）：
+      // 空 patch 不发请求。只发显式提供的字段——省略键 = 服务端保持原值。
+      const body: { enabled?: boolean; require_approval?: boolean } = {};
+      if (patch.enabled !== undefined) body.enabled = patch.enabled;
+      if (patch.requireApproval !== undefined) body.require_approval = patch.requireApproval;
+      if (body.enabled === undefined && body.require_approval === undefined) {
+        throw new Error('enabled or require_approval is required');
+      }
+      return parsePluginToolPolicyRows(await request({
+        method: 'PUT',
+        path: `${INSTALLATIONS_PATH}/${encodeURIComponent(id)}/tools/${encodeURIComponent(tool)}/policy`,
+        body,
+        ...(signal === undefined ? {} : { signal }),
+      }));
+    },
+  };
+}
+
+// ---- T08: installation envelopes (dto.PluginInstallationResponse / .PluginInstallationSummary,
+// internal/handler/dto/plugin.go; responses internal/handler/plugin.go confirm/state/get/list) ----
+
+/** One tool row of an installation directory (dto.PluginInstallationTool). */
+export interface PluginInstallationTool {
+  readonly name: string;
+  readonly description: string;
+  readonly readOnly: boolean;
+  readonly requiresPersonalAuth: boolean;
+  readonly scopes: readonly string[];
+  /**
+   * dto.Enabled is a NON-pointer bool without omitempty — the wire always
+   * carries a definite verdict (the handler resolves a missing policy row to
+   * ReadOnly; the field omitted by omitempty on the detail payload is
+   * require_approval, not this one). Parsed strictly as boolean
+   * (OCR R1 F21): the old boolean|null shape described a pre-T18 contract
+   * whose null branch is unreachable.
+   */
+  readonly enabled: boolean;
+}
+
+/** Full installation payload (confirm / state change / get-by-id) in camelCase. */
+export interface PluginInstallation {
+  readonly installationId: string;
+  readonly pluginId: string;
+  readonly name: string;
+  readonly description: string;
+  readonly version: string;
+  readonly state: 'active' | 'disabled';
+  readonly driftState: 'none' | 'detected';
+  readonly transportType: 'http-streamable' | 'sse';
+  readonly endpointUrl: string;
+  readonly serviceId: string;
+  readonly tools: readonly PluginInstallationTool[];
+}
+
+/** One row of the member-facing list (dto.PluginInstallationSummary) in camelCase. */
+export interface PluginInstallationSummary {
+  readonly installationId: string;
+  readonly pluginId: string;
+  readonly name: string;
+  readonly version: string;
+  readonly state: 'active' | 'disabled';
+  readonly driftState: 'none' | 'detected';
+  readonly requiresPersonalAuth: boolean;
+  readonly toolCount: number;
+}
+
+const INSTALLATIONS_PATH = '/api/v1/plugins/installations';
+
+const INSTALLATION_STATES = ['active', 'disabled'] as const;
+const DRIFT_STATES = ['none', 'detected'] as const;
+
+function installationState(value: unknown, path: string): 'active' | 'disabled' {
+  if (typeof value !== 'string' || !INSTALLATION_STATES.includes(value as 'active' | 'disabled')) {
+    throw new Error(`${path} must be one of ${INSTALLATION_STATES.join('|')}`);
+  }
+  return value as 'active' | 'disabled';
+}
+
+function driftState(value: unknown, path: string): 'none' | 'detected' {
+  if (typeof value !== 'string' || !DRIFT_STATES.includes(value as 'none' | 'detected')) {
+    throw new Error(`${path} must be one of ${DRIFT_STATES.join('|')}`);
+  }
+  return value as 'none' | 'detected';
+}
+
+function toolCount(value: unknown, path: string): number {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
+    throw new Error(`${path} must be a non-negative integer`);
+  }
+  return value;
+}
+
+/** Tool-name list normalized to [] (never null) — mirrors the [] wire shape
+ * the drift handler guarantees (OCR R1 F09) so consumers can .map/.length. */
+function nameList(value: unknown, path: string): string[] {
+  if (value === null || value === undefined) return [];
+  if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) {
+    throw new Error(`${path} must be a string array`);
+  }
+  return value;
+}
+
+function parseInstallationTool(value: unknown, path: string): PluginInstallationTool {
+  const row = record(value, path);
+  return {
+    name: required(row.name, `${path}.name`),
+    description: optionalText(row.description, `${path}.description`),
+    readOnly: flag(row.read_only, `${path}.read_only`),
+    requiresPersonalAuth: flag(row.requires_personal_auth, `${path}.requires_personal_auth`),
+    scopes: scopeList(row.scopes, `${path}.scopes`),
+    enabled: flag(row.enabled, `${path}.enabled`),
+  };
+}
+
+/**
+ * Strict parser for the single-installation envelope (confirm, disable/enable,
+ * get-by-id all return dto.PluginInstallationResponse). Metadata only — the
+ * input schema itself never crosses the wire.
+ */
+export function parsePluginInstallation(value: unknown): PluginInstallation {
+  const envelope = record(value, INSTALLATIONS_PATH);
+  if (envelope.success !== true) throw new Error(`${INSTALLATIONS_PATH}.success must be true`);
+  const data = record(envelope.data, `${INSTALLATIONS_PATH}.data`);
+  const transportType = required(data.transport_type, `${INSTALLATIONS_PATH}.data.transport_type`);
+  if (transportType !== 'http-streamable' && transportType !== 'sse') {
+    throw new Error(`${INSTALLATIONS_PATH}.data.transport_type is invalid`);
+  }
+  const tools = data.tools;
+  if (!Array.isArray(tools)) throw new Error(`${INSTALLATIONS_PATH}.data.tools must be an array`);
+  return {
+    installationId: required(data.installation_id, `${INSTALLATIONS_PATH}.data.installation_id`),
+    pluginId: required(data.plugin_id, `${INSTALLATIONS_PATH}.data.plugin_id`),
+    name: required(data.name, `${INSTALLATIONS_PATH}.data.name`),
+    description: optionalText(data.description, `${INSTALLATIONS_PATH}.data.description`),
+    version: required(data.version, `${INSTALLATIONS_PATH}.data.version`),
+    state: installationState(data.state, `${INSTALLATIONS_PATH}.data.state`),
+    driftState: driftState(data.drift_state, `${INSTALLATIONS_PATH}.data.drift_state`),
+    transportType,
+    endpointUrl: required(data.endpoint_url, `${INSTALLATIONS_PATH}.data.endpoint_url`),
+    // OCR R1 F18: an installation confirmed BEFORE the materialized service
+    // was persisted answers with service_id "" — a legal 200 (the server's
+    // healing lookup only runs on the connection view). Only the type is
+    // enforced, same reading as parsePluginMyConnection (T12-OCR1-F3): a
+    // strict required() made the panel throw AFTER a successful disable/
+    // enable call, reporting an error for an operation that had taken effect.
+    serviceId: optionalText(data.service_id, `${INSTALLATIONS_PATH}.data.service_id`),
+    tools: tools.map((item, index) => parseInstallationTool(item, `${INSTALLATIONS_PATH}.data.tools[${index}]`)),
+  };
+}
+
+/**
+ * Strict parser for the member-facing list envelope: data is an ARRAY of
+ * dto.PluginInstallationSummary rows (handler ListInstallations).
+ */
+export function parsePluginInstallations(value: unknown): PluginInstallationSummary[] {
+  const envelope = record(value, INSTALLATIONS_PATH);
+  if (envelope.success !== true) throw new Error(`${INSTALLATIONS_PATH}.success must be true`);
+  const data = envelope.data;
+  if (!Array.isArray(data)) throw new Error(`${INSTALLATIONS_PATH}.data must be an array`);
+  return data.map((item, index) => {
+    const row = record(item, `${INSTALLATIONS_PATH}.data[${index}]`);
+    return {
+      installationId: required(row.installation_id, `${INSTALLATIONS_PATH}.data[${index}].installation_id`),
+      pluginId: required(row.plugin_id, `${INSTALLATIONS_PATH}.data[${index}].plugin_id`),
+      name: required(row.name, `${INSTALLATIONS_PATH}.data[${index}].name`),
+      version: required(row.version, `${INSTALLATIONS_PATH}.data[${index}].version`),
+      state: installationState(row.state, `${INSTALLATIONS_PATH}.data[${index}].state`),
+      driftState: driftState(row.drift_state, `${INSTALLATIONS_PATH}.data[${index}].drift_state`),
+      requiresPersonalAuth: flag(row.requires_personal_auth, `${INSTALLATIONS_PATH}.data[${index}].requires_personal_auth`),
+      toolCount: toolCount(row.tool_count, `${INSTALLATIONS_PATH}.data[${index}].tool_count`),
+    };
+  });
+}
+
+// ---- T15: upgrade-preview envelope (dto.PluginUpgradePreviewResponse, Issue #114;
+// handler internal/handler/plugin.go PreviewUpgrade; five-dimension diff DTOs above it) ----
+
+/** One tool snapshot row inside an upgrade-preview diff (dto.PluginToolSnapshotDTO). */
+export interface PluginUpgradeToolSnapshot {
+  readonly name: string;
+  readonly description: string;
+  readonly inputSchemaDigest: string;
+  readonly readOnly: boolean;
+  readonly requiresPersonalAuth: boolean;
+  readonly scopes: readonly string[];
+}
+
+/**
+ * One changed tool with the four independent change-reason badges the admin
+ * reviews separately: schema / scope / 读写分类 / 授权面
+ * (dto.PluginToolChangeDTO), plus before/after snapshots for drill-down.
+ */
+export interface PluginUpgradeToolChange {
+  readonly name: string;
+  readonly schemaChanged: boolean;
+  readonly scopeChanged: boolean;
+  readonly readWriteClassChanged: boolean;
+  readonly personalAuthChanged: boolean;
+  readonly current: PluginUpgradeToolSnapshot;
+  readonly candidate: PluginUpgradeToolSnapshot;
+}
+
+/** Five-dimension version diff (dto.PluginVersionDiffDTO) in camelCase. */
+export interface PluginVersionDiff {
+  readonly pluginId: string;
+  readonly currentVersion: string;
+  readonly candidateVersion: string;
+  readonly isDowngrade: boolean;
+  readonly endpointChanged: boolean;
+  readonly currentEndpoint: string;
+  readonly candidateEndpoint: string;
+  readonly addedTools: readonly PluginUpgradeToolSnapshot[];
+  readonly removedTools: readonly PluginUpgradeToolSnapshot[];
+  readonly changedTools: readonly PluginUpgradeToolChange[];
+}
+
+/** Upgrade-preview payload (dto.PluginUpgradePreviewResponse) in camelCase. */
+export interface PluginUpgradePreview {
+  readonly diff: PluginVersionDiff;
+  readonly candidateFingerprint: string;
+  readonly candidateToolsDigest: string;
+}
+
+const UPGRADE_PREVIEW_PATH = `${INSTALLATIONS_PATH}/:id/upgrade-preview`;
+
+function parseUpgradeToolSnapshot(value: unknown, path: string): PluginUpgradeToolSnapshot {
+  const row = record(value, path);
+  return {
+    name: required(row.name, `${path}.name`),
+    description: optionalText(row.description, `${path}.description`),
+    // T15-OCR1-F1：digest 是 schema_changed 徽标的判定依据，后端清单校验
+    // （schemaDigestPattern 64 位 hex）与快照核验两处保证非空——用 required
+    // 与「拒绝任何缺失/畸形字段」的模块契约一致（description 才是协议允许
+    // 空串、用 optionalText 的字段）。
+    inputSchemaDigest: required(row.input_schema_digest, `${path}.input_schema_digest`),
+    readOnly: flag(row.read_only, `${path}.read_only`),
+    requiresPersonalAuth: flag(row.requires_personal_auth, `${path}.requires_personal_auth`),
+    scopes: scopeList(row.scopes, `${path}.scopes`),
+  };
+}
+
+/**
+ * Strict parser for the upgrade-preview envelope: the five-dimension diff
+ * (version pair with the downgrade flag, endpoint pair, added/removed/changed
+ * tool rows) plus the candidate identity the tenant WOULD accept. Metadata
+ * only — schema digests cross the wire, never schema text.
+ */
+export function parsePluginUpgradePreview(value: unknown): PluginUpgradePreview {
+  const envelope = record(value, UPGRADE_PREVIEW_PATH);
+  if (envelope.success !== true) throw new Error(`${UPGRADE_PREVIEW_PATH}.success must be true`);
+  const data = record(envelope.data, `${UPGRADE_PREVIEW_PATH}.data`);
+  const rawDiff = record(data.diff, `${UPGRADE_PREVIEW_PATH}.data.diff`);
+  for (const key of ['added_tools', 'removed_tools', 'changed_tools'] as const) {
+    if (!Array.isArray(rawDiff[key])) throw new Error(`${UPGRADE_PREVIEW_PATH}.data.diff.${key} must be an array`);
+  }
+  return {
+    diff: {
+      pluginId: required(rawDiff.plugin_id, `${UPGRADE_PREVIEW_PATH}.data.diff.plugin_id`),
+      currentVersion: required(rawDiff.current_version, `${UPGRADE_PREVIEW_PATH}.data.diff.current_version`),
+      candidateVersion: required(rawDiff.candidate_version, `${UPGRADE_PREVIEW_PATH}.data.diff.candidate_version`),
+      isDowngrade: flag(rawDiff.is_downgrade, `${UPGRADE_PREVIEW_PATH}.data.diff.is_downgrade`),
+      endpointChanged: flag(rawDiff.endpoint_changed, `${UPGRADE_PREVIEW_PATH}.data.diff.endpoint_changed`),
+      currentEndpoint: required(rawDiff.current_endpoint, `${UPGRADE_PREVIEW_PATH}.data.diff.current_endpoint`),
+      candidateEndpoint: required(rawDiff.candidate_endpoint, `${UPGRADE_PREVIEW_PATH}.data.diff.candidate_endpoint`),
+      addedTools: (rawDiff.added_tools as unknown[]).map((item, index) =>
+        parseUpgradeToolSnapshot(item, `${UPGRADE_PREVIEW_PATH}.data.diff.added_tools[${index}]`)),
+      removedTools: (rawDiff.removed_tools as unknown[]).map((item, index) =>
+        parseUpgradeToolSnapshot(item, `${UPGRADE_PREVIEW_PATH}.data.diff.removed_tools[${index}]`)),
+      changedTools: (rawDiff.changed_tools as unknown[]).map((item, index) => {
+        // T15-OCR1-F2：行路径前缀提取局部常量，八处引用一处调整。
+        const entry = `${UPGRADE_PREVIEW_PATH}.data.diff.changed_tools[${index}]`;
+        const row = record(item, entry);
+        return {
+          name: required(row.name, `${entry}.name`),
+          schemaChanged: flag(row.schema_changed, `${entry}.schema_changed`),
+          scopeChanged: flag(row.scope_changed, `${entry}.scope_changed`),
+          readWriteClassChanged: flag(row.read_write_class_changed, `${entry}.read_write_class_changed`),
+          personalAuthChanged: flag(row.personal_auth_changed, `${entry}.personal_auth_changed`),
+          current: parseUpgradeToolSnapshot(row.current, `${entry}.current`),
+          candidate: parseUpgradeToolSnapshot(row.candidate, `${entry}.candidate`),
+        };
+      }),
+    },
+    candidateFingerprint: required(data.candidate_fingerprint, `${UPGRADE_PREVIEW_PATH}.data.candidate_fingerprint`),
+    candidateToolsDigest: required(data.candidate_tools_digest, `${UPGRADE_PREVIEW_PATH}.data.candidate_tools_digest`),
+  };
+}
+
+// ---- T12: member personal connection envelope (dto.PluginMyConnection,
+// GET /plugins/installations/:id/connections/me, handler internal/handler/plugin.go GetMyConnection) ----
+
+/**
+ * The member's personal OAuth connection view of one installation: the
+ * materialized service binding, the three-state verdict
+ * (authorized | expired | unauthorized) and the legacy MCP OAuth endpoint
+ * paths mapped onto that service_id. No token material ever crosses the wire.
+ *
+ * T15-OCR2-low（消费方说明）: authorizeUrlPath/revokePath are carried for
+ * envelope completeness and diagnostics only — the member panel drives
+ * authorize/revoke through the EXISTING mcp-oauth client methods located by
+ * serviceId (client.configuration.mcp.oauth), not through these paths.
+ */
+export interface PluginMyConnection {
+  readonly installationId: string;
+  readonly pluginId: string;
+  readonly name: string;
+  readonly serviceId: string;
+  readonly requiresPersonalAuth: boolean;
+  readonly authorized: boolean;
+  readonly state: 'authorized' | 'expired' | 'unauthorized';
+  /** Legacy authorize-url endpoint path (diagnostics only); empty when the plugin needs no personal auth. */
+  readonly authorizeUrlPath: string;
+  /** Legacy DELETE-token endpoint path (diagnostics only); empty when the plugin needs no personal auth. */
+  readonly revokePath: string;
+  readonly requiresAuthTools: readonly string[];
+}
+
+// T15-OCR2-low：诊断前缀对齐 UPGRADE_PREVIEW_PATH 的 `:id` 占位约定——真实
+// 请求是 /installations/{id}/connections/me，缺段前缀会误导排障时的路径定位。
+const CONNECTION_PATH = `${INSTALLATIONS_PATH}/:id/connections/me`;
+const DRIFT_PATH = `${INSTALLATIONS_PATH}/:id/drift`;
+
+const CONNECTION_STATES = ['authorized', 'expired', 'unauthorized'] as const;
+
+function connectionState(value: unknown, path: string): 'authorized' | 'expired' | 'unauthorized' {
+  // Deliberately narrower than the mcp oauth STATUS vocabulary
+  // (refreshable/reauth_required/pending) — that is a different endpoint's
+  // state machine and must never pass as a plugin connection state.
+  if (typeof value !== 'string' || !CONNECTION_STATES.includes(value as 'authorized' | 'expired' | 'unauthorized')) {
+    throw new Error(`${path} must be one of ${CONNECTION_STATES.join('|')}`);
+  }
+  return value as 'authorized' | 'expired' | 'unauthorized';
+}
+
+/**
+ * Strict parser for the personal connection envelope: identity, service
+ * binding, three-state verdict and mapped endpoint paths. authorize_url_path /
+ * revoke_path — and service_id — may legitimately be EMPTY: no-personal-auth
+ * plugins carry no OAuth endpoints (T11 ruling), and a confirm interrupted
+ * before the materialized service exists answers with service_id "" (no
+ * orphan for the server's healing lookup to resolve), so only types are
+ * enforced for those three fields. The panel degrades such a row to a badge
+ * plus disabled entries instead of losing it to a parse error.
+ */
+export function parsePluginMyConnection(value: unknown): PluginMyConnection {
+  const envelope = record(value, CONNECTION_PATH);
+  if (envelope.success !== true) throw new Error(`${CONNECTION_PATH}.success must be true`);
+  const data = record(envelope.data, `${CONNECTION_PATH}.data`);
+  return {
+    installationId: required(data.installation_id, `${CONNECTION_PATH}.data.installation_id`),
+    pluginId: required(data.plugin_id, `${CONNECTION_PATH}.data.plugin_id`),
+    name: required(data.name, `${CONNECTION_PATH}.data.name`),
+    // T12-OCR1-F3: empty service_id = confirm-interruption window with no
+    // orphan service to heal from (plugin_install_service.go resolves one
+    // when it exists). Legal 200; only the type is enforced.
+    serviceId: optionalText(data.service_id, `${CONNECTION_PATH}.data.service_id`),
+    requiresPersonalAuth: flag(data.requires_personal_auth, `${CONNECTION_PATH}.data.requires_personal_auth`),
+    authorized: flag(data.authorized, `${CONNECTION_PATH}.data.authorized`),
+    state: connectionState(data.state, `${CONNECTION_PATH}.data.state`),
+    authorizeUrlPath: optionalText(data.authorize_url_path, `${CONNECTION_PATH}.data.authorize_url_path`),
+    revokePath: optionalText(data.revoke_path, `${CONNECTION_PATH}.data.revoke_path`),
+    requiresAuthTools: scopeList(data.requires_auth_tools, `${CONNECTION_PATH}.data.requires_auth_tools`),
+  };
+}
+
+// ---- drift governance surface (GET/POST .../drift(/{check,resolve});
+// dto.PluginDriftReportResponse, internal/handler/dto/plugin.go) — OCR R1 F23 ----
+
+/** The deviation record of one drift check: tool NAME lists per drift form. */
+export interface PluginDriftDetail {
+  readonly added: readonly string[];
+  readonly removed: readonly string[];
+  readonly schemaChanged: readonly string[];
+  readonly descriptionChanged: readonly string[];
+  readonly checkedAt: string;
+}
+
+/**
+ * The persisted drift report: state, the persisted detail when one exists
+ * (null when none/never checked — dto Detail is omitempty), and the accepted
+ * snapshot's tool names (the baseline the live directory deviates from).
+ */
+export interface PluginDriftReport {
+  readonly installationId: string;
+  readonly driftState: 'none' | 'detected';
+  readonly detail: PluginDriftDetail | null;
+  readonly snapshotToolNames: readonly string[];
+}
+
+/**
+ * Strict parser for the drift report envelope shared by GET /drift and POST
+ * /drift/{check,resolve}. Lists are normalized to [] (never null) — the
+ * server guarantees the [] wire shape (handler driftReportResponseDTO,
+ * OCR R1 F09) and consumers index into them (.map/.length).
+ */
+export function parsePluginDriftReport(value: unknown): PluginDriftReport {
+  const envelope = record(value, DRIFT_PATH);
+  if (envelope.success !== true) throw new Error(`${DRIFT_PATH}.success must be true`);
+  const data = record(envelope.data, `${DRIFT_PATH}.data`);
+  let detail: PluginDriftDetail | null = null;
+  if (data.detail !== null && data.detail !== undefined) {
+    const row = record(data.detail, `${DRIFT_PATH}.data.detail`);
+    detail = {
+      added: nameList(row.added, `${DRIFT_PATH}.data.detail.added`),
+      removed: nameList(row.removed, `${DRIFT_PATH}.data.detail.removed`),
+      schemaChanged: nameList(row.schema_changed, `${DRIFT_PATH}.data.detail.schema_changed`),
+      descriptionChanged: nameList(row.description_changed, `${DRIFT_PATH}.data.detail.description_changed`),
+      checkedAt: required(row.checked_at, `${DRIFT_PATH}.data.detail.checked_at`),
+    };
+  }
+  return {
+    installationId: required(data.installation_id, `${DRIFT_PATH}.data.installation_id`),
+    driftState: driftState(data.drift_state, `${DRIFT_PATH}.data.drift_state`),
+    detail,
+    snapshotToolNames: nameList(data.snapshot_tool_names, `${DRIFT_PATH}.data.snapshot_tool_names`),
+  };
+}
+
+// ---- T19: tool governance surface (GET .../tools, PUT .../tools/:tool_name/policy;
+// dto.PluginInstallationTool, internal/handler/dto/plugin.go) ----
+
+/**
+ * One row of the tool governance list — the AUTHORITATIVE approval view. All
+ * verdicts are definite values (T18 unification + T18-OCR1-F2): enabled /
+ * require_approval / disabled_reason always carry the CURRENT policy state,
+ * unlike the detail payload which omits require_approval entirely.
+ */
+export interface PluginToolPolicyRow {
+  readonly name: string;
+  readonly description: string;
+  readonly readOnly: boolean;
+  readonly requiresPersonalAuth: boolean;
+  readonly scopes: readonly string[];
+  readonly enabled: boolean;
+  readonly requireApproval: boolean;
+  readonly disabledReason: string;
+}
+
+/**
+ * One nullable-flag patch for PUT .../tools/:tool_name/policy: omitted fields
+ * keep their current values, at least one must be present (mirrors the server
+ * 400 "enabled or require_approval is required" client-side).
+ */
+export interface PluginToolPolicyPatch {
+  readonly enabled?: boolean;
+  readonly requireApproval?: boolean;
+}
+
+/**
+ * Strict parser for the tool governance envelope (GET .../tools and the
+ * refreshed list every PUT returns). require_approval is REQUIRED here — the
+ * governance surface asserts the current approval verdict as a definite value;
+ * an omitted key is a contract break, never a silent false (the detail
+ * payload's omittance is its own contract, T18-OCR1-F2).
+ */
+export function parsePluginToolPolicyRows(value: unknown): PluginToolPolicyRow[] {
+  const envelope = record(value, INSTALLATIONS_PATH);
+  if (envelope.success !== true) throw new Error(`${INSTALLATIONS_PATH}.success must be true`);
+  const data = envelope.data;
+  if (!Array.isArray(data)) throw new Error(`${INSTALLATIONS_PATH}.data must be an array`);
+  return data.map((item: unknown, index: number) => {
+    // Bracket path style统一为 parsePluginInstallations 同款（OCR R1 F20）。
+    const path = `${INSTALLATIONS_PATH}.data[${index}]`;
+    const row = record(item, path);
+    return {
+      name: required(row.name, `${path}.name`),
+      description: optionalText(row.description, `${path}.description`),
+      readOnly: flag(row.read_only, `${path}.read_only`),
+      requiresPersonalAuth: flag(row.requires_personal_auth, `${path}.requires_personal_auth`),
+      scopes: scopeList(row.scopes, `${path}.scopes`),
+      enabled: flag(row.enabled, `${path}.enabled`),
+      requireApproval: flag(row.require_approval, `${path}.require_approval`),
+      // dto.DisabledReason is a non-omitempty string — always present. The
+      // old silent `?? ''` downgrade let contract breaks flow into the UI as
+      // empty strings (OCR R1 F20); enforce the type explicitly.
+      disabledReason: optionalText(row.disabled_reason, `${path}.disabled_reason`),
+    };
+  });
+}
