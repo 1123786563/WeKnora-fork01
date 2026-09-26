@@ -64,7 +64,7 @@ func newPushIsolationEnv(t *testing.T) *pushIsolationEnv {
 		"migrations/sqlite/000058_mobile_devices.up.sql",
 		"migrations/sqlite/000059_mobile_notifications.up.sql",
 		"migrations/sqlite/000060_mobile_notification_delivery.up.sql",
-		"migrations/sqlite/000114_mobile_device_app.up.sql",
+		"migrations/sqlite/000118_mobile_device_app.up.sql",
 	} {
 		raw, err := os.ReadFile(filepath.Join(root, file))
 		require.NoError(t, err, file)
