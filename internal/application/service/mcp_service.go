@@ -412,6 +412,14 @@ func (s *mcpServiceService) TestMCPService(
 		return nil, fmt.Errorf("MCP service not found")
 	}
 
+	// B+A 裁决 #4：插件物化行与 GetMCPServiceTools（OCR R1 F07）同口径拒绝
+	// ——连通测试直连实时远端，Initialize/ListTools/ListResources 的结果
+	// 会把未接受能力与漂移后目录原样回显给 Admin+（已接受快照是唯一的
+	// 目录边界）。确定性 ErrPluginManagedService，由 handler 映射 409。
+	if service.PluginInstallationID != nil {
+		return nil, ErrPluginManagedService
+	}
+
 	// Create temporary client for testing. For OAuth services, wire the
 	// per-user token store so the test connects with the current user's
 	// authorization (and surfaces an authorization-required message when the
@@ -650,6 +658,13 @@ func (s *mcpServiceService) GetMCPServiceResources(
 	}
 	if service == nil {
 		return nil, fmt.Errorf("MCP service not found")
+	}
+
+	// B+A 裁决 #4：与 GetMCPServiceTools（OCR R1 F07）同款守卫——实时远端
+	// ListResources 绕过已接受快照边界，Viewer+ 即可达，未接受能力/漂移后
+	// 资源经此面泄露。确定性 ErrPluginManagedService，由 handler 映射 409。
+	if service.PluginInstallationID != nil {
+		return nil, ErrPluginManagedService
 	}
 
 	// Get or create client

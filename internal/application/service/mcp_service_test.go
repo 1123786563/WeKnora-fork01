@@ -447,3 +447,43 @@ func TestListMCPServices_ReturnsRawCredentials(t *testing.T) {
 	assert.Equal(t, "real-api", got[0].AuthConfig.APIKey)
 	assert.Equal(t, "real-token", got[0].AuthConfig.Token)
 }
+
+// seedPluginManagedService 落一条插件物化形态的服务行（PluginInstallationID
+// 指向安装行）——GetMCPServiceResources（Viewer+）与 TestMCPService（Admin+）
+// 对这类行必须与 GetMCPServiceTools（OCR R1 F07）同口径拒绝：实时远端
+// ListResources/连通测试绕过已接受快照边界，未接受能力/漂移后目录可经
+// 此二面泄露（B+A 裁决 #4）。
+func seedPluginManagedService(t *testing.T, repo *fakeMCPRepo) string {
+	t.Helper()
+	installationID := "11111111-2222-4333-8444-555555555555"
+	endpoint := "http://127.0.0.1:1/mcp"
+	s := &types.MCPService{
+		ID:                   "svc-plugin-managed",
+		TenantID:             1,
+		Name:                 "plugin:com.example.jira-todo",
+		Enabled:              true,
+		TransportType:        types.MCPTransportSSE,
+		URL:                  &endpoint,
+		PluginInstallationID: &installationID,
+	}
+	require.NoError(t, repo.Create(context.Background(), s))
+	return s.ID
+}
+
+func TestGetMCPServiceResourcesRejectsPluginManagedRow(t *testing.T) {
+	svc, repo := newTestService()
+	id := seedPluginManagedService(t, repo)
+
+	_, err := svc.GetMCPServiceResources(context.Background(), 1, id)
+	require.ErrorIs(t, err, ErrPluginManagedService,
+		"plugin-materialized rows must not serve live remote resources through the generic Viewer+ endpoint — the accepted snapshot is the only directory boundary")
+}
+
+func TestMCPServiceTestRejectsPluginManagedRow(t *testing.T) {
+	svc, repo := newTestService()
+	id := seedPluginManagedService(t, repo)
+
+	_, err := svc.TestMCPService(context.Background(), 1, id)
+	require.ErrorIs(t, err, ErrPluginManagedService,
+		"a live connectivity test against the plugin endpoint would enumerate unaccepted tools/resources in its Admin+ result payload")
+}

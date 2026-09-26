@@ -41,6 +41,9 @@ type pluginGuardService struct {
 	credErr   error
 	toolsErr  error
 	clearErr  error
+	// B+A 裁决 #4：资源/连通测试两面同族守卫。
+	resourcesErr error
+	testErr      error
 }
 
 func (s *pluginGuardService) CreateMCPService(_ context.Context, svc *types.MCPService) error {
@@ -75,6 +78,15 @@ func (s *pluginGuardService) ClearMCPCredential(_ context.Context, _ uint64, _, 
 	return s.clearErr
 }
 
+// B+A 裁决 #4：实时资源列表（Viewer+）与连通测试（Admin+）同族守卫。
+func (s *pluginGuardService) GetMCPServiceResources(_ context.Context, _ uint64, _ string) ([]*types.MCPResource, error) {
+	return nil, s.resourcesErr
+}
+
+func (s *pluginGuardService) TestMCPService(_ context.Context, _ uint64, _ string) (*types.MCPTestResult, error) {
+	return nil, s.testErr
+}
+
 func pluginGuardRouter(svc *pluginGuardService) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
@@ -91,6 +103,8 @@ func pluginGuardRouter(svc *pluginGuardService) *gin.Engine {
 	r.PUT("/mcp-services/:id/credentials", creds.Put)
 	r.DELETE("/mcp-services/:id/credentials/:field", creds.DeleteField)
 	r.GET("/mcp-services/:id/tools", h.GetMCPServiceTools)
+	r.GET("/mcp-services/:id/resources", h.GetMCPServiceResources)
+	r.POST("/mcp-services/:id/test", h.TestMCPService)
 	return r
 }
 
@@ -153,6 +167,24 @@ func TestDeleteMCPCredentialFieldPluginManagedIsConflictNot500(t *testing.T) {
 	w := pluginGuardRequest(pluginGuardRouter(svc), http.MethodDelete, "/mcp-services/svc-1/credentials/api_key", "")
 	require.Equal(t, http.StatusConflict, w.Code,
 		"credential write faces must reject plugin-managed rows uniformly (PUT already does): %s", w.Body.String())
+}
+
+// B+A 裁决 #4：GET /mcp-services/{id}/resources（Viewer+）与
+// POST /mcp-services/{id}/test（Admin+）对插件物化行必须确定性 409——
+// 实时远端资源/连通测试结果绕过已接受快照边界（未接受能力/漂移后目录
+// 泄露），且 test 面把服务层错误包成 200 的失败结果会掩盖确定性策略拒绝。
+func TestGetMCPServiceResourcesPluginManagedIsConflictNot500(t *testing.T) {
+	svc := &pluginGuardService{resourcesErr: service.ErrPluginManagedService}
+	w := pluginGuardRequest(pluginGuardRouter(svc), http.MethodGet, "/mcp-services/svc-1/resources", "")
+	require.Equal(t, http.StatusConflict, w.Code,
+		"plugin-materialized rows must not serve live remote resources through the generic resources endpoint: %s", w.Body.String())
+}
+
+func TestMCPServiceTestPluginManagedIsConflictNotTestFailure200(t *testing.T) {
+	svc := &pluginGuardService{testErr: service.ErrPluginManagedService}
+	w := pluginGuardRequest(pluginGuardRouter(svc), http.MethodPost, "/mcp-services/svc-1/test", "")
+	require.Equal(t, http.StatusConflict, w.Code,
+		"a deterministic policy rejection must surface as 409, not be wrapped into a 200 test-failure payload: %s", w.Body.String())
 }
 
 // OCR R1 F09 + F08：drift 响应四列表绝不为 null（one wire shape），且
