@@ -691,6 +691,14 @@ func (s *pluginService) SetInstallationState(
 	tenantID uint64,
 	installationID, state string,
 ) (*types.PluginInstallationResult, error) {
+	// B+A 裁决 #2：状态切换与升级接受/漂移重定基/卸载是同族读-改-写——
+	// syncService 先 GetByID 载入物化服务再整行 Update（含 URL/AuthConfig）。
+	// 不持 per-installation 锁时，与 accept 的 7b（整行切换 URL/OAuth 基线）
+	// 交错会让旧内存副本把 accept 刚切上的端点/基线整行回滚，或在 7a 与
+	// 7b 之间落一个「安装行 active+服务行停用」再被 7b 覆盖复活。与
+	// AcceptUpgrade/ResolveDrift/CheckDrift/UninstallInstallation 同款串行化。
+	defer lockUpgradeAccept(installationID)()
+
 	if state != types.PluginInstallationActive && state != types.PluginInstallationDisabled {
 		return nil, fmt.Errorf("%w: %q (want %q or %q)",
 			ErrInstallationStateInvalid, state, types.PluginInstallationActive, types.PluginInstallationDisabled)

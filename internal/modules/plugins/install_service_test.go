@@ -1050,3 +1050,53 @@ func TestUninstallConcurrentAcceptSerializes(t *testing.T) {
 	// serviceID 写策略行的 FK violation 形态）。
 	require.ErrorIs(t, <-acceptDone, service.ErrInstallationNotFound)
 }
+
+// TestSetInstallationStateConcurrentAcceptSerializes（B+A 裁决 #2）：
+// SetInstallationState 与 AcceptUpgrade 是同族读-改-写——它先
+// GetByID 载入物化服务、再整行 Update（含 URL/AuthConfig）。与升级接受
+// （7b 整行切换 URL/OAuth 基线）交错时，旧内存副本可把 accept 刚切上的
+// 端点/OAuth 基线整行回滚，或在 accept 的 7a（安装行已切）与 7b 之间落
+// 一个「安装行 active+服务行 Enabled=false」再被 7b 覆盖复活。必须在
+// 接受的 7b 中途（onUpdate 钩子）并发发起状态切换：接受在途期间状态
+// 切换必须零进展。
+func TestSetInstallationStateConcurrentAcceptSerializes(t *testing.T) {
+	const tenantID = uint64(9)
+	s := newUpgradeAcceptStack(t, tenantID)
+	resp := s.previewV2(t, tenantID)
+	ctx := context.Background()
+
+	acceptDone := make(chan error, 1)
+	stateDone := make(chan error, 1)
+	stateProgressedDuringAccept := make(chan bool, 1)
+	s.mcpRepo.onUpdate = func() {
+		s.mcpRepo.onUpdate = nil // 只在 accept 的 7b 触发一次（状态切换自身的 syncService Update 不再挂钩）
+		go func() {
+			_, err := s.svc.SetInstallationState(ctx, tenantID, s.inst.ID, types.PluginInstallationDisabled)
+			stateDone <- err
+		}()
+		select {
+		case <-stateDone:
+			stateProgressedDuringAccept <- true // 状态切换在接受未返回前完成 → 未串行化
+		case <-time.After(1500 * time.Millisecond):
+			stateProgressedDuringAccept <- false // 状态切换全程被阻塞 → 串行化生效
+		}
+	}
+
+	go func() {
+		_, err := s.svc.AcceptUpgrade(ctx, tenantID, "admin-1", s.inst.ID, resp.CandidateFingerprint)
+		acceptDone <- err
+	}()
+	require.NoError(t, <-acceptDone, "the in-flight accept completes normally")
+	require.False(t, <-stateProgressedDuringAccept,
+		"a concurrent state flip must make no progress while an accept of the SAME installation is mid-flight (B+A #2)")
+	require.NoError(t, <-stateDone, "the serialized state flip then completes normally")
+
+	// 串行化后终态一致：物化 URL 已切 v2 且 Enabled=false（状态切换基于
+	// 切换后的行读写——不回滚 accept 的端点、不复活停用）。
+	mat := s.materialized(t)
+	require.Equal(t, s.remoteV2.BaseURL()+"/mcp", *mat.URL,
+		"the state flip must write against the post-accept row, never roll the accepted endpoint switch back")
+	require.False(t, mat.Enabled, "the disable verdict must stick on the materialized service")
+	inst := s.innerRepo.installations[0]
+	require.Equal(t, types.PluginInstallationDisabled, inst.State)
+}
