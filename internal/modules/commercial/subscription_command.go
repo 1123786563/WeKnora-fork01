@@ -101,12 +101,19 @@ const MonthlyWalletPriority = 1
 // over), CreditsMicro an integer micro-credit amount that must stay
 // cent-aligned (% 10_000 == 0) so the adapter converts to the provider's
 // decimal string exactly, never through binary float.
+//
+// WalletName (additive, #82 D4) optionally overrides the wallet identity:
+// empty keeps the Base-plan MonthlyWalletName batch; the purchase first-
+// period grant sets PurchaseWalletName so purchase credits never collide
+// with the Base monthly batch (F11: grant idempotency matches by name AND
+// metadata — a shared name would trigger grant content conflicts).
 type GrantIncludedCreditsPayload struct {
 	TenantID           uint64
 	ExternalCustomerID string    // derived-equality enforced
 	Period             string    // "YYYY-MM", UTC
 	CreditsMicro       int64     // > 0 and cent-aligned (CreditsMicro % 10_000 == 0)
 	ExpiresAt          time.Time // exclusive period end, > grant time
+	WalletName         string    // optional; empty = MonthlyWalletName (Base batch)
 }
 
 // Validate enforces the monthly grant contract: derived identity, strict
@@ -154,12 +161,27 @@ func MonthlyWalletName(tenantID uint64, period string) string {
 	return ExternalCustomerID(tenantID) + "-" + period
 }
 
+// PurchaseWalletName derives the deterministic wallet identity for a
+// purchase first-period credits batch (#82 D4):
+// "<ext-purchase-subscription-id>-<YYYY-MM>". Deliberately distinct from
+// MonthlyWalletName (the Base-plan monthly batch) so the two grant families
+// never collide on the adapter's by-name idempotency match (F11: a shared
+// name would make the purchase grant re-use — or content-conflict with —
+// the Base monthly wallet).
+func PurchaseWalletName(tenantID uint64, period string) string {
+	return ExternalPurchaseSubscriptionID(tenantID) + "-" + period
+}
+
 // Wallet metadata keys — the E3 recovery-by-metadata obligation: a grant
 // whose create response was lost is recovered by querying wallets carrying
 // these markers, never by a blind re-create.
 const (
 	WalletMetaTenant = "weknora_tenant"
 	WalletMetaPeriod = "weknora_period"
+	// WalletMetaPurchasePeriod marks a PURCHASE first-period batch (#82 D4):
+	// a distinct key so purchase wallets never match a Base monthly batch's
+	// metadata (and vice versa) even if a name ever collided.
+	WalletMetaPurchasePeriod = "weknora_purchase_period"
 )
 
 // MonthlyPeriod formats a time as the UTC calendar period "YYYY-MM".

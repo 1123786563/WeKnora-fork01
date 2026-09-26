@@ -49,6 +49,18 @@ const (
 	// and a binding without a default payment method fails the gated create
 	// closed (no_default_payment_method, t09 evidence).
 	EnvStripePmToken = "WEKNORA_COMMERCIAL_STRIPE_PM" + "_TOKEN"
+	// EnvStripeSettlePmToken (#82 D2' step iii): the provider payment-method
+	// token the settle rail attaches and confirms the stuck gating intent
+	// with (the α dual-track's settlement leg — the channel collected the
+	// money, the provider rail settles the authority). Dev/test stacks set a
+	// PROVIDER TEST token; production sets the settlement instrument's token
+	// via the secret service. Empty = the settle command fails closed
+	// unconfigured (never charges with a guessed instrument).
+	EnvStripeSettlePmToken = "WEKNORA_COMMERCIAL_STRIPE_SETTLE_PM" + "_TOKEN"
+	// EnvOutboundAllowLoopback (#82 Task 8 S1): explicit dev-only egress
+	// bypass admitting loopback/localhost authority BaseURLs (local stub
+	// verification). Default OFF — production must never set it.
+	EnvOutboundAllowLoopback = "WEKNORA_COMMERCIAL_OUTBOUND_ALLOW_LOOPBACK"
 )
 
 // Config holds the platform adapter config references. An empty BaseURL or
@@ -72,6 +84,13 @@ type Config struct {
 	// StripePmToken is the OPTIONAL provider payment-method token attached
 	// as default during the binding ensure (F11; dev/test only).
 	StripePmToken string
+	// StripeSettlePmToken is the provider payment-method token the settle
+	// rail charges the stuck gating intent with (#82 D2'; credential-adjacent:
+	// env/secret-service only). Empty fails the settle command closed.
+	StripeSettlePmToken string
+	// OutboundAllowLoopback is the explicit dev-only egress bypass for the
+	// authority BaseURL host check (#82 Task 8 S1; default false).
+	OutboundAllowLoopback bool
 }
 
 // ConfigFromEnv reads the config references from the server-side
@@ -91,6 +110,8 @@ func configFromEnv(getenv func(string) string) Config {
 		StripeAPIBase:          getenv(EnvStripeAPIBase),
 		ProviderCustomerPrefix: getenv(EnvProviderCustomerPrefix),
 		StripePmToken:          getenv(EnvStripePmToken),
+		StripeSettlePmToken:    getenv(EnvStripeSettlePmToken),
+		OutboundAllowLoopback:  getenv(EnvOutboundAllowLoopback) == "true",
 	}
 }
 

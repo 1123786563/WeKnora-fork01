@@ -67,6 +67,7 @@ type purchaseStub struct {
 	// landed yet, so the create is refused and NO subscription record is
 	// created.
 	rejectCreateNoDefaultPM bool
+	invoices                []purchaseInvoiceRec // the finalized-stage visible set
 	mux                     *http.ServeMux // assembled by newPurchaseStub
 }
 
@@ -152,6 +153,53 @@ func newPurchaseStub() *purchaseStub {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/customers", customers)  // collection endpoint (exact, no trailing slash)
 	mux.HandleFunc("/api/v1/customers/", customers) // single lookup subtree
+	mux.HandleFunc("/api/v1/invoices", func(w http.ResponseWriter, r *http.Request) {
+		// The finalized-stage read (Task 4): external_customer_id +
+		// status[]=finalized; the RawQuery is recorded for the assertion
+		// face, the rows answer the stub's set (visible finalized only).
+		s.mu.Lock()
+		s.rawQueries = append(s.rawQueries, r.URL.RawQuery)
+		q := r.URL.Query()
+		want := q.Get("external_customer_id")
+		statuses := q["status[]"]
+		out := []purchaseInvoiceRec{}
+		for _, inv := range s.invoices {
+			if inv.ExternalCust != want {
+				continue
+			}
+			matched := false
+			for _, st := range statuses {
+				if st == "finalized" {
+					matched = true
+				}
+			}
+			if len(statuses) > 0 && !matched {
+				continue
+			}
+			out = append(out, inv)
+		}
+		s.mu.Unlock()
+		respond(w, r, &s.requests, &s.mu, http.StatusOK, purchaseInvoicesJSON(out), nil)
+	})
+	mux.HandleFunc("/api/v1/invoices/", func(w http.ResponseWriter, r *http.Request) {
+		// The single-invoice read (fees ride ONLY here — the pinned index
+		// answer carries none, t9 evidence).
+		s.mu.Lock()
+		id := strings.TrimPrefix(r.URL.Path, "/api/v1/invoices/")
+		var found *purchaseInvoiceRec
+		for i := range s.invoices {
+			if s.invoices[i].LagoID == id {
+				found = &s.invoices[i]
+				break
+			}
+		}
+		s.mu.Unlock()
+		if found == nil {
+			respond(w, r, &s.requests, &s.mu, http.StatusNotFound, "{}", nil)
+			return
+		}
+		respond(w, r, &s.requests, &s.mu, http.StatusOK, purchaseInvoiceDetailJSON(*found), nil)
+	})
 	mux.HandleFunc("/api/v1/subscriptions", func(w http.ResponseWriter, r *http.Request) {
 		blob, _ := io.ReadAll(io.LimitReader(r.Body, 1<<20))
 		switch r.Method {
@@ -235,6 +283,43 @@ func newPurchaseStub() *purchaseStub {
 // ServeHTTP exposes the stub as an http.Handler (server() mounts s.mux).
 func (s *purchaseStub) ServeHTTP(w http.ResponseWriter, r *http.Request) { s.mux.ServeHTTP(w, r) }
 
+// ---- finalized-invoice stub leg (#82 Task 4: readPurchaseInvoiceFees) ----
+
+// purchaseInvoiceRec is one finalized invoice the stub answers on the
+// invoices index (the status[]=finalized visible window).
+type purchaseInvoiceRec struct {
+	LagoID         string
+	ExternalCust   string
+	PaymentStatus  string
+	SubscriptionFee *struct{ Name string; AmountCents int64 } // nil = no subscription line
+}
+
+func purchaseInvoicesJSON(rows []purchaseInvoiceRec) string {
+	// The pinned runtime's INDEX answer carries NO fees (t9 integration
+	// evidence): fees only ride the single-invoice read below.
+	out := make([]string, 0, len(rows))
+	for _, inv := range rows {
+		out = append(out, fmt.Sprintf(
+			`{"lago_id":%q,"external_customer_id":%q,"status":"finalized","payment_status":%q,"invoice_type":"subscription","fees":[]}`,
+			inv.LagoID, inv.ExternalCust, inv.PaymentStatus))
+	}
+	return `{"invoices":[` + strings.Join(out, ",") + `]}`
+}
+
+// purchaseInvoiceDetailJSON answers the SINGLE-invoice read with the fee
+// rows (the index never carries them).
+func purchaseInvoiceDetailJSON(inv purchaseInvoiceRec) string {
+	fees := "[]"
+	if inv.SubscriptionFee != nil {
+		fees = fmt.Sprintf(
+			`[{"amount_cents":%d,"amount_currency":"USD","item":{"type":"subscription","name":%q,"code":"sub-fee"}}]`,
+			inv.SubscriptionFee.AmountCents, inv.SubscriptionFee.Name)
+	}
+	return fmt.Sprintf(
+		`{"invoice":{"lago_id":%q,"external_customer_id":%q,"status":"finalized","payment_status":%q,"invoice_type":"subscription","fees":%s}}`,
+		inv.LagoID, inv.ExternalCust, inv.PaymentStatus, fees)
+}
+
 func (s *purchaseStub) server(t *testing.T) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(s)
@@ -289,9 +374,11 @@ func (s *purchaseStub) countCustomerPuts() int {
 // secret-for-test-only constant (never a real credential shape).
 func purchaseAdapterWithPrefix(t *testing.T, srv *httptest.Server) *LagoAdapter {
 	t.Helper()
+	// OutboundAllowLoopback: the stub rides an httptest loopback origin —
+	// the explicit dev-only S1 bypass (production never sets it).
 	return NewLagoAdapter(Config{
 		Provider: ProviderLago, BaseURL: srv.URL, APIKey: testAPIKey, Release: "v1.53.0",
-		ProviderCustomerPrefix: "cus-dev",
+		ProviderCustomerPrefix: "cus-dev", OutboundAllowLoopback: true,
 	})
 }
 
@@ -402,7 +489,7 @@ func TestLagoCreatePurchaseDifferentPlanIsConflict(t *testing.T) {
 func TestLagoCreatePurchaseFailsClosedWithoutBindingSource(t *testing.T) {
 	stub := newPurchaseStub()
 	srv := stub.server(t)
-	a := NewLagoAdapter(Config{Provider: ProviderLago, BaseURL: srv.URL, APIKey: testAPIKey, Release: "v1.53.0"})
+	a := NewLagoAdapter(Config{Provider: ProviderLago, BaseURL: srv.URL, APIKey: testAPIKey, Release: "v1.53.0", OutboundAllowLoopback: true})
 	_, err := a.SubmitCommand(context.Background(), purchaseCmd(25, "weknora-pro-v1", 9900))
 	if !errors.Is(err, commercial.ErrPlatformUnconfigured) {
 		t.Fatalf("no stripe key and no prefix must fail closed unconfigured, got %v", err)
@@ -589,7 +676,7 @@ func TestLagoPaymentMethodSyncCancellationIsNotUnreachable(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 		cancel()
 	}()
-	a := NewLagoAdapter(Config{Provider: ProviderLago, BaseURL: srv.URL, APIKey: testAPIKey, Release: "v1.53.0"})
+	a := NewLagoAdapter(Config{Provider: ProviderLago, BaseURL: srv.URL, APIKey: testAPIKey, Release: "v1.53.0", OutboundAllowLoopback: true})
 	oldWait, oldTick := pmSyncWait, pmSyncTick
 	pmSyncWait, pmSyncTick = 10*time.Second, 500*time.Millisecond
 	t.Cleanup(func() { pmSyncWait, pmSyncTick = oldWait, oldTick })
@@ -641,13 +728,39 @@ func TestLagoGatedCreateNoDefaultPaymentMethodIsRetryable(t *testing.T) {
 	stub.rejectCreateNoDefaultPM = true
 	stub.mu.Unlock()
 	srv := stub.server(t)
+	// (R1-12) With a provider key AND a payment-method token configured,
+	// the 422 is TRANSIENT import lag — retryable unreachable, never a
+	// terminal verdict.
 	a := purchaseAdapterWithPrefix(t, srv)
+	a.cfg.StripeAPIKey = "sk-test-shape-for-stub-only"
+	a.cfg.StripePmToken = "pm_test_canary"
+	// The provider customer exists (no outbound create in this test — the
+	// seam-level function injection is the established pattern).
+	a.deriveProviderCustomer = func(_ context.Context, externalCustomerID string) (string, providerCustomerSource, error) {
+		return "cus-stub-" + externalCustomerID, providerCustomerAPI, nil
+	}
 	_, err := a.SubmitCommand(context.Background(), purchaseCmd(32, "weknora-pro-v1", 9900))
 	if !errors.Is(err, commercial.ErrPlatformUnreachable) {
 		t.Fatalf("import-not-landed 422 must be retryable unreachable, got %v", err)
 	}
 	if errors.Is(err, commercial.ErrPlatformInvalidResponse) {
 		t.Fatalf("import-not-landed 422 must NOT be a terminal verdict, got %v", err)
+	}
+}
+
+// TestLagoNoDefaultPmTerminalWhenUnconfigured (OCR r4): with NO provider
+// key/payment-method token, the same 422 is STRUCTURAL — no import can
+// ever land, so the adapter fails closed unconfigured instead of looping
+// a retryable verdict on a wiring gap.
+func TestLagoNoDefaultPmTerminalWhenUnconfigured(t *testing.T) {
+	stub := newPurchaseStub()
+	stub.mu.Lock()
+	stub.rejectCreateNoDefaultPM = true
+	stub.mu.Unlock()
+	a := purchaseAdapterWithPrefix(t, stub.server(t))
+	_, err := a.SubmitCommand(context.Background(), purchaseCmd(33, "weknora-pro-v1", 9900))
+	if !errors.Is(err, commercial.ErrPlatformUnconfigured) {
+		t.Fatalf("structural no_default_payment_method must fail closed unconfigured, got %v", err)
 	}
 }
 
@@ -753,5 +866,178 @@ func TestLagoPurchaseSnapshotMapsClosedStates(t *testing.T) {
 	snap, err = a.ReadSnapshot(context.Background(), commercial.SnapshotQuery{Kind: commercial.SnapshotKindPurchase, TenantID: 26})
 	if err != nil || snap.Purchase.State != commercial.PurchaseStateActive {
 		t.Fatalf("active expected, got %+v err=%v", snap.Purchase, err)
+	}
+}
+
+// ---- #82 Task 11: final-audit OCR open findings 7/6 (seam semantics) ----
+
+// Finding 7: a found (replayed) purchase subscription in a TERMINAL state
+// must fail closed — never a success receipt that mints a dead checkout.
+func TestLagoPurchaseCreateReplayCanceledFailsClosed(t *testing.T) {
+	stub := newPurchaseStub()
+	stub.mu.Lock()
+	stub.planAmount = map[string]int64{"weknora-pro-v1": 9900}
+	ext := commercial.ExternalCustomerID(34)
+	stub.subs = []purchaseSubRec{{
+		ExternalID: commercial.ExternalPurchaseSubscriptionID(34), ExternalCustomer: ext,
+		PlanCode: "weknora-pro-v1", AmountFen: 9900, Currency: "CNY", Status: "canceled",
+	}}
+	stub.mu.Unlock()
+	a := purchaseAdapterWithPrefix(t, stub.server(t))
+	_, err := a.SubmitCommand(context.Background(), purchaseCmd(34, "weknora-pro-v1", 9900))
+	if !errors.Is(err, commercial.ErrPlatformInvalidResponse) {
+		t.Fatalf("a canceled purchase replay must fail closed, got %v", err)
+	}
+}
+
+// Finding 7 (regression lock): the R1-V03 verbatim-replay semantics stay —
+// an ACTIVE held purchase on the SAME plan still answers a success receipt.
+func TestLagoPurchaseCreateReplayActiveStillReplays(t *testing.T) {
+	stub := newPurchaseStub()
+	stub.mu.Lock()
+	stub.planAmount = map[string]int64{"weknora-pro-v1": 9900}
+	ext := commercial.ExternalCustomerID(35)
+	stub.subs = []purchaseSubRec{{
+		ExternalID: commercial.ExternalPurchaseSubscriptionID(35), ExternalCustomer: ext,
+		PlanCode: "weknora-pro-v1", AmountFen: 9900, Currency: "CNY", Status: "active",
+	}}
+	stub.mu.Unlock()
+	a := purchaseAdapterWithPrefix(t, stub.server(t))
+	if _, err := a.SubmitCommand(context.Background(), purchaseCmd(35, "weknora-pro-v1", 9900)); err != nil {
+		t.Fatalf("an active same-plan replay must keep the R1-V03 receipt semantics: %v", err)
+	}
+}
+
+// Finding 6: the PM-sync poll budget derives from the CALLER's remaining
+// context deadline (min(pmSyncWait, ctx budget - guard)), so a request near
+// its budget never nominally polls past the caller's cancellation.
+func TestPaymentMethodSyncDeadlineDerivedFromCtx(t *testing.T) {
+	stub := newPurchaseStub()
+	srv := stub.server(t)
+	a := purchaseAdapterWithPrefix(t, srv)
+	a.cfg.StripePmToken = "pm_test_canary"
+	a.deriveProviderCustomer = func(_ context.Context, externalCustomerID string) (string, providerCustomerSource, error) {
+		return "cus-real-" + externalCustomerID, providerCustomerAPI, nil
+	}
+	stub.mu.Lock()
+	stub.pmAlwaysEmpty = true // the poll can never succeed; only the budget ends it
+	stub.mu.Unlock()
+	oldWait, oldTick := pmSyncWait, pmSyncTick
+	pmSyncWait, pmSyncTick = 30*time.Second, 50*time.Millisecond
+	t.Cleanup(func() { pmSyncWait, pmSyncTick = oldWait, oldTick })
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	start := time.Now()
+	_, err := a.SubmitCommand(ctx, purchaseCmd(36, "weknora-pro-v1", 9900))
+	elapsed := time.Since(start)
+	if elapsed > 5*time.Second {
+		t.Fatalf("the sync poll must yield to the caller budget in ~3s, took %s", elapsed)
+	}
+	if err == nil {
+		t.Fatal("an always-empty import must eventually fail")
+	}
+}
+
+// ---- #82 Task 4: the finalized-stage invoice fees read ----
+
+// feeLine builds one subscription fee row for the stub's invoice records.
+func feeLine(name string, cents int64) *struct {
+	Name        string
+	AmountCents int64
+} {
+	return &struct {
+		Name        string
+		AmountCents int64
+	}{Name: name, AmountCents: cents}
+}
+
+func activePurchaseStub(t *testing.T, invoices []purchaseInvoiceRec) (*purchaseStub, *LagoAdapter) {
+	t.Helper()
+	stub := newPurchaseStub()
+	stub.mu.Lock()
+	stub.planAmount = map[string]int64{"weknora-pro-v1": 9900}
+	ext := commercial.ExternalCustomerID(31)
+	stub.subs = []purchaseSubRec{{
+		ExternalID: commercial.ExternalPurchaseSubscriptionID(31), ExternalCustomer: ext,
+		PlanCode: "weknora-pro-v1", AmountFen: 9900, Currency: "CNY", Status: "active",
+	}}
+	stub.invoices = invoices
+	stub.mu.Unlock()
+	return stub, purchaseAdapterWithPrefix(t, stub.server(t))
+}
+
+func TestLagoReadPurchaseInvoiceFeesMapsSubscriptionLine(t *testing.T) {
+	invoices := []purchaseInvoiceRec{{
+		LagoID: "inv_f1", ExternalCust: commercial.ExternalCustomerID(31),
+		PaymentStatus: "succeeded", SubscriptionFee: feeLine("Pro plan", 1980),
+	}}
+	stub, a := activePurchaseStub(t, invoices)
+	snap, err := a.ReadSnapshot(context.Background(), commercial.SnapshotQuery{Kind: commercial.SnapshotKindPurchase, TenantID: 31})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snap.Purchase.State != commercial.PurchaseStateActive {
+		t.Fatalf("state = %q", snap.Purchase.State)
+	}
+	if len(snap.Purchase.InvoiceFees) != 1 {
+		t.Fatalf("exactly one subscription fee line expected, got %+v", snap.Purchase.InvoiceFees)
+	}
+	fee := snap.Purchase.InvoiceFees[0]
+	if fee.Kind != "subscription_fee" || fee.Name != "Pro plan" || fee.AmountFen != 1980 {
+		t.Fatalf("fee mapping mismatch (closed port word + integer fen): %+v", fee)
+	}
+	if snap.Purchase.InvoicePaymentStatus != "succeeded" {
+		t.Fatalf("invoice payment_status must ride the snapshot, got %q", snap.Purchase.InvoicePaymentStatus)
+	}
+	// The read must scope by identity AND the visible finalized status.
+	stub.mu.Lock()
+	raw := ""
+	if len(stub.rawQueries) > 0 {
+		raw = stub.rawQueries[len(stub.rawQueries)-1]
+	}
+	stub.mu.Unlock()
+	if !strings.Contains(raw, "status%5B%5D=finalized") && !strings.Contains(raw, "status[]=finalized") {
+		t.Fatalf("invoice index must pass explicit status[]=finalized, raw = %q", raw)
+	}
+	if !strings.Contains(raw, commercial.ExternalCustomerID(31)) {
+		t.Fatalf("invoice index must scope by external_customer_id, raw = %q", raw)
+	}
+}
+
+func TestLagoReadPurchaseInvoiceFeesZeroFinalizedIsEmpty(t *testing.T) {
+	_, a := activePurchaseStub(t, nil)
+	snap, err := a.ReadSnapshot(context.Background(), commercial.SnapshotQuery{Kind: commercial.SnapshotKindPurchase, TenantID: 31})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snap.Purchase.InvoiceFees) != 0 || snap.Purchase.InvoicePaymentStatus != "" {
+		t.Fatalf("zero finalized invoices = empty fees + empty payment status (awaiting semantics), got %+v", snap.Purchase)
+	}
+}
+
+func TestLagoReadPurchaseInvoiceFeesTwoFinalizedFailsClosed(t *testing.T) {
+	invoices := []purchaseInvoiceRec{
+		{LagoID: "inv_a", ExternalCust: commercial.ExternalCustomerID(31), PaymentStatus: "succeeded", SubscriptionFee: feeLine("Pro plan", 1980)},
+		{LagoID: "inv_b", ExternalCust: commercial.ExternalCustomerID(31), PaymentStatus: "succeeded", SubscriptionFee: feeLine("Pro plan", 9900)},
+	}
+	_, a := activePurchaseStub(t, invoices)
+	_, err := a.ReadSnapshot(context.Background(), commercial.SnapshotQuery{Kind: commercial.SnapshotKindPurchase, TenantID: 31})
+	if !errors.Is(err, commercial.ErrPlatformInvalidResponse) {
+		t.Fatalf("two finalized purchase invoices must fail closed (data anomaly), got %v", err)
+	}
+}
+
+func TestLagoReadPurchaseInvoiceFeesNoSubscriptionLineAnswersEmpty(t *testing.T) {
+	invoices := []purchaseInvoiceRec{{
+		LagoID: "inv_c", ExternalCust: commercial.ExternalCustomerID(31),
+		PaymentStatus: "succeeded", SubscriptionFee: nil,
+	}}
+	_, a := activePurchaseStub(t, invoices)
+	snap, err := a.ReadSnapshot(context.Background(), commercial.SnapshotQuery{Kind: commercial.SnapshotKindPurchase, TenantID: 31})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snap.Purchase.InvoiceFees) != 0 {
+		t.Fatalf("no subscription fee line = empty fees (the D6' review refuses downstream), got %+v", snap.Purchase.InvoiceFees)
 	}
 }

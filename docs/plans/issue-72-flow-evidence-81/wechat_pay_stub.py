@@ -23,7 +23,7 @@ auditable server-side exemption, e.g.
     SSRF_WHITELIST_EXTRA=127.0.0.1
 
 Replaying the #81 evidence flow against this stub must export that variable
-before starting the WeKnora backend; without it the purchase answers 503
+before starting the WeKnora backend; without it the purchase answers 202 with a channel-failed (checkout_error) order (the R3-27 fixed chain)
 payment_provider_unconfigured (the SSRF gate refusing the loopback base).
 """
 import json

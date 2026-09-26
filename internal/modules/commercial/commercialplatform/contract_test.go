@@ -567,6 +567,121 @@ func TestLagoAdapterPurchaseContract(t *testing.T) {
 	runPurchaseContract(t, "lago", purchaseAdapterWithPrefix(t, stub.server(t)), stub.countSubscriptionPosts)
 }
 
+// ---- #82 Task 6: the shared settle contract leg (fake + lago) ----
+
+// runSettleContract is the shared settle_purchase_payment contract both
+// adapters must satisfy. afterFinalize models the authority's built-in
+// webhook finalize: the Lago adapter's settle RETURNS before activation
+// (the webhook chain owns it, D2' step v), so the leg advances the stub
+// after the first settle to model the finalized authority; the fake's
+// settle is deterministic and needs no hook.
+func runSettleContract(t *testing.T, name string, p commercial.CommercialPlatform, create func() error, afterFinalize func()) {
+	t.Helper()
+	cmd := commercial.Command{
+		Kind:  commercial.CommandKindSettlePurchasePayment,
+		Key:   commercial.SettlePurchasePaymentCommandKey(commercial.ExternalPurchaseSubscriptionID(51), "txn-contract"),
+		Actor: "test", Reason: "settle",
+		Payload: commercial.SettlePurchasePaymentPayload{
+			TenantID: 51, ExternalCustomerID: commercial.ExternalCustomerID(51),
+			ExternalPurchaseSubscriptionID: commercial.ExternalPurchaseSubscriptionID(51),
+			PlanCode: "weknora-contract-v1", ChannelTransaction: "txn-contract",
+			AmountFen: 9900, Currency: commercial.CurrencyCNY,
+		},
+	}
+
+	t.Run(name+"/settle activates the purchase exactly once", func(t *testing.T) {
+		if err := create(); err != nil {
+			t.Fatalf("prime create: %v", err)
+		}
+		first, err := p.SubmitCommand(context.Background(), cmd)
+		if err != nil {
+			t.Fatalf("settle: %v", err)
+		}
+		if first.Key != cmd.Key {
+			t.Fatalf("receipt key = %q", first.Key)
+		}
+		afterFinalize() // the built-in webhook finalize (lago leg stub hook; fake no-op)
+		snap, err := p.ReadSnapshot(context.Background(), commercial.SnapshotQuery{Kind: commercial.SnapshotKindPurchase, TenantID: 51})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if snap.Purchase.State != commercial.PurchaseStateActive {
+			t.Fatalf("settle must leave the purchase active, got %q", snap.Purchase.State)
+		}
+		// (2) same-key replay: an equivalent receipt, zero side effects.
+		second, err := p.SubmitCommand(context.Background(), cmd)
+		if err != nil {
+			t.Fatalf("replay: %v", err)
+		}
+		if second.Key != first.Key || second.ExternalID != first.ExternalID {
+			t.Fatalf("replay must answer the same receipt identity, got %+v then %+v", first, second)
+		}
+		snap, _ = p.ReadSnapshot(context.Background(), commercial.SnapshotQuery{Kind: commercial.SnapshotKindPurchase, TenantID: 51})
+		if snap.Purchase.State != commercial.PurchaseStateActive {
+			t.Fatalf("replay must not change the state, got %q", snap.Purchase.State)
+		}
+	})
+
+	t.Run(name+"/settle rejects a wrong payload type", func(t *testing.T) {
+		_, err := p.SubmitCommand(context.Background(), commercial.Command{
+			Kind: commercial.CommandKindSettlePurchasePayment, Key: "settle:wrong:type",
+			Payload: commercial.CreatePurchaseSubscriptionPayload{},
+		})
+		if !errors.Is(err, commercial.ErrPlatformUnsupported) {
+			t.Fatalf("wrong payload type must be unsupported, got %v", err)
+		}
+	})
+
+	t.Run(name+"/settle rejects an invalid payload", func(t *testing.T) {
+		bad := cmd
+		bad.Key = "settle:bad:payload"
+		bad.Payload = commercial.SettlePurchasePaymentPayload{TenantID: 52} // identity violations + empty fields
+		_, err := p.SubmitCommand(context.Background(), bad)
+		if err == nil {
+			t.Fatal("invalid payload must be rejected")
+		}
+	})
+}
+
+// TestFakeAdapterSettleContract: the fake leg — settle is deterministic
+// (activation immediate), so afterFinalize is a no-op.
+func TestFakeAdapterSettleContract(t *testing.T) {
+	fake := NewFakeAdapter()
+	runSettleContract(t, "fake", fake, func() error {
+		_, err := fake.SubmitCommand(context.Background(), commercial.Command{
+			Kind:  commercial.CommandKindCreatePurchaseSubscription,
+			Key:   commercial.CreatePurchaseSubscriptionCommandKey(commercial.ExternalPurchaseSubscriptionID(51), "weknora-contract-v1"),
+			Actor: "test", Reason: "purchase",
+			Payload: commercial.CreatePurchaseSubscriptionPayload{
+				TenantID: 51, ExternalCustomerID: commercial.ExternalCustomerID(51),
+				ExternalPurchaseSubscriptionID: commercial.ExternalPurchaseSubscriptionID(51),
+				PlanCode: "weknora-contract-v1", AmountFen: 9900, Currency: commercial.CurrencyCNY,
+			},
+		})
+		return err
+	}, func() {})
+}
+
+// TestLagoAdapterSettleContract: the stub-backed Lago leg — the settle rail
+// drives the fake Stripe stack (the harness from lago_settlement_test.go);
+// afterFinalize advances the subscription stub to active, modeling the
+// built-in webhook finalize the real chain performs asynchronously.
+func TestLagoAdapterSettleContract(t *testing.T) {
+	h := newSettleHarnessForTenant(t, 51, "incomplete", []stripeIntentRec{{
+		ID: "pi_contract", Customer: "cus_stripe_1", Status: "requires_payment_method",
+		Created: 1000, LagoInvID: "inv_contract",
+	}})
+	runSettleContract(t, "lago", h.adapter, func() error { return nil }, func() {
+		h.lago.mu.Lock()
+		for i := range h.lago.subs {
+			if h.lago.subs[i].ExternalID == commercial.ExternalPurchaseSubscriptionID(51) {
+				h.lago.subs[i].Status = "active"
+			}
+		}
+		h.lago.mu.Unlock()
+	})
+}
+
 // TestFakeAdapterUnprimedFailsClosed: a fake that was never primed has no
 // authoritative readiness to report — it must fail closed instead of
 // fabricating a state.

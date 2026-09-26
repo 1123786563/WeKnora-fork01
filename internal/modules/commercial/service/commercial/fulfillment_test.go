@@ -113,7 +113,7 @@ func setupFulfillment(t *testing.T, gw domain.CommercialGateway) (*FulfillmentSe
 		t.Fatal(err)
 	}
 	store := repocommercial.NewOrderStore(db)
-	svc, err := NewFulfillmentService(db, gw)
+	svc, err := NewFulfillmentService(db, gw, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

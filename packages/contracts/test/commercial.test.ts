@@ -303,6 +303,17 @@ test('parsePurchaseView accepts awaiting_payment with order', () => {
   assert.equal(v.order?.id, 'ord_1');
 });
 
+// (#82 D3) paid_awaiting_activation 是协调层合成态：契约接受它；null
+// currency（后端滚动窗口）不炸整份视图。
+test('parsePurchaseView accepts paid_awaiting_activation and tolerates null currency', () => {
+  const v = parsePurchaseView({ state: 'paid_awaiting_activation',
+    order: { id: 'ord_2', quote_id: 'qt_2', state: 'paid', amount_fen: '9900', currency: 'CNY',
+      payment: 'paid', fulfillment: 'pending', version: 2 },
+    plan_key: 'pro', plan_version: 1, amount_fen: '9900', currency: null });
+  assert.equal(v.state, 'paid_awaiting_activation');
+  assert.equal(v.currency, undefined);
+});
+
 test('parsePurchaseView rejects raw provider states', () => {
   assert.throws(() => parsePurchaseView({ state: 'incomplete' }));
   assert.throws(() => parsePurchaseView({ state: 'awaiting_payment', amount_fen: 9900 })); // 非数字串

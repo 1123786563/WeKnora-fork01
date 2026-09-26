@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Tencent/WeKnora/internal/logger"
 	domain "github.com/Tencent/WeKnora/internal/modules/commercial"
 	repocommercial "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
 
@@ -173,12 +174,15 @@ func (s *PurchaseService) Purchase(ctx context.Context, tenantID uint64, quoteID
 	}
 	if _, err := s.platform.SubmitCommand(ctx, cmd); err != nil {
 		if errors.Is(err, domain.ErrPlatformInvalidResponse) {
-			// Distinguish the definitive concurrent-plan-change conflict
-			// from other invalid answers by the authority's own truth.
+			// Distinguish the definitive plan-change conflict from other
+			// invalid answers by the authority's own truth. (OCR final
+			// audit 11) ANY held state counts — an ACTIVE held purchase on
+			// a different plan is just as deterministic a conflict as an
+			// awaiting one (409, never an unavailable 503).
 			if held, serr := s.platform.ReadSnapshot(ctx, domain.SnapshotQuery{
 				Kind: domain.SnapshotKindPurchase, TenantID: tenantID,
 			}); serr == nil && held.Purchase != nil &&
-				held.Purchase.State == domain.PurchaseStateAwaitingPayment &&
+				held.Purchase.State != domain.PurchaseStateAbsent &&
 				held.Purchase.PlanCode != pub.PlanCode {
 				return PurchaseView{}, ErrPurchasePlanConflict
 			}
@@ -204,6 +208,7 @@ func (s *PurchaseService) Purchase(ctx context.Context, tenantID uint64, quoteID
 		p.Currency != domain.CurrencyCNY ||
 		p.Currency != snap.Currency ||
 		p.AmountFen != snap.PriceFen {
+		purchaseAudit(tenantID, quoteID, "invoice_quote_mismatch")
 		return PurchaseView{}, ErrInvoiceQuoteMismatch
 	}
 
@@ -221,6 +226,7 @@ func (s *PurchaseService) Purchase(ctx context.Context, tenantID uint64, quoteID
 		return PurchaseView{}, err
 	}
 	if p.State != domain.PurchaseStateAwaitingPayment {
+		purchaseAudit(tenantID, quoteID, "purchase_not_awaiting")
 		return PurchaseView{}, fmt.Errorf("%w: %s", ErrPurchaseNotAwaiting, p.State)
 	}
 	// (R1-22) ONE payable channel order per purchase: the idempotency key so
@@ -291,6 +297,17 @@ func (s *PurchaseService) Purchase(ctx context.Context, tenantID uint64, quoteID
 // PurchaseStatus answers the purchase projection for one tenant: the
 // authority truth (closed state + frozen price face) plus the local order
 // when one exists.
+// purchaseAudit is the attention-audit sink (OCR final audit 10, minimal
+// face): a purchase attempt that leaves the authority holding an
+// awaiting/terminal subscription it can no longer settle writes ONE
+// closed-token attention line (log by default; tests capture). The
+// lifecycle face (auto-cancel/terminate) belongs to #84/#92 and is
+// explicitly NOT taken here.
+var purchaseAudit = func(tenantID uint64, quoteID, token string) {
+	logger.Warnf(context.Background(),
+		"[CommercialPurchase] attention: tenant=%d quote=%s token=%s", tenantID, quoteID, token)
+}
+
 func (s *PurchaseService) PurchaseStatus(ctx context.Context, tenantID uint64) (PurchaseView, error) {
 	if tenantID == 0 {
 		return PurchaseView{}, repocommercial.ErrInvalidQuoteRow
@@ -321,12 +338,40 @@ func (s *PurchaseService) PurchaseStatus(ctx context.Context, tenantID uint64) (
 	// order as the current purchase state. An absent purchase attaches no
 	// order at all.
 	if p.State != domain.PurchaseStateAbsent {
-		if row, err := s.orders.orders.CurrentPurchaseOrder(ctx, tenantID, p.AmountFen, p.Currency); err == nil {
+		// (OCR final audit 9) Only an order whose frozen quote bought THIS
+		// purchase's plan is projectable: a historical same-price order on
+		// a different plan (pro-max at the pro price face during a
+		// republish window) must never shadow the current purchase.
+		wantPlanKey := ""
+		if pub, err := s.plans.FindPublicationByCode(ctx, p.PlanCode); err == nil {
+			wantPlanKey = pub.PlanKey
+		}
+		if row, err := s.orders.orders.CurrentPurchaseOrder(ctx, tenantID, p.AmountFen, p.Currency); err == nil &&
+			quoteBoughtPlan(ctx, s.orders, tenantID, row.QuoteID) == wantPlanKey {
 			ov := orderViewFromRow(row)
 			out.Order = &ov
+			// (#82 D3) paid_awaiting_activation is a COORDINATOR-COMPOSED
+			// product state: a locally PAID order while the authority has
+			// not yet been observed active. It never comes from an authority
+			// read — only this synthesis produces it.
+			if p.State == domain.PurchaseStateAwaitingPayment &&
+				row.State == domain.OrderStatePaid {
+				out.State = domain.PurchaseStatePaidAwaitingActivation
+			}
 		}
 	}
 	return out, nil
+}
+
+// quoteBoughtPlan reads the plan key a quote's frozen snapshot carries (""
+// when unreadable — an unmatchable value, so the caller never projects the
+// order). The read is tenant-guarded like every quote access.
+func quoteBoughtPlan(ctx context.Context, orders *OrderService, tenantID uint64, quoteID string) string {
+	_, snap, err := orders.QuoteSnapshotForTenant(ctx, tenantID, quoteID)
+	if err != nil {
+		return ""
+	}
+	return snap.PlanKey
 }
 
 // ensureNoCharges reads the frozen definition and refuses versions with

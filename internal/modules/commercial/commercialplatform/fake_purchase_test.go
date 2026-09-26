@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	commercial "github.com/Tencent/WeKnora/internal/modules/commercial"
 )
@@ -81,4 +82,101 @@ func TestFakePurchaseSnapshotStates(t *testing.T) {
 	if snap.Purchase.State != commercial.PurchaseStateActive {
 		t.Fatalf("activated purchase must answer active, got %+v", snap.Purchase)
 	}
+}
+
+// --- #82 Task 3: the fake's deterministic settle semantics (D2'(a)(b)(c))
+// and the purchase-wallet grant identity (D4). ---
+
+func newSettleCommand(tenant uint64, planCode, txn string, amount int64) commercial.Command {
+	return commercial.Command{
+		Kind: commercial.CommandKindSettlePurchasePayment,
+		Key:  commercial.SettlePurchasePaymentCommandKey(commercial.ExternalPurchaseSubscriptionID(tenant), txn),
+		Actor: "test", Reason: "settle",
+		Payload: commercial.SettlePurchasePaymentPayload{
+			TenantID: tenant, ExternalCustomerID: commercial.ExternalCustomerID(tenant),
+			ExternalPurchaseSubscriptionID: commercial.ExternalPurchaseSubscriptionID(tenant),
+			PlanCode: planCode, ChannelTransaction: txn, AmountFen: amount, Currency: commercial.CurrencyCNY,
+		},
+	}
+}
+
+func TestFakeSettleActivatesOnceThenIdempotent(t *testing.T) { // D2'(a)(b)
+	f := NewFakeAdapter()
+	if _, err := f.SubmitCommand(context.Background(), newPurchaseCommand(21, "weknora-pro-v1", 9900)); err != nil {
+		t.Fatal(err)
+	}
+	cmd := newSettleCommand(21, "weknora-pro-v1", "2026092622001471", 9900)
+	first, err := f.SubmitCommand(context.Background(), cmd)
+	if err != nil {
+		t.Fatalf("settle #1: %v", err)
+	}
+	snap, err := f.ReadSnapshot(context.Background(), commercial.SnapshotQuery{Kind: commercial.SnapshotKindPurchase, TenantID: 21})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snap.Purchase.State != commercial.PurchaseStateActive {
+		t.Fatalf("settle must activate the purchase, got %q", snap.Purchase.State)
+	}
+	second, err := f.SubmitCommand(context.Background(), cmd)
+	if err != nil {
+		t.Fatalf("settle #2 (same key): %v", err)
+	}
+	if first.Key != second.Key || !first.RecordedAt.Equal(second.RecordedAt) {
+		t.Fatalf("replayed settle must return the SAME receipt, got %+v then %+v", first, second)
+	}
+	snap, _ = f.ReadSnapshot(context.Background(), commercial.SnapshotQuery{Kind: commercial.SnapshotKindPurchase, TenantID: 21})
+	if snap.Purchase.State != commercial.PurchaseStateActive {
+		t.Fatalf("replayed settle must not change state, got %q", snap.Purchase.State)
+	}
+	if n := len(f.PurchaseSubscriptions()); n != 1 {
+		t.Fatalf("settle replay must never mint a second purchase, got %d", n)
+	}
+}
+
+func TestFakeSettleUnknownSubscriptionFailsClosed(t *testing.T) { // (c)
+	f := NewFakeAdapter()
+	_, err := f.SubmitCommand(context.Background(), newSettleCommand(22, "weknora-pro-v1", "txn-x", 9900))
+	if !errors.Is(err, commercial.ErrPlatformInvalidResponse) {
+		t.Fatalf("settle on an unknown purchase must fail closed, got %v", err)
+	}
+}
+
+func TestFakeGrantPurchaseWalletNoMonthlyCollision(t *testing.T) { // (d)
+	f := NewFakeAdapter()
+	tenant := uint64(23)
+	period := "2026-09"
+	monthly := commercial.GrantIncludedCreditsPayload{
+		TenantID: tenant, ExternalCustomerID: commercial.ExternalCustomerID(tenant),
+		Period: period, CreditsMicro: 100_00_00, // 1.00 credit in micro
+		ExpiresAt: periodEndOrFatal(t, period),
+	}
+	purchase := monthly
+	purchase.WalletName = commercial.PurchaseWalletName(tenant, period)
+	if _, err := f.SubmitCommand(context.Background(), commercial.Command{
+		Kind: commercial.CommandKindGrantIncludedCredits,
+		Key:  commercial.GrantCreditsCommandKey(commercial.ExternalCustomerID(tenant), period),
+		Actor: "test", Reason: "base", Payload: monthly,
+	}); err != nil {
+		t.Fatalf("monthly grant: %v", err)
+	}
+	if _, err := f.SubmitCommand(context.Background(), commercial.Command{
+		Kind: commercial.CommandKindGrantIncludedCredits,
+		Key:  commercial.SettlePurchasePaymentCommandKey(commercial.ExternalPurchaseSubscriptionID(tenant), "txn-1") + ":grant",
+		Actor: "test", Reason: "purchase", Payload: purchase,
+	}); err != nil {
+		t.Fatalf("purchase grant (own wallet name): %v", err)
+	}
+	wallets := f.Wallets()
+	if len(wallets) != 2 {
+		t.Fatalf("two grants with distinct wallet names must persist TWO wallets, got %d", len(wallets))
+	}
+}
+
+func periodEndOrFatal(t *testing.T, period string) (end time.Time) {
+	t.Helper()
+	end, err := commercial.PeriodEnd(period)
+	if err != nil {
+		t.Fatalf("period end: %v", err)
+	}
+	return end
 }

@@ -46,6 +46,7 @@ signed notify without touching product databases.
 """
 import base64
 import json
+import os
 import secrets
 import subprocess
 import tempfile
@@ -53,7 +54,9 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import parse_qs
 
 HOST, PORT = "127.0.0.1", 8292
-KEY_DIR = __file__.rsplit("/", 1)[0]
+# (OCR r4) KEY_DIR overridable: the local-only key pair may live outside
+# the repo (never committed); default stays beside this script.
+KEY_DIR = os.environ.get("FLOW82_KEY_DIR") or os.path.dirname(os.path.abspath(__file__))
 ALIPAY_KEY = f"{KEY_DIR}/alipay_verify_local.pem"
 SHARED_PUB = f"{KEY_DIR}/alipay_verify_local_pub.pem"
 

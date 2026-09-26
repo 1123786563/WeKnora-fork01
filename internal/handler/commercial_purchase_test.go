@@ -25,6 +25,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	"strings"
 )
 
 // handlerStubProvider is the minimal channel double for the purchase handler
@@ -194,6 +195,21 @@ func TestPurchaseHandlerAnswersConflictOnQuoteAlreadyUsed(t *testing.T) {
 
 // (R1-V04) 平台故障期 POST 必须答 503 + 闭合 reason（unreachable），绝不答
 // 201 + fabricated-absent 视图。
+// (review R82-2 / OCR r4) A nonexistent quote id is a CLIENT fact: the
+// tenant-guarded quote read miss answers 404 with the closed token — never
+// the residual 500 (which invites retrying a deterministic failure).
+func TestPurchaseHandlerAnswersNotFoundOnMissingQuote(t *testing.T) {
+	env := newPurchaseHandlerEnv(t)
+	seedHandlerPlan(t, env.plans)
+	rec := postPurchase(t, env, "qt_does_not_exist")
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("a missing quote must answer 404, got HTTP %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "quote not found") {
+		t.Fatalf("the closed token must ride the answer, got %s", rec.Body.String())
+	}
+}
+
 func TestPurchaseHandlerAnswersUnavailableOnPlatformFailure(t *testing.T) {
 	env := newPurchaseHandlerEnv(t)
 	seedHandlerPlan(t, env.plans)

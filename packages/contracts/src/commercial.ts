@@ -174,12 +174,15 @@ export function parseRefundView(value:unknown):RefundView {
 // answer.
 export interface PurchaseLineItemView { kind:string; name:string; amount_fen:string }
 export interface PurchaseView {
-  state:'awaiting_payment'|'active'|'absent'|'canceled';
+  // paid_awaiting_activation is the coordinator-composed middle state (#82
+  // D3): a locally paid order while the authority has not been observed
+  // active. It never comes from an authority read.
+  state:'awaiting_payment'|'paid_awaiting_activation'|'active'|'absent'|'canceled';
   order?:OrderView; plan_key?:string; plan_version?:number;
   amount_fen?:string; currency?:string; reason?:string;
 }
 
-const PURCHASE_STATES = new Set<string>(['awaiting_payment','active','absent','canceled']);
+const PURCHASE_STATES = new Set<string>(['awaiting_payment','paid_awaiting_activation','active','absent','canceled']);
 const PURCHASE_REASONS = new Set<string>(['unconfigured','unreachable','invalid_response','unsupported']);
 
 export function parsePurchaseView(value:unknown):PurchaseView {
@@ -196,7 +199,7 @@ export function parsePurchaseView(value:unknown):PurchaseView {
   if(v.amount_fen!==undefined&&v.amount_fen!==null&&v.amount_fen!=='') {
     out.amount_fen = digitString(v.amount_fen,'amount_fen','purchase');
   }
-  if(v.currency!==undefined&&v.currency!=='') out.currency = nonEmptyString(v.currency,'currency','purchase');
+  if(v.currency!==undefined&&v.currency!==null&&v.currency!=='') out.currency = nonEmptyString(v.currency,'currency','purchase');
   // (R2-21) reason is ADVISORY closed-vocabulary metadata: a backend ahead
   // of the frontend (rolling upgrade, version drift) may emit a newer
   // token — an unknown token is ignored as if absent (the state stays

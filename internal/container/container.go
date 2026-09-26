@@ -940,6 +940,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// (The gateway/execution-gate/remote-usage providers this drains through
 	// are registered earlier, before the craft Invoke that first resolves
 	// newAgentRuntime.)
+	must(container.Provide(commercialsvc.NewPurchaseFulfiller))
 	must(container.Provide(commercialsvc.NewFulfillmentService))
 	must(container.Invoke(startCommercialFulfillment))
 	// A03 action approval pipeline: the persisted action store and the

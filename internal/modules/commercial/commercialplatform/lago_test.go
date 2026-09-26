@@ -60,7 +60,59 @@ func (h *healthStub) url() string { return h.server.URL }
 const testAPIKey = "secret-for-test-only"
 
 func lagoTestConfig(baseURL string) Config {
-	return Config{Provider: ProviderLago, BaseURL: baseURL, APIKey: testAPIKey, Release: "v1.53.0"}
+	// OutboundAllowLoopback: the stubs ride httptest loopback origins —
+	// the explicit dev-only S1 bypass (production never sets it).
+	return Config{Provider: ProviderLago, BaseURL: baseURL, APIKey: testAPIKey,
+		Release: "v1.53.0", OutboundAllowLoopback: true}
+}
+
+// TestConfiguredRejectsPrivateBaseURL (OCR r4 / S1): the authority egress
+// host policy applies to the LAGO BaseURL itself — a private/loopback
+// authority URL without the explicit dev bypass fails closed unconfigured
+// before any request is built.
+func TestConfiguredRejectsPrivateBaseURL(t *testing.T) {
+	for _, baseURL := range []string{
+		"http://127.0.0.1:48889", "http://localhost:48889",
+		"http://10.1.2.3", "http://192.168.1.10",
+	} {
+		a := NewLagoAdapter(Config{Provider: ProviderLago, BaseURL: baseURL,
+			APIKey: testAPIKey, Release: "v1.53.0"})
+		if _, err := a.ReadSnapshot(context.Background(), commercial.SnapshotQuery{
+			Kind: commercial.SnapshotKindReadiness,
+		}); !errors.Is(err, commercial.ErrPlatformUnconfigured) {
+			t.Fatalf("private authority URL %q must fail closed unconfigured, got %v", baseURL, err)
+		}
+	}
+}
+
+// TestConfiguredAllowsLoopbackWithDevBypass: the explicit dev-only bypass
+// admits loopback authority URLs (local stub verification); production
+// never sets it.
+func TestConfiguredAllowsLoopbackWithDevBypass(t *testing.T) {
+	a := NewLagoAdapter(Config{Provider: ProviderLago, BaseURL: "http://127.0.0.1:1",
+		APIKey: testAPIKey, Release: "v1.53.0", OutboundAllowLoopback: true})
+	// The host check passes; the (unreachable) request itself may fail —
+	// the point is it is NOT the unconfigured posture.
+	_, err := a.ReadSnapshot(context.Background(), commercial.SnapshotQuery{
+		Kind: commercial.SnapshotKindReadiness,
+	})
+	if errors.Is(err, commercial.ErrPlatformUnconfigured) {
+		t.Fatalf("loopback with the dev bypass must not fail unconfigured, got %v", err)
+	}
+}
+
+// TestOutboundHostRejectsSingleLabel (OCR r4): a single-label host is not
+// an FQDN — intranet-style names refuse rather than riding the named-host
+// allowance.
+func TestOutboundHostRejectsSingleLabel(t *testing.T) {
+	for _, host := range []string{"http://intranet", "http://payments"} {
+		if err := validateOutboundHost(host); err == nil {
+			t.Fatalf("single-label host %q must be refused", host)
+		}
+	}
+	if err := validateOutboundHost("https://api.stripe.com"); err != nil {
+		t.Fatalf("a real FQDN must pass, got %v", err)
+	}
 }
 
 // TestLagoAdapterReadinessFromHealthSignal: a 2xx /health answers a ready

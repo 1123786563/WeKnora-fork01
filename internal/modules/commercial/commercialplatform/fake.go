@@ -78,6 +78,7 @@ type fakePurchase struct {
 	Currency         string
 	Status           string // "incomplete"|"active"|"canceled"
 	InvoiceFees      []commercial.InvoiceLineSnapshot
+	InvoicePaymentStatus string // finalized-stage payment_status (D6' review input)
 }
 
 // FakePurchaseSubscription is the observable purchase-subscription state for
@@ -280,6 +281,22 @@ func (f *FakeAdapter) SetPurchaseInvoiceFees(extPurchaseSubscriptionID string, f
 	defer f.mu.Unlock()
 	if s, ok := f.purchaseSubs[extPurchaseSubscriptionID]; ok {
 		s.InvoiceFees = append([]commercial.InvoiceLineSnapshot(nil), fees...)
+		if s.InvoicePaymentStatus == "" {
+			// A fee injection models the finalized stage; the D6' review
+			// reads the invoice payment_status alongside the lines.
+			s.InvoicePaymentStatus = "succeeded"
+		}
+		f.purchaseSubs[extPurchaseSubscriptionID] = s
+	}
+}
+
+// CancelPurchase advances the purchase subscription to canceled (the test
+// observation knob for the timeout/cancel boundary).
+func (f *FakeAdapter) CancelPurchase(extPurchaseSubscriptionID string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if s, ok := f.purchaseSubs[extPurchaseSubscriptionID]; ok {
+		s.Status = "canceled"
 		f.purchaseSubs[extPurchaseSubscriptionID] = s
 	}
 }
@@ -436,6 +453,7 @@ func (f *FakeAdapter) ReadSnapshot(_ context.Context, query commercial.SnapshotQ
 			// fees model the finalized stage only.
 			if sub.Status == "active" && len(sub.InvoiceFees) > 0 {
 				p.InvoiceFees = append([]commercial.InvoiceLineSnapshot(nil), sub.InvoiceFees...)
+				p.InvoicePaymentStatus = sub.InvoicePaymentStatus
 			}
 		}
 		return commercial.Snapshot{Kind: commercial.SnapshotKindPurchase, Purchase: p}, nil
@@ -594,7 +612,13 @@ func (f *FakeAdapter) SubmitCommand(_ context.Context, cmd commercial.Command) (
 		if err := payload.Validate(); err != nil {
 			return commercial.CommandReceipt{}, fmt.Errorf("%w: %v", commercial.ErrPlatformInvalidResponse, err)
 		}
-		walletName := commercial.MonthlyWalletName(payload.TenantID, payload.Period)
+		// D4: an empty WalletName keeps the Base monthly batch identity; a
+		// purchase first-period grant names its own wallet so the two grant
+		// families never collide on the by-name idempotency match.
+		walletName := payload.WalletName
+		if walletName == "" {
+			walletName = commercial.MonthlyWalletName(payload.TenantID, payload.Period)
+		}
 		wantCents := payload.CreditsMicro / 10_000
 		f.mu.Lock()
 		defer f.mu.Unlock()
@@ -692,6 +716,40 @@ func (f *FakeAdapter) SubmitCommand(_ context.Context, cmd commercial.Command) (
 			ExternalID: payload.ExternalPurchaseSubscriptionID,
 			RecordedAt: f.nowUTC(),
 		}, nil
+
+	case commercial.CommandKindSettlePurchasePayment:
+		payload, ok := cmd.Payload.(commercial.SettlePurchasePaymentPayload)
+		if !ok {
+			return commercial.CommandReceipt{}, commercial.ErrPlatformUnsupported
+		}
+		if err := payload.Validate(); err != nil {
+			return commercial.CommandReceipt{}, fmt.Errorf("%w: %v", commercial.ErrPlatformInvalidResponse, err)
+		}
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		sub, held := f.purchaseSubs[payload.ExternalPurchaseSubscriptionID]
+		if !held {
+			// D2'(c): settling an unknown purchase is a definitive integrity
+			// violation — never a fabricated activation.
+			return commercial.CommandReceipt{}, fmt.Errorf("%w: settle target purchase does not exist", commercial.ErrPlatformInvalidResponse)
+		}
+		if sub.Status == "canceled" || sub.Status == "terminated" {
+			// A terminal purchase can never be settled (the authority's own
+			// truth refuses; the Lago rails would fail the same way).
+			return commercial.CommandReceipt{}, fmt.Errorf("%w: settle target purchase is terminal", commercial.ErrPlatformInvalidResponse)
+		}
+		if receipt, ok := f.receipts[cmd.Key]; ok {
+			return receipt, nil // already settled under this channel identity
+		}
+		receipt := commercial.CommandReceipt{
+			Key:        cmd.Key,
+			ExternalID: payload.ExternalPurchaseSubscriptionID,
+			RecordedAt: f.nowUTC(),
+		}
+		f.receipts[cmd.Key] = receipt
+		sub.Status = "active"
+		f.purchaseSubs[payload.ExternalPurchaseSubscriptionID] = sub
+		return receipt, nil
 
 	default:
 		return commercial.CommandReceipt{}, commercial.ErrPlatformUnsupported

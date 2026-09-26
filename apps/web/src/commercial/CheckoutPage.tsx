@@ -14,10 +14,28 @@ const DEFAULT_PLAN_VERSION = 1;
 const DEFAULT_SUBSCRIPTION_VERSION = 1;
 const RECHARGE_EXPIRY_NOTE = '充值12个月到期说明：充值额度自到账之日起 12 个月内有效，到期未使用的额度将失效，不自动续期。';
 
+type PaymentChannel = 'alipay' | 'wechat';
+
 type CheckoutState =
   | { status: 'loading' }
   | { status: 'error'; message: string }
-  | { status: 'ready'; order: OrderView; quote: QuoteView | null };
+  | { status: 'ready'; order: OrderView; quote: QuoteView | null; purchase?: PurchaseView };
+
+// (#82 D3/审查 H1) The three product states the checkout surfaces:
+// awaiting payment / paid awaiting activation / active — driven by the
+// purchase projection (client.commercial.purchaseStatus), with the order's
+// channel face as the fallback.
+export function purchaseStateMessage(purchase: PurchaseView | undefined, order: OrderView): string {
+  switch (purchase?.state) {
+    case 'paid_awaiting_activation': return '已付款，权益处理中';
+    case 'active': return '权益已生效';
+    case 'awaiting_payment': return '待付款（权益未开通）';
+    default:
+      return order.payment === 'pending' ? '待付款（权益未开通）'
+        : order.payment === 'paid' ? '已付款，权益处理中'
+        : order.fulfillment === 'fulfilled' ? '权益已生效' : orderMessage(order);
+  }
+}
 
 function formatCny(amountFen: string): string {
   return `¥${(Number.parseInt(amountFen, 10) / 100).toFixed(2)}`;
@@ -123,10 +141,18 @@ interface CheckoutPageProps {
 export function CheckoutPage({ client, scopeController, orderId }: CheckoutPageProps) {
   const [state, setState] = useState<CheckoutState>({ status: 'loading' });
   const [retryToken, setRetryToken] = useState(0);
+  // (审查 H1) The payment-channel selector: Alipay is the #82 main rail and
+  // therefore the default; the WeChat path stays selectable (#81 shape).
+  const [channel, setChannel] = useState<PaymentChannel>('alipay');
+  // The channel the CURRENT order was submitted with: switching the radio on
+  // a still-pending order offers an explicit re-submit entry (never a silent
+  // second order).
+  const [submittedChannel, setSubmittedChannel] = useState<PaymentChannel>('alipay');
   const scope = scopeController.current();
   const queryKey = useMemo(() => scopedKey(scope.scope, 'commercial-checkout'), [scope.scope]);
-  // The only order this page may ever query or create; set once, never replaced by a new purchase.
-  const orderIdRef = useRef<string>(orderId);
+  // The only order this page may ever query or create; set once, cleared
+  // ONLY by the explicit restart entry (R3-09), never by a new purchase.
+  const orderIdRef = useRef<string | null>(orderId);
   const quoteRef = useRef<QuoteView | null>(null);
 
   useEffect(() => {
@@ -140,6 +166,11 @@ export function CheckoutPage({ client, scopeController, orderId }: CheckoutPageP
           const order = await client.commercial.getOrder(orderIdRef.current, currentScope.signal);
           if (active && scopeController.isCurrent(currentScope.scope)) {
             setState({ status: 'ready', order, quote: quoteRef.current });
+            void client.commercial.purchaseStatus(currentScope.signal).then((purchase) => {
+              if (active && scopeController.isCurrent(currentScope.scope)) {
+                setState((prev) => (prev.status === 'ready' ? { ...prev, purchase } : prev));
+              }
+            }).catch(() => { /* silent degrade */ });
           }
           return;
         }
@@ -152,8 +183,9 @@ export function CheckoutPage({ client, scopeController, orderId }: CheckoutPageP
         }
         // #81：提交走 payment-gated purchase。重试语义：同一 quote 重试就是同一次
         // purchase 调用，后端按身份幂等返回同一订单（不产生第二张订单/第二张账单）。
+        setSubmittedChannel(channel);
         const purchase = await client.commercial.purchase(
-          { quote_id: quoteRef.current.id, provider: 'wechat' },
+          { quote_id: quoteRef.current.id, provider: channel },
           currentScope.signal,
         );
         // R1-V01：purchase.order 缺席时不再发起空 ID 的 getOrder 请求（那必然
@@ -169,7 +201,7 @@ export function CheckoutPage({ client, scopeController, orderId }: CheckoutPageP
         const order = purchase.order;
         orderIdRef.current = order.id;
         if (active && scopeController.isCurrent(currentScope.scope)) {
-          setState({ status: 'ready', order, quote: quoteRef.current });
+          setState({ status: 'ready', order, quote: quoteRef.current, purchase });
         }
       } catch (error) {
         if (!active || !scopeController.isCurrent(currentScope.scope)) return;
@@ -189,18 +221,29 @@ export function CheckoutPage({ client, scopeController, orderId }: CheckoutPageP
     // Unmount/scope switch: active=false drops late results; in-flight requests are
     // aborted by the scope signal. Background fulfillment is never cancelled by leaving.
     return () => { active = false; };
-  }, [client, scopeController, retryToken, scope.scope.tenantId]);
+  }, [client, scopeController, retryToken, channel, scope.scope.tenantId]);
 
   const refreshOrder = useCallback((): void => {
     const id = orderIdRef.current;
     if (!id) return;
     const currentScope = scopeController.current();
+    // (OCR r4 / 审查 M6) The three-state face rides the purchase projection;
+    // the order read stays the channel fallback. A purchaseStatus failure
+    // degrades silently — it must never block the order poll. Late
+    // resolutions are dropped by the scope guard pair (isCurrent + abort).
+    const live = (): boolean =>
+      !currentScope.signal.aborted && scopeController.isCurrent(currentScope.scope);
     void client.commercial.getOrder(id, currentScope.signal).then((order) => {
-      if (scopeController.isCurrent(currentScope.scope)) {
+      if (live()) {
         setState((prev) => (prev.status === 'ready' ? { ...prev, order } : prev));
       }
+      void client.commercial.purchaseStatus(currentScope.signal).then((purchase) => {
+        if (live()) {
+          setState((prev) => (prev.status === 'ready' ? { ...prev, purchase } : prev));
+        }
+      }).catch(() => { /* silent degrade */ });
     }).catch((error: unknown) => {
-      if (currentScope.signal.aborted || !scopeController.isCurrent(currentScope.scope)) return;
+      if (!live()) return;
       setState((prev) => (prev.status === 'ready'
         ? prev
         : { status: 'error', message: error instanceof Error ? error.message : 'Unable to load order' }));
@@ -244,7 +287,7 @@ export function CheckoutPage({ client, scopeController, orderId }: CheckoutPageP
         {state.status === 'error' ? (
           <>
             <Status tone="error">{state.message}</Status>
-            <Button type="button" onClick={() => setRetryToken((value) => value + 1)}>重试（复用原订单与幂等键，不重复下单）</Button>
+            <Button type="button" onClick={() => setRetryToken((value) => value + 1)}>重试（同一报价服务端幂等；报价失效时自动重新报价）</Button>
           </>
         ) : null}
         {state.status === 'ready' ? (
@@ -252,17 +295,46 @@ export function CheckoutPage({ client, scopeController, orderId }: CheckoutPageP
             <section aria-live="polite">
               <h2>{spaceName} 的订单</h2>
               <p>{orderMessage(state.order)}</p>
-              {/* AC3：购买成功后产品状态为「待付款」，付费权益未开通——仅当订单
-                  仍在待付款时显示（R1-V12：已支付/终态不再误导重复支付）。
-                  R1-V19：Status 本身渲染 <p>，不再嵌套外层段落。 */}
-              {state.order.payment === 'pending' ? <Status>待付款（权益未开通）</Status> : null}
-              {/* 渠道支付入口（审查 F2）：渠道请求创建后展示跳转链接，用户由此完成支付。
-                  R1-V13：渲染前经 scheme 白名单校验，危险 scheme 一律不渲染。 */}
-              {state.order.checkout_url && isSafeCheckoutUrl(state.order.checkout_url) ? (
-                <p>
-                  <a href={state.order.checkout_url} target="_blank" rel="noreferrer">前往支付</a>
-                </p>
+              {/* AC1（#82）：三态产品状态由 purchase 投影驱动（待付款 → 已付款
+                  待激活 → 已生效）；order.payment 是渠道面兜底。 */}
+              <Status>{purchaseStateMessage(state.purchase, state.order)}</Status>
+              {/* (审查 H1) 支付渠道单选：支付宝为 #82 主链默认；微信路径保持
+                  可选（#81 形状）。选择只在下一单提交时生效。 */}
+              <fieldset style={{ border: '1px solid #e7e7ea', borderRadius: 8, margin: '12px 0', padding: '8px 12px' }}>
+                <legend>支付渠道</legend>
+                <label>
+                  <input type="radio" name="payment-channel" value="alipay"
+                    checked={channel === 'alipay'} onChange={() => setChannel('alipay')} />
+                  支付宝
+                </label>
+                <label>
+                  <input type="radio" name="payment-channel" value="wechat"
+                    checked={channel === 'wechat'} onChange={() => setChannel('wechat')} />
+                  微信支付
+                </label>
+              </fieldset>
+              {/* (审查 H1) 渠道切换入口：待付款订单上切换渠道是显式动作——
+                  「改用 X 重新发起支付」走新报价新订单，绝不静默开第二单。 */}
+              {state.order.payment === 'pending' && channel !== submittedChannel ? (
+                <>
+                  <Status tone="error">当前订单以 {submittedChannel === 'alipay' ? '支付宝' : '微信支付'} 创建</Status>
+                  <Button type="button" onClick={() => { restartCheckout(); }}>
+                    改用{channel === 'alipay' ? '支付宝' : '微信支付'}重新发起支付（获取新报价）
+                  </Button>
+                </>
               ) : null}
+              {/* 渠道支付入口（审查 F2）：渠道请求创建后展示跳转链接，用户由此完成支付。
+                  R1-V13 / (OCR r4)：渲染前经 scheme 白名单校验，危险 scheme 一律不渲染；
+                  checkoutHref 是唯一事实源，两处判断共用。 */}
+              {(() => {
+                const checkoutHref = state.order.checkout_url && isSafeCheckoutUrl(state.order.checkout_url)
+                  ? state.order.checkout_url : null;
+                return checkoutHref ? (
+                  <p>
+                    <a href={checkoutHref} target="_blank" rel="noreferrer">前往支付</a>
+                  </p>
+                ) : null;
+              })()}
               {/* R3-09：渠道创建失败（后端 202 姿态）——订单 pending 但没有任何
                   可用支付链接，本页刷新永远拿回同一行：给出渠道异常提示与
                   「重新发起支付」入口（新报价新订单），不让用户困在死胡同。 */}

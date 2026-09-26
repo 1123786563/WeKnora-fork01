@@ -125,13 +125,14 @@ type fulfillEventPayload struct {
 // Payment callbacks are never blocked by this service: they only write
 // durable outbox events, and recovery runs as a background registration.
 type FulfillmentService struct {
-	db       *gorm.DB
-	orders   *repocommercial.OrderStore
-	gateway  domain.CommercialGateway
-	lines    func(domain.Order) []FulfillmentLine
-	leaseTTL time.Duration
-	interval time.Duration
-	now      func() time.Time
+	db        *gorm.DB
+	orders    *repocommercial.OrderStore
+	gateway   domain.CommercialGateway
+	purchaser *PurchaseFulfiller
+	lines     func(domain.Order) []FulfillmentLine
+	leaseTTL  time.Duration
+	interval  time.Duration
+	now       func() time.Time
 
 	stopMu sync.Mutex
 	stop   chan struct{}
@@ -141,7 +142,7 @@ type FulfillmentService struct {
 // record table. The gateway arriving unconfigured (blocked-env) is legal:
 // recovery passes will classify its calls as unknown and leave orders paid
 // until the connector is configured.
-func NewFulfillmentService(db *gorm.DB, gateway domain.CommercialGateway) (*FulfillmentService, error) {
+func NewFulfillmentService(db *gorm.DB, gateway domain.CommercialGateway, purchaser *PurchaseFulfiller) (*FulfillmentService, error) {
 	if db == nil {
 		return nil, ErrFulfillmentDatabaseMissing
 	}
@@ -152,13 +153,14 @@ func NewFulfillmentService(db *gorm.DB, gateway domain.CommercialGateway) (*Fulf
 		return nil, err
 	}
 	return &FulfillmentService{
-		db:       db,
-		orders:   repocommercial.NewOrderStore(db),
-		gateway:  gateway,
-		lines:    TopUpOrderLines,
-		leaseTTL: time.Minute,
-		interval: 30 * time.Second,
-		now:      time.Now,
+		db:        db,
+		orders:    repocommercial.NewOrderStore(db),
+		gateway:   gateway,
+		purchaser: purchaser,
+		lines:     TopUpOrderLines,
+		leaseTTL:  time.Minute,
+		interval:  30 * time.Second,
+		now:       time.Now,
 	}, nil
 }
 
@@ -276,6 +278,29 @@ func (s *FulfillmentService) fulfillEvent(ctx context.Context, ev repocommercial
 		// Not payable (still pending): leave the event for a later pass.
 		return s.completeEvent(ctx, ev, repocommercial.OutboxStatePending)
 	}
+	// (#82 D5) SUBSCRIPTION purchase orders route to the PurchaseFulfiller
+	// — the dual-track settle/observe/grant orchestration. The order kind
+	// alone cannot tell them apart (every wallet top-up is also a purchase
+	// order — domain: "a purchase order settles as credit top-up"); the
+	// discriminator is the #81 frozen quote face: a subscription purchase
+	// carries exactly one subscription_fee line item. A nil purchaser
+	// (blocked-env wiring) never blocks the shared drain: the event stays
+	// pending for a later pass with a configured fulfiller.
+	if row.Kind == domain.OrderKindPurchase && s.isSubscriptionPurchase(ctx, row) {
+		if s.purchaser == nil {
+			return s.completeEvent(ctx, ev, repocommercial.OutboxStatePending)
+		}
+		if err := s.purchaser.Fulfill(ctx, ev); err != nil {
+			return err
+		}
+		// Completion is observed on the order row (Fulfill is idempotent and
+		// returns nil both for "still activating" and for completion).
+		if row2, rerr := s.orders.GetOrder(ctx, order.ID); rerr == nil &&
+			row2.Domain().State == domain.OrderStateFulfilled {
+			return s.completeEvent(ctx, ev, repocommercial.OutboxStateSent)
+		}
+		return s.completeEvent(ctx, ev, repocommercial.OutboxStatePending)
+	}
 	var lines []FulfillmentLine
 	if row.Kind == domain.OrderKindUpgrade {
 		lines, err = s.prepareUpgrade(ctx, row, now)
@@ -307,6 +332,31 @@ func (s *FulfillmentService) fulfillEvent(ctx context.Context, ev repocommercial
 		return err
 	}
 	return s.completeEvent(ctx, ev, repocommercial.OutboxStateSent)
+}
+
+// isSubscriptionPurchase reports whether a purchase order is a SUBSCRIPTION
+// purchase (#81/#82): its frozen quote carries the subscription_fee line
+// item. Orders without a readable quote (the legacy top-up seeds and the
+// pre-#81 pipeline) are not subscription purchases.
+func (s *FulfillmentService) isSubscriptionPurchase(ctx context.Context, row repocommercial.OrderRow) bool {
+	var q repocommercial.QuoteRow
+	if err := s.db.WithContext(ctx).Where("id = ?", row.QuoteID).First(&q).Error; err != nil {
+		return false
+	}
+	var snap struct {
+		LineItems []struct {
+			Kind string `json:"kind"`
+		} `json:"line_items"`
+	}
+	if err := json.Unmarshal([]byte(q.SnapshotJSON), &snap); err != nil {
+		return false
+	}
+	for _, line := range snap.LineItems {
+		if line.Kind == "subscription_fee" {
+			return true
+		}
+	}
+	return false
 }
 
 // ensureRecord claims the unique FulfillmentRecord for one order line,

@@ -47,13 +47,19 @@ check("AC1 gate.status==pass", g["status"] == "pass")
 check("AC1 subscription incomplete", o["subscription_status"] == "incomplete")
 check("AC1 entitlements 404", o["entitlements_status"] == 404)
 if o.get("invoice_api_visible") is False:
-    # documented branch: invoice API-invisible; AC1 on core observation held
-    check("AC1 invoice branch: still incomplete across window",
-          o.get("recheck_subscription_status") == "incomplete")
+    # documented branch: invoice API-invisible; AC1 on core observation held.
+    # (final-audit 4) The recheck accepts the charge-failure ENDGAME too:
+    # the gate may have lapsed to canceled(payment_failed) inside the
+    # window — incomplete OR canceled are both honest gate outcomes.
+    check("AC1 invoice branch: gate held across window",
+          o.get("recheck_subscription_status") in ("incomplete", "canceled"))
 else:
+    # (final-audit 4) invoice_status open OR the closed-failed endgame;
+    # a pending payment status only pairs with the open shape.
     check("AC1 invoice open/pending/numberless",
-          o.get("invoice_status") == "open" and o.get("invoice_payment_status") == "pending"
-          and not o.get("invoice_number"))
+          (o.get("invoice_status") == "open" and o.get("invoice_payment_status") == "pending"
+           and not o.get("invoice_number"))
+          or o.get("invoice_status") == "closed-failed")
     check("AC1 <=1 non-succeeded payment",
           o.get("payments_non_succeeded_count", 99) <= 1)
 

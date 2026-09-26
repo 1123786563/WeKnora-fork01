@@ -169,6 +169,8 @@ func (a *LagoAdapter) SubmitCommand(ctx context.Context, cmd commercial.Command)
 		return a.grantIncludedCredits(ctx, cmd)
 	case commercial.CommandKindCreatePurchaseSubscription:
 		return a.createPurchaseSubscription(ctx, cmd)
+	case commercial.CommandKindSettlePurchasePayment:
+		return a.settlePurchasePayment(ctx, cmd)
 	default:
 		return commercial.CommandReceipt{}, commercial.ErrPlatformUnsupported
 	}
@@ -275,6 +277,15 @@ func (a *LagoAdapter) createCustomer(ctx context.Context, externalID, displayNam
 func (a *LagoAdapter) configured() error {
 	if a.cfg.BaseURL == "" || a.cfg.APIKey == "" {
 		return commercial.ErrPlatformUnconfigured
+	}
+	// (OCR r4 / S1) The authority egress itself is host-validated BEFORE
+	// any request is built — a hostile or misconfigured BaseURL pointing
+	// at loopback/private/reserved space can never leave this process. The
+	// explicit dev-only bypass admits loopback hosts for local stub
+	// verification (WEKNORA_COMMERCIAL_OUTBOUND_ALLOW_LOOPBACK=true);
+	// everything else still runs the full policy.
+	if err := validateOutboundHostWithBypass(a.cfg.BaseURL, a.cfg.OutboundAllowLoopback); err != nil {
+		return fmt.Errorf("%w: authority base url violates the outbound host policy", commercial.ErrPlatformUnconfigured)
 	}
 	return nil
 }
@@ -787,7 +798,19 @@ func (a *LagoAdapter) grantIncludedCredits(ctx context.Context, cmd commercial.C
 	ctx, cancel := context.WithTimeout(ctx, subscriptionRequestTimeout+walletLimitRetryBudget)
 	defer cancel()
 
-	walletName := commercial.MonthlyWalletName(payload.TenantID, payload.Period)
+	// (D4) An empty WalletName keeps the Base monthly batch identity; the
+	// purchase first-period grant names its own wallet (never colliding
+	// with the monthly batch on the by-name idempotency match, F11).
+	walletName := payload.WalletName
+	// The metadata period key follows the batch family (D4): the purchase
+	// wallet stamps purchase_period, the Base monthly batch period — the
+	// two families never match each other's metadata (F11 anti-collision).
+	periodMetaKey := commercial.WalletMetaPeriod
+	if walletName != "" {
+		periodMetaKey = commercial.WalletMetaPurchasePeriod
+	} else {
+		walletName = commercial.MonthlyWalletName(payload.TenantID, payload.Period)
+	}
 	grantCents := payload.CreditsMicro / 10_000
 	deadline := time.Now().Add(walletLimitRetryBudget)
 	for {
@@ -799,7 +822,7 @@ func (a *LagoAdapter) grantIncludedCredits(ctx context.Context, cmd commercial.C
 			meta := w.meta()
 			byName := w.Name == walletName
 			byMeta := meta[commercial.WalletMetaTenant] == payload.ExternalCustomerID &&
-				meta[commercial.WalletMetaPeriod] == payload.Period
+				meta[periodMetaKey] == payload.Period
 			if !byName && !byMeta {
 				continue
 			}
@@ -815,7 +838,7 @@ func (a *LagoAdapter) grantIncludedCredits(ctx context.Context, cmd commercial.C
 			}, nil
 		}
 		// Absent: create the short-TTL wallet for this month.
-		status, body, err := a.createWallet(ctx, payload, walletName)
+		status, body, err := a.createWallet(ctx, payload, walletName, periodMetaKey)
 		if err != nil {
 			return commercial.CommandReceipt{}, err
 		}
@@ -857,7 +880,7 @@ func (a *LagoAdapter) grantIncludedCredits(ctx context.Context, cmd commercial.C
 // createWallet posts the short-TTL monthly wallet. Credits cross as an
 // exact decimal string (never binary float); rate_amount "1" keeps credit
 // cents == currency cents; the metadata anchors E3 recovery-by-query.
-func (a *LagoAdapter) createWallet(ctx context.Context, payload commercial.GrantIncludedCreditsPayload, walletName string) (int, []byte, error) {
+func (a *LagoAdapter) createWallet(ctx context.Context, payload commercial.GrantIncludedCreditsPayload, walletName, periodMetaKey string) (int, []byte, error) {
 	granted, err := commercial.MicroToDecimalString(payload.CreditsMicro)
 	if err != nil {
 		return 0, nil, fmt.Errorf("%w: %v", commercial.ErrPlatformInvalidResponse, err)
@@ -872,7 +895,7 @@ func (a *LagoAdapter) createWallet(ctx context.Context, payload commercial.Grant
 			"expiration_at":        payload.ExpiresAt.UTC().Format(time.RFC3339),
 			"metadata": map[string]string{
 				commercial.WalletMetaTenant: payload.ExternalCustomerID,
-				commercial.WalletMetaPeriod: payload.Period,
+				periodMetaKey:               payload.Period,
 			},
 		},
 	}

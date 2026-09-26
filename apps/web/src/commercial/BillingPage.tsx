@@ -113,8 +113,10 @@ export function BillingPage({ client, scopeController }: BillingPageProps) {
               <strong>套餐</strong>
               <span>
                 {planDisplayName(state.summary)}
-                {/* AC3：待付款购买期间套餐行显示待付款；权益保持未开放（D4）。 */}
+                {/* AC1（#82 三态）：待付款（权益未开放）→ 已付款待激活 → 已生效。 */}
                 {purchase?.state === 'awaiting_payment' ? ' · 待付款（权益未开放）' : ''}
+                {purchase?.state === 'paid_awaiting_activation' ? ' · 已付款待激活' : ''}
+                {purchase?.state === 'active' ? ' · 已生效' : ''}
               </span>
             </li>
             <li><strong>到期</strong><span>{state.summary.subscription?.paid_until || '无固定到期（未订阅）'}</span></li>
