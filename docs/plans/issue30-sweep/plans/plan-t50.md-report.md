@@ -306,3 +306,116 @@ e405abbab feat(publish): confluence storage body pure projection (T20 #50)
 
 - 无阻塞。Task 5（`ConfluenceBridge`）可依计划继续；Task 6 消费的 `ConfluenceStorageBody` 签名不变。
 - 提请审查注意：本任务对计划模板有一处已记录的实现偏差（too-large 计数语义，见第 3 节）；如审查者倾向保留模板原实现，则必须同时修改计划自带的验收测试——二者不可兼得。
+
+---
+
+# Task 5/10 报告——publish 包：`ConfluenceBridge`（Dispatcher+Resolver+预读）与生产端口
+
+日期：2026-09-26
+任务定位：plan-t50.md:2315-3107（Task 5）
+
+## 1. 实现内容
+
+新建 2 个文件（均在任务授权清单内，工作区零其他改动，未触碰任何他人文件）：
+
+- **Create** `internal/modules/appconnector/publish/confluence_bridge.go`（325 行，按计划 plan-t50.md:2767-3091 逐字落地）：
+  - `const ConfluenceVersionConflictResult = "confluence_version_conflict"`——冲突 ProviderResult 前缀，Task 6 映射 409 `PUBLISH_VERSION_CONFLICT`；
+  - `ConfluenceConnectionScope`——11 字段与计划 Produces 签名逐字一致；
+  - 三端口接口：`ConfluenceScopeSource` / `ConfluencePolicyProvider` / `ConfluenceTokenSource`；
+  - `ConfluenceBridge` + `NewConfluenceBridge`（三端口，无进度端口——单步适配器无多步进度可持久化），`var _ appconnectorsvc.ActionDispatcher` / `var _ appconnectorsvc.UnknownResolver` 编译期断言；
+  - `adapterFor`：scope→AppID 路由守卫（非 confluence 即 `ErrDispatchNotStarted` 包装）→policy→credential 每次调用现场解析（吊销连接永不复用陈旧密钥）；`appconn.IsConfluenceUpdateArgs` 快照形状路由 update/create 两个适配器；
+  - `run`：适配器 FAILED→确定性 failed（nil error；`errors.Is(aerr, ErrConfluenceVersionConflict)` 时前缀 `ConfluenceVersionConflictResult`）；UNKNOWN→unknown（nil error，落位等待 provider query）；`ActionAwaitingApproval`→failed（"approval revoked before send"）；其余 error 原样上抛；
+  - `Dispatch` / `QueryProvider`：同一 `run`，query 走 `adapter.Query`——对账只读远端不重发；
+  - `ReadConfluencePageVersion`：计划形成期预读（AC1），复用同三端口，纯只读；
+  - 生产端口三件套：`dbConfluenceScopeSource`（connections→installations→app_versions 三跳；connection 按 id 单独查、installation 带 `tenant_id = conn.TenantID` 谓词；`base_url` 解析失败 fail-closed）、`scopePolicyProvider`（scheme/host/port + GET/POST/PUT + `APIBasePath+"/"` 前缀（空则 `/`）+ 30s 超时）、`confluenceCredentialTokenSource`（A02 `CredentialResolver.Resolve` → `ParseConfluenceCredential`）。
+- **Create** `internal/modules/appconnector/publish/confluence_bridge_test.go`（426 行，按计划 plan-t50.md:2339-2756 落地，含两处勘误修正与 gofmt 机械重排，见第 4 节）：
+  - 云版线缆双打 `cfWireFake`（Basic 认证、POST 创建、GET/PUT 单调版本门、409 冲突、`dropNextWrite` 丢回复旋钮）；
+  - 7 个测试：`TestConfluenceBridgeDispatchesCreateAndUpdate` / `TestConfluenceBridgeConflictPrefix` / `TestConfluenceBridgeRefusesNonConfluenceConnection` / `TestConfluenceBridgeQueryProviderReadsRemoteFirst` / `TestConfluenceBridgeReadPageVersion` / `TestDBConfluenceScopeSource` / `TestConfluencePolicyProviderFromScope`。
+
+**Consumes 核实（实现前逐项实读验证）**：
+- Task 1/2/3 适配器族：`ConfluenceCreateAdapter`（confluence_create.go:196，字段 Policy/Credential/Edition/APIBasePath/ApprovedParents/ConnectionCapabilities）、`ConfluenceUpdateAdapter`（confluence_update.go:120）、`IsConfluenceUpdateArgs`（confluence_create.go:68）、`ConfluenceCredential`（confluence_common.go:64）、`ParseConfluenceCredential`（confluence_common.go:70）、`ParseConfluenceBaseURL`（confluence_common.go:101）、`ConfluenceCapabilityWrite`（confluence_common.go:54）、`ReadConfluencePageVersion(ctx, pol, credFn, edition, apiBasePath, pageID)`（confluence_update.go:297）、`ErrConfluenceVersionConflict`（confluence_common.go:20）；
+- A03 管线：`ActionDispatcher`/`UnknownResolver`（service/appconnector/action.go:118/124）、`ActionSnapshot`（action.go:82，`Args []byte`）、`DispatchOutcome`（action.go:110）、`ErrDispatchNotStarted`（action.go:49）；
+- 仓储行：`ConnectionRow`/`InstallationRow`（含 `uq_installations_tenant_app` 唯一索引，install.go:39）/`AppVersion`（install.go:24/37/51）；
+- `CredentialResolver`（service/appconnector/credentials.go:21）。
+
+## 2. TDD 证据
+
+### Step 2 RED（写实现前实跑）
+
+命令（worktree 根）：
+
+```
+$ go test ./internal/modules/appconnector/publish/ -run 'TestConfluenceBridge|TestDBConfluenceScopeSource|TestConfluencePolicyProviderFromScope' -count=1
+# github.com/Tencent/WeKnora/internal/modules/appconnector/publish [github.com/Tencent/WeKnora/internal/modules/appconnector/publish.test]
+internal/modules/appconnector/publish/confluence_bridge_test.go:200:33: undefined: ConfluenceConnectionScope
+internal/modules/appconnector/publish/confluence_bridge_test.go:234:12: undefined: NewConfluenceBridge
+internal/modules/appconnector/publish/confluence_bridge_test.go:277:82: undefined: ConfluenceVersionConflictResult
+internal/modules/appconnector/publish/confluence_bridge_test.go:307:12: undefined: NewConfluenceBridge
+internal/modules/appconnector/publish/confluence_bridge_test.go:341:12: undefined: NewConfluenceBridge
+internal/modules/appconnector/publish/confluence_bridge_test.go:341:12: too many errors
+FAIL	github.com/Tencent/WeKnora/internal/modules/appconnector/publish [build failed]
+```
+
+失败原因即预期原因：被测符号全部未定义（计划 Step 2 Expected 为 `undefined: ConfluenceBridge`，实际报其构造器/类型族未定义，同一性质）。
+
+### Step 4 GREEN（最小实现后实跑，完整输出）
+
+```
+$ go test ./internal/modules/appconnector/publish/ -run 'TestConfluenceBridge|TestDBConfluenceScopeSource|TestConfluencePolicyProviderFromScope' -count=1 -v
+=== RUN   TestConfluenceBridgeDispatchesCreateAndUpdate
+--- PASS: TestConfluenceBridgeDispatchesCreateAndUpdate (0.01s)
+=== RUN   TestConfluenceBridgeConflictPrefix
+--- PASS: TestConfluenceBridgeConflictPrefix (0.00s)
+=== RUN   TestConfluenceBridgeRefusesNonConfluenceConnection
+--- PASS: TestConfluenceBridgeRefusesNonConfluenceConnection (0.00s)
+=== RUN   TestConfluenceBridgeQueryProviderReadsRemoteFirst
+--- PASS: TestConfluenceBridgeQueryProviderReadsRemoteFirst (0.01s)
+=== RUN   TestConfluenceBridgeReadPageVersion
+--- PASS: TestConfluenceBridgeReadPageVersion (0.00s)
+=== RUN   TestDBConfluenceScopeSource
+--- PASS: TestDBConfluenceScopeSource (0.01s)
+=== RUN   TestConfluencePolicyProviderFromScope
+--- PASS: TestConfluencePolicyProviderFromScope (0.00s)
+PASS
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/publish	3.067s
+```
+
+7/7 通过。首次 GREEN 运行中 `TestDBConfluenceScopeSource` 因计划夹具违反唯一索引而 FAIL（勘误 #2，见下），修正后通过。
+
+## 3. 回归与计划级验证（本任务实跑）
+
+| 检查 | 命令 | 结果 |
+|---|---|---|
+| 全包回归 | `go test ./internal/modules/appconnector/... -count=1` | 6 包全部 `ok`（appconnector / connectorcontrol / openconnector / publish / repository/appconnector / service/appconnector） |
+| 计划级命令前四段（plan-t50.md:4938） | `go build ./... && go vet ./internal/modules/appconnector/... ./internal/handler/ ./internal/router/ ./internal/container/ && go test ./internal/modules/appconnector/ -run 'Confluence' -count=1 && go test ./internal/modules/appconnector/publish/ -run 'Confluence' -count=1` | exit 0；`appconnector 0.629s ok`、`publish 2.500s ok`（build 仅 linker 无害告警 `ignoring duplicate libraries: '-lc++'`） |
+| 计划级命令末段 | `go test ./internal/handler/ -run 'TestConfluencePublish' -count=1` | `ok ... [no tests to run]`——该测试属 Task 7（HTTP 面），本任务时尚不存在；非失败非跳过，如实说明 |
+| gofmt | `gofmt -l internal/modules/appconnector/publish/` | 干净（无输出，两新文件重排后） |
+| go vet | `go vet ./internal/modules/appconnector/publish/` | 通过（零输出） |
+
+## 4. 对计划的两处勘误与一处机械重排（非静默改计划，与前序任务先例同责）
+
+1. **勘误 #1（编译错误）**：计划测试 plan-t50.md:2448-2449 `parent, ok := f.pages[req.ParentID]` 中 `parent` 声明未使用（后续条件只读 `ok`），Go 编译直接失败。最小修正为 `_, ok := f.pages[req.ParentID]` 并加注释（存在性检查语义不变）。
+2. **勘误 #2（夹具违反域约束，GREEN 首跑真实 FAIL）**：计划夹具把 `inst-bad`/`conn-bad` 放在 tenant 7，与 `inst-cf` 同为 `(tenant_id=7, app_id='confluence')`，违反 `InstallationRow` 自带唯一索引 `uq_installations_tenant_app`（install.go:39；域规则=一租户一 app 一安装）。首跑输出：`UNIQUE constraint failed: installations.tenant_id, installations.app_id`。修正：坏夹具改用 tenant 8（连接行同租户），fail-closed 断言语义完全不变。
+3. **gofmt 重排**：单行函数字面量与单行函数体展开为多行（同 Task 4 先例：机械格式差异以 gofmt 为准）。实现文件语义逐字等于计划文本。
+
+## 5. 自检发现
+
+- **gorm 默认 logger 噪音**：`TestDBConfluenceScopeSource` 两处预期查找未命中（conn-bad 无解析、conn-nope 不存在）在 `-v` 下打 gorm "record not found" 错误行。保留计划原样 `&gorm.Config{}`——与同包 sibling（dispatcher_test.go:51、plan_test.go:56）一致；非 verbose 输出干净（实测单行 `ok`）。若要求完全静默可仿 `oc_integration_test.go:412` 加 `gormlogger.Discard`，属测试卫生优化，未擅动。
+- **对账不重发的行为断言**：`TestConfluenceBridgeQueryProviderReadsRemoteFirst` 以 `putsBefore==putsAfter` 断言 Query 零写（AC2 对应面）；`TestConfluenceBridgeConflictPrefix` 以 `puts==0` 断言冲突零写（AC1 对应面）。
+- **越权路由 fail-closed**：非 confluence 连接走 `ErrDispatchNotStarted`，且 `posts==0 && puts==0 && gets==0`——请求从未离开进程（可证明的 pre-send 拒绝）。
+- **本任务未越界实现**：`ConfluencePublishService`（Task 6）、HTTP 端点（Task 7）零实现（YAGNI）。
+- **未跑的检查**：`go test ./...`（全仓）未跑——计划级验证命令（plan-t50.md:4938）明确排除全量 flaky 套件，本任务按计划口径执行。
+
+## 6. 提交
+
+```
+fbab6bd4d feat(publish): confluence bridge - dispatcher/resolver routing + production scope/policy/credential ports (T20 #50)
+ 2 files changed, 751 insertions(+)
+```
+
+提交前 `git status` 干净（仅两个本任务授权新文件）；未推送远端。
+
+## 7. 遗留/交接
+
+- 无阻塞。Task 6 可依计划消费：`ConfluenceVersionConflictResult` / `ConfluenceBridge`（`ActionDispatcher`+`UnknownResolver` 双实现）/ `ReadConfluencePageVersion` / `NewDBConfluenceScopeSource` / `NewConfluencePolicyProvider` / `NewConfluenceCredentialTokenSource`，签名逐字与计划 Produces 一致。
+- 提请审查注意：两处计划勘误（§4.1 编译错误、§4.2 唯一索引夹具冲突）均为计划文本客观缺陷，修正不改变任何断言语义；如审查者倾向保留计划原文，需同步修订计划文本，否则测试不可编译/不可通过。
