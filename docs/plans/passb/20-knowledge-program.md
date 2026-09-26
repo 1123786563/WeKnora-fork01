@@ -6,7 +6,7 @@
 - `b2-k0`（K0 冻结，§5–§7、§8 Task K0.1–K0.3、§13 历史记录的属主；**已 done+approved**，head=`5bcb798621b856f7ff6497986c7ca79dba8c338e`）；
 - `b2-k-integration`（K5 集成，§8 Task K5.1–K5.3 及本修订新增段落的属主；DAG `depends_on=[b2-k-process, b2-k-wikifaq]`，`task_ids=[K5.1,K5.2,K5.3]`，gates=`go build ./...` / `go test ./internal/modules/knowledge/...` / `make check-backend-architecture` / `make check-passb-readiness` / `make verify-module-moves`）。
 
-**修订记录：** 2026-09-23 b2-k0 初版（K0.1–K0.3 + K5 概要任务）→ 2026-09-23/24 审校与根因分析轮 → **2026-09-26 b2-k-integration 修订轮（本版）：K1–K4 已交付真实 seam，§8 K5.1–K5.3 由概要展开为零上下文可执行详案（门面五操作实装 + Brief + 18 别名删除 + 差分/门禁收口）；K0 属主段落原样保留。**
+**修订记录：** 2026-09-23 b2-k0 初版（K0.1–K0.3 + K5 概要任务）→ 2026-09-23/24 审校与根因分析轮 → 2026-09-26 b2-k-integration 修订轮（K1–K4 已交付真实 seam，§8 K5.1–K5.3 由概要展开为零上下文可执行详案；K0 属主段落原样保留）→ **2026-09-26 R1 审校修订轮（本版）：五条 findings 逐条实测处置——P-K5-7 readiness 门禁预裁定（基线 218 条诊断实测）、PASSB_BASE_SHA=ALIGN_SHA 裁定（210 文件陷阱）、P-K5-2 双路径判据（merge-tree 预演）、骨架示意签名差异处置、module.go 包注释按 passbguard facade 形态契约重写（module_test.go 原稿复核合法未改；均经干净副本模拟实测）；详见 §13 R1 条目。**
 
 **Goal:** 冻结知识子程序（K0–K5）的共享类型归属与跨 plan 未导出符号联动裁定（K0，已完成）；使 K1/K2/K3 并行、K4 串行完成 84 个 legacy 文件的搬迁与差分（K1–K4，已完成/在收口）；最后 K5 完成**模块门面五操作实装、装配切换 Integration Brief、18 条别名删除、例外/shim 收口核对与差分汇总门禁**。
 
@@ -32,7 +32,7 @@
 | **K1–K4 子计划**：`docs/plans/passb/21-knowledge-ingest.md`、`22-knowledge-retrieval.md`、`23-knowledge-wikifaq.md`、`24-knowledge-process.md` | 各域任务、耦合面裁定、推迟件登记（K5 汇总输入） |
 | **K1–K4 Integration Brief**：`docs/architecture/passb/briefs/b2-k-ingest.md`、`b2-k-retrieval.md`、`b2-k-wikifaq.md`、`b2-k-process.md`（基线对齐后随 `codex/passb-b2-k-process` 分支可见） | 装配切换申请、shim/seam 清单、删除批——K5.1 Brief 的汇总事实源 |
 | **K1–K4 证据/报告**：`docs/architecture/evidence/passb/b2-k-{ingest,retrieval,wikifaq,process}.md`、`docs/plans/passb/reports/b2-k-*.md` | 差分双跑记录（K5.3 复核对象） |
-| 实测代码 | 本计划全部签名与调用点行号的出处。**K5 详案（§8 K5.1–K5.3）的实测基准 = 分支 `codex/passb-b2-k-process` HEAD（2026-09-26，含 K0–K3 合并 + K4 终态；K1/K2/K3/K0 均为其祖先，`git merge-base --is-ancestor` 四支实测通过）；行号以实施时点复核为准** |
+| 实测代码 | 本计划全部签名与调用点行号的出处。**K5 详案（§8 K5.1–K5.3）的实测基准 = 分支 `codex/passb-b2-k-process` HEAD（2026-09-26，含 K0–K3 合并 + K4 终态；K1/K2/K3/K0 均为其祖先，`git merge-base --is-ancestor` 四支实测通过）；行号以实施时点复核为准。R1 修订轮（同日）另将该分支 `git archive` 至 /tmp 干净副本，逐字落盘 §8 K5.1 两代码块实跑全部门禁（build/test/kbfreeze/双守卫/passbguard）——结论已写入 §8 K5.1 与 P-K5-7** |
 
 注意：主 checkout 的 `docs/architecture/passb/knowledge-wikifaq.md`、`knowledge-process.md` 为 B0 前旧版；以集成 worktree 版为准。
 
@@ -58,11 +58,28 @@
 **K5 派发前置（2026-09-26 修订轮新增；实施者开工前逐条给出实证，任一不满足按 conventions §5 回 BLOCKED）：**
 
 - [ ] **P-K5-1 前置节点终态**：DAG `b2-k-wikifaq` `status=done, review_status=approved`（head=`ed156cd856a20a89bfcb24c27c782757a731fe42`）；`b2-k-process` `status=done, review_status=approved` 且 `head_sha` 已回填。本计划撰写时点（集成 worktree DAG 快照）b2-k-process 仍为 `in_progress/review=pending`（其分支已含差分证据、Brief 与节点报告三件套，收口在途）——**实施者必须以开工时点 DAG 实测为准**。
-- [ ] **P-K5-2 基线对齐 merge**（Ruling 2026-09-24-WAVE-DEP-BASELINE）：`git merge --no-ff codex/passb-b2-k-process`（独立 merge commit；K0/K1/K2/K3 已是其祖先，2026-09-26 `git merge-base --is-ancestor` 四支实测通过，无需逐支重并）。对齐后 `go build ./...` 绿、`go test -count=1 ./internal/modules/knowledge/kbfreeze/` 绿、`git status` 干净。module.go 冲突=两侧注册全保留；涉冻结签名取舍的冲突停下升级。
+- [ ] **P-K5-2 基线对齐 merge**（Ruling 2026-09-24-WAVE-DEP-BASELINE；R1 修订轮补双路径判据——Case A/B 互斥，实施者按开工时点实测拓扑走其一，K0/K1/K2/K3 已是 `codex/passb-b2-k-process` 祖先、无需逐支重并）。先判 `git merge-base --is-ancestor codex/passb-b2-k-process HEAD`：
+  - **Case A（输出 NO——2026-09-26 实测现状：本分支自 b1a3d6dd8 谱系分出、k-process 非其祖先）**：`git merge --no-ff codex/passb-b2-k-process` **必然产生独立 merge commit**（"Already up to date" 不可能出现；若出现说明误判 Case，转 Case B 判据复核）。冲突面已预演（R1 `git merge-tree --write-tree --name-only HEAD codex/passb-b2-k-process` 实测）：**唯一冲突 = 本计划文件自身**（add/add：k-process 侧是 b2-k0 时代旧版，其末次改动 `90530cac2`）——解法 = `git checkout --ours docs/plans/passb/20-knowledge-program.md && git add docs/plans/passb/20-knowledge-program.md`（属主 b2-k-integration 的修订版为准）；`internal/modules/knowledge/module.go` 两侧同为 22 行骨架、无冲突（原「两侧注册全保留」指引在本拓扑无适用对象，保留为通用规则：module.go 若因他因冲突仍按两侧注册全保留处理）。
+  - **Case B（输出 YES——重派/中断恢复，或协调者已把含 k-process 的内容并入本分支）**：merge 输出 "Already up to date" **不是前置失败**；判据改为指认既有引入点——`git log --merges --ancestry-path codex/passb-b2-k-process..HEAD --oneline` 最近一条即既有对齐 merge commit；无法指认 merge commit（squash/直推进入）→ 记录实际进入方式并按 conventions §5 上报。
+  - 两 Case 共同收尾判据：`go build ./...` 绿、`go test -count=1 ./internal/modules/knowledge/kbfreeze/` 绿、`git status` 干净；涉冻结签名取舍的冲突停下升级。
+  - **ALIGN_SHA 登记（K5 全部 diff 检查的基线，见 K5.3 Step 2 裁定）**：Case A = 新 merge commit 的 SHA；Case B = 指认的既有对齐 merge commit 的 SHA；`ALIGN_SHA` 及其来源写入报告。
 - [ ] **P-K5-3 四份 Brief 与四份 evidence 在位**：对齐后 `ls docs/architecture/passb/briefs/b2-k-{ingest,retrieval,wikifaq,process}.md docs/architecture/evidence/passb/b2-k-{ingest,retrieval,wikifaq,process}.md` 全部存在（K5.1/K5.3 的汇总输入）。
 - [ ] **P-K5-4 门面零实现复核**：`grep -cE "^func " internal/modules/knowledge/module.go` = 0（22 行注释骨架；K1–K4 四子计划禁改清单均列明未触碰，2026-09-26 于 k-process 分支实测 16 个模块门面全部零函数）。
 - [ ] **P-K5-5 门禁工具可用**：`Makefile` 三目标（:250/:255/:262）在位；`go run ./tools/passbguard -root .` 可执行。
 - [ ] **P-K5-6 工作树干净**：`codex/passb-b2-k-integration` worktree `git status` 干净。
+- [ ] **P-K5-7 readiness 门禁基线快照与节点判据预裁定（R1 修订轮新增）**：DAG b2-k-integration gates 实读含 `make check-passb-readiness`（= `go run ./tools/passbguard -root .`，Makefile:262；B2 knowledge 波内 k0/k-ingest/k-retrieval/k-wikifaq/k-process 五节点 gates 均无此项，K5 是首个执行者），但该命令在实测基准上**必然非 0 退出**——基线对齐后立即执行并留档：
+
+  ```bash
+  go run ./tools/passbguard -root . >/dev/null 2>&1; echo "baseline_exit=$?"   # 退出码原样入报告
+  go run ./tools/passbguard -root . 2>&1 | grep -v '^exit status' | sort > /tmp/k5-readiness-baseline.txt
+  wc -l /tmp/k5-readiness-baseline.txt
+  ```
+
+  **预期退出码 1、218 条既有诊断**（R1 修订轮于 k-process HEAD 干净副本复跑实测：85 contract-consumer-unrecorded / 42 contract-consumer-file-missing / 33 legacy-undeclared / 33 legacy-nonexistent / 13 contract-characterization-missing / 10 legacy-missing / event-producer-missing、event-consumer-missing 各 1）。根因全部是 B2 各 wave 搬迁后 b0 冻结治理文件未随迁改写（contracts.yaml consumers/characterization 路径指旧路径、manifest legacy_files 行待推迟批收口等）——**修复面全部位于 K5 禁改清单**（contracts.yaml=barrier 回写、ownership/manifest 行=各属主行级删除权），K5 节点不可能使其归零，**归零属 ib2 契约区回写与推迟批收口**（其中 knowledge.\* 契约的 unrecorded 类基线已有 41 条、K1–K4 落位模块文件大量在列——同类形态先例）。若开工时点实测退出码 0，按绿处理（快照仍留档）。据此本节点对该 gate 的完成判据预裁定为：
+  - **(i)** 命令原样执行、退出码与全量输出如实入报告（预期 1；非 0 不构成节点失败，如实记录不算伪造）；
+  - **(ii)** 节点终态相对本快照的差集 = **恰好 3 条预登记新增**：`contract-consumer-unrecorded: knowledge.service / knowledge.knowledge-base-service / knowledge.tag-service: production consumer internal/modules/knowledge/module.go references KnowledgeService|KnowledgeBaseService|KnowledgeTagService but is not recorded`（门面 `Dependencies` 必然引用三个冻结端口名，而 consumers 登记在 contracts.yaml=K5 禁改；R1 修订轮已模拟实测该终态差集恰为此 3 行）；**此外任何新增诊断 = 节点失败**；
+  - **(iii)** 消失项逐条归因于 K5 自身改动（K5.2 别名成对删行/注释修正不触及 passbguard 诊断面——基线无 alias 类诊断，预期消失集为空）；无法归因 = 按 conventions §5 上报；
+  - **(iv)** 本预裁定写入节点报告并在 DAG `b2-k-integration` notes 登记上报，请协调者按 conventions §9 采纳或修正该节点 gates 释义（K5 不自行改 DAG）。
 
 ---
 
@@ -81,7 +98,7 @@ IB2（29-core-capability-integration，contracts.yaml knowledge 契约区状态�
 ```
 
 - 子计划文件：`21-knowledge-ingest.md`、`22-knowledge-retrieval.md`、`23-knowledge-wikifaq.md`、`24-knowledge-process.md`（均已撰写并评审通过；义务清单见 §9）。
-- K5 任务即本文件 §8 K5.1–K5.3；派发属主节点是 `b2-k-integration`。在 K1–K4 四节点全部 review 通过并按缺省序 K1→K2→K3→K4 合入集成分支之前，K5 的**实施**（门面实装/Brief/删除）不可开工（P-K5-1/P-K5-2）；误派正确响应为 BLOCKED 上报（先例：2026-09-24 K5.1 于 b2-k0 误派，`docs/plans/passb/reports/b2-k0.md` §7/§8）。
+- K5 任务即本文件 §8 K5.1–K5.3；派发属主节点是 `b2-k-integration`。K5 **实施**的开工前置 = P-K5-1（DAG 终态 done+approved）+ P-K5-2（本节点分支基线对齐），均以开工时点实测为准；误派正确响应为 BLOCKED 上报（先例：2026-09-24 K5.1 于 b2-k0 误派，`docs/plans/passb/reports/b2-k0.md` §7/§8）。**时序互斥裁定（R1）**：集成分支的 K1→K2→K3→K4 合并（集成工程师执行，framework:28）与 K5 分支的 P-K5-2 基线对齐**互不等待、互不触碰**——K5 分支的对齐对象只有 `codex/passb-b2-k-process` 一个分支；集成分支合并先行或后行均不改变本分支与 k-process 的祖先关系（2026-09-26 实测 k-process 非本分支祖先），仅当协调者把含 k-process 的内容直接并入本分支才转入 P-K5-2 Case B。
 - 集成分支合并顺序缺省 **K1 → K2 → K3 → K4**（一次一支、审后合并，framework:28）；K5 分支的基线对齐 merge 不等于集成分支合并（Ruling WAVE-DEP-BASELINE：性质=基线对齐，不碰集成分支、不豁免 barrier 职责）。
 
 ---
@@ -97,7 +114,7 @@ IB2（29-core-capability-integration，contracts.yaml knowledge 契约区状态�
 | `internal/modules/knowledge/module.go`（门面五操作实装 + 包注释重写） | DAG b2-k-integration owned_files「internal/modules/knowledge 装配面（RegisterRoutes/RegisterWorkers/Start/Stop 实装…）」；conventions §3「module.go 门面注释仅 b0 与该模块集成节点可写」 |
 | `internal/modules/knowledge/module_test.go`（新建） | 同上（装配面测试），随产新文件 |
 | `internal/modules/knowledge/README.md`（装配面说明段更新） | 同上（模块装配文档；K1–K4 未触碰，装配说明归集成节点） |
-| `internal/modules/knowledge/docparser/anydoc/convert_linked_test.go`（**仅 :19 注释内旧路径字符串**） | 别名删除的机械缺口就地补齐（conventions §10 共同原则；见 §8 K5.2 Step 2c） |
+| `internal/modules/knowledge/docparser/anydoc/convert_linked_test.go`（**仅 :19 注释内旧路径字符串**；R1 修订轮 `grep -n` 于 k-process 与集成分支两副本复核均= :19，审校意见「:19→:20」不成立——行号漂移时按内容定位） | 别名删除的机械缺口就地补齐（conventions §10 共同原则；见 §8 K5.2 Step 2c） |
 | `docs/architecture/moves/knowledge.yaml`（alias_obligations 18 行删除） | DAG owned_files「…+ 别名删除」；Ruling 2026-09-23-LEGACY-ROW-OWNERSHIP 行级删除权 |
 | `docs/architecture/passb/ownership-matrix.yaml` 的 aliases 区 18 行（`plan: 20-knowledge-program` 行删除；本分支副本——k-process 分支实测 18 行在位，集成 worktree `.worktrees/passb-int/…` 为同文件的集成分支视图，删除随本分支合并回流） | 同上（manifest 行与 matrix 行**同 commit 成对删除**，passbguard 双侧奇偶校验 check.go:167-206） |
 | `docs/architecture/passb/briefs/b2-k-integration.md`（新建） | DAG b2-k-integration owned_files 第 2 项 |
@@ -269,7 +286,7 @@ make verify-module-moves                                    # 预期：exit 0
 
 **业务目标**：把 22 行零实现骨架 `internal/modules/knowledge/module.go` 实装为可编译、可测试的模块门面（contracts.yaml knowledge.facade:1613 的五操作），并产出交给 ib2 集成工程师的装配切换 Brief。**本任务不触碰任何 router/container/bootstrap 文件**（§4 禁改清单）；门面是纯新增装配面，切换由集成工程师按 Brief 执行。
 
-**输入**：K1–K4 落位包的真实导出面（下表，均于 `codex/passb-b2-k-process` HEAD 实测）；`internal/bootstrap` 既有契约（`WorkerRegistry`/`WorkerSink.RegisterTaskHandler(taskType string, handler any)`/`VerifyWorkerParity(redis, lite *WorkerRegistry) error`——workers.go:50-52/:74-95，包注释明示「IA 障碍任务才接入 router/container」，当前零生产 importer，**K5 是首个生产消费方**；import 方向 模块→bootstrap 合法：无环、不在 architectureguard `horizontalDirs`（check.go:1055-1059）、非模块间禁互导面（moduleImportBase 前缀检查））。
+**输入**：K1–K4 落位包的真实导出面（下表，均于 `codex/passb-b2-k-process` HEAD 实测）；`internal/bootstrap` 既有契约（R1 修订轮实读修正行号：`WorkerRegistry` workers.go:12、`WorkerSink.RegisterTaskHandler(taskType string, handler any)` :21-22、`NewWorkerRegistry(mode string, sink WorkerSink) *WorkerRegistry` :28、`(*WorkerRegistry).Register(taskType string, handler any) error` :39——重复登记返回 `already registered: …` 错误、`(*WorkerRegistry).TaskTypes() []string` :57、`VerifyWorkerParity(redis, lite *WorkerRegistry) error` :70；包注释明示「IA 障碍任务才接入 router/container」，当前零生产 importer，**K5 是首个生产消费方**；import 方向 模块→bootstrap 合法：无环、不在 architectureguard `horizontalDirs`（check.go:1055-1059）、非模块间禁互导面（moduleImportBase 前缀检查）——R1 模拟实测 `make check-backend-architecture` exit 0 复证）。
 
 **签名推导记录（K0 §5「不发明」纪律的兑现；每条对应真实 seam）**：
 
@@ -281,6 +298,8 @@ make verify-module-moves                                    # 预期：exit 0
 | `Start(ctx context.Context) error` | `container.go:1058 must(container.Invoke(recoverPendingWikiTasks))`（func at recover_pending_wiki_tasks.go:32，包私有，K5 禁改该文件） | 调用注入的 `PendingWikiRecovery func(ctx context.Context)`（生产值=container 侧现函数的等价闭包，ib2 注入并撤原挂接行——单一注册点，spec §4.3「同一钩子只注册一次」；过渡期双重触发无害，恢复函数幂等 :27-30）。nil 时 no-op（部分装配/测试场景） |
 | `Stop(ctx context.Context) error` | 知识域当前无模块自持后台 goroutine（housekeeping 调度属 K4 推迟件，经 `KnowledgeHousekeeping` 窄端口由 42-system-policy 消费方调度，24 计划 §5.3 表「Housekeeping 调度」行；**不得出现第二套清扫实现**） | 预留对称面，返回 nil |
 
+**骨架示意签名差异处置（R1 修订轮登记）**：现骨架（module.go 22 行 0 函数，k-process HEAD 实读）示意 `RegisterRoutes(r RouteRegistrar)`（:14）/ `RegisterWorkers(mux WorkerRegistrar)`（:16）；本任务实装为 `RegisterRoutes() (HandlerSet, error)` / `RegisterWorkers(redis, lite *bootstrap.WorkerRegistry) error`。合法性依据：contracts.yaml knowledge.facade（:1613 区段）`signature: façade` 为**占位值非 Go 签名**，`items` 仅冻结五操作名单（NewModule/RegisterRoutes/RegisterWorkers/Start/Stop）——**签名本身未被冻结**；K0 §5 裁定「精确签名由 K5 实装时按当时真实 seam 推导」（上表即兑现：`RouteRegistrar`/`WorkerRegistrar` 在 B2 无真实 seam 对应，实装消费 `bootstrap.WorkerRegistry` 既有契约）。module.go 属 §4 K5 可写，整文件重写时占位示意随旧注释消亡；Brief (f) 照录实装签名。**但 passbguard 冻结 module.go 注释的「形态」而非签名**（check.go:312-325：五操作须以 `//\t` 缩进显式声明——facadeOpRE `^//\t(?:\(m \*Module\) )?(NewModule|RegisterRoutes|RegisterWorkers|Start|Stop)\(`；且须含三个计数句式 `当前 (\d+) 项入口`、`当前 (\d+) 项，见 integration_points\.workers`、`当前 (\d+) 项生命周期挂点`，数值须等于 manifest integration_points 冻结计数 11/18/1）——下方完整代码的包注释已按该契约撰写（R1 模拟实测：不满足将新增 8 条 contract-facade-shape-drift/contract-facade-count-drift 诊断）。
+
 **写入文件与完整内容：**
 
 1. **`internal/modules/knowledge/module.go`（重写）**——完整代码（编译目标；import 的包均真实存在）：
@@ -291,13 +310,28 @@ make verify-module-moves                                    # 预期：exit 0
 // 职责（spec §5.18 / F0）：知识库、文档、Chunk、Tag、FAQ、Wiki、知识图谱、
 // 检索与语义知识索引。
 //
-// 门面五操作（contracts.yaml knowledge.facade:1613）由 b2-k-integration
-// （20 计划 K5.1）按真实 seam 实装：worker 面 = router/task.go 与
-// router/sync_task.go 的 knowledge 子集（18 类型双栈同构）；生命周期面 =
-// container.go:1058 挂接的 recoverPendingWikiTasks 等价入口；路由供给面 =
-// knowledge.yaml integration_points.routes 11 组注册函数的模块侧 handler
-// 供给（路由体与 rbacGuards guard 语义留驻 internal/router，ib2 按 Brief
-// 切换形参——RBAC 语义与路由计数 633 零变化，conventions §8）。
+// 门面五操作（contracts.yaml knowledge.facade:1613 冻结五操作名单）由
+// b2-k-integration（20 计划 K5.1）按真实 seam 实装，声明如下（passbguard
+// facade 形态契约 check.go:312-325：五操作须以 //\t 缩进显式声明、计数
+// 句式须与 manifest integration_points 冻结值一致）：
+//
+//	NewModule(deps Dependencies) (*Module, error)
+//	    构造模块实例；16 个必填装配依赖（9 worker 分发面 + 7 路由 handler 供给）
+//	    缺失时返回列出全部缺失字段名的错误。
+//	(m *Module) RegisterRoutes() (HandlerSet, error)
+//	    交付路由块模块侧 handler 供给（当前 11 项入口，见 manifest integration_points.routes）。
+//	(m *Module) RegisterWorkers(redis, lite *bootstrap.WorkerRegistry) error
+//	    把任务处理器登记进 Redis/Lite 双栈注册表（当前 18 项，见 integration_points.workers）。
+//	(m *Module) Start(ctx context.Context) error
+//	    启动生命周期挂点（当前 1 项生命周期挂点，见 manifest integration_points.lifecycle_hooks）。
+//	(m *Module) Stop(ctx context.Context) error
+//	    优雅停止；当前无模块自持后台 goroutine，预留对称面。
+//
+// worker 面 = router/task.go 与 router/sync_task.go 的 knowledge 子集（18 类型
+// 双栈同构）；生命周期面 = container.go:1058 挂接的 recoverPendingWikiTasks
+// 等价入口；路由供给面 = 11 组注册函数的模块侧 handler 供给（路由体与
+// rbacGuards guard 语义留驻 internal/router，ib2 按 Brief 切换形参——RBAC
+// 语义与路由计数 633 零变化，conventions §8）。
 package knowledge
 
 import (
@@ -511,7 +545,7 @@ func (m *Module) Stop(ctx context.Context) error {
 }
 ```
 
-（上例为可直接落盘的编译目标；逐字段 if 保持零依赖可读性，实施时可收敛为表驱动，语义不变——字段名与错误文案保持，测试断言以字段名子串匹配。）
+（上例为可直接落盘的编译目标；逐字段 if 保持零依赖可读性，实施时可收敛为表驱动，语义不变——字段名与错误文案保持，测试断言以字段名子串匹配。**包注释中 facade 形态契约句式（`//\t` 五操作声明 + 三计数句 11/18/1）任何情况下不得改动或删除——passbguard 强制，R1 模拟实测改动即产生 8 条 drift 诊断。**）
 
 2. **`internal/modules/knowledge/module_test.go`（新建）**——五组测试：
 
@@ -675,9 +709,9 @@ func TestStopReturnsNil(t *testing.T) {
 **TDD 步骤与命令（worktree 根执行；RED→GREEN→REFACTOR，conventions §1.4）：**
 
 ```bash
-# Step 0 前置核验（§2 P-K5-1..P-K5-6 全过）
+# Step 0 前置核验（§2 P-K5-1..P-K5-7 全过；P-K5-2 已按 Case A/B 完成并登记 ALIGN_SHA）
 git status                                    # 干净
-git log --oneline -3                          # 含基线对齐 merge commit
+git log --oneline -3                          # Case A：含 P-K5-2 新 merge commit；Case B：含既有对齐 merge commit（判据以 P-K5-2 ancestor 检查为准，本行不构成独立判据）
 
 # Step 1 RED：先写 module_test.go（完整内容见上），module.go 仍为骨架
 go test ./internal/modules/knowledge/ -count=1
@@ -689,19 +723,22 @@ go test ./internal/modules/knowledge/ -count=1 -v
 #       TestRegisterRoutesReturnsHandlerSupply / TestStartInvokesPendingWikiRecovery /
 #       TestStopReturnsNil 全部 PASS，退出码 0
 
-# Step 3 邻接回归（K0 守卫 + 全仓编译 + 三门禁）
+# Step 3 邻接回归（K0 守卫 + 全仓编译 + 三门禁；R1 修订轮已按本节内容于干净副本全量模拟实测）
 go test -count=1 ./internal/modules/knowledge/kbfreeze/   # 预期：2 PASS（门面新增标识符无影子冲突）
 go build ./...                                             # 预期：退出码 0
-make check-backend-architecture                            # 预期：退出码 0（RoutesTotal=633/Workers 23+23/Hooks 58 不变）
-make verify-module-moves                                   # 预期：退出码 0
-make check-passb-readiness                                 # 预期：退出码 0
+make check-backend-architecture                            # 预期：退出码 0（total=633：literal+apiKeyRoute+handle、redis=23 lite=23、hooks=58、modules=16 不变）
+make verify-module-moves                                   # 预期：退出码 0（16 manifests verified）
+make check-passb-readiness                                 # 原样执行；预期退出码 1（基线 218 条既有诊断，P-K5-7 预裁定），退出码与输出如实入报告
+go run ./tools/passbguard -root . 2>&1 | grep -v '^exit status' | sort | diff - /tmp/k5-readiness-baseline.txt
+# 预期：diff 恰为 P-K5-7 (ii) 预登记的 3 行（module.go 已于 Step 2 落盘，三个冻结端口名引用
+# 显形为 contract-consumer-unrecorded）；此外任何新增/消失=节点失败（消失项须可归因）
 ```
 
 - **Step 4**：写 Brief（上述 (a)–(h)），README.md 追加「装配门面（K5.1）」段（五操作签名与 ib2 切换指针）。
 - **产出 commit（2 笔，一任务内门面与 Brief 分离——docs 与 feat 不混提交，conventions §4）**：
   1. `feat(knowledge): passb b2-k-integration 门面五操作实装（K5.1）`（module.go + module_test.go + README 段）；
   2. `docs(passb): b2-k-integration 装配 Brief`（briefs/b2-k-integration.md）。
-- **验收**：Step 1-3 命令输出（含退出码）摘录入报告；Brief (a)–(h) 齐备；`git diff <BASE>...HEAD --name-only` 中不出现任何 `internal/router/**`、`internal/container/**`、`internal/bootstrap/**` 文件。
+- **验收**：Step 1-3 命令输出（含退出码）摘录入报告；Brief (a)–(h) 齐备；`git diff "$ALIGN_SHA"...HEAD --name-only` 中不出现任何 `internal/router/**`、`internal/container/**`、`internal/bootstrap/**` 文件。
 
 ### Task K5.2 — 18 别名删除与例外/shim 收口核对记录【属主：b2-k-integration】
 
@@ -728,8 +765,8 @@ ls internal/application/repository/retriever internal/infrastructure/chunker int
 **Step 2 — 成对删行（单一 commit）**：
 - (a) `docs/architecture/moves/knowledge.yaml`：删除 alias_obligations 的 18 行（`internal/application/repository/retriever/*` 12 + `internal/application/service/retriever` 1 + `internal/infrastructure/{chunker,docparser,docparser/anydoc,semantic}` 4 + `internal/searchutil` 1）；
 - (b) `docs/architecture/passb/ownership-matrix.yaml`（本分支副本）aliases 区：删除对应 18 行（`plan: 20-knowledge-program, delete_barrier: ib2`；k-process 分支实测 18 行在位）；
-- (c) 机械缺口就地补齐（conventions §10）：`internal/modules/knowledge/docparser/anydoc/convert_linked_test.go:19` build 指令注释内 `internal/infrastructure/docparser` → `internal/modules/knowledge/docparser`（唯一文本残留，非 import）；
-- (d) 删行后复跑 `go run ./tools/passbguard -root .`——预期 alias 双侧奇偶校验绿（passbguard 以 manifest↔matrix 行集对照为键、无 18 的字面计数断言，2026-09-26 于 check.go:167-206 实测确认）；若任何计数断言显形，按 conventions §8 机械修正 + 台账登记（独立 commit）。
+- (c) 机械缺口就地补齐（conventions §10）：`internal/modules/knowledge/docparser/anydoc/convert_linked_test.go:19` build 指令注释内 `internal/infrastructure/docparser` → `internal/modules/knowledge/docparser`（唯一文本残留，非 import；R1 `grep -n` 复核仍为 :19，漂移时按内容定位）；
+- (d) 删行后复跑 `go run ./tools/passbguard -root .`——**预期退出码仍为 1**（218 条基线诊断不在本节点修复面，P-K5-7）；alias 双侧奇偶校验以 manifest↔matrix 行集对照为键、无 18 的字面计数断言（2026-09-26 于 check.go:167-206 实读确认；实测基线无 alias 类诊断，成对删行后奇偶保持）；以快照比对验收：`go run ./tools/passbguard -root . 2>&1 | grep -v '^exit status' | sort | diff - /tmp/k5-readiness-baseline.txt` 差异仍应恰为 P-K5-7 (ii) 的 3 条预登记行；出现其他差异=按 conventions §5 上报（若为纯计数断言显形则按 §8 机械修正 + 台账登记，独立 commit）。
 
 **Step 3 — 例外 30 行与 shim 盘点（只读核对，产出记录）**：
 - 例外：`grep -B4 "plan: 2[1-4]-knowledge" docs/architecture/passb/exception-ledger.yaml | grep -c "id: exc-"` = 30（exc-0088、0089-0091、0106-0111、0112-0116、0117-0129、0130-0131；§7.6 表）。逐行确认 `remove_at: ib2` 与 tools/architectureguard/check.go importExceptions 双侧一致（`go run ./tools/architectureguard` 零例外诊断）；登记「K5 不删行、ib2 删除批前置=airesource/policy 门面端口或 ADR 修订」（K1 Brief §10、K2 Brief §7 处置建议照录）；
@@ -748,13 +785,24 @@ ls internal/application/repository/retriever internal/infrastructure/chunker int
 **Step 2 — 节点 DAG gates 全量执行（不得以更快等价检查替代，conventions §2）**：
 
 ```bash
-PASSB_BASE_SHA=$(git merge-base origin/main HEAD)    # 或协调者派发时给定值；记录采用值
+# PASSB_BASE_SHA 采用值裁定（Ruling 2026-09-24-WAVE-DEP-BASELINE 推论；R1 修订轮实测依据）：
+#   merge-base origin/main HEAD 在本节点分支恒为 b1a3d6dd8（2026-09-26 实测——K0–K4 产物
+#   经 P-K5-2 对齐 merge 进入本分支，不改变与 origin/main 的分叉点），直接套用 conventions
+#   §1.2 缺省公式会使 diff 含 K0–K4 全部 210 个文件（实测：
+#   git diff b1a3d6dd8...codex/passb-b2-k-process --name-only | wc -l = 210），
+#   与 §4 K5 可写清单求差必非空——按 §12 #3 判据自设失败。
+#   缺省采用值 = ALIGN_SHA（P-K5-2 对齐 merge commit；对齐产物视同本节点基线）。
+#   协调者显式给定值仅当其为 ALIGN_SHA 或其后代（git merge-base --is-ancestor
+#   "$ALIGN_SHA" "$GIVEN" 为真）时采用；否则记录差异并改用 ALIGN_SHA（报告注明原因）。
+PASSB_BASE_SHA="$ALIGN_SHA"    # 记录采用值与来源（P-K5-2 登记；禁用 merge-base origin/main 公式，理由见上）
 go build ./...                                        # 预期：退出码 0
 go test -count=1 ./internal/modules/knowledge/...     # 预期：全 PASS（含 kbfreeze 2 + module 5 + K1-K4 随迁测试）
-make check-backend-architecture                       # 预期：退出码 0；Summary: total=633（literal+apiKeyRoute+handle）、redis=23 lite=23、hooks=58
-make check-passb-readiness                            # 预期：退出码 0
-make verify-module-moves                              # 预期：退出码 0
-go run ./tools/passbguard -root .                     # 预期：零诊断（alias 删行后奇偶一致）
+make check-backend-architecture                       # 预期：退出码 0；total=633（literal+apiKeyRoute+handle）、redis=23 lite=23、hooks=58、modules=16
+make check-passb-readiness                            # 原样执行；预期退出码 1（P-K5-7 预裁定：基线 218 条既有诊断不在本节点修复面），退出码与全量输出如实入报告
+make verify-module-moves                              # 预期：退出码 0（16 manifests verified）
+go run ./tools/passbguard -root . 2>&1 | grep -v '^exit status' | sort | diff - /tmp/k5-readiness-baseline.txt
+# 预期：diff 恰为 P-K5-7 (ii) 预登记的 3 条 module.go consumer-unrecorded 行；
+# 其余任何差异=节点失败；消失项逐条归因于 K5 自身改动（预期消失集为空）
 ```
 
 **Step 3 — 计数奇偶三方一致复核（conventions §8）**：`passbguard`/`architectureguard` 实测值 == `docs/architecture/evidence/pass-a-acceptance.md` 台账记录值 == `manifests/`（moves/*.yaml）发现值；633 路由 / 23+23 worker / 58 hook / 537 migration。18 knowledge worker 在 Redis/Lite 双栈各登记一次（K5.1 parity 测试 + architectureguard redis/lite 计数双证）。任何偏差走 §8 基线变更（台账+登记+独立 commit），禁止静默改断言。
@@ -829,12 +877,12 @@ git diff "$PASSB_BASE_SHA"...HEAD --name-only | sort    # 与 §4 K5 可写清�
 5. 治理文件零改动；差异①②③如实登记；计划评审 approved。
 
 **K5 节点（属主 b2-k-integration，本修订轮细化）：**
-1. §2 P-K5-1..P-K5-6 前置逐条实证在报告（任一不满足即 BLOCKED，不产出占位物）；
-2. 五 gates 全绿（`go build ./...`、`go test -count=1 ./internal/modules/knowledge/...`、`make check-backend-architecture`、`make check-passb-readiness`、`make verify-module-moves`；命令原文+退出码在报告）；
-3. `git diff "$PASSB_BASE_SHA"...HEAD --name-only | sort` 与 §4 K5 可写清单差集为空——**特别地：零 `internal/router/**`、`internal/container/**`、`internal/bootstrap/**`、`go.mod`、`go.sum` 文件出现**；
+1. §2 P-K5-1..P-K5-7 前置逐条实证在报告（任一不满足即 BLOCKED，不产出占位物）；
+2. 五 gates 全部原样执行且命令原文+退出码在报告：`go build ./...`、`go test -count=1 ./internal/modules/knowledge/...`、`make check-backend-architecture`、`make verify-module-moves` 四项退出码必须为 0；`make check-passb-readiness` 按 P-K5-7 预裁定判据（预期退出码 1、终态快照差集恰为 3 条预登记行、无其他新增、消失项可归因）；
+3. `git diff "$PASSB_BASE_SHA"...HEAD --name-only | sort`（$PASSB_BASE_SHA 采用值按 K5.3 Step 2 裁定，缺省=ALIGN_SHA；禁用 merge-base origin/main 公式）与 §4 K5 可写清单差集为空——**特别地：零 `internal/router/**`、`internal/container/**`、`internal/bootstrap/**`、`go.mod`、`go.sum` 文件出现**；
 4. `module_test.go` 五测试 PASS + kbfreeze 2 测试 PASS（邻接回归）；
 5. Brief (a)–(h) 齐备并评审 approved（reviewer 独立出 `docs/plans/passb/reviews/b2-k-integration.md`）；
-6. 18 别名逐条结论在 evidence（预期全删：零 importer + 物理目录不存在双证）；passbguard 删行后零诊断；例外 30 行零改动；
+6. 18 别名逐条结论在 evidence（预期全删：零 importer + 物理目录不存在双证）；passbguard 删行后快照差集仍恰为 P-K5-7 (ii) 的 3 条预登记行（奇偶保持，无其他新增/消失）；例外 30 行零改动；
 7. K1-K4 差分证据四要素齐备性核对结论在 evidence（含顺延登记）；
 8. 计数三方一致（633/23+23/58/537）复核输出在 evidence。
 
@@ -854,3 +902,12 @@ git diff "$PASSB_BASE_SHA"...HEAD --name-only | sort    # 与 §4 K5 可写清�
 - **K0.1 复核轮（2026-09-23，实施者独立复核）**：§5/§6/§7 全部锚点逐项 grep 实测零漂移；84 行计数双副本一致；唯一计划修订=组 E `getParserEngineOverridesFromContext` 同名异义消歧 + ppc 修订工单上报（本程序不改 DAG）。
 - **K5.1 误派根因分析轮（2026-09-24，根因分析员）**：K5.x 属主节点前置未满足时被派发两次均回 BLOCKED；本轮修订 §3 派发序声明与 §2 K5 前置；DAG 状态/notes 回填仍归协调者（conventions §9）。
 - **K5 修订轮（2026-09-26，b2-k-integration 计划撰写员）**：① 实测基准声明（k-process HEAD 四祖先实测）；② §4 K5 可写/禁改清单落盘（module.go 写权=conventions §3「该模块集成节点」条 + DAG owned_files）；③ §8 K5.1–K5.3 由 K0 概要展开为可执行详案（门面五操作完整代码 + 五测试 + Brief 八节 + 18 别名成对删行 + 门禁/计数收口）；④ §7.5 预检结论（18 旧路径物理不存在 + import 零命中）；⑤ §7.6 例外清单更新为 30 行实数（K1-K4 显形例外并入）；⑥ RegisterRoutes 供给面口径的推导依据落盘（rbacGuards 包私有 + guard 扫描面 discovery.go:65-66 不含模块 + 禁双写）；⑦ 别名删除的行级权限依据（Ruling LEGACY-ROW-OWNERSHIP + matrix 行 plan: 20-knowledge-program + passbguard 奇偶校验实读 check.go:167-206）；⑧ 任务属主标注全文件贯穿（K0/K5 双节点同载文件的派发歧义防护）。
+- **R1 审校修订轮（2026-09-26，b2-k-integration 计划撰写员；审校五条 findings 逐条实测处置）**：
+  - **finding 1（critical）成立并扩展**：k-process HEAD `git archive` 至 /tmp 干净副本实跑 `go run ./tools/passbguard -root .` = **exit 1、218 条诊断**（85 contract-consumer-unrecorded / 42 contract-consumer-file-missing / 33 legacy-undeclared / 33 legacy-nonexistent / 13 contract-characterization-missing / 10 legacy-missing / event-producer-missing、event-consumer-missing 各 1，`grep -oE '^[a-z-]+:' | sort | uniq -c` 实测）；execution-dag.json 实读 b2-k-integration gates 确含 `make check-passb-readiness`（B2 knowledge 波五前置节点均无此 gate）→ 处置 = **P-K5-7 预裁定**（修复面全在 K5 禁改文件、归零属 ib2；节点判据=原样执行+如实记录+快照差集恰为 3 条预登记新增）。
+  - **finding 2（important）成立**：`git merge-base origin/main codex/passb-b2-k-process` 与 `git merge-base origin/main codex/passb-b2-k-integration` 均 = b1a3d6dd825e3263e12b1daac2a52dab80ac5813；`git diff b1a3d6dd8...codex/passb-b2-k-process --name-only | wc -l` = **210** → 处置 = K5.3 Step 2 / §12 #3 / K5.1 验收改用 **ALIGN_SHA**（WAVE-DEP-BASELINE 推论：对齐产物视同本节点基线；协调者给定值须为 ALIGN_SHA 或其后代，否则记录差异改用 ALIGN_SHA）。
+  - **finding 3（minor）成立**：`git merge-base --is-ancestor codex/passb-b2-k-process codex/passb-b2-k-integration` = **NO**（Case A 现状，merge 必产生独立 commit）；`git merge-tree --write-tree --name-only HEAD codex/passb-b2-k-process` 预演 = **仅 1 处冲突**（本计划文件 add/add；k-process 侧末次改动 `90530cac2`）→ 处置 = P-K5-2 Case A/B 互斥判据（Case B "Already up to date" 非失败，以 `--ancestry-path` 指认 merge commit）+ §3 时序互斥裁定（集成分支合并不触碰 K5 分支）。
+  - **finding 4（minor）成立**：module.go 骨架 22 行 0 函数实读（:14 `RegisterRoutes(r RouteRegistrar)` / :16 `RegisterWorkers(mux WorkerRegistrar)`）；contracts.yaml knowledge.facade（:1613 区段）`signature: façade` 为占位值、items 仅冻结五操作名单 → 处置 = §8 K5.1「骨架示意签名差异处置」段（签名未冻结、K0 §5 授权 K5 推导、module.go 整文件重写）。
+  - **finding 5（minor）复核不成立**：`git show codex/passb-b2-k-process:internal/modules/knowledge/docparser/anydoc/convert_linked_test.go | grep -n docparser` = **:19**（集成分支副本同），计划 :19 正确、审校「:19→:20」不采纳；§4 行加注复核结论。
+  - **模拟实测（计划代码块逐字落盘至干净副本全量实跑）**：**真实缺陷一处已修**——module.go 原包注释 0 处满足 passbguard facade 形态契约（check.go:312-325 facadeOpRE + 三计数句式，`git show HEAD` 原版 grep 实证），按原注释跑 passbguard 新增 **8 条 contract-facade-{shape,count}-drift**；§8 K5.1 代码块包注释已按契约重写（11/18/1），修正后实测新增恰 3 条预登记 consumer-unrecorded、消失 0 条。**一处撤回**——首轮模拟曾报 module_test.go drift 断言 printf「4 动词 3 实参」vet 失败，经 `grep -n` 对照已提交计划原文为 3 动词 3 实参（合法），该失败系本轮模拟转录笔误而非计划缺陷，计划测试代码块保持原样；以计划原版测试行复跑 `go test ./internal/modules/knowledge/ -count=1 -v` = **exit 0、5 测试全 PASS**。其余实测：`go build ./...` exit 0；kbfreeze exit 0（2 测试）；`make check-backend-architecture` exit 0（**total=633：literal=564+apiKeyRoute=69**、redis=23 lite=23、hooks=58、modules=16）；`make verify-module-moves` exit 0（16 manifests verified）；基线 218 条中 knowledge.\* unrecorded 类已有 41 条（K1–K4 模块文件在列——3 条新增属同类形态）。
+  - **bootstrap 契约行号修正**：WorkerRegistry workers.go:12 / WorkerSink.RegisterTaskHandler :21-22 / NewWorkerRegistry :28 / Register :39（already-registered 错误语义=测试重复登记拒绝断言依据）/ TaskTypes :57 / VerifyWorkerParity :70（原稿 :50-52/:74-95 不准）。
+  - **P-K5-5 复核**：Makefile 三目标实读 :250（verify-module-moves）/ :255（check-backend-architecture）/ :262（check-passb-readiness），计划行号正确。
