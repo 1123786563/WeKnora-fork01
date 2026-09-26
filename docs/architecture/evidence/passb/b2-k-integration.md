@@ -57,6 +57,28 @@ alias 双侧奇偶以 manifest↔matrix 行集对照为键（check.go:167-206 �
 
 删行后编译：`go build ./...` 退出码 0；`gofmt -l convert_linked_test.go` 空。
 
+### 收口出册补齐（2026-09-26 审阅 finding 修复轮）
+
+**finding**（reviewer，重要级）：`make verify-module-moves`（DAG b2-k-integration 五 gates 之一；K5.3 Step 2 :806 预期「退出码 0（16 manifests verified）」）由 BASE=1485a2480 绿转 HEAD 红——18 条 `alias-1to1: move from … 缺少对应 alias_obligation`。本轮 HEAD 复现确认（`make verify-module-moves` → 18 条诊断 + `make: Error 1`）。
+
+**根因**：`tools/modulemove/verify.go:108-124` 要求每条 `move_packages[].from` 必须有对应 `alias_obligation`（old_import_path == from，1:1 硬校验）；K5.2 Step 2(a) 删除了 alias_obligations 18 行，但 move_packages 区的 18 条 from/to 仍在册，1:1 断裂。全仓 16 份 manifest 对照：其余 15 份均为 move==alias；identity/agentcatalog/system 为 0/0（`move_packages: []` + 空 owned_files 三区）——别名收口的完整终态是 move_packages 对应行**同窗出册**（计划 Step 2(a) 的「alias_obligations 18 行」为收口面的别名义务侧，出册侧是其成对面，属 conventions §10 机械缺口就地补齐）。
+
+**修复**（commit 见本节末，manifest 单文件）：`docs/architecture/moves/knowledge.yaml` 三区出册为 `[]`——① `move_packages` 18 条（from/to）；② `owned_files.move_sources` 18 条（verify.go:295-300 move_sources == from 集合一致性强制，不同步删会新增 owned-move-sources 诊断）；③ `owned_files.move_targets` 36 条（18 to 树 + 「alias (no-logic forwarding) packages left at the old paths」注释段 + 18 旧路径别名登记；README.md:28-29 语义「== 全部 move_packages[].to 树 + 旧路径别名包」，两侧来源均已收口）。删除前对三区分别断言 36/18/36 条；删后 YAML 解析合法，`legacy_files` 53 / `importers` 12 / `module_files` 3 原样。matrix 无 move_sources/move_targets 区（grep 零命中），无联动。工具消费面排查：architectureguard 仅消费 `move_packages[].from`（check.go:1120-1122 → MoveFroms，:1459 legacy-guard 横向目录归属判定——18 个旧路径物理目录已不存在，不可能出现新文件，无影响）；passbguard 不读 move_packages/move_sources/move_targets。
+
+**修复后回归**（命令原样，2026-09-26）：
+
+| 命令 | 退出码 | 摘要 |
+|---|---|---|
+| `make verify-module-moves` | 0 | `modulemove: OK (16 manifests verified)`（finding gate 转绿） |
+| `go build ./...` | 0 | 仅 linker 既有 warning |
+| `make check-backend-architecture` | 0 | `literal=564 apiKeyRoute=69 handle=0 total=633 \| redis=23 lite=23 \| hooks=58 \| modules=16`，OK 0 violations |
+| `go run ./tools/passbguard -root .` | 1（预期基线） | 快照 diff 基线仍恰为 P-K5-7 (ii) 预登记 3 条，消失集为空（manifest 出册不触及诊断面，实测确认） |
+| `make check-passb-readiness` | 2（= go run 退出码 1 的 make 层包装，Makefile:262 recipe 失败标准行为；与上轮 go run 口径 1 同一命令） | 诊断集与上行相同 |
+| `go test -count=1 ./internal/modules/knowledge/...` | 0 | 26 包全 ok、0 FAIL（含 kbfreeze 守卫、module 门面五测试） |
+
+manifest 出册 commit：`a29abf40e`（refactor(passb) 同窗补齐，+3/-91）。
+
+
 ## §例外/shim 收口核对（K5.2 Step 3，只读盘点 — ib2 删除批输入）
 
 ### 例外 30 行（K5 不删行，删除前置=airesource/policy 门面端口或 ADR 修订）
