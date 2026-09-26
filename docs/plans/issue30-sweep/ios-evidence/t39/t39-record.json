@@ -34,7 +34,7 @@
     {
       "subject": "notification",
       "disposition": "blocked-env",
-      "reason": "downgraded from the planned evidenced classification by the live run: the system rejected the local push to the unauthorized package (UNErrorDomain 2003 'Source is not authorized', archived at ios-evidence/t39/push-error.txt) — delivery to the app could not be proven, so 'notification arrived' is not claimable; APNs remote push needs credentials that do not exist here; fail-closed survival after the attempt is evidenced by ios-evidence/t39/06-push-unauthorized-fail-closed.png + push-process-alive.txt but is not notification-flow evidence"
+      "reason": "downgraded from the planned evidenced classification by the live run: the system rejected the local push to the unauthorized package (UNErrorDomain 2003 'Source is not authorized', archived at ios-evidence/t39/push-error.txt) — delivery to the app could not be proven, so 'notification arrived' is not claimable; APNs remote push needs credentials that do not exist here; fail-closed survival after the attempt is evidenced by ios-evidence/t39/push-process-alive.txt (PID 20402) but is not notification-flow evidence; the post-attempt screenshot 06-push-unauthorized-fail-closed.png is byte-identical to 05-deeplink-detail-unauthorized.png (md5 3c79e97263b12ce0ea7e062eacdcf3cb — the rejected push attempt produced no UI change, consistent with fail-closed) and is archived as pipeline provenance only, NOT as independent visual evidence"
     },
     {
       "subject": "download-share",
@@ -73,8 +73,8 @@
       "subject": "revocation",
       "disposition": "evidenced",
       "source": "installed-package",
-      "evidence": "ios-evidence/t39/05-deeplink-detail-unauthorized.png"
+      "evidence": "ios-evidence/t39/05-deeplink-detail-unauthorized.png — scope: unauthorized-face fail-closed only (detail deeplink renders no task content on the signed-out package); the signOut-then-third-instance non-revival face needs a real deployment and stays blocked-env (see t39-acceptance.md AC2 revocation) — read this entry at report scope, NOT as package-level signOut-revocation proof"
     }
   ],
-  "generatedAt": "2026-09-26T12:38:28.229Z"
+  "generatedAt": "2026-09-26T13:55:46.643Z"
 }

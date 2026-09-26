@@ -19,7 +19,7 @@
 - **cold-start**：安装包证据 = `t39/cold-start.mov` + `01`/`02`（干净卸载 → 首装 → 录屏 → 2s/11s 截图）。真实部署 harness 活体（`coldBootRestore`）= **skip（无凭据，skip 不是 pass）**；行为级回归（fake-server，真实 Runtime/boot/文件持久凭据跨实例代码路径）已验证 `coldBootRestore='authorized-restored'` 可产出，**不冒充真实部署证据**。
 - **permission-denied**：安装包证据 = `t39/07-after-mic-revoked.png`（`simctl privacy revoke microphone` → 重启 3s 处存活画面）+ `t39/08-after-mic-revoked-settled.png`（settle 后登录页，进程 21650 存活）+ 崩溃筛查 0 命中。拒权 fail-closed 文案由既有单测钉住（`apps/mobile/src/dictation-view.test.ts:16-23`，`DICTATION_FAILURE_COPY.denied` 非空且为可行动文案）。
 - **weak-network**：真实部署 harness 活体（`weakNetwork`/`weakNetworkStartRequests`/`distinctRunIds`）= **skip（无凭据）**；宿主级 dummynet 真实弱网 = blocked-env（需 sudo 改 pf，宿主状态变更须人工批准）。行为级回归（fake-server + 真实 transport/runtime/task-office 全链路）实测：首枚 Start 派发被拦断后经 lookup admission 收敛同一 run —— `weakNetwork='reconciled-same-run'`、`distinctRunIds=1`、`weakNetworkStartRequests=1`（重续经 lookup 对账、从不重发 Start，与 `packages/domain/src/mobile/submission.ts` 的状态机口径一致）。该回归证明**接线与单写者幂等语义在代码层成立**，不冒充真实弱网证据。
-- **revocation**：安装包证据（未授权/越权面）= `t39/03-deeplink-tasks-unauthorized.png`（「请先登录并激活空间，再查看任务列表。」）、`t39/04-deeplink-ask-unauthorized.png`（「Sign in to ask a knowledge question.」）、`t39/05-deeplink-detail-unauthorized.png`（「无法读取该任务/请先登录并激活空间，再打开任务详情。」——**详情深链未渲染任何任务内容，无越权泄漏**）、`t39/06-push-unauthorized-fail-closed.png` + `t39/push-process-alive.txt`（投递尝试后进程存活）。真实部署 harness 活体（signOut 后第三实例不复活）= **skip（无凭据）**；fake-server 行为级回归已验证 `revocation='revoked'` 路径，不冒充真实证据。
+- **revocation**：安装包证据（未授权/越权面）= `t39/03-deeplink-tasks-unauthorized.png`（「请先登录并激活空间，再查看任务列表。」）、`t39/04-deeplink-ask-unauthorized.png`（「Sign in to ask a knowledge question.」）、`t39/05-deeplink-detail-unauthorized.png`（「无法读取该任务/请先登录并激活空间，再打开任务详情。」——**详情深链未渲染任何任务内容，无越权泄漏**）、`t39/push-process-alive.txt`（投递尝试后进程存活，PID 20402；`t39/06-push-unauthorized-fail-closed.png` 与 05 **逐字节相同**——md5 `3c79e97263b12ce0ea7e062eacdcf3cb`，被拒推送探针未产生 UI 变化、与 fail-closed 自洽——仅作管线存证，不计独立视觉证据）。真实部署 harness 活体（signOut 后第三实例不复活）= **skip（无凭据）**；fake-server 行为级回归已验证 `revocation='revoked'` 路径，不冒充真实证据。**#71 解读口径：revocation 条目（含 `t39-outcomes.json` 及记录 JSON 中该条 evidence 字段的 scope 说明）只证未授权面 fail-closed；signOut 撤销未在包上验证，不得据记录单层推断为已验证。**
 
 ## AC3 最高稳定 Interface（不冒充）
 
@@ -58,4 +58,12 @@
 
 ## 证据文件清单（t39/）
 
-`01-cold-start-2s.png`、`02-login-screen-11s.png`、`03-deeplink-tasks-unauthorized.png`、`04-deeplink-ask-unauthorized.png`、`05-deeplink-detail-unauthorized.png`、`06-push-unauthorized-fail-closed.png`、`07-after-mic-revoked.png`、`08-after-mic-revoked-settled.png`、`cold-start.mov`、`app-launch-log.txt`、`push-payload.json`、`push-error.txt`、`push-process-alive.txt`、`t39-record.json`、`xcodebuild-release.log`；outcomes 源 `../t39-outcomes.json`。
+`01-cold-start-2s.png`、`02-login-screen-11s.png`、`03-deeplink-tasks-unauthorized.png`、`04-deeplink-ask-unauthorized.png`、`05-deeplink-detail-unauthorized.png`、`06-push-unauthorized-fail-closed.png`（**与 05 逐字节相同**，md5 `3c79e97263b12ce0ea7e062eacdcf3cb`，仅管线存证，见下方修复轮注记）、`07-after-mic-revoked.png`、`08-after-mic-revoked-settled.png`、`cold-start.mov`、`app-launch-log.txt`、`push-payload.json`、`push-error.txt`、`push-process-alive.txt`、`t39-record.json`、`xcodebuild-release.log`；outcomes 源 `../t39-outcomes.json`。
+
+## 最终审查修复轮（实现员-t69，2026-09-26）
+
+整计划最终审查三项 minor 发现与本报告的对应处置（全部一次修复，回归证据见 `.superpowers/sdd/t69/final-fix-report.md`）：
+
+1. **06 截图与 05 逐字节相同（md5 `3c79e97263b12ce0ea7e062eacdcf3cb`）**：推送探针后画面无 UI 变化，06 无独立视觉信息量。处置：`t39-outcomes.json` notification reason 与本报告 AC2/证据清单均改为——fail-closed 存活证明由 `push-process-alive.txt`（PID 20402）承担；06 仅作管线存证、不计独立视觉证据。文件保留（验收脚本 `ios-acceptance-run.sh` 及其 TDD 用例钉住该产物名，删档会造成脚本与证据集失配），结论不变（notification 本已诚实降级 blocked-env）。
+2. **revocation 条目 scope 说明**：`t39-outcomes.json` 该条 `evidence` 字段追加 scope 文本——只证未授权面 fail-closed，signOut→第三实例不复活的真实部署活体仍 blocked-env；机器门重发 `t39-record.json`（exit 0，13 条目）携带同一 scope 文本。#71 消费记录时按报告口径解读，不得据 record 单层推断 signOut 撤销已在包上验证。
+3. **5s 墙钟断言宿主负载抖动**（`packages/domain/src/mobile/compatibility.test.ts`）：审查实跑全量回归复现一次 fail（best pass 5561.76ms > 5000ms，全套件 267s vs 首轮 145s），隔离重跑 11/11 pass，该文件在交付 range 内零改动。处置：断言加文档化宿主负载裕度系数 3（门限 = 冻结 5000ms × 3 = 15000ms；冻结目标保留为每次运行的日志参考值），吸收共享宿主三遍同时被抢占的膨胀；隔离基线 best ~0.8-2.6s 对 15s 门限仍保有 ~6x 余量，粗大（约 6x 级）代码成本回归仍会挂门。
