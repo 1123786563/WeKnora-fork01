@@ -156,12 +156,12 @@ func TestCraftT02Journey(t *testing.T) {
 
 	// Expanded material rides the same admission fence as uploads: the
 	// unrecognized member cannot join a Run without an explicit continue.
-	_, err = env.svc.StartRun(ctx, scope, CraftRunRequest{
+	_, _, err = env.svc.StartRun(ctx, scope, CraftRunRequest{
 		RequestID: "r1", Prompt: "Make a sales page", InputRefs: []string{csvMember.Ref},
 	})
 	require.ErrorIs(t, err, craft.ErrConflict, "expanded unrecognized material must not silently join a Run")
 	require.NoError(t, env.svc.DecideInput(ctx, scope, csvMember.Ref, "continue"))
-	run, err := env.svc.StartRun(ctx, scope, CraftRunRequest{
+	run, _, err := env.svc.StartRun(ctx, scope, CraftRunRequest{
 		RequestID: "r1", Prompt: "Make a sales page", InputRefs: []string{csvMember.Ref},
 	})
 	require.NoError(t, err)
@@ -273,7 +273,7 @@ func TestCraftArchiveMidExtractionFailureLeavesNoMaterial(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, persisted, 1)
 	require.Len(t, files.blobs, 1)
-	_, err = env.svc.StartRun(ctx, scope, CraftRunRequest{
+	_, _, err = env.svc.StartRun(ctx, scope, CraftRunRequest{
 		RequestID: "r1", Prompt: "build", InputRefs: []string{"craft-test://craft_input_phantom_member.txt"},
 	})
 	require.ErrorIs(t, err, craft.ErrInvalidInput, "no phantom expanded material may be usable by a Run")

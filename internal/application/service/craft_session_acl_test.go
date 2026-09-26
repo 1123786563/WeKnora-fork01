@@ -79,14 +79,14 @@ func TestCraftSessionTaskAccessGatesContentWritesAndDownloadBytes(t *testing.T) 
 	_, err = env.svc.AssociateInput(craftCtx(1, "viewer", ws.SessionID), viewer,
 		"collab-input", sha256Sum("shared material"))
 	require.ErrorIs(t, err, craft.ErrForbidden)
-	_, err = env.svc.StartRun(craftCtx(1, "viewer", ws.SessionID), viewer, CraftRunRequest{RequestID: "viewer-run", Prompt: "view only"})
+	_, _, err = env.svc.StartRun(craftCtx(1, "viewer", ws.SessionID), viewer, CraftRunRequest{RequestID: "viewer-run", Prompt: "view only"})
 	require.ErrorIs(t, err, craft.ErrForbidden)
 
 	input, err := env.svc.AssociateInput(craftCtx(1, "collaborator", ws.SessionID), collaborator,
 		"collab-input", sha256Sum("shared material"))
 	require.NoError(t, err)
 	require.Equal(t, "tempdocs://collab-input", input.Ref)
-	run, err := env.svc.StartRun(craftCtx(1, "collaborator", ws.SessionID), collaborator,
+	run, _, err := env.svc.StartRun(craftCtx(1, "collaborator", ws.SessionID), collaborator,
 		CraftRunRequest{RequestID: "collab-run", Prompt: "make a refinement"})
 	require.NoError(t, err)
 	require.Equal(t, ws.SessionID, run.SessionID)
@@ -151,7 +151,7 @@ func TestCraftSessionStartRunPersistsActorAndFencesContinueClaimByActor(t *testi
 	require.NoError(t, env.svc.DecideInput(craftCtx(1, collaborator.UserID, ws.SessionID), collaborator, input.Ref, "continue"))
 
 	request := CraftRunRequest{RequestID: "actor-run-key", Prompt: "build with my input", InputRefs: []string{input.Ref}}
-	run, err := env.svc.StartRun(craftCtx(1, collaborator.UserID, ws.SessionID), collaborator, request)
+	run, _, err := env.svc.StartRun(craftCtx(1, collaborator.UserID, ws.SessionID), collaborator, request)
 	require.NoError(t, err)
 	require.Equal(t, owner.UserID, run.UserID, "Run.UserID remains the Task storage owner")
 	require.Equal(t, collaborator.UserID, run.ActorUserID, "Run actor comes from the authenticated Collaborator")
@@ -163,11 +163,11 @@ func TestCraftSessionStartRunPersistsActorAndFencesContinueClaimByActor(t *testi
 	require.Equal(t, "admitted", claim.AdmissionState)
 	claimToken := claim.AdmissionToken
 
-	replay, err := env.svc.StartRun(craftCtx(1, collaborator.UserID, ws.SessionID), collaborator, request)
+	replay, _, err := env.svc.StartRun(craftCtx(1, collaborator.UserID, ws.SessionID), collaborator, request)
 	require.NoError(t, err, "same actor replays the admitted Run")
 	require.Equal(t, run.Key.RunID, replay.Key.RunID)
 
-	_, err = env.svc.StartRun(craftCtx(1, owner.UserID, ws.SessionID), owner, request)
+	_, _, err = env.svc.StartRun(craftCtx(1, owner.UserID, ws.SessionID), owner, request)
 	require.ErrorIs(t, err, craft.ErrConflict, "Task owner cannot replay the Collaborator's same-key Run")
 	var after craftSessionRequestRow
 	require.NoError(t, env.db.Where("tenant_id = ? AND user_id = ? AND session_id = ? AND purpose = ? AND request_id = ?",
@@ -206,7 +206,7 @@ func TestCraftSessionStartRunRejectsScopeThatDiffersFromAuthenticatedCaller(t *t
 	env, _ := newCraftTaskACLEnv(t)
 	ws := createCraftSession(t, env, "u1", "actor-scope-task", "actor task", "web")
 	owner := ownerScope(1, "u1", ws.SessionID)
-	_, err := env.svc.StartRun(craftCtx(1, "different-user", ws.SessionID), owner,
+	_, _, err := env.svc.StartRun(craftCtx(1, "different-user", ws.SessionID), owner,
 		CraftRunRequest{RequestID: "scope-mismatch", Prompt: "no spoof"})
 	require.ErrorIs(t, err, craft.ErrForbidden)
 	var runs int64
@@ -239,7 +239,7 @@ func assertCraftTaskWriteDenied(t *testing.T, env *craftSessionEnv, scope craft.
 	ctx := craftCtx(scope.TenantID, scope.UserID, scope.SessionID)
 	_, err := env.svc.AssociateInput(ctx, scope, "collab-input", sha256Sum("shared material"))
 	require.Error(t, err, "AssociateInput must deny %s", scope.UserID)
-	_, err = env.svc.StartRun(ctx, scope, CraftRunRequest{RequestID: "denied-" + scope.UserID, Prompt: "no access"})
+	_, _, err = env.svc.StartRun(ctx, scope, CraftRunRequest{RequestID: "denied-" + scope.UserID, Prompt: "no access"})
 	require.Error(t, err, "StartRun must deny %s", scope.UserID)
 }
 

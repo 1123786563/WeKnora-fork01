@@ -2568,13 +2568,23 @@ func newCraftSessionService(
 	if runs == nil {
 		runs = service.RegisteredAgentRunService()
 	}
-	return service.NewCraftSessionService(service.CraftSessionConfig{
+	// T16 (#134): the concrete workspace store is the durable writer-lease
+	// store (same row space the lease CAS fences). The dig graph provides
+	// store as the concrete *repository.CraftStore behind the craft.Store
+	// interface, so a plain assertion wires the lease seam without a new
+	// Provide; a stub store (tests) leaves the seam off and StartRun keeps
+	// the pre-T16 behavior.
+	cfg := service.CraftSessionConfig{
 		DB: db, Sessions: sessions, Store: store, Versions: versions,
 		Runs: runs, ActiveRuns: service.CraftActiveRunsQuery(db),
 		TemporaryDocs: documents, Files: files, Models: models,
 		Access: access, TaskList: access,
 		Gate: craftFeatureGateFromEnv(), DefaultVersionSelector: defaultVersionSelector,
-	})
+	}
+	if craftStore, ok := store.(*repository.CraftStore); ok {
+		cfg.WriterLeases = craftStore
+	}
+	return service.NewCraftSessionService(cfg)
 }
 
 // newCraftDefaultVersionSelector exposes the run-bound collector's
