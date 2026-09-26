@@ -53,7 +53,10 @@ import tempfile
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import parse_qs
 
-HOST, PORT = "127.0.0.1", 8292
+# (OCR r4 / plan Task 10) PORT overridable via FLOW82_ALIPAY_PORT: parallel
+# verification rounds drift the loopback ports (5272/5273 reserved; 8292 was
+# the first round). Default keeps the historical 8292.
+HOST, PORT = "127.0.0.1", int(os.environ.get("FLOW82_ALIPAY_PORT", "8292"))
 # (OCR r4) KEY_DIR overridable: the local-only key pair may live outside
 # the repo (never committed); default stays beside this script.
 KEY_DIR = os.environ.get("FLOW82_KEY_DIR") or os.path.dirname(os.path.abspath(__file__))
