@@ -272,3 +272,114 @@ ok  	github.com/Tencent/WeKnora/internal/application/repository	509.541s
 
 - `internal/application/repository/task_research_http_test.go` + 本报告追加，一次提交（SHA 见 submit_result）。
 - 提交信息：`test(workbench): T17 research delegation and annotation version immutability E2E (T17 #47 task 3)`
+
+---
+
+# Task 4：contracts——research wire 类型与解析器
+
+> 执行者：实现员-t47-任务4（subagent-driven-development）。工作目录：`.worktrees/issue30-sweep-t47`（分支 `codex/issue30-t47`，起点 `30ca6645d` 即 Task 3 提交）。
+
+## T4.1 任务与交付物
+
+按 `plan-t47.md` Task 4（contracts——research wire 类型与解析器）实施，严格 RED→GREEN→提交：
+
+**新建：**
+- `packages/contracts/src/mobile/research.ts`（计划原文逐字）——`ResearchStatusWire`/`ResearchDelegationWire`/`ResearchListWire`/`AnnotationWire`/`AnnotationListWire` 五个 wire 类型 + `parseResearchListResponse`/`parseAnnotationListResponse` 两个整体拒绝解析器（信封 `{success:true, data:{items:[...]}}`，任何字段缺失/类型不符即抛错，不部分渲染）。
+- `packages/contracts/src/mobile/research.test.ts`（计划原文逐字）——3 个 node:test 测试：真实信封接受（含 completed+summary）、15 种畸形信封整体拒绝、批注信封接受 + 4 种畸形行拒绝。
+
+**修改（纯追加 2 行，未动他人导出）：**
+- `packages/contracts/src/index.ts:740-741` —— 末尾追加计划指定的两行根导出（`parseResearchListResponse`/`parseAnnotationListResponse` 与 5 个 type 导出）。
+
+**键集核对（逐字）：** 与 Task 2 实际落盘 handler 的 JSON tag 逐字一致——`researchDelegationView`（`internal/handler/session/workbench_research.go:119-127`：`delegation_id`/`run_id`/`session_id`/`objective`/`sources`/`status`/`summary,omitempty`/`created_at`）与 `researchAnnotationView`（同文件 :144-152：`annotation_id`/`run_id`/`material_id`/`base_version`/`body`/`author_id`/`created_at`）。本 worktree HEAD 上亲眼核实（sed -n '110,175p'）。
+
+## T4.2 TDD RED 证据
+
+先写测试、实跑确认预期失败（实现文件尚不存在）：
+
+```
+$ pnpm exec tsx --test packages/contracts/src/mobile/research.test.ts 2>&1 | tail -25
+undefined
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command "tsx" not found
+```
+
+（首跑暴露 worktree 环境前提差异，见 T4.4 第 1 条；`pnpm install` 后重跑：）
+
+```
+$ pnpm exec tsx --test packages/contracts/src/mobile/research.test.ts 2>&1 | tail -25
+#   code: 'ERR_MODULE_NOT_FOUND',
+#   url: 'file:///Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue30-sweep-t47/packages/contracts/src/mobile/research.ts'
+# }
+# Node.js v22.22.3
+# Subtest: packages/contracts/src/mobile/research.test.ts
+not ok 1 - packages/contracts/src/mobile/research.test.ts
+  ---
+  duration_ms: 2021.935875
+  type: 'test'
+  location: '.../packages/contracts/src/mobile/research.test.ts:1:1'
+  failureType: 'testCodeFailure'
+  exitCode: 1
+  error: 'test failed'
+  ...
+1..1
+# tests 1
+# pass 0
+# fail 1
+```
+
+失败形态与计划 Step 2 预期一致（模块不存在，`ERR_MODULE_NOT_FOUND` 指向 `./research.ts`）。注：本段输出取自 `tail -25`，错误块最前一两行（`Cannot find module` 文本行）未入捕获，但错误码、目标 URL 与 fail=1 计数完整。事后曾尝试临时移走实现文件复现完整 RED 头部，被 Mimosa PreToolUse hook 拒绝（Bash 直接操作源文件绕过安全扫描）；RED 时序真实（实现在测试失败之后才落盘），不影响证据效力。
+
+## T4.3 GREEN 与提交前验证（全部实跑）
+
+**GREEN（计划 Step 4 指定命令，完整输出）：**
+
+```
+$ pnpm exec tsx --test packages/contracts/src/mobile/research.test.ts
+TAP version 13
+# Subtest: parseResearchListResponse accepts a real envelope
+ok 1 - parseResearchListResponse accepts a real envelope
+# Subtest: parseResearchListResponse rejects malformed envelopes wholesale
+ok 2 - parseResearchListResponse rejects malformed envelopes wholesale
+# Subtest: parseAnnotationListResponse accepts a real envelope and rejects malformed rows
+ok 3 - parseAnnotationListResponse accepts a real envelope and rejects malformed rows
+1..3
+# tests 3
+# pass 3
+# fail 0
+```
+
+**提交前包级全量（实现员模板要求；test/ 目录 16 个既有测试文件 + 本任务 src 测试一并跑）：**
+
+```
+$ pnpm exec tsx --test packages/contracts/test/*.test.ts packages/contracts/src/mobile/research.test.ts
+1..88
+# tests 88
+# pass 88
+# fail 0
+```
+
+**类型检查（确认 index.ts 追加未破坏 barrel，全入口 tsc）：**
+
+```
+$ pnpm exec tsc --noEmit --allowImportingTsExtensions --module nodenext --moduleResolution nodenext --target es2022 --strict --skipLibCheck packages/contracts/src/index.ts
+（无输出，exit=0）
+```
+
+**定点回归（index.ts 改动前的双保险，后被 88 全量覆盖）：**
+
+```
+$ pnpm exec tsx --test packages/contracts/test/mobile-knowledge-evidence.test.ts packages/contracts/test/mobile-read-models.test.ts
+# tests 9 / # pass 9 / # fail 0
+```
+
+## T4.4 自检发现
+
+1. **环境前提差异（非代码改动）**：计划头部声明「前置 pnpm install 已就绪」针对的是主 sweep worktree；本任务 worktree（issue30-sweep-t47）无 node_modules，首次测试命令以 `Command "tsx" not found` 失败。实跑 `pnpm install --prefer-offline`（Done in 1m 26.6s）后恢复。node_modules 被 gitignore（`.gitignore:21`），不产生 tracked 改动；后续 TS 任务（5–8）在本 worktree 不必重装。
+2. **summary 语义与服务端闭环**：解析器对 `summary` 为「缺省合法、present 但空串拒绝」。与服务端实际行为闭环：assigned 委派 summary="" 被 handler 的 `omitempty`（workbench_research.go:126）省略键 → 客户端读作 undefined（合法）；completed 委派的 summary 必非空（CompleteResearch 在 :256 拒绝空 summary）→ present 且非空（合法）。「present 但 ''」不可能由服务端产生，解析器拒绝属 fail-closed，无真实误伤面。
+3. **纯追加边界**：三处改动全部为新建文件或文件末尾追加（index.ts 739→741 行），未触碰任何既有导出与他人逻辑；`git show --stat HEAD` 确认 3 files changed, 166 insertions(+), 0 deletions。
+4. **迁移号/task 编号无关性**：本任务不触 Go 侧，Task 3 报告提到的迁移号顺延（000121/000201）对 contracts 无影响。
+
+## T4.5 提交
+
+- 代码提交：`a7e56dc80` `feat(contracts): research delegation and annotation wire contracts (T17 #47 task 4)`（3 文件：research.ts 新建 111 行、research.test.ts 新建 53 行、index.ts 追加 2 行）。
+- 报告追加：本 T4 章节，随后的 docs 提交（SHA 见 submit_result）。
+
