@@ -1609,3 +1609,116 @@ PluginsSettingsPanel 34/34、craft:shared 113/113。
 默认参数（undefined=无直出/数组=直出含空列表，listLoaded 语义依赖该区
 分）；fakejira SetMyselfDelay 加 testing.TB（调用点同步）；node-gte26
 shimEnv 增可选 baseEnv 参数（默认 process.env，既有调用零改动）。
+
+## B+A 裁决批次（2026-09-26）：后端安全/正确性 9 项（4 修复 + 5 已修复核）
+
+用户裁决 B+A：修复经 OCR 多轮裁决确认有效的 9 个后端发现。逐一核实
+现状后：4 项本轮修复（#1/#2/#4/#5），5 项经核实已被此前轮次修复（#3
+R2-F20、#6 R1-F45、#7 R1-F09、#8 R2-F18、#9 R1-F08——记录证据、无需
+改码）。
+
+### #1 幂等短路崩溃窗口 fail-open（plugin_install_service.go:1295 族）
+
+- 根因：AcceptUpgrade Step 6 / ResolveDrift Step 4 的幂等短路（版本/
+  digest/端点/漂移/服务行同步全匹配 → 零写入）不校验策略行完备性。快照
+  落库（7a/5a）后策略行写完（7c/5b）前被硬杀，重试命中短路零写入，
+  MCPToolApproval「缺行=运行时门默认启用」使缺行写工具默认启用——触碰
+  「新增写工具默认关闭」边界。ConfirmInstallation 同族：确认中途硬杀后
+  重试一律 409「走升级路径」，而升级路径短路同样放行。
+- 修复：新增 installationPolicyRowsComplete 助手；AcceptUpgrade/ResolveDrift
+  短路前校验候选/rebased 快照每工具显式策略行（svc==nil 无行可键时维持
+  原零写入读法），缺失落入写路径增量补齐（重写同值无害+只补缺行）；ResolveDrift
+  的 svc 载入移到短路前。ConfirmInstallation 新增 completeCrashedConfirm：
+  digest/版本/端点全等的同内容重试经 serviceIDByInstallation 反查自愈空
+  service_id 锚（卸载自愈同款）→ 增量补齐缺行 → 消费预览；行完备保持
+  既有 already-installed 409（TestConfirmInstallationIdempotent 判定不破）
+  、反查无行（物化前被杀，fail-closed 无暴露面）保持 409。
+- RED→GREEN：TestAcceptUpgradeIdempotentShortCircuitCompletesMissingPolicyRows
+  （RED 实测：重试成功但 create_issue 行仍缺）、TestResolveDriftIdempotent-
+  ShortCircuitCompletesMissingPolicyRows（RED 同形态）、TestConfirmInstallation-
+  HealsCrashedPolicyRows + TestConfirmInstallationHealsCrashedServiceBinding
+  （RED 实测：重试吃 ErrPluginAlreadyInstalled）。
+- 提交 a9d0fd0ce。
+
+### #2 SetInstallationState 缺 per-installation 锁（:689）
+
+- 根因：状态切换与 AcceptUpgrade 同族读-改-写——syncService 先 GetByID
+  载入物化服务再整行 Update（含 URL/AuthConfig），不持锁时与接受路径 7b
+  交错可整行回滚 accept 刚切换的端点/OAuth 基线、或在 7a/7b 之间落「安
+  装行 active+服务行停用」再被 7b 覆盖复活。
+- 修复：入口 defer lockUpgradeAccept（与 AcceptUpgrade/ResolveDrift/
+  CheckDrift/UninstallInstallation 同款串行化）。
+- RED→GREEN：TestSetInstallationStateConcurrentAcceptSerializes（RED 实测
+  「接受在途期间状态切换零进展」不成立；GREEN 后 accept 7b 中途并发切换
+  全程阻塞+终态 URL=v2/Enabled=false/安装行 disabled）。提交 28fcaa96b。
+
+### #3 UninstallInstallation 缺锁——已修复核（R2 F20）
+
+- 证据：plugin_install_service.go UninstallInstallation 入口
+  `defer lockUpgradeAccept(installationID)()`（注释标 OCR R2 F20）；
+  TestUninstallConcurrentAcceptSerializes 本轮复跑仍绿。无需改码。
+
+### #4 GetMCPServiceResources/TestMCPService 缺插件物化守卫（mcp_service.go:493 族）
+
+- 根因：GetMCPServiceTools（R1 F07）拒绝插件行，但 GetMCPServiceResources
+  （Viewer+）与 TestMCPService（Admin+）仍直连实时远端——资源列表/连通
+  测试结果绕过已接受快照边界暴露未接受能力与漂移后目录；且 test 面
+  handler 把服务层错误包成 200 失败结果、resources 面落默认 500。
+- 修复：两方法 GetByID 后补 `PluginInstallationID != nil → ErrPluginManagedService`
+  （与 R1 F07 同口径）；handler 两面补 pluginManagedConflict 409。
+- RED→GREEN：服务层 TestGetMCPServiceResourcesRejectsPluginManagedRow /
+  TestMCPServiceTestRejectsPluginManagedRow（RED：返回 nil/连通错误非哨兵）；
+  handler 层 TestGetMCPServiceResourcesPluginManagedIsConflictNot500（RED
+  500）/ TestMCPServiceTestPluginManagedIsConflictNotTestFailure200（RED 200
+  包装）。提交 25a21de58。
+
+### #5 maskEndpointCredentials/userinfoOf authority 未按 /?# 终止（manifest.go:446/451/474）
+
+- 根因：R2 F33 修了前导 //，但 authority 仍只按 '/' 截断——query 内 '@'
+  被当 userinfo（掩码把 host+query 整段吞成 "REDACTED@evil"、userinfoOf
+  对无凭据 URL 误报）；真实 userinfo+query 含 '@' 时 LastIndex 取错 '@'
+  掩码丢失 host 与 query；协议相对前导 // 在输出中丢失。
+- 修复：新增 authorityEnd（IndexAny "/?#"，RFC 3986 §3.2）；mask 的协议
+  相对分支 prefix 保留 "//"。
+- RED→GREEN：TestUserinfoAndMaskTerminateAuthorityAtQueryAndFragment（RED
+  实测 "https://REDACTED@evil.example" 失真形）。提交 318de31a7 + gofmt
+  补遗 891f351d9。
+
+### #6 升级接受路径候选端点 512 校验——已修复核（R1 F45）
+
+- 证据：AcceptUpgrade 与 PreviewUpgrade 均有 validatePluginURLLength(
+  "plugin transport endpoint", ...)（注释标 OCR R1 F45）；
+  TestUpgradeCandidateEndpointLengthBounded 在册。无需改码。
+
+### #7 drift 明细四列表 append(nil) → JSON null——已修复核（R1 F09）
+
+- 证据：handler/plugin.go driftReportResponseDTO 四列表 make+copy（注释标
+  OCR R1 F09）；TestDriftReportResponseListsNeverSerializeAsNull 在册且本轮
+  复跑绿。无需改码。
+
+### #8 jira.go pageToken→nextPageToken——已修复核（R2 F18）
+
+- 证据：jira.go SearchMyWeek 以 payload["nextPageToken"] 跟页、
+  NextPageToken 读回；ocr_fix_test.go 替身按 nextPageToken 键收发（354/
+  373 行）；fakejira.go 全文无分页读取逻辑（分页契约由测试替身承载，R2
+  记录所述「fakejira 分页读取」实为替身侧）。无需改码。
+
+### #9 pluginManagedConflict 插在 swaggo 注释块中间——已修复核（R1 F08）
+
+- 证据：handler/mcp_service.go pluginManagedConflict 位于首个 swaggo 注
+  释块（// CreateMCPService godoc）之前，注释标 OCR R1 F08；TestSwag-
+  AnnotationsPrecedeCreateMCPServiceDeclaration 在册且本轮复跑绿。
+  无需改码。
+
+### B+A 批次回归证据
+
+- 受影响包：go test ./internal/modules/plugins/ ./internal/application/
+  service/ ./internal/handler/ 全 ok（service 169.5s）。
+- 本轮改动文件 gofmt 全净、go vet 三包无输出（仓库既有 gofmt 脏文件为
+  基线固有，未触碰）。
+- 全量门控（真实退出码）：
+  - `go test ./...` → exit 0（129 包 ok，0 FAIL；链接器 -lc++ 重复库警告
+    为既有基线现象）；
+  - `pnpm run test:shared` → exit 0（tests 1024：pass 1023 / fail 0 /
+    skipped 1）；
+  - `pnpm run typecheck:shared` → exit 0（0 error）。
