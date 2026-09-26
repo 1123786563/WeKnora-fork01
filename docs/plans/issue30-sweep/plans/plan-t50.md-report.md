@@ -793,3 +793,83 @@ BUILD OK
 - 无阻塞。Task 9（真实受控集成证据，blocked-env opt-in）可直接开始：本任务已验证全链在生产迁移库上的行为，`confluence_publish_real_test.go` 只需把双打换成真实 `CONFLUENCE_BASE_URL`/`CONFLUENCE_EMAIL`/`CONFLUENCE_API_TOKEN`/`CONFLUENCE_PARENT_PAGE_ID` 注入。
 - 迁移轨道提示：本分支现在自洽（双轨唯一、E2E 可装载）；若后续 merge 兄弟分支的同号 dedupe（000118/000197），属同名同内容 rename/rename，机械消解即可。
 
+---
+
+# plan-t50.md 实现报告 — Task 9/10：真实受控集成证据（blocked-env，opt-in）
+
+> 任务：Issue #50 实施计划（`docs/plans/issue30-sweep/plans/plan-t50.md:4795`）Task 9——
+> 「真实受控集成证据（blocked-env，opt-in）」。
+> 执行 worktree：`/Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue30-sweep-t50`（分支 `codex/issue30-t50`，基于 Task 8 后 HEAD `02fce18c6`）。
+> 本节由实现员子代理撰写，仅覆盖 Task 9 授权文件（新增 `internal/modules/appconnector/confluence_publish_real_test.go`）。
+
+## 1. 实现内容
+
+按计划 Task 9 Step 1 逐字创建 **`internal/modules/appconnector/confluence_publish_real_test.go`**（108 行，本任务唯一改动文件，生产代码零改动）：
+
+- `TestConfluenceRealPublishLoop`：真实 Provider 受控证据——真实适配器跑完整闭环：在指定测试父页面下 create（基线版本读）→ `ParseConfluencePageReceipt` 核对回执 → 对同一页面 update（`ReadConfluencePageVersion` 实时预读 + 无冲突写 + 回执版本必须较预读值推进）→ 同页 stale-version update 必须以 `ErrConfluenceVersionConflict` 拒绝且零写。
+- 凭据门：`CONFLUENCE_BASE_URL`/`CONFLUENCE_EMAIL`/`CONFLUENCE_API_TOKEN`/`CONFLUENCE_PARENT_PAGE_ID` 任一为空、或 parent 以 `xxxx` 前缀（占位值形态）即 SKIP——与 #48 先例 `TestNotionRealPublishLoop`（`notion_publish_real_test.go:22-25`）同款纪律，skip 文案明示「skip is not a pass — T20 real-provider evidence stays blocked-env」。
+- **Consumes 核实（实现前逐项 grep）**：`ParseConfluenceBaseURL`（`confluence_common.go:101`）、`ParseConfluencePageReceipt`（`confluence_common.go:195`）、`ErrConfluenceVersionConflict`（`confluence_common.go:20`）、`ReadConfluencePageVersion(ctx, pol, cred, edition, apiBasePath, pageID) (string, error)`（`confluence_update.go:297`——返回 string，与计划测试中 `"expected_version": live` 直接承载一致）、`ConfluenceCreateAdapter`/`ConfluenceUpdateAdapter` 结构体字段、`HTTPPolicy` 字段（`http_policy.go:68-79`）、`Action`/`ActionSucceeded`/`ActionFailed`/`RiskWrite` 均存在且签名一致；`TestConfluenceRealPublishLoop` 包内无命名冲突（rg 零命中）。
+
+## 2. 测试证据
+
+### 计划 Step 2 指定命令（伪造凭据 + `xxxx` 前缀 parent——门即使变量被乱设也必须拒绝执行）
+
+命令：`CONFLUENCE_BASE_URL=x CONFLUENCE_EMAIL=x CONFLUENCE_API_TOKEN=x CONFLUENCE_PARENT_PAGE_ID=xxxx-skip go test ./internal/modules/appconnector/ -run TestConfluenceRealPublishLoop -count=1 -v`
+
+```
+=== RUN   TestConfluenceRealPublishLoop
+    confluence_publish_real_test.go:28: confluence real credentials not configured (CONFLUENCE_BASE_URL/CONFLUENCE_EMAIL/CONFLUENCE_API_TOKEN/CONFLUENCE_PARENT_PAGE_ID); skip is not a pass — T20 real-provider evidence stays blocked-env
+--- SKIP: TestConfluenceRealPublishLoop (0.00s)
+PASS
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector	0.503s
+```
+
+计划预期 `--- SKIP: TestConfluenceRealPublishLoop`（plan-t50.md:4922）达成。
+
+### 自然 blocked-env（无任何环境变量）同形 SKIP
+
+命令：`go test ./internal/modules/appconnector/ -run TestConfluenceRealPublishLoop -count=1 -v` → 同一 `--- SKIP` + 同款 skip 文案（`ok … 2.922s`）。
+
+### gofmt 修正后复跑 + 包内 Confluence 全域回归
+
+- gofmt 修正（见 §4 发现 1）后：`gofmt -l internal/modules/appconnector/confluence_publish_real_test.go` → 空输出（干净）；复跑 Step 2 命令 → 同一 SKIP。
+- `go test ./internal/modules/appconnector/ -run 'Confluence' -count=1 -v` → **28 PASS + 1 SKIP（即本测试）+ 0 FAIL**，`ok github.com/Tencent/WeKnora/internal/modules/appconnector`。
+- `go build ./...` → OK（仅 cmd/desktop、cmd/server 两条既有 `ld: warning: ignoring duplicate libraries: '-lc++'`）。
+
+### 计划级验证命令全量（plan-t50.md:4938，提交前实跑）
+
+命令：`go build ./... && go vet ./internal/modules/appconnector/... ./internal/handler/ ./internal/router/ ./internal/container/ && go test ./internal/modules/appconnector/ -run 'Confluence' -count=1 && go test ./internal/modules/appconnector/publish/ -run 'Confluence' -count=1 && go test ./internal/handler/ -run 'TestConfluencePublish' -count=1`
+
+```
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector	0.556s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/publish	4.051s
+ok  	github.com/Tencent/WeKnora/internal/handler	20.637s
+PLAN-LEVEL-VERIFY: ALL GREEN
+```
+
+vet 零输出（干净）；Task 8 三个 E2E（`TestConfluencePublish` 前缀）随命令全绿——本任务零生产改动、零回归。
+
+### TDD 形态说明（如实）
+
+本任务交付物是**测试文件本身**（gated real-provider evidence），无生产代码改动，无 RED→GREEN 实现阶段可跑；计划 Task 9 的验证即 SKIP 门（Step 2），已按计划原命令实跑（伪造凭据态 + 自然无凭据态 + gofmt 修正后复跑，共三次）。有真实凭据的环境（`artifacts/connector-real/confluence.env` 形态）自动执行完整闭环；本环境无法产生真实 Provider 证据，如实留作 blocked-env，不伪造。
+
+## 3. 提交
+
+- `e7e26a6fe` `test(appconnector): gated real confluence publish loop evidence (T20 #50, blocked-env)`（Task 9 Step 3 计划原文提交信息；1 file changed, 108 insertions(+)）。
+- 提交后 `git status --short` 干净；未推送远端；冻结面零触碰（#48 产物、`newOCArmedActionService`、知识库只读连接器均不在 diff 中）。
+
+## 4. 自检发现
+
+1. **计划草稿排版瑕疵（已最小修正，零语义变化）**：计划 Step 1 代码块中 `updateArgs`/`staleArgs` 两处 map 字面量的 `"title":` 键未按 gofmt 对齐（plan-t50.md:4888、4906）；`gofmt -w` 修正为键对齐，其余与计划逐字一致。
+2. **预存问题（非本任务引入，不属授权文件，未动）**：`internal/modules/appconnector/confluence_create_test.go` 在已提交状态（Task 2 落地）不满足 gofmt（`gofmt -l internal/modules/appconnector/` 列出该文件）。属前序任务遗留，留给集成方/其归属任务处理。
+3. **同机负载提示（不影响结论）**：验证期间同机有多个并行会话的 Go 构建（craft-107-integration、issue30-sweep-t61 等其他 worktree，`ps` 实见），`go build ./...` 首跑约 18 分钟才完成（CPU 竞争）；所有验证命令均完整跑完且全绿，结论不受影响。
+4. **执行环境差异（无碍）**：任务指派中的实现员提示模板路径 `…/superpowers/6.4.1/…/implementer-prompt.md` 不存在，实际读到同一文件 6.4.2 版本（`/Users/wuyongjun/.codex/plugins/cache/openai-curated-remote/superpowers/6.4.2/skills/subagent-driven-development/implementer-prompt.md`），报告契约按该版本执行。
+5. **blocked-env 如实声明（AC3 边界，plan-t50.md:44 定义）**：真实 Confluence 站点 + 真实 token + 真实 version.number 推进的验收在本地环境不可得（SKIP 且不伪造）；AC3 的本地最高稳定 Interface 替代证据由 Task 8 E2E 三测承担（本节计划级验证命令随 `TestConfluencePublish` 前缀复跑全绿）。与 #48 先例（`TestNotionRealPublishLoop` 本环境 SKIP）同款纪律。
+6. 未做的事：无。Task 9 Files 清单恰为 1 个测试文件，已全部交付。
+
+## 5. 遗留/交接
+
+- 无阻塞。计划 Task 0–9 的实现提交在本分支齐备（`git log`：Task 0 重编 `60bf99af3`、Task 1–3 适配器族、Task 3 review 修复 `2b1691753`、Task 4–8 交付及其报告提交、本任务 `e7e26a6fe`）；计划级验证命令在本任务 HEAD 实跑全绿。
+- 真实 Provider 证据激活路径：在具备凭据的环境注入四个 `CONFLUENCE_*` 变量（parent 不得以 `xxxx` 开头），`go test ./internal/modules/appconnector/ -run TestConfluenceRealPublishLoop -count=1 -v` 自动执行 create→update→stale 拒绝完整闭环（在指定父页面下真实留痕）。
+- 两个 cosmetic 遗留（零行为影响）：计划排版对齐已在落地文件修正；`confluence_create_test.go` 的 gofmt 属 Task 2 落地状态，本任务未动。
+
