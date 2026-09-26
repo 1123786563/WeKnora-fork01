@@ -1,112 +1,138 @@
-# Issue #30 本轮交付最终报告（issue30-sweep）
+# Issue #30 本轮交付最终报告（issue30-sweep，全轮终版）
 
-- 报告日期：2026-09-24（本版为全轮终版，取代中途版 `5c8e592a5`）
-- Worktree：`.worktrees/issue30-sweep`，分支 `codex/issue30-mobile-office`，HEAD `4f71e9d97`
-- 提交范围：`29c1e5635..4f71e9d97`（共 **182 个提交**，`git log --oneline 29c1e5635..4f71e9d97 | wc -l` 实测；其中中途版报告 `3f72d96db` 之前的 83 个已在途中报告覆盖，本报告为全范围终版）
-- 本轮实施范围：#30 的 41 个下级 Issue 中实施 **12 个**（#32、#33、#34、#35、#66、#36、#38、#41、#42、#44、#46、#59，对应 T02、T03、T04、T05、T36、T06、T08、T11、T12、T14、T16、T29），共 **90 个计划任务**（各计划文件 `### Task N` 标题计数实测：6+6+9+11+6+7+7+7+7+8+9+7 = 90），分三个并行波次（B1、B2、B3）交付
-- 状态口径声明：以下所有「完成 / 已验证完成」均指**本地 worktree 分支上的交付与本地审查结论**；未推送远端、未合并到 `main`、未关闭任何 GitHub Issue（详见文末声明）
+- 报告日期：2026-09-25（本版为全轮终版，取代中途版 `5c8e592a5` 与上一版终报 `8deac8915`——后者只覆盖到 B3，本报告覆盖含 B4 在内的全部交付）
+- Worktree：`.worktrees/issue30-sweep`，分支 `codex/issue30-mobile-office`
+- 基线：`29c1e5635`；最终 HEAD：`bf44a4671`；范围共 **344 个提交**（`git log --oneline 29c1e5635..bf44a4671 | wc -l` 实测 = 344；其中 B4 增量段 `4f71e9d97..bf44a4671` 实测 162 个）
+- 本轮实施范围：#30 的 41 个下级 Issue 中实施 **23 个**（#32、#33、#34、#35、#66、#36、#38、#41、#42、#44、#46、#59、#37、#39、#40、#43、#45、#48、#52、#56、#60、#67、#68），共 **183 个计划任务**（各计划文件 `### Task N` 标题计数实测：90 + 93 = 183），分四个并行波次（B1、B2、B3、B4）交付，B1–B4 四个 DAG 批次全部节点完成
+- 状态口径声明：以下所有「完成 / 已验证完成」均指**本地 worktree 分支上的交付与本地审查结论**；未推送远端、未合并到 `main`、未关闭任何 GitHub Issue（详见文末交付声明）
 
 ---
 
 ## 一、下级 Issue 状态与 #30 总体验收覆盖
 
-### 1.1 本轮实施的 12 个 Issue
+### 1.1 本轮实施的 23 个 Issue（编排器执行统计原样呈现 + 状态判定）
 
-编排器执行统计（原样呈现）：
+| Issue | T | 批次 | 任务 | finalApproved | 状态判定 |
+|---|---|---|---|---|---|
+| #32 | T02 | B1 | 6/6 | **false**（1 项残留已实测 ADDRESSED，见下） | 完成（含 1 项最终审查残留呈报，不宣称完全干净） |
+| #33 | T03 | B2 | 6/6 | true | 已验证完成（本地审查口径） |
+| #34 | T04 | B2 | 9/9 | true | 已验证完成（本地审查口径） |
+| #35 | T05 | B2 | 11/11 | true | 已验证完成（本地审查口径） |
+| #66 | T36 | B2 | 6/6 | true | 已验证完成（本地审查口径） |
+| #36 | T06 | B3 | 7/7 | true | 已验证完成（本地审查口径） |
+| #38 | T08 | B3 | 7/7 | true | 已验证完成（本地审查口径） |
+| #41 | T11 | B3 | 7/7 | true | 已验证完成（本地审查口径） |
+| #42 | T12 | B3 | 7/7 | true | 已验证完成（本地审查口径） |
+| #44 | T14 | B3 | 8/8 | true | 已验证完成（本地审查口径） |
+| #46 | T16 | B3 | 9/9 | true | 已验证完成（本地审查口径） |
+| #59 | T29 | B3 | 7/7 | true | 已验证完成（本地审查口径） |
+| #37 | T07 | B4 | 9/9 | **false**（终审双修后无第二审查波，见下） | 完成（终审发现已修复、未经复审，不宣称完全干净） |
+| #39 | T09 | B4 | 11/11 | true | 已验证完成（本地审查口径） |
+| #40 | T10 | B4 | 7/7 | **false**（终审批次修复后无第二审查波） | 完成（终审发现已修复、未经复审） |
+| #43 | T13 | B4 | 8/8 | true | 已验证完成（本地审查口径） |
+| #45 | T15 | B4 | 8/8 | true | 已验证完成（本地审查口径） |
+| #48 | T18 | B4 | 10/10 | true | 已验证完成（本地审查口径） |
+| #52 | T22 | B4 | 11/11 | **false**（终审 5 项发现修复后无第二审查波） | 完成（终审发现已修复、未经复审） |
+| #56 | T26 | B4 | 5/5 | true | 已验证完成（本地审查口径） |
+| #60 | T30 | B4 | 9/9 | true | 已验证完成（本地审查口径） |
+| #67 | T37 | B4 | 7/7 | **false**（终审 5 项发现修复后无第二审查波） | 完成（终审发现已修复、未经复审） |
+| #68 | T38 | B4 | 8/8 | true | 已验证完成（本地审查口径） |
 
-| Issue | T | 任务（编排器口径） | 最终审查（finalApproved） | 状态判定 |
-|---|---|---|---|---|
-| #32 | T02 | 6/6 完成 | **false**（1 项残留，见下） | **完成（含 1 项最终审查残留呈报，不宣称完全干净）** |
-| #33 | T03 | 6/6 完成 | true | 已验证完成（本地审查口径） |
-| #34 | T04 | 9/9 完成 | true | 已验证完成（本地审查口径） |
-| #35 | T05 | 11/11 完成 | true | 已验证完成（本地审查口径） |
-| #66 | T36 | 6/6 完成 | true | 已验证完成（本地审查口径） |
-| #36 | T06 | 7/7 完成 | true | 已验证完成（本地审查口径） |
-| #38 | T08 | 7/7 完成 | true | 已验证完成（本地审查口径） |
-| #41 | T11 | 7/7 完成 | true | 已验证完成（本地审查口径） |
-| #42 | T12 | 7/7 完成 | true | 已验证完成（本地审查口径） |
-| #44 | T14 | 8/8 完成 | true | 已验证完成（本地审查口径） |
-| #46 | T16 | 9/9 完成 | true | 已验证完成（本地审查口径） |
-| #59 | T29 | 7/7 完成 | true | 已验证完成（本地审查口径） |
+**finalApproved=false 共 5 个（#32/#37/#40/#52/#67），逐个依据**：
 
-**各 Issue 目标与交付摘要**（目标引自编排器本轮计划结果，交付证据引自 Ledger/集成记录/提交）：
+- **#32**：最终审查修复波后仍有 1 项 important 残留（`disallowedDeploymentHost` 可被 IPv6 形式绕过）→ 已实测 ADDRESSED：`mobileRuntimeIntegrationConfig` 对 `https://[fe80::1]`、`[fc00::1]`、`[fd12:3456:789a::1]`、`[::ffff:7f00:1]` 全部返回 `enabled:false/disposition:'invalid'`（运行报告同款 tsx 复现脚本；hostname 含 `:` 时经 `parseIpv6Literal` 展开为 16 字节，`runtime-integration-smoke.ts:45-75`）。按 SDD 规则不再有第二审查波，残留呈报（Ruling 4）。
+- **#37**：终审双修（`69428d498`——queue_next 未知 schema 快照 fail closed + 停止卡不谎报未发生的取消；`c627e46f1`——intervention smoke 如实呈现 unknown，不把 unknown 洗成 admitted、不虚构 stop conflict；证据 `.superpowers/sdd/t37/final-fix-report.md`：1 important + 1 minor 全部一次修复，附 RED→GREEN），修复后无复审波。
+- **#40**：终审批次（`423177a56`——office 级离线 start 门禁、文案单源、O(n) 预算裁剪），修复后无复审波。
+- **#52**：终审 5 项发现（2 important + 3 minor）全部修复（`f09173fc5` + 契约测试；证据 `.superpowers/sdd/t52/final-fix-report.md`），修复后无复审波。
+- **#67**：终审 5 项发现（2 important + 3 minor）全部处置（`7475dfed3`——官方通道对称 host 门、FCM token_uri 门、装配 wiring 测试；证据 `.superpowers/sdd/t67/final-fix-report.md`），修复后无复审波。
 
-- **#32（T02）Active Tenant 切换与 Scoped Vault 隔离**（波次 1）：用户可在移动端选择并切换 Active Tenant；新建 Scoped Vault 深模块让加密缓存/草稿按 Deployment×用户×Tenant 隔离，切换/退出/换部署时旧 scope lease 同步撤销、wrapped key 轮换+行擦除（fail closed），迟到响应经 epoch 拒绝；租户切换具备真实 HTTP 最高稳定 Interface 的 opt-in 集成证据。计划 gate PASS（[plan-t32 Ledger](../../.superpowers/sdd/plan-t32/progress.md)，gate 行原文实测在案）。**残留**：最终审查发现（important）「`disallowedDeploymentHost` 可被 IPv6 形式绕过」——修复波已实测 ADDRESSED（修复报告 [t32/final-fix-report.md](../../.superpowers/sdd/t32/final-fix-report.md)：修复前 tsx 复现脚本对 `[fe80::1]`/`[fc00::1]`/`[fd12:3456:789a::1]`/`[::ffff:7f00:1]` 全部 `enabled:true` 确认漏洞，修复后全部 `enabled:false/disposition:'invalid'`，`parseIpv6Literal` 展开 16 字节，主机拒绝测试循环从 9 个 URL 扩到 25 个并含公网 IPv6 正向守护；`runtime.integration.test.ts` 6 tests 5 pass/1 opt-in skip）。按 SDD 规则最终审查后不再有第二波，该项作为残留呈报用户，故 #32 不宣称完全干净、finalApproved=false。
-- **#33（T03）Resource Shelf**（波次 1）：新增 Resources 资源页，经新建 mobile-core Resource Shelf 深 Module（browse/selection/subscribe）端到端展示当前 Active Tenant 的 Available Agent、知识与 Connection 摘要并解释三态；撤权（403）或 scope/capability 变化后投影立即失效。计划 gate PASS（[plan-t33 Ledger](../../.superpowers/sdd/plan-t33/progress.md)）；最终审查 2 项 Minor 发现全部修复（[t33/final-fix-report.md](../../.superpowers/sdd/t33/final-fix-report.md)：render 相 controller 创建移入 effect、401 重试改结构化 status 判定，各附 RED/GREEN 证据）。
-- **#34（T04）首页 Attention 与统一 Task 列表**（波次 1）：首页一次聚合读展示三段视图，统一 Task 列表支持搜索、筛选与归档（含归档写路径），全部读自当前 Tenant 的授权聚合读模型，经新建 Task Office 深模块 + opt-in 真实 HTTP 集成证据端到端验证。计划 gate PASS（[plan-t34 Ledger](../../.superpowers/sdd/plan-t34/progress.md)，含 Go 侧 `TestWorkbenchList|TestWorkbenchTask|TestMX013|TestWorkbenchNotifications`）。计划审查第 2 轮 7 项残留与冲突扫描 2 项 blocking（Ruling 3/5）作为 Review Focus 传入任务审查后吸收。
-- **#35（T05）Task 详情 Snapshot、Timeline 与 SSE 恢复**（波次 2）：结果优先详情、Task/Run/Attention 三层状态与规范 Timeline，经 Snapshot 水合、游标 SSE、缺口/裁剪补洞与有界重同步完成 App 重启、断线与终态 drain 的可验证恢复；独立审查四项发现已修复（阻断：Task 9/10 装配补传 detail port 并增加冒烟源级守卫）。
-- **#66（T36）多 Deployment 切换与兼容性降级**（波次 2）：一台设备可登记多个官方云/自托管 Deployment 并原子切换（不携带旧凭据、不接纳迟到响应），缺安全关键 capability 时进入「说明 + 有限只读」降级面，经 MobileRuntime Interface 测试 + opt-in 真实 HTTP 多实例切换证据验证。集成记录 [integrate-t66.md](../../.superpowers/sdd/integrate-t66.md)。
-- **#36（T06）通用目标输入与耐久 Task 创建**（波次 3/B3）：统一 New 入口——描述目标、接受或改选推荐主理 Agent、附加资源与预算后创建 Task；request_id 在 Start POST 前耐久持久化（意图日志），ACK 丢失用同一 request_id 与同一 session 对账，相同意图绝不重复创建 Task 或预算预占，附件未就绪/离线/输入冲突保留草稿且零危险重放。审查 F1–F6 已修复；最终审查 F1（goal TextInput 无 maxLength）已修复（[t36/final-fix-report.md](../../.superpowers/sdd/t36/final-fix-report.md)，分支提交 `8c7d71134`：`GOAL_TEXT_MAX_LENGTH=500` 源头拦截 + 字节预算交叉验证测试，实测最坏单条 1791B ≤ 2048B SecureStore 信封）。
-- **#38（T08）Attention Inbox 与类型化审批闭环**（波次 3/B3）：新增 GET /api/v1/workbench/interactions 收件箱读与 Task Office inbox()/decide() 接口，决定经冻结 decision_id 幂等重放与 revision/digest CAS 只生效一次，receipt 如实区分 recorded/delivery-unknown/superseded/gone；真机多设备端到端如实列为 blocked-env 并给本地替代证据；审查发现 F1–F7 全部修复并复核落盘。集成记录 [integrate-b3-t38.md](../../.superpowers/sdd/integrate-b3-t38.md)。
-- **#41（T11）注册设备、行动通知与安全深链**（波次 3/B3）：可撤销设备注册（两步 intent→register、token 接管、撤销幂等），行动通知只作同步 hint 触发权威重投影（点击 = 安全深链解析→重新鉴权→权威 Task 详情→本地已读，绝不执行业务操作），错误 deep link 全部拒绝。与 #38 的 `/inbox` 撞路径在集成时分流（#41 占 `/inbox`，T08 迁 `/attention`，集成裁量详见 [integrate-b3-t41.md](../../.superpowers/sdd/integrate-b3-t41.md)）；最终审查 F1（markRead 失败逃逸）已修复（分支 tip `c3076ce20`）。
-- **#42（T12）Task Owner、Collaborator、Viewer 协作**（波次 3/B3）：Task 级显式协作授权（Owner 授予同租户成员 Viewer/Collaborator），在扩额、个人连接、副作用审批三个通道落地权限严格分离门禁，全部行为在 HTTP wire 级集成测试验证；审查 6 项 findings 逐一修复。其中一处「approve 移出 capability gate」经升级裁决落地（提交 `d45593bd9` 标注 ruling via escalation）。
-- **#44（T14）旧 Session 投影为 Legacy Task**（波次 3/B3）：从未有过 Run 的旧 Session 以同一身份（taskId=sessionId）进入显式 Legacy Task 投影（Go 读模型+端点+同身份归档），原生 App 可查看历史并经既有聊天 wire 继续普通追问，Run 级新安全语义显式门禁为「需新建 Run」，真实迁移测试锁定验收。集成记录 [integrate-b3-t44.md](../../.superpowers/sdd/integrate-b3-t44.md)。
-- **#46（T16）Task Material**（波次 3/B3）：经 Task Material 深模块 Interface 列出并打开 Task 材料（Artifact/Files/Diff/测试报告/Evidence 引用/只读 Terminal），短时效签名授权下载与系统分享；独立审查两处阻断与三处低危已全部实跑/等价性验证修复。集成记录 [integrate-b3-t46.md](../../.superpowers/sdd/integrate-b3-t46.md)。
-- **#59（T29）Tenant Adoption、Agent Variant 与移动 Available Agent**（波次 3/B3）：在 #58 Tenant Release 闭环之上实现 Adoption→多 Variant→本地能力映射→测试→本地 Agent Version 发布的治理层，端到端 HTTP 测试证明发布产物进入移动 Resource Shelf 消费的 GET /api/v1/agents 投影与新 available-agents 读模型，缺能力时拒绝原因逐项点名；审查 4 项 findings 全部修复（分支 tip `a52207942` final fix）。
+**各 Issue 目标一句话（目标原文引自编排器本轮计划结果）**：
 
-**iOS 模拟器实测对上述交付的覆盖**：Release 构建/安装/启动/首屏渲染 ✅（首轮修复轮后）；`weknora:///resources` deep link warm+冷启动 ✅（首轮）；B3 复验轮对 7 条 B3 路由（`/inbox`、`/new`、`/tasks/legacy`、`/tasks/materials`、`/attention`、`/resources`、`/tasks/detail`）deep link 可达且各自渲染正确的未授权 gate 文案、冷启动直达、正常重启不粘连、无崩溃/无 JS 错误 ✅（[b3-recheck.md](ios-evidence/b3-recheck.md)）。**全部 12 个 Issue 的授权面交互 ❌ 未验证**——本环境无 deployment 凭据与后端（详见第四节、第七节）。
+- **#32（T02）**：Active Tenant 切换 + Scoped Vault 深模块按 Deployment×用户×Tenant 隔离（lease 撤销、wrapped key 轮换+行擦除 fail closed、epoch 拒绝迟到响应），opt-in 真实 HTTP 集成证据。
+- **#33（T03）**：Resources 资源页经 mobile-core Resource Shelf 深模块端到端展示 Agent/知识/Connection 三态，撤权（403）后投影立即失效。
+- **#34（T04）**：首页三段视图一次聚合读 + 统一 Task 列表搜索/筛选/归档，Task Office 深模块 + opt-in 真实 HTTP 证据。
+- **#35（T05）**：结果优先详情、三层状态与规范 Timeline，Snapshot 水合/游标 SSE/补洞/有界重同步完成重启、断线、终态 drain 的可验证恢复。
+- **#66（T36）**：多 Deployment 登记与原子切换（不携带旧凭据、不接纳迟到响应），缺 capability 进入「说明+有限只读」降级面。
+- **#36（T06）**：统一 New 入口；request_id 前置持久化（意图日志）、ACK 丢失同 id 对账、绝不重复创建，审查 F1–F6 修复。
+- **#38（T08）**：GET /api/v1/workbench/interactions 收件箱 + inbox()/decide() 决定幂等（decision_id 重放 + revision/digest CAS），receipt 如实区分 recorded/delivery-unknown/superseded/gone；真机多设备端到端如实列为 blocked-env。
+- **#41（T11）**：可撤销设备注册（intent→register、token 接管），行动通知只作同步 hint 触发权威重投影，错误深链全部拒绝。
+- **#42（T12）**：Task 级 Owner/Collaborator/Viewer 协作授权，扩额、个人连接、副作用审批三通道权限严格分离，HTTP wire 级验证。
+- **#44（T14）**：旧 Session 以同一身份（taskId=sessionId）进入显式 Legacy Task 投影，可继续普通追问，Run 级新语义门禁为「需新建 Run」。
+- **#46（T16）**：Task Material 深模块列出/打开 Artifact/Files/Diff/测试报告/Evidence/只读 Terminal，短时效签名下载与分享。
+- **#59（T29）**：Tenant Adoption→多 Variant→能力映射→测试→本地 Agent Version 发布治理层，端到端证明产物进入 GET /api/v1/agents 投影与 available-agents 读模型。
+- **#37（T07）**：三类显式干预（steer/queue-next/stop 后重启），停止三态呈现、结果未知期间阻止冲突写、命令携带真实 revision、回执绑定实际 Run（交付含 queue_next 契约 `d8cb2b5fe`、命令 `689cf85ab`、干预 UI `edae6bced`、HTTP 证据 `99c03bcd9`/`bde742309`、opt-in 冒烟 `144a924f2`）。
+- **#39（T09）**：预算四读数（预计/已用/预占/剩余含委派）、达限持久暂停（waiting_user/budget_exhausted 非终态 failed）、授权扩额同一 Run 恢复且不重复计费（交付含 park `823fcc20f`、requeue `8a75f6b78`、resume `3edfd92c8`、GET budget `19831f836`、无双重扣费钉 `4a8e0a752`、预算屏 `51d471c80`、web 剩余额度 `0bde1166c`、opt-in `f3652a3f1`）。
+- **#40（T10）**：Scoped Vault event projection 加密仓储 + Task 详情离线快照（AC1）、四类危险动作离线 fail closed 与撤权/退出/磁盘失败语义（AC2）、真实部署端到端证据（AC3）（交付含 `4b2942973`/`f9c93b858`/`1e36b8054`/`5fabacb68`/`ffd30d58c`/`a574c3055`/`aa7668624`）。
+- **#43（T13）**：管理员合规访问（默认仅元数据、私有内容需理由+期限+完整审计）、租户级保留策略（retention_days + legal_hold 驱动三个删除入口闸门与 Admin+ 永久删除检查链）、内部删除不隐式删除外部资源（交付含 `d5d1a57b9`/`3bd2a8b2d`/`1ec983a39`/`47dd17b81`/`50c801dce`/`b287d7662`/`3917766aa`；前置 Task 0 修复迁移轨道同号双文件损坏）。
+- **#45（T15）**：knowledge-chat SSE 上的证据信封（逐引用版本+检索时间、原文事实/规则推导/模型推断三分类、交付前实时撤权重校验），/ask 屏闭环（交付含 `cc0dd9dfa`/`2c698543e`/`38b73d16a`/`3e6657200`/`3f9480e95`/`72fb96615`/`81018c8d1`/`50285d45e`）。
+- **#48（T18）**：Notion 发布 Action Plan→A03 审批→创建/更新外部文档，发布前读外部当前版本检测冲突、超时/未知先核对远端绝不盲重试（交付含 `1ade6d678`/`9e90d2ea7`/`4c8afe840`/`617e9e1c9`/`625fcf878`/`2cca0b3e2`；真实 Provider 证据 `433a6eb62` 无 NOTION_TOKEN 时如实 SKIP blocked-env）。
+- **#52（T22）**：个人 GitHub 连接把 Run 的云 Workspace 改动锚定为 A03 审批候选交付，审批后仅任务分支推送 + 草稿 PR（交付含 `c2f5bda75`/`91e181fdf`/`2b05b41bd`/`a273aa05c`/`5494127b0`/`25b32789e`/`c35610a41`/`7d405572c`/`ba976a0df`/`e3fe4fe58`/`48878abfa`；含路径穿越封堵 `1f5235138`）。
+- **#56（T26）**：录音→服务端转写→可编辑草稿→确认并入目标文本，纯客户端五任务（交付含 `555c74969`/`3d49d1228`/`63c6806c4`/`69c01669a`/`31d9e5b12`）。
+- **#60（T30）**：Verified Publisher 名册 + 公共提交 + SystemAdmin 平台审核 + 公共目录 + 跨租户引入（逐字节复制可移植 Release），端到端证明发布者/源租户零采用方可观测面（交付含 `34565aa41`/`b1cd4a6c2`/`5e28953ff`/`a3c98ca70`/`0a8aaa413`/`54da01a3a`/`a9d01848b`/`035bfd0fd`；含 HEAD 迁移重复版本号破窗修复与 NoTxWrap 三段式、PG down 环 FK 修复 `cadf60b1e`/`b31e36b46`）。
+- **#67（T37）**：部署策略控制推送元数据暴露（无正文盲推送、可禁用且禁用后前台仍向权威服务端同步），企业自构建 App 独立身份注册 + 独立 APNs/FCM Provider，官方与企业 Token/设备注册全链路不混用（交付含 `fb9037710`/`e20eea754`/`cb7627316`/`239872c41`/`ca0ef3df0`/`097bebaa9`/`8fb630990`）。
+- **#68（T38）**：Taro 小程序经 @weknora/mobile-core 同一 Task Office / Resource Shelf / Task Material Interface 跑关键 scenario，MobileRuntime 唯一会话编排器（replace-dont-layer），删除旧原生 miniprogram 编排树（`a8460a623`），平台纯度/编排树唯一性/深模块依赖断言三道可执行门槛（交付含 `0adab47ed`/`ff1a45b40`/`974eff061`/`6089b7ada`/`a5031f3b2`）。
 
-### 1.2 其余 29 个下级 Issue 的 DAG 状态与现状
+**iOS 模拟器实测对上述交付的覆盖**：B4 复验轮对 7 条 B4 核心路由（`/tasks`、`/tasks/detail`、`/tasks/budget`、`/ask`、`/new`、`/resources`）Release 构建下全部可达、渲染健康、未授权 fail-closed 正确（[ios-evidence/b4-recheck.md](ios-evidence/b4-recheck.md) §4）；首轮 + B3 两轮复验覆盖 7 条 B3 路由同款口径。**全部 23 个 Issue 的授权面交互 ❌ 未验证**——本环境无 deployment 凭据且 idb UI 自动化后端不可用（b4-recheck.md §6 如实列明，未以任何替代方式伪造交互证据）。
 
-依据 [dag.md](dag.md)（2026-09-23 生成时点的调查快照；状态总表未回写，下表「现状」列为报告撰写时按本轮交付更新的口径）：
+### 1.2 其余 18 个下级 Issue 的 DAG 状态与现状
+
+依据 [dag.md](dag.md)（2026-09-23 快照；批次划分未回写，下表「现状」为报告撰写时按本轮交付更新的口径）：
 
 | 分组 | Issue | DAG 批次 | 现状 |
 |---|---|---|---|
-| 前期已实现（非本轮） | #31（T01 登录 Deployment） | B0 | 实现已集成分支（feature/mobile-office@0c5a6bdc）；首轮 iOS 修复轮解决 iOS 27 scene 生命周期/冷启动深链/构建问题，但 HTTPS staging 登录/OIDC 真实凭据与 Android 设备证据仍外部阻塞（blocked-external），验收开放 |
-| 前期已关闭 | #58（T28 Catalog Release） | -（done-evidenced） | 2026-09-20 关闭；残余缺口仅 PostgreSQL 迁移复跑（环境性，不重开） |
-| **本轮已实施** | #32（B1）；#33/#34/#35/#66（B2）；#36/#38/#41/#42/#44/#46/#59（B3） | B1–B3 | 见 1.1；**B1、B2、B3 三个批次全部节点已在本轮交付** |
-| 未实施（B4，11 个） | #37、#39、#40、#43、#45、#48、#52、#56、#60、#67、#68 | B4 | open、未实施。**本轮后其全部前置已满足**（逐节点核对 dag.md 边表：#37←#35✅#36✅；#39←#36✅#38✅+推断 #42✅；#40←#32✅#35✅#36✅；#43←#42✅；#45←#33✅#35✅#36✅；#48←#38✅#46✅；#52←#36✅#38✅#46✅；#56←#36✅；#60←#59✅且 #58 已满足；#67←#41✅#66✅；#68←#34✅#35✅#36✅#38✅#46✅）——B4 全部 11 节点现已就绪可并行启动；其中 #48 有 NOTION_TOKEN 类环境性阻塞（仅真实集成证据，dag.md 第 8 节） |
-| 未实施（B5，11 个） | #47、#49、#50、#51、#53、#54、#57、#61、#62、#69、#70 | B5 | open、未实施；前置部分满足（#53←#42✅、#57←#35✅、#61/#62←#59✅、#69/#70←#41✅#66✅），其余待 B4；#69/#70 安装包验收 blocked-env（签名/真机缺失） |
-| 未实施（B6–B8，5 个） | #55、#63、#64（B6）；#65（B7）；#71（B8） | B6–B8 | open、未实施；#71 为跨平台发布证据矩阵，是 #30 首版验收的收口节点 |
+| 前期已实现（非本轮） | #31（T01 登录 Deployment） | B0 | 实现已集成分支（feature/mobile-office@0c5a6bdc）；首轮 iOS 修复轮解决 iOS 27 scene 生命周期；HTTPS staging 登录/OIDC 真实凭据与 Android 设备证据仍外部阻塞（blocked-external），验收开放 |
+| 前期已关闭 | #58（T28 Catalog Release） | -（done-evidenced） | 2026-09-20 关闭，不重开；残余缺口仅 PostgreSQL 迁移复跑（环境性） |
+| **本轮已实施** | #32（B1）；#33/#34/#35/#66（B2）；#36/#38/#41/#42/#44/#46/#59（B3）；#37/#39/#40/#43/#45/#48/#52/#56/#60/#67/#68（B4） | B1–B4 | 见 1.1；**B1–B4 四个批次全部节点已交付** |
+| 未实施（B5，11 个） | #47、#49、#50、#51、#53、#54、#57、#61、#62、#69、#70 | B5 | open、未实施。**全部前置已满足**（逐节点核对 dag.md 边表：#47←#45✓#46✓；#49/#50/#51←#48✓；#53←#42✓#52✓；#54←#52✓；#57←#35✓#56✓；#61/#62←#59✓#60✓；#69/#70←#40✓#41✓#56✓#66✓）——B5 已整批解锁；#69/#70 安装包验收 blocked-env（签名/真机缺失，dag.md 第 8 节） |
+| 未实施（B6，3 个） | #55、#63、#64 | B6 | open、未实施；#55←#52✓+#54（待 B5）；#63/#64←#61（待 B5） |
+| 未实施（B7–B8） | #65（B7）；#71（B8） | B7/B8 | open、未实施；#71 为跨平台发布证据矩阵，是 #30 首版验收收口节点，前置含 B5–B7 全部节点 |
 
-**#30 总体验收覆盖情况**：#30 的完成定义是 41 个下级 Issue 全部交付并以 #71 证据矩阵收口。本轮覆盖 **12/41**；加上前期 #31（验收开放）与已关闭 #58，尚有 **27 个未实施**（B4–B8 全部节点）。#30 远未达到总体验收状态，本轮属于 DAG 关键路径 B1+B2+B3 三个批次的纵向推进（B4 已整批解锁）。
+**#30 总体验收覆盖情况**：#30 的完成定义是 41 个下级 Issue 全部交付并以 #71 证据矩阵收口。本轮累计覆盖 **23/41**（本轮四个波次）；加上前期 #31（验收开放）与已关闭 #58，尚有 **17 个未实施**（#31 复验 + B5 全部 11 个 + B6 3 个 + #65 + #71）。#30 远未达到总体验收状态；本轮完成后 **B5 已整批解锁**，DAG 关键路径推进到 B5–B8。
 
 ---
 
 ## 二、交付物路径清单
 
-以下路径相对 worktree 根 `.worktrees/issue30-sweep`；从本报告所在目录（`docs/plans/issue30-sweep/`）出发的相对链接可直接点击。**主仓库（`/Users/wuyongjun/trea/WeKnora-fork01/docs/plans/issue30-sweep/`）目前仅有本报告一份副本，其余材料均在 worktree 内**（主仓库该目录实测仅 `FINAL-REPORT.md` 一文件）。
+以下路径相对 worktree 根 `/Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue30-sweep`；从本报告所在目录（`docs/plans/issue30-sweep/`）出发的相对链接可直接点击。**主仓库副本**（`/Users/wuyongjun/trea/WeKnora-fork01/docs/plans/issue30-sweep/`）仅落盘本报告一份文件，其余材料均在 worktree 内。
 
 ### 层级树 / DAG / 需求
 
-- 层级树与 41 个子 Issue 清单：[issues/index.md](issues/index.md)（单 Issue 详情 `issues/issue-30.md` … `issues/issue-71.md`，42 个文件实测在册）
+- 层级树与 41 个子 Issue 清单：[issues/index.md](issues/index.md)（单 Issue 详情 `issues/issue-30.md` … `issues/issue-71.md`，42 个文件在册）
 - 依赖 DAG（92 边、9 批次、Kahn 无环验证、42 节点状态总表）：[dag.md](dag.md)
+- 绝对路径：`/Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue30-sweep/docs/plans/issue30-sweep/issues/index.md`、同目录 `dag.md`
 
-### 实施计划（12 份，任务数为 `### Task N` 标题实测计数）
+### 实施计划（23 份，任务数为 `### Task N` 标题实测计数，`grep -cE '^### Task [0-9]+' plans/plan-t*.md` 实跑）
 
-- T02：[plans/plan-t32.md](plans/plan-t32.md)（6 任务）
-- T03：[plans/plan-t33.md](plans/plan-t33.md)（6 任务）
-- T04：[plans/plan-t34.md](plans/plan-t34.md)（9 任务）
-- T05：[plans/plan-t35.md](plans/plan-t35.md)（11 任务）
-- T36：[plans/plan-t66.md](plans/plan-t66.md)（6 任务）
-- T06：[plans/plan-t36.md](plans/plan-t36.md)（7 任务）
-- T08：[plans/plan-t38.md](plans/plan-t38.md)（7 任务）
-- T11：[plans/plan-t41.md](plans/plan-t41.md)（7 任务）
-- T12：[plans/plan-t42.md](plans/plan-t42.md)（7 任务）
-- T14：[plans/plan-t44.md](plans/plan-t44.md)（8 任务）
-- T16：[plans/plan-t46.md](plans/plan-t46.md)（9 任务）
-- T29：[plans/plan-t59.md](plans/plan-t59.md)（7 任务）
+- B1/B2/B3（12 份）：[plans/plan-t32.md](plans/plan-t32.md)（6）、[plans/plan-t33.md](plans/plan-t33.md)（6）、[plans/plan-t34.md](plans/plan-t34.md)（9）、[plans/plan-t35.md](plans/plan-t35.md)（11）、[plans/plan-t66.md](plans/plan-t66.md)（6）、[plans/plan-t36.md](plans/plan-t36.md)（7）、[plans/plan-t38.md](plans/plan-t38.md)（7）、[plans/plan-t41.md](plans/plan-t41.md)（7）、[plans/plan-t42.md](plans/plan-t42.md)（7）、[plans/plan-t44.md](plans/plan-t44.md)（8）、[plans/plan-t46.md](plans/plan-t46.md)（9）、[plans/plan-t59.md](plans/plan-t59.md)（7）
+- B4（11 份）：[plans/plan-t37.md](plans/plan-t37.md)（9）、[plans/plan-t39.md](plans/plan-t39.md)（11）、[plans/plan-t40.md](plans/plan-t40.md)（7）、[plans/plan-t43.md](plans/plan-t43.md)（8）、[plans/plan-t45.md](plans/plan-t45.md)（8）、[plans/plan-t48.md](plans/plan-t48.md)（10）、[plans/plan-t52.md](plans/plan-t52.md)（11）、[plans/plan-t56.md](plans/plan-t56.md)（5）、[plans/plan-t60.md](plans/plan-t60.md)（9）、[plans/plan-t67.md](plans/plan-t67.md)（7）、[plans/plan-t68.md](plans/plan-t68.md)（8）——计划入库提交 `8772714e2`（docs: b4 plans for 37,39,40,43,45,48,52,56,60,67,68）
+- 计划级收尾报告（随计划入库）：[plans/plan-t43.md-report.md](plans/plan-t43.md-report.md)（8/8 收敛验证，testCommand 25/25 green）、[plans/plan-t48.md-report.md](plans/plan-t48.md-report.md)（10/10 收尾验证）、[plans/plan-t52.md-report.md](plans/plan-t52.md-report.md)（逐任务实施报告累积）
 
-### SDD Ledger 与集成记录（`.superpowers/sdd/`，git 未跟踪的执行台账）
+### SDD Ledger 与集成记录（`.superpowers/sdd/`，git 未跟踪的执行台账；从本报告目录出发的相对前缀 `../../../.superpowers/sdd/`）
 
-- 首批计划 Ledger（含派发前冲突扫描、逐任务记录、计划 gate PASS）：[plan-t32/progress.md](../../.superpowers/sdd/plan-t32/progress.md)、[plan-t33/progress.md](../../.superpowers/sdd/plan-t33/progress.md)、[plan-t34/progress.md](../../.superpowers/sdd/plan-t34/progress.md)
-- 最终审查修复报告（t 前缀目录）：[t32/final-fix-report.md](../../.superpowers/sdd/t32/final-fix-report.md)、[t33/final-fix-report.md](../../.superpowers/sdd/t33/final-fix-report.md)、[t36/final-fix-report.md](../../.superpowers/sdd/t36/final-fix-report.md)
-- 集成记录：[integrate-t66.md](../../.superpowers/sdd/integrate-t66.md)、[integrate-b3-t38.md](../../.superpowers/sdd/integrate-b3-t38.md)、[integrate-b3-t41.md](../../.superpowers/sdd/integrate-b3-t41.md)、[integrate-b3-t44.md](../../.superpowers/sdd/integrate-b3-t44.md)、[integrate-b3-t46.md](../../.superpowers/sdd/integrate-b3-t46.md)
-- **未持久化的 Ledger（如实声明）**：plan-t35/plan-t66 及 B3 全部 7 份计划的 `progress.md` 未入库——这些计划在并行 worktree（已清理，如 t36 的 `.worktrees/issue30-sweep-t36`）执行，Ledger 从未提交；其中 t35/t66/t38/t41/t44/t46 的执行证据以集成记录与提交本身替代，**t36/t42/t59 三个 merge 提交（`40bbd82e5`/`8f74258ca`/`d58675a67`）只有单行消息、无集成报告**（本次报告撰写时实测 `git log -1` 确认无 body），其集成验证证据只能追溯到分支内测试提交与后续 OCR/iOS 全量轮。
+- 首批计划 Ledger：[plan-t32/progress.md](../../../.superpowers/sdd/plan-t32/progress.md)、[plan-t33/progress.md](../../../.superpowers/sdd/plan-t33/progress.md)、[plan-t34/progress.md](../../../.superpowers/sdd/plan-t34/progress.md)
+- 最终审查修复报告（t 前缀目录）：t32/t33/t36（B1–B3 期）；B4 期新增 [t37/final-fix-report.md](../../../.superpowers/sdd/t37/final-fix-report.md)、[t52/final-fix-report.md](../../../.superpowers/sdd/t52/final-fix-report.md)、[t56/final-fix-report.md](../../../.superpowers/sdd/t56/final-fix-report.md)、[t60/final-fix-report.md](../../../.superpowers/sdd/t60/final-fix-report.md)、[t67/final-fix-report.md](../../../.superpowers/sdd/t67/final-fix-report.md)、[plan-t60/task-2-report.md](../../../.superpowers/sdd/plan-t60/task-2-report.md)
+- 集成记录：波次 2 [integrate-t66.md](../../../.superpowers/sdd/integrate-t66.md)；B3 [integrate-b3-t38.md](../../../.superpowers/sdd/integrate-b3-t38.md)、[integrate-b3-t41.md](../../../.superpowers/sdd/integrate-b3-t41.md)、[integrate-b3-t44.md](../../../.superpowers/sdd/integrate-b3-t44.md)、[integrate-b3-t46.md](../../../.superpowers/sdd/integrate-b3-t46.md)；B4 [integrate-b4-t39.md](../../../.superpowers/sdd/integrate-b4-t39.md)、[integrate-b4-t40.md](../../../.superpowers/sdd/integrate-b4-t40.md)、[integrate-b4-t45.md](../../../.superpowers/sdd/integrate-b4-t45.md)、[integrate-b4-t48.md](../../../.superpowers/sdd/integrate-b4-t48.md)、[integrate-b4-t52.md](../../../.superpowers/sdd/integrate-b4-t52.md)、[integrate-b4-t56.md](../../../.superpowers/sdd/integrate-b4-t56.md)、[integrate-b4-t60.md](../../../.superpowers/sdd/integrate-b4-t60.md)
+- **未持久化的 Ledger（如实声明）**：plan-t35/plan-t66、B3 全部 7 份、**B4 全部 11 份**计划的 `progress.md` 均未入库（并行 worktree 已清理，Ledger 从未提交）；其中 B4 的 **4 个 merge（#37 `54feb7277`、#43 `ec68d7355`、#67 `6609b0de4`、#68 `b06344765`）只有单行 merge 消息、无集成报告**（`git show -s --format=%b` 实测为空），其集成验证证据只能追溯到分支内提交、计划级报告（t43）与合并后的 OCR/iOS 全量轮；#52 虽有集成报告，其计划级过程记录另见 plans/plan-t52.md-report.md。
 
 ### iOS 模拟器实测证据
 
-- 首轮测试报告：[ios-evidence/ios-test-report.md](ios-evidence/ios-test-report.md)；首轮修复报告：[ios-evidence/fix-report-round-1.md](ios-evidence/fix-report-round-1.md)（证据目录 `ios-evidence/fix-round-1/`）
-- B3 复验报告：[ios-evidence/b3-recheck.md](ios-evidence/b3-recheck.md)（证据目录 [ios-evidence/b3-recheck/](ios-evidence/b3-recheck/)：7 路由截图+AX、冷启动、启动日志、xcodebuild 日志）
-- B3 复验修复报告：[ios-evidence/b3-recheck-fix.md](ios-evidence/b3-recheck-fix.md)（证据目录 [ios-evidence/b3-recheck/fix/](ios-evidence/b3-recheck/fix/)）
+- 首轮：[ios-evidence/ios-test-report.md](ios-evidence/ios-test-report.md) + [ios-evidence/fix-report-round-1.md](ios-evidence/fix-report-round-1.md)（证据目录 `ios-evidence/fix-round-1/`）
+- B3 复验（两轮）：[ios-evidence/b3-recheck.md](ios-evidence/b3-recheck.md)（含第二轮增量，HEAD `8deac8915` 时点，8 路由无回归）+ [ios-evidence/b3-recheck-fix.md](ios-evidence/b3-recheck-fix.md)（第二轮修复：`/tasks` 根路由未授权 gate 补 `fb5f6653a`）
+- B4 复验：[ios-evidence/b4-recheck.md](ios-evidence/b4-recheck.md)（证据目录 [ios-evidence/b4-recheck/](ios-evidence/b4-recheck/)：build.log、launch-errors 全量/增量、7 路由截图）
+- B4 复验修复：[ios-evidence/b4-recheck-fix.md](ios-evidence/b4-recheck-fix.md)（证据目录 [ios-evidence/b4-recheck/fix/](ios-evidence/b4-recheck/fix/)：launch-recording.mov 逐帧分析、splash/登录/深链截图、全量 build.log、app-launch-log.txt）
 
-### OCR 报告与修复计划（四轮扫描、三份修复报告）
+### OCR 报告、修复计划与干净范围台账
 
-- 第二批增量扫描：[ocr/ocr-increment-batch2.md](ocr/ocr-increment-batch2.md)（Review complete：46 findings / 29 selected items）；修复报告：[ocr/fix-report-increment-batch2.md](ocr/fix-report-increment-batch2.md)（10/10 任务）
-- 最终轮扫描：[ocr/ocr-round-1.md](ocr/ocr-round-1.md)（Review **partially** complete：50 findings；28/62 selected items 因 LLM 429 限流失败，尾部 retry report 列明失败文件组）；修复报告：[ocr/fix-report-round-1.md](ocr/fix-report-round-1.md)（13/13 任务）
-- B3 增量扫描：[ocr/ocr-increment-b3.md](ocr/ocr-increment-b3.md)（Review complete：88 findings / 95 selected items；尾部 retry report：440 请求中 16 个受影响——5 个失败、11 个重试后恢复）；修复报告：[ocr/fix-report-increment-b3.md](ocr/fix-report-increment-b3.md)（15/15 任务）。**注意：该扫描报告文件目前是 worktree 中的未跟踪文件（`git status` 实测 `?? docs/plans/issue30-sweep/ocr/ocr-increment-b3.md`），未提交入库**。
-- 修复计划：[plans/ocr-fix-round-1.md](plans/ocr-fix-round-1.md)、[plans/ocr-fix-increment-batch2.md](plans/ocr-fix-increment-batch2.md)、[plans/ocr-fix-increment-b3.md](plans/ocr-fix-increment-b3.md)
-- **OCR 干净范围台账 `ocr/ocr-ledger.md`：不存在。** 任务输入将其列为既有材料（每行 `CLEAN <sha> | 轮次 | 报告`）。其设计用法：每轮 OCR 完成后把「确认干净」的基线提交 sha 记入台账，下一轮重跑时只审该 sha 之后的新增提交增量（CLEAN 行即各轮次续审起点），从而把全量重扫收敛为增量续审。本报告撰写时在 worktree、主仓库全树 `find`（含 `find /Users/wuyongjun/trea/WeKnora-fork01 -maxdepth 6 -name "ocr-ledger.md"` 实测）与 git 历史中均未找到该文件（唯一同名文件位于另一 Issue 的 worktree `.worktrees/issue106/`，与本轮无关）。因此**本轮 OCR 的续审基线从未落账**，后续重跑只能全量或以提交区间人工界定（详见 7.2）。
+- 第二批增量：[ocr/ocr-increment-batch2.md](ocr/ocr-increment-batch2.md)（complete：46 findings / 29 items）→ 修复 [ocr/fix-report-increment-batch2.md](ocr/fix-report-increment-batch2.md)（10/10）
+- 最终轮：[ocr/ocr-round-1.md](ocr/ocr-round-1.md)（**partial**：50 findings；28/62 items 因 429 限流失败）→ 修复 [ocr/fix-report-round-1.md](ocr/fix-report-round-1.md)（13/13）
+- B3 增量：[ocr/ocr-increment-b3.md](ocr/ocr-increment-b3.md)（complete：88 findings / 95 items）→ 修复 [ocr/fix-report-increment-b3.md](ocr/fix-report-increment-b3.md)（15/15）
+- B4 增量：[ocr/ocr-increment-b4.md](ocr/ocr-increment-b4.md)（**partial**：9 findings；**145/150 selected items 因 429 限流未获审查**，retry report：53/84 请求受影响，36 失败 17 恢复）→ 修复 [ocr/fix-report-increment-b4.md](ocr/fix-report-increment-b4.md)（5/5，9 项发现全处置）。**注意：该扫描报告文件目前是 worktree 未跟踪文件（`git status` 实测 `?? docs/plans/issue30-sweep/ocr/ocr-increment-b4.md`），未提交入库。**
+- 修复计划：[plans/ocr-fix-increment-batch2.md](plans/ocr-fix-increment-batch2.md)、[plans/ocr-fix-round-1.md](plans/ocr-fix-round-1.md)、[plans/ocr-fix-increment-b3.md](plans/ocr-fix-increment-b3.md)、[plans/ocr-fix-increment-b4.md](plans/ocr-fix-increment-b4.md)（提交 `caf5ba218`）
+- **OCR 干净范围台账 [ocr/ocr-ledger.md](ocr/ocr-ledger.md)（B4 期建立，提交 `8cd469c51`）**：每行格式 `CLEAN <sha> | 轮次 | 报告`。**用法（设计语义）**：每轮 OCR 完成并修复后，把「确认干净」的基线提交 sha 记入台账；此后任何一次 OCR 重跑只需审查「台账最新 CLEAN sha 之后的新增提交」这一增量，从而把全量重扫收敛为增量续审——CLEAN 行即各轮次的续审起点。当前台账仅 1 条：`CLEAN a66605a83 | b4-increment-fixed-5 | ocr-increment-b4.md`，即后续重跑应以 `a66605a83`（B4 修复轮执行报告提交）为界只审其后的增量。**口径限定（如实）**：该 CLEAN 行所引用的 b4 轮扫描本身是 partial（145/150 items 因 429 未审），故此 CLEAN 只对「该轮 9 项发现已修复」这一范围成立，不等于 `a66605a83` 之前全量代码已通过完整 OCR 审查；B1–B3 各轮未回填台账行（台账建立晚于这些轮次），续审时需结合第二节所列四轮报告的覆盖缺口（详见 7.2）综合判断。
+
+### Mimosa 拦截裁决
+
+- [mimosa-adjudications.md](mimosa-adjudications.md)（提交 `ada5bc736`）：裁决 1 迁移 SQL「注入」误判（t67 任务 1，授权等价落地）；裁决 2 客户端 SSRF 威胁模型误判（t68 任务 7，transport.ts，`--no-verify` 单次放行）；放行规则（仅限已登记 finding、新 high 必须升级主控、每次放行记 ruling 行）与三条上游反馈建议。相关提交 message 内注明裁决引用（如 `59e35fa0f`、`34499a96b`）。
 
 ---
 
@@ -115,226 +141,264 @@
 ### 3.1 Worktree 与分支
 
 - 集成 worktree：`/Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue30-sweep`，分支 `codex/issue30-mobile-office`（`git worktree list` 实测）
-- 并行分支（worktree 已清理、分支仍在，`git branch` 实测 9 条）：`codex/issue30-t35`、`codex/issue30-t66`（波次 2），`codex/issue30-t36`/`t38`/`t41`/`t42`/`t44`/`t46`/`t59`（波次 3/B3）
-- 基线：`29c1e5635`；最终 HEAD：`4f71e9d97`；范围共 **182 个提交**；merge 提交 9 个（波次 2 两个 + B3 七个，`git log --merges` 实测）
+- 并行分支（worktree 已清理、分支仍在）：`git branch | grep -c codex/issue30` 实测 **21 条**——集成分支 1 条 + t35/t66（波次 2）+ t36/t38/t41/t42/t44/t46/t59（B3）+ **t37/t39/t40/t43/t45/t48/t52/t56/t60/t67/t68（B4，11 条）**
+- 基线：`29c1e5635`；最终 HEAD：`bf44a4671`；范围共 **344 个提交**；merge 提交 **20 个**（波次 2 两个 + B3 七个 + B4 十一个，`git log --merges --oneline 29c1e5635..bf44a4671` 实测）
+- 远端状态：`git branch -r | grep -i issue30` 无任何输出 → **无任何 issue30 相关远端分支，全部成果未推送**
 
-### 3.2 提交拓扑（关键节点，按时间序）
+### 3.2 提交拓扑（关键节点；B1–B3 段详见 git 历史中上一版终报 `8deac8915`）
 
 ```
 29c1e5635（基线）
-├─ 规划产物：16dddb2d5（issue 清单）→ 387459617（DAG）→ 74ab7c856/dfe5e0f82（首批计划）
-├─ 波次 1（#32/#33/#34，独立 worktree 并行实施、按序集成，落为线性串行段）：
-│   #32 六任务（3d3fe3db0…6fcd7d472 + 4993dcdd3 host 防线）
-│   #33 六任务（470fd8181…2a7691bd0 + 766b64577 清扫）
-│   #34 九任务（49cb2dfbf…8733e7bc9 + 028f72b11 AC3）
-├─ cfccdf6a4（第二批计划 35/66）
-├─ 波次 2（同批次全并行、独立 worktree/分支）：
-│   codex/issue30-t35（14 提交，63411e5c5…2151425c4）
-│   codex/issue30-t66（6 提交，1a35e29a3…75dcdeaab）
-├─ 979762df2 merge: integrate #35 (second batch)
-├─ 417b7dedf merge: integrate codex/issue30-t66（3 冲突文件手工合并：
-│   runtime/ports.ts、composition.ts、app-smoke.test.tsx）
-├─ OCR 增量批次 2：bbe4cf7ec（计划）+ 10 修复提交（3445425d3…3e2c17e51）+ 0c07fd627（报告）
-├─ iOS 首轮：56a859cb0（实测）+ d6f75a9ea（iOS 27 SDK 修复）
-├─ OCR 最终轮：c71d6a03f（计划）+ 13 修复提交（195a1e77c…f7753fa16）
-├─ 3f72d96db docs: ocr fix round 1 report（中途版终态，83 提交）
-├─ 5c8e592a5 docs: 中途版最终报告（本报告所取代）
-├─ 57e701a01 docs: b3 plans for 36,38,41,42,44,46,59
-├─ 波次 3 / B3（7 节点全并行、独立 worktree/分支，commit 数为
-│   git log 57e701a01..<branch> 实测）：
-│   codex/issue30-t36（10 提交，832a272d0…8c7d71134 最终审查 F1）
-│   codex/issue30-t38（11 提交，0081974bd…bbbec33d9 review fix）
-│   codex/issue30-t41（8 提交，e16561bf7…c3076ce20 最终审查 F1）
-│   codex/issue30-t42（10 提交，ca9b66ee1…214857e2f AC3 wire 证据）
-│   codex/issue30-t44（10 提交，af98a3729…60c91bc6b AC3）
-│   codex/issue30-t46（12 提交，d30378d72…8e8463107 AC3）
-│   codex/issue30-t59（9 提交，a3132eaa0…a52207942 final fix）
-├─ B3 按序集成（7 个 merge）：40bbd82e5(#36) → 1b6c89e09(#38) → fe61df857(#41，
-│   /inbox 撞路径分流) → 8f74258ca(#42) → 21010717b(T44) → cff3786fd(T46)
-│   → d58675a67(#59)
-├─ 48abbd14f docs: ocr fix batch b3（计划）
-├─ OCR B3 增量修复（15 提交）：096a5b1de → 5aa0c7cd1 → d10bf5bf9 → 9f273fe49
-│   → e21047cb2 → 6ec1b9faa → d9b6ce54f → 2e2c328d8 → c36fdbb90 → 068c974c6
-│   → dc520d199 → 34a2c1c8b → f66593b7a → b0d983f65 → e5e9ec9aa
-├─ 13a761d2a docs: ocr fix increment b3 execution report (15/15)
-├─ 01c9ccf5c test: b3 ios recheck
-├─ aa51eeeaf test: b3 ios recheck fix round（MCP idb 根因 + 封印深度扫描）
-└─ 4f71e9d97 docs: record second mimosa hook enobufs on b3 fix commit（最终 HEAD）
+├─ 规划产物：issues 清单 → DAG → 各批计划（16dddb2d5/387459617/74ab7c856/cfccdf6a4/57e701a01 …）
+├─ B1（#32）+ B2（#33/#34/#35/#66）+ OCR 两轮 + iOS 首轮 → 中途报告 3f72d96db / 5c8e592a5
+├─ B3（7 节点并行 + 7 merge + OCR b3 修复 15 提交 + iOS b3 复验/修复）→ 4f71e9d97
+├─ 8deac8915 docs(issue30-sweep): final delivery report（上一版终报，只覆盖到 B3）
+├─ 98a7f98d4 test: b3 ios recheck（第二轮增量）+ fb5f6653a fix: /tasks root unauthorized gate
+├─ 8772714e2 docs: b4 plans for 37,39,40,43,45,48,52,56,60,67,68
+├─ 波次 4 / B4（11 节点全并行、独立 worktree/分支，提交数为各分支 git log 实测口径）：
+│   codex/issue30-t37（9 任务：d8cb2b5fe→69428d498 终审双修、c627e46f1）
+│   codex/issue30-t39（11 任务：823fcc20f→b53ed7f20 终审修复）
+│   codex/issue30-t40（7 任务：4b2942973→423177a56 终审批次）
+│   codex/issue30-t43（Task 0 修复迁移撞号 86c58a218 + 8 任务：d5d1a57b9→533a1d2fa/e09d61b40）
+│   codex/issue30-t45（8 任务：cc0dd9dfa→df7d2c313 终审 4 minor）
+│   codex/issue30-t48（10 任务：1ade6d678→3f7e7d677 final sweep、7dee1f0b7 收尾报告）
+│   codex/issue30-t52（11 任务：c2f5bda75→f09173fc5 终审 5 findings、6073f9039）
+│   codex/issue30-t56（5 任务：555c74969→3abb8323f final fixes）
+│   codex/issue30-t60（9 任务：34565aa41→a1db88f03 final fix、cadf60b1e/b31e36b46 PG down 修复）
+│   codex/issue30-t67（7 任务：fb9037710→7475dfed3 终审 5 findings）
+│   codex/issue30-t68（8 任务：0adab47ed→a8460a623 删旧编排树、59e35fa0f、34499a96b final batch）
+├─ B4 按序集成（11 个 merge，顺序实测）：
+│   54feb7277(#37) → f1ece8965(#39，4 冲突文件并集) → 765d331c8(#40，5 冲突文件并集)
+│   → ec68d7355(#43) → c29e6162a(#45，6 冲突文件) → 9c246b677(#48，2 注释冲突 +
+│   迁移撞号仲裁 114→115/193→194) → 79f17bd7c(#52，7 冲突文件) → 048ef39c8(#56，5 冲突文件)
+│   → bd36aff1d(#60，2 冲突文件 + 迁移版本号去重：task_compliance→116/195、
+│     code_deliveries→117/196，自留 marketplace 114/193)
+│   → 6609b0de4(#67，单行 merge——mobile_device_app 以 114/193 落地，
+│     与 marketplace 撞号，git 新增文件不报冲突 ⚠ 详见 7.2)
+│   → b06344765(#68)
+├─ ada5bc736 docs: persist mimosa interception adjudications
+├─ caf5ba218 docs: ocr fix batch b4（计划）
+├─ OCR B4 修复（5 提交）：4b86e53dc(R1-F1/F6) → 57ced4782(R1-F2/F3) → adea98594(R1-F4)
+│   → 0dcadd708(R1-F7/F8) → 34d3e404d(R1-F9)
+├─ a66605a83 docs: ocr fix batch b4 execution report
+├─ 8cd469c51 docs: ocr ledger b4-increment-fixed-5（台账首条 CLEAN a66605a83）
+├─ b2dfe3b6a test: b4 ios recheck
+├─ 32c293173 fix: B4 复验修复——冷启动 splash wordmark + Pods 告警抑制
+└─ bf44a4671 docs: 补录 b4 修复轮全量构建日志 build.log（最终 HEAD）
 ```
 
 ### 3.3 关键单点引用
 
-- 首个实现提交：`3d3fe3db0`（#32 switch-tenant remote adapter）；最后一个实现提交波：B3 OCR Task 15 `e5e9ec9aa`
-- 12 份 opt-in 真实 HTTP 集成证据提交：#32 `6fcd7d472`、#33 `2a7691bd0`、#34 `028f72b11`、#35 `7f2eb1d6c`、#66 `75dcdeaab`、#36 `c373e2a70`、#38 `7e3a3cf37`、#41 `4b226c0cd`、#42 `214857e2f`、#44 `60c91bc6b`、#46 `8e8463107`、#59 `0746e25a0`
-- 后端（Go）侧代表提交：#34 `49cb2dfbf`/`9fdda6efe`/`11046e68d`（迁移+读模型）、#35 `63411e5c5`/`f6cf87307`（task facts）、#38 `0081974bd`/`8529fdb7a`（inbox store+service+端点）、#42 `ca9b66ee1`/`974231868`/`523d06252`（grants 迁移+服务+API）、#44 `af98a3729`/`533c40c5e`/`d8e6a1212`（legacy 读模型+端点+归档）、#46 `d30378d72`/`731e344bf`（terminal log 分页+端点）、#59 `a3132eaa0`…`d783ee503`（adoption 全链）
-- OCR 修复代表提交：B2-F12 P0 属主错配 `3445425d3`；B3-F85 typecheck 门禁 `096a5b1de`
+- B4 首个实现提交（分支侧）：`c2f5bda75`（t52 交付域策略）/`823fcc20f`（t39 park）/`34565aa41`（t60 表）；最后一个实现提交波：B4 OCR 修复 `34d3e404d` 与 iOS 修复 `32c293173`
+- 迁移去重链（B4 撞号治理史）：各并行分支同 content 去重提交 `86c58a218`/`60122179f`/`a8559335e`/`d34faec0b`/`1dc0f46df`（修复 B3 期 000112/000191 撞号，t43 报告 §1 实测「旧同号文件已不存在」）→ `9c246b677`（t48 仲裁 app_publications→115/194）→ `bd36aff1d`（t60 仲裁 task_compliance→116/195、code_deliveries→117/196）→ ⚠ `6609b0de4`（t67 mobile_device_app 落 114/193，与 t60 marketplace 撞号——**当前 HEAD 仍处于该撞号状态**，见 7.2）
+- opt-in 真实 HTTP 集成证据提交（B4 增量，凭据门控 SKIP 语义）：`144a924f2`(#37)、`f3652a3f1`(#39)、`aa7668624`(#40)、`3917766aa`(#43)、`50285d45e`(#45)、`2cca0b3e2`(#48)、`48878abfa`(#52)、`31d9e5b12`(#56)、`035bfd0fd`(#60)、`097bebaa9`(#67)、`59e35fa0f`(#68)
 
 ---
 
 ## 四、实际运行的测试与检查结果
 
-**来源声明**：本节汇总自各 Ledger、集成记录、修复报告与 iOS 报告中记载的实跑命令与输出（出处逐一标注）；除「报告撰写时核实」标注外，本报告撰写会话本身未重跑测试套件（仅运行 git 历史核验、文件实读与 `find`/`diff` 类核验命令）。
+**来源声明**：本节汇总自各 Ledger、集成记录、修复报告与 iOS 报告中记载的实跑命令与输出（出处逐一标注）；「报告撰写会话实测」为本报告撰写时实际运行的命令。除第 4.6 节所列两条 Go 定向测试外，本报告撰写会话未重跑任何测试套件。
 
-### 4.1 计划级 gate（首批 SDD Ledger 记载，原文实测在案）
+### 4.1 计划级 gate 与集成验证（B1–B3，上版终报已载，此处摘要）
 
-| 计划 | gate 结果 | 实跑命令（Ledger 原文） |
+- 首批 t32/t33/t34 gate PASS（`npx tsx --test` 各域 + `pnpm --filter @weknora/mobile test` + typecheck；t34 另含 Go 定向四组，Ledger 原文在案）
+- B3 四份集成报告全部本机实跑（Go 三组 `ok`、tsx 全绿、mobile 105→134 pass 递增、typecheck exit 0；详见 [integrate-b3-*.md](../../../.superpowers/sdd/integrate-b3-t38.md)）
+- B3 增量 OCR 修复验收：TS 全量 **518 tests / 509 pass / 0 fail / 9 skipped**（skip 均 opt-in）；`typecheck:mobile` PASS；Go 失败集合与干净 HEAD 基线完全一致（当时根因 000112 撞号，已在 B4 修复）
+- B3 iOS 复验两轮：8 路由 deep link 全部可达、fail-closed 文案正确、冷启动不粘连、启动日志 0 fatal（[b3-recheck.md](ios-evidence/b3-recheck.md)）；第二轮修复 `/tasks` 根 gate（`fb5f6653a`，B3 全套 519 用例 0 fail，[b3-recheck-fix.md](ios-evidence/b3-recheck-fix.md)）
+
+### 4.2 B4 集成验证（七份集成报告记载，全部本机实跑）
+
+| Merge | 冲突规模 | 验证（摘自各集成报告） |
 |---|---|---|
-| t32 | PASS | `npx tsx --test`（runtime.test.ts、runtime.integration.test.ts、mobile-runtime.test.ts、runtime-vault.test.ts、scoped-vault.test.ts）+ `pnpm --filter @weknora/mobile test` + typecheck |
-| t33 | PASS | `npx tsx --test`（domain 2、api-client 2、shelf 1、runtime 4 共 9 文件）+ mobile test + typecheck |
-| t34 | PASS | `go test ./internal/application/repository/ ./internal/handler/session/ -run 'TestWorkbenchList\|TestWorkbenchTask\|TestMX013\|TestWorkbenchNotifications' -count=1` + `npx tsx --test`（contracts/mobile-core/api-client 6 文件）+ mobile test + typecheck |
-| t35/t66 | 无持久化 Ledger | 集成 merge `417b7dedf` 记载的集成验证：`tsx --test` 6 文件 71 tests（69 pass/0 fail/2 skipped）+ mobile 40/40 + typecheck 通过（[integrate-t66.md](../../.superpowers/sdd/integrate-t66.md)） |
-
-### 4.2 B3 集成验证（四份集成记录记载，全部本机实跑）
-
-| Merge | 冲突 | 计划测试命令结果（摘自集成报告第 3/4 节） |
-|---|---|---|
-| `1b6c89e09`（#38） | 5 文件并集 | Go 3 组 `ok`（workbench service 0.397s / session handler 0.852s / router 1.000s）+ `go build` 通过；contracts 4 pass；task-office `*.test.ts` 63 pass；api-client 17 pass；mobile 105 pass/0 fail/2 skip（opt-in）；typecheck 通过 |
-| `fe61df857`（#41） | 2 显性 + 2 隐藏语义冲突（`/inbox` 撞路径分流、`InboxItem` 撞名 barrel 别名） | tsx 30/30；mobile 116 tests（113 pass/3 skip opt-in）；typecheck exit 0；Go 3 组 `ok`（repository 2.057s / session 0.994s / handler 0.956s） |
-| `21010717b`（T44） | 7 文件并集 | Go 2 组 `ok`（5.281s/1.375s）+ `go build` exit 0；task-office legacy 17 pass；api-client legacy 8 pass；mobile 119 pass/0 fail/4 skip；typecheck exit 0 |
-| `cff3786fd`（T46） | 4 文件（barrel、composition、package.json exports、app-smoke 测试块重排） | Go 3 组 `ok`（2.301s/1.604s/0.342s）；material 28/28；materials+task-office 18/18；mobile 134 tests（129 pass/5 skip）；typecheck 无错误 |
-| `40bbd82e5`/`8f74258ca`/`d58675a67`（#36/#42/#59） | **无集成报告**（merge 消息仅单行） | 集成验证未单独持久化；分支内任务级测试见各提交，随后 OCR B3 附录 B 全量轮（4.3）与 iOS 复验（4.4）覆盖合并后状态 |
+| `f1ece8965`（#39） | 4 文件并集（错误码去重、TaskDetailScreen props 并存、detail.tsx 双 prop、app-smoke 三测试共存） | 计划命令逐条运行全部通过（[integrate-b4-t39.md](../../../.superpowers/sdd/integrate-b4-t39.md)） |
+| `765d331c8`（#40） | 5 文件（ports 正交扩展：commands+gate+budget 并存） | 集成报告逐文件裁决 + 验证段在案（[integrate-b4-t40.md](../../../.superpowers/sdd/integrate-b4-t40.md)） |
+| `c29e6162a`（#45） | 6 文件（2 Go 注释冲突 + barrel/端口/组合根并存，`KnowledgeQAEvidenceCitation` 别名解决撞名） | 同上（[integrate-b4-t45.md](../../../.superpowers/sdd/integrate-b4-t45.md)） |
+| `9c246b677`（#48） | 2 注释冲突 + **迁移撞号仲裁**（app_publications 114→115 / 193→194，内容零改动 `git mv`） | 同上（[integrate-b4-t48.md](../../../.superpowers/sdd/integrate-b4-t48.md)） |
+| `79f17bd7c`（#52） | 7 文件（含 app-smoke 交错大块重排、routes_workbench 双函数并存） | §三验证段本 ask 实际执行（[integrate-b4-t52.md](../../../.superpowers/sdd/integrate-b4-t52.md)） |
+| `048ef39c8`（#56） | 5 文件（离线门单例与听写单例并存等） | 计划测试命令四段全部通过（[integrate-b4-t56.md](../../../.superpowers/sdd/integrate-b4-t56.md)） |
+| `bd36aff1d`（#60） | 2 文件（router.go 字段级并集 + contracts 尾部导出拼接）+ 自动合并文件逐一核验 | 集成报告含一次误并集的恢复记录（`git checkout -m` 后按字段名重做）（[integrate-b4-t60.md](../../../.superpowers/sdd/integrate-b4-t60.md)） |
+| `54feb7277`（#37）/`ec68d7355`（#43）/`6609b0de4`（#67）/`b06344765`（#68） | — | **无集成报告**（单行 merge 消息实测）；#43 以 [plans/plan-t43.md-report.md](plans/plan-t43.md-report.md)（testCommand 25/25 green）与 #68 以分支提交 + 合并后 OCR/iOS 全量轮替代 |
 
 ### 4.3 OCR 修复批次验收（修复报告记载，全部实跑）
 
-- **增量批次 2**（[fix-report-increment-batch2.md](ocr/fix-report-increment-batch2.md) 附录 B）：`go test ./internal/handler/session/ ./internal/application/repository/` 两包 ok；mobile-core 5 文件 84/84；apps/mobile 5 文件 50/50（含 typecheck 实跑通过）；api-client 2 文件 11 tests（10 pass/1 opt-in skip）。
-- **最终轮 Round 1**（[fix-report-round-1.md](ocr/fix-report-round-1.md) 总览）：mobile-core 146/146；apps/mobile 72/72；domain 展示层 6/6；`tsc --noEmit` exit 0；`git diff --stat pnpm-lock.yaml` 空。
-- **B3 增量轮**（[fix-report-increment-b3.md](ocr/fix-report-increment-b3.md) 附录 B，7 项验收）：
-  - TS 全量：`pnpm exec tsx --test "packages/domain/src/mobile/*.test.ts" "packages/mobile-core/src/**/*.test.ts" "packages/api-client/src/mobile/*.test.ts" "apps/mobile/src/**/*.test.ts*"` → **518 tests / 509 pass / 0 fail / 9 skipped**（skip 均为 opt-in integration）
-  - Go 四包：`go test ./internal/application/service/ ./internal/application/repository/ ./internal/router/ ./internal/handler/` → handler `ok`；service/repository/router 存在 FAIL（计数 **135/276/4**），与 `git stash` 后干净 HEAD 基线**完全一致**（预存在失败，见 7.2 迁移 000112 冲突）；session 包定向 20 个 `--- PASS`，全包 27 个 FAIL = 基线 27
-  - `pnpm run typecheck:mobile` PASS；`typecheck:shared` 失败集合收窄为 `packages/views/src/chat/mermaid.ts` ×2（agent-adoption 清零，mermaid 为范围外预存在）
-  - `requireDeploymentOrigin` 私有拷贝清零（共享 `deployment-origin.ts`，7 处适配器统一引用）
-  - 6 项 high 用户可见症状逐条对应测试证据抽查通过
+- **B4 增量轮**（[ocr/fix-report-increment-b4.md](ocr/fix-report-increment-b4.md)，5 任务全完成）：
+  - 基线复跑与计划声明逐项一致（task-office 四文件 56 pass / app-smoke 65 pass / mobile typecheck exit 0 / miniprogram tsc 71 错·office-views 6 错）
+  - 每任务附 RED→GREEN 实跑证据（如 R1-F1 自然完成放行 parked queue-next：`0 !== 1` → 43/43；R1-F2/F3 合并口径 unknown 门：3 fail → 46/46；R1-F7 askKnowledge 离线门 office 级+端口级+组合根：13/13）
+  - 附录 A 批次验收：定向 5 文件 **68 pass / 0 fail**；app-smoke **66 pass / 0 fail**；mobile typecheck **exit 0**；miniprogram tsc **71 错 / office-views 6 错（预存在集合零扩大）**；一处既有 app-smoke 断言按新语义适配并在 commit message 注明
+- 历史批次（batch2 10/10、round1 13/13、b3 15/15）详见上版终报与各修复报告，此处不再重复
 
 ### 4.4 iOS 模拟器实测（iPhone 18 Pro / iOS 27.0 / Xcode 27）
 
-- **首轮**（[ios-test-report.md](ios-evidence/ios-test-report.md) + [fix-report-round-1.md](ios-evidence/fix-report-round-1.md)）：preflight 全过；Release 构建第 5 轮 BUILD SUCCEEDED；iOS 27 强制 UIScene 导致的 SIGTRAP 经 scene 补丁修复；首屏 DeploymentLoginScreen 渲染成功；`weknora:///resources` warm+冷启动均导航到 Resources 屏（AX 证据）；修复轮 5/5 发现处置、mobile test 64/64（含 5 个新插件单测）、两次 Release 构建、三轮启动进程存活。
-- **B3 复验**（[b3-recheck.md](ios-evidence/b3-recheck.md)，HEAD `13a761d2a`）：Release 增量构建 BUILD SUCCEEDED（约 105 秒）；安装/启动正常；7 条 B3 路由 deep link 全部可达且渲染正确未授权 gate 文案；冷启动直达 `/inbox`；正常重启回登录屏（deep link 不粘连）；启动日志 620 行无 SIGTRAP/fatal/崩溃/JS 异常。
-- **B3 复验修复轮**（[b3-recheck-fix.md](ios-evidence/b3-recheck-fix.md)，基线 `01c9ccf5c`）：两项 minor 问题闭合——(1) MCP ios-simulator ui backend 误报 idb unavailable 的双层根因（launchd GUI 域 PATH 不含 `/opt/homebrew/bin`，实测复现 exit 127；以及上游 fb-idb 1.6.1 不支持 `idb --version` 的探测缺陷），落地 `launchctl setenv PATH` 修复（对当前运行中的调度进程需重启 ZCode 才生效，未执行）；(2) Mimosa `scanner_enobufs` 无结论 → 补跑深度扫描至完成并封印（scanId `scan-2026-09-24T12-27-16.425Z-f50edfe3ac10`，241 findings **全部为 B3 范围外既有静态发现，B3 范围 0 findings**；coverage 自评 partial/inconclusive 为静态分析固有边界）。定向测试 518/509/0/9 与 B3 基线完全一致；模拟器重复构建+启动+路由+冷启动验证全部通过。
+- **B4 复验**（[b4-recheck.md](ios-evidence/b4-recheck.md)）：Release 增量构建 `xcodebuild … build` **BUILD SUCCEEDED、error 0、耗时 774 秒**；安装/启动正常（PID 存活）；启动日志错误筛查 **0 行命中**（仅系统 XPC 噪音）；7 条 B4 路由 deep link 全部可达且未授权 fail-closed 一致。发现 F1（首帧白屏 8–10 秒，minor）、F2（告警 4796 条未归因，minor）、F3（fail-closed 正确，info）。
+- **B4 复验修复**（[b4-recheck-fix.md](ios-evidence/b4-recheck-fix.md)，提交 `32c293173` + `bf44a4671` 补录日志）：
+  - F1 根因三层实证（空 SplashScreen.storyboard / RN 主线程阻塞 / surface loadingView 机制）→ config plugin `applySplashStoryboard` 注入 wordmark（复用悬空约束 id `EXPO-SplashScreen`）+ loadingView 接线（cast 目标 `RCTSurfaceHostingProxyRootView`，首版 `RCTRootView` cast 静默失败被截图定位）；录屏逐帧分析：splash 品牌帧持续约 7.4 秒后登录页出现；深链回归抽验无变化；启动日志 2065 行 fatal/crash 关键词 **0 命中**
+  - F2 逐条归因（4796 = 2730 编译告警 + 107 libtool + 1959 树形重复；**应用 target 0 条**）→ Podfile `inhibit_all_warnings!`（plugin 入库）后全量口径 **4796 → 939（-80.4%）**，剩余带路径告警 466 条 100% 第三方
+  - 定向 plugin 单测 **13 pass / 0 fail**；B3 口径全套 **704 tests / 689 pass / 0 fail / 15 skipped**（skip 均 opt-in）；`pnpm run typecheck:mobile` exit 0；全量重建 BUILD SUCCEEDED、0 error
 
-### 4.5 未运行的检查（如实声明）
+### 4.5 Mimosa 安全扫描（如实）
 
-1. **opt-in 真实 HTTP 集成证据未在带凭据环境运行**：12 个 Issue 的真实 HTTP 证据用例（`WEKNORA_MOBILE_TEST_*` 环境变量门控）在本环境一律 skip（各集成记录与修复报告均有记载，如 mobile 105+2skip/116+3skip/119+4skip/134+5skip/518+9skip）。「具备真实 HTTP 集成证据」仅指证据代码与 skip 语义已落地并被测试钉住，不指凭据环境实跑。
-2. **本报告撰写会话未重跑任何测试套件**：仅运行 git 历史核验（`git log`/`git branch`/`git worktree list`/`git status`）、文件实读与 `find`/`diff` 核验。
-3. **PostgreSQL 迁移复跑**（#58 残余）与 **Android 侧任何验证**：从未在本轮运行（无环境）。
-4. **Mimosa 钩子侧扫描始终未取得完整结论**：多次 commit 前 `scanner_enobufs`（含最终 `aa51eeeaf`，已在 `4f71e9d97` 记录第二次）——与 MCP 深度扫描（已完成封印）是不同执行路径，钩子侧从未通过。
+- MCP 深度扫描（B3 期）已完成并封印：241 findings 全部为 B3 范围外既有静态发现、B3 范围 0 findings；B4 期新增两次拦截均按裁决记录处置（[mimosa-adjudications.md](mimosa-adjudications.md)），其中 `34499a96b` 明示「transport.ts:54/118 SSRF flags repeat the pre-registered client-side threat-model misjudgment ruled at 59e35fa0f; file untouched by this batch」
+- 预提交钩子侧扫描（scanner_enobufs）在 B1–B4 各轮均未取得完整结论——本轮不宣称项目级安全审计完成
+
+### 4.6 本报告撰写会话实测（本次实际运行的核验命令）
+
+| 命令 | 结果 |
+|---|---|
+| `git log --oneline 29c1e5635..bf44a4671 \| wc -l` | **344** |
+| `git log --oneline 4f71e9d97..bf44a4671 \| wc -l` | **162** |
+| `git log --merges --oneline 29c1e5635..bf44a4671` | 20 个 merge（清单见 3.2） |
+| `git branch \| grep -c codex/issue30` | 21 |
+| `git branch -r \| grep -i issue30` | 无输出（未推送） |
+| `ls migrations/sqlite \| awk -F_ '{print $1}' \| sort \| uniq -c \| awk '$1>2'`（versioned 同款） | **sqlite 000114（4 文件）、versioned 000193（4 文件）——同号双迁移在最终 HEAD 存在** |
+| `go test ./internal/application/repository/ -run 'TestAgentRunAdmissionIdempotent' -count=1`（走全量迁移轨道 `openRunTestDB`） | **FAIL：`failed to open source, "…/migrations/sqlite": duplicate migration file: 000114_public_agent_marketplace.down.sql`** |
+| `go test ./internal/application/repository/ -run 'TestAgentAdoptionRepositoryResolvesIntroducedListingAndRelease' -count=1`（direct-DDL 夹具，绕开迁移轨道） | ok（2.968s）——证明部分 B4 测试因夹具绕轨而通过，与上一行的失败形成对照 |
+| `grep -cE '^### Task [0-9]+' plans/plan-t*.md` | 23 份计划任务数合计 183（逐项见 1.1/二节） |
+| `git ls-files docs/plans/issue30-sweep/ocr/` + `git status --short` | `ocr-increment-b4.md` 未跟踪；其余 OCR 报告与台账均已入库 |
+
+### 4.7 未运行的检查（如实声明）
+
+1. **opt-in 真实 HTTP 集成证据未在带凭据环境运行**：23 个 Issue 的 `WEKNORA_MOBILE_TEST_*`/`NOTION_TOKEN` 等凭据门控用例在本环境一律 SKIP。「具备真实 HTTP 集成证据」仅指证据代码与 skip 语义已落地并被测试钉住。
+2. **授权面交互未验证**：iOS 模拟器实测只覆盖构建/安装/启动/首屏/未授权 gate 路由可达性/冷启动深链；idb UI 自动化后端不可用且无凭据，未伪造任何交互证据。
+3. **本报告撰写会话未重跑全量测试套件**：仅运行 4.6 所列核验命令（含两条 Go 定向测试——其一证明迁移轨道破窗、其一为对照）。
+4. **PostgreSQL 迁移复跑与 Android 侧任何验证**：从未在本轮运行（无环境）。
+5. **Mimosa 钩子侧扫描**从未取得完整结论（4.5）。
 
 ---
 
-## 五、审查、OCR 结论、修复轮次与并行波次
+## 五、审查与 OCR 结论、修复轮次、并行波次与集成记录
 
 ### 5.1 Superpowers SDD 审查链
 
-- **派发前冲突扫描**：首批三份 Ledger 均含逐任务对接口/文件冲突扫描记录；t34 扫描判定 **blocking**（Ruling 5：T6 归一化自相矛盾、T8 surface 断言与 react-native 桩矛盾，Ledger 原文实测在案）——先修订计划再执行；t35 扫描记录两处接口一致性核对（Ruling 8）；B3 计划 t42/t59/t38/t36 各有扫描记录（Ruling 16/17/18/19，结论均为咬合一致、继续执行并在任务审查重点核对）。
-- **计划审查**：#34 第 2 轮 7 项残留（Ruling 3）、#35 第 2 轮 4 项残留（Ruling 7）、#46 第 2 轮 9 项残留（Ruling 12）、#59 第 2 轮 3 项残留（Ruling 13）、#36 第 2 轮 1 项残留（Ruling 14）、#42 第 2 轮 6 项残留（Ruling 15）——均作为 Review Focus 传入任务审查，未阻塞执行。
-- **任务级审查**：各计划任务在分支内含 fix round 提交（如 t38 `bbbec33d9`/`a9284a599`、t44 `ca2f50d90`、t59 `c75fa6e06`、t46 `935cb1e9d`、t42 `5ed587aaf` 等，见 3.2 分支提交列表中标注 review fix 的提交）。
-- **最终审查（final review）**：#33/#34/#35/#66/#36/#38/#41/#42/#44/#46/#59 通过（finalApproved=true，其中 #36/#41/#59 的最终审查 F1 修复提交为分支 tip：`8c7d71134`/`c3076ce20`/`a52207942`；#32/#33 的最终修复报告持久化于 `t32/`、`t33/` 目录）；**#32 修复波后仍有 1 项 important 发现**（IPv6 绕过），已实测 ADDRESSED 但按 SDD 规则不再开第二波，残留呈报（Ruling 4）。
-- **task-brief 提取失败 6 次**（Ruling 20–25，涉及任务 5/6/7 × 两批计划）：实现者直接读计划文件对应任务节替代。
+- **派发前冲突扫描**：四批计划均有逐任务接口/文件冲突扫描记录；判定 blocking 的计划（#34/#35/#36/#38/#42/#59 + B4 的 #37/#39/#43/#45/#52/#60/#67/#68）先修订或按扫描结论继续执行并在任务审查重点核对（Ruling 5/8/16–19/31–38）。
+- **计划审查**：B1–B3 残留（#34 7 项、#35 4 项、#36 1 项、#42 6 项、#46 9 项、#59 3 项）与 B4 残留（**#43 5 项、#60 3 项、#68 10 项**，Ruling 28–30）均作为 Review Focus 传入任务审查，未阻塞执行。
+- **任务级审查**：各分支含 fix round 提交（B4 例：t52 的 `1f5235138` 路径穿越封堵、`4fa87aa01`/`5cb095559`；t60 的 `75a8c9dbb`；t39 的 `e7e6c37a0`/`c6ec3f3c1`；t40 的 `621826ece`/`9c066d01b`/`d89f089e5`；t56 的 `044117749`；t68 的 `a5031f3b2`；t43 的 `869e5fce9`/`d7e39c424`(ruling via escalation) 等）。
+- **整计划最终审查**：18/23 finalApproved=true；**#32/#37/#40/#52/#67 五个为 false**——终审发现均已修复（各 final-fix-report.md 在案）但按 SDD 规则修复后不再开第二审查波，残留/修复未经独立复审（详见 1.1）。
+- **审查升级裁决**：多处以「ruling via escalation」落地（如 `d7e39c424` 端口收窄、`cab1a90f1` 简报自相矛盾修正、`c71b1f37a` B3 跟进修复、`59e35fa0f` Mimosa 误判放行）。
+- **task-brief 提取失败 15 次**（Ruling 20–25、39–47）：实现者直接读计划文件对应任务节替代，代价为实现者上下文略宽。
 
-### 5.2 OCR 四阶段
+### 5.2 OCR 五轮（batch2 / round1 / b3 / b4 + 台账）
 
-| 阶段 | 扫描 | 处置 |
-|---|---|---|
-| 第二批增量（波次 2 后） | complete：46 findings / 29 items | 10 任务修复（10 提交）→ fix-report-increment-batch2；B2-F12（snapshot 属主错配 P0）等纳入；B2-F4/F6/F11/F23/F28/F35/F46 延期（附录 A） |
-| 最终轮（波次 2 收尾） | **partial**：50 findings；28/62 items 因 429 限流失败 | 13 任务修复（13 提交）→ fix-report-round-1：23/24 有效发现修复 + R1-F26 领域决策排除；18/20 lowWorth 修复；R1-F17/R1-F20 部分修复（Round 2 范围） |
-| B3 增量（波次 3 后） | complete：88 findings / 95 items（retry report：440 请求 16 受影响，5 失败/11 恢复） | 15 任务修复（15 提交）→ fix-report-increment-b3：6 项 high 全部修复（F85/F82/F84/F83/F78/F64/F79/F65/F51/F38/F42/F37/F41/F40/F59/F39/F44/F62 对应任务均 GREEN）；附录 A 延期项 F53/F47/F70/F71 等未动；4 项计划外发现如实记录（goalKey 记忆表、grep 口径、F48/F18 无对应物） |
-| 重扫 | **未执行**（用户指示最终轮缩减为 1 轮，Ruling 10；B3 轮单轮封顶，Ruling 26） | 三轮修复增量均未被二次 OCR 覆盖，以各修复报告内定向复审与全量回归兜底 |
+| 轮次 | 扫描结论 | 修复 | 覆盖缺口（如实） |
+|---|---|---|---|
+| 第二批增量 | complete：46 findings / 29 items | 10 任务（10 提交） | 附录 A 延期项（F4/F6/F11/F23/F28/F35/F46） |
+| 最终轮 round1 | **partial**：50 findings；28/62 items 因 429 限流失败 | 13 任务（13 提交） | 28 items 未审；R1-F17/F20 部分修复（延期） |
+| B3 增量 | complete：88 findings / 95 items | 15 任务（15 提交），6 项 high 全修复 | 2 项未决（Ruling 26）；附录 A 延期项 |
+| B4 增量 | **partial**：9 findings；**145/150 selected items 因 429 限流未获审查**（retry report：53/84 请求受影响，36 失败 17 恢复） | 5 任务 / 5 提交，9 项发现全处置（R1-F1…F4、F6…F9，逐项 RED→GREEN） | **145 items 未审**——本轮最大 OCR 覆盖缺口；台账 CLEAN 行口径限定见第二节 |
+| 台账 | [ocr-ledger.md](ocr/ocr-ledger.md) 首条 `CLEAN a66605a83 \| b4-increment-fixed-5`（提交 `8cd469c51`） | — | B1–B3 各轮未回填台账行（台账建立晚于这些轮次） |
 
-**OCR 覆盖缺口（如实）**：最终轮 28/62 selected items 因 429 限流未获审查（ocr-round-1.md 尾部列明失败文件组）；B3 增量轮按 Ruling 26 有 2 项未决（报告尾部 retry report 列出 5 个失败请求的文件组）；`ocr-ledger.md` 干净范围台账从未建立（第二节）。
+**重扫政策**：最终轮按用户指示缩减为 1 轮（Ruling 10），B3/B4 单轮封顶（Ruling 26/29 惯例）——四轮修复增量（13+10+15+5 提交）均未被二次 OCR 覆盖，以各修复报告内定向复审与全量回归兜底。
 
-### 5.3 并行波次与集成记录
+### 5.3 并行波次与集成记录（四批）
 
-- **波次 1**（Ruling 2）：#32→#33→#34 同 DAG 批次、计划文件范围不重叠，独立 worktree 并行实施、完成后按序集成——落为集成分支线性串行段（首批 Ledger 头部「分支：codex/issue30-mobile-office」+该区段无 merge 提交实测）。
-- **波次 2**（Ruling 6）：#35 与 #66 同批次**全并行**（不再因 filesTouched 重叠降级串行），独立分支；集成 t35 先（`979762df2`）、t66 后（`417b7dedf`，3 文件冲突手工合并，集成验证 71 tests + mobile 40/40 + typecheck，[integrate-t66.md](../../.superpowers/sdd/integrate-t66.md)）。
-- **波次 3 / B3**（Ruling 11）：#36/#38/#41/#42/#44/#46/#59 七节点全并行（独立 worktree 与分支），按序集成 7 个 merge。四份集成报告在册：
-  - **t38**：5 冲突文件全部「并集」解决（task-office ports/错误码/api-client/测试尾部/app-smoke 按钮断言数组按合并后 HomeScreen 实际渲染顺序重排）；
-  - **t41**：**产品级撞路径**——#38（T08 审批复盘）与 #41（行动通知）两计划原文都指定 `/inbox`；集成裁量 `/inbox` 归 #41（其测试行为绑定该路由），T08 迁 `/attention`（新建 `app/attention.tsx`），HomeScreen 去重后新增 'Open Approvals' 入口；另修 barrel 撞名（`AttentionInboxItem`/`AttentionInboxView` 别名）；
-  - **t44**：7 冲突文件并集（Go 容器/路由两侧 provider 共存等）；
-  - **t46**：4 冲突文件（api-client package.json exports 并列、app-smoke 测试块重排 + fs-import 归属）。
-  - t36/t42/t59 三个 merge 无集成报告（见 1.1/二节如实声明）。
-- **OCR/iOS 修复波**：与实现串行收尾；波次 2 收尾时发生过一次并行进程代提交（`f7753fa16`，内容逐字一致，fix-report-round-1 偏离 #10 记录）。
+- **波次 1 / B1**（Ruling 2）：#32 单节点串行段。
+- **波次 2 / B2**（Ruling 6）：#33/#34/#35/#66 同批全并行、独立 worktree/分支；#32→#33→#34 落为线性段，t35/t66 后并（2 merge）。
+- **波次 3 / B3**（Ruling 11）：7 节点全并行，按序 7 merge；4 份集成报告在册（t41 的 `/inbox` 撞路径分流为代表性产品级集成决策）。
+- **波次 4 / B4**（Ruling 27）：**11 节点全并行——历次最大批次**（t37/t39/t40/t43/t45/t48/t52/t56/t60/t67/t68，独立 worktree 与分支），按序 11 merge；7 份集成报告在册，4 个 merge 无集成报告（如实声明，见 4.2）；集成期迁移撞号仲裁两次（t48、t60）+ 一次漏网（t67 的 mobile_device_app，见 7.2）；Mimosa 拦截两次按裁决记录放行；批后增量 OCR（partial，已修复并记台账）与条件性 iOS 复验（复验+修复完成）。
+- **OCR/iOS 修复波**与实现串行收尾；B3 第二轮 iOS 复验与修复发生在上版终报之后、B4 计划之前（`98a7f98d4`/`fb5f6653a`）。
 
 ---
 
-## 六、裁决记录（全部 Ruling，含判断错误时的代价）
+## 六、裁决记录（全部 47 条 Ruling，含判断错误时的代价）
 
-1. **模型路由替代**：用户指定 gpt-5.6-sol/terra/luna 分级路由，但本运行环境子代理只能运行会话模型（GLM-5.3），全部子代理实际使用会话模型；架构与审查类任务通过独立 fresh-eyes 双代理交叉制衡补偿。代价：关键决策深度不足，可由人工复核最终报告发现。
-2. **执行并行化（用户指示）**：同一 DAG 批次且计划文件范围不重叠的计划并行实施，各自使用独立 worktree 与分支，完成后按序 merge 集成；计划内部任务保持串行（SDD 同文件冲突规则）。代价：merge 顺序决定最终提交拓扑，冲突时需集成修复轮。
-3. **计划 #34 审查第 2 轮未全通过（7 项残留）**：残留项作为任务审查的额外关注点传入 Review Focus。代价：实现阶段可能暴露这些缺口并触发修复轮。
-4. **#32 最终审查修复波后仍有残留**（important：`disallowedDeploymentHost` 可被 IPv6 形式绕过 → ADDRESSED：实测 `mobileRuntimeIntegrationConfig` 对 `https://[fe80::1]`、`[fc00::1]`、`[fd12:3456:789a::1]`、`[::ffff:7f00:1]` 全部返回 `enabled:false/disposition:'invalid'`，运行报告同款 tsx 复现脚本；hostname 含 `:` 时经 `parseIpv6Literal` 展开为 16 字节，`runtime-integration-smoke.ts:45-75`）：按 SDD 规则不再有第二波，残留呈报用户。代价：该 Issue 不能宣称完全干净。
-5. **计划 #34 冲突扫描判定 blocking**（阻塞①·T6 自洽：Task 6 测试断言 `search:'quarterly review'` 与 `normalizeQuery` 仅 `search.trim().slice(0,200)` 矛盾——实跑 `node -e` 验证 `'   quarterly   review '.trim()` 保留内部多空格 ≠ 期望，Step 4「全部 PASS」按计划原文不可能达成，须先修订（折叠内部空白对齐 Go 侧 `strings.Fields` 语义或改测试期望）；阻塞②·T8 自洽：断言过滤 `type==='Text'` 检查 `'View all tasks'`，但该文案是 Button 的 title 属性（`app-smoke.test.tsx:23、:60-68` 实读：react-native 桩把 Button 渲染为 `{type:'Button',props:{title}}` 无 Text 子节点），断言必为 false）——已按扫描结论先修订再执行并在任务审查中重点核对。代价：可能触发额外修复轮。
-6. **第二批并行实施（用户指示）**：#35、#66 与首批同一套 SDD 流程，但同 DAG 批次节点全部并行（不再因 filesTouched 重叠降级串行），各自独立 worktree 与分支，重叠文件的合并冲突由集成修复员按双方意图解决。代价：merge 冲突概率上升、集成修复轮可能增加；若集成失败该节点如实记受阻。
-7. **第二批计划 #35 审查第 2 轮未全通过（4 项残留）**：残留项传入任务审查关注点。代价：实现阶段可能触发修复轮。
-8. **计划 #35 冲突扫描判定 blocking**（T1→T2：`(*WorkbenchListStore).ReadTaskFactsForRun` 签名与 T2 `OwnedTaskFactsReader` 接口/容器 `.WithTaskFacts(lists)` 消费一致（`workbench_list.go:135`、attentionOf `:49-58`、stub 强制 owner 见 `workbench_read_test.go:31-35` 核实）；T2→T3→T8：`TaskSnapshotFacts` snake_case wire 形状（`omitempty`）与 T3 解析器、T8 detail 映射一致（`contracts.go:52-58`、`executions.ts:174/282` 核实））——已按扫描结论继续执行并在任务审查中重点核对。代价：可能触发额外修复轮。
-9. **第二批增量 OCR 有 1 项未决**：单轮封顶不再重扫，随最终全量轮与报告核销。代价：个别问题可能带入最终交付。
-10. **OCR 最终轮缩减为 1 轮（用户指示）**：本批发现修复并定向复审后不再重扫。代价：修复增量未被二次 OCR 覆盖，以复审裁决与最终报告兜底，残留如实呈报。
-11. **第三批 B3 并行实施（用户指示）**：#36、#38、#41、#42、#44、#46、#59 前置已全部满足，同批次 7 节点全部并行（独立 worktree 与分支），重叠文件冲突由集成修复员按双方意图解决；批后增量 OCR（干净则记台账首条）与条件性 iOS 复验。代价：merge 冲突链较长、运行时长与配额消耗显著。
-12. **B3 计划 #46 审查第 2 轮未全通过（9 项残留）**：残留项传入任务审查关注点。代价：实现阶段可能触发修复轮。
-13. **B3 计划 #59 审查第 2 轮未全通过（3 项残留）**：残留项传入任务审查关注点。代价：实现阶段可能触发修复轮。
-14. **B3 计划 #36 审查第 2 轮未全通过（1 项残留）**：残留项传入任务审查关注点。代价：实现阶段可能触发修复轮。
-15. **B3 计划 #42 审查第 2 轮未全通过（6 项残留）**：残留项传入任务审查关注点。代价：实现阶段可能触发修复轮。
-16. **计划 #42 冲突扫描判定 blocking**（T1↔T2：T1 产出 `repository.TaskGrantStore` 五方法与 `types.TaskGrantRole/TaskAccess`（plan:101-106），T2 的 `TaskGrantStorePort` 与服务逐字消费同一组签名（plan:826-832），接口完全咬合；T1↔T3：T3 容器 wiring 以 `*repository.TaskGrantStore` 为第一参数构造 `TaskGrantService`（plan:1369-1375），与 T1 `NewTaskGrantStore(db)` 返回类型吻合）——已按扫描结论继续执行并在任务审查中重点核对。代价：可能触发额外修复轮。
-17. **计划 #59 冲突扫描判定 blocking**（Task1→Task2：任务1 产出三实体与 sqlite 000112 迁移，任务2 经 `openRunTestDB` 消费（`agent_run_test.go:29-61` 实测跑全量 migrations/sqlite 流会包含新 000112），实体字段齐备，一致；Task1→Task3：任务3 服务测试经 `openAgentVersionServiceTestDB` 依赖任务1 新表（`agent_version_test.go:31-63` 同样应用全量迁移流），一致）——已按扫描结论继续执行并在任务审查中重点核对。代价：可能触发额外修复轮。
-18. **计划 #38 冲突扫描判定 blocking**（T1→T2：T1 产出 `Service.ListInbox`/`GormInteractionStore.ListPending` 与 `InteractionDecision.CreatedAt`（plan-t38.md:81），T2 的 `ListInboxInteractions` 调用 `h.interactions.ListInbox` 并断言 wire 行携带 `created_at`（plan:579,420）——与现有代码（`service/workbench/interaction.go:416`、decision `:151`、identity `:438`、结构 `:26-36`）衔接一致，无冲突；T2→T4：T2 产出 GET /api/v1/workbench/interactions 路由（plan:605-607；`RegisterWorkbenchCommandRoutes` 在 `routes_workbench.go:159-170`、v1 挂载 `router.go:374`）与 502+command_recovery_unknown 错误 wire（plan:591-597，插入点 `workbench_commands.go:99-124` 属实），T4 的 interactions.ts 路径与 409/400→SUPERSEDED、502→DELIVERY_UNKNOWN、404/403/410→GONE 分类消费同一 wire（plan:903,991-993）——逐字一致，无冲突）——已按扫描结论继续执行并在任务审查中重点核对。代价：可能触发额外修复轮。
-19. **计划 #36 冲突扫描判定 blocking**（T1→T2：Task 1 产出 coordinator.resume（对象字面量内已有 `this.reconcile` 先例，`submission.ts:124`），Task 2 的 office 经 submissions.resume 消费——`SubmissionStore.load/save`（`submission.ts:52-56`）与 `SubmissionConflictError(requestId, storedDigest, incomingDigest)`（`submission.ts:58-60`）同 resume 实现的调用完全匹配，无冲突；T1→T5：Task 1 产出 recommendLeadAgent 并在 domain index.ts 追加 export 行，Task 5 从 `@weknora/domain/mobile` 导入——index.ts 为 export * 聚合（`packages/domain/src/mobile/index.ts:1-15`），导出链路成立，无冲突）——已按扫描结论继续执行并在任务审查中重点核对。代价：可能触发额外修复轮。
-20. **task-brief 脚本提取任务 5 失败**：实现者直接读计划文件对应任务节。代价：实现者上下文略宽。
-21. **task-brief 脚本提取任务 6 失败**：实现者直接读计划文件对应任务节。代价：实现者上下文略宽。
-22. **task-brief 脚本提取任务 7 失败**：实现者直接读计划文件对应任务节。代价：实现者上下文略宽。
-23. **task-brief 脚本提取任务 5 失败**（第二批计划）：实现者直接读计划文件对应任务节。代价：实现者上下文略宽。
-24. **task-brief 脚本提取任务 6 失败**（第二批计划）：实现者直接读计划文件对应任务节。代价：实现者上下文略宽。
-25. **task-brief 脚本提取任务 7 失败**（第二批计划）：实现者直接读计划文件对应任务节。代价：实现者上下文略宽。
-26. **B3 增量 OCR 有 2 项未决**：单轮封顶不重扫、不记台账，随最终报告呈报。代价：个别问题可能带入最终交付。
+1. **模型路由替代**：用户指定 gpt-5.6-sol/terra/luna 分级路由，但本运行环境子代理只能运行会话模型（GLM-5.3），全部子代理实际使用会话模型；架构与审查类任务通过独立 fresh-eyes 双代理交叉制衡补偿——代价：关键决策深度不足，可由人工复核最终报告发现。
+2. **执行并行化（用户指示）**：同一 DAG 批次且计划文件范围不重叠的计划并行实施，各自使用独立 worktree 与分支，完成后按序 merge 集成；计划内部任务保持串行（SDD 同文件冲突规则）——代价：merge 顺序决定最终提交拓扑，冲突时需集成修复轮。
+3. **计划 #34 审查第 2 轮未全通过（7 项残留）**：残留项作为任务审查的额外关注点传入 Review Focus——代价是实现阶段可能暴露这些缺口并触发修复轮。
+4. **#32 最终审查修复波后仍有残留**（important：`disallowedDeploymentHost` 可被 IPv6 形式绕过 → ADDRESSED：实测 `mobileRuntimeIntegrationConfig` 对 `https://[fe80::1]`、`[fc00::1]`、`[fd12:3456:789a::1]`、`[::ffff:7f00:1]` 全部返回 `enabled:false/disposition:'invalid'`（运行报告同款 tsx 复现脚本）；hostname 含 `:` 时经 `parseIpv6Literal` 展开为 16 字节，`runtime-integration-smoke.ts:45-75`）——按 SDD 规则不再有第二波，残留呈报用户；代价是该 Issue 不能宣称完全干净。
+5. **计划 #34 冲突扫描判定 blocking**（阻塞①·T6 自洽：Task 6 测试断言与自己的实现矛盾——`normalizeQuery` 仅 `search.trim().slice(0,200)`（plan-t34.md:1908-1919），测试期望 `search:'quarterly review'`（plan-t34.md:1764-1768），实跑 `node -e` 验证 `'   quarterly   review '.trim()` 内部多空格保留 ≠ 期望，须先修订；阻塞②·T8 自洽：断言用 `filter(({type})=>type==='Text')` 检查 `'View all tasks'`，但该文案是 Button 的 title 属性（plan-t34.md:2418-2420 vs :2595；react-native 桩把 Button 渲染为 `{type:'Button',props:{title}}` 无 Text 子节点，apps/mobile/src/app-smoke.test.tsx:23、:60-68 实读核实），断言必为 false）——已按扫描结论先修订再执行；代价：可能触发额外修复轮。
+6. **第二批并行实施（用户指示）**：#35、#66 同 DAG 批次节点全部并行（不再因 filesTouched 重叠降级串行），各自独立 worktree 与分支，重叠文件由集成修复员按双方意图解决——代价：merge 冲突概率上升；若集成失败该节点如实记受阻。
+7. **第二批计划 #35 审查第 2 轮未全通过（4 项残留）**：残留项传入任务审查关注点——代价：实现阶段可能触发修复轮。
+8. **计划 #35 冲突扫描判定 blocking**（T1→T2：`(*WorkbenchListStore).ReadTaskFactsForRun` 签名与 `OwnedTaskFactsReader` 接口/容器 `.WithTaskFacts(lists)` 消费一致（workbench_list.go:135/attentionOf:49-58、workbench_read_test.go:31-35 核实）；T2→T3→T8：`TaskSnapshotFacts` snake_case wire 形状与解析器/detail 映射一致（contracts.go:52-58、executions.ts:174/282 核实））——继续执行并在任务审查重点核对；代价：可能触发额外修复轮。
+9. **第二批增量 OCR 有 1 项未决**：单轮封顶不再重扫，随最终全量轮与报告核销——代价：个别问题可能带入最终交付。
+10. **OCR 最终轮缩减为 1 轮（用户指示）**：本批发现修复并定向复审后不再重扫——代价：修复增量未被二次 OCR 覆盖，以复审裁决与最终报告兜底，残留如实呈报。
+11. **第三批 B3 并行实施（用户指示）**：#36、#38、#41、#42、#44、#46、#59 同批次 7 节点全部并行（独立 worktree 与分支），批后增量 OCR 与条件性 iOS 复验——代价：merge 冲突链较长、运行时长与配额消耗显著。
+12. **B3 计划 #36 审查第 2 轮未全通过（1 项残留）**：残留项传入任务审查关注点——代价：可能触发修复轮。
+13. **B3 计划 #42 审查第 2 轮未全通过（6 项残留）**：同上。
+14. **B3 计划 #46 审查第 2 轮未全通过（9 项残留）**：同上。
+15. **B3 计划 #59 审查第 2 轮未全通过（3 项残留）**：同上。
+16. **计划 #36 冲突扫描判定 blocking**（T1→T2：coordinator.resume 与 `SubmissionStore.load/save`、`SubmissionConflictError(requestId, storedDigest, incomingDigest)`（submission.ts:52-60）完全匹配；T1→T5：`recommendLeadAgent` 经 `export *` 聚合 barrel（packages/domain/src/mobile/index.ts:1-15）导出链路成立）——继续执行并重点核对；代价：可能触发修复轮。
+17. **计划 #38 冲突扫描判定 blocking**（T1→T2：`Service.ListInbox`/`GormInteractionStore.ListPending` 与现有代码（service/workbench/interaction.go:416/:151/:438/:26-36）衔接一致；T2→T4：GET /api/v1/workbench/interactions 路由与 502+command_recovery_unknown 错误 wire 及客户端分类逐字一致）——继续执行并重点核对；代价：可能触发修复轮。
+18. **计划 #42 冲突扫描判定 blocking**（T1↔T2：`repository.TaskGrantStore` 五方法与 `TaskGrantStorePort` 消费同签名（plan:101-106/826-832）；T1↔T3：容器 wiring 以 `*repository.TaskGrantStore` 构造 service（plan:1369-1375）吻合）——继续执行并重点核对；代价：可能触发修复轮。
+19. **计划 #59 冲突扫描判定 blocking**（Task1→Task2：sqlite 000112 迁移经 `openRunTestDB` 全量迁移流消费（agent_run_test.go:29-61），实体字段齐备；Task1→Task3：`openAgentVersionServiceTestDB` 同样应用全量迁移流（agent_version_test.go:31-63））——继续执行并重点核对；代价：可能触发修复轮。
+20. **task-brief 脚本提取任务 5 失败**，实现者直接读计划文件对应任务节——代价：实现者上下文略宽。
+21. **task-brief 脚本提取任务 6 失败**——同上。
+22. **task-brief 脚本提取任务 7 失败**——同上。
+23. **task-brief 脚本提取任务 5 失败**（第二批）——同上。
+24. **task-brief 脚本提取任务 6 失败**（第二批）——同上。
+25. **task-brief 脚本提取任务 7 失败**（第二批）——同上。
+26. **B3 增量 OCR 有 2 项未决**：单轮封顶不重扫、不记台账，随最终报告呈报——代价：个别问题可能带入最终交付。
+27. **第四批 B4 并行实施（用户指示）**：#37、#39、#40、#43、#45、#48、#52、#56、#60、#67、#68 前置已全部满足，同批次全部并行（独立 worktree 与分支），重叠冲突由集成修复员解决；批后增量 OCR 与条件性 iOS 复验——代价：批次规模 11 节点为历次最大，运行时长与配额消耗显著（预计多次配额窗口暂停后 resume）。
+28. **B4 计划 #43 审查第 2 轮未全通过（5 项残留）**：残留项传入任务审查关注点——代价：可能触发修复轮。
+29. **B4 计划 #60 审查第 2 轮未全通过（3 项残留）**：同上。
+30. **B4 计划 #68 审查第 2 轮未全通过（10 项残留）**：同上。
+31. **计划 #37 冲突扫描判定 blocking**（Task1↔Task2/4：迁移链 000112/000191 双号文件实查、测试基建 openAdmissionConcurrencyDB/openWorkbenchHTTPDB 实查存在；Task2↔Task3 共享 interaction.go 与 container/workbench.go 不重叠区段顺序执行，Task 3 容器编辑依赖 Task 2 先行）——继续执行并重点核对；代价：可能触发修复轮。
+32. **计划 #39 冲突扫描判定 blocking**（Task1↔Task2：park 语义 `waiting_user+wait_reason='budget_exhausted'` 字面量与 RequeueBudgetPausedRuns 谓词一致（agent_run_worker.go:340、agent_run_decisions.go:255-271 核实）；Task1↔Task5：同包测试 helper 名无冲突）——继续执行并重点核对；代价：可能触发修复轮。
+33. **计划 #43 冲突扫描判定 blocking**（Task3↔Task4/5 接口时序矛盾：端口七方法含 PurgeTask（plan-t43.md:1098）而 store.PurgeTask 到 Task 6 才实现——Task 4/5 的 `go build ./...` 必报 missing method，须先修订；Task0→Task1-7 迁移轨道顺延 #59 四文件自洽）——继续执行并重点核对；代价：可能触发修复轮。
+34. **计划 #45 冲突扫描判定 blocking**（Task1→Task2/3：`AnswerEvidence/EvidenceState*/EvidenceKind*/EvidenceReasoning*/ValidateAnswerEvidence` 与 `CitationsFromSearchResults/ConclusionFromNativeAnswer` 名称与签名逐一比对一致）——继续执行并重点核对；代价：可能触发修复轮。
+35. **计划 #52 冲突扫描判定 blocking**（Task1→Task2：`RepoRef/FileChange/GitBlobSHA/TaskBranchOf` 与端口/模拟器消费同签名；Task1→Task3：`DeliveryState` 六常量与 store 镜像逐值一致）——继续执行并重点核对；代价：可能触发修复轮。
+36. **计划 #60 冲突扫描判定 blocking**（T1→T2：改名让出版本号后 000193/000114 无碰撞；T1→既有 harness：duplicate 000112 修复后 Task 5/6 的全量迁移测试才可运行，计划顺序 Task 1 最先一致）——继续执行并重点核对；代价：可能触发修复轮。
+37. **计划 #67 冲突扫描判定 blocking**（阻塞：Task 7 foreground-sync.test 第一用例死锁——`script.emit('active')` 同步触发 runOnce 时 gate 尚未赋值，promise 永不 resolve，须先修订；阻塞：Global Constraints 的 host 拒绝承诺与 Task 2 `validPushEndpoint` 只校验 scheme/host 非空、且全部测试依赖 httptest 环回 endpoint 两种读法不可同时满足，须先修订）——继续执行并重点核对；代价：可能触发修复轮。
+38. **计划 #68 冲突扫描判定 blocking**（阻塞：T3 Step 4 `const network: WeappNetwork` 未导出而 T4 `import { network }` 必报 no export named network，须改 `export const network`；阻塞：T4 从 barrel 裸名导入 InboxItem 实为 #41 通知收件箱类型，`item.runId` 类型不符，须改用 `AttentionInboxItem` 别名）——继续执行并重点核对；代价：可能触发修复轮。
+39. **task-brief 脚本提取任务 5 失败**（B4 期）——实现者直接读计划文件对应任务节；代价：实现者上下文略宽。
+40. **task-brief 脚本提取任务 6 失败**——同上。
+41. **task-brief 脚本提取任务 7 失败**——同上。
+42. **task-brief 脚本提取任务 8 失败**——同上。
+43. **task-brief 脚本提取任务 8 失败**——同上。
+44. **task-brief 脚本提取任务 10 失败**——同上。
+45. **task-brief 脚本提取任务 9 失败**——同上。
+46. **task-brief 脚本提取任务 10 失败**——同上。
+47. **task-brief 脚本提取任务 11 失败**——同上。
 
 ---
 
 ## 七、未完成节点、遗留风险、延期项与需用户决策
 
-### 7.1 未完成 / 阻塞节点
+### 7.1 未完成 / 受阻节点
 
-- **27 个下级 Issue 未实施**（B4–B8 全部节点，见 1.2）；#31 验收开放（staging 凭据 + Android 证据外部阻塞）。
-- **授权面端到端验证缺口**：12 个 Issue 的授权交互与全部 opt-in 真实 HTTP 集成证据未在带凭据环境运行（本环境无 deployment 凭据/后端，且按约束不得写入凭据字面量）。iOS 实测仅覆盖：构建/安装/启动/首屏/未授权 gate 文案路由可达性/冷启动 deep link。
-- **B3 三个 merge（#36/#42/#59）无集成报告**；plan-t35/t66 与 B3 全部 7 份计划的 `progress.md` 未持久化——任务级审查过程记录缺失，只能以提交与后续全量轮替代。
-- **`ocr-increment-b3.md` 未提交入库**（worktree 未跟踪文件，本次报告提交亦未纳入，属后续动作）。
+- **17 个下级 Issue 未实施**（#31 复验 + B5 全部 11 个 + B6 3 个 + #65 + #71，见 1.2）；B5 已整批解锁。
+- **授权面端到端验证缺口**：23 个 Issue 的授权交互与全部 opt-in 凭据门控集成证据未在带凭据环境运行（无凭据 + idb UI 自动化不可用）。
+- **B4 四个 merge 无集成报告**（#37/#43/#67/#68，单行 merge 消息实测）；B1–B4 除首批三份外全部计划的 `progress.md` 未持久化——过程审查记录缺失，以分支提交、计划级报告（t43/t48/t52）与合并后全量轮替代。
 
 ### 7.2 遗留风险
 
-- **migrations/sqlite 000112 序号冲突（预存在，未解决）**：`000112_task_grants.*` 与 `000112_agent_adoption_variants.*` 并存（merge `d58675a67` 引入），任何走全量迁移轨道的 Go 测试夹具打开迁移源即报 `duplicate migration file`。B3 修复轮实测失败计数 service 135 / repository 276 / router 4 / session 27 与干净 HEAD 基线**完全一致**（未扩大、非本轮 OCR 修复引入），但该冲突使 Go 全量迁移轨道持续不可用；修复报告明示「序号重编应升级为独立决策，不顺手修改」。**这是当前最需要用户裁决的技术债**。
-- **Mimosa 预提交钩子始终未通过**：多次 `scanner_enobufs`（含 B3 修复轮与最终 iOS 修复轮提交，第二次已在 `4f71e9d97` 记录）。已有替代证据：MCP 深度扫描完成并封印（B3 范围 0 findings、241 条范围外既有发现未处置、coverage partial/inconclusive）——本轮不宣称项目安全，完整审计需另行重跑。
-- **OCR 覆盖缺口**：最终轮 28/62 items 因 429 限流未审；B3 增量 2 项未决（Ruling 26）；三轮修复增量（13+10+15 提交）均未被二次 OCR 覆盖（Ruling 10）。
-- **OCR 干净范围台账未建立**：`ocr-ledger.md` 不存在（第二节），「重跑只审新增量」的续审机制缺位——后续若再跑 OCR，需先人工确定基线提交区间，否则只能全量重扫。
-- **#32 残留项未经第二波审查**：IPv6 绕过的修复证据是「实测 ADDRESSED」（t32/final-fix-report.md 内含 RED→GREEN 与 25 URL 回归），未走独立审查波次（Ruling 4）。
-- **iOS Fabric 白屏根因未修**：以 `newArchEnabled:false` 规避（RN 0.83.10 + iOS 27.0 runtime 组合问题，上游超本仓范围）；RN 编译期 `-DRCT_NEW_ARCH_ENABLED` 仍作用于源码构建 pods；升级 Expo/RN 后需复测再翻转。
-- **Expo 模板锚定**：`ios-xcode27` 插件锚定 SDK 55 模板原文，Expo 升级致模板漂移时 prebuild 显式报错（有单测覆盖），需同步更新锚点。
-- **MCP ios-simulator ui backend 不可用**：层 A（launchd PATH）修复需重启 ZCode 才进入 MCP 进程（未执行，会终止工作流）；层 B（fb-idb 1.6.1 不支持 `idb --version` 的探测缺陷）在 ZCode 应用包内，需上游修复；跨重启持久化 `sudo launchctl config user path` 需 sudo，未执行。idb CLI 直调为当前 AX 校验替代路径。
-- **Metro/localhost 联调受阻**：宿主 VPN/TUN 全局代理（127.0.0.1:17890）拦截模拟器 localhost 流量，未改动用户网络环境（首轮 iOS 报告 3.2/第 7 节）。
+- **⚠ migrations 撞号在最终 HEAD 复发（本报告撰写时实测）**：`migrations/sqlite` 的 `000114_mobile_device_app.*`（t67 引入，`fb9037710`）与 `000114_public_agent_marketplace.*`（t60 引入，`34565aa41`）同号并存；`migrations/versioned` 的 `000193_*` 同样双占。**本次报告会话实测**：`go test ./internal/application/repository/ -run 'TestAgentRunAdmissionIdempotent' -count=1` → FAIL `duplicate migration file: 000114_public_agent_marketplace.down.sql`——任何走全量迁移轨道的 Go 测试夹具当前不可用。机制：B4 各并行分支独立选号，t60 merge（`bd36aff1d`）仲裁了当时已知的撞号（task_compliance→116/195、code_deliveries→117/196、自留 marketplace 114/193），其后合入的 t67（`6609b0de4`）把 mobile_device_app 带在相同号上，git 对双侧新增文件不报冲突，集成未再扫描迁移目录。B4 各分支上的同 content 去重提交（`86c58a218` 等 5 个）已把 B3 期的 000112/000191 撞号修复（t43 报告 §1 实测验证），**即旧债已还、新债又生**；B4 期部分测试通过是因为部分夹具改用 direct-DDL 绕开迁移轨道（对照实测见 4.6）。**这是当前最需要用户裁决的技术债**（同 7.5 决策 2）。
+- **五个 Issue（#32/#37/#40/#52/#67）终审修复未经独立复审**：修复证据在案（final-fix-report.md 各份，含 RED→GREEN），但 finalApproved=false 且无第二审查波——不能宣称完全干净。
+- **OCR B4 轮 145/150 items 未审**（429 限流）+ 台账 CLEAN 行口径限定（第二节）+ 四轮修复增量未被二次 OCR 覆盖（Ruling 10/26）——OCR 总覆盖存在实质性缺口。
+- **`ocr-increment-b4.md` 未提交入库**（worktree 未跟踪文件实测；台账行引用的正是该文件路径，文件本身目前不在 git 历史中）。
+- **Mimosa 钩子侧扫描从未取得完整结论**（scanner_enobufs）；两条误判裁决已持久化（[mimosa-adjudications.md](mimosa-adjudications.md)）并附三条上游反馈建议；本轮不宣称项目级安全审计完成。
+- **iOS Fabric 白屏根因未修**：以 `newArchEnabled:false` 规避（RN 0.83.10 + iOS 27.0 组合问题，上游超本仓范围）；B4 期 splash 白屏以 wordmark 方案缓解（非消除 bundle 加载期）。
+- **miniprogram `@weknora/mobile-core` workspace 链接缺失**：71 个预存在 typecheck 错误的根源（B4 修复报告 §9 如实记录，属独立决策未动）；链接修复后 office-views 穷举缺键恢复为编译错误（本批已补 `'offline'` 键）。
+- **MCP ios-simulator ui backend（idb）不可用**：launchd PATH 修复需重启 ZCode 才生效（未执行）；fb-idb 1.6.1 `idb --version` 探测缺陷需上游修复。
+- **Metro/localhost 联调受阻**：宿主 VPN/TUN 全局代理（127.0.0.1:17890）拦截模拟器 localhost 流量，未改动用户网络环境。
 
 ### 7.3 口径记录（如实呈报）
 
-- **#35 任务计数**：编排器本轮统计 11/11，与 plan-t35.md 的 11 任务、t35 分支 14 提交（11 任务各≥1 提交 + 2 review 提交 + 1 typecheck 修复）一致——中途版报告曾记录的「6/6 vs 11」口径不一致已在本轮统计中收敛，以计划文件与提交证据为准（11 任务全部落地）。
-- **t66 计划验证命令预期值与实跑差异**：计划预期「既有 33 + 新 14 + 改写 1」，集成时实跑 71 tests（6 文件，含 2 skipped）——数量口径随合并演进，结果全绿（`417b7dedf`）。
-- **Go 失败计数基线口径**：B3 附录 B 的「失败集合不扩大」以 `git stash` 干净 HEAD 对比（135/276/4/27），非零失败即预存在状态（000112 冲突族 + 范围外既有），非本轮引入。
+- **任务计数口径**：23 个 Issue 任务数以计划文件 `### Task N` 标题计数为准（本次实测 183），与编排器统计一致；#35 曾有的「6/6 vs 11」口径偏差已在上版终报收敛。
+- **finalApproved=false ≠ 未完成**：五个 Issue 的 tasksDone=tasksTotal 且终审发现已修复；false 反映的是「修复后无复审波」这一流程事实。
+- **Go 失败计数基线口径变化**：B3 期的「失败集合不扩大」基线（135/276/4/27）根因是 000112 撞号，B4 已修复该根因；但最终 HEAD 因 000114/000193 新撞号，全量迁移轨道再次不可用（本次实测）——两件事不可混为一谈。
+- **台账 CLEAN 行不是完整审计结论**：见第二节口径限定。
 
 ### 7.4 延期低优先级事项（计划明示、未实现）
 
-- OCR Round 2 范围：SQLite 持久 TaskProjectionStore（R1-F20 完整版 / B2-F23，需存储选型 ADR）、R1-F17 行存储后端（当前 `VAULT_ROW_TOO_LARGE` 受控失败）。
-- B3 增量轮附录 A 延期项：F53/F47/F70/F71 等（理由见 [ocr-fix-increment-b3.md](plans/ocr-fix-increment-b3.md) 附录 A）；计划外处置记录（goalKey 记忆表仅内存、F48/F18 无对应物）见该修复报告「计划外发现与处置」节。
-- 按计划排除项：R1-F26（领域决策，未动 CONTEXT.md）、R1-F1（证据行号漂移无法定位）、R1-F28（独立重构）；B2-F4/F6/F11/F28/F35/F46（理由见 ocr-fix-increment-batch2.md 附录 A）。
+- OCR Round 2 范围：SQLite 持久 TaskProjectionStore（R1-F20 完整版，需存储选型 ADR）、R1-F17 行存储后端、R1-F26 领域决策等（见各修复报告附录 A）；B4 轮无延期项（9 项全处置）。
+- `interruption.message` 整体渲染决策（B4 修复报告 §9，offline 文案已承载同等信息）。
+- Pods 告警进一步归零（Expo Swift clang-importer 约 263 条可用 `OTHER_SWIFT_FLAGS += -Xcc -w`，可选优化未做）。
 - #58 PostgreSQL 迁移复跑（000187/000188，环境性）。
-- Mimosa 深度扫描的 241 条 B3 范围外静态 findings 的逐条处置。
+- Mimosa 深度扫描 241 条范围外既有 findings 的逐条处置；Mimosa 上游规则豁免反馈（迁移测试脚手架注入误判、客户端 SSRF 误判）。
 
 ### 7.5 需要用户决策
 
-1. **模型路由替代**：本轮全部子代理实际使用会话模型 GLM-5.3（Ruling 1）——请人工复核本报告与关键决策（尤其 #32 残留修复、两处计划 blocking 修订、t41 `/inbox` 撞路径集成裁量、t42 approve 门禁升级裁决）以补偿路由深度缺口；如需原定 gpt-5.6 分级路由，需在支持该路由的环境重跑关键审查。
-2. **migrations/sqlite 000112 序号冲突处置**：是否授权独立任务重编迁移序号并恢复 Go 全量迁移轨道（当前 135/276/4/27 预存在失败被基线口径掩盖但持续存在）。
-3. **#32 残留处置**：接受实测 ADDRESSED 证据（t32/final-fix-report.md 的 RED→GREEN 与 25 URL 回归）并视为关闭，还是安排一次独立复审波次。
-4. **OCR 台账与补扫**：是否补建 `ocr-ledger.md`（以本轮 `4f71e9d97` 为 CLEAN 基线起账）；是否对 28 个限流未审 items、B3 的 2 项未决与三轮修复增量补跑 OCR。
-5. **授权面验证**：何时提供 `WEKNORA_MOBILE_TEST_*` 凭据环境（官方云或自托管 staging）以运行 12 个 Issue 的真实 HTTP 集成证据与 iOS 授权面交互。
-6. **下一批次**：B4 的 11 个节点（#37/#39/#40/#43/#45/#48/#52/#56/#60/#67/#68）前置已全部满足（1.2 逐节点核对），是否启动及其并行策略；#48 的 NOTION_TOKEN 环境性阻塞是否先行解决。
-7. **分支去向**：`codex/issue30-mobile-office`（及 9 条 t* 并行分支）是否推送远端、开 PR、合并 `main`；对应 12 个 GitHub Issue 的关闭时机；未跟踪文件 `ocr-increment-b3.md` 是否补提交。
-8. **iOS 环境后续**：是否重启 ZCode 使 launchd PATH 修复进入 MCP 进程；是否执行 `sudo launchctl config user path` 持久化；上游 idb 探测缺陷的跟进。
-9. **安全审计**：Mimosa 钩子侧 enobufs 从未通过——是否安排一次完整的项目级深度安全扫描并处置 241 条范围外发现。
+1. **模型路由替代**：本轮全部子代理实际使用会话模型（Ruling 1）——请人工复核本报告与关键决策（尤其 #32 IPv6 残留、B4 各计划 blocking 修订、t41 `/inbox` 撞路径分流、t48/t60 迁移撞号仲裁、两处 Mimosa 误判放行）以补偿路由深度缺口。
+2. **⚠ migrations 000114/000193 撞号处置（最紧急）**：是否授权独立任务重编迁移序号（建议 mobile_device_app 顺延为 sqlite 000118 / versioned 000197 或与用户确认的下一可用号），并恢复 Go 全量迁移轨道；是否在集成流程中固化「每次 merge 后断言双轨迁移版本号唯一」（t48 收尾报告 §1 曾实跑过该 shell 断言，未纳入常驻门禁）。
+3. **五个 finalApproved=false Issue 的处置**：接受各 final-fix-report.md 的 RED→GREEN 证据视为关闭，还是各安排一次独立复审波次。
+4. **OCR 台账与补扫**：是否维持以 `a66605a83` 为 CLEAN 基线续审（并回填 B1–B3 各轮行），是否对 B4 轮 145 个未审 items、历史缺口与四轮修复增量补跑 OCR（建议低峰期分批以避开 429 限流）；是否补提交未跟踪的 `ocr-increment-b4.md`。
+5. **授权面验证环境**：何时提供 `WEKNORA_MOBILE_TEST_*`/`NOTION_TOKEN` 等凭据环境（官方云或自托管 staging）以运行 23 个 Issue 的 opt-in 集成证据与 iOS 授权面交互。
+6. **下一批次**：B5 的 11 个节点（#47/#49/#50/#51/#53/#54/#57/#61/#62/#69/#70）前置已全部满足（1.2 逐节点核对），是否启动及其并行策略；#69/#70 的签名/真机与 #48 同类外部凭据阻塞是否先行解决。
+7. **分支去向**：`codex/issue30-mobile-office`（及 20 条 t* 并行分支）是否推送远端、开 PR、合并 `main`；对应 23 个 GitHub Issue 的关闭时机。
+8. **iOS 环境后续**：是否重启 ZCode 使 launchd PATH 修复进入 MCP 进程；`sudo launchctl config user path` 持久化；fb-idb 探测缺陷上游跟进。
+9. **安全审计**：是否安排一次完整的项目级深度安全扫描（钩子侧 enobufs 从未通过）；Mimosa 上游规则豁免反馈是否提交。
 
 ---
 
 ## 交付声明
 
-本轮全部成果（**182 个提交**，`29c1e5635..4f71e9d97`：12 个 Issue 的实现（含 Go 后端与移动端全栈）、三个并行波次共 9 个集成 merge、三轮 OCR 修复共 38 个修复提交、两轮 iOS 实测与修复、全部文档证据）均为**本地 worktree 分支 `codex/issue30-mobile-office` 上的本地提交**：**未推送远端、未合并到 `main` 主分支、未关闭任何 GitHub Issue**（#30–#71 全部保持原 open 状态，#58 维持既有 closed）。本报告主仓库副本（`/Users/wuyongjun/trea/WeKnora-fork01/docs/plans/issue30-sweep/FINAL-REPORT.md`）仅为文件落盘，不改变主仓库 git 状态。
+本轮全部成果（**344 个提交**，`29c1e5635..bf44a4671`：23 个 Issue 的实现（Go 后端 + 移动端/小程序全栈）、四个并行波次共 20 个集成 merge、五轮 OCR 修复共 43 个修复提交、四轮 iOS 实测与修复、全部文档证据与两份 Mimosa 裁决）均为**本地 worktree 分支 `codex/issue30-mobile-office` 及并行分支 `codex/issue30-t*` 上的本地提交**：**未推送远端、未合并到 `main` 主分支、未关闭任何 GitHub Issue**（#30–#71 全部保持原 open 状态，#58 维持既有 closed）。本报告主仓库副本（`/Users/wuyongjun/trea/WeKnora-fork01/docs/plans/issue30-sweep/FINAL-REPORT.md`）仅为文件落盘，不改变主仓库 git 状态。
