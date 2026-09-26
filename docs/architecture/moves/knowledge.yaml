@@ -2,42 +2,7 @@
 module: knowledge
 description: 知识库、文档、Chunk、Tag、FAQ、Wiki、graph、检索、语义索引（§5.2/§5.18）
 move_packages:
-  - from: internal/application/repository/retriever/doris
-    to: internal/modules/knowledge/retriever/doris
-  - from: internal/application/repository/retriever/elasticsearch
-    to: internal/modules/knowledge/retriever/elasticsearch
-  - from: internal/application/repository/retriever/elasticsearch/v7
-    to: internal/modules/knowledge/retriever/elasticsearch/v7
-  - from: internal/application/repository/retriever/elasticsearch/v8
-    to: internal/modules/knowledge/retriever/elasticsearch/v8
-  - from: internal/application/repository/retriever/milvus
-    to: internal/modules/knowledge/retriever/milvus
-  - from: internal/application/repository/retriever/neo4j
-    to: internal/modules/knowledge/retriever/neo4j
-  - from: internal/application/repository/retriever/opensearch
-    to: internal/modules/knowledge/retriever/opensearch
-  - from: internal/application/repository/retriever/postgres
-    to: internal/modules/knowledge/retriever/postgres
-  - from: internal/application/repository/retriever/qdrant
-    to: internal/modules/knowledge/retriever/qdrant
-  - from: internal/application/repository/retriever/sqlite
-    to: internal/modules/knowledge/retriever/sqlite
-  - from: internal/application/repository/retriever/tencentvectordb
-    to: internal/modules/knowledge/retriever/tencentvectordb
-  - from: internal/application/repository/retriever/weaviate
-    to: internal/modules/knowledge/retriever/weaviate
-  - from: internal/application/service/retriever
-    to: internal/modules/knowledge/retriever
-  - from: internal/infrastructure/chunker
-    to: internal/modules/knowledge/chunker
-  - from: internal/infrastructure/docparser
-    to: internal/modules/knowledge/docparser
-  - from: internal/infrastructure/docparser/anydoc
-    to: internal/modules/knowledge/docparser/anydoc
-  - from: internal/infrastructure/semantic
-    to: internal/modules/knowledge/semantic
-  - from: internal/searchutil
-    to: internal/modules/knowledge/searchutil
+  []
 legacy_files:
   - path: internal/application/repository/kbshare.go
     reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
@@ -255,62 +220,9 @@ legacy_files:
     passb_task: B-knowledge
 owned_files:
   move_sources:
-  - internal/application/repository/retriever/doris
-  - internal/application/repository/retriever/elasticsearch
-  - internal/application/repository/retriever/elasticsearch/v7
-  - internal/application/repository/retriever/elasticsearch/v8
-  - internal/application/repository/retriever/milvus
-  - internal/application/repository/retriever/neo4j
-  - internal/application/repository/retriever/opensearch
-  - internal/application/repository/retriever/postgres
-  - internal/application/repository/retriever/qdrant
-  - internal/application/repository/retriever/sqlite
-  - internal/application/repository/retriever/tencentvectordb
-  - internal/application/repository/retriever/weaviate
-  - internal/application/service/retriever
-  - internal/infrastructure/chunker
-  - internal/infrastructure/docparser
-  - internal/infrastructure/docparser/anydoc
-  - internal/infrastructure/semantic
-  - internal/searchutil
+    []
   move_targets:
-    - internal/modules/knowledge/retriever/doris
-    - internal/modules/knowledge/retriever/elasticsearch
-    - internal/modules/knowledge/retriever/elasticsearch/v7
-    - internal/modules/knowledge/retriever/elasticsearch/v8
-    - internal/modules/knowledge/retriever/milvus
-    - internal/modules/knowledge/retriever/neo4j
-    - internal/modules/knowledge/retriever/opensearch
-    - internal/modules/knowledge/retriever/postgres
-    - internal/modules/knowledge/retriever/qdrant
-    - internal/modules/knowledge/retriever/sqlite
-    - internal/modules/knowledge/retriever/tencentvectordb
-    - internal/modules/knowledge/retriever/weaviate
-    - internal/modules/knowledge/retriever
-    - internal/modules/knowledge/chunker
-    - internal/modules/knowledge/docparser
-    - internal/modules/knowledge/docparser/anydoc
-    - internal/modules/knowledge/semantic
-    - internal/modules/knowledge/searchutil
-    # alias (no-logic forwarding) packages left at the old paths above, deleted in Pass B:
-    - internal/application/repository/retriever/doris
-    - internal/application/repository/retriever/elasticsearch
-    - internal/application/repository/retriever/elasticsearch/v7
-    - internal/application/repository/retriever/elasticsearch/v8
-    - internal/application/repository/retriever/milvus
-    - internal/application/repository/retriever/neo4j
-    - internal/application/repository/retriever/opensearch
-    - internal/application/repository/retriever/postgres
-    - internal/application/repository/retriever/qdrant
-    - internal/application/repository/retriever/sqlite
-    - internal/application/repository/retriever/tencentvectordb
-    - internal/application/repository/retriever/weaviate
-    - internal/application/service/retriever
-    - internal/infrastructure/chunker
-    - internal/infrastructure/docparser
-    - internal/infrastructure/docparser/anydoc
-    - internal/infrastructure/semantic
-    - internal/searchutil
+    []
   importers:
   - internal/agent
   - internal/agent/tools
