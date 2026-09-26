@@ -27,3 +27,17 @@ test('the release build script is a reproducible prebuild -> pods -> Release pip
   assert.match(script, /babel-preset-expo/, 'pnpm 工作区下 babel-preset-expo 链接守卫（B3 实测缺失即 Metro 打包失败）');
   assert.match(script, /Release-iphonesimulator\/WeKnora\.app/, '脚本末尾必须解析出 .app 产物路径');
 });
+
+test('the acceptance probe script installs before probing and records the no-credential paths', () => {
+  const script = scriptOf('ios-acceptance-run.sh');
+  assert.match(script, /set -euo pipefail/);
+  const installAt = script.indexOf('simctl install');
+  const launchAt = script.indexOf('simctl launch');
+  assert.ok(installAt >= 0 && launchAt > installAt, '必须先 install 再 launch——证据来自安装包，不是浏览器 prototype（AC1）');
+  assert.match(script, /recordVideo/, '冷启动必须有录屏证据（AC2 cold-start）');
+  assert.match(script, /simctl uninstall/, '冷启动探针前必须干净卸载（首装冷启动口径）');
+  assert.match(script, /weknora:\/\/tasks\/detail/, '未授权深链 fail-closed 探针必须包含详情深链（越权面最强探针）');
+  assert.match(script, /simctl push/, '未授权推送投递探针（AC2 撤销/越权面）');
+  assert.match(script, /revoke microphone/, '麦克风拒权探针（AC2 permission-denied）');
+  assert.match(script, /NSException\|SIGTRAP/, '日志崩溃筛查必须覆盖 NSException/SIGTRAP 口径（B4 同款）');
+});
