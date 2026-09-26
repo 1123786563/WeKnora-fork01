@@ -146,3 +146,47 @@
 | web 全量（node26） | `node --import tsx --test 'src/**/*.test.ts' 'src/**/*.test.tsx'` | 2305/2305 PASS |
 | web 商业面（node26） | `npx tsx --test 'src/commercial/**/*.test.ts(x)'` | 22/22 PASS |
 | 安全红线自查 | diff 审查 | 无新增 SQL/凭据/外呼 host；外呼沿用既有 S1 host 校验路径 |
+
+## 真实流程验证失败修复 第 2 轮（flowfix-82 r2，2026-09-27）
+
+验证环境（复验轮 1 之后的失败项 F-5/F-2'/F-4/F-3'）：worktree @ ed779a2a8 重建后端（sqlite data/issue82-r4v2.db）、Lago 82flow 栈 :48889、支付宝 stub、node v26.4.0；主角 tenant 9、订单 ord_450538d2bbae2c55；证据提交 591af74b8（r4-flow2/）。修复提交 `de4f5dd86`。本轮修复期间 82flow 栈仍存活，**全部判据先在活栈实证再落码**。
+
+### R-23（F-5，高）base 订阅的 finalized 发票使购买投影永久坍塌
+
+- **根因**：`readPurchaseInvoiceFees` 按 `external_customer_id` 全查 finalized 并把「>1 张」当数据异常 fail-closed——lazy base onboarding（`GET /account` 触发，生产常态）会建 `-sub` 订阅并产生 0 元月度发票 auto-finalize，customer 名下恒有 ≥2 张 finalized → active 分支整体 `invalid_response` → `/purchase` 恒 `{state:absent,reason:invalid_response}`、billing/checkout「已生效」不可达（f5-purchase-collapse.txt：两张发票 d4d69920/ba5b262d）。
+- **活栈实证（本轮修复前探测）**：v1.53 invoices 索引行不带订阅身份、`external_subscription_ids[]`/`subscription_external_id` 过滤参数均被忽略（两参试查仍返回全集）；**发票详情的 fee 带 `external_subscription_id`**（购买发票 fee=weknora-tenant-9-purchase/1650，base 发票 fee=weknora-tenant-9-sub/0），索引分页 `meta.next_page` 数字/null。
+- **修复（采纳报告方向 fees→subscription）**：`finalizedInvoiceIDs` 分页拉索引（per_page=100、10 页预算，超限 fail-closed）；逐张读详情，取 `item.type=="subscription" && fee.external_subscription_id==购买订阅` 的 fee 行；恰 1 张购买发票→fees+payment_status、0 张→awaiting 空、>1 张→数据异常 fail-closed（原 fail-closed 语义保留，仅定位谓词收紧到购买订阅）。代价披露：每次快照对每张 finalized 发票一次详情读（长历史租户读放大），正确性优先、读路径非热点。
+- **活栈端到端实证（修复后，tenant 9 失败现场原样）**：purchase face `state=active`、`fees=[{subscription_fee, Pro, 1650}]`、`payment=succeeded`（修复前 invalid_response 塌缩）。
+- **回归锁定**：`TestLagoReadPurchaseInvoiceFeesIgnoresBaseSubscriptionInvoices`（base 0 元发票+购买发票并存→恰购买行、两张详情各读一次）；既有「两张购买发票 fail-closed」用例语义不变。**T9 集成测试全量本轮未跑**（7 个 operator-owned env 含真实 Stripe TEST key，容器内不可得，r4 轮证据为修复前代码）——披露。
+
+### R-24（F-2'，中）entitlements 解析字段与 pinned v1.53 形状不符 + 值语义收口
+
+- **根因**：c5a1917bb 只改对了路由，解析仍读 `feature_code`/`feature.code`；活栈两腿 curl 实证 v1.53 形状为 `{"entitlements":[{"code":…,"name":…,"privileges":[],"overrides":{}}]}` → features 仍恒空。
+- **修复**：解析接受 `code` 为主形状、旧形状容错（`TestLagoBenefitsFeaturesParseToleratedShapes` 三形状表驱动）；walletsStub 默认 entitlements 改真实形状（既有测试即实证真形状解析）。
+- **值语义深挖（本轮新发现并在服务层收口）**：活栈 base 腿 entitlements 含 **advanced_models/api_access/priority_support 全部三个 code**——发布腿 `attachEntitlements` 对 map 的**每个 key**（含 false 特性）都挂 entitlement，故 entitlement **存在性 ≠ 产品布尔真值**；纯存在性映射会让 base-only 租户误显示 advanced_models。收口（benefits.go `effectiveFeatures`）：**发布定义是值真值**（base 定义布尔为准）；购买 ACTIVE 时 OR 其 plan 的定义（经 purchase 快照 PlanCode→FindPublicationByCode→definitionOf；购买腿读取失败不破坏 benefits 面，静默退回 base 真值）；entitlement 物化仅补充定义未知的 code。`TestBenefitsFeaturesPurchaseFaceORsPurchasePlanDefinition` 锁定：base-only advanced_models=false、购买后 true、api_access 恒 true。
+- **活栈实证**：修复后 adapter 快照 features=`{advanced_models:true, api_access:true, priority_support:true}`（购买者腿并集）；产品面经 effectiveFeatures 得 base OR pro 定义。
+
+### R-25（F-4，中）购买 Credits 批次不在产品 benefits.credits 视图
+
+- **根因（两层）**：① 适配器批次过滤器只认 `weknora_period` meta/`<ext>-<YYYY-MM>` 名——购买钱包（meta 键 `weknora_purchase_period`、名 `<ext>-purchase-<YYYY-MM>`，D4 设计）被当 foreign `continue`；② 服务层 BatchView 由本地注册表（`commercial_credit_batches`，UNIQUE(tenant,period)）驱动且 `balances[period]` 为覆盖赋值——购买授权走 PurchaseFulfiller **不经协调器注册表**，即便适配器修好也会被注册表缺行/同月覆盖隐藏。
+- **修复（三层）**：lago.go 认 `weknora_purchase_period` meta 与 purchase 名前缀（fake.go `fakeWalletPeriod` 同修保持契约对等）；benefits.go 批次余额按 period **求和**（同月 base+购买聚合为一行月度余额，杜绝 last-write 任意性）+ 注册表缺失的快照独有 period 以快照过期时间并入视图（ oldest-first 确定性）。
+- **活栈实证**：tenant 9 的 2026-09 月度批次=2 条、合计 10_900_000 micro（base 1.0+购买 9.9），总余额 10.9。
+- **回归锁定**：`TestLagoBenefitsSnapshotIncludesPurchaseBatch`（适配器双批次+双倍余额）、`TestEnsureBenefitsPurchaseBatchJoinsCreditsView`（服务层 SUM+总额）、`TestRefreshProjectionUnionsSnapshotOnlyPurchasePeriod`（注册表缺行并入）、fake `TestFakeGrantPurchaseWalletNoMonthlyCollision` 扩批次断言。
+
+### R-26（F-3'，低）typecheck:web 残留 5 错——维持 R-22 判定，不改码
+
+与 R-22 同判：DevMarkdownPage.tsx/PlatformShell.tsx/mermaid.ts 共 5 错，最后改动 89e17fb6a（预存、#82 未触碰该三文件），本轮 web 面零改动未复跑全量（r4 轮 node26 test:web 全量 exit=0 已证测试面环境致败不成立）。建议独立票清偿。
+
+### flowfix-82 r2 回归清单（本会话实跑）
+
+| 检查 | 命令 | 结果 |
+|---|---|---|
+| commercialplatform 全包 | `go test ./internal/modules/commercial/commercialplatform/ -count=1` | ok（75s） |
+| service 全包 | `go test ./internal/modules/commercial/service/commercial/ -count=1` | ok |
+| 定向新/邻接用例 | `-run 'TestLagoReadPurchaseInvoiceFees…|TestLagoBenefits…|TestFakeGrantPurchaseWallet…|TestBenefitsFeaturesPurchaseFace…'` 等 -v | 全 PASS（含 6 个新增） |
+| 10 包回归 | `go test ./internal/modules/commercial/... ./internal/handler/ ./internal/router/ ./internal/container/ -count=1` | 全 ok |
+| 架构门 | `make check-backend-architecture` / `make verify-module-moves` | 0 violations / 16 OK |
+| 集成编译门 | `go vet -tags lago_integration ./internal/modules/commercial/commercialplatform/` | clean |
+| **活栈端到端（82flow :48889，tenant 9 失败现场）** | 临时 `-tags flowverify_live` 测试（验后已删）经真实 adapter 读 purchase/benefits 快照 | F-5 active+1650+succeeded；F-2' features 三 code；F-4 月度 10.9 —— 全 PASS |
+| T9 真实栈全量 | — | **未跑**（Stripe key 等 7 env 不可得；活栈验证覆盖被改读取路径） |
+| 安全红线自查 | diff 审查 | 无 SQL 改动（既有参数绑定不动）、无凭据入文件（活栈 key 仅 shell env）、无新外呼路径 |
