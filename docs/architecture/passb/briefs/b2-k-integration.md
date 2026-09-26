@@ -44,7 +44,7 @@ func (m *Module) Stop(ctx context.Context) error
 | SemanticInternal | *kbhandler.SemanticInternalHandler | 同上（container.go:197 区段） |
 | PendingWikiRecovery（可选） | func(ctx context.Context) | 生产值 = container 侧 `recoverPendingWikiTasks` 等价闭包（(c)）；nil 时 Start no-op |
 
-`HandlerSet` 字段与 `Dependencies` 路由供给段一一对应（7 组已落位；其余 5 组 handler 为 K2/K4 宿主推迟件——RegisterKnowledgeRoutes/RegisterKnowledgeBaseRoutes/RegisterKnowledgeBaseActivityRoutes 的 KnowledgeHandler/KnowledgeBaseHandler/AuditLogHandler 与 serveKBScopedFiles——ib2/补迁窗后增补 `Dependencies`/`HandlerSet` 字段，装配面扩展非契约变更）。
+`HandlerSet` 字段与 `Dependencies` 路由供给段一一对应（7 组已落位；其余 4 项为宿主推迟件：3 组 handler——RegisterKnowledgeRoutes/RegisterKnowledgeBaseRoutes/RegisterKnowledgeBaseActivityRoutes 的 KnowledgeHandler/KnowledgeBaseHandler/AuditLogHandler——与 serveKBScopedFiles 文件服务面（非 handler 供给，无字段）；ib2/补迁窗后增补 `Dependencies`/`HandlerSet` 字段，装配面扩展非契约变更）。
 
 ## (a) 11 路由注册切换表（§7.1 全表；宿主→模块 HandlerSet 供给；RBAC/路由计数 633 零变化声明）
 

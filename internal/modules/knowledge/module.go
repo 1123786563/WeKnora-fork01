@@ -61,8 +61,11 @@ type Dependencies struct {
 	KnowledgeAutoTag     interfaces.TaskHandler // dig name "knowledgeAutoTag"
 	WikiIngest           interfaces.TaskHandler // dig name "wikiIngest"
 
-	// 路由块 handler 供给面（7 个；§7.1 全表中已落位模块包的组，其余 5 组
-	// handler 为 K2/K4 宿主推迟件，ib2/补迁窗后增补字段——装配面扩展，非契约变更）。
+	// 路由块 handler 供给面（7 个；§7.1 全表 11 项中已落位模块包的组，其余
+	// 4 项为宿主推迟件：3 组 handler（RegisterKnowledgeRoutes/
+	// RegisterKnowledgeBaseRoutes/RegisterKnowledgeBaseActivityRoutes）+
+	// serveKBScopedFiles 文件服务面（非 handler 供给，无字段）；ib2/补迁窗后
+	// 增补字段——装配面扩展，非契约变更）。
 	Chunk               *ingest.ChunkHandler                  // RegisterChunkRoutes（routes_knowledge.go:28）
 	ChunkerDebug        gin.HandlerFunc                       // RegisterChunkerDebugRoutes（:18）；生产值 ingest.PreviewChunking（chunker_debug.go:123）
 	WikiPage            *wiki.WikiPageHandler                 // RegisterWikiPageRoutes（:309）

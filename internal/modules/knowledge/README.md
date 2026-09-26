@@ -59,7 +59,7 @@ func (m *Module) Stop(ctx context.Context) error
 
 - **Dependencies**：16 必填装配依赖（9 worker 分发面 = `router.AsynqTaskParams`/`SyncTaskParams` knowledge 子集 + 7 路由 handler 供给）+ 1 可选 `PendingWikiRecovery`；构造仍在 dig 容器（集成工程师独占），门面只收已构造实例（窄端口注入，spec §4.3）。缺失必填字段返回列出全部缺失名的错误。
 - **RegisterWorkers**：18 任务类型按稳定序登记进 Redis/Lite 双栈 `bootstrap.WorkerRegistry` 并以 `bootstrap.VerifyWorkerParity` 校验双栈一致；与 `router/task.go`、`router/sync_task.go` 现行注册行逐条同构。
-- **RegisterRoutes**：交付 7 组已落位 handler 的 `HandlerSet`（路由体与 rbacGuards 留驻 `internal/router`，本包不复刻路由表——双写禁令）；其余 5 组 handler 随 K2/K4 推迟件补迁增补字段。
+- **RegisterRoutes**：交付 7 组已落位 handler 的 `HandlerSet`（路由体与 rbacGuards 留驻 `internal/router`，本包不复刻路由表——双写禁令）；其余 4 项为宿主推迟件（3 组 handler：RegisterKnowledgeRoutes/RegisterKnowledgeBaseRoutes/RegisterKnowledgeBaseActivityRoutes + serveKBScopedFiles 文件服务面），ib2/补迁窗后补迁增补字段。
 - **Start/Stop**：唯一生命周期挂点 = `recoverPendingWikiTasks` 等价入口（nil 时 no-op；幂等）；Stop 预留对称面。
 
 **ib2 切换指针**：装配切换申请（11 路由形参切换 / 18 worker 双栈装配 / hook 切 Start / seam 接线 / shim 删除批 / 推迟件裁定）见 `docs/architecture/passb/briefs/b2-k-integration.md` (a)–(h)。门面当前为 M4 预备态（纯新增装配面、零生产引用），ib2 切换前无消费者。
