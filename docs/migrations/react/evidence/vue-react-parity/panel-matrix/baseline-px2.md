@@ -54,7 +54,7 @@
 
 | id | 基线% | 备注 |
 |---|---|---|
-| px2-settings-runtimequeues-autorefresh | 0 | 自动刷新开关（客户端 5s 轮询，无服务端写；clickAria 先行因 React 该页 2 个 switch 须唯一定位） |
+| px2-settings-runtimequeues-autorefresh | 0 | ✅ 终值 0（基线即零；2026-09-26 worktree pp2/system 复扫确认 run `auto-scan/2026-09-26T04-43-02`，PARITY_REACT_URL=:5293，1/1 成功 0%）。自动刷新开关（客户端 5s 轮询，无服务端写；clickAria 先行因 React 该页 2 个 switch 须唯一定位）；受影响域测试 70/70 绿（SettingsPage/surface/router/routes，node v26.4.0） |
 
 ### chat 域（1 项）
 
