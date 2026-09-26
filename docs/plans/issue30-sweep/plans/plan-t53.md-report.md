@@ -1175,3 +1175,61 @@ VET-OK
 - 修复语义：审查员方案（id 补第 6 段 `:official`）逐字采纳；补充的 3 行注释把 id 形状契约（6 段 + official 归一化）钉在测试现场，防止后续漂移复发。
 - 回归面评估：仅测试文件内一行数据 + 注释，无跨包引用（测试代码不进生产构建）；workbench 全包 27/27 与 vet 双重覆盖。
 - 待核实项回应：557 分片存档日志（`/tmp/t53-shards/part_a{a..f}.log`）未复跑——维持上轮声明与审查员的合理性采信；TDD 时序声明、base 325 名单 diff、blocked-env 真实 GitHub 门控四项均维持上轮状态，本轮无新增可补证据。
+
+---
+
+# 终局审查处置留痕：越界触碰清单外他人测试文件（不阻塞，授权证据链固化）
+
+> 追加于终局修复轮（t53 final-fix，2026-09-27）。终局审查唯一 finding（minor）：收口段 `2f28de54a` / `c59690540` 触碰计划文件清单外的他人测试文件。本节把该越界的授权证据链固化到事实源，替代此前散落在 commit message 与 gate-report 中的记录。
+
+## 1. Finding 与事实核实
+
+**Finding**：`notification_delivery_test.go:487`（`internal/modules/workbench/service/workbench/`）与 `agent_run_test.go:346`（`internal/application/repository/`）不在 `plan-t53.md` 任一 Task 的 Files 清单内，被收口段两 commit 触碰。
+
+**事实核实（终局修复轮现场复核，全部为本次实跑）**：
+
+| 核对项 | 命令 | 结果 |
+|---|---|---|
+| 两文件确不在计划清单 | `grep -n "notification_delivery_test\|agent_run_test" docs/plans/issue30-sweep/plans/plan-t53.md` | 退出码 1，零命中——finding 成立 |
+| 越界触碰 | `git show --stat 2f28de54a` / `git show --stat c59690540` | 前者 +4/-1（notification_delivery_test.go），后者 +12（agent_run_test.go），均零生产代码 |
+
+## 2. 授权证据链（既有记录 + 本轮复跑复核）
+
+**既有记录**：
+
+- 主控决策：`plan-t53.md-report.md:1117`（本文件上文）——审查员独立验证零因果三点成立后「主控决策：修测试」；第一轮执行员依授权清单拒修留主控（`:1087`）。
+- base 铁证（第一轮记录）：`gate-report.md:13,25-33`——`TestAgentRunPostgres/postgres/reopen_migrations` 在 base `47518e5e5` detached worktree 同样 2BP01，串行 3/3 复现，变更面 diff 为空。
+- RED→GREEN 记录：`plan-t53.md-report.md:1121-1180`——RED `expected int(1) actual int64(0)` → GREEN workbench 全包 27/27。
+
+**本轮复跑复核（2026-09-27，worktree HEAD `c59690540`）**：
+
+GREEN（修复后现状）：
+
+```
+$ go test ./internal/modules/workbench/service/workbench/ -run 'TestNotificationDeliveryRejectsResolvedInteractionAfterClaim' -count=1 -v
+--- PASS: TestNotificationDeliveryRejectsResolvedInteractionAfterClaim (1.75s)
+ok      github.com/Tencent/WeKnora/internal/modules/workbench/service/workbench 5.344s
+
+$ TRPC_TEST_POSTGRES_DSN=... go test ./internal/application/repository/ \
+    -run 'TestAgentRunPostgres|TestAgentRunReopenAndMigrations' -count=1 -timeout=20m -v
+--- PASS: TestAgentRunReopenAndMigrations (2.51s)          ← sqlite 轨
+--- PASS: TestAgentRunPostgres (44.69s)                    ← 含 postgres/reopen_migrations 全 6 子测试
+ok      github.com/Tencent/WeKnora/internal/application/repository  49.709s
+```
+
+RED（`git worktree add /tmp/t53-final-red-check 47518e5e5` detached base，复跑后已 remove）：
+
+```
+$ go test ./internal/modules/workbench/service/workbench/ -run 'TestNotificationDeliveryRejectsResolvedInteractionAfterClaim' -count=1
+    notification_delivery_test.go:489: expected: int(1) / actual: int64(0)
+FAIL   （与 plan-t53.md-report.md:1132 记录的 RED 逐字一致）
+
+$ TRPC_TEST_POSTGRES_DSN=... go test ./internal/application/repository/ \
+    -run 'TestAgentRunPostgres/postgres/reopen_migrations' -count=1
+    agent_run_test.go:350: ERROR: cannot drop table agent_runs because other objects depend on it (SQLSTATE 2BP01)
+FAIL   （与 gate-report.md:25-27 记录的 RED 逐字一致）
+```
+
+## 3. 处置结论
+
+**判定维持：合理，不阻塞。** 两处均为 Task 0 迁移集成（`4b36054fe`）后才首次真正执行的既有测试缺陷；修复属"使计划门控（workbench 27/27、repository 557 分片 + PG 轨取证）通过所需的最小问题"，越界经主控决策授权（上节记录），零生产代码变更，base RED 与修复后 GREEN 本轮均独立复现。无需回滚、无需代码变更；本节即终局留痕。
