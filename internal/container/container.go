@@ -980,6 +980,12 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// grant row.
 	must(container.Provide(repoappconn.NewOCStore))
 	must(container.Provide(repoappconn.NewInstallationStore))
+	// T23 (#53) task 3: the grant store itself must be a dig provider — the
+	// guard closure below takes *SpaceConnectionGrantStore, and without this
+	// line the container fails at startup with "missing type"
+	// (plan step 5(c) omitted it; gap proven by a one-off dig resolution
+	// test before this line was added).
+	must(container.Provide(repoappconn.NewSpaceConnectionGrantStore))
 	must(container.Provide(func(src appconnectorsvc.ConnectionCredentialSource,
 		installs *repoappconn.InstallationStore, grants *repoappconn.SpaceConnectionGrantStore,
 		oc *repoappconn.OCStore,
