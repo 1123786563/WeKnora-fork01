@@ -1,0 +1,61 @@
+# T39 iOS 安装包核心工作流验收报告（Issue #69）
+
+- 日期/执行者：2026-09-26 / 实现员-t69-任务6（子代理，Task 6「执行整条管线 + 验收报告 + 全量回归」）
+- Worktree HEAD（被测源码状态）：`754337769`（apps/mobile 生产源码自该 commit 未再变更；本任务随后的提交仅为脚本修复与本文档/证据，不影响被测包内容）
+- 被测对象：apps/mobile @ `754337769`，`apps/mobile/ios/build/Build/Products/Release-iphonesimulator/WeKnora.app`（Release-iphonesimulator，builtAt `2026-09-26T16:12:28+08:00`，含 expo-audio ~55.0.18 / expo-network ~55.0.18）
+- 模拟器：iPhone 18 Pro（`0A38DB71-CEE1-4A89-8B19-6DD24A3E85FC`），iOS 27.0 (24A434)，Xcode 27.0 (27A266a)
+- 机器门产物：`t39/t39-record.json`（`pnpm exec tsx apps/mobile/scripts/emit-acceptance-record.ts docs/plans/issue30-sweep/ios-evidence/t39-outcomes.json` → **exit 0**，13 条目；outcomes 文件凭据字样 `/password|token|email/i` 零命中）
+- **验收结论（不美化）：13 个验收项中 5 项 evidenced（全部 `installed-package`，来自本任务实跑）+ 8 项 blocked-env（如实登记，不计为通过）。AC1 达成；AC2 四路径全部有记录（2 项安装包 evidenced、2 项 blocked-env + 行为级回归）；AC3 机器门形态通过、真实部署集成证据被凭据缺失阻塞。Issue 级验收在拿到真实部署凭据 / APNs 凭据 / 真机前保持 blocked，本报告不得被引用为「全部通过」。**
+
+## AC1 证据来自安装包（非浏览器 prototype）
+
+- 构建管线：`bash apps/mobile/scripts/ios-release-build.sh "$(pwd)"` → exit 0，末行 `RELEASE_APP=…/WeKnora.app`，日志 `** BUILD SUCCEEDED **`（全量日志入库 `t39/xcodebuild-release.log`，6345 KB）。prebuild → babel-preset-expo 守卫 → pod install → xcodebuild Release 四步幂等重放。
+- **Task 1 原生依赖真实入包证据**（本任务实测）：`Podfile.lock` 含 `ExpoAudio (55.0.18)`/`ExpoNetwork (55.0.18)`；主二进制 `nm -U` 实测 ExpoAudio 相关符号 1420 个、ExpoNetwork 相关符号 83 个（静态链接；Frameworks/ 仅 React/ReactNativeDependencies/hermesvm 三个动态框架）；`PlistBuddy -c "Print :NSMicrophoneUsageDescription"` 输出 `WeKnora uses the microphone for voice dictation and live voice sessions.`。
+- 安装/冷启动/登录页：`t39/cold-start.mov`（首装冷启动全程录屏，4.7MB）、`t39/01-cold-start-2s.png`（splash wordmark）、`t39/02-login-screen-11s.png`（登录表单：origin/Email/Password/Sign in/SSO）——对应记录中 `cold-start` 与 `sign-in` 两条 evidenced。
+- 探针先安装后启动：`ios-acceptance-run.sh` 源级断言钉住 `simctl install` 先于 `simctl launch`（AC1 口径），本轮实跑遵循该序。
+
+## AC2 弱网、拒权、冷启动、撤销四路径记录
+
+- **cold-start**：安装包证据 = `t39/cold-start.mov` + `01`/`02`（干净卸载 → 首装 → 录屏 → 2s/11s 截图）。真实部署 harness 活体（`coldBootRestore`）= **skip（无凭据，skip 不是 pass）**；行为级回归（fake-server，真实 Runtime/boot/文件持久凭据跨实例代码路径）已验证 `coldBootRestore='authorized-restored'` 可产出，**不冒充真实部署证据**。
+- **permission-denied**：安装包证据 = `t39/07-after-mic-revoked.png`（`simctl privacy revoke microphone` → 重启 3s 处存活画面）+ `t39/08-after-mic-revoked-settled.png`（settle 后登录页，进程 21650 存活）+ 崩溃筛查 0 命中。拒权 fail-closed 文案由既有单测钉住（`apps/mobile/src/dictation-view.test.ts:16-23`，`DICTATION_FAILURE_COPY.denied` 非空且为可行动文案）。
+- **weak-network**：真实部署 harness 活体（`weakNetwork`/`weakNetworkStartRequests`/`distinctRunIds`）= **skip（无凭据）**；宿主级 dummynet 真实弱网 = blocked-env（需 sudo 改 pf，宿主状态变更须人工批准）。行为级回归（fake-server + 真实 transport/runtime/task-office 全链路）实测：首枚 Start 派发被拦断后经 lookup admission 收敛同一 run —— `weakNetwork='reconciled-same-run'`、`distinctRunIds=1`、`weakNetworkStartRequests=1`（重续经 lookup 对账、从不重发 Start，与 `packages/domain/src/mobile/submission.ts` 的状态机口径一致）。该回归证明**接线与单写者幂等语义在代码层成立**，不冒充真实弱网证据。
+- **revocation**：安装包证据（未授权/越权面）= `t39/03-deeplink-tasks-unauthorized.png`（「请先登录并激活空间，再查看任务列表。」）、`t39/04-deeplink-ask-unauthorized.png`（「Sign in to ask a knowledge question.」）、`t39/05-deeplink-detail-unauthorized.png`（「无法读取该任务/请先登录并激活空间，再打开任务详情。」——**详情深链未渲染任何任务内容，无越权泄漏**）、`t39/06-push-unauthorized-fail-closed.png` + `t39/push-process-alive.txt`（投递尝试后进程存活）。真实部署 harness 活体（signOut 后第三实例不复活）= **skip（无凭据）**；fake-server 行为级回归已验证 `revocation='revoked'` 路径，不冒充真实证据。
+
+## AC3 最高稳定 Interface（不冒充）
+
+- 机器门产物：`t39/t39-record.json`，`emit-acceptance-record.ts` **exit 0**；门语义（三形冒充拒绝/not-run 恒违规/blocked-env 必须带理由/installed-package 必须带产物路径）由 `apps/mobile/src/ios-release-evidence.test.ts` 6 用例钉住（本轮全量回归含）。
+- integration-harness 家族本轮实跑结果（**skip 不是 pass**）：
+  - `ios-core-workflow-integration-smoke.test.ts`：4 tests / 3 pass / 1 skipped——skip 的是活体组合用例（`missing WEKNORA_MOBILE_TEST_DEPLOYMENT_URL/EMAIL/PASSWORD`）；3 个 pass 为 opt-in 门、total 化 runner、fake-server 死接线回归（行为级，非真实部署证据）。
+  - 四条与九流直接相关的既有 smoke 同口径复跑（`task-start` / `offline-vault` / `device-inbox` / `voice-dictation`）：12 tests / 8 pass / 4 skipped——4 个 skip 全部是活体用例（缺凭据），8 个 pass 为各 smoke 的 opt-in 门、total 化与脱敏断言（结构级）。
+  - 因此本记录中**没有任何一条 evidenced 以 `integration-harness` 为来源**——真实部署活体证据被凭据缺失阻塞，全部如实落 blocked-env，不以结构级 pass 冒充。
+- AC3 合规自查：5 条 evidenced 全部 `installed-package` 且证据文件真实存在（01–08、cold-start.mov）；fake-server 回归在报告中的措辞始终是「行为级回归」，从未被计入证据处置。
+
+## 实跑缺陷与处置（Task 6 差异节）
+
+1. **Task 4 脚本缺陷（已修复，落回 `apps/mobile/scripts/ios-acceptance-run.sh`）**：首次实跑在未授权推送探针处中止——未授权源上系统拒绝投递（`UNErrorDomain 2003` "Repository could not save notification. Source is not authorized."），`simctl push` 非零退出在 `set -e` 下中止整条管线（01–05 已产出，06/07/日志门未执行）。修复（TDD，RED→GREEN）：`ios-acceptance-scripts.test.ts` 新增用例 `the unauthorized push probe tolerates system rejection and archives the outcome honestly`（RED 实跑 1 fail）→ 脚本改为 `if ! xcrun simctl push … 2> push-error.txt` + `PUSH_DELIVERY_REJECTED` 显式标记 + 截图更名 `06-push-unauthorized-fail-closed.png`（不预设「已送达」）→ 3/3 pass（GREEN）→ 管线复跑 exit 0、`FATAL_LOG_HITS=0`、`ACCEPTANCE_PROBES_OK`。
+2. **notification 处置降级（按实跑结果，不反向美化）**：计划预期形态把 notification 记为 evidenced（06「推送到达且应用未崩溃」）；实跑结果是投递被系统以未授权为由拒绝，「到达」不可证 → 按计划「按实际结果降级处置」规则改记 blocked-env（reason 内点名 UNErrorDomain 2003 与缺失的 APNs 凭据，并引用 06/push-error.txt/push-process-alive.txt 作为 fail-closed 存活的辅助指针）。
+3. 补充证据 `t39/08-after-mic-revoked-settled.png`：计划人工确认口径要求「拒权后重启仍正常渲染登录页」，07（+3s）停在 splash，故补拍 settle 后画面证实登录页渲染、进程存活。
+
+## blocked-env（不计为通过，未满足项保持阻塞）
+
+1. **真机分发**：Apple 开发者账号/签名证书/物理 iPhone 缺失——本轮口径为模拟器安装包证据（iPhone 18 Pro / iOS 27.0），真机复验挂账。
+2. **APNs 真实远程推送**：无推送凭据。本轮新增实测：连本地 `simctl push` 模拟投递都被系统以「Source is not authorized」拒绝（`t39/push-error.txt`）——未授权包上连本地模拟投递都无法证明「到达」，授权到达路径完全待真凭据。
+3. **授权面九流的安装包内自动化路径**：idb companion 不可用（tap/输入级自动化缺失）+ 无 deployment 凭据（登录表单无法自动填写）→ 包内授权流由持凭据人工路径执行（见下节清单）；自动化替代证据 = opt-in 真实部署集成 harness，本轮全部 skip（无凭据），fake-server 行为级回归不冒充。
+4. **宿主级真实弱网**：dummynet 需 sudo 改 pf 规则（宿主状态变更须人工批准），本轮未执行；替代 = transport 注入弱网组合证据（代码层已由回归验证接线，真实部署活体待凭据）。
+5. **系统分享面板**：true external（spec 明示 real-device acceptance separately）；本地替代 = material smoke 的授权/预览/字节下载通道（活体待凭据）。
+
+## 人工路径清单（持凭据运营者复验用）
+
+1. 登录：填部署 origin + 账号 → Sign in → 预期进入授权面 Home（对应 `sign-in` 条目升级为授权后证据）。
+2. 切租户：空间切换入口选第二空间 → 预期首页/任务列表随活动空间刷新（对应 `tenant-switch`）。
+3. 发任务：New 屏提交目标 → 预期 Start 回执 bound、详情页 SSE 流式更新（对应 `task`）。
+4. 后台恢复：Home 键退后台 ≥30s → 回前台 → 预期详情续流、不重复派发（对应 `background-recovery`）。
+5. 离线草稿：飞行模式后提交 → 预期离线门拦截入草稿；恢复网络后重提交成功（对应 `offline-draft`）。
+6. 通知：服务端触发通知 → Inbox 收到 → 点击深链 → 预期落在对应任务详情（对应 `notification`）。
+7. 材料分享：任务详情材料 → 系统分享面板 → 预期面板出现（true external，真机为准；对应 `download-share`）。
+8. 语音拒权：New 屏点麦克风 → 系统弹窗选拒绝 → 预期 `DICTATION_FAILURE_COPY.denied` 文案、无崩溃（对照安装包证据 07/08）。
+9. 登出后冷启动：signOut → 杀进程 → 冷启动 → 预期停在登录页、无会话复活（对照 fake-server 回归的 `revocation='revoked'` 路径）。
+
+## 证据文件清单（t39/）
+
+`01-cold-start-2s.png`、`02-login-screen-11s.png`、`03-deeplink-tasks-unauthorized.png`、`04-deeplink-ask-unauthorized.png`、`05-deeplink-detail-unauthorized.png`、`06-push-unauthorized-fail-closed.png`、`07-after-mic-revoked.png`、`08-after-mic-revoked-settled.png`、`cold-start.mov`、`app-launch-log.txt`、`push-payload.json`、`push-error.txt`、`push-process-alive.txt`、`t39-record.json`、`xcodebuild-release.log`；outcomes 源 `../t39-outcomes.json`。
