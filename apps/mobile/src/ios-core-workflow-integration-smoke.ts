@@ -139,7 +139,9 @@ export async function runIosCoreWorkflowIntegration(config: Extract<IosCoreWorkf
   let activeRuntime: MobileRuntime | undefined;
   try {
     // 第一实例：signIn 落盘凭据（createSecureCredentialStore → 文件）+ deploymentStore 记忆活动实例。
-    const first = runtimeOf({ credentialDir, fetcher: (input, init) => fetch(input, init as RequestInit) });
+    // weakStart 接线（修复轮 1）：弱网注入只挂在本实例——首枚 POST /workbench/executions 在请求
+    // 发出前拦断（2s 后 reject），非首次派发与 GET（lookup/agents/列表）全部放行。二/三实例不挂。
+    const first = runtimeOf({ credentialDir, fetcher: (input, init) => fetch(input, init as RequestInit), weakStart: true, startDispatches: dispatches });
     activeRuntime = first;
     const snapshot = await first.signIn({
       deployment: { origin: config.deploymentOrigin, label: 'T39 acceptance deployment' },
