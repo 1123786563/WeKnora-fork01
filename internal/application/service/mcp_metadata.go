@@ -43,6 +43,19 @@ func (s *mcpServiceService) loadServiceForMetadata(
 	if service == nil || tenant == 0 {
 		return nil, "", nil, types.ErrMCPServiceNotFound
 	}
+	// OCR 终局 F09: plugin-materialized rows keep their directory and
+	// instructions in the plugin domain (the accepted snapshot + the plugin
+	// APIs). Every metadata face reaching here must refuse them BEFORE any
+	// live call — RefreshMCPMetadata would otherwise Initialize+ListTools the
+	// live endpoint and hand the FULL directory (unaccepted capabilities,
+	// post-drift schemas) to a Viewer on an OAuth row (the handler's admin
+	// gate skips OAuth rows), the same leak the seven mcp_service.go guards
+	// close. The persist channel shares the verdict: the runtime load path
+	// stops calling metadata.Put for plugin rows (mcp_tool.go), so the
+	// plugin-row metadata cache is retired outright.
+	if service.PluginInstallationID != nil {
+		return nil, "", nil, ErrPluginManagedService
+	}
 	principal, err := metadataPrincipal(ctx, service)
 	if err != nil {
 		return nil, "", nil, err

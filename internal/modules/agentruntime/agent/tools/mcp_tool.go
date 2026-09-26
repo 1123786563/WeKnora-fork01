@@ -582,7 +582,13 @@ func loadPluginDirectory(
 	if snap != nil {
 		instructions = ""
 	}
-	if metadata != nil && metadata.Put != nil {
+	// OCR 终局 F09: skip metadata.Put for plugin rows entirely — the persist
+	// channel (PersistMCPMetadata) now refuses PluginInstallationID rows by
+	// sentinel, so calling it here would only log a guaranteed-failure Warn on
+	// every directory load. The plugin-row metadata cache is retired: the
+	// directory and instructions authority for plugin rows is the accepted
+	// snapshot served by the plugin domain APIs, never this cache.
+	if snap == nil && metadata != nil && metadata.Put != nil {
 		tenant, _ := types.TenantIDFromContext(loadCtx)
 		if persistErr := metadata.Put(loadCtx, tenant, service.ID, filtered, instructions); persistErr != nil {
 			logger.GetLogger(loadCtx).Warnf(

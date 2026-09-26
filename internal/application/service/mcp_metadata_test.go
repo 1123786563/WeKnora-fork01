@@ -138,3 +138,51 @@ func TestMCPMetadataRefreshAndOfflineEditing(t *testing.T) {
 	_, err = metadata.GetMCPMetadata(ctx, 1, "svc")
 	require.ErrorIs(t, err, types.ErrMCPOAuthPrincipalRequired, "OAuth metadata cannot be read without a principal")
 }
+
+// TestMCPMetadataRejectsPluginManagedService（OCR 终局 F09）：插件物化行的
+// 目录与说明由插件域 API（已接受快照）承载，MCP metadata 域三面
+// （Refresh/Get/Persist）对 PluginInstallationID 行统一 ErrPluginManagedService
+// ——尤其 Refresh（路由 Viewer+，OAuth 行跳过 Admin 门槛）不得直连 live 端点
+// 把完整目录（未接受能力/漂移后 schema）原样回给成员。守卫必须先于任何
+// live 连接：端点指向保留端口上的不可达回环时也返回哨兵而非连接错误，
+// 才能证明零外呼。
+func TestMCPMetadataRejectsPluginManagedService(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&types.MCPService{}, &types.MCPMetadata{}))
+	repo := repository.NewMCPServiceRepository(db)
+	manager := mcp.NewMCPManager(nil)
+	t.Cleanup(manager.Shutdown)
+	svc := NewMCPServiceService(repo, manager, nil)
+	metadata, ok := svc.(interfaces.MCPMetadataService)
+	require.True(t, ok)
+
+	// OAuth 插件物化行（成员可直达的最宽暴露面）；不可达端点用于证明守卫
+	// 先于任何 live 拨号。
+	deadEndpoint := "http://127.0.0.1:9/mcp"
+	installationID := "inst-f09"
+	require.NoError(t, repo.Create(context.Background(), &types.MCPService{
+		ID:                   "svc-plugin",
+		TenantID:             1,
+		Name:                 "plugin:jira",
+		Enabled:              true,
+		URL:                  &deadEndpoint,
+		TransportType:        types.MCPTransportHTTPStreamable,
+		PluginInstallationID: &installationID,
+		AuthConfig:           &types.MCPAuthConfig{AuthType: types.MCPAuthOAuth},
+	}))
+	ctx := types.WithPrincipal(
+		context.WithValue(context.Background(), types.TenantIDContextKey, uint64(1)),
+		types.Principal{Type: types.PrincipalWebUser, ID: "member-1"},
+	)
+
+	_, err = metadata.RefreshMCPMetadata(ctx, 1, "svc-plugin")
+	require.ErrorIs(t, err, ErrPluginManagedService,
+		"refresh must reject the plugin-materialized row before any live call — a Viewer+ route leaking the full live directory")
+	_, err = metadata.GetMCPMetadata(ctx, 1, "svc-plugin")
+	require.ErrorIs(t, err, ErrPluginManagedService,
+		"the metadata cache face serves plugin rows through the plugin domain APIs only")
+	err = metadata.PersistMCPMetadata(ctx, 1, "svc-plugin", nil, "")
+	require.ErrorIs(t, err, ErrPluginManagedService,
+		"the runtime persist channel must not maintain a plugin-row metadata cache (F 轮裁决：插件行缓存退役)")
+}

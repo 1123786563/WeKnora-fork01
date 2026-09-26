@@ -336,8 +336,11 @@ func TestRegisterMCPToolsRejectsDescriptionDrift(t *testing.T) {
 // TestRegisterMCPToolsPluginServiceLiveVerifiesAndPersistsFiltered（转交
 // T01-OCR1-F6 / T01-OCR2-F9）：插件物化服务的漂移核验必须对服务器实况——
 // metadata 持久化目录不是运行时核验基准，常规发现（live=false）不得拿缓存
-// 充当 live 目录；且过滤必须发生在持久化之前——落库目录不得含快照外工具。
-// manual 服务保持既有缓存语义（现状不变）。
+// 充当 live 目录。落库面随 OCR 终局 F09 裁决演进：插件行的 metadata 缓存
+// 整体退役（服务层 PersistMCPMetadata 对插件行返回 ErrPluginManagedService，
+// 见 TestMCPMetadataRejectsPluginManagedService）——运行时不得再对插件行
+// 调 metadata.Put（每次必失败的 Warn 噪音），插件目录/说明的权威面是插件
+// 域 API 的已接受快照。manual 服务保持既有缓存语义（现状不变）。
 func TestRegisterMCPToolsPluginServiceLiveVerifiesAndPersistsFiltered(t *testing.T) {
 	service, requests := guardControlledService(t, "snapshot_tool", "extra_tool")
 	manual := &types.MCPService{
@@ -386,13 +389,14 @@ func TestRegisterMCPToolsPluginServiceLiveVerifiesAndPersistsFiltered(t *testing
 
 	// 插件服务常规发现（无 refresh）：核验对实况——不吃持久化缓存
 	//（Get 对插件服务 0 次）、live 列举（外呼 >0）、只见快照内工具、
-	// 落库目录为过滤后版本（无 extra_tool）。
+	// 插件行零 metadata.Put（OCR 终局 F09 裁决：插件行 metadata 缓存退役，
+	// 服务层 Put 已对插件行返回哨兵——运行时再调只会落一条必失败的 Warn）。
 	page := discoverPage(ctx, t, registry, map[string]any{"mode": "list_tools", "server_id": service.ID})
 	require.Len(t, page.Tools, 1)
 	require.Equal(t, "snapshot_tool", page.Tools[0].Name)
 	require.Zero(t, pluginGets.Load(), "plugin directory must be verified against the live server, not the persisted cache")
 	require.Positive(t, requests.Load())
-	require.Equal(t, []string{"snapshot_tool"}, persistedNames, "the persisted directory must be filtered before it is written")
+	require.Empty(t, persistedNames, "plugin rows must not maintain a metadata cache (F 轮 F09: the persist channel rejects them; skip the doomed Put)")
 
 	// manual 服务：缓存语义现状不变——原样返回持久化目录、零新增外呼。
 	before := requests.Load()
