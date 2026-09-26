@@ -14,7 +14,7 @@
 
 交付的 helper（与计划 Step 1 逐字，除下述「与计划的唯一偏差」中的拆分）：
 
-- `newAgentUpgradeTestApp`：真实迁移流（`openTenantAgentMarketplaceHTTPTestDB`，含 000119）上挂载真实五层服务栈（CustomAgentService / AgentVersionService / AgentMarketplaceService / AgentAdoptionService / AgentUpgradeService）+ 真实 `GET /api/v1/agents`；镜像 `newAgentAdoptionTestApp` 但不改动它（并行批次合并安全）。
+- `newAgentUpgradeTestApp`：真实迁移流（`openTenantAgentMarketplaceHTTPTestDB`，含 000120——迁移号自 Task 1 起按 plan-t48 约定整体顺延，见「修复轮 1/5 偏差记录」）上挂载真实五层服务栈（CustomAgentService / AgentVersionService / AgentMarketplaceService / AgentAdoptionService / AgentUpgradeService）+ 真实 `GET /api/v1/agents`；镜像 `newAgentAdoptionTestApp` 但不改动它（并行批次合并安全）。
 - `freezeAndPublishUpgradeRelease`：真实 HTTP 冻结 → 提交 → 审核发布一个语义版本。
 - `publishUpgradeVariant`：创建草稿后委托 `mapTestPublishUpgradeVariant`。
 - `mapTestPublishUpgradeVariant`（新增拆分，见偏差说明）：对**既有** variant 驱动 #59 既有流程（重映射 → 测试 → 发布）。
@@ -139,8 +139,58 @@ ok  	github.com/Tencent/WeKnora/internal/router	5.606s
 ```
 
 3. **计划级验证复验**（「计划级验证」节命令逐字）：退出码 0，六段全 `ok`——database 14.994s / repository 15.533s / service 24.176s / handler 1.671s / workbench 1.399s / router 12.096s。
-4. **逐测试计数复核**：service 计划新测试 8 个 PASS（TestDiffUpgradeBundles* 4 + TestAgentUpgradeService* 4）、repository 计划新测试 3 个 PASS（TestAgentUpgradeRepository*）、database 4 个 PASS（含 `TestSQLiteMigrationsCreateVersionedSchema`——000119 表 + `uq_agent_upgrade_proposals_scope` 索引随迁移流真实装载）。
+4. **逐测试计数复核**：service 计划新测试 8 个 PASS（TestDiffUpgradeBundles* 4 + TestAgentUpgradeService* 4）、repository 计划新测试 3 个 PASS（TestAgentUpgradeRepository*）、database 4 个 PASS（含 `TestSQLiteMigrationsCreateVersionedSchema`——000120 表 + `uq_agent_upgrade_proposals_scope` 索引随迁移流真实装载）。
 5. **静态检查复验**：`gofmt -l`（9 个本计划 Go 文件）为空；`go vet ./internal/router/ ./internal/handler/ ./internal/application/service/ ./internal/application/repository/` 无输出。
 6. **HEAD 状态**：`git log` 确认 Task 0-6 七个提交（`96e579ad0`→`3301a1fd8`→`2e75e7882`→`ef43cd83a`→`0a5af2af2`→`7f41cde2f`→`762ab07d2`）依次在 `codex/issue30-t61` 分支上，工作区除本报告文件外 clean。
 
 复验结论：本报告全部声明经独立第二会话实跑确认，无需任何代码变更。
+
+---
+
+## 修复轮 1/5（审查问题处置，2026-09-26）
+
+### 审查问题（important）
+
+> 迁移号顺延未入账且报告两处事实错误：实际迁移为 000120/000200（自 Task 1 提交 3301a1fd8 起），计划写 000119/000198；……唯一存活的 Task 6 报告第 17、142 行仍写「含 000119」……修法为报告补偏差记录并改正两处号段，无需动代码。
+
+### 修复内容（仅报告文件，代码零改动）
+
+1. `:17`「含 000119」→「含 000120」（附顺延指引）。
+2. `:142`「000119 表」→「000120 表」。
+3. 本节偏差记录补账。
+
+### 偏差记录：迁移号整体顺延 000119→000120 / 000198→000200（补账）
+
+计划 Task 0 注记已预告此情形（「若合并时 000118/000197 已被先集成者占用，按 plan-t48 既有约定『整体顺延、DDL 零变化』处理」），但此前执行会话未把实际顺延写入任何存活的账面文件（Task 1-5 报告被共享路径覆盖），且两处残留旧号构成事实错误。本轮逐项核实（全部为本轮实跑/实读）：
+
+1. **实际号段**：本 worktree 迁移文件为 `migrations/sqlite/000120_agent_upgrade_proposals.{up,down}.sql` 与 `migrations/versioned/000200_agent_upgrade_proposals.{up,down}.sql`；`git show --stat 3301a1fd8` 证实自 Task 1 提交起即为 000120/000200，此后无改名（`git log --follow` 该文件仅 3301a1fd8 一条）。
+2. **避让依据真实**：兄弟 worktree `issue30-sweep-t51` 占用 `000119/000198_app_action_plans.*`，`issue30-sweep-t53` 占用 `000119/000198_space_connection_grants.*`——若本计划仍用 000119/000198 即三方碰撞，golang-migrate 将报 duplicate migration file（与 Task 0 同型）。本计划作为后集成方按 plan-t48「整体顺延」约定取下一空闲号。
+3. **空号确认**：`migrations/sqlite/` 无任何 `000119_*` 文件、`migrations/versioned/` 无任何 `000199_*` 文件（ls+grep 实测无匹配）——两流各留一个空号位，与审查员「流装载到 version 120、000119/000199 为空号」一致。
+4. **DDL 零变化逐字比对**：000120/000200 四文件的 `CREATE TABLE`/`CREATE INDEX`/`CREATE UNIQUE INDEX`/`DROP` 语句与计划 Task 1 Step 3 给出的 000119/000198 DDL 全文逐字一致；唯一差异为 `000120_...up.sql` 首行 twin 注释由「versioned migration 000198」写作「000200」（双号指向自身的顺延自然伴随，非 DDL 变化）。表结构、复合主键 `(id, tenant_id)`、复合外键 `(adoption_id, tenant_id)→agent_adoptions`、唯一索引 `uq_agent_upgrade_proposals_scope(tenant_id, adoption_id, to_release_id)` 全部不变。
+5. **下游影响面**：计划内五处测试路径字符串本就不引用 000119/000198（Task 1 schema 测试经 `sqliteMigrationHead` 动态推导头版本，Task 6 e2e 走全量迁移流）；仓储测试直建表（AutoMigrate+显式索引）同样无号段耦合。故顺延只需账面更正，无需任何代码/测试改动。
+
+### 回归覆盖测试（本轮实跑）
+
+修复仅涉报告文件，回归面按计划「计划级验证」节命令逐字复跑（顺带消除审查待核实项 1：handler 段与 workbench 段此前两轮均未由审查员实跑，本轮为第三会话实跑补证）。退出码 0，六段全 `ok`：
+
+```
+ok  	github.com/Tencent/WeKnora/internal/database	76.475s        （含 TestSQLiteMigrationsCreateVersionedSchema：000120 表 + uq_agent_upgrade_proposals_scope 索引随真实迁移流装载断言）
+ok  	github.com/Tencent/WeKnora/internal/application/repository	47.928s
+ok  	github.com/Tencent/WeKnora/internal/application/service	171.914s
+ok  	github.com/Tencent/WeKnora/internal/handler	6.277s                 （审查待核实项 1 的 handler 段，本轮实跑全绿）
+ok  	github.com/Tencent/WeKnora/internal/modules/workbench/service/workbench	18.964s（同上 workbench 段）
+ok  	github.com/Tencent/WeKnora/internal/router	168.024s               （含 TestAgentUpgrade 两测试）
+```
+
+（本轮时长普遍高于前两轮系后台执行与机器负载所致，与断言强度无关。）
+
+### 审查待核实项处置
+
+1. **handler/workbench 段未实跑** → 本轮实跑全绿（见上），消除。
+2. **第二会话 GREEN 计时 2.08s 与首会话 13.02s 差异** → 计时差异源于机器负载与 sqlite 内存库状态，非断言强度差异；本轮计划级验证 router 段（含同一 e2e 测试）再次全绿，与审查员 HEAD 独立复跑（4.50s PASS）三方一致。
+3. **RED 首跑输出不可重演** → 维持采信为前一会话记录（工作已提交，本会话不回退他人提交）；其偏差代码依据（`agent_adoption.go:131-134`）已由第二会话实读核实、与失败断言位置内在一致，计划 Task 6 Step 3 明示授权修测试笔误。
+4. **顺延决策无第一手记录** → 本节偏差记录即为补账，依据 `3301a1fd8` 提交统计、兄弟 worktree 现状与 DDL 逐字比对反推，反推性质如实注明。
+
+### 修复轮结论
+
+代码零改动；报告两处号段改正 + 顺延偏差记录入册；计划级验证全链（含 handler/workbench 回归段）六段实跑全绿。
