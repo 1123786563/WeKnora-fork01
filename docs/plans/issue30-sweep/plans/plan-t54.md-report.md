@@ -405,3 +405,96 @@ h.SetAppOAuthProviders(providers)
 - 新建 `docs/plans/issue30-sweep/plans/plan-t54.md-ledger.md`（ruling 行 + 兜底条款，裁决第 3/4 条执行）。
 - 本报告追加本节。
 - **零代码改动**：裁决第 1 条明示该项不修；Task 4 授权文件自上轮验证后零改动（`git status` 实证干净）。
+
+---
+
+# T24 #54 Task 5 实现报告：移动面文案中性化（PR → PR/MR）
+
+> 本轮为任务循环正常派发的第 5/5 个任务（修复轮 2 报告中的兜底条款**未触发**——planner tasks 数组包含 Task 5，不存在漏项）。裁决预言的「Task 5 将由任务循环在 Task 4 收口后正常派发实施」按预期发生。
+
+## 一、实现内容
+
+按 `plan-t54.md:2161-2217`（Task 5）逐字实施，两个授权文件、共 4 处文案 + 1 处文案钉：
+
+1. `apps/mobile/src/screens/TaskDetailScreen.tsx`（3 字符串 + 1 注释，位于 `:42-61`）：
+   - `DELIVERY_STATE_COPY.pushed`：`'已推送，等待草稿 PR 恢复'` → `'已推送，等待草稿 PR/MR 恢复'`；
+   - `DELIVERY_STATE_COPY.delivered`：`'草稿 PR 已创建'` → `'草稿 PR/MR 已创建'`；
+   - 交付回执区块标签行：`PR：{delivery.prUrl}` → `PR/MR：{delivery.prUrl}`；
+   - 两条注释同步：`DELIVERY_STATE_COPY` 头注释追加一行「PR/MR 中性措辞：GitLab 草稿 MR 与 GitHub 草稿 PR 经同一统一回执呈现（T24 #54）。」；区块注释 `PR/远端身份` → `PR·MR/远端身份`。
+2. `apps/mobile/src/app-smoke.test.tsx:1398`：文案钉断言同步为 `'已推送，等待草稿 PR/MR 恢复'`。
+
+数据面零改动（AC1 读面延伸）：`pr_number/pr_url` 统一回执字段原样流转，仅用户可见文案中性化；GitLab 草稿 MR 与 GitHub 草稿 PR 经同一回执区块呈现，UI 不暴露平台差异。
+
+## 二、TDD 证据（RED → GREEN，均为实跑）
+
+### RED（先改测试，实跑确认失败）
+
+命令（计划 Step 2 指定）：`pnpm --filter @weknora/mobile test 2>&1 | tail -4`
+
+首次运行报 `spawn ENOENT / node_modules missing`——本 dedicated worktree（`.worktrees/issue30-sweep-t54`）独立于共享 worktree，无依赖（计划 Tech Stack 节的「`pnpm install` 已就绪」针对共享 worktree）。执行 `pnpm install`（Done in 1m 15.8s using pnpm v10.28.2；`git status` 确认未触碰任何跟踪文件）后重跑：
+
+```
+# duration_ms 60707.759125
+/Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue30-sweep-t54/apps/mobile:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @weknora/mobile@0.0.0 test: `tsx --test 'src/**/*.test.ts*'`
+Exit status 1
+```
+
+完整输出存 `/tmp/t54-task5-red.log`，失败明细（节选）：
+
+```
+not ok 106 - the task detail screen renders the code delivery receipt section with honest state copy
+  failureType: 'testCodeFailure'
+  error: 'pushed state uses honest copy'
+  code: 'ERR_ASSERTION'
+  expected: true
+  actual: false
+  stack: |-
+    TestContext.<anonymous> (/Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue30-sweep-t54/apps/mobile/src/app-smoke.test.tsx:1398:10)
+# tests 226
+# pass 214
+# fail 1
+# skipped 11
+```
+
+失败原因符合预期：唯一失败项即被改写的 app-smoke 文案钉（`app-smoke.test.tsx:1398`），实现侧仍为旧 PR 文案。
+
+### GREEN（最小实现后，实跑确认通过）
+
+命令（计划 Step 4 指定）：`pnpm --filter @weknora/mobile test 2>&1 | tail -4 && pnpm --filter @weknora/mobile typecheck`
+
+测试（完整输出存 `/tmp/t54-task5-green.log`，exit=0）：
+
+```
+# tests 226
+# suites 0
+# pass 215
+# fail 0
+# cancelled 0
+# skipped 11
+# todo 0
+ok 106 - the task detail screen renders the code delivery receipt section with honest state copy
+```
+
+215 pass / 0 fail / 11 skipped，与计划基线（215/0/11）完全一致；11 个 skip 均为既有 opt-in 集成证据门控。目标测试 `ok 106` 通过。计划差异记录 9 所述「同批并发写入致全量口径瞬时失败」在本 dedicated worktree 不存在（树独立干净），故直接以计划指定的全量口径取证，未动用文件级作用域兜底。
+
+typecheck：
+
+```
+> @weknora/mobile@0.0.0 typecheck /Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue30-sweep-t54/apps/mobile
+> tsc --noEmit
+（无输出，exit 0）
+```
+
+## 三、提交
+
+- `ff125c8a3` `feat(mobile): platform-neutral delivery copy — draft PR/MR wording (T24 #54 task 5)`（2 files changed, 7 insertions(+), 6 deletions(-)；`git status` 提交后干净）
+
+## 四、自检发现（模板 Completeness/Quality/Discipline/Testing）
+
+- **Completeness**：计划 Task 5 五步全部执行（RED→GREEN→typecheck→commit）；4 处文案 + 1 处文案钉逐字落地，diff 自审与计划代码块逐字一致，无遗漏字符串。
+- **Quality**：纯文案变更零逻辑改动；`grep -n "PR：\|草稿 PR "` 复核全仓移动面无残留旧文案（两文件外无命中）。
+- **Discipline**：仅修改两个授权文件；未触碰 Go 侧/contracts/api-client（与计划「包外零改动声明」一致）；未派发任何子代理；未推送远端。
+- **Testing**：RED 与 GREEN 均为真实全量运行（226 tests），非文件级或 mock 替代；测试输出无杂音。
+- **说明（技能模板路径）**：任务给的模板路径 `superpowers/6.4.1/...` 不存在，实读 `superpowers/6.4.2/.../implementer-prompt.md`（内容为同一报告契约：完整报告入文件 + 短状态回传），不影响契约履行。
+
