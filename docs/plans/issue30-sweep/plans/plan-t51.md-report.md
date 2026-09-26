@@ -138,3 +138,53 @@ go vet ./internal/modules/appconnector/plan/   → VET_OK
 - 测试 doubles（`newPlanSvcEnv`/`formTwo`/`item`/`scriptedDispatcher`/`okReceipt`）同包可复用，Task 3/4 直接追加测试
 
 **待办提示（给控制器）**：Task 3 必须替换 `plan.go:262` 的 `// Approve ... IMPLEMENT IN TASK 3.` 占位；Task 4 替换 `:263-264` 的 Execute/Status 占位——计划明示占位不得留到计划完成。
+
+---
+
+# 修复轮 1 报告（审查发现修复）
+
+- **执行者**：实现员-t51-任务2（resumed with findings）
+- **提交**：见下方「修复轮提交」
+- **状态**：DONE（1/1 findings 修复，变异验证 + 全量回归在案）
+
+## F1（important）：TestPlanFormMidItemFailureLeavesNoPlanRow 核心断言空转
+
+**审查指认**（`internal/modules/appconnector/plan/plan_test.go:275-278`）：「失败不留计划行」断言用 `ListPlanItems(ctx,7,"nonexistent")`——对任意不存在的 plan_id 恒返回 0 行，CreatePlan 回归挪位或吞错续建不会使测试变红。
+
+**核实**：属实。实测变异验证（见下）证明旧断言对实现回归盲视。
+
+### 修复内容（仅动本任务授权文件 plan_test.go，零实现改动）
+
+1. `planSvcEnv` 增加 `db *gorm.DB` 字段（`plan_test.go:97-104`），`newPlanSvcEnv` 回填（`plan_test.go:127`）。
+2. 空转断言替换为对 `app_action_plans` / `app_action_plan_items` 两表按租户**直接计数**（`plan_test.go:276-293`）：`e.db.Model(&repoappconn.ActionPlanRow{}).Where("tenant_id = ?", uint64(7)).Count(&planCount).Error`（参数绑定，无拼接 SQL），断言 `planCount == 0 && itemCount == 0`；id 探测式断言删除。
+3. 修复过程中的实测坑（记录在案）：第一版漏写 `.Error` —— gorm `Count()` 返回 `*gorm.DB` 链对象（恒非 nil），`if err := ...Count(&n); err != nil` 恒真、测试立即假红（错误对象打印为 `count plans: *gorm.DB: &{...}`）；改为取 `.Count(&n).Error` 后语义正确。
+
+### 变异验证（隔离证明：旧断言空转、新断言有杀伤力）
+
+变异体（临时改动，已还原）：`plan.go` FormPlan 的 mid-item failure 分支在返回原错误前先 `CreatePlan` 一行 `plan_leak` 计划 + 1 条计划项（模拟「失败也建计划行」回归；错误仍如实返回，故隔离于「错误类型断言」之外）。
+
+| 步骤 | 被测断言 | 实现 | 命令 | 结果 |
+|---|---|---|---|---|
+| 1 | 旧断言（ListPlanItems 探测） | 变异（泄漏 1 计划行） | `go test ./internal/modules/appconnector/plan/ -run TestPlanFormMidItemFailureLeavesNoPlanRow -count=1` | `ok` → **旧断言盲视泄漏，审查属实** |
+| 2 | 新断言（表计数） | 同一变异 | 同上 | `--- FAIL: ... plan_test.go:291: a failed formation must leave NO plan rows/items, got plans=1 items=1` → **新断言精确抓红** |
+| 3 | 新断言 | 还原（HEAD `aa2558dd1` 版 plan.go） | 同上 | `ok` |
+
+（步骤 1 与步骤 2 之间新断言尚未写入时跑的是旧测试代码；步骤 2 起测试为表计数版本。还原用 `git checkout -- internal/modules/appconnector/plan/plan.go`，`git diff --stat` 前后确认变异仅 7 行且还原后仅剩 plan_test.go 的 18+/4-。）
+
+### 修复后回归（本 ask 实跑）
+
+```
+go test ./internal/modules/appconnector/plan/ -count=1
+→ ok  github.com/Tencent/WeKnora/internal/modules/appconnector/plan  1.008s
+
+go test ./internal/modules/appconnector/... -count=1
+→ ok  .../appconnector 0.528s | connectorcontrol 2.775s | openconnector 0.584s
+  | plan 2.428s | publish 1.299s | repository/appconnector 2.275s | service/appconnector 3.398s（7 包全 ok）
+
+go vet ./internal/modules/appconnector/plan/ → VET_OK
+go build ./... → exit 0（仅 macOS ld 既有噪音）
+```
+
+### 附带更正
+
+上轮报告「待办提示」中占位行号笔误：实际占位在 `plan.go:252`（`// Approve ... IMPLEMENT IN TASK 3.`）与 `plan.go:253-254`（Execute/Status），非 `:262-264`（该行号来自变异前草稿）。Task 3/4 以 `grep -n "IMPLEMENT IN TASK" plan.go` 现查为准。

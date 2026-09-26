@@ -100,6 +100,7 @@ func openPlanSvcDB(t *testing.T) *gorm.DB {
 }
 
 type planSvcEnv struct {
+	db       *gorm.DB
 	svc      *Service
 	store    *repoappconn.ActionStore
 	plans    *repoappconn.PlanStore
@@ -123,7 +124,7 @@ func newPlanSvcEnv(t *testing.T) *planSvcEnv {
 		}},
 		stubScopes{})
 	svc := NewService(plans, store, actions, publishSvc)
-	return &planSvcEnv{svc: svc, store: store, plans: plans, pubs: pubs, dispatch: dispatch}
+	return &planSvcEnv{db: db, svc: svc, store: store, plans: plans, pubs: pubs, dispatch: dispatch}
 }
 
 func item(title string) ItemInput {
@@ -272,9 +273,22 @@ func TestPlanFormMidItemFailureLeavesNoPlanRow(t *testing.T) {
 	if err == nil {
 		t.Fatal("the unreadable destination must abort formation")
 	}
-	plans, _ := e.plans.ListPlanItems(context.Background(), 7, "nonexistent")
-	if len(plans) != 0 {
-		t.Fatalf("no plan items may exist: %+v", plans)
+	// NO plan row or plan item may exist for this tenant — counted
+	// straight off the tables. (A lookup of an arbitrary MISSING plan id
+	// returns zero rows even if the failed formation had leaked one, so
+	// an id-based probe can never go red; the raw count is the assertion
+	// that actually pins the fail-closed property.)
+	var planCount, itemCount int64
+	if err := e.db.Model(&repoappconn.ActionPlanRow{}).
+		Where("tenant_id = ?", uint64(7)).Count(&planCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := e.db.Model(&repoappconn.ActionPlanItemRow{}).
+		Where("tenant_id = ?", uint64(7)).Count(&itemCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if planCount != 0 || itemCount != 0 {
+		t.Fatalf("a failed formation must leave NO plan rows/items, got plans=%d items=%d", planCount, itemCount)
 	}
 }
 
