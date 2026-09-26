@@ -234,7 +234,13 @@ func (c *DockerNormalExecClient) StartAttachedExecOnce(
 	if _, loaded := c.started.Load(receipt.ExecID); loaded {
 		return out, ErrDockerNormalExecAlreadyStarted
 	}
-	preflight, err := c.inspectRaw(ctx, receipt)
+	// The preflight inspect gets its OWN timeout: sharing the create
+	// budget let a slow daemon leave only残余 deadline for this cheap call,
+	// failing the whole creation while the daemon keeps the already-created
+	// (never-started, lazy) exec behind.
+	preflightCtx, preflightCancel := context.WithTimeout(ctx, c.rpcTimeout)
+	preflight, err := c.inspectRaw(preflightCtx, receipt)
+	preflightCancel()
 	if err != nil {
 		return out, err
 	}

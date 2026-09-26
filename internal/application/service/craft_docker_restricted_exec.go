@@ -313,10 +313,24 @@ func (s *CraftDockerRestrictedExec) Observe(ctx context.Context, grantID, activi
 	s.mu.Unlock()
 	observed, err := s.client.ObserveOutputlessExec(ctx, sandbox.DockerOutputlessExecReceipt{ContainerID: receipt.ContainerID, ExecID: receipt.ExecID}, previouslyRunning)
 	if err != nil {
+		// Claimed-never-started reconciliation: the container is GONE (its
+		// lifecycle owns the sandbox) and no start evidence exists — the
+		// exec can never run. Converge to the failed terminal instead of an
+		// eternal Unknown; with prior Running evidence the honest answer
+		// stays Unknown (it may have produced effects before deletion).
+		if !previouslyRunning && (strings.Contains(err.Error(), "No such container") || strings.Contains(err.Error(), "No such exec")) {
+			return sandbox.DockerOutputlessExecObservation{State: sandbox.DockerOutputlessFailed, OutputAvailable: false}, nil
+		}
 		return unknown, err
 	}
 	if observed.State == sandbox.DockerOutputlessRunning {
 		s.mu.Lock()
+		// Cap mirrors the normal-exec table: deleted containers never reach
+		// a terminal observation, so abandoned keys are bounded by reset.
+		if len(s.running) >= 4096 {
+			logger.Warnf(ctx, "[CraftDockerRestrictedExec] running table hit its cap; resetting")
+			s.running = make(map[string]bool)
+		}
 		s.running[key] = true
 		s.mu.Unlock()
 	} else if observed.State == sandbox.DockerOutputlessSucceeded || observed.State == sandbox.DockerOutputlessFailed {

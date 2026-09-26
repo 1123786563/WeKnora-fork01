@@ -201,6 +201,21 @@ func (r *CraftRunCaptureRunner) RecoverRun(ctx context.Context, fence runtime.Fe
 	}
 }
 
+// RecoverTick drains one periodic-scan round (synthesis only every Nth
+// tick; freshness gate keeps it off receipts the drain owns).
+func (r *CraftRunCaptureRunner) RecoverTick(ctx context.Context, limit int) {
+	if r == nil {
+		return
+	}
+	if r.svc == nil {
+		r.logInertOnce(ctx)
+		return
+	}
+	if err := r.svc.RecoverPendingTick(ctx, limit); err != nil {
+		logger.Warnf(ctx, "[CraftRunCapture] recovery tick left receipts pending: %v", err)
+	}
+}
+
 // Recover drains up to limit durable capture receipts. Missing receipts for
 // terminal Runs are synthesized by the store's recovery scan, so a process
 // that died between the terminal commit and the enqueue is healed here too.
@@ -249,7 +264,7 @@ func (r *CraftRunCaptureRunner) Start(ctx context.Context) {
 				return
 			case <-ticker.C:
 				scanCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), craftRunCaptureScanBudget)
-				r.Recover(scanCtx, 100)
+				r.RecoverTick(scanCtx, 100)
 				cancel()
 			}
 		}

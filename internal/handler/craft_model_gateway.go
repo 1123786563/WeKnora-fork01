@@ -56,7 +56,7 @@ const (
 	craftCredentialMinSecret = 16
 	// craftMaxForwardBody bounds one forwarded model request.
 	craftMaxForwardBody     = 8 << 20
-	craftUsageRecordTimeout = 3 * time.Second
+	craftUsageRecordTimeout = 10 * time.Second // bounded loss window for O01 usage facts; ledger reconcile remains the backstop
 )
 
 var (
@@ -324,7 +324,7 @@ func (g *CraftModelGateway) IssueCredential(c *gin.Context) {
 	scope := craft.Scope{TenantID: tenantID, UserID: userID, SessionID: sessionID}
 	grant, err := g.budget.Admit(c.Request.Context(), scope, input.RunID)
 	if err != nil {
-		g.failBudget(c, err, true)
+		g.failBudget(c, err, true, "")
 		return
 	}
 	if !grant.Allowed {
@@ -509,11 +509,15 @@ func (g *CraftModelGateway) Forward(c *gin.Context) {
 			appFail(c, http.StatusConflict, "ACTIVITY_UNRESOLVED", "this model activity was already attempted; reconcile before retry")
 			return
 		}
-		g.failBudget(c, err, false)
+		g.failBudget(c, err, false, payload.GrantID)
 		return
 	}
 	defer attempt.CancelInitiation()
-	resp, forwardErr, attempted, initiationExpired, cancelRequest := g.forwardWithinInitiation(attempt, req)
+	resp, forwardErr, attempted, initiationExpiredRaw, cancelRequest := g.forwardWithinInitiation(attempt, req)
+	// err==nil proves the cancellation never took effect: a response that
+	// raced the deadline callback must not be rewritten into a phantom
+	// DeadlineExceeded (which would Resolve Unknown and park the Run).
+	initiationExpired := initiationExpiredRaw && forwardErr != nil
 	if cancelRequest != nil {
 		defer cancelRequest()
 	}
@@ -613,7 +617,10 @@ func (g *CraftModelGateway) Forward(c *gin.Context) {
 		return
 	}
 	if err := attempt.Resolve(c.Request.Context(), service.CraftChargeStartStarted); err != nil {
-		g.recordCall(c, payload, callID, attemptID, model, nil)
+		// The response body was fully observed above: its usage fact is
+		// idempotently recorded even when the Started resolution failed, so
+		// manual reconciliation keeps a fixed billing basis.
+		g.recordCall(c, payload, callID, attemptID, model, craftParseUsage(respBody))
 		logger.ErrorWithFields(c.Request.Context(), err, map[string]any{
 			"craft_run_id": payload.RunID, "craft_call_id": callID, "craft_attempt_id": attemptID,
 		})
@@ -746,7 +753,7 @@ func (g *CraftModelGateway) recordCall(c *gin.Context, payload craftCredentialPa
 // whether the failure happened at run admission (403) or at call
 // authorization (402 payment-required): both carry BUDGET_STOPPED so the
 // main agent can read the stop and its reason verbatim.
-func (g *CraftModelGateway) failBudget(c *gin.Context, err error, admission bool) {
+func (g *CraftModelGateway) failBudget(c *gin.Context, err error, admission bool, grantID string) {
 	status := http.StatusPaymentRequired
 	if admission {
 		status = http.StatusForbidden
@@ -763,7 +770,7 @@ func (g *CraftModelGateway) failBudget(c *gin.Context, err error, admission bool
 		// internal DB topology) log server-side; the client sees only the
 		// opaque code and a fixed sentence.
 		logger.ErrorWithFields(c.Request.Context(), err, map[string]any{
-			"craft_grant_id": c.GetString("craft_grant_id"),
+			"craft_grant_id": grantID,
 		})
 		appFail(c, http.StatusInternalServerError, "BUDGET_GATE_FAILED", "the budget gate could not be consulted; retry or contact the operator")
 	}

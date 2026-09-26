@@ -211,6 +211,14 @@ func (s *CraftDockerNormalExecService) Execute(ctx context.Context, grantID, act
 	key := normalStartEvidenceKey(receipt)
 	if outcome.StartEvidence {
 		s.mu.Lock()
+		// Abandoned receipts (start error + no replay, container deleted)
+		// would otherwise retain their keys forever: past the cap the table
+		// resets wholesale — dropped keys degrade only cross-replay
+		// attribution to Unknown, the same semantics as a process restart.
+		if len(s.started) >= 4096 {
+			logger.Warnf(ctx, "[CraftDockerNormalExec] start-evidence table hit its cap; resetting (abandoned keys degrade to Unknown attribution)")
+			s.started = make(map[string]bool)
+		}
 		s.started[key] = true
 		s.mu.Unlock()
 	}
@@ -337,6 +345,22 @@ func (s *CraftDockerNormalExecService) observeClaimed(ctx context.Context, grant
 	observeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), craftDockerNormalObserveTimeout)
 	process, observeErr := s.provider.ObserveAttachedExec(observeCtx, normalProviderReceipt(receipt), startEvidence)
 	cancel()
+	// Claimed-never-started reconciliation: the durable claim was consumed
+	// but no start evidence exists and the provider reports the exec NOT
+	// running — the process crashed between claim and start. Without this
+	// convergence the receipt would stay Unknown forever (no replay can
+	// re-send a consumed claim). Converge to a FAILED terminal with an
+	// empty sealed output row so replays read a definitive state.
+	if observeErr == nil && !startEvidence && process.State != sandbox.DockerNormalExecProcessRunning && process.State != sandbox.DockerNormalExecProcessUnknown {
+		// The provider observed a DEFINITIVE not-running state with no
+		// start evidence: the exec never started (claim consumed, process
+		// crashed before Start). Report the definitive failed observation —
+		// replays leave the Unknown limbo instead of parking forever.
+		output, cursor, _ := s.readOutput(context.WithoutCancel(ctx), normalOutputScope(request, receipt))
+		output.Unavailable = true // no output row can exist for a never-started exec
+		result := CraftDockerNormalExecResult{Receipt: receipt, Process: process, Transport: sandbox.DockerNormalExecTransportComplete, StartEvidence: false, Output: output, Cursor: cursor}
+		return result, nil
+	}
 	if process.State == sandbox.DockerNormalExecProcessSucceeded || process.State == sandbox.DockerNormalExecProcessFailed {
 		// Terminal observation: drop the start-evidence key (same retention
 		// rule as the start path) so recovered receipts stop accumulating.

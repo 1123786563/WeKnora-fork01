@@ -187,6 +187,10 @@ func (j *CraftEgressAttemptJournal) AllocateIfNotParked(requestDigest string) (C
 
 // Reuse returns the durable unresolved attempt for a fingerprint. ok=false
 // means the fingerprint has no parked identity and a new one must be minted.
+//
+// NOTE: production traffic must go through AllocateIfNotParked — this
+// exported read exists for reconciliation/audit tooling that needs to
+// inspect the parked identity WITHOUT minting; it never mutates state.
 func (j *CraftEgressAttemptJournal) Reuse(requestDigest string) (CraftEgressAttemptRecord, bool) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
@@ -217,7 +221,34 @@ func (j *CraftEgressAttemptJournal) Resolve(attemptID, requestDigest string, gat
 		return err
 	}
 	if definitive {
-		delete(j.unresolved, requestDigest)
+		// Guard the one-parked-identity invariant: only the holder of the
+		// CURRENT parked id may unpark the digest (a late duplicate resolve
+		// must not erase a newer id's parked state).
+		if parked, ok := j.unresolved[requestDigest]; ok && parked.AttemptID == attemptID {
+			delete(j.unresolved, requestDigest)
+		}
+	} else if parked, ok := j.unresolved[requestDigest]; !ok || parked.AttemptID == attemptID {
+		// An unknown-outcome observation on this journal's own parked id
+		// must be reflected in the in-memory index too: without the
+		// backfill, a racing definitive resolve followed by this unknown
+		// append leaves memory empty while the disk still holds an
+		// unresolved record — the next same-digest request would mint a
+		// second identity and replay would pick between two at random.
+		for _, record := range j.unresolved {
+			if record.AttemptID == attemptID {
+				j.unresolved[requestDigest] = record
+				break
+			}
+		}
+		if !ok {
+			// The id was already unparked in memory (a definitive resolve
+			// won the race) but the disk now carries a NEW unresolved tail:
+			// restore the parked entry from the record being appended.
+			j.unresolved[requestDigest] = CraftEgressAttemptRecord{
+				Ordinal: j.ordinalLocked(attemptID), AttemptID: attemptID, RequestDigest: requestDigest,
+				State: CraftEgressAttemptUnresolved, CreatedNano: j.now().UnixNano(),
+			}
+		}
 	}
 	return nil
 }

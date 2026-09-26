@@ -28,6 +28,7 @@ type craftRunCaptureStore interface {
 	EnsurePending(context.Context, craft.Scope, string, string, string) (repository.CraftRunCapture, error)
 	BeginCapture(context.Context, repository.CraftRunCapture, string) (repository.CraftRunCapture, error)
 	RecoverPending(context.Context, int) ([]repository.CraftRunCapture, error)
+	RecoverPendingTick(context.Context, int) ([]repository.CraftRunCapture, error)
 	RecoverPendingForRun(context.Context, uint64, string) ([]repository.CraftRunCapture, error)
 	Seal(context.Context, repository.CraftRunCapture, []craft.File, string) (repository.CraftRunCapture, error)
 	VerifySealedRefs(context.Context, repository.CraftRunCapture) error
@@ -79,6 +80,19 @@ func (s *CraftRunCaptureService) RecoverPending(ctx context.Context, limit int) 
 		return fmt.Errorf("%w: capture recovery source resolver unavailable", craft.ErrInvalidInput)
 	}
 	receipts, err := s.captures.RecoverPending(ctx, limit)
+	if err != nil {
+		return err
+	}
+	return s.recoverReceipts(ctx, receipts)
+}
+
+// RecoverPendingTick runs one periodic-scan round through the store's tick
+// variant (synthesis only every Nth pass, freshness gate honored).
+func (s *CraftRunCaptureService) RecoverPendingTick(ctx context.Context, limit int) error {
+	if s == nil || s.resolve == nil {
+		return fmt.Errorf("%w: capture recovery source resolver unavailable", craft.ErrInvalidInput)
+	}
+	receipts, err := s.captures.RecoverPendingTick(ctx, limit)
 	if err != nil {
 		return err
 	}

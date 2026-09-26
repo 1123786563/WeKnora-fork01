@@ -245,7 +245,7 @@ export function CraftSources(props: CraftSourcesProps) {
           <h4>{labels.citationsHeading}</h4>
           <ul className="wk-craft-citation-list">
             {props.citations.map((entry, index) => {
-              if (entry.kind === 'inference') {
+              if (!isCraftCitationFact(entry)) {
                 return (
                   <li key={`inference-${index}`} className="wk-craft-citation-inference" data-craft-inference="true">
                     <span className="wk-craft-inference-label">{labels.inferenceLabel}</span> {entry.claim}

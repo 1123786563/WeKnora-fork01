@@ -226,6 +226,9 @@ type CraftPreviewService struct {
 	mu      sync.Mutex
 	tickets map[string]craftPreviewGrant // digest → grant
 	caps    map[string]craftPreviewGrant // digest → grant
+	// doorCache dedups the per-resource access/no-egress doors inside one
+	// capability burst (short TTL, successes only).
+	doorCache map[craft.Scope]craftPreviewDoorResult
 	// versionFiles caches ONE shared allowlist per immutable version id.
 	// Grants reference their version instead of freezing a private copy of
 	// the manifest: the grant tables stay bounded by maxCraftPreviewGrants
@@ -271,6 +274,7 @@ func NewCraftPreviewService(
 		config:       config,
 		tickets:      map[string]craftPreviewGrant{},
 		caps:         map[string]craftPreviewGrant{},
+		doorCache:    map[craft.Scope]craftPreviewDoorResult{},
 		versionFiles: map[string]map[string]struct{}{},
 	}
 }
@@ -514,10 +518,7 @@ func (s *CraftPreviewService) lookup(ctx context.Context, digest, rel string) (c
 			return craft.File{}, craft.Scope{}, craftPreviewGrant{}, fmt.Errorf("%w: file is outside preview capability", craft.ErrNotFound)
 		}
 	}
-	if err := craft.RequireTaskAccess(ctx, s.config.AccessChecker, grant.scope, craft.TaskPreview); err != nil {
-		return craft.File{}, craft.Scope{}, craftPreviewGrant{}, err
-	}
-	if err := s.requireNoEgress(ctx, grant.scope); err != nil {
+	if err := s.requireFreshPreviewDoors(ctx, grant.scope); err != nil {
 		return craft.File{}, craft.Scope{}, craftPreviewGrant{}, err
 	}
 	version, err := s.versions.Get(ctx, grant.scope, grant.versionID)
@@ -531,6 +532,52 @@ func (s *CraftPreviewService) lookup(ctx context.Context, digest, rel string) (c
 	}
 	return craft.File{}, craft.Scope{}, craftPreviewGrant{},
 		fmt.Errorf("%w: %q is not part of version %s", craft.ErrNotFound, rel, grant.versionID)
+}
+
+// craftPreviewDoorCacheTTL bounds how long a successful (access, no-egress)
+// door pair is reused for the same scope: one preview page fetches dozens of
+// static assets in a burst, and re-running membership + binding + live
+// Docker inspect per asset pins workers when the daemon is slow. Failures
+// are NEVER cached — a revocation or a flapping daemon takes effect on the
+// very next request; the TTL only bounds how long a fresh success may be
+// reused, so revocation windows stay in the same order as the TTL.
+const craftPreviewDoorCacheTTL = 2 * time.Second
+
+type craftPreviewDoorResult struct {
+	ok bool
+	at time.Time
+}
+
+// requireFreshPreviewDoors runs the two I/O-heavy doors with a per-scope
+// short-TTL success cache (per-resource dedup inside a capability burst).
+func (s *CraftPreviewService) requireFreshPreviewDoors(ctx context.Context, scope craft.Scope) error {
+	// Membership/revocation stays LIVE on every read (a revoked grant must
+	// end a live capability immediately — the cheap indexed query); only the
+	// expensive no-egress door (binding load + live Docker inspect, up to
+	// 30s) is deduped within the short TTL window.
+	if err := craft.RequireTaskAccess(ctx, s.config.AccessChecker, scope, craft.TaskPreview); err != nil {
+		return err
+	}
+	now := s.config.Now()
+	s.mu.Lock()
+	if cached, ok := s.doorCache[scope]; ok {
+		if cached.ok && now.Sub(cached.at) < craftPreviewDoorCacheTTL {
+			s.mu.Unlock()
+			return nil
+		}
+		delete(s.doorCache, scope)
+	}
+	s.mu.Unlock()
+	if err := s.requireNoEgress(ctx, scope); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	if len(s.doorCache) > 1024 {
+		s.doorCache = make(map[craft.Scope]craftPreviewDoorResult)
+	}
+	s.doorCache[scope] = craftPreviewDoorResult{ok: true, at: now}
+	s.mu.Unlock()
+	return nil
 }
 
 func (s *CraftPreviewService) requireNoEgress(ctx context.Context, scope craft.Scope) error {

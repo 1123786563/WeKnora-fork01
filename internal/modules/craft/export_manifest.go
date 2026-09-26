@@ -263,6 +263,18 @@ func ExportManifestDigest(m ExportManifest) (string, error) {
 // with one would duplicate a zip entry (unpackers disagree about the
 // winner), so the manifest-to-package correspondence stays deterministic
 // only if the collision is refused outright.
+// reservedFold reports whether path equals any reserved name
+// case-insensitively after Win32 trailing-dot/space normalization.
+func reservedFold(path string, reserved map[string]bool) bool {
+	normalized := strings.ToLower(strings.TrimRight(path, " ."))
+	for name := range reserved {
+		if strings.ToLower(name) == normalized {
+			return true
+		}
+	}
+	return false
+}
+
 func ValidateExportBundleMembers(files []File) error {
 	reserved := map[string]bool{
 		BundleManifestPath: true,
@@ -273,13 +285,27 @@ func ValidateExportBundleMembers(files []File) error {
 		if err := ValidateArtifactPath(member.Path); err != nil {
 			return err
 		}
-		if first := strings.SplitN(member.Path, "/", 2)[0]; len(first) == 2 && first[1] == ':' &&
+		if first := strings.SplitN(member.Path, "/", 2)[0]; len(first) >= 2 && first[1] == ':' &&
 			((first[0] >= 'a' && first[0] <= 'z') || (first[0] >= 'A' && first[0] <= 'Z')) {
-			// Windows drive-letter first segment (both cases): a zip-slip
-			// variant that older extractors resolve as an absolute target
-			// outside the extraction directory. Refused BEFORE any byte is
-			// packaged, unlike a handler-side post-head check.
+			// Windows drive-letter path (both cases, any suffix — c:evil is
+			// a drive-RELATIVE escape on Windows too): a zip-slip variant
+			// refused BEFORE any byte is packaged.
 			return fmt.Errorf("%w: bundle member %q uses a drive-letter path", ErrInvalidInput, member.Path)
+		}
+		if strings.Contains(member.Path, ":") && strings.Contains(strings.SplitN(member.Path, "/", 2)[0], ":") {
+			if first := strings.SplitN(member.Path, "/", 2)[0]; strings.Contains(first, ":") && first[0] != ':' && !strings.Contains(first, "/") {
+				// Any remaining colon in the FIRST segment (foo/c:evil put
+				// the drive spec mid-path, which Windows still resolves).
+				return fmt.Errorf("%w: bundle member %q first segment carries a drive separator", ErrInvalidInput, member.Path)
+			}
+		}
+		// Reserved-name collision compares case-insensitively and after the
+		// Win32 normalization (trailing dots/spaces stripped): on
+		// case-insensitive filesystems a later member would otherwise
+		// overwrite the authoritative fixed document on extraction.
+		normalized := strings.ToLower(strings.TrimRight(member.Path, " ."))
+		if reserved[normalized] || reservedFold(member.Path, reserved) {
+			return fmt.Errorf("%w: bundle member %q collides with a fixed bundle document", ErrInvalidInput, member.Path)
 		}
 		if reserved[member.Path] {
 			return fmt.Errorf("%w: bundle member %q collides with a fixed bundle document", ErrInvalidInput, member.Path)

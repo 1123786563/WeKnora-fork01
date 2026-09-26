@@ -347,6 +347,13 @@ func craftWebBuildEvidenceSource(
 			if err != nil && !errors.Is(err, fs.ErrNotExist) {
 				logger.Warnf(ctx, "[CraftWebBuild] build log read failed for run %s: %v", task.Fence.RunID, err)
 			}
+			if err == nil && len(raw) == 0 {
+				// A present-but-EMPTY log is the classic truncation tamper
+				// shape: the decision stays unobserved (fail-closed) but the
+				// visibility gap between "absent" and "zeroed" must be
+				// logged like any other tamper/drift signal.
+				logger.Warnf(ctx, "[CraftWebBuild] build log for run %s is present but empty (possible truncation)", task.Fence.RunID)
+			}
 			return evidence
 		}
 		log, err := ParseCraftWebBuildLog(raw)

@@ -126,7 +126,11 @@ func (c *DockerRemoteClient) ObserveExecEventPair(ctx context.Context, receipt D
 	} else {
 		since = since.Add(-dockerExecEventReplayGrace)
 	}
-	until := time.Now()
+	// Symmetric grace on the until bound: a daemon clock running ahead of
+	// this process stamps exec_die slightly after our wall-clock now, and
+	// without the grace those events fall outside the replay window and the
+	// authoritative-duration path degrades systematically.
+	until := time.Now().Add(dockerExecEventReplayGrace)
 	result := streamer.Events(ctx, client.EventsListOptions{
 		Since:   formatDockerEventTimestamp(since),
 		Until:   formatDockerEventTimestamp(until),

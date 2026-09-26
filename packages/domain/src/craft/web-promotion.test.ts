@@ -42,3 +42,36 @@ test('versions without four-check evidence never become the default', () => {
   assert.equal(defaultPreviewVersion([failedRound, legacy]), null);
   assert.equal(defaultPreviewVersion([]), null);
 });
+
+
+// Round-4 OCR: the createdAt ordering witness finally has assertions —
+// newest wins out of order, single-sided absence falls back to array order,
+// and equal timestamps keep the first (array) winner.
+import { defaultPreviewVersion } from './web-promotion.ts';
+import type { WebVersionEvidenceFact } from './web-promotion.ts';
+
+const ready = (id: string, createdAt?: string): WebVersionEvidenceFact => ({
+  id,
+  createdAt,
+  webEvidence: { build: 'passed', entry: 'passed', preview_reachable: 'passed', page_loaded: 'passed' } as never,
+});
+
+test('createdAt witness: newest ready version wins regardless of array order', () => {
+  const older = ready('ver-old', '2026-09-01T00:00:00Z');
+  const newer = ready('ver-new', '2026-09-02T00:00:00Z');
+  assert.equal(defaultPreviewVersion([older, newer])?.id, 'ver-new');
+  assert.equal(defaultPreviewVersion([newer, older])?.id, 'ver-new', 'shuffled input still picks the newest');
+});
+
+test('createdAt witness: single-sided absence falls back to newest-first array order', () => {
+  const withStamp = ready('ver-stamped', '2026-09-01T00:00:00Z');
+  const withoutStamp = ready('ver-array-first');
+  assert.equal(defaultPreviewVersion([withoutStamp, withStamp])?.id, 'ver-array-first',
+    'when timestamps are not comparable the array order remains the ordering contract');
+});
+
+test('createdAt witness: equal timestamps keep the first array entry', () => {
+  const a = ready('ver-a', '2026-09-01T00:00:00Z');
+  const b = ready('ver-b', '2026-09-01T00:00:00Z');
+  assert.equal(defaultPreviewVersion([a, b])?.id, 'ver-a');
+});
