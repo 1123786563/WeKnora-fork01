@@ -594,7 +594,13 @@ func (f *FakeAdapter) SubmitCommand(_ context.Context, cmd commercial.Command) (
 		if err := payload.Validate(); err != nil {
 			return commercial.CommandReceipt{}, fmt.Errorf("%w: %v", commercial.ErrPlatformInvalidResponse, err)
 		}
-		walletName := commercial.MonthlyWalletName(payload.TenantID, payload.Period)
+		// D4: an empty WalletName keeps the Base monthly batch identity; a
+		// purchase first-period grant names its own wallet so the two grant
+		// families never collide on the by-name idempotency match.
+		walletName := payload.WalletName
+		if walletName == "" {
+			walletName = commercial.MonthlyWalletName(payload.TenantID, payload.Period)
+		}
 		wantCents := payload.CreditsMicro / 10_000
 		f.mu.Lock()
 		defer f.mu.Unlock()
@@ -692,6 +698,35 @@ func (f *FakeAdapter) SubmitCommand(_ context.Context, cmd commercial.Command) (
 			ExternalID: payload.ExternalPurchaseSubscriptionID,
 			RecordedAt: f.nowUTC(),
 		}, nil
+
+	case commercial.CommandKindSettlePurchasePayment:
+		payload, ok := cmd.Payload.(commercial.SettlePurchasePaymentPayload)
+		if !ok {
+			return commercial.CommandReceipt{}, commercial.ErrPlatformUnsupported
+		}
+		if err := payload.Validate(); err != nil {
+			return commercial.CommandReceipt{}, fmt.Errorf("%w: %v", commercial.ErrPlatformInvalidResponse, err)
+		}
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		sub, held := f.purchaseSubs[payload.ExternalPurchaseSubscriptionID]
+		if !held {
+			// D2'(c): settling an unknown purchase is a definitive integrity
+			// violation — never a fabricated activation.
+			return commercial.CommandReceipt{}, fmt.Errorf("%w: settle target purchase does not exist", commercial.ErrPlatformInvalidResponse)
+		}
+		if receipt, ok := f.receipts[cmd.Key]; ok {
+			return receipt, nil // already settled under this channel identity
+		}
+		receipt := commercial.CommandReceipt{
+			Key:        cmd.Key,
+			ExternalID: payload.ExternalPurchaseSubscriptionID,
+			RecordedAt: f.nowUTC(),
+		}
+		f.receipts[cmd.Key] = receipt
+		sub.Status = "active"
+		f.purchaseSubs[payload.ExternalPurchaseSubscriptionID] = sub
+		return receipt, nil
 
 	default:
 		return commercial.CommandReceipt{}, commercial.ErrPlatformUnsupported
