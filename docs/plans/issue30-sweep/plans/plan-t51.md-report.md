@@ -1347,3 +1347,158 @@ VET_OK（exit 0）
 1. **Task 0 已在本分支收口**（`e760c9255`，与兄弟分支统一配方）：迁移轨道可装载，Task 6 的 AC3 全量迁移 e2e 前置解除，可派发 Task 6。
 2. workbench 预存在失败 `TestNotificationDeliveryRejectsResolvedInteractionAfterClaim`（§3，HEAD 基线复现）建议单独立案，勿再回流至 #51 任务面。
 3. 本任务（Task 5）交付面（handler/路由/容器接线 + 4 测试）经四轮在案，本轮零改动零回归。
+
+---
+
+# Task 6 报告：端到端证据（AC1/AC2/AC3，生产迁移库 + 契约双打 Notion）
+
+- **执行者**：实现员-t51-任务6（subagent-driven-development 实现员）
+- **执行时刻 HEAD**：`b720e66d5`（工作树干净；Task 0 迁移去重与 Task 1-5 产物实核在位：`migrations/sqlite/000119_app_action_plans.*`、`migrations/versioned/000198_app_action_plans.*`、`internal/modules/appconnector/plan/`、`internal/handler/app_connector_action_plan.go`、`internal/router/routes_app_action_plan.go`）
+- **提交**：`1ff35e75a` `test(appconnector): 多操作计划 AC1/AC2/排除单项 端到端证据（T21 #51 Task 6）`（2 files changed, 450 insertions(+), 1 deletion(-)；提交后工作树干净，未推送远端）
+- **需求来源**：`docs/plans/issue30-sweep/plans/plan-t51.md` Task 6（plan-t51.md:2345-2881）
+
+## T6-1. 实现内容
+
+### `internal/handler/app_connector_notion_publish_e2e_test.go`（Modify，加法式 4 处，+16/-1）
+
+给 #48 契约双打 `e2eNotion` 加 title 定向丢回复钩子，与计划 plan-t51.md:2355-2415 逐字一致：
+
+1. `e2eNotion` 结构体追加 `dropAppendForTitle string` 与 `droppedOnce map[string]bool`（注释明示：该 title 页面创建后其第一次 append-children 回复在效果落库后丢失——计划层 unknown 腿；既有 `dropNextAppend` 路径零改动）。
+2. `newE2ENotion` 初始化 `droppedOnce: map[string]bool{}`。
+3. `/v1/pages` POST 处理器：页面创建与 `e.unlock()` 之后、`writeJSON` 之前插入独立 `lock/unlock` 块——`dropAppendForTitle` 与创建 title 相符时记 `e.droppedOnce[id] = true`。
+4. `/v1/blocks/` PATCH 处理器：既有 `drop := e.dropNextAppend; if drop {...}` 之后追加 `if e.droppedOnce[id] { delete(e.droppedOnce, id); drop = true }`（持锁区间内），该页第一次 append 在效果已应用后断连。
+
+### `internal/handler/app_connector_action_plan_e2e_test.go`（Create，449 行）
+
+计划 plan-t51.md:2419-2859 逐字落盘（含一处必要笔误修复，见 T6-4.1）。五测试：
+
+| 测试 | 验证点 |
+|---|---|
+| `TestAppActionPlansTablesExistAfterMigrations` | 生产迁移轨道建出 `app_action_plans`/`app_action_plan_items` 及与 Go 行类型对齐的全部列（迁移↔投影对齐） |
+| `TestActionPlanEndToEndApproveExecutePerItemResults` | 全链：三项计划经真实 publish seam 形成→整体批准一次→顺序执行→逐项回执（external id+version）；远端真实存在 parent+3 页；durable 投影一致 |
+| `TestActionPlanEndToEndContentChangeInvalidatesOldApproval`（AC1） | 内容变化的新计划拿旧 digest 批准 409/执行 409（`ACTION_PLAN_DIGEST_MISMATCH`）；旧计划批准后其 digest 同样驱动不了新计划；全程零派发（远端仅 parent 1 页） |
+| `TestActionPlanEndToEndPartialSuccessResumesUnfinishedOnly`（AC2） | [create-ok, update-stale, create-unknown] 三项：第一遍 succeeded+failed(版本冲突，零写 patch=0)+unknown（块已落、回复丢失）；第二遍同 digest 恢复零重派（append 计数不变、无重复页）；unknown 经既有 `POST /apps/notion-publish/actions/:id/reconcile` 远端查询结算 succeeded；第三遍读 skipped_succeeded/settled/skipped_succeeded，conflict 更新永不重发（patch 恒 0） |
+| `TestActionPlanEndToEndExcludeItem`（Owner 排除单项） | 批准排除第 2 项：执行只跑 1/3（disposition=excluded），被排除 action 停 `awaiting_approval`（经冻结单操作 GET 可查），远端仅 2 新页，计划 GET 投影 `"excluded":[2]` |
+
+环境构成（`newActionPlanE2E`）：生产 sqlite 迁移库（`openNotionPublishE2EDB` golang-migrate 全量轨道，Task 0 修复后可装载）+ 真实 `ActionService`/`PlanStore`/`NotionPublishService`/`NotionBridge`/`CredentialResolver`/gin 处理器 + Task 5 四端点 + 既有 `GET /apps/actions/:id` 与 reconcile 端点；唯一切换面是 Notion 网络端点（#48 契约双打，文件头注释明示 NOT the real-provider acceptance）。测试 token `secret_test_token` 为双打专用假值；出站请求走 `HTTPPolicy`+`AuthorizedNetworks` 127.0.0.0/8 documented test hook；种子 SQL 全部 gorm 参数绑定或字面量常量。
+
+## T6-2. 测试命令与完整输出
+
+### Step 1 后零回归验证（双打改动不破坏 #48）
+
+```
+$ go vet ./internal/handler/
+（无输出，干净）
+$ go test ./internal/handler/ -run 'TestNotionPublish' -count=1
+ok  	github.com/Tencent/WeKnora/internal/handler	12.400s
+```
+
+### Step 3 首跑（如实记录：第一次编译失败，修复计划笔误后全 PASS）
+
+第一次实跑（计划代码原样）：
+
+```
+$ go test ./internal/handler/ -run 'TestActionPlanEndToEnd|TestAppActionPlansTables' -count=1 -v
+# github.com/Tencent/WeKnora/internal/handler [github.com/Tencent/WeKnora/internal/handler.test]
+internal/handler/app_connector_action_plan_e2e_test.go:351:2: declared and not used: appendsAfterSeed
+FAIL	github.com/Tencent/WeKnora/internal/handler [build failed]
+FAIL	github.com/Tencent/WeKnora/internal/handler [build failed]
+```
+
+删除未使用变量块后重跑（= 计划 Step 3 首跑记录）：
+
+```
+$ go test ./internal/handler/ -run 'TestActionPlanEndToEnd|TestAppActionPlansTables' -count=1 -v
+=== RUN   TestAppActionPlansTablesExistAfterMigrations
+--- PASS: TestAppActionPlansTablesExistAfterMigrations (2.45s)
+=== RUN   TestActionPlanEndToEndApproveExecutePerItemResults
+--- PASS: TestActionPlanEndToEndApproveExecutePerItemResults (3.40s)
+=== RUN   TestActionPlanEndToEndContentChangeInvalidatesOldApproval
+--- PASS: TestActionPlanEndToEndContentChangeInvalidatesOldApproval (1.60s)
+=== RUN   TestActionPlanEndToEndPartialSuccessResumesUnfinishedOnly
+--- PASS: TestActionPlanEndToEndPartialSuccessResumesUnfinishedOnly (1.73s)
+=== RUN   TestActionPlanEndToEndExcludeItem
+--- PASS: TestActionPlanEndToEndExcludeItem (1.64s)
+PASS
+ok  	github.com/Tencent/WeKnora/internal/handler	14.140s
+```
+
+（中间 INFO 行为 local file service GetFile 日志，省略；PASS 判定行完整保留。）与计划预期一致：「Task 0/1 已合入时全部应直接 PASS——本任务是前五个任务的红绿证据收口，不是新的 RED」。
+
+### Step 4：handler 层全量（计划 4+1 e2e + Task 5 handler 测试 + #48 零回归）
+
+```
+$ go test ./internal/handler/ -run 'TestActionPlan|TestNotionPublish|TestAppPublications' -count=1 -v
+=== RUN   TestActionPlanEndToEndApproveExecutePerItemResults
+--- PASS: TestActionPlanEndToEndApproveExecutePerItemResults (4.03s)
+=== RUN   TestActionPlanEndToEndContentChangeInvalidatesOldApproval
+--- PASS: TestActionPlanEndToEndContentChangeInvalidatesOldApproval (5.97s)
+=== RUN   TestActionPlanEndToEndPartialSuccessResumesUnfinishedOnly
+--- PASS: TestActionPlanEndToEndPartialSuccessResumesUnfinishedOnly (5.14s)
+=== RUN   TestActionPlanEndToEndExcludeItem
+--- PASS: TestActionPlanEndToEndExcludeItem (5.15s)
+=== RUN   TestActionPlanHandlerFailClosedWithoutService
+--- PASS: TestActionPlanHandlerFailClosedWithoutService (0.00s)
+=== RUN   TestActionPlanHandlerValidationAndNotFound
+--- PASS: TestActionPlanHandlerValidationAndNotFound (0.00s)
+=== RUN   TestAppPublicationsTableExistsAfterMigrations
+--- PASS: TestAppPublicationsTableExistsAfterMigrations (13.68s)
+=== RUN   TestNotionPublishEndToEndCreateApprovePublishReceipt
+--- PASS: TestNotionPublishEndToEndCreateApprovePublishReceipt (9.40s)
+=== RUN   TestNotionPublishEndToEndUpdateConflict
+--- PASS: TestNotionPublishEndToEndUpdateConflict (5.33s)
+=== RUN   TestNotionPublishEndToEndUnknownReconcilesRemoteFirst
+--- PASS: TestNotionPublishEndToEndUnknownReconcilesRemoteFirst (3.42s)
+=== RUN   TestNotionPublishPlanGates
+--- PASS: TestNotionPublishPlanGates (0.01s)
+=== RUN   TestNotionPublishActionLookupIsTenantScoped
+--- PASS: TestNotionPublishActionLookupIsTenantScoped (0.01s)
+PASS
+ok  	github.com/Tencent/WeKnora/internal/handler	55.293s
+```
+
+12/12 PASS：本计划 4 e2e + 迁移对齐 + Task 5 的 2 handler 测试 + #48 既有 5 个（3 e2e + 2 单测）零回归。
+
+### Step 5：计划级全量验证
+
+```
+$ go build ./...
+BUILD_OK
+（仅两条 linker 警告 "ignoring duplicate libraries: '-lc++'"，cmd/desktop 与 cmd/server，本机工具链噪音，与代码无关）
+$ go test ./internal/database/ -count=1
+ok  	github.com/Tencent/WeKnora/internal/database	21.380s
+$ go test ./internal/modules/appconnector/... -count=1
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector	0.590s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/connectorcontrol	3.217s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/openconnector	3.208s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/plan	2.830s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/publish	5.688s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector	3.537s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector	7.637s
+$ go test ./internal/handler/ -run 'TestActionPlan|TestNotionPublish|TestAppPublications' -count=1
+ok  	github.com/Tencent/WeKnora/internal/handler	24.831s
+$ go test ./internal/router/ -run TestActionPlanRoutes -count=1
+ok  	github.com/Tencent/WeKnora/internal/router	3.039s
+```
+
+全绿（router 一项为计划级 testCommand 组成部分，顺带实跑取证）。
+
+## T6-3. 提交
+
+```
+$ git add internal/handler/app_connector_notion_publish_e2e_test.go internal/handler/app_connector_action_plan_e2e_test.go
+$ git commit -m "test(appconnector): 多操作计划 AC1/AC2/排除单项 端到端证据（T21 #51 Task 6）"
+[codex/issue30-t51 1ff35e75a] test(appconnector): 多操作计划 AC1/AC2/排除单项 端到端证据（T21 #51 Task 6）
+ 2 files changed, 450 insertions(+), 1 deletion(-)
+```
+
+提交后 `git status --short` 干净；报告文件随后单独入册。
+
+## T6-4. 自检发现
+
+1. **计划代码笔误（已修复，本任务对计划文本的唯一偏差）**：计划 plan-t51.md:2771-2773 在 `TestActionPlanEndToEndPartialSuccessResumesUnfinishedOnly` 开头声明 `appendsAfterSeed := env.fake.appendCalls` 后从未使用——Go 判为编译错误（首跑输出在案）。该变量不参与任何断言（实际断言基线是 `appendsAfterPass1`），最小修复为删除该三行读取块；断言与测试语义零变化。
+2. **AC3 blocked-env 边界（如实声明）**：真实 Notion 多操作计划验收（`NOTION_TOKEN`+真实父页面）本环境不可运行；本地最高稳定 Interface 证据 = 生产迁移库 + 真实服务/处理器链 + 契约双打 Notion（本任务五测试）。计划级真实 Provider 循环留待有凭据环境执行，未伪造（延续 Task 5 报告 §4.6 同一声明）。
+3. **加法式纪律核验**：`e2eNotion` 钩子为纯增量（新字段+新初始化+两处插入），既有 `dropNextAppend` 路径逐字保留；Step 1 后即复跑 `TestNotionPublish` 3 e2e（12.400s ok）零回归，Step 4 全量再确认。
+4. **改动范围**：本任务仅触碰计划授权的两个文件（`git diff --stat`：`app_connector_notion_publish_e2e_test.go` +16/-1、新文件 449 行）；未撤销/回退他人修改，未派发子代理，未推送远端。
+5. **Task 5 报告 §5.1 移交闭环**：「可派发 Task 6」的前置（迁移轨道可装载）本任务实测兑现——五测试在生产全量迁移轨道上直接 PASS，无需任何夹具侧迁移修补。
+
