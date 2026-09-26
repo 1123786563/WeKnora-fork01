@@ -47,7 +47,7 @@ func openMobilePushPolicyDB(t *testing.T) *gorm.DB {
 		"migrations/sqlite/000058_mobile_devices.up.sql",
 		"migrations/sqlite/000059_mobile_notifications.up.sql",
 		"migrations/sqlite/000060_mobile_notification_delivery.up.sql",
-		"migrations/sqlite/000114_mobile_device_app.up.sql",
+		"migrations/sqlite/000118_mobile_device_app.up.sql",
 	)
 	require.NoError(t, db.Exec(`CREATE TABLE IF NOT EXISTS mobile_notification_provider_state (provider_key TEXT PRIMARY KEY, paused INTEGER NOT NULL DEFAULT 0, reason TEXT NOT NULL DEFAULT '', alert_count INTEGER NOT NULL DEFAULT 0, paused_at DATETIME, recovered_at DATETIME, updated_at DATETIME NOT NULL)`).Error)
 	require.NoError(t, db.Exec(`CREATE TABLE agent_runs (tenant_id INTEGER NOT NULL, run_id TEXT NOT NULL, owner_id TEXT NOT NULL, PRIMARY KEY (tenant_id, run_id))`).Error)

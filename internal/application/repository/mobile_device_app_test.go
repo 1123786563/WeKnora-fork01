@@ -34,7 +34,7 @@ func openMobileAppDB(t *testing.T) *gorm.DB {
 		"migrations/sqlite/000058_mobile_devices.up.sql",
 		"migrations/sqlite/000059_mobile_notifications.up.sql",
 		"migrations/sqlite/000060_mobile_notification_delivery.up.sql",
-		"migrations/sqlite/000114_mobile_device_app.up.sql",
+		"migrations/sqlite/000118_mobile_device_app.up.sql",
 	} {
 		migration, err := os.ReadFile(filepath.Join(root, file))
 		require.NoError(t, err, file)
@@ -185,8 +185,8 @@ func TestMobileDeviceAppDownMigrationsDeleteEnterpriseRows(t *testing.T) {
 		file          string
 		deviceRebuild string
 	}{
-		{file: "migrations/sqlite/000114_mobile_device_app.down.sql", deviceRebuild: "CREATE TABLE mobile_devices_rebuilt"},
-		{file: "migrations/versioned/000193_mobile_device_app.down.sql", deviceRebuild: "ADD PRIMARY KEY (tenant_id, owner_id, device_id, environment)"},
+		{file: "migrations/sqlite/000118_mobile_device_app.down.sql", deviceRebuild: "CREATE TABLE mobile_devices_rebuilt"},
+		{file: "migrations/versioned/000197_mobile_device_app.down.sql", deviceRebuild: "ADD PRIMARY KEY (tenant_id, owner_id, device_id, environment)"},
 	} {
 		script, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(tc.file)))
 		require.NoError(t, err, tc.file)

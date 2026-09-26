@@ -30,7 +30,7 @@ func openMobileHandlerDB(t *testing.T) *gorm.DB {
 	for _, file := range []string{
 		"000059_mobile_notifications.up.sql",
 		"000060_mobile_notification_delivery.up.sql",
-		"000114_mobile_device_app.up.sql",
+		"000118_mobile_device_app.up.sql",
 	} {
 		upNext, err := os.ReadFile(filepath.Join("..", "..", "migrations", "sqlite", file))
 		require.NoError(t, err)
