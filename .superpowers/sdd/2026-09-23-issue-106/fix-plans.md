@@ -1941,4 +1941,136 @@ mcp_tool.go loadPluginDirectory、三个前端面板），5 条全部属实。
   276d50cba6d7 completed（seal sha256:ca3c…e9d5），全仓 157 findings 经
   findings.json 定位——聚焦 8 文件零命中（全部为仓库存量）。
 - 提交：4 个（f2f5ba297 F09 / d7bff114f F10+F13+F11 / d637647f2 F02 /
-  d645152b6 本文档），均标注「OCR 终局修复」。
+  d645152b6 本文档，amend 后 b5d6865a8），均标注「OCR 终局修复」。
+
+---
+
+# OCR 终局第 2 轮修复批次计划（F2 轮，2026-09-26）——4 项（f01/f02/f14/f27，均 medium）
+
+输入：OCR 终局第 2 轮 4 条有效发现。原则不变：证据优先、TDD（RED→GREEN）、
+中文提交标注「OCR 终局修复」、范围仅本 worktree。处置前逐项核实（4 处
+回调路径副本 grep、两份弹窗/轮询骨架对照、lockUpgradeAccept 全文件 7 处
+调用 + SetInstallationToolPolicy 函数体、settings/integrations 双 registry
+撞名 + normalize 消费链），4 条全部属实（f14/f27 的严重性下调论证与代码
+实证一致，本轮按 medium 处置）。
+
+## F2-A（medium·f14）SetInstallationToolPolicy 缺 per-installation 锁 → 入口补 lockUpgradeAccept [T18]
+
+- 根因：该方法是 plugin_install_service.go 中唯一缺锁的策略写路径——
+  grep 实证其余 7 处（569/686/905/1007/1441/1830/1994）均持
+  lockUpgradeAccept；本方法在 GetInstallation 快照成员校验（读）与
+  toolApprovalService.SetPolicy（写，仅校验服务存在）之间不持锁，经
+  PUT /installations/:id/tools/:tool_name/policy（Admin）暴露，与并发
+  升级/重定基/卸载交错时可产生伪 500 或本应被 ErrInstallationToolNotFound
+  拒绝的请求成功落行（交错最坏形态——报告的 fail-open 链不成立：7c
+  跳过既有行是「existing rows keep the admin's verdicts」显式设计语义；
+  孤儿行论据与生产 DSN `_foreign_keys=on` 相悖）。
+- 文件：internal/application/service/plugin_install_service.go
+  SetInstallationToolPolicy 入口 `defer lockUpgradeAccept(installationID)()`
+  （同款一行，与 F 轮 F10 补锁纪律一致）。
+- 回归测试（先 RED 后 GREEN，tool_policy_test.go 追加，upgradeAcceptStack
+  + fakeInstallApprovalRepo.onUpsert 钩子）：
+  TestSetInstallationToolPolicyConcurrentAcceptSerializes——策略 PATCH 的
+  UpsertPolicy 在途时并发 AcceptUpgrade：accept 必须零进展（RED：立即
+  完成）；串行化后 accept 正常完成、终态一致（安装 v2、PATCH 的行裁决
+  保留——7c 只补缺行）。
+- 完成条件：先 RED 后 GREEN；`go test ./internal/modules/plugins/` 全绿。
+
+## F2-B（medium·f27）设置分区裸 key 'plugins' 与 integrations tab 撞名 → normalize 对已注册设置分区不加前缀 [T03 前端归属]
+
+- 根因：settings/registry.ts:43 裸 key 'plugins'（PluginSettings 管理面板）
+  与 integrations/registry.ts:27 key 'plugins'（PluginDiscoverPanel 成员
+  tab）撞名；normalizeIntegrationSettingsSection（integrations/
+  settings-route.ts:13-18）对 INTEGRATION_SECTIONS 裸 key 一律加
+  integration- 前缀——SettingsPage 的 requestedSection（初始挂载 :191 与
+  popstate :296 均经 integrationSettingsQuery）把 ?section=plugins 归一化
+  为 integration-plugins，落到渲染 IntegrationsRoutePage 的成员发现 tab
+  （:212/:487 链），而侧边栏 select 原样写 ?section=plugins（:286）——
+  刷新/深链/popstate 100% 确定性复现 URL 与内容不一致，管理员插件设置
+  面板无任何可用深链。
+- 修复（两选项取 normalize 侧——改 key 影响已发布 URL/别名面更大）：
+  normalizeIntegrationSettingsSection 对已注册 SETTINGS_SECTIONS 的裸
+  key 保持原样（settings 路由的 ?section= 唯一合法含义就是设置分区；
+  integrations 页面自己的 tab 消费（integrationKeyFromQuery）与带前缀
+  规范 URL（integration-plugins）不受影响）。
+- 回归测试（先 RED 后 GREEN，packages/views/src/integrations/
+  settings-route.test.ts 新建）：
+  TestNormalizeKeepsRegisteredSettingsSectionKeys——normalize('plugins')
+  === 'plugins'（RED：现返回 'integration-plugins'）、normalize('mcp')
+  === 'mcp' 等同族裸 key 保持、非注册裸 key（'im'）仍归一化为
+  integration-im（integrations tab 的规范前缀语义保留）、
+  integrationTabForSection('plugins') 仍 undefined（不劫持渲染）。
+  SettingsPage.test / registry.test 回归。
+- 完成条件：先 RED 后 GREEN；test:shared 中 views/integrations 与
+  SettingsPage.test 全绿；typecheck:shared/web 0 error。
+
+## F2-C（medium·f01+f02）OAuth 回调路径四副本 + 弹窗/轮询常量双份 → 共享模块 apps/web/src/plugins/oauth.ts [T08 前端]
+
+- 根因："/api/v1/mcp-oauth/callback" 在 apps/web 内 4 处逐字副本
+  （PluginsPanel.tsx:188、McpSettingsPanel.tsx:838、ConfigurationEditor.
+  tsx:68、ChatRoutePage.tsx:1367——后两处为模板串内嵌），后端路由调整
+  无编译期保护；授权弹窗参数（"weknora_mcp_oauth"/"width=600,height=720"）
+  与轮询节奏（40×1500ms）在两面板各自维护且已分叉（PluginsPanel 常量化
+  +aliveRef+兜底刷新，McpSettingsPanel 内联魔数无卸载终止）——防御逻辑
+  后续调整需双处同步。
+- 修复（f02 取「至少弹窗参数与轮询常量并入共享」——骨架合并超本轮范围，
+  aliveRef/兜底分叉保留各自）：新建 apps/web/src/plugins/oauth.ts——
+  MCP_OAUTH_CALLBACK_PATH / MCP_OAUTH_POPUP_NAME / MCP_OAUTH_POPUP_
+  FEATURES / MCP_OAUTH_POLL_INTERVAL_MS / MCP_OAUTH_POLL_ATTEMPTS；四处
+  回调路径与两面板弹窗/轮询引用改 import（PluginsPanel 删本地
+  AUTH_POLL_*，McpSettingsPanel 魔数与弹窗串改常量）。
+- 回归测试：apps/web/src/plugins/oauth.test.ts 新建（常量值与现行四处
+  逐字锁定，RED：模块不存在）；PluginsPanel.test / SettingsPage.test /
+  McpSettingsPanel 相关测试回归；typecheck:web 0 error。
+- 完成条件：新测 RED 后 GREEN；相关面板测试全绿。
+
+## F2 轮完成条件（总）
+
+1. 三组回归测试（f14 并发串行化 / f27 归一化族 / f01+f02 常量锁定）
+   全部先 RED 后 GREEN；
+2. `go test ./internal/modules/plugins/ ./internal/application/service/
+   ./internal/handler/` 全绿；test:shared（views/integrations）与 web
+   相关面板测试绿；typecheck:web 0 error；
+3. `go build ./...` exit 0；改动文件 gofmt/vet 干净；
+4. 中文提交 2-3 个（f14 Go 侧 / f27 views 侧 / f01+f02 web 侧），均标注
+   「OCR 终局修复」；本节回填完成记录。
+
+### F2 轮完成记录（2026-09-26）
+
+4 项全部修复，无剩余项。逐项 RED→GREEN 证据：
+
+- **F2-A（f14）**：RED——TestSetInstallationToolPolicyConcurrentAccept-
+  Serializes 首跑 `Should be false` 失败（accept 在 PATCH 的 UpsertPolicy
+  在途期间完成=零串行化；过程插曲如实：首跑为编译期 RED `undefined:
+  time`，补 import 后取得行为 RED）。GREEN：SetInstallationToolPolicy
+  入口 `defer lockUpgradeAccept(installationID)()`（一行，同款注释锚
+  upgradeAcceptMutexes）；终态断言过（安装 v2 + PATCH 行裁决保留 +
+  accept 新工具落行）。plugins 包全量 ok。
+- **F2-B（f27）**：RED——settings-route.test.ts（新建）
+  `the settings-section key plugins must survive normalization` 失败
+  （normalize('plugins') 返回 'integration-plugins'）。GREEN：
+  normalizeIntegrationSettingsSection 对 SETTINGS_SECTIONS 注册裸 key
+  保持原样（import 方向 settings-route → settings/registry →
+  integrations/registry 无环，已核）；integration-only 裸 key 前缀语义
+  不变（'im'→'integration-im'）、integrationTabForSection('plugins')
+  仍 undefined（渲染不劫持）。邻域：integrations 全目录 62/62（含
+  registry.test 的 integrationKeyFromQuery 断言原样通过）、
+  SettingsPage.test 26/26、test:shared 全量 1026 测试 1025 pass/
+  0 fail/1 skipped（新增 2 测计入）。
+- **F2-C（f01+f02）**：RED——oauth.test.ts ERR_MODULE_NOT_FOUND。GREEN：
+  新建 apps/web/src/plugins/oauth.ts（MCP_OAUTH_CALLBACK_PATH/
+  POPUP_NAME/POPUP_FEATURES/POLL_INTERVAL_MS/POLL_ATTEMPTS）；四处回调
+  字面量清零（grep 'mcp-oauth/callback' 非 oauth.ts 副本 0）、PluginsPanel
+  本地 AUTH_POLL_* 删除改引共享、McpSettingsPanel 内联魔数 40/1500 与
+  弹窗串改常量（值不变）；ChatRoutePage 的页面级弹窗名 'mcp_oauth'
+  语义不同不纳入（已记）。面板+新模块 79/79（oauth 2/ui 2/PluginsPanel
+  15/PluginsSettingsPanel 34/SettingsPage 26）；typecheck:web 与
+  typecheck:shared 均 exit 0。
+- 门控（真实运行）：go build ./... exit 0（仅既有 ld 告警）；改动 Go
+  文件 gofmt 干净（tool_policy_test.go 追加段曾报不齐，gofmt -w 后复检
+  干净且测试复跑绿）、两包 vet 干净；Go 三包全量 ok（plugins 12.8s/
+  service 331.7s/handler 2.9s）；configuration/chat 目录无独立测试文件
+  （ConfigurationEditor/ChatRoutePage 的等值常量替换由 typecheck:web
+  覆盖编译面，如实记录）。
+- 提交：3 个（f14 Go / f27 views / f01+f02 web）+ 本文档，均标注
+  「OCR 终局修复」。
