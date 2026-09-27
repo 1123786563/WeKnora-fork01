@@ -83,3 +83,36 @@ func TestCraftT17StoppingRunKeepsWriterFence(t *testing.T) {
 		t.Fatal("an unobserved Run row is unknown and must keep the fence")
 	}
 }
+
+
+// ---- round-2 OCR regressions -------------------------------------------------
+
+// StopIntentOutcome must NOT confirm a stop that was never requested: an
+// abort by any other mechanism (budget pause, transport failure) observed
+// Aborted+Idle is not a stop confirmation (same-source discipline with
+// StopStatus(true, o)).
+func TestStopIntentOutcomeRequiresRequestedPremise(t *testing.T) {
+	abortedIdle := Observation{Aborted: true, Idle: true}
+	if got := StopIntentOutcome(abortedIdle); got != StopConfirmed {
+		t.Fatalf("aborted+idle observation should confirm: %v", got)
+	}
+	// StopStatus(true, ...) requires requested && aborted && idle — the
+	// outcome mapping is now same-source.
+	if StopStatus(true, abortedIdle) != "canceled" {
+		t.Fatalf("same-source discipline violated: StopStatus(true, o) should be canceled")
+	}
+	// An idle observation WITHOUT the abort is a normal completion: the
+	// lingering intent is superseded, not "still in flight".
+	if got := StopIntentOutcome(Observation{Idle: true, Completed: true}); got != StopRequested {
+		t.Fatalf("superseded completion must stay requested: %v", got)
+	}
+	if !StopIntentSuperseded(Observation{Idle: true, Completed: true}) {
+		t.Fatalf("a completed observation supersedes the stop")
+	}
+	if !StopIntentSuperseded(Observation{Idle: true}) {
+		t.Fatalf("an idle-not-aborted observation supersedes the stop")
+	}
+	if StopIntentSuperseded(Observation{Aborted: true, Idle: false}) {
+		t.Fatalf("an in-flight abort does not supersede the stop")
+	}
+}

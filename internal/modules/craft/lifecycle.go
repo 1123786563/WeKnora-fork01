@@ -368,10 +368,25 @@ func (i StopIntent) Validate() error {
 // is still in flight). An observation that cannot be read at all is the
 // caller's unknown — never a confirmation.
 func StopIntentOutcome(o Observation) StopOutcomeStatus {
-	if o.Aborted && o.Idle {
+	// Same-source discipline with StopStatus: a confirmed stop requires the
+	// stop to have been REQUESTED — an abort by any OTHER mechanism (budget
+	// pause, session deletion, a transport failure) observed Aborted+Idle
+	// is not a stop confirmation and must never project one.
+	if StopStatus(true, o) == "canceled" {
 		return StopConfirmed
 	}
 	return StopRequested
+}
+
+// StopIntentSuperseded reports whether a normal completion has overtaken a
+// stop: the observation completed WITHOUT the stop's abort, so a lingering
+// requested/unknown intent is stale and the Run's terminal fact is its
+// completion, not a pending stop.
+func StopIntentSuperseded(o Observation) bool {
+	// A normal completion overtakes the stop: either the observation reports
+	// the delegation Completed, or it settled idle without the stop's abort
+	// ever landing. Domain-local — no executor-side normalizer import.
+	return o.Completed || (!o.Aborted && o.Idle)
 }
 
 // StopIntentMayWriteRunTerminal reports whether the durable stop state of a

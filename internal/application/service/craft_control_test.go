@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
@@ -799,4 +800,98 @@ func TestControlStopBlocksNewDispatchOnRealStore(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "canceled", status.Phase)
 	require.Equal(t, 2, exec.AbortCount())
+}
+
+
+// ---- T17 round-2 OCR regressions ---------------------------------------------
+
+// TestControlStopExecutorCanceledResultConverges pins the round-2 high fix:
+// the real executor writes a CANCELED result during Abort (fenced — only
+// possible under T17 because the run stays running); the stop must NOT
+// early-return on that result — it flows to the terminal write and the
+// confirmed marker, so the run converges and a repeated stop replays.
+func TestControlStopExecutorCanceledResultConverges(t *testing.T) {
+	db := openCraftSessionDB(t)
+	ctx := context.Background()
+	const sessionID = "s-t17r2"
+	scope := craft.Scope{TenantID: 1, UserID: "u1", SessionID: sessionID}
+	require.NoError(t, db.Exec(
+		`INSERT INTO sessions (id, tenant_id, title, user_id, engine_type) VALUES (?, 1, 't17r2', 'u1', 'trpc')`,
+		sessionID).Error)
+
+	// Fake delegation store (the journey-test pattern) with a REAL run
+	// store; the executor's Abort writes a CANCELED result — the fenced
+	// SaveResult the real opencode executor performs under T17.
+	delegations := newFakeDelegationStore()
+	runs := NewAgentRunService(repository.NewAgentRunStore(db))
+	const runID = "run-t17r2"
+	_, err := runs.Submit(ctx, agentruntime.Admission{
+		Key:                agentruntime.RunKey{TenantID: 1, RunID: runID},
+		SessionID:          sessionID, UserID: "u1",
+		RequestID:          "r-" + runID, AssistantMessageID: "a-" + runID,
+		RequestHash:        "h-" + runID,
+		Snapshot:           json.RawMessage(`{"version":1,"craft":true}`),
+		UserMessage:        json.RawMessage(`{"role":"user","content":"r2"}`),
+		AssistantMessage:   json.RawMessage(`{"role":"assistant","content":""}`),
+		Deadline:           time.Now().Add(time.Hour),
+	})
+	require.NoError(t, err)
+	_, err = delegations.PutWorkspace(ctx, craft.Workspace{
+		Scope: scope, SandboxID: "sbx-r2", Generation: "0",
+		OpenCodeSessionID: "oc-r2", RuntimeDigest: "digest-r2",
+	}, 0)
+	require.NoError(t, err)
+	ws, err := delegations.GetWorkspace(ctx, scope)
+	require.NoError(t, err)
+	_, err = delegations.PrepareTask(ctx, craft.Task{
+		ID: "dlg-r2", ToolCallID: "call-r2", Prompt: "stop me", PromptMessageID: "msg_r2",
+		RequestHash: "hash-r2", WorkspaceID: ws.ID, Scope: scope,
+		Fence: agentruntime.Fence{RunKey: agentruntime.RunKey{TenantID: 1, RunID: runID}, Owner: "worker-r2", Epoch: 1},
+	})
+	require.NoError(t, err)
+
+	exec := &controlExecutor{}
+	exec.onAbort = func(tk craft.Task) error {
+		return delegations.SaveResult(ctx, tk.Fence, craft.Result{
+			TaskID: tk.ID, Status: "canceled", Files: []craft.File{},
+		})
+	}
+	exec.onObserve = func(craft.Task) (craft.Observation, error) {
+		return craft.Observation{Aborted: true, Idle: true}, nil
+	}
+
+	intents := &memoryStopIntentStore{}
+	svc := NewCraftControlService(runs, delegations, exec, nil, nil)
+	svc.SetStopIntents(intents)
+
+	status, err := svc.Stop(context.Background(), CraftStopRequest{Scope: scope, RunKey: agentruntime.RunKey{TenantID: 1, RunID: runID}, TaskID: "dlg-r2"})
+	require.NoError(t, err)
+	require.Equal(t, "canceled", status.Phase, "the executor's canceled confirmation must converge the stop (not early-return)")
+	require.Equal(t, craft.StopConfirmed, status.Outcome.Status)
+	require.Equal(t, craft.StopConfirmed, intents.rows[runID].Status)
+	row, err := runs.Get(ctx, agentruntime.RunKey{TenantID: 1, RunID: runID})
+	require.NoError(t, err)
+	require.Equal(t, "canceled", row.Status, "the run must terminalize (fence releases)")
+}
+
+type memoryStopIntentStore struct {
+	rows map[string]craft.StopIntent
+}
+
+func (m *memoryStopIntentStore) PutStopIntent(_ context.Context, _ craft.Scope, intent craft.StopIntent) (craft.StopIntent, error) {
+	if m.rows == nil {
+		m.rows = map[string]craft.StopIntent{}
+	}
+	if prior, ok := m.rows[intent.RunID]; ok && prior.Status == craft.StopConfirmed {
+		return prior, nil
+	}
+	m.rows[intent.RunID] = intent
+	return intent, nil
+}
+
+func (m *memoryStopIntentStore) GetStopIntent(_ context.Context, _ craft.Scope, runID string) (craft.StopIntent, error) {
+	if row, ok := m.rows[runID]; ok {
+		return row, nil
+	}
+	return craft.StopIntent{}, craft.ErrNotFound
 }

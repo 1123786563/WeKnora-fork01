@@ -23,15 +23,17 @@ export function CraftStatusNotice({ kind, children }: { kind: CraftNoticeKind; c
   );
 }
 
-// T17 (#136): the stop-outcome notice vocabulary. The three durable stop
-// outcomes of a Run (the frozen T00 CraftStopOutcome) each carry their own
-// member-facing sentence — the accepted stop is NEVER announced as stopped,
-// and an unobservable abort outcome is never announced as confirmed.
-export type CraftStopOutcomeStatus = 'requested' | 'confirmed' | 'unknown';
+// T17 (#136): the stop-outcome vocabulary re-exports the T00 frozen
+// contract type (@weknora/contracts export *), keeping the projection
+// source and this banner's Record compile-time linked. The accepted stop is
+// NEVER announced as stopped, and an unobservable abort outcome is never
+// announced as confirmed; `confirmed` reuses the canceled lifecycle banner
+// text — the member-visible fact is the same sentence.
+export type CraftStopOutcomeStatus = import('@weknora/contracts').CraftStopOutcomeStatus;
 
 const STOP_OUTCOME_NOTICE_TEXT: Record<CraftStopOutcomeStatus, string> = {
   requested: '已请求停止，正在等待执行器确认…',
-  confirmed: '已停止',
+  confirmed: STATUS_NOTICE_TEXT.canceled,
   unknown: '停止结果不明，等待核对',
 };
 
