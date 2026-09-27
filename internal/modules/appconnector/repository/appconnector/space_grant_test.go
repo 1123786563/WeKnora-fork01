@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
 
 	"github.com/golang-migrate/migrate/v4"
 	sqlite3migrate "github.com/golang-migrate/migrate/v4/database/sqlite3"
@@ -78,4 +79,32 @@ func TestSpaceConnectionGrantStoreUpsertListRevoke(t *testing.T) {
 	require.Len(t, grants, 1)
 	require.Equal(t, "carol", grants[0].ActorID)
 	require.Equal(t, "alice", grants[0].GrantedBy)
+}
+
+// TestGrantSpaceConnectionKeepsFirstCreatorOnRegrant pins B5-F56: a
+// re-grant rewrites granted_by (the operator intent) and advances
+// updated_at, but must never reset created_at — the first grant time is
+// audit history, not a mutable column of the latest write.
+func TestGrantSpaceConnectionKeepsFirstCreatorOnRegrant(t *testing.T) {
+	db := openSpaceGrantDB(t)
+	store := NewSpaceConnectionGrantStore(db)
+	ctx := context.Background()
+
+	require.NoError(t, store.GrantSpaceConnection(ctx, 7, "conn-space", "bob", "alice"))
+	var first SpaceConnectionGrantRow
+	require.NoError(t, db.Where("tenant_id = ? AND connection_id = ? AND actor_id = ?", 7, "conn-space", "bob").
+		First(&first).Error)
+	firstCreatedAt := first.CreatedAt
+
+	// Let the clock tick so a reset would be observable.
+	time.Sleep(10 * time.Millisecond)
+
+	require.NoError(t, store.GrantSpaceConnection(ctx, 7, "conn-space", "bob", "dave"))
+
+	var after SpaceConnectionGrantRow
+	require.NoError(t, db.Where("tenant_id = ? AND connection_id = ? AND actor_id = ?", 7, "conn-space", "bob").
+		First(&after).Error)
+	require.Equal(t, firstCreatedAt, after.CreatedAt, "重复授权不得抹掉首次授予时间（B5-F56）")
+	require.Equal(t, "dave", after.GrantedBy, "重授权改写 granted_by 为最新操作者")
+	require.True(t, after.UpdatedAt.After(first.UpdatedAt) || !after.UpdatedAt.Equal(first.CreatedAt), "updated_at 允许前进")
 }

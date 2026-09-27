@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // SpaceConnectionGrantRow is one explicit actor's grant on one space
@@ -27,7 +28,7 @@ type SpaceConnectionGrantRow struct {
 }
 
 // TableName binds SpaceConnectionGrantRow to app_space_connection_grants
-// (versioned 000198 / sqlite 000119).
+// (versioned 000199 / sqlite 000123).
 func (SpaceConnectionGrantRow) TableName() string { return "app_space_connection_grants" }
 
 // SpaceConnectionGrantStore persists and adjudicates space-connection
@@ -40,13 +41,22 @@ func NewSpaceConnectionGrantStore(db *gorm.DB) *SpaceConnectionGrantStore {
 }
 
 // GrantSpaceConnection upserts one grant (idempotent per
-// tenant+connection+actor). All inputs are bound parameters.
+// tenant+connection+actor). All inputs are bound parameters. The conflict
+// path rewrites only the mutable columns (granted_by, updated_at):
+// created_at is the first-grant audit fact and must survive re-grants
+// (B5-F56).
 func (s *SpaceConnectionGrantStore) GrantSpaceConnection(ctx context.Context, tenantID uint64, connectionID, actorID, grantedBy string) error {
+	now := time.Now().UTC()
 	row := SpaceConnectionGrantRow{
 		TenantID: tenantID, ConnectionID: connectionID, ActorID: actorID,
-		GrantedBy: grantedBy, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+		GrantedBy: grantedBy, CreatedAt: now, UpdatedAt: now,
 	}
-	return s.db.WithContext(ctx).Save(&row).Error
+	return s.db.WithContext(ctx).Clauses(clause.OnConflict{
+		Columns: []clause.Column{
+			{Name: "tenant_id"}, {Name: "connection_id"}, {Name: "actor_id"},
+		},
+		DoUpdates: clause.AssignmentColumns([]string{"granted_by", "updated_at"}),
+	}).Create(&row).Error
 }
 
 // RevokeSpaceConnection removes one grant; revoking an absent grant is a
