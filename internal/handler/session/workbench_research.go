@@ -24,18 +24,20 @@ import (
 )
 
 // ResearchStore is the delegation persistence seam (production:
-// *repository.TaskResearchStore).
+// *repository.TaskResearchStore). CreateDelegation receives the entity by
+// pointer: the store writes back the persisted timestamps (B5-F74).
 type ResearchStore interface {
-	CreateDelegation(ctx context.Context, d types.TaskResearchDelegation) error
+	CreateDelegation(ctx context.Context, d *types.TaskResearchDelegation) error
 	GetDelegation(ctx context.Context, tenantID uint64, id string) (types.TaskResearchDelegation, error)
 	ListDelegationsBySession(ctx context.Context, tenantID uint64, sessionID string) ([]types.TaskResearchDelegation, error)
 	CompleteDelegation(ctx context.Context, tenantID uint64, id, summary string) (types.TaskResearchDelegation, error)
 }
 
 // AnnotationStore is the annotation persistence seam (production:
-// *repository.TaskAnnotationStore).
+// *repository.TaskAnnotationStore). CreateAnnotation receives the entity by
+// pointer: the store writes back the persisted timestamps (B5-F75).
 type AnnotationStore interface {
-	CreateAnnotation(ctx context.Context, a types.TaskArtifactAnnotation) error
+	CreateAnnotation(ctx context.Context, a *types.TaskArtifactAnnotation) error
 	ListAnnotationsBySession(ctx context.Context, tenantID uint64, sessionID string) ([]types.TaskArtifactAnnotation, error)
 }
 
@@ -211,7 +213,7 @@ func (h *WorkbenchResearchHandler) DelegateResearch(c *gin.Context) {
 		Objective: objective, SourcesJSON: string(encoded),
 		Status: types.TaskResearchAssigned, CreatedBy: userID,
 	}
-	if err := h.research.CreateDelegation(c.Request.Context(), delegation); err != nil {
+	if err := h.research.CreateDelegation(c.Request.Context(), &delegation); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "code": "research_backend", "error": "failed to persist delegation"})
 		return
 	}
@@ -337,7 +339,7 @@ func (h *WorkbenchResearchHandler) AnnotateMaterial(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "code": "research_invalid_request", "error": "body is required"})
 		return
 	}
-	if err := h.annotations.CreateAnnotation(c.Request.Context(), annotation); err != nil {
+	if err := h.annotations.CreateAnnotation(c.Request.Context(), &annotation); err != nil {
 		writeResearchError(c, err)
 		return
 	}

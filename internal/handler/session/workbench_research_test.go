@@ -35,8 +35,12 @@ func newResearchStoreStub() *researchStoreStub {
 	return &researchStoreStub{completed: map[string]string{}}
 }
 
-func (s *researchStoreStub) CreateDelegation(_ context.Context, d types.TaskResearchDelegation) error {
-	s.created = append(s.created, d)
+func (s *researchStoreStub) CreateDelegation(_ context.Context, d *types.TaskResearchDelegation) error {
+	// Same contract as the production store: GORM writes the persisted
+	// timestamps back through the pointer target.
+	now := time.Now().UTC()
+	d.CreatedAt, d.UpdatedAt = now, now
+	s.created = append(s.created, *d)
 	return nil
 }
 
@@ -93,8 +97,11 @@ type annotationStoreStub struct {
 	created []types.TaskArtifactAnnotation
 }
 
-func (s *annotationStoreStub) CreateAnnotation(_ context.Context, a types.TaskArtifactAnnotation) error {
-	s.created = append(s.created, a)
+func (s *annotationStoreStub) CreateAnnotation(_ context.Context, a *types.TaskArtifactAnnotation) error {
+	// Same contract as the production store: GORM writes the persisted
+	// timestamps back through the pointer target.
+	a.CreatedAt = time.Now().UTC()
+	s.created = append(s.created, *a)
 	return nil
 }
 
@@ -357,4 +364,48 @@ func TestListAnnotationsReadableByGrantedViewer(t *testing.T) {
 	h.ListAnnotations(c)
 	require.Equal(t, http.StatusOK, c.Writer.Status())
 	require.Contains(t, rec.Body.String(), `"base_version":"9a2f1c3d4e5f6a7b"`)
+}
+
+// ─── persisted timestamps (B5-F74/F75) ──────────────────────────────────────
+
+// The 201 responses must echo the store-persisted created_at, not the
+// handler-local zero value. The stub store simulates GORM's write-back
+// through the pointer target (production: Create(d) fills CreatedAt on the
+// pointed-to entity).
+func TestDelegateResearchReturnsPersistedCreatedAt(t *testing.T) {
+	h, _, _, _ := researchHandlerEnv(types.TaskAccessOwner)
+	c, rec := researchContext(http.MethodPost, "/api/v1/workbench/executions/run-1/research",
+		`{"objective":"survey retrieval baselines","sources":["kb-1"]}`)
+	h.DelegateResearch(c)
+	require.Equal(t, http.StatusCreated, c.Writer.Status())
+
+	var body struct {
+		Data struct {
+			Delegation researchDelegationView `json:"delegation"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	created, err := time.Parse(time.RFC3339, body.Data.Delegation.CreatedAt)
+	require.NoError(t, err)
+	require.WithinDuration(t, time.Now().UTC(), created, 5*time.Second,
+		"created_at 必须是落库回写时刻，绝非零值 0001-01-01T00:00:00Z（B5-F74）")
+}
+
+func TestAnnotateMaterialReturnsPersistedCreatedAt(t *testing.T) {
+	h, _, _, _ := researchHandlerEnv(types.TaskAccessOwner)
+	c, rec := researchContext(http.MethodPost, "/api/v1/workbench/executions/run-1/annotations",
+		`{"material_id":"m1:0","base_version":"9a2f1c3d4e5f6a7b","body":"结论第三段缺引用"}`)
+	h.AnnotateMaterial(c)
+	require.Equal(t, http.StatusCreated, c.Writer.Status())
+
+	var body struct {
+		Data struct {
+			Annotation researchAnnotationView `json:"annotation"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	created, err := time.Parse(time.RFC3339, body.Data.Annotation.CreatedAt)
+	require.NoError(t, err)
+	require.WithinDuration(t, time.Now().UTC(), created, 5*time.Second,
+		"created_at 必须是落库回写时刻，绝非零值 0001-01-01T00:00:00Z（B5-F75）")
 }

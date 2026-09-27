@@ -7,6 +7,7 @@ package repository_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/types"
@@ -26,13 +27,17 @@ func TestTaskResearchStoreDelegationRoundTrip(t *testing.T) {
 	store := repository.NewTaskResearchStore(db)
 	ctx := context.Background()
 
-	require.NoError(t, store.CreateDelegation(ctx, researchDelegationFixture("d1")))
+	d1 := researchDelegationFixture("d1")
+	require.NoError(t, store.CreateDelegation(ctx, &d1))
+	// B5-F74: GORM writes the persisted timestamps back through the pointer.
+	require.False(t, d1.CreatedAt.IsZero(), "落库时间戳必须回写到调用方实体")
 
 	got, err := store.GetDelegation(ctx, 1, "d1")
 	require.NoError(t, err)
 	require.Equal(t, "survey retrieval baselines", got.Objective)
 	require.Equal(t, []string{"kb-1", "kb-2"}, got.Sources())
 	require.Equal(t, types.TaskResearchAssigned, got.Status)
+	require.WithinDuration(t, time.Now().UTC(), got.CreatedAt, 5*time.Second)
 
 	// Cross-tenant read is one uniform miss: the probe learns nothing.
 	_, err = store.GetDelegation(ctx, 2, "d1")
@@ -50,7 +55,8 @@ func TestTaskResearchStoreCompleteDelegationCASMovesAssignedOnly(t *testing.T) {
 	db := openTaskGrantDB(t)
 	store := repository.NewTaskResearchStore(db)
 	ctx := context.Background()
-	require.NoError(t, store.CreateDelegation(ctx, researchDelegationFixture("d1")))
+	d1 := researchDelegationFixture("d1")
+	require.NoError(t, store.CreateDelegation(ctx, &d1))
 
 	done, err := store.CompleteDelegation(ctx, 1, "d1", "3 findings, all cited")
 	require.NoError(t, err)
@@ -81,7 +87,7 @@ func TestTaskAnnotationStoreAppendOnlyAndMaterialIndex(t *testing.T) {
 		MaterialID: "m1:0", BaseVersion: "9a2f1c3d4e5f6a7b",
 		Body: "结论第三段缺引用", AuthorID: "u3",
 	}
-	require.NoError(t, store.CreateAnnotation(ctx, base))
+	require.NoError(t, store.CreateAnnotation(ctx, &base))
 
 	list, err := store.ListAnnotationsBySession(ctx, 1, "s1")
 	require.NoError(t, err)
@@ -106,15 +112,15 @@ func TestTaskAnnotationStoreAppendOnlyAndMaterialIndex(t *testing.T) {
 	bad := base
 	bad.ID = "an2"
 	bad.Body = ""
-	require.ErrorIs(t, store.CreateAnnotation(ctx, bad), types.ErrTaskAnnotationInvalid)
+	require.ErrorIs(t, store.CreateAnnotation(ctx, &bad), types.ErrTaskAnnotationInvalid)
 	bad.ID = "an3"
 	bad.Body = "x"
 	bad.BaseVersion = ""
-	require.ErrorIs(t, store.CreateAnnotation(ctx, bad), types.ErrTaskAnnotationInvalid)
+	require.ErrorIs(t, store.CreateAnnotation(ctx, &bad), types.ErrTaskAnnotationInvalid)
 	bad.ID = "an4"
 	bad.BaseVersion = string(make([]rune, 129))
 	for i := range bad.BaseVersion {
 		bad.BaseVersion = bad.BaseVersion[:i] + "a" + bad.BaseVersion[i+1:]
 	}
-	require.ErrorIs(t, store.CreateAnnotation(ctx, bad), types.ErrTaskAnnotationInvalid)
+	require.ErrorIs(t, store.CreateAnnotation(ctx, &bad), types.ErrTaskAnnotationInvalid)
 }

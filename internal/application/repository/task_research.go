@@ -28,9 +28,12 @@ func NewTaskResearchStore(db *gorm.DB) *TaskResearchStore {
 }
 
 // CreateDelegation inserts one delegation row. The caller (handler) owns
-// identity and scope validation; the store persists as given.
-func (s *TaskResearchStore) CreateDelegation(ctx context.Context, d types.TaskResearchDelegation) error {
-	return s.db.WithContext(ctx).Create(&d).Error
+// identity and scope validation; the store persists as given. The entity is
+// passed by pointer so GORM's automatic timestamps are written back to the
+// caller's entity (B5-F74) — the 201 response echoes the persisted
+// created_at, never a zero value.
+func (s *TaskResearchStore) CreateDelegation(ctx context.Context, d *types.TaskResearchDelegation) error {
+	return s.db.WithContext(ctx).Create(d).Error
 }
 
 // GetDelegation loads one delegation; a miss and a cross-tenant id are the
@@ -106,12 +109,14 @@ func validateAnnotation(a types.TaskArtifactAnnotation) error {
 }
 
 // CreateAnnotation appends one annotation. Rows are never updated by this
-// store: the reviewed version identity is frozen at insert.
-func (s *TaskAnnotationStore) CreateAnnotation(ctx context.Context, a types.TaskArtifactAnnotation) error {
-	if err := validateAnnotation(a); err != nil {
+// store: the reviewed version identity is frozen at insert. The entity is
+// passed by pointer so GORM's automatic timestamps are written back to the
+// caller's entity (B5-F75).
+func (s *TaskAnnotationStore) CreateAnnotation(ctx context.Context, a *types.TaskArtifactAnnotation) error {
+	if err := validateAnnotation(*a); err != nil {
 		return err
 	}
-	return s.db.WithContext(ctx).Create(&a).Error
+	return s.db.WithContext(ctx).Create(a).Error
 }
 
 // ListAnnotationsBySession lists the task's annotations in creation order.
