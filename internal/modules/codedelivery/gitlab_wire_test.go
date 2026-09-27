@@ -13,6 +13,7 @@ import (
 	"sync"
 	"testing"
 
+	appconnectorsvc "github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector"
 	"github.com/stretchr/testify/require"
 )
 
@@ -41,6 +42,10 @@ type gitLabEmulator struct {
 	failMR         bool
 	cutAfterCommit bool
 	blackout       bool
+	// lastStartBranch/lastActions 捕获最近一次 commits POST 的锚定与动作
+	// 面（R5-F11 的断言用）。
+	lastStartBranch string
+	lastActions     []glCommitAction
 }
 
 type gitLabMR struct {
@@ -144,6 +149,42 @@ func (e *gitLabEmulator) deleteBranch(name string) {
 	e.mu.Lock()
 	delete(e.branches, name)
 	e.mu.Unlock()
+}
+
+// advanceDefaultTip 在默认分支 tip 之上直接落一颗「外部协作者」提交
+// （模拟基线锚定之后 main 上的推进：新增/修改文件——R5-F11 的现场）。
+func (e *gitLabEmulator) advanceDefaultTip(changes map[string][]byte) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	old := e.branches[e.defaultBranch]
+	tree := map[string]string{}
+	for p, b := range e.trees[old] {
+		tree[p] = b
+	}
+	for p, c := range changes {
+		sha := GitBlobSHA(c)
+		e.blobs[sha] = c
+		tree[p] = sha
+	}
+	sha := fmt.Sprintf("ext-%d", len(e.commits)+1)
+	e.commits[sha] = []string{old}
+	e.trees[sha] = tree
+	e.branches[e.defaultBranch] = sha
+}
+
+// LastStartBranch 返回最近一次 commits POST 携带的 start_branch（空 = 未
+// 携带/分支已存在）。
+func (e *gitLabEmulator) LastStartBranch() string {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.lastStartBranch
+}
+
+// LastActions 返回最近一次 commits POST 的 actions 列表副本。
+func (e *gitLabEmulator) LastActions() []glCommitAction {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return append([]glCommitAction(nil), e.lastActions...)
 }
 
 // blackoutAfterCommitCreate：下一条 commits POST 成功落地后立即断连——
@@ -344,7 +385,14 @@ func (e *gitLabEmulator) commitOnBranch(w http.ResponseWriter, r *http.Request) 
 			writeJSON(w, map[string]any{"message": "branch does not exist; start_branch required"})
 			return
 		}
-		s, ok := e.branches[body.StartBranch]
+		// 真实 GitLab 的 start_branch 接受 branch/tag/commit SHA（ref 解析）；
+		// 此处已持锁，按 resolveRef 同语义内联解析。
+		s, ok := "", false
+		if sha, found := e.branches[body.StartBranch]; found {
+			s, ok = sha, true
+		} else if _, found := e.trees[body.StartBranch]; found {
+			s, ok = body.StartBranch, true
+		}
 		if !ok {
 			w.WriteHeader(http.StatusBadRequest)
 			writeJSON(w, map[string]any{"message": "start_branch not found"})
@@ -352,6 +400,8 @@ func (e *gitLabEmulator) commitOnBranch(w http.ResponseWriter, r *http.Request) 
 		}
 		start = s
 	}
+	e.lastStartBranch = body.StartBranch
+	e.lastActions = append([]glCommitAction(nil), body.Actions...)
 	if len(body.Actions) == 0 {
 		w.WriteHeader(http.StatusBadRequest)
 		writeJSON(w, map[string]any{"message": "ensure at least one action"})
@@ -686,4 +736,72 @@ func TestCallClassifies2xxDecodeFailureAsServerFault(t *testing.T) {
 	require.Error(t, err)
 	require.NotErrorIs(t, err, ErrCodeRequestInvalid, "a 2xx decode failure is not a request-invalid (never-sent) outcome")
 	require.ErrorIs(t, err, ErrCodeTransport, "nearest existing family: an untrustworthy exchange, not a provable pre-send refusal")
+}
+
+// TestEnsureBranchAnchorsNewBranchAtBaseline pins R5-F11: a NEW task branch
+// must grow from the APPROVED BASELINE ref (the GitHub chain's
+// parent := material.BaselineSHA semantics), not the default branch's
+// current tip. Anchoring at the default tip would converge the branch to
+// the default↔baseline increment — deleting a collaborator's brand-new
+// file X and rolling Y back — and misattribute the blown action cap to
+// ErrBaselineTooLarge.
+func TestEnsureBranchAnchorsNewBranchAtBaseline(t *testing.T) {
+	e := newGitLabEmulator(t)
+	baseline := "b" + strings.Repeat("0", 39)
+	// The default branch moved past the baseline AFTER the plan anchored:
+	// collaborator added X.txt and edited main.go on main.
+	e.advanceDefaultTip(map[string][]byte{
+		"X.txt":   []byte("external addition\n"),
+		"main.go": []byte("package main // external edit\n"),
+	})
+	client := NewGitLabClientFactory(http.DefaultClient, e.srv.URL)("glpat-testtoken", RepoRef{Owner: "octocat", Name: "hello"})
+	ctx := context.Background()
+
+	ours := []byte("package main\n\nfunc main() {}\n")
+	blobSHA, err := client.CreateBlob(ctx, ours)
+	require.NoError(t, err)
+	staged, err := client.CreateTree(ctx, baseline, []TreeEntry{{Path: "main.go", SHA: blobSHA}})
+	require.NoError(t, err)
+	placeholder, err := client.CreateCommit(ctx, baseline, staged, "fix: greeting")
+	require.NoError(t, err)
+
+	branch := "weknora/task/s-anchor"
+	require.NoError(t, client.EnsureBranch(ctx, branch, placeholder))
+
+	// The new branch is anchored at the BASELINE ref, not the default branch.
+	require.Equal(t, baseline, e.LastStartBranch(), "start_branch must be the baseline ref, not the default branch name")
+	commit, ok := e.BranchCommit(branch)
+	require.True(t, ok)
+	require.Equal(t, []string{baseline}, e.ParentOf(commit), "the new branch must fork from the baseline commit")
+	// Actions cover ONLY the staged change: no delete of X, no rollback of Y.
+	actions := e.LastActions()
+	require.Len(t, actions, 1, "actions must be exactly the staged change, not the default↔baseline increment")
+	require.Equal(t, "main.go", actions[0].FilePath)
+	// Converged tree = baseline + staged only.
+	tip := e.BranchTree(branch)
+	require.Len(t, tip, 2)
+	require.Equal(t, GitBlobSHA(ours), tip["main.go"])
+	require.Equal(t, GitBlobSHA([]byte("# hello\n")), tip["README.md"])
+	require.Empty(t, e.Violations())
+}
+
+// TestEnsureBranchEmptyConvergenceIsDispatchNotStarted pins R5-F13: an
+// empty convergence on a missing branch is rejected BEFORE the commits API
+// leaves the process (no branch, no MR — provably nothing started), so it
+// must carry ErrDispatchNotStarted and settle FAILED, not park unknown
+// where QueryProvider could never find a remote fact.
+func TestEnsureBranchEmptyConvergenceIsDispatchNotStarted(t *testing.T) {
+	e := newGitLabEmulator(t)
+	baseline := "b" + strings.Repeat("0", 39)
+	client := NewGitLabClientFactory(http.DefaultClient, e.srv.URL)("glpat-testtoken", RepoRef{Owner: "octocat", Name: "hello"})
+	ctx := context.Background()
+
+	staged, err := client.CreateTree(ctx, baseline, nil) // no mutations: intended == baseline
+	require.NoError(t, err)
+	placeholder, err := client.CreateCommit(ctx, baseline, staged, "empty")
+	require.NoError(t, err)
+
+	err = client.EnsureBranch(ctx, "weknora/task/s-empty", placeholder)
+	require.ErrorIs(t, err, appconnectorsvc.ErrDispatchNotStarted, "a proven pre-send local rejection must carry the not-started contract")
+	require.Zero(t, e.Calls()["POST /repository/commits"], "nothing may leave")
 }

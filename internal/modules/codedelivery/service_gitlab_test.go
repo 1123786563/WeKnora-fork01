@@ -380,3 +380,30 @@ func TestQueryProviderIgnoresForeignTargetMR(t *testing.T) {
 	require.Equal(t, string(DeliveryUnknown), after.State, "no terminal transition may be written")
 	require.Zero(t, after.PRNumber, "no PR receipt may be recorded from a foreign-target MR")
 }
+
+// R5-F13（settle 契约级）：EnsureBranch 的空收敛是 commits API 之前的本地
+// 可证拒绝（分支/MR 均未创建）。批准已消耗后，若该拒绝不携带
+// ErrDispatchNotStarted，settle 会落 unknown——而 QueryProvider 永远查不到
+// 任何远端事实，交付永久滞留。批准后把工作区内容回卷成基线内容，派发时
+// staged blob 与基线一致 → 空收敛 → 必须落 failed（可重开计划）。
+func TestDispatchSettlesFailedOnEnsureBranchLocalRejection(t *testing.T) {
+	f := seededGitLabFixture(t)
+	ctx := context.Background()
+	view := firstDelivery(t, f)
+
+	// 批准之后、派发之前：工作区 main.go 回卷为基线内容（等价 blob sha）。
+	require.NoError(t, os.WriteFile(filepath.Join(f.root, "octocat/hello/main.go"), []byte("package main\n"), 0o644))
+
+	_, err := f.svc.DispatchDelivery(ctx, dispatchInput(view))
+	require.ErrorIs(t, err, ErrDeliveryDispatchRejected, "a proven pre-send rejection settles failed")
+
+	after, gerr := f.svc.GetDelivery(ctx, 7, view.ID)
+	require.NoError(t, gerr)
+	require.Equal(t, string(DeliveryFailed), after.State, "the delivery must settle FAILED, not strand in unknown")
+	require.Zero(t, f.gitlab.Calls()["POST /repository/commits"], "nothing may leave")
+	require.Zero(t, f.gitlab.Calls()["POST /merge_requests"])
+
+	var row appconnectorrepo.ActionRow
+	require.NoError(t, f.db.Where("id = ?", after.ActionID).First(&row).Error)
+	require.Equal(t, "failed", row.State, "the action settles ActionFailed via the ErrDispatchNotStarted contract")
+}

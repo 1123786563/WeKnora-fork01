@@ -13,6 +13,8 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+
+	appconnectorsvc "github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector"
 )
 
 // GitLabAPIBaseURL is the reviewed production endpoint (gitlab.com SaaS).
@@ -291,32 +293,31 @@ func (c *gitLabRestClient) CreateCommit(ctx context.Context, parent, tree, messa
 	return "gl-commit-placeholder", nil
 }
 
-func (c *gitLabRestClient) baseBranch(ctx context.Context) (string, error) {
-	if c.defaultBranch != "" {
-		return c.defaultBranch, nil
-	}
-	info, err := c.Repository(ctx)
-	if err != nil {
-		return "", err
-	}
-	return info.DefaultBranch, nil
-}
-
 // EnsureBranch materializes the staged delivery as ONE GitLab commits-API
 // call that converges <branch> to the intended tree (tree at stagedBase plus
-// the staged entries). A missing branch is created from the default branch
-// (start_branch); an existing branch is committed onto its CURRENT tip —
-// GitLab never rewrites history. When the branch already sits exactly on the
-// intended tree the call is a converged no-op (GitLab rejects empty actions;
-// the tip IS the delivery fact).
+// the staged entries). A missing branch is created FROM THE APPROVED BASELINE
+// ref (start_branch accepts a branch/tag/commit SHA) — the same anchoring as
+// the GitHub chain's parent := material.BaselineSHA; an existing branch is
+// committed onto its CURRENT tip — GitLab never rewrites history. When the
+// branch already sits exactly on the intended tree the call is a converged
+// no-op (GitLab rejects empty actions; the tip IS the delivery fact).
+//
+// Local rejections that provably precede the commits POST (empty convergence
+// on a missing branch, the action cap, the baseline tree's pagination cap)
+// carry ErrDispatchNotStarted: nothing left the process, so settle maps them
+// to ActionFailed — never unknown, where QueryProvider would find no remote
+// fact and the delivery would strand forever (R5-F13).
 func (c *gitLabRestClient) EnsureBranch(ctx context.Context, branch, commit string) error {
-	base, err := c.baseBranch(ctx)
+	baselineTree, err := c.Tree(ctx, c.stagedBase)
 	if err != nil {
+		if _, ok := localCapError(err); ok {
+			return fmt.Errorf("%w: baseline tree read exceeded local cap: %v", appconnectorsvc.ErrDispatchNotStarted, err)
+		}
 		return err
 	}
-	intended, err := c.Tree(ctx, c.stagedBase)
-	if err != nil {
-		return err
+	intended := make(map[string]string, len(baselineTree))
+	for p, sha := range baselineTree {
+		intended[p] = sha
 	}
 	for _, e := range c.stagedEntries {
 		if e.SHA == "" {
@@ -329,13 +330,21 @@ func (c *gitLabRestClient) EnsureBranch(ctx context.Context, branch, commit stri
 	if err != nil {
 		return err
 	}
-	startRef := base
+	// 锚定（R5-F11）：新任务分支从批准基线 ref 生长，而非默认分支现 tip。
+	// 基线即默认 tip（首次迭代）时两者同树，语义等价；基线滞后时，锚定
+	// 默认分支会把收敛面扩大成 default↔baseline 全量增量（删协作者新文
+	// 件、回卷他人修改、误报 ErrBaselineTooLarge）。
+	startRef := c.stagedBase
+	current := baselineTree
 	if exists {
 		startRef = head
-	}
-	current, err := c.Tree(ctx, startRef)
-	if err != nil {
-		return err
+		current, err = c.Tree(ctx, startRef)
+		if err != nil {
+			if _, ok := localCapError(err); ok {
+				return fmt.Errorf("%w: branch tree read exceeded local cap: %v", appconnectorsvc.ErrDispatchNotStarted, err)
+			}
+			return err
+		}
 	}
 	type commitAction struct {
 		Action   string `json:"action"`
@@ -372,10 +381,12 @@ func (c *gitLabRestClient) EnsureBranch(ctx context.Context, branch, commit stri
 		if exists {
 			return nil // 已收敛：GitLab 不写空提交，tip 即交付事实
 		}
-		return fmt.Errorf("%w: task branch %s would be empty; nothing to push", ErrInvalidMaterial, branch)
+		// 空收敛 + 分支不存在：commits POST 从未出网（分支/MR 均未创建），
+		// 本地可证拒绝 → ErrDispatchNotStarted（settle 落 failed）。
+		return fmt.Errorf("%w: task branch %s would be empty; nothing to push: %v", appconnectorsvc.ErrDispatchNotStarted, branch, ErrInvalidMaterial)
 	}
 	if len(actions) > 2*MaxDeliveryFiles {
-		return fmt.Errorf("%w: %d commit actions exceed cap %d", ErrBaselineTooLarge, len(actions), 2*MaxDeliveryFiles)
+		return fmt.Errorf("%w: %d commit actions exceed cap %d: %w", appconnectorsvc.ErrDispatchNotStarted, len(actions), 2*MaxDeliveryFiles, ErrBaselineTooLarge)
 	}
 	body := map[string]any{
 		"branch":         branch,
@@ -383,13 +394,23 @@ func (c *gitLabRestClient) EnsureBranch(ctx context.Context, branch, commit stri
 		"actions":        actions,
 	}
 	if !exists {
-		body["start_branch"] = base
+		body["start_branch"] = startRef // 基线 ref：分支/tag/commit SHA 皆可（R5-F11）
 	}
 	var out struct {
 		ID string `json:"id"`
 	}
 	_, err = c.call(ctx, http.MethodPost, "/api/v4/projects/"+c.projectSegment()+"/repository/commits", body, &out)
 	return err
+}
+
+// localCapError 报告 err 是否为本地分页上限判定（Status==0 的合成
+// CodePlatformAPIError——无 HTTP 状态即从未出网的本地决定）。
+func localCapError(err error) (*CodePlatformAPIError, bool) {
+	var apiErr *CodePlatformAPIError
+	if errors.As(err, &apiErr) && apiErr.Status == 0 {
+		return apiErr, true
+	}
+	return nil, false
 }
 
 // BranchHead resolves the branch tip; a missing branch is (absent), a
