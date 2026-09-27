@@ -58,19 +58,29 @@ type PlanView struct {
 	Limits   map[string]int64
 }
 
-// BatchView is one monthly credit batch in the Billing API answer; an
-// expired batch reports zero (the registry expiry overlay).
+// BatchView is one credit batch in the Billing API answer; an expired
+// batch reports zero (the registry expiry overlay). Monthly-family batches
+// of one period AGGREGATE into one line (the #82 F-4 semantics); top-up
+// batches answer individually (each carries its own grant/expiry face).
 type BatchView struct {
 	Period       string
 	BalanceMicro int64
 	ExpiresAt    time.Time
+	Source       string    // closed set: monthly | topup
+	GrantedAt    time.Time // the batch's grant instant (display face)
 }
 
-// CreditsView is the included-credit answer: the expiry-overlaid balance
-// and the per-batch breakdown.
+// CreditsView is the balance breakdown (#86 Task 4): the expiry-overlaid
+// balance, the committed holds face (in-flight reservation holds and
+// refund-locked credits — zeros when no budget projection answers), the
+// derived available amount, the projection instant, and the per-batch
+// breakdown.
 type CreditsView struct {
-	BalanceMicro int64
-	Batches      []BatchView
+	BalanceMicro      int64
+	HeldMicro         int64
+	RefundLockedMicro int64
+	ProjectedAt       time.Time
+	Batches           []BatchView
 }
 
 // BenefitsStatus is the closed product answer served by the Billing API:
@@ -307,10 +317,25 @@ func (s *BenefitsService) EnsureBenefits(ctx context.Context, tenantID uint64, d
 		}
 	}
 	if len(batches) > 0 {
-		status.Credits = &CreditsView{Batches: batches}
+		credits := &CreditsView{Batches: batches, ProjectedAt: row.ProjectedAt}
 		for _, b := range batches {
-			status.Credits.BalanceMicro += b.BalanceMicro
+			credits.BalanceMicro += b.BalanceMicro
 		}
+		// The committed holds face (#86 Task 4): in-flight reservation holds
+		// and refund-locked credits from the budget projection. A missing
+		// row (or no budget wired) answers honest zeros — the breakdown is
+		// still complete; a read failure degrades to zeros with one Warn
+		// (the billing read must not turn into an error over the advisory
+		// face — the A-23 posture).
+		if s.budget != nil {
+			held, locked, holdsErr := s.budget.AccountHolds(ctx, tenantID)
+			if holdsErr != nil {
+				logger.Warnf(ctx, "[CommercialBenefits] account holds read failed for tenant %d: %v", tenantID, holdsErr)
+			} else {
+				credits.HeldMicro, credits.RefundLockedMicro = held, locked
+			}
+		}
+		status.Credits = credits
 	}
 	return status, nil
 }
@@ -525,24 +550,44 @@ func (s *BenefitsService) refreshAndCollect(ctx context.Context, tenantID uint64
 
 	// The expiry overlay: registry truth decides spendability. An expired
 	// batch reports ZERO even while the authority still lists the wallet
-	// active (the lazy-termination window — E1). Balances aggregate by
-	// period ACROSS grant families (F-4): the purchase first-period wallet
-	// (#82 D4 — its own deterministic name and meta key) shares the
-	// activation month with the base monthly batch; the month's line
-	// answers the SUM, never an arbitrary last-write overwrite.
+	// active (the lazy-termination window — E1). Monthly-family balances
+	// aggregate by period ACROSS grant families (F-4): the purchase
+	// first-period wallet (#82 D4 — its own deterministic name and meta
+	// key) shares the activation month with the base monthly batch; the
+	// month's line answers the SUM, never an arbitrary last-write
+	// overwrite. Top-up batches (#86) answer INDIVIDUALLY — each carries
+	// its own twelve-month expiry face, never a period.
 	all, err := s.store.ListBatches(ctx, tenantID)
 	if err != nil {
 		return repocommercial.BenefitsRow{}, nil, "", err
 	}
 	balances := make(map[string]int64, len(b.Batches))
 	expires := make(map[string]time.Time, len(b.Batches))
+	granted := make(map[string]time.Time, len(b.Batches))
+	var topUps []BatchView
 	for _, batch := range b.Batches {
+		if batch.Period == "" {
+			// A top-up batch: its own line, same expiry overlay,
+			// expiry-then-grant order for a deterministic answer.
+			balance := int64(0)
+			if batch.ExpiresAt.After(now) {
+				balance = batch.BalanceMicro
+			}
+			topUps = append(topUps, BatchView{
+				BalanceMicro: balance, ExpiresAt: batch.ExpiresAt,
+				Source: domain.BatchSourceTopUp, GrantedAt: batch.GrantedAt,
+			})
+			continue
+		}
 		balances[batch.Period] += batch.BalanceMicro
 		if batch.ExpiresAt.After(expires[batch.Period]) {
 			expires[batch.Period] = batch.ExpiresAt
 		}
+		if g, ok := granted[batch.Period]; !ok || batch.GrantedAt.Before(g) {
+			granted[batch.Period] = batch.GrantedAt
+		}
 	}
-	batches := make([]BatchView, 0, len(all))
+	batches := make([]BatchView, 0, len(all)+len(topUps))
 	seen := make(map[string]bool, len(all))
 	for _, a := range all {
 		seen[a.Period] = true
@@ -550,7 +595,10 @@ func (s *BenefitsService) refreshAndCollect(ctx context.Context, tenantID uint64
 		if a.ExpiresAt.After(now) {
 			balance = balances[a.Period] // absent from the snapshot (terminated) = 0
 		}
-		batches = append(batches, BatchView{Period: a.Period, BalanceMicro: balance, ExpiresAt: a.ExpiresAt})
+		batches = append(batches, BatchView{
+			Period: a.Period, BalanceMicro: balance, ExpiresAt: a.ExpiresAt,
+			Source: domain.BatchSourceMonthly, GrantedAt: granted[a.Period],
+		})
 	}
 	// Snapshot-only periods (F-4): the purchase grant rides the fulfiller,
 	// not this coordinator's registry — a purchase activated in a month
@@ -569,8 +617,18 @@ func (s *BenefitsService) refreshAndCollect(ctx context.Context, tenantID uint64
 		if expires[period].After(now) {
 			balance = balances[period]
 		}
-		batches = append(batches, BatchView{Period: period, BalanceMicro: balance, ExpiresAt: expires[period]})
+		batches = append(batches, BatchView{
+			Period: period, BalanceMicro: balance, ExpiresAt: expires[period],
+			Source: domain.BatchSourceMonthly, GrantedAt: granted[period],
+		})
 	}
+	sort.Slice(topUps, func(i, j int) bool {
+		if !topUps[i].ExpiresAt.Equal(topUps[j].ExpiresAt) {
+			return topUps[i].ExpiresAt.Before(topUps[j].ExpiresAt)
+		}
+		return topUps[i].GrantedAt.Before(topUps[j].GrantedAt)
+	})
+	batches = append(batches, topUps...)
 
 	// The lot projection (#86 Task 3): the same authority batch read-back
 	// feeds the local lot table — the reservation face's allocation source.

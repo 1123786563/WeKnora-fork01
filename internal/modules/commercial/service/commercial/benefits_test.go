@@ -546,6 +546,34 @@ func TestRefreshSyncsLotsFromSnapshot(t *testing.T) {
 	}
 }
 
+// TestBreakdownHoldsSurviveMissingAccountRow (#86 Task 4): a tenant with NO
+// budget account row answers held=0, refund_locked=0 and available=balance
+// — an honest zero face, never an error.
+func TestBreakdownHoldsSurviveMissingAccountRow(t *testing.T) {
+	fake := commercialplatform.NewFakeAdapter()
+	fake.SetBasePlanFeatures(map[string]bool{"api_access": true})
+	svc, _, _ := newBenefitsService(t, fake)
+	svc.SetNow(septemberClock())
+	tenant := uint64(508)
+	status, err := svc.EnsureBenefits(context.Background(), tenant, "Holds Space", "user-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Credits == nil {
+		t.Fatal("credits view must answer")
+	}
+	if status.Credits.HeldMicro != 0 || status.Credits.RefundLockedMicro != 0 {
+		t.Fatalf("no budget row must answer zero holds, got held=%d locked=%d",
+			status.Credits.HeldMicro, status.Credits.RefundLockedMicro)
+	}
+	if status.Credits.BalanceMicro != BasePlanSeedIncludedCreditsMicro {
+		t.Fatalf("balance = %d", status.Credits.BalanceMicro)
+	}
+	if status.Credits.ProjectedAt.IsZero() {
+		t.Fatal("projected_at must answer the projection instant")
+	}
+}
+
 // TestMonthlyGrantEncodesYieldPriority (#86 Task 2): a top-up batch expiring
 // BEFORE this month's end pushes the monthly wallet's creation priority to
 // TopUpWalletPriority+1 (it must be consumed after the aging top-up); with
