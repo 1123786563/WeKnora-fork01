@@ -37,10 +37,15 @@ type CraftSessionAPI interface {
 	// ExpandArchive (#121) extracts one associated archive input within hard
 	// resource limits and returns the all-or-nothing member projection.
 	ExpandArchive(context.Context, craft.Scope, string) ([]craft.Input, error)
-	// StartRun admits one Craft run; the returned WriterAcquisition is the
-	// T16 (#134) durable workspace writer-lease outcome (acquired/conflict/
-	// unknown, the T00 frozen DTO) projected straight into the response.
-	StartRun(context.Context, craft.Scope, service.CraftRunRequest) (agentruntime.Run, craft.WriterAcquisition, error)
+	// StartCollaboratorRun admits one Craft run requested by the
+	// authenticated member under their own CURRENT grant (T09 #135): the
+	// owner/collaborator admission is derived fresh through the T08
+	// authority, the durable actor is the initiating member and the
+	// craft.run_started timeline records them; the returned
+	// WriterAcquisition is the T16 (#134) durable workspace writer-lease
+	// outcome (acquired/conflict/unknown, the T00 frozen DTO) projected
+	// straight into the response.
+	StartCollaboratorRun(context.Context, craft.Scope, service.CraftRunRequest) (agentruntime.Run, craft.WriterAcquisition, error)
 	ListVersions(context.Context, craft.Scope) ([]craft.Version, error)
 	GetVersion(context.Context, craft.Scope, string) (craft.Version, error)
 	OpenVersionFile(context.Context, craft.Scope, string, string) (craft.File, io.ReadCloser, error)
@@ -538,7 +543,7 @@ func (h *CraftSessionHandler) PostCraftRun(c *gin.Context) {
 	if !decodeCraftBody(c, &body) {
 		return
 	}
-	run, acquisition, err := h.svc.StartRun(c.Request.Context(), scope, service.CraftRunRequest{
+	run, acquisition, err := h.svc.StartCollaboratorRun(c.Request.Context(), scope, service.CraftRunRequest{
 		RequestID: body.RequestID, Prompt: body.Prompt, InputRefs: body.InputRefs,
 		KnowledgeScope: body.KnowledgeScope, BaseVersionID: body.BaseVersionID,
 	})
