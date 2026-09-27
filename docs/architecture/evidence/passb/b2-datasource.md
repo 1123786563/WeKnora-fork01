@@ -268,6 +268,26 @@ K 属主留守测试断链面（DAG ppc 清单外显形）与 Ruling 2026-09-24-
 
 24 调用点改写对账（模块侧 `internal/modules/datasource/service/datasource_service.go` grep 实测）：`app.RecordKBActivity(` = 17、`app.WithKBActivityTask(` = 2、`app.KBActivityTrigger(` = 1、`app.WithKBActivitySuppressed(` = 3、`s.knowledgeCleanup(` = 1（seam 调用点）、旧符号残留（`recordKBActivity(\|withKBActivityTask(\|kbActivityTrigger(\|withKBActivitySuppressed(\|withKnowledgeCleanup(`）= **0**。
 
-## §计数基线（占位——B2-DS.5 例外行登记、B2-DS.7 三方一致复核时填写；本任务 P-6 快照已录 633/23+23/58/16、16 manifests、0 violations）
+## §计数基线
+
+### 例外行登记（B2-DS.5，2026-09-27，任务 commit 工作树实测）
+
+- **基值 X 实测**：`grep -c "id: exc-" docs/architecture/passb/exception-ledger.yaml` = **131**（登记前 HEAD=75e94da99 树实测；max `grep -o "id: exc-[0-9]*" | sort | tail -1` = exc-0131——与计划 §2.6「撰写时点 K 分支实测 131 行、max exc-0131」一致，id 顺延 exc-0132..0134，不硬编码）。
+- **X+3 机械修正**：ledger 头注计数 131→**134** 并补登来源行（26-datasource B2-DS.5 3 条，同窗同 commit）；代码侧无计数断言（`grep -n "105\|131\|134\|len(g.Exceptions)" tools/passbguard/*.go` 零命中，Makefile:260 的 105 为 B0 期文档注释非断言）。
+- **双侧一致（F1：check.go importExceptions ↔ ledger 逐字）**：passbguard exception-reason-drift / exception-unregistered / exception-overlap / exception-plan-unknown / exception-barrier 诊断均为 **0**（3 行 plan=26-datasource 在 KnownPlans{modules:[datasource], barrier:ib2}，remove_at=ib2 匹配）。
+- **conventions §8 基线登记**：台账 `docs/architecture/evidence/pass-a-acceptance.md` 不改（B2 阶段口径），登记于本节；变更原因=26-datasource B2-DS.5 搬迁显形 3 对预存横向耦合登记（授权依据=Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY + 冻结计划 §2.3 种子表）；例外计数基线 131→134（ib2 收口回落）。
+- **guard 归零复证（T5 Step 4，命令原文+退出码）**：
+
+| 命令 | 退出码 | 关键输出 |
+|---|---|---|
+| `make check-backend-architecture` | 0 | `total=633 \| redis=23 lite=23 \| hooks=58 \| modules=16`、`OK (0 violations)`（B2-DS.3 时点恰 3 条 forbidden-import 全部被精确豁免吸收归零） |
+| `make verify-module-moves` | 0 | `OK (16 manifests verified)` |
+| `go run ./tools/architectureguard 2>&1 \| tail -3` | 0 | `OK (0 violations)`，无例外诊断新增 |
+| `go build ./...` | 0 | 仅既有链接器重复库警告（cmd/desktop、cmd/server） |
+| `gofmt -l tools/architectureguard/check.go` | 0 | 无输出（格式合规） |
+
+- **passbguard 前后对照（非本节点 gate，诚实登记）**：诊断行数 259→248。①**−12 治愈**：基线 12 条 `contract-consumer-module-import` 全部指向 `internal/modules/datasource/service/datasource_service.go`（6 契约 consumer × knowledge/retrieval/app + policy/access 两导入，stash 复跑实证 /tmp/passbguard-baseline-ccmi.txt），本登记使 `excepted[from→to]` 命中而全部消失；②**+1 新增**：`exception-task-module: guard PassBTask "B2-DS.5" has no module mapping`（3 行同 check+path+message 去重为 1；`PassBTaskModule` 映射（tools/passbguard/check.go:83-93）仅含 B0 建制的 9 个模块级 id，无 B2-DS.5/B-datasource——计划 T5 Step 1 原文指定 `PassBTask: "B2-DS.5"`，本节点无权改 passbguard 补映射；移交 IB2：barrier 在 PassBTaskModule 增 `"B2-DS.5": "datasource"` 行或裁定改用模块级 id，归入 Brief (c) 例外收口编排）。check-passb-readiness 本就因 K 谱系继承债务 exit 1（计划 §12 实测在案），本任务净减 11 条诊断。
+
+### 三方一致复核（占位——B2-DS.7 填写；P-6 快照已录 633/23+23/58/16、16 manifests、0 violations）
 
 ## §别名（占位——B2-DS.6 填写）
