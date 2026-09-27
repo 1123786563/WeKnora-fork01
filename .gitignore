@@ -100,3 +100,4 @@ migrations/
 # tracked copies are redacted (token fields = "REDACTED"); this rule keeps a
 # future rerun's live capture OUT of git status until it is redacted.
 docs/plans/**/seed-login-*.json
+data/
