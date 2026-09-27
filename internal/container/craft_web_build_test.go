@@ -240,6 +240,31 @@ func TestCraftT04Journey(t *testing.T) {
 	}, pin)(context.Background(), task)
 	require.False(t, missing.BuildRan)
 	require.True(t, missing.PreviewRan)
+
+	// 6. Deferred item (ledger :533): the offline build COMMAND entry consumes
+	//    the T03 uploaded-material policy. The pinned build command passes the
+	//    same gate the exec services enforce; a command that smuggles admitted
+	//    material is refused member-visibly; a foreign command shape never
+	//    reaches the gate at all.
+	{
+		fixture := newCraftWebBuildReviewFixture(t)
+		reviewer, rerr := NewCraftWebBuildCommandGate(fixture.gate, pin, craftWebToolchainAbsDir(t))
+		require.NoError(t, rerr, "the command gate assembles over the shipped toolchain")
+
+		require.NoError(t, reviewer.Review(context.Background(), craftWebBuildRequest(craftWebPinnedBuildCommand(), nil)),
+			"the pinned offline build command passes the T03 gate")
+
+		derr := reviewer.Review(context.Background(), craftWebBuildRequest(craftWebPinnedBuildCommand(), map[string]string{
+			"PYTHONSTARTUP": "/workspace/inputs/" + fixture.uploaded.SHA256 + "/analyze.py",
+		}))
+		require.ErrorIs(t, derr, craft.ErrForbidden)
+		require.Contains(t, derr.Error(), "Allowed alternative", "the refusal must be member-visible")
+
+		serr := reviewer.Review(context.Background(), craftWebBuildRequest(
+			[]string{"python3", "/tmp/evil.py"}, nil))
+		require.ErrorIs(t, serr, craft.ErrForbidden)
+		require.Contains(t, serr.Error(), "craft web build command", "the fixed shape is named for the member")
+	}
 }
 
 func mustJSON(t *testing.T, v any) []byte {
