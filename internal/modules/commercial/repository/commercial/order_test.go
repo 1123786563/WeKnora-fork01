@@ -544,6 +544,72 @@ func TestCurrentPurchaseOrderSkipsChannelFailedPending(t *testing.T) {
 	}
 }
 
+// ---- #82 Task 13 (OCR r2): purchase race hardening ----
+
+// TestCurrentPayableFallbackSkipsDeadPending（r2:348）：pending 偏好循环之后的
+// fallback 不得无条件返回最新行——同价面最新行是 channel_failed 死 pending（paid
+// 订单之后渠道 Create 又失败的形状）时，fallback 必须跳过死行、返回最新的
+// paid/fulfilled 行，否则 PurchaseStatus 投影永久 pending 死单、丢掉
+// paid_awaiting_activation 合成窗口。
+func TestCurrentPayableFallbackSkipsDeadPending(t *testing.T) {
+	s, db := testOrderStore(t)
+	ctx := context.Background()
+	// O1 paid（较早）——真实支付入口已完结的订单。
+	insertCreatedAtOrder(t, db, "ord_paid_older", "paid", "2026-03-01T00:00:00Z", true)
+	// O2 pending + channel_failed（较新、无链接）——死的支付入口。
+	if err := db.Exec(`INSERT INTO commercial_orders (id, tenant_id, quote_id, kind, amount_fen, currency, state, version, created_at, channel_failed)
+		VALUES ('ord_dead_newer', 7, 'qt_dead_newer', 'purchase', 100, 'CNY', 'pending', 1, '2026-07-01T00:00:00Z', 1)`).Error; err != nil {
+		t.Fatal(err)
+	}
+	row, err := s.CurrentPurchaseOrder(ctx, 7, 100, "CNY")
+	if err != nil || row.ID != "ord_paid_older" {
+		t.Fatalf("the fallback must skip the dead pending and answer the newest paid row, got %+v err=%v", row, err)
+	}
+}
+
+// TestCurrentPaidAwaitingActivationPurchaseOrder（D11 / r2:253）：paid-awaiting
+// 窗口探测——state=paid 即「已付款未履约」（paid→fulfilled 由 OrderRow.State 承
+// 载，fulfilled 行自然不命中）。三形态：命中最新 paid；fulfilled/异 kind/异价面
+// NotFound。
+func TestCurrentPaidAwaitingActivationPurchaseOrder(t *testing.T) {
+	s, db := testOrderStore(t)
+	ctx := context.Background()
+	insertCreatedAtOrder(t, db, "ord_paid_old", "paid", "2026-03-01T00:00:00Z", true)
+	insertCreatedAtOrder(t, db, "ord_paid_new", "paid", "2026-07-01T00:00:00Z", true)
+	row, err := s.CurrentPaidAwaitingActivationPurchaseOrder(ctx, 7, 100, "CNY")
+	if err != nil || row.ID != "ord_paid_new" {
+		t.Fatalf("the NEWEST paid unfulfilled purchase order must answer, got %+v err=%v", row, err)
+	}
+	// fulfilled 之后退出窗口。
+	if err := db.Exec(`UPDATE commercial_orders SET state = 'fulfilled' WHERE id = ?`,
+		"ord_paid_new").Error; err != nil {
+		t.Fatal(err)
+	}
+	row, err = s.CurrentPaidAwaitingActivationPurchaseOrder(ctx, 7, 100, "CNY")
+	if err != nil || row.ID != "ord_paid_old" {
+		t.Fatalf("a fulfilled order leaves the paid-awaiting window (the next paid row answers), got %+v err=%v", row, err)
+	}
+	if err := db.Exec(`UPDATE commercial_orders SET state = 'fulfilled' WHERE id = ?`,
+		"ord_paid_old").Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CurrentPaidAwaitingActivationPurchaseOrder(ctx, 7, 100, "CNY"); !errors.Is(err, ErrOrderNotFound) {
+		t.Fatalf("no paid unfulfilled order must answer ErrOrderNotFound, got %v", err)
+	}
+	// 异 kind / 异价面不命中。
+	insertCreatedAtOrder(t, db, "ord_upgrade_paid", "paid", "2026-08-01T00:00:00Z", true)
+	if err := db.Exec(`UPDATE commercial_orders SET kind = 'upgrade' WHERE id = ?`,
+		"ord_upgrade_paid").Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CurrentPaidAwaitingActivationPurchaseOrder(ctx, 7, 100, "CNY"); !errors.Is(err, ErrOrderNotFound) {
+		t.Fatalf("a paid upgrade order must not answer the purchase window read, got %v", err)
+	}
+	if _, err := s.CurrentPaidAwaitingActivationPurchaseOrder(ctx, 7, 9900, "CNY"); !errors.Is(err, ErrOrderNotFound) {
+		t.Fatalf("a different price face must not answer, got %v", err)
+	}
+}
+
 // TestCreateOrderNormalizesCreatedAtToUTC（A-30 / F110）：SQLite 驱动以文本
 // 存储 time.Time 且排序/清扫门按词法比较——本地时区渲染（+08:00）会排到同刻
 // UTC 行之后、把清扫年龄门推过日边界（负偏移时区甚至立即清掉刚建的单）。
@@ -593,7 +659,11 @@ func TestIsQuoteUniqueConflictClassifier(t *testing.T) {
 		want bool
 	}{
 		{"sqlite column face", errors.New("UNIQUE constraint failed: commercial_orders.quote_id"), true},
-		{"postgres index name", errors.New(`duplicate key value violates unique constraint "idx_commercial_orders.quote_id"`), true},
+		{"postgres index name (dotted, defensive)", errors.New(`duplicate key value violates unique constraint "idx_commercial_orders.quote_id"`), true},
+		// (r2:212) The REAL PG driver face: gorm's default NamingStrategy
+		// renders idx_<table>_<column> — the underscore form the previous
+		// row's dotted literal never matches on a live PostgreSQL.
+		{"postgres index name (underscore, real driver face)", errors.New(`duplicate key value violates unique constraint "idx_commercial_orders_quote_id"`), true},
 		{"pending-uniqueness index (pg)", errors.New(`duplicate key value violates unique constraint "uq_purchase_pending_per_tenant"`), false},
 		{"pending-uniqueness (sqlite tenant face)", errors.New("UNIQUE constraint failed: commercial_orders.tenant_id"), false},
 		{"unrelated", errors.New("no such table: commercial_orders"), false},

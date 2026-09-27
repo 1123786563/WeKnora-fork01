@@ -590,6 +590,113 @@ func TestPurchaseCorruptPlanDefinitionIsNotALegacyQuote(t *testing.T) {
 	}
 }
 
+// ---- #82 Task 13 (OCR r2): purchase race hardening ----
+
+// seedAwaitingPurchase plants the authority-side awaiting purchase (the
+// frozen 9900 CNY face) for a tenant through the real seam command.
+func seedAwaitingPurchase(t *testing.T, fake *commercialplatform.FakeAdapter, tenant uint64, planKey string, amountFen int64) {
+	t.Helper()
+	if _, err := fake.SubmitCommand(context.Background(), commercial.Command{
+		Kind: commercial.CommandKindCreatePurchaseSubscription,
+		Key: commercial.CreatePurchaseSubscriptionCommandKey(
+			commercial.ExternalPurchaseSubscriptionID(tenant), commercial.DeterministicPlanCode(planKey, 1)),
+		Actor: "test", Reason: "purchase",
+		Payload: commercial.CreatePurchaseSubscriptionPayload{
+			TenantID: tenant, ExternalCustomerID: commercial.ExternalCustomerID(tenant),
+			ExternalPurchaseSubscriptionID: commercial.ExternalPurchaseSubscriptionID(tenant),
+			PlanCode:                       commercial.DeterministicPlanCode(planKey, 1),
+			AmountFen:                      amountFen, Currency: commercial.CurrencyCNY,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestPurchasePaidAwaitingWindowDoesNotOpenSecondOrder（D11 / r2:253 high）：
+// 支付成功但权威侧尚未激活的窗口（本地 O1 已 paid、订阅仍 awaiting——正常为
+// drain 30s + settle + webhook 的数十秒）内，用户换新 quote 再次提交购买不得
+// 开出第二张渠道订单（O3 的回调独立 ConfirmPayment、settle 幂等键绑定自己的
+// 渠道流水号——同一订阅双重收款）。必须返回既有 paid 订单并以
+// paid_awaiting_activation 合成态回答（与 PurchaseStatus 投影一致）。
+func TestPurchasePaidAwaitingWindowDoesNotOpenSecondOrder(t *testing.T) {
+	svc, fake, cp, db := newPurchaseTestEnv(t)
+	purchaseSeedPlan(t, svc.plans, "pro", 9900)
+	seedAwaitingPurchase(t, fake, 60, "pro", 9900)
+	// O1：同 plan 真实 quote 的 paid 未履约订单（回调已确认、履约未收敛）。
+	paidQuote := purchaseQuote(t, svc.orders, 60, "pro")
+	if err := db.Exec(`INSERT INTO commercial_orders (id, tenant_id, quote_id, kind, amount_fen, currency, state, version, created_at, checkout_url)
+		VALUES ('ord_paid_win', 60, ?, 'purchase', 9900, 'CNY', 'paid', 1, '2026-07-01T00:00:00Z', 'https://pay.example/o1')`,
+		paidQuote.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	// 窗口内的新 quote 提交。
+	q2 := purchaseQuote(t, svc.orders, 60, "pro")
+	view, err := svc.Purchase(context.Background(), 60, q2.ID, "wechat", "a", "WeKnora Space 60")
+	if err != nil {
+		t.Fatalf("the paid-awaiting window must replay the paid order, got %v", err)
+	}
+	if view.Order == nil || view.Order.ID != "ord_paid_win" {
+		t.Fatalf("the paid order must be replayed (no second channel order), got %+v", view.Order)
+	}
+	if view.State != commercial.PurchaseStatePaidAwaitingActivation {
+		t.Fatalf("the replay must synthesize paid_awaiting_activation, got %q", view.State)
+	}
+	if n := len(cp.createCalls); n != 0 {
+		t.Fatalf("a paid order in the activation window must NEVER open a second channel order, creates=%d", n)
+	}
+}
+
+// TestPurchasePaidAwaitingWindowDifferentPlanConflicts（D11）：paid 探测命中价
+// 面但归属另一 plan（republish 窗口同价异 plan 的历史单）时，与 pending 探测同
+// 防线——ErrPurchasePlanConflict，绝不把异 plan 的支付入口重放给本次购买。
+func TestPurchasePaidAwaitingWindowDifferentPlanConflicts(t *testing.T) {
+	svc, fake, cp, db := newPurchaseTestEnv(t)
+	purchaseSeedPlan(t, svc.plans, "pro", 9900)
+	purchaseSeedPlan(t, svc.plans, "pro-max", 29900) // 另一 plan（订单行价面手插成同价的 republish 形态）
+	seedAwaitingPurchase(t, fake, 61, "pro", 9900)
+	// 历史 paid 单：quote 冻结的是 max，订单行价面手插 9900（republish 窗口形
+	// 态——价面匹配但 quote 归属另一 plan）。
+	foreignQuote := purchaseQuote(t, svc.orders, 61, "pro-max")
+	if err := db.Exec(`INSERT INTO commercial_orders (id, tenant_id, quote_id, kind, amount_fen, currency, state, version, created_at, checkout_url)
+		VALUES ('ord_paid_foreign', 61, ?, 'purchase', 9900, 'CNY', 'paid', 1, '2026-07-01T00:00:00Z', 'https://pay.example/f')`,
+		foreignQuote.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	q := purchaseQuote(t, svc.orders, 61, "pro")
+	_, err := svc.Purchase(context.Background(), 61, q.ID, "wechat", "a", "WeKnora Space 61")
+	if !errors.Is(err, ErrPurchasePlanConflict) {
+		t.Fatalf("a paid order of a DIFFERENT plan must conflict, got %v", err)
+	}
+	if n := len(cp.createCalls); n != 0 {
+		t.Fatalf("no channel order may open on the conflict, creates=%d", n)
+	}
+}
+
+// TestPurchaseConcurrentPendingExistsAnswers409WithReplay（D12 / r2:306）：
+// 并发 checkout 败者在 winner 渠道 Create 窗口内（link-less pending 占住索引、
+// 不到 sweep 年龄、冲突回读也不可付）时，服务层把 ErrPurchasePendingExists
+// 哨兵交还调用方（handler 409），绝不再开第二渠道单。
+func TestPurchaseConcurrentPendingExistsAnswers409WithReplay(t *testing.T) {
+	svc, fake, cp, db := newPurchaseTestEnv(t)
+	purchaseSeedPlan(t, svc.plans, "pro", 9900)
+	seedAwaitingPurchase(t, fake, 62, "pro", 9900)
+	// winner 形态：OpenOrder 已提交（pending、未 channel_failed、URL 仍空——
+	// 正在外呼渠道 Create），占住 pending 索引且不到 SweepStaleAge。
+	if err := db.Exec(`INSERT INTO commercial_orders (id, tenant_id, quote_id, kind, amount_fen, currency, state, version, created_at, checkout_url, channel_failed)
+		VALUES ('ord_winner_creating', 62, 'qt_winner', 'purchase', 9900, 'CNY', 'pending', 1, ?, '', 0)`,
+		time.Now().UTC().Format(time.RFC3339Nano)).Error; err != nil {
+		t.Fatal(err)
+	}
+	q := purchaseQuote(t, svc.orders, 62, "pro")
+	_, err := svc.Purchase(context.Background(), 62, q.ID, "wechat", "a", "WeKnora Space 62")
+	if !errors.Is(err, repocommercial.ErrPurchasePendingExists) {
+		t.Fatalf("an unreplayable pending-exists race must surface the conflict sentinel (handler 409), got %v", err)
+	}
+	if n := len(cp.createCalls); n != 0 {
+		t.Fatalf("the loser must NEVER open a second channel order, creates=%d", n)
+	}
+}
+
 // ---- #82 Task 11: final-audit OCR open findings 11/9/10 (service layer) ----
 
 // Finding 11: the disambiguation probe must cover the ACTIVE conflict too —
@@ -639,7 +746,7 @@ func TestPurchaseStatusSkipsForeignPlanOrder(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	// A historical PAID order at the same price face but on plan "max".
+	// A historical PAID order at the same price face but on plan "pro-max".
 	if err := db.Create(&repocommercial.QuoteRow{
 		ID: "q-foreign", TenantID: 82, SubscriptionVersion: 1,
 		SnapshotJSON: `{"plan_key":"pro-max","plan_version":1,"price_fen":9900,"credits_micro":9900000,"currency":"CNY","line_items":[{"kind":"subscription_fee","name":"pro-max","amount_fen":9900}]}`,

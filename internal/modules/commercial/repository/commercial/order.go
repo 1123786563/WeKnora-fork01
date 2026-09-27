@@ -203,9 +203,11 @@ func isPendingPurchaseConflict(err error) bool {
 // isQuoteUniqueConflict matches the quote_id unique index violation (A-20)
 // across the two supported drivers: SQLite reports the column face
 // ("UNIQUE constraint failed: commercial_orders.quote_id"), PostgreSQL
-// names the index (idx_commercial_orders.quote_id — the gorm default for
-// the uniqueIndex tag). The pending-uniqueness shape deliberately does not
-// match (it reports tenant_id).
+// names the index — in the UNDERSCORE form gorm's default NamingStrategy
+// actually generates (idx_commercial_orders_quote_id, r2:212 — the dotted
+// literal the previous matcher relied on never appears on a live PG; it
+// stays matched as a defensive shape). The pending-uniqueness shape
+// deliberately does not match (it reports tenant_id).
 func isQuoteUniqueConflict(err error) bool {
 	if err == nil {
 		return false
@@ -214,7 +216,8 @@ func isQuoteUniqueConflict(err error) bool {
 	if strings.Contains(msg, "UNIQUE constraint failed") && strings.Contains(msg, "commercial_orders.quote_id") {
 		return true
 	}
-	return strings.Contains(msg, "idx_commercial_orders.quote_id")
+	return strings.Contains(msg, "idx_commercial_orders_quote_id") ||
+		strings.Contains(msg, "idx_commercial_orders.quote_id")
 }
 
 // OpenOrderCommand is the SINGLE input from which the order row and its
@@ -354,10 +357,50 @@ func (s *OrderStore) CurrentPurchaseOrder(ctx context.Context, tenantID uint64, 
 			return row, nil
 		}
 	}
-	if len(rows) > 0 {
-		return rows[0], nil
+	// (r2:348) The fallback carries the SAME dead-row discipline: any
+	// pending row still reaching the fallback is a DEAD payment entry
+	// (channel-failed, or link-less — a payable one would have won the
+	// preference loop above), and the newest row being one (a paid order
+	// followed by a failed channel Create within the awaiting window) must
+	// not shadow the newest LIVE row. The first non-pending row (the newest
+	// paid/fulfilled one) answers; an all-pending price face reports
+	// not-found rather than projecting a permanently-dead entry.
+	for _, row := range rows {
+		if row.State == domain.OrderStatePending {
+			continue // dead payment entry — never the current purchase face
+		}
+		return row, nil
 	}
 	return OrderRow{}, ErrOrderNotFound
+}
+
+// CurrentPaidAwaitingActivationPurchaseOrder answers the NEWEST purchase
+// order sitting in the paid-awaiting-activation window (D11 / r2:253):
+// purchase-kind at the held purchase's frozen price face, state=paid —
+// "paid but not yet fulfilled" is exactly the OrderRow.State=paid shape
+// (MarkFulfilled moves it to fulfilled, which leaves the window and this
+// read). The pre-create probe uses it to REPLAY the paid order instead of
+// opening a second channel order for the same gating subscription (the
+// pending uniqueness index only guards state='pending' — a paid order has
+// left its range, so the database no longer rejects the double open).
+// No matching order reports ErrOrderNotFound; all bounds are
+// parameter-bound.
+func (s *OrderStore) CurrentPaidAwaitingActivationPurchaseOrder(ctx context.Context, tenantID uint64, amountFen int64, currency string) (OrderRow, error) {
+	if tenantID == 0 {
+		return OrderRow{}, ErrOrderNotFound
+	}
+	var row OrderRow
+	err := s.db.WithContext(ctx).
+		Where("tenant_id = ? AND kind = ? AND amount_fen = ? AND currency = ? AND state = ?",
+			tenantID, domain.OrderKindPurchase, amountFen, currency, domain.OrderStatePaid).
+		Order("created_at DESC, id ASC").First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return OrderRow{}, ErrOrderNotFound
+	}
+	if err != nil {
+		return OrderRow{}, err
+	}
+	return row, nil
 }
 
 // CurrentPendingPurchaseOrder returns the NEWEST still-PENDING, PAYABLE

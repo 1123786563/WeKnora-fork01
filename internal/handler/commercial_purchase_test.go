@@ -26,6 +26,7 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"strings"
+	"time"
 )
 
 // handlerStubProvider is the minimal channel double for the purchase handler
@@ -330,5 +331,108 @@ func TestPurchaseHandlerCarriesRealActorAndDisplayName(t *testing.T) {
 	}
 	if customers[0].Name != "WeKnora Space 50" {
 		t.Fatalf("ensure display name must come from tenantDisplayName, got %q", customers[0].Name)
+	}
+}
+
+// ---- #82 Task 13 (OCR r2): purchase race hardening ----
+
+// TestPurchaseHandlerAnswersConflictOnPendingExists（D12 / r2:306 medium）：
+// 并发 checkout 败者在 winner 渠道 Create 窗口内（link-less pending 占索引、冲
+// 突回读不可付）时，服务层把 ErrPurchasePendingExists 哨兵交还——handler 必须
+// 答 409 + 闭合令牌（可重试语义），绝不落 default 的 500（"server-side, never
+// invites retry"——与实际所需正好相反）。
+func TestPurchaseHandlerAnswersConflictOnPendingExists(t *testing.T) {
+	env := newPurchaseHandlerEnv(t)
+	seedHandlerPlan(t, env.plans)
+	// 权威面 awaiting 购买（fake seam 真实命令）。
+	if _, err := env.fake.SubmitCommand(context.Background(), commercial.Command{
+		Kind: commercial.CommandKindCreatePurchaseSubscription,
+		Key: commercial.CreatePurchaseSubscriptionCommandKey(
+			commercial.ExternalPurchaseSubscriptionID(50), commercial.DeterministicPlanCode("pro", 1)),
+		Actor: "test", Reason: "purchase",
+		Payload: commercial.CreatePurchaseSubscriptionPayload{
+			TenantID: 50, ExternalCustomerID: commercial.ExternalCustomerID(50),
+			ExternalPurchaseSubscriptionID: commercial.ExternalPurchaseSubscriptionID(50),
+			PlanCode:                       commercial.DeterministicPlanCode("pro", 1),
+			AmountFen:                      9900, Currency: commercial.CurrencyCNY,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// winner 正在渠道 Create 窗口：pending、未 channel_failed、URL 空、新鲜
+	// （占索引、不被 sweep、冲突回读不可付）。
+	if err := env.db.Exec(`INSERT INTO commercial_orders (id, tenant_id, quote_id, kind, amount_fen, currency, state, version, created_at, checkout_url, channel_failed)
+		VALUES ('ord_winner_win', 50, 'qt_winner', 'purchase', 9900, 'CNY', 'pending', 1, ?, '', 0)`,
+		time.Now().UTC().Format(time.RFC3339Nano)).Error; err != nil {
+		t.Fatal(err)
+	}
+	q, err := env.orders.CreateQuote(context.Background(), 50, "pro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := postPurchase(t, env, q.ID)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("an unreplayable pending-exists race must answer 409, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !bytes.Contains(rec.Body.Bytes(), []byte("purchase pending exists")) {
+		t.Fatalf("409 must carry the closed message, got %s", rec.Body.String())
+	}
+}
+
+// TestCreateOrderHandlerPendingExistsForeignPlanBare409（r2:818 medium，
+// A-21/F105 一致性缺口）：legacy POST /orders 挂回的 pending 订单必须有 plan
+// 归属证明——既有可付 pending 的 quote 买的另一 plan 时，挂回的 checkout_url
+// 会结算异 plan 的 quote（orderWire 无 plan 字段，客户端无法分辨），必须答裸
+// 409 不附 order。
+func TestCreateOrderHandlerPendingExistsForeignPlanBare409(t *testing.T) {
+	env := newPurchaseHandlerEnv(t)
+	seedHandlerPlan(t, env.plans)
+	// 第二个 plan（合法阶梯价 29900——订单行价面手插 9900 构造 republish 窗口
+	// 的同价异 plan 形态）。
+	maxDraft, err := env.plans.CreateDraft(context.Background(), "test:seed", commercialsvc.DraftInput{
+		PlanKey: "pro-max", Name: "pro-max Plan", AmountFen: 29900, IncludedCreditsMicro: 29_900_000,
+		Features: map[string]bool{"advanced_models": true}, Currency: commercial.CurrencyCNY,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// plan A 的既有可付 pending。
+	qPro, err := env.orders.CreateQuote(context.Background(), 50, "pro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := env.orders.CreateOrder(context.Background(), 50, qPro.ID, "wechat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// plan B 发布 + 新 quote 走遗留 POST /orders。
+	if _, err := env.plans.Publish(context.Background(), "test:seed", "seed", "pro-max", maxDraft.Version); err != nil {
+		t.Fatal(err)
+	}
+	qMax, err := env.orders.CreateQuote(context.Background(), 50, "pro-max")
+	if err != nil {
+		t.Fatal(err)
+	}
+	router := gin.New()
+	env.handler.SetOrderService(env.orders)
+	router.POST("/api/v1/commercial/orders", func(c *gin.Context) {
+		cctx := context.WithValue(c.Request.Context(), types.TenantIDContextKey, uint64(50))
+		cctx = context.WithValue(cctx, types.UserIDContextKey, "user-50")
+		c.Request = c.Request.WithContext(cctx)
+		c.Next()
+	}, env.handler.CreateOrder)
+	body := `{"quote_id":"` + qMax.ID + `","provider":"wechat"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/commercial/orders", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("a foreign-plan pending must answer 409, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !bytes.Contains(rec.Body.Bytes(), []byte("purchase pending exists")) {
+		t.Fatalf("409 must carry the closed message, got %s", rec.Body.String())
+	}
+	if bytes.Contains(rec.Body.Bytes(), []byte(first.ID)) || bytes.Contains(rec.Body.Bytes(), []byte(first.CheckoutURL)) {
+		t.Fatalf("a foreign-plan order must NOT be attached as the replay entry, got %s", rec.Body.String())
 	}
 }
