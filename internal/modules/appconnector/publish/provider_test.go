@@ -12,6 +12,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 
@@ -199,4 +200,23 @@ func TestFeishuProfileBlocksOfMapsAdapterSentinels(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, blocks, 2, "正常内容不受影响")
 	require.False(t, errors.Is(err, appconn.ErrFeishuPublishEmptyContent))
+}
+
+// TestConfluencePublishServiceIsProviderProfileThin pins R5-F12: the
+// confluence publish service must be the SHARED provider-neutral body over
+// the Confluence profile — the #49/#50 ProviderProfile collapse feishu
+// already took. A parallel FormPlan/Execute/Reconcile/Receipt copy in
+// confluence.go is double maintenance (this batch's reconciliation-semantics
+// fix already had to land in two projections); the source assertion keeps
+// the copy from creeping back.
+func TestConfluencePublishServiceIsProviderProfileThin(t *testing.T) {
+	raw, err := os.ReadFile("confluence.go")
+	require.NoError(t, err)
+	src := string(raw)
+	for _, method := range []string{"FormPlan", "Execute", "Reconcile", "Receipt", "project"} {
+		require.NotContainsf(t, src, "func (s *ConfluencePublishService) "+method,
+			"the %s body must live only in the shared plan.go service", method)
+	}
+	require.Contains(t, src, "NewProviderPublishService(",
+		"the confluence constructor must build the shared service over the profile")
 }

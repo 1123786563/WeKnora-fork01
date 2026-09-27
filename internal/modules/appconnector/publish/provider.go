@@ -98,3 +98,56 @@ func FeishuProfile(read NotionRemoteReader) ProviderProfile {
 		},
 	}
 }
+
+// errConfluenceVersionEmpty preserves the confluence plan face's fail-closed
+// pre-read: an empty version string is a failure, never a recorded baseline
+// (the shared create path tolerates empty baselines for providers whose
+// destinations have no revision — feishu folders; a confluence page read
+// must never record one).
+var errConfluenceVersionEmpty = errors.New("confluence page version empty")
+
+// ConfluenceProfile is #50's profile (#49 feishu precedent): the storage
+// body projection, the snapshot byte shapes, the plan-time version pre-read
+// and the receipt parser. The storage XHTML rides BlocksOf's slice as its
+// single RawMessage — the shared service never inspects the carrier; only
+// this profile's Create/UpdateArgs unwrap it into the "storage" field, so
+// the approved snapshot bytes stay identical to the pre-collapse wire
+// (digest compatibility).
+func ConfluenceProfile(remote ConfluenceRemoteReader) ProviderProfile {
+	return ProviderProfile{
+		AppID: appIDConfluence, Provider: "confluence", ActionVersion: "confluence/v1",
+		ConflictResultPrefix: ConfluenceVersionConflictResult,
+		// ConfluenceStorageBody already speaks the neutral publish
+		// sentinels (ErrPublishEmptyContent / ErrPublishContentTooLarge).
+		BlocksOf: func(text string) ([]json.RawMessage, error) {
+			storage, err := ConfluenceStorageBody(text)
+			if err != nil {
+				return nil, err
+			}
+			return []json.RawMessage{json.RawMessage(storage)}, nil
+		},
+		CreateArgs: func(parent, title string, blocks []json.RawMessage) ([]byte, error) {
+			if len(blocks) == 0 {
+				return nil, ErrPublishEmptyContent
+			}
+			return json.Marshal(map[string]any{"parent": parent, "title": title, "storage": string(blocks[0])})
+		},
+		UpdateArgs: func(destination, expectedVersion, title string, blocks []json.RawMessage) ([]byte, error) {
+			if len(blocks) == 0 {
+				return nil, ErrPublishEmptyContent
+			}
+			return json.Marshal(map[string]any{"page_id": destination, "expected_version": expectedVersion, "title": title, "storage": string(blocks[0])})
+		},
+		ReadRemoteVersion: func(ctx context.Context, connectionID, destination string) (string, error) {
+			v, err := remote.ReadConfluencePageVersion(ctx, connectionID, destination)
+			if err == nil && v == "" {
+				return "", errConfluenceVersionEmpty
+			}
+			return v, err
+		},
+		ParseReceipt: func(providerResult string) (string, string, error) {
+			rcpt, err := appconn.ParseConfluencePageReceipt([]byte(providerResult))
+			return rcpt.ExternalID, rcpt.ExternalVersion, err
+		},
+	}
+}

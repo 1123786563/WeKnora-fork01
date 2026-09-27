@@ -179,11 +179,13 @@ func TestConfluenceFormPlanUpdateBindsExpectedVersion(t *testing.T) {
 func TestConfluenceFormPlanRejectsNotConfluenceConnection(t *testing.T) {
 	fake := newCfWireFake("cf-user@example.test", "secret_cf_token")
 	env := newCfPlanEnv(t, fake, &cfRemote{versions: map[string]string{"parent-1": "7"}})
-	env.svc.scopes = &cfFakeScopes{scope: func() ConfluenceConnectionScope {
+	// The shared service's scope port is NotionScopeSource; the confluence
+	// shape rides the same adapter the constructor installs (R5-F12).
+	env.svc.scopes = confluenceScopeAdapter{src: &cfFakeScopes{scope: func() ConfluenceConnectionScope {
 		s := cfScopeOK()
 		s.AppID = "notion"
 		return s
-	}()}
+	}()}}
 	if _, err := env.svc.FormPlan(context.Background(), cfPlanInput()); !errors.Is(err, ErrPublishInvalidInput) {
 		t.Fatalf("a notion connection must be refused at the confluence endpoint, got %v", err)
 	}
