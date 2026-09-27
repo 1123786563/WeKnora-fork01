@@ -58,6 +58,10 @@ var appOAuthDefaults = map[string]AppOAuthProviderConfig{
 		AuthorizeURL: "https://github.com/login/oauth/authorize",
 		TokenURL:     "https://github.com/login/oauth/access_token",
 	},
+	"gitlab": {
+		AuthorizeURL: "https://gitlab.com/oauth/authorize",
+		TokenURL:     "https://gitlab.com/oauth/token",
+	},
 }
 
 // DefaultAppOAuthProviderConfigs returns the fixed provider endpoints of
@@ -124,6 +128,21 @@ func exchangeAppOAuthCode(ctx context.Context, cfg AppOAuthProviderConfig, appID
 		form.Set("client_id", cfg.ClientID)
 		form.Set("client_secret", cfg.ClientSecret)
 		form.Set("code", code)
+		form.Set("redirect_uri", redirectURI)
+		req, err = http.NewRequestWithContext(ctx, http.MethodPost, cfg.TokenURL, strings.NewReader(form.Encode()))
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("Accept", "application/json")
+	case "gitlab":
+		// GitLab 的 token 端点与 github 同形：form-encoded 客户端凭据 +
+		// 授权码，返回 JSON（T24 #54：连接获取路径与 GitHub 一致）。
+		form := url.Values{}
+		form.Set("client_id", cfg.ClientID)
+		form.Set("client_secret", cfg.ClientSecret)
+		form.Set("code", code)
+		form.Set("grant_type", "authorization_code")
 		form.Set("redirect_uri", redirectURI)
 		req, err = http.NewRequestWithContext(ctx, http.MethodPost, cfg.TokenURL, strings.NewReader(form.Encode()))
 		if err != nil {
@@ -229,6 +248,9 @@ func appAuthorizeURL(cfg AppOAuthProviderConfig, appID, state, redirectURI strin
 		q.Set("owner", "user")
 	case "github":
 		q.Set("scope", "repo read:user")
+	case "gitlab":
+		q.Set("response_type", "code")
+		q.Set("scope", "api read_user")
 	}
 	return cfg.AuthorizeURL + "?" + q.Encode()
 }

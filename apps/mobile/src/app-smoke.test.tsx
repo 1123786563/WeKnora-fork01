@@ -1395,9 +1395,25 @@ test('the task detail screen renders the code delivery receipt section with hone
   const section = render(sectionElement!.type as (props: unknown) => unknown, sectionElement!.props);
   const text = JSON.stringify(section);
   assert.ok(text.includes('代码交付'), 'delivery section is present');
-  assert.ok(text.includes('已推送，等待草稿 PR 恢复'), 'pushed state uses honest copy');
+  assert.ok(text.includes('已推送，等待草稿 PR/MR 恢复'), 'pushed state uses honest copy');
   assert.ok(text.includes('octocat/hello'), 'repo is shown');
   assert.ok(text.includes('c1f0'), 'commit sha is shown');
+  // 终审修复：delivered 新文案「草稿 PR/MR 已创建」与回执标签「PR/MR：」
+  // 与 pushed 同等强度钉住（T24 #54 PR/MR 中性化文案的移动面断言补全）。
+  const delivered = {
+    deliveryId: 'dlv-1', taskId: 's-1', runId: 'run-1', state: 'delivered', repo: 'octocat/hello',
+    branch: 'weknora/task/s-1', baselineSha: 'b'.repeat(40), commitSha: 'c1f0', prNumber: 1,
+    prUrl: 'https://gitlab.com/octocat/hello/-/merge_requests/1', attention: false,
+    updatedAt: '2026-09-24T00:00:30Z', remoteLogin: 'gl-user',
+  } as const;
+  const deliveredTree = render(TaskDetailScreen, { view, loading: false, delivery: delivered, onRefresh: () => {} });
+  const deliveredElement = descendants(deliveredTree).find(({ type, props }) => typeof type === 'function' && 'delivery' in props);
+  assert.ok(deliveredElement, 'delivered delivery section is present');
+  const deliveredSection = render(deliveredElement!.type as (props: unknown) => unknown, deliveredElement!.props);
+  const deliveredText = JSON.stringify(deliveredSection);
+  assert.ok(deliveredText.includes('草稿 PR/MR 已创建'), 'delivered state uses neutral draft PR/MR copy');
+  assert.ok(deliveredText.includes('PR/MR：'), 'receipt label is provider-neutral PR/MR');
+  assert.ok(deliveredText.includes('https://gitlab.com/octocat/hello/-/merge_requests/1'), 'pr url is rendered');
   // 无交付时不渲染区块。
   const without = render(TaskDetailScreen, { view, loading: false, onRefresh: () => {} });
   assert.ok(!JSON.stringify(without).includes('代码交付'));

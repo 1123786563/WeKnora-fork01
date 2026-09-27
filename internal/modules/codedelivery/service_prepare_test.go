@@ -56,6 +56,9 @@ func (f *fixtureConnections) FindConnectionByID(ctx context.Context, id string) 
 }
 
 func (f *fixtureConnections) LoadCredential(ctx context.Context, c appconnector.Connection) ([]byte, error) {
+	if strings.HasSuffix(c.CredentialRef, ":gitlab") {
+		return []byte("glpat-testtoken"), nil
+	}
 	return []byte("gho_testtoken"), nil
 }
 
@@ -71,6 +74,9 @@ func (f *fixtureConnections) Resolve(ctx context.Context, connectionID string, e
 	if f.credsBroken {
 		return nil, errors.New("credential row deleted")
 	}
+	if strings.HasSuffix(connectionID, "-gl") {
+		return []byte("glpat-testtoken"), nil
+	}
 	return []byte("gho_testtoken"), nil
 }
 
@@ -82,6 +88,7 @@ type deliveryFixture struct {
 	actions     *appconnectorsvc.ActionService
 	svc         *CodeDeliveryService
 	github      *githubEmulator
+	gitlab      *gitLabEmulator
 	workspace   WorkspaceFileSource
 	root        string
 	connections *fixtureConnections
@@ -108,8 +115,18 @@ func newDeliveryFixture(t *testing.T, mutate func(root string)) *deliveryFixture
 		OwnerID: "u1", CredentialRef: "mcp:conn-gh:github", State: appconnector.ConnectionActive,
 		TenantID: 7, AuthVersion: 1,
 	}).Error)
+	// 个人 GitLab 连接：inst-gl / conn-gl，owner=u1，active（T24 #54）。
+	require.NoError(t, db.Create(&appconnectorrepo.InstallationRow{ID: "inst-gl", AppID: "gitlab", AppVersion: "1", State: appconnector.InstallationActive, TenantID: 7}).Error)
+	require.NoError(t, db.Create(&appconnectorrepo.ConnectionRow{
+		ID: "conn-gl", InstallationID: "inst-gl", Kind: appconnector.ConnectionKindPersonal,
+		OwnerID: "u1", CredentialRef: "mcp:conn-gl:gitlab", State: appconnector.ConnectionActive,
+		TenantID: 7, AuthVersion: 1,
+	}).Error)
 
 	e := newGitHubEmulator(t)
+	gl := newGitLabEmulator(t)
+	gitlabFactory := NewGitLabClientFactory(http.DefaultClient, gl.srv.URL)
+	providers := appconnectorrepo.NewInstallationStore(db)
 	root := t.TempDir()
 	if mutate != nil {
 		mutate(root)
@@ -124,17 +141,18 @@ func newDeliveryFixture(t *testing.T, mutate func(root string)) *deliveryFixture
 	store := deliveryrepo.NewDeliveryStore(db)
 	dispatcher := NewDeliveryDispatcher(DispatcherDeps{
 		Connections: connections, Creds: connections, Guard: guard,
-		GitHub: factory, Workspace: workspace, Store: store,
+		GitHub: factory, GitLab: gitlabFactory, Workspace: workspace, Store: store,
 		ActionRows: actionStore, Runs: fixtureRun{sessionID: "s-1"},
 	})
 	actions := appconnectorsvc.NewActionService(actionStore, guard, nil, dispatcher, dispatcher)
 	svc := NewCodeDeliveryService(CodeDeliveryDeps{
 		Store: store, Actions: actions, ActionRows: actionStore,
 		Connections: connections, Creds: connections,
-		GitHub: factory, Workspace: workspace, Runs: fixtureRun{sessionID: "s-1"},
+		GitHub: factory, GitLab: gitlabFactory, Providers: providers,
+		Workspace: workspace, Runs: fixtureRun{sessionID: "s-1"},
 		Dispatcher: dispatcher,
 	})
-	return &deliveryFixture{db: db, store: store, actions: actions, svc: svc, github: e, workspace: workspace, root: root, connections: connections, dispatcher: dispatcher}
+	return &deliveryFixture{db: db, store: store, actions: actions, svc: svc, github: e, gitlab: gl, workspace: workspace, root: root, connections: connections, dispatcher: dispatcher}
 }
 
 func membersDrop(f *deliveryFixture, userID string) { f.connections.drop(userID) }

@@ -197,6 +197,7 @@ func TestDeliveryErrorClassificationTable(t *testing.T) {
 		{"invalid repo ref", codedelivery.ErrRepoRefInvalid, http.StatusBadRequest, "code_delivery_invalid_material"},
 		{"baseline too large", codedelivery.ErrBaselineTooLarge, http.StatusBadRequest, "code_delivery_invalid_material"},
 		{"dispatch rejected pre-send", codedelivery.ErrDeliveryDispatchRejected, http.StatusConflict, "code_delivery_dispatch_rejected"},
+		{"unsupported provider", codedelivery.ErrUnsupportedProvider, http.StatusBadRequest, "code_delivery_unsupported_provider"},
 		{"request build failure", codedelivery.ErrGitHubRequestInvalid, http.StatusInternalServerError, "code_delivery_request_invalid"},
 		{"provider refused", &codedelivery.GitHubAPIError{Status: 422, Endpoint: "POST /pulls"}, http.StatusBadGateway, "code_delivery_provider_refused"},
 		{"provider unobservable", codedelivery.ErrGitHubTransport, http.StatusBadGateway, "code_delivery_provider_unreachable"},
