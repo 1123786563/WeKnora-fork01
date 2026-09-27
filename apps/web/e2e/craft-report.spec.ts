@@ -110,6 +110,13 @@ test('01 create, upload, generate, preview, modify, old-version download', async
   await page.getByTestId('craft-upload').setInputFiles('e2e/fixtures/craft-sales.csv');
   await page.getByTestId('craft-send').click();
 
+  // T01 disclosure gate (approved Spec stories 5/6): an unrecognized-format
+  // upload parks the enriched send until the owner's explicit continue — the
+  // browser journey walks the REAL member decision, never a silent approval.
+  const discloseContinue = page.getByRole('button', { name: '继续', exact: true });
+  await expect(discloseContinue).toBeVisible({ timeout: 30_000 });
+  await discloseContinue.click();
+
   await expect(page.getByTestId('craft-main-status')).toHaveText('已完成', { timeout: 240_000 });
   sessionId = new URL(page.url()).pathname.split('/').pop() ?? '';
   expect(sessionId).not.toBe('');
