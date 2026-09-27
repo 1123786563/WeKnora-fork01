@@ -72,6 +72,10 @@ export interface DictationPorts {
   newRequestId(): string;
   /** 录音时长上限（毫秒）；缺省 DICTATION_MAX_DURATION_MS。到点自动 finish。 */
   maxDurationMs?: number;
+  /** 原始音频删除端口（module-seams §8.1 + CONTEXT.md:339「原始音频默认在实时处理后删除」；
+   *  #56 延迟项由 #70 闭合）：模块在 dropIntent（音频不再需要的唯一权威时点）对 uri 源音频
+   *  尽最大努力删除一次；bytes 源在内存中不调用。缺省不删除（Node/集成冒烟场景）。 */
+  audioCleanup?: (audio: DictationAudio) => Promise<void>;
 }
 
 export interface Dictation {
@@ -120,7 +124,11 @@ export function createDictation(ports: DictationPorts): Dictation {
   };
   const dropIntent = (): void => {
     requestId = undefined;
+    const audio = pendingAudio;
     pendingAudio = undefined; // 原始音频即刻释放（失败重试窗口结束）
+    if (audio?.uri !== undefined && ports.audioCleanup !== undefined) {
+      void ports.audioCleanup(audio).catch(() => undefined); // 尽最大努力：清理失败不外泄、不阻塞主流程
+    }
   };
 
   async function dispatchTranscription(attemptGeneration: number, id: string, audio: DictationAudio): Promise<void> {
