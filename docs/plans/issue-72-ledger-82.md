@@ -12,6 +12,25 @@
 | 裁决依据 | R-1（T02=②Provider，2026-09-23）、R-3（付款前订阅面校验+付款时 InvoiceFees 复核，2026-09-23）、R-4（D2 重议=α 双轨道，2026-09-26，`9393ce0da`）——`docs/plans/issue-72-user-rulings.md` |
 | 上轮处置 | 第 1/2 轮计划 D2（cancel intent+切 pm+retry_payment）被 t10 证伪，随 `e0364d196` revert 出集成分支；本计划为 R-4 附带授权的重做版 |
 
+## 第 4 轮计划身份（2026-09-27 计划员会话追加）
+
+| 项 | 值 |
+|---|---|
+| 计划文件 | `docs/plans/issue-72-plan-82.md`（R-4 双轨道修订版，**第 4 轮：OCR r2 清偿 + 浏览器 UI 复验收口**，Task 编号 T12-T17 延续第 3 轮） |
+| 集成基线 | `codex/issue-72-lago` @ `da4b544db`（本会话 worktree 创建后 fast-forward 合并，无冲突；第 3 轮基线 f50c705074 已被完全包含） |
+| findings 输入 | `docs/plans/issue-72-ocr-issue-82-r2.md`（101 findings，基线提交 `c6d027df8`）——本会话 8 点抽查证实关键产品代码 findings 在 da4b544db 上全部未修：明文口令 `browser_sync_face_82.mjs:35`、Purchase switch default→500（commercial.go:515-516）、default_payment_method 写入（lago_settlement.go:359）、paid-awaiting 窗口（purchase.go:253 仅探测 pending）、回调无 MaxBytesReader、order.go:217 带点索引名、boundProviderCustomerID 非 200 全 InvalidResponse（:445-447）、readSubscriptionByIdentity 429 落 default（lago.go:688-696） |
+| 环境实测 | docker daemon 未运行（OrbStack 停，`docker info` 连接失败——任务简报「栈在跑」已过时，Task 17 前置为起栈）；`npx playwright --version`=1.63.0；:5272/:5273 禁用、:8093/:5194/:8294/:48889 空闲 |
+| 主要范围 | T12 settle 链正确性（distinct-invoice 消歧闸 D9 / default 改写移除 D10 / 瞬态分类对齐 D13）；T13 购买竞态（paid-awaiting 防重开 D11 / 409+winner 重放 D12 / PG 索引名 / fallback 谓词）；T14 回调 body 封顶 D14 + drain 保护；T15 前端六点 D15；T16 evidence 脚本与 t11 lab security/bug 级清偿 + `_browser_lib.mjs`；T17 真实流程复验（R-19 浏览器面清偿） |
+| 评估后不修（D16） | settle 空集幂等分支客户维度绑定（R-17 语义必要 + D7 兜底，完整绑定随 #84 回议）；fees N+1（R-23 已披露）；冻结证据脚本回改；typecheck 预存 5 错（独立票） |
+
+### 第 4 轮自检结论（writing-plans Self-Review，2026-09-27）
+
+1. **Spec 覆盖**：AC1-AC4 追踪矩阵逐行标注第 3 轮已证面与本轮补强点；GC 1-13 引 spec 原文（L105/L121-126/L165/L169-170，行号本会话实读核对）。
+2. **Step 扫描**：T12-T17 全部 RED→GREEN→回归→Commit；无 TBD/TODO/占位（「以实际为准」两处已消除，测试文件名经 `ls` 实核：CheckoutPage.test.tsx/BillingPage.test.ts/order-state.test.ts/purchase_test.go/purchase_fulfillment_test.go/order_test.go/commercial_purchase_test.go/payment_callbacks_test.go 均在案）。
+3. **类型一致性**：`CurrentPaidAwaitingActivationPurchaseOrder(ctx, tenantID uint64, amountFen int64, currency string) (OrderRow, error)`（T13 定义/消费）；`PURCHASE_STATE_LABEL`（T15 order-state.ts）；`_browser_lib.mjs` 导出 `{ LOGIN, login, note, runLeg, assertOrderIdentity }`（T16 产/T17 消费）。
+4. **Review Focus**：5 条输入类（跨发票混入/paid 窗口重开/并发 409/限流误终态/超大回调体）均有归属测试名。
+5. **比例**：以签名、测试名、判据为主；D9-D16 决策各一段；无实现体转写。
+
 ## 前置状态（本会话实测核验）
 
 - flowfix 三缺陷（回调 Auth 白名单 / `MerchantID()` 商户身份 / 客户绑定 upsert）已在基线（`7324eb054`，`internal/router/commercial_callback_public_test.go`、`internal/handler/payment_callbacks_test.go` 在案）。
