@@ -1,7 +1,10 @@
 import React, { useCallback, useState } from 'react';
-import type {
-  CraftExportDecision as CraftExportDecisionContract,
-  CraftExportOriginRef,
+import {
+  CRAFT_DECISIONS,
+  CRAFT_EXPORT_ORIGIN_KINDS,
+  type CraftExportDecision as CraftExportDecisionContract,
+  type CraftDecisionStatus,
+  type CraftExportOriginRef,
 } from '@weknora/contracts';
 
 // T13 (#133): exporting restricted derived data is server authority this
@@ -14,7 +17,7 @@ import type {
 
 export type CraftExportConsentStatus = 'none' | 'awaiting' | 'consented' | 'declined';
 export type CraftExportRole = 'owner' | 'collaborator' | 'viewer';
-export type CraftExportDecisionKind = 'approved' | 'rejected' | 'unknown';
+export type CraftExportDecisionKind = CraftDecisionStatus;
 
 // The decision shape is the FROZEN @weknora/contracts export; the panel
 // only adds the 'unknown' parse residual on top of it.
@@ -38,8 +41,12 @@ export interface CraftExportConsentView {
 }
 
 const consentStatuses: readonly CraftExportConsentStatus[] = ['none', 'awaiting', 'consented', 'declined'];
-const exportDecisions: readonly CraftExportDecisionKind[] = ['approved', 'rejected', 'unknown'];
-const originKinds: readonly string[] = ['knowledge', 'input', 'artifact'];
+// The decision vocabulary is the FROZEN contract constant (same source as
+// the server's frozen parsers) — a local mirror would drift on the next
+// contract evolution and the fail-closed projection below would then drop
+// the whole panel for every member.
+const exportDecisions: readonly string[] = CRAFT_DECISIONS;
+const originKinds: readonly string[] = CRAFT_EXPORT_ORIGIN_KINDS;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -136,6 +143,7 @@ interface CraftExportLabels {
   noConsentNeeded: string;
   approve: string;
   safeExport: string;
+  withdraw: string;
   decidedBy: string;
   actionFailed: string;
 }
@@ -153,6 +161,7 @@ function exportLabels(locale: 'zh' | 'en'): CraftExportLabels {
       noConsentNeeded: 'No derived file derives from restricted sources. Downloads need no consent.',
       approve: 'Approve export',
       safeExport: 'Export without restricted files',
+      withdraw: 'Withdraw consent, export safe files',
       decidedBy: 'Decided by',
       actionFailed: 'The export decision failed. Try again.',
     };
@@ -168,6 +177,7 @@ function exportLabels(locale: 'zh' | 'en'): CraftExportLabels {
     noConsentNeeded: '没有派生文件来自受限来源，下载无需同意。',
     approve: '同意导出',
     safeExport: '导出不含受限派生文件',
+    withdraw: '撤回同意，导出安全文件',
     decidedBy: '决定人',
     actionFailed: '导出决定操作失败，请重试。',
   };
@@ -181,10 +191,14 @@ function exportLabels(locale: 'zh' | 'en'): CraftExportLabels {
 export function CraftExportConsentPanel({ locale, role, view, onDecide }: CraftExportConsentPanelProps) {
   const labels = exportLabels(locale);
   const isOwner = role === 'owner';
-  // A declined decision is not final: the server keeps one decision row
-  // per task+version and a fresh decision upserts over it, so the owner
-  // can decide again at any time.
-  const canDecide = isOwner && (view.state === 'awaiting' || view.state === 'declined');
+  // The owner can decide again at any time: the server keeps ONE decision
+  // row per task+version and a fresh decision upserts over it — a declined
+  // decision is not final, and a standing APPROVAL can be withdrawn by a
+  // fresh rejection (the only long-lived way to end a consent, exactly as
+  // the service and the migration docs pin). Hiding the controls after
+  // consented would make the approval irrevocable from this panel.
+  const canDecide = isOwner && view.state !== 'none';
+  const withdrawing = view.state === 'consented';
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -227,8 +241,8 @@ export function CraftExportConsentPanel({ locale, role, view, onDecide }: CraftE
     </p>}
     {actionError && <p role="alert" className="wk-craft-export-error">{actionError}</p>}
     {canDecide && <div className="wk-craft-export-actions">
-      <button type="button" className="wk-craft-export-approve" disabled={busy} onClick={() => void runExportAction(() => onDecide('approved'))}>{labels.approve}</button>
-      <button type="button" className="wk-craft-export-decline" disabled={busy} onClick={() => void runExportAction(() => onDecide('rejected'))}>{labels.safeExport}</button>
+      {withdrawing ? null : <button type="button" className="wk-craft-export-approve" disabled={busy} onClick={() => void runExportAction(() => onDecide('approved'))}>{labels.approve}</button>}
+      <button type="button" className="wk-craft-export-decline" data-withdrawing={withdrawing} disabled={busy} onClick={() => void runExportAction(() => onDecide('rejected'))}>{withdrawing ? labels.withdraw : labels.safeExport}</button>
     </div>}
   </section>;
 }

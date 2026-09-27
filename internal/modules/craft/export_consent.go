@@ -141,6 +141,14 @@ func ExportConsentStateOf(restrictedDerived []string, d *ExportDecision, version
 		return ExportConsentAwaiting
 	}
 	if d.Decision == DecisionRejected {
+		// Symmetric with the approved path below: a decision of a FORMER
+		// owner is history — after an ownership move the state awaits the
+		// new owner's decision again, whichever way the old decision went.
+		// (A former owner's rejection surfacing as declined would attribute
+		// the current ownership with a decision it never made.)
+		if currentOwner == "" || d.OwnerID != currentOwner {
+			return ExportConsentAwaiting
+		}
 		return ExportConsentDeclined
 	}
 	if GrantsExportAuthority(d, versionID, manifestDigest, currentOwner) {

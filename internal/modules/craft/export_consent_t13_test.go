@@ -177,8 +177,16 @@ func TestCraftT13ExportConsentStateOf(t *testing.T) {
 	require.Equal(t, ExportConsentAwaiting, ExportConsentStateOf([]string{"report.html"}, &stale, m.VersionID, m.ManifestDigest, "u-owner"), "a stale decision is history: the state awaits again")
 	require.Equal(t, ExportConsentAwaiting, ExportConsentStateOf([]string{"report.html"}, &approved, m.VersionID, m.ManifestDigest, "u-new-owner"), "a former owner's consent is not live authority")
 
-	// An explicit rejection is visible as declined.
+	// An explicit rejection by the CURRENT owner is visible as declined.
 	require.Equal(t, ExportConsentDeclined, ExportConsentStateOf([]string{"report.html"}, &rejected, m.VersionID, m.ManifestDigest, "u-owner"))
+	// Round-1 OCR: a former owner's rejection is history too — after an
+	// ownership move the state awaits the new owner's decision again,
+	// whichever way the old decision went (symmetric with the approved
+	// path above).
+	require.Equal(t, ExportConsentAwaiting, ExportConsentStateOf([]string{"report.html"}, &rejected, m.VersionID, m.ManifestDigest, "u-new-owner"),
+		"a former owner's rejection must not attribute the current ownership with a decision")
+	require.Equal(t, ExportConsentAwaiting, ExportConsentStateOf([]string{"report.html"}, &rejected, m.VersionID, m.ManifestDigest, ""),
+		"an unresolvable current owner never surfaces a recorded rejection")
 
 	// The live authority state needs everything.
 	require.Equal(t, ExportConsentConsented, ExportConsentStateOf([]string{"report.html"}, &approved, m.VersionID, m.ManifestDigest, "u-owner"))

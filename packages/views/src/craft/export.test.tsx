@@ -68,7 +68,7 @@ test('the panel never renders a URL — origins stay opaque identities, never li
   assert.doesNotMatch(markup, /https?:\/\//, 'no provider URL is ever rendered');
 });
 
-test('a live consented state projects the binding and hides the approval controls', () => {
+test('a live consented state projects the binding and offers withdrawal instead of re-approval', () => {
   const view = projectExportConsentView({
     ...raw,
     state: 'consented',
@@ -82,6 +82,11 @@ test('a live consented state projects the binding and hides the approval control
   assert.match(markup, /Consented/, 'the live export authority is projected');
   assert.match(markup, /u-owner/, 'the decision names the consenting owner');
   assert.doesNotMatch(markup, /Approve export/, 'no duplicate approval while a consent is live');
+  // Round-1 OCR: hiding every control after consented would make the
+  // approval irrevocable from this panel — a fresh rejection is the only
+  // long-lived way to end a consent (service + migration docs pin it), so
+  // the decline control stays, with explicit withdraw semantics.
+  assert.match(markup, /Withdraw consent/, 'a standing approval can be withdrawn from the panel');
 });
 
 test('a declined state stays decidable — a fresh decision upserts server-side', () => {
@@ -184,6 +189,30 @@ test('a rejected decide callback surfaces visible feedback instead of an unhandl
     rejectDecide(new Error('decision endpoint down'));
     await act(async () => {});
     assert.match(panel.container.textContent ?? '', /failed/i, 'the failure is visible');
+  } finally {
+    await panel.unmount();
+  }
+});
+
+test('a standing approval can be withdrawn — the consented decline control submits a fresh rejection', async () => {
+  const view = projectExportConsentView({
+    ...raw,
+    state: 'consented',
+    decision: { version_id: 'ver-1', manifest_digest: digest, owner_id: 'u-owner', decision: 'approved' },
+  });
+  assert.ok(view);
+  const decisions: string[] = [];
+  const panel = await mountExport({
+    view,
+    onDecide: async (decision) => { decisions.push(decision); },
+  });
+  try {
+    const withdraw = panel.container.querySelector('button.wk-craft-export-decline[data-withdrawing="true"]') as HTMLButtonElement;
+    assert.ok(withdraw, 'the consented state renders the withdraw control');
+    assert.match(withdraw.textContent ?? '', /Withdraw consent/, 'the control carries withdraw semantics, not a first-time decline');
+    const { act } = await import('react');
+    await act(async () => { withdraw.click(); });
+    assert.deepEqual(decisions, ['rejected'], 'withdrawal submits the fresh rejection that ends the consent');
   } finally {
     await panel.unmount();
   }
