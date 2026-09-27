@@ -406,8 +406,12 @@ func TestCraftGatewayPostSendAndBodyReadFailuresStayNonReplayable(t *testing.T) 
 		require.Equal(t, 1, forwardCalls, "body-read failure cannot reopen the committed activity")
 		recorded := env.recorder.recorded()
 		require.Len(t, recorded, 1)
-		require.Nil(t, recorded[0].Usage, "body-read failure records unknown usage")
-		require.Equal(t, service.CraftChargeStartUnknown, env.budget.outcome(fakeGatewayActivityKey(t, "activity-body-1")), "ambiguous body failure must remain unresolved")
+		require.Nil(t, recorded[0].Usage, "an unreadable body records nil usage (unknown observation)")
+		// HEAD semantics: the fake forward returned response HEADERS, so the
+		// physical call factually started — the durable outcome is the
+		// deterministic Started. The activity stays closed against replay
+		// exactly as before (the 409 above proves it).
+		require.Equal(t, service.CraftChargeStartStarted, env.budget.outcome(fakeGatewayActivityKey(t, "activity-body-1")), "headers-returned body failure is definitively started")
 	})
 
 	t.Run("response returned with transport error is closed", func(t *testing.T) {
@@ -521,10 +525,25 @@ func TestCraftGatewayPostSendAndBodyReadFailuresStayNonReplayable(t *testing.T) 
 			activity := "activity-" + strings.ReplaceAll(tc.name, " ", "-")
 			w := forwardWithActivityOn(t, env, credential, `{"model":"m1","messages":[]}`, activity)
 			require.Equal(t, http.StatusBadGateway, w.Code, w.Body.String())
-			require.Equal(t, service.CraftChargeStartUnknown, env.budget.outcome(fakeGatewayActivityKey(t, activity)))
+			// HEAD semantics ([T14] 7e4be7a93/ba78f06c1): the response
+			// HEADERS returned, so the physical call factually started — the
+			// durable outcome is Started (deterministic), never Unknown; an
+			// Unknown here would park the adapter id and exclude the Run from
+			// lease recovery. Replay protection is unchanged: the fake
+			// coordinator still refuses a second BeginBinding on the same
+			// activity key.
+			require.Equal(t, service.CraftChargeStartStarted, env.budget.outcome(fakeGatewayActivityKey(t, activity)))
 			recorded := env.recorder.recorded()
 			require.Len(t, recorded, 1)
-			require.Nil(t, recorded[0].Usage)
+			// Usage fidelity: whatever bytes survived the read failure still
+			// feed the billing basis. A fully unreadable body records nil
+			// usage (unknown observation); the close-failure fixture read the
+			// whole `{"usage":{}}` body first, so its (empty) totals persist.
+			if tc.name == "close failure" {
+				require.NotNil(t, recorded[0].Usage)
+			} else {
+				require.Nil(t, recorded[0].Usage)
+			}
 		})
 	}
 
@@ -540,7 +559,12 @@ func TestCraftGatewayPostSendAndBodyReadFailuresStayNonReplayable(t *testing.T) 
 		require.Equal(t, service.CraftChargeStartOutcome(0), env.budget.outcome(fakeGatewayActivityKey(t, "activity-resolver-failure")), "failed CAS leaves the fake intent unresolved")
 		recorded := env.recorder.recorded()
 		require.Len(t, recorded, 1)
-		require.Nil(t, recorded[0].Usage)
+		// Usage fidelity on a failed Started resolution: the fully observed
+		// body still feeds the usage fact so manual reconciliation keeps a
+		// fixed billing basis (HEAD [T14] semantics — recorded BEFORE the
+		// ACTIVITY_UNRESOLVED answer below).
+		require.NotNil(t, recorded[0].Usage)
+		require.Equal(t, int64(1), recorded[0].Usage.Input)
 	})
 
 	t.Run("inbound cancellation interrupts response body", func(t *testing.T) {
@@ -664,12 +688,32 @@ func TestCraftGatewayUsageRecordFailureUsesBoundedDetachedContextAndLogsIdentity
 	w := httptest.NewRecorder()
 	env.router.ServeHTTP(w, req)
 	require.Equal(t, http.StatusBadGateway, w.Code, w.Body.String())
-	require.Equal(t, service.CraftChargeStartUnknown, env.budget.outcome(fakeGatewayActivityKey(t, "activity-record-failure")))
+	// HEAD semantics: the fake forward returned response HEADERS, so the
+	// physical call factually started — the durable outcome is the
+	// deterministic Started, never Unknown (an Unknown would park the
+	// adapter id and exclude the Run from lease recovery). The bounded
+	// detached recordCall context is what this test actually proves below.
+	require.Equal(t, service.CraftChargeStartStarted, env.budget.outcome(fakeGatewayActivityKey(t, "activity-record-failure")))
 	require.True(t, recorder.sawDeadline, "append receives an explicit deadline")
 	require.True(t, recorder.sawTrace, "WithoutCancel preserves trace values")
 	require.True(t, recorder.sawExpiry, "bounded persistence ends when its deadline expires")
+	// The read-failure branch and the usage-record failure each emit one
+	// JSON log line; the assertions target the usage-record entry, which is
+	// the one carrying the durable correlation identities.
 	var entry map[string]any
-	require.NoError(t, json.Unmarshal([]byte(strings.TrimSpace(logBuffer.String())), &entry))
+	for _, line := range strings.Split(strings.TrimSpace(logBuffer.String()), "\n") {
+		if line == "" {
+			continue
+		}
+		var parsed map[string]any
+		if err := json.Unmarshal([]byte(line), &parsed); err != nil {
+			continue
+		}
+		if parsed["event"] == "craft_model_gateway_usage_record_failed" {
+			entry = parsed
+		}
+	}
+	require.NotNil(t, entry, "a usage-record failure must log its correlation identities")
 	require.Equal(t, "run-1", entry["run_id"])
 	require.NotEmpty(t, entry["call_id"])
 	require.NotEmpty(t, entry["attempt_id"])

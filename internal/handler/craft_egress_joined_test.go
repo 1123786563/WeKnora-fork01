@@ -66,10 +66,16 @@ func TestCraftEgressAdapterJoinedWithRealGateway(t *testing.T) {
 	defer gatewayServer.Close()
 
 	journalPath := filepath.Join(t.TempDir(), "attempts.jsonl")
+	// The joined gateway is an httptest server on 127.0.0.1: this fixture is
+	// exactly the adapter's documented "local deployment" case, so it takes
+	// the explicit private-target opt-in. Without it the production transport
+	// re-validates every dialed IP against the loopback/private/reserved
+	// ranges at connect time and refuses the forward ([T08] dial guard).
 	adapter, err := craftegress.NewCraftEgressAdapter(craftegress.CraftEgressAdapterConfig{
-		GatewayBaseURL: gatewayServer.URL + "/craft/model-gateway",
-		Credential:     credential,
-		JournalPath:    journalPath,
+		GatewayBaseURL:     gatewayServer.URL + "/craft/model-gateway",
+		Credential:         credential,
+		JournalPath:        journalPath,
+		AllowPrivateTarget: true,
 	})
 	require.NoError(t, err)
 	defer func() { require.NoError(t, adapter.Close()) }()
