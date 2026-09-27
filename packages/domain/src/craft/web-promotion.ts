@@ -15,7 +15,21 @@ export type WebCheckEvidenceFact = NonNullable<CraftVersionView['web_evidence']>
 export interface WebVersionEvidenceFact {
   id: string;
   webEvidence: WebCheckEvidenceFact | null;
+  /**
+   * Optional ordering witness (creation timestamp of the version, newest
+   * wins). NOTE ON DATA PROVENANCE: CraftVersionView (and the contracts
+   * package as a whole) carries NO timestamp field today and version ids are
+   * content digests, not time-ordered — so until the frozen contract gains
+   * a timestamp member, the newest-first ARRAY ORDER (server-side
+   * created_at DESC) remains the only ordering source that actually fires.
+   * The createdAt branch below is the ready consumer for that future field;
+   * callers must keep passing a newest-first list until then.
+   */
+  createdAt?: string;
 }
+
+/** The passed outcome literal, shared by every four-check comparison. */
+const PASSED_OUTCOME = 'passed';
 
 /**
  * A promotion is ready only when all four facts independently passed. A
@@ -25,24 +39,39 @@ export interface WebVersionEvidenceFact {
 export function webCheckEvidenceReady(evidence: WebCheckEvidenceFact | null): boolean {
   if (evidence === null) return false;
   return (
-    evidence.build === 'passed' &&
-    evidence.entry === 'passed' &&
-    evidence.preview_reachable === 'passed' &&
-    evidence.page_loaded === 'passed'
+    evidence.build === PASSED_OUTCOME &&
+    evidence.entry === PASSED_OUTCOME &&
+    evidence.preview_reachable === PASSED_OUTCOME &&
+    evidence.page_loaded === PASSED_OUTCOME
   );
 }
 
 /**
- * Picks the default preview version from newest-first versions: the newest
- * four-check ready one. A newer version that is not ready never displaces
- * the prior default — it stays out of the seat until its page actually
- * loaded.
+ * Picks the default preview version: the newest four-check ready one. The
+ * documented precondition is a newest-first list; when facts carry createdAt
+ * the function enforces the rule itself (max createdAt among ready facts)
+ * instead of trusting caller order. A newer version that is not ready never
+ * displaces the prior default — it stays out of the seat until its page
+ * actually loaded.
  */
 export function defaultPreviewVersion(
   versions: readonly WebVersionEvidenceFact[],
 ): WebVersionEvidenceFact | null {
+  let best: WebVersionEvidenceFact | null = null;
   for (const version of versions) {
-    if (webCheckEvidenceReady(version.webEvidence)) return version;
+    if (!webCheckEvidenceReady(version.webEvidence)) continue;
+    if (best === null) {
+      best = version;
+      continue;
+    }
+    const versionTime = Date.parse(version.createdAt ?? '');
+    const bestTime = Date.parse(best.createdAt ?? '');
+    if (!Number.isNaN(versionTime) && !Number.isNaN(bestTime)) {
+      if (versionTime > bestTime) best = version;
+      continue;
+    }
+    // Without comparable createdAt witnesses the newest-first array order
+    // remains the ordering contract.
   }
-  return null;
+  return best;
 }

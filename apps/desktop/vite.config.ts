@@ -18,6 +18,7 @@ export default defineConfig({
       // '@weknora/domain/craft/state' into '<query-key.ts>/craft/state'.
       '@weknora/domain/craft/state': fileURLToPath(new URL('../../packages/domain/src/craft/state.ts', import.meta.url)),
       '@weknora/domain/craft/reconnect': fileURLToPath(new URL('../../packages/domain/src/craft/reconnect.ts', import.meta.url)),
+      '@weknora/domain/craft/web-promotion': fileURLToPath(new URL('../../packages/domain/src/craft/web-promotion.ts', import.meta.url)),
       '@weknora/domain/scope': fileURLToPath(new URL('../../packages/domain/src/scope.ts', import.meta.url)),
       '@weknora/domain/chat/draft': fileURLToPath(new URL('../../packages/domain/src/chat/draft.ts', import.meta.url)),
       '@weknora/domain/chat/reducer': fileURLToPath(new URL('../../packages/domain/src/chat/reducer.ts', import.meta.url)),
@@ -65,7 +66,9 @@ export default defineConfig({
       '@weknora/views/craft/slides': fileURLToPath(new URL('../../packages/views/src/craft/slides.tsx', import.meta.url)),
       '@weknora/views/craft/presentation': fileURLToPath(new URL('../../packages/views/src/craft/presentation.ts', import.meta.url)),
       '@weknora/views/craft/interaction': fileURLToPath(new URL('../../packages/views/src/craft/interaction.tsx', import.meta.url)),
+      '@weknora/views/craft/access': fileURLToPath(new URL('../../packages/views/src/craft/access.tsx', import.meta.url)),
       '@weknora/views': fileURLToPath(new URL('../../packages/views/src/index.ts', import.meta.url)),
+
     },
   },
   build: { outDir: 'dist', emptyOutDir: true },

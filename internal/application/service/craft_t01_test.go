@@ -53,18 +53,18 @@ func TestCraftT01Journey(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, input, staged)
 	require.Equal(t, "inputs/"+input[0].SHA256+"/ledger.mystery", stagedPath)
-	_, err = env.svc.StartRun(ctx, scope, CraftRunRequest{RequestID: "r1", Prompt: "Make a page", InputRefs: []string{input[0].Ref}})
+	_, _, err = env.svc.StartRun(ctx, scope, CraftRunRequest{RequestID: "r1", Prompt: "Make a page", InputRefs: []string{input[0].Ref}})
 	require.ErrorIs(t, err, craft.ErrConflict)
 	require.NoError(t, env.svc.DecideInput(ctx, scope, input[0].Ref, "cancel"))
-	_, err = env.svc.StartRun(ctx, scope, CraftRunRequest{RequestID: "r1", Prompt: "Make a page", InputRefs: []string{input[0].Ref}})
+	_, _, err = env.svc.StartRun(ctx, scope, CraftRunRequest{RequestID: "r1", Prompt: "Make a page", InputRefs: []string{input[0].Ref}})
 	require.ErrorIs(t, err, craft.ErrConflict)
 	var count int64
 	require.NoError(t, env.db.Table("agent_runs").Where("session_id = ?", ws.SessionID).Count(&count).Error)
 	require.Zero(t, count, "cancel must submit no Run")
 	require.NoError(t, env.svc.DecideInput(ctx, scope, input[0].Ref, "continue"))
-	run, err := env.svc.StartRun(ctx, scope, CraftRunRequest{RequestID: "r1", Prompt: "Make a page", InputRefs: []string{input[0].Ref}})
+	run, _, err := env.svc.StartRun(ctx, scope, CraftRunRequest{RequestID: "r1", Prompt: "Make a page", InputRefs: []string{input[0].Ref}})
 	require.NoError(t, err)
-	replay, err := env.svc.StartRun(ctx, scope, CraftRunRequest{RequestID: "r1", Prompt: "Make a page", InputRefs: []string{input[0].Ref}})
+	replay, _, err := env.svc.StartRun(ctx, scope, CraftRunRequest{RequestID: "r1", Prompt: "Make a page", InputRefs: []string{input[0].Ref}})
 	require.NoError(t, err)
 	require.Equal(t, run.Key.RunID, replay.Key.RunID)
 	require.NoError(t, env.db.Table("agent_runs").Where("session_id = ?", ws.SessionID).Count(&count).Error)
@@ -140,7 +140,7 @@ func TestCraftT01RestartReplaysCommittedAdmissionClaim(t *testing.T) {
 	inputs, err := env.svc.AcceptInputRound(ctx, scope, []CraftInputUpload{{Name: "ledger.mystery", Content: []byte("opaque payload"), SHA256: sha256Sum("opaque payload")}})
 	require.NoError(t, err)
 	require.NoError(t, env.svc.DecideInput(ctx, scope, inputs[0].Ref, "continue"))
-	first, err := env.svc.StartRun(ctx, scope, CraftRunRequest{RequestID: "committed", Prompt: "build", InputRefs: []string{inputs[0].Ref}})
+	first, _, err := env.svc.StartRun(ctx, scope, CraftRunRequest{RequestID: "committed", Prompt: "build", InputRefs: []string{inputs[0].Ref}})
 	require.NoError(t, err)
 	// Simulate an old/partial marker left as claimed even though the exact Run
 	// is durable. Recovery must reconcile it, while refusing to replace the
@@ -170,7 +170,7 @@ func TestCraftT01RestartReplaysCommittedAdmissionClaim(t *testing.T) {
 		Files: env.svc.files, Models: env.models, Gate: openGate,
 	})
 	require.NoError(t, err)
-	replay, err := restarted.StartRun(ctx, scope, CraftRunRequest{RequestID: "committed", Prompt: "build", InputRefs: []string{inputs[0].Ref}})
+	replay, _, err := restarted.StartRun(ctx, scope, CraftRunRequest{RequestID: "committed", Prompt: "build", InputRefs: []string{inputs[0].Ref}})
 	require.NoError(t, err)
 	require.Equal(t, first.Key.RunID, replay.Key.RunID)
 	var admitted int64
@@ -396,7 +396,7 @@ func TestCraftT01CancelCannotReplaceDecisionDuringRunAdmission(t *testing.T) {
 		1, "u1", ws.SessionID, "input_admission", craftInputDecisionKey(input[0].Ref),
 	).Update("lease_expires_at", time.Now().Add(-time.Minute)).Error)
 	require.NoError(t, env.svc.DecideInput(ctx, scope, input[0].Ref, "cancel"))
-	_, err = env.svc.StartRun(ctx, scope, CraftRunRequest{RequestID: "cancelled", Prompt: "build", InputRefs: []string{input[0].Ref}})
+	_, _, err = env.svc.StartRun(ctx, scope, CraftRunRequest{RequestID: "cancelled", Prompt: "build", InputRefs: []string{input[0].Ref}})
 	require.ErrorIs(t, err, craft.ErrConflict)
 	var count int64
 	require.NoError(t, env.db.Table("agent_runs").Where("session_id = ?", ws.SessionID).Count(&count).Error)

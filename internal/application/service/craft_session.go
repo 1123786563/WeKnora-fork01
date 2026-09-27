@@ -18,6 +18,8 @@ import (
 	"github.com/Tencent/WeKnora/internal/modules/craft"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
+
+	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -88,6 +90,14 @@ func (e *ActiveRunConflict) Error() string {
 
 func (e *ActiveRunConflict) Unwrap() error { return craft.ErrBusy }
 
+// DefaultVersionSelector resolves a scope's default preview version under
+// the T15 (#130) promotion policy: the newest published web version whose
+// four independent checks each passed. The boolean reports whether any
+// version qualified; an error degrades CONSERVATIVELY at the call site —
+// the default seat stays EMPTY (never a legacy newest-version fallback),
+// exactly like the View projection in this file.
+type DefaultVersionSelector = func(ctx context.Context, scope craft.Scope) (craft.Version, bool, error)
+
 // CraftSessionConfig assembles the craft session service.
 type CraftSessionConfig struct {
 	// DB is the migrated business database.
@@ -121,6 +131,18 @@ type CraftSessionConfig struct {
 	Models interfaces.ModelService
 	// Gate is the deployment feature gate; the zero value keeps craft closed.
 	Gate CraftFeatureGate
+	// DefaultVersionSelector picks the session's default preview version for
+	// web-kind sessions (T15 #130: only a version whose four independent
+	// checks each passed takes the seat). nil keeps the recorded legacy
+	// behavior (newest version); non-web kinds always use the legacy rule.
+	DefaultVersionSelector func(ctx context.Context, scope craft.Scope) (craft.Version, bool, error)
+	// WriterLeases is the T16 (#134) durable writer-lease store: after a Run
+	// Submit commits, StartRun acquires the workspace writer lease and the
+	// acquisition outcome (acquired/conflict/unknown, the T00 frozen DTO)
+	// travels to the HTTP response. A conflict never rolls back admission —
+	// the run slot stays the first serialization layer. Nil keeps the
+	// pre-T16 behavior.
+	WriterLeases CraftWriterLeaseStore
 	// Now is injectable for tests.
 	Now func() time.Time
 }
@@ -139,7 +161,13 @@ type CraftSessionService struct {
 	files         interfaces.FileService
 	models        interfaces.ModelService
 	gate          CraftFeatureGate
-	now           func() time.Time
+	// defaultVersionSelector is the T15 web default-seat selector; nil
+	// keeps the legacy newest-version behavior.
+	defaultVersionSelector func(ctx context.Context, scope craft.Scope) (craft.Version, bool, error)
+	// writerLeases is the T16 durable writer-lease store; nil keeps the
+	// pre-T16 behavior (admission stays the only serialization).
+	writerLeases CraftWriterLeaseStore
+	now          func() time.Time
 }
 
 // NewCraftSessionService validates the assembly and returns the service.
@@ -157,7 +185,8 @@ func NewCraftSessionService(cfg CraftSessionConfig) (*CraftSessionService, error
 		db: cfg.DB, sessions: cfg.Sessions, store: cfg.Store, versions: cfg.Versions,
 		runs: cfg.Runs, activeRuns: cfg.ActiveRuns, access: cfg.Access, taskList: cfg.TaskList,
 		temporaryDocs: cfg.TemporaryDocs,
-		files:         cfg.Files, models: cfg.Models, gate: cfg.Gate, now: now,
+		files:         cfg.Files, models: cfg.Models, gate: cfg.Gate,
+		defaultVersionSelector: cfg.DefaultVersionSelector, writerLeases: cfg.WriterLeases, now: now,
 	}, nil
 }
 
@@ -467,7 +496,23 @@ func (s *CraftSessionService) View(ctx context.Context, scope craft.Scope) (Craf
 			}
 		}
 	}
-	if versions, verr := s.versions.List(ctx, owner); verr == nil && len(versions) > 0 {
+	if registration.Kind == craft.KindWeb && s.defaultVersionSelector != nil {
+		// T15 (#130): a web session's default preview seat goes to the
+		// newest version whose four independent checks each passed. A
+		// selector failure degrades CONSERVATIVELY: the seat stays empty
+		// rather than falling back to the newest version — an unverified
+		// latest version on the preview seat is exactly what #130 forbids.
+		// The read itself never fails (the seat is a projection, not an
+		// authorization boundary), but the degradation is logged so a
+		// broken selector is observable in production.
+		selected, ok, serr := s.defaultVersionSelector(ctx, owner)
+		switch {
+		case serr != nil:
+			logger.Warnf(ctx, "[CraftSession] web default-version selector failed for workspace %s; the default preview seat stays empty this read: %v", workspace.ID, serr)
+		case ok:
+			view.CurrentVersion = &selected
+		}
+	} else if versions, verr := s.versions.List(ctx, owner); verr == nil && len(versions) > 0 {
 		current := versions[0]
 		view.CurrentVersion = &current
 	}
@@ -763,38 +808,38 @@ func (r CraftRunRequest) Validate() error {
 // goroutine; the durable worker owns execution. A live run (including
 // waiting_user) refuses the request with the existing run id, and a retried
 // request id reuses the original admission.
-func (s *CraftSessionService) StartRun(ctx context.Context, scope craft.Scope, req CraftRunRequest) (agentruntime.Run, error) {
+func (s *CraftSessionService) StartRun(ctx context.Context, scope craft.Scope, req CraftRunRequest) (agentruntime.Run, craft.WriterAcquisition, error) {
 	if err := req.Validate(); err != nil {
-		return agentruntime.Run{}, err
+		return agentruntime.Run{}, craft.WriterAcquisition{}, err
 	}
 	if req.BaseVersionID != "" {
-		return agentruntime.Run{}, fmt.Errorf("%w: historical Artifact Versions cannot be used as Craft edit seeds", craft.ErrUnsupported)
+		return agentruntime.Run{}, craft.WriterAcquisition{}, fmt.Errorf("%w: historical Artifact Versions cannot be used as Craft edit seeds", craft.ErrUnsupported)
 	}
 	caller := types.CallerFromContext(ctx)
 	if caller.TenantID != scope.TenantID || caller.UserID == "" || caller.UserID != scope.UserID {
-		return agentruntime.Run{}, craft.ErrForbidden
+		return agentruntime.Run{}, craft.WriterAcquisition{}, craft.ErrForbidden
 	}
 	actorUserID := caller.UserID
 	if !s.gate.Enabled {
-		return agentruntime.Run{}, fmt.Errorf("%w: craft is not enabled on this deployment", craft.ErrUnsupported)
+		return agentruntime.Run{}, craft.WriterAcquisition{}, fmt.Errorf("%w: craft is not enabled on this deployment", craft.ErrUnsupported)
 	}
 	session, err := s.writeSession(ctx, scope, scope.SessionID)
 	if err != nil {
-		return agentruntime.Run{}, err
+		return agentruntime.Run{}, craft.WriterAcquisition{}, err
 	}
 	if _, err := s.craftRow(ctx, session.TenantID, session.ID); err != nil {
-		return agentruntime.Run{}, err
+		return agentruntime.Run{}, craft.WriterAcquisition{}, err
 	}
 	owner := ownerScopeOf(session)
 	workspace, err := s.store.GetWorkspace(ctx, owner)
 	if err != nil {
-		return agentruntime.Run{}, err
+		return agentruntime.Run{}, craft.WriterAcquisition{}, err
 	}
 
 	// Every input ref must belong to this workspace's associated manifest.
 	authorized, err := s.resolveInputRefs(ctx, workspace.ID, req.InputRefs)
 	if err != nil {
-		return agentruntime.Run{}, err
+		return agentruntime.Run{}, craft.WriterAcquisition{}, err
 	}
 	requestID := "craft-" + strings.TrimSpace(req.RequestID)
 
@@ -812,25 +857,25 @@ func (s *CraftSessionService) StartRun(ctx context.Context, scope craft.Scope, r
 	if errors.Is(priorErr, gorm.ErrRecordNotFound) {
 		if active, aerr := s.activeRuns(ctx, owner); aerr == nil && active {
 			if conflict := s.activeRunConflict(ctx, session); conflict != nil {
-				return agentruntime.Run{}, conflict
+				return agentruntime.Run{}, craft.WriterAcquisition{}, conflict
 			}
-			return agentruntime.Run{}, fmt.Errorf("%w: session %s has an active run", craft.ErrBusy, session.ID)
+			return agentruntime.Run{}, craft.WriterAcquisition{}, fmt.Errorf("%w: session %s has an active run", craft.ErrBusy, session.ID)
 		}
 	} else if priorErr != nil {
-		return agentruntime.Run{}, priorErr
+		return agentruntime.Run{}, craft.WriterAcquisition{}, priorErr
 	} else if priorRun.ActorUserID == "" || priorRun.ActorUserID != actorUserID {
 		// Reject a cross-actor same-key replay before touching any T01 input
 		// decision/admission claim; the owner remains only the storage key.
-		return agentruntime.Run{}, craft.ErrConflict
+		return agentruntime.Run{}, craft.WriterAcquisition{}, craft.ErrConflict
 	}
 
 	modelID, err := s.craftChatModelID(ctx)
 	if err != nil {
-		return agentruntime.Run{}, err
+		return agentruntime.Run{}, craft.WriterAcquisition{}, err
 	}
 	snapshot, err := craftRunSnapshot(req, authorized, modelID)
 	if err != nil {
-		return agentruntime.Run{}, err
+		return agentruntime.Run{}, craft.WriterAcquisition{}, err
 	}
 
 	runID := uuid.NewString()
@@ -842,15 +887,15 @@ func (s *CraftSessionService) StartRun(ctx context.Context, scope craft.Scope, r
 	digest := sha256.Sum256(append(append([]byte(nil), snapshot...), []byte(assistantID)...))
 	user, err := json.Marshal(map[string]any{"role": "user", "content": req.Prompt})
 	if err != nil {
-		return agentruntime.Run{}, err
+		return agentruntime.Run{}, craft.WriterAcquisition{}, err
 	}
 	assistant, err := json.Marshal(map[string]any{"role": "assistant", "content": ""})
 	if err != nil {
-		return agentruntime.Run{}, err
+		return agentruntime.Run{}, craft.WriterAcquisition{}, err
 	}
 	inputClaims, runID, err := s.claimInputDecisions(ctx, session, authorized, requestID, runID, actorUserID)
 	if err != nil {
-		return agentruntime.Run{}, err
+		return agentruntime.Run{}, craft.WriterAcquisition{}, err
 	}
 	run, err := s.runs.Submit(ctx, agentruntime.Admission{
 		Key:                agentruntime.RunKey{TenantID: session.TenantID, RunID: runID},
@@ -873,15 +918,30 @@ func (s *CraftSessionService) StartRun(ctx context.Context, scope craft.Scope, r
 		// could reopen a decision while a Run is already durable.
 		if errors.Is(err, agentruntime.ErrRunActive) {
 			if conflict := s.activeRunConflict(ctx, session); conflict != nil {
-				return agentruntime.Run{}, conflict
+				return agentruntime.Run{}, craft.WriterAcquisition{}, conflict
 			}
 		}
 		if errors.Is(err, agentruntime.ErrConflict) {
-			return agentruntime.Run{}, fmt.Errorf("%w: %v", craft.ErrConflict, err)
+			return agentruntime.Run{}, craft.WriterAcquisition{}, fmt.Errorf("%w: %v", craft.ErrConflict, err)
 		}
-		return agentruntime.Run{}, err
+		return agentruntime.Run{}, craft.WriterAcquisition{}, err
 	}
-	return run, nil
+	// T16 (#134): the durable writer lease serializes workspace WRITERS on
+	// top of admission. Submit already committed the run, so the lease can
+	// neither fail this response nor un-admit the run: acquired and conflict
+	// project to the caller (a conflict means another writing Run holds the
+	// workspace — the takeover path stays available), and an indeterminate
+	// acquisition reports unknown while the fence keeps whatever row exists.
+	acquisition := craft.WriterAcquisition{Outcome: craft.WriterAcquireOutcome{WorkspaceID: workspace.ID, Status: craft.WriterUnknown}}
+	if s.writerLeases != nil {
+		acquired, aerr := s.writerLeases.AcquireWriterLease(ctx, owner, workspace.ID, runID)
+		if aerr != nil {
+			logger.Warnf(ctx, "[CraftSession] writer lease acquisition indeterminate for run %s (fence retained): %v", runID, aerr)
+		} else {
+			acquisition = acquired
+		}
+	}
+	return run, acquisition, nil
 }
 
 // activeRunConflict reads the session's run slot and wraps it as a typed

@@ -516,3 +516,341 @@ func (s *CraftStore) GetResult(ctx context.Context, scope craft.Scope, taskID st
 	}
 	return result, nil
 }
+
+// ---------------------------------------------------------------------------
+// T16 (#134): the durable Workspace writer lease.
+// ---------------------------------------------------------------------------
+
+// craftWriterLeaseRow is the one-row-per-Workspace writer lease. The
+// workspace_id primary key IS the compare-and-swap identity: two concurrent
+// writers race a single insert/update on it and the database decides.
+type craftWriterLeaseRow struct {
+	WorkspaceID string    `gorm:"column:workspace_id;primaryKey"`
+	TenantID    uint64    `gorm:"column:tenant_id"`
+	SessionID   string    `gorm:"column:session_id"`
+	RunID       string    `gorm:"column:run_id"`
+	Revision    int64     `gorm:"column:revision"`
+	CreatedAt   time.Time `gorm:"column:created_at"`
+	UpdatedAt   time.Time `gorm:"column:updated_at"`
+}
+
+func (craftWriterLeaseRow) TableName() string { return "craft_workspace_writer_leases" }
+
+func (r craftWriterLeaseRow) view() *craft.WriterLease {
+	return &craft.WriterLease{
+		WorkspaceID: r.WorkspaceID, TaskID: r.SessionID, RunID: r.RunID, Revision: r.Revision,
+	}
+}
+
+func craftWriterAcquired(row craftWriterLeaseRow) craft.WriterAcquisition {
+	return craft.WriterAcquisition{
+		Outcome: craft.WriterAcquireOutcome{WorkspaceID: row.WorkspaceID, Status: craft.WriterAcquired},
+		Lease:   row.view(),
+	}
+}
+
+func craftWriterConflict(row craftWriterLeaseRow) craft.WriterAcquisition {
+	return craft.WriterAcquisition{
+		Outcome: craft.WriterAcquireOutcome{WorkspaceID: row.WorkspaceID, Status: craft.WriterConflict},
+		Holder:  row.view(),
+	}
+}
+
+// observeCraftWriterRun reads the authoritative facts of one Run inside the
+// caller's transaction: the durable status and the counts of writers that
+// may still write through the workspace. A missing run row is an UNOBSERVED
+// (unknown) outcome — reported as facts, never as an error, because
+// "unknown" is a decision input, not a failure.
+func observeCraftWriterRun(tx *gorm.DB, tenantID uint64, runID string) (craft.WriterRunFacts, error) {
+	var run agentRunRow
+	err := runScope(tx, agentruntime.RunKey{TenantID: tenantID, RunID: runID}).Take(&run).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return craft.WriterRunFacts{Observed: false}, nil
+	}
+	if err != nil {
+		return craft.WriterRunFacts{}, err
+	}
+	facts := craft.WriterRunFacts{Observed: true, Status: run.Status}
+	if err := tx.Model(&agentToolCallRow{}).
+		Where("tenant_id = ? AND run_id = ? AND status NOT IN ('succeeded','failed')", tenantID, runID).
+		Count(&facts.PendingToolWriters).Error; err != nil {
+		return craft.WriterRunFacts{}, err
+	}
+	if err := tx.Model(&craftDelegationRow{}).
+		Where("tenant_id = ? AND run_id = ? AND status NOT IN ('succeeded','failed','canceled')", tenantID, runID).
+		Count(&facts.PendingDelegations).Error; err != nil {
+		return craft.WriterRunFacts{}, err
+	}
+	return facts, nil
+}
+
+// lockCraftWriterWorkspace locks and authorizes the leased workspace row in
+// the caller's transaction: cross-tenant or cross-session workspaces do not
+// exist for the caller, another user's binding is visible but forbidden.
+func lockCraftWriterWorkspace(tx *gorm.DB, scope craft.Scope, workspaceID string) (craftWorkspaceRow, error) {
+	var ws craftWorkspaceRow
+	err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+		Where("id = ? AND tenant_id = ?", workspaceID, scope.TenantID).Take(&ws).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return craftWorkspaceRow{}, fmt.Errorf("%w: workspace %s", craft.ErrNotFound, workspaceID)
+	}
+	if err != nil {
+		return craftWorkspaceRow{}, err
+	}
+	if ws.SessionID != scope.SessionID {
+		// Cross-session workspaces are invisible on this surface, matching
+		// GetWriterLease/GetWorkspace: the exported store seam must not leak
+		// the binding session's existence.
+		return craftWorkspaceRow{}, fmt.Errorf("%w: workspace %s", craft.ErrNotFound, workspaceID)
+	}
+	if ws.OwnerID != scope.UserID {
+		return craftWorkspaceRow{}, fmt.Errorf("%w: workspace owned by %s", craft.ErrForbidden, ws.OwnerID)
+	}
+	return ws, nil
+}
+
+// craftWriterLeaseFenceRevision reads the draft-head revision a new writer
+// must be fenced against. A workspace without a trustworthy head refuses
+// admission fail-closed.
+func craftWriterLeaseFenceRevision(tx *gorm.DB, scope craft.Scope, workspaceID string) (int64, error) {
+	var head craftDraftHeadRow
+	err := tx.Where("workspace_id = ? AND tenant_id = ?", workspaceID, scope.TenantID).Take(&head).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return 0, craft.ErrDraftHeadUnresolved
+	}
+	if err != nil {
+		return 0, err
+	}
+	return head.Revision, nil
+}
+
+// AcquireWriterLease admits at most one writing Run per Workspace through
+// transactional compare-and-swap on the unique lease row. The winner's lease
+// binds the Task (session), the Workspace, the Run and the draft-head
+// revision at acquisition; a same-Run retry is idempotent; a loser receives
+// a STABLE conflict naming the holder; and a previous holder is superseded
+// only by the authoritative-recovery verdict re-verified from the durable
+// run state inside this transaction.
+func (s *CraftStore) AcquireWriterLease(ctx context.Context, scope craft.Scope, workspaceID, runID string) (craft.WriterAcquisition, error) {
+	if scope.TenantID == 0 || scope.UserID == "" || scope.SessionID == "" || workspaceID == "" || runID == "" {
+		return craft.WriterAcquisition{}, fmt.Errorf("%w: incomplete writer lease request", craft.ErrInvalidInput)
+	}
+	var out craft.WriterAcquisition
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if _, err := lockCraftWriterWorkspace(tx, scope, workspaceID); err != nil {
+			return err
+		}
+		revision, err := craftWriterLeaseFenceRevision(tx, scope, workspaceID)
+		if err != nil {
+			return err
+		}
+		readLease := func() (craftWriterLeaseRow, error) {
+			var row craftWriterLeaseRow
+			e := tx.Where("workspace_id = ? AND tenant_id = ?", workspaceID, scope.TenantID).Take(&row).Error
+			if e != nil {
+				return craftWriterLeaseRow{}, e
+			}
+			if row.SessionID != scope.SessionID {
+				return craftWriterLeaseRow{}, fmt.Errorf(
+					"%w: lease of workspace %s names session %s, not %s", craft.ErrInvalidInput, workspaceID, row.SessionID, scope.SessionID)
+			}
+			return row, nil
+		}
+		// takeOver resolves the request against the CURRENT holder row:
+		// same-Run is the idempotent winner, an authoritative-recovery
+		// verdict supersedes via CAS, and anything else stays a stable
+		// conflict naming the holder.
+		var takeOver func(current craftWriterLeaseRow) error
+		// insertLease claims the empty workspace through the guarded
+		// insert; losing the unique-row race defers to the durable
+		// winner's takeOver.
+		var insertLease func() error
+		takeOver = func(current craftWriterLeaseRow) error {
+			if current.RunID == runID {
+				out = craftWriterAcquired(current)
+				return nil
+			}
+			facts, ferr := observeCraftWriterRun(tx, scope.TenantID, current.RunID)
+			if ferr != nil {
+				return ferr
+			}
+			if !craft.WriterLeaseTakeover(current.view(), facts) {
+				out = craftWriterConflict(current)
+				return nil
+			}
+			updated := tx.Model(&craftWriterLeaseRow{}).
+				Where("workspace_id = ? AND tenant_id = ? AND run_id = ? AND revision = ?",
+					workspaceID, scope.TenantID, current.RunID, current.Revision).
+				Updates(map[string]any{
+					"session_id": scope.SessionID, "run_id": runID, "revision": revision,
+					"updated_at": gorm.Expr("CURRENT_TIMESTAMP"),
+				})
+			if updated.Error != nil {
+				return updated.Error
+			}
+			if updated.RowsAffected != 1 {
+				after, aerr := readLease()
+				if errors.Is(aerr, gorm.ErrRecordNotFound) {
+					// The holder row vanished under the CAS (a concurrent
+					// release won the race — release and takeover share the
+					// same eligibility rule, so they genuinely contend): the
+					// fence is gone, and this run claims the now-empty
+					// workspace through the insert path instead of bubbling
+					// a raw not-found that StartRun would misreport as
+					// "unknown, fence retained".
+					return insertLease()
+				}
+				if aerr != nil {
+					return aerr
+				}
+				return takeOver(after)
+			}
+			won, werr := readLease()
+			if werr != nil {
+				return werr
+			}
+			out = craftWriterAcquired(won)
+			return nil
+		}
+		insertLease = func() error {
+			row := craftWriterLeaseRow{
+				WorkspaceID: workspaceID, TenantID: scope.TenantID,
+				SessionID: scope.SessionID, RunID: runID, Revision: revision,
+			}
+			created := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&row)
+			if created.Error != nil {
+				return created.Error
+			}
+			if created.RowsAffected == 1 {
+				out = craftWriterAcquired(row)
+				return nil
+			}
+			// Lost the unique-row race: the durable winner is the holder.
+			winner, werr := readLease()
+			if werr != nil {
+				return werr
+			}
+			return takeOver(winner)
+		}
+
+		var leaseRow craftWriterLeaseRow
+		err = tx.Where("workspace_id = ? AND tenant_id = ?", workspaceID, scope.TenantID).Take(&leaseRow).Error
+		switch {
+		case err == nil:
+			if leaseRow.SessionID != scope.SessionID {
+				return fmt.Errorf(
+					"%w: lease of workspace %s names session %s, not %s", craft.ErrInvalidInput, workspaceID, leaseRow.SessionID, scope.SessionID)
+			}
+			return takeOver(leaseRow)
+		case errors.Is(err, gorm.ErrRecordNotFound):
+			return insertLease()
+		default:
+			return err
+		}
+	})
+	if err != nil {
+		return craft.WriterAcquisition{}, err
+	}
+	if err := out.Outcome.Validate(); err != nil {
+		return craft.WriterAcquisition{}, err
+	}
+	return out, nil
+}
+
+// ReleaseWriterLease releases the Workspace writer lease ONLY after a
+// verified outcome: the named basis must not be unknown, the releasing Run
+// must be the recorded holder, and the holder's durable run state is
+// re-verified as terminal with zero unfinished writers inside the releasing
+// transaction. Every refusal leaves the fence intact.
+func (s *CraftStore) ReleaseWriterLease(ctx context.Context, scope craft.Scope, workspaceID, runID, basis string) error {
+	if scope.TenantID == 0 || scope.UserID == "" || scope.SessionID == "" || workspaceID == "" || runID == "" {
+		return fmt.Errorf("%w: incomplete writer lease release", craft.ErrInvalidInput)
+	}
+	switch basis {
+	case craft.WriterReleaseVerifiedCompletion, craft.WriterReleaseConfirmedStop, craft.WriterReleaseAuthoritativeRecovery:
+	case craft.WriterReleaseUnknown:
+		return fmt.Errorf("%w: unknown outcome retains the writer fence of run %s", craft.ErrBusy, runID)
+	default:
+		return fmt.Errorf("%w: unknown release basis %q", craft.ErrInvalidInput, basis)
+	}
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Lock the workspace BEFORE the lease row: this carries the
+		// workspace ACL (session binding + OwnerID) on EVERY path — a
+		// same-session non-owner must never release another writer's
+		// fence — and serializes Release with AcquireWriterLease under the
+		// same workspace→lease lock order (AB-BA avoidance). It also makes
+		// the lease-row delete below strictly ordered against any
+		// concurrent Acquire's read/CAS of that row.
+		if _, err := lockCraftWriterWorkspace(tx, scope, workspaceID); err != nil {
+			return err
+		}
+		var leaseRow craftWriterLeaseRow
+		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("workspace_id = ? AND tenant_id = ?", workspaceID, scope.TenantID).Take(&leaseRow).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return fmt.Errorf("%w: workspace %s holds no writer lease", craft.ErrNotFound, workspaceID)
+		}
+		if err != nil {
+			return err
+		}
+		if leaseRow.SessionID != scope.SessionID || leaseRow.RunID != runID {
+			return fmt.Errorf("%w: the lease of workspace %s is held by run %s, not run %s",
+				craft.ErrForbidden, workspaceID, leaseRow.RunID, runID)
+		}
+		facts, err := observeCraftWriterRun(tx, scope.TenantID, runID)
+		if err != nil {
+			return err
+		}
+		if !craft.WriterLeaseReleasable(facts) {
+			return fmt.Errorf(
+				"%w: run %s is not a verified terminal writer (status %q, pending tools %d, pending delegations %d); the fence stays",
+				craft.ErrBusy, runID, facts.Status, facts.PendingToolWriters, facts.PendingDelegations)
+		}
+		deleted := tx.Where("workspace_id = ? AND tenant_id = ? AND run_id = ?", workspaceID, scope.TenantID, runID).
+			Delete(&craftWriterLeaseRow{})
+		if deleted.Error != nil {
+			return deleted.Error
+		}
+		if deleted.RowsAffected != 1 {
+			return fmt.Errorf("%w: lease of run %s changed concurrently", craft.ErrConflict, runID)
+		}
+		return nil
+	})
+}
+
+// GetWriterLease projects the durable lease row without ever taking it —
+// the read path of status surfaces; a workspace without a lease answers
+// ErrNotFound.
+func (s *CraftStore) GetWriterLease(ctx context.Context, scope craft.Scope, workspaceID string) (*craft.WriterLease, error) {
+	if scope.TenantID == 0 || scope.UserID == "" || scope.SessionID == "" || workspaceID == "" {
+		return nil, fmt.Errorf("%w: incomplete writer lease read", craft.ErrInvalidInput)
+	}
+	// Keep the ACL shape of GetWorkspace on EVERY answer — the hit path
+	// too, not just the empty one: the workspace row decides cross-session
+	// invisibility (NotFound) and non-owner refusal (Forbidden) before any
+	// lease fact (Task/Run/revision) is projected. This method is an
+	// exported seam, so it must not rely on callers filtering first.
+	var ws craftWorkspaceRow
+	we := s.db.WithContext(ctx).Where("id = ? AND tenant_id = ?", workspaceID, scope.TenantID).Take(&ws).Error
+	if errors.Is(we, gorm.ErrRecordNotFound) {
+		return nil, fmt.Errorf("%w: workspace %s", craft.ErrNotFound, workspaceID)
+	}
+	if we != nil {
+		return nil, we
+	}
+	if ws.SessionID != scope.SessionID {
+		return nil, fmt.Errorf("%w: workspace %s", craft.ErrNotFound, workspaceID)
+	}
+	if ws.OwnerID != scope.UserID {
+		return nil, fmt.Errorf("%w: workspace owned by %s", craft.ErrForbidden, ws.OwnerID)
+	}
+	var leaseRow craftWriterLeaseRow
+	err := s.db.WithContext(ctx).Where("workspace_id = ? AND tenant_id = ?", workspaceID, scope.TenantID).Take(&leaseRow).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, fmt.Errorf("%w: workspace %s holds no writer lease", craft.ErrNotFound, workspaceID)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return leaseRow.view(), nil
+}

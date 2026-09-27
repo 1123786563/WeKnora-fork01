@@ -72,6 +72,9 @@ func newAdapterForTest(t *testing.T, gateway *httptest.Server, journalPath strin
 		GatewayBaseURL: gateway.URL + "/craft/model-gateway",
 		Credential:     "craft-execution-credential-test",
 		JournalPath:    journalPath,
+		// The mock gateway is an httptest loopback listener; the production
+		// dial-time private-IP refusal would correctly reject it.
+		AllowPrivateTarget: true,
 	})
 	if err != nil {
 		t.Fatalf("adapter construction failed: %v", err)

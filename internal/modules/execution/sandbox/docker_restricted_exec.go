@@ -50,6 +50,15 @@ type DockerOutputlessExecClient interface {
 
 // CreateOutputlessExec creates an inert exec. It rejects stream-dependent
 // requests before contacting Docker and never restarts a stopped container.
+// dockerExecStarterAPI pins the detached-start method set at compile time:
+// a moby client upgrade that changes the ExecStart signature must break the
+// build here instead of degrading every restricted exec to "unsupported".
+type dockerExecStarterAPI = interface {
+	ExecStart(context.Context, string, client.ExecStartOptions) (client.ExecStartResult, error)
+}
+
+var _ dockerExecStarterAPI = (*client.Client)(nil)
+
 func (c *DockerRemoteClient) CreateOutputlessExec(ctx context.Context, handle RemoteSandboxHandle, restricted DockerOutputlessExecRequest) (DockerOutputlessExecReceipt, error) {
 	req := restricted.Request
 	if !restricted.DiscardOutput || req.Stdin != "" || req.OnOutput != nil {
@@ -68,6 +77,9 @@ func (c *DockerRemoteClient) CreateOutputlessExec(ctx context.Context, handle Re
 	timeout := req.Timeout
 	if timeout <= 0 {
 		timeout = DefaultTimeout
+	}
+	if timeout > time.Duration(1<<62) {
+		return DockerOutputlessExecReceipt{}, dockerInvalidRequest("RestrictedExec", "timeout exceeds the supported upper bound")
 	}
 	created, err := c.api.ExecCreate(ctx, id, client.ExecCreateOptions{
 		Cmd: dockerExecCommand(req, timeout), User: dockerExecUser(req.User),
@@ -100,9 +112,7 @@ func (c *DockerRemoteClient) StartOutputlessExec(ctx context.Context, receipt Do
 	if wrapped, ok := api.(*dockerRPCTimeoutAPI); ok {
 		api = wrapped.inner
 	}
-	starter, ok := api.(interface {
-		ExecStart(context.Context, string, client.ExecStartOptions) (client.ExecStartResult, error)
-	})
+	starter, ok := api.(dockerExecStarterAPI)
 	if !ok {
 		return fmt.Errorf("restricted Docker ExecStart unsupported")
 	}
@@ -125,6 +135,7 @@ func (c *DockerRemoteClient) ObserveOutputlessExec(ctx context.Context, receipt 
 		return unknown, dockerError("RestrictedExecInspect", err)
 	}
 	if inspected.ID != receipt.ExecID || inspected.ContainerID != receipt.ContainerID {
+		// (identity mismatch is an explicit error, not a silent unknown)
 		return unknown, nil
 	}
 	if inspected.Running {

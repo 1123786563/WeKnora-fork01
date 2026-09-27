@@ -210,7 +210,13 @@ func (s *CraftBudgetService) BeginBinding(ctx context.Context, grantID, activity
 		return nil, fmt.Errorf("%w: charge start preparation did not commit an intent and hold", craft.ErrConflict)
 	}
 	if err := ctx.Err(); err != nil {
-		if resolveErr := s.resolveCraftChargeStart(context.Background(), preparation.journal, CraftChargeStartDefinitelyNotStarted); resolveErr != nil {
+		// The resolution write must not inherit the already-canceled caller
+		// context (the journal would strand in 'intent' forever), nor run
+		// unbounded on a wedged database: the same bounded detach the
+		// attempt's Resolve path uses applies here.
+		resolveCtx, resolveDone := context.WithTimeout(context.WithoutCancel(ctx), craftChargeStartResolveTimeout)
+		defer resolveDone()
+		if resolveErr := s.resolveCraftChargeStart(resolveCtx, preparation.journal, CraftChargeStartDefinitelyNotStarted); resolveErr != nil {
 			return nil, errors.Join(err, resolveErr)
 		}
 		return nil, err
@@ -299,7 +305,9 @@ func (s *CraftBudgetService) StartBinding(ctx context.Context, grantID, activity
 	}
 	journal := preparation.journal
 	if err := ctx.Err(); err != nil {
-		if resolveErr := s.resolveCraftChargeStart(context.Background(), journal, CraftChargeStartDefinitelyNotStarted); resolveErr != nil {
+		resolveCtx, resolveDone := context.WithTimeout(context.WithoutCancel(ctx), craftChargeStartResolveTimeout)
+		defer resolveDone()
+		if resolveErr := s.resolveCraftChargeStart(resolveCtx, journal, CraftChargeStartDefinitelyNotStarted); resolveErr != nil {
 			return CraftChargeStartUnknown, resolveErr
 		}
 		return CraftChargeStartDefinitelyNotStarted, err
@@ -322,8 +330,18 @@ func (s *CraftBudgetService) StartBinding(ctx context.Context, grantID, activity
 	if startErr != nil && outcome != CraftChargeStartDefinitelyNotStarted {
 		outcome = CraftChargeStartUnknown
 	}
-	if resolveErr := s.resolveCraftChargeStart(ctx, journal, outcome); resolveErr != nil {
-		return outcome, resolveErr
+	// The journal resolution must survive a caller context that was canceled
+	// while the external callback ran (client disconnect, stop, shutdown):
+	// resolve with a bounded detached context, mirroring the attempt's own
+	// Resolve discipline. Without this the journal strands in 'intent', the
+	// activity replay is refused, and the lease recovery scan excludes the
+	// Run until someone reconciles by hand.
+	resolveCtx, resolveDone := context.WithTimeout(context.WithoutCancel(ctx), craftChargeStartResolveTimeout)
+	defer resolveDone()
+	if resolveErr := s.resolveCraftChargeStart(resolveCtx, journal, outcome); resolveErr != nil {
+		// Join like BeginBinding: the caller must see BOTH the external
+		// callback failure and the persistence failure.
+		return outcome, errors.Join(startErr, resolveErr)
 	}
 	return outcome, startErr
 }
@@ -339,8 +357,28 @@ func (s *CraftBudgetService) prepareCraftDockerChargeStart(ctx context.Context, 
 
 func (s *CraftBudgetService) prepareCraftChargeStartWithProtocol(ctx context.Context, row CraftBudgetGrantRow, activityID string, b CraftCallBinding, protocol *string) (craftChargeStartPreparation, error) {
 	callKey := CraftCallKey("activity/" + activityID)
-	var preparation craftChargeStartPreparation
-	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	// Bounded whole-transaction retry on the per-binding sequence slot:
+	// two concurrent charge starts with identical facets can read the same
+	// MAX(call_seq) and race the INSERT (a failed statement aborts the
+	// transaction on PostgreSQL, so the retry must restart the transaction,
+	// not continue inside it). The unique index remains the final
+	// arbiter — same discipline as AuthorizeBinding's sequence loop.
+	for attempt := 0; attempt < craftCallSeqAttempts; attempt++ {
+		preparation := craftChargeStartPreparation{}
+		err := s.prepareCraftChargeStartTx(ctx, row, activityID, b, protocol, callKey, &preparation)
+		if err != nil && isUniqueViolation(err) {
+			continue
+		}
+		if err != nil {
+			return craftChargeStartPreparation{}, err
+		}
+		return preparation, nil
+	}
+	return craftChargeStartPreparation{}, fmt.Errorf("%w: charge start call sequence contention on grant %s", craft.ErrConflict, row.GrantID)
+}
+
+func (s *CraftBudgetService) prepareCraftChargeStartTx(ctx context.Context, row CraftBudgetGrantRow, activityID string, b CraftCallBinding, protocol *string, callKey string, preparation *craftChargeStartPreparation) error {
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		run, err := lockCraftRun(tx, ctx, row)
 		if err != nil {
 			return err
@@ -356,10 +394,34 @@ func (s *CraftBudgetService) prepareCraftChargeStartWithProtocol(ctx context.Con
 			return craft.ErrForbidden
 		}
 		var previous CraftChargeStartJournalRow
-		if err := tx.Where("tenant_id = ? AND run_id = ? AND activity_key = ?", row.TenantID, row.RunID, activityID).Take(&previous).Error; err == nil {
+		previousErr := tx.Where("tenant_id = ? AND run_id = ? AND activity_key = ?", row.TenantID, row.RunID, activityID).Take(&previous).Error
+		if previousErr == nil && previous.State != "definitely_unstarted" {
 			return fmt.Errorf("%w: activity start already attempted; reconcile before retry", craft.ErrConflict)
-		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
-			return err
+		}
+		if previousErr == nil {
+			// A DEFINITELY-not-started attempt is a clean slate: nothing was
+			// physically sent, so the activity may restart instead of
+			// deadlocking every retry on a phantom conflict. The same-key
+			// ledger call row AND its reservation must be cleared in the
+			// SAME transaction, or the re-insert collides on the primary
+			// key and the "restart" never actually works.
+			if err := tx.Where("tenant_id = ? AND run_id = ? AND activity_key = ?", row.TenantID, row.RunID, activityID).
+				Delete(&CraftChargeStartJournalRow{}).Error; err != nil {
+				return err
+			}
+			if err := tx.Where("tenant_id = ? AND call_key = ?", row.TenantID, callKey).
+				Delete(&CraftBudgetCallRow{}).Error; err != nil {
+				return err
+			}
+			// Clear the dispatched reservation row in the SAME transaction:
+			// ReserveInTx only replays idempotently in the held state, so a
+			// leftover dispatched row blocks the restart's re-reserve.
+			if err := tx.Where("tenant_id = ? AND reservation_key = ?", row.TenantID, callKey).
+				Delete(&repocommercial.ReservationRow{}).Error; err != nil {
+				return err
+			}
+		} else if !errors.Is(previousErr, gorm.ErrRecordNotFound) {
+			return previousErr
 		}
 		var used int64
 		if err := tx.Model(&CraftBudgetCallRow{}).Where("tenant_id = ? AND grant_id = ? AND call_seq >= 0", row.TenantID, row.GrantID).Count(&used).Error; err != nil {
@@ -412,10 +474,6 @@ func (s *CraftBudgetService) prepareCraftChargeStartWithProtocol(ctx context.Con
 		preparation.status = craftChargeStartPrepared
 		return nil
 	})
-	if err != nil {
-		return craftChargeStartPreparation{}, err
-	}
-	return preparation, nil
 }
 
 // PauseRunForBudget orders a durable budget pause against StartBinding using
@@ -747,12 +805,76 @@ func (s *CraftBudgetService) AuthorizeCall(ctx context.Context, grantID, callID 
 // sandbox action. The event identity must come from the durable lifecycle
 // event, so retrying its admission cannot create a second Task hold. The
 // sandbox executor must call this before the external action, not after it.
+//
+// Sandbox activities get their own ledger facet: the empty-facet namespace
+// AuthorizeCall's generic fresh branch uses would collide on the
+// (tenant, run, '', '', '', 0) unique tuple at the second distinct activity.
+// The facet plus a per-run monotonic sequence (re-read under the unique
+// index's final arbitration, like AuthorizeBinding) keeps every distinct
+// activity insertable.
 func (s *CraftBudgetService) AuthorizeSandbox(ctx context.Context, grantID, activityID string) error {
 	if activityID == "" || len(activityID) > 256 {
 		return fmt.Errorf("%w: invalid sandbox activity identity", craft.ErrInvalidInput)
 	}
-	return s.AuthorizeCall(ctx, grantID, "sandbox/"+activityID)
+	row, err := s.loadGrant(ctx, grantID)
+	if err != nil {
+		return err
+	}
+	if ferr := s.fastRefuse(row); ferr != nil {
+		return ferr
+	}
+	if err := s.requireRunChargeable(ctx, row); err != nil {
+		return err
+	}
+	callID := "sandbox/" + activityID
+	callKey := CraftCallKey(callID)
+	var call CraftBudgetCallRow
+	err = s.db.WithContext(ctx).Where("tenant_id = ? AND call_key = ?", row.TenantID, callKey).First(&call).Error
+	fresh := false
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		fresh = true
+		allocated := false
+		for attempt := 0; attempt < craftCallSeqAttempts && !allocated; attempt++ {
+			var seq int64
+			if err := s.db.WithContext(ctx).Model(&CraftBudgetCallRow{}).
+				Where("tenant_id = ? AND run_id = ? AND delegation_id = '' AND model_id = ? AND funding = ''",
+					row.TenantID, row.RunID, craftSandboxCallModelID).
+				Select("COALESCE(MAX(call_seq),0)").Scan(&seq).Error; err != nil {
+				return err
+			}
+			seq++
+			call = CraftBudgetCallRow{
+				TenantID: row.TenantID, CallKey: callKey, GrantID: row.GrantID, RunID: row.RunID,
+				DelegationID: "", ModelID: craftSandboxCallModelID, Funding: "",
+				CallSeq: seq, CallID: callID, CreatedAt: s.now(),
+			}
+			if err := s.db.WithContext(ctx).Create(&call).Error; err != nil {
+				// A concurrent sandbox authorization took this sequence slot;
+				// re-read the fresh maximum and retry with the next one.
+				continue
+			}
+			allocated = true
+		}
+		if !allocated {
+			return fmt.Errorf("%w: sandbox call sequence contention on grant %s", craft.ErrConflict, grantID)
+		}
+	} else if err != nil {
+		return err
+	} else if call.CallSeq < 0 {
+		return fmt.Errorf("%w: call id is reserved for an extension marker", craft.ErrConflict)
+	} else if call.GrantID != row.GrantID {
+		return fmt.Errorf("%w: call %s belongs to another grant", craft.ErrForbidden, callID)
+	}
+	if err := s.enforceCallCap(ctx, row, call); err != nil {
+		return s.pauseOnDenial(ctx, row, err)
+	}
+	return s.pauseOnDenial(ctx, row, s.authorizeReservedCall(ctx, row, call, fresh))
 }
+
+// craftSandboxCallModelID is the sandbox activity facet of the call ledger:
+// distinct from every model/delegation binding facet and from the extension
+// marker namespace, so sandbox sequences never collide with either.
+const craftSandboxCallModelID = "__craft_sandbox__"
 
 // reserveCall holds the commercial budget of one call WITHOUT dispatching it.
 // It exists for callers that must separate "reserved" from "dispatched"
@@ -1037,9 +1159,13 @@ func (s *CraftBudgetService) applyCraftCallExtension(ctx context.Context, grant 
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			return err
 		}
+		// The marker's model facet embeds the extension key: the unique
+		// index tuple otherwise collapses every same-sized extension of one
+		// run into the first marker, and a second "+N calls" request with a
+		// different key could then never commit.
 		marker := CraftBudgetCallRow{
 			TenantID: grant.TenantID, CallKey: callKey, GrantID: grant.GrantID,
-			RunID: grant.RunID, ModelID: "__craft_budget_extension__",
+			RunID: grant.RunID, ModelID: fmt.Sprintf("__craft_budget_extension__/%s", key),
 			Funding: commercial.FundingPlatform, CallSeq: -int64(extraCalls), CallID: callID,
 			CreatedAt: s.now(),
 		}
@@ -1144,12 +1270,21 @@ func (s *CraftBudgetService) BudgetPause(ctx context.Context, scope craft.Scope,
 	}
 	var grant CraftBudgetGrantRow
 	if err := s.db.WithContext(ctx).Where("tenant_id = ? AND run_id = ?", scope.TenantID, runID).Take(&grant).Error; err != nil {
-		return craft.BudgetPause{}, craft.ErrNotFound
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return craft.BudgetPause{}, craft.ErrNotFound
+		}
+		return craft.BudgetPause{}, err
 	}
 	var run struct{ Status, WaitReason string }
 	err := s.db.WithContext(ctx).Table("agent_runs").Select("status, wait_reason").
 		Where("tenant_id = ? AND session_id = ? AND run_id = ?", scope.TenantID, scope.SessionID, runID).Take(&run).Error
-	if err != nil || run.Status != "waiting_user" || run.WaitReason != craftBudgetWaitReason {
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return craft.BudgetPause{}, craft.ErrNotFound
+	}
+	if err != nil {
+		return craft.BudgetPause{}, err
+	}
+	if run.Status != "waiting_user" || run.WaitReason != craftBudgetWaitReason {
 		return craft.BudgetPause{}, craft.ErrNotFound
 	}
 	grantView := s.snapshot(ctx, grant)
@@ -1162,7 +1297,7 @@ func (s *CraftBudgetService) BudgetPause(ctx context.Context, scope craft.Scope,
 func (s *CraftBudgetService) authorizeBudgetActor(ctx context.Context, scope craft.Scope) error {
 	var session struct{ UserID string }
 	err := s.db.WithContext(ctx).Table("sessions").Select("user_id").
-		Where("tenant_id = ? AND id = ?", scope.TenantID, scope.SessionID).Take(&session).Error
+		Where("tenant_id = ? AND id = ? AND deleted_at IS NULL", scope.TenantID, scope.SessionID).Take(&session).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return craft.ErrNotFound
 	}
@@ -1174,7 +1309,8 @@ func (s *CraftBudgetService) authorizeBudgetActor(ctx context.Context, scope cra
 	}
 	var member struct{ Role, Status string }
 	err = s.db.WithContext(ctx).Table("tenant_members").Select("role, status").
-		Where("tenant_id = ? AND user_id = ?", scope.TenantID, scope.UserID).Take(&member).Error
+		Where("tenant_id = ? AND user_id = ? AND deleted_at IS NULL", scope.TenantID, scope.UserID).
+		Order("id ASC").Take(&member).Error
 	if err == nil && member.Status == "active" && (member.Role == "admin" || member.Role == "owner") {
 		return nil
 	}
@@ -1193,7 +1329,10 @@ func (s *CraftBudgetService) ExtendAndResume(ctx context.Context, scope craft.Sc
 	}
 	var grant CraftBudgetGrantRow
 	if err := s.db.WithContext(ctx).Where("tenant_id = ? AND run_id = ?", scope.TenantID, runID).Take(&grant).Error; err != nil {
-		return craft.ErrNotFound
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return craft.ErrNotFound
+		}
+		return err
 	}
 	if _, err := s.BudgetPause(ctx, scope, runID); err != nil {
 		return err

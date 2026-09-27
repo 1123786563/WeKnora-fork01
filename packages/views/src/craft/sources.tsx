@@ -7,7 +7,7 @@
 // which re-resolves it through the EXISTING resource permission chain on
 // every click — a share revoked after the run immediately yields the
 // permission error instead of replaying a cached link.
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Button } from '@weknora/ui';
 import { craftStrings, formatBytes, type CraftLocale } from './presentation.ts';
 
@@ -34,6 +34,23 @@ export interface CraftKnowledgeBaseChoice {
   name: string;
 }
 
+/**
+ * One citation entry of the delivered web artifact's citation manifest
+ * (T06/#125). A fact carries the stable citation id of a source the Run
+ * actually recorded; model inference never carries one and is never
+ * presented as a source fact.
+ */
+export interface CraftCitationFact {
+  kind: 'fact';
+  citationId: string;
+  claim: string;
+}
+export interface CraftCitationInference {
+  kind: 'inference';
+  claim: string;
+}
+export type CraftCitationEntry = CraftCitationFact | CraftCitationInference;
+
 export interface CraftSourcesProps {
   locale: CraftLocale;
   /** The bounded source list of the run's knowledge package. */
@@ -47,6 +64,13 @@ export interface CraftSourcesProps {
    * only the citable placeholder — no cached excerpt, no title replay.
    */
   revokedCitationIds?: readonly string[];
+  /**
+   * The delivered web artifact's citation manifest (T06/#125). Facts link to
+   * their recorded source rows through the same durable-ref open seam;
+   * inference entries carry the explicit distinct marker and open nothing.
+   * Missing/revoked sources keep a non-leaking placeholder.
+   */
+  citations?: readonly CraftCitationEntry[];
   /** Server-projected libraries available to this viewer for a new Run. */
   knowledgeBases?: readonly CraftKnowledgeBaseChoice[];
   selectedKnowledgeBaseIds?: readonly string[];
@@ -74,6 +98,11 @@ interface SourceLabels {
   revokedTitle: string;
   acquired: string;
   select: string;
+  citationsHeading: string;
+  factLabel: string;
+  inferenceLabel: string;
+  unavailable: string;
+  unavailableTitle: string;
 }
 
 function sourceLabels(locale: CraftLocale): SourceLabels {
@@ -93,6 +122,11 @@ function sourceLabels(locale: CraftLocale): SourceLabels {
       revokedTitle: '该来源的共享授权已被撤回，引用占位保留，原文不可再打开。',
       acquired: '获取时间',
       select: '选择知识库',
+      citationsHeading: '引用与推断',
+      factLabel: '[事实来源]',
+      inferenceLabel: '[模型推断]',
+      unavailable: '来源不可用',
+      unavailableTitle: '该引用对应的来源缺失或已不可访问，占位保留，不泄露原文。',
     };
   }
   return {
@@ -110,12 +144,34 @@ function sourceLabels(locale: CraftLocale): SourceLabels {
     revokedTitle: 'The backing share was revoked; the citation placeholder stays, the excerpt cannot reopen.',
     acquired: 'Acquired',
     select: 'Select knowledge bases',
+    citationsHeading: 'Citations and inference',
+    factLabel: '[Source fact]',
+    inferenceLabel: '[Model inference]',
+    unavailable: 'Source unavailable',
+    unavailableTitle: 'The cited source is missing or inaccessible; the placeholder stays without leaking the original.',
   };
+}
+
+// isCraftCitationFact narrows the citation union without a silent cast.
+// NOTE: the parameter is deliberately typed { kind: string } so this is a
+// RUNTIME predicate, not a compile-time guarantee — new kinds stay excluded
+// from citedIds here; keep the RENDER branch (below) on the same predicate
+// when adding kinds, or the two sites drift.
+function isCraftCitationFact(entry: { kind: string }): entry is CraftCitationFact {
+  return entry.kind === 'fact';
 }
 
 export function CraftSources(props: CraftSourcesProps) {
   const base = craftStrings(props.locale);
   const labels = sourceLabels(props.locale);
+  const sourcesByCitation = useMemo(() => {
+    const map = new Map(props.sources.map((source) => [source.citationId, source]));
+    return map;
+  }, [props.sources]);
+  const citedIds = useMemo(
+    () => new Set<string>((props.citations ?? []).filter(isCraftCitationFact).map((entry) => entry.citationId)),
+    [props.citations],
+  );
 
   return (
     <section className="wk-craft-panel-body" data-testid="craft-sources" aria-label={labels.heading}>
@@ -154,8 +210,9 @@ export function CraftSources(props: CraftSourcesProps) {
           <tbody>
             {props.sources.map((source) => {
               const revoked = props.revokedCitationIds?.includes(source.citationId) ?? false;
+              const cited = citedIds.has(source.citationId);
               return (
-                <tr key={source.citationId} data-testid="craft-source-item" data-revoked={revoked}>
+                <tr key={source.citationId} data-testid="craft-source-item" data-revoked={revoked} data-cited={cited}>
                   <td>
                     <code>{source.citationId}</code>
                     <div>{revoked ? labels.revoked : source.title}</div>
@@ -187,6 +244,44 @@ export function CraftSources(props: CraftSourcesProps) {
       )}
       {props.truncated ? (
         <p className="wk-craft-muted" data-testid="craft-sources-truncated" role="status">{labels.truncated}</p>
+      ) : null}
+      {props.citations && props.citations.length > 0 ? (
+        <div className="wk-craft-citations" data-testid="craft-citations">
+          <h4>{labels.citationsHeading}</h4>
+          <ul className="wk-craft-citation-list">
+            {props.citations.map((entry, index) => {
+              if (!isCraftCitationFact(entry)) {
+                return (
+                  <li key={`inference-${index}`} className="wk-craft-citation-inference" data-craft-inference="true">
+                    <span className="wk-craft-inference-label">{labels.inferenceLabel}</span> {entry.claim}
+                  </li>
+                );
+              }
+              const row = sourcesByCitation.get(entry.citationId);
+              const revoked = props.revokedCitationIds?.includes(entry.citationId) ?? false;
+              const openable = row !== undefined && !revoked;
+              return (
+                <li key={`fact-${entry.citationId}-${index}`} className="wk-craft-citation-fact" data-craft-citation={entry.citationId}>
+                  <span className="wk-craft-fact-label">{labels.factLabel}</span> {entry.claim}{' '}
+                  {openable && row ? (
+                    <Button
+                      type="button"
+                      data-craft-citation-open={entry.citationId}
+                      disabled={props.openingCitation === entry.citationId}
+                      onClick={() => props.onOpenSource(entry.citationId, row.ref)}
+                    >
+                      {props.openingCitation === entry.citationId ? labels.opening : labels.open}
+                    </Button>
+                  ) : (
+                    <span className="wk-craft-muted" data-craft-citation-unavailable={entry.citationId} title={labels.unavailableTitle}>
+                      {labels.unavailable}
+                    </span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
       ) : null}
     </section>
   );

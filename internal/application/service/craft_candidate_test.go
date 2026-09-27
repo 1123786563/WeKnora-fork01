@@ -135,3 +135,43 @@ func TestCraftArtifactCollectCandidateValidationFailureLeavesNoCandidate(t *test
 	require.Zero(t, files.saves)
 	require.Empty(t, candidates.byRun)
 }
+
+
+// TestCraftArtifactWebHTMLScreenRejectsScriptShapes is the round-3 build-log
+// trust regression: whatever a forged build-log.json claims, a staged web
+// HTML member carrying script/event/egress shapes refuses the WHOLE round
+// server-side before any byte is uploaded.
+func TestCraftArtifactWebHTMLScreenRejectsScriptShapes(t *testing.T) {
+	malformed := []string{
+		`<h1>ok</h1><img src="a>b" onerror="alert(1)">`,            // quoted ">" bypass of naive regexes
+		"<h1>ok</h1><img/onerror=alert(1)>",                        // "/" tag separator
+		`<div style="&#92;75 rl&#40;&#92;2f&#92;2fevil&#46;example&#41;">x</div>`, // entity×CSS smuggle
+		`<a href="https://evil.example">x</a>`,                      // external URL
+		`<iframe src="x"></iframe>`,                                 // embedding tag
+	}
+	for index, content := range malformed {
+		files := newDirBackedFileService(t)
+		candidates := &memoryCandidateStore{}
+		svc := NewCraftArtifactServiceWithCandidates(
+			candidateSource("run-s", "gen-s", "<h1>clean</h1>"), files, newMemVersionStore(), candidates, nil,
+			CraftArtifactConfig{OutputDir: craftTestOutputDir},
+		)
+		_, err := svc.CollectCandidate(context.Background(), craftArtifactTask("s1", "ws-1", "run-s"), craft.KindWeb,
+			candidateSource("run-s", "gen-s", content), "gen-s")
+		require.ErrorIs(t, err, craft.ErrInvalidInput, "case %d must be refused: %s", index, content)
+		require.Zero(t, files.saves, "case %d must not upload any object", index)
+		require.Empty(t, candidates.byRun, "case %d must not stage a candidate", index)
+	}
+
+	// Clean HTML still stages (control).
+	files := newDirBackedFileService(t)
+	candidates := &memoryCandidateStore{}
+	svc := NewCraftArtifactServiceWithCandidates(
+		candidateSource("run-ok", "gen-ok", "<h1>clean</h1>"), files, newMemVersionStore(), candidates, nil,
+		CraftArtifactConfig{OutputDir: craftTestOutputDir},
+	)
+	_, err := svc.CollectCandidate(context.Background(), craftArtifactTask("s1", "ws-1", "run-ok"), craft.KindWeb,
+		candidateSource("run-ok", "gen-ok", "<!doctype html><html><body><h1>fine</h1><p>only = 3</p></body></html>"), "gen-ok")
+	require.NoError(t, err)
+	require.Len(t, candidates.byRun, 1)
+}

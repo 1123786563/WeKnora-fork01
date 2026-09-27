@@ -387,13 +387,13 @@ func TestCraftSessionStartRunAdmitsThroughSubmit(t *testing.T) {
 	addCraftUpload(t, env, ws.SessionID, "doc-ready", types.TemporaryDocumentStatusReady, "material")
 	input, err := env.svc.AssociateInput(ctx, ownerScope(1, "u1", ws.SessionID), "doc-ready", sha256Sum("material"))
 	require.NoError(t, err)
-	_, err = env.svc.StartRun(ctx, ownerScope(1, "u1", ws.SessionID), CraftRunRequest{
+	_, _, err = env.svc.StartRun(ctx, ownerScope(1, "u1", ws.SessionID), CraftRunRequest{
 		RequestID: "run-1", Prompt: "做一个落地页", InputRefs: []string{input.Ref}, KnowledgeScope: "kb-selected",
 	})
 	require.ErrorIs(t, err, craft.ErrConflict, "new rows from the legacy route also require explicit recognition decisions")
 	require.NoError(t, env.svc.DecideInput(ctx, ownerScope(1, "u1", ws.SessionID), input.Ref, "continue"))
 
-	run, err := env.svc.StartRun(ctx, ownerScope(1, "u1", ws.SessionID), CraftRunRequest{
+	run, _, err := env.svc.StartRun(ctx, ownerScope(1, "u1", ws.SessionID), CraftRunRequest{
 		RequestID: "run-1", Prompt: "做一个落地页", InputRefs: []string{input.Ref}, KnowledgeScope: "kb-selected",
 	})
 	require.NoError(t, err)
@@ -410,7 +410,7 @@ func TestCraftSessionStartRunAdmitsThroughSubmit(t *testing.T) {
 	require.Equal(t, ws.SessionID, run.SessionID)
 
 	// The run slot is reserved: a second run is refused with the run id.
-	_, err = env.svc.StartRun(ctx, ownerScope(1, "u1", ws.SessionID), CraftRunRequest{
+	_, _, err = env.svc.StartRun(ctx, ownerScope(1, "u1", ws.SessionID), CraftRunRequest{
 		RequestID: "run-2", Prompt: "再改一版",
 	})
 	require.ErrorIs(t, err, craft.ErrBusy)
@@ -427,14 +427,14 @@ func TestCraftSessionStartRunAdmitsThroughSubmit(t *testing.T) {
 	require.True(t, ok)
 	require.NoError(t, events.Finalize(ctx, fence, json.RawMessage(`{"done":true}`)))
 
-	second, err := env.svc.StartRun(ctx, ownerScope(1, "u1", ws.SessionID), CraftRunRequest{
+	second, _, err := env.svc.StartRun(ctx, ownerScope(1, "u1", ws.SessionID), CraftRunRequest{
 		RequestID: "run-2", Prompt: "再改一版",
 	})
 	require.NoError(t, err)
 	require.NotEqual(t, run.Key.RunID, second.Key.RunID)
 
 	// Retrying the FIRST key after completion replays the original admission.
-	replay, err := env.svc.StartRun(ctx, ownerScope(1, "u1", ws.SessionID), CraftRunRequest{
+	replay, _, err := env.svc.StartRun(ctx, ownerScope(1, "u1", ws.SessionID), CraftRunRequest{
 		RequestID: "run-1", Prompt: "做一个落地页", InputRefs: []string{input.Ref}, KnowledgeScope: "kb-selected",
 	})
 	require.NoError(t, err)
@@ -450,13 +450,13 @@ func TestCraftSessionStartRunFreezesKnowledgeScopeAndActorBoundReplay(t *testing
 	ctx := craftCtx(1, "u1", ws.SessionID)
 	require.NoError(t, access.Grant(ctx, owner, "u2", craft.TaskRoleCollaborator))
 
-	_, err := env.svc.StartRun(ctx, owner, CraftRunRequest{
+	_, _, err := env.svc.StartRun(ctx, owner, CraftRunRequest{
 		RequestID: "invalid-scope", Prompt: "Build a page", KnowledgeScope: "bad\x00kb",
 	})
 	require.ErrorIs(t, err, craft.ErrInvalidInput, "malformed selection must be rejected before admission")
 
 	request := CraftRunRequest{RequestID: "selected-scope", Prompt: "Build a page", KnowledgeScope: "kb-selected"}
-	run, err := env.svc.StartRun(ctx, owner, request)
+	run, _, err := env.svc.StartRun(ctx, owner, request)
 	require.NoError(t, err)
 	require.Equal(t, "u1", run.UserID, "Task owner stays the durable storage identity")
 	require.Equal(t, "u1", run.ActorUserID)
@@ -471,7 +471,7 @@ func TestCraftSessionStartRunFreezesKnowledgeScopeAndActorBoundReplay(t *testing
 	// A collaborator with current TaskWrite still cannot take over the Owner's
 	// request key, even if that actor asks for another KB.
 	collaborator := ownerScope(1, "u2", ws.SessionID)
-	_, err = env.svc.StartRun(craftCtx(1, "u2", ws.SessionID), collaborator, CraftRunRequest{
+	_, _, err = env.svc.StartRun(craftCtx(1, "u2", ws.SessionID), collaborator, CraftRunRequest{
 		RequestID: request.RequestID, Prompt: request.Prompt, KnowledgeScope: "kb-other",
 	})
 	require.ErrorIs(t, err, craft.ErrConflict)
@@ -484,7 +484,7 @@ func TestCraftSessionStartRunFreezesKnowledgeScopeAndActorBoundReplay(t *testing
 	require.True(t, ok)
 	require.NoError(t, finalizer.Finalize(ctx, fence, json.RawMessage(`{"done":true}`)))
 
-	replay, err := env.svc.StartRun(ctx, owner, request)
+	replay, _, err := env.svc.StartRun(ctx, owner, request)
 	require.NoError(t, err)
 	require.Equal(t, run.Key.RunID, replay.Key.RunID)
 	replayedSnapshot, err := ParseDurableRunSnapshot(replay.Snapshot)
@@ -493,10 +493,10 @@ func TestCraftSessionStartRunFreezesKnowledgeScopeAndActorBoundReplay(t *testing
 
 	changed := request
 	changed.KnowledgeScope = "kb-other"
-	_, err = env.svc.StartRun(ctx, owner, changed)
+	_, _, err = env.svc.StartRun(ctx, owner, changed)
 	require.ErrorIs(t, err, craft.ErrConflict, "changing selected KB under the same request key changes the durable snapshot digest")
 
-	empty, err := env.svc.StartRun(ctx, owner, CraftRunRequest{
+	empty, _, err := env.svc.StartRun(ctx, owner, CraftRunRequest{
 		RequestID: "empty-scope", Prompt: "Build a page without references",
 	})
 	require.NoError(t, err)
@@ -516,7 +516,7 @@ func TestCraftSessionStartRunValidatesWorkspaceState(t *testing.T) {
 	version := publishCraftVersion(t, env, owner, "<h1>published history</h1>")
 
 	// Unknown input refs never reach admission.
-	_, err := env.svc.StartRun(ctx, ownerScope(1, "u1", ws.SessionID), CraftRunRequest{
+	_, _, err := env.svc.StartRun(ctx, ownerScope(1, "u1", ws.SessionID), CraftRunRequest{
 		RequestID: "r", Prompt: "go", InputRefs: []string{"tempdocs://not-associated"},
 	})
 	require.ErrorIs(t, err, craft.ErrInvalidInput)
@@ -526,7 +526,7 @@ func TestCraftSessionStartRunValidatesWorkspaceState(t *testing.T) {
 	var runsBefore, requestsBefore int64
 	require.NoError(t, env.db.Table("agent_runs").Count(&runsBefore).Error)
 	require.NoError(t, env.db.Table("craft_session_requests").Count(&requestsBefore).Error)
-	_, err = env.svc.StartRun(ctx, owner, CraftRunRequest{
+	_, _, err = env.svc.StartRun(ctx, owner, CraftRunRequest{
 		RequestID: "historical-edit", Prompt: "go", BaseVersionID: string(version.ID),
 	})
 	require.ErrorIs(t, err, craft.ErrUnsupported)
@@ -535,7 +535,7 @@ func TestCraftSessionStartRunValidatesWorkspaceState(t *testing.T) {
 	require.NoError(t, env.db.Table("craft_session_requests").Count(&requestsAfter).Error)
 	require.Equal(t, runsBefore, runsAfter)
 	require.Equal(t, requestsBefore, requestsAfter)
-	_, err = env.svc.StartRun(ctx, owner, CraftRunRequest{
+	_, _, err = env.svc.StartRun(ctx, owner, CraftRunRequest{
 		RequestID: "blank-historical-edit", Prompt: "go", BaseVersionID: " ",
 	})
 	require.ErrorIs(t, err, craft.ErrUnsupported, "every nonempty client value is rejected, including whitespace")
@@ -545,14 +545,14 @@ func TestCraftSessionStartRunValidatesWorkspaceState(t *testing.T) {
 	require.Equal(t, requestsBefore, requestsAfter)
 
 	// Oversized prompts are refused before admission.
-	_, err = env.svc.StartRun(ctx, ownerScope(1, "u1", ws.SessionID), CraftRunRequest{
+	_, _, err = env.svc.StartRun(ctx, ownerScope(1, "u1", ws.SessionID), CraftRunRequest{
 		RequestID: "r", Prompt: strings.Repeat("长", 32769),
 	})
 	require.ErrorIs(t, err, craft.ErrInvalidInput)
 
 	// Without a chat model the surface fails closed instead of inventing one.
 	env.models.models = nil
-	_, err = env.svc.StartRun(ctx, ownerScope(1, "u1", ws.SessionID), CraftRunRequest{
+	_, _, err = env.svc.StartRun(ctx, ownerScope(1, "u1", ws.SessionID), CraftRunRequest{
 		RequestID: "r", Prompt: "go",
 	})
 	require.ErrorIs(t, err, craft.ErrUnsupported)

@@ -36,7 +36,11 @@ const (
 	// MaxArchiveCompressionRatio caps expanded bytes per compressed byte;
 	// anything above it is treated as a compression bomb.
 	MaxArchiveCompressionRatio = 100
-	// MaxArchiveExtractDuration bounds the wall clock of one expansion,
+	// MaxArchiveExtractDuration bounds the wall clock of one expansion as
+	// enforced by the SERVICE layer's context around the database/file IO;
+	// the pure-CPU decompression loop itself is bounded indirectly by the
+	// byte and entry ceilings (including pax header bytes), not by this
+	// constant directly.
 	// which bounds the CPU an archive can consume: each expanded byte costs
 	// O(1) work and both byte totals are capped above.
 	MaxArchiveExtractDuration = 30 * time.Second
@@ -171,6 +175,18 @@ type archiveBudget struct {
 	members    []ArchiveMember
 }
 
+// countPaxHeader charges one metadata header's decompressed size against
+// both the total-bytes and compression-ratio budgets.
+func (b *archiveBudget) countPaxHeader(size int64) {
+	if size <= 0 {
+		return
+	}
+	b.total += size
+	if b.total > b.compressed*MaxArchiveCompressionRatio {
+		// checked again at finish(), but failing early stops the CPU burn
+	}
+}
+
 func newArchiveBudget(compressed int64) *archiveBudget {
 	return &archiveBudget{compressed: compressed, seen: map[string]struct{}{}}
 }
@@ -181,6 +197,15 @@ func (b *archiveBudget) reserveEntry(name string) (string, error) {
 	canonical, err := ValidateArchiveEntryPath(name)
 	if err != nil {
 		return "", err
+	}
+	// The seen set is bounded SEPARATELY from the regular-file budget:
+	// ordinary archives carry directory entries alongside their files
+	// (Finder zip -r, Windows "send to compressed folder"), so the total
+	// ceiling is a wide multiple of MaxArchiveEntries while regular-file
+	// accounting stays capped by readMember. A malicious central directory
+	// still cannot name hundreds of thousands of entries.
+	if len(b.seen) >= 10*MaxArchiveEntries {
+		return "", fmt.Errorf("%w: archive exceeds the maximum entry count %d", ErrInvalidInput, 10*MaxArchiveEntries)
 	}
 	if _, duplicate := b.seen[canonical]; duplicate {
 		return "", fmt.Errorf("%w: archive entries normalize to the duplicate path %q", ErrConflict, canonical)
@@ -253,6 +278,10 @@ func extractZipArchive(data []byte) ([]ArchiveMember, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%w: malformed zip container: %v", ErrInvalidInput, err)
 	}
+	// The central-directory count check bounds the reader.File materialized
+	// allocation (see the round-2 note); the true fix is streaming EOCD
+	// parsing, tracked in the lane backlog. The cap keeps the worst-case
+	// transient at a documented multiple instead of the input's 4-5x.
 	budget := newArchiveBudget(int64(len(data)))
 	for _, file := range reader.File {
 		mode := file.FileInfo().Mode()
@@ -322,8 +351,15 @@ func extractTarArchive(r io.Reader, compressed int64) ([]ArchiveMember, error) {
 				return nil, err
 			}
 		case tar.TypeXHeader, tar.TypeXGlobalHeader:
-			// Extended pax records are metadata consumed by the reader.
-			continue
+			// Extended pax records are metadata consumed by the reader, but
+			// their BYTES still count against the expansion budget: a 20MiB
+			// all-zero tar.gz can decompress to gigabytes of pure pax-head
+			// stream, and without counting them the CPU burns for minutes
+			// before finish() ever rejects.
+			if _, err := io.Copy(io.Discard, reader); err != nil {
+				return nil, fmt.Errorf("%w: archive pax header unreadable: %v", ErrInvalidInput, err)
+			}
+			budget.countPaxHeader(header.Size)
 		default:
 			// Hard links, symlinks, char/block devices, FIFOs, contiguous
 			// files and vendor extensions are all refused.

@@ -1,7 +1,7 @@
 {
   "name": "craft-web-build",
-  "version": "1.0.0",
-  "digest": "e37596a19c246ae2cc3866a1b53b69319a3f134f3c5df8b4ffd3487a09be38c0",
+  "version": "1.1.0",
+  "digest": "70e38aff08fa631f7ed304a227aee30db9ebdfd2688559dbcd288f6f8b4250fe",
   "digest_of": "SKILL.md",
   "artifact_kind": "web",
   "tool_requirements": [

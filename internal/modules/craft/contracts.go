@@ -34,6 +34,12 @@ var (
 	ErrBusy = errors.New("craft busy")
 	// ErrUnsupported reports a capability the current engine does not offer.
 	ErrUnsupported = errors.New("craft unsupported")
+	// ErrCorruptEvidence reports a server-side storage integrity failure on
+	// immutable evidence bytes (digest mismatch against the stored payload,
+	// undecodable pinned JSON). It is not a client-retryable conflict: the
+	// assembly boundary maps it to a 500-class response so integrity events
+	// stay distinguishable from real publication conflicts in monitoring.
+	ErrCorruptEvidence = errors.New("craft corrupt evidence")
 )
 
 // Scope is the server-derived execution identity: authenticated tenant and

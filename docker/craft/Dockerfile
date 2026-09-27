@@ -303,3 +303,9 @@ EXPOSE 4096
 # it is never published to the host network.
 ENTRYPOINT ["/usr/local/bin/opencode"]
 CMD ["serve", "--hostname", "0.0.0.0", "--port", "4096"]
+
+# T19 activity-ID egress adapter (cmd/craft-egress-adapter): NOT built into
+# this image yet — the per-Run deployment wiring (binary build stage,
+# CRAFT_EGRESS_* env injection, sandbox provider endpoint pointing at
+# 127.0.0.1:8787) is T19 lane scope; the gateway's fail-closed activity-ID
+# check stays default-off until that lane lands the wiring.

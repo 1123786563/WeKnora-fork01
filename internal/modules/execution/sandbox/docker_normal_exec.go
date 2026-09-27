@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/moby/moby/client"
 )
 
@@ -196,7 +197,9 @@ func (c *DockerNormalExecClient) CreateAttachedExec(ctx context.Context, handle 
 		ContainerID: containerID, ExecID: created.ID, StdinEnabled: request.StdinEnabled,
 		StdinBytes: int64(len(req.Stdin)), StdinSHA256: fmt.Sprintf("%x", sha256.Sum256([]byte(req.Stdin))), Timeout: timeout,
 	}
-	inspected, err := c.api.ExecInspect(rpcCtx, receipt.ExecID, client.ExecInspectOptions{})
+	inspectCtx, inspectCancel := context.WithTimeout(ctx, c.rpcTimeout)
+	inspected, err := c.api.ExecInspect(inspectCtx, receipt.ExecID, client.ExecInspectOptions{})
+	inspectCancel()
 	if err != nil {
 		return DockerNormalExecReceipt{}, dockerError("NormalExecCreateInspect", err)
 	}
@@ -233,7 +236,13 @@ func (c *DockerNormalExecClient) StartAttachedExecOnce(
 	if _, loaded := c.started.Load(receipt.ExecID); loaded {
 		return out, ErrDockerNormalExecAlreadyStarted
 	}
-	preflight, err := c.inspectRaw(ctx, receipt)
+	// The preflight inspect gets its OWN timeout: sharing the create
+	// budget let a slow daemon leave only残余 deadline for this cheap call,
+	// failing the whole creation while the daemon keeps the already-created
+	// (never-started, lazy) exec behind.
+	preflightCtx, preflightCancel := context.WithTimeout(ctx, c.rpcTimeout)
+	preflight, err := c.inspectRaw(preflightCtx, receipt)
+	preflightCancel()
 	if err != nil {
 		return out, err
 	}
@@ -291,7 +300,15 @@ func (c *DockerNormalExecClient) StartAttachedExecOnce(
 			result := dockerNormalExecInputResult{}
 			closer, ok := attached.Conn.(interface{ CloseWrite() error })
 			if !ok {
-				result.err = errors.New("Docker hijacked stream does not support stdin half-close")
+				// A TLS-hijacked remote daemon connection has no
+				// CloseWrite. Degrade like the legacy streamExec path: skip
+				// the half-close (the server reads stdin to EOF on detach)
+				// instead of failing an attach that already consumed the
+				// durable send claim.
+				logger.Warnf(ctx, "[DockerNormalExec] stream does not support stdin half-close; skipping CloseWrite")
+				written, writeErr := io.Copy(attached.Conn, bytes.NewReader(stdin))
+				result.bytes = written
+				result.err = writeErr
 				inputChannel <- result
 				return
 			}
@@ -428,9 +445,11 @@ func (c *DockerNormalExecClient) ObserveAttachedExec(ctx context.Context, receip
 }
 
 func (c *DockerNormalExecClient) inspectRaw(ctx context.Context, receipt DockerNormalExecReceipt) (client.ExecInspectResult, error) {
-	rpcCtx, cancel := context.WithTimeout(ctx, c.rpcTimeout)
-	defer cancel()
-	inspected, err := c.api.ExecInspect(rpcCtx, receipt.ExecID, client.ExecInspectOptions{})
+	// Every inspect gets its OWN timeout budget (never a residual slice of
+	// a caller's already-consumed deadline).
+	inspectCtx, inspectCancel := context.WithTimeout(ctx, c.rpcTimeout)
+	defer inspectCancel()
+	inspected, err := c.api.ExecInspect(inspectCtx, receipt.ExecID, client.ExecInspectOptions{})
 	if err != nil {
 		return client.ExecInspectResult{}, dockerError("NormalExecInspect", err)
 	}

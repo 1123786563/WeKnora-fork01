@@ -14,7 +14,7 @@ type Feedback = { kind: 'pending' | 'success' | 'error'; message: string } | nul
 
 // Server refusals (ApiError with status) and transport failures say different
 // things; the distinction is what makes the message actionable.
-function errorHint(error: unknown): string {
+export function errorHint(error: unknown): string {
   const status = (error as { status?: number } | null)?.status;
   if (typeof status === 'number') {
     return status >= 500
@@ -36,14 +36,14 @@ export function CraftAccess({ role, members, onGrant, onRevoke }: CraftAccessPro
   // One shared action lifecycle: pending feedback, the caller's authoritative
   // callback, then success/error feedback. The thrown error is bound so the
   // hint can distinguish transport failures from server refusals.
-  async function runAction(key: string, pendingMessage: string, action: () => Promise<void>, message: (error: unknown) => string) {
+  async function runAction(key: string, pendingMessage: string, action: () => Promise<void>, successMessage: () => string, errorMessage: (error: unknown) => string) {
     setPendingAction(key);
     setFeedback({ kind: 'pending', message: pendingMessage });
     try {
       await action();
-      setFeedback({ kind: 'success', message: message(null) });
+      setFeedback({ kind: 'success', message: successMessage() });
     } catch (error) {
-      setFeedback({ kind: 'error', message: message(error) });
+      setFeedback({ kind: 'error', message: errorMessage(error) });
     } finally {
       setPendingAction(null);
     }
@@ -60,9 +60,8 @@ export function CraftAccess({ role, members, onGrant, onRevoke }: CraftAccessPro
         await onGrant(trimmed, grantRole);
         setUserId('');
       },
-      error => error === null
-        ? 'Member added.'
-        : `Member could not be added. ${errorHint(error)}`,
+      () => 'Member added.',
+      error => `Member could not be added. ${errorHint(error)}`,
     );
   }
 
@@ -72,9 +71,8 @@ export function CraftAccess({ role, members, onGrant, onRevoke }: CraftAccessPro
       `revoke:${memberId}`,
       'Revoking member…',
       async () => { await onRevoke(memberId); },
-      error => error === null
-        ? `Access revoked for ${memberId}.`
-        : `Access for ${memberId} could not be revoked. ${errorHint(error)}`,
+      () => `Access revoked for ${memberId}.`,
+      error => `Access for ${memberId} could not be revoked. ${errorHint(error)}`,
     );
   }
 
@@ -99,6 +97,6 @@ export function CraftAccess({ role, members, onGrant, onRevoke }: CraftAccessPro
       </select></label>
       <button type="submit" disabled={isPending}>{pendingAction === 'grant' ? 'Adding…' : 'Add member'}</button>
     </form>}
-    {feedback && <p role={feedback.kind === 'error' ? 'alert' : 'status'} aria-live={feedback.kind === 'error' ? 'assertive' : 'polite'} aria-atomic="true" data-state={feedback.kind} className="wk-craft-access-feedback" data-kind={feedback.kind}>{feedback.message}</p>}
+    {feedback && <p role={feedback.kind === 'error' ? 'alert' : 'status'} aria-live={feedback.kind === 'error' ? 'assertive' : 'polite'} aria-atomic="true" className="wk-craft-access-feedback" data-kind={feedback.kind}>{feedback.message}</p>}
   </section>;
 }

@@ -228,3 +228,106 @@ func QuotaAllows(action string, sandboxOverLimit, storageOverLimit bool) bool {
 	}
 	return !sandboxOverLimit && !storageOverLimit
 }
+
+// T16 (#134): the durable Workspace writer lease. One Workspace admits at
+// most one writing Run at a time; the lease is a database row bound to the
+// Task (the session), the Workspace, the Run and the draft-head revision the
+// writer saw when it acquired. Read-only version/preview/download traffic
+// never touches it.
+
+// WriterLease is the durable projection of one Workspace's writer lease.
+type WriterLease struct {
+	// WorkspaceID is the leased Workspace.
+	WorkspaceID string
+	// TaskID is the Craft Task — by the frozen identity rule this equals the
+	// session id and is never a second aggregate id.
+	TaskID string
+	// RunID is the one Run allowed to write the Workspace while held.
+	RunID string
+	// Revision is the draft-head revision fenced at acquisition. T16
+	// (#134) persists and projects it only: enforcing it against every
+	// write and promotion of the Run is the T20+ orchestration contract —
+	// the serialization this increment guarantees is the lease CAS itself.
+	Revision int64
+}
+
+// WriterAcquisition is the answer of one writer-lease attempt: the frozen
+// T00 outcome projection plus the durable lease on acquisition and the
+// current holder on conflict.
+type WriterAcquisition struct {
+	Outcome WriterAcquireOutcome
+	// Lease is set exactly when Outcome.Status is WriterAcquired.
+	Lease *WriterLease
+	// Holder names the current holder when Outcome.Status is WriterConflict.
+	Holder *WriterLease
+}
+
+// Release bases the lease store accepts. Every basis except unknown is
+// re-verified against the authoritative run state inside the releasing
+// transaction; unknown retains the fence unconditionally.
+const (
+	// WriterReleaseVerifiedCompletion releases after the holder Run's
+	// terminal outcome and workspace effects were verified.
+	WriterReleaseVerifiedCompletion = "verified_completion"
+	// WriterReleaseConfirmedStop releases after a confirmed stop.
+	WriterReleaseConfirmedStop = "confirmed_stop"
+	// WriterReleaseAuthoritativeRecovery releases after an authoritative
+	// recovery inspected the durable run and workspace state.
+	WriterReleaseAuthoritativeRecovery = "authoritative_recovery"
+	// WriterReleaseUnknown is an outcome that could not be determined: it
+	// never releases the lease.
+	WriterReleaseUnknown = "unknown"
+)
+
+// WriterRunFacts is the authoritative observation of the lease-holding Run
+// at decision time, always read from the durable run row inside the deciding
+// transaction — never from a snapshot cached by the caller. Observed false
+// means the run row cannot be read at all: the outcome is unknown, which is
+// never permission.
+type WriterRunFacts struct {
+	// Observed reports whether the durable run row was readable at all.
+	Observed bool
+	// Status is the durable run status vocabulary (queued, running,
+	// waiting_user, reconciling, recovering, succeeded, failed, canceled).
+	Status string
+	// PendingToolWriters counts tool calls of the Run that are not yet in a
+	// terminal state — each may still write through the workspace.
+	PendingToolWriters int64
+	// PendingDelegations counts craft delegations of the Run that are not
+	// yet terminal.
+	PendingDelegations int64
+}
+
+// WriterRunTerminal reports whether a durable run status is a confirmed
+// terminal outcome. Anything else — including an unreadable row — is not.
+func WriterRunTerminal(status string) bool {
+	switch status {
+	case "succeeded", "failed", "canceled":
+		return true
+	default:
+		return false
+	}
+}
+
+// WriterLeaseReleasable reports whether the holder's authoritative facts
+// permit releasing the Workspace writer lease: a confirmed terminal outcome
+// (verified completion, confirmed stop, or the same evidence an
+// authoritative recovery would inspect) with zero unfinished writers. An
+// unreadable or non-terminal run — an unknown outcome — always retains the
+// fence: it can never permit a conflicting writer.
+func WriterLeaseReleasable(facts WriterRunFacts) bool {
+	return facts.Observed && WriterRunTerminal(facts.Status) &&
+		facts.PendingToolWriters == 0 && facts.PendingDelegations == 0
+}
+
+// WriterLeaseTakeover reports whether a new writer may TAKE OVER the lease
+// currently held under the observed facts. This is exactly the authoritative
+// recovery verdict: only a releasable holder (verified completion, confirmed
+// stop, or an authoritative recovery's evidence) may be superseded. An
+// absent lease is always takeable; an unknown or live holder never is.
+func WriterLeaseTakeover(held *WriterLease, facts WriterRunFacts) bool {
+	if held == nil {
+		return true
+	}
+	return WriterLeaseReleasable(facts)
+}

@@ -313,6 +313,11 @@ func CraftWebBuildEvidence(log CraftWebBuildLog, pin CraftWebToolchainPin) (craf
 	if pin.RuntimeDigest != "" && log.RuntimeDigest != pin.RuntimeDigest {
 		return craft.ArtifactEvidence{}, fmt.Errorf("%w: build log names runtime %s, deployment runs %s", craft.ErrConflict, log.RuntimeDigest, pin.RuntimeDigest)
 	}
+	if log.ExitCode == nil {
+		// Parse guarantees a non-nil pointer for canonical logs; a caller
+		// that constructed the struct directly must not panic here.
+		return craft.ArtifactEvidence{}, fmt.Errorf("%w: build log carries no exit code", craft.ErrConflict)
+	}
 	return craft.ArtifactEvidence{BuildRan: true, BuildExitCode: *log.ExitCode}, nil
 }
 
@@ -341,6 +346,13 @@ func craftWebBuildEvidenceSource(
 			// silent; a read failure beyond not-exist is worth a trace.
 			if err != nil && !errors.Is(err, fs.ErrNotExist) {
 				logger.Warnf(ctx, "[CraftWebBuild] build log read failed for run %s: %v", task.Fence.RunID, err)
+			}
+			if err == nil && len(raw) == 0 {
+				// A present-but-EMPTY log is the classic truncation tamper
+				// shape: the decision stays unobserved (fail-closed) but the
+				// visibility gap between "absent" and "zeroed" must be
+				// logged like any other tamper/drift signal.
+				logger.Warnf(ctx, "[CraftWebBuild] build log for run %s is present but empty (possible truncation)", task.Fence.RunID)
 			}
 			return evidence
 		}

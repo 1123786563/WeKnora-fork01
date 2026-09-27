@@ -30,6 +30,18 @@ type TaskRunAccess interface {
 
 type TaskAction string
 
+// Valid reports whether the action belongs to the frozen five-action
+// vocabulary. It is the single authority both RequireTaskAccess and the
+// denial-audit vocabulary switch consume, so a new action cannot be added
+// to one and silently skipped by the other.
+func (a TaskAction) Valid() bool {
+	switch a {
+	case TaskRead, TaskWrite, TaskShare, TaskOpenSource, TaskPreview:
+		return true
+	}
+	return false
+}
+
 const (
 	TaskRead       TaskAction = "read"
 	TaskWrite      TaskAction = "write"
@@ -46,9 +58,7 @@ func RequireTaskAccess(ctx context.Context, checker TaskAccessChecker, scope Sco
 	if scope.TenantID == 0 || scope.UserID == "" || scope.SessionID == "" {
 		return ErrForbidden
 	}
-	switch action {
-	case TaskRead, TaskWrite, TaskShare, TaskOpenSource, TaskPreview:
-	default:
+	if !action.Valid() {
 		return ErrInvalidInput
 	}
 	return checker.CheckTaskAccess(ctx, scope, action)

@@ -59,6 +59,40 @@ input directory:
   `javascript:`/`data:text/html`, no `url()`/`@import`, and no
   `base/iframe/object/embed/form` tags. The build rejects all of them.
 
+## 2b. Evidence-backed citations (required when you cite)
+
+When any claim in the page rests on the staged knowledge material, write
+`output/citations.json` NEXT TO the build output and mark the claims in
+`content.json`. The platform's admission gate refuses fabricated citation
+ids, unmarked citation claims, and inference passed off as fact.
+
+`citations.json` shape (schema 1, at most 200 entries, claims ≤ 512 bytes):
+
+```json
+{
+  "schema": 1,
+  "lang": "zh-CN",
+  "entries": [
+    {"kind": "fact", "citation_id": "kc_…24 hex…", "claim": "华东区 Q3 增长 96%"},
+    {"kind": "inference", "claim": "据此预计 Q4 …"}
+  ]
+}
+```
+
+Rules the gate enforces:
+
+- `kind:"fact"` MUST carry a `citation_id` that appears in THIS Run's staged
+  knowledge manifest — a well-formed but invented `kc_` id is refused.
+- `kind:"inference"` MUST NOT carry a `citation_id`: model inference is
+  never dressed as cited fact.
+- In `content.json`, the fact rows/elements you cite must carry
+  `data-craft-citation="kc_…"` and every inference statement must carry a
+  `data-craft-inference` marker. Markers and manifest must agree exactly:
+  an undeclared marker is refused, a declared fact left unmarked is
+  refused, and an inference without its marker is refused.
+- A page that cites nothing is fine — but then it must contain NO citation
+  marker at all, and you should not write `citations.json`.
+
 ## 3. Run the one build command
 
 ```

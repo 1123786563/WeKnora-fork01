@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import React, { act } from 'react';
 import { JSDOM } from 'jsdom';
-import { CraftAccess, type CraftTaskMember } from './access.tsx';
+import { CraftAccess, errorHint, type CraftTaskMember } from './access.tsx';
 
 const ownerMembers: CraftTaskMember[] = [
   { user_id: 'owner', role: 'owner' },
@@ -135,5 +135,33 @@ test('revoke failure retains the member and reports error; success waits for ref
     await act(async () => resolveRevoke());
     assert.equal(view.container.querySelectorAll('li').length, ownerMembers.length, 'successful callback does not optimistically remove the member');
     assert.match(view.container.querySelector('[aria-live]')?.textContent ?? '', /revoked/i);
+  } finally { await view.unmount(); }
+});
+
+
+// The distinction between server refusal and transport failure is the whole
+// point of the hint copy (round-3 OCR): all three branches get pinned here.
+test('errorHint distinguishes server refusal, server failure and transport loss', () => {
+  assert.match(errorHint({ status: 403 }), /refused the request/i);
+  assert.match(errorHint({ status: 500 }), /could not complete the request/i);
+  assert.match(errorHint({ status: 503 }), /could not complete the request/i);
+  assert.match(errorHint(new Error('network down')), /check your connection/i);
+  assert.match(errorHint(null), /check your connection/i);
+});
+
+test('grant failure with a server status surfaces the refusal hint', async () => {
+  let rejectGrant: (error: unknown) => void = () => {};
+  const view = await mount('owner', ownerMembers, {
+    onGrant: async () => { const e = new Error('forbidden') as Error & { status?: number }; e.status = 403; throw e; },
+  });
+  try {
+    const input = field(view.container, 'User ID') as HTMLInputElement;
+    await act(async () => {
+      setControlValue(input, 'u2');
+      view.container.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    });
+    const feedback = view.container.querySelector('[aria-live]')?.textContent ?? '';
+    assert.match(feedback, /refused the request/i);
+    assert.doesNotMatch(feedback, /Member added/i, 'a rejected promise must never render the success copy');
   } finally { await view.unmount(); }
 });

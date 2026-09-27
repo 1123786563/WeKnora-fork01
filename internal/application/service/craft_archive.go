@@ -10,6 +10,7 @@ import (
 	"path"
 	"path/filepath"
 
+	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/modules/craft"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -180,9 +181,12 @@ func (s *CraftSessionService) ExpandArchive(
 	// also drops the deadline, so a finite cleanup budget is layered on top:
 	// a wedged database or object backend must not pin the request forever
 	// either.
-	cleanupCtx, cleanupDone := context.WithTimeout(context.WithoutCancel(ctx), craftInputCleanupBudget)
-	defer cleanupDone()
 	rollback := func() {
+		// The budget starts HERE, when the failure is already known: a
+		// budget that started before the (up to 100 MiB) member upload loop
+		// would already be spent exactly when cleanup matters most.
+		cleanupCtx, cleanupDone := context.WithTimeout(context.WithoutCancel(ctx), craftInputCleanupBudget)
+		defer cleanupDone()
 		seen := make(map[string]struct{}, len(created))
 		for _, createdRef := range created {
 			if _, ok := seen[createdRef]; ok {
@@ -194,7 +198,9 @@ func (s *CraftSessionService) ExpandArchive(
 				Where("ref = ?", createdRef).Count(&associations).Error; err != nil || associations != 0 {
 				continue
 			}
-			_ = s.files.DeleteFile(cleanupCtx, createdRef)
+			if err := s.files.DeleteFile(cleanupCtx, createdRef); err != nil {
+				logger.Warnf(cleanupCtx, "[CraftArchive] rollback delete failed for ref %s (object may leak until reclamation): %v", createdRef, err)
+			}
 		}
 	}
 	for i, member := range members {

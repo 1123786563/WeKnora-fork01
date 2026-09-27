@@ -8,6 +8,7 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/modules/craft"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // CraftPreviewCheckStore is W02's preview check update channel (独立 origin
@@ -31,6 +32,13 @@ var _ craft.PreviewCheckStore = (*CraftPreviewCheckStore)(nil)
 // the migrated business database. It composes with NewCraftVersionStore on
 // the same *gorm.DB.
 func NewCraftPreviewCheckStore(db *gorm.DB) craft.PreviewCheckStore {
+	return &CraftPreviewCheckStore{db: db}
+}
+
+// NewCraftPreviewCheckStoreConcrete is the same store at its concrete type
+// for consumers that need the T15 (#130) UpdateWebProbeCheck fact channel
+// beyond the frozen craft.PreviewCheckStore interface (dig.As binding).
+func NewCraftPreviewCheckStoreConcrete(db *gorm.DB) *CraftPreviewCheckStore {
 	return &CraftPreviewCheckStore{db: db}
 }
 
@@ -60,7 +68,14 @@ func (s *CraftPreviewCheckStore) UpdateWebProbeCheck(ctx context.Context, scope 
 		return craft.Version{}, fmt.Errorf("%w: channel updates only the %q/%q checks, got %q", craft.ErrInvalidInput, craft.CheckPreviewReachable, craft.CheckPageLoad, name)
 	}
 	switch outcome {
-	case craft.WebCheckPassed, craft.WebCheckFailed, craft.WebCheckNotRun:
+	case craft.WebCheckPassed, craft.WebCheckFailed:
+	case craft.WebCheckNotRun:
+		// Writing an explicit not_run row is a contract trap: the row is
+		// immutable once written, so the check name could never again record
+		// a REAL observation, while a missing row already means not_run in
+		// WebEvidenceFromChecks. Producers that could not observe simply do
+		// not write.
+		return craft.Version{}, fmt.Errorf("%w: the probe channel records observations only; not_run is the absent-row state, got %q", craft.ErrInvalidInput, string(outcome))
 	default:
 		return craft.Version{}, fmt.Errorf("%w: unknown web check outcome %q", craft.ErrInvalidInput, string(outcome))
 	}
@@ -68,7 +83,13 @@ func (s *CraftPreviewCheckStore) UpdateWebProbeCheck(ctx context.Context, scope 
 	var out craft.Version
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var row craftVersionRow
-		e := tx.Where("id = ?", versionID).Take(&row).Error
+		// Row lock (SELECT ... FOR UPDATE, the repo's established pattern):
+		// check writers arrive from independent observation callbacks, so
+		// concurrent updates must serialize on the version row. Without the
+		// lock both read the same old checks_json snapshot and the last
+		// unconditional write silently drops the other's fact — or worse,
+		// rewrites a recorded outcome and breaks fact immutability.
+		e := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", versionID).Take(&row).Error
 		if errors.Is(e, gorm.ErrRecordNotFound) {
 			return fmt.Errorf("%w: version %s", craft.ErrNotFound, versionID)
 		}
@@ -154,7 +175,13 @@ func (s *CraftPreviewCheckStore) UpdatePreviewCheck(ctx context.Context, scope c
 	var out craft.Version
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var row craftVersionRow
-		e := tx.Where("id = ?", versionID).Take(&row).Error
+		// Row lock (SELECT ... FOR UPDATE, the repo's established pattern):
+		// check writers arrive from independent observation callbacks, so
+		// concurrent updates must serialize on the version row. Without the
+		// lock both read the same old checks_json snapshot and the last
+		// unconditional write silently drops the other's fact — or worse,
+		// rewrites a recorded outcome and breaks fact immutability.
+		e := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", versionID).Take(&row).Error
 		if errors.Is(e, gorm.ErrRecordNotFound) {
 			return fmt.Errorf("%w: version %s", craft.ErrNotFound, versionID)
 		}

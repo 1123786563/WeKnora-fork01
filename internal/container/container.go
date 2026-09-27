@@ -325,8 +325,12 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(newSandboxManager))
 	// Per-tenant sandbox backends: the resolver builds a manager per request
 	// from the tenant's own configuration, falling back to the singleton above
-	// for tenants that configured nothing.
+	// for tenants that configured nothing. The binding store is one shared
+	// singleton for every writer and reader (resolver, preview no-egress
+	// checker, craft lifecycle) so Lite-mode memory bindings are visible
+	// across all of them.
 	must(container.Provide(service.NewTenantSandboxConfigLoader))
+	must(container.Provide(newSharedSessionSandboxBindingStore))
 	must(container.Provide(newTenantSandboxResolver))
 
 	// Business service layer
@@ -524,9 +528,15 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// uninstantiated: the executor above fails closed, which is the recorded
 	// assembly boundary (craft runtime deployment task).
 	must(container.Provide(repository.NewCraftVersionStore))
-	must(container.Provide(repository.NewCraftPreviewCheckStore))
+	// Dual registration: dig v1.19's As REPLACES the registered type with
+	// the interface (it does not register both), so the concrete constructor
+	// stays resolvable for the T14/T20 probe writer while the adapter below
+	// satisfies the frozen craft.PreviewCheckStore seam for consumers.
+	must(container.Provide(newCraftPreviewCheckStoreConcrete))
+	must(container.Provide(func(store *repository.CraftPreviewCheckStore) craft.PreviewCheckStore { return store }))
 	must(container.Provide(newCraftPreviewService))
 	must(container.Provide(newCraftSessionService))
+	must(container.Provide(newCraftDefaultVersionSelector))
 	// C05: the recovery snapshot service rides the same env-driven local
 	// runtime as the executor; without the craft dial it stays nil and the
 	// snapshot/restore routes never mount (fail-closed, like the executor).
@@ -538,6 +548,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// durable record repository + current Task authority injection and the
 	// runtime/HTTP wiring (see craft_knowledge_wiring.go).
 	must(container.Provide(repository.NewCraftKnowledgeRecordRepository))
+	must(container.Provide(newCraftWebCitationGate))
 	must(container.Provide(newCraftKnowledgeService))
 	// O03/O04 integration wiring (coordinator-assigned): the craft lifecycle
 	// service (guards, tombstone, sweep), the O01 usage ledger read side and
@@ -1066,6 +1077,17 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Invoke(wireCraftKnowledgeRuntime))
 	must(container.Invoke(registerCraftKnowledgeFeature))
 	must(container.Invoke(wireCraftSessionTombstone))
+	// T11 (#128): the restricted-share consent surface (read/decision/
+	// revocation feature routes) over the shared version/file/record
+	// stores and the persistent TaskAccess checker.
+	must(container.Provide(newCraftShareService))
+	must(container.Invoke(registerCraftShareFeature))
+	// T12 (#132): the version-bound source-bundle export (describe +
+	// download feature routes) over the member-level version/evidence
+	// adapter, the shared file service and the persistent TaskAccess
+	// checker.
+	must(container.Provide(newCraftExportService))
+	must(container.Invoke(registerCraftExportFeature))
 
 	// Router configuration
 	logger.Debugf(ctx, "[Container] Registering router and starting task server...")
@@ -2538,6 +2560,9 @@ func craftFeatureGateFromEnv() service.CraftFeatureGate {
 // newCraftSessionService assembles W03's craft session service from the
 // already-registered craft stores and the existing session, upload, file and
 // model services. New runs are admitted through the live agent run service.
+// T15 (#130): web sessions resolve their default preview seat through the
+// promotion-gated selector (newest version whose four independent checks
+// passed) — the run-bound collector carries the promotion assembly.
 func newCraftSessionService(
 	db *gorm.DB,
 	sessions interfaces.SessionService,
@@ -2548,33 +2573,90 @@ func newCraftSessionService(
 	models interfaces.ModelService,
 	access *service.CraftAccessService,
 	runtime *AgentRuntime,
+	defaultVersionSelector service.DefaultVersionSelector,
 ) (*service.CraftSessionService, error) {
 	runs := runtime.Runs
 	if runs == nil {
 		runs = service.RegisteredAgentRunService()
 	}
-	return service.NewCraftSessionService(service.CraftSessionConfig{
+	// T16 (#134): the concrete workspace store is the durable writer-lease
+	// store (same row space the lease CAS fences). The dig graph provides
+	// store as the concrete *repository.CraftStore behind the craft.Store
+	// interface, so a plain assertion wires the lease seam without a new
+	// Provide; a stub store (tests) leaves the seam off and StartRun keeps
+	// the pre-T16 behavior.
+	cfg := service.CraftSessionConfig{
 		DB: db, Sessions: sessions, Store: store, Versions: versions,
 		Runs: runs, ActiveRuns: service.CraftActiveRunsQuery(db),
 		TemporaryDocs: documents, Files: files, Models: models,
 		Access: access, TaskList: access,
-		Gate: craftFeatureGateFromEnv(),
-	})
+		Gate: craftFeatureGateFromEnv(), DefaultVersionSelector: defaultVersionSelector,
+	}
+	if craftStore, ok := store.(*repository.CraftStore); ok {
+		cfg.WriterLeases = craftStore
+	}
+	return service.NewCraftSessionService(cfg)
+}
+
+// newCraftDefaultVersionSelector exposes the run-bound collector's
+// T15-gated default-seat selection as the session view's web selector. A
+// nil executor (craft dial not configured) keeps the legacy newest-version
+// projection: without a run-bound collector there are no four-check
+// versions to select anyway.
+func newCraftDefaultVersionSelector(executor craft.Executor) service.DefaultVersionSelector {
+	runtime, ok := executor.(*localCraftRuntime)
+	if !ok || runtime == nil || runtime.runViewArtifacts == nil {
+		return nil
+	}
+	return runtime.runViewArtifacts.SelectDefaultVersion
+}
+
+// newCraftPreviewCheckStoreConcrete constructs the concrete preview-check
+// store. It is registered BOTH as its concrete type (the T14/T20 probe
+// writer resolves it for the T15 UpdateWebProbeCheck fact channel) and,
+// through a separate adapter provider, under the frozen
+// craft.PreviewCheckStore interface for existing interface consumers.
+func newCraftPreviewCheckStoreConcrete(db *gorm.DB) *repository.CraftPreviewCheckStore {
+	return repository.NewCraftPreviewCheckStoreConcrete(db)
 }
 
 // newCraftPreviewService assembles W02's preview service. Without a
 // configured isolated https preview origin the feature stays disabled:
 // issuance answers unavailable and the isolated origin 404s.
+//
+// T14 (#129) completion wiring: the service also receives the REAL Docker
+// network checker (bound-sandbox policy + live container inspection — a
+// stored config value alone cannot attest an old bridge container) and the
+// explicit browser-navigation protection gate. The gate is env-driven and
+// defaults OFF: a deployment enables previews only after the isolated
+// origin's no-egress posture is actually proven (the T14 live matrix).
+// Until then issuance stays fail-closed (ErrUnsupported) even with both
+// origins configured — the recorded default-off contract.
 func newCraftPreviewService(
 	versions craft.VersionStore,
 	files interfaces.FileService,
 	checks craft.PreviewCheckStore,
 	access *service.CraftAccessService,
+	loader sandbox.TenantSandboxConfigLoader,
+	bindings sandbox.SessionSandboxBindingStore,
 ) *service.CraftPreviewService {
+	// bindings is the process-wide shared singleton (resolver writes it,
+	// this checker reads it). nil keeps the checker zero-value = every
+	// issuance fails closed with "preview network policy is unavailable".
+	if bindings == nil {
+		logger.Warnf(context.Background(), "[CraftPreview] shared binding store unavailable; network checker stays zero-value (fail-closed)")
+	}
 	return service.NewCraftPreviewService(versions, files, checks, service.CraftPreviewConfig{
 		AppOrigin:     strings.TrimSpace(os.Getenv("WEKNORA_CRAFT_APP_ORIGIN")),
 		PreviewOrigin: strings.TrimSpace(os.Getenv("WEKNORA_CRAFT_PREVIEW_ORIGIN")),
 		AccessChecker: access,
+		NetworkChecker: service.CraftPreviewDockerNetworkChecker{
+			Bindings:  bindings,
+			Loader:    loader,
+			Global:    sandbox.DefaultConfig(),
+			Inspector: service.CraftPreviewLocalDockerInspector{},
+		},
+		BrowserNavigationProtected: strings.EqualFold(strings.TrimSpace(os.Getenv("WEKNORA_CRAFT_PREVIEW_NAVIGATION_PROTECTED")), "true"),
 	})
 }
 

@@ -16,8 +16,8 @@ import (
 	"github.com/Tencent/WeKnora/internal/handler/session"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/modules/craft"
+	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
-	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
 
@@ -38,23 +38,27 @@ func (craftLocalSandboxDeleter) Delete(_ context.Context, _ uint64, sandboxID st
 }
 
 // newCraftLifecycleService assembles the O03 lifecycle service over the real
-// ports: the craft store, the session sandbox binding store (redis when
-// configured, process memory otherwise), the real active-run query, the
-// soft-delete session existence check, the local sandbox deleter, the run
-// canceler and the file-backed object deleter. Quota and TTL sources stay
-// unwired until their specialties own them.
+// ports: the craft store, the SHARED session sandbox binding store singleton
+// (the same instance the tenant resolver writes and the preview no-egress
+// checker reads — a separately built memory store in Lite mode would make
+// this sweeper blind to the resolver's bindings and its lifecycle locks
+// non-mutual), the real active-run query, the soft-delete session existence
+// check, the local sandbox deleter, the run canceler and the file-backed
+// object deleter. Quota and TTL sources stay unwired until their
+// specialties own them.
 func newCraftLifecycleService(
 	db *gorm.DB,
 	store craft.Store,
-	rdb *redis.Client,
+	bindings sandbox.SessionSandboxBindingStore,
 	files interfaces.FileService,
 	activeRuns service.CraftRunActivity,
 ) (*service.CraftLifecycle, error) {
-	bindings, kind, err := selectSessionBindingStore(rdb, false)
-	if err != nil {
+	if bindings == nil {
+		// NewCraftLifecycle's own validation below REFUSES a nil binding
+		// store and aborts assembly — say so, instead of implying the
+		// sweeper degrades to inert-but-running.
 		logger.Warnf(context.Background(),
-			"[CraftLifecycle] redis binding store unavailable, falling back to in-memory bindings: %v", err)
-		bindings, kind, _ = selectSessionBindingStore(nil, false)
+			"[CraftLifecycle] shared binding store unavailable; lifecycle assembly will be refused (startup fails closed)")
 	}
 	var runCanceler service.CraftSessionRunCanceler
 	if runs := service.RegisteredAgentRunService(); runs != nil {
@@ -70,7 +74,7 @@ func newCraftLifecycleService(
 	if lerr != nil {
 		return nil, lerr
 	}
-	logger.Infof(context.Background(), "[CraftLifecycle] service assembled (bindings=%s)", kind)
+	logger.Infof(context.Background(), "[CraftLifecycle] service assembled (shared binding store)")
 	return lifecycle, nil
 }
 

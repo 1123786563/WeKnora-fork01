@@ -104,23 +104,41 @@ func buildGlobalSandboxConfig() *sandbox.Config {
 	return cfg
 }
 
+// newSharedSessionSandboxBindingStore is the process-wide singleton binding
+// store. Every consumer of session-sandbox bindings — the tenant resolver
+// that WRITES them, the preview no-egress checker and the craft lifecycle
+// that READ them — must resolve this one instance: in Lite mode (no Redis)
+// the store is an in-memory map, and two separately built instances would
+// be mutually invisible, making the preview checker deny every issuance
+// ("no current Docker sandbox binding") even though the resolver recorded
+// a live none-network sandbox. Redis deployments are functionally shared
+// anyway, but the singleton also avoids duplicate connection pools.
+func newSharedSessionSandboxBindingStore(redisClient *redis.Client) sandbox.SessionSandboxBindingStore {
+	store, kind, err := selectSessionBindingStore(redisClient, false)
+	if err != nil {
+		logger.Warnf(context.Background(),
+			"[sandbox] shared session binding store unavailable: %v", err)
+		return nil
+	}
+	logger.Infof(context.Background(),
+		"[sandbox] shared session binding store configured: binding=%s (single instance for writers and readers)", kind)
+	return store
+}
+
 // newTenantSandboxResolver wires the workspace-config resolver. The
 // process-wide manager is disabled; agents without a selected config stay
-// disabled as well.
+// disabled as well. The binding store is the shared singleton (see
+// newSharedSessionSandboxBindingStore) so preview no-egress checks observe
+// this resolver's writes even in Lite mode.
 func newTenantSandboxResolver(
 	defaultManager sandbox.Manager,
 	loader sandbox.TenantSandboxConfigLoader,
-	redisClient *redis.Client,
+	store sandbox.SessionSandboxBindingStore,
 	sessionRepo interfaces.SessionRepository,
 ) sandbox.TenantSandboxResolver {
 	ctx := context.Background()
-
-	// Tenants may configure any supported backend regardless of process startup
-	// mode. Remote configs use this binding store for session persistence.
-	store, storeKind, err := selectSessionBindingStore(redisClient, true)
-	if err != nil {
-		logger.Warnf(ctx,
-			"Per-tenant sandbox config disabled: %v", err)
+	if store == nil {
+		logger.Warnf(ctx, "Per-tenant sandbox config disabled: no shared binding store")
 		return nil
 	}
 	resolver, err := sandbox.NewTenantSandboxResolver(sandbox.TenantSandboxResolverDeps{
@@ -137,6 +155,6 @@ func newTenantSandboxResolver(
 				"(per-tenant sandbox config disabled)", err)
 		return nil
 	}
-	logger.Infof(ctx, "Tenant sandbox resolver configured: binding=%s", storeKind)
+	logger.Infof(ctx, "Tenant sandbox resolver configured (shared binding store)")
 	return resolver
 }
