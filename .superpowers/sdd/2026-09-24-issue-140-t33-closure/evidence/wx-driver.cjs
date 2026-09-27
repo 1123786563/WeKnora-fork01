@@ -44,12 +44,14 @@ async function tapText(page, wanted, timeoutMs = 20000) {
   }
   return false;
 }
-async function tapListRow(page, wanted, timeoutMs = 20000) {
+/* consent 勾选对齐 T24 live-driver 精确选择器先例（t24r1-live-driver.cjs:161）：
+ * page.$$('view') 按文档序先返回聚合了子孙文案的外层容器，tap 落点偏移致勾选不生效（ocr3-022），
+ * 必须直达 .wk-consent 内的 checkbox 本体（回退页面唯一 checkbox） */
+async function tapConsent(page, timeoutMs = 8000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    for (const el of await page.$$('view')) {
-      try { if (((await el.text()) || '').includes(wanted)) { await el.tap(); return true; } } catch {}
-    }
+    const box = (await page.$('.wk-consent checkbox')) || (await page.$('checkbox'));
+    if (box) { try { await box.tap(); return true; } catch {} }
     await sleep(900);
   }
   return false;
@@ -75,9 +77,9 @@ async function relaunch(mp, path) {
     await fillInput(page, '请输入账号邮箱', 't33a@t33.io');
     await fillInput(page, '请输入密码', '[REDACTED-disposable]');
     await shot(mp, '01-login-filled');
-    // 勾选同意（checkbox 通过 wrapper tap）：登录前置条件，失败即 record 并快速失败（对齐 T24「tap 超时即 throw」，
+    // 勾选同意（直达 checkbox 本体的精确选择器，对齐 T24 先例）：登录前置条件，失败即 record 并快速失败（对齐 T24「tap 超时即 throw」，
     // 不允许勾选未生效仍继续点登录、把根因埋进 login 步骤）
-    const consentOk = await tapListRow(page, '我已了解平台的数据使用与服务说明', 8000);
+    const consentOk = await tapConsent(page, 8000);
     record('consent-tap', consentOk, consentOk ? 'consent checkbox tapped before login' : 'consent row not reachable');
     if (!consentOk) throw new Error('consent checkbox not reachable (login precondition)');
     await sleep(800);
@@ -93,8 +95,11 @@ async function relaunch(mp, path) {
       if (/求职工作台|选择工作空间/.test(t)) { homeText = t; break; }
     }
     if (/选择工作空间/.test(homeText)) {
+      // 进入工作空间是后续全部断言的前置：与 consent 同标准，失败即 record 并 throw（ocr3-023），
+      // 不把「未进入空间」伪装成后续数据断言 FAIL、掩盖真实根因
       const entered = await tapText(page, '进入工作空间', 12000);
-      log('enter workspace', entered);
+      record('enter-workspace', entered, entered ? 'entered workspace via 进入工作空间' : 'enter-workspace button not reachable');
+      if (!entered) throw new Error('enter-workspace button not reachable (precondition of all later assertions)');
       await sleep(3000);
       page = await mp.currentPage();
       homeText = await allTexts(page);
@@ -126,8 +131,9 @@ async function relaunch(mp, path) {
     record('apply-material-data', seenApply, 'web-created application fact 2026 秋招 A 批 / 前端开发实习 visible in weapp');
     await shot(mp, '04-application-material');
 
-    // 6. 找岗执行（一次性搜索）走 request-layer seam：直接以同 token 发起真实 POST（T24 先例）验证失败态
-    // （已在 Web 端真实执行过一次搜索并取得 no_vetted_sources 失败态；小程序侧由 172 单测覆盖 D2/D3/D4）
+    // 6. 找岗执行（一次性搜索）的失败态验证不在本脚本执行（本脚本不含任何 HTTP 请求代码）：
+    // 该验证发生在脚本之外——Web 端已真实执行过一次搜索并取得 no_vetted_sources 失败态（T24 先例），
+    // 小程序侧 request-layer seam 行为由 172 单测覆盖 D2/D3/D4。
     // 7. 展现最后页面快照文本（供报告引用）
     log('careerText-head:', careerText.slice(0, 500).replace(/\n/g, '|'));
     log('applyText-head:', applyText.slice(0, 500).replace(/\n/g, '|'));

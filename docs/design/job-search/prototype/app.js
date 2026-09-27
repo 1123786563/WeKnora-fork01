@@ -25,7 +25,9 @@ function syncUrl() {
   const url = new URL(location.href);
   url.searchParams.set('variant', state.variant);
   url.searchParams.set('platform', state.platform);
-  history.replaceState(null, '', url);
+  /* file:// 直开或沙箱 iframe（opaque origin）下 history.replaceState 抛 SecurityError（ocr3-125）：
+   * syncUrl 在 render() 中先于 innerHTML 执行，URL 同步只是增强，此处降级跳过、绝不中断渲染 */
+  try { history.replaceState(null, '', url); } catch { /* 降级：保持当前 URL 不变 */ }
 }
 
 function platformTitle(platform) { return { web: 'Web 工作台', mobile: '移动 App', mini: '微信小程序' }[platform]; }
