@@ -10,6 +10,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
+	"github.com/Tencent/WeKnora/internal/modules/knowledge"
 	"github.com/google/uuid"
 	"github.com/hibiken/asynq"
 	"go.uber.org/dig"
@@ -135,32 +136,26 @@ type SyncTaskParams struct {
 	// QueryHistoryExport runs the Admin+ async query-history CSV export
 	// (SP13 Task 4); the Lite executor dispatches it inline like the rest.
 	QueryHistoryExport *service.QueryHistoryExportService
+
+	// KnowledgeModule 是 knowledge 模块装配门面（IB2，K5 Brief (b)）：18 个
+	// knowledge 任务处理器的双栈注册经门面执行（RegisterSyncHandlers 内装配点，
+	// 见 workers_knowledge.go）。knowledge 分发面字段保留为注入源。
+	KnowledgeModule *knowledge.Module
 }
 
 // RegisterSyncHandlers registers all task handlers on the SyncTaskExecutor.
 // Used in Lite mode instead of RunAsynqServer.
 func RegisterSyncHandlers(params SyncTaskParams) {
-	params.Executor.RegisterHandler(types.TypeChunkExtract, params.ChunkExtractor.Handle)
-	params.Executor.RegisterHandler(types.TypeDataTableSummary, params.DataTableSummary.Handle)
-	params.Executor.RegisterHandler(types.TypeDocumentProcess, params.KnowledgeService.ProcessDocument)
+	// Register the 18 knowledge task handlers via the module facade
+	// (IB2, K5 Brief (b)): one-for-one swap of the former 18 knowledge
+	// RegisterHandler lines (same task types, same method values).
+	if err := RegisterKnowledgeWorkersLite(params.Executor, params.KnowledgeModule); err != nil {
+		logger.Errorf(context.Background(), "register knowledge workers (lite): %v", err)
+		panic(err)
+	}
 	params.Executor.RegisterHandler(types.TypeTemporaryDocumentProcess, params.TemporaryDocument.Process)
-	params.Executor.RegisterHandler(types.TypeManualProcess, params.KnowledgeService.ProcessManualUpdate)
-	params.Executor.RegisterHandler(types.TypeFAQImport, params.KnowledgeService.ProcessFAQImport)
-	params.Executor.RegisterHandler(types.TypeQuestionGeneration, params.KnowledgeService.ProcessQuestionGeneration)
-	params.Executor.RegisterHandler(types.TypeSummaryGeneration, params.KnowledgeService.ProcessSummaryGeneration)
-	params.Executor.RegisterHandler(types.TypeKBClone, params.KnowledgeService.ProcessKBClone)
-	params.Executor.RegisterHandler(types.TypeKnowledgeMove, params.KnowledgeService.ProcessKnowledgeMove)
-	params.Executor.RegisterHandler(types.TypeKnowledgeListDelete, params.KnowledgeService.ProcessKnowledgeListDelete)
-	params.Executor.RegisterHandler(types.TypeKnowledgeListReparse, params.KnowledgeService.ProcessKnowledgeListReparse)
-	params.Executor.RegisterHandler(types.TypeIndexDelete, params.TagService.ProcessIndexDelete)
-	params.Executor.RegisterHandler(types.TypeKBDelete, params.KnowledgeBaseService.ProcessKBDelete)
-	params.Executor.RegisterHandler(types.TypeImageMultimodal, params.ImageMultimodal.Handle)
-	params.Executor.RegisterHandler(types.TypeKnowledgePostProcess, params.KnowledgePostProcess.Handle)
-	params.Executor.RegisterHandler(types.TypeKnowledgeAutoTag, params.KnowledgeAutoTag.Handle)
 	params.Executor.RegisterHandler(types.TypeDataSourceSync, params.DataSourceService.ProcessSync)
 	params.Executor.RegisterHandler(types.TypeDataSourcePurge, params.DataSourceService.ProcessDataSourcePurge)
-	params.Executor.RegisterHandler(types.TypeWikiIngest, params.WikiIngest.Handle)
-	params.Executor.RegisterHandler(types.TypeWikiFinalize, params.WikiIngest.Handle)
 	params.Executor.RegisterHandler(types.TypeMemoryExtract, params.MemoryService.Handle)
 	params.Executor.RegisterHandler(types.TypeQueryHistoryExport, params.QueryHistoryExport.ProcessExport)
 	logger.Infof(context.Background(), "[SyncTask] All task handlers registered (Lite mode, no Redis)")

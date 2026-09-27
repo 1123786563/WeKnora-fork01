@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/Tencent/WeKnora/internal/handler"
+	"github.com/Tencent/WeKnora/internal/modules/knowledge/ingest"
 )
 
 // RegisterChunkerDebugRoutes wires the read-only chunker preview endpoint
@@ -16,10 +17,16 @@ import (
 // has not yet expired are kept out by the role check, matching the
 // rest of the RBAC matrix in this file.
 func RegisterChunkerDebugRoutes(r *gin.RouterGroup, g *rbacGuards) {
-	g.apiKeyRoute(r, http.MethodPost, "/chunker/preview", apiKeyRetrieve(apiKeyIngest(apiKeyFullAccess())), g.Viewer(), handler.PreviewChunking)
+	g.apiKeyRoute(r, http.MethodPost, "/chunker/preview", apiKeyRetrieve(apiKeyIngest(apiKeyFullAccess())), g.Viewer(), ingest.PreviewChunking)
 }
 
 // RegisterChunkRoutes 注册分块相关的路由
+//
+// IB2 裁定（K5 Brief (a) 表 2 部分执行）：形参保持宿主 wrapper 类型——完整
+// 切换（*ingest.ChunkHandler）依赖 K1 Brief §9 四步序第 1 步 identity 去方法化
+//（rbac_lookups.go:103/:130 方法仍在 wrapper 类型上，未去方法化），超出 IB2
+// 单方面可切范围；ChunkerDebug 直引（表 1）与 worker 双栈/Start 切换（(b)/(c)）
+// 已执行。container 侧 ingest.NewChunkHandler 并存供给（门面用模块实例）。
 //
 // Mutating routes addressed via :knowledge_id inherit per-KB ownership
 // from the owning knowledge entry's KB (PR 5, #1303); the chain hop is
