@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -126,6 +127,24 @@ func (e *gitLabEmulator) protectPattern(pattern string) {
 	e.mu.Unlock()
 }
 func (e *gitLabEmulator) failNextMRCreation() { e.mu.Lock(); e.failMR = true; e.mu.Unlock() }
+
+// addMR 注入一条开放 MR（绕过 createMR 的同 source 冲突闸——真实 GitLab
+// 允许同 source 对不同 target 的多条开放 MR，这正是 R5-F8 的平台语义）。
+func (e *gitLabEmulator) addMR(source, target string) int64 {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.nextMR++
+	e.mrs = append(e.mrs, gitLabMR{IID: e.nextMR, Title: "Draft: injected", Source: source, Target: target, State: "opened"})
+	return e.nextMR
+}
+
+// deleteBranch 删除分支（MR 保持开放——真实 GitLab 在 source 分支被删后
+// MR 仍开放，只是不可合并；对账面这是「分支缺席、MR 残留」的形态）。
+func (e *gitLabEmulator) deleteBranch(name string) {
+	e.mu.Lock()
+	delete(e.branches, name)
+	e.mu.Unlock()
+}
 
 // blackoutAfterCommitCreate：下一条 commits POST 成功落地后立即断连——
 // 推送已发生、结果不可观测（与 githubEmulator 的 blackoutAfterRefCreate
@@ -250,12 +269,33 @@ func (e *gitLabEmulator) serve(w http.ResponseWriter, r *http.Request) {
 		e.note("GET /merge_requests")
 		source := r.URL.Query().Get("source_branch")
 		state := r.URL.Query().Get("state")
+		target := r.URL.Query().Get("target_branch")
+		perPage := 20 // real GitLab default
+		if v, err := strconv.Atoi(r.URL.Query().Get("per_page")); err == nil && v > 0 && v <= 100 {
+			perPage = v
+		}
+		page := 1
+		if v, err := strconv.Atoi(r.URL.Query().Get("page")); err == nil && v > 0 {
+			page = v
+		}
 		e.mu.Lock()
-		out := []map[string]any{}
+		filtered := []gitLabMR{}
 		for _, mr := range e.mrs {
-			if (source == "" || mr.Source == source) && (state == "" || mr.State == state) {
-				out = append(out, map[string]any{"iid": mr.IID, "web_url": mrURL(mr.IID), "title": mr.Title, "state": mr.State})
+			if (source == "" || mr.Source == source) && (state == "" || mr.State == state) && (target == "" || mr.Target == target) {
+				filtered = append(filtered, mr)
 			}
+		}
+		start := (page - 1) * perPage
+		if start > len(filtered) {
+			start = len(filtered)
+		}
+		end := start + perPage
+		if end > len(filtered) {
+			end = len(filtered)
+		}
+		out := []map[string]any{}
+		for _, mr := range filtered[start:end] {
+			out = append(out, map[string]any{"iid": mr.IID, "web_url": mrURL(mr.IID), "title": mr.Title, "state": mr.State, "target_branch": mr.Target})
 		}
 		e.mu.Unlock()
 		writeJSON(w, out)
@@ -561,4 +601,89 @@ func TestGitLabBlobVerifiesContentAddressedSHA(t *testing.T) {
 	require.Error(t, err, "a body that does not hash to the requested sha must be refused")
 	require.ErrorIs(t, err, ErrCodeTransport)
 	require.Contains(t, err.Error(), "content-addressed")
+}
+
+// TestPullRequestForHeadMatchesTargetBranch pins R5-F8: GitLab allows
+// several open MRs from the same source branch to DIFFERENT targets, so
+// head alone is not an identity. The lookup must resolve by source+target
+// — a foreign-target MR must never be hit, and a base with no MR must
+// return (nil, nil) rather than an unrelated reuse.
+func TestPullRequestForHeadMatchesTargetBranch(t *testing.T) {
+	e := newGitLabEmulator(t)
+	head := "octocat:weknora/task/s-1"
+	e.addMR("weknora/task/s-1", "release-1") // foreign target, listed FIRST
+	mainIID := e.addMR("weknora/task/s-1", "main")
+	client := NewGitLabClientFactory(http.DefaultClient, e.srv.URL)("glpat-testtoken", RepoRef{Owner: "octocat", Name: "hello"})
+
+	got, err := client.PullRequestForHead(context.Background(), head, "main")
+	require.NoError(t, err)
+	require.NotNil(t, got, "the MR targeting main must be hit")
+	require.EqualValues(t, mainIID, got.Number, "the foreign-target MR must never be returned")
+
+	got, err = client.PullRequestForHead(context.Background(), head, "feature-x")
+	require.NoError(t, err)
+	require.Nil(t, got, "no open MR targets feature-x — (nil, nil), not an unrelated reuse")
+}
+
+// TestPullRequestForHeadPaginates pins R5-F8's pagination half: the MR
+// listing pages per_page=100 until a short page (cap 50). The fake here
+// IGNORES the target_branch query filter (modeling a proxy that drops
+// unknown params), so the client must page through a full first page of
+// foreign-target MRs and find the match on the short second page by the
+// response's own target_branch field — the double-insurance compare.
+func TestPullRequestForHeadPaginates(t *testing.T) {
+	type mrItem struct {
+		IID    int64  `json:"iid"`
+		Title  string `json:"title"`
+		State  string `json:"state"`
+		Target string `json:"target_branch"`
+	}
+	head := "weknora/task/s-1"
+	// 100 foreign-target MRs (full page 1) + the main-target MR first on
+	// page 2 (short page).
+	page1 := make([]mrItem, 100)
+	for i := range page1 {
+		page1[i] = mrItem{IID: int64(i + 1), Title: "Draft: x", State: "opened", Target: fmt.Sprintf("release-%d", i)}
+	}
+	page2 := []mrItem{{IID: 101, Title: "Draft: ours", State: "opened", Target: "main"}}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("per_page") != "100" {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		switch r.URL.Query().Get("page") {
+		case "1", "":
+			writeJSON(w, page1)
+		case "2":
+			writeJSON(w, page2)
+		default:
+			writeJSON(w, []mrItem{})
+		}
+	}))
+	t.Cleanup(srv.Close)
+	client := NewGitLabClientFactory(http.DefaultClient, srv.URL)("glpat-testtoken", RepoRef{Owner: "octocat", Name: "hello"})
+
+	got, err := client.PullRequestForHead(context.Background(), "octocat:"+head, "main")
+	require.NoError(t, err)
+	require.NotNil(t, got, "the match on the second (short) page must be found")
+	require.EqualValues(t, 101, got.Number)
+}
+
+// TestCallClassifies2xxDecodeFailureAsServerFault pins R5-F10: a 2xx reply
+// carrying undecodable JSON is a server/protocol fault on a response that
+// DID arrive — never ErrCodeRequestInvalid, which is reserved for requests
+// that never left the process.
+func TestCallClassifies2xxDecodeFailureAsServerFault(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`this is { not json`))
+	}))
+	t.Cleanup(srv.Close)
+	client := NewGitLabClientFactory(http.DefaultClient, srv.URL)("glpat-testtoken", RepoRef{Owner: "octocat", Name: "hello"})
+
+	_, err := client.CurrentLogin(context.Background())
+	require.Error(t, err)
+	require.NotErrorIs(t, err, ErrCodeRequestInvalid, "a 2xx decode failure is not a request-invalid (never-sent) outcome")
+	require.ErrorIs(t, err, ErrCodeTransport, "nearest existing family: an untrustworthy exchange, not a provable pre-send refusal")
 }

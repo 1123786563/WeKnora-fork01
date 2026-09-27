@@ -89,7 +89,11 @@ type GitHubClient interface {
 	BranchHead(ctx context.Context, branch string) (string, bool, error)
 	EnsureBranch(ctx context.Context, branch, commit string) error
 	DraftPullRequest(ctx context.Context, input PullRequestInput) (PullRequestReceipt, error)
-	PullRequestForHead(ctx context.Context, head string) (*PullRequestReceipt, error)
+	// PullRequestForHead resolves the open PR/MR for one head AND one target
+	// base. Head alone is not an identity on every platform: GitLab allows
+	// several open MRs from the same source branch to different targets, so
+	// the base dimension is part of the port (R5-F8).
+	PullRequestForHead(ctx context.Context, head, base string) (*PullRequestReceipt, error)
 	CurrentLogin(ctx context.Context) (string, error)
 }
 

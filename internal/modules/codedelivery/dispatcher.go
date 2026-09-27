@@ -267,8 +267,16 @@ func (d *DeliveryDispatcher) QueryProvider(ctx context.Context, snap appconnecto
 	if err != nil {
 		return appconnectorsvc.DispatchOutcome{}, fmt.Errorf("%w: %v", appconnectorsvc.ErrDispatchUnknown, err)
 	}
+	// MR identity carries the target dimension (R5-F8): resolve the repo's
+	// default branch — the same source of truth the dispatch half's PR leg
+	// uses (client.Repository) — so a same-source foreign-target MR can
+	// never be mistaken for this delivery's receipt.
+	info, ierr := client.Repository(ctx)
+	if ierr != nil {
+		return appconnectorsvc.DispatchOutcome{}, ierr
+	}
 	head := material.Repo.Owner + ":" + material.Branch
-	if receipt, rerr := client.PullRequestForHead(ctx, head); rerr == nil && receipt != nil {
+	if receipt, rerr := client.PullRequestForHead(ctx, head, info.DefaultBranch); rerr == nil && receipt != nil {
 		if err := d.deps.Store.RecordReceipts(ctx, snap.TenantID, row.ID, deliveryrepo.ReceiptUpdate{
 			PRNumber: receipt.Number, PRURL: receipt.URL,
 		}); err != nil {

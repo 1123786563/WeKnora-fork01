@@ -107,7 +107,13 @@ func (c *gitLabRestClient) call(ctx context.Context, method, path string, body a
 	}
 	if out != nil {
 		if err := json.Unmarshal(raw, out); err != nil {
-			return &header, fmt.Errorf("%w: decode %s %s: %v", ErrCodeRequestInvalid, method, path, err)
+			// A 2xx reply carrying undecodable JSON is a server/protocol
+			// fault on a response that DID arrive — not a request that
+			// never left the process (R5-F10: ErrCodeRequestInvalid would
+			// masquerade as a provable pre-send refusal). The transport
+			// family is the nearest existing classification: an
+			// untrustworthy exchange, settled unknown, never failed.
+			return &header, fmt.Errorf("%w: decode %s %s: %v", ErrCodeTransport, method, path, err)
 		}
 	}
 	return &header, nil
@@ -414,7 +420,7 @@ func (c *gitLabRestClient) BranchHead(ctx context.Context, branch string) (strin
 // stripped to a bare source_branch. GitLab's 409 on a duplicate source branch
 // resolves to the existing MR (Created=false).
 func (c *gitLabRestClient) DraftPullRequest(ctx context.Context, input PullRequestInput) (PullRequestReceipt, error) {
-	if existing, err := c.PullRequestForHead(ctx, input.Head); err == nil && existing != nil {
+	if existing, err := c.PullRequestForHead(ctx, input.Head, input.Base); err == nil && existing != nil {
 		// 复用既有开放 MR：Created 只在本次真实创建时为 true（与 GitHub 客户端同语义）。
 		reuse := *existing
 		reuse.Created = false
@@ -433,7 +439,7 @@ func (c *gitLabRestClient) DraftPullRequest(ctx context.Context, input PullReque
 	if err != nil {
 		var apiErr *CodePlatformAPIError
 		if errors.As(err, &apiErr) && apiErr.Status == http.StatusConflict {
-			if existing, rerr := c.PullRequestForHead(ctx, input.Head); rerr == nil && existing != nil {
+			if existing, rerr := c.PullRequestForHead(ctx, input.Head, input.Base); rerr == nil && existing != nil {
 				reuse := *existing
 				reuse.Created = false
 				return reuse, nil
@@ -448,28 +454,44 @@ func (c *gitLabRestClient) branchOf(head string) string {
 	return strings.TrimPrefix(head, c.repo.Owner+":")
 }
 
-func (c *gitLabRestClient) PullRequestForHead(ctx context.Context, head string) (*PullRequestReceipt, error) {
-	q := url.Values{}
-	q.Set("source_branch", c.branchOf(head))
-	q.Set("state", "opened")
-	q.Set("per_page", "20")
-	var out []struct {
-		IID    int64  `json:"iid"`
-		WebURL string `json:"web_url"`
-		Title  string `json:"title"`
-		State  string `json:"state"`
-	}
-	_, err := c.call(ctx, http.MethodGet, "/api/v4/projects/"+c.projectSegment()+"/merge_requests?"+q.Encode(), nil, &out)
-	if err != nil {
-		return nil, err
-	}
-	for _, mr := range out {
-		if mr.State != "opened" {
-			continue
+// PullRequestForHead resolves the OPEN merge request for one source head AND
+// one target base. GitLab — unlike GitHub, where a head is unique per repo —
+// allows several open MRs from the same source branch to DIFFERENT targets,
+// so head alone is not an identity (R5-F8): resolving by head only could
+// reuse an unrelated MR and write a wrong receipt. The lookup filters
+// target_branch server-side and re-checks the response's own target_branch
+// field locally (double insurance against proxies that drop the filter),
+// paging per_page=100 until a short page (cap 50 pages, the Tree precedent).
+func (c *gitLabRestClient) PullRequestForHead(ctx context.Context, head, base string) (*PullRequestReceipt, error) {
+	for page := 1; page <= 50; page++ {
+		q := url.Values{}
+		q.Set("source_branch", c.branchOf(head))
+		q.Set("state", "opened")
+		q.Set("target_branch", base)
+		q.Set("per_page", "100")
+		q.Set("page", fmt.Sprint(page))
+		var out []struct {
+			IID    int64  `json:"iid"`
+			WebURL string `json:"web_url"`
+			Title  string `json:"title"`
+			State  string `json:"state"`
+			Target string `json:"target_branch"`
 		}
-		return &PullRequestReceipt{Number: mr.IID, URL: mr.WebURL, Draft: strings.HasPrefix(mr.Title, draftMRPrefix), Created: true}, nil
+		_, err := c.call(ctx, http.MethodGet, "/api/v4/projects/"+c.projectSegment()+"/merge_requests?"+q.Encode(), nil, &out)
+		if err != nil {
+			return nil, err
+		}
+		for _, mr := range out {
+			if mr.State != "opened" || mr.Target != base {
+				continue
+			}
+			return &PullRequestReceipt{Number: mr.IID, URL: mr.WebURL, Draft: strings.HasPrefix(mr.Title, draftMRPrefix), Created: true}, nil
+		}
+		if len(out) < 100 {
+			return nil, nil
+		}
 	}
-	return nil, nil
+	return nil, &CodePlatformAPIError{Status: 0, Endpoint: "merge_requests", Message: "pagination exceeded local cap"}
 }
 
 func (c *gitLabRestClient) CurrentLogin(ctx context.Context) (string, error) {

@@ -351,3 +351,32 @@ func TestGitLabDispatchFailsClosedWhenConnectionUnusable(t *testing.T) {
 	require.Zero(t, f.gitlab.Calls()["POST /repository/commits"])
 	require.Zero(t, f.gitlab.Calls()["POST /merge_requests"])
 }
+
+// R5-F8（对账面）：仅存在同 source、target=其他 base 的开放 MR 时，
+// QueryProvider 不得凭 head 单维命中误判 delivered（错误终态无自愈）。
+// 形态：source 分支已删（MR 仍开放——真实 GitLab 语义）、MR target 指向
+// release-9；仓库默认分支 main 上没有任何 MR → 无远端事实 → 仍
+// ErrDispatchUnknown，不写回执、不迁移终态。
+func TestQueryProviderIgnoresForeignTargetMR(t *testing.T) {
+	f := seededGitLabFixture(t)
+	ctx := context.Background()
+	f.gitlab.blackoutAfterCommitCreate()
+	view, err := f.svc.DispatchDelivery(ctx, dispatchInput(firstDelivery(t, f)))
+	require.NoError(t, err)
+	require.Equal(t, string(DeliveryUnknown), view.State)
+
+	f.gitlab.liftBlackout()
+	// 残留形态：同 source 的开放 MR 指向无关 target，且任务分支已被删除。
+	f.gitlab.addMR("weknora/task/s-1", "release-9")
+	f.gitlab.deleteBranch("weknora/task/s-1")
+
+	view, err = f.svc.GetDelivery(ctx, 7, view.ID)
+	require.NoError(t, err)
+	_, err = f.svc.ResolveDeliveryUnknown(ctx, dispatchInput(view))
+	require.ErrorIs(t, err, appconnectorsvc.ErrDispatchUnknown, "a foreign-target MR is not a remote fact of THIS delivery")
+
+	after, gerr := f.svc.GetDelivery(ctx, 7, view.ID)
+	require.NoError(t, gerr)
+	require.Equal(t, string(DeliveryUnknown), after.State, "no terminal transition may be written")
+	require.Zero(t, after.PRNumber, "no PR receipt may be recorded from a foreign-target MR")
+}

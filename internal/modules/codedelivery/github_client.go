@@ -231,7 +231,7 @@ func (c *gitHubRestClient) EnsureBranch(ctx context.Context, branch, commit stri
 }
 
 func (c *gitHubRestClient) DraftPullRequest(ctx context.Context, input PullRequestInput) (PullRequestReceipt, error) {
-	if existing, err := c.PullRequestForHead(ctx, input.Head); err == nil && existing != nil {
+	if existing, err := c.PullRequestForHead(ctx, input.Head, input.Base); err == nil && existing != nil {
 		return PullRequestReceipt{Number: existing.Number, URL: existing.URL, Draft: true, Created: false}, nil
 	}
 	body := map[string]any{"title": input.Title, "head": input.Head, "base": input.Base, "draft": true}
@@ -246,7 +246,12 @@ func (c *gitHubRestClient) DraftPullRequest(ctx context.Context, input PullReque
 	return PullRequestReceipt{Number: out.Number, URL: out.HTMLURL, Draft: out.Draft, Created: true}, nil
 }
 
-func (c *gitHubRestClient) PullRequestForHead(ctx context.Context, head string) (*PullRequestReceipt, error) {
+func (c *gitHubRestClient) PullRequestForHead(ctx context.Context, head, base string) (*PullRequestReceipt, error) {
+	// GitHub head ("owner:branch") is unique per repository, so the target
+	// base is not an identity dimension on this platform — the parameter
+	// exists to keep the shared port shape (R5-F8 is GitLab's same-source-
+	// multiple-targets semantics; it cannot occur here).
+	_ = base
 	var out []struct {
 		Number  int64  `json:"number"`
 		HTMLURL string `json:"html_url"`
