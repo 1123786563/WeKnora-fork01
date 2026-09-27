@@ -48,6 +48,7 @@ import { createNativeRequestId } from './adapters/request-id.ts';
 import { createNativeSecureIntentLog } from './adapters/intent-log.ts';
 import { resolveWeKnoraAppId } from './app-id.ts';
 import { createNativeAppStateLifecycle } from './adapters/app-state.ts';
+import { createNativeNotificationPermissionIfAvailable, type NotificationPermissionPort } from './adapters/notification-permission.ts';
 import { createForegroundSyncLoop } from './foreground-sync.ts';
 
 /** App 生命周期单例：Runtime 撤销 scope 时 revoke 的就是这把 vault（#32）。 */
@@ -245,15 +246,24 @@ export async function openNotificationFromInbox(
 }
 
 /** 设备注册入口（spec §4「注册设备与 App 前后台生命周期」）：无原生 push token 或无安全
- * 设备身份时 fail closed 跳过；注册失败不阻塞授权主流程（best effort）。 */
+ * 设备身份时 fail closed 跳过；注册失败不阻塞授权主流程（best effort）。
+ * #70：Android 13+ 通知运行时权限先于 token 获取——权限弹窗不随 token 自动出现，denied
+ * 时注册出的是收不到可显示通知的幽灵设备；短路结果如实上报 'permission-denied'，bounded
+ * 重试由调用方既有 attempts 上限承担（composition.ts MobileApp effect）。 */
 export async function registerActiveDeviceIfPossible(
   activeRuntime: Pick<MobileRuntime, 'snapshot' | 'authorizedRequest' | 'scopeLease'>,
   tokenSource: { token(): Promise<string | undefined> } = createNativePushTokenIfAvailable(),
   identity: { deviceId(): Promise<string | undefined> } = createNativeDeviceIdentity(),
-): Promise<'registered' | 'no-token' | 'no-device-id' | 'unauthorized' | 'failed'> {
+  permission: NotificationPermissionPort | undefined = createNativeNotificationPermissionIfAvailable(),
+): Promise<'registered' | 'no-token' | 'no-device-id' | 'permission-denied' | 'unauthorized' | 'failed'> {
   const snapshot = activeRuntime.snapshot();
   const origin = snapshot.deployment?.origin;
   if (snapshot.surface !== 'authorized' || origin === undefined) return 'unauthorized';
+  if (permission !== undefined) {
+    const outcome = await permission.ensure();
+    if (outcome === 'denied') return 'permission-denied';
+    // 'unavailable' 继续走既有链：token 通道自身 fail closed（no-token），不做二次伪造。
+  }
   const token = await tokenSource.token();
   if (token === undefined) return 'no-token';
   const deviceId = await identity.deviceId();

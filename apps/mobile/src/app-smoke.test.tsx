@@ -1172,6 +1172,48 @@ test('device registration is fail-closed without a native push token or device i
   assert.equal(await registerActiveDeviceIfPossible(unauthorizedRuntime as never, { token: async () => 'tok' }, { deviceId: async () => 'device-1' }), 'unauthorized');
 });
 
+test('device registration requests notification permission first and reports denial honestly (#70)', async () => {
+  const { registerActiveDeviceIfPossible } = await import('./composition.ts');
+  const { readFileSync } = await import('node:fs');
+  const { dirname, join } = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  const here = dirname(fileURLToPath(import.meta.url));
+  const authorizedRuntime = {
+    snapshot: () => ({ surface: 'authorized' as const, deployment: { origin: 'https://weknora.example.test', label: 'Test' } }),
+    authorizedRequest: async () => { throw new Error('must not reach the wire without a token'); },
+    scopeLease: () => undefined,
+  };
+  const deniedTokens: string[] = [];
+  // denied：权限短路发生在 token 获取之前，绝不注册无权限设备（Review Focus 1）
+  const denied = await registerActiveDeviceIfPossible(
+    authorizedRuntime as never,
+    { token: async () => { deniedTokens.push('fetched'); return 'tok'; } },
+    { deviceId: async () => 'device-1' },
+    { ensure: async () => 'denied' },
+  );
+  assert.equal(denied, 'permission-denied');
+  assert.deepEqual(deniedTokens, [], 'denied 后不得触碰 push token 通道');
+  // granted：走完既有 fail-closed 注册链（本 stub 环境 registry.register 到 wire 即抛 → failed），绝不被权限层短路
+  const granted = await registerActiveDeviceIfPossible(
+    authorizedRuntime as never,
+    { token: async () => 'tok' },
+    { deviceId: async () => 'device-1' },
+    { ensure: async () => 'granted' },
+  );
+  assert.notEqual(granted, 'permission-denied');
+  // unavailable：保持既有行为——继续走 token fail-closed 路径
+  const unavailable = await registerActiveDeviceIfPossible(
+    authorizedRuntime as never,
+    { token: async () => undefined },
+    { deviceId: async () => 'device-1' },
+    { ensure: async () => 'unavailable' },
+  );
+  assert.equal(unavailable, 'no-token');
+  // 组合根默认参必须接原生权限 Adapter（真机路径生效的唯一接线点）
+  const composition = readFileSync(join(here, 'composition.ts'), 'utf8');
+  assert.match(composition, /permission[^=]*=\s*createNativeNotificationPermissionIfAvailable\(\)/, '默认参必须惰性接原生权限 Adapter');
+});
+
 test('the home surface keeps a reachable inbox entry point and the inbox screen renders projections', async () => {
   const { HomeScreen } = await import('./screens/HomeScreen.tsx');
   hooks().__reset();
