@@ -5,6 +5,22 @@
 - 计划文件：`docs/plans/issue-72-plan-84.md`（从零编写——集成分支 HEAD 无预写稿，`git -C ../lago-int show HEAD:docs/plans/issue-72-plan-84.md` 实测 `path does not exist`）。
 - 计划员会话：计划员-84（dynamic workflow subagent），2026-09-28。
 - Worktree：`/Users/wuyongjun/trea/WeKnora-fork01/.worktrees-issue72/issue-84`，分支 `codex/issue-72-lago-84`。
+- 修订史：初版 `9e3df0fbd`；**第 1 轮审查修订**（7 条反馈，全部实读核实后修订，见下节）。
+
+## 第 1 轮审查修订记录（2026-09-28，7 条反馈逐条核实）
+
+| 反馈 | 严重度 | 核实手段（本会话实读） | 修订落点 |
+|---|---|---|---|
+| R1 非 succeeded 状态误判为异常+200 | high | 属实：`payment/wechat.go:304` Verify 直接 `mapWechatTradeState` 不过滤；`domain/order.go:54-60` ValidatePayment 把 State≠succeeded 与金额/币种统一 ErrPaymentMismatch | 新哨兵 `domain.ErrPaymentNotSucceeded`（`internal/modules/commercial/order.go`）；ConfirmPayment 入口先判状态（零落库回滚）；handler 双分支（NotSucceeded→409 维持 / Mismatch→200 终态）；Task 1 新测试 `TestConfirmPaymentNotSucceededStaysRollbackNoAnomaly`；Task 2 Step 2 预判修正（NonSucceeded 用例改造前后均须 PASS，回归锁定） |
+| R2 stub `/stub/mark` 无金额字段，错金额主链不可执行 | high | 属实：`flow-evidence-83/wechat_native_stub.py:27`（mark 只收 out_trade_no/state/transaction_id）、:148/:228（amount 取 order["total"]，币种硬编码 CNY） | 真实验证方案新增**第 0 步 stub 副本改造**（`wechat_native_stub_anomaly.py`：mark 增 total/currency 覆盖，回调与 Query 用覆盖值，附双形态冒烟）；第一幕步骤 3 / 第四幕命令改为实际接口（字段名 `state`，金额走覆盖字段）；错币种变体并入同一覆盖机制；通过判据补冒烟前置 |
+| R3 第二 attempt 无真实创建路径 | medium | 属实：grep 全仓 `OpenOrderCommand{` 非测试仅 `service/commercial/order.go:395` 一处；`RegisterAttempt`（repository :637）无非测试调用方 | Task 3 测试引言注明单测层直调 `store.RegisterAttempt` 的边界；第三幕新增种子脚本 `seed_84_second_attempt.sh`（参数绑定 INSERT 直种第二渠道 attempt，验证设施非产品路径，README 明示） |
+| R4 orderWire 对 fulfilled+anomaly 行为未裁决 | medium | 属实：`handler/commercial.go:284-312` 三态 switch；`order-state.ts:2-7` 顺序 fulfilled→paid→closed | Task 5 Produces 显式**分派表**（attention 仅 pending 读数覆盖；paid→processing、fulfilled→fulfilled 不被覆盖；不变量：attention 只与 payment=pending 同现；PaymentAttention 字段随 fulfilled 单携带）；新测试 `TestOrderWireAttentionNeverOverridesPaidOrFulfilled`；BillingPage 两种后缀形态；第三幕补 fulfilled 单主状态断言 |
+| R5 commercial_test.go 不存在 + Create/Modify 矛盾 | medium | 属实：`ls internal/handler/` 仅 commercial.go/commercial_benefits_test.go/commercial_purchase_test.go/commercial_task_budget.go；lago_settlement_integration_test.go 已存在 | Task 3 直接新建 `commercial_anomaly_test.go`（删 fallback 措辞）；Task 5 落点与 git add 同步改；File Structure lago_settlement_integration_test.go 改 Modify；L523 残留同步清理 |
+| R6 buildMismatchAnomaly(attempt,row,fact) row 未声明 | low | 属实：第一个 mismatch 返回点 `order.go:699-702` 先于 `var row OrderRow`（:704） | 签名改 `(attempt PaymentAttemptRow, fact domain.PaymentFact) PaymentAnomalyRow`，Task 1 Step 3 注明理由 |
+| R7 路径引用错置 | low | 部分属实：`deliver_stripe_webhook.py` 实测在 `flow-evidence-82/settle-evidence/`（与反馈一致）；`_browser_lib.mjs` **实测在 `flow-evidence-82/` 根目录**（反馈称 83/settle-evidence/，与 find 实测不符——`find docs/plans -name _browser_lib.mjs` 唯一命中 82 根；83 目录仅 api_recovery_83.mjs/browser_flow_83.mjs），「83 根下不存在」的指正成立 | platform.go 全路径化；deliver_stripe_webhook.py 与 _browser_lib.mjs 按实测路径改（82 目录）；Task 7 Consumes 注明实测依据 |
+| R8 Task 4 测试 row 未声明 | low | 属实：RecoverOrderStatus 返回 OrderView 无 row 暴露（service :535-547） | 改 `view.State`/`view.PaymentAttention` |
+
+## 集成基线
 
 ## 集成基线
 
