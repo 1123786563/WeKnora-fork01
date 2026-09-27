@@ -554,6 +554,104 @@ func (s *OrderService) RecoverOrderStatus(ctx context.Context, tenantID uint64, 
 		CheckoutURL: row.CheckoutURL, Version: row.Version}, nil
 }
 
+// CloseChannelOrder retires one pending order's channel entry in a
+// race-safe way (#83, spec L123 close + L165 indeterminate outcomes): the
+// channel Close is driven against the ORIGINAL merchant order id; ANY close
+// failure (ORDER_PAID race, transport timeout, already-closed) is decided by
+// the channel Query — a succeeded query confirms the payment through the
+// SAME ConfirmPayment transaction the callback path uses (the fund fact
+// survives the close, the fulfillment right is minted exactly once), a
+// closed query lands like a clean close, and anything else (NOTPAY /
+// unknown / query failure) stays UNRESOLVED: the error surfaces, nothing is
+// marked, and the order keeps its payable entry so the caller may retry.
+func (s *OrderService) CloseChannelOrder(ctx context.Context, tenantID uint64, orderID string) (OrderView, error) {
+	row, err := s.orders.GetOrder(ctx, orderID)
+	if err != nil {
+		return OrderView{}, err
+	}
+	if row.TenantID != tenantID {
+		return OrderView{}, ErrOrderTenantMismatch
+	}
+	if row.State != domain.OrderStatePending {
+		// No payable channel entry exists for a paid/fulfilled order; the
+		// caller answers the current state (zero channel calls).
+		return OrderView{ID: row.ID, QuoteID: row.QuoteID, State: row.State,
+			AmountFen: row.AmountFen, Currency: row.Currency, Version: row.Version}, nil
+	}
+	att, err := s.orders.FirstPendingAttempt(ctx, orderID)
+	if errors.Is(err, repocommercial.ErrPaymentAttemptNotFound) {
+		// A pending order with no attempt is not payable at all (e.g. a
+		// channel-unconfigured leftover): retire the slot and answer pending.
+		if err := s.orders.MarkChannelFailed(ctx, orderID); err != nil {
+			return OrderView{}, err
+		}
+		return OrderView{ID: row.ID, QuoteID: row.QuoteID, State: row.State,
+			AmountFen: row.AmountFen, Currency: row.Currency, Version: row.Version}, nil
+	}
+	if err != nil {
+		return OrderView{}, err
+	}
+	provider, ok := s.providers[att.Provider]
+	if !ok || provider == nil {
+		return OrderView{}, fmt.Errorf("%w: %q", ErrPaymentProviderUnconfigured, att.Provider)
+	}
+	landClosed := func() (OrderView, error) {
+		if err := s.orders.MarkAttemptClosed(ctx, orderID); err != nil {
+			return OrderView{}, err
+		}
+		if err := s.orders.MarkChannelFailed(ctx, orderID); err != nil {
+			return OrderView{}, err
+		}
+		return OrderView{ID: row.ID, QuoteID: row.QuoteID, State: domain.OrderStatePending,
+			AmountFen: row.AmountFen, Currency: row.Currency, Provider: att.Provider,
+			Version: row.Version}, nil
+	}
+	cerr := provider.Close(ctx, att.MerchantOrderID)
+	if cerr == nil {
+		return landClosed()
+	}
+	// Indeterminate on the close side (ORDER_PAID race, timeout, already
+	// closed, transport error): the channel alone knows the truth — decide
+	// by querying the ORIGINAL identifier, never by parsing the close error.
+	res, qerr := provider.Query(ctx, att.MerchantOrderID)
+	if qerr != nil {
+		// Both legs failed: the outcome stays unknown — surface it, mark
+		// nothing, keep the payable entry for a retry.
+		return OrderView{}, qerr
+	}
+	switch res.State {
+	case payment.StateSucceeded:
+		txn := res.ProviderID
+		if txn == "" {
+			txn = att.MerchantOrderID
+		}
+		if err := s.orders.ConfirmPayment(ctx, domain.PaymentFact{
+			Provider: att.Provider, Merchant: att.Merchant,
+			AttemptID: att.MerchantOrderID, OrderID: orderID, TenantID: tenantID,
+			Amount: domain.CNYFen(att.AmountFen), Currency: att.Currency,
+			Transaction: txn, State: payment.StateSucceeded.String(),
+		}); err != nil {
+			return OrderView{}, err
+		}
+		after, err := s.orders.GetOrder(ctx, orderID)
+		if err != nil {
+			return OrderView{}, err
+		}
+		return OrderView{ID: after.ID, QuoteID: after.QuoteID, State: after.State,
+			AmountFen: after.AmountFen, Currency: after.Currency, Provider: att.Provider,
+			Version: after.Version}, nil
+	case payment.StateClosed:
+		// The channel already closed it (or the close landed first): same
+		// landing as a clean close.
+		return landClosed()
+	default:
+		// NOTPAY / unknown: the close did not resolve and the channel has
+		// no terminal answer — return the original close error, mark
+		// nothing, keep the payable entry.
+		return OrderView{}, cerr
+	}
+}
+
 // ChangePlanView is the Commerce.ChangePlan answer: either an UPGRADE order
 // (prorated, immediately effective once paid, same recoverable checkout
 // contract as CreateOrder) or a SCHEDULED switch that takes effect at the

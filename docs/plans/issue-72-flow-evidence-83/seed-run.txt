@@ -1,0 +1,28 @@
+== register placeholders (absorb Lago tenant ids earlier 82-rounds occupy) ==
+placeholder-1: HTTP 201 (registered)
+placeholder-2: HTTP 201 (registered)
+placeholder-3: HTTP 201 (registered)
+placeholder-4: HTTP 201 (registered)
+placeholder-5: HTTP 201 (registered)
+placeholder-6: HTTP 201 (registered)
+placeholder-7: HTTP 201 (registered)
+placeholder-8: HTTP 201 (registered)
+placeholder-9: HTTP 201 (registered)
+placeholder-10: HTTP 201 (registered)
+placeholder-11: HTTP 201 (registered)
+placeholder-12: HTTP 201 (registered)
+placeholder-13: HTTP 201 (registered)
+placeholder-14: HTTP 201 (registered)
+== register protagonists ==
+a (browser): HTTP 201 (registered)
+b (publisher): HTTP 201 (registered)
+tenant A (browser protagonist) = 15
+tenant B (publisher) = 16, user id = 669fcd28-ee29-4ad0-9f95-f814101893d4
+== grant plan_publish to B at platform scope (seed row) ==
+granted: 1 row(s)
+== draft + publish plan pro v1 (9900 CNY monthly, advanced_models) ==
+draft: {"success":true,"state":"draft","key":"pro","v":1}
+publish: {"success":true,"receipt":"publish_plan_version:pro:1"}
+== assert publication landed in Lago (:48889) ==
+lago 9900 plans: [{"code":"weknora-pro-v1","amount_cents":9900,"interval":"monthly"}]
+SEED OK (tenants A=15 B=16)
