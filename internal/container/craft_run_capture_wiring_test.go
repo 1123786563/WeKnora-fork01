@@ -235,7 +235,7 @@ func TestCraftRunViewExecuteStagesPrivateCandidateNotVersion(t *testing.T) {
 	t.Setenv(craftOpenCodeWorkDirEnv, t.TempDir())
 	files := newCaptureWiringFiles(t, db)
 	executor, err := newCraftRuntimeExecutor(db, repository.NewCraftStore(db), runs,
-		files, repository.NewCraftVersionStore(db), nil, nil)
+		files, repository.NewCraftVersionStore(db), nil, nil, nil)
 	require.NoError(t, err)
 	runtimeExec, ok := executor.(*localCraftRuntime)
 	require.True(t, ok)

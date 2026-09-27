@@ -121,7 +121,7 @@ func wiringRuntime(t *testing.T) (*localCraftRuntime, *CraftInteractionAssembly,
 		db, store, runs,
 		struct{ interfaces.FileService }{},
 		struct{ craft.VersionStore }{},
-		nil, nil,
+		nil, nil, nil,
 	)
 	require.NoError(t, err)
 	runtime, ok := executor.(*localCraftRuntime)

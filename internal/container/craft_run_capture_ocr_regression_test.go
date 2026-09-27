@@ -374,7 +374,7 @@ func TestCraftRunViewCandidateStagesWithNonDefaultOutputDirEnv(t *testing.T) {
 	t.Setenv(craftOpenCodeWorkDirEnv, t.TempDir())
 	t.Setenv(craftOpenCodeOutputDirEnv, "custom-output")
 	executor, err := newCraftRuntimeExecutor(db, repository.NewCraftStore(db), runs,
-		newCaptureWiringFiles(t, db), repository.NewCraftVersionStore(db), nil, nil)
+		newCaptureWiringFiles(t, db), repository.NewCraftVersionStore(db), nil, nil, nil)
 	require.NoError(t, err)
 	runtimeExec, ok := executor.(*localCraftRuntime)
 	require.True(t, ok)

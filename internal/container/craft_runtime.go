@@ -127,6 +127,7 @@ func newCraftRuntimeExecutor(
 	versions craft.VersionStore,
 	previews *service.CraftPreviewService,
 	citationGate service.WebCitationGate,
+	audit interfaces.AuditLogService,
 ) (craft.Executor, error) {
 	baseURL := strings.TrimSpace(os.Getenv(craftOpenCodeBaseURLEnv))
 	if baseURL == "" {
@@ -191,8 +192,15 @@ func newCraftRuntimeExecutor(
 		// the constructor); the workspace root is the CONTAINER /workspace,
 		// not the host serve workDir — the T03 lexical layers resolve the
 		// read-only inputs tree relative to it.
-		delegateService := service.NewCraftDelegateService(store, nil)
+		// T20 (#139) T03 assembly completion: the production audit sink rides
+		// the delegate service (material-policy rows) and the policy adapter
+		// (denial rows) — the same injection the Docker command-face factory
+		// applies, so every uploaded-material decision is durably audited.
+		delegateService := service.NewCraftDelegateService(store, nil).WithAuditLog(audit)
 		delegatePolicy, perr := service.NewCraftDelegateExecutionPolicy(delegateService, db, "/workspace")
+		if perr == nil {
+			delegatePolicy.WithAuditLog(audit)
+		}
 		if perr != nil {
 			logger.Warnf(context.Background(), "[CraftRuntime] T04 execution policy NOT assembled: %v (build commands stay fail-closed)", perr)
 		} else if gate, gerr := NewCraftWebBuildCommandGate(delegatePolicy, pin, webToolchainDir); gerr == nil {
@@ -362,9 +370,9 @@ type localCraftRuntime struct {
 	emit             func(context.Context, craft.Task, string, json.RawMessage) error
 	workDir          string
 	outputDir        string
-	runtimeDigest         string
-	sessionsRoot          string
-	materialResolver      func(context.Context, craft.Task) (CraftRunViewMaterialHandle, error)
+	runtimeDigest    string
+	sessionsRoot     string
+	materialResolver func(context.Context, craft.Task) (CraftRunViewMaterialHandle, error)
 	// knowledgeResolver must load the admitted Run and use its durable
 	// selection plus exact accepted record/package for this material handle.
 	knowledgeResolver       func(context.Context, craft.Task, CraftRunViewMaterialHandle) (CraftKnowledgeRunViewAcceptance, error)
