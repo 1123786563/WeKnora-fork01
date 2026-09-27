@@ -105,6 +105,9 @@ const ALL_PAGES = [
   // —— 设置：全部 section（Vue Settings.vue navItems 权威键表） ——
   ...SETTINGS_SECTION_KEYS.map((key) => ({
     id: 'settings-' + key, path: '/platform/settings?section=' + key, settle: 2000,
+    // runtime-queues 为活数据页（5s 轮询真实队列计数），双端顺序截图受数据
+    // 搅动影响——标记走请求级快照冻结（见 PAGES 循环 liveFreeze 处理）。
+    ...(key === 'runtime-queues' ? { liveFreeze: 'queues' } : {}),
   })),
   ...INTEGRATION_TAB_KEYS.map((key) => ({
     id: 'settings-integration-' + key, path: '/platform/settings?section=integration-' + key, settle: 2000,
@@ -387,7 +390,7 @@ const ALL_PAGES = [
     actions: [{ clickCss: ['.settings-section-tabs .t-tabs__nav-item >> nth=1'] }] },
   // runtime-queues 自动刷新开关（客户端 5s 轮询开关，无服务端写；clickAria 先行
   // 因 React 该页有 2 个 switch，aria 唯一定位自动刷新；双端探针实证命中）
-  { id: 'px2-settings-runtimequeues-autorefresh', path: '/platform/settings?section=runtime-queues', settle: 2000,
+  { id: 'px2-settings-runtimequeues-autorefresh', path: '/platform/settings?section=runtime-queues', settle: 2000, liveFreeze: 'queues',
     actions: [{ clickAria: ['自动刷新'], clickCss: ['.t-switch'] }] },
   // 常规设置字号分段控件（小/正常/大 t-radio-button 三段双端同构，
   // GeneralSettings.vue:114-121；localStorage-only（preferenceStorage.ts:69
@@ -661,9 +664,32 @@ async function main() {
       const path = p.kind ? (fixturePath ? fixturePath + (p.suffix || '') : undefined) : p.path;
       const entry = { id: p.id, path: path || p.path, status: 'ok', diff_pct: null };
       if (!path) { entry.status = 'skipped-no-fixture'; results.push(entry); console.log(`[skip] ${p.id}（fixture 未找到）`); continue; }
+      let liveFreezePat = null;
       try {
         const shots = [];
         const warnings = [];
+        // 活数据冻结（三期验收）：runtime-queues 页渲染真实队列计数（active/
+        // pending/archived 等，5s 轮询），双端顺序截图间隔中作业状态变化会造
+        // 成整表假差异（实测 1.3%→25%→91% 随机耀斑；同步探针证明 UI 本身
+        // 一致、数据对齐轮恒 0）。请求级快照：vue 首个 /queues 请求透传并捕
+        // 获响应体，其后双端所有同名请求一律 fulfill 同一快照 → 两端渲染同
+        // 一份数据。项末统一 unroute（错误路径亦然），不污染后续项。
+        if (p.liveFreeze === 'queues') {
+          liveFreezePat = /\/api\/v1\/system\/admin\/runtime\/queues(\?|$)/;
+          let snap = null;
+          const handler = async (route) => {
+            try {
+              if (snap === null) {
+                const resp = await route.fetch();
+                snap = await resp.body();
+                await route.fulfill({ response: resp });
+              } else {
+                await route.fulfill({ status: 200, contentType: 'application/json', body: snap });
+              }
+            } catch { await route.continue().catch(() => {}); }
+          };
+          await Promise.all([vuePage, reactPage].map(pg => pg.route(liveFreezePat, handler)));
+        }
         // 轮播定格由 anon context 级 initScript 完成（见 context 创建处注释），
         // 此处不再步进；旧版 authed 页面文本轮询步进器已删除（读错页面对象，
         // 从未对实际截图的 anon 页生效）。
@@ -805,6 +831,7 @@ async function main() {
         entry.status = 'error'; entry.error = e.message.split(String.fromCharCode(10))[0];
         console.log(`[err ] ${p.id}: ${entry.error}`);
       }
+      if (liveFreezePat) await Promise.all([vuePage, reactPage].map(pg => pg.unroute(liveFreezePat).catch(() => {})));
       results.push(entry);
     }
   } finally {
