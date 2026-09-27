@@ -372,3 +372,129 @@ func TestAgentUpgradeServiceSkipsInactiveAdoptionsAndCorruptReleases(t *testing.
 	require.NoError(t, err)
 	require.Len(t, healed, 1)
 }
+
+// countingUpgradeRepo wraps the REAL repository and counts the expensive
+// reads reconcile performs (per pair: one listing read + two release reads
+// + a full two-bundle decode for the diff). Sequential calls only — no lock.
+type countingUpgradeRepo struct {
+	repository.AgentUpgradeRepository
+	listingReads int
+	releaseReads int
+}
+
+func (c *countingUpgradeRepo) GetMarketplaceListing(ctx context.Context, tenantID uint64, listingID string) (*types.AgentMarketplaceListingEntity, error) {
+	c.listingReads++
+	return c.AgentUpgradeRepository.GetMarketplaceListing(ctx, tenantID, listingID)
+}
+
+func (c *countingUpgradeRepo) GetRelease(ctx context.Context, tenantID uint64, releaseID string) (*types.AgentReleaseEntity, error) {
+	c.releaseReads++
+	return c.AgentUpgradeRepository.GetRelease(ctx, tenantID, releaseID)
+}
+
+// TestReconcileSkipsMaterializedPairsWithoutDiff pins R5-F1: a materialized
+// (adoption, to_release) pair — in ANY state — must not recompute the diff
+// on every read request. The listing row read remains (the current release
+// pointer is only knowable from it), but both release reads and the full
+// bundle decode are skipped.
+func TestReconcileSkipsMaterializedPairsWithoutDiff(t *testing.T) {
+	db := openAgentVersionServiceTestDB(t)
+	counting := &countingUpgradeRepo{AgentUpgradeRepository: repository.NewAgentUpgradeRepository(db)}
+	svc := NewAgentUpgradeService(counting)
+	listingID, v1 := publishUpgradeServiceRelease(t, db, 1, "1.0.0", upgradeManifestV1, upgradeLockV1, upgradeBundleV1)
+	adoptUpgradeRelease(t, db, listingID, v1)
+	publishUpgradeServiceRelease(t, db, 2, "1.1.0", upgradeManifestV2, upgradeLockV2, upgradeBundleV2)
+	ctx := context.Background()
+
+	first, err := svc.ListUpgradeProposals(ctx, 1)
+	require.NoError(t, err)
+	require.Len(t, first, 1)
+	require.Greater(t, counting.releaseReads, 0, "setup: the first materialization performs the expensive reads")
+
+	counting.listingReads, counting.releaseReads = 0, 0
+	second, err := svc.ListUpgradeProposals(ctx, 1)
+	require.NoError(t, err)
+	require.Len(t, second, 1, "the materialized row still lists — the skip only saves the recompute")
+	require.Equal(t, first[0].ID, second[0].ID)
+	require.Zero(t, counting.releaseReads, "a materialized pair must short-circuit before BOTH release reads and the bundle diff")
+}
+
+// TestReconcileDismissesStaleOpenProposalsAfterReAdopt pins R5-F2 upper
+// half: re-adopting advances AcceptedReleaseID, and the open proposal whose
+// from_release is no longer the accepted pointer must migrate to a terminal
+// dismissed state (system marker) instead of lingering forever as open.
+func TestReconcileDismissesStaleOpenProposalsAfterReAdopt(t *testing.T) {
+	svc, db := newAgentUpgradeServiceForTest(t)
+	repo := repository.NewAgentUpgradeRepository(db)
+	listingID, v1 := publishUpgradeServiceRelease(t, db, 1, "1.0.0", upgradeManifestV1, upgradeLockV1, upgradeBundleV1)
+	adoptUpgradeRelease(t, db, listingID, v1)
+	_, v2 := publishUpgradeServiceRelease(t, db, 2, "1.1.0", upgradeManifestV2, upgradeLockV2, upgradeBundleV2)
+	ctx := context.Background()
+
+	first, err := svc.ListUpgradeProposals(ctx, 1)
+	require.NoError(t, err)
+	require.Len(t, first, 1)
+	staleID := first[0].ID // open, from=v1, to=v2
+
+	// Re-adopt advances the accepted pointer to v2; v3 ships afterwards.
+	_, _, err = repo.AdoptListing(ctx, &types.AgentAdoptionEntity{
+		TenantID: 1, ListingID: listingID, AcceptedReleaseID: v2, State: "active", CreatedBy: "admin",
+	})
+	require.NoError(t, err)
+	_, v3 := publishUpgradeServiceRelease(t, db, 3, "1.2.0", upgradeManifestV3, `{"dependencies":[]}`, upgradeBundleV3)
+
+	second, err := svc.ListUpgradeProposals(ctx, 1)
+	require.NoError(t, err)
+	require.Len(t, second, 2)
+	for _, row := range second {
+		switch row.ToReleaseID {
+		case v2:
+			require.Equal(t, AgentUpgradeProposalStateDismissed, row.State,
+				"the stale open (from_release no longer the accepted pointer) must migrate to a terminal state")
+			require.Equal(t, AgentUpgradeSystemResolvedBy, row.ResolvedBy,
+				"the system dismissal must be distinguishable from a human dismiss")
+		case v3:
+			require.Equal(t, AgentUpgradeProposalStateOpen, row.State)
+		default:
+			t.Fatalf("unexpected proposal: %+v", row)
+		}
+	}
+	_ = staleID
+	// 不再以 open 呈现：对该行的 Accept 被终态拒绝（state guard），无孤儿草稿。
+	_, _, err = svc.AcceptUpgradeProposal(ctx, 1, "admin", staleID, interfaces.UpgradeVariantInput{Name: "late"})
+	require.ErrorIs(t, err, ErrAgentUpgradeStateConflict)
+}
+
+// TestAcceptRejectsProposalFromStaleReleasePointer pins R5-F2 lower half:
+// an open proposal whose from_release is no longer the adoption's accepted
+// pointer must be refused at Accept time — accepting it would create a
+// redundant draft Variant pinned to an already-superseded release.
+func TestAcceptRejectsProposalFromStaleReleasePointer(t *testing.T) {
+	svc, db := newAgentUpgradeServiceForTest(t)
+	repo := repository.NewAgentUpgradeRepository(db)
+	listingID, v1 := publishUpgradeServiceRelease(t, db, 1, "1.0.0", upgradeManifestV1, upgradeLockV1, upgradeBundleV1)
+	adoptUpgradeRelease(t, db, listingID, v1)
+	_, v2 := publishUpgradeServiceRelease(t, db, 2, "1.1.0", upgradeManifestV2, upgradeLockV2, upgradeBundleV2)
+	ctx := context.Background()
+
+	first, err := svc.ListUpgradeProposals(ctx, 1)
+	require.NoError(t, err)
+	require.Len(t, first, 1)
+	stale := first[0] // open, from=v1, to=v2
+
+	// Re-adopt advances past v1 WITHOUT a reconcile run in between (Accept
+	// itself never reconciles — the guard must live in Accept).
+	_, _, err = repo.AdoptListing(ctx, &types.AgentAdoptionEntity{
+		TenantID: 1, ListingID: listingID, AcceptedReleaseID: v2, State: "active", CreatedBy: "admin",
+	})
+	require.NoError(t, err)
+
+	_, _, err = svc.AcceptUpgradeProposal(ctx, 1, "admin", stale.ID, interfaces.UpgradeVariantInput{Name: "stale draft"})
+	require.ErrorIs(t, err, ErrAgentUpgradeStateConflict,
+		"accepting a proposal whose from release is no longer the accepted pointer must be a state conflict")
+
+	var variants int64
+	require.NoError(t, db.Model(&types.AgentAdoptionVariantEntity{}).
+		Where("tenant_id = ? AND adoption_id = ?", uint64(1), stale.AdoptionID).Count(&variants).Error)
+	require.Zero(t, variants, "no draft variant may be created off a superseded release pointer")
+}
