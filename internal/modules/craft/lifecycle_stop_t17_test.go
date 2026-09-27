@@ -29,19 +29,24 @@ func TestCraftT17StopIntentValidate(t *testing.T) {
 
 func TestCraftT17StopIntentOutcome(t *testing.T) {
 	cases := []struct {
-		name string
-		obs  Observation
-		want StopOutcomeStatus
+		name      string
+		requested bool
+		obs       Observation
+		want      StopOutcomeStatus
 	}{
-		{"observed abort on idle session confirms the cancellation", Observation{Aborted: true, Idle: true}, StopConfirmed},
-		{"abort requested but executor still busy stays requested", Observation{Aborted: true, Idle: false}, StopRequested},
-		{"idle without abort evidence stays requested", Observation{Aborted: false, Idle: true}, StopRequested},
-		{"no stop evidence at all stays requested", Observation{}, StopRequested},
+		{"observed abort on idle session of a requested stop confirms the cancellation", true, Observation{Aborted: true, Idle: true}, StopConfirmed},
+		{"abort requested but executor still busy stays requested", true, Observation{Aborted: true, Idle: false}, StopRequested},
+		{"idle without abort evidence stays requested", true, Observation{Aborted: false, Idle: true}, StopRequested},
+		{"no stop evidence at all stays requested", true, Observation{}, StopRequested},
+		// round-3: the requested premise is a parameter, so an abort by any
+		// OTHER mechanism is structurally unable to project a confirmation.
+		{"non-stop abort mechanism never confirms", false, Observation{Aborted: true, Idle: true}, StopRequested},
+		{"never-requested running observation stays requested", false, Observation{}, StopRequested},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := StopIntentOutcome(tc.obs); got != tc.want {
-				t.Fatalf("StopIntentOutcome(%+v) = %q, want %q", tc.obs, got, tc.want)
+			if got := StopIntentOutcome(tc.requested, tc.obs); got != tc.want {
+				t.Fatalf("StopIntentOutcome(%v, %+v) = %q, want %q", tc.requested, tc.obs, got, tc.want)
 			}
 		})
 	}
@@ -84,33 +89,43 @@ func TestCraftT17StoppingRunKeepsWriterFence(t *testing.T) {
 	}
 }
 
-
-// ---- round-2 OCR regressions -------------------------------------------------
+// ---- round-2/3 OCR regressions ------------------------------------------------
 
 // StopIntentOutcome must NOT confirm a stop that was never requested: an
 // abort by any other mechanism (budget pause, transport failure) observed
-// Aborted+Idle is not a stop confirmation (same-source discipline with
-// StopStatus(true, o)).
+// Aborted+Idle is not a stop confirmation — the requested premise is a
+// signature parameter (same-source with StopStatus), so the discipline is
+// enforced structurally instead of trusted to the caller.
 func TestStopIntentOutcomeRequiresRequestedPremise(t *testing.T) {
 	abortedIdle := Observation{Aborted: true, Idle: true}
-	if got := StopIntentOutcome(abortedIdle); got != StopConfirmed {
-		t.Fatalf("aborted+idle observation should confirm: %v", got)
+	if got := StopIntentOutcome(true, abortedIdle); got != StopConfirmed {
+		t.Fatalf("aborted+idle observation of a requested stop should confirm: %v", got)
 	}
-	// StopStatus(true, ...) requires requested && aborted && idle — the
-	// outcome mapping is now same-source.
 	if StopStatus(true, abortedIdle) != "canceled" {
 		t.Fatalf("same-source discipline violated: StopStatus(true, o) should be canceled")
 	}
-	// An idle observation WITHOUT the abort is a normal completion: the
-	// lingering intent is superseded, not "still in flight".
-	if got := StopIntentOutcome(Observation{Idle: true, Completed: true}); got != StopRequested {
+	// round-3: without the premise the SAME observation must degrade to
+	// requested — a non-stop abort can never fabricate a confirmation.
+	if got := StopIntentOutcome(false, abortedIdle); got != StopRequested {
+		t.Fatalf("an abort by a non-stop mechanism must never project confirmed: %v", got)
+	}
+	// An idle observation WITHOUT the abort is NOT a normal completion on its
+	// own (round-3): only Completed without the abort supersedes.
+	if got := StopIntentOutcome(true, Observation{Idle: true, Completed: true}); got != StopRequested {
 		t.Fatalf("superseded completion must stay requested: %v", got)
 	}
 	if !StopIntentSuperseded(Observation{Idle: true, Completed: true}) {
-		t.Fatalf("a completed observation supersedes the stop")
+		t.Fatalf("a completed-not-aborted observation supersedes the stop")
 	}
-	if !StopIntentSuperseded(Observation{Idle: true}) {
-		t.Fatalf("an idle-not-aborted observation supersedes the stop")
+	// round-3: the locked runtime marks an aborted message Completed=true as
+	// well — Completed alone must NEVER read as a supersession.
+	if StopIntentSuperseded(Observation{Aborted: true, Idle: true, Completed: true}) {
+		t.Fatalf("an aborted observation is the stop being confirmed, never superseded")
+	}
+	// round-3: bare idleness is not completion evidence — an undetermined
+	// abort outcome must stay unknown instead of reading as settled.
+	if StopIntentSuperseded(Observation{Idle: true}) {
+		t.Fatalf("bare idleness is not completion evidence and must not supersede the stop")
 	}
 	if StopIntentSuperseded(Observation{Aborted: true, Idle: false}) {
 		t.Fatalf("an in-flight abort does not supersede the stop")

@@ -363,16 +363,17 @@ func (i StopIntent) Validate() error {
 }
 
 // StopIntentOutcome maps one authoritative executor observation onto the
-// stop-outcome vocabulary: only an observed abort on an idle session is a
-// confirmed cancellation; anything else observed stays requested (the stop
-// is still in flight). An observation that cannot be read at all is the
-// caller's unknown — never a confirmation.
-func StopIntentOutcome(o Observation) StopOutcomeStatus {
-	// Same-source discipline with StopStatus: a confirmed stop requires the
-	// stop to have been REQUESTED — an abort by any OTHER mechanism (budget
-	// pause, session deletion, a transport failure) observed Aborted+Idle
-	// is not a stop confirmation and must never project one.
-	if StopStatus(true, o) == "canceled" {
+// stop-outcome vocabulary: only an observed abort on an idle session of a
+// REQUESTED stop is a confirmed cancellation; anything else observed stays
+// requested (the stop is still in flight). An observation that cannot be
+// read at all is the caller's unknown — never a confirmation.
+func StopIntentOutcome(requested bool, o Observation) StopOutcomeStatus {
+	// Same-source discipline with StopStatus, structurally enforced: the
+	// requested premise is a parameter, not a hardcoded true — an abort by
+	// any OTHER mechanism (budget pause, session deletion, a transport
+	// failure) observed Aborted+Idle is not a stop confirmation and can
+	// never project one.
+	if StopStatus(requested, o) == "canceled" {
 		return StopConfirmed
 	}
 	return StopRequested
@@ -383,10 +384,14 @@ func StopIntentOutcome(o Observation) StopOutcomeStatus {
 // requested/unknown intent is stale and the Run's terminal fact is its
 // completion, not a pending stop.
 func StopIntentSuperseded(o Observation) bool {
-	// A normal completion overtakes the stop: either the observation reports
-	// the delegation Completed, or it settled idle without the stop's abort
-	// ever landing. Domain-local — no executor-side normalizer import.
-	return o.Completed || (!o.Aborted && o.Idle)
+	// A normal completion overtakes the stop ONLY when the stop's abort
+	// never landed: an ABORTED observation (even one the locked runtime
+	// marks Completed=true on its aborted message) is the stop being
+	// confirmed, never a supersession. Bare idleness is NOT completion
+	// evidence — an undetermined abort outcome must stay unknown, so the
+	// Idle disjunct is deliberately absent. Domain-local — no
+	// executor-side normalizer import.
+	return !o.Aborted && o.Completed
 }
 
 // StopIntentMayWriteRunTerminal reports whether the durable stop state of a

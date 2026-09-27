@@ -1,234 +1,264 @@
-Review complete: 12 finding(s) across 3 selected item(s).
+Review complete: 14 finding(s) across 3 selected item(s).
 
-─── internal/modules/craft/lifecycle.go:382-384 ───
-[maintainability · medium] StopIntentMayWriteRunTerminal 是导出的域门控，但全库检索显示它没有任何生产调用点（仅
-lifecycle_stop_t17_test.go / craft_stop_t17_test.go 引用）：本次 T17 流中真正写 canceled 终态的位置（service 层确认分支的
-runs.Cancel）是以观察相位 craft.StopStatus(true, observation)=="canceled" 门控的，并未查阅持久 intent 状态。也就是说"仅
-confirmed 可写 Run 终态"这条本函数文档声明的不变量，当前只是由另一处（StopStatus 的 Aborted&&Idle
-条件，interaction.go:43）附带成立——confirmed 判定条件现在存在两份独立编码（StopStatus 与
-StopIntentOutcome），再加一个未被调用的门控谓词，三者漂移时不会被编译器或任何调用链发现。建议在终态写入点实际接入该谓词，或在文档注释中明确标注接线时点（如
-T20），避免它被误认为已在生产路径生效。
+─── internal/modules/craft/lifecycle.go:386-389 ───
+[bug · high] StopIntentSuperseded 在"停止已确认"的标准观测上会返回 true，与自身文档及 StopIntentOutcome 直接矛盾。锁定的 OpenCode
+投影中，被 abort 的消息同样携带 Completed=true：normalizer.go 快照路径仅在 best.completedAt>0 且 finish!="stop" 时才查
+MessageAbortedError 并置 Aborted（executor_test.go:1017 的 abort 用例即 completed=5、finish 为空），live 路径 537
+行同理。因此权威确认停止的观测是 {Aborted:true, Idle:true, Completed:true}，此处首析取项 o.Completed
+命中，函数判定"被正常完成超越"——但文档明确要求 "completed WITHOUT the stop's abort"，且同一观测经 StopIntentOutcome 投影为
+StopConfirmed。按本函数声明的用途（判定 lingering requested/unknown intent 已 stale 可清理），一次已落地的 abort
+会被误判为正常完成，停止意图被清、Run 永不落 canceled、writer fence 不释放；当前唯一生产调用点（craft_control.go:796）虽以 !requested
+兜底，但在该分支内也会把已 abort 的会话误投为 Phase="completed"。建议首析取项补 !o.Aborted 守卫；另可一并评估次析取项：仅 Idle 无 Aborted
+也会把等待人工交互的 idle 会话当 settled。
 
-+ // StopIntentMayWriteRunTerminal reports whether the durable stop state of a
-+ // Run permits writing the terminal canceled status on the Run row. Only a
-+ // confirmed stop does: requested and unknown are nonterminal — the accepted
-+ // HTTP response must never terminalize the Run, and the writer fence and
-+ // the promotion gate stay in force until the authoritative outcome.
-+ // NOTE(T20): the terminal write site must consult this predicate; today the
-+ // confirmed write is gated by StopStatus(observation) == "canceled" only.
-  func StopIntentMayWriteRunTerminal(status StopOutcomeStatus) bool {
-  	return status == StopConfirmed
-  }
-
-
-─── internal/modules/craft/lifecycle.go:370-375 ───
-[bug · medium] StopIntentOutcome 对"停止被正常完成超越"的观察（o.Completed 为真，或 !Aborted && Idle）仍返回 requested，而
-T00 词汇表内又没有第四态可表达该终局；结合 service 层以持久 intent 为投影权威（durableStopOutcome 优先返回
-intent.Status），一次停止请求与正常完成竞态后，intent 行将永久停留 requested：断线重连/刷新按持久 intent 重建投影时，已终态（succeeded/failed）的
-Run 会永远携带 outcome=requested（前端文案"已请求停止，正在等待执行器确认…"），与 Phase=completed 并存；轮询面上甚至可能出现
-Phase="canceled"（来自观察）而 Outcome="requested"（来自持久 intent）的分裂投影。域层缺少一条"Run 由其他终态路径落定后收敛
-requested/unknown intent"的规则，建议补充显式收敛谓词并在完成/失败路径上覆写或退役悬空 intent。
-
-- func StopIntentOutcome(o Observation) StopOutcomeStatus {
-- 	if o.Aborted && o.Idle {
-- 		return StopConfirmed
-- 	}
-- 	return StopRequested
-+ // StopIntentSuperseded reports whether a persisted requested/unknown stop
-+ // intent is superseded by a terminal Run outcome written by another path
-+ // (a normal completion or failure that raced the stop): the projection
-+ // must retire the intent instead of replaying "requested" forever.
-+ func StopIntentSuperseded(runStatus string) bool {
-+ 	return WriterRunTerminal(runStatus) && runStatus != "canceled"
-  }
+- 	// A normal completion overtakes the stop: either the observation reports
+- 	// the delegation Completed, or it settled idle without the stop's abort
+- 	// ever landing. Domain-local — no executor-side normalizer import.
+- 	return o.Completed || (!o.Aborted && o.Idle)
++ 	// A normal completion overtakes the stop only WITHOUT the stop's abort:
++ 	// the locked runtime marks an aborted message Completed as well
++ 	// (completedAt>0 with finish != "stop"), so Completed alone cannot
++ 	// separate a landed abort from a normal finish.
++ 	return !o.Aborted && (o.Completed || o.Idle)
 
 
-─── internal/modules/craft/lifecycle.go:370-375 ───
-[bug · medium] StopIntentOutcome 缺少"停止已被请求"这一前提，与同包 StopStatus(requested, o) 的 canceled
-判定不同源：StopStatus 要求 requested && o.Aborted && o.Idle，而本函数无条件把 Aborted && Idle 映射为
-StopConfirmed。实际调用点（craft_control.go DelegationStatus ~758-760 行）在同一响应里分别用两者计算 Phase 与 Outcome：当
-requested 为 false（pre-T17 装配 stopIntents==nil 时 requested 仅为 run.Status=="canceled"；或 GetStopIntent
-瞬时出错且 run 非 canceled）而观察恰为 Aborted && Idle（如预算暂停等其它机制触发的 abort、或异常终止后的残留观察）时，同一响应会给出
-Phase=StopStatus(false,o)="running" 但 Outcome.Status=StopConfirmed
-的自相矛盾投影——一次未被请求（或未被持久记录）的停止被谎报为已确认，前端三态文案将显示错误状态。建议为函数补充 requested 前提参数（requested=false 时返回
-StopRequested），或直接委托 StopStatus(true, o)=="canceled" 复用同一判定，顺带消除两处独立维护的确认条件漂移风险。
+─── internal/modules/craft/lifecycle.go:375-378 ───
+[maintainability · medium] StopIntentOutcome 将"stop 已被请求"前提硬编码为 true 且不进签名，注释宣称的同源纪律（"an abort by
+any OTHER mechanism ... must never project one"）在函数内无法落实——它收不到 requested
+事实，只能信任调用方。唯一生产调用点恰好暴露了这一缺口：craft_control.go DelegationStatus 中 794 行 phase 用真实
+requested（StopStatus(requested, ...)），795 行 fallback 却用本函数（pinned true）；当 intent 存储瞬时读错（760-764 行
+Warnf 分支，requested 保持 false）而观测为 Aborted+Idle+未带 completedAt（live 路径 session.error 置 aborted
+无需消息完成）时，803 行的同源守卫只修正 phase（且此时 phase 本就是 running，守卫空转），fallback 仍为 StopConfirmed；若
+durableStopOutcome 再读失败或无 intent 行（460-468 行原样采用 fallback），只读轮询面将向 DTO 投影 fabricated
+confirmed——恰是本函数文档禁止的结果。建议镜像 StopStatus 签名显式传入 requested，使该误用结构上不可行（调用点改为
+StopIntentOutcome(requested, observation) 后此不对称即消除）。
 
-- func StopIntentOutcome(o Observation) StopOutcomeStatus {
-- 	if o.Aborted && o.Idle {
-+ func StopIntentOutcome(requested bool, o Observation) StopOutcomeStatus {
-+ 	if requested && o.Aborted && o.Idle {
+- 	if StopStatus(true, o) == "canceled" {
++ 	if StopStatus(requested, o) == "canceled" {
   		return StopConfirmed
   	}
   	return StopRequested
-  }
-+ // 或与 StopStatus 共用同一判定：
-+ // func StopIntentOutcome(requested bool, o Observation) StopOutcomeStatus {
-+ // 	if requested && StopStatus(requested, o) == "canceled" {
-+ // 		return StopConfirmed
-+ // 	}
-+ // 	return StopRequested
-+ // }
 
 
-─── packages/views/src/craft/status-notice.tsx:30-30 ───
-[maintainability · medium] T00 冻结契约 packages/contracts/src/craft/web-artifact.ts 已公开导出同名的
-CraftStopOutcomeStatus（CRAFT_STOP_OUTCOMES 派生的 'requested' | 'confirmed' | 'unknown'，经
-craft/index.ts 的 export * 可从 @weknora/contracts 导入）。此处手工重复声明该联合类型，导致：(1) 投影数据源（契约的
-CraftStopOutcome.status，T20 接线时）与横幅词表之间失去编译期关联，词表演进时会静默漂移；(2) 两个同名类型因导入路径不同而产生歧义，下游可能误从 views 导入。同目录
-share.tsx/home.tsx/library.tsx 均已有从 @weknora/contracts 导入冻结契约类型（含运行时词表数组）的既定先例，建议直接复用契约导出。
+─── internal/modules/craft/lifecycle.go:389-389 ───
+[bug · high] `(!o.Aborted && o.Idle)` 这一析取支把"会话空闲"直接当作"正常完成压过了停止"，但空闲本身不构成完成证据：同一观测 `{Idle:true,
+Aborted:false}` 上 StopIntentOutcome 返回 StopRequested（stop 仍在途，lifecycle_stop_t17_test.go:38
+已钉死），两个新谓词对同一 Observation 给出互斥结论，必有一错。权威判定 opencode.Completed（调用点 craft_control.go:790 就在同一轮询里使用）要求
+AssistantParentID 匹配、Finish=="stop"、!PendingTool 等证据，正是"空闲≠完成"的体现；此处为了"Domain-local"丢弃了全部完成证据，仅凭
+Idle 就断言"the Run's terminal fact is its completion"。可达后果：生产调用点 796 行以 !requested 为门，持久 intent 为
+StopUnknown（754 行不置 requested=true）或 intent 读瞬时失败（760 行）时即进入该分支——一个 abort 结果未定、run 行仍非终态的
+Run，仅因会话空闲（如 abort 标记未落盘、turn 记录被裁剪、prompt 从未派发）就被投影为 Phase="completed"；而 durableStopOutcome 优先返回持久
+intent，同一响应可同时携带 Phase=completed 与 Outcome=unknown，自相矛盾，违背本文件 T17 头注释"an outcome that could not be
+determined stays unknown"。建议由调用方传入权威完成判定（opencode.Completed），域内谓词不再从空闲推导完成。
 
-- export type CraftStopOutcomeStatus = 'requested' | 'confirmed' | 'unknown';
-+ // 顶部 import 处增加：
-+ import type { CraftStopOutcomeStatus } from '@weknora/contracts';
+- 	return o.Completed || (!o.Aborted && o.Idle)
++ // completed is the authoritative executor verdict (opencode.Completed at
++ // the call site) — idleness alone is never completion evidence.
++ func StopIntentSuperseded(o Observation, completed bool) bool {
++ 	return completed && !o.Aborted
++ }
+
+
+─── packages/views/src/craft/status-notice.tsx:32-32 ───
+[bug · high] 该 re-export 引用的 `CraftStopOutcomeStatus` 并未从 `@weknora/contracts`
+包入口导出：`packages/contracts/package.json` 的 exports 仅暴露 `"." → ./src/index.ts`，而根 index.ts 对 craft
+模块只做点名转发（第 178-182 行的导出清单不含 `CraftStopOutcomeStatus`，`export *` 只用于
+analytics/usage/query-history；该类型目前仅存在于 `craft/index.ts` 的 `export * from './web-artifact.ts'`
+内部命名空间）。因此此处 `import('@weknora/contracts').CraftStopOutcomeStatus` 在 moduleResolution: Bundler
+下无法解析（TS2305/TS2724），注释宣称的"与投影源 compile-time linked"并未成立。当前之所以未被拦截，是因为根 package.json 的
+`typecheck:shared` 文件清单不含本文件、stop 测试经 tsx 运行不检查类型、且尚无生产代码 import 本文件——一旦 T20 把 CraftStopNotice 接入
+workbench（或本文件进入任何 tsc 程序）即会编译失败。建议在 `packages/contracts/src/index.ts` 的 craft 点名转发清单中补充导出该类型（及
+`CRAFT_STOP_OUTCOMES`，与既有 178/179 行模式一致、纯增量），再保留此处的 re-export；同时建议将本文件纳入 typecheck 覆盖以防再回归。
+
+- export type CraftStopOutcomeStatus = import('@weknora/contracts').CraftStopOutcomeStatus;
++ // packages/contracts/src/index.ts（第 178 行清单追加，纯增量）:
++ // export type { ..., CraftStopOutcomeStatus } from './craft/index.ts';
++ // export { ..., CRAFT_STOP_OUTCOMES } from './craft/index.ts';
 + 
-+ // 如需保留本模块对外导出面，可改为类型再导出而非重新声明：
-+ export type { CraftStopOutcomeStatus };
++ // 本文件保持:
++ import type { CraftStopOutcomeStatus as ContractStopOutcomeStatus } from '@weknora/contracts';
++ export type CraftStopOutcomeStatus = ContractStopOutcomeStatus;
 
 
-─── packages/views/src/craft/status-notice.tsx:32-36 ───
-[maintainability · low] 同一文件内重复硬编码成员可见文案 '已停止'：STATUS_NOTICE_TEXT.canceled（第 11 行）与
-STOP_OUTCOME_NOTICE_TEXT.confirmed 表达的是同一个成员可见事实（任务已停止，且此处 kind 也恰好映射为
-'canceled'）。两处独立维护会在文案演进时漂移——例如产品统一改为「任务已停止」时只改一处，confirmed 停止结果与 canceled 生命周期横幅对同一状态展示两种措辞。建议直接复用
-STATUS_NOTICE_TEXT.canceled 建立显式关联。
+─── internal/application/service/craft_control.go:689-693 ───
+[bug · high] 确认标记持久化失败后没有任何修复路径,且该重放分支主动跳过修复。链条:(1) 首次 Stop 在 runs.Cancel 成功后
+PutStopIntent(confirmed) 失败(701-708 行)或进程恰在两次持久写之间崩溃——这正是本注释自己描述的场景——此时 run 行已 canceled 但意图行停留
+requested;(2) 成员再次 Stop 重试时走到本分支,直接 confirmedReplay() 返回,不尝试回补 confirmed 标记;(3) 之后所有
+DelegationStatus 轮询:意图行非 confirmed(747 行快路径不触发)、run.Status=="canceled" 使 requested=true,最终
+durableStopOutcome 读到 requested——永久投影出 Phase=canceled +
+Outcome=requested("已请求停止,正在等待执行器确认…")的跨面矛盾,注释宣称的 "the durable answer is confirmed either way"
+与实际持久事实相悖。建议在本分支回补标记后再重放。
 
-  const STOP_OUTCOME_NOTICE_TEXT: Record<CraftStopOutcomeStatus, string> = {
-    requested: '已请求停止，正在等待执行器确认…',
--   confirmed: '已停止',
-+   confirmed: STATUS_NOTICE_TEXT.canceled,
-    unknown: '停止结果不明，等待核对',
-  };
+  				case "canceled":
+  					// The CAS already ran (an earlier stop crashed between
+- 					// the CAS and the confirmed marker): the durable
+- 					// answer is confirmed either way.
++ 					// the CAS and the confirmed marker): back-fill the
++ 					// confirmed marker so the durable answer matches the
++ 					// replay — otherwise every later poll projects
++ 					// Outcome=requested next to Phase=canceled forever.
++ 					_, _ = s.stopIntents.PutStopIntent(detachCtx, req.Scope, craft.StopIntent{
++ 						RunID: req.RunKey.RunID, Status: craft.StopConfirmed,
++ 					})
+  					return confirmedReplay(), nil
 
 
-─── internal/application/service/craft_control.go:527-533 ───
-[bug · high] T17 窗口内停止请求失去了"阻断继续执行/派发"的手段。pre-T17 依赖立即 runs.Cancel 使所有 fenced write
-失败从而阻断新派发（被删除的注释即此语义）；T17 把 run 行终态化推迟到确认之后，而持久化 stop intent 目前没有任何围栏/派发消费方（GetStopIntent
-在生产代码中仅本文件出现；craft_workspace.go:564 observeCraftWriterRun 只读 run 行状态）。因此 PutStopIntent(requested)
-之后若 exec.Abort 未送达（失败仅记入 abortNote、不阻断流程），run 仍为 running、其 fenced
-写与新派发照常成功，被接受的停止对仍在执行的委托没有权威约束，与"服务端维持权威停止"的规约相悖。建议：在 fenced write/派发闸门处消费持久化
-intent（requested/unknown 即拒绝该 run 的新派发与写），或为围栏引入可消费的非终态 stopping 事实。
+─── internal/application/service/craft_control.go:701-709 ───
+[bug · medium] 确认标记写入失败(merr != nil)时 Stop 返回 Phase=canceled + Outcome=StopConfirmed,但持久意图行停留
+requested:观察层面 confirmed 是诚实的,可随后的 DelegationStatus 以持久意图为权威,将同一 run 投影为 Phase=canceled +
+Outcome=requested,两面对外答案不一致且(结合上一个 case "canceled" 重放分支不回补标记的问题)永不收敛。建议在 Note
+之外考虑同时投影请求重试,或至少让重试路径具备修复能力(见上一条)。
 
 
 
-─── internal/application/service/craft_control.go:518-522 ───
-[bug · high] run.Status=="canceled" 并非停止旅程独有的事实：craft_lifecycle.go:99（会话删除的 CancelSessionRuns）与通用
-CancelAgentRun 端点（handler/session/agent_run.go:281）都经同一 run 控制器把 run 行置为
-canceled。此短路把这些场景一律误判为"停止已确认"：返回伪造的 Outcome=StopConfirmed（持久化 intent 中并无 confirmed 记录，Note 还声称
-replaying the durable answer），并跳过对可能仍在运行的委托子执行的 Abort。建议：仅当持久化 intent 为 StopConfirmed 时才回放
-confirmed，否则继续后续流程（确认段的 runs.Cancel 冲突分支已能正确处理已 canceled 的行）。
+─── internal/application/service/craft_control.go:0-0 ───
+[bug · medium] 该分支复用 confirmedReplay(),返回 Note "stop already confirmed; replaying the durable
+answer" 与 Outcome=StopConfirmed——与本行内注释 "without claiming a stop journey" 自相矛盾,也违背 531-535
+行自己写明的纪律("conflating them fabricates a stop confirmation")。前端 status-notice.tsx 会把 confirmed
+渲染为已停止横幅,把会话删除/通用 cancel 误报为"停止已确认";且 DelegationStatus 对同一 run(run canceled、无意图行)经
+durableStopOutcome 回退投影 Outcome=requested,形成 Stop 与轮询两面的答案分叉。建议不复用 confirmedReplay,给出独立措辞的应答。
 
-- 		// marker): the repeated stop replays the confirmed answer and never
-- 		// aborts again.
-  		if run.Status == "canceled" {
-+ 			if intent, ierr := s.stopIntents.GetStopIntent(detachCtx, req.Scope, req.RunKey.RunID); ierr == nil &&
-+ 				intent.Status == craft.StopConfirmed {
+  		if run.Status == "canceled" && intentErrNotFound(ierr) {
+  			// The run was canceled by a NON-stop path with no stop intent on
+- 			// record — replay the row's terminal fact without claiming a stop
++ 			// record — replay the row's terminal fact WITHOUT claiming a stop
+  			// journey (and without aborting again).
 - 			return confirmedReplay(), nil
-+ 				return confirmedReplay(), nil
-+ 			}
-+ 			// A non-stop cancellation (session deletion, the generic run
-+ 			// cancel): the stop journey still aborts the sub-execution below;
-+ 			// the confirmation CAS tolerates the already-canceled row.
++ 			return CraftStopStatus{Phase: "canceled",
++ 				Note:    "run already canceled by a non-stop path; nothing to stop",
++ 				Outcome: craft.StopOutcome{RunID: req.RunKey.RunID, Status: craft.StopConfirmed}}, nil
   		}
 
 
-─── internal/application/service/craft_control.go:758-760 ───
-[bug · medium] 持久化确认只有"再次调用 Stop"这一条推进路径：DelegationStatus 按设计只读、unknown 分支注释里的 awaits reconciliation
-没有任何实现。停止返回 "stopping" 后若客户端只轮询，run 永久非终态、writer fence 永久持有。且此处 phase 来自实时观察（aborted+idle 即
-"canceled"）而 Outcome 来自仍为 requested 的持久化 intent，同一响应会出现 phase="canceled" + Outcome=requested
-的矛盾组合；观察不可用（如刷新后无 executor）时又漂回 "stopping"，与"页面刷新读到同一持久事实"的注释矛盾。建议：轮询 phase 与持久化 outcome 同源（intent 非
-confirmed 时不报 canceled），并补充 unknown→confirmed 的对账路径或明确只有重复 Stop 才推进确认。
-
-
-
-─── internal/application/service/craft_control.go:683-687 ───
-[maintainability · low] pre-T17 装配下本函数其余分支都回填了 StopRequested fallback，唯独紧随其后（未变更）的 `return
-CraftStopStatus{Phase: phase}, nil` 返回零值 Outcome（Status 为 ""），同一 DTO 出现第四种取值；一旦 T20 把 Outcome
-接上序列化，前端 CraftStopNotice 的 Record 查表（packages/views/src/craft/status-notice.tsx，键只有
-requested/confirmed/unknown）对 "" 会渲染为无文案的 canceled 横幅。建议该尾分支回填 StopConfirmed（此分支 phase 即
-"canceled"），保持词汇表封闭。
-
-- 		return CraftStopStatus{
-- 			Phase:   "canceled",
-- 			Outcome: craft.StopOutcome{RunID: req.RunKey.RunID, Status: craft.StopConfirmed},
-- 		}, nil
-- 	}
-+ 	// 尾分支（pre-T17 确认路径）保持 DTO 一致：
-+ 	return CraftStopStatus{Phase: phase,
-+ 		Outcome: craft.StopOutcome{RunID: req.RunKey.RunID, Status: craft.StopConfirmed}}, nil
-
-
-─── internal/application/service/craft_control.go:723-728 ───
-[bug · low] ierr != nil（意图存储读失败）时 requested 保持 false：存储抖动的瞬间轮询面从 "stopping" 闪回 "running"，与本变更反复强调的
-fail-closed 降级叙事相反；而同一函数里 Observe 失败且 intent=requested 时又把原始错误直接上抛——同一故障面给出两种不同呈现。建议区分 ErrNotFound
-与其他读错误：非 NotFound 时上抛（或保守保持 requested=true）。
-
-  		case ierr == nil && run.Status != "canceled":
-- 			// The persisted intent (requested, or an unresolved unknown) is
-- 			// what tells the poll the member asked to stop: the T17 run row
-- 			// stays nonterminal until the confirmation, so the stopping
-- 			// status cannot come from the run row alone.
-  			requested = true
-+ 		case ierr != nil && !errors.Is(ierr, craft.ErrNotFound):
-+ 			// 意图存储读故障：如实上抛，而不是悄悄当作"未请求停止"
-+ 			return CraftStopStatus{}, ierr
-+ 		}
-
-
-─── internal/application/service/craft_control.go:453-458 ───
-[maintainability · low] GetStopIntent 的错误被静默吞掉并降级为 fallback：瞬时故障下可能把已 confirmed 的停止投影成
-requested，与函数自身"persisted intent is the authority"的注释相悖；且 ErrNotFound（从未停止过）与其他错误不加区分——从未停止的 run
-也会被投影为 requested（"成员已请求停止"）。错误既不上抛也不记录日志，排障时不可见。建议：非 ErrNotFound 的失败至少记 Warnf，语义上仅在确实无意图行时使用
+─── internal/application/service/craft_control.go:803-807 ───
+[bug · medium] 这个守卫是不可达死代码:craft.StopStatus(interaction.go:42-50)只在 requested==true 时返回
+"canceled",所以 phase=="canceled" 必然 requested==true,条件永假;而它想防御的真实场景——!requested 且观察为
+Aborted+Idle(预算暂停、执行器侧会话删除等非停止机制的 abort)——实际产出 phase=StopStatus(false,…)="running",同时
+fallback=StopIntentOutcome(observation)=StopConfirmed,再经 durableStopOutcome(意图行 NotFound 或瞬时读失败时取
+fallback)返回 Phase="running" + Outcome=StopConfirmed 的自相矛盾 DTO,直接违反 StopIntentOutcome 自己注释的
+same-source 纪律("an abort by any OTHER mechanism … must never project one")。建议改为在 !requested 时钳制
 fallback。
 
-  	if s.stopIntents != nil {
-- 		if intent, err := s.stopIntents.GetStopIntent(ctx, scope, runID); err == nil {
-+ 		intent, err := s.stopIntents.GetStopIntent(ctx, scope, runID)
-+ 		switch {
-+ 		case err == nil:
-  			return craft.StopOutcome{RunID: runID, Status: intent.Status}
-+ 		case !errors.Is(err, craft.ErrNotFound):
-+ 			logger.Warnf(ctx, "craft: stop intent read failed for run %s: %v", runID, err)
-  		}
+- 			if phase == "canceled" && !requested {
++ 			if !requested && fallback == craft.StopConfirmed {
+  				// The observation alone cannot claim a stop cancellation the
+- 				// durable intent never confirmed (same-source discipline).
+- 				phase = "stopping"
++ 				// durable intent never confirmed (same-source discipline):
++ 				// StopStatus never reports "canceled" without requested, so
++ 				// clamp the outcome fallback instead of the unreachable phase.
++ 				fallback = craft.StopRequested
+  			}
+
+
+─── internal/application/service/craft_control.go:203-208 ───
+[bug · medium] stopIntents 是普通接口字段,SetStopIntents 做构造后写入,而 Stop/DelegationStatus 在请求 goroutine
+上无同步读取。同一 struct 中完全相同注入模式的 executor 专门用 atomic.Pointer 规避该窗口(SetExecutor/currentExecutor);文档 ledger
+记载 T20 将在生产容器按同一时机装配该 seam,届时若注入与存活请求交叠即构成数据竞争(Go 内存模型下是未定义行为)。建议对齐本文件既有并发风格,改用 atomic.Pointer。
+
+  func (s *CraftControlService) SetStopIntents(store CraftStopIntentStore) {
+  	if s == nil || store == nil {
+  		return
   	}
-  	return craft.StopOutcome{RunID: runID, Status: fallback}
+- 	s.stopIntents = store
++ 	s.stopIntents.Store(&store)
+  }
++ 
++ // 配套:字段改为 stopIntents atomic.Pointer[CraftStopIntentStore],
++ // 读取处统一走 if held := s.stopIntents.Load(); held != nil { … *held … }
 
 
-─── internal/application/service/craft_control.go:621-627 ───
-[bug · high] T17 快速中止场景下确认写入被本分支吞掉，run 行永久非终态。机制：真实
-opencode.Executor.Abort（executor.go:367-375）在内联快照确认 Aborted 时会调用 SaveResult 写入 Status:"canceled"
-的委托结果；该写入经 lockToolRun→fenced（agent_run.go:1270-1274）要求 run 行仍为 running/recovering。pre-T17 先
-runs.Cancel 使该写入必然失败（ErrLeaseLost，结果从不落库）；而 T17 刻意把终态化推迟到确认之后，Abort 执行时 run 行仍是 running，于是 canceled
-结果成功落库。随后本处（Observe 之后、确认尾部之前）的 GetResult 读到该结果即提前返回：Phase 报 "canceled"、Note 谎称 "completed
-normally"、Outcome 停在 requested，而 runs.Cancel（终态 CAS）与 PutStopIntent(confirmed)（行 645-687）永远不执行——run
-行永久非终态、writer fence 永久持有、intent 永久 requested。且重复 Stop 在更早的 step-2 GetResult（行
-556）就被同一结果短路，该状态无法通过停止面自愈。T17 旅程测试使用不写结果的 controlExecutor fake，未覆盖此路径。建议：T17 路径下
-result.Status=="canceled" 不得从本分支退出——它是 executor 自身的中止确认，应流转到下方的终态写入+confirmed 标记（并修正 Note 文案）；step-2
-分支同理需放行 canceled 结果以允许重试推进确认。
+─── internal/application/service/craft_control.go:145-146 ───
+[documentation · low] GetStopIntent 的接口文档未钉死 not-found 错误契约,而 intentErrNotFound 及
+Stop/DelegationStatus 的全部分支判定都依赖 errors.Is(err, craft.ErrNotFound)。生产实现(T20 所有)若返回裸
+sql.ErrNoRows/datastore 错误,所有"无意图行"读取都会被判为瞬时故障:Stop 会向已 canceled 的 run 重复落 requested 意图并再次
+abort,confirmedReplay 快路径永不触发,durableStopOutcome 一律退化为 fallback。接口是 T20 实现方的唯一契约来源,建议在此显式钉死。
 
-  		if result, rerr := s.store.GetResult(detachCtx, req.Scope, req.TaskID); rerr == nil {
-+ 			if s.stopIntents == nil || result.Status != "canceled" {
-- 			return CraftStopStatus{
-+ 				return CraftStopStatus{
-- 				Phase: stopPhaseForResult(result), Result: &result,
-+ 					Phase: stopPhaseForResult(result), Result: &result,
-- 				Note:    "the delegation completed normally while the stop was in flight; the original result is preserved",
-+ 					Note:    "the delegation completed normally while the stop was in flight; the original result is preserved",
-- 				Outcome: requestedOutcome(),
-+ 					Outcome: requestedOutcome(),
-- 			}, nil
-+ 				}, nil
+- 	// GetStopIntent reads one Run's durable stop intent.
++ 	// GetStopIntent reads one Run's durable stop intent. It MUST return
++ 	// an error wrapping craft.ErrNotFound when no intent row exists —
++ 	// callers distinguish "no row" from a transient store failure via
++ 	// errors.Is(err, craft.ErrNotFound).
+  	GetStopIntent(context.Context, craft.Scope, string) (craft.StopIntent, error)
+
+
+─── internal/application/service/craft_control.go:812-813 ───
+[bug · low] 尾部兜底(及 770/792 行的 completed 分支)在无意图行(NotFound)时无条件回退 StopRequested:该状态端点是通用的 GET
+/sessions/:id/craft/runs/:run_id/delegations/:task_id/status,一个从未请求停止、正常执行中的 delegation 被轮询也会投影出
+Outcome=requested("已请求停止,正在等待执行器确认…"),凭空捏造"成员请求过停止"这一事实;一旦 T20 把 Outcome 序列化到前端 CraftStopNotice
+横幅即成为用户可见的误导。建议仅在存在停止旅程证据(意图行存在、run 行 canceled 或 requested=true)时投影 Outcome,否则返回零值 Outcome。
+
+
+
+─── internal/application/service/craft_control.go:546-547 ───
+[documentation · low] T17 分支把 runs.Cancel(旧路径中"使所有围栏写失败、从而阻断一切新 dispatch"的机制)推迟到确认之后,而本次变更内(含
+lifecycle.go 新增的 66 行辅助类型)没有任何组件消费停止意图来阻断 dispatch——意图 store 的消费方仅本文件的 Stop/DelegationStatus。ledger
+已把"dispatch 阻断改查持久 stop intent"与容器装配 SetStopIntents 都排给 T20 同批落地,因此建议在此处补一行注释显式记录该耦合,避免 T20 只装配
+store 而不带 dispatch 阻断时,成员请求停止后 run 在 abort 生效前的窗口内仍可派发新工作。
+
+  		// 1. The stop intent persists BEFORE anything is aborted: an accepted
+- 		//    stop survives every later failure.
++ 		//    stop survives every later failure. NOTE: unlike the pre-T17
++ 		//    branch below, nothing here blocks new dispatch until T20 lands
++ 		//    the intent-aware dispatch check — the run row stays nonterminal
++ 		//    by design and the window is bounded by the Abort in step 3.
+
+
+─── internal/application/service/craft_control.go:624-627 ───
+[bug · medium] 此处无条件 PutStopIntent(StopUnknown) 会把行级已终态确认的停止永久降级为 unknown/stopping，且无收敛路径。链条：首次 Stop
+在 runs.Cancel(676 行)成功后、confirmed 标记写入前崩溃或标记写入失败(701-708 行，即 689-693 行注释自述的场景)——run 行已
+canceled、intent 停留 requested；成员重试 Stop 时，537 行(intent≠confirmed)与 540 行(要求 intentErrNotFound，此处
+ierr==nil)都不早退，流程继续再次 Abort+Observe；已被停止/清理的会话 Observe 失败后，本分支把 intent 从 requested 降级写入 unknown 并回答
+Phase=stopping。此后 DelegationStatus：747 行快路径(intent==confirmed)永不触发，778-786 行把 unknown 原样回放——run
+行明明已终态 canceled，轮询面却永久显示 "stopping + 停止结果不明，等待核对"，再次重试 Stop 又循环复写 unknown。与已确认问题 #1(case "canceled"
+重放分支跳过修复)不同，这条是本分支对已终态事实的主动降级。建议在写 unknown 前检查 run.Status：已 canceled 时跳过降级(并宜顺势回补 confirmed 标记，与 #1
+的修复方向一致)，仅对行级仍非终态的 run 记录 unknown。
+
+- 		if s.stopIntents != nil {
++ 		if s.stopIntents != nil && run.Status != "canceled" {
++ 			// Only a still-nonterminal run records the durable unknown; a
++ 			// terminally canceled row replays its confirmed fact instead of
++ 			// downgrading the stop journey to unknown.
+  			if _, uerr := s.stopIntents.PutStopIntent(detachCtx, req.Scope, craft.StopIntent{
+  				RunID: req.RunKey.RunID, Status: craft.StopUnknown,
+  			}); uerr == nil {
+
+
+─── internal/application/service/craft_control.go:794-802 ───
+[bug · medium] superseded 收敛对 Outcome 投影完全无效，悬空 intent 在两条表面上永久错配。两个缺口：(1) 795 行把 fallback 传入
+durableStopOutcome(452-469 行)，但后者在 intent 行读取成功时直接返回 intent.Status、丢弃 fallback——而本分支可达的前提恰是
+intent=StopUnknown 且读取成功(754 行对 unknown 不置 requested)，因此 800 行的 fallback=StopRequested 是死赋值，最终仍投影
+Outcome=unknown("停止结果不明，等待核对")与 Phase=completed 永久并存，正是 797-799 行注释声称要消除的错配；(2)
+更常见的陈旧形态——intent=requested 的停止被 succeeded/failed 正常完成超越——因 754 行将 requested 置
+true，本分支(!requested)永不可达，768-770、790-792、812-813 行及 Stop 的 524-529、579-583、656-661 行全部投影
+Outcome=requested("已请求停止，正在等待执行器确认…")与 Phase=completed/failed 并存，且没有任何路径退役该 intent(Stop 对终态 run
+早退不写)。上一轮评审要求的"完成/失败路径覆写或退役悬空 intent"实际未落地：谓词只修了 phase。建议以行级终态为准判定超越(如
+craft.WriterRunTerminal(run.Status) && run.Status != "canceled"，存储的 succeeded/failed 委托结果同理)，命中时绕过陈旧
+intent 行改投 superseded 后的诚实结果(或在该等路径退役/覆写 intent 行)。
+
+- 			phase := craft.StopStatus(requested, observation)
+- 			fallback := craft.StopIntentOutcome(observation)
++ 			superseded := craft.WriterRunTerminal(run.Status) && run.Status != "canceled"
+  			if !requested && craft.StopIntentSuperseded(observation) {
+- 				// A normal completion overtook a never-confirmed stop: the
+- 				// durable intent is stale and projecting it would show
+- 				// "waiting for the executor" next to Phase=completed forever.
+- 				fallback = craft.StopRequested
++ 				superseded = true
 + 			}
-+ 			// Under T17 the executor persists the canceled result while the
-+ 			// run row is still nonterminal: that is its own abort confirmation
-+ 			// — fall through to the terminal write and the confirmed marker
-+ 			// below instead of exiting with Outcome=requested.
-  		}
++ 			if superseded {
++ 				// A non-canceled terminal outcome overtakes the stop: the
++ 				// durable intent is stale — project the superseded fact, not
++ 				// the lingering intent row (durableStopOutcome would replay it).
+  				phase = "completed"
++ 				return CraftStopStatus{Phase: phase,
++ 					Outcome: craft.StopOutcome{RunID: key.RunID, Status: craft.StopRequested}}, nil
+  			}
 
 
-LLM retry report summary: 3 of 48 requests affected -- 3 requests recovered after retry
+LLM retry report summary: 1 of 25 requests affected -- 1 request recovered after retry
 
-Core review (3 requests):
-- internal/application/service/craft_control.go: rate limited (HTTP 429) -> rate limited (HTTP 429) -> succeeded
-- internal/application/service/craft_control.go: rate limited (HTTP 429) -> rate limited (HTTP 429) -> rate limited (HTTP 429) -> rate limited (HTTP 429) -> rate limited (HTTP 429) -> succeeded
-- internal/application/service/craft_control.go: rate limited (HTTP 429) -> rate limited (HTTP 429) -> rate limited (HTTP 429) -> rate limited (HTTP 429) -> rate limited (HTTP 429) -> succeeded
+Core review (1 request):
+- internal/application/service/craft_control.go: rate limited (HTTP 429) -> succeeded
 
 Per-attempt detail: --format json (retry_report).
