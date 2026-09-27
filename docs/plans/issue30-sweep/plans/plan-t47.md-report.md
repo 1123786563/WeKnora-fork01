@@ -776,3 +776,52 @@ $ pnpm --filter @weknora/mobile test
 ## T8R.6 提交
 
 - 本轮仅追加本报告章节（docs 提交，SHA 见 submit_result）。代码零改动——Task 8 交付维持 `8821bdf6d` 原样。
+
+---
+
+# T8 第二轮复核（实现员-t47-任务9，同一任务再次派发）
+
+## T8R2.1 派发现状核实（本会话亲眼核实）
+
+本会话再次收到「第 9/9 个任务」派发（任务定位、需求文件、前置接口行与 T8R 轮所收派发单同形——前置接口行仍是 research-integration-smoke 三导出，与 Task 8 自身 Produces 逐字重合，维持 T8R.5 的重派判定）。本会话核实（git log / git status --short / 文件读取，均为本会话实跑）：
+
+- Task 8 代码交付 `8821bdf6d`（2 文件 +163）、报告 `3107a6511`、第一轮复核 `6a1227ce2` 均已在树上；工作区 clean（`git status --short` 零输出）。
+- 本会话不重复实现（不撤销/不覆盖他人交付，TDD 的 RED 无法对已交付代码重演），执行**第二轮独立复核**：①交付物与计划代码块逐字 diff；②计划 Step 4 三段串联命令本会话亲自重跑。
+
+## T8R2.2 交付物逐字 diff（本会话实跑）
+
+- **实现文件**：`diff <(sed -n '3688,3807p' plan-t47.md) apps/mobile/src/research-integration-smoke.ts` → **exit=0，与计划 Task 8 Step 3 代码块逐字一致**（零差异）。
+- **测试文件**：`diff <(sed -n '3643,3672p' plan-t47.md) apps/mobile/src/research-integration-smoke.test.ts` → 仅一处追加：计划 3 测试（前 30 行）逐字一致 + 第 4 个 opt-in 实跑测试（31-43 行，skip 门控）。该微偏差已由 T8.3 首次声明（依据计划 Step 4 明文「有真实环境时另加 opt-in 实跑（缺环境如实 skip，不伪造）」）并经 T8R.2 复核确认，本轮 diff 再次实证其边界精确：无其它任何改动。
+
+## T8R2.3 验证命令重跑（本会话实跑，一条串联命令原样执行）
+
+```
+$ pnpm --filter @weknora/mobile exec tsx --test src/research-integration-smoke.test.ts && pnpm --filter @weknora/mobile typecheck && pnpm --filter @weknora/mobile test
+✔ researchIntegrationConfig skips without credentials and rejects non-public origins (17.739917ms)
+✔ runResearchIntegration without credentials reports an honest skip shape (0.932292ms)
+✔ evidence records never contain credential material (1.712ms)
+﹣ runResearchIntegration executes against a real deployment when credentials are provided (0.252625ms) # SKIP
+ℹ tests 4 / ℹ pass 3 / ℹ fail 0 / ℹ skipped 1
+
+> @weknora/mobile@0.0.0 typecheck
+> tsc --noEmit        （零输出，串联继续）
+
+ℹ tests 233 / ℹ pass 221 / ℹ fail 0 / ℹ cancelled 0 / ℹ skipped 12 / ℹ duration_ms 367314.74975
+chain-exit=0
+```
+
+三段全过：证据契约 4 项（3 pass + 1 诚实 SKIP，0 fail）；typecheck 零输出；全应用 233 项（221 pass + 12 skip，0 fail）。数字与前两轮（T8.2 / T8R.3）完全一致，无回归漂移。12 个 skip 均为 opt-in 真实 HTTP 用例缺凭据的诚实跳过。
+
+## T8R2.4 AC3 opt-in 声明（与 T8R.4 同口径）
+
+本会话 `env | grep -c WEKNORA_MOBILE_TEST` → 0（无凭据）。设凭据重跑命令未运行（无凭据可设，不伪造）。真实部署 AC3 证据仍依赖具备环境时重跑本测试文件自动产出；替代证据链不变（Task 3 Go 真实迁移 E2E + Task 6 Interface 场景 + Task 4/5 wire 契约 + Task 7 控制器/路由 + 本任务证据契约与全应用回归，均已在树上并经本/前会话实跑）。
+
+## T8R2.5 自检发现
+
+- 本会话零代码改动：验证命令跑完 `git status --short` 仍零输出；报告追加前工作区仅本报告文件待提交；未触碰源码/测试；未派发子代理；未推送远端。
+- 三轮独立验证（T8 实现 / T8R / T8R2）输出零漂移，Task 8 交付稳定性充分确认。
+- 重申 T8R.5 建议：计划级收口命令（含 Go 侧）属主控/终局任务职责，本任务授权范围内不执行。
+
+## T8R2.6 提交
+
+- 本轮仅追加本报告章节（docs 提交，SHA 见 submit_result）。代码零改动——Task 8 交付维持 `8821bdf6d` 原样。
