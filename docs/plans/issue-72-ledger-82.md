@@ -87,6 +87,12 @@
 | Task 9 真实栈 | 见 `356b10772`+`settle-evidence/t9-integration-run.txt` | `go test -tags lago_integration -run TestLagoIntegrationSettle -v` **PASS（17.6s，非 skip）**；证据 grep sk_test/whsec_ = 0 | **PASS** | 全链：gated create→等 unsettled PI→settle→真实 PI 事件+真实 secret 签名投递→active+D6'→重放 no-op。暴露并修复两缺陷（Ruling R-13 幂等键、R-16 两步 fees 读） |
 | Task 10 脚本 OCR | 见收尾提交 | `node browser_flow_82.mjs`（缺 env）exit 2 + stderr 提示（三脚本同口径）；`python3 -c "import alipay_gateway_stub/alipay_sandbox_notify"` 冒烟 OK；`verify_ac_assertions.py`（74 目录）既有证据重放 ALL PASS | PASS | 三 .mjs 凭据 env 必需+FLOW82_WEB/EXPECT_CNY 参数化+waitForSelector+fileURLToPath+paid 冗余条件删；KEY_DIR env 化；四副本 endgame 放宽；81 docstring 修正 |
 | Task 10 真实流程 | 见收尾提交 | API 链全通（t11 栈+支付宝 stub+真后端 :8093）：purchase→precreate→**同步面**→签名回调 success→**paid_awaiting_activation**→drain settle→webhook 投递→**active+fulfilled+applied 回执**；重复回调 success 且 fulfill 事件不增（AC3a）；四对象证据 `lago-four-objects-after-settle.txt`（subscription active/invoice finalized+numbered+succeeded+fee 1650 proration/payments 恰 1 succeeded/wallet 购买批次） | PASS（API 面） | 浏览器 UI 面未实跑（前端 jsdom 测试 12/12 覆盖逻辑；真实浏览器断言留给复验）；沙箱残余披露不变 |
+| Task 12 settle 收口 | `0782c31fc` | RED 7 用例全 FAIL（形态与 r2 findings 一一对应）→ GREEN：定向 PASS + 全包 `go test ./internal/modules/commercial/commercialplatform/ -count=1` **ok 72.337s**；`go vet -tags lago_integration` clean | PASS | D9 消歧闸（跨发票 fail-closed 零扣款）/D10 删 default 改写（调用序列 5→4）/D13 瞬态分类（binding+subscription 429→Unreachable）/r2:166 key 检查提前（零出站）；既有用例同步调整 5 处（PicksLatest 改同 invoice 形态——D9 语义） |
+| Task 13 购买竞态 | `2cbea7f64` | RED（409 复现 500 形态精确命中 r2:306）→ GREEN + 回归 `go test ./internal/modules/commercial/... ./internal/handler/ ./internal/router/ -count=1` **9 包全 ok** | PASS | D11 paid 窗口防重开（`CurrentPaidAwaitingActivationPurchaseOrder`，paid→fulfilled 由 OrderRow.State 承载——谓词收敛为 state='paid'，计划所写 fulfillment_state 列在仓库层不存在，Ruling R-27）/D12 409+winner 重放+retry 链分类/PG 下划线索引名/fallback 跳死 pending/r2:818 legacy 挂回 plan 校验/r2:327 doc 错位顺手修 |
+| Task 14 回调封顶 | `d0f3b9c89` | RED 3 用例 → GREEN + 回归 9 包全 ok + `make check-backend-architecture`（0 violations）+ `make verify-module-moves`（16 manifests） | PASS | D14 MaxBytesReader 1MiB（入口处，两分支共用）；r2:119 三读分类（quote NotFound/快照损坏/publication NotFound→attention+nil 不中止 drain 批；瞬态→pending）；r2:341 isSubscriptionPurchase Warn |
+| Task 15 前端收口 | `cfd20ebc1` | RED 5 用例+order-state SyntaxError → GREEN 25/25；`pnpm test:web` node26 **2311/2311**（新增 6 测试）；`pnpm typecheck:web` **5 错=F23 基线不增** | PASS | D15 六点：run() 守卫/channelRef 出依赖/submittedChannel null 深链不臆测/文案分流（订单加载失败）/令牌集补 2/canceled 专属文案+隐藏支付入口；PURCHASE_STATE_LABEL 共享词表（BillingPage 接入） |
+| Task 16 脚本清偿 | `6cc9d7c40` | `python3 -m unittest test_phases -v` **27/27**（26 既有+1 新增顺序契约）；三 .mjs env 冒烟 exit 2+stderr；`bash -n`×5/`py_compile`×8 OK；红线 grep（issue82-Flow/sk_/whsec_）**零命中** | PASS | 明文口令→PASSWORD 变量（安全红线首项清偿）；token 落盘 REDACTED；密码 jq 构造+stdin；DB_PATH :? 前置守卫；LAGO_KEY order by created_at+非空断言；TENANT 序号断言；provider_code 白名单+WSECRET stdin（phases.py）；PHASE_SEQUENCE 由 PHASE_ORDER 派生；Timeline.text() 无副作用；`_browser_lib.mjs` 共享库+`r5-verify/seed.sh` |
+| Task 17 真实复验 | 见收尾提交 | 四腿浏览器 21/21 PASS（真栈：Lago weknora-lago-82r5 v1.53.0+后端 :8093+vite :5194+stub :8294+Playwright 1.63.0）；四对象 `lago-four-objects-r5.txt`；重放三面 `rv5-06-replay-idempotent.txt`；Go 回归 10 包全 ok+双架构门 OK+vet(-tags lago_integration) clean；web 2311 中 2310 PASS（1 个未触碰 timing flake 单跑 7/7）+typecheck 5=基线；红线四项全零 | **PASS**（R-19 清偿；(h) T9 如实披露） | 判据 (a)-(g) 全过；(h) T9 实跑尝试：r5 共享栈 FAIL（webhook 400——测试取列表首个 succeeded PI，共享栈上属重复应用被 Lago 正当拒绝——环境形状缺陷）+t11 专属栈 lab.env 缺失——不以 skip 冒充 pass，等价覆盖由真实栈四腿+四对象+重放承担 |
 
 ## Ruling（执行期裁决）
 
@@ -209,3 +215,30 @@
 | **活栈端到端（82flow :48889，tenant 9 失败现场）** | 临时 `-tags flowverify_live` 测试（验后已删）经真实 adapter 读 purchase/benefits 快照 | F-5 active+1650+succeeded；F-2' features 三 code；F-4 月度 10.9 —— 全 PASS |
 | T9 真实栈全量 | — | **未跑**（Stripe key 等 7 env 不可得；活栈验证覆盖被改读取路径） |
 | 安全红线自查 | diff 审查 | 无 SQL 改动（既有参数绑定不动）、无凭据入文件（活栈 key 仅 shell env）、无新外呼路径 |
+
+## 第 4 轮收尾判定（2026-09-28 执行会话）
+
+**通过判据（计划 r5 复验轮）**：
+
+- (a) 三态文案浏览器断言：四腿 21/21 PASS（rv5-01~05 截图；R-19 清偿）—— **PASS**
+- (b) 同步面零推进：browser_02 回访+显式刷新仍待付款（AC2）—— **PASS**
+- (c) 重放三面（重复 notify 计数不变/重复 webhook 四对象 STRICT-BYTE-IDENTICAL/重启 drain 零二次发放）+ D11 竞态面（paid 窗口重购返回同一订单、渠道侧恰 1 次 PRECREATE）—— **PASS**
+- (d) 四对象齐全 + D6' 判据（fee 1320，0<1320≤9900 proration 剪裁披露）；`ac4-sandbox-credentials-unavailable` 残余不变 —— **PASS**
+- (e) 红线自查：sk_/whsec_ 字面量、明文口令、force-active 直写、manual payments 调用四项全零 —— **PASS**
+- (f) Go 回归 10 包全 ok；architectureguard 0 violations；modulemove 16 manifests —— **PASS**
+- (g) web node26 全量 2311 中 2310 PASS（唯一失败为未触碰的 debounce timing 测试，单文件重跑 7/7——负载 flake 披露）；typecheck 5 错=F23 基线 —— **PASS**
+- (h) `go vet -tags lago_integration` clean；T9 集成测试实跑尝试如实披露：r5 共享栈 FAIL（webhook 400——测试取 Stripe 列表首个 succeeded PI，在已 finalize 过浏览器轮 PI 的共享栈上属重复应用、被 Lago 正当拒绝——测试的环境形状缺陷，产品侧该 400 正是幂等拒绝的表现）；专属 t11 栈 lab.env 本地文件缺失无法构造 env —— **披露（skip≠pass 纪律）**，等价覆盖由真实栈四腿+四对象+重放三面承担
+
+**第 4 轮 Ruling**：
+
+- **R-27（fulfillment_state 列不存在）**：计划 D11 谓词写「state='paid' + fulfillment_state 非 fulfilled」——仓库层 OrderRow 无 fulfillment_state 列（paid→fulfilled 由 OrderRow.State 承载，order.go MarkFulfilled）。`CurrentPaidAwaitingActivationPurchaseOrder` 谓词收敛为 `state='paid'`（语义等价：fulfilled 行自然不命中）。
+- **R-28（sqlite3 CLI 无位置参数绑定）**：Task 16 按计划把 seed SQL 改 `?1` 绑定——真跑实证 homebrew sqlite3 3.51.2 对 shell 调用不绑定（`?1` 落 NULL 被 NOT NULL 拒、额外 argv 被当第二条 SQL）。回退为 A-08 UUID 白名单（^[0-9a-f-]{36}$）+ 内插（r2 建议的等效形态），四份 seed 同步。
+- **R-29（重复注册的 400 形态）**：本 worktree 当前后端对重复注册答 `400 + already exists`（r4 轮记录的 409 属当时集成分支）。r5 seed 容忍集扩为 409 或 400-with-marker；r4 三份 seed 为已冻结轮次证据不动。
+- **R-30（环境处置）**：OrbStack 重启自动恢复历史 weknora-lago-82flow 栈占 48889/48890——`docker compose down`（无 -v，卷保留，该栈证据已冻结）释放端口；本轮新栈 weknora-lago-82r5。后端 env 补 `WEKNORA_COMMERCIAL_STRIPE_API_KEY=$STRIPE_SECRET_KEY` 映射（gated create 需要它，首次 503 unconfigured 的根因）。
+- **R-31（T9 共享栈形状）**：见判据 (h)——T9 测试取「Stripe 列表首个 succeeded PI」在共享栈上会拿到已 finalize 的旧 PI（Lago 正当 400）。修复测试（按本轮锚定 invoice 过滤）属第 3 轮冻结证据面改造，超出本轮计划范围，移交复验。
+
+**明确移交/残余（第 4 轮）**：
+
+1. T9 集成测试的共享栈形状修复（按 gated create 的 invoice 锚定过滤 PI）+ 专属栈 lab.env 重建——下轮或集成会话。
+2. AC4 沙箱残余 `ac4-sandbox-credentials-unavailable`（不变，R-4 已披露边界）。
+3. #84/#92 已移交项不变（废弃 pending 单回收、cancel 命令、续期收款路由）；D16 不修项不变。

@@ -120,11 +120,12 @@ done
 uuid_shape "$UID_B" || { say "FAIL: login response user id is not a UUID ('$UID_B') — refusing SQL interpolation"; exit 1; }
 
 say "== grant plan_publish to B at platform scope (seed row) =="
-# (OCR r2 / safety constraint) The SQL binds ?1 parameters — no string
-# interpolation of external input into the statement (the UUID whitelist
-# above stays as defense in depth).
-sqlite3 "$DB" "insert or replace into commercial_grants (tenant_id, user_id, capability, granted_by, version) values (0, ?1, 'plan_publish', 'flow-verifier-r4', 1);" "$UID_B"
-say "granted: $(sqlite3 "$DB" "select count(*) from commercial_grants where capability='plan_publish' and user_id=?1;" "$UID_B") row(s)"
+# (OCR r2 / safety constraint) The shell's sqlite3 CLI has NO usable
+# parameter binding for statement values; the STRICT UUID whitelist above
+# (uuid_shape, provably [0-9a-f-]{36}) is the injection gate before the
+# value ever reaches the statement.
+sqlite3 "$DB" "insert or replace into commercial_grants (tenant_id, user_id, capability, granted_by, version) values (0, '$UID_B', 'plan_publish', 'flow-verifier-r4', 1);"
+say "granted: $(sqlite3 "$DB" "select count(*) from commercial_grants where capability='plan_publish' and user_id='$UID_B';") row(s)"
 
 say "== read Lago 9900-plan baseline (BEFORE this round's publish) =="
 # (A-09) The 82flow Lago stack is shared across rounds — "a 9900 plan

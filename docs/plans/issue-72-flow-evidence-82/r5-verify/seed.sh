@@ -30,19 +30,30 @@ PLAN_FEN="${PLAN_FEN:-9900}"
 : > "$EV/seed-run.txt"
 say() { echo "$@" | tee -a "$EV/seed-run.txt"; }
 
-reg() { # reg <email>
+reg() { # reg <email> -> "<body>\n<http_code>"
   jq -nc --arg e "$1" --arg p "$PW" '{username:$e,email:$e,password:$p}' \
-    | curl -s -o /dev/null -w "%{http_code}" -X POST "$BACKEND/api/v1/auth/register" \
+    | curl -s -w "\n%{http_code}" -X POST "$BACKEND/api/v1/auth/register" \
         -H 'Content-Type: application/json' --data @-
 }
 
+# (r5 observed) THIS backend answers a duplicate registration with
+# HTTP 400 + {"message":"user with this email already exists"} (the r4
+# rounds' seeds recorded 409 on their integration branch) — BOTH shapes
+# are the documented rerun tolerance; a 400 WITHOUT the marker is a real
+# parameter failure and fails.
 reg_expect() { # reg_expect <label> <email>
-  local label="$1" code
-  code=$(reg "$2") || true   # keep the 000 diagnosis reachable
+  local label="$1" out code body
+  out=$(reg "$2") || true   # keep the 000 diagnosis reachable
+  code=$(tail -n1 <<<"$out"); body=$(sed '$d' <<<"$out")
   case "$code" in
     2*) say "$label: HTTP $code (registered)" ;;
-    409) say "$label: HTTP 409 (already registered — documented rerun tolerance, the login below reuses this account)" ;;
-    *) say "FAIL: $label register answered HTTP $code (expected 2xx; only the documented 409 rerun shape is tolerated)"; exit 1 ;;
+    409) say "$label: HTTP 409 (already registered — rerun tolerance, the login below reuses this account)" ;;
+    400) if [[ "$body" == *"already exists"* ]]; then
+        say "$label: HTTP 400 already-exists (rerun tolerance, the login below reuses this account)"
+      else
+        say "FAIL: $label register answered HTTP 400: ${body:0:160}"; exit 1
+      fi ;;
+    *) say "FAIL: $label register answered HTTP $code (body: ${body:0:120})"; exit 1 ;;
   esac
 }
 
@@ -85,10 +96,12 @@ uuid_shape() { [[ "$1" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA
 uuid_shape "$UID_B" || { say "FAIL: login response user id is not a UUID ('$UID_B') — refusing further processing"; exit 1; }
 
 say "== grant plan_publish to B at platform scope (seed row) =="
-# (safety constraint) ?1 parameter binding — no interpolation of external
-# input into the SQL statement (UUID whitelist stays as defense in depth).
-sqlite3 "$DB" "insert or replace into commercial_grants (tenant_id, user_id, capability, granted_by, version) values (0, ?1, 'plan_publish', 'flow-verifier-r5', 1);" "$UID_B"
-say "granted: $(sqlite3 "$DB" "select count(*) from commercial_grants where capability='plan_publish' and user_id=?1;" "$UID_B") row(s)"
+# (safety constraint) The shell's sqlite3 CLI has NO usable parameter
+# binding for statement values; the STRICT UUID whitelist above
+# (uuid_shape, provably [0-9a-f-]{36}) is the injection gate before the
+# value ever reaches the statement.
+sqlite3 "$DB" "insert or replace into commercial_grants (tenant_id, user_id, capability, granted_by, version) values (0, '$UID_B', 'plan_publish', 'flow-verifier-r5', 1);"
+say "granted: $(sqlite3 "$DB" "select count(*) from commercial_grants where capability='plan_publish' and user_id='$UID_B';") row(s)"
 
 say "== read Lago plan baseline (BEFORE this round's publish) =="
 LAGO_KEY=$(docker exec weknora-lago-82r5-db-1 psql -U lago -tAc "select value from api_keys order by created_at desc limit 1" | tr -d '[:space:]')
