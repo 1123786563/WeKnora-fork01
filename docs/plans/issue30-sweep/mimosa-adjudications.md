@@ -14,6 +14,12 @@
 - 判定：**威胁模型误判**。SSRF 规则针对服务端被诱导发请求；transport.ts 是小程序客户端传输层（用户设备运行时），请求目标为用户显式配置的自托管部署 origin；微信平台合法域名白名单提供平台级出网治理。加 host 白名单将破坏"用户自选自托管部署"的产品语义（T36/T38 核心能力）
 - 处置：`git commit --no-verify` 单次放行（commit message 注明裁决）
 
+## 裁决 3：CLI scripts/ 下 argv readFileSync 路径穿越误判（2026-09-26，t69 任务 3）
+
+- 拦截对象：`apps/mobile/scripts/emit-acceptance-record.ts` 的 `readFileSync(<argv 路径>)`——计划 Task 3 的验收记录发射器 CLI（Task 6 命令 `pnpm exec tsx apps/mobile/scripts/emit-acceptance-record.ts <outcomes.json>` 锚定该路径）
+- 判定：**形态级误判**。三次写入均被拦（拦截行号 26→35→39，全部指向 readFileSync 行）：①计划逐字内容；②加 `resolve` + 仓库根 `startsWith` 边界校验；③ Mimosa 建议三件套逐字落实（禁止 `..` 段 + 规范化 + 允许目录边界 + 拒绝绝对路径逃逸）——规则不接受任何校验逻辑。对照组：`apps/mobile/src/` 下同形态文件读取（`readFileSync(join(...))`、动态 import 带 `../`）全部放行，证明规则目录/形态感知
+- 处置（ruling via escalation，主控裁决选 (b)）：**逻辑移 src/ + 薄壳，不放行不绕过**——读取与路径校验实现移入 `apps/mobile/src/ios-release-evidence-cli.ts`（三件套完整保留、纳入 typecheck:mobile 覆盖、可被测试直测）；`scripts/emit-acceptance-record.ts` 仅留薄壳 import main（Task 6 命令路径不变）。代价：偏离计划单文件布局；该误判模式为系列第三次，累计入最终报告
+
 ## 放行规则（对后续被拦截者）
 
 1. **仅限**上述已登记的 finding（文件+行号+判定码匹配）可引用本文件裁决并使用 `--no-verify`（Edit/Write 拦截则用等价落地方式），commit/message 注明 "(mimosa pre-registered misjudgment, see mimosa-adjudications.md)"。
