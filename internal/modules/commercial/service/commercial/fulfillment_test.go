@@ -109,7 +109,8 @@ func setupFulfillment(t *testing.T, gw domain.CommercialGateway) (*FulfillmentSe
 	if s, err := db.DB(); err == nil {
 		s.SetMaxOpenConns(1) // serialize SQLite writers; claims still race logically
 	}
-	if err := db.AutoMigrate(&repocommercial.OrderRow{}, &repocommercial.PaymentAttemptRow{}, &repocommercial.OutboxEvent{}); err != nil {
+	if err := db.AutoMigrate(&repocommercial.OrderRow{}, &repocommercial.PaymentAttemptRow{},
+		&repocommercial.OutboxEvent{}, &repocommercial.PaymentAnomalyRow{}); err != nil {
 		t.Fatal(err)
 	}
 	store := repocommercial.NewOrderStore(db)
@@ -443,5 +444,140 @@ func TestFulfillmentWorkerPaidNotFulfilledStaysRecoverable(t *testing.T) {
 	}
 	if got := gw.appliedCount(); got != 1 {
 		t.Fatalf("recovery must grant exactly once, got %d applies", got)
+	}
+}
+
+// ---- #84 Task 3: the over_payment outbox consumer (G3 / AC2) ----
+
+// seedSecondChannelSuccess registers a SECOND-channel attempt on an order
+// whose first channel already confirmed (seedPaidOrder), then confirms the
+// second fact — the multiple-success shape ConfirmPayment audits as a
+// kind=over_payment outbox event (#84 AC2).
+func seedSecondChannelSuccess(t *testing.T, store *repocommercial.OrderStore, orderID string, tenant uint64, amountFen int64) {
+	t.Helper()
+	ctx := context.Background()
+	if err := store.RegisterAttempt(ctx, repocommercial.PaymentAttemptRow{
+		ID: "att2-" + orderID, TenantID: tenant, OrderID: orderID, Provider: "wechat", Merchant: "1900000109",
+		MerchantOrderID: "mo2-" + orderID, AmountFen: amountFen, Currency: "CNY",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.ConfirmPayment(ctx, domain.PaymentFact{
+		TenantID: tenant, OrderID: orderID, AttemptID: "mo2-" + orderID, Provider: "wechat", Merchant: "1900000109",
+		Transaction: "txn2-" + orderID, Amount: domain.CNYFen(amountFen), Currency: "CNY", State: "succeeded",
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func overPaymentEvent(t *testing.T, db *gorm.DB) repocommercial.OutboxEvent {
+	t.Helper()
+	var ev repocommercial.OutboxEvent
+	if err := db.Where("kind = ?", repocommercial.OutboxKindOverPaid).First(&ev).Error; err != nil {
+		t.Fatal(err)
+	}
+	return ev
+}
+
+// TestOverPaymentDrainConsumesEventIntoAwaitingDisposal（AC2 / G3）：多收款的
+// 第二笔成功经 ConfirmPayment 落 over_payment 事件后，drain 必须把它消费为
+// awaiting_disposition 的 over_payment 异常行（唯一键幂等）并把事件标记
+// sent；权益不扩大——fulfillment_records 恰一行 applied、订单只履约一次。
+func TestOverPaymentDrainConsumesEventIntoAwaitingDisposal(t *testing.T) {
+	gw := &stubGateway{findable: true}
+	svc, db, store := setupFulfillment(t, gw)
+	ctx := context.Background()
+	const orderID = "ord-over-1"
+	seedPaidOrder(t, store, orderID, 7, 9900)
+	seedSecondChannelSuccess(t, store, orderID, 7, 9900)
+
+	if err := svc.Recover(ctx); err != nil {
+		t.Fatal(err)
+	}
+	ok, err := store.HasUnresolvedPaymentAnomaly(ctx, orderID)
+	if err != nil || !ok {
+		t.Fatalf("the over_payment must land as an unresolved anomaly, got %v %v", ok, err)
+	}
+	var anomaly repocommercial.PaymentAnomalyRow
+	if err := db.Where("order_id = ?", orderID).First(&anomaly).Error; err != nil {
+		t.Fatal(err)
+	}
+	if anomaly.Kind != repocommercial.PaymentAnomalyKindOverPaid ||
+		anomaly.ExpectedAmountFen != 0 || anomaly.ActualAmountFen != 9900 ||
+		anomaly.Transaction != "txn2-"+orderID {
+		t.Fatalf("over_payment snapshot mismatch: %+v", anomaly)
+	}
+	ev := overPaymentEvent(t, db)
+	if ev.State != repocommercial.OutboxStateSent {
+		t.Fatalf("the consumed over_payment event must be sent, got %s", ev.State)
+	}
+	// 权益不扩大：恰一行 applied 的履约记录（top-up 面），订单只履约一次。
+	recs := fulfillmentRecords(t, db, orderID)
+	if len(recs) != 1 || recs[0].State != domain.FulfillmentStateApplied {
+		t.Fatalf("exactly one applied fulfillment record expected, got %+v", recs)
+	}
+	if s := orderState(t, db, orderID); s != domain.OrderStateFulfilled {
+		t.Fatalf("the first payment must still fulfill the order exactly once, got %s", s)
+	}
+}
+
+// TestOverPaymentDrainReplayYieldsSingleAnomaly（Review Focus 3）：同一
+// over_payment 事件被重置 pending 后再 drain 一轮——唯一键幂等保证 anomaly
+// 行数仍为 1。
+func TestOverPaymentDrainReplayYieldsSingleAnomaly(t *testing.T) {
+	gw := &stubGateway{findable: true}
+	svc, db, store := setupFulfillment(t, gw)
+	ctx := context.Background()
+	const orderID = "ord-over-2"
+	seedPaidOrder(t, store, orderID, 7, 9900)
+	seedSecondChannelSuccess(t, store, orderID, 7, 9900)
+	if err := svc.Recover(ctx); err != nil {
+		t.Fatal(err)
+	}
+	// Replay the event: reset it to pending (lease expired) and drain again.
+	if err := db.Model(&repocommercial.OutboxEvent{}).
+		Where("kind = ?", repocommercial.OutboxKindOverPaid).
+		Updates(map[string]interface{}{"state": repocommercial.OutboxStatePending, "lease_until": time.Now().Add(-time.Minute)}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Recover(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var n int64
+	db.Model(&repocommercial.PaymentAnomalyRow{}).Where("order_id = ?", orderID).Count(&n)
+	if n != 1 {
+		t.Fatalf("a replayed over_payment event must not mint a second anomaly row, got %d", n)
+	}
+}
+
+// TestOverPaymentDisposeFailureDoesNotBlockFulfillDrain（Review Focus 5 /
+// A-32 纪律）：单条 over_payment dispose 失败（anomaly 表故障）不得中止整批
+// drain——同批的 fulfill 事件仍被处理（订单推进 fulfilled），over_payment
+// 事件保持 pending 等下一轮，整体不报错不 panic。
+func TestOverPaymentDisposeFailureDoesNotBlockFulfillDrain(t *testing.T) {
+	gw := &stubGateway{findable: true}
+	svc, db, store := setupFulfillment(t, gw)
+	ctx := context.Background()
+	const orderID = "ord-over-3"
+	seedPaidOrder(t, store, orderID, 7, 9900)
+	seedSecondChannelSuccess(t, store, orderID, 7, 9900)
+	// The queue now holds BOTH a fulfill event and an over_payment event.
+	if got := len(fulfillEvents(t, db)); got != 1 {
+		t.Fatalf("setup: want 1 fulfill event, got %d", got)
+	}
+	if err := db.Migrator().DropTable(&repocommercial.PaymentAnomalyRow{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Recover(ctx); err != nil {
+		t.Fatalf("a single dispose failure must not fail the whole drain pass: %v", err)
+	}
+	// The fulfill event was still processed to completion.
+	if s := orderState(t, db, orderID); s != domain.OrderStateFulfilled {
+		t.Fatalf("the fulfill event must not be starved by the dispose failure, order=%s", s)
+	}
+	// The over_payment event stays pending for the next pass.
+	ev := overPaymentEvent(t, db)
+	if ev.State != repocommercial.OutboxStatePending {
+		t.Fatalf("the failed dispose must keep the event pending, got %s", ev.State)
 	}
 }

@@ -23,11 +23,13 @@ import (
 // tests: Create returns a checkout URL (or a configured error), Query
 // returns the configured attempt state.
 type stubCheckoutProvider struct {
-	mu          sync.Mutex
-	queryState  payment.AttemptState
-	createErr   error
-	createCalls []string
-	queryCalls  []string
+	mu             sync.Mutex
+	queryState     payment.AttemptState
+	queryAmountFen int64  // #84/G2: the collected amount the channel reports (0 = not reported)
+	queryCurrency  string // #84/G2 补: the collected currency the channel reports ("" = not reported)
+	createErr      error
+	createCalls    []string
+	queryCalls     []string
 }
 
 func (p *stubCheckoutProvider) Create(_ context.Context, req payment.OrderRequest) (payment.AttemptResult, error) {
@@ -43,7 +45,7 @@ func (p *stubCheckoutProvider) Query(_ context.Context, id string) (payment.Atte
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.queryCalls = append(p.queryCalls, id)
-	return payment.AttemptResult{State: p.queryState, ProviderID: "txn_" + id}, nil
+	return payment.AttemptResult{State: p.queryState, ProviderID: "txn_" + id, AmountFen: p.queryAmountFen, AmountCurrency: p.queryCurrency}, nil
 }
 func (p *stubCheckoutProvider) Close(context.Context, string) error { return nil }
 func (p *stubCheckoutProvider) Verify(context.Context, http.Header, []byte) (domain.PaymentFact, error) {
@@ -72,7 +74,8 @@ func newOrderTestEnv(t *testing.T) (*OrderService, *stubCheckoutProvider, *gorm.
 		s.SetMaxOpenConns(1)
 	}
 	if err := db.AutoMigrate(&repocommercial.OrderRow{}, &repocommercial.PaymentAttemptRow{},
-		&repocommercial.OutboxEvent{}, &repocommercial.PlanRow{}, &repocommercial.QuoteRow{}, &repocommercial.Subscription{}); err != nil {
+		&repocommercial.OutboxEvent{}, &repocommercial.PlanRow{}, &repocommercial.QuoteRow{},
+		&repocommercial.Subscription{}, &repocommercial.PaymentAnomalyRow{}); err != nil {
 		t.Fatal(err)
 	}
 	provider := &stubCheckoutProvider{queryState: payment.StateSucceeded}
@@ -529,5 +532,256 @@ func TestCreateQuoteFreezesLineItemsFeaturesAndCurrency(t *testing.T) {
 	}
 	if q.ExpiresAt == "" {
 		t.Fatal("expiry must be present")
+	}
+}
+
+// TestGetOrderSurfacesUnresolvedAnomaly（#84 Task 5 / AC4 后端半）：读路径
+// （RecoverOrderStatus）必须把未处置异常投影为 PaymentAttention；运营处置
+// （resolve）后 attention 消失。
+func TestGetOrderSurfacesUnresolvedAnomaly(t *testing.T) {
+	svc, provider, db := newOrderTestEnv(t)
+	provider.queryState = payment.StatePending // the channel says still pending
+	seedPublishedPlan(t, db)
+	ctx := context.Background()
+	q, err := svc.CreateQuote(ctx, 44, "pro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, err := svc.CreateOrder(ctx, 44, q.ID, "wechat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// No anomaly yet: a plain pending read carries no attention.
+	plain, err := svc.RecoverOrderStatus(ctx, 44, view.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plain.PaymentAttention {
+		t.Fatal("a clean pending order must not surface attention")
+	}
+	store := repocommercial.NewOrderStore(db)
+	if err := store.RecordPaymentAnomaly(ctx, repocommercial.PaymentAnomalyRow{
+		TenantID: 44, OrderID: view.ID, AttemptID: "mo_x", Provider: "wechat", Merchant: "1900000109",
+		Transaction: "txn_x", Kind: repocommercial.PaymentAnomalyKindAmount,
+		ExpectedAmountFen: 9900, ActualAmountFen: 19900,
+		ExpectedCurrency: "CNY", ActualCurrency: "CNY",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	flagged, err := svc.RecoverOrderStatus(ctx, 44, view.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !flagged.PaymentAttention {
+		t.Fatal("an unresolved anomaly must surface payment attention")
+	}
+	// Operator disposition clears the flag.
+	if _, err := store.ResolvePaymentAnomaly(ctx, "anom_missing", 1); err == nil {
+		t.Fatal("setup sanity: resolve must key the real id")
+	}
+	var anomaly repocommercial.PaymentAnomalyRow
+	if err := db.Where("order_id = ?", view.ID).First(&anomaly).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.ResolvePaymentAnomaly(ctx, anomaly.ID, 1); err != nil {
+		t.Fatal(err)
+	}
+	cleared, err := svc.RecoverOrderStatus(ctx, 44, view.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cleared.PaymentAttention {
+		t.Fatal("a resolved anomaly must clear the attention flag")
+	}
+}
+
+// TestRecoverOrderStatusWrongCurrencyRetainedAsAnomaly（真栈缺陷回归锁，
+// #84 第一幕错币种变体实抓）：渠道 Query 报 succeeded 且实收币种 ≠ attempt
+// 面额币种（金额恰好相等）时，恢复路径绝不能用 attempt 的 CNY 构造 fact
+// 洗白确认——必须与金额不符同型分流：不确认、落 currency_mismatch、
+// PaymentAttention 置位（spec L127 wrong-currency 不激活）。
+func TestRecoverOrderStatusWrongCurrencyRetainedAsAnomaly(t *testing.T) {
+	svc, provider, db := newOrderTestEnv(t)
+	provider.queryState = payment.StateSucceeded
+	provider.queryAmountFen = 9900 // same amount as the face...
+	provider.queryCurrency = "USD" // ...but a WRONG currency
+	seedPublishedPlan(t, db)
+	ctx := context.Background()
+	q, err := svc.CreateQuote(ctx, 45, "pro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, err := svc.CreateOrder(ctx, 45, q.ID, "wechat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	recovered, err := svc.RecoverOrderStatus(ctx, 45, view.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if recovered.State == domain.OrderStatePaid {
+		t.Fatal("a wrong-currency recovery must NEVER confirm (the attempt's currency must not launder the collection)")
+	}
+	if !recovered.PaymentAttention {
+		t.Fatal("a wrong-currency recovery must surface attention")
+	}
+	store := repocommercial.NewOrderStore(db)
+	ok, err := store.HasUnresolvedPaymentAnomaly(ctx, view.ID)
+	if err != nil || !ok {
+		t.Fatalf("the wrong-currency collection must be retained, got %v %v", ok, err)
+	}
+	var anomaly repocommercial.PaymentAnomalyRow
+	if err := db.Where("order_id = ?", view.ID).First(&anomaly).Error; err != nil {
+		t.Fatal(err)
+	}
+	if anomaly.Kind != repocommercial.PaymentAnomalyKindCurrency ||
+		anomaly.ExpectedCurrency != "CNY" || anomaly.ActualCurrency != "USD" {
+		t.Fatalf("currency anomaly snapshot mismatch: %+v", anomaly)
+	}
+	var nFulfill int64
+	db.Model(&repocommercial.OutboxEvent{}).Where("kind = ?", repocommercial.OutboxKindFulfill).Count(&nFulfill)
+	if nFulfill != 0 {
+		t.Fatalf("a wrong-currency collection must not mint a fulfill right, got %d", nFulfill)
+	}
+}
+
+// ---- #84 Task 4: collected-amount comparison on the recovery paths (G2) ----
+
+// TestRecoverOrderStatusAmountMismatchRecordsAnomalyWithoutConfirm（G2）：
+// 恢复路径的渠道 Query 报 succeeded 但实收额（5000）≠ attempt 面额（9900）——
+// 绝不按 attempt 金额盲目确认：不 ConfirmPayment、订单仍 pending、事实落
+// amount_mismatch anomaly、view 标 PaymentAttention（Task 5 消费投影）。
+func TestRecoverOrderStatusAmountMismatchRecordsAnomalyWithoutConfirm(t *testing.T) {
+	svc, provider, db := newOrderTestEnv(t)
+	provider.queryState = payment.StateSucceeded
+	provider.queryAmountFen = 5000 // collected 5000, order face 9900
+	seedPublishedPlan(t, db)
+	ctx := context.Background()
+	q, err := svc.CreateQuote(ctx, 41, "pro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, err := svc.CreateOrder(ctx, 41, q.ID, "wechat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	recovered, err := svc.RecoverOrderStatus(ctx, 41, view.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if recovered.State == domain.OrderStatePaid {
+		t.Fatal("a wrong-amount recovery must never confirm the payment")
+	}
+	if !recovered.PaymentAttention {
+		t.Fatal("a recovered mismatch must surface payment attention")
+	}
+	store := repocommercial.NewOrderStore(db)
+	ok, err := store.HasUnresolvedPaymentAnomaly(ctx, view.ID)
+	if err != nil || !ok {
+		t.Fatalf("the query-path mismatch must retain its fact, got %v %v", ok, err)
+	}
+	var anomaly repocommercial.PaymentAnomalyRow
+	if err := db.Where("order_id = ?", view.ID).First(&anomaly).Error; err != nil {
+		t.Fatal(err)
+	}
+	// Closed classification: collected 5000 < face 9900 → partial_payment.
+	if anomaly.Kind != repocommercial.PaymentAnomalyKindPartial ||
+		anomaly.ExpectedAmountFen != 9900 || anomaly.ActualAmountFen != 5000 {
+		t.Fatalf("recovery anomaly snapshot mismatch: %+v", anomaly)
+	}
+	// The order stays a payable pending entry — the customer may still pay it
+	// correctly, and a correct later callback confirms through the normal leg.
+	if len(provider.queryCalls) == 0 {
+		t.Fatal("the recovery must have queried the channel")
+	}
+}
+
+// TestRecoverOrderStatusCollectedAmountMatchConfirmsNormally：实收额与面额
+// 一致时恢复路径照常确认（比对是分流器，不是新障碍）。
+func TestRecoverOrderStatusCollectedAmountMatchConfirmsNormally(t *testing.T) {
+	svc, provider, db := newOrderTestEnv(t)
+	provider.queryState = payment.StateSucceeded
+	provider.queryAmountFen = 9900
+	seedPublishedPlan(t, db)
+	ctx := context.Background()
+	q, err := svc.CreateQuote(ctx, 42, "pro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, err := svc.CreateOrder(ctx, 42, q.ID, "wechat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	recovered, err := svc.RecoverOrderStatus(ctx, 42, view.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if recovered.State != domain.OrderStatePaid {
+		t.Fatalf("a matching collected amount must confirm normally, got %s", recovered.State)
+	}
+	if recovered.PaymentAttention {
+		t.Fatal("a clean recovery must not surface attention")
+	}
+}
+
+// TestRecoverOrderStatusLateSuccessAfterFulfilledIsIdempotentOverPayment（G5）：
+// 订单已 fulfilled 后第二渠道 late succeeded——恢复读幂等（仍 fulfilled）、
+// 不产生第二个 fulfill 事件、不二次履约，第二笔只落 over_payment 事件（由
+// Task 3 的 drain 消费为 anomaly）。
+func TestRecoverOrderStatusLateSuccessAfterFulfilledIsIdempotentOverPayment(t *testing.T) {
+	svc, _, db := newOrderTestEnv(t)
+	seedPublishedPlan(t, db)
+	ctx := context.Background()
+	q, err := svc.CreateQuote(ctx, 43, "pro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, err := svc.CreateOrder(ctx, 43, q.ID, "wechat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := repocommercial.NewOrderStore(db)
+	var first repocommercial.PaymentAttemptRow
+	if err := db.Where("order_id = ?", view.ID).First(&first).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := store.ConfirmPayment(ctx, domain.PaymentFact{
+		TenantID: 43, OrderID: view.ID, AttemptID: first.MerchantOrderID, Provider: "wechat",
+		Merchant: first.Merchant, Transaction: "txn_first", Amount: 9900, Currency: "CNY", State: "succeeded",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.MarkFulfilled(ctx, view.ID); err != nil {
+		t.Fatal(err)
+	}
+	// The SECOND channel's late success (a second registered attempt).
+	if err := store.RegisterAttempt(ctx, repocommercial.PaymentAttemptRow{
+		ID: "att2-late", TenantID: 43, OrderID: view.ID, Provider: "alipay", Merchant: "2088000000000000",
+		MerchantOrderID: "mo2-late", AmountFen: 9900, Currency: "CNY",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.ConfirmPayment(ctx, domain.PaymentFact{
+		TenantID: 43, OrderID: view.ID, AttemptID: "mo2-late", Provider: "alipay",
+		Merchant: "2088000000000000", Transaction: "txn2_late", Amount: 9900, Currency: "CNY", State: "succeeded",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// The recovery read on the fulfilled order is idempotent and honest.
+	recovered, err := svc.RecoverOrderStatus(ctx, 43, view.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if recovered.State != domain.OrderStateFulfilled {
+		t.Fatalf("a fulfilled order must stay fulfilled through recovery, got %s", recovered.State)
+	}
+	var nFulfill, nOver int64
+	db.Model(&repocommercial.OutboxEvent{}).Where("kind = ?", repocommercial.OutboxKindFulfill).Count(&nFulfill)
+	db.Model(&repocommercial.OutboxEvent{}).Where("kind = ?", repocommercial.OutboxKindOverPaid).Count(&nOver)
+	if nFulfill != 1 {
+		t.Fatalf("the late success must never mint a second fulfill right, got %d", nFulfill)
+	}
+	if nOver != 1 {
+		t.Fatalf("the late success must be audited as over_payment, got %d", nOver)
 	}
 }

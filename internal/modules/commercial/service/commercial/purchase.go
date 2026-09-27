@@ -488,6 +488,14 @@ func (s *PurchaseService) PurchaseStatus(ctx context.Context, tenantID uint64) (
 		if row, err := s.orders.orders.CurrentPurchaseOrder(ctx, tenantID, p.AmountFen, p.Currency); err == nil &&
 			quoteBoughtPlan(ctx, s.orders, tenantID, row.QuoteID) == pub.PlanKey {
 			ov := orderViewFromRow(row)
+			// (#84 Task 5 / G4) the purchase's order projection carries the
+			// SAME attention flag as the order read paths (BillingPage's
+			// anomaly suffix reads it); the purchase state axis itself stays
+			// the closed five-state set — attention rides on the order
+			// sub-object only.
+			if ok, aerr := s.orders.orders.HasUnresolvedPaymentAnomaly(ctx, row.ID); aerr == nil && ok {
+				ov.PaymentAttention = true
+			}
 			out.Order = &ov
 			// (#82 D3) paid_awaiting_activation is a COORDINATOR-COMPOSED
 			// product state: a locally PAID order while the authority has

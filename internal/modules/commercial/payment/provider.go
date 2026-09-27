@@ -53,11 +53,20 @@ type OrderRequest struct {
 // AttemptResult reports the provider-side state of one attempt. ProviderID
 // is the provider-visible identifier of the ORIGINAL request (for WeChat
 // the out_trade_no); CheckoutURL carries the customer-facing payment link
-// or code URL when the channel returns one.
+// or code URL when the channel returns one. AmountFen (#84/G2) is the
+// COLLECTED amount the channel's Query reports (WeChat amount.total /
+// Alipay total_amount); 0 means the channel did not report one, in which
+// case the recovery paths skip the collected-amount comparison.
+// AmountCurrency (#84 real-stack fix) is the collected amount's CURRENCY;
+// "" means not reported (comparison skipped) — a reported currency that
+// contradicts the attempt face must never be laundered into a confirmation
+// built from the attempt's own currency (spec L127 wrong-currency).
 type AttemptResult struct {
-	State       AttemptState
-	ProviderID  string
-	CheckoutURL string
+	State         AttemptState
+	ProviderID    string
+	CheckoutURL   string
+	AmountFen     int64
+	AmountCurrency string
 }
 
 // RefundRequest refunds a previously captured attempt; ProviderID again

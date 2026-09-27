@@ -24,6 +24,17 @@ const (
 // a different order, tenant, amount, or currency, or a non-succeeded state.
 var ErrPaymentMismatch = errors.New("payment_mismatch")
 
+// ErrPaymentNotSucceeded (#84, spec L127 classification) reports a
+// VERIFIED-SIGNATURE fact whose channel state is not succeeded (e.g.
+// trade_status=TRADE_CLOSED): it is neither a fulfillment nor an abnormal
+// collection — nothing is persisted, the transaction rolls back whole, and
+// the callback face keeps its non-2xx answer so the channel finishes its
+// retry policy. It is a SEPARATE classification from ErrPaymentMismatch
+// (which retains the fund fact as an anomaly and answers terminally):
+// folding the two would misread "right amount, closed state" as a false
+// amount mismatch.
+var ErrPaymentNotSucceeded = errors.New("payment_not_succeeded")
+
 // Order awaits exactly one successful payment before fulfillment.
 type Order struct {
 	ID       string

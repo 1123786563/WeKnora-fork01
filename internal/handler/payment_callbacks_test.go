@@ -679,27 +679,141 @@ func TestWechatCallbackUnknownAttemptNotFound(t *testing.T) {
 	}
 }
 
-func TestWechatCallbackAmountMismatchRejectedNoFact(t *testing.T) {
-	env := newWechatCallbackEnv(t)
-	order, att := placeWechatOrder(t, env, 708)
-	// A genuine signature over a SUCCESS whose amount (100 fen) does not
-	// match the order face (9900): ConfirmPayment must refuse with a
-	// mismatch and persist NOTHING.
-	body, h := wechatCBNotify(t, env, att.MerchantOrderID, "wx_txn_m", 100, "SUCCESS")
-	w := postWechatNotify(env.engine, body, h)
-	if w.Code != http.StatusConflict {
-		t.Fatalf("amount mismatch must be rejected 409, got %d %q", w.Code, w.Body.String())
+// countAnomalies counts retained abnormal payment facts (#84).
+func countAnomalies(t *testing.T, db *gorm.DB) int64 {
+	t.Helper()
+	var n int64
+	if err := db.Model(&repocommercial.PaymentAnomalyRow{}).Count(&n).Error; err != nil {
+		t.Fatal(err)
 	}
-	if n := outboxCount(t, env.db); n != 0 {
-		t.Fatalf("a mismatched fact must persist nothing, got %d events", n)
-	}
+	return n
+}
+
+// assertOrderPendingNoFulfillEvent（#84 AC1）：异常收款绝不履约——订单仍
+// pending、attempt 仍 pending、fulfill 事件为零。
+func assertOrderPendingNoFulfillEvent(t *testing.T, db *gorm.DB, orderID string) {
+	t.Helper()
 	var row repocommercial.OrderRow
-	if err := env.db.Where("id = ?", order.ID).First(&row).Error; err != nil {
+	if err := db.Where("id = ?", orderID).First(&row).Error; err != nil {
 		t.Fatal(err)
 	}
 	if row.State != commercial.OrderStatePending {
-		t.Fatalf("the order must stay pending, got %s", row.State)
+		t.Fatalf("an abnormal payment must never advance the order, got %s", row.State)
 	}
+	var nFulfill int64
+	if err := db.Model(&repocommercial.OutboxEvent{}).
+		Where("kind = ?", repocommercial.OutboxKindFulfill).Count(&nFulfill).Error; err != nil {
+		t.Fatal(err)
+	}
+	if nFulfill != 0 {
+		t.Fatalf("abnormal payment must not mint a fulfill event, got %d", nFulfill)
+	}
+}
+
+// ---- #84 Task 2: terminal idempotent ack for abnormal callbacks ----
+
+// TestWechatCallbackAmountMismatchRecordsAnomalyAndAcksIdempotent（G1 / AC1c
+// / AC3 前半）：错金额的已验签通知——事实已独立事务落库（Task 1）后回调面
+// 答 200 终态（spec L171：渠道停止重试风暴），重复投递同样 200 且 anomaly
+// 行数不变；订单 pending、无 fulfill 事件。
+func TestWechatCallbackAmountMismatchRecordsAnomalyAndAcksIdempotent(t *testing.T) {
+	env := newWechatCallbackEnv(t)
+	order, att := placeWechatOrder(t, env, 708)
+	// A genuine signature over a SUCCESS whose amount (5000 fen, a partial
+	// payment) does not match the order face (9900).
+	body, h := wechatCBNotify(t, env, att.MerchantOrderID, "wx_txn_m", 5000, "SUCCESS")
+	w := postWechatNotify(env.engine, body, h)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"code":"SUCCESS"`) {
+		t.Fatalf("a retained mismatch must answer the terminal 200 ack, got %d %q", w.Code, w.Body.String())
+	}
+	if n := countAnomalies(t, env.db); n != 1 {
+		t.Fatalf("the mismatch fact must be retained exactly once, got %d", n)
+	}
+	var anomaly repocommercial.PaymentAnomalyRow
+	if err := env.db.Where("order_id = ?", order.ID).First(&anomaly).Error; err != nil {
+		t.Fatal(err)
+	}
+	if anomaly.Kind != repocommercial.PaymentAnomalyKindPartial ||
+		anomaly.ExpectedAmountFen != 9900 || anomaly.ActualAmountFen != 5000 ||
+		anomaly.Transaction != "wx_txn_m" {
+		t.Fatalf("partial-payment snapshot mismatch: %+v", anomaly)
+	}
+	// Redelivery of the SAME notification: terminal 200 again, still one row.
+	w2 := postWechatNotify(env.engine, body, h)
+	if w2.Code != http.StatusOK {
+		t.Fatalf("redelivery must ack 200 again, got %d %q", w2.Code, w2.Body.String())
+	}
+	if n := countAnomalies(t, env.db); n != 1 {
+		t.Fatalf("redelivery must not mint a second anomaly row, got %d", n)
+	}
+	assertOrderPendingNoFulfillEvent(t, env.db, order.ID)
+	var att2 repocommercial.PaymentAttemptRow
+	if err := env.db.Where("id = ?", att.ID).First(&att2).Error; err != nil {
+		t.Fatal(err)
+	}
+	if att2.State != repocommercial.PaymentAttemptStatePending {
+		t.Fatalf("the attempt must stay pending, got %s", att2.State)
+	}
+}
+
+// TestAlipayCallbackAmountMismatchRecordsAnomalyAndAcksSuccess：支付宝腿同
+// 契约——篡改 total_amount 的已验签通知答纯文本 "success"（终态），事实落库，
+// 订单 pending、无 fulfill 事件（AC1a 的 Alipay 面）。
+func TestAlipayCallbackAmountMismatchRecordsAnomalyAndAcksSuccess(t *testing.T) {
+	db, stub, engine, orders := newCallbackTestEnv(t)
+	seedCallbackPublishedPlan(t, db)
+	ctx := context.Background()
+	q, err := orders.CreateQuote(ctx, 603, "pro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	order, err := orders.CreateOrder(ctx, 603, q.ID, payment.ProviderAlipay)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fact := notifyFact(t, db, stub, order.ID)
+	fact.Amount = 50_00 // order face 9900, notified 5000 → partial payment
+	stub.fact = fact
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost,
+		"/api/v1/commercial/callbacks/alipay", strings.NewReader("notify=1"))
+	engine.ServeHTTP(w, req)
+	if w.Code != http.StatusOK || w.Body.String() != "success" {
+		t.Fatalf("a retained mismatch must answer 200 \"success\", got %d %q", w.Code, w.Body.String())
+	}
+	if n := countAnomalies(t, db); n != 1 {
+		t.Fatalf("the alipay mismatch fact must be retained, got %d", n)
+	}
+	var anomaly repocommercial.PaymentAnomalyRow
+	if err := db.Where("order_id = ?", order.ID).First(&anomaly).Error; err != nil {
+		t.Fatal(err)
+	}
+	if anomaly.Kind != repocommercial.PaymentAnomalyKindPartial {
+		t.Fatalf("kind=%s, want partial_payment", anomaly.Kind)
+	}
+	assertOrderPendingNoFulfillEvent(t, db, order.ID)
+}
+
+// TestWechatCallbackNonSucceededStatusStaysRejectedNoAnomaly（Review Focus 1
+// / 审查 R1）：金额币种身份全对、仅 trade_state=CLOSED 的已验签通知——非
+// succeeded 独立分类，维持非 2xx（渠道重试是正确姿态）、零落库、订单
+// pending。改造前后均须 PASS：它是防止 ErrPaymentNotSucceeded 被误并入 200
+// 终态分支的回归锁。
+func TestWechatCallbackNonSucceededStatusStaysRejectedNoAnomaly(t *testing.T) {
+	env := newWechatCallbackEnv(t)
+	order, att := placeWechatOrder(t, env, 709)
+	body, h := wechatCBNotify(t, env, att.MerchantOrderID, "wx_txn_c", 9900, "CLOSED")
+	w := postWechatNotify(env.engine, body, h)
+	if w.Code == http.StatusOK {
+		t.Fatalf("a non-succeeded fact must NOT answer the terminal 200, got %d %q", w.Code, w.Body.String())
+	}
+	if w.Code != http.StatusConflict {
+		t.Fatalf("a non-succeeded fact keeps the 409 failure face, got %d %q", w.Code, w.Body.String())
+	}
+	if n := countAnomalies(t, env.db); n != 0 {
+		t.Fatalf("a non-succeeded fact is not an abnormal collection: %d anomaly rows", n)
+	}
+	assertOrderPendingNoFulfillEvent(t, env.db, order.ID)
 	var att2 repocommercial.PaymentAttemptRow
 	if err := env.db.Where("id = ?", att.ID).First(&att2).Error; err != nil {
 		t.Fatal(err)

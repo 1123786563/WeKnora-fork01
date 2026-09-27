@@ -185,13 +185,16 @@ func TestFuncDeclNamesRecursive(t *testing.T) {
 // #81 增量（issue-72(#81): purchase endpoints，69fd9b16d 前置提交）：
 // routes_commercial.go +2 literal（POST /purchases、GET /purchase）、
 // container.go +1 Invoke（SetPurchaseService 装配）→ 566 literal + 69 + 0 =
-// 635；hooks 59。审查第 2 轮 F8：基线随代码同步（代码为事实源）。 ----
+// 635；hooks 59。审查第 2 轮 F8：基线随代码同步（代码为事实源）。
+// #84 增量（issue-72(#84): over_payment disposal drain + admin surface）：
+// routes_commercial.go +2 literal（GET /POST /admin/payment-anomalies 组）→
+// 568 literal + 69 + 0 = 637。 ----
 
 const (
-	wantRouteLiteral  = 566
+	wantRouteLiteral  = 568
 	wantRouteAPIKey   = 69
 	wantRouteHandle   = 0
-	wantRouteTotal    = 635
+	wantRouteTotal    = 637
 	wantWorkersPerMix = 23
 	wantHooks         = 59
 )
