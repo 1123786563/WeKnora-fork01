@@ -569,6 +569,16 @@ func (o *Office) triggerRulePeriod(ctx context.Context, s Scope, rule searchRule
 				ran = false
 				blockedStatus, blockedNote = RuleRunStatusBlockedNoQuota, ruleRunNoteNoQuota
 				receipt = SearchOnceReceipt{}
+			} else if errors.Is(searchErr, ErrIdempotencyConflict) {
+				// The period request ID is deterministic while the profile
+				// revision moves with every write: a claiming row left by a
+				// crashed attempt is replayed or taken over under its stored
+				// fingerprint instead of stranding this rule's period — and
+				// with it the whole trigger — forever (ocr3-017).
+				receipt, searchErr = o.searchOnceUnderStoredFingerprint(ctx, s, requestID)
+				if searchErr != nil {
+					return RuleRunSummary{}, searchErr
+				}
 			} else {
 				return RuleRunSummary{}, searchErr
 			}

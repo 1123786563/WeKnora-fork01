@@ -813,20 +813,82 @@ func (o *Office) DeleteCareer(ctx context.Context, input CareerDeletionInput) (C
 
 	failed := o.runDeletionSteps(ctx, s, input.RequestID, &execution)
 
-	// The finalize step only runs when everything before it succeeded; it is
-	// what flips the durable status to "deleted".
+	// The finalize phase runs inside one transaction that locks the deletion
+	// audit row first and the profile row second (ocr3-128). The record lock
+	// makes finalize exactly-once per request: a concurrent retry of the same
+	// request ID that reaches this point after another runner finalized
+	// replays the stored receipt instead of re-running finalize and bumping
+	// the revision twice. The profile lock — the one every Career write path
+	// takes first — plus the in-transaction re-purge close the window in
+	// which a racing write could commit new career rows after the purge step
+	// and before the receipt claims "deleted". Step failures still commit
+	// their partial state afterwards, exactly as before.
+	var finalized CareerDeletionReceipt
 	if failed == "" {
-		if err = o.finalizeDeletion(ctx, s, input.RequestID, &execution); err != nil {
+		finalizeErr := o.runImportTransaction(ctx, func(tx *gorm.DB) error {
+			var current careerDataDeletionRecord
+			e := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+				Where("tenant_id=? AND user_id=? AND request_id=?", s.TenantID, s.UserID, input.RequestID).
+				First(&current).Error
+			if e != nil {
+				return e
+			}
+			if current.Status == DeletionStatusDeleted {
+				// A concurrent runner finalized first: its receipt replays
+				// and nothing here re-runs.
+				storedReceipt, decodeErr := decodeCareerDeletionReceipt(current.ReceiptBody)
+				if decodeErr != nil {
+					return decodeErr
+				}
+				finalized = storedReceipt
+				return nil
+			}
+			var head profile
+			e = tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+				Where("tenant_id=? AND user_id=?", s.TenantID, s.UserID).First(&head).Error
+			if errors.Is(e, gorm.ErrRecordNotFound) {
+				// A space without a profile row still finalizes: create the
+				// epoch counter (the same first-write semantics profile
+				// writes use) so the lock has a row to hold.
+				head = profile{TenantID: s.TenantID, UserID: s.UserID, Revision: 0}
+				if e = tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&head).Error; e != nil {
+					return e
+				}
+			} else if e != nil {
+				return e
+			}
+			// Defensive sweep: the purge step ran unlocked above; anything a
+			// racing write committed in between is removed here under the
+			// profile lock, so the "deleted" receipt stays truthful.
+			if e = purgeCareerRows(tx, s); e != nil {
+				return e
+			}
+			if e = finalizeDeletionRows(tx, s, &execution); e != nil {
+				return e
+			}
+			finalized = CareerDeletionReceipt{
+				Kind:      CareerKindDeleted,
+				RequestID: input.RequestID,
+				Status:    DeletionStatusDeleted,
+				Steps:     execution.Steps,
+				Retention: careerDeletionRetention(),
+				Revision:  execution.NextRevision,
+				StartedAt: record.CreatedAt,
+			}
+			completed := time.Now().UTC()
+			finalized.CompletedAt = &completed
+			return persistDeletionOutcomeRow(tx, s, input.RequestID, DeletionStatusDeleted, &execution, finalized, &finalized)
+		})
+		if finalizeErr != nil {
 			failed = DeletionStepFinalize
 			execution.Steps[execution.StepIndex[DeletionStepFinalize]].Status = DeletionStepStatusFailed
-			execution.Steps[execution.StepIndex[DeletionStepFinalize]].Detail = err.Error()
+			execution.Steps[execution.StepIndex[DeletionStepFinalize]].Detail = finalizeErr.Error()
+		} else if finalized.Kind != "" {
+			return finalized, nil
 		}
 	}
 
-	status := DeletionStatusDeleted
-	if failed != "" {
-		status = DeletionStatusPartial
-	}
+	status := DeletionStatusPartial
 	receipt := CareerDeletionReceipt{
 		Kind:      CareerKindDeleted,
 		RequestID: input.RequestID,
@@ -835,10 +897,6 @@ func (o *Office) DeleteCareer(ctx context.Context, input CareerDeletionInput) (C
 		Retention: careerDeletionRetention(),
 		Revision:  execution.NextRevision,
 		StartedAt: record.CreatedAt,
-	}
-	if status == DeletionStatusDeleted {
-		completed := time.Now().UTC()
-		receipt.CompletedAt = &completed
 	}
 	return o.persistDeletionOutcome(ctx, s, input.RequestID, status, &execution, receipt)
 }
@@ -1059,15 +1117,21 @@ func (o *Office) deletionPurgeCareerData(ctx context.Context, s Scope) error {
 		}
 	}
 	return o.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		for _, table := range careerPurgeTables {
-			if err := tx.Table(table).
-				Where("tenant_id=? AND user_id=?", s.TenantID, s.UserID).
-				Delete(nil).Error; err != nil {
-				return fmt.Errorf("purge %s: %w", table, err)
-			}
-		}
-		return nil
+		return purgeCareerRows(tx, s)
 	})
+}
+
+// purgeCareerRows clears every Career table for the scope inside the given
+// transaction. It backs both the purge step and the finalize-phase sweep.
+func purgeCareerRows(tx *gorm.DB, s Scope) error {
+	for _, table := range careerPurgeTables {
+		if err := tx.Table(table).
+			Where("tenant_id=? AND user_id=?", s.TenantID, s.UserID).
+			Delete(nil).Error; err != nil {
+			return fmt.Errorf("purge %s: %w", table, err)
+		}
+	}
+	return nil
 }
 
 func (o *Office) deletionRemoveProjections(ctx context.Context, s Scope) error {
@@ -1078,50 +1142,77 @@ func (o *Office) deletionRemoveProjections(ctx context.Context, s Scope) error {
 	return err
 }
 
-// finalizeDeletion bumps the space revision, replaces the changes stream with
-// the single career_deleted event, and closes the deletion audit row.
-func (o *Office) finalizeDeletion(ctx context.Context, s Scope, requestID string, execution *deletionExecution) error {
-	return o.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var head profile
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-			Where("tenant_id=? AND user_id=?", s.TenantID, s.UserID).First(&head).Error; err != nil {
-			if !errors.Is(err, gorm.ErrRecordNotFound) {
-				return err
-			}
-			// A space without a profile row still finalizes: create the
-			// epoch counter (the same first-write semantics profile writes
-			// use) so career_deleted gets a durable revision to land on.
-			head = profile{TenantID: s.TenantID, UserID: s.UserID, Revision: 0}
-			if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&head).Error; err != nil {
-				return err
-			}
+// finalizeDeletionRows bumps the space revision, replaces the changes stream
+// with the single career_deleted event, and marks the finalize step done. It
+// runs inside the caller's locked transaction (see DeleteCareer): the
+// profile row is already held FOR UPDATE there, and the terminal audit write
+// lands atomically with the revision bump.
+func finalizeDeletionRows(tx *gorm.DB, s Scope, execution *deletionExecution) error {
+	var head profile
+	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+		Where("tenant_id=? AND user_id=?", s.TenantID, s.UserID).First(&head).Error; err != nil {
+		return err
+	}
+	next := head.Revision + 1
+	if err := tx.Model(&profile{}).
+		Where("tenant_id=? AND user_id=? AND revision=?", s.TenantID, s.UserID, head.Revision).
+		Update("revision", next).Error; err != nil {
+		return err
+	}
+	if err := tx.Where("tenant_id=? AND user_id=?", s.TenantID, s.UserID).Delete(&change{}).Error; err != nil {
+		return err
+	}
+	event := Change{Revision: next, Kind: ChangeKindCareerDeleted}
+	body, err := json.Marshal(event)
+	if err != nil {
+		return err
+	}
+	if err := tx.Create(&change{
+		TenantID: s.TenantID, UserID: s.UserID, Revision: next,
+		Kind: ChangeKindCareerDeleted, Body: string(body),
+	}).Error; err != nil {
+		return err
+	}
+	execution.NextRevision = next
+	step := execution.Steps[execution.StepIndex[DeletionStepFinalize]]
+	step.Status = DeletionStepStatusDone
+	execution.Steps[execution.StepIndex[DeletionStepFinalize]] = step
+	return nil
+}
+
+// persistDeletionOutcomeRow is the in-transaction form of
+// persistDeletionOutcome: the terminal write lands atomically with the
+// finalize revision bump. Under the deletion-record lock the guarded update
+// always applies; the replay hook only keeps the no-regress invariant.
+func persistDeletionOutcomeRow(tx *gorm.DB, s Scope, requestID, status string,
+	execution *deletionExecution, receipt CareerDeletionReceipt, replay *CareerDeletionReceipt,
+) error {
+	result := tx.Model(&careerDataDeletionRecord{}).
+		Where("tenant_id=? AND user_id=? AND request_id=?", s.TenantID, s.UserID, requestID).
+		Where("status<>?", DeletionStatusDeleted).
+		Updates(map[string]any{
+			"status":       status,
+			"state_body":   string(mustJSON(execution)),
+			"receipt_body": string(mustJSON(receipt)),
+			"updated_at":   time.Now().UTC(),
+		})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		var stored careerDataDeletionRecord
+		if err := tx.Where("tenant_id=? AND user_id=? AND request_id=?", s.TenantID, s.UserID, requestID).
+			First(&stored).Error; err != nil {
+			return ErrDeletionNotFound
 		}
-		next := head.Revision + 1
-		if err := tx.Model(&profile{}).
-			Where("tenant_id=? AND user_id=? AND revision=?", s.TenantID, s.UserID, head.Revision).
-			Update("revision", next).Error; err != nil {
-			return err
+		storedReceipt, decodeErr := decodeCareerDeletionReceipt(stored.ReceiptBody)
+		if decodeErr != nil {
+			return decodeErr
 		}
-		if err := tx.Where("tenant_id=? AND user_id=?", s.TenantID, s.UserID).Delete(&change{}).Error; err != nil {
-			return err
-		}
-		event := Change{Revision: next, Kind: ChangeKindCareerDeleted}
-		body, err := json.Marshal(event)
-		if err != nil {
-			return err
-		}
-		if err := tx.Create(&change{
-			TenantID: s.TenantID, UserID: s.UserID, Revision: next,
-			Kind: ChangeKindCareerDeleted, Body: string(body),
-		}).Error; err != nil {
-			return err
-		}
-		execution.NextRevision = next
-		step := execution.Steps[execution.StepIndex[DeletionStepFinalize]]
-		step.Status = DeletionStepStatusDone
-		execution.Steps[execution.StepIndex[DeletionStepFinalize]] = step
+		*replay = storedReceipt
 		return nil
-	})
+	}
+	return nil
 }
 
 func trimRequestID(requestID string) string {

@@ -197,7 +197,13 @@ func (o *Office) CreateApplication(ctx context.Context, input CreateApplicationI
 		if e != nil {
 			return e
 		}
-		if evaluation.OpportunityID != snapshot.OpportunityID || evaluation.SnapshotID != input.SnapshotID {
+		// An evaluation created before a merge still names the merged-away
+		// opportunity. Resolve its owner through the merge chain before
+		// comparing: merges now migrate evaluation rows, but evaluations
+		// merged under older builds must also self-heal here instead of
+		// becoming permanently unusable for application creation (ocr3-016).
+		if canonicalOpportunityID(tx, scope, evaluation.OpportunityID) != snapshot.OpportunityID ||
+			evaluation.SnapshotID != input.SnapshotID {
 			return ErrInvalidRequest
 		}
 

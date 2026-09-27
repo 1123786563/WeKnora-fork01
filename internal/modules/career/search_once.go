@@ -279,6 +279,50 @@ func searchFingerprint(input SearchOnceInput) (string, error) {
 	return hex.EncodeToString(sum[:]), nil
 }
 
+// searchOnceUnderStoredFingerprint replays or takes over a durable search
+// under the fingerprint already stored for its request ID (ocr3-017). The
+// rule trigger seam needs it: its request ID is deterministic per period
+// while the profile revision legitimately moves with every write, so a
+// claiming row left by a crashed attempt would answer every later retry
+// with ErrIdempotencyConflict and strand that rule period (and with it the
+// whole trigger) forever. The stored fingerprint is the durable identity of
+// the search and the stored query is its intent, so the retry converges on
+// exactly what was first claimed. Quota admission is not repeated: the
+// first claim already consumed it, and an exact replay must never be
+// blocked by the gate.
+func (o *Office) searchOnceUnderStoredFingerprint(ctx context.Context, s Scope, requestID string) (SearchOnceReceipt, error) {
+	var row searchRecord
+	err := o.db.WithContext(ctx).
+		Where("tenant_id=? AND user_id=? AND request_id=?", s.TenantID, s.UserID, requestID).
+		First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return SearchOnceReceipt{}, ErrIdempotencyConflict
+	}
+	if err != nil {
+		return SearchOnceReceipt{}, err
+	}
+	input := SearchOnceInput{RequestID: requestID, Query: row.Query}
+	claim, err := o.claimSearchRequest(ctx, s, input, row.Fingerprint)
+	if err != nil {
+		return SearchOnceReceipt{}, err
+	}
+	switch claim.state {
+	case searchClaimTerminal:
+		return claim.receipt, nil
+	case searchClaimInFlight:
+		receipt, found, awaitErr := o.awaitSearchTerminal(ctx, s, requestID, row.Fingerprint, searchClaimWaitLimit)
+		if awaitErr != nil {
+			return SearchOnceReceipt{}, awaitErr
+		}
+		if found {
+			return receipt, nil
+		}
+		return SearchOnceReceipt{}, &OutcomeUnknownError{RequestID: requestID}
+	}
+	receipt := o.executeSearch(ctx, s, input)
+	return o.commitSearch(ctx, s, input, row.Fingerprint, claim.token, receipt)
+}
+
 // claimSearchRequest durably claims the scoped request before any network
 // I/O, checking the expected revision on first claim. Concurrent identical
 // claims resolve to one owner; the losers wait for the terminal receipt.

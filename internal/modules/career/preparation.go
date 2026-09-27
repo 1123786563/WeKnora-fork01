@@ -315,7 +315,11 @@ func (o *Office) GeneratePreparation(ctx context.Context, input GeneratePreparat
 		if isSQLiteBusy(txErr) {
 			return PreparationReceipt{}, &OutcomeUnknownError{RequestID: input.RequestID}
 		}
-		return PreparationReceipt{}, txErr
+		stored, _, resolveErr := o.resolvePreparationReserveError(operationCtx, s, input, fingerprint, txErr)
+		if resolveErr != nil {
+			return PreparationReceipt{}, resolveErr
+		}
+		return stored, nil
 	}
 
 	// The generation seam runs outside any transaction: it may be slow and
@@ -422,6 +426,26 @@ func (o *Office) attemptPreparationReserve(ctx context.Context, s Scope, input G
 		return preparationRecord{}, err
 	}
 	return row, nil
+}
+
+// resolvePreparationReserveError settles a failed reserve attempt that is
+// not a typed rejection: the losing side of a same-request-ID Create race
+// (unique-index violation) reconciles through the winner's durable row
+// instead of leaking the raw database error as a 500 (ocr3-129). A stored
+// receipt replays; a missing or still-generating row leaves the outcome
+// undecided and answers OutcomeUnknown.
+func (o *Office) resolvePreparationReserveError(ctx context.Context, s Scope, input GeneratePreparationInput, fingerprint string, txErr error) (PreparationReceipt, bool, error) {
+	if !isReceiptRaceError(txErr) {
+		return PreparationReceipt{}, false, txErr
+	}
+	stored, found, lookupErr := o.replayPreparationReceipt(ctx, s, input.RequestID, fingerprint)
+	if lookupErr != nil {
+		return PreparationReceipt{}, false, lookupErr
+	}
+	if found {
+		return stored, true, nil
+	}
+	return PreparationReceipt{}, false, &OutcomeUnknownError{RequestID: input.RequestID}
 }
 
 // persistPreparationFailure records the typed failure without publishing any
@@ -553,7 +577,9 @@ func (o *Office) finalizePreparation(ctx context.Context, s Scope, input Generat
 		}
 		if isReceiptRaceError(err) {
 			// A concurrent writer under the same request ID decided the
-			// outcome; the stored receipt is the truth.
+			// outcome; the stored receipt is the truth. With no durable
+			// decision observable, the outcome stays unknown instead of
+			// leaking the raw race error (ocr3-129).
 			stored, found, lookupErr := o.replayPreparationReceipt(ctx, s, input.RequestID, fingerprint)
 			if lookupErr != nil {
 				return PreparationReceipt{}, lookupErr
@@ -561,6 +587,7 @@ func (o *Office) finalizePreparation(ctx context.Context, s Scope, input Generat
 			if found {
 				return stored, nil
 			}
+			return PreparationReceipt{}, &OutcomeUnknownError{RequestID: input.RequestID}
 		}
 		if ctx.Err() != nil {
 			return PreparationReceipt{}, &OutcomeUnknownError{RequestID: input.RequestID}

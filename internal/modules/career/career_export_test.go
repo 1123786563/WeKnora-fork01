@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -377,6 +378,83 @@ func TestDeleteCareerPartialFailureKeepsRecoverableStateAndAudit(t *testing.T) {
 		Where("tenant_id = ? AND user_id = ? AND request_id = ?", uint64(1951), "owner-1", "delete-1").
 		Select("status").Scan(&status).Error)
 	require.Equal(t, DeletionStatusDeleted, status)
+}
+
+// TestDeleteCareerConcurrentRetryBumpsRevisionExactlyOnce pins ocr3-128:
+// two concurrent DeleteCareer retries under the same request ID must not
+// double-run finalize — the revision bumps exactly once and exactly one
+// career_deleted event lands, because the finalize phase locks the deletion
+// audit row and replays any already-finalized receipt.
+func TestDeleteCareerConcurrentRetryBumpsRevisionExactlyOnce(t *testing.T) {
+	o, db, ctx := newCareerExportOffice(t, "owner-1", 1980)
+	o.SetApplicationTaskRemover(&fakeCareerTaskRemover{})
+	fx := seedExportChain(t, o, ctx, "double-run")
+
+	var wg sync.WaitGroup
+	results := make([]error, 2)
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			_, results[i] = o.DeleteCareer(ctx, CareerDeletionInput{RequestID: "delete-race", ExpectedRevision: fx.Revision})
+		}(i)
+	}
+	wg.Wait()
+	require.True(t, results[0] == nil || results[1] == nil,
+		"at least one runner must produce a receipt: %v / %v", results[0], results[1])
+
+	var revision uint64
+	require.NoError(t, db.Table("career_profiles").
+		Where("tenant_id = ? AND user_id = ?", uint64(1980), "owner-1").
+		Select("revision").Scan(&revision).Error)
+	require.Equal(t, fx.Revision+1, revision,
+		"concurrent retries of the same request ID must bump the revision exactly once")
+
+	var events int64
+	require.NoError(t, db.Table("career_changes").
+		Where("tenant_id = ? AND user_id = ? AND kind = ?", uint64(1980), "owner-1", ChangeKindCareerDeleted).
+		Count(&events).Error)
+	require.EqualValues(t, 1, events, "exactly one career_deleted event survives")
+
+	var status string
+	require.NoError(t, db.Table("career_data_deletions").
+		Where("tenant_id = ? AND user_id = ? AND request_id = ?", uint64(1980), "owner-1", "delete-race").
+		Select("status").Scan(&status).Error)
+	require.Equal(t, DeletionStatusDeleted, status)
+}
+
+// TestDeleteCareerSweepRemovesRowsCommittedDuringPausedDeletion pins the
+// honesty half of ocr3-128: a career row committed after the purge step ran
+// (the deletion sits partial) must be swept inside the locked finalize
+// transaction — the resumed receipt may only claim "deleted" over an empty
+// space.
+func TestDeleteCareerSweepRemovesRowsCommittedDuringPausedDeletion(t *testing.T) {
+	o, db, ctx := newCareerExportOffice(t, "owner-1", 1951)
+	remover := &fakeCareerTaskRemover{failErr: errors.New("workbench unavailable")}
+	o.SetApplicationTaskRemover(remover)
+	fx := seedExportChain(t, o, ctx, "sweep")
+
+	partial, err := o.DeleteCareer(ctx, CareerDeletionInput{RequestID: "delete-sweep", ExpectedRevision: fx.Revision})
+	require.NoError(t, err)
+	require.Equal(t, DeletionStatusPartial, partial.Status)
+
+	// While the deletion sits partial, a racing write commits a fresh career
+	// row after the purge already ran.
+	sneaky, err := o.ImportJD(ctx, ImportJDInput{RequestID: "sneaky-job", RawText: "仅限2027届。Go 服务端工程师。"})
+	require.NoError(t, err)
+	require.NotEmpty(t, sneaky.OpportunityID)
+	require.EqualValues(t, 1, countScopeRows(t, db, "career_opportunities"),
+		"the sneaked row is committed after the purge step ran")
+
+	// Resuming the same request ID finalizes under the profile lock with the
+	// in-transaction sweep: the sneaked row must not survive into a receipt
+	// that claims "deleted".
+	remover.failErr = nil
+	resumed, err := o.DeleteCareer(ctx, CareerDeletionInput{RequestID: "delete-sweep", ExpectedRevision: fx.Revision})
+	require.NoError(t, err)
+	require.Equal(t, DeletionStatusDeleted, resumed.Status)
+	require.Zerof(t, countScopeRows(t, db, "career_opportunities"),
+		"rows committed after the purge must be swept before the deleted receipt")
 }
 
 func TestDeleteCareerInvalidatesClientVisibleScopeOrChanges(t *testing.T) {

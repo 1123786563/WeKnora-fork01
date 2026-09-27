@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )
 
@@ -279,6 +280,82 @@ func TestRuleTriggerDuplicateReconcilesBySameRequestId(t *testing.T) {
 
 	require.EqualValues(t, 1, countRows(t, o, &searchRecord{}), "no duplicated search row")
 	require.EqualValues(t, 1, countRows(t, o, &searchRuleRunRecord{}), "one run row per rule period")
+	view, err := o.Rule(ctx, created.RuleID)
+	require.NoError(t, err)
+	require.Len(t, view.Runs, 1)
+	require.Equal(t, seeded.SearchID, view.Runs[0].SearchID)
+}
+
+// TestRuleTriggerTakesOverStrandedClaimAfterRevisionMoved pins ocr3-017: a
+// crashed rule attempt leaves the deterministic period request ID claiming;
+// once the profile revision moves, the plain fingerprint no longer matches
+// and every later trigger would answer ErrIdempotencyConflict forever,
+// stranding the rule period and failing the whole trigger. The trigger
+// takes the stranded row over under its stored fingerprint instead.
+func TestRuleTriggerTakesOverStrandedClaimAfterRevisionMoved(t *testing.T) {
+	o, _, _, ctx := newSearchRuleOffice(t)
+	created, err := o.SetRule(ctx, ruleInput("rule-strand-1", 60, RuleStatusEnabled))
+	require.NoError(t, err)
+	scope, err := getScope(ctx)
+	require.NoError(t, err)
+
+	// A crashed first attempt: the period request ID holds an expired claim
+	// fingerprinted against the revision observed back then (0).
+	deterministic := "rule:" + created.RuleID + ":1"
+	strandedFingerprint, err := searchFingerprint(SearchOnceInput{RequestID: deterministic, Query: searchFixtureQuery, ExpectedRevision: 0})
+	require.NoError(t, err)
+	leaseUntil := searchRuleClockBase.Add(-time.Minute)
+	claimBody, err := json.Marshal(searchClaimBody{Kind: searchOnceClaimKind, ClaimToken: "stranded-token", LeaseUntil: leaseUntil})
+	require.NoError(t, err)
+	require.NoError(t, o.db.Create(&searchRecord{
+		ID: uuid.NewString(), TenantID: scope.TenantID, UserID: scope.UserID,
+		RequestID: deterministic, Fingerprint: strandedFingerprint, Status: searchStatusClaiming,
+		ClaimToken: "stranded-token", LeaseUntil: &leaseUntil, Query: searchFixtureQuery,
+		ReceiptBody: string(claimBody), CreatedAt: searchRuleClockBase.Add(-2 * time.Minute),
+	}).Error)
+
+	// The revision moves before the retry (every write path bumps it).
+	_, err = o.Confirm(ctx, "skill.go", "Go", "rule-strand-rev", 0, Source{Kind: "manual"})
+	require.NoError(t, err)
+
+	outcomes, err := o.TriggerDueRules(ctx, searchRuleClockBase.Add(time.Hour))
+	require.NoError(t, err, "a stranded claim under a moved revision must not fail the trigger")
+	require.Len(t, outcomes, 1)
+	require.Equal(t, deterministic, outcomes[0].RequestID)
+	require.Equal(t, RuleRunStatusCompleted, outcomes[0].Status)
+
+	require.EqualValues(t, 1, countRows(t, o, &searchRecord{}), "the stranded row is taken over, not duplicated")
+	require.EqualValues(t, 1, countRows(t, o, &searchRuleRunRecord{}))
+	view, err := o.Rule(ctx, created.RuleID)
+	require.NoError(t, err)
+	require.Len(t, view.Runs, 1)
+	require.Equal(t, RuleRunStatusCompleted, view.Runs[0].Status)
+}
+
+// TestRuleTriggerReplaysStrandedTerminalAfterRevisionMoved pins the replay
+// half of ocr3-017: a terminal receipt stored under an older revision still
+// replays for the rule trigger after the revision moved — no refetch, no
+// duplicate search row.
+func TestRuleTriggerReplaysStrandedTerminalAfterRevisionMoved(t *testing.T) {
+	o, transport, _, ctx := newSearchRuleOffice(t)
+	created, err := o.SetRule(ctx, ruleInput("rule-strand-2", 60, RuleStatusEnabled))
+	require.NoError(t, err)
+
+	deterministic := "rule:" + created.RuleID + ":1"
+	seeded, err := o.SearchOnce(ctx, SearchOnceInput{RequestID: deterministic, Query: searchFixtureQuery, ExpectedRevision: 0})
+	require.NoError(t, err)
+	require.Equal(t, SearchStatusCompleted, seeded.Status)
+
+	// The revision moves before the trigger runs.
+	_, err = o.Confirm(ctx, "skill.go", "Go", "rule-strand-2-rev", 0, Source{Kind: "manual"})
+	require.NoError(t, err)
+
+	outcomes, err := o.TriggerDueRules(ctx, searchRuleClockBase.Add(time.Hour))
+	require.NoError(t, err)
+	require.Len(t, outcomes, 1)
+	require.Equal(t, RuleRunStatusCompleted, outcomes[0].Status)
+	require.Len(t, transport.calls, 1, "the stored terminal receipt replays without refetching")
+	require.EqualValues(t, 1, countRows(t, o, &searchRecord{}))
 	view, err := o.Rule(ctx, created.RuleID)
 	require.NoError(t, err)
 	require.Len(t, view.Runs, 1)

@@ -442,6 +442,52 @@ func seedApplicationEvaluationWithFields(t *testing.T, o *Office, ctx context.Co
 	}
 }
 
+// TestReconcileMergeKeepsPreMergeEvaluationsUsableForApplications pins
+// ocr3-016: an evaluation created before a merge must keep backing
+// application creation afterwards. The merge migrates the evaluation rows
+// onto the target, and the application-time comparison resolves the merge
+// chain so evaluations merged under older builds (rows still naming the
+// merged-away candidate) self-heal instead of failing ErrInvalidRequest
+// forever with no recovery path.
+func TestReconcileMergeKeepsPreMergeEvaluationsUsableForApplications(t *testing.T) {
+	o, db, ctx := newApplicationOffice(t, "owner", 123)
+	fields := knownFields("平台后端工程师", "示例科技", "杭州", "2027届秋招", "本科及以上学历")
+	seed := seedApplicationEvaluationWithFields(t, o, ctx, fields, "eval-merge")
+	linker := &fakeCareerApplicationLinker{}
+	o.SetApplicationTaskLinker(linker)
+
+	// A duplicate posting of the same job is merged into the seeded one; the
+	// seeded opportunity becomes the merged-away candidate.
+	duplicate := importKnownJD(t, o, ctx, "eval-merge-dup", "https://other.example.net/jobs/1001", fields)
+	receipt, err := o.ReconcileOpportunities(ctx, ReconcileInput{
+		RequestID: "eval-merge-1", TargetID: duplicate.OpportunityID, CandidateID: seed.OpportunityID,
+	})
+	require.NoError(t, err)
+	require.Equal(t, ReconcileDecisionMerged, receipt.Decision)
+
+	// The pre-merge evaluation row migrates onto the canonical owner.
+	var evaluation evaluationRecord
+	require.NoError(t, db.Where("id = ?", seed.EvaluationID).First(&evaluation).Error)
+	require.Equal(t, duplicate.OpportunityID, evaluation.OpportunityID,
+		"the merge migrates the pre-merge evaluation onto the target")
+
+	// A pre-merge evaluation keeps backing application creation through the
+	// old (merged-away) opportunity ID.
+	application, err := o.CreateApplication(ctx, applicationInput(seed, "eval-merge-app", "2028-spring"))
+	require.NoError(t, err)
+	require.Equal(t, duplicate.OpportunityID, application.PinnedEvidence.OpportunityID)
+
+	// Legacy self-heal: evaluations merged under older builds still name the
+	// candidate (simulate by rewriting the row back). The application-time
+	// comparison resolves the merge chain instead of stranding the row.
+	require.NoError(t, db.Model(&evaluationRecord{}).
+		Where("id = ?", seed.EvaluationID).
+		Update("opportunity_id", seed.OpportunityID).Error)
+	legacy, err := o.CreateApplication(ctx, applicationInput(seed, "eval-merge-app-2", "2029-autumn"))
+	require.NoError(t, err, "a stranded pre-merge evaluation must stay usable through the merge chain")
+	require.Equal(t, duplicate.OpportunityID, legacy.PinnedEvidence.OpportunityID)
+}
+
 // ---- 6. source coverage ----------------------------------------------------
 
 func TestReconcileExposesSourceCoverageAndCities(t *testing.T) {

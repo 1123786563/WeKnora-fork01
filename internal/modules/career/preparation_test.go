@@ -429,6 +429,55 @@ func TestPreparationScopeRejectsOtherTenantAndOwner(t *testing.T) {
 	require.Len(t, readPreparationRows(t, db), 1, "only the owner's preparation may persist")
 }
 
+// TestPreparationReserveRaceReconcilesThroughStoredRow pins ocr3-129: the
+// losing side of a same-request-ID reserve race (unique-index violation on
+// career_preparations) reconciles through the winner's durable row instead
+// of leaking the raw database error as a 500.
+func TestPreparationReserveRaceReconcilesThroughStoredRow(t *testing.T) {
+	o, db, _, ctx := newPreparationOffice(t, "owner-1", 1979)
+	fx := seedSubmissionFixture(t, o, ctx, "race")
+	_, err := o.RecordSubmission(ctx, RecordSubmissionInput{
+		RequestID: "race-sub", ApplicationID: fx.ApplicationID, Channel: SubmissionChannelEmail,
+		MaterialID: fx.MaterialID, ExportID: fx.ExportID, ExpectedRevision: fx.Revision,
+	})
+	require.NoError(t, err)
+	input := preparationInput(fx, "race-1", PreparationFocusCoverLetter, fx.Revision)
+	receipt, err := o.GeneratePreparation(ctx, input)
+	require.NoError(t, err)
+
+	var row preparationRecord
+	require.NoError(t, db.Where("request_id = ?", "race-1").First(&row).Error)
+	scope, err := getScope(ctx)
+	require.NoError(t, err)
+
+	// The losing twin replays the winner's stored receipt.
+	stored, resolved, resolveErr := o.resolvePreparationReserveError(ctx, scope, input, row.Fingerprint, gorm.ErrDuplicatedKey)
+	require.NoError(t, resolveErr)
+	require.True(t, resolved)
+	require.Equal(t, receipt.RequestID, stored.RequestID)
+	require.Equal(t, receipt.MaterialID, stored.MaterialID)
+
+	// The same request ID under different content stays a typed conflict.
+	_, resolved, resolveErr = o.resolvePreparationReserveError(ctx, scope, input, "different-fingerprint", gorm.ErrDuplicatedKey)
+	require.ErrorIs(t, resolveErr, ErrIdempotencyConflict)
+	require.False(t, resolved)
+
+	// No durable decision (the winner rolled back): the outcome stays
+	// unknown, never a raw database error.
+	missing := input
+	missing.RequestID = "race-missing"
+	var unknown *OutcomeUnknownError
+	_, resolved, resolveErr = o.resolvePreparationReserveError(ctx, scope, missing, row.Fingerprint, gorm.ErrDuplicatedKey)
+	require.ErrorAs(t, resolveErr, &unknown)
+	require.False(t, resolved)
+
+	// Non-race errors pass through untouched.
+	boom := errors.New("boom")
+	_, resolved, resolveErr = o.resolvePreparationReserveError(ctx, scope, input, row.Fingerprint, boom)
+	require.Same(t, boom, resolveErr)
+	require.False(t, resolved)
+}
+
 func TestPreparationRevisionConflictReturnsCurrentRevision(t *testing.T) {
 	o, db, _, ctx := newPreparationOffice(t, "owner-1", 1979)
 	fx := seedSubmissionFixture(t, o, ctx, "rev")
