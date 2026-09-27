@@ -102,7 +102,7 @@ func NewOrderService(db *gorm.DB, providers map[string]payment.Provider) (*Order
 	if err := normalizeMigratedCommercialUniques(db); err != nil {
 		return nil, err
 	}
-	if err := db.AutoMigrate(&repocommercial.OrderRow{}, &repocommercial.Subscription{}); err != nil {
+	if err := db.AutoMigrate(&repocommercial.OrderRow{}, &repocommercial.Subscription{}, &repocommercial.PaymentAnomalyRow{}); err != nil {
 		return nil, err
 	}
 	// (R3-26) Migration of PRE-INVARIANT rows, BEFORE the index is created:

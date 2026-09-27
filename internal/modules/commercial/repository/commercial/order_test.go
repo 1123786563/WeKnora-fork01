@@ -29,7 +29,7 @@ func testOrderStore(t *testing.T) (*OrderStore, *gorm.DB) {
 		t.Fatal(err)
 	}
 	sqlDB.SetMaxOpenConns(1)
-	if err := db.AutoMigrate(&OrderRow{}, &PaymentAttemptRow{}, &OutboxEvent{}); err != nil {
+	if err := db.AutoMigrate(&OrderRow{}, &PaymentAttemptRow{}, &OutboxEvent{}, &PaymentAnomalyRow{}); err != nil {
 		t.Fatal(err)
 	}
 	for _, idx := range []string{
@@ -673,6 +673,107 @@ func TestIsQuoteUniqueConflictClassifier(t *testing.T) {
 		if got := isQuoteUniqueConflict(tc.err); got != tc.want {
 			t.Fatalf("%s: isQuoteUniqueConflict = %v, want %v", tc.name, got, tc.want)
 		}
+	}
+}
+
+// ---- #84 Task 1: abnormal payment facts are retained (spec L127) ----
+
+// TestConfirmPaymentMismatchRetainsExternalFactWithoutFulfillment（G1）：
+// 错金额的已验签事实不再整体丢弃——事务照旧回滚（不履约、无 outbox 事件、
+// attempt 不动），但异常资金事实以独立事务幂等落库为 awaiting_disposition
+// 的 PaymentAnomalyRow（kind 由闭合分类定：actual < expected → partial）。
+func TestConfirmPaymentMismatchRetainsExternalFactWithoutFulfillment(t *testing.T) {
+	s, db := testOrderStore(t)
+	ctx := context.Background()
+	mustCreateOrder(t, s, "o1", "q1")
+	att := mustRegisterAttempt(t, s, "a1", "o1", "wechat", "wxm", "m1")
+	mismatched := att
+	mismatched.Amount = 50 // order face 100, fact 50 → partial payment
+	if err := s.ConfirmPayment(ctx, mismatched); !errors.Is(err, domain.ErrPaymentMismatch) {
+		t.Fatalf("want ErrPaymentMismatch, got %v", err)
+	}
+	ok, err := s.HasUnresolvedPaymentAnomaly(ctx, "o1")
+	if err != nil || !ok {
+		t.Fatalf("mismatch fact must be retained as unresolved anomaly, got %v %v", ok, err)
+	}
+	var anomaly PaymentAnomalyRow
+	if err := db.Where("order_id = ?", "o1").First(&anomaly).Error; err != nil {
+		t.Fatal(err)
+	}
+	if anomaly.Kind != PaymentAnomalyKindPartial ||
+		anomaly.ExpectedAmountFen != 100 || anomaly.ActualAmountFen != 50 ||
+		anomaly.Transaction != att.Transaction || anomaly.State != PaymentAnomalyStateAwaiting {
+		t.Fatalf("anomaly snapshot mismatch: %+v", anomaly)
+	}
+	row, err := s.GetOrder(ctx, "o1")
+	if err != nil || row.State != domain.OrderStatePending {
+		t.Fatalf("mismatch must never fulfill: state=%s err=%v", row.State, err)
+	}
+	if n := countOutbox(t, db, OutboxKindFulfill); n != 0 {
+		t.Fatalf("fulfill events %d, want 0", n)
+	}
+	attempt := getAttempt(t, db, "a1")
+	if attempt.State != PaymentAttemptStatePending || attempt.ProviderTransactionID != nil {
+		t.Fatalf("the attempt must stay pending: %+v", attempt)
+	}
+	// 渠道重投同一通知：仍是 mismatch + anomaly 行数不变（终态幂等的事实面）。
+	if err := s.ConfirmPayment(ctx, mismatched); !errors.Is(err, domain.ErrPaymentMismatch) {
+		t.Fatalf("replay want ErrPaymentMismatch, got %v", err)
+	}
+	var n int64
+	db.Model(&PaymentAnomalyRow{}).Count(&n)
+	if n != 1 {
+		t.Fatalf("replay must not mint a second anomaly row, got %d", n)
+	}
+}
+
+// TestConfirmPaymentMismatchAnomalyInsertFailurePropagates（Review Focus 2）：
+// anomaly 落库失败必须上抛原始错误（覆盖 ErrPaymentMismatch）——调用方因此
+// 回退非 2xx，渠道重试兜底，绝不能「200 却无事实」。
+func TestConfirmPaymentMismatchAnomalyInsertFailurePropagates(t *testing.T) {
+	s, db := testOrderStore(t)
+	ctx := context.Background()
+	mustCreateOrder(t, s, "o1", "q1")
+	att := mustRegisterAttempt(t, s, "a1", "o1", "wechat", "wxm", "m1")
+	mismatched := att
+	mismatched.Amount = 50
+	db.Migrator().DropTable(&PaymentAnomalyRow{})
+	err := s.ConfirmPayment(ctx, mismatched)
+	if err == nil || errors.Is(err, domain.ErrPaymentMismatch) {
+		t.Fatalf("want the raw insert error to propagate, got %v", err)
+	}
+}
+
+// TestConfirmPaymentNotSucceededStaysRollbackNoAnomaly（Review Focus 1 /
+// 审查 R1）：金额/币种/身份全对、仅 trade_state 非 SUCCESS 的已验签通知
+// （两渠道 Verify 均不过滤 trade_state）是独立分类 ErrPaymentNotSucceeded——
+// 零落库、整体回滚、绝不混入 anomaly（ValidatePayment 的 State 判定不再触发，
+// 否则「金额全对但状态 CLOSED」会被误判为假 amount_mismatch）。
+func TestConfirmPaymentNotSucceededStaysRollbackNoAnomaly(t *testing.T) {
+	s, db := testOrderStore(t)
+	ctx := context.Background()
+	mustCreateOrder(t, s, "o1", "q1")
+	att := mustRegisterAttempt(t, s, "a1", "o1", "wechat", "wxm", "m1")
+	closed := att
+	closed.Transaction = "txn_closed"
+	closed.State = "closed"
+	if err := s.ConfirmPayment(ctx, closed); !errors.Is(err, domain.ErrPaymentNotSucceeded) {
+		t.Fatalf("want ErrPaymentNotSucceeded, got %v", err)
+	}
+	if ok, _ := s.HasUnresolvedPaymentAnomaly(ctx, "o1"); ok {
+		t.Fatal("non-succeeded must not land an anomaly")
+	}
+	var n int64
+	db.Model(&PaymentAnomalyRow{}).Count(&n)
+	if n != 0 {
+		t.Fatalf("non-succeeded must persist nothing, got %d rows", n)
+	}
+	row, err := s.GetOrder(ctx, "o1")
+	if err != nil || row.State != domain.OrderStatePending {
+		t.Fatalf("state=%s err=%v, want pending", row.State, err)
+	}
+	if got := countOutbox(t, db, ""); got != 0 {
+		t.Fatalf("outbox events=%d, want 0", got)
 	}
 }
 

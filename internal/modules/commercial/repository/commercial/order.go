@@ -685,8 +685,18 @@ func (p paymentEventPayload) toJSON() (string, error) {
 // fulfillment event is never duplicated. A failure at any point — including
 // between the payment confirmation and the outbox write — rolls back the
 // whole transaction.
+//
+// (#84, spec L127) Two refused classes split: a NON-SUCCEEDED verified fact
+// answers ErrPaymentNotSucceeded with zero persistence (the channel's retry
+// is the correct posture for a not-yet/never collection), while an
+// AMOUNT/CURRENCY mismatch still rolls the confirmation back but its
+// external fund fact is retained — AFTER the transaction, in its own
+// RecordPaymentAnomaly transaction — as an awaiting-disposition anomaly.
+// A retention failure propagates over ErrPaymentMismatch so the callback
+// face answers non-2xx (never "acknowledged" without the fact).
 func (s *OrderStore) ConfirmPayment(ctx context.Context, fact domain.PaymentFact) error {
-	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	var anomaly *PaymentAnomalyRow
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var attempt PaymentAttemptRow
 		err := tx.Where("provider = ? AND merchant = ? AND merchant_order_id = ?",
 			fact.Provider, fact.Merchant, fact.AttemptID).First(&attempt).Error
@@ -696,8 +706,18 @@ func (s *OrderStore) ConfirmPayment(ctx context.Context, fact domain.PaymentFact
 		if err != nil {
 			return err
 		}
+		// (#84 / Review Focus 1) A verified fact whose channel state is not
+		// succeeded is its own class: no anomaly (it is not a collection),
+		// no fulfillment, whole rollback. This fires BEFORE the identity /
+		// amount comparison so a "right amount, closed state" fact is never
+		// misfiled as an amount mismatch.
+		if fact.State != "succeeded" {
+			return domain.ErrPaymentNotSucceeded
+		}
 		if attempt.OrderID != fact.OrderID || attempt.TenantID != fact.TenantID ||
 			attempt.AmountFen != int64(fact.Amount) || attempt.Currency != fact.Currency {
+			snap := buildMismatchAnomaly(attempt, fact)
+			anomaly = &snap
 			return domain.ErrPaymentMismatch
 		}
 
@@ -709,6 +729,8 @@ func (s *OrderStore) ConfirmPayment(ctx context.Context, fact domain.PaymentFact
 			return err
 		}
 		if err := domain.ValidatePayment(row.Domain(), fact); err != nil {
+			snap := buildMismatchAnomaly(attempt, fact)
+			anomaly = &snap
 			return err
 		}
 
@@ -785,6 +807,39 @@ func (s *OrderStore) ConfirmPayment(ctx context.Context, fact domain.PaymentFact
 		}
 		return err
 	})
+	// (#84) The mismatch fund fact is retained OUTSIDE the rolled-back
+	// confirmation transaction, in its own transaction: the anomaly survives
+	// the rollback, and a retention failure overrides the mismatch sentinel
+	// so the callback face answers non-2xx (the channel retries — Review
+	// Focus 2).
+	if err != nil && anomaly != nil && errors.Is(err, domain.ErrPaymentMismatch) {
+		if rerr := s.RecordPaymentAnomaly(ctx, *anomaly); rerr != nil {
+			return rerr
+		}
+	}
+	return err
+}
+
+// buildMismatchAnomaly snapshots a refused amount/currency/identity mismatch
+// as an awaiting-disposition anomaly row (#84, spec L127): expected values
+// come from the REGISTERED attempt (the order's frozen face), actual values
+// from the verified fact. The row's ID is minted at insert time inside
+// RecordPaymentAnomaly — never here — so a rollback-and-retry keeps one
+// identity per (provider, merchant, transaction).
+func buildMismatchAnomaly(attempt PaymentAttemptRow, fact domain.PaymentFact) PaymentAnomalyRow {
+	return PaymentAnomalyRow{
+		TenantID:          attempt.TenantID,
+		OrderID:           attempt.OrderID,
+		AttemptID:         attempt.MerchantOrderID,
+		Provider:          fact.Provider,
+		Merchant:          fact.Merchant,
+		Transaction:       fact.Transaction,
+		Kind:              ClassifyPaymentAnomaly(attempt.AmountFen, int64(fact.Amount), attempt.Currency, fact.Currency),
+		ExpectedAmountFen: attempt.AmountFen,
+		ActualAmountFen:   int64(fact.Amount),
+		ExpectedCurrency:  attempt.Currency,
+		ActualCurrency:    fact.Currency,
+	}
 }
 
 // MarkFulfilled transitions a paid order to fulfilled once its benefit event
