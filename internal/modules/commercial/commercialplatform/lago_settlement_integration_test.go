@@ -369,6 +369,67 @@ func TestLagoIntegrationSettleActivatesGatedSubscription(t *testing.T) {
 			t.Fatalf("replayed settle changed the authority state:\nbefore %s\nafter  %s", before, after)
 		}
 	})
+
+	// (#84 Task 6 / AC3 authority side) A SECOND settle under a DIFFERENT
+	// channel transaction — the multiple-success second payment's shape, the
+	// command a buggy coordinator would drive — must short-circuit on the
+	// already-active purchase (step (i)): nil error + receipt, and EXACTLY
+	// ONE succeeded Lago Payment before and after (never a second Stripe
+	// charge, never a second Payment row). Merged as a subtest of the
+	// activation case on purpose: reaching active REQUIRES the full
+	// gated-create → settle → webhook chain (local activation is forbidden,
+	// spec L123-125), so an independent function would re-run the whole
+	// multi-minute chain for the same assertion.
+	t.Run("TestSettleSecondChannelTransactionShortCircuitsWhenActive", func(t *testing.T) {
+		before := countLagoSucceededPayments(t, a, extCustomer)
+		if before != 1 {
+			t.Fatalf("setup: exactly one succeeded Lago payment expected after the single activation, got %d", before)
+		}
+		txnOther := txn + "-OTHER"
+		if _, err := a.SubmitCommand(ctx, commercial.Command{
+			Kind:  commercial.CommandKindSettlePurchasePayment,
+			Key:   commercial.SettlePurchasePaymentCommandKey(extPurchase, txnOther),
+			Actor: "t9", Reason: "integration second-channel settle must short-circuit",
+			Payload: commercial.SettlePurchasePaymentPayload{
+				TenantID: tenant, ExternalCustomerID: extCustomer,
+				ExternalPurchaseSubscriptionID: extPurchase, PlanCode: planCode,
+				ChannelTransaction: txnOther, AmountFen: 9900, Currency: commercial.CurrencyCNY,
+			},
+		}); err != nil {
+			t.Fatalf("the second-channel settle must short-circuit with nil error (idempotent receipt), got %v", err)
+		}
+		after := countLagoSucceededPayments(t, a, extCustomer)
+		if after != before {
+			t.Fatalf("the short-circuited second settle must not mint another Lago payment: before=%d after=%d", before, after)
+		}
+	})
+}
+
+// countLagoSucceededPayments reads the authority's Payment ledger for one
+// external customer (#84 Task 6): the authoritative count of succeeded
+// payments behind the "never a second Lago Payment" assertion.
+func countLagoSucceededPayments(t *testing.T, a *LagoAdapter, extCustomer string) int {
+	t.Helper()
+	status, body, err := a.do(context.Background(), http.MethodGet,
+		"/api/v1/payments?external_customer_id="+url.QueryEscape(extCustomer)+"&per_page=100", nil)
+	if err != nil || status != 200 {
+		t.Fatalf("lago payments read: HTTP %d err=%v", status, err)
+	}
+	var parsed struct {
+		Payments []struct {
+			Status string `json:"status"`
+		} `json:"payments"`
+	}
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		t.Fatalf("lago payments parse: %v", err)
+	}
+	n := 0
+	for _, p := range parsed.Payments {
+		if p.Status == "succeeded" {
+			n++
+		}
+	}
+	return n
 }
 
 func providerCustomerOf(t *testing.T, a *LagoAdapter, extCustomer string) string {
