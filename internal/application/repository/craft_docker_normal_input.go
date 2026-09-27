@@ -49,7 +49,17 @@ type CraftDockerNormalInputRequest struct {
 	StdinEnabled  bool              `json:"stdin_enabled"`
 	Stdin         []byte            `json:"stdin"`
 	OutputLimit   int64             `json:"output_limit"`
-	OutputPolicy  string            `json:"output_policy"`
+	OutputPolicy string            `json:"output_policy"`
+
+	// ResolvedTargetPath / TargetSHA256 are OPTIONAL additive fields for
+	// server-resolvable faces (the fixed-shape web build entry): such a face
+	// walks the HOST filesystem, fills the symlink-resolved absolute target
+	// and its digest, and the T03 module policy's identity layer fires
+	// exactly as it does for adapter-supplied evidence. Container-side
+	// callers leave both empty — the canonical JSON form and the durable
+	// encrypted identity are unchanged.
+	ResolvedTargetPath string `json:"resolved_target_path,omitempty"`
+	TargetSHA256       string `json:"target_sha256,omitempty"`
 }
 
 type CraftDockerStagedNormalInput struct {

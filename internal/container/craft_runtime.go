@@ -172,6 +172,7 @@ func newCraftRuntimeExecutor(
 	previewOnly := evidence
 	webToolchainDir := strings.TrimSpace(os.Getenv(craftWebToolchainDirEnv))
 	var webToolchainPin *CraftWebToolchainPin
+	var webBuildGate *CraftWebBuildCommandGate
 	if webToolchainDir != "" {
 		pin, pinErr := LoadCraftWebToolchainPin(webToolchainDir)
 		if pinErr != nil {
@@ -182,7 +183,20 @@ func newCraftRuntimeExecutor(
 		pin.RuntimeDigest = runtimeDigest
 		webToolchainPin = &pin
 		evidence = craftWebBuildEvidenceSource(evidence, craftSessionBuildLogReader(source, outputDir), pin)
+		// T04 integration wiring: build the T03 execution policy and the
+		// fixed-shape web build command gate at the SAME site as the pin,
+		// so the central dispatch point (T20 lane) attaches the SAME gate
+		// instance before any server-initiated build command is sent.
+		if delegatePolicy, perr := service.NewCraftDelegateExecutionPolicy(nil, db, workDir); perr == nil {
+			if gate, gerr := NewCraftWebBuildCommandGate(delegatePolicy, pin, webToolchainDir); gerr == nil {
+				webBuildGate = gate
+				logger.Infof(context.Background(), "[CraftRuntime] T04 web build command gate assembled (toolchain %s)", webToolchainDir)
+			} else {
+				logger.Warnf(context.Background(), "[CraftRuntime] T04 web build command gate NOT assembled: %v (build commands stay fail-closed)", gerr)
+			}
+		}
 	}
+	_ = webBuildGate // central dispatch attachment is T20 lane scope
 	// The candidate store backs the R4 Task3 Run-bound collection: successful
 	// delegations stage a private candidate and the post-terminal capture
 	// seals the draft; the legacy session-wide publication route keeps its

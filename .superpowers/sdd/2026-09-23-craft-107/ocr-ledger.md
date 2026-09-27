@@ -17,3 +17,4 @@ Open-code-review records for the delivered Craft #107 scope. Per `docs/plans/202
 | 2026-09-26 | T07: 1c1468641^..5f60d5cfc | clean（增量收敛后干净） | 0 open | 报告: docs/plans/craft-107-ocr-t07.md |
 | 2026-09-26 | T16: 463be670b^..0112ab0bb | clean（增量收敛后干净） | 0 open | 报告: docs/plans/craft-107-ocr-t16.md |
 | 2026-09-26 | T08: 13c656301^..0108a1f3e | clean（第三轮后干净段延伸：build-log 信任缺口服务端收口，见报告） | 0 open | 报告: docs/plans/craft-107-ocr-t08.md |
+| 2026-09-26 | T14: eeb1ee2db^..b91d265dd | clean（第四轮豁免补救后干净段延伸：暂存资产钉扎/capture 前置门/manifest 逐段盘符等，见报告） | 0 open | 报告: docs/plans/craft-107-ocr-t14.md |
