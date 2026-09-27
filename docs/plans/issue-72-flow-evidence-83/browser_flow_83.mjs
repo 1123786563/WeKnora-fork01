@@ -183,7 +183,10 @@ try {
   // --- settle rail + webhook finalize: poll purchase to active ---
   const deliver = `${EV}../issue-72-flow-evidence-82/settle-evidence/deliver_stripe_webhook.py`;
   const ORG = '305eddac-1bbd-47a3-af15-219f1d39a27d'; // 82flow stack seed org (read-only)
-  const TENANT = process.env.FLOW83_TENANT ?? '17';
+  const TENANT = process.env.FLOW83_TENANT ?? '';
+  if (!/^\d+$/.test(TENANT)) {
+    note('tenant-env', false, `FLOW83_TENANT must be the protagonist's numeric tenant id (got '${TENANT}')`);
+  }
   const lagoCustomer = () => {
     try {
       return execFileSync('docker', [

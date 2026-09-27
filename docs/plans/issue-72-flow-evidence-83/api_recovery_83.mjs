@@ -89,8 +89,18 @@ async function stubNotify(id) {
   const res = await fetch(`${STUB}/stub/notify`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ out_trade_no: id }) });
   return { status: res.status, body: await res.json() };
 }
+// FLOW83_DB (default data/issue83-flow.db) + FLOW83_TENANT parameterize the
+// round: reruns land on a fresh sqlite db and a fresh protagonist tenant, so
+// no counts may be hardcoded (v2 rerun-friendliness fix).
+const DB_PATH = process.env.FLOW83_DB ?? 'data/issue83-flow.db';
+const MAIN_LOGIN = JSON.parse(readFileSync(`${EV}seed-login-f.json`, 'utf8'));
+const TEN = String(process.env.FLOW83_TENANT ?? MAIN_LOGIN.active_tenant?.id ?? '');
+if (!/^\d+$/.test(TEN)) {
+  console.error(`bad tenant id for SQL interpolation: ${TEN}`);
+  process.exit(2);
+}
 function sql(query) {
-  return execFileSync('sqlite3', ['data/issue83-flow.db', query], { encoding: 'utf8', cwd: fileURLToPath(new URL('../../..', import.meta.url)) }).trim();
+  return execFileSync('sqlite3', [DB_PATH, query], { encoding: 'utf8', cwd: fileURLToPath(new URL('../../..', import.meta.url)) }).trim();
 }
 function alipayLog() {
   try { return readFileSync(`${tmpdir()}/issue83-alipay-stub.log`, 'utf8'); } catch { return ''; }
@@ -159,34 +169,38 @@ async function driveToActive(token, tenant, log) {
 {
   const act = 'act3-duplicate';
   const log = [];
-  const tokenF = JSON.parse(readFileSync(`${EV}seed-login-f.json`, 'utf8')).token;
+  const tokenF = MAIN_LOGIN.token;
   const orders = await stubOrders();
   const mo = Object.keys(orders).find((k) => orders[k].total === 9900 && (orders[k].transaction_id ?? '').startsWith('wx_txn_83_main_')) ?? '';
-  log.push(`out_trade_no=${mo} state=${orders[mo]?.state} txn=${orders[mo]?.transaction_id}`);
+  log.push(`tenant=${TEN} out_trade_no=${mo} state=${orders[mo]?.state} txn=${orders[mo]?.transaction_id}`);
   const first = await stubNotify(mo);
   const second = await stubNotify(mo);
   log.push(`replay1: stub ok=${first.body.ok} detail=${first.body.detail}`);
   log.push(`replay2: stub ok=${second.body.ok} detail=${second.body.detail}`);
   note(act, 'both-ack-success', first.body.ok === true && second.body.ok === true, 'both replays answered WeKnora 200 {"code":"SUCCESS"}');
-  // tenant 20 legitimately holds TWO order rows: the retired alipay order
+  // The protagonist legitimately holds TWO order rows: the retired alipay order
   // (closed by the channel switch, pending+channel_failed) and the paid
   // wechat order — the exactly-once assertions are on the FULFILLED count
   // and the single-channel-transaction bookkeeping, not the raw row count.
+  const fulfilledOrder = sql(`select id from commercial_orders where tenant_id=${TEN} and state='fulfilled'`);
+  if (!/^ord_[0-9a-f]+$/.test(fulfilledOrder)) {
+    note(act, 'fulfilled-order-shape', false, `unexpected fulfilled order id: ${fulfilledOrder}`);
+  }
   const counts = {
-    orders: sql("select count(*) from commercial_orders where tenant_id=20"),
-    fulfilled: sql("select count(*) from commercial_orders where tenant_id=20 and state='fulfilled'"),
-    outboxFulfill: sql("select count(*) from commercial_outbox_events where kind='fulfill' and event_key like '%ord_a33ff14916c09989'"),
-    attempts: sql("select count(*) from commercial_payment_attempts where order_id='ord_a33ff14916c09989' and state='succeeded'"),
+    orders: sql(`select count(*) from commercial_orders where tenant_id=${TEN}`),
+    fulfilled: sql(`select count(*) from commercial_orders where tenant_id=${TEN} and state='fulfilled'`),
+    outboxFulfill: sql(`select count(*) from commercial_outbox_events where kind='fulfill' and event_key like '%${fulfilledOrder}'`),
+    attempts: sql(`select count(*) from commercial_payment_attempts where order_id='${fulfilledOrder}' and state='succeeded'`),
   };
-  log.push(`counts: ${JSON.stringify(counts)}`);
+  log.push(`fulfilled order=${fulfilledOrder} counts: ${JSON.stringify(counts)}`);
   note(act, 'counts-unchanged', counts.fulfilled === '1' && counts.outboxFulfill === '1' && counts.attempts === '1',
     'fulfilled/outbox-fulfill/succeeded-attempt all exactly 1 (plus the retired pre-switch alipay row)');
   // v1.53 provider payments carry no invoice_id — resolve the tenant's
   // provider customer binding (uuid) and count through it.
-  const cus20 = lagoCustomer(20);
+  const cus20 = lagoCustomer(TEN);
   const lagoPayments = execFileSync('docker', ['exec', 'weknora-lago-82flow-db-1', 'psql', '-U', 'lago', '-tAc',
     `select count(*) from payments p join payment_provider_customers ppc on ppc.id=p.payment_provider_customer_id where ppc.provider_customer_id='${cus20}' and p.status='succeeded'`], { encoding: 'utf8' }).trim();
-  log.push(`lago payments succeeded (tenant 20 purchase): ${lagoPayments}`);
+  log.push(`lago payments succeeded (tenant ${TEN} purchase): ${lagoPayments}`);
   note(act, 'lago-payment-one', lagoPayments === '1', `lago succeeded payments = ${lagoPayments}`);
   files['duplicate-notify-idempotent.txt'] = log.join('\n');
 }
@@ -257,35 +271,35 @@ async function driveToActive(token, tenant, log) {
   files['close-race-switch.txt'] = log.join('\n');
 }
 
-// ---- act 5: the Lago four objects for act 1 (tenant 20) + product face ----
+// ---- act 5: the Lago four objects for act 1 (protagonist tenant) + product face ----
 {
   const act = 'act5-four-objects';
   const log = [];
   const lago = (q) => execFileSync('docker', ['exec', 'weknora-lago-82flow-db-1', 'psql', '-U', 'lago', '-tAc', q], { encoding: 'utf8' }).trim();
   const lagoAPI = async (path) => (await (await fetch(`http://127.0.0.1:48889${path}`, { headers: { Authorization: `Bearer ${LAGO_KEY}` } })).json());
-  const sub = lago("select status from subscriptions where external_id='weknora-tenant-20-purchase'");
-  log.push(`subscription weknora-tenant-20-purchase status=${sub} (Lago enum 1=active)`);
+  const sub = lago(`select status from subscriptions where external_id='weknora-tenant-${TEN}-purchase'`);
+  log.push(`subscription weknora-tenant-${TEN}-purchase status=${sub} (Lago enum 1=active)`);
   note(act, 'subscription-active', sub === '1', 'the purchase subscription is active (exactly one)');
   // The invoice face reads through the API (string enums beat DB ints).
-  const invAPI = await lagoAPI('/api/v1/invoices?external_subscription_id=weknora-tenant-20-purchase');
+  const invAPI = await lagoAPI(`/api/v1/invoices?external_subscription_id=weknora-tenant-${TEN}-purchase`);
   const inv = invAPI.invoices?.[0] ?? {};
   log.push(`invoice via API: status=${inv.status} payment_status=${inv.payment_status} fees_amount=${inv.fees_amount_cents} total=${inv.total_amount_cents}`);
   note(act, 'invoice-finalized-fee', inv.status === 'finalized' && inv.payment_status === 'succeeded' && Number(inv.fees_amount_cents) > 0,
     `gating invoice finalized+succeeded (fee face ${inv.fees_amount_cents}, the proration shape 82 already documented)`);
-  const fees = lago("select count(*), coalesce(max(amount_cents),0) from fees where subscription_id=(select id from subscriptions where external_id='weknora-tenant-20-purchase') and fee_type=2");
+  const fees = lago(`select count(*), coalesce(max(amount_cents),0) from fees where subscription_id=(select id from subscriptions where external_id='weknora-tenant-${TEN}-purchase') and fee_type=2`);
   const [feeN, feeMax] = fees.split('|');
   log.push(`subscription fees = ${feeN} (max amount ${feeMax} fen)`);
   note(act, 'fee-exactly-one', feeN === '1', 'exactly one subscription fee on the gating invoice');
   // Lago's provider payments do not carry invoice_id in v1.53 — key them by
   // the tenant's provider customer binding instead.
-  const cus = lagoCustomer(20);
+  const cus = lagoCustomer(TEN);
   const pays = lago(`select count(*) from payments p join payment_provider_customers ppc on ppc.id=p.payment_provider_customer_id where ppc.provider_customer_id='${cus}' and p.status='succeeded'`);
   log.push(`succeeded provider payments (cus=${cus}) = ${pays}`);
   note(act, 'payment-one', pays === '1', `succeeded payments = ${pays}`);
-  const walletsAny = lago("select w.name, wt.status, wt.amount from wallet_transactions wt join wallets w on w.id=wt.wallet_id join customers c on c.id=w.customer_id where c.external_id='weknora-tenant-20' and w.name like '%purchase%'");
+  const walletsAny = lago(`select w.name, wt.status, wt.amount from wallet_transactions wt join wallets w on w.id=wt.wallet_id join customers c on c.id=w.customer_id where c.external_id='weknora-tenant-${TEN}' and w.name like '%purchase%'`);
   log.push(`purchase wallets: ${walletsAny.replace(/\n/g, ' ; ')}`);
   note(act, 'purchase-wallet-granted', walletsAny.includes('9.9'), 'the purchase wallet granted the 9.90 first period (status 1 = settled)');
-  const tokenF = JSON.parse(readFileSync(`${EV}seed-login-f.json`, 'utf8')).token;
+  const tokenF = MAIN_LOGIN.token;
   const acct = await api('GET', '/api/v1/commercial/account', tokenF);
   files['account-after-wechat.json'] = JSON.stringify(acct.json, null, 2);
   const credits = JSON.stringify(acct.json?.data?.benefits?.credits ?? {});

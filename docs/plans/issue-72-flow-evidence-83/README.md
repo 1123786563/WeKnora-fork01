@@ -5,6 +5,28 @@
 - 验证者：实现员-83（dynamic workflow），全链路真实环境（真实 Playwright chromium + 真实 vite 渲染 + 真实 Lago v1.53.0 + 真实 Stripe TEST 结算腿）
 - 核心结论：**微信渠道走与 #82 完全相同的激活链（微信回调验签 → ConfirmPayment Payment Fact → outbox → PurchaseFulfiller settle → Lago 内建 webhook finalize → active），五幕全过**；渠道切轨（支付宝→微信）由真实浏览器面演练并覆盖关单竞态。
 
+## 复验轮（v2，2026-09-27 12:2x，流程验证员-83，集成分支 `codex/issue-72-lago` @ `9ebd1c738`）
+
+同拓扑独立重跑（新 sqlite 库 `data/issue83-flow-v2.db`、新一次性密钥、新主角租户 39/40、Lago 82flow 栈彼时已被外部轮占到 tenant-34 故占位 38 个）：**五幕全部关键断言在真实环境复现通过**。
+
+| 幕 | v2 结果 | 证据 |
+|---|---|---|
+| 幕一 浏览器主链 | ✅（渠道单选/微信单 weixin:// 链接/stub NATIVE 9900/签名回调 200/paid_awaiting_activation 双页面/settle 真 Stripe PI `pi_3UK97Q...` succeeded/webhook 投递 200/active 双页面） | `01-05-*.png`（本轮 11:51/12:18 拍摄）、`act1-browser-run-v2.log`、`purchase-state-progression-v2.txt` |
+| 幕二 漏通知查单恢复 | ✅ 4/4 | `recovery-no-notify.txt` |
+| 幕三 重复通知幂等 | ✅ 3/3（fulfilled/fulfill/attempt/Lago payments 各恰 1） | `duplicate-notify-idempotent.txt` |
+| 幕四 关单竞态+切轨+晚到成功 | ✅ 12/12 | `close-race-paid.txt`、`close-race-switch.txt` |
+| 幕五 四对象+产品面 | ✅ 6/6 | `lago-four-objects-wechat.txt`、`account-after-wechat.json` |
+| 回归+红线 | ✅ 8 包 ok、architectureguard 0 violations、stripe test key 前缀字面量 0 命中、本地强制 active 0 命中 | `act2345-api-run-v2.log` |
+
+v2 轮勘误与脚本修复（均为**验证侧脚本/凭据注入问题**，非产品缺陷；产品代码零改动）：
+
+1. 首次生成的运行时 Lago key env 文件把 key 截断到 10 字符（管道拼装截断）→ `publish_conflict` 409；分步生成+长度校验后恢复（`seed-run.txt` 有记录）。
+2. webhook secret 经 rails runner 导出时混入尾部 Sidekiq-Pro 警告行，`tail -1` 取错 → 幕一脚本的 settle 轮询投递 24 轮全败；**settle 腿本身已真实成功**（Stripe PI 03:51:16Z succeeded），改用 `grep '^whsec_'` 精确导出后一次投递即 active（04/05 截图为同页面补拍，披露见 progression-v2）。
+3. `api_recovery_83.mjs`/`seed_83.sh` 的轮次硬编码（tenant 20、订单号、db 路径、seed-login-f 依赖手工 cp）参数化——`FLOW83_DB`/`FLOW83_TENANT`/fulfilled 订单动态发现（重跑友好）。
+4. README 原文「红线」行自身含 stripe test key 前缀字面量使 grep 无法归零——改为描述性文字，红线复跑 0 命中。
+5. 新增 v2 运行脚本：`v2_gen_keys.sh`（一次性密钥）、`v2_up_stubs.sh`（stub 启动+冒烟）、`v2_up_backend.sh`（后端全套 env，密钥仅经运行时 0600 env 文件注入）、`v2_probe.sh`（run_in_background bash3.2 PATH 差异探测，排障留档）。
+
+
 ## 环境拓扑（全部真实运行）
 
 | 组件 | 地址 | 说明 |
@@ -39,7 +61,7 @@
 | 幕四 AC3 | 已关旧单晚到成功（防御性）：200 收单、事实保留、无第二次履约 | ✅ | 同上 |
 | 幕五 AC4 | Lago 四对象：subscription active 恰 1、gating invoice finalized+succeeded（API 字符串枚举直读；fee 1320=4/30 日剪裁面，82 已披露的 proration 形状）、succeeded payment 恰 1、purchase 钱包 granted 9.9 恰 1 笔 | ✅ 6/6 | `lago-four-objects-wechat.txt` |
 | 幕五 | 产品面：credits 10.9=base 1.0+购买 9.9、features `advanced_models:true` | ✅ | `account-after-wechat.json` |
-| 回归+红线 | `go test ./internal/modules/commercial/... ./internal/handler/ -count=1` 8 包 ok；`make check-backend-architecture` 0 violations；`sk_test_` 0 命中；本地强制 active 0 命中 | ✅ | 本 README「红线」节；Ledger |
+| 回归+红线 | `go test ./internal/modules/commercial/... ./internal/handler/ -count=1` 8 包 ok；`make check-backend-architecture` 0 violations；stripe test key 前缀字面量 0 命中；本地强制 active 0 命中 | ✅ | 本 README「红线」节；Ledger |
 
 ## 验证过程中发现并修复的实现缺陷（TDD，commit 6ef004e3a）
 

@@ -12,7 +12,7 @@ set -euo pipefail
 cd "$(dirname "$0")/../../.."   # worktree root
 EV="$(cd "$(dirname "$0")" && pwd)"
 BACKEND=http://127.0.0.1:8095
-DB_PATH=data/issue83-flow.db
+DB_PATH="${FLOW83_DB:-data/issue83-flow.db}"
 PW="${FLOW83_PW:?missing required env FLOW83_PW}"
 
 : > "$EV/seed-run.txt"
@@ -49,6 +49,11 @@ LOGIN_A=$(curl -s -X POST "$BACKEND/api/v1/auth/login" -H 'Content-Type: applica
 LOGIN_B=$(curl -s -X POST "$BACKEND/api/v1/auth/login" -H 'Content-Type: application/json' -d "{\"email\":\"issue83-flow-b@verify.local\",\"password\":\"$PW\"}")
 echo "$LOGIN_A" > "$EV/seed-login-a.json"
 echo "$LOGIN_B" > "$EV/seed-login-b.json"
+# The main-chain protagonist's login, ALSO landed under the -f name the
+# downstream api_recovery_83.mjs reads (act 3/5) — a rerun-safe indirection:
+# every fresh round rewrites this file with ITS own tenant (v2 fix; the
+# original round hand-copied tenant 20's login here).
+cp "$EV/seed-login-a.json" "$EV/seed-login-f.json"
 TOKEN_A=$(jq -r .token "$EV/seed-login-a.json")
 TOKEN_B=$(jq -r .token "$EV/seed-login-b.json")
 UID_B=$(jq -r .user.id "$EV/seed-login-b.json")
