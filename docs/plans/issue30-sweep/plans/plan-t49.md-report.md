@@ -838,3 +838,14 @@ ok  	github.com/Tencent/WeKnora/internal/modules/appconnector	0.144s
 ## 4. 任务 8 结论
 
 计划 testCommand 六条命令 + Step 2 兜底检查在本会话亲手复跑**全绿**；#49 计划 Task 0–7 全部完成且均已落库，工作树 clean。「T19 飞书文档发布端到端闭环」实现终态确认收尾。
+
+---
+
+## 5. 门控修复轮（gate 修复员-t49，2026-09-27）
+
+- **失败现象**：计划级 testCommand 报 `bash: line 0: cd: /Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue30-sweep-t49: No such file or directory`——命令在 `cd` 阶段即失败，六段 go 命令均未执行。
+- **诊断**：环境性失败，非新增缺陷、非 flaky。`git worktree list` 与 `ls .worktrees/` 实测均无该目录（worktree 被删），分支 `codex/issue30-t49` 完好且已合入 sweep 分支（`git merge-base --is-ancestor` 返回 0）。docs 登记的已知 flaky（recoverytest crash-matrix）与本失败无关。
+- **修复**：`git worktree add .worktrees/issue30-sweep-t49 codex/issue30-t49` 重建（HEAD `420996148`，clean），零代码改动。
+- **复跑留证**（命令原样、原规模，单次通过、退出码 0）：`go build ./...` 成功（仅 ld 重复库警告）、`go vet` 四路径零输出、五段 `go test -count=1` 全 `ok`（database 5.940s；appconnector 六包 0.429–2.216s；handler 定向 4.613s；application/repository 定向 0.957s；workbench 定向 0.757s）。
+- **门控报告**：`.superpowers/sdd/t49/gate-report.md`（worktree 内，gitignored，不入库；本章节为其入库镜像）。
+- 真实 Provider 凭据（FEISHU_*）本环境仍未配置，`TestFeishuRealPublishLoop` 维持 blocked-env 如实 SKIP 语义，终态不变。
