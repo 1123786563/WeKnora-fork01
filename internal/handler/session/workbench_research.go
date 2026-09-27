@@ -165,7 +165,11 @@ func annotationViewOf(a types.TaskArtifactAnnotation) researchAnnotationView {
 type researchDelegateInput struct {
 	Objective string   `json:"objective"`
 	Sources   []string `json:"sources"`
-	AgentID   string   `json:"agent_id"`
+	// NOTE: the plan's original draft also carried an agent_id field, but a
+	// delegation is consumed inside the owning write run and never binds to
+	// a specific agent, so the field was dead wire — removed. Clients that
+	// still send agent_id are unaffected: gin's JSON binding ignores
+	// unknown keys.
 }
 
 // DelegateResearch POST /workbench/executions/:run_id/research — owner-only.
@@ -308,6 +312,7 @@ func (h *WorkbenchResearchHandler) AnnotateMaterial(c *gin.Context) {
 		return
 	}
 	input.MaterialID = strings.TrimSpace(input.MaterialID)
+	input.BaseVersion = strings.TrimSpace(input.BaseVersion)
 	refs, err := h.refs.GetSessionArtifactRefs(c.Request.Context(), run.SessionID)
 	if err != nil {
 		writeWorkbenchError(c, err)
@@ -328,14 +333,14 @@ func (h *WorkbenchResearchHandler) AnnotateMaterial(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusConflict, gin.H{"success": false, "code": "annotation_base_version_conflict", "error": "base_version does not match the current artifact version; reload the material list"})
 		return
 	}
+	if strings.TrimSpace(input.Body) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "code": "research_invalid_request", "error": "body is required"})
+		return
+	}
 	annotation := types.TaskArtifactAnnotation{
 		TenantID: tenantID, ID: uuid.NewString(), SessionID: run.SessionID, RunID: run.Key.RunID,
 		MaterialID: input.MaterialID, BaseVersion: input.BaseVersion,
 		Body: strings.TrimSpace(input.Body), AuthorID: userID,
-	}
-	if strings.TrimSpace(input.Body) == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "code": "research_invalid_request", "error": "body is required"})
-		return
 	}
 	if err := h.annotations.CreateAnnotation(c.Request.Context(), annotation); err != nil {
 		writeResearchError(c, err)

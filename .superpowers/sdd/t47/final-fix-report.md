@@ -1,130 +1,139 @@
-# T47 终局修复报告（最终审查 2 项发现，一次批次全修）
+# T47 最终修复报告（整计划最终审查 3 项 minor 发现，一次批次全修）
 
-- 基线：`74e9c8959`（worktree `.worktrees/issue30-sweep-t47`）
-- 修复范围：最终审查 2 项 important 发现，**2/2 全部修复，零未修项**
-- 编号约定：与本批次审查发现清单一致——**发现 1 = requestRevision 缺离线拒绝断言（task-research.ts）；发现 2 = 修订命令通道未接线（composition.ts）**
-- 结论：每项修复附 RED→GREEN 回归证据（**全部为本会话亲自实跑**，非引用先前批次输出）；受影响链路全量回归全绿（mobile-core 330/330、apps/mobile 234：222 pass + 12 opt-in skip / 0 fail、typecheck 干净、计划门 Go 部分 build + 三测全 ok）
-
-> 批次说明（如实）：进场时 worktree 已有一个中断批次遗留的同套未提交修复与旧版报告（编号与本清单相反、证据属该批次）。本会话逐一核实其与两项发现、计划约束、同族先例的一致性后：保留修复内容，把 6 处代码注释中的发现编号对齐本清单，亲自重跑全部 RED/GREEN 与回归证据（RED 经「保存补丁→回退 4 个源文件到 HEAD→实跑→`git apply` 恢复→GREEN 复确认」复现），并重写本报告。
-
----
-
-## 发现 1（important）：requestRevision 缺 OfflineGate 结构化断言
-
-### 根因核实（本会话实读）
-
-- 修复前（`git show HEAD:packages/mobile-core/src/research/task-research.ts` 的 requestRevision，对应审查引用 :131-156）仅有 `check()`（scope lease）与输入校验，无任何 gate 检查；本会话以回退源文件实跑复现了该缺陷行为（见下 RED）；
-- `types.ts`（修复前）注释自认「缺失 → annotate 直接走网络」——gate 在场时也只用于 annotate 的草稿分支（task-research.ts:103），requestRevision 完全绕过；
-- 违反计划 Global Constraints 逐字约束「修订请求属 Run 命令，离线一律拒绝（OfflineGate 断言）」（`docs/plans/issue30-sweep/plans/plan-t47.md:39`）、plan:61「离线修订请求不做草稿（属 Run 命令，spec 明文离线禁止）」、plan:15 引 spec「Offline mode ... prohibits Run commands」；
-- 同族 Run 命令先例（本会话 grep 实证）：`packages/mobile-core/src/task-office/task-office.ts:546`（start）与 `:667`（askKnowledge）均为 `if (ports.gate !== undefined) await ports.gate.assertOnline('run');` 且在包装层之外原样上抛；`offline/guarded-ports.ts:13,23,33,43` 同族 `await gate.assertOnline(...)`；
-- 后果链：真断网时命令派发失败落入 catch → 包装成 `RESEARCH_BACKEND`（文案「服务端暂时不可用」，误导）；gate 判 offline 而物理有网时命令仍会真实派发。当前生产因发现 2（commands 未接线）不可达，但模块是公共导出且 #71 将消费——正是审查所指的先行修复理由。
-
-### 修复（3 处，同族行为对齐）
-
-1. `packages/mobile-core/src/research/task-research.ts:142`（+6 行）：输入校验之后、命令派发 try/catch **之外**——
-
-   ```ts
-   if (ports.gate !== undefined) await ports.gate.assertOnline('run');
-   ```
-
-   OfflineGateError（`OFFLINE_ACTION_BLOCKED:run`，见 `offline/offline-gate.ts:20-25`）原样上抛，绝不包装成 `ResearchError/RESEARCH_BACKEND`；`if` 形式而非 `?.` 沿 task-office 同一注释约定（gate 缺省不引入额外微任务，物理离线仍由传输层兜底，fail closed 不变——offline-gate.ts:8-10 判定语义）。
-2. `packages/mobile-core/src/research/types.ts:60-62`：gate 端口注释更新为「缺失 → annotate/requestRevision 直接走网络（物理离线由传输层兜底）。在场时 requestRevision 属 Run 命令：派发前经 assertOnline('run') 结构化拒绝」——消除注释与行为的自相矛盾。
-3. `apps/mobile/src/research-view.ts:28-34`：`messageOf` 增加 `OfflineGateError` 首分支 + 导出 `RESEARCH_OFFLINE_REVISION_COPY = '当前离线：修订请求属于运行指令，请联网后再提交。'`——结构化离线判决获得诚实用户文案，终结「服务端暂时不可用」误导。
-
-### 回归测试与输出（本会话实跑）
-
-**模块级** `packages/mobile-core/src/research/task-research.test.ts:185` 新增「requestRevision is a Run command: offline gate rejects before any dispatch, online passes through」：真 `createOfflineGate({ online: async () => false })`（真 OfflineGate 探测语义，非手搓 stub gate）+ 记账式 commands，断言 ① 离线以 `instanceof OfflineGateError && action === 'run' && code === OFFLINE_ACTION_BLOCKED && message === 'OFFLINE_ACTION_BLOCKED:run' && !(error instanceof ResearchError)` 拒绝；② `dispatched === 0`（判决在派发之前）；③ 在线 gate 放行照常派发；④ gate 缺省直通（既有行为回归钉死）。
-
-- **RED**（回退 task-research.ts/types.ts/research-view.ts/composition.ts 至 HEAD 后实跑）：
-  ```
-  $ pnpm exec tsx --test packages/mobile-core/src/research/task-research.test.ts
-  not ok 5 - requestRevision is a Run command: offline gate rejects before any dispatch, online passes through
-    error: 'Missing expected rejection.'   ← 离线 requestRevision 未被拒绝
-    code: 'ERR_ASSERTION'  location: task-research.test.ts:202:3
-  # tests 6 / # pass 5 / # fail 1
-  ```
-- **GREEN**（恢复补丁后实跑，同命令）：`# tests 6 / # pass 6 / # fail 0`
-
-**视图级** `apps/mobile/src/research-view.test.ts:117` 新增「controller requestRevision surfaces the structured offline rejection with honest copy」：stub 句柄上抛真 `OfflineGateError('run')`——断言 error 恰为 `RESEARCH_OFFLINE_REVISION_COPY` 且 `notEqual RESEARCH_ERROR_COPY.RESEARCH_BACKEND`；在线路径 notice 仍匹配 `/修订请求已提交/`。
-
-- **RED**（同上回退态实跑）：
-  ```
-  not ok 4 - controller requestRevision surfaces the structured offline rejection with honest copy
-    + actual   'OFFLINE_ACTION_BLOCKED:run'   ← messageOf 无 OfflineGateError 分支，裸码直出
-    - expected undefined                       ← RESEARCH_OFFLINE_REVISION_COPY 尚未导出
-  # tests 4 / # pass 2 / # fail 2
-  ```
-- **GREEN**（恢复后实跑，`pnpm --filter @weknora/mobile exec tsx --test src/research-view.test.ts`）：`# tests 4 / # pass 4 / # fail 0`
+- Worktree：`.worktrees/issue30-sweep-t47`（分支 `codex/issue30-t47`）
+- 修复基线：进场 HEAD `289dd0861`（worktree clean，实跑 `git status` 确认）
+- 修复范围：整计划最终审查 3 项发现，全部位于 `internal/handler/session/workbench_research.go`，**3/3 全部修复，零未修项**
+- 结论：每项修复附新增回归测试与实跑输出；受影响包全量测试全绿（session 包 ok）、`go vet` 干净、`go build ./...` 通过。所有证据均为本会话亲自实跑。
+- 历史批次：上一轮（mobile 2 项 important 发现）报告归档于同目录 `final-fix-report-mobile-round.md`（基线 `74e9c8959`，其修复已在提交历史中）。
 
 ---
 
-## 发现 2（important）：修订命令通道未接线——生产修订请求恒不可用
+## 发现 1（minor）：`researchDelegateInput.AgentID` 声明但从未使用（dead wire 字段）
 
-### 根因核实（本会话实读）
+审查原文：`internal/handler/session/workbench_research.go:168` ——「计划原文如此，委派由写 Run 内消化不绑定具体 agent；可在 #71 消费前清理或补语义」。
 
-- 修复前 `composition.ts` 的 `taskResearchFor`（对应审查引用 :520-526）`createTaskResearch({ remote, gate, ...drafts })` 确缺 `commands`（HEAD 版本实核）；
-- 消费链：路由 `apps/mobile/src/app/tasks/research.tsx` 经 `activeTaskResearch()` → 控制器 `research-view.ts` → `handle.requestRevision` → `task-research.ts:133`（修复前行号）的 `if (ports.commands === undefined) throw new ResearchError('RESEARCH_COMMAND_UNAVAILABLE')`——任何部署下用户都看到「此部署暂不支持修订请求通道」（`RESEARCH_ERROR_COPY`，research-view.ts:22）；
-- 可复用生产端口在 `composition.ts:176`（`taskOfficeFor` 的同款 `createTaskOfficeRemote`，其 `commands: remote` 用法即 `TaskCommandPort` 可赋值的类型证明）；`createTaskOfficeRemote` 已在 composition.ts:18 导入，零新依赖；
-- 计划级缺口核实：plan Task 7 的 `taskResearchFor` 代码块缺此行，实现逐字忠实——违反计划 Goal「**经既有命令通道**提出绑定确定版本的修订请求」（plan:5）。
+### 核实（本会话实读/实跑）
 
-### 所有者裁决问题的处理（如实）
+- 修复前代码（本会话 Read `workbench_research.go` 旧版 :165-169）：
 
-审查指出该发现「需所有者裁决：接线或明示延期 #71 并记 Ledger」。本批次任务指令为「全部一次修复」，且接线是唯一满足计划 Goal 的选项（延期则发现保持未修）、成本为 1 行注入且与 :176 既有先例同款、`#71` 消费的正是接好线的公共模块（发现 1 的 gate 断言同样服务 #71）——故取「接线」，不记延期 Ledger。
+  ```go
+  type researchDelegateInput struct {
+      Objective string   `json:"objective"`
+      Sources   []string `json:"sources"`
+      AgentID   string   `json:"agent_id"`
+  }
+  ```
+
+  `AgentID` 在 `DelegateResearch`（旧版 :174-219）中无任何读写——纯 dead wire 字段。
+- 计划原文确带此字段：`docs/plans/issue30-sweep/plans/plan-t47.md:1255`（`grep -n "agent_id\|AgentID" plan-t47.md` 唯一命中），且计划同样未消费它——是计划稿的复制残留而非语义要求。
+- 消费面核查（本会话实跑 grep）：
+  - 前端无引用：`grep -rn "research" --include="*.ts" --include="*.tsx" --include="*.vue" --include="*.js" -il web/` → 零文件；
+  - spec/plans 无契约要求：`grep -rn "agent_id" docs/specs/ docs/plans/ | grep -i "research\|delegat"` → 零命中；
+  - 仓库内 `DelegateResearch` 引用仅三处：handler 自身、其测试、路由（`internal/router/routes_workbench.go`）；`internal/application/repository/task_research_http_test.go` 中无 `agent_id`。
 
 ### 修复
 
-`apps/mobile/src/composition.ts:518`（+5 行含注释）：
-
-```ts
-commands: createTaskOfficeRemote({ origin, request: (input) => activeRuntime.authorizedRequest(input) }),
+删除 `AgentID` 字段，并留注释说明删除理由与兼容性（`internal/handler/session/workbench_research.go:165`）：```go
+type researchDelegateInput struct {
+	Objective string   `json:"objective"`
+	Sources   []string `json:"sources"`
+	// NOTE: the plan's original draft also carried an agent_id field, but a
+	// delegation is consumed inside the owning write run and never binds to
+	// a specific agent, so the field was dead wire — removed. Clients that
+	// still send agent_id are unaffected: gin's JSON binding ignores
+	// unknown keys.
+}
 ```
 
-与 `taskOfficeFor` 的 commands 同款 adapter（同 origin + `authorizedRequest`；`command` 只走 request 通道，`stream` 可选不传）。离线拒绝不在此重复设防——`taskResearchFor` 已注入 `gate: nativeOfflineGate`（:513），模块级 `assertOnline('run')`（发现 1）在派发前拦截，防线正在计划 Global Constraints 指定的模块 seam 上。
+选择「清理」而非「补语义」的理由：委派由写 Run 内消化、不绑定具体 agent 是审查确认的既定语义；补一个读取该字段的假语义反而制造新的假承诺。行为兼容性：gin `ShouldBindJSON` 默认忽略未知 JSON 键，删除字段前后客户端发送 `agent_id` 的请求行为完全一致（都被忽略、正常 201）——由下方回归测试锁定。
 
-### 回归测试与输出（本会话实跑）
+### 回归测试与输出
 
-`apps/mobile/src/research-view.test.ts:106` 既有 Interface boundary 测试新增两条断言——以 `function taskResearchFor` 至 `export function activeTaskResearch` 的**函数体切片**为界（不跨函数误匹配 taskOfficeFor 的既有 commands），断言切片含 `commands:` 且含 `createTaskOfficeRemote`（钉死「复用 #37 既有命令通道 adapter」）。
+新增 `TestDelegateResearchIgnoresLegacyAgentIDKey`（`internal/handler/session/workbench_research_test.go:253`）：请求体携带 `agent_id` 键，断言 201 且委派行内容不受影响。
 
-- **RED**（回退态实跑，同发现 1 的 RED 运行）：
-  ```
-  $ pnpm --filter @weknora/mobile exec tsx --test src/research-view.test.ts
-  not ok 3 - research route and composition wiring stay at the Interface boundary
-    error: 'taskResearchFor 必须注入 commands 端口：缺失时修订请求在生产中恒不可用（RESEARCH_COMMAND_UNAVAILABLE）'
-  ```
-- **GREEN**（恢复后实跑，同命令）：`# tests 4 / # pass 4 / # fail 0`
-
-> 测试形态说明（如实）：跨包无法构造真 `RuntimeScopeLease`（类未从 mobile-core index 导出，`leaseActive` 以 instanceof 判定），生产 runtime 单例在单测中无法达到 authorized 面，故接线缺口采用与本测试文件既有断言（「composition 必须装配 research 深模块」）同一惯例的**源级断言**钉死；删除注入即 RED，已实证。
+```
+$ go test ./internal/handler/session/ -run 'TestDelegateResearch|TestAnnotateMaterial' -v | grep -E '^(=== RUN|--- PASS|--- FAIL|ok)'
+=== RUN   TestDelegateResearchPersistsReadOnlyDelegation
+--- PASS: TestDelegateResearchPersistsReadOnlyDelegation (0.00s)
+=== RUN   TestDelegateResearchRejectsSourceOutsideTenantScope
+--- PASS: TestDelegateResearchRejectsSourceOutsideTenantScope (0.00s)
+=== RUN   TestDelegateResearchRequiresObjectiveAndSources
+--- PASS: TestDelegateResearchRequiresObjectiveAndSources (0.00s)
+=== RUN   TestDelegateResearchIgnoresLegacyAgentIDKey
+--- PASS: TestDelegateResearchIgnoresLegacyAgentIDKey (0.00s)
+...
+ok  	github.com/Tencent/WeKnora/internal/handler/session	0.848s
+```
 
 ---
 
-## 全量回归证据（全部本会话实跑）
+## 发现 2（minor）：`AnnotateMaterial` 的 BaseVersion 比较前未 TrimSpace
 
-计划门 = plan:3837-3844（Task 9 终局验证链，含 Go 部分——虽本 diff 零 Go 文件改动，仍按计划门原样实跑以凑齐全链）：
+审查原文：`internal/handler/session/workbench_research.go:327` ——「MaterialID 在 :310 有 trim；带空白的 base_version 得 409 而非 400，fail closed 方向正确，行为可接受」。
 
-| 命令 | 结果 |
-| --- | --- |
-| `pnpm exec tsx --test packages/mobile-core/src/research/task-research.test.ts` | 6/6 pass（回退源文件同命令 1 fail = RED） |
-| `pnpm --filter @weknora/mobile exec tsx --test src/research-view.test.ts` | 4/4 pass（回退态 2 fail = RED） |
-| `go test ./internal/database/ -run 'TestSQLiteMigrations...|TestWorkbenchSQLite' -count=1`（计划门） | `ok github.com/Tencent/WeKnora/internal/database 11.831s` |
-| `go test ./internal/application/repository/ -run 'TestTaskResearchStore|...' -count=1`（计划门） | `ok github.com/Tencent/WeKnora/internal/application/repository 23.714s` |
-| `go test ./internal/handler/session/ -run 'TestDelegateResearch|...' -count=1`（计划门） | `ok github.com/Tencent/WeKnora/internal/handler/session 1.618s` |
-| `go build ./...`（计划门） | 通过（仅既有链接器 warning `ignoring duplicate libraries: '-lc++'`，与基线一致） |
-| `pnpm exec tsx --test packages/contracts/src/mobile/research.test.ts packages/api-client/src/mobile/research.test.ts packages/mobile-core/src/research/task-research.test.ts`（计划门 TS 链） | 14 pass / 0 fail |
-| `pnpm --filter @weknora/mobile exec tsx --test src/research-view.test.ts src/research-integration-smoke.test.ts`（计划门） | 8 tests：7 pass + 1 SKIP（opt-in 真实部署凭据缺席的诚实跳过，既有语义）/ 0 fail |
-| `pnpm --filter @weknora/mobile typecheck`（计划门） | 通过（`tsc --noEmit` 无错误输出） |
-| `pnpm --filter @weknora/mobile exec tsx --test src/materials-view.test.ts`（计划门） | 5/5 pass |
-| `pnpm --filter @weknora/mobile test`（apps/mobile **全量**，含真实装载 composition.ts 的 app-smoke） | 234 tests：222 pass / 12 skipped（opt-in 凭据门控）/ **0 fail** |
-| `pnpm exec tsx --test $(find packages/mobile-core/src -name "*.test.ts")`（mobile-core **全量** 36 文件） | 330/330 pass / 0 fail |
+### 核实（本会话实读）
 
-**未跑项（如实）**：无——计划门全链（Go 三测 + go build + TS 四链）与两包全量均在本会话实跑。环境注：node v22.22.3 触发 pnpm engine WARN（wanted >=26），为该仓库在当前机器的既有状态，不影响任何测试结果。
+- 旧版 :310 仅 `input.MaterialID = strings.TrimSpace(input.MaterialID)`；
+- 旧版 :327 `if artifactVersionOf(*matched) != input.BaseVersion` 直接比较未 trim 的 `input.BaseVersion`；`artifactVersionOf`（`workbench_artifacts.go:77`）内部对 ContentHash 做了 trim 后取前 16 位，返回值无空白——因此「`" 9a2f…\n"` 形式的当前版本号」会误判为 stale 而 409。
+
+### 修复
+
+与 MaterialID 的 trim 并列（`internal/handler/session/workbench_research.go:315`）：
+
+```go
+input.MaterialID = strings.TrimSpace(input.MaterialID)
+input.BaseVersion = strings.TrimSpace(input.BaseVersion)
+```
+
+效果：带空白的当前版本号从 409 变为 201，且落库的 `BaseVersion` 是 trim 后的干净版本身份；真正 stale 的版本仍 409（既有测试 `TestAnnotateMaterialRejectsStaleBaseVersion` 锁定）。fail closed 语义未被削弱——空白只是传输噪声，不是版本漂移。
+
+### 回归测试与输出
+
+新增 `TestAnnotateMaterialTrimsBaseVersionBeforeCompare`（`workbench_research_test.go:366`）：`base_version` 带前后空白发送，断言 201、落库值为 trim 后的 `9a2f1c3d4e5f6a7b`。
+
+```
+=== RUN   TestAnnotateMaterialTrimsBaseVersionBeforeCompare
+--- PASS: TestAnnotateMaterialTrimsBaseVersionBeforeCompare (0.00s)
+```
+
+（同命令全量输出见发现 1；stale 409 回归 `TestAnnotateMaterialRejectsStaleBaseVersion --- PASS` 亦在同轮输出中。）
+
+---
+
+## 发现 3（minor）：body 空值校验发生在 annotation 结构体构造之后
+
+审查原文：`internal/handler/session/workbench_research.go:331-339` ——「顺序略反直觉；400 仍在任何落库之前，行为正确」。
+
+### 核实（本会话实读）
+
+旧版顺序：`annotation := types.TaskArtifactAnnotation{…}`（:331）构造在先，`if strings.TrimSpace(input.Body) == "" { 400; return }`（:336-339）在后——先构造注定丢弃的结构体，再校验。
+
+### 修复
+
+校验整体上移到构造之前（校验 `workbench_research.go:336-339`，构造 `:340`），构造后直达 `CreateAnnotation`。选择「紧邻构造点前移」而非「上移到 bind 之后」的保守位置：404（material 未命中）/409（版本冲突）/400（body 空）的相对优先序保持与修复前完全一致，零行为变化，纯顺序整理。
+
+### 回归测试与输出
+
+新增 `TestAnnotateMaterialRejectsBlankBodyBeforePersist`（`workbench_research_test.go:379`）：body 全空白，断言 400 `research_invalid_request` 且零落库。
+
+```
+=== RUN   TestAnnotateMaterialRejectsBlankBodyBeforePersist
+--- PASS: TestAnnotateMaterialRejectsBlankBodyBeforePersist (0.00s)
+```
+
+---
+
+## 全量回归（本会话实跑）
+
+| 检查 | 命令 | 结果 |
+| --- | --- | --- |
+| research 全部 handler 测试（含 3 项新增） | `go test ./internal/handler/session/ -run 'TestDelegateResearch\|TestAnnotateMaterial\|TestListResearch\|TestCompleteResearch\|TestListAnnotations' -v` | 全 PASS，`ok github.com/Tencent/WeKnora/internal/handler/session` |
+| session 包全量 | `go test ./internal/handler/session/` | `ok github.com/Tencent/WeKnora/internal/handler/session 46.472s` |
+| 静态检查 | `go vet ./internal/handler/session/` | 无输出（通过） |
+| 全仓构建 | `go build ./...` | 通过（仅 `cmd/server`/`cmd/desktop` 链接器重复库 `-lc++` 警告，与本修复无关，修复前已存在） |
 
 ## 变更清单
 
-| 文件 | 变更 |
-| --- | --- |
-| `packages/mobile-core/src/research/task-research.ts` | +6：requestRevision 入口 `assertOnline('run')`（try/catch 之外原样上抛，发现 1） |
-| `packages/mobile-core/src/research/types.ts` | 注释修正：gate 端口语义覆盖 requestRevision（发现 1 配套） |
-| `apps/mobile/src/composition.ts` | +5：taskResearchFor 注入 `commands: createTaskOfficeRemote({ origin, request: authorizedRequest })`（发现 2） |
-| `apps/mobile/src/research-view.ts` | +8/-1：`RESEARCH_OFFLINE_REVISION_COPY` + `messageOf` OfflineGateError 首分支（发现 1 文案） |
-| `packages/mobile-core/src/research/task-research.test.ts` | +57：模块级离线断言回归测试（发现 1） |
-| `apps/mobile/src/research-view.test.ts` | +37/-2：接线源级断言（发现 2）+ 离线文案控制器测试（发现 1） |
+- `internal/handler/session/workbench_research.go`：+10 −5（删 dead 字段 + BaseVersion trim + body 校验前移）
+- `internal/handler/session/workbench_research_test.go`：+40（3 个回归测试）
+- 本报告 + 上一轮报告归档 `final-fix-report-mobile-round.md`
