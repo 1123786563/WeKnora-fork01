@@ -266,6 +266,40 @@ export function createCraftApi(request: (input: ClientRequest) => Promise<unknow
     async download(sessionId: string, versionId: string, filePath: string, signal?: AbortSignal): Promise<unknown> {
       return request({ method: 'GET', path: craftDownloadPath(sessionId, versionId, filePath), signal });
     },
+    /**
+     * GET /sessions/:id/craft/versions/:version_id/export/consent — the T13
+     * (#133) owner-consent surface. The resolved value is the RAW consent
+     * wire payload (manifest, decision, state, restricted_derived); the
+     * views layer (projectExportConsentView) holds the single fail-closed
+     * projection, the same discipline as the run submit seam.
+     */
+    async exportConsent(sessionId: string, versionId: string, signal?: AbortSignal): Promise<unknown> {
+      return unwrap(await request({
+        method: 'GET',
+        path: '/api/v1/sessions/' + encodeURIComponent(sessionId) + '/craft/versions/' + encodeURIComponent(versionId) + '/export/consent',
+        signal,
+      }), 'export consent view');
+    },
+    /**
+     * POST .../export/consent/decision — owner-only on the server; the
+     * decision binds to the EXACT manifest digest it was made against (a
+     * replay against a changed manifest answers 409). The resolved value is
+     * the raw consent view (same shape as exportConsent).
+     */
+    async decideExportConsent(
+      sessionId: string,
+      versionId: string,
+      decision: 'approved' | 'rejected',
+      manifestDigest: string,
+      signal?: AbortSignal,
+    ): Promise<unknown> {
+      return unwrap(await request({
+        method: 'POST',
+        path: '/api/v1/sessions/' + encodeURIComponent(sessionId) + '/craft/versions/' + encodeURIComponent(versionId) + '/export/consent/decision',
+        body: { decision, manifest_digest: manifestDigest },
+        signal,
+      }), 'export consent decision');
+    },
     /** POST /craft/runs/:run_id/stop — R06 verifiable stop; "stopping" is an honest phase, poll delegationStatus until terminal. */
     async stop(sessionId: string, runId: string, taskId: string, signal?: AbortSignal): Promise<CraftStopStatusView> {
       return parseStopStatus(await request({

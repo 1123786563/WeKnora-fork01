@@ -149,13 +149,54 @@ func newCraftExportService(
 	})
 }
 
+// newCraftExportConsentService assembles the T13 (#133) consent authority:
+// the SAME member-level version/evidence adapter the T12 bundle reads
+// through (versions belong to the requesting task; every other task stays
+// 404) plus the persistent CraftAccessService, so every consent view and
+// decision re-checks current Task membership through fresh derivations.
+// Failures refuse application setup closed.
+func newCraftExportConsentService(
+	db *gorm.DB,
+	versions craft.VersionStore,
+	access *service.CraftAccessService,
+) (*service.CraftExportConsentService, error) {
+	concrete, ok := versions.(*repository.CraftVersionStore)
+	if !ok || concrete == nil {
+		return nil, fmt.Errorf("craft: export consent service requires the concrete craft version store")
+	}
+	member := craftMemberVersionReader{db: db, store: concrete}
+	return service.NewCraftExportConsentService(service.CraftExportConsentConfig{
+		DB: db, Versions: member, Evidence: member, TaskAccess: access,
+	})
+}
+
 // registerCraftExportFeature mounts the bundle describe/download routes
 // through the T00 constrained feature registry (static siblings of the
-// existing version-file and share routes). A nil service (typed nil
-// included) refuses fail-closed.
-func registerCraftExportFeature(export *service.CraftExportService, files interfaces.FileService, routes *session.CraftFeatureRoutes) error {
-	if export == nil {
+// existing version-file and share routes) — CONSENT-GATED (T13 #133): the
+// T12 bundle projector is wrapped in NewConsentGatedExportService, so no
+// restricted derived byte leaves without the current owner's bound approval
+// (an ungated bundle projector answering downloads was the one fail-open
+// seam). A nil service (typed nil included) refuses fail-closed.
+func registerCraftExportFeature(
+	export *service.CraftExportService,
+	consent *service.CraftExportConsentService,
+	files interfaces.FileService,
+	routes *session.CraftFeatureRoutes,
+) error {
+	if export == nil || consent == nil {
 		return session.RegisterCraftExportFeature(routes, nil, files)
 	}
-	return session.RegisterCraftExportFeature(routes, export, files)
+	gated, err := service.NewConsentGatedExportService(export, consent)
+	if err != nil {
+		return err
+	}
+	return session.RegisterCraftExportFeature(routes, gated, files)
+}
+
+// registerCraftExportConsentFeature mounts the T13 consent read/decision
+// routes (feature "export_consent": the GET view beside the T12 describe
+// route, the decision beside every other craft mutation). A nil service
+// refuses fail-closed inside the registry.
+func registerCraftExportConsentFeature(consent *service.CraftExportConsentService, routes *session.CraftFeatureRoutes) error {
+	return session.RegisterCraftExportConsentFeature(routes, consent)
 }

@@ -122,11 +122,13 @@ func TestCraftExportMemberAdapterServesSameTaskMembers(t *testing.T) {
 	require.NotErrorIs(t, err, craft.ErrNotFound, "a transient failure is never a 404")
 }
 
-// TestCraftExportFeatureAssemblyRegistersRoutes pins the T12 central
+// TestCraftExportFeatureAssemblyRegistersRoutes pins the T12+T13 central
 // wiring: the assembly requires the concrete craft version store, the
-// feature registration mounts the bundle routes through the T00 registry
-// (fail-closed on a nil service), and a real service instance registers
-// and mounts the two static export routes.
+// feature registration mounts the CONSENT-GATED bundle routes through the
+// T00 registry (fail-closed on a nil service — a nil consent service fails
+// the gate closed exactly like a nil bundle), the consent read/decision
+// feature mounts beside it, and a real service instance registers and
+// mounts the static export routes.
 func TestCraftExportFeatureAssemblyRegistersRoutes(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	db := newT12ExportDB(t)
@@ -134,13 +136,19 @@ func TestCraftExportFeatureAssemblyRegistersRoutes(t *testing.T) {
 
 	store, ok := repository.NewCraftVersionStore(db).(*repository.CraftVersionStore)
 	require.True(t, ok)
-	exportSvc, err := newCraftExportService(db, store, exportStubKnowledge{}, &service.CraftAccessService{})
+	access := &service.CraftAccessService{}
+	exportSvc, err := newCraftExportService(db, store, exportStubKnowledge{}, access)
 	require.NoError(t, err)
 	require.NotNil(t, exportSvc)
+	consentSvc, err := newCraftExportConsentService(db, store, access)
+	require.NoError(t, err)
+	require.NotNil(t, consentSvc)
 
 	routes := session.NewCraftFeatureRoutes()
-	require.Error(t, registerCraftExportFeature(nil, exportStubFiles{}, routes), "a nil service is refused fail-closed")
-	require.NoError(t, registerCraftExportFeature(exportSvc, exportStubFiles{}, routes))
+	require.Error(t, registerCraftExportFeature(nil, nil, exportStubFiles{}, routes), "a nil service is refused fail-closed")
+	require.Error(t, registerCraftExportFeature(exportSvc, nil, exportStubFiles{}, routes), "a nil consent service refuses the gate fail-closed")
+	require.NoError(t, registerCraftExportFeature(exportSvc, consentSvc, exportStubFiles{}, routes))
+	require.NoError(t, registerCraftExportConsentFeature(consentSvc, routes))
 
 	engine := gin.New()
 	group := engine.Group("/sessions")
@@ -152,12 +160,18 @@ func TestCraftExportFeatureAssemblyRegistersRoutes(t *testing.T) {
 	for _, want := range []string{
 		"GET /sessions/:id/craft/versions/:version_id/export",
 		"GET /sessions/:id/craft/versions/:version_id/export/download",
+		// T13 (#133): the consent view rides the GET tree beside the T12
+		// describe route; the owner decision rides the POST tree.
+		"GET /sessions/:id/craft/versions/:version_id/export/consent",
+		"POST /sessions/:session_id/craft/versions/:version_id/export/consent/decision",
 	} {
 		require.True(t, recorded[want], "export route %s must be mounted", want)
 	}
 
 	// The assembly refuses a non-concrete version store (a stub must never
-	// silently serve bundles).
+	// silently serve bundles — the consent authority holds the same bar).
 	_, err = newCraftExportService(db, shareStubVersions{}, exportStubKnowledge{}, &service.CraftAccessService{})
 	require.Error(t, err, "the export service requires the concrete craft version store")
+	_, err = newCraftExportConsentService(db, shareStubVersions{}, access)
+	require.Error(t, err, "the export consent service requires the concrete craft version store")
 }

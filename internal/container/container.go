@@ -1085,9 +1085,14 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// T12 (#132): the version-bound source-bundle export (describe +
 	// download feature routes) over the member-level version/evidence
 	// adapter, the shared file service and the persistent TaskAccess
-	// checker.
+	// checker. T13 (#133): the download seam is CONSENT-GATED — the bundle
+	// projector is wrapped by the export-consent service below, so no
+	// restricted derived byte leaves without the current owner's bound
+	// approval; the consent read/decision feature rides beside it.
 	must(container.Provide(newCraftExportService))
+	must(container.Provide(newCraftExportConsentService))
 	must(container.Invoke(registerCraftExportFeature))
+	must(container.Invoke(registerCraftExportConsentFeature))
 
 	// Router configuration
 	logger.Debugf(ctx, "[Container] Registering router and starting task server...")
