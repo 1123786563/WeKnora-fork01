@@ -16,6 +16,7 @@
     "./mobile/knowledge-qa": "./src/mobile/knowledge-qa.ts",
     "./mobile/materials": "./src/mobile/materials.ts",
     "./mobile/code-delivery": "./src/mobile/code-delivery.ts",
+    "./mobile/research": "./src/mobile/research.ts",
     "./mobile/resources": "./src/mobile/resources.ts",
     "./mobile/voice": "./src/mobile/voice.ts",
     "./transport": "./src/transport/json.ts"

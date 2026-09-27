@@ -1,6 +1,9 @@
 package container
 
 import (
+	"context"
+	"errors"
+	"fmt"
 	"os"
 	"strings"
 
@@ -189,4 +192,58 @@ func wireTaskDeletionGuard(handler *session.Handler, compliance *service.TaskCom
 		return
 	}
 	handler.SetTaskDeletionGuard(compliance)
+}
+
+// researchSourceAuthorizer gates delegated sources against the task's tenant
+// knowledge scope. Production binds the tenant-scoped knowledge base lookup;
+// KB-level ACLs (shares/groups) stay enforced at retrieval time by the
+// existing access seam — a delegation never widens what a later read allows.
+type researchSourceAuthorizer struct {
+	kb interfaces.KnowledgeBaseRepository
+}
+
+// AuthorizeResearchSource rejects sources the task's tenant does not own.
+func (a researchSourceAuthorizer) AuthorizeResearchSource(ctx context.Context, tenantID uint64, knowledgeBaseID string) error {
+	if strings.TrimSpace(knowledgeBaseID) == "" {
+		return errors.New("empty research source")
+	}
+	if _, err := a.kb.GetKnowledgeBaseByIDAndTenant(ctx, knowledgeBaseID, tenantID); err != nil {
+		return fmt.Errorf("research source %q is outside the task's tenant knowledge scope", knowledgeBaseID)
+	}
+	return nil
+}
+
+// NewResearchSourceAuthorizer wires the production source gate.
+func NewResearchSourceAuthorizer(db *gorm.DB) session.ResearchSourceAuthorizer {
+	return researchSourceAuthorizer{kb: repository.NewKnowledgeBaseRepository(db)}
+}
+
+// NewWorkbenchResearchHandler wires the T17 (#47) delegation/annotation
+// surface: the same durable run store doubles as the granted reader (owner
+// first, #42 grant fallback second), annotations pin the current version
+// identity derived from message-bound artifacts.
+//
+// Wiring note (deviation from the plan's sketch, dig-v1.19 fact verified
+// empirically): the provider returns ONLY the handler — dig rejects a second
+// constructor result of session.ResearchSourceAuthorizer at Provide time
+// ("already provided") once NewResearchSourceAuthorizer is provided, which
+// would panic the app at startup via must(). The grant service is assembled
+// from the container-provided *repository.TaskGrantStore (review round 1
+// added that Provide; the #42 grants handler shares the same instance) so
+// both collaboration surfaces resolve through one durable store.
+func NewWorkbenchResearchHandler(
+	db *gorm.DB,
+	runs *repository.AgentRunStore,
+	messages interfaces.MessageService,
+	grants *repository.TaskGrantStore,
+	sessions interfaces.SessionRepository,
+	members interfaces.TenantMemberRepository,
+) *session.WorkbenchResearchHandler {
+	return session.NewWorkbenchResearchHandler(
+		runs, runs, messages,
+		repository.NewTaskResearchStore(db),
+		repository.NewTaskAnnotationStore(db),
+		NewResearchSourceAuthorizer(db),
+		service.NewTaskGrantService(grants, sessions, members),
+	)
 }

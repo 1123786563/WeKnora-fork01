@@ -49,6 +49,9 @@ import { createNativeSecureIntentLog } from './adapters/intent-log.ts';
 import { resolveWeKnoraAppId } from './app-id.ts';
 import { createNativeAppStateLifecycle } from './adapters/app-state.ts';
 import { createForegroundSyncLoop } from './foreground-sync.ts';
+import { createTaskResearch } from '@weknora/mobile-core';
+import type { ResearchAnnotationDraft, ResearchDraftsPort, TaskResearch } from '@weknora/mobile-core';
+import { createMobileResearchRemote } from '@weknora/api-client/mobile/research';
 
 /** App 生命周期单例：Runtime 撤销 scope 时 revoke 的就是这把 vault（#32）。 */
 const nativeScopedVault = createNativeScopedVaultIfAvailable();
@@ -477,4 +480,51 @@ export function MobileApp() {
 
 export function completeNativeOidcCallback(callbackUrl: string): Promise<RuntimeSnapshot> {
   return runtime().completeOidc(callbackUrl);
+}
+
+const taskResearches = new Map<string, TaskResearch>();
+
+/** Task Research 按 deployment scope key 记忆化（同 taskMaterialFor 模式）；
+ *  离线批注草稿经 Scoped Vault drafts 命名空间加密保存（无 vault 时模块内 fail closed）。 */
+function taskResearchFor(activeRuntime: MobileRuntime, origin: string, tenantId: string): TaskResearch {
+  return cachePut(taskResearches, deploymentScopeKey(origin, tenantId), () => {
+    const remote = createMobileResearchRemote({ origin, request: (input) => activeRuntime.authorizedRequest(input) });
+    const draftsPort: ResearchDraftsPort | undefined = nativeScopedVault === undefined ? undefined : {
+      async put(draft) {
+        const store = await openScopedDraftStore();
+        if (store === undefined) throw new Error('RESEARCH_DRAFT_UNAVAILABLE');
+        await store.drafts.put({ id: draft.draftId, body: JSON.stringify(draft) });
+      },
+      async list() {
+        const store = await openScopedDraftStore();
+        if (store === undefined) return [];
+        return (await store.drafts.list())
+          .map((entry) => { try { return JSON.parse(entry.body) as ResearchAnnotationDraft; } catch { return undefined; } })
+          .filter((draft): draft is ResearchAnnotationDraft => draft !== undefined && typeof draft.draftId === 'string');
+      },
+      async remove(draftId) {
+        const store = await openScopedDraftStore();
+        if (store === undefined) return;
+        await store.drafts.remove(draftId);
+      },
+    };
+    return createTaskResearch({
+      remote,
+      gate: nativeOfflineGate,
+      // 终局修复（终局审查发现 2）：修订命令通道注入生产端口——与 taskOfficeFor 的
+      // commands（:185）同款 adapter（同 origin + authorizedRequest；command 只走 request
+      // 通道，无需 stream）。缺失时 requestRevision 恒 fail closed
+      // （RESEARCH_COMMAND_UNAVAILABLE），移动端生产修订请求整体不可用。
+      commands: createTaskOfficeRemote({ origin, request: (input) => activeRuntime.authorizedRequest(input) }),
+      ...(draftsPort === undefined ? {} : { drafts: draftsPort }),
+    });
+  });
+}
+
+/** /tasks/research 路由经此取当前授权 scope 的研究模块（无授权面返回 undefined）。 */
+export function activeTaskResearch(): TaskResearch | undefined {
+  const activeRuntime = runtime();
+  const snapshot = activeRuntime.snapshot();
+  if (snapshot.surface !== 'authorized' || !snapshot.deployment || !snapshot.identity?.userId) return undefined;
+  return taskResearchFor(activeRuntime, snapshot.deployment.origin, snapshot.identity.activeTenantId ?? '');
 }

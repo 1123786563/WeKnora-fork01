@@ -114,3 +114,13 @@ export type {
 } from './voice/dictation.ts';
 export { createScenarioDictationTranscriber, createScriptedDictationCapture } from './voice/in-memory-dictation.ts';
 export type { ScenarioDictationTranscriber, ScriptedDictationCapture, ScriptedDictationCaptureOptions } from './voice/in-memory-dictation.ts';
+// —— T17 (#47) 只读研究委派与版本化批注 ——
+export { ResearchError, createTaskResearch } from './research/task-research.ts';
+export type { ResearchErrorCode } from './research/task-research.ts';
+export type {
+  ResearchAnnotationDraft, ResearchAnnotationReceipt, ResearchAnnotationRow, ResearchBackendPort,
+  ResearchDelegationRow, ResearchDraftsPort, ResearchEvent, ResearchRevisionInput, ResearchRevisionReceipt,
+  ResearchStatus, TaskResearch, TaskResearchHandle, TaskResearchPorts,
+} from './research/types.ts';
+export { createScenarioResearchRemote } from './research/in-memory-research-remote.ts';
+export type { ScenarioResearchRemoteScript } from './research/in-memory-research-remote.ts';

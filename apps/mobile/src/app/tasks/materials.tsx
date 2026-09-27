@@ -44,6 +44,7 @@ export function MaterialsRouteLifecycle({ runId }: { runId: string }) {
       onOpenEvidence={() => { void controller?.openEvidence(); }}
       onDownload={(materialId) => { void controller?.download(materialId); }}
       onShare={(materialId) => { void controller?.share(materialId); }}
+      onOpenResearch={runId.trim() === '' ? undefined : () => router.push(`/tasks/research?runId=${encodeURIComponent(runId)}`)}
       onRefresh={() => { void controller?.load(); }}
       onBack={() => router.back()}
     />
