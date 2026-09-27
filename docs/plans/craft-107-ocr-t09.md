@@ -1,57 +1,47 @@
-Review complete: 5 finding(s) across 4 selected item(s).
+Review complete: 2 finding(s) across 5 selected item(s).
 
-─── packages/views/src/craft/workbench-edit.tsx:48-49 ───
-[bug · high] 投影契约与线上响应无法对接：实测 PostCraftRun 响应为 {"data": runView(run), "writer_acquisition":
-...}，runView（internal/handler/session/agent_run.go:124）只输出 snake_case 的 run_id/session_id/status
-等字段，且不含任何发起成员身份（本仓库契约层刻意不上线 actor/owner 身份，见 packages/contracts/src/appconnector.ts 注释）。而本函数强制要求
-camelCase 的 runId/actorUserId/writerAcquisition 且 actorUserId 非空，否则整体丢弃。T09 服务端只把发起成员写入审计时间线与
-agent_runs.actor_user_id，并未放入 HTTP 响应；面板头注释又明确禁止客户端推导身份（“never ... invents an initiator”）。因此 T20
-装配层接线后，任何真实响应都会被判为“服务器响应无效”，面板核心功能（展示实际发起成员）不可满足。建议：① 键名对齐冻结线上命名（run_id / writer_acquisition，与嵌套
-workspace_id 一致），消除 camel/snake 混排；② actorUserId
-在现有线上契约中无来源，需要么由服务端响应增补（需协同变更），要么将该字段改为非必需/由装配层从真实存在的成员视图单独喂入，并在注释中写明其权威来源。
+─── internal/application/service/craft_collaborator_run.go:67-68 ───
+[bug · medium] 幂等重放会重复写入 craft.run_started 时间线行：客户端携带同一 RequestID 重试时（幂等键的设计场景），StartRun 中 priorErr
+== nil 命中已有 admission，Submit 重放同一 Run 并成功返回，随后此处无条件再次调用 auditCollaboratorRunStart，导致同一 TargetID（Run
+ID）的 craft.run_started 审计行按重试次数重复追加——任务时间线会显示同一 Run 被同一成员"发起"多次；且重放时角色可能已变（如被撤销后由 owner 以同 key
+重放），第二行的 role 细节与首次准入不一致。同库 craft_access.go 的拒绝审计对重复写入有明确的 dedup probe 纪律（172-185 行），此处应保持一致：要么由
+StartRun 返回 admission 是否为重放并在重放时跳过审计，要么在写入前按 (tenant_id, action, scope_id, target_id) 探测已存在行。
 
-
-
-─── packages/views/src/craft/workbench-edit.tsx:18-20 ───
-[maintainability · medium] 本地镜像已过时：本 PR 正是在 @weknora/contracts
-根索引新增了该冻结词汇表的再导出（CraftWriterAcquireStatus/CraftWriterAcquireOutcome/CRAFT_WRITER_ACQUIRE_OUTCOMES，取值
-['acquired','conflict','unknown'] 与镜像完全一致），views 的 package.json 也已声明 @weknora/contracts
-依赖。文件头“central package top-level index does not re-export them yet, so this panel mirrors”的注释在本 PR
-内即失真，本地 CRAFT_WRITER_ACQUIRE_STATUSES/CraftWriterAcquireStatus/CraftWriterAcquireOutcome
-与包导出同名构成遮蔽，词汇演进时必然漂移。建议直接从包导入并删除镜像块，同步更新头注释。
-
-- const CRAFT_WRITER_ACQUIRE_STATUSES = ['acquired', 'conflict', 'unknown'] as const;
-- export type CraftWriterAcquireStatus = (typeof CRAFT_WRITER_ACQUIRE_STATUSES)[number];
-- export interface CraftWriterAcquireOutcome { workspace_id: string; status: CraftWriterAcquireStatus }
-+ import { CRAFT_WRITER_ACQUIRE_OUTCOMES, type CraftWriterAcquireOutcome, type CraftWriterAcquireStatus } from '@weknora/contracts';
-+ // 删除本地 CRAFT_WRITER_ACQUIRE_STATUSES、CraftWriterAcquireStatus、CraftWriterAcquireOutcome 镜像，parseWriterAcquisition 改用 CRAFT_WRITER_ACQUIRE_OUTCOMES 校验。
+- 	s.auditCollaboratorRunStart(ctx, scope, s.initiatingMemberRole(ctx, scope), run, req)
+- 	return run, acquisition, nil
++ // 方案一（推荐，与 craft_access.go 去重纪律一致）：在 auditCollaboratorRunStart 写入前探测已有行
++ 	var recent int64
++ 	if err := s.db.WithContext(ctx).Model(&craftAccessAudit{}).
++ 		Where("tenant_id = ? AND action = ? AND scope_id = ? AND target_id = ?",
++ 			scope.TenantID, "craft.run_started", scope.SessionID, run.Key.RunID).
++ 		Count(&recent).Error; err == nil && recent > 0 {
++ 		return // 幂等重放：同一 Run 的 run_started 时间线行只写一次
++ 	}
++ // 方案二：由 StartRun 返回 admission 是否为重放（如新增 replayed bool 返回值），
++ // StartCollaboratorRun 仅在首次准入时调用 auditCollaboratorRunStart。
 
 
-─── packages/views/src/craft/workbench-edit.tsx:114-114 ───
-[bug · medium] writerAcquisition.status === 'unknown'（T00 冻结三态之一，租约状态未知）时无任何提示，UI 呈现与 'acquired'
-完全相同（展示 runId+发起成员），用户会误以为写入租约已取得；同时 conflict 分支 setDraft('') 无条件清空草稿，但 conflict
-文案明确引导“等待其完成后再试”，用户被迫整段重输 prompt。建议为 'unknown' 增加中性提示（与 conflict 的 alert 区分），并考虑 conflict
-时保留草稿以便显式重试（与“a refused request keeps the draft”的体验对齐）。
+─── internal/application/service/craft_collaborator_run.go:55-59 ───
+[performance · low] 同一次 StartCollaboratorRun 成功路径会对完全相同的 TaskWrite 权限做 3 次独立推导：本处前置
+RequireTaskAccess、StartRun→writeSession 内部再次执行的同一 RequireTaskAccess（同 scope/同 action/同
+checker，顺序紧邻，拒绝时的 denial 审计行为也完全一致），以及随后 initiatingMemberRole 的第三次 Role() 推导。每次推导含 session join +
+membership pluck + grant 查询 2-3 次 DB 往返，即每个准入请求重复约 5-6 次冗余查询。前置检查相对 writeSession
+内的检查无任何行为差异（含审计），属纯冗余；建议至少消除第三次推导（复用一次 Role 结果同时供 TaskWrite 判定与审计 detail 使用），或直接移除前置检查由 writeSession
+统一裁决（注意语义微差：移除后 Viewer 提交非法 body 会先命中 Validate 返回 400 而非 403 且不产生 denial 审计）。
 
-
-
-─── packages/views/src/craft/workbench-edit.tsx:126-126 ───
-[style · low] “服务器响应无效/Invalid server response”以内联三元写在 submit 中，是面板内唯一未纳入 EDIT_STRINGS
-双语表的用户可见文案，组织方式与其余文案不一致。建议在 EDIT_STRINGS.zh/en 中增加 invalidResponse 键并引用。
-
--         throw new Error(props.locale === 'zh' ? '服务器响应无效' : 'Invalid server response');
-+     invalidResponse: '服务器响应无效',
-+     // en: invalidResponse: 'Invalid server response',
-+     // submit 内改为： throw new Error(strings.invalidResponse);
-
-
-─── packages/views/src/craft/workbench-edit.tsx:64-65 ───
-[maintainability · medium] 回调类型与面板职责自相矛盾：prop 声明返回已投影的 CraftEditRequestOutcome，但 submit 中又将其作为
-unknown 交给 projectEditOutcome 重新校验。若 assembly 遵守该类型，就必须自己完成投影（面板内的投影/丢弃逻辑成为重复死码，且 TS 不会暴露漏校验）；若
-assembly 按注释本意返回原始 wire 载荷，则类型注解失真，只能靠 as 强转满足。与文件头"本面板只投影、不推导"的职责声明一致的做法是声明为
-Promise<unknown>，由面板持有唯一一次投影与拒绝点。
-
-    /** Sends one serialized-edit request; the assembly owns the API call and the request id. */
--   onRequestEdit(prompt: string): Promise<CraftEditRequestOutcome>;
-+   onRequestEdit(prompt: string): Promise<unknown>;
++ 	// Derive the caller's role once and reuse it for both the TaskWrite
++ 	// decision and the timeline detail below (writeSession re-checks the
++ 	// same authority as defense-in-depth).
++ 	role := s.initiatingMemberRole(ctx, scope)
+  	if s.access != nil {
+  		if err := craft.RequireTaskAccess(ctx, s.access, scope, craft.TaskWrite); err != nil {
+  			return agentruntime.Run{}, craft.WriterAcquisition{}, err
++ 		}
+- 		}
++ 	}
++ 	run, acquisition, err := s.StartRun(ctx, scope, req)
++ 	if err != nil {
++ 		return run, acquisition, err
+  	}
++ 	s.auditCollaboratorRunStart(ctx, scope, role, run, req)
 

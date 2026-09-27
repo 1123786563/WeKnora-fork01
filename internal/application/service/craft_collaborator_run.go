@@ -31,6 +31,14 @@ type craftTaskRoleReader interface {
 	Role(context.Context, craft.Scope) (craft.TaskRole, error)
 }
 
+// craftTaskRoleGate is the optional single-derivation seam: the production
+// *CraftAccessService enforces the TaskWrite gate and hands back the derived
+// role in one pass, so the timeline detail reuses the SAME derivation
+// instead of re-querying the membership/grant facts a second time.
+type craftTaskRoleGate interface {
+	CheckTaskAccessWithRole(context.Context, craft.Scope, craft.TaskAction) (craft.TaskRole, error)
+}
+
 // StartCollaboratorRun admits one serialized-edit Run requested by the
 // authenticated member under their own CURRENT grant. The Run stays inside
 // the same Workspace (the owner's persisted binding), must acquire the T16
@@ -51,10 +59,27 @@ func (s *CraftSessionService) StartCollaboratorRun(ctx context.Context, scope cr
 	// is refused here and the refusal is audited by the access service. When
 	// the ACL assembly is absent the seam stays fail-closed for non-owner
 	// callers through StartRun's writeSession owner fallback, so this entrance
-	// never widens authority beyond the pre-T08 owner behavior.
+	// never widens authority beyond the pre-T08 owner behavior. ONE derivation
+	// serves both the gate and the timeline detail (the production seam
+	// returns the derived role); the derivation StartRun repeats inside its
+	// own boundary stays by design — removing the pre-gate would flip the
+	// observable order for a Viewer sending an invalid body (400 before the
+	// audited 403) and weaken the owner-fallback contract.
+	var initiatorRole craft.TaskRole
 	if s.access != nil {
-		if err := craft.RequireTaskAccess(ctx, s.access, scope, craft.TaskWrite); err != nil {
-			return agentruntime.Run{}, craft.WriterAcquisition{}, err
+		if gate, ok := s.access.(craftTaskRoleGate); ok {
+			role, err := gate.CheckTaskAccessWithRole(ctx, scope, craft.TaskWrite)
+			if err != nil {
+				return agentruntime.Run{}, craft.WriterAcquisition{}, err
+			}
+			initiatorRole = role
+		} else {
+			// A non-standard checker keeps the plain gate plus the separate
+			// informational role read (both optional seams degrade honestly).
+			if err := craft.RequireTaskAccess(ctx, s.access, scope, craft.TaskWrite); err != nil {
+				return agentruntime.Run{}, craft.WriterAcquisition{}, err
+			}
+			initiatorRole = s.initiatingMemberRole(ctx, scope)
 		}
 	}
 	run, acquisition, err := s.StartRun(ctx, scope, req)
@@ -64,7 +89,7 @@ func (s *CraftSessionService) StartCollaboratorRun(ctx context.Context, scope cr
 	// Timeline: record the actual initiating member of the admitted Run.
 	// The row never substitutes the storage owner — the actor is exactly the
 	// authenticated caller whose current grant admitted the Run.
-	s.auditCollaboratorRunStart(ctx, scope, s.initiatingMemberRole(ctx, scope), run, req)
+	s.auditCollaboratorRunStart(ctx, scope, initiatorRole, run, req)
 	return run, acquisition, nil
 }
 
@@ -94,6 +119,21 @@ func (s *CraftSessionService) initiatingMemberRole(ctx context.Context, scope cr
 // identity in agent_runs.actor_user_id).
 func (s *CraftSessionService) auditCollaboratorRunStart(ctx context.Context, scope craft.Scope, role craft.TaskRole, run agentruntime.Run, req CraftRunRequest) {
 	if s == nil || s.db == nil || run.Key.RunID == "" {
+		return
+	}
+	// Replay dedup (the auditTaskDenial discipline): a T01 idempotent retry
+	// with the same request id replays the SAME admission, so the
+	// run_started row for that Run already exists — re-writing it would
+	// append one timeline row per retry (with retry-time role details that
+	// can drift from the first admission). The probe keys on the Run
+	// identity: a same-key replay is always the same actor (a cross-actor
+	// replay is refused inside StartRun). A probe failure degrades to
+	// writing a duplicate — never to skipping the audit for another reason.
+	var existing int64
+	if err := s.db.WithContext(ctx).Model(&craftAccessAudit{}).
+		Where("tenant_id = ? AND action = ? AND scope_id = ? AND target_id = ?",
+			scope.TenantID, "craft.run_started", scope.SessionID, run.Key.RunID).
+		Count(&existing).Error; err == nil && existing > 0 {
 		return
 	}
 	actor, actorFull := craftAuditActorUserID(scope.UserID)

@@ -115,18 +115,27 @@ func (s *CraftAccessService) Role(ctx context.Context, scope craft.Scope) (craft
 }
 
 func (s *CraftAccessService) CheckTaskAccess(ctx context.Context, scope craft.Scope, action craft.TaskAction) error {
+	_, err := s.CheckTaskAccessWithRole(ctx, scope, action)
+	return err
+}
+
+// CheckTaskAccessWithRole enforces exactly CheckTaskAccess and additionally
+// returns the freshly derived role, so a caller that needs the role for an
+// audit detail (the T09 run-start timeline) derives it ONCE instead of
+// re-querying the same membership/grant facts a second time.
+func (s *CraftAccessService) CheckTaskAccessWithRole(ctx context.Context, scope craft.Scope, action craft.TaskAction) (craft.TaskRole, error) {
 	role, err := s.Role(ctx, scope)
 	if err != nil {
 		if errors.Is(err, craft.ErrForbidden) && s.knownTask(ctx, scope) {
 			s.auditTaskDenial(ctx, scope, action)
 		}
-		return err
+		return "", err
 	}
 	if !role.AllowsTaskAction(action) {
 		s.auditTaskDenial(ctx, scope, action)
-		return craft.ErrForbidden
+		return "", craft.ErrForbidden
 	}
-	return nil
+	return role, nil
 }
 
 // knownTask distinguishes a proven refusal on a tenant-visible Craft Task
