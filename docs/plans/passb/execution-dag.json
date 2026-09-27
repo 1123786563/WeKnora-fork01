@@ -1349,9 +1349,9 @@
     "docs/architecture/evidence/passb/b2-k-integration.md"
    ],
    "execution_mode": "serial",
-   "status": "in_progress",
+   "status": "done",
    "base_sha": null,
-   "head_sha": null,
+   "head_sha": "461d8c4b2aa346519d94ea84cffaa5108ec45796",
    "review_status": "changes_requested",
    "evidence_paths": [
     "docs/architecture/evidence/passb/b2-k-integration.md",
@@ -1398,6 +1398,10 @@
     },
     {
      "base": "fa4d083af0a193b47c8d2fae7f4df0e0b18758de",
+     "head": "461d8c4b2aa346519d94ea84cffaa5108ec45796"
+    },
+    {
+     "base": "55e13524a72acba76be3251799e06525510d0c15",
      "head": "461d8c4b2aa346519d94ea84cffaa5108ec45796"
     }
    ],
@@ -1730,17 +1734,36 @@
     "docs/architecture/evidence/passb/b2-datasource.md"
    ],
    "execution_mode": "serial",
-   "status": "pending",
+   "status": "done",
    "base_sha": null,
-   "head_sha": null,
-   "review_status": "pending",
+   "head_sha": "4ebe14cf50c7d0f4395e314f714816c801b85936",
+   "review_status": "approved",
    "evidence_paths": [
     "docs/architecture/evidence/passb/b2-datasource.md",
     "docs/plans/passb/reports/b2-datasource.md",
     "docs/plans/passb/reviews/b2-datasource.md"
    ],
    "role": "work",
-   "task_ids": [],
+   "task_ids": [
+    "B2-DS.1",
+    "B2-DS.2",
+    "B2-DS.3",
+    "B2-DS.4",
+    "B2-DS.5",
+    "B2-DS.6",
+    "B2-DS.7",
+    "B2-DS.8"
+   ],
+   "task_status": {
+    "B2-DS.1": "done",
+    "B2-DS.2": "done",
+    "B2-DS.3": "done",
+    "B2-DS.4": "done",
+    "B2-DS.5": "done",
+    "B2-DS.6": "done",
+    "B2-DS.7": "done",
+    "B2-DS.8": "done"
+   },
    "gates": [
     [
      "sh",
@@ -1760,7 +1783,41 @@
      "verify-module-moves"
     ]
    ],
-   "notes": "CORR-2：骨架修正——由 [ib1] 增加 b2-k-integration 前置。datasource→knowledge 5 符号 24 调用点同宿主包未导出调用（调用方 datasource_service.go 归属 datasource.yaml:59；定义方审校 F1 修正后分两处：kb_activity 4 函数在 kb_activity.go=K2 retrieval（knowledge-retrieval.md:11）、withKnowledgeCleanup 在 knowledge_delete_plan.go:22=K4 process（knowledge-process.md:12），本会话 grep 双向实证）——依赖 b2-k-integration 同时覆盖 K2 与 K4，边不变。若 IB1 裁定共享 shim/提前导出，可回写本 DAG 降级为并行（基线变更流程）。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-retrieval 阻塞；解除条件：修复并 done b2-k-retrieval 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-process 阻塞；解除条件：修复并 done b2-k-process 后恢复。 BLOCKED（2026-09-26）：前置 b2-k-process 阻塞；解除条件：修复并 done b2-k-process 后恢复。 BLOCKED（2026-09-26）：前置 b2-k-integration 阻塞；解除条件：修复并 done b2-k-integration 后恢复。 BLOCKED（2026-09-27）：前置 b2-k-integration 阻塞；解除条件：修复并 done b2-k-integration 后恢复。"
+   "notes": "CORR-2：骨架修正——由 [ib1] 增加 b2-k-integration 前置。datasource→knowledge 5 符号 24 调用点同宿主包未导出调用（调用方 datasource_service.go 归属 datasource.yaml:59；定义方审校 F1 修正后分两处：kb_activity 4 函数在 kb_activity.go=K2 retrieval（knowledge-retrieval.md:11）、withKnowledgeCleanup 在 knowledge_delete_plan.go:22=K4 process（knowledge-process.md:12），本会话 grep 双向实证）——依赖 b2-k-integration 同时覆盖 K2 与 K4，边不变。若 IB1 裁定共享 shim/提前导出，可回写本 DAG 降级为并行（基线变更流程）。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。 BLOCKED（2026-09-24）：前置 b2-k0 阻塞；解除条件：修复并 done b2-k0 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-retrieval 阻塞；解除条件：修复并 done b2-k-retrieval 后恢复。 BLOCKED（2026-09-25）：前置 b2-k-process 阻塞；解除条件：修复并 done b2-k-process 后恢复。 BLOCKED（2026-09-26）：前置 b2-k-process 阻塞；解除条件：修复并 done b2-k-process 后恢复。 BLOCKED（2026-09-26）：前置 b2-k-integration 阻塞；解除条件：修复并 done b2-k-integration 后恢复。 BLOCKED（2026-09-27）：前置 b2-k-integration 阻塞；解除条件：修复并 done b2-k-integration 后恢复。 计划审校第 0 轮（2026-09-27 调度指令）：findings 5 条（important 2 + minor 3）登记修复工单 pr0-f1~pr0-f5——f1(important) repository 侧 datasource_repo_test.go（6 用例）/datasource_repo_synclog_test.go（4 用例）在计划 §1/§2.1/§2.4/T1/T2 全缺失（管家实测：双文件在位、10 处构造引用行号逐一相符）；f2(important) 特征化/差分命令 -run 模式覆盖不全，计划自身验收判据不可由所给命令达成（§5 T1 Step 2/T3 Step 5/T7 Step 1、§9.4/§9.5）；f3(minor) §2.3 无环论证引用不实——K 分支 retrieval/app 无 knowledgebase.go（管家 git ls-tree 实测 14 项无此文件）；f4(minor) §2.1 compat 全集表漏 internal/router/router.go:118-119 两字段与 router_api_key_capabilities_test.go:353（管家实测相符）；f5(minor) 描述性坐标漂移多处与 §11「行号全部实读」自检不符（§1/§2.3/§4.2.3/T5）。desc 多处截断以调度方原文为准；修复义务确立，详见台账 2026-09-27 条目。 计划审校第 1/4 轮（2026-09-27 调度指令，R0 遗留 R1 未修部分在案）：仍有 findings 4 条（important 2 + minor 2）登记修复工单 pr1-f1~pr1-f4——f1(important) §4.3.1/§4.3.2 purge_test 重写按字面执行不可编译（R0 遗留 R1 未修）：compat wrapper 与模块构造器均返回 interfaces.DataSourceService（datasource_service.go:65），purge_test fixture 字段为具体类型 svc *DataSourceService（datasource_purge_test.go:116）且 PurgeDataSourceDocuments 仅定义在具体类型（datasource_service.go:857）——管家三处实读全相符；f2(important) §2.1 appconnector 行与 §7 Brief (a)「接口零改动天然兼容」与事实不符（R0 遗留 R1 未修）：sync_test.go 消费具体类型与构造器（:102 newTestService 返回 *service.DataSourceService、:103 NewDataSourceService 10 参、:105 类型断言）——管家三行实读全相符；f3(minor) §8 与 §2.6 末句「105（对齐后实值）→+3」内部矛盾：K 分支已增 exc-0106..0131（管家实测 K 分支 max exc-0131、本分支 105 恰符），对齐后基值应为实测 X（131 数据条目）而非 105；f4(minor) 残留行号/枚举小错（}:52 实为 :51、semantic_*×5 实为 ×6[管家上轮 ls-tree 实测 6 文件]、stub 定义坐标漂移）。desc 截断处以调度方原文为准；修复义务维持，详见台账 2026-09-27 条目。 计划审校第 2/4 轮（2026-09-27 调度指令）：通过——零 findings，pr0（5 条）/pr1（4 条）工单全部闭合；review_status changes_requested → approved（本轮回转覆盖计划审校 episode：R0/R1 findings 已消解；实施阶段审查进入时按 conventions §9 状态机重新走 requested→…）。计划审校链闭合：R0（5 findings）→ R1 修复轮 → 第 1/4 轮（4 findings，R0 遗留 2 条在案）→ R2 修复轮 → 第 2/4 轮通过。节点进入实施就绪态。 计划审校通过登记（2026-09-27 调度指令）：计划 26-datasource.md 审校通过，任务 8 个——task_ids 回填 B2-DS.1~B2-DS.8（管家读计划 §T1-T8 实测核对恰 8 个：T1 前置核验+基线对齐+特征化 / T2 repository 搬迁+compat / T3 service 搬迁 kbActivity 直连+cleanup seam+purge_test 重写 / T4 handler 搬迁+compat / T5 跨模块例外登记 / T6 别名 12 行成对删除 / T7 差分复跑+evidence 定稿 / T8 Brief+实施报告+门禁收口），task_status 8 任务全 pending 建立；计划版本=codex/passb-b2-datasource@c0d380e14（R2 修订版），实现 worktree .worktrees/passb-b2-datasource 在位（01:26 条目「未见盘面」登记就此更新）。 B2-DS.1 SDD 审查通过（2026-09-27 05:09 登记；报告 .superpowers/sdd/passb/b2-datasource/B2-DS.1-report.md，04:56 版 9,613 字节 + review-pkg 1.44MB；产出 2 commits：486d46b42（P-2 基线对齐 merge codex/passb-b2-k-integration@461d8c4b2，无冲突，Ruling WAVE-DEP-BASELINE）+ 020c05168（T1 evidence 252 行）；ALIGN_SHA=486d46b424b95d49903e3e9aaf23f1461ce5d863（本节点后续 diff 检查 PASSB_BASE_SHA）；115 用例特征化基线 service 85+repository 10+handler 20 全 PASS 零新增；P-1 实测 b2-k-integration review_status=changes_requested 与本 DAG 现值一致（计划期望 approved 系偏差登记非冲突）——进入任务级 OCR；task_status B2-DS.1 维持 pending——SDD 通过≠task done，沿 K1.x 先例，收口待调度方指令）。 B2-DS.1 重派确认（2026-09-27 06:49，指令与 05:09 逐字相同——SDD 通过态在位维持、task_status pending 不变）；中间事件盘面补登（未经指令登记，以 git/文件证据为准）：任务级 OCR 两跑不完整（429 限流×80 项选区放大器、失败批次全为 K 谱系；产物 ocr-r1.txt 05:30/17,353 字节 + ocr-r1-a2.txt 05:55/19,593 字节 + ocr-context.md 05:13）；replan commit 81f53c33a（06:10，26-datasource.md +16 行）——根因登记 + 重试选区裁定（净改动 1 文件 evidence、排除对齐产物 161 文件、间隔≥2h）+ 两跑 19 findings 两轨处置（K 属主债务；check-passb-readiness 当前树 exit 1 实测属实=继承债务移交协调者）；报告修订 04:56 版 9,613 字节 → 06:26 版 9,204 字节（review-pkg 同步重生成 1.44MB→22KB）；本轮重派=按 replan 裁定进入 OCR 重试轮。 B2-DS.2 SDD 审查通过（2026-09-27 07:53 登记；报告 .superpowers/sdd/passb/b2-datasource/B2-DS.2-report.md，07:22 版 8,885 字节 + review-pkg 7,215 字节；任务 BASE=81f53c33a，产出 commit b6d705dbd（repository 迁入模块与宿主 compat，一任务一 commit）——进入任务级 OCR；task_status B2-DS.2 维持 pending——SDD 通过≠task done，沿 K1.x/B2-DS.1 先例，收口待调度方指令）。 B2-DS.3 SDD 审查通过（2026-09-27 10:26 登记；报告 .superpowers/sdd/passb/b2-datasource/B2-DS.3-report.md，09:24 版 14,542 字节 + review-pkg 78,921 字节；任务 BASE=b6d705dbd，产出 commit e6c3baa61（service 迁入模块：kbActivity 直连 + cleanup seam，一任务一 commit）——重点风险面任务（pr0/pr1 important findings 集中区：purge_test 重写+11 测试随迁）——进入任务级 OCR；task_status B2-DS.3 维持 pending——SDD 通过≠task done，沿先例，收口待调度方指令）。 B2-DS.4 SDD 审查通过（2026-09-27 11:26 登记；报告 .superpowers/sdd/passb/b2-datasource/B2-DS.4-report.md，11:12 版 10,191 字节 + review-pkg 13,192 字节；任务 BASE=e6c3baa61，产出 commit 75e94da99（handler 迁入模块与宿主 compat，一任务一 commit；datasource.go git rename 98%+import 改写、datasource_credentials.go R100 纯重命名零改写）——进入任务级 OCR；task_status B2-DS.4 维持 pending——SDD 通过≠task done，沿先例，收口待调度方指令）。 B2-DS.5 SDD 审查通过（2026-09-27 12:16 登记；报告 .superpowers/sdd/passb/b2-datasource/B2-DS.5-report.md，11:53 版 8,672 字节 + review-pkg 13,477 字节；任务 BASE=75e94da99，产出 commit 90b93f321（登记跨模块 import 例外：数据行+台账，Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY + §8 基线登记）——进入任务级 OCR；task_status B2-DS.5 维持 pending——SDD 通过≠task done，沿先例，收口待调度方指令）。 B2-DS.6 SDD 审查通过（2026-09-27 12:42 登记；报告 .superpowers/sdd/passb/b2-datasource/B2-DS.6-report.md，12:34 版 5,463 字节 + review-pkg 16,236 字节；任务 BASE=90b93f321，产出 commit 52ae889a2（删除 12 条别名义务行：manifest+matrix 同 commit）——进入任务级 OCR；task_status B2-DS.6 维持 pending——SDD 通过≠task done，沿先例，收口待调度方指令）。 B2-DS.7 SDD 审查通过（2026-09-27 13:19 登记；报告 .superpowers/sdd/passb/b2-datasource/B2-DS.7-report.md，13:07 版 7,256 字节 + review-pkg 17,104 字节；任务 BASE=52ae889a2，产出 commit a43505d1b（差分复跑比对与证据定稿，1 文件 +51/−2 纯 evidence 定稿）——进入任务级 OCR；task_status B2-DS.7 维持 pending——SDD 通过≠task done，沿先例，收口待调度方指令）。 B2-DS.8 SDD 审查通过（2026-09-27 14:11 登记；报告 .superpowers/sdd/passb/b2-datasource/B2-DS.8-report.md，14:02 版 7,195 字节 + review-pkg 43,405 字节；任务 BASE=a43505d1b，产出 commit 4ebe14cf5（节点收口：Brief、报告与门禁，4 文件：Brief 新增+节点报告新增+README ×2 回填）——末任务，进入任务级 OCR；task_status B2-DS.8 维持 pending——SDD 通过≠task done，沿先例，收口待调度方指令）。",
+   "ocr_covered": [
+    {
+     "base": "81f53c33a65985a91e5e59373b74d2a28be2ff83",
+     "head": "81f53c33a65985a91e5e59373b74d2a28be2ff83"
+    },
+    {
+     "base": "81f53c33a65985a91e5e59373b74d2a28be2ff83",
+     "head": "b6d705dbde34865443a401f29122f1a9ffc29406"
+    },
+    {
+     "base": "b6d705dbde34865443a401f29122f1a9ffc29406",
+     "head": "e6c3baa61128a952cf4424c02fae331206877074"
+    },
+    {
+     "base": "e6c3baa61128a952cf4424c02fae331206877074",
+     "head": "75e94da99eb5963e149ec298f49ed2183a6d70a6"
+    },
+    {
+     "base": "75e94da99eb5963e149ec298f49ed2183a6d70a6",
+     "head": "90b93f3211d3e0da8e86278746ef10258b0de675"
+    },
+    {
+     "base": "90b93f3211d3e0da8e86278746ef10258b0de675",
+     "head": "52ae889a201ad5637ce5c5f5de6e1d2e19a949c1"
+    },
+    {
+     "base": "52ae889a201ad5637ce5c5f5de6e1d2e19a949c1",
+     "head": "a43505d1b3001736083da40ba4563bb27f936624"
+    },
+    {
+     "base": "a43505d1b3001736083da40ba4563bb27f936624",
+     "head": "4ebe14cf50c7d0f4395e314f714816c801b85936"
+    }
+   ]
   },
   {
    "id": "b2-appconnector",
@@ -1887,7 +1944,7 @@
     "catalog version/install 不变式、sync/action 行为差分证据"
    ],
    "execution_mode": "serial",
-   "status": "pending",
+   "status": "in_progress",
    "base_sha": null,
    "head_sha": null,
    "review_status": "pending",
