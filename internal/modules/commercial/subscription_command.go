@@ -330,6 +330,11 @@ type CreditBatchSnapshot struct {
 	ExpiresAt    time.Time
 	Source       string    // closed set: BatchSourceMonthly | BatchSourceTopUp
 	GrantedAt    time.Time // the wallet's created_at (grant time, tie-break)
+	// WalletRef is the batch's deterministic wallet name — the batch
+	// identity the local lot projection keys on (#86 Task 3). The Base
+	// monthly and purchase first-period batches of one period carry
+	// DISTINCT refs (their own wallet names), so both stay addressable.
+	WalletRef string
 }
 
 // Batch sources — the closed two-family set. A top-up batch carries no

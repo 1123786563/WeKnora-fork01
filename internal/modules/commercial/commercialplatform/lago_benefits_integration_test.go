@@ -110,7 +110,7 @@ func newIntegrationBenefitsService(t *testing.T, baseURL, apiKey string) (*comme
 	if err != nil {
 		t.Fatal(err)
 	}
-	svc, err := commercialsvc.NewBenefitsService(db, accounts, plans, p)
+	svc, err := commercialsvc.NewBenefitsService(db, accounts, plans, p, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

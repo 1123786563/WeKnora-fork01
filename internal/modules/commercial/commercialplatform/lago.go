@@ -1190,6 +1190,7 @@ func (a *LagoAdapter) readBenefitsSnapshot(ctx context.Context, tenantID uint64)
 			ExpiresAt:    expires,
 			Source:       source,
 			GrantedAt:    granted,
+			WalletRef:    w.Name,
 		})
 	}
 	return commercial.Snapshot{Kind: commercial.SnapshotKindBenefits, Benefits: b}, nil

@@ -61,7 +61,7 @@ func newBenefitsService(t *testing.T, platform domain.CommercialPlatform) (*Bene
 	if err != nil {
 		t.Fatal(err)
 	}
-	svc, err := NewBenefitsService(db, accounts, plans, platform)
+	svc, err := NewBenefitsService(db, accounts, plans, platform, repocommercial.NewBudgetStore(db))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -496,6 +496,56 @@ func walletPriorityByName(t *testing.T, fake *commercialplatform.FakeAdapter, na
 	return 0, false
 }
 
+// TestRefreshSyncsLotsFromSnapshot (#86 Task 3): one benefits refresh
+// projects the authority batch read-back onto commercial_budget_lots — both
+// the monthly-family and the top-up batch land as lot rows with the correct
+// balances (the allocation order's comparison keys ride the same rows).
+func TestRefreshSyncsLotsFromSnapshot(t *testing.T) {
+	fake := commercialplatform.NewFakeAdapter()
+	fake.SetBasePlanFeatures(map[string]bool{"api_access": true})
+	svc, _, db := newBenefitsService(t, fake)
+	if err := db.AutoMigrate(&repocommercial.BudgetLotRow{}); err != nil {
+		t.Fatal(err)
+	}
+	svc.SetNow(septemberClock())
+	tenant := uint64(507)
+	ctx := context.Background()
+
+	if _, err := svc.EnsureBenefits(ctx, tenant, "Lot Space", "user-1"); err != nil {
+		t.Fatal(err)
+	}
+	// A top-up batch beside the monthly one.
+	ext := domain.ExternalCustomerID(tenant)
+	fake.SeedTopUpWallet(ext+"-topup-x", ext, 5_000,
+		time.Date(2027, 3, 10, 0, 0, 0, 0, time.UTC),
+		time.Date(2026, 9, 16, 0, 0, 0, 0, time.UTC), domain.TopUpWalletPriority)
+	if _, err := svc.EnsureBenefits(ctx, tenant, "Lot Space", "user-1"); err != nil {
+		t.Fatal(err)
+	}
+	type lotRow struct {
+		LotID          string
+		RemainingMicro int64
+	}
+	var lots []lotRow
+	if err := db.Raw(`SELECT lot_id, remaining_micro FROM commercial_budget_lots WHERE tenant_id = ? ORDER BY lot_id`, tenant).Scan(&lots).Error; err != nil {
+		t.Fatal(err)
+	}
+	byID := map[string]int64{}
+	for _, l := range lots {
+		byID[l.LotID] = l.RemainingMicro
+	}
+	monthly := domain.MonthlyWalletName(tenant, "2026-09")
+	if got, ok := byID[monthly]; !ok || got != BasePlanSeedIncludedCreditsMicro {
+		t.Fatalf("monthly lot row missing/wrong: %+v", byID)
+	}
+	if got, ok := byID[ext+"-topup-x"]; !ok || got != domain.CentsToMicro(5_000) {
+		t.Fatalf("topup lot row missing/wrong: %+v", byID)
+	}
+	if len(byID) != 2 {
+		t.Fatalf("exactly two lot rows expected, got %+v", byID)
+	}
+}
+
 // TestMonthlyGrantEncodesYieldPriority (#86 Task 2): a top-up batch expiring
 // BEFORE this month's end pushes the monthly wallet's creation priority to
 // TopUpWalletPriority+1 (it must be consumed after the aging top-up); with
@@ -789,7 +839,7 @@ func TestSeedBasePlanIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	opSvc, err := NewBenefitsService(db, opAccounts, opPlans, opFake)
+	opSvc, err := NewBenefitsService(db, opAccounts, opPlans, opFake, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

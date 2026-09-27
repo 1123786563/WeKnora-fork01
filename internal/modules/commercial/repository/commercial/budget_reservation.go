@@ -144,12 +144,16 @@ func (s *BudgetStore) tryReserve(ctx context.Context, req domain.BudgetRequest) 
 			return errBudgetCASRetry
 		}
 
-		// Lot allocation, earliest-expiry-first, same transaction.
+		// Lot allocation, earliest-expiry-first, same transaction. The
+		// #86 consumption order: same-expiry lots break the tie by
+		// EARLIEST ISSUED (the spec's "earliest expiry, then earliest
+		// grant"), lot_id as the deterministic final tie-break — the same
+		// comparison keys the authority rebalance encodes into priorities.
 		var lots []BudgetLotRow
 		if err := tx.Raw(`SELECT * FROM commercial_budget_lots
 			WHERE tenant_id = ? AND remaining_micro - held_micro > 0
 			  AND (expires_at IS NULL OR expires_at > ?)
-			ORDER BY expires_at ASC`, req.TenantID, now).Scan(&lots).Error; err != nil {
+			ORDER BY expires_at ASC, issued_at ASC, lot_id ASC`, req.TenantID, now).Scan(&lots).Error; err != nil {
 			return err
 		}
 		need := int64(req.Upper)

@@ -1,6 +1,7 @@
 package commercial
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
@@ -158,6 +159,100 @@ func minI64(a, b int64) int64 {
 		return a
 	}
 	return b
+}
+
+// SyncLots projects one tenant's authority batch read-back onto the local
+// lot table in ONE transaction (every statement parameter-bound). The
+// invariants (#86 Task 3):
+//
+//   - a snapshot batch that is UNEXPIRED aligns remaining to
+//     max(authority balance, held) — evaluated ATOMICALLY against the
+//     row's CURRENT held (a concurrent Reserve's hold is never stranded or
+//     overwritten by a stale in-transaction read: the held ≤ remaining
+//     invariant survives any interleaving);
+//   - an EXPIRED batch (or one ABSENT from the snapshot — terminated, or
+//     still inside the authority's lazy-termination window) collapses
+//     remaining to the row's CURRENT held: in-flight holds stay endorsed,
+//     nothing NEW may be allocated against it. An expired batch is never
+//     resurrected by a snapshot that still lists a balance (review-focus 3);
+//   - a never-seen unexpired batch inserts (remaining = authority balance,
+//     held = 0); a never-seen EXPIRED batch never inserts;
+//   - lot identity and the expires_at/issued_at columns are immutable after
+//     insert — the allocation order's comparison keys never move.
+//
+// The sync is the lot face of the same refresh that writes the benefits
+// projection: a failure surfaces to the caller (the service logs a Warn and
+// keeps the billing read green — the A-23 posture), never a partial write.
+func (s *BudgetStore) SyncLots(ctx context.Context, tenantID uint64, batches []domain.LotSyncBatch, now time.Time) error {
+	if tenantID == 0 {
+		return ErrInvalidBudgetRequest
+	}
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var existing []BudgetLotRow
+		if err := tx.Where("tenant_id = ?", tenantID).Find(&existing).Error; err != nil {
+			return err
+		}
+		known := make(map[string]bool, len(existing))
+		for _, row := range existing {
+			known[row.LotID] = true
+		}
+		seen := make(map[string]bool, len(batches))
+		for _, b := range batches {
+			if b.LotID == "" {
+				continue // a malformed identity is skipped, never guessed at
+			}
+			seen[b.LotID] = true
+			if !known[b.LotID] {
+				if !b.ExpiresAt.After(now) {
+					continue // a never-seen expired batch never inserts
+				}
+				if err := tx.Create(&BudgetLotRow{
+					TenantID:       tenantID,
+					LotID:          b.LotID,
+					RemainingMicro: b.RemainingMicro,
+					HeldMicro:      0,
+					ExpiresAt:      &b.ExpiresAt,
+					IssuedAt:       b.IssuedAt,
+				}).Error; err != nil {
+					return err
+				}
+				continue
+			}
+			if b.ExpiresAt.After(now) {
+				// Unexpired: never below the row's CURRENT held — the max
+				// is evaluated inside the UPDATE, under the row lock, so a
+				// concurrent Reserve's increment is always accounted. CASE
+				// is the portable spelling (SQLite has no GREATEST).
+				if err := tx.Exec(`UPDATE commercial_budget_lots
+					SET remaining_micro = CASE WHEN ? > held_micro THEN ? ELSE held_micro END
+					WHERE tenant_id = ? AND lot_id = ?`,
+					b.RemainingMicro, b.RemainingMicro, tenantID, b.LotID).Error; err != nil {
+					return err
+				}
+				continue
+			}
+			// Expired: hold-only collapse, same atomicity.
+			if err := tx.Exec(`UPDATE commercial_budget_lots
+				SET remaining_micro = held_micro
+				WHERE tenant_id = ? AND lot_id = ?`,
+				tenantID, b.LotID).Error; err != nil {
+				return err
+			}
+		}
+		// Snapshot-absent existing lots: same hold-only collapse.
+		for _, row := range existing {
+			if seen[row.LotID] {
+				continue
+			}
+			if err := tx.Exec(`UPDATE commercial_budget_lots
+				SET remaining_micro = held_micro
+				WHERE tenant_id = ? AND lot_id = ?`,
+				tenantID, row.LotID).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 // casRetry is the SHARED transaction/retry helper layer for every budget

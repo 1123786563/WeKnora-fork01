@@ -64,52 +64,22 @@ func budgetPGFixture(t *testing.T) *gorm.DB {
 	if err := db.Exec(string(migration)).Error; err != nil {
 		t.Fatal(err)
 	}
+	// 000161's column IN ORDER after 000116: the reservations owner column
+	// the 000116 DDL never created — Reserve INSERTs failed on production
+	// Postgres without it (issue inventory L180's two known FAILs). Applied
+	// through the typed migrator (the ReservationRow owner tag mirrors
+	// 000161's ADD COLUMN owner VARCHAR(255) NOT NULL DEFAULT ''), never a
+	// hand-built DDL string.
+	if !db.Migrator().HasColumn(&ReservationRow{}, "owner") {
+		if err := db.Migrator().AddColumn(&ReservationRow{}, "owner"); err != nil {
+			t.Fatal(err)
+		}
+	}
 	return db
 }
 
 func TestBudgetPGConcurrentReservation(t *testing.T) {
-	raw := os.Getenv("SAAS_TEST_PG_DSN")
-	if raw == "" {
-		t.Fatal("SAAS_TEST_PG_DSN is required for isolated integration evidence")
-	}
-	parsed, err := url.Parse(raw)
-	if err != nil || (parsed.Scheme != "postgres" && parsed.Scheme != "postgresql") {
-		t.Fatal("test DSN must be a PostgreSQL URL")
-	}
-	admin, err := gorm.Open(postgres.Open(raw), &gorm.Config{})
-	if err != nil {
-		t.Fatal("test database unavailable")
-	}
-	adminSQL, err := admin.DB()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer adminSQL.Close()
-	schema := fmt.Sprintf("saas_budget_%d", time.Now().UnixNano())
-	if err := admin.Exec("CREATE SCHEMA " + schema).Error; err != nil {
-		t.Fatal(err)
-	}
-	defer admin.Exec("DROP SCHEMA " + schema + " CASCADE")
-	query := parsed.Query()
-	query.Set("search_path", schema)
-	parsed.RawQuery = query.Encode()
-	db, err := gorm.Open(postgres.Open(parsed.String()), &gorm.Config{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	pool, err := db.DB()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer pool.Close()
-	pool.SetMaxOpenConns(20)
-	migration, err := os.ReadFile("../../../../../migrations/versioned/000116_commercial_budgets.up.sql")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Exec(string(migration)).Error; err != nil {
-		t.Fatal(err)
-	}
+	db := budgetPGFixture(t)
 	end := time.Now().UTC().Add(time.Hour)
 	statements := []struct {
 		sql  string
@@ -263,5 +233,105 @@ func TestBudgetPGRefundLockCompetesWithReservation(t *testing.T) {
 	}
 	if held+refundLocked != 60 || (held != 0 && held != 60) {
 		t.Fatalf("held=%d refund_locked=%d; want a single 60 draw", held, refundLocked)
+	}
+}
+
+// TestSyncLotsConcurrentWithReserveNoOverAllocation (#86 Task 3): SyncLots
+// (a shrinking authority balance) racing concurrent Reserves on real
+// Postgres must never over-allocate: no lot goes negative or below its
+// holds, holds never exceed reservations, and an EXPIRED batch mid-race
+// never gains a new allocation.
+func TestSyncLotsConcurrentWithReserveNoOverAllocation(t *testing.T) {
+	db := budgetPGFixture(t)
+	end := time.Now().UTC().Add(time.Hour)
+	expired := time.Now().UTC().Add(-time.Minute)
+	if err := db.Exec("INSERT INTO commercial_budget_accounts (tenant_id,verified_micro,unreflected_micro,held_micro,refund_locked_micro,watermark,version,verified_until) VALUES (7,10000,0,0,0,'w1',1,?)", end).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec("INSERT INTO commercial_task_budgets (tenant_id,run_id,limit_micro,spent_micro,held_micro,deadline,version) VALUES (7,'r1',10000,0,0,?,1)", end).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec("INSERT INTO commercial_budget_lots (tenant_id,lot_id,remaining_micro,held_micro,expires_at,issued_at) VALUES (7,'live-lot',10000,0,?,?)", end, time.Now().UTC().Add(-2*time.Hour)).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec("INSERT INTO commercial_budget_lots (tenant_id,lot_id,remaining_micro,held_micro,expires_at,issued_at) VALUES (7,'dying-lot',5000,0,?,?)", expired, time.Now().UTC().Add(-3*time.Hour)).Error; err != nil {
+		t.Fatal(err)
+	}
+	store := NewBudgetStore(db)
+	var wg sync.WaitGroup
+	// 8 racers: half shrink the live lot's authority balance in steps (the
+	// sync face), half draw reservations of 500 each (the allocation face).
+	// The live batch's snapshot expiry flips late in the race — the sync
+	// must collapse it to hold-only, never resurrect allocatable credits.
+	shrink := func(round int) {
+		defer wg.Done()
+		for i := 0; i < 5; i++ {
+			remaining := 10000 - int64(i*500*(round+1))
+			if remaining < 0 {
+				remaining = 0
+			}
+			exp := end
+			if i == 4 {
+				exp = expired
+			}
+			_ = store.SyncLots(context.Background(), 7, []domain.LotSyncBatch{
+				{LotID: "live-lot", RemainingMicro: remaining, ExpiresAt: exp, IssuedAt: time.Now().UTC().Add(-2 * time.Hour)},
+			}, time.Now().UTC())
+		}
+	}
+	draw := func(id int) {
+		defer wg.Done()
+		for i := 0; i < 5; i++ {
+			_, err := store.Reserve(context.Background(), domain.BudgetRequest{
+				TenantID: 7, RunID: "r1", Key: fmt.Sprintf("race-%d-%d", id, i),
+				Upper: domain.Credits(500), Deadline: time.Now().Add(time.Minute),
+			})
+			if err != nil && err != ErrBudgetLotsInsufficient && err != ErrInsufficientBudget && err != ErrBudgetContention {
+				t.Errorf("reserve: %v", err)
+				return
+			}
+		}
+	}
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		if i%2 == 0 {
+			go shrink(i / 2)
+		} else {
+			go draw(i)
+		}
+	}
+	wg.Wait()
+	// Convergence invariants (every read parameter-bound).
+	type lotRow struct {
+		LotID     string
+		Remaining int64
+		Held      int64
+	}
+	var lots []lotRow
+	if err := db.Raw("SELECT lot_id, remaining_micro AS remaining, held_micro AS held FROM commercial_budget_lots WHERE tenant_id = ?", 7).Scan(&lots).Error; err != nil {
+		t.Fatal(err)
+	}
+	var heldSum int64
+	for _, l := range lots {
+		if l.Remaining < 0 {
+			t.Fatalf("lot %s negative remaining %d", l.LotID, l.Remaining)
+		}
+		if l.Held > l.Remaining {
+			t.Fatalf("lot %s over-allocated: held %d > remaining %d", l.LotID, l.Held, l.Remaining)
+		}
+		if l.LotID == "dying-lot" && l.Held != 0 {
+			t.Fatalf("the expired dying-lot gained allocations: held %d", l.Held)
+		}
+		heldSum += l.Held
+	}
+	var reserved int64
+	if err := db.Raw("SELECT COUNT(*) FROM commercial_reservations WHERE tenant_id = ?", 7).Scan(&reserved).Error; err != nil {
+		t.Fatal(err)
+	}
+	if reserved*500 > 15000 {
+		t.Fatalf("over-draw: %d reservations of 500 exceed the seeded 15000", reserved)
+	}
+	if heldSum != reserved*500 {
+		t.Fatalf("lot holds %d must equal reservations %d × 500", heldSum, reserved)
 	}
 }

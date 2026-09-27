@@ -463,6 +463,7 @@ func (f *FakeAdapter) ReadSnapshot(_ context.Context, query commercial.SnapshotQ
 					ExpiresAt:    w.ExpiresAt,
 					Source:       commercial.BatchSourceMonthly,
 					GrantedAt:    w.CreatedAt,
+					WalletRef:    w.Name,
 				})
 			} else {
 				b.Batches = append(b.Batches, commercial.CreditBatchSnapshot{
@@ -470,6 +471,7 @@ func (f *FakeAdapter) ReadSnapshot(_ context.Context, query commercial.SnapshotQ
 					ExpiresAt:    w.ExpiresAt,
 					Source:       commercial.BatchSourceTopUp,
 					GrantedAt:    w.CreatedAt,
+					WalletRef:    w.Name,
 				})
 			}
 		}

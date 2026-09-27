@@ -468,3 +468,293 @@ func TestBudgetReserveConcurrentSameKeyReplayIdempotent(t *testing.T) {
 		t.Fatalf("lot held=%d want 30 counted once", lot.HeldMicro)
 	}
 }
+
+// TestReserveSameExpiryPicksEarliestIssuedLot (#86 Task 3): two lots sharing
+// one expiry — the earlier-ISSUED lot must be allocated first (the spec's
+// "earliest expiry, then earliest grant" order; lot1 is the deterministic
+// final tie-break). All three rows carry the EXACT same expires_at
+// (normalized below — SQLite stores nanosecond-precision strings, so
+// seedBudget's own clock read would otherwise break the tie by nanoseconds).
+// The earliest-issued lot is deliberately named LAST in (tenant, lot_id)
+// index order: SQLite serves equal ORDER BY keys in that index order, so a
+// missing issued_at tie-break deterministically picks the WRONG row here.
+func TestReserveSameExpiryPicksEarliestIssuedLot(t *testing.T) {
+	store, db := testBudgetStore(t)
+	seedBudget(t, db, 1_000_000, 1_000_000)
+	exp := time.Now().UTC().Add(time.Hour)
+	for _, row := range []any{
+		&BudgetLotRow{TenantID: 7, LotID: "aa-later", RemainingMicro: 1_000_000,
+			ExpiresAt: &exp, IssuedAt: time.Now().UTC().Add(-1 * time.Hour)},
+		&BudgetLotRow{TenantID: 7, LotID: "zz-earliest", RemainingMicro: 1_000_000,
+			ExpiresAt: &exp, IssuedAt: time.Now().UTC().Add(-2 * time.Hour)},
+	} {
+		if err := db.Create(row).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Normalize the seeded lot1 to the SAME instant (parameter-bound).
+	if err := db.Exec(`UPDATE commercial_budget_lots SET expires_at = ? WHERE tenant_id = ? AND lot_id = ?`,
+		exp, 7, "lot1").Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Reserve(context.Background(), budgetRequest("r1", "k1", 500_000)); err != nil {
+		t.Fatalf("reserve: %v", err)
+	}
+	var early, late, seeded BudgetLotRow
+	if err := db.Where("tenant_id = ? AND lot_id = ?", 7, "zz-earliest").First(&early).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Where("tenant_id = ? AND lot_id = ?", 7, "aa-later").First(&late).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Where("tenant_id = ? AND lot_id = ?", 7, "lot1").First(&seeded).Error; err != nil {
+		t.Fatal(err)
+	}
+	// 500_000 fits one row's capacity: it must land ENTIRELY on the
+	// earliest-issued row (zz-earliest at -2h; aa-later at -1h and lot1 at
+	// now both lose the tie-break).
+	if early.HeldMicro != 500_000 || late.HeldMicro != 0 || seeded.HeldMicro != 0 {
+		t.Fatalf("earliest-issued lot must be allocated first: early=%d late=%d lot1=%d",
+			early.HeldMicro, late.HeldMicro, seeded.HeldMicro)
+	}
+}
+
+// ---- #86 Task 3: SyncLots — the authority-batch → local-lot projection ----
+
+// syncLotRow reads one lot row (nil-safe assertions helper).
+func syncLotRow(t *testing.T, db *gorm.DB, tenantID uint64, lotID string) BudgetLotRow {
+	t.Helper()
+	var row BudgetLotRow
+	if err := db.Where("tenant_id = ? AND lot_id = ?", tenantID, lotID).First(&row).Error; err != nil {
+		t.Fatal(err)
+	}
+	return row
+}
+
+// TestSyncLotsNeverResurrectsExpiredBatch (#86 Task 3, review-focus 3): a
+// batch the authority still lists (the lazy-termination window) but whose
+// expiry has passed must NOT become allocatable again — remaining collapses
+// to held (in-flight holds stay endorsed; nothing new may draw on it). A
+// batch ABSENT from the snapshot gets the same treatment; a never-seen
+// expired batch is never inserted.
+func TestSyncLotsNeverResurrectsExpiredBatch(t *testing.T) {
+	store, db := testBudgetStore(t)
+	now := time.Now().UTC()
+	past := now.Add(-time.Hour)
+	future := now.Add(24 * time.Hour)
+	for _, row := range []any{
+		// Expired-but-listed: the authority balance is 500, an in-flight
+		// hold keeps 200.
+		&BudgetLotRow{TenantID: 7, LotID: "expired-listed", RemainingMicro: 500, HeldMicro: 200,
+			ExpiresAt: &past, IssuedAt: now.Add(-48 * time.Hour)},
+		// Absent from the snapshot entirely (terminated): hold 100.
+		&BudgetLotRow{TenantID: 7, LotID: "absent", RemainingMicro: 300, HeldMicro: 100,
+			ExpiresAt: &future, IssuedAt: now.Add(-2 * time.Hour)},
+	} {
+		if err := db.Create(row).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The snapshot carries ONLY the expired batch (balance 500).
+	err := store.SyncLots(context.Background(), 7, []domain.LotSyncBatch{
+		{LotID: "expired-listed", RemainingMicro: 500, ExpiresAt: past, IssuedAt: now.Add(-48 * time.Hour)},
+	}, now)
+	if err != nil {
+		t.Fatalf("SyncLots: %v", err)
+	}
+	listed := syncLotRow(t, db, 7, "expired-listed")
+	if listed.RemainingMicro != 200 {
+		t.Fatalf("expired-listed remaining = %d, want 200 (== held; never allocatable again)", listed.RemainingMicro)
+	}
+	absent := syncLotRow(t, db, 7, "absent")
+	if absent.RemainingMicro != 100 {
+		t.Fatalf("absent remaining = %d, want 100 (== held)", absent.RemainingMicro)
+	}
+	// A never-seen expired batch must never be inserted.
+	var n int64
+	db.Model(&BudgetLotRow{}).Where("tenant_id = 7").Count(&n)
+	if n != 2 {
+		t.Fatalf("lot rows = %d, want 2 (no insertion of unseen batches)", n)
+	}
+}
+
+// TestSyncLotsNeverShrinksBelowHolds (#86 Task 3): the authority balance
+// dropping below an in-flight hold never strands the hold — remaining keeps
+// at least held (holds are endorsed draws, always allocatable at settle).
+func TestSyncLotsNeverShrinksBelowHolds(t *testing.T) {
+	store, db := testBudgetStore(t)
+	now := time.Now().UTC()
+	future := now.Add(24 * time.Hour)
+	if err := db.Create(&BudgetLotRow{TenantID: 7, LotID: "held-heavy", RemainingMicro: 900,
+		HeldMicro: 400, ExpiresAt: &future, IssuedAt: now}).Error; err != nil {
+		t.Fatal(err)
+	}
+	err := store.SyncLots(context.Background(), 7, []domain.LotSyncBatch{
+		{LotID: "held-heavy", RemainingMicro: 100, ExpiresAt: future, IssuedAt: now},
+	}, now)
+	if err != nil {
+		t.Fatalf("SyncLots: %v", err)
+	}
+	row := syncLotRow(t, db, 7, "held-heavy")
+	if row.RemainingMicro != 400 {
+		t.Fatalf("remaining = %d, want 400 (never below held)", row.RemainingMicro)
+	}
+}
+
+// TestSyncLotsTenantScoped (#86 Task 3, review-focus 5): tenant 8's sync
+// never touches tenant 7's lot rows — the projection is tenant-closed.
+func TestSyncLotsTenantScoped(t *testing.T) {
+	store, db := testBudgetStore(t)
+	now := time.Now().UTC()
+	future := now.Add(24 * time.Hour)
+	if err := db.Create(&BudgetLotRow{TenantID: 7, LotID: "t7-lot", RemainingMicro: 700,
+		ExpiresAt: &future, IssuedAt: now}).Error; err != nil {
+		t.Fatal(err)
+	}
+	err := store.SyncLots(context.Background(), 8, []domain.LotSyncBatch{
+		{LotID: "t8-lot", RemainingMicro: 300, ExpiresAt: future, IssuedAt: now},
+	}, now)
+	if err != nil {
+		t.Fatalf("SyncLots: %v", err)
+	}
+	t7 := syncLotRow(t, db, 7, "t7-lot")
+	if t7.RemainingMicro != 700 {
+		t.Fatalf("tenant 7 lot must be untouched, remaining = %d", t7.RemainingMicro)
+	}
+	t8 := syncLotRow(t, db, 8, "t8-lot")
+	if t8.RemainingMicro != 300 {
+		t.Fatalf("tenant 8 lot must be inserted, remaining = %d", t8.RemainingMicro)
+	}
+}
+
+// TestSyncLotsInsertsAndAlignsFreshBatches (#86 Task 3): a fresh unexpired
+// batch inserts (remaining = authority balance); an existing unexpired
+// batch's remaining tracks the authority balance upward and identity
+// columns (expires_at/issued_at) stay immutable after insert.
+func TestSyncLotsInsertsAndAlignsFreshBatches(t *testing.T) {
+	store, db := testBudgetStore(t)
+	now := time.Now().UTC()
+	future := now.Add(24 * time.Hour)
+	issued := now.Add(-3 * time.Hour)
+	if err := db.Create(&BudgetLotRow{TenantID: 7, LotID: "known", RemainingMicro: 100,
+		ExpiresAt: &future, IssuedAt: issued}).Error; err != nil {
+		t.Fatal(err)
+	}
+	err := store.SyncLots(context.Background(), 7, []domain.LotSyncBatch{
+		{LotID: "known", RemainingMicro: 800, ExpiresAt: future, IssuedAt: issued},
+		{LotID: "fresh", RemainingMicro: 500, ExpiresAt: future.Add(24 * time.Hour), IssuedAt: now},
+	}, now)
+	if err != nil {
+		t.Fatalf("SyncLots: %v", err)
+	}
+	known := syncLotRow(t, db, 7, "known")
+	if known.RemainingMicro != 800 {
+		t.Fatalf("known remaining = %d, want 800 (tracks authority)", known.RemainingMicro)
+	}
+	if !known.IssuedAt.Equal(issued) {
+		t.Fatalf("issued_at must be immutable after insert, got %v want %v", known.IssuedAt, issued)
+	}
+	fresh := syncLotRow(t, db, 7, "fresh")
+	if fresh.RemainingMicro != 500 || fresh.HeldMicro != 0 {
+		t.Fatalf("fresh lot = (remaining %d, held %d), want (500, 0)", fresh.RemainingMicro, fresh.HeldMicro)
+	}
+}
+
+// TestSyncLotsConcurrentSqlite (#86 Task 3, the PG gate's portable
+// floor): 8 goroutines racing SyncLots (a shrinking, late-expiring balance)
+// against Reserves on SQLite — the same no-over-allocation invariants the
+// PG integration test asserts, runnable everywhere.
+func TestSyncLotsConcurrentSqlite(t *testing.T) {
+	store, db := testBudgetStore(t)
+	now := time.Now().UTC()
+	end := now.Add(time.Hour)
+	expired := now.Add(-time.Minute)
+	if err := db.Exec(`INSERT INTO commercial_budget_accounts
+		(tenant_id, verified_micro, unreflected_micro, held_micro, refund_locked_micro, watermark, version, verified_until)
+		VALUES (?, 10000, 0, 0, 0, 'w1', 1, ?)`, 7, end).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(`INSERT INTO commercial_task_budgets
+		(tenant_id, run_id, limit_micro, spent_micro, held_micro, deadline, version)
+		VALUES (?, 'r1', 10000, 0, 0, ?, 1)`, 7, end).Error; err != nil {
+		t.Fatal(err)
+	}
+	dying := expired
+	if err := db.Exec(`INSERT INTO commercial_budget_lots
+		(tenant_id, lot_id, remaining_micro, held_micro, expires_at, issued_at)
+		VALUES (?, 'dying-lot', 5000, 0, ?, ?)`, 7, &dying, now.Add(-3*time.Hour)).Error; err != nil {
+		t.Fatal(err)
+	}
+	live := end
+	if err := db.Exec(`INSERT INTO commercial_budget_lots
+		(tenant_id, lot_id, remaining_micro, held_micro, expires_at, issued_at)
+		VALUES (?, 'live-lot', 10000, 0, ?, ?)`, 7, &live, now.Add(-2*time.Hour)).Error; err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	shrink := func(round int) {
+		defer wg.Done()
+		for i := 0; i < 5; i++ {
+			remaining := 10000 - int64(i*500*(round+1))
+			if remaining < 0 {
+				remaining = 0
+			}
+			exp := end
+			if i == 4 {
+				exp = expired
+			}
+			_ = store.SyncLots(context.Background(), 7, []domain.LotSyncBatch{
+				{LotID: "live-lot", RemainingMicro: remaining, ExpiresAt: exp, IssuedAt: now.Add(-2 * time.Hour)},
+			}, time.Now().UTC())
+		}
+	}
+	draw := func(id int) {
+		defer wg.Done()
+		for i := 0; i < 5; i++ {
+			_, err := store.Reserve(context.Background(), domain.BudgetRequest{
+				TenantID: 7, RunID: "r1", Key: fmt.Sprintf("race-%d-%d", id, i),
+				Upper: domain.Credits(500), Deadline: time.Now().Add(time.Minute),
+			})
+			if err != nil && err != ErrBudgetLotsInsufficient && err != ErrInsufficientBudget && err != ErrBudgetContention {
+				t.Errorf("reserve: %v", err)
+				return
+			}
+		}
+	}
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		if i%2 == 0 {
+			go shrink(i / 2)
+		} else {
+			go draw(i)
+		}
+	}
+	wg.Wait()
+	var lots []BudgetLotRow
+	if err := db.Where("tenant_id = ?", 7).Find(&lots).Error; err != nil {
+		t.Fatal(err)
+	}
+	var heldSum int64
+	for _, l := range lots {
+		if l.RemainingMicro < 0 {
+			t.Fatalf("lot %s negative remaining %d", l.LotID, l.RemainingMicro)
+		}
+		if l.HeldMicro > l.RemainingMicro {
+			t.Fatalf("lot %s over-allocated: held %d > remaining %d", l.LotID, l.HeldMicro, l.RemainingMicro)
+		}
+		if l.LotID == "dying-lot" && l.HeldMicro != 0 {
+			t.Fatalf("the expired dying-lot gained allocations: held %d", l.HeldMicro)
+		}
+		heldSum += l.HeldMicro
+	}
+	var reserved int64
+	if err := db.Model(&ReservationRow{}).Where("tenant_id = ?", 7).Count(&reserved).Error; err != nil {
+		t.Fatal(err)
+	}
+	if reserved*500 > 15000 {
+		t.Fatalf("over-draw: %d reservations of 500 exceed the seeded 15000", reserved)
+	}
+	if heldSum != reserved*500 {
+		t.Fatalf("lot holds %d must equal reservations %d × 500", heldSum, reserved)
+	}
+}

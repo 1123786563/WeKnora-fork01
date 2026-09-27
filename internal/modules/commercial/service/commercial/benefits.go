@@ -89,11 +89,12 @@ type BenefitsStatus struct {
 // become spendable only with #87/#88 admission, which can add the clock):
 //
 //	EnsureBenefits
-//	  ├─ SeedBasePlan         (idempotent #79 publish of (base, v1); no-op once published)
+//	  ├─ SeedBasePlan         (idempotent #79 publish of (base,1); no-op once published)
 //	  ├─ EnsureBillingAccount (#78 — the SAME customer ensure; linked row answers fast)
 //	  ├─ ensure_subscription  (seam; idempotent by ExternalSubscriptionID)
 //	  ├─ EnsureMonthlyCredits (registry-gated grant for the current UTC period)
-//	  └─ RefreshProjection    (benefits snapshot → plan identity via publications → limits/features → counters)
+//	  ├─ RefreshProjection    (benefits snapshot → plan identity via publications → limits/features → counters)
+//	  └─ SyncLots             (#86 — the batch read-back projected onto local lots)
 //
 // Failure posture (the #78 doctrine): every platform failure is a STATE
 // (pending + closed reason), never a caller error; the chain is resumable
@@ -104,8 +105,9 @@ type BenefitsService struct {
 	accounts *BillingAccountService
 	plans    *PlanVersionService
 	store    *repocommercial.BenefitsStore
-	platform domain.CommercialPlatform // nil legal: projection stays pending, nothing fabricated
-	now      func() time.Time          // injectable clock
+	budget   *repocommercial.BudgetStore // nil legal: lot sync disabled (tests without the lot face)
+	platform domain.CommercialPlatform   // nil legal: projection stays pending, nothing fabricated
+	now      func() time.Time            // injectable clock
 	// seedMu makes concurrent first-access seeding exactly-once in-process:
 	// without it, racing seeds would each allocate the next (base, N)
 	// version and fork parallel publications of one product plan.
@@ -124,8 +126,10 @@ type BenefitsService struct {
 
 // NewBenefitsService builds the service and bootstraps its schema (portable
 // EnsureSchema — safe next to migrations 000180/000101). A nil platform is
-// legal (blocked-env: the chain fails closed as pending/unconfigured).
-func NewBenefitsService(db *gorm.DB, accounts *BillingAccountService, plans *PlanVersionService, platform domain.CommercialPlatform) (*BenefitsService, error) {
+// legal (blocked-env: the chain fails closed as pending/unconfigured); a
+// nil budget is legal too (the lot-sync face is simply not wired — tests
+// that never touch commercial_budget_lots).
+func NewBenefitsService(db *gorm.DB, accounts *BillingAccountService, plans *PlanVersionService, platform domain.CommercialPlatform, budget *repocommercial.BudgetStore) (*BenefitsService, error) {
 	if db == nil {
 		return nil, errors.New("benefits service requires a database")
 	}
@@ -137,6 +141,7 @@ func NewBenefitsService(db *gorm.DB, accounts *BillingAccountService, plans *Pla
 		accounts: accounts,
 		plans:    plans,
 		store:    store,
+		budget:   budget,
 		platform: platform,
 		now:      func() time.Time { return time.Now().UTC() },
 	}, nil
@@ -565,6 +570,30 @@ func (s *BenefitsService) refreshAndCollect(ctx context.Context, tenantID uint64
 			balance = balances[period]
 		}
 		batches = append(batches, BatchView{Period: period, BalanceMicro: balance, ExpiresAt: expires[period]})
+	}
+
+	// The lot projection (#86 Task 3): the same authority batch read-back
+	// feeds the local lot table — the reservation face's allocation source.
+	// A registry batch the snapshot no longer lists needs NO sync input
+	// here: SyncLots collapses snapshot-absent lots to hold-only by itself.
+	// A sync failure is a Warn, never a billing-read error (A-23 posture) —
+	// the lot face re-syncs on the next refresh.
+	if s.budget != nil {
+		sync := make([]domain.LotSyncBatch, 0, len(b.Batches))
+		for _, batch := range b.Batches {
+			if batch.WalletRef == "" {
+				continue // a batch without a deterministic identity never syncs
+			}
+			sync = append(sync, domain.LotSyncBatch{
+				LotID:          batch.WalletRef,
+				RemainingMicro: batch.BalanceMicro,
+				ExpiresAt:      batch.ExpiresAt,
+				IssuedAt:       batch.GrantedAt,
+			})
+		}
+		if err := s.budget.SyncLots(ctx, tenantID, sync, now); err != nil {
+			logger.Warnf(ctx, "[CommercialBenefits] lot sync failed for tenant %d: %v", tenantID, err)
+		}
 	}
 
 	// The consumption-order calibration (#86 Task 2): after the projection

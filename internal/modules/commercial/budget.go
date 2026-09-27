@@ -32,6 +32,19 @@ type Reservation struct {
 	Version  int64
 }
 
+// LotSyncBatch is ONE authority batch read-back feeding the local lot
+// projection (#86 Task 3): the deterministic wallet identity (LotID — the
+// MonthlyWalletName/top-up wallet name), the RAW authority-visible balance,
+// and the batch's expiry/grant instants (the same comparison keys the
+// consumption order uses). Tenant scoping is the caller's contract — the
+// store applies the batches to exactly one tenant.
+type LotSyncBatch struct {
+	LotID          string
+	RemainingMicro int64
+	ExpiresAt      time.Time
+	IssuedAt       time.Time // the authority's grant instant (created_at)
+}
+
 // Available projects the spendable credits of a tenant from its balance
 // projection: the verified balance reduced by unacknowledged spend, then by
 // in-flight reservation holds, then by refund-locked credits. A negative
