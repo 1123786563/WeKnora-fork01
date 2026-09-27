@@ -49,12 +49,12 @@ const usageEstimate = (over = {}) => ({
 });
 // ---- 提醒合同 fixture（decodeReminderReceipt / decodeReminderList 必须全部通过）----
 const reminderView = (over = {}) => ({
-  reminderId: 'rem-1', sourceKind: 'progress_event', sourceId: 'evt-1', applicationId: 'app-1',
+  reminderId: 'rem-1', sourceKind: 'progress_event', sourceId: 'evt-1', applicationId: 'app-1', opportunityId: 'opp-1',
   noticeKey: 'progress_updated', notice: '你有新的求职进展，请登录查看。', status: 'open', createdAt: T, ...over,
 });
 const reminderReceipt = (over = {}) => ({
   kind: 'reminder_set', requestId: 'srv-rem', reminderId: 'rem-1', sourceKind: 'progress_event',
-  sourceId: 'evt-1', applicationId: 'app-1', deduplicated: false, noticeKey: 'progress_updated',
+  sourceId: 'evt-1', applicationId: 'app-1', opportunityId: 'opp-1', deduplicated: false, noticeKey: 'progress_updated',
   notice: '你有新的求职进展，请登录查看。', status: 'open', revision: 3, createdAt: T, ...over,
 });
 const confirmedAct = (key, value, revision) => ({
