@@ -57,7 +57,11 @@ func (s *AgentMarketplaceService) SubmitRelease(ctx context.Context, tenantID ui
 	if err != nil {
 		return interfaces.ReleaseSubmissionView{}, fmt.Errorf("%w: %v", ErrAgentMarketplaceMissingDependency, err)
 	}
-	bundle, err := experts.BuildAgentReleaseBundle(version, input.Metadata, lock)
+	lineage, lineageLicenseID, err := s.resolveSubmissionLineage(ctx, tenantID, version)
+	if err != nil {
+		return interfaces.ReleaseSubmissionView{}, err
+	}
+	bundle, err := experts.BuildAgentReleaseBundleWithLineage(version, input.Metadata, lock, lineage)
 	if err != nil {
 		return interfaces.ReleaseSubmissionView{}, fmt.Errorf("%w: %v", ErrAgentMarketplaceInvalidInput, err)
 	}
@@ -73,12 +77,30 @@ func (s *AgentMarketplaceService) SubmitRelease(ctx context.Context, tenantID ui
 		return interfaces.ReleaseSubmissionView{}, fmt.Errorf("encode dependency lock: %w", err)
 	}
 	listing := &types.AgentMarketplaceListingEntity{TenantID: tenantID, SourceAgentID: version.AgentID, DisplayName: bundle.Manifest.DisplayName, Summary: bundle.Manifest.Summary, State: "listed"}
-	submission := &types.AgentReleaseSubmissionEntity{TenantID: tenantID, AgentVersionID: version.ID, SourceAgentID: version.AgentID, AuthorID: actorID, SemanticVersion: bundle.Manifest.SemanticVersion, BundleDigest: bundle.SHA256, ManifestJSON: string(manifestJSON), DependencyLockJSON: string(lockJSON), Bundle: append([]byte(nil), bundle.Bytes...), Status: "submitted"}
+	submission := &types.AgentReleaseSubmissionEntity{TenantID: tenantID, AgentVersionID: version.ID, SourceAgentID: version.AgentID, AuthorID: actorID, SemanticVersion: bundle.Manifest.SemanticVersion, BundleDigest: bundle.SHA256, ManifestJSON: string(manifestJSON), DependencyLockJSON: string(lockJSON), Bundle: append([]byte(nil), bundle.Bytes...), IsFork: lineage != nil && lineage.IsFork, ForkSourceListingID: lineageSourceValue(lineage, func(l *types.AgentReleaseLineage) string { return l.SourceListingID }), ForkSourceReleaseID: lineageSourceValue(lineage, func(l *types.AgentReleaseLineage) string { return l.SourceReleaseID }), ForkNotes: lineageNotes(lineage, bundle.Manifest.ChangeNotes), LineageLicenseID: lineageLicenseID, Status: "submitted"}
 	created, err := s.repo.CreateSubmission(ctx, listing, submission)
 	if err != nil {
 		return interfaces.ReleaseSubmissionView{}, fmt.Errorf("persist release submission: %w", err)
 	}
 	return interfaces.ReleaseSubmissionView{AgentReleaseSubmissionEntity: *created}, nil
+}
+
+// lineageSourceValue keeps the original-content path all-zero: derived
+// submissions copy the resolved lineage, original ones stay empty.
+func lineageSourceValue(lineage *types.AgentReleaseLineage, pick func(*types.AgentReleaseLineage) string) string {
+	if lineage == nil {
+		return ""
+	}
+	return pick(lineage)
+}
+
+// lineageNotes records the modification notes (修改说明) exactly for
+// derived submissions — the author's ChangeNotes at submit time (spec §9).
+func lineageNotes(lineage *types.AgentReleaseLineage, changeNotes string) string {
+	if lineage == nil {
+		return ""
+	}
+	return changeNotes
 }
 
 func ensurePayloadReferencesLocked(payload types.AgentReleasePayload, lock types.DependencyLock) error {

@@ -119,6 +119,20 @@ func (s *PublicMarketplaceService) SubmitPublicRelease(ctx context.Context, tena
 	if err := verifyBundleDigest(release.Bundle, release.BundleDigest); err != nil {
 		return interfaces.PublicSubmissionView{}, err
 	}
+	// T32 #62 AC2（公共 lane）：带 lineage 的 Release 再次分发前必须 live
+	// 通过许可证注册表——租户 lane 发布时的放行不缓存（注册表可翻转）。
+	if strings.TrimSpace(release.LineageLicenseID) != "" {
+		license, err := s.listings.GetLicense(ctx, release.LineageLicenseID)
+		if err != nil {
+			return interfaces.PublicSubmissionView{}, err
+		}
+		if license == nil {
+			return interfaces.PublicSubmissionView{}, fmt.Errorf("%w: source lineage license %q is not registered in the license registry", ErrReleaseRedistributionForbidden, release.LineageLicenseID)
+		}
+		if !license.AllowsRedistribution {
+			return interfaces.PublicSubmissionView{}, fmt.Errorf("%w: source lineage license %q does not permit redistribution", ErrReleaseRedistributionForbidden, release.LineageLicenseID)
+		}
+	}
 	created, err := s.repo.CreatePublicSubmission(ctx,
 		&types.PublicMarketplaceListingEntity{DisplayName: listing.DisplayName, Summary: listing.Summary},
 		&types.PublicReleaseSubmissionEntity{
