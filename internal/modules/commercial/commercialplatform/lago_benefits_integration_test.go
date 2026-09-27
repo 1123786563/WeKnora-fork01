@@ -101,7 +101,11 @@ func newIntegrationBenefitsService(t *testing.T, baseURL, apiKey string) (*comme
 	if sqlDB, err := db.DB(); err == nil {
 		sqlDB.SetMaxOpenConns(1)
 	}
-	p := NewLagoAdapter(Config{Provider: ProviderLago, BaseURL: baseURL, APIKey: apiKey, Release: lockedRelease(t)})
+	// OutboundAllowLoopback: the integration stack IS a loopback dev stack —
+	// the same explicit dev-only egress bypass the runtime env installs
+	// (WEKNORA_COMMERCIAL_OUTBOUND_ALLOW_LOOPBACK=true); production keeps
+	// the full host policy.
+	p := NewLagoAdapter(Config{Provider: ProviderLago, BaseURL: baseURL, APIKey: apiKey, Release: lockedRelease(t), OutboundAllowLoopback: true})
 	accounts, err := commercialsvc.NewBillingAccountService(db, p)
 	if err != nil {
 		t.Fatal(err)
