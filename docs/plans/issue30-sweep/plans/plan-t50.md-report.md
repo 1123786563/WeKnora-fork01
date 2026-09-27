@@ -1115,3 +1115,86 @@ vet 段零输出（干净）；两条 `ld: warning` 为多轮已记录的既有�
 
 计划 Task 9（编排指派的第 10/10 个任务）的交付物在 HEAD `da149ac10` 上依然齐备：文件与计划整代码块逐字一致（gofmt 归一化零差异）、SKIP 门双态（伪造凭据/自然态）按计划原命令实跑达成、appconnector Confluence 全域 29 PASS/1 SKIP/0 FAIL、计划级验证命令（build + vet + 三组测试）exit 0 ALL GREEN。第二次复核轮后无新代码提交、本任务文件历史隔离（仅 `e7e26a6fe` 一笔）。无阻塞、无越权改动、无未声明事项。
 
+# plan-t50.md 复核报告 — Task 9/10 第四次重派轮（终审后独立验证，零代码改动）
+
+> 背景：编排方第四次派发计划 Task 9（真实受控集成证据，blocked-env，opt-in），指派定位「第 10/10 个任务」（计划 Task 0–9 的最后一项）。分支现状：Task 9 代码提交 `e7e26a6fe`（首轮实现员）、报告提交 `e2cb9cd25`（实现员报告）、`28642de4f`（第一次重派复核轮）、`c75f8785d`（第二次重派复核轮）均已入库；第三次重派复核轮报告在本轮到达时为提交 `7a3d2550c` + 工作区 2 行措辞修正，**本轮处理期间由并行会话将该提交重写为 `0e57a3c9a`**（父提交 `c75f8785d`，`git diff 7a3d2550c 0e57a3c9a --stat` 核验：仅报告文件 +2/-2，代码零触碰；第三次重派节在当前文件中恰出现一次）。本节由第四次重派轮实现员撰写，性质为**终审后独立复核**：验证 Task 9 交付物在当前 HEAD 上依然齐备无漂移。处置纪律：不回退/丢弃/干预他人内容；对已逐字一致的授权代码文件零改动（重落只会制造伪 diff）。
+
+## 1. 复核范围与方法（本轮全部亲手执行）
+
+1. **逐字核验（整文件范围，无落盘）**：`sed -n '4809,4916p' docs/plans/issue30-sweep/plans/plan-t50.md`（108 行，尾部空白归一）与 `internal/modules/appconnector/confluence_publish_real_test.go`（108 行）比对。如实分两级记录：(a) 原始文本 `diff` 仅 2 行差异（80/98 行 `"title":` 后的 gofmt 键对齐空格——计划文本未归一化、落地文件为 gofmt 规范形）；(b) `gofmt < 计划块 | diff - 落地文件` → **零差异**（VERBATIM-MATCH after gofmt normalization）。与前三次复核轮结论一致。
+2. **gofmt**：`gofmt -l internal/modules/appconnector/confluence_publish_real_test.go` → 空输出（exit 0，干净）。
+3. **提交隔离核验**：`git log --oneline --follow -- internal/modules/appconnector/confluence_publish_real_test.go` → 仅 `e7e26a6fe` 一笔（与前三轮一致）；并行重写 `0e57a3c9a` 仅涉报告文件，本轮全部验证跑在代码态不变的工作树上（重写前后两个提交的代码文件树零差异，经 `git diff 7a3d2550c 0e57a3c9a --stat` 证明）。
+4. **Notion 先例纪律复核**：`notion_publish_real_test.go:24` 的 `t.Skip("…skip is not a pass…")` 与 `confluence_publish_real_test.go:28` 同款（四变量门 + `xxxx` 前缀占位 parent 拒绝 + 文案明示 blocked-env），本轮经 2.1/2.2 节实测 SKIP 文案逐字印证。
+
+## 2. 本轮实跑的验证命令与完整输出
+
+### 2.1 计划 Step 2 指定命令（plan-t50.md:4921 逐字；伪造凭据 + `xxxx` 占位 parent）
+
+命令：`CONFLUENCE_BASE_URL=x CONFLUENCE_EMAIL=x CONFLUENCE_API_TOKEN=x CONFLUENCE_PARENT_PAGE_ID=xxxx-skip go test ./internal/modules/appconnector/ -run TestConfluenceRealPublishLoop -count=1 -v`
+
+```
+=== RUN   TestConfluenceRealPublishLoop
+    confluence_publish_real_test.go:28: confluence real credentials not configured (CONFLUENCE_BASE_URL/CONFLUENCE_EMAIL/CONFLUENCE_API_TOKEN/CONFLUENCE_PARENT_PAGE_ID); skip is not a pass — T20 real-provider evidence stays blocked-env
+--- SKIP: TestConfluenceRealPublishLoop (0.00s)
+PASS
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector	0.137s
+```
+
+计划预期 `--- SKIP: TestConfluenceRealPublishLoop`（plan-t50.md:4922）达成。
+
+### 2.2 自然 blocked-env（显式清除四变量）
+
+命令：`env -u CONFLUENCE_BASE_URL -u CONFLUENCE_EMAIL -u CONFLUENCE_API_TOKEN -u CONFLUENCE_PARENT_PAGE_ID go test ./internal/modules/appconnector/ -run TestConfluenceRealPublishLoop -count=1 -v`
+
+```
+=== RUN   TestConfluenceRealPublishLoop
+    confluence_publish_real_test.go:28: confluence real credentials not configured (CONFLUENCE_BASE_URL/CONFLUENCE_EMAIL/CONFLUENCE_API_TOKEN/CONFLUENCE_PARENT_PAGE_ID); skip is not a pass — T20 real-provider evidence stays blocked-env
+--- SKIP: TestConfluenceRealPublishLoop (0.00s)
+PASS
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector	0.135s
+```
+
+### 2.3 三域 Confluence 测试计数复核（本轮 HEAD）
+
+| 域 | 命令 | 计数（`-v` 输出对 `^--- PASS/SKIP/FAIL` 统计） |
+|---|---|---|
+| appconnector | `go test ./internal/modules/appconnector/ -run 'Confluence' -count=1 -v` | **29 PASS / 1 SKIP / 0 FAIL**（SKIP 即 TestConfluenceRealPublishLoop） |
+| publish | `go test ./internal/modules/appconnector/publish/ -run 'Confluence' -count=1 -v` | **26 PASS / 0 SKIP / 0 FAIL** |
+| handler | `go test ./internal/handler/ -run 'TestConfluencePublish' -count=1 -v` | **5 PASS / 0 SKIP / 0 FAIL** |
+
+appconnector 域计数与第二、三次复核轮一致（29P/1S/0F）；三域合计 60 PASS / 1 SKIP / 0 FAIL。
+
+### 2.4 计划级验证命令全量（plan-t50.md:4938 逐字，前台完整跑完 exit 0）
+
+命令：`go build ./... && go vet ./internal/modules/appconnector/... ./internal/handler/ ./internal/router/ ./internal/container/ && go test ./internal/modules/appconnector/ -run 'Confluence' -count=1 && go test ./internal/modules/appconnector/publish/ -run 'Confluence' -count=1 && go test ./internal/handler/ -run 'TestConfluencePublish' -count=1`
+
+```
+# github.com/Tencent/WeKnora/cmd/desktop
+ld: warning: ignoring duplicate libraries: '-lc++'
+# github.com/Tencent/WeKnora/cmd/server
+ld: warning: ignoring duplicate libraries: '-lc++'
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector	0.432s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/publish	0.861s
+ok  	github.com/Tencent/WeKnora/internal/handler	4.689s
+```
+
+vet 段零输出（干净）；两条 `ld: warning` 为多轮已记录的既有链接噪音（cmd/desktop、cmd/server），非失败。
+
+## 3. 提交
+
+本轮对授权代码文件**零改动**（现有文件与计划逐字一致，重落只会制造伪 diff），无代码提交（不制造空提交）。第三次重派轮的提交重写（`7a3d2550c`→`0e57a3c9a`）为并行会话所为，本轮全程未干预。本轮唯一提交仅含本节第四次重派轮报告。
+
+## 4. 自检发现（第四次重派轮）
+
+1. **TDD 形态如实声明**：本任务交付物是 gated real-provider 测试文件本身，无生产代码改动；文件已在 HEAD（`e7e26a6fe`），本轮无法也不应重演 RED（删除他人已交付文件再重建属回退他人修改，被任务纪律禁止）。GREEN 侧证据即 SKIP 门双态实跑 + 三域计数 + 计划级验证全量，均为本轮亲手执行。
+2. **blocked-env 边界（不变，如实重申）**：真实 Confluence 站点 + 真实 token + 真实 version.number 推进的证据在本地不可得（SKIP 不冒充 pass）；激活路径：注入四个真实 `CONFLUENCE_*` 变量（parent 不以 `xxxx` 开头）即自动执行 create→update→stale 拒绝完整闭环。
+3. **指派模板路径缺失（与前三轮同源）**：指派给出的 `…/superpowers/6.4.1/…/implementer-prompt.md` 本轮 `test -d` 复核仍 NOT FOUND；缓存目录下唯一版本为 6.4.2（`…/superpowers/6.4.2/skills/subagent-driven-development/implementer-prompt.md` 已读取），报告契约沿用其形态（实现内容/测试证据/提交/自检发现）。
+4. **并行会话历史重写观察（如实记录，未干预）**：本轮到达时 HEAD 为 `7a3d2550c` 且报告文件有 +2/-2 未提交措辞修正；处理期间并行会话将其重写为 `0e57a3c9a`（父 `c75f8785d`，仅报告文件 +2/-2，第三次重派节恰一份、内容为修正后事实）。经 `git diff 7a3d2550c 0e57a3c9a --stat` 核验代码零触碰，本轮全部验证结论对此不敏感。旧提交 `7a3d2550c` 成为游离对象，非本轮处置范围。
+5. **环境事实（Mimosa hook）**：本轮 `cp` 到 `/tmp/*.go` 的比对方式被安全 hook 拒绝（提示改用 Write/Edit），改用 stdin 管道 `gofmt < 计划块 | diff - 落地文件` 无落盘完成同一逐字核验——与第三次复核轮第 5 条同源，结论不受影响。
+6. **前轮遗留 gofmt 项现状（未动，非本任务授权文件）**：`gofmt -l internal/modules/appconnector/` 本轮复跑仍列 `confluence_create_test.go` 一项（Task 2 落地状态遗留），维持前三轮处置——留给归属任务/集成方。
+7. 未做的事：无。Task 9 Files 清单恰为 1 个测试文件，已在 HEAD 且逐字一致、门控语义与验证全部亲手复核通过。
+
+## 5. 结论
+
+计划 Task 9（编排指派的第 10/10 个任务）的交付物在 HEAD `0e57a3c9a` 上依然齐备：文件与计划整代码块逐字一致（原始 diff 仅 2 行 gofmt 对齐空格、归一化后零差异）、SKIP 门双态（伪造凭据/自然态）按计划原命令实跑达成、三域 Confluence 计数 29+26+5 PASS / 1 SKIP / 0 FAIL（SKIP 即 blocked-env 声明的真实 Provider 证据，skip 不是 pass）、计划级验证命令（build + vet + 三组测试）exit 0 全绿。本任务文件历史隔离（仅 `e7e26a6fe` 一笔），本轮零代码改动。无阻塞、无越权改动、无未声明事项。
+
