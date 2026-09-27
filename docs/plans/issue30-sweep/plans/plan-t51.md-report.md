@@ -2013,3 +2013,114 @@ ok  	github.com/Tencent/WeKnora/internal/modules/appconnector	0.576s
 3. **handler 段耗时波动（非回归）**：本轮五段链 handler 段 15.860s、-v 复跑 14.388s，与 T7-2 的 199.614s / E-2 的 14.836s 差异为环境负载/构建缓存所致（测试集合与判定相同，同为 `ok`/exit 0），T7-6.1/E-6.2 同判。
 4. **编排方重复派发（第四次记录）**：C-4.1/D-5.1/E-6.3 之后，本轮再次接替已完成的 Task 7/7。建议以本报告文件与 git log 为准推进收口。
 5. **纪律核验**：本会话仅追加报告文件；未撤销/回退他人提交或未提交改动；未派发子代理或审查者；未推送远端；testCommand 逐字运行于计划指定验证规模（-v/哨兵不改变被测集合与判定）。
+
+# Task 6 复核轮报告·第二重放轮（G 节——worktree 重建 + 交付在位核验 + Step 3/4/5 复跑全绿）
+
+- **执行者**：实现员-t51-任务6（第三复核轮；C/D 为前两轮 Task 6 复核，E/F 为 Task 7 复核）
+- **执行时刻 HEAD**：`bca4c2ac1`（与本 ask 派发语所述前置「止于 Task 5 修复轮 1」严重不同步，处置定性同 C-0/D-1/E/F，见 G-1）
+- **本会话提交**：仅本报告文件追加本节（生产代码与测试代码零改动）
+- **需求来源**：`docs/plans/issue30-sweep/plans/plan-t51.md` Task 6（plan-t51.md:2345-2881）
+
+## G-0. 本轮独有环境事件：t51 worktree 注册已消失，本会话重建（如实记录）
+
+本 ask 要求在 worktree `/Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue30-sweep-t51`（分支 `codex/issue30-t51`）工作，但开工实查：该路径**不在 `git worktree list` 中**（注册已消失），目录仅剩编排方状态文件 `.superpowers/sdd/plan-t51/progress.md`（2 行：「Task 5: fix round 1/5」「Task 5: complete（commits 59aaffb..d4d0615）」——后者提交号实为 main 分支 HEAD，属编排方状态滞后）。分支 `codex/issue30-t51` 本体健在（HEAD `bca4c2ac1`，且经 `git merge-base --is-ancestor` 实证已完整合入 `codex/issue30-mobile-office`）。处置：
+
+1. 孤儿 `.superpowers` 先移至 `/tmp/t51-orphan-backup` 备份；
+2. `git worktree add .worktrees/issue30-sweep-t51 codex/issue30-t51` 重建（检出 8437 文件，HEAD `bca4c2ac1`）；
+3. 编排方 2 行状态文件**逐字节原样恢复**至原路径（覆盖检出的 git 跟踪版全文账本——跟踪版安全存于 `bca4c2ac1`，零信息丢失）；该未提交改动沿 D-5.2 先例**不动、不提交、不回退**。
+
+重建后的 `git status --short` 仅 ` M .superpowers/sdd/plan-t51/progress.md` 一项（编排方状态），生产/测试文件零改动——本轮全部复跑取证于干净的 `bca4c2ac1` 树。
+
+## G-1. 本轮定性（编排方重放派发，第五次记录）
+
+本 ask 派发「第 6/7 个任务」且前置止于「Task 5 修复轮 1」，但开工 `git log` 核查：Task 6 本体（`1ff35e75a`）、Task 6 报告入册（`4afa3e942`）、Task 7 收口（`76cc5d369`）、终修轮（`b272915d5`）、C/D（Task 6 复核，`ed73e29bc`/`b1bcbeaba`）、E/F（Task 7 复核，`81e4dc643`/`bca4c2ac1`）**均已提交入册**。重新从零实现既无必要（交付已四轮验证在案）也违反「绝不撤销或回退他人修改」纪律。本轮定性为**第三验证轮**：交付在位核验（G-2）+ Task 6 Step 3/4/5 在当前 HEAD 复跑取证（G-3）+ blocked-env 复证（G-4），结论入册。
+
+## G-2. 交付在位核验（本会话实查）
+
+1. **提交链完整性**：两授权文件（`internal/handler/app_connector_action_plan_e2e_test.go`、`internal/handler/app_connector_notion_publish_e2e_test.go`）的最后触碰提交均为 `1ff35e75a`（Task 6 本体，2 files changed, 450 insertions(+), 1 deletion(-)）；`git log 1ff35e75a..HEAD -- <两文件>` 零命中——**Task 6 之后无人改动交付物**，当前文件状态即 Task 6 提交态（D-2.3 同判）。
+2. **双打加法钩子 4 处**（计划 Step 1，plan-t51.md:2355-2415）：结构体字段 `dropAppendForTitle`/`droppedOnce`（`:103-104`）、`newE2ENotion` 初始化（`:113`）、`/v1/pages` POST 记账块（`:169-170`）、`/v1/blocks/` PATCH 追加块（`:256-257`）；既有 `dropNextAppend` 路径逐字保留（`:98`/`:252-254`/`:575`）。
+3. **e2e 五测试**：`TestAppActionPlansTablesExistAfterMigrations`（`:44`）、`TestActionPlanEndToEndApproveExecutePerItemResults`（`:274`）、`…ContentChangeInvalidatesOldApproval`（`:308`）、`…PartialSuccessResumesUnfinishedOnly`（`:347`）、`…ExcludeItem`（`:414`），434 行。
+4. **规格机械比对（复现 D-2 方法）**：`sed -n '2422,2859p' plan-t51.md` 与实际文件 diff，仅两处差异——①计划 :350-352 的 `appendsAfterSeed` 未使用变量块在实际文件中不存在（= T6-4.1 已入册的计划笔误修复，Go「declared and not used」唯一最小修复，断言语义零变化）；②diff 末行 `< ``` ` 为提取范围携带的围栏行（提取伪影，非文件差异）。**其余逐字一致**。
+
+## G-3. 复跑命令与完整输出（本会话在重建 worktree、HEAD `bca4c2ac1` 实跑）
+
+### Task 6 Step 3（计划原文逐字 + -v 逐名取证）
+
+```
+$ go test ./internal/handler/ -run 'TestActionPlanEndToEnd|TestAppActionPlansTables' -count=1
+ok  	github.com/Tencent/WeKnora/internal/handler	3.669s
+
+$ go test ./internal/handler/ -run 'TestActionPlanEndToEnd|TestAppActionPlansTables' -count=1 -v （RUN/PASS 判定行）
+=== RUN   TestAppActionPlansTablesExistAfterMigrations
+--- PASS: TestAppActionPlansTablesExistAfterMigrations (0.48s)
+=== RUN   TestActionPlanEndToEndApproveExecutePerItemResults
+--- PASS: TestActionPlanEndToEndApproveExecutePerItemResults (0.43s)
+=== RUN   TestActionPlanEndToEndContentChangeInvalidatesOldApproval
+--- PASS: TestActionPlanEndToEndContentChangeInvalidatesOldApproval (0.43s)
+=== RUN   TestActionPlanEndToEndPartialSuccessResumesUnfinishedOnly
+--- PASS: TestActionPlanEndToEndPartialSuccessResumesUnfinishedOnly (0.41s)
+=== RUN   TestActionPlanEndToEndExcludeItem
+--- PASS: TestActionPlanEndToEndExcludeItem (0.41s)
+PASS
+ok  	github.com/Tencent/WeKnora/internal/handler	3.984s
+```
+
+### Task 6 Step 4（计划原文逐字）
+
+```
+$ go test ./internal/handler/ -run 'TestActionPlan|TestNotionPublish|TestAppPublications' -count=1
+ok  	github.com/Tencent/WeKnora/internal/handler	10.028s
+```
+
+（12 测试集合与 T6-2 Step 4 / D-3 同集：本计划 4 e2e + Task 5 handler 2 测 + #48 既有 5 测——迁移对齐测试由 Step 3 正则单独覆盖，终修轮后计划级门控已补 `TestAppActionPlans` 分支收口该缺口，见 plan-t51.md:2890。）
+
+### Task 6 Step 5（计划原文逐字，四段 && 链）
+
+```
+$ go build ./... && go test ./internal/database/ -count=1 && go test ./internal/modules/appconnector/... -count=1 && go test ./internal/handler/ -run 'TestActionPlan|TestNotionPublish|TestAppPublications' -count=1
+# github.com/Tencent/WeKnora/cmd/server
+ld: warning: ignoring duplicate libraries: '-lc++'
+# github.com/Tencent/WeKnora/cmd/desktop
+ld: warning: ignoring duplicate libraries: '-lc++'
+ok  	github.com/Tencent/WeKnora/internal/database	8.198s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector	0.523s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/connectorcontrol	2.256s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/openconnector	0.470s
+ok   github.com/Tencent/WeKnora/internal/modules/appconnector/plan	1.310s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/publish	1.957s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector	1.869s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector	3.047s
+ok  	github.com/Tencent/WeKnora/internal/handler	7.397s
+STEP5_EXIT=0
+```
+
+（两条 `ld: warning` 为 macOS 链接器对 cmd/server、cmd/desktop 的既有噪音，T6-2/T7-2/D-3/E-2/F-2 同判，非错误。）
+
+### 附加自检：`go vet ./internal/handler/` → `VET_OK`（exit 0，零输出）。
+
+## G-4. 交付边界复证（blocked-env，本会话实跑）
+
+```
+$ echo "NOTION_TOKEN set? ${NOTION_TOKEN:+yes}${NOTION_TOKEN:-no}"
+NOTION_TOKEN set? no
+$ go test ./internal/modules/appconnector/ -run 'TestNotionReal' -count=1 -v
+    notion_create_real_test.go:21: notion real credentials not configured (...); skip is not a pass — NO-04 stays blocked-env
+--- SKIP: TestNotionRealControlledCreate (0.00s)
+    notion_publish_real_test.go:24: notion real credentials not configured (...); skip is not a pass — T18 real-provider evidence stays blocked-env
+--- SKIP: TestNotionRealPublishLoop (0.00s)
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector	0.472s
+```
+
+与 T7-3/E-3/F-3 同判：无凭据显式 SKIP，skip 不是 pass；AC3 本地证据链维持「生产迁移库 + 真实服务/处理器链 + 契约双打 Notion」五 e2e（G-3 逐名 PASS），计划级真实 Provider 多操作循环仍为 blocked-env 待有凭据环境执行，不得伪造。
+
+## G-5. TDD 适用性说明
+
+本会话未新写失败测试，理由与 C-3/D-4 同构：Task 6 是「前五个任务的红绿证据收口，不是新的 RED」（计划 plan-t51.md:2864 原文），交付已由前任会话按 RED（计划笔误编译失败 `declared and not used: appendsAfterSeed`）→ GREEN（修复后 5/5 PASS）完成并入册（T6-2），且已经 C/D 两轮复核。本会话为第三验证轮：在位核验（G-2）+ 命令复跑（G-3/G-4）。
+
+## G-6. 自检发现
+
+1. **worktree 消失与重建（本轮独有，上报编排方）**：t51 worktree 注册在此前某时刻被移除（`git worktree list` 无该条目；目录仅剩编排方状态文件）。本会话以 `git worktree add` 重建于原路径原分支，未触碰任何分支指针与他人提交；若编排方后续依赖该 worktree 的存在性，注意其曾在窗口期内缺失。重建动作纯增量（新增一条 worktree 注册），主仓与 issue30-sweep worktree 的工作区零影响（后者另有他人在场未提交改动 ocr 文档与 confluence 测试，本会话未触碰）。
+2. **编排方状态文件滞后（上报）**：孤儿 progress.md 仅 2 行且「Task 5: complete（commits 59aaffb..d4d0615）」引用的提交号不在 t51 分支（实为 main HEAD）；git 跟踪版 progress.md（`bca4c2ac1`）才是完整账本（Task 1-7 全 complete + 终修轮 + 双 gate PASS）。本会话原样保留磁盘版、以 git 历史为准推进——若编排方继续从该 2 行状态推进，将再次派发已完成任务（本节即第六次派发 Task 6/Task 7 族的实例）。
+3. **编排方重复派发（第五次记录）**：C-4.1/D-5.1/E-6.3/F-6.4 之后，本轮再次接替已完成的 Task 6。建议以本报告文件、git log 与 git 跟踪版 progress.md 为准推进收口。
+4. **handler 段耗时波动（非回归）**：本轮 Step 3/4/5 分别 3.669s/10.028s/7.397s，与历史各轮（199.614s 至 1.5s 区间）差异为环境负载/构建缓存所致（测试集合与判定相同，同为 `ok`/exit 0），T7-6.1/E-6.2/F-6.3 同判。
+5. **纪律核验**：本会话仅追加本报告文件（生产代码/测试零改动）；未撤销/回退他人提交或未提交改动；未派发子代理或审查者；未推送远端；Step 3/4/5 按计划原文命令逐字运行于计划指定验证规模（附注的 `-v`/`STEP5_EXIT` 回显不改变被测集合与判定）。
