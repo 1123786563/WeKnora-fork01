@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -366,5 +367,76 @@ func TestReadConfluencePageVersion(t *testing.T) {
 	}
 	if _, err := ReadConfluencePageVersion(context.Background(), cfPolicyOf(srv, ""), cfCredential, EditionCloud, "", "missing"); err == nil {
 		t.Fatal("missing page must error, never fabricate a version")
+	}
+}
+
+// TestConfluenceQueryConvergesAfterServerEntityNormalization pins R5-F7:
+// the publish side writes the locally-escaped storage form (&#39;/&#34;
+// entities, CRLF), while the real Confluence serializer writes back bare
+// quotes/apostrophes on LF-only whitespace. A byte-exact comparison can
+// never converge for quoted bodies — the query must compare NORMALIZED
+// forms (entity-unescape + CRLF→LF + trim on both sides).
+func TestConfluenceQueryConvergesAfterServerEntityNormalization(t *testing.T) {
+	fake := newFakeConfluence("cf-user@example.test", "secret_cf_token")
+	fake.addPage("page-9", "sp-1", "ENG", "old title", 3)
+	srv := fake.server(t)
+	ad := &ConfluenceUpdateAdapter{
+		Policy: cfPolicyOf(srv, ""), Credential: cfCredential,
+		Edition: EditionCloud, ConnectionCapabilities: cfCaps(ConfluenceCapabilityWrite),
+	}
+	fake.mu.Lock()
+	fake.dropNextWrite = true
+	fake.mu.Unlock()
+	storage := "<p>it&#39;s &#34;quoted&#34;\r\nsecond line</p>"
+	act := cfUpdateAction(cfUpdateArgs("page-9", "3", "Report", storage))
+	if out, _ := ad.Execute(context.Background(), act); out.State != ActionUnknown {
+		t.Fatalf("setup: unknown expected, got %s", out.State)
+	}
+	// The effect applied in the escaped form; every later read is served in
+	// the server's own re-serialized form (entities restored, LF-only).
+	fake.mu.Lock()
+	fake.reserialize = true
+	fake.mu.Unlock()
+
+	q, qerr := ad.Query(context.Background(), act)
+	if qerr != nil || q.State != ActionSucceeded {
+		t.Fatalf("entity/whitespace-only reserialization must converge, got state=%s err=%v", q.State, qerr)
+	}
+	_, putsAfter, _ := fake.stats()
+	if putsAfter != 1 {
+		t.Fatalf("query must not re-send: puts=%d", putsAfter)
+	}
+}
+
+// TestConfluenceQueryStillRejectsRealContentDrift pins R5-F7's honest side:
+// normalization only collapses KNOWN re-serialization noise — a remote body
+// with genuinely different content (an extra paragraph) stays unverifiable
+// even when the version advanced by exactly one.
+func TestConfluenceQueryStillRejectsRealContentDrift(t *testing.T) {
+	fake := newFakeConfluence("cf-user@example.test", "secret_cf_token")
+	fake.addPage("page-9", "sp-1", "ENG", "old title", 3)
+	srv := fake.server(t)
+	ad := &ConfluenceUpdateAdapter{
+		Policy: cfPolicyOf(srv, ""), Credential: cfCredential,
+		Edition: EditionCloud, ConnectionCapabilities: cfCaps(ConfluenceCapabilityWrite),
+	}
+	fake.mu.Lock()
+	fake.dropNextWrite = true
+	fake.mu.Unlock()
+	act := cfUpdateAction(cfUpdateArgs("page-9", "3", "Report", "<p>ours</p>"))
+	if out, _ := ad.Execute(context.Background(), act); out.State != ActionUnknown {
+		t.Fatalf("setup: unknown expected, got %s", out.State)
+	}
+	// Version stays ours (4) but the remote body carries real extra content.
+	fake.mu.Lock()
+	fake.pages["page-9"].storage = "<p>ours</p><p>someone appended real text</p>"
+	fake.mu.Unlock()
+
+	q, qerr := ad.Query(context.Background(), act)
+	if q.State != ActionUnknown || qerr == nil {
+		t.Fatalf("real content drift must stay unverifiable, got state=%s err=%v", q.State, qerr)
+	}
+	if !strings.Contains(qerr.Error(), "confluence_query_unverifiable") {
+		t.Fatalf("the honest refusal must stay classified unverifiable, got: %v", qerr)
 	}
 }

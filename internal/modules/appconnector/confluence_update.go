@@ -6,9 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 )
 
 // ConfluenceUpdateSnapshot is the A03-approved argument snapshot for
@@ -256,11 +258,25 @@ func (m *ConfluenceUpdateAdapter) Execute(ctx context.Context, a Action) (Action
 	return ActionResult{State: ActionSucceeded, ExternalID: rcpt.ExternalID, Output: json.RawMessage(raw)}, nil
 }
 
+// normalizeStorageXHTML collapses the KNOWN re-serialization noise between
+// the locally-escaped storage a plan writes (ConfluenceStorageBody emits
+// &#39;/&#34; entities, publish/confluence_blocks.go) and the server's own
+// re-serialized read-back (bare characters, LF-only whitespace, trimmed
+// edges). It is applied to BOTH sides before comparison, so it can only
+// converge equivalent bodies — genuinely different content (an extra
+// paragraph) still differs after normalization and stays unverifiable.
+func normalizeStorageXHTML(s string) string {
+	s = html.UnescapeString(s)
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	return strings.TrimSpace(s)
+}
+
 // Query is the reconciliation entry point for an update parked in
 // unknown: it reconciles ONLY via the reliable page read. Success is
 // claimed only when the version advanced by EXACTLY one from the approved
 // baseline AND the title AND the storage body all still match the
-// approved snapshot; anything less stays the honest unknown.
+// approved snapshot (storage compared in normalized form — the server
+// re-serializes XHTML); anything less stays the honest unknown.
 func (m *ConfluenceUpdateAdapter) Query(ctx context.Context, a Action) (ActionResult, error) {
 	if err := m.configError(); err != nil {
 		return ActionResult{State: ActionFailed}, err
@@ -284,7 +300,8 @@ func (m *ConfluenceUpdateAdapter) Query(ctx context.Context, a Action) (ActionRe
 	if cur.VersionNumber != strconv.Itoa(next) {
 		return ActionResult{State: ActionUnknown}, fmt.Errorf("confluence_query_unverifiable: remote version %q, expected ours at %q", cur.VersionNumber, strconv.Itoa(next))
 	}
-	if cur.Title != snap.Title || cur.BodyStorage != snap.Storage {
+	if strings.TrimSpace(cur.Title) != strings.TrimSpace(snap.Title) ||
+		normalizeStorageXHTML(cur.BodyStorage) != normalizeStorageXHTML(snap.Storage) {
 		return ActionResult{State: ActionUnknown}, fmt.Errorf("confluence_query_unverifiable: remote content drifted from the approved snapshot")
 	}
 	// The success output is a faithful local projection

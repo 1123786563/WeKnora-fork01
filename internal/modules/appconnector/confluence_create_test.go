@@ -174,6 +174,7 @@ func (f *fakeConfluence) server(t *testing.T) *httptest.Server {
 			if reserialize {
 				served := *p
 				served.storage = html.UnescapeString(p.storage)
+				served.storage = strings.ReplaceAll(served.storage, "\r\n", "\n")
 				writeJSON(w, 200, cfCloudJSON(&served, true))
 				return
 			}
