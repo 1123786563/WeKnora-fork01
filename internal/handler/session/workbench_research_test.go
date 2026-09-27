@@ -312,6 +312,20 @@ func TestDelegateResearchRequiresObjectiveAndSources(t *testing.T) {
 	require.Empty(t, delegations.created)
 }
 
+// 最终审查发现 1：agent_id 曾是 dead wire 字段（声明即弃）。删除字段后，
+// 旧客户端仍可能发送该键——gin 绑定必须忽略未知 JSON 键，委派行为不变。
+func TestDelegateResearchIgnoresLegacyAgentIDKey(t *testing.T) {
+	h, delegations, _, _ := researchHandlerEnv(types.TaskAccessOwner)
+	c, rec := researchContext(http.MethodPost, "/api/v1/workbench/executions/run-1/research",
+		`{"objective":"survey retrieval baselines","sources":["kb-1"],"agent_id":"agent-x"}`)
+	h.DelegateResearch(c)
+
+	require.Equal(t, http.StatusCreated, c.Writer.Status(), rec.Body.String())
+	require.Len(t, delegations.created, 1)
+	require.Equal(t, "survey retrieval baselines", delegations.created[0].Objective)
+	require.Equal(t, `["kb-1"]`, delegations.created[0].SourcesJSON)
+}
+
 // ─── list / complete ─────────────────────────────────────────────────────────
 
 func TestListResearchFallsBackToGrantedReader(t *testing.T) {
@@ -409,6 +423,32 @@ func TestAnnotateMaterialUnknownMaterialIsUniform404(t *testing.T) {
 	h.AnnotateMaterial(c)
 	require.Equal(t, http.StatusNotFound, c.Writer.Status())
 	require.Empty(t, annotations.created)
+}
+
+// 最终审查发现 2：base_version 曾未 trim 即与 artifactVersionOf 比对，
+// 带空白的当前版本号会误得 409。修复后 trim 先于比对，落库值亦为干净版本号。
+func TestAnnotateMaterialTrimsBaseVersionBeforeCompare(t *testing.T) {
+	h, _, annotations, _ := researchHandlerEnv(types.TaskAccessOwner)
+	c, rec := researchContext(http.MethodPost, "/api/v1/workbench/executions/run-1/annotations",
+		`{"material_id":"m1:0","base_version":"  9a2f1c3d4e5f6a7b\n","body":"结论第三段缺引用"}`)
+	h.AnnotateMaterial(c)
+
+	require.Equal(t, http.StatusCreated, c.Writer.Status(), rec.Body.String())
+	require.Len(t, annotations.created, 1)
+	require.Equal(t, "9a2f1c3d4e5f6a7b", annotations.created[0].BaseVersion, "落库的 base_version 必须是 trim 后的当前版本身份")
+}
+
+// 最终审查发现 3：body 空值校验曾发生在 annotation 构造之后。修复后校验
+// 先于构造，空白 body 仍 400 且零落库（fail closed 方向不变）。
+func TestAnnotateMaterialRejectsBlankBodyBeforePersist(t *testing.T) {
+	h, _, annotations, _ := researchHandlerEnv(types.TaskAccessOwner)
+	c, rec := researchContext(http.MethodPost, "/api/v1/workbench/executions/run-1/annotations",
+		`{"material_id":"m1:0","base_version":"9a2f1c3d4e5f6a7b","body":"   "}`)
+	h.AnnotateMaterial(c)
+
+	require.Equal(t, http.StatusBadRequest, c.Writer.Status())
+	require.Contains(t, rec.Body.String(), "research_invalid_request")
+	require.Empty(t, annotations.created, "空白 body 绝不能落库")
 }
 
 func TestListAnnotationsReadableByGrantedViewer(t *testing.T) {
