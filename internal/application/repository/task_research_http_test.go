@@ -11,6 +11,8 @@ package repository_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -83,14 +85,19 @@ func newResearchE2E(t *testing.T) *researchE2E {
 
 // researchGateAdapter mirrors the production container gate
 // (container.researchSourceAuthorizer) against the real tenant-bound KB
-// repository: a source the task's tenant does not own is rejected before any
-// durable write (the production wiring is byte-equivalent in behavior).
+// repository: a source the task's tenant does not own is rejected (sentinel
+// → 400) before any durable write; infrastructure failures pass through so
+// the handler can answer 500 (the production wiring is byte-equivalent in
+// behavior, B5-F58).
 type researchGateAdapter struct {
 	kb interfaces.KnowledgeBaseRepository
 }
 
 func (a researchGateAdapter) AuthorizeResearchSource(ctx context.Context, tenantID uint64, kbID string) error {
 	if _, err := a.kb.GetKnowledgeBaseByIDAndTenant(ctx, kbID, tenantID); err != nil {
+		if errors.Is(err, repository.ErrKnowledgeBaseNotFound) {
+			return fmt.Errorf("research source %q: %w", kbID, session.ErrResearchSourceOutOfScope)
+		}
 		return err
 	}
 	return nil

@@ -18,6 +18,7 @@ import (
 	"time"
 
 	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
+	apperrors "github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -61,6 +62,12 @@ const (
 	maxResearchObjectiveRunes = 2000
 )
 
+// ErrResearchSourceOutOfScope is the ONE authorizer verdict that means
+// "this knowledge base is outside the task's tenant scope" (a business
+// rejection → 400). Any other error from ResearchSourceAuthorizer is an
+// infrastructure failure and must surface as 500 (B5-F58).
+var ErrResearchSourceOutOfScope = errors.New("research source outside the task's tenant knowledge scope")
+
 // WorkbenchResearchHandler owns the research/annotation endpoints.
 type WorkbenchResearchHandler struct {
 	runs        OwnedRunReader
@@ -99,7 +106,10 @@ func (h *WorkbenchResearchHandler) caller(c *gin.Context) (uint64, string, bool)
 }
 
 // resolveReadable resolves the run owner-first, then through the task-grant
-// fallback (#42 read face). Writes re-gate on the resolved task role.
+// fallback (#42 read face). Writes re-gate on the resolved task role. A miss
+// (ErrNotFound) falls through to the uniform 404; any other store error is an
+// infrastructure failure and aborts 500 — DB downtime must never impersonate
+// a miss (B5-F63).
 func (h *WorkbenchResearchHandler) resolveReadable(c *gin.Context) (agentruntime.Run, bool) {
 	tenantID, userID, ok := h.caller(c)
 	if !ok {
@@ -109,9 +119,18 @@ func (h *WorkbenchResearchHandler) resolveReadable(c *gin.Context) (agentruntime
 	if err == nil {
 		return run, true
 	}
+	if !errors.Is(err, agentruntime.ErrNotFound) {
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"success": false, "code": "research_backend", "error": "failed to load execution"})
+		return agentruntime.Run{}, false
+	}
 	if h.granted != nil {
-		if granted, gerr := h.granted.GetRunForGrantedReader(c.Request.Context(), tenantID, userID, c.Param("run_id")); gerr == nil {
+		granted, gerr := h.granted.GetRunForGrantedReader(c.Request.Context(), tenantID, userID, c.Param("run_id"))
+		if gerr == nil {
 			return granted, true
+		}
+		if !errors.Is(gerr, agentruntime.ErrNotFound) {
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"success": false, "code": "research_backend", "error": "failed to load execution"})
+			return agentruntime.Run{}, false
 		}
 	}
 	c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"success": false, "code": "run_not_found", "error": "execution not found"})
@@ -203,7 +222,14 @@ func (h *WorkbenchResearchHandler) DelegateResearch(c *gin.Context) {
 	}
 	for _, source := range cleaned {
 		if err := h.sources.AuthorizeResearchSource(c.Request.Context(), tenantID, source); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"success": false, "code": "research_source_out_of_task_grant", "error": "research source is outside the task's tenant knowledge scope"})
+			// Only the scope verdict is a business rejection; anything else
+			// the authorizer reports is infrastructure and must not be
+			// mislabeled as an authorization denial (B5-F58).
+			if errors.Is(err, ErrResearchSourceOutOfScope) {
+				c.JSON(http.StatusBadRequest, gin.H{"success": false, "code": "research_source_out_of_task_grant", "error": "research source is outside the task's tenant knowledge scope"})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "code": "research_backend", "error": "failed to authorize research source"})
 			return
 		}
 	}
@@ -260,7 +286,9 @@ func (h *WorkbenchResearchHandler) CompleteResearch(c *gin.Context) {
 	}
 	delegation, err := h.research.GetDelegation(c.Request.Context(), run.Key.TenantID, c.Param("delegation_id"))
 	if err != nil {
-		c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"success": false, "code": "research_not_found", "error": "delegation not found"})
+		// A uniform miss (unknown or cross-task id) is 404; a storage failure
+		// must surface as 500, never as a miss (B5-F76).
+		writeResearchError(c, err)
 		return
 	}
 	if delegation.SessionID != run.SessionID {
@@ -366,8 +394,22 @@ func (h *WorkbenchResearchHandler) ListAnnotations(c *gin.Context) {
 }
 
 // writeResearchError maps store/service failures onto a fixed code table; no
-// upstream text crosses the wire.
+// upstream text crosses the wire. Typed AppErrors from the task-access
+// resolver keep their class: NotFound→404, BadRequest→400, everything else
+// (and untyped infrastructure errors) → 500 (B5-F68).
 func writeResearchError(c *gin.Context, err error) {
+	var appErr *apperrors.AppError
+	if errors.As(err, &appErr) {
+		switch appErr.HTTPCode {
+		case http.StatusNotFound:
+			c.JSON(http.StatusNotFound, gin.H{"success": false, "code": "research_task_not_found", "error": "task not found"})
+		case http.StatusBadRequest:
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "code": "research_invalid_request", "error": "invalid task access request"})
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "code": "research_backend", "error": "research surface temporarily unavailable"})
+		}
+		return
+	}
 	switch {
 	case errors.Is(err, types.ErrTaskResearchNotFound):
 		c.JSON(http.StatusNotFound, gin.H{"success": false, "code": "research_not_found", "error": "delegation not found"})

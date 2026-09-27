@@ -203,12 +203,19 @@ type researchSourceAuthorizer struct {
 }
 
 // AuthorizeResearchSource rejects sources the task's tenant does not own.
+// The scope verdict is the exported sentinel (handler → 400); any other
+// lookup failure is infrastructure and passes through untouched so the
+// handler can surface 500 instead of mislabeling DB downtime as a denial
+// (B5-F58).
 func (a researchSourceAuthorizer) AuthorizeResearchSource(ctx context.Context, tenantID uint64, knowledgeBaseID string) error {
 	if strings.TrimSpace(knowledgeBaseID) == "" {
-		return errors.New("empty research source")
+		return fmt.Errorf("empty research source: %w", session.ErrResearchSourceOutOfScope)
 	}
 	if _, err := a.kb.GetKnowledgeBaseByIDAndTenant(ctx, knowledgeBaseID, tenantID); err != nil {
-		return fmt.Errorf("research source %q is outside the task's tenant knowledge scope", knowledgeBaseID)
+		if errors.Is(err, repository.ErrKnowledgeBaseNotFound) {
+			return fmt.Errorf("research source %q: %w", knowledgeBaseID, session.ErrResearchSourceOutOfScope)
+		}
+		return err
 	}
 	return nil
 }

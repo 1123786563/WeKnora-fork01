@@ -10,12 +10,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
+	apperrors "github.com/Tencent/WeKnora/internal/errors"
 	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/gin-gonic/gin"
@@ -115,18 +117,33 @@ func (s *annotationStoreStub) ListAnnotationsBySession(_ context.Context, tenant
 	return out, nil
 }
 
-type sourceAuthorizerStub struct{ denied map[string]bool }
+type sourceAuthorizerStub struct {
+	denied map[string]bool
+	// err, when set, is returned verbatim for every source: it simulates an
+	// infrastructure failure (DB down) as opposed to a scope rejection.
+	err error
+}
 
 func (s sourceAuthorizerStub) AuthorizeResearchSource(_ context.Context, _ uint64, kbID string) error {
+	if s.err != nil {
+		return s.err
+	}
 	if s.denied[kbID] {
-		return errors.New("source outside tenant knowledge scope")
+		return fmt.Errorf("%w", ErrResearchSourceOutOfScope)
 	}
 	return nil
 }
 
-type accessResolverStub struct{ role types.TaskAccessRole }
+type accessResolverStub struct {
+	role types.TaskAccessRole
+	// err, when set, replaces the static role resolution (B5-F68 cases).
+	err error
+}
 
 func (a accessResolverStub) ResolveTaskAccess(context.Context, types.Caller, string) (types.TaskAccess, error) {
+	if a.err != nil {
+		return types.TaskAccess{}, a.err
+	}
 	return types.TaskAccess{TaskID: "sess-1", OwnerID: "u1", Role: a.role}, nil
 }
 
@@ -408,4 +425,97 @@ func TestAnnotateMaterialReturnsPersistedCreatedAt(t *testing.T) {
 	require.NoError(t, err)
 	require.WithinDuration(t, time.Now().UTC(), created, 5*time.Second,
 		"created_at 必须是落库回写时刻，绝非零值 0001-01-01T00:00:00Z（B5-F75）")
+}
+
+// ─── store failure classification (B5-F63/F76; F58/F68) ──────────────────────
+
+// grantedRunErrStub misses on the owner path then fails with a raw
+// infrastructure error on the granted fallback.
+type grantedRunErrStub struct{ err error }
+
+func (g grantedRunErrStub) GetRunForGrantedReader(_ context.Context, _ uint64, _, _ string) (agentruntime.Run, error) {
+	return agentruntime.Run{}, g.err
+}
+
+// A storage failure must surface as 500 (research_backend), never be
+// mislabeled as a miss (404 run_not_found / research_not_found) or a scope
+// rejection (400 research_source_out_of_task_grant) — DB downtime must not
+// impersonate business states (B5-F63, B5-F76, B5-F58).
+func TestResearchReadsReturn500OnStoreFailure(t *testing.T) {
+	dbDown := errors.New("db down")
+
+	// 1) resolveReadable: GetOwnedRun infrastructure failure → 500, not 404.
+	ownerRuns := researchRunStub()
+	ownerRuns.err = dbDown
+	h, _, _, _ := researchHandler(ownerRuns, grantedRunStub{}, types.TaskAccessOwner)
+	c, rec := researchContext(http.MethodGet, "/api/v1/workbench/executions/run-1/research", "")
+	h.ListResearch(c)
+	require.Equal(t, http.StatusInternalServerError, c.Writer.Status(), rec.Body.String())
+	require.Contains(t, rec.Body.String(), "research_backend")
+	require.NotContains(t, rec.Body.String(), "run_not_found")
+
+	// 2) Granted fallback infrastructure failure → 500, not 404. The owner
+	// predicate misses for u2 (stub only admits u1) so the granted reader is
+	// engaged with a raw db error.
+	h2, _, _, _ := researchHandler(researchRunStub(), grantedRunErrStub{err: dbDown}, types.TaskAccessOwner)
+	c2, rec2 := researchContext(http.MethodGet, "/api/v1/workbench/executions/run-1/annotations", "")
+	c2.Request = c2.Request.WithContext(context.WithValue(c2.Request.Context(), types.UserIDContextKey, "u2"))
+	h2.ListAnnotations(c2)
+	require.Equal(t, http.StatusInternalServerError, c2.Writer.Status(), rec2.Body.String())
+	require.NotContains(t, rec2.Body.String(), "run_not_found")
+
+	// 3) CompleteResearch: GetDelegation infrastructure failure → 500, not 404.
+	h3, delegations, _, _ := researchHandlerEnv(types.TaskAccessOwner)
+	delegations.getByID = func(uint64, string) (types.TaskResearchDelegation, error) {
+		return types.TaskResearchDelegation{}, dbDown
+	}
+	c3, rec3 := researchContext(http.MethodPost, "/api/v1/workbench/executions/run-1/research/delegation_id/summary", `{"summary":"s"}`)
+	h3.CompleteResearch(c3)
+	require.Equal(t, http.StatusInternalServerError, c3.Writer.Status(), rec3.Body.String())
+	require.NotContains(t, rec3.Body.String(), "research_not_found", "DB 故障不得伪装成 miss")
+
+	// 4) F58: AuthorizeResearchSource infrastructure failure → 500, not a
+	// scope rejection 400, and nothing is persisted.
+	delegations4 := newResearchStoreStub()
+	h4 := NewWorkbenchResearchHandler(
+		researchRunStub(), grantedRunStub{}, &artifactRefReaderStub{refs: researchRefs()},
+		delegations4, &annotationStoreStub{},
+		sourceAuthorizerStub{err: dbDown}, accessResolverStub{role: types.TaskAccessOwner},
+	)
+	c4, rec4 := researchContext(http.MethodPost, "/api/v1/workbench/executions/run-1/research",
+		`{"objective":"x","sources":["kb-1"]}`)
+	h4.DelegateResearch(c4)
+	require.Equal(t, http.StatusInternalServerError, c4.Writer.Status(), rec4.Body.String())
+	require.NotContains(t, rec4.Body.String(), "research_source_out_of_task_grant")
+	require.Empty(t, delegations4.created)
+}
+
+// writeResearchError maps the task-access resolver's typed AppErrors:
+// NotFound→404, BadRequest→400, infrastructure→500 (B5-F68).
+func TestAnnotateMaterialClassifiesTaskAccessErrors(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		err  error
+		code int
+		body string
+	}{
+		{"not-found", apperrors.NewNotFoundError("task not found"), http.StatusNotFound, ""},
+		{"bad-request", apperrors.NewBadRequestError("task id is required"), http.StatusBadRequest, ""},
+		{"infra", errors.New("db down"), http.StatusInternalServerError, "research_backend"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := NewWorkbenchResearchHandler(
+				researchRunStub(), grantedRunStub{}, &artifactRefReaderStub{refs: researchRefs()},
+				newResearchStoreStub(), &annotationStoreStub{},
+				sourceAuthorizerStub{}, accessResolverStub{err: tc.err},
+			)
+			c, rec := researchContext(http.MethodPost, "/api/v1/workbench/executions/run-1/annotations",
+				`{"material_id":"m1:0","base_version":"9a2f1c3d4e5f6a7b","body":"x"}`)
+			h.AnnotateMaterial(c)
+			require.Equal(t, tc.code, c.Writer.Status(), rec.Body.String())
+			if tc.body != "" {
+				require.Contains(t, rec.Body.String(), tc.body)
+			}
+		})
+	}
 }
