@@ -105,3 +105,38 @@ test('parseCommercialAccountCredits rejects malformed digit strings', () => {
   assert.equal(parsed.available_micro, '800000');
   assert.equal(parsed.batches.length, 1);
 });
+
+// ---- OCR r1 round (CR-86-1 / CR-86-2) ----
+
+// CR-86-2: available_micro is the one SIGNED face — over-committed holds
+// surface a negative availability honestly (plan Task 4: "可为负数如实显示
+// ——超占即事实"); a negative digit string must parse, never throw.
+test('parseCommercialAccountCredits accepts a negative available_micro', () => {
+  const overcommitted = { ...breakdown, available_micro: '-200000' };
+  const parsed = parseCommercialAccountCredits(overcommitted);
+  assert.equal(parsed.available_micro, '-200000');
+  // Malformed signed values still reject.
+  assert.throws(() => parseCommercialAccountCredits({ ...breakdown, available_micro: '-' }));
+  assert.throws(() => parseCommercialAccountCredits({ ...breakdown, available_micro: '-12.5' }));
+  // The non-negative faces keep rejecting negatives.
+  assert.throws(() => parseCommercialAccountCredits({ ...breakdown, balance_micro: '-1' }));
+  assert.throws(() => parseCommercialAccountCredits({ ...breakdown, held_micro: '-1' }));
+});
+
+// CR-86-1: a batch whose granted_at the backend omitted (the cross-month
+// lingering-batch shape — a registry batch the terminated authority wallet
+// no longer backs) must NOT kill the whole breakdown: the display-only
+// field degrades to '' instead of throwing.
+test('parseCommercialAccountCredits degrades a missing granted_at to empty string', () => {
+  const legacy = {
+    ...breakdown,
+    batches: [
+      { source: 'monthly', period: '2026-08', balance_micro: '0', expires_at: '2026-09-01T00:00:00Z' },
+    ],
+  };
+  const parsed = parseCommercialAccountCredits(legacy);
+  assert.equal(parsed.batches[0]?.granted_at, '');
+  // A present granted_at still passes through verbatim.
+  const full = parseCommercialAccountCredits(breakdown);
+  assert.equal(full.batches[0]?.granted_at, '2026-09-01T00:00:00Z');
+});

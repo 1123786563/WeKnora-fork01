@@ -216,6 +216,21 @@ func (f *FakeAdapter) SeedTopUpWallet(name, customer string, grantedCents int64,
 	})
 }
 
+// TerminateWallet flips one stored wallet to terminated (the observation
+// knob for the authority's termination tick): a terminated wallet leaves
+// the benefits snapshot's batch list — the post-lazy-termination steady
+// state cross-month tests model.
+func (f *FakeAdapter) TerminateWallet(name string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i := range f.wallets {
+		if f.wallets[i].Name == name {
+			f.wallets[i].Terminated = true
+			return
+		}
+	}
+}
+
 // Wallets returns the observable wallet state (VISIBLE balance — settled
 // per the settle lag, terminated excluded from balance but listed).
 func (f *FakeAdapter) Wallets() []FakeWallet {

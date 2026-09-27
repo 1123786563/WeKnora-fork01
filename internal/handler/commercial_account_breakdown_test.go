@@ -190,6 +190,74 @@ func TestBenefitsWireNoProviderVocabulary(t *testing.T) {
 	}
 }
 
+// TestBenefitsWireCrossMonthBatchesAllCarryGrantedAt (OCR r1, CR-86-1):
+// the wire face of the cross-month steady state — a lingering LAST-month
+// registry batch (its terminated wallet left the snapshot, GrantedAt from
+// the registry row) beside the current month's batch. Every monthly batch
+// line must carry a granted_at the frontend contract accepts (present and
+// RFC3339); a zero instant (the defensive omission branch) must leave the
+// rest of the breakdown parseable.
+func TestBenefitsWireCrossMonthBatchesAllCarryGrantedAt(t *testing.T) {
+	registryGrant := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	status := commercialsvc.BenefitsStatus{
+		Plan: &commercialsvc.PlanView{Key: "base", Version: 1, State: "active"},
+		Credits: &commercialsvc.CreditsView{
+			BalanceMicro: 1_000_000,
+			ProjectedAt:  time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC),
+			Batches: []commercialsvc.BatchView{
+				// The lingering September batch: zero balance (expired), the
+				// grant instant from the REGISTRY row (snapshot absent).
+				{Period: "2026-09", BalanceMicro: 0,
+					ExpiresAt: time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC),
+					Source: "monthly", GrantedAt: registryGrant},
+				// The current October batch.
+				{Period: "2026-10", BalanceMicro: 1_000_000,
+					ExpiresAt: time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC),
+					Source: "monthly", GrantedAt: time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)},
+			},
+		},
+	}
+	wire := benefitsWire(status)
+	creditsFace, ok := wire["credits"].(gin.H)
+	if !ok {
+		t.Fatalf("credits wire face = %+v", wire["credits"])
+	}
+	batches, ok := creditsFace["batches"].([]gin.H)
+	if !ok || len(batches) != 2 {
+		t.Fatalf("batches wire face = %+v", creditsFace["batches"])
+	}
+	for _, b := range batches {
+		grantedAt, present := b["granted_at"]
+		if !present || grantedAt == "" {
+			t.Fatalf("CR-86-1: batch %v must carry granted_at (a missing one makes the frontend contract reject the whole breakdown)", b)
+		}
+		if _, err := time.Parse(time.RFC3339, grantedAt.(string)); err != nil {
+			t.Fatalf("granted_at must be RFC3339, got %v", grantedAt)
+		}
+	}
+
+	// The defensive branch: a zero instant omits the key — the batch line
+	// must stay JSON-serializable and the credits object complete (the
+	// frontend parser degrades the display field to '').
+	status.Credits.Batches = append(status.Credits.Batches, commercialsvc.BatchView{
+		Period: "2026-08", BalanceMicro: 0,
+		ExpiresAt: time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC),
+		Source: "monthly", GrantedAt: time.Time{},
+	})
+	wire = benefitsWire(status)
+	if _, err := json.Marshal(wire); err != nil {
+		t.Fatalf("the wire face must stay serializable with a zero-instant batch: %v", err)
+	}
+	creditsFace, _ = wire["credits"].(gin.H)
+	batches, _ = creditsFace["batches"].([]gin.H)
+	if len(batches) != 3 {
+		t.Fatalf("batches = %d, want 3", len(batches))
+	}
+	if _, present := batches[2]["granted_at"]; present {
+		t.Fatal("a zero instant must omit granted_at (the omission branch)")
+	}
+}
+
 func stringContains(s, sub string) bool {
 	for i := 0; i+len(sub) <= len(s); i++ {
 		if s[i:i+len(sub)] == sub {

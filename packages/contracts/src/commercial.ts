@@ -60,6 +60,15 @@ function digitString(value: unknown, field: string, label: string): string {
   return value;
 }
 
+// signedDigitString accepts ONE optional leading '-' (an over-committed
+// projection's negative availability is a fact, displayed as-is — #86 plan
+// Task 4: "available 可为负数如实显示"). Everything else rejects like
+// digitString.
+function signedDigitString(value: unknown, field: string, label: string): string {
+  if (typeof value !== 'string' || !/^-?\d+$/.test(value)) throw new Error('invalid ' + label + ' (' + field + ')');
+  return value;
+}
+
 function nonEmptyString(value: unknown, field: string, label: string): string {
   if (typeof value !== 'string' || value.trim() === '') throw new Error('invalid ' + label + ' (' + field + ')');
   return value;
@@ -164,7 +173,7 @@ export function parseCommercialAccountCredits(value:unknown):CommercialAccountCr
   balance_micro: digitString(v.balance_micro,'balance_micro','account credits'),
   held_micro: digitString(v.held_micro,'held_micro','account credits'),
   refund_locked_micro: digitString(v.refund_locked_micro,'refund_locked_micro','account credits'),
-  available_micro: digitString(v.available_micro,'available_micro','account credits'),
+  available_micro: signedDigitString(v.available_micro,'available_micro','account credits'),
   projected_at: nonEmptyString(v.projected_at,'projected_at','account credits'),
   batches: [],
  };
@@ -177,7 +186,10 @@ export function parseCommercialAccountCredits(value:unknown):CommercialAccountCr
   return {
    source: b.source,
    period: b.period,
-   granted_at: nonEmptyString(b.granted_at,'granted_at','account credits batch'),
+   // granted_at is DISPLAY-ONLY advisory metadata: a backend that omits it
+   // (the cross-month lingering-batch shape, CR-86-1) degrades to '' —
+   // never a whole-breakdown parse failure over a display field.
+   granted_at: typeof b.granted_at==='string' ? b.granted_at : '',
    balance_micro: digitString(b.balance_micro,'balance_micro','account credits batch'),
    expires_at: nonEmptyString(b.expires_at,'expires_at','account credits batch'),
   };

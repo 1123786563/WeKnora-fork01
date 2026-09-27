@@ -595,9 +595,19 @@ func (s *BenefitsService) refreshAndCollect(ctx context.Context, tenantID uint64
 		if a.ExpiresAt.After(now) {
 			balance = balances[a.Period] // absent from the snapshot (terminated) = 0
 		}
+		// GrantedAt: the snapshot's authority instant when the period's
+		// wallet still lists, else the REGISTRY row's own grant instant —
+		// never the zero time (CR-86-1: a lingering cross-month batch row
+		// whose terminated wallet left the snapshot must still carry a
+		// grant instant; the wire omits zero instants and the frontend
+		// contract then rejects the whole breakdown).
+		grantedAt := granted[a.Period]
+		if grantedAt.IsZero() {
+			grantedAt = a.CreatedAt
+		}
 		batches = append(batches, BatchView{
 			Period: a.Period, BalanceMicro: balance, ExpiresAt: a.ExpiresAt,
-			Source: domain.BatchSourceMonthly, GrantedAt: granted[a.Period],
+			Source: domain.BatchSourceMonthly, GrantedAt: grantedAt,
 		})
 	}
 	// Snapshot-only periods (F-4): the purchase grant rides the fulfiller,

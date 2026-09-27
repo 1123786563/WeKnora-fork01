@@ -574,6 +574,66 @@ func TestBreakdownHoldsSurviveMissingAccountRow(t *testing.T) {
 	}
 }
 
+// TestBreakdownCrossMonthBatchesCarryGrantedAt (OCR r1, CR-86-1): after a
+// month rolls over the registry KEEPS the expired month's batch row while
+// the authority snapshot no longer lists the terminated wallet — the view
+// line's GrantedAt must fall back to the REGISTRY row's grant instant
+// (created_at), never the zero time (the wire omits granted_at for a zero
+// instant and the frontend contract then rejects the whole breakdown).
+func TestBreakdownCrossMonthBatchesCarryGrantedAt(t *testing.T) {
+	fake := commercialplatform.NewFakeAdapter()
+	fake.SetBasePlanFeatures(map[string]bool{"api_access": true})
+	svc, _, _ := newBenefitsService(t, fake)
+	ctx := context.Background()
+	tenant := uint64(509)
+	// September: the registry row for 2026-09 is minted (grant completed).
+	clock := time.Date(2026, 9, 15, 10, 0, 0, 0, time.UTC)
+	svc.SetNow(func() time.Time { return clock })
+	if _, err := svc.EnsureBenefits(ctx, tenant, "CrossMonth Space", "user-1"); err != nil {
+		t.Fatal(err)
+	}
+	// The registry's grant instant for the September row.
+	row, err := svc.store.GetBatch(ctx, tenant, "2026-09")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row.CreatedAt.IsZero() {
+		t.Fatal("test setup: the registry row must carry a grant instant")
+	}
+	// October: the September wallet is TERMINATED on the authority (absent
+	// from the snapshot — the post-lazy-termination steady state), yet the
+	// registry row lingers. The September view line must still carry a
+	// NON-ZERO GrantedAt (the registry's grant instant).
+	clock = time.Date(2026, 10, 5, 10, 0, 0, 0, time.UTC)
+	fake.TerminateWallet(domain.MonthlyWalletName(tenant, "2026-09"))
+	status, err := svc.EnsureBenefits(ctx, tenant, "CrossMonth Space", "user-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Credits == nil {
+		t.Fatal("credits view must answer")
+	}
+	sawSeptember := false
+	for _, b := range status.Credits.Batches {
+		if b.Period != "2026-09" {
+			continue
+		}
+		sawSeptember = true
+		if b.GrantedAt.IsZero() {
+			t.Fatal("CR-86-1: the expired month's lingering batch must carry the registry grant instant, got the zero time")
+		}
+		if !b.GrantedAt.Equal(row.CreatedAt) {
+			t.Fatalf("September GrantedAt = %v, want the registry row's CreatedAt %v (the snapshot no longer contributes one)", b.GrantedAt, row.CreatedAt)
+		}
+		if b.BalanceMicro != 0 {
+			t.Fatalf("the expired September batch must surface zero (no rollover), got %d", b.BalanceMicro)
+		}
+	}
+	if !sawSeptember {
+		t.Fatal("the September registry batch must stay in the view (expired/zero, not dropped)")
+	}
+}
+
 // TestMonthlyGrantEncodesYieldPriority (#86 Task 2): a top-up batch expiring
 // BEFORE this month's end pushes the monthly wallet's creation priority to
 // TopUpWalletPriority+1 (it must be consumed after the aging top-up); with

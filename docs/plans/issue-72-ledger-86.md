@@ -110,3 +110,25 @@ baseSha `aef39bb82d1f6ebe6653d132bbe4a01bd692a129`（计划 r1 提交点）。
 - `internal/modules/commercial/repository/commercial/benefits.go`（EnsureSchema 修复）与 `internal/modules/commercial/commercialplatform/lago_benefits_integration_test.go`（OutboundAllowLoopback 豁免）：基线缺陷/缺失修复，真实栈验证前置条件，见 Ruling 5 与附带修复节。
 - `packages/contracts/src/index.ts`（导出新类型）、`deploy/lago/.env`（本地生成，不入库——.gitignore 覆盖，git status 干净）。
 - `docs/migrations/lago/t14-credits-order/`（reconcile.sh + evidence/）：计划 Produces 指定的证据目录。
+
+## 代码审查第 1 轮 findings 处置（OCR r1，2026-09-28）
+
+### CR-86-1（High）跨月后余额分解卡整体报错——已修复
+
+- **根因定位（systematic-debugging）**：复现链与审查一致——①`granted` map 仅由快照批次构建（benefits.go 快照循环），②registry 遗留的上月批次行（`ListBatches` 无过滤、视图无条件 append）在快照缺席（Lago 终止后常态）时 `GrantedAt: granted[a.Period]` 得零值，③handler 对零值省略 `granted_at` 键，④契约 `nonEmptyString(b.granted_at)` 对 undefined 抛错——all-or-nothing，任一批次缺失毁掉整个 credits 解析。服务级 RED 复现：`TestBreakdownCrossMonthBatchesCarryGrantedAt`（9 月批次行 + 10 月访问 + 9 月钱包 terminated）首跑 `got the zero time` FAIL，与审查实证同形。
+- **修复（两层）**：
+  1. 数据层（根因）：registry 批次行的 GrantedAt 零值时回退 `a.CreatedAt`（注册表自身的 grant 时刻，not null 列）——被忽略的权威发放时间本来就在本地注册表里。
+  2. 契约层（防御 rolling upgrade）：`granted_at` 是 display-only 字段，缺失/非 string 降级 `''`，不再 `nonEmptyString` 抛错——一个展示字段坏值不再毁掉整张分解卡。
+- **回归测试**：`TestBreakdownCrossMonthBatchesCarryGrantedAt`（service：快照缺席月 GrantedAt==registry CreatedAt 且余额归零不结转、批次不缺席）+ `TestBenefitsWireCrossMonthBatchesAllCarryGrantedAt`（handler wire：跨月双批次 granted_at 全在场且 RFC3339；零值防御分支省略键但 JSON 仍可序列化）+ 契约测试「degrades a missing granted_at to empty string」。fake 补 `TerminateWallet(name)` 观察 knob（terminated 钱包离开快照——跨月稳态建模缺口）。
+- **命令与结果**：`go test ./internal/modules/commercial/service/commercial/ -run TestBreakdownCrossMonthBatchesCarryGrantedAt -count=1` → ok（首跑 RED：`CR-86-1: ... got the zero time`）；`go test ./internal/handler/ -run "TestBenefitsWireCrossMonthBatchesAllCarryGrantedAt|TestAccountCreditsBreakdownArithmetic|TestBenefitsWireNoProviderVocabulary" -count=1` → ok；`node --import tsx --test src/commercial/BillingPage.test.ts` → 6 tests pass 6 fail 0（含 2 个 OCR r1 新增）。
+
+### CR-86-2（Medium）负数 available_micro 前端不可解析——已修复
+
+- **根因定位**：handler 如实发射 `"-%d"`（`strconv.FormatInt(balance-held-refundLocked)`），契约 `digitString` 正则 `/^\d+$/` 拒绝负号——审查实证 `available_micro:'-200000'` → `THROWS`。触发场景真实：过期 lot 上背书的预占计入 held 而 balance 被 overlay 归零 → available 为负。
+- **修复**：契约新增 `signedDigitString`（`/^-?\d+$/`，仅一个可选前导负号）专用于 `available_micro`（计划 Task 4 明示「可为负数如实显示——超占即事实」）；`balance_micro`/`held_micro`/`refund_locked_micro`/批次 `balance_micro` 保持非负 `digitString`（各自语义本就非负，负值仍是错误信号）。
+- **回归测试**：契约测试「accepts a negative available_micro」（`'-200000'` 解析通过；`'-'`/`'-12.5'` 仍拒；非负面对 `'-1'` 仍拒）。
+- **命令与结果**：随上 BillingPage.test.ts 一并 6 tests pass 6 fail 0。
+
+### 审查轮回归总检
+
+`go test ./internal/modules/commercial/... ./internal/handler/ ./internal/router/ -count=1` → 9 包全 ok；`pnpm typecheck:web`/`typecheck:shared` → 5/2 error（与基线 stash 对照完全一致，零新增）。
