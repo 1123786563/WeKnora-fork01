@@ -23,3 +23,4 @@ Open-code-review records for the delivered Craft #107 scope. Per `docs/plans/202
 | 2026-09-27 | T15: 526e765a0^..699287503 | clean（增量轮收编段：树等价 merge 零代码增量，排除后 0 审查对象，报告为 skip-no-items） | 0 open | 报告: docs/plans/craft-107-ocr-t15.md |
 | 2026-09-27 | T11: 04b17527e^..35fb100bb | clean（复验轮报告收编段：零代码变更，排除后 0 审查对象，报告为 skip-no-items） | 0 open | 报告: docs/plans/craft-107-ocr-t11.md |
 | 2026-09-27 | T07: c8f2ecf90^..49cb9f732 | clean（幂等复验收编段：无生产代码变更，排除后 0 审查对象，报告为 skip-no-items） | 0 open | 报告: docs/plans/craft-107-ocr-t07.md |
+| 2026-09-27 | T16: d0ceff70c^..e046d9256 | clean（增量复验收编段：仅测试/报告变更，排除后 0 审查对象，报告为 skip-no-items） | 0 open | 报告: docs/plans/craft-107-ocr-t16.md |
