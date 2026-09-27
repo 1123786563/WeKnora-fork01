@@ -341,6 +341,14 @@ func (s *FulfillmentService) fulfillEvent(ctx context.Context, ev repocommercial
 func (s *FulfillmentService) isSubscriptionPurchase(ctx context.Context, row repocommercial.OrderRow) bool {
 	var q repocommercial.QuoteRow
 	if err := s.db.WithContext(ctx).Where("id = ?", row.QuoteID).First(&q).Error; err != nil {
+		// (r2:341) A paid order misrouting into the top-up settlement (book
+		// rate credits instead of the settle/activation chain) is the most
+		// expensive silent failure this dispatcher has: a NotFound is the
+		// frozen legacy-seed semantics (silently false), but any OTHER read
+		// failure leaves one Warn so the misroute stays diagnosable.
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			logger.Warnf(ctx, "[CommercialFulfillment] subscription-purchase quote read failed for order %s: %v", row.ID, err)
+		}
 		return false
 	}
 	var snap struct {
@@ -349,6 +357,7 @@ func (s *FulfillmentService) isSubscriptionPurchase(ctx context.Context, row rep
 		} `json:"line_items"`
 	}
 	if err := json.Unmarshal([]byte(q.SnapshotJSON), &snap); err != nil {
+		logger.Warnf(ctx, "[CommercialFulfillment] subscription-purchase quote snapshot unparsable for order %s: %v", row.ID, err)
 		return false
 	}
 	for _, line := range snap.LineItems {

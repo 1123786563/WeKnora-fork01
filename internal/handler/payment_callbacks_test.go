@@ -132,6 +132,40 @@ func outboxCount(t *testing.T, db *gorm.DB) int64 {
 	return n
 }
 
+// ---- #82 Task 14 (OCR r2): callback body cap ----
+
+// TestPaymentCallbackRejectsOversizedBody（D14 / r2 auth.go:71 medium）：回调
+// 端点是匿名可达面，签名校验发生在读完整个 body 之后——无上限的 io.ReadAll
+// 让任何匿名客户端在验签失败前把任意大请求体完整缓冲进内存（内存耗尽 DoS，
+// 还可放大 RSA 验签的 CPU 开销）。Alipay/WeChat notify 报文只有几 KB：1 MiB
+// 封顶后超大报文走既有 unreadable-body 失败面（非 5xx、零落库、不进验签）。
+func TestPaymentCallbackRejectsOversizedBody(t *testing.T) {
+	db, _, engine, _ := newCallbackTestEnv(t)
+	// 2 MiB 匿名超大报文（无需任何有效签名形状）。
+	big := bytes.Repeat([]byte("x"), 2<<20)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/commercial/callbacks/alipay", bytes.NewReader(big))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	engine.ServeHTTP(rec, req)
+	if rec.Code >= 500 {
+		t.Fatalf("an oversized body must answer the existing failure face (never 5xx), got %d: %s", rec.Code, rec.Body.String())
+	}
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("an oversized body must be rejected by the cap (unreadable-body face), got %d: %s", rec.Code, rec.Body.String())
+	}
+	// 零落库：attempts/orders/outbox 均无新增行。
+	var attempts, orders int64
+	if err := db.Model(&repocommercial.PaymentAttemptRow{}).Count(&attempts).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Model(&repocommercial.OrderRow{}).Count(&orders).Error; err != nil {
+		t.Fatal(err)
+	}
+	if attempts != 0 || orders != 0 || outboxCount(t, db) != 0 {
+		t.Fatalf("an oversized body must persist NOTHING, attempts=%d orders=%d outbox=%d", attempts, orders, outboxCount(t, db))
+	}
+}
+
 // TestAlipayCallbackConfirmsOrderRegisteredWithChannelMerchant: 下单（真实
 // openOrder）→ 匿名签名通知 → 200 "success" + 订单 paid + outbox 恰一；重放
 // 幂等。整链复刻流程验证第 9/12 断言（修复前在 attempt 解析步 404）。

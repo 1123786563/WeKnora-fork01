@@ -569,3 +569,105 @@ func TestPurchaseFulfillObservationTransientErrorKeepsPending(t *testing.T) {
 		t.Fatalf("a transient observation failure must not land any terminal record, got %+v", recs)
 	}
 }
+
+// ---- #82 Task 14 (OCR r2): drain-shape guards ----
+
+// seedPaidOrderRaw plants one paid order through the REAL CreateOrder /
+// RegisterAttempt / ConfirmPayment chain with a fully controlled quote
+// snapshot and an OPTIONAL publication row (the publication-missing test
+// omits it).
+func seedPaidOrderRaw(t *testing.T, store *repocommercial.OrderStore, db *gorm.DB,
+	tenant uint64, orderID string, snapshotJSON string, amountFen int64, withPublication bool) {
+	t.Helper()
+	ctx := context.Background()
+	if err := db.Create(&repocommercial.QuoteRow{
+		ID: "q-" + orderID, TenantID: tenant, SubscriptionVersion: 1, SnapshotJSON: snapshotJSON,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if withPublication {
+		if err := db.Create(&repocommercial.PublicationRow{
+			CommandKey: "publish_raw:" + orderID, PlanKey: "weknora-pro", Version: 1, PlanCode: "pub-raw-1",
+			ReceiptJSON: "{}", PublishedAt: time.Now().UTC(),
+		}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := store.CreateOrder(ctx, repocommercial.OrderRow{
+		ID: orderID, TenantID: tenant, QuoteID: "q-" + orderID, Kind: domain.OrderKindPurchase,
+		AmountFen: amountFen, Currency: domain.CurrencyCNY,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RegisterAttempt(ctx, repocommercial.PaymentAttemptRow{
+		ID: "att-" + orderID, TenantID: tenant, OrderID: orderID, Provider: "alipay", Merchant: "weknora",
+		MerchantOrderID: "mo-" + orderID, AmountFen: amountFen, Currency: domain.CurrencyCNY,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.ConfirmPayment(ctx, domain.PaymentFact{
+		TenantID: tenant, OrderID: orderID, AttemptID: "mo-" + orderID, Provider: "alipay", Merchant: "weknora",
+		Transaction: "txn-" + orderID, Amount: domain.CNYFen(amountFen), Currency: domain.CurrencyCNY, State: "succeeded",
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestPurchaseFulfillPublicationMissingTurnsAttentionNotAbort（r2:119）：
+// 确定性数据失败（快照指向的 publication 行不存在——迁移缺口）不再上抛中止
+// 共享 drain 批次：该购买事件落 attention（运营面），同批的普通充值事件照常
+// 完成。修复前每轮 lease 到期即重复中止整趟 pass（延迟其后所有事件、永不自
+// 愈、无 attention 记录）。
+func TestPurchaseFulfillPublicationMissingTurnsAttentionNotAbort(t *testing.T) {
+	_, svc, _, db, store := setupPurchaseFulfillment(t)
+	const tenant = uint64(84)
+	// 购买单：快照有 plan 面，但 publications 表无行（确定性数据缺口）。
+	seedPaidOrderRaw(t, store, db, tenant, "ord-84", mustJSON(t, map[string]any{
+		"plan_key": "weknora-pro", "plan_version": int64(1), "price_fen": int64(9900),
+		"credits_micro": int64(9_900_000), "currency": domain.CurrencyCNY,
+		"line_items": []map[string]any{{"kind": "subscription_fee", "name": "weknora-pro", "amount_fen": int64(9900)}},
+	}), 9900, false)
+	// 同批充值单：无 subscription_fee 行的 paid 订单（top-up 形态；不种
+	// publication——top-up 路径不读它，且同 plan 的行会喂给购买单）。
+	seedPaidOrderRaw(t, store, db, tenant, "ord-84t", mustJSON(t, map[string]any{
+		"plan_key": "weknora-pro", "plan_version": int64(1), "price_fen": int64(9900),
+		"credits_micro": int64(9_900_000), "currency": domain.CurrencyCNY,
+		"line_items": []map[string]any{{"kind": "top_up", "name": "top-up", "amount_fen": int64(9900)}},
+	}), 9900, false)
+
+	if err := svc.Recover(context.Background()); err != nil {
+		t.Fatalf("a deterministic publication gap must NOT abort the shared drain pass, got %v", err)
+	}
+	// 购买单：attention 记录（运营面），绝不 fulfilled。
+	if state := orderState(t, db, "ord-84"); state == domain.OrderStateFulfilled {
+		t.Fatal("a publication-missing purchase must never reach fulfilled")
+	}
+	recs := fulfillmentRecords(t, db, "ord-84")
+	if len(recs) != 1 || recs[0].State != domain.FulfillmentStateAttention {
+		t.Fatalf("a deterministic publication gap must surface attention, got %+v", recs)
+	}
+	// 同批充值单照常完成（不被购买事件的中止饥饿）。
+	if state := orderState(t, db, "ord-84t"); state != domain.OrderStateFulfilled {
+		t.Fatalf("the later top-up event in the same batch must still complete, got %q", state)
+	}
+}
+
+// TestPurchaseFulfillQuoteSnapshotCorruptTurnsAttention（r2:119）：quote 的
+// SnapshotJSON 非法（快照损坏——确定性形状）同姿态：attention + nil，不上抛、
+// 不 panic、不中止共享 drain。
+func TestPurchaseFulfillQuoteSnapshotCorruptTurnsAttention(t *testing.T) {
+	purchaser, _, _, db, store := setupPurchaseFulfillment(t)
+	const tenant = uint64(85)
+	seedPaidOrderRaw(t, store, db, tenant, "ord-85", `{"plan_key": "weknora-pro", bad json`, 9900, true)
+	events := fulfillEvents(t, db)
+	if len(events) == 0 {
+		t.Fatal("the seeded paid order must carry a fulfill event")
+	}
+	if err := purchaser.Fulfill(context.Background(), events[0]); err != nil {
+		t.Fatalf("a corrupt quote snapshot must turn attention with a nil return (never abort the drain), got %v", err)
+	}
+	recs := fulfillmentRecords(t, db, "ord-85")
+	if len(recs) != 1 || recs[0].State != domain.FulfillmentStateAttention {
+		t.Fatalf("a corrupt quote snapshot must surface attention, got %+v", recs)
+	}
+}
