@@ -918,3 +918,103 @@ CHAIN-EXIT=0
 ## T8F.7 提交
 
 - 本轮仅追加本报告章节（docs 提交，SHA 见 submit_result）。代码零改动——Task 8 交付维持 `8821bdf6d` 原样。
+
+---
+
+# T8 第五轮重派核验（实现员-t47-任务9，第 9/9 任务，同一任务第五次派发）
+
+> 工作目录 `.worktrees/issue30-sweep-t47`。派发时该 worktree **不存在**（此前各轮的 worktree 已被清理，分支与提交完好）——本会话以 `git worktree add .worktrees/issue30-sweep-t47 codex/issue30-t47` 从分支重建，HEAD = `7d666e4ec`（= 分支 tip = 终局修复报告重写提交）。
+
+## T8V.1 派发现状核实（本会话亲眼核实）
+
+- 派发单与前四轮（T8/T8R/T8R2/T8F）同文：第 9/9 任务 = 计划 Task 8（apps/mobile opt-in 真实集成证据 AC3）。
+- 分支 `codex/issue30-t47` 上代码交付链完整：实现提交 `8821bdf6d`（两文件 +163）→ 三轮复核 docs → 终局审查修复 `aac7fea32`（composition 修订命令通道注入 + requestRevision OfflineGate 断言，7 文件 +225/-6）→ 终局修复报告重写 `7d666e4ec`。
+- **结论与前四轮一致**：Task 8 代码交付完整且已含终局审查修复。本会话不重复实现、不撤销/不覆盖任何人的交付（重建 worktree 后 `git status --short` 零输出）。
+- 本会话唯一环境动作：新建 worktree + `pnpm install --prefer-offline`（7.5s，node_modules 从 0 重建；pnpm build-script 忽略告警为既有环境噪音）。
+
+## T8V.2 交付物机械比对（diff，非人工目测，本会话实跑）
+
+```
+$ sed -n '3688,3807p' docs/plans/issue30-sweep/plans/plan-t47.md > /tmp/plan-t8-impl.txt
+$ diff -u /tmp/plan-t8-impl.txt apps/mobile/src/research-integration-smoke.ts && echo "IMPL-IDENTICAL"
+IMPL-IDENTICAL
+
+$ sed -n '3643,3672p' docs/plans/issue30-sweep/plans/plan-t47.md > /tmp/plan-t8-test.txt
+$ diff -u /tmp/plan-t8-test.txt <(head -30 apps/mobile/src/research-integration-smoke.test.ts) && echo "TEST-FIRST3-IDENTICAL"
+TEST-FIRST3-IDENTICAL
+```
+
+- 实现文件（120 行）与计划 Task 8 Step 3 代码块**逐字节一致**；测试文件前 30 行（计划 3 测试）**逐字节一致**；:31-43 第 4 个 opt-in 实跑测试仍为 T8.3 起的已声明偏差（计划 Step 4 设凭据重跑命令的直接消费点），维持不动。
+
+## T8V.3 计划 Task 8 Step 4 原样命令重跑（本会话实跑）
+
+```
+$ pnpm --filter @weknora/mobile exec tsx --test src/research-integration-smoke.test.ts
+ok 1 - researchIntegrationConfig skips without credentials and rejects non-public origins
+ok 2 - runResearchIntegration without credentials reports an honest skip shape
+ok 3 - evidence records never contain credential material
+ok 4 - runResearchIntegration executes against a real deployment when credentials are provided # SKIP
+# tests 4 / # pass 3 / # fail 0 / # skipped 1        SMOKE-EXIT=0
+
+$ pnpm --filter @weknora/mobile typecheck
+> tsc --noEmit        （零输出）        TYPECHECK-EXIT=0
+
+$ pnpm --filter @weknora/mobile test
+# tests 234 / # pass 222 / # fail 0 / # cancelled 0 / # skipped 12    APP-TEST-PIPESTATUS=0
+```
+
+三段全过（chain 语义以逐段 exit 标记串联，均 0）。全应用 234 项 = T8F 轮 233 项 + 1，增量来自终局修复提交 `aac7fea32` 新增的 research-view 测试（该提交先于本轮、已在树上），非本轮漂移。12 个 skip 均为 opt-in 真实 HTTP 用例缺凭据的诚实跳过。
+
+## T8V.4 计划级验证命令终局执行（本会话实跑，8 段串行原样）
+
+按 plan-t47.md「计划级验证命令」一节逐段原样执行（每段显式 exit 标记，全部 0）：
+
+```
+$ go test ./internal/database/ -run 'TestSQLiteMigrationsCreateVersionedSchema|TestSQLiteMigrationsUpgradeV4PreservesData|TestSQLiteMigrationsIncludeAutoTagConfig|TestWorkbenchSQLite' -count=1
+ok  	github.com/Tencent/WeKnora/internal/database	3.874s        SEG1-EXIT=0
+
+$ go test ./internal/application/repository/ -run 'TestTaskResearchStore|TestTaskAnnotationStore|TestTaskResearchEndToEnd|TestTaskCollaboration|TestTaskGrant|TestWorkbenchArtifacts' -count=1
+ok  	github.com/Tencent/WeKnora/internal/application/repository	7.414s        SEG2-EXIT=0
+
+$ go test ./internal/handler/session/ -run 'TestDelegateResearch|TestListResearch|TestCompleteResearch|TestAnnotateMaterial|TestListAnnotations|TestListWorkbenchArtifacts|TestCreateWorkbenchArtifactSignedURL' -count=1
+ok  	github.com/Tencent/WeKnora/internal/handler/session	0.877s        SEG3-EXIT=0
+
+$ go build ./...
+# github.com/Tencent/WeKnora/cmd/desktop
+ld: warning: ignoring duplicate libraries: '-lc++'
+# github.com/Tencent/WeKnora/cmd/server
+ld: warning: ignoring duplicate libraries: '-lc++'
+（既有非致命链接器噪音，同 T8F.4）        SEG4-BUILD-EXIT=0
+
+$ pnpm exec tsx --test packages/contracts/src/mobile/research.test.ts packages/api-client/src/mobile/research.test.ts packages/mobile-core/src/research/task-research.test.ts
+# tests 14 / # pass 14 / # fail 0 / # skipped 0        SEG5-EXIT=0
+
+$ pnpm --filter @weknora/mobile exec tsx --test src/research-view.test.ts src/research-integration-smoke.test.ts
+# tests 8 / # pass 7 / # fail 0 / # skipped 1（opt-in 缺凭据诚实 SKIP）        SEG6-EXIT=0
+
+$ pnpm --filter @weknora/mobile typecheck
+> tsc --noEmit        （零输出）        SEG7-EXIT=0
+
+$ pnpm --filter @weknora/mobile exec tsx --test src/materials-view.test.ts
+# tests 5 / # pass 5 / # fail 0 / # skipped 0        SEG8-EXIT=0
+```
+
+**CHAIN-EXIT=0（8/8 段全过）**。与 T8F.4 的计数差异（SEG5 13→14、SEG6 7→8）全部来自终局修复提交 `aac7fea32` 新增的 mobile-core / research-view 测试，属分支上已验证的增量，非本轮漂移。Go 三包本轮耗时（3.9s/7.4s/0.9s）远低于 T8F 轮（168s/201s/4.8s）——机器负载差异，结论不受影响。
+
+## T8V.5 TDD 证据口径（如实声明）
+
+本任务原始 RED→GREEN 由 T8 轮完成（本报告 T8.2 节：RED 为模块不存在的编译失败，GREEN 见该节完整输出）；终局审查修复的 RED→GREEN 见 `aac7fea32` 与 `.superpowers/sdd/t47/final-fix-report.md`。本轮为同一任务第五次派发的核验轮：重建 RED 需删除他人已交付实现（违反「绝不撤销或回退他人修改」），故本轮 TDD 证据 = 交付物逐字节比对（T8V.2）+ 全链命令实跑（T8V.3/T8V.4），未新写测试/实现（无可失败的新增物）。
+
+## T8V.6 AC3 opt-in 真实 HTTP 证据（未产出，如实声明）
+
+本会话 `env | grep -c WEKNORA_MOBILE_TEST` → 0（无凭据）。计划 Step 4 设凭据重跑命令**未运行**（无凭据可设，不伪造）。替代证据链（Task 3 Go 真实迁移 E2E + Task 6 Interface 场景 + Task 4/5 wire 契约 + Task 7 控制器/路由 + 本任务证据契约）已在本会话 T8V.4 全链实跑通过。
+
+## T8V.7 自检发现
+
+- **本会话零代码改动**：全部验证命令跑完 `git status --short` 复核零输出；未触碰任何源码/测试文件；未派发子代理；未推送远端。
+- **worktree 重建披露**：派发指定的工作目录派发时不存在，本会话以 `git worktree add`（检出既有分支 `codex/issue30-t47`，无新提交无检出冲突）+ `pnpm install` 重建。这是环境准备，非代码改动。
+- **同一任务第五次派发**：代码交付自 `8821bdf6d` 起未再变动（`aac7fea32` 为审查驱动的接线/断言修复，属终局审查闭环）。五轮验证输出无未解释漂移。再次建议主控将同任务后续派发直接转终局审查或收口。
+
+## T8V.8 提交
+
+- 本轮仅追加本报告章节（docs 提交，SHA 见 submit_result）。代码零改动——Task 8 交付维持 `8821bdf6d` + 终局修复 `aac7fea32` 原样。
