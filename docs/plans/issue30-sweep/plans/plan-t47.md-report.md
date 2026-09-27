@@ -825,3 +825,96 @@ chain-exit=0
 ## T8R2.6 提交
 
 - 本轮仅追加本报告章节（docs 提交，SHA 见 submit_result）。代码零改动——Task 8 交付维持 `8821bdf6d` 原样。
+
+---
+
+# T8 终局收口轮（实现员-t47-任务9，第 9/9 任务，同一任务第三次重派）
+
+## T8F.1 派发现状核实（本会话亲眼核实）
+
+- 派发单与本任务前两轮（T8R/T8R2，报告 :708/:782）完全同文——同一 9/9 任务（计划 Task 8，apps/mobile opt-in 真实集成证据 AC3）的再次重派。
+- 派发时核实：`git status --short` 零输出（工作树干净）；HEAD = `6a1227ce2`；Task 8 实现提交 `8821bdf6d`（2 文件 +163）与其后全部报告提交均在树上。
+- **结论与前两轮一致**：Task 8 代码交付完整，本会话不重复实现、不撤销/不覆盖他人交付。本轮新增两件事：①对交付物做**机械逐字节比对**（不轻信前轮人工表格）；②以第 9/9 = 终局任务身份执行**计划级验证命令**（plan-t47.md:3837-3844）——前两轮均以「属主控/终局任务职责」为由未执行（T8R.5/T8R2.5），本任务正是终局任务，且该命令为只读验证（全程零文件改动，跑完 `git status --short` 复核仍零输出）。
+
+## T8F.2 交付物机械比对（diff，非人工目测）
+
+```
+$ sed -n '3688,3807p' docs/plans/issue30-sweep/plans/plan-t47.md > /tmp/plan-t8-impl.txt
+$ diff -u /tmp/plan-t8-impl.txt apps/mobile/src/research-integration-smoke.ts && echo "IMPL-IDENTICAL"
+IMPL-IDENTICAL
+
+$ sed -n '3643,3672p' docs/plans/issue30-sweep/plans/plan-t47.md > /tmp/plan-t8-test.txt
+$ diff -u /tmp/plan-t8-test.txt <(head -30 apps/mobile/src/research-integration-smoke.test.ts) && echo "TEST-FIRST3-IDENTICAL"
+TEST-FIRST3-IDENTICAL
+```
+
+- 实现文件与计划 Task 8 Step 3 代码块**逐字节一致**（含 `ResearchIntegrationConfig`/`ResearchIntegrationEvidence` 全字段、`researchIntegrationConfig` 门控、`runResearchIntegration` 编排、`emitResearchIntegrationEvidence` JSONL 输出）。
+- 测试文件前 30 行（计划 3 测试）**逐字节一致**；:31-43 的第 4 个 opt-in 实跑测试仍为 T8.3 已声明偏差（计划 Step 4「有真实环境时另加 opt-in 实跑」设凭据重跑命令的直接消费点），本轮维持不动。
+
+## T8F.3 计划 Task 8 Step 4 原样命令重跑（本会话实跑）
+
+```
+$ pnpm --filter @weknora/mobile exec tsx --test src/research-integration-smoke.test.ts && pnpm --filter @weknora/mobile typecheck && pnpm --filter @weknora/mobile test
+✔ researchIntegrationConfig skips without credentials and rejects non-public origins (10.897ms)
+✔ runResearchIntegration without credentials reports an honest skip shape (0.30475ms)
+✔ evidence records never contain credential material (0.5605ms)
+﹣ runResearchIntegration executes against a real deployment when credentials are provided (0.103792ms) # SKIP
+ℹ tests 4 / ℹ pass 3 / ℹ fail 0 / ℹ skipped 1
+> tsc --noEmit        （零输出，链式 exit 0 = 通过）
+ℹ tests 233 / ℹ pass 221 / ℹ fail 0 / ℹ cancelled 0 / ℹ skipped 12
+```
+
+三段全过，chain exit 0。数字与前三轮（T8.2/T8R.3/T8R2.3）完全一致，零漂移。
+
+## T8F.4 计划级验证命令终局执行（本会话实跑，全链原样）
+
+按 plan-t47.md「计划级验证命令」一节 8 段串行原样执行（worktree 根 `.worktrees/issue30-sweep-t47`）：
+
+```
+$ go test ./internal/database/ -run 'TestSQLiteMigrationsCreateVersionedSchema|TestSQLiteMigrationsUpgradeV4PreservesData|TestSQLiteMigrationsIncludeAutoTagConfig|TestWorkbenchSQLite' -count=1
+ok  	github.com/Tencent/WeKnora/internal/database	168.447s
+
+$ go test ./internal/application/repository/ -run 'TestTaskResearchStore|TestTaskAnnotationStore|TestTaskResearchEndToEnd|TestTaskCollaboration|TestTaskGrant|TestWorkbenchArtifacts' -count=1
+ok  	github.com/Tencent/WeKnora/internal/application/repository	200.727s
+
+$ go test ./internal/handler/session/ -run 'TestDelegateResearch|TestListResearch|TestCompleteResearch|TestAnnotateMaterial|TestListAnnotations|TestListWorkbenchArtifacts|TestCreateWorkbenchArtifactSignedURL' -count=1
+ok  	github.com/Tencent/WeKnora/internal/handler/session	4.816s
+
+$ go build ./...
+# github.com/Tencent/WeKnora/cmd/desktop
+ld: warning: ignoring duplicate libraries: '-lc++'
+# github.com/Tencent/WeKnora/cmd/server
+ld: warning: ignoring duplicate libraries: '-lc++'
+（链接器非致命 warning，与本计划改动无关的既有环境噪音；链式 && 继续且整体 exit 0）
+
+$ pnpm exec tsx --test packages/contracts/src/mobile/research.test.ts packages/api-client/src/mobile/research.test.ts packages/mobile-core/src/research/task-research.test.ts
+✔ parseResearchListResponse accepts a real envelope … ✔ closed handles reject every path with SCOPE_CHANGED and emit scope-closed
+ℹ tests 13 / ℹ pass 13 / ℹ fail 0 / ℹ skipped 0
+
+$ pnpm --filter @weknora/mobile exec tsx --test src/research-view.test.ts src/research-integration-smoke.test.ts
+ℹ tests 7 / ℹ pass 6 / ℹ fail 0 / ℹ skipped 1（opt-in 缺凭据诚实 SKIP）
+
+$ pnpm --filter @weknora/mobile typecheck
+> tsc --noEmit        （零输出）
+
+$ pnpm --filter @weknora/mobile exec tsx --test src/materials-view.test.ts
+ℹ tests 5 / ℹ pass 5 / ℹ fail 0 / ℹ skipped 0
+
+CHAIN-EXIT=0
+```
+
+**终局结论：计划 9 个任务（Task 0–8）的全量验证链在本会话一气呵成全绿**——Go 三包（迁移轨道 / store+E2E / handler wire）、`go build ./...`、contracts+api-client+mobile-core research 测试 13/13、apps/mobile research 视图+集成证据 6 pass+1 skip、typecheck、materials-view 回归 5/5。前两轮留待终局任务的收口证据至此补齐。
+
+## T8F.5 AC3 opt-in 真实 HTTP 证据（未产出，如实声明）
+
+本会话 `env | grep -c WEKNORA_MOBILE_TEST` → 0。计划 Step 4 设凭据重跑命令**未运行**（无凭据可设，不伪造）。真实部署端到端 AC3 证据依赖具备环境者设 `WEKNORA_MOBILE_TEST_DEPLOYMENT_URL/EMAIL/PASSWORD` 重跑 `research-integration-smoke.test.ts` 的 opt-in 测试自动产出。替代证据链（Task 3 Go 真实迁移 E2E + Task 6 Interface 场景 + Task 4/5 wire 契约 + Task 7 控制器/路由 + 本任务证据契约）已全部在本会话计划级命令中实跑通过。
+
+## T8F.6 自检发现
+
+- **本会话零代码改动**：验证命令跑完 `git status --short` 复核仍零输出；追加本报告章节前无任何待提交文件；未触碰任何源码/测试文件；未派发子代理；未推送远端。
+- **关于执行计划级命令的边界说明**：前两轮以「超出任务授权」为由不执行；本轮判断该命令是**只读验证**（不修改任何受管文件，跑后复核工作树干净）且计划明文将其列为计划级收口命令，第 9/9 任务即终局任务，执行它是收口职责而非越权。如主控不认同此判断，本节即为完整披露。
+- **同一任务第四次派发的观察**：派发单「前置接口」行描述的 research-integration-smoke 三导出与 Task 8 自身 Produces 逐字重合（T8R.5 已指出）。代码交付自 `8821bdf6d` 起未再变动，四轮验证（T8/T8R/T8R2/T8F）输出零漂移。建议主控将后续同任务派发合并为终局审查或直接收口。
+
+## T8F.7 提交
+
+- 本轮仅追加本报告章节（docs 提交，SHA 见 submit_result）。代码零改动——Task 8 交付维持 `8821bdf6d` 原样。
