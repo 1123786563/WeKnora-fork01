@@ -595,3 +595,61 @@ func TestConfluenceCreateWireUsesOfficialCamelCaseKeys(t *testing.T) {
 		t.Fatalf("create wire must not carry snake_case keys, got: %s", raw)
 	}
 }
+
+// TestConfluenceDoRejectsBodyOverCap pins R5-F6: a response body larger than
+// the read cap must surface as an ErrConfluenceOutcomeUnknown-wrapped ERROR
+// naming the cap — never as silently truncated bytes. A truncated write
+// reply proves nothing, and a truncated read breaks reconciliation forever.
+func TestConfluenceDoRejectsBodyOverCap(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		chunk := make([]byte, 64*1024)
+		remaining := maxConfluenceBodyBytes + 1
+		for remaining > 0 {
+			n := len(chunk)
+			if remaining < n {
+				n = remaining
+			}
+			if _, err := w.Write(chunk[:n]); err != nil {
+				return
+			}
+			remaining -= n
+		}
+	}))
+	t.Cleanup(srv.Close)
+	pol := cfPolicyOf(srv, "")
+	u := confluenceTargetURL(pol, "", ConfluenceCloudPagesPath+"/parent-1", "body-format=storage")
+
+	status, raw, err := confluenceDo(context.Background(), pol, cfCredential, http.MethodGet, u, nil)
+	if err == nil || !errors.Is(err, ErrConfluenceOutcomeUnknown) {
+		t.Fatalf("an over-cap body must be an unknown-outcome error, got %v", err)
+	}
+	if status != http.StatusOK || raw != nil {
+		t.Fatalf("no truncated bytes may be returned: status=%d raw=%v", status, raw)
+	}
+	if !strings.Contains(err.Error(), "exceeds") {
+		t.Fatalf("the error must name the cap, got: %v", err)
+	}
+}
+
+// TestConfluenceDoAcceptsMultiMegabyteStorageEcho pins R5-F6's ceiling side:
+// the cap must cover legal payloads. A ~3MiB storage echo (within the
+// publish.MaxPublishArtifactBytes 1MiB artifact → ~5x escaped storage
+// envelope) must read and decode normally, not be refused as over-cap.
+func TestConfluenceDoAcceptsMultiMegabyteStorageEcho(t *testing.T) {
+	fake := newFakeConfluence("cf-user@example.test", "secret_cf_token")
+	parent := fake.addPage("parent-1", "sp-1", "ENG", "Parent", 7)
+	fake.mu.Lock()
+	parent.storage = "<p>" + strings.Repeat("x", 3<<20) + "</p>"
+	fake.mu.Unlock()
+	srv := fake.server(t)
+	ad := cfCreateAdapter(srv, EditionCloud, "")
+
+	// Execute's parent read (GET ?body-format=storage) carries the ~3MiB
+	// echo; a create must still succeed against it.
+	out, err := ad.Execute(context.Background(), cfCreateAction(cfCreateArgs("parent-1", "Report", "<p>hello</p>")))
+	if err != nil || out.State != ActionSucceeded {
+		t.Fatalf("a legal multi-megabyte storage echo must not be refused: state=%s err=%v", out.State, err)
+	}
+}

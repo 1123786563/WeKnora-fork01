@@ -130,6 +130,16 @@ func confluenceTargetURL(pol HTTPPolicy, apiBasePath, path, query string) *url.U
 	return &url.URL{Scheme: pol.Scheme, Host: host, Path: apiBasePath + path, RawQuery: query}
 }
 
+// maxConfluenceBodyBytes caps ONE response body. It is a runaway guard,
+// NOT a truncation point: a body over the cap is an ERROR (a truncated
+// write reply proves nothing; a truncated read breaks reconciliation
+// forever). The cap must cover the largest legal payload: publish artifact
+// bodies are bounded by MaxPublishArtifactBytes (1MiB, publish/plan.go) but
+// escape to ~5x their raw size through ConfluenceStorageBody
+// (html.EscapeString emits &#39;/&#34; entities), so 8MiB covers the worst
+// legal storage echo with headroom.
+const maxConfluenceBodyBytes = 8 << 20
+
 // confluenceDo performs ONE policy-validated request with HTTP Basic auth
 // — the same request/redirect re-validation as the Notion family (A04).
 // Transport failures wrap ErrConfluenceOutcomeUnknown: the effect may
@@ -159,9 +169,16 @@ func confluenceDo(ctx context.Context, pol HTTPPolicy, cred func(context.Context
 		return 0, nil, fmt.Errorf("%w: %v", ErrConfluenceOutcomeUnknown, err)
 	}
 	defer resp.Body.Close()
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxConfluenceBodyBytes+1))
 	if err != nil {
 		return resp.StatusCode, nil, fmt.Errorf("%w: %v", ErrConfluenceOutcomeUnknown, err)
+	}
+	if len(raw) > maxConfluenceBodyBytes {
+		// Never hand back truncated bytes: the over-cap reply proves
+		// nothing about the effect (and a truncated read would poison
+		// every later reconciliation).
+		return resp.StatusCode, nil, fmt.Errorf("%w: %s %s: response body exceeds cap %d bytes",
+			ErrConfluenceOutcomeUnknown, method, u.Path, maxConfluenceBodyBytes)
 	}
 	return resp.StatusCode, raw, nil
 }

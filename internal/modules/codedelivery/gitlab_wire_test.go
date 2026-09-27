@@ -507,3 +507,58 @@ func TestDraftMRTitleAndProtectedGlob(t *testing.T) {
 	require.ErrorIs(t, err, ErrUnsupportedProvider)
 	require.Equal(t, "gitlab.deliver", DeliveryTargetOf("gitlab"))
 }
+
+// TestGitLabRawRejectsBodyOverCap pins R5-F9: a 2xx body larger than the raw
+// cap must surface as a transport-family ERROR naming the cap — never as
+// silently truncated bytes that the baseline materializer would write into
+// the session workspace.
+func TestGitLabRawRejectsBodyOverCap(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		chunk := make([]byte, 64*1024)
+		remaining := maxRawBodyBytes + 1
+		for remaining > 0 {
+			n := len(chunk)
+			if remaining < n {
+				n = remaining
+			}
+			if _, err := w.Write(chunk[:n]); err != nil {
+				return
+			}
+			remaining -= n
+		}
+	}))
+	t.Cleanup(srv.Close)
+	client := NewGitLabClientFactory(http.DefaultClient, srv.URL)("glpat-testtoken", RepoRef{Owner: "octocat", Name: "hello"})
+
+	var raw []byte
+	raw, err := client.Blob(context.Background(), strings.Repeat("0", 40))
+	require.Error(t, err, "an over-cap body must be refused, not returned truncated")
+	require.ErrorIs(t, err, ErrCodeTransport)
+	require.Contains(t, err.Error(), "exceeds", "the error must name the cap")
+	require.Contains(t, err.Error(), fmt.Sprintf("%d", maxRawBodyBytes))
+	require.Nil(t, raw)
+}
+
+// TestGitLabBlobVerifiesContentAddressedSHA pins R5-F9's second layer: the
+// raw blob endpoint is content-addressed, so the body must hash to the
+// requested sha before it is trusted. Mismatched bytes (a truncated or
+// misrouted read) are a transport-family error; matching bytes pass.
+func TestGitLabBlobVerifiesContentAddressedSHA(t *testing.T) {
+	content := []byte("package main\n\nfunc main() {}\n")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(content)
+	}))
+	t.Cleanup(srv.Close)
+	client := NewGitLabClientFactory(http.DefaultClient, srv.URL)("glpat-testtoken", RepoRef{Owner: "octocat", Name: "hello"})
+
+	got, err := client.Blob(context.Background(), GitBlobSHA(content))
+	require.NoError(t, err, "a body matching the requested sha must pass")
+	require.Equal(t, content, got)
+
+	_, err = client.Blob(context.Background(), strings.Repeat("f", 40))
+	require.Error(t, err, "a body that does not hash to the requested sha must be refused")
+	require.ErrorIs(t, err, ErrCodeTransport)
+	require.Contains(t, err.Error(), "content-addressed")
+}

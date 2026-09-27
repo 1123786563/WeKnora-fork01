@@ -17,7 +17,9 @@ import (
 // Delivery target constant of every A03 action this module prepares.
 const DeliveryActionTarget = "github.deliver"
 
-// maxBaselineBytes bounds the materialized baseline payload.
+// maxBaselineBytes bounds the materialized baseline payload. It must stay
+// <= maxRawBodyBytes (gitlab_client.go) — the raw blob cap is the runaway
+// guard for the blobs this ceiling admits, and must never refuse one.
 const maxBaselineBytes = 16 << 20
 
 // maxWorkspaceFileBytes bounds one workspace file considered for a diff.

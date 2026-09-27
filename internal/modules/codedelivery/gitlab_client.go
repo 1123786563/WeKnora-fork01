@@ -113,6 +113,14 @@ func (c *gitLabRestClient) call(ctx context.Context, method, path string, body a
 	return &header, nil
 }
 
+// maxRawBodyBytes caps ONE raw (non-JSON) response body. It is a runaway
+// guard, NOT a truncation point: a body over the cap is a transport-family
+// ERROR — silently truncated bytes would be written into the session
+// workspace by the baseline materializer. The cap must stay >=
+// maxBaselineBytes (service.go, the 16MiB single-blob ceiling the baseline
+// materializer admits) so a legal large blob is never refused.
+const maxRawBodyBytes = 16 << 20
+
 // callRaw fetches non-JSON payloads (raw blobs).
 func (c *gitLabRestClient) callRaw(ctx context.Context, method, path string, out *[]byte) error {
 	req, err := http.NewRequestWithContext(ctx, method, c.base+path, nil)
@@ -125,9 +133,14 @@ func (c *gitLabRestClient) callRaw(ctx context.Context, method, path string, out
 		return fmt.Errorf("%w: %s %s: %v", ErrCodeTransport, method, path, err)
 	}
 	defer resp.Body.Close()
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxRawBodyBytes+1))
 	if err != nil {
 		return fmt.Errorf("%w: %s %s: read body: %v", ErrCodeTransport, method, path, err)
+	}
+	if len(raw) > maxRawBodyBytes {
+		// Never hand back truncated bytes.
+		return fmt.Errorf("%w: %s %s: response body exceeds cap %d bytes",
+			ErrCodeTransport, method, path, maxRawBodyBytes)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		msg := strings.TrimSpace(string(raw))
@@ -219,13 +232,18 @@ func (c *gitLabRestClient) CommitTree(ctx context.Context, commitSHA string) (st
 }
 
 // Blob reads raw bytes by blob sha (GitLab's raw-blob endpoint takes the sha,
-// no path needed).
+// no path needed). The body is content-addressed: it must hash to the
+// requested sha (GitBlobSHA, the same object id CreateBlob stages) — a
+// mismatch means a truncated or misrouted read and is refused.
 func (c *gitLabRestClient) Blob(ctx context.Context, sha string) ([]byte, error) {
 	var raw []byte
 	err := c.callRaw(ctx, http.MethodGet,
 		"/api/v4/projects/"+c.projectSegment()+"/repository/blobs/"+url.PathEscape(sha)+"/raw", &raw)
 	if err != nil {
 		return nil, err
+	}
+	if got := GitBlobSHA(raw); got != sha {
+		return nil, fmt.Errorf("%w: blob %s is not content-addressed: body hashes to %s", ErrCodeTransport, sha, got)
 	}
 	return raw, nil
 }
