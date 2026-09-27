@@ -10,8 +10,9 @@ import test from 'node:test';
 const hooks = nodeModule as typeof nodeModule & { registerHooks?: (hooks: { resolve: (specifier: string, context: unknown, nextResolve: (specifier: string, context: unknown) => unknown) => void }) => void };
 if (hooks.registerHooks) hooks.registerHooks({ resolve: (specifier, context, nextResolve) => specifier.endsWith('.css') ? { shortCircuit: true, url: 'data:text/javascript,export default {}' } : nextResolve(specifier, context) });
 
-import type { CommercialSummary, CommercialUsageRow } from '@weknora/contracts';
-const { loadCommercialSummary, loadCommercialUsage, planDisplayName } = await import('./BillingPage.tsx');
+import type { CommercialAccountCredits, CommercialSummary, CommercialUsageRow } from '@weknora/contracts';
+const { loadCommercialSummary, loadCommercialUsage, loadCommercialAccount, planDisplayName } = await import('./BillingPage.tsx');
+const { parseCommercialAccountCredits } = await import('@weknora/contracts');
 
 function client(summaryOrError: () => Promise<CommercialSummary>, usageOrError: () => Promise<CommercialUsageRow[]>) {
   return {
@@ -53,4 +54,54 @@ test('planDisplayName shows plan_key for subscribed spaces and the base-tier fal
   assert.equal(planDisplayName(subscribed), 'pro');
   assert.equal(planDisplayName({ tenant_id: 303, subscription: null, base_tier: true, base_tier_key: 'free', can_manage_billing: true }), 'free');
   assert.equal(planDisplayName({ tenant_id: 303, subscription: null, base_tier: true, can_manage_billing: true }), '基础版');
+});
+
+// ---- #86 Task 5: the credits breakdown loader + contract parser ----
+
+const breakdown: CommercialAccountCredits = {
+  balance_micro: '1000000',
+  held_micro: '200000',
+  refund_locked_micro: '0',
+  available_micro: '800000',
+  projected_at: '2026-09-28T00:00:00Z',
+  batches: [
+    { source: 'monthly', period: '2026-09', granted_at: '2026-09-01T00:00:00Z', balance_micro: '1000000', expires_at: '2026-10-01T00:00:00Z' },
+  ],
+};
+
+test('loadCommercialAccount maps breakdown and pending degradation', async () => {
+  const ok = { commercial: { account: async () => breakdown } };
+  const st = await loadCommercialAccount(ok.commercial);
+  assert.equal(st.status, 'success');
+  if (st.status === 'success' && st.credits) {
+    assert.equal(st.credits.available_micro, '800000');
+    assert.equal(st.credits.held_micro, '200000');
+    assert.equal(st.credits.batches[0]?.source, 'monthly');
+  } else {
+    assert.fail('breakdown must map');
+  }
+
+  // A pending chain (benefits absent) answers null credits — the card
+  // hides, never errors.
+  const pending = { commercial: { account: async () => null } };
+  const pd = await loadCommercialAccount(pending.commercial);
+  assert.equal(pd.status, 'success');
+  if (pd.status === 'success') assert.equal(pd.credits, null);
+
+  const failing = { commercial: { account: async () => { throw new Error('NETWORK'); } } };
+  const fe = await loadCommercialAccount(failing.commercial);
+  assert.equal(fe.status, 'error');
+  if (fe.status === 'error') assert.equal(fe.message, 'NETWORK');
+});
+
+test('parseCommercialAccountCredits rejects malformed digit strings', () => {
+  const bad = { ...breakdown, balance_micro: '12.5' };
+  assert.throws(() => parseCommercialAccountCredits(bad));
+  assert.throws(() => parseCommercialAccountCredits({ ...breakdown, held_micro: 'abc' }));
+  assert.throws(() => parseCommercialAccountCredits(null));
+  assert.throws(() => parseCommercialAccountCredits('nope'));
+  // A well-formed answer parses verbatim.
+  const parsed = parseCommercialAccountCredits(breakdown);
+  assert.equal(parsed.available_micro, '800000');
+  assert.equal(parsed.batches.length, 1);
 });
