@@ -82,6 +82,11 @@ type CraftRunCaptureRunner struct {
 	db       *gorm.DB
 	store    craft.RunViewStore
 	provider *CraftRunViewContainerProvider
+	// promoter is the T20 (#139) post-terminal four-check promotion pass:
+	// after a drain seals a Run's output into the Workspace draft head it
+	// attempts the promotion of exactly that sealed head (fail-closed on
+	// every incomplete fact; nil keeps the trigger inert).
+	promoter *craftPostTerminalPromoter
 
 	unavailable string
 	interval    time.Duration
@@ -109,16 +114,22 @@ func newCraftRunCaptureRunner(
 		}
 		return &CraftRunCaptureRunner{unavailable: reason, interval: craftRunCaptureScanInterval, inertLog: logger.Infof}
 	}
+	drafts := repository.NewCraftDraftHeadStore(db)
 	artifacts := service.NewCraftArtifactServiceWithCandidates(
 		closedCraftArtifactSource{}, files, versions, repository.NewCraftCandidateStore(db), nil,
 		service.CraftArtifactConfig{Kind: craft.KindWeb, OutputDir: craftLocalOutputDir},
-	)
+		// T20 (#139): the SAME service carries the four-check promotion
+		// dependencies — the draft-head revision fence plus the externally
+		// observed page probe (nil until the T14 implementation registers;
+		// promotion then fails closed on the not_run page facts).
+	).WithWebPromotion(drafts, RegisteredCraftWebPageLoadProbe())
 	runner := &CraftRunCaptureRunner{
 		db: db, store: assembly.Store, provider: assembly.Provider,
 		interval: craftRunCaptureScanInterval, inertLog: logger.Infof,
+		promoter: newCraftPostTerminalPromoter(db, artifacts, drafts, versions),
 	}
 	runner.svc = service.NewCraftRunCaptureService(
-		artifacts, repository.NewCraftRunCaptureStore(db), repository.NewCraftDraftHeadStore(db),
+		artifacts, repository.NewCraftRunCaptureStore(db), drafts,
 		runner.resolveSource,
 	)
 	return runner
@@ -199,6 +210,9 @@ func (r *CraftRunCaptureRunner) RecoverRun(ctx context.Context, fence runtime.Fe
 	if err := r.svc.RecoverRun(ctx, fence.TenantID, fence.RunID); err != nil {
 		logger.Warnf(ctx, "[CraftRunCapture] per-run recovery left receipts pending: %v", err)
 	}
+	// T20: the drain sealed this Run's output; attempt the four-check
+	// promotion of the sealed head (best-effort, idempotent, fail-closed).
+	r.promoter.promoteTerminalReceipts(ctx, craftPromotionScanLimit)
 }
 
 // RecoverTick drains one periodic-scan round (synthesis only every Nth
@@ -214,6 +228,7 @@ func (r *CraftRunCaptureRunner) RecoverTick(ctx context.Context, limit int) {
 	if err := r.svc.RecoverPendingTick(ctx, limit); err != nil {
 		logger.Warnf(ctx, "[CraftRunCapture] recovery tick left receipts pending: %v", err)
 	}
+	r.promoter.promoteTerminalReceipts(ctx, craftPromotionScanLimit)
 }
 
 // Recover drains up to limit durable capture receipts. Missing receipts for
@@ -230,6 +245,7 @@ func (r *CraftRunCaptureRunner) Recover(ctx context.Context, limit int) {
 	if err := r.svc.RecoverPending(ctx, limit); err != nil {
 		logger.Warnf(ctx, "[CraftRunCapture] recovery pass left receipts pending: %v", err)
 	}
+	r.promoter.promoteTerminalReceipts(ctx, craftPromotionScanLimit)
 }
 
 // logInertOnce explains the fail-closed inert state at most once per

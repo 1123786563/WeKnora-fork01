@@ -210,7 +210,15 @@ func newCraftRuntimeExecutor(
 			logger.Warnf(context.Background(), "[CraftRuntime] T04 web build command gate NOT assembled: %v (build commands stay fail-closed)", gerr)
 		}
 	}
-	_ = webBuildGate // central dispatch attachment is T20 lane scope
+	// T20 (#139): the assembled gate registers for the future command
+	// dispatch face (T19 S3 route / T04 entry) — the dispatch consumer
+	// consults RegisteredCraftWebBuildCommandGate before any
+	// server-initiated build command is sent; until that face exists the
+	// gate is simply reachable instead of discarded.
+	if webBuildGate != nil {
+		RegisterCraftWebBuildCommandGate(webBuildGate)
+		logger.Infof(context.Background(), "[CraftRuntime] T04 web build command gate registered for the dispatch face (toolchain %s)", webToolchainDir)
+	}
 	// The candidate store backs the R4 Task3 Run-bound collection: successful
 	// delegations stage a private candidate and the post-terminal capture
 	// seals the draft; the legacy session-wide publication route keeps its
@@ -275,7 +283,11 @@ func newCraftRuntimeExecutor(
 	// the publish), through the same record repository the citation gate
 	// reads — pinned evidence and admitted citations can never disagree.
 	runViewArtifacts.WithVersionEvidence(repository.NewCraftKnowledgeRecordRepository(db))
-	runViewArtifacts.WithWebPromotion(repository.NewCraftDraftHeadStore(db), nil)
+	// T20 (#139): both artifact assemblies (runtime route + capture
+	// coordinator) read the SAME registered page probe — nil until the T14
+	// implementation lands, and promotion then fails closed on the not_run
+	// page facts by contract.
+	runViewArtifacts.WithWebPromotion(repository.NewCraftDraftHeadStore(db), RegisteredCraftWebPageLoadProbe())
 	// C02: an interaction.pending event first lands durably (interaction row
 	// + waiting_user park) before it is projected to the run stream, so the
 	// pending decision is decidable through the HTTP surface. The registrar

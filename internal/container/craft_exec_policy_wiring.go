@@ -23,6 +23,26 @@ import (
 	"gorm.io/gorm"
 )
 
+// registeredCraftWebBuildCommandGate holds the T04 (#123) fixed offline
+// web-build command gate assembled at the runtime site: the future command
+// dispatch face (the T19 S3 route / T04 entry) consumes it through
+// RegisteredCraftWebBuildCommandGate before any server-initiated build
+// command is sent. nil (the default) leaves dispatch fail-closed per the
+// gate's own contract.
+var registeredCraftWebBuildCommandGate *CraftWebBuildCommandGate
+
+// RegisterCraftWebBuildCommandGate installs the deployment's build-command
+// gate (assembled once, next to the toolchain pin).
+func RegisterCraftWebBuildCommandGate(gate *CraftWebBuildCommandGate) {
+	registeredCraftWebBuildCommandGate = gate
+}
+
+// RegisteredCraftWebBuildCommandGate returns the registered gate (nil when
+// the deployment pins no toolchain).
+func RegisteredCraftWebBuildCommandGate() *CraftWebBuildCommandGate {
+	return registeredCraftWebBuildCommandGate
+}
+
 // craftDockerWorkspaceRoot is the container-side workspace root the T03
 // lexical layers resolve the read-only inputs tree against (the same root
 // the T04 web-build gate uses at the runtime assembly site).
