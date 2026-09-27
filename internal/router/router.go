@@ -144,6 +144,9 @@ type RouterParams struct {
 	// receipt) — its own handler so the frozen action lifecycle handlers
 	// stay untouched.
 	AppNotionPublishHandler *handler.AppNotionPublishHandler
+	// T19 (#49): the Feishu publish closed loop — the structural twin of
+	// the notion publish handler over the same provider-neutral service.
+	AppFeishuPublishHandler *handler.AppFeishuPublishHandler
 }
 
 // NewRouter 创建新的路由
@@ -436,6 +439,7 @@ func NewRouter(params RouterParams) *gin.Engine {
 			params.AppSyncHandler,
 			params.AppActionHandler)
 		RegisterAppNotionPublishRoutes(v1, params.AppNotionPublishHandler)
+		RegisterAppFeishuPublishRoutes(v1, params.AppFeishuPublishHandler)
 		RegisterChunkerDebugRoutes(v1, rbacGuards)
 
 		// Fail fast if any declared API-key policy points at a route

@@ -31,6 +31,11 @@ type NotionConnectionScope struct {
 	AuthVersion      int64
 	ApprovedParents  []string
 	InsertCapability bool
+	// Scopes carries the connection's reviewed scopes verbatim (AC2 data
+	// plane): downstream providers (#49 feishu) gate their own write
+	// capability on this list; the notion-specific InsertCapability
+	// projection above is unchanged for #48 behavior.
+	Scopes []string
 }
 
 // NotionScopeSource resolves the scope of one connection from the
@@ -299,6 +304,7 @@ func (s *dbNotionScopeSource) NotionScope(ctx context.Context, connectionID stri
 		OwnerID:         conn.OwnerID,
 		AuthVersion:     conn.AuthVersion,
 		ApprovedParents: parsed.ApprovedParents,
+		Scopes:          append([]string(nil), parsed.Scopes...),
 	}
 	for _, sc := range parsed.Scopes {
 		if sc == appconn.NotionCapabilityInsert {

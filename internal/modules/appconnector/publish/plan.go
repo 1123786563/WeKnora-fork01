@@ -2,7 +2,6 @@ package publish
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -114,9 +113,15 @@ type NotionPublishService struct {
 	content   ArtifactContentReader
 	remote    NotionRemoteReader
 	scopes    NotionScopeSource
+	// profile carries every provider-specific decision. AC1: the
+	// provider difference lives only in the adapter/bridge layer — the
+	// service body below has zero provider branches.
+	profile ProviderProfile
 }
 
-// NewNotionPublishService builds the publish service.
+// NewNotionPublishService builds the publish service over the Notion
+// profile (#48 signature unchanged — all existing call sites keep
+// compiling).
 func NewNotionPublishService(
 	actions *appconnectorsvc.ActionService,
 	store appconnectorsvc.ActionStoreSource,
@@ -126,7 +131,21 @@ func NewNotionPublishService(
 	remote NotionRemoteReader,
 	scopes NotionScopeSource,
 ) *NotionPublishService {
-	return &NotionPublishService{actions: actions, store: store, pubs: pubs, artifacts: artifacts, content: content, remote: remote, scopes: scopes}
+	return NewProviderPublishService(actions, store, pubs, artifacts, content, scopes, NotionProfile(remote))
+}
+
+// NewProviderPublishService builds the provider-neutral publish service
+// for any provider profile (#49 feishu, #50 confluence).
+func NewProviderPublishService(
+	actions *appconnectorsvc.ActionService,
+	store appconnectorsvc.ActionStoreSource,
+	pubs *repoappconn.PublicationStore,
+	artifacts ArtifactVersionReader,
+	content ArtifactContentReader,
+	scopes NotionScopeSource,
+	profile ProviderProfile,
+) *NotionPublishService {
+	return &NotionPublishService{actions: actions, store: store, pubs: pubs, artifacts: artifacts, content: content, scopes: scopes, profile: profile}
 }
 
 func publishableMIME(mime string) bool {
@@ -152,8 +171,8 @@ func (s *NotionPublishService) FormPlan(ctx context.Context, in PublishPlanInput
 	if err != nil {
 		return PublishPlanView{}, fmt.Errorf("%w: connection scope: %v", ErrPublishInvalidInput, err)
 	}
-	if scope.AppID != "notion" {
-		return PublishPlanView{}, fmt.Errorf("%w: connection is %q, not notion", ErrPublishInvalidInput, scope.AppID)
+	if scope.AppID != s.profile.AppID {
+		return PublishPlanView{}, fmt.Errorf("%w: connection is %q, not %s", ErrPublishInvalidInput, scope.AppID, s.profile.AppID)
 	}
 	mode, destination := "create", in.ParentPageID
 	if in.PageID != "" {
@@ -189,34 +208,36 @@ func (s *NotionPublishService) FormPlan(ctx context.Context, in PublishPlanInput
 	if len(content) > MaxPublishArtifactBytes {
 		return PublishPlanView{}, fmt.Errorf("%w: %d bytes", ErrPublishContentTooLarge, len(content))
 	}
-	blocks, berr := NotionParagraphBlocks(string(content))
+	blocks, berr := s.profile.BlocksOf(string(content))
 	if berr != nil {
 		return PublishPlanView{}, berr
 	}
 	// AC1: 发布前读取外部当前版本 —— the plan-time pre-read. For update
-	// this value is bound into the approved snapshot; for create it is the
-	// destination's recorded baseline.
-	remoteVersion, rerr := s.remote.ReadPageVersion(ctx, in.ConnectionID, destination)
-	if rerr != nil || remoteVersion == "" {
+	// this value is bound into the approved snapshot and MUST succeed.
+	// For create the baseline is provider-defined: Notion reads the parent
+	// page's version; Feishu's reviewed destination is a FOLDER with no
+	// document revision, which the adapter reports as the typed
+	// not-found shape and the plan records an EMPTY baseline. Any other
+	// create pre-read failure (transport, permission) still fails closed.
+	remoteVersion, rerr := s.profile.ReadRemoteVersion(ctx, in.ConnectionID, destination)
+	if rerr != nil && !errors.Is(rerr, appconn.ErrFeishuPublishNotFound) {
+		return PublishPlanView{}, fmt.Errorf("%w: %v", ErrPublishDestinationUnreadable, rerr)
+	}
+	if mode == "update" && (rerr != nil || remoteVersion == "") {
 		return PublishPlanView{}, fmt.Errorf("%w: %v", ErrPublishDestinationUnreadable, rerr)
 	}
 	var args []byte
 	if mode == "update" {
-		args, err = json.Marshal(map[string]any{
-			"page_id": in.PageID, "expected_version": remoteVersion,
-			"title": in.Title, "blocks": blocks,
-		})
+		args, err = s.profile.UpdateArgs(in.PageID, remoteVersion, in.Title, blocks)
 	} else {
-		args, err = json.Marshal(map[string]any{
-			"parent": in.ParentPageID, "title": in.Title, "blocks": blocks,
-		})
+		args, err = s.profile.CreateArgs(in.ParentPageID, in.Title, blocks)
 	}
 	if err != nil {
 		return PublishPlanView{}, err
 	}
 	actionID, perr := s.actions.Prepare(ctx, appconn.Action{
 		ID: "", TenantID: in.TenantID, ActorID: in.ActorID, ConnectionID: in.ConnectionID,
-		Version: "notion/v1", Target: destination, Risk: appconn.RiskWrite,
+		Version: s.profile.ActionVersion, Target: destination, Risk: appconn.RiskWrite,
 		AuthVersion: scope.AuthVersion, Args: args,
 	})
 	if perr != nil {
@@ -224,7 +245,7 @@ func (s *NotionPublishService) FormPlan(ctx context.Context, in PublishPlanInput
 	}
 	if uerr := s.pubs.CreatePublication(ctx, repoappconn.PublicationRow{
 		TenantID: in.TenantID, ActionID: actionID, ConnectionID: in.ConnectionID,
-		Provider: "notion", Mode: mode, Destination: destination,
+		Provider: s.profile.Provider, Mode: mode, Destination: destination,
 		ExpectedVersion: remoteVersion, ArtifactVersionID: version.ID,
 		ArtifactDigest: version.Digest, State: repoappconn.PublicationPlanned,
 	}); uerr != nil {
@@ -296,7 +317,7 @@ func (s *NotionPublishService) project(ctx context.Context, tenantID uint64, act
 	if row.TenantID != tenantID {
 		return PublishExecuteOutcome{}, repoappconn.ErrActionNotFound
 	}
-	out := PublishExecuteOutcome{ActionState: row.State, Conflict: strings.HasPrefix(row.ProviderResult, PublishVersionConflictResult)}
+	out := PublishExecuteOutcome{ActionState: row.State, Conflict: s.profile.ConflictResultPrefix != "" && strings.HasPrefix(row.ProviderResult, s.profile.ConflictResultPrefix)}
 	switch row.State {
 	case appconn.ActionSucceeded:
 		// Defensive: a succeeded payload that no longer parses as a page
@@ -304,9 +325,9 @@ func (s *NotionPublishService) project(ctx context.Context, tenantID uint64, act
 		// today — every succeeded ProviderResult is the adapter's read-back
 		// receipt — and safe on re-entry: any later Execute/Reconcile re-runs
 		// project, which retries the settle from the durable action row.
-		rcpt, rerr := appconn.ParseNotionPageReceipt([]byte(row.ProviderResult))
+		rcptExternalID, rcptExternalVersion, rerr := s.profile.ParseReceipt(row.ProviderResult)
 		if rerr == nil {
-			if serr := s.pubs.SettlePublication(ctx, tenantID, actionID, repoappconn.PublicationPublished, rcpt.ExternalID, rcpt.ExternalVersion, row.ProviderResult); serr != nil && !errors.Is(serr, repoappconn.ErrPublicationConflict) {
+			if serr := s.pubs.SettlePublication(ctx, tenantID, actionID, repoappconn.PublicationPublished, rcptExternalID, rcptExternalVersion, row.ProviderResult); serr != nil && !errors.Is(serr, repoappconn.ErrPublicationConflict) {
 				return out, serr
 			}
 		}
