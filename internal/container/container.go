@@ -453,6 +453,11 @@ func BuildContainer(container *dig.Container) *dig.Container {
 		return service.NewAgentAdoptionService(repo, agents, versions)
 	}))
 	must(container.Provide(handler.NewAgentAdoptionHandler))
+	must(container.Provide(repository.NewAgentUpgradeRepository))
+	must(container.Provide(func(repo repository.AgentUpgradeRepository) interfaces.AgentUpgradeService {
+		return service.NewAgentUpgradeService(repo)
+	}))
+	must(container.Provide(handler.NewAgentUpgradeHandler))
 	must(container.Provide(repository.NewPublicMarketplaceRepository))
 	must(container.Provide(func(repo repository.PublicMarketplaceRepository, listings interfaces.AgentMarketplaceRepository) interfaces.PublicMarketplaceService {
 		return service.NewPublicMarketplaceService(repo, listings)
