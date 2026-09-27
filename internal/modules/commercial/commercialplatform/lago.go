@@ -765,6 +765,7 @@ type lagoWallet struct {
 	BalanceCents   int64             `json:"balance_cents"`
 	GrantedCredits string            `json:"granted_credits"`
 	ExpirationAt   string            `json:"expiration_at"`
+	CreatedAt      string            `json:"created_at"`
 	MetadataMap    map[string]string `json:"metadata"`
 	MetadataList   []struct {
 		Key   string `json:"key"`
@@ -1073,17 +1074,38 @@ func (a *LagoAdapter) readBenefitsSnapshot(ctx context.Context, tenantID uint64)
 				}
 			}
 		}
-		if period == "" || meta[commercial.WalletMetaTenant] != "" && meta[commercial.WalletMetaTenant] != extCustomer {
-			continue // a foreign (future top-up) wallet — counted in balance, not a monthly batch
+		if meta[commercial.WalletMetaTenant] != "" && meta[commercial.WalletMetaTenant] != extCustomer {
+			continue // a foreign wallet — counted in balance, never a batch
+		}
+		// Three-way family classification (#86 Task 1): a period-carrying
+		// wallet is the monthly family (Base monthly OR purchase first-period
+		// — both expire at period end and never roll over, #82 D4); a
+		// period-less wallet of THIS tenant is a top-up batch (the #85
+		// payment-confirmed credits shape: no weknora_period key, grant-time
+		// metadata anchors only). Anything else (foreign or unanchored) is
+		// not a batch.
+		source := ""
+		if period != "" {
+			source = commercial.BatchSourceMonthly
+		} else if meta[commercial.WalletMetaTenant] == extCustomer {
+			source = commercial.BatchSourceTopUp
+		} else {
+			continue // unanchored — counted in balance, not a batch
 		}
 		expires := time.Time{}
 		if t, err := time.Parse(time.RFC3339, w.ExpirationAt); err == nil {
 			expires = t.UTC()
 		}
+		granted := time.Time{}
+		if t, err := time.Parse(time.RFC3339, w.CreatedAt); err == nil {
+			granted = t.UTC()
+		}
 		b.Batches = append(b.Batches, commercial.CreditBatchSnapshot{
 			Period:       period,
 			BalanceMicro: commercial.CentsToMicro(w.BalanceCents),
 			ExpiresAt:    expires,
+			Source:       source,
+			GrantedAt:    granted,
 		})
 	}
 	return commercial.Snapshot{Kind: commercial.SnapshotKindBenefits, Benefits: b}, nil

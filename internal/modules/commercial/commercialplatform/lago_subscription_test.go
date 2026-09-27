@@ -179,14 +179,19 @@ type stubWallet struct {
 	GrantedCents int64
 	BalanceCents int64
 	ExpiresAt    string
+	CreatedAt    string
 	Metadata     map[string]string
 }
 
 func walletJSON(w stubWallet) string {
 	m, _ := json.Marshal(w.Metadata)
+	createdAt := w.CreatedAt
+	if createdAt == "" {
+		createdAt = "2099-01-01T00:00:00Z"
+	}
 	return fmt.Sprintf(
-		`{"lago_id":%q,"name":%q,"status":%q,"balance_cents":%d,"granted_credits":"%s","rate_amount":"1","expiration_at":%q,"metadata":%s,"currency":"CNY"}`,
-		w.LagoID, w.Name, w.Status, w.BalanceCents, centsString(w.GrantedCents), w.ExpiresAt, string(m))
+		`{"lago_id":%q,"name":%q,"status":%q,"balance_cents":%d,"granted_credits":"%s","rate_amount":"1","expiration_at":%q,"created_at":%q,"metadata":%s,"currency":"CNY"}`,
+		w.LagoID, w.Name, w.Status, w.BalanceCents, centsString(w.GrantedCents), w.ExpiresAt, createdAt, string(m))
 }
 
 func centsString(cents int64) string { return commercial.FenToDecimalString(cents) }
@@ -949,6 +954,74 @@ func TestLagoBenefitsSnapshotIncludesPurchaseBatch(t *testing.T) {
 	}
 	if b.BalanceMicro != commercial.CentsToMicro(100)+commercial.CentsToMicro(990) {
 		t.Fatalf("balance must carry both wallets, got %d", b.BalanceMicro)
+	}
+}
+
+// TestLagoBenefitsSnapshotListsTopUpBatch (#86 Task 1): an active wallet
+// carrying NO weknora_period metadata but THIS tenant's weknora_tenant key
+// (the #85 top-up batch shape) must join Batches with Source=topup and
+// GrantedAt = the wallet's created_at; the monthly batch answers
+// Source=monthly. The balance sum still carries both (existing behavior).
+func TestLagoBenefitsSnapshotListsTopUpBatch(t *testing.T) {
+	stub := newCombinedStub(t)
+	stub.wallets.entitlementCustomer = commercial.ExternalCustomerID(subTenant)
+	stub.subs.preloaded = []stubSubscription{{
+		ExternalID:       commercial.ExternalSubscriptionID(subTenant),
+		ExternalCustomer: commercial.ExternalCustomerID(subTenant),
+		PlanCode:         subPlanCode,
+		Status:           "active",
+	}}
+	stub.wallets.mu.Lock()
+	stub.wallets.wallets = []stubWallet{
+		{ // top-up shape: no period key, this tenant's tenant key
+			LagoID: "w-topup", Customer: commercial.ExternalCustomerID(subTenant),
+			Name: commercial.ExternalCustomerID(subTenant) + "-topup-ord1", Status: "active",
+			GrantedCents: 5000, BalanceCents: 5000,
+			ExpiresAt: "2100-01-31T00:00:00Z", CreatedAt: "2099-01-10T00:00:00Z",
+			Metadata: map[string]string{commercial.WalletMetaTenant: commercial.ExternalCustomerID(subTenant)},
+		},
+		{ // monthly shape (the established seed convention)
+			LagoID: "w-monthly", Customer: commercial.ExternalCustomerID(subTenant),
+			Name: commercial.MonthlyWalletName(subTenant, "2099-01"), Status: "active",
+			GrantedCents: 990, BalanceCents: 990, ExpiresAt: "2099-02-01T00:00:00Z",
+			CreatedAt: "2099-01-01T00:00:00Z",
+			Metadata: map[string]string{
+				commercial.WalletMetaTenant: commercial.ExternalCustomerID(subTenant),
+				commercial.WalletMetaPeriod: "2099-01",
+			},
+		},
+	}
+	stub.wallets.mu.Unlock()
+	snap, err := subAdapter(stub.url()).ReadSnapshot(context.Background(), commercial.SnapshotQuery{
+		Kind: commercial.SnapshotKindBenefits, TenantID: subTenant})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sawTopUp, sawMonthly bool
+	for _, b := range snap.Benefits.Batches {
+		switch b.Source {
+		case commercial.BatchSourceTopUp:
+			sawTopUp = true
+			if b.BalanceMicro != commercial.CentsToMicro(5000) {
+				t.Fatalf("topup balance: %d", b.BalanceMicro)
+			}
+			if !b.GrantedAt.Equal(time.Date(2099, 1, 10, 0, 0, 0, 0, time.UTC)) {
+				t.Fatalf("topup granted_at: %v", b.GrantedAt)
+			}
+			if b.Period != "" {
+				t.Fatalf("topup batch carries no calendar period, got %q", b.Period)
+			}
+		case commercial.BatchSourceMonthly:
+			sawMonthly = true
+		default:
+			t.Fatalf("unknown source %q", b.Source)
+		}
+	}
+	if !sawTopUp || !sawMonthly {
+		t.Fatalf("batches incomplete: topup=%v monthly=%v", sawTopUp, sawMonthly)
+	}
+	if snap.Benefits.BalanceMicro != commercial.CentsToMicro(5990) { // both count (existing behavior)
+		t.Fatalf("balance = %d", snap.Benefits.BalanceMicro)
 	}
 }
 

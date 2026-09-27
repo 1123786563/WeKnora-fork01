@@ -425,7 +425,10 @@ func (f *FakeAdapter) ReadSnapshot(_ context.Context, query commercial.SnapshotQ
 		}
 		// Raw authority truth: TERMINATED wallets are excluded; expired but
 		// not-yet-terminated ones are INCLUDED (the coordinator overlays
-		// registry expiry).
+		// registry expiry). Batch families (#86 Task 1): a deterministic-name
+		// wallet is the monthly family; any OTHER wallet of this customer is
+		// a top-up batch (the #85 payment-confirmed shape — the fake models
+		// it by name, exactly how tests seed it).
 		now := f.nowUTC()
 		for _, w := range f.wallets {
 			if w.Customer != extCustomer || w.Terminated {
@@ -441,6 +444,15 @@ func (f *FakeAdapter) ReadSnapshot(_ context.Context, query commercial.SnapshotQ
 					Period:       period,
 					BalanceMicro: commercial.CentsToMicro(visible),
 					ExpiresAt:    w.ExpiresAt,
+					Source:       commercial.BatchSourceMonthly,
+					GrantedAt:    w.CreatedAt,
+				})
+			} else {
+				b.Batches = append(b.Batches, commercial.CreditBatchSnapshot{
+					BalanceMicro: commercial.CentsToMicro(visible),
+					ExpiresAt:    w.ExpiresAt,
+					Source:       commercial.BatchSourceTopUp,
+					GrantedAt:    w.CreatedAt,
 				})
 			}
 		}

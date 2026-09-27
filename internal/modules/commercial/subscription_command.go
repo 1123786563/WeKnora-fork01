@@ -253,12 +253,27 @@ const (
 
 // CreditBatchSnapshot is one wallet batch inside a benefits snapshot: the
 // calendar period, the RAW authority balance micro (expiry overlay is the
-// coordinator's job), and the batch's expiry instant.
+// coordinator's job), and the batch's expiry instant. Source and GrantedAt
+// are additive (#86): the closed batch family (monthly vs top-up — top-up
+// batches are the #85 payment-confirmed credits shape) and the authority's
+// grant instant (created_at), the consumption-order tie-break input
+// ("earliest expiry, then earliest grant").
 type CreditBatchSnapshot struct {
 	Period       string
 	BalanceMicro int64
 	ExpiresAt    time.Time
+	Source       string    // closed set: BatchSourceMonthly | BatchSourceTopUp
+	GrantedAt    time.Time // the wallet's created_at (grant time, tie-break)
 }
+
+// Batch sources — the closed two-family set. A top-up batch carries no
+// calendar period (Period stays ""); a monthly-family batch (Base monthly
+// OR purchase first-period — both expire at period end and never roll over,
+// #82 D4) answers BatchSourceMonthly.
+const (
+	BatchSourceMonthly = "monthly"
+	BatchSourceTopUp   = "topup"
+)
 
 // BenefitsSnapshot is the authority-side benefits section of a Snapshot: the
 // subscription truth, the attached plan code (seam-internal — the service
