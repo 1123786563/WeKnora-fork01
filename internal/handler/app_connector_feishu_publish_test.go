@@ -112,6 +112,10 @@ func TestFeishuPublishActionLookupIsTenantScoped(t *testing.T) {
 	require.NoError(t, db.Create(&appconnectorrepo.ActionRow{ID: "act-fx", TenantID: 7, ConnectionID: "conn-feishu",
 		AppVersion: "feishu/v1", Target: "fld-1", Risk: "write", ArgsSnapshot: "{}", ArgsDigest: "d",
 		State: "authorized"}).Error)
+	// B5-F42: the family ledger — plan formation always writes this row, so
+	// a resolvable action carries one.
+	require.NoError(t, db.Create(&appconnectorrepo.PublicationRow{TenantID: 7, ActionID: "act-fx", ConnectionID: "conn-feishu",
+		Provider: "feishu", Mode: "create", Destination: "fld-1", State: "planned"}).Error)
 	w := feishuPublishDo(t, engine, http.MethodPost, "/api/v1/apps/feishu-publish/actions/act-fx/publish", "")
 	require.Equal(t, http.StatusNotImplemented, w.Code, w.Body.String())
 	// Foreign tenant id is indistinguishable from missing: 404.

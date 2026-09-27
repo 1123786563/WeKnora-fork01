@@ -11,6 +11,8 @@ package publish
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"strings"
 	"testing"
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
@@ -171,4 +173,30 @@ func TestPublishServiceProfilesAreSymmetric(t *testing.T) {
 			require.Equal(t, repoappconn.PublicationFailed, outcome.Receipt.State)
 		})
 	}
+}
+
+// TestFeishuProfileBlocksOfMapsAdapterSentinels pins B5-F78/F57: the feishu
+// profile must surface the NEUTRAL publish sentinels — the family the
+// handler's failPublish matches — not the adapter-package instances whose
+// errors.Is chains never reach the handler. Empty content → the 400 branch;
+// an oversized block set → the 413 branch.
+func TestFeishuProfileBlocksOfMapsAdapterSentinels(t *testing.T) {
+	profile := FeishuProfile(&fakeRemote{})
+
+	_, err := profile.BlocksOf("   \n\n  \n\t\n")
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrPublishEmptyContent, "空内容必须落到 publish 包哨兵（handler 400 分支可达）")
+
+	paragraphs := make([]string, MaxPublishBlocks+1)
+	for i := range paragraphs {
+		paragraphs[i] = "段"
+	}
+	_, err = profile.BlocksOf(strings.Join(paragraphs, "\n\n"))
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrPublishContentTooLarge, "超限块数必须落到 publish 包哨兵（handler 413 分支可达）")
+
+	blocks, err := profile.BlocksOf("第一段。\n\n第二段。")
+	require.NoError(t, err)
+	require.Len(t, blocks, 2, "正常内容不受影响")
+	require.False(t, errors.Is(err, appconn.ErrFeishuPublishEmptyContent))
 }

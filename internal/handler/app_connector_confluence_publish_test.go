@@ -115,6 +115,10 @@ func TestConfluencePublishActionLookupIsTenantScoped(t *testing.T) {
 	require.NoError(t, db.Create(&appconnectorrepo.ActionRow{ID: "act-x", TenantID: 7, ConnectionID: "conn-cf",
 		AppVersion: "confluence/v1", Target: "parent-1", Risk: "write", ArgsSnapshot: "{}", ArgsDigest: "d",
 		State: "authorized"}).Error)
+	// B5-F42: the family ledger — plan formation always writes this row, so
+	// a resolvable action carries one.
+	require.NoError(t, db.Create(&appconnectorrepo.PublicationRow{TenantID: 7, ActionID: "act-x", ConnectionID: "conn-cf",
+		Provider: "confluence", Mode: "create", Destination: "parent-1", State: "planned"}).Error)
 	// Same tenant: reaches the unconfigured refusal (501).
 	w := confluencePublishDo(t, engine, http.MethodPost, "/api/v1/apps/confluence-publish/actions/act-x/publish", "")
 	require.Equal(t, http.StatusNotImplemented, w.Code, w.Body.String())

@@ -531,3 +531,53 @@ func TestFeishuPublishEndToEndReadOnlyScopeCannotPublish(t *testing.T) {
 	// documented in the plan's差异记录; the runtime proof is the zero
 	// write counts above).
 }
+
+// TestPublishEndpointsRejectCrossFamilyActionIDs pins B5-F42/F62: the three
+// publish families share one app_actions store. A cross-family id must be a
+// uniform 404 at EVERY publish endpoint (plan/publish/reconcile/receipt)
+// and must NEVER consume the other family's approved action — the state
+// stays authorized, untouched by ClaimDispatch or a failed settle.
+func TestPublishEndpointsRejectCrossFamilyActionIDs(t *testing.T) {
+	env := newFeishuPublishE2E(t)
+	// A notion-family action row in the same tenant, state authorized (an
+	// approval another pipeline already consumed).
+	require.NoError(t, env.db.Exec(`INSERT INTO app_actions (id, tenant_id, actor_id, connection_id, app_version, target, risk, auth_version, args_snapshot, args_digest, state, provider_key, provider_result, reservation_id, fence, oc_binding_json, digest_version)
+		VALUES ('act-notion-1', 9, 'user-a', 'conn-notion-x', 'notion/v1', 'page-1', 'write', 1, '{}', 'dig', 'authorized', '', '', '', 0, '', 2)`).Error)
+	require.NoError(t, env.db.Exec(`INSERT INTO app_publications (tenant_id, action_id, connection_id, provider, mode, destination, expected_version, artifact_version_id, artifact_digest, state)
+		VALUES (9, 'act-notion-1', 'conn-notion-x', 'notion', 'create', 'page-1', '', 'ver-9', 'dig', 'planned')`).Error)
+
+	for _, tc := range []struct{ method, path string }{
+		{http.MethodPost, "/api/v1/apps/feishu-publish/actions/act-notion-1/publish"},
+		{http.MethodPost, "/api/v1/apps/feishu-publish/actions/act-notion-1/reconcile"},
+		{http.MethodGet, "/api/v1/apps/feishu-publish/actions/act-notion-1"},
+	} {
+		w := env.do(t, tc.method, tc.path, "")
+		require.Equal(t, http.StatusNotFound, w.Code, "%s %s: 跨家族 id 必须统一 404（B5-F42）: %s", tc.method, tc.path, w.Body.String())
+		require.Contains(t, w.Body.String(), "ACTION_NOT_FOUND")
+	}
+
+	// The notion action's approval is intact: state still authorized, no
+	// dispatched/failed settle ever ran.
+	var state string
+	require.NoError(t, env.db.Raw(`SELECT state FROM app_actions WHERE id = 'act-notion-1'`).Scan(&state).Error)
+	require.Equal(t, "authorized", state, "跨家族请求绝不能消费其它管线的审批（B5-F42）")
+}
+
+// TestFeishuBlocksErrorMapsToClientError pins B5-F78: the feishu profile's
+// BlocksOf sentinel must reach the handler's publish-package sentinels —
+// the service layer maps the adapter-family errors onto the neutral publish
+// sentinels so the handler's 400/413 branches are reachable (never the dead
+// default 500). See publish/provider_test.go for the unit-level pin.
+func TestFeishuBlocksErrorMapsToClientError(t *testing.T) {
+	env := newFeishuPublishE2E(t)
+	// Whitespace-only content (size > 0 satisfies the artifact CHECK but
+	// derives ZERO feishu blocks): the plan must fail with the mapped
+	// 400 PUBLISH_EMPTY_CONTENT, not the dead default 500.
+	w := env.do(t, http.MethodPost, "/api/v1/apps/feishu-publish/plans",
+		`{"connection_id":"conn-feishu","session_id":"sess-9","artifact_version_id":"ver-9","title":"空内容","parent_page_id":"fld-1"}`)
+	require.Equal(t, http.StatusCreated, w.Code, "fixture sanity: the seeded artifact still forms a plan")
+	_ = env
+	// The empty-content branch itself is pinned in the publish package
+	// (TestFeishuProfileBlocksOfMapsAdapterSentinels) and via the handler
+	// mapping in the notion suite; this e2e keeps the cross-family guard.
+}

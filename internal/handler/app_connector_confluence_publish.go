@@ -54,14 +54,37 @@ type confluencePublishPlanInput struct {
 	PageID            string `json:"page_id"`
 }
 
-// confluenceActionByID resolves an action inside the tenant — a
-// cross-tenant id and a missing one are both 404, never a 403 that leaks
-// existence.
+// publishActionOfFamily checks that the action id carries a publication row
+// of the given provider family (the three publish families share the
+// app_actions + app_publications stores; the publication's provider column
+// is the family ledger written at plan formation). A cross-family id is the
+// same uniform 404 as a missing one (B5-F42/F62): the write endpoints must
+// NEVER resolve through to Execute/ClaimDispatch, which would consume the
+// other pipeline's approval and settle it failed.
+func publishActionOfFamily(c *gin.Context, db *gorm.DB, tenantID uint64, id, provider string) bool {
+	var count int64
+	if err := db.WithContext(c.Request.Context()).Model(&appconnectorrepo.PublicationRow{}).
+		Where("tenant_id = ? AND action_id = ? AND provider = ?", tenantID, id, provider).
+		Count(&count).Error; err != nil || count == 0 {
+		appFail(c, http.StatusNotFound, "ACTION_NOT_FOUND", "action not found")
+		return false
+	}
+	return true
+}
+
+// confluenceActionByID resolves an action inside the tenant AND inside the
+// confluence publish family — a cross-tenant id, a missing one and a
+// cross-family one (notion/feishu share the same app_actions store) are all
+// the uniform 404, never a 403 that leaks existence and NEVER a dispatch
+// that consumes another pipeline's approved action (B5-F42/F62).
 func (h *AppConfluencePublishHandler) confluenceActionByID(c *gin.Context, tenantID uint64, id string) (appconnectorrepo.ActionRow, bool) {
 	var row appconnectorrepo.ActionRow
 	if err := h.db.WithContext(c.Request.Context()).
 		Where("tenant_id = ? AND id = ?", tenantID, id).First(&row).Error; err != nil {
 		appFail(c, http.StatusNotFound, "ACTION_NOT_FOUND", "action not found")
+		return row, false
+	}
+	if !publishActionOfFamily(c, h.db, tenantID, id, "confluence") {
 		return row, false
 	}
 	return row, true

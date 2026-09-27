@@ -100,18 +100,18 @@ var _ appconnectorsvc.UnknownResolver = (*ConfluenceBridge)(nil)
 func (b *ConfluenceBridge) adapterFor(ctx context.Context, snap appconnectorsvc.ActionSnapshot) (appconn.Adapter, error) {
 	scope, err := b.scopes.ConfluenceScope(ctx, snap.ConnectionID)
 	if err != nil {
-		return nil, fmt.Errorf("%w: scope for connection %q: %v", appconnectorsvc.ErrDispatchNotStarted, snap.ConnectionID, err)
+		return nil, fmt.Errorf("%w: scope for connection %q: %w", appconnectorsvc.ErrDispatchNotStarted, snap.ConnectionID, err)
 	}
 	if scope.AppID != appIDConfluence {
 		return nil, fmt.Errorf("%w: connection %q is %q, not a confluence connection", appconnectorsvc.ErrDispatchNotStarted, snap.ConnectionID, scope.AppID)
 	}
 	pol, err := b.policies.PolicyFor(ctx, snap.ConnectionID)
 	if err != nil {
-		return nil, fmt.Errorf("%w: policy for connection %q: %v", appconnectorsvc.ErrDispatchNotStarted, snap.ConnectionID, err)
+		return nil, fmt.Errorf("%w: policy for connection %q: %w", appconnectorsvc.ErrDispatchNotStarted, snap.ConnectionID, err)
 	}
 	cred, err := b.tokens.Token(ctx, snap.ConnectionID, snap.AuthVersion)
 	if err != nil {
-		return nil, fmt.Errorf("%w: credential for connection %q: %v", appconnectorsvc.ErrDispatchNotStarted, snap.ConnectionID, err)
+		return nil, fmt.Errorf("%w: credential for connection %q: %w", appconnectorsvc.ErrDispatchNotStarted, snap.ConnectionID, err)
 	}
 	caps := func(ctx context.Context, a appconn.Action) ([]string, error) {
 		if !scope.WriteCapability {

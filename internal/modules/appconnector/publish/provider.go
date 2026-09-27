@@ -11,6 +11,8 @@ package publish
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 
 	appconn "github.com/Tencent/WeKnora/internal/modules/appconnector"
 )
@@ -60,14 +62,29 @@ func NotionProfile(remote NotionRemoteReader) ProviderProfile {
 // FeishuProfile is #49's profile. The snapshot field names bind the
 // FE-PUB-01 contract parsed by appconn.ParseFeishuDocCreate/UpdateSnapshot:
 // create = exactly {parent_folder, title, blocks}; update = exactly
-// {document_id, expected_revision, title, blocks}. The title is
-// approval/ledger metadata — the Feishu create-document contract has no
-// title parameter (SDK model.go:7895-7896), so nothing sends or compares it.
+// {document_id, expected_revision, title, blocks}.
 func FeishuProfile(read NotionRemoteReader) ProviderProfile {
 	return ProviderProfile{
 		AppID: "feishu", Provider: "feishu", ActionVersion: "feishu/v1",
 		ConflictResultPrefix: FeishuVersionConflictResult,
-		BlocksOf:             appconn.FeishuTextBlocks,
+		// B5-F78/F57: the adapter-domain block projection's sentinels are
+		// mapped onto the NEUTRAL publish-package errors — the family the
+		// handler's failPublish matches. Returning the adapter instances
+		// verbatim left the handler's 400/413 branches unreachable
+		// (errors.Is over different instances) and surfaced 500s.
+		BlocksOf: func(text string) ([]json.RawMessage, error) {
+			blocks, err := appconn.FeishuTextBlocks(text)
+			if err != nil {
+				if errors.Is(err, appconn.ErrFeishuPublishEmptyContent) {
+					return nil, fmt.Errorf("%w: %v", ErrPublishEmptyContent, err)
+				}
+				if errors.Is(err, appconn.ErrFeishuPublishContentTooLarge) {
+					return nil, fmt.Errorf("%w: %v", ErrPublishContentTooLarge, err)
+				}
+				return nil, err
+			}
+			return blocks, nil
+		},
 		CreateArgs: func(parent, title string, blocks []json.RawMessage) ([]byte, error) {
 			return json.Marshal(map[string]any{"parent_folder": parent, "title": title, "blocks": blocks})
 		},

@@ -52,11 +52,18 @@ type feishuPublishPlanInput struct {
 	PageID            string `json:"page_id"`        // update: the published document id
 }
 
+// feishuActionByID resolves an action inside the tenant AND inside the
+// feishu publish family (notion/confluence share the same stores): a
+// cross-family id is the uniform 404 and never consumes the other
+// pipeline's approved action (B5-F42/F62).
 func (h *AppFeishuPublishHandler) feishuActionByID(c *gin.Context, tenantID uint64, id string) (appconnectorrepo.ActionRow, bool) {
 	var row appconnectorrepo.ActionRow
 	if err := h.db.WithContext(c.Request.Context()).
 		Where("tenant_id = ? AND id = ?", tenantID, id).First(&row).Error; err != nil {
 		appFail(c, http.StatusNotFound, "ACTION_NOT_FOUND", "action not found")
+		return row, false
+	}
+	if !publishActionOfFamily(c, h.db, tenantID, id, "feishu") {
 		return row, false
 	}
 	return row, true
