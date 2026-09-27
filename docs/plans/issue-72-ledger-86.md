@@ -6,7 +6,19 @@
 - Issue：https://github.com/1123786563/WeKnora-fork01/issues/86
 - Worktree：`.worktrees-issue72/issue-86`，分支 `codex/issue-72-lago-86`
 - 集成基线：`ee02d3218`（issue-72: ocr issue-82 round 1；与 lago-int HEAD 同点，实测 `git -C .worktrees-issue72/lago-int log -1`）
-- 计划编写日期：2026-09-28
+- 计划编写日期：2026-09-28；审查 R1 修订：2026-09-28（8 项 findings 全部处置，见下）
+
+## 审查 R1 修订记录（2026-09-28，8 项全处置）
+
+1. **High（消费顺序编码混合场景乱序）**：采纳。原「充值单类 priority=2 + 月度二元让位（1↔3）」在「老化充值+新充值+月度」三类共存时给出 A→B→M 而正确序为 A→M→B，已证伪。修订为两层：创建初值（原编码保留为初值）+ **刷新时权威重排**（`WalletRank` 按 (expires_at, created_at) 计秩 → 不一致者 `PUT /api/v1/wallets/:id {priority}`）。重排可行性有本会话实测源码证据：pinned v1.53.0 运行容器 `wallet_actions.rb` update_params permit `:priority`、`Wallets::UpdateService` 赋值 priority、terminated 钱包拒绝 update（docker exec weknora-lago-82r5-api-1 grep/sed 实读）。新增混合场景测试 `TestWalletRankMixedFamilies`/`TestLagoRebalancePutsMixedFamiliesInExpiryOrder`/`TestRefreshRebalancesMixedFamilies`/Task 6 阶段 d（真实栈重排 + BLOCKED gate：PUT 被拒则按 spec L132 升级，不静默降级）。矩阵 AC② 行同步扩充。
+2. **Med（端口 48895/48896 被 t11 栈占用）**：采纳。docker ps 复核实测 t11 占 48895/48896，改选 48897/48898（实测空闲），端口纪律行加「执行前 docker ps 复核」指令。
+3. **Med（TestLagoBenefitsChain 不存在）**：采纳。grep 实测唯一集成测试为 `TestLagoBasePlanIntegration`（lago_benefits_integration_test.go:148），引用已替换。
+4. **Med（容器装配点错误）**：采纳。实测 container.go:2597 属 newMobileVoiceHandler 手动构造（无关）、BenefitsService 装配在 :915 fx Provide、fx 图无 BudgetStore provide。修订：`NewBenefitsService` 签名增第 5 参 + 新增 `must(container.Provide(repocommercial.NewBudgetStore))`，废弃 WithBudgetStore 链式法，计划写明两处改动与 2597 不相干勿改。
+5. **Med（PG fixture 缺 000161 owner 列）**：采纳。Task 3 Step 4 增「修复先行」步骤（fixture 补读 000161_commercial_reservations_owner.up.sql），明确这是 issue inventory L180 登记、既有 2 测试 FAIL 的代码级根因修复，属本任务交付物；blocked-env 不得掩盖代码级缺陷。
+6. **Low（矩阵 void/refund 无范围声明）**：采纳。矩阵下加范围声明：void/refund 归 #95/#96/#97，#105 矩阵 8 全绿由其闭合。
+7. **Low（RED 失败解释矛盾）**：采纳。统一为「顺序未定义，任意命中行使断言失败、RED 稳定」。
+8. **Low（purchase 首期批次归类未显式）**：采纳。Task 1 Step 3 改三分显式归类（monthly/purchase→monthly/topup），L9-13 contracts 失真注释列入 Task 5 修改项。
+
 
 ## 编写期核实记录（全部本次会话实测）
 
