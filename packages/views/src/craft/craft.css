@@ -1,6 +1,33 @@
 /* W05 craft workbench styles — extends the existing wk-* brand tokens
-   (packages/ui + apps/web styles.css palette: var(--craft-ink) ink, var(--craft-canvas) canvas,
+   (apps/web styles.css :root palette: var(--craft-ink) ink, var(--craft-canvas) canvas,
    var(--craft-brand) accent, var(--craft-danger) danger, var(--craft-success-text) success, var(--craft-line) hairline). */
+
+/* CFT-S00-T003 语义别名作用域：craft 只经别名继承品牌源（蓝品牌/绿动作），
+   绝不重涂全局调色板。原定义随 packages/ui 旧栈拆除丢失（theme.css 的
+   .wk-craft 块），此为其在新架构的等位复刻——别名逐条映射 apps/web
+   styles.css :root 的 --color-* 源变量（craft.test.ts 锁定本块）。 */
+.wk-craft {
+  --craft-brand: var(--color-primary);
+  --craft-brand-strong: var(--color-primary-strong);
+  --craft-brand-soft: var(--color-surface-wash);
+  --craft-accent: var(--color-accent);
+  --craft-accent-hover: var(--color-accent-hover);
+  --craft-accent-active: var(--color-accent-active);
+  --craft-accent-soft: var(--color-brand-light);
+  --craft-canvas: var(--color-canvas);
+  --craft-surface: var(--color-surface);
+  --craft-ink: var(--color-ink);
+  --craft-muted: var(--color-muted);
+  --craft-secondary-text: var(--color-muted-strong);
+  --craft-line: var(--color-line);
+  --craft-line-soft: var(--color-line-soft);
+  --craft-line-strong: var(--color-line-strong);
+  --craft-success-text: var(--color-success-text);
+  --craft-danger: var(--color-danger);
+  /* 无障碍修正：绿色按钮前景用深墨色（对比度 >= 4.5:1），非白。 */
+  --craft-action-fg: var(--color-ink);
+}
+
 
 .wk-craft-page { box-sizing: border-box; margin: 0 auto; max-width: 1180px; min-width: 0; overflow-x: clip; padding: 1.5rem 1.25rem 3rem; }
 .wk-craft-head { align-items: baseline; display: flex; flex-wrap: wrap; gap: 0.75rem; justify-content: space-between; margin-bottom: 1rem; }

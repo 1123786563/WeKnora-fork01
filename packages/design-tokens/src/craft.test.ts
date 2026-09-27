@@ -4,9 +4,13 @@
 // palette. These tests pin the three acceptance assertions:
 //   1. blue brand stays #2e6de6 and green action stays #07c05f (sources)
 //   2. craft aliases live under the .wk-craft scope only — the global
-//      :root primary is untouched
+//      palette (apps/web styles.css :root) is untouched
 //   3. the small-size green button foreground keeps >= 4.5:1 contrast
 //      (WCAG relative-luminance formula, computed, not eyeballed)
+// 架构注（旧栈拆除后）：别名定义块原在 packages/ui/src/theme.css 的 .wk-craft
+// 作用域，随该包删除而丢失——现已等位复刻进 packages/views/src/craft/craft.css
+// 顶部（别名指向 apps/web styles.css :root 的 --color-* 源变量）。本测试
+// 改读两处新事实源。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -14,8 +18,8 @@ import { fileURLToPath } from 'node:url';
 import { designTokens } from './tokens.ts';
 
 const pkgRoot = fileURLToPath(new URL('.', import.meta.url));
-const themeCss = readFileSync(new URL('../../ui/src/theme.css', import.meta.url), 'utf8');
 const craftCss = readFileSync(new URL('../../views/src/craft/craft.css', import.meta.url), 'utf8');
+const rootPaletteCss = readFileSync(new URL('../../../apps/web/src/styles.css', import.meta.url), 'utf8');
 
 /** WCAG 2.x relative luminance + contrast ratio. */
 function contrast(fg: string, bg: string): number {
@@ -42,11 +46,11 @@ test('source tokens keep the WeKnora blue brand and green action', () => {
   assert.equal(designTokens.color.canvas, '#f7f9fc');
 });
 
-test('.wk-craft aliases exist and never repaint the global :root', () => {
-  const scopeStart = themeCss.indexOf('.wk-craft {');
-  assert.ok(scopeStart > 0, 'theme.css must define the .wk-craft scope block');
-  const scopeEnd = themeCss.indexOf('}', scopeStart);
-  const scope = themeCss.slice(scopeStart, scopeEnd);
+test('.wk-craft aliases exist and never repaint the global palette', () => {
+  const scopeStart = craftCss.indexOf('.wk-craft {');
+  assert.ok(scopeStart > 0, 'craft.css must define the .wk-craft scope block');
+  const scopeEnd = craftCss.indexOf('}', scopeStart);
+  const scope = craftCss.slice(scopeStart, scopeEnd);
   // every design-table alias resolves to an existing source variable
   for (const [alias, source] of [
     ['--craft-brand', 'var(--color-primary'],
@@ -71,15 +75,15 @@ test('.wk-craft aliases exist and never repaint the global :root', () => {
   }
   // the accessibility correction: green buttons use the dark ink foreground
   assert.ok(scope.includes('--craft-action-fg: var(--color-ink)'), 'green action foreground must be ink (#172033), not white');
-  // the aliases must NOT leak into the global @theme source — the blue
-  // brand keeps its single definition there and gains no craft override
-  // (theme.css defines variables under Tailwind v4 @theme, not a :root block)
-  const themeStart = themeCss.indexOf('@theme');
-  const themeEnd = themeCss.indexOf('\n}', themeStart);
-  const themeBlock = themeCss.slice(themeStart, themeEnd);
-  assert.ok(themeBlock.includes('--color-primary: #2e6de6'), '@theme keeps the blue brand');
-  assert.ok(!themeBlock.includes('--craft-'), 'no craft alias may be defined in the global @theme block');
-  assert.equal((themeBlock.match(/--color-primary:/g) ?? []).length, 1, 'global primary stays single-sourced');
+  // the aliases must NOT leak into the global palette — the blue brand keeps
+  // its single definition there and gains no craft override（apps/web
+  // styles.css :root 块，旧 @theme 的等位事实源）
+  const rootStart = rootPaletteCss.indexOf(':root');
+  const rootEnd = rootPaletteCss.indexOf('}', rootStart);
+  const rootBlock = rootPaletteCss.slice(rootStart, rootEnd);
+  assert.ok(rootBlock.includes('--color-primary: #2e6de6'), 'the global palette keeps the blue brand');
+  assert.ok(!rootBlock.includes('--craft-'), 'no craft alias may be defined in the global palette block');
+  assert.equal((rootBlock.match(/--color-primary:/g) ?? []).length, 1, 'global primary stays single-sourced');
 });
 
 test('green small-size action foreground reaches at least 4.5:1', () => {
