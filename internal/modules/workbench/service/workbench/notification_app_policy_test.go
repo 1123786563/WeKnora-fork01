@@ -33,7 +33,7 @@ func execMigrationFiles(t *testing.T, db *gorm.DB, root string, files ...string)
 }
 
 // openMobilePushPolicyDB 只执行本域迁移子集（差异记录第 4 条：全目录迁移在 HEAD 因
-// 同号 000112 损坏），顺序必须保持 000058 → 000059 → 000060 → 000114（000114 重建段
+// 同号 000112 损坏），顺序必须保持 000058 → 000059 → 000060 → 000118（000118 重建段
 // 依赖前两者建出的 mobile_devices 与 mobile_notification_intents），
 // 再建 provider_state 表与最小 agent_runs/agent_run_events。
 func openMobilePushPolicyDB(t *testing.T) *gorm.DB {

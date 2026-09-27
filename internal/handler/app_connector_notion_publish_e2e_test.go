@@ -96,6 +96,12 @@ type e2eNotion struct {
 	patchCalls     int
 	appendCalls    int
 	dropNextAppend bool
+	// T21 (#51) additive hook: when a page is CREATED with this title,
+	// its first append-children reply is lost AFTER the effect applied
+	// (blocks land, the connection dies) — the plan-level unknown leg.
+	// The pre-existing dropNextAppend behavior is untouched.
+	dropAppendForTitle string
+	droppedOnce        map[string]bool
 }
 
 type e2ePage struct {
@@ -104,7 +110,7 @@ type e2ePage struct {
 }
 
 func newE2ENotion(token string) *e2eNotion {
-	return &e2eNotion{token: token, pages: map[string]*e2ePage{}}
+	return &e2eNotion{token: token, pages: map[string]*e2ePage{}, droppedOnce: map[string]bool{}}
 }
 
 func (e *e2eNotion) lock()   { e.mu.Lock() }
@@ -158,6 +164,11 @@ func (e *e2eNotion) server(t *testing.T) *httptest.Server {
 		e.nextID++
 		id := fmt.Sprintf("page-%d", e.nextID)
 		e.pages[id] = &e2ePage{id: id, parent: req.Parent.PageID, title: req.Properties.Title.Title[0].Text.Content, lastEdited: "2026-09-24T09:00:00.000Z"}
+		e.unlock()
+		e.lock()
+		if e.dropAppendForTitle != "" && req.Properties.Title.Title[0].Text.Content == e.dropAppendForTitle {
+			e.droppedOnce[id] = true
+		}
 		e.unlock()
 		writeJSON(w, 200, fmt.Sprintf(`{"object":"page","id":%q,"last_edited_time":"2026-09-24T09:00:00.000Z","parent":{"type":"page_id","page_id":%q}}`, id, req.Parent.PageID))
 	})
@@ -241,6 +252,10 @@ func (e *e2eNotion) server(t *testing.T) *httptest.Server {
 			drop := e.dropNextAppend
 			if drop {
 				e.dropNextAppend = false
+			}
+			if e.droppedOnce[id] {
+				delete(e.droppedOnce, id)
+				drop = true
 			}
 			results := append([]json.RawMessage(nil), p.children...)
 			e.unlock()

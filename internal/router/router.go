@@ -143,9 +143,6 @@ type RouterParams struct {
 	// T18 (#48): the Notion publish closed loop (plan formation through
 	// receipt) — its own handler so the frozen action lifecycle handlers
 	// stay untouched.
-	// T18 (#48): the Notion publish closed loop (plan formation through
-	// receipt) — its own handler so the frozen action lifecycle handlers
-	// stay untouched.
 	AppNotionPublishHandler *handler.AppNotionPublishHandler
 	// T19 (#49): the Feishu publish closed loop — the structural twin of
 	// the notion publish handler over the same provider-neutral service.
@@ -153,6 +150,10 @@ type RouterParams struct {
 	// T20 (#50): the Confluence publish closed loop — same wiring shape as
 	// the Notion publish handler, its own dedicated handler.
 	AppConfluencePublishHandler *handler.AppConfluencePublishHandler
+	// T21 (#51): the multi-action Action Plan surface (form / approve
+	// with exclusions / ordered execute / per-item projection) — its own
+	// handler over the same publish seam authority.
+	AppActionPlanHandler *handler.AppActionPlanHandler
 }
 
 // NewRouter 创建新的路由
@@ -447,6 +448,7 @@ func NewRouter(params RouterParams) *gin.Engine {
 		RegisterAppNotionPublishRoutes(v1, params.AppNotionPublishHandler)
 		RegisterAppFeishuPublishRoutes(v1, params.AppFeishuPublishHandler)
 		RegisterAppConfluencePublishRoutes(v1, params.AppConfluencePublishHandler)
+		RegisterAppActionPlanRoutes(v1, params.AppActionPlanHandler)
 		RegisterChunkerDebugRoutes(v1, rbacGuards)
 
 		// Fail fast if any declared API-key policy points at a route

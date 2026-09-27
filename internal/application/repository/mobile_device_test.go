@@ -24,7 +24,7 @@ func openMobileDeviceTestDB(t *testing.T) *gorm.DB {
 	require.NoError(t, err)
 	require.NoError(t, db.Exec(string(up)).Error)
 	// mobileDeviceRow 自带 AppID 后，旧 000058 schema 库上的 INSERT 会缺 app_id 列；
-	// 与 openMobileHandlerDB 同构成组补齐 000059 → 000060 → 000114（顺序固定）。
+	// 与 openMobileHandlerDB 同构成组补齐 000059 → 000060 → 000118（顺序固定）。
 	for _, file := range []string{
 		"000059_mobile_notifications.up.sql",
 		"000060_mobile_notification_delivery.up.sql",

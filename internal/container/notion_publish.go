@@ -9,6 +9,7 @@ import (
 	filesvc "github.com/Tencent/WeKnora/internal/application/service/file"
 	"github.com/Tencent/WeKnora/internal/handler"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/storageurl"
+	"github.com/Tencent/WeKnora/internal/modules/appconnector/plan"
 	"github.com/Tencent/WeKnora/internal/modules/appconnector/publish"
 	repoappconn "github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector"
 	appconnectorsvc "github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector"
@@ -35,7 +36,7 @@ func newNotionPublishHandler(
 	tenants interfaces.TenantService,
 	storage interfaces.StorageBackendResolver,
 	versions *repository.ArtifactVersionStore,
-) (*handler.AppNotionPublishHandler, error) {
+) (*handler.AppNotionPublishHandler, *handler.AppActionPlanHandler, error) {
 	pubs := repoappconn.NewPublicationStore(db)
 	bridge := publish.NewNotionBridge(
 		publish.NewDBNotionScopeSource(db),
@@ -49,7 +50,14 @@ func newNotionPublishHandler(
 		publish.NewDBNotionScopeSource(db))
 	h := handler.NewAppNotionPublishHandler(db)
 	h.SetNotionPublishService(svc)
-	return h, nil
+	// T21 (#51): the plan layer over the SAME publish ActionService —
+	// per-item digests/approvals/dispatch claims stay on the A03
+	// authority; the plan adds the set digest, exclusions and ordered
+	// partial-success execution.
+	planSvc := plan.NewService(repoappconn.NewPlanStore(db), store, actions, svc)
+	planHandler := handler.NewAppActionPlanHandler(db)
+	planHandler.SetActionPlanService(planSvc)
+	return h, planHandler, nil
 }
 
 // tenantStorageArtifactContent reads one artifact version's bytes through

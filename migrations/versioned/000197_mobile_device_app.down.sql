@@ -1,6 +1,6 @@
--- 与 sqlite 000114 down 对称（review round 1 修复）：跨 App 数据无法双保留，回滚前
+-- 与 sqlite 000118 down 对称（review round 1 修复）：跨 App 数据无法双保留，回滚前
 -- 确定性丢弃企业行。缺少 DELETE 时，同设备双 App 数据（official 与 enterprise:<slug>
--- 两行）会让下方 UNIQUE / PRIMARY KEY 重建因重复键直接失败，回滚卡死在 000193。
+-- 两行）会让下方 UNIQUE / PRIMARY KEY 重建因重复键直接失败，回滚卡死在 000197。
 DELETE FROM mobile_notification_intents WHERE app_id <> 'official';
 ALTER TABLE mobile_notification_intents DROP CONSTRAINT uq_mobile_notification_identity;
 ALTER TABLE mobile_notification_intents

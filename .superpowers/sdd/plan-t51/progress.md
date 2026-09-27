@@ -1,0 +1,51 @@
+# SDD ledger — plan: docs/plans/issue30-sweep/plans/plan-t51.md
+基线：29c1e5635，分支：codex/issue30-mobile-office（并行 worktree /Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue30-sweep-t51），DAG：docs/plans/issue30-sweep/dag.md
+Global Constraints：以下为批准 Spec / CONTEXT.md / Issue 的项目级约束，逐字引用，所有任务隐含遵守： - 「计划内容变化使旧批准失效。」（Issue #51 验收标准 1 原文） - 「部分成功只恢复确认未完成的动作。」（Issue #51 验收标准 2 原文） - 「端到端行为通过最高稳定 Interface 验证；底层单测、静态检查或 mock 不冒充真实集成证据。」（Issue #51 验收标准 3 原文） - CONTEXT.md「操作计划（Action Plan）」全文：「提交审批的一组确定外部操作，包含每项操作的连接、目标、内容摘要、顺序与版本；成员可整体批准或排除单项，执行结果仍逐项持久记录。任何目标、内容、连接或操作集合变化都会使既有批准失效。」与「_避免_：批准整个运行中的未知未来操作、一次批准后的永久自动执行。」——计划 digest 在批准与执行两个时刻都核对；
+## 派发前冲突扫描
+【Task 0→Task 1｜迁移编号】Task 0 把 public_agent_marketplace 重编到 sqlite 000118/versioned 000197（plan-t51.md:81），Task 1 的新表落位其后 119/198（plan-t51.md:188-191）；但实测执行根现状两号已被未提交工作区改动占用（`ls migrations/sqlite/ | grep 000118` → 000118_mobile_device_app，versioned → 000197_mobile_device_app，且 000114/000193_mobile_device_app 处于 git status D 未提交状态）——计划的 Step 0 强制核查+顺延条款（plan-t51.md:99-107「含未跟踪落盘文件」）精确覆盖此撞车，顺延为 119/198+120/199 即可，非阻塞但执行时必须真实触发顺延并联动六处。
+【Task 0→Task 1｜未覆盖分支】若同批 T67 的 mobile_device_app 重编先正式合入，duplicate 将消失，Task 0 前提失效，而计划 Step 1 的 Expected 写死「3 个 FAIL + duplicate migration」（plan-t51.md:113-114）未写该分支处置——由 Step 1 RED 基线实测暴露（实测会得 PASS 与计划不符），执行者须停下重估，标注为计划缺口非当前阻塞。
+【Task 0→Task 6｜可装载轨道】Task 0 修复 golang-migrate duplicate（plan-t51.md:9 作者实跑基线）是 Task 6 全量迁移 e2e `openNotionPublishE2EDB`（实测 internal/handler/app_connector_notion_publish_e2e_test.go:53 存在）可运行的前置；任务顺序 0→1→…→6 与该依赖一致，自洽。
+【Task 1→Task 2｜PlanStore 接口】Task 1 Produces 的 NewPlanStore/CreatePlan/FindPlan/ListPlanItems/ApprovePlan 与行类型、ErrPlanNotFound/ErrPlanState（plan-t51.md:197）被 Task 2 测试逐字消费（plan-t51.md:704-720 newPlanSvcEnv 与 :805 ListPlanItems），签名与 Task 1 实现代码（plan-t51.md:496-558）逐一咬合，一致。
+【Task 1→Task 5｜行类型】Task 5 handler 的 planByID 直接 gorm 查 repoappconn.ActionPlanRow（plan-t51.md:2011-2019）且测试 AutoMigrate 同两行类型（plan-t51.md:1841），依赖 Task 1 的表投影——已实测 ActionRow/ApprovalRow(:63)/PreAuthorizationRow(:75) 在 repository/appconnector/action.go 存在，ActionPlanRow 为 Task 1 新建，一致；轻微分层味道（绕过 PlanStore 复制 not-found→404 语义）但 wire 行为与 ErrPlanNotFound 路径一致。
+【Task 2→Task 3｜plan.go 占位交接】Task 2 留 `// Approve records the owner's whole-plan decision. IMPLEMENT IN TASK 3.` 占位（plan-t51.md:1147），Task 3 用同一文本做替换锚（plan-t51.md:1356）并删除两行 `var _` 占位卫兵（plan-t51.md:1215-1216→:1434），ApproveInput/normalizeExclusions/parseExclusions/equalSeqs/view 均在 Task 2 定义、Task 3 消费，交接自洽。
+【Task 2→Task 4｜类型与 helper】Task 4 消费 ItemOutcome/ExecuteOutcome/PlanStatus、ItemExecuted 等处置常量与 parseExclusions/view（plan-t51.md:1702-1776），全部在 Task 2 代码体（plan-t51.md:946-1067）定义；TestPlanApproveRecoveryExclusionFrozen 从 Task 3 挪至 Task 4 Step 1（plan-t51.md:1344 与 :1629-1630 两处互相注明），自洽。
+【Task 3→Task 4｜Approve→Execute 状态依赖】Task 4 Execute 消费 Task 3 Approve 写入的 excluded_json 冻结与 authorized 状态（plan-t51.md:1694-1726），approveAll helper 由 Task 3 定义（plan-t51.md:1246-1251）、Task 4 测试复用（plan-t51.md:1510 等），顺序正确，自洽。
+【Task 2-4→Task 5｜wire 契约】Task 5 Consumes plan.Service/ItemInput/FormInput/ApproveInput/FormPlan/Approve/Execute/Status 与三哨兵（plan-t51.md:1804）在 Task 2 Produces 列表逐字覆盖；failForm/failPlan 映射表引用的 publish 哨兵与 appconnectorsvc.ErrActionDigestMismatch/ErrActionState/ErrNoDispatcher 已实测存在（publish/plan.go:18-23、service/appconnector/action.go:21/24/41），一致。
+【Task 5→Task 6｜端点消费】Task 6 e2e 消费 Task 5 的四端点（FormActionPlan/ApproveActionPlan/ExecuteActionPlan/GetActionPlan，plan-t51.md:2577-2583）并复用 #48 的 ReconcileNotionAction/GetNotionPublication/GetAction（实测 :155/:178 与 app_connector_action.go:384 均存在），方法名与 Task 5 实现一致；handler 包以镜像路由代替 import router 的循环依赖理由成立（Task 5 自注 plan-t51.md:1801）。
+【Task 5 内部｜container 双输出】接线代码 `plan.NewService(repoappconn.NewPlanStore(db), store, actions, svc)`（plan-t51.md:2322）引用的变量实测均在 newNotionPublishHandler 作用域内（internal/container/notion_publish.go:28 db/store 形参、:46 actions、:47 svc、:41 pubs），container.go:1013 Provide 调用点零改动的声明与 dig 多输出现状相符，一致。
+【Task 6↔#48 夹具｜加法修改】Task 6 Step 1 声称的 e2eNotion「现状」结构体（plan-t51.md:2360-2374）与实测 internal/handler/app_connector_notion_publish_e2e_test.go:91-99 逐字段一致，newE2ENotion(:106)/lock/unlock(:110)/addPage(:113)/touch(:119)/server(:127)/patchCalls/appendCalls/dropNextAppend 均实测存在，req.Properties.Title.Title[0].Text.Content 与双打实际代码一致，既有 3 个 TestNotionPublish* e2e（:450/:496/:540）不依赖新字段，加法式零回归声明成立。
+【Task 1→Task 6｜迁移对齐测试】Task 6 TestAppActionPlansTablesExistAfterMigrations 断言的列集合（plan-t51.md:2469-2477）与 Task 1 DDL 列（tenant_id/id/actor_id/digest/state/excluded_json/approved_by/approved_at + items 四列，plan-t51.md:211-236）完全对齐，且计划注明该测试不引用编号故顺延免改（plan-t51.md:295），自洽。
+【Task 0 自洽】Files/联动点/Step 内编号文本一致（114→118、193→197、migration.go:33 常量与:123 探测串——两处原文与实测一致），Step 0 判定规则与顺延条款自洽；缺陷：Step 1 标题行连续重复两次（plan-t51.md:110-111，格式瑕疵），且 Step 1 Expected 未覆盖「duplicate 已被兄弟计划修复」分支（见上）。
+【Task 1 自洽】测试与实现逐字咬合（零项 CreatePlan→ErrPlanState :368/:497、跨租户 ErrPlanNotFound :371/:510、CAS 0 行→ErrPlanState :391/:554、ExcludedJSON "[2]" :402 序列化一致），Step 5「PASS（2 个测试）」与测试函数数一致；sqlite up 首行采用描述性注释与 000115-000117 近期文件同风格（实测首行），无冲突。
+【Task 2 自洽】4 个测试与实现咬合（digest 绑定集/序/内容/连接/目标/actor :741-782 vs :976-992、formation 零派发 :843、逐项 publication 行 :827 经实测 PublicationStore.FindByAction 存在 publication.go:91），stub 签名与 publish 接口实测一致（plan.go:33/:38、dispatcher.go:40/:235）；但 TestPlanFormMidItemFailureLeavesNoPlanRow 的「无 plan 行」腿为恒真断言（见缺陷行）。
+【Task 3 自洽】4 个测试与 Approve 实现咬合（外 digest→ErrPlanDigestMismatch 且零写入 :1316-1327 vs :1379-1381、排除集记录 :1293 vs :1402、超界/重复排除→ErrPlanInvalidInput :1330-1341 vs normalizeExclusions :1154-1172、占位锚与 var _ 清理说明与实际 import 使用一致 :1434），自洽。
+【Task 4 自洽】6 个测试与 Execute/Status 咬合：dispatch 计数断言依赖 scriptedDispatcher.calls（:1489/:1538-1542）、SetActionState(ctx,id,from,to) 四参与实测接口签名一致（action.go:146）、Conflict 断言依赖 PublishVersionConflictResult 前缀契约（实测 dispatcher.go:20 存在）、恢复腿 skipped/settled 语义与 switch 分支（:1709-1729）一一对应，Step 4 回归命令与计划级 testCommand 一致，自洽。
+【Task 5 自洽】两条 handler 测试与实现的 404-before-501 顺序互相咬合（未知 plan→planByID 先返回 404 :2011-2019，存在 plan+nil service→501 :2034/:2082/:2113/:2137），router 测试与注册实现路由表逐字一致（plan-t51.md:2271-2280 vs :2229-2235），CanDriveActionWrites 实测存在（internal/modules/appconnector/access.go:43）且 appRequireWriteCapability 用法与既有判例同款（app_connector_action.go:53），自洽。
+【Task 6 自洽】4 条 e2e 断言与实现语义咬合（AC1 双时刻 409、fake 外发计数 pages/appendCalls/patchCalls、排除项停在 awaiting_approval 经既有 GET /apps/actions/:id 查证、reconcile 复用既有端点），`-run 'TestActionPlan|...'` 非锚定正则可匹配 TestAppActionPlansTablesExistAfterMigrations【勘误 2026-09-27 终审 Finding 1：此判断与事实不符——该测试名含 `TestAppActionPlans` 而非 `TestActionPlan` 子串，本 ask 实跑 `go test ./internal/handler/ -list 'TestActionPlan|TestNotionPublish|TestAppPublications'` 仅 12 条、不含该测试；终修已在计划级 testCommand 补 `TestAppActionPlans` 分支（plan-t51.md:2890），-list 复核 13 条全含】，import 的 NewAgentRunStore.Admit/NewArtifactVersionStore/NewMCPOAuthBindingStore/NewCredentialTokenSource 组合与 container 现行装配同款（notion_publish.go:38-47），自洽。
+【审查规则缺陷｜恒真断言】Task 2 TestPlanFormMidItemFailureLeavesNoPlanRow 的「no plan items may exist」腿（plan-t51.md:869-872）用 `e.plans.ListPlanItems(ctx, 7, "nonexistent")` 查一个必然不存在的 plan id，空结果恒真、无法捕获孤儿 items——该腿不断言任何东西，且其后 `if err == nil` 死分支（:866-868）冗余；建议改为统计全表或按可推导锚查询（修订建议，不阻塞其他任务）。
+【审查规则缺陷｜声明的逐字复制】Task 6 newActionPlanE2E 的种子数据刻意逐字复制 #48 newNotionPublishE2E（实测 :281 存在被复制原件；plan-t51.md:2493-2495 注释自认 "deliberately duplicated … merge-isolated"），Task 5 handler 测试亦手抄镜像路由表（plan-t51.md:1859-1865 自认 "Mirror of RegisterAppActionPlanRoutes"）——两处均为计划明确声明的复制模式（#48 同判例、冻结夹具零改动理由），按规则如实标出，风险是路由/种子变更时双处同步。
+【综合结论】11 对任务间文件/接口重叠全部核实为产出—消费顺序正确、签名逐字咬合，无循环依赖、无同文件并行写冲突（plan.go/plan_test.go 为 Task 2→3→4 串行交接）；7 个任务自洽性全部成立，仅 Task 2 一处恒真断言、Task 0 一处格式重复与一个未覆盖分支；Task 0 编号撞车已被计划自带 Step 0 强制核查+顺延条款覆盖且实测现状正需触发顺延（118/197 已被未提交的 mobile_device_app 占用）——无必须先修订计划的阻塞冲突。
+Task 1: complete（commits 11a0676..5d4ccd7, review clean）
+Task 2: fix round 1/5（1 项裁决，新破坏 0）
+Task 2: complete（commits 5d4ccd7..f185b13, review clean）
+Task 3: fix round 1/5（2 项裁决，新破坏 0）
+Task 3: fix round 2/5（2 项裁决，新破坏 0）
+Task 3: fix round 3/5（2 项裁决，新破坏 0）
+Task 3: fix round 4/5（2 项裁决，新破坏 0）
+Task 3: fix round 5/5（2 项裁决，新破坏 0）
+Task 3: parked — important:【plan-mandated，非实现偏差】排除集冻结存在并发 TOCTOU 窗口：Approve 的冻结检查（plan.go:280 row.State==Pl；important:【跨任务协调项，非 Task 3 缺陷，实现员疑虑 1 经本 ask 实核属实】Task 0（迁移轨道去重重编）在本 worktree 未执行：ls 实证 mi；minor:【plan-mandated】TestPlanApproveWholeApprovesEveryIncludedItem 与 TestPlanApproveEx；minor:GREEN 输出含 gorm trace 红色 r — Ruling: 达到 5 轮上限，移交整计划最终审查裁决
+Task 3: complete-with-parked（commits f185b13..3db22f0, parked 见上）
+Task 4: complete（commits 3db22f0..59aaffb, review clean）
+Task 5: fix round 1/5（1 项裁决，新破坏 0）
+Task 5: fix round 2/5（1 项裁决，新破坏 0）
+Task 5: fix round 3/5（1 项裁决，新破坏 0）
+Task 5: fix round 4/5（1 项裁决，新破坏 0）
+Task 5: complete（commits 59aaffb..b720e66, review clean）
+Task 6: complete（commits b720e66..4afa3e9, review clean）
+Task 7: complete（commits 4afa3e9..76cc5d3, review clean）
+计划 gate：PASS（go build ./... && go test ./internal/database/ -count=1 && go test ./internal/modules/appconnector/... -count=1 && go test ./internal/handler/ -run 'TestActionPlan|TestNotionPublish|TestAppPublications' -count=1 && go test ./internal/router/ -run TestActionPlanRoutes -count=1）
+终修轮（整计划最终审查 3 findings 一次批次，报告 .superpowers/sdd/t51/final-fix-report.md）：
+- Finding 1（minor）已修：计划级 testCommand handler 段正则补 TestAppActionPlans（plan-t51.md:2890），本 ask -list 实证旧 12 条不含 TestAppActionPlansTablesExistAfterMigrations、新 13 条全含，-v 实跑 13 RUN 全 PASS（#48 零回归）；progress.md:24 自洽判断就地勘误（见上）。Task 6 Step 4/5 历史命令不回写。
+- Finding 2（minor）已修：新增 TestPlanExecuteSkipsInFlightItemsOwnedByLiveWriter（plan_test.go）直接覆盖 plan.go:389-390 queued/dispatched→skipped_in_flight 分支（queued+dispatched 双腿零派发、状态不被 plan pass 改写、authorized 控制腿照常执行）；单跑 PASS，plan 包 16 测全 PASS。
+- Finding 3（minor）维持不修：gorm 红色 record not found 噪音在案；本 ask 两轮对照实验实证机制为 CreatePublication 存在性守卫预检（publication.go:79，formation 期每新项一条，rows:0 为预期放行分支、后随 planned INSERT），finding 所述 Receipt/LatestPublishedByDestination 探测（:93/:159）实际命中 planned 行不产生噪音——探测点行号 :79 正确、机制描述以此勘误为准；与 #48 同款预期路径噪音，非失败。
+终修后计划 gate：PASS（更新版 testCommand：go build ./... && go test ./internal/database/ -count=1 && go test ./internal/modules/appconnector/... -count=1 && go test ./internal/handler/ -run 'TestActionPlan|TestAppActionPlans|TestNotionPublish|TestAppPublications' -count=1 && go test ./internal/router/ -run TestActionPlanRoutes -count=1，五段全绿）
