@@ -1,490 +1,194 @@
-# [Lago 11] 微信付款复用同一激活流程 实施计划（Issue #83）
+预写基线（待实现阶段复核定稿）
+
+# [Lago 11] 微信付款复用同一激活流程 复核与回归计划（Issue #83，第二轮预写）
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+>
+> **本文件取代 `707d730aa`（issue-72(#83): plan）落盘的第一版预写计划。** 该版已执行完毕（Task 1-4 全交付，执行记录见 `docs/plans/issue-72-ledger-83.md`），历史文本在 git（`git show 707d730aa:docs/plans/issue-72-plan-83.md`）。本版按预写员于当前集成分支 HEAD `7d614752c`（2026-09-28 实读）重新核定基线后编写，形态从「初次实施」转为「交付物在位核对 + #82 后续合入后的微信腿回归」。
 
-**Goal:** 微信渠道付款走与支付宝完全相同的激活链（微信回调验签 → ConfirmPayment Payment Fact → outbox → PurchaseFulfiller settle → Lago 内建 finalize → active，恰好一次），并补齐微信自己的渠道语义：Native 下单/查单/关单协议单测、回调 HTTP 层测试、关单-晚成功竞态编排，以及微信专属真实受控环境验收。
+**Goal:** 确认 Issue #83（微信付款复用同一激活流程）的全部交付物在当前集成分支 HEAD 上在位且行为未回归——特别是 #83 验证轮之后合入的 #82 task12-17 改动了 25 个共享链路文件、其 r5 浏览器复验只走了支付宝腿，微信腿五幕（浏览器主链/漏通知恢复/重复通知幂等/关单竞态/四对象）需在 HEAD 上以真实受控环境复跑一遍；若回归发现破坏，按 TDD 修补。
 
-**Architecture:** #82 已在集成分支（本 worktree 基线 `c6d027df8`）交付渠道无关的激活链：`PaymentCallbacksHandler`（渠道分发）→ `OrderStore.ConfirmPayment`（单事务校验+幂等+outbox）→ `PurchaseFulfiller`（`CommandKindSettlePurchasePayment` → Stripe Provider 结算 → Lago webhook finalize → active）。微信渠道 Provider（`WechatProvider` 的 Create/Query/Close/Refund/Verify）也已实现并经 env 注册。#83 不新造任何激活路径，只做四件事：(1) 用协议级单测 pin 住微信 Create/Query/Close 契约；(2) 用真实 `WechatProvider.Verify` 走通回调 HTTP 层到 outbox 的微信腿测试；(3) 新增唯一的渠道侧生产行为——竞态安全的关单编排 `OrderService.CloseChannelOrder`，并接入 checkout 渠道切换（`Purchase` 重放分支检测 provider 换轨时先关旧渠道单）；(4) 微信专属真实受控环境（完整微信 Native v3 协议 stub：签名请求双向对验 + AES-GCM 签名回调推送 + 可编排状态机）跑浏览器/API 全链验收。
+**Architecture:** #83 的实现形态（已集成，本节为核对基准）：微信渠道 Provider（`WechatProvider` Create/Query/Close/Refund/Verify）走与支付宝完全相同的渠道无关激活链——回调 `POST /api/v1/commercial/callbacks/:provider`（`internal/router/routes_commercial.go:123` 挂载，匿名可达）→ `PaymentCallbacksHandler.HandleProviderCallback`（`internal/handler/payment_callbacks.go:61`，1 MiB body cap）→ `WechatProvider.Verify`（RSA-SHA256 验签 + AES-GCM 解密 + mchid/appid 匹配，`internal/modules/commercial/payment/wechat.go:249`）→ `resolveByMerchantOrderID`（按 `(provider, merchant, merchant_order_id)` 参数绑定查本地 attempt，绝不信任 payload 身份）→ `OrderStore.ConfirmPayment`（单事务金额/币种校验 + sameTxn 幂等 + outbox fulfill 事件）→ `PurchaseFulfiller.Fulfill`（`internal/modules/commercial/service/commercial/purchase_fulfillment.go:86`）→ `CommandKindSettlePurchasePayment`（`lago_settlement.go:54`，WeKnora 驱动 Stripe gated 结算扣款，幂等键绑定渠道 attempt）→ Lago 内建 webhook finalize → Subscription active，恰好一次。渠道侧生产行为只有一个：竞态安全关单编排 `OrderService.CloseChannelOrder`（`internal/modules/commercial/service/commercial/order.go:567`，Close 失败一律 Query 决胜）+ `purchase.go` 重放分支换轨关单。**零 Commercial Platform seam 改动**（ADR-0014 加法纪律）。
 
-**Tech Stack:** Go（gin + gorm + sqlite 测试库 / `//go:build lago_integration` 真栈门控）、Python 3（微信协议 stub，参照 `docs/plans/issue-72-flow-evidence-82/alipay_gateway_stub.py` 惯例）、Playwright（`@playwright/test`，仓库 devDependencies，参照 `browser_flow_82.mjs` 惯例）、真实 Lago v1.53.0 compose 栈 + Stripe TEST（R-4 α 双轨道结算腿）。
+**Tech Stack:** Go（gin + gorm；sqlite 测试库）、Playwright `@playwright/test`（仓库 devDependencies）、Python 3 微信 Native v3 协议 stub（`docs/plans/issue-72-flow-evidence-83/wechat_native_stub.py`，已交付）、真实 Lago v1.53.0 compose（:48889/:48890）+ Stripe TEST 结算腿（R-4 双轨道）。
 
-**Spec:** `docs/specs/2026-09-20-lago-billing-migration-design.md`（L123/L124/L125/L127/L165/L218「Behavior and contract matrix #5」）；ADR-0012（`docs/adr/0012-lago-as-commercial-billing-authority.md`，含 2026-09-23 修订）；ADR-0014（`docs/adr/0014-commercial-platform-single-deep-seam.md`，seam 只许加法）；用户裁决 R-4（2026-09-26，α 双轨道：渠道真实收款 + WeKnora 驱动 Stripe gated 结算 → Lago 内建 finalize；渠道沙箱凭据缺失属已披露边界，用本地 RSA stub 证明协议往返+验签，**不得伪造沙箱证据**）。
+**Spec:** `docs/specs/2026-09-20-lago-billing-migration-design.md`（L123/L124/L125/L127/L165/L218 矩阵 #5）；ADR-0012（`docs/adr/0012-lago-as-commercial-billing-authority.md`，含 2026-09-23 修订）；ADR-0014（seam 只许加法）；用户裁决 R-4（2026-09-26：渠道真实收款 + WeKnora 驱动 Stripe gated 结算 → Lago 内建 finalize → active；渠道沙箱凭据缺失属已披露边界，用本地 RSA stub 证明协议往返+验签，**不得伪造沙箱证据**）。
 
-## 基线核实（计划编写时实读代码结论，修正调查简报的滞后描述）
+## 基线核实（预写员 2026-09-28 实读实跑，修正任务调查简报的滞后描述）
 
-Issue 调查简报称「lago.go:684-687 不带 activation_rules、CommercialGateway seam 无 Payment 命令、激活链完全缺失」——该描述对应**旧基线**。本 worktree（集成分支 `c6d027df8`，含 `issue-72: ocr issue-82 round 2`）实况：
+任务调查简报称「#83 OPEN、Payment Fact→Lago activation 链路在适配器与 seam 上完全缺失（lago.go:684-687 不带 activation_rules）、微信 Create/Query/Close 无单测、回调无 HTTP 测试、无微信受控环境栈」——**该描述对应旧基线，与当前集成分支实况不符**。实况（本会话 `git log --graph` 实查）：
 
-- `internal/modules/commercial/purchase_settlement_command.go:25` 已有 `CommandKindSettlePurchasePayment`；`internal/modules/commercial/service/commercial/purchase_fulfillment.go:63` 已有 `PurchaseFulfiller.Fulfill`（settle→观察→D6'→grant→activation claim）。
-- `internal/handler/payment_callbacks.go:67-114` 微信回调分发→`Verify`→`resolveByMerchantOrderID`→`ConfirmPayment` 已通（#82 缺陷 B/C 已修：`internal/middleware/auth.go:71` 回调路径匿名放行；`internal/modules/commercial/service/commercial/order.go:403-405` attempt 注册 `Merchant: provider.MerchantID()`）。
-- `internal/handler/payment_callbacks_test.go` 已存在（2 个支付宝腿测试）；微信腿无覆盖。
-- `internal/modules/commercial/payment/wechat.go` Create(:399)/Query(:428)/Close(:446)/Refund(:464)/Verify(:249) 全部已实现；`wechat_test.go` 仅覆盖 Verify 验签与 SSRF 出站门，**Create/Query/Close 无任何单测**。
-- `WechatProvider.Close` 与 `AlipayProvider.Close` 均无生产调用方——关单编排是真缺口（AC3 关单侧）。
-- 真实受控环境：`docs/plans/issue-72-flow-evidence-81/wechat_pay_stub.py` 只覆盖 Create+Query(NOTPAY)，无 Close、无签名回调推送——不满足 #83 验收。
-- 本会话实跑：`go test ./internal/modules/commercial/payment/ -run TestWechat -count=1` → `ok ... 2.103s`（基线绿）。
+- #83 已完整交付并合并：`707d730aa`(plan) → `9e11d7170`(task1 协议 pin) → `9131c32c7`(task2 回调 HTTP 腿) → `ebf64a905`(task3 关单编排+切轨) → `6ef004e3a`(fix: Query 键 transaction_id) → `1f51e425d`(task4 真栈证据) → `9ebd1c738`(merge #83) → `3ebc70347`/`85cd62761`/`da4b544db`(OCR r1/r1修复/r2)。
+- **当前 HEAD `7d614752c` = merge #82**，且 `git merge-base --is-ancestor 9ebd1c738 HEAD` 为真（#83 全部在 HEAD 可达）。
+- 调查简报所列缺口在 HEAD 的实况：
+  - 「无 activation_rules」：`internal/modules/commercial/commercialplatform/lago_purchase.go:226` `createPurchaseSubscription` 已携带 `"activation_rules": [{"type":"payment","timeout_hours":0}]`（F1/F8）。免费 Base Plan 的 `ensureSubscription`（`lago.go:621` 起）不带 activation_rules 是 T02 决策，非缺口。
+  - 「微信 Create/Query/Close 无单测」：`wechat_native_test.go` 已有 10 个测试（`TestWechatCreatePostsNativeOrderAndMapsCodeURL`、`TestWechatQueryMapsTradeStates`、`TestWechatQueryPrefersTransactionID`、`TestWechatClosePropagatesOrderPaidCode` 等）。
+  - 「回调无 HTTP 层测试」：`payment_callbacks_test.go` 已有微信腿（`:417` 直接 POST `/api/v1/commercial/callbacks/wechat`，真实 `WechatProvider.Verify` 全链到 outbox）。
+  - 「无微信受控环境栈」：`docs/plans/issue-72-flow-evidence-83/` 已有 v1+v2 两轮五幕验收（微信协议 stub + 真实 Lago + 真实 Stripe TEST + Playwright），全过。
+- **真正的残留缺口（本计划的对象）**：v2 复验轮时点是 `9ebd1c738`；其后 #82 的 task12-17（`2cbacd763..00ff79aec`）+ merge 改动 64 个文件，其中 25 个落在 #83 链路直接依赖的文件上（`payment_callbacks.go`、`purchase.go`、`purchase_fulfillment.go`、`lago_settlement.go`、`lago_purchase.go`、`repository/commercial/order.go`、`internal/handler/commercial.go`、`apps/web/src/commercial/{CheckoutPage,BillingPage,order-state}.tsx|ts` 等）。#82 自己的 r5 浏览器复验走的是**支付宝腿**（`issue-72-flow-evidence-82/r5-verify/`）——Issue #83 AC4 明确「不以支付宝证据替代」，微信腿在 HEAD 上缺真栈回归记录。
+- 本会话在 HEAD 上实跑（基线绿）：
+  - `go test ./internal/modules/commercial/payment/ -count=1` → `ok ... 20.128s`
+  - `go test ./internal/modules/commercial/service/commercial/ -count=1` → `ok ... 2.603s`
+  - `go test ./internal/handler/ -run 'TestWechatCallback|TestAlipayCallback|TestPaymentCallback' -count=1` → `ok ... 4.431s`
 
-因此 #83 = 「补微信渠道证据与渠道侧关单语义」，不是重建激活链。
+## Global Constraints
 
-## Global Constraints（批准需求原文引用）
+- spec L123：WeKnora 拥有微信/支付宝的下单、回调验签、查单、关单、退款行为；已验证渠道结果产生不可变 Payment Fact。
+- spec L124：受支持的 Lago 外部支付集成记录 Payment；只有观察为 active 的 Lago Subscription 才开通 Entitlement 与履约。
+- spec L125：不许本地强制 Subscription active（红线 grep）。
+- spec L127：重复/错额/错币/多成功付款保留外部事实，不自动改 Invoice 金额或已交付权益。
+- spec L165：命令走 durable Outbox + 稳定幂等身份；超时与 5xx 是不定结局，必须查单后重放。
+- spec L218（矩阵 #5）：已验证微信/支付宝结果经受支持集成到达 Lago 并恰好一次地把 incomplete 订阅推到 active。
+- spec「Public product states」：Billing API 不暴露 Lago 凭据、内部 URL、Organization 标识或原始状态枚举。
+- 用户裁决 R-4（2026-09-26）：激活链一律「渠道真实收款 + WeKnora 驱动 Stripe Provider gated 结算 → Lago 内建 finalize」；微信真实沙箱凭据缺失为已披露边界，用本地 RSA stub 证明协议往返+验签，不得伪造沙箱证据。
+- ADR-0014：Commercial Platform seam 只许加法；本计划预期**零 seam 改动**。
+- 安全约束（实现验收条件）：渠道/平台出站仅 http/https 且过 SSRF 校验（环回 stub 需显式 `SSRF_WHITELIST_EXTRA=127.0.0.1` 豁免，`wechat.go` `do` 已实现）；SQL 一律参数绑定（`resolveByMerchantOrderID` 与 `ConfirmPayment` 既有惯例）；凭据只从环境变量/密钥文件注入——Stripe key 仅 `source ~/.zcode/issue72-stripe.env`，本地一次性 RSA/apiv3 密钥生成在运行时临时目录（`${TMPDIR}issue83-keys*`），源码、测试、证据目录不得出现任何可用凭据字面量（含 `sk_test_` 前缀）。
+- 端口纪律：验证环境避开 `:5272/:5273`（其他会话）及既往占用口径 `:8080/:8091/:8092/:8093/:5183/:5192/:5194/:8291/:8292/:8294`；沿用 v2 口径：后端 `:8095`、前端 `:5196`、微信 stub `:8296`、支付宝 stub `:8297`（复验前以 `lsof -iTCP:<port> -sTCP:LISTEN` 确认空闲，被占则整体 +10 顺延并同步脚本 env）。
 
-- spec L123：「WeKnora owns WeChat Pay and Alipay request creation, callback verification, query, close, and refund behavior. A verified channel result produces an immutable Payment Fact.」
-- spec L124：「A supported Lago external-payment integration records the Payment. Only a Lago Subscription observed as active enables Entitlement and fulfillment.」
-- spec L125：「If Lago manual Payment does not release the activation rule in the pinned Community version, the implementation must use a Lago-supported external Payment Provider adapter. It may not force the Subscription active locally.」
-- spec L127：「Duplicate, mismatched, partial, wrong-currency, and multiple-success payment cases retain their external facts without automatically changing Invoice amount or delivered benefits.」
-- spec L165：「WeKnora-to-Lago commands use a durable Outbox and stable idempotency identity. Timeout and server error are indeterminate outcomes that must be queried before replay.」
-- spec L218（矩阵 #5）：「a verified WeChat Pay or Alipay result reaches Lago through a supported integration and moves an incomplete subscription to active exactly once.」
-- spec「Public product states」节：「The public Billing API never exposes Lago credentials, internal URLs, Lago Organization identifiers, or raw status enums.」
-- 用户裁决 R-4（2026-09-26）：激活链一律按「渠道真实收款 + WeKnora 驱动 Stripe Provider gated 结算扣款 → Lago 内建 finalize → active」设计；微信/支付宝真实沙箱凭据缺失为已披露边界，用本地 RSA stub 证明协议往返+验签，不得伪造沙箱证据。
-- ADR-0014：Commercial Platform seam 只许加法；本计划**零 seam 改动**（`SettlePurchasePaymentPayload.ChannelTransaction` 是 string，微信 transaction_id 直接复用）。
-- 安全约束（实现验收条件）：渠道出站仅 http/https 且过 SSRF 校验（环回 stub 需显式 `SSRF_WHITELIST_EXTRA=127.0.0.1` 豁免，`wechat.go:545` 已实现）；全部 SQL 用参数绑定（既有 gorm 参数绑定惯例，新增语句同守）；凭据只从环境变量/文件路径注入，源码、测试与证据目录**不得出现任何可用凭据字面量**（含 `sk_test_`、真实商户密钥；本地一次性 RSA 测试密钥在 `t.TempDir()`/运行时目录生成，不进仓库）。
-- 端口纪律：验证环境避开 `:5272/:5273`（其他会话）及既往占用口径 `:8080/:8091/:8092/:8093/:5183/:5192/:5194/:8291/:8292/:8294`；本计划统一用后端 `:8095`、前端 `:5196`、微信 stub `:8296`、支付宝 stub `:8297`。
+## Review Focus（复核视角：HEAD 上最可能被 #82 后续合入咬到的五类行为；每行已归属 owning task）
 
-## Review Focus（spec 隐含但任务测试未覆盖、最可能咬人的五类输入；每行已归属到 owning task 的测试）
-
-1. **平台证书轮换窗口的未知 serial 回调**（spec L123 验签职责）：`Wechatpay-Serial` 不在配置集 → 必须 401 且零持久化 → Task 2 `TestWechatCallbackRejectsUnknownSerialNothingPersisted`。
-2. **金额/币种不符的微信成功通知**（用户实付与订单面不符，spec L127）：必须 409 `ErrPaymentMismatch`、零 outbox、订单仍 pending → Task 2 `TestWechatCallbackAmountMismatchRejectedNoFact`。
-3. **关单撞在途支付（ORDER_PAID 竞态，spec L165 不定结局必须查单）**：Close 失败必须以 Query 决胜，资金事实保留、恰好一次履约 → Task 3 `TestCloseChannelOrderPaidRaceConfirmsFundFact`。
-4. **渠道 Create 超时**（spec L165 不定结局）：必须回 `StateUnknown` 且键回原 `merchant_order_id`，恢复查原单、绝不重键 → Task 1 `TestWechatCreateTimeoutReturnsUnknownWithOriginalKey`。
-5. **关单后旧渠道晚到成功（跨渠道 multiple-success，spec L127）**：重复成功只落 over-payment 审计事件恰一条，不二次履约 → Task 3 `TestLateSuccessAfterCloseAuditsWithoutSecondFulfillment`。
-
----
-
-## File Structure（创建/修改全清单）
-
-- Create: `internal/modules/commercial/payment/wechat_native_test.go` —— 微信 Native v3 协议 pin 测试（Create/Query/Close，Task 1）。
-- Modify: `internal/handler/payment_callbacks_test.go` —— 追加微信腿 fixture 与测试（Task 2，文件已存在，保留支付宝腿）。
-- Create: `internal/modules/commercial/service/commercial/order_close_test.go` —— 关单编排与渠道切换测试（Task 3）。
-- Modify: `internal/modules/commercial/repository/commercial/order.go` —— `PaymentAttemptStateClosed` 常量 + `MarkAttemptClosed`（Task 3）。
-- Modify: `internal/modules/commercial/service/commercial/order.go` —— `CloseChannelOrder`（Task 3）。
-- Modify: `internal/modules/commercial/service/commercial/purchase.go` —— 重放分支 provider 换轨关单（Task 3，:253-261 区域）。
-- Create: `docs/plans/issue-72-flow-evidence-83/wechat_native_stub.py` —— 完整微信 Native v3 受控 stub（Task 4）。
-- Create: `docs/plans/issue-72-flow-evidence-83/browser_flow_83.mjs` 等 —— 验收脚本与证据（Task 4，产出时落盘）。
-- Create: `docs/plans/issue-72-flow-evidence-83/README.md` —— 证据索引（Task 4）。
-- Modify: `docs/plans/issue-72-ledger-83.md` —— 执行账本续写（Task 4 收尾）。
-
-不改：`platform.go`/`purchase_settlement_command.go`/`lago*.go`（seam 与激活链零改动——#83 的「复用」承诺）、`apps/web/**`（渠道选择器与三态呈现 #82 已交付：`CheckoutPage.tsx:188` 提交 `provider: channel`，`:301-314` 微信单选，`packages/contracts/src/commercial.ts:52` `weixin://wxpay/` scheme 已放行）、`internal/handler/payment_callbacks.go`（分发逻辑已渠道通用）。
+1. **切轨关单路径被 purchase 竞态加固改坏**（#82 task13「paid-awaiting no-reopen / pending-exists 409」重写了 `purchase.go` 重放分支，而 #83 的换轨关单正挂在该分支）：微信待付单切支付宝时仍必须先 `CloseChannelOrder` 旧单 → Task 2 `TestPurchaseSwitchesChannelByClosingOldOrder`/`TestCloseChannelOrderPaidRaceConfirmsFundFact` + Task 3 幕四。
+2. **settle 链正确性改动影响微信腿**（#82 task12 distinct-invoice fail-closed、429/5xx 分类改了 `lago_settlement.go`/`purchase_fulfillment.go`）：微信回调驱动的 settle 仍必须恰好一次到 active → Task 3 幕一/幕五（`purchase-state-progression` 三态 + Lago payments 恰 1）。
+3. **回调 body cap 与微信通知兼容**（#82 task14 的 1 MiB `MaxBytesReader`）：正常微信通知（KB 级）不受影响、超限体非 5xx 拒收 → Task 2 既有 `TestWechatCallback*` 族回归 + Task 3 幕一签名回调 200 回执。
+4. **Checkout 前端 polish 改坏微信呈现**（#82 task15 channel ref/canceled state 改了 `CheckoutPage.tsx`）：`weixin://` code_url 仍呈现「前往支付」入口（`isSafeCheckoutUrl` 白名单须仍含 weixin scheme，`CheckoutPage.tsx:367`）→ Task 2 `pnpm test:web`（`CheckoutPage.test.tsx`/`order-state.test.ts`）+ Task 3 幕一浏览器断言。
+5. **`order.go` repository 索引/谓词改动影响 ConfirmPayment 幂等**（#82 task13 PG index、fallback predicate）：微信重复通知仍必须 exactly-once（无假 over-payment、无 500）→ Task 2 `TestWechatCallbackDuplicateDeliveryIdempotent` + Task 3 幕三。
 
 ---
 
-### Task 1: 微信 Native 协议 pin 测试（Create/Query/Close）
+## File Structure（本计划为复核+条件修补型；预期零新建产品代码）
 
-**Files:**
-- Create: `internal/modules/commercial/payment/wechat_native_test.go`
+- 核对对象（不修改，Task 1/2/3 只读或测试运行）：`internal/modules/commercial/payment/wechat.go` 与三个测试文件、`internal/handler/payment_callbacks.go`(+test)、`internal/modules/commercial/service/commercial/{order,purchase}.go`(+tests)、`internal/modules/commercial/repository/commercial/order.go`(+test)、`internal/modules/commercial/commercialplatform/{lago_purchase,lago_settlement}.go`(+tests)、`internal/router/routes_commercial.go`、`apps/web/src/commercial/{CheckoutPage,BillingPage}.tsx`、`docs/plans/issue-72-flow-evidence-83/*`、`docs/plans/issue-72-ledger-83.md`。
+- 条件修改（仅当 Task 2/3 发现回归，Task 4）：对应破损文件 + 其特征测试文件；`docs/plans/issue-72-ledger-83.md` 续写复验记录；`docs/plans/issue-72-flow-evidence-83/` 增补本轮证据（`r6-head-verify/` 子目录，不覆盖 v2 证据）。
+
+---
+
+### Task 1: 交付物在位核对（HEAD 上 #83 全链构件逐一确认）
+
+**Files:** 只读核对，无修改。
 
 **Interfaces:**
-- Consumes（全部既有，零改动）：`WechatProvider.Create(ctx, OrderRequest) (AttemptResult, error)`（wechat.go:399）、`Query(ctx, providerID string) (AttemptResult, error)`（:428）、`Close(ctx, providerID string) error`（:446）、`newWechatProvider(cfg WechatConfig, platformKeys map[string]*rsa.PublicKey, apiv3Key []byte) *WechatProvider`（wechat.go:179，包内可见）、`WechatConfig{AppID, MchID, MchSerial, MchKeyPath, APIBaseURL, Timeout}`、`ErrInvalidRequest`、`StatePending/StateSucceeded/StateClosed/StateUnknown`、`secutils.ResetSSRFWhitelistForTest()`。
-- Produces: 测试 helper `newNativeFixture(t, handler http.HandlerFunc) *WechatProvider`（生成商户 RSA 私钥写 `t.TempDir()` PEM、`t.Setenv("SSRF_WHITELIST","127.0.0.1")` + reset、httptest 服务、构造 provider）与 `captureWechat{Method, Path, Body string, Auth string}` 请求捕获器——Task 2/3 不直接用（handler/service 层用各自的 stub），仅本文件内复用；行为 pin 供 Task 3/4 依赖（ORDER_PAID 错误形状 `wechat api status 400 code=ORDER_PAID`）。
+- Consumes: 本计划「基线核实」节的提交清单与文件路径。
+- Produces: 核对结论（写入 ledger 续写）：后续 Task 的执行前提。
 
-- [ ] **Step 1: 写测试（全部落 `wechat_native_test.go`；这是对已实现行为的特征测试——落盘后如与微信 v3 契约不符即实现缺陷，修实现到 GREEN）**
+- [ ] **Step 1: 确认 #83 提交链在 HEAD 可达**
 
-```go
-// newNativeFixture：商户私钥 PEM（PKCS1）写 TempDir → WechatConfig{MchSerial:"MCH-SERIAL-1",
-// MchKeyPath:…, APIBaseURL: srv.URL} → newWechatProvider(cfg, nil, nil)。
-// handler 同时把 {Method, Path, string(Body), r.Header.Get("Authorization")} 记入 *[]captureWechat。
+Run: `git merge-base --is-ancestor 9ebd1c738 HEAD && echo IN && git log --oneline -1`
+Expected: `IN` 且 HEAD 为 `7d614752c` 或其后续（若 HEAD 已前移，以 `git log --oneline --grep="#83" -15` 确认 task1-4/fix/OCR 提交仍在）。
 
-func TestWechatCreatePostsNativeOrderAndMapsCodeURL(t *testing.T) {
-	// stub 应 {"code_url":"weixin://wxpay/bizpayurl?pr=n83"}
-	// res, err := p.Create(ctx, OrderRequest{OrderID:"ord_83", MerchantOrderID:"mo_83", AmountFen:9900, Currency:"CNY"})
-	// 断言 err==nil; res.State==StatePending; res.ProviderID=="mo_83"; res.CheckoutURL=="weixin://wxpay/bizpayurl?pr=n83"
-	// 断言捕获：Method POST；Path "/v3/pay/transactions/native"
-	// Authorization 前缀 "WECHATPAY2-SHA256-RSA2048" 且含 `mchid="1900000001"`、`serial_str="MCH-SERIAL-1"`
-	// body JSON：appid=="wx-test-app" 且 mchid=="1900000001" 且 out_trade_no=="mo_83"
-	//           且 amount.total==9900 且 amount.currency=="CNY" 且 description 含 "ord_83"
-}
+- [ ] **Step 2: 确认关键构件文件在位且非空壳**
 
-func TestWechatCreateRejectsInvalidRequestLocally(t *testing.T) {
-	// 空 MerchantOrderID、AmountFen<=0 两例 → errors.Is(err, ErrInvalidRequest)；stub 收到 0 次请求
-}
+Run: `grep -c "func Test" internal/modules/commercial/payment/wechat_native_test.go && grep -c "func Test" internal/handler/payment_callbacks_test.go && grep -n "func (s \*OrderService) CloseChannelOrder" internal/modules/commercial/service/commercial/order.go && grep -n "activation_rules" internal/modules/commercial/commercialplatform/lago_purchase.go && ls docs/plans/issue-72-flow-evidence-83/browser_flow_83.mjs docs/plans/issue-72-flow-evidence-83/wechat_native_stub.py`
+Expected: wechat_native_test 计数 ≥ 10；callbacks_test 含微信腿；`CloseChannelOrder` 命中 `order.go:567` 附近；`activation_rules` 命中 `lago_purchase.go:285` 附近；两个验收脚本存在。
 
-func TestWechatCreateTimeoutReturnsUnknownWithOriginalKey(t *testing.T) {
-	// cfg.Timeout=200ms，stub sleep 1s → err!=nil 且 res.State==StateUnknown 且 res.ProviderID=="mo_t"
-	// （spec L165：不定结局键回原 merchant_order_id，恢复必须 Query 原单）
-}
+- [ ] **Step 3: 确认回调路由与环境注册**
 
-func TestWechatQueryMapsTradeStates(t *testing.T) {
-	// 表驱动：响应 trade_state SUCCESS/NOTPAY/CLOSED/REFUND + amount.total
-	// 期望 State==StateSucceeded/StatePending/StateClosed/StateSucceeded（REFUND 语义：成功过一次）
-	// 且响应缺 out_trade_no 时 res.ProviderID==请求 id（回退原单号）
-}
+Run: `grep -n "callbacksGroup.POST" internal/router/routes_commercial.go && grep -n "WEKNORA_WECHAT_MCH_ID" internal/modules/commercial/payment/providers_env.go && grep -n "commercial/callbacks" internal/middleware/auth.go`
+Expected: 三处均命中（挂载、`wechatConfigFromEnv` 必填集、匿名放行表）。
 
-func TestWechatQueryEmptyProviderIDRejected(t *testing.T) { // "" → ErrInvalidRequest，零请求 }
+### Task 2: 单测与守卫回归（HEAD 基线复核）
 
-func TestWechatClosePostsMchIDBody(t *testing.T) {
-	// stub 204 空体 → err==nil；断言 Method POST；Path "/v3/pay/transactions/out-trade-no/mo_c/close"；body {"mchid":"1900000001"}
-}
-
-func TestWechatClosePropagatesOrderPaidCode(t *testing.T) {
-	// stub 400 {"code":"ORDER_PAID","message":"订单已支付，禁止关单"} → err!=nil 且 strings.Contains(err.Error(),"ORDER_PAID")
-	// （Task 3 的关单竞态编排靠此错误形状触发 Query 决胜；Task 4 stub 同契约）
-}
-```
-
-- [ ] **Step 2: 运行（特征测试，期望 PASS；任何 FAIL 即实现与契约偏差，修 `wechat.go` 后复跑）**
-
-Run: `go test ./internal/modules/commercial/payment/ -run 'TestWechat(Create|Query|Close)' -count=1 -v`
-Expected: 全部 PASS（若 FAIL：按微信 APIv3 契约修正 `wechat.go` 对应实现后 PASS，并在 Ledger 记录偏差）。
-
-- [ ] **Step 3: 全包回归 + Commit**
-
-Run: `go test ./internal/modules/commercial/payment/ -count=1`
-Expected: `ok github.com/Tencent/WeKnora/internal/modules/commercial/payment`
-
-```bash
-git add internal/modules/commercial/payment/wechat_native_test.go
-git commit -m "issue-72(#83): (task1) pin wechat native create/query/close protocol contract"
-```
-
----
-
-### Task 2: 微信回调 HTTP 层测试（真实 Verify → ConfirmPayment → outbox → fulfiller 链）
-
-**Files:**
-- Modify: `internal/handler/payment_callbacks_test.go`（追加；保留既有支付宝腿与 `newCallbackTestEnv` 惯例——真实 OrderService 落库 + 真实 handler + sqlite 内存库）
+**Files:** 只读运行；证据写入 ledger。
 
 **Interfaces:**
-- Consumes: `handler.PaymentCallbacksHandler.HandleProviderCallback`（payment_callbacks.go:67）；`NewWechatProvider(cfg WechatConfig) (*WechatProvider, error)`（wechat.go:136，公钥构造器：从 `PlatformCerts` 路径加载平台公钥、`APIv3KeyPath` 读 32 字节 key）；`VerifyWechatSignature` 语义（wechat.go:66）；`repocommercial.OutboxEvent{Kind: OutboxKindFulfill, EventKey: "fulfill:"+orderID}`；`commercialsvc.NewPurchaseFulfiller(db, platform, nil) (*PurchaseFulfiller, error)` + `Fulfill(ctx, ev) error`（purchase_fulfillment.go:57/63）；`commercialplatform.NewFakeAdapter(...)`（contract_test.go 既有 fake，Task 2 仅用其 settle→active 钩子 `ActivatePurchase(extSubID)`，fake.go:265 既有）。
-- Produces（测试内 fixture，供本文件微信腿共享）：`newWechatCallbackEnv(t) (*gorm.DB, *WechatProvider, *gin.Engine, *commercialsvc.OrderService, signing helpers)`——生成平台 RSA 密钥对（私钥留测试侧签名、公钥 PEM 写 TempDir 经 `NewWechatProvider` 加载）、apiv3 32 字节 key 写文件、`buildWechatNotify(t, p, outTradeNo, txnID, totalFen, state)` 构造签名回调（复刻 `wechat_test.go:90-155` 的 `buildPaymentResource`/`signCallback`/`callbackHeaders`，因跨包不可导入，复制实现并注明同源）。AutoMigrate 在既有 `newCallbackTestEnv` 五表（payment_callbacks_test.go:64-65）基础上**追加 `repocommercial.FulfillmentRecord` 与 `repocommercial.PublicationRow`**（组合测试 `TestWechatCallbackDrainsToFulfilledWithFakePlatform` 需要——fulfiller 写 activation claim 并读 publication）。
+- Consumes: Task 1 的在位结论。
+- Produces: HEAD 上的回归绿基线（命令+输出截录），作为 Task 3 真栈复验的前置门。
 
-- [ ] **Step 1: RED——追加微信腿测试（`CloseChannelOrder` 无关，此处全部针对既有链路；新测试名落盘后先跑，未知项预期 PASS、若链路有缺陷则 FAIL 即缺陷证据）**
+- [ ] **Step 1: 微信渠道三包全量**
 
-```go
-// 落单：真实 OrderService + wechatCreateStub（MerchantID()=="1900000001"，Create 返回 Pending+URL）
-// ——照 callbackAlipayStub 形状新建 callbackWechatCreateStub；回调侧用真实 WechatProvider.Verify。
+Run: `go test ./internal/modules/commercial/payment/ ./internal/modules/commercial/service/commercial/ ./internal/handler/ -count=1`
+Expected: 三包 `ok`（exit 0）。任一 FAIL → 转 Task 4 修补流程，禁止带病进 Task 3。
 
-func TestWechatCallbackConfirmsOrderAndEmitsFulfillEvent(t *testing.T) {
-	// 前置：openOrder 落 pending 订单 + attempt（provider=wechat, merchant=1900000001, 9900 CNY）
-	// POST /api/v1/commercial/callbacks/wechat，签名 TRANSACTION.SUCCESS（out_trade_no=attempt.MerchantOrderID,
-	// transaction_id="wx_txn_83", amount.total=9900, mchid/appid 与配置一致）
-	// 断言：HTTP 200 且 body {"code":"SUCCESS"}
-	// DB：attempt.state==succeeded 且 provider_transaction_id=="wx_txn_83"；order.state==paid
-	// outbox：OutboxKindFulfill 事件恰 1 条，EventKey=="fulfill:"+orderID，payload JSON provider=="wechat"
-}
+- [ ] **Step 2: 定点回归 #83 特征测试（Review Focus 五行的单测腿）**
 
-func TestWechatCallbackDrainsToFulfilledWithFakePlatform(t *testing.T) {
-	// 同上落单+回调后：NewPurchaseFulfiller(db, fakeAdapter, nil)；读出 outbox 事件直接 Fulfill(ctx, ev)
-	// fake 先 ActivatePurchase(commercial.ExternalPurchaseSubscriptionID(tenant))（webhook finalize 替身）
-	// 断言：Fulfill 返回 nil；订单 fulfilled；fulfillment_records 恰 1 条 applied（purchase_activation）
-	// ——AC1「复用同一激活流程」的组合级 pin：微信事实驱动同一条 #82 链
-}
+Run: `go test ./internal/handler/ -run 'TestWechatCallback' -count=1 -v && go test ./internal/modules/commercial/service/commercial/ -run 'TestCloseChannelOrder|TestPurchaseSwitch|TestLateSuccessAfterClose' -count=1 -v && go test ./internal/modules/commercial/payment/ -run 'TestWechat(Create|Query|Close)' -count=1 -v`
+Expected: 全 PASS；逐条对照 Review Focus 1/3/5 的测试名在场且绿。
 
-func TestWechatCallbackDuplicateDeliveryIdempotent(t *testing.T) {
-	// 同一签名通知体 POST 两次 → 两次 200 {"code":"SUCCESS"}
-	// 计数不变：outbox fulfill 恰 1、attempt succeeded 恰 1、订单 paid（version 不再 +1）
-}
+- [ ] **Step 3: 架构守卫与前端回归**
 
-func TestWechatCallbackDifferentTransactionOverPaidAudit(t *testing.T) {
-	// 回调 txn A 确认后，再投同 out_trade_no 不同 transaction_id 的成功通知
-	// → 200；outbox 新增 OutboxKindOverPaid 恰 1（键含 txn）；fulfill 仍恰 1；订单不被二次履约
-}
+Run: `make check-backend-architecture && pnpm test:web && pnpm typecheck:web`
+Expected: `architectureguard: OK (0 violations)`；web 测试与类型检查全过（Review Focus 4 的单测腿）。
 
-func TestWechatCallbackRejectsTamperedSignature(t *testing.T) {
-	// 篡改 body 一字节（签名失配）→ 401；DB 零写入（attempt/order/outbox 全不变）
-}
+- [ ] **Step 4: 红线 grep**
 
-func TestWechatCallbackRejectsUnknownSerialNothingPersisted(t *testing.T) {
-	// Wechatpay-Serial 用未配置 serial → 401；零持久化（Review Focus #1）
-}
+Run: `grep -rn "sk_test_" docs/plans/issue-72-flow-evidence-83/ internal/ | wc -l && grep -rniE "force.*active|直接.*(写|置).*active" internal/modules/commercial/commercialplatform/*.go | grep -v _test | wc -l`
+Expected: 两计数均 `0`。
 
-func TestWechatCallbackUnknownAttemptNotFound(t *testing.T) {
-	// out_trade_no 未注册 → 404 {"code":"FAIL"}；零持久化
-}
+### Task 3: 真实受控环境微信五幕复验（HEAD 上，AC4 独立微信证据）
 
-func TestWechatCallbackAmountMismatchRejectedNoFact(t *testing.T) {
-	// 通知 amount.total=100（订单 9900）→ 409；attempt/order/outbox 全不变（Review Focus #2）
-}
-```
-
-- [ ] **Step 2: 运行**
-
-Run: `go test ./internal/handler/ -run 'TestWechatCallback' -count=1 -v`
-Expected: PASS（这是对已修复链路的 pin；任何 FAIL 即真实缺陷——记录 Ledger 并按 ConfirmPayment/Verify 契约修复后复跑）。
-
-- [ ] **Step 3: 回归 + Commit**
-
-Run: `go test ./internal/handler/ ./internal/modules/commercial/service/commercial/ -count=1`
-Expected: 两包 `ok`。
-
-```bash
-git add internal/handler/payment_callbacks_test.go
-git commit -m "issue-72(#83): (task2) wechat callback http leg pins — verify/confirm/outbox/fulfiller reuse"
-```
-
----
-
-### Task 3: 关单竞态编排 CloseChannelOrder 与渠道切换接线（AC3 核心，唯一新生产行为）
-
-**Files:**
-- Modify: `internal/modules/commercial/repository/commercial/order.go`（:31-32 状态常量区 + `MarkChannelFailed`(:422) 附近）
-- Modify: `internal/modules/commercial/service/commercial/order.go`（`RecoverOrderStatus`(:498) 之后）
-- Modify: `internal/modules/commercial/service/commercial/purchase.go`（:253-261 重放分支）
-- Create: `internal/modules/commercial/service/commercial/order_close_test.go`
+**Files:** 证据落 `docs/plans/issue-72-flow-evidence-83/r6-head-verify/`（新建目录）；复用既有脚本（见下）。
 
 **Interfaces:**
-- Consumes: `payment.Provider` 接口（Close/Query）；`OrderStore.GetOrder/FirstPendingAttempt/MarkChannelFailed/ConfirmPayment`（order.go:481/469/422/584）；`domain.PaymentFact`；`ErrOrderTenantMismatch`、`ErrPaymentProviderUnconfigured`（service 既有）。
-- Produces:
-  - `const PaymentAttemptStateClosed = "closed"`（repository/order.go，与 `PaymentAttemptStatePending/Succeeded` 并列）。
-  - `func (s *OrderStore) MarkAttemptClosed(ctx context.Context, orderID string) error` —— `UPDATE commercial_payment_attempts SET state='closed' WHERE order_id = ? AND state = 'pending'`（gorm 参数绑定；幂等）。
-  - `func (s *OrderService) CloseChannelOrder(ctx context.Context, tenantID uint64, orderID string) (OrderView, error)` —— 竞态安全关单编排（算法见 Step 3，签名+测试不足以决定的部分）。
-  - `PurchaseService.Purchase` 重放分支新增语义（不新增导出符号）：待付单 provider 与请求 provider 不同 → 先 `CloseChannelOrder`（paid → 直接作答 paid 单；closed → 落到 `CreateOrder(quoteID, providerName)` 开新渠道单）。
-  - `MarkChannelFailed` 注释更新（覆盖 closed 语义：「渠道入口不可再支付——渠道失败或已关单」；索引行为不变）。
+- Consumes: `docs/plans/issue-72-flow-evidence-83/` 既有资产——`wechat_native_stub.py`（Native v3 协议 stub：验出站签名/AES-GCM 签名回调/可编排状态机/`/stub/mark`+`/stub/notify`）、`browser_flow_83.mjs`、`api_recovery_83.mjs`、`seed_83.sh`、`v2_gen_keys.sh`、`v2_up_stubs.sh`、`v2_up_backend.sh`；`../issue-72-flow-evidence-82/alipay_gateway_stub.py`（切轨腿对端）与 `settle-evidence/deliver_stripe_webhook.py`（D8 webhook 投递替身）。
+- Produces: `r6-head-verify/` 证据包（截图 5 + txt 留档 + README 增补轮次记录）；ledger 续写。
 
-- [ ] **Step 1: RED——写 `order_close_test.go`（sqlite 内存库 + 可编排 wechat/alipay stub provider：`Close` 按 `closeResult` 字段返回 nil/ORDER_PAID 错误，`Query` 按 `queryState` 返回）**
+- [ ] **Step 1: 栈起（端口纪律见 Global Constraints；先 `lsof` 探空闲）**
 
-```go
-type closeRaceStub struct {
-	merchant    string
-	closeErr    error            // nil=204 成功；非 nil=渠道错误（含 ORDER_PAID 形状）
-	queryRes    payment.AttemptResult
-	queryErr    error
-	closeCalls  int
-	queryCalls  int
-}
-// 实现 payment.Provider 全接口；Create 返回 Pending+URL；MerchantID 返回渠道商户号。
+一次性密钥经 `v2_gen_keys.sh` 生成于运行时临时目录（不进仓库）；微信 stub `:8296`、支付宝 stub `:8297`、后端 `:8095`（`go run ./cmd/server`，sqlite 独立新库 `data/issue83-flow-r6.db`，`source ~/.zcode/issue72-stripe.env` 注入结算腿，`WEKNORA_WECHAT_*`/`WEKNORA_ALIPAY_*`/平台 env 全套，`SSRF_WHITELIST_EXTRA=127.0.0.1`）；前端 `:5196`（`VITE_DEV_PROXY_TARGET=http://127.0.0.1:8095`）。Lago 复用 `deploy/lago` pinned v1.53.0 栈（:48889/:48890，docker ps 确认 healthy；若 82flow 栈的 Lago 租户号又被外部轮占据，按 R-83a 占位注册吸收）。
+Expected: 各组件冒烟通过（stub `/v3/pay/transactions/native` 签名验证 401/200 行为正常、后端健康检查 200）。
 
-func TestCloseChannelOrderClosesPendingAndFreesSlot(t *testing.T) {
-	// 落 pending 微信单（checkout_url 有值）→ CloseChannelOrder(tenant, orderID)
-	// 断言 err==nil；view.State==pending；attempt.state=="closed"；order.channel_failed==true
-	// CurrentPendingPurchaseOrder(tenant, 9900, "CNY") → ErrOrderNotFound（支付槽释放）
-}
+- [ ] **Step 2: 幕一（AC1 主链，浏览器）+ 幕二/三（AC2）+ 幕四（AC3）+ 幕五（AC4 四对象）**
 
-func TestCloseChannelOrderPaidRaceConfirmsFundFact(t *testing.T) {
-	// stub.closeErr=ORDER_PAID 形状；stub.queryRes={State:StateSucceeded, ProviderID:"wx_txn_race"}
-	// → CloseChannelOrder 返回 view.State==paid
-	// DB：attempt succeeded+provider_transaction_id=="wx_txn_race"；订单 paid；outbox fulfill 恰 1
-	// stub.closeCalls==1 且 queryCalls==1（Review Focus #3：Close 失败必须查单决胜）
-}
+Run: `node browser_flow_83.mjs && node api_recovery_83.mjs`（env 按 v2 README：`FLOW83_DB`/`FLOW83_TENANT` 参数化；每轮唯一 email 规避 R-83a）。
+Expected（与 v2 同判据，全部必须在本轮 HEAD 复现）：
+- 幕一 12/12：渠道单选默认支付宝、显式切微信（页面换轨入口触发关旧开新）→「待付款（权益未开通）」+ `weixin://wxpay/` 前往支付链接 → stub mark SUCCESS + 签名 notify → 200 `{"code":"SUCCESS"}` → paid_awaiting_activation 双页面 → settle（真 Stripe PI succeeded）→ webhook finalize → active 双页面（截图 01-05）。
+- 幕二 4/4：mark SUCCESS 不推 notify → `GET /orders/:id` 查单恢复（`RecoverOrderStatus`，`internal/handler/commercial.go:866` 接线）→ paid → active（`recovery-no-notify.txt`）。
+- 幕三 4/4：同一签名通知重投两次均 200；fulfilled/outbox fulfill/succeeded attempt/Lago payments 各恰 1（`duplicate-notify-idempotent.txt`）。
+- 幕四 12/12：关单撞在途支付（CLOSE 400 ORDER_PAID → Query 决胜 → 答已付旧微信单、支付宝 PRECREATE 零调用、fulfill 恰 1）；干净切轨（CLOSE 204 → 旧单退役、新支付宝单唯一可付）；已关旧单晚到成功无二次履约（`close-race-*.txt`）。
+- 幕五 6/6：Lago 四对象（subscription active 恰 1、gating invoice finalized+succeeded、succeeded payment 恰 1、purchase 钱包 granted 恰 1 笔）+ 产品面 credits/features（`lago-four-objects-wechat.txt`、`account-after-wechat.json`）。
 
-func TestLateSuccessAfterCloseAuditsWithoutSecondFulfillment(t *testing.T) {
-	// 关单成功（closeErr=nil）后：订单已被 ConfirmPayment 走到 paid+outbox1 的前提下
-	// （先回调确认成功、再关单撞已付）投递不同 txn 的第二笔成功回调/ConfirmPayment
-	// → outbox 恰新增 1 条 OverPaid 审计、fulfill 仍恰 1、无第二次履约（Review Focus #5）
-	// 反向时序同样断言：先关单成功，再投首笔晚到成功 → ConfirmPayment 幂等落账，订单 paid 恰一次履约
-}
+- [ ] **Step 3: 收口与留档**
 
-func TestCloseChannelOrderIndeterminateStaysPending(t *testing.T) {
-	// closeErr=transport error 且 queryErr=error → 返回 err；attempt 仍 pending、channel_failed 不变、订单仍 payable
-	// closeErr=error 且 queryRes=NOTPAY → 返回原 close err；同上零标记（不定结局不得收口）
-}
+回归命令复跑一遍（Task 2 Step 1 三包）+ 红线 grep；`r6-head-verify/README.md` 记录拓扑、端口、轮次结论与任何勘误；`docs/plans/issue-72-ledger-83.md` 续写「r6 HEAD 复验」行（Commit+结果）。全过 → Issue #83 按「已交付+HEAD 回归通过」收口；有 FAIL → 转 Task 4。
+Expected: 证据包完整、ledger 有本轮记录。
 
-func TestCloseChannelOrderQueryClosedIdempotentMark(t *testing.T) {
-	// closeErr=ORDER_CLOSED 已关错误；queryRes={State:StateClosed} → 同成功路径落 closed+channel_failed
-}
+### Task 4:（条件触发）回归破坏的 TDD 修补
 
-func TestCloseChannelOrderNonPendingNoop(t *testing.T) {
-	// 已 paid 订单 → 返回当前 view（state==paid）；stub.closeCalls==0
-}
-
-func TestCloseChannelOrderTenantMismatch(t *testing.T) {
-	// 租户 2 关租户 1 的单 → ErrOrderTenantMismatch；零渠道调用
-}
-
-// ——渠道切换接线（purchase 层，落单经真实 PurchaseService）——
-func TestPurchaseSwitchesChannelByClosingOldOrder(t *testing.T) {
-	// 表驱动 [old=wechat→new=alipay, old=alipay→new=wechat]：
-	// 先 purchase(quoteA, old) 落待付单（stub Create 成功）；再 quote(新) + purchase(quoteB, new)
-	// 断言：旧单 channel_failed==true 且 attempt closed；新单 provider==new 且 checkout_url 非空
-	// CurrentPendingPurchaseOrder 恰返回新单（一张可付单不变量保持）
-}
-
-func TestPurchaseSwitchPaidRaceAnswersPaidOrder(t *testing.T) {
-	// 旧微信单在途支付（stub Query=SUCCESS, Close=ORDER_PAID）→ purchase(quoteB, alipay)
-	// 断言：答 paid 的旧单（order.provider==wechat, state==paid）；新渠道 Create 零调用；outbox 恰 1
-}
-```
-
-Run: `go test ./internal/modules/commercial/service/commercial/ -run 'TestCloseChannelOrder|TestPurchaseSwitch' -count=1`
-Expected: **FAIL（编译错误：`CloseChannelOrder`/`MarkAttemptClosed`/`PaymentAttemptStateClosed` 未定义）**——这是真 RED。
-
-- [ ] **Step 2: GREEN——实现（`CloseChannelOrder` 算法体，Step 1 测试与签名不能唯一决定处）**
-
-```go
-// CloseChannelOrder 竞态安全地退役一张 pending 订单的渠道入口（spec L123 close、L165 不定结局查单）：
-// 1. row := GetOrder(orderID)；row.TenantID != tenantID → ErrOrderTenantMismatch
-// 2. row.State != OrderStatePending → 返回当前 view（无渠道入口可关；调用方按现状作答，零渠道调用）
-// 3. att := FirstPendingAttempt(orderID)；ErrPaymentAttemptNotFound → MarkChannelFailed(orderID)
-//    （无 attempt 的 pending 残留本就不可付）→ 返回 pending view
-// 4. provider := s.providers[att.Provider]；缺 → ErrPaymentProviderUnconfigured
-// 5. cerr := provider.Close(ctx, att.MerchantOrderID)
-//    - cerr == nil → MarkAttemptClosed(orderID) + MarkChannelFailed(orderID) → 返回 pending view
-//    - cerr != nil →（含 ORDER_PAID 竞态与超时——一律查单决胜，不解析渠道错误码）
-//        res, qerr := provider.Query(ctx, att.MerchantOrderID)
-//        - qerr != nil → 返回 qerr（零标记，保持可重试）
-//        - res.State == StateSucceeded → txn := res.ProviderID（空则 att.MerchantOrderID）
-//          ConfirmPayment(PaymentFact{Provider: att.Provider, Merchant: att.Merchant,
-//            AttemptID: att.MerchantOrderID, OrderID: orderID, TenantID: tenantID,
-//            Amount: CNYFen(att.AmountFen), Currency: att.Currency, Transaction: txn,
-//            State: StateSucceeded.String()})
-//          → 重读订单返回 paid view（资金事实保留；履约交既有 outbox→PurchaseFulfiller 恰好一次）
-//        - res.State == StateClosed → 同 cerr==nil 落账分支
-//        - 其他（NOTPAY/Unknown）→ 返回 cerr（未定不收口）
-```
-
-`purchase.go:253` 重放分支改造（在 `quoteBoughtPlan` 校验之后、`orderViewFromRow(existing)` 之前）：
-
-```go
-if existing.Provider != providerName {
-	closeView, cerr := s.orders.CloseChannelOrder(ctx, tenantID, existing.ID)
-	if cerr != nil {
-		return PurchaseView{}, cerr // 未定关单结局：显式失败，调用方重试（绝不在旧单未收口时开第二渠道单）
-	}
-	if closeView.State == domain.OrderStatePaid {
-		return s.purchaseView(p, snap, pub, &closeView), nil // 在途支付落账：答已付旧单，不开新单
-	}
-	// 关单成功：支付槽已释放，落入下方 CreateOrder(quoteID, providerName) 开新渠道单
-} else {
-	ov := orderViewFromRow(existing)
-	return s.purchaseView(p, snap, pub, &ov), nil // 同渠道重放：现状不变（#82 冻结语义）
-}
-```
-
-- [ ] **Step 3: 复跑 Step 1 命令 → 全部 PASS。**
-
-Run: `go test ./internal/modules/commercial/service/commercial/ -run 'TestCloseChannelOrder|TestPurchaseSwitch' -count=1 -v`
-Expected: PASS。
-
-- [ ] **Step 4: 全量回归（商业域 + handler + architecture guard）**
-
-Run: `go test ./internal/modules/commercial/... ./internal/handler/ -count=1 && make check-backend-architecture`
-Expected: 全 `ok`；architecture guard `0 violations`。
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add internal/modules/commercial/repository/commercial/order.go internal/modules/commercial/service/commercial/order.go internal/modules/commercial/service/commercial/purchase.go internal/modules/commercial/service/commercial/order_close_test.go
-git commit -m "issue-72(#83): (task3) race-safe channel close orchestration + checkout channel-switch wiring"
-```
-
----
-
-### Task 4: 真实受控环境全链验收、证据与收尾
-
-**Files:**
-- Create: `docs/plans/issue-72-flow-evidence-83/wechat_native_stub.py`（见「真实流程验证方案」stub 规格）
-- Create: `docs/plans/issue-72-flow-evidence-83/browser_flow_83.mjs`（Playwright 主链：下单→待付款→支付→已付款待激活→已生效）
-- Create: `docs/plans/issue-72-flow-evidence-83/api_recovery_83.mjs`（漏通知查单恢复 + 关单竞态 + 重放幂等 API 腿）——或合并为一个脚本分幕执行，证据文件名不变
-- Create: `docs/plans/issue-72-flow-evidence-83/README.md` + 证据落盘（截图/JSON/txt，见验证方案）
-- Modify: `docs/plans/issue-72-ledger-83.md`（执行记录续写）
+**Files:** 视破损点而定（见 Interfaces 的候选面）；特征测试加在对应既有 `_test.go`。
 
 **Interfaces:**
-- Consumes: 运行中的 `weknora-lago-82flow` Lago 栈（:48889/:48890，本会话 `docker ps` 实测 healthy，Stripe provider `weknora-stripe` 已注册）；`~/.zcode/issue72-stripe.env`（source 注入 STRIPE TEST key——任何产出不得含 `sk_test_` 字面量）；`docs/plans/issue-72-flow-evidence-82/alipay_gateway_stub.py`（切轨腿的新渠道 Create 所需，verbatim 复用 + 本地 RSA 密钥重生成）；`docs/plans/issue-72-flow-evidence-82/browser_flow_82.mjs`（登录/grant/轮询断言的脚本模板）。
-- Produces: `docs/plans/issue-72-flow-evidence-83/` 证据包（Issue AC1-AC4 判定输入）；`wechat_native_stub.py` 可复用于 #84 生命周期票。
+- Consumes: Task 2/3 的 FAIL 现象与最小复现；#82 task12-17 的改动面（`git diff --name-only da4b544db..7d614752c` 中 25 个商业域文件为首要嫌疑：`purchase.go` 重放分支、`lago_settlement.go` 分类、`repository/commercial/order.go` 谓词、`payment_callbacks.go` body cap、`CheckoutPage.tsx`）。
+- Produces: 修补提交（测试先行），不改变 #83 冻结契约：`CloseChannelOrder(ctx context.Context, tenantID uint64, orderID string) (OrderView, error)`（`order.go:567`）、`WechatProvider` 六方法签名（`provider.go:90` `Provider` 接口：`Create(context.Context, OrderRequest) (AttemptResult, error)`、`Query(context.Context, string) (AttemptResult, error)`、`Close(context.Context, string) error`、`Verify(context.Context, http.Header, []byte) (commercial.PaymentFact, error)`、`Refund`/`QueryRefund`、`MerchantID() string`）、`CommandKindSettlePurchasePayment` 幂等键绑定 attempt。
 
-- [ ] **Step 1: 写 `wechat_native_stub.py`（完整微信 Native v3 受控 stub；规格见「真实流程验证方案」§stub）+ 冒烟**：`python3 -c "import ast; ast.parse(open('docs/plans/issue-72-flow-evidence-83/wechat_native_stub.py').read())"` → exit 0；启动后 `curl -s -X POST 127.0.0.1:8296/v3/pay/transactions/native -d '{}'` 返回 401（缺 Authorization 签名被拒——stub 验签 fail-closed）。
-- [ ] **Step 2: 按「真实流程验证方案」全量执行五幕（主链浏览器 / 漏通知恢复 / 关单竞态 / 重放幂等 / Lago 四对象核验），证据落盘到 `docs/plans/issue-72-flow-evidence-83/`。**
-- [ ] **Step 3: 回归 + 红线自查**：`go test ./internal/modules/commercial/... ./internal/handler/ -count=1` 全 ok；`make check-backend-architecture` 0 violations；`grep -rn "sk_test_" docs/plans/issue-72-flow-evidence-83/ internal/ | wc -l` → 0；`grep -rniE "force.*active|直接.*(写|置).*active" internal/modules/commercial/commercialplatform/*.go | grep -v _test | wc -l` → 0（AC4' 红线：无本地强制 active）。
-- [ ] **Step 4: 写 README.md（断言结果总览表 + 环境拓扑 + 披露：微信真实商户凭据不可得——本地 RSA stub 证明协议往返+验签，不构成真实微信钱包付款证据，对称适用 R-4 对支付宝的披露口径）+ 续写 Ledger。**
-- [ ] **Step 5: Commit**
-
-```bash
-git add docs/plans/issue-72-flow-evidence-83 docs/plans/issue-72-ledger-83.md
-git commit -m "issue-72(#83): (task4) real-env wechat activation flow evidence + docs + ledger"
-```
+- [ ] **Step 1（RED）:** 以 FAIL 现象写特征测试（加到破损文件的对应 `_test.go`；测试名前缀 `TestRegression83`），运行确认其失败且信息指向根因。Run: `go test ./<pkg>/ -run 'TestRegression83' -count=1` → FAIL。
+- [ ] **Step 2（GREEN）:** 在嫌疑文件做最小修复（保持既有签名与幂等语义；零 seam 改动）。Run 同上 → PASS。
+- [ ] **Step 3（REFACTOR+回归）:** `go test ./internal/modules/commercial/... ./internal/handler/ -count=1` 八包 ok + `make check-backend-architecture`；若修在前端，`pnpm test:web && pnpm typecheck:web`。
+- [ ] **Step 4:** 重跑 Task 3 的失败幕（单幕即可，但幕一主链必须整幕重跑）确认闭合；ledger 记 Ruling（根因/裁决/代价，格式照 R-83a..f）。
+- [ ] **Step 5: Commit**（消息格式 `issue-72(#83-r6): regression fix — <现象>`）。
 
 ---
 
-## 真实流程验证方案（真实环境端到端；在集成分支 worktree 构建+运行）
+## 验收标准 → Task → 测试追踪矩阵
 
-### 环境拓扑（全部真实运行；端口避开 :5272/:5273 及既往占用口径，统一 +1/+2 漂移）
-
-| 组件 | 地址 | 说明 |
+| Issue #83 验收标准 | 既有交付（核对基准） | 本计划复核动作 |
 |---|---|---|
-| Lago v1.53.0 | 127.0.0.1:48889 / :48890 | **复用运行中的 `weknora-lago-82flow` 栈**（docker ps 实测 healthy；seed org 与 Stripe provider `weknora-stripe` 已注册，真实 Stripe TEST key 仅环境变量注入）。若需重建：`cd deploy/lago && ./lago.sh init && (追加 LAGO_CREATE_ORG=true 等 seed) && ./lago.sh up`，`./lago.sh status` 健康检查 |
-| WeKnora 后端 | 127.0.0.1:8095 | 本 worktree `go run ./cmd/server`（首次编译数分钟）；`DB_DRIVER=sqlite DB_PATH=data/issue83-flow.db`（独立新库）；商业平台 env：`WEKNORA_COMMERCIAL_PLATFORM_PROVIDER=lago WEKNORA_COMMERCIAL_PLATFORM_URL=http://127.0.0.1:48889 WEKNORA_COMMERCIAL_PLATFORM_API_KEY=<deploy/lago/.env 的 key>`；Stripe 腿：`source ~/.zcode/issue72-stripe.env` 注入 `WEKNORA_COMMERCIAL_STRIPE_API_KEY`，`WEKNORA_COMMERCIAL_STRIPE_PM_TOKEN=pm_card_threeDSecure2Required`（3DS 必验卡稳待付窗口）、`WEKNORA_COMMERCIAL_STRIPE_SETTLE_PM_TOKEN=pm_card_visa`；微信渠道 env 见下；`SSRF_WHITELIST_EXTRA=127.0.0.1`（环回 stub 可审计豁免）；`WEKNORA_COMMERCIAL_OUTBOUND_ALLOW_LOOPBACK=true`；健康检查 `curl -s 127.0.0.1:8095/health` |
-| 微信 Native stub | 127.0.0.1:8296 | `wechat_native_stub.py`（本票交付）：真实 WechatProvider 的协议对端 |
-| 支付宝 stub（切轨腿） | 127.0.0.1:8297 | 复用 `../issue-72-flow-evidence-82/alipay_gateway_stub.py`，本地 RSA 密钥重生成 |
-| WeKnora 前端 | localhost:5196 | `VITE_DEV_PROXY_TARGET=http://127.0.0.1:8095 pnpm --filter @weknora/web exec vite --port 5196`（/api 代理 :8095） |
-| Playwright | headless chromium | 仓库 devDependencies `@playwright/test`（`browser_flow_83.mjs`）；本会话亦挂 playwright MCP 插件可交互复核 |
+| AC1 微信真实回调验签、商户、金额和币种校验通过后才形成 Payment Fact | `TestWechatCallback*` 族（`payment_callbacks_test.go` 微信腿，真实 `WechatProvider.Verify`）、`wechat_native_test.go` 10 测试、v2 幕一 | Task 1 Step 2 在位核对；Task 2 Step 1/2 回归；Task 3 幕一（签名回调 200 → Fact → 三态） |
+| AC2 漏通知通过查单恢复，重复通知不重复激活 | `TestWechatCallbackDuplicateDeliveryIdempotent`、`TestWechatQueryMapsTradeStates`/`PrefersTransactionID`、`RecoverOrderStatus`（`order.go:498`）、v2 幕二/三 | Task 2 Step 2；Task 3 幕二（`recovery-no-notify.txt`）+ 幕三（`duplicate-notify-idempotent.txt`，恰 1 计数） |
+| AC3 关单与晚成功竞态保留资金事实并只履约一次 | `order_close_test.go` 竞态族（`TestCloseChannelOrderPaidRaceConfirmsFundFact` 等 9 测试，微信 stub）、`CloseChannelOrder`（`order.go:567`）、v2 幕四 | Task 2 Step 2；Task 3 幕四 12/12（ORDER_PAID 决胜/干净切轨/晚到成功） |
+| AC4 微信验收使用真实受控环境，不以支付宝证据替代 | `issue-72-flow-evidence-83/` v1+v2 独立微信证据包（协议 stub+真实 Lago+真实 Stripe TEST+Playwright） | Task 3 全五幕在 HEAD 重跑，证据落 `r6-head-verify/`；支付宝 stub 仅作切轨腿对端 |
+| 核心目标：复用同一激活流程（Fact→Lago activation→active 恰好一次） | `TestWechatCallbackDrainsToFulfilledWithFakePlatform`（组合级）、`createPurchaseSubscription` activation_rules + `settlePurchasePayment` | Task 2 Step 1/2；Task 3 幕一 `purchase-state-progression` 三态 + 幕五 Lago 四对象 + 红线 grep（零本地强制 active） |
 
-### 微信渠道 env（一次性本地密钥，运行时目录 `${TMPDIR}/issue83-keys/`，**不进仓库**）
+## 真实流程验证方案（Task 3 展开）
 
-```
-WEKNORA_WECHAT_APP_ID=wx83issue83flow
-WEKNORA_WECHAT_MCH_ID=1900000830
-WEKNORA_WECHAT_MCH_SERIAL=MCH-SERIAL-83
-WEKNORA_WECHAT_MCH_KEY_PATH=$KEYS/mch_private.pem        # openssl genrsa 2048
-WEKNORA_WECHAT_APIV3_KEY_PATH=$KEYS/apiv3.key            # head -c 32 /dev/urandom | base64 解回 32 字节
-WEKNORA_WECHAT_PLATFORM_CERTS=PLAT-SERIAL-83:$KEYS/platform_pub.pem
-WEKNORA_WECHAT_API_BASE_URL=http://127.0.0.1:8296
-WEKNORA_WECHAT_NOTIFY_URL=http://127.0.0.1:8095/api/v1/commercial/callbacks/wechat
-```
+- **链路**：真实浏览器（Playwright chromium + 真实 vite 渲染 `:5196`）→ Billing 页选付费套餐 → Checkout 页切「微信支付」（`CheckoutPage.tsx:343-345` 微信单选，提交带 `provider: channelRef.current`）→ 后端 `openOrder`（`order.go:378`，`Merchant: provider.MerchantID()`=MchID）→ `WechatProvider.Create`（`wechat.go:400`，POST `/v3/pay/transactions/native`）→ stub 验出站 WECHATPAY2 签名后回 `code_url` → 页面呈现 `weixin://wxpay/`「前往支付」（`CheckoutPage.tsx:367` `isSafeCheckoutUrl` 放行）→ stub `/stub/mark` SUCCESS + `/stub/notify` 推 AES-GCM+平台私钥签名回调 → `POST /api/v1/commercial/callbacks/wechat` 验签 → ConfirmPayment Fact → outbox → PurchaseFulfiller settle（真实 Stripe TEST PI off-session confirm）→ `deliver_stripe_webhook.py` 投 Lago 内建 webhook → finalize → active「权益已生效」。漏通知走 `GET /orders/:id` 查单恢复；竞态走页面换轨入口（`CheckoutPage.tsx:355-357`）触发 `CloseChannelOrder`。
+- **与 v2 的差异仅三点**：HEAD 换成 `7d614752c`+、sqlite 库换 `data/issue83-flow-r6.db`、主角 email 每轮唯一（R-83a）；其余拓扑、密钥纪律、判据逐字沿用 v2 README。
+- **披露边界（不伪造）**：微信腿为本地 RSA/AES 协议 stub（真实商户号/平台证书不可得）——证明「微信协议往返+验签+同一激活链」，不构成真实微信钱包付款证据；对称适用 R-4 对支付宝的口径。AC4 的「不以支付宝证据替代」由本票独立微信证据包满足。
 
-### `wechat_native_stub.py` 规格（AC4「真实受控环境」的渠道对端）
+## 待复核项（实现阶段定稿时必须逐条裁决）
 
-- 仅绑定 127.0.0.1。渠道端点（只实现 adapter 会调用的）：
-  - `POST /v3/pay/transactions/native`：**验证 WeKnora 出站签名**（Authorization `WECHATPAY2-SHA256-RSA2048`，用商户公钥 `$KEYS/mch_public.pem` 验 `METHOD\nPATH\nts\nnonce\nbody\n` RSA-SHA256；失配 401）→ 登记 `out_trade_no → {total, state=NOTPAY}` → `{"code_url":"weixin://wxpay/bizpayurl?pr=issue83"+随机}`。
-  - `GET /v3/pay/transactions/out-trade-no/{id}?mchid=`：按状态表回答 `{"out_trade_no":id,"trade_state":<state>,"amount":{"total":<total>,"currency":"CNY"}}`。
-  - `POST /v3/pay/transactions/out-trade-no/{id}/close`：state==SUCCESS → 400 `{"code":"ORDER_PAID",...}`（竞态形状，与 Task 1 pin 一致）；否则置 CLOSED → 204。
-- 编排端点（仅 loopback）：`POST /stub/mark`（body `{"out_trade_no":..,"state":"SUCCESS"|"CLOSED","transaction_id":..}`）改状态；`POST /stub/notify`（body `{"out_trade_no":..}`）**推送签名回调**：构造 `TRANSACTION.SUCCESS` envelope，resource 以 APIv3 key AES-256-GCM 加密（nonce 12 字节、AAD `"transaction"`），平台私钥对 `ts\nnonce\nbody\n` RSA-SHA256 签名，携 `Wechatpay-Serial/Timestamp/Nonce/Signature` 头 POST `WEKNORA_WECHAT_NOTIFY_URL`，断言答 `{"code":"SUCCESS"}` 200。
-- 凭据纪律：key 路径全部经 env/CLI 注入；stub 源码零密钥字面量。
+1. **【待复核】HEAD 前移**：本计划基线是 `7d614752c`；若实现阶段 HEAD 已含 #84+ 提交，Task 1 Step 1 的祖先检查改为「#83 链可达即可」，Task 3 的回归价值随共享链路新改动相应扩展（`git diff --name-only 7d614752c..HEAD -- internal/modules/commercial internal/handler` 增量对照 Review Focus）。
+2. **【待复核】Lago 共享栈租户占用**：82flow 栈（:48889）的租户号被多轮验证占据（R-83a 已至 tenant-34 口径）；r6 起栈前实测 `subscriptions` 表已占号，占位注册量按实况调整，或改起独立 `deploy/lago` compose 实例（端口仍避开清单）。
+3. **【待复核】`deliver_stripe_webhook.py` 依赖**：webhook secret 经 rails runner 只读导出（R-83b）；若共享栈重建致路径失效，按 `deploy/lago-lab/payment-settle-trigger/` 的 lab.env 口径重取。注意 #82 r4/r5 改过该栈 `fixtures.py`/`phases.py`（diff 清单在案），与 r6 脚本无直接耦合，但起栈前 `git status` 确认无未提交漂移。
+4. **【待复核】`v2_up_backend.sh` 的 env 面**：#82 task12-17 若新增了影响 settle 的环境变量（如 429/5xx 分类开关），r6 起栈 env 需比对 `providers_env.go`/`commercialplatform/config.go` 当前必填集补齐，避免假 FAIL。
+5. **【待复核】AC4 字面「真实微信」与 stub 边界的最终口径**：若实现阶段取得真实微信商户测试凭据，则 Task 3 升级为真实商户小额付款验收（回调公网可达需内网穿透，端口纪律同样适用）；否则维持 R-4 披露边界口径收口。
 
-### 种子数据（sqlite 独立库，Lago 独立租户，零污染）
+## Out of scope（防与并行票冲突）
 
-| 账号 | 租户 | 角色 |
-|---|---|---|
-| issue83-flow-a@verify.local | 新 tenant（自增） | owner（浏览器主链主角：Billing→Checkout 选微信→支付→三态） |
-| issue83-flow-b@verify.local | 新 tenant | owner + `plan_publish` grant（API 发布 plan） |
+- 废弃 pending 单超时回收调度与公开 cancel 命令（`CommandKindCancelPurchaseSubscription`）——#84/#92 生命周期票（`CloseChannelOrder` 为其可复用 seam）。
+- `RecoverOrderStatus` 查单见 CLOSED 的本地收口 UX——#84。
+- partial/multiple-success 异常付款完整处置面——#84；充值 Credits 批次——#85。
+- Commercial Platform seam 与 Lago 适配器改动（本计划预期零改动；Task 4 修补也不得触碰 seam 形状）。
+- 前端新功能（渠道选择器/三态呈现/`weixin://` 白名单均已在 #81/#82/#83 交付；Task 4 只允许回归性修复）。
 
-Plan：`pro` v1（9900 分 CNY、monthly、pay_in_advance、无 charges、features advanced_models）——经 `POST /api/v1/commercial/admin/plans/draft` + `/publish`（照 #82 evidence 脚本 api-01/02 模板；发布幂等落到 Lago `pro:1` 既有计划码，r4-flow3 已验证同码重发布可行）。注册/grant 流程照 `browser_flow_82.mjs` 既有机制。
+## Self-Review 结论
 
-### 五幕验证与通过判据（AC → 可观察结果）
-
-**幕一（AC1 主链，浏览器）**——`browser_flow_83.mjs`（Playwright headless，截图存 `docs/plans/issue-72-flow-evidence-83/`）：
-1. 登录 issue83-flow-a → `http://localhost:5196/platform/billing` → 进 Checkout（`/platform/billing/checkout`；路由见 `apps/web/src/routes.tsx:80`）。
-2. 断言「支付渠道」单选存在且默认支付宝；**选微信支付** → 提交。
-3. 断言页面呈现「等待付款/待付款（权益未开通）」且存在 `前往支付` 链接，`href` 以 `weixin://wxpay/` 开头（Native code_url；stub 日志同时记录 NATIVE out_trade_no 与金额 99.00 CNY）。截图 `01-checkout-wechat-awaiting-payment.png`。
-4. `curl -X POST 127.0.0.1:8296/stub/mark -d '{"out_trade_no":"<mo_..>","state":"SUCCESS","transaction_id":"wx_txn_83_main"}'` + `curl -X POST 127.0.0.1:8296/stub/notify -d '{"out_trade_no":"<mo_..>"}'`（模拟真实扫码付款+官方通知；stub 推送日志与 WeKnora 200 回执存 `stub-callback-01.txt`）。
-5. 页面轮询（3s）后断言「已付款，权益处理中」（paid_awaiting_activation）。截图 `02-checkout-paid-awaiting-activation.png`；Billing 页断言「待付款（权益未开通）」消失、呈现中态。截图 `03-billing-paid-awaiting.png`。
-6. 等待 settle→webhook（`PurchaseFulfiller` 后台 drain，秒级~分钟级；期间后端日志零 `attention`）→ 断言「权益已生效」。截图 `04-checkout-active.png` + `05-billing-active.png`。
-通过判据：3/5/6 三态断言全中 + 5 张截图 + `GET /api/v1/commercial/purchase`（带 JWT）依次观测 `awaiting_payment → paid_awaiting_activation → active`（curl 留档 `purchase-state-progression.txt`）。
-
-**幕二（AC2 漏通知查单恢复，API）**：
-新租户/新单（或清库重跑）：stub `mark SUCCESS` 但**不推 notify** → 浏览器/`curl` 触发 `GET /api/v1/commercial/orders/:id`（即 `RecoverOrderStatus` 查单）→ 断言订单转 paid、`GET /purchase` → `paid_awaiting_activation` → settle 后 active。留档 `recovery-no-notify.txt`（渠道 Query 日志 + 状态跃迁）。
-
-**幕三（AC2 重复通知不重复激活，API）**：
-幕一结束后，对同一 out_trade_no 重推 stub notify 两次 → 两次 WeKnora 200 `{"code":"SUCCESS"}`；DB 计数不变：`commercial_orders` 1、fulfilled 1、outbox fulfill 1、`commercial_payment_attempts` succeeded 1、Lago payments succeeded 恰 1。留档 `duplicate-notify-idempotent.txt`（含 sqlite 查询输出与 Lago API 读数）。
-
-**幕四（AC3 关单-晚成功竞态，API）**：
-1. 新租户落微信待付单 → stub mark SUCCESS（在途）→ 调 `POST /api/v1/commercial/purchases`（新 quote，`provider:"alipay"`）触发渠道切换。
-2. 断言：答的是**已付旧微信单**（state=paid、provider=wechat）；支付宝 stub `PRECREATE` 日志零调用；微信 stub 日志 `CLOSE → 400 ORDER_PAID` 后 `QUERY → SUCCESS`。
-3. `GET /purchase` → `paid_awaiting_activation` → settle → active（资金事实保留、恰好一次履约——「复用同一激活流程」在竞态下成立）。
-4. 反向剧本：另一租户落待付单 → stub 保持 NOTPAY → 切换 `provider:"alipay"` → 断言微信 stub `CLOSE → 204`、旧单 `channel_failed` 不可付、新支付宝单 `checkout_url=qr.alipay.com/...` 生成（`CurrentPendingPurchaseOrder` 只见新单）。
-5. 晚到成功再补一刀：反向剧本后对已关旧单推 stub notify（防御性）→ 订单仍按 ConfirmPayment 幂等语义处理，无二次履约、无第二 fulfill 事件。
-留档 `close-race-paid.txt` / `close-race-switch.txt`（stub 双侧日志 + DB 计数）。
-
-**幕五（AC4 四对象 + 红线核验）**：
-1. Lago API（`deploy/lago/.env` 的 key）：`GET /api/v1/subscriptions?external_id=weknora-tenant-<N>-purchase&status[]=active` 恰 1 条 active；gating invoice finalized+succeeded、fees 恰 1 行 subscription_fee 9900；payments succeeded 恰 1；purchase 钱包 granted 9.9 恰 1 笔。留档 `lago-four-objects-wechat.txt`。
-2. 产品面：`GET /api/v1/commercial/account` credits 含购买批次（9.9）、features `advanced_models:true`。留档 `account-after-wechat.json`。
-3. 红线：Task 4 Step 3 三条 grep + architecture guard（凭据字面量 0、本地强制 active 0）。
-通过判据：四对象齐 + 红线 0 命中 + 前四幕全过。
-
-**披露边界（写进 README，不伪造）**：微信腿为本地 RSA/AES 协议 stub（真实商户号/平台证书不可得）——证明「微信协议往返 + 验签 + 同一激活链」，**不构成真实微信钱包付款证据**；对称适用 R-4 对支付宝的披露口径。AC4 的「不以支付宝证据替代」由本票独立微信证据包满足。
-
----
-
-## 验收标准 → Task → 测试 追踪矩阵
-
-| Issue 验收标准 | Task | 测试/证据 |
-|---|---|---|
-| AC1 微信真实回调验签、商户、金额和币种校验通过后才形成 Payment Fact | T2（+T1 协议 pin） | `TestWechatCallbackConfirmsOrderAndEmitsFulfillEvent`（验签+商户解析+金额一致→Fact+outbox）、`TestWechatCallbackRejectsTamperedSignature`/`RejectsUnknownSerial`（401 零持久化）、`TestWechatCallbackAmountMismatchRejectedNoFact`（409）、`TestWechatCallbackUnknownAttemptNotFound`；幕一 stub 回调 200 回执 |
-| AC2 漏通知通过查单恢复，重复通知不重复激活 | T2/T3/T4 | `TestWechatCallbackDrainsToFulfilledWithFakePlatform`（微信事实驱动同一 #82 链恰一次）、`TestWechatCallbackDuplicateDeliveryIdempotent`、`TestWechatQueryMapsTradeStates`（查单状态映射）；幕二 `recovery-no-notify.txt`、幕三 `duplicate-notify-idempotent.txt` |
-| AC3 关单与晚成功竞态保留资金事实并只履约一次 | T3（+T4 幕四） | `TestCloseChannelOrderPaidRaceConfirmsFundFact`、`TestLateSuccessAfterCloseAuditsWithoutSecondFulfillment`、`TestCloseChannelOrderClosesPendingAndFreesSlot`、`TestPurchaseSwitchPaidRaceAnswersPaidOrder`、`TestPurchaseSwitchesChannelByClosingOldOrder`、`TestCloseChannelOrderIndeterminateStaysPending`；幕四 `close-race-*.txt` |
-| AC4 微信验收使用真实受控环境，不以支付宝证据替代 | T4 | `docs/plans/issue-72-flow-evidence-83/` 全套微信腿独立证据（五幕 + 四对象 + 截图）；披露边界如实标注；支付宝 stub 仅作切轨腿的新渠道对端 |
-| 复用同一激活流程（Issue 标题/正文核心） | T2/T4 | `TestWechatCallbackDrainsToFulfilledWithFakePlatform`（组合级）；幕一 `purchase-state-progression.txt` 三态 + 幕五 Lago 四对象（真 Stripe settle + webhook finalize，零本地强制 active——红线 grep） |
-
-## Spec 行为矩阵覆盖对照（#83 分片）
-
-- **#5 External payment activation**（L218）微信腿：T2 组合测试 + T4 幕一/五真栈。
-- **#7 Payment anomalies**（L220）duplicate/late/multiple-success：T2 `Duplicate/DifferentTransaction` + T3 `LateSuccessAfterClose`；partial 归 #84。
-- **#20 Fault injection**（L233）：T1 超时 StateUnknown、T3 不定结局不收口、T2/T3 幂等重放。
-- **#22 Privacy and secrets**（L235）：T4 红线 grep（sk_test 0、密钥文件不进仓库）。
-
-## Out of scope（#83 明确不做，防与并行票冲突）
-
-- 废弃 pending 单**超时回收**调度与公开 cancel 命令（`CommandKindCancelPurchaseSubscription`）——#84/#92 生命周期票（#82 计划 Task 11 已显式移交；#83 的 `CloseChannelOrder` 即其可复用 seam，Ledger 记移交）。
-- `RecoverOrderStatus` 查单见 CLOSED 时的本地收口呈现（当前如实回 pending+原链接；渠道自动关单 UX 归 #84，本票只在切轨路径收口）。
-- partial/multiple-success 异常付款完整处置面（#84）；充值 Credits 批次（#85）。
-- 前端改动：渠道选择器、三态呈现、`weixin://` scheme 白名单均 #81/#82 已交付，零改动。
-- Commercial Platform seam 与 Lago 适配器改动（零改动——`ChannelTransaction` 为 string，微信 transaction_id 直接复用）。
-
-## Self-Review 结论（编写时自检）
-
-1. **Spec 覆盖**：L123（T1/T2）、L124+L218（T2/T4）、L125（红线）、L127（T2/T3）、L165（T1/T3）、L220 #7 部分（T2/T3，partial 显式移交 #84）——全覆盖或显式移交。2. **Step 扫描**：每步一个可核查动作；CloseChannelOrder 算法体是唯一「签名+测试不定」的代码块，其余为测试断言与精确修改点。3. **类型一致**：`CloseChannelOrder(ctx, tenantID uint64, orderID string) (OrderView, error)` 在 T3 定义、purchase 接线与 T4 幕四消费一致；`PaymentAttemptStateClosed`/`MarkAttemptClosed(ctx, orderID)` 全文一致。4. **Review Focus 五行**均已映射 owning task 测试。5. **比例**：计划长度由「真实流程验证方案」与追踪矩阵（任务书强制章节）构成，任务本体保持签名+断言粒度。
+1. **Spec 覆盖**：AC1-AC4 与「复用同一激活流程」均映射到「既有交付核对基准 + 本计划复核动作」两列；spec L123/L124/L125/L127/L165/L218 逐条落在矩阵或 Global Constraints。2. **Step 扫描**：每个 Step 均为一条可运行命令+期望输出；Task 4 为条件触发的 TDD 模板（RED/GREEN/REFACTOR 各一步），未预设不存在的破损。3. **类型一致**：`CloseChannelOrder`/`WechatProvider` 方法/`CommandKindSettlePurchasePayment` 均按 HEAD 实读签名引用（`order.go:567`、`provider.go:90`、`purchase_settlement_command.go`）。4. **Review Focus 五行**均已归属 Task 2/3 的具体测试或幕。5. **比例**：本计划主体为复核命令、判据与待复核清单，无函数体转写；实现细节引用既有交付与 v2 证据，不重复。
