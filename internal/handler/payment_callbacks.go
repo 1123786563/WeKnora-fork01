@@ -113,8 +113,22 @@ func (h *PaymentCallbacksHandler) HandleProviderCallback(c *gin.Context) {
 	// ErrPaymentMismatch, and a replayed channel transaction returns the
 	// original success without a second event.
 	if err := h.orders.ConfirmPayment(c.Request.Context(), fact); err != nil {
+		if errors.Is(err, domain.ErrPaymentNotSucceeded) {
+			// (#84 / Review Focus 1) A verified-but-not-succeeded fact
+			// (e.g. TRADE_CLOSED) is neither a fulfillment nor an abnormal
+			// collection: nothing was retained, so the channel's retry is
+			// the correct posture — keep the FAIL face (spec L171).
+			callbackFail(c, http.StatusConflict, "payment not succeeded")
+			return
+		}
 		if errors.Is(err, domain.ErrPaymentMismatch) {
-			callbackFail(c, http.StatusConflict, "payment does not match its order")
+			// (#84 / G1, spec L127+L171) An amount/currency mismatch whose
+			// fund fact is already durably retained (Task 1's independent
+			// RecordPaymentAnomaly transaction): answer TERMINALLY so the
+			// channel stops its retry storm. A retention failure arrives as
+			// a non-mismatch raw error and falls to the 500 branch below —
+			// the channel retries and the fact lands on the next delivery.
+			c.JSON(http.StatusOK, gin.H{"code": "SUCCESS", "message": "OK"})
 			return
 		}
 		callbackFail(c, http.StatusInternalServerError, "payment confirmation failed")
@@ -168,8 +182,17 @@ func (h *PaymentCallbacksHandler) handleAlipayNotify(c *gin.Context) {
 	fact.TenantID = attempt.TenantID
 	fact.OrderID = attempt.OrderID
 	if err := h.orders.ConfirmPayment(c.Request.Context(), fact); err != nil {
-		if errors.Is(err, domain.ErrPaymentMismatch) {
+		if errors.Is(err, domain.ErrPaymentNotSucceeded) {
+			// (#84 / Review Focus 1) Same classification as the WeChat leg:
+			// a not-succeeded verified fact is kept on the failure face —
+			// Alipay keeps retrying, nothing was retained.
 			alipayFail(http.StatusConflict)
+			return
+		}
+		if errors.Is(err, domain.ErrPaymentMismatch) {
+			// (#84 / G1) The mismatch fund fact is retained; the plain-text
+			// "success" is Alipay's only terminal ack (spec L127+L171).
+			c.String(http.StatusOK, "success")
 			return
 		}
 		alipayFail(http.StatusInternalServerError)
