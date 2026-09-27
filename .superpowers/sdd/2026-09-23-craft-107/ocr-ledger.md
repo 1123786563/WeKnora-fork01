@@ -27,3 +27,4 @@ Open-code-review records for the delivered Craft #107 scope. Per `docs/plans/202
 | 2026-09-27 | T12: dea1ddefa^..b2dcbbb6a | clean（幂等复验收编段：1 个生产文件纯 gofmt 治齐，0 findings） | 0 open | 报告: docs/plans/craft-107-ocr-t12.md |
 | 2026-09-27 | T17: 6a738e454^..1c31bfce | clean（第三轮 14 项全修复后干净：Superseded 收敛/requested 前提/contracts 补导出/崩溃窗口回补等，见报告） | 0 open | 报告: docs/plans/craft-107-ocr-t17.md |
 | 2026-09-27 | T09: fd0f7030e^..790412d1 | clean（第二轮 2 项全修复后干净：时间线幂等去重+单推导缝隙，见报告） | 0 open | 报告: docs/plans/craft-107-ocr-t09.md |
+| 2026-09-27 | T13: fff903f54^..8d302ed83 | clean（第二轮 3 项全修复后干净：冻结契约面对齐扁平 wire+views 复用契约 parse，见报告） | 0 open | 报告: docs/plans/craft-107-ocr-t13.md |
