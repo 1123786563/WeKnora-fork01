@@ -14,6 +14,7 @@ import (
 
 	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/modules/craft"
+	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -193,9 +194,13 @@ func (s *CraftSessionService) AcceptInputRound(ctx context.Context, scope craft.
 	// deadline, so a finite cleanup budget bounds a wedged backend instead
 	// of pinning the upload request forever.
 	created := make([]string, 0, len(uploads))
-	cleanupCtx, cleanupDone := context.WithTimeout(context.WithoutCancel(ctx), craftInputCleanupBudget)
-	defer cleanupDone()
 	rollback := func() {
+		// The budget starts HERE, not when the upload loop began: an upload
+		// phase that consumed most of a pre-started budget would expire the
+		// Count/DeleteFile calls below immediately and silently leak every
+		// stored object (the errors were previously discarded outright).
+		cleanupCtx, cleanupDone := context.WithTimeout(context.WithoutCancel(ctx), craftInputCleanupBudget)
+		defer cleanupDone()
 		seen := make(map[string]struct{}, len(created))
 		for _, ref := range created {
 			if _, ok := seen[ref]; ok {
@@ -206,7 +211,9 @@ func (s *CraftSessionService) AcceptInputRound(ctx context.Context, scope craft.
 			if err := s.db.WithContext(cleanupCtx).Model(&craftWorkspaceInputRow{}).Where("ref = ?", ref).Count(&associations).Error; err != nil || associations != 0 {
 				continue
 			}
-			_ = s.files.DeleteFile(cleanupCtx, ref)
+			if err := s.files.DeleteFile(cleanupCtx, ref); err != nil {
+				logger.Warnf(cleanupCtx, "[CraftInput] rollback delete failed for ref %s (object may leak until reclamation): %v", ref, err)
+			}
 		}
 	}
 	for i, upload := range uploads {

@@ -196,7 +196,12 @@ func TestCraftChargeStartCallbackOutsideTransactionAllowsPauseAndCancellationRem
 	}
 	var journal CraftChargeStartJournalRow
 	require.NoError(t, db.Where("tenant_id = ? AND run_id = ? AND activity_key = ?", 102, "run-cancel", "activity-cancel").Take(&journal).Error)
-	require.Equal(t, "intent", journal.State, "canceled result persistence stays recoverable as intent")
+	// The OCR fix contract: the resolve write detaches from the canceled
+	// caller context, so a mid-send cancellation PERSISTS the unknown
+	// outcome instead of stranding the journal in 'intent' (where the
+	// activity replay is refused and the lease recovery scan excludes the
+	// Run until manual reconciliation). 'unknown' is the reconcilable state.
+	require.Equal(t, "unknown", journal.State, "canceled result persistence records the unknown outcome for reconciliation")
 	require.Len(t, craftReservations(t, db, 102), 1)
 }
 

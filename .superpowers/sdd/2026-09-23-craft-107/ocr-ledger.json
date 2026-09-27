@@ -22,7 +22,7 @@
     {
       "tid": "T08",
       "from": "13c6563010014b7a66f6e41fd58560ceb1a70db8^",
-      "to": "d7e522c6107a48d9fb20b927cd613bea5fc2f82a",
+      "to": "0108a1f3e12c1ca129f8bf89eedd4dee1c661b9e",
       "reportPath": "/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/docs/plans/craft-107-ocr-t08.md"
     },
     {
@@ -40,7 +40,7 @@
     {
       "tid": "T14",
       "from": "eeb1ee2db2220f67ec92e8cbb3b3dc57733fa41a^",
-      "to": "700238a7465f6fddcb7bb6c67be356da52848373",
+      "to": "b91d265ddac4b8e353b763411f65f75826359678",
       "reportPath": "/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/docs/plans/craft-107-ocr-t14.md"
     },
     {
@@ -48,7 +48,43 @@
       "from": "00da0930b^",
       "to": "81ac54057f6b1db56d201713e0f2a147c448381d",
       "reportPath": "/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/docs/plans/craft-107-ocr-t06.md"
+    },
+    {
+      "tid": "T15",
+      "from": "05fb4d496^",
+      "to": "440985251752e5d91c7782b3d39024980494eb60",
+      "reportPath": "/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/docs/plans/craft-107-ocr-t15.md"
+    },
+    {
+      "tid": "T11",
+      "from": "d84192a87^",
+      "to": "bc86041040542942aa01b2838194a782a15a9a51",
+      "reportPath": "/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/docs/plans/craft-107-ocr-t11.md"
+    },
+    {
+      "tid": "T07",
+      "from": "1c1468641^",
+      "to": "5f60d5cfc1cf468ae0033a71fd5c95bc2e5a2043",
+      "reportPath": "/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/docs/plans/craft-107-ocr-t07.md"
+    },
+    {
+      "tid": "T16",
+      "from": "463be670b^",
+      "to": "0112ab0bbfe6bad084f28905ccd1bee551bb0cbf",
+      "reportPath": "/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/docs/plans/craft-107-ocr-t16.md"
+    },
+    {
+      "tid": "T04",
+      "from": "678f34076^",
+      "to": "f42e745e758eaab95fc38dfc48032b08cdcaac7e",
+      "reportPath": "/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/docs/plans/craft-107-ocr-t04.md"
+    },
+    {
+      "tid": "T06",
+      "from": "545a2dc20^",
+      "to": "e4de8a62a1391043a9334a98c0439889bfe08321",
+      "reportPath": "/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/docs/plans/craft-107-ocr-t06.md"
     }
   ],
-  "maxCleanHead": "81ac54057f6b1db56d201713e0f2a147c448381d"
+  "maxCleanHead": "e4de8a62a1391043a9334a98c0439889bfe08321"
 }

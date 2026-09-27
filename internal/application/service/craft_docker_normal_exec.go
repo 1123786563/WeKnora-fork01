@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
+	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/modules/craft"
 	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
 )
@@ -60,9 +61,15 @@ type CraftDockerNormalExecService struct {
 // attach is logged so a deployment that forgot to wire the security gate
 // is observable in its logs.
 func (s *CraftDockerNormalExecService) WithExecutionPolicy(policy CraftExecutionPolicyGate) *CraftDockerNormalExecService {
-	if s != nil && policy != nil {
-		s.policy = policy
+	if s == nil {
+		return s
 	}
+	if policy == nil {
+		logger.Warnf(context.Background(), "[CraftDockerNormalExec] T03 execution gate NOT attached: the uploaded-material execution policy is nil (unwired assembly)")
+		return s
+	}
+	s.policy = policy
+	logger.Infof(context.Background(), "[CraftDockerNormalExec] T03 execution gate attached")
 	return s
 }
 
@@ -137,7 +144,13 @@ func (s *CraftDockerNormalExecService) Execute(ctx context.Context, grantID, act
 	// T03 (#122): uploaded code stays data. Screen the staged command
 	// against the Run's admitted input manifest before anything is created,
 	// bound, claimed or sent; a denial returns the member-visible refusal.
-	if s.policy != nil {
+	if s.policy == nil {
+		// Fail-closed: an unwired T03 gate must never fall through to the
+		// legacy allow-everything behavior — the upload-execute invariant
+		// (#122) is the whole point of this command face.
+		return CraftDockerNormalExecResult{}, fmt.Errorf("%w: T03 execution policy gate is not assembled", craft.ErrForbidden)
+	}
+	{
 		if err := s.policy.ReviewNormalExec(ctx, request); err != nil {
 			return CraftDockerNormalExecResult{}, err
 		}
@@ -204,7 +217,24 @@ func (s *CraftDockerNormalExecService) Execute(ctx context.Context, grantID, act
 	key := normalStartEvidenceKey(receipt)
 	if outcome.StartEvidence {
 		s.mu.Lock()
+		// Abandoned receipts (start error + no replay, container deleted)
+		// would otherwise retain their keys forever: past the cap the table
+		// resets wholesale — dropped keys degrade only cross-replay
+		// attribution to Unknown, the same semantics as a process restart.
+		if len(s.started) >= 4096 {
+			logger.Warnf(ctx, "[CraftDockerNormalExec] start-evidence table hit its cap; resetting (abandoned keys degrade to Unknown attribution)")
+			s.started = make(map[string]bool)
+		}
 		s.started[key] = true
+		s.mu.Unlock()
+	}
+	// A terminal process observation closes this receipt's start-evidence
+	// window: later observations of an already-terminal receipt no longer
+	// need the flag, and the long-lived service must not retain one key per
+	// exec forever.
+	if state := outcome.Observation.State; state == sandbox.DockerNormalExecProcessSucceeded || state == sandbox.DockerNormalExecProcessFailed {
+		s.mu.Lock()
+		delete(s.started, key)
 		s.mu.Unlock()
 	}
 	result := CraftDockerNormalExecResult{
@@ -314,12 +344,36 @@ func (s *CraftDockerNormalExecService) observeClaimed(ctx context.Context, grant
 		return s.unknownResult(ctx, activityID, receipt, err)
 	}
 	startEvidence := false
+	key := normalStartEvidenceKey(receipt)
 	s.mu.Lock()
-	startEvidence = s.started[normalStartEvidenceKey(receipt)]
+	startEvidence = s.started[key]
 	s.mu.Unlock()
 	observeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), craftDockerNormalObserveTimeout)
 	process, observeErr := s.provider.ObserveAttachedExec(observeCtx, normalProviderReceipt(receipt), startEvidence)
 	cancel()
+	// Claimed-never-started reconciliation: the durable claim was consumed
+	// but no start evidence exists and the provider reports the exec NOT
+	// running — the process crashed between claim and start. Without this
+	// convergence the receipt would stay Unknown forever (no replay can
+	// re-send a consumed claim). Converge to a FAILED terminal with an
+	// empty sealed output row so replays read a definitive state.
+	if observeErr == nil && !startEvidence && process.State != sandbox.DockerNormalExecProcessRunning && process.State != sandbox.DockerNormalExecProcessUnknown {
+		// The provider observed a DEFINITIVE not-running state with no
+		// start evidence: the exec never started (claim consumed, process
+		// crashed before Start). Report the definitive failed observation —
+		// replays leave the Unknown limbo instead of parking forever.
+		output, cursor, _ := s.readOutput(context.WithoutCancel(ctx), normalOutputScope(request, receipt))
+		output.Unavailable = true // no output row can exist for a never-started exec
+		result := CraftDockerNormalExecResult{Receipt: receipt, Process: process, Transport: sandbox.DockerNormalExecTransportComplete, StartEvidence: false, Output: output, Cursor: cursor}
+		return result, nil
+	}
+	if process.State == sandbox.DockerNormalExecProcessSucceeded || process.State == sandbox.DockerNormalExecProcessFailed {
+		// Terminal observation: drop the start-evidence key (same retention
+		// rule as the start path) so recovered receipts stop accumulating.
+		s.mu.Lock()
+		delete(s.started, key)
+		s.mu.Unlock()
+	}
 	result := CraftDockerNormalExecResult{Receipt: receipt, Process: process, Transport: sandbox.DockerNormalExecTransportUnavailable, StartEvidence: startEvidence}
 	result.Output, result.Cursor, _ = s.readOutput(context.WithoutCancel(ctx), normalOutputScope(request, receipt))
 	if result.Output.Sealed {
@@ -349,6 +403,12 @@ func (s *CraftDockerNormalExecService) readOutput(ctx context.Context, scope rep
 	readCtx, cancel := context.WithTimeout(ctx, craftDockerNormalObserveTimeout)
 	defer cancel()
 	_, snapshot, err := s.output.ReadAfter(readCtx, scope, 0, 1)
+	if err != nil {
+		// A missing/unreadable operation row must NOT project as an open,
+		// growing empty stream: mark it unavailable like the sink/service
+		// ReadAfter wrappers in the same contract family.
+		snapshot.Unavailable = true
+	}
 	return snapshot, snapshot.NextSequence, err
 }
 

@@ -213,7 +213,6 @@ func (c CraftPreviewConfig) withDefaults() CraftPreviewConfig {
 type craftPreviewGrant struct {
 	scope     craft.Scope
 	versionID string
-	files     map[string]struct{}
 	expiresAt time.Time
 }
 
@@ -227,6 +226,15 @@ type CraftPreviewService struct {
 	mu      sync.Mutex
 	tickets map[string]craftPreviewGrant // digest → grant
 	caps    map[string]craftPreviewGrant // digest → grant
+	// doorCache dedups the per-resource access/no-egress doors inside one
+	// capability burst (short TTL, successes only).
+	doorCache map[craft.Scope]craftPreviewDoorResult
+	// versionFiles caches ONE shared allowlist per immutable version id.
+	// Grants reference their version instead of freezing a private copy of
+	// the manifest: the grant tables stay bounded by maxCraftPreviewGrants
+	// times an O(1) reference, while the allowlists are bounded by the
+	// number of DISTINCT published versions actually previewed.
+	versionFiles map[string]map[string]struct{}
 }
 
 // NewCraftPreviewService assembles the preview service. versions and files
@@ -249,13 +257,25 @@ func NewCraftPreviewService(
 		panic(fmt.Sprintf("craft: preview origin %q must be a distinct https origin from app origin %q",
 			config.PreviewOrigin, config.AppOrigin))
 	}
+	if config.AppOrigin != "" && config.PreviewOrigin != "" &&
+		previewBareHostname(config.AppOrigin) != "" &&
+		strings.EqualFold(previewBareHostname(config.AppOrigin), previewBareHostname(config.PreviewOrigin)) {
+		// Host-only cookies are shared across PORTS: a preview origin that
+		// differs from the app origin only by port spelling (or by port at
+		// all) is not an isolation boundary for the unauthenticated preview
+		// routes.
+		panic(fmt.Sprintf("craft: preview origin %q shares host %q with app origin %q; the preview origin must live on a distinct hostname",
+			config.PreviewOrigin, previewBareHostname(config.PreviewOrigin), config.AppOrigin))
+	}
 	return &CraftPreviewService{
-		versions: versions,
-		files:    files,
-		checks:   checks,
-		config:   config,
-		tickets:  map[string]craftPreviewGrant{},
-		caps:     map[string]craftPreviewGrant{},
+		versions:     versions,
+		files:        files,
+		checks:       checks,
+		config:       config,
+		tickets:      map[string]craftPreviewGrant{},
+		caps:         map[string]craftPreviewGrant{},
+		doorCache:    map[craft.Scope]craftPreviewDoorResult{},
+		versionFiles: map[string]map[string]struct{}{},
 	}
 }
 
@@ -298,7 +318,34 @@ func (s *CraftPreviewService) AcceptsPreviewHost(host string) bool {
 	}
 	// Normalize both sides: the config side may omit the default port while
 	// the request carries it (or vice versa).
-	return strings.EqualFold(trimDefaultPort(host, u.Scheme), trimDefaultPort(u.Host, u.Scheme))
+	if !strings.EqualFold(trimDefaultPort(host, u.Scheme), trimDefaultPort(u.Host, u.Scheme)) {
+		return false
+	}
+	// Bare-hostname overlap guard: a request on the APP origin's hostname
+	// (whatever port spelling) must never reach the unauthenticated preview
+	// routes — Host-only session cookies follow the hostname, not the port.
+	if app, err := url.Parse(s.config.AppOrigin); err == nil && app.Host != "" {
+		requestBare := previewBareHostname("https://" + host)
+		if strings.EqualFold(requestBare, previewBareHostname(s.config.AppOrigin)) &&
+			!strings.EqualFold(previewBareHostname(s.config.PreviewOrigin), previewBareHostname(s.config.AppOrigin)) {
+			return false
+		}
+	}
+	return true
+}
+
+// previewBareHostname reduces an origin (or host:port) to its bare hostname:
+// default port trimmed, any remaining port split off, IPv6 brackets removed.
+func previewBareHostname(origin string) string {
+	u, err := url.Parse(origin)
+	if err != nil || u.Host == "" {
+		return ""
+	}
+	host := trimDefaultPort(u.Host, u.Scheme)
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	return strings.Trim(host, "[]")
 }
 
 // Issue mints one redemption ticket for a published version after the full
@@ -337,10 +384,7 @@ func (s *CraftPreviewService) Issue(ctx context.Context, scope craft.Scope, vers
 	if !ok {
 		return craft.PreviewTicket{}, fmt.Errorf("%w: kind %q has no entry file", craft.ErrUnsupported, version.Kind)
 	}
-	allowedFiles := make(map[string]struct{}, len(version.Files))
-	for _, file := range version.Files {
-		allowedFiles[file.Path] = struct{}{}
-	}
+	allowedFiles := s.sharedVersionFiles(version.ID, version.Files)
 	if _, ok := allowedFiles[entry]; !ok {
 		return craft.PreviewTicket{}, fmt.Errorf("%w: entry is absent from version manifest", craft.ErrNotFound)
 	}
@@ -351,7 +395,7 @@ func (s *CraftPreviewService) Issue(ctx context.Context, scope craft.Scope, vers
 	}
 	now := s.config.Now()
 	expiresAt := now.Add(s.config.TTL)
-	if err := s.putTicket(digest, craftPreviewGrant{scope: scope, versionID: version.ID, files: allowedFiles, expiresAt: expiresAt}); err != nil {
+	if err := s.putTicket(digest, craftPreviewGrant{scope: scope, versionID: version.ID, expiresAt: expiresAt}); err != nil {
 		return craft.PreviewTicket{}, err
 	}
 	base := strings.TrimSuffix(s.config.PreviewOrigin, "/")
@@ -414,7 +458,7 @@ func (s *CraftPreviewService) Open(ctx context.Context, token, requestPath strin
 			return PreviewOpen{}, err
 		}
 		expiresAt := s.config.Now().Add(s.config.TTL)
-		if err := s.putCapability(capDigest, craftPreviewGrant{scope: grant.scope, versionID: grant.versionID, files: grant.files, expiresAt: expiresAt}); err != nil {
+		if err := s.putCapability(capDigest, craftPreviewGrant{scope: grant.scope, versionID: grant.versionID, expiresAt: expiresAt}); err != nil {
 			return PreviewOpen{}, err
 		}
 		return PreviewOpen{Redirect: "/" + craft.PreviewPathSegment + "/" + capToken + "/" + rel}, nil
@@ -469,13 +513,12 @@ func (s *CraftPreviewService) lookup(ctx context.Context, digest, rel string) (c
 	// config load + live container inspect). Authorized manifest paths
 	// still run both doors before any byte is served — the order change
 	// only short-circuits guaranteed-404 requests.
-	if _, ok := grant.files[rel]; !ok {
-		return craft.File{}, craft.Scope{}, craftPreviewGrant{}, fmt.Errorf("%w: file is outside preview capability", craft.ErrNotFound)
+	if allowlist, cached := s.sharedVersionAllowlist(grant.versionID); cached {
+		if _, ok := allowlist[rel]; !ok {
+			return craft.File{}, craft.Scope{}, craftPreviewGrant{}, fmt.Errorf("%w: file is outside preview capability", craft.ErrNotFound)
+		}
 	}
-	if err := craft.RequireTaskAccess(ctx, s.config.AccessChecker, grant.scope, craft.TaskPreview); err != nil {
-		return craft.File{}, craft.Scope{}, craftPreviewGrant{}, err
-	}
-	if err := s.requireNoEgress(ctx, grant.scope); err != nil {
+	if err := s.requireFreshPreviewDoors(ctx, grant.scope); err != nil {
 		return craft.File{}, craft.Scope{}, craftPreviewGrant{}, err
 	}
 	version, err := s.versions.Get(ctx, grant.scope, grant.versionID)
@@ -489,6 +532,56 @@ func (s *CraftPreviewService) lookup(ctx context.Context, digest, rel string) (c
 	}
 	return craft.File{}, craft.Scope{}, craftPreviewGrant{},
 		fmt.Errorf("%w: %q is not part of version %s", craft.ErrNotFound, rel, grant.versionID)
+}
+
+// craftPreviewDoorCacheTTL bounds how long a successful (access, no-egress)
+// door pair is reused for the same scope: one preview page fetches dozens of
+// static assets in a burst, and re-running membership + binding + live
+// Docker inspect per asset pins workers when the daemon is slow. Failures
+// are NEVER cached — a revocation or a flapping daemon takes effect on the
+// very next request; the TTL only bounds how long a fresh success may be
+// reused, so revocation windows stay in the same order as the TTL.
+const craftPreviewDoorCacheTTL = 2 * time.Second
+
+type craftPreviewDoorResult struct {
+	ok bool
+	at time.Time
+}
+
+// requireFreshPreviewDoors runs the two I/O-heavy doors with a per-scope
+// short-TTL success cache (per-resource dedup inside a capability burst).
+func (s *CraftPreviewService) requireFreshPreviewDoors(ctx context.Context, scope craft.Scope) error {
+	// Membership/revocation stays LIVE on every read (a revoked grant must
+	// end a live capability immediately — the cheap indexed query); only the
+	// expensive no-egress door (binding load + live Docker inspect, up to
+	// 30s) is deduped within the short TTL window.
+	if err := craft.RequireTaskAccess(ctx, s.config.AccessChecker, scope, craft.TaskPreview); err != nil {
+		return err
+	}
+	now := s.config.Now()
+	s.mu.Lock()
+	if cached, ok := s.doorCache[scope]; ok {
+		if cached.ok && now.Sub(cached.at) < craftPreviewDoorCacheTTL {
+			s.mu.Unlock()
+			return nil
+		}
+		delete(s.doorCache, scope)
+	}
+	s.mu.Unlock()
+	if err := s.requireNoEgress(ctx, scope); err != nil {
+		return err
+	}
+	// Timestamp AFTER the expensive door: the door itself can take up to
+	// 30s (live Docker inspect) while the TTL is 2s — stamping before it
+	// would expire the entry at insert time exactly in the slow-daemon
+	// scenario the cache exists for.
+	s.mu.Lock()
+	if len(s.doorCache) > 1024 {
+		s.doorCache = make(map[craft.Scope]craftPreviewDoorResult)
+	}
+	s.doorCache[scope] = craftPreviewDoorResult{ok: true, at: s.config.Now()}
+	s.mu.Unlock()
+	return nil
 }
 
 func (s *CraftPreviewService) requireNoEgress(ctx context.Context, scope craft.Scope) error {
@@ -509,6 +602,38 @@ func (s *CraftPreviewService) openReader(ctx context.Context, grant craftPreview
 		return nil, fmt.Errorf("craft: open preview object: %w", err)
 	}
 	return newBoundedReadCloser(reader, file.Bytes), nil
+}
+
+// maxCraftPreviewVersionCache bounds the shared per-version allowlist cache;
+// beyond it new versions simply skip the O(1) 404 short-circuit and pay the
+// full per-read validation path.
+const maxCraftPreviewVersionCache = 1 << 12
+
+// sharedVersionFiles returns the shared allowlist for one immutable version,
+// populating the cache on first use. Versions are immutable, so one map is
+// safely shared by every grant, ticket and capability of that version.
+func (s *CraftPreviewService) sharedVersionFiles(versionID string, files []craft.File) map[string]struct{} {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if cached, ok := s.versionFiles[versionID]; ok {
+		return cached
+	}
+	allowlist := make(map[string]struct{}, len(files))
+	for _, file := range files {
+		allowlist[file.Path] = struct{}{}
+	}
+	if len(s.versionFiles) < maxCraftPreviewVersionCache {
+		s.versionFiles[versionID] = allowlist
+	}
+	return allowlist
+}
+
+// sharedVersionAllowlist reports the cached allowlist for a version, if any.
+func (s *CraftPreviewService) sharedVersionAllowlist(versionID string) (map[string]struct{}, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cached, ok := s.versionFiles[versionID]
+	return cached, ok
 }
 
 // putTicket stores one ticket grant, purging expired entries first.

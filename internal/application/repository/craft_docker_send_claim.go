@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"errors"
 	"context"
 	"fmt"
 	"strings"
@@ -235,10 +236,10 @@ func lockDockerSendRunFence(tx *gorm.DB, ctx context.Context, key CraftChargeSta
 func (r *CraftDockerSendClaimRepository) load(ctx context.Context, key CraftChargeStartKey) (craftDockerSendClaimRow, error) {
 	var row craftDockerSendClaimRow
 	err := r.db.WithContext(ctx).Where("tenant_id = ? AND run_id = ? AND activity_key = ?", key.TenantID, key.RunID, key.ActivityKey).Take(&row).Error
-	if err == gorm.ErrRecordNotFound {
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return craftDockerSendClaimRow{}, craftDockerSendConflict("operation not found")
 	}
-	return row, err
+	return row, dockerNormalInputDBError(err)
 }
 
 func validateCraftDockerSendIdentity(key CraftChargeStartKey, receipt DockerExecReceipt) error {

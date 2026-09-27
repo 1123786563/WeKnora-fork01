@@ -155,10 +155,9 @@ func craftAuditActorUserID(actor string) (column string, full string) {
 
 func (s *CraftAccessService) auditTaskDenial(ctx context.Context, scope craft.Scope, action craft.TaskAction) {
 	// TaskAction is externally reachable through application seams, so only
-	// persist the finite action vocabulary defined by the Craft contract.
-	switch action {
-	case craft.TaskRead, craft.TaskWrite, craft.TaskShare, craft.TaskOpenSource, craft.TaskPreview:
-	default:
+	// persist the finite action vocabulary defined by the Craft contract —
+	// the same single authority RequireTaskAccess enforces.
+	if !action.Valid() {
 		return
 	}
 	actor, fullActor := craftAuditActorUserID(scope.UserID)

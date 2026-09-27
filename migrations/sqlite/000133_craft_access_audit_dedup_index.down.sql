@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS idx_craft_access_audit_dedup;

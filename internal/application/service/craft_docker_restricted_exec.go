@@ -2,12 +2,14 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
 	"time"
 
 	repository "github.com/Tencent/WeKnora/internal/application/repository"
+	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
 )
 
@@ -56,9 +58,15 @@ type CraftDockerRestrictedExec struct {
 // is logged so a deployment that forgot to wire the security gate is
 // observable in its logs.
 func (s *CraftDockerRestrictedExec) WithExecutionPolicy(policy CraftExecutionPolicyGate) *CraftDockerRestrictedExec {
-	if s != nil && policy != nil {
-		s.policy = policy
+	if s == nil {
+		return s
 	}
+	if policy == nil {
+		logger.Warnf(context.Background(), "[CraftDockerRestrictedExec] T03 execution gate NOT attached: the uploaded-material execution policy is nil (unwired assembly)")
+		return s
+	}
+	s.policy = policy
+	logger.Infof(context.Background(), "[CraftDockerRestrictedExec] T03 execution gate attached")
 	return s
 }
 
@@ -95,7 +103,10 @@ func (s *CraftDockerRestrictedExec) Start(ctx context.Context, grantID, activity
 	// T03 (#122): uploaded code stays data. Screen the command before the
 	// durable send is prepared; a denial returns the member-visible refusal
 	// and nothing is created, bound or sent.
-	if s.policy != nil {
+	if s.policy == nil {
+		return CraftDockerOutputlessResult{}, errors.New("restricted Docker exec refused: T03 execution policy gate is not assembled (fail-closed)")
+	}
+	{
 		if err := s.policy.ReviewOutputlessExec(ctx, binding, request); err != nil {
 			return CraftDockerOutputlessResult{}, err
 		}
@@ -122,7 +133,10 @@ func (s *CraftDockerRestrictedExec) Start(ctx context.Context, grantID, activity
 // command through recovery — an unreviewable command is never sent, from
 // either path.
 func (s *CraftDockerRestrictedExec) ResumeBound(ctx context.Context, grantID, activityID string) (CraftDockerOutputlessResult, error) {
-	if s.policy != nil {
+	if s.policy == nil {
+		return CraftDockerOutputlessResult{}, errors.New("restricted Docker exec refused: T03 execution policy gate is not assembled (fail-closed)")
+	}
+	{
 		if err := s.policy.ReviewOutputlessExec(ctx, CraftCallBinding{}, CraftDockerOutputlessRequest{}); err != nil {
 			return CraftDockerOutputlessResult{}, err
 		}
@@ -184,7 +198,11 @@ func (s *CraftDockerRestrictedExec) Wait(ctx context.Context, grantID, activityI
 		return unknown, sandbox.ErrRemoteOperationUnknown
 	}
 	unknown.Receipt = *durable.Receipt
-	ticker := time.NewTicker(20 * time.Millisecond)
+	// Exponential backoff 20ms→200ms: each round costs two DB queries plus
+	// a Docker inspect, so a fixed 20ms ticker hammers both backends (~150
+	// round trips per second per waiter) for the whole wait window.
+	interval := 20 * time.Millisecond
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
 		if err := waitCtx.Err(); err != nil {
@@ -208,6 +226,13 @@ func (s *CraftDockerRestrictedExec) Wait(ctx context.Context, grantID, activityI
 			return result, nil
 		case sandbox.DockerOutputlessUnknown:
 			// Unknown is not terminal proof. Continue until the caller's bound.
+		}
+		if interval < 200*time.Millisecond {
+			interval *= 2
+			if interval > 200*time.Millisecond {
+				interval = 200 * time.Millisecond
+			}
+			ticker.Reset(interval)
 		}
 		select {
 		case <-waitCtx.Done():
@@ -295,11 +320,37 @@ func (s *CraftDockerRestrictedExec) Observe(ctx context.Context, grantID, activi
 	s.mu.Unlock()
 	observed, err := s.client.ObserveOutputlessExec(ctx, sandbox.DockerOutputlessExecReceipt{ContainerID: receipt.ContainerID, ExecID: receipt.ExecID}, previouslyRunning)
 	if err != nil {
+		// Claimed-never-started reconciliation: the container is GONE (its
+		// lifecycle owns the sandbox) and no start evidence exists — the
+		// exec can never run. Converge to the failed terminal instead of an
+		// eternal Unknown; with prior Running evidence the honest answer
+		// stays Unknown (it may have produced effects before deletion).
+		var remoteErr *sandbox.RemoteError
+		isNotFound := errors.As(err, &remoteErr) && remoteErr.Kind == sandbox.RemoteErrorKindNotFound
+		if !previouslyRunning && (isNotFound || strings.Contains(err.Error(), "No such container") || strings.Contains(err.Error(), "No such exec")) {
+			return sandbox.DockerOutputlessExecObservation{State: sandbox.DockerOutputlessFailed, OutputAvailable: false}, nil
+		}
 		return unknown, err
 	}
 	if observed.State == sandbox.DockerOutputlessRunning {
 		s.mu.Lock()
+		// Cap mirrors the normal-exec table: deleted containers never reach
+		// a terminal observation, so abandoned keys are bounded by reset.
+		if len(s.running) >= 4096 {
+			logger.Warnf(ctx, "[CraftDockerRestrictedExec] running table hit its cap; resetting")
+			s.running = make(map[string]bool)
+		}
 		s.running[key] = true
+		s.mu.Unlock()
+	} else if observed.State == sandbox.DockerOutputlessSucceeded || observed.State == sandbox.DockerOutputlessFailed {
+		// TERMINAL observation only: the "was Running" attribution (a
+		// terminal zero/missing exit code reads as failure, not unknown) has
+		// served its purpose for this receipt and the long-lived service
+		// must not accumulate one key per exec forever. An Unknown
+		// observation deliberately KEEPS the flag — attribution is still
+		// pending for a later terminal read.
+		s.mu.Lock()
+		delete(s.running, key)
 		s.mu.Unlock()
 	}
 	return observed, nil

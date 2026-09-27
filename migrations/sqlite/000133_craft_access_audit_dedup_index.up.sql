@@ -1,0 +1,2 @@
+-- Denial-dedup Count predicate coverage: (tenant,actor,action,scope,target,outcome,created_at)
+CREATE INDEX IF NOT EXISTS idx_craft_access_audit_dedup ON audit_logs (tenant_id, actor_user_id, action, scope_id, target_id, outcome, created_at);

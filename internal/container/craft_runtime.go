@@ -164,16 +164,45 @@ func newCraftRuntimeExecutor(
 	// deployment's pinned toolchain. Unset keeps the preview-only evidence
 	// (default-off, like the rest of this assembly); set-but-invalid refuses
 	// the whole assembly rather than trusting an unverifiable toolchain.
-	if toolchainDir := strings.TrimSpace(os.Getenv(craftWebToolchainDirEnv)); toolchainDir != "" {
-		pin, pinErr := LoadCraftWebToolchainPin(toolchainDir)
+	//
+	// previewOnly is captured BEFORE the legacy wrapping: the RunView
+	// route's evidence must never fall through to the legacy shared-tree
+	// build-log reader, whose stale delegation exit status would silently
+	// pollute THIS Run's promotion checks.
+	previewOnly := evidence
+	webToolchainDir := strings.TrimSpace(os.Getenv(craftWebToolchainDirEnv))
+	var webToolchainPin *CraftWebToolchainPin
+	var webBuildGate *CraftWebBuildCommandGate
+	if webToolchainDir != "" {
+		pin, pinErr := LoadCraftWebToolchainPin(webToolchainDir)
 		if pinErr != nil {
-			return nil, fmt.Errorf("craft web toolchain pin %s: %w", toolchainDir, pinErr)
+			return nil, fmt.Errorf("craft web toolchain pin %s: %w", webToolchainDir, pinErr)
 		}
 		// The deployment's own runtime identity joins the pin: a log naming
 		// any other runtime is foreign even when the toolchain pins match.
 		pin.RuntimeDigest = runtimeDigest
+		webToolchainPin = &pin
 		evidence = craftWebBuildEvidenceSource(evidence, craftSessionBuildLogReader(source, outputDir), pin)
+		// T04 integration wiring: build the T03 execution policy and the
+		// fixed-shape web build command gate at the SAME site as the pin,
+		// so the central dispatch point (T20 lane) attaches the SAME gate
+		// instance before any server-initiated build command is sent.
+		// The policy gate needs a REAL delegate service (nil is rejected by
+		// the constructor); the workspace root is the CONTAINER /workspace,
+		// not the host serve workDir — the T03 lexical layers resolve the
+		// read-only inputs tree relative to it.
+		delegateService := service.NewCraftDelegateService(store, nil)
+		delegatePolicy, perr := service.NewCraftDelegateExecutionPolicy(delegateService, db, "/workspace")
+		if perr != nil {
+			logger.Warnf(context.Background(), "[CraftRuntime] T04 execution policy NOT assembled: %v (build commands stay fail-closed)", perr)
+		} else if gate, gerr := NewCraftWebBuildCommandGate(delegatePolicy, pin, webToolchainDir); gerr == nil {
+			webBuildGate = gate
+			logger.Infof(context.Background(), "[CraftRuntime] T04 web build command gate assembled (toolchain %s)", webToolchainDir)
+		} else {
+			logger.Warnf(context.Background(), "[CraftRuntime] T04 web build command gate NOT assembled: %v (build commands stay fail-closed)", gerr)
+		}
 	}
+	_ = webBuildGate // central dispatch attachment is T20 lane scope
 	// The candidate store backs the R4 Task3 Run-bound collection: successful
 	// delegations stage a private candidate and the post-terminal capture
 	// seals the draft; the legacy session-wide publication route keeps its
@@ -181,6 +210,12 @@ func newCraftRuntimeExecutor(
 	artifacts := service.NewCraftArtifactServiceWithCandidates(source, files, versions,
 		repository.NewCraftCandidateStore(db), evidence,
 		service.CraftArtifactConfig{Kind: craft.KindWeb, OutputDir: outputDir, WebCitationGate: citationGate})
+	// T07 (#131): promotion pins the promoting Run's immutable knowledge
+	// record as the published version's evidence member (same commit). The
+	// record repository is the same reader the citation gate uses, so the
+	// pinned evidence and the admitted citations always agree; the store
+	// side is the shared version store (type-asserted by the service).
+	artifacts.WithVersionEvidence(repository.NewCraftKnowledgeRecordRepository(db))
 	// The Run-bound candidate route always materializes from the verified
 	// generation's fixed "output" layout (its source rejects any other dir),
 	// so it gets a dedicated service with the RunView OutputDir pinned — the
@@ -203,15 +238,15 @@ func newCraftRuntimeExecutor(
 	// foreign tree.
 	runViewEvidence := evidence
 	var runViewLogReader func(context.Context, craft.Task) ([]byte, error)
-	if strings.TrimSpace(os.Getenv(craftWebToolchainDirEnv)) != "" {
-		runViewPin, pinErr := LoadCraftWebToolchainPin(strings.TrimSpace(os.Getenv(craftWebToolchainDirEnv)))
-		if pinErr != nil {
-			return nil, fmt.Errorf("craft web toolchain pin %s: %w", os.Getenv(craftWebToolchainDirEnv), pinErr)
-		}
-		runViewPin.RuntimeDigest = runtimeDigest
-		// Late-bound: the reader closure is assigned after the runtime is
-		// constructed (it needs the runtime's material seam).
-		runViewEvidence = craftWebBuildEvidenceSource(evidence, func(ctx context.Context, task craft.Task) ([]byte, error) {
+	if webToolchainPin != nil {
+		runViewPin := *webToolchainPin
+		// The RunView route's evidence inner is the PREVIEW-ONLY source
+		// (captured before the legacy wrapping): when this Run's own log
+		// read fails or is rejected, the build fact degrades to unobserved —
+		// it must never fall back to the legacy shared workDir tree, whose
+		// stale build-log.json would fold a foreign delegation's exit status
+		// into THIS Run's T15 promotion checks.
+		runViewEvidence = craftWebBuildEvidenceSource(previewOnly, func(ctx context.Context, task craft.Task) ([]byte, error) {
 			if runViewLogReader == nil {
 				return nil, fs.ErrNotExist
 			}
@@ -227,6 +262,11 @@ func newCraftRuntimeExecutor(
 	// implemented (T14 live gate closed), so nil leaves both probe facts
 	// not_run and promotion fails closed — exactly the recorded contract.
 	// The promotion TRIGGER (post-terminal orchestration) is T20 scope.
+	// T07 (#131): the same route pins the promoting Run's immutable
+	// knowledge record as the promoted version's evidence (same commit as
+	// the publish), through the same record repository the citation gate
+	// reads — pinned evidence and admitted citations can never disagree.
+	runViewArtifacts.WithVersionEvidence(repository.NewCraftKnowledgeRecordRepository(db))
 	runViewArtifacts.WithWebPromotion(repository.NewCraftDraftHeadStore(db), nil)
 	// C02: an interaction.pending event first lands durably (interaction row
 	// + waiting_user park) before it is projected to the run stream, so the
@@ -242,17 +282,17 @@ func newCraftRuntimeExecutor(
 	// through to the durable run event stream.
 	emit := craftRunEventEmitter(runs)
 	runtime := &localCraftRuntime{
-		db:                db,
-		client:            client,
-		store:             store,
-		files:             files,
-		artifacts:         artifacts,
-		runViewArtifacts:  runViewArtifacts,
-		emit:              emit,
-		outputDir:         outputDir,
-		runtimeDigest:     runtimeDigest,
-		sessionsRoot:      filepath.Join(workDir, "ws"),
-		workDir:           workDir,
+		db:               db,
+		client:           client,
+		store:            store,
+		files:            files,
+		artifacts:        artifacts,
+		runViewArtifacts: runViewArtifacts,
+		emit:             emit,
+		outputDir:        outputDir,
+		runtimeDigest:    runtimeDigest,
+		sessionsRoot:     filepath.Join(workDir, "ws"),
+		workDir:          workDir,
 	}
 	// The RunView build-log reader resolves the task's own verified
 	// generation output through the same run-bound artifact source the
@@ -272,10 +312,28 @@ func newCraftRuntimeExecutor(
 		if err != nil {
 			return nil, err
 		}
-		logPath := path.Clean(craftLocalOutputDir + "/" + craftWebBuildLogName)
-		return source.ReadSessionFile(ctx, task.Scope.SessionID, logPath)
+		// The run-bound source only serves files its own bounded walk listed
+		// (identity-checked, no-follow). List first and map "absent" to
+		// fs.ErrNotExist — the evidence collector treats that as
+		// unobserved, while a raw read would surface as a generic conflict
+		// and (worse) could be misread as a screening rejection.
+		entries, err := source.ListSessionFiles(ctx, task.Scope.SessionID, craftLocalOutputDir)
+		if err != nil {
+			return nil, err
+		}
+		logName := craftWebBuildLogName
+		present := false
+		for _, entry := range entries {
+			if entry.Type == sandbox.RemoteEntryFile && path.Base(entry.Path) == logName {
+				present = true
+				break
+			}
+		}
+		if !present {
+			return nil, fs.ErrNotExist
+		}
+		return source.ReadSessionFile(ctx, task.Scope.SessionID, path.Clean(craftLocalOutputDir+"/"+logName))
 	}
-	runtime.runViewBuildLogReader = runViewLogReader
 	runtime.inner = opencode.NewExecutor(client, store,
 		func(ctx context.Context, task craft.Task, kind string, data json.RawMessage) error {
 			return runtime.emit(ctx, task, kind, data)
@@ -290,24 +348,20 @@ func newCraftRuntimeExecutor(
 // the sub-prompt with the session workspace, execute through the R04
 // executor, then publish the finished output as an immutable version.
 type localCraftRuntime struct {
-	db               *gorm.DB
-	client           *opencode.Client
-	store            craft.Store
-	files            interfaces.FileService
-	inner            craft.Executor
-	artifacts        *service.CraftArtifactService
+	db        *gorm.DB
+	client    *opencode.Client
+	store     craft.Store
+	files     interfaces.FileService
+	inner     craft.Executor
+	artifacts *service.CraftArtifactService
 	// runViewArtifacts is the Run-bound candidate service with the RunView
 	// OutputDir pinned to craftLocalOutputDir, independent of the
 	// deployment-wide CRAFT_OPENCODE_OUTPUT_DIR that configures the legacy
 	// session-wide publication route on artifacts.
-	runViewArtifacts  *service.CraftArtifactService
-	// runViewBuildLogReader reads THIS Run's verified-generation
-	// output/build-log.json for the T04 build evidence on the RunView
-	// candidate route (never the legacy shared tree).
-	runViewBuildLogReader func(ctx context.Context, task craft.Task) ([]byte, error)
-	emit                  func(context.Context, craft.Task, string, json.RawMessage) error
-	workDir               string
-	outputDir             string
+	runViewArtifacts *service.CraftArtifactService
+	emit             func(context.Context, craft.Task, string, json.RawMessage) error
+	workDir          string
+	outputDir        string
 	runtimeDigest         string
 	sessionsRoot          string
 	materialResolver      func(context.Context, craft.Task) (CraftRunViewMaterialHandle, error)

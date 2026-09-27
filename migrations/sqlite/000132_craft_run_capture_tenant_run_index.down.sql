@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS idx_craft_run_captures_tenant_run;

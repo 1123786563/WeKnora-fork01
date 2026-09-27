@@ -83,6 +83,7 @@ func TestCraftDockerRestrictedRejectsUnsupportedContractBeforeHold(t *testing.T)
 	coordinator, budget, _, tenant, grantID := newCraftDockerCoordinatorFixture(t)
 	service, err := NewCraftDockerRestrictedExec(coordinator, &sandbox.DockerRemoteClient{}, 0)
 	require.NoError(t, err)
+	service.WithExecutionPolicy(&permissiveExecPolicyGate{})
 	callback := func(string, []byte) {}
 	for _, request := range []CraftDockerOutputlessRequest{
 		{Exec: sandbox.RemoteExecRequest{Command: "true"}},
@@ -102,6 +103,7 @@ func TestCraftDockerRestrictedPhysicalStartRequiresExclusiveDurableClaim(t *test
 	docker := &fakeOutputlessDocker{}
 	service, err := NewCraftDockerRestrictedExec(coordinator, docker, time.Second)
 	require.NoError(t, err)
+	service.WithExecutionPolicy(&permissiveExecPolicyGate{})
 	request := CraftDockerOutputlessRequest{DiscardOutput: true, Exec: sandbox.RemoteExecRequest{Command: "true"}}
 	binding := CraftCallBinding{ModelID: "model", Funding: commercial.FundingPlatform}
 	result, err := service.Start(context.Background(), grantID, "activity-one-send", binding, fakeDockerHandle{}, request)
@@ -124,6 +126,7 @@ func TestCraftDockerRestrictedLostStartResponseStaysUnknownWithoutRetry(t *testi
 	docker := &fakeOutputlessDocker{startErr: errors.New("connection lost after daemon acceptance")}
 	service, err := NewCraftDockerRestrictedExec(coordinator, docker, time.Second)
 	require.NoError(t, err)
+	service.WithExecutionPolicy(&permissiveExecPolicyGate{})
 	request := CraftDockerOutputlessRequest{DiscardOutput: true, Exec: sandbox.RemoteExecRequest{Command: "true"}}
 	result, err := service.Start(context.Background(), grantID, "activity-lost-response", CraftCallBinding{ModelID: "model", Funding: commercial.FundingPlatform}, fakeDockerHandle{}, request)
 	require.ErrorIs(t, err, sandbox.ErrRemoteOperationUnknown)
@@ -152,6 +155,7 @@ func TestCraftDockerRestrictedCancellationAfterClaimSkipsProviderStart(t *testin
 	docker := &fakeOutputlessDocker{}
 	service, err := NewCraftDockerRestrictedExec(coordinator, docker, time.Second)
 	require.NoError(t, err)
+	service.WithExecutionPolicy(&permissiveExecPolicyGate{})
 	ctx := boundaryCanceledContext{Context: context.Background()}
 	result, err := service.Start(ctx, grantID, "activity-cancel-after-claim", CraftCallBinding{ModelID: "model", Funding: commercial.FundingPlatform}, fakeDockerHandle{}, CraftDockerOutputlessRequest{DiscardOutput: true, Exec: sandbox.RemoteExecRequest{Command: "true"}})
 	require.ErrorIs(t, err, context.Canceled)
@@ -177,6 +181,7 @@ func TestCraftDockerRestrictedWaitReturnsOutputlessTerminalState(t *testing.T) {
 	}}
 	service, err := NewCraftDockerRestrictedExec(coordinator, docker, time.Second)
 	require.NoError(t, err)
+	service.WithExecutionPolicy(&permissiveExecPolicyGate{})
 	result, err := service.Start(context.Background(), grantID, "activity-wait-terminal", CraftCallBinding{ModelID: "model", Funding: commercial.FundingPlatform}, fakeDockerHandle{}, CraftDockerOutputlessRequest{DiscardOutput: true, Exec: sandbox.RemoteExecRequest{Command: "true"}})
 	require.NoError(t, err)
 	terminal, err := service.Wait(context.Background(), grantID, "activity-wait-terminal", time.Second)
@@ -202,6 +207,7 @@ func TestCraftDockerRestrictedWaitCancellationRemainsUnknown(t *testing.T) {
 	docker := &fakeOutputlessDocker{observations: []sandbox.DockerOutputlessExecObservation{{State: sandbox.DockerOutputlessRunning}}}
 	service, err := NewCraftDockerRestrictedExec(coordinator, docker, time.Second)
 	require.NoError(t, err)
+	service.WithExecutionPolicy(&permissiveExecPolicyGate{})
 	_, err = service.Start(context.Background(), grantID, "activity-wait-canceled", CraftCallBinding{ModelID: "model", Funding: commercial.FundingPlatform}, fakeDockerHandle{}, CraftDockerOutputlessRequest{DiscardOutput: true, Exec: sandbox.RemoteExecRequest{Command: "true"}})
 	require.NoError(t, err)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -222,6 +228,7 @@ func TestCraftDockerRestrictedWaitDeadlineRemainsUnknown(t *testing.T) {
 	docker := &fakeOutputlessDocker{observations: []sandbox.DockerOutputlessExecObservation{{State: sandbox.DockerOutputlessRunning}}}
 	service, err := NewCraftDockerRestrictedExec(coordinator, docker, time.Second)
 	require.NoError(t, err)
+	service.WithExecutionPolicy(&permissiveExecPolicyGate{})
 	_, err = service.Start(context.Background(), grantID, "activity-wait-deadline", CraftCallBinding{ModelID: "model", Funding: commercial.FundingPlatform}, fakeDockerHandle{}, CraftDockerOutputlessRequest{DiscardOutput: true, Exec: sandbox.RemoteExecRequest{Command: "true"}})
 	require.NoError(t, err)
 	result, err := service.Wait(context.Background(), grantID, "activity-wait-deadline", 15*time.Millisecond)
@@ -237,6 +244,7 @@ func TestCraftDockerRestrictedWaitInspectErrorRemainsUnknown(t *testing.T) {
 	docker := &fakeOutputlessDocker{observeErr: errors.New("inspect unavailable")}
 	service, err := NewCraftDockerRestrictedExec(coordinator, docker, time.Second)
 	require.NoError(t, err)
+	service.WithExecutionPolicy(&permissiveExecPolicyGate{})
 	_, err = service.Start(context.Background(), grantID, "activity-wait-inspect-error", CraftCallBinding{ModelID: "model", Funding: commercial.FundingPlatform}, fakeDockerHandle{}, CraftDockerOutputlessRequest{DiscardOutput: true, Exec: sandbox.RemoteExecRequest{Command: "true"}})
 	require.NoError(t, err)
 	result, err := service.Wait(context.Background(), grantID, "activity-wait-inspect-error", time.Second)
@@ -257,6 +265,7 @@ func TestCraftDockerRestrictedWaitReturnsFastTerminalState(t *testing.T) {
 	}}
 	service, err := NewCraftDockerRestrictedExec(coordinator, docker, time.Second)
 	require.NoError(t, err)
+	service.WithExecutionPolicy(&permissiveExecPolicyGate{})
 	_, err = service.Start(context.Background(), grantID, "activity-wait-fast", CraftCallBinding{ModelID: "model", Funding: commercial.FundingPlatform}, fakeDockerHandle{}, CraftDockerOutputlessRequest{DiscardOutput: true, Exec: sandbox.RemoteExecRequest{Command: "false"}})
 	require.NoError(t, err)
 	result, err := service.Wait(context.Background(), grantID, "activity-wait-fast", time.Second)
@@ -292,6 +301,7 @@ func TestCraftDockerRestrictedWaitCancellationDuringInspectRejectsLateTerminal(t
 			}
 			service, err := NewCraftDockerRestrictedExec(coordinator, docker, time.Second)
 			require.NoError(t, err)
+			service.WithExecutionPolicy(&permissiveExecPolicyGate{})
 			_, err = service.Start(context.Background(), grantID, "activity-late-terminal", CraftCallBinding{ModelID: "model", Funding: commercial.FundingPlatform}, fakeDockerHandle{}, CraftDockerOutputlessRequest{DiscardOutput: true, Exec: sandbox.RemoteExecRequest{Command: "true"}})
 			require.NoError(t, err)
 
@@ -338,6 +348,7 @@ func TestCraftDockerRestrictedWaitFirstFalseZeroRemainsUnknown(t *testing.T) {
 	docker := &fakeOutputlessDocker{observations: []sandbox.DockerOutputlessExecObservation{{State: sandbox.DockerOutputlessUnknown, ExitCode: ptr(0)}}}
 	service, err := NewCraftDockerRestrictedExec(coordinator, docker, time.Second)
 	require.NoError(t, err)
+	service.WithExecutionPolicy(&permissiveExecPolicyGate{})
 	_, err = service.Start(context.Background(), grantID, "activity-first-false-zero", CraftCallBinding{ModelID: "model", Funding: commercial.FundingPlatform}, fakeDockerHandle{}, CraftDockerOutputlessRequest{DiscardOutput: true, Exec: sandbox.RemoteExecRequest{Command: "true"}})
 	require.NoError(t, err)
 	result, err := service.Wait(context.Background(), grantID, "activity-first-false-zero", 45*time.Millisecond)
@@ -423,6 +434,7 @@ func TestCraftDockerRestrictedCoordinatorBindFailureNeverStarts(t *testing.T) {
 	}}
 	service, err := NewCraftDockerRestrictedExec(coordinator, fake, time.Second)
 	require.NoError(t, err)
+	service.WithExecutionPolicy(&permissiveExecPolicyGate{})
 	_, err = service.Start(context.Background(), grantID, "activity-bind-fence", CraftCallBinding{ModelID: "model", Funding: commercial.FundingPlatform}, fakeDockerHandle{}, CraftDockerOutputlessRequest{DiscardOutput: true, Exec: sandbox.RemoteExecRequest{Command: "true"}})
 	require.Error(t, err, "stale Run revision makes receipt bind fail")
 	require.Equal(t, 1, fake.createCalls)
@@ -450,6 +462,7 @@ func TestCraftDockerRestrictedCoordinatorRestartAfterBindUsesPersistedReceipt(t 
 	recorder := &recordedOutputlessDocker{delegate: fake}
 	service, err := NewCraftDockerRestrictedExec(restartedCoordinator, recorder, time.Second)
 	require.NoError(t, err)
+	service.WithExecutionPolicy(&permissiveExecPolicyGate{})
 	result, err := service.ResumeBound(context.Background(), grantID, "activity-restart-after-bind")
 	require.NoError(t, err)
 	require.True(t, result.Accepted)
@@ -486,6 +499,7 @@ func TestCraftDockerRestrictedCoordinatorRestartAfterClaimNeverStartsAgain(t *te
 	recorder := &recordedOutputlessDocker{delegate: fake}
 	service, err := NewCraftDockerRestrictedExec(restartedCoordinator, recorder, time.Second)
 	require.NoError(t, err)
+	service.WithExecutionPolicy(&permissiveExecPolicyGate{})
 	_, err = service.ResumeBound(context.Background(), grantID, "activity-restart-after-claim")
 	require.Error(t, err, "a claimed receipt is observation-only after restart")
 	require.Zero(t, recorder.startCalls.Load())
@@ -520,6 +534,7 @@ func TestCraftDockerRestrictedCoordinatorConcurrentStartResumeAndLostResponseSen
 	}
 	service, err := NewCraftDockerRestrictedExec(coordinator, recorder, time.Second)
 	require.NoError(t, err)
+	service.WithExecutionPolicy(&permissiveExecPolicyGate{})
 	binding := CraftCallBinding{ModelID: "model", Funding: commercial.FundingPlatform}
 	request := CraftDockerOutputlessRequest{DiscardOutput: true, Exec: sandbox.RemoteExecRequest{Command: "true"}}
 	type startResult struct {
@@ -628,6 +643,7 @@ func TestCraftDockerRestrictedCoordinatorRealDockerResponseLossMarkerOnce(t *tes
 	}
 	service, err := NewCraftDockerRestrictedExec(coordinator, recorder, 3*time.Second)
 	require.NoError(t, err)
+	service.WithExecutionPolicy(&permissiveExecPolicyGate{})
 	request := CraftDockerOutputlessRequest{DiscardOutput: true, Exec: sandbox.RemoteExecRequest{
 		Command: "/bin/sh", Args: []string{"-c", fmt.Sprintf("sleep 2; printf 'marker\\n' >> %s", markerPath)}, Timeout: 8 * time.Second,
 	}}
@@ -726,6 +742,7 @@ func TestCraftDockerRestrictedRealDockerExecEventPairDuration(t *testing.T) {
 
 	captured, err := NewCraftDockerRestrictedExec(coordinator, provider, 3*time.Second)
 	require.NoError(t, err)
+	captured.WithExecutionPolicy(&permissiveExecPolicyGate{})
 	captured.WithExecEventPairObserver(provider)
 	request := CraftDockerOutputlessRequest{DiscardOutput: true, Exec: sandbox.RemoteExecRequest{Command: "/bin/sh", Args: []string{"-c", "sleep 1"}, Timeout: 8 * time.Second}}
 	start, err := captured.Start(ctx, grantID, "activity-real-duration", CraftCallBinding{ModelID: "integration-model", Funding: commercial.FundingPlatform}, integrationDockerHandle{id: created.ID}, request)
@@ -755,6 +772,7 @@ func TestCraftDockerRestrictedRealDockerExecEventPairDuration(t *testing.T) {
 	// must keep the terminal result while reporting the indeterminate source.
 	empty, err := NewCraftDockerRestrictedExec(coordinator, provider, 3*time.Second)
 	require.NoError(t, err)
+	empty.WithExecutionPolicy(&permissiveExecPolicyGate{})
 	empty.WithExecEventPairObserver(futureSinceEventObserver{inner: provider})
 	emptyStart, err := empty.Start(ctx, grantID, "activity-real-duration-empty", CraftCallBinding{ModelID: "integration-model", Funding: commercial.FundingPlatform}, integrationDockerHandle{id: created.ID}, request)
 	require.NoError(t, err)
@@ -800,6 +818,7 @@ func TestCraftDockerRestrictedWaitCapturesExecEventPairDuration(t *testing.T) {
 	events := &fakeExecEventObserver{status: sandbox.DockerExecEventPairCaptured, pair: sandbox.DockerExecEventPair{StartedNano: 1758796800_000000000, FinishedNano: 1758796801_250000000}}
 	service, err := NewCraftDockerRestrictedExec(coordinator, docker, time.Second)
 	require.NoError(t, err)
+	service.WithExecutionPolicy(&permissiveExecPolicyGate{})
 	service.WithExecEventPairObserver(events)
 	receipt := startClaimedOutputlessExec(t, service, grantID, "activity-duration-capture")
 
@@ -845,6 +864,7 @@ func TestCraftDockerRestrictedWaitDurationSurvivesRestartFromJournal(t *testing.
 	events := &fakeExecEventObserver{status: sandbox.DockerExecEventPairCaptured, pair: sandbox.DockerExecEventPair{StartedNano: 1758796800_000000000, FinishedNano: 1758796800_500000000}}
 	service, err := NewCraftDockerRestrictedExec(coordinator, docker, time.Second)
 	require.NoError(t, err)
+	service.WithExecutionPolicy(&permissiveExecPolicyGate{})
 	service.WithExecEventPairObserver(events)
 	startClaimedOutputlessExec(t, service, grantID, "activity-duration-restart")
 	first, err := service.Wait(context.Background(), grantID, "activity-duration-restart", 2*time.Second)
@@ -858,6 +878,7 @@ func TestCraftDockerRestrictedWaitDurationSurvivesRestartFromJournal(t *testing.
 	}}
 	restarted, err := NewCraftDockerRestrictedExec(coordinator, restartedDocker, time.Second)
 	require.NoError(t, err)
+	restarted.WithExecutionPolicy(&permissiveExecPolicyGate{})
 	again, err := restarted.Wait(context.Background(), grantID, "activity-duration-restart", 2*time.Second)
 	require.NoError(t, err)
 	require.True(t, again.DurationAvailable)
@@ -887,6 +908,7 @@ func TestCraftDockerRestrictedWaitExplicitlyUnavailableDuration(t *testing.T) {
 			}}
 			service, err := NewCraftDockerRestrictedExec(coordinator, docker, time.Second)
 			require.NoError(t, err)
+			service.WithExecutionPolicy(&permissiveExecPolicyGate{})
 			if tc.events != nil {
 				service.WithExecEventPairObserver(tc.events)
 			}
@@ -908,6 +930,7 @@ func TestCraftDockerRestrictedWaitConflictingJournalPairRefusesNewEvidence(t *te
 	}}
 	service, err := NewCraftDockerRestrictedExec(coordinator, docker, time.Second)
 	require.NoError(t, err)
+	service.WithExecutionPolicy(&permissiveExecPolicyGate{})
 	receipt := startClaimedOutputlessExec(t, service, grantID, "activity-duration-conflict")
 	require.NoError(t, coordinator.RecordExecEventPair(context.Background(), grantID, "activity-duration-conflict", receipt, 1758796800_000000000, 1758796800_250000000))
 

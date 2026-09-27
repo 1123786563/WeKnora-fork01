@@ -7,7 +7,7 @@
 // which re-resolves it through the EXISTING resource permission chain on
 // every click — a share revoked after the run immediately yields the
 // permission error instead of replaying a cached link.
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Button } from '@weknora/ui';
 import { craftStrings, formatBytes, type CraftLocale } from './presentation.ts';
 
@@ -152,11 +152,25 @@ function sourceLabels(locale: CraftLocale): SourceLabels {
   };
 }
 
+// isCraftCitationFact narrows the citation union without a silent cast.
+// NOTE: the parameter is deliberately typed { kind: string } so this is a
+// RUNTIME predicate, not a compile-time guarantee — new kinds stay excluded
+// from citedIds here; keep the RENDER branch (below) on the same predicate
+// when adding kinds, or the two sites drift.
+function isCraftCitationFact(entry: { kind: string }): entry is CraftCitationFact {
+  return entry.kind === 'fact';
+}
+
 export function CraftSources(props: CraftSourcesProps) {
   const base = craftStrings(props.locale);
   const labels = sourceLabels(props.locale);
-  const citedIds = new Set<string>(
-    (props.citations ?? []).filter((entry) => entry.kind === 'fact').map((entry) => (entry as CraftCitationFact).citationId),
+  const sourcesByCitation = useMemo(() => {
+    const map = new Map(props.sources.map((source) => [source.citationId, source]));
+    return map;
+  }, [props.sources]);
+  const citedIds = useMemo(
+    () => new Set<string>((props.citations ?? []).filter(isCraftCitationFact).map((entry) => entry.citationId)),
+    [props.citations],
   );
 
   return (
@@ -236,18 +250,18 @@ export function CraftSources(props: CraftSourcesProps) {
           <h4>{labels.citationsHeading}</h4>
           <ul className="wk-craft-citation-list">
             {props.citations.map((entry, index) => {
-              if (entry.kind === 'inference') {
+              if (!isCraftCitationFact(entry)) {
                 return (
-                  <li key={index} className="wk-craft-citation-inference" data-craft-inference="true">
+                  <li key={`inference-${index}`} className="wk-craft-citation-inference" data-craft-inference="true">
                     <span className="wk-craft-inference-label">{labels.inferenceLabel}</span> {entry.claim}
                   </li>
                 );
               }
-              const row = props.sources.find((source) => source.citationId === entry.citationId);
+              const row = sourcesByCitation.get(entry.citationId);
               const revoked = props.revokedCitationIds?.includes(entry.citationId) ?? false;
               const openable = row !== undefined && !revoked;
               return (
-                <li key={index} className="wk-craft-citation-fact" data-craft-citation={entry.citationId}>
+                <li key={`fact-${entry.citationId}-${index}`} className="wk-craft-citation-fact" data-craft-citation={entry.citationId}>
                   <span className="wk-craft-fact-label">{labels.factLabel}</span> {entry.claim}{' '}
                   {openable && row ? (
                     <Button

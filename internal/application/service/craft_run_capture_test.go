@@ -113,6 +113,16 @@ func (s *memoryCaptureStore) RecoverPending(context.Context, int) ([]repository.
 	}
 	return []repository.CraftRunCapture{s.receipt}, nil
 }
+func (s *memoryCaptureStore) ClaimForDrain(_ context.Context, receipt repository.CraftRunCapture) (repository.CraftRunCapture, error) {
+	if s.receipt.RunID == receipt.RunID {
+		s.receipt.State = "capturing"
+		return s.receipt, nil
+	}
+	return receipt, nil
+}
+func (s *memoryCaptureStore) RecoverPendingTick(ctx context.Context, limit int) ([]repository.CraftRunCapture, error) {
+	return s.RecoverPending(ctx, limit)
+}
 func (s *memoryCaptureStore) RecoverPendingForRun(_ context.Context, tenantID uint64, runID string) ([]repository.CraftRunCapture, error) {
 	if s.receipt.State == "" || s.receipt.State == "advanced" ||
 		s.receipt.Scope.TenantID != tenantID || s.receipt.RunID != runID {
@@ -207,7 +217,10 @@ func TestCaptureQuiescentDraftFailsClosedWithoutQuiescenceProof(t *testing.T) {
 	require.Zero(t, files.saves)
 	require.Equal(t, int64(0), drafts.head.Revision)
 	require.Zero(t, drafts.advances)
-	require.Equal(t, "pending", captures.receipt.State)
+	// The drain CLAIMS the receipt (pending→capturing) before quiescence so
+	// the freshness gate covers the pre-staging phase; a failed proof leaves
+	// it claimed for the periodic scan to retry.
+	require.Equal(t, "capturing", captures.receipt.State)
 }
 
 func TestCaptureQuiescentTerminalDraftAdvancesWithoutPublishingVersion(t *testing.T) {

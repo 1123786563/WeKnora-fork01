@@ -53,9 +53,17 @@ func validateGatewayTarget(rawURL string, allowPrivate bool, lookup func(string)
 	return target, nil
 }
 
+// craftCGNATBlock is the shared-address range 100.64.0.0/10: not in
+// net.IP.IsPrivate, but a common cloud-internal/internal-LB range that a
+// Bearer-bearing forward must never dial unintentionally.
+var craftCGNATBlock = net.IPNet{IP: net.IP{100, 64, 0, 0}, Mask: net.CIDRMask(10, 32)}
+
 func rejectPrivateIP(ip net.IP) error {
 	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() ||
-		ip.IsInterfaceLocalMulticast() || ip.IsMulticast() || ip.IsUnspecified() {
+		ip.IsInterfaceLocalMulticast() || ip.IsMulticast() || ip.IsUnspecified() ||
+		!ip.IsGlobalUnicast() || craftCGNATBlock.Contains(ip) {
+		// !IsGlobalUnicast additionally refuses the limited broadcast
+		// 255.255.255.255 and every other non-routable form.
 		return fmt.Errorf("craftegress: gateway host %s is loopback/private/reserved; set the explicit private-target opt-in for local deployments", ip)
 	}
 	return nil

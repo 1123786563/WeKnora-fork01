@@ -118,8 +118,24 @@ func (g *CraftDelegateExecutionPolicy) ReviewNormalExec(ctx context.Context, req
 		Command:     append([]string(nil), request.Command...),
 		WorkingDir:  request.WorkingDir,
 		Environment: request.Environment,
+		// Additive shared-DTO passthrough (T04 central ruling): a
+		// server-resolvable face fills the symlink-resolved host target and
+		// its digest; container faces leave both empty and the identity
+		// layer simply does not fire, exactly as before.
+		ResolvedTargetPath: request.ResolvedTargetPath,
 	}
-	if request.StdinEnabled && len(request.Stdin) > 0 {
+	if request.TargetSHA256 != "" {
+		execRequest.TargetSHA256 = request.TargetSHA256
+	}
+	// Evidence-channel discipline: the module policy carries ONE
+	// TargetSHA256, so an explicit digest together with stdin bytes would
+	// silently disable the stdin channel's own byte-identity refusal (the
+	// stdin bytes could be uploaded material). The combination is refused
+	// fail-closed; either evidence source alone reviews normally.
+	if request.TargetSHA256 != "" && request.StdinEnabled && len(request.Stdin) > 0 {
+		return fmt.Errorf("%w: a request cannot carry both an explicit target digest and stdin bytes", craft.ErrForbidden)
+	}
+	if request.TargetSHA256 == "" && request.StdinEnabled && len(request.Stdin) > 0 {
 		// Byte identity for the stdin channel: the stdin bytes ride on the
 		// reviewed request itself, so their digest can be matched against
 		// the admitted manifest exactly like a file target.

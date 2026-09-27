@@ -410,6 +410,13 @@ func (r *CraftDockerOutputRepository) operationStateError(tx *gorm.DB, ctx conte
 	if op.Truncated {
 		return ErrCraftDockerOutputQuota
 	}
+	// Unreachable under the current WHERE shape (sealed_at IS NULL rows are
+	// handled above), but any future change to the locking predicate or the
+	// state column must never silently swallow an unsealed, untruncated
+	// zero-row update as success.
+	if tx.Error == nil {
+		return ErrCraftDockerOutputUnavailable
+	}
 	return tx.Error
 }
 

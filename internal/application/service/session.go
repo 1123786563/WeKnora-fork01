@@ -305,6 +305,13 @@ func (s *sessionService) GetSession(ctx context.Context, id string) (*types.Sess
 		if registeredCraft {
 			scope := craft.Scope{TenantID: tenantID, UserID: userID, SessionID: id}
 			if accessErr := s.craftTaskAccess.CheckTaskAccess(ctx, scope, craft.TaskRead); accessErr != nil {
+				// Same discipline as IsCraftTask above: only the semantic
+				// outcomes (invisible task, no grant) are the 404 this
+				// surface promises — a database outage is never masked as
+				// "not found" for a member who does have access.
+				if !stderrors.Is(accessErr, craft.ErrNotFound) && !stderrors.Is(accessErr, craft.ErrForbidden) {
+					return nil, accessErr
+				}
 				return nil, apperrors.ErrSessionNotFound
 			}
 

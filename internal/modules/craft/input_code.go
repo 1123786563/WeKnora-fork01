@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -94,7 +95,7 @@ type InputExecutionRequest struct {
 // Reason is a stable machine code, empty when allowed.
 type InputExecutionDecision struct {
 	Allowed   bool
-	Reason    string // input_target | interpreter_input | shell_input | input_symlink | input_identity
+	Reason    string // input_target | interpreter_input | shell_input | input_symlink | input_identity | wrapper_shape | exec_forward
 	AuditKind string
 	Target    string // canonical path or digest identity that matched
 	Digest    string
@@ -274,8 +275,14 @@ func (p *InputExecutionPolicy) Review(req InputExecutionRequest) InputExecutionD
 	for _, value := range req.Environment {
 		for _, token := range shellTokens(value) {
 			for _, segment := range strings.Split(token, ":") {
-				if abs := p.canonical(req.WorkingDir, segment); p.withinInputs(abs) {
-					return p.deny("input_target", abs, "")
+				candidates := append([]string{segment}, flagValueCandidates(segment)...)
+				for _, candidate := range candidates {
+					if stripped, ok := stripEnvAssignment(candidate); ok {
+						candidate = stripped
+					}
+					if abs := p.canonical(req.WorkingDir, candidate); p.withinInputs(abs) {
+						return p.deny("input_target", abs, "")
+					}
 				}
 			}
 		}
@@ -290,24 +297,55 @@ func (p *InputExecutionPolicy) Review(req InputExecutionRequest) InputExecutionD
 			return p.deny("shell_input", p.canonical(req.WorkingDir, req.TargetPath), "")
 		}
 		for _, token := range shellTokens(req.CommandText) {
-			if abs := p.canonical(req.WorkingDir, token); p.withinInputs(abs) {
-				return p.deny("shell_input", abs, "")
-			}
-		}
-	} else if interpreter, offset := InterpreterPrefix(req.Command); interpreter {
-		// The wrapper prefix consumed by InterpreterPrefix is itself
-		// screened: env assignments (env BASH_ENV=<inputs>/x.sh bash gen.sh)
-		// are startup hooks exactly like Environment entries and must not
-		// ride along unscreened just because the interpreter was found.
-		for _, prefix := range req.Command[:offset] {
-			for _, token := range shellTokens(prefix) {
-				for _, segment := range strings.Split(token, ":") {
-					if abs := p.canonical(req.WorkingDir, segment); p.withinInputs(abs) {
-						return p.deny("input_target", abs, "")
+			for _, segment := range strings.Split(token, ":") {
+				candidates := append([]string{segment}, flagValueCandidates(segment)...)
+				for _, candidate := range candidates {
+					if stripped, ok := stripEnvAssignment(candidate); ok {
+						candidate = stripped
+					}
+					if abs := p.canonical(req.WorkingDir, candidate); p.withinInputs(abs) {
+						return p.deny("shell_input", abs, "")
 					}
 				}
 			}
 		}
+	} else if hasExecForwardFlag(req.Command) || hasStdinPlaceholder(req.Command) {
+		// find -exec / -execdir forwards arbitrary files to an interpreter
+		// at RUNTIME ({} is filled with paths from the whole workspace,
+		// including the read-only inputs tree): the argv itself is lexically
+		// clean, so no path containment can catch it. Fail closed.
+		return p.deny("exec_forward", strings.Join(req.Command, " "), "")
+	} else if status, offset := InterpreterPrefixStatus(req.Command); status != InterpreterScanNone {
+		if status == InterpreterScanInconclusive {
+			// Fail closed: the wrapper's option structure could not be
+			// parsed conclusively (unknown flag arity, combined short
+			// options, an operand shape we do not model). Guessing here
+			// would silently drop the rest of the line into the weaker
+			// non-interpreter lexical branch, where inline program-text
+			// flags are no longer refused.
+			return p.deny("wrapper_shape", strings.Join(req.Command, " "), "")
+		}
+		// The wrapper prefix consumed by InterpreterPrefix is itself
+		// screened: env assignments (env BASH_ENV=<inputs>/x.sh bash gen.sh)
+		// are startup hooks exactly like Environment entries and must not
+		// ride along unscreened just because the interpreter was found.
+	for _, prefix := range req.Command[:offset] {
+		for _, token := range shellTokens(prefix) {
+			for _, segment := range strings.Split(token, ":") {
+				if abs := p.canonical(req.WorkingDir, segment); p.withinInputs(abs) {
+					return p.deny("input_target", abs, "")
+				}
+			}
+		}
+		// Wrapper long options with attached values (env
+		// --split-string=BASH_ENV=<inputs>/x.sh) are startup hooks exactly
+		// like assignments: the =-attached value is screened too.
+		for _, value := range flagValueCandidates(prefix) {
+			if abs := p.canonical(req.WorkingDir, value); p.withinInputs(abs) {
+				return p.deny("input_target", abs, "")
+			}
+		}
+	}
 		rest := req.Command[offset:]
 		// An interpreter reading its program from stdin executes whatever
 		// bytes arrive on stdin — deny the marker forms outright; the
@@ -324,12 +362,22 @@ func (p *InputExecutionPolicy) Review(req InputExecutionRequest) InputExecutionD
 		// command (bash -c "python3 <path>" smuggling).
 		scriptSeen := false
 		pendingRun := false
+		// programFileNext marks that the previous option token was a
+		// separated-form program-file flag whose VALUE operand follows.
+		programFileNext := false
 		for _, arg := range rest {
 			if !scriptSeen {
 				// run subcommands (deno run x.ts, bun run x.js) shift the
 				// executed file one operand later; remember and keep
 				// treating the remainder as the option/operand region.
 				if arg == "run" && !pendingRun {
+					// "run" itself can BE the uploaded script when the
+					// working dir points inside the tree (python3 run with
+					// an uploaded extension-less file named run): screen it
+					// before shifting.
+					if abs := p.canonical(req.WorkingDir, arg); p.withinInputs(abs) {
+						return p.deny("interpreter_input", abs, "")
+					}
 					pendingRun = true
 					continue
 				}
@@ -339,10 +387,31 @@ func (p *InputExecutionPolicy) Review(req InputExecutionRequest) InputExecutionD
 					// -c/-e/-r inline programs (python3 -c, node -e, php
 					// -r, perl -e, ruby -e/-r, awk -e), including combined
 					// short groups (-cexec(...), -lc "...") and python -m
-					// module indirection. Long options and the bare "-"
-					// stdin marker are not program text.
+					// module indirection. The long forms (--eval=,
+					// --print=, --execute=, --require=, --init-file=, ...)
+					// are program text or startup hooks exactly the same
+					// way, whatever value syntax they use.
 					if arg != "-" && !strings.HasPrefix(arg, "--") && carriesProgramTextFlag(arg) {
 						return p.deny("interpreter_input", arg, "")
+					}
+					if strings.HasPrefix(arg, "--") {
+						name := strings.TrimPrefix(arg, "--")
+						if eq := strings.IndexByte(name, '='); eq >= 0 {
+							name = name[:eq]
+						}
+						if longProgramTextOptions[name] {
+							return p.deny("interpreter_input", arg, "")
+						}
+					}
+					// An attached value is still a value: --flag=inputs/x,
+					// -finputs/x and every short-flag suffix must be
+					// screened against the tree, or a startup hook
+					// (node --require=inputs/x.js) rides the flag token
+					// itself past every layer.
+					for _, value := range flagValueCandidates(arg) {
+						if abs := p.canonical(req.WorkingDir, value); p.withinInputs(abs) {
+							return p.deny("interpreter_input", abs, "")
+						}
 					}
 					continue
 				}
@@ -359,6 +428,41 @@ func (p *InputExecutionPolicy) Review(req InputExecutionRequest) InputExecutionD
 					}
 				}
 				continue
+			}
+			// The post-script region is NOT safe to skip wholesale:
+			//  - OPTION values: awk -f executes EVERY -f program in order,
+			//    php -B/-F/-R/-E run their file arguments — an option naming
+			//    tree material in ANY position is a program/hook, so every
+			//    flag-attached value is screened.
+			//  - POSITIONAL operands stay data for most interpreters
+			//    (python3 gen.py <input> is a read), EXCEPT the php family
+			//    where a positional after -S is a router script executed
+			//    per request.
+			if strings.HasPrefix(arg, "-") {
+				for _, value := range flagValueCandidates(arg) {
+					if stripped, ok := stripEnvAssignment(value); ok {
+						value = stripped
+					}
+					if abs := p.canonical(req.WorkingDir, value); p.withinInputs(abs) {
+						return p.deny("interpreter_input", abs, "")
+					}
+				}
+				programFileNext = programFileFlag(arg)
+				continue
+			}
+			if programFileNext {
+				// Separated-form program-file flag (awk -f PROG, php -F/-B/-R/-E
+				// PROG): the NEXT operand is a program file, not data.
+				programFileNext = false
+				if abs := p.canonical(req.WorkingDir, arg); p.withinInputs(abs) {
+					return p.deny("interpreter_input", abs, "")
+				}
+				continue
+			}
+			if isPHPFamily(path.Base(req.Command[interpreterOffset(req.Command)])) {
+				if abs := p.canonical(req.WorkingDir, arg); p.withinInputs(abs) {
+					return p.deny("interpreter_input", abs, "")
+				}
 			}
 			if !strings.ContainsAny(arg, " \t\n") {
 				continue // pure data operand: the script reads it, no execution
@@ -382,18 +486,27 @@ func (p *InputExecutionPolicy) Review(req InputExecutionRequest) InputExecutionD
 						return p.deny("input_target", abs, "")
 					}
 				}
+				// Flag-attached values are operands too: make -finputs/x
+				// and --file=inputs/x must not slip past the containment
+				// rule on token-shape grounds.
+				if strings.HasPrefix(arg, "-") && arg != "-" {
+					for _, value := range flagValueCandidates(arg) {
+						if abs := p.canonical(req.WorkingDir, value); p.withinInputs(abs) {
+							return p.deny("input_target", abs, "")
+						}
+					}
+				}
 			}
 		}
 		if abs := p.canonical(req.WorkingDir, req.Command[0]); p.withinInputs(abs) {
 			// Direct execution of the uploaded path itself.
 			return p.deny("input_target", abs, "")
 		}
-		// Read-only utilities and byte-copying commands (cp, mv) naming input
-		// material do not execute it here; the digest layer catches the
-		// copied bytes at their next execution WHEN the adapter supplies the
-		// target digest — a server-side adapter without container filesystem
-		// access documents that two-step copy/execute as a known residual
-		// instead (see the adapter's evidence contract).
+		// Byte-copying commands (cp, mv, dd, tee, install, rsync) are NOT in
+		// readOnlyCommands: their operands go through the full containment
+		// screening above, so naming inputs-tree paths is refused here
+		// outright. Only the narrow reader/inspector vocabulary may name
+		// input material as data.
 	}
 	// Explicit target path inside the tree even when the command shape did
 	// not match (defensive: adapters may fill TargetPath only).
@@ -423,32 +536,109 @@ var readOnlyCommands = map[string]bool{
 	"grep": true, "egrep": true, "fgrep": true, "wc": true,
 	"stat": true, "file": true, "ls": true, "du": true, "diff": true,
 	"md5sum": true, "sha1sum": true, "sha256sum": true, "sha512sum": true,
-	"sort": true, "uniq": true, "cut": true, "tr": true,
+	// sort is deliberately NOT here: GNU coreutils sort --compress-program=PROG
+	// executes PROG through sh -c, so its operands stay under the full
+	// flag-value and containment screening.
+	"uniq": true, "cut": true, "tr": true,
 }
+
+// InterpreterPrefixStatus classifies the outcome of the wrapper-aware
+// interpreter scan: a plain non-interpreter command, an interpreter with the
+// operand offset, or an inconclusive wrapper whose option structure the
+// scanner cannot conclusively parse (the policy then fails closed instead of
+// degrading to the weaker non-interpreter screening).
+type InterpreterScanStatus int
+
+const (
+	InterpreterScanNone InterpreterScanStatus = iota
+	InterpreterScanInterpreter
+	InterpreterScanInconclusive
+)
 
 // InterpreterPrefix reports whether the argv launches an interpreter that
 // executes a following path argument, and the offset where its operands
-// start. It is wrapper-aware (timeout/env/nohup/xargs/nice/stdbuf/setsid/
-// time, with env assignments and the timeout duration skipped) and tolerant
-// of version-suffixed interpreter names (python3.11, php8.2, lua5.4,
-// tclsh8.6, mawk ...). It is exported so server-side adapters can reuse the
-// same detection for their own evidence assembly (shell -c detection,
-// stdin-program forms).
+// start. See InterpreterPrefixStatus for the tri-state form the policy uses.
 func InterpreterPrefix(command []string) (bool, int) {
+	status, offset := InterpreterPrefixStatus(command)
+	return status == InterpreterScanInterpreter, offset
+}
+
+// longProgramTextOption lists long options whose value is program text or a
+// startup hook: unreviewable by construction, exactly like -c/-e/-r/-m.
+var longProgramTextOptions = map[string]bool{
+	"eval": true, "print": true, "execute": true, "exec": true,
+	"require": true, "include": true, "import": true,
+	"init-file": true, "rcfile": true, "exrc": true, "lua": true,
+}
+
+// flagValueCandidates returns every substring of a flag token that could be
+// an attached value: the part after the first '=', plus each short-flag
+// suffix (-finputs/x → inputs/x). Only candidates that resolve inside the
+// screened tree matter, so over-generation is safe (it can only add denies).
+func flagValueCandidates(arg string) []string {
+	var out []string
+	if arg == "" || arg == "-" {
+		return nil
+	}
+	if eq := strings.IndexByte(arg, '='); eq >= 0 && eq+1 < len(arg) {
+		value := arg[eq+1:]
+		out = append(out, value)
+		// The value may itself carry a VAR= assignment prefix
+		// (env --split-string=BASH_ENV=inputs/x): strip it so the ASSIGNED
+		// path is what gets screened.
+		if stripped, ok := stripEnvAssignment(value); ok {
+			out = append(out, stripped)
+		}
+	}
+	if !strings.HasPrefix(arg, "--") {
+		// Every short-flag suffix participates: the flag's letter count is
+		// unknowable from the token alone, and only a suffix that resolves
+		// inside the screened tree produces a denial anyway.
+		for i := 1; i < len(arg); i++ {
+			if arg[i] == '=' || arg[i] == '-' {
+				continue
+			}
+			out = append(out, arg[i:])
+		}
+	}
+	return out
+}
+
+// wrapperValueFlags lists each wrapper's short flags that consume one value
+// operand; every other short flag is valueless. Anything outside these tables
+// (unknown short flags, long options other than "--") makes the scan
+// inconclusive: guessing the arity would silently misplace the real program.
+var wrapperValueFlags = map[string]map[string]bool{
+	"timeout": {"-k": true, "-s": true},
+	"env":     {"-u": true, "-S": true},
+	"nice":    {"-n": true},
+	"time":    {"-o": true, "-f": true},
+	"xargs":   {"-I": true, "-D": true, "-E": true, "-n": true, "-P": true, "-s": true},
+	"stdbuf":  {"-i": true, "-o": true, "-e": true},
+	"setsid":  {},
+	"nohup":   {},
+}
+
+// InterpreterPrefixStatus scans past wrapper launchers with their option
+// grammar modeled per wrapper (timeout/env/nohup/xargs/nice/stdbuf/setsid/
+// time), tolerant of version-suffixed interpreter names (python3.11, php8.2,
+// lua5.4, tclsh8.6, mawk ...). It is exported so server-side adapters reuse
+// the same detection for their own evidence assembly.
+func InterpreterPrefixStatus(command []string) (InterpreterScanStatus, int) {
 	for offset := 0; offset < len(command); {
 		base := path.Base(command[offset])
 		if isInterpreterName(base) {
-			return true, offset + 1
+			return InterpreterScanInterpreter, offset + 1
 		}
 		if !wrapperCommands[base] {
-			return false, 0
+			return InterpreterScanNone, 0
 		}
 		offset++
+		valueFlags := wrapperValueFlags[base]
 		switch base {
 		case "env":
-			// Skip VAR=value assignments and env's own flags (-i, -u NAME,
-			// -S ...) before the real program; a flag-bearing env used to
-			// hide the interpreter must not defeat detection.
+			// Skip VAR=value assignments and env's own flags; a flag-bearing
+			// env used to hide the interpreter must not defeat detection.
 			for offset < len(command) {
 				next := command[offset]
 				if strings.Contains(next, "=") && !strings.HasPrefix(next, "-") {
@@ -456,32 +646,157 @@ func InterpreterPrefix(command []string) (bool, int) {
 					continue
 				}
 				if strings.HasPrefix(next, "-") && next != "-" {
-					offset++
-					if next == "-u" || next == "-S" {
-						// These flags consume one value operand.
+					if next == "--" {
+						offset++
+						break
+					}
+					if valueFlags[next] {
+						offset++
 						if offset < len(command) {
 							offset++
 						}
+						continue
 					}
-					continue
+					if strings.HasPrefix(next, "--") {
+						if strings.Contains(next, "=") {
+							offset++
+							continue
+						}
+						return InterpreterScanInconclusive, 0
+					}
+					// Short group: every letter before the last must be the
+					// known valueless 'i'; a value-taking letter ('u', 'S')
+					// is only conclusive as the LAST letter, where it
+					// consumes one following operand (-iu F, -S "x"). Any
+					// other letter makes the arity unknowable — refuse the
+					// guess (the policy fails closed).
+					group := next[1:]
+					if group == "" {
+						offset++
+						continue
+					}
+					for i := 0; i < len(group)-1; i++ {
+						if group[i] != 'i' {
+							return InterpreterScanInconclusive, 0
+						}
+					}
+					switch group[len(group)-1] {
+					case 'i':
+						offset++
+						continue
+					case 'u', 'S':
+						offset++
+						if offset < len(command) {
+							offset++
+						}
+						continue
+					default:
+						return InterpreterScanInconclusive, 0
+					}
 				}
 				break
 			}
 		case "timeout":
-			// timeout consumes its duration operand (and optional flags).
-			for offset < len(command) && strings.HasPrefix(command[offset], "-") {
+			for offset < len(command) {
+				next := command[offset]
+				if next == "--" {
+					offset++
+					break
+				}
+				if !strings.HasPrefix(next, "-") {
+					// The mandatory duration operand.
+					offset++
+					break
+				}
+				if valueFlags[next] {
+					offset++
+					if offset < len(command) {
+						offset++
+					}
+					continue
+				}
+				if strings.Contains(next, "=") {
+					offset++
+					continue
+				}
+				if len(next) > 2 && valueFlags[next[:2]] {
+					offset++
+					continue
+				}
+				if len(next) == 2 || strings.HasPrefix(next, "--") {
+					return InterpreterScanInconclusive, 0
+				}
 				offset++
 			}
-			if offset < len(command) {
+		case "nice":
+			for offset < len(command) {
+				next := command[offset]
+				if next == "--" {
+					offset++
+					break
+				}
+				if !strings.HasPrefix(next, "-") {
+					// Optional numeric priority operand.
+					if _, err := strconv.Atoi(strings.TrimPrefix(next, "+")); err == nil {
+						offset++
+					}
+					break
+				}
+				if valueFlags[next] {
+					offset++
+					if offset < len(command) {
+						offset++
+					}
+					continue
+				}
+				if strings.Contains(next, "=") {
+					offset++
+					continue
+				}
+				if len(next) > 2 && valueFlags[next[:2]] {
+					offset++
+					continue
+				}
+				if len(next) == 2 || strings.HasPrefix(next, "--") {
+					return InterpreterScanInconclusive, 0
+				}
 				offset++
 			}
-		case "xargs":
-			for offset < len(command) && strings.HasPrefix(command[offset], "-") {
+		default:
+			// xargs / stdbuf / setsid / time / nohup: modeled value flags,
+			// everything else inconclusive.
+			for offset < len(command) {
+				next := command[offset]
+				if next == "--" {
+					offset++
+					break
+				}
+				if !strings.HasPrefix(next, "-") {
+					break
+				}
+				if valueFlags[next] {
+					offset++
+					if offset < len(command) {
+						offset++
+					}
+					continue
+				}
+				if strings.Contains(next, "=") {
+					offset++
+					continue
+				}
+				if len(next) > 2 && valueFlags[next[:2]] {
+					offset++
+					continue
+				}
+				if len(next) == 2 || strings.HasPrefix(next, "--") {
+					return InterpreterScanInconclusive, 0
+				}
 				offset++
 			}
 		}
 	}
-	return false, 0
+	return InterpreterScanNone, 0
 }
 
 // isInterpreterName matches an interpreter basename exactly or with a
@@ -511,6 +826,63 @@ func (p *InputExecutionPolicy) deny(reason, target, digest string) InputExecutio
 		Digest:    digest,
 		Err:       fmt.Errorf("%w: %s matched %s", ErrExecutionDenied, reason, target),
 	}
+}
+
+// hasExecForwardFlag reports whether any argv token is find's execution
+// forwarding flag (separate or =-attached forms).
+// programFileFlag reports whether an option token selects a PROGRAM FILE in
+// a multi-program interpreter family: awk/mawk/gawk -f/--file, php -B/-F/-R/-E
+// (both attached and bare separated forms).
+func programFileFlag(arg string) bool {
+	switch arg {
+	case "-f", "-F", "-B", "-R", "-E":
+		return true
+	}
+	return strings.HasPrefix(arg, "--file=") || arg == "--file"
+}
+
+// isPHPFamily reports whether the interpreter is php (any version suffix):
+// a POSITIONAL operand after php -S is a router script executed per request,
+// unlike the plain data operands of most interpreters.
+func isPHPFamily(base string) bool {
+	return base == "php" || strings.HasPrefix(base, "php")
+}
+
+// interpreterOffset returns the index of the interpreter itself (0 when no
+// wrapper preceded it).
+func interpreterOffset(command []string) int {
+	for offset := 0; offset < len(command); offset++ {
+		base := path.Base(command[offset])
+		if isInterpreterName(base) {
+			return offset
+		}
+		if !wrapperCommands[base] {
+			return 0
+		}
+	}
+	return 0
+}
+
+// hasStdinPlaceholder reports whether any argv token carries the xargs
+// replace-str placeholder {}: at runtime each stdin line is substituted into
+// it and executed as the wrapped command's operand — a stdin-content
+// forwarder exactly like find -exec.
+func hasStdinPlaceholder(command []string) bool {
+	for _, arg := range command {
+		if strings.Contains(arg, "{}") {
+			return true
+		}
+	}
+	return false
+}
+
+func hasExecForwardFlag(command []string) bool {
+	for _, arg := range command {
+		if arg == "-exec" || arg == "-execdir" || strings.HasPrefix(arg, "-exec=") || strings.HasPrefix(arg, "-execdir=") {
+			return true
+		}
+	}
+	return false
 }
 
 // carriesProgramTextFlag reports whether a short-option group (already
@@ -553,6 +925,17 @@ func shellTokens(commandText string) []string {
 		fields[i] = strings.TrimPrefix(f, envAssignment(f))
 	}
 	return fields
+}
+
+// stripEnvAssignment removes a leading VAR= prefix from a flag VALUE
+// candidate: "BASH_ENV=inputs/x" screens the assigned path, not the
+// concatenation with WorkingDir that never lands inside the tree.
+func stripEnvAssignment(value string) (string, bool) {
+	prefix := envAssignment(value)
+	if prefix == "" {
+		return value, false
+	}
+	return value[len(prefix):], true
 }
 
 // envAssignment returns the leading VAR= prefix of a token, if any, so the

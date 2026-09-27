@@ -104,9 +104,29 @@ func (s craftCaptureSeed) validate(workspaceID string) error {
 
 func (craftRunCaptureFileRow) TableName() string { return "craft_run_capture_files" }
 
-type CraftRunCaptureStore struct{ db *gorm.DB }
+type CraftRunCaptureStore struct {
+	db    *gorm.DB
+	ticks uint64
+}
 
 func NewCraftRunCaptureStore(db *gorm.DB) *CraftRunCaptureStore { return &CraftRunCaptureStore{db: db} }
+
+// craftCaptureDrainWindow is how long the global scan stays OFF a receipt
+// after any write, so the immediate post-terminal drain owns it exclusively
+// (each redo uploads fresh physical objects; the loser's uploads leak as
+// unreferenced resource rows).
+const craftCaptureDrainWindow = 30 * time.Second
+
+// RecoverPendingTick advances one periodic-scan round: the expensive
+// multi-table JOIN synthesis (full-history JSON predicates, unindexable)
+// runs only every craftCaptureSynthesisEveryNth tick; every tick advances
+// durable receipts with the indexed state query plus the freshness gate.
+const craftCaptureSynthesisEveryNth = 20
+
+func (s *CraftRunCaptureStore) RecoverPendingTick(ctx context.Context, limit int) ([]CraftRunCapture, error) {
+	s.ticks++
+	return s.recoverPending(ctx, limit, s.ticks%craftCaptureSynthesisEveryNth == 1)
+}
 
 // EnsurePending creates the frozen receipt for one terminal Run, or returns
 // the existing receipt. The complete server-owned identity and quiescent SQL
@@ -234,6 +254,28 @@ func (s *CraftRunCaptureStore) EnsurePending(ctx context.Context, scope craft.Sc
 // BeginCapture durably records the exact path/hash/size manifest identity
 // before uploading objects. A retry after upload-before-seal may reread only
 // the same quiescent bytes; a changed manifest for the same Run conflicts.
+// ClaimForDrain atomically moves a pending receipt into the capturing
+// state (refreshing updated_at) WITHOUT pinning any manifest digest: the
+// freshness gate then excludes it from the periodic ticker for the whole
+// quiescence/staging phase, while the later BeginCapture with the real
+// digest stays idempotent.
+func (s *CraftRunCaptureStore) ClaimForDrain(ctx context.Context, receipt CraftRunCapture) (CraftRunCapture, error) {
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		res := tx.Model(&craftRunCaptureRow{}).
+			Where("tenant_id=? AND workspace_id=? AND run_id=? AND state = 'pending'", receipt.Scope.TenantID, receipt.WorkspaceID, receipt.RunID).
+			Updates(map[string]any{"state": "capturing", "last_error": "", "updated_at": time.Now()})
+		if res.Error != nil {
+			return res.Error
+		}
+		return nil
+	})
+	if err != nil {
+		return receipt, err
+	}
+	receipt.State = "capturing"
+	return receipt, nil
+}
+
 func (s *CraftRunCaptureStore) BeginCapture(ctx context.Context, receipt CraftRunCapture, digest string) (CraftRunCapture, error) {
 	if !craft.ValidSHA256(digest) {
 		return CraftRunCapture{}, fmt.Errorf("%w: empty capture attempt digest", craft.ErrInvalidInput)
@@ -278,17 +320,31 @@ func (s *CraftRunCaptureStore) BeginCapture(ctx context.Context, receipt CraftRu
 // Runs missed by a worker after its terminal transaction. Only a still-current
 // admission-frozen predecessor is synthesized; mismatches stay fenced.
 func (s *CraftRunCaptureStore) RecoverPending(ctx context.Context, limit int) ([]CraftRunCapture, error) {
+	return s.recoverPending(ctx, limit, true)
+}
+
+func (s *CraftRunCaptureStore) recoverPending(ctx context.Context, limit int, synthesize bool) ([]CraftRunCapture, error) {
 	if limit <= 0 || limit > 500 {
 		limit = 100
 	}
 	var rows []craftRunCaptureRow
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		// Recovery accepts only the predecessor frozen into the immutable
-		// admission snapshot and still current in durable draft history.
-		if err := tx.Exec(craftCaptureRecoveryInsertSQL(tx.Dialector.Name())).Error; err != nil {
-			return err
+		if synthesize {
+			// Recovery accepts only the predecessor frozen into the immutable
+			// admission snapshot and still current in durable draft history.
+			if err := tx.Exec(craftCaptureRecoveryInsertSQL(tx.Dialector.Name())).Error; err != nil {
+				return err
+			}
 		}
-		return tx.Where("state IN ('pending','capturing','sealed','blocked')").Order("created_at ASC").Limit(limit).Find(&rows).Error
+		// Freshness gate: a CAPTURING receipt touched within the drain
+		// window is being processed by the immediate post-terminal drain
+		// right now — the ticker must not redo it concurrently (each redo
+		// uploads fresh physical objects; the loser's uploads leak). Sealed
+		// rows (crash after seal before draft CAS) and pending rows stay
+		// immediately recoverable.
+		return tx.Where("state IN ('pending','capturing','sealed','blocked')").
+			Where("state != 'capturing' OR updated_at IS NULL OR updated_at < ?", time.Now().Add(-craftCaptureDrainWindow)).
+			Order("created_at ASC").Limit(limit).Find(&rows).Error
 	})
 	if err != nil {
 		return nil, err

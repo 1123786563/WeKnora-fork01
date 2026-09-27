@@ -54,8 +54,11 @@ func newCraftLifecycleService(
 	activeRuns service.CraftRunActivity,
 ) (*service.CraftLifecycle, error) {
 	if bindings == nil {
+		// NewCraftLifecycle's own validation below REFUSES a nil binding
+		// store and aborts assembly — say so, instead of implying the
+		// sweeper degrades to inert-but-running.
 		logger.Warnf(context.Background(),
-			"[CraftLifecycle] shared binding store unavailable; lifecycle binding sweep stays inert (fail-closed)")
+			"[CraftLifecycle] shared binding store unavailable; lifecycle assembly will be refused (startup fails closed)")
 	}
 	var runCanceler service.CraftSessionRunCanceler
 	if runs := service.RegisteredAgentRunService(); runs != nil {

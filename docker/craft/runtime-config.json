@@ -33,8 +33,8 @@
         "sha256": "5b930dd96b33bf707653ed6c1b5dc294cb8a790ee7ba7b6adfd13d65a0130064"
       }
     ],
-    "build_program_sha256": "02ad19f473105039377006df8c29de4b95eb4bc175ffdf79b335c095b097787a",
-    "toolchain_digest": "5d9d7d283de0cfd84c40a7b411c07f4dfb74051b438dad2dd4f44a5e4a52deff",
+    "build_program_sha256": "900ae637284149614bed70d9894d5c46b28d413353ed63b6aafb629e8c8c01d4",
+    "toolchain_digest": "7bc5aab15730039b661369f826cdd660aa50154621b2e73d01a4cda4a5731b6f",
     "digest_rule": "The toolchain digest is the deterministic identity of the fixed template + provisioned dependencies + build program (docker/craft/web/toolchain.lock.json pins every file). The build verifies every file against the lock before building and the runtime refuses a sandbox whose /etc/craft/runtime-config.json digest differs from the pinned value, so the web template and dependency versions are represented in the runtime identity the probe hashes.",
     "egress": "The web build runs with all external egress denied (no HTTP, no DNS, no Git, no package manager); the build program performs no network access and rejects staged content referencing any external origin."
   },

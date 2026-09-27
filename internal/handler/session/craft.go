@@ -37,7 +37,10 @@ type CraftSessionAPI interface {
 	// ExpandArchive (#121) extracts one associated archive input within hard
 	// resource limits and returns the all-or-nothing member projection.
 	ExpandArchive(context.Context, craft.Scope, string) ([]craft.Input, error)
-	StartRun(context.Context, craft.Scope, service.CraftRunRequest) (agentruntime.Run, error)
+	// StartRun admits one Craft run; the returned WriterAcquisition is the
+	// T16 (#134) durable workspace writer-lease outcome (acquired/conflict/
+	// unknown, the T00 frozen DTO) projected straight into the response.
+	StartRun(context.Context, craft.Scope, service.CraftRunRequest) (agentruntime.Run, craft.WriterAcquisition, error)
 	ListVersions(context.Context, craft.Scope) ([]craft.Version, error)
 	GetVersion(context.Context, craft.Scope, string) (craft.Version, error)
 	OpenVersionFile(context.Context, craft.Scope, string, string) (craft.File, io.ReadCloser, error)
@@ -248,6 +251,10 @@ func craftHTTPError(c *gin.Context, err error) {
 		c.Error(apperrors.NewNotFoundError(err.Error()))
 	case stderrors.Is(err, craft.ErrConflict):
 		c.Error(apperrors.NewConflictError(err.Error()))
+	case stderrors.Is(err, craft.ErrCorruptEvidence):
+		// Storage integrity failure, not a client conflict: 500-class so
+		// monitoring separates corruption from retryable publication races.
+		c.Error(apperrors.NewInternalServerError(err.Error()))
 	case stderrors.Is(err, craft.ErrBusy):
 		var conflict *service.ActiveRunConflict
 		detail := gin.H{"code": "run_active", "message": err.Error()}
@@ -531,7 +538,7 @@ func (h *CraftSessionHandler) PostCraftRun(c *gin.Context) {
 	if !decodeCraftBody(c, &body) {
 		return
 	}
-	run, err := h.svc.StartRun(c.Request.Context(), scope, service.CraftRunRequest{
+	run, acquisition, err := h.svc.StartRun(c.Request.Context(), scope, service.CraftRunRequest{
 		RequestID: body.RequestID, Prompt: body.Prompt, InputRefs: body.InputRefs,
 		KnowledgeScope: body.KnowledgeScope, BaseVersionID: body.BaseVersionID,
 	})
@@ -539,7 +546,9 @@ func (h *CraftSessionHandler) PostCraftRun(c *gin.Context) {
 		craftHTTPError(c, err)
 		return
 	}
-	c.JSON(http.StatusAccepted, gin.H{"success": true, "data": runView(run)})
+	// The T00 frozen WriterAcquireOutcome DTO projects verbatim: acquired,
+	// conflict (another writing Run holds the workspace) or unknown.
+	c.JSON(http.StatusAccepted, gin.H{"success": true, "data": runView(run), "writer_acquisition": acquisition.Outcome})
 }
 
 // ListCraftVersions serves GET /api/v1/sessions/:session_id/craft/versions.

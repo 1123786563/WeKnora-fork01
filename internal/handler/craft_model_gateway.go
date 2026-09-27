@@ -56,7 +56,7 @@ const (
 	craftCredentialMinSecret = 16
 	// craftMaxForwardBody bounds one forwarded model request.
 	craftMaxForwardBody     = 8 << 20
-	craftUsageRecordTimeout = 3 * time.Second
+	craftUsageRecordTimeout = 10 * time.Second // bounded loss window for O01 usage facts; ledger reconcile remains the backstop
 )
 
 var (
@@ -324,7 +324,7 @@ func (g *CraftModelGateway) IssueCredential(c *gin.Context) {
 	scope := craft.Scope{TenantID: tenantID, UserID: userID, SessionID: sessionID}
 	grant, err := g.budget.Admit(c.Request.Context(), scope, input.RunID)
 	if err != nil {
-		g.failBudget(c, err, true)
+		g.failBudget(c, err, true, "")
 		return
 	}
 	if !grant.Allowed {
@@ -509,28 +509,46 @@ func (g *CraftModelGateway) Forward(c *gin.Context) {
 			appFail(c, http.StatusConflict, "ACTIVITY_UNRESOLVED", "this model activity was already attempted; reconcile before retry")
 			return
 		}
-		g.failBudget(c, err, false)
+		g.failBudget(c, err, false, payload.GrantID)
 		return
 	}
 	defer attempt.CancelInitiation()
-	resp, forwardErr, attempted, initiationExpired, cancelRequest := g.forwardWithinInitiation(attempt, req)
+	resp, forwardErr, attempted, initiationExpiredRaw, cancelRequest := g.forwardWithinInitiation(attempt, req)
+	// err==nil proves the cancellation never took effect: a response that
+	// raced the deadline callback must not be rewritten into a phantom
+	// DeadlineExceeded (which would Resolve Unknown and park the Run).
+	initiationExpired := initiationExpiredRaw && forwardErr != nil
 	if cancelRequest != nil {
 		defer cancelRequest()
 	}
 	if !attempted {
 		resolveErr := attempt.Resolve(c.Request.Context(), service.CraftChargeStartDefinitelyNotStarted)
 		if resolveErr != nil {
-			appFail(c, http.StatusBadGateway, "ACTIVITY_UNRESOLVED", resolveErr.Error())
+			// The client sees only the opaque code; the detail (which may
+			// quote SQL or table names) stays in the server log, exactly
+			// like recordCall's redaction discipline.
+			logger.ErrorWithFields(c.Request.Context(), resolveErr, map[string]any{
+				"craft_run_id": payload.RunID, "craft_call_id": callID, "craft_attempt_id": attemptID,
+			})
+			appFail(c, http.StatusBadGateway, "ACTIVITY_UNRESOLVED", "the activity outcome could not be recorded")
 			return
 		}
-		appFail(c, http.StatusBadGateway, "UPSTREAM_ERROR", forwardErr.Error())
+		// DefinitelyNotStarted resolved above — a definitive clean failure.
+		// UPSTREAM_ERROR (not ACTIVITY_UNRESOLVED) keeps the adapter from
+		// parking an id whose retry is provably safe.
+		appFail(c, http.StatusBadGateway, "UPSTREAM_ERROR", "the activity never started before the initiation deadline")
 		return
 	}
 	if initiationExpired {
 		closeGatewayResponse(resp)
 		g.recordCall(c, payload, callID, attemptID, model, nil)
 		resolveErr := attempt.Resolve(c.Request.Context(), service.CraftChargeStartUnknown)
-		appFail(c, http.StatusBadGateway, "ACTIVITY_UNRESOLVED", errors.Join(forwardErr, resolveErr).Error())
+		if resolveErr != nil {
+			logger.ErrorWithFields(c.Request.Context(), resolveErr, map[string]any{
+				"craft_run_id": payload.RunID, "craft_call_id": callID, "craft_attempt_id": attemptID,
+			})
+		}
+		appFail(c, http.StatusBadGateway, "ACTIVITY_UNRESOLVED", "the activity start outcome is unknown and requires reconciliation")
 		return
 	}
 	if forwardErr != nil || resp == nil {
@@ -540,19 +558,42 @@ func (g *CraftModelGateway) Forward(c *gin.Context) {
 			forwardErr = errors.New("model transport returned no response")
 		}
 		resolveErr := attempt.Resolve(c.Request.Context(), service.CraftChargeStartUnknown)
-		appFail(c, http.StatusBadGateway, "UPSTREAM_ERROR", errors.Join(forwardErr, resolveErr).Error())
+		if resolveErr != nil {
+			logger.ErrorWithFields(c.Request.Context(), resolveErr, map[string]any{
+				"craft_run_id": payload.RunID, "craft_call_id": callID, "craft_attempt_id": attemptID,
+			})
+		}
+		// The charge-start journal resolved Unknown: the send MAY have left.
+		// The machine-readable code must say so — the egress adapter keys
+		// its parked/resolved decision off this code.
+		appFail(c, http.StatusBadGateway, "ACTIVITY_UNRESOLVED", "the upstream model request failed with an unknown activity outcome")
 		return
 	}
 	if resp.Body == nil {
+		// Headers returned => the physical call started: resolve Started
+		// (deterministic) instead of parking the Run as unknown.
+		if resolveErr := attempt.Resolve(c.Request.Context(), service.CraftChargeStartStarted); resolveErr != nil {
+			logger.ErrorWithFields(c.Request.Context(), resolveErr, map[string]any{
+				"craft_run_id": payload.RunID, "craft_call_id": callID, "craft_attempt_id": attemptID,
+			})
+		}
 		g.recordCall(c, payload, callID, attemptID, model, nil)
-		resolveErr := attempt.Resolve(c.Request.Context(), service.CraftChargeStartUnknown)
-		appFail(c, http.StatusBadGateway, "ACTIVITY_UNRESOLVED", errors.Join(errors.New("upstream response body is missing"), resolveErr).Error())
+		appFail(c, http.StatusBadGateway, "UPSTREAM_ERROR", "the upstream response body is missing; the activity started and failed")
 		return
 	}
 	respBody, readErr := io.ReadAll(io.LimitReader(resp.Body, craftMaxForwardBody+1))
 	closeErr := resp.Body.Close()
 	if readErr != nil || len(respBody) == 0 || len(respBody) > craftMaxForwardBody || closeErr != nil {
-		g.recordCall(c, payload, callID, attemptID, model, nil)
+		// resp != nil here means the response HEADERS returned: the physical
+		// call factually started (and is recorded in the O01 ledger below),
+		// so the durable outcome is Started, not Unknown — an Unknown here
+		// would park the adapter id and exclude the Run from lease recovery.
+		if resolveErr := attempt.Resolve(c.Request.Context(), service.CraftChargeStartStarted); resolveErr != nil {
+			logger.ErrorWithFields(c.Request.Context(), resolveErr, map[string]any{
+				"craft_run_id": payload.RunID, "craft_call_id": callID, "craft_attempt_id": attemptID,
+			})
+		}
+		g.recordCall(c, payload, callID, attemptID, model, craftParseUsage(respBody))
 		failure := errors.Join(readErr, closeErr)
 		if len(respBody) == 0 && readErr == nil {
 			failure = errors.Join(failure, errors.New("upstream response body is empty"))
@@ -560,13 +601,26 @@ func (g *CraftModelGateway) Forward(c *gin.Context) {
 		if len(respBody) > craftMaxForwardBody {
 			failure = errors.Join(failure, errors.New("upstream response body exceeds maximum size"))
 		}
-		resolveErr := attempt.Resolve(c.Request.Context(), service.CraftChargeStartUnknown)
-		appFail(c, http.StatusBadGateway, "ACTIVITY_UNRESOLVED", errors.Join(failure, resolveErr).Error())
+		// (The Started resolution above already fixed the durable outcome;
+		// a second, contradictory Unknown resolve here is dead residue.)
+		// Upstream transport errors can quote internal IP:port topology and
+		// resolve errors can quote SQL — both stay in the server log; the
+		// client gets the opaque code and a fixed sentence.
+		logger.ErrorWithFields(c.Request.Context(), failure, map[string]any{
+			"craft_run_id": payload.RunID, "craft_call_id": callID, "craft_attempt_id": attemptID,
+		})
+		appFail(c, http.StatusBadGateway, "UPSTREAM_ERROR", "the upstream response could not be read; the activity started and failed")
 		return
 	}
 	if err := attempt.Resolve(c.Request.Context(), service.CraftChargeStartStarted); err != nil {
-		g.recordCall(c, payload, callID, attemptID, model, nil)
-		appFail(c, http.StatusBadGateway, "ACTIVITY_UNRESOLVED", err.Error())
+		// The response body was fully observed above: its usage fact is
+		// idempotently recorded even when the Started resolution failed, so
+		// manual reconciliation keeps a fixed billing basis.
+		g.recordCall(c, payload, callID, attemptID, model, craftParseUsage(respBody))
+		logger.ErrorWithFields(c.Request.Context(), err, map[string]any{
+			"craft_run_id": payload.RunID, "craft_call_id": callID, "craft_attempt_id": attemptID,
+		})
+		appFail(c, http.StatusBadGateway, "ACTIVITY_UNRESOLVED", "the activity started but its record could not be persisted; reconciliation required")
 		return
 	}
 	g.recordCall(c, payload, callID, attemptID, model, craftParseUsage(respBody))
@@ -602,11 +656,19 @@ func (g *CraftModelGateway) forwardWithinInitiation(attempt service.CraftChargeS
 	stopDeadline()
 	attempt.CancelInitiation()
 	if initiationExpired {
-		cancelRequest()
-		if err == nil {
-			err = context.DeadlineExceeded
+		// err == nil proves the deadline callback never cancelled the
+		// request (responseHeadersReturned=true skips it): a fully
+		// successful response must NOT be rewritten into a phantom
+		// DeadlineExceeded — that would Resolve Unknown and park an
+		// activity whose physical call demonstrably completed.
+		if err != nil || resp == nil {
+			cancelRequest()
+			if err == nil {
+				err = context.DeadlineExceeded
+			}
+			return resp, err, true, true, cancelRequest
 		}
-		return resp, err, true, true, cancelRequest
+		return resp, err, true, false, cancelRequest
 	}
 	return resp, err, true, false, cancelRequest
 }
@@ -695,7 +757,7 @@ func (g *CraftModelGateway) recordCall(c *gin.Context, payload craftCredentialPa
 // whether the failure happened at run admission (403) or at call
 // authorization (402 payment-required): both carry BUDGET_STOPPED so the
 // main agent can read the stop and its reason verbatim.
-func (g *CraftModelGateway) failBudget(c *gin.Context, err error, admission bool) {
+func (g *CraftModelGateway) failBudget(c *gin.Context, err error, admission bool, grantID string) {
 	status := http.StatusPaymentRequired
 	if admission {
 		status = http.StatusForbidden
@@ -708,7 +770,13 @@ func (g *CraftModelGateway) failBudget(c *gin.Context, err error, admission bool
 	case errors.Is(err, craft.ErrGrantExhausted), errors.Is(err, craft.ErrBudgetDenied):
 		appFail(c, status, "BUDGET_STOPPED", "model call blocked by budget: "+err.Error())
 	default:
-		appFail(c, http.StatusInternalServerError, "BUDGET_GATE_FAILED", err.Error())
+		// Infrastructure failures (GORM/driver errors may quote SQL or
+		// internal DB topology) log server-side; the client sees only the
+		// opaque code and a fixed sentence.
+		logger.ErrorWithFields(c.Request.Context(), err, map[string]any{
+			"craft_grant_id": grantID,
+		})
+		appFail(c, http.StatusInternalServerError, "BUDGET_GATE_FAILED", "the budget gate could not be consulted; retry or contact the operator")
 	}
 }
 

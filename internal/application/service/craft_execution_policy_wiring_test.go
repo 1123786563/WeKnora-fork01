@@ -323,3 +323,26 @@ func TestCraftRestrictedExecResumeBoundIsGated(t *testing.T) {
 	_, err = svc.ResumeBound(context.Background(), "grant-anything", "activity-anything")
 	require.ErrorIs(t, err, craft.ErrForbidden, "the recovery send path must refuse unreviewable commands")
 }
+
+
+// TestCraftDelegateExecutionPolicyRefusesExplicitDigestPlusStdin is the
+// round-2 medium finding regression: carrying BOTH an explicit
+// TargetSHA256 and stdin bytes would silently disable the stdin channel's
+// own byte-identity refusal (the stdin bytes could be uploaded material).
+// The combination is refused fail-closed.
+func TestCraftDelegateExecutionPolicyRefusesExplicitDigestPlusStdin(t *testing.T) {
+	const tenant = uint64(9307)
+	db := openCraftBudgetTestDB(t)
+	seedCraftFundedTenant(t, db, tenant, 10000)
+	seedCraftBudgetRun(t, db, tenant, "run-dual-evidence", "sess-dual-evidence")
+	craftPolicySeed(t, db, tenant, "run-dual-evidence")
+	gate := craftPolicyGate(t, db)
+
+	err := gate.ReviewNormalExec(context.Background(), repository.CraftDockerNormalInputRequest{
+		TenantID: tenant, RunID: "run-dual-evidence", WorkingDir: "/workspace",
+		Command:      []string{"python3", "gen.py"},
+		StdinEnabled: true, Stdin: []byte("uploaded-material-bytes"),
+		TargetSHA256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+	})
+	require.ErrorIs(t, err, craft.ErrForbidden, "the dual-evidence combination must be refused fail-closed")
+}
