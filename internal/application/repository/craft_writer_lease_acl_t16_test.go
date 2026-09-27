@@ -60,7 +60,11 @@ func TestCraftT16LeaseSeamsCarryWorkspaceACLEverywhere(t *testing.T) {
 	err = store.ReleaseWriterLease(ctx, sameSessionNonOwner, ws.ID, "run-acl-2", craft.WriterReleaseVerifiedCompletion)
 	require.ErrorIs(t, err, craft.ErrForbidden, "a same-session non-owner never releases another writer's fence")
 	err = store.ReleaseWriterLease(ctx, crossSession, ws.ID, "run-acl-2", craft.WriterReleaseVerifiedCompletion)
-	require.ErrorIs(t, err, craft.ErrForbidden, "a foreign session never releases")
+	// Cross-session callers do not exist on this seam ([T08] 404 discipline,
+	// aligned with GetWriterLease above): NotFound refuses the release AND
+	// hides the binding session. The refusal itself is unchanged — the fence
+	// assertion below still proves the release never happened.
+	require.ErrorIs(t, err, craft.ErrNotFound, "a foreign session never releases")
 	lease, err = store.GetWriterLease(ctx, owner, ws.ID)
 	require.NoError(t, err)
 	require.Equal(t, "run-acl-2", lease.RunID, "every refusal leaves the fence intact")

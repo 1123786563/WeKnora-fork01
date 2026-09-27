@@ -8,18 +8,32 @@ package repository
 // service seam in craft_workspace_lease_t16_test.go.)
 import (
 	"context"
+	"database/sql"
+	"path/filepath"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/modules/craft"
+	"github.com/golang-migrate/migrate/v4"
+	sqlite3migrate "github.com/golang-migrate/migrate/v4/database/sqlite3"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/stretchr/testify/require"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 func TestCraftWorkspaceWriterLeaseConcurrentCAS(t *testing.T) {
 	for _, dialect := range []string{"sqlite", "postgres"} {
 		t.Run(dialect, func(t *testing.T) {
-			db := openCraftDB(t)
+			var db *gorm.DB
+			if dialect == "postgres" {
+				db = openCraftDB(t)
+			} else {
+				db = openCraftLeaseRaceDB(t)
+			}
 			store, ok := NewCraftStore(db).(*CraftStore)
 			require.True(t, ok, "the lease methods live on the concrete store")
 			ctx := context.Background()
@@ -101,11 +115,51 @@ func TestCraftWorkspaceWriterLeaseConcurrentCAS(t *testing.T) {
 			require.Equal(t, winnerRun, again.Lease.RunID)
 
 			// A foreign scope never reaches the lease: another user is
-			// forbidden, another session does not exist.
+			// forbidden, another session does not exist ([T08] 404
+			// discipline — same shape as lockCraftWriterWorkspace).
 			_, err = store.AcquireWriterLease(ctx, craft.Scope{TenantID: 1, UserID: "u2", SessionID: scope.SessionID}, ws.ID, "r-lease-x")
 			require.ErrorIs(t, err, craft.ErrForbidden)
 			_, err = store.AcquireWriterLease(ctx, craft.Scope{TenantID: 1, UserID: "u1", SessionID: "s2"}, ws.ID, "r-lease-x")
-			require.ErrorIs(t, err, craft.ErrForbidden)
+			require.ErrorIs(t, err, craft.ErrNotFound)
 		})
 	}
+}
+
+// openCraftLeaseRaceDB opens the craft SQLite store with IMMEDIATE write
+// transactions for the concurrent-CAS race above. Under a deferred BEGIN,
+// every racing goroutine first takes a SHARED lock (the workspace row read)
+// and then tries to upgrade to RESERVED for the lease write — SQLite can
+// only break that mutual upgrade wait by failing one side with SQLITE_BUSY,
+// which no busy_timeout resolves deterministically under scheduler load.
+// With _txlock=immediate the transactions queue on the busy timeout and the
+// lease CAS itself — the actual subject under test — decides the winner
+// (same fixture shape as native_pending/appconnector worker tests).
+func openCraftLeaseRaceDB(t *testing.T) *gorm.DB {
+	t.Helper()
+	_, filename, _, ok := runtime.Caller(0)
+	require.True(t, ok)
+	repoRoot := filepath.Clean(filepath.Join(filepath.Dir(filename), "../../.."))
+	dbPath := filepath.Join(t.TempDir(), "craft-lease-race.db")
+	dsn := "file:" + dbPath + "?_foreign_keys=on&_busy_timeout=5000&_txlock=immediate"
+
+	sqlDB, err := sql.Open("sqlite3", dsn)
+	require.NoError(t, err)
+	driver, err := sqlite3migrate.WithInstance(sqlDB, &sqlite3migrate.Config{NoTxWrap: true})
+	require.NoError(t, err)
+	migrator, err := migrate.NewWithDatabaseInstance(
+		"file://"+filepath.Join(repoRoot, "migrations/sqlite"), "sqlite3", driver,
+	)
+	require.NoError(t, err)
+	require.NoError(t, migrator.Up())
+	_, _ = migrator.Close()
+
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	require.NoError(t, err)
+	seedRunFixtures(t, db)
+	t.Cleanup(func() {
+		if conn, e := db.DB(); e == nil {
+			_ = conn.Close()
+		}
+	})
+	return db
 }
