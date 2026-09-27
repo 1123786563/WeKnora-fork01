@@ -145,9 +145,11 @@ export interface CraftWorkbenchProps {
    * ASSEMBLY re-resolves the ref through the existing resource permission
    * chain on every click — it must never cache or pre-sign a URL into the
    * component. Optional until the assembly wires it; the panel renders the
-   * resolved notice (or permission error) it returns.
+   * resolved notice (or permission error) it returns. The runId of the log
+   * that produced the citation rides along (T20/#139): the tested T10 open
+   * seam is run-scoped. Existing two-arg callbacks keep compiling.
    */
-  onOpenSource?(citationId: string, ref: string): Promise<string | null>;
+  onOpenSource?(citationId: string, ref: string, runId?: string | null): Promise<string | null>;
   /**
    * Fetches one immutable member's TEXT through the assembly's authorized
    * version-files route (D01 wiring): the document view reads report.md and
@@ -370,14 +372,16 @@ export function CraftWorkbench(props: CraftWorkbenchProps) {
   const knowledgePackage = useMemo(() => projectKnowledgeSources(snapshot.events), [snapshot]);
   const [openingCitation, setOpenCitation] = useState<string | null>(null);
   const [sourceNotice, setSourceNotice] = useState<string | null>(null);
-  const onOpenSourceProp = useEventCallback((citationId: string, ref: string): Promise<string | null> => {
+  const onOpenSourceProp = useEventCallback((citationId: string, ref: string, runId?: string | null): Promise<string | null> => {
     if (props.onOpenSource === undefined) return Promise.resolve(null);
-    return props.onOpenSource(citationId, ref);
+    return props.onOpenSource(citationId, ref, runId ?? null);
   });
   const openSource = (citationId: string, ref: string): void => {
     setOpenCitation(citationId);
     setSourceNotice(null);
-    void onOpenSourceProp(citationId, ref)
+    // The open seam is run-scoped: the citation came out of THIS log's
+    // knowledge.built frames, so the run the log tracks owns the record.
+    void onOpenSourceProp(citationId, ref, snapshot.runId)
       .then((notice) => { setSourceNotice(notice); })
       .catch((error: unknown) => {
         setSourceNotice(error instanceof Error ? error.message : String(error));

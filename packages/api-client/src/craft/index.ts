@@ -338,6 +338,21 @@ export function createCraftApi(request: (input: ClientRequest) => Promise<unknow
         signal,
       }), 'budget extend');
     },
+    /**
+     * GET /sessions/:id/craft/runs/:run_id/sources/:citation_id/open — the
+     * T10 (#127) tested source-open seam: ONE fetch passes BOTH the current
+     * Task grant and the caller's own knowledge ACL. The response carries
+     * only the server's opaque durable ref (never a provider/storage URL);
+     * denials answer 403/404 with no reason. Raw wire per the download()
+     * precedent — the views/assembly layer holds the fail-closed projection.
+     */
+    async openSource(sessionId: string, runId: string, citationId: string, signal?: AbortSignal): Promise<unknown> {
+      return request({
+        method: 'GET',
+        path: '/api/v1/sessions/' + encodeURIComponent(sessionId) + '/craft/runs/' + encodeURIComponent(runId) + '/sources/' + encodeURIComponent(citationId) + '/open',
+        signal,
+      });
+    },
     /** POST /craft/runs/:run_id/stop — R06 verifiable stop; "stopping" is an honest phase, poll delegationStatus until terminal. */
     async stop(sessionId: string, runId: string, taskId: string, signal?: AbortSignal): Promise<CraftStopStatusView> {
       return parseStopStatus(await request({

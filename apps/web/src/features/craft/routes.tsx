@@ -187,25 +187,6 @@ export function CraftRoutes(props: CraftRoutesProps) {
     [authedFetch, route, apiBaseUrl],
   );
 
-  // C01 sources panel: resolve one durable craftkb:// ref through the
-  // EXISTING knowledge permission chain on every click (never cached, never
-  // pre-signed): the documents list of the owning library answers 403/404
-  // through the same ACL the build went through, and the resolved row
-  // becomes the panel notice. A revoked share fails HERE, at click time.
-  const openKnowledgeSource = useCallback(
-    async (citationId: string, ref: string): Promise<string | null> => {
-      const match = /^craftkb:\/\/kb\/([^/]+)\/knowledge\/([^/]+)\//.exec(ref);
-      if (match === null) return '无法解析来源引用 ' + ref;
-      const kbId = match[1] ?? '';
-      const knowledgeId = match[2] ?? '';
-      const page = await client.knowledgeBases.documents.list(kbId, {});
-      const row = page.data.find((item) => item.id === knowledgeId);
-      if (row === undefined) return '引用 ' + citationId + ' 的来源已不可见（无权限或已删除）';
-      return '已解析来源：' + (row.title ?? row.file_name ?? knowledgeId) + '（在所属知识库查看全文）';
-    },
-    [client],
-  );
-
 
   // Identity for the owner write gate (the terminal entry is owner-scoped).
   const [meId, setMeId] = useState<string | null>(null);
@@ -314,6 +295,29 @@ export function CraftRoutes(props: CraftRoutesProps) {
 
   // --- Workbench data ----------------------------------------------------------
   const sessionId = route.name === 'workbench' ? route.sessionId : null;
+  // C01/T10 (#127) sources panel opener — switched (T20/#139) to the TESTED
+  // HTTP seam: ONE fetch through GET /craft/runs/:run_id/sources/:citation_id/
+  // open passes BOTH doors (the current Task grant AND the caller's own
+  // knowledge ACL) and returns only the opaque durable ref. The former
+  // client-side craftkb:// parsing walked the viewer's knowledge ACL but
+  // never the TaskOpenSource gate. Nothing is cached or pre-signed; a denial
+  // (or a revoked share) fails HERE, at click time, and no URL/href is ever
+  // rendered — the panel's only currency stays the durable ref.
+  const openKnowledgeSource = useCallback(
+    async (citationId: string, _ref: string, runId: string | null): Promise<string | null> => {
+      if (sessionId === null || runId === null || runId === '') return '来源不可打开（当前无运行上下文）';
+      try {
+        const wire = await craftApi.openSource(sessionId, runId, citationId, scopeController.current().signal);
+        const ref = typeof (wire as { ref?: unknown } | null)?.ref === 'string' ? (wire as { ref: string }).ref : '';
+        return ref !== '' ? '来源已通过当前权限校验（引用可见）' : '服务器响应无效';
+      } catch {
+        // Denials carry no reason by design (T10); every click re-runs both
+        // doors, so a later grant succeeds on the next click.
+        return '引用 ' + citationId + ' 的来源已不可见（无权限或已删除）';
+      }
+    },
+    [craftApi, sessionId, scopeController],
+  );
   const [workbenchInfo, setWorkbenchInfo] = useState<{ title: string; kind: string; ownerId: string; snapshotVersionId: string | null; updatedAt: string; resumed: boolean; activeRun: { id: string; status: string; waitReason: string } | null } | null>(null);
   const [versions, setVersions] = useState<{ status: 'loading' | 'ready' | 'error'; items: CraftVersionView[] }>({ status: 'loading', items: [] });
   const [inputDecisionState, setInputDecisionState] = useState<{ sessionId: string; inputs: CraftInputView[] }>({ sessionId: '', inputs: [] });
