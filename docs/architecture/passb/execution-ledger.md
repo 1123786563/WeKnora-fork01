@@ -8434,3 +8434,24 @@
 - **OCR 报告路径**：无（barrier 实施未开始）
 - **修复轮次**：0（派发轮）
 - **备注**：(1) barrier 既有义务（DAG produced_artifacts/notes 在案）：**contracts.yaml 回写批**（K 面 + B2 各门面 current 化——23:42/01:05 裁决的「218 基线诊断系 ib2 回写批范围义务」就此落位）；**exception-ledger 例外行删除**（b2-datasource 3 条 remove_at=ib2 等）；transition shim/compat 删除批（各节点 compat 删除点=ib2）；migration 编号序列与共享装配文件（集成工程师独占，conventions §4）；(2) 一次一支、审后合并（framework:28,101-105——ib1 先例）；(3) notes 陈旧 BLOCKED 句（多 episode 叠加）清理维持归调度方；(4) ib2 done 后 15 个下游节点（b3-*/b4-*/b5/ib3/ib4）恢复派发资格
+
+
+---
+
+## 2026-09-27 · ib2 屏障执行（Pass B 总集成工程师：四支合并 + 装配切换 + IB2 回写批收口；head 已回填、status 收口留调度方）
+
+- **执行者**：Pass B 总集成工程师（barrier 即 integration 侧独占装配工作）
+- **合并序列（任务指定序，一次一支）**：
+  1. `ddea7b526` ← codex/passb-b2-k-integration（461d8c4b2；K 序全量汇聚：k0/ingest/retrieval/wikifaq/process 全部祖先本会话 merge-base 实测）——零冲突
+  2. `51c2a83ab` ← codex/passb-b2-ac-market（8e0ce1a67；25 序全量：已含 25a 938087598 + 25b 5ed64d324）——4 冲突裁定
+  3. `bc2127f8d` ← codex/passb-b2-datasource（4ebe14cf5；B2-DS.1 已含 k-integration 对齐 486d46b42）——2 冲突裁定
+  4. `e09d491ee` ← codex/passb-b2-appconnector（8e80bb3c6；DAG 登记 head 6e8c84860 后另有 2 文档提交按实际 HEAD 合并）——2 冲突裁定
+- **冲突裁定摘要**：check.go 两侧 importExceptions 全集保留（×2）；exception-ledger exc-id 两次撞号按 B0 头注 (from,to) 边键规则重编号（25b 0106..0113→0132..0139；datasource 0132..0134→0140..0142，终态 142 条唯一）；execution-ledger 纯追加型 3 条目按时间戳（09-24 04:35/10:21）插入 HEAD 侧区间全保留；pass-a-acceptance 计数融合（例外 142、legacy 358 实测）；ownership_test wantPerModule 取 matrix 实测合并真值（knowledge 76→53、datasource 3、appconnector 1）
+- **模块与直接消费者测试（每支合并后实跑）**：knowledge 29 包 + 9 消费者包 / agentcatalog 3 包 + 3 消费者包 / datasource 5 包 + 4 消费者包 / appconnector 4 包 + 6 消费者包——全 ok（消费者集合 go list 实测确定）
+- **装配切换（集成工程师独占）**：(b) 18 worker 双栈经模块门面（workers_knowledge.go 装配点，task.go/sync_task.go 18+18 行删除）；(c) recoverPendingWikiTasks 切 mod.Start 单一注册点；(a) 表 1 ChunkerDebug 直引、表 4/6/8/10 别名同型零改、**表 2/9 部分执行**（完整切换依赖 identity 去方法化前置，rbac_lookups.go 方法仍在 wrapper 类型——登记移交）；(e) shim/compat 删除批不删（前置均未满足）
+- **IB2 回写批收口**：matrix 33 删 + 10 补（358 三方一致）；contracts.yaml 196 条回写（72 替换 rename map 100% 映射/8 删/66 增）；event-catalog chunk 路径；architectureguard DiscoverWorkers 门面注册识别扩展（23+23/633 零漂移）；passbguard B2-DS.5 映射 + HandlerSessionRuling compat 承接 + brief 认领
+- **exception-ledger IB2 属主 45 条**：import 全部仍在（抽查 grep 实测），删除前置=被导入包门面合法化契约任务——45 条保留登记移交（不推 b5 外属主）
+- **终局门禁**：make check-backend-architecture ✓（633/23+23/58/16，0 violations）+ make verify-module-moves ✓（16 manifests）+ make check-passb-readiness ✓（legacy=358 exceptions=142 contracts=125 overlaps=0 missing=0）+ go build ./... ✓ + tools 治理测试套 ✓；**未跑**：go test ./internal/... 全量 25m gate 与 changed-range lint（时间预算，如实登记）
+- **head_sha 回填**：集成侧屏障产出末位提交（见 DAG ib2 节点）；status=in_progress / review_status=pending 维持——收口迁移归调度方指令（沿 7548 行「门禁+OCR 口径，未授权不动」先例）
+- **证据**：docs/architecture/evidence/passb/ib2.md + docs/architecture/passb/briefs/ib2.md + docs/plans/passb/29-core-capability-integration.md（开工时按框架 IB2 节写盘，4ce7d7b23）
+- **另**：管家台账遗留未提交改动先行落盘（326d548cb，归属台账管家）；误提交的 architectureguard 构建产物已移除（后续 chore 提交）
