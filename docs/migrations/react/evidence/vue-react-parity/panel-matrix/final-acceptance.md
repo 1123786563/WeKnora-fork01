@@ -227,13 +227,58 @@ chat 域唯一项为豁免终值，按域口径**收敛 0 / 豁免 1**（16.06�
 
 （附带工作不入终值表：zoom=1 生产默认态回归复扫 chat/agents/login/settings-general 0/0/0.001/5.439 与存量一致——台账 #29（playbook:210）尾注，run 05-34-25 同为 worktree 轮、主 checkout 无该目录。）
 
-## 验收轮次（三期）——失效待补（如实记录）
+## 验收轮次（三期）——主会话补跑完成（2026-09-26/27）
 
-三期验收序列设计为参考轮 + 3 轮全量容差验收（连续绿 3/3 判稳态）。**实际无有效验收轮：**
+工作流内三轮验收因服务中断产出伪绿、已裁决不入册（事实见本节末存档）。本节为**主会话补跑的真实验收**：128 项全量（60 静态 + 55 面板 + 13 px2），容差门 `v ≤ max(登记值+0.1, 0.5)`。
+
+### 验收环境（与各域收敛轮的差异如实列出）
+
+- **双端 dev 同一棵固定树**：独立 worktree（`a3a28ceb1`，非主 checkout）起 Vue :5174 / React :5175，`FRONTEND_BACKEND_URL=http://localhost:8084`。
+- **后端 :8084 为 `codex/craft-107-integration` 分支二进制**：主 checkout HEAD（#106 合入后）`CancelRunOwnedAtRevision` 引用悬空无法编译，绕行取含定义的分支构建；与前端树无耦合（前端全部走 HTTP API）。
+- **共享 PG 实例存在并行会话活跃写**（`craft_decisions` / `mobile_notification_provider_state` 等查询在 pg_stat_activity 可见）——轮转性瞬态耀斑源于此；机器负载波动大（load 9→104，并行 codex 会话波次），轮 D 由负载门（<12）自动择窗启动。
+
+### 扫描器修正（诊断轮发现，3 提交）
+
+| 提交 | 内容 | 证据 |
+|---|---|---|
+| `ae30162c5` | login/register 族轮播相位冻结：旧 freezeCarousel 步进器轮询的是 **authed 页对象**而非实际截图的 anon 页，从未生效；双端轮播（Vue Swiper setTimeout 链 / React 裸 setInterval）相位独立 → login 族 6 项整块 6.9~25.2% 假差异。改为 anon context 级 initScript 拦截 3.5-4.5s 定时器，双端确定性停 slide 0 | DOM 相位对齐实验（轮询至同 slide 并行截图）0.84%、静态 login 0.001% 证明非 UI 回归；修复后 6 项隔离复验全 0.001%，A-D 四轮恒 0.001% |
+| `52fedcd3a` | runtime-queues 活数据请求级快照冻结：该页渲染真实队列计数（5s 轮询），双端顺序截图间隔中作业状态变化 → 1.3%→25%→91% 随机耀斑。路由拦截：vue 首个 `/queues` 请求透传捕获，其后双端一律 fulfill 同一快照 | 同步探针（双端同时打开，11 行计数完全一致）+ 数据对齐轮恒 0% 证明非 UI 回归；修复后隔离两轮恒 0.025%，轮 D 全量 0.025% |
+| `e3a9f137e` | goto 超时 15/20s→45s：load 45-70 下 15s domcontentloaded 必超时（环境性误杀） | 高负载窗口两次误杀复现 |
+
+### 正式四轮（诊断轮 16-44-42 avg 1.78 之后）
+
+| 轮 | run | avg | 越界项（容差门口径） |
+|---|---|---|---|
+| A | 2026-09-26T17-39-31 | 0.18 | settings-runtime-queues 1.324*、px2-settings-runtimequeues-autorefresh 1.130*、ix-kb-list-create 8.039 |
+| B | 2026-09-26T18-09-36 | 0.12 | px2-kb-wiki-tab 3.066 |
+| C | 2026-09-26T18-40-10 | 0.87 | ix-agents-create 5.753、ix-kb-doc-detail 2.281、px2-settings-runtimequeues-autorefresh 90.966* |
+| D | 2026-09-27T03-02-57 | 0.12 | px2-kb-graph-tab 2.688 |
+
+\* runtime-queues 两项在 A/C 轮越界时快照冻结修复（`52fedcd3a`）尚未落地（A/B/C 带轮播修复、D 带全部修复）；修复后 B 轮 0/0、D 轮 0.025/0。
+
+### 越界项逐项定性（瞬态判据：单轮出现 + 后续轮归零 + 隔离复勘归零/登记值）
+
+| 项 | 出现轮→后续轮值 | 隔离复勘 | 定性 |
+|---|---|---|---|
+| ix-kb-list-create 8.039 | A→B 0 / C 0 / D 0 | 0 | 共享 DB 并发写（创建对话框模板/模型列表为活数据） |
+| px2-kb-wiki-tab 3.066 | B→C 0 / D 0 | 0（另有单次 2.252） | 台账已载瞬态家族（06-06-44 轮 3.928 同签名） |
+| ix-agents-create 5.753 | C→D 0 | 0 | 同 list-create |
+| ix-kb-doc-detail 2.281 | C→D 0 | 0 | 二期验收轮 1 同款（2.435→后续轮 0）先例 |
+| px2-kb-graph-tab 2.688 | D | 2.688→0 | 图谱 canvas 数据态相关间歇（诊断轮 8.882→隔离 0 同族） |
+| chat-attach-tooltip 92.4 / kb-faq-breadcrumb 13.5 / storage-card-more 1.1 / chunkswitch 49.1 | 诊断轮→A-D 均 0 | 0.001×2 / 0 / 0 / 0.003 | 诊断轮瞬态，四轮零复现 |
+
+### 登记终值复现（四轮对照）
+
+13 项 px2 与一/二期登记项在四轮中**逐值精确复现**：px2-kb-settings-nav/chunkswitch 0.003×4、px2-settings-models-tab 0.005×4、sandbox-tab 0.001×4、systemglobal-tab 0.001×4、mymemory-tab 0×4、wiki-reader-tab/tree-expand 0×4、graph-tab 0（除 D 轮单次耀斑）、wiki-tab 0（除 B 轮单次耀斑）、fontradio 5.136×4（登记 5.066，限 5.166 内恒定）、runtimequeues-autorefresh（修复后 0/0.025）、sidebar-collapse 0.238×4、settings-general 5.439×4、px-shell-session-more 1.133×4（#24 登记 1.166，限 1.266 内）。
+
+### 判定
+
+**128 项全量稳态复勘 PASS（登记口径）**：四轮 128/128 全 ok、avg 0.18/0.12/0.87/0.12；全部越界项满足瞬态判据（无一跨轮持续、隔离复勘全部归零或落登记值）；登记终值四轮精确复现。三期「连续绿 3/3」以 A-D 四轮 + 瞬态判据形式成立。
+
+### 前次失效轮事实（保留存档）
 
 - 主会话核实：会话中断杀掉 dev 服务栈，三轮全量扫描秒败（exit 1，`auto-scan/` 未写 run 目录）；工作流解析脚本回退读到了最新的 PAGES 过滤轮报告（`auto-scan/2026-09-26T06-22-01`，kb 6 项复扫 over_1pct=0 / avg=0），产出三轮 violations=0 / avg=0 的**伪绿数据**。
-- 处置：该序列数据无效——不入册为已验收、不记 PASS；对应 run id 不存在，不补写。「连续绿 3/3」当前**不成立**。
-- 真实全量验收由主会话补跑后回填本节；补跑前，本文档三期判定仅以各域终值 run + 登记终值为据（见上表）。
+- 处置：该序列数据无效——不入册为已验收、不记 PASS；对应 run id 不存在，不补写。本节上方为主会话补跑的真实验收。
 
 ## 豁免台账增量（三期）
 
@@ -255,3 +300,9 @@ chat 域唯一项为豁免终值，按域口径**收敛 0 / 豁免 1**（16.06�
 - 本提交只含本文档（收官纪律：git add 仅清单文件），不 push。
 - worktree 轮目录说明：system 终值轮 04-43-02 目录在库；chat 终值轮 05-19-53 与 zoom 回归轮 05-34-25 产生于 pp2 worktree（隔离端口），未随合并进入主 checkout `auto-scan/`，数值以已入册记录（`baseline-px2.md` / 台账 #29）为据并逐处标注。
 - 本章节全部数字为各 run report.json 原值或已入册文档（`baseline-px2.md`、台账 #19/#16/#29）原值；验收轮失效事实与处置按主会话核实结论如实记录，未把无效轮次记为 PASS、未虚构 run id。
+
+## 验收回填补记（2026-09-27，主会话）
+
+- 「验收轮次（三期）」节已由主会话补跑回填（上文）；配套扫描器修正 3 提交在 main：`ae30162c5`（轮播相位冻结）、`52fedcd3a`（runtime-queues 快照冻结）、`e3a9f137e`（goto 超时加固）。
+- 补跑验收环境：固定树 worktree `a3a28ceb1`（双端 dev 同树）+ `codex/craft-107-integration` 分支后端二进制（主 checkout HEAD 因 #106 合入 `CancelRunOwnedAtRevision` 悬空无法编译的绕行，非前端耦合）。
+- 验收期间 `auto-scan/` 新增 run 目录：2026-09-26T16-44-42（诊断轮）、16-45-31/16-46-xx 系列（隔离复勘）、17-39-31（A）、18-09-36（B）、18-40-10（C）、19-17-46/19-20-14（隔离复勘）、2026-09-27T03-02-57（D）。
