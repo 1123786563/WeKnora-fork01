@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	kbretrieval "github.com/Tencent/WeKnora/internal/modules/knowledge/retrieval/app/repository"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -216,7 +217,7 @@ func TestApplyKnowledgeListFilter_TagIDsOrSemantics(t *testing.T) {
 func TestBatchCountReferences_ScopedToKnowledgeBase(t *testing.T) {
 	db := setupKnowledgeTagTestDB(t)
 	knowledgeRepo := &knowledgeRepository{db: db}
-	tagRepo := &knowledgeTagRepository{db: db}
+	tagRepo := kbretrieval.NewKnowledgeTagRepository(db)
 	ctx := context.Background()
 
 	kb1 := uuid.New().String()

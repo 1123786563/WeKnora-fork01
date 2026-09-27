@@ -8455,3 +8455,43 @@
 - **head_sha 回填**：集成侧屏障产出末位提交（见 DAG ib2 节点）；status=in_progress / review_status=pending 维持——收口迁移归调度方指令（沿 7548 行「门禁+OCR 口径，未授权不动」先例）
 - **证据**：docs/architecture/evidence/passb/ib2.md + docs/architecture/passb/briefs/ib2.md + docs/plans/passb/29-core-capability-integration.md（开工时按框架 IB2 节写盘，4ce7d7b23）
 - **另**：管家台账遗留未提交改动先行落盘（326d548cb，归属台账管家）；误提交的 architectureguard 构建产物已移除（后续 chore 提交）
+
+---
+
+## 2026-09-28 00:18 CST · ib2 屏障 env_unblock 补迁完成登记：git mv 3 测试文件 R100 纯重命名（f81e9f054，用户 2026-09-26 批准，时序=生产依赖集成之后）；JSON 无字节级改动
+
+- **节点/任务**：ib2 —— IB2 核心能力集成 barrier（in_progress 中的 env_unblock 迁移事件登记）
+- **指令内容**（原文）：「屏障 ib2 env_unblock 补迁完成（git mv 3 文件于集成分支，用户 2026-09-26 批准，时序=生产依赖集成之后）」
+- **迁移提交核验（本会话 git show 实测）**：集成分支 HEAD=**`f81e9f054`**（2026-09-28 00:18:01，"refactor: barrier env-unblocked verbatim migration (user-approved 2026-09-26, R100 by rename construction, after production deps per deferral blueprint)"）——`git show --name-status` 实测恰 **3 文件**，全部 **R100 纯重命名**（0 insertions/0 deletions）：
+  - internal/application/repository/knowledge_finalize_test.go → internal/modules/knowledge/process/repository/knowledge_finalize_test.go
+  - internal/application/repository/knowledge_span_repo_test.go → internal/modules/knowledge/process/repository/knowledge_span_repo_test.go
+  - internal/application/repository/knowledge_tag_test.go → internal/modules/knowledge/process/repository/knowledge_tag_test.go
+- **批准与时序核验（commit message + 历史链在案）**：用户批准 2026-09-26 ✓（提交自述 + cffbbf69c「k-process tail baseline pinned…env_unblock pairs (user-approved DDL test fixture release)」先例链）；时序裁定=生产依赖集成之后 ✓（d10539f36「revert premature env_unblock sequencing (tests-before-production lesson); pairs moved to ib2 (after deferral-batch production migration)」——先产线后测试的蓝图时序，f81e9f054 系该裁定落地点，提交自述 "after production deps per deferral blueprint" 吻合）
+- **本次 JSON 变更**：**无字节级改动**——迁移系事件登记非状态翻转：ib2 `status=in_progress` 维持；**head_sha 不动**（现值 63430d7b1 系集成侧裁定口径「屏障产出末位实现提交」——08701d6f7 修正提交在案；f81e9f054 系其后迁移提交，是否纳入 head 范围归调度方/集成侧裁定，本指令未授权）；`review_status=pending`、base（null）均维持。JSON 合法性本会话 `python3 json.load` 复验通过（33 节点分布 17 done + 1 in_progress + 15 pending）
+- **前置**（barrier 级）：四支全 done ✓（b2-k-integration/b2-ac-market/b2-datasource/b2-appconnector）——不变
+- **worktree**：DAG/台账所在 `.worktrees/passb-int`（HEAD=`f81e9f054`，**工作树清洁**——集成侧已将累计 DAG/台账变更落盘至 326d548cb 等，含本管家 15:09 前全部条目）；实现分支们各归其位（合并序列见 8441 条目）
+- **base → head**：base=null / head=63430d7b1（集成侧回填口径维持）；f81e9f054 在 head 之后（时序如实登记）
+- **测试证据路径**：迁移 3 文件系 knowledge process repository 测试（R100 零变更——行为等价由 rename construction 保证）；8441 条目所载每支合并后模块与消费者测试台账在案
+- **审查结论**：`review_status=pending` 维持（barrier 审查未开始；收口迁移归调度方指令——8441 条目「status 收口留调度方」维持）
+- **OCR 报告路径**：无（barrier 实施在途）
+- **修复轮次**：无新修复义务（补迁系既定蓝图落地点，非缺陷修复）
+- **备注**：(1) env_unblock 对（cffbbf69c 登记 pairs）就此在 ib2 完成落位——先产线后测试时序合规；(2) 8441 条目所载「表 2/9 部分执行（identity 去方法化前置）」「exception-ledger IB2 属主 45 条保留移交」等遗留项不受本迁移影响，维持移交登记；(3) barrier 收口链（status→done、review 流转、全量 25m gate 与 changed-range lint 补跑——8441 条目「未跑」留痕项）待调度方指令
+
+---
+
+## 2026-09-28 00:30 CST · ib2 → blocked（屏障全量回归真实失败：undefined: setupKnowledgeTestDB ×10）+ 传递闭包 15 节点联动 blocked（在途清零）
+
+- **节点**：ib2 —— IB2 核心能力集成 barrier——**in_progress → blocked，在途清零**
+- **指令内容**（原文，文本于「此编译错误在当前状」处截断，以调度方原文为准）：「屏障全量回归真实失败：github.com/Tencent/WeKnora/internal/application/repository [build failed]（屏障原报）：undefined: setupKnowledgeTestDB ×10——knowledge_datasource_external_id_test.go:44,66 / knowledge_datasource_test.go:34,80,115 / knowledge_duplicate_test.go:14,81 / knowledge_folder_move_test.go:23,59。复验：该函数定义存在于 knowledge_finalize_test.go:63（当前 git clean @14d2d0660），go test -c 编译通过 COMPILE_OK，此编译错误在当前状[截断——按文义推知为"态不复现"，以调度方为准]」
+- **闭包计算（本会话 python 实测）**：ib2 传递依赖未完成节点 = **15 节点**（b3-channels/conv-queryhistory/conv-session/insights/r-engine/r-integration/r-memory/r-protocol/r-tools、b4-craft/systempolicy/workbench、b5、ib3、ib4——闭包内零 done）+ 源头 ib2 共 **16 节点翻转**
+- **python 原子更新（节点块内定向文本手术 + 临时文件 os.replace；断言全过）**：(1) ib2 status **in_progress → blocked**，notes 追加 BLOCKED 段（原报 10 处未定义引用 4 文件行号全录 + 复验口径 + 截断留痕）；(2) 15 闭包节点 status **pending → blocked**，notes 各追加「 BLOCKED（2026-09-28）：前置 ib2 阻塞；解除条件：修复并 done ib2 后恢复。」（逐节点断言新句 count==1——各节点 notes 现含多 episode 阻塞句叠加，沿 00:16 惯例不清理陈旧句）；**方法说明**：00:16 先例的整文件 dump 保真预检本轮失败（集成侧改动后文件与标准 dump 不再逐字节一致）——改用节点块内定向手术（状态行唯一锚替换 + notes 值经 raw_decode 精确拼接），零重排风险；干净重载实测分布 **17 done + 16 blocked（in_progress/pending 归零）**；`git diff` 本轮 32+/32−（恰 16 状态行 + 16 notes 行）
+- **复验环境留痕**：指令称复验于 @14d2d0660（git clean）——本会话 `git cat-file` 实测该对象存在（commit 14d2d0660「fix(craft): 补回 .wk-craft 语义别名作用域…」，系调度方复验环境状态，非本 worktree HEAD=f81e9f054 祖先）；「定义存在于 knowledge_finalize_test.go:63 + COMPILE_OK」按调度方口径登记，管家未独立复跑（屏障原报失败态的复现条件——如运行时点在迁移窗口前后——归调度方排查链）
+- **不动项留痕**：ib2 `head_sha=63430d7b1`（集成侧裁定口径）、`review_status=pending`、task_ids、evidence_paths 均未动；17 done 节点未动；8441 集成侧条目与 00:18 迁移登记不受影响
+- **前置**（barrier 级）：四支全 done——不变
+- **worktree**：DAG/台账所在 `.worktrees/passb-int`（HEAD=`f81e9f054`，本轮 32 行变更在工作树待提交）；实现分支各归其位
+- **base → head**：base=null / head=63430d7b1 维持
+- **测试证据路径**：屏障原报（指令转录）+ 调度方复验（@14d2d0660 COMPILE_OK）——8441 条目「未跑」的全量 25m gate 即本轮失败来源，如实衔接
+- **审查结论**：`review_status=pending` 维持（blocked 系门禁真实失败非审查 findings 变化）
+- **OCR 报告路径**：无（barrier 门禁轮）
+- **修复轮次**：屏障门禁修复轮 **1 待启动**（解除条件：修复后恢复 → in_progress → 收口链重启）
+- **备注**：(1) 失败面锁定 internal/application/repository 宿主包测试编译——setupKnowledgeTestDB 定义随 f81e9f054 迁入模块后宿主侧引用悬空的可能性与复验"当前态不复现"的时序关系，归调度方排查（管家如实登记两头口径）；(2) 15 闭包节点陈旧阻塞句清理维持归调度方；(3) 恢复链：修复 → ib2 in_progress → 全量 gate 补跑（25m + changed-range lint）→ 收口 → done → 15 节点级联恢复
