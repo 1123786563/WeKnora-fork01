@@ -326,6 +326,26 @@ func (s *BenefitsService) tenantGrantMu(tenantID uint64) *sync.Mutex {
 	return mu
 }
 
+// topUpExpiries collects this tenant's UNEXPIRED top-up batch expiries from
+// the authority benefits snapshot — the yield input for
+// MonthlyWalletPriorityFor (#86 Task 2). A snapshot read failure propagates
+// (the caller's platform-failure posture applies).
+func (s *BenefitsService) topUpExpiries(ctx context.Context, tenantID uint64, now time.Time) ([]time.Time, error) {
+	snap, err := s.platform.ReadSnapshot(ctx, domain.SnapshotQuery{
+		Kind: domain.SnapshotKindBenefits, TenantID: tenantID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	var exps []time.Time
+	for _, b := range snap.Benefits.Batches {
+		if b.Source == domain.BatchSourceTopUp && b.ExpiresAt.After(now) {
+			exps = append(exps, b.ExpiresAt)
+		}
+	}
+	return exps, nil
+}
+
 // EnsureMonthlyCredits issues the current period's included credits through
 // the three-layer idempotency: the registry's unique (tenant, period) row
 // is the gate; the seam command's deterministic Key
@@ -368,6 +388,15 @@ func (s *BenefitsService) EnsureMonthlyCredits(ctx context.Context, tenantID uin
 	if !created && row.WalletRef != "" {
 		return row, nil // a completed batch replays from the registry alone
 	}
+	// The consumption-order initial (#86 Task 2): an aging top-up batch (one
+	// expiring strictly before this period's end) must be consumed FIRST, so
+	// the monthly wallet's creation priority yields to the top-up class. A
+	// snapshot read failure propagates as the platform-failure state (the
+	// same pending posture as every other chain leg; no retry here).
+	topUps, err := s.topUpExpiries(ctx, tenantID, now)
+	if err != nil {
+		return row, err
+	}
 	receipt, err := s.platform.SubmitCommand(ctx, domain.Command{
 		Kind:   domain.CommandKindGrantIncludedCredits,
 		Key:    domain.GrantCreditsCommandKey(extCustomer, period),
@@ -379,6 +408,7 @@ func (s *BenefitsService) EnsureMonthlyCredits(ctx context.Context, tenantID uin
 			Period:             period,
 			CreditsMicro:       BasePlanSeedIncludedCreditsMicro,
 			ExpiresAt:          end,
+			Priority:           domain.MonthlyWalletPriorityFor(topUps, end),
 		},
 	})
 	if err != nil {
@@ -535,6 +565,26 @@ func (s *BenefitsService) refreshAndCollect(ctx context.Context, tenantID uint64
 			balance = balances[period]
 		}
 		batches = append(batches, BatchView{Period: period, BalanceMicro: balance, ExpiresAt: expires[period]})
+	}
+
+	// The consumption-order calibration (#86 Task 2): after the projection
+	// is written, converge the customer's wallet priorities onto the true
+	// expiry order (the invariant's authority — creation-time initials
+	// cannot express mixed aging+fresh coexistence). A failure is a Warn,
+	// NEVER a billing-read error (the A-23 posture): a failed calibration
+	// leaves the wallets on their last priorities and the next refresh
+	// re-runs the convergent rebalance.
+	if _, err := s.platform.SubmitCommand(ctx, domain.Command{
+		Kind:   domain.CommandKindRebalanceCreditsOrder,
+		Key:    domain.RebalanceCreditsOrderCommandKey(domain.ExternalCustomerID(tenantID)),
+		Actor:  "system:benefits-refresh",
+		Reason: "consumption_order_calibration",
+		Payload: domain.RebalanceCreditsOrderPayload{
+			TenantID:           tenantID,
+			ExternalCustomerID: domain.ExternalCustomerID(tenantID),
+		},
+	}); err != nil {
+		logger.Warnf(ctx, "[CommercialBenefits] credits-order rebalance failed for tenant %d: %v", tenantID, err)
 	}
 	return row, batches, reason, nil
 }

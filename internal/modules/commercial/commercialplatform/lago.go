@@ -178,9 +178,82 @@ func (a *LagoAdapter) SubmitCommand(ctx context.Context, cmd commercial.Command)
 		return a.createPurchaseSubscription(ctx, cmd)
 	case commercial.CommandKindSettlePurchasePayment:
 		return a.settlePurchasePayment(ctx, cmd)
+	case commercial.CommandKindRebalanceCreditsOrder:
+		return a.rebalanceCreditsOrder(ctx, cmd)
 	default:
 		return commercial.CommandReceipt{}, commercial.ErrPlatformUnsupported
 	}
+}
+
+// rebalanceCreditsOrder converges the customer's active WeKnora wallets onto
+// the correct consumption order (#86 Task 2): list the ACTIVE wallets
+// anchored to this tenant, rank them by WalletRank (expires_at ASC,
+// created_at ASC — the "earliest expiry, then earliest grant" order), and
+// PUT every wallet whose current priority diverges from its rank. Aligned
+// wallets answer ZERO writes (an idempotent no-op on the hot refresh path);
+// a replay re-ranks from the authoritative list and converges again. A
+// terminated wallet is never touched (the pinned v1.53 refuses updates on
+// terminated wallets — wallet_is_terminated).
+func (a *LagoAdapter) rebalanceCreditsOrder(ctx context.Context, cmd commercial.Command) (commercial.CommandReceipt, error) {
+	if err := a.configured(); err != nil {
+		return commercial.CommandReceipt{}, err
+	}
+	payload, ok := cmd.Payload.(commercial.RebalanceCreditsOrderPayload)
+	if !ok {
+		return commercial.CommandReceipt{}, commercial.ErrPlatformUnsupported
+	}
+	if err := payload.Validate(); err != nil {
+		return commercial.CommandReceipt{}, fmt.Errorf("%w: %v", commercial.ErrPlatformInvalidResponse, err)
+	}
+	ctx, cancel := context.WithTimeout(ctx, subscriptionRequestTimeout)
+	defer cancel()
+	wallets, err := a.listCustomerWallets(ctx, payload.ExternalCustomerID)
+	if err != nil {
+		return commercial.CommandReceipt{}, err
+	}
+	// Only this tenant's ANCHORED active wallets participate (the same
+	// admission the benefits snapshot applies — foreign or unanchored
+	// wallets are never calibrated by us).
+	ours := make([]lagoWallet, 0, len(wallets))
+	inputs := make([]commercial.WalletRankInput, 0, len(wallets))
+	for _, w := range wallets {
+		if w.Status != "active" {
+			continue
+		}
+		if w.meta()[commercial.WalletMetaTenant] != payload.ExternalCustomerID {
+			continue
+		}
+		ours = append(ours, w)
+		inputs = append(inputs, commercial.WalletRankInput{
+			WalletRef: w.Name,
+			ExpiresAt: parseRFC3339UTC(w.ExpirationAt),
+			GrantedAt: parseRFC3339UTC(w.CreatedAt),
+		})
+	}
+	ranks := commercial.WalletRank(inputs)
+	for _, w := range ours {
+		rank, ranked := ranks[w.Name]
+		if !ranked || w.Priority == rank {
+			continue // aligned (or unranked): zero writes
+		}
+		status, _, err := a.do(ctx, http.MethodPut, "/api/v1/wallets/"+url.PathEscape(w.LagoID),
+			map[string]any{"wallet": map[string]any{"priority": rank}})
+		if err != nil {
+			return commercial.CommandReceipt{}, err
+		}
+		switch {
+		case status >= 200 && status < 300:
+		case status >= 500:
+			return commercial.CommandReceipt{}, fmt.Errorf("%w: wallet priority update unavailable", commercial.ErrPlatformUnreachable)
+		default:
+			return commercial.CommandReceipt{}, fmt.Errorf("%w: wallet priority update rejected", commercial.ErrPlatformInvalidResponse)
+		}
+	}
+	return commercial.CommandReceipt{
+		Key:        cmd.Key,
+		ExternalID: payload.ExternalCustomerID,
+		RecordedAt: time.Now().UTC(),
+	}, nil
 }
 
 // Reconcile stays frozen and disabled: fail closed.
@@ -766,11 +839,21 @@ type lagoWallet struct {
 	GrantedCredits string            `json:"granted_credits"`
 	ExpirationAt   string            `json:"expiration_at"`
 	CreatedAt      string            `json:"created_at"`
+	Priority       int               `json:"priority"`
 	MetadataMap    map[string]string `json:"metadata"`
 	MetadataList   []struct {
 		Key   string `json:"key"`
 		Value string `json:"value"`
 	} `json:"metadata_array"`
+}
+
+// parseRFC3339UTC parses an RFC3339 instant to UTC; unparseable input
+// answers the zero time (callers treat zero as unknown).
+func parseRFC3339UTC(s string) time.Time {
+	if t, err := time.Parse(time.RFC3339, s); err == nil {
+		return t.UTC()
+	}
+	return time.Time{}
 }
 
 // meta answers the wallet metadata in map form whatever wire shape it rode.
@@ -906,6 +989,7 @@ func (a *LagoAdapter) createWallet(ctx context.Context, payload commercial.Grant
 			"granted_credits":      granted,
 			"rate_amount":          "1",
 			"expiration_at":        payload.ExpiresAt.UTC().Format(time.RFC3339),
+			"priority":             payload.Priority,
 			"metadata": map[string]string{
 				commercial.WalletMetaTenant: payload.ExternalCustomerID,
 				periodMetaKey:               payload.Period,

@@ -47,6 +47,7 @@ type fakeWallet struct {
 	ExpiresAt    time.Time
 	Terminated   bool
 	CreatedAt    time.Time
+	Priority     int
 }
 
 // FakeWallet is the observable wallet state for tests: the VISIBLE
@@ -58,6 +59,7 @@ type FakeWallet struct {
 	BalanceCents int64
 	ExpiresAt    time.Time
 	Terminated   bool
+	Priority     int
 }
 
 // FakeSubscription is the observable subscription state for tests.
@@ -118,7 +120,6 @@ type FakeAdapter struct {
 	// T08 state (#80): a real in-memory subscription + wallet authority.
 	subs       map[string]fakeSubscription
 	wallets    []fakeWallet
-	nextWallet int
 	// T09 state (#81): a real in-memory payment-gated purchase authority —
 	// purchase subscriptions keyed by external id, and the provider binding
 	// per external customer (external customer id → provider customer id).
@@ -200,6 +201,21 @@ func (f *FakeAdapter) RejectWalletCreatesWith(err error) {
 	f.rejectWalletCreates = err
 }
 
+// SeedTopUpWallet seeds a TOP-UP shaped wallet directly into the authority
+// store (#86): a non-grant-family name, a mid-month expiry the grant
+// command's own validation can never express (grants expire at period ends
+// only). This is the #85 payment-confirmed batch shape tests model — the
+// name must NOT parse as a monthly/purchase deterministic name.
+func (f *FakeAdapter) SeedTopUpWallet(name, customer string, grantedCents int64, expiresAt, grantedAt time.Time, priority int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.wallets = append(f.wallets, fakeWallet{
+		Name: name, Customer: customer,
+		GrantedCents: grantedCents, ExpiresAt: expiresAt,
+		CreatedAt: grantedAt, Priority: priority,
+	})
+}
+
 // Wallets returns the observable wallet state (VISIBLE balance — settled
 // per the settle lag, terminated excluded from balance but listed).
 func (f *FakeAdapter) Wallets() []FakeWallet {
@@ -215,6 +231,7 @@ func (f *FakeAdapter) Wallets() []FakeWallet {
 		out = append(out, FakeWallet{
 			Name: w.Name, Customer: w.Customer, GrantedCents: w.GrantedCents,
 			BalanceCents: visible, ExpiresAt: w.ExpiresAt, Terminated: w.Terminated,
+			Priority: w.Priority,
 		})
 	}
 	return out
@@ -684,6 +701,7 @@ func (f *FakeAdapter) SubmitCommand(_ context.Context, cmd commercial.Command) (
 			f.wallets = append(f.wallets, fakeWallet{
 				Name: walletName, Customer: payload.ExternalCustomerID,
 				GrantedCents: wantCents, ExpiresAt: payload.ExpiresAt, CreatedAt: f.nowUTC(),
+				Priority: payload.Priority,
 			})
 			return commercial.CommandReceipt{}, f.failSubmits
 		}
@@ -695,6 +713,7 @@ func (f *FakeAdapter) SubmitCommand(_ context.Context, cmd commercial.Command) (
 		f.wallets = append(f.wallets, fakeWallet{
 			Name: walletName, Customer: payload.ExternalCustomerID,
 			GrantedCents: wantCents, ExpiresAt: payload.ExpiresAt, CreatedAt: f.nowUTC(),
+			Priority: payload.Priority,
 		})
 		return commercial.CommandReceipt{
 			Key:        cmd.Key,
@@ -787,6 +806,43 @@ func (f *FakeAdapter) SubmitCommand(_ context.Context, cmd commercial.Command) (
 		sub.Status = "active"
 		f.purchaseSubs[payload.ExternalPurchaseSubscriptionID] = sub
 		return receipt, nil
+
+	case commercial.CommandKindRebalanceCreditsOrder:
+		payload, ok := cmd.Payload.(commercial.RebalanceCreditsOrderPayload)
+		if !ok {
+			return commercial.CommandReceipt{}, commercial.ErrPlatformUnsupported
+		}
+		if err := payload.Validate(); err != nil {
+			return commercial.CommandReceipt{}, fmt.Errorf("%w: %v", commercial.ErrPlatformInvalidResponse, err)
+		}
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		// The same convergent calibration the Lago adapter runs: rank the
+		// customer's non-terminated wallets by (expires_at, created_at) and
+		// align each stored priority — aligned wallets stay untouched.
+		inputs := make([]commercial.WalletRankInput, 0, len(f.wallets))
+		for _, w := range f.wallets {
+			if w.Customer != payload.ExternalCustomerID || w.Terminated {
+				continue
+			}
+			inputs = append(inputs, commercial.WalletRankInput{
+				WalletRef: w.Name, ExpiresAt: w.ExpiresAt, GrantedAt: w.CreatedAt,
+			})
+		}
+		ranks := commercial.WalletRank(inputs)
+		for i := range f.wallets {
+			if f.wallets[i].Customer != payload.ExternalCustomerID || f.wallets[i].Terminated {
+				continue
+			}
+			if rank, ranked := ranks[f.wallets[i].Name]; ranked {
+				f.wallets[i].Priority = rank
+			}
+		}
+		return commercial.CommandReceipt{
+			Key:        cmd.Key,
+			ExternalID: payload.ExternalCustomerID,
+			RecordedAt: f.nowUTC(),
+		}, nil
 
 	default:
 		return commercial.CommandReceipt{}, commercial.ErrPlatformUnsupported

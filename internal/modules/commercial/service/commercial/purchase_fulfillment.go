@@ -247,6 +247,27 @@ func (p *PurchaseFulfiller) Fulfill(ctx context.Context, ev repocommercial.Outbo
 	if err != nil {
 		return err
 	}
+	// The consumption-order initial (#86 Task 2 — the same rule as the Base
+	// monthly grant): an aging top-up batch expiring before this period's
+	// end must be consumed first, so the purchase first-period wallet yields
+	// to the top-up class. A snapshot read failure is transient here (the
+	// same posture as an unreachable grant): the event stays pending and the
+	// next pass re-drives.
+	topUps := []time.Time{}
+	if bsnap, bsErr := p.platform.ReadSnapshot(ctx, domain.SnapshotQuery{
+		Kind: domain.SnapshotKindBenefits, TenantID: order.TenantID,
+	}); bsErr == nil && bsnap.Benefits != nil {
+		for _, b := range bsnap.Benefits.Batches {
+			if b.Source == domain.BatchSourceTopUp && b.ExpiresAt.After(p.now()) {
+				topUps = append(topUps, b.ExpiresAt)
+			}
+		}
+	} else if bsErr != nil {
+		if errors.Is(bsErr, domain.ErrPlatformUnreachable) || errors.Is(bsErr, domain.ErrPlatformUnconfigured) {
+			return nil
+		}
+		return p.markActivationState(ctx, order.ID, order.TenantID, domain.FulfillmentStateAttention)
+	}
 	grant, err := p.platform.SubmitCommand(ctx, domain.Command{
 		Kind: domain.CommandKindGrantIncludedCredits,
 		Key: domain.GrantCreditsCommandKey(
@@ -259,6 +280,7 @@ func (p *PurchaseFulfiller) Fulfill(ctx context.Context, ev repocommercial.Outbo
 			CreditsMicro:       snap.CreditsMicro,
 			ExpiresAt:          end,
 			WalletName:         domain.PurchaseWalletName(order.TenantID, period),
+			Priority:           domain.MonthlyWalletPriorityFor(topUps, end),
 		},
 	})
 	if err != nil {

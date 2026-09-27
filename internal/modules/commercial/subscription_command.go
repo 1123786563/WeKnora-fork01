@@ -3,6 +3,7 @@ package commercial
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 )
@@ -95,6 +96,62 @@ const CommandKindGrantIncludedCredits CommandKind = "grant_included_credits"
 // consumption order is `priority ASC, created_at ASC`).
 const MonthlyWalletPriority = 1
 
+// TopUpWalletPriority is the single creation-time priority class of top-up
+// batches (#86 Task 2). Under the uniform twelve-month TTL the family's
+// internal expiry order ≡ grant order, so Lago's same-priority
+// `created_at ASC` tie-break already IS the expiry order — one class
+// suffices at creation; the authority rebalance (WalletRank) is the
+// invariant's real guarantee.
+const TopUpWalletPriority = 2
+
+// MonthlyWalletPriorityFor computes a monthly wallet's CREATION-TIME
+// priority: MonthlyWalletPriority (1) unless some top-up batch expires
+// strictly before this period's end ("aging" — it must be consumed before
+// the monthly batch), in which case the monthly batch yields to
+// TopUpWalletPriority+1 (3). This initial value only reduces rebalance
+// writes; correctness is the refresh-time authority rebalance — a static
+// encoding cannot express mixed aging+fresh coexistence (the r1-review
+// counterexample: rebalance converges A=1, M=2, B=3).
+func MonthlyWalletPriorityFor(topUpExpiries []time.Time, periodEnd time.Time) int {
+	for _, exp := range topUpExpiries {
+		if exp.After(time.Time{}) && exp.Before(periodEnd) {
+			return TopUpWalletPriority + 1
+		}
+	}
+	return MonthlyWalletPriority
+}
+
+// WalletRankInput is one active batch participating in the authority
+// consumption-order ranking (seam-internal shape).
+type WalletRankInput struct {
+	WalletRef string // the wallet's deterministic name (adapters map to lago_id)
+	ExpiresAt time.Time
+	GrantedAt time.Time // the authority's created_at (grant time)
+}
+
+// WalletRank answers the correct ranks 1..n over (ExpiresAt ASC, GrantedAt
+// ASC, WalletRef ASC) — the "earliest expiry, then earliest grant" order
+// spec L132 mandates. WalletRef is the deterministic final tie-break. The
+// authority rebalance aligns each wallet's priority to its rank; Lago then
+// consumes `priority ASC, created_at ASC` = the intended total order.
+func WalletRank(batches []WalletRankInput) map[string]int {
+	ordered := append([]WalletRankInput(nil), batches...)
+	sort.Slice(ordered, func(i, j int) bool {
+		if !ordered[i].ExpiresAt.Equal(ordered[j].ExpiresAt) {
+			return ordered[i].ExpiresAt.Before(ordered[j].ExpiresAt)
+		}
+		if !ordered[i].GrantedAt.Equal(ordered[j].GrantedAt) {
+			return ordered[i].GrantedAt.Before(ordered[j].GrantedAt)
+		}
+		return ordered[i].WalletRef < ordered[j].WalletRef
+	})
+	ranks := make(map[string]int, len(ordered))
+	for i, b := range ordered {
+		ranks[b.WalletRef] = i + 1
+	}
+	return ranks
+}
+
 // GrantIncludedCreditsPayload is the typed payload of grant_included_credits.
 // One calendar month per grant: Period is the UTC "YYYY-MM", ExpiresAt the
 // EXCLUSIVE period end (short-TTL wallet — included credits never roll
@@ -114,6 +171,12 @@ type GrantIncludedCreditsPayload struct {
 	CreditsMicro       int64     // > 0 and cent-aligned (CreditsMicro % 10_000 == 0)
 	ExpiresAt          time.Time // exclusive period end, > grant time
 	WalletName         string    // optional; empty = MonthlyWalletName (Base batch)
+	// Priority is the consumption-order class encoded into the wallet at
+	// creation (#86 Task 2; MonthlyWalletPriorityFor / TopUpWalletPriority).
+	// Required [1,50] — the consumption order must be explicit, never the
+	// provider default. The invariant's authority is the refresh-time
+	// rebalance; this initial value only reduces rebalance writes.
+	Priority int
 }
 
 // Validate enforces the monthly grant contract: derived identity, strict
@@ -141,6 +204,9 @@ func (p GrantIncludedCreditsPayload) Validate() error {
 	}
 	if p.CreditsMicro%10_000 != 0 {
 		return errors.New("invalid grant payload: credits_micro must be cent-aligned (% 10_000 == 0)")
+	}
+	if p.Priority < 1 || p.Priority > 50 {
+		return errors.New("invalid grant payload: priority must be within [1,50] (the consumption-order class)")
 	}
 	return nil
 }
@@ -289,3 +355,36 @@ type BenefitsSnapshot struct {
 	CheckedAt         time.Time
 }
 
+// CommandKindRebalanceCreditsOrder converges the customer's active wallets'
+// priorities onto the correct consumption order (#86 Task 2): the adapter
+// lists the active wallets, ranks them by WalletRank (expires_at ASC,
+// created_at ASC) and PUTs each wallet whose current priority diverges from
+// its rank — aligned wallets answer ZERO writes (idempotent no-op). A replay
+// re-computes from the authoritative list and converges again: the command
+// is a calibrating reconciliation, never a mutation with its own state.
+const CommandKindRebalanceCreditsOrder CommandKind = "rebalance_credits_order"
+
+// RebalanceCreditsOrderPayload is the typed payload of
+// rebalance_credits_order — one customer's wallet set, derived identity only.
+type RebalanceCreditsOrderPayload struct {
+	TenantID           uint64
+	ExternalCustomerID string // must equal ExternalCustomerID(TenantID)
+}
+
+// Validate enforces the derived-identity equality.
+func (p RebalanceCreditsOrderPayload) Validate() error {
+	if p.TenantID == 0 {
+		return errors.New("invalid rebalance_credits_order payload: tenant is required")
+	}
+	if p.ExternalCustomerID != ExternalCustomerID(p.TenantID) {
+		return errors.New("invalid rebalance_credits_order payload: external_customer_id must equal ExternalCustomerID(tenant)")
+	}
+	return nil
+}
+
+// RebalanceCreditsOrderCommandKey derives the seam command identity
+// "rebalance_credits_order:<ext-customer>" — a convergent calibration: a
+// replay re-ranks from the authoritative list and is harmless by design.
+func RebalanceCreditsOrderCommandKey(externalCustomerID string) string {
+	return string(CommandKindRebalanceCreditsOrder) + ":" + externalCustomerID
+}

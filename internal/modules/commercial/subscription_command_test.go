@@ -88,6 +88,7 @@ func validGrantPayload(t *testing.T) GrantIncludedCreditsPayload {
 		Period:             period,
 		CreditsMicro:       1_000_000,
 		ExpiresAt:          end,
+		Priority:           MonthlyWalletPriority,
 	}
 }
 
@@ -320,5 +321,78 @@ func TestPublishPayloadZeroAmount(t *testing.T) {
 	negative.AmountFen = -1
 	if err := negative.Validate(); err == nil {
 		t.Fatal("a negative amount_fen stays structurally invalid")
+	}
+}
+
+// ---- #86 Task 2: consumption-order encoding (priority classes) ----
+
+// TestMonthlyWalletPriorityYieldsToAgingTopUp: a top-up batch expiring BEFORE
+// this period's end must push the monthly wallet's creation-time priority
+// ABOVE the top-up class; no such aging batch keeps the monthly class 1.
+func TestMonthlyWalletPriorityYieldsToAgingTopUp(t *testing.T) {
+	periodEnd := time.Date(2027, 1, 31, 0, 0, 0, 0, time.UTC)
+	if got := MonthlyWalletPriorityFor(nil, periodEnd); got != MonthlyWalletPriority {
+		t.Fatalf("no topup: got %d", got)
+	}
+	aging := []time.Time{time.Date(2027, 1, 15, 0, 0, 0, 0, time.UTC)} // before the period end
+	if got := MonthlyWalletPriorityFor(aging, periodEnd); got != TopUpWalletPriority+1 {
+		t.Fatalf("aging topup: got %d", got)
+	}
+	later := []time.Time{time.Date(2027, 2, 15, 0, 0, 0, 0, time.UTC)} // after the period end
+	if got := MonthlyWalletPriorityFor(later, periodEnd); got != MonthlyWalletPriority {
+		t.Fatalf("later topup: got %d", got)
+	}
+}
+
+// TestWalletRankMixedFamilies (the r1-review High counterexample): an aging
+// top-up A (expires before this month's end) + monthly M (period end) + fresh
+// top-up B (expires after) coexist — the correct total order is A→M→B; no
+// static priority encoding can express it (initials give A=2,B=2,M=3, which
+// Lago would consume A→B→M). WalletRank must answer A=1, M=2, B=3.
+func TestWalletRankMixedFamilies(t *testing.T) {
+	got := WalletRank([]WalletRankInput{
+		{WalletRef: "B", ExpiresAt: time.Date(2027, 7, 10, 0, 0, 0, 0, time.UTC), GrantedAt: time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)},
+		{WalletRef: "M", ExpiresAt: time.Date(2027, 1, 31, 0, 0, 0, 0, time.UTC), GrantedAt: time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC)},
+		{WalletRef: "A", ExpiresAt: time.Date(2027, 1, 15, 0, 0, 0, 0, time.UTC), GrantedAt: time.Date(2026, 1, 15, 0, 0, 0, 0, time.UTC)},
+	})
+	if got["A"] != 1 || got["M"] != 2 || got["B"] != 3 {
+		t.Fatalf("mixed-family rank = %+v, want A=1 M=2 B=3", got)
+	}
+}
+
+// TestWalletRankSameExpiryEarliestGrant: same-expiry batches break the tie
+// by grant time (the spec's "earliest grant" tie-break).
+func TestWalletRankSameExpiryEarliestGrant(t *testing.T) {
+	exp := time.Date(2027, 3, 31, 0, 0, 0, 0, time.UTC)
+	got := WalletRank([]WalletRankInput{
+		{WalletRef: "late", ExpiresAt: exp, GrantedAt: exp.Add(-1 * time.Hour)},
+		{WalletRef: "early", ExpiresAt: exp, GrantedAt: exp.Add(-2 * time.Hour)},
+	})
+	if got["early"] != 1 || got["late"] != 2 {
+		t.Fatalf("same-expiry rank = %+v", got)
+	}
+}
+
+// TestGrantPayloadRequiresPriorityRange: Priority ∈ [1,50] is required —
+// the consumption order must be explicitly encoded at grant time.
+func TestGrantPayloadRequiresPriorityRange(t *testing.T) {
+	base := GrantIncludedCreditsPayload{
+		TenantID:           9,
+		ExternalCustomerID: ExternalCustomerID(9),
+		Period:             "2099-01",
+		CreditsMicro:       1_000_000,
+		ExpiresAt:          time.Date(2099, 2, 1, 0, 0, 0, 0, time.UTC),
+	}
+	for _, p := range []int{0, -1, 51} { // 0 = default — must be explicitly encoded
+		bad := base
+		bad.Priority = p
+		if err := bad.Validate(); err == nil {
+			t.Fatalf("priority %d must be rejected", p)
+		}
+	}
+	ok := base
+	ok.Priority = 1
+	if err := ok.Validate(); err != nil {
+		t.Fatal(err)
 	}
 }
