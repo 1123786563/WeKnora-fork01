@@ -65,9 +65,10 @@ export interface RecoverableWriteInput<T> {
   reuseId?: string;
   send: (id: string, expected: number) => Promise<T>;
 }
-/** 写入 + 未知结果恢复（两域共用）：stamp 守卫先于 intent 落盘——作用域在途切换抛
- *  SCOPE_CHANGED 且绝不落 intent（键按发送时刻 stamp 预铸）；歧义失败落 intent 并抛
- *  outcome_unknown；确定失败原样上抛，不进恢复链。 */
+/** 写入 + 未知结果恢复（两域共用）：stamp 守卫先于 intent 落盘——作用域在途切换或
+ *  确定性本地失败（SCOPE_CHANGED/AUTH_REQUIRED，见 definiteLocalFailure 冻结口径）抛
+ *  SCOPE_CHANGED 且绝不落 intent（键按发送时刻 stamp 预铸）；其余歧义失败落 intent 并抛
+ *  outcome_unknown；确定失败原样上抛，不进恢复链。与 retryRecoverable 的守卫保持同一判据。 */
 export async function recoverableWrite<T>(store: ControlledCareerStore, options: RecoverableWriteInput<T>): Promise<T> {
   const id = options.reuseId ?? newRequestId();
   const stamp = auth.scope.capture();
@@ -75,7 +76,9 @@ export async function recoverableWrite<T>(store: ControlledCareerStore, options:
   try {
     return await options.send(id, options.expected);
   } catch (error) {
-    if (ambiguousOutcome(error) && !auth.scope.isCurrent(stamp)) {
+    // OCR2-037：AUTH_REQUIRED 等确定性本地失败（裸 message 无 code/status，会被
+    // ambiguousOutcome 误判歧义）绝不落 intent——与 retryRecoverable 同一守卫口径。
+    if (ambiguousOutcome(error) && (!auth.scope.isCurrent(stamp) || definiteLocalFailure(error))) {
       throw Object.assign(new Error('SCOPE_CHANGED'), { cause: error });
     }
     if (ambiguousOutcome(error)) {

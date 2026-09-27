@@ -227,7 +227,7 @@ export default function ProgressPreparationPage() {
       <Field label='备注（可选）' value={note} onChange={setNote} placeholder='例如：一面定在 10 月 8 日下午' />
       <Field label='声明发生时间（格式 2026-09-25 20:00；留空即记录确认时间）' value={occurredAt} onChange={setOccurredAt} placeholder='2026-09-25 20:00' />
       <View className='wk-between'><View className='wk-tdesign-scope'>
-        <t-button block size='large' theme='primary' ariaLabel={correcting ? '提交更正' : '录入进展'} customStyle={tdesignButtonStyle} loading={correcting ? correctBusy.busy : appendBusy.busy} onTap={() => void (correcting ? correctBusy : appendBusy).run(async () => {
+        <t-button block size='large' theme='primary' ariaLabel={correcting ? '提交更正' : '录入进展'} customStyle={tdesignButtonStyle} loading={correcting ? correctBusy.busy : appendBusy.busy} disabled={pendingProgress !== null} onTap={() => void (correcting ? correctBusy : appendBusy).run(async () => {
           // 声明时间严格解析（与投递确认同一判据）：无效输入显式拒绝，绝不静默丢弃。
           const parsed = career.parseDeclaredOccurredAt(occurredAt);
           if (parsed.status === 'invalid') throw new Error('声明时间格式无效：请使用 2026-09-25 20:00 这样的本地时间，或留空');
@@ -252,7 +252,7 @@ export default function ProgressPreparationPage() {
       {(Object.keys(focusLabels) as PreparationFocus[]).map(option => <Text key={option} className='wk-small' onClick={() => setFocus(option)}>{focus === option ? '● ' : '○ '}{focusLabels[option]}</Text>)}
       <DataBoundary state={desk}>{loaded => loaded && <Text className='wk-muted wk-small'>当前档案修订 {loaded.revision}（准备生成按此修订提交）</Text>}</DataBoundary>
       <View className='wk-between'><View className='wk-tdesign-scope'>
-        <t-button block size='large' theme='primary' ariaLabel='生成准备草稿' customStyle={tdesignButtonStyle} loading={genBusy.busy} disabled={!applicationId.trim() || revision === undefined} onTap={() => void genBusy.run(async () => {
+        <t-button block size='large' theme='primary' ariaLabel='生成准备草稿' customStyle={tdesignButtonStyle} loading={genBusy.busy} disabled={!applicationId.trim() || revision === undefined || pendingPreparation !== null} onTap={() => void genBusy.run(async () => {
           try {
             await career.generatePreparation({ applicationId: applicationId.trim(), focus });
             setGenErrCode(undefined); setGenNotice('');
@@ -302,7 +302,7 @@ export default function ProgressPreparationPage() {
       </View>)}
       <Action secondary onClick={() => setSections(previous => [...previous, { heading: '', content: '', claims: [] }])}>新增小节</Action>
       <View className='wk-between'><View className='wk-tdesign-scope'>
-        <t-button block size='large' theme='primary' ariaLabel='保存准备草稿修订' customStyle={tdesignButtonStyle} loading={reviseBusy.busy} onTap={() => void reviseBusy.run(saveRevision)}>保存修订（显式提交）</t-button>
+        <t-button block size='large' theme='primary' ariaLabel='保存准备草稿修订' customStyle={tdesignButtonStyle} loading={reviseBusy.busy} disabled={pendingMaterial !== null} onTap={() => void reviseBusy.run(saveRevision)}>保存修订（显式提交）</t-button>
       </View></View>
       {reviseBusy.error && <Notice tone='danger'>{reviseBusy.error}{reviseErrCode === 'outcome_unknown' ? ' 修订结果未知：本地草稿已保留，请用页首「用原请求编号重试材料修订」恢复（幂等可重放），本页不会自动重发。' : reviseErrCode === 'revision_conflict' ? ' 档案已更新：请重新读取修订后再保存（新保存会使用新的请求编号）。' : ''}</Notice>}
       <Action secondary loading={readBackBusy.busy} onClick={() => void readBackBusy.run(async () => {

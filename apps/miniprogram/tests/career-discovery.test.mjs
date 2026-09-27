@@ -417,3 +417,15 @@ test('H1: a forbidden career scope clears local desk state for recovery', async 
   await assert.rejects(career.loadCareer(), error => error.code === 'forbidden');
   assert.equal(career.careerDesk().snapshot, undefined, 'private desk state is invalidated');
 });
+
+test('OCR2-037: a bare AUTH_REQUIRED on the first search never persists a recovery intent', async () => {
+  await freshLogin({
+    'GET /api/v1/career/open': call => stub.succeed(call, { data: { revision: 3, facts: [], proposals: [] } }),
+  });
+  await career.loadCareer();
+  await runtime.auth.logout();
+  const failed = await career.searchOnce('Go 工程师').catch(error => error);
+  assert.equal(failed.message, 'SCOPE_CHANGED');
+  assert.match(`${failed.cause?.message ?? ''}`, /AUTH_REQUIRED/);
+  assert.equal(career.pendingSearch(), null, 'AUTH_REQUIRED is a definite local failure — no search intent may be persisted');
+});

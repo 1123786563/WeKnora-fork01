@@ -31,6 +31,7 @@ export default function ApplicationMaterialPage() {
   const matLoadBusy = useAction(); const matEditBusy = useAction(); const matConfirmBusy = useAction();
   const publishBusy = useAction(); const downloadBusy = useAction(); const submitBusy = useAction(); const listBusy = useAction();
   const recoverAppBusy = useAction(); const recoverMatBusy = useAction(); const recoverSubBusy = useAction();
+  const recoverPubBusy = useAction(); const retryPubBusy = useAction();
 
   const params = Taro.getCurrentInstance().router?.params as Record<string, string | undefined> | undefined;
   const [opportunityId, setOpportunityId] = useState(params?.opportunityId ?? '');
@@ -57,6 +58,7 @@ export default function ApplicationMaterialPage() {
   const pendingApplication = career.pendingApplication();
   const pendingMaterial = career.pendingMaterialWrite();
   const pendingSubmission = career.pendingSubmission();
+  const pendingPublish = career.pendingMaterialPublish();
   const ineligible = evaluation?.status === 'ineligible';
   // 硬条件警示常驻：评估不符合时创建前常驻；申请回执带 warning 时存续期间常驻。
   const hardWarning = (ineligible || application?.warning) && (
@@ -228,10 +230,28 @@ export default function ApplicationMaterialPage() {
       {matConfirmBusy.error && <Notice tone='danger'>{matConfirmBusy.error}</Notice>}
     </Card>}
 
-    {((material?.versionCount ?? 0) > 0 || exports) && <Card>
+    {(((material?.versionCount ?? 0) > 0) || exports || pendingPublish) && <Card>
       <Text className='wk-h3'>发布与下载（PDF / DOCX）</Text>
+      {pendingPublish && <>
+        <Notice tone='warning'>有一次结果未知的材料发布（{pendingPublish.requestId.slice(0, 10)}…，材料 {pendingPublish.input.materialId.slice(0, 10)}… · V{pendingPublish.input.version}）。请先用原请求对账；确认未送达后才需要安全重发，不会重复发布。</Notice>
+        <Action secondary loading={recoverPubBusy.busy} onClick={() => void recoverPubBusy.run(async () => {
+          const receipt = await career.reconcilePendingMaterialPublish();
+          if (!receipt) throw Object.assign(new Error('导出列表中没有这次发布的记录：请求可能未送达'), { code: 'publish_receipt_missing' });
+          setMaterialId(receipt.materialId);
+          setConfirmedVersion(receipt.version);
+          await loadExports(receipt.materialId);
+        })}>用原请求对账发布</Action>
+        {recoverPubBusy.error && <Notice tone='danger'>{recoverPubBusy.error} intent 保留：可稍后再对账，或用原请求编号安全重发。</Notice>}
+        <Action secondary loading={retryPubBusy.busy} onClick={() => void retryPubBusy.run(async () => {
+          const receipt = await career.retryPendingMaterialPublish();
+          setMaterialId(receipt.materialId);
+          setConfirmedVersion(receipt.version);
+          await loadExports(receipt.materialId);
+        })}>用原请求编号安全重发发布</Action>
+        {retryPubBusy.error && <Notice tone='danger'>{retryPubBusy.error} 重发沿用原请求编号与原版本（服务端幂等不会重复执行）；结果仍未知时 intent 保留，可再次对账。</Notice>}
+      </>}
       <View className='wk-between'><View className='wk-tdesign-scope'>
-        <t-button block size='large' theme='primary' ariaLabel='发布双格式导出' customStyle={tdesignButtonStyle} loading={publishBusy.busy} onTap={() => void publishBusy.run(async () => {
+        <t-button block size='large' theme='primary' ariaLabel='发布双格式导出' customStyle={tdesignButtonStyle} loading={publishBusy.busy} disabled={pendingPublish !== null} onTap={() => void publishBusy.run(async () => {
           const version = confirmedVersion ?? material?.versionCount;
           if (version === undefined) throw new Error('请先确认材料版本');
           await career.publishMaterial(materialId, version);

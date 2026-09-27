@@ -521,3 +521,66 @@ test('T1: a declared time is parsed strictly — invalid input is never silently
   assert.equal(career.parseDeclaredOccurredAt('不是时间').status, 'invalid');
   assert.equal(career.parseDeclaredOccurredAt('2026-09-25').status, 'invalid', 'date-only is rejected: a claimed time needs minutes');
 });
+
+// —— OCR 第 2 轮（ocr2-001/ocr2-037）：材料发布恢复链 + 确定性本地失败不落 intent ——
+
+test('OCR2-001 D5: an unknown publish outcome is reconciled through the export list by the original request id', async () => {
+  let postFails = true; let pendingId = '';
+  await freshLogin({
+    'POST /api/v1/career/materials/mat-1/exports': call => { if (postFails) stub.fail(call, 'request:fail timeout'); else stub.succeed(call, { data: exportReceipt() }); },
+    'GET /api/v1/career/materials/mat-1/exports': call => stub.succeed(call, { data: { materialId: 'mat-1', exports: [exportReceipt({ requestId: pendingId })] } }),
+  });
+  await career.loadCareer();
+  const failed = await career.publishMaterial('mat-1', 2).catch(error => error);
+  assert.equal(errorCode(failed), 'outcome_unknown');
+  const pending = career.pendingMaterialPublish();
+  assert.ok(pending, 'the export intent is now readable — no longer dead data');
+  assert.equal(pending.input.materialId, 'mat-1');
+  assert.equal(pending.input.version, 2);
+  assert.equal(pending.expectedRevision, 3, 'the intent stores the fingerprint-bound original revision');
+  pendingId = pending.requestId; // the server list now carries the entry created by that very request
+  const receipt = await career.reconcilePendingMaterialPublish();
+  assert.equal(receipt.requestId, pending.requestId, 'reconciliation matched the original request id in the export list');
+  assert.equal(career.pendingMaterialPublish(), null, 'a matched reconciliation clears the intent');
+});
+
+test('OCR2-001 D6: a publish safe resend replays the original version and revision even after the desk advanced', async () => {
+  let postFails = true; let serverRevision = 3; const publishPosts = [];
+  await freshLogin({
+    'GET /api/v1/career/open': call => stub.succeed(call, { data: { revision: serverRevision, facts: [], proposals: [] } }),
+    'GET /api/v1/career/list': call => stub.succeed(call, { data: { revision: serverRevision, facts: [], proposals: [] } }),
+    'POST /api/v1/career/materials/mat-1/exports': call => { publishPosts.push(call.options.data); if (postFails) stub.fail(call, 'request:fail timeout'); else stub.succeed(call, { data: exportReceipt({ requestId: call.options.data.requestId }) }); },
+    'GET /api/v1/career/materials/mat-1/exports': call => stub.succeed(call, { data: { materialId: 'mat-1', exports: [] } }),
+  });
+  await career.loadCareer();
+  const failed = await career.publishMaterial('mat-1', 2).catch(error => error);
+  assert.equal(errorCode(failed), 'outcome_unknown');
+  assert.ok(career.pendingMaterialPublish(), 'intent persisted');
+  const missing = await career.reconcilePendingMaterialPublish();
+  assert.equal(missing, undefined, 'an empty export list means the request may never have arrived');
+  assert.ok(career.pendingMaterialPublish(), 'a missing reconciliation keeps the intent for a safe resend');
+  serverRevision = 7; // meanwhile the profile moved on — the fingerprint must still replay the original value
+  await career.refreshCareer();
+  postFails = false;
+  const receipt = await career.retryPendingMaterialPublish();
+  assert.equal(receipt.exportId, 'exp-1');
+  assert.equal(publishPosts.length, 2, 'one failed attempt plus one safe resend');
+  assert.equal(publishPosts[1].requestId, publishPosts[0].requestId, 'the resend replays the original request id');
+  assert.equal(publishPosts[1].version, 2, 'the resend replays the original version');
+  assert.equal(publishPosts[1].expectedRevision, 3, 'the resend replays the original revision so the server fingerprint matches');
+  assert.equal(career.pendingMaterialPublish(), null, 'a successful resend clears the intent');
+});
+
+test('OCR2-037 E2: a bare AUTH_REQUIRED on the first write never persists a recovery intent (frozen: definite local failure)', async () => {
+  await freshLogin();
+  await career.loadCareer();
+  // 本地登出后 scoped() 在发送前抛裸 Error('AUTH_REQUIRED')（无 code 无 status）——
+  // ambiguousOutcome 会把它误判为歧义；冻结口径要求它绝不落 intent。
+  await runtime.auth.logout();
+  const failed = await career.publishMaterial('mat-1', 2).catch(error => error);
+  assert.equal(failed.message, 'SCOPE_CHANGED');
+  assert.match(`${failed.cause?.message ?? ''}`, /AUTH_REQUIRED/);
+  assert.equal(career.pendingMaterialPublish(), null, 'AUTH_REQUIRED is a definite local failure — no export intent may be persisted');
+  assert.equal(career.pendingApplication(), null);
+  assert.equal(career.pendingSubmission(), null);
+});

@@ -504,3 +504,13 @@ test('F1: a definite retry refusal and a scope-changed failure do not raise the 
   assert.equal(deletionRecoveryUnresolvedAfter('retry', Object.assign(new Error('删除结果未知'), { code: 'outcome_unknown' }), false), false);
   assert.equal(deletionRecoveryUnresolvedAfter('reconcile', new Error('request:fail timeout'), false), false);
 });
+
+test('OCR2-037: a bare AUTH_REQUIRED on the first deletion never persists a recovery intent', async () => {
+  await freshLogin();
+  await career.loadCareer();
+  await runtime.auth.logout();
+  const failed = await career.deleteWholeSpace().catch(error => error);
+  assert.equal(failed.message, 'SCOPE_CHANGED');
+  assert.match(`${failed.cause?.message ?? ''}`, /AUTH_REQUIRED/);
+  assert.equal(career.pendingSpaceDeletion(), null, 'AUTH_REQUIRED is a definite local failure — no deletion intent may be persisted');
+});

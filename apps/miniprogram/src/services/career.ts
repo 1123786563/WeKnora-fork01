@@ -134,7 +134,8 @@ export async function searchOnce(query: string): Promise<SearchOutcome> {
   try {
     return decodeSearchOutcome(await client.request({ method: 'POST', path: '/api/v1/career/searches', body: { requestId: id, query: trimmed, expectedRevision: expected } }));
   } catch (error) {
-    if (ambiguousOutcome(error) && !auth.scope.isCurrent(stamp)) {
+    // OCR2-037：确定性本地失败（AUTH_REQUIRED 等）不落 intent——与 retryPendingSearch 同一守卫口径。
+    if (ambiguousOutcome(error) && (!auth.scope.isCurrent(stamp) || definiteLocalFailure(error))) {
       throw Object.assign(new Error('SCOPE_CHANGED'), { cause: error });
     }
     if (ambiguousOutcome(error)) { store.write(searchKey(stamp), { requestId: id, query: trimmed, expectedRevision: expected }); throw unknownOutcome(id, trimmed, error); }
@@ -327,6 +328,30 @@ export async function publishMaterial(materialId: string, version: number): Prom
 export async function listMaterialExports(materialId: string): Promise<MaterialExportList> {
   if (!materialId.trim()) throw new Error('缺少材料编号');
   return decodeMaterialExportList(await client.request({ method: 'GET', path: `/api/v1/career/materials/${encodeURIComponent(materialId.trim())}/exports` }));
+}
+
+// —— 材料发布恢复链（OCR2-001）：publishMaterial 的 writeRecoverable('export',…) 会把
+// intent 落到 wk:career:export:<scope>，此前没有任何读取器——发布结果未知即成死数据。
+// 服务端幂等合同：PublishMaterial 按全量请求体指纹（requestId+materialId+version+
+// expectedRevision）replay，同编号重发绝不重复执行，也不产生重复导出记录。
+export interface PublishMaterialIntent { materialId: string; version: number }
+export function pendingMaterialPublish(): StoredIntent<PublishMaterialIntent> | null { return readIntent<PublishMaterialIntent>(intentKey('export')); }
+/** 对账：服务端没有材料发布的专用 receipt 路由——以导出列表按原 requestId 匹配（列表
+ *  条目与回执同构，均携带 requestId）。匹配到即该编号的发布已落库（含已撤销态），清
+ *  intent 返回回执；匹配不到视同回执缺失（可能未送达），intent 保留由上层引导安全重发。 */
+export async function reconcilePendingMaterialPublish(): Promise<MaterialExportReceipt | undefined> {
+  const pending = pendingMaterialPublish();
+  if (!pending) throw new Error('没有待对账的材料发布');
+  const receipt = (await listMaterialExports(pending.input.materialId)).exports.find(entry => entry.requestId === pending.requestId);
+  if (receipt) store.remove(intentKey('export'));
+  return receipt;
+}
+/** 安全重发：同 requestId + 原 version 重放（服务端幂等 replay，不重复发布）；成功清 intent。 */
+export async function retryPendingMaterialPublish(): Promise<MaterialExportReceipt> {
+  const pending = pendingMaterialPublish();
+  if (!pending) throw new Error('没有待恢复的材料发布');
+  return retryIntent<MaterialExportReceipt>('export', '材料发布', async (id, expected) =>
+    decodeMaterialExportReceipt(await client.request({ method: 'POST', path: `/api/v1/career/materials/${encodeURIComponent(pending.input.materialId)}/exports`, body: { requestId: id, version: pending.input.version, expectedRevision: expected } })));
 }
 const EXPORT_GRANT_TTL_SECONDS = 300;
 async function issueExportGrant(materialId: string, exportId: string, format: MaterialExportFormat): Promise<MaterialExportDownload> {
@@ -550,7 +575,8 @@ export async function deleteWholeSpace(): Promise<CareerDeletionReceipt> {
     if (receipt.status !== 'deleted') store.write(intentKey('spaceDeletion'), { requestId: id, input: {}, expectedRevision: expected });
     return receipt;
   } catch (error) {
-    if (ambiguousOutcome(error) && !auth.scope.isCurrent(stamp)) {
+    // OCR2-037：确定性本地失败（AUTH_REQUIRED 等）不落 intent——与 retryPendingSpaceDeletion 同一守卫口径。
+    if (ambiguousOutcome(error) && (!auth.scope.isCurrent(stamp) || definiteLocalFailure(error))) {
       throw Object.assign(new Error('SCOPE_CHANGED'), { cause: error });
     }
     if (ambiguousOutcome(error)) {
