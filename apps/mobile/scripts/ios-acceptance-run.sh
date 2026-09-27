@@ -4,6 +4,9 @@
 # 见 t39-acceptance.md 的 blocked-env 清单与人工路径清单）。
 # 用法：bash apps/mobile/scripts/ios-acceptance-run.sh <booted-UDID> [仓库根]
 # 产物：docs/plans/issue30-sweep/ios-evidence/t39/
+# 注：全程仅 simctl CLI（boot/install/launch/openurl/io），不依赖 Simulator.app GUI——
+#     本机无该 GUI（B5 复验 minor 发现，MCP ios_boot_simulator 报 Unable to find
+#     application named 'Simulator'），本管线在此类机器上照常可用。
 set -euo pipefail
 
 UDID="${1:?usage: ios-acceptance-run.sh <booted-UDID> [repo-root]}"

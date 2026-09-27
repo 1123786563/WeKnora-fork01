@@ -26,6 +26,11 @@ test('the release build script is a reproducible prebuild -> pods -> Release pip
   assert.match(script, /-derivedDataPath build/, '产物路径固定，验收脚本才能找到 WeKnora.app');
   assert.match(script, /babel-preset-expo/, 'pnpm 工作区下 babel-preset-expo 链接守卫（B3 实测缺失即 Metro 打包失败）');
   assert.match(script, /Release-iphonesimulator\/WeKnora\.app/, '脚本末尾必须解析出 .app 产物路径');
+  const guardCmdAt = script.search(/^pnpm exec tsx scripts\/verify-ios-native-deps\.ts$/m);
+  const podCmdAt = script.search(/^pod install$/m);
+  const xcodebuildCmdAt = script.search(/^xcodebuild -workspace /m);
+  assert.ok(podCmdAt >= 0 && guardCmdAt > podCmdAt && xcodebuildCmdAt > guardCmdAt, 'B5 复验 important 发现：原生依赖漂移守卫必须夹在 pod install 与 xcodebuild 之间——旧 Podfile.lock 缺 expo-audio/expo-network 时裸 xcodebuild 静默产出缺模块的包');
+  assert.match(script, /watchman watch-project/, 'B5 复验 minor 发现：watchman 预热缓解主仓库 .worktrees 初始 crawl 挤压构建预算');
 });
 
 test('the acceptance probe script installs before probing and records the no-credential paths', () => {

@@ -1,3 +1,134 @@
+- Creating native directory (./ios)
+✔ Created native directory | reusing /ios
+- Updating package.json
+✔ Updated package.json | no changes
+- Running prebuild
+» ios: icon: No icon is defined in the Expo config.
+- Running prebuild
+✔ Finished prebuild
+Using Expo modules
+[Expo] Enabling modular headers for pod ExpoModulesCore
+[Expo] Enabling modular headers for pod React-RCTAppDelegate
+[Expo] Enabling modular headers for pod React-RCTFabric
+[Expo] Enabling modular headers for pod ReactAppDependencyProvider
+[Expo] Enabling modular headers for pod React-Core
+[Expo] Enabling modular headers for pod ReactCodegen
+[Expo] Enabling modular headers for pod RCTRequired
+[Expo] Enabling modular headers for pod RCTTypeSafety
+[Expo] Enabling modular headers for pod ReactCommon
+[Expo] Enabling modular headers for pod React-NativeModulesApple
+[Expo] Enabling modular headers for pod Yoga
+[Expo] Enabling modular headers for pod React-Fabric
+[Expo] Enabling modular headers for pod React-graphics
+[Expo] Enabling modular headers for pod React-utils
+[Expo] Enabling modular headers for pod React-featureflags
+[Expo] Enabling modular headers for pod React-debug
+[Expo] Enabling modular headers for pod React-ImageManager
+[Expo] Enabling modular headers for pod React-rendererdebug
+[Expo] Enabling modular headers for pod React-jsi
+[Expo] Enabling modular headers for pod React-renderercss
+[Expo] Enabling modular headers for pod hermes-engine
+[Expo] Enabling modular headers for pod glog
+[Expo] Enabling modular headers for pod boost
+[Expo] Enabling modular headers for pod DoubleConversion
+[Expo] Enabling modular headers for pod fast_float
+[Expo] Enabling modular headers for pod fmt
+[Expo] Enabling modular headers for pod RCT-Folly
+[Expo] Enabling modular headers for pod SocketRocket
+[Expo] Enabling modular headers for pod SDWebImage
+[Expo] Enabling modular headers for pod SDWebImageAVIFCoder
+[Expo] Enabling modular headers for pod SDWebImageSVGCoder
+[Expo] Enabling modular headers for pod SDWebImageWebPCoder
+[Expo] Enabling modular headers for pod libavif
+[Expo] Enabling modular headers for pod RNScreens
+[RNScreens] Gamma project enabled. Including source files.
+Found 4 modules for target `WeKnora`
+link_native_modules! {ios_packages: [{configurations: [], name: "expo", root: "/Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue30-sweep/node_modules/.pnpm/expo@55.0.31_@babel+core@7.29.7_@expo+dom-webview@55.0.6_@expo+metro-runtime@55.0.12_ex_f593484c475f317ab8dae98e152db8db/node_modules/expo", path: "../../../node_modules/.pnpm/expo@55.0.31_@babel+core@7.29.7_@expo+dom-webview@55.0.6_@expo+metro-runtime@55.0.12_ex_f593484c475f317ab8dae98e152db8db/node_modules/expo", podspec_path: "/Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue30-sweep/node_modules/.pnpm/expo@55.0.31_@babel+core@7.29.7_@expo+dom-webview@55.0.6_@expo+metro-runtime@55.0.12_ex_f593484c475f317ab8dae98e152db8db/node_modules/expo/Expo.podspec", script_phases: []}, {configurations: [], name: "react-native-gesture-handler", root: "/Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue30-sweep/node_modules/.pnpm/react-native-gesture-handler@2.30.1_react-native@0.83.10_@babel+core@7.29.7_@types+reac_0ff1a1ac46eeda3bddad0430270458c1/node_modules/react-native-gesture-handler", path: "../../../node_modules/.pnpm/react-native-gesture-handler@2.30.1_react-native@0.83.10_@babel+core@7.29.7_@types+reac_0ff1a1ac46eeda3bddad0430270458c1/node_modules/react-native-gesture-handler", podspec_path: "/Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue30-sweep/node_modules/.pnpm/react-native-gesture-handler@2.30.1_react-native@0.83.10_@babel+core@7.29.7_@types+reac_0ff1a1ac46eeda3bddad0430270458c1/node_modules/react-native-gesture-handler/RNGestureHandler.podspec", script_phases: []}, {configurations: [], name: "react-native-safe-area-context", root: "/Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue30-sweep/node_modules/.pnpm/react-native-safe-area-context@5.6.2_react-native@0.83.10_@babel+core@7.29.7_@types+rea_a7d101d674131d6015c181cd16db2c72/node_modules/react-native-safe-area-context", path: "../../../node_modules/.pnpm/react-native-safe-area-context@5.6.2_react-native@0.83.10_@babel+core@7.29.7_@types+rea_a7d101d674131d6015c181cd16db2c72/node_modules/react-native-safe-area-context", podspec_path: "/Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue30-sweep/node_modules/.pnpm/react-native-safe-area-context@5.6.2_react-native@0.83.10_@babel+core@7.29.7_@types+rea_a7d101d674131d6015c181cd16db2c72/node_modules/react-native-safe-area-context/react-native-safe-area-context.podspec", script_phases: []}, {configurations: [], name: "react-native-screens", root: "/Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue30-sweep/node_modules/.pnpm/react-native-screens@4.23.0_react-native@0.83.10_@babel+core@7.29.7_@types+react@19.2.18_react@19.2.0__react@19.2.0/node_modules/react-native-screens", path: "../../../node_modules/.pnpm/react-native-screens@4.23.0_react-native@0.83.10_@babel+core@7.29.7_@types+react@19.2.18_react@19.2.0__react@19.2.0/node_modules/react-native-screens", podspec_path: "/Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue30-sweep/node_modules/.pnpm/react-native-screens@4.23.0_react-native@0.83.10_@babel+core@7.29.7_@types+react@19.2.18_react@19.2.0__react@19.2.0/node_modules/react-native-screens/RNScreens.podspec", script_phases: []}], ios_project_root_path: "/Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue30-sweep/apps/mobile/ios", react_native_path: "../../../node_modules/.pnpm/react-native@0.83.10_@babel+core@7.29.7_@types+react@19.2.18_react@19.2.0/node_modules/react-native"}
+[RNScreens] Gamma project enabled. Including source files.
+Auto-linking React Native modules for target `WeKnora`: RNGestureHandler, RNScreens, and react-native-safe-area-context
+Framework build type is static library
+[ReactNativeDependencies] Setting up ReactNativeDependencies...
+[ReactNativeDependencies] Building from source: false
+[ReactNativeDependencies] Using tarball from URL: https://repo1.maven.org/maven2/com/facebook/react/react-native-artifacts/0.83.10/react-native-artifacts-0.83.10-reactnative-dependencies-debug.tar.gz
+[ReactNativeDependencies] Tarball reactnative-dependencies-0.83.10-debug.tar.gz already exists in Pods. Skipping download.
+[ReactNativeDependencies] Tarball reactnative-dependencies-0.83.10-release.tar.gz already exists in Pods. Skipping download.
+[ReactNativeDependencies] Source: {http: "file:///Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue30-sweep/apps/mobile/ios/Pods/ReactNativeDependencies-artifacts/reactnative-dependencies-0.83.10-debug.tar.gz"}
+[ReactNativeCore] Setting up ReactNativeCore...
+[ReactNativeCore] Building from source: false
+Configuring the target with the New Architecture
+[ReactNativeCore] Using React Native Core and React Native Dependencies prebuilt versions.
+[36m[1m[Codegen][0m Analyzing /Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue30-sweep/apps/mobile/package.json[0m
+[36m[1m[Codegen][0m [33mSearching for codegen-enabled libraries in the app.[0m
+[36m[1m[Codegen][0m [33mThe "codegenConfig" field is not defined in package.json. Assuming there is nothing to generate at the app level.[0m
+[36m[1m[Codegen][0m [33mSearching for codegen-enabled libraries in react-native.config.js[0m
+[36m[1m[Codegen][0m Found react-native-gesture-handler[0m
+[36m[1m[Codegen][0m Found react-native-safe-area-context[0m
+[36m[1m[Codegen][0m Found react-native-screens[0m
+[36m[1m[Codegen][0m Processing rngesturehandler_codegen[0m
+[36m[1m[Codegen][0m [33mSearching for podspec in the project dependencies.[0m
+[36m[1m[Codegen][0m Supported Apple platforms: ios, macos, tvos, visionos for rngesturehandler_codegen[0m
+[36m[1m[Codegen][0m Processing safeareacontext[0m
+[36m[1m[Codegen][0m [33mSearching for podspec in the project dependencies.[0m
+[36m[1m[Codegen][0m Supported Apple platforms: ios, macos, tvos, visionos for safeareacontext[0m
+[36m[1m[Codegen][0m Processing rnscreens[0m
+[36m[1m[Codegen][0m [33mSearching for podspec in the project dependencies.[0m
+[36m[1m[Codegen][0m Supported Apple platforms: ios, tvos, visionos for rnscreens[0m
+[36m[1m[Codegen][0m Generating Native Code for rngesturehandler_codegen - ios[0m
+[36m[1m[Codegen][0m Generated artifacts: /Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue30-sweep/apps/mobile/ios/build/generated/ios/ReactCodegen[0m
+[36m[1m[Codegen][0m Generating Native Code for safeareacontext - ios[0m
+[36m[1m[Codegen][0m Generated artifacts: /Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue30-sweep/apps/mobile/ios/build/generated/ios/ReactCodegen[0m
+[36m[1m[Codegen][0m Generating Native Code for rnscreens - ios[0m
+[36m[1m[Codegen][0m Generated artifacts: /Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue30-sweep/apps/mobile/ios/build/generated/ios/ReactCodegen[0m
+[36m[1m[Codegen][0m Generating RCTThirdPartyComponentsProvider.h[0m
+[36m[1m[Codegen][0m Generated artifact: /Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue30-sweep/apps/mobile/ios/build/generated/ios/ReactCodegen/RCTThirdPartyComponentsProvider.h[0m
+[36m[1m[Codegen][0m Generating RCTThirdPartyComponentsProvider.mm[0m
+[36m[1m[Codegen][0m Generated artifact: /Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue30-sweep/apps/mobile/ios/build/generated/ios/ReactCodegen/RCTThirdPartyComponentsProvider.mm[0m
+[36m[1m[Codegen][0m Generating RCTModulesProvider.h[0m
+[36m[1m[Codegen][0m Generated artifact: /Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue30-sweep/apps/mobile/ios/build/generated/ios/ReactCodegen/RCTModuleProviders.h[0m
+[36m[1m[Codegen][0m Generating RCTModuleProviders.mm[0m
+[36m[1m[Codegen][0m Generated artifact: /Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue30-sweep/apps/mobile/ios/build/generated/ios/ReactCodegen/RCTModuleProviders.mm[0m
+[36m[1m[Codegen][0m Generating RCTAppDependencyProvider[0m
+[36m[1m[Codegen][0m Generated artifact: /Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue30-sweep/apps/mobile/ios/build/generated/ios/ReactAppDependencyProvider/RCTAppDependencyProvider.h[0m
+[36m[1m[Codegen][0m Generated artifact: /Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue30-sweep/apps/mobile/ios/build/generated/ios/ReactAppDependencyProvider/RCTAppDependencyProvider.mm[0m
+[36m[1m[Codegen][0m Generated podspec: /Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue30-sweep/apps/mobile/ios/build/generated/ios/ReactAppDependencyProvider/ReactAppDependencyProvider.podspec[0m
+[36m[1m[Codegen][0m Generated podspec: /Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue30-sweep/apps/mobile/ios/build/generated/ios/ReactCodegen/ReactCodegen.podspec[0m
+[36m[1m[Codegen][0m Generating Package.swift[0m
+[36m[1m[Codegen][0m Generated artifact: /Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue30-sweep/apps/mobile/ios/build/generated/ios/Package.swift[0m
+[36m[1m[Codegen][0m [33mDone.[0m
+[ReactNativeDependencies] Using tarball from URL: https://repo1.maven.org/maven2/com/facebook/react/react-native-artifacts/0.83.10/react-native-artifacts-0.83.10-reactnative-dependencies-debug.tar.gz
+[ReactNativeDependencies] Tarball reactnative-dependencies-0.83.10-debug.tar.gz already exists in Pods. Skipping download.
+[ReactNativeDependencies] Tarball reactnative-dependencies-0.83.10-release.tar.gz already exists in Pods. Skipping download.
+Analyzing dependencies
+[RNScreens] Gamma project enabled. Including source files.
+Downloading dependencies
+Generating Pods project
+Setting USE_HERMES build settings
+Setting REACT_NATIVE_PATH build settings
+Setting SWIFT_ACTIVE_COMPILATION_CONDITIONS build settings
+[Ccache]: Removing Ccache from CC, LD, CXX & LDPLUSPLUS build settings
+Setting SWIFT_ENABLE_EXPLICIT_MODULES build settings
+[SPM] Cleaning old SPM dependencies from Pods project
+[SPM] Adding SPM dependencies to Pods project
+[Privacy Manifest Aggregation] Appending aggregated reasons to existing PrivacyInfo.xcprivacy file.
+[Privacy Manifest Aggregation] Reading .xcprivacy files to aggregate all used Required Reason APIs.
+Setting CLANG_CXX_LANGUAGE_STANDARD to c++20 on /Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue30-sweep/apps/mobile/ios/WeKnora.xcodeproj
+
+==================== DEPRECATION NOTICE =====================
+Calling `pod install` directly is deprecated in React Native
+because we are moving away from Cocoapods toward alternative
+solutions to build the project.
+* If you are using Expo, please run:
+`npx expo run:ios`
+* If you are using the Community CLI, please run:
+`yarn ios`
+=============================================================
+
+Pod install took 12 [s] to run
+Integrating client project
+Pod installation complete! There are 100 dependencies from the Podfile and 106 total pods installed.
+[Expo] Adding '[Expo Autolinking] Run Codegen with autolinking' build phase to ReactCodegen
+[Expo] Disabling SWIFT_EMIT_MODULE_INTERFACE for pod targets (prebuilt React compatibility)
+IOS_NATIVE_DEPS_OK modules=21 pods=22
 Command line invocation:
     /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -workspace WeKnora.xcworkspace -scheme WeKnora -sdk iphonesimulator -configuration Release -derivedDataPath build -destination "generic/platform=iOS Simulator" build
 
@@ -6876,3 +7007,6 @@ note: Run script build phase '[Expo] Configure project' will be run during every
 note: Run script build phase 'Bundle React Native code and images' will be run during every build because the option to run the script phase "Based on dependency analysis" is unchecked. (in target 'WeKnora' from project 'WeKnora')
 ** BUILD SUCCEEDED **
 
+RELEASE_APP=/Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue30-sweep/apps/mobile/ios/build/Build/Products/Release-iphonesimulator/WeKnora.app
+bash apps/mobile/scripts/ios-release-build.sh   322.06s user 37.11s system 291% cpu 2:03.25 total
+BUILD_EXIT=0
