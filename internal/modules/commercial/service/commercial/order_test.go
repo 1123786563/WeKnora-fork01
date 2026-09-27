@@ -534,6 +534,66 @@ func TestCreateQuoteFreezesLineItemsFeaturesAndCurrency(t *testing.T) {
 	}
 }
 
+// TestGetOrderSurfacesUnresolvedAnomaly（#84 Task 5 / AC4 后端半）：读路径
+// （RecoverOrderStatus）必须把未处置异常投影为 PaymentAttention；运营处置
+// （resolve）后 attention 消失。
+func TestGetOrderSurfacesUnresolvedAnomaly(t *testing.T) {
+	svc, provider, db := newOrderTestEnv(t)
+	provider.queryState = payment.StatePending // the channel says still pending
+	seedPublishedPlan(t, db)
+	ctx := context.Background()
+	q, err := svc.CreateQuote(ctx, 44, "pro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, err := svc.CreateOrder(ctx, 44, q.ID, "wechat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// No anomaly yet: a plain pending read carries no attention.
+	plain, err := svc.RecoverOrderStatus(ctx, 44, view.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plain.PaymentAttention {
+		t.Fatal("a clean pending order must not surface attention")
+	}
+	store := repocommercial.NewOrderStore(db)
+	if err := store.RecordPaymentAnomaly(ctx, repocommercial.PaymentAnomalyRow{
+		TenantID: 44, OrderID: view.ID, AttemptID: "mo_x", Provider: "wechat", Merchant: "1900000109",
+		Transaction: "txn_x", Kind: repocommercial.PaymentAnomalyKindAmount,
+		ExpectedAmountFen: 9900, ActualAmountFen: 19900,
+		ExpectedCurrency: "CNY", ActualCurrency: "CNY",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	flagged, err := svc.RecoverOrderStatus(ctx, 44, view.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !flagged.PaymentAttention {
+		t.Fatal("an unresolved anomaly must surface payment attention")
+	}
+	// Operator disposition clears the flag.
+	if _, err := store.ResolvePaymentAnomaly(ctx, "anom_missing", 1); err == nil {
+		t.Fatal("setup sanity: resolve must key the real id")
+	}
+	var anomaly repocommercial.PaymentAnomalyRow
+	if err := db.Where("order_id = ?", view.ID).First(&anomaly).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.ResolvePaymentAnomaly(ctx, anomaly.ID, 1); err != nil {
+		t.Fatal(err)
+	}
+	cleared, err := svc.RecoverOrderStatus(ctx, 44, view.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cleared.PaymentAttention {
+		t.Fatal("a resolved anomaly must clear the attention flag")
+	}
+}
+
 // ---- #84 Task 4: collected-amount comparison on the recovery paths (G2) ----
 
 // TestRecoverOrderStatusAmountMismatchRecordsAnomalyWithoutConfirm（G2）：

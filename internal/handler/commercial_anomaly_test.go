@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	commercialsvc "github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial"
 	repocommercial "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
 	"github.com/Tencent/WeKnora/internal/types"
 
@@ -151,6 +152,47 @@ func TestAdminPaymentAnomaliesListAndResolve(t *testing.T) {
 	engine.ServeHTTP(w, req)
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("unknown anomaly must answer 404, got %d %s", w.Code, w.Body.String())
+	}
+}
+
+// ---- #84 Task 5: orderWire attention projection (R4 dispatch table) ----
+
+// TestOrderWireProjectsAttentionWhileUnresolved（AC4）：pending 订单带未处置
+// 异常 → wire fulfillment=attention 且必须与 payment=pending 成对出现（契约
+// 不变量：attention 只与 pending 同时出现，前端文案互斥由此获得保证）。
+func TestOrderWireProjectsAttentionWhileUnresolved(t *testing.T) {
+	w := orderWire(commercialsvc.OrderView{ID: "o1", State: "pending", AmountFen: 9900, Currency: "CNY", PaymentAttention: true})
+	if w["fulfillment"] != "attention" {
+		t.Fatalf("got %v", w["fulfillment"])
+	}
+	if w["payment"] != "pending" {
+		t.Fatalf("attention must pair pending, got %v", w["payment"])
+	}
+	if w["payment_attention"] != true {
+		t.Fatal("the attention flag must ride along")
+	}
+}
+
+// TestOrderWireAttentionNeverOverridesPaidOrFulfilled（审查 R4 裁决锁定）：
+// 多收款典型形态——订单已 fulfilled/paid 且仍有未处置 anomaly，用户主状态
+// 必须如实（fulfilled/processing），异常面走 admin + payment_attention 附加
+// 字段；attention 绝不改写履约事实。
+func TestOrderWireAttentionNeverOverridesPaidOrFulfilled(t *testing.T) {
+	w := orderWire(commercialsvc.OrderView{ID: "o2", State: "fulfilled", AmountFen: 9900, Currency: "CNY", PaymentAttention: true})
+	if w["fulfillment"] != "fulfilled" {
+		t.Fatalf("got %v", w["fulfillment"])
+	}
+	if w["payment_attention"] != true {
+		t.Fatal("attention flag must still ride along")
+	}
+	w2 := orderWire(commercialsvc.OrderView{ID: "o3", State: "paid", AmountFen: 9900, Currency: "CNY", PaymentAttention: true})
+	if w2["fulfillment"] != "processing" {
+		t.Fatalf("got %v", w2["fulfillment"])
+	}
+	// A pending order WITHOUT attention keeps the plain pending projection.
+	w3 := orderWire(commercialsvc.OrderView{ID: "o4", State: "pending", AmountFen: 9900, Currency: "CNY"})
+	if w3["fulfillment"] != "pending" {
+		t.Fatalf("plain pending must stay pending, got %v", w3["fulfillment"])
 	}
 }
 

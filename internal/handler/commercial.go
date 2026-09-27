@@ -279,8 +279,12 @@ func quoteWire(q commercialsvc.QuoteView) gin.H {
 // The backend keeps ONE lifecycle state (pending → paid → fulfilled); the
 // projection onto the two axes is mechanical — pending waits for payment,
 // paid has settled with fulfillment still processing, fulfilled has the
-// benefits live. The backend fields (state, quote_id, provider,
-// checkout_url, checkout_error, version) stay in the same object.
+// benefits live. (#84 / R4 dispatch table) An unresolved payment anomaly
+// (PaymentAttention) maps onto fulfillment=attention ONLY for pending
+// reads: paid→processing and fulfilled→fulfilled are fulfillment FACTS a
+// multiple-success anomaly never rewrites (the anomaly surface is the admin
+// list plus the payment_attention add-on). Contract invariant:
+// fulfillment==="attention" only ever pairs with payment==="pending".
 func orderWire(o commercialsvc.OrderView) gin.H {
 	payment, fulfillment := "pending", "pending"
 	switch o.State {
@@ -288,6 +292,9 @@ func orderWire(o commercialsvc.OrderView) gin.H {
 		payment, fulfillment = "paid", "processing"
 	case commercial.OrderStateFulfilled:
 		payment, fulfillment = "paid", "fulfilled"
+	}
+	if o.State == commercial.OrderStatePending && o.PaymentAttention {
+		fulfillment = "attention"
 	}
 	w := gin.H{
 		"id":             o.ID,
@@ -301,6 +308,12 @@ func orderWire(o commercialsvc.OrderView) gin.H {
 		"checkout_url":   o.CheckoutURL,
 		"checkout_error": o.CheckoutError,
 		"version":        o.Version,
+	}
+	// (#84) the attention add-on rides along on every state (a fulfilled
+	// order with a pending over-payment disposition still carries it) —
+	// BillingPage appends its notice from this flag.
+	if o.PaymentAttention {
+		w["payment_attention"] = true
 	}
 	// (R2-27) the closed degradation marker rides along when set — the
 	// raw persistence error stays in the server log, never on the wire.

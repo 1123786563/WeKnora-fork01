@@ -507,6 +507,17 @@ func (s *OrderService) ListOrders(ctx context.Context, tenantID uint64) ([]Order
 	return out, nil
 }
 
+// withAttention（#84 Task 5 / G4）decorates an order projection with the
+// unresolved-anomaly flag: one parameter-bound indexed read per order poll
+// (acceptable; no join). A read failure degrades to "no attention" — the
+// order's primary state must never 500 over the anomaly decoration.
+func (s *OrderService) withAttention(ctx context.Context, view OrderView) OrderView {
+	if ok, err := s.orders.HasUnresolvedPaymentAnomaly(ctx, view.ID); err == nil && ok {
+		view.PaymentAttention = true
+	}
+	return view
+}
+
 // collectedAmountMismatch（#84 / G2）reports whether the channel Query's
 // COLLECTED amount contradicts the registered attempt face: the recovery
 // paths refuse to confirm such a payment (confirming at the attempt's face
@@ -554,17 +565,17 @@ func (s *OrderService) RecoverOrderStatus(ctx context.Context, tenantID uint64, 
 		return OrderView{}, ErrOrderTenantMismatch
 	}
 	if row.State != domain.OrderStatePending {
-		return OrderView{ID: row.ID, QuoteID: row.QuoteID, State: row.State,
-			AmountFen: row.AmountFen, Currency: row.Currency, Version: row.Version}, nil
+		return s.withAttention(ctx, OrderView{ID: row.ID, QuoteID: row.QuoteID, State: row.State,
+			AmountFen: row.AmountFen, Currency: row.Currency, Version: row.Version}), nil
 	}
 	att, err := s.orders.FirstPendingAttempt(ctx, orderID)
 	if errors.Is(err, repocommercial.ErrPaymentAttemptNotFound) {
 		// No attempt ever registered (e.g. channel unconfigured at creation):
 		// honestly pending, nothing to recover. The persisted checkout link
 		// (R1-35) still rides along so the customer keeps a payment entry.
-		return OrderView{ID: row.ID, QuoteID: row.QuoteID, State: row.State,
+		return s.withAttention(ctx, OrderView{ID: row.ID, QuoteID: row.QuoteID, State: row.State,
 			AmountFen: row.AmountFen, Currency: row.Currency, CheckoutURL: row.CheckoutURL,
-			Version: row.Version}, nil
+			Version: row.Version}), nil
 	}
 	if err != nil {
 		return OrderView{}, err
@@ -605,9 +616,9 @@ func (s *OrderService) RecoverOrderStatus(ctx context.Context, tenantID uint64, 
 	// verbatim: the channel said pending (or the confirm re-read the row),
 	// and the customer must be able to reach the payment page again without
 	// a second checkout of the same consumed quote.
-	return OrderView{ID: row.ID, QuoteID: row.QuoteID, State: row.State,
+	return s.withAttention(ctx, OrderView{ID: row.ID, QuoteID: row.QuoteID, State: row.State,
 		AmountFen: row.AmountFen, Currency: row.Currency, Provider: att.Provider,
-		CheckoutURL: row.CheckoutURL, Version: row.Version}, nil
+		CheckoutURL: row.CheckoutURL, Version: row.Version}), nil
 }
 
 // CloseChannelOrder retires one pending order's channel entry in a

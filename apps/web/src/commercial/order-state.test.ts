@@ -42,3 +42,12 @@ test('closed orders are reported closed', () => {
 test('unpaid pending orders wait for payment', () => {
   assert.equal(orderMessage(order()), '等待付款');
 });
+
+// (#84 Task 5 / AC4 / spec L210) 付款异常是闭合文案，不含任何平台词汇；后端
+// 不变量（attention 只与 payment=pending 成对）保证它与处理中/已生效互斥，
+// 分支前置可防御后端误发。
+test('orderMessage distinguishes anomaly vs processing vs fulfilled', () => {
+  assert.equal(orderMessage({ id: 'o', payment: 'pending', fulfillment: 'attention', amount_fen: '9900', currency: 'CNY' }), '付款异常（资金事实已记录，待处理）');
+  assert.equal(orderMessage({ id: 'o', payment: 'paid', fulfillment: 'processing', amount_fen: '9900', currency: 'CNY' }), '已付款，权益处理中');
+  assert.equal(orderMessage({ id: 'o', payment: 'paid', fulfillment: 'fulfilled', amount_fen: '9900', currency: 'CNY' }), '权益已生效');
+});

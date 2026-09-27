@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
-import type { CommercialSummary, CommercialUsageRow, PurchaseView } from '@weknora/contracts';
+import type { CommercialSummary, CommercialUsageRow, OrderView, PurchaseView } from '@weknora/contracts';
 import { createScopeController } from '@weknora/domain/scope';
 import { scopedKey } from '@weknora/domain';
 import { Button, Card, Status } from '@weknora/ui';
@@ -119,6 +119,18 @@ export function BillingPage({ client, scopeController }: BillingPageProps) {
                     (D15-f) 文案经共享词表 PURCHASE_STATE_LABEL——两页不再各持一套。 */}
                 {purchase?.state && purchase.state !== 'absent'
                   ? ` · ${PURCHASE_STATE_LABEL[purchase.state]}`
+                  : ''}
+                {/* (#84 / AC4) 付款异常后缀两种形态：①待付款异常单（order 子对象的
+                    fulfillment=attention——错额/部分/错币，订单无法正常推进）；
+                    ②已生效但仍带未处置多收款异常的单（payment_attention 附加字段，
+                    R4 裁决：多收款不改写用户主状态，只追加提示）。M1 类型裁决：
+                    契约 OrderView 无 payment_attention 字段（#85 并行期契约零改动），
+                    用局部类型断言读取加法字段——运行时由 parseOrderView 未知字段
+                    透传保证在位。 */}
+                {purchase?.order?.fulfillment === 'attention' ? ' · 付款异常（待处理）' : ''}
+                {purchase?.state === 'active'
+                  && (purchase.order as (OrderView & { payment_attention?: boolean }) | undefined)?.payment_attention
+                  ? ' · 付款异常（待处理）'
                   : ''}
               </span>
             </li>
