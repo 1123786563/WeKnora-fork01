@@ -12,6 +12,8 @@ export interface TaskDetailScreenProps {
   /** T07：受控干预入口；未提供时整个干预区不渲染（通道缺失 fail closed 的呈现面）。 */
   onAct?: (intent: TaskIntent) => Promise<InterventionReceipt>;
   onOpenBudget?: () => void;
+  /** T27 语音房入口；未提供时不渲染（组合根未装配或无捕获能力的呈现面）。 */
+  onOpenVoiceRoom?: () => void;
   delivery?: DeliveryReceiptView;
 }
 
@@ -67,7 +69,7 @@ function DeliveryReceiptSection({ delivery }: { delivery: DeliveryReceiptView })
 }
 
 /** 结果优先详情屏：状态卡 + 三层状态 + attention 横幅在前，干预区随后，时间线事实流在后；原始证据默认折叠、按需展开；预算入口与交付回执在底部操作区。 */
-export function TaskDetailScreen({ view, loading, error, onRefresh, onOpenMaterials, onOpenBudget, onAct, delivery }: TaskDetailScreenProps) {
+export function TaskDetailScreen({ view, loading, error, onRefresh, onOpenMaterials, onOpenBudget, onOpenVoiceRoom, onAct, delivery }: TaskDetailScreenProps) {
   const [expanded, setExpanded] = useState<ReadonlySet<number>>(new Set());
   const [draft, setDraft] = useState('');
   // B2-F41：expanded 以 runId 隔离——切换任务（组件复用）时不携带上一个任务的展开状态。
@@ -122,6 +124,7 @@ export function TaskDetailScreen({ view, loading, error, onRefresh, onOpenMateri
       {(view.interventions ?? []).slice(-5).reverse().map((receipt, index) => (
         <View key={`${receipt.at}-${index}`}>
           <Text>{OUTCOME_COPY[receipt.outcome]} · 绑定 Run {receipt.boundRunId}{receipt.nextRunId === undefined ? '' : ` · 下一 Run ${receipt.nextRunId}`}</Text>
+          {(receipt.intent.kind === 'steer' || receipt.intent.kind === 'queue-next') && <Text numberOfLines={2}>指令：{receipt.intent.text}</Text>}
         </View>
       ))}
       {(view.queuedNext ?? []).length > 0 && <Text>已排队待发：{view.queuedNext!.map((q) => q.text).join('；')}</Text>}
@@ -139,6 +142,7 @@ export function TaskDetailScreen({ view, loading, error, onRefresh, onOpenMateri
       {view.duplicateSeqs.length > 0 && <Text>已忽略重复事件：{view.duplicateSeqs.join(', ')}</Text>}
       {onOpenMaterials !== undefined && <Button title="任务材料" onPress={onOpenMaterials} />}
       {onOpenBudget !== undefined && <Button title="任务预算" onPress={onOpenBudget} />}
+      {onOpenVoiceRoom !== undefined && <Button title="语音房" onPress={onOpenVoiceRoom} />}
       {delivery !== undefined ? <DeliveryReceiptSection delivery={delivery} /> : null}
       <Button title="重新同步快照" onPress={onRefresh} disabled={loading} />
       {error !== undefined && <Text>{error}</Text>}

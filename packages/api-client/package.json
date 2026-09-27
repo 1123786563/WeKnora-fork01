@@ -19,6 +19,7 @@
     "./mobile/research": "./src/mobile/research.ts",
     "./mobile/resources": "./src/mobile/resources.ts",
     "./mobile/voice": "./src/mobile/voice.ts",
+    "./mobile/voice-sessions": "./src/mobile/voice-sessions.ts",
     "./transport": "./src/transport/json.ts"
   },
   "dependencies": {
