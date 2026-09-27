@@ -27,7 +27,7 @@ export function createNotificationPermissionFrom(notifications: ExpoNotification
         const current = await notifications.getPermissionsAsync();
         if (current?.granted === true) return 'granted'; // 已授权：零弹窗请求
       } catch {
-        return 'unavailable'; // 权限面不可用：如实上抛，不伪造结论
+        return 'unavailable'; // 权限面不可用：如实返回 'unavailable'，不伪造结论（与下方 requestPermissionsAsync 失败路径同型）
       }
       try {
         const requested = await notifications.requestPermissionsAsync();
