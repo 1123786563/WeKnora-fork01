@@ -965,6 +965,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(handler.NewAppConnectionHandler))
 	must(container.Provide(handler.NewAppSyncHandler))
 	must(container.Provide(handler.NewAppActionHandler))
+	must(container.Provide(handler.NewAppConnectionGrantHandler))
 	// Commercial fulfillment: the V03-selected gateway (family official_v3;
 	// unconfigured env stays legal as blocked-env) and the background worker
 	// that drains paid orders' fulfillment outbox events into benefits.
@@ -985,15 +986,27 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// R11 carry (T07): the interim permission-only NewSubjectGuard(src) is
 	// replaced by the FULL subject guard - the real OC store as the binding
 	// source and the installation catalog as the state source, so OC binding
-	// validation and install-active checks go live. No space-grant store
-	// exists yet, so space connections keep failing closed (the authorizer's
-	// nil-grant semantics), which only tightens the interim behavior.
+	// validation and install-active checks go live. Since #53 the space-grant
+	// store is wired below — space connections are admitted per explicit
+	// grant row.
 	must(container.Provide(repoappconn.NewOCStore))
 	must(container.Provide(repoappconn.NewInstallationStore))
+	// T23 (#53) task 3: the grant store itself must be a dig provider — the
+	// guard closure below takes *SpaceConnectionGrantStore, and without this
+	// line the container fails at startup with "missing type"
+	// (plan step 5(c) omitted it; gap proven by a one-off dig resolution
+	// test before this line was added).
+	must(container.Provide(repoappconn.NewSpaceConnectionGrantStore))
 	must(container.Provide(func(src appconnectorsvc.ConnectionCredentialSource,
-		installs *repoappconn.InstallationStore, oc *repoappconn.OCStore,
+		installs *repoappconn.InstallationStore, grants *repoappconn.SpaceConnectionGrantStore,
+		oc *repoappconn.OCStore,
 	) appconnectorsvc.A02Guard {
-		return appconnectorsvc.NewOCSubjectGuard(src, appconnectorsvc.NewInstallationStateSource(installs), nil, oc)
+		// T23 (#53): the space-grant store replaces the pre-#53 nil —
+		// space connections are admitted per explicit grant row, and every
+		// Check still re-queries the row live (revocation converges
+		// immediately; the nil semantics could only fail closed, so this
+		// wiring strictly widens toward the CONTEXT.md 授权模型).
+		return appconnectorsvc.NewOCSubjectGuard(src, appconnectorsvc.NewInstallationStateSource(installs), grants, oc)
 	}))
 	// T13 open-connector product wiring (open_connector.go). The
 	// ActionService is built THROUGH PrepareOpenConnector/NewOCArmedActionService
