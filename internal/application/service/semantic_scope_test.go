@@ -58,7 +58,7 @@ func TestSemanticScopeRejectsExpiryDuringDeliveryRead(t *testing.T) {
 	expiry := time.Now().Add(2 * time.Second).Truncate(time.Second)
 	s.ScopeRef = mutateSemanticClaims(t, s.ScopeRef, func(c jwt.MapClaims) { c["exp"] = expiry.Unix() })
 	s.ExpiresAt = expiry.UTC().Format(time.RFC3339)
-	f.Service.knowledge = semanticSlowKnowledgeRead{KnowledgeRepository: f.Service.knowledge, until: expiry.Add(10 * time.Millisecond)}
+	f.Service.Knowledge = semanticSlowKnowledgeRead{KnowledgeRepository: f.Service.Knowledge, until: expiry.Add(10 * time.Millisecond)}
 	require.ErrorIs(t, f.Service.ValidateDelivery(f.Context, s), ErrSemanticScopeExpired)
 }
 
@@ -81,7 +81,7 @@ func (r semanticOrganizationReadFailure) GetTenantMember(context.Context, string
 	return nil, r.err
 }
 func (f *semanticScopeFixture) FailOrganizationRead(err error) {
-	s := f.Service.shares.(*kbShareService)
+	s := f.Service.Shares.(*kbShareService)
 	s.orgRepo = semanticOrganizationReadFailure{OrganizationRepository: s.orgRepo, err: err}
 }
 

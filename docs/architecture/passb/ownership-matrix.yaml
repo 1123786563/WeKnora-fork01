@@ -113,12 +113,6 @@ legacy_files:
     destination: internal/modules/identity/repository
     integration_owner: ib1
     delete_barrier: ib1
-  - path: internal/application/repository/chunk.go
-    module: knowledge
-    plan: 21-knowledge-ingest
-    destination: internal/modules/knowledge/ingest
-    integration_owner: ib2
-    delete_barrier: ib2
   - path: internal/application/repository/craft_preview_check.go
     module: craft
     plan: 41-craft
@@ -707,18 +701,6 @@ legacy_files:
     destination: internal/modules/identity/service
     integration_owner: ib1
     delete_barrier: ib1
-  - path: internal/application/service/chunk.go
-    module: knowledge
-    plan: 21-knowledge-ingest
-    destination: internal/modules/knowledge/ingest
-    integration_owner: ib2
-    delete_barrier: ib2
-  - path: internal/application/service/chunk_write.go
-    module: knowledge
-    plan: 21-knowledge-ingest
-    destination: internal/modules/knowledge/ingest
-    integration_owner: ib2
-    delete_barrier: ib2
   - path: internal/application/service/craft_artifacts.go
     module: craft
     plan: 41-craft
@@ -887,12 +869,6 @@ legacy_files:
     destination: internal/modules/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
-  - path: internal/application/service/extract.go
-    module: knowledge
-    plan: 21-knowledge-ingest
-    destination: internal/modules/knowledge/ingest
-    integration_owner: ib2
-    delete_barrier: ib2
   - path: internal/application/service/faq_clone_sync.go
     module: knowledge
     plan: 23-knowledge-wikifaq
@@ -915,12 +891,6 @@ legacy_files:
     module: knowledge
     plan: 22-knowledge-retrieval
     destination: internal/modules/knowledge/retrieval/app
-    integration_owner: ib2
-    delete_barrier: ib2
-  - path: internal/application/service/image_multimodal.go
-    module: knowledge
-    plan: 21-knowledge-ingest
-    destination: internal/modules/knowledge/ingest
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/kb_activity.go
@@ -1001,12 +971,6 @@ legacy_files:
     destination: internal/modules/knowledge/process
     integration_owner: ib2
     delete_barrier: ib2
-  - path: internal/application/service/knowledge_index_content.go
-    module: knowledge
-    plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
-    integration_owner: ib2
-    delete_barrier: ib2
   - path: internal/application/service/knowledge_post_process.go
     module: knowledge
     plan: 24-knowledge-process
@@ -1049,12 +1013,6 @@ legacy_files:
     destination: internal/modules/knowledge/process
     integration_owner: ib2
     delete_barrier: ib2
-  - path: internal/application/service/knowledge_task_options.go
-    module: knowledge
-    plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
-    integration_owner: ib2
-    delete_barrier: ib2
   - path: internal/application/service/knowledge_transfer.go
     module: knowledge
     plan: 24-knowledge-process
@@ -1062,12 +1020,6 @@ legacy_files:
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/knowledge_util.go
-    module: knowledge
-    plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
-    integration_owner: ib2
-    delete_barrier: ib2
-  - path: internal/application/service/knowledge_write.go
     module: knowledge
     plan: 24-knowledge-process
     destination: internal/modules/knowledge/process
@@ -1211,24 +1163,12 @@ legacy_files:
     destination: internal/modules/agentruntime/service
     integration_owner: ib3
     delete_barrier: ib3
-  - path: internal/application/service/ocr_sanitizer.go
-    module: knowledge
-    plan: 21-knowledge-ingest
-    destination: internal/modules/knowledge/ingest
-    integration_owner: ib2
-    delete_barrier: ib2
   - path: internal/application/service/organization.go
     module: identity
     plan: 10-identity
     destination: internal/modules/identity/service
     integration_owner: ib1
     delete_barrier: ib1
-  - path: internal/application/service/parser_url_security.go
-    module: knowledge
-    plan: 21-knowledge-ingest
-    destination: internal/modules/knowledge/ingest
-    integration_owner: ib2
-    delete_barrier: ib2
   - path: internal/application/service/password_policy.go
     module: identity
     plan: 10-identity
@@ -1769,18 +1709,6 @@ legacy_files:
     destination: internal/modules/identity/handler
     integration_owner: ib1
     delete_barrier: ib1
-  - path: internal/handler/chunk.go
-    module: knowledge
-    plan: 21-knowledge-ingest
-    destination: internal/modules/knowledge/ingest
-    integration_owner: ib2
-    delete_barrier: ib2
-  - path: internal/handler/chunker_debug.go
-    module: knowledge
-    plan: 21-knowledge-ingest
-    destination: internal/modules/knowledge/ingest
-    integration_owner: ib2
-    delete_barrier: ib2
   - path: internal/handler/commercial.go
     module: commercial
     plan: 12-commercial
@@ -1877,12 +1805,6 @@ legacy_files:
     destination: internal/modules/system/handler
     integration_owner: ib4
     delete_barrier: ib4
-  - path: internal/handler/kb_access.go
-    module: knowledge
-    plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
-    integration_owner: ib2
-    delete_barrier: ib2
   - path: internal/handler/knowledge.go
     module: knowledge
     plan: 24-knowledge-process
@@ -2303,12 +2225,6 @@ legacy_files:
     destination: internal/modules/knowledge/retrieval/app
     integration_owner: ib2
     delete_barrier: ib2
-  - path: internal/handler/task_progress_auth.go
-    module: knowledge
-    plan: 24-knowledge-process
-    destination: internal/modules/knowledge/process
-    integration_owner: ib2
-    delete_barrier: ib2
   - path: internal/handler/tenant.go
     module: identity
     plan: 10-identity
@@ -2405,6 +2321,44 @@ legacy_files:
     destination: internal/modules/knowledge/wiki
     integration_owner: ib2
     delete_barrier: ib2
+  # ---- Pass B 过渡 shim 登记（Ruling 2026-09-25-TRANSITION-SHIM-ROW-REGISTRATION：
+  # 与 knowledge.yaml legacy_files 成对；终态=ib2 同 commit 随文件删行）----
+  - path: internal/application/repository/chunk_ingest_shim.go
+    module: knowledge
+    plan: 21-knowledge-ingest
+    destination: internal/modules/knowledge/ingest
+    integration_owner: ib2
+    delete_barrier: ib2
+  - path: internal/application/service/chunk_ingest_shim.go
+    module: knowledge
+    plan: 21-knowledge-ingest
+    destination: internal/modules/knowledge/ingest
+    integration_owner: ib2
+    delete_barrier: ib2
+  - path: internal/application/service/span_trace_seam_adapter.go
+    module: knowledge
+    plan: 21-knowledge-ingest
+    destination: internal/modules/knowledge/ingest
+    integration_owner: ib2
+    delete_barrier: ib2
+  - path: internal/handler/chunk_ingest_shim.go
+    module: knowledge
+    plan: 21-knowledge-ingest
+    destination: internal/modules/knowledge/ingest
+    integration_owner: ib2
+    delete_barrier: ib2
+  - path: internal/application/service/kbprocess_passb_compat.go
+    module: knowledge
+    plan: 24-knowledge-process
+    destination: internal/modules/knowledge/process
+    integration_owner: ib2
+    delete_barrier: ib2
+  - path: internal/handler/kbprocess_passb_compat.go
+    module: knowledge
+    plan: 24-knowledge-process
+    destination: internal/modules/knowledge/process
+    integration_owner: ib2
+    delete_barrier: ib2
 aliases:
   - old_import_path: internal/agent
     plan: 30-agentruntime-program
@@ -2475,42 +2429,6 @@ aliases:
   - old_import_path: internal/application/repository/commercial
     plan: 12-commercial
     delete_barrier: ib1
-  - old_import_path: internal/application/repository/retriever/doris
-    plan: 20-knowledge-program
-    delete_barrier: ib2
-  - old_import_path: internal/application/repository/retriever/elasticsearch
-    plan: 20-knowledge-program
-    delete_barrier: ib2
-  - old_import_path: internal/application/repository/retriever/elasticsearch/v7
-    plan: 20-knowledge-program
-    delete_barrier: ib2
-  - old_import_path: internal/application/repository/retriever/elasticsearch/v8
-    plan: 20-knowledge-program
-    delete_barrier: ib2
-  - old_import_path: internal/application/repository/retriever/milvus
-    plan: 20-knowledge-program
-    delete_barrier: ib2
-  - old_import_path: internal/application/repository/retriever/neo4j
-    plan: 20-knowledge-program
-    delete_barrier: ib2
-  - old_import_path: internal/application/repository/retriever/opensearch
-    plan: 20-knowledge-program
-    delete_barrier: ib2
-  - old_import_path: internal/application/repository/retriever/postgres
-    plan: 20-knowledge-program
-    delete_barrier: ib2
-  - old_import_path: internal/application/repository/retriever/qdrant
-    plan: 20-knowledge-program
-    delete_barrier: ib2
-  - old_import_path: internal/application/repository/retriever/sqlite
-    plan: 20-knowledge-program
-    delete_barrier: ib2
-  - old_import_path: internal/application/repository/retriever/tencentvectordb
-    plan: 20-knowledge-program
-    delete_barrier: ib2
-  - old_import_path: internal/application/repository/retriever/weaviate
-    plan: 20-knowledge-program
-    delete_barrier: ib2
   - old_import_path: internal/application/service/appconnector
     plan: 27-appconnector
     delete_barrier: ib2
@@ -2526,9 +2444,6 @@ aliases:
   - old_import_path: internal/application/service/metric
     plan: 37-insights
     delete_barrier: ib3
-  - old_import_path: internal/application/service/retriever
-    plan: 20-knowledge-program
-    delete_barrier: ib2
   - old_import_path: internal/application/service/workbench
     plan: 40-workbench
     delete_barrier: ib4
@@ -2616,24 +2531,12 @@ aliases:
   - old_import_path: internal/im/yunzhijia
     plan: 36-channels
     delete_barrier: ib3
-  - old_import_path: internal/infrastructure/chunker
-    plan: 20-knowledge-program
-    delete_barrier: ib2
   - old_import_path: internal/infrastructure/commercialplatform
     plan: 12-commercial
     delete_barrier: ib1
-  - old_import_path: internal/infrastructure/docparser
-    plan: 20-knowledge-program
-    delete_barrier: ib2
-  - old_import_path: internal/infrastructure/docparser/anydoc
-    plan: 20-knowledge-program
-    delete_barrier: ib2
   - old_import_path: internal/infrastructure/openmeter
     plan: 12-commercial
     delete_barrier: ib1
-  - old_import_path: internal/infrastructure/semantic
-    plan: 20-knowledge-program
-    delete_barrier: ib2
   - old_import_path: internal/infrastructure/web_search
     plan: 11-airesource
     delete_barrier: ib1
@@ -2685,9 +2588,6 @@ aliases:
   - old_import_path: internal/sandbox
     plan: 13-execution
     delete_barrier: ib1
-  - old_import_path: internal/searchutil
-    plan: 20-knowledge-program
-    delete_barrier: ib2
   - old_import_path: internal/storageallowlist
     plan: 42-system-policy
     delete_barrier: ib4
