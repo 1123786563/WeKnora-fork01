@@ -15,30 +15,62 @@ func (s *AgentRunStore) CancelRun(ctx context.Context, key agentruntime.RunKey, 
 		return agentruntime.ErrConflict
 	}
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var run agentRunRow
-		if err := runScope(tx, key).Take(&run).Error; err != nil {
-			if err == gorm.ErrRecordNotFound {
-				return agentruntime.ErrNotFound
-			}
-			return err
+		return s.cancelRunTx(tx, key, reason)
+	})
+}
+
+// cancelRunTx is the in-transaction terminal transition shared by every cancel
+// entry point. Idempotent on already-canceled runs; succeeded/failed runs are
+// conflicts (their settlement facts must survive).
+func (s *AgentRunStore) cancelRunTx(tx *gorm.DB, key agentruntime.RunKey, reason string) error {
+	var run agentRunRow
+	if err := runScope(tx, key).Take(&run).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return agentruntime.ErrNotFound
 		}
-		if run.Status == "canceled" {
-			return nil
+		return err
+	}
+	if run.Status == "canceled" {
+		return nil
+	}
+	if run.Status == "succeeded" || run.Status == "failed" {
+		return agentruntime.ErrConflict
+	}
+	if err := runScope(tx, key).Updates(map[string]any{"status": "canceled", "wait_reason": reason, "lease_owner": "", "lease_until": nil, "revision": gorm.Expr("revision+1"), "updated_at": gorm.Expr("CURRENT_TIMESTAMP")}).Error; err != nil {
+		return err
+	}
+	payloadBytes, err := json.Marshal(map[string]string{"reason": reason})
+	if err != nil {
+		return err
+	}
+	if err := appendRunEventLocked(tx, agentruntime.Fence{RunKey: key}, "cancellation_requested", string(payloadBytes)); err != nil {
+		return err
+	}
+	return tx.Table("sessions").Where("tenant_id=? AND id=? AND active_agent_run_id=?", key.TenantID, run.SessionID, key.RunID).Update("active_agent_run_id", nil).Error
+}
+
+// CancelRunOwnedAtRevision is the owner-and-revision fenced cancel used by the
+// workbench control seam (GormCancelPort). The CAS locks the authenticated
+// owner's run at the expected revision before the terminal transition; any
+// mismatch (unknown run, foreign owner, stale revision, terminal status) is a
+// conflict and never mutates a different run. Signature/semantics mirror the
+// codex/craft-107-integration branch (agent_run_lifecycle.go:80-96) so its
+// later merge lands as a no-op here minus the craft charge hooks.
+func (s *AgentRunStore) CancelRunOwnedAtRevision(ctx context.Context, tenantID uint64, ownerID, runID string, revision int64, reason string) error {
+	if tenantID == 0 || ownerID == "" || runID == "" || revision < 0 {
+		return agentruntime.ErrConflict
+	}
+	key := agentruntime.RunKey{TenantID: tenantID, RunID: runID}
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		locked := runScope(tx, key).Where("owner_id = ? AND revision = ? AND status IN ('queued','running','waiting_user','reconciling','recovering')", ownerID, revision).
+			UpdateColumn("revision", gorm.Expr("revision"))
+		if locked.Error != nil {
+			return locked.Error
 		}
-		if run.Status == "succeeded" || run.Status == "failed" {
+		if locked.RowsAffected != 1 {
 			return agentruntime.ErrConflict
 		}
-		if err := runScope(tx, key).Updates(map[string]any{"status": "canceled", "wait_reason": reason, "lease_owner": "", "lease_until": nil, "revision": gorm.Expr("revision+1"), "updated_at": gorm.Expr("CURRENT_TIMESTAMP")}).Error; err != nil {
-			return err
-		}
-		payloadBytes, err := json.Marshal(map[string]string{"reason": reason})
-		if err != nil {
-			return err
-		}
-		if err := appendRunEventLocked(tx, agentruntime.Fence{RunKey: key}, "cancellation_requested", string(payloadBytes)); err != nil {
-			return err
-		}
-		return tx.Table("sessions").Where("tenant_id=? AND id=? AND active_agent_run_id=?", key.TenantID, run.SessionID, key.RunID).Update("active_agent_run_id", nil).Error
+		return s.cancelRunTx(tx, key, reason)
 	})
 }
 
