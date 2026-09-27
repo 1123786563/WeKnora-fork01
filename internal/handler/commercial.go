@@ -1141,6 +1141,79 @@ func (h *CommercialHandler) AdminReviewRefund(c *gin.Context) {
 	}
 }
 
+// ---- #84: platform payment-anomaly disposition surface ----
+
+// AdminListPaymentAnomalies serves GET /admin/payment-anomalies: every
+// retained abnormal payment fact, newest first, in closed WeKnora vocabulary
+// (spec L170) — the operator's disposition queue for mismatched, partial,
+// wrong-currency and multiple-success payments (spec L127).
+func (h *CommercialHandler) AdminListPaymentAnomalies(c *gin.Context) {
+	store := repocommercial.NewOrderStore(h.db)
+	rows, err := store.ListPaymentAnomalies(c.Request.Context())
+	if err != nil {
+		log.Printf("commercial: payment anomaly list failed: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "internal_error"})
+		return
+	}
+	data := make([]gin.H, 0, len(rows)) // SP11: never null
+	for _, r := range rows {
+		item := gin.H{
+			"id":                  r.ID,
+			"order_id":            r.OrderID,
+			"tenant_id":           r.TenantID,
+			"provider":            r.Provider,
+			"kind":                r.Kind,
+			"expected_amount_fen": strconv.FormatInt(r.ExpectedAmountFen, 10),
+			"actual_amount_fen":   strconv.FormatInt(r.ActualAmountFen, 10),
+			"currency":            r.ExpectedCurrency,
+			"state":               r.State,
+			"version":             r.Version,
+			"created_at":          r.CreatedAt.UTC().Format(time.RFC3339),
+		}
+		if r.ActualCurrency != r.ExpectedCurrency {
+			// A currency mismatch carries BOTH closed codes — never a raw
+			// provider currency token beyond the codes themselves.
+			item["actual_currency"] = r.ActualCurrency
+		}
+		if r.ResolvedAt != nil {
+			item["resolved_at"] = r.ResolvedAt.UTC().Format(time.RFC3339)
+		}
+		data = append(data, item)
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": data})
+}
+
+// AdminResolvePaymentAnomaly serves POST /admin/payment-anomalies/:id/resolve:
+// the operator's disposition decision. expected_version is the optimistic
+// guard (409 anomaly changed since read); a missing row answers 404. The
+// retained fund fact itself is never rewritten.
+func (h *CommercialHandler) AdminResolvePaymentAnomaly(c *gin.Context) {
+	var req struct {
+		ExpectedVersion *int64 `json:"expected_version"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.ExpectedVersion == nil || *req.ExpectedVersion <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "expected_version is required"})
+		return
+	}
+	store := repocommercial.NewOrderStore(h.db)
+	row, err := store.ResolvePaymentAnomaly(c.Request.Context(), c.Param("id"), *req.ExpectedVersion)
+	switch {
+	case err == nil:
+		c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{
+			"id":      row.ID,
+			"state":   row.State,
+			"version": row.Version,
+		}})
+	case errors.Is(err, repocommercial.ErrPaymentAnomalyNotFound):
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "payment_anomaly_not_found"})
+	case errors.Is(err, repocommercial.ErrPaymentAnomalyVersionConflict):
+		c.JSON(http.StatusConflict, gin.H{"success": false, "error": "anomaly changed since read"})
+	default:
+		log.Printf("commercial: payment anomaly resolve failed for %s: %v", c.Param("id"), err)
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "internal_error"})
+	}
+}
+
 // ---- T07 (#79): platform plan-version admin surface ----
 
 // PlatformPlanPublisherCapability is the explicit grant (a row in

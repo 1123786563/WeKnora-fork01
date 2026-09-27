@@ -174,6 +174,16 @@ func (s *FulfillmentService) Recover(ctx context.Context) error {
 		return err
 	}
 	for _, ev := range events {
+		// (#84 / G3) over_payment events are DISPOSAL work, not fulfillment:
+		// a dispose failure keeps its own event pending for the next pass
+		// and never starves the fulfill events of the same batch (A-32
+		// per-event isolation discipline) — the failure stays a Warn.
+		if ev.Kind == repocommercial.OutboxKindOverPaid {
+			if err := s.disposeOverPayment(ctx, ev, now); err != nil {
+				logger.Warnf(ctx, "[CommercialFulfillment] over_payment dispose %s failed (stays pending): %v", ev.EventKey, err)
+			}
+			continue
+		}
 		if err := s.fulfillEvent(ctx, ev, now); err != nil {
 			return fmt.Errorf("fulfill event %s: %w", ev.EventKey, err)
 		}
@@ -223,15 +233,18 @@ func (s *FulfillmentService) Stop() {
 	}
 }
 
-// leasePendingEvents selects eligible fulfill events and claims each with
-// a durable claim token via a guarded update: only the worker whose update
-// moves lease_until forward wins, so concurrent workers lease disjoint
-// events and a crashed worker's lease simply expires.
+// leasePendingEvents selects eligible events and claims each with a durable
+// claim token via a guarded update: only the worker whose update moves
+// lease_until forward wins, so concurrent workers lease disjoint events and
+// a crashed worker's lease simply expires. (#84 / G3) The lease covers BOTH
+// drainable kinds — fulfill and over_payment — the latter consumed by
+// disposeOverPayment instead of the fulfillment leg.
 func (s *FulfillmentService) leasePendingEvents(ctx context.Context, now time.Time) ([]repocommercial.OutboxEvent, error) {
 	var pending []repocommercial.OutboxEvent
 	err := s.db.WithContext(ctx).
-		Where("kind = ? AND state = ? AND lease_until <= ?",
-			repocommercial.OutboxKindFulfill, repocommercial.OutboxStatePending, now).
+		Where("kind IN ? AND state = ? AND lease_until <= ?",
+			[]string{repocommercial.OutboxKindFulfill, repocommercial.OutboxKindOverPaid},
+			repocommercial.OutboxStatePending, now).
 		Find(&pending).Error
 	if err != nil {
 		return nil, err
@@ -329,6 +342,48 @@ func (s *FulfillmentService) fulfillEvent(ctx context.Context, ev repocommercial
 		return s.completeEvent(ctx, ev, repocommercial.OutboxStatePending)
 	}
 	if err := s.orders.MarkFulfilled(ctx, order.ID); err != nil {
+		return err
+	}
+	return s.completeEvent(ctx, ev, repocommercial.OutboxStateSent)
+}
+
+// overPaymentPayload mirrors the over_payment outbox payload written by
+// ConfirmPayment (#84): the multiple-success SECOND payment's fund fact.
+type overPaymentPayload struct {
+	OrderID     string `json:"order_id"`
+	TenantID    uint64 `json:"tenant_id"`
+	AttemptID   string `json:"attempt_id"`
+	Provider    string `json:"provider"`
+	Merchant    string `json:"merchant"`
+	Transaction string `json:"transaction"`
+	AmountFen   int64  `json:"amount_fen"`
+	Currency    string `json:"currency"`
+}
+
+// disposeOverPayment consumes one over_payment event into the operator
+// disposition surface (#84 / G3 / AC2): the multiple-success second payment
+// is retained as an awaiting-disposition over_payment anomaly — Expected
+// AmountFen deliberately 0 (this is not a single-payment wrong amount; the
+// expected face lives on the order row) — and the event completes sent.
+// RecordPaymentAnomaly is idempotent on (provider, merchant, transaction),
+// so a redelivered/replayed event never mints a second row. A malformed
+// payload is a deterministic dead end: the event is completed sent and the
+// malformation logged — no retry can fix unparseable bytes. A retention
+// error keeps the event pending for the next pass (the drain loop isolates
+// it from the fulfill events of the same batch).
+func (s *FulfillmentService) disposeOverPayment(ctx context.Context, ev repocommercial.OutboxEvent, now time.Time) error {
+	var payload overPaymentPayload
+	if err := json.Unmarshal([]byte(ev.PayloadJSON), &payload); err != nil {
+		logger.Warnf(ctx, "[CommercialFulfillment] dropping malformed over_payment event %s: %v", ev.EventKey, err)
+		return s.completeEvent(ctx, ev, repocommercial.OutboxStateSent)
+	}
+	if err := s.orders.RecordPaymentAnomaly(ctx, repocommercial.PaymentAnomalyRow{
+		TenantID: payload.TenantID, OrderID: payload.OrderID, AttemptID: payload.AttemptID,
+		Provider: payload.Provider, Merchant: payload.Merchant, Transaction: payload.Transaction,
+		Kind:              repocommercial.PaymentAnomalyKindOverPaid,
+		ExpectedAmountFen: 0, ActualAmountFen: payload.AmountFen,
+		ExpectedCurrency: payload.Currency, ActualCurrency: payload.Currency,
+	}); err != nil {
 		return err
 	}
 	return s.completeEvent(ctx, ev, repocommercial.OutboxStateSent)

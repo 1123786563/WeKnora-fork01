@@ -82,6 +82,18 @@ func RegisterCommercialRoutes(r *gin.RouterGroup, commercialHandler *handler.Com
 		commercialHandler.RequirePlatformRefundReviewer(),
 		commercialHandler.AdminReviewRefund)
 
+	// #84: platform payment-anomaly disposition surface — the operator queue
+	// for retained abnormal payment facts (mismatched / partial / wrong
+	// currency / multiple-success, spec L127). Same authority model as the
+	// refund review above: cross-space money handling hangs DIRECTLY on the
+	// parent group behind the platform-operator gate; space administration
+	// is 403. Responses are closed WeKnora vocabulary only (spec L170).
+	anomalyAdmin := r.Group("/admin/payment-anomalies", commercialHandler.RequirePlatformRefundReviewer())
+	{
+		anomalyAdmin.GET("", commercialHandler.AdminListPaymentAnomalies)
+		anomalyAdmin.POST("/:id/resolve", commercialHandler.AdminResolvePaymentAnomaly)
+	}
+
 	// T07 (#79): platform plan-version admin surface. Catalog operations
 	// are cross-space, so the endpoints hang DIRECTLY on the parent group
 	// behind their OWN platform-operator gate — the exact refund-review
