@@ -23,14 +23,18 @@ auditable server-side exemption, e.g.
     SSRF_WHITELIST_EXTRA=127.0.0.1
 
 Replaying the #81 evidence flow against this stub must export that variable
-before starting the WeKnora backend; without it the purchase answers 202 with a channel-failed (checkout_error) order (the R3-27 fixed chain)
-payment_provider_unconfigured (the SSRF gate refusing the loopback base).
+before starting the WeKnora backend; without it the purchase answers 202
+with a channel-failed (checkout_error) order (the R3-27 fixed chain): the
+SSRF gate refuses the loopback base.
 """
 import json
+import os
 import secrets
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-HOST, PORT = "127.0.0.1", 8291
+# (OCR r2, shared with the #82 copy) env-overridable port — parallel
+# verification rounds must not collide on the shared default.
+HOST, PORT = "127.0.0.1", int(os.environ.get("FLOW82_WECHAT_PORT", "8291"))
 
 
 class Handler(BaseHTTPRequestHandler):

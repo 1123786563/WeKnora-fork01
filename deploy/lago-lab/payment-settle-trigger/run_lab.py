@@ -63,12 +63,14 @@ PHASE_FILES = {
 ENVIRONMENT_FILE = "t11-environment.json"
 TIMELINE_FILE = "t11-run.txt"
 
-# Execution-order contract. phases.PHASE_ORDER carries the same probe
-# sequence (cleanup excluded: it always runs from the finally block).
-PHASE_SEQUENCE = (
-    ("gated_3ds", phases.phase_gated_3ds),
-    ("settle_probe", phases.phase_settle_probe),
-    ("settle_trigger", phases.phase_settle_trigger),
+# Execution-order contract. DERIVED from phases.PHASE_ORDER — the single
+# source of truth (OCR r2: two independently maintained tuples drifted
+# silently when one side changed; the derivation plus
+# test_phase_order_contract_matches_runner_order in test_phases.py keeps
+# them locked). cleanup is excluded here: it always runs from the finally
+# block.
+PHASE_SEQUENCE = tuple(
+    (fn.__name__.removeprefix("phase_"), fn) for fn in phases.PHASE_ORDER
 )
 
 
@@ -137,7 +139,10 @@ class Timeline:
         print(f"run_lab: {message}", flush=True)
 
     def text(self):
-        self.lines.append(f"[{utc_now()}] run finished")
+        # (OCR r2) NO side effects: the closing marker is logged explicitly
+        # by the caller — a text() that appended "run finished" stamped a
+        # duplicate finish line into t11-run.txt every time the timeline was
+        # written more than once (the committed evidence shows two).
         return "\n".join(self.lines) + "\n"
 
 
@@ -308,6 +313,9 @@ def run_experiment(args):
     )
     if not scan["clean"]:
         overall = "fail"
+    # (OCR r2) the closing marker is ONE explicit log line — Timeline.text()
+    # is side-effect free, so the finish stamp lands exactly once.
+    timeline.log("run finished")
     # rewrite timeline + environment with the final scan result
     environment["secrets_scan"] = scan
     write_json(output_dir / ENVIRONMENT_FILE, environment)

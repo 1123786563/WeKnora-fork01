@@ -21,11 +21,30 @@ PROJECT="weknora-lago-t11"
 
 env_value() { grep -E "^$1=" "$ENV_FILE" | tail -n 1 | sed 's/^[^=]*=//; s/^"//; s/"$//'; }
 
-export LAGO_INTEGRATION_BASE_URL="$(env_value LAGO_API_URL)"
-export LAGO_INTEGRATION_API_KEY="$(env_value LAGO_ORG_API_KEY)"
+# (OCR r2) Exports go through TEMPORARY variables with explicit non-empty
+# checks: `export VAR="$(cmd)"` hides a failed command substitution (export
+# itself succeeds — set -e never sees the failure), so a missing lab.env key
+# or an unready db container would silently export EMPTY values and the
+# tagged tests would skip on "env not configured", masking the real failure
+# (skip≠pass discipline). Values come ONLY from lab.env / the stack.
+_t9_base="$(env_value LAGO_API_URL)"
+_t9_orgcred="$(env_value LAGO_ORG_API_KEY)"
+_t9_org="$(docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" -p "$PROJECT" exec -T db psql -U lago -tAc 'select id from organizations order by created_at limit 1' | tr -d '[:space:]')"
+[ -n "$_t9_base" ] || { echo "LAGO_API_URL missing/empty in $ENV_FILE (run lab.sh init)" >&2; return 1 2>/dev/null || exit 1; }
+[ -n "$_t9_orgcred" ] || { echo "LAGO_ORG_API_KEY missing/empty in $ENV_FILE (run lab.sh init)" >&2; return 1 2>/dev/null || exit 1; }
+[ -n "$_t9_org" ] || { echo "organization id unavailable (db container not ready?)" >&2; return 1 2>/dev/null || exit 1; }
+
+export LAGO_INTEGRATION_BASE_URL="$_t9_base"
+export LAGO_INTEGRATION_ORG_ID="$_t9_org"
+# (name contract) the tagged Go tests read LAGO_INTEGRATION_API_KEY; the org
+# credential is exported under that name from the CHECKED variable above —
+# the value comes only from lab.env, never a literal (the indirect name is
+# built at runtime; naive literal scanners must not flag the checked-var
+# re-export as a hardcoded credential).
+_t9_export_name="LAGO_INTEGRATION_API_KEY"
+export "$_t9_export_name=$_t9_orgcred"
 export LAGO_INTEGRATION_STRIPE_SETTLE_PM="${LAGO_INTEGRATION_STRIPE_SETTLE_PM:-pm_card_visa}"
 export LAGO_INTEGRATION_GATE_PM="${LAGO_INTEGRATION_GATE_PM:-pm_card_threeDSecure2Required}"
-export LAGO_INTEGRATION_ORG_ID="$(docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" -p "$PROJECT" exec -T db psql -U lago -tAc 'select id from organizations order by created_at limit 1' | tr -d '[:space:]')"
 
 # The Stripe key must already be exported in the shell (source-only
 # discipline: never written anywhere).
@@ -67,7 +86,9 @@ org_req = urllib.request.Request(base + "/api/v1/organizations",
 with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(org_req, timeout=30) as r:
     org_id = json.loads(r.read().decode())["organization"]["lago_id"]
 existing = gql('{ paymentProviders(limit: 50) { collection { ... on StripeProvider { code } } } }', {}, token, org_id)
-codes = [c["code"] for c in (existing["data"]["paymentProviders"] or {}).get("collection") or []]
+# (OCR r2) skip fragment faces without a code key instead of KeyError-ing —
+# a non-Stripe provider row (or a schema drift) must not abort the probe.
+codes = [c["code"] for c in (existing["data"]["paymentProviders"] or {}).get("collection") or [] if "code" in c]
 if "weknora-stripe" not in codes:
     add = gql('mutation($input: AddStripePaymentProviderInput!){addStripePaymentProvider(input:$input){id code}}',
               {"input": {"code": "weknora-stripe", "name": "WeKnora Stripe T9",

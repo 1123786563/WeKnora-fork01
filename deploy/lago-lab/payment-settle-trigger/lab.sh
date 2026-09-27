@@ -4,7 +4,7 @@
 # Compose project, ports, volumes; never touches the weknora-lago (#73),
 # weknora-lago-82flow or OpenMeter projects).
 #
-# Usage: ./deploy/lago-lab/payment-trigger/lab.sh init|up|down|status|config
+# Usage: ./deploy/lago-lab/payment-settle-trigger/lab.sh init|up|down|status|config
 #
 #   init    generate lab.env (random secrets + one-shot seed values, mode 600)
 #   up      validate secrets, then start the isolated stack (up -d --wait)
@@ -12,8 +12,8 @@
 #   status  health snapshot JSON for the lab project only
 #   config  resolved Compose config with secrets redacted
 #
-# The lab reuses deploy/lago/compose.yaml read-only; all state lives under the
-# weknora-lago-82 Compose project (volumes weknora-lago-82_lago_*).
+# The lab reuses deploy/lago/compose.yaml read-only; all state lives under
+# the weknora-lago-t11 Compose project (volumes weknora-lago-t11_lago_*).
 # Secrets generation reuses deploy/lago-lab/payment-activation/clients.py
 # read-only (sys.path import); the isolation pins are overridden HERE to this
 # lab's own project name and ports (48895 API / 48896 front -- the 82flow

@@ -10,6 +10,21 @@ from __future__ import annotations
 import unittest
 
 import fixtures
+import phases
+import run_lab
+
+
+class RunnerOrderContractTest(unittest.TestCase):
+    def test_phase_order_contract_matches_runner_order(self):
+        # (OCR r2) phases.PHASE_ORDER is the execution-order contract's
+        # single source of truth; run_lab.PHASE_SEQUENCE is DERIVED from it.
+        # The guard keeps a one-sided phase add/remove from silently
+        # producing an incomplete-coverage "pass" evidence.
+        order_names = [fn.__name__ for fn in phases.PHASE_ORDER]
+        self.assertEqual(order_names[-1], "phase_settle_trigger")
+        runner_names = [name for name, _fn in run_lab.PHASE_SEQUENCE]
+        self.assertEqual(
+            [f"phase_{name}" for name in runner_names], order_names)
 
 
 class GatedSubscriptionPayloadTest(unittest.TestCase):

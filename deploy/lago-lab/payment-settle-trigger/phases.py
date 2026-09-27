@@ -43,6 +43,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import subprocess
 import time
 import urllib.error
@@ -80,6 +81,16 @@ SETTLE_PM = "pm_card_visa"
 STRIPE_PROVIDER_NAME = "WeKnora T11 Stripe Test"
 
 PASS, FAIL, BLOCKED = "pass", "fail", "blocked-env"
+
+# (OCR r2 / safety constraint) provider_code is interpolated into rails
+# snippets below; a strict charset whitelist gates EVERY interpolation site
+# (anything outside [A-Za-z0-9_-] — quotes, whitespace, semicolons — would
+# break or inject the Ruby fragment).
+_PROVIDER_CODE_SHAPE = re.compile(r"[A-Za-z0-9_-]+")
+
+
+def _valid_provider_code(code):
+    return bool(code) and _PROVIDER_CODE_SHAPE.fullmatch(code) is not None
 
 
 def _utc_now():
@@ -188,7 +199,11 @@ class RunContext:
             headers=headers,
             method="POST",
         )
-        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        # (OCR r2) the GraphQL egress uses the shared ORIGIN-BOUND proxyless
+        # opener (clients._proxyless_opener) — the same redirect discipline
+        # the REST clients already enforce, instead of a bare proxy bypass.
+        from urllib.parse import urlsplit
+        opener = clients._proxyless_opener(urlsplit(self.lago_url)[:2])
         with opener.open(request, timeout=self.lago._timeout) as response:
             status = response.status
             raw = response.read()
@@ -311,6 +326,12 @@ class RunContext:
         and read it back. Signature verification and the whole receive
         chain stay 100% Lago built-in.
         """
+        # (OCR r2) the interpolation gate: a non-conforming provider_code
+        # must fail closed BEFORE any rails snippet is built.
+        if not _valid_provider_code(provider_code):
+            self.note(f"provider_code {provider_code!r} failed the charset "
+                      "whitelist — refusing to interpolate into the rails snippet")
+            return None
         value = self._runner_sentinel(
             "print PaymentProviders::StripeProvider.where(deleted_at: nil)"
             f".find_by(code: '{provider_code}').try(:webhook_secret).to_s")
@@ -331,11 +352,14 @@ class RunContext:
             return None
         secret = body["secret"]
         self.state["stripe_webhook_endpoint_id"] = body.get("id")
-        written = self._compose_exec_env(
-            {"WSECRET": secret},
+        # (OCR r2) the secret rides STDIN into the container — never the
+        # docker exec argv (-e WSECRET=… is visible in the local process
+        # list for the exec's lifetime; stdin is not).
+        written = self._compose_exec_stdin(
+            secret,
             "PaymentProviders::StripeProvider.where(deleted_at: nil)"
             f".find_by(code: '{provider_code}')"
-            ".update!(webhook_secret: ENV['WSECRET'])")
+            ".update!(webhook_secret: STDIN.read)")
         if not written:
             self.note("model-layer webhook_secret store failed")
             return None
@@ -344,18 +368,17 @@ class RunContext:
             f".find_by(code: '{provider_code}').try(:webhook_secret).to_s")
         return readback or None
 
-    def _compose_exec_env(self, env_vars, code):
-        """docker compose exec with -e env vars, running a rails snippet."""
+    def _compose_exec_stdin(self, secret, code):
+        """docker compose exec running a rails snippet with the secret piped
+        via STDIN (the argv never carries it)."""
         command = ["docker", "compose", "-f", str(_COMPOSE_FILE)]
         if self.lab_env and self.lab_env.exists():
             command += ["--env-file", str(self.lab_env)]
-        command += ["-p", self.compose_project, "exec", "-T"]
-        for key, value in env_vars.items():
-            command += ["-e", f"{key}={value}"]
-        command += ["api", "bin/rails", "runner", code]
+        command += ["-p", self.compose_project, "exec", "-T",
+                    "api", "bin/rails", "runner", code]
         try:
-            result = subprocess.run(command, capture_output=True, text=True,
-                                    timeout=180)
+            result = subprocess.run(command, input=secret, capture_output=True,
+                                    text=True, timeout=180)
         except (OSError, subprocess.SubprocessError):
             return False
         return result.returncode == 0
@@ -834,7 +857,19 @@ def phase_cleanup(ctx):
         except OSError:
             record("stripe_webhook_endpoint", endpoint_id, "failed", None)
 
-    failures = [item for item in objects if item["outcome"] != "deleted"]
+    # (OCR r2) The lab's OWN payment provider (created through GraphQL in
+    # phase_gated_3ds) is part of "every lab object created this run": the
+    # pinned v1.53 GraphQL surface exposes no provider destroy mutation we
+    # could drive from here, so the residue is RECORDED explicitly (never
+    # silently leaked) — repeated runs accumulate providers under their
+    # unique run prefixes, and each carries a webhook secret; operators
+    # prune them with the recorded code list.
+    provider_code = state.get("provider_code")
+    if provider_code:
+        record("payment_provider", provider_code, "residue-recorded", None)
+
+    failures = [item for item in objects
+                if item["outcome"] not in ("deleted", "residue-recorded")]
     observed = {
         "objects": objects,
         "cleanup_failures": [f"{item['object']}({item['id']})" for item in failures],
@@ -844,8 +879,10 @@ def phase_cleanup(ctx):
 
 
 # Execution-order contract: gated_3ds (setup) -> settle_probe (P-A) ->
-# settle_trigger (P-B/C/D/E) -> cleanup. The runner's PHASE_SEQUENCE mirrors
-# this tuple (guarded by the runner import).
+# settle_trigger (P-B/C/D/E) -> cleanup. The runner's PHASE_SEQUENCE is
+# DERIVED from this tuple (single source of truth); the alignment is
+# guarded by test_phase_order_contract_matches_runner_order in
+# test_phases.py (the payment-activation lab's discipline).
 PHASE_ORDER = (
     phase_gated_3ds,
     phase_settle_probe,
