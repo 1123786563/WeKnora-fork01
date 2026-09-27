@@ -1,9 +1,9 @@
 package container
 
 import (
+	"sync"
 	"context"
 	"fmt"
-	"path"
 	"path/filepath"
 	"strings"
 
@@ -57,6 +57,7 @@ const craftWebBuildToolchainPath = "/opt/craft/web"
 // offline web toolchain. Assemble it once per deployment next to the toolchain
 // pin; Review is per dispatch.
 type CraftWebBuildCommandGate struct {
+	warnInputsRootOnce sync.Once
 	policy        service.CraftExecutionPolicyGate
 	pin           CraftWebToolchainPin
 	toolchainDir  string
@@ -133,7 +134,11 @@ var craftWebBuildValueFlags = map[string]bool{
 // pinned build program invocation: python3 + the image build program + a
 // known flag set, with --toolchain pinned to the image directory.
 func craftWebBuildCommandShapeOk(command []string) bool {
-	if len(command) < 2 || path.Base(command[0]) != "python3" || command[1] != craftWebBuildProgramPath {
+	// argv[0] is pinned to the EXACT interpreter name (never a path):
+	// a same-named wrapper or symlink at any writable location
+	// (/tmp/evil/python3, ./python3) must not borrow this entry, and
+	// path.Base would happily accept all of them.
+	if len(command) < 2 || command[0] != "python3" || command[1] != craftWebBuildProgramPath {
 		return false
 	}
 	toolchainSeen := false
@@ -182,6 +187,14 @@ func craftWebShapeRefusal(command []string) error {
 // gate's own refusal (with the "Allowed alternative" text) is passed through
 // unchanged so the caller can project it into the member-facing response.
 func (g *CraftWebBuildCommandGate) Review(ctx context.Context, request repository.CraftDockerNormalInputRequest) error {
+	if g.hostInputsRel == "" {
+		// The material-overlap layer is unwired (no WithCraftWebHostInputsRoot
+		// at assembly): say so once per process instead of failing open in
+		// silence — the operator can then wire the host root.
+		g.warnInputsRootOnce.Do(func() {
+			logger.Warnf(ctx, "[CraftWebBuildGate] host inputs root NOT configured: the staged-material overlap layer is inactive (pass WithCraftWebHostInputsRoot at assembly)")
+		})
+	}
 	if g == nil {
 		return fmt.Errorf("%w: craft web build command gate is not assembled", craft.ErrForbidden)
 	}

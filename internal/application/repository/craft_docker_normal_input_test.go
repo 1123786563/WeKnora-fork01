@@ -211,6 +211,17 @@ func TestCraftDockerNormalInputCanonicalSizerMatchesJSONEscaping(t *testing.T) {
 	encoded, err := json.Marshal(request)
 	require.NoError(t, err)
 	require.EqualValues(t, len(encoded), craftDockerNormalCanonicalJSONSize(request))
+
+	// Round-5 additive evidence fields: carrying them must NOT desynchronize
+	// the canonical sizer — the request still stages through the durable
+	// encrypted identity chain (previously the sizer ignored both fields and
+	// Stage rejected every evidence-carrying request as Corrupt).
+	request.ResolvedTargetPath = "/host/toolchain/inputs<a>\u2028 x"
+	request.TargetSHA256 = strings.Repeat("0123456789abcdef", 4)
+	encoded, err = json.Marshal(request)
+	require.NoError(t, err)
+	require.EqualValues(t, len(encoded), craftDockerNormalCanonicalJSONSize(request),
+		"evidence-carrying request must size-match json.Marshal")
 }
 
 func TestCraftDockerNormalInputRejectsOversizedCommandEnvironmentAndStoredPayload(t *testing.T) {

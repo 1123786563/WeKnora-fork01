@@ -376,7 +376,17 @@ func craftDockerNormalCanonicalJSONSize(in CraftDockerNormalInputRequest) int64 
 		size += 2 + int64(base64.StdEncoding.EncodedLen(len(in.Stdin)))
 	}
 	size += int64(len(`,"output_limit":`)) + int64(len(strconv.FormatInt(in.OutputLimit, 10)))
-	size += int64(len(`,"output_policy":`)) + craftDockerJSONQuotedStringSize(in.OutputPolicy) + 1
+	size += int64(len(`,"output_policy":`)) + craftDockerJSONQuotedStringSize(in.OutputPolicy)
+	// Optional additive evidence fields (omitempty): each contributes its
+	// `,"name":` prefix plus the JSON-quoted value ONLY when non-empty.
+	if in.ResolvedTargetPath != "" {
+		size += int64(len(`,"resolved_target_path":`)) + craftDockerJSONQuotedStringSize(in.ResolvedTargetPath)
+	}
+	if in.TargetSHA256 != "" {
+		size += int64(len(`,"target_sha256":`)) + craftDockerJSONQuotedStringSize(in.TargetSHA256)
+	}
+	// closing brace
+	size += 1
 	return size
 }
 

@@ -187,13 +187,19 @@ func newCraftRuntimeExecutor(
 		// fixed-shape web build command gate at the SAME site as the pin,
 		// so the central dispatch point (T20 lane) attaches the SAME gate
 		// instance before any server-initiated build command is sent.
-		if delegatePolicy, perr := service.NewCraftDelegateExecutionPolicy(nil, db, workDir); perr == nil {
-			if gate, gerr := NewCraftWebBuildCommandGate(delegatePolicy, pin, webToolchainDir); gerr == nil {
-				webBuildGate = gate
-				logger.Infof(context.Background(), "[CraftRuntime] T04 web build command gate assembled (toolchain %s)", webToolchainDir)
-			} else {
-				logger.Warnf(context.Background(), "[CraftRuntime] T04 web build command gate NOT assembled: %v (build commands stay fail-closed)", gerr)
-			}
+		// The policy gate needs a REAL delegate service (nil is rejected by
+		// the constructor); the workspace root is the CONTAINER /workspace,
+		// not the host serve workDir — the T03 lexical layers resolve the
+		// read-only inputs tree relative to it.
+		delegateService := service.NewCraftDelegateService(store, nil)
+		delegatePolicy, perr := service.NewCraftDelegateExecutionPolicy(delegateService, db, "/workspace")
+		if perr != nil {
+			logger.Warnf(context.Background(), "[CraftRuntime] T04 execution policy NOT assembled: %v (build commands stay fail-closed)", perr)
+		} else if gate, gerr := NewCraftWebBuildCommandGate(delegatePolicy, pin, webToolchainDir); gerr == nil {
+			webBuildGate = gate
+			logger.Infof(context.Background(), "[CraftRuntime] T04 web build command gate assembled (toolchain %s)", webToolchainDir)
+		} else {
+			logger.Warnf(context.Background(), "[CraftRuntime] T04 web build command gate NOT assembled: %v (build commands stay fail-closed)", gerr)
 		}
 	}
 	_ = webBuildGate // central dispatch attachment is T20 lane scope

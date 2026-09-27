@@ -127,7 +127,10 @@ func (g *CraftDelegateExecutionPolicy) ReviewNormalExec(ctx context.Context, req
 	if request.TargetSHA256 != "" {
 		execRequest.TargetSHA256 = request.TargetSHA256
 	}
-	if request.StdinEnabled && len(request.Stdin) > 0 {
+	// Evidence priority (central ruling): an explicitly carried
+	// TargetSHA256 (a server-resolvable face walked the host target) WINS —
+	// the stdin digest never silently overwrites it.
+	if request.TargetSHA256 == "" && request.StdinEnabled && len(request.Stdin) > 0 {
 		// Byte identity for the stdin channel: the stdin bytes ride on the
 		// reviewed request itself, so their digest can be matched against
 		// the admitted manifest exactly like a file target.
