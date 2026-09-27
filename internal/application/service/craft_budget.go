@@ -1320,6 +1320,15 @@ func (s *CraftBudgetService) authorizeBudgetActor(ctx context.Context, scope cra
 	return craft.ErrForbidden
 }
 
+// MayExtendBudget projects the CURRENT extension authority (Task owner or
+// active tenant billing admin/owner) without touching any grant or Run row.
+// The T20 budget-pause HTTP surface uses it to project can_extend
+// server-side; the authoritative check still reruns inside ExtendAndResume
+// before any extension lands.
+func (s *CraftBudgetService) MayExtendBudget(ctx context.Context, scope craft.Scope) error {
+	return s.authorizeBudgetActor(ctx, scope)
+}
+
 // ExtendAndResume raises a paused Run's grant and requests recovery only
 // after every dispatched effect is reconciled. Unknown outcomes keep the Run
 // parked, preventing a resumed worker from replaying an uncertain call.

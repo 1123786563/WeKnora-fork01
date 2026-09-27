@@ -25,6 +25,7 @@
     "./craft/slides": "./src/craft/slides.tsx",
     "./craft/spreadsheet": "./src/craft/spreadsheet.tsx",
     "./craft/templates": "./src/craft/templates.tsx",
+    "./craft/usage": "./src/craft/usage.tsx",
     "./craft/workbench": "./src/craft/workbench.tsx",
     "./embed/bridge": "./src/embed/bridge.ts",
     "./guides/contextual-guides": "./src/guides/contextual-guides.ts",

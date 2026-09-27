@@ -715,6 +715,11 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Invoke(validateCraftKnowledgeAssembly))
 	// O04: the usage view handler rides the craft session route table.
 	must(container.Invoke(registerCraftUsageHTTPHandlers))
+	// T20 (#139): the durable budget-pause surface (pause view + owner/
+	// billing-admin extension) rides the same craft session route table,
+	// gated by the persistent T08 Task checker.
+	must(container.Provide(newCraftBudgetPauseService))
+	must(container.Invoke(registerCraftBudgetPauseHTTPHandlers))
 	// O03 hard wiring: delegation/restore guards + the periodic reclamation
 	// sweep (default ON; CRAFT_LIFECYCLE_SWEEP_DISABLED=true turns it off).
 	must(container.Invoke(wireCraftLifecycleIntegration))

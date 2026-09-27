@@ -157,6 +157,15 @@ func RegisterCraftSessionRoutes(craftSessions, sessions craftRouteGroup, craftHa
 		sessions.GET("/:id/craft/snapshots", holder.ListCraftSnapshots)
 		sessions.POST("/:session_id/craft/restore", holder.RestoreCraftSnapshot)
 	}
+	if pauseAPI := RegisteredCraftBudgetPauseHandler(); pauseAPI != nil {
+		// T20 (#139): the durable budget-pause surface — the pause view Task
+		// members read (with the server-projected can_extend) and the
+		// owner/billing-admin extension that resumes the Run. The Task read
+		// gate is registered alongside the service (nil fails closed).
+		pauseHolder := NewCraftBudgetPauseHandler(pauseAPI, RegisteredCraftBudgetPauseAccess())
+		sessions.GET("/:id/craft/runs/:run_id/budget/pause", pauseHolder.GetCraftBudgetPause)
+		sessions.POST("/:session_id/craft/runs/:run_id/budget/extend", pauseHolder.PostCraftBudgetExtend)
+	}
 	if previewHandler != nil {
 		// W02's authenticated ticket issuance endpoint, mounted at its exact
 		// path (same route as RegisterCraftPreviewIssueRoute, which stays

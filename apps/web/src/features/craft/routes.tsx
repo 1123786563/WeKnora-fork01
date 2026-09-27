@@ -32,6 +32,7 @@ import { CraftTemplates } from '@weknora/views/craft/templates';
 import { CraftWorkbench, createCraftWorkbenchFeatures, type CraftInteractionActionInput } from '@weknora/views/craft/workbench';
 import { CraftAccess } from '@weknora/views/craft/access';
 import { CraftInputDecisionPanel } from '@weknora/views/craft/files';
+import { CraftBudgetPauseNotice } from '@weknora/views/craft/usage';
 import { createCraftMessageLog, downloadFileName, type CraftLocale } from '@weknora/views/craft/presentation';
 import { createSessionCraftInteractionClient, CraftInteractionPanel } from '@weknora/views/craft/interaction';
 
@@ -313,7 +314,7 @@ export function CraftRoutes(props: CraftRoutesProps) {
 
   // --- Workbench data ----------------------------------------------------------
   const sessionId = route.name === 'workbench' ? route.sessionId : null;
-  const [workbenchInfo, setWorkbenchInfo] = useState<{ title: string; kind: string; ownerId: string; snapshotVersionId: string | null; updatedAt: string; resumed: boolean } | null>(null);
+  const [workbenchInfo, setWorkbenchInfo] = useState<{ title: string; kind: string; ownerId: string; snapshotVersionId: string | null; updatedAt: string; resumed: boolean; activeRun: { id: string; status: string; waitReason: string } | null } | null>(null);
   const [versions, setVersions] = useState<{ status: 'loading' | 'ready' | 'error'; items: CraftVersionView[] }>({ status: 'loading', items: [] });
   const [inputDecisionState, setInputDecisionState] = useState<{ sessionId: string; inputs: CraftInputView[] }>({ sessionId: '', inputs: [] });
   const pendingRequestIdRef = useRef<string | null>(null);
@@ -441,6 +442,9 @@ export function CraftRoutes(props: CraftRoutesProps) {
           snapshotVersionId: view.current_version === null ? null : view.current_version.id,
           updatedAt,
           resumed: view.active_run !== null,
+          activeRun: view.active_run === null
+            ? null
+            : { id: view.active_run.run_id, status: view.active_run.status, waitReason: view.active_run.wait_reason },
         });
         await loadVersions();
         await controller.load(sessionId);
@@ -457,6 +461,61 @@ export function CraftRoutes(props: CraftRoutesProps) {
   }, [sessionId, craftApi, scopeController, controller, loadVersions, loadHomeList]);
 
   const canWrite = workbenchInfo !== null && currentMeId !== null && workbenchInfo.ownerId === currentMeId;
+
+  // T20 (#139) budget-pause panel mount: when the workspace's active Run is
+  // durably parked on the budget wait, the pause view is fetched ONCE per
+  // run identity. Extension actors (owner/billing admin) get the server's
+  // can_extend projection; everyone else is refused server-side and the
+  // assembly keeps the contact-owner copy without any figures (the panel
+  // renders no limit/used, so nothing is fabricated).
+  const activeRun = workbenchInfo?.activeRun ?? null;
+  const [budgetPauseView, setBudgetPauseView] = useState<{ runId: string; canExtend: boolean; limit: number; used: number } | null>(null);
+  useEffect(() => {
+    setBudgetPauseView(null);
+    if (sessionId === null || activeRun === null || activeRun.waitReason !== 'budget_exhausted') return;
+    let cancelled = false;
+    const runId = activeRun.id;
+    void craftApi.budgetPause(sessionId, runId, scopeController.current().signal)
+      .then((view) => {
+        if (!cancelled) setBudgetPauseView({ runId, canExtend: view.canExtend, limit: view.pause.limit, used: view.pause.used });
+      })
+      .catch(() => {
+        if (!cancelled) setBudgetPauseView({ runId, canExtend: false, limit: 0, used: 0 });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId, activeRun, craftApi, scopeController]);
+  // The extension decision: one click = one idempotency key; the quantum is
+  // the deployment default (10 calls at the gateway's 1-credit-per-call
+  // upper bound). The server re-runs the owner/billing-admin check itself.
+  const requestBudgetExtension = useCallback(
+    async (runId: string): Promise<void> => {
+      if (sessionId === null) return;
+      await craftApi.extendBudget(sessionId, runId, {
+        key: 'extend-' + crypto.randomUUID(),
+        extra_calls: 10,
+        extra_credits: 10_000_000,
+      }, scopeController.current().signal);
+      // The Run left the pause durably: reload the authoritative projection
+      // (workspace view drives the panel away) and the controller state.
+      try {
+        const view = await craftApi.get(sessionId, scopeController.current().signal);
+        setWorkbenchInfo((prev) => prev === null ? prev : {
+          ...prev,
+          resumed: view.active_run !== null,
+          activeRun: view.active_run === null
+            ? null
+            : { id: view.active_run.run_id, status: view.active_run.status, waitReason: view.active_run.wait_reason },
+        });
+      } catch {
+        // The controller reload below still reflects the resumed state; the
+        // panel stays until the next workspace refresh.
+      }
+      await controller.load(sessionId);
+    },
+    [sessionId, craftApi, scopeController, controller],
+  );
 
   const issuePreview = useCallback(
     async (versionId: string) => craftApi.preview(sessionId ?? '', versionId, scopeController.current().signal),
@@ -894,6 +953,17 @@ export function CraftRoutes(props: CraftRoutesProps) {
           canDecide={canWrite}
           pollMs={5000}
         />
+        {budgetPauseView !== null ? (
+          <CraftBudgetPauseNotice
+            pause={{ run_id: budgetPauseView.runId, reason: 'exhausted', limit: budgetPauseView.limit, used: budgetPauseView.used }}
+            canExtend={budgetPauseView.canExtend}
+            onRequestExtension={canWrite ? (runId) => {
+              void requestBudgetExtension(runId).catch((error: unknown) => {
+                setSyncError(error instanceof Error ? error.message : String(error));
+              });
+            } : undefined}
+          />
+        ) : null}
         </div>
       )}
     </div>

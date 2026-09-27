@@ -1,4 +1,5 @@
 import {
+  parseCraftBudgetPause,
   parseCraftInputView,
   parseCraftPreviewTicket,
   parseCraftRunView,
@@ -7,6 +8,7 @@ import {
   parseCraftVersionView,
   parseCraftVersionsPage,
   parseCraftWorkspaceView,
+  type CraftBudgetPause,
   type CraftInputView,
   type CraftPreviewTicketView,
   type CraftRunView,
@@ -299,6 +301,42 @@ export function createCraftApi(request: (input: ClientRequest) => Promise<unknow
         body: { decision, manifest_digest: manifestDigest },
         signal,
       }), 'export consent decision');
+    },
+    /**
+     * GET /sessions/:id/craft/runs/:run_id/budget/pause — the T20 (#139)
+     * durable budget-pause view. Extension actors (Task owner / tenant
+     * billing admin) read the frozen {run_id, reason, limit, used} wire plus
+     * the server-projected can_extend; anyone else is refused server-side.
+     */
+    async budgetPause(sessionId: string, runId: string, signal?: AbortSignal): Promise<{ pause: CraftBudgetPause; canExtend: boolean }> {
+      const data = unwrap(await request({
+        method: 'GET',
+        path: '/api/v1/sessions/' + encodeURIComponent(sessionId) + '/craft/runs/' + encodeURIComponent(runId) + '/budget/pause',
+        signal,
+      }), 'budget pause view');
+      const canExtend = typeof (data as Record<string, unknown>)['can_extend'] === 'boolean'
+        ? ((data as Record<string, unknown>)['can_extend'] as boolean)
+        : false;
+      return { pause: parseCraftBudgetPause(data), canExtend };
+    },
+    /**
+     * POST /sessions/:id/craft/runs/:run_id/budget/extend — the owner/billing-
+     * admin extension that reconciles unknown dispatched effects and durably
+     * resumes a budget-paused Run. key is the idempotency key of THIS
+     * extension decision; the server re-runs the actor check itself.
+     */
+    async extendBudget(
+      sessionId: string,
+      runId: string,
+      input: { key: string; extra_calls: number; extra_credits: number },
+      signal?: AbortSignal,
+    ): Promise<void> {
+      requireCraftActionSuccess(await request({
+        method: 'POST',
+        path: '/api/v1/sessions/' + encodeURIComponent(sessionId) + '/craft/runs/' + encodeURIComponent(runId) + '/budget/extend',
+        body: { key: input.key, extra_calls: input.extra_calls, extra_credits: input.extra_credits },
+        signal,
+      }), 'budget extend');
     },
     /** POST /craft/runs/:run_id/stop — R06 verifiable stop; "stopping" is an honest phase, poll delegationStatus until terminal. */
     async stop(sessionId: string, runId: string, taskId: string, signal?: AbortSignal): Promise<CraftStopStatusView> {
