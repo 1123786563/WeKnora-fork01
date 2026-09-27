@@ -72,7 +72,11 @@ func (r *agentMarketplaceRepository) getDerivationRelease(ctx context.Context, t
 }
 
 // UpsertLicense registers (or re-registers) one deployment license term.
-// The upsert is how a license flip propagates to later submissions.
+// The upsert is how a license flip propagates to later submissions. Per the
+// entity contract, a re-register updates the FLAGS ONLY: the first
+// registrar and its created_at are audit facts and are never overwritten
+// (R5-F3). The returned row is re-read from the store — the caller renders
+// it directly, so it must be the stored truth, not the input copy.
 func (r *agentMarketplaceRepository) UpsertLicense(ctx context.Context, license *types.AgentLicenseEntity) (*types.AgentLicenseEntity, error) {
 	if license == nil || strings.TrimSpace(license.ID) == "" {
 		return nil, ErrAgentLicenseIDRequired
@@ -83,13 +87,13 @@ func (r *agentMarketplaceRepository) UpsertLicense(ctx context.Context, license 
 	err := r.db.WithContext(ctx).
 		Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "id"}},
-			DoUpdates: clause.AssignmentColumns([]string{"name", "allows_redistribution", "created_by", "updated_at"}),
+			DoUpdates: clause.AssignmentColumns([]string{"name", "allows_redistribution", "updated_at"}),
 		}).
 		Create(license).Error
 	if err != nil {
 		return nil, err
 	}
-	return license, nil
+	return r.GetLicense(ctx, license.ID)
 }
 
 // GetLicense returns the license row, nil when unregistered (the service

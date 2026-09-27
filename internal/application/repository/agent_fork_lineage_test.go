@@ -149,3 +149,41 @@ func TestUpsertLicenseRejectsMissingID(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, rows)
 }
+
+// TestUpsertLicensePreservesFirstRegistrar pins R5-F3: the entity contract
+// says re-registering updates the FLAGS ONLY ("that is how a license flip
+// propagates") — the first registrar and its created_at are audit facts and
+// must survive; and the upsert must return the STORED row, never the
+// caller's input copy (which would echo a fabricated registrar/time to the
+// API response).
+func TestUpsertLicensePreservesFirstRegistrar(t *testing.T) {
+	db := openForkLineageDB(t)
+	repo := NewAgentMarketplaceRepository(db)
+	ctx := context.Background()
+
+	_, err := repo.UpsertLicense(ctx, &types.AgentLicenseEntity{
+		ID: "Apache-2.0", Name: "Apache License 2.0", AllowsRedistribution: false, CreatedBy: "first-admin",
+	})
+	require.NoError(t, err)
+	firstRead, err := repo.GetLicense(ctx, "Apache-2.0")
+	require.NoError(t, err)
+	require.Equal(t, "first-admin", firstRead.CreatedBy)
+
+	// Re-registration by a DIFFERENT actor flips the flag — the propagation
+	// path — but must not rewrite WHO first registered the license nor WHEN.
+	second, err := repo.UpsertLicense(ctx, &types.AgentLicenseEntity{
+		ID: "Apache-2.0", Name: "Apache License 2.0", AllowsRedistribution: true, CreatedBy: "second-admin",
+	})
+	require.NoError(t, err)
+	require.True(t, second.AllowsRedistribution, "the flag flip must propagate")
+	require.Equal(t, "first-admin", second.CreatedBy,
+		"the returned row must carry the FIRST registrar, not the input copy's actor")
+
+	stored, err := repo.GetLicense(ctx, "Apache-2.0")
+	require.NoError(t, err)
+	require.Equal(t, "first-admin", stored.CreatedBy, "re-registration must not overwrite the first registrar (audit)")
+	require.Equal(t, firstRead.CreatedAt.UTC(), stored.CreatedAt.UTC(), "the first registration's created_at must survive")
+	require.False(t, stored.UpdatedAt.Before(firstRead.UpdatedAt), "updated_at must not go backwards")
+	require.True(t, stored.AllowsRedistribution, "the stored flags carry the flip")
+	require.Equal(t, *stored, *second, "the upsert's return must equal the stored row — no input-copy echo")
+}
