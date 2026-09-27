@@ -8,8 +8,10 @@ export interface OrderView {
 }
 // The commercial summary wire shape mirrors the handler projection
 // (internal/handler/commercial.go Summary): the purchased subscription or
-// the base tier. It is NOT a ledger — available/held/refund_locked are
-// served by no endpoint; resource usage comes from
+// the base tier. It is NOT a ledger — the credits breakdown
+// (balance/held/refund_locked/available + batches) is served by
+// GET /api/v1/commercial/account's benefits.credits face
+// (parseCommercialAccountCredits); resource usage comes from
 // parseCommercialUsageList (GET /api/v1/commercial/usage) instead.
 export interface CommercialSubscription {
  id:string; plan_key:string; plan_version:number;
@@ -55,6 +57,15 @@ export function isSafeCheckoutUrl(href:string):boolean {
 
 function digitString(value: unknown, field: string, label: string): string {
   if (typeof value !== 'string' || !/^\d+$/.test(value)) throw new Error('invalid ' + label + ' (' + field + ')');
+  return value;
+}
+
+// signedDigitString accepts ONE optional leading '-' (an over-committed
+// projection's negative availability is a fact, displayed as-is — #86 plan
+// Task 4: "available 可为负数如实显示"). Everything else rejects like
+// digitString.
+function signedDigitString(value: unknown, field: string, label: string): string {
+  if (typeof value !== 'string' || !/^-?\d+$/.test(value)) throw new Error('invalid ' + label + ' (' + field + ')');
   return value;
 }
 
@@ -139,6 +150,52 @@ export function parseQuoteView(value:unknown):QuoteView {
 }
 
 export interface RefundView { id:string; state:string; amount_fen:string; locked_credits:string; }
+
+// ---- #86: the credits breakdown (GET /commercial/account benefits.credits) ----
+
+// CreditBatchView is one batch line: the closed source set (monthly = the
+// plan-included monthly family incl. the purchase first-period batch; topup
+// = a payment-confirmed top-up batch), the calendar period (empty for
+// top-ups), the grant instant, the balance and the expiry — amounts as
+// digit strings (the wire-amount convention).
+export interface CreditBatchView {
+ source:'monthly'|'topup'; period:string; granted_at:string;
+ balance_micro:string; expires_at:string;
+}
+export interface CommercialAccountCredits {
+ balance_micro:string; held_micro:string; refund_locked_micro:string;
+ available_micro:string; projected_at:string; batches:CreditBatchView[];
+}
+export function parseCommercialAccountCredits(value:unknown):CommercialAccountCredits {
+ if(typeof value!=='object'||value===null||Array.isArray(value)) throw new Error('invalid account credits');
+ const v=value as Record<string,unknown>;
+ const out:CommercialAccountCredits = {
+  balance_micro: digitString(v.balance_micro,'balance_micro','account credits'),
+  held_micro: digitString(v.held_micro,'held_micro','account credits'),
+  refund_locked_micro: digitString(v.refund_locked_micro,'refund_locked_micro','account credits'),
+  available_micro: signedDigitString(v.available_micro,'available_micro','account credits'),
+  projected_at: nonEmptyString(v.projected_at,'projected_at','account credits'),
+  batches: [],
+ };
+ if(!Array.isArray(v.batches)) throw new Error('invalid account credits (batches)');
+ out.batches = v.batches.map((row):CreditBatchView=>{
+  if(typeof row!=='object'||row===null||Array.isArray(row)) throw new Error('invalid account credits (batch)');
+  const b=row as Record<string,unknown>;
+  if(b.source!=='monthly'&&b.source!=='topup') throw new Error('invalid account credits (batch source)');
+  if(typeof b.period!=='string') throw new Error('invalid account credits (batch period)');
+  return {
+   source: b.source,
+   period: b.period,
+   // granted_at is DISPLAY-ONLY advisory metadata: a backend that omits it
+   // (the cross-month lingering-batch shape, CR-86-1) degrades to '' —
+   // never a whole-breakdown parse failure over a display field.
+   granted_at: typeof b.granted_at==='string' ? b.granted_at : '',
+   balance_micro: digitString(b.balance_micro,'balance_micro','account credits batch'),
+   expires_at: nonEmptyString(b.expires_at,'expires_at','account credits batch'),
+  };
+ });
+ return out;
+}
 
 // C05 refund lifecycle vocabulary (internal/commercial/refund.go). The wire
 // contract accepts exactly these states; 'refund_unknown' and 'rejected' exist

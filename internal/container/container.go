@@ -903,15 +903,20 @@ func BuildContainer(container *dig.Container) *dig.Container {
 		h.SetPlanVersionService(s)
 	}))
 	// T08 (#80): the lazy Base-Plan benefits chain (seed → account →
-	// subscription → monthly credits → projection) behind the benefits
-	// section of GET /commercial/account, plus the commercial growth gate
-	// (ResourceQuotaGuard) wired into the member and knowledge growth
-	// paths. Registered in the SAME block, away from the pre-craft-Invoke
-	// provider block (the ordering trap documented there). The guard is
-	// fail-open BY CONSTRUCTION: quotas bite only where a projection wrote
-	// a hard_limit — an unprojected dimension (blocked-env, Lago outage,
-	// unconfigured platform) carries NULL limits and every reserve passes;
-	// a pending chain never locks a space out of its own functions.
+	// subscription → monthly credits → projection + lot sync) behind the
+	// benefits section of GET /commercial/account, plus the commercial
+	// growth gate (ResourceQuotaGuard) wired into the member and knowledge
+	// growth paths. Registered in the SAME block, away from the
+	// pre-craft-Invoke provider block (the ordering trap documented there).
+	// The guard is fail-open BY CONSTRUCTION: quotas bite only where a
+	// projection wrote a hard_limit — an unprojected dimension
+	// (blocked-env, Lago outage, unconfigured platform) carries NULL limits
+	// and every reserve passes; a pending chain never locks a space out of
+	// its own functions. NewBudgetStore (#86 Task 3) feeds the benefits
+	// service's lot-sync parameter — fx constructs it from the provided
+	// *gorm.DB (the manually-built BudgetStore inside newMobileVoiceHandler
+	// is that handler's own private instance, unrelated to this wiring).
+	must(container.Provide(repocommercial.NewBudgetStore))
 	must(container.Provide(commercialsvc.NewBenefitsService))
 	must(container.Invoke(func(
 		h *handler.CommercialHandler,

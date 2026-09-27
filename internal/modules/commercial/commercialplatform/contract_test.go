@@ -261,6 +261,7 @@ func contractGrantCommand(tenant uint64, period string, credits int64) commercia
 			Period:             period,
 			CreditsMicro:       credits,
 			ExpiresAt:          end,
+			Priority:           commercial.MonthlyWalletPriority,
 		},
 	}
 }

@@ -643,24 +643,49 @@ func (h *CommercialHandler) AccountStatus(c *gin.Context) {
 
 // benefitsWire projects the closed benefits answer onto the wire: the plan
 // (key/version/state), the feature map, the limits and the credits
-// breakdown (amounts as digit strings — the wire-amount convention). nil
-// while the chain is pending: never a fabricated plan.
+// BREAKDOWN (#86 Task 4) — balance, held, refund-locked, available
+// (= balance − held − refund_locked, negative honestly when over-committed),
+// the projection instant and the per-batch face (source monthly|topup,
+// period, grant instant, expiry). Amounts are digit strings — the
+// wire-amount convention. nil while the chain is pending: never a
+// fabricated plan.
 func benefitsWire(status commercialsvc.BenefitsStatus) gin.H {
 	if status.Plan == nil {
 		return nil
 	}
-	balance := int64(0)
+	balance, held, refundLocked := int64(0), int64(0), int64(0)
+	projectedAt := ""
 	var batches []gin.H
 	if status.Credits != nil {
 		balance = status.Credits.BalanceMicro
+		held = status.Credits.HeldMicro
+		refundLocked = status.Credits.RefundLockedMicro
+		if !status.Credits.ProjectedAt.IsZero() {
+			projectedAt = status.Credits.ProjectedAt.UTC().Format(time.RFC3339)
+		}
 		batches = make([]gin.H, 0, len(status.Credits.Batches))
 		for _, b := range status.Credits.Batches {
-			batches = append(batches, gin.H{
+			batch := gin.H{
+				"source":        b.Source,
 				"period":        b.Period,
 				"balance_micro": strconv.FormatInt(b.BalanceMicro, 10),
 				"expires_at":    b.ExpiresAt.UTC().Format(time.RFC3339),
-			})
+			}
+			if !b.GrantedAt.IsZero() {
+				batch["granted_at"] = b.GrantedAt.UTC().Format(time.RFC3339)
+			}
+			batches = append(batches, batch)
 		}
+	}
+	credits := gin.H{
+		"balance_micro":       strconv.FormatInt(balance, 10),
+		"held_micro":          strconv.FormatInt(held, 10),
+		"refund_locked_micro": strconv.FormatInt(refundLocked, 10),
+		"available_micro":     strconv.FormatInt(balance-held-refundLocked, 10),
+		"batches":             batches,
+	}
+	if projectedAt != "" {
+		credits["projected_at"] = projectedAt
 	}
 	return gin.H{
 		"plan": gin.H{
@@ -670,10 +695,7 @@ func benefitsWire(status commercialsvc.BenefitsStatus) gin.H {
 		},
 		"features": status.Plan.Features,
 		"limits":   status.Plan.Limits,
-		"credits": gin.H{
-			"balance_micro": strconv.FormatInt(balance, 10),
-			"batches":       batches,
-		},
+		"credits":  credits,
 	}
 }
 

@@ -179,14 +179,20 @@ type stubWallet struct {
 	GrantedCents int64
 	BalanceCents int64
 	ExpiresAt    string
+	CreatedAt    string
+	Priority     int
 	Metadata     map[string]string
 }
 
 func walletJSON(w stubWallet) string {
 	m, _ := json.Marshal(w.Metadata)
+	createdAt := w.CreatedAt
+	if createdAt == "" {
+		createdAt = "2099-01-01T00:00:00Z"
+	}
 	return fmt.Sprintf(
-		`{"lago_id":%q,"name":%q,"status":%q,"balance_cents":%d,"granted_credits":"%s","rate_amount":"1","expiration_at":%q,"metadata":%s,"currency":"CNY"}`,
-		w.LagoID, w.Name, w.Status, w.BalanceCents, centsString(w.GrantedCents), w.ExpiresAt, string(m))
+		`{"lago_id":%q,"name":%q,"status":%q,"balance_cents":%d,"granted_credits":"%s","rate_amount":"1","expiration_at":%q,"created_at":%q,"priority":%d,"metadata":%s,"currency":"CNY"}`,
+		w.LagoID, w.Name, w.Status, w.BalanceCents, centsString(w.GrantedCents), w.ExpiresAt, createdAt, w.Priority, string(m))
 }
 
 func centsString(cents int64) string { return commercial.FenToDecimalString(cents) }
@@ -259,6 +265,7 @@ func newWalletsStubBuilder() *walletsStub {
 				Name               string            `json:"name"`
 				GrantedCredits     string            `json:"granted_credits"`
 				ExpirationAt       string            `json:"expiration_at"`
+				Priority           int               `json:"priority"`
 				Metadata           map[string]string `json:"metadata"`
 			} `json:"wallet"`
 		}
@@ -280,6 +287,7 @@ func newWalletsStubBuilder() *walletsStub {
 				GrantedCents: granted,
 				BalanceCents: 0, // unsettled until the after-commit job (settle poll)
 				ExpiresAt:    parsed.Wallet.ExpirationAt,
+				Priority:     parsed.Wallet.Priority,
 				Metadata:     parsed.Wallet.Metadata,
 			})
 			resp = `{"wallet":` + walletJSON(s.wallets[len(s.wallets)-1]) + `}`
@@ -293,6 +301,34 @@ func newWalletsStubBuilder() *walletsStub {
 		id := strings.TrimPrefix(r.URL.Path, "/api/v1/wallets/")
 		var resp string
 		status := http.StatusOK
+		if r.Method == http.MethodPut {
+			// The priority-calibration write (the #86 rebalance): parse
+			// {"wallet":{"priority":N}}, apply onto the stored wallet.
+			blob, _ := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+			var parsed struct {
+				Wallet struct {
+					Priority int `json:"priority"`
+				} `json:"wallet"`
+			}
+			_ = json.Unmarshal(blob, &parsed)
+			s.mu.Lock()
+			var found *stubWallet
+			for i := range s.wallets {
+				if s.wallets[i].LagoID == id {
+					found = &s.wallets[i]
+					break
+				}
+			}
+			if found == nil {
+				status, resp = http.StatusNotFound, `{}`
+			} else {
+				found.Priority = parsed.Wallet.Priority
+				resp = `{"wallet":` + walletJSON(*found) + `}`
+			}
+			s.mu.Unlock()
+			respond(w, r, &s.requests, &s.mu, status, resp, blob)
+			return
+		}
 		s.mu.Lock()
 		var found *stubWallet
 		for i := range s.wallets {
@@ -476,6 +512,7 @@ func grantCommand(credits int64) commercial.Command {
 			Period:             period,
 			CreditsMicro:       credits,
 			ExpiresAt:          end,
+			Priority:           commercial.MonthlyWalletPriority,
 		},
 	}
 }
@@ -949,6 +986,229 @@ func TestLagoBenefitsSnapshotIncludesPurchaseBatch(t *testing.T) {
 	}
 	if b.BalanceMicro != commercial.CentsToMicro(100)+commercial.CentsToMicro(990) {
 		t.Fatalf("balance must carry both wallets, got %d", b.BalanceMicro)
+	}
+}
+
+// TestLagoGrantWalletCarriesEncodedPriority (#86 Task 2): the wallet create
+// POST body must carry payload.Priority — the consumption-order class is
+// explicitly encoded at creation, never left to the provider default.
+func TestLagoGrantWalletCarriesEncodedPriority(t *testing.T) {
+	stub := newWalletsStub(t)
+	cmd := grantCommand(9_900_000)
+	cmd.Payload = commercial.GrantIncludedCreditsPayload{
+		TenantID:           subTenant,
+		ExternalCustomerID: commercial.ExternalCustomerID(subTenant),
+		Period:             "2099-01",
+		CreditsMicro:       9_900_000,
+		ExpiresAt:          time.Date(2099, 2, 1, 0, 0, 0, 0, time.UTC),
+		Priority:           3, // a yielding month's monthly batch
+	}
+	if _, err := subAdapter(stub.url()).SubmitCommand(context.Background(), cmd); err != nil {
+		t.Fatalf("grant: %v", err)
+	}
+	var body string
+	for _, r := range stub.recorded() {
+		if r.Method == http.MethodPost && r.Path == "/api/v1/wallets" {
+			body = r.Body
+		}
+	}
+	if !strings.Contains(body, `"priority":3`) {
+		t.Fatalf("wallet create body must carry encoded priority, got %s", body)
+	}
+}
+
+// TestLagoRebalancePutsMixedFamiliesInExpiryOrder (#86 Task 2, the r1-review
+// High counterexample on the wire): three wallets stored at their
+// creation-time initials (aging top-up A=2, fresh top-up B=2, monthly M=3)
+// — the static encoding's consumption order A→B→M is WRONG (B must be
+// consumed after M). One rebalance command must PUT exactly three wallets to
+// A=1, M=2, B=3 (the true expiry order).
+func TestLagoRebalancePutsMixedFamiliesInExpiryOrder(t *testing.T) {
+	stub := newWalletsStub(t)
+	ext := commercial.ExternalCustomerID(subTenant)
+	stub.mu.Lock()
+	stub.wallets = []stubWallet{
+		{ // A — aging top-up (expires before the monthly period end)
+			LagoID: "w-a", Customer: ext,
+			Name: ext + "-topup-a", Status: "active",
+			GrantedCents: 500, BalanceCents: 500,
+			ExpiresAt: "2099-01-15T00:00:00Z", CreatedAt: "2098-01-15T00:00:00Z",
+			Priority: commercial.TopUpWalletPriority,
+			Metadata: map[string]string{commercial.WalletMetaTenant: ext},
+		},
+		{ // M — monthly (expires at the period end)
+			LagoID: "w-m", Customer: ext,
+			Name: commercial.MonthlyWalletName(subTenant, "2099-01"), Status: "active",
+			GrantedCents: 100, BalanceCents: 100,
+			ExpiresAt: "2099-02-01T00:00:00Z", CreatedAt: "2099-01-01T00:00:00Z",
+			Priority: commercial.TopUpWalletPriority + 1,
+			Metadata: map[string]string{
+				commercial.WalletMetaTenant: ext,
+				commercial.WalletMetaPeriod: "2099-01",
+			},
+		},
+		{ // B — fresh top-up (expires after the period end)
+			LagoID: "w-b", Customer: ext,
+			Name: ext + "-topup-b", Status: "active",
+			GrantedCents: 500, BalanceCents: 500,
+			ExpiresAt: "2099-07-10T00:00:00Z", CreatedAt: "2099-01-10T00:00:00Z",
+			Priority: commercial.TopUpWalletPriority,
+			Metadata: map[string]string{commercial.WalletMetaTenant: ext},
+		},
+	}
+	stub.mu.Unlock()
+	if _, err := subAdapter(stub.url()).SubmitCommand(context.Background(),
+		commercial.Command{
+			Kind:  commercial.CommandKindRebalanceCreditsOrder,
+			Key:   commercial.RebalanceCreditsOrderCommandKey(commercial.ExternalCustomerID(subTenant)),
+			Actor: "test", Reason: "refresh_calibration",
+			Payload: commercial.RebalanceCreditsOrderPayload{
+				TenantID: subTenant, ExternalCustomerID: commercial.ExternalCustomerID(subTenant),
+			},
+		}); err != nil {
+		t.Fatalf("rebalance: %v", err)
+	}
+	puts := map[string]int{} // wallet lago_id → the PUT body's priority
+	for _, r := range stub.recorded() {
+		if r.Method == http.MethodPut && strings.HasPrefix(r.Path, "/api/v1/wallets/") {
+			var p struct {
+				Wallet struct {
+					Priority int `json:"priority"`
+				} `json:"wallet"`
+			}
+			if err := json.Unmarshal([]byte(r.Body), &p); err != nil {
+				t.Fatalf("PUT body malformed: %v (%s)", err, r.Body)
+			}
+			puts[strings.TrimPrefix(r.Path, "/api/v1/wallets/")] = p.Wallet.Priority
+		}
+	}
+	if len(puts) != 3 || puts["w-a"] != 1 || puts["w-m"] != 2 || puts["w-b"] != 3 {
+		t.Fatalf("rebalance PUTs = %+v, want w-a=1 w-m=2 w-b=3", puts)
+	}
+	// The stub's stored priorities converged too (the authority state).
+	stub.mu.Lock()
+	defer stub.mu.Unlock()
+	for _, w := range stub.wallets {
+		want := map[string]int{"w-a": 1, "w-m": 2, "w-b": 3}[w.LagoID]
+		if w.Priority != want {
+			t.Fatalf("stored priority of %s = %d, want %d", w.LagoID, w.Priority, want)
+		}
+	}
+}
+
+// TestLagoRebalanceSkipsAlignedWallets (#86 Task 2): priorities already
+// equal to the WalletRank ranks answer ZERO PUTs — the calibration is an
+// idempotent no-op when converged (no gratuitous writes on the hot refresh
+// path).
+func TestLagoRebalanceSkipsAlignedWallets(t *testing.T) {
+	stub := newWalletsStub(t)
+	ext := commercial.ExternalCustomerID(subTenant)
+	stub.mu.Lock()
+	stub.wallets = []stubWallet{
+		{
+			LagoID: "w-x", Customer: ext,
+			Name: ext + "-topup-x", Status: "active",
+			GrantedCents: 500, BalanceCents: 500,
+			ExpiresAt: "2099-01-15T00:00:00Z", CreatedAt: "2098-01-15T00:00:00Z",
+			Priority: 1,
+			Metadata: map[string]string{commercial.WalletMetaTenant: ext},
+		},
+		{
+			LagoID: "w-y", Customer: ext,
+			Name: commercial.MonthlyWalletName(subTenant, "2099-01"), Status: "active",
+			GrantedCents: 100, BalanceCents: 100,
+			ExpiresAt: "2099-02-01T00:00:00Z", CreatedAt: "2099-01-01T00:00:00Z",
+			Priority: 2,
+			Metadata: map[string]string{
+				commercial.WalletMetaTenant: ext,
+				commercial.WalletMetaPeriod: "2099-01",
+			},
+		},
+	}
+	stub.mu.Unlock()
+	if _, err := subAdapter(stub.url()).SubmitCommand(context.Background(),
+		commercial.Command{
+			Kind:  commercial.CommandKindRebalanceCreditsOrder,
+			Key:   commercial.RebalanceCreditsOrderCommandKey(commercial.ExternalCustomerID(subTenant)),
+			Actor: "test", Reason: "refresh_calibration",
+			Payload: commercial.RebalanceCreditsOrderPayload{
+				TenantID: subTenant, ExternalCustomerID: commercial.ExternalCustomerID(subTenant),
+			},
+		}); err != nil {
+		t.Fatalf("rebalance: %v", err)
+	}
+	for _, r := range stub.recorded() {
+		if r.Method == http.MethodPut {
+			t.Fatalf("an aligned wallet set must answer ZERO PUTs, saw %s %s", r.Method, r.Path)
+		}
+	}
+}
+
+// TestLagoBenefitsSnapshotListsTopUpBatch (#86 Task 1): an active wallet
+// carrying NO weknora_period metadata but THIS tenant's weknora_tenant key
+// (the #85 top-up batch shape) must join Batches with Source=topup and
+// GrantedAt = the wallet's created_at; the monthly batch answers
+// Source=monthly. The balance sum still carries both (existing behavior).
+func TestLagoBenefitsSnapshotListsTopUpBatch(t *testing.T) {
+	stub := newCombinedStub(t)
+	stub.wallets.entitlementCustomer = commercial.ExternalCustomerID(subTenant)
+	stub.subs.preloaded = []stubSubscription{{
+		ExternalID:       commercial.ExternalSubscriptionID(subTenant),
+		ExternalCustomer: commercial.ExternalCustomerID(subTenant),
+		PlanCode:         subPlanCode,
+		Status:           "active",
+	}}
+	stub.wallets.mu.Lock()
+	stub.wallets.wallets = []stubWallet{
+		{ // top-up shape: no period key, this tenant's tenant key
+			LagoID: "w-topup", Customer: commercial.ExternalCustomerID(subTenant),
+			Name: commercial.ExternalCustomerID(subTenant) + "-topup-ord1", Status: "active",
+			GrantedCents: 5000, BalanceCents: 5000,
+			ExpiresAt: "2100-01-31T00:00:00Z", CreatedAt: "2099-01-10T00:00:00Z",
+			Metadata: map[string]string{commercial.WalletMetaTenant: commercial.ExternalCustomerID(subTenant)},
+		},
+		{ // monthly shape (the established seed convention)
+			LagoID: "w-monthly", Customer: commercial.ExternalCustomerID(subTenant),
+			Name: commercial.MonthlyWalletName(subTenant, "2099-01"), Status: "active",
+			GrantedCents: 990, BalanceCents: 990, ExpiresAt: "2099-02-01T00:00:00Z",
+			CreatedAt: "2099-01-01T00:00:00Z",
+			Metadata: map[string]string{
+				commercial.WalletMetaTenant: commercial.ExternalCustomerID(subTenant),
+				commercial.WalletMetaPeriod: "2099-01",
+			},
+		},
+	}
+	stub.wallets.mu.Unlock()
+	snap, err := subAdapter(stub.url()).ReadSnapshot(context.Background(), commercial.SnapshotQuery{
+		Kind: commercial.SnapshotKindBenefits, TenantID: subTenant})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sawTopUp, sawMonthly bool
+	for _, b := range snap.Benefits.Batches {
+		switch b.Source {
+		case commercial.BatchSourceTopUp:
+			sawTopUp = true
+			if b.BalanceMicro != commercial.CentsToMicro(5000) {
+				t.Fatalf("topup balance: %d", b.BalanceMicro)
+			}
+			if !b.GrantedAt.Equal(time.Date(2099, 1, 10, 0, 0, 0, 0, time.UTC)) {
+				t.Fatalf("topup granted_at: %v", b.GrantedAt)
+			}
+			if b.Period != "" {
+				t.Fatalf("topup batch carries no calendar period, got %q", b.Period)
+			}
+		case commercial.BatchSourceMonthly:
+			sawMonthly = true
+		default:
+			t.Fatalf("unknown source %q", b.Source)
+		}
+	}
+	if !sawTopUp || !sawMonthly {
+		t.Fatalf("batches incomplete: topup=%v monthly=%v", sawTopUp, sawMonthly)
+	}
+	if snap.Benefits.BalanceMicro != commercial.CentsToMicro(5990) { // both count (existing behavior)
+		t.Fatalf("balance = %d", snap.Benefits.BalanceMicro)
 	}
 }
 

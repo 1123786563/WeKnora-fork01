@@ -1,10 +1,12 @@
 import {
+  parseCommercialAccountCredits,
   parseCommercialSummary,
   parseCommercialUsageList,
   parseOrderView,
   parsePurchaseView,
   parseQuoteView,
   parseRefundView,
+  type CommercialAccountCredits,
   type CommercialSummary,
   type CommercialUsageRow,
   type CreateOrderInput,
@@ -96,6 +98,24 @@ export function createCommercialApi(request: (input: ClientRequest) => Promise<u
         body: { decision, expected_version: expectedVersion },
         signal,
       })));
+    },
+    // #86: the credits breakdown — balance / held / refund-locked /
+    // available / projected-at plus the per-batch face (monthly|topup).
+    // GET /api/v1/commercial/account; a benefits.credits section absent
+    // (the chain is pending) answers null — the card hides, never errors.
+    async account(signal?: AbortSignal): Promise<CommercialAccountCredits | null> {
+      const data = unwrap(await request({ method: 'GET', path: '/api/v1/commercial/account', signal }));
+      if (typeof data !== 'object' || data === null || Array.isArray(data)) {
+        throw new ApiError({ code: 'INVALID_RESPONSE', message: 'Expected an account response object' });
+      }
+      const benefits = (data as Record<string, unknown>).benefits;
+      if (benefits === undefined || benefits === null) return null; // pending: no fabricated credits
+      if (typeof benefits !== 'object' || Array.isArray(benefits)) {
+        throw new ApiError({ code: 'INVALID_RESPONSE', message: 'Expected a benefits object' });
+      }
+      const credits = (benefits as Record<string, unknown>).credits;
+      if (credits === undefined || credits === null) return null;
+      return parseCommercialAccountCredits(credits);
     },
   };
 }

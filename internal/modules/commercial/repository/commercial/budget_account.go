@@ -58,6 +58,24 @@ func (s *BudgetStore) tryApplyExternalBalance(ctx context.Context, tenantID uint
 	return false, nil
 }
 
+// AccountHolds reads the tenant's committed holds face — the in-flight
+// reservation holds and refund-locked credits — for the balance breakdown
+// (#86 Task 4). A missing account row answers (0, 0, nil): a space that
+// never reserved answers an honest zero, never an error.
+func (s *BudgetStore) AccountHolds(ctx context.Context, tenantID uint64) (held, refundLocked int64, err error) {
+	if tenantID == 0 {
+		return 0, 0, ErrInvalidBudgetRequest
+	}
+	var row BudgetAccountRow
+	if err := s.db.WithContext(ctx).Where("tenant_id = ?", tenantID).First(&row).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return 0, 0, nil
+		}
+		return 0, 0, err
+	}
+	return row.HeldMicro, row.RefundLockedMicro, nil
+}
+
 // budgetAccountDenial re-reads the account after a failed guard and turns
 // the failure into either a hard rejection (expired verification, genuine
 // insufficiency) or a retry sentinel (the guard would pass on fresh data —

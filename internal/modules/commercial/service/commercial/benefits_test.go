@@ -61,7 +61,7 @@ func newBenefitsService(t *testing.T, platform domain.CommercialPlatform) (*Bene
 	if err != nil {
 		t.Fatal(err)
 	}
-	svc, err := NewBenefitsService(db, accounts, plans, platform)
+	svc, err := NewBenefitsService(db, accounts, plans, platform, repocommercial.NewBudgetStore(db))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,6 +202,7 @@ func TestEnsureBenefitsPurchaseBatchJoinsCreditsView(t *testing.T) {
 			TenantID: tenant, ExternalCustomerID: domain.ExternalCustomerID(tenant),
 			Period: period, CreditsMicro: purchaseMicro, ExpiresAt: end,
 			WalletName: domain.PurchaseWalletName(tenant, period),
+			Priority:   domain.MonthlyWalletPriority,
 		},
 	}); err != nil {
 		t.Fatalf("purchase grant: %v", err)
@@ -254,6 +255,7 @@ func TestRefreshProjectionUnionsSnapshotOnlyPurchasePeriod(t *testing.T) {
 			TenantID: tenant, ExternalCustomerID: domain.ExternalCustomerID(tenant),
 			Period: period, CreditsMicro: purchaseMicro, ExpiresAt: end,
 			WalletName: domain.PurchaseWalletName(tenant, period),
+			Priority:   domain.MonthlyWalletPriority,
 		},
 	}); err != nil {
 		t.Fatalf("purchase grant: %v", err)
@@ -326,7 +328,7 @@ func TestBenefitsFeaturesPurchaseFaceORsPurchasePlanDefinition(t *testing.T) {
 		Payload: domain.CreatePurchaseSubscriptionPayload{
 			TenantID: tenant, ExternalCustomerID: domain.ExternalCustomerID(tenant),
 			ExternalPurchaseSubscriptionID: domain.ExternalPurchaseSubscriptionID(tenant),
-			PlanCode: domain.DeterministicPlanCode("pro", 1), AmountFen: 99_00, Currency: domain.CurrencyCNY,
+			PlanCode:                       domain.DeterministicPlanCode("pro", 1), AmountFen: 99_00, Currency: domain.CurrencyCNY,
 		},
 	}); err != nil {
 		t.Fatalf("purchase create: %v", err)
@@ -338,8 +340,8 @@ func TestBenefitsFeaturesPurchaseFaceORsPurchasePlanDefinition(t *testing.T) {
 		Payload: domain.SettlePurchasePaymentPayload{
 			TenantID: tenant, ExternalCustomerID: domain.ExternalCustomerID(tenant),
 			ExternalPurchaseSubscriptionID: domain.ExternalPurchaseSubscriptionID(tenant),
-			PlanCode: domain.DeterministicPlanCode("pro", 1),
-			ChannelTransaction: "txn-or-1", AmountFen: 99_00, Currency: domain.CurrencyCNY,
+			PlanCode:                       domain.DeterministicPlanCode("pro", 1),
+			ChannelTransaction:             "txn-or-1", AmountFen: 99_00, Currency: domain.CurrencyCNY,
 		},
 	}); err != nil {
 		t.Fatalf("settle: %v", err)
@@ -479,6 +481,250 @@ func TestMonthlyGrantNewPeriod(t *testing.T) {
 	}
 	if n := broker.batchCount(benefitsTenant); n != 2 {
 		t.Fatalf("registry must keep both periods, got %d", n)
+	}
+}
+
+// walletPriorityByName answers the observable priority of one wallet (nil
+// when absent) — the #86 consumption-order assertion helper.
+func walletPriorityByName(t *testing.T, fake *commercialplatform.FakeAdapter, name string) (int, bool) {
+	t.Helper()
+	for _, w := range fake.Wallets() {
+		if w.Name == name {
+			return w.Priority, true
+		}
+	}
+	return 0, false
+}
+
+// TestRefreshSyncsLotsFromSnapshot (#86 Task 3): one benefits refresh
+// projects the authority batch read-back onto commercial_budget_lots — both
+// the monthly-family and the top-up batch land as lot rows with the correct
+// balances (the allocation order's comparison keys ride the same rows).
+func TestRefreshSyncsLotsFromSnapshot(t *testing.T) {
+	fake := commercialplatform.NewFakeAdapter()
+	fake.SetBasePlanFeatures(map[string]bool{"api_access": true})
+	svc, _, db := newBenefitsService(t, fake)
+	if err := db.AutoMigrate(&repocommercial.BudgetLotRow{}); err != nil {
+		t.Fatal(err)
+	}
+	svc.SetNow(septemberClock())
+	tenant := uint64(507)
+	ctx := context.Background()
+
+	if _, err := svc.EnsureBenefits(ctx, tenant, "Lot Space", "user-1"); err != nil {
+		t.Fatal(err)
+	}
+	// A top-up batch beside the monthly one.
+	ext := domain.ExternalCustomerID(tenant)
+	fake.SeedTopUpWallet(ext+"-topup-x", ext, 5_000,
+		time.Date(2027, 3, 10, 0, 0, 0, 0, time.UTC),
+		time.Date(2026, 9, 16, 0, 0, 0, 0, time.UTC), domain.TopUpWalletPriority)
+	if _, err := svc.EnsureBenefits(ctx, tenant, "Lot Space", "user-1"); err != nil {
+		t.Fatal(err)
+	}
+	type lotRow struct {
+		LotID          string
+		RemainingMicro int64
+	}
+	var lots []lotRow
+	if err := db.Raw(`SELECT lot_id, remaining_micro FROM commercial_budget_lots WHERE tenant_id = ? ORDER BY lot_id`, tenant).Scan(&lots).Error; err != nil {
+		t.Fatal(err)
+	}
+	byID := map[string]int64{}
+	for _, l := range lots {
+		byID[l.LotID] = l.RemainingMicro
+	}
+	monthly := domain.MonthlyWalletName(tenant, "2026-09")
+	if got, ok := byID[monthly]; !ok || got != BasePlanSeedIncludedCreditsMicro {
+		t.Fatalf("monthly lot row missing/wrong: %+v", byID)
+	}
+	if got, ok := byID[ext+"-topup-x"]; !ok || got != domain.CentsToMicro(5_000) {
+		t.Fatalf("topup lot row missing/wrong: %+v", byID)
+	}
+	if len(byID) != 2 {
+		t.Fatalf("exactly two lot rows expected, got %+v", byID)
+	}
+}
+
+// TestBreakdownHoldsSurviveMissingAccountRow (#86 Task 4): a tenant with NO
+// budget account row answers held=0, refund_locked=0 and available=balance
+// — an honest zero face, never an error.
+func TestBreakdownHoldsSurviveMissingAccountRow(t *testing.T) {
+	fake := commercialplatform.NewFakeAdapter()
+	fake.SetBasePlanFeatures(map[string]bool{"api_access": true})
+	svc, _, _ := newBenefitsService(t, fake)
+	svc.SetNow(septemberClock())
+	tenant := uint64(508)
+	status, err := svc.EnsureBenefits(context.Background(), tenant, "Holds Space", "user-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Credits == nil {
+		t.Fatal("credits view must answer")
+	}
+	if status.Credits.HeldMicro != 0 || status.Credits.RefundLockedMicro != 0 {
+		t.Fatalf("no budget row must answer zero holds, got held=%d locked=%d",
+			status.Credits.HeldMicro, status.Credits.RefundLockedMicro)
+	}
+	if status.Credits.BalanceMicro != BasePlanSeedIncludedCreditsMicro {
+		t.Fatalf("balance = %d", status.Credits.BalanceMicro)
+	}
+	if status.Credits.ProjectedAt.IsZero() {
+		t.Fatal("projected_at must answer the projection instant")
+	}
+}
+
+// TestBreakdownCrossMonthBatchesCarryGrantedAt (OCR r1, CR-86-1): after a
+// month rolls over the registry KEEPS the expired month's batch row while
+// the authority snapshot no longer lists the terminated wallet — the view
+// line's GrantedAt must fall back to the REGISTRY row's grant instant
+// (created_at), never the zero time (the wire omits granted_at for a zero
+// instant and the frontend contract then rejects the whole breakdown).
+func TestBreakdownCrossMonthBatchesCarryGrantedAt(t *testing.T) {
+	fake := commercialplatform.NewFakeAdapter()
+	fake.SetBasePlanFeatures(map[string]bool{"api_access": true})
+	svc, _, _ := newBenefitsService(t, fake)
+	ctx := context.Background()
+	tenant := uint64(509)
+	// September: the registry row for 2026-09 is minted (grant completed).
+	clock := time.Date(2026, 9, 15, 10, 0, 0, 0, time.UTC)
+	svc.SetNow(func() time.Time { return clock })
+	if _, err := svc.EnsureBenefits(ctx, tenant, "CrossMonth Space", "user-1"); err != nil {
+		t.Fatal(err)
+	}
+	// The registry's grant instant for the September row.
+	row, err := svc.store.GetBatch(ctx, tenant, "2026-09")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row.CreatedAt.IsZero() {
+		t.Fatal("test setup: the registry row must carry a grant instant")
+	}
+	// October: the September wallet is TERMINATED on the authority (absent
+	// from the snapshot — the post-lazy-termination steady state), yet the
+	// registry row lingers. The September view line must still carry a
+	// NON-ZERO GrantedAt (the registry's grant instant).
+	clock = time.Date(2026, 10, 5, 10, 0, 0, 0, time.UTC)
+	fake.TerminateWallet(domain.MonthlyWalletName(tenant, "2026-09"))
+	status, err := svc.EnsureBenefits(ctx, tenant, "CrossMonth Space", "user-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Credits == nil {
+		t.Fatal("credits view must answer")
+	}
+	sawSeptember := false
+	for _, b := range status.Credits.Batches {
+		if b.Period != "2026-09" {
+			continue
+		}
+		sawSeptember = true
+		if b.GrantedAt.IsZero() {
+			t.Fatal("CR-86-1: the expired month's lingering batch must carry the registry grant instant, got the zero time")
+		}
+		if !b.GrantedAt.Equal(row.CreatedAt) {
+			t.Fatalf("September GrantedAt = %v, want the registry row's CreatedAt %v (the snapshot no longer contributes one)", b.GrantedAt, row.CreatedAt)
+		}
+		if b.BalanceMicro != 0 {
+			t.Fatalf("the expired September batch must surface zero (no rollover), got %d", b.BalanceMicro)
+		}
+	}
+	if !sawSeptember {
+		t.Fatal("the September registry batch must stay in the view (expired/zero, not dropped)")
+	}
+}
+
+// TestMonthlyGrantEncodesYieldPriority (#86 Task 2): a top-up batch expiring
+// BEFORE this month's end pushes the monthly wallet's creation priority to
+// TopUpWalletPriority+1 (it must be consumed after the aging top-up); with
+// no aging batch the next month's wallet keeps class 1. This drives
+// EnsureMonthlyCredits DIRECTLY — the grant-time initial; the refresh-chain
+// rebalance that follows a full EnsureBenefits would immediately converge
+// the same set to absolute ranks (TestRefreshRebalancesMixedFamilies).
+func TestMonthlyGrantEncodesYieldPriority(t *testing.T) {
+	fake := commercialplatform.NewFakeAdapter()
+	fake.SetBasePlanFeatures(map[string]bool{"api_access": true})
+	svc, _, _ := newBenefitsService(t, fake)
+	clock := time.Date(2026, 9, 15, 10, 0, 0, 0, time.UTC)
+	svc.SetNow(func() time.Time { return clock })
+	tenant := uint64(505)
+	ext := domain.ExternalCustomerID(tenant)
+
+	// An aging top-up: expires mid-month, strictly before 2026-09-30's end.
+	fake.SeedTopUpWallet(ext+"-topup-x", ext, 5_000,
+		time.Date(2026, 9, 25, 0, 0, 0, 0, time.UTC), clock, domain.TopUpWalletPriority)
+
+	if _, err := svc.EnsureMonthlyCredits(context.Background(), tenant); err != nil {
+		t.Fatal(err)
+	}
+	p, ok := walletPriorityByName(t, fake, domain.MonthlyWalletName(tenant, "2026-09"))
+	if !ok {
+		t.Fatal("the September monthly wallet must exist")
+	}
+	if p != domain.TopUpWalletPriority+1 {
+		t.Fatalf("September monthly priority = %d, want %d (yielding to the aging top-up)", p, domain.TopUpWalletPriority+1)
+	}
+
+	// October: the aging batch is gone (expired) — no top-up expires before
+	// the new period end, so the new monthly wallet keeps class 1.
+	clock = time.Date(2026, 10, 5, 10, 0, 0, 0, time.UTC)
+	if _, err := svc.EnsureMonthlyCredits(context.Background(), tenant); err != nil {
+		t.Fatal(err)
+	}
+	p2, ok := walletPriorityByName(t, fake, domain.MonthlyWalletName(tenant, "2026-10"))
+	if !ok {
+		t.Fatal("the October monthly wallet must exist")
+	}
+	if p2 != domain.MonthlyWalletPriority {
+		t.Fatalf("October monthly priority = %d, want %d (no aging top-up)", p2, domain.MonthlyWalletPriority)
+	}
+}
+
+// TestRefreshRebalancesMixedFamilies (#86 Task 2, the r1-review High
+// counterexample end-to-end): aging top-up A + monthly M + fresh top-up B
+// coexist at their creation-time initials (A=2, B=2, M=3 — statically
+// unorderable); one benefits refresh submits the authority rebalance and
+// the fake's priorities converge to the true expiry order A=1, M=2, B=3.
+func TestRefreshRebalancesMixedFamilies(t *testing.T) {
+	fake := commercialplatform.NewFakeAdapter()
+	fake.SetBasePlanFeatures(map[string]bool{"api_access": true})
+	svc, _, _ := newBenefitsService(t, fake)
+	clock := time.Date(2026, 9, 15, 10, 0, 0, 0, time.UTC)
+	svc.SetNow(func() time.Time { return clock })
+	tenant := uint64(506)
+	ext := domain.ExternalCustomerID(tenant)
+
+	// A: aging top-up (expires 2026-09-25, before the period end).
+	fake.SeedTopUpWallet(ext+"-topup-a", ext, 5_000,
+		time.Date(2026, 9, 25, 0, 0, 0, 0, time.UTC),
+		time.Date(2025, 9, 15, 0, 0, 0, 0, time.UTC), domain.TopUpWalletPriority)
+	// The first ensure mints the monthly wallet at the YIELDING initial (3).
+	if _, err := svc.EnsureBenefits(context.Background(), tenant, "Mixed Space", "user-1"); err != nil {
+		t.Fatal(err)
+	}
+	// B: fresh top-up (expires 2027-03, after the period end).
+	fake.SeedTopUpWallet(ext+"-topup-b", ext, 5_000,
+		time.Date(2027, 3, 10, 0, 0, 0, 0, time.UTC),
+		time.Date(2026, 9, 16, 0, 0, 0, 0, time.UTC), domain.TopUpWalletPriority)
+
+	// The refresh chain now sees all three families and submits the
+	// rebalance — the fake's priorities must converge to the expiry order.
+	if _, err := svc.EnsureBenefits(context.Background(), tenant, "Mixed Space", "user-1"); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]int{
+		ext + "-topup-a": 1,
+		domain.MonthlyWalletName(tenant, "2026-09"): 2,
+		ext + "-topup-b": 3,
+	}
+	for name, rank := range want {
+		p, ok := walletPriorityByName(t, fake, name)
+		if !ok {
+			t.Fatalf("wallet %s must exist", name)
+		}
+		if p != rank {
+			t.Fatalf("priority of %s = %d, want %d (true expiry order)", name, p, rank)
+		}
 	}
 }
 
@@ -681,7 +927,7 @@ func TestSeedBasePlanIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	opSvc, err := NewBenefitsService(db, opAccounts, opPlans, opFake)
+	opSvc, err := NewBenefitsService(db, opAccounts, opPlans, opFake, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

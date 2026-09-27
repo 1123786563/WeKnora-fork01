@@ -149,6 +149,7 @@ func TestFakeGrantPurchaseWalletNoMonthlyCollision(t *testing.T) { // (d)
 		TenantID: tenant, ExternalCustomerID: commercial.ExternalCustomerID(tenant),
 		Period: period, CreditsMicro: 100_00_00, // 1.00 credit in micro
 		ExpiresAt: periodEndOrFatal(t, period),
+		Priority: commercial.MonthlyWalletPriority,
 	}
 	purchase := monthly
 	purchase.WalletName = commercial.PurchaseWalletName(tenant, period)
