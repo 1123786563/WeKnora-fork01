@@ -171,7 +171,11 @@ func TestCraftT07EvidenceReadNeverReconstructs(t *testing.T) {
 		Where("version_id = ?", pinnedID).
 		Update("evidence_json", `{"version_id":"`+pinnedID+`","run_id":"run-1","sources":[]}`).Error)
 	_, err = store.VersionEvidence(ctx, scope, pinnedID)
-	require.ErrorIs(t, err, craft.ErrConflict)
+	// T08's round-3 OCR ruling replaced the ErrConflict mapping with the
+	// ErrCorruptEvidence sentinel (digest mismatch is server-side corruption,
+	// 500-class, not a client-retryable conflict) — the tamper refusal still
+	// stands, under the reviewed contract.
+	require.ErrorIs(t, err, craft.ErrCorruptEvidence)
 
 	// The read carries the same scope ACL as the version itself: a foreign
 	// tenant or session sees nothing, a foreign owner is forbidden.
