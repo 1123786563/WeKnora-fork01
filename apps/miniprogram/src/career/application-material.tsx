@@ -54,6 +54,9 @@ export default function ApplicationMaterialPage() {
   const [note, setNote] = useState('');
   const [submissions, setSubmissions] = useState<SubmissionReceipt[]>();
   const [subErrCode, setSubErrCode] = useState<string>();
+  // OCR r3 ocr3-029/030：未对账封锁把新写入挡在门外时，显式放弃是唯一解除出口；
+  // setAbandonNotice 同时触发重渲染让 pending* 重读。
+  const [abandonNotice, setAbandonNotice] = useState('');
 
   const pendingApplication = career.pendingApplication();
   const pendingMaterial = career.pendingMaterialWrite();
@@ -76,7 +79,9 @@ export default function ApplicationMaterialPage() {
     {pendingApplication && <>
       <Notice tone='warning'>有一次结果未知的申请创建（{pendingApplication.requestId.slice(0, 10)}…）。请先用原请求对账，不会重复创建。</Notice>
       <Action secondary loading={recoverAppBusy.busy} onClick={() => void recoverAppBusy.run(async () => { setApplication(await career.reconcilePendingApplication()); })}>用原请求对账申请</Action>
-      {recoverAppBusy.error && <Notice tone='danger'>{recoverAppBusy.error} 对账被拒时说明该请求不属于当前空间或不存在；可稍后再试，不会自动重发。</Notice>}
+      {recoverAppBusy.error && <Notice tone='danger'>{recoverAppBusy.error} 对账被拒时说明该请求不属于当前空间或不存在；可稍后再试，不会自动重发。</Notice>
+      }
+      <Action secondary onClick={() => { career.abandonPendingApplication(); setAbandonNotice('已放弃本次申请恢复：创建入口恢复可用。若原申请实际已生效，以服务端记录为准——重新创建会收到「此岗位与该批次已存在申请」提示。'); }}>放弃本次申请恢复</Action>
     </>}
     {pendingMaterial && <>
       <Notice tone='warning'>有一次结果未知的材料写入（{pendingMaterial.requestId.slice(0, 10)}…）。</Notice>
@@ -91,8 +96,12 @@ export default function ApplicationMaterialPage() {
         setConfirmedVersion(undefined);
         setExports(view.versionCount > 0 ? (await career.listMaterialExports(receipt.materialId)).exports : undefined);
       })}>用原请求对账材料</Action>
-      {recoverMatBusy.error && <Notice tone='danger'>{recoverMatBusy.error} 对账被拒时说明该请求不属于当前空间或不存在；intent 保留，可稍后再试。</Notice>}
+      {recoverMatBusy.error && <Notice tone='danger'>{recoverMatBusy.error} 对账被拒时说明该请求不属于当前空间或不存在；intent 保留，可稍后再试。</Notice>
+      }
+      <Action secondary onClick={() => { career.abandonPendingMaterialWrite(); setAbandonNotice('已放弃本次材料写入恢复：编辑与确认入口恢复可用。若原写入实际已生效，重新读取材料即可见最新版本。'); }}>放弃本次材料恢复</Action>
     </>}
+    {abandonNotice && <Notice tone='info'>{abandonNotice}</Notice>}
+
     {pendingSubmission && <>
       <Notice tone='warning'>有一次结果未知的投递确认（{pendingSubmission.requestId.slice(0, 10)}…）。请先对账，确认前不会重复记录。</Notice>
       <Action secondary loading={recoverSubBusy.busy} onClick={() => void recoverSubBusy.run(async () => {
@@ -100,7 +109,9 @@ export default function ApplicationMaterialPage() {
         if (application) await loadSubmissions(application.applicationId);
         void receipt;
       })}>用原请求对账投递</Action>
-      {recoverSubBusy.error && <Notice tone='danger'>{recoverSubBusy.error} 对账被拒时说明该请求不属于当前空间或不存在；intent 保留，可稍后再试。</Notice>}
+      {recoverSubBusy.error && <Notice tone='danger'>{recoverSubBusy.error} 对账被拒时说明该请求不属于当前空间或不存在；intent 保留，可稍后再试。</Notice>
+      }
+      <Action secondary onClick={() => { career.abandonPendingSubmission(); setAbandonNotice('已放弃本次投递确认恢复：记录入口恢复可用。若原确认实际已生效，读取投递记录即可见（一申请一记录，重复记录会被服务端拒绝）。'); }}>放弃本次投递恢复</Action>
     </>}
 
     <DataBoundary state={desk}>{view => view && <Card>
@@ -135,7 +146,7 @@ export default function ApplicationMaterialPage() {
       </View>}
       <Field label='招聘批次标识（同一岗位不同批次可分别申请）' value={batchIdentity} onChange={setBatchIdentity} placeholder='例如：2026 秋招 A 批' />
       <View className='wk-between'><View className='wk-tdesign-scope'>
-        <t-button block size='large' theme='primary' ariaLabel='创建求职申请' customStyle={tdesignButtonStyle} loading={applyBusy.busy} onTap={() => void applyBusy.run(async () => {
+        <t-button block size='large' theme='primary' ariaLabel='创建求职申请' customStyle={tdesignButtonStyle} loading={applyBusy.busy} disabled={pendingApplication !== null} onTap={() => void applyBusy.run(async () => {
           try {
             const receipt = await career.createApplication({ opportunityId, snapshotId, evaluationId: evaluation.evaluationId, batchIdentity, continueDespiteHardFailure: ineligible });
             setApplication(receipt);
@@ -209,7 +220,7 @@ export default function ApplicationMaterialPage() {
       </View>)}
       <Action secondary onClick={() => setSections(previous => [...previous, { heading: '', content: '', claims: [] }])}>添加小节</Action>
       <View className='wk-between'><View className='wk-tdesign-scope'>
-        <t-button block size='large' theme='primary' ariaLabel='保存材料草稿' customStyle={tdesignButtonStyle} loading={matEditBusy.busy} onTap={() => void matEditBusy.run(async () => {
+        <t-button block size='large' theme='primary' ariaLabel='保存材料草稿' customStyle={tdesignButtonStyle} loading={matEditBusy.busy} disabled={pendingMaterial !== null} onTap={() => void matEditBusy.run(async () => {
           const body = career.bodyFromEditable(sections);
           const receipt = material
             ? await career.editMaterial({ materialId, body })
@@ -220,7 +231,7 @@ export default function ApplicationMaterialPage() {
       </View></View>
       {matEditBusy.error && <Notice tone='danger'>{matEditBusy.error} 冲突时请重读材料后重试。</Notice>}
       <View className='wk-between'><View className='wk-tdesign-scope'>
-        <t-button block size='large' theme='default' ariaLabel='确认材料新版本' customStyle={tdesignButtonStyle} loading={matConfirmBusy.busy} onTap={() => void matConfirmBusy.run(async () => {
+        <t-button block size='large' theme='default' ariaLabel='确认材料新版本' customStyle={tdesignButtonStyle} loading={matConfirmBusy.busy} disabled={pendingMaterial !== null} onTap={() => void matConfirmBusy.run(async () => {
           const receipt = await career.confirmMaterial(materialId);
           setConfirmedVersion(receipt.version);
           setMaterial(await career.material(materialId));
@@ -248,7 +259,9 @@ export default function ApplicationMaterialPage() {
           setConfirmedVersion(receipt.version);
           await loadExports(receipt.materialId);
         })}>用原请求编号安全重发发布</Action>
-        {retryPubBusy.error && <Notice tone='danger'>{retryPubBusy.error} 重发沿用原请求编号与原版本（服务端幂等不会重复执行）；结果仍未知时 intent 保留，可再次对账。</Notice>}
+        {retryPubBusy.error && <Notice tone='danger'>{retryPubBusy.error} 重发沿用原请求编号与原版本（服务端幂等不会重复执行）；结果仍未知时 intent 保留，可再次对账。</Notice>
+        }
+        <Action secondary onClick={() => { career.abandonPendingMaterialPublish(); setAbandonNotice('已放弃本次发布恢复：发布入口恢复可用。若原发布实际已生效，刷新导出列表即可见。'); }}>放弃本次发布恢复</Action>
       </>}
       <View className='wk-between'><View className='wk-tdesign-scope'>
         <t-button block size='large' theme='primary' ariaLabel='发布双格式导出' customStyle={tdesignButtonStyle} loading={publishBusy.busy} disabled={pendingPublish !== null} onTap={() => void publishBusy.run(async () => {
@@ -293,7 +306,7 @@ export default function ApplicationMaterialPage() {
       {/* F1：未选择≠显式未知。一申请一记录不可逆，漏选必须阻断而不是被推断。 */}
       {!versionChoice && <Notice tone='warning'>请先在上面选择投递版本，或显式选择「版本未知」——未选择不会被当作版本未知提交。</Notice>}
       <View className='wk-between'><View className='wk-tdesign-scope'>
-        <t-button block size='large' theme='primary' ariaLabel='记录投递确认' customStyle={tdesignButtonStyle} loading={submitBusy.busy} onTap={() => void submitBusy.run(async () => {
+        <t-button block size='large' theme='primary' ariaLabel='记录投递确认' customStyle={tdesignButtonStyle} loading={submitBusy.busy} disabled={pendingSubmission !== null} onTap={() => void submitBusy.run(async () => {
           try {
             const choice = career.resolveSubmissionVersion(versionChoice, (exports ?? []).filter(exportReceipt => exportReceipt.submittable));
             if (choice.status === 'unselected') {

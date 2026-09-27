@@ -35,7 +35,7 @@ export function ambiguousOutcome(error: unknown): boolean {
   const code = (error as { code?: unknown })?.code;
   if (typeof code === 'string') {
     if (['TIMEOUT', 'NETWORK_ERROR', 'CANCELLED', 'outcome_unknown'].includes(code)) return true;
-    if (['forbidden', 'revision_conflict', 'idempotency_conflict', 'invalid_request', 'not_found', 'proposal_resolved', 'search_quota_refused'].includes(code)) return false;
+    if (['forbidden', 'revision_conflict', 'idempotency_conflict', 'invalid_request', 'not_found', 'proposal_resolved', 'search_quota_refused', 'contract_violation'].includes(code)) return false;
   }
   const status = (error as { status?: unknown })?.status;
   return typeof status !== 'number' || status >= 500;
@@ -57,6 +57,19 @@ export function unknownOutcomeError(describe: string, requestId: string, cause: 
   return Object.assign(new Error(`${describe}结果未知：请用原请求对账后再试`, { cause }), { code: 'outcome_unknown', requestId });
 }
 
+/** 解码守卫（OCR r3 ocr3-029）：api-client 解码器对畸形 200 正文抛裸 TypeError/Error（无
+ *  code 无 status），会被歧义判据误判“结果未知”落 intent——但服务端已 200，同 requestId
+ *  重放必然再次解码失败，用户会被困在恢复循环。此处给解码失败附加确定性标记
+ *  contract_violation（歧义判据判 false，不进恢复链）；已携带 code 的错误原样放行。 */
+export function decodeAs<T>(decode: (value: unknown) => T, value: unknown): T {
+  try {
+    return decode(value);
+  } catch (error) {
+    if ((error as { code?: unknown } | null | undefined)?.code !== undefined) throw error;
+    throw Object.assign(new Error('服务端响应不符合冻结合同（解码失败）：已按确定失败处理，不进入恢复链'), { code: 'contract_violation', cause: error });
+  }
+}
+
 export interface RecoverableWriteInput<T> {
   kind: string; describe: string; input: unknown;
   /** 发送前捕获的 CAS 期望值（幂等指纹的一部分，随 intent 持久化）。 */
@@ -68,11 +81,17 @@ export interface RecoverableWriteInput<T> {
 /** 写入 + 未知结果恢复（两域共用）：stamp 守卫先于 intent 落盘——作用域在途切换或
  *  确定性本地失败（SCOPE_CHANGED/AUTH_REQUIRED，见 definiteLocalFailure 冻结口径）抛
  *  SCOPE_CHANGED 且绝不落 intent（键按发送时刻 stamp 预铸）；其余歧义失败落 intent 并抛
- *  outcome_unknown；确定失败原样上抛，不进恢复链。与 retryRecoverable 的守卫保持同一判据。 */
+ *  outcome_unknown；确定失败原样上抛，不进恢复链。与 retryRecoverable 的守卫保持同一判据。
+ *  发送前先按同 kind 检查未对账 intent（unresolved_action 阻断，OCR r3 ocr3-030）。 */
 export async function recoverableWrite<T>(store: ControlledCareerStore, options: RecoverableWriteInput<T>): Promise<T> {
   const id = options.reuseId ?? newRequestId();
   const stamp = auth.scope.capture();
   const key = intentKeyFor(options.kind, stamp);
+  // OCR r3 ocr3-030（对齐 desk.mutate 的 unresolved_action 硬性守卫）：同 kind 已有未对账
+  // intent 时绝不发新写入——catch 中的单键覆盖会静默丢掉旧 requestId（唯一对账凭据），
+  // 第一次写入可能已落地，覆盖即永久失去对账入口。先对账/安全重发/显式放弃。
+  const unresolved = readStoredIntent(store, key);
+  if (unresolved) throw Object.assign(new Error(`有一次结果未知的${options.describe}（${unresolved.requestId.slice(0, 10)}…）：请先用原请求对账、安全重发，或显式放弃本次恢复`), { code: 'unresolved_action', requestId: unresolved.requestId });
   try {
     return await options.send(id, options.expected);
   } catch (error) {
@@ -108,4 +127,11 @@ export async function retryRecoverable<T>(store: ControlledCareerStore, kind: st
     if (ambiguousOutcome(error)) throw unknownOutcomeError(describe, pending.requestId, error);
     throw error;
   }
+}
+
+/** 显式放弃恢复（OCR r3 ocr3-029 统一出口，rule/reminder 先例同语义）：只清本端 intent，
+ *  不动任何服务端事实——若原写入实际已落地，以服务端记录为准（回执/列表可对账找回）。
+ *  未对账封锁（recoverableWrite 的 unresolved_action）把用户挡在门外时，这是唯一解除出口。 */
+export function abandonRecoverable(store: ControlledCareerStore, kind: string): void {
+  store.remove(intentKeyFor(kind, auth.scope.capture()));
 }

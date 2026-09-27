@@ -418,6 +418,54 @@ test('H1: a forbidden career scope clears local desk state for recovery', async 
   assert.equal(career.careerDesk().snapshot, undefined, 'private desk state is invalidated');
 });
 
+// —— OCR 第 3 轮（ocr3-026/031/032）：搜索写入收敛 + 未对账封锁 + 上传对账纪律 ——
+
+test('OCR3-026/031 D9: an unresolved search blocks a second search and keeps the original query and request id', async () => {
+  await freshLogin({
+    'GET /api/v1/career/open': call => stub.succeed(call, { data: { revision: 0, facts: [], proposals: [] } }),
+    'POST /api/v1/career/searches': call => stub.fail(call, 'request:fail timeout'),
+    'GET /api/v1/career/searches/receipt': call => stub.succeed(call, { statusCode: 404, data: { error: { code: 'not_found', message: 'no receipt yet' } } }),
+  });
+  await career.loadCareer();
+  await assert.rejects(career.searchOnce('Go 工程师'), error => error.code === 'outcome_unknown');
+  const pending = career.pendingSearch();
+  assert.ok(pending, 'intent persisted via the shared recoverableWrite shape');
+  assert.equal(pending.query, 'Go 工程师', 'the converged intent shape still exposes the query');
+  assert.equal(typeof pending.requestId, 'string');
+  const blocked = await career.searchOnce('换个岗位再搜').catch(error => error);
+  assert.equal(errorCode(blocked), 'unresolved_action', 'a second search must not overwrite the pending intent');
+  assert.equal(career.pendingSearch()?.requestId, pending.requestId, 'the original request id survives');
+  assert.equal(career.pendingSearch()?.query, 'Go 工程师', 'the original query survives');
+  career.abandonPendingSearch();
+  assert.equal(career.pendingSearch(), null, 'the unified abandon exit clears the block');
+});
+
+test('OCR3-032 F3: an ambiguous upload keeps its request id — the safe resend replays it and never mints a second claim', async () => {
+  let uploads = 0; const served = [];
+  const uploadReceipt = () => ({
+    source: { id: 'src-9', revision: 1, fileName: 'resume.pdf', mimeType: 'application/pdf', size: 2048, digest: 'a'.repeat(64), status: 'ready', createdAt: '2026-09-25T03:00:00Z' },
+    receipt: { kind: 'intake_completed', requestId: 'srv-up', revision: 4, proposals: [proposal('p1', '学历', '本科')] },
+  });
+  await freshLogin({
+    'GET /api/v1/career/open': call => stub.succeed(call, { data: { revision: 3, facts: [], proposals: [] } }),
+    'POST /api/v1/career/sources/upload': call => {
+      uploads++; served.push(call.options.formData.requestId);
+      if (uploads === 1) stub.fail(call, 'uploadFile:fail timeout'); else stub.succeed(call, { data: uploadReceipt() });
+    },
+  });
+  await career.loadCareer();
+  const file = { uri: 'wxfile://tmp-resume.pdf', name: 'resume.pdf', type: 'application/pdf', size: 2048 };
+  await assert.rejects(career.uploadResume(file), error => error.code === 'outcome_unknown');
+  assert.ok(career.pendingUpload(), 'the upload intent is persisted with its request id');
+  const blocked = await career.uploadResume(file).catch(error => error);
+  assert.equal(errorCode(blocked), 'unresolved_action', 'a re-upload must not mint a second request id while unresolved');
+  const upload = await career.retryPendingUpload(file);
+  assert.equal(upload.source.status, 'ready');
+  assert.equal(served.length, 2, 'one failed attempt plus one safe resend');
+  assert.equal(served[1], served[0], 'the resend replays the original request id — the idempotent server never creates a second claim for the same resume');
+  assert.equal(career.pendingUpload(), null, 'a successful resend clears the intent');
+});
+
 test('OCR2-037: a bare AUTH_REQUIRED on the first search never persists a recovery intent', async () => {
   await freshLogin({
     'GET /api/v1/career/open': call => stub.succeed(call, { data: { revision: 3, facts: [], proposals: [] } }),

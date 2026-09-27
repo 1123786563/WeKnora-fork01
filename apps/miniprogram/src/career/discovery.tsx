@@ -21,7 +21,7 @@ export default function DiscoveryPage() {
   const query = useData(`career:${session.userId}:${session.tenantId}`, () => career.loadCareer());
   const confirmBusy = useAction(); const dismissBusy = useAction(); const proposeBusy = useAction(); const uploadBusy = useAction();
   const searchBusy = useAction(); const recoverBusy = useAction(); const importBusy = useAction();
-  const reconcileBusy = useAction(); const resendBusy = useAction();
+  const reconcileBusy = useAction(); const resendBusy = useAction(); const resendUploadBusy = useAction();
   const [searchInput, setSearchInput] = useState('');
   const [searchOut, setSearchOut] = useState<career.SearchOutcome>();
   const [receiptMissing, setReceiptMissing] = useState(false);
@@ -38,6 +38,7 @@ export default function DiscoveryPage() {
 
   const pendingFactAction = career.pendingAction();
   const pendingSearch = career.pendingSearch();
+  const pendingUpload = career.pendingUpload();
   // 额度不足专属提示（typed 429 search_quota_refused）经 errorMessage 真实可达：
   // useAction 存的串即页面呈现文案，专属句式同时决定 Notice 降为 warning 而非失败。
   const quotaRefused = (message?: string) => message?.includes('搜索额度不足') ?? false;
@@ -77,7 +78,7 @@ export default function DiscoveryPage() {
       <Card>
         <Text className='wk-h3'>建档</Text>
         <View className='wk-between'><View className='wk-tdesign-scope'>
-          <t-button block size='large' theme='primary' ariaLabel='上传已有简历' customStyle={tdesignButtonStyle} loading={uploadBusy.busy} onTap={() => void uploadBusy.run(async () => {
+          <t-button block size='large' theme='primary' ariaLabel='上传已有简历' customStyle={tdesignButtonStyle} loading={uploadBusy.busy} disabled={pendingUpload !== null} onTap={() => void uploadBusy.run(async () => {
             const stamp = auth.scope.capture();
             const file = await careerPlatform.chooseResume();
             if (!auth.scope.isCurrent(stamp)) throw new Error('SCOPE_CHANGED');
@@ -87,6 +88,19 @@ export default function DiscoveryPage() {
           })}>上传已有简历</t-button>
         </View></View>
         {uploadBusy.error && <Notice tone='danger'>{uploadBusy.error}</Notice>}
+        {pendingUpload && <>
+          <Notice tone='warning'>有一次结果未知的简历上传（{(pendingUpload.input?.fileName ?? '').slice(0, 24)}）。请重选同一份文件用原请求编号安全重发（服务端按请求编号幂等，不会为同一简历重复建档解析），或先放弃本次恢复再重新上传。</Notice>
+          <Action secondary loading={resendUploadBusy.busy} onClick={() => void resendUploadBusy.run(async () => {
+            const stamp = auth.scope.capture();
+            const file = await careerPlatform.chooseResume();
+            if (!auth.scope.isCurrent(stamp)) throw new Error('SCOPE_CHANGED');
+            const upload = await career.retryPendingUpload(file);
+            setImportNotice(upload.receipt ? `简历已上传：抽取到 ${upload.receipt.proposals.length} 条待确认事实，请逐项确认。` : '简历已上传，解析结果稍后可在待确认列表出现。');
+            query.reload();
+          })}>重选同一文件，安全重发上传</Action>
+          {resendUploadBusy.error && <Notice tone='danger'>{resendUploadBusy.error} 重发沿用原请求编号，请确认选择的是同一份简历文件。</Notice>}
+          <Action secondary onClick={() => { career.abandonPendingUpload(); setImportNotice('已放弃本次上传恢复：可重新上传简历。若原上传实际已生效，解析出的待确认事实以列表为准。'); }}>放弃本次上传恢复</Action>
+        </>}
         <Text className='wk-muted wk-small'>或逐步建档：每填一项都会先成为待确认事实。</Text>
         {FIELDS.map(field => <Text key={field} className='wk-small' onClick={() => setFactKey(field)}>{factKey === field ? '● ' : '○ '}{field}</Text>)}
         <Field label={`补充：${factKey}`} value={factValue} onChange={setFactValue} placeholder='例如：本科' />
@@ -102,10 +116,10 @@ export default function DiscoveryPage() {
       <Text className='wk-h3'>找岗（一次性搜索）</Text>
       <Field label='想找什么' value={searchInput} onChange={setSearchInput} placeholder='岗位、方向或要求' />
       <View className='wk-between'><View className='wk-tdesign-scope'>
-        <t-button block size='large' theme='primary' ariaLabel='发起一次性搜索' customStyle={tdesignButtonStyle} loading={searchBusy.busy} onTap={() => void searchBusy.run(async () => { setSearchOut(await career.searchOnce(searchInput)); })}>搜索</t-button>
+        <t-button block size='large' theme='primary' ariaLabel='发起一次性搜索' customStyle={tdesignButtonStyle} loading={searchBusy.busy} disabled={pendingSearch !== null} onTap={() => void searchBusy.run(async () => { setSearchOut(await career.searchOnce(searchInput)); })}>搜索</t-button>
       </View></View>
       {searchBusy.error && <Notice tone={quotaRefused(searchBusy.error) ? 'warning' : 'danger'}>{searchBusy.error}</Notice>}
-      {pendingSearch && <Notice tone='warning'>有一次结果未知的搜索（{pendingSearch.query}）。</Notice>}
+      {pendingSearch && <Notice tone='warning'>有一次结果未知的搜索（{pendingSearch.query}）：请先对账或安全重发，未恢复前不发起第二次搜索（旧请求可能已消耗额度，覆盖会丢失对账凭据）。</Notice>}
       {pendingSearch && <Action secondary loading={reconcileBusy.busy} onClick={() => void reconcileBusy.run(async () => {
         setReceiptMissing(false);
         try {
@@ -117,6 +131,7 @@ export default function DiscoveryPage() {
         }
       })}>用原请求对账</Action>}
       {reconcileBusy.error && <Notice tone='danger'>{reconcileBusy.error}</Notice>}
+      {pendingSearch && <Action secondary onClick={() => { career.abandonPendingSearch(); setImportNotice('已放弃本次搜索恢复：可重新发起搜索。若原搜索实际已生效，额度以服务端记录为准。'); }}>放弃本次搜索恢复</Action>}
       {receiptMissing && <>
         <Notice tone='warning'>尚未找到该请求的回执：搜索请求可能未送达服务器。可安全重发（同一请求 ID，服务端不会重复执行），或稍后再用原请求对账。</Notice>
         <Action secondary loading={resendBusy.busy} onClick={() => void resendBusy.run(async () => { setSearchOut(await career.retryPendingSearch()); setReceiptMissing(false); })}>安全重发原搜索</Action>

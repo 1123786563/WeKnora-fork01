@@ -45,6 +45,8 @@ export default function ProgressPreparationPage() {
   const [correcting, setCorrecting] = useState<ProgressEventView>();
   const [correctErrCode, setCorrectErrCode] = useState<string>();
   const [progressNotice, setProgressNotice] = useState('');
+  // OCR r3 ocr3-029/030：未对账封锁挡住新写入时，显式放弃是唯一解除出口。
+  const [abandonNotice, setAbandonNotice] = useState('');
   // —— 按需准备 ——
   const [focus, setFocus] = useState<PreparationFocus>('interview_prep');
   const [genErrCode, setGenErrCode] = useState<string>();
@@ -155,12 +157,16 @@ export default function ProgressPreparationPage() {
     <Notice tone='info'>与 Web 端同一后端合同：事件按服务端权威顺序呈现，纠错追加引用事件、原文保留可追溯；面试准备基于你实际投递的版本生成，未确认投递时只提示、绝不自行改用最新材料版本。</Notice>
 
     {/* 恢复态置顶（T24/T26/T32 教训）：结果未知的写入第一屏可见、可操作。 */}
+    {abandonNotice && <Notice tone='info'>{abandonNotice}</Notice>}
+
     {pendingProgress && <>
       <Notice tone='warning'>有一次结果未知的进展写入（{pendingProgress.requestId.slice(0, 10)}…）。请先用原请求对账，不会重复执行。</Notice>
       <Action secondary loading={recProgBusy.busy} onClick={() => void recProgBusy.run(async () => { acceptReceipt(await career.reconcilePendingProgress()); })}>用原请求对账进展</Action>
       {recProgBusy.error && <Notice tone='danger'>{recProgBusy.error} 对账被拒时说明该请求不存在或不属于当前空间；可再用原编号重试。</Notice>}
       <Action secondary loading={retryProgBusy.busy} onClick={() => void retryProgBusy.run(async () => { acceptReceipt(await career.retryPendingProgress()); })}>用原请求编号重试进展写入</Action>
-      {retryProgBusy.error && <Notice tone='danger'>{retryProgBusy.error} 重试沿用原请求编号与原事件计数，服务端幂等不会重复执行。</Notice>}
+      {retryProgBusy.error && <Notice tone='danger'>{retryProgBusy.error} 重试沿用原请求编号与原事件计数，服务端幂等不会重复执行。</Notice>
+      }
+      <Action secondary onClick={() => { career.abandonPendingProgressWrite(); setAbandonNotice('已放弃本次进展写入恢复：录入入口恢复可用。若原事件实际已生效，重新读取时间线即可见。'); }}>放弃本次进展恢复</Action>
     </>}
     {pendingPreparation && <>
       <Notice tone='warning'>有一次结果未知的准备生成（{pendingPreparation.requestId.slice(0, 10)}…）。请先用原请求对账，不会重复生成。</Notice>
@@ -180,7 +186,9 @@ export default function ProgressPreparationPage() {
           throw error;
         }
       })}>用原请求编号重试准备生成</Action>
-      {retryPrepBusy.error && <Notice tone='danger'>{retryPrepBusy.error} 重试沿用原请求编号，服务端幂等不会重复执行。</Notice>}
+      {retryPrepBusy.error && <Notice tone='danger'>{retryPrepBusy.error} 重试沿用原请求编号，服务端幂等不会重复执行。</Notice>
+      }
+      <Action secondary onClick={() => { career.abandonPendingPreparationWrite(); setAbandonNotice('已放弃本次准备生成恢复：生成入口恢复可用。若原生成实际已生效，读取准备列表即可见。'); }}>放弃本次准备恢复</Action>
     </>}
     {pendingMaterial && <>
       <Notice tone='warning'>有一次结果未知的材料写入（{pendingMaterial.requestId.slice(0, 10)}…）。保存准备修订走同一恢复链；重发沿用原请求编号与原正文，服务端幂等不会重复执行。</Notice>
@@ -190,7 +198,9 @@ export default function ProgressPreparationPage() {
         // 与保存后同语义：修订的持久事实从材料域回读。
         try { setRevisedBody((await career.material(receipt.materialId)).body); } catch { /* 回读失败不掩埋重试成功的事实 */ }
       })}>用原请求编号重试材料修订</Action>
-      {retryMatBusy.error && <Notice tone='danger'>{retryMatBusy.error} 重试被拒时说明该请求编号已对应其他内容或不属于当前空间；可到「申请与材料」页对账。</Notice>}
+      {retryMatBusy.error && <Notice tone='danger'>{retryMatBusy.error} 重试被拒时说明该请求编号已对应其他内容或不属于当前空间；可到「申请与材料」页对账。</Notice>
+      }
+      <Action secondary onClick={() => { career.abandonPendingMaterialWrite(); setAbandonNotice('已放弃本次材料修订恢复：保存入口恢复可用。若原修订实际已生效，重新读取准备/材料即可见最新版本。'); }}>放弃本次材料恢复</Action>
     </>}
 
     <Card>

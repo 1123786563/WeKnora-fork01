@@ -571,6 +571,85 @@ test('OCR2-001 D6: a publish safe resend replays the original version and revisi
   assert.equal(career.pendingMaterialPublish(), null, 'a successful resend clears the intent');
 });
 
+// —— OCR 第 3 轮（ocr3-002/029/030）：导出兑付下载作用域守卫 + 确定性失败不进恢复链 ——
+
+const waitForDownloadCall = async () => {
+  for (let i = 0; i < 50 && !stub.state.calls.some(c => c.kind === 'downloadFile'); i++) await new Promise(resolve => setTimeout(resolve, 1));
+  assert.ok(stub.state.calls.some(c => c.kind === 'downloadFile'), 'the native download was dispatched');
+};
+
+test('OCR3-002 F4: logout during the redemption download aborts it — no copy, no open', async () => {
+  const grant = grantFor('pdf');
+  await freshLogin({
+    'POST /api/v1/career/materials/mat-1/exports/exp-1/signed-url': call => stub.succeed(call, { data: grant }),
+    'GET /api/v1/career/materials/mat-1/exports/exp-1/download': call => {
+      // 真实 weapp abort 后以 fail 回调收尾（taro-stub 契约：由测试 handler 模拟）。
+      call.onAborted = () => stub.fail(call, 'downloadFile:fail abort');
+    },
+  });
+  await career.loadCareer();
+  const pending = career.openMaterialExport('mat-1', 'exp-1', 'pdf');
+  await waitForDownloadCall();
+  await runtime.auth.clear(); // 登出 → scope.switchTo → abortAll → 在途下载被中断
+  await assert.rejects(pending, error => /下载失败|SCOPE_CHANGED|abort/i.test(`${error.message} ${error.cause?.errMsg ?? ''}`));
+  assert.equal(stub.state.copies.length, 0, 'the aborted download never materializes a private copy');
+  assert.equal(stub.state.openedDocuments.length, 0, 'the old account document is never opened');
+});
+
+test('OCR3-002 F5: a download that lands after logout is SCOPE_CHANGED — the stale file never lands locally', async () => {
+  const grant = grantFor('pdf');
+  await freshLogin({
+    'POST /api/v1/career/materials/mat-1/exports/exp-1/signed-url': call => stub.succeed(call, { data: grant }),
+    'GET /api/v1/career/materials/mat-1/exports/exp-1/download': () => {/* hangs until the test answers */},
+  });
+  await career.loadCareer();
+  const pending = career.openMaterialExport('mat-1', 'exp-1', 'pdf');
+  await waitForDownloadCall();
+  await runtime.auth.clear(); // 旧空间的兑付响应在途到达
+  stub.state.fileContents.set('http://tmp/dl.pdf', PDF_BYTES);
+  stub.succeed(stub.lastCall('downloadFile'), { statusCode: 200, tempFilePath: 'http://tmp/dl.pdf' });
+  await assert.rejects(pending, error => /SCOPE_CHANGED/i.test(error.message));
+  assert.equal(stub.state.copies.length, 0, 'a stale response must not be copied into the user path');
+  assert.equal(stub.state.openedDocuments.length, 0, 'a stale response must never be opened');
+});
+
+test('OCR3-002 F6: an oversized grant is rejected before any bytes are downloaded', async () => {
+  const grant = { ...grantFor('pdf'), size: 20 * 1024 * 1024 + 1 };
+  await freshLogin({
+    'POST /api/v1/career/materials/mat-1/exports/exp-1/signed-url': call => stub.succeed(call, { data: grant }),
+  });
+  await career.loadCareer();
+  await assert.rejects(career.openMaterialExport('mat-1', 'exp-1', 'pdf'), error => error.message === '文件超出本端查看上限');
+  assert.equal(stub.state.calls.filter(c => c.kind === 'downloadFile').length, 0, 'the grant.size pre-check fires before the native download starts');
+});
+
+test('OCR3-030 D5: a fresh write of the same kind is blocked while an intent is unresolved — the original request id is never overwritten', async () => {
+  await freshLogin({
+    'POST /api/v1/career/materials/confirm': call => stub.fail(call, 'request:fail timeout'),
+  });
+  await career.loadCareer();
+  await assert.rejects(career.confirmMaterial('mat-1'), error => error.code === 'outcome_unknown');
+  const pending = career.pendingMaterialWrite();
+  assert.ok(pending, 'the unknown write is kept for recovery');
+  const blocked = await career.editMaterial({ materialId: 'mat-1', body: materialBody }).catch(error => error);
+  assert.equal(errorCode(blocked), 'unresolved_action', 'a fresh write must not silently overwrite the pending intent');
+  assert.equal(blocked.requestId, pending.requestId, 'the block names the pending request id');
+  assert.equal(career.pendingMaterialWrite()?.requestId, pending.requestId, 'the original intent survives untouched');
+  // 显式放弃是未对账封锁的唯一解除出口（ocr3-029 统一出口）：
+  career.abandonPendingMaterialWrite();
+  assert.equal(career.pendingMaterialWrite(), null, 'the abandon exit unblocks the write entry');
+});
+
+test('OCR3-029 D6: a malformed 200 body is a definite contract violation — it never enters the recovery chain', async () => {
+  await freshLogin({
+    'POST /api/v1/career/materials/confirm': call => stub.succeed(call, { data: 'not-a-receipt' }),
+  });
+  await career.loadCareer();
+  const failed = await career.confirmMaterial('mat-1').catch(error => error);
+  assert.equal(errorCode(failed), 'contract_violation', 'a decode failure is deterministic — replaying the same request id cannot recover it');
+  assert.equal(career.pendingMaterialWrite(), null, 'no intent is persisted — the user is not trapped in a recovery loop');
+});
+
 test('OCR2-037 E2: a bare AUTH_REQUIRED on the first write never persists a recovery intent (frozen: definite local failure)', async () => {
   await freshLogin();
   await career.loadCareer();

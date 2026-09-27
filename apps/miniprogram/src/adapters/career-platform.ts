@@ -10,11 +10,13 @@ import { requestId } from '../core/intent.ts';
 // runtime 不反向依赖本适配器，无环。career-intent 同层依赖 runtime，无环。
 import { auth, apiOrigin, client } from '../services/runtime.ts';
 import { scopeKey } from '../core/scope.ts';
-import { CAREER_STORE_PREFIX, createControlledStore, intentKeyFor, readStoredIntent, recoverableWrite, retryRecoverable, type StoredIntent } from '../services/career-intent.ts';
+import { CAREER_STORE_PREFIX, createControlledStore, intentKeyFor, readStoredIntent, recoverableWrite, retryRecoverable, decodeAs, type StoredIntent } from '../services/career-intent.ts';
 
 // T24 小程序 Career 平台适配器：分享、文件、受控存储三个本端能力 seam。
-// 全部依赖可注入（测试与真实运行时共用同一实现）；网络一律经 services/career.ts
-// 的认证客户端，本适配器永不直接发请求。
+// 全部依赖可注入（测试与真实运行时共用同一实现）；JSON 网络一律经 services/career.ts
+// 的认证客户端。唯一例外是 T26 导出兑付下载：带 Authorization 的二进制下载走
+// Taro.downloadFile 原生 seam（与 T06 platform/files.ts 同源，含同一三层作用域守卫），
+// JSON 客户端不承载文件流（OCR r3 ocr3-002：修正头注释与实现的矛盾表述）。
 
 /** 分享入口 query 参数名（分享卡片 path 携带的 JD 原文）。 */
 export const SHARED_ENTRY_PARAM = 'jd';
@@ -183,9 +185,9 @@ function defaultExportParts(): ExportPlatformParts {
 }
 
 interface DownloadOutcome { statusCode: number; tempFilePath: string }
-function taroDownload(options: { url: string; header: Record<string, string>; timeout: number }): Promise<DownloadOutcome> {
+function taroDownload(options: { url: string; header: Record<string, string>; timeout: number }, controller: AbortController): Promise<DownloadOutcome> {
   return new Promise((resolve, reject) => {
-    Taro.downloadFile({
+    const task = Taro.downloadFile({
       ...options, success: res => {
         if (res.statusCode !== 200) {
           const code = downloadErrorCode(res.tempFilePath);
@@ -195,6 +197,11 @@ function taroDownload(options: { url: string; header: Record<string, string>; ti
         resolve({ statusCode: res.statusCode, tempFilePath: res.tempFilePath });
       }, fail: e => reject(Object.assign(new Error('下载失败'), { cause: e })),
     });
+    // T06 files.ts 同款 abort 联动（OCR r3 ocr3-002）：登出/切换空间 abortAll() 时中断
+    // 在途下载；下载中实际字节数超限也主动中止（授权 size 预检挡声明超限，这里挡膨胀）。
+    const stop = () => task.abort();
+    controller.signal.addEventListener('abort', stop, { once: true });
+    task.onProgressUpdate(progress => { if (progress.totalBytesWritten > MAX_EXPORT_BYTES) task.abort(); });
   });
 }
 
@@ -225,33 +232,48 @@ function downloadErrorCode(filePath: string): string | undefined {
 /**
  * 兑付一份导出下载授权：带认证下载 → 全字节 sha256 与授权 digest 比对 → 私有副本
  * 打开 → 立即清理。授权失效抛 EXPORT_GRANT_EXPIRED（上层重取授权后重试）。
+ * OCR r3 ocr3-002（对齐 T06 files.ts openProtectedDocument 三层守卫）：stamp 捕获 +
+ * controller 注册（登出/切空间 abortAll 联动中断在途下载）+ 下载后/打开前 isCurrent
+ * 复验 + finally release——旧空间的兑付下载绝不把旧账号材料写进本机副本再打开；授权
+ * 声明的 size 在下载前预检，不在完整下载后才发现超限。
  */
 export async function openExportedDocument(grant: ExportDownloadGrant, deps: ExportOpenDeps = {}): Promise<ExportOpenRecord> {
   if (!grant.url.startsWith('/api/v1/career/materials/') || grant.url.includes('://') || grant.url.includes('..')) throw new Error('不可信下载路径');
+  if (!Number.isSafeInteger(grant.size) || grant.size <= 0) throw new Error('下载授权缺少有效的文件大小');
+  if (grant.size > MAX_EXPORT_BYTES) throw new Error('文件超出本端查看上限');
   // 与 Web 客户端一致：不直接取回执里的 url，用解码后的授权字段重建兑付路径。
   const path = `/api/v1/career/materials/${encodeURIComponent(grant.materialId)}/exports/${encodeURIComponent(grant.exportId)}/download?format=${grant.format}&expires=${grant.expiresAt}&signature=${encodeURIComponent(grant.signature)}`;
   const parts: ExportPlatformParts = deps.bearer && deps.origin ? { bearer: deps.bearer, origin: deps.origin } : defaultExportParts();
+  const stamp = auth.scope.capture();
+  if (!auth.scope.isCurrent(stamp)) throw new Error('SCOPE_CHANGED');
+  const controller = auth.scope.controller();
   const fs = Taro.getFileSystemManager();
-  const outcome = await taroDownload({ url: `${parts.origin()}${path}`, header: { Authorization: `Bearer ${parts.bearer()}` }, timeout: 60000 });
-  const info = await Taro.getFileInfo({ filePath: outcome.tempFilePath }) as { size: number };
-  if (info.size > MAX_EXPORT_BYTES) throw new Error('文件超出本端查看上限');
-  const buffer = fs.readFileSync(outcome.tempFilePath) as unknown as ArrayBuffer;
-  const bytes = new Uint8Array(buffer);
-  const actualDigest = sha256Hex(bytes);
-  const record: ExportOpenRecord = {
-    format: grant.format, version: grant.version, size: bytes.length,
-    expectedDigest: grant.digest, actualDigest, digestMatched: actualDigest === grant.digest,
-    opened: false, checkedAt: new Date().toISOString(),
-  };
-  if (!record.digestMatched) throw Object.assign(new Error('文件校验失败：下载内容与授权版本不一致，已拒绝打开'), { code: EXPORT_DIGEST_MISMATCH });
-  const userCopy = exportUserCopyPath(`career-material-v${grant.version}.${grant.format}`);
+  let userCopy = '';
   let failure: { failed: boolean; error: unknown } = { failed: false, error: undefined };
+  let record: ExportOpenRecord | undefined;
   try {
+    const outcome = await taroDownload({ url: `${parts.origin()}${path}`, header: { Authorization: `Bearer ${parts.bearer()}` }, timeout: 60000 }, controller);
+    if (!auth.scope.isCurrent(stamp)) throw new Error('SCOPE_CHANGED');
+    const info = await Taro.getFileInfo({ filePath: outcome.tempFilePath }) as { size: number };
+    if (info.size > MAX_EXPORT_BYTES) throw new Error('文件超出本端查看上限');
+    if (!auth.scope.isCurrent(stamp)) throw new Error('SCOPE_CHANGED');
+    const buffer = fs.readFileSync(outcome.tempFilePath) as unknown as ArrayBuffer;
+    const bytes = new Uint8Array(buffer);
+    const actualDigest = sha256Hex(bytes);
+    record = {
+      format: grant.format, version: grant.version, size: bytes.length,
+      expectedDigest: grant.digest, actualDigest, digestMatched: actualDigest === grant.digest,
+      opened: false, checkedAt: new Date().toISOString(),
+    };
+    if (!record.digestMatched) throw Object.assign(new Error('文件校验失败：下载内容与授权版本不一致，已拒绝打开'), { code: EXPORT_DIGEST_MISMATCH });
+    userCopy = exportUserCopyPath(`career-material-v${grant.version}.${grant.format}`);
     await new Promise<void>((resolve, reject) => fs.copyFile({ srcPath: outcome.tempFilePath, destPath: userCopy, success: () => resolve(), fail: e => reject(Object.assign(new Error('本机文件准备失败'), { cause: e })) }));
+    if (!auth.scope.isCurrent(stamp)) throw new Error('SCOPE_CHANGED');
     await Taro.openDocument({ filePath: userCopy, showMenu: true });
     record.opened = true;
   } catch (error) { failure = { failed: true, error }; }
   finally {
+    auth.scope.release(controller);
     if (userCopy) {
       // 清理失败不静默（D3/T06）：UI 承诺打开后立即清理，违背承诺必须可见。
       try { await new Promise<void>((resolve, reject) => fs.unlink({ filePath: userCopy, success: () => resolve(), fail: e => reject(Object.assign(new Error(`临时副本清理失败：${userCopy}`), { cause: e })) })) }
@@ -259,6 +281,7 @@ export async function openExportedDocument(grant: ExportDownloadGrant, deps: Exp
     }
   }
   if (failure.failed) throw failure.error;
+  if (!record) throw new Error('下载打开流程异常终止');
   return record;
 }
 
@@ -448,7 +471,7 @@ export async function saveRule(input: RuleWriteInput): Promise<SetRuleReceipt> {
   return recoverableWrite<SetRuleReceipt>(t30Store, {
     kind: 'rule-write', describe: '规则保存', input, expected: input.expectedRevision,
     send: async id => {
-      const receipt = decodeSetRuleReceipt(await client.request({ method: 'POST', path: '/api/v1/career/rules', body: ruleRequestBody(id, input) }));
+      const receipt = decodeAs(decodeSetRuleReceipt, await client.request({ method: 'POST', path: '/api/v1/career/rules', body: ruleRequestBody(id, input) }));
       acceptRuleReceipt(receipt);
       return receipt;
     },
@@ -472,7 +495,7 @@ export async function retryPendingRule(): Promise<SetRuleReceipt> {
   if (!pending) throw new Error('没有待恢复的规则保存');
   try {
     return await retryRecoverable<SetRuleReceipt>(t30Store, 'rule-write', '规则保存', async (id, expected) => {
-      const receipt = decodeSetRuleReceipt(await client.request({ method: 'POST', path: '/api/v1/career/rules', body: ruleRequestBody(id, { ...pending.input, expectedRevision: expected }) }));
+      const receipt = decodeAs(decodeSetRuleReceipt, await client.request({ method: 'POST', path: '/api/v1/career/rules', body: ruleRequestBody(id, { ...pending.input, expectedRevision: expected }) }));
       acceptRuleReceipt(receipt);
       return receipt;
     });
@@ -515,7 +538,7 @@ export async function createReminder(input: ReminderWriteInput): Promise<Reminde
   if (!input.sourceId.trim()) throw Object.assign(new Error('请先填写来源事件编号'), { code: 'invalid_request', recoverable: true });
   return recoverableWrite<ReminderReceipt>(t30Store, {
     kind: 'reminder-write', describe: '待办登记', input, expected: input.expectedRevision,
-    send: async id => decodeReminderReceipt(await client.request({ method: 'POST', path: '/api/v1/career/reminders', body: { requestId: id, sourceKind: input.sourceKind, sourceId: input.sourceId.trim(), expectedRevision: input.expectedRevision } })),
+    send: async id => decodeAs(decodeReminderReceipt, await client.request({ method: 'POST', path: '/api/v1/career/reminders', body: { requestId: id, sourceKind: input.sourceKind, sourceId: input.sourceId.trim(), expectedRevision: input.expectedRevision } })),
   });
 }
 export function pendingReminderWrite(): StoredIntent<ReminderWriteInput> | null { return t30Intent<ReminderWriteInput>('reminder-write'); }
@@ -530,7 +553,7 @@ export async function retryPendingReminder(): Promise<ReminderReceipt> {
   const pending = pendingReminderWrite();
   if (!pending) throw new Error('没有待恢复的待办登记');
   return retryRecoverable<ReminderReceipt>(t30Store, 'reminder-write', '待办登记', async (id, expected) =>
-    decodeReminderReceipt(await client.request({ method: 'POST', path: '/api/v1/career/reminders', body: { requestId: id, sourceKind: pending.input.sourceKind, sourceId: pending.input.sourceId.trim(), expectedRevision: expected } })));
+    decodeAs(decodeReminderReceipt, await client.request({ method: 'POST', path: '/api/v1/career/reminders', body: { requestId: id, sourceKind: pending.input.sourceKind, sourceId: pending.input.sourceId.trim(), expectedRevision: expected } })));
 }
 /** 显式放弃恢复（OCR high-12 同构出口）：只清本端 intent，登记入口恢复可用；若原登记
  *  实际已落地，待办以服务端记录为准（收件箱刷新即可见）。 */

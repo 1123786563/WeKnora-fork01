@@ -10,7 +10,7 @@ import type { NativeFileSource } from '@weknora/api-client';
 import { requestId as newRequestId } from '../core/intent.ts';
 import { storage } from '../platform/storage.ts';
 import type { ScopeStamp } from '../core/scope.ts';
-import { CAREER_STORE_PREFIX, createControlledStore, recoverableWrite, retryRecoverable, readStoredIntent, intentKeyFor, ambiguousOutcome, definiteLocalFailure, type StoredIntent } from './career-intent.ts';
+import { CAREER_STORE_PREFIX, createControlledStore, recoverableWrite, retryRecoverable, readStoredIntent, intentKeyFor, ambiguousOutcome, definiteLocalFailure, decodeAs, abandonRecoverable, type StoredIntent } from './career-intent.ts';
 import { type SharedImportDraft, openExportedDocument, EXPORT_GRANT_EXPIRED, type ExportDownloadGrant, type ExportOpenRecord } from '../adapters/career-platform.ts';
 
 export { prepareSharedImport, careerPlatform, CAREER_STORE_PREFIX } from '../adapters/career-platform.ts';
@@ -113,32 +113,33 @@ const searchKey = (stamp: ScopeStamp = auth.scope.capture()): string => intentKe
 export function pendingSearch(): PendingSearchIntent | null {
   const value = store.read(searchKey());
   if (!value || typeof value !== 'object') return null;
-  const r = value as { requestId?: unknown; query?: unknown; expectedRevision?: unknown };
-  if (typeof r.requestId !== 'string' || typeof r.query !== 'string') return null;
+  const r = value as { requestId?: unknown; query?: unknown; input?: { query?: unknown } | null; expectedRevision?: unknown };
+  // OCR r3 ocr3-031：intent 收敛到 recoverableWrite 统一形状（query 在 input 内）；顶层
+  // query 兼容历史 T24 形状。
+  const query = typeof r.query === 'string' ? r.query : (typeof r.input?.query === 'string' ? r.input.query : undefined);
+  if (typeof r.requestId !== 'string' || typeof query !== 'string') return null;
   const expectedRevision = typeof r.expectedRevision === 'number' && Number.isSafeInteger(r.expectedRevision) && r.expectedRevision >= 0 ? r.expectedRevision : undefined;
-  return { requestId: r.requestId, query: r.query, ...(expectedRevision !== undefined ? { expectedRevision } : {}) };
+  return { requestId: r.requestId, query, ...(expectedRevision !== undefined ? { expectedRevision } : {}) };
 }
 function unknownOutcome(requestId: string, query: string, cause: unknown): Error {
   return Object.assign(new Error('搜索结果未知：请用原请求恢复后再试', { cause }), { code: 'outcome_unknown', requestId, query });
 }
 /** 一次性找岗：POST /searches 的冻结合同（requestId/query/expectedRevision，禁多余字段）。
- *  expectedRevision 与作用域 stamp 都在发送前捕获（OCR high-7/high-8）：修订随 intent
- *  持久化（安全重发逐字节重放）；intent 键按发送时 stamp 预铸，作用域在途切换时不落
- *  intent——与 writeRecoverable 同一守卫，绝不把旧作用域的恢复意图铸到新作用域键下。 */
+ *  OCR r3 ocr3-031：写入形状收敛到两域共用的 recoverableWrite（stamp 守卫/歧义判据/
+ *  expectedRevision 持久化/未对账封锁/解码守卫一份实现），消除与 OCR2-037 修复并存的
+ *  手写副本——守卫口径再变时只改一处。intent 形状随之变为
+ *  {requestId,input:{query},expectedRevision}，pendingSearch 兼容读取新旧两种形状。 */
 export async function searchOnce(query: string): Promise<SearchOutcome> {
   const trimmed = query.trim();
   if (!trimmed) throw new Error('请先输入想找的岗位或要求');
-  const id = newRequestId();
-  const expected = revision();
-  const stamp = auth.scope.capture();
   try {
-    return decodeSearchOutcome(await client.request({ method: 'POST', path: '/api/v1/career/searches', body: { requestId: id, query: trimmed, expectedRevision: expected } }));
+    return await recoverableWrite<SearchOutcome>(store, {
+      kind: 'search', describe: '搜索', input: { query: trimmed }, expected: revision(),
+      send: async (id, expected) => decodeAs(decodeSearchOutcome, await client.request({ method: 'POST', path: '/api/v1/career/searches', body: { requestId: id, query: trimmed, expectedRevision: expected } })),
+    });
   } catch (error) {
-    // OCR2-037：确定性本地失败（AUTH_REQUIRED 等）不落 intent——与 retryPendingSearch 同一守卫口径。
-    if (ambiguousOutcome(error) && (!auth.scope.isCurrent(stamp) || definiteLocalFailure(error))) {
-      throw Object.assign(new Error('SCOPE_CHANGED'), { cause: error });
-    }
-    if (ambiguousOutcome(error)) { store.write(searchKey(stamp), { requestId: id, query: trimmed, expectedRevision: expected }); throw unknownOutcome(id, trimmed, error); }
+    // 保持搜索域错误形状（附带 query）——recoverableWrite 的统一包装只带 requestId。
+    if ((error as { code?: unknown })?.code === 'outcome_unknown') throw unknownOutcome((error as { requestId: string }).requestId, trimmed, (error as { cause?: unknown }).cause);
     throw error;
   }
 }
@@ -166,7 +167,7 @@ export async function retryPendingSearch(): Promise<SearchOutcome> {
   const expected = pending.expectedRevision ?? revision();
   const stamp = auth.scope.capture();
   try {
-    const outcome = decodeSearchOutcome(await client.request({ method: 'POST', path: '/api/v1/career/searches', body: { requestId: pending.requestId, query: pending.query, expectedRevision: expected } }));
+    const outcome = decodeAs(decodeSearchOutcome, await client.request({ method: 'POST', path: '/api/v1/career/searches', body: { requestId: pending.requestId, query: pending.query, expectedRevision: expected } }));
     store.remove(searchKey());
     return outcome;
   } catch (error) {
@@ -176,13 +177,28 @@ export async function retryPendingSearch(): Promise<SearchOutcome> {
   }
 }
 
-/** 上传已有简历：抽取事实以待确认 proposal 返回（未确认不生效）。 */
-export async function uploadResume(file: NativeFileSource): Promise<CareerUpload> {
-  return decodeCareerUpload(await client.request({
+/** 上传已有简历：抽取事实以待确认 proposal 返回（未确认不生效）。OCR r3 ocr3-032：上传
+ *  与其它写入同守「requestId + 对账」纪律——服务端 Upload 按 requestId 幂等（intent-hash
+ *  指纹），超时后换新 requestId 重传会为同一简历创建全新 claim（重复存储/解析/重复 proposal）。
+ *  结果未知时 intent 持久化；重选同一文件即可通过指纹校验，同编号安全重发不重复建 claim。 */
+export interface UploadResumeIntent { fileName: string }
+async function sendResumeUpload(file: NativeFileSource, id: string, expected: number): Promise<CareerUpload> {
+  return decodeAs(decodeCareerUpload, await client.request({
     method: 'POST', path: '/api/v1/career/sources/upload', nativeFile: file,
-    multipartFields: { requestId: newRequestId(), expectedRevision: String(revision()) },
+    multipartFields: { requestId: id, expectedRevision: String(expected) },
   }));
 }
+export async function uploadResume(file: NativeFileSource): Promise<CareerUpload> {
+  return recoverableWrite<CareerUpload>(store, { kind: 'upload', describe: '简历上传', input: { fileName: file.name }, expected: revision(), send: (id, expected) => sendResumeUpload(file, id, expected) });
+}
+export function pendingUpload(): StoredIntent<UploadResumeIntent> | null { return readIntent<UploadResumeIntent>(intentKey('upload')); }
+/** 上传无按 requestId 的回执路由：恢复出口 = 重选同一文件同编号安全重发，或显式放弃。 */
+export async function retryPendingUpload(file: NativeFileSource): Promise<CareerUpload> {
+  const pending = pendingUpload();
+  if (!pending) throw new Error('没有待恢复的简历上传');
+  return retryRecoverable<CareerUpload>(store, 'upload', '简历上传', async (id, expected) => sendResumeUpload(file, id, expected), revision);
+}
+export function abandonPendingUpload(): void { abandonRecoverable(store, 'upload'); }
 export async function listSources(): Promise<CareerDocumentSource[]> {
   return decodeCareerSources(await client.request({ method: 'GET', path: '/api/v1/career/sources' }));
 }
@@ -235,12 +251,25 @@ async function retryIntent<T>(kind: string, describe: string, resend: (id: strin
   return retryRecoverable<T>(store, kind, describe, async (id, expected) => (await resend(id, expected)) as T, revision);
 }
 
+// —— 显式放弃各 kind 未对账 intent（OCR r3 ocr3-029 统一出口，rule/reminder 先例同语义）：
+//    只清本端恢复记录，不动服务端事实——原写入若已落地，以服务端记录为准（回执/列表对账
+//    可见）。未对账封锁（unresolved_action）挡住新写入时，这是唯一解除出口。 ——
+export function abandonPendingSearch(): void { abandonRecoverable(store, 'search'); }
+export function abandonPendingApplication(): void { abandonRecoverable(store, 'application'); }
+export function abandonPendingMaterialWrite(): void { abandonRecoverable(store, 'material'); }
+export function abandonPendingSubmission(): void { abandonRecoverable(store, 'submission'); }
+export function abandonPendingMaterialPublish(): void { abandonRecoverable(store, 'export'); }
+export function abandonPendingProgressWrite(): void { abandonRecoverable(store, 'progress'); }
+export function abandonPendingPreparationWrite(): void { abandonRecoverable(store, 'preparation'); }
+export function abandonPendingSpaceExport(): void { abandonRecoverable(store, 'spaceExport'); }
+export function abandonPendingSpaceDeletion(): void { abandonRecoverable(store, 'spaceDeletion'); }
+
 // —— 申请（T14 合同）：一岗一批一申请；硬条件不符必须显式继续 ——
 export async function createApplication(input: ApplicationIntentInput): Promise<ApplicationReceipt> {
   if (!input.opportunityId.trim() || !input.snapshotId.trim() || !input.evaluationId.trim() || !input.batchIdentity.trim()) throw new Error('申请缺少岗位、评估或批次信息');
   const batch = input.batchIdentity.trim();
   return writeRecoverable<ApplicationReceipt>('application', '申请创建', input, async (id, expected) =>
-    decodeApplicationReceipt(await client.request({ method: 'POST', path: '/api/v1/career/applications', body: { requestId: id, opportunityId: input.opportunityId.trim(), snapshotId: input.snapshotId.trim(), evaluationId: input.evaluationId.trim(), batchIdentity: batch, continueDespiteHardFailure: input.continueDespiteHardFailure, expectedRevision: expected } })));
+    decodeAs(decodeApplicationReceipt, await client.request({ method: 'POST', path: '/api/v1/career/applications', body: { requestId: id, opportunityId: input.opportunityId.trim(), snapshotId: input.snapshotId.trim(), evaluationId: input.evaluationId.trim(), batchIdentity: batch, continueDespiteHardFailure: input.continueDespiteHardFailure, expectedRevision: expected } })));
 }
 export function pendingApplication(): StoredIntent<ApplicationIntentInput> | null { return readIntent<ApplicationIntentInput>(intentKey('application')); }
 export async function reconcilePendingApplication(): Promise<ApplicationReceipt> {
@@ -251,7 +280,7 @@ export async function retryPendingApplication(): Promise<ApplicationReceipt> {
   const pending = pendingApplication();
   if (!pending) throw new Error('没有待恢复的申请');
   return retryIntent<ApplicationReceipt>('application', '申请', async (id, expected) =>
-    decodeApplicationReceipt(await client.request({ method: 'POST', path: '/api/v1/career/applications', body: { requestId: id, opportunityId: pending.input.opportunityId.trim(), snapshotId: pending.input.snapshotId.trim(), evaluationId: pending.input.evaluationId.trim(), batchIdentity: pending.input.batchIdentity.trim(), continueDespiteHardFailure: pending.input.continueDespiteHardFailure, expectedRevision: expected } })));
+    decodeAs(decodeApplicationReceipt, await client.request({ method: 'POST', path: '/api/v1/career/applications', body: { requestId: id, opportunityId: pending.input.opportunityId.trim(), snapshotId: pending.input.snapshotId.trim(), evaluationId: pending.input.evaluationId.trim(), batchIdentity: pending.input.batchIdentity.trim(), continueDespiteHardFailure: pending.input.continueDespiteHardFailure, expectedRevision: expected } })));
 }
 export async function getApplication(applicationId: string): Promise<ApplicationReceipt> {
   if (!applicationId.trim()) throw new Error('缺少申请编号');
@@ -285,12 +314,12 @@ function materialRequestBody(id: string, intent: EditMaterialIntent, expected: n
 export async function editMaterial(intent: EditMaterialIntent): Promise<MaterialReceipt> {
   materialRequestBody(newRequestId(), intent, revision()); // 先做参数校验，再进入可恢复写入
   return writeRecoverable<MaterialReceipt>('material', '材料编辑', { op: 'edit' as const, ...intent }, async (id, expected) =>
-    decodeMaterialReceipt(await client.request({ method: 'POST', path: '/api/v1/career/materials', body: materialRequestBody(id, intent, expected) })));
+    decodeAs(decodeMaterialReceipt, await client.request({ method: 'POST', path: '/api/v1/career/materials', body: materialRequestBody(id, intent, expected) })));
 }
 export async function confirmMaterial(materialId: string): Promise<MaterialReceipt> {
   if (!materialId.trim()) throw new Error('缺少材料编号');
   return writeRecoverable<MaterialReceipt>('material', '材料确认', { op: 'confirm' as const, materialId: materialId.trim() }, async (id, expected) =>
-    decodeMaterialReceipt(await client.request({ method: 'POST', path: '/api/v1/career/materials/confirm', body: { requestId: id, materialId: materialId.trim(), expectedRevision: expected } })));
+    decodeAs(decodeMaterialReceipt, await client.request({ method: 'POST', path: '/api/v1/career/materials/confirm', body: { requestId: id, materialId: materialId.trim(), expectedRevision: expected } })));
 }
 export function pendingMaterialWrite(): StoredIntent<Record<string, unknown>> | null { return readIntent<Record<string, unknown>>(intentKey('material')); }
 export async function reconcilePendingMaterial(): Promise<MaterialReceipt> {
@@ -305,9 +334,9 @@ export async function retryPendingMaterial(): Promise<MaterialReceipt> {
   return retryIntent<MaterialReceipt>('material', '材料写入', async (id, expected) => {
     if (stored.op === 'edit') {
       const intent: EditMaterialIntent = { ...(stored.materialId !== undefined ? { materialId: String(stored.materialId) } : {}), ...(stored.opportunityId !== undefined ? { opportunityId: String(stored.opportunityId) } : {}), ...(stored.snapshotId !== undefined ? { snapshotId: String(stored.snapshotId) } : {}), body: stored.body as MaterialBody };
-      return decodeMaterialReceipt(await client.request({ method: 'POST', path: '/api/v1/career/materials', body: materialRequestBody(id, intent, expected) }));
+      return decodeAs(decodeMaterialReceipt, await client.request({ method: 'POST', path: '/api/v1/career/materials', body: materialRequestBody(id, intent, expected) }));
     }
-    return decodeMaterialReceipt(await client.request({ method: 'POST', path: '/api/v1/career/materials/confirm', body: { requestId: id, materialId: String(stored.materialId ?? ''), expectedRevision: expected } }));
+    return decodeAs(decodeMaterialReceipt, await client.request({ method: 'POST', path: '/api/v1/career/materials/confirm', body: { requestId: id, materialId: String(stored.materialId ?? ''), expectedRevision: expected } }));
   });
 }
 export async function material(materialId: string): Promise<MaterialView> {
@@ -323,7 +352,7 @@ export async function materialVersions(materialId: string): Promise<MaterialVers
 export async function publishMaterial(materialId: string, version: number): Promise<MaterialExportReceipt> {
   if (!materialId.trim() || !Number.isSafeInteger(version) || version <= 0) throw new Error('发布需要材料编号与确认版本');
   return writeRecoverable<MaterialExportReceipt>('export', '材料发布', { materialId: materialId.trim(), version }, async (id, expected) =>
-    decodeMaterialExportReceipt(await client.request({ method: 'POST', path: `/api/v1/career/materials/${encodeURIComponent(materialId.trim())}/exports`, body: { requestId: id, version, expectedRevision: expected } })));
+    decodeAs(decodeMaterialExportReceipt, await client.request({ method: 'POST', path: `/api/v1/career/materials/${encodeURIComponent(materialId.trim())}/exports`, body: { requestId: id, version, expectedRevision: expected } })));
 }
 export async function listMaterialExports(materialId: string): Promise<MaterialExportList> {
   if (!materialId.trim()) throw new Error('缺少材料编号');
@@ -351,7 +380,7 @@ export async function retryPendingMaterialPublish(): Promise<MaterialExportRecei
   const pending = pendingMaterialPublish();
   if (!pending) throw new Error('没有待恢复的材料发布');
   return retryIntent<MaterialExportReceipt>('export', '材料发布', async (id, expected) =>
-    decodeMaterialExportReceipt(await client.request({ method: 'POST', path: `/api/v1/career/materials/${encodeURIComponent(pending.input.materialId)}/exports`, body: { requestId: id, version: pending.input.version, expectedRevision: expected } })));
+    decodeAs(decodeMaterialExportReceipt, await client.request({ method: 'POST', path: `/api/v1/career/materials/${encodeURIComponent(pending.input.materialId)}/exports`, body: { requestId: id, version: pending.input.version, expectedRevision: expected } })));
 }
 const EXPORT_GRANT_TTL_SECONDS = 300;
 async function issueExportGrant(materialId: string, exportId: string, format: MaterialExportFormat): Promise<MaterialExportDownload> {
@@ -420,7 +449,7 @@ function submissionRequestBody(id: string, input: RecordSubmissionIntent, expect
 export async function recordSubmission(input: RecordSubmissionIntent): Promise<SubmissionReceipt> {
   submissionRequestBody(newRequestId(), input, revision()); // 先校验，再进入可恢复写入
   return writeRecoverable<SubmissionReceipt>('submission', '投递确认', input, async (id, expected) =>
-    decodeSubmissionReceipt(await client.request({ method: 'POST', path: `/api/v1/career/applications/${encodeURIComponent(input.applicationId.trim())}/submissions`, body: submissionRequestBody(id, input, expected) })));
+    decodeAs(decodeSubmissionReceipt, await client.request({ method: 'POST', path: `/api/v1/career/applications/${encodeURIComponent(input.applicationId.trim())}/submissions`, body: submissionRequestBody(id, input, expected) })));
 }
 export function pendingSubmission(): StoredIntent<RecordSubmissionIntent> | null { return readIntent<RecordSubmissionIntent>(intentKey('submission')); }
 export async function reconcilePendingSubmission(): Promise<SubmissionReceipt> {
@@ -431,7 +460,7 @@ export async function retryPendingSubmission(): Promise<SubmissionReceipt> {
   const pending = pendingSubmission();
   if (!pending) throw new Error('没有待恢复的投递确认');
   return retryIntent<SubmissionReceipt>('submission', '投递确认', async (id, expected) =>
-    decodeSubmissionReceipt(await client.request({ method: 'POST', path: `/api/v1/career/applications/${encodeURIComponent(pending.input.applicationId)}/submissions`, body: submissionRequestBody(id, pending.input, expected) })));
+    decodeAs(decodeSubmissionReceipt, await client.request({ method: 'POST', path: `/api/v1/career/applications/${encodeURIComponent(pending.input.applicationId)}/submissions`, body: submissionRequestBody(id, pending.input, expected) })));
 }
 export async function listSubmissions(applicationId: string): Promise<SubmissionList> {
   if (!applicationId.trim()) throw new Error('缺少申请编号');
@@ -467,7 +496,7 @@ export async function appendProgressEvent(input: ProgressEventInput, expectedRev
   if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) throw new Error('进展事件缺少有效的预期修订（事件计数）');
   progressRequestBody(newRequestId(), input, expectedRevision); // 先校验，再进入可恢复写入
   return writeRecoverable<ProgressReceipt>('progress', '进展录入', input, async (id, expected) =>
-    decodeProgressReceipt(await client.request({ method: 'POST', path: `/api/v1/career/applications/${encodeURIComponent(input.applicationId.trim())}/progress`, body: progressRequestBody(id, input, expected) })), expectedRevision);
+    decodeAs(decodeProgressReceipt, await client.request({ method: 'POST', path: `/api/v1/career/applications/${encodeURIComponent(input.applicationId.trim())}/progress`, body: progressRequestBody(id, input, expected) })), expectedRevision);
 }
 /** 纠错=追加引用事件（原事件保留）：只能纠 plain 事件，不能纠一条更正。 */
 export async function correctProgressEvent(input: CorrectProgressInputMin, expectedRevision: number): Promise<ProgressReceipt> {
@@ -475,7 +504,7 @@ export async function correctProgressEvent(input: CorrectProgressInputMin, expec
   if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) throw new Error('进展事件缺少有效的预期修订（事件计数）');
   progressRequestBody(newRequestId(), input, expectedRevision);
   return writeRecoverable<ProgressReceipt>('progress', '进展纠错', input, async (id, expected) =>
-    decodeProgressReceipt(await client.request({ method: 'POST', path: `/api/v1/career/applications/${encodeURIComponent(input.applicationId.trim())}/progress/correct`, body: progressRequestBody(id, input, expected) })), expectedRevision);
+    decodeAs(decodeProgressReceipt, await client.request({ method: 'POST', path: `/api/v1/career/applications/${encodeURIComponent(input.applicationId.trim())}/progress/correct`, body: progressRequestBody(id, input, expected) })), expectedRevision);
 }
 export function pendingProgressWrite(): StoredIntent<ProgressEventInput> | null { return readIntent<ProgressEventInput>(intentKey('progress')); }
 export async function reconcilePendingProgress(): Promise<ProgressReceipt> {
@@ -488,7 +517,7 @@ export async function retryPendingProgress(): Promise<ProgressReceipt> {
   const input = pending.input as ProgressEventInput & { correctsEventId?: string };
   const correction = typeof input.correctsEventId === 'string' && input.correctsEventId;
   return retryIntent<ProgressReceipt>('progress', '进展写入', async (id, expected) =>
-    decodeProgressReceipt(await client.request({
+    decodeAs(decodeProgressReceipt, await client.request({
       method: 'POST',
       path: `/api/v1/career/applications/${encodeURIComponent(input.applicationId.trim())}/progress${correction ? '/correct' : ''}`,
       body: progressRequestBody(id, input, expected),
@@ -511,7 +540,7 @@ function preparationRequestBody(id: string, input: GeneratePreparationIntent, ex
 export async function generatePreparation(intent: GeneratePreparationIntent): Promise<PreparationReceipt> {
   preparationRequestBody(newRequestId(), intent, revision()); // 先校验，再进入可恢复写入
   return writeRecoverable<PreparationReceipt>('preparation', '准备生成', intent, async (id, expected) =>
-    decodePreparationReceipt(await client.request({ method: 'POST', path: `/api/v1/career/applications/${encodeURIComponent(intent.applicationId.trim())}/preparations`, body: preparationRequestBody(id, intent, expected) })));
+    decodeAs(decodePreparationReceipt, await client.request({ method: 'POST', path: `/api/v1/career/applications/${encodeURIComponent(intent.applicationId.trim())}/preparations`, body: preparationRequestBody(id, intent, expected) })));
 }
 export async function listPreparations(applicationId: string): Promise<PreparationList> {
   if (!applicationId.trim()) throw new Error('缺少申请编号');
@@ -526,7 +555,7 @@ export async function retryPendingPreparation(): Promise<PreparationReceipt> {
   const pending = pendingPreparationWrite();
   if (!pending) throw new Error('没有待恢复的准备生成');
   return retryIntent<PreparationReceipt>('preparation', '准备生成', async (id, expected) =>
-    decodePreparationReceipt(await client.request({ method: 'POST', path: `/api/v1/career/applications/${encodeURIComponent(pending.input.applicationId.trim())}/preparations`, body: preparationRequestBody(id, pending.input, expected) })));
+    decodeAs(decodePreparationReceipt, await client.request({ method: 'POST', path: `/api/v1/career/applications/${encodeURIComponent(pending.input.applicationId.trim())}/preparations`, body: preparationRequestBody(id, pending.input, expected) })));
 }
 
 // ---- T32 全空间生命周期：导出、删除边界与完整删除（与 Web ExportDeletionPage 同源）----
@@ -538,7 +567,7 @@ export async function retryPendingPreparation(): Promise<PreparationReceipt> {
 // —— 全空间导出：同步内联归档（档案/原始岗位快照/申请事件/材料版本/投递记录）+ sha256 摘要 ——
 export async function exportWholeSpace(): Promise<CareerExportReceipt> {
   return writeRecoverable<CareerExportReceipt>('spaceExport', '导出', {}, async (id, expected) =>
-    decodeCareerExportReceipt(await client.request({ method: 'POST', path: '/api/v1/career/exports', body: { requestId: id, expectedRevision: expected } })));
+    decodeAs(decodeCareerExportReceipt, await client.request({ method: 'POST', path: '/api/v1/career/exports', body: { requestId: id, expectedRevision: expected } })));
 }
 export function pendingSpaceExport(): StoredIntent<Record<string, unknown>> | null { return readIntent<Record<string, unknown>>(intentKey('spaceExport')); }
 export async function reconcilePendingSpaceExport(): Promise<CareerExportReceipt> {
@@ -549,7 +578,7 @@ export async function retryPendingSpaceExport(): Promise<CareerExportReceipt> {
   const pending = pendingSpaceExport();
   if (!pending) throw new Error('没有待恢复的导出');
   return retryIntent<CareerExportReceipt>('spaceExport', '导出', async (id, expected) =>
-    decodeCareerExportReceipt(await client.request({ method: 'POST', path: '/api/v1/career/exports', body: { requestId: id, expectedRevision: expected } })));
+    decodeAs(decodeCareerExportReceipt, await client.request({ method: 'POST', path: '/api/v1/career/exports', body: { requestId: id, expectedRevision: expected } })));
 }
 /** 删除后旧授权复验：按原请求编号读历史导出回执（完整删除后服务端应 404 not_found）。 */
 export async function spaceExportReceipt(requestId: string): Promise<CareerExportReceipt> {
@@ -571,7 +600,7 @@ export async function deleteWholeSpace(): Promise<CareerDeletionReceipt> {
   const expected = revision();
   const stamp = auth.scope.capture();
   try {
-    const receipt = decodeCareerDeletionReceipt(await client.request({ method: 'POST', path: '/api/v1/career/deletions', body: { requestId: id, expectedRevision: expected } }));
+    const receipt = decodeAs(decodeCareerDeletionReceipt, await client.request({ method: 'POST', path: '/api/v1/career/deletions', body: { requestId: id, expectedRevision: expected } }));
     if (receipt.status !== 'deleted') store.write(intentKey('spaceDeletion'), { requestId: id, input: {}, expectedRevision: expected });
     return receipt;
   } catch (error) {
@@ -600,7 +629,7 @@ export async function retryPendingSpaceDeletion(): Promise<CareerDeletionReceipt
   const expected = pending.expectedRevision ?? revision();
   const stamp = auth.scope.capture();
   try {
-    const receipt = decodeCareerDeletionReceipt(await client.request({ method: 'POST', path: '/api/v1/career/deletions', body: { requestId: pending.requestId, expectedRevision: expected } }));
+    const receipt = decodeAs(decodeCareerDeletionReceipt, await client.request({ method: 'POST', path: '/api/v1/career/deletions', body: { requestId: pending.requestId, expectedRevision: expected } }));
     if (receipt.status === 'deleted') store.remove(intentKey('spaceDeletion'));
     return receipt;
   } catch (error) {
