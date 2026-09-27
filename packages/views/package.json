@@ -18,6 +18,7 @@
     "./craft/document": "./src/craft/document.tsx",
     "./craft/files": "./src/craft/files.tsx",
     "./craft/home": "./src/craft/home.tsx",
+    "./craft/input-expand": "./src/craft/input-expand.tsx",
     "./craft/interaction": "./src/craft/interaction.tsx",
     "./craft/library": "./src/craft/library.tsx",
     "./craft/presentation": "./src/craft/presentation.ts",

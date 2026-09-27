@@ -32,6 +32,7 @@ import { CraftTemplates } from '@weknora/views/craft/templates';
 import { CraftWorkbench, createCraftWorkbenchFeatures, type CraftInteractionActionInput } from '@weknora/views/craft/workbench';
 import { CraftAccess } from '@weknora/views/craft/access';
 import { CraftInputDecisionPanel } from '@weknora/views/craft/files';
+import { CraftInputExpandPanel } from '@weknora/views/craft/input-expand';
 import { CraftBudgetPauseNotice } from '@weknora/views/craft/usage';
 import { createCraftMessageLog, downloadFileName, type CraftLocale } from '@weknora/views/craft/presentation';
 import { createSessionCraftInteractionClient, CraftInteractionPanel } from '@weknora/views/craft/interaction';
@@ -321,6 +322,11 @@ export function CraftRoutes(props: CraftRoutesProps) {
   const [workbenchInfo, setWorkbenchInfo] = useState<{ title: string; kind: string; ownerId: string; snapshotVersionId: string | null; updatedAt: string; resumed: boolean; activeRun: { id: string; status: string; waitReason: string } | null } | null>(null);
   const [versions, setVersions] = useState<{ status: 'loading' | 'ready' | 'error'; items: CraftVersionView[] }>({ status: 'loading', items: [] });
   const [inputDecisionState, setInputDecisionState] = useState<{ sessionId: string; inputs: CraftInputView[] }>({ sessionId: '', inputs: [] });
+  // T20/T02 (#121): inputs the member associated with THIS Task in this
+  // workbench session — the archive-expansion entrance projects exactly
+  // these (the server re-validates association on every expand; a reconnect
+  // simply re-associates or re-expands through the same guarded endpoint).
+  const [associatedInputs, setAssociatedInputs] = useState<{ sessionId: string; inputs: CraftInputView[] }>({ sessionId: '', inputs: [] });
   const pendingRequestIdRef = useRef<string | null>(null);
   const pendingSubmitRef = useRef<{
     sessionId: string;
@@ -338,6 +344,7 @@ export function CraftRoutes(props: CraftRoutesProps) {
 
   useEffect(() => {
     setInputDecisionState({ sessionId: sessionId ?? '', inputs: [] });
+    setAssociatedInputs({ sessionId: sessionId ?? '', inputs: [] });
     pendingRequestIdRef.current = null;
     pendingSubmitRef.current = null;
     return () => {
@@ -643,6 +650,14 @@ export function CraftRoutes(props: CraftRoutesProps) {
           // the upload's address, not the workspace input ref (W06 finding).
           const input = await craftApi.addInput(sessionId, { resource_ref: attachmentId, expected_sha256: digest }, scopeController.current().signal);
           if (activeSessionId.current !== sessionId) throw new Error('Task changed while the attachment was being accepted.');
+          // T20/T02: track the accepted input so the archive-expansion
+          // entrance can offer the guarded server endpoint for it.
+          setAssociatedInputs((prior) => ({
+            sessionId,
+            inputs: prior.sessionId === sessionId && !prior.inputs.some((row) => row.ref === input.ref)
+              ? [...prior.inputs, input]
+              : prior.sessionId === sessionId ? prior.inputs : [input],
+          }));
           if (input.recognition === null || !input.recognition.accepted) {
             throw new Error('Craft input acceptance was not confirmed by the server.');
           }
@@ -788,6 +803,24 @@ export function CraftRoutes(props: CraftRoutesProps) {
       />,
     },
     {
+      // T20/T02 (#121): the archive-expansion entrance rides the guarded
+      // POST /craft/inputs/expand endpoint; members the server published
+      // join the tracked inputs (nested archives re-enter the same gate).
+      name: 'input-expand',
+      slot: 'header',
+      render: () => sessionId === null ? null : <CraftInputExpandPanel
+        key={sessionId + '-expand'}
+        locale={locale}
+        inputs={associatedInputs.sessionId === sessionId ? associatedInputs.inputs : []}
+        onExpand={(ref) => craftApi.expandInput(sessionId, ref, scopeController.current().signal).then((members) => {
+          setAssociatedInputs((prior) => prior.sessionId === sessionId
+            ? { sessionId, inputs: [...prior.inputs, ...members.filter((member) => !prior.inputs.some((row) => row.ref === member.ref))] }
+            : { sessionId, inputs: [...members] });
+          return members;
+        })}
+      />,
+    },
+    {
       name: 'task-access',
       slot: 'aside',
       render: () => {
@@ -810,7 +843,7 @@ export function CraftRoutes(props: CraftRoutesProps) {
         />;
       },
     },
-  ]), [sessionId, locale, inputDecisionState, decideInput, accessState, currentMeId, grantAccess, revokeAccess]);
+  ]), [sessionId, locale, inputDecisionState, associatedInputs, decideInput, craftApi, scopeController, accessState, currentMeId, grantAccess, revokeAccess]);
 
   if (route.name === 'home') {
     return (

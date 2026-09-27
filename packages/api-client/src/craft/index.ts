@@ -339,6 +339,23 @@ export function createCraftApi(request: (input: ClientRequest) => Promise<unknow
       }), 'budget extend');
     },
     /**
+     * POST /craft/inputs/expand — T02 (#121): one associated archive input's
+     * bounded ATOMIC extraction. All members publish as immutable inputs at
+     * once or nothing does; the response reuses the Input projection.
+     */
+    async expandInput(sessionId: string, ref: string, signal?: AbortSignal): Promise<CraftInputView[]> {
+      const data = unwrap(await request({
+        method: 'POST',
+        path: '/api/v1/sessions/' + encodeURIComponent(sessionId) + '/craft/inputs/expand',
+        body: { resource_ref: ref },
+        signal,
+      }), 'input expand');
+      if (!Array.isArray(data)) {
+        throw new ApiError({ code: 'INVALID_RESPONSE', message: 'Craft input expand response must be an array' });
+      }
+      return data.map((row) => parseCraftInputView(row));
+    },
+    /**
      * GET /sessions/:id/craft/runs/:run_id/sources/:citation_id/open — the
      * T10 (#127) tested source-open seam: ONE fetch passes BOTH the current
      * Task grant and the caller's own knowledge ACL. The response carries
