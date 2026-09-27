@@ -459,7 +459,7 @@ async function newAuthedPage(ctx, base, auth) {
   const page = await ctx.newPage();
   await page.setViewportSize({ width: 1280, height: 720 });
   // 先访问 origin 一次以获得 localStorage 写入权限
-  await page.goto(base + '/login', { waitUntil: 'domcontentloaded', timeout: 15000 });
+  await page.goto(base + '/login', { waitUntil: 'domcontentloaded', timeout: 45000 });
   await page.evaluate(([a, guideKeys, isReact]) => {
     localStorage.setItem('weknora_token', a.token);
     if (a.refreshToken) localStorage.setItem('weknora_refresh_token', a.refreshToken);
@@ -695,7 +695,7 @@ async function main() {
         // 从未对实际截图的 anon 页生效）。
         for (const [tag, page, base] of [['vue', vuePage, VUE], ['react', reactPage, REACT]]) {
           const active = p.auth === false ? anonPages[tag] : page;
-          await active.goto(base + path, { waitUntil: 'domcontentloaded', timeout: 20000 });
+          await active.goto(base + path, { waitUntil: 'domcontentloaded', timeout: 45000 });
           // dev server 首次编译/HMR full-reload 会打断首帧；稳态门（网络空闲 +
           // 字体就绪 + 动画冻结）后走每页差异化 settle，消除瞬态白屏/字体/过渡
           // 动画伪差（R5xx chat 页间歇 93% 假阳性的根因是网络瞬态）。
