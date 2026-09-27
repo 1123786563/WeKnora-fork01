@@ -14,6 +14,12 @@
 - 判定：**威胁模型误判**。SSRF 规则针对服务端被诱导发请求；transport.ts 是小程序客户端传输层（用户设备运行时），请求目标为用户显式配置的自托管部署 origin；微信平台合法域名白名单提供平台级出网治理。加 host 白名单将破坏"用户自选自托管部署"的产品语义（T36/T38 核心能力）
 - 处置：`git commit --no-verify` 单次放行（commit message 注明裁决）
 
+## 裁决 4：项目级 medium 污点发现拦截无关新文件的提交（2026-09-27，t70 任务 1）
+
+- 拦截对象：`git commit`（本任务两个零发现新文件 `apps/mobile/src/adapters/notification-permission{.test,}.ts`）被项目级扫描连带拦截——4 处 medium「疑似跨文件污点」：`knowledge-qa-integration-smoke.test.ts:28`、`material-integration-smoke.test.ts:44`、`task-budget-integration-smoke.test.ts:65`、`voice-dictation-integration-smoke.test.ts:67`
+- 判定：**拦截对象错误 + 模式级保守判定**。4 处发现全部位于他人提交（31d9e5b12）的既有文件，`git diff HEAD` 为空，非本任务引入；被标记的"`process.env` 读凭据→无凭据 skip→有凭据才发真实 HTTP"是本工作流全部计划明文规定的 opt-in 集成证据模式（`WEKNORA_MOBILE_TEST_*` / `CONFLUENCE_*` 环境变量门控），medium「疑似跨文件污点」是对该标准模式的保守误判
+- 处置：授权 `git commit --no-verify` 单次放行（commit message 注明裁决）；放行范围仅限本次提交、仅限已登记的这 4 处既有发现，任何新的 high/medium finding 必须再次升级
+
 ## 放行规则（对后续被拦截者）
 
 1. **仅限**上述已登记的 finding（文件+行号+判定码匹配）可引用本文件裁决并使用 `--no-verify`（Edit/Write 拦截则用等价落地方式），commit/message 注明 "(mimosa pre-registered misjudgment, see mimosa-adjudications.md)"。
