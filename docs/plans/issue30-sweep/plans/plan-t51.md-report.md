@@ -1778,3 +1778,118 @@ ALL_GREEN
 1. **编排方重复派发同一任务槽**（与 C-4.1 独立得出同一结论）：本 ask 派发时 Task 6/7/终修轮 3 均已提交入册。建议编排方以本报告文件与 git log 为准推进，避免再派重复轮。
 2. **并发写冲突风险已规避**：C 节与本节先后追加于同一文件，内容互不覆盖；`.superpowers/sdd/plan-t51/progress.md` 的他人未提交改动（重复的「Task 5」账目行）本会话不纳入提交、不回退。
 3. **本会话改动范围**：仅本报告文件追加本节；生产代码/测试零改动；未撤销/回退任何他人提交；未派发子代理或审查者；未推送远端；复跑按 Task 6 Step 3/4/5 命令原测试选择执行（附注的 `-v`/日志过滤/段间哨兵不改变被测集合与判定）。
+
+# Task 7/7 复核轮报告（编排方重放派发 Task 7/7——交付已在位，本会话核验一致性 + 更新版 testCommand 全量复跑取证）
+
+- **执行者**：实现员-t51-任务7（复核轮）
+- **执行时刻 HEAD**：`b1bcbeaba`（终修轮 `b272915d5` 之后，叠加 Task 6 复核轮两个 docs 提交 `ed73e29bc`/`b1bcbeaba`；生产代码与测试代码的最终 HEAD 为 `b272915d5`）
+- **本轮定性**：本 ask 派发时 Task 7/7 原始报告已在册（T7 节，HEAD `4afa3e942` 入册），其后发生了两轮演进——终修轮（`b272915d5`：testCommand 正则补 `TestAppActionPlans` 分支 + 新增 `TestPlanExecuteSkipsInFlightItemsOwnedByLiveWriter` 单测）与 Task 6 复核轮（C/D 节，仅复跑 Task 6 Step 3/4/5，**未按更新版正则完整重跑计划级 testCommand 五段链**）。本轮为验证轮：交付在位核验 + 在当前 HEAD 按计划现行 testCommand（plan-t51.md:2890，终审 Finding 1 修订版）全量复跑取证 + blocked-env 复证。**无新增实现代码。**
+
+## E-1. 交付在位核验（本会话实查，对照 T7-1 清单 + 终修轮新增项）
+
+| 任务 | 交付物 | 核验结果（本会话 ls/grep 实证） |
+|---|---|---|
+| Task 0（裁决改道 mobile_device_app） | `migrations/sqlite/000118_mobile_device_app.{up,down}.sql`、`migrations/versioned/000197_mobile_device_app.{up,down}.sql` | 在位 |
+| Task 1 | `migrations/sqlite/000119_app_action_plans.{up,down}.sql`、`migrations/versioned/000198_app_action_plans.{up,down}.sql`、`repository/appconnector/{plan,plan_test}.go` | 在位 |
+| Task 2-4 | `internal/modules/appconnector/plan/{plan,plan_test}.go` | 在位；`grep -rn "IMPLEMENT IN TASK" internal/modules/appconnector/plan/` 零命中（占位全部替换）；`FormPlan/Approve/Execute/Status` 在 plan.go:204/261/343/410 |
+| 终修轮 Finding 2 | `TestPlanExecuteSkipsInFlightItemsOwnedByLiveWriter`（plan_test.go:592） | 在位 |
+| Task 5 | `internal/handler/app_connector_action_plan{,_test}.go`、`internal/router/routes_app_action_plan{,_test}.go`、`router.go:149/:441` 接线、`container/notion_publish.go:39/:57-58` 双输出构造器 | 在位；路由组 `/apps/action-plans`（routes_app_action_plan.go:19） |
+| Task 6 | `internal/handler/app_connector_action_plan_e2e_test.go` 5 测试（:44/:274/:308/:347/:414）+ `app_connector_notion_publish_e2e_test.go` 双打钩子 | 在位 |
+
+结论：T7-1 清单在最终 HEAD 全部在位，终修轮新增项亦在位，零漂移。
+
+## E-2. 复跑命令与完整输出（本会话在 HEAD `b1bcbeaba` 实跑）
+
+计划现行 testCommand（plan-t51.md:2890，终审 Finding 1 修订版——与原始 T7-2 所跑旧版的唯一差异是 handler 段正则补 `TestAppActionPlans` 分支）：
+
+```bash
+go build ./... && go test ./internal/database/ -count=1 && go test ./internal/modules/appconnector/... -count=1 && go test ./internal/handler/ -run 'TestActionPlan|TestAppActionPlans|TestNotionPublish|TestAppPublications' -count=1 && go test ./internal/router/ -run TestActionPlanRoutes -count=1
+```
+
+实跑输出（五段串行 && 链，exit code 0；`===X_OK===` 为本会话插入的分段哨兵，非计划原文；两条 `ld: warning` 是 macOS 链接器对 cmd/desktop、cmd/server 的既有噪音，T7-2/D-3 同判）：
+
+```
+# github.com/Tencent/WeKnora/cmd/desktop
+ld: warning: ignoring duplicate libraries: '-lc++'
+# github.com/Tencent/WeKnora/cmd/server
+ld: warning: ignoring duplicate libraries: '-lc++'
+===BUILD_OK===
+ok  	github.com/Tencent/WeKnora/internal/database	18.655s
+===DATABASE_OK===
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector	0.522s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/connectorcontrol	1.662s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/openconnector	1.996s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/plan	1.387s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/publish	2.755s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector	2.107s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector	3.430s
+===APPCONN_OK===
+ok  	github.com/Tencent/WeKnora/internal/handler	14.836s
+===HANDLER_OK===
+ok  	github.com/Tencent/WeKnora/internal/router	4.872s
+===ROUTER_OK===
+```
+
+handler 段 `-v` 逐名取证（同一正则，13 条 RUN 全 PASS——含终修轮修订点捕获的 `TestAppActionPlansTablesExistAfterMigrations`；原始 T7-2 旧正则仅 12 条聚合）：
+
+```
+=== RUN   TestAppActionPlansTablesExistAfterMigrations
+--- PASS: TestAppActionPlansTablesExistAfterMigrations (1.51s)
+=== RUN   TestActionPlanEndToEndApproveExecutePerItemResults
+--- PASS: TestActionPlanEndToEndApproveExecutePerItemResults (2.27s)
+=== RUN   TestActionPlanEndToEndContentChangeInvalidatesOldApproval
+--- PASS: TestActionPlanEndToEndContentChangeInvalidatesOldApproval (1.65s)
+=== RUN   TestActionPlanEndToEndPartialSuccessResumesUnfinishedOnly
+--- PASS: TestActionPlanEndToEndPartialSuccessResumesUnfinishedOnly (1.68s)
+=== RUN   TestActionPlanEndToEndExcludeItem
+--- PASS: TestActionPlanEndToEndExcludeItem (2.82s)
+=== RUN   TestActionPlanHandlerFailClosedWithoutService
+--- PASS: TestActionPlanHandlerFailClosedWithoutService (0.00s)
+=== RUN   TestActionPlanHandlerValidationAndNotFound
+--- PASS: TestActionPlanHandlerValidationAndNotFound (0.00s)
+=== RUN   TestAppPublicationsTableExistsAfterMigrations
+--- PASS: TestAppPublicationsTableExistsAfterMigrations (4.44s)
+=== RUN   TestNotionPublishEndToEndCreateApprovePublishReceipt
+--- PASS: TestNotionPublishEndToEndCreateApprovePublishReceipt (3.13s)
+=== RUN   TestNotionPublishEndToEndUpdateConflict
+--- PASS: TestNotionPublishEndToEndUpdateConflict (2.17s)
+=== RUN   TestNotionPublishEndToEndUnknownReconcilesRemoteFirst
+--- PASS: TestNotionPublishEndToEndUnknownReconcilesRemoteFirst (2.37s)
+=== RUN   TestNotionPublishPlanGates
+--- PASS: TestNotionPublishPlanGates (0.00s)
+=== RUN   TestNotionPublishActionLookupIsTenantScoped
+--- PASS: TestNotionPublishActionLookupIsTenantScoped (0.00s)
+PASS
+ok  	github.com/Tencent/WeKnora/internal/handler	23.574s
+```
+
+## E-3. 交付边界取证（blocked-env 复证，本会话实跑）
+
+```
+$ echo "NOTION_TOKEN set? ${NOTION_TOKEN:+yes}${NOTION_TOKEN:-no}"
+NOTION_TOKEN set? no
+$ go test ./internal/modules/appconnector/ -run 'TestNotionReal' -count=1 -v
+=== RUN   TestNotionRealControlledCreate
+--- SKIP: TestNotionRealControlledCreate (0.00s)
+=== RUN   TestNotionRealPublishLoop
+--- SKIP: TestNotionRealPublishLoop (0.00s)
+PASS
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector	0.135s
+```
+
+与 T7-3 同判：无凭据即显式 SKIP（门控 `notion_publish_real_test.go:23-26`），skip 不是 pass；AC3 本地证据链维持「生产迁移库 + 真实服务/处理器链 + 契约双打 Notion」的五 e2e（E-2 逐名 PASS），计划级真实 Provider 多操作循环仍为 blocked-env 待有凭据环境执行，不得伪造。
+
+## E-4. TDD 适用性说明
+
+本会话未新写失败测试，理由与 C-3/D-4 同构：Task 7/7 是计划文末的验证收口门（「本任务是前六个任务的红绿证据收口，不是新的 RED」），且交付已由前任会话完成并入册（T7 节）。本会话为验证轮：在位核验（E-1）+ 命令复跑（E-2/E-3），复跑即本任务的验收检查，无跳过、无替代、无伪造。
+
+## E-5. 文件变更与提交
+
+本会话唯一文件变更：本报告文件追加本节。生产代码与测试代码零改动（复跑前后 `git status` 中生产/测试文件无变化）。`.superpowers/sdd/plan-t51/progress.md` 的他人未提交改动（编排方账目行追加）不纳入本会话提交、不回退（D-5.2 同判）。
+
+## E-6. 自检发现
+
+1. **原始 T7-2 的正则已过时（已由本轮闭环）**：原始 T7 报告在 HEAD `4afa3e942` 用旧版 handler 段正则（缺 `TestAppActionPlans` 分支）取证；终修轮修订了计划 testCommand 后，C/D 节复核轮未按新正则完整重跑五段链。本轮以计划现行命令在最终 HEAD 全量复跑（E-2），13 条 handler 测试含迁移对齐测试逐名 PASS——计划级门控证据与计划现行文本对齐闭合。
+2. **handler 段耗时波动（非回归）**：本轮五段链 handler 段 14.836s、-v 复跑 23.574s，与 T7-2 的 199.614s 差异为环境负载/构建缓存所致（测试集合与判定相同，同为 `ok`/exit 0），T7-6.1 同判。
+3. **编排方重复派发**：本 ask 派发时 Task 7/7 原始报告已在册（C-4.1/D-5.1 已两次独立记录同类现象）。建议以本报告文件与 git log 为准推进收口。
+4. **纪律核验**：本会话仅追加报告文件；未撤销/回退他人提交或未提交改动；未派发子代理或审查者；未推送远端；testCommand 逐字运行于计划指定验证规模（-v/哨兵不改变被测集合与判定）。
