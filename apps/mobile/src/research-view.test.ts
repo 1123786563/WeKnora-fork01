@@ -3,10 +3,11 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
+import { OfflineGateError } from '@weknora/mobile-core';
 import type {
   ResearchAnnotationDraft, ResearchAnnotationRow, ResearchDelegationRow, ResearchEvent, TaskResearchHandle,
 } from '@weknora/mobile-core';
-import { createResearchController, type ResearchViewState } from './research-view.ts';
+import { createResearchController, RESEARCH_ERROR_COPY, RESEARCH_OFFLINE_REVISION_COPY, type ResearchViewState } from './research-view.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -22,8 +23,9 @@ interface StubHandle extends TaskResearchHandle {
   closeReason?: string;
 }
 
-/** 结构化 stub：offline=true 时 annotate 返回 drafted 并记账 drafts（模拟离线草稿路径）。 */
-function stubHandle(options: { offline?: boolean } = {}): StubHandle {
+/** 结构化 stub：offline=true 时 annotate 返回 drafted 并记账 drafts（模拟离线草稿路径）；
+ *  offlineRevision=true 时 requestRevision 上抛真 OfflineGateError（模拟 Run 命令离线判决）。 */
+function stubHandle(options: { offline?: boolean; offlineRevision?: boolean } = {}): StubHandle {
   const drafts: ResearchAnnotationDraft[] = [];
   let draftSeq = 0;
   const handle: StubHandle = {
@@ -46,7 +48,10 @@ function stubHandle(options: { offline?: boolean } = {}): StubHandle {
       };
     },
     async annotations() { return annotations; },
-    async requestRevision(input) { return { intent: 'revision-request', outcome: 'accepted', action: input.action, at: '2026-09-26T00:00:00Z' }; },
+    async requestRevision(input) {
+      if (options.offlineRevision === true) throw new OfflineGateError('run'); // 模块原样上抛的结构化离线判决
+      return { intent: 'revision-request', outcome: 'accepted', action: input.action, at: '2026-09-26T00:00:00Z' };
+    },
     async flushAnnotationDrafts() {
       const flushed = drafts.splice(0);
       return flushed.map((draft) => ({ draftId: draft.draftId, outcome: 'recorded' as const }));
@@ -98,4 +103,28 @@ test('research route and composition wiring stay at the Interface boundary', asy
   assert.ok(composition.includes('activeTaskResearch'), 'composition 必须导出 activeTaskResearch');
   const screen = readFileSync(join(here, 'screens/ResearchScreen.tsx'), 'utf8');
   assert.ok(!screen.includes('@weknora/contracts') && !screen.includes('@weknora/api-client'), 'Screen 禁止导入 contracts/api-client');
+  // 终局修复回归（发现 2）：生产装配必须注入 commands 端口——切片以 taskResearchFor
+  // 函数体为界（不跨函数匹配 taskOfficeFor 的既有 commands），缺失该注入时生产修订
+  // 请求恒命中 RESEARCH_COMMAND_UNAVAILABLE fail closed（计划 Task 7 代码块缺此行）。
+  const factoryStart = composition.indexOf('function taskResearchFor');
+  const factoryEnd = composition.indexOf('export function activeTaskResearch');
+  assert.ok(factoryStart >= 0 && factoryEnd > factoryStart, 'composition 必须保留 taskResearchFor 工厂');
+  const researchFactory = composition.slice(factoryStart, factoryEnd);
+  assert.ok(researchFactory.includes('commands:'), 'taskResearchFor 必须注入 commands 端口：缺失时修订请求在生产中恒不可用（RESEARCH_COMMAND_UNAVAILABLE）');
+  assert.ok(researchFactory.includes('createTaskOfficeRemote'), 'commands 端口必须复用 #37 既有命令通道 adapter（createTaskOfficeRemote，同 taskOfficeFor 先例）');
+});
+
+test('controller requestRevision surfaces the structured offline rejection with honest copy', async () => {
+  // 终局修复回归（发现 1）：离线修订请求是结构化 OfflineGateError，控制器文案必须是
+  // 离线判决文案——绝不得落 RESEARCH_BACKEND 的「服务端暂时不可用」（误导用户以为服务端故障）。
+  const controller = createResearchController(stubHandle({ offlineRevision: true }), { runId: 'r-scenario' });
+  await controller.requestRevision({ materialId: 'm1:0', baseVersion: 'abcdef0123456789', note: '补齐引用', action: 'steer', expectedRevision: 3 });
+  assert.equal(controller.state().error, RESEARCH_OFFLINE_REVISION_COPY);
+  assert.notEqual(controller.state().error, RESEARCH_ERROR_COPY.RESEARCH_BACKEND);
+  controller.dispose();
+
+  const online = createResearchController(stubHandle(), { runId: 'r-scenario' });
+  await online.requestRevision({ materialId: 'm1:0', baseVersion: 'abcdef0123456789', note: '补齐引用', action: 'steer', expectedRevision: 3 });
+  assert.match(online.state().notice ?? '', /修订请求已提交/);
+  online.dispose();
 });

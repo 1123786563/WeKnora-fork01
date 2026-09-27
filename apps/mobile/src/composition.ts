@@ -511,6 +511,11 @@ function taskResearchFor(activeRuntime: MobileRuntime, origin: string, tenantId:
     return createTaskResearch({
       remote,
       gate: nativeOfflineGate,
+      // 终局修复（终局审查发现 2）：修订命令通道注入生产端口——与 taskOfficeFor 的
+      // commands（:185）同款 adapter（同 origin + authorizedRequest；command 只走 request
+      // 通道，无需 stream）。缺失时 requestRevision 恒 fail closed
+      // （RESEARCH_COMMAND_UNAVAILABLE），移动端生产修订请求整体不可用。
+      commands: createTaskOfficeRemote({ origin, request: (input) => activeRuntime.authorizedRequest(input) }),
       ...(draftsPort === undefined ? {} : { drafts: draftsPort }),
     });
   });

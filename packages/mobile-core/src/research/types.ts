@@ -57,7 +57,8 @@ export interface TaskResearchPorts {
   remote: ResearchBackendPort;
   /** 修订请求的命令通道（#37）；缺失 → requestRevision fail closed。 */
   commands?: TaskCommandPort;
-  /** 离线探测（#40）；缺失 → annotate 直接走网络（物理离线由传输层兜底）。 */
+  /** 离线探测（#40）；缺失 → annotate/requestRevision 直接走网络（物理离线由传输层兜底）。
+   *  在场时 requestRevision 属 Run 命令：派发前经 assertOnline('run') 结构化拒绝（终局修复）。 */
   gate?: OfflineGate;
   /** 离线批注草稿仓储；缺失且离线 → annotate fail closed（不静默丢批注）。 */
   drafts?: ResearchDraftsPort;

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { RuntimeScopeLease } from '../runtime/scope-lease.ts';
 import type { ScopeLease } from '../runtime/types.ts';
+import { createOfflineGate, OfflineGateError, OFFLINE_ACTION_BLOCKED } from '../offline/offline-gate.ts';
 import { createScenarioResearchRemote, type ScenarioResearchRemoteScript } from './in-memory-research-remote.ts';
 import { createTaskResearch, ResearchError, type ResearchBackendPort, type ResearchDraftsPort, type ResearchEvent } from './task-research.ts';
 
@@ -179,6 +180,62 @@ test('requestRevision composes a version-pinned text over the command port', asy
     conflicting.open({ lease: newLease().lease }).requestRevision({ runId: 'r1', materialId: 'm', baseVersion: 'v', note: 'n', action: 'steer', expectedRevision: 1 }),
     (error: unknown) => error instanceof ResearchError && error.code === 'RESEARCH_COMMAND_CONFLICT',
   );
+});
+
+test('requestRevision is a Run command: offline gate rejects before any dispatch, online passes through', async () => {
+  // 终局修复回归（发现 1）：Global Constraints「修订请求属 Run 命令，离线一律拒绝
+  // （OfflineGate 断言）」——离线判决必须发生在命令派发之前，且 OfflineGateError
+  // （OFFLINE_ACTION_BLOCKED:run）原样上抛，绝不包装成 ResearchError/RESEARCH_BACKEND
+  // （与 task-office.ts start()/askKnowledge() 的入口断言先例同款）。
+  let dispatched = 0;
+  const commands = {
+    command: async (input: { runId: string; action: 'steer' | 'queue_next' | 'cancel' }) => {
+      dispatched += 1;
+      return { runId: input.runId, action: input.action };
+    },
+  };
+  const offline = createTaskResearch({
+    remote: createScenarioResearchRemote({ delegations: [] }),
+    commands,
+    gate: createOfflineGate({ online: async () => false }), // 真 OfflineGate：探测=false → 离线
+  });
+  await assert.rejects(
+    offline.open({ lease: newLease().lease }).requestRevision({
+      runId: 'r1', materialId: 'm1:0', baseVersion: '9a2f1c3d4e5f6a7b',
+      note: '补齐引用', action: 'steer', expectedRevision: 2,
+    }),
+    (error: unknown) => error instanceof OfflineGateError
+      && error.action === 'run'
+      && error.code === OFFLINE_ACTION_BLOCKED
+      && error.message === 'OFFLINE_ACTION_BLOCKED:run'
+      && !(error instanceof ResearchError), // 不得被包装成 RESEARCH_BACKEND（误导文案）
+  );
+  assert.equal(dispatched, 0, '离线判决在命令派发之前：零后端派发');
+
+  // 在线（gate 放行）→ 命令通道照常派发；无 gate → 同样直通（既有行为回归钉死）。
+  const online = createTaskResearch({
+    remote: createScenarioResearchRemote({ delegations: [] }),
+    commands,
+    gate: createOfflineGate({ online: async () => true }),
+  });
+  const receipt = await online.open({ lease: newLease().lease }).requestRevision({
+    runId: 'r1', materialId: 'm1:0', baseVersion: '9a2f1c3d4e5f6a7b',
+    note: '补齐引用', action: 'steer', expectedRevision: 2,
+  });
+  assert.equal(receipt.outcome, 'accepted');
+  assert.equal(receipt.action, 'steer');
+  assert.equal(dispatched, 1);
+
+  const gateless = createTaskResearch({
+    remote: createScenarioResearchRemote({ delegations: [] }),
+    commands, // gate 缺省（物理离线由传输层兜底）——命令照常派发
+  });
+  const passthrough = await gateless.open({ lease: newLease().lease }).requestRevision({
+    runId: 'r1', materialId: 'm1:0', baseVersion: '9a2f1c3d4e5f6a7b',
+    note: '补齐引用', action: 'queue_next', expectedRevision: 2,
+  });
+  assert.equal(passthrough.outcome, 'accepted');
+  assert.equal(dispatched, 2);
 });
 
 test('closed handles reject every path with SCOPE_CHANGED and emit scope-closed', async () => {

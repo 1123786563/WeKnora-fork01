@@ -1,4 +1,4 @@
-import { ResearchError } from '@weknora/mobile-core';
+import { OfflineGateError, ResearchError } from '@weknora/mobile-core';
 import type {
   MaterialEntry, ResearchAnnotationRow, ResearchDelegationRow, ResearchErrorCode, TaskResearchHandle,
 } from '@weknora/mobile-core';
@@ -25,7 +25,13 @@ export const RESEARCH_ERROR_COPY: Record<ResearchErrorCode, string> = {
   RESEARCH_BACKEND: '服务端暂时不可用，请稍后重试。',
 };
 
+/** 终局修复（终局审查发现 1）：修订请求属 Run 命令（Global Constraints「离线一律拒绝」），
+ *  模块以 OfflineGateError（OFFLINE_ACTION_BLOCKED:run）原样上抛——此处给出结构化离线
+ *  判决的用户文案，绝不落 RESEARCH_BACKEND 的「服务端暂时不可用」（误导用户以为服务端故障）。 */
+export const RESEARCH_OFFLINE_REVISION_COPY = '当前离线：修订请求属于运行指令，请联网后再提交。';
+
 const messageOf = (failure: unknown): string => {
+  if (failure instanceof OfflineGateError) return RESEARCH_OFFLINE_REVISION_COPY;
   if (failure instanceof ResearchError) return RESEARCH_ERROR_COPY[failure.code] ?? failure.code;
   return failure instanceof Error ? failure.message : String(failure);
 };

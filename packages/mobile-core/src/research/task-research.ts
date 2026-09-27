@@ -134,6 +134,12 @@ export function createTaskResearch(ports: TaskResearchPorts): TaskResearch {
           if (input.note.trim() === '' || input.baseVersion.trim() === '' || input.materialId.trim() === '') {
             throw new ResearchError('RESEARCH_INVALID_INPUT');
           }
+          // Global Constraints：「修订请求属 Run 命令，离线一律拒绝（OfflineGate 断言）」——
+          // 与同族 Run 命令先例（task-office.ts start()/askKnowledge() 的入口断言）同款：
+          // 在下方 try/catch 之外上抛，OfflineGateError（OFFLINE_ACTION_BLOCKED:run）原样
+          // 透出，绝不包装成 ResearchError/RESEARCH_BACKEND（「服务端暂时不可用」误导文案）。
+          // if 形式而非 ?.：gate 缺省时不引入额外微任务（与 start 同一注释约定）。
+          if (ports.gate !== undefined) await ports.gate.assertOnline('run');
           // 确定性版本钉定文本：Lead Agent 依据该文本在授权版本上派生新版本。
           const text = `请基于版本 ${input.baseVersion.trim()} 修订材料 ${input.materialId.trim()}：${input.note.trim()}`;
           try {
