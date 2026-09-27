@@ -74,7 +74,9 @@ var HandlerSessionRuling = map[string]PlanID{
 	"internal/handler/session/agent_run.go":               "33-agentruntime-engine",
 	"internal/handler/session/agent_stream_handler.go":    "33-agentruntime-engine",
 	"internal/handler/session/native_archive.go":          "34-agentruntime-protocol",
-	"internal/handler/session/wiki_fixer_scope.go":        "23-knowledge-wikifaq",
+	// wiki_fixer_scope.go 已随 K3 迁入模块（IB2 回写批删 matrix 残留行）；
+	// 宿主过渡 shim wiki_fixer_scope_compat.go 承接裁定属主（删除点=ib2）。
+	"internal/handler/session/wiki_fixer_scope_compat.go": "23-knowledge-wikifaq",
 	"internal/handler/session/browserskill.go":            "13-execution",
 	"internal/handler/session/sandbox_terminal_bridge.go": "13-execution",
 	"internal/handler/session/sandbox_terminal_ws.go":     "13-execution",

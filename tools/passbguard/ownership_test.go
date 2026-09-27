@@ -314,20 +314,23 @@ func TestRealRepoOwnershipMatrixFreezesAllLegacy(t *testing.T) {
 	require.Equal(t, wantExceptions, len(g.Exceptions), "exception-ledger 行数与台账不符")
 	require.Equal(t, len(d.Aliases), len(g.Aliases), "alias 属主行数与 manifest alias_obligations 不符")
 
-	// 框架要求的分模块冻结总量（freeze:150-155）。knowledge 84→79→77→76：
+	// 框架要求的分模块冻结总量（freeze:150-155）。knowledge 84→79→77→76→53：
 	// K1.1–K1.5 迁移删 9 行（Ruling 2026-09-23-LEGACY-ROW-OWNERSHIP，K1.6 窗口
 	// 补录）+ 过渡 shim 成对补 4 行（Ruling
 	// 2026-09-25-TRANSITION-SHIM-ROW-REGISTRATION）；K4.2 迁移删 3 行
 	// （write/index_content/task_options）+ 宿主 compat 成对补 1 行（同 Ruling）；
 	// K4.3 迁移删 2 行（kb_access/task_progress_auth）+ 宿主 compat 成对补
-	// 1 行（同 Ruling）；纯计数修正，判定逻辑不变。
+	// 1 行（同 Ruling）；IB2 回写批（2026-09-27）——K2/K3 已迁残留 33 行删除
+	// + K2/K3 宿主 compat 过渡 shim 10 行成对补行（K4.3 条目登记的 23 行 BASE
+	// 漂移修复收口），76-33+10=53；纯计数修正，判定逻辑不变。
 	// datasource 4→3：b2-datasource B2-DS.2 repository 迁移删行（matrix 已删、
 	// 该分支测试期望未同步，IB2 集成侧修正）。appconnector 7→1：
 	// Ruling 2026-09-23-LEGACY-ROW-OWNERSHIP（B2-AC.2，2026-09-23）——6 行已迁
-	// handler 删除后仅余 shim 行 app_connector.go。IB2 集成合并树实测 total=381。
+	// handler 删除后仅余 shim 行 app_connector.go。IB2 集成合并树实测 total=358
+	//（matrix == manifests 三方一致）。
 	wantPerModule := map[string]int{
 		"identity": 27, "airesource": 33, "commercial": 8, "execution": 21,
-		"knowledge": 76, "agentcatalog": 55, "datasource": 3, "appconnector": 1,
+		"knowledge": 53, "agentcatalog": 55, "datasource": 3, "appconnector": 1,
 		"agentruntime": 45, "conversation": 44, "channels": 7, "insights": 6,
 		"workbench": 19, "craft": 30, "system": 5, "policy": 1,
 	}

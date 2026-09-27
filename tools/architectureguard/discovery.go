@@ -207,9 +207,24 @@ func dedupKey(method, recvPrefix, path string) string {
 //   - lite 模式: executor.RegisterHandler(types.TypeX, ...)（SyncTaskExecutor）
 //
 // 首参取标识符/选择器的源码文本（如 "types.TypeChunkExtract"）。
+//
+// IB2 门面装配扩展（K5 Brief (b)）：knowledge 等 18 worker 的注册行已由
+// task.go/sync_task.go 的 18+18 行手写注册改为模块门面注册
+//（internal/modules/<mod>/module.go 的 workerHandlers() map 字面量，
+// RegisterWorkers 对 Redis/Lite 双 registry 各登记一次，module_test.go
+// parity 测试锚定双栈同构）。因此：
+//  1. 首参为裸标识符（参数转发，如 bootstrap.WorkerSink 委托实现体内的
+//     taskType）跳过——sink 委托不是终端注册；
+//  2. 扫描 internal/modules/**/module.go 中 key 为 types.TypeX 的 map 复合
+//     字面量键值对，每条同时计入 redis 与 lite（模块门面双栈注册）。
 func DiscoverWorkers(root string) (redis, lite []WorkerReg, err error) {
 	err = forEachGoFile(root, []string{"internal/router"}, func(rel string, f *ast.File, fset *token.FileSet) error {
 		ranges := funcDeclRanges(f, fset)
+		// terminalTaskArg 判定首参是否终端注册的任务类型字面量（types.TypeX）。
+		// WorkerSink 委托实现体内的参数转发（裸标识符 taskType）不是终端注册。
+		terminalTaskArg := func(e ast.Expr) bool {
+			return strings.HasPrefix(exprText(f, e), "types.Type")
+		}
 		ast.Inspect(f, func(n ast.Node) bool {
 			call, ok := n.(*ast.CallExpr)
 			if !ok {
@@ -228,6 +243,10 @@ func DiscoverWorkers(root string) (redis, lite []WorkerReg, err error) {
 			default:
 				return true
 			}
+			if !terminalTaskArg(call.Args[0]) {
+				// 参数转发（WorkerSink 委托实现体内）等非终端注册形态。
+				return true
+			}
 			line := fset.Position(call.Pos()).Line
 			reg := WorkerReg{
 				TaskType: exprText(f, call.Args[0]),
@@ -240,6 +259,52 @@ func DiscoverWorkers(root string) (redis, lite []WorkerReg, err error) {
 				redis = append(redis, reg)
 			} else {
 				lite = append(lite, reg)
+			}
+			return true
+		})
+		return nil
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// 模块门面注册（IB2）：internal/modules/**/module.go 的 map 复合字面量键
+	//（types.TypeX: handler 方法值）——RegisterWorkers 对双栈 registry 各登记
+	// 一次，故每条同时计入 redis 与 lite。
+	err = forEachGoFile(root, []string{"internal/modules"}, func(rel string, f *ast.File, fset *token.FileSet) error {
+		if filepath.Base(rel) != "module.go" {
+			return nil
+		}
+		ranges := funcDeclRanges(f, fset)
+		ast.Inspect(f, func(n ast.Node) bool {
+			cl, ok := n.(*ast.CompositeLit)
+			if !ok || cl.Type == nil {
+				return true
+			}
+			for _, elt := range cl.Elts {
+				kv, ok := elt.(*ast.KeyValueExpr)
+				if !ok {
+					continue
+				}
+				keyText := exprText(f, kv.Key)
+				if !strings.HasPrefix(keyText, "types.Type") {
+					continue
+				}
+				line := fset.Position(kv.Pos()).Line
+				for _, mode := range []string{"redis", "lite"} {
+					reg := WorkerReg{
+						TaskType: keyText,
+						File:     rel,
+						Line:     line,
+						Func:     funcNameAt(ranges, line),
+						Mode:     mode,
+					}
+					if mode == "redis" {
+						redis = append(redis, reg)
+					} else {
+						lite = append(lite, reg)
+					}
+				}
 			}
 			return true
 		})

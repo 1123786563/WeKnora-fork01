@@ -431,30 +431,6 @@ legacy_files:
     destination: internal/modules/airesource/repository
     integration_owner: ib1
     delete_barrier: ib1
-  - path: internal/application/repository/semantic_model_invocation.go
-    module: knowledge
-    plan: 22-knowledge-retrieval
-    destination: internal/modules/knowledge/retrieval/app
-    integration_owner: ib2
-    delete_barrier: ib2
-  - path: internal/application/repository/semantic_model_policy.go
-    module: knowledge
-    plan: 22-knowledge-retrieval
-    destination: internal/modules/knowledge/retrieval/app
-    integration_owner: ib2
-    delete_barrier: ib2
-  - path: internal/application/repository/semantic_outbox.go
-    module: knowledge
-    plan: 22-knowledge-retrieval
-    destination: internal/modules/knowledge/retrieval/app
-    integration_owner: ib2
-    delete_barrier: ib2
-  - path: internal/application/repository/semantic_scope_epoch.go
-    module: knowledge
-    plan: 22-knowledge-retrieval
-    destination: internal/modules/knowledge/retrieval/app
-    integration_owner: ib2
-    delete_barrier: ib2
   - path: internal/application/repository/session.go
     module: conversation
     plan: 35-conversation-program
@@ -473,12 +449,6 @@ legacy_files:
     destination: internal/modules/system/repository
     integration_owner: ib4
     delete_barrier: ib4
-  - path: internal/application/repository/tag.go
-    module: knowledge
-    plan: 22-knowledge-retrieval
-    destination: internal/modules/knowledge/retrieval/app
-    integration_owner: ib2
-    delete_barrier: ib2
   - path: internal/application/repository/temporary_document.go
     module: conversation
     plan: 35-conversation-program
@@ -569,12 +539,6 @@ legacy_files:
     destination: internal/modules/airesource/repository
     integration_owner: ib1
     delete_barrier: ib1
-  - path: internal/application/repository/wiki_page.go
-    module: knowledge
-    plan: 23-knowledge-wikifaq
-    destination: internal/modules/knowledge/wiki
-    integration_owner: ib2
-    delete_barrier: ib2
   - path: internal/application/repository/workbench_list.go
     module: workbench
     plan: 40-workbench
@@ -869,12 +833,6 @@ legacy_files:
     destination: internal/modules/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
-  - path: internal/application/service/faq_clone_sync.go
-    module: knowledge
-    plan: 23-knowledge-wikifaq
-    destination: internal/modules/knowledge/faq
-    integration_owner: ib2
-    delete_barrier: ib2
   - path: internal/application/service/feedback.go
     module: conversation
     plan: 35-conversation-program
@@ -887,18 +845,6 @@ legacy_files:
     destination: internal/modules/conversation/service
     integration_owner: ib3
     delete_barrier: ib3
-  - path: internal/application/service/graph.go
-    module: knowledge
-    plan: 22-knowledge-retrieval
-    destination: internal/modules/knowledge/retrieval/app
-    integration_owner: ib2
-    delete_barrier: ib2
-  - path: internal/application/service/kb_activity.go
-    module: knowledge
-    plan: 22-knowledge-retrieval
-    destination: internal/modules/knowledge/retrieval/app
-    integration_owner: ib2
-    delete_barrier: ib2
   - path: internal/application/service/kbshare.go
     module: knowledge
     plan: 22-knowledge-retrieval
@@ -939,30 +885,6 @@ legacy_files:
     module: knowledge
     plan: 24-knowledge-process
     destination: internal/modules/knowledge/process
-    integration_owner: ib2
-    delete_barrier: ib2
-  - path: internal/application/service/knowledge_faq.go
-    module: knowledge
-    plan: 23-knowledge-wikifaq
-    destination: internal/modules/knowledge/faq
-    integration_owner: ib2
-    delete_barrier: ib2
-  - path: internal/application/service/knowledge_faq_batch.go
-    module: knowledge
-    plan: 23-knowledge-wikifaq
-    destination: internal/modules/knowledge/faq
-    integration_owner: ib2
-    delete_barrier: ib2
-  - path: internal/application/service/knowledge_faq_create_guard.go
-    module: knowledge
-    plan: 23-knowledge-wikifaq
-    destination: internal/modules/knowledge/faq
-    integration_owner: ib2
-    delete_barrier: ib2
-  - path: internal/application/service/knowledge_faq_import.go
-    module: knowledge
-    plan: 23-knowledge-wikifaq
-    destination: internal/modules/knowledge/faq
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/knowledge_housekeeping.go
@@ -1026,12 +948,6 @@ legacy_files:
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/knowledgebase.go
-    module: knowledge
-    plan: 22-knowledge-retrieval
-    destination: internal/modules/knowledge/retrieval/app
-    integration_owner: ib2
-    delete_barrier: ib2
-  - path: internal/application/service/knowledgebase_access.go
     module: knowledge
     plan: 22-knowledge-retrieval
     destination: internal/modules/knowledge/retrieval/app
@@ -1229,24 +1145,6 @@ legacy_files:
     destination: internal/modules/commercial/service
     integration_owner: ib1
     delete_barrier: ib1
-  - path: internal/application/service/semantic_model_capability.go
-    module: knowledge
-    plan: 22-knowledge-retrieval
-    destination: internal/modules/knowledge/retrieval/app
-    integration_owner: ib2
-    delete_barrier: ib2
-  - path: internal/application/service/semantic_model_policy.go
-    module: knowledge
-    plan: 22-knowledge-retrieval
-    destination: internal/modules/knowledge/retrieval/app
-    integration_owner: ib2
-    delete_barrier: ib2
-  - path: internal/application/service/semantic_scope.go
-    module: knowledge
-    plan: 22-knowledge-retrieval
-    destination: internal/modules/knowledge/retrieval/app
-    integration_owner: ib2
-    delete_barrier: ib2
   - path: internal/application/service/session.go
     module: conversation
     plan: 35-conversation-program
@@ -1299,12 +1197,6 @@ legacy_files:
     module: agentcatalog
     plan: 25-agentcatalog-program
     destination: internal/modules/agentcatalog/service
-    integration_owner: ib2
-    delete_barrier: ib2
-  - path: internal/application/service/slug_fuzzy.go
-    module: knowledge
-    plan: 22-knowledge-retrieval
-    destination: internal/modules/knowledge/retrieval/app
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/application/service/storagebackend.go
@@ -1565,60 +1457,6 @@ legacy_files:
     destination: internal/modules/airesource/service
     integration_owner: ib1
     delete_barrier: ib1
-  - path: internal/application/service/wiki_ingest.go
-    module: knowledge
-    plan: 23-knowledge-wikifaq
-    destination: internal/modules/knowledge/wiki
-    integration_owner: ib2
-    delete_barrier: ib2
-  - path: internal/application/service/wiki_ingest_batch.go
-    module: knowledge
-    plan: 23-knowledge-wikifaq
-    destination: internal/modules/knowledge/wiki
-    integration_owner: ib2
-    delete_barrier: ib2
-  - path: internal/application/service/wiki_ingest_cite.go
-    module: knowledge
-    plan: 23-knowledge-wikifaq
-    destination: internal/modules/knowledge/wiki
-    integration_owner: ib2
-    delete_barrier: ib2
-  - path: internal/application/service/wiki_ingest_dedup.go
-    module: knowledge
-    plan: 23-knowledge-wikifaq
-    destination: internal/modules/knowledge/wiki
-    integration_owner: ib2
-    delete_barrier: ib2
-  - path: internal/application/service/wiki_ingest_taxonomy.go
-    module: knowledge
-    plan: 23-knowledge-wikifaq
-    destination: internal/modules/knowledge/wiki
-    integration_owner: ib2
-    delete_barrier: ib2
-  - path: internal/application/service/wiki_linkify.go
-    module: knowledge
-    plan: 23-knowledge-wikifaq
-    destination: internal/modules/knowledge/wiki
-    integration_owner: ib2
-    delete_barrier: ib2
-  - path: internal/application/service/wiki_lint.go
-    module: knowledge
-    plan: 23-knowledge-wikifaq
-    destination: internal/modules/knowledge/wiki
-    integration_owner: ib2
-    delete_barrier: ib2
-  - path: internal/application/service/wiki_page.go
-    module: knowledge
-    plan: 23-knowledge-wikifaq
-    destination: internal/modules/knowledge/wiki
-    integration_owner: ib2
-    delete_barrier: ib2
-  - path: internal/application/service/wiki_slug_handles.go
-    module: knowledge
-    plan: 23-knowledge-wikifaq
-    destination: internal/modules/knowledge/wiki
-    integration_owner: ib2
-    delete_barrier: ib2
   - path: internal/application/service/workspace_checkpointer.go
     module: conversation
     plan: 35-conversation-program
@@ -1737,12 +1575,6 @@ legacy_files:
     module: agentcatalog
     plan: 25-agentcatalog-program
     destination: internal/modules/agentcatalog/handler
-    integration_owner: ib2
-    delete_barrier: ib2
-  - path: internal/handler/faq.go
-    module: knowledge
-    plan: 23-knowledge-wikifaq
-    destination: internal/modules/knowledge/faq
     integration_owner: ib2
     delete_barrier: ib2
   - path: internal/handler/feedback.go
@@ -1901,18 +1733,6 @@ legacy_files:
     destination: internal/modules/execution/handler
     integration_owner: ib1
     delete_barrier: ib1
-  - path: internal/handler/semantic_internal.go
-    module: knowledge
-    plan: 22-knowledge-retrieval
-    destination: internal/modules/knowledge/retrieval/app
-    integration_owner: ib2
-    delete_barrier: ib2
-  - path: internal/handler/semantic_model_policy.go
-    module: knowledge
-    plan: 22-knowledge-retrieval
-    destination: internal/modules/knowledge/retrieval/app
-    integration_owner: ib2
-    delete_barrier: ib2
   - path: internal/handler/session/agent_run.go
     module: agentruntime
     plan: 33-agentruntime-engine
@@ -2081,12 +1901,6 @@ legacy_files:
     destination: internal/modules/conversation/handler
     integration_owner: ib3
     delete_barrier: ib3
-  - path: internal/handler/session/wiki_fixer_scope.go
-    module: knowledge
-    plan: 23-knowledge-wikifaq
-    destination: internal/modules/knowledge/wiki
-    integration_owner: ib2
-    delete_barrier: ib2
   - path: internal/handler/session/workbench_artifacts.go
     module: workbench
     plan: 40-workbench
@@ -2177,12 +1991,6 @@ legacy_files:
     destination: internal/modules/system/handler
     integration_owner: ib4
     delete_barrier: ib4
-  - path: internal/handler/tag.go
-    module: knowledge
-    plan: 22-knowledge-retrieval
-    destination: internal/modules/knowledge/retrieval/app
-    integration_owner: ib2
-    delete_barrier: ib2
   - path: internal/handler/tenant.go
     module: identity
     plan: 10-identity
@@ -2273,12 +2081,6 @@ legacy_files:
     destination: internal/modules/airesource/handler
     integration_owner: ib1
     delete_barrier: ib1
-  - path: internal/handler/wiki_page.go
-    module: knowledge
-    plan: 23-knowledge-wikifaq
-    destination: internal/modules/knowledge/wiki
-    integration_owner: ib2
-    delete_barrier: ib2
   # ---- Pass B 过渡 shim 登记（Ruling 2026-09-25-TRANSITION-SHIM-ROW-REGISTRATION：
   # 与 knowledge.yaml legacy_files 成对；终态=ib2 同 commit 随文件删行）----
   - path: internal/application/repository/chunk_ingest_shim.go
@@ -2315,6 +2117,70 @@ legacy_files:
     module: knowledge
     plan: 24-knowledge-process
     destination: internal/modules/knowledge/process
+    integration_owner: ib2
+    delete_barrier: ib2
+
+  # ---- IB2 回写批（K4.3 条目登记的 23 行 BASE 漂移修复，2026-09-27）：
+  # K2/K3 已迁残留 33 行删除 + K2/K3 宿主 compat 过渡 shim 10 行成对补行
+  #（Ruling 2026-09-25-TRANSITION-SHIM-ROW-REGISTRATION 口径；删除点=ib2 随文件删行）----
+  - path: internal/application/repository/kbretrieval_passb_compat.go
+    module: knowledge
+    plan: 22-knowledge-retrieval
+    destination: internal/modules/knowledge/retrieval/app
+    integration_owner: ib2
+    delete_barrier: ib2
+  - path: internal/application/repository/wiki_k3_repo_compat.go
+    module: knowledge
+    plan: 23-knowledge-wikifaq
+    destination: internal/modules/knowledge/wiki
+    integration_owner: ib2
+    delete_barrier: ib2
+  - path: internal/application/service/kbretrieval_passb_compat.go
+    module: knowledge
+    plan: 22-knowledge-retrieval
+    destination: internal/modules/knowledge/retrieval/app
+    integration_owner: ib2
+    delete_barrier: ib2
+  - path: internal/application/service/knowledge_faq_k3_delegate.go
+    module: knowledge
+    plan: 23-knowledge-wikifaq
+    destination: internal/modules/knowledge/faq
+    integration_owner: ib2
+    delete_barrier: ib2
+  - path: internal/application/service/wiki_k3_compat.go
+    module: knowledge
+    plan: 23-knowledge-wikifaq
+    destination: internal/modules/knowledge/wiki
+    integration_owner: ib2
+    delete_barrier: ib2
+  - path: internal/application/service/wiki_k3_ctor_compat.go
+    module: knowledge
+    plan: 23-knowledge-wikifaq
+    destination: internal/modules/knowledge/wiki
+    integration_owner: ib2
+    delete_barrier: ib2
+  - path: internal/handler/faq_k3_compat.go
+    module: knowledge
+    plan: 23-knowledge-wikifaq
+    destination: internal/modules/knowledge/faq
+    integration_owner: ib2
+    delete_barrier: ib2
+  - path: internal/handler/kbretrieval_passb_compat.go
+    module: knowledge
+    plan: 22-knowledge-retrieval
+    destination: internal/modules/knowledge/retrieval/app/handler
+    integration_owner: ib2
+    delete_barrier: ib2
+  - path: internal/handler/session/wiki_fixer_scope_compat.go
+    module: knowledge
+    plan: 23-knowledge-wikifaq
+    destination: internal/modules/knowledge/wiki
+    integration_owner: ib2
+    delete_barrier: ib2
+  - path: internal/handler/wiki_page_k3_compat.go
+    module: knowledge
+    plan: 23-knowledge-wikifaq
+    destination: internal/modules/knowledge/wiki
     integration_owner: ib2
     delete_barrier: ib2
 aliases:
