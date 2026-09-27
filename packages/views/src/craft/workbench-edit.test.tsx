@@ -2,27 +2,33 @@
 // server authority the edit panel only PROJECTS. Only a member whose current
 // Task role allows writing (owner or collaborator) sees the edit composer; a
 // Viewer sees a read-only notice and the request callback is never invoked.
-// The panel surfaces the server's serialization answers verbatim: the
-// writer-acquisition conflict (another writing run holds the Workspace) and
-// the actual initiating member the server recorded — it never derives
-// authority, identity or conflict state client-side.
+// The panel projects the RAW PostCraftRun wire envelope (snake_case
+// data.run_id / writer_acquisition / initiated_by) — the single
+// projection-and-rejection point lives here, the assembly resolves the raw
+// payload. The panel surfaces the server's serialization answers verbatim:
+// the writer-acquisition conflict (another writing run holds the Workspace),
+// an unknown lease outcome (never painted as acquired) and the actual
+// initiating member the server recorded — it never derives authority,
+// identity or conflict state client-side.
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import React, { act } from 'react';
 import { JSDOM } from 'jsdom';
-import { CraftEditRequestPanel, projectEditOutcome, type CraftEditRequestOutcome } from './workbench-edit.tsx';
+import { CraftEditRequestPanel, projectEditOutcome } from './workbench-edit.tsx';
 
-const acquired: CraftEditRequestOutcome = {
-  runId: 'run-1',
-  actorUserId: 'u2',
-  writerAcquisition: { workspace_id: 'ws-1', status: 'acquired' },
+// The PostCraftRun wire envelope, exactly as the server answers it.
+const acquiredWire = {
+  success: true,
+  data: { run_id: 'run-1', session_id: 's-1', status: 'running' },
+  writer_acquisition: { workspace_id: 'ws-1', status: 'acquired' },
+  initiated_by: 'u2',
 };
 
 async function mount(overrides: {
   canWrite?: boolean;
   runActive?: boolean;
   locale?: 'zh' | 'en';
-  onRequestEdit?: (prompt: string) => Promise<CraftEditRequestOutcome>;
+  onRequestEdit?: (prompt: string) => Promise<unknown>;
 }) {
   const dom = new JSDOM('<!doctype html><html><body></body></html>');
   Object.assign(globalThis, {
@@ -47,7 +53,7 @@ async function mount(overrides: {
       runActive={overrides.runActive ?? false}
       onRequestEdit={overrides.onRequestEdit ?? (async (prompt: string) => {
         prompts.push(prompt);
-        return acquired;
+        return acquiredWire;
       })}
     />,
   ));
@@ -62,7 +68,7 @@ async function mount(overrides: {
           runActive={props.runActive ?? overrides.runActive ?? false}
           onRequestEdit={overrides.onRequestEdit ?? (async (prompt: string) => {
             prompts.push(prompt);
-            return acquired;
+            return acquiredWire;
           })}
         />,
       ));
@@ -118,12 +124,31 @@ test('a collaborator requests one serialized edit and the panel projects the rec
   } finally { await view.unmount(); }
 });
 
-test('a writer-lease conflict is surfaced as an alert without hiding the request', async () => {
+test('a wire without initiated_by shows the run without inventing an initiator', async () => {
   const view = await mount({
     onRequestEdit: async () => ({
-      runId: 'run-2',
-      actorUserId: 'u2',
-      writerAcquisition: { workspace_id: 'ws-1', status: 'conflict' },
+      success: true,
+      data: { run_id: 'run-noactor', status: 'running' },
+      writer_acquisition: { workspace_id: 'ws-1', status: 'acquired' },
+    }),
+  });
+  try {
+    const area = promptArea(view.container);
+    assert.ok(area);
+    await typePrompt(area, '旧版服务端');
+    await submitForm(view.container);
+    assert.match(view.container.textContent ?? '', /run-noactor/, 'the admitted run id is shown');
+    assert.doesNotMatch(view.container.textContent ?? '', /发起成员/, 'no initiator line when the wire carries none');
+  } finally { await view.unmount(); }
+});
+
+test('a writer-lease conflict is surfaced as an alert and keeps the draft for the guided retry', async () => {
+  const view = await mount({
+    onRequestEdit: async () => ({
+      success: true,
+      data: { run_id: 'run-2', status: 'running' },
+      writer_acquisition: { workspace_id: 'ws-1', status: 'conflict' },
+      initiated_by: 'u2',
     }),
   });
   try {
@@ -134,8 +159,35 @@ test('a writer-lease conflict is surfaced as an alert without hiding the request
     await submitForm(view.container);
     const alert = view.container.querySelector('[role="alert"]');
     assert.ok(alert, 'the conflict is announced, never swallowed');
-    assert.match(alert.textContent ?? "", /另一个写入/);
+    assert.match(alert.textContent ?? '', /另一个写入/);
     assert.match(view.container.textContent ?? '', /run-2/, 'the admitted run id stays visible (admission is not undone)');
+    assert.equal((promptArea(view.container) as HTMLTextAreaElement).value, '并发修改',
+      'a conflicted request keeps the draft — the notice guides an explicit retry');
+  } finally { await view.unmount(); }
+});
+
+test('an unknown writer-lease outcome gets a neutral notice, never painted as acquired', async () => {
+  const view = await mount({
+    onRequestEdit: async () => ({
+      success: true,
+      data: { run_id: 'run-3', status: 'running' },
+      writer_acquisition: { workspace_id: 'ws-1', status: 'unknown' },
+      initiated_by: 'u2',
+    }),
+  });
+  try {
+    const area = promptArea(view.container);
+    assert.ok(area);
+    await typePrompt(area, '租约不明');
+    await submitForm(view.container);
+    const notice = view.container.querySelector('[data-testid="craft-edit-unknown-lease"]');
+    assert.ok(notice, 'the unknown lease outcome is announced');
+    assert.equal(notice.getAttribute('role'), 'status', 'unknown is a neutral status, not a conflict alert');
+    assert.match(notice.textContent ?? '', /租约结果不明/);
+    assert.equal(view.container.querySelectorAll('[role="alert"]').length, 0, 'unknown is never escalated to an alert');
+    assert.match(view.container.textContent ?? '', /run-3/, 'the admitted run id is shown');
+    assert.equal((promptArea(view.container) as HTMLTextAreaElement).value, '',
+      'the request went through — the composer resets like an acquired answer');
   } finally { await view.unmount(); }
 });
 
@@ -147,7 +199,7 @@ test('a refused request (revoked collaborator) keeps the draft for an explicit r
         rejectOnce = false;
         throw new Error('没有修改权限');
       }
-      return acquired;
+      return acquiredWire;
     },
   });
   try {
@@ -163,6 +215,20 @@ test('a refused request (revoked collaborator) keeps the draft for an explicit r
     assert.equal(submitButton(view.container)?.disabled, false, 'retry stays available');
     await submitForm(view.container);
     assert.match(view.container.textContent ?? '', /u2/, 'the retry succeeded and projects the initiator');
+  } finally { await view.unmount(); }
+});
+
+test('a malformed wire is rejected with the bilingual invalid-response wording', async () => {
+  const view = await mount({ onRequestEdit: async () => ({ success: true }) });
+  try {
+    const area = promptArea(view.container);
+    assert.ok(area);
+    await typePrompt(area, '畸形响应');
+    await submitForm(view.container);
+    const alert = view.container.querySelector('[role="alert"]');
+    assert.ok(alert, 'the malformed response is announced');
+    assert.match(alert.textContent ?? '', /服务器响应无效/, 'the wording comes from the EDIT_STRINGS table');
+    assert.equal((promptArea(view.container) as HTMLTextAreaElement).value, '畸形响应', 'a dropped projection keeps the draft');
   } finally { await view.unmount(); }
 });
 
@@ -183,18 +249,21 @@ test('while a writing run is active the composer is disabled with the serializat
   } finally { await view.unmount(); }
 });
 
-test('the projection drops malformed outcomes instead of guessing authority', () => {
+test('the projection drops malformed wires instead of guessing authority', () => {
   assert.equal(projectEditOutcome(null), null);
   assert.equal(projectEditOutcome({}), null);
-  assert.equal(projectEditOutcome({ runId: '', actorUserId: 'u2', writerAcquisition: null }), null);
-  assert.equal(projectEditOutcome({ runId: 'r', actorUserId: '', writerAcquisition: null }), null);
+  assert.equal(projectEditOutcome({ data: {} }), null, 'a run envelope without run_id is malformed');
+  assert.equal(projectEditOutcome({ data: { run_id: '' }, initiated_by: 'u2' }), null);
+  assert.equal(projectEditOutcome({ data: { run_id: 'r' }, initiated_by: '' }), null, 'an empty initiator is malformed, never defaulted');
   // An unknown writer status is rejected, never defaulted to acquired.
-  assert.equal(projectEditOutcome({ runId: 'r', actorUserId: 'u2', writerAcquisition: { workspace_id: 'w', status: 'locked' } }), null);
-  const ok = projectEditOutcome({ runId: 'r', actorUserId: 'u2', writerAcquisition: { workspace_id: 'w', status: 'conflict' } });
-  assert.ok(ok);
-  assert.equal(ok.writerAcquisition?.status, 'conflict');
+  assert.equal(projectEditOutcome({ data: { run_id: 'r' }, writer_acquisition: { workspace_id: 'w', status: 'locked' } }), null);
+  const conflict = projectEditOutcome({ data: { run_id: 'r' }, writer_acquisition: { workspace_id: 'w', status: 'conflict' }, initiated_by: 'u2' });
+  assert.ok(conflict);
+  assert.equal(conflict.writerAcquisition?.status, 'conflict');
+  assert.equal(conflict.actorUserId, 'u2');
   // A missing writer acquisition stays null (the server may not answer one).
-  const noLease = projectEditOutcome({ runId: 'r', actorUserId: 'u2', writerAcquisition: null });
+  const noLease = projectEditOutcome({ data: { run_id: 'r' } });
   assert.ok(noLease);
   assert.equal(noLease.writerAcquisition, null);
+  assert.equal(noLease.actorUserId, null, 'no initiated_by on the wire — no client-side initiator');
 });

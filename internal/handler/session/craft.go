@@ -552,8 +552,12 @@ func (h *CraftSessionHandler) PostCraftRun(c *gin.Context) {
 		return
 	}
 	// The T00 frozen WriterAcquireOutcome DTO projects verbatim: acquired,
-	// conflict (another writing Run holds the workspace) or unknown.
-	c.JSON(http.StatusAccepted, gin.H{"success": true, "data": runView(run), "writer_acquisition": acquisition.Outcome})
+	// conflict (another writing Run holds the workspace) or unknown. The
+	// initiating member (T09 #135) projects additively in the envelope from
+	// the admitted run's durable actor — runView itself stays the frozen
+	// craft DTO projection without actor identity.
+	c.JSON(http.StatusAccepted, gin.H{"success": true, "data": runView(run),
+		"writer_acquisition": acquisition.Outcome, "initiated_by": run.ActorUserID})
 }
 
 // ListCraftVersions serves GET /api/v1/sessions/:session_id/craft/versions.
