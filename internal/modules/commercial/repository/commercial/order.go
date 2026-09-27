@@ -26,10 +26,15 @@ var (
 )
 
 // Payment attempt lifecycle states: an attempt is registered pending and
-// becomes succeeded once its provider transaction is confirmed.
+// becomes succeeded once its provider transaction is confirmed. A pending
+// attempt whose channel entry was deliberately retired (CloseChannelOrder,
+// #83) lands closed — the row keeps the channel identity for a late
+// confirmation (ConfirmPayment still resolves it) but the attempt is no
+// longer the recovery path's payable entry.
 const (
 	PaymentAttemptStatePending   = "pending"
 	PaymentAttemptStateSucceeded = "succeeded"
+	PaymentAttemptStateClosed    = "closed"
 )
 
 // Outbox event kinds emitted by payment confirmation.
@@ -413,10 +418,11 @@ func (s *OrderStore) CurrentPayablePendingOrder(ctx context.Context, tenantID ui
 	return row, nil
 }
 
-// MarkChannelFailed persists the channel-Create failure on the order row
-// (R2-28): the order stays pending (the recovery paths and a late channel
-// confirmation still work) but is marked NOT payable — no checkout link
-// exists, the channel most likely never saw the order. The partial
+// MarkChannelFailed persists the channel entry's retirement on the order row
+// (R2-28, #83): the order stays pending (the recovery paths and a late
+// channel confirmation still work) but is marked NOT payable — the channel
+// entry is no longer open (a failed channel Create left no checkout link, or
+// CloseChannelOrder deliberately closed a pending order). The partial
 // pending-uniqueness index excludes channel-failed rows, so a fresh quote's
 // checkout is never blocked by a dead order.
 func (s *OrderStore) MarkChannelFailed(ctx context.Context, orderID string) error {
@@ -475,6 +481,26 @@ func (s *OrderStore) FirstPendingAttempt(ctx context.Context, orderID string) (P
 		return PaymentAttemptRow{}, ErrPaymentAttemptNotFound
 	}
 	return att, err
+}
+
+// MarkAttemptClosed retires every still-pending attempt of an order to the
+// closed state (#83 CloseChannelOrder landing): the channel entry is gone,
+// but the row — and its (provider, merchant, merchant_order_id) identity —
+// survives so a LATE channel success still confirms through ConfirmPayment
+// (the fund fact is never destroyed by a close). Idempotent by construction:
+// only pending rows move, so a replay (or a race with a confirmation that
+// already succeeded the attempt) is a no-op. Parameter-bound.
+func (s *OrderStore) MarkAttemptClosed(ctx context.Context, orderID string) error {
+	if orderID == "" {
+		return ErrInvalidOrderRow
+	}
+	res := s.db.WithContext(ctx).Model(&PaymentAttemptRow{}).
+		Where("order_id = ? AND state = ?", orderID, PaymentAttemptStatePending).
+		Update("state", PaymentAttemptStateClosed)
+	if res.Error != nil {
+		return res.Error
+	}
+	return nil
 }
 
 // GetOrder returns an order by ID; readers distinguish paid from fulfilled.

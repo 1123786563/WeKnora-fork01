@@ -254,8 +254,32 @@ func (s *PurchaseService) Purchase(ctx context.Context, tenantID uint64, quoteID
 		if quoteBoughtPlan(ctx, s.orders, tenantID, existing.QuoteID) != snap.PlanKey {
 			return PurchaseView{}, ErrPurchasePlanConflict
 		}
-		ov := orderViewFromRow(existing)
-		return s.purchaseView(p, snap, pub, &ov), nil
+		// (#83 channel switch) A pending order on a DIFFERENT provider than
+		// the requested one is retired first — race-safely: the old channel
+		// entry is closed (an in-flight payment decides through the query
+		// and lands as the PAID old order, never a second channel request),
+		// and only a cleanly released slot falls through to open the new
+		// channel order below. An unresolved close outcome surfaces its
+		// error: the caller retries — a second channel order must NEVER be
+		// opened while the old one's outcome is unknown.
+		att, aerr := s.orders.orders.FirstPendingAttempt(ctx, existing.ID)
+		if aerr != nil {
+			return PurchaseView{}, aerr
+		}
+		if att.Provider != providerName {
+			closeView, cerr := s.orders.CloseChannelOrder(ctx, tenantID, existing.ID)
+			if cerr != nil {
+				return PurchaseView{}, cerr
+			}
+			if closeView.State == domain.OrderStatePaid {
+				return s.purchaseView(p, snap, pub, &closeView), nil
+			}
+			// Closed cleanly: the payable slot is free — fall through to
+			// CreateOrder(quoteID, providerName) on the new channel.
+		} else {
+			ov := orderViewFromRow(existing)
+			return s.purchaseView(p, snap, pub, &ov), nil // same-channel replay (#82 frozen semantics)
+		}
 	} else if !errors.Is(perr, repocommercial.ErrOrderNotFound) {
 		return PurchaseView{}, perr
 	}
