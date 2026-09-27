@@ -33,7 +33,7 @@ import { CraftWorkbench, createCraftWorkbenchFeatures, type CraftInteractionActi
 import { CraftAccess } from '@weknora/views/craft/access';
 import { CraftInputDecisionPanel } from '@weknora/views/craft/files';
 import { CraftInputExpandPanel } from '@weknora/views/craft/input-expand';
-import { CraftBudgetPauseNotice } from '@weknora/views/craft/usage';
+import { CRAFT_USAGE_STRINGS_ZH, CraftBudgetPauseNotice } from '@weknora/views/craft/usage';
 import { createCraftMessageLog, downloadFileName, type CraftLocale } from '@weknora/views/craft/presentation';
 import { createSessionCraftInteractionClient, CraftInteractionPanel } from '@weknora/views/craft/interaction';
 
@@ -480,7 +480,14 @@ export function CraftRoutes(props: CraftRoutesProps) {
   // assembly keeps the contact-owner copy without any figures (the panel
   // renders no limit/used, so nothing is fabricated).
   const activeRun = workbenchInfo?.activeRun ?? null;
-  const [budgetPauseView, setBudgetPauseView] = useState<{ runId: string; canExtend: boolean; limit: number; used: number } | null>(null);
+  // The pause view's numbers exist ONLY when the server answered: a denied
+  // fetch (the T19 seam restricts the view to extension actors) degrades to
+  // the contact-owner notice WITHOUT fabricating limit/used — unknown stays
+  // unknown, never folded into zeros.
+  const [budgetPauseView, setBudgetPauseView] = useState<
+    | { runId: string; viewed: true; canExtend: boolean; limit: number; used: number }
+    | { runId: string; viewed: false }
+  | null>(null);
   useEffect(() => {
     setBudgetPauseView(null);
     if (sessionId === null || activeRun === null || activeRun.waitReason !== 'budget_exhausted') return;
@@ -488,10 +495,10 @@ export function CraftRoutes(props: CraftRoutesProps) {
     const runId = activeRun.id;
     void craftApi.budgetPause(sessionId, runId, scopeController.current().signal)
       .then((view) => {
-        if (!cancelled) setBudgetPauseView({ runId, canExtend: view.canExtend, limit: view.pause.limit, used: view.pause.used });
+        if (!cancelled) setBudgetPauseView({ runId, viewed: true, canExtend: view.canExtend, limit: view.pause.limit, used: view.pause.used });
       })
       .catch(() => {
-        if (!cancelled) setBudgetPauseView({ runId, canExtend: false, limit: 0, used: 0 });
+        if (!cancelled) setBudgetPauseView({ runId, viewed: false });
       });
     return () => {
       cancelled = true;
@@ -991,6 +998,7 @@ export function CraftRoutes(props: CraftRoutesProps) {
           pollMs={5000}
         />
         {budgetPauseView !== null ? (
+          budgetPauseView.viewed ? (
           <CraftBudgetPauseNotice
             pause={{ run_id: budgetPauseView.runId, reason: 'exhausted', limit: budgetPauseView.limit, used: budgetPauseView.used }}
             canExtend={budgetPauseView.canExtend}
@@ -1000,6 +1008,14 @@ export function CraftRoutes(props: CraftRoutesProps) {
               });
             } : undefined}
           />
+          ) : (
+            // Denied pause view: the same member-visible copy the panel
+            // uses, WITHOUT the numeric pause object — nothing fabricated.
+            <aside role="status" data-testid="craft-budget-pause">
+              <strong>{CRAFT_USAGE_STRINGS_ZH.pauseTitle}</strong>
+              <p>{CRAFT_USAGE_STRINGS_ZH.pauseContactOwner}</p>
+            </aside>
+          )
         ) : null}
         </div>
       )}

@@ -44,10 +44,14 @@ func RegisterCraftBudgetPauseHandler(h CraftBudgetPauseAPI, access craft.TaskAcc
 }
 
 // RegisteredCraftBudgetPauseHandler returns the registered pause API.
-func RegisteredCraftBudgetPauseHandler() CraftBudgetPauseAPI { return registeredCraftBudgetPauseHandler }
+func RegisteredCraftBudgetPauseHandler() CraftBudgetPauseAPI {
+	return registeredCraftBudgetPauseHandler
+}
 
 // RegisteredCraftBudgetPauseAccess returns the registered Task gate.
-func RegisteredCraftBudgetPauseAccess() craft.TaskAccessChecker { return registeredCraftBudgetPauseAccess }
+func RegisteredCraftBudgetPauseAccess() craft.TaskAccessChecker {
+	return registeredCraftBudgetPauseAccess
+}
 
 // CraftBudgetPauseHandler serves the budget-pause surface. The routes
 // inherit the enclosing sessions group's guards; Task membership is
