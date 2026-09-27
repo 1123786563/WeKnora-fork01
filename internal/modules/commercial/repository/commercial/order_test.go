@@ -737,7 +737,9 @@ func TestConfirmPaymentMismatchAnomalyInsertFailurePropagates(t *testing.T) {
 	att := mustRegisterAttempt(t, s, "a1", "o1", "wechat", "wxm", "m1")
 	mismatched := att
 	mismatched.Amount = 50
-	db.Migrator().DropTable(&PaymentAnomalyRow{})
+	if err := db.Migrator().DropTable(&PaymentAnomalyRow{}); err != nil {
+		t.Fatal(err)
+	}
 	err := s.ConfirmPayment(ctx, mismatched)
 	if err == nil || errors.Is(err, domain.ErrPaymentMismatch) {
 		t.Fatalf("want the raw insert error to propagate, got %v", err)

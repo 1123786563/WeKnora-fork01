@@ -57,7 +57,78 @@
 
 ## Task 执行记录
 
-（执行阶段逐 Task 追加：提交哈希、测试输出摘要、偏差与披露。）
+（执行阶段逐 Task 追加：提交哈希、测试输出摘要、偏差与披露。执行员：实现员-84，2026-09-28，baseSha `de1ab4cd9`。）
+
+### 前置门与 Ruling（执行员）
+
+- **Ruling 0（#85 未合入，按合并纪律路径开工）**：前置门要求 merge/rebase 到 #85 合入后的集成分支，但 lago-int HEAD 仍为 `ee02d3218`（#85 未合入，issue-85 worktree 当前为 OCR-83 内容）。按 Global Constraint 11 替代路径：开工前 `go test ./internal/modules/commercial/... -count=1` 全绿（7 包 ok，2026-09-28 实跑）；只动授权区域（service/commercial/order.go 仅 Recover/Close/OrderView/withAttention 区、contracts 零改动）。集成冲突由集成分支主会话仲裁。错误代价：#85 合入时该文件可能需手工合解。
+- **Ruling 1（ResolvePaymentAnomaly 带 expectedVersion）**：计划签名 `(ctx, id)` 与其自身「state+version 守卫」描述及 Task 3 的 expected_version/409 契约矛盾——定为 `(ctx, id string, expectedVersion int64)` + `ErrPaymentAnomalyNotFound`(404)/`ErrPaymentAnomalyVersionConflict`(409) 双哨兵。
+- **Ruling 2（admin 路径取 /api/v1/admin/payment-anomalies）**：计划 Produces 文字 `/api/v1/commercial/admin/...` 与挂载指令「直挂父组（refund 先例）」矛盾——以挂载指令+refund-review 实际路径一致方为准。
+- **Ruling 3（Task 6 用例并为既有用例子测试）**：独立函数需重跑 6 分钟 gated→settle→webhook 链（禁止本地强制 active），按计划「复用既有搭建」许可以 `t.Run("TestSettleSecondChannelTransactionShortCircuitsWhenActive")` 挂既有用例尾部，断言不变。
+- **Ruling 4（真栈异常单占槽=正确保守行为，披露不改行为）**：attention 单保持 payable pending（防双重收款），新购买被 R2-26 回放；解锁=渠道侧关单（真栈演示完整闭环）。与 spec L127 一致，README 披露。
+- **Ruling 5（settle 消歧闸 fail-closed 时人工补步结算腿，披露）**：共享栈历史同名 customer 残留触发 #82 distinct-invoice 闸正确 fail-closed；以与 settle step iii/iv 相同参数面的 Stripe API 两步补齐，后续轮 settle 幂等重放（F-1）。README 披露①。
+- **Ruling 6（AC3 权威验证面随栈版本 Payment 行形态调整）**：82r5 栈 finalize 置 invoice payment_status=succeeded 但不铸 payments 新行——断言面= invoice 恰一次 succeeded + payments 基线（14|3）全程不变。README 披露②。
+- **Ruling 7（前端基线既有失败披露）**：`pnpm test:web` 38 fail、typecheck 5 错——baseSha 临时 worktree（de1ab4cd9）实跑**完全一致**，失败全在 #84 未触碰域；commercial 三文件 7/7 过零新增错误；主 checkout 44/44 过但其工作区代码状态与集成分支不同（main 无 packages/ui/src/sheet.tsx、lockfile 不同）非有效对照。
+
+### Task 1 异常付款事实持久化 —— commit cbf232d4c
+
+- RED：`go test ./internal/modules/commercial/repository/commercial/ -run 'TestClassifyPaymentAnomaly|TestRecordPaymentAnomaly|TestConfirmPaymentMismatch|TestConfirmPaymentNotSucceeded|TestPaymentAnomalyList' -count=1` → build failed（`undefined: PaymentAnomalyRow` 等，实跑）。
+- GREEN：`go test ./internal/modules/commercial/repository/commercial/ -count=1` → ok（新增 6 用例 + 既有不回归；修两处：`transaction` SQL 关键字带引号、`anomaly=&snap` 取地址）。
+- 交付：payment_anomaly.go（表+闭合分类+Record/Has/List/Resolve 全参数绑定+唯一键幂等）、domain.ErrPaymentNotSucceeded、ConfirmPayment 入口先判状态+两 mismatch 点事务外独立落库、NewOrderService AutoMigrate 挂点。
+
+### Task 2 回调面终态幂等应答 —— commit 1f69c94e7
+
+- RED：mismatch 两用例 409≠200 FAIL；NonSucceeded 因 Task 1 新分类暂 500（任务顺序预期 RED）。
+- GREEN：`go test ./internal/handler/ -run 'TestWechatCallback|TestAlipayCallback|TestPaymentCallback|TestCallbackMerchant' -count=1` → ok（13 用例全过含既有回归）。
+- 交付：双渠道双分支（NotSucceeded→409 维持重试；Mismatch→200 终态）；落库失败自然走 500 渠道重试兜底。
+
+### Task 3 over_payment 消费方与处置面 —— commit 1e2444142
+
+- RED：drain 不租约 over_payment FAIL；handler 编译错（AdminList 未定义）。
+- GREEN：`go test ./internal/modules/commercial/service/commercial/ -count=1` ok + `go test ./internal/handler/ -count=1` ok（修：grants granted_by NOT NULL、gin Use 须先于路由注册）。
+- 交付：lease 谓词 kind IN (fulfill, over_payment)、disposeOverPayment（畸形→sent+Warn；Record 幂等；失败保持 pending 不阻塞同批 fulfill）、admin list/resolve 端点（平台守卫、409/404 闭合面）。
+
+### Task 4 恢复/关单路径实收金额比对 —— commit 2c64cff86
+
+- RED：AmountFen/PaymentAttention 编译错（预期）。
+- GREEN：`go test ./internal/modules/commercial/payment/ -count=1` ok + service 全量 ok（修断言：5000<9900 闭合分类为 partial_payment）。
+- 交付：AttemptResult.AmountFen、双渠道 Query 回传（alipay 不可解析降级 0）、Recover/Close 先比后确认、recoverMismatchedCollection（落 anomaly+attention）。
+
+### Task 5 付款异常 UI 投影 —— commit 9b98c1229
+
+- RED：orderWire 两用例 FAIL、GetOrderSurfaces FAIL、前端 not ok 1。
+- GREEN：`go test ./internal/handler/ -run 'TestOrderWire|TestAdminPaymentAnomalies'` ok + service ok + `npx tsx --test src/commercial/order-state.test.ts` 7 pass 0 fail；全量 test:web/typecheck 的 38 fail/5 错均为基线既有（Ruling 7）。
+- 交付：OrderView.PaymentAttention、withAttention 读路径（Recover 三返回点）、PurchaseStatus 投影点、orderWire R4 分派表（attention 仅 pending、flag 全态透传）、order-state attention 前置分支、BillingPage 两形态后缀（M1 局部类型断言，契约零改动）。
+
+### Task 6 Lago Payment 恰好一次 —— commit 687867d52（blocked-env）
+
+- 常规：`go test ./internal/modules/commercial/commercialplatform/ -count=1` → ok（72.5s）。
+- tagged：`go test -tags lago_integration ./internal/modules/commercial/commercialplatform/ -run TestLagoIntegrationSettleActivatesGatedSubscription -count=1 -v` → **SKIP（lago integration env not configured）**——lab.env（gitignored）缺失，webhook secret mint 链（prepare_t9_env.sh 依赖 lab.env）不可完整重组；skip≠pass 披露。短路单测锁定在位（lago_settlement_test.go:278 already-active 零 provider 调用）；真栈第三幕 payments 基线不变为结构性权威证据。
+
+### Task 7 真实流程验证 —— commits f1eb7c167（实抓缺陷修复）+ 767970cdd（证据）
+
+- **实抓缺陷（f1eb7c167）**：第一轮第一幕错币种通知落 anomaly 后，浏览器轮询触发 RecoverOrderStatus——collected 比对只比金额不比币种（实收恰等面额）→ fact 用 attempt 的 CNY 构造 → **错币种收款经恢复路径洗白成正常确认**。修复：AttemptResult.AmountCurrency + 微信 Query 回传 + collectedAmountMismatch 双维比对（金额或币种任一不符分流 anomaly）；回归锁 `TestRecoverOrderStatusWrongCurrencyRetainedAsAnomaly`（RED→GREEN）；`go test ./internal/modules/commercial/... -count=1` 7 包 ok。
+- **四幕全过**（重置栈复跑，证据 `docs/plans/issue-72-flow-evidence-84/`，README 含判据核对）：
+  - 第一幕（租户 21 微信单）：部分付款 5000→200 终态+重投 200+partial_payment；USD→currency_mismatch；恢复读后仍 pending（缺陷修复验证）；Lago 零激活零支付；UI 三截图。
+  - 第二幕（租户 23 全新 Lago customer）：正常通知→paid→settle→真实 PI webhook（provider stored secret HMAC）→sub active+invoice succeeded→fulfilled+active；重投 ×3 全 success、records 恰 1 applied、Lago payments 基线 14|3 不变；UI 两帧。
+  - 第三幕（同单换交易号）：over_payment 事件→drain ~14s→anomaly(0/9900)；records 仍 1、Lago 基线不变；主状态 fulfilled+payment_attention:true（R4）；处置面 list/resolve 200/重放 409/全处置后 attention 回落。
+  - 第四幕（租户 24 漏通知+实收 19900）：GET 恢复读→attention+pending+amount_mismatch(9900/19900)+attempt pending；Lago sub status=4 零激活、基线不变。
+- 凭据纪律：sk_test/whsec 零命中、登录 REDACTED、密钥只经 shell 变量。
+- 栈侧过程：secrets env 裸 KEY=value 未导出→unconfigured（改 export 前缀+tmp-probe 定位，探针已删）；支付宝通知交易号复用撞 provider_transaction_id 唯一索引 500（渠道全局唯一约束正确拦截，换号重投）。
+
+### Task 8 收尾（门禁实跑记录，2026-09-28）
+
+| 命令 | 结果 | 说明 |
+|---|---|---|
+| `make test` | **PASS**（exit 0，126 包 ok） | 首跑 architectureguard 2 用例失败——新增 2 条 admin 路由使计数基线 635→637 偏移；按「基线随代码同步」惯例更新 discovery_test.go 基线（568/637）后全绿 |
+| `make lint` | exit 2（438 项） | **基线既有**（knowledge/knowledgebase 等未触碰域 + worktree 缓存 warning）；#84 改动域唯一引入项（order_test.go DropTable errcheck）已修，`golangci-lint run` 改动域（commercial/handler/router）零 #84 引入残留（余项 alipay_test:273/order_test:147/152/commercial.go:917-963 均经 git diff 基线行核实为既有） |
+| `make check-backend-architecture` | **PASS**（0 violations，literal=568 total=637） | 基线同步后过 |
+| `pnpm test:web` | 2274 pass / 38 fail | 38 fail 与 baseSha 完全一致（Ruling 7，临时 worktree 实跑取证）；commercial 域 7/7 过 |
+| `pnpm typecheck:web` | 5 error | 与 baseSha 完全一致（Ruling 7）；#84 触碰文件零错误 |
+| `pnpm test:shared` | 988 pass / 3 fail | 3 fail（kbDetail 域）与 baseSha 实跑**完全一致**（992 tests / 988 pass / 3 fail，临时 worktree 对照）——基线既有 |
+| `make verify-module-moves` | 未跑 | 本计划未触及模块搬迁清单文件（计划预期不需要） |
+
+栈收尾：stub/后端/前端已停（8096/5197/8298/8299 down）；Lago 82r5 栈为宿主共享资产未动。
 
 | Task | 状态 | 提交 | 证据摘要 |
 |---|---|---|---|
