@@ -97,9 +97,13 @@ func (f *cfWireFake) server(t *testing.T) *httptest.Server {
 			return
 		}
 		body, _ := io.ReadAll(r.Body)
+		// The double decodes the OFFICIAL Cloud v2 contract — camelCase
+		// spaceId/parentId keys only (R5-F5: an isomorphic snake_case decode
+		// here would mask a wire-contract regression exactly as it did on
+		// the real provider).
 		var req struct {
-			SpaceID  string `json:"space_id"`
-			ParentID string `json:"parent_id"`
+			SpaceID  string `json:"spaceId"`
+			ParentID string `json:"parentId"`
 			Title    string `json:"title"`
 			Body     struct {
 				Value string `json:"value"`

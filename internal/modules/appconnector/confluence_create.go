@@ -85,8 +85,8 @@ type confluenceStorageBody struct {
 }
 
 type confluenceCloudCreateRequest struct {
-	SpaceID  string                `json:"space_id"`
-	ParentID string                `json:"parent_id,omitempty"`
+	SpaceID  string                `json:"spaceId"`
+	ParentID string                `json:"parentId,omitempty"`
 	Status   string                `json:"status"`
 	Title    string                `json:"title"`
 	Body     confluenceStorageBody `json:"body"`

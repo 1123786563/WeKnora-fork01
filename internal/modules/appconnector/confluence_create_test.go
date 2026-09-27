@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"net"
 	"net/http"
@@ -33,6 +34,13 @@ type fakeConfluence struct {
 	postCalls, putCalls, pageGets int
 	// knob: apply the write effect, then lose the reply (unknown outcome).
 	dropNextWrite bool
+	// knob: serve page reads with HTML entities decoded to raw characters
+	// — the real Confluence serializer writes back bare quotes/apostrophes
+	// where Go's html.EscapeString emitted &#39;/&#34; (B5-F71).
+	reserialize bool
+	// lastCreateRaw captures the raw create request body for wire-shape
+	// assertions (B5-F43).
+	lastCreateRaw string
 }
 
 type cfPage struct {
@@ -115,9 +123,12 @@ func (f *fakeConfluence) server(t *testing.T) *httptest.Server {
 		switch {
 		case path == "/api/v2/pages" && r.Method == http.MethodPost:
 			body, _ := io.ReadAll(r.Body)
+			// The double decodes the OFFICIAL Cloud v2 contract — camelCase
+			// spaceId/parentId keys only (B5-F43: an isomorphic snake_case
+			// decode would mask a wire-contract regression).
 			var req struct {
-				SpaceID  string `json:"space_id"`
-				ParentID string `json:"parent_id"`
+				SpaceID  string `json:"spaceId"`
+				ParentID string `json:"parentId"`
 				Status   string `json:"status"`
 				Title    string `json:"title"`
 				Body     struct {
@@ -127,6 +138,7 @@ func (f *fakeConfluence) server(t *testing.T) *httptest.Server {
 			}
 			_ = json.Unmarshal(body, &req)
 			f.mu.Lock()
+			f.lastCreateRaw = string(body)
 			parent, ok := f.pages[req.ParentID]
 			f.mu.Unlock()
 			if !ok || req.SpaceID == "" || req.Title == "" || req.Body.Value == "" {
@@ -153,9 +165,16 @@ func (f *fakeConfluence) server(t *testing.T) *httptest.Server {
 			f.mu.Lock()
 			f.pageGets++
 			p, ok := f.pages[id]
+			reserialize := f.reserialize
 			f.mu.Unlock()
 			if !ok {
 				writeJSON(w, 404, `{"errors":[{"title":"not found"}]}`)
+				return
+			}
+			if reserialize {
+				served := *p
+				served.storage = html.UnescapeString(p.storage)
+				writeJSON(w, 200, cfCloudJSON(&served, true))
 				return
 			}
 			writeJSON(w, 200, cfCloudJSON(p, true))
@@ -201,8 +220,8 @@ func (f *fakeConfluence) server(t *testing.T) *httptest.Server {
 		case path == "/rest/api/content" && r.Method == http.MethodPost:
 			body, _ := io.ReadAll(r.Body)
 			var req struct {
-				Type      string `json:"type"`
-				Space     struct {
+				Type  string `json:"type"`
+				Space struct {
 					Key string `json:"key"`
 				} `json:"space"`
 				Ancestors []struct {
@@ -548,5 +567,31 @@ func TestConfluenceCreateRejectsBadEdition(t *testing.T) {
 	posts, _, gets := fake.stats()
 	if posts != 0 || gets != 0 {
 		t.Fatalf("no request may leave: posts=%d gets=%d", posts, gets)
+	}
+}
+
+// TestConfluenceCreateWireUsesOfficialCamelCaseKeys pins B5-F43: the Cloud
+// v2 create wire must carry the official camelCase spaceId/parentId keys —
+// a snake_case body is a first-call 400 on the real Confluence Cloud (the
+// fake now decodes the official contract, so the isomorphic-mask cannot
+// recur) and the captured raw body proves the wire shape.
+func TestConfluenceCreateWireUsesOfficialCamelCaseKeys(t *testing.T) {
+	fake := newFakeConfluence("cf-user@example.test", "secret_cf_token")
+	fake.addPage("parent-1", "sp-1", "ENG", "Parent", 7)
+	srv := fake.server(t)
+	ad := cfCreateAdapter(srv, EditionCloud, "")
+
+	out, err := ad.Execute(context.Background(), cfCreateAction(cfCreateArgs("parent-1", "Report", "<p>hello</p>")))
+	if err != nil || out.State != ActionSucceeded {
+		t.Fatalf("create against the official-contract double: state=%s err=%v", out.State, err)
+	}
+	fake.mu.Lock()
+	raw := fake.lastCreateRaw
+	fake.mu.Unlock()
+	if !strings.Contains(raw, `"spaceId"`) || !strings.Contains(raw, `"parentId"`) {
+		t.Fatalf("create wire must use official camelCase keys (spaceId/parentId), got: %s", raw)
+	}
+	if strings.Contains(raw, `"space_id"`) || strings.Contains(raw, `"parent_id"`) {
+		t.Fatalf("create wire must not carry snake_case keys, got: %s", raw)
 	}
 }
