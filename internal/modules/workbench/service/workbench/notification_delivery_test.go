@@ -487,7 +487,7 @@ func TestNotificationDeliveryRejectsResolvedInteractionAfterClaim(t *testing.T) 
 	// Intent ids are the 6-segment projection of notificationID (tenant:event:
 	// owner:device:env:appID, mobile_notification.go); the fixture's Enqueue
 	// normalizes the absent AppID to the official app.
-	res := db.Exec(`UPDATE mobile_notification_intents SET event_id = ?, kind = 'interaction_requested' WHERE id = ?`, "1:delivery-run:1", "1:delivery-event-interaction-device:u1:interaction-device:dev:official")
+	res := db.Exec(`UPDATE mobile_notification_intents SET event_id = ?, kind = 'interaction_requested' WHERE id = ?`, "1:delivery-run:1", "1:delivery-event-interaction-device:u1:interaction-device:dev:"+repository.MobileAppIDOfficial)
 	require.NoError(t, res.Error)
 	require.EqualValues(t, 1, res.RowsAffected)
 	spy := &notificationProviderSpy{}
