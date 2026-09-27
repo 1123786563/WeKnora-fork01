@@ -392,7 +392,7 @@ export function LoginPage({ client, onAuthenticated, apiBaseUrl, initialError, i
           <div ref={swiperRef} className="swiper swiper-fade swiper-horizontal swiper-initialized screenshot-swiper">
             <div className="swiper-wrapper">
               {SLIDES.map((slide, index) => (
-                <div key={slide.titleKey} className={`swiper-slide${index === 0 ? ' swiper-slide-active' : ''}`} style={slideStyle(index)}>
+                <div key={slide.titleKey} className={`swiper-slide${index === slideIndex ? ' swiper-slide-active' : ''}`} style={slideStyle(index)}>
                   <div className="slide-content">
                     <img src={slide.image} alt={t(slide.titleKey)} className="slide-image" />
                   </div>
