@@ -157,6 +157,12 @@ func (o *Office) CreateApplication(ctx context.Context, input CreateApplicationI
 			if prior.Fingerprint != fingerprint {
 				return ErrIdempotencyConflict
 			}
+			// A replay of an undecided (linking) row re-enters the linker
+			// below; the intent title must again carry the canonical owner.
+			// The stored row pins it (merges migrate applications onto the
+			// merge target), so reusing the raw input ID here would replay a
+			// different title than the first attempt and be rejected.
+			resolvedOpportunityID = prior.OpportunityID
 			return decodeApplicationReceipt(prior.ReceiptBody, &receipt)
 		}
 		if !errors.Is(e, gorm.ErrRecordNotFound) {
@@ -399,8 +405,26 @@ func (o *Office) ReconcileApplicationLink(ctx context.Context, requestID string)
 	if err = decodeApplicationReceipt(row.ReceiptBody, &receipt); err != nil {
 		return ApplicationReceipt{}, err
 	}
+	if row.LinkState == ApplicationLinkStateFailed {
+		// link_failed is a definite rejection: reconcile never re-opens a
+		// terminally failed link, and never re-associates the request ID
+		// with whatever durable task a concurrent twin may have created.
+		return receipt, nil
+	}
 	link, findErr := o.linker.FindCareerApplicationTask(ctx, scope.TenantID, scope.UserID, requestID)
 	if findErr == nil {
+		if link.ApplicationID != "" && link.ApplicationID != row.ID {
+			// The durable task found under this request ID belongs to a
+			// different application: the request ID is bound to foreign
+			// content, which is a definite rejection for this row.
+			if _, failErr := o.updateApplicationLink(ctx, scope, requestID, ApplicationLinkStateFailed, interfaces.CareerApplicationTaskLink{}); failErr == nil {
+				return ApplicationReceipt{}, fmt.Errorf(
+					"%w: workbench task %s belongs to application %s",
+					ErrApplicationConflict, link.TaskID, link.ApplicationID,
+				)
+			}
+			return ApplicationReceipt{}, &OutcomeUnknownError{RequestID: requestID}
+		}
 		return o.updateApplicationLink(ctx, scope, requestID, ApplicationLinkStateReady, link)
 	}
 	if errors.Is(findErr, interfaces.ErrCareerApplicationTaskNotFound) {

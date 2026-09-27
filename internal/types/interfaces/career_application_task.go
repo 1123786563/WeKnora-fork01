@@ -37,6 +37,11 @@ type CareerApplicationTaskIntent struct {
 type CareerApplicationTaskLink struct {
 	TaskID string
 	RunID  string
+	// ApplicationID names the application that owns the durable task. The
+	// finder fills it so callers can verify the request ID did not resolve
+	// to a different application's projection; an empty value means the
+	// implementation does not disclose ownership and no check is possible.
+	ApplicationID string
 }
 
 type CareerApplicationTaskLinker interface {

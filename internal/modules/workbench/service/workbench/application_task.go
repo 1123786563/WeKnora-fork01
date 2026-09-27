@@ -103,6 +103,10 @@ func (c *ApplicationTaskCoordinator) ensureWithRetry(
 	intent interfaces.CareerApplicationTaskIntent,
 	ensure applicationTaskEnsure,
 ) (interfaces.CareerApplicationTaskLink, error) {
+	intent, err := normalizeApplicationTaskIntent(tenantID, ownerID, intent)
+	if err != nil {
+		return interfaces.CareerApplicationTaskLink{}, err
+	}
 	var lastRace error
 	for attempt := 0; attempt < applicationTaskMaxAttempts; attempt++ {
 		link, err := ensure(ctx, tenantID, ownerID, intent)
@@ -122,10 +126,13 @@ func (c *ApplicationTaskCoordinator) ensureWithRetry(
 		case <-time.After(applicationTaskRetryPause(attempt)):
 		}
 	}
-	if link, err := c.FindCareerApplicationTask(ctx, tenantID, ownerID, intent.RequestID); err == nil {
-		return link, nil
-	} else if !errors.Is(err, ErrApplicationTaskNotFound) {
+	if row, found, err := findApplicationTask(c.db.WithContext(ctx), tenantID, ownerID, intent.RequestID, false); err != nil {
 		return interfaces.CareerApplicationTaskLink{}, err
+	} else if found {
+		// The durable row must still match this intent: a twin that won the
+		// same request ID with different content is a typed conflict, never
+		// a successful link handed to the losing application.
+		return applicationTaskReplay(row, intent)
 	}
 	return interfaces.CareerApplicationTaskLink{}, fmt.Errorf(
 		"%w: creation still racing after %d attempts: %v",
@@ -290,7 +297,7 @@ func (c *ApplicationTaskCoordinator) FindCareerApplicationTask(
 	if !found {
 		return interfaces.CareerApplicationTaskLink{}, ErrApplicationTaskNotFound
 	}
-	return interfaces.CareerApplicationTaskLink{TaskID: row.TaskID, RunID: row.RunID}, nil
+	return interfaces.CareerApplicationTaskLink{TaskID: row.TaskID, RunID: row.RunID, ApplicationID: row.ApplicationID}, nil
 }
 
 func normalizeApplicationTaskIntent(

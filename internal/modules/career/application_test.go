@@ -616,3 +616,131 @@ func TestCreateApplicationSQLiteBusyConvergesToOutcomeUnknown(t *testing.T) {
 	require.Equal(t, ApplicationLinkStateReady, receipt.LinkState)
 	require.Len(t, readApplicationRows(t, db), 1)
 }
+
+// ---- OCR round 2 fixes ---------------------------------------------------
+
+// TestReconcileApplicationLinkKeepsFailedStateTerminal pins ocr2-019:
+// link_failed is a definite rejection — reconcile must never re-open it, and
+// never flip the row onto a twin's durable task.
+func TestReconcileApplicationLinkKeepsFailedStateTerminal(t *testing.T) {
+	o, db, ctx := newApplicationOffice(t, "owner-1", 1715)
+	seed := seedApplicationEvaluation(t, o, ctx, "仅限2027届。", "2027", "terminal")
+	linker := &fakeCareerApplicationLinker{ensureErr: interfaces.ErrCareerApplicationTaskConflict}
+	o.SetApplicationTaskLinker(linker)
+
+	_, err := o.CreateApplication(ctx, applicationInput(seed, "terminal-1", "batch-2027-a"))
+	require.ErrorIs(t, err, ErrApplicationConflict)
+
+	rows := readApplicationRows(t, db)
+	require.Len(t, rows, 1)
+	applicationID := rows[0].ID
+	require.Equal(t, ApplicationLinkStateFailed, rows[0].LinkState)
+
+	// A durable task now exists under this request ID (the winning twin's).
+	// Reconcile must return the stored terminal receipt without flipping.
+	linker.ensureErr = nil
+	linker.findLink = interfaces.CareerApplicationTaskLink{
+		TaskID: "twin-task", RunID: "twin-run", ApplicationID: uuid.NewString(),
+	}
+	reconciled, err := o.ReconcileApplicationLink(ctx, "terminal-1")
+	require.NoError(t, err)
+	require.Equal(t, applicationID, reconciled.ApplicationID)
+	require.Equal(t, ApplicationLinkStateFailed, reconciled.LinkState)
+	require.Empty(t, reconciled.TaskID)
+
+	_, findCalls := linker.calls()
+	require.Zero(t, findCalls, "a terminal link_failed row must not consult Find")
+
+	rows = readApplicationRows(t, db)
+	require.Len(t, rows, 1)
+	require.Equal(t, ApplicationLinkStateFailed, rows[0].LinkState)
+	require.Empty(t, rows[0].TaskID)
+}
+
+// TestReconcileApplicationLinkRejectsForeignOwnedTask pins the ownership half
+// of ocr2-019: a Find hit that belongs to a different application is a
+// definite rejection for this row — never a ready flip with the foreign task.
+func TestReconcileApplicationLinkRejectsForeignOwnedTask(t *testing.T) {
+	o, db, ctx := newApplicationOffice(t, "owner-1", 1716)
+	seed := seedApplicationEvaluation(t, o, ctx, "仅限2027届。", "2027", "foreign")
+	linker := &fakeCareerApplicationLinker{ensureErr: context.Canceled}
+	o.SetApplicationTaskLinker(linker)
+
+	_, err := o.CreateApplication(ctx, applicationInput(seed, "foreign-1", "batch-2027-a"))
+	require.ErrorIs(t, err, ErrOutcomeUnknown)
+
+	rows := readApplicationRows(t, db)
+	require.Len(t, rows, 1)
+	applicationID := rows[0].ID
+	require.Equal(t, ApplicationLinkStateLinking, rows[0].LinkState)
+
+	// The request ID resolved to a different application's durable task.
+	linker.ensureErr = nil
+	linker.findLink = interfaces.CareerApplicationTaskLink{
+		TaskID: "twin-task", RunID: "twin-run", ApplicationID: uuid.NewString(),
+	}
+	_, err = o.ReconcileApplicationLink(ctx, "foreign-1")
+	require.ErrorIs(t, err, ErrApplicationConflict)
+
+	rows = readApplicationRows(t, db)
+	require.Len(t, rows, 1)
+	require.Equal(t, applicationID, rows[0].ID)
+	require.Equal(t, ApplicationLinkStateFailed, rows[0].LinkState, "foreign ownership is a definite rejection")
+	require.Empty(t, rows[0].TaskID)
+}
+
+// TestCreateApplicationReplayAfterMergeReusesCanonicalTitle pins ocr2-144: a
+// retry of an undecided link must re-enter the linker with the canonical
+// opportunity title the first attempt pinned, not the raw input ID that a
+// later merge resolved away — otherwise the Workbench replay check would
+// terminally reject a legal recovery.
+func TestCreateApplicationReplayAfterMergeReusesCanonicalTitle(t *testing.T) {
+	o, _, ctx := newApplicationOffice(t, "owner-1", 1717)
+	view, err := o.Open(ctx)
+	require.NoError(t, err)
+	_, err = o.Confirm(ctx, "education.graduation_year", "2027", "app-merge-year", view.Revision, Source{Kind: "manual"})
+	require.NoError(t, err)
+	view, err = o.Open(ctx)
+	require.NoError(t, err)
+
+	fields := knownFields("平台后端工程师", "示例科技", "杭州", "2027届秋招", "本科及以上学历")
+	target := importKnownJD(t, o, ctx, "app-merge-1", "https://jobs.example.com/postings/2001", fields)
+	candidate := importKnownJD(t, o, ctx, "app-merge-2", "https://other.example.net/jobs/2001", fields)
+	merged, err := o.ReconcileOpportunities(ctx, ReconcileInput{
+		RequestID: "app-merge-req", TargetID: target.OpportunityID, CandidateID: candidate.OpportunityID,
+	})
+	require.NoError(t, err)
+	require.Equal(t, ReconcileDecisionMerged, merged.Decision)
+
+	evaluation, err := o.EvaluateOpportunity(ctx, EvaluateInput{
+		RequestID:     "app-merge-eval",
+		OpportunityID: target.OpportunityID,
+		SnapshotID:    target.SnapshotID,
+	})
+	require.NoError(t, err)
+
+	linker := &fakeCareerApplicationLinker{ensureErr: context.Canceled}
+	o.SetApplicationTaskLinker(linker)
+	// The caller keeps using the pre-merge candidate reference; the pinned
+	// intent resolves onto the canonical target.
+	input := CreateApplicationInput{
+		RequestID:        "app-merge-app",
+		OpportunityID:    candidate.OpportunityID,
+		SnapshotID:       target.SnapshotID,
+		EvaluationID:     evaluation.EvaluationID,
+		BatchIdentity:    "batch-2027-a",
+		ExpectedRevision: view.Revision,
+	}
+	_, err = o.CreateApplication(ctx, input)
+	require.ErrorIs(t, err, ErrOutcomeUnknown)
+	require.Equal(t, applicationTaskTitle(target.OpportunityID), linker.lastIntent.Title)
+
+	// The retry replays the stored intent and must reuse the canonical title
+	// so the Workbench projection recognizes its own request.
+	linker.ensureErr = nil
+	receipt, err := o.CreateApplication(ctx, input)
+	require.NoError(t, err)
+	require.Equal(t, ApplicationLinkStateReady, receipt.LinkState)
+	require.Equal(t, applicationTaskTitle(target.OpportunityID), linker.lastIntent.Title)
+	require.Equal(t, target.OpportunityID, receipt.PinnedEvidence.OpportunityID)
+}

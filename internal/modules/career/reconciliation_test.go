@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/require"
 )
 
@@ -668,7 +669,7 @@ func TestReconcileMergeWithDualSameBatchApplicationsKeepsHistoryReachable(t *tes
 
 	// The decision is durable and recoverable by replay.
 	var decisions int64
-	require.NoError(t, db.Model(&reconciliationRecord{}).Count(&decisions).Error)
+	require.NoError(t, o.db.Model(&reconciliationRecord{}).Count(&decisions).Error)
 	require.EqualValues(t, 1, decisions)
 
 	// The conflicting application row stays on the merged-away record —
@@ -734,4 +735,56 @@ func TestReconcileRejectsForeignAndMalformedRequests(t *testing.T) {
 		RequestID: "rec-foreign", TargetID: target.OpportunityID, CandidateID: uuid.NewString(),
 	})
 	require.ErrorIs(t, err, ErrOpportunityNotFound)
+}
+
+// ---- OCR round 2 fixes ---------------------------------------------------
+
+// TestReconcileEvidenceReadFailureAbortsDecision pins ocr2-148: a failed
+// evidence read aborts the whole decision — empty evidence must never degrade
+// into a durable side_by_side receipt that the same request ID replays
+// forever.
+func TestReconcileEvidenceReadFailureAbortsDecision(t *testing.T) {
+	o, _, ctx := newReconciliationOffice(t)
+	fields := knownFields("平台后端工程师", "示例科技", "杭州", "2027届秋招", "本科及以上学历")
+	target := importKnownJD(t, o, ctx, "rec-evfail-1", "https://jobs.example.com/postings/3001", fields)
+	candidate := importKnownJD(t, o, ctx, "rec-evfail-2", "https://other.example.net/jobs/3001", fields)
+
+	// The evidence source becomes unreadable mid-decision.
+	require.NoError(t, o.db.Exec("DROP TABLE career_opportunity_snapshots").Error)
+
+	_, err := o.ReconcileOpportunities(ctx, ReconcileInput{
+		RequestID: "rec-evfail-req", TargetID: target.OpportunityID, CandidateID: candidate.OpportunityID,
+	})
+	require.Error(t, err, "an unreadable evidence source must abort the decision")
+	require.NotErrorIs(t, err, ErrOutcomeUnknown)
+
+	var decisions int64
+	require.NoError(t, o.db.Model(&reconciliationRecord{}).Count(&decisions).Error)
+	require.Zero(t, decisions, "no decision may persist when the evidence read failed")
+}
+
+// TestReconcileBusyExhaustionIsTypedUnknownOutcome pins ocr2-149: when the
+// bounded busy-retry budget runs out while the parent context stays healthy,
+// the caller gets the typed outcome_unknown carrying the request ID — never a
+// raw "database is locked" 500 — and nothing durable was decided.
+func TestReconcileBusyExhaustionIsTypedUnknownOutcome(t *testing.T) {
+	o, _, ctx := newReconciliationOffice(t)
+	fields := knownFields("平台后端工程师", "示例科技", "杭州", "2027届秋招", "本科及以上学历")
+	target := importKnownJD(t, o, ctx, "rec-busy-1", "https://jobs.example.com/postings/3002", fields)
+	candidate := importKnownJD(t, o, ctx, "rec-busy-2", "https://other.example.net/jobs/3002", fields)
+
+	o.failReconcileCommit = func() error { return sqlite3.Error{Code: sqlite3.ErrBusy} }
+	_, err := o.ReconcileOpportunities(ctx, ReconcileInput{
+		RequestID: "rec-busy-req", TargetID: target.OpportunityID, CandidateID: candidate.OpportunityID,
+	})
+	o.failReconcileCommit = nil
+
+	var unknown *OutcomeUnknownError
+	require.ErrorAs(t, err, &unknown, "busy exhaustion must converge to the typed unknown outcome, got: %v", err)
+	require.Equal(t, "rec-busy-req", unknown.RequestID)
+	require.NotContains(t, err.Error(), "database is locked", "the raw lock error must not leak")
+
+	var decisions int64
+	require.NoError(t, o.db.Model(&reconciliationRecord{}).Count(&decisions).Error)
+	require.Zero(t, decisions, "the busy transaction rolled back whole")
 }

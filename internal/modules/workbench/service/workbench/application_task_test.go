@@ -375,7 +375,11 @@ func TestFindCareerApplicationTaskIsTenantAndOwnerScoped(t *testing.T) {
 	require.NoError(t, err)
 	found, err := coordinator.FindCareerApplicationTask(ctx, 701, "owner-1", "career-create-application")
 	require.NoError(t, err)
-	require.Equal(t, created, found)
+	require.Equal(t, created.TaskID, found.TaskID)
+	require.Equal(t, created.RunID, found.RunID)
+	// The finder discloses which application owns the durable task so the
+	// caller can reject a request ID that resolved to foreign content.
+	require.Equal(t, "0cd7ee38-03e5-45bf-a070-6a8675da7db3", found.ApplicationID)
 
 	_, err = coordinator.FindCareerApplicationTask(ctx, 702, "owner-1", "career-create-application")
 	require.ErrorIs(t, err, ErrApplicationTaskNotFound)
@@ -589,4 +593,34 @@ func TestIsApplicationTaskCreationRaceMatchesOnlyPlannedMarkers(t *testing.T) {
 	} {
 		require.Falsef(t, isApplicationTaskCreationRace(err), "marker outside the fix-r1 plan accepted: %v", err)
 	}
+}
+
+// OCR round 2 fix ocr2-150: when the exhausted race budget recovers a durable
+// row, that row must still match THIS intent — a twin that committed the same
+// request ID for a different application is a typed conflict, never a
+// successful link handed to the losing application.
+func TestEnsureApplicationTaskRetryExhaustionRejectsForeignTwin(t *testing.T) {
+	db := openApplicationTaskDB(t)
+	coordinator := NewApplicationTaskCoordinator(db)
+	ctx := context.Background()
+
+	_, err := coordinator.EnsureCareerApplicationTask(ctx, 701, "owner-1", applicationTaskIntent())
+	require.NoError(t, err)
+
+	loser := applicationTaskIntent()
+	loser.ApplicationID = uuid.NewString()
+	once := func(context.Context, uint64, string, interfaces.CareerApplicationTaskIntent) (interfaces.CareerApplicationTaskLink, error) {
+		return interfaces.CareerApplicationTaskLink{}, errors.New("database is locked")
+	}
+	link, err := coordinator.ensureWithRetry(ctx, 701, "owner-1", loser, once)
+	require.Empty(t, link.TaskID)
+	require.Empty(t, link.RunID)
+	require.ErrorIs(t, err, ErrApplicationTaskConflict, "the foreign twin's link must not be handed out")
+	require.NotErrorIs(t, err, ErrApplicationTaskUndecided, "a durable foreign row is a definite conflict, not undecided")
+
+	// The durable row still belongs to the winner, untouched.
+	var mappings int64
+	require.NoError(t, db.Table("workbench_application_tasks").
+		Where("origin_request_id = ?", "career-create-application").Count(&mappings).Error)
+	require.Equal(t, int64(1), mappings)
 }

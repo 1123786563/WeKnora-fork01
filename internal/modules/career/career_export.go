@@ -293,7 +293,12 @@ func (o *Office) ExportCareer(ctx context.Context, input CareerExportInput) (Car
 		var head profile
 		e := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 			Where("tenant_id=? AND user_id=?", s.TenantID, s.UserID).First(&head).Error
-		if e != nil {
+		if errors.Is(e, gorm.ErrRecordNotFound) {
+			// A space that was only opened (or only imported sources) may
+			// carry no profile row yet: the epoch reads as revision 0, the
+			// same tolerant read evaluation and material already apply.
+			head.Revision = 0
+		} else if e != nil {
 			return e
 		}
 		if head.Revision != input.ExpectedRevision {
@@ -391,7 +396,10 @@ func buildCareerExportArchive(tx *gorm.DB, s Scope) (CareerExportArchive, error)
 	}
 	var head profile
 	if err := tx.Where("tenant_id=? AND user_id=?", s.TenantID, s.UserID).First(&head).Error; err != nil {
-		return archive, err
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return archive, err
+		}
+		head.Revision = 0
 	}
 	archive.Profile.Revision = head.Revision
 
@@ -631,11 +639,15 @@ func (o *Office) CareerDeletionBoundary(ctx context.Context) (CareerDeletionBoun
 			{Section: "material_exports", Description: "材料导出与下载授权", Count: sectionCount("career_material_exports", "")},
 			{Section: "submissions", Description: "你确认的投递记录", Count: sectionCount("career_submissions", "")},
 			{Section: "preparations", Description: "投递准备稿（随完整导出携带后删除）", Count: sectionCount("career_preparations", "")},
-			{Section: "searches", Description: "一次性搜索记录", Count: sectionCount("career_searches", "")},
-			{Section: "search_rules", Description: "周期搜索规则（随完整导出携带后删除）", Count: sectionCount("career_search_rules", "")},
+			{Section: "searches", Description: "一次性搜索记录及其搜索结果", Count: sectionCount("career_searches", "")},
+			{Section: "search_rules", Description: "周期搜索规则及其运行与发现待办（随完整导出携带后删除）", Count: sectionCount("career_search_rules", "")},
 			{Section: "reminders", Description: "站内待办与提醒回执（推送仅为提醒渠道，不含公司、岗位或面试细节；随完整导出携带后删除）", Count: sectionCount("career_reminders", "")},
 			{Section: "usage_reservations", Description: "搜索额度预占与结算记录（额度账本，删除后随空间一并清空）", Count: sectionCount("career_usage_reservations", "")},
 			{Section: "reconciliations", Description: "岗位去重与合并的决策记录（含合并证据，随删除一并清除）", Count: sectionCount("career_reconciliations", "")},
+			{Section: "evaluations", Description: "岗位资格评估结果与固定证据（资格判断历史，随删除一并清除）", Count: sectionCount("career_evaluations", "")},
+			{Section: "source_revisions", Description: "导入的简历/JD 原件记录（上传原件随删除一并物理释放）", Count: sectionCount("career_source_revisions", "")},
+			{Section: "data_exports", Description: "整空间导出归档（冻结的导出载荷与回执，随删除一并清除）", Count: sectionCount("career_data_exports", "")},
+			{Section: "receipts", Description: "各操作幂等回执账本（回执正文随删除一并清除）", Count: sectionCount("career_receipts", "") + sectionCount("career_opportunity_receipts", "") + sectionCount("career_material_receipts", "") + sectionCount("career_search_rule_receipts", "") + sectionCount("career_reminder_receipts", "")},
 			{Section: "workbench_tasks", Description: "Workbench 侧申请任务投影（经删除端口移除）", Count: sectionCount("career_applications", "task_id <> ''")},
 		},
 		External:  careerDeletionExternalBoundary(),
@@ -757,9 +769,15 @@ func (o *Office) DeleteCareer(ctx context.Context, input CareerDeletionInput) (C
 		}
 	} else if errors.Is(err, gorm.ErrRecordNotFound) {
 		var head profile
-		if err = o.db.WithContext(ctx).
-			Where("tenant_id=? AND user_id=?", s.TenantID, s.UserID).First(&head).Error; err != nil {
-			return CareerDeletionReceipt{}, err
+		if e := o.db.WithContext(ctx).
+			Where("tenant_id=? AND user_id=?", s.TenantID, s.UserID).First(&head).Error; e != nil {
+			if !errors.Is(e, gorm.ErrRecordNotFound) {
+				return CareerDeletionReceipt{}, e
+			}
+			// No profile row yet (the space was only opened or only imported
+			// sources): the epoch reads as revision 0. Deletion must still
+			// proceed — data sovereignty cannot require a written profile.
+			head.Revision = 0
 		}
 		if head.Revision != input.ExpectedRevision {
 			return CareerDeletionReceipt{}, &RevisionConflictError{CurrentRevision: head.Revision}
@@ -774,7 +792,11 @@ func (o *Office) DeleteCareer(ctx context.Context, input CareerDeletionInput) (C
 		}
 		if err = o.db.WithContext(ctx).Create(&record).Error; err != nil {
 			if isReceiptRaceError(err) {
-				if replay, lookupErr := o.FindCareerDeletion(ctx, input.RequestID); lookupErr == nil {
+				replay, resolved, raceErr := o.resolveDeletionCreateRace(ctx, s, input.RequestID, fingerprint)
+				if raceErr != nil {
+					return CareerDeletionReceipt{}, raceErr
+				}
+				if resolved {
 					return replay, nil
 				}
 			}
@@ -818,15 +840,63 @@ func (o *Office) DeleteCareer(ctx context.Context, input CareerDeletionInput) (C
 		completed := time.Now().UTC()
 		receipt.CompletedAt = &completed
 	}
-	if err = o.db.WithContext(ctx).Model(&careerDataDeletionRecord{}).
-		Where("tenant_id=? AND user_id=? AND request_id=?", s.TenantID, s.UserID, input.RequestID).
+	return o.persistDeletionOutcome(ctx, s, input.RequestID, status, &execution, receipt)
+}
+
+// resolveDeletionCreateRace settles a lost Create race for a deletion
+// request ID: the winner's durable row decides. A fingerprint mismatch
+// (same request ID, different expected revision) is a definite conflict —
+// the winner's receipt must never be handed to the loser — while an exact
+// match replays the winner's current receipt. resolved=false means no
+// durable row was found and the original Create error still stands.
+func (o *Office) resolveDeletionCreateRace(
+	ctx context.Context, s Scope, requestID, fingerprint string,
+) (CareerDeletionReceipt, bool, error) {
+	var raced careerDataDeletionRecord
+	e := o.db.WithContext(ctx).
+		Where("tenant_id=? AND user_id=? AND request_id=?", s.TenantID, s.UserID, requestID).
+		First(&raced).Error
+	if errors.Is(e, gorm.ErrRecordNotFound) {
+		return CareerDeletionReceipt{}, false, nil
+	}
+	if e != nil {
+		return CareerDeletionReceipt{}, false, e
+	}
+	if raced.Fingerprint != fingerprint {
+		return CareerDeletionReceipt{}, false, ErrIdempotencyConflict
+	}
+	replay, lookupErr := o.FindCareerDeletion(ctx, requestID)
+	if lookupErr != nil {
+		return CareerDeletionReceipt{}, false, lookupErr
+	}
+	return replay, true, nil
+}
+
+// persistDeletionOutcome records this run's outcome — unless the same
+// request ID already finalized its terminal "deleted" state: a late partial
+// from a concurrent runner must never regress a finalized receipt, so the
+// write is conditional on the row not being deleted yet, and a no-op write
+// replays the stored terminal receipt instead.
+func (o *Office) persistDeletionOutcome(
+	ctx context.Context, s Scope, requestID, status string, execution *deletionExecution, receipt CareerDeletionReceipt,
+) (CareerDeletionReceipt, error) {
+	result := o.db.WithContext(ctx).Model(&careerDataDeletionRecord{}).
+		Where("tenant_id=? AND user_id=? AND request_id=?", s.TenantID, s.UserID, requestID).
+		Where("status<>?", DeletionStatusDeleted).
 		Updates(map[string]any{
 			"status":       status,
 			"state_body":   string(mustJSON(execution)),
 			"receipt_body": string(mustJSON(receipt)),
 			"updated_at":   time.Now().UTC(),
-		}).Error; err != nil {
-		return CareerDeletionReceipt{}, err
+		})
+	if result.Error != nil {
+		return CareerDeletionReceipt{}, result.Error
+	}
+	if result.RowsAffected == 0 {
+		if stored, err := o.FindCareerDeletion(ctx, requestID); err == nil {
+			return stored, nil
+		}
+		return CareerDeletionReceipt{}, ErrDeletionNotFound
 	}
 	return receipt, nil
 }
@@ -1015,7 +1085,16 @@ func (o *Office) finalizeDeletion(ctx context.Context, s Scope, requestID string
 		var head profile
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 			Where("tenant_id=? AND user_id=?", s.TenantID, s.UserID).First(&head).Error; err != nil {
-			return err
+			if !errors.Is(err, gorm.ErrRecordNotFound) {
+				return err
+			}
+			// A space without a profile row still finalizes: create the
+			// epoch counter (the same first-write semantics profile writes
+			// use) so career_deleted gets a durable revision to land on.
+			head = profile{TenantID: s.TenantID, UserID: s.UserID, Revision: 0}
+			if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&head).Error; err != nil {
+				return err
+			}
 		}
 		next := head.Revision + 1
 		if err := tx.Model(&profile{}).

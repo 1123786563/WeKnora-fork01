@@ -176,12 +176,14 @@ func jobCodeFromRef(ref string) string {
 // opportunity's immutable history: each dimension takes its most recent
 // known snapshot value, and the posting code comes from the most recent
 // source reference that yields one.
-func collectIdentityEvidence(tx *gorm.DB, scope Scope, opportunityID string) IdentityEvidence {
+func collectIdentityEvidence(tx *gorm.DB, scope Scope, opportunityID string) (IdentityEvidence, error) {
 	evidence := IdentityEvidence{}
 	var snapshots []opportunitySnapshot
 	if err := tx.Where("tenant_id=? AND user_id=? AND opportunity_id=?", scope.TenantID, scope.UserID, opportunityID).
 		Order("acquired_at DESC, id DESC").Find(&snapshots).Error; err != nil {
-		return evidence
+		// A transient read failure must not degrade into "no evidence": the
+		// decision is only safe to persist when the evidence is complete.
+		return IdentityEvidence{}, err
 	}
 	for _, snapshot := range snapshots {
 		var fields OpportunityFields
@@ -208,7 +210,7 @@ func collectIdentityEvidence(tx *gorm.DB, scope Scope, opportunityID string) Ide
 	var observations []opportunityObservation
 	if err := tx.Where("tenant_id=? AND user_id=? AND opportunity_id=?", scope.TenantID, scope.UserID, opportunityID).
 		Order("acquired_at DESC, id DESC").Find(&observations).Error; err != nil {
-		return evidence
+		return IdentityEvidence{}, err
 	}
 	for _, observation := range observations {
 		if evidence.SourceRef == "" {
@@ -221,7 +223,7 @@ func collectIdentityEvidence(tx *gorm.DB, scope Scope, opportunityID string) Ide
 			break
 		}
 	}
-	return evidence
+	return evidence, nil
 }
 
 // sufficientIdentityEvidence is the frozen merge threshold: both sides must
@@ -298,8 +300,14 @@ func (o *Office) ReconcileOpportunities(ctx context.Context, input ReconcileInpu
 				return err
 			}
 		}
-		targetEvidence := collectIdentityEvidence(tx, s, input.TargetID)
-		candidateEvidence := collectIdentityEvidence(tx, s, input.CandidateID)
+		targetEvidence, evidenceErr := collectIdentityEvidence(tx, s, input.TargetID)
+		if evidenceErr != nil {
+			return evidenceErr
+		}
+		candidateEvidence, evidenceErr := collectIdentityEvidence(tx, s, input.CandidateID)
+		if evidenceErr != nil {
+			return evidenceErr
+		}
 		decision := ReconcileDecisionSideBySide
 		conflictingBatches := []string{}
 		if sufficientIdentityEvidence(targetEvidence, candidateEvidence) {
@@ -395,6 +403,13 @@ func (o *Office) ReconcileOpportunities(ctx context.Context, input ReconcileInpu
 			} else if found {
 				return replay, nil
 			}
+		}
+		if isSQLiteBusy(err) {
+			// The decision transaction rolled back whole (the bounded busy
+			// retry budget may have run out while the parent context stayed
+			// healthy): nothing durable was decided, so the same request ID
+			// retries safely instead of surfacing a raw "database is locked".
+			return ReconcileReceipt{}, &OutcomeUnknownError{RequestID: input.RequestID}
 		}
 		if ctx.Err() != nil {
 			return ReconcileReceipt{}, &OutcomeUnknownError{RequestID: input.RequestID}

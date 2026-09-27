@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -563,4 +564,174 @@ func TestExportCareerArchiveCarriesPreparationsSearchRulesAndReminders(t *testin
 	require.NoError(t, err)
 	sum := sha256.Sum256(payload)
 	require.Equal(t, hex.EncodeToString(sum[:]), receipt.Digest)
+}
+
+// ---- OCR round 2 fixes ---------------------------------------------------
+
+// TestExportCareerWithoutProfileRowSucceedsAtRevisionZero pins ocr2-020: a
+// space that never wrote a profile row (only opened, or only imported
+// sources) still exports whole — the epoch reads as revision 0 instead of a
+// 500 — and a revision mismatch stays a typed conflict.
+func TestExportCareerWithoutProfileRowSucceedsAtRevisionZero(t *testing.T) {
+	o, _, ctx := newCareerExportOffice(t, "owner-1", 1961)
+
+	receipt, err := o.ExportCareer(ctx, CareerExportInput{RequestID: "bare-export-1", ExpectedRevision: 0})
+	require.NoError(t, err)
+	require.Equal(t, CareerKindExported, receipt.Kind)
+	require.Equal(t, uint64(0), receipt.Revision)
+	require.Equal(t, CareerExportStatusComplete, receipt.Status)
+	require.Empty(t, receipt.Archive.Profile.Facts)
+	require.Empty(t, receipt.Archive.Opportunities)
+
+	replay, err := o.FindCareerExport(ctx, "bare-export-1")
+	require.NoError(t, err)
+	require.Equal(t, receipt.ExportID, replay.ExportID)
+
+	_, err = o.ExportCareer(ctx, CareerExportInput{RequestID: "bare-export-2", ExpectedRevision: 3})
+	var conflict *RevisionConflictError
+	require.ErrorAs(t, err, &conflict)
+	require.Equal(t, uint64(0), conflict.CurrentRevision)
+}
+
+// TestDeleteCareerWithoutProfileRowCompletes pins ocr2-021: deletion is a
+// data-sovereignty right — a user who never wrote a profile fact must still
+// delete their whole space (no 500 at the pre-check, no partial stall at
+// finalize; the epoch row is created so career_deleted lands on revision 1).
+func TestDeleteCareerWithoutProfileRowCompletes(t *testing.T) {
+	o, db, ctx := newCareerExportOffice(t, "owner-1", 1962)
+	o.SetApplicationTaskRemover(&fakeCareerTaskRemover{})
+
+	receipt, err := o.DeleteCareer(ctx, CareerDeletionInput{RequestID: "bare-delete-1", ExpectedRevision: 0})
+	require.NoError(t, err)
+	require.Equal(t, DeletionStatusDeleted, receipt.Status)
+	require.Equal(t, uint64(1), receipt.Revision, "finalize creates the epoch row and bumps to revision 1")
+
+	var head profile
+	require.NoError(t, db.Where("tenant_id=? AND user_id=?", uint64(1962), "owner-1").First(&head).Error)
+	require.Equal(t, uint64(1), head.Revision)
+
+	var changes []change
+	require.NoError(t, db.Where("tenant_id=? AND user_id=?", uint64(1962), "owner-1").Find(&changes).Error)
+	require.Len(t, changes, 1)
+	require.Equal(t, ChangeKindCareerDeleted, changes[0].Kind)
+}
+
+// TestDeleteCareerBoundaryDisclosesPurgeListSections pins ocr2-145: the
+// personal-data tables the purge physically sweeps — evaluations, uploaded
+// source originals, whole-space export archives, and the idempotency receipt
+// ledgers — must each be disclosed before the user confirms deletion.
+func TestDeleteCareerBoundaryDisclosesPurgeListSections(t *testing.T) {
+	o, db, ctx := newCareerExportOffice(t, "owner-1", 1951)
+	fx := seedExportChain(t, o, ctx, "disclose")
+	_, err := o.ExportCareer(ctx, CareerExportInput{RequestID: "disclose-export", ExpectedRevision: fx.Revision})
+	require.NoError(t, err)
+	require.NoError(t, db.Create(&sourceRevision{
+		ID: "src-disclose-1", TenantID: 1951, UserID: "owner-1", Revision: 1,
+		FileName: "resume.pdf", Status: SourceStatusComplete,
+	}).Error)
+
+	boundary, err := o.CareerDeletionBoundary(ctx)
+	require.NoError(t, err)
+	sections := map[string]CareerDeletionSection{}
+	for _, section := range boundary.InSpace {
+		sections[section.Section] = section
+	}
+	for _, name := range []string{"evaluations", "source_revisions", "data_exports", "receipts"} {
+		require.Containsf(t, sections, name, "boundary must disclose purge section %s", name)
+		require.NotEmptyf(t, sections[name].Description, "section %s must carry a description", name)
+	}
+	require.Equal(t, 1, sections["evaluations"].Count)
+	require.Equal(t, 1, sections["source_revisions"].Count)
+	require.Equal(t, 1, sections["data_exports"].Count)
+	require.Positive(t, sections["receipts"].Count, "the fixture's confirmed facts wrote idempotency receipts")
+}
+
+// TestDeleteCareerCreateRaceRejectsDifferentFingerprint pins ocr2-146: the
+// Create race fallback compares fingerprints — the same request ID with a
+// different expected revision is a definite conflict and never receives the
+// winner's deletion receipt.
+func TestDeleteCareerCreateRaceRejectsDifferentFingerprint(t *testing.T) {
+	o, db, ctx := newCareerExportOffice(t, "owner-1", 1963)
+	scope, err := getScope(ctx)
+	require.NoError(t, err)
+
+	winnerFP, err := careerDeletionFingerprint("race-1", 3)
+	require.NoError(t, err)
+	execution := newDeletionExecution()
+	winner := CareerDeletionReceipt{
+		Kind: CareerKindDeleted, RequestID: "race-1", Status: DeletionStatusPartial,
+		Retention: careerDeletionRetention(), Revision: 3,
+	}
+	now := time.Now().UTC()
+	require.NoError(t, db.Create(&careerDataDeletionRecord{
+		ID: uuid.NewString(), TenantID: scope.TenantID, UserID: scope.UserID,
+		RequestID: "race-1", Fingerprint: winnerFP, ExpectedRevision: 3,
+		Status: DeletionStatusPartial, StateBody: string(mustJSON(execution)),
+		ReceiptBody: string(mustJSON(winner)), CreatedAt: now, UpdatedAt: now,
+	}).Error)
+
+	// The losing twin raced with a different expected revision under the
+	// same request ID: a definite conflict, never the winner's receipt.
+	loserFP, err := careerDeletionFingerprint("race-1", 4)
+	require.NoError(t, err)
+	_, resolved, raceErr := o.resolveDeletionCreateRace(ctx, scope, "race-1", loserFP)
+	require.ErrorIs(t, raceErr, ErrIdempotencyConflict)
+	require.False(t, resolved)
+
+	// An exact fingerprint match replays the winner's current receipt.
+	replay, resolved, raceErr := o.resolveDeletionCreateRace(ctx, scope, "race-1", winnerFP)
+	require.NoError(t, raceErr)
+	require.True(t, resolved)
+	require.Equal(t, DeletionStatusPartial, replay.Status)
+	require.Equal(t, "race-1", replay.RequestID)
+
+	// A race that resolved nothing durable stays unresolved.
+	_, resolved, raceErr = o.resolveDeletionCreateRace(ctx, scope, "race-none", winnerFP)
+	require.NoError(t, raceErr)
+	require.False(t, resolved)
+}
+
+// TestPersistDeletionOutcomeNeverRegressesDeletedState pins ocr2-147: a late
+// partial write from a concurrent same-request runner must never regress a
+// finalized "deleted" receipt — the conditional write is a no-op and the
+// stored terminal receipt replays instead.
+func TestPersistDeletionOutcomeNeverRegressesDeletedState(t *testing.T) {
+	o, db, ctx := newCareerExportOffice(t, "owner-1", 1964)
+	scope, err := getScope(ctx)
+	require.NoError(t, err)
+
+	fp, err := careerDeletionFingerprint("regress-1", 0)
+	require.NoError(t, err)
+	execution := newDeletionExecution()
+	for i := range execution.Steps {
+		execution.Steps[i].Status = DeletionStepStatusDone
+	}
+	terminal := CareerDeletionReceipt{
+		Kind: CareerKindDeleted, RequestID: "regress-1", Status: DeletionStatusDeleted,
+		Retention: careerDeletionRetention(), Revision: 1,
+	}
+	now := time.Now().UTC()
+	require.NoError(t, db.Create(&careerDataDeletionRecord{
+		ID: uuid.NewString(), TenantID: scope.TenantID, UserID: scope.UserID,
+		RequestID: "regress-1", Fingerprint: fp, ExpectedRevision: 0,
+		Status: DeletionStatusDeleted, StateBody: string(mustJSON(execution)),
+		ReceiptBody: string(mustJSON(terminal)), CreatedAt: now, UpdatedAt: now,
+	}).Error)
+
+	// The late runner's partial outcome loses to the finalized state.
+	partialExecution := newDeletionExecution()
+	partial := CareerDeletionReceipt{
+		Kind: CareerKindDeleted, RequestID: "regress-1", Status: DeletionStatusPartial,
+		Retention: careerDeletionRetention(),
+	}
+	returned, err := o.persistDeletionOutcome(ctx, scope, "regress-1", DeletionStatusPartial, &partialExecution, partial)
+	require.NoError(t, err)
+	require.Equal(t, DeletionStatusDeleted, returned.Status, "the stored terminal receipt replays")
+
+	var row careerDataDeletionRecord
+	require.NoError(t, db.Where("request_id=?", "regress-1").First(&row).Error)
+	require.Equal(t, DeletionStatusDeleted, row.Status, "the terminal state must not regress")
+	var stored CareerDeletionReceipt
+	require.NoError(t, json.Unmarshal([]byte(row.ReceiptBody), &stored))
+	require.Equal(t, DeletionStatusDeleted, stored.Status)
 }
