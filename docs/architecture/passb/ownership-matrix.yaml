@@ -2453,42 +2453,6 @@ aliases:
   - old_import_path: internal/craft
     plan: 41-craft
     delete_barrier: ib4
-  - old_import_path: internal/datasource
-    plan: 26-datasource
-    delete_barrier: ib2
-  - old_import_path: internal/datasource/connector/confluence
-    plan: 26-datasource
-    delete_barrier: ib2
-  - old_import_path: internal/datasource/connector/dingtalk
-    plan: 26-datasource
-    delete_barrier: ib2
-  - old_import_path: internal/datasource/connector/feishu/core
-    plan: 26-datasource
-    delete_barrier: ib2
-  - old_import_path: internal/datasource/connector/feishu/drive
-    plan: 26-datasource
-    delete_barrier: ib2
-  - old_import_path: internal/datasource/connector/feishu/wiki
-    plan: 26-datasource
-    delete_barrier: ib2
-  - old_import_path: internal/datasource/connector/gitlab
-    plan: 26-datasource
-    delete_barrier: ib2
-  - old_import_path: internal/datasource/connector/ima
-    plan: 26-datasource
-    delete_barrier: ib2
-  - old_import_path: internal/datasource/connector/moauth
-    plan: 26-datasource
-    delete_barrier: ib2
-  - old_import_path: internal/datasource/connector/notion
-    plan: 26-datasource
-    delete_barrier: ib2
-  - old_import_path: internal/datasource/connector/rss
-    plan: 26-datasource
-    delete_barrier: ib2
-  - old_import_path: internal/datasource/connector/yuque
-    plan: 26-datasource
-    delete_barrier: ib2
   - old_import_path: internal/embedpolicy
     plan: 42-system-policy
     delete_barrier: ib4

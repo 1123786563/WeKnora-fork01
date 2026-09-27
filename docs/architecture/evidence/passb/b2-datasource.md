@@ -290,4 +290,46 @@ K 属主留守测试断链面（DAG ppc 清单外显形）与 Ruling 2026-09-24-
 
 ### 三方一致复核（占位——B2-DS.7 填写；P-6 快照已录 633/23+23/58/16、16 manifests、0 violations）
 
-## §别名（占位——B2-DS.6 填写）
+## §别名（B2-DS.6，2026-09-27，空义务核销——12 行成对删除）
+
+**授权依据**：Ruling LEGACY-ROW-OWNERSHIP「可早删不可晚删」+ K5.2 先例（`46447494a` 删义务行 / `a29abf40e` 三区出册补齐 / `55e13524a` 补回空键）。本节点为 12 行属主（`plan: 26-datasource`）。
+
+### Step 1 逐条零 importer 复检（12/12 全 zero）
+
+`python3` 读 `datasource.yaml` alias_obligations 12 条 old_import_path，逐条 `grep -rln "\"<path>\"" --include="*.go" . | grep -v _test.go`：
+
+| # | old_import_path | 非测试 importer |
+|---|---|---|
+| 1 | internal/datasource | (zero non-test importer) |
+| 2 | internal/datasource/connector/confluence | (zero non-test importer) |
+| 3 | internal/datasource/connector/dingtalk | (zero non-test importer) |
+| 4 | internal/datasource/connector/feishu/core | (zero non-test importer) |
+| 5 | internal/datasource/connector/feishu/drive | (zero non-test importer) |
+| 6 | internal/datasource/connector/feishu/wiki | (zero non-test importer) |
+| 7 | internal/datasource/connector/gitlab | (zero non-test importer) |
+| 8 | internal/datasource/connector/ima | (zero non-test importer) |
+| 9 | internal/datasource/connector/moauth | (zero non-test importer) |
+| 10 | internal/datasource/connector/notion | (zero non-test importer) |
+| 11 | internal/datasource/connector/rss | (zero non-test importer) |
+| 12 | internal/datasource/connector/yuque | (zero non-test importer) |
+
+- `ls internal/datasource` → `No such file or directory`（复跑留档，与计划 §2.4 实测一致）。
+- 广义核验（§2.4 同口径）：`grep -rn "WeKnora/internal/datasource" --include="*.go" internal cmd | grep -v modules/datasource` → 0 行（exit 1）。
+
+### Step 2 成对删行 + 三区出册补齐（同窗同 commit）
+
+- **manifest**（`docs/architecture/moves/datasource.yaml`）：alias_obligations 12 行 → 空列表 `[]`（`55e13524a` 同型，保留键）；**机械缺口就地补齐**（K5.2 同因）：`tools/modulemove/verify.go:108-124` 强制 move_packages[].from 与 alias_obligations 1:1 成对，删义务行后 from 仍在册 → `alias-1to1` 违规；故 move_packages 12 条 from/to → `[]`、owned_files.move_sources 12 条 → `[]`（verify.go:295 集合一致）、move_targets 24 条（12 to 树 + 12 旧路径别名登记 + 注释段）→ `[]`；importers 区 12 条 `internal/datasource/connector/*` 旧路径行随迁删（旧路径物理不存在；verify.go 无 importers 校验；终态满足计划 Step 3 `grep -c` 归零口径），保留 3 条真实宿主 importer（application/service、container、handler——compat shim 所在）。
+- **matrix**（`docs/architecture/passb/ownership-matrix.yaml`）：aliases 区 12 条 `old_import_path: internal/datasource*`（`plan: 26-datasource, delete_barrier: ib2`，删行时 :2456-:2491）成对删除。
+
+### Step 3 验证（命令原文 + 退出码）
+
+| 命令 | 退出码 | 输出 |
+|---|---|---|
+| `grep -c "internal/datasource" docs/architecture/moves/datasource.yaml` | 1（无匹配） | `0`（计划口径达成） |
+| `make verify-module-moves` | 0 | `modulemove: OK (16 manifests verified)`（双侧奇偶） |
+| `make check-backend-architecture` | 0 | `total=633 \| redis=23 lite=23 \| hooks=58 \| modules=16`、`OK (0 violations)` |
+| `grep -n "internal/datasource" docs/architecture/passb/ownership-matrix.yaml` | 1（无匹配） | 0 行（matrix 侧同步归零） |
+| `go test ./tools/modulemove/... -count=1` | 0 | `ok` |
+| `go test ./tools/passbguard/... -count=1` | FAIL | `TestRealRepoExceptionLedgerPlansMatchGuardTasks`：`guard 源 PassBTask "B2-DS.5" 缺模块映射`——**BASE 预存**（stash 复跑实证，90b93f321 树同 FAIL），B2-DS.5 已登记移交 IB2 债务（§计数基线「+1 新增」段），非本任务引入；本任务改动仅 manifest/matrix 数据行，与该测试断言的 PassBTaskModule 映射无交集 |
+
+**结论**：12 条空义务全核销，manifest/matrix 双侧归零，guard 双绿，奇偶无破坏。
