@@ -1,16 +1,25 @@
-# Issue #140 终局交付报告
+# Issue #140 终局交付报告（修订版 v2）
 
-- 报告日期：2026-09-28（Asia/Shanghai）
+- 报告日期：2026-09-28（Asia/Shanghai）；v2 修订日期：2026-09-28（吸收读者审读 18 条意见后全文修订）
 - 报告人：#140 动态工作流·终局报告员
 - 交付范围：集成工作区 `/Users/wuyongjun/.codex/worktrees/issue-140-integration/WeKnora-fork01`，分支 `codex/issue-140-integration`（**全部为本地提交：未推送、未开 PR、未合并、未上线**）
 - 事实源（优先级从高到低）：批准 Spec `docs/specs/2026-09-23-weknora-job-search-design.md` > 主计划 `docs/plans/2026-09-24-issue-140-implementation.md` > ADR 0015–0018 > `CONTEXT.md` > GitHub Issue 文本
-- 证据核查方式：本报告员于 2026-09-28 在集成工作区实跑 `git log`/`git status`/`grep`/`sed` 等只读命令核对；凡引用主控终验门结果处均注明"主控 ask 材料载明"，本报告员未重跑全量验证门（如实声明，不冒充）
+
+### 术语与证据等级（首次阅读先看）
+
+- **主控**：#140 动态工作流的主控会话——负责波次派发、终验门执行、OCR 范围审查与 Step 4 终裁的角色；本报告员、集成员、调度员均为其下游。
+- **主控 ask 材料**：主控下发给本报告员的任务指令中转述的材料（如终验门"go exit=0；web exit=0（双门并行执行）"）。此类材料**未随附命令原文、测试范围与执行时点**，本报告只能按原文转述，无法独立复核其强度与覆盖对象。
+- 本报告证据分三级，正文引用时注明：
+  - **A 级（本报告员实跑核对）**：git log/status/grep/sed 等，在 2026-09-28 于集成工作区执行，命令随文给出；
+  - **B 级（台账/报告文件载明的他人实跑）**：SDD 台账（progress.md）与 docs/plans/issue-140/ 下各报告载明的集成员/评审/实现者执行结果，本报告员未复跑；
+  - **C 级（ask 材料转述，无法独立复核）**：终验门 go/web exit=0、OCR"部分项限流失败后已低并发 resume 补跑"等。
+- 凡本报告员未亲自执行的检查一律标注"未重跑/未执行"，不冒充。
 
 ---
 
-## ① 33 个子 Issue 与 #140 总体验收状态
+## ① 33 个子 Issue、43 条用户故事与 #140 总体验收状态
 
-状态依据：DAG 状态表（`docs/plans/issue-140/2026-09-24-issue-140-dag.md` 节点表，最后一次更新于 Wave 16 集成提交 dc2558355）+ SDD 台账终态记录（progress.md Wave 15–17 与 OCR 轮集成段）。台账 Wave 16 明确：running/pending 的终态翻牌属主控 Step 4 终裁，调度员/集成员不代裁；下表"建议终态"为台账随 T33 终裁材料提交主控的建议口径，尚未经主控落定。
+**状态表时点声明**：下表"DAG 状态"列取自 `docs/plans/issue-140/2026-09-24-issue-140-dag.md` 节点表，该表**最后一次更新于 Wave 16 集成提交 dc2558355**（A 级：git log 该文件最后变更实核）；其后 OCR 三轮又产生 19 个提交（dc2558355→77917de10，含约 30+ 项生产代码修复），**未再更新状态表**。因此"DAG 状态"反映 dc2558355 时点，OCR 修复未在表中体现；表中状态与最终 HEAD 之间存在时点差，最终 HEAD 的质量证据以⑤⑥为准。台账 Wave 16 明确：running/pending 的终态翻牌属主控 Step 4 终裁，调度员/集成员不代裁；下表"建议终态"为台账随 T33 终裁材料提交主控的建议口径，尚未经主控落定。
 
 | 任务 | 子 Issue | DAG 状态 | 验收要点与证据（来源） | 建议终态（台账，待主控终裁） |
 | --- | --- | --- | --- | --- |
@@ -25,7 +34,7 @@
 | T09 | #149 | verified | 来源完整性五分类固定响应契约；集成门 go 6 包全绿、test:web 2363/2363（wave-report-T09后端.md/-Web.md） | verified（已落） |
 | T10 | #150 | verified | 三值资格：临时 SQLite+真实浏览器验证 2026 不符合/2027 符合/旧评估不变/390px 无溢出（task-10-live-browser-validation.md） | verified（已落） |
 | T11 | #152 | verified | 一次性找岗：后端 Wave3+Web Wave4 集成，test:web 2389/2389（wave-report-T11*.md） | verified（已落） |
-| T12 | #151 | verified | 去重/更新差异/历史快照：后端第 4 轮+Web Wave14 集成；聚焦门 80/80+50/50（全量因 CPU 争用欠账，后由 OCR r2 web 组串行全量 2503/2503 exit 0 偿还，台账 326 段） | verified（已落） |
+| T12 | #151 | verified | 去重/更新差异/历史快照：后端第 4 轮+Web Wave14 集成；Wave14 时点聚焦门 80/80+50/50（全量欠账见⑧-5，最终 HEAD 未闭环） | verified（已落） |
 | T13 | #154 | verified | 持续规则：后端 Wave7+Web Wave8；E2E 8 截图+server.log 交叉证实；test:web 2430/2430 | verified（已落） |
 | T14 | #155 | verified | 申请关联 Task：后端子任务 1+2+Web（浏览器 E2E 12 相位评审核验真实渲染）；test:web 2378/2378 | verified（已落） |
 | T15 | #153 | verified | 结构化材料：后端 Wave4+Web Wave5 第 2 轮复审；test:web 2401/2401 | verified（已落） |
@@ -34,7 +43,7 @@
 | T18 | #159 | verified | 本人投递确认：后端 Wave8+Web Wave9；归档证据+HTTP 幂等探针；test:web 2442/2442 | verified（已落） |
 | T19 | #156 | verified | 求职信/面试准备：15 相位浏览器 E2E+HTTP 探针，评审独立复跑 2459 全绿；集成偿还 F1（careerPurgeTables 补 preparations，56c164d4a） | verified（已落） |
 | T20 | #160 | verified | 站内待办/隐私通知：隐私字面量与 reminder.go 逐项一致；test:web 2466/2466 | verified（已落） |
-| T21 | #161 | verified | 额度准入：聚焦门 career 四页 82/82+改动文件 27/27+api-client 43/43（全量因 CPU 争用欠账，偿还口径同 T12） | verified（已落） |
+| T21 | #161 | verified | 额度准入：Wave13 时点聚焦门 career 四页 82/82+改动文件 27/27+api-client 43/43（全量欠账见⑧-5，最终 HEAD 未闭环） | verified（已落） |
 | T22 | #162 | verified | 导出/删除：联合合同测试+Web E2E；test:web 2449/2449 | verified（已落） |
 | T23 | #163 | pending | Expo 移动端 C 找岗/建档/分享：未启动，T01 传导（台账 312 行） | blocked |
 | T24 | #164 | verified | 小程序建档/分享导入：F1/F2/F3 修复经独立复核（单测 90/90、DevTools 复验 14/14、6 截图 6 哈希）（wave-report-T24修复.md） | verified（已落） |
@@ -43,14 +52,38 @@
 | T27 | #167 | pending | Expo 移动端时间线：未启动，T01 传导 | blocked |
 | T28 | #169 | running | 小程序时间线/按需准备：功能与可达环境（DevTools）证据链评审通过；F3 真机/人工录屏验收面为环境门槛保留（台账 278 行） | verified-with-environment-gate |
 | T29 | #168 | pending | Expo 移动端规则/额度/提醒：未启动，T01 传导 | blocked |
-| T30 | #170 | running | 小程序规则/用量/订阅：四条验证命令评审实跑全过（test 172/172、build:weapp 编译成功）；真机与订阅弹层真实环境如实 blocked（简报允许）；3 medium 主控知悉项（台账 d6b3e1bb5 终态段） | verified-with-environment-gate |
+| T30 | #170 | running | 小程序规则/用量/订阅：四条验证命令评审实跑全过（test 172/172、build:weapp 编译成功）；真机与订阅弹层真实环境如实 blocked（简报允许）；3 medium 主控知悉项明细见①之后"欠账明细"（台账 d6b3e1bb5 终态段） | verified-with-environment-gate |
 | T31 | #171 | pending | Expo 移动端导出/删除：未启动，T01 传导 | blocked |
 | T32 | #173 | verified | 小程序导出/删除：M1 主按钮门控修复+M2/M3 证据补档；修复轮第 2 轮复审 138/138；miniprogram 157/157（wave-report-T32修复.md） | verified（已落） |
-| T33 | #172 | running | 五环境终局验收：launch-matrix.md + source-coverage.md + 证据包已集成（8997b212e）；Wave16 修复轮闭环 2 medium（17×HTTP 200 回执原文在档+PDF SHA-256 自洽）；评审认定不阻塞终裁；**verified 待主控 Step 4 终裁（43 条故事覆盖核对）**；余 4 low+3 low 欠账披露不阻塞（台账 dc2558355 终态段） | verified（材料齐备，待终裁） |
+| T33 | #172 | running | 五环境终局验收：launch-matrix.md + source-coverage.md + 证据包已集成（8997b212e）；Wave16 修复轮闭环 2 medium（17×HTTP 200 回执原文在档+PDF SHA-256 自洽）；评审认定不阻塞终裁；**verified 待主控 Step 4 终裁（43 条故事覆盖核对）**；7 low 明细见"欠账明细" | verified（材料齐备，待终裁） |
 
-**DAG 终态统计（台账 8997b212e/dc2558355 段 grep 实核，34 节点含 T00 前置）**：verified 23 节点（T00 + 22 个子 Issue）、running 4（T02/T28/T30/T33）、pending 6（T05/T23/T25/T27/T29/T31）、blocked 1（T01），23+4+6+1=34 无遗漏。
+**DAG 终态统计（台账 8997b212e/dc2558355 段载明，34 节点含 T00 前置）**：verified 23 节点（T00 + 22 个子 Issue）、running 4（T02/T28/T30/T33）、pending 6（T05/T23/T25/T27/T29/T31）、blocked 1（T01），23+4+6+1=34 无遗漏。
 
-**#140 总体验收状态**：本地实现、集成与验证门全部完成——22 个子 Issue 已 verified、4 个 running 的可推进工作全部完成并集成评审（终态翻牌待主控终裁）、7 个受环境传导的票如实 blocked/pending；主控终验门 go exit=0、web exit=0（双门并行，主控 ask 材料载明）；OCR 三轮范围审查的修复已全部集成（dc2558355→77917de10，19 提交），但 **OCR 仍有未消除 findings（见⑥）**；**未推送、未合并、未上线**；鸿蒙（无工具链）与 Android（无设备/adb）环境门槛如实 blocked。本报告不声称 #140 已在 GitHub 关闭。
+### 终态建议所依据的票面条款原文（供核对环境豁免是否符合票面）
+
+以下引文均出自 DAG 状态表 acceptance/verification 列（其内容由各 GitHub 子 Issue 正文提炼）：
+
+- **T05/#144**（mobile 链 blocked 依据之一）：验证列原文"iOS、Android 开发构建与鸿蒙可用构建各演示一条现有 Task；**鸿蒙不支持时按 #143 判定阻塞**"——票面自身预设了鸿蒙不可行时的 blocked 出口。
+- **T23/T25/T27/T29/T31**（mobile 六票建议 blocked 依据）：验证列均为"**iOS、Android、鸿蒙各**（演示/验证）……"三端并列要求；鸿蒙端因 #143 不可达、Android 真机因无设备不可达，台账据此建议整票 blocked（台账 312 行）。
+- **T02/#145**（建议 verified-with-environment-gate 依据）：acceptance 原文"iOS、Android 开发构建均在**真实模拟器或设备**打开受保护 Task"——iOS 以模拟器满足票面字面；Android 无设备缺项，终态建议保留 environment-gate 由主控裁决（台账 105/162/188 行）。
+- **小程序票（T26/T28/T30 等）**：acceptance 载"实际开发工具与真机验证"，而 verification 列为"微信小程序（Taro 4 + TDesign Miniprogram）**真实环境**完成……"（T26）/"真机或官方开发环境"（T24）。两种写法并存：DevTools 官方环境满足 T24 式字面；"真实环境"字面（T26/T28/T30）是否被 DevTools 满足由各票评审与主控裁量——台账记录为"评审通过有保留+真机项如实 blocked"（Wave 14 段）。
+- 上述建议均为台账口径，**不构成终裁**；若主控对票面条款另有解释，以主控为准（台账 312 行原文"若主控另有裁决以主控为准"）。
+
+### 43 条用户故事覆盖（#140 票面核心验收的故事维度）
+
+逐条索引：DAG 文件"#140 用户故事逐项验收映射"表将根 Issue 正文 1–43 条故事逐条映射到执行节点（A 级：该表全文实读）。本报告员按"故事的全部映射节点状态"交叉统计（方法：DAG 映射表 × 状态表，A 级）：
+
+- **37/43 条**故事的映射节点**全部 verified**（故事 2–8、10–25、27–35、37–39、41、43 等，载体为 T03–T22、T24、T26、T32）；
+- **6/43 条**故事含未完成移动端节点：故事 1/9/26/42（含 T23 pending）、故事 36（含 T29 pending、T30 running）、故事 40（含 T31 pending）——与 mobile 链 blocked 传导完全一致，此 6 条的故事级达成度只能随主控对 mobile 链的终裁落定；
+- 故事级逐条验收结论（每条"是否满足票面故事"）属主控 Step 4 终裁动作（台账 319 行"父规格 43 条故事覆盖核对"明确列为主控待办），本报告提供上述索引与统计，不代裁。
+
+### 欠账明细（对应⑧各条，均引台账原文）
+
+- **T33 评审遗留 7 low**（台账 dc2558355 终态段原文）：4 low＝①请求体覆盖过度声明、②报告节编号重复、③diff --check 范围失真、④Web 门日志无阳性标记；3 low 前波欠账＝⑤全量 test:web 欠账（见⑧-5）、⑥证据计数/空文件瑕疵、⑦miniprogram typecheck 13 基线欠账。评审认定均不阻塞终裁。
+- **T30 评审保留 3 medium**（台账 d6b3e1bb5 终态段原文）：①不自动读回规则可致重复建规则的 Web 语义分歧、②订阅弹层缺真实验证、③live 证据仅归档；另有 3 low。真机与订阅弹层路径如实 blocked（简报允许）。
+- **OCR #140 实现面 142 块 findings 明细**：见⑥的文件级清单与严重度表；逐条全文在 `docs/plans/issue-140/ocr/ocr-round-3-resume.md`（该文件当前未入库，见⑧-11）。
+
+**#140 总体验收状态**：本地实现、集成与验证门全部完成——22 个子 Issue 已 verified、4 个 running 的可推进工作全部完成并集成评审（终态翻牌待主控终裁）、7 个受环境传导的票如实 blocked/pending；主控终验门 go exit=0、web exit=0（C 级材料，时点与命令未知，见⑤）；OCR 三轮范围审查的修复已全部集成（dc2558355→77917de10，19 提交），但 OCR 报告仍有 369 块 findings 未确认是否消除（见⑥）；**未推送、未合并、未上线**；鸿蒙（无工具链）与 Android（无设备/adb）环境门槛如实 blocked。本报告不声称 #140 已在 GitHub 关闭。
 
 ## ② DAG 与计划/台账路径
 
@@ -60,9 +93,12 @@
 | 主实施计划（plan commit 7041e38ab） | `docs/plans/2026-09-24-issue-140-implementation.md` |
 | SDD 台账（330 行，75 条 Ruling） | `.superpowers/sdd/2026-09-24-issue-140-implementation/progress.md` |
 | 批准 Spec | `docs/specs/2026-09-23-weknora-job-search-design.md` |
+| ADR 0015–0018 | `docs/adr/0015-job-search-as-weknora-specialist-agent.md`、`0016-one-task-per-job-application.md`、`0017-immutable-job-and-application-evidence.md`、`0018-expo-tdesign-career-clients.md`（A 级：目录实列） |
 | 各票任务报告/评审/验证证据 | `docs/plans/issue-140/`（task-*-validation.md、wave-report-*.md、reviews/ 等） |
 | T33 终局验收材料 | `docs/plans/issue-140/verification/`（launch-matrix.md、source-coverage.md、harmony-native-gate.md） |
 | OCR 三轮范围审查报告 | `docs/plans/issue-140/ocr/`（round 1–3 各含 resume 版 + ocr-workspace.md） |
+
+**ADR/CONTEXT 合规比对声明**：ADR 0015（求职作为 WeKnora 专家 agent）、0016（一岗一 Task）、0017（不可变 JD 与申请证据）、0018（Expo+TDesign career 客户端）与 CONTEXT.md 属于优先级高于台账的事实源；本报告的验收状态判定依据 DAG/台账/OCR/git 等直接证据，**未逐条执行 ADR/CONTEXT 合规比对**（该比对属主控 Step 4 终裁与独立复审职责），因此本报告不宣称"交付已遵守 ADR/CONTEXT"，也不宣称存在冲突——比对未发生，如实声明。
 
 DAG 完整性自检（DAG 文件自检节）：33 个唯一子 Issue、33 条 contains 边、Kahn 拓扑覆盖 33/33 节点、0 循环、0 遗漏、10 个波次。
 
@@ -97,44 +133,51 @@ DAG 完整性自检（DAG 文件自检节）：33 个唯一子 Issue、33 条 co
 
 Wave 17（调度员收口）：全 DAG 可派发工作耗尽，无可派任务；待主控 Step 4 终裁。
 
-### 阶段三：主控侧 OCR 三轮修复集成（dc2558355 → 77917de10，19 提交）
+### 阶段三：主控侧 OCR 三轮修复集成（dc2558355 → 77917de10，19 提交，分段计数 A 级实核）
 
-| 轮次 | BASE → 新 HEAD | 落地内容（台账 322/326/329 段） |
-| --- | --- | --- |
-| OCR 第 1 轮 | dc2558355 → cbd4db5f8 | 7 任务提交+1 集成修复：web 组 1 critical+20 high+10 红线 medium（ac25a84a5/e338250f8）、miniprogram 组六 high+四 medium（1cada9857）、backend 组 15 项（a06189a24/eeb129a39）、misc 组（b9c397f27/8c7977862）；集成修复 6b6581457（reminder 双 ID 测试桩对齐冻结契约） |
-| OCR 第 2 轮 | cbd4db5f8 → fcc149133 | 4 提交：miniprogram 86615d2d5（恢复链三件套等）、web 70310fb6a（19 high+8 红线 medium）、backend a4e8020be（3 high+7 medium，11 新回归测试含 -race）、misc c77da2710 |
-| OCR 第 3 轮 | fcc149133 → 77917de10 | 4 提交：web 24821e5b1（15 critical/high+6 红线 medium）、miniprogram 4f1c765ea（3 high+5 幂等红线 medium）、backend 0d50acb4a（2 high+2 红线 medium，6 新测试含并发）、misc 9818d7cef（T33 证据脚本三处可靠性修复+原型 syncUrl 降级）+ 台账提交 77917de10 |
+分段提交计数（A 级：`git log --oneline dc2558355..cbd4db5f8 | wc -l` = 9；`cbd4db5f8..fcc149133` = 5；`fcc149133..77917de10` = 5；合计 19，与④总计数一致）：
+
+| 轮次 | 提交数 | 提交明细（A 级 git log 实核） | 修复内容（台账 322/326/329 段） |
+| --- | --- | --- | --- |
+| OCR 第 1 轮（dc2558355 → cbd4db5f8） | **9**（8 修复+1 台账） | ac25a84a5、e338250f8（web）、1cada9857（miniprogram）、a06189a24、eeb129a39（backend）、b9c397f27、8c7977862（misc）、6b6581457（集成修复：reminder 双 ID 测试桩）、cbd4db5f8（docs ledger） | web 1 critical+20 high+10 红线 medium；miniprogram 六 high+四 medium；backend 15 项；misc 2 项 |
+| OCR 第 2 轮（cbd4db5f8 → fcc149133） | **5**（4 修复+1 台账） | 86615d2d5（miniprogram）、70310fb6a（web）、a4e8020be（backend）、c77da2710（misc）、fcc149133（docs ledger） | web 19 high+8 红线 medium；backend 3 high+7 medium（11 新回归测试含 -race，组内跑）；miniprogram 恢复链三件套；misc 2 项 |
+| OCR 第 3 轮（fcc149133 → 77917de10） | **5**（4 修复+1 台账） | 24821e5b1（web）、4f1c765ea（miniprogram）、0d50acb4a（backend）、9818d7cef（misc）、77917de10（docs ledger） | web 15 critical/high+6 红线 medium；miniprogram 3 high+5 幂等红线 medium；backend 2 high+2 红线 medium；misc 3 项 |
 
 ## ④ 原始 BASE 与最终 HEAD
 
 - **原始 BASE**：`f7753fa160927195e388c65e1dbbdff7e288506c`（.worktrees/issue30-sweep 的 codex/issue30-mobile-office 已提交 HEAD；DAG 文件声明）
-- **最终 HEAD（本报告核查时点）**：`77917de1014831e5691a8f7280d3af5c3a10cbeb`（"docs(plan): record OCR round 3 four-domain integration ledger"，2026-09-28 02:04:49 +0800，`git log -1 --format="%H %ci" HEAD` 实核）
-- **提交统计**（`git log --oneline f7753fa..HEAD | wc -l` 实核）：**261 个提交**；分段：codex 会话段 148（f7753fa..21df162a2）+ 波次段 94（21df162a2..dc2558355）+ OCR 段 19（dc2558355..77917de10）
-- **未推送状态**：`git status` 分支 `codex/issue-140-integration`，无远端跟踪；台账历波均载明"未 push；任务 worktree HEAD 实核未触碰"
+- **最终实现 HEAD（本报告核查时点）**：`77917de1014831e5691a8f7280d3af5c3a10cbeb`（"docs(plan): record OCR round 3 four-domain integration ledger"，2026-09-28 02:04:49 +0800，A 级：`git log -1 --format="%H %ci" HEAD`）
+- **提交统计**（A 级：`git log --oneline f7753fa..HEAD | wc -l`）：**实现提交 261 个**（f7753fa..77917de10）；分段：codex 会话段 148 + 波次段 94 + OCR 段 19。**另有本报告自身的 docs 提交**（首版 34221bbb8 + 本次 v2 修订提交，哈希见 `git log` 最新 docs(plan) 条目）——分支本地提交总数 = 261 + 报告提交数（当前为 262 或 263，以 git log 为准）。
+- **未推送状态**（A 级：`git status`）：分支 `codex/issue-140-integration`，无远端跟踪；台账历波均载明"未 push；任务 worktree HEAD 实核未触碰"。
 
 ## ⑤ 实际测试与设备验证证据
 
-### 终验门（主控 ask 材料载明，本报告员未重跑）
+### 终验门（C 级材料——原文转述与已知局限）
 
-- **go 门 exit=0；web 门 exit=0**（双门并行执行）——主控终验材料原文。命令细节未随 ask 提供，本报告按原文引用，不扩大口径。
+- 主控 ask 材料原文："验证门：go exit=0；web exit=0（双门并行执行）"。
+- **已知局限（如实声明）**：该材料未随附命令原文、测试范围、执行时点。因此本报告**无法确认**该双门是在 OCR 三轮修复（dc2558355→77917de10）之前还是之后执行；若在之前，则最终 HEAD 77917de10 上不存在任何本报告可引用的全量双门证据。**最终 HEAD 上可引用的最新门证据是 B 级的 OCR 第 3 轮集成门**（见下节），本报告员未重跑任何门。
+- OCR round 3 与终验门"并行执行"（ask 原文"exit=0（与终验门并行执行）"）这一时序描述同样无法用于判定双门覆盖的代码时点。
 
-### 集成门（集成员在各波/各 OCR 轮于集成工作区实跑，台账载明）
+### 集成门（B 级：集成员在各波/各 OCR 轮于集成工作区实跑，台账载明）
 
-最近一轮（OCR 第 3 轮集成，2026-09-28）：
-- `go test ./internal/modules/career/... ./internal/handler/... ./internal/database/... ./internal/router/... -count=1` 全 ok 一次过（career 28.8s / handler 1.7s / dto 0.6s / session 32.3s / database 30.1s / router 3.7s）
-- `pnpm --filter @weknora/miniprogram test` 188/188 pass 0 fail 0 skipped（build:weapp 重建后仍全绿）；typecheck 13 错均为基线预存在
-- web 聚焦 career 五文件 97/97 + api-client 全量 157/157 + career-core 27/27（node26.4.0）；`pnpm typecheck:web` 退出 0
+最近一轮（OCR 第 3 轮集成，2026-09-28，BASE fcc149133→77917de10）：
+- `go test ./internal/modules/career/... ./internal/handler/... ./internal/database/... ./internal/router/... -count=1` 全 ok 一次过（career 28.8s / handler 1.7s / dto 0.6s / session 32.3s / database 30.1s / router 3.7s）。
+  - **覆盖面说明（A 级 git show --stat 0d50acb4a 实核）**：第 3 轮 backend 修复 0d50acb4a 改动全部位于 `internal/modules/career/`（application.go、career_export.go、preparation.go 及对应 _test.go），被门的 `./internal/modules/career/...` 路径覆盖；web/miniprogram/misc 组修复不经该门。**-race 口径**：该集成门命令无 `-race`；第 2 轮 backend 的 11 个新测试"含 -race"为组内会话口径（台账 326 段），第 3 轮 6 个新测试（含并发用例）的 -race 复跑未在台账载明，其提交信息自述"career 包全量 go test 通过（20.8s）……go build ./... 通过"为组内口径——**最终 HEAD 上未载明 -race 全量复跑**。
+- `pnpm --filter @weknora/miniprogram test` 188/188 pass 0 fail 0 skipped（build:weapp 重建后仍全绿）；typecheck 13 错均为基线预存在。
+- **web 侧最终 HEAD 证据仅为聚焦门**：career 五文件 97/97 + api-client 全量 157/157 + career-core 27/27（node26.4.0）+ `pnpm typecheck:web` 退出 0。**最终 HEAD 上无全量 test:web 证据**（见⑧-5）。
 
-历史全量 test:web 台账轨迹：2309（T03）→ 2363（T09）→ 2378 → 2389 → 2401 → 2412 → 2420 → 2430 → 2442 → 2449 → 2459 → 2466；Wave 13/14/15 全量因并行会话 CPU 争用与 agent-editor.test.tsx 间歇性死循环（BASE 预存缺陷）三次未完成，按聚焦门口径交付并 park（Wave 16 Ruling）；**OCR 第 2 轮 web 组会话内已跑串行全量 2503/2503 exit 0**（台账 326 段）——欠账以"聚焦门全绿+串行全量一次通过"记录，未在集成工作区以并行口径复跑闭环。
+**数据库口径（各验证门所用 DB）**：上述 go 集成门命令未显式指定 DB 驱动，career/database 测试按仓库默认以临时/内存 SQLite 口径运行为主（B 级：T03 后端轮载明"focused Go/SQLite and isolated PostgreSQL migration checks"，即**迁移**曾在隔离 PostgreSQL 上检查过，但**运行时** live PostgreSQL 未演练，task-4-final-validation.md 披露）；T03 浏览器门使用隔离 SQLite Lite 实例（DB_DRIVER=sqlite、临时 DB_PATH，台账 146 行段）。**SQLite 验证对 PostgreSQL 生产环境的代表性未建立**，见⑧-10。
 
-### 设备/环境验证矩阵（T33 launch-matrix.md + 各票验证报告）
+**历史全量 test:web 台账轨迹（B 级）**：2309（T03）→ 2363（T09）→ 2378 → 2389 → 2401 → 2412 → 2420 → 2430 → 2442 → 2449 → 2459 → 2466。Wave 13/14/15 全量因并行会话 CPU 争用与 agent-editor.test.tsx 间歇性死循环（BASE 预存缺陷）三次未完成，按聚焦门口径交付并 park（Wave 16 Ruling）。**OCR 第 2 轮 web 组曾在会话内以串行口径跑全量 2503/2503 exit 0（台账 326 段），但其时点为第 2 轮（BASE cbd4db5f8 范围），先于第 3 轮 15 个 critical/high 修复，不能作为最终 HEAD 的全量证据**（v1 曾以"偿还"表述引用，属过度支撑，v2 撤回——欠账状态见⑧-5）。
+
+### 设备/环境验证矩阵（T33 launch-matrix.md + 各票验证报告，B 级）
 
 | 环境 | 状态 | 证据 |
 | --- | --- | --- |
 | Web 浏览器（真实渲染 E2E） | 达成 | T03/T10/T14/T15/T16/T17/T18/T19/T20/T22/T33 等多相位浏览器证据（截图+server.log 交叉证实） |
 | iOS 模拟器 | 达成 | T02 受认证 Task 读取/越权拒绝（task-2-live-ios-validation.md、task-2-evidence-ios/）；T33 iOS 实测记录 |
 | 微信开发者工具（官方环境） | 达成 | T06 真实 DevTools 全链路；T24 14/14+6 截图哈希；T26 全链 18/18（端口 57817）；T32 修复轮 138/138；T33 wx-driver.cjs 自动化链 |
-| 微信真机 | 未达成（环境门槛） | 各票以官方 DevTools 环境完成票面"真机或官方开发环境"条款；T28 F3 真机录屏、T32 M3 真机、T30 真机+订阅弹层项保留（台账 278 行与 d6b3e1bb5 终态段） |
+| 微信真机（仅真机维度） | 真机维度未达成 | **口径说明**：各小程序票票面条款为"真机或官方开发环境"（T24 式）或"真实环境"（T26/T28/T30 式，见①票面引文）——官方 DevTools 满足前者字面；"真实环境"条款由各票评审裁量通过（有保留）。真机维度专项缺项：T28 F3 真机录屏、T32 M3 真机、T30 真机+订阅弹层，均按环境门槛保留（台账 278 行与 d6b3e1bb5 终态段） |
 | Android 真机/模拟器 | 未达成（无 adb/设备） | 台账 105/162/188 行历次实勘 |
 | 鸿蒙原生 | 未达成（无 SDK/DevEco/hdc/hvigor/设备/.hap） | T01 blocked 证据（080cf7d47）+ verification/harmony-native-gate.md |
 
@@ -142,15 +185,15 @@ Wave 17（调度员收口）：全 DAG 可派发工作耗尽，无可派任务�
 
 ## ⑥ SDD 结论与 OCR 轮次结论
 
-### SDD 结论（台账 Wave 17 收口段）
+### SDD 结论（台账 Wave 17 收口段，B 级）
 
 - 全 DAG 可派发工作已于 Wave 1–16 耗尽（34 节点：23 verified + 4 running + 6 pending + 1 blocked）；集成 HEAD dc2558355 时点全部 worktree 未 push 留档。
-- 待主控 Step 4 终裁的 4 项：① T33 verified 终裁（7 low 披露不阻塞）；② T02/T28/T30 终态（建议 verified-with-environment-gate）；③ mobile 链 6 票终态（建议 blocked，T01 传导）；④ parked 欠账（全量 test:web agent-editor 间歇性死循环，BASE 预存）知悉确认。
-- 本报告时点补充：主控终验门（go/web exit=0）与 OCR 三轮已执行完毕（ask 材料载明），终裁落定状态以主控记录为准，本报告不代裁。
+- 待主控 Step 4 终裁的 4 项：① T33 verified 终裁（7 low 明细见①"欠账明细"，评审认定不阻塞）；② T02/T28/T30 终态（建议 verified-with-environment-gate，票面依据见①）；③ mobile 链 6 票终态（建议 blocked，T01 传导，票面依据见①）；④ parked 欠账（全量 test:web agent-editor 间歇性死循环，BASE 预存）知悉确认。
+- 本报告时点补充：主控终验门（go/web exit=0，C 级）与 OCR 三轮已执行完毕，终裁落定状态以主控记录为准，本报告不代裁。
 
-### OCR 轮次结论（`docs/plans/issue-140/ocr/`）
+### OCR 轮次结论（`docs/plans/issue-140/ocr/`，A/B 级）
 
-| 轮次 | 报告首行结论（原文） | findings 块 | 限流失败项 |
+| 轮次 | 报告首行结论（A 级原文实读） | findings 块 | 限流失败项 |
 | --- | --- | --- | --- |
 | Round 1 | "Review partially complete: 290 finding(s); 111 of 315 selected item(s) failed." | 290 | 111/315 |
 | Round 1 resume | "Review partially complete: 372 finding(s); 69 of 315 selected item(s) failed." | 372 | 69/315 |
@@ -158,14 +201,20 @@ Wave 17（调度员收口）：全 DAG 可派发工作耗尽，无可派任务�
 | Round 2 resume | "Review partially complete: 409 finding(s); 13 of 319 selected item(s) failed." | 409 | 13/319 |
 | Round 3 | "Review partially complete: 186 finding(s); 154 of 319 selected item(s) failed." | 186 | 154/319 |
 | Round 3 resume | "Review partially complete: 369 finding(s); 40 of 319 selected item(s) failed." | 369 | 40/319 |
-| workspace（终次） | "Review skipped: no items were selected."（ocr-workspace.md 原文） | — | — |
+| workspace（终次） | "Review skipped: no items were selected."（ocr-workspace.md 原文，全文仅此一行） | — | — |
 
-- 三轮均因 LLM 限流（HTTP 429）部分失败，随后以低并发 resume 补跑（ask 材料载明"部分项限流失败后已低并发 resume 补跑"）；resume 后仍有失败项（69→13→40/319），失败明细在各报告尾部 retry report。
-- 每轮 findings 中 critical/high/红线 medium 经四域修复提交集成（见③阶段三）；**修复后未再跑下一轮复查确认消除**。
-- **未消除 findings（如实列出）**：以最新一轮 round-3-resume 为准，报告载 369 个 finding 块，按严重度 grep 统计（`grep -o "^\[[a-z]* · …]"`）：critical 1、high 18（bug 17+security 1）、medium 127（bug 80/maintainability 37/test 4/style 2/performance 2/documentation 1/other 1）、low 220（另有 3 块格式未匹配，合计 369）。按文件域分布：#140 实现面（career/workbench/miniprogram/issue-140/mobile 相关文件）142 块（如 internal/modules/career/search_once.go、reconciliation.go、usage.go、submission.go、search_rule.go、rendering.go、material.go、preparation.go、profile_intake.go、internal/modules/workbench/service/workbench/application_task.go、packages/api-client/src/career.ts、packages/career-core/src/desk.ts、contracts.ts 等，每处 1 块）；**非 #140 实现面 227 块**（packages/views/src/chat/*、craft/*、integrations/* 等 Vue→React 迁移与其他 BASE 改动文件，从未列入 #140 修复计划）。这些 findings 在 HEAD 77917de10 未被消除，亦无 round 4 复查证据；是否阻塞合并由主控/人工评审裁决。
-- OCR 现场文件入库状态（`git status` 实勘）：`docs/plans/issue-140/ocr/ocr-round-1.md` 为已跟踪修改，round-1/2/3 及 resume、ocr-workspace.md 共 6 个文件未跟踪——集成员历轮均"保持原样未动"，本报告同样不代为提交，是否入库由主控决定。
+- 三轮均因 LLM 限流（HTTP 429）部分失败，随后以低并发 resume 补跑（C 级：ask 材料载明；B 级旁证：各报告尾部 retry report 列明 429/timeout 失败请求）；resume 后仍有失败项（69/13/40 of 315/319/319），这些 items 未被复审。
+- **workspace 轮"Review skipped: no items were selected"原因未知**：该文件仅一行结论，未载明无条目入选的原因（候选解释——全部条目已被前三轮覆盖、或该次扫描选择器未命中任何 diff——均无证据支撑），**本报告不猜测；无法据此判断终次 OCR 是否实际生效**。
+- 每轮 findings 中 critical/high/红线 medium 经四域修复提交集成（见③阶段三）；**修复后未再跑下一轮复查**，因此对 round-3-resume 所列 findings 而言：**其在最终 HEAD 77917de10 上是否已被消除属未确认状态**（部分可能已被第 3 轮修复提交顺带处理，部分可能仍在，本报告无从区分）。v1 曾表述为"未被消除"，v2 更正为"未确认是否消除"。
+- **round-3-resume findings 统计（A 级，命令原文可复核）**：
+  - 全部 369 块的严重度（命令：`grep -o "^\[[a-z]* · \(critical\|high\|medium\|low\)\]" ocr-round-3-resume.md | sort | uniq -c | sort -rn`）：critical 1（bug）、high 18（bug 17+security 1）、medium 127（bug 80/maintainability 37/test 4/style 2/performance 2/documentation 1/other 1）、low 223（maintainability 104/bug 63/style 32/documentation 7/other 6/test 4/performance 4/security 3）——severity 标签行计数=块计数=369（`grep -o … | wc -l` 与 `grep -c "^─── "` 双命令实核一致，369 块全部有可匹配标签行；v1 曾误记"366 匹配+3 未匹配/low 220"为手算错误，v2 更正）。
+  - **#140 实现面 142 块**（域判定命令：`grep "^─── " ocr-round-3-resume.md | grep -cE "(career|workbench|miniprogram|issue-140|mobile)"`；严重度命令：awk 逐块判定域后打印标签行 `| sort | uniq -c`）：**high 6**（security·high 1：openExportedDocument/taroDownload 绕过作用域守卫的网络路径；bug·high 5：规则触发固定 requestID 与 SearchOnce 幂等冲突、CareerValidationError 与网络层裸 TypeError 未区分的红线违规、合并前生成的评估合并后永久无法创建申请、pending 三件套恢复链缺口、discovery.tsx useShareAppMessage 的 Taro 4.2.1 兼容违规）；**medium 44**（bug 24/maintainability 13/test 3/performance 2/style 1/documentation 1，代表性主题：写入恢复链竞态回放缺口、回执不匹配 TypeError、CSS 特异性覆盖主按钮、ExportCareer 持锁全表扫描、TDesign 令牌名硬编码、跨包相对路径引用等）；**low 92**（maintainability 44/bug 27/style 11/test 4/performance 3/other 2/documentation 1）。6+44+92=142 ✓
+  - 域内 142 块的文件级清单（每处 1 块，A 级 `grep "^─── " | grep -E "(career|workbench|miniprogram|issue-140|mobile)"` 实跑输出）：internal/modules/career/（search_once.go×3、reconciliation.go×2、search_rule.go×2、usage.go、submission.go、rendering.go、profile_intake.go、preparation.go、material.go、career_export.go×3、application.go×2）；internal/modules/workbench/service/workbench/application_task.go×3；internal/handler/session/workbench_artifacts.go；packages/api-client/src/career.ts×8；packages/career-core/src/（desk.ts×3、contracts.ts×2）；apps/web/src/career/（SubmissionPage.tsx×6、MaterialPage.tsx×3、reconciliation.tsx×3、UsagePanel.tsx×2、ExportDeletionPage.tsx×2、CareerPage.tsx×2 及 protocol.ts、ProgressPage、OpportunityPage、InboxPage 各 1 与 9 个 css 文件各 1）；apps/mobile/src/task-office-integration-smoke.ts×5；apps/miniprogram/src/（application-material.tsx×10、discovery.tsx×7、adapters/career-platform.ts×6、platform/files.ts×5、services/career.ts×4、career/ 其余页面与 config 若干、subpackages/execution/artifact×3、tests/×10）；.superpowers/sdd/…-t33-closure/evidence/wx-driver.cjs×6。逐条全文（含行号与建议 diff）在 `docs/plans/issue-140/ocr/ocr-round-3-resume.md`。
+  - **非 #140 实现面 227 块**（369−142）：packages/views/src/chat/*、craft/*、integrations/* 等文件——属 BASE f7753fa 起更大 diff 范围内的 Vue→React 迁移等非 #140 改动，从未列入 #140 修复计划（台账三轮四域修复的文件面均不含 packages/views）。
+- **处置状态**：以上 findings 是否阻塞推送/合并由主控/人工评审裁决；本报告只列事实。
+- OCR 现场文件入库状态（A 级 `git status` 实勘）：`docs/plans/issue-140/ocr/ocr-round-1.md` 为已跟踪修改，round-1/2/3 及 resume、ocr-workspace.md 共 6 个文件未跟踪——集成员历轮均"保持原样未动"，本报告同样不代为提交，是否入库由主控决定（后果见⑧-11）。
 
-## ⑦ 全部 Ruling 及判断错误的代价（台账 progress.md 含 "Ruling:" 的行共 75 条，`grep -c` 实核；行号为台账行号，逐条列入）
+## ⑦ 全部 Ruling 及判断错误的代价（台账 progress.md 含 "Ruling:" 的行共 75 条，A 级 `grep -c` 实核；行号为台账行号，逐条列入）
 
 ### A. Preflight 接口冻结（5 条）
 
@@ -258,18 +307,22 @@ Wave 17（调度员收口）：全 DAG 可派发工作耗尽，无可派任务�
 
 1. **鸿蒙无工具链（真实阻塞）**：无 SDK/DevEco/hdc/hvigor/设备/.hap，T01/#143 blocked，传导 T05/T23/T25/T27/T29/T31 六票建议终态 blocked（未启动）。证据：harmony-native-gate.md、台账 97 行。
 2. **Android 无设备（真实阻塞）**：无 adb/真机，T02 Android 验收面永久缺项；T28/T32/T30 的真机项保留为环境门槛。证据：台账 105/162/188/278 行。
-3. **未推送、未合并、未上线**：集成分支 261 个提交全部本地；未 push、未开 PR、未合并 main、未发布。任何"已交付上线"表述均不成立。
-4. **OCR 仍有未消除 findings**：round-3-resume 载 369 块（critical 1/high 18/medium 127/low 220，按严重度 grep 统计+3 块未匹配），其中 #140 实现面 142 块、非 #140 面 227 块；三轮修复（critical/high/红线 medium）后无 round 4 复查证据；三轮 resume 后仍各有 69/13/40 个 items 因限流失败未复审。合并前需人工或再轮 OCR 处置。
-5. **全量 test:web 并行口径欠账（parked）**：agent-editor.test.tsx 间歇性死循环为 BASE 预存缺陷（Wave 13/14/15 三次取证）；以聚焦门全绿+OCR r2 web 组串行全量 2503/2503 exit 0 记录，未在集成工作区以并行口径闭环。
+3. **未推送、未合并、未上线**：实现提交 f7753fa..77917de10 共 261 个（A 级），另加本报告首版 34221bbb8 与 v2 修订提交（docs 提交），全部本地；未 push、未开 PR、未合并 main、未发布。任何"已交付上线"表述均不成立。
+4. **OCR findings 消除状态未确认**：round-3-resume 载 369 块（全部严重度分布与域内 142 块明细见⑥）；三轮修复针对各自修复单所列 critical/high/红线 medium，但**修复后无下一轮复查，全部 findings 在最终 HEAD 上是否消除未确认**；三轮 resume 后仍各有 69/13/40 个 items 因限流失败未复审。是否阻塞推送/合并由主控/人工裁决。
+5. **全量 test:web 欠账（最终 HEAD 未闭环）**：术语解释——`pnpm test:web` 默认以并行调度运行多个测试文件；Wave 13/14/15 三次在并行口径下挂起（agent-editor.test.tsx 间歇性死循环为 BASE 预存缺陷+并行会话 CPU 争用，⑦ Ruling 72/73 取证），故台账以"聚焦门全绿"交付。OCR 第 2 轮 web 组曾以**串行口径**跑全量 2503/2503 exit 0，但该时点（BASE cbd4db5f8 范围）**早于第 3 轮 15 个 critical/high 修复，不构成最终 HEAD 的全量证据**。因此：**最终 HEAD 77917de10 上 web 侧仅有聚焦门（97/97+157/157+27/27）与 typecheck:web exit 0；全量 test:web（并行或串行）未在最终 HEAD 执行过**——T12/T21 集成时的全量欠账在最终 HEAD 依旧未闭环（v1 表述已更正）。
 6. **miniprogram typecheck 13 个基线预存错误**：全部位于 src/features/account/pages.tsx（CommercialSummary），非 #140 引入，历波未清偿。
-7. **真机微信验证缺失**：各小程序票以官方 DevTools 完成票面"真机或官方开发环境"条款；真机/人工录屏证据（T28 F3、T32 M3、T30 真机+订阅弹层）不存在。
+7. **真机微信验证缺失**：小程序票以官方 DevTools 完成票面"真机或官方开发环境"式条款（T26/T28/T30 的"真实环境"条款由评审裁量通过有保留）；真机/人工录屏证据（T28 F3、T32 M3、T30 真机+订阅弹层）不存在。
 8. **运营域未核验**：生产岗位来源 allowlist 为空（无真实来源接入）、来源/模型/微信能力/个人信息/收费流程运营核验属人工域，T33 如实记录未完成。
-9. **终裁未落定**：T33/#172 verified、T02/T28/T30 终态、mobile 链 6 票 blocked 落定均属主控 Step 4 终裁（含父规格 43 条故事覆盖核对）；本报告按 DAG 现状+台账建议如实呈现，不代裁。
-10. **PostgreSQL 运行时迁移未实测**：早期票（T03/T04/T07 等）披露 SQLite 全量验证，live PostgreSQL 运行时迁移未演练（task-4-final-validation.md 披露）。
-11. **OCR 现场文件未入库**：docs/plans/issue-140/ocr/ 下 1 个已跟踪修改+6 个未跟踪文件（含本报告引用的全部 OCR 证据），是否入库由主控决定。
+9. **终裁未落定**：T33/#172 verified、T02/T28/T30 终态、mobile 链 6 票 blocked 落定均属主控 Step 4 终裁（含父规格 43 条故事覆盖核对，故事维度索引与统计见①）；本报告按 DAG 现状+台账建议如实呈现，不代裁。
+10. **PostgreSQL 运行时迁移未实测**：各验证门以 SQLite 口径为主（隔离 PostgreSQL 仅覆盖迁移检查，见⑤数据库口径），live PostgreSQL 运行时迁移未演练（task-4-final-validation.md 披露）；SQLite 验证对 PostgreSQL 生产的代表性未建立。
+11. **OCR 现场文件未入库（证据链断裂风险）**：docs/plans/issue-140/ocr/ 下 1 个已跟踪修改+6 个未跟踪文件。**后果**：若主控决定不入库，⑥节全部 OCR 统计（三轮 findings 计数、369 块严重度分布、域内 142 块清单）与逐条 findings 内容将仅存在于工作区磁盘，git 历史无档案可复核，任何后续审查无法追溯依据——建议主控随终局材料一并提交入库。
+12. **终验门可核查性缺口**：主控终验门（go/web exit=0）无命令原文、测试范围与执行时点（C 级，见⑤），其强度与覆盖对象（是否覆盖最终 HEAD）无法从本报告材料评估；建议主控补录终验门命令与时点供归档。
+13. **本报告员 git commit 时 Mimosa 预提交扫描未得出完整结论（scanner_enobufs，按兼容策略继续）**：本次提交为 markdown 报告文档，不宣称项目安全，完整审计待重跑。
 
 ---
 
 ## 声明
 
-本报告仅陈述有证据支撑的事实：DAG/台账/OCR 报告/git 历史均为集成工作区实读，终验门结果（go exit=0、web exit=0）引自主控 ask 材料原文。本报告员未重跑任何全量验证门、未执行推送/合并/上线操作，也未将任何研究性结论记为设备验收通过。
+本报告仅陈述有证据支撑的事实并按"术语与证据等级"标注 A/B/C 级：DAG/台账/OCR 报告/git 历史为集成工作区实读（A/B 级），终验门结果（go exit=0、web exit=0）引自主控 ask 材料原文（C 级，命令与时点未知）。本报告员未重跑任何全量验证门、未执行推送/合并/上线操作，未将任何研究性结论记为设备验收通过，未对 OCR findings 的消除状态、ADR/CONTEXT 合规性、43 条故事逐条达成度作出超出证据的断言——此三项分别为"未确认/未比对/待主控终裁"。
+
+（报告版本：v2，修订自首版 34221bbb8；v2 修订提交哈希见 `git log` 最新 docs(plan) 提交）
