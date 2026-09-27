@@ -285,16 +285,34 @@ func (s *OrderService) CreateQuote(ctx context.Context, tenantID uint64, planKey
 // the link for later replays failed (closed marker, raw error in the server
 // log only) — the answer itself stays a clean success.
 type OrderView struct {
-	ID                   string `json:"id"`
-	QuoteID              string `json:"quote_id"`
-	State                string `json:"state"`
-	AmountFen            int64  `json:"amount_fen"`
-	Currency             string `json:"currency"`
-	Provider             string `json:"provider,omitempty"`
-	CheckoutURL          string `json:"checkout_url,omitempty"`
+	ID        string `json:"id"`
+	QuoteID   string `json:"quote_id"`
+	State     string `json:"state"`
+	AmountFen int64  `json:"amount_fen"`
+	Currency  string `json:"currency"`
+	Provider  string `json:"provider,omitempty"`
+	// CheckoutURL carries the customer-facing payment link when a channel
+	// adapter produced one.
+	CheckoutURL string `json:"checkout_url,omitempty"`
+	// CheckoutError is non-empty when the channel call failed AFTER the order
+	// was durably opened: the pending order stays recoverable through
+	// GetOrder/RecoverOrderStatus, and the write answer still carries the
+	// operation ID and state as the product contract requires.
+	// CheckoutLinkDegraded (R2-27) marks a DIFFERENT posture: the channel call
+	// succeeded and the answer carries a working CheckoutURL, but persisting
+	// the link for later replays failed (closed marker, raw error in the
+	// server log only) — the answer itself stays a clean success.
 	CheckoutError        string `json:"checkout_error,omitempty"`
 	CheckoutLinkDegraded bool   `json:"checkout_link_degraded,omitempty"`
-	Version              int64  `json:"version"`
+	// PaymentAttention (#84, spec L169 operator attention) marks an
+	// unresolved retained payment anomaly on this order: an abnormal
+	// collection (mismatched / partial / wrong currency / multiple success)
+	// whose fund fact is recorded but which must never expand benefits. It
+	// rides along on every state (a fulfilled order with a pending
+	// over-payment disposition still carries it); the wire projection maps
+	// it onto fulfillment=attention ONLY for pending reads.
+	PaymentAttention bool  `json:"payment_attention,omitempty"`
+	Version          int64 `json:"version"`
 }
 
 // CreateOrder consumes the quote and opens one pending order with one
@@ -489,12 +507,44 @@ func (s *OrderService) ListOrders(ctx context.Context, tenantID uint64) ([]Order
 	return out, nil
 }
 
+// collectedAmountMismatch（#84 / G2）reports whether the channel Query's
+// COLLECTED amount contradicts the registered attempt face: the recovery
+// paths refuse to confirm such a payment (confirming at the attempt's face
+// would silently absorb a wrong collection) and retain it as an anomaly
+// instead. 0 (= channel did not report an amount) never mismatches.
+func collectedAmountMismatch(reported, attemptFen int64) bool {
+	return reported > 0 && reported != attemptFen
+}
+
+// recoverMismatchedCollection retains a query-path collected-amount
+// mismatch as an awaiting anomaly (#84, spec L127) and returns the pending
+// order view flagged for operator attention. The confirmation is skipped
+// entirely: the order keeps its payable entry (a correct later callback or
+// retry still confirms through the normal leg).
+func (s *OrderService) recoverMismatchedCollection(ctx context.Context, row repocommercial.OrderRow, att repocommercial.PaymentAttemptRow, txn string, collectedFen int64) (OrderView, error) {
+	if err := s.orders.RecordPaymentAnomaly(ctx, repocommercial.PaymentAnomalyRow{
+		TenantID: row.TenantID, OrderID: row.ID, AttemptID: att.MerchantOrderID,
+		Provider: att.Provider, Merchant: att.Merchant, Transaction: txn,
+		Kind:              repocommercial.ClassifyPaymentAnomaly(att.AmountFen, collectedFen, att.Currency, att.Currency),
+		ExpectedAmountFen: att.AmountFen, ActualAmountFen: collectedFen,
+		ExpectedCurrency: att.Currency, ActualCurrency: att.Currency,
+	}); err != nil {
+		return OrderView{}, err
+	}
+	return OrderView{ID: row.ID, QuoteID: row.QuoteID, State: domain.OrderStatePending,
+		AmountFen: row.AmountFen, Currency: row.Currency, Provider: att.Provider,
+		CheckoutURL: row.CheckoutURL, PaymentAttention: true, Version: row.Version}, nil
+}
+
 // RecoverOrderStatus is the payment state-recovery path for a PENDING order
 // whose channel result may have been missed (closed tab, lost callback): it
 // re-queries the provider by the ORIGINAL merchant order id and, on a
 // succeeded fact, confirms the payment through the SAME ConfirmPayment
-// transaction the callback path uses. Paid/fulfilled orders are returned
-// untouched; a pending order whose channel is still pending stays pending.
+// transaction the callback path uses. (#84/G2) A succeeded fact whose
+// COLLECTED amount contradicts the attempt face is never confirmed — the
+// mismatch is retained as an anomaly and the order surfaces operator
+// attention. Paid/fulfilled orders are returned untouched; a pending order
+// whose channel is still pending stays pending.
 func (s *OrderService) RecoverOrderStatus(ctx context.Context, tenantID uint64, orderID string) (OrderView, error) {
 	row, err := s.orders.GetOrder(ctx, orderID)
 	if err != nil {
@@ -531,6 +581,12 @@ func (s *OrderService) RecoverOrderStatus(ctx context.Context, tenantID uint64, 
 		txn := res.ProviderID
 		if txn == "" {
 			txn = att.MerchantOrderID
+		}
+		// (#84/G2) Compare what the channel ACTUALLY collected against the
+		// attempt face BEFORE confirming: a mismatched collection is an
+		// abnormal fact, never a fulfillment.
+		if collectedAmountMismatch(res.AmountFen, att.AmountFen) {
+			return s.recoverMismatchedCollection(ctx, row, att, txn, res.AmountFen)
 		}
 		if err := s.orders.ConfirmPayment(ctx, domain.PaymentFact{
 			Provider: att.Provider, Merchant: att.Merchant,
@@ -625,6 +681,13 @@ func (s *OrderService) CloseChannelOrder(ctx context.Context, tenantID uint64, o
 		txn := res.ProviderID
 		if txn == "" {
 			txn = att.MerchantOrderID
+		}
+		// (#84/G2) The decisive query carries the COLLECTED amount: a
+		// mismatched collection is retained as an anomaly instead of being
+		// confirmed at the attempt's face (the fund fact survives the close,
+		// the fulfillment right is never minted from a wrong collection).
+		if collectedAmountMismatch(res.AmountFen, att.AmountFen) {
+			return s.recoverMismatchedCollection(ctx, row, att, txn, res.AmountFen)
 		}
 		if err := s.orders.ConfirmPayment(ctx, domain.PaymentFact{
 			Provider: att.Provider, Merchant: att.Merchant,

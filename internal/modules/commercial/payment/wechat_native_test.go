@@ -342,3 +342,22 @@ func TestWechatClosePropagatesOrderPaidCode(t *testing.T) {
 		t.Fatalf("error must carry the channel ORDER_PAID code, got %v", err)
 	}
 }
+
+// TestWechatQueryReportsCollectedAmount（#84 / G2）：Query 必须回传渠道实收额
+// （amount.total）——恢复/关单路径据此把「渠道实收 ≠ 开单面额」的付款分流到
+// anomaly 处置而不是按 attempt 金额盲目确认。
+func TestWechatQueryReportsCollectedAmount(t *testing.T) {
+	f := newNativeFixture(t, func(w http.ResponseWriter, _ *http.Request) {
+		respondJSON(t, w, http.StatusOK, `{"out_trade_no":"mo_amt","transaction_id":"txn_amt","trade_state":"SUCCESS","amount":{"total":5000,"currency":"CNY"}}`)
+	})
+	res, err := f.provider.Query(context.Background(), "mo_amt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.AmountFen != 5000 {
+		t.Fatalf("query must report the collected amount.total, got %d", res.AmountFen)
+	}
+	if res.State != StateSucceeded || res.ProviderID != "txn_amt" {
+		t.Fatalf("state/provider unchanged by the additive field: %+v", res)
+	}
+}
