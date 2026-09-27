@@ -441,7 +441,8 @@ export function AgentCard({ agent, t, viewer, favorited, menuOpen, hidden = fals
             placement="bottom-right"
             onVisibleChange={(visible) => { if (!visible) onToggleMenu(null); }}
             content={(
-              <div className="popup-menu">
+              /* 菜单点击不得冒泡到卡片 onClick（onOpen→openCard）：Popup 经 portal 渲染，React 合成事件仍沿 React 树冒泡。 */
+              <div className="popup-menu" onClick={(event) => event.stopPropagation()}>
                 {actions.map((action) => (
                   <div
                     key={action}
@@ -601,6 +602,7 @@ export function AgentDeleteDialog({ agent, t, busy, onConfirm, onCancel }: {
     <Dialog
       visible={agent !== null}
       dialogClassName="del-agent-dialog"
+      top="40vh"
       closeBtn={false}
       cancelBtn={null}
       confirmBtn={null}

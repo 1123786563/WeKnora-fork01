@@ -1182,11 +1182,8 @@
   padding: 0;
 }
 
-/* Vue scoped :deep(.t-dialog__position.t-dialog--top) 全局段（agents/
-   kb-list 同款先例：Vue 端 t-dialog 默认 top 定位 padding-top 40vh）。 */
-.t-dialog__position.t-dialog--top {
-  padding-top: 40vh !important;
-}
+/* Vue :deep(.t-dialog__position.t-dialog--top) 的 40vh 上移已改为组件级
+   Dialog top="40vh"（inline paddingTop），不再注入全局规则（OCR ocr2-005）。 */
 
 .del-org-dialog .circle-wrap .dialog-header {
   display: flex;

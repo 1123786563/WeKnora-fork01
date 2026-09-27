@@ -3,6 +3,7 @@ import type { WeKnoraClient } from '@weknora/api-client'
 import type { ScopeController } from '@weknora/domain/scope'
 import type { CareerView } from '../../../../packages/career-core/src/contracts.ts'
 import type { ConfirmMaterialInput, EditMaterialInput, MaterialBody, MaterialClaim, MaterialExportDownload, MaterialExportFormat, MaterialExportReceipt, MaterialReceipt, MaterialVersionChange, MaterialVersionComparison, MaterialVersionView, MaterialView, PublishMaterialInput, RevokeMaterialExportInput } from '../../../../packages/api-client/src/career.ts'
+import { ReceiptMismatchError } from './protocol.ts'
 import './material.css'
 
 type MaterialPhase = 'idle' | 'busy' | 'unknown' | 'error' | 'forbidden' | 'scope-changed'
@@ -14,8 +15,9 @@ type ExportPhase = 'idle' | 'busy' | 'unknown' | 'error'
 type DownloadNote = { state: 'busy' | 'ok' | 'error'; note: string }
 const newRequestId = (): string => typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`
 // Mirrors MaxExportGrantTTL in internal/modules/career/rendering.go: a
-// career export download grant lives at most 15 minutes.
-const EXPORT_GRANT_TTL_SECONDS = 600
+// career export download grant lives at most 15 minutes (OCR ocr2-064：
+// 原 600（10 分钟）把授权静默缩短 1/3，已对齐 900）。
+const EXPORT_GRANT_TTL_SECONDS = 900
 
 function errorDetails(cause: unknown): { code?: string; requestId?: string; currentRevision?: number; status?: number; message: string } {
  const error = cause as { code?: string; requestId?: string; currentRevision?: number; status?: number; message?: string }
@@ -208,8 +210,8 @@ export function MaterialPage({ client, scopeController, opportunityId, snapshotI
   try {
    const receipt: MaterialReceipt = await client.career.editMaterial(currentAttempt.input as EditMaterialInput, requestScope.signal)
    if (!scopeController.isCurrent(requestScope.scope)) return
-   if (receipt.requestId !== currentAttempt.requestId || (currentAttempt.input.materialId !== undefined && receipt.materialId !== currentAttempt.input.materialId)) throw new TypeError('材料回执与本次请求不匹配')
-   setMaterialId(receipt.materialId); setSavedBody(receipt.body); syncClaimCounter(receipt.body)
+   if (receipt.requestId !== currentAttempt.requestId || (currentAttempt.input.materialId !== undefined && receipt.materialId !== currentAttempt.input.materialId)) throw new ReceiptMismatchError('材料回执与本次请求不匹配')
+   setMaterialId(receipt.materialId); setSavedBody(receipt.body); setSections(editableFromBody(receipt.body)); syncClaimCounter(receipt.body)
    const url = materialParamUrl(receipt.materialId)
    if (url) window.history.replaceState({}, document.title, url)
    // ocr1-072：写入已成功且回执已验证，只读回读失败不得落入下方未知写入
@@ -226,6 +228,9 @@ export function MaterialPage({ client, scopeController, opportunityId, snapshotI
    setPhase('idle'); setMessage(`草稿已保存（材料编号 ${receipt.materialId}）`)
   } catch (cause) {
    if (!scopeController.isCurrent(requestScope.scope)) return
+   // OCR ocr2-067：回执不匹配是确定性协议错误，直接置 error，不得落入
+   // unknown 走回执恢复（恢复流程对该错误永远失败）。
+   if (cause instanceof ReceiptMismatchError) { setAttempt(undefined); setPhase('error'); setMessage('材料回执与本次请求不匹配，本次保存已中止。请重新保存；新提交会使用新的请求编号。'); return }
    const parsed = errorDetails(cause)
    if (parsed.code === 'forbidden') { clearPrivate('当前空间不可访问此材料，已清除编辑内容。'); return }
    if (parsed.code === 'revision_conflict') {
@@ -268,7 +273,7 @@ export function MaterialPage({ client, scopeController, opportunityId, snapshotI
   try {
    const receipt: MaterialReceipt = await client.career.confirmMaterial(currentAttempt.input as ConfirmMaterialInput, requestScope.signal)
    if (!scopeController.isCurrent(requestScope.scope)) return
-   if (receipt.requestId !== currentAttempt.requestId || receipt.materialId !== (currentAttempt.input as ConfirmMaterialInput).materialId || receipt.kind !== 'material_confirmed') throw new TypeError('材料回执与本次请求不匹配')
+   if (receipt.requestId !== currentAttempt.requestId || receipt.materialId !== (currentAttempt.input as ConfirmMaterialInput).materialId || receipt.kind !== 'material_confirmed') throw new ReceiptMismatchError('材料回执与本次请求不匹配')
    // ocr1-072 同款：confirm 写入成功后的回读失败不改变发布结果。
    try {
     await reloadView(receipt.materialId)
@@ -281,6 +286,7 @@ export function MaterialPage({ client, scopeController, opportunityId, snapshotI
    setPhase('idle'); setMessage(`已发布不可变版本 V${receipt.version ?? ''}`)
   } catch (cause) {
    if (!scopeController.isCurrent(requestScope.scope)) return
+   if (cause instanceof ReceiptMismatchError) { setAttempt(undefined); setPhase('error'); setMessage('材料回执与本次请求不匹配，本次确认已中止。请重新确认；新提交会使用新的请求编号。'); return }
    const parsed = errorDetails(cause)
    if (parsed.code === 'forbidden') { clearPrivate('当前空间不可访问此材料，已清除编辑内容。'); return }
    if (parsed.code === 'revision_conflict') {
@@ -317,8 +323,8 @@ export function MaterialPage({ client, scopeController, opportunityId, snapshotI
   try {
    const receipt: MaterialReceipt = await client.career.materialReceipt(currentAttempt.requestId, requestScope.signal)
    if (!scopeController.isCurrent(requestScope.scope)) return
-   if (receipt.requestId !== currentAttempt.requestId) throw new TypeError('材料回执与原请求编号不匹配')
-   setMaterialId(receipt.materialId); setSavedBody(receipt.body); syncClaimCounter(receipt.body)
+   if (receipt.requestId !== currentAttempt.requestId) throw new ReceiptMismatchError('材料回执与原请求编号不匹配')
+   setMaterialId(receipt.materialId); setSavedBody(receipt.body); setSections(editableFromBody(receipt.body)); syncClaimCounter(receipt.body)
    const url = materialParamUrl(receipt.materialId)
    if (url) window.history.replaceState({}, document.title, url)
    await reloadView(receipt.materialId)
@@ -327,6 +333,7 @@ export function MaterialPage({ client, scopeController, opportunityId, snapshotI
    setMessage(receipt.kind === 'material_confirmed' ? `已发布不可变版本 V${receipt.version ?? ''}` : `草稿已保存（材料编号 ${receipt.materialId}）`)
   } catch (cause) {
    if (!scopeController.isCurrent(requestScope.scope)) return
+   if (cause instanceof ReceiptMismatchError) { setAttempt(undefined); setPhase('error'); setMessage('查得的回执与原请求编号不匹配，已退出恢复流程。请用新的请求编号重新保存。'); return }
    const parsed = errorDetails(cause)
    if (parsed.code === 'forbidden') { clearPrivate('当前空间不可访问此材料，已清除编辑内容。'); return }
    setPhase('unknown')
@@ -375,8 +382,12 @@ export function MaterialPage({ client, scopeController, opportunityId, snapshotI
 
  useEffect(() => {
   if (!materialId) return
+  // OCR ocr2-069：原守卫 isCurrent(scopeController.current().scope) 恒真
+  // （同一 tick 内自取自比）——请求因空间切换中止时 catch 仍清 URL，污染新
+  // 空间状态。捕获发起时的 requestScope（与 reloadExports 内部一致）再判。
+  const requestScope = scopeController.current()
   void reloadExports(materialId).catch((cause: unknown) => {
-   if (!scopeController.isCurrent(scopeController.current().scope)) return
+   if (!scopeController.isCurrent(requestScope.scope)) return
    const parsed = errorDetails(cause)
    if (parsed.code === 'forbidden') { clearPrivate('当前空间不可访问此材料，已清除编辑内容。'); return }
    setExportMessage(`导出列表暂时无法读取：${parsed.message}`)
@@ -395,7 +406,7 @@ export function MaterialPage({ client, scopeController, opportunityId, snapshotI
   try {
    const receipt: MaterialExportReceipt = await client.career.publishMaterial(currentAttempt.input as PublishMaterialInput, requestScope.signal)
    if (!scopeController.isCurrent(requestScope.scope)) return
-   if (receipt.requestId !== currentAttempt.requestId || receipt.kind !== 'material_published') throw new TypeError('导出回执与本次请求不匹配')
+   if (receipt.requestId !== currentAttempt.requestId || receipt.kind !== 'material_published') throw new ReceiptMismatchError('导出回执与本次请求不匹配')
    setExportAttempt(undefined); setExportPhase('idle')
    const success = receipt.status === 'submittable'
     ? `导出已发布：PDF 与 DOCX 均核验通过，可用于投递（绑定版本 V${receipt.version}）。`
@@ -406,6 +417,7 @@ export function MaterialPage({ client, scopeController, opportunityId, snapshotI
    try { await reloadExports((currentAttempt.input as PublishMaterialInput).materialId) } catch { if (scopeController.isCurrent(requestScope.scope)) setExportMessage(`${success}导出列表暂时无法刷新，可稍后重试。`) }
   } catch (cause) {
    if (!scopeController.isCurrent(requestScope.scope)) return
+   if (cause instanceof ReceiptMismatchError) { setExportAttempt(undefined); setExportPhase('error'); setExportMessage('导出回执与本次请求不匹配，本次发布已中止。请重新发布；新提交会使用新的请求编号。'); return }
    const parsed = errorDetails(cause)
    if (parsed.code === 'forbidden') { clearPrivate('当前空间不可访问此材料，已清除编辑内容。'); return }
    if (parsed.code === 'revision_conflict') {
@@ -440,12 +452,13 @@ export function MaterialPage({ client, scopeController, opportunityId, snapshotI
   try {
    const receipt: MaterialExportReceipt = await client.career.revokeMaterialExport(currentAttempt.input as RevokeMaterialExportInput, requestScope.signal)
    if (!scopeController.isCurrent(requestScope.scope)) return
-   if (receipt.requestId !== currentAttempt.requestId || receipt.kind !== 'material_export_revoked') throw new TypeError('导出回执与本次请求不匹配')
+   if (receipt.requestId !== currentAttempt.requestId || receipt.kind !== 'material_export_revoked') throw new ReceiptMismatchError('导出回执与本次请求不匹配')
    setExportAttempt(undefined); setExportPhase('idle')
    setExportMessage('导出已撤销：已签发的下载授权立即失效。')
    try { await reloadExports((currentAttempt.input as RevokeMaterialExportInput).materialId) } catch { if (scopeController.isCurrent(requestScope.scope)) setExportMessage('导出已撤销：已签发的下载授权立即失效。导出列表暂时无法刷新，可稍后重试。') }
   } catch (cause) {
    if (!scopeController.isCurrent(requestScope.scope)) return
+   if (cause instanceof ReceiptMismatchError) { setExportAttempt(undefined); setExportPhase('error'); setExportMessage('导出回执与本次请求不匹配，本次撤销已中止。请再次撤销；新提交会使用新的请求编号。'); return }
    const parsed = errorDetails(cause)
    if (parsed.code === 'forbidden') { clearPrivate('当前空间不可访问此材料，已清除编辑内容。'); return }
    if (parsed.code === 'revision_conflict') {
@@ -476,7 +489,7 @@ export function MaterialPage({ client, scopeController, opportunityId, snapshotI
   try {
    const grant: MaterialExportDownload = await client.career.materialExportSignedURL(materialId, exportId, format, EXPORT_GRANT_TTL_SECONDS, requestScope.signal)
    if (!scopeController.isCurrent(requestScope.scope)) return
-   if (grant.exportId !== exportId || grant.format !== format) throw new TypeError('下载授权与本次请求不匹配')
+   if (grant.exportId !== exportId || grant.format !== format) throw new ReceiptMismatchError('下载授权与本次请求不匹配')
    setDownloads((current) => ({ ...current, [key]: { state: 'busy', note: '正在认证下载…' } }))
    const file = await client.career.materialExportDownload(grant, requestScope.signal)
    if (!scopeController.isCurrent(requestScope.scope)) return
@@ -489,6 +502,7 @@ export function MaterialPage({ client, scopeController, opportunityId, snapshotI
    setDownloads((current) => ({ ...current, [key]: { state: 'ok', note: `${format.toUpperCase()} 已下载，SHA-256 与授权摘要一致（${digest.slice(0, 16)}…）。` } }))
   } catch (cause) {
    if (!scopeController.isCurrent(requestScope.scope)) return
+   if (cause instanceof ReceiptMismatchError) { setDownloads((current) => ({ ...current, [key]: { state: 'error', note: '下载授权与本次请求不匹配，本次下载已中止。' } })); return }
    const parsed = errorDetails(cause)
    if (parsed.code === 'forbidden') { clearPrivate('当前空间不可访问此材料，已清除编辑内容。'); return }
    setDownloads((current) => ({ ...current, [key]: { state: 'error', note: parsed.code === 'export_grant_invalid' ? '下载授权已失效（导出可能已被撤销），本次下载被拒绝。' : `下载未完成：${parsed.message}` } }))

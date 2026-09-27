@@ -2486,7 +2486,7 @@ export function FAQPage({ client, knowledgeBaseId }: { client: WeKnoraClient; kn
       onClearTagFilter={() => setActiveTagIds([])}
       onOpenTagManage={() => setTagManageOpen(true)}
       onOpenCreate={() => openEditor()}
-      onOpenImport={() => { setImportFile(null); setImportPreview([]); setImportOpen(true); }}
+      onOpenImport={() => { setImportFile(null); setImportPreview([]); setImportTask(null); setImportOpen(true); }}
       onCloseImport={() => setImportOpen(false)}
       onImportModeChange={setImportMode}
       onImportFile={handleImportFile}

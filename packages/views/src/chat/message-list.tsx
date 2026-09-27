@@ -412,6 +412,9 @@ export function MessageList({ copy, messages, pending, onRetry, loadingOlder = f
                 content={historyThink?.answer ?? message.content ?? ''}
                 onBookmark={onBookmark}
                 onCitationClick={onCitationClick}
+                onRateMessage={onRateMessage}
+                onRemoveRating={onRemoveRating}
+                ratingOf={ratingOf}
                 onToggleReferences={onToggleReferences}
                 referencesOpen={referencesOpen}
               />

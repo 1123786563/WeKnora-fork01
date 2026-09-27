@@ -196,11 +196,11 @@ function MembersPager({ total, page, pageSize, onPage, onPageSize, t }: {
   return <div className="wk-admin-20">
     <span className="wk-admin-21">{t('mobileAdministration.pager.total', { total })}</span>
     <TSelect className="wk-admin-page-size wk-admin-22" value={pageSize} onChange={(value) => onPageSize(Number(String(value)))} options={MEMBERS_PAGE_SIZE_OPTIONS.map((size) => ({ value: size, label: t('mobileAdministration.pager.sizePerPage', { size }) }))} />
-    <button type="button" className={PAGER_BTN + PAGER_BTN_DISABLED} aria-label={t('common.previous')} disabled={page <= 1} onClick={() => onPage(page - 1)}>‹</button>
+    <button type="button" className={`${PAGER_BTN} ${PAGER_BTN_DISABLED}`} aria-label={t('common.previous')} disabled={page <= 1} onClick={() => onPage(page - 1)}>‹</button>
     {pageWindow(page, maxPage).map((entry, index) => entry === 'ellipsis'
       ? <span key={'e' + index} className="wk-admin-23">…</span>
       : <button key={entry} type="button" className={PAGER_BTN + ' wk-admin-pager-current'} aria-current={entry === page ? 'page' : undefined} onClick={() => onPage(entry)}>{entry}</button>)}
-    <button type="button" className={PAGER_BTN + PAGER_BTN_DISABLED} aria-label={t('common.next')} disabled={page >= maxPage} onClick={() => onPage(page + 1)}>›</button>
+    <button type="button" className={`${PAGER_BTN} ${PAGER_BTN_DISABLED}`} aria-label={t('common.next')} disabled={page >= maxPage} onClick={() => onPage(page + 1)}>›</button>
     <span className="wk-admin-24">
       {t('mobileAdministration.pager.jumper')}
       <TInput className="wk-admin-pager-jump wk-admin-25" type="text" value={jump}

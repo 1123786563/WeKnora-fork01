@@ -34,6 +34,8 @@
   width: 100%;
   cursor: grab;
   user-select: none;
+  /* touch-none 平移遗漏补充：阻止触屏原生滚动/双指缩放抢占指针手势（ocr2-010） */
+  touch-action: none;
 }
 
 .wk-kg-3:active {
@@ -106,7 +108,7 @@
   z-index: 10;
   display: flex;
   width: 20rem;
-  max-width: calc(100%-2rem);
+  max-width: calc(100% - 2rem);
   flex-direction: column;
   gap: 12px;
 }
@@ -197,7 +199,7 @@
 .wk-kg-21 {
   position: absolute;
   left: 0;
-  top: calc(100%+4px);
+  top: calc(100% + 4px);
   z-index: 3;
   margin: 0;
   max-height: 16rem;
@@ -253,7 +255,7 @@
 .wk-kg-25 {
   position: absolute;
   right: 0;
-  top: calc(100%+8px);
+  top: calc(100% + 8px);
   z-index: 20;
   margin: 0;
   min-width: 240px;

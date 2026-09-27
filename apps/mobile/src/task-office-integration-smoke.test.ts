@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { taskOfficeIntegrationConfig, emitTaskOfficeIntegrationEvidence, probeUnauthenticatedRead, runArchiveRoundtrip, type TaskOfficeIntegrationEvidence } from './task-office-integration-smoke.ts';
+import { taskOfficeIntegrationConfig, emitTaskOfficeIntegrationEvidence, probeServerAuthBoundary, probeUnauthenticatedRead, runArchiveRoundtrip, type TaskOfficeIntegrationEvidence } from './task-office-integration-smoke.ts';
 import { createTaskOffice, TaskOfficeError, type TaskOffice } from '@weknora/mobile-core';
 
 test('Task Office live integration remains opt-in and requires all credentials', () => {
@@ -26,6 +26,7 @@ test('Task Office evidence reports unauthenticated rejection and never serialize
   const evidence: TaskOfficeIntegrationEvidence = {
     deploymentOrigin: 'https://weknora.example.org',
     unauthenticatedRead: 'rejected',
+    serverAuthBoundary: 'unreachable',
     home: 'failed',
     sections: 'unavailable',
     listSearch: 'failed',
@@ -55,6 +56,40 @@ test('pre-login probe accepts only typed scope rejection and detects fail-open',
   const resolved: TaskOffice = { ...unauthenticated, async tasks() { backendCalls += 1; return { items: [], duplicateRunIds: [] }; } };
   assert.equal(await probeUnauthenticatedRead(resolved), 'failed-open');
   assert.equal(backendCalls, 2, 'the real no-lease Office made no backend call; only deliberately broken adapters did');
+});
+
+test('server auth boundary probe rejects only on 401/403 without credentials (ocr2-043)', async () => {
+  const originalFetch = globalThis.fetch;
+  const calls: Array<{ url: string; init: RequestInit | undefined }> = [];
+  const install = (respond: () => Promise<Response>): void => {
+    // 测试隔离 stub：仅在本用例内替换全局 fetch，结束即还原。
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ url: String(input), init });
+      return respond();
+    }) as typeof fetch;
+  };
+  const status = (code: number): Response => new Response('{}', { status: code });
+  try {
+    install(async () => status(401));
+    assert.equal(await probeServerAuthBoundary('https://weknora.example.org'), 'rejected');
+    install(async () => status(403));
+    assert.equal(await probeServerAuthBoundary('https://weknora.example.org'), 'rejected');
+    install(async () => status(200));
+    assert.equal(await probeServerAuthBoundary('https://weknora.example.org'), 'failed-open');
+    install(async () => status(302));
+    assert.equal(await probeServerAuthBoundary('https://weknora.example.org'), 'failed-open');
+    install(async () => { throw new TypeError('network down'); });
+    assert.equal(await probeServerAuthBoundary('https://weknora.example.org'), 'unreachable');
+    assert.equal(calls.length, 5);
+    for (const call of calls) {
+      assert.ok(call.url.startsWith('https://weknora.example.org/api/v1/workbench/executions'), call.url);
+      assert.equal(call.init?.method, 'GET');
+      assert.equal(call.init?.redirect, 'error');
+      assert.equal(Object.keys(call.init?.headers ?? {}).includes('authorization'), false, 'no credentials are sent');
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test('archive smoke restores in finally when archived listing fails, and exposes restore failure', async () => {

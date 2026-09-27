@@ -1597,6 +1597,7 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
       <Dialog
         visible={deletingKb !== null}
         dialogClassName="del-knowledge-dialog"
+        top="40vh"
         closeBtn={false}
         cancelBtn={null}
         confirmBtn={null}
@@ -1619,8 +1620,8 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
 
       {/* 知识库编辑器（创建/编辑统一组件，Vue Teleport body → createPortal） */}
       {dialogOpen ? createPortal(
-        <div className="settings-overlay" onClick={(event) => { if (event.target === event.currentTarget) setDialogOpen(false); }}>
-          <div className="settings-modal wk-kb-editor-dialog">
+        <div className="wk-kb-settings-overlay" onClick={(event) => { if (event.target === event.currentTarget) setDialogOpen(false); }}>
+          <div className="wk-kb-settings-modal wk-kb-editor-dialog">
             {editorOptions.loading ? (
               <div className="editor-initializing" role="status" aria-label={t('common.loading')}>
                 <Loading size="medium" text={t('common.loading')} />

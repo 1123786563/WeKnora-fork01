@@ -1938,6 +1938,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
       {confirmState ? <Dialog
         visible
         dialogClassName="del-org-dialog"
+        top="40vh"
         closeBtn={false}
         cancelBtn={null}
         confirmBtn={null}

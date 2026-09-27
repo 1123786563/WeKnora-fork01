@@ -444,6 +444,9 @@
 .wk-kbs-4 {
   /* Vue 弹层 border: var(--td-component-stroke) */
   position: absolute;
+  /* inset-x-0（left:0; right:0）平移遗漏补充：下拉水平贴齐触发器（ocr2-008） */
+  left: 0;
+  right: 0;
   top: calc(100% + 0.25rem);
   z-index: 30;
   display: grid;

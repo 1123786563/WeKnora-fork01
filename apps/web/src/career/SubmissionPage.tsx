@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { WeKnoraClient } from '@weknora/api-client'
 import type { ScopeController } from '@weknora/domain/scope'
-import type { MaterialExportReceipt, MaterialVersionView, SubmissionChannel, SubmissionReceipt } from '../../../../packages/api-client/src/career.ts'
+import { CareerValidationError, type MaterialExportReceipt, type MaterialVersionView, type RecordSubmissionInput, type SubmissionChannel, type SubmissionReceipt } from '../../../../packages/api-client/src/career.ts'
 import './submission.css'
 
 type WritePhase = 'idle' | 'busy' | 'unknown' | 'error'
 type ReadState = 'loading' | 'ready' | 'error' | 'forbidden' | 'scope-changed'
-type WriteAttempt = { requestId: string; input: Record<string, unknown> }
+type WriteAttempt = { requestId: string; input: RecordSubmissionInput }
 const newRequestId = (): string => typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`
 // Frozen backend enums rendered verbatim (internal/modules/career/submission.go):
 // the submission channel is a closed vocabulary the UI never extends, and the
@@ -74,7 +74,7 @@ export function SubmissionPage({ client, scopeController, applicationId, materia
  const [revision, setRevision] = useState<number | undefined>()
  const [revisionState, setRevisionState] = useState<'loading' | 'ready' | 'error'>('loading')
  const [exports, setExports] = useState<MaterialExportReceipt[]>()
- const [channel, setChannel] = useState('')
+ const [channel, setChannel] = useState<SubmissionChannel | ''>('')  // '' 占位由 runWrite 守卫排除，写入载荷收窄为冻结枚举（ocr2-078）
  const [versionChoice, setVersionChoice] = useState('')
  const [occurredAt, setOccurredAt] = useState('')
  const [note, setNote] = useState('')
@@ -165,7 +165,9 @@ export function SubmissionPage({ client, scopeController, applicationId, materia
    if (writePhase === 'busy' || writePhase === 'unknown') return
    if (revision === undefined || !channel || !versionChoice) return
    const requestId = newRequestId()
-   const input: Record<string, unknown> = versionChoice === UNKNOWN_VERSION_CHOICE
+   // OCR ocr2-078：直接构造 RecordSubmissionInput 类型化对象（编译期校验
+   // 字段名），不再经 Record<string, unknown> + as 强转。
+   const input: RecordSubmissionInput = versionChoice === UNKNOWN_VERSION_CHOICE
     ? { requestId, applicationId, channel, versionUnknown: true, expectedRevision: revision, ...(occurredAtFromInput(occurredAt) ? { occurredAt: occurredAtFromInput(occurredAt) } : {}), ...(note.trim() ? { note: note.trim() } : {}) }
     : { requestId, applicationId, channel, versionUnknown: false, materialId: exports?.find((receipt) => receipt.exportId === versionChoice)?.materialId, exportId: versionChoice, expectedRevision: revision, ...(occurredAtFromInput(occurredAt) ? { occurredAt: occurredAtFromInput(occurredAt) } : {}), ...(note.trim() ? { note: note.trim() } : {}) }
    current = { requestId, input }
@@ -174,11 +176,14 @@ export function SubmissionPage({ client, scopeController, applicationId, materia
   const requestScope = scopeController.current()
   setAttempt(current); setWritePhase('busy'); setMessage('正在记录投递确认…'); setRevisionConflict(undefined)
   try {
-   const next = await client.career.recordSubmission(current.input as Parameters<typeof client.career.recordSubmission>[0], requestScope.signal)
+   const next = await client.career.recordSubmission(current.input, requestScope.signal)
    if (!scopeController.isCurrent(requestScope.scope)) return
    acceptReceipt(next, current)
   } catch (cause) {
    if (!scopeController.isCurrent(requestScope.scope)) return
+   // OCR ocr2-078：客户端同步校验拒绝时请求从未发出，写入确定未发生——
+   // 直接置 error，不得判 unknown 走回执恢复。
+   if (cause instanceof CareerValidationError) { setAttempt(undefined); setWritePhase('error'); setMessage(`投递确认未被接受：${cause.message}`); return }
    const parsed = errorDetails(cause)
    if (parsed.code === 'forbidden') { clearPrivate('当前空间不可访问此申请的投递确认，已清除投递内容。'); return }
    if (parsed.code === 'submission_already_confirmed') {
@@ -220,6 +225,9 @@ export function SubmissionPage({ client, scopeController, applicationId, materia
    acceptReceipt(next, current)
   } catch (cause) {
    if (!scopeController.isCurrent(requestScope.scope)) return
+   // OCR ocr2-079：查得的回执与原请求不匹配是确定性协议错误——置 error
+   // 退出恢复流程，不得伪装瞬态置 unknown 困住用户。
+   if (cause instanceof ReceiptMismatchError) { setAttempt(undefined); setWritePhase('error'); setMessage('查得的投递回执与原请求编号不匹配，已退出恢复流程。请用新的请求编号重新确认。'); return }
    const parsed = errorDetails(cause)
    if (parsed.code === 'forbidden') { clearPrivate('当前空间不可访问此申请的投递确认，已清除投递内容。'); return }
    setWritePhase('unknown')
@@ -256,7 +264,7 @@ export function SubmissionPage({ client, scopeController, applicationId, materia
     <fieldset className="wk-submission__compose" aria-label="确认投递表单">
      <legend>记录投递确认</legend>
      <label className="wk-submission__label" htmlFor="wk-submission-channel">投递渠道（本人实际使用的渠道）</label>
-     <select id="wk-submission-channel" aria-label="投递渠道" value={channel} disabled={composeBlocked} onChange={(event) => setChannel(event.target.value)}>
+     <select id="wk-submission-channel" aria-label="投递渠道" value={channel} disabled={composeBlocked} onChange={(event) => setChannel(event.target.value as SubmissionChannel | '')}>
       <option value="">请选择投递渠道</option>
       {channelOptions.map((option) => <option key={option} value={option}>{channelLabels[option]}</option>)}
      </select>

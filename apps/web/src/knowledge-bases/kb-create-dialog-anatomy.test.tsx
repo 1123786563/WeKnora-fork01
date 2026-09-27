@@ -234,8 +234,8 @@ test('(d) the editor dialog renders no wrapping form — Vue KnowledgeBaseEditor
   assert.equal(document.body.querySelectorAll('form').length, 0, 'no native form wraps the editor sections (removes the form-in-form hydration error source)');
   const modal = document.body.querySelector('.wk-kb-editor-dialog');
   assert.ok(modal, 'the settings-modal renders (Vue .settings-modal, wk-kb-editor-dialog 为测试锚点类)');
-  assert.equal(modal.classList.contains('settings-modal'), true);
-  assert.ok(document.body.querySelector('.settings-overlay'), 'overlay teleported to body (Vue Teleport)');
+  assert.equal(modal.classList.contains('wk-kb-settings-modal'), true);
+  assert.ok(document.body.querySelector('.wk-kb-settings-overlay'), 'overlay teleported to body (Vue Teleport)');
 });
 
 test('(d-edit) edit mode: visiting every section (share included) keeps the DOM form-free', async () => {

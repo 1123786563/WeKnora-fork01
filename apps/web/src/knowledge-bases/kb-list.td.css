@@ -15,7 +15,8 @@
  *     body DOM）原样平移（§2.5）；del-knowledge-dialog 弹层以 dialogClassName
  *     限定作用域（语义与 [data-v] 等价）。
  *  7. frontend/src/views/knowledge/KnowledgeBaseEditorModal.vue —— scoped 块 →
- *     根类前缀 .settings-overlay（Teleport 到 body 的弹层，类名全局唯一）。
+ *     根类前缀 .wk-kb-settings-overlay（Teleport 到 body 的弹层；OCR ocr2-009
+ *     起改域唯一前缀，避免与 agents/orgs 同名全局类冲突）。
  *
  * 类名不改（§2.4）；--td-* / --app-font-family 变量原样平移（T4 token 已接线）。
  * @keyframes 名保留 Vue 端原名（contentFadeIn / spin / highlightFlash /
@@ -1598,12 +1599,8 @@
   padding: 0;
 }
 
-/* Vue :deep(.t-dialog__position.t-dialog--top)：删除确认弹窗上移（40vh）。
-   弹层渲染在 body 下，Vue scoped 穿透规则在 portal DOM 上等效全局——按
-   agents.td.css 同源处理原样落全局（同 pilot 先例）。 */
-.t-dialog__position.t-dialog--top {
-  padding-top: 40vh !important;
-}
+/* Vue :deep(.t-dialog__position.t-dialog--top) 的 40vh 上移已改为组件级
+   Dialog top="40vh"（inline paddingTop），不再注入全局规则（OCR ocr2-005/107）。 */
 
 .del-knowledge-dialog .circle-wrap .dialog-header {
   display: flex;
@@ -1854,11 +1851,11 @@
 }
 
 /* ============================================================================
- * 8. KnowledgeBaseEditorModal.vue（scoped → 根类前缀 .settings-overlay）
+ * 8. KnowledgeBaseEditorModal.vue（scoped → 根类前缀 .wk-kb-settings-overlay）
  *    —— Teleport 到 body 的弹层，类名全局唯一（§2.5 + §2.6 createPortal）
  * ========================================================================== */
 
-.settings-overlay {
+.wk-kb-settings-overlay {
   position: fixed;
   top: 0;
   left: 0;
@@ -1874,7 +1871,7 @@
   line-height: normal;
 }
 
-.settings-modal {
+.wk-kb-settings-modal {
   position: relative;
   width: 90vw;
   max-width: 1000px;
@@ -1889,7 +1886,7 @@
   font-family: var(--app-font-family);
 }
 
-.settings-overlay .editor-initializing {
+.wk-kb-settings-overlay .editor-initializing {
   position: absolute;
   inset: 0;
   z-index: 20;
@@ -1899,7 +1896,7 @@
   background: var(--td-bg-color-container);
 }
 
-.settings-overlay .close-btn {
+.wk-kb-settings-overlay .close-btn {
   position: absolute;
   top: 20px;
   right: 20px;
@@ -1918,12 +1915,12 @@
   padding: 0;
 }
 
-.settings-overlay .close-btn:hover {
+.wk-kb-settings-overlay .close-btn:hover {
   background: var(--td-bg-color-secondarycontainer);
   color: var(--td-text-color-primary);
 }
 
-.settings-overlay .settings-container {
+.wk-kb-settings-overlay .settings-container {
   display: flex;
   height: 100%;
   width: 100%;
@@ -1931,7 +1928,7 @@
 }
 
 /* 左侧导航：与 AgentEditorModal 对齐 */
-.settings-overlay .settings-sidebar {
+.wk-kb-settings-overlay .settings-sidebar {
   width: 208px;
   background-color: var(--td-bg-color-settings-modal);
   border-right: 1px solid var(--td-component-stroke);
@@ -1941,27 +1938,27 @@
   overflow: hidden;
 }
 
-.settings-overlay .sidebar-header {
+.wk-kb-settings-overlay .sidebar-header {
   padding: 16px 14px 12px;
   border-bottom: 1px solid var(--td-component-stroke);
   flex-shrink: 0;
 }
 
-.settings-overlay .sidebar-title {
+.wk-kb-settings-overlay .sidebar-title {
   margin: 0;
   font-size: 16px;
   font-weight: 600;
   color: var(--td-text-color-primary);
 }
 
-.settings-overlay .settings-nav {
+.wk-kb-settings-overlay .settings-nav {
   flex: 1;
   padding: 8px 8px 12px;
   overflow-y: auto;
   min-height: 0;
 }
 
-.settings-overlay .nav-group-title {
+.wk-kb-settings-overlay .nav-group-title {
   padding: 6px 14px 2px;
   color: var(--td-text-color-placeholder);
   font-size: 12px;
@@ -1969,15 +1966,15 @@
   letter-spacing: 0.02em;
 }
 
-.settings-overlay .settings-nav .nav-group-title:first-child {
+.wk-kb-settings-overlay .settings-nav .nav-group-title:first-child {
   padding-top: 2px;
 }
 
-.settings-overlay .settings-nav .nav-group-title:not(:first-child) {
+.wk-kb-settings-overlay .settings-nav .nav-group-title:not(:first-child) {
   padding-top: 8px;
 }
 
-.settings-overlay .nav-item {
+.wk-kb-settings-overlay .nav-item {
   display: flex;
   align-items: center;
   padding: 6px 12px;
@@ -1990,18 +1987,18 @@
   user-select: none;
 }
 
-.settings-overlay .nav-item:hover {
+.wk-kb-settings-overlay .nav-item:hover {
   background-color: var(--td-bg-color-container-hover);
   color: var(--td-text-color-primary);
 }
 
-.settings-overlay .nav-item.active {
+.wk-kb-settings-overlay .nav-item.active {
   background-color: var(--td-bg-color-secondarycontainer);
   color: var(--td-brand-color);
   font-weight: 500;
 }
 
-.settings-overlay .nav-icon {
+.wk-kb-settings-overlay .nav-icon {
   margin-right: 9px;
   font-size: 16px;
   flex-shrink: 0;
@@ -2011,11 +2008,11 @@
   color: inherit;
 }
 
-.settings-overlay .nav-label {
+.wk-kb-settings-overlay .nav-label {
   flex: 1;
 }
 
-.settings-overlay .nav-badge {
+.wk-kb-settings-overlay .nav-badge {
   flex-shrink: 0;
   margin-left: 2px;
   padding: 0 6px;
@@ -2028,32 +2025,32 @@
   text-align: center;
 }
 
-.settings-overlay .settings-content {
+.wk-kb-settings-overlay .settings-content {
   flex: 1;
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
 
-.settings-overlay .content-wrapper {
+.wk-kb-settings-overlay .content-wrapper {
   flex: 1;
   overflow-y: auto;
   padding: 24px 32px;
 }
 
-.settings-overlay .section {
+.wk-kb-settings-overlay .section {
   margin-bottom: 32px;
 }
 
-.settings-overlay .section:last-child {
+.wk-kb-settings-overlay .section:last-child {
   margin-bottom: 0;
 }
 
-.settings-overlay .section-content .section-header {
+.wk-kb-settings-overlay .section-content .section-header {
   margin-bottom: 16px;
 }
 
-.settings-overlay .section-content .section-title {
+.wk-kb-settings-overlay .section-content .section-title {
   margin: 0 0 6px 0;
   font-family: var(--app-font-family);
   font-size: 20px;
@@ -2061,7 +2058,7 @@
   color: var(--td-text-color-primary);
 }
 
-.settings-overlay .section-content .section-desc {
+.wk-kb-settings-overlay .section-content .section-desc {
   margin: 0;
   font-family: var(--app-font-family);
   font-size: 14px;
@@ -2069,19 +2066,19 @@
   line-height: 22px;
 }
 
-.settings-overlay .section-content .section-body {
+.wk-kb-settings-overlay .section-content .section-body {
   background: var(--td-bg-color-container);
 }
 
-.settings-overlay .form-item {
+.wk-kb-settings-overlay .form-item {
   margin-bottom: 16px;
 }
 
-.settings-overlay .form-item:last-child {
+.wk-kb-settings-overlay .form-item:last-child {
   margin-bottom: 0;
 }
 
-.settings-overlay .form-label {
+.wk-kb-settings-overlay .form-label {
   display: block;
   margin-bottom: 8px;
   font-family: var(--app-font-family);
@@ -2090,19 +2087,19 @@
   color: var(--td-text-color-primary);
 }
 
-.settings-overlay .form-label.required::after {
+.wk-kb-settings-overlay .form-label.required::after {
   content: '*';
   color: var(--td-error-color);
   margin-left: 4px;
 }
 
-.settings-overlay .form-tip {
+.wk-kb-settings-overlay .form-tip {
   margin-top: 6px;
   font-size: 12px;
   color: var(--td-text-color-placeholder);
 }
 
-.settings-overlay .kb-id-field {
+.wk-kb-settings-overlay .kb-id-field {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -2115,7 +2112,7 @@
   border-radius: 6px;
 }
 
-.settings-overlay .kb-id-field .kb-id-value {
+.wk-kb-settings-overlay .kb-id-field .kb-id-value {
   flex: 1;
   min-width: 0;
   margin: 0;
@@ -2131,20 +2128,20 @@
   white-space: nowrap;
 }
 
-.settings-overlay .kb-id-field .kb-id-copy {
+.wk-kb-settings-overlay .kb-id-field .kb-id-copy {
   flex-shrink: 0;
   color: var(--td-text-color-secondary);
 }
 
-.settings-overlay .kb-id-field .kb-id-copy:hover {
+.wk-kb-settings-overlay .kb-id-field .kb-id-copy:hover {
   color: var(--td-brand-color);
 }
 
-.settings-overlay .granularity-radio-group {
+.wk-kb-settings-overlay .granularity-radio-group {
   margin-top: 4px;
 }
 
-.settings-overlay .granularity-hint {
+.wk-kb-settings-overlay .granularity-hint {
   margin-top: 8px;
   line-height: 1.6;
   color: var(--td-text-color-secondary);
@@ -2152,14 +2149,14 @@
   word-break: break-word;
 }
 
-.settings-overlay .indexing-checks {
+.wk-kb-settings-overlay .indexing-checks {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 12px;
   margin-top: 10px;
 }
 
-.settings-overlay .indexing-check-item {
+.wk-kb-settings-overlay .indexing-check-item {
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -2172,50 +2169,50 @@
   transition: border-color 0.2s ease, background 0.2s ease;
 }
 
-.settings-overlay .indexing-check-item:hover {
+.wk-kb-settings-overlay .indexing-check-item:hover {
   border-color: var(--td-brand-color);
 }
 
-.settings-overlay .indexing-check-item.is-checked {
+.wk-kb-settings-overlay .indexing-check-item.is-checked {
   border-color: var(--td-brand-color);
   background: var(--td-brand-color-light);
 }
 
-.settings-overlay .indexing-check-item.is-disabled {
+.wk-kb-settings-overlay .indexing-check-item.is-disabled {
   cursor: not-allowed;
   opacity: 0.7;
 }
 
-.settings-overlay .indexing-check-item.is-disabled:hover {
+.wk-kb-settings-overlay .indexing-check-item.is-disabled:hover {
   border-color: var(--td-component-stroke);
 }
 
-.settings-overlay .indexing-check-item.is-disabled.is-checked:hover {
+.wk-kb-settings-overlay .indexing-check-item.is-disabled.is-checked:hover {
   border-color: var(--td-brand-color);
 }
 
-.settings-overlay .indexing-check-item .t-checkbox__label {
+.wk-kb-settings-overlay .indexing-check-item .t-checkbox__label {
   font-weight: 500;
   color: var(--td-text-color-primary);
 }
 
-.settings-overlay .locked-tip {
+.wk-kb-settings-overlay .locked-tip {
   color: var(--td-warning-color);
   margin-top: 8px;
 }
 
 /* 禁用内部 checkbox 自身的点击事件，统一由卡片处理 */
-.settings-overlay .indexing-check-box {
+.wk-kb-settings-overlay .indexing-check-box {
   pointer-events: none;
 }
 
-.settings-overlay .indexing-check-title {
+.wk-kb-settings-overlay .indexing-check-title {
   display: inline-flex;
   align-items: center;
   gap: 6px;
 }
 
-.settings-overlay .indexing-new-badge {
+.wk-kb-settings-overlay .indexing-new-badge {
   display: inline-flex;
   align-items: center;
   padding: 0 6px;
@@ -2229,7 +2226,7 @@
   background: var(--td-brand-color-light);
 }
 
-.settings-overlay .indexing-check-desc {
+.wk-kb-settings-overlay .indexing-check-desc {
   margin: 0;
   padding-left: 24px;
   font-size: 12px;
@@ -2237,7 +2234,7 @@
   color: var(--td-text-color-placeholder);
 }
 
-.settings-overlay .faq-guide {
+.wk-kb-settings-overlay .faq-guide {
   margin-top: 20px;
   padding: 12px 16px;
   border-radius: 8px;
@@ -2247,7 +2244,7 @@
   line-height: 20px;
 }
 
-.settings-overlay .settings-footer {
+.wk-kb-settings-overlay .settings-footer {
   padding: 12px 40px;
   border-top: 1px solid var(--td-component-stroke);
   display: flex;
@@ -2257,7 +2254,7 @@
   flex-shrink: 0;
 }
 
-.settings-overlay .settings-footer-note {
+.wk-kb-settings-overlay .settings-footer-note {
   margin: 0;
   margin-right: auto;
   flex: 1;
@@ -2270,54 +2267,54 @@
   color: var(--td-text-color-secondary);
 }
 
-.settings-overlay .settings-footer-note strong {
+.wk-kb-settings-overlay .settings-footer-note strong {
   margin-right: 4px;
   color: var(--td-text-color-primary);
   font-weight: 500;
 }
 
-.settings-overlay .settings-footer-note__icon {
+.wk-kb-settings-overlay .settings-footer-note__icon {
   flex-shrink: 0;
   margin-top: 2px;
   font-size: 14px;
   color: var(--td-success-color);
 }
 
-.settings-overlay .settings-footer-actions {
+.wk-kb-settings-overlay .settings-footer-actions {
   display: flex;
   gap: 12px;
   flex-shrink: 0;
 }
 
 /* 多模态配置内联样式（与子组件 KBStorageSettings/KBAdvancedSettings 一致） */
-.settings-overlay .kb-multimodal-settings {
+.wk-kb-settings-overlay .kb-multimodal-settings {
   width: 100%;
 }
 
-.settings-overlay .kb-multimodal-settings .section-header {
+.wk-kb-settings-overlay .kb-multimodal-settings .section-header {
   margin-bottom: 20px;
 }
 
-.settings-overlay .kb-multimodal-settings .section-header h2 {
+.wk-kb-settings-overlay .kb-multimodal-settings .section-header h2 {
   font-size: 20px;
   font-weight: 600;
   color: var(--td-text-color-primary);
   margin: 0 0 6px 0;
 }
 
-.settings-overlay .kb-multimodal-settings .section-header .section-description {
+.wk-kb-settings-overlay .kb-multimodal-settings .section-header .section-description {
   font-size: 14px;
   color: var(--td-text-color-secondary);
   margin: 0;
   line-height: 1.5;
 }
 
-.settings-overlay .kb-multimodal-settings .settings-group {
+.wk-kb-settings-overlay .kb-multimodal-settings .settings-group {
   display: flex;
   flex-direction: column;
 }
 
-.settings-overlay .kb-multimodal-settings .setting-row {
+.wk-kb-settings-overlay .kb-multimodal-settings .setting-row {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -2325,17 +2322,17 @@
   border-bottom: 1px solid var(--td-component-stroke);
 }
 
-.settings-overlay .kb-multimodal-settings .setting-row:last-child {
+.wk-kb-settings-overlay .kb-multimodal-settings .setting-row:last-child {
   border-bottom: none;
 }
 
-.settings-overlay .kb-multimodal-settings .setting-info {
+.wk-kb-settings-overlay .kb-multimodal-settings .setting-info {
   flex: 1;
   max-width: 65%;
   padding-right: 24px;
 }
 
-.settings-overlay .kb-multimodal-settings .setting-info label {
+.wk-kb-settings-overlay .kb-multimodal-settings .setting-info label {
   font-size: 15px;
   font-weight: 500;
   color: var(--td-text-color-primary);
@@ -2343,14 +2340,14 @@
   margin-bottom: 4px;
 }
 
-.settings-overlay .kb-multimodal-settings .setting-info .desc {
+.wk-kb-settings-overlay .kb-multimodal-settings .setting-info .desc {
   font-size: 13px;
   color: var(--td-text-color-secondary);
   margin: 0;
   line-height: 1.5;
 }
 
-.settings-overlay .kb-multimodal-settings .setting-control {
+.wk-kb-settings-overlay .kb-multimodal-settings .setting-control {
   flex-shrink: 0;
   min-width: 280px;
   display: flex;
@@ -2358,7 +2355,7 @@
   align-items: center;
 }
 
-.settings-overlay .kb-multimodal-settings .required {
+.wk-kb-settings-overlay .kb-multimodal-settings .required {
   color: var(--td-error-color);
   margin-left: 2px;
   font-weight: 500;
@@ -2379,33 +2376,33 @@
  *     #e7e7e7 vs React 默认 component-border #dcdcdc）。
  * ========================================================================== */
 
-.settings-overlay .t-radio-group .t-radio-button {
+.wk-kb-settings-overlay .t-radio-group .t-radio-button {
   border-color: var(--td-component-stroke);
   transition: all 0.2s ease;
 }
 
-.settings-overlay .t-radio-group .t-radio-button:hover:not(.t-is-disabled) {
+.wk-kb-settings-overlay .t-radio-group .t-radio-button:hover:not(.t-is-disabled) {
   border-color: var(--td-brand-color);
   color: var(--td-brand-color);
 }
 
-.settings-overlay .t-radio-group .t-radio-button.t-is-checked,
-.settings-overlay .t-radio-group .t-radio-button.t-is-checked .t-radio-button__label,
-.settings-overlay .t-radio-group .t-radio-button.t-is-checked > span {
+.wk-kb-settings-overlay .t-radio-group .t-radio-button.t-is-checked,
+.wk-kb-settings-overlay .t-radio-group .t-radio-button.t-is-checked .t-radio-button__label,
+.wk-kb-settings-overlay .t-radio-group .t-radio-button.t-is-checked > span {
   background: var(--td-brand-color);
   border-color: var(--td-brand-color);
   color: var(--td-text-color-anti);
 }
 
-.settings-overlay .t-radio-group .t-radio-button.t-is-checked:hover:not(.t-is-disabled),
-.settings-overlay .t-radio-group .t-radio-button.t-is-checked:hover:not(.t-is-disabled) .t-radio-button__label,
-.settings-overlay .t-radio-group .t-radio-button.t-is-checked:hover:not(.t-is-disabled) > span {
+.wk-kb-settings-overlay .t-radio-group .t-radio-button.t-is-checked:hover:not(.t-is-disabled),
+.wk-kb-settings-overlay .t-radio-group .t-radio-button.t-is-checked:hover:not(.t-is-disabled) .t-radio-button__label,
+.wk-kb-settings-overlay .t-radio-group .t-radio-button.t-is-checked:hover:not(.t-is-disabled) > span {
   background: var(--td-brand-color-active);
   border-color: var(--td-brand-color-active);
   color: var(--td-text-color-anti);
 }
 
-.settings-overlay .t-radio-group .t-radio-button.t-is-disabled {
+.wk-kb-settings-overlay .t-radio-group .t-radio-button.t-is-disabled {
   background: var(--td-bg-color-component-disabled);
   border-color: var(--td-component-border);
   color: var(--td-text-color-disabled);
@@ -2413,14 +2410,14 @@
   opacity: 0.6;
 }
 
-.settings-overlay .t-radio-group .t-radio-button.t-is-disabled .t-radio-button__label,
-.settings-overlay .t-radio-group .t-radio-button.t-is-disabled > span {
+.wk-kb-settings-overlay .t-radio-group .t-radio-button.t-is-disabled .t-radio-button__label,
+.wk-kb-settings-overlay .t-radio-group .t-radio-button.t-is-disabled > span {
   color: var(--td-text-color-disabled);
 }
 
-.settings-overlay .t-radio-group .t-radio-button.t-is-disabled.t-is-checked,
-.settings-overlay .t-radio-group .t-radio-button.t-is-disabled.t-is-checked .t-radio-button__label,
-.settings-overlay .t-radio-group .t-radio-button.t-is-disabled.t-is-checked > span {
+.wk-kb-settings-overlay .t-radio-group .t-radio-button.t-is-disabled.t-is-checked,
+.wk-kb-settings-overlay .t-radio-group .t-radio-button.t-is-disabled.t-is-checked .t-radio-button__label,
+.wk-kb-settings-overlay .t-radio-group .t-radio-button.t-is-disabled.t-is-checked > span {
   background: var(--td-brand-color-disabled) !important;
   border-color: var(--td-brand-color-disabled) !important;
   color: var(--td-text-color-anti) !important;

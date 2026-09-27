@@ -641,7 +641,7 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
       <div className="wk-kg-1">
         <div ref={surfaceRef} data-testid="knowledge-graph-surface" className="wk-kg-2">
           {status.kind === 'success' && graph && visible && visible.nodes.length > 0 ? (
-            <svg className="touch-none wk-kg-3" viewBox={`0 0 ${surfaceSize.width} ${surfaceSize.height}`} role="img" aria-label={t('knowledgeBase.graph.ariaLinks')} onPointerDown={beginPan} onPointerMove={moveGraphGesture} onPointerUp={endGraphGesture} onPointerCancel={cancelGraphGesture} onClick={(event) => {
+            <svg className="wk-kg-3" viewBox={`0 0 ${surfaceSize.width} ${surfaceSize.height}`} role="img" aria-label={t('knowledgeBase.graph.ariaLinks')} onPointerDown={beginPan} onPointerMove={moveGraphGesture} onPointerUp={endGraphGesture} onPointerCancel={cancelGraphGesture} onClick={(event) => {
               // Vue setupPanZoom mouseup (L4544-4553): a near-stationary click
               // on the svg background clears the selection, the drawer, and
               // the highlight with it.

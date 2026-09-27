@@ -54,11 +54,13 @@ import '../../../../packages/views/src/guides/guides.css';
 import './platform-shell.td.css';
 import { Icon as TIcon } from 'tdesign-icons-react';
 
-// Vue menu.vue getImgSrc 同款解析（new URL(..., import.meta.url)）：vite 资产
-// 管线在 dev/build 均支持；node 直算 href 不加载文件，测试无需 svg 拦截。
-const getImgSrc = (url: string): string => new URL(`./assets/img/${url}`, import.meta.url).href;
-const searchIconUrl = getImgSrc('search.svg');
-const weknoraLogo = getImgSrc('weknora.png');
+// OCR ocr2-015：Vite 只对「字符串字面量」的 new URL(..., import.meta.url)
+// 做资产依赖分析（官方 Asset Handling 契约）——原 getImgSrc(`./assets/img/${url}`)
+// 含变量，dev 恰好可解析而生产构建不产出资产（logo/搜索/导航图标 404）。
+// 逐资产写字面量：build 重写为产出资产 URL；node 直算 file:// href 不加载
+// 文件，测试无需 svg 拦截。
+const searchIconUrl = new URL('./assets/img/search.svg', import.meta.url).href;
+const weknoraLogo = new URL('./assets/img/weknora.png', import.meta.url).href;
 
 type Client = ReturnType<typeof createWeKnoraClient>;
 
@@ -204,10 +206,10 @@ export function kbScopeFromLocation(): { id: string; name: string } | null {
 // assets are byte-identical copies; the rendered glyph is therefore the
 // same rasterization path as Vue (<img> of the same svg bytes).
 const NAV_ICON_URLS: Record<string, { default: string; active: string }> = {
-  creatChat: { default: getImgSrc('prefixIcon.svg'), active: getImgSrc('prefixIcon-green.svg') },
-  'knowledge-bases': { default: getImgSrc('zhishiku.svg'), active: getImgSrc('zhishiku-green.svg') },
-  agents: { default: getImgSrc('agent.svg'), active: getImgSrc('agent-green.svg') },
-  organizations: { default: getImgSrc('organization.svg'), active: getImgSrc('organization-green.svg') },
+  creatChat: { default: new URL('./assets/img/prefixIcon.svg', import.meta.url).href, active: new URL('./assets/img/prefixIcon-green.svg', import.meta.url).href },
+  'knowledge-bases': { default: new URL('./assets/img/zhishiku.svg', import.meta.url).href, active: new URL('./assets/img/zhishiku-green.svg', import.meta.url).href },
+  agents: { default: new URL('./assets/img/agent.svg', import.meta.url).href, active: new URL('./assets/img/agent-green.svg', import.meta.url).href },
+  organizations: { default: new URL('./assets/img/organization.svg', import.meta.url).href, active: new URL('./assets/img/organization-green.svg', import.meta.url).href },
 };
 
 export function buildNavItems(t: (key: string) => string, labels: Record<string, string>): NavItem[] {

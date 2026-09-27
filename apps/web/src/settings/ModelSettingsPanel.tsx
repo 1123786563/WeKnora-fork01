@@ -109,7 +109,10 @@ function payloadNumber(value: unknown, key: string): number | undefined {
   const candidate = (value as Record<string, unknown>)[key];
   return typeof candidate === "number" && Number.isFinite(candidate) ? candidate : undefined;
 }
-function fromTInputNumber(value: number | string): number | "" {
+function fromTInputNumber(value: number | string | null | undefined): number | "" {
+  // TDesign InputNumber 清空时回调 value 为 null（非空串）——显式归一为空
+  // 语义，避免 null.trim() 抛 TypeError（OCR ocr2-016）。
+  if (value === null || value === undefined) return "";
   if (typeof value === "number") return value;
   return value.trim() === "" ? "" : Number(value);
 }

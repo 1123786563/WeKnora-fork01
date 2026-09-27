@@ -265,7 +265,7 @@ export function LoginPage({ client, onAuthenticated, apiBaseUrl, initialError, i
     setState('idle');
     setMessage('');
     setFieldErrors({});
-    setUsername(''); setPassword(''); setConfirmPassword('');
+    setUsername(''); setPassword(''); setConfirmPassword(''); setEmail('');
   }
 
   const loading = state === 'loading';

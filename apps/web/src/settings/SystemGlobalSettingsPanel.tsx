@@ -378,8 +378,9 @@ export function SystemGlobalSettingsPanel({ client, initialSettings }: { client:
   // ---- render（SystemSettings.vue 模板逐节点平移，类名/结构与 Vue 一致）----
   const cancelLabel = t('system.globalSettings.confirm.cancelBtn');
   // Input/InputNumber 的 @blur 提交语义（Vue :233）——onChange 只回写 editValues，
-  // onBlur 才 persist；ref 记录最新草稿值防闭包过期。
-  const draftRef = useRef<Record<string, unknown>>({});
+  // onBlur 才 persist。OCR ocr2-018：onBlur 直接消费回调 value 参数（与
+  // InputNumber 分支一致），不再经 ref——重置 editValues 的路径不清 ref，
+  // 过期草稿会在下次 blur 时静默覆盖刷新后的配置。
   const sectionTabs = tabs.map((key) => ({ value: key, label: t(`system.globalSettings.sections.${key}.tab`, { count: key === 'other' ? unknownSettings.length : sectionCount(key as Exclude<Section, 'other'>) }) }));
   return <div className="system-settings" aria-label={t('system.globalSettings.title')}>
     <div className="section-header">
@@ -470,10 +471,10 @@ export function SystemGlobalSettingsPanel({ client, initialSettings }: { client:
                     : enums.length > 0
                       ? <Select className="setting-input" value={String(current ?? '')} disabled={itemSaving} aria-label={keyLabel(item.key)} options={enums.map((option) => ({ label: enumLabel(item.key, option), value: option }))} onChange={(value) => requestPersist(item, value)} />
                       : item.value_type === 'int'
-                        ? <InputNumber className="setting-input" value={typeof current === 'number' ? current : Number(current ?? 0)} min={minimumFor(item.key)} disabled={itemSaving} aria-label={keyLabel(item.key)} theme="normal" step={1} placeholder={t('system.globalSettings.tagInputPlaceholder')} onChange={(value) => { draftRef.current[item.key] = value; setEditValues((state) => ({ ...state, [item.key]: value })); }} onBlur={(value) => { const parsed = value === '' || value === null || value === undefined ? null : Number(value); if (parsed !== null && !Number.isNaN(parsed)) void persist(item, parsed); }} />
+                        ? <InputNumber className="setting-input" value={typeof current === 'number' ? current : Number(current ?? 0)} min={minimumFor(item.key)} disabled={itemSaving} aria-label={keyLabel(item.key)} theme="normal" step={1} placeholder={t('system.globalSettings.tagInputPlaceholder')} onChange={(value) => { setEditValues((state) => ({ ...state, [item.key]: value })); }} onBlur={(value) => { const parsed = value === '' || value === null || value === undefined ? null : Number(value); if (parsed !== null && !Number.isNaN(parsed)) void persist(item, parsed); }} />
                         : item.value_type === 'string_list'
                           ? <TagInput value={Array.isArray(current) ? (current as string[]) : []} placeholder={t('system.globalSettings.tagInputPlaceholder')} aria-label={keyLabel(item.key)} disabled={itemSaving} className="setting-input setting-input--wide" clearable onChange={(value) => { setEditValues((state) => ({ ...state, [item.key]: value })); onSsrfTagsCommit(value as string[]); }} />
-                          : <TInput className="setting-input" value={String(current ?? '')} disabled={itemSaving} aria-label={keyLabel(item.key)} clearable placeholder={t('system.globalSettings.tagInputPlaceholder')} onChange={(value) => { draftRef.current[item.key] = value; setEditValues((state) => ({ ...state, [item.key]: value })); }} onBlur={() => { const draft = draftRef.current[item.key]; void persist(item, typeof draft === 'string' ? draft : String(current ?? '')); }} />}
+                          : <TInput className="setting-input" value={String(current ?? '')} disabled={itemSaving} aria-label={keyLabel(item.key)} clearable placeholder={t('system.globalSettings.tagInputPlaceholder')} onChange={(value) => { setEditValues((state) => ({ ...state, [item.key]: value })); }} onBlur={(value) => { void persist(item, typeof value === 'string' ? value : String(current ?? '')); }} />}
                   {itemSaving ? <div className="setting-save-state" role="status"><Loading size="small" /><span>{t('system.globalSettings.saving')}</span></div> : null}
                   {savedKey === item.key ? <div className="setting-save-state setting-save-state--success" role="status"><TIcon name="check-circle-filled" /><span>{t('system.globalSettings.saved')}</span></div> : null}
                 </div>

@@ -105,6 +105,13 @@ const SELF_ERROR_SECTIONS = new Set(['members']);
 // loading-inline/error-inline），userprofile 同款自持先例。
 const SELF_HEADER_SECTIONS = new Set<string>(['general', 'userprofile', 'envvars', 'tenant', 'mymemory', 'chathistory', 'memory', 'ollama', 'weknoracloud', 'models', 'parser', 'sandbox', 'skills', 'system']);
 
+// OCR ocr2-017：SELF_HEADER 早退分支中「只消费壳层 payload、无自持
+// loading/错误态」的面板——壳层须为它们渲染 inline 错误/加载占位（否则加载
+// 失败静默显示默认值，防抖自动保存有覆盖风险）。其余 SELF 面板自持 Vue
+// loading/error 态（settings-error-ux.test.tsx：tenant/userprofile/system/
+// parser 断言无壳层横幅），不介入。
+const SHELL_FEEDBACK_SELF_PANELS = new Set(['chathistory', 'memory']);
+
 // S1 评审回收：system-global/runtime-queues/platform-api-keys/system-audit-log
 // 四个死条目已删——T12c 后它们在 portedPanel 三元链上有显式分支，永不落入
 // PARTIALLY_PORTED 兜底路径。
@@ -491,8 +498,14 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
             select('integration-' + nextTab);
           }} />
         : <Suspense fallback={<Status>{t('common.loading')}</Status>}>{generalPanel ?? chatPreferencesPanel ?? resourcePanel ?? configPanel ?? chatHistoryPanel ?? ollamaPanel ?? usagePanel ?? queryHistoryPanel ?? cloudPanel ?? envVarPanel ?? systemPanel ?? portedPanel ?? (key === 'tenant' ? <TenantInfoSection client={client} tenantId={tenantId} role={role} locale={locale} payload={sectionPayload} error={sectionError} loading={sectionLoading} onRetry={() => { void load(true); }} /> : key === 'userprofile' ? <UserProfileSection client={client} locale={locale} payload={sectionPayload} error={sectionError} loading={sectionLoading} onRetry={() => { void load(true); }} /> : key === 'memory' ? <MemoryWorkspacePanel client={client} initialConfig={sectionPayload} canEdit={roleAtLeast(role, 'admin')} /> : key === 'mymemory' ? <PersonalMemorySettingsPanel client={client} initialSettings={sectionPayload} /> : null)}</Suspense>;
+      const shellFeedback = SHELL_FEEDBACK_SELF_PANELS.has(key);
       return (
         <div key={key} className="section" style={isActive ? undefined : { display: 'none' }}>
+          {/* OCR ocr2-017：早退分支原先丢掉壳层反馈——notice 全部丢失，
+              chathistory/memory（无自持错误态，只消费壳层 payload）的 inline
+              错误与加载占位也丢失。自持面板不介入（见集合定义处注释）。 */}
+          {shellFeedback && sectionError ? <Status tone="error">{sectionError}</Status> : shellFeedback && sectionLoading ? <Status>{t('common.loading')}</Status> : null}
+          {isActive && notice ? <Status tone="success">{notice}</Status> : null}
           {content}
         </div>
       );

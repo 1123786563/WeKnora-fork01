@@ -464,7 +464,9 @@ test('downloads redeem an authenticated grant and verify the SHA-256 digest befo
    materialExportDownload: async (grant: unknown) => { downloads.push(grant); return { format: 'pdf', digest, size: bytes.byteLength, body: new Blob([bytes], { type: 'application/pdf' }), contentType: 'application/pdf' } },
   })
   await act(async () => { click(container.querySelector<HTMLButtonElement>('[aria-label="下载 PDF exp-1"]')!); await settle(); await settle() })
-  assert.deepEqual(grants, [['mat-1', 'exp-1', 'pdf', 600]])
+  // OCR ocr2-064：下载授权 TTL 与后端 MaxExportGrantTTL（rendering.go 15 分钟）
+  // 对齐为 900——原断言锚定了被静默缩短的 600。
+  assert.deepEqual(grants, [['mat-1', 'exp-1', 'pdf', 900]])
   assert.equal(downloads.length, 1)
   assert.equal((downloads[0] as { digest: string }).digest, digest)
   const note = container.querySelector('[aria-label="导出 exp-1 下载状态"]')?.textContent ?? ''

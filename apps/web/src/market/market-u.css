@@ -650,6 +650,13 @@
   background-color: #07c05f;
 }
 
-/* T15 勘误：原 aria-selected:* 三联 utility 为死样式（同 experts：unlayered
-   .wk-mkt-mk-tab 基类恒胜），不补规则保持生效值。 */
+/* 迁移前 MK_TAB 的 aria-selected:border-accent / bg-accent-wash /
+   text-accent 三联与基类同处 utilities layer，属性选择器特异性 (0,2,0)
+   高于单类 (0,1,0)，选中页签实际渲染绿描边+accent-wash 底+绿字——并非死样式，
+   此处语义化承接（同 experts 域 T15 勘误之勘误，OCR ocr2-014）。 */
+.wk-mkt-mk-tab[aria-selected="true"] {
+  border-color: #07c05f;
+  background-color: rgba(7, 192, 95, 0.08);
+  color: #07c05f;
+}
 .wk-mkt-mk-input::placeholder { color: rgba(23, 26, 29, 0.35); }

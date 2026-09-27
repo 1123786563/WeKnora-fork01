@@ -312,6 +312,42 @@ export interface AnswerToolbarProps {
   showRequestInfo: boolean;
 }
 
+/*
+ * SP11 like/dislike pair（OCR ocr2-023 恢复）：aria-pressed mirrors ratingOf;
+ * clicking the pressed rating removes it (toggle), any other click (re)rates
+ * the message. The pressed button's tooltip switches to the remove hint so
+ * the affordance is truthful before the click. 宿主未提供 onRateMessage 时
+ * 整对隐藏（message-list isFeedbackAvailable 能力开关）。
+ */
+function FeedbackButtons({ copy: copyTable, message, ratingOf, onRateMessage, onRemoveRating }: {
+  copy: ChatCopyTable;
+  message: ChatMessage;
+  ratingOf?: AnswerToolbarProps['ratingOf'];
+  onRateMessage?: AnswerToolbarProps['onRateMessage'];
+  onRemoveRating?: AnswerToolbarProps['onRemoveRating'];
+}) {
+  if (typeof onRateMessage !== 'function') return null;
+  const current = ratingOf?.(message.id);
+  const toggle = (rating: FeedbackRating) => {
+    if (current === rating) {
+      onRemoveRating?.(message.id);
+      return;
+    }
+    onRateMessage(message.id, rating);
+  };
+  const likeLabel = current === 'like' ? copyTable.feedbackRemoveTooltip : copyTable.feedbackLikeTooltip;
+  const dislikeLabel = current === 'dislike' ? copyTable.feedbackRemoveTooltip : copyTable.feedbackDislikeTooltip;
+  const buttonClass = 't-button t-button--theme-default t-button--variant-outline t-button--shape-round t-size-s';
+  return <>
+    <button type="button" className={`${buttonClass} wk-chat-feedback-like`} aria-label={likeLabel} title={likeLabel} aria-pressed={current === 'like'} onClick={() => toggle('like')}>
+      <span className="t-button__text"><SpriteIcon name="thumb-up" /></span>
+    </button>
+    <button type="button" className={`${buttonClass} wk-chat-feedback-dislike`} aria-label={dislikeLabel} title={dislikeLabel} aria-pressed={current === 'dislike'} onClick={() => toggle('dislike')}>
+      <span className="t-button__text"><SpriteIcon name="thumb-down" /></span>
+    </button>
+  </>;
+}
+
 /** Vue AgentStreamDisplay answer-toolbar + botmsg answer-toolbar（chat-message-shared.less）。 */
 export function AnswerToolbar(props: AnswerToolbarProps) {
   const { copy } = props;
@@ -334,6 +370,7 @@ export function AnswerToolbar(props: AnswerToolbarProps) {
     <div className="answer-toolbar wk-chat-answer-toolbar">
       <ToolbarButton icon="copy" title={copied ? copy.copied : copy.copy} className="wk-chat-copy" onClick={() => void copyAnswer()} />
       <ToolbarButton icon="bookmark-add" title={copy.addToKnowledgeBase} className="wk-chat-bookmark" disabled={!props.onBookmark} onClick={() => props.onBookmark?.(props.message.id)} />
+      <FeedbackButtons copy={copy} message={props.message} ratingOf={props.ratingOf} onRateMessage={props.onRateMessage} onRemoveRating={props.onRemoveRating} />
       {row.is_fallback === true ? (
         <ToolbarButton icon="info-circle" title={copy.fallbackHint} className="fallback-icon-btn" />
       ) : null}
@@ -354,6 +391,10 @@ export function AgentStreamAnswerFace(props: {
   sessionId: string | null;
   onBookmark?(messageId: string): void | Promise<void>;
   onCitationClick?(citationId: string): void;
+  /** SP11 消息反馈透传（OCR ocr2-023 恢复接线）。 */
+  onRateMessage?(messageId: string, rating: FeedbackRating): void;
+  onRemoveRating?(messageId: string): void;
+  ratingOf?(messageId: string): FeedbackRating | undefined;
 }) {
   const row = props.message as Record<string, unknown>;
   const showRequestInfo = Boolean(row.request_id || props.message.id);
@@ -380,6 +421,9 @@ export function AgentStreamAnswerFace(props: {
                 sessionId={props.sessionId}
                 rendered={props.message.is_completed === true}
                 onBookmark={props.onBookmark}
+                onRateMessage={props.onRateMessage}
+                onRemoveRating={props.onRemoveRating}
+                ratingOf={props.ratingOf}
                 showRequestInfo={showRequestInfo}
               />
             </div>
@@ -403,6 +447,10 @@ export function BotMessageFace(props: {
   content: string;
   onBookmark?(messageId: string): void | Promise<void>;
   onCitationClick?(citationId: string): void;
+  /** SP11 消息反馈透传（OCR ocr2-023 恢复接线）。 */
+  onRateMessage?(messageId: string, rating: FeedbackRating): void;
+  onRemoveRating?(messageId: string): void;
+  ratingOf?(messageId: string): FeedbackRating | undefined;
   /** Vue ChatReferencesDrawer 入口：折叠根「检索完成」切换共享引用面板。 */
   onToggleReferences?(): void;
   /** 共享引用面板当前开合态（折叠根 aria-expanded + chevron 方向）。 */
@@ -427,6 +475,9 @@ export function BotMessageFace(props: {
             sessionId={props.sessionId}
             onBookmark={props.onBookmark}
             onCitationClick={props.onCitationClick}
+            onRateMessage={props.onRateMessage}
+            onRemoveRating={props.onRemoveRating}
+            ratingOf={props.ratingOf}
           />
         </div>
       </div>

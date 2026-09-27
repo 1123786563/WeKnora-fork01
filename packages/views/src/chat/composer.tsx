@@ -413,7 +413,16 @@ export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraft
         ref={draftRef}
         value={draft}
         onChange={(event) => onDraftChange(event.target.value)}
-        onKeyDown={(event) => { if (mentionOpen) handleMentionKeyDown(event); handleDraftKeyDown(event); }}
+        onKeyDown={(event) => {
+          /* OCR ocr2-022：提及菜单打开时 Enter/Arrow/Escape 由 handleMentionKeyDown
+             消费（preventDefault）后必须短路——否则 handleDraftKeyDown 继续执行，
+             出现「选中提及项 + 立即发送整条消息」双触发。 */
+          if (mentionOpen) {
+            handleMentionKeyDown(event);
+            if (event.defaultPrevented) return;
+          }
+          handleDraftKeyDown(event);
+        }}
         disabled={disabled}
         rows={2}
         placeholder={t.composerPlaceholder}

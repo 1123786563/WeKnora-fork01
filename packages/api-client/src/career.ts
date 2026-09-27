@@ -4,6 +4,19 @@ import type { ClientRequest } from './client.ts'
 
 export type CareerRequest = (input: ClientRequest) => Promise<unknown>
 
+/**
+ * OCR ocr2-078：本地同步校验拒绝（请求从未发出，写入确定未发生）。此前抛
+ * TypeError，与网络层 fetch 失败抛出的裸 TypeError 无法区分——页面侧
+ * isUncertainWrite 一律判 unknown 路由进回执恢复，「确定失败进入恢复路径」
+ * 违背红线。消费方应据此直接置 error，不做回执恢复。
+ */
+export class CareerValidationError extends Error {
+ constructor(message: string) {
+  super(message)
+  this.name = 'CareerValidationError'
+ }
+}
+
 // Frozen application contract owned by the career backend (T14). The client
 // consumes the enums verbatim; decoders reject invented link states,
 // evaluation statuses, or malformed pinned evidence before they reach the UI.
@@ -1452,13 +1465,13 @@ export function createCareerApi(request: CareerRequest, binaryRequest?: CareerBi
   // explicit unknown marker is exclusive — no material/export reference may
   // accompany it — and a confirmed binding requires both identifiers.
   async recordSubmission(input: RecordSubmissionInput, signal?: AbortSignal): Promise<SubmissionReceipt> {
-   if (!input.requestId.trim() || !input.applicationId.trim()) throw new TypeError('submission requestId and applicationId must not be empty')
-   if (!submissionChannels.includes(input.channel)) throw new TypeError('submission channel must be email, web, or other')
-   if (input.occurredAt !== undefined && !validTimestamp(input.occurredAt)) throw new TypeError('submission occurredAt must be an RFC3339 timestamp')
-   if (input.note !== undefined && input.note.length > maxSubmissionNoteBytes) throw new TypeError('submission note must not exceed 4096 bytes')
-   if (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0) throw new TypeError('submission expected revision must be a non-negative integer')
-   if (input.versionUnknown && (input.materialId !== undefined || input.exportId !== undefined)) throw new TypeError('submission versionUnknown must not carry a material or export binding')
-   if (!input.versionUnknown && (!input.materialId?.trim() || !input.exportId?.trim())) throw new TypeError('submission requires materialId and exportId unless versionUnknown is explicit')
+   if (!input.requestId.trim() || !input.applicationId.trim()) throw new CareerValidationError('submission requestId and applicationId must not be empty')
+   if (!submissionChannels.includes(input.channel)) throw new CareerValidationError('submission channel must be email, web, or other')
+   if (input.occurredAt !== undefined && !validTimestamp(input.occurredAt)) throw new CareerValidationError('submission occurredAt must be an RFC3339 timestamp')
+   if (input.note !== undefined && input.note.length > maxSubmissionNoteBytes) throw new CareerValidationError('submission note must not exceed 4096 bytes')
+   if (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0) throw new CareerValidationError('submission expected revision must be a non-negative integer')
+   if (input.versionUnknown && (input.materialId !== undefined || input.exportId !== undefined)) throw new CareerValidationError('submission versionUnknown must not carry a material or export binding')
+   if (!input.versionUnknown && (!input.materialId?.trim() || !input.exportId?.trim())) throw new CareerValidationError('submission requires materialId and exportId unless versionUnknown is explicit')
    const body = { requestId: input.requestId, applicationId: input.applicationId, channel: input.channel,
     ...(input.occurredAt !== undefined ? { occurredAt: input.occurredAt } : {}),
     ...(input.materialId !== undefined ? { materialId: input.materialId } : {}),

@@ -4,7 +4,7 @@ import type { ScopeController } from '@weknora/domain/scope'
 import type { OpportunityEvidence } from '../../../../packages/career-core/src/contracts.ts'
 import type { CareerCoverageView, OpportunityAnnotation, OpportunityObservation, OpportunitySourceStatus, OpportunityStatusView, ReconcileIdentityEvidence, ReconcileReceipt } from '../../../../packages/api-client/src/career.ts'
 import { opportunityEvidencePath } from './OpportunityPage.tsx'
-import { errorDetails, isUncertainWrite, newRequestId } from './protocol.ts'
+import { ReceiptMismatchError, errorDetails, isUncertainWrite, newRequestId } from './protocol.ts'
 import './reconciliation.css'
 
 // T12 Web surface: the frozen reconciliation contract rendered honestly.
@@ -125,10 +125,13 @@ export function OpportunityStatusPanel({ client, scopeController, opportunityId 
   try {
    const next = await client.career.reconcileOpportunities(currentAttempt, requestScope.signal)
    if (!scopeController.isCurrent(requestScope.scope)) return
-   if (next.requestId !== currentAttempt.requestId) throw new TypeError('对账回执与本次请求编号不匹配')
+   if (next.requestId !== currentAttempt.requestId) throw new ReceiptMismatchError('对账回执与本次请求编号不匹配')
    setReceipt(next); setReconcilePhase('saved'); setReconcileMessage(''); setReload((value) => value + 1)
   } catch (cause) {
    if (!scopeController.isCurrent(requestScope.scope)) return
+   // OCR ocr2-082：回执不匹配是确定性协议错误，直接置 error，不得判
+   // unknown 路由进回执恢复（「确定性协议错误不得路由进回执恢复」红线）。
+   if (cause instanceof ReceiptMismatchError) { setAttempt(undefined); setReconcilePhase('error'); setReconcileMessage('对账回执与本次请求编号不匹配，本次判定已中止。请更换新的请求编号重试。'); return }
    const parsed = errorDetails(cause)
    if (parsed.code === 'forbidden') { setReceipt(undefined); setAttempt(undefined); setReconcilePhase('error'); setReconcileMessage('当前空间不可访问此对账，已清除结果。'); return }
    if (parsed.code === 'idempotency_conflict') { setReconcilePhase('error'); setReconcileMessage('请求编号已对应其他对账内容，服务器拒绝了本次判定。请更换新的请求编号重试。'); return }
@@ -158,10 +161,13 @@ export function OpportunityStatusPanel({ client, scopeController, opportunityId 
   try {
    const next = await client.career.reconciliationReceipt(attempt.requestId, requestScope.signal)
    if (!scopeController.isCurrent(requestScope.scope)) return
-   if (next.requestId !== attempt.requestId) throw new TypeError('对账回执与本次请求编号不匹配')
+   if (next.requestId !== attempt.requestId) throw new ReceiptMismatchError('对账回执与本次请求编号不匹配')
    setReceipt(next); setReconcilePhase('saved'); setReconcileMessage(''); setReload((value) => value + 1)
   } catch (cause) {
    if (!scopeController.isCurrent(requestScope.scope)) return
+   // OCR ocr2-082：查询路径同款——回执不匹配置 error 退出恢复，不再自成
+   // 「unknown → 查询 → 又 mismatch → unknown」循环。
+   if (cause instanceof ReceiptMismatchError) { setAttempt(undefined); setReconcilePhase('error'); setReconcileMessage('查得的对账回执与原请求编号不匹配，已退出恢复流程。请更换新的请求编号重试。'); return }
    const parsed = errorDetails(cause)
    if (parsed.code === 'forbidden') { setReceipt(undefined); setAttempt(undefined); setReconcilePhase('error'); setReconcileMessage('当前空间不可访问此对账，已清除结果。'); return }
    setReconcilePhase('unknown')

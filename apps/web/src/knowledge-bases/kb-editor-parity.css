@@ -9,7 +9,7 @@
  * parser / storage / multimodal / asr / advanced 段仍是 R490 的 React 端口
  * （Tailwind 字面值 + text-ink/text-muted 色类），其样式锚点在此承接，待
  * knowledge-settings 批次（R8 批次 3）同构迁移时一并清理。
- * 作用域：.wk-kb-editor-dialog（挂在 .settings-modal 上的测试/留守锚点类）。 */
+ * 作用域：.wk-kb-editor-dialog（挂在 .wk-kb-settings-modal 上的测试/留守锚点类）。 */
 
 /* 留守段文本色系：Vue td tokens——主文字 rgba(0,0,0,.9)。
    （原 .text-ink/.text-muted 覆写行随旧栈色类清零而删除——DOM 已无生产者。） */
