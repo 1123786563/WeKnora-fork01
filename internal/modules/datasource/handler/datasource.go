@@ -7,13 +7,20 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/Tencent/WeKnora/internal/application/service"
 	"github.com/Tencent/WeKnora/internal/handler/dto"
 	"github.com/Tencent/WeKnora/internal/modules/datasource"
+	"github.com/Tencent/WeKnora/internal/modules/datasource/service"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/gin-gonic/gin"
 )
+
+// maxListPageSize mirrors the host handler pagination cap
+// (internal/handler/list_pagination.go:15) that this file consumed in-package
+// before the Pass B migration (26-datasource). Declared locally so the module
+// handler package is self-contained; keep in sync with the host constant until
+// the ib2 consolidation decides the shared-pagination owner.
+const maxListPageSize = 100
 
 // DataSourceHandler handles HTTP requests for data source management
 type DataSourceHandler struct {

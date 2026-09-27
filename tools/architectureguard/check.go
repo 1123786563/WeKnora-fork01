@@ -1090,6 +1090,30 @@ var importExceptions = []importException{
 		Reason:       "预存横向包耦合，Pass B 25b 搬迁显形，IB2/契约任务收口",
 		PassBTask:    "B-agentcatalog",
 	},
+	// ---- Pass B 搬迁显形的预存横向包耦合：datasource service 面消费 knowledge 活动端口/
+	// appconnector 绑定存储/policy 写入门控内部包（26-datasource §2.3 种子表 3 对；
+	// Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY）----
+	{
+		ImporterFile: "internal/modules/datasource/service/datasource_service.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/knowledge/retrieval/app",
+		Reason: "预存横向包耦合（Pass A 前宿主文件→模块导入，" +
+			"26 号搬迁显形 module→module），Pass B 不改边界",
+		PassBTask: "B2-DS.5",
+	},
+	{
+		ImporterFile: "internal/modules/datasource/service/datasource_service.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/appconnector",
+		Reason: "预存横向包耦合（Pass A 前宿主文件→模块导入，" +
+			"26 号搬迁显形 module→module），Pass B 不改边界",
+		PassBTask: "B2-DS.5",
+	},
+	{
+		ImporterFile: "internal/modules/datasource/service/datasource_service.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/policy/access",
+		Reason: "预存横向包耦合（Pass A 前宿主文件→模块导入，" +
+			"26 号搬迁显形 module→module），Pass B 不改边界",
+		PassBTask: "B2-DS.5",
+	},
 }
 
 // importExcepted 报告 (importerFile, importedPath) 是否命中一条精确豁免。

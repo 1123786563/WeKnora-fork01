@@ -114,6 +114,7 @@ type datasourcePurgeFixture struct {
 	enqueuer   *purgeEnqueuer
 	audit      *purgeAuditSink
 	svc        *DataSourceService
+	ks         interfaces.KnowledgeService
 	kbID       string
 	ds         *types.DataSource
 	otherDS    *types.DataSource
@@ -237,15 +238,8 @@ func newDataSourcePurgeFixture(t *testing.T, manualDocSharesAutoTag bool) *datas
 	f.enqueuer = &purgeEnqueuer{}
 	f.audit = &purgeAuditSink{}
 	f.scheduler = datasource.NewScheduler(dsRepo, syncLogRepo, nil)
-	f.svc = &DataSourceService{
-		dsRepo:           dsRepo,
-		syncLogRepo:      syncLogRepo,
-		knowledgeService: knowledgeService,
-		tagService:       tagService,
-		taskEnqueuer:     f.enqueuer,
-		scheduler:        f.scheduler,
-		audit:            f.audit,
-	}
+	f.ks = knowledgeService
+	f.svc = NewDataSourceService(dsRepo, syncLogRepo, knowledgeService, nil, f.enqueuer, nil, f.scheduler, nil, tagService, f.audit).(*DataSourceService)
 	return f
 }
 
@@ -464,10 +458,7 @@ func TestPurgeWorkerStopsBetweenBatchesWhenContextCanceled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	// Cancel right after the first batch's DeleteKnowledgeList returns — the
 	// exact boundary the drain loop's ctx.Err() check guards.
-	svc := &DataSourceService{
-		dsRepo:           f.dsRepo,
-		knowledgeService: &cancelAfterBatchKS{KnowledgeService: f.svc.knowledgeService, cancel: cancel},
-	}
+	svc := NewDataSourceService(f.dsRepo, nil, &cancelAfterBatchKS{KnowledgeService: f.ks, cancel: cancel}, nil, nil, nil, nil, nil, nil, nil).(*DataSourceService)
 
 	err := svc.PurgeDataSourceDocuments(ctx, types.DataSourcePurgePayload{
 		TenantID: purgeTenantID, KnowledgeBaseID: f.kbID, DataSourceID: f.ds.ID, TagName: f.ds.Name,

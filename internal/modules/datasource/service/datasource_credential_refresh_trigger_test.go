@@ -11,8 +11,8 @@ import (
 
 	"github.com/hibiken/asynq"
 
-	apprepo "github.com/Tencent/WeKnora/internal/application/repository"
 	appconnector "github.com/Tencent/WeKnora/internal/modules/appconnector"
+	apprepo "github.com/Tencent/WeKnora/internal/modules/datasource/repository"
 	"github.com/Tencent/WeKnora/internal/modules/datasource"
 	"github.com/Tencent/WeKnora/internal/modules/datasource/connector/moauth"
 	"github.com/Tencent/WeKnora/internal/types"
@@ -31,6 +31,64 @@ import (
 // ──────────────────────────────────────────────────────────────────────
 
 const credentialTriggerTenantID uint64 = 21
+
+// triggerAuditSink is a Pass B test-support shim (Ruling
+// 2026-09-24-TEST-SUPPORT-SHIM): this file migrated to the module package
+// while the host purgeAuditSink (datasource_purge_test.go, staying behind)
+// defined the audit recording surface it used. Minimal equivalent: records
+// entries, filters by action. remove_at: ib2 (B5 cleanup scope at the latest).
+type triggerAuditSink struct {
+	interfaces.AuditLogService
+	entries []*types.AuditLog
+}
+
+func (a *triggerAuditSink) Log(_ context.Context, entry *types.AuditLog) error {
+	a.entries = append(a.entries, entry)
+	return nil
+}
+
+func (a *triggerAuditSink) findByAction(action types.AuditAction) []*types.AuditLog {
+	var found []*types.AuditLog
+	for _, e := range a.entries {
+		if e.Action == action {
+			found = append(found, e)
+		}
+	}
+	return found
+}
+
+// triggerProbeConnector is a Pass B test-support shim (Ruling
+// 2026-09-24-TEST-SUPPORT-SHIM): mirrors the host credentialRefreshProbeConnector
+// (datasource_credential_refresh_test.go, staying behind) — a no-refresher probe
+// connector. remove_at: ib2 (B5 cleanup scope at the latest).
+const triggerProbeConnectorType = "test-credential-refresh"
+
+type triggerProbeConnector struct{}
+
+func (triggerProbeConnector) Type() string { return triggerProbeConnectorType }
+func (triggerProbeConnector) Validate(context.Context, *types.DataSourceConfig) error {
+	return nil
+}
+func (triggerProbeConnector) ListResources(
+	context.Context, *types.DataSourceConfig, string,
+) ([]types.Resource, error) {
+	return nil, nil
+}
+func (triggerProbeConnector) ResolveResourceAncestors(
+	context.Context, *types.DataSourceConfig, []string,
+) ([]string, error) {
+	return nil, nil
+}
+func (triggerProbeConnector) FetchAll(
+	context.Context, *types.DataSourceConfig, []string,
+) ([]types.FetchedItem, error) {
+	return nil, nil
+}
+func (triggerProbeConnector) FetchIncremental(
+	context.Context, *types.DataSourceConfig, *types.SyncCursor,
+) ([]types.FetchedItem, *types.SyncCursor, error) {
+	return nil, nil, nil
+}
 
 // credentialTriggerBindingStore serves appconnector.SyncBindingStore from the
 // same sqlite table the real repository writes, so currentSyncAuthVersion
@@ -85,7 +143,7 @@ type credentialTriggerFixture struct {
 	dsRepo  interfaces.DataSourceRepository
 	ds      *types.DataSource
 	syncLog *types.SyncLog
-	audit   *purgeAuditSink
+	audit   *triggerAuditSink
 	conn    datasource.Connector
 	svc     *DataSourceService
 	logRepo *processSyncSyncLogRepo
@@ -140,7 +198,7 @@ func newCredentialTriggerFixture(
 
 	f := &credentialTriggerFixture{
 		db: db, dsRepo: dsRepo, ds: ds, syncLog: syncLog,
-		audit: &purgeAuditSink{}, conn: conn, logRepo: logRepo,
+		audit: &triggerAuditSink{}, conn: conn, logRepo: logRepo,
 	}
 	svc := &DataSourceService{
 		dsRepo:            dsRepo,
@@ -359,7 +417,7 @@ func TestProcessSync_ExpiredUnrefreshablePausesWithoutErrorFlip(t *testing.T) {
 
 // 过期 + connector without a refresher → same permission pause.
 func TestProcessSync_ExpiredWithoutRefresherPauses(t *testing.T) {
-	conn := &credentialRefreshProbeConnector{} // Task 5 fixture connector: no CredentialsRefresher
+	conn := &triggerProbeConnector{} // probe fixture connector: no CredentialsRefresher
 	// The probe connector type has no expiring-credential semantics of its own;
 	// drive the pause purely through the stored expires_at.
 	f := newCredentialTriggerFixture(t, conn, mockExpiringCreds(-time.Minute))
