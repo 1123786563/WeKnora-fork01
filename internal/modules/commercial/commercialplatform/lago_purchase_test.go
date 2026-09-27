@@ -67,12 +67,22 @@ type purchaseStub struct {
 	// landed yet, so the create is refused and NO subscription record is
 	// created.
 	rejectCreateNoDefaultPM bool
-	invoices                []purchaseInvoiceRec // the finalized-stage visible set
+	invoices []purchaseInvoiceRec // the finalized-stage visible set
 	// invoiceIndexStatus / invoiceDetailStatus script a NON-2xx answer on the
 	// corresponding face (0 = the normal 200) — the A-25 transient tests.
 	invoiceIndexStatus  int
 	invoiceDetailStatus int
-	mux                     *http.ServeMux // assembled by newPurchaseStub
+	// subscriptionIndexStatus scripts a NON-2xx answer on the subscriptions
+	// identity index (0 = the normal 200) — the D13 transient-classification
+	// tests (429 must be unreachable, never the definitive sentinel).
+	subscriptionIndexStatus int
+	// customerGetStatuses scripts per-call statuses on the single-customer
+	// GET (consumed front-first; empty = the normal path). Settle runs TWO
+	// binding reads back to back (customerProviderBound then
+	// boundProviderCustomerID) — the queue distinguishes them: [200, 429]
+	// makes the SECOND read answer the transient throttle.
+	customerGetStatuses []int
+	mux                 *http.ServeMux // assembled by newPurchaseStub
 }
 
 func newPurchaseStub() *purchaseStub {
@@ -106,12 +116,25 @@ func newPurchaseStub() *purchaseStub {
 		switch {
 		case r.Method == http.MethodGet && ext != "": // GET /api/v1/customers/{id}
 			s.mu.Lock()
+			scripted := 0
+			if len(s.customerGetStatuses) > 0 {
+				scripted = s.customerGetStatuses[0]
+				s.customerGetStatuses = s.customerGetStatuses[1:]
+			}
 			c, ok := s.customer[ext]
 			var b []byte
 			if ok {
 				b, _ = json.Marshal(map[string]any{"customer": c})
 			}
 			s.mu.Unlock()
+			if scripted != 0 && scripted != http.StatusOK {
+				// A scripted NON-200 answer (the transient-classification
+				// tests). A scripted 200 falls through to the REAL body —
+				// the queue distinguishes consecutive reads without
+				// corrupting the first one's payload.
+				respond(w, r, &s.requests, &s.mu, scripted, "{}", nil)
+				return
+			}
 			if !ok {
 				respond(w, r, &s.requests, &s.mu, http.StatusNotFound, "{}", nil)
 				return
@@ -265,6 +288,12 @@ func newPurchaseStub() *purchaseStub {
 			respond(w, r, &s.requests, &s.mu, status, purchaseSubscriptionsJSON(snapshot), blob)
 		case http.MethodGet: // identity index: models the v1.53.0 default status=active filter
 			s.mu.Lock()
+			if s.subscriptionIndexStatus != 0 {
+				code := s.subscriptionIndexStatus
+				s.mu.Unlock()
+				respond(w, r, &s.requests, &s.mu, code, "{}", nil)
+				return
+			}
 			s.rawQueries = append(s.rawQueries, r.URL.RawQuery)
 			q := r.URL.Query()
 			want := q.Get("external_id")
@@ -314,6 +343,11 @@ type purchaseInvoiceRec struct {
 	// PURCHASE subscription (the historical tests' intent); a Base-plan
 	// invoice sets the "-sub" identity.
 	FeeSubscriptionID string
+	// CreatedAt is the invoice detail's created_at (ISO-8601). The INDEX
+	// answer never carries it (the pinned runtime's shape) — it rides the
+	// single-invoice read only, the explicit-comparison selection face
+	// (OCR r2 lago_purchase.go:624).
+	CreatedAt string
 }
 
 func purchaseInvoicesJSON(rows []purchaseInvoiceRec) string {
@@ -343,8 +377,8 @@ func purchaseInvoiceDetailJSON(inv purchaseInvoiceRec, purchaseSubscriptionID st
 			inv.SubscriptionFee.AmountCents, subID, inv.SubscriptionFee.Name)
 	}
 	return fmt.Sprintf(
-		`{"invoice":{"lago_id":%q,"external_customer_id":%q,"status":"finalized","payment_status":%q,"invoice_type":"subscription","fees":%s}}`,
-		inv.LagoID, inv.ExternalCust, inv.PaymentStatus, fees)
+		`{"invoice":{"lago_id":%q,"external_customer_id":%q,"status":"finalized","payment_status":%q,"created_at":%q,"invoice_type":"subscription","fees":%s}}`,
+		inv.LagoID, inv.ExternalCust, inv.PaymentStatus, inv.CreatedAt, fees)
 }
 
 func (s *purchaseStub) server(t *testing.T) *httptest.Server {
@@ -1001,7 +1035,7 @@ func activePurchaseStub(t *testing.T, invoices []purchaseInvoiceRec) (*purchaseS
 func TestLagoReadPurchaseInvoiceFeesMapsSubscriptionLine(t *testing.T) {
 	invoices := []purchaseInvoiceRec{{
 		LagoID: "inv_f1", ExternalCust: commercial.ExternalCustomerID(31),
-		PaymentStatus: "succeeded", SubscriptionFee: feeLine("Pro plan", 1980),
+		PaymentStatus: "succeeded", SubscriptionFee: feeLine("Pro plan", 1980), CreatedAt: "2026-08-15T00:00:00Z",
 	}}
 	stub, a := activePurchaseStub(t, invoices)
 	snap, err := a.ReadSnapshot(context.Background(), commercial.SnapshotQuery{Kind: commercial.SnapshotKindPurchase, TenantID: 31})
@@ -1060,8 +1094,8 @@ func TestLagoReadPurchaseInvoiceFeesTwoFinalizedAnswersNewestSucceeded(t *testin
 	// Index order is newest-first: the renewal (this month) precedes the
 	// original gating invoice.
 	invoices := []purchaseInvoiceRec{
-		{LagoID: "inv_renewal", ExternalCust: commercial.ExternalCustomerID(31), PaymentStatus: "succeeded", SubscriptionFee: feeLine("Pro plan", 9900)},
-		{LagoID: "inv_gating", ExternalCust: commercial.ExternalCustomerID(31), PaymentStatus: "succeeded", SubscriptionFee: feeLine("Pro plan", 1980)},
+		{LagoID: "inv_renewal", ExternalCust: commercial.ExternalCustomerID(31), PaymentStatus: "succeeded", SubscriptionFee: feeLine("Pro plan", 9900), CreatedAt: "2026-09-01T00:00:00Z"},
+		{LagoID: "inv_gating", ExternalCust: commercial.ExternalCustomerID(31), PaymentStatus: "succeeded", SubscriptionFee: feeLine("Pro plan", 1980), CreatedAt: "2026-08-01T00:00:00Z"},
 	}
 	stub, a := activePurchaseStub(t, invoices)
 	snap, err := a.ReadSnapshot(context.Background(), commercial.SnapshotQuery{Kind: commercial.SnapshotKindPurchase, TenantID: 31})
@@ -1074,8 +1108,10 @@ func TestLagoReadPurchaseInvoiceFeesTwoFinalizedAnswersNewestSucceeded(t *testin
 	if snap.Purchase.InvoicePaymentStatus != "succeeded" {
 		t.Fatalf("payment status must ride the answered invoice, got %q", snap.Purchase.InvoicePaymentStatus)
 	}
-	// (A-26) The iteration stops at the first succeeded match — the older
-	// gating invoice behind it is not detail-read.
+	// (r2:624) Every index row is detail-read: the newest selection ranks
+	// the invoice detail's own created_at, so the walk cannot stop at the
+	// first succeeded match (A-26's early exit left with the explicit
+	// ordering — the N+1 shape stays disclosed, R-23).
 	stub.mu.Lock()
 	detailReads := 0
 	for _, req := range stub.requests {
@@ -1084,8 +1120,8 @@ func TestLagoReadPurchaseInvoiceFeesTwoFinalizedAnswersNewestSucceeded(t *testin
 		}
 	}
 	stub.mu.Unlock()
-	if detailReads != 1 {
-		t.Fatalf("the read must stop at the newest succeeded match (early exit), got %d detail reads", detailReads)
+	if detailReads != 2 {
+		t.Fatalf("both finalized invoices must be ranked by their own created_at, got %d detail reads", detailReads)
 	}
 }
 
@@ -1096,8 +1132,8 @@ func TestLagoReadPurchaseInvoiceFeesTwoFinalizedAnswersNewestSucceeded(t *testin
 // no succeeded one exists.
 func TestLagoReadPurchaseInvoiceFeesOpenRenewalDoesNotShadowGating(t *testing.T) {
 	invoices := []purchaseInvoiceRec{
-		{LagoID: "inv_renewal", ExternalCust: commercial.ExternalCustomerID(31), PaymentStatus: "pending", SubscriptionFee: feeLine("Pro plan", 9900)},
-		{LagoID: "inv_gating", ExternalCust: commercial.ExternalCustomerID(31), PaymentStatus: "succeeded", SubscriptionFee: feeLine("Pro plan", 1980)},
+		{LagoID: "inv_renewal", ExternalCust: commercial.ExternalCustomerID(31), PaymentStatus: "pending", SubscriptionFee: feeLine("Pro plan", 9900), CreatedAt: "2026-09-01T00:00:00Z"},
+		{LagoID: "inv_gating", ExternalCust: commercial.ExternalCustomerID(31), PaymentStatus: "succeeded", SubscriptionFee: feeLine("Pro plan", 1980), CreatedAt: "2026-08-01T00:00:00Z"},
 	}
 	_, a := activePurchaseStub(t, invoices)
 	snap, err := a.ReadSnapshot(context.Background(), commercial.SnapshotQuery{Kind: commercial.SnapshotKindPurchase, TenantID: 31})
@@ -1121,11 +1157,11 @@ func TestLagoReadPurchaseInvoiceFeesIgnoresBaseSubscriptionInvoices(t *testing.T
 		{
 			LagoID: "inv_base", ExternalCust: commercial.ExternalCustomerID(31),
 			PaymentStatus: "succeeded", SubscriptionFee: feeLine("Base Plan", 0),
-			FeeSubscriptionID: commercial.ExternalSubscriptionID(31),
+			FeeSubscriptionID: commercial.ExternalSubscriptionID(31), CreatedAt: "2026-09-01T00:00:00Z",
 		},
 		{
 			LagoID: "inv_gating", ExternalCust: commercial.ExternalCustomerID(31),
-			PaymentStatus: "succeeded", SubscriptionFee: feeLine("Pro plan", 1650),
+			PaymentStatus: "succeeded", SubscriptionFee: feeLine("Pro plan", 1650), CreatedAt: "2026-08-01T00:00:00Z",
 		},
 	}
 	stub, a := activePurchaseStub(t, invoices)
@@ -1161,7 +1197,7 @@ func TestLagoReadPurchaseInvoiceFeesIgnoresBaseSubscriptionInvoices(t *testing.T
 func TestLagoReadPurchaseInvoiceFeesNoSubscriptionLineAnswersEmpty(t *testing.T) {
 	invoices := []purchaseInvoiceRec{{
 		LagoID: "inv_c", ExternalCust: commercial.ExternalCustomerID(31),
-		PaymentStatus: "succeeded", SubscriptionFee: nil,
+		PaymentStatus: "succeeded", SubscriptionFee: nil, CreatedAt: "2026-08-15T00:00:00Z",
 	}}
 	_, a := activePurchaseStub(t, invoices)
 	snap, err := a.ReadSnapshot(context.Background(), commercial.SnapshotQuery{Kind: commercial.SnapshotKindPurchase, TenantID: 31})
@@ -1180,7 +1216,7 @@ func TestLagoReadPurchaseInvoiceFeesNoSubscriptionLineAnswersEmpty(t *testing.T)
 // definitive invalid_response that would park a settle replay in attention.
 func TestLagoInvoiceFacesClassifyTransient5xxUnreachable(t *testing.T) {
 	invoices := []purchaseInvoiceRec{
-		{LagoID: "inv_a", ExternalCust: commercial.ExternalCustomerID(31), PaymentStatus: "succeeded", SubscriptionFee: feeLine("Pro plan", 1980)},
+		{LagoID: "inv_a", ExternalCust: commercial.ExternalCustomerID(31), PaymentStatus: "succeeded", SubscriptionFee: feeLine("Pro plan", 1980), CreatedAt: "2026-08-15T00:00:00Z"},
 	}
 	for _, tc := range []struct {
 		name   string
@@ -1218,5 +1254,67 @@ func TestLagoInvoiceFacesKeepDefinitive4xxInvalidResponse(t *testing.T) {
 	_, err := a.ReadSnapshot(context.Background(), commercial.SnapshotQuery{Kind: commercial.SnapshotKindPurchase, TenantID: 31})
 	if !errors.Is(err, commercial.ErrPlatformInvalidResponse) {
 		t.Fatalf("a definitive 404 index answer must stay invalid_response, got %v", err)
+	}
+}
+
+// ---- #82 Task 12 (OCR r2): explicit created_at ordering + transient reads ----
+
+// TestLagoReadPurchaseInvoiceFeesExplicitCreatedAtOrdering (r2:624
+// medium, correctness half): the NEWEST selection must compare the invoice
+// detail's own created_at, never the index row order. Here the index
+// answers OLDEST-FIRST (the opposite of the assumed newest-first
+// convention): trusting the row order would lock in the stale 1980 gating
+// invoice; the explicit comparison must answer the newer 9900 renewal.
+func TestLagoReadPurchaseInvoiceFeesExplicitCreatedAtOrdering(t *testing.T) {
+	invoices := []purchaseInvoiceRec{
+		{LagoID: "inv_old", ExternalCust: commercial.ExternalCustomerID(31),
+			PaymentStatus: "succeeded", SubscriptionFee: feeLine("Pro plan", 1980), CreatedAt: "2026-08-01T00:00:00Z"},
+		{LagoID: "inv_new", ExternalCust: commercial.ExternalCustomerID(31),
+			PaymentStatus: "succeeded", SubscriptionFee: feeLine("Pro plan", 9900), CreatedAt: "2026-09-01T00:00:00Z"},
+	}
+	_, a := activePurchaseStub(t, invoices)
+	snap, err := a.ReadSnapshot(context.Background(), commercial.SnapshotQuery{Kind: commercial.SnapshotKindPurchase, TenantID: 31})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snap.Purchase.InvoiceFees) != 1 || snap.Purchase.InvoiceFees[0].AmountFen != 9900 {
+		t.Fatalf("the created_at-NEWEST invoice must answer regardless of index row order, got %+v", snap.Purchase.InvoiceFees)
+	}
+}
+
+// TestLagoReadPurchaseInvoiceFeesUnparsableCreatedAtFailsClosed (D13
+// companion): a matching invoice whose created_at cannot be parsed is a
+// malformed authority shape — the selection cannot rank it, so the read
+// fails closed invalid_response instead of silently guessing (the
+// unparsable row may be the newest).
+func TestLagoReadPurchaseInvoiceFeesUnparsableCreatedAtFailsClosed(t *testing.T) {
+	invoices := []purchaseInvoiceRec{
+		{LagoID: "inv_bad", ExternalCust: commercial.ExternalCustomerID(31),
+			PaymentStatus: "succeeded", SubscriptionFee: feeLine("Pro plan", 1980), CreatedAt: "not-a-timestamp"},
+	}
+	_, a := activePurchaseStub(t, invoices)
+	_, err := a.ReadSnapshot(context.Background(), commercial.SnapshotQuery{Kind: commercial.SnapshotKindPurchase, TenantID: 31})
+	if !errors.Is(err, commercial.ErrPlatformInvalidResponse) {
+		t.Fatalf("an unparsable invoice created_at must fail closed invalid_response, got %v", err)
+	}
+}
+
+// TestLagoSubscriptionRead429Unreachable (D13 / r2:688 medium): a 429 on
+// the subscription identity index is a TRANSIENT authority condition —
+// ErrPlatformUnreachable, never the definitive invalid_response. The
+// fulfiller's error taxonomy keys off this split: unreachable keeps a paid
+// order pending for retry; invalid_response mints it into terminal
+// attention. A rate-limited snapshot read must never do the latter.
+func TestLagoSubscriptionRead429Unreachable(t *testing.T) {
+	stub, a := activePurchaseStub(t, nil)
+	stub.mu.Lock()
+	stub.subscriptionIndexStatus = http.StatusTooManyRequests
+	stub.mu.Unlock()
+	_, err := a.ReadSnapshot(context.Background(), commercial.SnapshotQuery{Kind: commercial.SnapshotKindPurchase, TenantID: 31})
+	if !errors.Is(err, commercial.ErrPlatformUnreachable) {
+		t.Fatalf("a 429 subscription index must classify unreachable (retryable), got %v", err)
+	}
+	if errors.Is(err, commercial.ErrPlatformInvalidResponse) {
+		t.Fatalf("a transient 429 must NOT be the definitive sentinel, got %v", err)
 	}
 }

@@ -599,30 +599,32 @@ func (a *LagoAdapter) readPurchaseSnapshot(ctx context.Context, tenantID uint64)
 // (fees→subscription: fee.external_subscription_id), never by the index row
 // count.
 //
-// Selection rule (A-24 / F95): the index is newest-first, and MORE THAN ONE
-// finalized invoice may legitimately carry a purchase subscription fee —
-// the authority's own recurring billing issues a renewal invoice (same
+// Selection rule (A-24 / F95, D13' explicit ordering / r2:624): MORE THAN
+// ONE finalized invoice may legitimately carry a purchase subscription fee
+// — the authority's own recurring billing issues a renewal invoice (same
 // external_subscription_id) at every monthly boundary of the purchase
-// subscription (t02-duplicates lab evidence: a renewal invoice was issued
-// minutes after the 200), and a repurchase reuses the same external
-// subscription identity with its own gating invoice. "two or more matches
-// is a data anomaly" is therefore WRONG — it would permanently break the
-// snapshot a month after the first successful payment. The GATING answer
-// the callers need is: the NEWEST invoice whose payment_status is
+// subscription, and a repurchase reuses the same identity. The GATING
+// answer the callers need is: the NEWEST invoice whose payment_status is
 // "succeeded" (an active purchase necessarily settled its gating invoice;
 // a later still-open renewal never shadows it), falling back to the newest
-// match of any payment_status (the defensive shape — an active purchase
-// always has a succeeded one). The iteration stops at the first succeeded
-// match (A-26 / F97: the read stops early instead of walking the whole
-// finalized history every refresh).
+// match of any payment_status. (r2:624, correctness half) "Newest" is
+// ranked by the invoice detail's OWN created_at, EXPLICITLY compared —
+// never the index row order (an unrequested server-side sort convention
+// the read must not depend on). The ranking therefore detail-reads every
+// index row; the N+1 shape stays disclosed (R-23 — read path, not hot).
+type purchaseInvoiceMatch struct {
+	createdAt     time.Time
+	lines         []commercial.InvoiceLineSnapshot
+	paymentStatus string
+}
+
 func (a *LagoAdapter) readPurchaseInvoiceFees(ctx context.Context, tenantID uint64) ([]commercial.InvoiceLineSnapshot, string, error) {
 	purchaseSubscriptionID := commercial.ExternalPurchaseSubscriptionID(tenantID)
 	ids, err := a.finalizedInvoiceIDs(ctx, tenantID)
 	if err != nil {
 		return nil, "", err
 	}
-	var fallbackFees []commercial.InvoiceLineSnapshot
-	var fallbackStatus string
+	var bestSucceeded, bestAny *purchaseInvoiceMatch
 	for _, id := range ids {
 		// …read the single invoice (t9 integration evidence: the pinned
 		// runtime's INDEX answer carries no fees; only the single-invoice
@@ -643,6 +645,7 @@ func (a *LagoAdapter) readPurchaseInvoiceFees(ctx context.Context, tenantID uint
 		var parsed struct {
 			Invoice struct {
 				PaymentStatus string `json:"payment_status"`
+				CreatedAt     string `json:"created_at"`
 				Fees          []struct {
 					AmountCents int64  `json:"amount_cents"` // integer minor units, never float (GC-6)
 					Item        struct {
@@ -670,16 +673,29 @@ func (a *LagoAdapter) readPurchaseInvoiceFees(ctx context.Context, tenantID uint
 		if len(lines) == 0 {
 			continue // this finalized invoice bills no purchase subscription fee
 		}
-		if parsed.Invoice.PaymentStatus == "succeeded" {
-			// The newest succeeded purchase invoice IS the gating answer.
-			return lines, parsed.Invoice.PaymentStatus, nil
+		// (r2:624) A matching row the selection cannot rank is a malformed
+		// authority shape — the unparsable row may be the NEWEST — so the
+		// read fails closed instead of silently guessing.
+		createdAt, cerr := time.Parse(time.RFC3339, parsed.Invoice.CreatedAt)
+		if cerr != nil {
+			return nil, "", fmt.Errorf("%w: invoice created_at unparsable", commercial.ErrPlatformInvalidResponse)
 		}
-		if fallbackFees == nil {
-			fallbackFees, fallbackStatus = lines, parsed.Invoice.PaymentStatus
+		match := &purchaseInvoiceMatch{createdAt: createdAt, lines: lines, paymentStatus: parsed.Invoice.PaymentStatus}
+		if match.paymentStatus == "succeeded" {
+			// The newest succeeded purchase invoice IS the gating answer.
+			if bestSucceeded == nil || createdAt.After(bestSucceeded.createdAt) {
+				bestSucceeded = match
+			}
+		}
+		if bestAny == nil || createdAt.After(bestAny.createdAt) {
+			bestAny = match
 		}
 	}
-	if fallbackFees != nil {
-		return fallbackFees, fallbackStatus, nil
+	if bestSucceeded != nil {
+		return bestSucceeded.lines, bestSucceeded.paymentStatus, nil
+	}
+	if bestAny != nil {
+		return bestAny.lines, bestAny.paymentStatus, nil
 	}
 	return nil, "", nil // awaiting semantics: no finalized purchase invoice visible yet
 }

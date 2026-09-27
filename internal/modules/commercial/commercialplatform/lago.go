@@ -687,7 +687,12 @@ func (a *LagoAdapter) readSubscriptionByIdentity(ctx context.Context, externalSu
 	}
 	switch {
 	case status >= 200 && status < 300:
-	case status >= 500:
+	// (D13 / r2:688) The transient split every other read path already
+	// applies: a 429/5xx index answer is the RETRYABLE unreachable — the
+	// fulfiller's taxonomy keys off this (unreachable keeps a paid order
+	// pending; the definitive sentinel would mint terminal attention out
+	// of a throttled read).
+	case status == http.StatusTooManyRequests || status >= 500:
 		return lagoSubscription{}, false, fmt.Errorf("%w: subscription read unavailable", commercial.ErrPlatformUnreachable)
 	default:
 		return lagoSubscription{}, false, fmt.Errorf("%w: subscription read rejected", commercial.ErrPlatformInvalidResponse)

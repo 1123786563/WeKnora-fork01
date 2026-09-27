@@ -30,16 +30,18 @@ import (
 //	(ii)  GET /v1/payment_intents?customer={pcid} — candidates are intents
 //	      in an UNSETTLED shape (requires_payment_method — t10/t11's only
 //	      observed shape — or requires_action) carrying a non-empty
-//	      metadata.lago_invoice_id; more than one candidate resolves to the
-//	      LATEST created (the current purchase's gating intent is always the
-//	      most recent); ties or unparsable created values fail closed. The
-//	      same read collects the invoice identities already carried to
-//	      succeeded: when the invoice the resolved candidate gates is
-//	      already succeeded, the settle replays idempotently (F-1 — the
-//	      residual sibling of a settled invoice is never driven, never
-//	      re-keyed, never a second charge);
-//	(iii) attach the configured settle pm (clone id) and set it as the
-//	      customer default;
+//	      metadata.lago_invoice_id; the candidate set must span EXACTLY ONE
+//	      distinct invoice identity (D9 — more fails closed, never a
+//	      charge), then resolves to the LATEST created (ties or unparsable
+//	      created values fail closed). The same read collects the invoice
+//	      identities already carried to succeeded: when the invoice the
+//	      resolved candidate gates is already succeeded, the settle replays
+//	      idempotently (F-1 — the residual sibling of a settled invoice is
+//	      never driven, never re-keyed, never a second charge);
+//	(iii) attach the configured settle pm (clone id); the customer default
+//	      payment method is NEVER rewritten (D10 — confirm carries the pm
+//	      explicitly, and a rewritten default would reroute renewal
+//	      auto-collection onto the settlement instrument);
 //	(iv)  POST /v1/payment_intents/{pi} (payment_method=…) then
 //	      POST /v1/payment_intents/{pi}/confirm → succeeded (off-session
 //	      synchronous charge; both calls carry Idempotency-Key = cmd.Key);
@@ -88,6 +90,16 @@ func (a *LagoAdapter) settlePurchasePayment(ctx context.Context, cmd commercial.
 
 	// The provider-side customer identity (the Stripe cus_…) comes from the
 	// authority's binding read — never a guess.
+	//
+	// (r2:166) Configuration gate BEFORE any provider rail call: a missing
+	// settle instrument or provider credential is ErrPlatformUnconfigured,
+	// not an authority rejection. An empty API key riding the Authorization
+	// header would draw a provider 401 and the definitive classification
+	// would park the order in attention for an operator-fixable gap.
+	if a.cfg.StripeSettlePmToken == "" || a.cfg.StripeAPIKey == "" {
+		return commercial.CommandReceipt{}, fmt.Errorf(
+			"%w: no settle payment method or provider credential configured", commercial.ErrPlatformUnconfigured)
+	}
 	_, bound, err := a.customerProviderBound(ctx, payload.ExternalCustomerID)
 	if err != nil {
 		return commercial.CommandReceipt{}, err
@@ -125,6 +137,22 @@ func (a *LagoAdapter) settlePurchasePayment(ctx context.Context, cmd commercial.
 	if err != nil {
 		return commercial.CommandReceipt{}, err
 	}
+	// (D9 / r2:139) Distinct-invoice disambiguation gate: the unsettled
+	// candidate set must span EXACTLY ONE gating invoice identity before
+	// any charge-bearing call. Candidates from TWO different invoices (a
+	// renewal's or a foreign purchase's stuck intent beside the current
+	// gate) mean the locator cannot PROVE which invoice this settle owes —
+	// the amount guard alone (1..AmountFen) would happily pass a smaller
+	// foreign intent, and the latest-created heuristic would then charge
+	// the WRONG invoice. Fail closed: zero writes, the attention face
+	// hands the ambiguity to operations. The SAME-invoice residual sibling
+	// (R-20's legal shape) is unaffected — siblings share one invoice id,
+	// distinct == 1.
+	if distinct := distinctInvoiceCount(intents); distinct > 1 {
+		return commercial.CommandReceipt{}, fmt.Errorf(
+			"%w: %d distinct gating invoices among the unsettled candidates — refusing to charge without a provable target",
+			commercial.ErrPlatformInvalidResponse, distinct)
+	}
 	// (A-16 / F84) Amount guard, proration aware: the resolved intent's
 	// amount must not EXCEED the command payload's frozen quote amount and
 	// must be positive — the created-latest heuristic alone must NEVER
@@ -157,16 +185,12 @@ func (a *LagoAdapter) settlePurchasePayment(ctx context.Context, cmd commercial.
 		return receipt, nil
 	}
 
-	// (iii) Attach the settle payment method and promote it to default.
-	// An unconfigured token fails closed BEFORE any charge-bearing call.
-	// (A-18) The attach/default rail calls carry DETERMINISTIC idempotency
-	// keys derived from the command key (the same discipline as
-	// update/confirm): a replay of the same settle drive replays the same
-	// pair, so a lost response can never double-attach.
-	if a.cfg.StripeSettlePmToken == "" {
-		return commercial.CommandReceipt{}, fmt.Errorf(
-			"%w: no settle payment method configured", commercial.ErrPlatformUnconfigured)
-	}
+	// (iii) Attach the settle payment method. The attach rail call carries
+	// a DETERMINISTIC idempotency key derived from the command key (the
+	// same discipline as update/confirm): a replay of the same settle drive
+	// replays the same call, so a lost response can never double-attach.
+	// (D10) The customer default payment method is NEVER rewritten here —
+	// see the gate below.
 	attachedID, err := a.stripeAttachSettlePaymentMethod(ctx, providerCustomerID, a.cfg.StripeSettlePmToken, cmd.Key)
 	if err != nil {
 		return commercial.CommandReceipt{}, err
@@ -214,12 +238,12 @@ func (a *LagoAdapter) settlePurchasePayment(ctx context.Context, cmd commercial.
 // purchaseRequestTimeout discipline): THREE authority reads
 // (readPurchaseSnapshot — itself bounded by subscriptionRequestTimeout
 // including its invoice index + per-invoice GETs — customerProviderBound and
-// boundProviderCustomerID) plus FIVE provider round trips (intent list,
-// attach, set-default, intent update, confirm), each bounded by
-// outboundProviderTimeout. A budget below the sum expires mid-confirm on a
-// slow provider, wrapping a transport error as unreachable and re-driving a
-// half-completed leg (pm attached, default rewritten).
-const settleRequestTimeout = 5*outboundProviderTimeout + 3*subscriptionRequestTimeout
+// boundProviderCustomerID) plus FOUR provider round trips (intent list,
+// attach, intent update, confirm — the default rewrite left the chain with
+// D10), each bounded by outboundProviderTimeout. A budget below the sum
+// expires mid-confirm on a slow provider, wrapping a transport error as
+// unreachable and re-driving a half-completed leg (pm attached).
+const settleRequestTimeout = 4*outboundProviderTimeout + 3*subscriptionRequestTimeout
 
 // stripeIntent is one PaymentIntent row from the provider list (only the
 // fields the locator needs).
@@ -314,6 +338,8 @@ func (a *LagoAdapter) stripeListGatingIntents(ctx context.Context, providerCusto
 // latestIntent resolves the disambiguation rule (D2' step ii): the current
 // purchase's gating intent is necessarily the MOST RECENTLY created
 // candidate; a tie is ambiguous and fails closed — never a blind charge.
+// Callers must first pass the D9 distinct-invoice gate: the latest-created
+// heuristic only ranks intents that provably gate the SAME invoice.
 func latestIntent(intents []stripeIntent) (stripeIntent, error) {
 	best := intents[0]
 	tied := false
@@ -332,12 +358,32 @@ func latestIntent(intents []stripeIntent) (stripeIntent, error) {
 	return best, nil
 }
 
-// stripeAttachSettlePaymentMethod attaches the settle token and promotes
-// the CLONED id to the customer default (the provider clones on attach —
-// the default update must reference the clone, F6/t02 evidence). (A-18)
-// keyBase is the settle command's key; both rail calls derive deterministic
-// idempotency keys from it (":attach" / ":default") so a replay of the same
-// drive replays the same pair — a lost response never double-attaches.
+// distinctInvoiceCount answers how many DIFFERENT gating invoice identities
+// the unsettled candidate set spans (the D9 gate's input).
+func distinctInvoiceCount(intents []stripeIntent) int {
+	seen := make(map[string]bool, len(intents))
+	for _, intent := range intents {
+		seen[intent.LagoInvoiceID] = true
+	}
+	return len(seen)
+}
+
+// stripeAttachSettlePaymentMethod attaches the settle token to the customer
+// and answers the CLONED id (the provider clones on attach — the confirm
+// below must reference the clone, F6/t02 evidence). (A-18) keyBase is the
+// settle command's key; the rail call derives a deterministic idempotency
+// key from it (":attach") so a replay of the same drive replays the same
+// call — a lost response never double-attaches.
+//
+// (D10 / r2:357) The customer's invoice_settings default payment method is
+// NEVER rewritten on the settle leg. The confirm call carries the attached
+// settle pm EXPLICITLY, so the permanent default rewrite buys nothing for
+// THIS charge while silently rerouting every RENEWAL invoice's
+// auto-collection onto the settlement instrument (a real monthly charge on
+// the operator's card). Renewal collection routing stays whatever the
+// purchase-create face set (a 3DS pm → requires_action, fail-closed — never
+// an automatic charge); the renewal routing question itself is a #84 /
+// production-review agenda item, deliberately NOT decided here.
 func (a *LagoAdapter) stripeAttachSettlePaymentMethod(ctx context.Context, providerCustomerID, pmToken, keyBase string) (string, error) {
 	attachStatus, attachBody, err := a.providerOutboundRequest(ctx, http.MethodPost,
 		"/v1/payment_methods/"+url.PathEscape(pmToken)+"/attach",
@@ -353,15 +399,6 @@ func (a *LagoAdapter) stripeAttachSettlePaymentMethod(ctx context.Context, provi
 	}
 	if json.Unmarshal(attachBody, &attached) != nil || attached.ID == "" {
 		return "", fmt.Errorf("%w: settle payment method attach malformed", commercial.ErrPlatformInvalidResponse)
-	}
-	defaultStatus, _, err := a.providerOutboundRequest(ctx, http.MethodPost,
-		"/v1/customers/"+url.PathEscape(providerCustomerID),
-		"invoice_settings[default_payment_method]="+url.QueryEscape(attached.ID), keyBase+":default")
-	if err != nil {
-		return "", err
-	}
-	if err := classifyStripeStatus(defaultStatus, "settle default payment method"); err != nil {
-		return "", err
 	}
 	return attached.ID, nil
 }
@@ -436,13 +473,21 @@ const maxProviderBodyBytes = 64 << 10
 
 // boundProviderCustomerID reads the provider_customer_id off the
 // authority's customer binding (the Stripe cus_… identity).
+// (D13 / r2:445) The status split matches customerProviderBound and every
+// other read path: 429/5xx is the RETRYABLE unreachable (the fulfiller
+// keeps the event pending), anything else non-200 is the definitive
+// invalid_response.
 func (a *LagoAdapter) boundProviderCustomerID(ctx context.Context, externalCustomerID string) (string, error) {
 	status, body, err := a.do(ctx, http.MethodGet,
 		"/api/v1/customers/"+url.PathEscape(externalCustomerID), nil)
 	if err != nil {
 		return "", err
 	}
-	if status != http.StatusOK {
+	switch {
+	case status >= 200 && status < 300:
+	case status == http.StatusTooManyRequests || status >= 500:
+		return "", fmt.Errorf("%w: binding read unavailable (HTTP %d)", commercial.ErrPlatformUnreachable, status)
+	default:
 		return "", fmt.Errorf("%w: binding read answered HTTP %d", commercial.ErrPlatformInvalidResponse, status)
 	}
 	var parsed struct {
