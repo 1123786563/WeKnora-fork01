@@ -236,3 +236,90 @@ test('stop without any available audio is a capture failure, not an empty upload
   assert.equal(dictation.state().failure, 'capture-failed');
   assert.equal(transcriber.requests.length, 0);
 });
+
+test('dropping an intent deletes the uri-sourced audio exactly once via audioCleanup (#70)', async () => {
+  const deleted: string[] = [];
+  const dictation = createDictation({
+    capture: {
+      start: async () => 'recording' as const,
+      stop: async () => ({ uri: 'file:///cache/d1.m4a', mimeType: 'audio/mp4', fileName: 'd.m4a' }),
+      cancel: async () => undefined,
+    },
+    transcribe: { async transcribe() { return { text: '转写成功' }; } },
+    newRequestId: () => 'req-cleanup-1',
+    audioCleanup: async (audio) => { if (audio.uri !== undefined) deleted.push(audio.uri); },
+  });
+  await dictation.begin();
+  await dictation.finish();
+  await dictation.confirmTranscript();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepEqual(deleted, ['file:///cache/d1.m4a'], '确认（dropIntent 已发生）后原始音频文件被清理恰好一次');
+});
+
+test('bytes-sourced audio never triggers audioCleanup (nothing on disk to delete)', async () => {
+  let cleanups = 0;
+  const dictation = createDictation({
+    capture: {
+      start: async () => 'recording' as const,
+      stop: async () => ({ bytes: new Uint8Array([1, 2, 3]), mimeType: 'audio/wav' }),
+      cancel: async () => undefined,
+    },
+    transcribe: { async transcribe() { return { text: 'ok' }; } },
+    newRequestId: () => 'req-cleanup-2',
+    audioCleanup: async () => { cleanups += 1; },
+  });
+  await dictation.begin();
+  await dictation.finish();
+  await dictation.discardTranscript();
+  assert.equal(cleanups, 0, 'bytes 源音频只在内存，无文件可删');
+});
+
+test('a failed transcription retains the audio for retry; the eventual drop deletes it once', async () => {
+  const deleted: string[] = [];
+  let attempts = 0;
+  const dictation = createDictation({
+    capture: {
+      start: async () => 'recording' as const,
+      stop: async () => ({ uri: 'file:///cache/retry.m4a', mimeType: 'audio/mp4' }),
+      cancel: async () => undefined,
+    },
+    transcribe: {
+      async transcribe() {
+        attempts += 1;
+        if (attempts === 1) throw new Error('network down');
+        return { text: '重试成功' };
+      },
+    },
+    newRequestId: () => 'req-cleanup-3',
+    audioCleanup: async (audio) => { if (audio.uri !== undefined) deleted.push(audio.uri); },
+  });
+  await dictation.begin();
+  await dictation.finish();
+  assert.equal(deleted.length, 0, '失败重试窗口内音频必须保留（服务端同 requestId 幂等重放），绝不提前删除');
+  await dictation.retryTranscription();
+  assert.equal(dictation.state().phase, 'review');
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepEqual(deleted, ['file:///cache/retry.m4a'], '重试成功进入 review 后（dropIntent）清理恰好一次');
+});
+
+test('a rejecting audioCleanup never fails the flow nor leaks an unhandled rejection (Review Focus 3)', async () => {
+  const unhandled: unknown[] = [];
+  const onUnhandled = (reason: unknown) => { unhandled.push(reason); };
+  process.on('unhandledRejection', onUnhandled);
+  const dictation = createDictation({
+    capture: {
+      start: async () => 'recording' as const,
+      stop: async () => ({ uri: 'file:///cache/gone.m4a', mimeType: 'audio/mp4' }),
+      cancel: async () => undefined,
+    },
+    transcribe: { async transcribe() { return { text: 'ok' }; } },
+    newRequestId: () => 'req-cleanup-4',
+    audioCleanup: async () => { throw new Error('EFILEGONE'); },
+  });
+  await dictation.begin();
+  await dictation.finish();
+  assert.equal(dictation.state().phase, 'review', '清理失败不得影响转写主流程');
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  process.off('unhandledRejection', onUnhandled);
+  assert.deepEqual(unhandled, [], '清理 rejection 必须被模块吞掉');
+});

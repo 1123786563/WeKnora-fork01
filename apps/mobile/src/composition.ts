@@ -32,12 +32,12 @@ import { createDeviceRegistry, createNotificationInbox, type DeviceRegistry, typ
 import { createMobileDeviceRemote } from '@weknora/api-client/mobile/devices';
 import { createMobileInboxRemote } from '@weknora/api-client/mobile/inbox';
 import { createDictation } from '@weknora/mobile-core';
-import type { Dictation } from '@weknora/mobile-core';
+import type { Dictation, DictationAudio } from '@weknora/mobile-core';
 import { createMobileVoiceTranscriptionRemote } from '@weknora/api-client/mobile/voice';
 import { createMobileVoiceSessionRemote } from '@weknora/api-client/mobile/voice-sessions';
 import { createVoiceRoom } from '@weknora/mobile-core';
 import type { VoiceRoom } from '@weknora/mobile-core';
-import { createNativeDictationCaptureIfAvailable } from './adapters/dictation-capture.ts';
+import { createNativeAudioFileCleanupIfAvailable, createNativeDictationCaptureIfAvailable } from './adapters/dictation-capture.ts';
 import { createNativePushTokenIfAvailable } from './adapters/push-token.ts';
 import { createNativeDeviceIdentity, nativeDevicePlatform } from './adapters/device-identity.ts';
 import { createFetchBlobAdapter, createNativeSharePortIfAvailable } from './adapters/material-adapters.ts';
@@ -51,6 +51,7 @@ import { createNativeRequestId } from './adapters/request-id.ts';
 import { createNativeSecureIntentLog } from './adapters/intent-log.ts';
 import { resolveWeKnoraAppId } from './app-id.ts';
 import { createNativeAppStateLifecycle } from './adapters/app-state.ts';
+import { createNativeNotificationPermissionIfAvailable, type NotificationPermissionPort } from './adapters/notification-permission.ts';
 import { createForegroundSyncLoop } from './foreground-sync.ts';
 import { createTaskResearch } from '@weknora/mobile-core';
 import type { ResearchAnnotationDraft, ResearchDraftsPort, TaskResearch } from '@weknora/mobile-core';
@@ -63,6 +64,8 @@ const nativeScopedVault = createNativeScopedVaultIfAvailable();
 const nativeOfflineGate = createOfflineGate(createNativeNetworkStatusIfAvailable());
 /** 听写捕获原生 Adapter 单例（组合根唯一探测点；不可用时全 App 无麦克风入口，fail closed）。 */
 const nativeDictationCapture = createNativeDictationCaptureIfAvailable();
+/** 临时音频文件清理原生 Adapter 单例（#70 文件 URI 工作流；缺包 fail closed → undefined）。 */
+const nativeAudioCleanup = createNativeAudioFileCleanupIfAvailable();
 let nativeIntentLog: ReturnType<typeof createNativeSecureIntentLog> | undefined;
 /** 惰性解析 expo-secure-store（与 pendingOidcStore 的函数体内 require 同模式；app-smoke 环境有 stub）。 */
 const intentLogOf = (): ReturnType<typeof createNativeSecureIntentLog> => (nativeIntentLog ??= createNativeSecureIntentLog());
@@ -251,15 +254,24 @@ export async function openNotificationFromInbox(
 }
 
 /** 设备注册入口（spec §4「注册设备与 App 前后台生命周期」）：无原生 push token 或无安全
- * 设备身份时 fail closed 跳过；注册失败不阻塞授权主流程（best effort）。 */
+ * 设备身份时 fail closed 跳过；注册失败不阻塞授权主流程（best effort）。
+ * #70：Android 13+ 通知运行时权限先于 token 获取——权限弹窗不随 token 自动出现，denied
+ * 时注册出的是收不到可显示通知的幽灵设备；短路结果如实上报 'permission-denied'，bounded
+ * 重试由调用方既有 attempts 上限承担（composition.ts MobileApp effect）。 */
 export async function registerActiveDeviceIfPossible(
   activeRuntime: Pick<MobileRuntime, 'snapshot' | 'authorizedRequest' | 'scopeLease'>,
   tokenSource: { token(): Promise<string | undefined> } = createNativePushTokenIfAvailable(),
   identity: { deviceId(): Promise<string | undefined> } = createNativeDeviceIdentity(),
-): Promise<'registered' | 'no-token' | 'no-device-id' | 'unauthorized' | 'failed'> {
+  permission: NotificationPermissionPort | undefined = createNativeNotificationPermissionIfAvailable(),
+): Promise<'registered' | 'no-token' | 'no-device-id' | 'permission-denied' | 'unauthorized' | 'failed'> {
   const snapshot = activeRuntime.snapshot();
   const origin = snapshot.deployment?.origin;
   if (snapshot.surface !== 'authorized' || origin === undefined) return 'unauthorized';
+  if (permission !== undefined) {
+    const outcome = await permission.ensure();
+    if (outcome === 'denied') return 'permission-denied';
+    // 'unavailable' 继续走既有链：token 通道自身 fail closed（no-token），不做二次伪造。
+  }
   const token = await tokenSource.token();
   if (token === undefined) return 'no-token';
   const deviceId = await identity.deviceId();
@@ -349,6 +361,18 @@ function dictationFor(activeRuntime: MobileRuntime, origin: string, tenantId: st
     capture: nativeDictationCapture,
     transcribe: createMobileVoiceTranscriptionRemote({ origin, request: (input) => activeRuntime.authorizedRequest(input) }),
     newRequestId: createNativeRequestId(),
+    // #70：AudioFileCleanupPort（deleteAsync 对象）必须适配为 DictationPorts.audioCleanup
+    //（(audio) => Promise 函数）——直接注入对象会在 dropIntent 调用时同步抛 TypeError（Review
+    // Focus 3 的失效模式）。仅对 uri 源音频删文件；bytes 源无盘上文件（与 Task 3 模块侧语义
+    // 一致）；删除 rejection 由模块 dropIntent 的 .catch 吞掉。
+    ...(nativeAudioCleanup === undefined
+      ? {}
+      : {
+          audioCleanup: async (audio: DictationAudio): Promise<void> => {
+            if (audio.uri === undefined) return;
+            await nativeAudioCleanup.deleteAsync(audio.uri);
+          },
+        }),
   }));
 }
 

@@ -3,3 +3,5 @@
 # take precedence over the root negations.
 node_modules/
 .expo/
+# CNG（expo prebuild）流程：android/ 目录是生成产物，勿提交（与根 .gitignore 的 ios/ 同一约定）
+android/
