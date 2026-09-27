@@ -1,0 +1,5 @@
+out_trade_no=mo_52e20bee3fd6f264 state=SUCCESS txn=wx_txn_83_main_muj7rmur
+replay1: stub ok=true detail={"code":"SUCCESS","message":"OK"}
+replay2: stub ok=true detail={"code":"SUCCESS","message":"OK"}
+counts: {"orders":"2","fulfilled":"1","outboxFulfill":"1","attempts":"1"}
+lago payments succeeded (tenant 20 purchase): 1
