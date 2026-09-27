@@ -102,27 +102,27 @@
 
 **根因与修复说明：** Cloud v2 创建请求体键名 `space_id`/`parent_id` 与官方 camelCase 契约不符，真实 Cloud 实例首次调用即 400。既有测试双打按 snake_case 键解码自洽绿灯（掩盖面）；工作区 RED 已把 fake 改为仅认官方键，4 项 FAIL 复现缺陷（ask 指定命令原样复跑确认）。
 
-- [ ] **Step 1: 确认工作区 RED 形态（不重写）**
+- [x] **Step 1: 确认工作区 RED 形态（不重写）**
 
 `git status` 确认 `confluence_create_test.go` 未提交修改在场；实读 fake 的键校验（仅认 `spaceId`/`parentId`）与 `TestConfluenceCreateWireUsesOfficialCamelCaseKeys` 断言形态。
 
-- [ ] **Step 2: 实跑确认失败**
+- [x] **Step 2: 实跑确认失败**
 
 Run: `go test ./internal/modules/appconnector/ -run "TestConfluenceCreate" -count=1`
 Expected: FAIL ×4（`status=400`——本计划作者基线已复跑确认）。
 
-- [ ] **Step 3: 最小实现**
+- [x] **Step 3: 最小实现**
 
 按 Interfaces Produces 改两个 json tag（一处结构体、两行改动）。
 
-- [ ] **Step 4: 实跑确认通过 + 回归**
+- [x] **Step 4: 实跑确认通过 + 回归**
 
 Run: `go test ./internal/modules/appconnector/ -run "TestConfluenceCreate" -count=1`
 Expected: PASS。
 Run: `go test ./internal/modules/appconnector/...`
 Expected: 全 ok（基线 4 项 RED 转绿）。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/modules/appconnector/confluence_create.go internal/modules/appconnector/confluence_create_test.go
@@ -144,7 +144,7 @@ git commit -m "fix(confluence): use official camelCase keys on the Cloud v2 crea
 
 **根因与修复说明：** 上限本意是防失控响应，静默截断把它变成两处数据损坏。F6：create/update 回显与 Query 对账读（`body-format=storage` 携带全文，confluence_create.go:176-178）一旦超 1MiB 即截断 → JSON 解析失败 → 已成功的发布被判 ActionUnknown 且 Query 永远无法收敛；F9：`maxBaselineBytes=16MB` 允许单 blob 8-16MB，callRaw 8MB 截断无错——MaterializeBaseline 把截断基线写入会话工作区（静默基线损坏随交付发出）、EnsureBranch 兜底取回（gitlab_client.go:325-341）把截断 blob base64 提交进任务分支，且 Blob 无 sha 校验兜底。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```go
 // gitlab_wire_test.go（或同包既有 fake 宿主）
@@ -166,12 +166,12 @@ func TestConfluenceDoAcceptsMultiMegabyteStorageEcho(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: 实跑确认失败**
+- [x] **Step 2: 实跑确认失败**
 
 Run: `go test ./internal/modules/codedelivery/ -run 'TestGitLabRawRejects|TestGitLabBlobVerifies'` 与 `go test ./internal/modules/appconnector/ -run 'TestConfluenceDoRejects|TestConfluenceDoAccepts'`
 Expected: FAIL ×4——当前返回截断字节、无检测；Blob 无校验。
 
-- [ ] **Step 3: 最小实现**
+- [x] **Step 3: 最小实现**
 
 ```go
 raw, err := io.ReadAll(io.LimitReader(resp.Body, cap+1))
@@ -181,12 +181,12 @@ if len(raw) > cap { return /* 各自家族错误，含 method/path/cap */ }
 
 （两处同型；Blob 的 sha 校验按 Produces (c)，算法与 CreateBlob 的生成侧实读对齐。）
 
-- [ ] **Step 4: 实跑确认通过 + 回归**
+- [x] **Step 4: 实跑确认通过 + 回归**
 
 Run: `go test ./internal/modules/codedelivery/ ./internal/modules/appconnector/...`
 Expected: PASS（两域基线全绿维持，含 Task 1 转绿后的 appconnector）。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/modules/appconnector/confluence_create.go internal/modules/codedelivery/gitlab_client.go internal/modules/codedelivery/gitlab_wire_test.go
@@ -207,7 +207,7 @@ git commit -m "fix(http): detect cap-exceeding responses and verify blob content
 
 **根因与修复说明：** 对账对 storage 做字节精确相等，而发布侧写入的是「本地转义形态」、服务端读回的是「服务端重序列化形态」——正文含引号/可归一空白时两者永不相等，实际已落地的 PUT 一旦 park unknown，每次对账 unverifiable、action 永久停留 unknown（unknown 行本身永久滞留需人工处置）。归一化只消除**已知**重序列化噪声（实体还原与空白归一），真实内容漂移（多一段文字）仍拒收——不可比时维持 unverifiable 是诚实语义而非缺陷。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```go
 // confluence_update_test.go 追加
@@ -220,21 +220,21 @@ func TestConfluenceQueryStillRejectsRealContentDrift(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: 实跑确认失败**
+- [x] **Step 2: 实跑确认失败**
 
 Run: `go test ./internal/modules/appconnector/ -run 'TestConfluenceQueryConvergesAfterServer|TestConfluenceQueryStillRejects'`
 Expected: 第一项 FAIL（当前字节比较永假）、第二项 PASS（先跑出基线语义）。
 
-- [ ] **Step 3: 最小实现**
+- [x] **Step 3: 最小实现**
 
 按 Interfaces Produces 落地 `normalizeStorageXHTML` 并替换 :287 的比较操作数（title/storage 各自归一后比较；版本号先决检查不动）。
 
-- [ ] **Step 4: 实跑确认通过 + 回归**
+- [x] **Step 4: 实跑确认通过 + 回归**
 
 Run: `go test ./internal/modules/appconnector/ -run 'Confluence'` 与 `go test ./internal/modules/appconnector/...`
 Expected: PASS。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/modules/appconnector/confluence_update.go internal/modules/appconnector/confluence_update_test.go
@@ -257,7 +257,7 @@ git commit -m "fix(confluence): normalize server-reserialized storage before que
 
 **根因与修复说明：** GitLab 平台语义允许同一 source_branch 对不同 target_branch 存在多个开放 MR（与 GitHub head 唯一键不同），当前凭 head 单维度取首条即复用——DraftPullRequest 可能复用指向其他 base 的无关 MR 写错误回执；QueryProvider 凭无关 MR 把 unknown 误判 delivered（错误终态无法自愈）；`per_page=20` 无翻页使 >20 条时目标 MR 漏检。F10 是同文件错误分类纪律：2xx 解码失败被归类 ErrCodeRequestInvalid（4xx 误导）。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```go
 // gitlab_wire_test.go 追加
@@ -280,21 +280,21 @@ func TestQueryProviderIgnoresForeignTargetMR(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: 实跑确认失败**
+- [x] **Step 2: 实跑确认失败**
 
 Run: `go test ./internal/modules/codedelivery/ -run 'PullRequestForHead|CallClassifies|QueryProviderIgnores'`
 Expected: FAIL ×4——当前无 target 维度、无翻页、解码失败误分类、无关 MR 误判 delivered。
 
-- [ ] **Step 3: 最小实现**
+- [x] **Step 3: 最小实现**
 
 按 Interfaces Produces 落地（签名变更波及面：grep 全部调用点同步，接口声明处一并改）。
 
-- [ ] **Step 4: 实跑确认通过 + 回归**
+- [x] **Step 4: 实跑确认通过 + 回归**
 
 Run: `go test ./internal/modules/codedelivery/`
 Expected: PASS（含 GitHub 链既有用例——GitHub 客户端同型接口若受签名影响，按其现有形态适配并保持行为不变）。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/modules/codedelivery/
@@ -317,7 +317,7 @@ git commit -m "fix(gitlab): resolve MRs by source+target with pagination, classi
 
 **根因与修复说明：** F11：新任务分支从默认分支 `start_branch` 收敛，commit actions 数 = 完整 default↔baseline 增量而非仅 staged 变更——基线锚定较旧 SHA 时超过 cap（1000）或默认分支超 Tree 50 页（5000 entries）即在批准已消耗后以语义误导的 `ErrBaselineTooLarge` 失败（真因是锚定错误不是基线过大），且每次派发两次全量递归树拉取放大延迟与配额；GitHub 链的对照实现锚定 BaselineSHA，GitLab 链偏离。F13：空收敛+新分支路径的裸 `ErrInvalidMaterial` 发生在出网之前、可证未创建任何远端资源，但 settleOutcome 只认 `ErrDispatchNotStarted`——该路径落 ActionUnknown 且分支/MR 均未创建，QueryProvider 永查不到远端事实，批准被消耗后交付永久滞留 unknown 无自愈路径。修复统一为：锚定对齐 GitHub 链语义；本地可证拒绝进 ErrDispatchNotStarted → settle 落 ActionFailed（确定性失败，用户可重开计划，不滞留 unknown）。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```go
 // gitlab_wire_test.go 追加
@@ -338,21 +338,21 @@ func TestDispatchSettlesFailedOnEnsureBranchLocalRejection(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: 实跑确认失败**
+- [x] **Step 2: 实跑确认失败**
 
 Run: `go test ./internal/modules/codedelivery/ -run 'EnsureBranchAnchors|EnsureBranchEmptyConvergence|DispatchSettlesFailed'`
 Expected: FAIL ×3。
 
-- [ ] **Step 3: 最小实现**
+- [x] **Step 3: 最小实现**
 
 按 Interfaces Produces 落地（stagedBase 与 BaselineSHA 的关系、start_branch 传 SHA 的可行性以实读+实测定，选型记入 commit message）。
 
-- [ ] **Step 4: 实跑确认通过 + 回归**
+- [x] **Step 4: 实跑确认通过 + 回归**
 
 Run: `go test ./internal/modules/codedelivery/`
 Expected: PASS。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/modules/codedelivery/
@@ -375,7 +375,7 @@ git commit -m "fix(gitlab): anchor new task branches at the baseline and settle 
 
 **根因与修复说明：** F1：reconcile 在每次 List/Get 请求时对每个 active adoption 重放 listing+两份 Release 读取并完整解码两份 Bundle JSON（携带完整便携 payload）计算 diff，已物化组合不做存在性短路——读路径 O(N) 次大 JSON 解码 + ~3N 条 DB 往返，adoption 数量大的租户列表/详情请求持续退化。F2：open 建议不随 Adoption 前进而关闭——re-adopt 前进 AcceptedReleaseID 后，from_release_id 脱节的 open 建议永久残留且可 Accept（Accept 不校验 FromReleaseID==AcceptedReleaseID），创建指向已被越过 Release 的冗余草稿 Variant。F4：`now func() time.Time` 为死注入（误导维护者以为服务层控制时间源，时间戳实际全由 repository 层生成）。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```go
 // agent_upgrade_test.go 追加
@@ -398,23 +398,23 @@ func TestAcceptRejectsProposalFromStaleReleasePointer(t *testing.T) {
 
 （F4 为编译级验证：Step 3 移除字段后 `go build ./...` 通过即证明无调用点。）
 
-- [ ] **Step 2: 实跑确认失败**
+- [x] **Step 2: 实跑确认失败**
 
 Run: `go test ./internal/application/service/ -run 'TestReconcileSkips|TestReconcileDismisses|TestAcceptRejectsProposal'`
 Expected: FAIL ×3。
 
-- [ ] **Step 3: 最小实现**
+- [x] **Step 3: 最小实现**
 
 按 Interfaces Produces 落地（索引 map 的键编码、resolved_by 系统标记值按实读字段定；now 移除含 time import 清理）。
 
-- [ ] **Step 4: 实跑确认通过 + 回归**
+- [x] **Step 4: 实跑确认通过 + 回归**
 
 Run: `go test ./internal/application/service/`
 Expected: PASS。
 Run: `go build ./... && go test ./internal/application/service/ ./internal/application/repository/`
 Expected: build exit 0；repository 仅差异记录 7 的 3 项预存在失败（不新增）。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/application/service/agent_upgrade.go internal/application/service/agent_upgrade_test.go
@@ -435,7 +435,7 @@ git commit -m "fix(agent-upgrade): short-circuit materialized pairs, dismiss sta
 
 **根因与修复说明：** 冲突更新面包含 created_by 与实体契约不符（re-register 只更新 flags），许可翻转的正常传播路径会永久覆盖「首次登记人」审计信息；且冲突路径返回的是本次输入副本（CreatedAt=本次 now、CreatedBy=本次 actor），handler 直接渲染——重复登记后 API 报出与库中行不符的 created_at/created_by。与一轮批次「值传递 store 不得回显未落库状态」同族纪律：重读库行再返回。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```go
 // repository 层测试追加（宿主按 Step 前实读定）
@@ -447,21 +447,21 @@ func TestUpsertLicensePreservesFirstRegistrar(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: 实跑确认失败**
+- [x] **Step 2: 实跑确认失败**
 
 Run: `go test ./internal/application/repository/ -run TestUpsertLicensePreservesFirstRegistrar`
 Expected: FAIL——当前 DoUpdates 覆盖 created_by 且返回输入副本。
 
-- [ ] **Step 3: 最小实现**
+- [x] **Step 3: 最小实现**
 
 按 Interfaces Produces 落地（两处改动：DoUpdates 列清单 + 返回前重读）。
 
-- [ ] **Step 4: 实跑确认通过 + 回归**
+- [x] **Step 4: 实跑确认通过 + 回归**
 
 Run: `go test ./internal/application/repository/ -run 'License|Lineage'` 与 `go test ./internal/application/service/`
 Expected: PASS（repository 全量仅差异记录 7 的 3 项预存在失败）。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/application/repository/agent_marketplace_lineage.go
@@ -484,7 +484,7 @@ git commit -m "fix(marketplace): preserve the first license registrar and return
 
 **根因与修复说明：** `ConfluencePublishService`（confluence.go 全文件 234 行）与 `NotionPublishService`（plan.go:108 起）五方法完全平行、逐行同构，是 #49/#50 ProviderProfile 抽象落地时 confluence 侧未收敛的遗留——每次服务体修 bug 都要双写（本批 Task 3 的对账语义已在两侧各有一份投影）。修复先例齐备（NewProviderPublishService 预留 + feishu 已走通），按样板收敛即可。
 
-- [ ] **Step 1: 写守护测试**
+- [x] **Step 1: 写守护测试**
 
 ```go
 // provider_test.go 追加
@@ -496,21 +496,21 @@ func TestConfluencePublishServiceIsProviderProfileThin(t *testing.T) {
 
 （行为面以既有 `confluence_test.go` 全绿为准入——本任务是行为不变重构，既有测试即回归网。）
 
-- [ ] **Step 2: 实跑确认失败**
+- [x] **Step 2: 实跑确认失败**
 
 Run: `go test ./internal/modules/appconnector/publish/ -run TestConfluencePublishServiceIsProviderProfileThin`
 Expected: FAIL——当前服务体在位。
 
-- [ ] **Step 3: 最小实现（重构）**
+- [x] **Step 3: 最小实现（重构）**
 
 按 Interfaces Produces 落地；每挪一段决策跑一次 `go test ./internal/modules/appconnector/publish/ ./internal/modules/appconnector/...` 保持全绿（小步重构、频繁可回退）。
 
-- [ ] **Step 4: 实跑确认通过 + 回归**
+- [x] **Step 4: 实跑确认通过 + 回归**
 
 Run: `go test ./internal/modules/appconnector/... ./internal/handler/ -run 'Publish|Confluence'`
 Expected: PASS（handler/container 调用面零行为变化）。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/modules/appconnector/publish/ internal/container/confluence_publish.go
@@ -521,12 +521,12 @@ git commit -m "refactor(publish): collapse ConfluencePublishService onto the pro
 
 ## 终局验收（全批完成后）
 
-- [ ] Run: `go build ./...`
+- [x] Run: `go build ./...`
   Expected: exit 0（仅 ld 重复库警告）。
-- [ ] Run: `go test ./internal/modules/appconnector/... ./internal/modules/codedelivery/`
+- [x] Run: `go test ./internal/modules/appconnector/... ./internal/modules/codedelivery/`
   Expected: 全 ok（基线 4 项 TestConfluenceCreate RED 已转绿）。
-- [ ] Run: `go test ./internal/application/... 2>&1 | grep -E "^FAIL"`
+- [x] Run: `go test ./internal/application/... 2>&1 | grep -E "^FAIL"`
   Expected: 仅 `internal/application/repository`（差异记录 7 的 3 项预存在 delivery e2e，域外不修）；service 全 ok。
-- [ ] Run: `go vet ./internal/modules/appconnector/... ./internal/modules/codedelivery/ ./internal/application/...`
+- [x] Run: `go vet ./internal/modules/appconnector/... ./internal/modules/codedelivery/ ./internal/application/...`
   Expected: 无新增告警。
-- [ ] 发现对账：10 项主发现全部有对应任务与测试（覆盖对照表 10 行）；3 项 lowWorth 全部有折叠归宿（F4→Task 6、F10→Task 4、F12→Task 8）。
+- [x] 发现对账：10 项主发现全部有对应任务与测试（覆盖对照表 10 行）；3 项 lowWorth 全部有折叠归宿（F4→Task 6、F10→Task 4、F12→Task 8）。
