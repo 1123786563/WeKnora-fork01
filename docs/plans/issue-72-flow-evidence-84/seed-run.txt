@@ -1,0 +1,35 @@
+== register placeholders (absorb Lago tenant ids earlier rounds occupy) ==
+placeholder-1: HTTP 201 (registered)
+placeholder-2: HTTP 201 (registered)
+placeholder-3: HTTP 201 (registered)
+placeholder-4: HTTP 201 (registered)
+placeholder-5: HTTP 201 (registered)
+placeholder-6: HTTP 201 (registered)
+placeholder-7: HTTP 201 (registered)
+placeholder-8: HTTP 201 (registered)
+placeholder-9: HTTP 201 (registered)
+placeholder-10: HTTP 201 (registered)
+placeholder-11: HTTP 201 (registered)
+placeholder-12: HTTP 201 (registered)
+placeholder-13: HTTP 201 (registered)
+placeholder-14: HTTP 201 (registered)
+placeholder-15: HTTP 201 (registered)
+placeholder-16: HTTP 201 (registered)
+placeholder-17: HTTP 201 (registered)
+placeholder-18: HTTP 201 (registered)
+placeholder-19: HTTP 201 (registered)
+placeholder-20: HTTP 201 (registered)
+== register protagonists ==
+a (browser buyer): HTTP 201 (registered)
+b (publisher): HTTP 201 (registered)
+tenant A (browser buyer) = 21
+tenant B (publisher) = 22, user id = 0a045dec-a862-4ad5-80bf-cd7d1ef181a6
+== grants: plan_publish (B) + refund_review (B) at platform scope ==
+granted: 2 row(s) for B
+== draft + publish plan pro v1 (9900 CNY monthly, advanced_models) ==
+draft: {"success":true,"state":"draft","key":"pro","v":1}
+publish: {"success":true,"receipt":"publish_plan_version:pro:1"}
+== assert publication landed in Lago (:48889, 82r5 stack) ==
+lago 9900 plans: [{"code":"weknora-pro-v2","amount_cents":9900,"interval":"monthly"},{"code":"weknora-pro-v1","amount_cents":9900,"interval":"monthly"}]
+plan weknora-pro-v1 present at the exact 9900/monthly face
+SEED OK (tenants A=21 B=22)
