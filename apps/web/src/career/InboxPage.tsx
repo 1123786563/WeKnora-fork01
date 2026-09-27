@@ -5,13 +5,19 @@ import type { ReminderReceipt, ReminderView, SetReminderInput } from '../../../.
 import type { CareerAction, CareerReceipt, CareerView } from '../../../../packages/career-core/src/contracts.ts'
 import { opportunityEvidencePath } from './OpportunityPage.tsx'
 import './inbox.css'
+import { ReceiptMismatchError, errorDetails, isUncertainWrite as baseIsUncertainWrite, newRequestId } from './protocol.ts'
+// ocr3-054/055：ReceiptMismatchError / errorDetails / newRequestId 统一改用
+// protocol.ts 共享实现——本地副本与共享类同名但 instanceof 不互通；本页
+// 端点特定的确定性失败码在基础契约之上叠加。
+const endpointDefiniteCodes: readonly string[] = ['revision_conflict']
+const isUncertainWrite = (cause: unknown): boolean => endpointDefiniteCodes.includes(errorDetails(cause).code ?? '') ? false : baseIsUncertainWrite(cause)
+
 
 type ReadState = 'loading' | 'ready' | 'error' | 'forbidden' | 'scope-changed'
 type WritePhase = 'idle' | 'busy' | 'unknown' | 'error'
 type WriteAttempt = { kind: 'reminder'; requestId: string; input: SetReminderInput } | { kind: 'subscription'; requestId: string; value: 'subscribed' | 'unsubscribed' }
 type SubscriptionAttempt = Extract<WriteAttempt, { kind: 'subscription' }>
 type ApplicationRef = { snapshotId: string; opportunityId: string }
-const newRequestId = (): string => typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`
 // Frozen backend enums rendered verbatim (internal/modules/career/
 // reminder.go): the todo body is the frozen privacy literal and the push
 // reasons are the closed set; the UI never invents a source kind, a notice
@@ -23,19 +29,6 @@ const PUSH_UNSUBSCRIBED = 'unsubscribed'
 // A receipt that does not answer the request it claims is a definite
 // protocol error, unlike a network TypeError, which leaves the write outcome
 // genuinely unknown and must route into receipt recovery.
-class ReceiptMismatchError extends Error {}
-
-function errorDetails(cause: unknown): { code?: string; requestId?: string; currentRevision?: number; status?: number; message: string } {
- const error = cause as { code?: string; requestId?: string; currentRevision?: number; status?: number; message?: string }
- return { code: error?.code, requestId: error?.requestId, currentRevision: error?.currentRevision, status: error?.status, message: error?.message || '请求未完成' }
-}
-function isUncertainWrite(cause: unknown): boolean {
- const error = errorDetails(cause)
- if (error.code === 'TIMEOUT' || error.code === 'outcome_unknown') return true
- if (['forbidden', 'invalid_request', 'idempotency_conflict', 'revision_conflict', 'request_too_large', 'PAYLOAD_TOO_LARGE', 'not_found', 'unauthorized'].includes(error.code ?? '')) return false
- if (error.status !== undefined) return error.status >= 500 || error.status < 400
- return true
-}
 function pushOutcomeNote(receipt: ReminderReceipt): string {
  // The push report is response-only: neither outcome touches the todo.
  if (!receipt.push) return ''

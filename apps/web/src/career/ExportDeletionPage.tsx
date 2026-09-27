@@ -3,10 +3,16 @@ import type { WeKnoraClient } from '@weknora/api-client'
 import type { ScopeController } from '@weknora/domain/scope'
 import type { CareerDeletionBoundaryView, CareerDeletionReceipt, CareerDeletionStatus, CareerDeletionStep, CareerDeletionStepName, CareerDeletionStepStatus, CareerExportReceipt } from '../../../../packages/api-client/src/career.ts'
 import './export-deletion.css'
+import { ReceiptMismatchError, errorDetails, isUncertainWrite as baseIsUncertainWrite, newRequestId } from './protocol.ts'
+// ocr3-054/055：ReceiptMismatchError / errorDetails / newRequestId 统一改用
+// protocol.ts 共享实现——本地副本与共享类同名但 instanceof 不互通；本页
+// 端点特定的确定性失败码在基础契约之上叠加。
+const endpointDefiniteCodes: readonly string[] = ['revision_conflict']
+const isUncertainWrite = (cause: unknown): boolean => endpointDefiniteCodes.includes(errorDetails(cause).code ?? '') ? false : baseIsUncertainWrite(cause)
+
 
 type Phase = 'idle' | 'busy' | 'unknown' | 'error'
 type Attempt = { requestId: string; expectedRevision: number }
-const newRequestId = (): string => typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`
 // Frozen backend enums rendered verbatim (internal/modules/career/
 // career_export.go): the deletion step vocabulary and its three durable
 // statuses are closed sets the UI never extends, and “已完全删除” is reserved
@@ -20,22 +26,6 @@ const stepNameLabels: Record<CareerDeletionStepName, string> = {
 const stepStatusLabels: Record<CareerDeletionStepStatus, string> = { pending: '待执行', done: '已完成', failed: '失败' }
 const deletionStatusLabels: Record<CareerDeletionStatus, string> = { deleting: '删除进行中', partial: '部分失败（未完全删除，可恢复）', deleted: '已完全删除' }
 
-// A receipt that does not match the request it answers is a definite protocol
-// error, unlike a network TypeError (a failed fetch), which leaves the write
-// outcome genuinely unknown and must route into receipt recovery.
-class ReceiptMismatchError extends Error {}
-
-function errorDetails(cause: unknown): { code?: string; requestId?: string; currentRevision?: number; status?: number; message: string } {
- const error = cause as { code?: string; requestId?: string; currentRevision?: number; status?: number; message?: string }
- return { code: error?.code, requestId: error?.requestId, currentRevision: error?.currentRevision, status: error?.status, message: error?.message || '请求未完成' }
-}
-function isUncertainWrite(cause: unknown): boolean {
- const error = errorDetails(cause)
- if (error.code === 'TIMEOUT' || error.code === 'outcome_unknown') return true
- if (['forbidden', 'invalid_request', 'idempotency_conflict', 'revision_conflict', 'request_too_large', 'PAYLOAD_TOO_LARGE', 'not_found', 'unauthorized'].includes(error.code ?? '')) return false
- if (error.status !== undefined) return error.status >= 500 || error.status < 400
- return true
-}
 
 const snapshotCount = (view: CareerDeletionBoundaryView | undefined, section: string): number => view?.inSpace.find((item) => item.section === section)?.count ?? 0
 

@@ -117,7 +117,9 @@ export function UserMessageFace(props: {
   const row = message as Record<string, unknown>;
   const images = Array.isArray(row.images) ? row.images as { url?: string }[] : [];
   const attachments = Array.isArray(row.attachments) ? row.attachments as { id?: string; file_name?: string; file_size?: number }[] : [];
-  const steerFailed = row._steerFailed === true;
+  // ocr3-019：宿主 steer-preview.ts 写入的字段是 steer_failed（映射注释里的
+  // Vue _steerFailed 只是语义说明，不是实际字段名）——此前读 _steerFailed 永不匹配。
+  const steerFailed = row.steer_failed === true;
   const steerId = typeof message.steer_id === 'string' ? message.steer_id : undefined;
   return (
     <div className="user_msg_container wk-chat-user-message">

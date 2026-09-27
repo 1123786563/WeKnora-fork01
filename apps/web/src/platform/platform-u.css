@@ -48,7 +48,7 @@
   display: flex;
   max-height: 70vh;
   width: 640px;
-  max-width: calc(100vw-32px);
+  max-width: calc(100vw - 32px);
   flex-direction: column;
   overflow: hidden;
   border-radius: 10px;
@@ -345,7 +345,7 @@
   display: flex;
   height: 100%;
   width: 420px;
-  max-width: calc(100vw-32px);
+  max-width: calc(100vw - 32px);
   flex-direction: column;
   background-color: #fff;
   box-shadow: -10px 0 60px rgba(15,23,32,0.3);

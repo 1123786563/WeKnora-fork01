@@ -145,7 +145,7 @@ export function ConfigSettingsPanel({ client, section, initialValue, models, onS
     disabled={disabled}
     clearable
     options={[{ value: '', label: '—' }, ...modelOptions.map((model) => ({ value: model.id, label: model.name ? model.name + ' (' + model.id + ')' : model.id }))]}
-    onChange={(value) => setValue(key, String(value))}
+    onChange={(value) => setValue(key, String(value ?? ''))}
   />;
 
   const parserToggle = (key: string, label: string) => <label className="wk-config-toggle">

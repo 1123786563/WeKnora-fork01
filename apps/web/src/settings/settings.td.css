@@ -5980,3 +5980,170 @@
    （SystemGlobalSettingsPanel hint 外包 span）为 popup 定位锚，同平移。 */
 .wk-settings-context-contents { display: contents; }
 .wk-settings-hint-anchor { position: relative; display: inline-flex; }
+
+/* ===== SandboxConfigEditor 布局（ocr3-013）=====
+ * 原 sandbox-settings.css 已删除，但编辑器仍消费 wk-net-row/wk-sandbox-rows/
+ * wk-template-row 等 12 处类且全仓无规则——网络规则行/环境变量行失去 flex
+ * 布局垂直堆叠。以下按 Vue 事实源移植：
+ *  - section: SandboxConfigEditorDrawer.vue → .setting-drawer__section
+ *    (integration-landing.less:331)
+ *  - steps/step/marker/title: 同文件 :1708-1802（.sandbox-steps 族）
+ *  - conflict: 同文件 .compact-alert (:2135 附近)
+ *  - switch-row: 同文件 .private-endpoint-row
+ *  - section-row: 同文件 .section-title-row (:1920)
+ *  - rows/net-row: 同文件 .net-list/.net-row/:2191 与 .env-rows/.env-row
+ *  - template-row: 同文件 .template-row (:1993)
+ */
+.wk-settings-drawer-root .wk-sandbox-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+.wk-settings-drawer-root .wk-sandbox-editor-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 0 14px;
+  border-bottom: 1px solid var(--td-component-stroke, #e7e7e7);
+  min-width: 0;
+}
+.wk-settings-drawer-root .wk-sandbox-editor-section > h4 { margin: 0; font-size: 14px; }
+.wk-settings-drawer-root .wk-sandbox-steps {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+.wk-settings-drawer-root .wk-sandbox-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--td-text-color-placeholder, rgba(0, 0, 0, 0.4));
+  transition: color 0.15s ease;
+}
+.wk-settings-drawer-root .wk-sandbox-step:not(:last-child) { flex: 1; }
+.wk-settings-drawer-root .wk-sandbox-step.is-active { color: var(--td-brand-color, #07c05f); }
+.wk-settings-drawer-root .wk-sandbox-step.is-done { color: var(--td-text-color-secondary, rgba(0, 0, 0, 0.6)); }
+.wk-settings-drawer-root .wk-sandbox-step.is-clickable {
+  padding: 0;
+  font: inherit;
+  text-align: left;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.wk-settings-drawer-root .wk-sandbox-step.is-clickable:hover:not(.is-active) { color: var(--td-brand-color, #07c05f); }
+.wk-settings-drawer-root .wk-sandbox-step.is-clickable:focus-visible {
+  outline: 2px solid var(--td-brand-color, #07c05f);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.wk-settings-drawer-root .wk-sandbox-step__marker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+}
+.wk-settings-drawer-root .wk-sandbox-step.is-active .wk-sandbox-step__marker {
+  background: var(--td-brand-color, #07c05f);
+  border-color: var(--td-brand-color, #07c05f);
+  color: #fff;
+}
+.wk-settings-drawer-root .wk-sandbox-step.is-done .wk-sandbox-step__marker {
+  background: rgba(7, 192, 95, 0.12);
+  border-color: rgba(7, 192, 95, 0.35);
+  color: var(--td-brand-color, #07c05f);
+}
+.wk-settings-drawer-root .wk-sandbox-step__title {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wk-settings-drawer-root .wk-sandbox-conflict {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 9px 11px;
+  border: 1px solid var(--td-component-stroke, #e7e7e7);
+  border-radius: 7px;
+  background: var(--td-bg-color-secondarycontainer, #f3f3f3);
+}
+.wk-settings-drawer-root .wk-sandbox-conflict > p { margin: 0; font-size: 12px; line-height: 1.5; }
+.wk-settings-drawer-root .wk-sandbox-switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--td-component-stroke, #e7e7e7);
+  border-radius: 6px;
+  background: var(--td-bg-color-secondarycontainer, #f3f3f3);
+}
+.wk-settings-drawer-root .wk-sandbox-switch-row > div { min-width: 0; }
+.wk-settings-drawer-root .wk-sandbox-switch-row p { margin: 0; }
+.wk-settings-drawer-root .wk-sandbox-section-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+.wk-settings-drawer-root .wk-sandbox-section-row > h4 { margin: 0; font-size: 14px; }
+.wk-settings-drawer-root .wk-sandbox-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.wk-settings-drawer-root .wk-net-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.wk-settings-drawer-root .wk-net-row > .t-input { flex: 1 1 0%; min-width: 0; }
+.wk-settings-drawer-root .wk-net-row > .t-input.env-key { flex: 7 1 140px; }
+.wk-settings-drawer-root .wk-net-row > .t-input.env-value { flex: 13 1 200px; }
+.wk-settings-drawer-root .wk-net-row > .t-button { flex: 0 0 auto; }
+.wk-settings-drawer-root .wk-sandbox-sel-backend { width: 100%; max-width: 320px; }
+.wk-settings-drawer-root .wk-template-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  padding: 10px 12px;
+  overflow: hidden;
+  border: 1px solid var(--td-component-stroke, #e7e7e7);
+  border-radius: 8px;
+  background: var(--td-bg-color-container, #ffffff);
+  color: var(--td-text-color-primary, rgba(0, 0, 0, 0.9));
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.wk-settings-drawer-root .wk-template-row > div { flex: 1 1 0%; min-width: 0; }
+.wk-settings-drawer-root .wk-template-row:hover:not(.is-disabled):not(.wk-template-row--offer) {
+  border-color: var(--td-brand-color, #07c05f);
+}
+.wk-settings-drawer-root .wk-template-row.is-active { border-color: var(--td-brand-color, #07c05f); }
+.wk-settings-drawer-root .wk-template-row:focus-visible {
+  outline: 2px solid var(--td-brand-color, #07c05f);
+  outline-offset: 2px;
+}
+.wk-settings-drawer-root .wk-template-row.is-disabled { cursor: default; }
+.wk-settings-drawer-root .wk-template-row--offer {
+  cursor: default;
+  border-style: dashed;
+}

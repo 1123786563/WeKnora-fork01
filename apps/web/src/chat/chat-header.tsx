@@ -109,13 +109,13 @@ export function ChatHeader(props: ChatHeaderProps) {
     setRenameBusy(true);
     setRenameError(null);
     try {
-      setTitleEditing(false);
-      setTitleDraft('');
       await props.onRenameSession(title);
-    } catch {
+      // 成功后才退出编辑态：失败时保持表单挂载，错误文案才有宿主可渲染（ocr3-005）。
       setTitleEditing(false);
       setTitleDraft('');
+    } catch {
       setRenameError(props.renameTitleFailed);
+      titleInputRef.current?.focus();
     } finally {
       renameSubmittingRef.current = false;
       setRenameBusy(false);

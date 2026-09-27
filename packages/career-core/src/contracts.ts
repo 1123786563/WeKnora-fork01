@@ -36,6 +36,18 @@ export function decodeCareerReceipt(value: unknown): CareerReceipt {
  if (value.kind === 'dismissed' && validProposal(value.proposal)) return value as CareerReceipt
  throw new TypeError('invalid career receipt discriminator payload')
 }
+/** ocr3-142：open()/list() 视图在 desk 边界统一校验——畸形响应（如 revision
+ * 缺失）此前直达状态机，Math.max 产生 NaN 中毒 currentView.revision。 */
+export function decodeCareerView(value: unknown): CareerView {
+ if (!isRecord(value) || typeof value.revision !== 'number' || !Array.isArray(value.facts) || !value.facts.every(validFact) || !Array.isArray(value.proposals) || !value.proposals.every(validProposal)) throw new TypeError('invalid career view')
+ return value as CareerView
+}
+/** ocr3-142：changes() 增量集合同样在 desk 边界校验后再合入状态。 */
+export function decodeCareerChangeSet(value: unknown): CareerChangeSet {
+ const validChange = (change: unknown): boolean => isRecord(change) && typeof change.revision === 'number' && ['proposed', 'confirmed', 'dismissed'].includes(String(change.kind)) && (change.proposal === undefined || validProposal(change.proposal)) && (change.fact === undefined || validFact(change.fact))
+ if (!isRecord(value) || typeof value.revision !== 'number' || !Array.isArray(value.changes) || !value.changes.every(validChange)) throw new TypeError('invalid career change set')
+ return value as CareerChangeSet
+}
 export function decodeCareerError(value: unknown): CareerError {
  if (!isRecord(value) || !isRecord(value.error)) throw new TypeError('invalid career error')
  const body = value.error

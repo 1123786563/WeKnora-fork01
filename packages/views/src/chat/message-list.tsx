@@ -88,6 +88,9 @@ export interface MessageListProps {
    */
   scrollContainerRef?: { current: HTMLDivElement | null };
   onScrolledUpChange?(scrolledUp: boolean): void;
+  /** ocr3-019：注入失败（steer_failed）乐观气泡的重试/移除入口；缺省只读。 */
+  onRetrySteer?(steerId: string): void;
+  onRemoveSteer?(steerId: string): void;
 }
 
 export function messageArtifactItems(message: Record<string, unknown>): ChatArtifact[] {
@@ -222,7 +225,7 @@ export function shouldRenderAssistantMessage(message: ChatMessage): boolean {
   return false;
 }
 
-export function MessageList({ copy, messages, pending, onRetry, loadingOlder = false, hasMore = false, onLoadOlder, suggestions, onSuggestionClick, onRefreshSuggestions, onDismissSuggestions, onCitationClick, onBookmark, onRateMessage, onRemoveRating, ratingOf, onForkMessage, canForkMessage, onArtifactDownload, onArtifactPreview, sessionId = null, typingIndicator = false, onToggleReferences, referencesOpen = false, scrollContainerRef, onScrolledUpChange }: MessageListProps) {
+export function MessageList({ copy, messages, pending, onRetry, loadingOlder = false, hasMore = false, onLoadOlder, suggestions, onSuggestionClick, onRefreshSuggestions, onDismissSuggestions, onCitationClick, onBookmark, onRateMessage, onRemoveRating, ratingOf, onForkMessage, canForkMessage, onArtifactDownload, onArtifactPreview, sessionId = null, typingIndicator = false, onToggleReferences, referencesOpen = false, scrollContainerRef, onScrolledUpChange, onRetrySteer, onRemoveSteer }: MessageListProps) {
   const t = copy ?? resolveChatCopy(resolveChatLocale());
   const localContainerRef = useRef<HTMLDivElement>(null);
   const containerRef = scrollContainerRef ?? localContainerRef;
@@ -391,14 +394,13 @@ export function MessageList({ copy, messages, pending, onRetry, loadingOlder = f
           {showSeparator ? <ConversationTimestamp copy={t} value={message.created_at} /> : null}
           {message.role === 'user' ? (
             <div className="message-row wk-chat-message-row wk-chat-message-row--user" data-message-id={message.id || undefined}>
-              {/* steer retry/remove：宿主 steer 回调（onSteerRetry/onSteerRemove）经
-                  ChatRoutePage 作用于队列 chip；消息行内的失败重试/移除入口当前无
-                  host 接线（占位 no-op），Vue usermsg steer-failure 面保留结构。 */}
+              {/* ocr3-019：宿主 steer 回调（onSteerRetry/onSteerRemove）经
+                  MessageListProps 透传到行内 steer-failure 面的重试/移除按钮。 */}
               <UserMessageFace
                 copy={t}
                 message={message}
-                onRetrySteer={undefined}
-                onRemoveSteer={undefined}
+                onRetrySteer={onRetrySteer}
+                onRemoveSteer={onRemoveSteer}
               />
             </div>
           ) : (

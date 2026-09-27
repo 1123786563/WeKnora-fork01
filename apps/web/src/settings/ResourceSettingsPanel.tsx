@@ -957,7 +957,7 @@ export function ResourceSettingsPanel({ client, section, initialValue, role = 'o
                     else if (value === 'delete') void remove(rowId(row));
                   }}
                 >
-                  <TButton variant="text" shape="square" size="small" style={{ color: 'var(--td-text-color-placeholder, rgba(0, 0, 0, 0.4))', opacity: 0 }} icon={<TIcon name="ellipsis" />} />
+                  <TButton variant="text" shape="square" size="small" style={{ color: 'var(--td-text-color-placeholder, rgba(0, 0, 0, 0.4))' }} icon={<TIcon name="ellipsis" />} />
                 </TDropdown>
               </span> : null}
               {/* Vue 每张 storage 卡尾部都有 opacity:0 的 24px 操作按钮

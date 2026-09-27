@@ -3,11 +3,17 @@ import type { WeKnoraClient } from '@weknora/api-client'
 import type { ScopeController } from '@weknora/domain/scope'
 import type { AppendProgressInput, CorrectProgressInput, ProgressEventView, ProgressEventType, ProgressReceipt, ProgressView } from '../../../../packages/api-client/src/career.ts'
 import './progress.css'
+import { ReceiptMismatchError, errorDetails, isUncertainWrite as baseIsUncertainWrite, newRequestId } from './protocol.ts'
+// ocr3-054/055：ReceiptMismatchError / errorDetails / newRequestId 统一改用
+// protocol.ts 共享实现——本地副本与共享类同名但 instanceof 不互通；本页
+// 端点特定的确定性失败码在基础契约之上叠加。
+const endpointDefiniteCodes: readonly string[] = ['revision_conflict']
+const isUncertainWrite = (cause: unknown): boolean => endpointDefiniteCodes.includes(errorDetails(cause).code ?? '') ? false : baseIsUncertainWrite(cause)
+
 
 type WritePhase = 'idle' | 'busy' | 'unknown' | 'error'
 type ReadState = 'loading' | 'ready' | 'error' | 'forbidden' | 'scope-changed'
 type WriteAttempt = { requestId: string; input: AppendProgressInput | CorrectProgressInput }
-const newRequestId = (): string => typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`
 // Frozen backend enums rendered verbatim (internal/modules/career/progress.go):
 // the seven-stage projection and the event dictionary are closed vocabularies,
 // the UI never invents a stage, an event type, or a provenance kind.
@@ -16,22 +22,6 @@ const eventTypeLabels: Record<ProgressEventType, string> = { pending_submission:
 const eventTypeOptions = Object.keys(eventTypeLabels) as ProgressEventType[]
 const sourceKindLabels: Record<string, string> = { manual: '用户录入', user: '用户录入', system_import: '系统导入' }
 
-// A receipt that does not match the request it answers is a definite protocol
-// error, unlike a network TypeError (a failed fetch), which leaves the write
-// outcome genuinely unknown and must route into receipt recovery.
-class ReceiptMismatchError extends Error {}
-
-function errorDetails(cause: unknown): { code?: string; requestId?: string; currentRevision?: number; status?: number; message: string } {
- const error = cause as { code?: string; requestId?: string; currentRevision?: number; status?: number; message?: string }
- return { code: error?.code, requestId: error?.requestId, currentRevision: error?.currentRevision, status: error?.status, message: error?.message || '请求未完成' }
-}
-function isUncertainWrite(cause: unknown): boolean {
- const error = errorDetails(cause)
- if (error.code === 'TIMEOUT' || error.code === 'outcome_unknown') return true
- if (['forbidden', 'invalid_request', 'idempotency_conflict', 'revision_conflict', 'request_too_large', 'PAYLOAD_TOO_LARGE', 'not_found', 'unauthorized'].includes(error.code ?? '')) return false
- if (error.status !== undefined) return error.status >= 500 || error.status < 400
- return true
-}
 
 function ProgressEventRow({ item, onCorrect }: { item: ProgressEventView; onCorrect: (eventId: string) => void }): ReactNode {
  return <li className={item.corrected ? 'wk-progress__event wk-progress__event--corrected' : item.kind === 'progress_corrected' ? 'wk-progress__event wk-progress__event--correction' : 'wk-progress__event'} aria-label={`进展事件 ${item.eventId}`}>

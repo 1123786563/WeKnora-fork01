@@ -5,16 +5,12 @@ import type { Evaluation, EvaluationReceipt, OpportunityEvidence, OpportunityImp
 import type { OpportunityCompleteness, OpportunityFailureCode, OpportunityObservation, OpportunitySourceStatus, OpportunityURLImportReceipt } from '../../../../packages/api-client/src/career.ts'
 import { ApplicationPage } from './ApplicationPage.tsx'
 import { OpportunityStatusPanel } from './reconciliation.tsx'
-import { errorDetails, isUncertainWrite, newRequestId } from './protocol.ts'
+import { ReceiptMismatchError, errorDetails, isUncertainWrite, newRequestId } from './protocol.ts'
 
 type Attempt = OpportunityImportInput & { opportunityId?: string; priorObservationId?: string }
 type URLAttempt = { requestId: string; url: string; attemptedAt: string }
 type URLImportState = 'idle' | 'busy' | 'unknown' | 'observed' | 'error'
 type ImportState = 'idle' | 'busy' | 'unknown' | 'saved' | 'error' | 'forbidden' | 'scope-changed'
-// A receipt that does not match the request it answers is a definite protocol
-// error, unlike a network TypeError (a failed fetch), which leaves the write
-// outcome genuinely unknown and must route into receipt recovery.
-class ReceiptMismatchError extends Error {}
 // Frozen backend enums rendered verbatim: no frontend-invented status, completeness, or failure code ever reaches the user.
 const sourceStatusLabels: Record<OpportunitySourceStatus, string> = { complete: '来源完整', partial: '内容不完整', login_required: '需要登录', blocked: '访问受限', not_found: '页面不存在', timed_out: '抓取超时', fetch_failed: '抓取失败', policy_unverified: '来源未核验' }
 const completenessLabels: Record<OpportunityCompleteness, string> = { complete: '完整', incomplete: '不完整', unknown: '未知' }
@@ -209,10 +205,11 @@ export function OpportunityImportPanel({ client, scopeController }: { client: We
   try {
    const next = await client.career.evaluateOpportunity({ requestId, opportunityId: fixedReceipt.opportunityId, snapshotId: fixedReceipt.snapshotId }, requestScope.signal)
    if (!scopeController.isCurrent(requestScope.scope) || !evaluationIsCurrent(generation, fixedReceipt)) return
-   if (next.requestId !== requestId || next.opportunityId !== fixedReceipt.opportunityId || next.snapshotId !== fixedReceipt.snapshotId) throw new TypeError('评估回执与固定职位快照不匹配')
+   if (next.requestId !== requestId || next.opportunityId !== fixedReceipt.opportunityId || next.snapshotId !== fixedReceipt.snapshotId) throw new ReceiptMismatchError('评估回执与固定职位快照不匹配')
    setEvaluationReceipt(next); setEvaluationReceipts((previous) => evaluationIsCurrent(generation, fixedReceipt) ? [...previous.filter((item) => item.evaluationId !== next.evaluationId), next] : previous); setEvaluationState('saved'); setEvaluationMessage('评估已保存，可随时重新打开此固定版本。')
   } catch (cause) {
    if (!scopeController.isCurrent(requestScope.scope) || !evaluationIsCurrent(generation, fixedReceipt)) return
+   if (cause instanceof ReceiptMismatchError) { setEvaluationState('error'); setEvaluationMessage(`评估回执与固定职位快照不匹配，本次评估已中止：${cause.message}。请重新发起评估。`); return }
    const parsed = errorDetails(cause)
    if (parsed.code === 'forbidden') { clearPrivate('当前空间不可访问此评估。'); return }
    else if (isUncertainWrite(cause)) { setEvaluationState('unknown'); setEvaluationMessage('暂时无法确认评估是否已保存。请先查询原请求回执，再决定是否使用同一编号重试。') }
@@ -231,10 +228,11 @@ export function OpportunityImportPanel({ client, scopeController }: { client: We
   try {
    const next = await client.career.evaluationReceipt(requestId, requestScope.signal)
    if (!scopeController.isCurrent(requestScope.scope) || !evaluationIsCurrent(generation, fixedReceipt)) return
-   if (next.requestId !== requestId || next.opportunityId !== fixedReceipt.opportunityId || next.snapshotId !== fixedReceipt.snapshotId) throw new TypeError('评估回执与固定职位快照不匹配')
+   if (next.requestId !== requestId || next.opportunityId !== fixedReceipt.opportunityId || next.snapshotId !== fixedReceipt.snapshotId) throw new ReceiptMismatchError('评估回执与固定职位快照不匹配')
    setEvaluationReceipt(next); setEvaluationReceipts((previous) => evaluationIsCurrent(generation, fixedReceipt) ? [...previous.filter((item) => item.evaluationId !== next.evaluationId), next] : previous); setEvaluationState('saved'); setEvaluationMessage('评估已保存，可随时重新打开此固定版本。')
   } catch (cause) {
    if (!scopeController.isCurrent(requestScope.scope) || !evaluationIsCurrent(generation, fixedReceipt)) return
+   if (cause instanceof ReceiptMismatchError) { setEvaluationState('error'); setEvaluationMessage(`评估回执查询未完成：${cause.message}，已放弃本次结果。请重新发起评估。`); return }
    const parsed = errorDetails(cause)
    if (parsed.code === 'forbidden') { clearPrivate('当前空间不可访问此评估。'); return }
    else { setEvaluationState('unknown'); setEvaluationMessage(parsed.code === 'not_found' ? '尚未找到评估回执。可使用原请求编号重试。' : '评估回执暂时无法读取。原请求编号已保留。') }
@@ -294,7 +292,7 @@ export function EvaluationAction({ client, scopeController, opportunityId, snaps
   return () => requestScope.signal?.removeEventListener('abort', clear)
  }, [scopeController, scope.scope.generation])
  const accept = (next: EvaluationReceipt, expectedRequestId: string): void => {
-  if (next.requestId !== expectedRequestId || next.opportunityId !== opportunityId || next.snapshotId !== snapshotId) throw new TypeError('评估回执与固定职位快照不匹配')
+  if (next.requestId !== expectedRequestId || next.opportunityId !== opportunityId || next.snapshotId !== snapshotId) throw new ReceiptMismatchError('评估回执与固定职位快照不匹配')
   setLatest(next); setHistory((previous) => [...previous.filter((item) => item.evaluationId !== next.evaluationId), next]); setState('idle'); setMessage('评估已保存。旧评估仍保留原档案版本。')
  }
  const evaluate = async (id = newRequestId()): Promise<void> => {
@@ -307,6 +305,7 @@ export function EvaluationAction({ client, scopeController, opportunityId, snaps
    accept(next, id)
   } catch (cause) {
    if (!scopeController.isCurrent(requestScope.scope)) return
+   if (cause instanceof ReceiptMismatchError) { setState('error'); setMessage(`评估回执与固定职位快照不匹配，本次评估已中止：${cause.message}。请重新发起评估。`); return }
    const parsed = errorDetails(cause)
    if (parsed.code === 'forbidden') { setLatest(undefined); setHistory([]); setState('forbidden'); setMessage('当前空间不可访问此职位，已清除评估结果。') }
    else if (isUncertainWrite(cause)) { setState('unknown'); setMessage('暂时无法确认评估是否已保存。请先查询原请求回执，再决定是否使用同一编号重试。') }
@@ -323,6 +322,7 @@ export function EvaluationAction({ client, scopeController, opportunityId, snaps
    accept(next, requestId)
   } catch (cause) {
    if (!scopeController.isCurrent(requestScope.scope)) return
+   if (cause instanceof ReceiptMismatchError) { setState('error'); setMessage(`评估回执查询未完成：${cause.message}，已放弃本次结果。请重新发起评估。`); return }
    const parsed = errorDetails(cause)
    if (parsed.code === 'forbidden') { setLatest(undefined); setHistory([]); setState('forbidden'); setMessage('当前空间不可访问此职位，已清除评估结果。') }
    else { setState('unknown'); setMessage(parsed.code === 'not_found' ? '尚未找到回执，可以继续使用原请求编号重试。' : '回执暂时无法读取，可以稍后重试查询。') }

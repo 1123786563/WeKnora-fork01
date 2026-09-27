@@ -169,7 +169,7 @@ export function TenantInfoSection({ client, tenantId, role, locale, payload, err
                         if (e.key === 'Escape') cancelEdits();
                       }}
                     />
-                    <TButton theme="primary" size="small" loading={saving} disabled={!nameDraft.trim()} onClick={() => { void saveName(reload); }}>
+                    <TButton theme="primary" size="small" loading={saving} disabled={!nameDraft.trim() || nameDraft.trim() === currentName.trim()} onClick={() => { void saveName(reload); }}>
                       {t('tenant.details.editNameConfirm')}
                     </TButton>
                     <TButton theme="default" variant="outline" size="small" disabled={saving} onClick={cancelEdits}>
@@ -220,7 +220,7 @@ export function TenantInfoSection({ client, tenantId, role, locale, payload, err
                       }}
                     />
                     <div className="inline-edit-actions">
-                      <TButton theme="primary" size="small" loading={savingDescription} disabled={!descriptionDraft.trim()} onClick={() => { void saveDescription(reload); }}>
+                      <TButton theme="primary" size="small" loading={savingDescription} disabled={descriptionDraft.trim() === currentDescription.trim()} onClick={() => { void saveDescription(reload); }}>
                         {t('tenant.details.editNameConfirm')}
                       </TButton>
                       <TButton theme="default" variant="outline" size="small" disabled={savingDescription} onClick={cancelEdits}>

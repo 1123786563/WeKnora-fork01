@@ -1259,7 +1259,7 @@ export function createCareerApi(request: CareerRequest, binaryRequest?: CareerBi
   async act(action: CareerAction, signal?: AbortSignal): Promise<CareerReceipt> { return decodeCareerReceipt(await request({ method: 'POST', path: '/api/v1/career/act', body: action, ...(signal ? { signal } : {}) })) },
   async sources(signal?: AbortSignal): Promise<CareerDocumentSource[]> { return decodeCareerSources(await request({ method: 'GET', path: '/api/v1/career/sources', ...(signal ? { signal } : {}) })) },
   async upload(file: Blob, fileName: string, requestId: string, expectedRevision: number, signal?: AbortSignal): Promise<CareerUpload> {
-   if (!requestId.trim()) throw new TypeError('career upload requestId must not be empty')
+   if (!requestId.trim()) throw new CareerValidationError('career upload requestId must not be empty')
    const body = new FormData()
    body.append('file', file, fileName)
    body.append('requestId', requestId)
@@ -1267,159 +1267,159 @@ export function createCareerApi(request: CareerRequest, binaryRequest?: CareerBi
    return decodeCareerUpload(await request({ method: 'POST', path: '/api/v1/career/sources/upload', body, ...(signal ? { signal } : {}) }))
   },
   async importUrl(input: OpportunityURLImportInput, signal?: AbortSignal): Promise<OpportunityURLImportReceipt> {
-   if (!input.requestId.trim()) throw new TypeError('URL import requestId must not be empty')
-   if (!input.url.trim()) throw new TypeError('URL import url must not be empty')
+   if (!input.requestId.trim()) throw new CareerValidationError('URL import requestId must not be empty')
+   if (!input.url.trim()) throw new CareerValidationError('URL import url must not be empty')
    return decodeOpportunityURLImportReceipt(await request({ method: 'POST', path: '/api/v1/career/opportunities/import-url', body: { requestId: input.requestId, url: input.url }, ...(signal ? { signal } : {}) }))
   },
   async importOpportunity(input: OpportunityImportInput & { opportunityId?: string; priorObservationId?: string }, signal?: AbortSignal): Promise<OpportunityReceipt> {
-   if (!input.requestId.trim()) throw new TypeError('opportunity import requestId must not be empty')
-   if (!input.rawText.trim()) throw new TypeError('opportunity import rawText must not be empty')
-   if ((input.opportunityId !== undefined) !== (input.priorObservationId !== undefined)) throw new TypeError('opportunity append requires opportunityId and priorObservationId together')
+   if (!input.requestId.trim()) throw new CareerValidationError('opportunity import requestId must not be empty')
+   if (!input.rawText.trim()) throw new CareerValidationError('opportunity import rawText must not be empty')
+   if ((input.opportunityId !== undefined) !== (input.priorObservationId !== undefined)) throw new CareerValidationError('opportunity append requires opportunityId and priorObservationId together')
    const body: OpportunityImportInput & { opportunityId?: string; priorObservationId?: string } = { requestId: input.requestId, rawText: input.rawText, ...(input.sourceLabel !== undefined ? { sourceLabel: input.sourceLabel } : {}), ...(input.sourceReference !== undefined ? { sourceReference: input.sourceReference } : {}), ...(input.opportunityId !== undefined ? { opportunityId: input.opportunityId } : {}), ...(input.priorObservationId !== undefined ? { priorObservationId: input.priorObservationId } : {}) }
    return decodeOpportunityReceipt(await request({ method: 'POST', path: '/api/v1/career/opportunities/import', body, ...(signal ? { signal } : {}) }))
   },
   async opportunityReceipt(requestId: string, signal?: AbortSignal): Promise<OpportunityReceipt> {
-   if (!requestId.trim()) throw new TypeError('opportunity receipt requestId must not be empty')
+   if (!requestId.trim()) throw new CareerValidationError('opportunity receipt requestId must not be empty')
    return decodeOpportunityReceipt(await request({ method: 'GET', path: `/api/v1/career/opportunities/receipt?requestId=${encodeURIComponent(requestId)}`, ...(signal ? { signal } : {}) }))
   },
   async opportunityObservations(opportunityId: string, signal?: AbortSignal): Promise<OpportunityObservationList> {
-   if (!opportunityId.trim()) throw new TypeError('opportunity observations opportunityId must not be empty')
+   if (!opportunityId.trim()) throw new CareerValidationError('opportunity observations opportunityId must not be empty')
    return decodeOpportunityObservations(await request({ method: 'GET', path: `/api/v1/career/opportunities/${encodeURIComponent(opportunityId)}/observations`, ...(signal ? { signal } : {}) }))
   },
   async opportunityEvidence(opportunityId: string, snapshotId: string, signal?: AbortSignal): Promise<OpportunityEvidence> {
-   if (!opportunityId.trim() || !snapshotId.trim()) throw new TypeError('opportunity evidence IDs must not be empty')
+   if (!opportunityId.trim() || !snapshotId.trim()) throw new CareerValidationError('opportunity evidence IDs must not be empty')
    return decodeOpportunityEvidencePage(await request({ method: 'GET', path: `/api/v1/career/opportunities/${encodeURIComponent(opportunityId)}?snapshotId=${encodeURIComponent(snapshotId)}`, ...(signal ? { signal } : {}) }))
   },
   async opportunityStatus(opportunityId: string, signal?: AbortSignal): Promise<OpportunityStatusView> {
-   if (!opportunityId.trim()) throw new TypeError('opportunity status opportunityId must not be empty')
+   if (!opportunityId.trim()) throw new CareerValidationError('opportunity status opportunityId must not be empty')
    return decodeOpportunityStatusView(await request({ method: 'GET', path: `/api/v1/career/opportunities/${encodeURIComponent(opportunityId)}/status`, ...(signal ? { signal } : {}) }))
   },
   async opportunityReconciliations(opportunityId: string, signal?: AbortSignal): Promise<ReconciliationList> {
-   if (!opportunityId.trim()) throw new TypeError('opportunity reconciliations opportunityId must not be empty')
+   if (!opportunityId.trim()) throw new CareerValidationError('opportunity reconciliations opportunityId must not be empty')
    return decodeReconciliationList(await request({ method: 'GET', path: `/api/v1/career/opportunities/${encodeURIComponent(opportunityId)}/reconciliations`, ...(signal ? { signal } : {}) }))
   },
   async reconcileOpportunities(input: ReconcileInput, signal?: AbortSignal): Promise<ReconcileReceipt> {
-   if (!input.requestId.trim() || !input.targetId.trim() || !input.candidateId.trim()) throw new TypeError('reconciliation request identifiers must not be empty')
-   if (input.targetId === input.candidateId) throw new TypeError('reconciliation target and candidate must be different records')
+   if (!input.requestId.trim() || !input.targetId.trim() || !input.candidateId.trim()) throw new CareerValidationError('reconciliation request identifiers must not be empty')
+   if (input.targetId === input.candidateId) throw new CareerValidationError('reconciliation target and candidate must be different records')
    return decodeReconcileReceipt(await request({ method: 'POST', path: '/api/v1/career/opportunities/reconcile', body: { requestId: input.requestId, targetId: input.targetId, candidateId: input.candidateId }, ...(signal ? { signal } : {}) }))
   },
   async reconciliationReceipt(requestId: string, signal?: AbortSignal): Promise<ReconcileReceipt> {
-   if (!requestId.trim()) throw new TypeError('reconciliation receipt requestId must not be empty')
+   if (!requestId.trim()) throw new CareerValidationError('reconciliation receipt requestId must not be empty')
    return decodeReconcileReceipt(await request({ method: 'GET', path: `/api/v1/career/reconciliations/receipt?requestId=${encodeURIComponent(requestId)}`, ...(signal ? { signal } : {}) }))
   },
   async careerCoverage(signal?: AbortSignal): Promise<CareerCoverageView> {
    return decodeCareerCoverageView(await request({ method: 'GET', path: '/api/v1/career/coverage', ...(signal ? { signal } : {}) }))
   },
   async evaluateOpportunity(input: { requestId: string; opportunityId: string; snapshotId: string; profileRevision?: number }, signal?: AbortSignal): Promise<EvaluationReceipt> {
-   if (!input.requestId.trim() || !input.opportunityId.trim() || !input.snapshotId.trim() || (input.profileRevision !== undefined && (!Number.isSafeInteger(input.profileRevision) || input.profileRevision < 0))) throw new TypeError('evaluation request identifiers and revision must be valid')
+   if (!input.requestId.trim() || !input.opportunityId.trim() || !input.snapshotId.trim() || (input.profileRevision !== undefined && (!Number.isSafeInteger(input.profileRevision) || input.profileRevision < 0))) throw new CareerValidationError('evaluation request identifiers and revision must be valid')
    return decodeEvaluationReceipt(await request({ method: 'POST', path: '/api/v1/career/evaluations', body: input, ...(signal ? { signal } : {}) }))
   },
   async evaluationReceipt(requestId: string, signal?: AbortSignal): Promise<EvaluationReceipt> {
-   if (!requestId.trim()) throw new TypeError('evaluation receipt requestId must not be empty')
+   if (!requestId.trim()) throw new CareerValidationError('evaluation receipt requestId must not be empty')
    return decodeEvaluationReceipt(await request({ method: 'GET', path: `/api/v1/career/evaluations/receipt?requestId=${encodeURIComponent(requestId)}`, ...(signal ? { signal } : {}) }))
   },
   async evaluation(evaluationId: string, signal?: AbortSignal): Promise<Evaluation> {
-   if (!evaluationId.trim()) throw new TypeError('evaluation ID must not be empty')
+   if (!evaluationId.trim()) throw new CareerValidationError('evaluation ID must not be empty')
    return decodeEvaluation(await request({ method: 'GET', path: `/api/v1/career/evaluations/${encodeURIComponent(evaluationId)}`, ...(signal ? { signal } : {}) }))
   },
   async createApplication(input: CreateApplicationInput, signal?: AbortSignal): Promise<ApplicationReceipt> {
-   if (!input.requestId.trim() || !input.opportunityId.trim() || !input.snapshotId.trim() || !input.evaluationId.trim() || !input.batchIdentity.trim() || !Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0) throw new TypeError('application request identifiers and revision must be valid')
+   if (!input.requestId.trim() || !input.opportunityId.trim() || !input.snapshotId.trim() || !input.evaluationId.trim() || !input.batchIdentity.trim() || !Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0) throw new CareerValidationError('application request identifiers and revision must be valid')
    return decodeApplicationReceipt(await request({ method: 'POST', path: '/api/v1/career/applications', body: input, ...(signal ? { signal } : {}) }))
   },
   async applicationReceipt(requestId: string, signal?: AbortSignal): Promise<ApplicationReceipt> {
-   if (!requestId.trim()) throw new TypeError('application receipt requestId must not be empty')
+   if (!requestId.trim()) throw new CareerValidationError('application receipt requestId must not be empty')
    return decodeApplicationReceipt(await request({ method: 'GET', path: `/api/v1/career/applications/receipt?requestId=${encodeURIComponent(requestId)}`, ...(signal ? { signal } : {}) }))
   },
   async application(applicationId: string, signal?: AbortSignal): Promise<ApplicationReceipt> {
-   if (!applicationId.trim()) throw new TypeError('application ID must not be empty')
+   if (!applicationId.trim()) throw new CareerValidationError('application ID must not be empty')
    return decodeApplicationReceipt(await request({ method: 'GET', path: `/api/v1/career/applications/${encodeURIComponent(applicationId)}`, ...(signal ? { signal } : {}) }))
   },
   async reconcileApplicationLink(requestId: string, signal?: AbortSignal): Promise<ApplicationReceipt> {
-   if (!requestId.trim()) throw new TypeError('application reconcile requestId must not be empty')
+   if (!requestId.trim()) throw new CareerValidationError('application reconcile requestId must not be empty')
    return decodeApplicationReceipt(await request({ method: 'POST', path: '/api/v1/career/applications/link/reconcile', body: { requestId }, ...(signal ? { signal } : {}) }))
   },
   async searchOnce(input: SearchOnceInput, signal?: AbortSignal): Promise<SearchOnceReceipt> {
-   if (!input.requestId.trim() || !input.query.trim()) throw new TypeError('search requestId and query must not be empty')
-   if (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0) throw new TypeError('search expected revision must be a non-negative integer')
+   if (!input.requestId.trim() || !input.query.trim()) throw new CareerValidationError('search requestId and query must not be empty')
+   if (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0) throw new CareerValidationError('search expected revision must be a non-negative integer')
    return decodeSearchOnceReceipt(await request({ method: 'POST', path: '/api/v1/career/searches', body: { requestId: input.requestId, query: input.query, expectedRevision: input.expectedRevision }, ...(signal ? { signal } : {}) }))
   },
   async searchReceipt(requestId: string, signal?: AbortSignal): Promise<SearchOnceReceipt> {
-   if (!requestId.trim()) throw new TypeError('search receipt requestId must not be empty')
+   if (!requestId.trim()) throw new CareerValidationError('search receipt requestId must not be empty')
    return decodeSearchOnceReceipt(await request({ method: 'GET', path: `/api/v1/career/searches/receipt?requestId=${encodeURIComponent(requestId)}`, ...(signal ? { signal } : {}) }))
   },
   async search(searchId: string, signal?: AbortSignal): Promise<SearchOnceReceipt> {
-   if (!searchId.trim()) throw new TypeError('search ID must not be empty')
+   if (!searchId.trim()) throw new CareerValidationError('search ID must not be empty')
    return decodeSearchOnceReceipt(await request({ method: 'GET', path: `/api/v1/career/searches/${encodeURIComponent(searchId)}`, ...(signal ? { signal } : {}) }))
   },
   async usageEstimate(operation: UsageOperation, signal?: AbortSignal): Promise<UsageEstimateView> {
-   if (operation !== 'search_once' || operation.trim() !== operation) throw new TypeError('usage operation must be search_once')
+   if (operation !== 'search_once' || operation.trim() !== operation) throw new CareerValidationError('usage operation must be search_once')
    return decodeUsageEstimateView(await request({ method: 'GET', path: `/api/v1/career/usage/estimate?operation=${encodeURIComponent(operation)}`, ...(signal ? { signal } : {}) }))
   },
   async setRule(input: SetRuleInput, signal?: AbortSignal): Promise<SetRuleReceipt> {
-   if (!input.requestId.trim() || !input.query.trim()) throw new TypeError('rule requestId and query must not be empty')
-   if (!ruleStatuses.includes(input.status)) throw new TypeError('rule status must be enabled, paused, or disabled')
-   if (!Number.isSafeInteger(input.intervalMinutes) || input.intervalMinutes < minRuleIntervalMinutes || input.intervalMinutes > maxRuleIntervalMinutes) throw new TypeError('rule interval must be an integer between 1 and 43200 minutes')
-   if (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0) throw new TypeError('rule expected revision must be a non-negative integer')
+   if (!input.requestId.trim() || !input.query.trim()) throw new CareerValidationError('rule requestId and query must not be empty')
+   if (!ruleStatuses.includes(input.status)) throw new CareerValidationError('rule status must be enabled, paused, or disabled')
+   if (!Number.isSafeInteger(input.intervalMinutes) || input.intervalMinutes < minRuleIntervalMinutes || input.intervalMinutes > maxRuleIntervalMinutes) throw new CareerValidationError('rule interval must be an integer between 1 and 43200 minutes')
+   if (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0) throw new CareerValidationError('rule expected revision must be a non-negative integer')
    const body: Record<string, unknown> = { requestId: input.requestId, query: input.query, intervalMinutes: input.intervalMinutes, status: input.status, expectedRevision: input.expectedRevision, ...(input.ruleId?.trim() ? { ruleId: input.ruleId.trim() } : {}) }
    return decodeSetRuleReceipt(await request({ method: 'POST', path: '/api/v1/career/rules', body, ...(signal ? { signal } : {}) }))
   },
   async ruleReceipt(requestId: string, signal?: AbortSignal): Promise<SetRuleReceipt> {
-   if (!requestId.trim()) throw new TypeError('rule receipt requestId must not be empty')
+   if (!requestId.trim()) throw new CareerValidationError('rule receipt requestId must not be empty')
    return decodeSetRuleReceipt(await request({ method: 'GET', path: `/api/v1/career/rules/receipt?requestId=${encodeURIComponent(requestId)}`, ...(signal ? { signal } : {}) }))
   },
   async getRule(ruleId: string, signal?: AbortSignal): Promise<RuleView> {
-   if (!ruleId.trim()) throw new TypeError('rule ID must not be empty')
+   if (!ruleId.trim()) throw new CareerValidationError('rule ID must not be empty')
    return decodeRuleView(await request({ method: 'GET', path: `/api/v1/career/rules/${encodeURIComponent(ruleId)}`, ...(signal ? { signal } : {}) }))
   },
   async editMaterial(input: EditMaterialInput, signal?: AbortSignal): Promise<MaterialReceipt> {
-   if (!input.requestId.trim()) throw new TypeError('material requestId must not be empty')
-   if (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0) throw new TypeError('material expected revision must be a non-negative integer')
-   if (!input.materialId?.trim() && (!input.opportunityId?.trim() || !input.snapshotId?.trim())) throw new TypeError('material creation requires opportunity and snapshot IDs')
-   if (!Array.isArray(input.body?.sections) || input.body.sections.length === 0) throw new TypeError('material body must contain at least one section')
+   if (!input.requestId.trim()) throw new CareerValidationError('material requestId must not be empty')
+   if (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0) throw new CareerValidationError('material expected revision must be a non-negative integer')
+   if (!input.materialId?.trim() && (!input.opportunityId?.trim() || !input.snapshotId?.trim())) throw new CareerValidationError('material creation requires opportunity and snapshot IDs')
+   if (!Array.isArray(input.body?.sections) || input.body.sections.length === 0) throw new CareerValidationError('material body must contain at least one section')
    const body: Record<string, unknown> = { requestId: input.requestId, ...(input.materialId?.trim() ? { materialId: input.materialId.trim() } : { opportunityId: input.opportunityId!.trim(), snapshotId: input.snapshotId!.trim() }), body: input.body, expectedRevision: input.expectedRevision }
    return decodeMaterialReceipt(await request({ method: 'POST', path: '/api/v1/career/materials', body, ...(signal ? { signal } : {}) }))
   },
   async confirmMaterial(input: ConfirmMaterialInput, signal?: AbortSignal): Promise<MaterialReceipt> {
-   if (!input.requestId.trim() || !input.materialId.trim()) throw new TypeError('material confirm requestId and materialId must not be empty')
-   if (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0) throw new TypeError('material confirm expected revision must be a non-negative integer')
+   if (!input.requestId.trim() || !input.materialId.trim()) throw new CareerValidationError('material confirm requestId and materialId must not be empty')
+   if (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0) throw new CareerValidationError('material confirm expected revision must be a non-negative integer')
    return decodeMaterialReceipt(await request({ method: 'POST', path: '/api/v1/career/materials/confirm', body: { requestId: input.requestId, materialId: input.materialId, expectedRevision: input.expectedRevision }, ...(signal ? { signal } : {}) }))
   },
   async materialReceipt(requestId: string, signal?: AbortSignal): Promise<MaterialReceipt> {
-   if (!requestId.trim()) throw new TypeError('material receipt requestId must not be empty')
+   if (!requestId.trim()) throw new CareerValidationError('material receipt requestId must not be empty')
    return decodeMaterialReceipt(await request({ method: 'GET', path: `/api/v1/career/materials/receipt?requestId=${encodeURIComponent(requestId)}`, ...(signal ? { signal } : {}) }))
   },
   async material(materialId: string, signal?: AbortSignal): Promise<MaterialView> {
-   if (!materialId.trim()) throw new TypeError('material ID must not be empty')
+   if (!materialId.trim()) throw new CareerValidationError('material ID must not be empty')
    return decodeMaterialView(await request({ method: 'GET', path: `/api/v1/career/materials/${encodeURIComponent(materialId)}`, ...(signal ? { signal } : {}) }))
   },
   async materialVersions(materialId: string, signal?: AbortSignal): Promise<MaterialVersionList> {
-   if (!materialId.trim()) throw new TypeError('material ID must not be empty')
+   if (!materialId.trim()) throw new CareerValidationError('material ID must not be empty')
    return decodeMaterialVersionList(await request({ method: 'GET', path: `/api/v1/career/materials/${encodeURIComponent(materialId)}/versions`, ...(signal ? { signal } : {}) }))
   },
   async materialVersion(materialId: string, version: number, signal?: AbortSignal): Promise<MaterialVersionView> {
-   if (!materialId.trim()) throw new TypeError('material ID must not be empty')
-   if (!Number.isSafeInteger(version) || version <= 0) throw new TypeError('material version must be a positive integer')
+   if (!materialId.trim()) throw new CareerValidationError('material ID must not be empty')
+   if (!Number.isSafeInteger(version) || version <= 0) throw new CareerValidationError('material version must be a positive integer')
    return decodeMaterialVersionView(await request({ method: 'GET', path: `/api/v1/career/materials/${encodeURIComponent(materialId)}/versions/${version}`, ...(signal ? { signal } : {}) }))
   },
   async compareMaterialVersions(materialId: string, baseline: number, target: number, signal?: AbortSignal): Promise<MaterialVersionComparison> {
-   if (!materialId.trim()) throw new TypeError('material ID must not be empty')
-   if (!Number.isSafeInteger(baseline) || baseline <= 0 || !Number.isSafeInteger(target) || target <= 0) throw new TypeError('material compare versions must be positive integers')
+   if (!materialId.trim()) throw new CareerValidationError('material ID must not be empty')
+   if (!Number.isSafeInteger(baseline) || baseline <= 0 || !Number.isSafeInteger(target) || target <= 0) throw new CareerValidationError('material compare versions must be positive integers')
    return decodeMaterialComparison(await request({ method: 'GET', path: `/api/v1/career/materials/${encodeURIComponent(materialId)}/versions/${target}/compare?baseline=${baseline}`, ...(signal ? { signal } : {}) }))
   },
   async publishMaterial(input: PublishMaterialInput, signal?: AbortSignal): Promise<MaterialExportReceipt> {
-   if (!input.requestId.trim() || !input.materialId.trim()) throw new TypeError('material export publish requestId and materialId must not be empty')
-   if (!Number.isSafeInteger(input.version) || input.version <= 0) throw new TypeError('material export publish version must be a positive integer')
-   if (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0) throw new TypeError('material export publish expected revision must be a non-negative integer')
+   if (!input.requestId.trim() || !input.materialId.trim()) throw new CareerValidationError('material export publish requestId and materialId must not be empty')
+   if (!Number.isSafeInteger(input.version) || input.version <= 0) throw new CareerValidationError('material export publish version must be a positive integer')
+   if (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0) throw new CareerValidationError('material export publish expected revision must be a non-negative integer')
    return decodeMaterialExportReceipt(await request({ method: 'POST', path: `/api/v1/career/materials/${encodeURIComponent(input.materialId)}/exports`, body: { requestId: input.requestId, version: input.version, expectedRevision: input.expectedRevision }, ...(signal ? { signal } : {}) }))
   },
   async materialExports(materialId: string, signal?: AbortSignal): Promise<MaterialExportList> {
-   if (!materialId.trim()) throw new TypeError('material export materialId must not be empty')
+   if (!materialId.trim()) throw new CareerValidationError('material export materialId must not be empty')
    return decodeMaterialExportList(await request({ method: 'GET', path: `/api/v1/career/materials/${encodeURIComponent(materialId)}/exports`, ...(signal ? { signal } : {}) }))
   },
   async materialExportSignedURL(materialId: string, exportId: string, format: MaterialExportFormat, ttlSeconds: number, signal?: AbortSignal): Promise<MaterialExportDownload> {
-   if (!materialId.trim() || !exportId.trim()) throw new TypeError('material export grant materialId and exportId must not be empty')
-   if (!materialExportFormats.includes(format)) throw new TypeError('material export grant format must be pdf or docx')
-   if (!Number.isSafeInteger(ttlSeconds) || ttlSeconds <= 0 || ttlSeconds > MAX_EXPORT_GRANT_TTL_SECONDS) throw new TypeError(`material export grant ttl must be an integer between 1 and ${MAX_EXPORT_GRANT_TTL_SECONDS}`)
+   if (!materialId.trim() || !exportId.trim()) throw new CareerValidationError('material export grant materialId and exportId must not be empty')
+   if (!materialExportFormats.includes(format)) throw new CareerValidationError('material export grant format must be pdf or docx')
+   if (!Number.isSafeInteger(ttlSeconds) || ttlSeconds <= 0 || ttlSeconds > MAX_EXPORT_GRANT_TTL_SECONDS) throw new CareerValidationError(`material export grant ttl must be an integer between 1 and ${MAX_EXPORT_GRANT_TTL_SECONDS}`)
    return decodeMaterialExportDownload(await request({ method: 'POST', path: `/api/v1/career/materials/${encodeURIComponent(materialId)}/exports/${encodeURIComponent(exportId)}/signed-url`, body: { format, ttlSeconds }, ...(signal ? { signal } : {}) }))
   },
   // Authenticated redemption: the path is rebuilt from the decoded grant
@@ -1427,37 +1427,37 @@ export function createCareerApi(request: CareerRequest, binaryRequest?: CareerBi
   // with the download; grant.url is never fetched.
   async materialExportDownload(grant: MaterialExportDownload, signal?: AbortSignal): Promise<MaterialExportFile> {
    if (!binaryRequest) throw new Error('Binary transport is unavailable')
-   if (!materialExportFormats.includes(grant.format)) throw new TypeError('material export download format must be pdf or docx')
+   if (!materialExportFormats.includes(grant.format)) throw new CareerValidationError('material export download format must be pdf or docx')
    const response = await binaryRequest({ method: 'GET', path: `/api/v1/career/materials/${encodeURIComponent(grant.materialId)}/exports/${encodeURIComponent(grant.exportId)}/download?format=${grant.format}&expires=${grant.expiresAt}&signature=${encodeURIComponent(grant.signature)}`, ...(signal ? { signal } : {}) })
    return { format: grant.format, digest: grant.digest, size: grant.size, body: response.body, ...(response.contentType !== undefined ? { contentType: response.contentType } : {}) }
   },
   async revokeMaterialExport(input: RevokeMaterialExportInput, signal?: AbortSignal): Promise<MaterialExportReceipt> {
-   if (!input.requestId.trim() || !input.materialId.trim() || !input.exportId.trim()) throw new TypeError('material export revoke requestId, materialId and exportId must not be empty')
-   if (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0) throw new TypeError('material export revoke expected revision must be a non-negative integer')
+   if (!input.requestId.trim() || !input.materialId.trim() || !input.exportId.trim()) throw new CareerValidationError('material export revoke requestId, materialId and exportId must not be empty')
+   if (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0) throw new CareerValidationError('material export revoke expected revision must be a non-negative integer')
    return decodeMaterialExportReceipt(await request({ method: 'DELETE', path: `/api/v1/career/materials/${encodeURIComponent(input.materialId)}/exports/${encodeURIComponent(input.exportId)}`, body: { requestId: input.requestId, expectedRevision: input.expectedRevision }, ...(signal ? { signal } : {}) }))
   },
   async appendProgress(input: AppendProgressInput, signal?: AbortSignal): Promise<ProgressReceipt> {
-   if (!input.requestId.trim() || !input.applicationId.trim()) throw new TypeError('progress requestId and applicationId must not be empty')
-   if (!progressEventTypes.includes(input.eventType)) throw new TypeError('progress eventType must come from the frozen event vocabulary')
-   if (input.occurredAt !== undefined && !validTimestamp(input.occurredAt)) throw new TypeError('progress occurredAt must be an RFC3339 timestamp')
-   if (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0) throw new TypeError('progress expected revision must be a non-negative integer')
+   if (!input.requestId.trim() || !input.applicationId.trim()) throw new CareerValidationError('progress requestId and applicationId must not be empty')
+   if (!progressEventTypes.includes(input.eventType)) throw new CareerValidationError('progress eventType must come from the frozen event vocabulary')
+   if (input.occurredAt !== undefined && !validTimestamp(input.occurredAt)) throw new CareerValidationError('progress occurredAt must be an RFC3339 timestamp')
+   if (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0) throw new CareerValidationError('progress expected revision must be a non-negative integer')
    const body = { requestId: input.requestId, applicationId: input.applicationId, eventType: input.eventType, ...(input.note !== undefined ? { note: input.note } : {}), ...(input.occurredAt !== undefined ? { occurredAt: input.occurredAt } : {}), source: { kind: 'manual' }, expectedRevision: input.expectedRevision }
    return decodeProgressReceipt(await request({ method: 'POST', path: `/api/v1/career/applications/${encodeURIComponent(input.applicationId)}/progress`, body, ...(signal ? { signal } : {}) }))
   },
   async correctProgress(input: CorrectProgressInput, signal?: AbortSignal): Promise<ProgressReceipt> {
-   if (!input.requestId.trim() || !input.applicationId.trim() || !input.correctsEventId.trim()) throw new TypeError('progress correct requestId, applicationId and correctsEventId must not be empty')
-   if (!progressEventTypes.includes(input.eventType)) throw new TypeError('progress eventType must come from the frozen event vocabulary')
-   if (input.occurredAt !== undefined && !validTimestamp(input.occurredAt)) throw new TypeError('progress occurredAt must be an RFC3339 timestamp')
-   if (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0) throw new TypeError('progress expected revision must be a non-negative integer')
+   if (!input.requestId.trim() || !input.applicationId.trim() || !input.correctsEventId.trim()) throw new CareerValidationError('progress correct requestId, applicationId and correctsEventId must not be empty')
+   if (!progressEventTypes.includes(input.eventType)) throw new CareerValidationError('progress eventType must come from the frozen event vocabulary')
+   if (input.occurredAt !== undefined && !validTimestamp(input.occurredAt)) throw new CareerValidationError('progress occurredAt must be an RFC3339 timestamp')
+   if (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0) throw new CareerValidationError('progress expected revision must be a non-negative integer')
    const body = { requestId: input.requestId, applicationId: input.applicationId, correctsEventId: input.correctsEventId, eventType: input.eventType, ...(input.note !== undefined ? { note: input.note } : {}), ...(input.occurredAt !== undefined ? { occurredAt: input.occurredAt } : {}), source: { kind: 'manual' }, expectedRevision: input.expectedRevision }
    return decodeProgressReceipt(await request({ method: 'POST', path: `/api/v1/career/applications/${encodeURIComponent(input.applicationId)}/progress/correct`, body, ...(signal ? { signal } : {}) }))
   },
   async applicationProgress(applicationId: string, signal?: AbortSignal): Promise<ProgressView> {
-   if (!applicationId.trim()) throw new TypeError('progress applicationId must not be empty')
+   if (!applicationId.trim()) throw new CareerValidationError('progress applicationId must not be empty')
    return decodeProgressView(await request({ method: 'GET', path: `/api/v1/career/applications/${encodeURIComponent(applicationId)}/progress`, ...(signal ? { signal } : {}) }))
   },
   async progressReceipt(requestId: string, signal?: AbortSignal): Promise<ProgressReceipt> {
-   if (!requestId.trim()) throw new TypeError('progress receipt requestId must not be empty')
+   if (!requestId.trim()) throw new CareerValidationError('progress receipt requestId must not be empty')
    return decodeProgressReceipt(await request({ method: 'GET', path: `/api/v1/career/progress/receipt?requestId=${encodeURIComponent(requestId)}`, ...(signal ? { signal } : {}) }))
   },
   // T18: the user confirms what they did externally; the product records the
@@ -1480,11 +1480,11 @@ export function createCareerApi(request: CareerRequest, binaryRequest?: CareerBi
    return decodeSubmissionReceipt(await request({ method: 'POST', path: `/api/v1/career/applications/${encodeURIComponent(input.applicationId)}/submissions`, body, ...(signal ? { signal } : {}) }))
   },
   async applicationSubmissions(applicationId: string, signal?: AbortSignal): Promise<SubmissionList> {
-   if (!applicationId.trim()) throw new TypeError('submission applicationId must not be empty')
+   if (!applicationId.trim()) throw new CareerValidationError('submission applicationId must not be empty')
    return decodeSubmissionList(await request({ method: 'GET', path: `/api/v1/career/applications/${encodeURIComponent(applicationId)}/submissions`, ...(signal ? { signal } : {}) }))
   },
   async submissionReceipt(requestId: string, signal?: AbortSignal): Promise<SubmissionReceipt> {
-   if (!requestId.trim()) throw new TypeError('submission receipt requestId must not be empty')
+   if (!requestId.trim()) throw new CareerValidationError('submission receipt requestId must not be empty')
    return decodeSubmissionReceipt(await request({ method: 'GET', path: `/api/v1/career/submissions/receipt?requestId=${encodeURIComponent(requestId)}`, ...(signal ? { signal } : {}) }))
   },
   // T19 sourced preparations: generation anchors to the actually submitted
@@ -1493,17 +1493,17 @@ export function createCareerApi(request: CareerRequest, binaryRequest?: CareerBi
   // revises and cites. Uncertain outcomes recover by replaying the same
   // request ID through the receipt endpoint.
   async generatePreparation(input: GeneratePreparationInput, signal?: AbortSignal): Promise<PreparationReceipt> {
-   if (!input.requestId.trim() || !input.applicationId.trim()) throw new TypeError('preparation requestId and applicationId must not be empty')
-   if (!preparationFocuses.includes(input.focus)) throw new TypeError('preparation focus must be cover_letter or interview_prep')
-   if (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0) throw new TypeError('preparation expected revision must be a non-negative integer')
+   if (!input.requestId.trim() || !input.applicationId.trim()) throw new CareerValidationError('preparation requestId and applicationId must not be empty')
+   if (!preparationFocuses.includes(input.focus)) throw new CareerValidationError('preparation focus must be cover_letter or interview_prep')
+   if (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0) throw new CareerValidationError('preparation expected revision must be a non-negative integer')
    return decodePreparationReceipt(await request({ method: 'POST', path: `/api/v1/career/applications/${encodeURIComponent(input.applicationId)}/preparations`, body: { requestId: input.requestId, applicationId: input.applicationId, focus: input.focus, expectedRevision: input.expectedRevision }, ...(signal ? { signal } : {}) }))
   },
   async applicationPreparations(applicationId: string, signal?: AbortSignal): Promise<PreparationList> {
-   if (!applicationId.trim()) throw new TypeError('preparation applicationId must not be empty')
+   if (!applicationId.trim()) throw new CareerValidationError('preparation applicationId must not be empty')
    return decodePreparationList(await request({ method: 'GET', path: `/api/v1/career/applications/${encodeURIComponent(applicationId)}/preparations`, ...(signal ? { signal } : {}) }))
   },
   async preparationReceipt(requestId: string, signal?: AbortSignal): Promise<PreparationReceipt> {
-   if (!requestId.trim()) throw new TypeError('preparation receipt requestId must not be empty')
+   if (!requestId.trim()) throw new CareerValidationError('preparation receipt requestId must not be empty')
    return decodePreparationReceipt(await request({ method: 'GET', path: `/api/v1/career/preparations/receipt?requestId=${encodeURIComponent(requestId)}`, ...(signal ? { signal } : {}) }))
   },
   // T20 in-station todos: one source event holds exactly one todo (the
@@ -1512,16 +1512,16 @@ export function createCareerApi(request: CareerRequest, binaryRequest?: CareerBi
   // channel exists — is response-only: a delivery failure never fails the
   // write and never mutates the todo.
   async setReminder(input: SetReminderInput, signal?: AbortSignal): Promise<ReminderReceipt> {
-   if (!input.requestId.trim() || !input.sourceId.trim()) throw new TypeError('reminder requestId and sourceId must not be empty')
-   if (!reminderSourceKinds.includes(input.sourceKind)) throw new TypeError('reminder sourceKind must be progress_event or discovery')
-   if (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0) throw new TypeError('reminder expected revision must be a non-negative integer')
+   if (!input.requestId.trim() || !input.sourceId.trim()) throw new CareerValidationError('reminder requestId and sourceId must not be empty')
+   if (!reminderSourceKinds.includes(input.sourceKind)) throw new CareerValidationError('reminder sourceKind must be progress_event or discovery')
+   if (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0) throw new CareerValidationError('reminder expected revision must be a non-negative integer')
    return decodeReminderReceipt(await request({ method: 'POST', path: '/api/v1/career/reminders', body: { requestId: input.requestId, sourceKind: input.sourceKind, sourceId: input.sourceId, expectedRevision: input.expectedRevision }, ...(signal ? { signal } : {}) }))
   },
   async reminders(signal?: AbortSignal): Promise<ReminderList> {
    return decodeReminderList(await request({ method: 'GET', path: '/api/v1/career/reminders', ...(signal ? { signal } : {}) }))
   },
   async reminderReceipt(requestId: string, signal?: AbortSignal): Promise<ReminderReceipt> {
-   if (!requestId.trim()) throw new TypeError('reminder receipt requestId must not be empty')
+   if (!requestId.trim()) throw new CareerValidationError('reminder receipt requestId must not be empty')
    return decodeReminderReceipt(await request({ method: 'GET', path: `/api/v1/career/reminders/receipt?requestId=${encodeURIComponent(requestId)}`, ...(signal ? { signal } : {}) }))
   },
   // T22 whole-space lifecycle: export packages, the pre-deletion boundary
@@ -1529,24 +1529,24 @@ export function createCareerApi(request: CareerRequest, binaryRequest?: CareerBi
   // the pinned profile revision; uncertain outcomes are recovered by
   // replaying the same request ID through the receipt endpoints.
   async exportCareer(input: CareerExportInput, signal?: AbortSignal): Promise<CareerExportReceipt> {
-   if (!input.requestId.trim()) throw new TypeError('career export requestId must not be empty')
-   if (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0) throw new TypeError('career export expected revision must be a non-negative integer')
+   if (!input.requestId.trim()) throw new CareerValidationError('career export requestId must not be empty')
+   if (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0) throw new CareerValidationError('career export expected revision must be a non-negative integer')
    return decodeCareerExportReceipt(await request({ method: 'POST', path: '/api/v1/career/exports', body: { requestId: input.requestId, expectedRevision: input.expectedRevision }, ...(signal ? { signal } : {}) }))
   },
   async careerExportReceipt(requestId: string, signal?: AbortSignal): Promise<CareerExportReceipt> {
-   if (!requestId.trim()) throw new TypeError('career export receipt requestId must not be empty')
+   if (!requestId.trim()) throw new CareerValidationError('career export receipt requestId must not be empty')
    return decodeCareerExportReceipt(await request({ method: 'GET', path: `/api/v1/career/exports/receipt?requestId=${encodeURIComponent(requestId)}`, ...(signal ? { signal } : {}) }))
   },
   async careerDeletionBoundary(signal?: AbortSignal): Promise<CareerDeletionBoundaryView> {
    return decodeCareerDeletionBoundary(await request({ method: 'GET', path: '/api/v1/career/deletions/boundary', ...(signal ? { signal } : {}) }))
   },
   async deleteCareer(input: CareerDeletionInput, signal?: AbortSignal): Promise<CareerDeletionReceipt> {
-   if (!input.requestId.trim()) throw new TypeError('career deletion requestId must not be empty')
-   if (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0) throw new TypeError('career deletion expected revision must be a non-negative integer')
+   if (!input.requestId.trim()) throw new CareerValidationError('career deletion requestId must not be empty')
+   if (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0) throw new CareerValidationError('career deletion expected revision must be a non-negative integer')
    return decodeCareerDeletionReceipt(await request({ method: 'POST', path: '/api/v1/career/deletions', body: { requestId: input.requestId, expectedRevision: input.expectedRevision }, ...(signal ? { signal } : {}) }))
   },
   async careerDeletionReceipt(requestId: string, signal?: AbortSignal): Promise<CareerDeletionReceipt> {
-   if (!requestId.trim()) throw new TypeError('career deletion receipt requestId must not be empty')
+   if (!requestId.trim()) throw new CareerValidationError('career deletion receipt requestId must not be empty')
    return decodeCareerDeletionReceipt(await request({ method: 'GET', path: `/api/v1/career/deletions/receipt?requestId=${encodeURIComponent(requestId)}`, ...(signal ? { signal } : {}) }))
   },
  }

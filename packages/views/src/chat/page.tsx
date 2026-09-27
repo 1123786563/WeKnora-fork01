@@ -676,7 +676,13 @@ export function ChatPage(props: ChatPageProps) {
           onArtifactPreview={props.onArtifactPreview}
           scrollContainerRef={scrollBoxRef}
           onScrolledUpChange={setUserScrolledUp}
+          onRetrySteer={props.onSteerRetry ? (steerId) => { void props.onSteerRetry!(steerId); } : undefined}
+          onRemoveSteer={props.onSteerRemove ? (steerId) => { void props.onSteerRemove!(steerId); } : undefined}
         />
+        {/* ocr3-020：会话视图同样挂共享引用面板——此前仅主路径（空态外壳）渲染
+            ReferenceList，早退路径只加 has-references-panel class，点引用角标无面板。
+            与主路径一致放在 .chat_thread 消息流内（.wk-chat-references 是常规流块）。 */}
+        {referencesOpen && references.length > 0 ? <ReferenceList references={references} activeId={activeCitationId} onActivate={activateCitation} copy={copy} /> : null}
       </div>
       <div
         className="scroll-to-bottom-btn wk-chat-scroll-bottom"
@@ -809,6 +815,8 @@ export function ChatPage(props: ChatPageProps) {
           canForkMessage={props.canForkMessage}
           onArtifactDownload={props.onArtifactDownload}
           onArtifactPreview={props.onArtifactPreview}
+          onRetrySteer={props.onSteerRetry ? (steerId) => { void props.onSteerRetry!(steerId); } : undefined}
+          onRemoveSteer={props.onSteerRemove ? (steerId) => { void props.onSteerRemove!(steerId); } : undefined}
         />}
       </div>
       {sandboxAvailable && terminalOpen ? <aside className="wk-chat-sandbox-drawer wk-vc-page-41" role="complementary" aria-label={copy.sandboxPanelTitle}>

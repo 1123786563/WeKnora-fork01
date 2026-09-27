@@ -1,4 +1,4 @@
-import { decodeCareerReceipt, type CareerAction, type CareerChangeSet, type CareerReceipt, type CareerView } from './contracts.ts'
+import { decodeCareerChangeSet, decodeCareerReceipt, decodeCareerView, type CareerAction, type CareerChangeSet, type CareerReceipt, type CareerView } from './contracts.ts'
 
 export interface CareerRemote {
  open(signal?: AbortSignal): Promise<CareerView>
@@ -75,12 +75,12 @@ export class CareerDesk {
    throw error
   }
  }
- async open(): Promise<CareerView | undefined> { return this.read((signal) => this.remote.open(signal), (candidate) => this.applyView(candidate), () => this.currentView!) }
- async refresh(): Promise<CareerView | undefined> { return this.read((signal) => this.remote.list(signal), (candidate) => this.applyView(candidate), () => this.currentView!) }
+ async open(): Promise<CareerView | undefined> { return this.read((signal) => this.remote.open(signal).then(decodeCareerView), (candidate) => this.applyView(candidate), () => this.currentView!) }
+ async refresh(): Promise<CareerView | undefined> { return this.read((signal) => this.remote.list(signal).then(decodeCareerView), (candidate) => this.applyView(candidate), () => this.currentView!) }
  async syncChanges(): Promise<CareerChangeSet | undefined> {
   let response: CareerChangeSet | undefined
   const since = this.currentView?.revision ?? 0
-  return this.read((signal) => this.remote.changes(since, signal), (set) => {
+  return this.read((signal) => this.remote.changes(since, signal).then(decodeCareerChangeSet), (set) => {
    response = set
    if (!this.currentView || set.revision < this.currentView.revision) return
    const facts = [...this.currentView.facts]
@@ -106,6 +106,13 @@ export class CareerDesk {
  }
  async retryUnknown(action: CareerAction): Promise<CareerReceipt | undefined> {
   if (!this.unresolved || !sameAction(this.unresolved, action)) throw Object.assign(new Error('Retry must use the exact pending action and request ID'), { code: 'retry_payload_mismatch' })
+  // ocr3-141：捕获本空间的 epoch。await reconcile 期间若发生 activate()/
+  // invalidatePrivateState()（空间切换/失效），unresolved 已被清空、epoch 已
+  // 前进——read() 返回 undefined 被当作「未找到回执」继续 send，会把旧空间
+  // action 用同一 requestId 提交到新空间，违反空间切换红线。send 前重新校验
+  // epoch 与 unresolved 归属。
+  const epoch = this.epoch
+  const stillOwned = (): boolean => this.current(epoch) && this.unresolved?.requestId === action.requestId
   if (!this.receiptMissing) {
    try {
     const existing = await this.reconcile(action.requestId)
@@ -114,6 +121,7 @@ export class CareerDesk {
     if (errorCode(error) === 'forbidden') throw error
     if (errorCode(error) !== 'not_found') throw outcomeUnknown(action, error, false)
    }
+   if (!stillOwned()) return undefined
   }
   try { return await this.send(action) } catch (error) {
    if (['revision_conflict', 'invalid_request', 'proposal_resolved', 'not_found'].includes(errorCode(error) ?? '')) { this.unresolved = undefined; this.receiptMissing = false }

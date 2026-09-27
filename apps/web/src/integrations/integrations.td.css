@@ -29,7 +29,28 @@
 .wk-api-playground-overlay .wk-api-playground-field { font-size: 13px; }
 .wk-api-playground-overlay .wk-api-playground-agent,
 .wk-api-playground-overlay .wk-api-playground-external-user,
-.wk-api-playground-overlay .wk-api-playground-query { box-sizing: border-box; }
+.wk-api-playground-overlay .wk-api-playground-query {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--wk-border, #e5e7eb);
+  border-radius: 6px;
+  background: #ffffff;
+  color: var(--td-text-color-primary, rgba(0, 0, 0, 0.9));
+  font: inherit;
+  font-size: 14px;
+  line-height: 20px;
+}
+/* 单行输入对齐 32px chrome；textarea 交给 rows + 手动 resize（ocr3-006）。 */
+.wk-api-playground-overlay .wk-api-playground-agent,
+.wk-api-playground-overlay .wk-api-playground-external-user { height: 32px; }
+.wk-api-playground-overlay .wk-api-playground-query { resize: vertical; }
+.wk-api-playground-overlay .wk-api-playground-agent:focus,
+.wk-api-playground-overlay .wk-api-playground-external-user:focus,
+.wk-api-playground-overlay .wk-api-playground-query:focus {
+  outline: none;
+  border-color: var(--td-brand-color, #07c05f);
+}
 .wk-api-playground-overlay .wk-muted { color: var(--color-muted, #66758b); }
 .wk-api-playground-overlay .wk-api-playground-error { margin: 0; }
 .wk-api-playground-overlay .wk-api-playground-empty,

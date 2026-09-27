@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createCareerApi } from './career.ts'
+import { CareerValidationError, createCareerApi } from './career.ts'
 import { createWeKnoraClient } from './client.ts'
 import { createJsonTransport } from './transport/json.ts'
 
@@ -1228,12 +1228,14 @@ test('reconciliation client encodes the three frozen routes and decodes receipts
 
 test('reconciliation client validates identifiers before anything is sent', async () => {
  const refusing = createCareerApi(async () => { throw new Error('must not send invalid request') })
- await assert.rejects(refusing.reconcileOpportunities({ requestId: ' ', targetId: 'a', candidateId: 'b' }), TypeError)
- await assert.rejects(refusing.reconcileOpportunities({ requestId: 'r', targetId: '', candidateId: 'b' }), TypeError)
- await assert.rejects(refusing.reconcileOpportunities({ requestId: 'r', targetId: 'a', candidateId: ' ' }), TypeError)
- await assert.rejects(refusing.reconcileOpportunities({ requestId: 'r', targetId: 'same', candidateId: 'same' }), TypeError)
- await assert.rejects(refusing.opportunityReconciliations(' '), TypeError)
- await assert.rejects(refusing.reconciliationReceipt(''), TypeError)
+ // ocr3-018：本地预检属「请求从未发出」的确定性拒绝，须抛 CareerValidationError，
+ // 页面侧才不会把它当 unknown 误入回执恢复——不再断言裸 TypeError。
+ await assert.rejects(refusing.reconcileOpportunities({ requestId: ' ', targetId: 'a', candidateId: 'b' }), CareerValidationError)
+ await assert.rejects(refusing.reconcileOpportunities({ requestId: 'r', targetId: '', candidateId: 'b' }), CareerValidationError)
+ await assert.rejects(refusing.reconcileOpportunities({ requestId: 'r', targetId: 'a', candidateId: ' ' }), CareerValidationError)
+ await assert.rejects(refusing.reconcileOpportunities({ requestId: 'r', targetId: 'same', candidateId: 'same' }), CareerValidationError)
+ await assert.rejects(refusing.opportunityReconciliations(' '), CareerValidationError)
+ await assert.rejects(refusing.reconciliationReceipt(''), CareerValidationError)
 })
 
 test('reconciliation decoder rejects invented decisions and broken receipts', async () => {

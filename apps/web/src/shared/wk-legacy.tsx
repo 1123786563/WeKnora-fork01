@@ -54,32 +54,36 @@ export function WkDialog({ open, title, children, onClose, closeLabel = 'Close',
   useEffect(() => { setMounted(true); }, []);
   useEffect(() => {
     if (!open) return;
-    if (dialogRef.current) openDialogStack.push(dialogRef.current);
+    // ocr3-015：cleanup 运行在 open=false 的 commit 之后，此时节点已卸载、
+    // dialogRef.current 已被置 null——栈内元素永不弹出（只增不减，残留栈顶
+    // 还会挡住外层弹窗的 Escape 仲裁）。effect 体内捕获元素引用供 cleanup 使用。
+    const dialog = dialogRef.current;
+    if (dialog) openDialogStack.push(dialog);
     restoreRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    dialogRef.current?.focus();
+    dialog?.focus();
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        if (openDialogStack[openDialogStack.length - 1] !== dialogRef.current) return;
+        if (openDialogStack[openDialogStack.length - 1] !== dialog) return;
         const activeElement = document.activeElement;
-        if (activeElement && !dialogRef.current?.contains(activeElement)) return;
+        if (activeElement && dialog && !dialog.contains(activeElement)) return;
         event.preventDefault();
         event.stopPropagation();
         onCloseRef.current();
         return;
       }
-      if (event.key !== 'Tab' || !dialogRef.current) return;
-      const focusable = Array.from(dialogRef.current.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')).filter((element) => element.getAttribute('tabindex') !== '-1');
-      if (focusable.length === 0) { event.preventDefault(); dialogRef.current.focus(); return; }
+      if (event.key !== 'Tab' || !dialog) return;
+      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')).filter((element) => element.getAttribute('tabindex') !== '-1');
+      if (focusable.length === 0) { event.preventDefault(); dialog.focus(); return; }
       const first = focusable[0]!;
       const last = focusable[focusable.length - 1]!;
       const active = document.activeElement;
-      if (event.shiftKey && (active === first || active === dialogRef.current)) { event.preventDefault(); last.focus(); }
+      if (event.shiftKey && (active === first || active === dialog)) { event.preventDefault(); last.focus(); }
       else if (!event.shiftKey && active === last) { event.preventDefault(); first.focus(); }
     };
     document.addEventListener('keydown', onKeyDown);
     return () => {
       document.removeEventListener('keydown', onKeyDown);
-      const index = dialogRef.current ? openDialogStack.indexOf(dialogRef.current) : -1;
+      const index = dialog ? openDialogStack.indexOf(dialog) : -1;
       if (index >= 0) openDialogStack.splice(index, 1);
       restoreRef.current?.focus();
       restoreRef.current = null;

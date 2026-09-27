@@ -842,6 +842,12 @@ html:not(.wk-kbd-nav) .wk-settings-drawer-root :focus-visible { outline: none; }
 .rs-card__title { margin: 0; min-width: 0; flex: 1 1 0%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 600; line-height: 1.4; color: rgba(0, 0, 0, 0.9); }
 .rs-card__tag.t-tag { flex-shrink: 0; }
 .rs-card__more { flex-shrink: 0; }
+/* Vue WebSearchSettings.vue:951-968 — more 按钮默认隐藏、卡片 hover/focus-within
+ * 显形；opacity 平移到 CSS（inline 会压死 hover 规则）。ocr3-012 */
+.rs-card__more .t-button { opacity: 0; transition: opacity 0.15s ease; }
+.backend-card:hover .rs-card__more .t-button,
+.backend-card:focus-within .rs-card__more .t-button,
+.rs-card__more:focus-within .t-button { opacity: 1; }
 .rs-card__action-spacer { width: 24px; height: 24px; flex-shrink: 0; }
 .rs-card__subtitle { display: flex; align-items: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; margin: 4px 0 0; line-height: 1.4; color: var(--td-text-color-secondary, rgba(0, 0, 0, 0.6)); }
 .rs-card__subtitle.is-storage { line-height: 18px; color: rgba(0, 0, 0, 0.6); }

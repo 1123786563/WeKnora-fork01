@@ -9,30 +9,20 @@ import { ProgressPage } from './ProgressPage.tsx'
 import { SubmissionPage } from './SubmissionPage.tsx'
 import { opportunityEvidencePath } from './OpportunityPage.tsx'
 import './application.css'
+import { ReceiptMismatchError, errorDetails, isUncertainWrite as baseIsUncertainWrite, newRequestId } from './protocol.ts'
+// ocr3-054/055：ReceiptMismatchError / errorDetails / newRequestId 统一改用
+// protocol.ts 共享实现——本地副本与共享类同名但 instanceof 不互通；本页
+// 端点特定的确定性失败码在基础契约之上叠加。
+const endpointDefiniteCodes: readonly string[] = ['revision_conflict', 'application_conflict', 'hard_ineligible_requires_continue']
+const isUncertainWrite = (cause: unknown): boolean => endpointDefiniteCodes.includes(errorDetails(cause).code ?? '') ? false : baseIsUncertainWrite(cause)
+
 
 type ApplicationPhase = 'idle' | 'busy' | 'created' | 'unknown' | 'error' | 'forbidden' | 'scope-changed'
 type Attempt = { requestId: string; input: CreateApplicationInput }
-const newRequestId = (): string => typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`
 // Frozen backend enums rendered verbatim: the application UI never invents a
 // link state or evaluation status the career backend did not send.
 const evaluationStatusLabel = (status: EvaluationReceipt['status']): string => status === 'ineligible' ? '不符合' : status === 'eligible' ? '符合已识别条件' : '待确认'
 const linkStateLabels: Record<ApplicationReceipt['linkState'], string> = { linking: 'Task 关联中（未就绪，可恢复）', ready: 'Task 已就绪', link_failed: 'Task 关联失败' }
-// A receipt that does not match the request it answers is a definite protocol
-// error, unlike a network TypeError (a failed fetch), which leaves the write
-// outcome genuinely unknown and must route into receipt recovery.
-class ReceiptMismatchError extends Error {}
-
-function errorDetails(cause: unknown): { code?: string; requestId?: string; currentRevision?: number; status?: number; message: string } {
- const error = cause as { code?: string; requestId?: string; currentRevision?: number; status?: number; message?: string }
- return { code: error?.code, requestId: error?.requestId, currentRevision: error?.currentRevision, status: error?.status, message: error?.message || '请求未完成' }
-}
-function isUncertainWrite(cause: unknown): boolean {
- const error = errorDetails(cause)
- if (error.code === 'TIMEOUT' || error.code === 'outcome_unknown') return true
- if (['forbidden', 'invalid_request', 'idempotency_conflict', 'revision_conflict', 'application_conflict', 'hard_ineligible_requires_continue', 'request_too_large', 'PAYLOAD_TOO_LARGE', 'not_found', 'unauthorized'].includes(error.code ?? '')) return false
- if (error.status !== undefined) return error.status >= 500 || error.status < 400
- return true
-}
 function applicationParamUrl(applicationId?: string): string | undefined {
  if (typeof window === 'undefined' || !window.location) return undefined
  const params = new URLSearchParams(window.location.search)

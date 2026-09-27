@@ -80,7 +80,10 @@ export function OpportunityStatusPanel({ client, scopeController, opportunityId 
     client.career.opportunityStatus(opportunityId, requestScope.signal),
     client.career.opportunityReconciliations(opportunityId, requestScope.signal),
    ])
-   if (!active || !scopeController.isCurrent(requestScope.scope) || nextStatus.opportunityId !== opportunityId) return
+   if (!active || !scopeController.isCurrent(requestScope.scope)) return
+   // ocr3-063：回执 opportunityId 不匹配是确定性协议错误，不能与作用域守卫
+   // 合并短路——此前直接 return 让面板永久停留 loading（无错误文案无重试）。
+   if (nextStatus.opportunityId !== opportunityId) { setStatus(undefined); setHistory(undefined); setPhase('error'); return }
    setStatus(nextStatus); setHistory(nextHistory.reconciliations); setPhase('ready')
    setDiffOld(0); setDiffNew(nextStatus.observations.length > 1 ? nextStatus.observations.length - 1 : undefined)
   }

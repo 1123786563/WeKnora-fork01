@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { CareerDesk, type CareerRemote } from './desk.ts'
-import type { CareerAction, CareerReceipt, CareerView } from './contracts.ts'
+import type { CareerAction, CareerChangeSet, CareerReceipt, CareerView } from './contracts.ts'
 
 const view = (revision: number, facts: CareerView['facts'] = [], proposals: CareerView['proposals'] = []): CareerView => ({ revision, facts, proposals })
 const pending = { id: 'p1', key: '毕业时间', value: '2027', source: { kind: 'user' }, status: 'pending' as const, createdAt: 'now' }
@@ -209,4 +209,43 @@ test('retry receipt forbidden stays a forbidden state after a previous receipt m
  await assert.rejects(desk.retryUnknown(action), (error: unknown) => (error as { code?: string }).code === 'forbidden')
  assert.equal(desk.pendingAction, undefined)
  assert.equal(desk.snapshot, undefined)
+})
+
+test('retry unknown after a scope switch never resends the old-space action (ocr3-141)', async () => {
+ let acts = 0
+ let receiptCalls = 0
+ let release!: () => void
+ const gate = new Promise<void>((done) => { release = done })
+ const action = { action: 'propose', key: pending.key, value: pending.value, source: pending.source, requestId: 'r9', expectedRevision: 0 } satisfies CareerAction
+ const desk = new CareerDesk(remote({
+  act: async () => { acts += 1; throw Object.assign(new Error('unknown'), { code: 'outcome_unknown' }) },
+  // 第一次（mutate 内部对账）NETWORK_ERROR 立即失败制造 unresolved 且
+  // receiptMissing=false；第二次（retryUnknown 的 reconcile）挂起到空间切换
+  // 之后以 not_found 失败——走 catch fall-through 才能命中 send 前守卫。
+  receipt: async () => { receiptCalls += 1; if (receiptCalls > 1) { await gate; throw Object.assign(new Error('missing'), { code: 'not_found' }) } throw Object.assign(new Error('network dropped'), { code: 'NETWORK_ERROR' }) },
+ }))
+ desk.activate('u', 'tenant-a')
+ // act 结果未知 + 回执查询网络失败 → unresolved 且 receiptMissing=false。
+ await assert.rejects(desk.mutate(action))
+ assert.equal(desk.pendingAction?.requestId, 'r9')
+ const retrying = desk.retryUnknown(action)
+ desk.activate('u', 'tenant-b') // await 期间切换空间：旧空间 action 不得再 send。
+ release()
+ assert.equal(await retrying, undefined)
+ assert.equal(acts, 1, 'only the original attempt; the old-space action must never be re-sent into the new scope')
+})
+
+test('malformed open view is rejected at the desk boundary and never poisons the snapshot (ocr3-142)', async () => {
+ const desk = new CareerDesk(remote({ open: async () => ({ facts: [], proposals: [] }) as unknown as CareerView }))
+ desk.activate('u', 't')
+ await assert.rejects(desk.open(), TypeError)
+ assert.equal(desk.snapshot, undefined)
+})
+
+test('malformed change set is rejected before merging into the state machine (ocr3-142)', async () => {
+ const desk = new CareerDesk(remote({ list: async () => view(3), changes: async () => ({ revision: 'soon', changes: [] }) as unknown as CareerChangeSet }))
+ desk.activate('u', 't')
+ await desk.refresh()
+ await assert.rejects(desk.syncChanges(), TypeError)
+ assert.equal(desk.snapshot?.revision, 3)
 })

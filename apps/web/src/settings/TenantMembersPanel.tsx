@@ -887,7 +887,7 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
         <div className="audit-header">
           <span className="audit-desc">{tr('tenantMember.audit.description')}</span>
           <TButton type="button" variant="text" size="small" className="audit-refresh-btn" loading={auditLoading} disabled={auditLoading} onClick={() => void loadAudit(true)}>
-            <Icon name="refresh" /> {tr('tenantMember.audit.refresh')}
+            <TIcon name="refresh" /> {tr('tenantMember.audit.refresh')}
           </TButton>
         </div>
         {auditError ? <div className="audit-drawer-branch audit-drawer-branch--error"><div className="wk-inline-state"><Status tone="error">{auditError}</Status><TButton type="button" onClick={() => void loadAudit(true)}>{tr('tenantMember.retry')}</TButton></div></div>
@@ -908,7 +908,7 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
                       return <Fragment key={entry.id}>
                         <tr className="audit-tr" aria-expanded={expanded} onClick={() => toggleAuditExpand(entry.id)}>
                           <td className="audit-td audit-td--expand">
-                            <span className={'audit-expand-toggle' + (expanded ? ' is-open' : '')}><Icon name="chevron-down" /></span>
+                            <span className={'audit-expand-toggle' + (expanded ? ' is-open' : '')}><TIcon name="chevron-down" /></span>
                           </td>
                           <td className="audit-td">
                             <div className="audit-time">
@@ -1006,7 +1006,7 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
           <TInput className="wk-tenant-share-input" readOnly aria-label={tr('tenantInvitation.shareLink.resultTitle')} value={absoluteInviteURL(shareLink.invite_url ?? '')}
             onFocus={(_, context) => { const input = (context.e.target as HTMLInputElement | null); input?.select?.(); }} />
           <TButton type="button" onClick={() => void copyText(shareLink.invite_url ?? '')}>
-            <Icon name="copy" /> {tr('tenantInvitation.copyLink')}
+            <TIcon name="copy" /> {tr('tenantInvitation.copyLink')}
           </TButton>
         </div>
         <div className="wk-tenant-invite-actions">

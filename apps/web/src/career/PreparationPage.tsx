@@ -3,35 +3,24 @@ import type { WeKnoraClient } from '@weknora/api-client'
 import type { ScopeController } from '@weknora/domain/scope'
 import type { MaterialBody, PreparationFocus, PreparationReceipt } from '../../../../packages/api-client/src/career.ts'
 import './preparation.css'
+import { ReceiptMismatchError, errorDetails, isUncertainWrite as baseIsUncertainWrite, newRequestId } from './protocol.ts'
+// ocr3-054/055：ReceiptMismatchError / errorDetails / newRequestId 统一改用
+// protocol.ts 共享实现——本地副本与共享类同名但 instanceof 不互通；本页
+// 端点特定的确定性失败码在基础契约之上叠加。
+const endpointDefiniteCodes: readonly string[] = ['revision_conflict', 'preparation_version_unknown', 'preparation_generation_failed']
+const isUncertainWrite = (cause: unknown): boolean => endpointDefiniteCodes.includes(errorDetails(cause).code ?? '') ? false : baseIsUncertainWrite(cause)
+
 
 type WritePhase = 'idle' | 'busy' | 'unknown' | 'error'
 type ReadState = 'loading' | 'ready' | 'error' | 'forbidden' | 'scope-changed'
 type GenerateAttempt = { requestId: string; focus: PreparationFocus; expectedRevision: number }
 type ReviseAttempt = { requestId: string; materialId: string; body: MaterialBody; expectedRevision: number }
-const newRequestId = (): string => typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`
 // Frozen backend enums rendered verbatim (internal/modules/career/preparation.go):
 // the two T19 drafts are the closed focus vocabulary, and the version anchor
 // is always the actually submitted version — never the latest one.
 const focusLabels: Record<PreparationFocus, string> = { cover_letter: '求职信', interview_prep: '面试准备' }
 const focusOptions = Object.keys(focusLabels) as PreparationFocus[]
 
-// A receipt that does not match the request it answers is a definite protocol
-// error, unlike a network TypeError (a failed fetch), which leaves the write
-// outcome genuinely unknown and must route into receipt recovery.
-class ReceiptMismatchError extends Error {}
-
-function errorDetails(cause: unknown): { code?: string; requestId?: string; currentRevision?: number; status?: number; message: string } {
- const error = cause as { code?: string; requestId?: string; currentRevision?: string | number; status?: number; message?: string }
- const currentRevision = typeof error?.currentRevision === 'number' ? error.currentRevision : undefined
- return { code: error?.code, requestId: error?.requestId, currentRevision, status: error?.status, message: error?.message || '请求未完成' }
-}
-function isUncertainWrite(cause: unknown): boolean {
- const error = errorDetails(cause)
- if (error.code === 'TIMEOUT' || error.code === 'outcome_unknown') return true
- if (['forbidden', 'invalid_request', 'idempotency_conflict', 'revision_conflict', 'preparation_version_unknown', 'preparation_generation_failed', 'request_too_large', 'PAYLOAD_TOO_LARGE', 'not_found', 'unauthorized'].includes(error.code ?? '')) return false
- if (error.status !== undefined) return error.status >= 500 || error.status < 400
- return true
-}
 const cloneBody = (body: MaterialBody): MaterialBody => ({ sections: body.sections.map((section) => ({ heading: section.heading, content: section.content, claims: section.claims.map((claim) => ({ ...claim })) })) })
 
 function PreparationRow({ item, revising, onRevise }: { item: PreparationReceipt; revising: boolean; onRevise: (receipt: PreparationReceipt) => void }): ReactNode {
