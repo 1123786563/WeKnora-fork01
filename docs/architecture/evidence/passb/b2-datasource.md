@@ -245,7 +245,7 @@ grep 用例名实证（基线 -v 输出 + 源文件双核对），计划列出�
 | SyncLog cancel 标志 / stall 窗口 | repo `TestSyncLogLifecycleRequestCancel` / `TestSyncLogLifecycleHasRunningSyncExcludesStalledRuns` | ✓ |
 | 凭据轮换 / auth-version 游标 | refresh_test 4（`TestRefreshDataSourceCredential*`）+ trigger 14（`TestProcessSync_*` ×10 + `TestCursorAuthVersionStale` + `TestIncrementAppDataSourceBindingAuthVersion_Scoping` + `TestProcessSyncStreaming_StaleAuthVersionDropsCursor` 等，credential_refresh_trigger_test.go 逐用例实读 14 个全在基线）= 18 | ✓ |
 
-## §差分（占位——T3/T4 包级复跑为每个删除 commit 的即时门，B2-DS.7 四面×四要素定稿填写）
+## §差分（T3/T4 包级复跑为每个删除 commit 的即时门；B2-DS.7 小节为节点级四面×四要素终局比对）
 
 ### B2-DS.3 包级复跑（service 面；2026-09-27，迁移 commit 工作树实测）
 
@@ -268,6 +268,44 @@ K 属主留守测试断链面（DAG ppc 清单外显形）与 Ruling 2026-09-24-
 
 24 调用点改写对账（模块侧 `internal/modules/datasource/service/datasource_service.go` grep 实测）：`app.RecordKBActivity(` = 17、`app.WithKBActivityTask(` = 2、`app.KBActivityTrigger(` = 1、`app.WithKBActivitySuppressed(` = 3、`s.knowledgeCleanup(` = 1（seam 调用点）、旧符号残留（`recordKBActivity(\|withKBActivityTask(\|kbActivityTrigger(\|withKBActivitySuppressed(\|withKnowledgeCleanup(`）= **0**。
 
+### B2-DS.7 差分复跑比对（2026-09-27，HEAD=`52ae889a2` 树实跑；conventions §6 四要素=用例清单/双跑输出/比对结论/命令与退出码）
+
+**要素①命令与退出码（Step 1 新旧同用例双跑，命令原文；④旧锚面为计划 T7 原命令、③为偏差面补跑）**：
+
+| # | 面 | 命令（原文） | 退出码 | 顶层 RUN | 结果 |
+|---|---|---|---|---|---|
+| ① | 新实现（模块包：repository 10 + service 73 + handler 20 + 既有模块面） | `go test -count=1 ./internal/modules/datasource/... -v 2>&1 \| tee /tmp/ds-new.txt` | 0 | 483（其中迁移面 103 = repo 10 + service 73 + handler 20，其余为既有模块面/connector 等基线外用例） | 15 包全 `ok`，`--- FAIL`/`--- SKIP` = 0 |
+| ② | 旧锚点（留守 purge_test，经 compat 装配运行同一实现，兼作 compat/seam 接线等价证据） | `go test -count=1 ./internal/application/service/ -run 'TestDeleteDataSourcePurge\|TestDeleteDataSourceWithoutPurge\|TestPurgeWorker\|TestProcessDataSourcePurge\|TestDataSourcePurgeQueueTopology\|TestCountDataSourceDocumentsScopesToTenantKbDataSource' -v 2>&1 \| tee /tmp/ds-old-anchor.txt` | 0 | 9 | 9/9 PASS，0 FAIL/SKIP |
+| ③ | delete_sqlite 留守补跑（**偏差面**：计划 T7 注释预期「service 76」迁移，B2-DS.3 实际 73+3 分裂——3 用例按 B2-DS.3 报告偏差登记留守宿主，命令模式沿 evidence §差分 B2-DS.3 节第 3 行） | `go test -count=1 ./internal/application/service/ -run 'TestDataSourceServiceDeleteSQLiteCleansUpAfterSoftDelete\|TestDataSourceServiceDeleteKeepsCleanupStateWhenSoftDeleteFails\|TestDeleteKnowledgeBaseCleansUpSQLiteDataSources' -v 2>&1 \| tee /tmp/ds-old-sqlite.txt` | 0 | 3 | 3/3 PASS |
+
+注：表中 `\|` 为 markdown 表格转义；实跑命令用 `|`（go test -run 正则交替）。首次误用 `\|` 字面量时输出 `[no tests to run]`（exit 0），已按正确正交替义重跑并留档 /tmp/ds-old-sqlite.txt。
+
+**要素②用例清单（四面拆分，`-v` 顶层 RUN 行不含 `/` 口径）**：repository 10（`/tmp/ds-new-repository.txt`）、service 73（`/tmp/ds-new-service.txt`）、handler 20（`/tmp/ds-new-handler.txt`）、旧锚点 9+3（`/tmp/ds-old-purge9.txt` + `/tmp/ds-old-sqlite3.txt`）——与 §特征化基线 115 清单一一对应。
+
+**要素③双跑输出**：T1 基线（ALIGN_SHA 树，§特征化基线：85+10+20 全 PASS）vs 本轮（HEAD=52ae889a2：73+9+3+10+20 全 PASS）。
+
+**要素④比对结论（Step 2 逐用例比对，程序化 diff 实测）**：
+
+```bash
+diff /tmp/ds-baseline-repo.txt /tmp/ds-new-repository.txt        # exit 0（identical，10/10）
+diff /tmp/ds-baseline-handler.txt /tmp/ds-new-handler.txt        # exit 0（identical，20/20）
+cat /tmp/ds-new-service.txt /tmp/ds-old-purge9.txt /tmp/ds-old-sqlite3.txt | sort > /tmp/ds-service-union.txt
+wc -l < /tmp/ds-service-union.txt                                 # 85
+diff /tmp/ds-baseline-service.txt /tmp/ds-service-union.txt       # exit 0（identical）
+cat /tmp/ds-service-union.txt /tmp/ds-new-repository.txt /tmp/ds-new-handler.txt | sort > /tmp/ds-now-115.txt
+diff /tmp/ds-baseline-115.txt /tmp/ds-now-115.txt                 # exit 0（identical 115）
+```
+
+**115 用例零偏差**：集合侧五组 diff 全空；状态侧 T1 基线 115/115 PASS vs 本轮 115/115 PASS、双侧 0 FAIL/0 SKIP——PASS/FAIL/SKIP 逐用例一致，通过判据满足。
+
+**高风险两面专门登记（计划 T7 Step 2）**：
+
+- **knowledge 删除/purge 级联**（framework §14.3）：purge 9 用例全在旧锚点面②运行——drain 跨批 `TestPurgeWorkerDrainsAcrossBatches`、ctx 取消批次边界 `TestPurgeWorkerStopsBetweenBatchesWhenContextCanceled`、墓碑/硬删 `TestDeleteDataSourcePurgeEnqueuesTaskAndWorkerDrainsDocuments`、孤儿 tag `TestPurgeWorkerRemovesOrphanAutoTag`、不 purge 保留 `TestDeleteDataSourceWithoutPurgeKeepsDocuments`、预取消 noop `TestPurgeWorkerNoopOnPreCanceledContext`、无效载荷 `TestProcessDataSourcePurgeRejectsInvalidPayload`、队列拓扑 `TestDataSourcePurgeQueueTopology`、计数作用域 `TestCountDataSourceDocumentsScopesToTenantKbDataSource`。**绑定清理断言（purge_test `:349-:350` `bindingRows`，实测行号，属墓碑用例）同时证明模块 `datasource_service.go:898-899` seam 调用（`s.knowledgeCleanup`，`SetKnowledgeCleanup` 接线 `:121`）与迁移前 `withKnowledgeCleanup` 直引等价**。
+- **Worker 状态机/取消/重试/幂等**（framework §14.3）：cancel_enqueue 6（`datasource_cancel_enqueue_test.go` 逐名：`TestDeleteDataSourceHardCancelsQueuedSyncTasksBeforeSweep`/`TestDeleteDataSourceWithoutInspectorDegradesToSweep`/`TestPauseDataSourceCancelsRunningAndQueuedSyncs`/`TestManualSyncRecordsAsynqTaskID`/`TestManualSyncPassesForceFullToPayload`/`TestSetTaskInspectorInstallsHardCancel`）+ sync_cancel 7（`datasource_sync_cancel_test.go`：`TestCancelSyncLog_*`×2 + `TestCheckpoint_*`×2 + `TestCheckCancelRequested_ReadsFlagFromRepository` + `TestProcessSyncStreaming_UserCancelIsGracefulSuccess` + `TestProcessSyncBatch_UserCancelAtItemBoundary`）+ sync_heartbeat 2（`TestSyncHeartbeat*`）+ stream 6（`TestStreamStartCursor_*`×2 + `TestStreamHandler_*`×3 + `TestStreamingFetchUsesFullStreamBaseline`）——文件级 `grep -c '^func Test'` 实测 6/7/2/6 与计划计数一致，全 PASS。
+- **审计活动流**：宿主 `purgeAuditSink.findByAction`（`datasource_purge_test.go:95` 定义，`:319` 消费 `AuditActionDataSourceDeleted`）+ 模块侧 findByAction 断言（`datasource_credential_refresh_test.go:198`、`datasource_credential_refresh_trigger_test.go` 7 处，含 `AuditActionDataSourceCredentialAutoRefreshed`/`AuditActionDataSourceSyncFailed`）——覆盖 17 个 `app.RecordKBActivity` 直连改写点的行为面（:349-:350 绑定断言所在用例即经 seam 走完整清理链）。
+
+**结论**：差分四要素齐备，四面（①repo 10 / ②service 73 / ③handler 20 / ④旧锚 9+补 3）115 用例零偏差，任一未归因偏差为零——B2-DS.7 通过判据满足。
+
 ## §计数基线
 
 ### 例外行登记（B2-DS.5，2026-09-27，任务 commit 工作树实测）
@@ -288,7 +326,18 @@ K 属主留守测试断链面（DAG ppc 清单外显形）与 Ruling 2026-09-24-
 
 - **passbguard 前后对照（非本节点 gate，诚实登记）**：诊断行数 259→248。①**−12 治愈**：基线 12 条 `contract-consumer-module-import` 全部指向 `internal/modules/datasource/service/datasource_service.go`（6 契约 consumer × knowledge/retrieval/app + policy/access 两导入，stash 复跑实证 /tmp/passbguard-baseline-ccmi.txt），本登记使 `excepted[from→to]` 命中而全部消失；②**+1 新增**：`exception-task-module: guard PassBTask "B2-DS.5" has no module mapping`（3 行同 check+path+message 去重为 1；`PassBTaskModule` 映射（tools/passbguard/check.go:83-93）仅含 B0 建制的 9 个模块级 id，无 B2-DS.5/B-datasource——计划 T5 Step 1 原文指定 `PassBTask: "B2-DS.5"`，本节点无权改 passbguard 补映射；移交 IB2：barrier 在 PassBTaskModule 增 `"B2-DS.5": "datasource"` 行或裁定改用模块级 id，归入 Brief (c) 例外收口编排）。check-passb-readiness 本就因 K 谱系继承债务 exit 1（计划 §12 实测在案），本任务净减 11 条诊断。
 
-### 三方一致复核（占位——B2-DS.7 填写；P-6 快照已录 633/23+23/58/16、16 manifests、0 violations）
+### 三方一致复核（B2-DS.7，2026-09-27，HEAD=`52ae889a2` 树实跑；conventions §8 / F5 口径）
+
+| 指标 | guard 实测 | `pass-a-acceptance.md` 台账 | 发现值 | 一致 |
+|---|---|---|---|---|
+| 路由 | `make check-backend-architecture` exit 0：`literal=564 apiKeyRoute=69 handle=0 total=633` | :22「633（564 literal + 69 apiKeyRoute）」 | architectureguard 扫描即发现面（同左列命令输出） | ✅ |
+| worker | `redis=23 lite=23` | :23「23 任务类型 + 6 池 / 23」 | 同上 | ✅ |
+| hooks | `hooks=58` | :24「58」 | 同上 | ✅ |
+| migrations | （guard 不扫 migrations） | :25「537 文件（270 assets）」 | `find migrations -type f \| wc -l` = **537**（versioned 346 + mysql/paradedb/sqlite 191，`ls`/`wc -l` 实测） | ✅ |
+
+- P-6 基线快照（ALIGN_SHA 树）同值：633/23+23/58/16、16 manifests、0 violations——**B2-DS.1 至 B2-DS.7 全程计数零漂移**。
+- 本节点零路由/worker/hook/migration 增删：`git diff "$ALIGN_SHA"...HEAD --name-only | grep -E "internal/router/|migrations/"` 计数 = **0**（实跑 exit 1 无匹配）。
+- 例外行基线 131→134（B2-DS.5 §例外行登记，ib2 回落）；`make verify-module-moves` exit 0 `OK (16 manifests verified)`；`go build ./...` exit 0（仅 cmd/desktop、cmd/server 既有 `ld: warning: ignoring duplicate libraries: '-lc++'`）。
 
 ## §别名（B2-DS.6，2026-09-27，空义务核销——12 行成对删除）
 
