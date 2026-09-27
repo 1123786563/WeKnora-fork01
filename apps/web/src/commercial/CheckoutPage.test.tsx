@@ -424,3 +424,137 @@ test('a javascript-scheme checkout_url is never rendered as a link', async () =>
   assert.equal(document.querySelector('a'), null, 'no payment link at all for an unsafe checkout_url');
   await act(async () => { root?.unmount(); });
 });
+
+// ---- #82 Task 15 (OCR r2): checkout/billing closure (D15) ----
+
+// (D15-f) canceled 是闭合产品状态：专属文案 + 隐藏支付入口（已取消的购买
+// 不得再引导付款）。
+test('a canceled purchase shows the canceled copy and hides the payment entry', async () => {
+  const canceledOrder = { ...order, payment: 'closed' as const };
+  const client = {
+    commercial: {
+      quote: async () => quote,
+      purchase: async () => ({ state: 'canceled', order: canceledOrder, plan_key: 'pro', plan_version: 1, amount_fen: '9900', currency: 'CNY' }),
+      purchaseStatus: async () => ({ state: 'canceled' }),
+      getOrder: async () => canceledOrder,
+    },
+  };
+  const { CheckoutPage } = await import('./CheckoutPage.tsx');
+  const { createScopeController } = await import('@weknora/domain/scope');
+  const scopeController = createScopeController({ origin: '', userId: 'user-1', tenantId: '81' });
+  let root: Root | undefined;
+  document.body.innerHTML = '';
+  await act(async () => {
+    root = createRoot(document.body.appendChild(document.createElement('div')));
+    root.render(React.createElement(CheckoutPage, { client: client as never, scopeController, orderId: '' }));
+  });
+  await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+  const text = document.body.textContent ?? '';
+  assert.match(text, /该购买已取消，请重新发起购买/);
+  assert.equal(document.querySelector('a[href="https://pay.example/qr"]'), null, 'a canceled purchase must hide the payment entry');
+  await act(async () => { root?.unmount(); });
+});
+
+// (D15-e) 报价级死循环令牌补全：invoice_quote_mismatch 与 not-purchasable-yet
+// 的重试必然同一 409——不在令牌集内就会对同一 quote 死循环重试。
+test('quote-level conflict tokens cover invoice_quote_mismatch and the not-purchasable-yet token', async () => {
+  const { ApiError } = await import('@weknora/api-client');
+  const { isQuoteLevelConflict } = await import('./CheckoutPage.tsx');
+  assert.equal(isQuoteLevelConflict(new ApiError({ status: 409, code: 'HTTP_409', message: 'invoice_quote_mismatch' })), true);
+  assert.equal(isQuoteLevelConflict(new ApiError({ status: 409, code: 'HTTP_409', message: 'this plan version is not purchasable yet; please re-quote later' })), true);
+  assert.equal(isQuoteLevelConflict(new ApiError({ status: 409, code: 'HTTP_409', message: 'purchase_plan_conflict' })), false, 'plan conflicts stay purchase-level');
+});
+
+// (D15-b) 切换渠道单选不得重跑加载 effect：getOrder 调用计数不变（避免每个
+// 单选点击都重发请求/重置页面）。
+test('switching the channel radio does not re-run the loading effect', async () => {
+  let getOrderCalls = 0;
+  const client = {
+    commercial: {
+      quote: async () => quote,
+      purchase: async () => ({ state: 'awaiting_payment', order, plan_key: 'pro', plan_version: 1, amount_fen: '9900', currency: 'CNY' }),
+      purchaseStatus: async () => ({ state: 'awaiting_payment' }),
+      getOrder: async () => { getOrderCalls += 1; return order; },
+    },
+  };
+  const { CheckoutPage } = await import('./CheckoutPage.tsx');
+  const { createScopeController } = await import('@weknora/domain/scope');
+  const scopeController = createScopeController({ origin: '', userId: 'user-1', tenantId: '82' });
+  let root: Root | undefined;
+  document.body.innerHTML = '';
+  await act(async () => {
+    root = createRoot(document.body.appendChild(document.createElement('div')));
+    root.render(React.createElement(CheckoutPage, { client: client as never, scopeController, orderId: 'ord_1' }));
+  });
+  await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+  assert.equal(getOrderCalls, 1, 'the deep-link open loads the order exactly once');
+  const wechatRadio = document.querySelector<HTMLInputElement>('input[value="wechat"]');
+  assert.ok(wechatRadio, 'the wechat radio must render');
+  await act(async () => { wechatRadio?.click(); });
+  await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+  assert.equal(getOrderCalls, 1, 'switching the radio must NOT re-run the loading effect');
+  await act(async () => { root?.unmount(); });
+});
+
+// (D15-c) 深链打开既有订单不臆测渠道：submittedChannel 初值 null——失配横幅
+// 只在真正提交过一次后才可能显示（深链 + 切换单选也不出现）。
+test('a deep-link open shows no channel-mismatch banner until a submit happens', async () => {
+  const client = {
+    commercial: {
+      quote: async () => quote,
+      purchase: async () => ({ state: 'awaiting_payment', order, plan_key: 'pro', plan_version: 1, amount_fen: '9900', currency: 'CNY' }),
+      purchaseStatus: async () => ({ state: 'awaiting_payment' }),
+      getOrder: async () => order,
+    },
+  };
+  const { CheckoutPage } = await import('./CheckoutPage.tsx');
+  const { createScopeController } = await import('@weknora/domain/scope');
+  const scopeController = createScopeController({ origin: '', userId: 'user-1', tenantId: '83' });
+  let root: Root | undefined;
+  document.body.innerHTML = '';
+  await act(async () => {
+    root = createRoot(document.body.appendChild(document.createElement('div')));
+    root.render(React.createElement(CheckoutPage, { client: client as never, scopeController, orderId: 'ord_1' }));
+  });
+  await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+  let text = document.body.textContent ?? '';
+  assert.doesNotMatch(text, /当前订单以/, 'a deep-link open must not guess the order channel (no mismatch banner)');
+  // 切换单选同样不触发横幅（本页从未提交过任何渠道）。
+  const wechatRadio = document.querySelector<HTMLInputElement>('input[value="wechat"]');
+  assert.ok(wechatRadio, 'the wechat radio must render');
+  await act(async () => { wechatRadio?.click(); });
+  await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+  text = document.body.textContent ?? '';
+  assert.doesNotMatch(text, /当前订单以/, 'no mismatch banner before this page has actually submitted a purchase');
+  await act(async () => { root?.unmount(); });
+});
+
+// (D15-d) getOrder 加载失败与购买创建失败文案分流：深链读单失败是「订单加载
+// 失败」，不是「购买未能创建」。
+test('a deep-link getOrder failure renders the order-load copy, not the purchase-creation copy', async () => {
+  const { ApiError } = await import('@weknora/api-client');
+  const notFound = new ApiError({ status: 404, code: 'HTTP_404', message: 'order not found' });
+  const client = {
+    commercial: {
+      quote: async () => quote,
+      purchase: async () => ({ state: 'awaiting_payment', order, plan_key: 'pro', plan_version: 1, amount_fen: '9900', currency: 'CNY' }),
+      purchaseStatus: async () => ({ state: 'awaiting_payment' }),
+      getOrder: async () => { throw notFound; },
+    },
+  };
+  const { CheckoutPage } = await import('./CheckoutPage.tsx');
+  const { createScopeController } = await import('@weknora/domain/scope');
+  const scopeController = createScopeController({ origin: '', userId: 'user-1', tenantId: '84' });
+  let root: Root | undefined;
+  document.body.innerHTML = '';
+  await act(async () => {
+    root = createRoot(document.body.appendChild(document.createElement('div')));
+    root.render(React.createElement(CheckoutPage, { client: client as never, scopeController, orderId: 'ord_gone' }));
+  });
+  await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+  const text = document.body.textContent ?? '';
+  assert.match(text, /订单加载失败，请稍后重试/);
+  assert.doesNotMatch(text, /购买未能创建/);
+  assert.doesNotMatch(text, /order not found/);
+  await act(async () => { root?.unmount(); });
+});
