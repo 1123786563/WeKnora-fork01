@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
 	apperrors "github.com/Tencent/WeKnora/internal/errors"
@@ -27,19 +28,23 @@ import (
 // ResearchStore is the delegation persistence seam (production:
 // *repository.TaskResearchStore). CreateDelegation receives the entity by
 // pointer: the store writes back the persisted timestamps (B5-F74).
+// ListDelegationsBySession pages by the (created_at, id) keyset with an id
+// cursor (B5-F67).
 type ResearchStore interface {
 	CreateDelegation(ctx context.Context, d *types.TaskResearchDelegation) error
 	GetDelegation(ctx context.Context, tenantID uint64, id string) (types.TaskResearchDelegation, error)
-	ListDelegationsBySession(ctx context.Context, tenantID uint64, sessionID string) ([]types.TaskResearchDelegation, error)
+	ListDelegationsBySession(ctx context.Context, tenantID uint64, sessionID string, limit int, cursor string) ([]types.TaskResearchDelegation, error)
 	CompleteDelegation(ctx context.Context, tenantID uint64, id, summary string) (types.TaskResearchDelegation, error)
 }
 
 // AnnotationStore is the annotation persistence seam (production:
 // *repository.TaskAnnotationStore). CreateAnnotation receives the entity by
 // pointer: the store writes back the persisted timestamps (B5-F75).
+// ListAnnotationsBySession pages by the (created_at, id) keyset with an id
+// cursor (B5-F67).
 type AnnotationStore interface {
 	CreateAnnotation(ctx context.Context, a *types.TaskArtifactAnnotation) error
-	ListAnnotationsBySession(ctx context.Context, tenantID uint64, sessionID string) ([]types.TaskArtifactAnnotation, error)
+	ListAnnotationsBySession(ctx context.Context, tenantID uint64, sessionID string, limit int, cursor string) ([]types.TaskArtifactAnnotation, error)
 }
 
 // ResearchSourceAuthorizer decides whether one knowledge base may be
@@ -60,7 +65,28 @@ type TaskAccessResolver interface {
 const (
 	maxResearchSources        = 8
 	maxResearchObjectiveRunes = 2000
+	maxResearchSummaryRunes   = 2000
+	maxAnnotationBodyRunes    = 8000
+
+	// List paging (B5-F67): append-only surfaces must not return unbounded
+	// responses.
+	researchListDefaultLimit = 50
+	researchListMaxLimit     = 200
 )
+
+// researchListParams parses ?limit=&cursor= with a fixed default and cap.
+func researchListParams(c *gin.Context) (limit int, cursor string) {
+	limit = researchListDefaultLimit
+	if raw := strings.TrimSpace(c.Query("limit")); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed >= 1 {
+			limit = parsed
+		}
+	}
+	if limit > researchListMaxLimit {
+		limit = researchListMaxLimit
+	}
+	return limit, strings.TrimSpace(c.Query("cursor"))
+}
 
 // ErrResearchSourceOutOfScope is the ONE authorizer verdict that means
 // "this knowledge base is outside the task's tenant scope" (a business
@@ -186,7 +212,6 @@ func annotationViewOf(a types.TaskArtifactAnnotation) researchAnnotationView {
 type researchDelegateInput struct {
 	Objective string   `json:"objective"`
 	Sources   []string `json:"sources"`
-	AgentID   string   `json:"agent_id"`
 }
 
 // DelegateResearch POST /workbench/executions/:run_id/research — owner-only.
@@ -247,21 +272,29 @@ func (h *WorkbenchResearchHandler) DelegateResearch(c *gin.Context) {
 }
 
 // ListResearch GET /workbench/executions/:run_id/research — owner + granted.
+// Pages by the (created_at, id) keyset; next_cursor is present while a
+// further page exists (B5-F67).
 func (h *WorkbenchResearchHandler) ListResearch(c *gin.Context) {
 	run, ok := h.resolveReadable(c)
 	if !ok {
 		return
 	}
-	rows, err := h.research.ListDelegationsBySession(c.Request.Context(), run.Key.TenantID, run.SessionID)
+	limit, cursor := researchListParams(c)
+	rows, err := h.research.ListDelegationsBySession(c.Request.Context(), run.Key.TenantID, run.SessionID, limit+1, cursor)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "code": "research_backend", "error": "failed to list delegations"})
 		return
+	}
+	nextCursor := ""
+	if len(rows) > limit {
+		rows = rows[:limit]
+		nextCursor = rows[len(rows)-1].ID
 	}
 	items := make([]researchDelegationView, 0, len(rows))
 	for _, row := range rows {
 		items = append(items, delegationViewOf(row))
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"items": items}})
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"items": items, "next_cursor": nextCursor}})
 }
 
 type researchSummaryInput struct {
@@ -282,6 +315,10 @@ func (h *WorkbenchResearchHandler) CompleteResearch(c *gin.Context) {
 	var input researchSummaryInput
 	if err := c.ShouldBindJSON(&input); err != nil || strings.TrimSpace(input.Summary) == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "code": "research_invalid_request", "error": "summary is required"})
+		return
+	}
+	if runes := utf8.RuneCountInString(input.Summary); runes > maxResearchSummaryRunes {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "code": "research_invalid_request", "error": "summary exceeds the 2000-rune cap"})
 		return
 	}
 	delegation, err := h.research.GetDelegation(c.Request.Context(), run.Key.TenantID, c.Param("delegation_id"))
@@ -337,6 +374,18 @@ func (h *WorkbenchResearchHandler) AnnotateMaterial(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "code": "research_invalid_request", "error": "material_id, base_version and body are required"})
 		return
 	}
+	// Input-format verdicts come BEFORE business states (B5-F65): an
+	// empty or oversized body is 400 even when the material is also
+	// missing (404) or the version stale (409).
+	input.Body = strings.TrimSpace(input.Body)
+	if input.Body == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "code": "research_invalid_request", "error": "body is required"})
+		return
+	}
+	if utf8.RuneCountInString(input.Body) > maxAnnotationBodyRunes {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "code": "research_invalid_request", "error": "body exceeds the 8000-rune cap"})
+		return
+	}
 	input.MaterialID = strings.TrimSpace(input.MaterialID)
 	refs, err := h.refs.GetSessionArtifactRefs(c.Request.Context(), run.SessionID)
 	if err != nil {
@@ -361,11 +410,7 @@ func (h *WorkbenchResearchHandler) AnnotateMaterial(c *gin.Context) {
 	annotation := types.TaskArtifactAnnotation{
 		TenantID: tenantID, ID: uuid.NewString(), SessionID: run.SessionID, RunID: run.Key.RunID,
 		MaterialID: input.MaterialID, BaseVersion: input.BaseVersion,
-		Body: strings.TrimSpace(input.Body), AuthorID: userID,
-	}
-	if strings.TrimSpace(input.Body) == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "code": "research_invalid_request", "error": "body is required"})
-		return
+		Body: input.Body, AuthorID: userID,
 	}
 	if err := h.annotations.CreateAnnotation(c.Request.Context(), &annotation); err != nil {
 		writeResearchError(c, err)
@@ -375,22 +420,29 @@ func (h *WorkbenchResearchHandler) AnnotateMaterial(c *gin.Context) {
 }
 
 // ListAnnotations GET /workbench/executions/:run_id/annotations — owner +
-// granted read (annotations are review records, readable by viewers).
+// granted read (annotations are review records, readable by viewers). Pages
+// by the (created_at, id) keyset with an id cursor (B5-F67).
 func (h *WorkbenchResearchHandler) ListAnnotations(c *gin.Context) {
 	run, ok := h.resolveReadable(c)
 	if !ok {
 		return
 	}
-	rows, err := h.annotations.ListAnnotationsBySession(c.Request.Context(), run.Key.TenantID, run.SessionID)
+	limit, cursor := researchListParams(c)
+	rows, err := h.annotations.ListAnnotationsBySession(c.Request.Context(), run.Key.TenantID, run.SessionID, limit+1, cursor)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "code": "research_backend", "error": "failed to list annotations"})
 		return
+	}
+	nextCursor := ""
+	if len(rows) > limit {
+		rows = rows[:limit]
+		nextCursor = rows[len(rows)-1].ID
 	}
 	items := make([]researchAnnotationView, 0, len(rows))
 	for _, row := range rows {
 		items = append(items, annotationViewOf(row))
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"items": items}})
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"items": items, "next_cursor": nextCursor}})
 }
 
 // writeResearchError maps store/service failures onto a fixed code table; no

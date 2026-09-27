@@ -6,6 +6,7 @@ package repository_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -43,10 +44,10 @@ func TestTaskResearchStoreDelegationRoundTrip(t *testing.T) {
 	_, err = store.GetDelegation(ctx, 2, "d1")
 	require.ErrorIs(t, err, types.ErrTaskResearchNotFound)
 
-	list, err := store.ListDelegationsBySession(ctx, 1, "s1")
+	list, err := store.ListDelegationsBySession(ctx, 1, "s1", 50, "")
 	require.NoError(t, err)
 	require.Len(t, list, 1)
-	list, err = store.ListDelegationsBySession(ctx, 2, "s1")
+	list, err = store.ListDelegationsBySession(ctx, 2, "s1", 50, "")
 	require.NoError(t, err)
 	require.Empty(t, list, "跨租户列表必须为空（AC1 探测面）")
 }
@@ -89,7 +90,7 @@ func TestTaskAnnotationStoreAppendOnlyAndMaterialIndex(t *testing.T) {
 	}
 	require.NoError(t, store.CreateAnnotation(ctx, &base))
 
-	list, err := store.ListAnnotationsBySession(ctx, 1, "s1")
+	list, err := store.ListAnnotationsBySession(ctx, 1, "s1", 50, "")
 	require.NoError(t, err)
 	require.Len(t, list, 1)
 	require.Equal(t, "9a2f1c3d4e5f6a7b", list[0].BaseVersion)
@@ -101,10 +102,10 @@ func TestTaskAnnotationStoreAppendOnlyAndMaterialIndex(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, byMaterial)
 
-	_, err = store.ListAnnotationsBySession(ctx, 2, "s1")
+	_, err = store.ListAnnotationsBySession(ctx, 2, "s1", 50, "")
 	require.NoError(t, err)
 	// 跨租户返回空集（同委派列表口径），绝不泄漏其它租户批注。
-	other, err := store.ListAnnotationsBySession(ctx, 2, "s1")
+	other, err := store.ListAnnotationsBySession(ctx, 2, "s1", 50, "")
 	require.NoError(t, err)
 	require.Empty(t, other)
 
@@ -123,4 +124,37 @@ func TestTaskAnnotationStoreAppendOnlyAndMaterialIndex(t *testing.T) {
 		bad.BaseVersion = bad.BaseVersion[:i] + "a" + bad.BaseVersion[i+1:]
 	}
 	require.ErrorIs(t, store.CreateAnnotation(ctx, &bad), types.ErrTaskAnnotationInvalid)
+}
+
+// B5-F67: the keyset pagination must resume strictly after the cursor row on
+// the real database (row-value comparison over (created_at, id)).
+func TestTaskAnnotationStoreKeysetPagination(t *testing.T) {
+	db := openTaskGrantDB(t)
+	store := repository.NewTaskAnnotationStore(db)
+	ctx := context.Background()
+
+	for i := 0; i < 3; i++ {
+		row := types.TaskArtifactAnnotation{
+			TenantID: 1, ID: fmt.Sprintf("an-%d", i), SessionID: "s1", RunID: "r1",
+			MaterialID: "m1:0", BaseVersion: "v", Body: "b", AuthorID: "u3",
+			CreatedAt: time.Unix(int64(1_700_000_000+i), 0).UTC(),
+		}
+		require.NoError(t, store.CreateAnnotation(ctx, &row))
+	}
+
+	page1, err := store.ListAnnotationsBySession(ctx, 1, "s1", 2, "")
+	require.NoError(t, err)
+	require.Len(t, page1, 2)
+	require.Equal(t, "an-0", page1[0].ID)
+	require.Equal(t, "an-1", page1[1].ID)
+
+	page2, err := store.ListAnnotationsBySession(ctx, 1, "s1", 2, page1[1].ID)
+	require.NoError(t, err)
+	require.Len(t, page2, 1)
+	require.Equal(t, "an-2", page2[0].ID)
+
+	// An unknown cursor is the uniform empty page, never an error or a leak.
+	pageMiss, err := store.ListAnnotationsBySession(ctx, 1, "s1", 2, "an-missing")
+	require.NoError(t, err)
+	require.Empty(t, pageMiss)
 }

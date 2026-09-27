@@ -52,13 +52,24 @@ func (s *TaskResearchStore) GetDelegation(ctx context.Context, tenantID uint64, 
 	return row, nil
 }
 
-// ListDelegationsBySession lists the task's delegations in creation order.
-func (s *TaskResearchStore) ListDelegationsBySession(ctx context.Context, tenantID uint64, sessionID string) ([]types.TaskResearchDelegation, error) {
+// ListDelegationsBySession lists the task's delegations in creation order,
+// paged by the (created_at, id) keyset: cursor is the id of the last row of
+// the previous page and the page resumes strictly after that row (B5-F67).
+// All parameters are bound.
+func (s *TaskResearchStore) ListDelegationsBySession(ctx context.Context, tenantID uint64, sessionID string, limit int, cursor string) ([]types.TaskResearchDelegation, error) {
+	if limit < 1 {
+		limit = 50
+	}
+	query := s.db.WithContext(ctx).Model(&types.TaskResearchDelegation{}).
+		Where("tenant_id = ? AND session_id = ?", tenantID, sessionID)
+	if cursor != "" {
+		query = query.Where(
+			"(created_at, id) > (SELECT created_at, id FROM task_research_delegations WHERE tenant_id = ? AND session_id = ? AND id = ?)",
+			tenantID, sessionID, cursor,
+		)
+	}
 	var rows []types.TaskResearchDelegation
-	err := s.db.WithContext(ctx).
-		Where("tenant_id = ? AND session_id = ?", tenantID, sessionID).
-		Order("created_at ASC, id ASC").
-		Find(&rows).Error
+	err := query.Order("created_at ASC, id ASC").Limit(limit).Find(&rows).Error
 	if err != nil {
 		return nil, err
 	}
@@ -119,13 +130,23 @@ func (s *TaskAnnotationStore) CreateAnnotation(ctx context.Context, a *types.Tas
 	return s.db.WithContext(ctx).Create(a).Error
 }
 
-// ListAnnotationsBySession lists the task's annotations in creation order.
-func (s *TaskAnnotationStore) ListAnnotationsBySession(ctx context.Context, tenantID uint64, sessionID string) ([]types.TaskArtifactAnnotation, error) {
+// ListAnnotationsBySession lists the task's annotations in creation order,
+// paged by the (created_at, id) keyset with an id cursor (B5-F67). All
+// parameters are bound.
+func (s *TaskAnnotationStore) ListAnnotationsBySession(ctx context.Context, tenantID uint64, sessionID string, limit int, cursor string) ([]types.TaskArtifactAnnotation, error) {
+	if limit < 1 {
+		limit = 50
+	}
+	query := s.db.WithContext(ctx).Model(&types.TaskArtifactAnnotation{}).
+		Where("tenant_id = ? AND session_id = ?", tenantID, sessionID)
+	if cursor != "" {
+		query = query.Where(
+			"(created_at, id) > (SELECT created_at, id FROM task_artifact_annotations WHERE tenant_id = ? AND session_id = ? AND id = ?)",
+			tenantID, sessionID, cursor,
+		)
+	}
 	var rows []types.TaskArtifactAnnotation
-	err := s.db.WithContext(ctx).
-		Where("tenant_id = ? AND session_id = ?", tenantID, sessionID).
-		Order("created_at ASC, id ASC").
-		Find(&rows).Error
+	err := query.Order("created_at ASC, id ASC").Limit(limit).Find(&rows).Error
 	if err != nil {
 		return nil, err
 	}

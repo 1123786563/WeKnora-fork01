@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -58,14 +59,47 @@ func (s *researchStoreStub) GetDelegation(_ context.Context, tenantID uint64, id
 	return types.TaskResearchDelegation{}, types.ErrTaskResearchNotFound
 }
 
-func (s *researchStoreStub) ListDelegationsBySession(_ context.Context, tenantID uint64, sessionID string) ([]types.TaskResearchDelegation, error) {
-	var out []types.TaskResearchDelegation
-	for _, d := range s.created {
-		if d.TenantID == tenantID && d.SessionID == sessionID {
-			out = append(out, d)
+// pageByKeyset mirrors the production keyset semantics on a pre-sorted
+// slice: resume strictly after the cursor row; an unknown cursor is the
+// uniform empty page (the SQL subselect yields NULL → no rows).
+func pageByKeyset[T any](sorted []T, cursor string, limit int, idOf func(T) string) []T {
+	start := 0
+	if cursor != "" {
+		start = -1
+		for i := range sorted {
+			if idOf(sorted[i]) == cursor {
+				start = i + 1
+				break
+			}
+		}
+		if start == -1 {
+			return nil
 		}
 	}
-	return out, nil
+	if start >= len(sorted) {
+		return nil
+	}
+	end := start + limit
+	if end > len(sorted) {
+		end = len(sorted)
+	}
+	return sorted[start:end]
+}
+
+func (s *researchStoreStub) ListDelegationsBySession(_ context.Context, tenantID uint64, sessionID string, limit int, cursor string) ([]types.TaskResearchDelegation, error) {
+	all := make([]types.TaskResearchDelegation, 0, len(s.created))
+	for _, d := range s.created {
+		if d.TenantID == tenantID && d.SessionID == sessionID {
+			all = append(all, d)
+		}
+	}
+	sort.Slice(all, func(i, j int) bool {
+		if all[i].CreatedAt.Equal(all[j].CreatedAt) {
+			return all[i].ID < all[j].ID
+		}
+		return all[i].CreatedAt.Before(all[j].CreatedAt)
+	})
+	return pageByKeyset(all, cursor, limit, func(d types.TaskResearchDelegation) string { return d.ID }), nil
 }
 
 func (s *researchStoreStub) CompleteDelegation(_ context.Context, tenantID uint64, id, summary string) (types.TaskResearchDelegation, error) {
@@ -107,14 +141,20 @@ func (s *annotationStoreStub) CreateAnnotation(_ context.Context, a *types.TaskA
 	return nil
 }
 
-func (s *annotationStoreStub) ListAnnotationsBySession(_ context.Context, tenantID uint64, sessionID string) ([]types.TaskArtifactAnnotation, error) {
-	var out []types.TaskArtifactAnnotation
+func (s *annotationStoreStub) ListAnnotationsBySession(_ context.Context, tenantID uint64, sessionID string, limit int, cursor string) ([]types.TaskArtifactAnnotation, error) {
+	all := make([]types.TaskArtifactAnnotation, 0, len(s.created))
 	for _, a := range s.created {
 		if a.TenantID == tenantID && a.SessionID == sessionID {
-			out = append(out, a)
+			all = append(all, a)
 		}
 	}
-	return out, nil
+	sort.Slice(all, func(i, j int) bool {
+		if all[i].CreatedAt.Equal(all[j].CreatedAt) {
+			return all[i].ID < all[j].ID
+		}
+		return all[i].CreatedAt.Before(all[j].CreatedAt)
+	})
+	return pageByKeyset(all, cursor, limit, func(a types.TaskArtifactAnnotation) string { return a.ID }), nil
 }
 
 type sourceAuthorizerStub struct {
@@ -518,4 +558,114 @@ func TestAnnotateMaterialClassifiesTaskAccessErrors(t *testing.T) {
 			}
 		})
 	}
+}
+
+// ─── input bounds & pagination (B5-F64; F65/F66/F67) ─────────────────────────
+
+func TestResearchInputBounds(t *testing.T) {
+	overBody := strings.Repeat("好", maxAnnotationBodyRunes+1)
+	overSummary := strings.Repeat("s", maxResearchSummaryRunes+1)
+
+	// 1) F65: an oversized body is a 400 input-format verdict and must be
+	// judged BEFORE business states (404 material miss, 409 stale version).
+	h, _, annotations, _ := researchHandlerEnv(types.TaskAccessOwner)
+	c, rec := researchContext(http.MethodPost, "/api/v1/workbench/executions/run-1/annotations",
+		`{"material_id":"m-missing:9","base_version":"stale","body":"`+overBody+`"}`)
+	h.AnnotateMaterial(c)
+	require.Equal(t, http.StatusBadRequest, c.Writer.Status(), rec.Body.String())
+	require.Contains(t, rec.Body.String(), "research_invalid_request")
+	require.Empty(t, annotations.created)
+
+	// Empty body with an unknown material: still the input 400, not 404.
+	c2, rec2 := researchContext(http.MethodPost, "/api/v1/workbench/executions/run-1/annotations",
+		`{"material_id":"m-missing:9","base_version":"stale","body":"  "}`)
+	h.AnnotateMaterial(c2)
+	require.Equal(t, http.StatusBadRequest, c2.Writer.Status(), rec2.Body.String())
+	require.Empty(t, annotations.created)
+
+	// A body at exactly the cap is accepted (boundary).
+	c3, _ := researchContext(http.MethodPost, "/api/v1/workbench/executions/run-1/annotations",
+		`{"material_id":"m1:0","base_version":"9a2f1c3d4e5f6a7b","body":"`+strings.Repeat("好", maxAnnotationBodyRunes)+`"}`)
+	h.AnnotateMaterial(c3)
+	require.Equal(t, http.StatusCreated, c3.Writer.Status())
+
+	// 2) F64: complete summary over the cap → 400.
+	h2, delegations, _, _ := researchHandlerEnv(types.TaskAccessOwner)
+	delegations.created = append(delegations.created, types.TaskResearchDelegation{
+		TenantID: 1, ID: "d1", SessionID: "sess-1", ParentRunID: "run-1",
+		Objective: "o", SourcesJSON: `["kb-1"]`, Status: types.TaskResearchAssigned, CreatedBy: "u1",
+	})
+	c4, rec4 := researchContext(http.MethodPost, "/api/v1/workbench/executions/run-1/research/delegation_id/summary",
+		`{"summary":"`+overSummary+`"}`)
+	h2.CompleteResearch(c4)
+	require.Equal(t, http.StatusBadRequest, c4.Writer.Status(), rec4.Body.String())
+	require.Contains(t, rec4.Body.String(), "research_invalid_request")
+	require.Equal(t, types.TaskResearchAssigned, delegations.created[0].Status, "超限摘要绝不能落库")
+
+	// 3) F66: an agent_id key in the request body is ignored (dead binding
+	// removed from the contract); delegation still succeeds.
+	h3, _, _, _ := researchHandlerEnv(types.TaskAccessOwner)
+	c5, rec5 := researchContext(http.MethodPost, "/api/v1/workbench/executions/run-1/research",
+		`{"objective":"x","sources":["kb-1"],"agent_id":"agent-9"}`)
+	h3.DelegateResearch(c5)
+	require.Equal(t, http.StatusCreated, c5.Writer.Status(), rec5.Body.String())
+	require.NotContains(t, rec5.Body.String(), "agent_id")
+}
+
+func TestResearchListsPaginateByIDCursor(t *testing.T) {
+	h, delegations, annotations, _ := researchHandlerEnv(types.TaskAccessOwner)
+	for i := 0; i < 3; i++ {
+		delegations.created = append(delegations.created, types.TaskResearchDelegation{
+			TenantID: 1, ID: fmt.Sprintf("d%d", i), SessionID: "sess-1", ParentRunID: "run-1",
+			Objective: "o", SourcesJSON: `["kb-1"]`, Status: types.TaskResearchAssigned, CreatedBy: "u1",
+			CreatedAt: time.Unix(int64(i), 0).UTC(),
+		})
+		annotations.created = append(annotations.created, types.TaskArtifactAnnotation{
+			TenantID: 1, ID: fmt.Sprintf("an%d", i), SessionID: "sess-1", RunID: "run-1",
+			MaterialID: "m1:0", BaseVersion: "9a2f1c3d4e5f6a7b", Body: "b", AuthorID: "u3",
+			CreatedAt: time.Unix(int64(i), 0).UTC(),
+		})
+	}
+
+	// First page: 2 of 3 annotations plus a cursor.
+	c, rec := researchContext(http.MethodGet, "/api/v1/workbench/executions/run-1/annotations?limit=2", "")
+	h.ListAnnotations(c)
+	require.Equal(t, http.StatusOK, c.Writer.Status(), rec.Body.String())
+	var page struct {
+		Data struct {
+			Items      []researchAnnotationView `json:"items"`
+			NextCursor string                   `json:"next_cursor"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &page))
+	require.Len(t, page.Data.Items, 2)
+	require.NotEmpty(t, page.Data.NextCursor, "还有余页时必须返回 next_cursor")
+
+	// Second page follows the cursor and drains the remainder.
+	c2, rec2 := researchContext(http.MethodGet, "/api/v1/workbench/executions/run-1/annotations?limit=2&cursor="+page.Data.NextCursor, "")
+	h.ListAnnotations(c2)
+	require.Equal(t, http.StatusOK, c2.Writer.Status(), rec2.Body.String())
+	var page2 struct {
+		Data struct {
+			Items      []researchAnnotationView `json:"items"`
+			NextCursor string                   `json:"next_cursor"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec2.Body.Bytes(), &page2))
+	require.Len(t, page2.Data.Items, 1)
+	require.Empty(t, page2.Data.NextCursor, "末页不再有 next_cursor")
+
+	// The delegation list paginates the same way.
+	c3, rec3 := researchContext(http.MethodGet, "/api/v1/workbench/executions/run-1/research?limit=2", "")
+	h.ListResearch(c3)
+	require.Equal(t, http.StatusOK, c3.Writer.Status(), rec3.Body.String())
+	var dpage struct {
+		Data struct {
+			Items      []researchDelegationView `json:"items"`
+			NextCursor string                   `json:"next_cursor"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec3.Body.Bytes(), &dpage))
+	require.Len(t, dpage.Data.Items, 2)
+	require.NotEmpty(t, dpage.Data.NextCursor)
 }
