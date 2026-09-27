@@ -519,26 +519,40 @@ func (s *OrderService) withAttention(ctx context.Context, view OrderView) OrderV
 }
 
 // collectedAmountMismatch（#84 / G2）reports whether the channel Query's
-// COLLECTED amount contradicts the registered attempt face: the recovery
-// paths refuse to confirm such a payment (confirming at the attempt's face
-// would silently absorb a wrong collection) and retain it as an anomaly
-// instead. 0 (= channel did not report an amount) never mismatches.
-func collectedAmountMismatch(reported, attemptFen int64) bool {
-	return reported > 0 && reported != attemptFen
+// COLLECTED face contradicts the registered attempt face — amount OR
+// currency: the recovery paths refuse to confirm such a payment (confirming
+// at the attempt's face would silently absorb a wrong amount; building the
+// fact from the attempt's own currency would LAUNDER a wrong-currency
+// collection — the real-stack defect the #84 leg-1 currency variant caught)
+// and retain it as an anomaly instead. 0 / "" (= channel did not report)
+// never mismatches.
+func collectedAmountMismatch(reportedFen, attemptFen int64, reportedCurrency, attemptCurrency string) bool {
+	if reportedFen > 0 && reportedFen != attemptFen {
+		return true
+	}
+	return reportedCurrency != "" && reportedCurrency != attemptCurrency
 }
 
-// recoverMismatchedCollection retains a query-path collected-amount
-// mismatch as an awaiting anomaly (#84, spec L127) and returns the pending
-// order view flagged for operator attention. The confirmation is skipped
-// entirely: the order keeps its payable entry (a correct later callback or
-// retry still confirms through the normal leg).
-func (s *OrderService) recoverMismatchedCollection(ctx context.Context, row repocommercial.OrderRow, att repocommercial.PaymentAttemptRow, txn string, collectedFen int64) (OrderView, error) {
+// recoverMismatchedCollection retains a query-path collected-face mismatch
+// as an awaiting anomaly (#84, spec L127) and returns the pending order view
+// flagged for operator attention. The confirmation is skipped entirely: the
+// order keeps its payable entry (a correct later callback or retry still
+// confirms through the normal leg).
+func (s *OrderService) recoverMismatchedCollection(ctx context.Context, row repocommercial.OrderRow, att repocommercial.PaymentAttemptRow, txn string, collectedFen int64, collectedCurrency string) (OrderView, error) {
+	actualFen := collectedFen
+	if actualFen <= 0 {
+		actualFen = att.AmountFen // channel reported no amount: the currency is the contradiction
+	}
+	actualCurrency := collectedCurrency
+	if actualCurrency == "" {
+		actualCurrency = att.Currency // channel reported no currency: the amount is the contradiction
+	}
 	if err := s.orders.RecordPaymentAnomaly(ctx, repocommercial.PaymentAnomalyRow{
 		TenantID: row.TenantID, OrderID: row.ID, AttemptID: att.MerchantOrderID,
 		Provider: att.Provider, Merchant: att.Merchant, Transaction: txn,
-		Kind:              repocommercial.ClassifyPaymentAnomaly(att.AmountFen, collectedFen, att.Currency, att.Currency),
-		ExpectedAmountFen: att.AmountFen, ActualAmountFen: collectedFen,
-		ExpectedCurrency: att.Currency, ActualCurrency: att.Currency,
+		Kind:              repocommercial.ClassifyPaymentAnomaly(att.AmountFen, actualFen, att.Currency, actualCurrency),
+		ExpectedAmountFen: att.AmountFen, ActualAmountFen: actualFen,
+		ExpectedCurrency: att.Currency, ActualCurrency: actualCurrency,
 	}); err != nil {
 		return OrderView{}, err
 	}
@@ -596,8 +610,8 @@ func (s *OrderService) RecoverOrderStatus(ctx context.Context, tenantID uint64, 
 		// (#84/G2) Compare what the channel ACTUALLY collected against the
 		// attempt face BEFORE confirming: a mismatched collection is an
 		// abnormal fact, never a fulfillment.
-		if collectedAmountMismatch(res.AmountFen, att.AmountFen) {
-			return s.recoverMismatchedCollection(ctx, row, att, txn, res.AmountFen)
+		if collectedAmountMismatch(res.AmountFen, att.AmountFen, res.AmountCurrency, att.Currency) {
+			return s.recoverMismatchedCollection(ctx, row, att, txn, res.AmountFen, res.AmountCurrency)
 		}
 		if err := s.orders.ConfirmPayment(ctx, domain.PaymentFact{
 			Provider: att.Provider, Merchant: att.Merchant,
@@ -697,8 +711,8 @@ func (s *OrderService) CloseChannelOrder(ctx context.Context, tenantID uint64, o
 		// mismatched collection is retained as an anomaly instead of being
 		// confirmed at the attempt's face (the fund fact survives the close,
 		// the fulfillment right is never minted from a wrong collection).
-		if collectedAmountMismatch(res.AmountFen, att.AmountFen) {
-			return s.recoverMismatchedCollection(ctx, row, att, txn, res.AmountFen)
+		if collectedAmountMismatch(res.AmountFen, att.AmountFen, res.AmountCurrency, att.Currency) {
+			return s.recoverMismatchedCollection(ctx, row, att, txn, res.AmountFen, res.AmountCurrency)
 		}
 		if err := s.orders.ConfirmPayment(ctx, domain.PaymentFact{
 			Provider: att.Provider, Merchant: att.Merchant,

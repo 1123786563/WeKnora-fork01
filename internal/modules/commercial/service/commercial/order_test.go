@@ -25,7 +25,8 @@ import (
 type stubCheckoutProvider struct {
 	mu             sync.Mutex
 	queryState     payment.AttemptState
-	queryAmountFen int64 // #84/G2: the collected amount the channel reports (0 = not reported)
+	queryAmountFen int64  // #84/G2: the collected amount the channel reports (0 = not reported)
+	queryCurrency  string // #84/G2 补: the collected currency the channel reports ("" = not reported)
 	createErr      error
 	createCalls    []string
 	queryCalls     []string
@@ -44,7 +45,7 @@ func (p *stubCheckoutProvider) Query(_ context.Context, id string) (payment.Atte
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.queryCalls = append(p.queryCalls, id)
-	return payment.AttemptResult{State: p.queryState, ProviderID: "txn_" + id, AmountFen: p.queryAmountFen}, nil
+	return payment.AttemptResult{State: p.queryState, ProviderID: "txn_" + id, AmountFen: p.queryAmountFen, AmountCurrency: p.queryCurrency}, nil
 }
 func (p *stubCheckoutProvider) Close(context.Context, string) error { return nil }
 func (p *stubCheckoutProvider) Verify(context.Context, http.Header, []byte) (domain.PaymentFact, error) {
@@ -591,6 +592,56 @@ func TestGetOrderSurfacesUnresolvedAnomaly(t *testing.T) {
 	}
 	if cleared.PaymentAttention {
 		t.Fatal("a resolved anomaly must clear the attention flag")
+	}
+}
+
+// TestRecoverOrderStatusWrongCurrencyRetainedAsAnomaly（真栈缺陷回归锁，
+// #84 第一幕错币种变体实抓）：渠道 Query 报 succeeded 且实收币种 ≠ attempt
+// 面额币种（金额恰好相等）时，恢复路径绝不能用 attempt 的 CNY 构造 fact
+// 洗白确认——必须与金额不符同型分流：不确认、落 currency_mismatch、
+// PaymentAttention 置位（spec L127 wrong-currency 不激活）。
+func TestRecoverOrderStatusWrongCurrencyRetainedAsAnomaly(t *testing.T) {
+	svc, provider, db := newOrderTestEnv(t)
+	provider.queryState = payment.StateSucceeded
+	provider.queryAmountFen = 9900 // same amount as the face...
+	provider.queryCurrency = "USD" // ...but a WRONG currency
+	seedPublishedPlan(t, db)
+	ctx := context.Background()
+	q, err := svc.CreateQuote(ctx, 45, "pro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, err := svc.CreateOrder(ctx, 45, q.ID, "wechat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	recovered, err := svc.RecoverOrderStatus(ctx, 45, view.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if recovered.State == domain.OrderStatePaid {
+		t.Fatal("a wrong-currency recovery must NEVER confirm (the attempt's currency must not launder the collection)")
+	}
+	if !recovered.PaymentAttention {
+		t.Fatal("a wrong-currency recovery must surface attention")
+	}
+	store := repocommercial.NewOrderStore(db)
+	ok, err := store.HasUnresolvedPaymentAnomaly(ctx, view.ID)
+	if err != nil || !ok {
+		t.Fatalf("the wrong-currency collection must be retained, got %v %v", ok, err)
+	}
+	var anomaly repocommercial.PaymentAnomalyRow
+	if err := db.Where("order_id = ?", view.ID).First(&anomaly).Error; err != nil {
+		t.Fatal(err)
+	}
+	if anomaly.Kind != repocommercial.PaymentAnomalyKindCurrency ||
+		anomaly.ExpectedCurrency != "CNY" || anomaly.ActualCurrency != "USD" {
+		t.Fatalf("currency anomaly snapshot mismatch: %+v", anomaly)
+	}
+	var nFulfill int64
+	db.Model(&repocommercial.OutboxEvent{}).Where("kind = ?", repocommercial.OutboxKindFulfill).Count(&nFulfill)
+	if nFulfill != 0 {
+		t.Fatalf("a wrong-currency collection must not mint a fulfill right, got %d", nFulfill)
 	}
 }
 
