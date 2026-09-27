@@ -20,3 +20,4 @@ Open-code-review records for the delivered Craft #107 scope. Per `docs/plans/202
 | 2026-09-26 | T14: eeb1ee2db^..b91d265dd | clean（第四轮豁免补救后干净段延伸：暂存资产钉扎/capture 前置门/manifest 逐段盘符等，见报告） | 0 open | 报告: docs/plans/craft-107-ocr-t14.md |
 | 2026-09-27 | T04: 678f34076^..f42e745e7 | clean（增量轮第三轮后干净段：nil 检查前移/组合 fail-closed/PATH 拒绝/形状校验等 6 项全修，见报告） | 0 open | 报告: docs/plans/craft-107-ocr-t04.md |
 | 2026-09-27 | T06: 545a2dc20^..e4de8a62a | clean（复核轮收编段：纯文档/台账变更，排除后 0 审查对象，报告为 skip-no-items） | 0 open | 报告: docs/plans/craft-107-ocr-t06.md |
+| 2026-09-27 | T15: 526e765a0^..699287503 | clean（增量轮收编段：树等价 merge 零代码增量，排除后 0 审查对象，报告为 skip-no-items） | 0 open | 报告: docs/plans/craft-107-ocr-t15.md |
