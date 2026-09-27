@@ -25,12 +25,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// t20BudgetChecker allows the session owner and one viewer; everyone else
-// (including a same-tenant non-member) is refused at the Task gate.
+// t20BudgetChecker allows the session owner and one viewer; a same-tenant
+// non-member is refused at the Task gate (403) and a FOREIGN tenant maps to
+// ErrNotFound — the T08 invisibility discipline (a foreigner never learns
+// the Task exists).
 type t20BudgetChecker struct{}
 
 func (t20BudgetChecker) CheckTaskAccess(_ context.Context, scope craft.Scope, _ craft.TaskAction) error {
-	if (scope.UserID == "u1" || scope.UserID == "u2") && scope.TenantID == 1 {
+	if scope.TenantID != 1 {
+		return craft.ErrNotFound
+	}
+	if scope.UserID == "u1" || scope.UserID == "u2" {
 		return nil
 	}
 	return craft.ErrForbidden

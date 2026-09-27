@@ -112,6 +112,19 @@ func (f *craftHTTPFiles) GetFile(_ context.Context, ref string) (io.ReadCloser, 
 	return io.NopCloser(strings.NewReader(string(data))), nil
 }
 
+// SaveBytes/DeleteFile back the T02 archive-expansion publish path (members
+// persist as immutable objects; a rollback deletes exactly what it created).
+func (f *craftHTTPFiles) SaveBytes(_ context.Context, data []byte, _ uint64, storageName string, _ bool) (string, error) {
+	ref := "files://" + storageName
+	f.blobs[ref] = append([]byte(nil), data...)
+	return ref, nil
+}
+
+func (f *craftHTTPFiles) DeleteFile(_ context.Context, ref string) error {
+	delete(f.blobs, ref)
+	return nil
+}
+
 func openCraftHTTPDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	_, filename, _, ok := runtime.Caller(0)
