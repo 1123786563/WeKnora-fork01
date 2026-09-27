@@ -14,12 +14,12 @@ package craft
 // fresh authorization (T10) — the manifest itself grants no access.
 
 import (
-	"strings"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 )
 
