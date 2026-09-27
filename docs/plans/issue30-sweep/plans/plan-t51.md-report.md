@@ -1669,3 +1669,112 @@ ok  	github.com/Tencent/WeKnora/internal/handler	20.225s
 2. **`.superpowers/sdd/plan-t51/progress.md` 存在他人未提交修改**（追加「Task 5: fix round 1/5」「Task 5: complete」两行，疑似此前会话遗留）：非本任务授权文件，本会话不动、不提交、不回退，保持原样并在此声明。
 3. **本会话改动范围**：仅追加本报告节；生产代码/测试零改动；未派发子代理或审查者；未推送远端；未撤销/回退任何他人提交。
 4. **转录勘误（已修正）**：本节 C-2 Step 5 输出块中的 publish 行初次手抄漏写 `Tencent/` 段（实际终端输出为 `github.com/Tencent/WeKnora/internal/modules/appconnector/publish`，`ok`、退出码 0），报告内已改为与终端一致；不影响任何测试判定。
+
+# Task 6 复核轮报告·第二并发会话（D 节——规格机械比对 + 提交链完整性 + 全量复跑）
+
+- **执行者**：实现员-t51-任务6（同一任务槽的又一并发派发轮；上一节 C 节由并行会话在本轮进行中落盘，本会话未触碰其内容）
+- **执行时刻 HEAD**：`b272915d5`（与本 ask 派发语所述「前置止于 Task 5 修复轮 1」不同步，处置定性同 C-0，交叉印证）
+- **本会话提交**：仅本报告文件追加本节（生产代码与测试代码零改动）
+- **需求来源**：`docs/plans/issue30-sweep/plans/plan-t51.md` Task 6（plan-t51.md:2345-2881）
+
+## D-1. 本轮定位与并发事实
+
+开工时 `git status --short` 仅见 `.superpowers/sdd/plan-t51/progress.md` 被他人修改（非授权文件，不动、不提交、不回退）；本会话复跑取证期间，另一并行会话向本报告追加了 C 节（其测试输出时间戳与本会话实跑不同，本会话无法亦不代为验证其输出，仅确认未与其发生文件写冲突——本节追加于其后）。两轮复核结论一致：Task 6 交付在位且全部验证命令在 HEAD `b272915d5` 复跑全绿。
+
+## D-2. 规格-代码机械一致性（本会话独有取证）
+
+1. **计划 Step 2 代码块 vs 实际文件机械 diff**：`sed -n '2422,2859p' plan-t51.md`（剥 ``` 围栏）与 `internal/handler/app_connector_action_plan_e2e_test.go` 全文 diff，仅两处差异：①计划 350-352 行的 `appendsAfterSeed` 未使用变量捕获块在实际文件中不存在（= T6-4.1 已入册的计划笔误修复，Go「declared and not used」编译错误的唯一最小修复，断言语义零变化）；②计划块末尾一行多余空行。**其余逐字一致**。
+2. **计划 Step 1 钩子 4 处逐处核对**（`app_connector_notion_publish_e2e_test.go`）：`e2eNotion` 结构体新字段 `dropAppendForTitle`/`droppedOnce`（`:103-104`）；`newE2ENotion` 初始化 `droppedOnce`（`:113`）；`/v1/pages` POST 创建页面后独立 lock/unlock 记账块（`:168-172`）；`/v1/blocks/` PATCH 在既有 `dropNextAppend` 三行之后追加 `if e.droppedOnce[id] { delete(...); drop = true }`（`:256-259`，持锁区间内）——与计划 plan-t51.md:2355-2415 逐字一致，既有 `dropNextAppend` 路径原样保留（`:252-255`）。
+3. **提交链完整性**：两授权文件的最后触碰提交均为 `1ff35e75a`（Task 6 本体，`git log --oneline --follow` 实证）；其后的 `4afa3e942`/`76cc5d369`（报告入册）只改本报告文件，`b272915d5`（终修轮 3）只改 progress.md、final-fix-report.md、plan-t51.md 与 `internal/modules/appconnector/plan/plan_test.go`（`git show --name-only` 实证）——**Task 6 之后无人改动本任务交付物**，当前文件状态即 Task 6 提交态。
+
+## D-3. 复跑命令与完整输出（本会话在 HEAD `b272915d5` 实跑）
+
+### Task 6 Step 3（-v 逐名取证，过滤 local file service 日志行）
+
+实跑命令：`go test ./internal/handler/ -run 'TestActionPlanEndToEnd|TestAppActionPlansTables' -count=1 -v 2>&1 | grep -vE "^\[|INFO|level=" | tail -20`（较计划原文多 `-v` 与日志过滤，测试选择与判定不变）：
+
+```
+=== RUN   TestAppActionPlansTablesExistAfterMigrations
+--- PASS: TestAppActionPlansTablesExistAfterMigrations (2.17s)
+=== RUN   TestActionPlanEndToEndApproveExecutePerItemResults
+--- PASS: TestActionPlanEndToEndApproveExecutePerItemResults (2.13s)
+=== RUN   TestActionPlanEndToEndContentChangeInvalidatesOldApproval
+--- PASS: TestActionPlanEndToEndContentChangeInvalidatesOldApproval (1.91s)
+=== RUN   TestActionPlanEndToEndPartialSuccessResumesUnfinishedOnly
+--- PASS: TestActionPlanEndToEndPartialSuccessResumesUnfinishedOnly (1.90s)
+=== RUN   TestActionPlanEndToEndExcludeItem
+--- PASS: TestActionPlanEndToEndExcludeItem (2.15s)
+PASS
+ok  	github.com/Tencent/WeKnora/internal/handler	12.651s
+```
+
+### Task 6 Step 4（handler 层全量，#48 零回归面，12 测试逐名）
+
+实跑命令：`go test ./internal/handler/ -run 'TestActionPlan|TestNotionPublish|TestAppPublications' -count=1 -v 2>&1 | grep -E "^=== RUN|^--- (PASS|FAIL|SKIP)|^PASS|^FAIL|^ok "`：
+
+```
+=== RUN   TestActionPlanEndToEndApproveExecutePerItemResults
+--- PASS: TestActionPlanEndToEndApproveExecutePerItemResults (2.72s)
+=== RUN   TestActionPlanEndToEndContentChangeInvalidatesOldApproval
+--- PASS: TestActionPlanEndToEndContentChangeInvalidatesOldApproval (2.00s)
+=== RUN   TestActionPlanEndToEndPartialSuccessResumesUnfinishedOnly
+--- PASS: TestActionPlanEndToEndPartialSuccessResumesUnfinishedOnly (2.99s)
+=== RUN   TestActionPlanEndToEndExcludeItem
+--- PASS: TestActionPlanEndToEndExcludeItem (2.13s)
+=== RUN   TestActionPlanHandlerFailClosedWithoutService
+--- PASS: TestActionPlanHandlerFailClosedWithoutService (0.00s)
+=== RUN   TestActionPlanHandlerValidationAndNotFound
+--- PASS: TestActionPlanHandlerValidationAndNotFound (0.00s)
+=== RUN   TestAppPublicationsTableExistsAfterMigrations
+--- PASS: TestAppPublicationsTableExistsAfterMigrations (2.22s)
+=== RUN   TestNotionPublishEndToEndCreateApprovePublishReceipt
+--- PASS: TestNotionPublishEndToEndCreateApprovePublishReceipt (2.44s)
+=== RUN   TestNotionPublishEndToEndUpdateConflict
+--- PASS: TestNotionPublishEndToEndUpdateConflict (2.13s)
+=== RUN   TestNotionPublishEndToEndUnknownReconcilesRemoteFirst
+--- PASS: TestNotionPublishEndToEndUnknownReconcilesRemoteFirst (2.23s)
+=== RUN   TestNotionPublishPlanGates
+--- PASS: TestNotionPublishPlanGates (0.01s)
+=== RUN   TestNotionPublishActionLookupIsTenantScoped
+--- PASS: TestNotionPublishActionLookupIsTenantScoped (0.00s)
+PASS
+ok  	github.com/Tencent/WeKnora/internal/handler	20.836s
+```
+
+与 T6-2 Step 4 入册的 12 测试清单完全同集（本计划 4 e2e + 迁移对齐 + Task 5 handler 2 测 + #48 既有 5 测）。
+
+### Task 6 Step 5（计划级全量，四段串行 && 链）
+
+实跑命令：计划原文四段以 `&&` 串联（段间插入 `echo` 哨兵标记，命令本体不变）`go build ./... && go test ./internal/database/ -count=1 && go test ./internal/modules/appconnector/... -count=1 && go test ./internal/handler/ -run 'TestActionPlan|TestNotionPublish|TestAppPublications' -count=1`：
+
+```
+# github.com/Tencent/WeKnora/cmd/desktop
+ld: warning: ignoring duplicate libraries: '-lc++'
+# github.com/Tencent/WeKnora/cmd/server
+ld: warning: ignoring duplicate libraries: '-lc++'
+BUILD_OK
+ok  	github.com/Tencent/WeKnora/internal/database	22.843s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector	0.510s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/connectorcontrol	3.274s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/openconnector	1.330s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/plan	3.337s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/publish	3.356s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector	0.787s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector	4.160s
+ok  	github.com/Tencent/WeKnora/internal/handler	15.315s
+ALL_GREEN
+```
+
+（两条 `ld: warning` 为 macOS 链接器对 cmd/desktop、cmd/server 的既有噪音，T6-2/T7-2 同判；链 exit code 0。）
+
+### 附加自检：`go vet ./internal/handler/` 干净（无输出）。
+
+## D-4. TDD 适用性说明
+
+本会话未新写失败测试，理由与 C-3 相同：Task 6 是「前五个任务的红绿证据收口，不是新的 RED」（计划 plan-t51.md:2864 原文），且交付已由前任会话按 RED（计划笔误编译失败）→ GREEN（修复后 5/5 PASS）完成并入册（T6-2）。本会话为验证轮：规格机械比对（D-2）+ 命令复跑（D-3）。
+
+## D-5. 自检发现
+
+1. **编排方重复派发同一任务槽**（与 C-4.1 独立得出同一结论）：本 ask 派发时 Task 6/7/终修轮 3 均已提交入册。建议编排方以本报告文件与 git log 为准推进，避免再派重复轮。
+2. **并发写冲突风险已规避**：C 节与本节先后追加于同一文件，内容互不覆盖；`.superpowers/sdd/plan-t51/progress.md` 的他人未提交改动（重复的「Task 5」账目行）本会话不纳入提交、不回退。
+3. **本会话改动范围**：仅本报告文件追加本节；生产代码/测试零改动；未撤销/回退任何他人提交；未派发子代理或审查者；未推送远端；复跑按 Task 6 Step 3/4/5 命令原测试选择执行（附注的 `-v`/日志过滤/段间哨兵不改变被测集合与判定）。
