@@ -821,7 +821,7 @@ legacy_files:
     destination: internal/modules/insights/evaluation
     integration_owner: ib3
     delete_barrier: ib3
-  - path: internal/application/service/datasource_service.go
+  - path: internal/application/service/datasource_passb_compat.go
     module: datasource
     plan: 26-datasource
     destination: internal/modules/datasource/service

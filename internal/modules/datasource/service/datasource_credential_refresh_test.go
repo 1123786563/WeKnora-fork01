@@ -58,7 +58,7 @@ func (c *credentialRefreshProbeConnector) FetchIncremental(
 type credentialRefreshFixture struct {
 	ds      *types.DataSource
 	repo    *kbDeleteDSRepo
-	audit   *purgeAuditSink
+	audit   *triggerAuditSink
 	probe   *credentialRefreshProbeConnector
 	svc     *DataSourceService
 	setAES  func(t *testing.T, key string)
@@ -70,7 +70,7 @@ func newCredentialRefreshFixture(t *testing.T, dsType string, creds map[string]i
 	t.Helper()
 	f := &credentialRefreshFixture{
 		probe: &credentialRefreshProbeConnector{},
-		audit: &purgeAuditSink{},
+		audit: &triggerAuditSink{},
 	}
 	f.setAES = func(t *testing.T, key string) {
 		t.Helper()

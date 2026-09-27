@@ -56,9 +56,9 @@ legacy_files:
     reason: Pass B 过渡 shim，ib2 同 commit 随文件删行
     navigation_label: Datasource host compat (application/repository)
     passb_task: B-datasource
-  - path: internal/application/service/datasource_service.go
-    reason: trapped in horizontal service package internal/application/service (Pass B file split)
-    navigation_label: Datasource service (application/service)
+  - path: internal/application/service/datasource_passb_compat.go
+    reason: Pass B 过渡 shim，ib2 同 commit 随文件删行
+    navigation_label: Datasource host compat (application/service)
     passb_task: B-datasource
   - path: internal/handler/datasource.go
     reason: trapped in horizontal handler package internal/handler (Pass B file split)

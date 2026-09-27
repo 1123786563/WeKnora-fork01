@@ -17,6 +17,46 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// processSyncDSRepo is a Pass B test-support shim (Ruling
+// 2026-09-24-TEST-SUPPORT-SHIM): this file migrated to the module package
+// while the shared host fixture newKBDeleteDSRepo
+// (knowledgebase_delete_datasource_test.go, K owner) stays behind. Minimal
+// surface for this file's harnesses: FindByID + FindByKnowledgeBase over an
+// in-memory map. remove_at: ib2 (B5 cleanup scope at the latest).
+type processSyncDSRepo struct {
+	interfaces.DataSourceRepository
+	byID map[string]*types.DataSource
+	byKB map[string][]*types.DataSource
+}
+
+func newProcessSyncDSRepo(kbID string, ds ...*types.DataSource) *processSyncDSRepo {
+	r := &processSyncDSRepo{
+		byID: map[string]*types.DataSource{},
+		byKB: map[string][]*types.DataSource{kbID: ds},
+	}
+	for _, d := range ds {
+		r.byID[d.ID] = d
+	}
+	return r
+}
+
+func (r *processSyncDSRepo) FindByID(_ context.Context, id string) (*types.DataSource, error) {
+	if ds, ok := r.byID[id]; ok {
+		return ds, nil
+	}
+	return nil, errors.New("data source not found")
+}
+
+func (r *processSyncDSRepo) FindByKnowledgeBase(_ context.Context, kbID string) ([]*types.DataSource, error) {
+	return r.byKB[kbID], nil
+}
+
+func (r *processSyncDSRepo) Update(_ context.Context, _ *types.DataSource) error { return nil }
+
+func (r *processSyncDSRepo) UpdateSyncState(_ context.Context, _ *types.DataSource) error {
+	return nil
+}
+
 func TestProcessSyncCancelsWhenKnowledgeBaseDeleted(t *testing.T) {
 	ds := &types.DataSource{
 		ID:              "ds-1",
@@ -25,7 +65,7 @@ func TestProcessSyncCancelsWhenKnowledgeBaseDeleted(t *testing.T) {
 		Type:            types.ConnectorTypeRSS,
 		Status:          types.DataSourceStatusActive,
 	}
-	dsRepo := newKBDeleteDSRepo("kb-deleted", ds)
+	dsRepo := newProcessSyncDSRepo("kb-deleted", ds)
 	syncLog := &types.SyncLog{
 		ID:           "log-1",
 		DataSourceID: ds.ID,
@@ -455,7 +495,7 @@ func newSyncDeletionHarness(
 		knowledgeRepo: repo,
 		knowledgeSvc:  ks,
 		svc: &DataSourceService{
-			dsRepo:            newKBDeleteDSRepo(ds.KnowledgeBaseID, ds),
+			dsRepo:            newProcessSyncDSRepo(ds.KnowledgeBaseID, ds),
 			syncLogRepo:       syncLogRepo,
 			knowledgeService:  ks,
 			kbService:         &processSyncKBService{kb: &types.KnowledgeBase{ID: ds.KnowledgeBaseID, TenantID: ds.TenantID}},
@@ -725,7 +765,7 @@ func TestProcessSync_SyncDeletionsPartialWhenMixedResults(t *testing.T) {
 	require.NoError(t, registry.Register(mixedSyncConnector{}))
 
 	svc := &DataSourceService{
-		dsRepo:            newKBDeleteDSRepo(ds.KnowledgeBaseID, ds),
+		dsRepo:            newProcessSyncDSRepo(ds.KnowledgeBaseID, ds),
 		syncLogRepo:       syncLogRepo,
 		knowledgeService:  ks,
 		kbService:         &processSyncKBService{kb: &types.KnowledgeBase{ID: ds.KnowledgeBaseID, TenantID: ds.TenantID}},

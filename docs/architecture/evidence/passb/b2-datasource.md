@@ -247,6 +247,27 @@ grep 用例名实证（基线 -v 输出 + 源文件双核对），计划列出�
 
 ## §差分（占位——T3/T4 包级复跑为每个删除 commit 的即时门，B2-DS.7 四面×四要素定稿填写）
 
+### B2-DS.3 包级复跑（service 面；2026-09-27，迁移 commit 工作树实测）
+
+T1 基线 service 侧 85 顶层用例 → 迁移后 **模块包 73 + 宿主留守 12 = 85 奇偶一致**：
+
+| 命令（原文） | 退出码 | 关键输出 |
+|---|---|---|
+| `go test -count=1 ./internal/modules/datasource/service/` | 0 | `ok ... 2.955s`；`-v` 顶层 RUN（不含 `/`）= **73**，`--- PASS` = 73 |
+| `go test -count=1 ./internal/application/service/ -run 'TestDeleteDataSourcePurge\|TestDeleteDataSourceWithoutPurge\|TestPurgeWorker\|TestProcessDataSourcePurge\|TestDataSourcePurgeQueueTopology\|TestCountDataSourceDocumentsScopesToTenantKbDataSource' -v`（计划 T3 Step 5 原命令） | 0 | 9/9 PASS（purge 留守 9 用例经 compat 装配运行，seam 接线等价性锚点） |
+| `go test -count=1 ./internal/application/service/ -run 'TestDataSourceServiceDeleteSQLiteCleansUpAfterSoftDelete\|TestDataSourceServiceDeleteKeepsCleanupStateWhenSoftDeleteFails\|TestDeleteKnowledgeBaseCleansUpSQLiteDataSources' -v` | 0 | 3/3 PASS（delete_sqlite 留守处置，见报告偏差登记） |
+| `go build ./...` | 0 | 仅链接器重复库警告（cmd/desktop、cmd/server 既有） |
+| `go vet ./internal/modules/datasource/...` | 0 | 无输出 |
+| `go vet ./internal/application/service/` | 0 | 无输出（含 K 属主留守测试 + Ruling 3 垫片编译） |
+| `make verify-module-moves` | 0 | `modulemove: OK (16 manifests verified)`（service 行级收口成对） |
+| `make check-backend-architecture 2>&1 \| grep -c forbidden-import` | 1（guard 退出码） | 计数 **恰 3**（§2.3 三对：knowledge/retrieval/app、appconnector、policy/access——B2-DS.5 登记后归零；计划 T3 Step 5 预期窗口，非节点失败） |
+
+K 属主留守测试断链面（DAG ppc 清单外显形）与 Ruling 2026-09-24-TEST-SUPPORT-SHIM 垫片锚定复跑：
+`TestDataSourceTagCreationReceivesOnlyItsTaskKBGrant`、`TestSharedFAQWriteLoadsOwnerTenantInfoWithoutReplacingCaller`、`TestReplaceKnowledgeFile*` ×14 全 PASS（垫片文件 `internal/application/service/datasource_shim_test.go`，Ruling ID 头注，remove_at=ib2）。
+宿主 service 全包 `go test -count=1 -timeout=20m ./internal/application/service/` → `ok 606.545s`（0 FAIL；默认 10m 超时不足以跑完 K 生态全量，属包固有耗时）。
+
+24 调用点改写对账（模块侧 `internal/modules/datasource/service/datasource_service.go` grep 实测）：`app.RecordKBActivity(` = 17、`app.WithKBActivityTask(` = 2、`app.KBActivityTrigger(` = 1、`app.WithKBActivitySuppressed(` = 3、`s.knowledgeCleanup(` = 1（seam 调用点）、旧符号残留（`recordKBActivity(\|withKBActivityTask(\|kbActivityTrigger(\|withKBActivitySuppressed(\|withKnowledgeCleanup(`）= **0**。
+
 ## §计数基线（占位——B2-DS.5 例外行登记、B2-DS.7 三方一致复核时填写；本任务 P-6 快照已录 633/23+23/58/16、16 manifests、0 violations）
 
 ## §别名（占位——B2-DS.6 填写）
