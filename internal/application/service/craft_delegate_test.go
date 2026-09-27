@@ -721,9 +721,14 @@ func TestExecuteDurableRunCraftDelegationLoop(t *testing.T) {
 	db := openDurableRunTestDB(t)
 	ctx := durableRunCtx()
 
-	// The session is a Craft session: trpc engine plus a bound workspace.
+	// The session is a Craft session: a registered craft task (craft_sessions
+	// row), a trpc engine and a bound workspace. The delegation fires only for
+	// runs admitted under the CURRENT craft contract (marked snapshot +
+	// durable actor) — the tool refuses anything else with "requires a known
+	// admitted snapshot identity".
 	craftStore := repository.NewCraftStore(db)
 	seedCraftWorkspace(t, db, "s1")
+	require.NoError(t, db.Exec(`INSERT INTO craft_sessions (session_id,tenant_id,kind) VALUES ('s1',1,'web')`).Error)
 
 	sub := &scriptedSubExecutor{store: craftStore}
 	delegation, err := NewCraftDelegation(craftStore, sub, nil)
@@ -746,7 +751,10 @@ func TestExecuteDurableRunCraftDelegationLoop(t *testing.T) {
 	RegisterAgentRunService(NewAgentRunService(runStore))
 	t.Cleanup(func() { RegisterAgentRunService(prev) })
 
-	key := admitDurableRun(t, runStore, durableRunSnapshot(t))
+	craftSnap, snapErr := BuildDurableCraftRunSnapshot("初稿 landing page", nil, "model-1", "",
+		&types.AgentConfig{AllowedTools: []string{tools.ToolThinking}, MultiTurnEnabled: true}, []craft.Input{})
+	require.NoError(t, snapErr)
+	key := admitDurableCraftRunAsActor(t, runStore, craftSnap, "u1")
 	fence, err := runStore.Claim(ctx, key, "worker-1", time.Minute)
 	require.NoError(t, err)
 
@@ -768,8 +776,13 @@ func TestExecuteDurableRunCraftDelegationLoop(t *testing.T) {
 	require.Contains(t, model.prompt(3), "status: succeeded")
 
 	// The finalized assistant message carries only the last turn's answer.
+	// The message id follows the admitted run's assistant_message_id (the
+	// craft admission helper mints its own).
+	var assistantID string
+	require.NoError(t, db.Raw("SELECT assistant_message_id FROM agent_runs WHERE tenant_id = 1 AND run_id = ?", key.RunID).Scan(&assistantID).Error)
+	require.NotEmpty(t, assistantID)
 	var content string
-	require.NoError(t, db.Raw("SELECT content FROM messages WHERE id = ?", "assistant-"+t.Name()).Scan(&content).Error)
+	require.NoError(t, db.Raw("SELECT content FROM messages WHERE id = ?", assistantID).Scan(&content).Error)
 	require.Equal(t, craftFixtureTurns()[2].content, content)
 
 	// Durable delegation journal: two rows, one failed and one succeeded.
@@ -816,18 +829,14 @@ func TestCraftToolCallJournalReplayReusesResult(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, caps.Tools.ListTools(), tools.ToolCraftDelegate)
 
+	// The delegation requires a craft-admitted run (marked snapshot + actor):
+	// register the task and admit under the current contract.
+	require.NoError(t, db.Exec(`INSERT INTO craft_sessions (session_id,tenant_id,kind) VALUES ('s1',1,'web')`).Error)
 	runStore := repository.NewAgentRunStore(db)
-	key := agentruntime.RunKey{TenantID: 1, RunID: "run-journal-" + t.Name()}
-	user, err := json.Marshal(map[string]any{"role": "user", "content": "hello"})
-	require.NoError(t, err)
-	assistant, err := json.Marshal(map[string]any{"role": "assistant", "content": ""})
-	require.NoError(t, err)
-	_, err = runStore.Admit(ctx, agentruntime.Admission{
-		Key: key, SessionID: "s1", UserID: "u1", RequestID: "req-journal", AssistantMessageID: "assistant-journal",
-		RequestHash: "hash-journal", Snapshot: durableRunSnapshot(t), UserMessage: user, AssistantMessage: assistant,
-		Deadline: time.Now().Add(time.Hour),
-	})
-	require.NoError(t, err)
+	craftSnap, snapErr := BuildDurableCraftRunSnapshot("journal replay", nil, "model-1", "",
+		&types.AgentConfig{AllowedTools: []string{tools.ToolThinking}, MultiTurnEnabled: true}, []craft.Input{})
+	require.NoError(t, snapErr)
+	key := admitDurableCraftRunAsActor(t, runStore, craftSnap, "u1")
 	fence, err := runStore.Claim(ctx, key, "worker-1", time.Minute)
 	require.NoError(t, err)
 

@@ -220,6 +220,13 @@ func openSnapshotServiceDB(t *testing.T) *gorm.DB {
 	require.NoError(t, db.Exec(
 		`INSERT INTO sessions (id, tenant_id, title, user_id, engine_type) VALUES
 		 ('s1', 1, 'craft-1', 'u1', 'trpc'), ('s2', 1, 'craft-2', 'u2', 'trpc')`).Error)
+	// The durable admission contract derives every run's principal through
+	// tenant_members (actorBelongsToTenant): seed the membership the fixture's
+	// admits rely on.
+	require.NoError(t, db.Exec(
+		`INSERT INTO tenant_members (tenant_id,user_id,role,status,joined_at,created_at,updated_at) VALUES
+		 (1,'u1','owner','active',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP),
+		 (1,'u2','owner','active',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)`).Error)
 	t.Cleanup(func() {
 		conn, e := db.DB()
 		if e == nil {

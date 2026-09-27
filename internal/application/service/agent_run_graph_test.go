@@ -479,6 +479,12 @@ func TestExecuteDurableCraftRunRechecksTaskWriteBeforeModelResolution(t *testing
 	require.NoError(t, db.Exec(`INSERT INTO users (id,username,email,password_hash,tenant_id) VALUES ('collaborator','collaborator','collaborator@example.test','x',1)`).Error)
 	require.NoError(t, db.Exec(`INSERT INTO tenant_members (tenant_id,user_id,role,status,joined_at,created_at,updated_at) VALUES (1,'collaborator','contributor','active',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)`).Error)
 	require.NoError(t, db.Exec(`INSERT INTO craft_sessions (session_id,tenant_id,kind) VALUES ('s1',1,'web')`).Error)
+	// Craft admission derives the repository-owned workspace seed at Admit
+	// time (agent_run.go GetWorkspace): the fixture must seed the workspace.
+	_, wsErr := repository.NewCraftStore(db).PutWorkspace(durableRunCtx(), craft.Workspace{
+		Scope: craft.Scope{TenantID: 1, UserID: "u1", SessionID: "s1"},
+	}, 0)
+	require.NoError(t, wsErr)
 	store := repository.NewAgentRunStore(db)
 	config := &types.AgentConfig{AllowedTools: []string{tools.ToolThinking}, MultiTurnEnabled: true}
 	snapshot, err := BuildDurableCraftRunSnapshot("revoked task", nil, "model-1", "", config, []craft.Input{})
@@ -518,11 +524,29 @@ func testExecuteDurableRunRejectsUnmarkedLegacyCraftRunWithoutActor(t *testing.T
 	t.Helper()
 	db := openDurableRunTestDB(t)
 	require.NoError(t, db.Exec(`INSERT INTO craft_sessions (session_id,tenant_id,kind) VALUES ('s1',1,'web')`).Error)
+	// Craft admission derives the repository-owned workspace seed at Admit
+	// time (agent_run.go GetWorkspace): the fixture must seed the workspace.
+	_, wsErr := repository.NewCraftStore(db).PutWorkspace(durableRunCtx(), craft.Workspace{
+		Scope: craft.Scope{TenantID: 1, UserID: "u1", SessionID: "s1"},
+	}, 0)
+	require.NoError(t, wsErr)
 	store := repository.NewAgentRunStore(db)
-	snapshot, err := BuildDurableRunSnapshot("legacy unmarked craft", nil, "model-1", "", &types.AgentConfig{AllowedTools: []string{tools.ToolThinking}})
+	// Admit under the CURRENT contract (marked Craft snapshot + actor), then
+	// regress the durable row to the LEGACY shape — snapshot without the
+	// Craft manifest and no actor — exactly the way the actor NULL-ing below
+	// simulates a pre-contract row. Admission itself must keep refusing the
+	// legacy shape; the executor sees only the regressed row.
+	legacy, err := BuildDurableRunSnapshot("legacy unmarked craft", nil, "model-1", "", &types.AgentConfig{AllowedTools: []string{tools.ToolThinking}})
 	require.NoError(t, err)
-	key := admitDurableCraftRunAsActor(t, store, snapshot, "u1")
-	require.NoError(t, db.Table("agent_runs").Where("tenant_id = ? AND run_id = ?", key.TenantID, key.RunID).Update("actor_user_id", nil).Error)
+	marked, err := BuildDurableCraftRunSnapshot("legacy unmarked craft", nil, "model-1", "", &types.AgentConfig{AllowedTools: []string{tools.ToolThinking}}, []craft.Input{})
+	require.NoError(t, err)
+	key := admitDurableCraftRunAsActor(t, store, marked, "u1")
+	// A真 pre-contract row carries no admission digest either: the digest
+	// columns bind the admitted snapshot, and Claim's digest fence only
+	// governs rows the CURRENT contract admitted.
+	require.NoError(t, db.Table("agent_runs").Where("tenant_id = ? AND run_id = ?", key.TenantID, key.RunID).
+		Updates(map[string]any{"actor_user_id": nil, "snapshot": json.RawMessage(legacy),
+			"snapshot_digest": "", "snapshot_digest_version": 0}).Error)
 	require.NoError(t, store.AppendInput(durableRunCtx(), key, agentruntime.RunInput{
 		SteerID: "after-legacy", Mode: "after", Message: json.RawMessage(`{"role":"user","content":"follow up"}`),
 	}))
@@ -625,6 +649,12 @@ func TestExecuteDurableGenericLegacyRunRetainsOwnerFallback(t *testing.T) {
 func TestExecuteDurableCraftRunRejectsLegacyMissingActorBeforeCapabilities(t *testing.T) {
 	db := openDurableRunTestDB(t)
 	require.NoError(t, db.Exec(`INSERT INTO craft_sessions (session_id,tenant_id,kind) VALUES ('s1',1,'web')`).Error)
+	// Craft admission derives the repository-owned workspace seed at Admit
+	// time (agent_run.go GetWorkspace): the fixture must seed the workspace.
+	_, wsErr := repository.NewCraftStore(db).PutWorkspace(durableRunCtx(), craft.Workspace{
+		Scope: craft.Scope{TenantID: 1, UserID: "u1", SessionID: "s1"},
+	}, 0)
+	require.NoError(t, wsErr)
 	store := repository.NewAgentRunStore(db)
 	config := &types.AgentConfig{AllowedTools: []string{tools.ToolThinking}, MultiTurnEnabled: true}
 	snapshot, err := BuildDurableCraftRunSnapshot("legacy actor", nil, "model-1", "", config, []craft.Input{})
