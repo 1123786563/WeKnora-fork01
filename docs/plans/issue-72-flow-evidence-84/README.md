@@ -148,3 +148,76 @@ pkill -f 'wechat_native_stub_anomaly.py'; pkill -f 'alipay_gateway_stub.py'
 kill <backend go run pid>; # 前端 dev 同理
 ```
 （Lago 82r5 栈为宿主共享资产，不动。）
+
+---
+
+## 复验轮（2026-09-28 r2，独立验证会话，全部四幕重跑 PASS）
+
+环境：同一 82r5 Lago 栈（:48889 healthy）+ worktree HEAD `3e4de6e2a`（merge #84+#86
+后的集成分支）构建的后端（:8096，**独立新库 `data/issue84-flow-r2.db`**）与前端
+（:5197）+ stub（:8298/:8299，密钥复用 `${TMPDIR}issue84-keys` 与 0600
+`${TMPDIR}issue84-secrets.env`）。种子：`FLOW84_PAD_COUNT=40` → 主角
+A=租户 41（浏览器买家，第一幕）、B=42（发布人）、c=租户 43（processing 帧）、
+**C2=租户 44（第二/三幕）**、D=45（第四幕）；plan_key 回落 `pro`（价格梯子只含
+base/lite/pro，`pro84r2` 会被 base_price_tier 轴拒绝——seed 脚本已 env 化但本轮
+用默认值；publish 对 Lago 既有 weknora-pro-v1 幂等重放，`verifyPlanReplay` 收口）。
+复验产物文件名一律 `*r2-*`，与首轮并存。
+
+- **Step 0 冒烟**：`--selftest` → `SELFTEST OK`（无覆盖与 83 一致；覆盖落两脸）。
+- **第一幕（租户 41，微信单 `ord_67591d1310ff085a`）**：浏览器真实购买（Checkout
+  页默认支付宝自动建单后经「改用微信支付重新发起支付」换渠道，code_url
+  `pr=issue84*` 证明走 :8298 副本）→ 部分付款 5000 首投+重投均 200
+  `{"code":"SUCCESS"}`、`partial_payment` 9900/5000 恰 1 行；错币种 USD 变体
+  200 + `currency_mismatch` 9900/9900 CNY/USD；订单全程 pending、fulfill 事件 0；
+  GET 订单（恢复读）`attention/pending/payment_attention:true` 且不洗白；Lago
+  租户 41 零 sub 零 payment；UI 三帧截图（`leg1r2-0{1,2,3}-*.png`）。
+- **第二幕（租户 44 支付宝单 `ord_baf3b4d5fc2c1c3c`）**：正确金额通知 `success`
+  200 → paid、fulfill 恰 1 → settle（attach `pm_card_visa` + confirm off-session
+  **全自动** succeeded，pi_3UKQGH…）→ `deliver_stripe_webhook.py` 补投
+  payment_intent.succeeded（Stripe 云→本地 Lago 的不可达腿，82 轮已裁决边界）→
+  **10s 闭环**：Lago sub=1（active）、invoice payment_status=1、WeKnora fulfilled
+  + purchase `active`。重投同一成功通知 ×3 每次 `success`；fulfill 事件 1 sent、
+  purchase_activation 恰 1 applied；**Lago payments succeeded 计数 4 全程不变**
+  （`leg2r2-lago-payments-baseline.txt`）。UI：processing 帧（租户 43 真实 paid
+  中间态）+ active 帧（租户 44 Billing「已生效」）。
+- **第三幕（租户 44 同单）**：换交易号 `txn84r2-leg3-b` 第二笔成功 → `success`、
+  订单仍 fulfilled、`over_payment` 事件落 → drain ~10s 消费 → anomaly
+  `over_payment` 0/9900 awaiting_disposition（Transaction=新交易号）；权益不扩大：
+  purchase_activation 仍 1 applied、Lago purchase 钱包批次仍恰 1（
+  weknora-tenant-44-purchase-2026-09）、payments succeeded 仍 4、sub 仍 active；
+  R4 投影：`state:active + order.fulfillment:fulfilled + payment_attention:true`。
+  处置面（B 的 refund_review 守卫，路由为 **`/api/v1/admin/payment-anomalies`**
+  ——直挂 v1 组，计划文档里 `/commercial/admin/...` 的写法与实现不符，属计划文档
+  笔误）：list 3 行闭合字段 → resolve（expected_version=1）→ resolved v2；重放同
+  version → **409**；C2 fulfilled 单 resolve 后主状态不变、attention 消失。
+  **观察（保守行为，非缺陷）**：resolve 后 A 单首次 GET 仍 attention——恢复读每次
+  向渠道 Query，stub 里该单仍是 SUCCESS+USD 的事实被重新报告（anomaly 行被唯一键
+  幂等挡住不新增、resolved 状态保持）；对 A 单做渠道关单（mark CLOSED，运营处置的
+  自然收尾）后 GET → `pending/pending/attention:null` 回落（`leg3r2-resolved.txt`）。
+- **第四幕（租户 45 微信单 `ord_04c549ccc9158b47`）**：漏通知场景不投回调；stub
+  编排实收 **19900**（> 面额 9900）+ SUCCESS → GET 订单触发 RecoverOrderStatus
+  → `attention/pending/payment_attention:true`、订单与 attempt 均 pending（不确认）、
+  `amount_mismatch` 9900/19900（actual>expected 闭合分类）、fulfill 事件 0；
+  Lago sub=4（gated 零激活）、D 租户 succeeded payments=0。披露：全局 failed
+  payments 11→12 的新增行是 Lago 内建为 D 的 gated invoice 铸的生命周期行
+  （41/43/44/45 各一行同型），succeeded 计数全程不变。
+
+**复验轮结论：四幕全部关键断言在真实环境命中，Issue #84 验收（AC1-AC4 + 事实
+保留 + R4 裁决 + 处置面）复验 PASS。** 复验中修复的测试脚本（非产品代码）：
+`up_backend_84.sh` DB 文件 env 化、`seed_84.sh` plan key/断言变量化与 draft body
+引号修正。产品代码零改动。
+
+### 复验轮环境事实披露
+
+1. **租户位碰撞（环境占用，非产品缺陷）**：首次尝试用租户 43 承载第二幕时命中
+   82 轮遗留的 Lago `weknora-tenant-43` 同名 customer（17.8h 前的 4 个 gating
+   intents），settle 的 distinct-invoice 消歧闸 fail-closed（#82 防双扣设计正确
+   触发，与首轮披露①同型）。处置：换全新租户 44 重做，settle 全自动走通（无需
+   首轮披露①的人工补步——证明该补步只与共享栈残留有关，产品链路本身全自动）。
+   租户 43 的单（`ord_00374365f2c6637f`）停留 paid/attention（drain 按 D7 预算
+   自行收敛），其 Checkout 页「已付款，权益处理中」被用作第二幕 processing 帧。
+2. **webhook secret 提取**：rails runner stdout 首行是 Sidekiq 提示，secret 在末行
+   （`tail -1`），首轮的 `2>/dev/null` 不够。
+3. **admin 路由前缀**：`GET/POST /api/v1/admin/payment-anomalies…`（无
+   `/commercial` 段，直挂 v1 组 `routes_commercial.go:91-96`）。
+

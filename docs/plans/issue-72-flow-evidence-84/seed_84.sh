@@ -8,6 +8,8 @@ EV="$(cd "$(dirname "$0")" && pwd)"
 BACKEND=http://127.0.0.1:8096
 DB_PATH="${FLOW84_DB:-data/issue84-flow.db}"
 PW="${FLOW84_PW:?missing required env FLOW84_PW}"
+# (r2 复验) plan key env 化：复验轮用新 key，规避共享 Lago 栈上历史轮次的 code 残留。
+PLAN_KEY="${FLOW84_PLAN_KEY:-pro}"
 
 : > "$EV/seed-run.txt"
 say() { echo "$@" | tee -a "$EV/seed-run.txt"; }
@@ -68,17 +70,17 @@ say "granted: $(sqlite3 "$DB_PATH" "select count(*) from commercial_grants where
 
 say "== draft + publish plan pro v1 (9900 CNY monthly, advanced_models) =="
 curl -s -X POST "$BACKEND/api/v1/admin/plans/drafts" \
-  -H "Authorization: Bearer $TOKEN_B" -H 'Content-Type: application/json' -d '{
-    "plan_key":"pro","name":"Pro","amount_fen":9900,"currency":"CNY",
-    "included_credits_micro":9900000,"features":{"advanced_models":true},
-    "limits":{},"charges":[]}' > "$EV/api-01-draft.json"
+  -H "Authorization: Bearer $TOKEN_B" -H 'Content-Type: application/json' -d "{
+    \"plan_key\":\"$PLAN_KEY\",\"name\":\"Pro\",\"amount_fen\":9900,\"currency\":\"CNY\",
+    \"included_credits_micro\":9900000,\"features\":{\"advanced_models\":true},
+    \"limits\":{},\"charges\":[]}" > "$EV/api-01-draft.json"
 DRAFT_V=$(jq -r '.data.version // 0' "$EV/api-01-draft.json")
-jq -e '.success == true and .data.plan_key == "pro" and .data.version >= 1' "$EV/api-01-draft.json" >/dev/null \
+jq -e --arg pk "$PLAN_KEY" '.success == true and .data.plan_key == $pk and .data.version >= 1' "$EV/api-01-draft.json" >/dev/null \
   || { say "FAIL: plan draft rejected (see api-01-draft.json)"; exit 1; }
 say "draft: $(jq -c '{success, state:.data.state, key:.data.plan_key, v:.data.version}' "$EV/api-01-draft.json")"
-curl -s -X POST "$BACKEND/api/v1/admin/plans/drafts/pro/$DRAFT_V/publish" \
+curl -s -X POST "$BACKEND/api/v1/admin/plans/drafts/$PLAN_KEY/$DRAFT_V/publish" \
   -H "Authorization: Bearer $TOKEN_B" > "$EV/api-02-publish.json"
-jq -e ".data.receipt.command_key == \"publish_plan_version:pro:$DRAFT_V\"" "$EV/api-02-publish.json" >/dev/null \
+jq -e ".data.receipt.command_key == \"publish_plan_version:$PLAN_KEY:$DRAFT_V\"" "$EV/api-02-publish.json" >/dev/null \
   || { say "FAIL: publish receipt mismatch"; exit 1; }
 say "publish: $(jq -c '{success, receipt:.data.receipt.command_key}' "$EV/api-02-publish.json")"
 
@@ -88,8 +90,8 @@ LAGO_KEY=$(docker exec weknora-lago-82r5-db-1 psql -U lago -tAc "select value fr
 [ -n "$LAGO_KEY" ] || { say "FAIL: LAGO_KEY read answered empty"; exit 1; }
 curl -s "http://127.0.0.1:48889/api/v1/plans" -H "Authorization: Bearer $LAGO_KEY" > "$EV/api-03-lago-plans.json"
 jq -c '[.plans[] | select(.amount_cents==9900) | {code, amount_cents, interval}]' "$EV/api-03-lago-plans.json" | say "lago 9900 plans: $(cat)"
-jq -e '[.plans[] | select(.code=="weknora-pro-v1" and .amount_cents==9900 and .interval=="monthly")] | length == 1' \
+jq -e --arg code "weknora-$PLAN_KEY-v1" '[.plans[] | select(.code==$code and .amount_cents==9900 and .interval=="monthly")] | length == 1' \
   "$EV/api-03-lago-plans.json" >/dev/null \
-  || { say "FAIL: plan weknora-pro-v1 (9900/monthly) not found in Lago"; exit 1; }
-say "plan weknora-pro-v1 present at the exact 9900/monthly face"
+  || { say "FAIL: plan weknora-$PLAN_KEY-v1 (9900/monthly) not found in Lago"; exit 1; }
+say "plan weknora-$PLAN_KEY-v1 present at the exact 9900/monthly face"
 say "SEED OK (tenants A=$TENANT_A B=$TENANT_B)"

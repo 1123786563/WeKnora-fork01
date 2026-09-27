@@ -16,7 +16,8 @@ source "${FLOW84_SECRETS_ENV:?set FLOW84_SECRETS_ENV to the runtime secrets env 
 echo "env self-check: lago key length=${#WEKNORA_COMMERCIAL_PLATFORM_API_KEY} stripe key length=${#WEKNORA_COMMERCIAL_STRIPE_API_KEY}"
 
 export SERVER_PORT=8096 SERVER_HOST=127.0.0.1
-export DB_DRIVER=sqlite DB_PATH=data/issue84-flow.db
+# (r2 复验) DB 文件 env 化：复验轮用独立新库避免与首轮数据混合。
+export DB_DRIVER=sqlite DB_PATH="${FLOW84_DB:-data/issue84-flow.db}"
 export WEKNORA_COMMERCIAL_PLATFORM_PROVIDER=lago
 export WEKNORA_COMMERCIAL_PLATFORM_URL=http://127.0.0.1:48889
 export WEKNORA_COMMERCIAL_STRIPE_PM_TOKEN=pm_card_threeDSecure2Required
