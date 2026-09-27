@@ -1,9 +1,8 @@
 import React, { useCallback, useState } from 'react';
 import {
-  CRAFT_DECISIONS,
-  CRAFT_EXPORT_ORIGIN_KINDS,
-  type CraftExportDecision as CraftExportDecisionContract,
-  type CraftDecisionStatus,
+  parseCraftExportConsentView,
+  type CraftExportConsentState,
+  type CraftExportDecision,
   type CraftExportOriginRef,
 } from '@weknora/contracts';
 
@@ -15,13 +14,12 @@ import {
 // identity they are, and opening an original is a separate, freshly
 // authorized act.
 
-export type CraftExportConsentStatus = 'none' | 'awaiting' | 'consented' | 'declined';
+export type CraftExportConsentStatus = CraftExportConsentState;
 export type CraftExportRole = 'owner' | 'collaborator' | 'viewer';
-export type CraftExportDecisionKind = CraftDecisionStatus;
 
-// The decision shape is the FROZEN @weknora/contracts export; the panel
-// only adds the 'unknown' parse residual on top of it.
-export type CraftExportDecision = CraftExportDecisionContract & { decision: CraftExportDecisionKind };
+// The decision shape IS the frozen @weknora/contracts export — 'unknown'
+// is already inside the frozen CRAFT_DECISIONS vocabulary, so no local
+// residual is added on top of it.
 
 export interface CraftExportConsentFile {
   path: string;
@@ -40,86 +38,63 @@ export interface CraftExportConsentView {
   decision: CraftExportDecision | null;
 }
 
-const consentStatuses: readonly CraftExportConsentStatus[] = ['none', 'awaiting', 'consented', 'declined'];
-// The decision vocabulary is the FROZEN contract constant (same source as
-// the server's frozen parsers) — a local mirror would drift on the next
-// contract evolution and the fail-closed projection below would then drop
-// the whole panel for every member.
-const exportDecisions: readonly string[] = CRAFT_DECISIONS;
-const originKinds: readonly string[] = CRAFT_EXPORT_ORIGIN_KINDS;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
-
-function optionalString(value: unknown): string | null {
-  return typeof value === 'string' && value.length > 0 ? value : null;
-}
-
 // projectExportConsentView normalizes the wire payload into the typed
-// view. The projection is fail-closed: malformed shapes are dropped, not
-// repaired, and authority is never inferred — a decision that does not
-// bind the CURRENT version and manifest digest is stale, a consented
-// claim without a binding approved decision downgrades to awaiting, and a
-// state that contradicts the recorded origins (restricted derived files
-// claimed as "none") resolves closed.
+// view. The SHAPE and the closed vocabularies (state, decision, origin
+// kinds) validate through the ONE frozen contract parser — the same
+// authority the server's wire is pinned against — so the contract and
+// this projection can never drift apart. On top of the parsed shape this
+// layer only adds the projection rules: authority is never inferred — a
+// decision that does not bind the CURRENT version and manifest digest is
+// stale, a consented claim without a binding approved decision downgrades
+// to awaiting, and a state that contradicts the recorded origins
+// (restricted derived files claimed as "none") resolves closed.
 export function projectExportConsentView(raw: unknown): CraftExportConsentView | null {
-  if (!isRecord(raw)) return null;
-  const versionId = optionalString(raw.version_id);
-  const manifestDigest = optionalString(raw.manifest_digest);
-  const state = raw.state;
-  if (!versionId || !manifestDigest) return null;
-  if (typeof state !== 'string' || !consentStatuses.includes(state as CraftExportConsentStatus)) return null;
-
-  if (!Array.isArray(raw.files)) return null;
-  const files: CraftExportConsentFile[] = [];
-  for (const item of raw.files) {
-    if (!isRecord(item)) return null;
-    const path = optionalString(item.path);
-    const sha256 = optionalString(item.sha256);
-    if (!path || !sha256 || !Array.isArray(item.origins)) return null;
-    const origins: CraftExportOriginRef[] = [];
-    for (const originItem of item.origins) {
-      if (!isRecord(originItem)) return null;
-      const kind = originItem.kind;
-      const ref = optionalString(originItem.ref);
-      const originDigest = optionalString(originItem.sha256);
-      if (!ref || !originDigest || typeof kind !== 'string' || !originKinds.includes(kind)) return null;
-      if (typeof originItem.restricted !== 'boolean') return null;
-      origins.push({ kind: kind as CraftExportOriginRef['kind'], ref, sha256: originDigest, restricted: originItem.restricted });
-    }
-    files.push({ path, sha256, origins, restrictedDerived: origins.some((origin) => origin.restricted) });
-  }
-
-  let decision: CraftExportDecision | null = null;
-  if (isRecord(raw.decision)) {
-    const d = raw.decision;
-    const dVersion = optionalString(d.version_id);
-    const dDigest = optionalString(d.manifest_digest);
-    const dOwner = optionalString(d.owner_id);
-    const dKind = d.decision;
-    if (dVersion && dDigest && dOwner && typeof dKind === 'string' && exportDecisions.includes(dKind as CraftExportDecisionKind)) {
-      // The binding guard mirrors the server rule: a decision of another
-      // version or another manifest digest is history, never authority.
-      if (dVersion === versionId && dDigest === manifestDigest) {
-        decision = { version_id: dVersion, manifest_digest: dDigest, owner_id: dOwner, decision: dKind as CraftExportDecisionKind };
-      }
+  let parsed;
+  try {
+    parsed = parseCraftExportConsentView(raw);
+  } catch {
+    // The frozen parser rejects a digest-mismatched decision outright — a
+    // stale decision is history, never a reason to hide the whole panel:
+    // retry once with the decision dropped and let the state-downgrade
+    // rules below speak. Every OTHER malformation still fails the retry
+    // closed (null), so this only rescues the stale-history case.
+    try {
+      parsed = parseCraftExportConsentView(
+        typeof raw === 'object' && raw !== null ? { ...(raw as Record<string, unknown>), decision: null } : raw,
+      );
+    } catch {
+      return null;
     }
   }
+
+  const files: CraftExportConsentFile[] = parsed.files.map((file) => ({
+    path: file.path,
+    sha256: file.sha256,
+    origins: file.origins,
+    restrictedDerived: file.origins.some((origin) => origin.restricted),
+  }));
+
+  // The binding guard mirrors the server rule: a decision of another
+  // version or another manifest digest is history, never authority. (The
+  // frozen parser already REJECTS a digest-mismatched decision outright;
+  // this keeps the same discipline for a decision of another VERSION,
+  // which the wire can legally carry as history.)
+  const decision = parsed.decision !== null && parsed.decision.version_id === parsed.version_id
+    ? parsed.decision
+    : null;
 
   // Authority is never inferred: a consented claim needs the binding
   // approved decision, and a "none" claim cannot stand over restricted
   // derived members the recorded origins themselves prove.
-  let effectiveStatus = state as CraftExportConsentStatus;
+  let effectiveStatus = parsed.state;
   if (effectiveStatus === 'consented' && decision?.decision !== 'approved') effectiveStatus = 'awaiting';
   if (effectiveStatus === 'none' && files.some((file) => file.restrictedDerived)) effectiveStatus = 'awaiting';
 
-  const restrictedDerived = files.filter((file) => file.restrictedDerived).map((file) => file.path);
   return {
-    versionId,
-    manifestDigest,
+    versionId: parsed.version_id,
+    manifestDigest: parsed.manifest_digest,
     state: effectiveStatus,
-    restrictedDerived,
+    restrictedDerived: files.filter((file) => file.restrictedDerived).map((file) => file.path),
     files,
     decision,
   };

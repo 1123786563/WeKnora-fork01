@@ -23,7 +23,20 @@ export interface CraftExportOriginRef { kind: CraftExportOriginKind; ref: string
 export interface CraftExportFile { path: string; sha256: string; restricted: boolean; origins: CraftExportOriginRef[] }
 export interface CraftExportManifest { version_id: string; manifest_digest: string; files: CraftExportFile[] }
 export interface CraftExportDecision { version_id: string; manifest_digest: string; owner_id: string; decision: CraftDecisionStatus }
-export interface CraftExportConsentView { manifest: CraftExportManifest; decision: CraftExportDecision | null }
+export const CRAFT_EXPORT_CONSENT_STATES = ['none', 'awaiting', 'consented', 'declined'] as const;
+export type CraftExportConsentState = (typeof CRAFT_EXPORT_CONSENT_STATES)[number];
+/** The T13 (#133) consent wire, exactly as the server projects it: the
+ * FLATTENED export manifest (version id, digest, files with every member's
+ * recorded origins), the restricted-derived classification, the reduced
+ * consent state and the binding decision. */
+export interface CraftExportConsentView {
+  version_id: string;
+  manifest_digest: string;
+  state: CraftExportConsentState;
+  restricted_derived: string[];
+  files: CraftExportFile[];
+  decision: CraftExportDecision | null;
+}
 
 function row(value: unknown, label: string): Record<string, unknown> {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) throw new Error('invalid ' + label);
@@ -90,10 +103,26 @@ export function parseCraftExportManifest(value: unknown): CraftExportManifest {
 export function parseCraftExportDecision(value: unknown): CraftExportDecision {
   const v = row(value, 'export decision'); return { version_id: id(v.version_id, 'version_id'), manifest_digest: id(v.manifest_digest, 'manifest_digest'), owner_id: id(v.owner_id, 'owner_id'), decision: choice(v.decision, CRAFT_DECISIONS, 'decision') };
 }
+function stringArray(value: unknown, field: string): string[] {
+  if (!Array.isArray(value) || value.some((entry) => typeof entry !== 'string' || entry.trim() === '')) throw new Error('invalid ' + field);
+  return value as string[];
+}
 export function parseCraftExportConsentView(value: unknown): CraftExportConsentView {
   const v = row(value, 'export consent view');
-  const manifest = parseCraftExportManifest(v.manifest);
+  // The wire flattens the manifest: files validate through the SAME frozen
+  // manifest parser over the synthesized nested shape — one authority for
+  // the file/origin vocabulary.
+  const files = parseCraftExportManifest({ version_id: v.version_id, manifest_digest: v.manifest_digest, files: v.files }).files;
+  const versionID = id(v.version_id, 'version_id');
+  const digest = id(v.manifest_digest, 'manifest_digest');
   const decision = v.decision === undefined || v.decision === null ? null : parseCraftExportDecision(v.decision);
-  if (decision !== null && (decision.version_id !== manifest.version_id || decision.manifest_digest !== manifest.manifest_digest)) throw new Error('invalid manifest_digest');
-  return { manifest, decision };
+  if (decision !== null && (decision.version_id !== versionID || decision.manifest_digest !== digest)) throw new Error('invalid manifest_digest');
+  return {
+    version_id: versionID,
+    manifest_digest: digest,
+    state: choice(v.state, CRAFT_EXPORT_CONSENT_STATES, 'state'),
+    restricted_derived: stringArray(v.restricted_derived, 'restricted_derived'),
+    files,
+    decision,
+  };
 }

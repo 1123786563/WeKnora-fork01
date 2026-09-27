@@ -1,47 +1,39 @@
-Review complete: 3 finding(s) across 7 selected item(s).
+Review complete: 3 finding(s) across 9 selected item(s).
 
-─── internal/modules/craft/export_consent.go:143-145 ───
-[bug · medium] ExportConsentStateOf 的 rejected 分支未校验 currentOwner，与函数文档契约矛盾：文档明确承诺 "a decision of a
-former owner is history, so after an ownership move the state awaits the new owner's decision
-again"，且同函数 approved 路径（经 GrantsExportAuthority 的 d.OwnerID != currentOwner 检查）确实兑现了该承诺——前 owner
-的批准正确落到 Awaiting。但 rejected 决策在前 owner 手中时直接返回 Declined：所有权转移后，新 owner 将看到 "declined/已拒绝导出" 而非
-"awaiting/等待新 owner 决定"。同时 projectCraftExportConsentView 因 owner 不匹配不会投影这条 decision，前端面板将呈现 declined
-状态却无 decidedBy，状态误归因于当前所有权。无安全影响（declined 与 awaiting 在 ConsentGatedExportService
-门控下均发安全回退包），属用户可见的状态机语义不一致。建议在 rejected 分支同样校验 owner，使其与前 owner 批准决策的处理对称。
-
-- 	if d.Decision == DecisionRejected {
-+ 	if d.Decision == DecisionRejected && currentOwner != "" && d.OwnerID == currentOwner {
-  		return ExportConsentDeclined
-  	}
+─── packages/contracts/src/index.ts:179-179 ───
+[bug · high] 本次将 CraftExportConsentView 与 parseCraftExportConsentView 首次从根索引导出为公共契约面，但该冻结面消费的是嵌套形状
+{manifest: {...}, decision: ...}（packages/contracts/src/craft/web-artifact.ts L93-L98，其单测亦喂嵌套 raw），而
+T13 服务端 craftExportConsentBody（internal/handler/session/craft_export_consent.go）实际返回扁平 wire：顶层
+version_id / manifest_digest / state / restricted_derived / files / decision，并无 manifest
+嵌套。下游若按命名直觉用 parseCraftExportConsentView 解析 exportConsent 端点响应，会因 v.manifest 缺失直接抛 'invalid export
+manifest'。建议随本次 T13 契约面落地同步修正冻结面为与服务端一致的扁平形状（补
+state、restricted_derived），或暂缓导出该解析器，避免下游把"已从根索引导出"当作已对齐真实 wire 的保证。
 
 
-─── packages/views/src/craft/export.tsx:187-187 ───
-[bug · medium] consented 状态下决策控件被隐藏，导致已生效的同意无法通过该面板撤回。紧邻注释声称 "the owner can decide again at any
-time"，服务端 DecideExport 的 upsert 注释也明确 "an approval can be withdrawn by a fresh rejection"，且迁移注释写明
-"No TTL by design ... a rejection can overwrite an approval anytime"——即拒绝是终止长期有效同意的唯一手段。但
-`canDecide` 仅在 awaiting/declined 时为 true，consented
-后按钮消失，且本面板是唯一的决策入口，所有者实际无法在前端撤回同意，受限派生数据将持续可导出，与三处文档化的设计能力相矛盾。建议将 'consented' 也纳入可决策状态（例如 canDecide
-= isOwner && view.state !== 'none'），并在该状态下将 decline 按钮呈现为撤回语义。
 
--   const canDecide = isOwner && (view.state === 'awaiting' || view.state === 'declined');
-+   // A live approval stays revocable: the server keeps one decision row
-+   // per task+version and a fresh decision upserts over it, so the owner
-+   // can decide (and re-decide) at any time — consent included.
-+   const canDecide = isOwner && view.state !== 'none';
+─── packages/views/src/craft/export.tsx:66-67 ───
+[maintainability · medium] projectExportConsentView 与 contracts 侧 parseCraftExportConsentView
+是对同一端点响应的两套解析器，且形状已经分叉（契约侧为嵌套 {manifest, decision}，本投影为含 state/restricted_derived
+的扁平形状）；契约解析器已随本次变更从 @weknora/contracts 根索引公共导出，两套校验规则会随契约演进各自漂移，出现"契约解析通过但视图丢弃"（或反向）的隐性分歧，且与本文件及
+api-client 注释中 "single fail-closed projection" 的说法不符。建议：修正冻结契约面为真实 wire 形状后，本投影复用
+parseCraftExportConsentView 完成形状校验，仅叠加本层独有的绑定守卫（version_id + manifest_digest）与 effectiveStatus
+降级规则；若刻意保留双轨，请在注释中说明与契约解析器的形状差异及不复用的原因。另：`CraftExportDecision = CraftExportDecisionContract & {
+decision: CraftDecisionStatus }` 的交集并未实际收窄（'unknown' 已在冻结词表 CRAFT_DECISIONS 中），注释所称 "adds the
+'unknown' parse residual" 未兑现，属冗余声明，可直接引用契约类型。
 
 
-─── packages/views/src/craft/export.tsx:42-42 ───
-[maintainability · low] 本地硬编码了冻结契约的封闭词汇表：originKinds 重复了 @weknora/contracts 已导出的
-CRAFT_EXPORT_ORIGIN_KINDS（['knowledge','input','artifact']），exportDecisions 重复了
-CRAFT_DECISIONS（['approved','rejected','unknown']），而本文件本就从 '@weknora/contracts' 导入类型。一旦契约/服务端新增
-origin kind 或 decision 枚举（T 系列后续票务的常见演进），此处不会同步，fail-closed 投影会直接返回
-null，整个同意面板对所有成员静默消失。建议直接复用契约导出的常量（如 `(CRAFT_EXPORT_ORIGIN_KINDS as readonly
-string[]).includes(kind)`），消除漂移风险。
 
-- const originKinds: readonly string[] = ['knowledge', 'input', 'artifact'];
-+ import { CRAFT_DECISIONS, CRAFT_EXPORT_ORIGIN_KINDS } from '@weknora/contracts';
-+ 
-+ // (删除本地 originKinds/exportDecisions，校验处改用契约常量)
-+ // typeof kind !== 'string' || !(CRAFT_EXPORT_ORIGIN_KINDS as readonly string[]).includes(kind)
-+ // exportDecisions.includes(dKind as CraftExportDecisionKind) → (CRAFT_DECISIONS as readonly string[]).includes(dKind)
+─── packages/views/src/craft/export.tsx:22-24 ───
+[maintainability · low] 这里的类型交叉是无效操作：`CraftExportDecisionContract` 的 `decision` 字段已经是
+`CraftDecisionStatus`，而 `CraftExportDecisionKind` 恰好就是 `CraftDecisionStatus` 的别名，`A & { decision: X
+}` 在 A 本就含 `decision: X` 时结果仍为 A 本身。注释声称 "the panel only adds the 'unknown' parse residual on top of
+it"，但交叉实际上什么都没有添加——'unknown' 已在契约的 CRAFT_DECISIONS
+里。这会误导读者以为视图层决定类型与契约类型存在差异（并在下次契约演进时基于此假设做扩展）。建议直接使用契约类型别名，或删掉这段注释。
+
+- // The decision shape is the FROZEN @weknora/contracts export; the panel
+- // only adds the 'unknown' parse residual on top of it.
+- export type CraftExportDecision = CraftExportDecisionContract & { decision: CraftExportDecisionKind };
++ // The decision shape is the FROZEN @weknora/contracts export verbatim —
++ // 'unknown' is already part of CRAFT_DECISIONS, nothing is widened here.
++ export type CraftExportDecision = CraftExportDecisionContract;
 

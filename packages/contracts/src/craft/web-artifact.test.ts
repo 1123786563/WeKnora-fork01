@@ -53,17 +53,29 @@ test('budget and restricted consent records bind immutable identities', () => {
   assert.throws(() => parseCraftExportDecision({ version_id: 'v1', manifest_digest: '', owner_id: 'u1', decision: 'approved' }), /manifest_digest/);
 });
 
-test('export consent view preserves immutable derived-file origins and binds decision digest', () => {
+test('export consent view parses the real FLAT wire and binds decision digest', () => {
+  // The shape is exactly craftExportConsentBody: version/digest/state/
+  // restricted_derived/files at the TOP level — never a nested manifest.
   const raw = {
-    manifest: { version_id: 'v1', manifest_digest: 'sha256:manifest', files: [{ path: 'data.csv', sha256: 'sha256:derived', restricted: true, origins: [{ kind: 'knowledge', ref: 'source-1', sha256: 'sha256:source', restricted: true }] }] },
+    version_id: 'v1',
+    manifest_digest: 'sha256:manifest',
+    state: 'awaiting',
+    restricted_derived: ['data.csv'],
+    files: [{ path: 'data.csv', sha256: 'sha256:derived', restricted: false, origins: [{ kind: 'knowledge', ref: 'source-1', sha256: 'sha256:source', restricted: true }] }],
     decision: { version_id: 'v1', manifest_digest: 'sha256:manifest', owner_id: 'owner-1', decision: 'approved' },
   };
   const view = parseCraftExportConsentView(raw);
   assert.deepEqual(JSON.parse(JSON.stringify(view)), raw);
-  assert.equal(view.manifest.files[0]?.origins[0]?.ref, 'source-1');
+  assert.equal(view.files[0]?.origins[0]?.ref, 'source-1');
+  assert.equal(view.state, 'awaiting');
+  assert.deepEqual(view.restricted_derived, ['data.csv']);
+  // A nested manifest shape (the pre-T13 placeholder) must NOT parse.
+  assert.throws(() => parseCraftExportConsentView({ manifest: { version_id: 'v1', manifest_digest: 'sha256:manifest', files: [] }, decision: null }), /files/, 'a nested manifest has no top-level files — the flat wire is the only accepted shape');
   assert.throws(() => parseCraftExportConsentView({ ...raw, decision: { ...raw.decision, manifest_digest: 'sha256:other' } }), /manifest_digest/);
-  assert.throws(() => parseCraftExportManifest({ ...raw.manifest, files: [{ ...raw.manifest.files[0], origins: [{ kind: 'web', ref: 'source-1', sha256: 'sha256:source', restricted: true }] }] }), /kind/);
-  assert.throws(() => parseCraftExportManifest({ ...raw.manifest, files: [{ ...raw.manifest.files[0], origins: [{ kind: 'knowledge', ref: '', sha256: 'sha256:source', restricted: true }] }] }), /ref/);
+  assert.throws(() => parseCraftExportConsentView({ ...raw, state: 'bogus' }), /state/);
+  assert.throws(() => parseCraftExportConsentView({ ...raw, restricted_derived: ['ok', ''] }), /restricted_derived/);
+  assert.throws(() => parseCraftExportConsentView({ ...raw, files: [{ path: 'data.csv', sha256: 'sha256:derived', restricted: false, origins: [{ kind: 'web', ref: 'source-1', sha256: 'sha256:source', restricted: true }] }] }), /kind/);
+  assert.throws(() => parseCraftExportConsentView({ ...raw, files: [{ path: 'data.csv', sha256: 'sha256:derived', restricted: false, origins: [{ kind: 'knowledge', ref: '', sha256: 'sha256:source', restricted: true }] }] }), /ref/);
 });
 
 test('run budget pause is a typed optional fact on the existing waiting state', () => {
