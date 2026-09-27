@@ -8,6 +8,7 @@
 // decompresses or fabricates anything client-side.
 import React from 'react';
 import type { CraftInputView } from '@weknora/contracts';
+import { Button } from '@weknora/ui';
 import type { CraftLocale } from './presentation.ts';
 
 /** The server's own archive-extension vocabulary (craft/archive.go). */
@@ -94,9 +95,9 @@ export function CraftInputExpandPanel(props: CraftInputExpandPanelProps) {
           <div key={input.ref} data-archive-ref={input.ref} aria-busy={busy || undefined}>
             <strong>{input.name}</strong> <code>{input.ref}</code>{' '}
             {members === undefined ? (
-              <button type="button" disabled={expandingRef !== null} onClick={() => void expand(input.ref)}>
+              <Button type="button" disabled={expandingRef !== null} onClick={() => void expand(input.ref)}>
                 {busy ? strings.expanding : strings.expand}
-              </button>
+              </Button>
             ) : (
               <span>{strings.alreadyExpanded} · {strings.expandedCount(members.length)}</span>
             )}
