@@ -1,7 +1,10 @@
-# Pass B exception ledger — 131 条精确路径 import 例外的删除属主与期限（B0.2 生成 105 条
+# Pass B exception ledger — 139 条精确路径 import 例外的删除属主与期限（B0.2 生成 105 条
 # Pass A 行 + 6 条 Pass B K1 搬迁显形行 + 5 条 Pass B K2 搬迁显形行 + 13 条 Pass B K3 搬迁显形行
 # + 2 条 Pass B K4 搬迁显形行（24-knowledge-process K4.4，2026-09-26，§5.5 种子多退少补：
-# 种子 3 对横向包目标零诊断退回、实测 policy/access 2 对补录），
+# 种子 3 对横向包目标零诊断退回、实测 policy/access 2 对补录）
+# + 8 条 Pass B 25b 迁移登记行（agentcatalog/service→execution/sandbox，Ruling
+# 2026-09-24-IMPORT-EXCEPTION-REGISTRY；IB2 集成撞号裁定：25b 行原 exc-0106..0113 与
+# K 面已占号撞号，按头注规则以 (from,to) 边键为准重编号为 exc-0132..0139）。
 # Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY；K2 五行经 2026-09-25 基线对齐 merge
 # 由 exc-0106..0110 重编号为 exc-0112..0116（K1 已占 0106..0111）；K3 十三行经同窗
 # 由 exc-0106..0118 重编号为 exc-0117..0129；(from,to) 边键与五字段逐字不变；
@@ -833,3 +836,54 @@ exceptions:
 #     经 R1 窄端口 ingest.CleanupOnFailure/ExtractionResources 委托真实现）
 #   remove_at: ib2
 # ----------------------------------------------------------------------------
+  # ---- Pass B 25b 迁移登记（Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY；
+  #      reason 与 tools/architectureguard/check.go importExceptions 逐字一致；
+  #      IB2 集成撞号裁定：原 exc-0106..0113 重编号为 exc-0132..0139，(from,to) 边键不变）----
+  - id: exc-0132
+    from: internal/modules/agentcatalog/service/host_adapters.go
+    to: "github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
+    plan: 25-agentcatalog-program
+    remove_at: ib2
+    reason: "预存横向包耦合，Pass B 25b 搬迁显形，IB2/契约任务收口"
+  - id: exc-0133
+    from: internal/modules/agentcatalog/service/tenant_skill_service.go
+    to: "github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
+    plan: 25-agentcatalog-program
+    remove_at: ib2
+    reason: "预存横向包耦合，Pass B 25b 搬迁显形，IB2/契约任务收口"
+  - id: exc-0134
+    from: internal/modules/agentcatalog/service/tenant_skill_effective.go
+    to: "github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
+    plan: 25-agentcatalog-program
+    remove_at: ib2
+    reason: "预存横向包耦合，Pass B 25b 搬迁显形，IB2/契约任务收口"
+  - id: exc-0135
+    from: internal/modules/agentcatalog/service/tenant_skill_install.go
+    to: "github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
+    plan: 25-agentcatalog-program
+    remove_at: ib2
+    reason: "预存横向包耦合，Pass B 25b 搬迁显形，IB2/契约任务收口"
+  - id: exc-0136
+    from: internal/modules/agentcatalog/service/tenant_skill_reaper.go
+    to: "github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
+    plan: 25-agentcatalog-program
+    remove_at: ib2
+    reason: "预存横向包耦合，Pass B 25b 搬迁显形，IB2/契约任务收口"
+  - id: exc-0137
+    from: internal/modules/agentcatalog/service/tenant_skill_remove.go
+    to: "github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
+    plan: 25-agentcatalog-program
+    remove_at: ib2
+    reason: "预存横向包耦合，Pass B 25b 搬迁显形，IB2/契约任务收口"
+  - id: exc-0138
+    from: internal/modules/agentcatalog/service/tenant_skill_runtime_verify.go
+    to: "github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
+    plan: 25-agentcatalog-program
+    remove_at: ib2
+    reason: "预存横向包耦合，Pass B 25b 搬迁显形，IB2/契约任务收口"
+  - id: exc-0139
+    from: internal/modules/agentcatalog/service/tenant_skill_verify.go
+    to: "github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
+    plan: 25-agentcatalog-program
+    remove_at: ib2
+    reason: "预存横向包耦合，Pass B 25b 搬迁显形，IB2/契约任务收口"

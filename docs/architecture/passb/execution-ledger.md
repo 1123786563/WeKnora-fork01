@@ -2611,6 +2611,27 @@
 
 ---
 
+---
+
+## 2026-09-24 · b2-ac-skills T3 · 临时测试装置垫片（B5 清理范围）——Ruling 2026-09-24-TEST-SUPPORT-SHIM
+
+- **垫片文件（唯一超出 owned_files 的改动，裁定授权）**：`internal/application/service/tenant_skill_testsupport_test.go`（_test.go，不进生产编译）
+- **符号清单（5）**：`validSkillMD`（SKILL.md fixture 副本）/ `skillArchiveSHA256`（转发 acatsvc.SkillArchiveSHA256）/ `installerAgentConfig`（3 参包装，转发 acatsvc.InstallerAgentConfig + agent/tools 三工具名常量）/ `installSkillRepo` + `newInstallSkillRepo`（acrepo.TenantSkillRepository 全接口测试替身副本：嵌入接口满足编译，显式实现 user_env_test.go 方法面 CreateSkill/UpdateSkill/GetSkill/ListSkillsByConfig + userEnvs 存储五方法）
+- **依赖方（禁改测试）**：user_env_test.go（execution）/ agent_service_skill_bundle_test.go、agent_service_install_shell_test.go（agentruntime）
+- **remove_at**：IB2 核查——25c 或 execution/agentruntime 后续节点把上述 3 个依赖测试文件迁走后立即删除；最迟不晚于 B5（先到先删）
+- **责任节点**：b2-ac-skills（随 T3 独立 commit 落盘）
+- **同日关联裁定**：Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY（例外台账 105→113，exc-0106..0113，owner 25-agentcatalog-program，remove_at ib2）
+
+## 2026-09-24 · b2-ac-skills T3 修复 · contracts.yaml 越权改动回滚（审查 findings 修复）
+
+- **审查判定（critical，成立）**：T3 曾以「两裁定同系原则」自援修改 contracts.yaml（8 条 consumer/characterization_tests 路径同步 + 1 行顺序挪动），无协调者裁定背书，违反「只允许修改任务声明的文件」（计划 §1 范围外 / §2.6 本节点零改动 / §8(e) 回写归 IB2）。已整体回滚至 BASE=97b037ccf 原文（git checkout 97b037ccf -- docs/architecture/passb/contracts.yaml，diff 0 行）。
+- **回滚后门禁状态（实测）**：DAG 本节点四 gates 全绿——`go build ./...`=0、`go test ./internal/modules/agentcatalog/...`=ok、`make check-backend-architecture`=OK(0 violations)、`make verify-module-moves`=OK(16 manifests)。`make check-passb-readiness` 非 work 节点 gate（公约 §2 属 barrier 追加项），现红，10 条诊断即 **IB2 §8(e) 收口清单**：
+  - consumer-unrecorded（7）：agentcatalog.custom-agent-service / agentruntime.agent-engine / agentruntime.agent-service / airesource.model-service / airesource.storage-backend-resolver / conversation.session-service / conversation.stream-manager ×2 —— 新包 internal/modules/agentcatalog/service/ 下 tenant_skill_service.go / tenant_skill_install.go / tenant_skill_transcript.go 引用未登记；
+  - consumer-vanished（3）：agentruntime.agent-engine 指宿主 tenant_skill_install.go（占位）、conversation.stream-manager 指宿主 tenant_skill_transcript.go（占位）与宿主 tenant_skill_service.go（残差）不再引用。
+  - **IB2 收口动作**：随残差/占位删除与装配切换，把上述 consumers/characterization_tests 路径改指新包文件（stream-manager 的宿主残差 service.go 行随残差删除一并移除）；修后 check-passb-readiness 应绿。清单已同步登记 evidence §5.4 与 Integration Brief 素材。
+
+---
+
 ## 2026-09-24 05:08 CST · b2-ac-definition / T5 SDD 审查通过，进入任务级 OCR（task 维持 pending——本指令无 done 授权）
 
 - **节点/任务**：b2-ac-definition · T5 —— Integration Brief + 实施报告（计划 `docs/plans/passb/25a-agent-definition-version.md` §6-T5，节点末任务）
@@ -3120,6 +3141,16 @@
 - **备注**：(1) 计划 Task 编号两种形态并存（T1–T5 主标题 / 25c.1–25c.5 括号编号），DAG task_ids 取 25c.1–25c.5（与姊妹节点 25b.x 同模式便于对照），如需改用 T1–T5 由调度方指令；(2) base_sha 仍为 null——实施开工首任务（25c.1）时按 conventions §9 以派发给定基线回填（沿 B2 其他节点先例）
 
 ---
+
+## 2026-09-24 · b2-ac-market T1 · 基线对齐合并（Ruling 2026-09-24-WAVE-DEP-BASELINE）
+
+- **性质**：基线对齐合并，**非集成合并**——不触碰 `codex/passb-integration`，不豁免 IB2 任何职责（IB2 仍按 25a→25b→25c 正式合并 + 装配切换 + 全量回归 + 例外台账收口）；基线对齐发生于 IB2 之前
+- **触发**：派发基线 `dfcec6067` 不含 25a/25b 模块树（FACADES 门面核验失败；`merge-base --is-ancestor` 实测两分支头均非 HEAD 祖先且互不为祖先；当时仓库不存在已含两者的 commit），升级裁定选项 A：先对齐后实施
+- **merge 25a**：**`ad53c2185`**（`codex/passb-b2-ac-definition` `938087598` → 本分支，零冲突）
+- **merge 25b**：**`c0ddf768a`**（`codex/passb-b2-ac-skills` `5ed64d324` → 本分支；唯一冲突 `docs/architecture/passb/execution-ledger.md` 纯追加型——b0 01:46 条目与 25b T3 两条目**全保留**，机械解决，无签名/注册/语义取舍）
+- **对齐后基线**：**`c0ddf768a`**（本节点 T2–T5 的 `PASSB_BASE_SHA`）
+- **对齐后门禁复跑（本会话实跑）**：`go build ./...`=0；`go test -count=1 ./internal/modules/agentcatalog/...` 三包 ok；宿主 repo/service/router 目标测试 ok（21/17/1 用例）；`make check-backend-architecture` `total=633 | redis=23 lite=23 | hooks=58 | modules=16`、0 violations 零漂移；`make verify-module-moves` `OK (16 manifests verified)`
+- **T1 基线表征 commit**：`e4753ae49`（39 用例 `-v` 旧实现基线 + FACADES 双跑留痕 → `docs/architecture/evidence/passb/b2-ac-market.md`）
 
 ## 2026-09-24 10:40 CST · b2-ac-market / T1 SDD 审查通过，进入任务级 OCR（task 维持 pending——本指令无 done 授权）
 

@@ -1039,6 +1039,57 @@ var importExceptions = []importException{
 			"24-knowledge-process K4.2 搬迁后显形），Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY 登记",
 		PassBTask: "B-knowledge",
 	},
+	// ---- Pass B 25b 搬迁显形（Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY）----
+	// 消费面自 application/service 宿主包迁入 agentcatalog 后，对 execution/sandbox
+	// 的既有消费跨过模块边界。属数据行登记（非判定逻辑修改）；IB2/契约任务收口。
+	{
+		ImporterFile: "internal/modules/agentcatalog/service/host_adapters.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/execution/sandbox",
+		Reason:       "预存横向包耦合，Pass B 25b 搬迁显形，IB2/契约任务收口",
+		PassBTask:    "B-agentcatalog",
+	},
+	{
+		ImporterFile: "internal/modules/agentcatalog/service/tenant_skill_service.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/execution/sandbox",
+		Reason:       "预存横向包耦合，Pass B 25b 搬迁显形，IB2/契约任务收口",
+		PassBTask:    "B-agentcatalog",
+	},
+	{
+		ImporterFile: "internal/modules/agentcatalog/service/tenant_skill_effective.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/execution/sandbox",
+		Reason:       "预存横向包耦合，Pass B 25b 搬迁显形，IB2/契约任务收口",
+		PassBTask:    "B-agentcatalog",
+	},
+	{
+		ImporterFile: "internal/modules/agentcatalog/service/tenant_skill_install.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/execution/sandbox",
+		Reason:       "预存横向包耦合，Pass B 25b 搬迁显形，IB2/契约任务收口",
+		PassBTask:    "B-agentcatalog",
+	},
+	{
+		ImporterFile: "internal/modules/agentcatalog/service/tenant_skill_reaper.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/execution/sandbox",
+		Reason:       "预存横向包耦合，Pass B 25b 搬迁显形，IB2/契约任务收口",
+		PassBTask:    "B-agentcatalog",
+	},
+	{
+		ImporterFile: "internal/modules/agentcatalog/service/tenant_skill_remove.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/execution/sandbox",
+		Reason:       "预存横向包耦合，Pass B 25b 搬迁显形，IB2/契约任务收口",
+		PassBTask:    "B-agentcatalog",
+	},
+	{
+		ImporterFile: "internal/modules/agentcatalog/service/tenant_skill_runtime_verify.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/execution/sandbox",
+		Reason:       "预存横向包耦合，Pass B 25b 搬迁显形，IB2/契约任务收口",
+		PassBTask:    "B-agentcatalog",
+	},
+	{
+		ImporterFile: "internal/modules/agentcatalog/service/tenant_skill_verify.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/execution/sandbox",
+		Reason:       "预存横向包耦合，Pass B 25b 搬迁显形，IB2/契约任务收口",
+		PassBTask:    "B-agentcatalog",
+	},
 }
 
 // importExcepted 报告 (importerFile, importedPath) 是否命中一条精确豁免。

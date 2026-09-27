@@ -81,6 +81,7 @@ var KnownPlans = map[PlanID]PlanInfo{
 // PassBTaskModule 把 guard 源 importExceptions 的模块级 PassBTask 映射到模块 id，
 // 用于例外属主计划与 guard 源的模块绑定校验。
 var PassBTaskModule = map[string]string{
+	"B-agentcatalog": "agentcatalog",
 	"B-agentruntime": "agentruntime",
 	"B-airesource":   "airesource",
 	"B-appconnector": "appconnector",

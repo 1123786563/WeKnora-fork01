@@ -29,14 +29,14 @@
 ## 3. Pass A 期间新增的治理资产
 
 - `tools/modulemove`（严格 manifest 校验 + 已集成搬迁语义）与 `tools/architectureguard`（资产发现/唯一注册/跨模块禁导入/legacy 新文件拒绝），Make 目标 `verify-module-moves`、`check-backend-architecture`。
-- guard 精确路径 import 例外共 **111 条**在册（a1:4 / a2:6 / a3:77 含 IA3 集成 1 条 / a4:18 = Pass A 105 条；另 Pass B K1 搬迁显形 6 条 exc-0106..0111，登记见 §6），全部绑定 Pass B 任务（B-appconnector/B-airesource/B-channels/B-execution/B-knowledge/B-conversation/B-agentruntime/B-workbench/B-craft），无通配。
+- guard 精确路径 import 例外共 **139 条**在册（a1:4 / a2:6 / a3:77 含 IA3 集成 1 条 / a4:18 = Pass A 105 条；另 Pass B K1-K4 搬迁显形 26 条 exc-0106..0131，登记见 §6；Pass B 25b 迁移新增 8 条，IB2 集成撞号裁定重编号 exc-0132..0139，见 §4），全部绑定 Pass B 任务（B-appconnector/B-airesource/B-channels/B-execution/B-knowledge/B-conversation/B-agentruntime/B-workbench/B-craft/B-agentcatalog），无通配。
 - 冻结契约：docs/architecture/frozen-entrypoints-batch-a2.md（A9–A14 消费面）。
 - Pass B 简报：docs/architecture/passb/（knowledge×4、conversation×2、agentruntime×4、workbench/craft/insights 各 1 + manifests 内 alias_obligations/legacy_files 义务）。
 
 ## 4. 在册债务与遗留（Pass B 输入）
 
 - 13 条 moved 文件 lint 债（internal/modules/agentruntime/**，lll/revive/unused，预存显形；裁定不加 nolint 以保 R100 证据链）→ B-agentruntime。
-- 预存横向耦合 105 条（见 §3）→ 对应模块 Pass B 边界收紧时改走公开门面后删除例外。
+- 预存横向耦合 113 条（105 条 Pass A 登记 + 8 条 Pass B 25b 迁移登记，Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY，见 §3）→ 对应模块 Pass B 边界收紧时改走公开门面后删除例外。
 - A2 payment `TestProvidersFromEnvRejectsPartialAlipay`（map 序断言）→ B-commercial 修测试。
 - system housekeeping hook 实现文件归 knowledge → B-knowledge/B-system 协调。
 - 各模块 legacy_files（396 条）→ 对应 B-<module> 拆分。
