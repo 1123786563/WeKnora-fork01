@@ -28,30 +28,6 @@ legacy_files:
     reason: trapped in horizontal handler package internal/handler (Pass B file split)
     navigation_label: App connector (handler)
     passb_task: B-appconnector
-  - path: internal/handler/app_connector_action.go
-    reason: trapped in horizontal handler package internal/handler (Pass B file split)
-    navigation_label: App connector action (handler)
-    passb_task: B-appconnector
-  - path: internal/handler/app_connector_connection.go
-    reason: trapped in horizontal handler package internal/handler (Pass B file split)
-    navigation_label: App connector connection (handler)
-    passb_task: B-appconnector
-  - path: internal/handler/app_connector_installation.go
-    reason: trapped in horizontal handler package internal/handler (Pass B file split)
-    navigation_label: App connector installation (handler)
-    passb_task: B-appconnector
-  - path: internal/handler/app_connector_oauth.go
-    reason: trapped in horizontal handler package internal/handler (Pass B file split)
-    navigation_label: App connector oauth (handler)
-    passb_task: B-appconnector
-  - path: internal/handler/app_connector_oc.go
-    reason: trapped in horizontal handler package internal/handler (Pass B file split)
-    navigation_label: App connector oc (handler)
-    passb_task: B-appconnector
-  - path: internal/handler/app_connector_sync.go
-    reason: trapped in horizontal handler package internal/handler (Pass B file split)
-    navigation_label: App connector sync (handler)
-    passb_task: B-appconnector
 owned_files:
   move_sources:
   - internal/appconnector

@@ -91,6 +91,10 @@ var PassBTaskModule = map[string]string{
 	"B-execution":    "execution",
 	"B-knowledge":    "knowledge",
 	"B-workbench":    "workbench",
+	// 任务级绑定（IB2 集成侧补录）：b2-datasource B2-DS.5 登记例外行采用任务级
+	// PassBTask（26-datasource §5 Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY，
+	// 分支侧已审查数据行保持逐字不动，集成侧补模块映射）。
+	"B2-DS.5": "datasource",
 }
 
 // modulesDirPrefix 是所有模块目标包的强制前缀。
