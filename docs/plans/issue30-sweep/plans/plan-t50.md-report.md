@@ -1198,3 +1198,132 @@ vet 段零输出（干净）；两条 `ld: warning` 为多轮已记录的既有�
 
 计划 Task 9（编排指派的第 10/10 个任务）的交付物在 HEAD `0e57a3c9a` 上依然齐备：文件与计划整代码块逐字一致（原始 diff 仅 2 行 gofmt 对齐空格、归一化后零差异）、SKIP 门双态（伪造凭据/自然态）按计划原命令实跑达成、三域 Confluence 计数 29+26+5 PASS / 1 SKIP / 0 FAIL（SKIP 即 blocked-env 声明的真实 Provider 证据，skip 不是 pass）、计划级验证命令（build + vet + 三组测试）exit 0 全绿。本任务文件历史隔离（仅 `e7e26a6fe` 一笔），本轮零代码改动。无阻塞、无越权改动、无未声明事项。
 
+---
+
+# plan-t50.md 实现报告 — Task 10/10：终局收口（计划级验证命令 + 交付盘点）
+
+> 任务：Issue #50 实施计划的第 10/10 个任务。指派的前置接口明确列出 Task 9 产物（`TestConfluenceRealPublishLoop`，`internal/modules/appconnector/confluence_publish_real_test.go`）为「此前任务已产出」——即本任务为 Task 9 之后、计划剩余内容（「计划级验证命令」节，`plan-t50.md:4938` 起）的终局收口：在最终 HEAD 上实跑计划级验证门、盘点全部交付物、如实报告。
+> 执行 worktree：`/Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue30-sweep-t50`（分支 `codex/issue30-t50`）。本报告由实现员子代理撰写。
+
+## 0. 环境异常与处置（如实记录，先于一切验证）
+
+到达时该 worktree 目录**只剩 `.superpowers/sdd/plan-t50/progress.md`**（内容：`Task 9: complete（commits 02fce18.., review clean）`）——git worktree 注册与整个 checkout 均已丢失（`git worktree list` 无此路径、`.git/worktrees/` 无 t50 条目）。处置（全程零 reset/revert/force/checkout 覆盖，不回退任何他人修改）：
+
+1. `mv .superpowers /tmp/t50-superpowers-backup`（保护台账）；
+2. `git worktree add /Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue30-sweep-t50 codex/issue30-t50`（检出到分支既有头，不新建分支）→ HEAD `c49f27d26`；
+3. `mv /tmp/t50-superpowers-backup …/.superpowers` 放回。**事后发现并已修正的一处操作事故（如实）**：checkout 重建了 git 跟踪的 `.superpowers`（`git ls-files .superpowers` 有 96 个跟踪文件），该 `mv` 因此嵌套为 `.superpowers/t50-superpowers-backup/sdd/plan-t50/progress.md` 而非落位；自检发现后已 `mv` 回 `.superpowers/sdd/plan-t50/` 并清理空目录，台账内容逐字完好（`Task 9: complete（commits 02fce18.., review clean）`），`git status` 全程/终态 clean（该台账为 gitignored 未跟踪文件）。
+
+本轮验证基线 HEAD 为 `c49f27d26`。相对第四轮复核的 HEAD `0e57a3c9a`，其后仅有两笔：`5707e4fba`（纯报告 docs）与 `c49f27d26`（workbench 终审二轮修复，非 Confluence 域）；`da149ac10`（appconnector 终审修复：`confluence_update.go` +9、`confluence_update_test.go` +47、`publish/confluence_blocks_test.go` +38，含两个新测试函数）**已在 `0e57a3c9a` 之前包含**（`git log --oneline 0e57a3c9a..HEAD` 逐字核实仅上述两笔）。因此在最终 HEAD 重跑计划级验证门覆盖了全部终审修复提交。
+
+## 1. 实现内容（零生产代码改动——收口任务）
+
+按计划「计划级验证命令」节与任务地图做终局盘点，全部在本轮亲手核实：
+
+**交付文件盘点（计划 Task 1–9 全部 Create 项，17/17 在位）**：
+
+| 文件 | 状态 |
+|---|---|
+| `internal/modules/appconnector/confluence_common.go` / `confluence_common_test.go`（Task 1） | OK |
+| `internal/modules/appconnector/confluence_create.go` / `confluence_create_test.go`（Task 2） | OK |
+| `internal/modules/appconnector/confluence_update.go` / `confluence_update_test.go`（Task 3） | OK |
+| `internal/modules/appconnector/publish/confluence_blocks.go` / `_test.go`（Task 4） | OK |
+| `internal/modules/appconnector/publish/confluence_bridge.go` / `_test.go`（Task 5） | OK |
+| `internal/modules/appconnector/publish/confluence.go` / `confluence_test.go`（Task 6） | OK |
+| `internal/handler/app_connector_confluence_publish.go` + `internal/router/routes_app_confluence_publish.go` + `internal/container/confluence_publish.go`（Task 7 三新文件） | OK |
+| `internal/handler/app_connector_confluence_publish_e2e_test.go`（Task 8） | OK |
+| `internal/modules/appconnector/confluence_publish_real_test.go`（Task 9） | OK |
+
+**共享文件最小接线（Task 7）**：`internal/router/router.go:146`（`AppConfluencePublishHandler` 字段）与 `:438`（`RegisterAppConfluencePublishRoutes`）在位；`internal/container/container.go:1017`（`must(container.Provide(newConfluencePublishHandler))`）在位。
+
+**Task 0 迁移重编在位**：`migrations/sqlite/000118_mobile_device_app.{up,down}.sql` 与 `migrations/versioned/000197_mobile_device_app.{up,down}.sql`（无 000114 双占残留）。
+
+**前置接口确认**：`confluence_publish_real_test.go:22` `func TestConfluenceRealPublishLoop`、`:28` skip 纪律原文（"skip is not a pass — T20 real-provider evidence stays blocked-env"）逐字在位。
+
+## 2. 验证（全部为本轮在最终 HEAD `c49f27d26` 亲手实跑）
+
+### 2.1 计划级验证命令（「计划级验证命令」节逐字）
+
+```
+go build ./... && go vet ./internal/modules/appconnector/... ./internal/handler/ ./internal/router/ ./internal/container/ && go test ./internal/modules/appconnector/ -run 'Confluence' -count=1 && go test ./internal/modules/appconnector/publish/ -run 'Confluence' -count=1 && go test ./internal/handler/ -run 'TestConfluencePublish' -count=1
+```
+
+完整输出（exit 0）：
+
+```
+# github.com/Tencent/WeKnora/cmd/desktop
+ld: warning: ignoring duplicate libraries: '-lc++'
+# github.com/Tencent/WeKnora/cmd/server
+ld: warning: ignoring duplicate libraries: '-lc++'
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector	3.121s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/publish	0.349s
+ok  	github.com/Tencent/WeKnora/internal/handler	2.045s
+```
+
+vet 段零输出（干净）；两条 `ld: warning` 为多轮已记录的既有链接噪音（cmd/desktop、cmd/server，非失败）。
+
+### 2.2 Task 9 SKIP 门双态（自然态 / 伪凭据态）
+
+自然态（`env -u` 四变量 + 计划 Task 9 Step 2 原命令形态）：
+
+```
+=== RUN   TestConfluenceRealPublishLoop
+    confluence_publish_real_test.go:28: confluence real credentials not configured (CONFLUENCE_BASE_URL/CONFLUENCE_EMAIL/CONFLUENCE_API_TOKEN/CONFLUENCE_PARENT_PAGE_ID); skip is not a pass — T20 real-provider evidence stays blocked-env
+--- SKIP: TestConfluenceRealPublishLoop (0.00s)
+PASS
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector	0.084s
+```
+
+伪凭据态（`CONFLUENCE_BASE_URL=x CONFLUENCE_EMAIL=x CONFLUENCE_API_TOKEN=x CONFLUENCE_PARENT_PAGE_ID=xxxx-skip`，计划 Task 9 Step 2 逐字命令）：
+
+```
+=== RUN   TestConfluenceRealPublishLoop
+    confluence_publish_real_test.go:28: confluence real credentials not configured (CONFLUENCE_BASE_URL/CONFLUENCE_EMAIL/CONFLUENCE_API_TOKEN/CONFLUENCE_PARENT_PAGE_ID); skip is not a pass — T20 real-provider evidence stays blocked-env
+--- SKIP: TestConfluenceRealPublishLoop (0.00s)
+PASS
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector	0.082s
+```
+
+双态均如实 SKIP（blocked-env 声明维持：真实 Confluence 证据需四个真实 `CONFLUENCE_*` 变量，本环境不存在，skip 不是 pass）。
+
+### 2.3 三域 Confluence 测试计数（最终 HEAD，`-v` 输出对 `^--- PASS/SKIP/FAIL` 统计）
+
+| 域 | 命令 | 计数 |
+|---|---|---|
+| appconnector | `go test ./internal/modules/appconnector/ -run 'Confluence' -count=1 -v` | **29 PASS / 1 SKIP / 0 FAIL**（SKIP 即 TestConfluenceRealPublishLoop） |
+| publish | `go test ./internal/modules/appconnector/publish/ -run 'Confluence' -count=1 -v` | **26 PASS / 0 SKIP / 0 FAIL** |
+| handler | `go test ./internal/handler/ -run 'TestConfluencePublish' -count=1 -v` | **5 PASS / 0 SKIP / 0 FAIL** |
+
+与第四轮复核口径一致（29+26+5 P / 1 S / 0 F），且本轮含 `da149ac10` 新增的 `TestConfluenceUpdateQueryOutputIsReceiptProjection` 与 `TestConfluenceStorageBodyCrossProviderEdge`（二者在第四轮计数前已入库）。
+
+### 2.4 补充验证：终审二轮修复（`c49f27d26`，workbench 域）在最终 HEAD 仍绿
+
+```
+go test ./internal/modules/workbench/service/workbench/ -run TestNotificationDeliveryRejectsResolvedInteractionAfterClaim -count=1 -v
+--- PASS: TestNotificationDeliveryRejectsResolvedInteractionAfterClaim (0.51s)
+PASS
+ok  	github.com/Tencent/WeKnora/internal/modules/workbench/service/workbench	0.864s
+```
+
+（此为计划级验证门之外的补充证据，非其替代——`0e57a3c9a..HEAD` 唯一的代码提交即此修复所在包。）
+
+## 3. TDD 形态如实声明
+
+本任务为终局收口（验证 + 盘点 + 报告），**无新生产代码、无新测试代码**，RED→GREEN 不适用；不伪造 TDD 证据。本任务全部证据为上述本轮亲手实跑的验证输出。
+
+## 4. 提交
+
+仅一笔 docs 提交：本 Task 10/10 报告段追加至本文件（唯一授权写入文件）。零代码改动、零空提交。
+
+## 5. 自检发现（Self-Review）
+
+1. **「10/10」两种读法的裁决（如实）**：第四轮复核曾把「第 10/10 个任务」解读为 plan Task 9 本身；本轮指派的前置接口明确将 Task 9 产物列为「此前任务已产出」，故本轮按「Task 9 之后的收口任务 = 计划级验证门」执行。两种读法所需的验证动作族（计划级命令、SKIP 门、三域计数、交付盘点）在本轮全部亲手重跑，结论对读法不敏感。
+2. **gitignored 过程工件在本 worktree 丢失（先于本轮发生，无法从 git 恢复）**：提交 `da149ac10`/`c49f27d26` 信息引用的 `.superpowers/sdd/t50/`（`final-fix-report.md`、`final-pkg.md`）在原 worktree checkout 丢失时一并消失——到达时目录里只剩 `sdd/plan-t50/progress.md`；这些文件按 `.gitignore .*` 规则有意不入库，git 无副本，全盘搜索无果。**已提交的交付物与验证结论不受影响**（其内容为过程记录/指引索引），但该目录若被后续流程引用需向主会话求源。此为本报告 DONE_WITH_CONCERNS 的主因。
+3. **worktree 恢复方式（可审计）**：`git worktree add` 到既有分支头 `c49f27d26`，未新建/切换分支、未改写任何提交、未触碰 `.superpowers` 台账内容；恢复后工作区 clean。
+4. **gofmt 遗留（未动，非本任务授权文件）**：`gofmt -l internal/modules/appconnector/ internal/modules/appconnector/publish/ internal/handler/` 仍列 `confluence_create_test.go`（Task 2 落地遗留，历轮已记录、留归属任务/集成方）；另命中 7 个非本计划文件（`internal/handler/analytics_test.go`、`internal/handler/session/*_test.go` 5 个、`internal/handler/usage_test.go`）——均不在 plan-t50 filesTouched 内，一并如实记录、不处置。
+5. **指派模板路径缺失（与历轮同源）**：指派给出的 `…/superpowers/6.4.1/…/implementer-prompt.md` 不存在；本轮读取缓存目录下唯一版本 6.4.2（`…/openai-curated-remote/superpowers/6.4.2/skills/subagent-driven-development/implementer-prompt.md`）沿用其报告契约（实现内容/测试证据/提交/自检发现/短契约回报）。
+6. 未做的事：无——计划级验证门四段命令逐字跑完、交付盘点 17/17、SKIP 门双态、终审修复回归，均已亲手执行并粘贴输出。
+
+## 6. 结论
+
+Issue #50（T20）实施计划在最终 HEAD `c49f27d26` 上终局收口完成：Task 0–9 全部交付物在位（17 文件 + 迁移重编 + router/container 接线），计划级验证命令（build + vet + 三域测试）exit 0 全绿，三域计数 29+26+5 PASS / 1 SKIP / 0 FAIL（SKIP 即 blocked-env 真实 Provider 证据，skip 不是 pass，激活路径为注入四个真实 `CONFLUENCE_*` 变量）。本任务零代码改动，唯一提交为本报告。遗留如实声明：`.superpowers/sdd/t50/` 过程工件随原 worktree 丢失（git 外，见自检第 2 条）；`confluence_create_test.go` 的 gofmt 遗留维持历轮处置。
+
