@@ -1946,7 +1946,7 @@
       "execution_mode": "serial",
       "status": "in_progress",
       "base_sha": null,
-      "head_sha": "51f9ac5526a62c41688601c2a8cc81da22ca1a97",
+      "head_sha": "63430d7b122fe31e539a4d4a2fb29418e879890a",
       "review_status": "pending",
       "evidence_paths": [
         "docs/architecture/evidence/passb/ib2.md",
