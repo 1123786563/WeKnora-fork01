@@ -5,7 +5,14 @@
 - 计划文件：`docs/plans/issue-72-plan-84.md`（从零编写——集成分支 HEAD 无预写稿，`git -C ../lago-int show HEAD:docs/plans/issue-72-plan-84.md` 实测 `path does not exist`）。
 - 计划员会话：计划员-84（dynamic workflow subagent），2026-09-28。
 - Worktree：`/Users/wuyongjun/trea/WeKnora-fork01/.worktrees-issue72/issue-84`，分支 `codex/issue-72-lago-84`。
-- 修订史：初版 `9e3df0fbd`；**第 1 轮审查修订**（7 条反馈，全部实读核实后修订，见下节）。
+- 修订史：初版 `9e3df0fbd`；第 1 轮审查修订（7 条反馈，全部实读核实后修订，见下节）；**第 2 轮审查修订**（2 条反馈，均实读核实，见第 2 轮节）。
+
+## 第 2 轮审查修订记录（2026-09-28，2 条反馈逐条核实）
+
+| 反馈 | 严重度 | 核实手段（本会话实读） | 修订落点 |
+|---|---|---|---|
+| M1 `purchase.order?.payment_attention` 与契约零改动冲突（TS2339，typecheck:web 必 FAIL） | medium | 属实：`packages/contracts/src/commercial.ts:1-7` OrderView 字段集（id/payment/fulfillment/amount_fen/currency/checkout_url）无 payment_attention；PurchaseView.order?:OrderView 同（:176-183） | 采纳解法②（前端局部类型断言，契约零改动口径与 Global Constraint 11/S1 边均保持）：Task 5 Produces 与 Step 3 写明 `(purchase.order as (OrderView & { payment_attention?: boolean }) | undefined)?.payment_attention`（运行时 parseOrderView 未知字段透传保证在位）；自检结论新增「跨层类型一致性」条目 |
+| L1 第三幕种子两细节未披露 + 存在更轻替代 | low | 属实：①stub 预下单端点 `POST /v3/pay/transactions/native` 受 `verify_outbound_signature` 保护（stub :256-263，401 SIGN_ERROR）——种子脚本预下单须实现商户 RSA-SHA256 出站签名；②`/stub/mark` 的 `transaction_id` 字段（stub :27、:243-244 直接写订单表）+ notify 推送即触发 sameTxn=false → over_payment，`TestWechatCallbackDifferentTransactionOverPaidAudit`（payment_callbacks_test.go:592）锁定同形态 | 第三幕主路径改为轻替代（同单换交易号 mark+notify，全真实回调链路，无需 DB 种子/无需预下单签名）；DB 种子降为可选补充（覆盖 AC2「多个 PaymentAttempt 成功」字面形态）并披露签名要求；Task 7 Produces 标注 seed 脚本可选；Task 3 引言同步；自检结论「真栈可执行性」更新 |
 
 ## 第 1 轮审查修订记录（2026-09-28，7 条反馈逐条核实）
 

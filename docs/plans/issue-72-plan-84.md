@@ -75,7 +75,7 @@
 - **Modify** `apps/web/src/commercial/order-state.ts` + `order-state.test.ts` —— orderMessage 增 attention 分支（G4 前端半）。
 - **Modify** `apps/web/src/commercial/BillingPage.tsx` —— 购买行后缀读 `purchase.order?.fulfillment==='attention'`。
 - **Modify** `internal/modules/commercial/commercialplatform/lago_settlement_integration_test.go`（已存在，`//go:build lago_integration`）——追加用例：active 后第二 settle 短路、Lago payments 不增（AC3 权威侧）。
-- **Create** `docs/plans/issue-72-flow-evidence-84/` —— 真实栈验证脚本与证据（Task 7；含微信 stub 副本 `wechat_native_stub_anomaly.py` 与第二 attempt 种子脚本 `seed_84_second_attempt.sh`，见真实流程验证方案第 0 步/第三幕）。
+- **Create** `docs/plans/issue-72-flow-evidence-84/` —— 真实栈验证脚本与证据（Task 7；含微信 stub 副本 `wechat_native_stub_anomaly.py` 与可选的第二 attempt 种子脚本 `seed_84_second_attempt.sh`，见真实流程验证方案第 0 步/第三幕）。
 
 ---
 
@@ -349,7 +349,7 @@ git commit -m "issue-72(#84): idempotent terminal ack for abnormal callbacks (ta
 
 - [ ] **Step 1: 写失败测试**
 
-fulfillment_test.go（沿用既有 fake 平台 + sqlite harness；第二 attempt 的搭建形态与单测层一致——**repository 层直调 `store.RegisterAttempt`**，因为生产代码中订单与 attempt 的唯一创建入口是 `OpenOrderCommand`（service/commercial/order.go:395，一单一 attempt），`RegisterAttempt`（repository order.go:637）无非测试调用方，真栈第二 attempt 的搭建手段见 Task 7 第三幕的种子脚本）：
+fulfillment_test.go（沿用既有 fake 平台 + sqlite harness；第二 attempt 的搭建形态与单测层一致——**repository 层直调 `store.RegisterAttempt`**，因为生产代码中订单与 attempt 的唯一创建入口是 `OpenOrderCommand`（service/commercial/order.go:395，一单一 attempt），`RegisterAttempt`（repository order.go:637）无非测试调用方，真栈的多收款触发手段见 Task 7 第三幕——主路径为同单换交易号的第二笔成功通知，可选补充为种子脚本）：
 
 ```go
 func TestOverPaymentDrainConsumesEventIntoAwaitingDisposal(t *testing.T) {
@@ -516,7 +516,7 @@ PaymentAttention bool `json:"payment_attention,omitempty"`
 
   **契约不变量**：`fulfillment==="attention"` 只与 `payment==="pending"` 同时出现（前端解析与文案顺序由此获得互斥保证）。`PaymentAttention` 字段本身仍随 fulfilled 单携带（`payment_attention:true`），供 BillingPage 附加提示与运营排查。
 - `PurchaseStatus` 的 order 投影同源填充（`purchase.order.fulfillment` 按上表；purchase 轴五态闭集不动，attention 走 order 子对象）。
-- 前端：`orderMessage` 增分支（闭合文案，无平台词汇，spec L210）：`if(order.fulfillment==='attention') return '付款异常（资金事实已记录，待处理）';`——置于函数最前（与 fulfilled/paid 互斥由后端不变量保证，前置可防御后端误发）。BillingPage 购买行后缀两种形态：`purchase.order?.fulfillment==='attention'` → 追加 `' · 付款异常（待处理）'`；`purchase.state==='active' && purchase.order?.payment_attention` → 追加 `' ·（另有一笔多收款待处理）'`。
+- 前端：`orderMessage` 增分支（闭合文案，无平台词汇，spec L210）：`if(order.fulfillment==='attention') return '付款异常（资金事实已记录，待处理）';`——置于函数最前（与 fulfilled/paid 互斥由后端不变量保证，前置可防御后端误发）。BillingPage 购买行后缀两种形态：`purchase.order?.fulfillment==='attention'` → 追加 `' · 付款异常（待处理）'`；多收款附加提示 `purchase.state==='active'` 时读附加标记——**类型层裁决（第 2 轮审查 M1）：契约 `OrderView` 字段集只有 id/payment/fulfillment/amount_fen/currency/checkout_url（`packages/contracts/src/commercial.ts:1-7`），无 `payment_attention`，且 Global Constraint 11 禁止 #85 并行期间改 contracts——BillingPage 必须用局部类型断言读取该加法字段而非改契约**：`(purchase.order as (OrderView & { payment_attention?: boolean }) | undefined)?.payment_attention`（运行时由 parseOrderView 未知字段透传保证在位；纯类型层适配）。禁改 `packages/contracts/src/commercial.ts` 的口径不变。
 
 - [ ] **Step 1: 写失败测试**
 
@@ -559,7 +559,7 @@ Expected: FAIL（orderMessage 现 fallback「等待付款」；PaymentAttention 
 
 - [ ] **Step 3: 实现**
 
-按 Produces：OrderView 加字段；`RecoverOrderStatus` 与 `GetOrder` 相关读路径（含 purchase.go `orderViewFromRow` 调用处）追加 `HasUnresolvedPaymentAnomaly` 查询（单条参数绑定索引查询，量级：每订单页轮询一次，可接受；不做 join）；orderWire 按 Produces 分派表实现（attention 仅在 `State==pending && PaymentAttention` 时输出，paid/fulfilled 分支不读 PaymentAttention 投影主状态、仅透传 `payment_attention` 字段）；order-state.ts 加前置分支；BillingPage 后缀两种形态。**不改** `packages/contracts/src/commercial.ts`、**不改** `PURCHASE_STATE_LABEL` 五态词表。
+按 Produces：OrderView 加字段；`RecoverOrderStatus` 与 `GetOrder` 相关读路径（含 purchase.go `orderViewFromRow` 调用处）追加 `HasUnresolvedPaymentAnomaly` 查询（单条参数绑定索引查询，量级：每订单页轮询一次，可接受；不做 join）；orderWire 按 Produces 分派表实现（attention 仅在 `State==pending && PaymentAttention` 时输出，paid/fulfilled 分支不读 PaymentAttention 投影主状态、仅透传 `payment_attention` 字段）；order-state.ts 加前置分支；BillingPage 后缀两种形态（多收款附加提示用 M1 裁决的局部类型断言 `(purchase.order as (OrderView & { payment_attention?: boolean }) | undefined)?.payment_attention`，使 `pnpm typecheck:web` 通过且契约零改动）。**不改** `packages/contracts/src/commercial.ts`、**不改** `PURCHASE_STATE_LABEL` 五态词表。
 
 - [ ] **Step 4: 跑测试确认通过**
 
@@ -627,7 +627,7 @@ git commit -m "issue-72(#84): prove settle short-circuit keeps one lago payment 
   - `docs/plans/issue-72-flow-evidence-82/alipay_gateway_stub.py`（82 根目录）与 `docs/plans/issue-72-flow-evidence-82/settle-evidence/deliver_stripe_webhook.py`（实测路径，不在 83 目录）；
   - `docs/plans/issue-72-flow-evidence-82/_browser_lib.mjs` 的 `{LOGIN,login,note,runLeg,assertOrderIdentity}`（实测在 **82 根目录**，83 目录下不存在 .mjs 共享库）；
   - `seed_83.sh`/`v2_up_backend.sh`/`v2_up_stubs.sh` 起栈形态（83 目录）。
-- Produces: `docs/plans/issue-72-flow-evidence-84/{README.md,run_84.sh,wechat_native_stub_anomaly.py,seed_84_second_attempt.sh,四幕断言输出,*.png}`——四幕证据 + Ledger 判定输入。
+- Produces: `docs/plans/issue-72-flow-evidence-84/{README.md,run_84.sh,wechat_native_stub_anomaly.py,seed_84_second_attempt.sh(可选),四幕断言输出,*.png}`——四幕证据 + Ledger 判定输入。
 
 - [ ] **Step 0: stub 副本改造（审查 R2——错金额主链的前置条件）**
 
@@ -700,9 +700,9 @@ git commit -m "issue-72(#84): ledger closeout"
 
 ### 第三幕：多成功只履约一次 + 多收款进入处置（AC2）
 
-1. **第二 attempt 的搭建手段（审查 R3）**：生产代码中订单与 attempt 的唯一创建入口是 `OpenOrderCommand`（`service/commercial/order.go:395`，一单一 attempt），无「对已有订单追加第二渠道 attempt」的 API——单测层的 `store.RegisterAttempt` 直调（order_test.go:202 形态）不能平移到真实栈。真栈用**种子脚本直种**：`docs/plans/issue-72-flow-evidence-84/seed_84_second_attempt.sh` 以参数绑定 INSERT 向 `commercial_payment_attempts` 追加一行（同 order_id/tenant/金额/币种，新 `merchant_order_id`=`mo_seed84_<rand>`，provider=wechat，state=pending；种子是验证设施，不是产品路径绕过——README 明示）。种子前先经 stub 预下单登记该 out_trade_no（total=9900），保证 `/stub/notify` 能对它产出已验签回调。
-2. 承接正常链：新购买单（支付宝腿）正常付款 → 激活 → fulfilled（第二幕同型，可用第二幕同一单继续，脚本固定为独立新单以保证幕间独立）；随后对种子 attempt 编排成功（stub `state=SUCCESS` + 新 transaction_id）→ `/stub/notify` → 回调 200。
-3. **断言**：anomaly 表新增 kind=`over_payment` 行（drain ≤60s 内消费，脚本轮询 outbox sent + anomaly 行）；权益不扩大——Lago wallets 的 purchase 批次仍恰 1、`fulfillment_records` applied 仍 1；**Lago payments succeeded 仍==1**（settle 短路，Task 6 单测的真栈对照）；订单主状态仍 `fulfilled`/`权益已生效`（R4 裁决：多收款不改写用户主状态），`payment_attention:true` 附加字段在位；`leg3-overpay-anomaly.txt`（DB 只读查询输出）。
+1. **主路径（第 2 轮审查 L1 采纳的轻替代——全走真实回调链路，无需 DB 种子）**：第二幕已 fulfilled 的同一订单，其 attempt 已记录 `provider_transaction_id=txn_A`；用 stub 的 `/stub/mark` 换交易号再推一笔成功通知：`curl -X POST http://127.0.0.1:8298/stub/mark -d '{"out_trade_no":"<leg2单mo>","state":"SUCCESS","transaction_id":"txn84-leg3-b"}'` → `/stub/notify`。回调携带 `txn84-leg3-b ≠ txn_A` → ConfirmPayment 的 sameTxn=false + 订单已过 pending → 唯一 fulfill 事件不重复，落 `over_payment` 事件（`TestWechatCallbackDifferentTransactionOverPaidAudit` payment_callbacks_test.go:592 锁定的同一形态）。mark 的 `transaction_id` 字段是 83 本体既有接口（stub :27、:243-244 直接写入订单表），无需副本改造。
+2. **可选补充路径（覆盖 AC2「多个 PaymentAttempt 成功」的字面形态，默认不执行）**：`docs/plans/issue-72-flow-evidence-84/seed_84_second_attempt.sh` 以参数绑定 INSERT 向 `commercial_payment_attempts` 追加第二渠道 attempt 行（同 order_id/tenant/金额/币种，新 merchant_order_id，provider=wechat，state=pending），随后正常链推送其成功回调。**披露（审查 L1①）**：种子 attempt 若需经 stub 预下单登记（使 `/stub/notify` 认识该 out_trade_no），stub 的预下单端点 `POST /v3/pay/transactions/native` 受**商户出站签名验证**保护（stub :256-263 `verify_outbound_signature`，401 SIGN_ERROR）——种子脚本必须实现与 WeKnora 相同的 RSA-SHA256 出站签名（密钥经 #83 的 `WECHAT_STUB_*` 密钥目录 env 注入），直接 curl 会被拒。主路径无此要求，故为默认。
+3. **断言（对主路径）**：anomaly 表新增 kind=`over_payment` 行（drain ≤60s 内消费，脚本轮询 outbox sent + anomaly 行，Transaction=txn84-leg3-b）；权益不扩大——Lago wallets 的 purchase 批次仍恰 1、`fulfillment_records` applied 仍 1；**Lago payments succeeded 仍==1**（settle 短路，Task 6 单测的真栈对照）；订单主状态仍 `fulfilled`/`权益已生效`（R4 裁决：多收款不改写用户主状态），`payment_attention:true` 附加字段在位；`leg3-overpay-anomaly.txt`（DB 只读查询输出）。
 4. 处置面：平台守卫凭据 `GET /api/v1/commercial/admin/payment-anomalies` → 列表含第一/三幕行；`POST .../resolve`（expected_version 正确）→ 200 resolved；随后 `GET /orders/<leg1单>`（pending 异常单）→ `fulfillment` 回落非 attention → `leg3-resolved.txt`；leg3 fulfilled 单 resolve 后 `fulfillment` 仍 `fulfilled`（不因 resolve 改变）。
 
 ### 第四幕：恢复路径实收额比对（G2 真实链）
@@ -742,10 +742,11 @@ git commit -m "issue-72(#84): ledger closeout"
 3. 证据目录不写凭据；Stripe key 仅 env；截图仅含 UI 闭合文案。
 4. 本计划文件本身的修订（若执行中发现接口偏差）直接改本文件并在 Ledger 记偏差行，不另开文档。
 
-## 自检结论（计划员落盘前；第 1 轮审查修订后更新）
+## 自检结论（计划员落盘前；第 2 轮审查修订后更新）
 
-- 占位符/TBD：无（所有文件路径、签名、测试名、命令均为实读核实或显式新建；第 1 轮审查指出的 3 处路径/落点不实——`internal/handler/commercial_test.go` 不存在、lago_settlement_integration_test.go 应为 Modify、`platform.go`/`deliver_stripe_webhook.py`/`_browser_lib.mjs` 路径错置——已全部按实测修正）。
+- 占位符/TBD：无（所有文件路径、签名、测试名、命令均为实读核实或显式新建；第 1 轮 3 处路径/落点不实、第 2 轮 1 处跨层类型冲突与 1 处种子方案过重——均已按实测修正）。
 - 接口一致性：`PaymentAnomalyRow`/`RecordPaymentAnomaly`/`HasUnresolvedPaymentAnomaly` 在 T1 定义、T2-T5 消费，签名一致；`ErrPaymentNotSucceeded` 在 T1（domain/order.go）定义、T1 仓库测试与 T2 handler 双分支消费，与 `ErrPaymentMismatch` 语义互斥；`buildMismatchAnomaly(attempt, fact)` 签名在第一个 mismatch 返回点可执行（该点位于 row 查询之前，order.go:699-702 先于 :704，签名不收 row）；`AttemptResult.AmountFen` T4 定义自消费；orderWire `attention` 分派表（R4 裁决：仅 pending 读数覆盖）与契约 token `packages/contracts/src/commercial.ts:3` 既有闭集一致，契约零改动。
+- **跨层类型一致性（第 2 轮 M1 裁决）**：契约 `OrderView` 字段集无 `payment_attention`（contracts commercial.ts:1-7 实读），BillingPage 的多收款附加提示用局部类型断言 `(purchase.order as (OrderView & { payment_attention?: boolean }) | undefined)?.payment_attention` 读取（运行时 parseOrderView 未知字段透传；类型层零契约改动），`pnpm typecheck:web` 可通过——契约零改动口径与 S1 边约定均保持。
 - 追踪矩阵：11 行覆盖 4 条 AC + spec L127 前提 + 非 succeeded 分类 + R4 裁决 + 处置面，每行有测试命令与（适用时）真栈幕次双锚点。
-- 真栈可执行性：错金额/错币种编排依赖第 0 步 stub 副本（83 本体 `/stub/mark` 无金额字段，实测 stub :27/:148/:228）；第二 attempt 依赖种子脚本（生产无追加 API，实测 RegisterAttempt 无非测试调用方）——两处前置条件均已写入 Task 7 步骤与通过判据。
+- 真栈可执行性：错金额/错币种编排依赖第 0 步 stub 副本（83 本体 `/stub/mark` 无金额字段，实测 stub :27/:148/:228）；多收款触发主路径为**同单换交易号的第二笔成功通知**（`/stub/mark` 的 transaction_id 字段为 83 本体既有接口，stub :27/:243-244 实读；`TestWechatCallbackDifferentTransactionOverPaidAudit` :592 锁定同形态），可选补充的 DB 种子脚本已披露 stub 预下单端点的出站签名要求（stub :256-263 verify_outbound_signature，401 SIGN_ERROR）——前置条件均已写入 Task 7 步骤与通过判据。
 - 依赖披露：#85 并行未合入（S1 边）——Global Constraints 第 11 条定义了开工前合并纪律；若 #85 最终未合入即开工，`service/commercial/order.go` 的合并冲突由集成分支主会话仲裁。
