@@ -32,9 +32,9 @@ import { createDeviceRegistry, createNotificationInbox, type DeviceRegistry, typ
 import { createMobileDeviceRemote } from '@weknora/api-client/mobile/devices';
 import { createMobileInboxRemote } from '@weknora/api-client/mobile/inbox';
 import { createDictation } from '@weknora/mobile-core';
-import type { Dictation } from '@weknora/mobile-core';
+import type { Dictation, DictationAudio } from '@weknora/mobile-core';
 import { createMobileVoiceTranscriptionRemote } from '@weknora/api-client/mobile/voice';
-import { createNativeDictationCaptureIfAvailable } from './adapters/dictation-capture.ts';
+import { createNativeAudioFileCleanupIfAvailable, createNativeDictationCaptureIfAvailable } from './adapters/dictation-capture.ts';
 import { createNativePushTokenIfAvailable } from './adapters/push-token.ts';
 import { createNativeDeviceIdentity, nativeDevicePlatform } from './adapters/device-identity.ts';
 import { createFetchBlobAdapter, createNativeSharePortIfAvailable } from './adapters/material-adapters.ts';
@@ -58,6 +58,8 @@ const nativeScopedVault = createNativeScopedVaultIfAvailable();
 const nativeOfflineGate = createOfflineGate(createNativeNetworkStatusIfAvailable());
 /** 听写捕获原生 Adapter 单例（组合根唯一探测点；不可用时全 App 无麦克风入口，fail closed）。 */
 const nativeDictationCapture = createNativeDictationCaptureIfAvailable();
+/** 临时音频文件清理原生 Adapter 单例（#70 文件 URI 工作流；缺包 fail closed → undefined）。 */
+const nativeAudioCleanup = createNativeAudioFileCleanupIfAvailable();
 let nativeIntentLog: ReturnType<typeof createNativeSecureIntentLog> | undefined;
 /** 惰性解析 expo-secure-store（与 pendingOidcStore 的函数体内 require 同模式；app-smoke 环境有 stub）。 */
 const intentLogOf = (): ReturnType<typeof createNativeSecureIntentLog> => (nativeIntentLog ??= createNativeSecureIntentLog());
@@ -353,6 +355,18 @@ function dictationFor(activeRuntime: MobileRuntime, origin: string, tenantId: st
     capture: nativeDictationCapture,
     transcribe: createMobileVoiceTranscriptionRemote({ origin, request: (input) => activeRuntime.authorizedRequest(input) }),
     newRequestId: createNativeRequestId(),
+    // #70：AudioFileCleanupPort（deleteAsync 对象）必须适配为 DictationPorts.audioCleanup
+    //（(audio) => Promise 函数）——直接注入对象会在 dropIntent 调用时同步抛 TypeError（Review
+    // Focus 3 的失效模式）。仅对 uri 源音频删文件；bytes 源无盘上文件（与 Task 3 模块侧语义
+    // 一致）；删除 rejection 由模块 dropIntent 的 .catch 吞掉。
+    ...(nativeAudioCleanup === undefined
+      ? {}
+      : {
+          audioCleanup: async (audio: DictationAudio): Promise<void> => {
+            if (audio.uri === undefined) return;
+            await nativeAudioCleanup.deleteAsync(audio.uri);
+          },
+        }),
   }));
 }
 
