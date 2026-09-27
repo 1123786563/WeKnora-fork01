@@ -1592,3 +1592,80 @@ ok  	github.com/Tencent/WeKnora/internal/modules/appconnector	0.144s
 2. **计划勾选框未勾选**：42 个 `- [ ]` 保持原样是历任务一致惯例（历次报告均未勾选计划框），非本任务遗漏。
 3. **blocked-env 维持**：本地证据链（AC1 批准面/执行面 409 双面、AC2 三遍执行零重发+reconcile 恢复、排除单项、逐项回执、迁移对齐）已闭合；唯一未闭合项是真实 Provider 验收，属环境受限非代码缺陷，已在 T7-3 实证。
 4. **纪律核验**：本任务仅追加报告文件；未撤销/回退他人修改；未派发子代理或审查者；未推送远端；testCommand 逐字运行于计划指定的验证规模（未用更快替代品冒充）。
+
+# Task 6 复核轮报告（编排方重新派发 Task 6——交付已在位，本会话核验一致性 + 全量复跑取证）
+
+- **执行者**：实现员-t51-任务6（重放轮）
+- **执行时刻 HEAD**：`b272915d5`（终修轮 3；注意：本 ask 派发时工作树上 Task 6/7/终修轮 3 的提交与报告均已在位，见 C-1）
+- **本会话提交**：仅本报告文件追加（生产代码与测试代码零改动）
+- **需求来源**：`docs/plans/issue30-sweep/plans/plan-t51.md` Task 6（plan-t51.md:2345-2881）
+
+## C-0. 本轮定性
+
+本 ask 派发语为「第 6/7 个任务」并附前置「修复轮 1：Task 5 交付面零改动零回归」，但开工核查发现工作树历史已越过该状态：Task 6 交付提交 `1ff35e75a`、Task 6 报告入册 `4afa3e942`、Task 7 收口 `76cc5d369`、终修轮 3 `b272915d5` 均已存在。重新从零实现既无必要（交付已验证在案）也违反「绝不撤销或回退他人修改」纪律。本轮因此定性为：**对已有交付的计划一致性核验 + Task 6 全部验证命令在当前 HEAD 的复跑取证**，结论入册。原始 TDD 过程证据（首跑编译失败→修复计划笔误→全 PASS）已在 T6-2 由前任会话完整记录，本轮不重复、不冒充。
+
+## C-1. 交付在位核验（本会话实查）
+
+1. **提交链**：`git log --oneline -12` 显示 `1ff35e75a test(appconnector): 多操作计划 AC1/AC2/排除单项 端到端证据（T21 #51 Task 6）`（2 files changed, 450 insertions(+), 1 deletion(-)）及后续 Task 6 报告/Task 7/终修轮 3 提交。
+2. **双打加法钩子**（计划 Step 1，plan-t51.md:2355-2415）：`internal/handler/app_connector_notion_publish_e2e_test.go:103-104`（`dropAppendForTitle`/`droppedOnce` 字段）、`:113`（`newE2ENotion` 初始化）、`:169-171`（`/v1/pages` POST 记账）、`:252-259`（`/v1/blocks/` PATCH：既有 `dropNextAppend` 三行逐字保留后追加 `if e.droppedOnce[id] { delete(...); drop = true }`）——四处与计划一致。
+3. **e2e 测试文件**（计划 Step 2，plan-t51.md:2419-2859）：`internal/handler/app_connector_action_plan_e2e_test.go` 434 行，五测试在位（`:44` TestAppActionPlansTablesExistAfterMigrations、`:274` …ApproveExecutePerItemResults、`:308` …ContentChangeInvalidatesOldApproval、`:347` …PartialSuccessResumesUnfinishedOnly、`:414` …ExcludeItem）；AC2 测试体（`:347-410`）三遍执行断言与计划逐字一致（含 T6-4.1 已声明的未使用变量笔误修复——该块已不存在）。
+
+## C-2. 复跑命令与完整输出（本会话在 HEAD `b272915d5` 实跑）
+
+### Task 6 Step 3（含 -v 逐名取证）
+
+```
+$ go test ./internal/handler/ -run 'TestActionPlanEndToEnd|TestAppActionPlansTables' -count=1
+ok  	github.com/Tencent/WeKnora/internal/handler	19.899s
+$ go test ./internal/handler/ -run 'TestActionPlanEndToEnd|TestAppActionPlansTables' -count=1 -v
+=== RUN   TestAppActionPlansTablesExistAfterMigrations
+--- PASS: TestAppActionPlansTablesExistAfterMigrations (2.06s)
+=== RUN   TestActionPlanEndToEndApproveExecutePerItemResults
+--- PASS: TestActionPlanEndToEndApproveExecutePerItemResults (2.24s)
+=== RUN   TestActionPlanEndToEndContentChangeInvalidatesOldApproval
+--- PASS: TestActionPlanEndToEndContentChangeInvalidatesOldApproval (3.27s)
+=== RUN   TestActionPlanEndToEndPartialSuccessResumesUnfinishedOnly
+--- PASS: TestActionPlanEndToEndPartialSuccessResumesUnfinishedOnly (6.32s)
+=== RUN   TestActionPlanEndToEndExcludeItem
+--- PASS: TestActionPlanEndToEndExcludeItem (2.20s)
+ok  	github.com/Tencent/WeKnora/internal/handler	17.589s
+```
+
+### Task 6 Step 4（#48 零回归面）
+
+```
+$ go test ./internal/handler/ -run 'TestActionPlan|TestNotionPublish|TestAppPublications' -count=1
+ok  	github.com/Tencent/WeKnora/internal/handler	16.227s
+```
+
+### Task 6 Step 5（计划级全量）
+
+```
+$ go build ./... && go test ./internal/database/ -count=1 && go test ./internal/modules/appconnector/... -count=1 && go test ./internal/handler/ -run 'TestActionPlan|TestNotionPublish|TestAppPublications' -count=1
+# github.com/Tencent/WeKnora/cmd/server
+ld: warning: ignoring duplicate libraries: '-lc++'
+# github.com/Tencent/WeKnora/cmd/desktop
+ld: warning: ignoring duplicate libraries: '-lc++'
+ok  	github.com/Tencent/WeKnora/internal/database	25.610s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector	0.528s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/connectorcontrol	1.954s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/openconnector	2.132s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/plan	2.423s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/publish	2.954s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector	2.091s
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector	4.257s
+ok  	github.com/Tencent/WeKnora/internal/handler	20.225s
+```
+
+三步全绿；两条 `ld: warning` 为 macOS 链接器对 cmd/server、cmd/desktop 的既有噪音（T7-2 同判），非错误。
+
+## C-3. TDD 适用性说明
+
+本会话未新写失败测试：Task 6 本身是「前五个任务的红绿证据收口，不是新的 RED」（计划 Step 3 原文，plan-t51.md:2864），且交付物已在位。原始 TDD 首跑证据（计划笔误导致的编译失败 + 修复后全 PASS）由前任会话入册于 T6-2，本会话的增量证据是上述三步在最新 HEAD 的复跑全绿。
+
+## C-4. 自检发现
+
+1. **编排方状态与工作树不同步（上报）**：本 ask 派发「Task 6/7」时工作树已完成 Task 6、Task 7 与终修轮 3（HEAD `b272915d5`）。本会话按「核验 + 复跑」处理并如实入册；若编排方后续再派 Task 7，将遇到同样的重复派发局面。
+2. **`.superpowers/sdd/plan-t51/progress.md` 存在他人未提交修改**（追加「Task 5: fix round 1/5」「Task 5: complete」两行，疑似此前会话遗留）：非本任务授权文件，本会话不动、不提交、不回退，保持原样并在此声明。
+3. **本会话改动范围**：仅追加本报告节；生产代码/测试零改动；未派发子代理或审查者；未推送远端；未撤销/回退任何他人提交。
+4. **转录勘误（已修正）**：本节 C-2 Step 5 输出块中的 publish 行初次手抄漏写 `Tencent/` 段（实际终端输出为 `github.com/Tencent/WeKnora/internal/modules/appconnector/publish`，`ok`、退出码 0），报告内已改为与终端一致；不影响任何测试判定。
