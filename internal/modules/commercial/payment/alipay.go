@@ -469,7 +469,17 @@ func (p *AlipayProvider) Query(ctx context.Context, providerID string) (AttemptR
 		return AttemptResult{State: stateIfTimeout(err, StateUnknown), ProviderID: providerID},
 			fmt.Errorf("alipay query %s: %w", providerID, err)
 	}
-	id := out.OutTradeNo
+	// (OCR C-08) The query's ProviderID must be SAME-SOURCED with the
+	// notify fact's Transaction (trade_no, the provider's own transaction
+	// identity) — the #83 duplicate-fact-unity contract the wechat leg
+	// already satisfies (transaction_id first). Answering out_trade_no
+	// instead broke ConfirmPayment's sameTxn replay detection whenever a
+	// recovery query landed before the notify replay: the transaction id
+	// was rewritten and a spurious over-payment audit event minted.
+	id := out.TradeNo
+	if id == "" {
+		id = out.OutTradeNo
+	}
 	if id == "" {
 		id = providerID
 	}

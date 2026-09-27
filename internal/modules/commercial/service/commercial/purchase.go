@@ -261,23 +261,46 @@ func (s *PurchaseService) Purchase(ctx context.Context, tenantID uint64, quoteID
 		// and only a cleanly released slot falls through to open the new
 		// channel order below. An unresolved close outcome surfaces its
 		// error: the caller retries — a second channel order must NEVER be
-		// opened while the old one's outcome is unknown. A pending order
-		// with NO attempt row cannot prove ANY channel (the atomic open
-		// always writes both): it keeps the frozen #82 replay semantics —
-		// answer the existing entry, never a second channel request.
-		if att, aerr := s.orders.orders.FirstPendingAttempt(ctx, existing.ID); aerr == nil && att.Provider != providerName {
+		// opened while the old one's outcome is unknown.
+		//
+		// (OCR C-10) The attempt read is CLASSIFIED, never blanket-else'd:
+		// no attempt row is the frozen #82 replay shape (the atomic open
+		// writes both rows, so a pending order with no attempt cannot prove
+		// any channel) — but any OTHER read error (connection fault,
+		// transient DB failure) propagates: converting a failed query into
+		// a success answer would both mask an infrastructure failure and
+		// leave an explicit channel-switch request answered with the OLD
+		// channel's entry.
+		att, aerr := s.orders.orders.FirstPendingAttempt(ctx, existing.ID)
+		switch {
+		case errors.Is(aerr, repocommercial.ErrPaymentAttemptNotFound):
+			// No attempt row: keep the frozen #82 replay semantics — answer
+			// the existing entry, never a second channel request.
+			ov := orderViewFromRow(existing)
+			return s.purchaseView(p, snap, pub, &ov), nil
+		case aerr != nil:
+			return PurchaseView{}, aerr
+		case att.Provider != providerName:
 			closeView, cerr := s.orders.CloseChannelOrder(ctx, tenantID, existing.ID)
 			if cerr != nil {
 				return PurchaseView{}, cerr
 			}
-			if closeView.State == domain.OrderStatePaid {
+			// (OCR C-09) EXCLUSIVE-DECISION check: anything that already
+			// left pending is decided for this order (paid — or even
+			// fulfilled, which the fulfill worker can reach between the
+			// close's ConfirmPayment and this read). Answering the
+			// closeView for every decided outcome means a fulfilled order
+			// can never fall through to CreateOrder and mint a SECOND
+			// channel order for an already-effective purchase.
+			if closeView.State != domain.OrderStatePending {
 				return s.purchaseView(p, snap, pub, &closeView), nil
 			}
-			// Closed cleanly: the payable slot is free — fall through to
+			// Closed cleanly (still pending, slot retired): fall through to
 			// CreateOrder(quoteID, providerName) on the new channel.
-		} else {
+		default:
+			// Same-channel replay: #82 frozen semantics.
 			ov := orderViewFromRow(existing)
-			return s.purchaseView(p, snap, pub, &ov), nil // same-channel (or channel-unknown) replay: #82 frozen semantics
+			return s.purchaseView(p, snap, pub, &ov), nil
 		}
 	} else if !errors.Is(perr, repocommercial.ErrOrderNotFound) {
 		return PurchaseView{}, perr

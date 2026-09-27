@@ -596,10 +596,11 @@ func (s *OrderService) CloseChannelOrder(ctx context.Context, tenantID uint64, o
 		return OrderView{}, fmt.Errorf("%w: %q", ErrPaymentProviderUnconfigured, att.Provider)
 	}
 	landClosed := func() (OrderView, error) {
-		if err := s.orders.MarkAttemptClosed(ctx, orderID); err != nil {
-			return OrderView{}, err
-		}
-		if err := s.orders.MarkChannelFailed(ctx, orderID); err != nil {
+		// (OCR C-07) The attempt-close and the channel_failed marking land
+		// as ONE transactional pair: two independent UPDATEs left a
+		// hand-recovery-only half state (attempt closed, order still
+		// payable) when the process died between them.
+		if err := s.orders.CloseAttemptAndRetireChannel(ctx, orderID); err != nil {
 			return OrderView{}, err
 		}
 		return OrderView{ID: row.ID, QuoteID: row.QuoteID, State: domain.OrderStatePending,

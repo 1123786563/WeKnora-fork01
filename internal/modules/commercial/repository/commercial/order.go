@@ -503,6 +503,41 @@ func (s *OrderStore) MarkAttemptClosed(ctx context.Context, orderID string) erro
 	return nil
 }
 
+// CloseAttemptAndRetireChannel lands the close-decision PAIR — every
+// still-pending attempt to closed AND the order row to channel_failed — in
+// ONE transaction (OCR C-07): the pair is the single close landing, and
+// landing it as two independent UPDATEs left a recoverable-only-by-hand
+// half state on a crash between them (attempt closed but the order still
+// payable: channel_failed=false with a persisted checkout_url has NO API
+// recovery path — the switch branch needs a pending attempt, the sweep only
+// touches link-less rows). Both writes carry the same predicates as the
+// standalone methods (MarkAttemptClosed / MarkChannelFailed); a concurrent
+// payment that already advanced the order past pending refuses the half
+// landing (ErrOrderNotFound — the whole transaction rolls back).
+// Parameter-bound throughout.
+func (s *OrderStore) CloseAttemptAndRetireChannel(ctx context.Context, orderID string) error {
+	if orderID == "" {
+		return ErrInvalidOrderRow
+	}
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&PaymentAttemptRow{}).
+			Where("order_id = ? AND state = ?", orderID, PaymentAttemptStatePending).
+			Update("state", PaymentAttemptStateClosed).Error; err != nil {
+			return err
+		}
+		res := tx.Model(&OrderRow{}).
+			Where("id = ? AND state = ?", orderID, domain.OrderStatePending).
+			Update("channel_failed", true)
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return ErrOrderNotFound
+		}
+		return nil
+	})
+}
+
 // GetOrder returns an order by ID; readers distinguish paid from fulfilled.
 func (s *OrderStore) GetOrder(ctx context.Context, id string) (OrderRow, error) {
 	var row OrderRow

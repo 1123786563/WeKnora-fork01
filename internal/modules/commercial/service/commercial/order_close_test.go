@@ -30,6 +30,10 @@ type closeRaceStub struct {
 	closeErr error
 	queryRes payment.AttemptResult
 	queryErr error
+	// queryHook runs inside Query before the scripted answer returns — the
+	// test's window to mutate local state mid-close (e.g. the fulfill worker
+	// landing between the close's ConfirmPayment and the decisive re-read).
+	queryHook func()
 	// counters
 	closeCalls  int
 	queryCalls  int
@@ -45,8 +49,14 @@ func (p *closeRaceStub) Create(_ context.Context, req payment.OrderRequest) (pay
 }
 func (p *closeRaceStub) Query(_ context.Context, id string) (payment.AttemptResult, error) {
 	p.mu.Lock()
-	defer p.mu.Unlock()
 	p.queryCalls++
+	hook := p.queryHook
+	p.mu.Unlock()
+	if hook != nil {
+		hook()
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	if p.queryErr != nil {
 		return payment.AttemptResult{}, p.queryErr
 	}
@@ -520,5 +530,85 @@ func TestPurchaseSwitchPaidRaceAnswersPaidOrder(t *testing.T) {
 	}
 	if wechat.closeCalls != 1 || wechat.queryCalls != 1 {
 		t.Fatalf("the race must be close-then-query-decide (close=%d query=%d)", wechat.closeCalls, wechat.queryCalls)
+	}
+}
+
+// TestPurchaseSwitchAnswersFulfilledOrderNotNewChannel（OCR C-09）：切换分支
+// 的终局判定是排除式——closeView 只要已决出 pending 之外的任何状态（paid，
+// 或本用例的 fulfilled：ConfirmPayment 落 paid 后、关单重读前，fulfill worker
+// 已把订单推进 fulfilled）就按 closeView 作答，绝不落穿 CreateOrder 为一份
+// 已支付生效的购买再开第二张渠道单（重复收款面）。
+func TestPurchaseSwitchAnswersFulfilledOrderNotNewChannel(t *testing.T) {
+	svc, wechat, alipay, db := newSwitchEnv(t)
+	purchaseSeedPlan(t, svc.plans, "pro", 9900)
+	qA := purchaseQuote(t, svc.orders, 93, "pro")
+	first, err := svc.Purchase(context.Background(), 93, qA.ID, payment.ProviderWechat, "billing-admin", "Space 93")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var att repocommercial.PaymentAttemptRow
+	if err := db.Where("order_id = ?", first.Order.ID).First(&att).Error; err != nil {
+		t.Fatal(err)
+	}
+	store := repocommercial.NewOrderStore(db)
+	// The in-flight payment + the fulfill worker winning the millisecond
+	// window: the decisive Query's side effect confirms the payment AND the
+	// worker has already advanced the order to fulfilled before the close's
+	// re-read.
+	wechat.closeErr = orderPaidError
+	wechat.queryRes = payment.AttemptResult{State: payment.StateSucceeded, ProviderID: "wx_txn_swful"}
+	wechat.queryHook = func() {
+		_ = store.ConfirmPayment(context.Background(), domain.PaymentFact{
+			Provider: payment.ProviderWechat, Merchant: att.Merchant,
+			AttemptID: att.MerchantOrderID, OrderID: first.Order.ID, TenantID: 93,
+			Amount: domain.CNYFen(att.AmountFen), Currency: att.Currency,
+			Transaction: "wx_txn_swful", State: payment.StateSucceeded.String(),
+		})
+		if err := store.MarkFulfilled(context.Background(), first.Order.ID); err != nil {
+			t.Errorf("fixture: mark fulfilled: %v", err)
+		}
+	}
+
+	qB := purchaseQuote(t, svc.orders, 93, "pro")
+	second, err := svc.Purchase(context.Background(), 93, qB.ID, payment.ProviderAlipay, "billing-admin", "Space 93")
+	if err != nil {
+		t.Fatalf("the fulfilled race must answer, not fail: %v", err)
+	}
+	if second.Order == nil || second.Order.ID != first.Order.ID {
+		t.Fatalf("the answer must be the OLD fulfilled order, got %+v", second.Order)
+	}
+	if second.Order.State != domain.OrderStateFulfilled {
+		t.Fatalf("the decided outcome must surface verbatim, got %q", second.Order.State)
+	}
+	if alipay.createCalls != 0 {
+		t.Fatalf("a fulfilled order must NEVER open a second channel order, got %d alipay creates", alipay.createCalls)
+	}
+	if n := countOutbox(t, db, repocommercial.OutboxKindFulfill); n != 1 {
+		t.Fatalf("exactly one fulfill event expected, got %d", n)
+	}
+}
+
+// TestPurchaseSwitchAttemptReadErrorPropagates（OCR C-10）：FirstPendingAttempt
+// 的非 NotFound 错误（连接故障/瞬时 DB 故障——本用例以缺表模拟驱动错误）必须
+// 上抛，绝不静默落入 #82 冻结重放把旧渠道 CheckoutURL 当成功答案返回。
+func TestPurchaseSwitchAttemptReadErrorPropagates(t *testing.T) {
+	svc, _, _, db := newSwitchEnv(t)
+	purchaseSeedPlan(t, svc.plans, "pro", 9900)
+	qA := purchaseQuote(t, svc.orders, 94, "pro")
+	if _, err := svc.Purchase(context.Background(), 94, qA.ID, payment.ProviderWechat, "billing-admin", "Space 94"); err != nil {
+		t.Fatal(err)
+	}
+	// The attempt read blows up with a driver error (NOT the NotFound
+	// sentinel): drop the attempts table right before the switch submit.
+	if err := db.Migrator().DropTable(&repocommercial.PaymentAttemptRow{}); err != nil {
+		t.Fatal(err)
+	}
+	qB := purchaseQuote(t, svc.orders, 94, "pro")
+	_, err := svc.Purchase(context.Background(), 94, qB.ID, payment.ProviderAlipay, "billing-admin", "Space 94")
+	if err == nil {
+		t.Fatal("a failed attempt read must propagate, never answer a replay of the old channel entry")
+	}
+	if errors.Is(err, repocommercial.ErrPaymentAttemptNotFound) {
+		t.Fatalf("the injected error is a driver failure, not the NotFound sentinel: %v", err)
 	}
 }

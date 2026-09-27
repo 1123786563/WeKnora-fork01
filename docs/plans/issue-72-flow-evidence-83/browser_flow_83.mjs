@@ -27,6 +27,14 @@ if (!EMAIL || !PASSWORD) {
   console.error('missing required env: FLOW83_EMAIL / FLOW83_PASSWORD (no source-code fallback)');
   process.exit(2);
 }
+// (C-02) The tenant id reaches a docker psql query — whitelist it AT THE
+// ENTRY like every other env (the old mid-flow check only noted and
+// continued, interpolating the unvalidated value into SQL).
+const TENANT = process.env.FLOW83_TENANT ?? '';
+if (!/^\d+$/.test(TENANT)) {
+  console.error(`bad FLOW83_TENANT for SQL interpolation: '${TENANT}' (must be the protagonist's numeric tenant id)`);
+  process.exit(2);
+}
 
 const results = [];
 const progression = [];
@@ -36,17 +44,24 @@ const note = (step, ok, detail) => {
 };
 const sleep = (ms) => new Promise((r) => { setTimeout(r, ms); });
 
-// Fresh accounts meet two guide dialogs (new-user guide, contextual kb
-// guide); their modal backdrops intercept every click. Dismiss whatever
-// guide is open (both use the .wk-guide__close button class).
+// Fresh accounts meet guide dialogs (new-user guide, contextual kb guide);
+// their modal backdrops intercept every click. Dismiss whatever guide is
+// open: the new-user guide closes via .wk-guide__close, the CONTEXTUAL kb
+// guide (SpotlightGuide) exposes a 跳过 button instead — click it, then
+// fall back to Esc + a bare backdrop click.
 async function dismissGuides(page) {
   for (let i = 0; i < 3; i += 1) {
     const btns = page.locator('.wk-guide__close:visible');
     const n = await btns.count().catch(() => 0);
     if (n === 0) {
-      // Nothing visible right now — Esc still clears a just-mounted dialog
-      // whose close button is animating in.
+      const skip = page.locator('button:visible', { hasText: '跳过' });
+      const skips = await skip.count().catch(() => 0);
+      for (let j = 0; j < skips; j += 1) {
+        await skip.first().click({ timeout: 3000 }).catch(() => {});
+        await sleep(200);
+      }
       await page.keyboard.press('Escape').catch(() => {});
+      await page.locator('.wk-guide__backdrop:visible').first().click({ timeout: 2000 }).catch(() => {});
       await sleep(300);
       continue;
     }
@@ -59,32 +74,51 @@ async function dismissGuides(page) {
   }
 }
 
+// (C-05) Every stub/backend fetch is guarded: an unreachable stub used to
+// crash the flow with an unhandled rejection — the accumulated PASS/FAIL
+// notes and the state progression were lost.
 async function stubOrders() {
-  const res = await fetch(`${STUB}/stub/orders`);
-  return res.json();
+  try {
+    const res = await fetch(`${STUB}/stub/orders`);
+    return await res.json();
+  } catch (err) {
+    throw new Error(`stubOrders: stub at ${STUB} unreachable (${String(err).split('\n')[0]})`);
+  }
 }
 async function stubMark(outTradeNo, transactionId) {
-  const res = await fetch(`${STUB}/stub/mark`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ out_trade_no: outTradeNo, state: 'SUCCESS', transaction_id: transactionId }),
-  });
-  return res.json();
+  try {
+    const res = await fetch(`${STUB}/stub/mark`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ out_trade_no: outTradeNo, state: 'SUCCESS', transaction_id: transactionId }),
+    });
+    return await res.json();
+  } catch (err) {
+    throw new Error(`stubMark(${outTradeNo}): stub at ${STUB} unreachable (${String(err).split('\n')[0]})`);
+  }
 }
 async function stubNotify(outTradeNo) {
-  const res = await fetch(`${STUB}/stub/notify`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ out_trade_no: outTradeNo }),
-  });
-  const body = await res.json();
-  return res.status === 200 && body.ok === true;
+  try {
+    const res = await fetch(`${STUB}/stub/notify`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ out_trade_no: outTradeNo }),
+    });
+    const body = await res.json();
+    return res.status === 200 && body.ok === true;
+  } catch (err) {
+    throw new Error(`stubNotify(${outTradeNo}): stub at ${STUB} unreachable (${String(err).split('\n')[0]})`);
+  }
 }
 const TOKEN = process.env.FLOW83_TOKEN ?? '';
 async function purchaseState() {
   if (!TOKEN) return { data: { state: 'env-missing-token' } };
-  const res = await fetch(`${BACKEND}/api/v1/commercial/purchase`, {
-    headers: { Authorization: `Bearer ${TOKEN}` },
-  });
-  return await res.json();
+  try {
+    const res = await fetch(`${BACKEND}/api/v1/commercial/purchase`, {
+      headers: { Authorization: `Bearer ${TOKEN}` },
+    });
+    return await res.json();
+  } catch (err) {
+    return { data: { state: `backend-unreachable (${String(err).split('\n')[0]})` } };
+  }
 }
 
 const browser = await chromium.launch();
@@ -121,7 +155,12 @@ try {
       await page.locator('button', { hasText: '重试（同一报价服务端幂等' }).click();
       continue;
     }
-    if (attempt === 3) note('checkout-awaiting-payment', false, 'order never landed (see backend log)');
+    if (attempt === 3) {
+      // (C-05) TERMINAL: noting and continuing used to run straight into
+      // the 60s weixin:// selector timeout, masking the real failure point.
+      note('checkout-awaiting-payment', false, 'order never landed after 4 attempts (see backend log)');
+      throw new Error('checkout: the awaiting-payment face never landed after 4 attempts');
+    }
   }
   // The new-user guide mounts lazily after the page settles — dismiss again
   // right before the interactions its backdrop would intercept.
@@ -148,12 +187,17 @@ try {
   note('wechat-order-id', orderId !== '', orderId);
   await page.screenshot({ path: `${EV}01-checkout-wechat-awaiting-payment.png`, fullPage: true });
 
-  // The stub saw exactly this wechat native order at the 99.00 CNY face.
+  // (C-03) The stub key order is INSERTION order — "the last key" guessed
+  // this order with no filtering (a leftover from an earlier round, a
+  // retry's sibling, or a concurrent order would get marked SUCCESS and
+  // receive the signed notify). Filter to the genuinely-pending 9900 face.
   const orders = await stubOrders();
-  const keys = Object.keys(orders);
-  const liveOrder = keys.length >= 1 ? keys[keys.length - 1] : '';
+  const pendingKeys = Object.entries(orders)
+    .filter(([, v]) => v?.state === 'NOTPAY' && v?.total === 9900)
+    .map(([k]) => k);
+  const liveOrder = pendingKeys[pendingKeys.length - 1] ?? '';
   note('stub-native-order', liveOrder !== '' && orders[liveOrder].total === 9900,
-    `stub NATIVE out_trade_no=${liveOrder} total=${orders[liveOrder]?.total} state=${orders[liveOrder]?.state}`);
+    `stub NATIVE out_trade_no=${liveOrder} (NOTPAY/9900-filtered) total=${orders[liveOrder]?.total} state=${orders[liveOrder]?.state}`);
 
   // --- simulated real payment: mark SUCCESS + push the SIGNED notify ---
   // The channel transaction id is UNIQUE per payment (a real WeChat
@@ -183,10 +227,6 @@ try {
   // --- settle rail + webhook finalize: poll purchase to active ---
   const deliver = `${EV}../issue-72-flow-evidence-82/settle-evidence/deliver_stripe_webhook.py`;
   const ORG = '305eddac-1bbd-47a3-af15-219f1d39a27d'; // 82flow stack seed org (read-only)
-  const TENANT = process.env.FLOW83_TENANT ?? '';
-  if (!/^\d+$/.test(TENANT)) {
-    note('tenant-env', false, `FLOW83_TENANT must be the protagonist's numeric tenant id (got '${TENANT}')`);
-  }
   const lagoCustomer = () => {
     try {
       return execFileSync('docker', [
@@ -239,11 +279,16 @@ try {
   await page.screenshot({ path: `${EV}05-billing-active.png`, fullPage: true });
   note('billing-active-face', true, 'billing shows 已生效');
 
+} catch (err) {
+  // (C-05) An uncaught flow error still writes everything accumulated so
+  // far: the progression, the RESULT summary and a non-zero exit — never a
+  // silent crash that loses the evidence.
+  note('uncaught-flow-error', false, String(err));
+} finally {
   const fs = await import('node:fs');
   fs.writeFileSync(`${EV}purchase-state-progression.txt`,
     `#83 act1 purchase state progression (${new Date().toISOString()})\n` +
     progression.join('\n') + '\n');
-} finally {
   await browser.close();
 }
 console.log('RESULT ' + JSON.stringify(results));

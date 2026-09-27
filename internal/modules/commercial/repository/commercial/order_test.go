@@ -605,3 +605,56 @@ func TestIsQuoteUniqueConflictClassifier(t *testing.T) {
 		}
 	}
 }
+
+// TestCloseAttemptAndRetireChannelAtomicPair（OCR C-07）：close 决策对
+// （attempt→closed + 订单→channel_failed）单事务原子落地——干净路径两写同
+// 落；订单在竞争窗口内离开 pending（并发支付）时整体拒绝（ErrOrderNotFound）
+// 且 attempt 的 closed 写入随事务回滚（绝不留下「attempt 已 closed 但订单仍
+// payable」的半状态——该状态无任何 API 恢复路径）。
+func TestCloseAttemptAndRetireChannelAtomicPair(t *testing.T) {
+	s, db := testOrderStore(t)
+	ctx := context.Background()
+	// 干净路径：pending 订单 + pending attempt → 两写原子落地。
+	mustCreateOrder(t, s, "ord_atom_ok", "qt_atom_ok")
+	if err := s.RegisterAttempt(ctx, PaymentAttemptRow{
+		ID: "att_atom_ok", TenantID: 7, OrderID: "ord_atom_ok", Provider: "wechat",
+		Merchant: "1900000109", MerchantOrderID: "mo_atom_ok", AmountFen: 100, Currency: "CNY",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CloseAttemptAndRetireChannel(ctx, "ord_atom_ok"); err != nil {
+		t.Fatalf("the atomic close pair must land: %v", err)
+	}
+	row, err := s.GetOrder(ctx, "ord_atom_ok")
+	if err != nil || !row.ChannelFailed {
+		t.Fatalf("the order must be retired (channel_failed), got %+v err=%v", row, err)
+	}
+	att, err := s.FirstPendingAttempt(ctx, "ord_atom_ok")
+	if !errors.Is(err, ErrPaymentAttemptNotFound) {
+		t.Fatalf("the attempt must be closed (no pending left), got %+v err=%v", att, err)
+	}
+
+	// 竞争路径：订单已 paid（channel_failed 谓词 0 行）→ 整体拒绝 + 回滚。
+	mustCreateOrder(t, s, "ord_atom_paid", "qt_atom_paid")
+	if err := s.RegisterAttempt(ctx, PaymentAttemptRow{
+		ID: "att_atom_paid", TenantID: 7, OrderID: "ord_atom_paid", Provider: "wechat",
+		Merchant: "1900000109", MerchantOrderID: "mo_atom_paid", AmountFen: 100, Currency: "CNY",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(`UPDATE commercial_orders SET state = 'paid' WHERE id = 'ord_atom_paid'`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CloseAttemptAndRetireChannel(ctx, "ord_atom_paid"); !errors.Is(err, ErrOrderNotFound) {
+		t.Fatalf("a concurrently-paid order must refuse the half landing, got %v", err)
+	}
+	// The attempt write rolled back with the transaction: still pending.
+	att2, err := s.FirstPendingAttempt(ctx, "ord_atom_paid")
+	if err != nil || att2.ID != "att_atom_paid" {
+		t.Fatalf("the attempt closed-write must roll back (still pending), got %+v err=%v", att2, err)
+	}
+	row2, err := s.GetOrder(ctx, "ord_atom_paid")
+	if err != nil || row2.ChannelFailed {
+		t.Fatalf("the paid order must stay un-retired, got %+v err=%v", row2, err)
+	}
+}

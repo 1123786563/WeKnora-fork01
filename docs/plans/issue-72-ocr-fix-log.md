@@ -1484,3 +1484,54 @@ A-16 首版（fixHint 强等校验）在真实 proration 场景把 settle 打死
 ### 提交
 
 - 提交 message 前缀：`issue-72(ocr-82-1):`（按本批 ask 指定）
+
+---
+
+## 批次 ocr-83-1（Issue #83 增量 OCR 有效 findings，2026-09-27）
+
+修复员批次：12 个有效 findings（C-01~C-12）一次连贯处理，全部根因修复，无 deferred。安全红线自查：C-01 消除了入库活体令牌（12 个文件脱敏 + .gitignore + seed 落盘脱敏 + 106 条 refresh token 吊销）；C-02 收紧了取证脚本 SQL 插值面（白名单 + fail-fast）；无新增凭据字面量。
+
+### 凭据红线处置（C-01，high）
+
+- **同类面扩大**：除 finding 点名的 #83 六个 seed-login-*.json 外，#82 目录 r4-flow/2/3 的六个同类文件同样含活体 JWT 入库（`git ls-files` 证实），一并处置。
+- 12 个文件原位脱敏（token/refresh_token → `"REDACTED"`，保留 success/tenant/user 证据结构）；`.gitignore` 追加 `docs/plans/**/seed-login-*.json`（已跟踪脱敏版继续跟踪，未来重跑的活体新文件被挡）。
+- seed_83.sh 与 #82 三份 seed.sh 改为**落盘前脱敏**（token 只走 shell 变量）；api_recovery_83.mjs 的 token 源同步迁移到 `FLOW83_TOKEN` env（文件已脱敏）。
+- **已泄露 refresh token 吊销**：issue83-flow-v2.db(18)/issue82-r4verify.db(36)/issue82-r4v2.db(30)/issue82-r4v3.db(22) 共 106 行 auth_tokens 全部删除（本地取证库的 refresh token 失效）；access JWT 无状态、exp 2026-09-28 自然过期（issue83-flow.db 旧库无 auth_tokens 表，该轮无持久化 refresh token——如实记录）。
+- 残留扫描：`git grep eyJ -- docs/plans` 仅剩 OCR 报告的截断引用（`eyJhbGciOiJI…`，非完整令牌）。
+
+### Go 生产代码
+
+- **C-07（repository/order.go）**：新增 `CloseAttemptAndRetireChannel`——attempt→closed 与订单→channel_failed 两条 UPDATE 在**单事务**内原子落地（landClosed 改调它）；订单在竞争窗口离开 pending 时整体拒绝（ErrOrderNotFound）且 attempt 写入随事务回滚——消除「attempt 已 closed 但订单仍 payable」的只能人工改库半状态。
+- **C-08（payment/alipay.go）**：Query 的 ProviderID 改为 **trade_no 优先**（out_trade_no 回退、providerID 兜底）——与回调事实的 Transaction（tradeNo）同源，对齐 wechat 腿的 transaction_id 优先纪律；恢复路径后再回调重放同一笔支付时 sameTxn 判定成立，不再误发 over-payment 审计。
+- **C-09（service/purchase.go）**：切换分支终局判定改**排除式**——`closeView.State != OrderStatePending`（已决出终局：paid 或 fulfilled）一律按 closeView 作答，fulfill worker 在 ConfirmPayment 与重读之间推进 fulfilled 时不再落穿 CreateOrder 为已生效购买开第二张渠道单。
+- **C-10（service/purchase.go）**：FirstPendingAttempt 错误**分流**——ErrPaymentAttemptNotFound → #82 冻结重放；其他错误（瞬时 DB 故障）上抛，绝不把失败查询冒充成功响应返回旧渠道入口。
+
+### 取证/验收脚本（docs/plans/issue-72-flow-evidence-83/）
+
+- **C-02（api_recovery_83.mjs）**：统一 `sqlShape(name,value,re)` 白名单（租户 `^\d+$`、订单 `^ord_[0-9a-f]+$`、渠道单 `^mo_[0-9a-f]+$`、Lago 绑定 id uuid-or-`cus_`）+ 校验失败落盘日志并终止；fulfilledOrder 形状校验失败改为终止（不再仅 note 后拼入后续 SQL）；browser_flow_83.mjs 的 FLOW83_TENANT 校验前置到入口 `process.exit(2)`（未校验值不再拼进 docker psql）。白名单首版把 Lago 绑定写成 UUID 形态——**活栈重放被自身拦截纠正**（cus_ id 拒绝→终止），修正为双形态后全绿。
+- **C-03（两个脚本）**：newestPendingOrder/liveOrder 改为按 `state==='NOTPAY' && total===9900` 过滤后取末键——残留单/重试兄弟单/并发单不再被误标 SUCCESS 并推送签名 notify。
+- **C-04（api_recovery_83.mjs）**：registerAndLogin 校验 token/tenant 非空（抛带上下文错误）；purchaseUntilLanded 四次耗尽改抛错终止该幕；五幕包顶层 try/catch——失败仍写 files + RESULT + 非零退出。
+- **C-05（browser_flow_83.mjs）**：主流程补 catch（uncaught-flow-error 记 note 后仍写 progression 与 RESULT）；第 4 次 checkout 失败立即抛带上下文错误（不再落穿进必然 60s 超时的 weixin:// 等待）；stubOrders/stubMark/stubNotify/purchaseState 四个 fetch 包 try/catch 带上下文。另适配 contextual guide（SpotlightGuide 的「跳过」按钮 + backdrop 兜底——原 dismissGuides 只认 .wk-guide__close）。
+- **C-06（v2_gen_keys.sh）**：apiv3.key 构造性保证首尾非空白（首尾各 1 字节经 `tr '\000-\040' 'A'` 折叠 + 中间 30 随机字节，恒 32 字节），末尾补 Python 边界断言（首尾字节 ∉ 空白集）——消除约 4.6% 概率的整轮随机启动失败。连跑 5 次断言全过（含折叠生效样本 0x41）。
+- **C-11（seed_83.sh）**：Lago 落库断言从「任意 9900 plan 计数≥1」改为**本轮 code 精确匹配 + 形状断言**（`weknora-pro-v1 && amount_cents==9900 && interval=="monthly"` 恰 1）——republish 幂等下计数增量不可用，形状断言对历史残留不空转。
+- **C-12（seed_83.sh）**：三处命令替换补传输层显式报错（reg_expect 的 curl、LOGIN_A/B 的 curl、LAGO_KEY 的 docker exec|tr，各带 `|| { say "FAIL: ... TRANSPORT failure"; exit 1; }` + LAGO_KEY 空值校验）——set -e 不再静默吞掉后端未启动等传输失败。
+
+### 回归测试（新增/改写）
+
+- `TestCloseAttemptAndRetireChannelAtomicPair`（C-07：干净路径两写同落 + 竞争路径整体回滚）、`TestPurchaseSwitchAnswersFulfilledOrderNotNewChannel`（C-09：queryHook 模拟 fulfill worker 竞争窗口，fulfilled 终局按 closeView 作答、alipay 零创建）、`TestPurchaseSwitchAttemptReadErrorPropagates`（C-10：drop attempts 表注入驱动错误 → 上抛非重放）、`TestAlipayQueryFallsBackWhenTradeNoAbsent`（C-08 回退链）、既有 `TestAlipayQueryReconcilesMissedNotification` 断言更新为 trade_no 优先（C-08 主行为）；closeRaceStub 增加 queryHook 注入。
+
+### 测试与重放证据（全部在本轮实际执行）
+
+| 检查 | 命令 | 结果 |
+|---|---|---|
+| commercial 全量 | `go test ./internal/modules/commercial/... -count=1` | 7 包全 ok |
+| 取证脚本语法 | `node --check` ×2、`bash -n` ×4（seed_83/v2_gen_keys/#82 三份 seed） | 全通过 |
+| 密钥边界断言 | `bash v2_gen_keys.sh <dir>` ×5 | 5/5 boundary non-whitespace OK |
+| 脱敏完整性 | `git grep eyJ -- docs/plans` + jq 校验 12 文件 token=="REDACTED" | 仅剩报告截断引用；12/12 REDACTED |
+| refresh token 吊销 | `delete from auth_tokens` ×4 库 | 18+36+30+22=106 行吊销 |
+| **活栈重放** | v2_gen→v2_up_stubs→seed_83（PAD=45）→browser act1→手动补投 webhook→api_recovery act2-5 | seed 形状断言过、脱敏落盘；act1 前 8 项 PASS（切换 UI/NOTPAY 过滤/签名回调/paid_awaiting），settle-active 两项 FAIL 归因 env 注入遗漏（非代码回归，手动补投后 active+fulfilled）；**act2-5 全 26 PASS exit 0**（act4a= C-09 paid 形态、act4b= C-07 原子对活栈验证）；证据 `docs/plans/issue-72-flow-evidence-83/ocr83fix-replay/` |
+| 全量 internal | `go test ./internal/... -count=1` | commercial 7 包 ok；application/repository、application/service 两包 ~605s 达默认超时（与前批相同的既有慢测试，与 commercial 无 import 依赖，未处理） |
+
+### 提交
+
+- 提交 message 前缀：`issue-72(ocr-83-1):`（按本批 ask 指定）

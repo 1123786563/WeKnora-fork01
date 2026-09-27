@@ -1,1 +1,48 @@
-{"success":true,"message":"Login successful","user":{"id":"6ea6a324-a19a-4f2b-8c23-34929472c51e","username":"issue83-flow-e","email":"issue83-flow-e@verify.local","avatar":"","tenant_id":19,"is_active":true,"can_access_all_tenants":false,"is_system_admin":false,"preferences":{},"created_at":"2026-09-27T10:18:48.379636+08:00","updated_at":"2026-09-27T10:18:48.379637+08:00","deleted_at":null},"active_tenant":{"id":19,"name":"issue83-flow-e's Workspace","description":"Default workspace","status":"active","retriever_engines":{"engines":[]},"business":"","storage_quota":10737418240,"storage_used":0,"context_config":{"max_tokens":0,"compression_strategy":"","recent_message_count":0,"summarize_threshold":0},"created_at":"2026-09-27T10:18:48.019508+08:00","updated_at":"2026-09-27T02:18:48.36003Z","deleted_at":null},"memberships":[{"tenant_id":19,"tenant_name":"issue83-flow-e's Workspace","role":"owner"}],"token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6Imlzc3VlODMtZmxvdy1lQHZlcmlmeS5sb2NhbCIsImV4cCI6MTc5MDU2MTkzMCwiaWF0IjoxNzkwNDc1NTMwLCJ0ZW5hbnRfaWQiOjE5LCJ0eXBlIjoiYWNjZXNzIiwidXNlcl9pZCI6IjZlYTZhMzI0LWExOWEtNGYyYi04YzIzLTM0OTI5NDcyYzUxZSJ9.upuHiIKGL6fIT28bc5Ihx_9DSSJbefb6iar0EnHfjQE","refresh_token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3OTEwODAzMzAsImlhdCI6MTc5MDQ3NTUzMCwidHlwZSI6InJlZnJlc2giLCJ1c2VyX2lkIjoiNmVhNmEzMjQtYTE5YS00ZjJiLThjMjMtMzQ5Mjk0NzJjNTFlIn0.MLzc0ty4JcwrtBXEX7Stys-IJVFCYCTXa3mw-sP5zY4"}
+{
+  "success": true,
+  "message": "Login successful",
+  "user": {
+    "id": "6ea6a324-a19a-4f2b-8c23-34929472c51e",
+    "username": "issue83-flow-e",
+    "email": "issue83-flow-e@verify.local",
+    "avatar": "",
+    "tenant_id": 19,
+    "is_active": true,
+    "can_access_all_tenants": false,
+    "is_system_admin": false,
+    "preferences": {},
+    "created_at": "2026-09-27T10:18:48.379636+08:00",
+    "updated_at": "2026-09-27T10:18:48.379637+08:00",
+    "deleted_at": null
+  },
+  "active_tenant": {
+    "id": 19,
+    "name": "issue83-flow-e's Workspace",
+    "description": "Default workspace",
+    "status": "active",
+    "retriever_engines": {
+      "engines": []
+    },
+    "business": "",
+    "storage_quota": 10737418240,
+    "storage_used": 0,
+    "context_config": {
+      "max_tokens": 0,
+      "compression_strategy": "",
+      "recent_message_count": 0,
+      "summarize_threshold": 0
+    },
+    "created_at": "2026-09-27T10:18:48.019508+08:00",
+    "updated_at": "2026-09-27T02:18:48.36003Z",
+    "deleted_at": null
+  },
+  "memberships": [
+    {
+      "tenant_id": 19,
+      "tenant_name": "issue83-flow-e's Workspace",
+      "role": "owner"
+    }
+  ],
+  "token": "REDACTED",
+  "refresh_token": "REDACTED"
+}

@@ -59,10 +59,15 @@ login() { # login <email> -> token
   curl -s -X POST "$BACKEND/api/v1/auth/login" -H 'Content-Type: application/json' \
     -d "{\"email\":\"$1\",\"password\":\"$PW\"}"
 }
-LOGIN_A=$(login "${FLOW82_EMAIL_PREFIX:-settle-r4}-a@verify.local"); echo "$LOGIN_A" > "$EV/seed-login-a.json"
-LOGIN_B=$(login "${FLOW82_EMAIL_PREFIX:-settle-r4}-b@verify.local"); echo "$LOGIN_B" > "$EV/seed-login-b.json"
-TOKEN_A=$(jq -r .token "$EV/seed-login-a.json")
-TOKEN_B=$(jq -r .token "$EV/seed-login-b.json")
+# (C-83/C-01) Login captures land on disk REDACTED — the access/refresh
+# JWTs live only in the shell variables for this run's own API calls; no
+# usable credential literal ever reaches a file (branch redline).
+LOGIN_A=$(login "${FLOW82_EMAIL_PREFIX:-settle-r4}-a@verify.local")
+LOGIN_B=$(login "${FLOW82_EMAIL_PREFIX:-settle-r4}-b@verify.local")
+jq '.token = "REDACTED" | .refresh_token = "REDACTED"' <<<"$LOGIN_A" > "$EV/seed-login-a.json"
+jq '.token = "REDACTED" | .refresh_token = "REDACTED"' <<<"$LOGIN_B" > "$EV/seed-login-b.json"
+TOKEN_A=$(jq -r .token <<<"$LOGIN_A")
+TOKEN_B=$(jq -r .token <<<"$LOGIN_B")
 UID_B=$(jq -r .user.id "$EV/seed-login-b.json")
 TENANT_A=$(jq -r .active_tenant.id "$EV/seed-login-a.json")
 TENANT_B=$(jq -r .active_tenant.id "$EV/seed-login-b.json")

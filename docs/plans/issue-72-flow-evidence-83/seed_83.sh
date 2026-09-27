@@ -20,9 +20,13 @@ say() { echo "$@" | tee -a "$EV/seed-run.txt"; }
 
 reg_expect() { # reg_expect <label> <email>
   local label="$1" code
+  # (C-12) A transport-layer failure (backend down -> curl exit 7) would
+  # otherwise kill the script through set -e with ZERO output — the
+  # promised HTTP-status FAIL path is unreachable for it. Fail loudly here.
   code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BACKEND/api/v1/auth/register" \
     -H 'Content-Type: application/json' \
-    -d "{\"username\":\"$2\",\"email\":\"$2\",\"password\":\"$PW\"}")
+    -d "{\"username\":\"$2\",\"email\":\"$2\",\"password\":\"$PW\"}") \
+    || { say "FAIL: $label register TRANSPORT failure (curl exit $? — backend at $BACKEND reachable?)"; exit 1; }
   case "$code" in
     2*) say "$label: HTTP $code (registered)" ;;
     409) say "$label: HTTP 409 (already registered — rerun tolerance)" ;;
@@ -45,17 +49,25 @@ say "== register protagonists =="
 reg_expect "a (browser)" "issue83-flow-a@verify.local"
 reg_expect "b (publisher)" "issue83-flow-b@verify.local"
 
-LOGIN_A=$(curl -s -X POST "$BACKEND/api/v1/auth/login" -H 'Content-Type: application/json' -d "{\"email\":\"issue83-flow-a@verify.local\",\"password\":\"$PW\"}")
-LOGIN_B=$(curl -s -X POST "$BACKEND/api/v1/auth/login" -H 'Content-Type: application/json' -d "{\"email\":\"issue83-flow-b@verify.local\",\"password\":\"$PW\"}")
-echo "$LOGIN_A" > "$EV/seed-login-a.json"
-echo "$LOGIN_B" > "$EV/seed-login-b.json"
+# (C-12) Bare curl in a command substitution + set -e = silent death on a
+# transport failure; fail loudly instead.
+LOGIN_A=$(curl -s -X POST "$BACKEND/api/v1/auth/login" -H 'Content-Type: application/json' -d "{\"email\":\"issue83-flow-a@verify.local\",\"password\":\"$PW\"}") \
+  || { say "FAIL: login A TRANSPORT failure (curl exit $? — backend at $BACKEND reachable?)"; exit 1; }
+LOGIN_B=$(curl -s -X POST "$BACKEND/api/v1/auth/login" -H 'Content-Type: application/json' -d "{\"email\":\"issue83-flow-b@verify.local\",\"password\":\"$PW\"}") \
+  || { say "FAIL: login B TRANSPORT failure (curl exit $?)"; exit 1; }
+# (C-01) The login captures land on disk REDACTED — the access/refresh JWTs
+# live ONLY in the shell variables below for this run's own API calls; no
+# usable credential literal ever reaches a file (the branch redline). The
+# evidence files keep the success/tenant/user shape only.
+redact_login() { jq '.token = "REDACTED" | .refresh_token = "REDACTED"'; }
+redact_login <<<"$LOGIN_A" > "$EV/seed-login-a.json"
+redact_login <<<"$LOGIN_B" > "$EV/seed-login-b.json"
 # The main-chain protagonist's login, ALSO landed under the -f name the
-# downstream api_recovery_83.mjs reads (act 3/5) — a rerun-safe indirection:
-# every fresh round rewrites this file with ITS own tenant (v2 fix; the
-# original round hand-copied tenant 20's login here).
-cp "$EV/seed-login-a.json" "$EV/seed-login-f.json"
-TOKEN_A=$(jq -r .token "$EV/seed-login-a.json")
-TOKEN_B=$(jq -r .token "$EV/seed-login-b.json")
+# downstream api_recovery_83.mjs reads (act 3/5 — tenant identity only; the
+# script takes its API token from the FLOW83_TOKEN env, never this file).
+redact_login <<<"$LOGIN_A" > "$EV/seed-login-f.json"
+TOKEN_A=$(jq -r .token <<<"$LOGIN_A")
+TOKEN_B=$(jq -r .token <<<"$LOGIN_B")
 UID_B=$(jq -r .user.id "$EV/seed-login-b.json")
 TENANT_A=$(jq -r .active_tenant.id "$EV/seed-login-a.json")
 TENANT_B=$(jq -r .active_tenant.id "$EV/seed-login-b.json")
@@ -87,9 +99,21 @@ jq -e ".data.receipt.command_key == \"publish_plan_version:pro:$DRAFT_V\"" "$EV/
 say "publish: $(jq -c '{success, receipt:.data.receipt.command_key}' "$EV/api-02-publish.json")"
 
 say "== assert publication landed in Lago (:48889) =="
-LAGO_KEY=$(docker exec weknora-lago-82flow-db-1 psql -U lago -tAc "select value from api_keys limit 1" | tr -d '[:space:]')
+# (C-12) Transport failure of the docker exec | tr pipeline (pipefail
+# propagates it) would silently kill the script under set -e — fail loudly.
+LAGO_KEY=$(docker exec weknora-lago-82flow-db-1 psql -U lago -tAc "select value from api_keys limit 1" | tr -d '[:space:]') \
+  || { say "FAIL: LAGO_KEY read TRANSPORT failure (docker exec psql exit $? — 82flow db container up?)"; exit 1; }
+[ -n "$LAGO_KEY" ] || { say "FAIL: LAGO_KEY read answered empty"; exit 1; }
 curl -s "http://127.0.0.1:48889/api/v1/plans" -H "Authorization: Bearer $LAGO_KEY" > "$EV/api-03-lago-plans.json"
 jq -c '[.plans[] | select(.amount_cents==9900) | {code, amount_cents, interval}]' "$EV/api-03-lago-plans.json" | say "lago 9900 plans: $(cat)"
-jq -e '[.plans[] | select(.amount_cents==9900)] | length >= 1' "$EV/api-03-lago-plans.json" >/dev/null \
-  || { say "FAIL: no 9900 plan visible in Lago"; exit 1; }
+# (C-11) The old `count >= 1` over ANY 9900 plan was satisfiable by earlier
+# rounds' residue (pro:1 predates this round on the shared 82flow stack) —
+# it never proved THIS round's publish arrived. Republish of the same code
+# is idempotent (no count delta available), so the round-specific proof is
+# the SHAPE: this round's exact plan code, at this round's frozen
+# amount/interval, present in the authority's index.
+jq -e '[.plans[] | select(.code=="weknora-pro-v1" and .amount_cents==9900 and .interval=="monthly")] | length == 1' \
+  "$EV/api-03-lago-plans.json" >/dev/null \
+  || { say "FAIL: plan weknora-pro-v1 (9900/monthly, this round's draft face) not found in Lago"; exit 1; }
+say "plan weknora-pro-v1 present at the exact 9900/monthly face (round-specific shape assertion)"
 say "SEED OK (tenants A=$TENANT_A B=$TENANT_B)"

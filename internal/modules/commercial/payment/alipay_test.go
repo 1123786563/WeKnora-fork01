@@ -315,7 +315,11 @@ func TestAlipayQueryReconcilesMissedNotification(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.State != StateSucceeded || res.ProviderID != "out-9" {
+	// (OCR C-08) The query's ProviderID is SAME-SOURCED with the notify
+	// fact's Transaction: trade_no first (the provider's own transaction
+	// identity — the #83 duplicate-fact-unity contract the wechat leg
+	// already satisfies), out_trade_no only as the fallback.
+	if res.State != StateSucceeded || res.ProviderID != "trade-9" {
 		t.Fatalf("query result: %+v", res)
 	}
 	if lastForm.Get("method") != "alipay.trade.query" {
@@ -323,6 +327,23 @@ func TestAlipayQueryReconcilesMissedNotification(t *testing.T) {
 	}
 	if lastForm.Get("biz_content") == "" || lastForm.Get("sign") == "" {
 		t.Fatalf("query request not signed: %v", lastForm)
+	}
+}
+
+// TestAlipayQueryFallsBackWhenTradeNoAbsent (OCR C-08): trade_no is the
+// primary ProviderID (same-sourced with the notify fact's Transaction);
+// when the provider answer omits it, the original out_trade_no key remains
+// the fallback — the query is still keyed, never empty.
+func TestAlipayQueryFallsBackWhenTradeNoAbsent(t *testing.T) {
+	p, _, _ := alipayGatewayFixture(t, func(r *http.Request) (string, error) {
+		return "{\"code\":\"10000\",\"msg\":\"Success\",\"out_trade_no\":\"out-fb\",\"trade_status\":\"TRADE_SUCCESS\",\"total_amount\":\"10.01\",\"seller_id\":\"2088000000000001\"}", nil
+	})
+	res, err := p.Query(context.Background(), "out-fb")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.State != StateSucceeded || res.ProviderID != "out-fb" {
+		t.Fatalf("query result: %+v", res)
 	}
 }
 
