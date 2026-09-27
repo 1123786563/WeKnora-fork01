@@ -113,3 +113,17 @@ node browser_flow_82.mjs && node browser_sync_face_82.mjs ord_98bb65420987f6fe
 ## 结论
 
 已落地面达成（步骤 1-3 + 步骤 4 同步面 + 验签面 + 回归 + 红线）；**回调入账与激活链不可达**（缺陷 2/3 实证阻断 + D2 冻结）——Issue #82 用户流程「可信异步回调写入 Lago Payment 后订单与 Billing 页变已生效，Credits/Entitlement 到账且重复回调只入账一次，后台 Lago 可查关联 Invoice/Payment/active Subscription」**整体未达成**，待缺陷修复与 T02 §5 重议后的修订版计划承接。
+
+## 复验轮 r5-verify（2026-09-28，第 4 轮）
+
+`r5-verify/README.md` 承接 R-19 移交的浏览器 UI 面：四腿 Playwright 断言
+（待付款 → 已付款待激活 → 已生效 三态 + 同步面零推进）全部真实环境 PASS，
+四对象（active subscription / finalized+numbered+succeeded invoice / 恰 1
+succeeded payment / 购买批次 wallet）与重放三面（重复 notify / 重复
+webhook / 后端重启）幂等实证，D11 paid 窗口防重开在真实栈复现（渠道侧整轮
+恰 1 次 PRECREATE）。判据 (a)-(g) PASS（(g) 含 1 个本票未触碰的负载
+timing flake 披露）；(h) 的 T9 集成测试实跑尝试如实披露（共享栈形状缺陷 +
+专属栈 lab.env 缺失，不以 skip 冒充 pass）。沙箱残余
+`ac4-sandbox-credentials-unavailable` 不变。**Issue #82 用户流程整体达成**
+（R-4 双轨道 α：渠道真实收款 → Stripe Provider gated 结算 → Lago 内建
+webhook finalize → active）。

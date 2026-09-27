@@ -305,6 +305,34 @@ func (s *PurchaseService) Purchase(ctx context.Context, tenantID uint64, quoteID
 	} else if !errors.Is(perr, repocommercial.ErrOrderNotFound) {
 		return PurchaseView{}, perr
 	}
+	// (D11 / r2:253 high) The paid-awaiting window: the payment SUCCEEDED
+	// (the order is locally paid) while the authority has not been observed
+	// active yet — normally the drain+settle+webhook chain's tens of
+	// seconds, at most the 10-minute budget. The pending probe above just
+	// missed (the order left state=pending) AND the pending uniqueness
+	// index no longer guards this tenant (its predicate is state='pending'
+	// — a paid order is out of range), so WITHOUT this probe a fresh quote
+	// would open a SECOND channel order for the SAME gating subscription:
+	// its callback confirms independently and its settle idempotency key
+	// binds to its OWN channel transaction — a real double charge. Replay
+	// the paid order instead, synthesized to paid_awaiting_activation
+	// exactly like PurchaseStatus projects it. The SAME plan-ownership
+	// proof as the pending replay (A-21): a same-face paid order whose
+	// frozen quote bought a DIFFERENT plan is a conflict, never a replayed
+	// payment entry.
+	if paidRow, paidErr := s.orders.orders.CurrentPaidAwaitingActivationPurchaseOrder(ctx, tenantID, p.AmountFen, p.Currency); paidErr == nil {
+		if quoteBoughtPlan(ctx, s.orders, tenantID, paidRow.QuoteID) != snap.PlanKey {
+			return PurchaseView{}, ErrPurchasePlanConflict
+		}
+		paidView := orderViewFromRow(paidRow)
+		out := s.purchaseView(p, snap, pub, &paidView)
+		if p.State == domain.PurchaseStateAwaitingPayment {
+			out.State = domain.PurchaseStatePaidAwaitingActivation
+		}
+		return out, nil
+	} else if !errors.Is(paidErr, repocommercial.ErrOrderNotFound) {
+		return PurchaseView{}, paidErr
+	}
 	ov, err := s.orders.CreateOrder(ctx, tenantID, quoteID, providerName)
 	if errors.Is(err, repocommercial.ErrQuoteAlreadyUsed) {
 		// The concurrent race lost the quote consumption: answer the
@@ -345,15 +373,46 @@ func (s *PurchaseService) Purchase(ctx context.Context, tenantID uint64, quoteID
 		// migration backfill does not already cover): it is not a replayable
 		// payment entry, so sweep it to channel-failed and retry the create
 		// ONCE. A second conflict is a genuine race beyond the sweep —
-		// surface the conflict error, never loop.
+		// surface the conflict error, never loop. (r2:306) The sweep's own
+		// failure is LOGGED, not silently discarded — the caller still sees
+		// the original conflict sentinel either way, but the sweep failure
+		// stays diagnosable.
 		if _, serr := s.orders.orders.SweepStaleLinklessPending(ctx, tenantID); serr != nil {
+			logger.Warnf(ctx, "[CommercialPurchase] link-less sweep failed for tenant %d: %v", tenantID, serr)
 			return PurchaseView{}, err
 		}
 		ov2, rerr := s.orders.CreateOrder(ctx, tenantID, quoteID, providerName)
-		if rerr != nil {
+		if rerr == nil {
+			return s.purchaseView(p, snap, pub, &ov2), nil
+		}
+		if errors.Is(rerr, repocommercial.ErrQuoteAlreadyUsed) {
+			// The retry's quote consumption lost its own race: answer the
+			// winner's order, never a second channel request.
+			if existing, gerr := s.orders.orders.GetOrderByQuote(ctx, tenantID, quoteID); gerr == nil {
+				ovExisting := orderViewFromRow(existing)
+				return s.purchaseView(p, snap, pub, &ovExisting), nil
+			}
+			return PurchaseView{}, repocommercial.ErrQuoteAlreadyUsed
+		}
+		if errors.Is(rerr, repocommercial.ErrPurchasePendingExists) {
+			// (D12 / r2:306) The retry hit the pending invariant again — the
+			// classic shape is the winner still inside its channel-Create
+			// window (link-less, too fresh for the sweep). Re-read the
+			// conflict entry once more: the winner has usually persisted its
+			// checkout link by now and replays cleanly. Still unreadable →
+			// the conflict SENTINEL itself (the handler maps it to a
+			// retryable 409) — never a bare escape into an unmapped 500,
+			// never a second channel order.
+			if existing, gerr := s.orders.orders.CurrentPayablePendingOrder(ctx, tenantID); gerr == nil {
+				if quoteBoughtPlan(ctx, s.orders, tenantID, existing.QuoteID) != snap.PlanKey {
+					return PurchaseView{}, ErrPurchasePlanConflict
+				}
+				ovExisting := orderViewFromRow(existing)
+				return s.purchaseView(p, snap, pub, &ovExisting), nil
+			}
 			return PurchaseView{}, rerr
 		}
-		return s.purchaseView(p, snap, pub, &ov2), nil
+		return PurchaseView{}, rerr
 	}
 	if err != nil {
 		return PurchaseView{}, err
@@ -361,9 +420,6 @@ func (s *PurchaseService) Purchase(ctx context.Context, tenantID uint64, quoteID
 	return s.purchaseView(p, snap, pub, &ov), nil
 }
 
-// PurchaseStatus answers the purchase projection for one tenant: the
-// authority truth (closed state + frozen price face) plus the local order
-// when one exists.
 // purchaseAudit is the attention-audit sink (OCR final audit 10, minimal
 // face): a purchase attempt that leaves the authority holding an
 // awaiting/terminal subscription it can no longer settle writes ONE
@@ -375,6 +431,9 @@ var purchaseAudit = func(tenantID uint64, quoteID, token string) {
 		"[CommercialPurchase] attention: tenant=%d quote=%s token=%s", tenantID, quoteID, token)
 }
 
+// PurchaseStatus answers the purchase projection for one tenant: the
+// authority truth (closed state + frozen price face) plus the local order
+// when one exists.
 func (s *PurchaseService) PurchaseStatus(ctx context.Context, tenantID uint64) (PurchaseView, error) {
 	if tenantID == 0 {
 		return PurchaseView{}, repocommercial.ErrInvalidQuoteRow

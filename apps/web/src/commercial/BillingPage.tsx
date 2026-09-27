@@ -4,6 +4,8 @@ import type { CommercialSummary, CommercialUsageRow, PurchaseView } from '@wekno
 import { createScopeController } from '@weknora/domain/scope';
 import { scopedKey } from '@weknora/domain';
 import { Button, Card, Status } from '@weknora/ui';
+// (D15-f) 共享购买状态词表：本页不再持有私有的三行内联文案。
+import { PURCHASE_STATE_LABEL } from './order-state.ts';
 
 export type CommercialSummaryState =
   | { status: 'success'; summary: CommercialSummary }
@@ -113,10 +115,11 @@ export function BillingPage({ client, scopeController }: BillingPageProps) {
               <strong>套餐</strong>
               <span>
                 {planDisplayName(state.summary)}
-                {/* AC1（#82 三态）：待付款（权益未开放）→ 已付款待激活 → 已生效。 */}
-                {purchase?.state === 'awaiting_payment' ? ' · 待付款（权益未开放）' : ''}
-                {purchase?.state === 'paid_awaiting_activation' ? ' · 已付款待激活' : ''}
-                {purchase?.state === 'active' ? ' · 已生效' : ''}
+                {/* AC1（#82 三态）：待付款（权益未开放）→ 已付款待激活 → 已生效。
+                    (D15-f) 文案经共享词表 PURCHASE_STATE_LABEL——两页不再各持一套。 */}
+                {purchase?.state && purchase.state !== 'absent'
+                  ? ` · ${PURCHASE_STATE_LABEL[purchase.state]}`
+                  : ''}
               </span>
             </li>
             <li><strong>到期</strong><span>{state.summary.subscription?.paid_until || '无固定到期（未订阅）'}</span></li>

@@ -503,6 +503,14 @@ func (h *CommercialHandler) Purchase(c *gin.Context) {
 	case errors.Is(err, repocommercial.ErrQuoteAlreadyUsed):
 		// (R1-V21) Same race outcome as POST /orders: 409, not a generic 400.
 		c.JSON(http.StatusConflict, gin.H{"error": "quote already used"})
+	case errors.Is(err, repocommercial.ErrPurchasePendingExists):
+		// (D12 / r2:306) A pending-exists race the service could not replay
+		// (the winner is still inside its channel-Create window, link-less
+		// and too fresh for the sweep): a RETRYABLE conflict, never the
+		// default branch's 500 — whose "server-side, never invites retry"
+		// semantics is exactly backwards for a race the caller wins by
+		// re-reading a moment later.
+		c.JSON(http.StatusConflict, gin.H{"error": "purchase pending exists"})
 	default:
 		// (R1-09) The residual error face is server-side (gorm/storage
 		// failures from EnsureBillingAccount/GetPublication/GetVersion/
@@ -815,10 +823,25 @@ func (h *CommercialHandler) CreateOrder(c *gin.Context) {
 		// pre-check, so the sentinel escapes through OpenOrder): answer 409
 		// and attach the EXISTING payable pending order so the client holds
 		// the payment entry instead of a bare error token.
+		// (A-21/F105, r2:818) The attached order must carry a plan-ownership
+		// PROOF: its frozen quote must have bought the SAME plan as this
+		// request's quote, else the replayed checkout_url settles ANOTHER
+		// plan's quote while orderWire carries no plan field for the client
+		// to tell them apart. Foreign plan (or an unreadable quote on either
+		// side) answers the bare 409.
 		if existing, rerr := h.orders.CurrentPayablePendingOrderView(c.Request.Context(), tenantID); rerr == nil {
-			c.JSON(http.StatusConflict, gin.H{"error": "purchase pending exists",
-				"order": orderWire(existing)})
-			return
+			_, reqSnap, qerr := h.orders.QuoteSnapshotForTenant(c.Request.Context(), tenantID, req.QuoteID)
+			_, exSnap, eerr := h.orders.QuoteSnapshotForTenant(c.Request.Context(), tenantID, existing.QuoteID)
+			if qerr == nil && eerr == nil && reqSnap.PlanKey == exSnap.PlanKey {
+				c.JSON(http.StatusConflict, gin.H{"error": "purchase pending exists",
+					"order": orderWire(existing)})
+				return
+			}
+		} else {
+			// (r2:823) The bare-409 degrade keeps one diagnosable line: the
+			// index proved a pending exists but the replay read failed
+			// (swept mid-flight, storage fault).
+			log.Printf("commercial: pending-purchase conflict read failed for tenant %d: %v", tenantID, rerr)
 		}
 		c.JSON(http.StatusConflict, gin.H{"error": "purchase pending exists"})
 	default:

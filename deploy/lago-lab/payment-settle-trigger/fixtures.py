@@ -26,14 +26,15 @@ import hashlib
 import hmac
 import importlib.util
 import json
-import sys
 import time
 import uuid
 from pathlib import Path
 
 _PA_DIR = Path(__file__).resolve().parent.parent / "payment-activation"
-if str(_PA_DIR) not in sys.path:
-    sys.path.insert(0, str(_PA_DIR))
+# (OCR r2) NO sys.path.insert here (the phases.py A-06/F17 discipline): the
+# payment-activation module is loaded READ-ONLY under an explicit alias —
+# mutating the import search path inverted the bare ``fixtures`` binding
+# whenever this file was imported outside the runner.
 
 # The payment-activation lab's fixtures module, loaded under an alias so the
 # bare name ``fixtures`` keeps resolving to THIS probe's payloads when the

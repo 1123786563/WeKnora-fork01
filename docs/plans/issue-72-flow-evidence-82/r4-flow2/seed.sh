@@ -13,14 +13,27 @@ cd "$(dirname "$0")/../../../.."   # worktree root (docs/plans/<dir>/<round> -> 
 EV="$(cd "$(dirname "$0")" && pwd)"   # evidence lands beside this script (per-round dir)
 BACKEND=http://127.0.0.1:8093
 PW="${FLOW82_R4_PW:?missing required env FLOW82_R4_PW}"
+# (OCR r2) DB_PATH pre-flight, BEFORE any registration side effect: unset
+# would abort late with "unbound variable" after the pads registered; a
+# nonexistent path would let sqlite3 silently mint an EMPTY db ("no such
+# table") and the grant would write nowhere meaningful.
+DB="${DB_PATH:?missing required env DB_PATH (this round's sqlite db per its README)}"
+[ -f "$DB" ] || { echo "FAIL: DB_PATH=$DB not found" >&2; exit 1; }
+# (OCR r2) The protagonists' email prefix is REQUIRED injection: the
+# historical default collided head-on with round 1's accounts (409
+# tolerance would silently reuse them — cross-round data bleed).
+PREFIX="${FLOW82_EMAIL_PREFIX:?missing required env FLOW82_EMAIL_PREFIX (this round's unique prefix)}"
 
 : > "$EV/seed-run.txt"
 say() { echo "$@" | tee -a "$EV/seed-run.txt"; }
 
 reg() { # reg <email>
-  curl -s -o /dev/null -w "%{http_code}" -X POST "$BACKEND/api/v1/auth/register" \
-    -H 'Content-Type: application/json' \
-    -d "{\"username\":\"$1\",\"email\":\"$1\",\"password\":\"$PW\"}"
+  # (OCR r2) The payload is jq-built and the password rides STDIN (--data
+  # @-): manual JSON escaping breaks on quotes/backslashes in PW, and a
+  # curl argv password is observable in local ps.
+  jq -nc --arg e "$1" --arg p "$PW" '{username:$e,email:$e,password:$p}' \
+    | curl -s -o /dev/null -w "%{http_code}" -X POST "$BACKEND/api/v1/auth/register" \
+        -H 'Content-Type: application/json' --data @-
 }
 
 # (A-13) Registration responses are ASSERTED, never merely printed: a failed
@@ -34,7 +47,10 @@ reg() { # reg <email>
 # below then reuses it — same placeholder semantics, same tenants).
 reg_expect() { # reg_expect <label> <email>
   local label="$1" code
-  code=$(reg "$2")
+  # (OCR r2) || true keeps the 000 diagnosis reachable: a connection-refused
+  # curl exits non-zero and set -e would otherwise abort BEFORE the case
+  # below can report the diagnostic code.
+  code=$(reg "$2") || true
   case "$code" in
     2*) say "$label: HTTP $code (registered)" ;;
     409) say "$label: HTTP 409 (already registered — documented rerun tolerance, the login below reuses this account)" ;;
@@ -49,24 +65,32 @@ reg_expect() { # reg_expect <label> <email>
 # a stale default (6 left over from an earlier round) would under-pad and
 # land a protagonist on an occupied Lago tenant id — cross-round data bleed.
 PAD="${FLOW82_PAD_COUNT:-8}"
+# (OCR r2) PAD must be a positive integer — a stray non-numeric value would
+# either expand weirdly in seq or silently under/over-pad the round.
+case "$PAD" in ''|*[!0-9]*) say "FAIL: FLOW82_PAD_COUNT must be a positive integer, got '$PAD'"; exit 1 ;; esac
+[ "$PAD" -ge 1 ] || { say "FAIL: FLOW82_PAD_COUNT must be >= 1, got '$PAD'"; exit 1; }
 say "== register $PAD placeholders (absorb Lago tenant ids) =="
 for i in $(seq 1 "$PAD"); do
-  reg_expect "placeholder-$i" "${FLOW82_EMAIL_PREFIX:-settle-r4}-pad$i@verify.local"
+  reg_expect "placeholder-$i" "$PREFIX-pad$i@verify.local"
 done
 
 say "== register protagonists =="
-reg_expect "a (browser)" "${FLOW82_EMAIL_PREFIX:-settle-r4}-a@verify.local"
-reg_expect "b (publisher)" "${FLOW82_EMAIL_PREFIX:-settle-r4}-b@verify.local"
+reg_expect "a (browser)" "$PREFIX-a@verify.local"
+reg_expect "b (publisher)" "$PREFIX-b@verify.local"
 
 login() { # login <email> -> token
-  curl -s -X POST "$BACKEND/api/v1/auth/login" -H 'Content-Type: application/json' \
-    -d "{\"email\":\"$1\",\"password\":\"$PW\"}"
+  # (OCR r2) jq-built payload, password via STDIN — same posture as reg().
+  jq -nc --arg e "$1" --arg p "$PW" '{email:$e,password:$p}' \
+    | curl -s -X POST "$BACKEND/api/v1/auth/login" -H 'Content-Type: application/json' --data @-
 }
 # (C-83/C-01) Login captures land on disk REDACTED — the access/refresh
 # JWTs live only in the shell variables for this run's own API calls; no
 # usable credential literal ever reaches a file (branch redline).
-LOGIN_A=$(login "${FLOW82_EMAIL_PREFIX:-settle-r4}-a@verify.local")
-LOGIN_B=$(login "${FLOW82_EMAIL_PREFIX:-settle-r4}-b@verify.local")
+# (OCR r2) || true: a transport-failed login (empty body, curl non-zero)
+# must fall through to the explicit assertions below, not abort set -e
+# style with no diagnosis.
+LOGIN_A=$(login "$PREFIX-a@verify.local") || true
+LOGIN_B=$(login "$PREFIX-b@verify.local") || true
 jq '.token = "REDACTED" | .refresh_token = "REDACTED"' <<<"$LOGIN_A" > "$EV/seed-login-a.json"
 jq '.token = "REDACTED" | .refresh_token = "REDACTED"' <<<"$LOGIN_B" > "$EV/seed-login-b.json"
 TOKEN_A=$(jq -r .token <<<"$LOGIN_A")
@@ -76,7 +100,16 @@ TENANT_A=$(jq -r .active_tenant.id "$EV/seed-login-a.json")
 TENANT_B=$(jq -r .active_tenant.id "$EV/seed-login-b.json")
 say "tenant A (browser protagonist) = $TENANT_A"
 say "tenant B (publisher) = $TENANT_B, user id = $UID_B"
-[ "$TENANT_A" != "null" ] && [ "$TENANT_B" != "null" ] || { say "FAIL: login token/tenant missing"; exit 1; }
+for v in "$TENANT_A" "$TENANT_B"; do
+  # (OCR r2) -n covers the empty-string shape jq emits for a present-but-
+  # blank field (the old != "null" check alone let it through).
+  [ -n "$v" ] && [ "$v" != "null" ] || { say "FAIL: login token/tenant missing"; exit 1; }
+done
+# (OCR r2) Round-isolation proof: on this round's OWN fresh db the
+# protagonists land exactly on pad+1 / pad+2 — any other serial means a
+# concurrent registration broke the isolation this evidence depends on.
+[ "$TENANT_A" -eq $((PAD + 1)) ] && [ "$TENANT_B" -eq $((PAD + 2)) ] \
+  || { say "FAIL: protagonists on unexpected tenants A=$TENANT_A B=$TENANT_B (expected $((PAD+1))/$((PAD+2))) — concurrent registration may have broken round isolation"; exit 1; }
 
 # (A-08) UID_B comes from the backend's login response — EXTERNAL input that
 # is interpolated into the sqlite3 CLI calls below (the CLI has no parameter
@@ -90,15 +123,23 @@ done
 uuid_shape "$UID_B" || { say "FAIL: login response user id is not a UUID ('$UID_B') — refusing SQL interpolation"; exit 1; }
 
 say "== grant plan_publish to B at platform scope (seed row) =="
-sqlite3 "$DB_PATH" "insert or replace into commercial_grants (tenant_id, user_id, capability, granted_by, version) values (0, '$UID_B', 'plan_publish', 'flow-verifier-r4', 1);"
-say "granted: $(sqlite3 "$DB_PATH" "select count(*) from commercial_grants where capability='plan_publish' and user_id='$UID_B';") row(s)"
+# (OCR r2 / safety constraint) The shell's sqlite3 CLI has NO usable
+# parameter binding for statement values; the STRICT UUID whitelist above
+# (uuid_shape, provably [0-9a-f-]{36}) is the injection gate before the
+# value ever reaches the statement.
+sqlite3 "$DB" "insert or replace into commercial_grants (tenant_id, user_id, capability, granted_by, version) values (0, '$UID_B', 'plan_publish', 'flow-verifier-r4', 1);"
+say "granted: $(sqlite3 "$DB" "select count(*) from commercial_grants where capability='plan_publish' and user_id='$UID_B';") row(s)"
 
 say "== read Lago 9900-plan baseline (BEFORE this round's publish) =="
 # (A-09) The 82flow Lago stack is shared across rounds — "a 9900 plan
 # exists" is satisfiable by EARLIER rounds' residue. This round's publish
 # arrival is proven by a STRICT count increase over the pre-publish
 # baseline read here.
-LAGO_KEY=$(docker exec weknora-lago-82flow-db-1 psql -U lago -tAc "select value from api_keys limit 1" | tr -d '[:space:]')
+# (OCR r2) The newest key wins (ORDER BY created_at) and an empty read
+# fails explicitly — limit-1-without-order picked an arbitrary key and a
+# failed read only surfaced as obscure downstream jq assertion noise.
+LAGO_KEY=$(docker exec weknora-lago-82flow-db-1 psql -U lago -tAc "select value from api_keys order by created_at desc limit 1" | tr -d '[:space:]')
+[ -n "$LAGO_KEY" ] || { say "FAIL: no lago api key readable from weknora-lago-82flow-db-1"; exit 1; }
 curl -s "http://127.0.0.1:48889/api/v1/plans" -H "Authorization: Bearer $LAGO_KEY" > "$EV/api-03-lago-plans-baseline.json"
 BASE_N=$(jq '[.plans[] | select(.amount_cents==9900)] | length' "$EV/api-03-lago-plans-baseline.json")
 say "baseline 9900 plans already in Lago: $BASE_N"

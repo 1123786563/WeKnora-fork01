@@ -21,8 +21,11 @@ import hmac
 import json
 import os
 import subprocess
-import sys
 import time
+# (OCR r2) urllib.error is imported EXPLICITLY — the previous file relied on
+# CPython's transitive import side effect of urllib.request (fragile: an
+# import-set change or a different runtime raises AttributeError).
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -54,7 +57,11 @@ def stripe(method, path, key, form=None):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--customer", required=True, help="the Stripe customer id (cus_...)")
-    ap.add_argument("--base", default=os.environ.get("LAGO_API_URL", "http://127.0.0.1:48895"))
+    # (OCR r2) LAGO_INTEGRATION_BASE_URL (the tagged Go integration tests'
+    # env contract) takes precedence; LAGO_API_URL (the t11 lab.env face) is
+    # the fallback.
+    ap.add_argument("--base", default=os.environ.get("LAGO_INTEGRATION_BASE_URL")
+                    or os.environ.get("LAGO_API_URL", "http://127.0.0.1:48895"))
     ap.add_argument("--org", default=os.environ.get("LAGO_INTEGRATION_ORG_ID", ""))
     ap.add_argument("--code", default="weknora-stripe")
     args = ap.parse_args()

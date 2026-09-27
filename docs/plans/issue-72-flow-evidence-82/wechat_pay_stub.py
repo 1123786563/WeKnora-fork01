@@ -22,10 +22,14 @@ Egress note (R1-V09): pointing WEKNORA_WECHAT_API_BASE_URL at 127.0.0.1
 REQUIRES the explicit server-side SSRF exemption SSRF_WHITELIST_EXTRA=127.0.0.1.
 """
 import json
+import os
 import secrets
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-HOST, PORT = "127.0.0.1", 8291
+# (OCR r2) the port is env-overridable (FLOW82_WECHAT_PORT, default 8291) —
+# parallel verification rounds (and the #81 stub occupying the same default)
+# must not collide; the alipay stub exposes the same face.
+HOST, PORT = "127.0.0.1", int(os.environ.get("FLOW82_WECHAT_PORT", "8291"))
 
 
 class Handler(BaseHTTPRequestHandler):

@@ -65,6 +65,16 @@ func (h *PaymentCallbacksHandler) resolveByMerchantOrderID(provider, merchant, m
 // notification is idempotent: ConfirmPayment replays the original result
 // (C01 semantics) and the success response is repeated.
 func (h *PaymentCallbacksHandler) HandleProviderCallback(c *gin.Context) {
+	// (D14 / r2 auth.go:71) The callback face is anonymously reachable and
+	// signature verification runs only AFTER the raw body is read: an
+	// unbounded io.ReadAll lets any anonymous client buffer an arbitrarily
+	// large body into memory (and amplify the RSA verify's CPU) before the
+	// first signature check can fail. Alipay/WeChat notify payloads are a
+	// few KB; 1 MiB is the cap (the project's per-handler limit convention
+	// — craft.go/upload_limit.go). Oversized bodies die on the existing
+	// unreadable-body failure face: non-5xx, nothing persisted, verify
+	// never runs.
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 1<<20)
 	providerName := c.Param("provider")
 	// Alipay gets its own dispatch: its async-notify contract requires the
 	// exact plain-text "success" body as the only final ack (and any

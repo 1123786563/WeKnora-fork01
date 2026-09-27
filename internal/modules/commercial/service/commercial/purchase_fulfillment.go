@@ -102,9 +102,19 @@ func (p *PurchaseFulfiller) Fulfill(ctx context.Context, ev repocommercial.Outbo
 	}
 
 	// The frozen quote pins the plan identity, price and credit face.
+	// (r2:119) These pre-settle reads follow the drain-shape discipline of
+	// settleSnapshotFailure below: a DETERMINISTIC data gap (quote row
+	// missing, snapshot JSON corrupt) lands the attention record and returns
+	// nil — the shared drain pass keeps moving (an error return aborts the
+	// batch's remaining events — including ordinary top-ups — and a
+	// deterministic shape re-fails every pass forever); a TRANSIENT DB
+	// failure returns nil keeping the event pending for the next pass.
 	var q repocommercial.QuoteRow
 	if err := p.db.WithContext(ctx).Where("id = ?", row.QuoteID).First(&q).Error; err != nil {
-		return fmt.Errorf("purchase quote %s: %w", row.QuoteID, err)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return p.markActivationState(ctx, order.ID, order.TenantID, domain.FulfillmentStateAttention)
+		}
+		return nil
 	}
 	var snap struct {
 		PlanKey      string `json:"plan_key"`
@@ -114,12 +124,18 @@ func (p *PurchaseFulfiller) Fulfill(ctx context.Context, ev repocommercial.Outbo
 		Currency     string `json:"currency"`
 	}
 	if err := json.Unmarshal([]byte(q.SnapshotJSON), &snap); err != nil {
-		return fmt.Errorf("purchase quote snapshot %s: %w", row.QuoteID, err)
+		return p.markActivationState(ctx, order.ID, order.TenantID, domain.FulfillmentStateAttention)
 	}
 	var pub repocommercial.PublicationRow
 	if err := p.db.WithContext(ctx).Where("plan_key = ? AND version = ?", snap.PlanKey, snap.PlanVersion).
 		First(&pub).Error; err != nil {
-		return fmt.Errorf("purchase publication %s v%d: %w", snap.PlanKey, snap.PlanVersion, err)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// The publication row the frozen snapshot points at is gone
+			// (migration gap, plan purge): deterministic — attention, never
+			// an abort of the shared drain batch.
+			return p.markActivationState(ctx, order.ID, order.TenantID, domain.FulfillmentStateAttention)
+		}
+		return nil
 	}
 
 	// (D7 total budget) A paid order whose activation never lands (dead

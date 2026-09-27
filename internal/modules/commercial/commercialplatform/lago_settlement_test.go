@@ -294,10 +294,9 @@ func TestLagoSettleDrivesProviderRails(t *testing.T) {
 		t.Fatalf("receipt key = %q", receipt.Key)
 	}
 	paths := h.stripe.paths()
-	want := []string{
+	want := []string{ // D10: no POST /v1/customers/{id} — the default pm is never rewritten
 		"GET /v1/payment_intents",
 		"POST /v1/payment_methods/pm_settle/attach",
-		"POST /v1/customers/cus_stripe_1",
 		"POST /v1/payment_intents/pi_1",
 		"POST /v1/payment_intents/pi_1/confirm",
 	}
@@ -333,10 +332,15 @@ func TestLagoSettleDrivesProviderRails(t *testing.T) {
 	}
 }
 
+// (D9) The latest-created ranking only ever runs inside a candidate set
+// that spans ONE invoice: two unsettled intents for the SAME gating
+// invoice (a provider-side retry shape) rank by created, and the drive
+// touches only the newest. Candidates spanning DIFFERENT invoices fail
+// closed — TestLagoSettleMultipleInvoiceCandidatesFailClosed.
 func TestLagoSettlePicksLatestUnsettledIntent(t *testing.T) {
 	intents := []stripeIntentRec{
-		{ID: "pi_old", Customer: "cus_stripe_1", Status: "requires_payment_method", Created: 900, LagoInvID: "inv_old"},
-		{ID: "pi_new", Customer: "cus_stripe_1", Status: "requires_action", Created: 1000, LagoInvID: "inv_new"},
+		{ID: "pi_old", Customer: "cus_stripe_1", Status: "requires_payment_method", Created: 900, LagoInvID: "inv_gating"},
+		{ID: "pi_new", Customer: "cus_stripe_1", Status: "requires_action", Created: 1000, LagoInvID: "inv_gating"},
 	}
 	h := newSettleHarness(t, "incomplete", intents)
 	if _, err := h.adapter.SubmitCommand(context.Background(), settleCmd(41, "txn-1")); err != nil {
@@ -348,7 +352,7 @@ func TestLagoSettlePicksLatestUnsettledIntent(t *testing.T) {
 			t.Fatalf("settle must drive the LATEST unsettled intent only, drove %v", paths)
 		}
 	}
-	if len(paths) != 5 {
+	if len(paths) != 4 { // D10: locator + attach + update + confirm
 		t.Fatalf("unexpected call count: %v", paths)
 	}
 }
@@ -380,8 +384,8 @@ func TestLagoSettleFailsClosedWithoutSettlePm(t *testing.T) {
 	if !errors.Is(err, commercial.ErrPlatformUnconfigured) {
 		t.Fatalf("missing settle pm must fail closed unconfigured, got %v", err)
 	}
-	if n := h.stripe.requestCount(); n != 1 { // the locator GET is allowed; nothing past it
-		t.Fatalf("only the locator read may fire without a settle pm, got %v", h.stripe.paths())
+	if n := h.stripe.requestCount(); n != 0 { // the config gate fires BEFORE the locator read (r2:166)
+		t.Fatalf("an unconfigured settle must make ZERO provider calls, got %v", h.stripe.paths())
 	}
 }
 
@@ -479,8 +483,8 @@ func TestLagoSettleDrivesWhenSucceededInvoiceDiffers(t *testing.T) {
 			drove = true
 		}
 	}
-	if !drove || len(paths) != 5 {
-		t.Fatalf("the current gating intent must be driven (5 calls), got %v", paths)
+	if !drove || len(paths) != 4 {
+		t.Fatalf("the current gating intent must be driven (4 calls, D10), got %v", paths)
 	}
 }
 
@@ -594,8 +598,9 @@ func TestLagoSettleIntentListPaginatesToCompletion(t *testing.T) {
 }
 
 // TestLagoSettleAttachRailDerivesIdempotencyKeys (A-18 / F86): the attach
-// and set-default rail calls carry DETERMINISTIC idempotency keys derived
-// from the command key, so a lost response can never double-attach.
+// rail call carries a DETERMINISTIC idempotency key derived from the
+// command key, so a lost response can never double-attach. (The set-default
+// key left the chain with D10's default-rewrite removal.)
 func TestLagoSettleAttachRailDerivesIdempotencyKeys(t *testing.T) {
 	intents := []stripeIntentRec{{
 		ID: "pi_1", Customer: "cus_stripe_1", Status: "requires_payment_method",
@@ -616,7 +621,6 @@ func TestLagoSettleAttachRailDerivesIdempotencyKeys(t *testing.T) {
 	}
 	for path, suffix := range map[string]string{
 		"POST /v1/payment_methods/pm_settle/attach": ":attach",
-		"POST /v1/customers/cus_stripe_1":           ":default",
 	} {
 		if idems[path] != cmd.Key+suffix {
 			t.Fatalf("%s must carry Idempotency-Key == cmd key%s, got %q", path, suffix, idems[path])
@@ -646,5 +650,122 @@ func TestLagoSettleOversizedBodyIsInvalidResponse(t *testing.T) {
 	_, err := h.adapter.SubmitCommand(context.Background(), settleCmd(41, "txn-big"))
 	if !errors.Is(err, commercial.ErrPlatformInvalidResponse) {
 		t.Fatalf("an oversized provider body must classify invalid_response, got %v", err)
+	}
+}
+
+// ---- #82 Task 12 (OCR r2): settle-chain correctness closure ----
+
+// TestLagoSettleMultipleInvoiceCandidatesFailClosed (D9 / r2:139 high): the
+// unsettled candidate set must span EXACTLY ONE distinct gating invoice
+// identity before any charge-bearing call. Candidates from TWO different
+// invoices (a renewal's or a foreign purchase's stuck intent next to the
+// current gate) mean the locator cannot prove which invoice the settle owes
+// — the amount guard alone (1..AmountFen) would happily pass a smaller
+// foreign intent — so the whole drive fails closed: one locator read, ZERO
+// writes, the attention face hands the ambiguity to operations. The
+// SAME-invoice residual sibling (R-20) is unaffected: siblings share one
+// invoice id, distinct == 1.
+func TestLagoSettleMultipleInvoiceCandidatesFailClosed(t *testing.T) {
+	intents := []stripeIntentRec{
+		{ID: "pi_a", Customer: "cus_stripe_1", Status: "requires_payment_method", Created: 900, LagoInvID: "inv_old"},
+		{ID: "pi_b", Customer: "cus_stripe_1", Status: "requires_payment_method", Created: 1000, LagoInvID: "inv_cur"},
+	}
+	h := newSettleHarness(t, "incomplete", intents)
+	_, err := h.adapter.SubmitCommand(context.Background(), settleCmd(41, "txn-1"))
+	if !errors.Is(err, commercial.ErrPlatformInvalidResponse) {
+		t.Fatalf("unsettled candidates spanning multiple invoices must fail closed invalid_response, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "distinct") {
+		t.Fatalf("the failure must name the distinct-invoice gate, got %v", err)
+	}
+	paths := h.stripe.paths()
+	if len(paths) != 1 || paths[0] != "GET /v1/payment_intents" {
+		t.Fatalf("the multi-invoice ambiguity must answer ONE locator read and zero writes, got %v", paths)
+	}
+}
+
+// TestLagoSettleDoesNotTouchCustomerDefault (D10 / r2:357 high): the settle
+// drive must NEVER rewrite the customer's default payment method. The
+// confirm call carries the attached settle pm explicitly, so the permanent
+// default rewrite buys nothing for THIS charge while silently rerouting
+// every RENEWAL invoice's auto-collection onto the settlement instrument —
+// a real monthly charge on the wrong card. The call sequence is exactly
+// locator + attach + update + confirm.
+func TestLagoSettleDoesNotTouchCustomerDefault(t *testing.T) {
+	intents := []stripeIntentRec{{
+		ID: "pi_1", Customer: "cus_stripe_1", Status: "requires_payment_method",
+		Created: 1000, LagoInvID: "inv_gating",
+	}}
+	h := newSettleHarness(t, "incomplete", intents)
+	if _, err := h.adapter.SubmitCommand(context.Background(), settleCmd(41, "txn-1")); err != nil {
+		t.Fatalf("settle: %v", err)
+	}
+	want := []string{
+		"GET /v1/payment_intents",
+		"POST /v1/payment_methods/pm_settle/attach",
+		"POST /v1/payment_intents/pi_1",
+		"POST /v1/payment_intents/pi_1/confirm",
+	}
+	paths := h.stripe.paths()
+	if len(paths) != len(want) {
+		t.Fatalf("call sequence mismatch:\n got %v\nwant %v", paths, want)
+	}
+	for i := range want {
+		if paths[i] != want[i] {
+			t.Fatalf("call %d mismatch: got %q want %q (all: %v)", i, paths[i], want[i], paths)
+		}
+	}
+	for _, p := range paths {
+		if strings.HasPrefix(p, "POST /v1/customers/") {
+			t.Fatalf("settle must never rewrite the customer default payment method (D10), saw %q (all: %v)", p, paths)
+		}
+	}
+}
+
+// TestLagoSettleBindingRead429KeepsRetriable (D13 / r2:445 medium): the
+// second binding read (boundProviderCustomerID — the cus_… extraction)
+// must classify a 429 as UNREACHABLE, the same split customerProviderBound
+// already applies: a throttled authority is a transient condition the
+// fulfiller keeps pending and retries — never the definitive
+// invalid_response that would mint a paid order into terminal attention.
+// The stub scripts [200, 429]: the FIRST binding read passes, the SECOND
+// answers the throttle.
+func TestLagoSettleBindingRead429KeepsRetriable(t *testing.T) {
+	intents := []stripeIntentRec{{
+		ID: "pi_1", Customer: "cus_stripe_1", Status: "requires_payment_method",
+		Created: 1000, LagoInvID: "inv_gating",
+	}}
+	h := newSettleHarness(t, "incomplete", intents)
+	h.lago.mu.Lock()
+	h.lago.customerGetStatuses = []int{http.StatusOK, http.StatusTooManyRequests}
+	h.lago.mu.Unlock()
+	_, err := h.adapter.SubmitCommand(context.Background(), settleCmd(41, "txn-429"))
+	if !errors.Is(err, commercial.ErrPlatformUnreachable) {
+		t.Fatalf("a 429 on the binding read must classify unreachable (keeps the event pending/retriable), got %v", err)
+	}
+	if errors.Is(err, commercial.ErrPlatformInvalidResponse) {
+		t.Fatalf("a transient 429 must NOT be the definitive sentinel, got %v", err)
+	}
+}
+
+// TestLagoSettleFailsClosedWithoutStripeApiKey (r2:166 low): a missing
+// provider API key is a CONFIGURATION gap — ErrPlatformUnconfigured — not
+// an authority rejection. Without the guard the empty key rides the
+// Authorization header, the provider answers 401, and the definitive
+// classification parks the order in attention for what is an operator
+// fixable env gap. Zero outbound calls may fire.
+func TestLagoSettleFailsClosedWithoutStripeApiKey(t *testing.T) {
+	intents := []stripeIntentRec{{
+		ID: "pi_1", Customer: "cus_stripe_1", Status: "requires_payment_method",
+		Created: 1000, LagoInvID: "inv_gating",
+	}}
+	h := newSettleHarness(t, "incomplete", intents)
+	h.adapter.cfg.StripeAPIKey = ""
+	_, err := h.adapter.SubmitCommand(context.Background(), settleCmd(41, "txn-nokey"))
+	if !errors.Is(err, commercial.ErrPlatformUnconfigured) {
+		t.Fatalf("a missing provider API key must fail closed unconfigured, got %v", err)
+	}
+	if n := h.stripe.requestCount(); n != 0 {
+		t.Fatalf("an unconfigured settle must make ZERO provider calls, got %d: %v", n, h.stripe.paths())
 	}
 }

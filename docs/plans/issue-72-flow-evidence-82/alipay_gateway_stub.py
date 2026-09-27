@@ -85,7 +85,8 @@ def rsa_verify_sha256(pub_pem: str, content: bytes, sig: bytes) -> bool:
             input=content, capture_output=True)
         return proc.returncode == 0
     finally:
-        import os
+        # (OCR r2) the module-level os import serves here — no shadowing
+        # local import.
         os.unlink(sig_path)
 
 
@@ -95,12 +96,16 @@ def request_sign_content(params: dict) -> str:
 
 
 def verify_request(params: dict, sign: str) -> bool:
+    # (OCR r2) only the DECODE face converts to "signature invalid": a
+    # missing/unreadable key file or a failing openssl call is a
+    # CONFIGURATION error and must raise (misreading it as a signature
+    # mismatch sent verifiers chasing the wrong bug).
     try:
-        sig = base64.b64decode(sign)
-        return rsa_verify_sha256(SHARED_PUB,
-                                 request_sign_content(params).encode(), sig)
-    except Exception:
+        sig = base64.b64decode(sign, validate=True)
+    except (ValueError, TypeError):
         return False
+    return rsa_verify_sha256(SHARED_PUB,
+                             request_sign_content(params).encode(), sig)
 
 
 def signed_envelope(method: str, inner: dict) -> bytes:
