@@ -1,7 +1,8 @@
 import * as React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { WeKnoraClient } from "@weknora/api-client";
-import { Button, Input, Status } from "@weknora/ui";
+import { Button, Input } from "tdesign-react";
+import { Status } from "../plugins/status";
 import { roleAtLeast } from "@weknora/views/settings/registry";
 // 单一来源解析器/请求构造（T08 收敛）：packages/api-client/src/plugins.ts 的
 // 严格 envelope 契约直接深路径复用（生产先例 SandboxSettingsPanel.tsx 对
@@ -545,11 +546,11 @@ export function PluginsSettingsPanel({ client, role }: Props) {
               type="url"
               value={manifestUrl}
               placeholder="https://plugins.example.com/jira-todo/manifest.json"
-              onChange={(event) => setManifestUrl(event.target.value)}
+              onChange={(value) => setManifestUrl(value)}
             />
           </label>
           <div>
-            <Button type="submit" variant="primary" loading={busy}>
+            <Button type="submit" variant="base" theme="primary" loading={busy}>
               核验预览
             </Button>
           </div>
@@ -627,7 +628,7 @@ export function PluginsSettingsPanel({ client, role }: Props) {
           </div>
           {canEdit ? (
             <div className="flex flex-wrap items-center gap-3 border-t border-[#eef1f5] p-3">
-              <Button type="button" variant="primary" loading={confirming} onClick={() => void confirmInstall()}>
+              <Button type="button" variant="base" theme="primary" loading={confirming} onClick={() => void confirmInstall()}>
                 确认安装
               </Button>
               <span className="text-[12px] leading-[18px] text-[#66758b]">

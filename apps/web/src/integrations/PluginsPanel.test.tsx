@@ -91,9 +91,23 @@ Object.assign(globalThis, {
   window: dom.window,
   document: dom.window.document,
   HTMLElement: dom.window.HTMLElement,
+  // tdesign Input/Switch 等组件的效果钩子用 rAF（plain jsdom 未定义，shim 之；
+  // 惯例同 EnvVarSettingsPanel.test.tsx:31）。
+  requestAnimationFrame: dom.window.requestAnimationFrame?.bind(dom.window) ?? ((cb: FrameRequestCallback) => setTimeout(cb, 16)),
+  cancelAnimationFrame: dom.window.cancelAnimationFrame?.bind(dom.window) ?? clearTimeout,
   IS_REACT_ACT_ENVIRONMENT: true,
 });
 Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator });
+
+// tdesign-react Button 在 disabled/loading 态渲染为 div.t-button 而非 <button>
+// （与 tdesign-vue-next 同族行为；源码 es/button/Button.js:96-98）——按钮检索
+// 同时覆盖两种宿主元素，禁用判定走 t-is-disabled 类。
+function findControl(root: ParentNode, label: string): HTMLElement | null {
+  return Array.from(root.querySelectorAll<HTMLElement>('button, .t-button')).find((el) => el.textContent === label) ?? null;
+}
+function controlDisabled(el: HTMLElement): boolean {
+  return el.classList.contains('t-is-disabled') || (el as HTMLButtonElement).disabled === true;
+}
 
 const { createRoot } = await import('react-dom/client');
 const { act } = await import('react');
@@ -176,8 +190,8 @@ function noOauthClient() {
   };
 }
 
-function findButton(container: HTMLElement, label: string): HTMLButtonElement | undefined {
-  return Array.from(container.querySelectorAll('button')).find((button) => button.textContent === label);
+function findButton(container: HTMLElement, label: string): HTMLElement | undefined {
+  return findControl(container, label) ?? undefined;
 }
 
 test('成员面板为需个人授权插件渲染三态徽标与入口；无个人授权插件不出现授权区', async () => {
@@ -211,7 +225,7 @@ test('成员面板为需个人授权插件渲染三态徽标与入口；无个�
     assert.ok(!findButton(rows[0] as HTMLElement, '去授权'), 'an authorized connection offers revoke, not authorize');
     // requires_personal_auth=false：整行无授权区（无徽标、无按钮、不发 connections/me）。
     assert.ok(!rows[1]!.innerHTML.includes('已授权') && !rows[1]!.innerHTML.includes('已过期') && !rows[1]!.innerHTML.includes('未授权'), 'a no-auth plugin renders no connection badge');
-    assert.equal(rows[1]!.querySelectorAll('button').length, 0, 'a no-auth plugin renders no auth buttons');
+    assert.equal(rows[1]!.querySelectorAll('button, .t-button').length, 0, 'a no-auth plugin renders no auth buttons');
     // expired：徽标「已过期」+ 去授权（引导重授权），无撤销。
     assert.match(rows[2]!.innerHTML, /已过期/);
     assert.match(rows[2]!.innerHTML, /去授权/);
@@ -364,7 +378,7 @@ test('OCR1-F3：物化服务缺失（service_id 空）时行内按钮禁用且�
     assert.match(container.innerHTML, /未授权/);
     const authorizeButton = findButton(container, '去授权');
     assert.ok(authorizeButton, 'the authorize entry renders');
-    assert.ok(authorizeButton!.disabled, 'entries stay disabled without a materialized service_id');
+    assert.ok(authorizeButton && controlDisabled(authorizeButton), 'entries stay disabled without a materialized service_id');
     await act(async () => { authorizeButton!.click(); });
     assert.deepEqual(authorizeCalls, [], 'no authorize-url request fires for an empty service_id');
   } finally {

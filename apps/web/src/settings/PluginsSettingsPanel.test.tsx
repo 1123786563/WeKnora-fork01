@@ -72,9 +72,20 @@ Object.assign(globalThis, {
   document: dom.window.document,
   HTMLElement: dom.window.HTMLElement,
   Event: dom.window.Event,
+  // tdesign Input/Switch 等组件的效果钩子用 rAF（plain jsdom 未定义，shim 之；
+  // 惯例同 EnvVarSettingsPanel.test.tsx:31）。
+  requestAnimationFrame: dom.window.requestAnimationFrame?.bind(dom.window) ?? ((cb: FrameRequestCallback) => setTimeout(cb, 16)),
+  cancelAnimationFrame: dom.window.cancelAnimationFrame?.bind(dom.window) ?? clearTimeout,
   IS_REACT_ACT_ENVIRONMENT: true,
 });
 Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator });
+
+// tdesign-react Button 在 disabled/loading 态渲染为 div.t-button 而非 <button>
+// （与 tdesign-vue-next 同族行为；源码 es/button/Button.js:96-98）——按钮/开关
+// 检索同时覆盖两种宿主元素，禁用判定走 t-is-disabled 类。
+function controlDisabled(el: HTMLElement): boolean {
+  return el.classList.contains('t-is-disabled') || (el as HTMLButtonElement).disabled === true;
+}
 
 const { createRoot } = await import('react-dom/client');
 const { act } = await import('react');
@@ -260,8 +271,8 @@ async function flushEffects(times = 4) {
   for (let i = 0; i < times; i += 1) await act(async () => {});
 }
 
-function findButtonByText(root: ParentNode, text: string): HTMLButtonElement | null {
-  const buttons = Array.from(root.querySelectorAll('button'));
+function findButtonByText(root: ParentNode, text: string): HTMLElement | null {
+  const buttons = Array.from(root.querySelectorAll<HTMLElement>('button, .t-button'));
   return buttons.find((button) => (button.textContent ?? '').trim() === text) ?? null;
 }
 
@@ -374,7 +385,7 @@ test('卸载范围明示：面板不出现卸载/删除插件的入口与文案�
     const html = document.body.innerHTML;
     assert.doesNotMatch(html, /卸载/, 'no uninstall entry or copy surfaces');
     assert.doesNotMatch(html, /删除插件/, 'no delete-plugin copy surfaces');
-    assert.equal(Array.from(document.querySelectorAll('button')).filter((button) => (button.textContent ?? '').includes('删除')).length, 0, 'no delete buttons render');
+    assert.equal(Array.from(document.querySelectorAll('button, .t-button')).filter((button) => (button.textContent ?? '').includes('删除')).length, 0, 'no delete buttons render');
   } finally {
     await unmount(root);
   }
@@ -669,20 +680,25 @@ test('其他行升级预览进行中时检查升级按钮呈现禁用态且完�
     const firstButton = findButtonByText(rows[0] as ParentNode, '检查升级');
     const secondButton = findButtonByText(rows[1] as ParentNode, '检查升级');
     assert.ok(firstButton && secondButton, 'both rows carry a check-upgrade button');
-    assert.equal(firstButton!.disabled, false, 'idle rows are clickable');
+    assert.equal(controlDisabled(firstButton!), false, 'idle rows are clickable');
     await act(async () => { firstButton!.click(); });
     await flushEffects(2);
     // 挂起期间：请求行经 loading 禁用；另一行必须有可见禁用态——全局互斥不能
-    // 只靠静默 return 吞点击（用户会误以为按钮失效）。
-    assert.equal(firstButton!.disabled, true, 'the in-flight row disables itself via loading');
-    assert.equal(secondButton!.disabled, true, 'another row disables visibly while a preview is in flight');
+    // 只靠静默 return 吞点击（用户会误以为按钮失效）。disabled 态 tdesign 渲染
+    // 为 div（宿主元素被替换），断言前须重查当前元素。
+    const firstNow = findButtonByText(rows[0] as ParentNode, '检查升级')!;
+    const secondNow = findButtonByText(rows[1] as ParentNode, '检查升级')!;
+    assert.ok(firstNow && secondNow, 'both rows still render their check-upgrade control');
+    assert.equal(controlDisabled(firstNow), true, 'the in-flight row disables itself via loading');
+    assert.equal(controlDisabled(secondNow), true, 'another row disables visibly while a preview is in flight');
     // 禁用态下点击另一行不发请求（全局互斥语义不变）。
-    await act(async () => { secondButton!.click(); });
+    await act(async () => { secondNow.click(); });
     await flushEffects(2);
     assert.equal(captured.filter((entry) => entry.path === '/api/v1/plugins/installations/inst-2/upgrade-preview').length, 0, 'a disabled row fires no request');
     releaseFirst(upgradePreviewEnvelope());
     await flushEffects();
-    assert.equal(secondButton!.disabled, false, 'buttons re-enable once the preview settles');
+    const secondAfter = findButtonByText(rows[1] as ParentNode, '检查升级')!;
+    assert.equal(controlDisabled(secondAfter), false, 'buttons re-enable once the preview settles');
     assert.ok(document.querySelector('[data-testid="plugin-upgrade-preview"]'), 'the gated preview resolves and renders');
   } finally {
     await unmount(root);
@@ -997,11 +1013,11 @@ test('T19-OCR1-F3 PUT 进行中其他安装的工具治理按钮禁用（互斥�
     await act(async () => { switchByAriaLabel(governance, 'create_todo 成员审批')!.click(); });
     await flushEffects();
     // PUT 在途：另一安装的工具治理按钮必须禁用（互斥冻结）。
-    const otherGovernance = Array.from(list.querySelectorAll('button'))
+    const otherGovernance = Array.from(list.querySelectorAll<HTMLElement>('button, .t-button'))
       .find((button) => (button.textContent ?? '').trim() === '工具治理'
-        && button.closest('li')?.textContent?.includes('其他插件')) as HTMLButtonElement | undefined;
+        && button.closest('li')?.textContent?.includes('其他插件')) as HTMLElement | undefined;
     assert.ok(otherGovernance, 'the other installation carries its governance button');
-    assert.equal(otherGovernance!.disabled, true, 'the other installation\'s governance button is frozen while a policy PUT is in flight');
+    assert.equal(controlDisabled(otherGovernance!), true, 'the other installation\'s governance button is frozen while a policy PUT is in flight');
     // 放行 PUT → 失败回到本安装面板（错误归因到发起安装，不污染他人）。
     releasePut!(undefined);
     await flushEffects();
@@ -1141,9 +1157,9 @@ test('T19-OCR2-F2 GET(B) 在途时 A 面板行开关冻结（对称闭合，迟�
     await act(async () => { findButtonByText(list, '工具治理')!.click(); });
     await flushEffects();
     // A 面板展开。发起 B 的工具治理（GET(B) 挂起在途）。
-    const otherGovernance = Array.from(list.querySelectorAll('button'))
+    const otherGovernance = Array.from(list.querySelectorAll<HTMLElement>('button, .t-button'))
       .find((button) => (button.textContent ?? '').trim() === '工具治理'
-        && button.closest('li')?.textContent?.includes('其他插件')) as HTMLButtonElement | undefined;
+        && button.closest('li')?.textContent?.includes('其他插件')) as HTMLElement | undefined;
     assert.ok(otherGovernance, 'the other installation carries its governance button');
     await act(async () => { otherGovernance!.click(); });
     await flushEffects();

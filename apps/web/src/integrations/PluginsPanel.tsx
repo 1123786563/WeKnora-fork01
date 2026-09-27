@@ -2,7 +2,8 @@
 // jsx: react-jsx 下 JSX 不依赖它）。
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { WeKnoraClient } from "@weknora/api-client";
-import { Button, Status } from "@weknora/ui";
+import { Button } from "tdesign-react";
+import { Status } from "../plugins/status";
 // 单一来源解析器（T08）：与 PluginsSettingsPanel 同款深路径复用（生产先例
 // SandboxSettingsPanel.tsx），面板层不维护 wire-format 镜像副本。
 import {
