@@ -467,3 +467,35 @@ func craftNormalSHA256Hex(value []byte) string {
 	sum := sha256.Sum256(value)
 	return hex.EncodeToString(sum[:])
 }
+
+
+// TestCraftDockerNormalInputRejectsMalformedEvidenceFields is the round-2
+// medium finding regression: a malformed TargetSHA256 silently misses the
+// manifest digest map (indistinguishable from no evidence) while
+// suppressing the stdin channel's identity derivation — it must be rejected
+// at shape validation, and both evidence fields reject NUL.
+func TestCraftDockerNormalInputRejectsMalformedEvidenceFields(t *testing.T) {
+	t.Setenv("SYSTEM_AES_KEY", "01234567890123456789012345678901")
+	forEachCraftDockerNormalInputDB(t, func(t *testing.T, db *gorm.DB) {
+		key, _ := craftDockerNormalInputFixtureForDB(t, db, "normal-evidence", "activity-evidence")
+		store := NewCraftDockerNormalInputRepository(db)
+		short := craftDockerNormalInputFixture(key)
+		short.TargetSHA256 = "ABC"
+		_, err := store.Stage(context.Background(), short)
+		require.ErrorIs(t, err, ErrCraftDockerNormalInputInvalid, "a truncated digest is malformed evidence")
+		upper := craftDockerNormalInputFixture(key)
+		upper.TargetSHA256 = strings.ToUpper(strings.Repeat("0123456789abcdef", 4))
+		_, err = store.Stage(context.Background(), upper)
+		require.ErrorIs(t, err, ErrCraftDockerNormalInputInvalid, "an uppercase digest is malformed evidence")
+		nulPath := craftDockerNormalInputFixture(key)
+		nulPath.ResolvedTargetPath = "/host/\x00toolchain"
+		_, err = store.Stage(context.Background(), nulPath)
+		require.ErrorIs(t, err, ErrCraftDockerNormalInputInvalid, "a NUL in the resolved path is malformed evidence")
+
+		valid := craftDockerNormalInputFixture(key)
+		valid.TargetSHA256 = strings.Repeat("0123456789abcdef", 4)
+		staged, err := store.Stage(context.Background(), valid)
+		require.NoError(t, err, "a well-formed digest must stage through the durable identity chain")
+		require.NotEmpty(t, staged.RequestSHA256)
+	})
+}

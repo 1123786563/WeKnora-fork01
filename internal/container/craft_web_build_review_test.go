@@ -236,3 +236,38 @@ func TestCraftWebBuildCommandGateRejectsHostInputsRootOverlap(t *testing.T) {
 	require.ErrorIs(t, err, craft.ErrConflict)
 	require.Contains(t, err.Error(), "inputs")
 }
+
+
+// TestCraftWebBuildCommandGateRejectsPathOverride is the round-2 medium
+// finding regression: argv[0] is a bare name resolved by the executor's
+// PATH, so a request carrying a PATH override (plus a writable-dir wrapper)
+// must be refused at this gate.
+func TestCraftWebBuildCommandGateRejectsPathOverride(t *testing.T) {
+	fixture := newCraftWebBuildReviewFixture(t)
+	pin, err := LoadCraftWebToolchainPin(craftWebToolchainAbsDir(t))
+	require.NoError(t, err)
+	reviewer, err := NewCraftWebBuildCommandGate(fixture.gate, pin, craftWebToolchainAbsDir(t))
+	require.NoError(t, err)
+
+	overridden := craftWebBuildRequest(craftWebPinnedBuildCommand(), map[string]string{
+		"PATH": "/tmp/evil:/usr/bin",
+	})
+	require.ErrorIs(t, reviewer.Review(context.Background(), overridden), craft.ErrForbidden,
+		"a PATH override must not borrow the bare-name argv[0] resolution")
+
+	clean := craftWebBuildRequest(craftWebPinnedBuildCommand(), map[string]string{"LC_ALL": "C"})
+	require.NoError(t, reviewer.Review(context.Background(), clean))
+}
+
+// TestCraftWebBuildCommandGateNilReceiverRefusesNotPanics is the round-2
+// high-finding regression: a nil gate (an assembly failure returning nil is
+// the designed defensive case) must REFUSE, not panic on the field access
+// that used to precede the nil check.
+func TestCraftWebBuildCommandGateNilReceiverRefusesNotPanics(t *testing.T) {
+	var gate *CraftWebBuildCommandGate
+	request := repository.CraftDockerNormalInputRequest{RunID: "run-nil"}
+	require.NotPanics(t, func() {
+		err := gate.Review(context.Background(), request)
+		require.ErrorIs(t, err, craft.ErrForbidden)
+	})
+}

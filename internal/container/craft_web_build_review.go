@@ -37,13 +37,14 @@ import (
 // CraftDockerNormalExecService/CraftDockerRestrictedExec at assembly; its
 // durable audit sink (WithAuditLog) is attached by the central assembly.
 //
-// ResolvedTargetPath note: the T03 module policy's symlink layer keys on the
-// CONTAINER workspace root, while this entry resolves HOST paths, so the
-// resolved facts are enforced here (layer 2) instead of being forwarded
-// through CraftDockerNormalInputRequest — that shared DTO carries no
-// server-resolved target fields. Forwarding them into the module policy's
-// InputExecutionRequest requires an additive DTO change owned by the central
-// assembly (recorded as an integration hook in the T04 report).
+// ResolvedTargetPath note (round-2 update): the shared DTO NOW carries the
+// optional additive fields ResolvedTargetPath/TargetSHA256 (omitempty), and
+// CraftDelegateExecutionPolicy.ReviewNormalExec forwards both into the
+// module policy's InputExecutionRequest. This entry STILL enforces the host
+// facts here (layer 2) because its symlink layer keys on the CONTAINER
+// workspace root while this gate walks HOST paths — the namespace difference
+// is real. The dispatch face (T20 lane) must fill the two fields with
+// HOST-side facts only; container-semantics callers leave them empty.
 
 // craftWebBuildProgramPath is the pinned build program's container path baked
 // into the runtime image (docker/craft/Dockerfile W1 layer).
@@ -187,6 +188,12 @@ func craftWebShapeRefusal(command []string) error {
 // gate's own refusal (with the "Allowed alternative" text) is passed through
 // unchanged so the caller can project it into the member-facing response.
 func (g *CraftWebBuildCommandGate) Review(ctx context.Context, request repository.CraftDockerNormalInputRequest) error {
+	if g == nil {
+		// Nil-receiver check FIRST: the warnInputsRootOnce field access below
+		// would panic on a nil gate (an assembly failure returning nil is
+		// exactly the case this refusal exists for).
+		return fmt.Errorf("%w: craft web build command gate is not assembled", craft.ErrForbidden)
+	}
 	if g.hostInputsRel == "" {
 		// The material-overlap layer is unwired (no WithCraftWebHostInputsRoot
 		// at assembly): say so once per process instead of failing open in
@@ -195,8 +202,14 @@ func (g *CraftWebBuildCommandGate) Review(ctx context.Context, request repositor
 			logger.Warnf(ctx, "[CraftWebBuildGate] host inputs root NOT configured: the staged-material overlap layer is inactive (pass WithCraftWebHostInputsRoot at assembly)")
 		})
 	}
-	if g == nil {
-		return fmt.Errorf("%w: craft web build command gate is not assembled", craft.ErrForbidden)
+	// PATH hijack: argv[0] is pinned to the bare name "python3", which the
+	// EXECUTOR resolves through the container PATH — a request carrying a
+	// PATH override plus a writable-dir wrapper of the same name would
+	// borrow this entry. Refuse PATH overrides outright.
+	for key := range request.Environment {
+		if key == "PATH" {
+			return fmt.Errorf("%w: the fixed web build entry does not accept a PATH override (argv[0] resolution hijack)", craft.ErrForbidden)
+		}
 	}
 	if g.policy == nil {
 		logger.Warnf(ctx, "[CraftWebBuild] command gate has NO T03 execution policy attached; refusing dispatch for run %s", request.RunID)
@@ -260,7 +273,10 @@ func pathWithinDir(directory, target string) bool {
 	}
 	rel, err := filepath.Rel(directory, target)
 	if err != nil {
-		return false
+		// A Rel failure means the roots cannot be related (relative vs
+		// absolute mix): the check cannot PROVE separation, so it reports
+		// overlap (the caller refuses dispatch) instead of silently passing.
+		return true
 	}
 	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }

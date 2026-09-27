@@ -127,9 +127,14 @@ func (g *CraftDelegateExecutionPolicy) ReviewNormalExec(ctx context.Context, req
 	if request.TargetSHA256 != "" {
 		execRequest.TargetSHA256 = request.TargetSHA256
 	}
-	// Evidence priority (central ruling): an explicitly carried
-	// TargetSHA256 (a server-resolvable face walked the host target) WINS —
-	// the stdin digest never silently overwrites it.
+	// Evidence-channel discipline: the module policy carries ONE
+	// TargetSHA256, so an explicit digest together with stdin bytes would
+	// silently disable the stdin channel's own byte-identity refusal (the
+	// stdin bytes could be uploaded material). The combination is refused
+	// fail-closed; either evidence source alone reviews normally.
+	if request.TargetSHA256 != "" && request.StdinEnabled && len(request.Stdin) > 0 {
+		return fmt.Errorf("%w: a request cannot carry both an explicit target digest and stdin bytes", craft.ErrForbidden)
+	}
 	if request.TargetSHA256 == "" && request.StdinEnabled && len(request.Stdin) > 0 {
 		// Byte identity for the stdin channel: the stdin bytes ride on the
 		// reviewed request itself, so their digest can be matched against

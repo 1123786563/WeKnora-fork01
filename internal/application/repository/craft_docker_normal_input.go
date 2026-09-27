@@ -318,6 +318,16 @@ func validCraftDockerNormalInput(in CraftDockerNormalInputRequest) bool {
 			return false
 		}
 	}
+	// Additive evidence fields: a malformed TargetSHA256 silently misses the
+	// manifest digest map (indistinguishable from "no evidence") while
+	// suppressing the stdin channel's own identity derivation — it must be
+	// exactly 64 lowercase hex when present, and both fields reject NUL.
+	if strings.ContainsRune(in.ResolvedTargetPath, '\x00') || strings.ContainsRune(in.TargetSHA256, '\x00') {
+		return false
+	}
+	if in.TargetSHA256 != "" && !isCraftDockerNormalDigest(in.TargetSHA256) {
+		return false
+	}
 	for _, arg := range in.Command {
 		if strings.ContainsRune(arg, '\x00') {
 			return false
@@ -388,6 +398,21 @@ func craftDockerNormalCanonicalJSONSize(in CraftDockerNormalInputRequest) int64 
 	// closing brace
 	size += 1
 	return size
+}
+
+// isCraftDockerNormalDigest reports whether s is exactly 64 lowercase hex
+// characters (a sha256 digest in the admitted-manifest identity space).
+func isCraftDockerNormalDigest(s string) bool {
+	if len(s) != 64 {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+			return false
+		}
+	}
+	return true
 }
 
 func craftDockerJSONQuotedStringSize(value string) int64 {
