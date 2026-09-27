@@ -484,7 +484,7 @@ func TestNotificationDeliveryRejectsResolvedInteractionAfterClaim(t *testing.T) 
 		VALUES (1,'interaction-1','delivery-run','u1','tool_approval','hash','pending',?)`, time.Now().Add(time.Hour)).Error)
 	require.NoError(t, db.Exec(`INSERT INTO agent_run_events
 		(tenant_id,run_id,seq,attempt_id,event_type,payload) VALUES (1,'delivery-run',1,'a','interaction_requested','{"pending_id":"interaction-1"}')`).Error)
-	res := db.Exec(`UPDATE mobile_notification_intents SET event_id = ?, kind = 'interaction_requested' WHERE id = ?`, "1:delivery-run:1", "1:delivery-event-interaction-device:u1:interaction-device:dev")
+	res := db.Exec(`UPDATE mobile_notification_intents SET event_id = ?, kind = 'interaction_requested' WHERE id = ?`, "1:delivery-run:1", "1:delivery-event-interaction-device:u1:interaction-device:dev:"+repository.MobileAppIDOfficial)
 	require.NoError(t, res.Error)
 	require.EqualValues(t, 1, res.RowsAffected)
 	spy := &notificationProviderSpy{}
