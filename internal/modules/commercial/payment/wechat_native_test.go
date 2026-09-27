@@ -263,6 +263,28 @@ func TestWechatQueryFallsBackToRequestedIDWhenResponseOmitsOutTradeNo(t *testing
 	}
 }
 
+// TestWechatQueryPrefersTransactionID pins the reconciliation identity
+// (issue #83 flow defect): the channel's query answer carries BOTH
+// out_trade_no and transaction_id, and the RESULT must key the channel
+// transaction id — ConfirmPayment's exactly-once guard compares the
+// verified callback fact's transaction id against what the recovery query
+// recorded, so a query that recorded out_trade_no instead would misread the
+// SAME payment as a different transaction on the callback's arrival (an
+// over-payment audit for one payment, or a unique-constraint failure).
+func TestWechatQueryPrefersTransactionID(t *testing.T) {
+	f := newNativeFixture(t, func(w http.ResponseWriter, _ *http.Request) {
+		respondJSON(t, w, http.StatusOK,
+			`{"out_trade_no":"mo_q","transaction_id":"4200001234202609271234567890","trade_state":"SUCCESS","amount":{"total":9900,"currency":"CNY"}}`)
+	})
+	res, err := f.provider.Query(context.Background(), "mo_q")
+	if err != nil {
+		t.Fatalf("query failed: %v", err)
+	}
+	if res.ProviderID != "4200001234202609271234567890" {
+		t.Fatalf("query must key the channel transaction_id, got %q", res.ProviderID)
+	}
+}
+
 func TestWechatQueryEmptyProviderIDRejected(t *testing.T) {
 	f := newNativeFixture(t, func(w http.ResponseWriter, _ *http.Request) {
 		t.Error("stub must not be reached for an empty provider id")

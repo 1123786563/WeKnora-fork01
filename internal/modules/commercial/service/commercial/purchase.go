@@ -261,12 +261,11 @@ func (s *PurchaseService) Purchase(ctx context.Context, tenantID uint64, quoteID
 		// and only a cleanly released slot falls through to open the new
 		// channel order below. An unresolved close outcome surfaces its
 		// error: the caller retries — a second channel order must NEVER be
-		// opened while the old one's outcome is unknown.
-		att, aerr := s.orders.orders.FirstPendingAttempt(ctx, existing.ID)
-		if aerr != nil {
-			return PurchaseView{}, aerr
-		}
-		if att.Provider != providerName {
+		// opened while the old one's outcome is unknown. A pending order
+		// with NO attempt row cannot prove ANY channel (the atomic open
+		// always writes both): it keeps the frozen #82 replay semantics —
+		// answer the existing entry, never a second channel request.
+		if att, aerr := s.orders.orders.FirstPendingAttempt(ctx, existing.ID); aerr == nil && att.Provider != providerName {
 			closeView, cerr := s.orders.CloseChannelOrder(ctx, tenantID, existing.ID)
 			if cerr != nil {
 				return PurchaseView{}, cerr
@@ -278,7 +277,7 @@ func (s *PurchaseService) Purchase(ctx context.Context, tenantID uint64, quoteID
 			// CreateOrder(quoteID, providerName) on the new channel.
 		} else {
 			ov := orderViewFromRow(existing)
-			return s.purchaseView(p, snap, pub, &ov), nil // same-channel replay (#82 frozen semantics)
+			return s.purchaseView(p, snap, pub, &ov), nil // same-channel (or channel-unknown) replay: #82 frozen semantics
 		}
 	} else if !errors.Is(perr, repocommercial.ErrOrderNotFound) {
 		return PurchaseView{}, perr

@@ -366,9 +366,10 @@ type wechatNativeOrderResponse struct {
 }
 
 type wechatTransactionResponse struct {
-	OutTradeNo string           `json:"out_trade_no"`
-	TradeState string           `json:"trade_state"`
-	Amount     wechatAmountJSON `json:"amount"`
+	OutTradeNo    string           `json:"out_trade_no"`
+	TransactionID string           `json:"transaction_id"`
+	TradeState    string           `json:"trade_state"`
+	Amount        wechatAmountJSON `json:"amount"`
 }
 
 type wechatCloseRequest struct {
@@ -424,7 +425,13 @@ func (p *WechatProvider) Create(ctx context.Context, req OrderRequest) (AttemptR
 	return AttemptResult{State: StatePending, ProviderID: req.MerchantOrderID, CheckoutURL: out.CodeURL}, nil
 }
 
-// Query reconciles an attempt by its ORIGINAL out_trade_no (WX-03).
+// Query reconciles an attempt by its ORIGINAL out_trade_no (WX-03). The
+// result keys the channel TRANSACTION id when the answer carries one: the
+// recovery path records this value as the attempt's provider transaction,
+// and ConfirmPayment's exactly-once guard compares it against the verified
+// callback fact's transaction — keying out_trade_no here would misread the
+// SAME payment (recovered first, callback second) as two different channel
+// transactions (issue #83 flow defect, spec L127 duplicate-fact unity).
 func (p *WechatProvider) Query(ctx context.Context, providerID string) (AttemptResult, error) {
 	if providerID == "" {
 		return AttemptResult{}, fmt.Errorf("%w: empty provider id", ErrInvalidRequest)
@@ -435,7 +442,10 @@ func (p *WechatProvider) Query(ctx context.Context, providerID string) (AttemptR
 		return AttemptResult{State: stateIfTimeout(err, StateUnknown), ProviderID: providerID},
 			fmt.Errorf("wechat query %s: %w", providerID, err)
 	}
-	id := out.OutTradeNo
+	id := out.TransactionID
+	if id == "" {
+		id = out.OutTradeNo
+	}
 	if id == "" {
 		id = providerID
 	}
