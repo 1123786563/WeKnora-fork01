@@ -379,7 +379,7 @@ graph TD
 | #62 | T32 | Fork lineage/许可证/再发布 | open | absent | B5 | 2 (#59,#60) | Fork 实体与再分发校验不存在 |
 | #63 | T33 | 退役/终止/Listing 生命周期 | open | absent | B6 | 2 (#59,#61) | 四类生命周期操作无路由/接口 |
 | #64 | T34 | Release 安全撤回传播 | open | absent | B6 | 2 (#60,#61) | 撤回状态与准入拦截零实现 |
-| #65 | T35 | Evaluation/隐私指标/Custody | open | T1/T2 SDD review fixes active; T3 implementation running | B7 | 3 (#60,#63,#64 verified) | Evaluation、Adoption/Upgrade Metrics、Custody、HTTP acceptance 分任务实施；批准 Spec §12 的 adopter 错误类别指标因当前缺少 immutable Run→Adoption/Release 来源而有已记录阻塞，禁止从 Task/Run 原始错误推断 |
+| #65 | T35 | Evaluation/隐私指标/Custody | open | T1/T2 task gates passed, integration pending; T3 review fix active | B7 | 3 (#60,#63,#64 verified) | Evaluation、Adoption/Upgrade Metrics、Custody、HTTP acceptance 分任务实施；批准 Spec §12 的 adopter 错误类别指标因当前缺少 immutable Run→Adoption/Release 来源而有已记录阻塞，禁止从 Task/Run 原始错误推断 |
 | #66 | T36 | 多 Deployment 切换与降级 | open | partial | B2 | 1 (#32) | 仅单实例存储；无只读降级面 |
 | #67 | T37 | 自托管盲推送/自签名 | open | partial | B4 | 2 (#41,#66) | 仅 Expo/HTTP 网关；无企业 Provider |
 | #68 | T38 | Taro Adapter 复用深 Module | open | partial | B4 | 5 (#34,#35,#36,#38,#46) | mobile-core 仅 Runtime 一模块；两棵小程序树并存 |

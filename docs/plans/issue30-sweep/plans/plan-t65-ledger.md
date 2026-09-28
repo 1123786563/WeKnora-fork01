@@ -19,9 +19,9 @@ External verified prerequisites: #60, #63, #64 integrated at base 93706830b. #60
 
 | Task | Status | Worktree / branch | Base | Commit / checkpoint | Review | Validation |
 |---|---|---|---|---|---|---|
-| T1 Release Evaluation persistence | fixing | /Users/wuyongjun/.codex/worktrees/issue30-t65-eval/WeKnora-fork01, detached at dispatch | 93706830b78205de0c7d433097e89f33d9726513 | 0dba37e17 | FAIL R1; fix plan active | focused validator PASS at 0dba37e17 |
-| T2 Publisher Custody and atomic source/adoption gate | fixing | /Users/wuyongjun/.codex/worktrees/issue30-t65-custody/WeKnora-fork01, detached at dispatch | 93706830b78205de0c7d433097e89f33d9726513 | 5688cfffd (R1 pending) | FAIL R1; fix plan active | focused validator PASS at 5688cfffd |
-| T3 privacy Adoption/Upgrade Metrics | ready | /Users/wuyongjun/.codex/worktrees/issue30-t65-metrics/WeKnora-fork01, detached at dispatch | 30a711f4e27c4ad1208dbfcdc03971ad62b30ce8 | pending | pending | baseline running |
+| T1 Release Evaluation persistence | running (integration pending) | /Users/wuyongjun/.codex/worktrees/issue30-t65-eval/WeKnora-fork01, detached at dispatch | 93706830b78205de0c7d433097e89f33d9726513 | bbc2e89c9 | PASS after R1; initial findings resolved | PASS at bbc2e89c9; raw output retained |
+| T2 Publisher Custody and atomic source/adoption gate | running (integration pending) | /Users/wuyongjun/.codex/worktrees/issue30-t65-custody/WeKnora-fork01, detached at dispatch | 93706830b78205de0c7d433097e89f33d9726513 | e7c42c51b | PASS after R1; T2-R1-1 ruled N/A | PASS at e7c42c51b; raw output retained |
+| T3 privacy Adoption/Upgrade Metrics | fixing | /Users/wuyongjun/.codex/worktrees/issue30-t65-metrics/WeKnora-fork01, detached at dispatch | 30a711f4e27c4ad1208dbfcdc03971ad62b30ce8 | 0b0057f78 (R1 pending) | FAIL R1; fix plan active | focused validator PASS at 0b0057f78 |
 | T4 catalog, Evaluation endpoint and end-to-end HTTP proof | pending | not created | depends on verified/integrated T1–T3 | pending | pending | pending |
 
 ## Ownership and scheduling
@@ -47,6 +47,11 @@ Approved Spec §12 requires adopter-level error-category metrics. Research in ev
 - Task1 implementation includes commits `ee6b0634c` and enum-conformance correction `0dba37e17`. Independent backend validation passed focused repository and service validation tests, SQLite migration/down-up tests, and diff check at exact HEAD `0dba37e17940acc4c02c4e2f5eede48c7b1bfde1`.
 - Independent Spec/Quality review returned Changes Required: Medium T1-R1-1 (invalid-result test's nonexistent Release FK masks result validation), Medium T1-R1-2 (missing second-Release pointer-advance pinning scenario), Low T1-R1-3 (fresh migration test omits the new table’s column assertions). All findings are accepted in `plans/plan-t65-task1-review-fix-r1.md`; repair owns only repository tests and SQLite schema tests.
 - Reviewer raised an ⚠️ question whether immutable semantics require DB-level UPDATE/DELETE triggers. **Ruling T1-R1-4:** preserve immutability at the application contract, matching the existing immutable Public Release pattern: Evaluation repositories expose insert/list only, with no update/delete surface. The approved Spec requires immutable Evaluation meaning but does not prescribe privileged-SQL triggers. Cost if wrong: an out-of-band privileged database writer could mutate/delete stored evidence; preventing that would require dialect-specific trigger migrations beyond the current repository pattern.
+
+## Task3 review and repair
+
+- Task3 source commit `0b0057f78dffa4b2db62f0f4cc9de99f27b010a5` independently validated: repository/service Marketplace Metrics tests, `git diff --check`, and `go build ./...` passed at the exact HEAD. Duplicate `-lc++` linker warnings were emitted for cmd/server and cmd/desktop; no failures.
+- Independent Spec/Quality review found Spec compliance PASS but Code Quality needs correction: Medium T3-R1-1 (four queries can observe different database snapshots), Low T3-R1-2 (boundary proposals lack matching introductions, so the date predicate is not actually exercised), and Low T3-R1-3 (no same-tenant Adoption/Proposal duplicates and privacy serialization uses a stub). All findings are accepted in `plans/plan-t65-task3-review-fix-r1.md`; fix owns only the three Task3 repository/service files.
 
 ## Integration record
 
