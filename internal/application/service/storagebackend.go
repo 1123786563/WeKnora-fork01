@@ -359,6 +359,36 @@ func (s *StorageBackendService) ResolveFileService(ctx context.Context, tenant *
 	return filesvc.NewResourceCatalogFileService(inner, s.resourceCatalog), resolvedProvider, nil
 }
 
+// ResolveResourceFileService resolves a stable resource reference using the
+// tenant and storage instance recorded with that resource, never the tenant's
+// mutable current default. Resource metadata is loaded before callers enter
+// any authorization transaction that may hold a constrained DB connection.
+func (s *StorageBackendService) ResolveResourceFileService(ctx context.Context, tenant *types.Tenant, reference, localBaseDir string) (interfaces.FileService, *types.StoredResource, error) {
+	if tenant == nil || s.resourceCatalog == nil {
+		return nil, nil, fmt.Errorf("resource storage context missing")
+	}
+	resource, err := s.resourceCatalog.Resolve(ctx, reference)
+	if err != nil || resource == nil || resource.TenantID != tenant.ID {
+		return nil, nil, fmt.Errorf("stored resource not found")
+	}
+	backendID, providerPath, scoped := types.ParseStorageBackendPath(resource.PhysicalPath)
+	if scoped && backendID != resource.StorageBackendID {
+		return nil, nil, fmt.Errorf("stored resource backend mismatch")
+	}
+	if !scoped {
+		providerPath = resource.PhysicalPath
+	}
+	provider := types.ParseProviderScheme(providerPath)
+	if provider == "" || provider != resource.Provider {
+		return nil, nil, fmt.Errorf("stored resource provider mismatch")
+	}
+	fileService, _, err := s.ResolveFileService(ctx, tenant, resource.StorageBackendID, resource.Provider, localBaseDir)
+	if err != nil || fileService == nil {
+		return nil, nil, fmt.Errorf("stored resource backend unavailable")
+	}
+	return fileService, resource, nil
+}
+
 func validateStorageBackendEndpoint(backend *types.StorageBackend) error {
 	if backend.Provider == "local" || (backend.Provider == "minio" && backend.Config.Mode == "docker") {
 		return nil

@@ -218,7 +218,24 @@ func (h *CareerArtifactHandler) prepareArtifactOpener(ctx context.Context, grant
 	}
 	provider := types.ParseProviderScheme(providerPath)
 	if _, isResource := types.ParseResourcePath(providerPath); isResource {
-		provider = "" // resource:// identifies the catalog, not the storage provider
+		resolver, ok := h.storage.(interface {
+			ResolveResourceFileService(context.Context, *types.Tenant, string, string) (interfaces.FileService, *types.StoredResource, error)
+		})
+		if !ok {
+			return nil, careerrepo.ErrNotFound
+		}
+		fileService, resource, err := resolver.ResolveResourceFileService(ctx, tenant, providerPath, storageurl.LocalStorageBaseDir())
+		if err != nil || resource == nil || resource.TenantID != grant.TenantID || fileService == nil {
+			return nil, careerrepo.ErrNotFound
+		}
+		if preparer, ok := fileService.(interface {
+			PrepareGetFile(context.Context, string) (func(context.Context) (io.ReadCloser, error), error)
+		}); ok {
+			return preparer.PrepareGetFile(ctx, version.ObjectKey)
+		}
+		return func(openCtx context.Context) (io.ReadCloser, error) {
+			return fileService.GetFile(openCtx, version.ObjectKey)
+		}, nil
 	}
 	fileService, _, err := h.storage.ResolveFileService(ctx, tenant, backendID, provider, storageurl.LocalStorageBaseDir())
 	if err != nil || fileService == nil {

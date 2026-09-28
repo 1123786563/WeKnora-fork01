@@ -124,6 +124,18 @@ func TestCareerArtifactHTTPDownloadWithProductionTenantServiceAndSingleSQLiteCon
 	if err := db.Exec(`ALTER TABLE tenants ADD COLUMN storage_engine_config TEXT`).Error; err != nil {
 		t.Fatal(err)
 	}
+	if err := db.AutoMigrate(&types.StorageBackend{}); err != nil {
+		t.Fatal(err)
+	}
+	for _, backendID := range []string{"backend-a", "backend-b"} {
+		backend := types.StorageBackend{ID: backendID, TenantID: 12, Name: backendID, Provider: "local", Config: types.StorageBackendConfig{}, Status: types.StorageBackendStatusActive}
+		if err := db.Create(&backend).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := db.Exec(`UPDATE tenants SET default_storage_backend_id='backend-b' WHERE id=12`).Error; err != nil {
+		t.Fatal(err)
+	}
 	storageDir := t.TempDir()
 	t.Setenv("LOCAL_STORAGE_BASE_DIR", storageDir)
 	config := `{"default_provider":"local","local":{"path_prefix":"` + strings.ReplaceAll(storageDir, `\`, `\\`) + `"}}`
@@ -134,11 +146,14 @@ func TestCareerArtifactHTTPDownloadWithProductionTenantServiceAndSingleSQLiteCon
 		t.Fatal(err)
 	}
 	body := []byte("single-connection artifact")
-	physical := filepath.Join(storageDir, "resume.txt")
+	physical := filepath.Join(storageDir, "tenant", "12", "resume.txt")
+	if err := os.MkdirAll(filepath.Dir(physical), 0700); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(physical, body, 0600); err != nil {
 		t.Fatal(err)
 	}
-	resource := types.StoredResource{ID: "resource-1", Handle: "AbCdEfGhIjKlMnOpQrStUv", TenantID: 12, Provider: "local", PhysicalPath: physical, LocationHash: strings.Repeat("a", 64), Kind: "file", OriginalName: "resume.txt", Size: int64(len(body)), State: types.ResourceStateActive}
+	resource := types.StoredResource{ID: "resource-1", Handle: "AbCdEfGhIjKlMnOpQrStUv", TenantID: 12, StorageBackendID: "backend-a", Provider: "local", PhysicalPath: types.BuildStorageBackendPath("backend-a", "local://tenant/12/resume.txt"), LocationHash: strings.Repeat("a", 64), Kind: "file", OriginalName: "resume.txt", Size: int64(len(body)), State: types.ResourceStateActive}
 	if err := db.Create(&resource).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -160,11 +175,11 @@ func TestCareerArtifactHTTPDownloadWithProductionTenantServiceAndSingleSQLiteCon
 	if err != nil {
 		t.Fatal(err)
 	}
-	resolved, _, err := storage.ResolveFileService(context.Background(), preparedTenant, "", "", "")
+	resolved, _, err := storage.ResolveFileService(context.Background(), preparedTenant, "backend-a", "local", "")
 	if err != nil {
 		t.Fatalf("resolve production file service: %v tenant=%+v", err, preparedTenant)
 	}
-	if _, err := resolved.GetFile(context.Background(), "resource://AbCdEfGhIjKlMnOpQrStUv"); err != nil {
+	if _, err := resolved.GetFile(context.Background(), "storage://backend-a/local://tenant/12/resume.txt"); err != nil {
 		t.Fatalf("resolve production resource object: %v", err)
 	}
 	h := NewCareerArtifactHandler(store, tenants, &careerArtifactTestFiles{bytes: body}, storage)
