@@ -1,12 +1,14 @@
 # Pass A Move Manifests（任务 F1）
 
-本目录是 Pass A 模块归位的**唯一搬迁事实源**：16 份 `docs/architecture/moves/<module>.yaml`
+本目录是 Pass A 模块归位的**唯一搬迁事实源**：16 份 Pass A `docs/architecture/moves/<module>.yaml`
 逐一声明每个业务模块拥有的包搬迁（move_packages）、旧路径别名义务（alias_obligations）、
 横向包内遗留文件（legacy_files）、允许写入的文件（owned_files）、验收命令（test_commands）、
 集成点（integration_points）与禁改共享文件（forbidden_shared_files）。
 Pass A 的每个模块 worker 只做 manifest 内声明的动作；scope 选择权不在 worker。
 边界权威：`docs/architecture/backend-modules.yaml`（F0）+ 
 `docs/specs/2026-09-21-backend-domain-module-reorganization-design.md` §5.18。
+
+`career.yaml` 是 Issue #140 新增模块的边界/集成补充说明，不属于 Pass A 既有 16 模块搬迁集合。
 
 ## Manifest schema（LOCKED，任务 F2 以 KnownFields(true) 严格加载；加字段/改名需协调变更）
 

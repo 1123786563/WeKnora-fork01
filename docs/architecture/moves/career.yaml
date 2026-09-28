@@ -1,0 +1,27 @@
+# CAREER MODULE — ISSUE #140 FOUNDATION (new module; not part of legacy Pass A package moves)
+module: career
+description: 单成员私有求职空间、确认事实、申请证据与求职工作流
+move_packages: []
+alias_obligations: []
+legacy_files: []
+owned_files:
+  move_sources: []
+  move_targets: []
+  importers: []
+  module_files:
+    - internal/modules/career/README.md
+    - internal/modules/career/module.go
+integration_points:
+  routes: ["Career module routes mounted by integration owner"]
+  workers: []
+  lifecycle_hooks: []
+test_commands:
+  - go test ./internal/modules/career/... -count=1
+forbidden_shared_files:
+  - internal/router/router.go
+  - internal/router/task.go
+  - internal/router/sync_task.go
+  - internal/container/container.go
+  - go.mod
+  - go.sum
+  - migrations/

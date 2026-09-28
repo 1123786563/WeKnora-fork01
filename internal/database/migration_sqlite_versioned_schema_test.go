@@ -1,9 +1,12 @@
 package database
 
 import (
+	"crypto/sha256"
 	"database/sql"
+	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -105,6 +108,17 @@ func TestSQLiteMigrationsCreateVersionedSchema(t *testing.T) {
 	for _, table := range versionedSQLiteTables {
 		require.Truef(t, sqliteTableExists(t, db, table), "SQLite migrations must create table %s", table)
 	}
+	for _, table := range []string{"career_spaces", "career_idempotency_receipts", "career_profile_facts", "career_evidence"} {
+		require.Truef(t, sqliteTableExists(t, db, table), "SQLite migrations must create Career table %s", table)
+	}
+	_, err := db.Exec(`INSERT INTO career_spaces (tenant_id, owner_id) VALUES (7, 'u1')`)
+	require.NoError(t, err)
+	_, err = db.Exec(`INSERT INTO career_evidence (tenant_id, owner_id, evidence_id, resource_id, version_id, digest, payload) VALUES (7, 'u1', 'e1', 'r1', 'v1', 'digest', '{}')`)
+	require.NoError(t, err)
+	_, err = db.Exec(`UPDATE career_evidence SET digest = 'changed' WHERE tenant_id = 7 AND owner_id = 'u1' AND evidence_id = 'e1'`)
+	require.Error(t, err, "Career evidence updates must fail")
+	_, err = db.Exec(`DELETE FROM career_evidence WHERE tenant_id = 7 AND owner_id = 'u1' AND evidence_id = 'e1'`)
+	require.Error(t, err, "Career evidence deletions must fail")
 	for _, index := range []string{
 		"uq_mobile_devices_active_token", "idx_mobile_devices_owner",
 		// 000099: the (tenant, agent, version_number) scope guard that makes
@@ -134,6 +148,39 @@ func TestSQLiteMigrationsCreateVersionedSchema(t *testing.T) {
 	assertSQLiteSkillStorageWorks(t, db)
 	require.False(t, sqliteColumnExists(t, db, "knowledges", "tag_id"),
 		"SQLite migrations must drop legacy knowledges.tag_id after multi-tag migration")
+}
+
+func TestCareerMigrationPairsMatchAcrossTracks(t *testing.T) {
+	repoRoot := sqliteRepoRoot(t)
+	created := regexp.MustCompile(`(?im)^CREATE TABLE\s+(?:IF NOT EXISTS\s+)?([a-z_]+)\s*\(`)
+	dropped := regexp.MustCompile(`(?im)^DROP TABLE\s+(?:IF EXISTS\s+)?([a-z_]+)\s*;`)
+	for _, track := range []struct {
+		name string
+		id   int
+	}{
+		{"sqlite", 124}, {"versioned", 203},
+	} {
+		base := fmt.Sprintf("%06d_career_foundation", track.id)
+		up, err := os.ReadFile(filepath.Join(repoRoot, "migrations", track.name, base+".up.sql"))
+		require.NoError(t, err)
+		down, err := os.ReadFile(filepath.Join(repoRoot, "migrations", track.name, base+".down.sql"))
+		require.NoError(t, err)
+		upTables, downTables := created.FindAllSubmatch(up, -1), dropped.FindAllSubmatch(down, -1)
+		require.Len(t, upTables, 4)
+		require.Len(t, downTables, 4)
+		upNames, downNames := make([]string, 0, 4), make([]string, 0, 4)
+		for _, match := range upTables {
+			upNames = append(upNames, string(match[1]))
+		}
+		for _, match := range downTables {
+			downNames = append(downNames, string(match[1]))
+		}
+		sort.Strings(upNames)
+		sort.Strings(downNames)
+		require.Equal(t, upNames, downNames, "%s up/down migrations must create and drop the same tables", track.name)
+		require.NotEqual(t, [32]byte{}, sha256.Sum256(up))
+		require.NotEqual(t, [32]byte{}, sha256.Sum256(down))
+	}
 }
 
 func TestSQLiteMigrationsUpgradeV4PreservesData(t *testing.T) {
