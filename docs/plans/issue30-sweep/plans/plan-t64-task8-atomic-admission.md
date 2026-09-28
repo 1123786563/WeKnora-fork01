@@ -174,10 +174,12 @@ Recheck migration heads immediately before editing. Create paired `000126_agent_
 - Create: `internal/types/agent_chat_turn_claim.go`
 - Create: `internal/application/repository/agent_chat_turn_claim.go`, `agent_chat_turn_claim_test.go`
 - Modify: `internal/application/repository/agent_security.go`, `agent_security_test.go`
+- Modify: `internal/application/repository/agent_security_guard.go`, `agent_security_guard_test.go` to implement the ordered dual-tenant guard consumed by claim admission.
 - Modify: `internal/application/repository/agent_run_security_cancel.go` and targeted-cancel/reconciliation tests; implement tenant-scoped pending-obligation reconciliation with the lock/recheck order below, exact sidecar targets, cumulative counts, and atomic Run/event/session/ledger completion.
 - Modify: `internal/application/repository/agent_adoption.go` and its tests to reject any identity-field update after publication; migration triggers enforce the same invariant for direct SQL writers.
 - Create: `docs/plans/issue30-sweep/evidence/t64-task8-run-cancel-preflight-sqlite.sql` and `docs/plans/issue30-sweep/evidence/t64-task8-run-cancel-preflight-postgres.sql`, read-only deployment queries that enumerate conflicting and unmatched legacy Run/Variant mappings before the migration is attempted. Create a sanitized `t64-task8-unmatched-run-review-template.md`; actual signed per-tenant reports and raw identifiers remain only in the access-controlled deployment evidence store.
 - Modify: `internal/application/service/agent_security.go`, `agent_security_test.go`
+- Modify: `internal/types/interfaces/agent_security.go` to expose `ResolvePublishedAgentVersion` from the Task8B service contract.
 - Modify: `internal/database/migration_sqlite_versioned_schema_test.go`
 - Create: `internal/container/agent_security_reconciler.go` and `internal/container/agent_security_reconciler_test.go`; `internal/container/container.go` invokes it with the durable revocation reconciler and registered `ResourceCleaner` shutdown.
 - Modify: Task7 `internal/container/agent_security.go` and `internal/container/container.go` to register the claim store and inject dependencies
