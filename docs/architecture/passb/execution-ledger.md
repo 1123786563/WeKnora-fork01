@@ -8495,3 +8495,38 @@
 - **OCR 报告路径**：无（barrier 门禁轮）
 - **修复轮次**：屏障门禁修复轮 **1 待启动**（解除条件：修复后恢复 → in_progress → 收口链重启）
 - **备注**：(1) 失败面锁定 internal/application/repository 宿主包测试编译——setupKnowledgeTestDB 定义随 f81e9f054 迁入模块后宿主侧引用悬空的可能性与复验"当前态不复现"的时序关系，归调度方排查（管家如实登记两头口径）；(2) 15 闭包节点陈旧阻塞句清理维持归调度方；(3) 恢复链：修复 → ib2 in_progress → 全量 gate 补跑（25m + changed-range lint）→ 收口 → done → 15 节点级联恢复
+
+---
+
+## 2026-09-28 09:17 CST · ib2 → running（屏障恢复运行确认：00:30 blocked 解除链已闭合——修复 328164dd4/c83c12672 + 集成侧 unblock e69bbb084 先行落盘；status 已在目标态 in_progress、状态行零改动，notes 追加确认段）
+
+- **节点**：ib2 —— IB2 核心能力集成 barrier——**blocked（00:30 登记）→ in_progress（e69bbb084 集成侧先行恢复，00:58）→ 本次 running 确认（词表映射，无状态行字节改动）**
+- **指令内容**（原文）：「更新状态：屏障 ib2 → running（先读 .worktrees/passb-int/docs/plans/passb/execution-dag.json 与 .worktrees/passb-int/docs/architecture/passb/execution-ledger.md，再原子更新两个字段/条目；JSON 必须保持合法）」
+- **词表映射裁定（管家）**：DAG 状态机（.superpowers/sdd/passb/conventions.md §status 行，本会话 grep 实测原文 `pending → blocked（§5 上报）→ in_progress → review → done；仅协调者可写`）**无 `running` 值**；指令 `running`（运行中）按语义映射为词表值 **`in_progress`**（沿 00:30 先例：调度方自然语言表述 → 词表状态值）
+- **事件链核验（本会话 git 实测，弥合台账 00:30 条目与本条目之间的登记空窗）**：00:30 blocked 登记后，集成分支先后落盘 3 个提交——`328164dd4`「refactor(knowledge): close deferral batch—migrate 8 setupKnowledgeTestDB dependents to module (blueprint 24 §5.3, companion to f81e9f054)」+ `c83c12672`「fix(knowledge): blueprint 24 5.3 companion rewrite—tag test direct-wires kbretrieval.NewKnowledgeTagRepository; drop zero-consumer host shim」+ `e69bbb084`（2026-09-28 00:58:41，"docs(passb): ib2 unblock after deferral-batch closure (8 dependents 328164dd4 + companion rewrite c83c12672); env_unblock consumed"，git show --stat 实测仅触达 DAG 1 文件）；python 语义 diff 实测（e69bbb084^ vs HEAD）：**恰 16 个状态翻转**——ib2 `blocked→in_progress` + 15 传递闭包节点 `blocked→pending`（b3-r-*/b3-conv-*/b3-channels/b3-insights/ib3/b4-*/ib4/b5），notes/head_sha/base_sha/review_status 零语义改动；该 commit 附带全文件缩进重排（2→1 空格，+2895/−2909，即当前文件格式）；工作树开工时清洁（git status 实测）
+- **本次 JSON 变更**：(1) ib2 `status` **状态行零改动**——现值 `in_progress` 已是指令目标态（e69bbb084 先行落盘，非本管家本轮翻转）；(2) ib2 `notes` 尾部追加「UNBLOCKED/running 确认」段（定向文本手术：锚定 ib2 notes 尾部独有串计数==1 断言后单点替换、临时文件 os.replace 原子写回；追加段含修复链 3 提交、16 翻转实测口径、词表映射依据）；(3) 复验：`python3 json.load` 通过，节点分布 **17 done + 15 pending + 1 in_progress**（33 节点，与 unblock 后分布一致）；`git diff --stat` 本轮 DAG 恰 1 行替换（notes 行）
+- **前置**（barrier 级）：四支全 done ✓（b2-k-integration/b2-ac-market/b2-datasource/b2-appconnector）——不变
+- **worktree**：DAG/台账所在 `.worktrees/passb-int`（HEAD=`e69bbb084`；本轮 notes 1 行 + 本台账条目变更在工作树待提交）；实现分支各归其位
+- **base → head**：base=null / head=`63430d7b122fe31e539a4d4a2fb29418e879890a`（集成侧回填口径维持；08701d6f7 修正裁定在案）
+- **测试证据路径**：00:30 条目所载屏障原报失败面（internal/application/repository 宿主包 undefined: setupKnowledgeTestDB ×10）的修复证据 = 328164dd4 迁移 8 文件 + c83c12672 直连改写（git 提交链在案，管家本轮未复跑测试）；全量 25m gate 与 changed-range lint——**本轮未跑**（指令为状态登记非门禁轮；8441 条目「未跑」留痕项的补跑义务随屏障收口链重启）
+- **审查结论**：`review_status=pending` 维持（barrier 审查未开始；收口迁移归调度方指令——8441 条目先例维持）
+- **OCR 报告路径**：无（barrier 实施在途）
+- **修复轮次**：00:30 登记「屏障门禁修复轮 1 待启动」——**本轮登记闭合**（328164dd4/c83c12672 即修复轮 1 落地，e69bbb084 unblock 为其状态落盘）
+- **备注**：(1) 15 闭包节点陈旧阻塞句（00:30 各节点 notes 追加段）按 00:16 惯例不清理，恢复事实以状态行 in_progress/pending 为准；(2) barrier 收口链（status→review→done、review 流转、全量 25m gate 与 changed-range lint 补跑、15 节点级联推进）待调度方指令；(3) 台账 00:30 → 本条目之间的集成侧提交（328164dd4/c83c12672/e69bbb084）事件链已在本条目弥合登记
+
+---
+
+## 2026-09-28 09:32 CST · ib2 屏障恢复轮——门禁补跑收口（集成工程师：阻塞门禁全量 25m gate 复跑 PASS；任务点名两项硬门禁 PASS；changed-range lint 实跑 RED 如实登记归因 B2 面存量；45 条属主例外复核 0 stale；台账含 09:17 管家 running 确认一并落盘）
+
+- **执行者**：Pass B 总集成工程师（barrier 恢复轮；无新合并、无代码变更——四支合并态本会话 `git merge-base --is-ancestor` 逐支复验 MERGED：k-integration 461d8c4b2 / ac-market 8e0ce1a67 / datasource 4ebe14cf5 / appconnector 8e80bb3c6）
+- **轮次背景**：00:30 blocked（全量回归 `undefined: setupKnowledgeTestDB ×10`）→ 修复链 `328164dd4`+`c83c12672` → `e69bbb084` 集成侧 unblock → 09:17 管家 running 确认（其 DAG notes 追加 + 台账条目开工时在工作树待提交，随本轮一并落盘提交）
+- **阻塞门禁复跑**：`go test ./internal/... -count=1 -timeout=25m` **PASS——137 ok / 0 FAIL，exit 0**（00:30 失败面消除；旧失败面定向 `go test -count=1 ./internal/application/repository/...` ok 88.966s）
+- **任务点名两项硬门禁**：`make check-backend-architecture` ✓（total=633 redis=23 lite=23 hooks=58 modules=16，0 violations——与 8441 条目零漂移）；`make verify-module-moves` ✓（16 manifests verified）
+- **其余 DAG gates 尽力项**：`make check-passb-readiness` ✓（legacy=358 aliases=69 exceptions=142 contracts=125 events=29 overlaps=0 missing=0）；`go build ./...` ✓；模块与消费者面复验 ✓（四模块全 ok；消费者集 grep 实测 7 包全 ok）；**changed-range lint 实跑 RED**：`golangci-lint run --new-from-rev="326d548cb" ./...` exit 1，120 findings（errcheck 4/gofmt 3/lll 50/revive 50/unused 10）——归因核查：涉案文件 ∩ 修复链 11 文件 = 空集（comm 实测），全部属 B2 面合并跨度存量；unused 10 与「(e) 15 过渡 shim 维持现状」登记裁定对应；该 gate 自 B0（b1a3d6dd8 0 issues，:129）后从未实跑（:52/:1181/:8432/8441 均「未跑」留痕）——29 号计划 §4 以任务点名两项为硬门禁，lint RED 不作恢复轮回退依据，是否阻断收口及清偿窗口归调度方裁定（详见 evidence §8.3）
+- **exception-ledger 复核（本屏障属主）**：全量脚本核对 142 条中 `remove_at: ib2` 45 条，(from,to) 逐条对代码 grep——**45/45 import 仍在、0 stale**；按 29 号计划 §5「仅当 import 实际消除才删」口径本轮零删除，45 条维持登记移交（删除前置=门面合法化契约任务）
+- **JSON 变更**：ib2 notes 尾部追加「恢复轮门禁补跑」段（定向追加）；status=in_progress / head_sha=63430d7b1 / review_status=pending / base=null 均不动（收口迁移归调度方；本轮提交系 docs/台账类 chore，不纳入 head 范围——08701d6f7 口径维持）；`python3 json.load` 复验合法
+- **测试证据路径**：docs/architecture/evidence/passb/ib2.md §8（恢复轮门禁补跑——命令原文+结果+lint 裁定）
+- **审查结论**：`review_status=pending` 维持（barrier 审查未开始）
+- **OCR 报告路径**：无（barrier 门禁补跑轮）
+- **修复轮次**：00:30 登记「修复轮 1 待启动」已闭合（328164dd4/c83c12672）——本轮为门禁补跑验证轮，无新修复义务
+- **备注**：(1) lint RED 的 120 条清偿建议随 shim 删除批+门面合法化契约任务同窗，归调度方排期；(2) 8441 条目遗留移交项（表 2/9 identity 前置、15 shim 删除批、45 例外删除前置）不受本轮影响，维持移交；(3) 收口链（in_progress→review→done、15 节点级联推进）待调度方指令

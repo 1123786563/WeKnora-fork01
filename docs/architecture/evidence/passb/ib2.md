@@ -71,3 +71,32 @@ IB2 属主（`remove_at: ib2`）例外共 **45 条**（B0 面承 8 条：exc-005
 3. IB2 属主 45 条例外删除：前置=被导入包门面合法化契约任务。
 4. K5 Brief (h) 推迟件窗口裁定：归协调者。
 5. `app/graph.go` NewGraphBuilder 零消费裁定请求：归协调者（K2 Brief §8.4 遗留）。
+
+## 8. 恢复轮门禁补跑（2026-09-28 09:17–09:32 CST，集成工程师）
+
+背景链：2026-09-28 00:30 屏障 blocked（调度方全量回归真实失败：`internal/application/repository` 构建失败 `undefined: setupKnowledgeTestDB ×10`）→ 修复链 `328164dd4`（blueprint 24 §5.3：8 个依赖测试迁模块）+ `c83c12672`（companion rewrite：tag 测试直连 `kbretrieval.NewKnowledgeTagRepository`、删零消费者宿主 shim）→ `e69bbb084` 集成侧 unblock 落盘（ib2 blocked→in_progress + 15 传递闭包节点→pending）→ 09:17 管家 running 确认登记（本恢复轮开工时在工作树待提交，随本轮一并落盘）。本轮为门禁补跑轮：无新合并（四支合并态以 `git merge-base --is-ancestor` 逐支复验 MERGED），无代码变更。
+
+### 8.1 门禁补跑（本会话实跑，命令原文）
+
+| 门禁 | 命令 | 结果 |
+|---|---|---|
+| 阻塞门禁复跑 | `go test ./internal/... -count=1 -timeout=25m` | **PASS**：137 ok / 0 FAIL，exit 0（00:30 失败面已消除） |
+| 旧失败面定向 | `go test -count=1 ./internal/application/repository/...` | **PASS**（ok，88.966s） |
+| 任务点名硬门禁 1 | `make check-backend-architecture` | **PASS**：`literal=564 apiKeyRoute=69 handle=0 total=633 \| redis=23 lite=23 \| hooks=58 \| modules=16`，0 violations（与首轮证据 §6 计数零漂移） |
+| 任务点名硬门禁 2 | `make verify-module-moves` | **PASS**：`modulemove: OK (16 manifests verified)` |
+| DAG gate 尽力项 | `make check-passb-readiness` | **PASS**：`legacy=358 aliases=69 exceptions=142 contracts=125 events=29 overlaps=0 missing=0`（与首轮零漂移） |
+| DAG gate 尽力项 | `golangci-lint run --new-from-rev="326d548cb" ./...` | **RED**：120 findings（errcheck 4 / gofmt 3 / lll 50 / revive 50 / unused 10），exit 1——裁定与移交见 §8.3 |
+| 全树构建 | `go build ./...` | PASS（exit 0；仅 ld duplicate libraries 告警） |
+
+模块与直接消费者面（复验）：`go test ./internal/modules/{knowledge,agentcatalog,datasource,appconnector}/...` 全 ok；消费者集（本会话 grep 模块路径实测：application/{repository,service}、container、handler、handler/session、router、cmd/connector-control）`go test -count=1` 全 ok。
+
+### 8.2 例外台账复核（本屏障属主）
+
+全量脚本核对（解析 ledger 142 条，`remove_at: ib2` 45 条，逐条取 (from,to) 对代码 grep）：**45/45 import 全部仍在代码中，0 条 stale**——按 29 号计划 §5「仅当 import 已实际消除才删」口径，本轮零删除；45 条维持登记移交（删除前置=被导入包门面合法化契约任务，与首轮 §5 裁定一致）。readiness 门禁 `missing=0 overlaps=0` 佐证账实一致。
+
+### 8.3 changed-range lint RED 裁定与移交（如实）
+
+- 基线选择：`326d548cb`（29 号计划 §2 开工基线，屏障合并跨度起点）。
+- 归因核查：lint 涉案文件集 ∩ 修复链文件集（`328164dd4`+`c83c12672` 触达的 11 个文件）= **空集**（comm 实测）——120 条 findings 全部属 B2 面合并跨度存量（四子分支代码 + 宿主过渡 shim），非恢复轮引入。其中 unused 10 条与「(e) 15 个过渡 shim 维持现状」的登记裁定直接对应（删除前置未满足）。
+- 先例口径：该 gate 自 B0 后从未实跑绿（台账 :52/:1181/:8432 均「未跑」留痕；B0 于 `--new-from-rev=b1a3d6dd8` 为 0 issues，台账 :129）。首轮 IB2 亦「未跑」如实登记（§6）。
+- 裁定：29 号计划 §4 明示本屏障以任务点名两项为硬门禁（均 PASS），lint 属尽力项——本轮实跑 RED 如实登记，不作为本轮合并/装配面的回退依据；是否作为 ib2 收口（in_progress→review）的阻断项、以及 120 条的清偿窗口（建议随 shim 删除批与门面合法化契约任务同窗），归调度方裁定。
