@@ -38,7 +38,7 @@ graph LR
 ### Task 1: Add production-composed retired-Agent admission test
 
 **Source:** Issue #63 AC3; Task 6 review finding F1.
-**Dependencies:** `plan-t63-task6-review-fix.md` Task 1 commit `707b0f803dfd3c7cf31271de1b1acdda5dab1fe7`, independently reviewed and validated before this task starts.
+**Dependencies:** verified T63 Task 6 F2 checkpoint `5f121c96df241724428adb2187b9984caf333fb5`; both independent Review and backend validation passed at this checkpoint.
 **Role:** backend_implementer (Go integration test).
 **Owned files:** Create `internal/container/workbench_agent_lifecycle_test.go` only.
 **Consumes:** same-package `wiringTestDB(t)` in `internal/container/craft_interaction_wiring_test.go`; `NewWorkbenchAdmissionCoordinator` in `internal/container/workbench.go`; `repository.NewAgentRunStore`, `NewExecutionTargetStore`, `NewAgentAdoptionRepository`; `session.NewWorkbenchStartHandler`; `types.AgentAdoptionEntity` and `types.AgentAdoptionVariantEntity`.
@@ -61,4 +61,3 @@ graph LR
 **Acceptance mapping:** #63 AC3 → production provider + real HTTP Start handler returns 409 and writes no request/Run for a persisted retired Agent. Combined with existing lifecycle router tests, this establishes the lifecycle transition and production admission wiring without an import cycle.
 
 **Failure handling:** If `wiringTestDB` lacks a required fixture, add setup only in the owned test file. If setup fails before reaching the lifecycle gate, fix tenant/session/target request inputs; never replace production composition or weaken the denial assertions.
-
