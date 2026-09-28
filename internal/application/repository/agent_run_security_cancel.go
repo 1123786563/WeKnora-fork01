@@ -6,17 +6,43 @@ import (
 	"errors"
 
 	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
+	"github.com/Tencent/WeKnora/internal/types"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
 const agentSecurityRevocationWaitReason = "agent_security_revocation"
 
+const (
+	AgentSecurityRevocationRelease    = "release"
+	AgentSecurityRevocationDependency = "dependency"
+)
+
+// AgentSecurityRevocationRef identifies the already committed revocation row
+// whose canceled-run count must commit atomically with the run transitions.
+type AgentSecurityRevocationRef struct {
+	Kind string
+	ID   string
+}
+
 // CancelRunsByAgents atomically cancels the active tenant runs whose frozen
 // coordinator snapshot names one of agentIDs. Malformed or non-coordinator
 // snapshots are deliberately skipped by this best-effort governance scan.
 func (s *AgentRunStore) CancelRunsByAgents(ctx context.Context, tenantID uint64, agentIDs []string, reason string) (int64, error) {
-	if tenantID == 0 || len(agentIDs) == 0 {
+	return s.cancelRunsByAgents(ctx, tenantID, agentIDs, reason, nil)
+}
+
+// CancelRunsByAgentsForRevocation writes the cancellation count to its
+// revocation ledger in the same transaction as run/event/session changes.
+func (s *AgentRunStore) CancelRunsByAgentsForRevocation(ctx context.Context, tenantID uint64, agentIDs []string, reason string, ref AgentSecurityRevocationRef) (int64, error) {
+	if ref.ID == "" || (ref.Kind != AgentSecurityRevocationRelease && ref.Kind != AgentSecurityRevocationDependency) {
+		return 0, errors.New("valid agent security revocation reference is required")
+	}
+	return s.cancelRunsByAgents(ctx, tenantID, agentIDs, reason, &ref)
+}
+
+func (s *AgentRunStore) cancelRunsByAgents(ctx context.Context, tenantID uint64, agentIDs []string, reason string, ref *AgentSecurityRevocationRef) (int64, error) {
+	if tenantID == 0 {
 		return 0, nil
 	}
 	wanted := make(map[string]struct{}, len(agentIDs))
@@ -25,7 +51,7 @@ func (s *AgentRunStore) CancelRunsByAgents(ctx context.Context, tenantID uint64,
 			wanted[id] = struct{}{}
 		}
 	}
-	if len(wanted) == 0 {
+	if len(wanted) == 0 && ref == nil {
 		return 0, nil
 	}
 
@@ -42,10 +68,12 @@ func (s *AgentRunStore) CancelRunsByAgents(ctx context.Context, tenantID uint64,
 		}
 
 		var candidates []agentRunRow
-		if err := tx.Table("agent_runs").
-			Where("tenant_id = ? AND status NOT IN ?", tenantID, []string{"succeeded", "failed", "canceled"}).
-			Order("created_at ASC").Order("run_id ASC").Find(&candidates).Error; err != nil {
-			return err
+		if len(wanted) > 0 {
+			if err := tx.Table("agent_runs").
+				Where("tenant_id = ? AND status NOT IN ?", tenantID, []string{"succeeded", "failed", "canceled"}).
+				Order("created_at ASC").Order("run_id ASC").Find(&candidates).Error; err != nil {
+				return err
+			}
 		}
 
 		for _, candidate := range candidates {
@@ -104,6 +132,21 @@ func (s *AgentRunStore) CancelRunsByAgents(ctx context.Context, tenantID uint64,
 				return err
 			}
 			canceled++
+		}
+		if ref != nil {
+			var update *gorm.DB
+			switch ref.Kind {
+			case AgentSecurityRevocationRelease:
+				update = tx.Model(&types.AgentReleaseRevocationEntity{}).Where("tenant_id = ? AND id = ?", tenantID, ref.ID).UpdateColumn("canceled_run_count", canceled)
+			case AgentSecurityRevocationDependency:
+				update = tx.Model(&types.AgentDependencyRevocationEntity{}).Where("tenant_id = ? AND id = ?", tenantID, ref.ID).UpdateColumn("canceled_run_count", canceled)
+			}
+			if update.Error != nil {
+				return update.Error
+			}
+			if update.RowsAffected != 1 {
+				return errors.New("agent security revocation row not found for canceled-run count")
+			}
 		}
 		return nil
 	})

@@ -113,6 +113,9 @@ func TestRevokeReleaseRecordsAuditScopeAndCancelsRuns(t *testing.T) {
 	require.Equal(t, "marketplace", audit.ScopeType)
 	require.Equal(t, "agent_release", audit.TargetType)
 	require.Equal(t, r1, audit.TargetID)
+	var ledger types.AgentReleaseRevocationEntity
+	require.NoError(t, db.Where("tenant_id = ? AND id = ?", 1, view.ID).Take(&ledger).Error)
+	require.Equal(t, "sec-admin", ledger.RevokedBy)
 	require.JSONEq(t, `{"reason":"CVE-2026-0001","replacement":"`+r2+`","in_flight_disposition":"cancel"}`, string(audit.Details))
 
 	detail, err := svc.GetRevocation(context.Background(), 1, view.ID)
@@ -147,10 +150,55 @@ func TestRevokeDependencyUsesExactLockIdentityForScopeAndCancellation(t *testing
 	require.Equal(t, r123, detail.Scope.BlockedReleases[0].ReleaseID)
 	require.Equal(t, interfaces.AgentSecurityRevocationKindDependency, detail.Scope.BlockedReleases[0].BlockedBy)
 	require.Len(t, detail.Scope.AffectedVariants, 1)
+	var dependencyAudit types.AuditLog
+	require.NoError(t, db.Where("tenant_id = ? AND action = ?", 1, types.AuditActionAgentDependencyRevoked).Take(&dependencyAudit).Error)
+	require.Equal(t, "sec-admin", dependencyAudit.ActorUserID)
+	require.Equal(t, "agent_dependency", dependencyAudit.TargetType)
+	require.Equal(t, "skill/web-search@1.2.3", dependencyAudit.TargetID)
+	var dependencyLedger types.AgentDependencyRevocationEntity
+	require.NoError(t, db.Where("tenant_id = ? AND id = ?", 1, view.ID).Take(&dependencyLedger).Error)
+	require.Equal(t, "sec-admin", dependencyLedger.RevokedBy)
 	require.ErrorIs(t, svc.ReleaseAdmission(context.Background(), 1, r123), ErrAgentSecurityReleaseBlocked)
 	require.NoError(t, svc.ReleaseAdmission(context.Background(), 1, r124))
 	_, err = svc.GetRevocation(context.Background(), 2, view.ID)
 	require.ErrorIs(t, err, ErrAgentSecurityNotFound)
+}
+
+func TestRevokeDependencyCancelTouchesOnlyExactLockedAgentInTenant(t *testing.T) {
+	svc, _, db := newAgentSecurityServiceForTest(t)
+	listingID, matchingRelease := publishUpgradeServiceRelease(t, db, 1, "1.0.0", securityManifest, lockV123, securityBundleWithLock(lockV123))
+	_, otherRelease := publishUpgradeServiceRelease(t, db, 2, "2.0.0", securityManifest, lockV124, securityBundleWithLock(lockV124))
+	adoption := adoptUpgradeRelease(t, db, listingID, matchingRelease)
+	publishSecurityVariant(t, db, adoption, matchingRelease, "matching", "local-agent-matching")
+	publishSecurityVariant(t, db, adoption, otherRelease, "other", "local-agent-other")
+	require.NoError(t, db.Exec(`INSERT INTO tenants (id, name, business) VALUES (2, 't2', 'test')`).Error)
+	require.NoError(t, db.Exec(`INSERT INTO users (id, username, email, password_hash, tenant_id) VALUES ('u2','u2','u2@example.test','x',2)`).Error)
+	require.NoError(t, db.Exec(`INSERT INTO sessions (id, tenant_id, title, user_id, engine_type, active_agent_run_id) VALUES
+		('s-match', 1, 'matching', 'u1', 'trpc', 'run-match'), ('s-other', 1, 'other', 'u1', 'trpc', 'run-other'), ('s-foreign', 2, 'foreign', 'u2', 'trpc', 'run-foreign')`).Error)
+	require.NoError(t, db.Exec(`INSERT INTO agent_runs (tenant_id, run_id, session_id, owner_id, request_id, assistant_message_id, request_hash, engine_type, status, snapshot, deadline) VALUES
+		(1, 'run-match', 's-match', 'u1', 'req-match', 'm-match', 'h-match', 'trpc', 'running', ?, datetime('now','+1 hour')),
+		(1, 'run-other', 's-other', 'u1', 'req-other', 'm-other', 'h-other', 'trpc', 'running', ?, datetime('now','+1 hour')),
+		(2, 'run-foreign', 's-foreign', 'u2', 'req-foreign', 'm-foreign', 'h-foreign', 'trpc', 'running', ?, datetime('now','+1 hour'))`,
+		`{"session_id":"s-match","agent_id":"local-agent-matching","request_id":"req-match"}`,
+		`{"session_id":"s-other","agent_id":"local-agent-other","request_id":"req-other"}`,
+		`{"session_id":"s-foreign","agent_id":"local-agent-matching","request_id":"req-foreign"}`).Error)
+
+	view, err := svc.RevokeDependency(context.Background(), 1, "sec-admin", interfaces.DependencyRevocationInput{
+		Dependency: types.AgentReleaseDependency{Type: "skill", ID: "web-search", Version: "1.2.3", Digest: "D1"}, Reason: "compromised"})
+	require.NoError(t, err)
+	require.EqualValues(t, 1, view.CanceledRunCount)
+	var rows []struct {
+		TenantID      uint64
+		RunID, Status string
+	}
+	require.NoError(t, db.Raw(`SELECT tenant_id, run_id, status FROM agent_runs WHERE run_id IN ('run-match','run-other','run-foreign') ORDER BY tenant_id, run_id`).Scan(&rows).Error)
+	require.Len(t, rows, 3)
+	require.Equal(t, "canceled", rows[0].Status)
+	require.Equal(t, "running", rows[1].Status)
+	require.Equal(t, "running", rows[2].Status)
+	var stored types.AgentDependencyRevocationEntity
+	require.NoError(t, db.Where("tenant_id = ? AND id = ?", 1, view.ID).Take(&stored).Error)
+	require.EqualValues(t, 1, stored.CanceledRunCount)
 }
 
 func TestRevokeRejectsMalformedInputWithoutWrites(t *testing.T) {

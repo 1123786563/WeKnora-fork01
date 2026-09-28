@@ -194,11 +194,9 @@ func (s *AgentSecurityService) RevokeRelease(ctx context.Context, tenantID uint6
 		if err != nil {
 			return interfaces.AgentSecurityRevocationView{}, err
 		}
-		count, err := s.runs.CancelRunsByAgents(ctx, tenantID, agentIDs, "agent security revocation: "+input.Reason)
+		count, err := s.runs.CancelRunsByAgentsForRevocation(ctx, tenantID, agentIDs, "agent security revocation: "+input.Reason,
+			repository.AgentSecurityRevocationRef{Kind: repository.AgentSecurityRevocationRelease, ID: row.ID})
 		if err != nil {
-			return interfaces.AgentSecurityRevocationView{}, err
-		}
-		if err := s.store.UpdateReleaseRevocationCanceled(ctx, tenantID, row.ID, count); err != nil {
 			return interfaces.AgentSecurityRevocationView{}, err
 		}
 		row.CanceledRunCount = count
@@ -240,11 +238,9 @@ func (s *AgentSecurityService) RevokeDependency(ctx context.Context, tenantID ui
 		if err != nil {
 			return interfaces.AgentSecurityRevocationView{}, err
 		}
-		count, err := s.runs.CancelRunsByAgents(ctx, tenantID, agentIDs, "agent security revocation: "+input.Reason)
+		count, err := s.runs.CancelRunsByAgentsForRevocation(ctx, tenantID, agentIDs, "agent security revocation: "+input.Reason,
+			repository.AgentSecurityRevocationRef{Kind: repository.AgentSecurityRevocationDependency, ID: row.ID})
 		if err != nil {
-			return interfaces.AgentSecurityRevocationView{}, err
-		}
-		if err := s.store.UpdateDependencyRevocationCanceled(ctx, tenantID, row.ID, count); err != nil {
 			return interfaces.AgentSecurityRevocationView{}, err
 		}
 		row.CanceledRunCount = count

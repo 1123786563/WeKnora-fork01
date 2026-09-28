@@ -9,6 +9,7 @@ import (
 	"time"
 
 	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
+	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -85,6 +86,31 @@ func TestCancelRunsByAgentsCancelsOnlyMatchingActiveRuns(t *testing.T) {
 	again, err := runs.CancelRunsByAgents(ctx, 1, []string{"local-agent-blocked"}, "again")
 	require.NoError(t, err)
 	require.EqualValues(t, 0, again, "处置幂等：已终态的行不再计入")
+}
+
+func TestCancelRunsByAgentsForRevocationRollsBackRunAndCountTogether(t *testing.T) {
+	db := openRunTestDB(t)
+	seedSecurityCancelFixture(t, db)
+	revocation := &types.AgentReleaseRevocationEntity{TenantID: 1, ListingID: "listing", ReleaseID: "release", Reason: "reason", RevokedBy: "admin"}
+	require.NoError(t, db.Create(revocation).Error)
+	require.NoError(t, db.Exec(`CREATE TRIGGER fail_revocation_count BEFORE UPDATE OF canceled_run_count ON agent_release_revocations BEGIN SELECT RAISE(ABORT, 'count unavailable'); END`).Error)
+
+	count, err := NewAgentRunStore(db).CancelRunsByAgentsForRevocation(context.Background(), 1,
+		[]string{"local-agent-blocked"}, "security revocation", AgentSecurityRevocationRef{Kind: AgentSecurityRevocationRelease, ID: revocation.ID})
+	require.Error(t, err)
+	require.Zero(t, count)
+	var status string
+	require.NoError(t, db.Raw(`SELECT status FROM agent_runs WHERE tenant_id = 1 AND run_id = 'sec-r1'`).Scan(&status).Error)
+	require.Equal(t, "running", status, "count update failure rolls back the run transition")
+	var events int64
+	require.NoError(t, db.Table("agent_run_events").Where("tenant_id = ? AND run_id = ? AND event_type = ?", 1, "sec-r1", "cancellation_requested").Count(&events).Error)
+	require.Zero(t, events)
+	var stored types.AgentReleaseRevocationEntity
+	require.NoError(t, db.Where("tenant_id = ? AND id = ?", 1, revocation.ID).Take(&stored).Error)
+	require.Zero(t, stored.CanceledRunCount)
+	var activeRunID string
+	require.NoError(t, db.Raw(`SELECT active_agent_run_id FROM sessions WHERE tenant_id = 1 AND id = 's1'`).Scan(&activeRunID).Error)
+	require.Equal(t, "sec-r1", activeRunID)
 }
 
 func TestCancelRunsByAgentsKeepsLongReasonInEventAndBoundsWaitReason(t *testing.T) {
