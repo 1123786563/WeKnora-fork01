@@ -12,7 +12,9 @@ func TestRegisterCareerArtifactRoutesExposesOnlyIssueOnAuthenticatedGroup(t *tes
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	issueGroup := r.Group("/api/v1")
-	RegisterCareerArtifactRoutes(issueGroup, session.NewCareerArtifactHandler(nil, nil, nil, nil))
+	h := session.NewCareerArtifactHandler(nil, nil, nil, nil)
+	RegisterCareerArtifactRoutes(issueGroup, h)
+	RegisterCareerArtifactDownloadRoute(r, h)
 	routes := map[string]bool{}
 	for _, route := range r.Routes() {
 		routes[route.Method+" "+route.Path] = true
@@ -20,7 +22,7 @@ func TestRegisterCareerArtifactRoutesExposesOnlyIssueOnAuthenticatedGroup(t *tes
 	if !routes[http.MethodPost+" /api/v1/career/resources/:resource_id/versions/:version_id/signed-url"] {
 		t.Fatal("authenticated issuance route missing")
 	}
-	if routes[http.MethodGet+" /api/v1/career/artifacts/download"] {
-		t.Fatal("signed download must be mounted before Auth by Router")
+	if !routes[http.MethodGet+" /api/v1/career/artifacts/download"] {
+		t.Fatal("public signed download route missing")
 	}
 }
