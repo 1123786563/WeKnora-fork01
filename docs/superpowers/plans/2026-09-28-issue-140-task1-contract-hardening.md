@@ -93,7 +93,7 @@
 
 **Dependency:** Task 1R3 implementation `e2040f7703c8234724fc9ad78f0080d3c8430f64`; finding `T1R3-M1` in `.superpowers/sdd/2026-09-28-issue-140-main-port/task-1r3-review.md`.
 
-- [ ] Add an assembled regression: client base URL `https://a.example`, observe scope origin `https://b.example`; expect the same typed deployment-origin error as HTTP calls and assert `careerObserver` was not invoked.
-- [ ] Preserve a positive control: matching origin registers, receives a revision hint, refreshes through CareerApi decoding, and unsubscribes on dispose.
-- [ ] Apply the authenticated client's base-origin guard at the observer adapter boundary before provider invocation; retain provider-owned tenant/actor authorization.
-- [ ] Run the mismatched-origin test RED, then focused Career suite, strict TypeScript, `pnpm test:shared`, accepted baseline shared typecheck and `git diff --check`; record exact BASE/HEAD and separate evidence from implementation. Do not release Task 2 until independent review passes.
+- [x] Add an assembled regression: client base URL `https://a.example`, observe scope origin `https://b.example`; expect the same typed deployment-origin error as HTTP calls and assert `careerObserver` was not invoked.
+- [x] Preserve a positive control: matching origin registers, receives a revision hint, refreshes through CareerApi decoding, and unsubscribes on dispose.
+- [x] Apply the authenticated client's base-origin guard at the observer adapter boundary before provider invocation; retain provider-owned tenant/actor authorization.
+- [x] Run the mismatched-origin test RED, then focused Career suite, strict TypeScript, `pnpm test:shared`, accepted baseline shared typecheck and `git diff --check`; record exact BASE/HEAD and separate evidence from implementation. Do not release Task 2 until independent review passes.
