@@ -51,6 +51,70 @@ test('unknown outcomes are looked up by the original ID before retry; conflict r
   assert.deepEqual(calls, ['act:original', 'lookup:original', 'act:original', 'lookup:rebased', 'act:rebased']);
 });
 
+test('unknown write remains pending and cannot be rebased after a newer read until same-ID conflict is authoritative', async () => {
+  const pending = new Map<string, any>();
+  let openRevision = 1;
+  const remote: CareerRemote<CareerWorkspace, CareerCommand> = {
+    open: async () => ({ revision: openRevision, value: { opportunities: [], applications: [] } }),
+    list: async () => ({ revision: 1, value: [] }),
+    act: async (_scope, intent) => ({ kind: 'unknown', requestId: intent.requestId }),
+    lookup: async (_scope, requestId) => ({ kind: 'unknown', requestId }),
+    observe: () => () => undefined,
+  };
+  const store: CareerIntentStore<CareerCommand> = {
+    save: async (_s, i) => { pending.set(i.requestId, i); }, list: async () => [...pending.values()],
+    remove: async (_s, id) => { pending.delete(id); },
+  };
+  const desk = createCareerDesk({ remote, intentStore: store, initialScope: scopeA, createRequestId: () => 'original' });
+  await desk.open();
+  await desk.act({ type: 'updateProfile', expectedRevision: 1, payload: { facts: [] } });
+  openRevision = 2;
+  await desk.open();
+  await assert.rejects(desk.rebase('original', { type: 'updateProfile', expectedRevision: 2, payload: { facts: [] } }), /conflict/i);
+  assert.equal(pending.has('original'), true);
+  assert.equal((await desk.reconcilePending())[0]?.kind, 'unknown');
+  assert.equal(pending.has('original'), true);
+});
+
+test('out-of-order same-scope open reads cannot regress the projection', async () => {
+  const deferred: Array<(value: any) => void> = [];
+  const remote: CareerRemote<CareerWorkspace, CareerCommand> = {
+    open: async () => new Promise(resolve => { deferred.push(resolve); }), list: async () => ({ revision: 1, value: [] }),
+    act: async (_s, i) => ({ kind: 'applied', requestId: i.requestId, envelope: { revision: 4, value: { opportunities: [], applications: [] } } }),
+    lookup: async (_s, id) => ({ kind: 'unknown', requestId: id }), observe: () => () => undefined,
+  };
+  const store: CareerIntentStore<CareerCommand> = { save: async () => undefined, list: async () => [], remove: async () => undefined };
+  const desk = createCareerDesk({ remote, intentStore: store, initialScope: scopeA });
+  const first = desk.open(); const second = desk.open();
+  deferred[1]!({ revision: 3, value: { opportunities: [], applications: [] } }); await second;
+  deferred[0]!({ revision: 2, value: { opportunities: [], applications: [] } }); await first;
+  assert.equal(desk.snapshot()?.revision, 3);
+  await assert.rejects(desk.act({ type: 'updateProfile', expectedRevision: 2, payload: { facts: [] } }), /stale/i);
+});
+
+test('Desk has no public submit path that can dispatch an unpersisted request', () => {
+  const desk = createCareerDesk({
+    remote: { open: async () => ({ revision: 1, value: { opportunities: [], applications: [] } }), list: async () => ({ revision: 1, value: [] }), act: async (_s, i) => ({ kind: 'unknown', requestId: i.requestId }), lookup: async (_s, id) => ({ kind: 'unknown', requestId: id }), observe: () => () => undefined },
+    intentStore: { save: async () => undefined, list: async () => [], remove: async () => undefined }, initialScope: scopeA,
+  });
+  assert.equal('submit' in desk, false);
+});
+
+test('revision-hint refresh rejection is reported and scope-switch refresh rejection is contained', async () => {
+  let hint!: (revision: number) => void;
+  const errors: unknown[] = [];
+  const remote: CareerRemote<CareerWorkspace, CareerCommand> = {
+    open: async () => { throw new Error('refresh failed'); }, list: async () => ({ revision: 1, value: [] }),
+    act: async (_s, i) => ({ kind: 'unknown', requestId: i.requestId }), lookup: async (_s, id) => ({ kind: 'unknown', requestId: id }),
+    observe: (_s, callback) => { hint = callback; return () => undefined; },
+  };
+  const desk = createCareerDesk({ remote, intentStore: { save: async () => undefined, list: async () => [], remove: async () => undefined }, initialScope: scopeA, onRefreshError: error => errors.push(error) });
+  desk.observe(); hint(2); await new Promise(resolve => setImmediate(resolve));
+  assert.equal(errors.length, 1);
+  await desk.changeScope(scopeB); hint(3); await new Promise(resolve => setImmediate(resolve));
+  assert.equal(errors.length, 1);
+});
+
 test('forbidden receipt is terminal and stale expected revisions are rejected before sending', async () => {
   let calls = 0;
   const remote: CareerRemote<CareerWorkspace, CareerCommand> = {

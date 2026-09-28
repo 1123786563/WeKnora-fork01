@@ -33,6 +33,7 @@ import { createAnalyticsApi } from './analytics/index.ts';
 import { createUsageApi } from './usage/index.ts';
 import { createQueryHistoryApi } from './queryHistory/index.ts';
 import { createCareerApi } from './career/index.ts';
+import type { CareerObserver } from './career/types.ts';
 
 export type { KnowledgeBase } from '@weknora/contracts';
 
@@ -57,6 +58,7 @@ export interface WeKnoraClientOptions {
   baseURL: string;
   transport: HttpTransport;
   timeoutMs?: number;
+  careerObserver?: CareerObserver;
 }
 
 export interface KnowledgeBaseListParams {
@@ -315,7 +317,7 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
     try { baseOrigin = new URL(options.baseURL).origin; } catch { throw new Error('Career API requires an absolute deployment base URL'); }
     if (baseOrigin !== input.scope.deploymentOrigin) throw new Error('Career scope deployment does not match the authenticated API client');
     return request(input);
-  });
+  }, options.careerObserver);
   const embed = createEmbedApi(request, async (streamRequest, onEvent, signal) => {
     const input = signal === undefined ? streamRequest : { ...streamRequest, signal };
     if (options.transport.sendStream) {

@@ -6,6 +6,7 @@ export interface CareerDeskOptions<T, C extends CareerCommand = CareerCommand> {
   intentStore: CareerIntentStore<C>;
   initialScope: CareerScope;
   createRequestId?: () => string;
+  onRefreshError?: (error: unknown) => void;
 }
 function validScope(scope: CareerScope): CareerScope {
   if (!scope || typeof scope !== 'object' || Object.keys(scope).length !== 3 || Object.keys(scope).some(key => !['deploymentOrigin', 'tenantId', 'actorId'].includes(key))) throw new Error('Invalid Career scope');
@@ -24,6 +25,7 @@ export function createCareerDesk<T, C extends CareerCommand = CareerCommand>(opt
   let projection: CareerEnvelope<T> | undefined;
   let cursor: string | undefined;
   let stopObserving: (() => void) | undefined;
+  const authoritativeConflicts = new Set<string>();
   const controllers = new Set<AbortController>();
   const makeId = options.createRequestId ?? (() => `career-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`);
   function begin() { const controller = new AbortController(); controllers.add(controller); return controller; }
@@ -36,6 +38,7 @@ export function createCareerDesk<T, C extends CareerCommand = CareerCommand>(opt
     if (receipt.kind === 'applied' || receipt.kind === 'conflict') {
       if (!validRevision(receipt.envelope.revision)) throw new Error('Career receipt has invalid revision');
       if (!projection || receipt.envelope.revision >= projection.revision) projection = receipt.envelope;
+      if (receipt.kind === 'conflict') authoritativeConflicts.add(intent.requestId);
     }
     return receipt;
   }
@@ -50,7 +53,10 @@ export function createCareerDesk<T, C extends CareerCommand = CareerCommand>(opt
       catch { ensureGeneration(expectedGeneration, expectedScope); return { kind: 'unknown', requestId: intent.requestId }; }
       ensureGeneration(expectedGeneration, expectedScope);
       const accepted = acceptReceipt(intent, receipt);
-      if (accepted.kind === 'applied' || accepted.kind === 'forbidden') await options.intentStore.remove(expectedScope, intent.requestId);
+      if (accepted.kind === 'applied' || accepted.kind === 'forbidden') {
+        await options.intentStore.remove(expectedScope, intent.requestId);
+        authoritativeConflicts.delete(intent.requestId);
+      }
       ensureGeneration(expectedGeneration, expectedScope);
       return accepted;
     } catch (error) {
@@ -67,7 +73,8 @@ export function createCareerDesk<T, C extends CareerCommand = CareerCommand>(opt
       const result = await options.remote.open(expectedScope, controller.signal);
       ensureGeneration(expectedGeneration, expectedScope);
       if (!validRevision(result.revision)) throw new Error('Career response has invalid revision');
-      projection = result; return result;
+      if (!projection || result.revision >= projection.revision) projection = result;
+      return projection;
     } catch (error) {
       if (generation !== expectedGeneration || !sameScope(scope, expectedScope)) throw scopeError();
       throw error;
@@ -96,7 +103,6 @@ export function createCareerDesk<T, C extends CareerCommand = CareerCommand>(opt
       const intent: CareerIntent<C> = { requestId: makeId(), expectedRevision: typed.expectedRevision, command };
       return send(intent, true);
     },
-    submit(intent: CareerIntent<C>) { return send(intent, false); },
     async reconcilePending(): Promise<CareerReceipt<T>[]> {
       const expectedGeneration = generation, expectedScope = scope;
       const pending = await options.intentStore.list(expectedScope);
@@ -117,7 +123,10 @@ export function createCareerDesk<T, C extends CareerCommand = CareerCommand>(opt
             ensureGeneration(expectedGeneration, expectedScope);
           }
           const accepted = acceptReceipt(intent, receipt);
-          if (accepted.kind === 'applied' || accepted.kind === 'forbidden') await options.intentStore.remove(expectedScope, intent.requestId);
+          if (accepted.kind === 'applied' || accepted.kind === 'forbidden') {
+            await options.intentStore.remove(expectedScope, intent.requestId);
+            authoritativeConflicts.delete(intent.requestId);
+          }
           ensureGeneration(expectedGeneration, expectedScope); results.push(accepted);
         } finally { finish(controller); }
       }
@@ -129,6 +138,7 @@ export function createCareerDesk<T, C extends CareerCommand = CareerCommand>(opt
       const old = (await options.intentStore.list(expectedScope)).find(intent => intent.requestId === requestId);
         ensureGeneration(expectedGeneration, expectedScope);
         if (!old) throw new Error('Career conflict intent is no longer pending');
+        if (!authoritativeConflicts.has(requestId)) throw new Error('Career rebase requires an authoritative conflict receipt');
         const expectedRevision = (command as C & { expectedRevision: number }).expectedRevision;
         if (!validRevision(expectedRevision) || expectedRevision <= old.expectedRevision || (projection && expectedRevision !== projection.revision)) throw new Error('Rebase requires a fresh, newer Career revision');
         const nextRequestId = makeId();
@@ -145,6 +155,7 @@ export function createCareerDesk<T, C extends CareerCommand = CareerCommand>(opt
           throw error;
         }
         await options.intentStore.remove(expectedScope, requestId);
+        authoritativeConflicts.delete(requestId);
         ensureGeneration(expectedGeneration, expectedScope);
         return rebased;
       })();
@@ -153,7 +164,11 @@ export function createCareerDesk<T, C extends CareerCommand = CareerCommand>(opt
       stopObserving?.();
       const expectedGeneration = generation, expectedScope = scope;
       stopObserving = options.remote.observe(expectedScope, revision => {
-        if (generation === expectedGeneration && sameScope(scope, expectedScope) && validRevision(revision)) void readOpen();
+        if (generation === expectedGeneration && sameScope(scope, expectedScope) && validRevision(revision)) {
+          void readOpen().catch(error => {
+            if (generation === expectedGeneration && sameScope(scope, expectedScope)) options.onRefreshError?.(error);
+          });
+        }
       });
     },
     snapshot() { return projection; },
@@ -167,13 +182,14 @@ export function createCareerDesk<T, C extends CareerCommand = CareerCommand>(opt
       stopObserving?.(); stopObserving = undefined;
       for (const controller of controllers) controller.abort();
       projection = undefined; cursor = undefined; scope = newScope;
+      authoritativeConflicts.clear();
       const oldPending = await options.intentStore.list(oldScope);
       for (const intent of oldPending) await options.intentStore.remove(oldScope, intent.requestId);
     },
     dispose(): void {
       generation++; stopObserving?.(); stopObserving = undefined;
       for (const controller of controllers) controller.abort();
-      controllers.clear(); projection = undefined; cursor = undefined;
+      controllers.clear(); projection = undefined; cursor = undefined; authoritativeConflicts.clear();
     },
   };
 }

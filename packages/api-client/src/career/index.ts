@@ -1,4 +1,5 @@
 import { ContractError, parseCareerApplication, parseCareerDeleteReceipt, parseCareerEvaluation, parseCareerExportReceipt, parseCareerMaterialVersion, parseCareerOpportunity, parseCareerProfile, parseCareerReminder, parseCareerSearchReceipt, parseCareerSubmission, parseCareerTimelineEvent } from '@weknora/contracts';
+import { ApiError } from '../errors.ts';
 import type { CareerCommand, CareerReceipt, CareerScope, CareerWorkspace } from '@weknora/contracts';
 import type { CareerApi, CareerObserver, CareerRequest, CareerRequester } from './types.ts';
 import {
@@ -63,7 +64,21 @@ export function createCareerApi(request: CareerRequester, observeScope: CareerOb
       ...(options.requestId === undefined ? {} : { requestId: options.requestId }),
       ...(options.input ? { requestId: options.input.requestId, headers: { 'X-Request-ID': options.input.requestId, ...(options.input.expectedRevision === undefined ? {} : { 'If-Match': String(options.input.expectedRevision) }) } } : {}),
     };
-    const response = await request(req);
+    let response: unknown;
+    try { response = await request(req); }
+    catch (error) {
+      const receiptRequestId = options.input?.requestId ?? (path.startsWith('/api/v1/career/requests/') ? options.requestId : undefined);
+      if (receiptRequestId && error instanceof ApiError && error.status === 403
+        && (path === '/api/v1/career/desk/actions' || path.startsWith('/api/v1/career/requests/'))) {
+        return { kind: 'forbidden', requestId: receiptRequestId } as T;
+      }
+      if (path === '/api/v1/career/desk/actions' && options.input && error instanceof ApiError && error.status === 409 && error.details !== undefined) {
+        const receipt = decodeCareerReceipt(error.details, options.input.requestId);
+        if (receipt.kind !== 'conflict') throw error;
+        return receipt as T;
+      }
+      throw error;
+    }
     return decodeCareerEnvelope(response, parse, options.requestId ?? options.input?.requestId, options.receipt ?? false).data;
   }
   const desk = {

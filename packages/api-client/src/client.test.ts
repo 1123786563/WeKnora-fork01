@@ -151,6 +151,44 @@ test('normalizes the backend success-false error envelope', async () => {
   );
 });
 
+test('assembled production Career client classifies definite 403/409 and keeps timeout/malformed writes unknown', async () => {
+  const { createCareerDesk } = await import('../../career-core/src/index.ts');
+  const scope = { deploymentOrigin: 'https://api.example.test', tenantId: 'tenant-1', actorId: 'actor-1' };
+  let outcome: 'forbidden' | 'conflict' | 'timeout' | 'malformed' = 'forbidden';
+  let currentRequestId = 'request-1';
+  const transport = { send: async request => {
+    if (request.method === 'GET') return { status: 200, headers: {}, body: { success: true, data: { revision: 1, value: { opportunities: [], applications: [] } } } };
+    if (outcome === 'forbidden') return { status: 403, headers: {}, body: { success: false, error: { code: 'FORBIDDEN' } } };
+    if (outcome === 'conflict') return { status: 409, headers: {}, body: { success: false, error: { code: 'CONFLICT', details: { kind: 'conflict', requestId: currentRequestId, envelope: { revision: 3, value: { opportunities: [], applications: [] } } } } } };
+    if (outcome === 'timeout') throw Object.assign(new Error('timed out'), { name: 'TimeoutError' });
+    return { status: 200, headers: {}, body: { success: false, data: {} } };
+  } };
+  const client = createWeKnoraClient({ baseURL: scope.deploymentOrigin, transport });
+  const stored = new Map<string, any>();
+  const requestIds = ['request-1', 'request-2', 'request-3', 'request-4'];
+  const desk = createCareerDesk({ remote: client.career, initialScope: scope, createRequestId: () => { currentRequestId = requestIds.shift()!; return currentRequestId; }, intentStore: {
+    save: async (_scope, intent) => { stored.set(intent.requestId, intent); }, list: async () => [...stored.values()], remove: async (_scope, id) => { stored.delete(id); },
+  } });
+  await desk.open();
+  const command = () => ({ type: 'updateProfile' as const, expectedRevision: desk.snapshot()!.revision, payload: { facts: [] } });
+  assert.equal((await desk.act(command())).kind, 'forbidden');
+  outcome = 'conflict';
+  assert.equal((await desk.act(command())).kind, 'conflict');
+  outcome = 'timeout';
+  assert.equal((await desk.act(command())).kind, 'unknown');
+  outcome = 'malformed';
+  assert.equal((await desk.act(command())).kind, 'unknown');
+});
+
+test('production Career client forwards the configured revision observer to its public Desk seam', () => {
+  const scope = { deploymentOrigin: 'https://api.example.test', tenantId: 'tenant-1', actorId: 'actor-1' };
+  let received = false;
+  const observer = (_scope: typeof scope, _onRevision: (revision: number) => void) => { received = true; return () => undefined; };
+  const client = createWeKnoraClient({ baseURL: scope.deploymentOrigin, transport: { send: async () => ({ status: 200, headers: {}, body: { success: true, data: { revision: 1, value: { opportunities: [], applications: [] } } } }) }, careerObserver: observer });
+  client.career.observe(scope, () => undefined);
+  assert.equal(received, true);
+});
+
 test('preserves numeric backend error codes for structured lifecycle errors', async () => {
   const client = createWeKnoraClient({
     baseURL: 'https://api.example.test',
