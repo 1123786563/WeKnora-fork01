@@ -15,6 +15,8 @@ var (
 	ErrConflict = errors.New("agent runtime conflict")
 	// ErrRunActive indicates that a session's durable run slot is occupied.
 	ErrRunActive = errors.New("agent run already active")
+	// ErrAgentUseDenied indicates that lifecycle state forbids new work for an Agent.
+	ErrAgentUseDenied = errors.New("agent use denied")
 	// ErrLeaseLost rejects workers without a current owner/epoch lease.
 	ErrLeaseLost = errors.New("agent run lease lost")
 	// ErrNotFound indicates no record exists in the requested scope.
@@ -134,6 +136,9 @@ type Run struct {
 type Admission struct {
 	Key       RunKey
 	SessionID string
+	// AgentID is explicit authorization input for the final serialized admission
+	// gate; it is never inferred from the client-controlled snapshot.
+	AgentID string
 	// Usage binding is server-owned admission metadata. It is persisted in
 	// the immutable run snapshot and copied into every worker Fence; clients
 	// and provider observations never populate these fields.

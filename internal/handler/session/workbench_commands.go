@@ -146,6 +146,8 @@ func writeWorkbenchCommandError(c *gin.Context, err error) {
 		status = http.StatusNotFound
 	case errors.Is(err, agentruntime.ErrConflict):
 		status = http.StatusConflict
+	case errors.Is(err, workbenchservice.ErrAgentUseDenied):
+		status = http.StatusConflict
 	case errors.Is(err, agentruntime.ErrRunActive):
 		// The follow-up admission raced another write run on the session: a
 		// deterministic conflict, not a server error.

@@ -24,7 +24,7 @@ var (
 	ErrBudgetDenied    = errors.New("budget denied")
 	ErrRequestPending  = errors.New("request admission pending")
 	ErrRequestRejected = errors.New("request rejected")
-	ErrAgentUseDenied  = errors.New("agent use denied")
+	ErrAgentUseDenied  = agentruntime.ErrAgentUseDenied
 )
 
 // TrustedAdmissionBinding is resolved by a server-side policy/target service.
@@ -320,18 +320,29 @@ func (a *AdmissionCoordinator) Start(ctx context.Context, in StartInput) (agentr
 	if in.TargetID == "" {
 		in.TargetID = "platform"
 	}
-	// T33 #63: a retired variant's local agent stops admitting NEW work. The
-	// gate is consulted before the durable request row so a refusal leaves
-	// zero side effects (mirrors the W34 gate discipline above).
-	if a.agentUseGate != nil && strings.TrimSpace(in.AgentID) != "" {
-		if err := a.agentUseGate(ctx, tenant, in.AgentID); err != nil {
-			return agentruntime.Run{}, err
-		}
-	}
 	hash := requestHash(in)
 	req := repository.WorkbenchRequest{
 		TenantID: tenant, ActorID: actor, RequestID: in.RequestID, RequestHash: hash,
 		SessionID: in.SessionID, AgentID: in.AgentID, TargetID: in.TargetID, WorkspaceRef: in.WorkspaceRef, Text: in.Text, BudgetUpper: in.BudgetUpper, //nolint:lll // 预存长行,import 修复入 range
+	}
+	existing, lookupErr := a.requests.Get(ctx, tenant, actor, in.RequestID)
+	if lookupErr == nil {
+		if existing.RequestHash != hash {
+			return agentruntime.Run{}, agentruntime.ErrConflict
+		}
+		if existing.State == "admitted" || existing.State == "dispatching" || existing.State == "rejected" {
+			return a.resumeExisting(ctx, existing, in)
+		}
+		if err := a.checkAgentUse(ctx, tenant, in.AgentID); err != nil {
+			return agentruntime.Run{}, err
+		}
+		return a.resumeExisting(ctx, existing, in)
+	}
+	if !errors.Is(lookupErr, gorm.ErrRecordNotFound) {
+		return agentruntime.Run{}, lookupErr
+	}
+	if err := a.checkAgentUse(ctx, tenant, in.AgentID); err != nil {
+		return agentruntime.Run{}, err
 	}
 	if err := a.requests.CreatePending(ctx, req); err != nil {
 		existing, getErr := a.requests.Get(ctx, tenant, actor, in.RequestID)
@@ -344,9 +355,22 @@ func (a *AdmissionCoordinator) Start(ctx context.Context, in StartInput) (agentr
 		if existing.RequestHash != hash {
 			return agentruntime.Run{}, agentruntime.ErrConflict
 		}
+		if existing.State == "admitted" || existing.State == "dispatching" || existing.State == "rejected" {
+			return a.resumeExisting(ctx, existing, in)
+		}
+		if gateErr := a.checkAgentUse(ctx, tenant, in.AgentID); gateErr != nil {
+			return agentruntime.Run{}, gateErr
+		}
 		return a.resumeExisting(ctx, existing, in)
 	}
 	return a.admitPending(ctx, req, in)
+}
+
+func (a *AdmissionCoordinator) checkAgentUse(ctx context.Context, tenant uint64, agentID string) error {
+	if a.agentUseGate == nil || strings.TrimSpace(agentID) == "" {
+		return nil
+	}
+	return a.agentUseGate(ctx, tenant, agentID)
 }
 
 func (a *AdmissionCoordinator) resumeExisting(ctx context.Context, req repository.WorkbenchRequest, in StartInput) (agentruntime.Run, error) {
@@ -445,8 +469,15 @@ func (a *AdmissionCoordinator) admitPending(ctx context.Context, req repository.
 	assistantID := uuid.NewString()
 	userMessage, _ := json.Marshal(map[string]any{"role": "user", "content": in.Text})
 	assistantMessage, _ := json.Marshal(map[string]any{"role": "assistant", "content": ""})
-	run, err = a.runs.Admit(ctx, agentruntime.Admission{Key: agentruntime.RunKey{TenantID: req.TenantID, RunID: runID}, SessionID: in.SessionID, UserID: req.ActorID, RequestID: in.RequestID, AssistantMessageID: assistantID, Driver: "platform", TargetID: "platform", BudgetRef: reservation, RequestHash: req.RequestHash, Snapshot: snapshot, UserMessage: userMessage, AssistantMessage: assistantMessage, Deadline: deadline, ParentRunID: binding.ParentRunID, UsageCredentialVersion: binding.CredentialVersion, UsageSource: binding.Source, UsageFunding: binding.Funding, UsageService: binding.Service, UsagePriceVersion: binding.PriceVersion, UsageUpper: binding.Upper, UsageRevision: binding.Revision, UsageStatus: binding.Status, UsageDimensions: binding.Dimensions})
+	run, err = a.runs.Admit(ctx, agentruntime.Admission{Key: agentruntime.RunKey{TenantID: req.TenantID, RunID: runID}, SessionID: in.SessionID, AgentID: in.AgentID, UserID: req.ActorID, RequestID: in.RequestID, AssistantMessageID: assistantID, Driver: "platform", TargetID: "platform", BudgetRef: reservation, RequestHash: req.RequestHash, Snapshot: snapshot, UserMessage: userMessage, AssistantMessage: assistantMessage, Deadline: deadline, ParentRunID: binding.ParentRunID, UsageCredentialVersion: binding.CredentialVersion, UsageSource: binding.Source, UsageFunding: binding.Funding, UsageService: binding.Service, UsagePriceVersion: binding.PriceVersion, UsageUpper: binding.Upper, UsageRevision: binding.Revision, UsageStatus: binding.Status, UsageDimensions: binding.Dimensions})
 	if err != nil {
+		if errors.Is(err, agentruntime.ErrAgentUseDenied) {
+			denial := fmt.Errorf("%w: %v", ErrAgentUseDenied, err)
+			if updateErr := a.requests.UpdatePending(ctx, req, "rejected", reservation, "", denial.Error()); updateErr == nil {
+				_ = a.budget.ReleaseUnstarted(ctx, reservation)
+			}
+			return agentruntime.Run{}, denial
+		}
 		_ = a.requests.UpdatePending(ctx, req, "rejected", reservation, "", err.Error())
 		_ = a.budget.ReleaseUnstarted(ctx, reservation)
 		return agentruntime.Run{}, err

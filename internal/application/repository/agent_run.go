@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
@@ -218,6 +219,28 @@ func (s *AgentRunStore) Admit(ctx context.Context, in agentruntime.Admission) (a
 		}
 		if !errors.Is(e, gorm.ErrRecordNotFound) {
 			return e
+		}
+		if strings.TrimSpace(in.AgentID) != "" {
+			// Serialize against RetireVariant before reading lifecycle state. The
+			// no-op UPDATE locks every matching tenant-local variant row on
+			// PostgreSQL and acquires SQLite's writer reservation. RetireVariant
+			// updates the same row, so one transaction must observe the other's
+			// committed state before deciding whether NEW work can be admitted.
+			lockAgent := tx.Table("agent_adoption_variants").
+				Where("tenant_id = ? AND local_agent_id = ?", in.Key.TenantID, in.AgentID).
+				UpdateColumn("state", gorm.Expr("state"))
+			if lockAgent.Error != nil {
+				return lockAgent.Error
+			}
+			var retired int64
+			if err := tx.Table("agent_adoption_variants").
+				Where("tenant_id = ? AND local_agent_id = ? AND state = ?", in.Key.TenantID, in.AgentID, "retired").
+				Count(&retired).Error; err != nil {
+				return err
+			}
+			if retired > 0 {
+				return agentruntime.ErrAgentUseDenied
+			}
 		}
 		slot := tx.Table("sessions").Where("tenant_id = ? AND id = ? AND active_agent_run_id IS NULL",
 			in.Key.TenantID, in.SessionID).UpdateColumn("active_agent_run_id", in.Key.RunID)
