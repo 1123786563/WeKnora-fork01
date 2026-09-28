@@ -90,11 +90,10 @@ func validateOutboundHostWithBypass(rawURL string, allowLoopback bool) error {
 	default:
 		return fmt.Errorf("outbound scheme %q not allowed", parsed.Scheme)
 	}
-	host := parsed.Hostname()
-	if strings.EqualFold(host, "localhost") || strings.HasSuffix(strings.ToLower(host), ".localhost") {
-		return nil
-	}
-	if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+	// (OCR84-R1-11) The loopback admission reuses outboundHostIsLoopback —
+	// ONE shared loopback-shape implementation, the same one the startup
+	// posture guard uses; two copies of the shape would drift apart.
+	if outboundHostIsLoopback(rawURL) {
 		return nil
 	}
 	return validateOutboundHost(rawURL)

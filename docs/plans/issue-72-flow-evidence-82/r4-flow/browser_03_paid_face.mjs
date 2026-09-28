@@ -26,8 +26,11 @@ const note = (step, ok, detail) => {
 };
 
 const browser = await chromium.launch();
+// (OCR84-R1-19) 基础设施失败（登录被拒/选择器超时/导航错误）可区分地落 note +
+// 截图并仍打印 RESULT——裸栈退出会吞掉 RESULT 行（browser_02/04 已实现该契约）。
+let page;
 try {
-  const page = await (await browser.newContext()).newPage();
+  page = await (await browser.newContext()).newPage();
   page.setDefaultTimeout(45000);
   await page.goto(`${WEB}/login`);
   await page.fill('#auth-email', EMAIL);
@@ -53,6 +56,9 @@ try {
   note('billing-paid-awaiting-activation', billing.includes('已付款待激活') && !billing.includes('已生效'),
     `billing plan row: ${billing.split('\n').find((l) => l.includes('已付款待激活')) ?? '(absent)'}`);
   await page.screenshot({ path: `${EV}05-billing-paid-awaiting-activation.png`, fullPage: true });
+} catch (error) {
+  note('script-error', false, String(error?.stack ?? error));
+  try { if (page) await page.screenshot({ path: `${EV}04-script-error.png`, fullPage: true }); } catch { /* page may be unusable */ }
 } finally {
   await browser.close();
 }

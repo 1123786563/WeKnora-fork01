@@ -3,6 +3,7 @@ package commercial
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -110,7 +111,7 @@ func setupFulfillment(t *testing.T, gw domain.CommercialGateway) (*FulfillmentSe
 		s.SetMaxOpenConns(1) // serialize SQLite writers; claims still race logically
 	}
 	if err := db.AutoMigrate(&repocommercial.OrderRow{}, &repocommercial.PaymentAttemptRow{},
-		&repocommercial.OutboxEvent{}, &repocommercial.PaymentAnomalyRow{}); err != nil {
+		&repocommercial.OutboxEvent{}, &repocommercial.PaymentAnomalyRow{}, &repocommercial.QuoteRow{}); err != nil {
 		t.Fatal(err)
 	}
 	store := repocommercial.NewOrderStore(db)
@@ -171,6 +172,77 @@ func fulfillEvents(t *testing.T, db *gorm.DB) []repocommercial.OutboxEvent {
 		t.Fatal(err)
 	}
 	return events
+}
+
+// TestFulfillEventKeepsPendingWhenDiscriminationUnprovable（OCR84-R1-05 high）：
+// isSubscriptionPurchase 是三态判定——「无法证明是订阅购买」绝不等于「证明不是」。
+// 报价行读取失败（非 NotFound 的瞬时 DB 故障）与 SnapshotJSON 解析失败都必须让
+// 事件保持 pending，绝不能落穿进充值结算：误路由一次即不可恢复（按簿记汇率折算
+// 额度 + MarkFulfilled + 事件 Sent，此后无任何路径回到 settle/observe/grant 链）。
+func TestFulfillEventKeepsPendingWhenDiscriminationUnprovable(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		inject func(t *testing.T, db *gorm.DB)
+	}{
+		{"corrupt quote snapshot", func(t *testing.T, db *gorm.DB) {
+			if err := db.Create(&repocommercial.QuoteRow{
+				ID: "q_ord_disc", TenantID: 71, SubscriptionVersion: 1,
+				SnapshotJSON: `{"line_items":[`, // 解析必然失败
+			}).Error; err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"quote read failure", func(t *testing.T, db *gorm.DB) {
+			// 非 NotFound 的读取错误：表被移走，First 直接报错。
+			if err := db.Migrator().DropTable(&repocommercial.QuoteRow{}); err != nil {
+				t.Fatal(err)
+			}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			gw := &stubGateway{findable: true}
+			svc, db, store := setupFulfillment(t, gw)
+			if err := db.AutoMigrate(&repocommercial.QuoteRow{}); err != nil {
+				t.Fatal(err)
+			}
+			ctx := context.Background()
+			if err := store.CreateOrder(ctx, repocommercial.OrderRow{
+				ID: "ord_disc", TenantID: 71, QuoteID: "q_ord_disc", Kind: domain.OrderKindPurchase,
+				AmountFen: 9900, Currency: domain.CurrencyCNY,
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if err := store.RegisterAttempt(ctx, repocommercial.PaymentAttemptRow{
+				ID: "att_ord_disc", TenantID: 71, OrderID: "ord_disc", Provider: "alipay", Merchant: "weknora",
+				MerchantOrderID: "mo_ord_disc", AmountFen: 9900, Currency: domain.CurrencyCNY,
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if err := store.ConfirmPayment(ctx, domain.PaymentFact{
+				TenantID: 71, OrderID: "ord_disc", AttemptID: "mo_ord_disc", Provider: "alipay", Merchant: "weknora",
+				Transaction: "txn_ord_disc", Amount: domain.CNYFen(9900), Currency: domain.CurrencyCNY, State: "succeeded",
+			}); err != nil {
+				t.Fatal(err)
+			}
+			tc.inject(t, db)
+			if err := svc.Recover(ctx); err != nil {
+				t.Fatalf("drain: %v", err)
+			}
+			// 订单绝不能被充值结算误路由成 fulfilled。
+			if state := orderState(t, db, "ord_disc"); state != domain.OrderStatePaid {
+				t.Fatalf("unprovable discrimination must NOT fulfill (top-up misroute), got state=%q", state)
+			}
+			// 事件必须保持 pending（等待下一次 drain 重试判别）。
+			events := fulfillEvents(t, db)
+			if len(events) != 1 || events[0].State != repocommercial.OutboxStatePending {
+				t.Fatalf("the fulfill event must stay pending, got %+v", events)
+			}
+			// 充值腿的 gateway 授予一次都不能发生。
+			if n := gw.appliedCount(); n != 0 {
+				t.Fatalf("no top-up grant may fire while discrimination is unprovable, got %d applies", n)
+			}
+		})
+	}
 }
 
 // TestFulfillmentWorkerSavedThenDroppedRecoversExactlyOnce: the gateway saves
@@ -518,6 +590,84 @@ func TestOverPaymentDrainConsumesEventIntoAwaitingDisposal(t *testing.T) {
 	}
 	if s := orderState(t, db, orderID); s != domain.OrderStateFulfilled {
 		t.Fatalf("the first payment must still fulfill the order exactly once, got %s", s)
+	}
+}
+
+// TestOverPaymentAnomalyCarriesMerchantOrderID（OCR84-R1-13 medium）：
+// PaymentAnomalyRow.AttemptID 列的文档语义是 merchant_order_id（mo_ 渠道身份），
+// 同表另两个写入方（buildMismatchAnomaly / recoverMismatchedCollection）写的都是
+// mo_ 前缀。新 over_payment 载荷内联携带 merchant_order_id；缺该键的旧载荷由
+// disposeOverPayment 回读 attempt 行取回——两条路径都不允许把 att_ 内部主键写进
+// 该列（运营按 merchant_order_id 关联渠道单据时对不上的口径分裂）。
+func TestOverPaymentAnomalyCarriesMerchantOrderID(t *testing.T) {
+	gw := &stubGateway{findable: true}
+	svc, db, store := setupFulfillment(t, gw)
+	ctx := context.Background()
+	const orderID = "ord-over-mid"
+	seedPaidOrder(t, store, orderID, 7, 9900)
+	seedSecondChannelSuccess(t, store, orderID, 7, 9900)
+	// 先把 over_payment 事件载荷改写为旧形态（剥掉 merchant_order_id 键），
+	// 验证回读兜底；随后再以内联载荷路径复验（同一断言面）。
+	ev := overPaymentEvent(t, db)
+	var fields map[string]any
+	if err := json.Unmarshal([]byte(ev.PayloadJSON), &fields); err != nil {
+		t.Fatal(err)
+	}
+	delete(fields, "merchant_order_id")
+	legacy, err := json.Marshal(fields)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Model(&repocommercial.OutboxEvent{}).Where("event_key = ?", ev.EventKey).
+		Update("payload_json", string(legacy)).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Recover(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var anomaly repocommercial.PaymentAnomalyRow
+	if err := db.Where("order_id = ?", orderID).First(&anomaly).Error; err != nil {
+		t.Fatal(err)
+	}
+	if anomaly.AttemptID != "mo2-"+orderID {
+		t.Fatalf("legacy payload: the anomaly attempt_id must recover the mo_ channel identity by attempt re-read, got %q", anomaly.AttemptID)
+	}
+	// 内联载荷路径：重放一笔新的 over_payment（第二个渠道成功），事件载荷现在
+	// 自带 merchant_order_id，直接落 mo_ 身份。
+	seedSecondChannelSuccessOn(t, store, orderID, 7, 9900, "mo3-"+orderID, "txn3-"+orderID)
+	if err := svc.Recover(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var anomalies []repocommercial.PaymentAnomalyRow
+	if err := db.Where("order_id = ?", orderID).Find(&anomalies).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(anomalies) != 2 {
+		t.Fatalf("expect the inline-payload over_payment to land its own anomaly row, got %+v", anomalies)
+	}
+	for _, row := range anomalies {
+		if !strings.HasPrefix(row.AttemptID, "mo") {
+			t.Fatalf("every over_payment anomaly must carry a mo_ identity, got %+v", anomalies)
+		}
+	}
+}
+
+// seedSecondChannelSuccessOn 是 seedSecondChannelSuccess 的可参数化变体
+// （第三个渠道成功：独立 merchant order / transaction 身份）。
+func seedSecondChannelSuccessOn(t *testing.T, store *repocommercial.OrderStore, orderID string, tenant uint64, amountFen int64, merchantOrderID, txn string) {
+	t.Helper()
+	ctx := context.Background()
+	if err := store.RegisterAttempt(ctx, repocommercial.PaymentAttemptRow{
+		ID: "att-" + merchantOrderID, TenantID: tenant, OrderID: orderID, Provider: "alipay", Merchant: "weknora",
+		MerchantOrderID: merchantOrderID, AmountFen: amountFen, Currency: "CNY",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.ConfirmPayment(ctx, domain.PaymentFact{
+		TenantID: tenant, OrderID: orderID, AttemptID: merchantOrderID, Provider: "alipay", Merchant: "weknora",
+		Transaction: txn, Amount: domain.CNYFen(amountFen), Currency: "CNY", State: "succeeded",
+	}); err != nil {
+		t.Fatal(err)
 	}
 }
 

@@ -3,8 +3,10 @@
 # 照 seed_83.sh 形态：注册主角（a=浏览器/购买人，b=平台发布人）、发布 pro 9900、
 # 断言发布落地 Lago（:48889, 82r5 栈）。凭据经 env 注入（FLOW84_PW）。
 set -euo pipefail
-cd "$(dirname "$0")/../../.."   # worktree root
+# (OCR84-R1-18 同型) EV 先于 cd 解析：cd 后基于相对 $0 的二次解析在 ./seed_84.sh
+# 相对调用时会把 EV 静默变成仓库根，证据文件全部落错位置。
 EV="$(cd "$(dirname "$0")" && pwd)"
+cd "$EV/../../.."   # worktree root
 BACKEND=http://127.0.0.1:8096
 DB_PATH="${FLOW84_DB:-data/issue84-flow.db}"
 PW="${FLOW84_PW:?missing required env FLOW84_PW}"
@@ -61,12 +63,31 @@ say "tenant B (publisher) = $TENANT_B, user id = $UID_B"
 [ "$TENANT_A" != "null" ] && [ "$TENANT_B" != "null" ] || { say "FAIL: login token/tenant missing"; exit 1; }
 
 uuid_shape() { [[ "$1" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]]; }
-uuid_shape "$UID_B" || { say "FAIL: user id not a UUID — refusing SQL interpolation"; exit 1; }
+# (OCR84-R1-17) uuid_shape 保留为纵深防御/快速失败前置；真正的注入防线是下方
+# python3 sqlite3 的 ? 参数绑定——外部输入不再以字符串拼接进入任何语句。
+uuid_shape "$UID_B" || { say "FAIL: user id not a UUID — refusing further processing"; exit 1; }
 
 say "== grants: plan_publish (B) + refund_review (B) at platform scope =="
-sqlite3 "$DB_PATH" "insert or replace into commercial_grants (tenant_id, user_id, capability, granted_by, version) values (0, '$UID_B', 'plan_publish', 'flow-verifier-84', 1);"
-sqlite3 "$DB_PATH" "insert or replace into commercial_grants (tenant_id, user_id, capability, granted_by, version) values (0, '$UID_B', 'refund_review', 'flow-verifier-84', 1);"
-say "granted: $(sqlite3 "$DB_PATH" "select count(*) from commercial_grants where user_id='$UID_B';") row(s) for B"
+# (OCR84-R1-17 / safety constraint) 数据库查询一律参数绑定：写入/计数经 python3
+# sqlite3 的 ? 占位符，$UID_B 不再插值进 SQL 文本。
+GRANT_N=$(python3 - "$DB_PATH" "$UID_B" <<'PY'
+import sqlite3, sys
+db, uid = sys.argv[1], sys.argv[2]
+conn = sqlite3.connect(db)
+with conn:
+    for cap in ("plan_publish", "refund_review"):
+        conn.execute(
+            "insert or replace into commercial_grants (tenant_id, user_id, capability, granted_by, version)"
+            " values (0, ?, ?, 'flow-verifier-84', 1)",
+            (uid, cap),
+        )
+print(conn.execute(
+    "select count(*) from commercial_grants where user_id = ?",
+    (uid,),
+).fetchone()[0])
+PY
+) || { say "FAIL: grants write/read failed (python3 sqlite3, db=$DB_PATH)"; exit 1; }
+say "granted: $GRANT_N row(s) for B"
 
 say "== draft + publish plan pro v1 (9900 CNY monthly, advanced_models) =="
 curl -s -X POST "$BACKEND/api/v1/admin/plans/drafts" \

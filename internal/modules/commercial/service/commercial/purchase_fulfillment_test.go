@@ -652,6 +652,64 @@ func TestPurchaseFulfillPublicationMissingTurnsAttentionNotAbort(t *testing.T) {
 	}
 }
 
+// TestPurchaseFulfillSucceededAttemptFailureClassified（OCR84-R1-14 medium）：
+// succeededAttempt 的错误必须按 r2:119/A-32 纪律分流——修复前任何错误（含确定性
+// 形状与瞬时 DB 故障）直接 return err，FulfillmentService.Recover 对 fulfill 事件
+// 错误整批中止：确定性形状每轮永久阻断整批，瞬时故障饿死同批后续事件（充值履约
+// 与 over_payment 处置）。分流后：①确定性数据缺口（无 succeeded attempt / 无渠道
+// 流水）落 attention + nil；②瞬时读故障 nil 保留 pending。
+func TestPurchaseFulfillSucceededAttemptFailureClassified(t *testing.T) {
+	subSnap := mustJSON(t, map[string]any{
+		"plan_key": "weknora-pro", "plan_version": int64(1), "price_fen": int64(9900),
+		"credits_micro": int64(9_900_000), "currency": domain.CurrencyCNY,
+		"line_items": []map[string]any{{"kind": "subscription_fee", "name": "weknora-pro", "amount_fen": int64(9900)}},
+	})
+	t.Run("deterministic no-succeeded-attempt turns attention", func(t *testing.T) {
+		_, svc, _, db, store := setupPurchaseFulfillment(t)
+		const tenant = uint64(86)
+		seedPaidOrderRaw(t, store, db, tenant, "ord-86", subSnap, 9900, true)
+		// 拿掉 succeeded 形态：attempt 退回 pending（无 succeeded attempt 可读）。
+		if err := db.Model(&repocommercial.PaymentAttemptRow{}).
+			Where("order_id = ?", "ord-86").
+			Update("state", repocommercial.PaymentAttemptStatePending).Error; err != nil {
+			t.Fatal(err)
+		}
+		if err := svc.Recover(context.Background()); err != nil {
+			t.Fatalf("a deterministic no-succeeded-attempt gap must NOT abort the drain pass, got %v", err)
+		}
+		if state := orderState(t, db, "ord-86"); state == domain.OrderStateFulfilled {
+			t.Fatal("a no-succeeded-attempt purchase must never reach fulfilled")
+		}
+		recs := fulfillmentRecords(t, db, "ord-86")
+		if len(recs) != 1 || recs[0].State != domain.FulfillmentStateAttention {
+			t.Fatalf("a deterministic no-succeeded-attempt gap must surface attention, got %+v", recs)
+		}
+	})
+	t.Run("transient attempt read failure stays pending", func(t *testing.T) {
+		_, svc, _, db, store := setupPurchaseFulfillment(t)
+		const tenant = uint64(87)
+		seedPaidOrderRaw(t, store, db, tenant, "ord-87", subSnap, 9900, true)
+		// 瞬时 DB 故障注入：attempts 表不可读。
+		if err := db.Migrator().DropTable(&repocommercial.PaymentAttemptRow{}); err != nil {
+			t.Fatal(err)
+		}
+		if err := svc.Recover(context.Background()); err != nil {
+			t.Fatalf("a transient attempt read failure must NOT abort the drain pass, got %v", err)
+		}
+		if state := orderState(t, db, "ord-87"); state != domain.OrderStatePaid {
+			t.Fatalf("a transient failure must leave the order paid (no grant), got %q", state)
+		}
+		events := fulfillEvents(t, db)
+		if len(events) != 1 || events[0].State != repocommercial.OutboxStatePending {
+			t.Fatalf("a transient failure must keep the event pending, got %+v", events)
+		}
+		recs := fulfillmentRecords(t, db, "ord-87")
+		if len(recs) != 0 {
+			t.Fatalf("a transient failure must not mint an attention record, got %+v", recs)
+		}
+	})
+}
+
 // TestPurchaseFulfillQuoteSnapshotCorruptTurnsAttention（r2:119）：quote 的
 // SnapshotJSON 非法（快照损坏——确定性形状）同姿态：attention + nil，不上抛、
 // 不 panic、不中止共享 drain。

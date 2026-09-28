@@ -167,9 +167,25 @@ func (p *PurchaseFulfiller) Fulfill(ctx context.Context, ev repocommercial.Outbo
 	}
 
 	// The verified channel transaction is the settle idempotency anchor.
+	// (OCR84-R1-14) The attempt read's failure is CLASSIFIED like the quote
+	// and snapshot reads above (the r2:119/A-32 discipline): the file's own
+	// comment names a raw return here "the most expensive silent failure" —
+	// it aborts the whole shared drain batch (fulfillment.go Recover stops
+	// at the first error), so a deterministic shape re-failed EVERY pass
+	// forever and a transient DB blip starved the batch's later events
+	// (ordinary top-ups and over_payment disposes) one drain cycle.
 	attempt, err := p.succeededAttempt(ctx, order.ID)
 	if err != nil {
-		return err
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return err // the drain pass itself is ending: propagate
+		}
+		if errors.Is(err, errNoSucceededAttempt) || errors.Is(err, errAttemptWithoutChannelTransaction) {
+			// Deterministic data gap on a PAID purchase order — attention
+			// (the operations face), never a grant and never a batch abort.
+			return p.markActivationState(ctx, order.ID, order.TenantID, domain.FulfillmentStateAttention)
+		}
+		logger.Warnf(ctx, "[CommercialFulfillment] purchase %s succeeded attempt read failed (event stays pending): %v", order.ID, err)
+		return nil // transient DB failure: the event stays pending
 	}
 
 	// ② The settle rail (provider rails only; activation is the built-in
@@ -319,21 +335,32 @@ func (p *PurchaseFulfiller) Fulfill(ctx context.Context, ev repocommercial.Outbo
 	return p.orders.MarkFulfilled(ctx, order.ID)
 }
 
+// Deterministic succeeded-attempt data-gap shapes (OCR84-R1-14): they land
+// attention (the operations face) instead of aborting the shared drain
+// batch; every other read failure stays a transient pending.
+var (
+	errNoSucceededAttempt               = errors.New("purchase order has no succeeded attempt")
+	errAttemptWithoutChannelTransaction = errors.New("succeeded attempt carries no channel transaction")
+)
+
 // succeededAttempt reads the order's one succeeded channel transaction (the
-// settle idempotency anchor; ConfirmPayment recorded it).
+// settle idempotency anchor; ConfirmPayment recorded it). Deterministic
+// data gaps wrap the package sentinels (classified by the caller); any
+// other read failure propagates as a TRANSIENT error the caller keeps
+// pending.
 func (p *PurchaseFulfiller) succeededAttempt(ctx context.Context, orderID string) (string, error) {
 	var att repocommercial.PaymentAttemptRow
 	err := p.db.WithContext(ctx).
 		Where("order_id = ? AND state = ?", orderID, repocommercial.PaymentAttemptStateSucceeded).
 		Order("id").First(&att).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return "", fmt.Errorf("purchase order %s has no succeeded attempt", orderID)
+		return "", fmt.Errorf("%w: %s", errNoSucceededAttempt, orderID)
 	}
 	if err != nil {
 		return "", err
 	}
 	if att.ProviderTransactionID == nil || *att.ProviderTransactionID == "" {
-		return "", fmt.Errorf("purchase order %s succeeded attempt carries no channel transaction", orderID)
+		return "", fmt.Errorf("%w: %s", errAttemptWithoutChannelTransaction, orderID)
 	}
 	return *att.ProviderTransactionID, nil
 }

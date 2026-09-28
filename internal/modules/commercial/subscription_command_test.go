@@ -2,6 +2,7 @@ package commercial
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -350,11 +351,14 @@ func TestMonthlyWalletPriorityYieldsToAgingTopUp(t *testing.T) {
 // static priority encoding can express it (initials give A=2,B=2,M=3, which
 // Lago would consume A→B→M). WalletRank must answer A=1, M=2, B=3.
 func TestWalletRankMixedFamilies(t *testing.T) {
-	got := WalletRank([]WalletRankInput{
+	got, err := WalletRank([]WalletRankInput{
 		{WalletRef: "B", ExpiresAt: time.Date(2027, 7, 10, 0, 0, 0, 0, time.UTC), GrantedAt: time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)},
 		{WalletRef: "M", ExpiresAt: time.Date(2027, 1, 31, 0, 0, 0, 0, time.UTC), GrantedAt: time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC)},
 		{WalletRef: "A", ExpiresAt: time.Date(2027, 1, 15, 0, 0, 0, 0, time.UTC), GrantedAt: time.Date(2026, 1, 15, 0, 0, 0, 0, time.UTC)},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if got["A"] != 1 || got["M"] != 2 || got["B"] != 3 {
 		t.Fatalf("mixed-family rank = %+v, want A=1 M=2 B=3", got)
 	}
@@ -364,12 +368,51 @@ func TestWalletRankMixedFamilies(t *testing.T) {
 // by grant time (the spec's "earliest grant" tie-break).
 func TestWalletRankSameExpiryEarliestGrant(t *testing.T) {
 	exp := time.Date(2027, 3, 31, 0, 0, 0, 0, time.UTC)
-	got := WalletRank([]WalletRankInput{
+	got, err := WalletRank([]WalletRankInput{
 		{WalletRef: "late", ExpiresAt: exp, GrantedAt: exp.Add(-1 * time.Hour)},
 		{WalletRef: "early", ExpiresAt: exp, GrantedAt: exp.Add(-2 * time.Hour)},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if got["early"] != 1 || got["late"] != 2 {
 		t.Fatalf("same-expiry rank = %+v", got)
+	}
+}
+
+// TestWalletRankFailsClosedOutsidePriorityDomain（OCR84-R1-09）：排名 1..n 无
+// 上界，而同一字段在 GrantIncludedCreditsPayload.Validate 被约束为
+// [1,MaxWalletPriority]——#86 十二个月 TTL 使活跃钱包累积，超界后 rebalance
+// 若照写即写出文档域外优先级（权威拒绝→反复失败落 attention；接受→本地契约
+// 静默失真）。重复 WalletRef（map 键，E3 恢复异常路径的同名形态）也必须显式
+// 报错，不允许后写静默覆盖前写。
+func TestWalletRankFailsClosedOutsidePriorityDomain(t *testing.T) {
+	base := time.Date(2027, 6, 1, 0, 0, 0, 0, time.UTC)
+	many := make([]WalletRankInput, 0, MaxWalletPriority+1)
+	for i := 0; i <= MaxWalletPriority; i++ { // 51 batches → rank 51 out of domain
+		many = append(many, WalletRankInput{
+			WalletRef: fmt.Sprintf("w_%03d", i), ExpiresAt: base, GrantedAt: base,
+		})
+	}
+	if _, err := WalletRank(many); err == nil {
+		t.Fatalf("%d batches exceed the priority domain and must fail closed", len(many))
+	}
+	// 恰好在界内（50 批）仍是合法排名。
+	inDomain := many[:MaxWalletPriority]
+	ranks, err := WalletRank(inDomain)
+	if err != nil {
+		t.Fatalf("exactly %d batches must rank legally, got %v", MaxWalletPriority, err)
+	}
+	if len(ranks) != MaxWalletPriority || ranks["w_000"] != 1 {
+		t.Fatalf("in-domain rank answer = %+v", ranks)
+	}
+	// 重复 WalletRef：显式报错。
+	dup := []WalletRankInput{
+		{WalletRef: "same", ExpiresAt: base, GrantedAt: base},
+		{WalletRef: "same", ExpiresAt: base.Add(time.Hour), GrantedAt: base},
+	}
+	if _, err := WalletRank(dup); err == nil {
+		t.Fatal("duplicate wallet refs must be refused, not silently overwritten")
 	}
 }
 

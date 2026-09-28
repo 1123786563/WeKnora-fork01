@@ -352,8 +352,13 @@ func (s *OrderStore) CurrentPurchaseOrder(ctx context.Context, tenantID uint64, 
 		// real paid order of the same price face (the caller would project a
 		// permanently-pending dead order and MISS the paid_awaiting_activation
 		// synthesis window). The pending preference carries the SAME payable
-		// predicate as CurrentPendingPurchaseOrder.
-		if row.State == domain.OrderStatePending && !row.ChannelFailed {
+		// predicate as CurrentPendingPurchaseOrder — including the persisted
+		// checkout_url (OCR84-R1-03: a persistence-degraded row whose channel
+		// Create succeeded but whose SetCheckoutURL failed carries
+		// channel_failed=false with an EMPTY link and is just as unpayable;
+		// letting it win projected a link-less permanent pending order that
+		// shadowed a same-price paid order until the stale-linkless sweep).
+		if row.State == domain.OrderStatePending && !row.ChannelFailed && row.CheckoutURL != "" {
 			return row, nil
 		}
 	}
@@ -656,16 +661,24 @@ func registerAttemptTx(tx *gorm.DB, row PaymentAttemptRow) error {
 }
 
 type paymentEventPayload struct {
-	OrderID     string `json:"order_id"`
-	QuoteID     string `json:"quote_id"`
-	TenantID    uint64 `json:"tenant_id"`
-	AttemptID   string `json:"attempt_id"`
-	Provider    string `json:"provider"`
-	Merchant    string `json:"merchant"`
-	Transaction string `json:"transaction"`
-	AmountFen   int64  `json:"amount_fen"`
-	Currency    string `json:"currency"`
-	Reason      string `json:"reason,omitempty"`
+	OrderID   string `json:"order_id"`
+	QuoteID   string `json:"quote_id"`
+	TenantID  uint64 `json:"tenant_id"`
+	AttemptID string `json:"attempt_id"`
+	// MerchantOrderID (OCR84-R1-13) is the attempt's CHANNEL order identity
+	// (mo_…). The over_payment consumer writes it into
+	// PaymentAnomalyRow.AttemptID — the column whose documented semantics
+	// is merchant_order_id (the other two writers, buildMismatchAnomaly and
+	// recoverMismatchedCollection, already write mo_ ids there). omitempty:
+	// payloads minted before the field carry no key and the consumer falls
+	// back to an attempt re-read.
+	MerchantOrderID string `json:"merchant_order_id,omitempty"`
+	Provider        string `json:"provider"`
+	Merchant        string `json:"merchant"`
+	Transaction     string `json:"transaction"`
+	AmountFen       int64  `json:"amount_fen"`
+	Currency        string `json:"currency"`
+	Reason          string `json:"reason,omitempty"`
 }
 
 func (p paymentEventPayload) toJSON() (string, error) {
@@ -770,6 +783,10 @@ func (s *OrderStore) ConfirmPayment(ctx context.Context, fact domain.PaymentFact
 			Transaction: fact.Transaction,
 			AmountFen:   int64(fact.Amount),
 			Currency:    fact.Currency,
+			// (OCR84-R1-13) The channel order identity rides along so the
+			// over_payment consumer can populate the anomaly's merchant-
+			// order-id-semantics AttemptID column without a re-read.
+			MerchantOrderID: attempt.MerchantOrderID,
 		}
 		if res.RowsAffected == 1 {
 			payloadJSON, err := payload.toJSON()

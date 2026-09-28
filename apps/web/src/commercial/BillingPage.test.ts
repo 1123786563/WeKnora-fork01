@@ -12,6 +12,7 @@ if (hooks.registerHooks) hooks.registerHooks({ resolve: (specifier, context, nex
 
 import type { CommercialAccountCredits, CommercialSummary, CommercialUsageRow } from '@weknora/contracts';
 const { loadCommercialSummary, loadCommercialUsage, loadCommercialAccount, planDisplayName } = await import('./BillingPage.tsx');
+const { batchExpiringWithin } = await import('./BillingPage.tsx');
 const { parseCommercialAccountCredits } = await import('@weknora/contracts');
 
 function client(summaryOrError: () => Promise<CommercialSummary>, usageOrError: () => Promise<CommercialUsageRow[]>) {
@@ -139,4 +140,52 @@ test('parseCommercialAccountCredits degrades a missing granted_at to empty strin
   // A present granted_at still passes through verbatim.
   const full = parseCommercialAccountCredits(breakdown);
   assert.equal(full.batches[0]?.granted_at, '2026-09-01T00:00:00Z');
+});
+
+// ---- OCR84-R1-04 / R1-16 round ----
+
+// R1-04: the backend benefitsWire emits a credits object even when the
+// projection chain answered credits==nil — batches serializes as null and
+// projected_at carries NO key. The parser must degrade both (projected_at
+// '' like granted_at, null batches → empty array) so api-client account()
+// succeeds and BillingPage hides the card instead of rendering the English
+// parse-error card — the "credits absent → null card hidden, never an
+// error" promise.
+test('parseCommercialAccountCredits degrades the benefitsWire nil-chain shape (batches null, no projected_at)', () => {
+  const degraded = {
+    balance_micro: '0',
+    held_micro: '0',
+    refund_locked_micro: '0',
+    available_micro: '0',
+    batches: null,
+  };
+  const parsed = parseCommercialAccountCredits(degraded);
+  assert.equal(parsed.projected_at, '');
+  assert.equal(parsed.batches.length, 0);
+  // The batches key entirely absent degrades the same way.
+  const absent = { balance_micro: '0', held_micro: '0', refund_locked_micro: '0', available_micro: '0' };
+  const parsed2 = parseCommercialAccountCredits(absent);
+  assert.equal(parsed2.projected_at, '');
+  assert.equal(parsed2.batches.length, 0);
+  // A present projected_at still passes through verbatim; a present
+  // non-array batches value still rejects (strictness kept for real
+  // contract violations).
+  assert.equal(parseCommercialAccountCredits(breakdown).projected_at, '2026-09-28T00:00:00Z');
+  assert.throws(() => parseCommercialAccountCredits({ ...breakdown, batches: 'nope' }));
+});
+
+// R1-16: 已过期批次（exp < now，后端投影对过期 top-up 行保留 balance=0 的行）
+// 不算「近到期」——负差值恒真的下界缺失会把过期行标成近到期。
+test('batchExpiringWithin excludes already-expired batches and keeps the 30d window', () => {
+  const now = new Date('2026-09-28T00:00:00Z');
+  // 已过期（-1 天）：不算近到期。
+  assert.equal(batchExpiringWithin('2026-09-27T00:00:00Z', now), false);
+  // 恰好现在：界内（0 ≤ delta ≤ 30d）。
+  assert.equal(batchExpiringWithin('2026-09-28T00:00:00Z', now), true);
+  // 29 天后：近到期。
+  assert.equal(batchExpiringWithin('2026-10-27T00:00:00Z', now), true);
+  // 31 天后：不算。
+  assert.equal(batchExpiringWithin('2026-10-29T00:00:00Z', now), false);
+  // 不可解析：不算。
+  assert.equal(batchExpiringWithin('not-a-date', now), false);
 });

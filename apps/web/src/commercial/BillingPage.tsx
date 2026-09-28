@@ -69,10 +69,15 @@ export function batchSourceLabel(source: string): string {
   return source === 'topup' ? '充值' : '套餐月度';
 }
 
-/** 批次是否在 30 天内到期（近到期行加标记）。 */
+/** 批次是否在 30 天内到期（近到期行加标记）。已过期（exp < now）不算近到期：
+ * 后端投影对过期 top-up 批次保留行（balance 置 0、ExpiresAt 为过去值仍输出），
+ * 无下界时这些行会被负差值恒真地标成「近到期」而非呈现已过期事实
+ * （OCR84-R1-16）。 */
 export function batchExpiringWithin(expiresAt: string, now: Date = new Date()): boolean {
   const exp = new Date(expiresAt).getTime();
-  return Number.isFinite(exp) && exp - now.getTime() <= 30 * 24 * 3600 * 1000;
+  if (!Number.isFinite(exp)) return false;
+  const delta = exp - now.getTime();
+  return delta >= 0 && delta <= 30 * 24 * 3600 * 1000;
 }
 
 /** 套餐行的显示名：已购空间显示 plan_key，base_tier 空间回退 base_tier_key 或「基础版」。 */

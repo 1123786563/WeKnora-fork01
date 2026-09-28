@@ -9,8 +9,10 @@
 #
 # Credentials are env-injected (no literals in source): FLOW82_R4_PW.
 set -euo pipefail
-cd "$(dirname "$0")/../../../.."   # worktree root (docs/plans/<dir>/<round> -> root)
+# (OCR84-R1-18 同型) EV 先于 cd 解析：cd 后基于相对 $0 的二次解析在 ./seed.sh
+# 相对调用时会把 EV 静默变成仓库根，证据文件全部落错位置。
 EV="$(cd "$(dirname "$0")" && pwd)"   # evidence lands beside this script (per-round dir)
+cd "$EV/../../../.."   # worktree root (docs/plans/<dir>/<round> -> root)
 BACKEND=http://127.0.0.1:8093
 PW="${FLOW82_R4_PW:?missing required env FLOW82_R4_PW}"
 # (OCR r2) DB_PATH pre-flight, BEFORE any registration side effect: unset
@@ -117,15 +119,28 @@ uuid_shape() { [[ "$1" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA
 for v in "$TOKEN_A" "$TOKEN_B"; do
   [ -n "$v" ] && [ "$v" != "null" ] || { say "FAIL: login response token missing/null"; exit 1; }
 done
-uuid_shape "$UID_B" || { say "FAIL: login response user id is not a UUID ('$UID_B') — refusing SQL interpolation"; exit 1; }
+uuid_shape "$UID_B" || { say "FAIL: login response user id is not a UUID ('$UID_B') — refusing further processing"; exit 1; }
 
 say "== grant plan_publish to B at platform scope (seed row) =="
-# (OCR r2 / safety constraint) The shell's sqlite3 CLI has NO usable
-# parameter binding for statement values; the STRICT UUID whitelist above
-# (uuid_shape, provably [0-9a-f-]{36}) is the injection gate before the
-# value ever reaches the statement.
-sqlite3 "$DB" "insert or replace into commercial_grants (tenant_id, user_id, capability, granted_by, version) values (0, '$UID_B', 'plan_publish', 'flow-verifier-r4', 1);"
-say "granted: $(sqlite3 "$DB" "select count(*) from commercial_grants where capability='plan_publish' and user_id='$UID_B';") row(s)"
+# (OCR84-R1-17 同型 / safety constraint) 外部输入一律参数绑定：写入/计数改经
+# python3 sqlite3 的 ? 占位符——uuid_shape 白名单保留为纵深防御前置。
+GRANT_N=$(python3 - "$DB" "$UID_B" <<'PY'
+import sqlite3, sys
+db, uid = sys.argv[1], sys.argv[2]
+conn = sqlite3.connect(db)
+with conn:
+    conn.execute(
+        "insert or replace into commercial_grants (tenant_id, user_id, capability, granted_by, version)"
+        " values (0, ?, 'plan_publish', 'flow-verifier-r4', 1)",
+        (uid,),
+    )
+print(conn.execute(
+    "select count(*) from commercial_grants where capability='plan_publish' and user_id = ?",
+    (uid,),
+).fetchone()[0])
+PY
+) || { say "FAIL: grant write/read failed (python3 sqlite3, db=$DB)"; exit 1; }
+say "granted: $GRANT_N row(s)"
 
 say "== read Lago 9900-plan baseline (BEFORE this round's publish) =="
 # (A-09) The 82flow Lago stack is shared across rounds — "a 9900 plan

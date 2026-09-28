@@ -21,7 +21,13 @@ if [ -n "$STORED" ]; then
 fi
 
 # Mint through the same Stripe API RegisterWebhookService uses; prune stale
-# weknora-described endpoints first (Stripe caps test endpoints at 16).
+# endpoints minted by THIS script first (Stripe caps test endpoints at 16).
+# (OCR84-R1-31) prune 条件收窄到本轮自己的标记：原条件「description 含 weknora
+# 即删」会波及共用同一 Stripe 测试账号的 t11 实验（phases.py 铸造的
+# "weknora t11 local settle probe…"）与 t9（"weknora t9 integration secret-mint
+# stand-in…"）端点——破坏它们记录在 state 里的 endpoint_id 清理链与 harness
+# 投递。本脚本自己铸造的端点带唯一标记：description 含 'weknora r4' 或 URL 以
+# /webhooks/stripe/r4 结尾。
 SECRET=$(python3 - <<'PY'
 import base64, json, os, sys, urllib.parse, urllib.request
 key = os.environ["STRIPE_SECRET_KEY"]
@@ -30,9 +36,13 @@ opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 with opener.open(urllib.request.Request("https://api.stripe.com/v1/webhook_endpoints?limit=100",
                                         headers={"Authorization": auth}), timeout=30) as r:
     rows = json.loads(r.read().decode()).get("data", [])
+def is_ours(row):
+    desc = str(row.get("description", ""))
+    url = str(row.get("url", ""))
+    return "weknora r4" in desc or url.endswith("/webhooks/stripe/r4")
 pruned = 0
 for row in rows:
-    if "weknora" in str(row.get("description", "")):
+    if is_ours(row):
         opener.open(urllib.request.Request("https://api.stripe.com/v1/webhook_endpoints/" + row["id"],
                                            headers={"Authorization": auth}, method="DELETE"),
                     timeout=30).read()

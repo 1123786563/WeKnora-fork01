@@ -446,6 +446,12 @@ func TestAlipayQueryReportsCollectedAmount(t *testing.T) {
 	if res.AmountFen != 5000 {
 		t.Fatalf("query must report total_amount as collected fen, got %d", res.AmountFen)
 	}
+	// (OCR84-R1-10) A parsed total_amount is by definition CNY — the currency
+	// rides along like the wechat leg so the recovery path's wrong-currency
+	// guard actually compares instead of skipping on an empty currency.
+	if res.AmountCurrency != "CNY" {
+		t.Fatalf("a parsed alipay amount must report currency CNY, got %q", res.AmountCurrency)
+	}
 	if res.State != StateSucceeded || res.ProviderID != "trade-amt" {
 		t.Fatalf("state/provider unchanged by the additive field: %+v", res)
 	}
@@ -459,5 +465,8 @@ func TestAlipayQueryReportsCollectedAmount(t *testing.T) {
 	}
 	if res2.AmountFen != 0 {
 		t.Fatalf("an unparsable amount must degrade to 0 (not reported), got %d", res2.AmountFen)
+	}
+	if res2.AmountCurrency != "" {
+		t.Fatalf("an unparsable amount must not report a currency, got %q", res2.AmountCurrency)
 	}
 }

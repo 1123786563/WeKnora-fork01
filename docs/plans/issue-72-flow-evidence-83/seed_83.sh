@@ -74,13 +74,40 @@ TENANT_B=$(jq -r .active_tenant.id "$EV/seed-login-b.json")
 say "tenant A (browser protagonist) = $TENANT_A"
 say "tenant B (publisher) = $TENANT_B, user id = $UID_B"
 [ "$TENANT_A" != "null" ] && [ "$TENANT_B" != "null" ] || { say "FAIL: login token/tenant missing"; exit 1; }
+# (OCR84-R1-29 / C-11) 断言轮次特定事实：PAD 占位的前提是主角租户号越过共享
+# Lago 栈上外部轮已占用的上限——按默认 PAD 重跑时主角落在 tenant 15/16，与
+# 外部轮的 weknora-customer-15/16 在 Lago 侧身份碰撞，act3/act5 会对错误租户
+# 的 Lago 对象做断言，产生误导性 PASS/FAIL。上限经 env 可调（复验轮实测被占
+# 到 34）。
+OCCUPIED_MAX="${FLOW83_LAGO_OCCUPIED_MAX:-12}"
+case "$OCCUPIED_MAX" in ''|*[!0-9]*) say "FAIL: FLOW83_LAGO_OCCUPIED_MAX must be an integer, got '$OCCUPIED_MAX'"; exit 1 ;; esac
+[ "$TENANT_A" -gt "$OCCUPIED_MAX" ] && [ "$TENANT_B" -gt "$OCCUPIED_MAX" ] \
+  || { say "FAIL: protagonists landed on tenants A=$TENANT_A B=$TENANT_B — within the externally occupied range (1..$OCCUPIED_MAX); raise FLOW83_PAD_COUNT or set FLOW83_LAGO_OCCUPIED_MAX to the verified bound"; exit 1; }
+say "protagonist tenants ($TENANT_A/$TENANT_B) are clear of the occupied range (1..$OCCUPIED_MAX)"
 
 uuid_shape() { [[ "$1" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]]; }
-uuid_shape "$UID_B" || { say "FAIL: user id not a UUID — refusing SQL interpolation"; exit 1; }
+# (OCR84-R1-17 同型) uuid_shape 保留为纵深防御前置；注入防线是下方 python3
+# sqlite3 的 ? 参数绑定。
+uuid_shape "$UID_B" || { say "FAIL: user id not a UUID — refusing further processing"; exit 1; }
 
 say "== grant plan_publish to B at platform scope (seed row) =="
-sqlite3 "$DB_PATH" "insert or replace into commercial_grants (tenant_id, user_id, capability, granted_by, version) values (0, '$UID_B', 'plan_publish', 'flow-verifier-83', 1);"
-say "granted: $(sqlite3 "$DB_PATH" "select count(*) from commercial_grants where capability='plan_publish' and user_id='$UID_B';") row(s)"
+GRANT_N=$(python3 - "$DB_PATH" "$UID_B" <<'PY'
+import sqlite3, sys
+db, uid = sys.argv[1], sys.argv[2]
+conn = sqlite3.connect(db)
+with conn:
+    conn.execute(
+        "insert or replace into commercial_grants (tenant_id, user_id, capability, granted_by, version)"
+        " values (0, ?, 'plan_publish', 'flow-verifier-83', 1)",
+        (uid,),
+    )
+print(conn.execute(
+    "select count(*) from commercial_grants where capability='plan_publish' and user_id = ?",
+    (uid,),
+).fetchone()[0])
+PY
+) || { say "FAIL: grant write/read failed (python3 sqlite3, db=$DB_PATH)"; exit 1; }
+say "granted: $GRANT_N row(s)"
 
 say "== draft + publish plan pro v1 (9900 CNY monthly, advanced_models) =="
 curl -s -X POST "$BACKEND/api/v1/admin/plans/drafts" \

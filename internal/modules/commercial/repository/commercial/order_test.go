@@ -316,6 +316,34 @@ func TestCurrentPurchaseOrderPrefersNewestByCreatedAt(t *testing.T) {
 	}
 }
 
+// TestCurrentPurchaseOrderSkipsLinklessPendingDegradedRow（OCR84-R1-03 high）：
+// CurrentPurchaseOrder 的 pending 偏好谓词必须与注释声明的
+// CurrentPendingPurchaseOrder「同一可付谓词」一致——含 checkout_url <> ''。
+// 持久化降级行（渠道 Create 成功但 SetCheckoutURL 失败且不标 channel_failed，
+// R2-27 形态）不携带支付入口：若它赢得偏好，purchase.go 的 orderViewFromRow
+// 投影出无支付入口的永久 pending 订单，并遮蔽同价位已支付订单、错过
+// paid_awaiting_activation 合成窗口，直到 SweepStaleLinklessPending 清扫。
+func TestCurrentPurchaseOrderSkipsLinklessPendingDegradedRow(t *testing.T) {
+	s, db := testOrderStore(t)
+	ctx := context.Background()
+	// 新的 link-less pending 降级行 + 旧的已支付行，同价位同租户。
+	insertCreatedAtOrder(t, db, "ord_0000degraded", "pending", "2026-07-01T00:00:00Z", false)
+	insertCreatedAtOrder(t, db, "ord_0001paid", "paid", "2026-06-01T00:00:00Z", true)
+	row, err := s.CurrentPurchaseOrder(ctx, 7, 100, "CNY")
+	if err != nil || row.ID != "ord_0001paid" {
+		t.Fatalf("a link-less degraded pending row must NOT win the preference over the paid order, got %+v err=%v", row, err)
+	}
+	if row.State != domain.OrderStatePaid {
+		t.Fatalf("the projected current purchase must be the PAID row, got state=%s", row.State)
+	}
+	// 对照：带链接的 pending 仍按既有语义赢得偏好（最新 pending 优先）。
+	insertCreatedAtOrder(t, db, "ord_0002payable", "pending", "2026-08-01T00:00:00Z", true)
+	row, err = s.CurrentPurchaseOrder(ctx, 7, 100, "CNY")
+	if err != nil || row.ID != "ord_0002payable" {
+		t.Fatalf("a payable pending row must still win the preference, got %+v err=%v", row, err)
+	}
+}
+
 // TestCurrentPendingPurchaseOrderReturnsNewestPayablePending（R1-22/R2-28）：
 // 重放面只认「可付」pending——渠道创建成功（checkout_url 非空）且未被标记
 // 渠道失败；channel_failed 死单与无链接 pending 不作为支付入口重放，无 match

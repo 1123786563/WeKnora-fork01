@@ -572,7 +572,17 @@ def phase_gate(ctx):
             # INVISIBLE_STATUS, so AC1's exactly-once line ("at most one
             # non-succeeded payment whenever the API can see it") is asserted
             # on this path too — not only when the gating invoice is visible.
+            # (ocr-84 R1-21) The read's HTTP status is ASSERTED first: a 4xx/5xx
+            # answers an empty list (LagoRestClient only raises on transport),
+            # which would silently pass the exactly-once assertion as
+            # non_succeeded=0 — an API failure is a blocked-env fact, never a
+            # vacuous PASS.
             ps, payments = _payments_for(ctx, customer["external_id"])
+            observed["payments_api_status"] = ps
+            if not _ok(ps):
+                return _blocked(ctx, "gate",
+                                f"payments API answered HTTP {ps} — cannot assert the exactly-once line",
+                                expected=expected)
             non_succeeded = [p for p in payments if p.get("status") != "succeeded"]
             observed["payments_non_succeeded_count"] = len(non_succeeded)
             ctx.state["gate"] = {
@@ -1283,23 +1293,57 @@ def phase_retries(ctx):
         deferred = {"checked": False, "ok": None}
         if all(checks.values()):
             time.sleep(ctx.duplicates_settle_delay)
-            _, sub_body3 = _subscription_show(ctx, sub_ext, "active")
-            sub3 = (sub_body3 or {}).get("subscription", {}) if isinstance(sub_body3, dict) else {}
-            _, invoices3 = _invoices_for(ctx, customer_b["external_id"])
-            _, payments3 = _payments_for(ctx, customer_b["external_id"])
+            # (ocr-84 R1-21) The deferred re-check's THREE reads carry their
+            # HTTP statuses into the verdict instead of discarding them: a
+            # transient 5xx answered subscription_status=None / counts=0 and
+            # the drift re-check FAILed AC3 on an API hiccup, not on drift.
+            # A non-2xx read (404 on the subscription included — the object
+            # this run created is GONE) is real drift; a transient 5xx read
+            # is a blocked-env fact that suspends the deferred verdict
+            # honestly.
+            ss3, sub_body3 = _subscription_show(ctx, sub_ext, "active")
+            is3, invoices3 = _invoices_for(ctx, customer_b["external_id"])
+            ps3, payments3 = _payments_for(ctx, customer_b["external_id"])
             deferred = {
                 "checked": True,
-                "subscription_status": sub3.get("status"),
-                "subscription_same_lago_id": sub3.get("lago_id") == known_lago_id,
+                "subscription_status": (sub_body3 or {}).get("subscription", {}).get("status")
+                if isinstance(sub_body3, dict) else None,
+                "subscription_same_lago_id": ((sub_body3 or {}).get("subscription", {}) or {}).get("lago_id") == known_lago_id
+                if isinstance(sub_body3, dict) else False,
                 "payments_succeeded_count": len(_succeeded(payments3)),
                 "invoice_count": len(invoices3),
+                "read_statuses": {"subscription": ss3, "invoices": is3, "payments": ps3},
             }
-            deferred["ok"] = (
-                deferred["subscription_status"] == "active"
-                and deferred["subscription_same_lago_id"]
-                and deferred["payments_succeeded_count"] == 1
-                and deferred["invoice_count"] == 1
+            read_blocked = (
+                (isinstance(ss3, int) and ss3 >= 500)
+                or (isinstance(is3, int) and is3 >= 500)
+                or (isinstance(ps3, int) and ps3 >= 500)
             )
+            if read_blocked:
+                deferred["ok"] = None
+                ctx.note(
+                    "deferred drift re-check suspended: Lago answered a 5xx "
+                    f"({deferred['read_statuses']}) — transient API failure, not drift"
+                )
+            else:
+                deferred["ok"] = (
+                    _ok(ss3)
+                    and deferred["subscription_status"] == "active"
+                    and deferred["subscription_same_lago_id"]
+                    and _ok(ps3)
+                    and deferred["payments_succeeded_count"] == 1
+                    and _ok(is3)
+                    and deferred["invoice_count"] == 1
+                )
+        # (ocr-84 R1-21) A SUSPENDED deferred verdict (transient 5xx read) is
+        # blocked-env, not FAIL — the immediate-window checks all passed and
+        # the drift verdict is simply unprovable this run.
+        if deferred["checked"] and deferred["ok"] is None:
+            observed["checks"] = checks
+            observed["deferred_recheck"] = deferred
+            return _blocked(ctx, "retries",
+                            "deferred drift re-check suspended on a transient Lago 5xx "
+                            f"({deferred['read_statuses']})", expected)
         checks["deferred_no_drift"] = bool(deferred["ok"])
         observed["checks"] = checks
         observed["deferred_recheck"] = deferred

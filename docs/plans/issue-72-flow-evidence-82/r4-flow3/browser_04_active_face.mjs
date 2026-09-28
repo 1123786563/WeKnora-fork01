@@ -17,8 +17,12 @@ const results = [];
 const note = (step, ok, detail) => { results.push({ step, ok, detail }); console.log(`${ok ? 'PASS' : 'FAIL'} | ${step} | ${detail}`); };
 
 const browser = await chromium.launch();
+// (OCR84-R1-19) 复制有 catch 的源文件时被裁掉的回归：基础设施失败（登录被拒/
+// 选择器超时/导航错误）必须可区分地落 note + 截图并仍打印 RESULT（r4-flow 的
+// browser_02/04 与 _browser_lib.mjs runLeg 均已实现该契约）。
+let page;
 try {
-  const page = await (await browser.newContext()).newPage();
+  page = await (await browser.newContext()).newPage();
   page.setDefaultTimeout(45000);
   await page.goto(`${WEB}/login`);
   await page.fill('#auth-email', EMAIL);
@@ -41,6 +45,9 @@ try {
   note('billing-active-face', billing.includes('已生效'),
     `billing row: ${billing.split('\n').find((l) => l.includes('已生效')) ?? '(absent)'}`);
   await page.screenshot({ path: `${EV}07-billing-active.png`, fullPage: true });
+} catch (error) {
+  note('script-error', false, String(error?.stack ?? error));
+  try { if (page) await page.screenshot({ path: `${EV}06-script-error.png`, fullPage: true }); } catch { /* page may be unusable */ }
 } finally { await browser.close(); }
 console.log('RESULT ' + JSON.stringify(results));
 process.exit(results.every((r) => r.ok) ? 0 : 1);

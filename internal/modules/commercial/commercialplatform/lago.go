@@ -230,7 +230,15 @@ func (a *LagoAdapter) rebalanceCreditsOrder(ctx context.Context, cmd commercial.
 			GrantedAt: parseRFC3339UTC(w.CreatedAt),
 		})
 	}
-	ranks := commercial.WalletRank(inputs)
+	// (OCR84-R1-09) A rank answer outside the priority domain (or over a
+	// duplicate wallet ref) is a definitive data anomaly — never a PUT that
+	// writes an out-of-domain priority the authority would reject (attention
+	// loop) or accept (silently falsifying the local [1,MaxWalletPriority]
+	// contract).
+	ranks, err := commercial.WalletRank(inputs)
+	if err != nil {
+		return commercial.CommandReceipt{}, fmt.Errorf("%w: %v", commercial.ErrPlatformInvalidResponse, err)
+	}
 	for _, w := range ours {
 		rank, ranked := ranks[w.Name]
 		if !ranked || w.Priority == rank {

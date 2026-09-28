@@ -174,9 +174,21 @@ export function parseCommercialAccountCredits(value:unknown):CommercialAccountCr
   held_micro: digitString(v.held_micro,'held_micro','account credits'),
   refund_locked_micro: digitString(v.refund_locked_micro,'refund_locked_micro','account credits'),
   available_micro: signedDigitString(v.available_micro,'available_micro','account credits'),
-  projected_at: nonEmptyString(v.projected_at,'projected_at','account credits'),
+  // (OCR84-R1-04) projected_at is DISPLAY-ONLY advisory metadata — the same
+  // degrade contract as granted_at below: the backend benefitsWire OMITS the
+  // key whenever the projection carried no instant (the credits==nil chain),
+  // and a whole-breakdown parse failure over a display field would surface an
+  // English parse-error card on BillingPage instead of the promised "credits
+  // absent → null card hidden, never an error" degrade.
+  projected_at: typeof v.projected_at==='string' ? v.projected_at : '',
   batches: [],
  };
+ // (OCR84-R1-04) The backend serializes a nil batch slice as JSON null —
+ // treat null/absent as the empty array (no batches to show), keeping the
+ // parse strict only for a present-but-non-array value.
+ if(v.batches===undefined||v.batches===null) {
+  return out;
+ }
  if(!Array.isArray(v.batches)) throw new Error('invalid account credits (batches)');
  out.batches = v.batches.map((row):CreditBatchView=>{
   if(typeof row!=='object'||row===null||Array.isArray(row)) throw new Error('invalid account credits (batch)');

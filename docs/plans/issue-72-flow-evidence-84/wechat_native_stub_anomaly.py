@@ -45,6 +45,23 @@ PLATFORM_SERIAL = os.environ.get("WECHAT_STUB_PLATFORM_SERIAL", "")
 NOTIFY_URL = os.environ.get("WECHAT_STUB_NOTIFY_URL", "")
 KEY_DIR = os.environ.get("WECHAT_STUB_KEY_DIR", "")
 
+# (OCR84-R1-34) 复制 83 原版时被裁掉的模块级必需 env 校验块（原版
+# wechat_native_stub.py:63-73）：任一 WECHAT_STUB_* env 缺失时快速失败——
+# KEY_DIR 未设时 os.path.join("", ...) 退化为相对 cwd 的裸文件名，轻则难定位
+# 的 FileNotFoundError，重则静默加载 cwd 中恰好同名的无关密钥文件；NOTIFY_URL
+# 为空会推迟到 /stub/notify 才以 urllib ValueError 崩溃。
+REQUIRED = {
+    "WECHAT_STUB_APP_ID": APP_ID,
+    "WECHAT_STUB_MCH_ID": MCH_ID,
+    "WECHAT_STUB_PLATFORM_SERIAL": PLATFORM_SERIAL,
+    "WECHAT_STUB_NOTIFY_URL": NOTIFY_URL,
+    "WECHAT_STUB_KEY_DIR": KEY_DIR,
+}
+missing = [k for k, v in REQUIRED.items() if not v]
+if missing:
+    print("missing required env: %s (no source-code fallback)" % ",".join(missing), file=sys.stderr)
+    sys.exit(2)
+
 
 def _load_merchant_public():
     with open(os.path.join(KEY_DIR, "mch_public.pem"), "rb") as f:

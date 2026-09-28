@@ -846,7 +846,10 @@ func (f *FakeAdapter) SubmitCommand(_ context.Context, cmd commercial.Command) (
 				WalletRef: w.Name, ExpiresAt: w.ExpiresAt, GrantedAt: w.CreatedAt,
 			})
 		}
-		ranks := commercial.WalletRank(inputs)
+		ranks, rerr := commercial.WalletRank(inputs)
+		if rerr != nil {
+			return commercial.CommandReceipt{}, fmt.Errorf("%w: %v", commercial.ErrPlatformInvalidResponse, rerr)
+		}
 		for i := range f.wallets {
 			if f.wallets[i].Customer != payload.ExternalCustomerID || f.wallets[i].Terminated {
 				continue

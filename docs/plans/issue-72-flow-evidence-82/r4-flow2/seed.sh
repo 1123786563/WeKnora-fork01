@@ -9,8 +9,11 @@
 #
 # Credentials are env-injected (no literals in source): FLOW82_R4_PW.
 set -euo pipefail
-cd "$(dirname "$0")/../../../.."   # worktree root (docs/plans/<dir>/<round> -> root)
+# (OCR84-R1-18) EV 先于 cd 解析：cd 到 worktree 根之后再基于相对 $0 二次解析，
+# 在 round 目录内以 ./seed.sh 相对调用时 dirname 基于新 cwd，EV 会静默变成仓库
+# 根——证据文件全部落错位置且无报错。
 EV="$(cd "$(dirname "$0")" && pwd)"   # evidence lands beside this script (per-round dir)
+cd "$EV/../../../.."   # worktree root (docs/plans/<dir>/<round> -> root)
 BACKEND=http://127.0.0.1:8093
 PW="${FLOW82_R4_PW:?missing required env FLOW82_R4_PW}"
 # (OCR r2) DB_PATH pre-flight, BEFORE any registration side effect: unset
@@ -123,12 +126,26 @@ done
 uuid_shape "$UID_B" || { say "FAIL: login response user id is not a UUID ('$UID_B') — refusing SQL interpolation"; exit 1; }
 
 say "== grant plan_publish to B at platform scope (seed row) =="
-# (OCR r2 / safety constraint) The shell's sqlite3 CLI has NO usable
-# parameter binding for statement values; the STRICT UUID whitelist above
-# (uuid_shape, provably [0-9a-f-]{36}) is the injection gate before the
-# value ever reaches the statement.
-sqlite3 "$DB" "insert or replace into commercial_grants (tenant_id, user_id, capability, granted_by, version) values (0, '$UID_B', 'plan_publish', 'flow-verifier-r4', 1);"
-say "granted: $(sqlite3 "$DB" "select count(*) from commercial_grants where capability='plan_publish' and user_id='$UID_B';") row(s)"
+# (OCR84-R1-17 / safety constraint) 外部输入一律参数绑定：sqlite3 CLI 对语句值
+# 没有可用的参数绑定，写入/计数改经 python3 sqlite3 的 ? 占位符——uuid_shape
+# 白名单保留为纵深防御/快速失败前置，不再是唯一注入防线。
+GRANT_N=$(python3 - "$DB" "$UID_B" <<'PY'
+import sqlite3, sys
+db, uid = sys.argv[1], sys.argv[2]
+conn = sqlite3.connect(db)
+with conn:
+    conn.execute(
+        "insert or replace into commercial_grants (tenant_id, user_id, capability, granted_by, version)"
+        " values (0, ?, 'plan_publish', 'flow-verifier-r4', 1)",
+        (uid,),
+    )
+print(conn.execute(
+    "select count(*) from commercial_grants where capability='plan_publish' and user_id = ?",
+    (uid,),
+).fetchone()[0])
+PY
+) || { say "FAIL: grant write/read failed (python3 sqlite3, db=$DB)"; exit 1; }
+say "granted: $GRANT_N row(s)"
 
 say "== read Lago 9900-plan baseline (BEFORE this round's publish) =="
 # (A-09) The 82flow Lago stack is shared across rounds — "a 9900 plan
@@ -141,7 +158,12 @@ say "== read Lago 9900-plan baseline (BEFORE this round's publish) =="
 LAGO_KEY=$(docker exec weknora-lago-82flow-db-1 psql -U lago -tAc "select value from api_keys order by created_at desc limit 1" | tr -d '[:space:]')
 [ -n "$LAGO_KEY" ] || { say "FAIL: no lago api key readable from weknora-lago-82flow-db-1"; exit 1; }
 curl -s "http://127.0.0.1:48889/api/v1/plans" -H "Authorization: Bearer $LAGO_KEY" > "$EV/api-03-lago-plans-baseline.json"
-BASE_N=$(jq '[.plans[] | select(.amount_cents==9900)] | length' "$EV/api-03-lago-plans-baseline.json")
+# (OCR84-R1-32) 计数必须先是可解析的数值：baseline curl 落空文件时 jq 输出空串
+# （随后 [ N -gt BASE_N ] 报 integer expression expected 后落误导性 elif 分支），
+# 落盘 Lago 错误体时 jq 直接 exit 5——两者都要 fail honestly 而非静默/误导。
+BASE_N=$(jq '[.plans[] | select(.amount_cents==9900)] | length' "$EV/api-03-lago-plans-baseline.json") \
+  || { say "FAIL: baseline plans read not parseable (see api-03-lago-plans-baseline.json)"; exit 1; }
+case "$BASE_N" in ''|*[!0-9]*) say "FAIL: baseline read not a count: '$BASE_N'"; exit 1 ;; esac
 say "baseline 9900 plans already in Lago: $BASE_N"
 
 say "== draft + publish plan pro v1 (9900 CNY monthly, advanced_models) =="
@@ -169,7 +191,10 @@ curl -s "http://127.0.0.1:48889/api/v1/plans" -H "Authorization: Bearer $LAGO_KE
 # integration publishes under an external plan code; assert by amount+currency+interval face
 # (amount_cents is a JSON number on the wire — compare numerically)
 jq -c '[.plans[] | select(.amount_cents==9900) | {code, amount_cents, interval}]' "$EV/api-03-lago-plans.json" | say "lago 9900 plans: $(cat)"
-N=$(jq '[.plans[] | select(.amount_cents==9900)] | length' "$EV/api-03-lago-plans.json")
+# (OCR84-R1-32) N 同型校验：非数值形状显式 FAIL。
+N=$(jq '[.plans[] | select(.amount_cents==9900)] | length' "$EV/api-03-lago-plans.json") \
+  || { say "FAIL: post-publish plans read not parseable (see api-03-lago-plans.json)"; exit 1; }
+case "$N" in ''|*[!0-9]*) say "FAIL: post-publish read not a count: '$N'"; exit 1 ;; esac
 # (A-09) Round-specific proof: a STRICT increase over the pre-publish
 # baseline. An unchanged nonzero count means this round's Lago projection
 # cannot be proven (earlier-round residue would satisfy the old >=1 check

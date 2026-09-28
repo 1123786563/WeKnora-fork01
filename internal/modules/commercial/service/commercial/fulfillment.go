@@ -296,10 +296,24 @@ func (s *FulfillmentService) fulfillEvent(ctx context.Context, ev repocommercial
 	// alone cannot tell them apart (every wallet top-up is also a purchase
 	// order — domain: "a purchase order settles as credit top-up"); the
 	// discriminator is the #81 frozen quote face: a subscription purchase
-	// carries exactly one subscription_fee line item. A nil purchaser
-	// (blocked-env wiring) never blocks the shared drain: the event stays
-	// pending for a later pass with a configured fulfiller.
-	if row.Kind == domain.OrderKindPurchase && s.isSubscriptionPurchase(ctx, row) {
+	// carries exactly one subscription_fee line item. (OCR84-R1-05) An
+	// UNPROVABLE discriminator is never a proof of absence: when the quote
+	// read or its snapshot parse fails indeterminately the event stays
+	// PENDING — it must never fall through to the top-up settlement, whose
+	// MarkFulfilled+Sent would misroute a paid subscription order
+	// irrecoverably (book-rate credits, no activation, no re-route).
+	// A nil purchaser (blocked-env wiring) never blocks the shared drain:
+	// the event stays pending for a later pass with a configured fulfiller.
+	isSubscription := false
+	if row.Kind == domain.OrderKindPurchase {
+		var serr error
+		isSubscription, serr = s.isSubscriptionPurchase(ctx, row)
+		if serr != nil {
+			logger.Warnf(ctx, "[CommercialFulfillment] subscription-purchase discrimination failed for order %s (event stays pending): %v", row.ID, serr)
+			return s.completeEvent(ctx, ev, repocommercial.OutboxStatePending)
+		}
+	}
+	if isSubscription {
 		if s.purchaser == nil {
 			return s.completeEvent(ctx, ev, repocommercial.OutboxStatePending)
 		}
@@ -350,14 +364,18 @@ func (s *FulfillmentService) fulfillEvent(ctx context.Context, ev repocommercial
 // overPaymentPayload mirrors the over_payment outbox payload written by
 // ConfirmPayment (#84): the multiple-success SECOND payment's fund fact.
 type overPaymentPayload struct {
-	OrderID     string `json:"order_id"`
-	TenantID    uint64 `json:"tenant_id"`
-	AttemptID   string `json:"attempt_id"`
-	Provider    string `json:"provider"`
-	Merchant    string `json:"merchant"`
-	Transaction string `json:"transaction"`
-	AmountFen   int64  `json:"amount_fen"`
-	Currency    string `json:"currency"`
+	OrderID   string `json:"order_id"`
+	TenantID  uint64 `json:"tenant_id"`
+	AttemptID string `json:"attempt_id"`
+	// MerchantOrderID (OCR84-R1-13) carries the channel order identity
+	// (mo_…). Absent on payloads minted before the field existed — then the
+	// attempt is re-read to recover it.
+	MerchantOrderID string `json:"merchant_order_id"`
+	Provider        string `json:"provider"`
+	Merchant        string `json:"merchant"`
+	Transaction     string `json:"transaction"`
+	AmountFen       int64  `json:"amount_fen"`
+	Currency        string `json:"currency"`
 }
 
 // disposeOverPayment consumes one over_payment event into the operator
@@ -371,14 +389,30 @@ type overPaymentPayload struct {
 // malformation logged — no retry can fix unparseable bytes. A retention
 // error keeps the event pending for the next pass (the drain loop isolates
 // it from the fulfill events of the same batch).
+//
+// (OCR84-R1-13) PaymentAnomalyRow.AttemptID's DOCUMENTED semantics is
+// merchant_order_id (the mo_ channel identity the other two anomaly
+// writers already write); the raw att_ internal primary key must never
+// land there. New payloads carry the identity inline; a legacy payload
+// without it re-reads the attempt row — a read failure keeps the event
+// pending (the anomaly write is idempotent-locked, writing a wrong-semantics
+// id is not correctable after the fact).
 func (s *FulfillmentService) disposeOverPayment(ctx context.Context, ev repocommercial.OutboxEvent, now time.Time) error {
 	var payload overPaymentPayload
 	if err := json.Unmarshal([]byte(ev.PayloadJSON), &payload); err != nil {
 		logger.Warnf(ctx, "[CommercialFulfillment] dropping malformed over_payment event %s: %v", ev.EventKey, err)
 		return s.completeEvent(ctx, ev, repocommercial.OutboxStateSent)
 	}
+	merchantOrderID := payload.MerchantOrderID
+	if merchantOrderID == "" {
+		var att repocommercial.PaymentAttemptRow
+		if err := s.db.WithContext(ctx).Where("id = ?", payload.AttemptID).First(&att).Error; err != nil {
+			return fmt.Errorf("over_payment merchant order id recovery for attempt %s: %w", payload.AttemptID, err)
+		}
+		merchantOrderID = att.MerchantOrderID
+	}
 	if err := s.orders.RecordPaymentAnomaly(ctx, repocommercial.PaymentAnomalyRow{
-		TenantID: payload.TenantID, OrderID: payload.OrderID, AttemptID: payload.AttemptID,
+		TenantID: payload.TenantID, OrderID: payload.OrderID, AttemptID: merchantOrderID,
 		Provider: payload.Provider, Merchant: payload.Merchant, Transaction: payload.Transaction,
 		Kind:              repocommercial.PaymentAnomalyKindOverPaid,
 		ExpectedAmountFen: 0, ActualAmountFen: payload.AmountFen,
@@ -391,20 +425,22 @@ func (s *FulfillmentService) disposeOverPayment(ctx context.Context, ev repocomm
 
 // isSubscriptionPurchase reports whether a purchase order is a SUBSCRIPTION
 // purchase (#81/#82): its frozen quote carries the subscription_fee line
-// item. Orders without a readable quote (the legacy top-up seeds and the
-// pre-#81 pipeline) are not subscription purchases.
-func (s *FulfillmentService) isSubscriptionPurchase(ctx context.Context, row repocommercial.OrderRow) bool {
+// item. (OCR84-R1-05) Three-valued: a NotFound quote row or a parsable
+// snapshot with NO subscription_fee line is the definitive (false, nil)
+// legacy/top-up semantics; every OTHER quote-read failure and a snapshot
+// parse failure answer (false, err) — UNPROVABLE, never a proof of absence.
+// The caller keeps such events pending instead of routing them into the
+// top-up settlement (a misroute is irrecoverable: MarkFulfilled+Sent leaves
+// no path back to the settle/observe/grant chain).
+func (s *FulfillmentService) isSubscriptionPurchase(ctx context.Context, row repocommercial.OrderRow) (bool, error) {
 	var q repocommercial.QuoteRow
 	if err := s.db.WithContext(ctx).Where("id = ?", row.QuoteID).First(&q).Error; err != nil {
-		// (r2:341) A paid order misrouting into the top-up settlement (book
-		// rate credits instead of the settle/activation chain) is the most
-		// expensive silent failure this dispatcher has: a NotFound is the
-		// frozen legacy-seed semantics (silently false), but any OTHER read
-		// failure leaves one Warn so the misroute stays diagnosable.
-		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			logger.Warnf(ctx, "[CommercialFulfillment] subscription-purchase quote read failed for order %s: %v", row.ID, err)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// The frozen legacy-seed semantics (r2:341): pre-#81 top-up
+			// orders carry no quote row — definitively not a subscription.
+			return false, nil
 		}
-		return false
+		return false, fmt.Errorf("subscription-purchase quote read failed: %w", err)
 	}
 	var snap struct {
 		LineItems []struct {
@@ -412,15 +448,14 @@ func (s *FulfillmentService) isSubscriptionPurchase(ctx context.Context, row rep
 		} `json:"line_items"`
 	}
 	if err := json.Unmarshal([]byte(q.SnapshotJSON), &snap); err != nil {
-		logger.Warnf(ctx, "[CommercialFulfillment] subscription-purchase quote snapshot unparsable for order %s: %v", row.ID, err)
-		return false
+		return false, fmt.Errorf("subscription-purchase quote snapshot unparsable: %w", err)
 	}
 	for _, line := range snap.LineItems {
 		if line.Kind == "subscription_fee" {
-			return true
+			return true, nil
 		}
 	}
-	return false
+	return false, nil
 }
 
 // ensureRecord claims the unique FulfillmentRecord for one order line,
