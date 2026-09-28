@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/Tencent/WeKnora/internal/types"
@@ -29,27 +30,31 @@ func NewAgentEvaluationRepository(db *gorm.DB) AgentEvaluationRepository {
 	return &agentEvaluationRepository{db: db}
 }
 
-var allowedEvaluationCodes = map[string]bool{"task_success": true, "tool_accuracy": true, "groundedness": true, "safety": true, "latency": true, "cost": true}
-var allowedEvaluationStatuses = map[string]bool{"passed": true, "failed": true, "not_applicable": true, "not_collected": true}
+var allowedEvaluationCodes = map[string]bool{"manifest_completeness": true, "compatibility": true, "license": true, "security": true, "dependency_integrity": true, "privacy": true}
+var allowedEvaluationStatuses = map[string]bool{"pass": true, "fail": true, "not_run": true}
+var allowedEvaluationOverallStatuses = map[string]bool{"pass": true, "fail": true, "inconclusive": true}
 
 func validateEvaluation(e *types.AgentEvaluationEntity) error {
 	if e == nil || strings.TrimSpace(e.ReleaseID) == "" || strings.TrimSpace(e.TestSetID) == "" || strings.TrimSpace(e.TestSetVersion) == "" || strings.TrimSpace(e.EnvironmentClass) == "" || strings.TrimSpace(e.EvaluatorID) == "" || e.EvaluatedAt.IsZero() {
 		return ErrAgentEvaluationInvalid
 	}
-	var root map[string]json.RawMessage
-	if err := json.Unmarshal([]byte(e.ResultsJSON), &root); err != nil || len(root) != 1 || root["checks"] == nil {
-		return ErrAgentEvaluationInvalid
-	}
-	var checks []struct {
-		Code   string `json:"code"`
+	var result struct {
 		Status string `json:"status"`
+		Checks []struct {
+			Code   string `json:"code"`
+			Status string `json:"status"`
+		} `json:"checks"`
 	}
-	decoder := json.NewDecoder(bytes.NewReader(root["checks"]))
+	decoder := json.NewDecoder(bytes.NewReader([]byte(e.ResultsJSON)))
 	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&checks); err != nil || len(checks) == 0 {
+	if err := decoder.Decode(&result); err != nil || len(result.Checks) == 0 || !allowedEvaluationOverallStatuses[result.Status] {
 		return ErrAgentEvaluationInvalid
 	}
-	for _, check := range checks {
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		return ErrAgentEvaluationInvalid
+	}
+	for _, check := range result.Checks {
 		if !allowedEvaluationCodes[check.Code] || !allowedEvaluationStatuses[check.Status] {
 			return ErrAgentEvaluationInvalid
 		}
