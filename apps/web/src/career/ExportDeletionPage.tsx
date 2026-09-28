@@ -56,6 +56,7 @@ export function ExportDeletionPage({ client, scopeController, onCareerDeleted }:
  const [boundary, setBoundary] = useState<CareerDeletionBoundaryView>()
  const [boundaryState, setBoundaryState] = useState<'idle' | 'loading' | 'ready' | 'error' | 'forbidden' | 'scope-changed'>('idle')
  const [boundaryMessage, setBoundaryMessage] = useState('')
+ const [scopeRecoveryLoading, setScopeRecoveryLoading] = useState(false)
  const [acknowledged, setAcknowledged] = useState(false)
  const [deletion, setDeletion] = useState<CareerDeletionReceipt>()
  const [deletionAttempt, setDeletionAttempt] = useState<Attempt>()
@@ -73,6 +74,7 @@ export function ExportDeletionPage({ client, scopeController, onCareerDeleted }:
   setExported(undefined); setExportAttempt(undefined); setExportPhase('idle'); setExportMessage(''); setExportConflict(undefined)
   setBoundary(undefined); setBoundaryState(nextState); setBoundaryMessage(notice); setAcknowledged(false)
   setDeletion(undefined); setDeletionAttempt(undefined); setDeletionPhase('idle'); setDeletionMessage(''); setDeletionConflict(undefined)
+  setScopeRecoveryLoading(false)
   lastExportRequest.current = undefined; deletedAnnounced.current = false
  }, [])
  useEffect(() => {
@@ -171,6 +173,7 @@ export function ExportDeletionPage({ client, scopeController, onCareerDeleted }:
    if (!scopeController.isCurrent(requestScope.scope)) return
    const parsed = errorDetails(cause)
    if (parsed.code === 'forbidden') { clearPrivate('当前空间不可访问导出与删除。'); return }
+   if (cause instanceof ReceiptMismatchError) { setExportAttempt(undefined); setExportPhase('error'); setExportMessage(`导出未完成：${cause.message}`); return }
    setExportPhase('unknown')
    setExportMessage(parsed.code === 'not_found' ? `尚未找到导出回执（原请求编号 ${current.requestId}）。可以继续查询，或使用原请求编号重试。` : '导出回执暂时无法读取。原请求编号已保留，可稍后重试查询。')
   }
@@ -203,6 +206,31 @@ export function ExportDeletionPage({ client, scopeController, onCareerDeleted }:
    if (parsed.code === 'forbidden') { clearPrivate('当前空间不可访问导出与删除。'); return }
    setBoundary(undefined); setBoundaryState('error')
    setBoundaryMessage('删除边界清单暂时无法读取，可重试。未呈现边界前不能发起删除。')
+  }
+ }
+
+ const recoverCurrentScope = async (): Promise<void> => {
+  if (scopeRecoveryLoading) return
+  const requestScope = scopeController.current()
+  setScopeRecoveryLoading(true)
+  setBoundaryMessage('正在重新读取当前空间的档案修订与删除边界…')
+  try {
+   const [view, nextBoundary] = await Promise.all([
+    client.career.open(requestScope.signal),
+    client.career.careerDeletionBoundary(requestScope.signal),
+   ])
+   if (!scopeController.isCurrent(requestScope.scope)) return
+   setRevision(view.revision); setRevisionState('ready')
+   setBoundary(nextBoundary); setBoundaryState('ready'); setBoundaryMessage('')
+  } catch (cause) {
+   if (!scopeController.isCurrent(requestScope.scope)) return
+   const parsed = errorDetails(cause)
+   if (parsed.code === 'forbidden') { clearPrivate('当前空间不可访问导出与删除。'); return }
+   setRevision(undefined); setRevisionState('error')
+   setBoundary(undefined); setBoundaryState('scope-changed')
+   setBoundaryMessage('当前空间信息暂时无法完整读取。导出与删除仍不可用，可重试重新加载。')
+  } finally {
+   setScopeRecoveryLoading(false)
   }
  }
 
@@ -275,6 +303,7 @@ export function ExportDeletionPage({ client, scopeController, onCareerDeleted }:
    if (!scopeController.isCurrent(requestScope.scope)) return
    const parsed = errorDetails(cause)
    if (parsed.code === 'forbidden') { clearPrivate('当前空间不可访问导出与删除。'); return }
+   if (cause instanceof ReceiptMismatchError) { setDeletionAttempt(undefined); setDeletionPhase('error'); setDeletionMessage(`删除未完成：${cause.message}`); return }
    setDeletionPhase('unknown')
    setDeletionMessage(parsed.code === 'not_found' ? `尚未找到删除回执（原请求编号 ${current.requestId}）。可以继续查询，或使用原请求编号重试。` : '删除回执暂时无法读取。原请求编号已保留，可稍后重试查询。')
   }
@@ -282,7 +311,7 @@ export function ExportDeletionPage({ client, scopeController, onCareerDeleted }:
 
  const exportBlocked = exportPhase === 'busy' || exportPhase === 'unknown'
  const deletionBlocked = deletionPhase === 'busy' || deletionPhase === 'unknown' || exportBlocked
- const startDeletionDisabled = deletionBlocked || revision === undefined || !boundary || !acknowledged || deletion?.status === 'deleted'
+ const startDeletionDisabled = deletionBlocked || revision === undefined || !boundary || !acknowledged || deletion?.status === 'deleting' || deletion?.status === 'deleted'
  const archive = exported?.archive
  const snapshotTotal = archive?.opportunities.reduce((total, item) => total + item.snapshots.length, 0) ?? 0
  const eventTotal = archive?.applications.reduce((total, item) => total + item.progressEvents.length, 0) ?? 0
@@ -290,7 +319,10 @@ export function ExportDeletionPage({ client, scopeController, onCareerDeleted }:
  return <section className="wk-lifecycle" aria-labelledby="wk-lifecycle-title">
   <h3 id="wk-lifecycle-title">导出与完整删除</h3>
   <p className="wk-lifecycle__notice">导出会生成一份完整的不可变导出包（档案、原始岗位快照、申请事件、材料版本、投递记录），可下载留存。完整删除不可恢复：空间内的求职数据会被删除，外部平台的投递与已发出的副本不受本系统控制、无法撤回；删除前会先呈现边界清单。部分失败时保留可恢复状态与审计，绝不声称已完全删除。</p>
-  {boundaryState === 'forbidden' || boundaryState === 'scope-changed' ? <p className="wk-lifecycle__message wk-lifecycle__message--error" role="alert">{boundaryMessage}</p> : <>
+  {boundaryState === 'forbidden' || boundaryState === 'scope-changed' ? <>
+   <p className="wk-lifecycle__message wk-lifecycle__message--error" role="alert">{boundaryMessage}</p>
+   {boundaryState === 'scope-changed' ? <div className="wk-lifecycle__actions"><button type="button" disabled={scopeRecoveryLoading} onClick={() => void recoverCurrentScope()}>{scopeRecoveryLoading ? '正在重新加载…' : '重新加载当前空间'}</button></div> : null}
+  </> : <>
    <p className="wk-lifecycle__revision" role="status">{revisionState === 'loading' ? '正在读取当前档案修订…' : revisionState === 'error' ? '暂时无法读取当前档案修订，可稍后重试；导出与删除会被暂缓。' : revision !== undefined ? `当前档案修订 ${revision}（导出与删除将按此修订提交）` : ''}</p>
    <fieldset className="wk-lifecycle__panel" aria-label="导出数据">
     <legend>导出数据</legend>
@@ -330,9 +362,9 @@ export function ExportDeletionPage({ client, scopeController, onCareerDeleted }:
      <label className="wk-lifecycle__ack"><input type="checkbox" checked={acknowledged} disabled={deletionBlocked} onChange={() => setAcknowledged((value) => !value)} />我已知悉外部平台资料不可撤回、保留范围如上，并理解完整删除不可恢复。</label>
     </section> : null}
     <div className="wk-lifecycle__actions"><button type="button" className="wk-lifecycle__delete" disabled={startDeletionDisabled} onClick={() => void runDeletion()}>发起完整删除</button></div>
-    {deletionPhase === 'unknown' && deletionAttempt ? <div className="wk-lifecycle__actions" role="group" aria-label="恢复删除写入">
+    {(deletionPhase === 'unknown' || (deletion?.status === 'deleting' && deletionAttempt !== undefined)) && deletionAttempt ? <div className="wk-lifecycle__actions" role="group" aria-label="恢复删除写入">
      <button type="button" onClick={() => void lookupDeletionReceipt()}>查询删除回执</button>
-     <button type="button" onClick={() => void runDeletion(deletionAttempt)}>用原请求编号重试</button>
+     {deletionPhase === 'unknown' ? <button type="button" onClick={() => void runDeletion(deletionAttempt)}>用原请求编号重试</button> : null}
     </div> : null}
     {deletion?.status === 'partial' && deletionAttempt && deletionPhase !== 'busy' ? <div className="wk-lifecycle__actions"><button type="button" onClick={() => void runDeletion(deletionAttempt)}>用原请求编号重试删除</button></div> : null}
     {deletionMessage && deletionPhase !== 'idle' ? <p className={deletionPhase === 'error' ? 'wk-lifecycle__message wk-lifecycle__message--error' : 'wk-lifecycle__message'} role={deletionPhase === 'error' ? 'alert' : 'status'} aria-live="polite">{deletionMessage}</p> : null}
