@@ -11,36 +11,44 @@ import (
 
 func TestCheckLocalAgentReleaseAdmissionTx(t *testing.T) {
 	tests := []struct {
-		name      string
-		version   string
-		variant   bool
-		revoked   bool
-		deps      string
-		depRevoke bool
-		duplicate bool
-		wantID    string
-		wantAdopt bool
-		wantErr   bool
+		name         string
+		version      string
+		variant      bool
+		revoked      bool
+		deps         string
+		depRevoke    bool
+		duplicate    bool
+		missingAgent bool
+		deletedAgent bool
+		wantID       string
+		wantAdopt    bool
+		wantErr      error
 	}{
 		{name: "active published exact version", version: "version-1", variant: true, deps: `{"dependencies":[]}`, wantID: "release-1", wantAdopt: true},
-		{name: "confirmed non marketplace", version: "", wantErr: false},
-		{name: "missing version", version: "missing", variant: true, deps: `{"dependencies":[]}`, wantErr: true},
-		{name: "mismatched version", version: "version-2", variant: true, deps: `{"dependencies":[]}`, wantErr: true},
-		{name: "retired variant", version: "version-1", variant: true, deps: `{"dependencies":[]}`, wantErr: true, wantID: "retired"},
-		{name: "draft variant", version: "version-1", variant: true, deps: `{"dependencies":[]}`, wantErr: true, wantID: "draft"},
-		{name: "revoked release", version: "version-1", variant: true, revoked: true, deps: `{"dependencies":[]}`, wantErr: true},
-		{name: "exact dependency tuple revoked", version: "version-1", variant: true, deps: `{"dependencies":[{"type":"skill","id":"dep","version":"1","digest":"sha-a"}]}`, depRevoke: true, wantErr: true},
+		{name: "confirmed non marketplace", version: ""},
+		{name: "missing version", version: "missing", variant: true, deps: `{"dependencies":[]}`, wantErr: ErrAgentSecurityReleaseUnresolvable},
+		{name: "mismatched version", version: "version-2", variant: true, deps: `{"dependencies":[]}`, wantErr: ErrAgentSecurityReleaseUnresolvable},
+		{name: "retired variant", version: "version-1", variant: true, deps: `{"dependencies":[]}`, wantErr: ErrAgentSecurityReleaseUnresolvable, wantID: "retired"},
+		{name: "draft variant", version: "version-1", variant: true, deps: `{"dependencies":[]}`, wantErr: ErrAgentSecurityReleaseUnresolvable, wantID: "draft"},
+		{name: "revoked release", version: "version-1", variant: true, revoked: true, deps: `{"dependencies":[]}`, wantErr: ErrAgentSecurityReleaseBlocked},
+		{name: "exact dependency tuple revoked", version: "version-1", variant: true, deps: `{"dependencies":[{"type":"skill","id":"dep","version":"1","digest":"sha-a"}]}`, depRevoke: true, wantErr: ErrAgentSecurityReleaseBlocked},
 		{name: "different dependency version allowed", version: "version-1", variant: true, deps: `{"dependencies":[{"type":"skill","id":"dep","version":"2","digest":"sha-a"}]}`, depRevoke: true, wantID: "release-1", wantAdopt: true},
 		{name: "same version different digest allowed", version: "version-1", variant: true, deps: `{"dependencies":[{"type":"skill","id":"dep","version":"1","digest":"sha-b"}]}`, depRevoke: true, wantID: "release-1", wantAdopt: true},
-		{name: "duplicate eligible mappings fail closed", version: "version-1", variant: true, duplicate: true, deps: `{"dependencies":[]}`, wantErr: true},
+		{name: "duplicate eligible mappings fail closed", version: "version-1", variant: true, duplicate: true, deps: `{"dependencies":[]}`, wantErr: ErrAgentSecurityReleaseUnresolvable},
+		{name: "missing local agent fails closed", version: "version-1", variant: true, missingAgent: true, deps: `{"dependencies":[]}`, wantErr: ErrAgentSecurityReleaseUnresolvable},
+		{name: "soft deleted local agent fails closed", version: "version-1", variant: true, deletedAgent: true, deps: `{"dependencies":[]}`, wantErr: ErrAgentSecurityReleaseUnresolvable},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			db := openRunTestDB(t)
 			localAgent := "local-agent"
-			if !tt.variant {
+			if !tt.missingAgent {
 				require.NoError(t, db.Create(&types.CustomAgent{ID: localAgent, TenantID: 1, Name: "Ordinary"}).Error)
-			} else {
+				if tt.deletedAgent {
+					require.NoError(t, db.Delete(&types.CustomAgent{}, "id = ? AND tenant_id = ?", localAgent, 1).Error)
+				}
+			}
+			if tt.variant {
 				seedAdmissionRelease(t, db, tt.deps)
 				seedAdmissionVariant(t, db, "variant-1", localAgent, "version-1", "release-1", tt.deps, "published")
 				if tt.duplicate {
@@ -61,8 +69,8 @@ func TestCheckLocalAgentReleaseAdmissionTx(t *testing.T) {
 				}
 			}
 			gotID, adopted, err := checkLocalAgentReleaseAdmissionTx(db, 1, localAgent, tt.version)
-			if tt.wantErr {
-				require.Error(t, err)
+			if tt.wantErr != nil {
+				require.ErrorIs(t, err, tt.wantErr)
 				return
 			}
 			require.NoError(t, err)
