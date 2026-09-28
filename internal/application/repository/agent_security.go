@@ -2,12 +2,14 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // AgentReleaseLockRow projects the immutable listing and dependency lock
@@ -39,6 +41,13 @@ func prepareReleaseRevocation(row *types.AgentReleaseRevocationEntity) {
 	if row.CreatedAt.IsZero() {
 		row.CreatedAt = now
 	}
+	if row.RunCancellationState == "" {
+		if row.InFlightDisposition == "cancel" {
+			row.RunCancellationState = "pending"
+		} else {
+			row.RunCancellationState = "complete"
+		}
+	}
 }
 
 func prepareDependencyRevocation(row *types.AgentDependencyRevocationEntity) {
@@ -52,6 +61,28 @@ func prepareDependencyRevocation(row *types.AgentDependencyRevocationEntity) {
 	if row.CreatedAt.IsZero() {
 		row.CreatedAt = now
 	}
+	if row.RunCancellationState == "" {
+		if row.InFlightDisposition == "cancel" {
+			row.RunCancellationState = "pending"
+		} else {
+			row.RunCancellationState = "complete"
+		}
+	}
+}
+
+func (s *AgentSecurityStore) PublishedRunPinsForReleases(ctx context.Context, tenantID uint64, releases map[string]string) ([]AgentSecurityRunPin, error) {
+	variants, err := s.ListVariants(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	pins := make([]AgentSecurityRunPin, 0)
+	for _, v := range variants {
+		if _, ok := releases[v.ReleaseID]; !ok || v.LocalAgentID == "" || v.LocalAgentVersionID == "" {
+			continue
+		}
+		pins = append(pins, AgentSecurityRunPin{AgentID: v.LocalAgentID, LocalAgentVersionID: v.LocalAgentVersionID, ReleaseID: v.ReleaseID})
+	}
+	return pins, nil
 }
 
 func appendReleaseRevocationTx(tx *gorm.DB, row *types.AgentReleaseRevocationEntity) error {
@@ -114,6 +145,113 @@ func (s *AgentSecurityStore) AppendDependencyRevocationWithAudit(ctx context.Con
 		}
 		return NewAuditLogRepository(tx).Create(ctx, audit)
 	})
+}
+
+func cancelActiveClaimsForReleasesTx(tx *gorm.DB, tenantID uint64, releaseIDs []string, reason string) error {
+	if len(releaseIDs) == 0 {
+		return nil
+	}
+	var claims []types.AgentChatTurnClaimEntity
+	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("source_tenant_id = ? AND release_id IN ? AND state = 'active'", tenantID, releaseIDs).Order("id ASC").Find(&claims).Error; err != nil {
+		return err
+	}
+	for _, claim := range claims {
+		res := tx.Model(&types.AgentChatTurnClaimEntity{}).Where("id=? AND source_tenant_id=? AND state='active'", claim.ID, tenantID).Updates(map[string]any{"state": "cancelled", "reason": reason, "generation": gorm.Expr("generation + 1"), "updated_at": time.Now().UTC()})
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			continue
+		}
+		if err := tx.Model(&types.Message{}).Where("id=? AND session_id=? AND request_id=? AND role='assistant'", claim.AssistantMessageID, claim.SessionID, claim.RequestID).Updates(map[string]any{"is_completed": true, "updated_at": time.Now().UTC()}).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// AppendReleaseRevocationWithAuditAndCancelClaims commits the release ledger,
+// audit row, claim fencing transitions, and placeholder terminalization as one unit.
+func (s *AgentSecurityStore) AppendReleaseRevocationWithAuditAndCancelClaims(ctx context.Context, row *types.AgentReleaseRevocationEntity, audit *types.AuditLog) error {
+	if row == nil || audit == nil {
+		return errors.New("release revocation and audit entry are required")
+	}
+	return withTenantSecurityGuard(ctx, s.db, row.TenantID, func(tx *gorm.DB) error {
+		if row.InFlightDisposition == "cancel" {
+			row.RunCancellationState = "pending"
+		} else {
+			row.RunCancellationState = "complete"
+		}
+		if err := appendReleaseRevocationTx(tx, row); err != nil {
+			return err
+		}
+		if err := NewAuditLogRepository(tx).Create(ctx, audit); err != nil {
+			return err
+		}
+		if row.InFlightDisposition == "cancel" {
+			return cancelActiveClaimsForReleasesTx(tx, row.TenantID, []string{row.ReleaseID}, "agent security revocation: "+row.Reason)
+		}
+		return nil
+	})
+}
+
+// AppendDependencyRevocationWithAuditAndCancelClaims matches Release locks by
+// the complete dependency tuple under the same tenant transaction.
+func (s *AgentSecurityStore) AppendDependencyRevocationWithAuditAndCancelClaims(ctx context.Context, row *types.AgentDependencyRevocationEntity, audit *types.AuditLog) error {
+	if row == nil || audit == nil {
+		return errors.New("dependency revocation and audit entry are required")
+	}
+	return withTenantSecurityGuard(ctx, s.db, row.TenantID, func(tx *gorm.DB) error {
+		if row.InFlightDisposition == "cancel" {
+			row.RunCancellationState = "pending"
+		} else {
+			row.RunCancellationState = "complete"
+		}
+		if err := appendDependencyRevocationTx(tx, row); err != nil {
+			return err
+		}
+		if err := NewAuditLogRepository(tx).Create(ctx, audit); err != nil {
+			return err
+		}
+		if row.InFlightDisposition != "cancel" {
+			return nil
+		}
+		ids := make([]string, 0)
+		var local []types.AgentReleaseEntity
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id = ?", row.TenantID).Order("id ASC").Find(&local).Error; err != nil {
+			return err
+		}
+		for _, release := range local {
+			if dependencyLockContains(release.DependencyLockJSON, row) {
+				ids = append(ids, release.ID)
+			}
+		}
+		var introduced []types.TenantIntroducedReleaseEntity
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id = ?", row.TenantID).Order("id ASC").Find(&introduced).Error; err != nil {
+			return err
+		}
+		for _, release := range introduced {
+			if dependencyLockContains(release.DependencyLockJSON, row) {
+				ids = append(ids, release.ID)
+			}
+		}
+		return cancelActiveClaimsForReleasesTx(tx, row.TenantID, ids, "agent security revocation: "+row.Reason)
+	})
+}
+
+func dependencyLockContains(lockJSON string, row *types.AgentDependencyRevocationEntity) bool {
+	var lock struct {
+		Dependencies *[]types.AgentReleaseDependency `json:"dependencies"`
+	}
+	if err := json.Unmarshal([]byte(lockJSON), &lock); err != nil || lock.Dependencies == nil {
+		return false
+	}
+	for _, d := range *lock.Dependencies {
+		if d.Type == row.DepType && d.ID == row.DepID && d.Version == row.DepVersion && d.Digest == row.DepDigest {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *AgentSecurityStore) ListReleaseRevocations(ctx context.Context, tenantID uint64) ([]types.AgentReleaseRevocationEntity, error) {
@@ -222,6 +360,46 @@ func (s *AgentSecurityStore) VariantsByLocalAgent(ctx context.Context, tenantID 
 		Where("tenant_id = ? AND local_agent_id = ? AND state = ?", tenantID, agentID, "published").
 		Order("created_at ASC").Order("id ASC").Find(&rows).Error
 	return rows, err
+}
+
+// ResolvePublishedVariant returns the exact immutable Version and Release
+// selected by the tenant's published Variant for this local Agent.
+func (s *AgentSecurityStore) ResolvePublishedVariant(ctx context.Context, tenantID uint64, agentID string) (string, string, bool, error) {
+	var versionID, releaseID string
+	var adopted bool
+	err := withTenantSecurityGuard(ctx, s.db, tenantID, func(tx *gorm.DB) error {
+		var variants []types.AgentAdoptionVariantEntity
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id = ? AND local_agent_id = ?", tenantID, agentID).Order("id ASC").Find(&variants).Error; err != nil {
+			return err
+		}
+		if len(variants) == 0 {
+			_, isAdopted, err := checkLocalAgentReleaseAdmissionTx(tx, tenantID, agentID, "")
+			if err != nil {
+				return err
+			}
+			if isAdopted {
+				return ErrAgentSecurityReleaseUnresolvable
+			}
+			return nil
+		}
+		if len(variants) != 1 {
+			return ErrAgentSecurityReleaseUnresolvable
+		}
+		variant := variants[0]
+		if variant.State != "published" || variant.RetiredAt != nil || variant.LocalAgentVersionID == "" {
+			return ErrAgentSecurityReleaseUnresolvable
+		}
+		resolvedRelease, isAdopted, err := checkLocalAgentReleaseAdmissionTx(tx, tenantID, agentID, variant.LocalAgentVersionID)
+		if err != nil {
+			return err
+		}
+		if !isAdopted || resolvedRelease != variant.ReleaseID {
+			return ErrAgentSecurityReleaseUnresolvable
+		}
+		versionID, releaseID, adopted = variant.LocalAgentVersionID, resolvedRelease, true
+		return nil
+	})
+	return versionID, releaseID, adopted, err
 }
 
 func (s *AgentSecurityStore) ListVariants(ctx context.Context, tenantID uint64) ([]types.AgentAdoptionVariantEntity, error) {

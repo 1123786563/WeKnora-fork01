@@ -9,6 +9,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/golang-migrate/migrate/v4"
+	sqlite3migrate "github.com/golang-migrate/migrate/v4/database/sqlite3"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
+
 	"github.com/stretchr/testify/require"
 )
 
@@ -43,6 +47,7 @@ var versionedSQLiteTables = []string{
 	"agent_releases",
 	"agent_adoptions",
 	"agent_adoption_variants",
+	"agent_chat_turn_claims",
 	"agent_variant_capability_mappings",
 	"public_marketplace_verified_publishers",
 	"public_marketplace_listings",
@@ -56,14 +61,17 @@ var versionedSQLiteTables = []string{
 // versionedSQLiteColumns maps each existing table to the columns that the
 // versioned migrations add and the SQLite baseline was missing.
 var versionedSQLiteColumns = map[string][]string{
-	"tenants":            {"api_principal_config"},           // 000064
-	"users":              {"is_system_admin"},                // 000053
-	"knowledges":         {"pending_subtasks_count"},         // 000056
-	"messages":           {"attachments", "usage"},           // 000034, 000085
-	"tenant_invitations": {"token", "accepted_count"},        // 000054
-	"embed_channels":     {"allow_memory"},                   // 000060
-	"mcp_oauth_tokens":   {"principal_type", "principal_id"}, // 000064
-	"mcp_tool_approvals": {"enabled"},                        // 000091
+	"tenants":                      {"api_principal_config"},           // 000064
+	"users":                        {"is_system_admin"},                // 000053
+	"knowledges":                   {"pending_subtasks_count"},         // 000056
+	"messages":                     {"attachments", "usage"},           // 000034, 000085
+	"tenant_invitations":           {"token", "accepted_count"},        // 000054
+	"embed_channels":               {"allow_memory"},                   // 000060
+	"mcp_oauth_tokens":             {"principal_type", "principal_id"}, // 000064
+	"mcp_tool_approvals":           {"enabled"},                        // 000091
+	"agent_runs":                   {"security_agent_id", "security_local_agent_version_id", "security_release_id", "security_pin_source"},
+	"agent_release_revocations":    {"run_cancellation_state"},
+	"agent_dependency_revocations": {"run_cancellation_state"},
 	"tenant_skills": {
 		"catalog_id", "install_session_id", "install_message_id", "envs",
 	}, // 000086-000090
@@ -114,6 +122,7 @@ func TestSQLiteMigrationsCreateVersionedSchema(t *testing.T) {
 		"uq_agent_releases_number", "uq_agent_releases_semantic", "uq_agent_releases_digest",
 		"uq_agent_adoptions_scope", "uq_agent_variant_capability",
 		"uq_agent_upgrade_proposals_scope",
+		"uq_agent_adoption_variant_local_agent",
 	} {
 		require.Truef(t, sqliteIndexExists(t, db, index), "SQLite migrations must create index %s", index)
 	}
@@ -134,6 +143,84 @@ func TestSQLiteMigrationsCreateVersionedSchema(t *testing.T) {
 	assertSQLiteSkillStorageWorks(t, db)
 	require.False(t, sqliteColumnExists(t, db, "knowledges", "tag_id"),
 		"SQLite migrations must drop legacy knowledges.tag_id after multi-tag migration")
+}
+
+func TestTask8ClaimMigrationEmptyDownUpAndPopulatedDownRefusal(t *testing.T) {
+	repoRoot := sqliteRepoRoot(t)
+	chdirAndRestore(t, repoRoot)
+	dbPath := filepath.Join(t.TempDir(), "task8-migration.db")
+	require.NoError(t, RunMigrationsWithOptions("sqlite3://unused", MigrationOptions{SQLiteDBPath: dbPath}))
+	sqlDB, err := sql.Open("sqlite3", dbPath)
+	require.NoError(t, err)
+	driver, err := sqlite3migrate.WithInstance(sqlDB, &sqlite3migrate.Config{NoTxWrap: false})
+	require.NoError(t, err)
+	m, err := migrate.NewWithDatabaseInstance("file://"+filepath.Join(repoRoot, "migrations/sqlite"), "sqlite3", driver)
+	require.NoError(t, err)
+	t.Cleanup(func() { _, _ = m.Close() })
+	require.NoError(t, m.Steps(-1), "empty-state rollback remains available")
+	require.NoError(t, m.Steps(1), "empty-state up/down round trip restores Task8 schema")
+	_, err = sqlDB.Exec(`INSERT INTO agent_chat_turn_claims(id,source_tenant_id,session_tenant_id,session_id,owner_id,request_id,request_hash,assistant_message_id,agent_id,state,lease_owner,lease_expires_at,generation) VALUES('claim',1,1,'session','owner','request','hash','assistant','agent','active','worker',CURRENT_TIMESTAMP,1)`)
+	require.NoError(t, err)
+	require.Error(t, m.Steps(-1), "populated claim history must refuse schema rollback")
+}
+
+func TestTask8RunPinsAndPublishedVariantIdentityAreImmutable(t *testing.T) {
+	repoRoot := sqliteRepoRoot(t)
+	chdirAndRestore(t, repoRoot)
+	dbPath := filepath.Join(t.TempDir(), "task8-pins.db")
+	require.NoError(t, RunMigrationsWithOptions("sqlite3://unused", MigrationOptions{SQLiteDBPath: dbPath}))
+	db, err := sql.Open("sqlite3", dbPath)
+	require.NoError(t, err)
+	defer db.Close()
+	_, err = db.Exec(`INSERT INTO tenants(id,name,business) VALUES(1,'t1','test'); INSERT INTO sessions(id,tenant_id,title,user_id,engine_type) VALUES('s1',1,'s','u1','trpc')`)
+	require.NoError(t, err)
+	insertRun := func(runID, snapshot, pinAgent, pinVersion, pinRelease, pinSource string) error {
+		nullable := func(v string) any {
+			if v == "" {
+				return nil
+			}
+			return v
+		}
+		_, e := db.Exec(`INSERT INTO agent_runs(tenant_id,run_id,session_id,owner_id,request_id,assistant_message_id,request_hash,engine_type,status,snapshot,deadline,security_agent_id,security_local_agent_version_id,security_release_id,security_pin_source) VALUES(1,?,'s1','u1',?,?,?,'trpc','running',?,CURRENT_TIMESTAMP,?,?,?,?)`, runID, "req-"+runID, "msg-"+runID, "hash", snapshot, nullable(pinAgent), nullable(pinVersion), nullable(pinRelease), nullable(pinSource))
+		return e
+	}
+	require.Error(t, insertRun("partial", `{"agent_id":"agent-a"}`, "agent-a", "", "", "admission"), "partial sidecar pins are rejected")
+	require.Error(t, insertRun("bad-source", `{"agent_id":"agent-a"}`, "agent-a", "version-a", "release-a", "bad"), "pin source is constrained")
+	require.NoError(t, insertRun("pinned", `{"agent_id":"agent-a"}`, "agent-a", "version-a", "release-a", "admission"))
+	_, err = db.Exec(`UPDATE agent_runs SET security_release_id='release-changed' WHERE tenant_id=1 AND run_id='pinned'`)
+	require.Error(t, err, "all populated sidecars are immutable")
+	_, err = db.Exec(`UPDATE agent_runs SET security_agent_id=NULL,security_local_agent_version_id=NULL,security_release_id=NULL,security_pin_source=NULL WHERE tenant_id=1 AND run_id='pinned'`)
+	require.Error(t, err, "populated pins cannot be cleared")
+	_, err = db.Exec(`PRAGMA foreign_keys=OFF; INSERT INTO agent_adoption_variants(id,tenant_id,adoption_id,release_id,name,state,local_agent_id,local_agent_version_id,published_at,created_at,updated_at) VALUES('v1',1,'missing-adoption','missing-release','V','published','agent-old','version-old',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP); PRAGMA foreign_keys=ON`)
+	require.NoError(t, err)
+	require.Error(t, insertRun("old-writer", `{"agent_id":"agent-old"}`, "", "", "", ""), "old application writers cannot create a Marketplace Run without pins")
+	_, err = db.Exec(`UPDATE agent_adoption_variants SET local_agent_version_id='version-changed' WHERE id='v1'`)
+	require.Error(t, err, "published Variant identity is immutable")
+	var snapshot string
+	require.NoError(t, db.QueryRow(`SELECT snapshot FROM agent_runs WHERE run_id='pinned'`).Scan(&snapshot))
+	require.Equal(t, `{"agent_id":"agent-a"}`, snapshot, "pin enforcement never rewrites the frozen snapshot")
+}
+
+func TestTask8PostgresMigrationDeclaresTransactionalSecurityGuards(t *testing.T) {
+	repoRoot := sqliteRepoRoot(t)
+	upBytes, err := os.ReadFile(filepath.Join(repoRoot, "migrations/versioned/000205_agent_chat_turn_claims.up.sql"))
+	require.NoError(t, err)
+	downBytes, err := os.ReadFile(filepath.Join(repoRoot, "migrations/versioned/000205_agent_chat_turn_claims.down.sql"))
+	require.NoError(t, err)
+	up := strings.ToLower(string(upBytes))
+	down := strings.ToLower(string(downBytes))
+	for _, fragment := range []string{
+		"begin;", "commit;", "lock table agent_runs,agent_adoption_variants,agent_release_revocations,agent_dependency_revocations in access exclusive mode",
+		"ck_agent_runs_security_pin_complete", "uq_agent_adoption_variant_local_agent", "trg_agent_runs_security_pin_immutable",
+		"trg_agent_runs_marketplace_pin_required", "trg_agent_adoption_variant_published_identity_immutable",
+		"agent_run_security_duplicate_variant_mapping", "agent_run_security_timestamp_conflict", "agent_run_security_stale_variant_version",
+		"security_pin_source='legacy_backfill'", "create table agent_chat_turn_claims",
+	} {
+		require.Contains(t, up, fragment, "PostgreSQL migration must preserve its reviewed atomic guard contract")
+	}
+	for _, fragment := range []string{"begin;", "commit;", "agent_security_history_prevents_down", "run_cancellation_state"} {
+		require.Contains(t, down, fragment, "PostgreSQL down migration must refuse populated history transactionally")
+	}
 }
 
 func TestSQLiteMigrationsUpgradeV4PreservesData(t *testing.T) {

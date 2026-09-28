@@ -1131,9 +1131,12 @@ func BuildContainer(container *dig.Container) *dig.Container {
 
 func provideAgentSecurity(container *dig.Container) {
 	must(container.Provide(repository.NewAgentSecurityStore))
+	must(container.Provide(repository.NewAgentChatTurnClaimRepository))
 	must(container.Provide(NewAgentSecurityService))
 	must(container.Provide(NewAgentSecurityHandler))
 	must(container.Invoke(wireAgentSecurityGates))
+	must(container.Invoke(wireAgentSecuritySessionClaims))
+	must(container.Invoke(startAgentSecurityReconciler))
 }
 
 func newUnavailableSemanticModelGateway(

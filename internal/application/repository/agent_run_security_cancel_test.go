@@ -113,6 +113,75 @@ func TestCancelRunsByAgentsForRevocationRollsBackRunAndCountTogether(t *testing.
 	require.Equal(t, "sec-r1", activeRunID)
 }
 
+func TestCancelRunsBySecurityPinsMatchesOnlyExactVariantIdentity(t *testing.T) {
+	db := openRunTestDB(t)
+	seedSecurityCancelFixture(t, db)
+	for _, row := range []struct{ id, agent, version, release string }{
+		{"pin-hit", "agent-a", "version-a", "release-a"}, {"pin-version-other", "agent-a", "version-b", "release-a"}, {"pin-release-other", "agent-a", "version-a", "release-b"},
+	} {
+		require.NoError(t, db.Exec(`INSERT INTO agent_runs (tenant_id,run_id,session_id,owner_id,request_id,assistant_message_id,request_hash,engine_type,status,snapshot,deadline,security_agent_id,security_local_agent_version_id,security_release_id,security_pin_source) VALUES (1,?,'s2','u1',?,?,'hash','trpc','running',?,datetime('now','+1 hour'),?,?,?,'admission')`, row.id, row.id, "msg-"+row.id, `{"agent_id":"`+row.agent+`"}`, row.agent, row.version, row.release).Error)
+	}
+	revocation := &types.AgentReleaseRevocationEntity{ID: "rev-pin-test", TenantID: 1, ReleaseID: "release-a", Reason: "reason", InFlightDisposition: "cancel", RunCancellationState: "pending"}
+	require.NoError(t, db.Create(revocation).Error)
+	count, err := NewAgentRunStore(db).CancelRunsBySecurityPinsForRevocation(context.Background(), 1, []AgentSecurityRunPin{{AgentID: "agent-a", LocalAgentVersionID: "version-a", ReleaseID: "release-a"}}, "security", AgentSecurityRevocationRef{Kind: AgentSecurityRevocationRelease, ID: revocation.ID})
+	require.NoError(t, err)
+	require.EqualValues(t, 1, count)
+	for _, row := range []struct{ id, want string }{{"pin-hit", "canceled"}, {"pin-version-other", "running"}, {"pin-release-other", "running"}} {
+		var status string
+		require.NoError(t, db.Raw(`SELECT status FROM agent_runs WHERE tenant_id=1 AND run_id=?`, row.id).Scan(&status).Error)
+		require.Equal(t, row.want, status)
+	}
+	var stored types.AgentReleaseRevocationEntity
+	require.NoError(t, db.Where("tenant_id=? AND id=?", 1, revocation.ID).Take(&stored).Error)
+	require.EqualValues(t, 1, stored.CanceledRunCount)
+	require.Equal(t, "complete", stored.RunCancellationState)
+}
+
+func TestRunCancellationReconciliationRetriesPendingExactPinsOnce(t *testing.T) {
+	db := openRunTestDB(t)
+	seedSecurityCancelFixture(t, db)
+	require.NoError(t, db.Exec(`PRAGMA foreign_keys=OFF`).Error)
+	require.NoError(t, db.Exec(`INSERT INTO agent_adoption_variants(id,tenant_id,adoption_id,release_id,name,state,local_agent_id,local_agent_version_id,published_at,created_at,updated_at) VALUES ('variant-pin',1,'adoption-unused','release-reconcile','Pinned','retired','agent-reconcile','version-reconcile',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)`).Error)
+	require.NoError(t, db.Exec(`PRAGMA foreign_keys=ON`).Error)
+	require.NoError(t, db.Exec(`INSERT INTO agent_runs (tenant_id,run_id,session_id,owner_id,request_id,assistant_message_id,request_hash,engine_type,status,snapshot,deadline,security_agent_id,security_local_agent_version_id,security_release_id,security_pin_source) VALUES (1,'run-reconcile','s1','u1','req-reconcile','msg-reconcile','h','trpc','running','{"agent_id":"agent-reconcile"}',datetime('now','+1 hour'),'agent-reconcile','version-reconcile','release-reconcile','legacy_backfill')`).Error)
+	revocation := types.AgentReleaseRevocationEntity{ID: "rev-reconcile", TenantID: 1, ReleaseID: "release-reconcile", Reason: "revoke", InFlightDisposition: "cancel", RunCancellationState: "pending"}
+	require.NoError(t, db.Create(&revocation).Error)
+	runs := NewAgentRunStore(db)
+	pending, err := runs.ListPendingRunCancellations(context.Background(), 10)
+	require.NoError(t, err)
+	require.Len(t, pending, 1)
+	type reconciliationResult struct {
+		count int64
+		err   error
+	}
+	results := make(chan reconciliationResult, 2)
+	var replicas sync.WaitGroup
+	for i := 0; i < 2; i++ {
+		replicas.Add(1)
+		go func() {
+			defer replicas.Done()
+			n, e := runs.ReconcileRunCancellation(context.Background(), 1, revocation.ID)
+			results <- reconciliationResult{count: n, err: e}
+		}()
+	}
+	replicas.Wait()
+	close(results)
+	for result := range results {
+		require.NoError(t, result.err)
+		require.EqualValues(t, 1, result.count, "replicas observe one cumulative completed obligation")
+	}
+	count, err := runs.ReconcileRunCancellation(context.Background(), 1, revocation.ID)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, count)
+	count, err = runs.ReconcileRunCancellation(context.Background(), 1, revocation.ID)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, count, "a completed retry returns the cumulative count without canceling twice")
+	var stored types.AgentReleaseRevocationEntity
+	require.NoError(t, db.Where("tenant_id=? AND id=?", 1, revocation.ID).Take(&stored).Error)
+	require.EqualValues(t, 1, stored.CanceledRunCount)
+	require.Equal(t, "complete", stored.RunCancellationState)
+}
+
 func TestCancelRunsByAgentsKeepsLongReasonInEventAndBoundsWaitReason(t *testing.T) {
 	db := openRunTestDB(t)
 	seedSecurityCancelFixture(t, db)

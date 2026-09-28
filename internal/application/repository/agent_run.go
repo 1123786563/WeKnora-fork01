@@ -40,18 +40,19 @@ func (s *AgentRunStore) DB() *gorm.DB {
 }
 
 type agentRunRow struct {
-	TenantID                                                              uint64
-	RunID, SessionID, OwnerID, RequestID, AssistantMessageID, RequestHash string
-	EngineType, Driver, TargetID, BudgetRef, Status, WaitReason           string
-	Snapshot                                                              string
-	GraphVersion, SDKVersion                                              string
-	SchemaVersion                                                         int
-	LeaseOwner                                                            string
-	LeaseUntil                                                            *time.Time
-	Epoch, Revision                                                       int64
-	MaxRounds, MaxToolCalls                                               int
-	TokenBudget                                                           int64
-	Deadline, CreatedAt, UpdatedAt                                        time.Time
+	TenantID                                                                           uint64
+	RunID, SessionID, OwnerID, RequestID, AssistantMessageID, RequestHash              string
+	EngineType, Driver, TargetID, BudgetRef, Status, WaitReason                        string
+	Snapshot                                                                           string
+	GraphVersion, SDKVersion                                                           string
+	SchemaVersion                                                                      int
+	LeaseOwner                                                                         string
+	SecurityAgentID, SecurityLocalAgentVersionID, SecurityReleaseID, SecurityPinSource string
+	LeaseUntil                                                                         *time.Time
+	Epoch, Revision                                                                    int64
+	MaxRounds, MaxToolCalls                                                            int
+	TokenBudget                                                                        int64
+	Deadline, CreatedAt, UpdatedAt                                                     time.Time
 }
 
 func (agentRunRow) TableName() string { return "agent_runs" }

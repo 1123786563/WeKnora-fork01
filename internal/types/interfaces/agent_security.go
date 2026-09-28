@@ -63,4 +63,5 @@ type AgentSecurityService interface {
 	GetRevocation(context.Context, uint64, string) (AgentSecurityRevocationView, error)
 	VerdictForAgent(context.Context, uint64, string) (AgentSecurityVerdict, error)
 	ReleaseAdmission(context.Context, uint64, string) error
+	ResolvePublishedAgentVersion(context.Context, uint64, string) (AgentVersionSnapshot, string, bool, error)
 }

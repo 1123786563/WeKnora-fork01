@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/application/service"
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/errors"
@@ -76,7 +77,9 @@ type Handler struct {
 	browserSkill *browserskill.Manager
 	// usageRecorder accumulates each finished chat turn's token usage into
 	// the user's daily bucket (SP12). Nil (tests) skips accounting.
-	usageRecorder interfaces.UsageRecorderService
+	usageRecorder           interfaces.UsageRecorderService
+	agentChatTurnClaimStore repository.AgentChatTurnClaimStore
+	agentVersionService     interfaces.AgentVersionService
 	// queryHistoryExport backs the Admin+ async query-history CSV export
 	// (SP13): the privacy gate, job admission, and the status/download reads.
 	// The asynq worker body (ProcessExport) lives on the same service.
@@ -93,6 +96,17 @@ type Handler struct {
 	// completion paths. Every path must still run the update — the mutex
 	// orders the writes, it never skips them.
 	completeMsgMu sync.Mutex
+}
+
+// SetAgentChatTurnClaimStore injects the durable AgentQA claim seam used by
+// the session handler. The turn flow is adopted by the follow-up checkpoint.
+func (h *Handler) SetAgentChatTurnClaimStore(store repository.AgentChatTurnClaimStore) {
+	h.agentChatTurnClaimStore = store
+}
+
+// SetAgentVersionService injects immutable Agent Version reads for claimed turns.
+func (h *Handler) SetAgentVersionService(service interfaces.AgentVersionService) {
+	h.agentVersionService = service
 }
 
 // queryHistoryExporter is the narrow port the export endpoints need from the
