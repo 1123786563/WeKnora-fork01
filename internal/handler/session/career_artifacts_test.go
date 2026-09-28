@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	stderrors "errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -29,6 +30,74 @@ import (
 	"gorm.io/gorm"
 )
 
+func TestCareerArtifactDownloadCleansStageWhenCatalogCommitFails(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	before := careerArtifactTempFiles(t)
+	db, store := careerArtifactDB(t)
+	body := []byte("stage removed after commit failure")
+	hash := sha256.Sum256(body)
+	digest := hex.EncodeToString(hash[:])
+	if err := db.Exec(`INSERT INTO artifact_versions (tenant_id,id,run_id,session_id,digest,object_key,mime,size,scan_state) VALUES (12,'commit-v','r','s',?,'local://tenant/12/o','text/plain',?,'ready')`, digest, len(body)).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(`INSERT INTO sessions (id,tenant_id,user_id) VALUES ('s',12,'owner-a')`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.BindVersion(context.Background(), careerrepo.Scope{TenantID: 12, OwnerID: "owner-a"}, "resume", "commit-v"); err != nil {
+		t.Fatal(err)
+	}
+	h := NewCareerArtifactHandler(failCommitCatalog{store}, careerArtifactTestTenant{}, &careerArtifactTestFiles{bytes: body}, nil)
+	h.stageBudget = newCareerArtifactStageBudget(int64(len(body)))
+	secret := []byte(strings.Repeat("c", 32))
+	h.key = func() ([]byte, error) { return secret, nil }
+	h.now = func() time.Time { return time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC) }
+	g := workbench.VersionArtifactGrant{TenantID: 12, OwnerID: "owner-a", ResourceID: "resume", VersionID: "commit-v", Digest: digest, ExpiresAt: h.now().Add(time.Minute).UnixNano()}
+	sig, err := workbench.SignVersionArtifactGrant(secret, g)
+	if err != nil {
+		t.Fatal(err)
+	}
+	values := url.Values{"tenant_id": {"12"}, "owner_id": {"owner-a"}, "resource_id": {"resume"}, "version_id": {"commit-v"}, "digest": {digest}, "expires_at": {strconv.FormatInt(g.ExpiresAt, 10)}, "signature": {sig}}
+	r := gin.New()
+	r.GET("/download", h.Download)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/download?"+values.Encode(), nil))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status=%d", rec.Code)
+	}
+	if h.stageBudget.used != 0 {
+		t.Fatalf("staging reservation leaked: %d", h.stageBudget.used)
+	}
+	for name := range careerArtifactTempFiles(t) {
+		if _, existed := before[name]; !existed {
+			t.Fatalf("staged temp file leaked: %s", name)
+		}
+	}
+}
+
+func careerArtifactTempFiles(t *testing.T) map[string]struct{} {
+	t.Helper()
+	entries, err := os.ReadDir(os.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := map[string]struct{}{}
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), "weknora-career-artifact-") {
+			out[entry.Name()] = struct{}{}
+		}
+	}
+	return out
+}
+
+type failCommitCatalog struct{ CareerArtifactCatalog }
+
+func (f failCommitCatalog) WithResolved(ctx context.Context, grant careerrepo.ArtifactGrant, use func(careerrepo.ArtifactVersion) error) error {
+	if err := f.CareerArtifactCatalog.WithResolved(ctx, grant, use); err != nil {
+		return err
+	}
+	return stderrors.New("simulated commit failure")
+}
+
 type careerArtifactTestFiles struct {
 	interfaces.FileService
 	bytes []byte
@@ -49,10 +118,33 @@ func TestCareerArtifactHTTPDownloadWithProductionTenantServiceAndSingleSQLiteCon
 	if err := db.Exec(`INSERT INTO tenants (id,name,status) VALUES (12,'workspace','active')`).Error; err != nil {
 		t.Fatal(err)
 	}
+	if err := db.Exec(`ALTER TABLE tenants ADD COLUMN default_storage_backend_id TEXT`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(`ALTER TABLE tenants ADD COLUMN storage_engine_config TEXT`).Error; err != nil {
+		t.Fatal(err)
+	}
+	storageDir := t.TempDir()
+	t.Setenv("LOCAL_STORAGE_BASE_DIR", storageDir)
+	config := `{"default_provider":"local","local":{"path_prefix":"` + strings.ReplaceAll(storageDir, `\`, `\\`) + `"}}`
+	if err := db.Exec(`UPDATE tenants SET storage_engine_config=? WHERE id=12`, config).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&types.StoredResource{}, &types.StorageBackend{}); err != nil {
+		t.Fatal(err)
+	}
 	body := []byte("single-connection artifact")
+	physical := filepath.Join(storageDir, "resume.txt")
+	if err := os.WriteFile(physical, body, 0600); err != nil {
+		t.Fatal(err)
+	}
+	resource := types.StoredResource{ID: "resource-1", Handle: "AbCdEfGhIjKlMnOpQrStUv", TenantID: 12, Provider: "local", PhysicalPath: physical, LocationHash: strings.Repeat("a", 64), Kind: "file", OriginalName: "resume.txt", Size: int64(len(body)), State: types.ResourceStateActive}
+	if err := db.Create(&resource).Error; err != nil {
+		t.Fatal(err)
+	}
 	digestBytes := sha256.Sum256(body)
 	digest := hex.EncodeToString(digestBytes[:])
-	if err := db.Exec(`INSERT INTO artifact_versions (tenant_id,id,run_id,session_id,digest,object_key,mime,size,scan_state) VALUES (12,'version-a','run','session',?,'local://tenant/12/object','text/plain',?,'ready')`, digest, len(body)).Error; err != nil {
+	if err := db.Exec(`INSERT INTO artifact_versions (tenant_id,id,run_id,session_id,digest,object_key,mime,size,scan_state) VALUES (12,'version-a','run','session',?,'resource://AbCdEfGhIjKlMnOpQrStUv','text/plain',?,'ready')`, digest, len(body)).Error; err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Exec(`INSERT INTO sessions (id,tenant_id,user_id) VALUES ('session',12,'owner-a')`).Error; err != nil {
@@ -62,8 +154,20 @@ func TestCareerArtifactHTTPDownloadWithProductionTenantServiceAndSingleSQLiteCon
 		t.Fatal(err)
 	}
 	tenants := appservice.NewTenantService(apprepo.NewTenantRepository(db), nil)
-	files := &careerArtifactTestFiles{bytes: body}
-	h := NewCareerArtifactHandler(store, tenants, files, nil)
+	resourceCatalog := appservice.NewResourceCatalog(apprepo.NewResourceRepository(db))
+	storage := appservice.NewStorageBackendServiceWithResources(apprepo.NewStorageBackendRepository(db), db, resourceCatalog)
+	preparedTenant, err := tenants.GetTenantByID(context.Background(), 12)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved, _, err := storage.ResolveFileService(context.Background(), preparedTenant, "", "", "")
+	if err != nil {
+		t.Fatalf("resolve production file service: %v tenant=%+v", err, preparedTenant)
+	}
+	if _, err := resolved.GetFile(context.Background(), "resource://AbCdEfGhIjKlMnOpQrStUv"); err != nil {
+		t.Fatalf("resolve production resource object: %v", err)
+	}
+	h := NewCareerArtifactHandler(store, tenants, &careerArtifactTestFiles{bytes: body}, storage)
 	secret := []byte(strings.Repeat("s", 32))
 	h.key = func() ([]byte, error) { return secret, nil }
 	now := time.Date(2026, 9, 29, 12, 30, 0, 123456789, time.UTC)

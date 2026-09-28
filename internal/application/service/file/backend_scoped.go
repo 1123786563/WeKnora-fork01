@@ -64,6 +64,18 @@ func (s *backendScopedFileService) GetFile(ctx context.Context, path string) (io
 	}
 	return s.inner.GetFile(ctx, p)
 }
+func (s *backendScopedFileService) PrepareGetFile(ctx context.Context, path string) (func(context.Context) (io.ReadCloser, error), error) {
+	p, err := s.unwrap(path)
+	if err != nil {
+		return nil, err
+	}
+	if preparer, ok := s.inner.(interface {
+		PrepareGetFile(context.Context, string) (func(context.Context) (io.ReadCloser, error), error)
+	}); ok {
+		return preparer.PrepareGetFile(ctx, p)
+	}
+	return func(openCtx context.Context) (io.ReadCloser, error) { return s.inner.GetFile(openCtx, p) }, nil
+}
 func (s *backendScopedFileService) GetFileURL(ctx context.Context, path string) (string, error) {
 	p, err := s.unwrap(path)
 	if err != nil {
