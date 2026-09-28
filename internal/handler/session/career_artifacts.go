@@ -142,27 +142,57 @@ func (h *CareerArtifactHandler) Download(c *gin.Context) {
 		c.AbortWithStatus(http.StatusNotFound)
 		return
 	}
+	// Tenant metadata is DB-backed; resolve it before entering WithResolved,
+	// whose transaction holds the SQLite database's only connection.
+	tenantCtx := types.WithExecutionTenant(c.Request.Context(), grant.TenantID)
+	tenant, err := h.tenants.GetTenantByID(tenantCtx, grant.TenantID)
+	if err != nil || tenant == nil {
+		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+	var staged *stagedCareerArtifact
+	var stagedName string
 	err = h.catalog.WithResolved(c.Request.Context(), careerrepo.ArtifactGrant{TenantID: grant.TenantID, OwnerID: grant.OwnerID, ResourceID: grant.ResourceID, VersionID: grant.VersionID, Digest: grant.Digest}, func(version careerrepo.ArtifactVersion) error {
-		return h.downloadResolved(c, grant, version)
+		var stageErr error
+		staged, stagedName, stageErr = h.stageResolved(c.Request.Context(), grant, version, tenant)
+		return stageErr
 	})
 	if err != nil && !c.Writer.Written() {
 		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+	if err != nil || staged == nil {
+		return
+	}
+	defer os.Remove(stagedName)
+	defer staged.Close()
+	if err := filetransport.Serve(c.Writer, c.Request, staged, filetransport.Options{Filename: versionFilename(staged.mime), Download: true, ContentType: staged.mime, Size: staged.size, CacheControl: "private, no-store"}); err != nil {
+		// The authorization lock and catalog connection have already been
+		// released; a slow or disconnected client cannot hold either resource.
+		return
 	}
 }
 
-func (h *CareerArtifactHandler) downloadResolved(c *gin.Context, grant workbench.VersionArtifactGrant, version careerrepo.ArtifactVersion) error {
+type stagedCareerArtifact struct {
+	*os.File
+	release func()
+	mime    string
+	size    int64
+}
+
+func (s *stagedCareerArtifact) Close() error {
+	err := s.File.Close()
+	s.release()
+	return err
+}
+
+func (h *CareerArtifactHandler) stageResolved(ctx context.Context, grant workbench.VersionArtifactGrant, version careerrepo.ArtifactVersion, tenant *types.Tenant) (*stagedCareerArtifact, string, error) {
 	if version.TenantID != grant.TenantID || version.OwnerID != grant.OwnerID || version.ResourceID != grant.ResourceID || version.VersionID != grant.VersionID || version.Digest != grant.Digest || version.Size <= 0 || version.Size > careerArtifactMaxSize {
-		return careerrepo.ErrNotFound
+		return nil, "", careerrepo.ErrNotFound
 	}
 	releaseStage, reserved := h.stageBudget.TryReserve(version.Size)
 	if !reserved {
-		return careerrepo.ErrNotFound
-	}
-	defer releaseStage()
-	ctx := types.WithExecutionTenant(c.Request.Context(), grant.TenantID)
-	tenant, err := h.tenants.GetTenantByID(ctx, grant.TenantID)
-	if err != nil || tenant == nil {
-		return careerrepo.ErrNotFound
+		return nil, "", careerrepo.ErrNotFound
 	}
 	backendID, providerPath, scoped := types.ParseStorageBackendPath(version.ObjectKey)
 	if !scoped {
@@ -170,36 +200,39 @@ func (h *CareerArtifactHandler) downloadResolved(c *gin.Context, grant workbench
 	}
 	fileService, _, ok := filesvc.ResolveTenantFileServiceWithFallback(ctx, "career artifact download", tenant, backendID, types.ParseProviderScheme(providerPath), storageurl.LocalStorageBaseDir(), h.storage, h.files)
 	if !ok || fileService == nil {
-		return careerrepo.ErrNotFound
+		releaseStage()
+		return nil, "", careerrepo.ErrNotFound
 	}
 	reader, err := fileService.GetFile(ctx, version.ObjectKey)
 	if err != nil {
-		return careerrepo.ErrNotFound
+		releaseStage()
+		return nil, "", careerrepo.ErrNotFound
 	}
 	defer reader.Close()
 	tmp, err := os.CreateTemp("", "weknora-career-artifact-*")
 	if err != nil {
-		return err
+		releaseStage()
+		return nil, "", err
 	}
 	name := tmp.Name()
-	defer os.Remove(name)
-	defer tmp.Close()
+	cleanup := func() { _ = tmp.Close(); _ = os.Remove(name); releaseStage() }
 	if err := tmp.Chmod(0600); err != nil {
-		return err
+		cleanup()
+		return nil, "", err
 	}
 	hasher := sha256.New()
 	n, err := io.Copy(io.MultiWriter(tmp, hasher), io.LimitReader(contextReader{ctx: ctx, reader: reader}, version.Size+1))
 	if err != nil || n != version.Size || hex.EncodeToString(hasher.Sum(nil)) != strings.ToLower(version.Digest) {
-		return careerrepo.ErrNotFound
+		cleanup()
+		return nil, "", careerrepo.ErrNotFound
 	}
 	if _, err := tmp.Seek(0, io.SeekStart); err != nil {
-		return err
+		cleanup()
+		return nil, "", err
 	}
-	c.Header("Cache-Control", "private, no-store")
-	if err := filetransport.Serve(c.Writer, c.Request, tmp, filetransport.Options{Filename: versionFilename(version.MIME), Download: true, ContentType: version.MIME, Size: version.Size, CacheControl: "private, no-store"}); err != nil {
-		return err
-	}
-	return nil
+	// Hold the stage budget for the staged file's lifetime, including response
+	// streaming. The response helper closes this wrapper on every path.
+	return &stagedCareerArtifact{File: tmp, release: releaseStage, mime: version.MIME, size: version.Size}, name, nil
 }
 
 func parseCareerArtifactGrant(q url.Values) (workbench.VersionArtifactGrant, string, bool) {

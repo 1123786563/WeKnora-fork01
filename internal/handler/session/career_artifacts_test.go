@@ -14,9 +14,12 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	apprepo "github.com/Tencent/WeKnora/internal/application/repository"
+	appservice "github.com/Tencent/WeKnora/internal/application/service"
 	careerrepo "github.com/Tencent/WeKnora/internal/modules/career/repository"
 	"github.com/Tencent/WeKnora/internal/modules/workbench"
 	"github.com/Tencent/WeKnora/internal/types"
@@ -30,6 +33,153 @@ type careerArtifactTestFiles struct {
 	interfaces.FileService
 	bytes []byte
 	opens int
+}
+
+func TestCareerArtifactHTTPDownloadWithProductionTenantServiceAndSingleSQLiteConnection(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db, store := careerArtifactDB(t)
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB.SetMaxOpenConns(1)
+	if err := db.Exec(`CREATE TABLE tenants (id INTEGER PRIMARY KEY, name TEXT, description TEXT, status TEXT, retriever_engines TEXT, business TEXT, storage_quota INTEGER, storage_used INTEGER, deleted_at DATETIME)`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(`INSERT INTO tenants (id,name,status) VALUES (12,'workspace','active')`).Error; err != nil {
+		t.Fatal(err)
+	}
+	body := []byte("single-connection artifact")
+	digestBytes := sha256.Sum256(body)
+	digest := hex.EncodeToString(digestBytes[:])
+	if err := db.Exec(`INSERT INTO artifact_versions (tenant_id,id,run_id,session_id,digest,object_key,mime,size,scan_state) VALUES (12,'version-a','run','session',?,'local://tenant/12/object','text/plain',?,'ready')`, digest, len(body)).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(`INSERT INTO sessions (id,tenant_id,user_id) VALUES ('session',12,'owner-a')`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.BindVersion(context.Background(), careerrepo.Scope{TenantID: 12, OwnerID: "owner-a"}, "resume", "version-a"); err != nil {
+		t.Fatal(err)
+	}
+	tenants := appservice.NewTenantService(apprepo.NewTenantRepository(db), nil)
+	files := &careerArtifactTestFiles{bytes: body}
+	h := NewCareerArtifactHandler(store, tenants, files, nil)
+	secret := []byte(strings.Repeat("s", 32))
+	h.key = func() ([]byte, error) { return secret, nil }
+	now := time.Date(2026, 9, 29, 12, 30, 0, 123456789, time.UTC)
+	h.now = func() time.Time { return now }
+	grant := workbench.VersionArtifactGrant{TenantID: 12, OwnerID: "owner-a", ResourceID: "resume", VersionID: "version-a", Digest: digest, ExpiresAt: now.Add(time.Minute).UnixNano()}
+	signature, err := workbench.SignVersionArtifactGrant(secret, grant)
+	if err != nil {
+		t.Fatal(err)
+	}
+	values := url.Values{"tenant_id": {"12"}, "owner_id": {"owner-a"}, "resource_id": {"resume"}, "version_id": {"version-a"}, "digest": {digest}, "expires_at": {strconv.FormatInt(grant.ExpiresAt, 10)}, "signature": {signature}}
+	r := gin.New()
+	r.GET("/download", h.Download)
+	result := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/download?"+values.Encode(), nil)
+	ctx, cancel := context.WithTimeout(req.Context(), 2*time.Second)
+	defer cancel()
+	req = req.WithContext(ctx)
+	done := make(chan struct{})
+	go func() { r.ServeHTTP(result, req); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("download deadlocked with one SQLite connection")
+	}
+	if result.Code != http.StatusOK || !bytesEqual(result.Body.Bytes(), body) {
+		t.Fatalf("download status=%d body=%q", result.Code, result.Body.Bytes())
+	}
+}
+
+type blockingArtifactWriter struct {
+	header        http.Header
+	firstWrite    chan struct{}
+	continueWrite chan struct{}
+	mu            sync.Mutex
+	body          []byte
+	status        int
+}
+
+func (w *blockingArtifactWriter) Header() http.Header  { return w.header }
+func (w *blockingArtifactWriter) WriteHeader(code int) { w.status = code }
+func (w *blockingArtifactWriter) Write(p []byte) (int, error) {
+	select {
+	case <-w.firstWrite:
+	default:
+		close(w.firstWrite)
+		<-w.continueWrite
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.bodyWrite(p)
+}
+func (w *blockingArtifactWriter) bodyWrite(p []byte) (int, error) {
+	w.body = append(w.body, p...)
+	return len(p), nil
+}
+
+func TestCareerArtifactHTTPDownloadReleasesSessionLockBeforeSlowResponse(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db, store := careerArtifactDB(t)
+	body := []byte("slow response snapshot")
+	digestBytes := sha256.Sum256(body)
+	digest := hex.EncodeToString(digestBytes[:])
+	if err := db.Exec(`INSERT INTO artifact_versions (tenant_id,id,run_id,session_id,digest,object_key,mime,size,scan_state) VALUES (12,'version-a','run','session',?,'local://tenant/12/object','text/plain',?,'ready')`, digest, len(body)).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(`INSERT INTO sessions (id,tenant_id,user_id) VALUES ('session',12,'owner-a')`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.BindVersion(context.Background(), careerrepo.Scope{TenantID: 12, OwnerID: "owner-a"}, "resume", "version-a"); err != nil {
+		t.Fatal(err)
+	}
+	files := &careerArtifactTestFiles{bytes: body}
+	h := NewCareerArtifactHandler(store, careerArtifactTestTenant{}, files, nil)
+	secret := []byte(strings.Repeat("s", 32))
+	h.key = func() ([]byte, error) { return secret, nil }
+	now := time.Now().UTC()
+	h.now = func() time.Time { return now }
+	grant := workbench.VersionArtifactGrant{TenantID: 12, OwnerID: "owner-a", ResourceID: "resume", VersionID: "version-a", Digest: digest, ExpiresAt: now.Add(time.Minute).UnixNano()}
+	sig, err := workbench.SignVersionArtifactGrant(secret, grant)
+	if err != nil {
+		t.Fatal(err)
+	}
+	values := url.Values{"tenant_id": {"12"}, "owner_id": {"owner-a"}, "resource_id": {"resume"}, "version_id": {"version-a"}, "digest": {digest}, "expires_at": {strconv.FormatInt(grant.ExpiresAt, 10)}, "signature": {sig}}
+	r := gin.New()
+	r.GET("/download", h.Download)
+	w := &blockingArtifactWriter{header: make(http.Header), firstWrite: make(chan struct{}), continueWrite: make(chan struct{})}
+	req := httptest.NewRequest(http.MethodGet, "/download?"+values.Encode(), nil)
+	done := make(chan struct{})
+	go func() { r.ServeHTTP(w, req); close(done) }()
+	select {
+	case <-w.firstWrite:
+	case <-time.After(2 * time.Second):
+		t.Fatal("download did not reach response write")
+	}
+	updated := make(chan error, 1)
+	go func() {
+		updated <- db.Exec(`UPDATE sessions SET user_id='owner-b' WHERE tenant_id=12 AND id='session'`).Error
+	}()
+	select {
+	case err := <-updated:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(2 * time.Second):
+		close(w.continueWrite)
+		t.Fatal("session owner update blocked behind slow response")
+	}
+	close(w.continueWrite)
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("download response did not finish")
+	}
+	if !bytesEqual(w.body, body) {
+		t.Fatalf("staged snapshot body=%q", w.body)
+	}
 }
 
 func (f *careerArtifactTestFiles) GetFile(context.Context, string) (io.ReadCloser, error) {
