@@ -10,6 +10,8 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+const agentSecurityRevocationWaitReason = "agent_security_revocation"
+
 // CancelRunsByAgents atomically cancels the active tenant runs whose frozen
 // coordinator snapshot names one of agentIDs. Malformed or non-coordinator
 // snapshots are deliberately skipped by this best-effort governance scan.
@@ -29,6 +31,16 @@ func (s *AgentRunStore) CancelRunsByAgents(ctx context.Context, tenantID uint64,
 
 	var canceled int64
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// SQLite starts deferred transactions. Reserve its single-writer slot
+		// before the candidate read so a worker cannot promote a competing read
+		// transaction after our scan and strand this batch with SQLITE_BUSY.
+		if tx.Dialector.Name() == "sqlite" {
+			if err := tx.Table("tenants").Where("id = ?", tenantID).
+				UpdateColumn("id", gorm.Expr("id")).Error; err != nil {
+				return err
+			}
+		}
+
 		var candidates []agentRunRow
 		if err := tx.Table("agent_runs").
 			Where("tenant_id = ? AND status NOT IN ?", tenantID, []string{"succeeded", "failed", "canceled"}).
@@ -63,8 +75,10 @@ func (s *AgentRunStore) CancelRunsByAgents(ctx context.Context, tenantID uint64,
 				Where("tenant_id = ? AND run_id = ? AND status NOT IN ?", tenantID, run.RunID,
 					[]string{"succeeded", "failed", "canceled"}).
 				Updates(map[string]any{
-					"status":      "canceled",
-					"wait_reason": reason,
+					"status": "canceled",
+					// The detailed reason lives in the append-only security ledger
+					// and event payload. Keep this compact status column bounded.
+					"wait_reason": agentSecurityRevocationWaitReason,
 					"lease_owner": "",
 					"lease_until": nil,
 					"revision":    gorm.Expr("revision + 1"),

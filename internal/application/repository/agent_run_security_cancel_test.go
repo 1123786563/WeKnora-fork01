@@ -2,11 +2,17 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
+	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
 	"github.com/stretchr/testify/require"
+	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 // seedSecurityCancelFixture reuses openRunTestDB's tenant 1 / u1 / s1 / s2,
@@ -36,14 +42,15 @@ func TestCancelRunsByAgentsCancelsOnlyMatchingActiveRuns(t *testing.T) {
 	runs := NewAgentRunStore(db)
 	ctx := context.Background()
 
-	canceled, err := runs.CancelRunsByAgents(ctx, 1, []string{"local-agent-blocked"}, "agent security revocation: CVE-2026-0001")
+	reason := "agent security revocation: CVE-2026-0001"
+	canceled, err := runs.CancelRunsByAgents(ctx, 1, []string{"local-agent-blocked"}, reason)
 	require.NoError(t, err)
 	require.EqualValues(t, 1, canceled)
 
 	blocked, err := runs.Get(ctx, agentruntime.RunKey{TenantID: 1, RunID: "sec-r1"})
 	require.NoError(t, err)
 	require.Equal(t, "canceled", blocked.Status)
-	require.Equal(t, "agent security revocation: CVE-2026-0001", blocked.WaitReason)
+	require.Equal(t, "agent_security_revocation", blocked.WaitReason)
 	require.Empty(t, blocked.Owner)
 	require.True(t, blocked.LeaseUntil.IsZero())
 	require.EqualValues(t, 4, blocked.Revision)
@@ -78,4 +85,131 @@ func TestCancelRunsByAgentsCancelsOnlyMatchingActiveRuns(t *testing.T) {
 	again, err := runs.CancelRunsByAgents(ctx, 1, []string{"local-agent-blocked"}, "again")
 	require.NoError(t, err)
 	require.EqualValues(t, 0, again, "处置幂等：已终态的行不再计入")
+}
+
+func TestCancelRunsByAgentsKeepsLongReasonInEventAndBoundsWaitReason(t *testing.T) {
+	db := openRunTestDB(t)
+	seedSecurityCancelFixture(t, db)
+	reason := strings.Repeat("revocation incident detail ", 8)
+
+	canceled, err := NewAgentRunStore(db).CancelRunsByAgents(context.Background(), 1,
+		[]string{"local-agent-blocked"}, reason)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, canceled)
+	run, err := NewAgentRunStore(db).Get(context.Background(), agentruntime.RunKey{TenantID: 1, RunID: "sec-r1"})
+	require.NoError(t, err)
+	require.Equal(t, "agent_security_revocation", run.WaitReason)
+	require.LessOrEqual(t, len(run.WaitReason), 64, "wait_reason fits PostgreSQL VARCHAR(64)")
+
+	var payload string
+	require.NoError(t, db.Table("agent_run_events").Select("payload").
+		Where("tenant_id = ? AND run_id = ? AND event_type = ?", 1, "sec-r1", "cancellation_requested").Scan(&payload).Error)
+	var event map[string]string
+	require.NoError(t, json.Unmarshal([]byte(payload), &event))
+	require.Equal(t, reason, event["reason"], "事件保留完整撤回原因")
+}
+
+func TestCancelRunsByAgentsReservesSQLiteWriterBeforeCandidateScan(t *testing.T) {
+	db := openRunTestDB(t)
+	seedSecurityCancelFixture(t, db)
+	ctx := context.Background()
+
+	// Pin a second connection for a worker transaction and keep its initial
+	// read open. The cancellation callback below gives the worker exactly the
+	// interleaving that previously caused a deferred read-to-write upgrade.
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	workerConn, err := sqlDB.Conn(ctx)
+	require.NoError(t, err)
+	workerDB, err := gorm.Open(sqlite.New(sqlite.Config{Conn: workerConn}),
+		&gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	require.NoError(t, err)
+	workerTx := workerDB.WithContext(ctx).Begin()
+	require.NoError(t, workerTx.Error)
+	defer func() {
+		_ = workerTx.Rollback().Error
+		_ = workerConn.Close()
+	}()
+	var observedRevision int64
+	require.NoError(t, workerTx.Table("agent_runs").Select("revision").
+		Where("tenant_id = ? AND run_id = ?", 1, "sec-r1").Scan(&observedRevision).Error)
+
+	candidateScanned := make(chan struct{})
+	continueCancellation := make(chan struct{})
+	var releaseOnce sync.Once
+	releaseScan := func() { releaseOnce.Do(func() { close(continueCancellation) }) }
+	defer releaseScan()
+	var scanObserved bool
+	callbackName := "test:wait_for_security_cancel_candidate_scan"
+	require.NoError(t, db.Callback().Query().After("gorm:query").Register(callbackName, func(tx *gorm.DB) {
+		if scanObserved || tx.Statement == nil {
+			return
+		}
+		if _, ok := tx.Statement.Dest.(*[]agentRunRow); !ok {
+			return
+		}
+		scanObserved = true
+		close(candidateScanned)
+		<-continueCancellation
+	}))
+	defer db.Callback().Query().Remove(callbackName)
+
+	type cancelResult struct {
+		count int64
+		err   error
+	}
+	canceled := make(chan cancelResult, 1)
+	go func() {
+		count, cancelErr := NewAgentRunStore(db).CancelRunsByAgents(ctx, 1,
+			[]string{"local-agent-blocked"}, strings.Repeat("security reason ", 10))
+		canceled <- cancelResult{count: count, err: cancelErr}
+	}()
+
+	select {
+	case <-candidateScanned:
+	case <-time.After(15 * time.Second):
+		releaseScan()
+		t.Fatal("cancellation did not reach candidate-scan barrier")
+	}
+
+	workerWrite := make(chan error, 1)
+	go func() {
+		workerWrite <- workerTx.Table("agent_runs").
+			Where("tenant_id = ? AND run_id = ? AND revision = ?", 1, "sec-r1", observedRevision).
+			UpdateColumn("revision", gorm.Expr("revision + 1")).Error
+	}()
+
+	var workerErr error
+	select {
+	case workerErr = <-workerWrite:
+	case <-time.After(15 * time.Second):
+		releaseScan()
+		t.Fatal("worker update did not resolve at the SQLite busy-timeout boundary")
+	}
+	if workerErr != nil {
+		// Release the worker's read transaction before cancellation commits.
+		require.NoError(t, workerTx.Rollback().Error)
+	}
+	releaseScan()
+
+	var result cancelResult
+	select {
+	case result = <-canceled:
+	case <-time.After(15 * time.Second):
+		t.Fatal("security cancellation did not finish after releasing the barrier")
+	}
+	if workerErr == nil {
+		_ = workerTx.Rollback().Error
+	}
+	require.Error(t, workerErr, "SQLite writer reservation prevents the stale worker write")
+	require.NoError(t, result.err)
+	require.EqualValues(t, 1, result.count)
+
+	run, err := NewAgentRunStore(db).Get(ctx, agentruntime.RunKey{TenantID: 1, RunID: "sec-r1"})
+	require.NoError(t, err)
+	require.Equal(t, "canceled", run.Status)
+	require.EqualValues(t, observedRevision+1, run.Revision, "仅撤回转换递增 revision，worker 写入未提交")
+	var events int64
+	require.NoError(t, db.Table("agent_run_events").Where("tenant_id = ? AND run_id = ? AND event_type = ?", 1, "sec-r1", "cancellation_requested").Count(&events).Error)
+	require.EqualValues(t, 1, events, "Run 与单个取消事件作为一个事务提交")
 }
