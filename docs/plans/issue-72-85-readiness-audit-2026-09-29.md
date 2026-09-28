@@ -1,12 +1,14 @@
 # Issue #85 current readiness audit
 
+> **Historical checkout scope:** This audit is a snapshot of checkout `cd6b0e521`. Its observation that `issue-72-dag.md` and `issue-72-execution-ledger.md` were absent applies only to that checkout and is not a statement about the current integration worktree. For current readiness, use [`issue-72-dag.md` §8](issue-72-dag.md#8-recovery-overlay--2026-09-28-supersedes-stale-readiness-snapshot-above) and [`issue-72-execution-ledger.md`](issue-72-execution-ledger.md). The `2026-09-20-lago-billing-waves.md` file cited below is the historical planning DAG, not the canonical current DAG.
+
 Read time: 2026-09-29 (Asia/Shanghai), repository `1123786563/WeKnora-fork01`, worktree HEAD `cd6b0e521`.
 
 ## Sources and traversal
 
 - GitHub API (authenticated `gh api`): Issue #72, formal `sub_issues` pagination; Issue #85 and its comments/formal children; dependency issues #75, #82, #83, and gate issues #84, #86, #87. No API errors observed. Issue #85 has zero comments and zero formal children.
-- `docs/plans/2026-09-20-lago-billing-waves.md`: canonical planned DAG and wave schedule. It places #85 in W7 with #84, after #82/#83 and #75; #86 consumes #85, then #87 consumes #86.
-- Requested `docs/plans/issue-72-dag.md` and `docs/plans/issue-72-execution-ledger.md` are absent at current HEAD (and not present in the worktree). This is an unresolved source gap, not evidence of an empty DAG/ledger.
+- `docs/plans/2026-09-20-lago-billing-waves.md`: historical planning DAG and wave schedule. It places #85 in W7 with #84, after #82/#83 and #75; #86 consumes #85, then #87 consumes #86.
+- At the audited checkout `cd6b0e521`, `docs/plans/issue-72-dag.md` and `docs/plans/issue-72-execution-ledger.md` were absent. This historical checkout-local absence is not evidence of an empty DAG/ledger; the current recovery overlay and ledger are linked in the scope note above.
 - `docs/migrations/lago/t03-wallet-semantics/verdict.md` and evidence: #75 is closed but AC a2 (12-month top-up batch expiry under Lago's six-wallet cap) is explicitly BLOCKED; other wallet semantics are PASS-with-coordination.
 - `docs/plans/ledgers/lago-80.md` and `docs/migrations/lago/t08-base-plan/README.md`: #80 evidence is complete for monthly included credits and identity replay, but is not #85 paid top-up evidence.
 - Current code contains generic top-up fulfillment and refund primitives (`internal/modules/commercial/service/commercial/fulfillment.go`, `refund.go`) and #82/#86 related code, but no issue-#85-specific acceptance/evidence record was found.
@@ -37,10 +39,10 @@ Therefore #85 is not accepted-ready. The exact gaps are a dedicated paid-top-up 
 
 ## Frontier assessment
 
-- #85 is blocked by all three explicit blockers (#75, #82, #83); #82/#83 are themselves gated by #74/#81 and #74 currently has documented blocked runtime evidence in the parent plan.
+- In the audited `cd6b0e521` snapshot, #85 had the explicit blockers #75, #82, and #83. The current recovery overlay records later completion evidence for #74 and #81; #82 code is integrated but acceptance remains unverified; #83 remains unverified; and #75 a2 remains blocked. Sources: [DAG §8](issue-72-dag.md#8-recovery-overlay--2026-09-28-supersedes-stale-readiness-snapshot-above), [execution ledger #82 ancestry correction](issue-72-execution-ledger.md#82-ancestry-correction-and-87-owner-rule-options-2026-09-28), and [execution ledger #85 readiness refresh](issue-72-execution-ledger.md#85-readiness-refresh-2026-09-29). None of these statuses alone clears #85.
 - #84 is also not an independent ready alternative while payment gates continue; its issue dependency chain is payment activation and quote/invoice behavior.
 - #86 is downstream of #85 and remains blocked; #87 is downstream of #86 and cannot be treated as ready.
-- No independent non-live task in the #85/#86/#87 slice is shown ready by the current Issue graph. The only clearly completed prerequisite evidence is #75’s partial verdict and #80’s monthly-credit implementation, neither satisfies #85.
+- This historical audit did not establish a ready independent task in the #85/#86/#87 slice. The current recovery overlay says no implementation task is verified-ready and identifies #86 checkpoint review/verification as the active gate ([DAG §8](issue-72-dag.md#8-recovery-overlay--2026-09-28-supersedes-stale-readiness-snapshot-above)). #75 a2 remains blocked and #80 monthly-credit evidence does not satisfy #85 ([execution ledger #85 readiness refresh](issue-72-execution-ledger.md#85-readiness-refresh-2026-09-29)).
 
 ## Inference (clearly labeled)
 
