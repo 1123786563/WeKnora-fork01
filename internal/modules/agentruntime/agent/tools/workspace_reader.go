@@ -27,7 +27,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/Tencent/WeKnora/internal/logger"
-	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
 	"github.com/Tencent/WeKnora/internal/types"
 )
 
@@ -86,7 +85,7 @@ type readCacheEntry struct {
 // what is held to one file instead of to every file the turn happened to read.
 // The tool instance lives for one agent run, so nothing outlives the turn.
 func (t *workspaceFileReader) readWithCache(
-	ctx context.Context, sessionID, filePath string, stat *sandbox.RemoteStatEntry,
+	ctx context.Context, sessionID, filePath string, stat *RemoteStatEntry,
 ) ([]byte, error) {
 	epoch := sandboxMutationEpoch()
 
@@ -145,13 +144,13 @@ func (t *workspaceFileReader) read(ctx context.Context, input ReadFileInput) (*t
 	// The source binds reads to the current session's sandbox. Preserve the
 	// familiar workspace roots in metadata, without restricting readable paths
 	// to them: temporary files and installed resources may live elsewhere.
-	clean := sandbox.ResolveWorkspacePath(trimmed)
+	clean := ResolveWorkspacePath(trimmed)
 	rootDir, ok := matchingInspectableRoot(clean)
 	if !ok {
 		rootDir = "/"
 	}
 
-	ctx = sandbox.WithSessionFileOperation(ctx)
+	ctx = WithSessionFileOperation(ctx)
 	stat, err := t.source.StatSessionFile(ctx, sessionID, clean)
 	if err != nil {
 		logger.Warnf(ctx, "[Tool][ReadSandboxFile] stat failed: session=%s path=%s err=%v",
@@ -167,7 +166,7 @@ func (t *workspaceFileReader) read(ctx context.Context, input ReadFileInput) (*t
 			Error:   fmt.Sprintf("file not found: %s", clean),
 		}, nil
 	}
-	if stat.Type == sandbox.RemoteEntryDir {
+	if stat.Type == RemoteEntryDir {
 		return &types.ToolResult{
 			Success: false,
 			Error:   fmt.Sprintf("path is a directory, not a file: %s", clean),
@@ -176,7 +175,7 @@ func (t *workspaceFileReader) read(ctx context.Context, input ReadFileInput) (*t
 	// Keep reads limited to regular files. Backends stat the final component
 	// without following symlinks; other filesystem permissions remain enforced
 	// by the sandbox backend.
-	if stat.Type != sandbox.RemoteEntryFile {
+	if stat.Type != RemoteEntryFile {
 		return &types.ToolResult{
 			Success: false,
 			Error:   fmt.Sprintf("path is not a regular file: %s", clean),

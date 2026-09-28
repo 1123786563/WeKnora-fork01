@@ -88,3 +88,32 @@ Ledger（`.worktrees/passb-int/docs/architecture/passb/exception-ledger.yaml`）
 ### 1.6 R2.1 结论
 
 前置 1–4 全部满足；T0 四命令与节点 gate 与计划基线零漂移；20 条例外边盘点完成，唯一勘误（3 个 sandbox 符号遗漏）已登记并转 R2.2 补入；契约快照 GREEN。R2.2–R2.4 可开工。
+
+## §8 计数基线登记（§8 三方一致，逐窗口）
+
+### 8.1 R2.2 窗口（2026-09-28）：exceptions 142→135（−9+2）
+
+**变更：** Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY + conventions §8 三方一致。
+
+- **−9**（tools 消费侧 seam 收敛，guard importExceptions 与 exception-ledger 同窗同 commit 删除）：exc-0029（browserskill.go→execution/browserskill）、exc-0030（browserskill_result.go→execution/browserskill）、exc-0039（output_links.go→execution/sandbox）、exc-0040（sandbox_edit.go）、exc-0041（sandbox_ls.go）、exc-0042（sandbox_write.go）、exc-0044（shell_exec.go）、exc-0045（skill_file.go）、exc-0047（workspace_reader.go）。
+- **+2**（seam 登记行，续号 exc-0143/0144，remove_at=ib3，reason="R2 消费侧 seam 收敛（32 计划 §0.4/§0.5），ib3 门面合法化后随 seam 文件消除（Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY）"）：exc-0143（execution_seams.go→execution/sandbox）、exc-0144（execution_seams.go→execution/browserskill）。ledger 头注同窗机械计数修正 142→135 并追加 R2.2 增量行。
+
+**三方一致复核（本窗口实跑）：**
+
+| 口径 | 命令 | 实测 |
+|---|---|---|
+| guard 实测 | `make check-backend-architecture` | `architectureguard: literal=564 apiKeyRoute=69 handle=0 total=633 \| redis=23 lite=23 \| hooks=58 \| modules=16` + `OK (0 violations)`（路由/任务/挂点计数不变） |
+| passbguard 实测 | `make check-passb-readiness` | `pass-b readiness: legacy=358 aliases=69 exceptions=135 contracts=125 events=29 overlaps=0 missing=0` |
+| ledger 行数 | `grep -c '^  - id:' docs/architecture/passb/exception-ledger.yaml` | `135`（plan=32 名下 20→13 行：−9+2） |
+
+### 8.2 R2.2 边核验与 GREEN 证据（差分关键项，§6 差分前拍见 §1）
+
+| 检查 | 命令 | 结果 |
+|---|---|---|
+| tools 生产代码 execution 边归零 | `grep -rn "modules/execution" internal/modules/agentruntime/agent/tools/*.go \| grep -v _test \| grep -v execution_seams.go` | 空输出（EXIT=1） |
+| seam 文件仅持 2 条 import 边 | `grep -c "execution/sandbox\|execution/browserskill" internal/modules/agentruntime/agent/tools/execution_seams.go` | `2` |
+| GREEN：tools 包 | `go test ./internal/modules/agentruntime/agent/tools/ -count=1` | `ok github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/tools 48.203s`（EXIT=0；含 R2.1 四快照 = 外部契约零变化机器证明） |
+| GREEN：全量构建 | `go build ./...` | EXIT=0（仅既有 `-lc++` 链接警告） |
+| gofmt/vet | `gofmt -l internal/modules/agentruntime/agent/tools/`；`go vet ./internal/modules/agentruntime/agent/tools/` | 空输出 / EXIT=0 |
+
+**符号勘误落点（§1.4 登记 → 本窗口执行）：** seam 实补 `RemoteEntryFile`/`RemoteEntryDir` 两常量（remote_client.go:382/:383）；`RemoteDirEntryType` 类型经 `RemoteDirEntry.Type` 字段透明传递，tools 包（生产+测试）零直接书写（grep 实证），无需独立别名。seam 终集 = 12 类型别名 + 6 常量别名 + 1 变量别名 + 9 薄委托函数（计划 §0.8-A 的 4 常量 + 勘误 2 常量）。

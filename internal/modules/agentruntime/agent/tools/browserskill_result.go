@@ -6,24 +6,23 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Tencent/WeKnora/internal/modules/execution/browserskill"
 	"github.com/Tencent/WeKnora/internal/types"
 )
 
 func browserToolFailure(method string, err error) *types.ToolResult {
-	var rpcErr *browserskill.RPCError
+	var rpcErr *RPCError
 	if !errors.As(err, &rpcErr) {
 		return &types.ToolResult{Success: false, Error: err.Error(), Output: err.Error()}
 	}
 	output, _ := json.Marshal(struct {
-		Method string                 `json:"method"`
-		Error  *browserskill.RPCError `json:"error"`
-		Hint   string                 `json:"recovery_hint"`
+		Method string    `json:"method"`
+		Error  *RPCError `json:"error"`
+		Hint   string    `json:"recovery_hint"`
 	}{method, rpcErr, browserRecoveryHint(method, rpcErr)})
 	return &types.ToolResult{Success: false, Error: err.Error(), Output: string(output)}
 }
 
-func browserRecoveryHint(method string, err *browserskill.RPCError) string {
+func browserRecoveryHint(method string, err *RPCError) string {
 	var data struct {
 		Reason string `json:"reason"`
 		Effect string `json:"effect_state"`
@@ -108,7 +107,7 @@ func (t *BrowserSkillTool) interpretResult(method string, raw json.RawMessage) *
 		return result
 	}
 	result := &types.ToolResult{Success: true, Output: string(raw)}
-	if browserskill.NavigationIncomplete(method, raw) {
+	if NavigationIncomplete(method, raw) {
 		result.Success = false
 		result.Error = "Navigation did not reach the requested loading phase. The page may already have changed. " +
 			"Observe current state before deciding what remains; do not automatically reload or repeat navigation."

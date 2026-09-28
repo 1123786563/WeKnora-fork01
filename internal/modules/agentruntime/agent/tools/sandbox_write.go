@@ -26,7 +26,6 @@ import (
 	"strings"
 
 	"github.com/Tencent/WeKnora/internal/logger"
-	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/utils"
 )
@@ -83,13 +82,13 @@ const writeSandboxMissingFieldHint = "\nIf the previous call was truncated, retr
 	"put `path` first (e.g. /workspace/output/script.py), then `content`. Split large files."
 
 // SandboxFileSink is the file-store slice write_sandbox_file needs.
-// Production uses *sandbox.SessionBoundManager via SessionFileStore.
+// Production uses *SessionBoundManager via SessionFileStore.
 //
 // It is not write-only: append mode has to see the file that is already there.
 // The remote backends expose no atomic append, so this reads and rewrites the
 // whole file, which is what edit_sandbox_file already does.
 type SandboxFileSink interface {
-	StatSessionFile(ctx context.Context, sessionID, filePath string) (*sandbox.RemoteStatEntry, error)
+	StatSessionFile(ctx context.Context, sessionID, filePath string) (*RemoteStatEntry, error)
 	ReadSessionFile(ctx context.Context, sessionID, filePath string) ([]byte, error)
 	WriteSessionWorkspaceFile(ctx context.Context, sessionID, filePath string, content []byte) error
 }
@@ -201,7 +200,7 @@ func (t *WriteSandboxFileTool) Execute(ctx context.Context, args json.RawMessage
 		}, nil
 	}
 
-	clean := sandbox.ResolveWorkspacePath(trimmed)
+	clean := ResolveWorkspacePath(trimmed)
 	rootDir, ok := matchingWritableRoot(clean)
 	if !ok {
 		return &types.ToolResult{
@@ -361,7 +360,7 @@ func (t *WriteSandboxFileTool) readForAppend(
 			"cannot append to %s: it does not exist yet (%v). Write the first chunk with mode=%q, then append the rest",
 			filePath, err, writeModeOverwrite)
 	}
-	if stat.Type != sandbox.RemoteEntryFile {
+	if stat.Type != RemoteEntryFile {
 		return nil, fmt.Sprintf("cannot append to %s: it is not a regular file", filePath)
 	}
 	existing, err := t.sink.ReadSessionFile(ctx, sessionID, filePath)
@@ -384,7 +383,7 @@ func workspaceWriteScopeError(requested string) string {
 	return fmt.Sprintf(
 		"path %q is outside that scope: write a file inside the session sandbox, "+
 			"not a directory root or a path under read-only %s",
-		requested, sandbox.SessionInputRoot,
+		requested, SessionInputRoot,
 	)
 }
 
@@ -392,16 +391,16 @@ func workspaceWriteScopeError(requested string) string {
 // and the read-only attachment tree.
 func matchingWritableRoot(clean string) (string, bool) {
 	if !path.IsAbs(clean) || clean == "/" ||
-		clean == sandbox.SessionWorkspaceRoot ||
-		clean == sandbox.SessionOutputRoot ||
-		isUnderRoot(clean, sandbox.SessionInputRoot) {
+		clean == SessionWorkspaceRoot ||
+		clean == SessionOutputRoot ||
+		isUnderRoot(clean, SessionInputRoot) {
 		return "", false
 	}
-	if isUnderRoot(clean, sandbox.SessionOutputRoot) {
-		return sandbox.SessionOutputRoot, true
+	if isUnderRoot(clean, SessionOutputRoot) {
+		return SessionOutputRoot, true
 	}
-	if isUnderRoot(clean, sandbox.SessionWorkspaceRoot) {
-		return sandbox.SessionWorkspaceRoot, true
+	if isUnderRoot(clean, SessionWorkspaceRoot) {
+		return SessionWorkspaceRoot, true
 	}
 	return "/", true
 }

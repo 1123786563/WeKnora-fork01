@@ -26,7 +26,6 @@ import (
 	"strings"
 
 	"github.com/Tencent/WeKnora/internal/logger"
-	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/utils"
 )
@@ -38,9 +37,9 @@ const editSandboxMissingFieldHint = "\nIf the previous call was truncated, retry
 	"Do not send the whole file — this tool replaces snippets."
 
 // SandboxFileEditor reads then writes a session workspace file. Production
-// uses *sandbox.SessionBoundManager via SessionFileStore.
+// uses *SessionBoundManager via SessionFileStore.
 type SandboxFileEditor interface {
-	StatSessionFile(ctx context.Context, sessionID, filePath string) (*sandbox.RemoteStatEntry, error)
+	StatSessionFile(ctx context.Context, sessionID, filePath string) (*RemoteStatEntry, error)
 	ReadSessionFile(ctx context.Context, sessionID, filePath string) ([]byte, error)
 	WriteSessionWorkspaceFile(ctx context.Context, sessionID, filePath string, content []byte) error
 }
@@ -149,7 +148,7 @@ func (t *EditSandboxFileTool) Execute(ctx context.Context, args json.RawMessage)
 		}, nil
 	}
 
-	clean := sandbox.ResolveWorkspacePath(trimmed)
+	clean := ResolveWorkspacePath(trimmed)
 	rootDir, ok := matchingWritableRoot(clean)
 	if !ok {
 		return &types.ToolResult{
@@ -169,7 +168,7 @@ func (t *EditSandboxFileTool) Execute(ctx context.Context, args json.RawMessage)
 			Error:   fmt.Sprintf("failed to stat %s: %v", clean, err),
 		}, nil
 	}
-	if stat != nil && stat.Type == sandbox.RemoteEntryDir {
+	if stat != nil && stat.Type == RemoteEntryDir {
 		return &types.ToolResult{
 			Success: false,
 			Error:   fmt.Sprintf("%s is a directory; edit_sandbox_file only edits files", clean),

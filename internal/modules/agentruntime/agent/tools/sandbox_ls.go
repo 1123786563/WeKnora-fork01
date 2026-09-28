@@ -32,21 +32,20 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/skills"
-	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/utils"
 )
 
 // SandboxFileSource is the narrow, tool-facing subset of a session-aware
 // sandbox manager. In production it is satisfied by
-// *sandbox.SessionBoundManager; tests can stub it with an in-memory fake.
+// *SessionBoundManager; tests can stub it with an in-memory fake.
 //
 // Keeping the interface local to the tools package avoids leaking a
 // dependency on internal/application/service (which is a higher layer)
 // and mirrors the pattern used by ArtifactCollector.SandboxArtifactSource.
 type SandboxFileSource interface {
-	ListSessionFiles(ctx context.Context, sessionID, dir string) ([]sandbox.RemoteDirEntry, error)
-	StatSessionFile(ctx context.Context, sessionID, path string) (*sandbox.RemoteStatEntry, error)
+	ListSessionFiles(ctx context.Context, sessionID, dir string) ([]RemoteDirEntry, error)
+	StatSessionFile(ctx context.Context, sessionID, path string) (*RemoteStatEntry, error)
 	ReadSessionFile(ctx context.Context, sessionID, path string) ([]byte, error)
 }
 
@@ -134,7 +133,7 @@ func (t *ListSandboxFilesTool) Execute(ctx context.Context, args json.RawMessage
 	if targetDir == "" {
 		targetDir = skills.ArtifactOutputDir()
 	} else {
-		targetDir = sandbox.ResolveWorkspacePath(targetDir)
+		targetDir = ResolveWorkspacePath(targetDir)
 	}
 	rootDir, ok := matchingInspectableRoot(targetDir)
 	if !ok {
@@ -252,13 +251,13 @@ func resolveSessionID(ctx context.Context) string {
 func sandboxInspectableRoots() []string {
 	return []string{
 		skills.ArtifactOutputDir(),
-		sandbox.SessionInputRoot,
-		sandbox.SessionWorkspaceRoot,
+		SessionInputRoot,
+		SessionWorkspaceRoot,
 	}
 }
 
 func relativeSkillFileFromImagePath(clean, skillName string) string {
-	dir, err := sandbox.SkillDirFor(skillName)
+	dir, err := SkillDirFor(skillName)
 	if err != nil || clean == dir {
 		return ""
 	}
