@@ -24,7 +24,7 @@ func (a *versionGrantAuthorizer) AuthorizeVersionGrant(_ context.Context, _ Vers
 func TestVersionArtifactGrantBindsOwnerResourceVersionAndDigest(t *testing.T) {
 	key := []byte(strings.Repeat("k", 32))
 	now := time.Now()
-	base := VersionArtifactGrant{TenantID: 7, OwnerID: "u1", ResourceID: "resume", VersionID: "v2", Digest: strings.Repeat("a", 64), ExpiresAt: now.Add(time.Minute).UnixMilli()}
+	base := VersionArtifactGrant{TenantID: 7, OwnerID: "u1", ResourceID: "resume", VersionID: "v2", Digest: strings.Repeat("a", 64), ExpiresAt: now.Add(time.Minute).UnixNano()}
 	sig, err := SignVersionArtifactGrant(key, base)
 	if err != nil {
 		t.Fatal(err)
@@ -69,8 +69,8 @@ func TestNewVersionArtifactGrantCapsExpiry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if grant.ExpiresAt != now.Add(MaxArtifactGrantTTL).UnixMilli() {
-		t.Fatalf("expiry = %d, want capped at %d", grant.ExpiresAt, now.Add(MaxArtifactGrantTTL).UnixMilli())
+	if grant.ExpiresAt != now.Add(MaxArtifactGrantTTL).UnixNano() {
+		t.Fatalf("expiry = %d, want capped at %d", grant.ExpiresAt, now.Add(MaxArtifactGrantTTL).UnixNano())
 	}
 }
 
@@ -82,19 +82,41 @@ func TestNewVersionArtifactGrantRejectsInvalidTTL(t *testing.T) {
 		}
 	}
 	grant, err := NewVersionArtifactGrant(1, "u1", "r1", "v1", strings.Repeat("a", 64), now, time.Second)
-	if err != nil || grant.ExpiresAt != now.Add(time.Second).UnixMilli() {
+	if err != nil || grant.ExpiresAt != now.Add(time.Second).UnixNano() {
 		t.Fatalf("one-second TTL grant=%+v err=%v", grant, err)
 	}
 }
 
+func TestNewVersionArtifactGrantExactMaximumLifetimeAndExpiryBoundary(t *testing.T) {
+	now := time.Unix(1_800_000_000, 987_654_321)
+	grant, err := NewVersionArtifactGrant(1, "u1", "r1", "v1", strings.Repeat("a", 64), now, MaxArtifactGrantTTL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := grant.ExpiresAt - now.UnixNano(); got != int64(MaxArtifactGrantTTL) {
+		t.Fatalf("max grant lifetime=%dns, want %dns", got, MaxArtifactGrantTTL)
+	}
+	key := []byte(strings.Repeat("k", 32))
+	sig, err := SignVersionArtifactGrant(key, grant)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := VerifyVersionArtifactGrantAt(key, grant, sig, time.Unix(0, grant.ExpiresAt-1)); err != nil {
+		t.Fatalf("grant rejected 1ns before expiry: %v", err)
+	}
+	if err := VerifyVersionArtifactGrantAt(key, grant, sig, time.Unix(0, grant.ExpiresAt)); err == nil {
+		t.Fatal("grant accepted at exact expiry")
+	}
+}
+
 func TestNewVersionArtifactGrantPreservesOneSecondAtFractionalNow(t *testing.T) {
-	now := time.Unix(1_800_000_000, 999_000_000)
+	now := time.Unix(1_800_000_000, 987_654_321)
 	grant, err := NewVersionArtifactGrant(1, "u1", "r1", "v1", strings.Repeat("a", 64), now, time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := grant.ExpiresAt - now.UnixMilli(); got != 1000 {
-		t.Fatalf("grant lifetime = %dms, want 1000ms", got)
+	if got := grant.ExpiresAt - now.UnixNano(); got != int64(time.Second) {
+		t.Fatalf("grant lifetime = %dns, want %dns", got, time.Second)
 	}
 }
 

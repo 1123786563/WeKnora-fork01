@@ -190,13 +190,18 @@ func TestCareerPostgresMigrationDeclaresIsolationAndAppendOnlyShape(t *testing.T
 	down, err := os.ReadFile(filepath.Join(repoRoot, "migrations/versioned/000203_career_foundation.down.sql"))
 	require.NoError(t, err)
 	upSQL, downSQL := string(up), string(down)
-	for _, declaration := range []string{"response_json JSONB", "payload JSONB"} {
-		require.Contains(t, upSQL, declaration)
+	compositeFK := `FOREIGN KEY\s*\(tenant_id, owner_id\)\s*REFERENCES\s+career_spaces\s*\(tenant_id, owner_id\)`
+	for _, table := range []struct{ name, column string }{
+		{"career_idempotency_receipts", "response_json JSONB"},
+		{"career_profile_facts", "payload JSONB"},
+		{"career_evidence", "payload JSONB"},
+	} {
+		blockRE := regexp.MustCompile(`(?is)CREATE TABLE\s+` + regexp.QuoteMeta(table.name) + `\s*\((.*?)\n\);`)
+		matches := blockRE.FindStringSubmatch(upSQL)
+		require.Len(t, matches, 2, "PostgreSQL migration must contain one %s table definition", table.name)
+		require.Contains(t, matches[1], table.column, "%s must store its owned payload as JSONB", table.name)
+		require.Regexp(t, regexp.MustCompile(compositeFK), matches[1], "%s must have a composite tenant/owner FK", table.name)
 	}
-	jsonbColumns := regexp.MustCompile(`(?m)^\s*(?:response_json|payload) JSONB(?:,|\s+NOT\s+NULL|$)`)
-	require.Len(t, jsonbColumns.FindAllString(upSQL, -1), 3, "receipt response and both durable payload columns must be PostgreSQL JSONB")
-	compositeFK := regexp.MustCompile(`FOREIGN KEY\s*\(tenant_id, owner_id\)\s*REFERENCES\s+career_spaces\s*\(tenant_id, owner_id\)`)
-	require.Len(t, compositeFK.FindAllString(upSQL, -1), 3, "receipts, profile facts, and evidence must all use composite tenant/owner FKs")
 	require.Contains(t, upSQL, "CREATE FUNCTION career_evidence_append_only()")
 	require.Contains(t, upSQL, "BEFORE UPDATE OR DELETE ON career_evidence")
 	require.Contains(t, upSQL, "EXECUTE FUNCTION career_evidence_append_only()")

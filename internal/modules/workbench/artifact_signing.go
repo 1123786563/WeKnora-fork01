@@ -38,7 +38,7 @@ type VersionArtifactGrant struct {
 	ResourceID string
 	VersionID  string
 	Digest     string
-	ExpiresAt  int64 // unix milliseconds
+	ExpiresAt  int64 // unix nanoseconds
 }
 
 func (g VersionArtifactGrant) Canonical() (string, error) {
@@ -49,7 +49,7 @@ func (g VersionArtifactGrant) Canonical() (string, error) {
 	if err != nil || len(digest) != sha256.Size {
 		return "", errors.New("version artifact grant: digest must be SHA-256 hex")
 	}
-	parts := []string{"wk-version-artifact-v1", strconv.FormatUint(g.TenantID, 10), g.OwnerID, g.ResourceID, g.VersionID, strings.ToLower(g.Digest), strconv.FormatInt(g.ExpiresAt, 10)}
+	parts := []string{"wk-version-artifact-v2", strconv.FormatUint(g.TenantID, 10), g.OwnerID, g.ResourceID, g.VersionID, strings.ToLower(g.Digest), strconv.FormatInt(g.ExpiresAt, 10)}
 	for _, part := range parts[2:6] {
 		if strings.ContainsAny(part, "|\r\n") || strings.TrimSpace(part) != part {
 			return "", errors.New("version artifact grant: invalid field")
@@ -68,7 +68,7 @@ func NewVersionArtifactGrant(tenantID uint64, ownerID, resourceID, versionID, di
 	if ttl > MaxArtifactGrantTTL {
 		ttl = MaxArtifactGrantTTL
 	}
-	g := VersionArtifactGrant{TenantID: tenantID, OwnerID: ownerID, ResourceID: resourceID, VersionID: versionID, Digest: strings.ToLower(digest), ExpiresAt: now.Add(ttl).UnixMilli()}
+	g := VersionArtifactGrant{TenantID: tenantID, OwnerID: ownerID, ResourceID: resourceID, VersionID: versionID, Digest: strings.ToLower(digest), ExpiresAt: now.Add(ttl).UnixNano()}
 	_, err := g.Canonical()
 	return g, err
 }
@@ -91,7 +91,7 @@ func SignVersionArtifactGrant(secret []byte, grant VersionArtifactGrant) (string
 // must also invoke VersionArtifactGrantAuthorizer.AuthorizeVersionGrant on
 // every request to recheck ownership, existence, digest and revocation.
 func VerifyVersionArtifactGrantAt(secret []byte, grant VersionArtifactGrant, signature string, now time.Time) error {
-	if grant.ExpiresAt <= now.UnixMilli() {
+	if grant.ExpiresAt <= now.UnixNano() {
 		return errors.New("artifact grant expired")
 	}
 	expected, err := SignVersionArtifactGrant(secret, grant)
