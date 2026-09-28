@@ -14,7 +14,7 @@ DONE_WITH_CONCERNS
 
 ## Assumptions and concerns
 
-- The assigned brief says “six named check codes/status values” but does not enumerate them. Implemented codes `task_success`, `tool_accuracy`, `groundedness`, `safety`, `latency`, `cost`; statuses `passed`, `failed`, `not_applicable`, `not_collected`. These values should be aligned with Task 4/API contract if its approved enumeration differs.
+- Initial implementation used provisional result codes/statuses because the brief omitted their values. The execution plan’s explicit ruling was later identified during review; the correction below replaces those provisional values with the approved allowlist and overall-status field.
 - HTTP SystemAdmin authorization is not implemented here because routes are owned by Task 4. Service accepts a reviewer ID and overwrites any caller-supplied evaluator identity; caller authorization must be enforced at the route boundary.
 - Adopter runtime error metrics remain `not_collected` as directed; no immutable runtime attribution exists.
 
@@ -30,4 +30,17 @@ DONE_WITH_CONCERNS
 
 ## Remaining risk
 
-- Confirm the code/status allowlist against the API contract before Task 4 exposes it. Schema migration and application tests cover SQLite; the versioned PostgreSQL twin was not run against a live PostgreSQL instance.
+- Schema migration and application tests cover SQLite; the versioned PostgreSQL twin was not run against a live PostgreSQL instance.
+
+## Task review correction
+
+The implementation review identified the canonical structured result contract in `docs/plans/issue30-sweep/plans/plan-t65.md` §Recorded implementation rulings. The repository now strictly accepts only overall status `pass|fail|inconclusive` and a non-empty `checks` array whose entries contain only `code` and `status`; codes are `manifest_completeness|compatibility|license|security|dependency_integrity|privacy`, and check statuses are `pass|fail|not_run`. Unknown fields, invalid enum values, missing fields, malformed JSON, and trailing JSON are rejected. The earlier provisional vocabulary has been removed.
+
+### Correction TDD / verification
+
+- RED: updated repository tests to require the plan allowlist; `go test ./internal/application/repository -run 'TestAgentEvaluation' -count=1` failed because the previous repository validator rejected approved codes/statuses and overall status structure.
+- GREEN: `go test ./internal/application/repository -run 'TestAgentEvaluation' -count=1` — PASS; covers every approved code/status and overall status, rejects invalid enums, extra/freeform fields, missing/empty checks, malformed and trailing JSON.
+- `go test ./internal/application/service -run 'TestAgentEvaluation' -count=1` — PASS.
+- `go test ./internal/database -run 'TestSQLiteAgentEvaluationMigrationDownUp|TestSQLiteMigrationsCreateVersionedSchema|TestSQLiteMigrationsUpgradeV4PreservesData' -count=1` — PASS.
+- `git diff --check` — PASS.
+- `go build ./...` — PASS.

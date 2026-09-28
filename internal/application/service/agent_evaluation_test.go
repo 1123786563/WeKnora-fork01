@@ -30,7 +30,7 @@ func (f *evaluationRepoFake) ListEvaluationsForReleases(_ context.Context, ids [
 func TestAgentEvaluationServiceBindsReviewerAndReturnsReleaseEvidence(t *testing.T) {
 	repo := &evaluationRepoFake{}
 	svc := NewAgentEvaluationService(repo)
-	input := types.AgentEvaluationEntity{ID: "eval-service", ReleaseID: "rel-service", TestSetID: "gold", TestSetVersion: "1", EnvironmentClass: "ci", EvaluatorID: "forged", EvaluatedAt: time.Now().UTC(), ResultsJSON: `{"checks":[{"code":"safety","status":"passed"}]}`}
+	input := types.AgentEvaluationEntity{ID: "eval-service", ReleaseID: "rel-service", TestSetID: "gold", TestSetVersion: "1", EnvironmentClass: "ci", EvaluatorID: "forged", EvaluatedAt: time.Now().UTC(), ResultsJSON: `{"status":"pass","checks":[{"code":"security","status":"pass"}]}`}
 	view, err := svc.RecordEvaluation(context.Background(), "system-admin", input)
 	require.NoError(t, err)
 	require.Equal(t, "system-admin", view.EvaluatorID)
