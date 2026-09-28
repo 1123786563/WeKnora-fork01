@@ -1332,9 +1332,53 @@ raise SystemExit(status)
                  mock.patch.object(sys, "stderr", capture):
                 result = reconcile.main()
             self.assertNotEqual(result, 0)
-            self.assertLessEqual(len(capture.getvalue()), 400)
+            diagnostic = capture.getvalue()
+            self.assertTrue(diagnostic.startswith("RECONCILE FAIL: artifact write failed ("))
+            reason = diagnostic.removeprefix("RECONCILE FAIL: artifact write failed (").removesuffix(")\n")
+            self.assertLessEqual(len(reason), 80)
+            self.assertLessEqual(len(diagnostic), 240)
             self.assertNotIn("LAGO_SENTINEL", capture.getvalue())
             self.assertNotIn("response body", capture.getvalue())
+
+    def test_reconcile_main_output_preflight_errors_are_bounded(self):
+        for existing in (True, False):
+            with self.subTest(existing=existing), tempfile.TemporaryDirectory() as root:
+                root_path = Path(root)
+                output = root_path / "existing" if existing else root_path / "missing-parent" / "run"
+                sentinel = output / "sentinel-secret.txt"
+                if existing:
+                    output.mkdir()
+                    sentinel.write_text("sentinel payload\n")
+                stderr = __import__("io").StringIO()
+                with mock.patch.object(sys, "argv", ["runner", "--output-dir", str(output)]), \
+                     mock.patch.object(sys, "stderr", stderr):
+                    result = reconcile.main()
+                diagnostic = stderr.getvalue()
+                self.assertEqual(result, 1)
+                self.assertTrue(diagnostic.startswith("RECONCILE FAIL: stage=output_preflight"))
+                self.assertLessEqual(len(diagnostic), 240)
+                self.assertIn("FileExistsError" if existing else "FileNotFoundError", diagnostic)
+                self.assertNotIn(str(output), diagnostic)
+                self.assertNotIn("sentinel-secret", diagnostic)
+                self.assertNotIn("Traceback", diagnostic)
+                if existing:
+                    self.assertEqual(sentinel.read_text(), "sentinel payload\n")
+                    self.assertEqual(sorted(p.name for p in output.iterdir()), [sentinel.name])
+                else:
+                    self.assertFalse(output.parent.exists())
+
+    def test_reconcile_main_preserves_argparse_system_exit(self):
+        help_output = __import__("io").StringIO()
+        with mock.patch.object(sys, "argv", ["runner"]), self.assertRaises(SystemExit) as missing:
+            reconcile.main()
+        self.assertEqual(missing.exception.code, 2)
+        with mock.patch.object(sys, "argv", ["runner", "--help"]), \
+             mock.patch.object(sys, "stdout", help_output), self.assertRaises(SystemExit) as help_exit:
+            reconcile.main()
+        self.assertEqual(help_exit.exception.code, 0)
+        self.assertIn("usage:", help_output.getvalue())
+        self.assertIn("--output-dir", help_output.getvalue())
+
 
     def test_reconcile_main_normal_fail_and_pass_persist(self):
         for active, page, expected in (([], [self.topup_page()], "RECONCILE FAIL"),

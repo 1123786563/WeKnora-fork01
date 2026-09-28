@@ -299,7 +299,14 @@ def _isolate_failed_stdout(stream):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output-dir", required=True)
-    output_dir = prepare_output_dir(parser.parse_args().output_dir)
+    args = parser.parse_args()
+    try:
+        output_dir = prepare_output_dir(args.output_dir)
+    except SystemExit:
+        raise
+    except Exception as exc:
+        _emit_text("RECONCILE FAIL: stage=output_preflight (%s)" % _safe_reason(exc), sys.stderr)
+        return 1
     stage = "account_input"
     try:
         src = os.environ.get("WK_ACCOUNT_JSON", "weknora-account-api.json")
@@ -348,7 +355,7 @@ def main():
             _write_artifact(output_dir, lines)
         except Exception as write_exc:
             safe = _safe_reason(write_exc)
-            _emit_text("RECONCILE FAIL: artifact write failed (%s)" % safe[:160], sys.stderr)
+            _emit_text("RECONCILE FAIL: artifact write failed (%s)" % safe, sys.stderr)
         else:
             _emit_text("\n".join(lines), sys.stderr)
         return 1
