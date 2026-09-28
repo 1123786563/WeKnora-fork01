@@ -54,12 +54,29 @@ func prepareDependencyRevocation(row *types.AgentDependencyRevocationEntity) {
 	}
 }
 
-func (s *AgentSecurityStore) AppendReleaseRevocation(ctx context.Context, row *types.AgentReleaseRevocationEntity) error {
+func appendReleaseRevocationTx(tx *gorm.DB, row *types.AgentReleaseRevocationEntity) error {
 	if row == nil {
 		return errors.New("release revocation is required")
 	}
 	prepareReleaseRevocation(row)
-	return s.db.WithContext(ctx).Create(row).Error
+	return tx.Create(row).Error
+}
+
+func appendDependencyRevocationTx(tx *gorm.DB, row *types.AgentDependencyRevocationEntity) error {
+	if row == nil {
+		return errors.New("dependency revocation is required")
+	}
+	prepareDependencyRevocation(row)
+	return tx.Create(row).Error
+}
+
+func (s *AgentSecurityStore) AppendReleaseRevocation(ctx context.Context, row *types.AgentReleaseRevocationEntity) error {
+	if row == nil {
+		return errors.New("release revocation is required")
+	}
+	return withTenantSecurityGuard(ctx, s.db, row.TenantID, func(tx *gorm.DB) error {
+		return appendReleaseRevocationTx(tx, row)
+	})
 }
 
 // AppendReleaseRevocationWithAudit records the revocation and its audit fact
@@ -68,9 +85,8 @@ func (s *AgentSecurityStore) AppendReleaseRevocationWithAudit(ctx context.Contex
 	if row == nil || audit == nil {
 		return errors.New("release revocation and audit entry are required")
 	}
-	prepareReleaseRevocation(row)
 	return withTenantSecurityGuard(ctx, s.db, row.TenantID, func(tx *gorm.DB) error {
-		if err := tx.Create(row).Error; err != nil {
+		if err := appendReleaseRevocationTx(tx, row); err != nil {
 			return err
 		}
 		return NewAuditLogRepository(tx).Create(ctx, audit)
@@ -81,8 +97,9 @@ func (s *AgentSecurityStore) AppendDependencyRevocation(ctx context.Context, row
 	if row == nil {
 		return errors.New("dependency revocation is required")
 	}
-	prepareDependencyRevocation(row)
-	return s.db.WithContext(ctx).Create(row).Error
+	return withTenantSecurityGuard(ctx, s.db, row.TenantID, func(tx *gorm.DB) error {
+		return appendDependencyRevocationTx(tx, row)
+	})
 }
 
 // AppendDependencyRevocationWithAudit records the revocation and its audit
@@ -91,9 +108,8 @@ func (s *AgentSecurityStore) AppendDependencyRevocationWithAudit(ctx context.Con
 	if row == nil || audit == nil {
 		return errors.New("dependency revocation and audit entry are required")
 	}
-	prepareDependencyRevocation(row)
 	return withTenantSecurityGuard(ctx, s.db, row.TenantID, func(tx *gorm.DB) error {
-		if err := tx.Create(row).Error; err != nil {
+		if err := appendDependencyRevocationTx(tx, row); err != nil {
 			return err
 		}
 		return NewAuditLogRepository(tx).Create(ctx, audit)

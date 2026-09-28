@@ -85,6 +85,13 @@ func releaseTenantGuardBarrier(barrier *tenantGuardBarrier) {
 	}
 }
 
+func ensureTenantGuardTestPool(t *testing.T, db *gorm.DB) {
+	t.Helper()
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	sqlDB.SetMaxOpenConns(4)
+}
+
 func TestAgentSecurityStoreAppendReleaseAndAuditRollsBackTogether(t *testing.T) {
 	db := openRunTestDB(t)
 	store := NewAgentSecurityStore(db)
@@ -184,6 +191,7 @@ func TestTenantSecurityGuardSerializesDecisiveWriteFamilies(t *testing.T) {
 		for _, order := range []string{"admission-first", "revocation-first"} {
 			t.Run(family+"/"+order, func(t *testing.T) {
 				db := openRunTestDB(t)
+				ensureTenantGuardTestPool(t, db)
 				listingID, releaseID := seedAdoptionRelease(t, db, 1, "security-"+family, "1.0.0")
 				guardedListingID, guardedReleaseID := listingID, releaseID
 				if family == "adoption" {
@@ -210,8 +218,12 @@ func TestTenantSecurityGuardSerializesDecisiveWriteFamilies(t *testing.T) {
 				}
 
 				revoke := func(callCtx context.Context) error {
-					return NewAgentSecurityStore(db).AppendReleaseRevocationWithAudit(callCtx,
-						&types.AgentReleaseRevocationEntity{TenantID: 1, ListingID: guardedListingID, ReleaseID: guardedReleaseID, Reason: "race", RevokedBy: "security-admin"},
+					row := &types.AgentReleaseRevocationEntity{TenantID: 1, ListingID: guardedListingID, ReleaseID: guardedReleaseID, Reason: "race", RevokedBy: "security-admin"}
+					store := NewAgentSecurityStore(db)
+					if order == "revocation-first" {
+						return store.AppendReleaseRevocation(callCtx, row)
+					}
+					return store.AppendReleaseRevocationWithAudit(callCtx, row,
 						&types.AuditLog{TenantID: 1, ActorUserID: "security-admin", Action: types.AuditActionAgentReleaseRevoked})
 				}
 				admit := func(callCtx context.Context) error {
@@ -232,8 +244,18 @@ func TestTenantSecurityGuardSerializesDecisiveWriteFamilies(t *testing.T) {
 				}
 
 				if order == "revocation-first" {
-					require.NoError(t, revoke(ctx))
-					require.ErrorIs(t, admit(ctx), ErrAgentSecurityReleaseBlocked)
+					barrier := installTenantGuardBarrier(t, db, "agent_release_revocations", true)
+					revokeDone := make(chan error, 1)
+					go func() { revokeDone <- revoke(context.WithValue(ctx, tenantGuardBarrierKey{}, barrier)) }()
+					waitTenantGuardBarrier(t, barrier)
+					admissionAttempt := installTenantGuardAttemptBarrier(t, db, "admission")
+					admitDone := make(chan error, 1)
+					go func() { admitDone <- admit(context.WithValue(ctx, tenantGuardAttemptKey{}, "admission")) }()
+					waitTenantGuardBarrier(t, admissionAttempt)
+					releaseTenantGuardBarrier(barrier)
+					require.NoError(t, <-revokeDone)
+					releaseTenantGuardBarrier(admissionAttempt)
+					require.ErrorIs(t, <-admitDone, ErrAgentSecurityReleaseBlocked)
 					return
 				}
 
@@ -259,6 +281,60 @@ func TestTenantSecurityGuardSerializesDecisiveWriteFamilies(t *testing.T) {
 				require.NoError(t, <-revokeDone)
 			})
 		}
+	}
+}
+
+func TestAppendDependencyRevocationSerializesAgainstAdmission(t *testing.T) {
+	for _, order := range []string{"admission-first", "revocation-first"} {
+		t.Run(order, func(t *testing.T) {
+			db := openRunTestDB(t)
+			ensureTenantGuardTestPool(t, db)
+			listingID, releaseID := seedAdoptionRelease(t, db, 1, "dependency-guard", "1.0.0")
+			require.NoError(t, db.Model(&types.AgentReleaseEntity{}).
+				Where("tenant_id = ? AND id = ?", 1, releaseID).
+				Update("dependency_lock_json", `{"dependencies":[{"type":"skill","id":"weather","version":"1.2.3","digest":"sha256:abc"}]}`).Error)
+			ctx := context.Background()
+			admit := func(callCtx context.Context) error {
+				_, _, err := NewAgentAdoptionRepository(db).AdoptListing(callCtx, &types.AgentAdoptionEntity{
+					TenantID: 1, ListingID: listingID, AcceptedReleaseID: releaseID, State: "active", CreatedBy: "admin",
+				})
+				return err
+			}
+			revoke := func(callCtx context.Context) error {
+				return NewAgentSecurityStore(db).AppendDependencyRevocation(callCtx, &types.AgentDependencyRevocationEntity{
+					TenantID: 1, DepType: "skill", DepID: "weather", DepVersion: "1.2.3", DepDigest: "sha256:abc", Reason: "race", RevokedBy: "security-admin",
+				})
+			}
+
+			if order == "admission-first" {
+				admissionBarrier := installTenantGuardBarrier(t, db, "agent_adoptions", true)
+				admitDone := make(chan error, 1)
+				go func() { admitDone <- admit(context.WithValue(ctx, tenantGuardBarrierKey{}, admissionBarrier)) }()
+				waitTenantGuardBarrier(t, admissionBarrier)
+				revocationAttempt := installTenantGuardAttemptBarrier(t, db, "revocation")
+				revokeDone := make(chan error, 1)
+				go func() { revokeDone <- revoke(context.WithValue(ctx, tenantGuardAttemptKey{}, "revocation")) }()
+				waitTenantGuardBarrier(t, revocationAttempt)
+				releaseTenantGuardBarrier(admissionBarrier)
+				require.NoError(t, <-admitDone)
+				releaseTenantGuardBarrier(revocationAttempt)
+				require.NoError(t, <-revokeDone)
+				return
+			}
+
+			revocationBarrier := installTenantGuardBarrier(t, db, "agent_dependency_revocations", true)
+			revokeDone := make(chan error, 1)
+			go func() { revokeDone <- revoke(context.WithValue(ctx, tenantGuardBarrierKey{}, revocationBarrier)) }()
+			waitTenantGuardBarrier(t, revocationBarrier)
+			admissionAttempt := installTenantGuardAttemptBarrier(t, db, "admission")
+			admitDone := make(chan error, 1)
+			go func() { admitDone <- admit(context.WithValue(ctx, tenantGuardAttemptKey{}, "admission")) }()
+			waitTenantGuardBarrier(t, admissionAttempt)
+			releaseTenantGuardBarrier(revocationBarrier)
+			require.NoError(t, <-revokeDone)
+			releaseTenantGuardBarrier(admissionAttempt)
+			require.ErrorIs(t, <-admitDone, ErrAgentSecurityReleaseBlocked)
+		})
 	}
 }
 
