@@ -38,7 +38,7 @@ type VersionArtifactGrant struct {
 	ResourceID string
 	VersionID  string
 	Digest     string
-	ExpiresAt  int64
+	ExpiresAt  int64 // unix milliseconds
 }
 
 func (g VersionArtifactGrant) Canonical() (string, error) {
@@ -68,7 +68,7 @@ func NewVersionArtifactGrant(tenantID uint64, ownerID, resourceID, versionID, di
 	if ttl > MaxArtifactGrantTTL {
 		ttl = MaxArtifactGrantTTL
 	}
-	g := VersionArtifactGrant{TenantID: tenantID, OwnerID: ownerID, ResourceID: resourceID, VersionID: versionID, Digest: strings.ToLower(digest), ExpiresAt: now.Add(ttl).Unix()}
+	g := VersionArtifactGrant{TenantID: tenantID, OwnerID: ownerID, ResourceID: resourceID, VersionID: versionID, Digest: strings.ToLower(digest), ExpiresAt: now.Add(ttl).UnixMilli()}
 	_, err := g.Canonical()
 	return g, err
 }
@@ -91,7 +91,7 @@ func SignVersionArtifactGrant(secret []byte, grant VersionArtifactGrant) (string
 // must also invoke VersionArtifactGrantAuthorizer.AuthorizeVersionGrant on
 // every request to recheck ownership, existence, digest and revocation.
 func VerifyVersionArtifactGrantAt(secret []byte, grant VersionArtifactGrant, signature string, now time.Time) error {
-	if grant.ExpiresAt <= now.Unix() {
+	if grant.ExpiresAt <= now.UnixMilli() {
 		return errors.New("artifact grant expired")
 	}
 	expected, err := SignVersionArtifactGrant(secret, grant)

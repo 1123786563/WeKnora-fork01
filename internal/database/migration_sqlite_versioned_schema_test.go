@@ -183,6 +183,27 @@ func TestCareerMigrationPairsMatchAcrossTracks(t *testing.T) {
 	}
 }
 
+func TestCareerPostgresMigrationDeclaresIsolationAndAppendOnlyShape(t *testing.T) {
+	repoRoot := sqliteRepoRoot(t)
+	up, err := os.ReadFile(filepath.Join(repoRoot, "migrations/versioned/000203_career_foundation.up.sql"))
+	require.NoError(t, err)
+	down, err := os.ReadFile(filepath.Join(repoRoot, "migrations/versioned/000203_career_foundation.down.sql"))
+	require.NoError(t, err)
+	upSQL, downSQL := string(up), string(down)
+	for _, declaration := range []string{"response_json JSONB", "payload JSONB"} {
+		require.Contains(t, upSQL, declaration)
+	}
+	jsonbColumns := regexp.MustCompile(`(?m)^\s*(?:response_json|payload) JSONB(?:,|\s+NOT\s+NULL|$)`)
+	require.Len(t, jsonbColumns.FindAllString(upSQL, -1), 3, "receipt response and both durable payload columns must be PostgreSQL JSONB")
+	compositeFK := regexp.MustCompile(`FOREIGN KEY\s*\(tenant_id, owner_id\)\s*REFERENCES\s+career_spaces\s*\(tenant_id, owner_id\)`)
+	require.Len(t, compositeFK.FindAllString(upSQL, -1), 3, "receipts, profile facts, and evidence must all use composite tenant/owner FKs")
+	require.Contains(t, upSQL, "CREATE FUNCTION career_evidence_append_only()")
+	require.Contains(t, upSQL, "BEFORE UPDATE OR DELETE ON career_evidence")
+	require.Contains(t, upSQL, "EXECUTE FUNCTION career_evidence_append_only()")
+	require.Contains(t, downSQL, "DROP TRIGGER IF EXISTS career_evidence_no_update ON career_evidence")
+	require.Contains(t, downSQL, "DROP FUNCTION IF EXISTS career_evidence_append_only()")
+}
+
 func TestSQLiteMigrationsUpgradeV4PreservesData(t *testing.T) {
 	repoRoot := sqliteRepoRoot(t)
 	expectedSQLiteMigrationVersion := sqliteMigrationHead(t, repoRoot)

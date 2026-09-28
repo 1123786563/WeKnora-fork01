@@ -24,7 +24,7 @@ func (a *versionGrantAuthorizer) AuthorizeVersionGrant(_ context.Context, _ Vers
 func TestVersionArtifactGrantBindsOwnerResourceVersionAndDigest(t *testing.T) {
 	key := []byte(strings.Repeat("k", 32))
 	now := time.Now()
-	base := VersionArtifactGrant{TenantID: 7, OwnerID: "u1", ResourceID: "resume", VersionID: "v2", Digest: strings.Repeat("a", 64), ExpiresAt: now.Add(time.Minute).Unix()}
+	base := VersionArtifactGrant{TenantID: 7, OwnerID: "u1", ResourceID: "resume", VersionID: "v2", Digest: strings.Repeat("a", 64), ExpiresAt: now.Add(time.Minute).UnixMilli()}
 	sig, err := SignVersionArtifactGrant(key, base)
 	if err != nil {
 		t.Fatal(err)
@@ -49,7 +49,7 @@ func TestVersionArtifactGrantBindsOwnerResourceVersionAndDigest(t *testing.T) {
 func TestVersionArtifactGrantRejectsExpiredAndAmbiguousFields(t *testing.T) {
 	key := []byte(strings.Repeat("k", 32))
 	grant := VersionArtifactGrant{TenantID: 1, OwnerID: "u1", ResourceID: "r", VersionID: "v1", Digest: "abc", ExpiresAt: 100}
-	if err := VerifyVersionArtifactGrantAt(key, grant, "", time.Unix(100, 0)); err == nil {
+	if err := VerifyVersionArtifactGrantAt(key, grant, "", time.UnixMilli(100)); err == nil {
 		t.Fatal("expired grant accepted")
 	}
 	grant.OwnerID = "u1|u2"
@@ -69,8 +69,8 @@ func TestNewVersionArtifactGrantCapsExpiry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if grant.ExpiresAt != now.Add(MaxArtifactGrantTTL).Unix() {
-		t.Fatalf("expiry = %d, want capped at %d", grant.ExpiresAt, now.Add(MaxArtifactGrantTTL).Unix())
+	if grant.ExpiresAt != now.Add(MaxArtifactGrantTTL).UnixMilli() {
+		t.Fatalf("expiry = %d, want capped at %d", grant.ExpiresAt, now.Add(MaxArtifactGrantTTL).UnixMilli())
 	}
 }
 
@@ -82,8 +82,19 @@ func TestNewVersionArtifactGrantRejectsInvalidTTL(t *testing.T) {
 		}
 	}
 	grant, err := NewVersionArtifactGrant(1, "u1", "r1", "v1", strings.Repeat("a", 64), now, time.Second)
-	if err != nil || grant.ExpiresAt != now.Add(time.Second).Unix() {
+	if err != nil || grant.ExpiresAt != now.Add(time.Second).UnixMilli() {
 		t.Fatalf("one-second TTL grant=%+v err=%v", grant, err)
+	}
+}
+
+func TestNewVersionArtifactGrantPreservesOneSecondAtFractionalNow(t *testing.T) {
+	now := time.Unix(1_800_000_000, 999_000_000)
+	grant, err := NewVersionArtifactGrant(1, "u1", "r1", "v1", strings.Repeat("a", 64), now, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := grant.ExpiresAt - now.UnixMilli(); got != 1000 {
+		t.Fatalf("grant lifetime = %dms, want 1000ms", got)
 	}
 }
 
