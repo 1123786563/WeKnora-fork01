@@ -36,29 +36,42 @@ func withTenantSecurityGuard(ctx context.Context, db *gorm.DB, tenantID uint64, 
 		return ErrTenantNotFound
 	}
 	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		query, write, err := tenantSecurityLockPlan(tx.Dialector.Name())
-		if err != nil {
+		if err := acquireTenantSecurityGuardTx(tx, tenantID); err != nil {
 			return err
-		}
-		if write {
-			locked := tx.Exec(query, tenantID)
-			if locked.Error != nil {
-				return locked.Error
-			}
-			if locked.RowsAffected != 1 {
-				return ErrTenantNotFound
-			}
-		} else {
-			var id uint64
-			if err := tx.Raw(query, tenantID).Scan(&id).Error; err != nil {
-				return err
-			}
-			if id != tenantID {
-				return ErrTenantNotFound
-			}
 		}
 		return callback(tx)
 	})
+}
+
+// acquireTenantSecurityGuardTx takes the same lock used by security admission
+// and revocation. Callers already inside a transaction can order multiple
+// tenant guards without opening nested transactions.
+func acquireTenantSecurityGuardTx(tx *gorm.DB, tenantID uint64) error {
+	if tenantID == 0 {
+		return ErrTenantNotFound
+	}
+	query, write, err := tenantSecurityLockPlan(tx.Dialector.Name())
+	if err != nil {
+		return err
+	}
+	if write {
+		locked := tx.Exec(query, tenantID)
+		if locked.Error != nil {
+			return locked.Error
+		}
+		if locked.RowsAffected != 1 {
+			return ErrTenantNotFound
+		}
+		return nil
+	}
+	var id uint64
+	if err := tx.Raw(query, tenantID).Scan(&id).Error; err != nil {
+		return err
+	}
+	if id != tenantID {
+		return ErrTenantNotFound
+	}
+	return nil
 }
 
 // withTenantSecurityGuards acquires each distinct tenant guard in ascending
@@ -81,27 +94,9 @@ func withTenantSecurityGuards(ctx context.Context, db *gorm.DB, tenantIDs []uint
 	}
 	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
 	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		query, write, err := tenantSecurityLockPlan(tx.Dialector.Name())
-		if err != nil {
-			return err
-		}
 		for _, id := range ids {
-			if write {
-				locked := tx.Exec(query, id)
-				if locked.Error != nil {
-					return locked.Error
-				}
-				if locked.RowsAffected != 1 {
-					return ErrTenantNotFound
-				}
-				continue
-			}
-			var lockedID uint64
-			if err := tx.Raw(query, id).Scan(&lockedID).Error; err != nil {
+			if err := acquireTenantSecurityGuardTx(tx, id); err != nil {
 				return err
-			}
-			if lockedID != id {
-				return ErrTenantNotFound
 			}
 		}
 		return callback(tx)

@@ -457,6 +457,8 @@ func TestAgentSecurityStoreReleaseFactsCoversLocalAndIntroducedReleases(t *testi
 	publicListing, err := publicRepo.GetPublicListing(ctx, submission.PublicListingID)
 	require.NoError(t, err)
 	require.NotNil(t, publicListing)
+	_, _, err = publicRepo.VerifyPublisher(ctx, &types.VerifiedPublisherEntity{TenantID: 1, State: "verified", VerifiedBy: "reviewer"})
+	require.NoError(t, err)
 	introduced, _, created, err := publicRepo.IntroduceRelease(ctx, 1, "admin", publicListing, publicRelease)
 	require.NoError(t, err)
 	require.True(t, created)

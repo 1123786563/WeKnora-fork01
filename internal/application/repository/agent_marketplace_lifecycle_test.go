@@ -159,6 +159,7 @@ func TestTransitionListingStateIsCAS(t *testing.T) {
 	db := openLifecycleMigrationDB(t)
 	repo := NewAgentMarketplaceRepository(db)
 	ctx := context.Background()
+	require.NoError(t, db.Create(&types.Tenant{ID: 1, Name: "publisher"}).Error)
 	require.NoError(t, db.Create(&types.AgentMarketplaceListingEntity{TenantID: 1, ID: "l1", SourceAgentID: "a", DisplayName: "d", State: "listed"}).Error)
 	row, err := repo.TransitionListingState(ctx, 1, "l1", "listed", "unlisted", map[string]any{"unlisted_by": "admin", "tenant_id": uint64(2), "id": "moved"})
 	require.NoError(t, err)

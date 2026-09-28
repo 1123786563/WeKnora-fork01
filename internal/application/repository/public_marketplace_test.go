@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 	"testing"
@@ -18,10 +20,11 @@ import (
 
 func openPublicMarketplaceDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared&_busy_timeout=5000"),
+	db, err := gorm.Open(sqlite.Open("file:"+t.TempDir()+"/marketplace.db?_busy_timeout=5000"),
 		&gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(
+		&types.Tenant{},
 		&types.AgentMarketplaceListingEntity{}, &types.AgentReleaseSubmissionEntity{},
 		&types.AgentReleaseReviewEntity{}, &types.AgentReleaseEntity{},
 		&types.VerifiedPublisherEntity{}, &types.PublicMarketplaceListingEntity{},
@@ -30,6 +33,7 @@ func openPublicMarketplaceDB(t *testing.T) *gorm.DB {
 		&types.AgentAdoptionEntity{}, &types.AgentAdoptionVariantEntity{},
 		&types.AgentReleaseRevocationEntity{},
 	))
+	require.NoError(t, db.Create(&[]types.Tenant{{ID: 1, Name: "publisher"}, {ID: 2, Name: "adopter"}, {ID: 3, Name: "adopter-2"}, {ID: 7, Name: "test"}}).Error)
 	// AutoMigrate 不创建实体未带 uniqueIndex tag 的唯一索引；显式补建使
 	// adoptListingTx/IntroduceRelease 的 OnConflict 竞态分支、ReviewConflict
 	// 的唯一 review 收敛与 ReleaseConflict 的 release 唯一性（number/semantic/
@@ -45,6 +49,32 @@ func openPublicMarketplaceDB(t *testing.T) *gorm.DB {
 }
 
 func digestOf(bundle []byte) string { sum := sha256.Sum256(bundle); return hex.EncodeToString(sum[:]) }
+
+func registerCustodyGuardBarriers(t *testing.T, db *gorm.DB, ownerMarker, attemptMarker string) (ownerReached, ownerRelease, attemptReached, attemptRelease chan struct{}) {
+	t.Helper()
+	ownerReached, ownerRelease = make(chan struct{}), make(chan struct{})
+	attemptReached, attemptRelease = make(chan struct{}), make(chan struct{})
+	name := fmt.Sprintf("test:custody-guards:%p", ownerReached)
+	require.NoError(t, db.Callback().Raw().After("gorm:raw").Register(name+":owner", func(tx *gorm.DB) {
+		if tx.Statement.Context.Value(tenantGuardAttemptKey{}) != ownerMarker || strings.TrimSpace(tx.Statement.SQL.String()) != "UPDATE tenants SET id = id WHERE id = ?" {
+			return
+		}
+		close(ownerReached)
+		<-ownerRelease
+	}))
+	require.NoError(t, db.Callback().Raw().Before("gorm:raw").Register(name+":attempt", func(tx *gorm.DB) {
+		if tx.Statement.Context.Value(tenantGuardAttemptKey{}) != attemptMarker || strings.TrimSpace(tx.Statement.SQL.String()) != "UPDATE tenants SET id = id WHERE id = ?" || len(tx.Statement.Vars) == 0 || tx.Statement.Vars[0] != uint64(1) {
+			return
+		}
+		close(attemptReached)
+		<-attemptRelease
+	}))
+	t.Cleanup(func() {
+		_ = db.Callback().Raw().Remove(name + ":owner")
+		_ = db.Callback().Raw().Remove(name + ":attempt")
+	})
+	return
+}
 
 // sourceReleaseNumber derives a stable per-version release_number so
 // repeated seeds against the same listing never collide with the real
@@ -67,6 +97,14 @@ func seedApprovedPublicRelease(t *testing.T, db *gorm.DB, semanticVersion string
 	t.Helper()
 	ctx := context.Background()
 	repo := NewPublicMarketplaceRepository(db)
+	_, _, err := repo.VerifyPublisher(ctx, &types.VerifiedPublisherEntity{TenantID: 1, State: "verified", VerifiedBy: "publisher-admin"})
+	require.NoError(t, err)
+	var source types.AgentMarketplaceListingEntity
+	if err := db.Where("tenant_id = ? AND id = ?", 1, "tenant-listing-1").First(&source).Error; errors.Is(err, gorm.ErrRecordNotFound) {
+		require.NoError(t, db.Create(&types.AgentMarketplaceListingEntity{TenantID: 1, ID: "tenant-listing-1", SourceAgentID: "agent-a", DisplayName: "Source", State: "listed"}).Error)
+	} else {
+		require.NoError(t, err)
+	}
 	bundle := []byte(`{"payload":{"system_prompt":"Be portable."},"manifest":{"semantic_version":"` + semanticVersion + `"},"dependency_lock":{"dependencies":[]}}`)
 	sourceReleaseID := "tenant-release-" + semanticVersion
 	require.NoError(t, db.Create(&types.AgentReleaseEntity{
@@ -274,6 +312,142 @@ func TestPublicMarketplaceRepositoryIntroduceReleaseCopiesPortableBundleAndAdopt
 	require.Zero(t, count)
 }
 
+func TestPublicMarketplaceCustodyDeniesNewIntroductionAfterPublisherRevocation(t *testing.T) {
+	db := openPublicMarketplaceDB(t)
+	repo := NewPublicMarketplaceRepository(db)
+	ctx := context.Background()
+	listing, release := seedApprovedPublicRelease(t, db, "3.0.0")
+	previous, _, _, err := repo.IntroduceRelease(ctx, 2, "adopter-admin", &listing, release)
+	require.NoError(t, err)
+	require.NoError(t, repo.RevokePublisher(ctx, 1))
+	_, _, _, err = repo.IntroduceRelease(ctx, 3, "adopter-admin", &listing, release)
+	require.ErrorIs(t, err, ErrPublicMarketplaceNotFound)
+	discoverable, err := repo.IsPublicListingDiscoverable(ctx, listing.ID)
+	require.NoError(t, err)
+	require.False(t, discoverable)
+	catalog, err := repo.ListPublicCatalog(ctx)
+	require.NoError(t, err)
+	require.Empty(t, catalog)
+	var count int64
+	require.NoError(t, db.Model(&types.TenantIntroducedReleaseEntity{}).Where("tenant_id = ?", 2).Count(&count).Error)
+	require.EqualValues(t, 1, count)
+	var preserved types.TenantIntroducedReleaseEntity
+	require.NoError(t, db.First(&preserved, "tenant_id = ? AND public_release_id = ?", 2, release.ID).Error)
+	require.Equal(t, previous.ID, preserved.ID)
+	require.Equal(t, release.Bundle, preserved.Bundle)
+	require.Equal(t, release.BundleDigest, preserved.BundleDigest)
+	var stored types.PublicAgentReleaseEntity
+	require.NoError(t, db.First(&stored, "id = ?", release.ID).Error)
+	require.Equal(t, uint64(1), stored.PublisherTenantID)
+	require.Equal(t, release.SubmissionID, stored.SubmissionID)
+}
+
+func TestPublicMarketplaceCustodyDeniesNewIntroductionAfterSourceUnlist(t *testing.T) {
+	db := openPublicMarketplaceDB(t)
+	ctx := context.Background()
+	repo := NewPublicMarketplaceRepository(db)
+	listing, release := seedApprovedPublicRelease(t, db, "4.0.0")
+	previous, _, _, err := repo.IntroduceRelease(ctx, 2, "adopter-admin", &listing, release)
+	require.NoError(t, err)
+	_, err = NewAgentMarketplaceRepository(db).TransitionListingState(ctx, 1, "tenant-listing-1", "listed", "unlisted", map[string]any{"unlisted_by": "publisher-admin"})
+	require.NoError(t, err)
+	_, _, _, err = repo.IntroduceRelease(ctx, 3, "adopter-admin", &listing, release)
+	require.ErrorIs(t, err, ErrPublicMarketplaceNotFound)
+	discoverable, err := repo.IsPublicListingDiscoverable(ctx, listing.ID)
+	require.NoError(t, err)
+	require.False(t, discoverable)
+	catalog, err := repo.ListPublicCatalog(ctx)
+	require.NoError(t, err)
+	require.Empty(t, catalog)
+	var preserved types.TenantIntroducedReleaseEntity
+	require.NoError(t, db.First(&preserved, "tenant_id = ? AND public_release_id = ?", 2, release.ID).Error)
+	require.Equal(t, previous.ID, preserved.ID)
+	require.Equal(t, release.Bundle, preserved.Bundle)
+}
+
+func TestPublicMarketplaceRevocationGuardSerializesIntroduction(t *testing.T) {
+	db := openPublicMarketplaceDB(t)
+	repo := NewPublicMarketplaceRepository(db)
+	ctx := context.Background()
+	listing, release := seedApprovedPublicRelease(t, db, "5.0.0")
+	ownerReached, ownerRelease, attemptReached, attemptRelease := registerCustodyGuardBarriers(t, db, "revoke-owner", "introduce-attempt")
+	revokeDone := make(chan error, 1)
+	go func() {
+		revokeDone <- repo.RevokePublisher(context.WithValue(ctx, tenantGuardAttemptKey{}, "revoke-owner"), 1)
+	}()
+	select {
+	case <-ownerReached:
+	case <-time.After(3 * time.Second):
+		t.Fatal("publisher revocation did not acquire tenant guard")
+	}
+	introduceDone := make(chan error, 1)
+	go func() {
+		_, _, _, err := repo.IntroduceRelease(context.WithValue(ctx, tenantGuardAttemptKey{}, "introduce-attempt"), 2, "adopter-admin", &listing, release)
+		introduceDone <- err
+	}()
+	select {
+	case <-attemptReached:
+	case <-time.After(3 * time.Second):
+		t.Fatal("introduction did not attempt publisher tenant guard")
+	}
+	close(attemptRelease)
+	close(ownerRelease)
+	select {
+	case err := <-revokeDone:
+		require.NoError(t, err)
+	case <-time.After(3 * time.Second):
+		t.Fatal("publisher revocation did not complete")
+	}
+	select {
+	case err := <-introduceDone:
+		require.ErrorIs(t, err, ErrPublicMarketplaceNotFound)
+	case <-time.After(3 * time.Second):
+		t.Fatal("introduction did not complete after revocation")
+	}
+}
+
+func TestPublicMarketplaceSourceUnlistGuardSerializesIntroduction(t *testing.T) {
+	db := openPublicMarketplaceDB(t)
+	ctx := context.Background()
+	repo := NewPublicMarketplaceRepository(db)
+	listing, release := seedApprovedPublicRelease(t, db, "6.0.0")
+	ownerReached, ownerRelease, attemptReached, attemptRelease := registerCustodyGuardBarriers(t, db, "unlist-owner", "introduce-attempt")
+	unlistDone := make(chan error, 1)
+	go func() {
+		_, err := NewAgentMarketplaceRepository(db).TransitionListingState(context.WithValue(ctx, tenantGuardAttemptKey{}, "unlist-owner"), 1, "tenant-listing-1", "listed", "unlisted", nil)
+		unlistDone <- err
+	}()
+	select {
+	case <-ownerReached:
+	case <-time.After(3 * time.Second):
+		t.Fatal("source unlist did not acquire tenant guard")
+	}
+	introduceDone := make(chan error, 1)
+	go func() {
+		_, _, _, err := repo.IntroduceRelease(context.WithValue(ctx, tenantGuardAttemptKey{}, "introduce-attempt"), 2, "adopter-admin", &listing, release)
+		introduceDone <- err
+	}()
+	select {
+	case <-attemptReached:
+	case <-time.After(3 * time.Second):
+		t.Fatal("introduction did not attempt publisher tenant guard")
+	}
+	close(attemptRelease)
+	close(ownerRelease)
+	select {
+	case err := <-unlistDone:
+		require.NoError(t, err)
+	case <-time.After(3 * time.Second):
+		t.Fatal("source unlist did not complete")
+	}
+	select {
+	case err := <-introduceDone:
+		require.ErrorIs(t, err, ErrPublicMarketplaceNotFound)
+	case <-time.After(3 * time.Second):
+		t.Fatal("introduction did not complete after unlist")
+	}
+}
+
 func TestPublicMarketplaceRepositoryRejectsIntroductionAfterUnlist(t *testing.T) {
 	db := openPublicMarketplaceDB(t)
 	repo := NewPublicMarketplaceRepository(db)
@@ -288,4 +462,70 @@ func TestPublicMarketplaceRepositoryRejectsIntroductionAfterUnlist(t *testing.T)
 	require.NoError(t, db.Model(&types.AgentAdoptionEntity{}).Where("tenant_id = ?", 2).Count(&adoptions).Error)
 	require.Zero(t, introductions)
 	require.Zero(t, adoptions)
+}
+
+type publicIntroductionOrderContextKey struct{}
+
+func TestPublicMarketplaceIntroduceReleaseAgainstEndedAdoptionRollsBack(t *testing.T) {
+	db := openPublicMarketplaceDB(t)
+	repo := NewPublicMarketplaceRepository(db)
+	ctx := context.Background()
+	listing, firstRelease := seedApprovedPublicRelease(t, db, "1.0.0")
+	introduced, adoption, created, err := repo.IntroduceRelease(ctx, 2, "adopter-admin", &listing, firstRelease)
+	require.NoError(t, err)
+	require.True(t, created)
+	_, err = NewAgentAdoptionRepository(db).TransitionAdoption(ctx, 2, adoption.ID, "active", "ended", map[string]any{"ended_by": "adopter-admin"})
+	require.NoError(t, err)
+
+	// A new public Release creates a fresh tenant introduction before calling
+	// the shared adoption upsert; the enclosing transaction must roll it back.
+	listing2, secondRelease := seedApprovedPublicRelease(t, db, "2.0.0")
+	require.Equal(t, listing.ID, listing2.ID)
+	ctx = context.WithValue(ctx, publicIntroductionOrderContextKey{}, true)
+	var events []string
+	guardName := "test:public-intro-order-guard:" + t.Name()
+	readName := "test:public-intro-order-read:" + t.Name()
+	createName := "test:public-intro-order-create:" + t.Name()
+	require.NoError(t, db.Callback().Update().After("gorm:update").Before("gorm:after_update").Register(guardName, func(tx *gorm.DB) {
+		if tx.Statement != nil && tx.Statement.Schema != nil && tx.Statement.Schema.Table == "public_marketplace_listings" && tx.Statement.Context.Value(publicIntroductionOrderContextKey{}) == true {
+			events = append(events, "listing-gate")
+		}
+	}))
+	require.NoError(t, db.Callback().Query().Before("gorm:query").Register(readName, func(tx *gorm.DB) {
+		if tx.Statement != nil && tx.Statement.Table == "tenant_introduced_releases" && tx.Statement.Context.Value(publicIntroductionOrderContextKey{}) == true {
+			events = append(events, "introduction-read")
+		}
+	}))
+	require.NoError(t, db.Callback().Create().Before("gorm:create").Register(createName, func(tx *gorm.DB) {
+		if tx.Statement != nil && tx.Statement.Schema != nil && tx.Statement.Schema.Table == "tenant_introduced_releases" && tx.Statement.Context.Value(publicIntroductionOrderContextKey{}) == true {
+			events = append(events, "introduction-write")
+		}
+	}))
+	t.Cleanup(func() { _ = db.Callback().Update().Remove(guardName) })
+	t.Cleanup(func() { _ = db.Callback().Query().Remove(readName) })
+	t.Cleanup(func() { _ = db.Callback().Create().Remove(createName) })
+	createdIntroduction, _, created, err := repo.IntroduceRelease(ctx, 2, "adopter-admin", &listing2, secondRelease)
+	require.ErrorIs(t, err, ErrAgentAdoptionTransition)
+	require.Equal(t, "listing-gate", events[0],
+		"the public listing gate must be acquired before introduction ledger reads or writes")
+	require.Contains(t, events, "introduction-write")
+	require.Nil(t, createdIntroduction)
+	require.False(t, created)
+	var introductionCount int64
+	require.NoError(t, db.Model(&types.TenantIntroducedReleaseEntity{}).Where("tenant_id = ? AND public_listing_id = ?", 2, listing.ID).Count(&introductionCount).Error)
+	require.EqualValues(t, 1, introductionCount, "the failed introduction must not leave a partial row")
+	stored, err := NewAgentAdoptionRepository(db).GetAdoption(ctx, 2, adoption.ID)
+	require.NoError(t, err)
+	require.NotNil(t, stored)
+	require.Equal(t, "ended", stored.State)
+	require.Equal(t, introduced.ID, stored.AcceptedReleaseID)
+
+	// An already introduced Release also cannot make the ended Adoption look
+	// successful when the requested accepted pointer is unchanged.
+	events = nil
+	_, _, _, err = repo.IntroduceRelease(ctx, 2, "adopter-admin", &listing, firstRelease)
+	require.ErrorIs(t, err, ErrAgentAdoptionTransition)
+	require.Equal(t, "listing-gate", events[0],
+		"the existing-introduction branch must also pass the listing gate before reading the ledger")
+	require.NotContains(t, events, "introduction-write")
 }

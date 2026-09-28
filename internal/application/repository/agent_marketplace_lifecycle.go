@@ -110,7 +110,7 @@ func (r *agentAdoptionRepository) RetiredVariantAgentExists(ctx context.Context,
 
 func (r *agentMarketplaceRepository) TransitionListingState(ctx context.Context, tenantID uint64, listingID, expectedFrom, nextState string, updates map[string]any) (*types.AgentMarketplaceListingEntity, error) {
 	var row types.AgentMarketplaceListingEntity
-	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err := withTenantSecurityGuard(ctx, r.db, tenantID, func(tx *gorm.DB) error {
 		if err := lockListingState(tx, tenantID, listingID, expectedFrom); err != nil {
 			return err
 		}
@@ -131,6 +131,9 @@ func (r *agentMarketplaceRepository) TransitionListingState(ctx context.Context,
 		}
 		return tx.Where("tenant_id = ? AND id = ?", tenantID, listingID).First(&row).Error
 	})
+	if errors.Is(err, ErrTenantNotFound) {
+		return nil, ErrAgentMarketplaceNotFound
+	}
 	if err != nil {
 		return nil, err
 	}

@@ -41,6 +41,7 @@ type PublicMarketplaceRepository interface {
 	RevokePublisher(ctx context.Context, tenantID uint64) error
 	ListVerifiedPublishers(ctx context.Context) ([]types.VerifiedPublisherEntity, error)
 	GetVerifiedPublisher(ctx context.Context, tenantID uint64) (*types.VerifiedPublisherEntity, error)
+	IsPublicListingDiscoverable(ctx context.Context, listingID string) (bool, error)
 	CreatePublicSubmission(ctx context.Context, listing *types.PublicMarketplaceListingEntity, submission *types.PublicReleaseSubmissionEntity) (*types.PublicReleaseSubmissionEntity, error)
 	ListPublicSubmissions(ctx context.Context, publisherTenantID uint64) ([]types.PublicReleaseSubmissionEntity, error)
 	ListPublicReviewQueue(ctx context.Context) ([]types.PublicReleaseSubmissionEntity, error)
@@ -134,55 +135,66 @@ func (r *publicMarketplaceRepository) VerifyPublisher(ctx context.Context, row *
 		return nil, false, fmt.Errorf("invalid verified publisher row")
 	}
 	var existing types.VerifiedPublisherEntity
-	err := r.db.WithContext(ctx).Where("tenant_id = ?", row.TenantID).First(&existing).Error
-	if err == nil {
-		if existing.State == "verified" && existing.VerifiedBy == row.VerifiedBy {
-			return &existing, false, nil
+	var created bool
+	err := withTenantSecurityGuard(ctx, r.db, row.TenantID, func(tx *gorm.DB) error {
+		err := tx.Where("tenant_id = ?", row.TenantID).First(&existing).Error
+		if err == nil {
+			if existing.State == "verified" && existing.VerifiedBy == row.VerifiedBy {
+				return nil
+			}
+			existing.State = "verified"
+			existing.VerifiedBy = row.VerifiedBy
+			existing.Note = row.Note
+			existing.VerifiedAt = row.VerifiedAt
+			existing.UpdatedAt = time.Now().UTC()
+			if err := tx.Model(&types.VerifiedPublisherEntity{}).Where("tenant_id = ?", row.TenantID).
+				Updates(map[string]any{"state": existing.State, "verified_by": existing.VerifiedBy, "note": existing.Note, "verified_at": existing.VerifiedAt, "updated_at": existing.UpdatedAt}).Error; err != nil {
+				return err
+			}
+			return nil
 		}
-		existing.State = "verified"
-		existing.VerifiedBy = row.VerifiedBy
-		existing.Note = row.Note
-		existing.VerifiedAt = row.VerifiedAt
-		existing.UpdatedAt = time.Now().UTC()
-		if err := r.db.WithContext(ctx).Model(&types.VerifiedPublisherEntity{}).Where("tenant_id = ?", row.TenantID).
-			Updates(map[string]any{"state": existing.State, "verified_by": existing.VerifiedBy, "note": existing.Note, "verified_at": existing.VerifiedAt, "updated_at": existing.UpdatedAt}).Error; err != nil {
-			return nil, false, err
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
 		}
-		return &existing, false, nil
-	}
-	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		newRow := *row
+		if newRow.State == "" {
+			newRow.State = "verified"
+		}
+		newRow.UpdatedAt = newRow.VerifiedAt
+		inserted := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&newRow)
+		if inserted.Error != nil {
+			return inserted.Error
+		}
+		if inserted.RowsAffected == 1 {
+			created = true
+			existing = newRow
+			return nil
+		}
+		return tx.Where("tenant_id = ?", row.TenantID).First(&existing).Error
+	})
+	if err != nil {
 		return nil, false, err
 	}
-	created := *row
-	if created.State == "" {
-		created.State = "verified"
-	}
-	created.UpdatedAt = created.VerifiedAt
-	inserted := r.db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(&created)
-	if inserted.Error != nil {
-		return nil, false, inserted.Error
-	}
-	if inserted.RowsAffected == 1 {
-		return &created, true, nil
-	}
-	var winner types.VerifiedPublisherEntity
-	if err := r.db.WithContext(ctx).Where("tenant_id = ?", row.TenantID).First(&winner).Error; err != nil {
-		return nil, false, err
-	}
-	return &winner, false, nil
+	return &existing, created, nil
 }
 
 func (r *publicMarketplaceRepository) RevokePublisher(ctx context.Context, tenantID uint64) error {
-	updated := r.db.WithContext(ctx).Model(&types.VerifiedPublisherEntity{}).
-		Where("tenant_id = ?", tenantID).
-		Updates(map[string]any{"state": "revoked", "updated_at": time.Now().UTC()})
-	if updated.Error != nil {
-		return updated.Error
-	}
-	if updated.RowsAffected != 1 {
+	err := withTenantSecurityGuard(ctx, r.db, tenantID, func(tx *gorm.DB) error {
+		updated := tx.Model(&types.VerifiedPublisherEntity{}).
+			Where("tenant_id = ?", tenantID).
+			Updates(map[string]any{"state": "revoked", "updated_at": time.Now().UTC()})
+		if updated.Error != nil {
+			return updated.Error
+		}
+		if updated.RowsAffected != 1 {
+			return ErrPublicMarketplaceNotFound
+		}
+		return nil
+	})
+	if errors.Is(err, ErrTenantNotFound) {
 		return ErrPublicMarketplaceNotFound
 	}
-	return nil
+	return err
 }
 
 func (r *publicMarketplaceRepository) ListVerifiedPublishers(ctx context.Context) ([]types.VerifiedPublisherEntity, error) {
@@ -286,6 +298,15 @@ func (r *publicMarketplaceRepository) GetPublicListing(ctx context.Context, list
 	return &row, nil
 }
 
+func (r *publicMarketplaceRepository) IsPublicListingDiscoverable(ctx context.Context, listingID string) (bool, error) {
+	var count int64
+	err := r.db.WithContext(ctx).Table("public_marketplace_listings AS l").
+		Joins("JOIN public_marketplace_verified_publishers AS p ON p.tenant_id = l.publisher_tenant_id AND p.state = ?", "verified").
+		Joins("JOIN agent_marketplace_listings AS source ON source.tenant_id = l.publisher_tenant_id AND source.id = l.source_listing_id AND source.state = ?", "listed").
+		Where("l.id = ? AND l.state = ? AND l.current_release_id IS NOT NULL", strings.TrimSpace(listingID), "listed").Count(&count).Error
+	return count == 1, err
+}
+
 func (r *publicMarketplaceRepository) GetPublicRelease(ctx context.Context, releaseID string) (*types.PublicAgentReleaseEntity, error) {
 	var row types.PublicAgentReleaseEntity
 	err := r.db.WithContext(ctx).Where("id = ?", strings.TrimSpace(releaseID)).First(&row).Error
@@ -374,7 +395,10 @@ func (r *publicMarketplaceRepository) ReviewAndPublishPublicTx(ctx context.Conte
 
 func (r *publicMarketplaceRepository) ListPublicCatalog(ctx context.Context) ([]PublicCatalogRow, error) {
 	rows := []types.PublicMarketplaceListingEntity{}
-	if err := r.db.WithContext(ctx).Where("state = ? AND current_release_id IS NOT NULL", "listed").Order("created_at ASC, id ASC").Find(&rows).Error; err != nil {
+	if err := r.db.WithContext(ctx).Table("public_marketplace_listings AS l").Select("l.*").
+		Joins("JOIN public_marketplace_verified_publishers AS p ON p.tenant_id = l.publisher_tenant_id AND p.state = ?", "verified").
+		Joins("JOIN agent_marketplace_listings AS source ON source.tenant_id = l.publisher_tenant_id AND source.id = l.source_listing_id AND source.state = ?", "listed").
+		Where("l.state = ? AND l.current_release_id IS NOT NULL", "listed").Order("l.created_at ASC, l.id ASC").Find(&rows).Error; err != nil {
 		return nil, err
 	}
 	out := make([]PublicCatalogRow, 0, len(rows))
@@ -398,6 +422,21 @@ func (r *publicMarketplaceRepository) IntroduceRelease(ctx context.Context, adop
 	var adoption *types.AgentAdoptionEntity
 	created := false
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// All cross-tenant paths acquire tenant guards in numeric order. This
+		// serializes against source Listing unlist / Publisher revocation and
+		// avoids opposite-order deadlocks when publisher == adopter.
+		first, second := adopterTenantID, listing.PublisherTenantID
+		if first > second {
+			first, second = second, first
+		}
+		if err := acquireTenantSecurityGuardTx(tx, first); err != nil {
+			return err
+		}
+		if second != first {
+			if err := acquireTenantSecurityGuardTx(tx, second); err != nil {
+				return err
+			}
+		}
 		// Listing is always the first lifecycle gate. UnlistPublicListing CASes
 		// this exact row, so PostgreSQL serializes the operations and SQLite
 		// holds its writer lock until the full transaction commits.
@@ -409,6 +448,17 @@ func (r *publicMarketplaceRepository) IntroduceRelease(ctx context.Context, adop
 		}
 		if listingGate.RowsAffected != 1 {
 			return ErrPublicMarketplaceLifecycleTransition
+		}
+		// Custody recheck inside the guarded transaction: the Publisher must
+		// still be verified and the source tenant Listing must still be listed.
+		var visible int64
+		if err := tx.Table("public_marketplace_listings AS l").Joins("JOIN public_marketplace_verified_publishers AS p ON p.tenant_id = l.publisher_tenant_id AND p.state = ?", "verified").
+			Joins("JOIN agent_marketplace_listings AS source ON source.tenant_id = l.publisher_tenant_id AND source.id = l.source_listing_id AND source.state = ?", "listed").
+			Where("l.id = ? AND l.publisher_tenant_id = ? AND l.state = ? AND l.current_release_id IS NOT NULL", listing.ID, listing.PublisherTenantID, "listed").Count(&visible).Error; err != nil {
+			return err
+		}
+		if visible != 1 {
+			return ErrPublicMarketplaceNotFound
 		}
 		var persistedRelease types.PublicAgentReleaseEntity
 		if err := tx.Where("listing_id = ? AND id = ?", listing.ID, release.ID).Take(&persistedRelease).Error; err != nil {
