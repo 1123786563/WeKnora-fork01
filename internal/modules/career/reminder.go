@@ -301,8 +301,20 @@ func (o *Office) reconcileReminderSource(ctx context.Context, s Scope, input Set
 	var receipt ReminderReceipt
 	found := false
 	err := o.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Serialize reconciliation with DeleteCareer's final profile lock and
+		// purge. A source read before that lock could otherwise be followed by
+		// deletion and then leave a new request receipt behind the deleted row.
+		var head profile
+		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("tenant_id=? AND user_id=?", s.TenantID, s.UserID).First(&head).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
 		var stored reminderReceiptRecord
-		err := tx.Where("tenant_id=? AND user_id=? AND request_id=?", s.TenantID, s.UserID, input.RequestID).First(&stored).Error
+		err = tx.Where("tenant_id=? AND user_id=? AND request_id=?", s.TenantID, s.UserID, input.RequestID).First(&stored).Error
 		if err == nil {
 			if stored.Fingerprint != fingerprint {
 				return ErrIdempotencyConflict

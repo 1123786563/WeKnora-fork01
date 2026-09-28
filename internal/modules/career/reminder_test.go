@@ -165,6 +165,113 @@ func TestConcurrentSetReminderDifferentRequestIDsConvergeOnOneTodo(t *testing.T)
 	require.EqualValues(t, 2, countReminderRows(t, db, "career_reminder_receipts"))
 }
 
+func TestReconcileReminderSourceDoesNotRecreateReceiptAfterDeletion(t *testing.T) {
+	o, db, ctx := newProgressOffice(t, "reminder-owner", 921)
+	_, eventID := seedReminderEvent(t, o, ctx, "reconcile-delete")
+	head := reminderHead(t, o, ctx)
+	_, err := o.SetReminder(ctx, reminderInput("reconcile-delete-original", ReminderSourceProgressEvent, eventID, head))
+	require.NoError(t, err)
+
+	_, err = o.DeleteCareer(ctx, CareerDeletionInput{RequestID: "reconcile-delete-space", ExpectedRevision: head})
+	require.NoError(t, err)
+
+	receipt, found, err := o.reconcileReminderSource(ctx, Scope{TenantID: 921, UserID: "reminder-owner"},
+		reminderInput("reconcile-delete-late", ReminderSourceProgressEvent, eventID, head), strings.Repeat("a", 64))
+	require.NoError(t, err)
+	require.False(t, found)
+	require.Empty(t, receipt.ReminderID)
+	require.Zero(t, countReminderRows(t, db, "career_reminders"))
+	require.Zero(t, countReminderRows(t, db, "career_reminder_receipts"))
+}
+
+func TestDeleteFinalizingDuringReminderReconciliationLeavesNoRows(t *testing.T) {
+	o, db, ctx := newProgressOffice(t, "reminder-owner", 921)
+	o.SetApplicationTaskRemover(&fakeCareerTaskRemover{})
+	_, eventID := seedReminderEvent(t, o, ctx, "reconcile-barrier")
+	head := reminderHead(t, o, ctx)
+	_, err := o.SetReminder(ctx, reminderInput("reconcile-barrier-original", ReminderSourceProgressEvent, eventID, head))
+	require.NoError(t, err)
+	require.NoError(t, db.Exec("PRAGMA journal_mode=WAL").Error)
+
+	sourceRead := make(chan struct{})
+	continueReconcile := make(chan struct{})
+	const callback = "test:pause-reminder-reconcile-after-source-read"
+	require.NoError(t, db.Callback().Query().After("gorm:query").Register(callback, func(tx *gorm.DB) {
+		if tx.Statement.Table != "career_reminders" || !strings.Contains(tx.Statement.SQL.String(), "source_kind") {
+			return
+		}
+		select {
+		case <-sourceRead:
+			return
+		default:
+			close(sourceRead)
+		}
+		<-continueReconcile
+	}))
+	t.Cleanup(func() { _ = db.Callback().Query().Remove(callback) })
+
+	type reconcileResult struct {
+		found bool
+		err   error
+	}
+	reconcileDone := make(chan reconcileResult, 1)
+	go func() {
+		_, found, err := o.reconcileReminderSource(ctx, Scope{TenantID: 921, UserID: "reminder-owner"},
+			reminderInput("reconcile-barrier-late", ReminderSourceProgressEvent, eventID, head), strings.Repeat("b", 64))
+		reconcileDone <- reconcileResult{found: found, err: err}
+	}()
+	select {
+	case <-sourceRead:
+	case <-time.After(5 * time.Second):
+		t.Fatal("reconciliation did not reach its source-read barrier")
+	}
+
+	type deleteResult struct {
+		status string
+		err    error
+	}
+	deleteDone := make(chan deleteResult, 1)
+	go func() {
+		deletion, err := o.DeleteCareer(ctx, CareerDeletionInput{RequestID: "reconcile-barrier-delete", ExpectedRevision: head})
+		deleteDone <- deleteResult{status: deletion.Status, err: err}
+	}()
+	firstDeleteStatus := DeletionStatusPartial
+	select {
+	case result := <-deleteDone:
+		require.NoError(t, result.err)
+		require.Contains(t, []string{DeletionStatusPartial, DeletionStatusDeleted}, result.status)
+		firstDeleteStatus = result.status
+	case <-time.After(5 * time.Second):
+		close(continueReconcile)
+		t.Fatal("deletion did not finalize while reconciliation was paused")
+	}
+	close(continueReconcile)
+	select {
+	case result := <-reconcileDone:
+		// SQLite may reject the stale read transaction's later write with
+		// SQLITE_BUSY; the invariant under test is that no rows survive delete.
+		if result.err == nil {
+			require.False(t, result.found)
+		} else {
+			require.True(t, isSQLiteBusy(result.err), "unexpected reconciliation error: %v", result.err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("reconciliation did not leave its source-read barrier")
+	}
+	if firstDeleteStatus != DeletionStatusDeleted {
+		var lastDeletion CareerDeletionReceipt
+		for attempt := 0; attempt < 3 && firstDeleteStatus != DeletionStatusDeleted; attempt++ {
+			deletion, err := o.DeleteCareer(ctx, CareerDeletionInput{RequestID: "reconcile-barrier-delete", ExpectedRevision: head})
+			require.NoError(t, err)
+			lastDeletion = deletion
+			firstDeleteStatus = deletion.Status
+		}
+		require.Equal(t, DeletionStatusDeleted, firstDeleteStatus, "%+v", lastDeletion.Steps)
+	}
+	require.Zero(t, countReminderRows(t, db, "career_reminders"))
+	require.Zero(t, countReminderRows(t, db, "career_reminder_receipts"))
+}
+
 // ---- 2. the inbox row is authoritative; push only reminds ---------------------
 
 func TestInboxRecordIsAuthoritativeAndPushOnlyReminds(t *testing.T) {
