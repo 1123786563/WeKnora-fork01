@@ -9,6 +9,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/golang-migrate/migrate/v4"
+	sqlite3migrate "github.com/golang-migrate/migrate/v4/database/sqlite3"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/stretchr/testify/require"
 )
 
@@ -42,6 +45,7 @@ var versionedSQLiteTables = []string{
 	"agent_release_reviews",
 	"agent_releases",
 	"craft_budget_extension_intents", // SQLite migration 000136 / versioned 000215.
+	"agent_release_evaluations",
 }
 
 // versionedSQLiteColumns maps each existing table to the columns that the
@@ -103,6 +107,7 @@ func TestSQLiteMigrationsCreateVersionedSchema(t *testing.T) {
 		"uq_agent_versions_scope", "uq_agent_versions_source_binding",
 		"uq_agent_marketplace_listing_scope", "uq_agent_release_review_decision",
 		"uq_agent_releases_number", "uq_agent_releases_semantic", "uq_agent_releases_digest",
+		"uq_agent_release_evaluation_identity", "idx_agent_release_evaluations_release",
 	} {
 		require.Truef(t, sqliteIndexExists(t, db, index), "SQLite migrations must create index %s", index)
 	}
@@ -192,6 +197,24 @@ func TestSQLiteMigrationsUpgradeV4PreservesData(t *testing.T) {
 	).Scan(&relationCount))
 	require.Equal(t, 1, relationCount)
 	require.False(t, sqliteColumnExists(t, db, "knowledges", "tag_id"))
+}
+
+func TestSQLiteAgentEvaluationMigrationDownUp(t *testing.T) {
+	repoRoot := sqliteRepoRoot(t)
+	chdirAndRestore(t, repoRoot)
+	dbPath := filepath.Join(t.TempDir(), "evaluation-down-up.db")
+	require.NoError(t, RunMigrationsWithOptions("sqlite3://unused", MigrationOptions{SQLiteDBPath: dbPath}))
+	sqlDB := openSQLiteDB(t, dbPath)
+	driver, err := sqlite3migrate.WithInstance(sqlDB, &sqlite3migrate.Config{NoTxWrap: true})
+	require.NoError(t, err)
+	m, err := migrate.NewWithDatabaseInstance("file://"+filepath.Join(repoRoot, "migrations/sqlite"), "sqlite3", driver)
+	require.NoError(t, err)
+	t.Cleanup(func() { _, _ = m.Close() })
+	require.NoError(t, m.Migrate(uint(sqliteMigrationHead(t, repoRoot)-1)))
+	require.False(t, sqliteTableExists(t, sqlDB, "agent_release_evaluations"))
+	require.NoError(t, m.Up())
+	require.True(t, sqliteTableExists(t, sqlDB, "agent_release_evaluations"))
+	require.True(t, sqliteIndexExists(t, sqlDB, "uq_agent_release_evaluation_identity"))
 }
 
 func sqliteRepoRoot(t *testing.T) string {
