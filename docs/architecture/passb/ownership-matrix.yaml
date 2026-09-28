@@ -1631,7 +1631,7 @@ legacy_files:
     destination: internal/modules/execution/handler
     integration_owner: ib1
     delete_barrier: ib1
-  - path: internal/handler/memory.go
+  - path: internal/handler/agentruntime_memory_passb_compat.go
     module: agentruntime
     plan: 31-agentruntime-memory
     destination: internal/modules/agentruntime/memory

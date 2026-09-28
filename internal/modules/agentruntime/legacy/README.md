@@ -43,7 +43,7 @@
 | `internal/application/service/native_recovery.go` | Native recovery (application/service) | `B-agentruntime` |
 | `internal/application/service/native_usage.go` | Native usage (application/service) | `B-agentruntime` |
 | `internal/application/service/subagent_delegate.go` | Subagent delegate (application/service) | `B-agentruntime` |
-| `internal/handler/memory.go` | Memory (handler) | `B-agentruntime` |
+| `internal/handler/agentruntime_memory_passb_compat.go` | Memory host compat (handler) | `B-agentruntime` |
 | `internal/handler/session/agent_run.go` | Agent run (handler/session) | `B-agentruntime` |
 | `internal/handler/session/agent_stream_handler.go` | Agent stream handler (handler/session) | `B-agentruntime` |
 | `internal/handler/session/native_archive.go` | Native archive (handler/session) | `B-agentruntime` |

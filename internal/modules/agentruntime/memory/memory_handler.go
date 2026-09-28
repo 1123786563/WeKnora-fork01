@@ -1,4 +1,4 @@
-package handler
+package memory
 
 import (
 	"errors"
@@ -9,7 +9,6 @@ import (
 
 	apperrors "github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/logger"
-	"github.com/Tencent/WeKnora/internal/modules/agentruntime/memory"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )
@@ -448,15 +447,15 @@ func (h *MemoryHandler) Consolidate(c *gin.Context) {
 // belonging to someone else produce the same 404 on purpose.
 func (h *MemoryHandler) fail(c *gin.Context, err error, message string) {
 	switch {
-	case errors.Is(err, memory.ErrNoMemoryScope):
+	case errors.Is(err, ErrNoMemoryScope):
 		c.Error(apperrors.NewUnauthorizedError("no principal in request"))
-	case errors.Is(err, memory.ErrItemNotFound):
+	case errors.Is(err, ErrItemNotFound):
 		c.Error(apperrors.NewNotFoundError("memory not found"))
 	case errors.Is(err, types.ErrMemoryConflict):
 		c.Error(apperrors.NewConflictError(err.Error()))
-	case errors.Is(err, memory.ErrSensitiveContent):
+	case errors.Is(err, ErrSensitiveContent):
 		c.Error(apperrors.NewBadRequestError(err.Error()))
-	case errors.Is(err, memory.ErrMemoryDisabled):
+	case errors.Is(err, ErrMemoryDisabled):
 		c.Error(apperrors.NewBadRequestError("memory is disabled"))
 	default:
 		logger.ErrorWithFields(c.Request.Context(), err, nil)
