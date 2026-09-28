@@ -47,3 +47,25 @@ All commands below ran from the target checkout at the stated HEAD.
 - Build and diff whitespace checks pass at that HEAD.
 - Acceptance gap: the complete repository and service package checks fail after about 10 minutes. This does not establish a regression in the changed metrics code; root cause remains unisolated, and existing same-HEAD full-package evidence was not available for reuse.
 - Validation status: `DONE_WITH_CONCERNS`.
+
+## Follow-up: serial package diagnosis
+
+No complete log from the earlier parallel timeout run was retained, so its exact active test name and stack cannot be recovered. A serial rerun was performed at the same revision; no other tests or builds were run concurrently.
+
+- Start/end HEAD: `8ddee80892c278b85c4ff5d5e6de5c26c640734b`
+- Checkout remained clean; no business or test source was changed.
+- Complete command outputs were retained at `/tmp/t65-r1-repository-serial.log` and `/tmp/t65-r1-service-serial.log`.
+
+1. Command: `go test -p 1 -timeout 15m ./internal/application/repository -count=1`
+   - Exit: `0`
+   - Complete output: `ok   github.com/Tencent/WeKnora/internal/application/repository 429.414s`
+
+2. Command: `go test -p 1 -timeout 15m ./internal/application/service -count=1`
+   - Exit: `0`
+   - Complete output: `ok   github.com/Tencent/WeKnora/internal/application/service 234.662s`
+
+### Diagnosis and evidence reconciliation
+
+Both package suites pass independently at the exact fix HEAD when run serially. The earlier command ran both packages concurrently, and both test binaries were observed actively consuming CPU before the default 10-minute timeout failure. Thus that timeout is consistent with test/resource contention under concurrent package execution; it does not establish a package test failure or contradict implementation evidence reporting full-package PASS at the same HEAD. This is a likely explanation supported by the serial results and observed contention, not a recovered identification of the exact test that was active during the earlier timeout. The old stack was not preserved, and the serial runs produced no timeout or failing test stack to diagnose.
+
+Follow-up validation status: both requested full-package serial checks pass; no source changes made. Original report's failed parallel run remains documented as such.

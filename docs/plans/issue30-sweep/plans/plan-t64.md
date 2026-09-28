@@ -1186,7 +1186,10 @@ type revokeDependencyBody struct {
 	InFlightDisposition string                       `json:"in_flight_disposition,omitempty"`
 }
 type agentSecurityDependencyBody struct {
-	Type, ID, Version, Digest string // json: type / id / version / digest
+	Type    string `json:"type"`
+	ID      string `json:"id"`
+	Version string `json:"version"`
+	Digest  string `json:"digest"`
 }
 ```
 
@@ -1201,10 +1204,9 @@ func RegisterAgentSecurityRoutes(r *gin.RouterGroup, securityHandler *handler.Ag
 
 ```go
 // internal/container/agent_security.go
-func NewAgentSecurityService(db *gorm.DB, runs *repository.AgentRunStore) *service.AgentSecurityService
+func NewAgentSecurityService(store *repository.AgentSecurityStore, runs *repository.AgentRunStore) *service.AgentSecurityService
 func NewAgentSecurityHandler(security *service.AgentSecurityService) *handler.AgentSecurityHandler
 func wireAgentSecurityGates(adoption *service.AgentAdoptionService, upgrade *service.AgentUpgradeService, security *service.AgentSecurityService) // security 非 nil 时对两者 SetReleaseSecurityGate
-func wireAgentChatSecurityGate(handler *session.Handler, security *service.AgentSecurityService) // Task 8 的 session 闸门安装（本任务先建文件与 Provide，AgentQA 接线在 Task 8）
 ```
 
 container.go 变更（写死）：
@@ -1216,8 +1218,8 @@ container.go 变更（写死）：
 	must(container.Provide(func(adoption *service.AgentAdoptionService) interfaces.AgentAdoptionService { return adoption }))
 ```
 2. :456-458 的 upgrade Provide 同款替换为 Concrete + 适配两段。
-3. 追加：`must(container.Provide(NewAgentSecurityService))`、`must(container.Provide(NewAgentSecurityHandler))`、`must(container.Invoke(wireAgentSecurityGates))`、`must(container.Invoke(wireAgentChatSecurityGate))`。
-4. `internal/container/workbench.go` 的 `NewWorkbenchAdmissionCoordinator` 签名追加末参 `security *service.AgentSecurityService`，函数体在 `SetAdmissionGate` 之后加 `coordinator.SetAgentSecurityGate(security)`（nil-safe，Task 8 提供该 setter；本任务可先加参数并在 Task 8 实现方法——为保持每任务可编译，**本任务就在 workbench.go 加参数与调用，Task 8 同批实现 setter**；若编排为逐任务提交，则把 workbench.go 的参数追加挪到 Task 8 Step 3 一并完成，此处只留注释位——取后者，见 Task 8）。
+3. 追加：`must(container.Provide(NewAgentSecurityService))`、`must(container.Provide(NewAgentSecurityHandler))`、`must(container.Invoke(wireAgentSecurityGates))`。`wireAgentChatSecurityGate` 和它的 Invoke 延后到 Task 8：当前 session.Handler 尚无 AgentSecurityGate setter，提前注册会使 Task 7 无法独立构建。
+4. 本任务不改 `internal/container/workbench.go`。Task 8 将在保留当前 `adoptions` 参数和 `SetAgentUseGate` 的前提下，扩展 workbench 装配。
 
 - [ ] **Step 1: 写失败测试（handler wire）**
 
@@ -1230,6 +1232,7 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -1354,7 +1357,6 @@ package container
 // 治理闸门是 Invoke 侧装配件：漏注册不会编译失败，只会让路由/闸门静默消失
 //（task_compliance_wiring_test.go 同款防线）。
 import (
-	"os"
 	"strings"
 	"testing"
 
@@ -1367,7 +1369,6 @@ func TestAgentSecurityWiringRegistered(t *testing.T) {
 		"must(container.Provide(NewAgentSecurityService))",
 		"must(container.Provide(NewAgentSecurityHandler))",
 		"must(container.Invoke(wireAgentSecurityGates))",
-		"must(container.Invoke(wireAgentChatSecurityGate))",
 	} {
 		require.Truef(t, strings.Contains(containerSrc, want),
 			"container.go 必须注册 %q——漏注册会让撤回路由/治理闸门静默消失", want)
@@ -1375,16 +1376,13 @@ func TestAgentSecurityWiringRegistered(t *testing.T) {
 	routerSrc := readRepoFile(t, "../router/router.go")
 	require.True(t, strings.Contains(routerSrc, "RegisterAgentSecurityRoutes(v1, params.AgentSecurityHandler, rbacGuards)"),
 		"router.go 必须挂载安全撤回路由")
-	workbenchSrc := readRepoFile(t, "workbench.go")
-	require.True(t, strings.Contains(workbenchSrc, "SetAgentSecurityGate(security)"),
-		"workbench.go 必须把安全闸门装进 AdmissionCoordinator（Task 8 交付后生效）")
 }
 ```
 
-Run: `go test ./internal/container/ -run TestAgentSecurityWiringRegistered -count=1` → 先 FAIL → 补齐 container.go 注册（workbench.go 断言将在 Task 8 后转绿——**因此本测试的 workbenchSrc 断言放在 Task 8 Step 4 之前会红**；为保持任务独立可提交，本测试先只断言 container.go 与 router.go 两处，Task 8 Step 4 再追加 workbench.go 断言。按此顺序执行）。
+Run: `go test ./internal/container/ -run TestAgentSecurityWiringRegistered -count=1` → 先 FAIL → 补齐 container.go 注册；本 Task 的断言范围只有 container.go 与 router.go。
 
 Run: `go test ./internal/container/ -run TestAgentSecurityWiringRegistered -count=1`
-Expected: PASS。
+Expected: PASS. This Task 7 assertion covers only the production Container and Router registrations. Task 8 extends the same assertion after the workbench/session gate setters exist.
 
 - [ ] **Step 6: Commit**
 
@@ -1396,6 +1394,19 @@ git commit -m "feat(security): /marketplace/tenant/security-revocations 四端�
 ---
 
 ### Task 8: 运行入口闸门（workbench 准入 + agent-chat 轮次）
+
+#### Task 8 architecture amendment — required before implementation
+
+The initial Task 8 sketch below described a plain `VerdictForAgent` precheck. Read-only audit at coordination HEAD `615c015c0` proved that design is unsafe: it races revocation, breaks idempotent replay if placed before request lookup, and in AgentQA runs after request parsing can persist image attachments. Do not implement that precheck.
+
+The implementation must preserve these ordering invariants:
+
+1. For workbench, keep the existing request-hash/existing-request replay path before any new security decision. A previously admitted request returns its existing result under current idempotency rules.
+2. A **new** Run admission must make its security decision and durable Run admission under the same tenant guard used by revocation (`withTenantSecurityGuard`), with tenant lock acquired before session/request/run rows. Reuse `checkReleaseAdmissionTx` for exact Release/dependency identity. Do not hold the guard across external budget or network work. If revocation commits first, a new Run is denied; if admission commits first, the existing in-flight disposition policy applies.
+3. AgentQA must resolve the applicable custom Agent without writing files or rows, and reject blocked agents before attachment persistence, message writes, live-run allocation, or SSE. Cover quick-answer mode as well as agent mode. Do not keep a tenant lock open across storage extraction or streaming; the implementation must use a durable admission/claim seam whose state participates in revocation ordering and has explicit cleanup on downstream failure.
+4. Task 8 preserves `NewWorkbenchAdmissionCoordinator`'s current `adoptions` parameter and `SetAgentUseGate` retirement guard while adding security wiring.
+
+The repository-level transaction seam and AgentQA turn-claim lifecycle require a separate detailed Task8 plan before any Task8 Brief or implementation dispatch. The architecture evidence and blocking findings are recorded in `evidence/t64-task7-task8-preflight.md` and `B6-execution-ledger.md`. Do not implement the pseudocode below literally. Task8 will be split into serial, independently reviewed checkpoints for transactional Run admission, workbench guard/wiring, and AgentQA side-effect-free resolution plus a guarded turn claim. Each checkpoint needs its own Brief, owned files, Review Package, independent review and validation before the next checkpoint consumes it. Task9 remains downstream of all Task8 checkpoints.
 
 **Files:**
 - Modify: `internal/modules/workbench/service/workbench/admission.go`（字段 + setter + Start guard + 哨兵）
