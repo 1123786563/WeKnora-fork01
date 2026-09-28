@@ -69,3 +69,20 @@ No implementation verification or OCR has run for this plan yet. Task 0 first in
 - `pnpm install --frozen-lockfile --offline`: PASS; all dependencies reused from cache, install confined to ignored worktree `node_modules`.
 - `pnpm test:shared`: PASS, 1126 tests, 1122 pass, 0 fail, 4 skipped, exit 0.
 - `pnpm typecheck:shared`: FAIL at unchanged `packages/views/src/chat/mermaid.ts` lines 127/158 (dark/light theme literal incompatibility and missing `themeVariables` property), exit 2. This is the clean baseline’s unrelated type error; record and do not modify it in Task 1. Re-run the same gate after the task to confirm it remains unchanged, plus focused Career type checks.
+
+### Task 0 follow-up: P6 Career Desk consumer seam
+
+- Parent review identified that P6 still named CareerApi without requiring the shared Career Desk. Task 8 now consumes `@weknora/career-core`; Career Desk owns `open/list/act/observe/reconcilePending` and scope invalidation. Taro provides only scope mapping, durable intent-store, and platform adapters.
+- Added named assembly/scope test `MiniCareerDesk_Assembly_ScopeSwitchInvalidatesPendingIntentsAndDropsLateReplies`, covering original request ID preservation, scope invalidation, late reply rejection and Desk port delegation.
+- This correction is committed as `73022bb85a4f75a3d23a1a6bb92e3f3bc3727ecd` (`docs: require career desk in mini program slice`); Task 0 remains `running` pending independent review.
+
+## Task 0 latest re-review correction checkpoint
+
+- Re-review source: `.superpowers/sdd/2026-09-28-issue-140-main-port/task-0-re-review.md`, reviewed through prior checkpoint `d23246a9ba4f8aa91e97ad7610afe125bad133bc`.
+- Docs-only correction commit: `c544e4392f31569a0a390ae5fc54c838462ab9e7`; tree: `ba1d31fd358329c0a713e2119a35fb44f842dbbe`.
+- #144 now belongs to P7 / Expo Task 9; P2 only provides the consumed authorized Task read seam, and P6 no longer maps #144. Task 9 sequences #145 Task boundary before #144 entry/restart/offline/scope behavior; #144 closure waits for #143 PH ruling and #145 evidence.
+- #169 belongs to P6 / Mini Task 8 with timeline order/correction, submitted-version/unknown preparation, account-switch cache invalidation and real WeChat DevTools/device test evidence.
+- #156 `CareerPreparationService/API`, `preparation/**` and named service tests are consistently owned by Task 6 / P4 after Task 5 records the submitted material version.
+- Web and Expo briefs explicitly consume the ADR 0019 Career Desk and provide named assembly tests. The dangling discovery-record link was removed from the approved spec; the wording now states the historical raw notes are not in this baseline, without inventing a replacement source.
+- Verification commands/results: inline `python3` structural assertions — PASS for #144/#169/#156 task ownership, prereqs/tests, Web/Expo Desk consumption, and the repaired link; owned-Markdown relative-link check — PASS; `git diff --check` — PASS (exit 0). Exact final report and range checks are recorded in `docs/plans/issue-140/reviews/task-0-plan-fix.md`.
+- Task 0 stays `running` pending the controller's next independent re-review.
