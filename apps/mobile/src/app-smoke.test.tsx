@@ -646,15 +646,21 @@ test('the delivery receipt section offers the recovery action for partial and un
     repo: 'octocat/hello', branch: 'weknora/task/s-1', baselineSha: 'b'.repeat(40),
     commitSha: 'c1', attention: true, updatedAt: '2026-09-24T00:00:30Z',
   };
+  const recoveredInput: Array<{ runId: string; deliveryId: string }> = [];
   const withRecovery = render(TaskDetailScreen, {
     view, loading: false, error: undefined, onRefresh: () => {},
-    delivery: pushedReceipt, onRecoverDelivery: async () => pushedReceipt,
+    delivery: pushedReceipt, onRecoverDelivery: async (input: { runId: string; deliveryId: string }) => { recoveredInput.push(input); return pushedReceipt; },
   });
   const pushedSection = descendants(withRecovery).find(({ type, props }) => typeof type === 'function' && 'delivery' in props);
   assert.ok(pushedSection, 'delivery section is present');
   const pushedJson = JSON.stringify(render(pushedSection!.type as (props: unknown) => unknown, pushedSection!.props));
   assert.ok(pushedJson.includes('已推送，等待草稿 PR/MR 恢复'), 'the honest partial-completion copy renders');
   assert.ok(pushedJson.includes('恢复创建草稿 PR/MR'), 'the pushed state offers the recovery action');
+  const recoverButton = descendants(render(pushedSection!.type as (props: unknown) => unknown, pushedSection!.props))
+    .find(({ type, props }) => type === 'Button' && props.title === '恢复创建草稿 PR/MR');
+  assert.ok(recoverButton, 'the actual pushed recovery button is rendered');
+  (recoverButton!.props.onPress as () => void)();
+  assert.deepEqual(recoveredInput, [{ runId: 'run-1', deliveryId: 'dlv-1' }], 'pressing the action forwards the exact route run and receipt id');
   const failedSection = render(TaskDetailScreen, {
     view, loading: false, error: undefined, onRefresh: () => {},
     delivery: pushedReceipt, recoveryError: '当前状态无法恢复：服务端暂不可用', onRecoverDelivery: async () => pushedReceipt,
@@ -684,6 +690,81 @@ test('the delivery receipt section offers the recovery action for partial and un
   const noCallbackSection = descendants(noCallback).find(({ type, props }) => typeof type === 'function' && 'delivery' in props);
   assert.ok(noCallbackSection, 'delivery section without callback is present');
   assert.equal(JSON.stringify(render(noCallbackSection!.type as (props: unknown) => unknown, noCallbackSection!.props)).includes('恢复创建草稿 PR/MR'), false, 'without the callback the action stays hidden (fail closed)');
+});
+
+test('route-bound delivery recovery ignores stale completions and applies current success and failure (T25 #55 review repair)', async () => {
+  const { createRouteBoundDeliveryRecoveryHandler } = await import('./app/tasks/detail.tsx');
+  type Identity = { taskId: string; runId: string };
+  type Receipt = import('@weknora/mobile-core').DeliveryReceiptView;
+  const a: Identity = { taskId: 'task-a', runId: 'run-a' };
+  const b: Identity = { taskId: 'task-b', runId: 'run-b' };
+  const receiptA: Receipt = {
+    deliveryId: 'dlv-a', taskId: a.taskId, runId: a.runId, state: 'pushed', repo: 'octocat/hello',
+    branch: 'weknora/task/a', baselineSha: 'a'.repeat(40), attention: true, updatedAt: '2026-09-24T00:00:30Z',
+  };
+  const receiptB: Receipt = { ...receiptA, deliveryId: 'dlv-b', taskId: b.taskId, runId: b.runId, state: 'pushed' };
+  function deferred<T>() {
+    let resolve!: (value: T) => void;
+    let reject!: (error: unknown) => void;
+    const promise = new Promise<T>((resolvePromise, rejectPromise) => { resolve = resolvePromise; reject = rejectPromise; });
+    return { promise, resolve, reject };
+  }
+
+  let current: Identity = a;
+  const appliedReceipts: Receipt[] = [];
+  const errors: Array<string | undefined> = [];
+  const staleSuccess = deferred<Receipt>();
+  const staleSuccessHandler = createRouteBoundDeliveryRecoveryHandler({
+    identity: a, receipt: receiptA, currentIdentity: () => current, recover: () => staleSuccess.promise,
+    setDelivery: (receipt: Receipt) => { appliedReceipts.push(receipt); }, setRecoveryError: (error?: string) => { errors.push(error); },
+    errorCopy: (error: unknown) => String(error),
+  });
+  const staleSuccessPending = staleSuccessHandler({ runId: a.runId, deliveryId: receiptA.deliveryId });
+  current = b;
+  errors.splice(0, errors.length, 'route B error');
+  staleSuccess.resolve({ ...receiptA, state: 'delivered' });
+  await staleSuccessPending;
+  assert.deepEqual(appliedReceipts.slice(), [], 'late success from route A cannot replace route B receipt');
+  assert.deepEqual(errors.slice(), ['route B error'], 'late success from route A cannot clear or set route B error');
+
+  const staleFailure = deferred<Receipt>();
+  const staleFailureHandler = createRouteBoundDeliveryRecoveryHandler({
+    identity: a, receipt: receiptA, currentIdentity: () => current, recover: () => staleFailure.promise,
+    setDelivery: (receipt: Receipt) => { appliedReceipts.push(receipt); }, setRecoveryError: (error?: string) => { errors.push(error); },
+    errorCopy: (error: unknown) => `failure:${String(error)}`,
+  });
+  current = a;
+  const staleFailurePending = staleFailureHandler({ runId: a.runId, deliveryId: receiptA.deliveryId });
+  current = b;
+  errors.splice(0, errors.length, 'route B error');
+  staleFailure.reject(new Error('late A failure'));
+  await assert.rejects(staleFailurePending, /late A failure/);
+  assert.deepEqual(appliedReceipts.slice(), [], 'late failure does not mutate route B receipt');
+  assert.deepEqual(errors.slice(), ['route B error'], 'late failure does not leak route A error into route B');
+
+  const success = deferred<Receipt>();
+  const currentHandler = createRouteBoundDeliveryRecoveryHandler({
+    identity: b, receipt: receiptB, currentIdentity: () => current, recover: () => success.promise,
+    setDelivery: (receipt: Receipt) => { appliedReceipts.push(receipt); }, setRecoveryError: (error?: string) => { errors.push(error); },
+    errorCopy: (error: unknown) => String(error),
+  });
+  const successPending = currentHandler({ runId: b.runId, deliveryId: receiptB.deliveryId });
+  success.resolve({ ...receiptB, state: 'delivered' });
+  await successPending;
+  assert.deepEqual(appliedReceipts.slice(), [{ ...receiptB, state: 'delivered' }], 'current route success updates its matching receipt');
+  assert.deepEqual(errors.slice(), ['route B error', undefined], 'current route recovery clears its prior error');
+
+  const failed = deferred<Receipt>();
+  const failingHandler = createRouteBoundDeliveryRecoveryHandler({
+    identity: b, receipt: receiptB, currentIdentity: () => current, recover: () => failed.promise,
+    setDelivery: (receipt: Receipt) => appliedReceipts.push(receipt), setRecoveryError: (error?: string) => errors.push(error),
+    errorCopy: (error: unknown) => `failure:${String(error)}`,
+  });
+  const failedPending = failingHandler({ runId: b.runId, deliveryId: receiptB.deliveryId });
+  failed.reject(new Error('backend unavailable'));
+  await assert.rejects(failedPending, /backend unavailable/);
+  assert.deepEqual(appliedReceipts.slice(), [{ ...receiptB, state: 'delivered' }], 'current route failure leaves the last receipt unchanged');
+  assert.equal(errors.at(-1), 'failure:Error: backend unavailable', 'current route failure produces visible error copy');
 });
 
 test('RuntimeSurface passes other registered deployments to the home screen and the full list to login', async () => {

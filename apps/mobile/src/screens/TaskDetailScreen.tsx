@@ -156,7 +156,7 @@ export function TaskDetailScreen({ view, loading, error, onRefresh, onOpenMateri
       {onOpenMaterials !== undefined && <Button title="任务材料" onPress={onOpenMaterials} />}
       {onOpenBudget !== undefined && <Button title="任务预算" onPress={onOpenBudget} />}
       {onOpenVoiceRoom !== undefined && <Button title="语音房" onPress={onOpenVoiceRoom} />}
-      {delivery !== undefined ? <DeliveryReceiptSection delivery={delivery} recoveryError={recoveryError} onRecover={onRecoverDelivery === undefined ? undefined : () => { void onRecoverDelivery({ runId: view.runId, deliveryId: delivery.deliveryId }).catch(() => undefined); }} /> : null}
+      {delivery !== undefined ? <DeliveryReceiptSection delivery={delivery} recoveryError={recoveryError} onRecover={onRecoverDelivery === undefined ? undefined : () => { void onRecoverDelivery({ runId: delivery.runId, deliveryId: delivery.deliveryId }).catch(() => undefined); }} /> : null}
       <Button title="重新同步快照" onPress={onRefresh} disabled={loading} />
       {error !== undefined && <Text>{error}</Text>}
     </ScrollView>
