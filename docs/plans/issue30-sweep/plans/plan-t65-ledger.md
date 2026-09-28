@@ -9,9 +9,9 @@ Recorded: 2026-09-28 UTC.
 
 ## Task DAG
 
-T1 Evaluation store → T3 Adoption/Upgrade metrics → T4 catalog HTTP acceptance  
-T1 → T4  
-T2 Publisher Custody → T4
+T1 Evaluation store → T4 catalog HTTP acceptance
+T2 Publisher Custody → T4 catalog HTTP acceptance
+T3 privacy Metrics → T4 catalog HTTP acceptance
 
 External verified prerequisites: #60, #63, #64 integrated at base 93706830b. #60/#63 evidence predates this plan in B6 Ledger. #64 Task6 R2 reports are archived under evidence/t64-task6-r2/.
 
@@ -21,14 +21,14 @@ External verified prerequisites: #60, #63, #64 integrated at base 93706830b. #60
 |---|---|---|---|---|---|---|
 | T1 Release Evaluation persistence | running | /Users/wuyongjun/.codex/worktrees/issue30-t65-eval/WeKnora-fork01, detached at dispatch | 93706830b78205de0c7d433097e89f33d9726513 | pending | pending | pending |
 | T2 Publisher Custody and atomic source/adoption gate | running | /Users/wuyongjun/.codex/worktrees/issue30-t65-custody/WeKnora-fork01, detached at dispatch | 93706830b78205de0c7d433097e89f33d9726513 | pending | pending | pending |
-| T3 privacy Adoption/Upgrade Metrics | pending | not created | depends on reviewed/integrated T1 contract | pending | pending | pending |
+| T3 privacy Adoption/Upgrade Metrics | ready | not created | 93706830b (existing source schema; no Task1 dependency) | pending | pending | pending |
 | T4 catalog, Evaluation endpoint and end-to-end HTTP proof | pending | not created | depends on verified/integrated T1–T3 | pending | pending | pending |
 
 ## Ownership and scheduling
 
 - T1 owned paths and SDD Brief: .superpowers/sdd/plan-t65/task-1-brief.md in T1 worktree. Report: .superpowers/sdd/plan-t65/task-1-report.md.
 - T2 owned paths and SDD Brief: .superpowers/sdd/plan-t65/task-2-brief.md in T2 worktree. Report: .superpowers/sdd/plan-t65/task-2-report.md.
-- T1 and T2 run in separate worktrees and have no shared owned files. T1 owns the Evaluation table migrations; T2 adds no schema. T3 waits for T1 interface review/integration and writes only new metrics files. T4 serializes catalog interfaces, handler, route, container and HTTP fixture changes.
+- T1, T2 and T3 run in separate worktrees and have no shared owned files. T1 owns the Evaluation table migrations; T2 and T3 add no schema. T3 reads existing introduction, Adoption and Upgrade Proposal rows only and writes only new metrics files. T4 serializes catalog interfaces, handler, route, container and HTTP fixture changes.
 - Every implemented task requires an independent Spec/Quality reviewer and a role-matched behavior validator. A task is integrated only after both pass and source blobs are checked against the reviewed checkpoint.
 - Local commits are authorized. Push, remote merge, release, deploy, and GitHub Issue mutation are not authorized.
 
