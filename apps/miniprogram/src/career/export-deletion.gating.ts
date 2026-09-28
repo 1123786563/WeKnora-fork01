@@ -58,3 +58,21 @@ export function deletionRecoveryUnresolvedAfter(kind: 'reconcile' | 'retry', err
   if (kind === 'reconcile') return true;
   return (error as { code?: unknown } | null | undefined)?.code === 'outcome_unknown';
 }
+
+/**
+ * Confirm abandonment against the request shown when the modal opened. The
+ * async modal can outlive that intent, so re-read identity and activity after
+ * confirmation, then let the storage service perform a final synchronous CAS.
+ */
+export async function confirmAbandonIntent(requestId: string, options: {
+  confirm: () => Promise<boolean>;
+  currentRequestId: () => string | undefined;
+  isBusy: () => boolean;
+  abandon: (expectedRequestId: string) => boolean;
+}): Promise<'abandoned' | 'cancelled' | 'changed' | 'busy'> {
+  if (options.isBusy()) return 'busy';
+  if (!await options.confirm()) return 'cancelled';
+  if (options.currentRequestId() !== requestId) return 'changed';
+  if (options.isBusy()) return 'busy';
+  return options.abandon(requestId) ? 'abandoned' : 'changed';
+}

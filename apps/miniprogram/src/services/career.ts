@@ -247,8 +247,8 @@ async function reconcileIntent<T>(kind: string, describe: string, fetch: (id: st
   store.remove(intentKey(kind));
   return receipt as T;
 }
-async function retryIntent<T>(kind: string, describe: string, resend: (id: string, expected: number) => Promise<unknown>): Promise<T> {
-  return retryRecoverable<T>(store, kind, describe, async (id, expected) => (await resend(id, expected)) as T, revision);
+async function retryIntent<T>(kind: string, describe: string, resend: (id: string, expected: number) => Promise<unknown>, fallbackExpected?: () => number): Promise<T> {
+  return retryRecoverable<T>(store, kind, describe, async (id, expected) => (await resend(id, expected)) as T, fallbackExpected);
 }
 
 // —— 显式放弃各 kind 未对账 intent（OCR r3 ocr3-029 统一出口，rule/reminder 先例同语义）：
@@ -261,8 +261,8 @@ export function abandonPendingSubmission(): void { abandonRecoverable(store, 'su
 export function abandonPendingMaterialPublish(): void { abandonRecoverable(store, 'export'); }
 export function abandonPendingProgressWrite(): void { abandonRecoverable(store, 'progress'); }
 export function abandonPendingPreparationWrite(): void { abandonRecoverable(store, 'preparation'); }
-export function abandonPendingSpaceExport(): void { abandonRecoverable(store, 'spaceExport'); }
-export function abandonPendingSpaceDeletion(): void { abandonRecoverable(store, 'spaceDeletion'); }
+export function abandonPendingSpaceExport(expectedRequestId: string): boolean { return abandonRecoverable(store, 'spaceExport', expectedRequestId); }
+export function abandonPendingSpaceDeletion(expectedRequestId: string): boolean { return abandonRecoverable(store, 'spaceDeletion', expectedRequestId); }
 
 // —— 申请（T14 合同）：一岗一批一申请；硬条件不符必须显式继续 ——
 export async function createApplication(input: ApplicationIntentInput): Promise<ApplicationReceipt> {
@@ -280,7 +280,7 @@ export async function retryPendingApplication(): Promise<ApplicationReceipt> {
   const pending = pendingApplication();
   if (!pending) throw new Error('没有待恢复的申请');
   return retryIntent<ApplicationReceipt>('application', '申请', async (id, expected) =>
-    decodeAs(decodeApplicationReceipt, await client.request({ method: 'POST', path: '/api/v1/career/applications', body: { requestId: id, opportunityId: pending.input.opportunityId.trim(), snapshotId: pending.input.snapshotId.trim(), evaluationId: pending.input.evaluationId.trim(), batchIdentity: pending.input.batchIdentity.trim(), continueDespiteHardFailure: pending.input.continueDespiteHardFailure, expectedRevision: expected } })));
+    decodeAs(decodeApplicationReceipt, await client.request({ method: 'POST', path: '/api/v1/career/applications', body: { requestId: id, opportunityId: pending.input.opportunityId.trim(), snapshotId: pending.input.snapshotId.trim(), evaluationId: pending.input.evaluationId.trim(), batchIdentity: pending.input.batchIdentity.trim(), continueDespiteHardFailure: pending.input.continueDespiteHardFailure, expectedRevision: expected } })), revision);
 }
 export async function getApplication(applicationId: string): Promise<ApplicationReceipt> {
   if (!applicationId.trim()) throw new Error('缺少申请编号');
@@ -337,7 +337,7 @@ export async function retryPendingMaterial(): Promise<MaterialReceipt> {
       return decodeAs(decodeMaterialReceipt, await client.request({ method: 'POST', path: '/api/v1/career/materials', body: materialRequestBody(id, intent, expected) }));
     }
     return decodeAs(decodeMaterialReceipt, await client.request({ method: 'POST', path: '/api/v1/career/materials/confirm', body: { requestId: id, materialId: String(stored.materialId ?? ''), expectedRevision: expected } }));
-  });
+  }, revision);
 }
 export async function material(materialId: string): Promise<MaterialView> {
   if (!materialId.trim()) throw new Error('缺少材料编号');
@@ -380,7 +380,7 @@ export async function retryPendingMaterialPublish(): Promise<MaterialExportRecei
   const pending = pendingMaterialPublish();
   if (!pending) throw new Error('没有待恢复的材料发布');
   return retryIntent<MaterialExportReceipt>('export', '材料发布', async (id, expected) =>
-    decodeAs(decodeMaterialExportReceipt, await client.request({ method: 'POST', path: `/api/v1/career/materials/${encodeURIComponent(pending.input.materialId)}/exports`, body: { requestId: id, version: pending.input.version, expectedRevision: expected } })));
+    decodeAs(decodeMaterialExportReceipt, await client.request({ method: 'POST', path: `/api/v1/career/materials/${encodeURIComponent(pending.input.materialId)}/exports`, body: { requestId: id, version: pending.input.version, expectedRevision: expected } })), revision);
 }
 const EXPORT_GRANT_TTL_SECONDS = 300;
 async function issueExportGrant(materialId: string, exportId: string, format: MaterialExportFormat): Promise<MaterialExportDownload> {
@@ -460,7 +460,7 @@ export async function retryPendingSubmission(): Promise<SubmissionReceipt> {
   const pending = pendingSubmission();
   if (!pending) throw new Error('没有待恢复的投递确认');
   return retryIntent<SubmissionReceipt>('submission', '投递确认', async (id, expected) =>
-    decodeAs(decodeSubmissionReceipt, await client.request({ method: 'POST', path: `/api/v1/career/applications/${encodeURIComponent(pending.input.applicationId)}/submissions`, body: submissionRequestBody(id, pending.input, expected) })));
+    decodeAs(decodeSubmissionReceipt, await client.request({ method: 'POST', path: `/api/v1/career/applications/${encodeURIComponent(pending.input.applicationId)}/submissions`, body: submissionRequestBody(id, pending.input, expected) })), revision);
 }
 export async function listSubmissions(applicationId: string): Promise<SubmissionList> {
   if (!applicationId.trim()) throw new Error('缺少申请编号');
@@ -555,7 +555,7 @@ export async function retryPendingPreparation(): Promise<PreparationReceipt> {
   const pending = pendingPreparationWrite();
   if (!pending) throw new Error('没有待恢复的准备生成');
   return retryIntent<PreparationReceipt>('preparation', '准备生成', async (id, expected) =>
-    decodeAs(decodePreparationReceipt, await client.request({ method: 'POST', path: `/api/v1/career/applications/${encodeURIComponent(pending.input.applicationId.trim())}/preparations`, body: preparationRequestBody(id, pending.input, expected) })));
+    decodeAs(decodePreparationReceipt, await client.request({ method: 'POST', path: `/api/v1/career/applications/${encodeURIComponent(pending.input.applicationId.trim())}/preparations`, body: preparationRequestBody(id, pending.input, expected) })), revision);
 }
 
 // ---- T32 全空间生命周期：导出、删除边界与完整删除（与 Web ExportDeletionPage 同源）----
@@ -578,7 +578,7 @@ export async function retryPendingSpaceExport(): Promise<CareerExportReceipt> {
   const pending = pendingSpaceExport();
   if (!pending) throw new Error('没有待恢复的导出');
   return retryIntent<CareerExportReceipt>('spaceExport', '导出', async (id, expected) =>
-    decodeAs(decodeCareerExportReceipt, await client.request({ method: 'POST', path: '/api/v1/career/exports', body: { requestId: id, expectedRevision: expected } })));
+    decodeAs(decodeCareerExportReceipt, await client.request({ method: 'POST', path: '/api/v1/career/exports', body: { requestId: id, expectedRevision: expected } })), revision);
 }
 /** 删除后旧授权复验：按原请求编号读历史导出回执（完整删除后服务端应 404 not_found）。 */
 export async function spaceExportReceipt(requestId: string): Promise<CareerExportReceipt> {
@@ -596,12 +596,15 @@ export async function deletionBoundary(): Promise<CareerDeletionBoundaryView> {
 // 删除未到终态——intent 必须保留（存续至 deleted 终态），否则用户离开页面就丢了唯一
 // 可恢复的原 request id。对账同理：非 deleted 回执不清 intent。
 export async function deleteWholeSpace(): Promise<CareerDeletionReceipt> {
+  const stamp = auth.scope.capture();
+  const key = intentKeyFor('spaceDeletion', stamp);
+  const pending = readIntent<Record<string, unknown>>(key);
+  if (pending) throw Object.assign(new Error(`有一次未完成的删除（${pending.requestId.slice(0, 10)}…）：请先用原请求对账或重试，或明确放弃本机恢复记录`), { code: 'unresolved_action', requestId: pending.requestId });
   const id = newRequestId();
   const expected = revision();
-  const stamp = auth.scope.capture();
   try {
     const receipt = decodeAs(decodeCareerDeletionReceipt, await client.request({ method: 'POST', path: '/api/v1/career/deletions', body: { requestId: id, expectedRevision: expected } }));
-    if (receipt.status !== 'deleted') store.write(intentKey('spaceDeletion'), { requestId: id, input: {}, expectedRevision: expected });
+    if (receipt.status !== 'deleted') store.write(key, { requestId: id, input: {}, expectedRevision: expected });
     return receipt;
   } catch (error) {
     // OCR2-037：确定性本地失败（AUTH_REQUIRED 等）不落 intent——与 retryPendingSpaceDeletion 同一守卫口径。
@@ -609,7 +612,7 @@ export async function deleteWholeSpace(): Promise<CareerDeletionReceipt> {
       throw Object.assign(new Error('SCOPE_CHANGED'), { cause: error });
     }
     if (ambiguousOutcome(error)) {
-      store.write(intentKey('spaceDeletion'), { requestId: id, input: {}, expectedRevision: expected });
+      store.write(key, { requestId: id, input: {}, expectedRevision: expected });
       throw Object.assign(new Error('删除结果未知：请用原请求对账后再试', { cause: error }), { code: 'outcome_unknown', requestId: id });
     }
     throw error;
@@ -624,13 +627,14 @@ export async function reconcilePendingSpaceDeletion(): Promise<CareerDeletionRec
   return receipt;
 }
 export async function retryPendingSpaceDeletion(): Promise<CareerDeletionReceipt> {
-  const pending = pendingSpaceDeletion();
+  const stamp = auth.scope.capture();
+  const key = intentKeyFor('spaceDeletion', stamp);
+  const pending = readIntent<Record<string, unknown>>(key);
   if (!pending) throw new Error('没有待恢复的删除');
   const expected = pending.expectedRevision ?? revision();
-  const stamp = auth.scope.capture();
   try {
     const receipt = decodeAs(decodeCareerDeletionReceipt, await client.request({ method: 'POST', path: '/api/v1/career/deletions', body: { requestId: pending.requestId, expectedRevision: expected } }));
-    if (receipt.status === 'deleted') store.remove(intentKey('spaceDeletion'));
+    if (receipt.status === 'deleted') store.remove(key);
     return receipt;
   } catch (error) {
     if (ambiguousOutcome(error) && (!auth.scope.isCurrent(stamp) || definiteLocalFailure(error))) throw Object.assign(new Error('SCOPE_CHANGED'), { cause: error });

@@ -132,6 +132,9 @@ export async function retryRecoverable<T>(store: ControlledCareerStore, kind: st
 /** 显式放弃恢复（OCR r3 ocr3-029 统一出口，rule/reminder 先例同语义）：只清本端 intent，
  *  不动任何服务端事实——若原写入实际已落地，以服务端记录为准（回执/列表可对账找回）。
  *  未对账封锁（recoverableWrite 的 unresolved_action）把用户挡在门外时，这是唯一解除出口。 */
-export function abandonRecoverable(store: ControlledCareerStore, kind: string): void {
-  store.remove(intentKeyFor(kind, auth.scope.capture()));
+export function abandonRecoverable(store: ControlledCareerStore, kind: string, expectedRequestId?: string): boolean {
+  const key = intentKeyFor(kind, auth.scope.capture());
+  if (expectedRequestId !== undefined && readStoredIntent(store, key)?.requestId !== expectedRequestId) return false;
+  store.remove(key);
+  return true;
 }

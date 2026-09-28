@@ -181,6 +181,20 @@ test('A5: a progress safe resend replays the original event revision even after 
   assert.equal(career.pendingProgressWrite(), null);
 });
 
+test('N8: a legacy progress intent without its per-application revision fails closed', async () => {
+  let posts = 0;
+  await freshLogin(meA, {
+    'POST /api/v1/career/applications/app-1/progress': call => { posts++; stub.succeed(call, { data: prReceipt() }); },
+  });
+  const { intentKeyFor } = await import('../src/services/career-intent.ts');
+  const key = intentKeyFor('progress', runtime.auth.scope.capture());
+  stub.state.storage.set(key, { requestId: 'legacy-progress', input: { applicationId: 'app-1', eventType: 'submitted' } });
+
+  await assert.rejects(career.retryPendingProgress(), error => error.code === 'intent_revision_missing');
+  assert.equal(posts, 0, 'progress retry must not substitute the unrelated profile revision');
+  assert.equal(career.pendingProgressWrite()?.requestId, 'legacy-progress', 'the unknown intent remains available for deliberate recovery');
+});
+
 test('A6: a progress revision conflict is definite and typed — no recovery intent (seam: 冲突回执)', async () => {
   await freshLogin(meA, {
     'POST /api/v1/career/applications/app-1/progress': call => stub.succeed(call, { statusCode: 409, data: { error: { code: 'revision_conflict', message: 'stale view', currentRevision: 2 } } }),

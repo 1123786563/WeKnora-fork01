@@ -214,6 +214,108 @@ test('B3: a partial deletion never claims complete deletion and recovers under t
   assert.equal(career.pendingSpaceDeletion(), null, 'a complete deletion clears the intent');
 });
 
+test('N1: starting another whole-space deletion is refused while a partial request still owns the recovery intent', async () => {
+  let posts = 0;
+  await freshLogin({
+    'POST /api/v1/career/deletions': call => {
+      posts++;
+      if (posts === 1) stub.succeed(call, { data: partialReceipt() });
+      else stub.succeed(call, { data: deletedReceipt() });
+    },
+  });
+  await career.loadCareer();
+  const partial = await career.deleteWholeSpace();
+  assert.equal(partial.status, 'partial');
+  const original = career.pendingSpaceDeletion();
+  assert.ok(original);
+
+  const refused = await career.deleteWholeSpace().catch(error => error);
+  assert.equal(errorCode(refused), 'unresolved_action');
+  assert.equal(posts, 1, 'no new request is sent while the original partial deletion is unresolved');
+  assert.equal(career.pendingSpaceDeletion()?.requestId, original.requestId, 'the only recovery request id is preserved');
+
+  assert.equal(career.abandonPendingSpaceDeletion('different-request-id'), false, 'a stale confirmation cannot clear a different intent');
+  assert.equal(career.pendingSpaceDeletion()?.requestId, original.requestId);
+  assert.equal(career.abandonPendingSpaceDeletion(original.requestId), true, 'an explicit matching abandon clears the local recovery record');
+  assert.equal(career.pendingSpaceDeletion(), null);
+  const deleted = await career.deleteWholeSpace();
+  assert.equal(deleted.status, 'deleted', 'a fresh request is allowed after an explicit abandon');
+  assert.equal(posts, 2);
+});
+
+test('R1: space export abandonment is scope-local and only clears the expected request id', async () => {
+  await freshLogin({ 'POST /api/v1/career/exports': call => stub.fail(call, 'request:fail timeout') });
+  await career.loadCareer();
+  await assert.rejects(career.exportWholeSpace(), error => error.code === 'outcome_unknown');
+  const pending = career.pendingSpaceExport();
+  assert.ok(pending);
+  assert.equal(career.abandonPendingSpaceExport('stale-confirmation'), false);
+  assert.equal(career.pendingSpaceExport()?.requestId, pending.requestId);
+  assert.equal(career.abandonPendingSpaceExport(pending.requestId), true);
+  assert.equal(career.pendingSpaceExport(), null);
+});
+
+test('N9: a deletion response stores its recoverable intent under the scope captured before send', async () => {
+  await freshLogin({ 'POST /api/v1/career/deletions': () => {/* answered after switching scope */} });
+  await career.loadCareer();
+  const { intentKeyFor } = await import('../src/services/career-intent.ts');
+  const originalScope = runtime.auth.scope.capture();
+  const originalKey = intentKeyFor('spaceDeletion', originalScope);
+  const originalRequest = runtime.client.request;
+  runtime.client.request = async function(options) {
+    const result = await originalRequest.call(runtime.client, options);
+    if (options.path === '/api/v1/career/deletions' && options.method === 'POST') {
+      runtime.auth.scope.switchTo({ origin: originalScope.origin, userId: 'u2', tenantId: '2' });
+    }
+    return result;
+  };
+  try {
+    const write = career.deleteWholeSpace();
+    stub.succeed(stub.lastCall('request'), { data: partialReceipt() });
+    await write;
+  } finally { runtime.client.request = originalRequest; }
+
+  assert.ok(stub.state.storage.get(originalKey), 'the late partial receipt writes to the sending scope key');
+  assert.equal(career.pendingSpaceDeletion(), null, 'the new scope never sees the old scope deletion intent');
+  assert.equal(career.abandonPendingSpaceDeletion(stub.state.storage.get(originalKey).requestId), false,
+    'a stale page cannot abandon another active scope’s intent');
+  runtime.auth.scope.switchTo({ origin: originalScope.origin, userId: originalScope.userId, tenantId: originalScope.tenantId });
+  assert.equal(career.pendingSpaceDeletion()?.requestId, stub.state.storage.get(originalKey).requestId);
+});
+
+test('N9: a completed deletion retry removes the original sending-scope key after a scope switch', async () => {
+  let posts = 0;
+  await freshLogin({
+    'POST /api/v1/career/deletions': call => {
+      posts++;
+      if (posts === 1) stub.succeed(call, { data: partialReceipt() });
+      else { /* answered after switching scope */ }
+    },
+  });
+  await career.loadCareer();
+  await career.deleteWholeSpace();
+  const { intentKeyFor } = await import('../src/services/career-intent.ts');
+  const originalScope = runtime.auth.scope.capture();
+  const originalKey = intentKeyFor('spaceDeletion', originalScope);
+  const requestId = career.pendingSpaceDeletion()?.requestId;
+  const originalRequest = runtime.client.request;
+  runtime.client.request = async function(options) {
+    const result = await originalRequest.call(runtime.client, options);
+    if (options.path === '/api/v1/career/deletions' && options.method === 'POST') {
+      runtime.auth.scope.switchTo({ origin: originalScope.origin, userId: 'u2', tenantId: '2' });
+    }
+    return result;
+  };
+  try {
+    const retry = career.retryPendingSpaceDeletion();
+    stub.succeed(stub.lastCall('request'), { data: deletedReceipt({ requestId }) });
+    await retry;
+  } finally { runtime.client.request = originalRequest; }
+
+  assert.equal(stub.state.storage.get(originalKey), undefined, 'the completed retry removes the intent from the sending scope');
+  assert.equal(career.pendingSpaceDeletion(), null, 'the new scope remains clear');
+});
+
 test('C1: an unknown export outcome is reconciled through the original request id', async () => {
   let postFails = true;
   await freshLogin({
@@ -460,23 +562,53 @@ test('F1: a partial receipt followed by an ambiguous retry re-blocks the deletio
   assert.equal(recovered.deletionDisabled, false, 'a definite receipt settles the unknown and reopens the main action');
 });
 
-test('N3/N2: a new ambiguous deletion re-locks stale partial UI and both recovery blocks offer confirmed abandon', async () => {
+test('N3/N2 wiring: unknown delete locks, and export/deletion recovery buttons use guarded abandon handlers', async () => {
   const source = await readFile(new URL('../src/career/export-deletion.tsx', import.meta.url), 'utf8');
   assert.match(source, /catch \(error\) \{\s*setDelErrCode\(typedCode\(error\)\);\s*if \(typedCode\(error\) === 'outcome_unknown'\) setDelRecoveryUnresolved\(true\);\s*throw error;\s*\}/,
     'an outcome_unknown from the initial delete must invalidate the prior partial receipt for gating');
-  assert.match(source, /career\.abandonPendingSpaceExport\(\)/, 'the pending export intent has an exit action');
-  assert.match(source, /career\.abandonPendingSpaceDeletion\(\)/, 'the pending deletion intent has an exit action');
-  assert.match(source, /disabled=\{recExportBusy\.busy \|\| retryExportBusy\.busy\}/,
-    'export recovery cannot be cleared while reconciliation or retry is running');
-  assert.match(source, /disabled=\{recDelBusy\.busy \|\| retryDelBusy\.busy \|\| deletionBusy\.busy\}/,
-    'deletion recovery cannot be cleared while a deletion operation is running');
-  assert.equal((source.match(/await confirmAction\(/g) ?? []).length >= 3, true,
-    'export/deletion abandonment requires a separate explicit confirmation from the destructive request');
-  assert.match(source, /只会清除本机恢复记录/,
-    'the confirmation explains that abandoning only clears local recovery and the original operation may have taken effect');
+  assert.equal((source.match(/confirmAbandonIntent\(/g) ?? []).length, 2, 'both abandon handlers use the testable conditional-confirm seam');
+  assert.match(source, /disabled=\{exportRecoveryBusy \|\| exportRecoveryConfirmationBusy\}/,
+    'export recovery cannot be cleared while export/recovery requests are running');
+  assert.match(source, /disabled=\{deletionRecoveryBusy \|\| deletionRecoveryConfirmationBusy\}/,
+    'deletion recovery cannot be cleared while deletion/recovery requests are running');
+  assert.match(source, /const expectedRequestId = pendingExport\?\.requestId/);
+  assert.match(source, /const expectedRequestId = pendingDeletion\?\.requestId/);
+  assert.match(source, /currentRequestId: \(\) => career\.pendingSpaceExport\(\)\?\.requestId/);
+  assert.match(source, /currentRequestId: \(\) => career\.pendingSpaceDeletion\(\)\?\.requestId/);
+  assert.match(source, /abandon: id => career\.abandonPendingSpaceExport\(id\)/);
+  assert.match(source, /abandon: id => career\.abandonPendingSpaceDeletion\(id\)/);
 });
 
-test('N3: after a partial receipt, an ambiguous new deletion retains its intent and must remain gated', async () => {
+test('N2/R1: conditional abandonment confirms before checking identity and in-flight state, then clears only the captured id', async () => {
+  const { confirmAbandonIntent } = await import('../src/career/export-deletion.gating.ts');
+  const deferred = () => {
+    let resolve;
+    const promise = new Promise(done => { resolve = done; });
+    return { promise, resolve };
+  };
+  const run = async ({ confirmed = true, idAfterModalOpens, busyAfterModalOpens = false } = {}) => {
+    const modal = deferred();
+    let busy = false;
+    const cleared = [];
+    const pending = { id: 'export-1' };
+    const work = confirmAbandonIntent('export-1', {
+      confirm: () => modal.promise,
+      currentRequestId: () => pending.id,
+      isBusy: () => busy,
+      abandon: id => { cleared.push(id); return pending.id === id; },
+    });
+    if (idAfterModalOpens) pending.id = idAfterModalOpens;
+    if (busyAfterModalOpens) busy = true;
+    modal.resolve(confirmed);
+    return { status: await work, cleared };
+  };
+  assert.deepEqual(await run({ confirmed: false }), { status: 'cancelled', cleared: [] }, 'cancel keeps the intent');
+  assert.deepEqual(await run({ idAfterModalOpens: 'export-2' }), { status: 'changed', cleared: [] }, 'an intent that changes while the modal is open is never cleared');
+  assert.deepEqual(await run({ busyAfterModalOpens: true }), { status: 'busy', cleared: [] }, 'an operation started while the modal is open keeps the intent');
+  assert.deepEqual(await run(), { status: 'abandoned', cleared: ['export-1'] }, 'a confirmed idle operation clears only the captured intent');
+});
+
+test('N1/N3: a partial intent prevents a second delete from reaching the new-request path', async () => {
   let posts = 0;
   await freshLogin({
     'POST /api/v1/career/deletions': call => {
@@ -489,19 +621,18 @@ test('N3: after a partial receipt, an ambiguous new deletion retains its intent 
   const partial = await career.deleteWholeSpace();
   assert.equal(partial.status, 'partial');
   const oldIntentId = career.pendingSpaceDeletion()?.requestId;
-  const uncertain = await career.deleteWholeSpace().catch(error => error);
-  assert.equal(errorCode(uncertain), 'outcome_unknown');
+  const refused = await career.deleteWholeSpace().catch(error => error);
+  assert.equal(errorCode(refused), 'unresolved_action');
   const pending = career.pendingSpaceDeletion();
-  assert.ok(pending, 'the unknown deletion remains recoverable');
-  assert.notEqual(pending.requestId, oldIntentId, 'the request that just became unknown is now the recovery target');
+  assert.ok(pending, 'the original partial deletion remains recoverable');
+  assert.equal(pending.requestId, oldIntentId, 'no new request id overwrites the original recovery target');
 
   const { deletionOutcomeUnknown, lifecycleGating } = await import('../src/career/export-deletion.gating.ts');
-  const unresolved = uncertain.code === 'outcome_unknown';
-  const unknown = deletionOutcomeUnknown({ intentPresent: true, inMemoryStatus: partial.status, recoveryUnresolved: unresolved });
-  assert.equal(unknown, true, 'the stale partial receipt cannot unlock a new full deletion after ambiguity');
+  const unknown = deletionOutcomeUnknown({ intentPresent: true, inMemoryStatus: partial.status, recoveryUnresolved: true });
+  assert.equal(unknown, true, 'if an earlier partial view is followed by an ambiguous operation, unresolved still takes precedence');
   const gating = lifecycleGating({ exportBusy: false, exportUnknown: false, deletionBusy: false, deletionUnknown: unknown, revisionLoaded: true, boundaryShown: true, acknowledged: true, deleted: false });
   assert.equal(gating.deletionDisabled, true);
-  assert.equal(posts, 2, 'a gated page cannot start another deletion with a third request id');
+  assert.equal(posts, 1, 'the second attempt is refused before transport');
   assert.equal(career.pendingSpaceDeletion()?.requestId, pending.requestId, 'the unresolved request id remains available for recovery');
 });
 

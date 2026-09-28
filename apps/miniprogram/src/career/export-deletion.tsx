@@ -4,7 +4,7 @@ import { Text, View } from '@tarojs/components';
 import { Screen, Card, Action, Notice, Badge, DataBoundary, useData, useAction, useSession, confirmAction } from '../components/ui.tsx';
 import * as career from '../services/career.ts';
 import { spaceExportPayload, saveSpaceExportPackage, copySpaceExportToClipboard, type SpaceExportSaveRecord } from '../adapters/career-platform.ts';
-import { lifecycleGating, deletionOutcomeUnknown, deletionRecoveryUnresolvedAfter } from './export-deletion.gating.ts';
+import { lifecycleGating, deletionOutcomeUnknown, deletionRecoveryUnresolvedAfter, confirmAbandonIntent } from './export-deletion.gating.ts';
 import type { CareerExportReceipt, CareerDeletionBoundaryView, CareerDeletionReceipt } from '../../../../packages/api-client/src/career.ts';
 import { formatTime, formatBytes } from '../core/format.ts';
 import { logout } from '../services/runtime.ts';
@@ -45,6 +45,8 @@ export default function ExportDeletionPage() {
   const [delErrCode, setDelErrCode] = useState<string>();
   const [verifyNotice, setVerifyNotice] = useState('');
   const [recoveryNotice, setRecoveryNotice] = useState('');
+  const [exportRecoveryConfirmationBusy, setExportRecoveryConfirmationBusy] = useState(false);
+  const [deletionRecoveryConfirmationBusy, setDeletionRecoveryConfirmationBusy] = useState(false);
   const [clearedKeys, setClearedKeys] = useState<string[]>();
   // 修复轮 2 F1：partial 确定回执后的恢复尝试（对账/重试）以未决告终时，旧 partial 回执
   // 不再代表当前结果——置位后删除主按钮与知悉回到 unknown 封锁，防止换新 requestId 重复
@@ -52,12 +54,18 @@ export default function ExportDeletionPage() {
   const [delRecoveryUnresolved, setDelRecoveryUnresolved] = useState(false);
   // 终态化处理只做一次（同一删除 requestId 的收尾不重复执行）。
   const finalizedFor = useRef<string | undefined>(undefined);
+  const exportAbandonInFlight = useRef(false);
+  const deletionAbandonInFlight = useRef(false);
+  const exportOperationInFlight = useRef(false);
+  const deletionOperationInFlight = useRef(false);
 
   // 恢复态读取自受控存储：每次渲染重读（useAction 状态变化触发重渲染）。
   const pendingExport = career.pendingSpaceExport();
   const pendingDeletion = career.pendingSpaceDeletion();
   const revision = desk.data?.revision;
   const deleted = deletion?.status === 'deleted';
+  const exportRecoveryBusy = exportBusy.busy || recExportBusy.busy || retryExportBusy.busy;
+  const deletionRecoveryBusy = deletionBusy.busy || recDelBusy.busy || retryDelBusy.busy;
 
   // 修复轮 M1：主按钮门控对齐 Web ExportDeletionPage——结果未知（intent 存续）与
   // 发起/对账/重试进行中都封锁主操作（防重复发起与竞态）；导出未决联动封锁删除与
@@ -111,30 +119,90 @@ export default function ExportDeletionPage() {
 
   // 恢复入口统一包装（修复轮 2 F1）：失败按 Web 语义置/清未决——对账失败（intent 仍在）
   // 一律未决，重试仅 ambiguous 未决、definite 拒绝解除封锁；成功拿到确定回执即落定。
-  const reconcileDeletion = (): void => void recDelBusy.run(async () => {
-    try { acceptDeletion(await career.reconcilePendingSpaceDeletion()); }
-    catch (error) { setDelRecoveryUnresolved(deletionRecoveryUnresolvedAfter('reconcile', error, career.pendingSpaceDeletion() !== null)); throw error; }
-  });
-  const retryDeletion = (): void => void retryDelBusy.run(async () => {
-    try { acceptDeletion(await career.retryPendingSpaceDeletion()); }
-    catch (error) { setDelRecoveryUnresolved(deletionRecoveryUnresolvedAfter('retry', error, career.pendingSpaceDeletion() !== null)); throw error; }
-  });
+  const reconcileDeletion = (): void => {
+    if (deletionOperationInFlight.current) return;
+    deletionOperationInFlight.current = true;
+    void recDelBusy.run(async () => {
+      try { acceptDeletion(await career.reconcilePendingSpaceDeletion()); }
+      catch (error) { setDelRecoveryUnresolved(deletionRecoveryUnresolvedAfter('reconcile', error, career.pendingSpaceDeletion() !== null)); throw error; }
+      finally { deletionOperationInFlight.current = false; }
+    });
+  };
+  const retryDeletion = (): void => {
+    if (deletionOperationInFlight.current) return;
+    deletionOperationInFlight.current = true;
+    void retryDelBusy.run(async () => {
+      try { acceptDeletion(await career.retryPendingSpaceDeletion()); }
+      catch (error) { setDelRecoveryUnresolved(deletionRecoveryUnresolvedAfter('retry', error, career.pendingSpaceDeletion() !== null)); throw error; }
+      finally { deletionOperationInFlight.current = false; }
+    });
+  };
 
   const abandonExportRecovery = async (): Promise<void> => {
-    const confirmed = await confirmAction('放弃导出恢复？', '这只会清除本机恢复记录；原导出请求可能已经在服务端生效。清除后本机不再保留原请求编号。');
-    if (!confirmed) return;
-    career.abandonPendingSpaceExport();
-    setRecoveryNotice('已放弃导出恢复：仅清除了本机恢复记录；原导出请求可能已在服务端生效。');
+    const expectedRequestId = pendingExport?.requestId;
+    if (!expectedRequestId) {
+      setRecoveryNotice('未放弃导出恢复：当前显示的恢复请求已变化或不存在，本机记录未清除。');
+      return;
+    }
+    if (exportAbandonInFlight.current) return;
+    exportAbandonInFlight.current = true;
+    setExportRecoveryConfirmationBusy(true);
+    try {
+      const result = await confirmAbandonIntent(expectedRequestId, {
+        confirm: () => confirmAction('放弃导出恢复？', '这只会清除本机恢复记录；原导出请求可能已经在服务端生效。清除后本机不再保留原请求编号。'),
+        currentRequestId: () => career.pendingSpaceExport()?.requestId,
+        isBusy: () => exportOperationInFlight.current,
+        abandon: id => career.abandonPendingSpaceExport(id),
+      });
+      setRecoveryNotice(result === 'abandoned'
+        ? '已放弃导出恢复：仅清除了本机恢复记录；原导出请求可能已在服务端生效。'
+        : result === 'cancelled'
+          ? '未放弃导出恢复：已取消确认，本机恢复记录仍保留。'
+          : result === 'busy'
+            ? '未放弃导出恢复：导出或恢复操作正在进行，本机恢复记录仍保留。'
+            : '未放弃导出恢复：当前请求编号已变化，本机恢复记录未清除。');
+    } catch {
+      setRecoveryNotice('未放弃导出恢复：确认未完成，本机恢复记录仍保留。');
+    } finally {
+      exportAbandonInFlight.current = false;
+      setExportRecoveryConfirmationBusy(false);
+    }
   };
 
   const abandonDeletionRecovery = async (): Promise<void> => {
-    const confirmed = await confirmAction('放弃删除恢复？', '这只会清除本机恢复记录；原删除操作可能已经在服务端生效。清除后本机不再保留原请求编号。');
-    if (!confirmed) return;
-    career.abandonPendingSpaceDeletion();
-    setDeletion(undefined);
-    setDelRecoveryUnresolved(false);
-    setAcknowledged(false);
-    setRecoveryNotice('已放弃删除恢复：仅清除了本机恢复记录；原删除操作可能已在服务端生效。');
+    const expectedRequestId = pendingDeletion?.requestId;
+    if (!expectedRequestId) {
+      setRecoveryNotice('未放弃删除恢复：当前显示的恢复请求已变化或不存在，本机记录未清除。');
+      return;
+    }
+    if (deletionAbandonInFlight.current) return;
+    deletionAbandonInFlight.current = true;
+    setDeletionRecoveryConfirmationBusy(true);
+    try {
+      const result = await confirmAbandonIntent(expectedRequestId, {
+        confirm: () => confirmAction('放弃删除恢复？', '这只会清除本机恢复记录；原删除操作可能已经在服务端生效。清除后本机不再保留原请求编号。'),
+        currentRequestId: () => career.pendingSpaceDeletion()?.requestId,
+        isBusy: () => deletionOperationInFlight.current,
+        abandon: id => career.abandonPendingSpaceDeletion(id),
+      });
+      if (result === 'abandoned') {
+        setDeletion(undefined);
+        setDelRecoveryUnresolved(false);
+        setAcknowledged(false);
+        setRecoveryNotice('已放弃删除恢复：仅清除了本机恢复记录；原删除操作可能已在服务端生效。');
+      } else {
+        setRecoveryNotice(result === 'cancelled'
+          ? '未放弃删除恢复：已取消确认，本机恢复记录仍保留。'
+          : result === 'busy'
+            ? '未放弃删除恢复：删除或恢复操作正在进行，本机恢复记录仍保留。'
+            : '未放弃删除恢复：当前请求编号已变化，本机恢复记录未清除。');
+      }
+    } catch {
+      setRecoveryNotice('未放弃删除恢复：确认未完成，本机恢复记录仍保留。');
+    } finally {
+      deletionAbandonInFlight.current = false;
+      setDeletionRecoveryConfirmationBusy(false);
+    }
   };
 
   const snapshotTotal = exported ? exported.archive.opportunities.reduce((total, item) => total + item.snapshots.length, 0) : 0;
@@ -148,11 +216,19 @@ export default function ExportDeletionPage() {
     {/* 恢复态置顶（T24/T26 教训）：结果未知的写入第一屏可见、可操作。 */}
     {pendingExport && <>
       <Notice tone='warning'>有一次结果未知的导出（{pendingExport.requestId.slice(0, 10)}…）。请先用原请求对账，不会重复执行。</Notice>
-      <Action secondary loading={recExportBusy.busy} onClick={() => void recExportBusy.run(async () => { acceptExport(await career.reconcilePendingSpaceExport()); })}>用原请求对账导出</Action>
+      <Action secondary loading={recExportBusy.busy} onClick={() => {
+        if (exportOperationInFlight.current) return;
+        exportOperationInFlight.current = true;
+        void recExportBusy.run(async () => { try { acceptExport(await career.reconcilePendingSpaceExport()); } finally { exportOperationInFlight.current = false; } });
+      }}>用原请求对账导出</Action>
       {recExportBusy.error && <Notice tone='danger'>{recExportBusy.error} 对账被拒时说明该请求不存在或不属于当前空间；可再用原编号重试。</Notice>}
-      <Action secondary loading={retryExportBusy.busy} onClick={() => void retryExportBusy.run(async () => { acceptExport(await career.retryPendingSpaceExport()); })}>用原请求编号重试导出</Action>
+      <Action secondary loading={retryExportBusy.busy} onClick={() => {
+        if (exportOperationInFlight.current) return;
+        exportOperationInFlight.current = true;
+        void retryExportBusy.run(async () => { try { acceptExport(await career.retryPendingSpaceExport()); } finally { exportOperationInFlight.current = false; } });
+      }}>用原请求编号重试导出</Action>
       {retryExportBusy.error && <Notice tone='danger'>{retryExportBusy.error} 重试沿用原请求编号，服务端幂等不会重复执行。</Notice>}
-      <Action secondary disabled={recExportBusy.busy || retryExportBusy.busy} onClick={() => void abandonExportRecovery()}>放弃导出恢复</Action>
+      <Action secondary disabled={exportRecoveryBusy || exportRecoveryConfirmationBusy} onClick={() => void abandonExportRecovery()}>放弃导出恢复</Action>
     </>}
     {pendingDeletion && !deleted && <>
       <Notice tone='warning'>有一次未到终态的删除（{pendingDeletion.requestId.slice(0, 10)}…）。可用原请求对账最新状态，或用原编号重试恢复；不会发起新的删除。</Notice>
@@ -160,7 +236,7 @@ export default function ExportDeletionPage() {
       {recDelBusy.error && <Notice tone='danger'>{recDelBusy.error} 对账被拒时说明该请求不存在或不属于当前空间；intent 保留，可稍后再试。</Notice>}
       <Action secondary danger loading={retryDelBusy.busy} onClick={retryDeletion}>用原请求编号重试删除</Action>
       {retryDelBusy.error && <Notice tone='danger'>{retryDelBusy.error} 重试沿用原请求编号；服务端按步骤续跑，已完成步骤不会重复执行。</Notice>}
-      <Action secondary disabled={recDelBusy.busy || retryDelBusy.busy || deletionBusy.busy} onClick={() => void abandonDeletionRecovery()}>放弃删除恢复</Action>
+      <Action secondary disabled={deletionRecoveryBusy || deletionRecoveryConfirmationBusy} onClick={() => void abandonDeletionRecovery()}>放弃删除恢复</Action>
     </>}
     {recoveryNotice && <Notice tone='info'>{recoveryNotice}</Notice>}
 
@@ -172,13 +248,19 @@ export default function ExportDeletionPage() {
     <Card>
       <Text className='wk-h3'>导出数据</Text>
       <View className='wk-between'><View className='wk-tdesign-scope'>
-        <t-button block size='large' theme='primary' ariaLabel='发起导出' customStyle={tdesignButtonStyle} loading={exportBusy.busy} disabled={gating.exportDisabled} onTap={() => void exportBusy.run(async () => {
-          if (gating.exportDisabled) return; // 防重入（Web runExport busy/unknown 守卫）
-          try {
-            acceptExport(await career.exportWholeSpace());
-            setExpErrCode(undefined);
-          } catch (error) { setExpErrCode(typedCode(error)); throw error; }
-        })}>发起导出（只读，不改变档案）</t-button>
+        <t-button block size='large' theme='primary' ariaLabel='发起导出' customStyle={tdesignButtonStyle} loading={exportBusy.busy} disabled={gating.exportDisabled} onTap={() => {
+          if (exportOperationInFlight.current) return;
+          exportOperationInFlight.current = true;
+          void exportBusy.run(async () => {
+            try {
+              if (gating.exportDisabled) return; // 防重入（Web runExport busy/unknown 守卫）
+              try {
+                acceptExport(await career.exportWholeSpace());
+                setExpErrCode(undefined);
+              } catch (error) { setExpErrCode(typedCode(error)); throw error; }
+            } finally { exportOperationInFlight.current = false; }
+          });
+        }}>发起导出（只读，不改变档案）</t-button>
       </View></View>
       {exportBusy.error && <Notice tone='danger'>{exportBusy.error}{expErrCode === 'revision_conflict' ? ' 档案已更新：重新读取修订后再导出（新导出将使用新请求编号）。' : ''}</Notice>}
       {expErrCode === 'revision_conflict' && <Action secondary onClick={() => desk.reload()}>重新读取档案修订</Action>}
@@ -223,21 +305,27 @@ export default function ExportDeletionPage() {
         </View>
       </Card>}
       <View className='wk-between'><View className='wk-tdesign-scope'>
-        <t-button block size='large' theme='primary' ariaLabel='发起完整删除' customStyle={tdesignButtonStyle} loading={deletionBusy.busy} disabled={gating.deletionDisabled} onTap={() => void deletionBusy.run(async () => {
-          if (gating.deletionDisabled) return; // 防重入（Web runDeletion busy/unknown 守卫）
-          const confirmed = await confirmAction('确认完整删除？', '空间内求职数据将被删除且不可恢复；外部平台的投递与已发出的副本不受本系统控制。');
-          if (!confirmed) return;
-          try {
-            acceptDeletion(await career.deleteWholeSpace());
-            setDelErrCode(undefined);
-          } catch (error) {
-            setDelErrCode(typedCode(error));
-            if (typedCode(error) === 'outcome_unknown') setDelRecoveryUnresolved(true);
-            throw error;
-          }
-        })}>发起完整删除</t-button>
+        <t-button block size='large' theme='primary' ariaLabel='发起完整删除' customStyle={tdesignButtonStyle} loading={deletionBusy.busy} disabled={gating.deletionDisabled} onTap={() => {
+          if (deletionOperationInFlight.current) return;
+          deletionOperationInFlight.current = true;
+          void deletionBusy.run(async () => {
+            try {
+              if (gating.deletionDisabled) return; // 防重入（Web runDeletion busy/unknown 守卫）
+              const confirmed = await confirmAction('确认完整删除？', '空间内求职数据将被删除且不可恢复；外部平台的投递与已发出的副本不受本系统控制。');
+              if (!confirmed) return;
+              try {
+                acceptDeletion(await career.deleteWholeSpace());
+                setDelErrCode(undefined);
+              } catch (error) {
+                setDelErrCode(typedCode(error));
+                if (typedCode(error) === 'outcome_unknown') setDelRecoveryUnresolved(true);
+                throw error;
+              }
+            } finally { deletionOperationInFlight.current = false; }
+          });
+        }}>发起完整删除</t-button>
       </View></View>
-      {deletionBusy.error && <Notice tone='danger'>{deletionBusy.error}{delErrCode === 'revision_conflict' ? ' 档案已更新：重新读取修订、确认边界后再次发起（新删除会使用新的请求编号）。' : delErrCode === 'idempotency_conflict' ? ' 请求编号已对应其他内容，服务器拒绝了本次删除。可回到恢复入口用原编号对账。' : ''}</Notice>}
+      {deletionBusy.error && <Notice tone='danger'>{deletionBusy.error}{delErrCode === 'revision_conflict' ? ' 档案已更新：重新读取修订、确认边界后再次发起（新删除会使用新的请求编号）。' : delErrCode === 'idempotency_conflict' ? ' 请求编号已对应其他内容，服务器拒绝了本次删除。可回到恢复入口用原编号对账。' : delErrCode === 'unresolved_action' ? ' 尚有删除恢复记录：请使用原请求对账/重试，或先在恢复区确认放弃，再开始新的完整删除。' : ''}</Notice>}
       {delErrCode === 'revision_conflict' && <Action secondary onClick={() => desk.reload()}>重新读取档案修订</Action>}
       {!boundary && !boundaryBusy.error && <Notice tone='info'>先查看删除边界清单并勾选知悉，才能发起删除。</Notice>}
     </Card>
