@@ -52,6 +52,10 @@ interface CareerDesk<T, C> {
 
 Receipt/envelope types may be generic and adjusted for repository compileability, but the operations and invariants below are frozen. Persist the original request ID before sending a write. On scope change, abort observation, increment epoch, clear private projection/cursor, and reject late replies. Reconcile unknown outcomes only with the same request ID; conflict requires explicit rebase. `observe` is only a revision hint: refetch and decode before publishing authority. Receipts remain bound to request ID.
 
+### Revision observer runtime contract
+
+The runtime assembly supplies `careerObserver` in `WeKnoraClientOptions` when it has a revision-hint source. Its contract is `(scope, onRevision) => unsubscribe`: subscribe for the provided deployment/tenant/actor scope, deliver positive revision hints, and stop delivery when the returned function is called. A hint never carries authoritative Career data; Career Desk calls `open()` through CareerApi and publishes only a strictly decoded response. The current `HttpTransport` has no Career event endpoint or built-in revision stream, so the shared client does not invent a polling or SSE route. If no provider is configured, `CareerApi.observe()` throws `CareerObservationUnavailableError` immediately. Consumers must handle that explicit unsupported state by using an explicit `open()` refresh strategy or by disabling observation-dependent freshness behavior.
+
 ## Consequences
 
 - Career-core behavioral tests run before Web/Mini/Mobile client tasks fork and cover request persistence/recovery, revision conflict, scope invalidation and late response rejection.

@@ -10,6 +10,13 @@ import {
 export type { CareerApi, CareerObserver, CareerRequest, CareerRequester, CareerScope, CareerWorkspace, CareerCommand } from './types.ts';
 export * from './decode.ts';
 
+export class CareerObservationUnavailableError extends Error {
+  constructor() {
+    super('Career observation is unavailable: configure careerObserver or refresh with open() explicitly');
+    this.name = 'CareerObservationUnavailableError';
+  }
+}
+
 function validateScope(scope: CareerScope): CareerScope {
   if (!scope || typeof scope !== 'object' || Array.isArray(scope)) throw new ContractError('scope', 'expected structured CareerScope');
   const keys = Object.keys(scope);
@@ -54,7 +61,7 @@ function parseDeskPage(value: unknown) {
   return { ...envelope, ...(row.cursor === undefined ? {} : { cursor: row.cursor }) };
 }
 
-export function createCareerApi(request: CareerRequester, observeScope: CareerObserver = () => () => undefined): CareerApi {
+export function createCareerApi(request: CareerRequester, observeScope?: CareerObserver): CareerApi {
   async function call<T>(scopeInput: CareerScope, method: string, path: string, parse: (value: unknown) => T, options: { input?: { requestId: string; expectedRevision?: number }; body?: unknown; signal?: AbortSignal; receipt?: boolean; requestId?: string } = {}): Promise<T> {
     const scope = validateScope(scopeInput);
     if (options.input) validateWrite(options.input, options.body, options.input.expectedRevision !== undefined);
@@ -88,7 +95,10 @@ export function createCareerApi(request: CareerRequester, observeScope: CareerOb
     list: (scope: CareerScope, cursor?: string, signal?: AbortSignal) => call(scope, 'GET', `/api/v1/career/desk${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`, parseDeskPage, { signal }),
     act: (scope: CareerScope, intent: import('@weknora/contracts').CareerIntent<CareerCommand>, signal?: AbortSignal) => call(scope, 'POST', '/api/v1/career/desk/actions', value => decodeCareerReceipt(value, intent.requestId), { input: { requestId: intent.requestId, expectedRevision: intent.expectedRevision }, body: intent, signal, receipt: true }),
     lookup: (scope: CareerScope, requestId: string, signal?: AbortSignal) => call(scope, 'GET', `/api/v1/career/requests/${encodeURIComponent(requiredId(requestId, 'requestId'))}`, value => decodeCareerReceipt(value, requestId), { requestId, receipt: true, signal }),
-    observe: (scope: CareerScope, onRevision: (revision: number) => void) => observeScope(validateScope(scope), onRevision),
+    observe: (scope: CareerScope, onRevision: (revision: number) => void) => {
+      if (!observeScope) throw new CareerObservationUnavailableError();
+      return observeScope(validateScope(scope), onRevision);
+    },
   };
   return {
     ...desk,

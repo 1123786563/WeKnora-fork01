@@ -58,6 +58,7 @@ export interface WeKnoraClientOptions {
   baseURL: string;
   transport: HttpTransport;
   timeoutMs?: number;
+  /** Runtime-owned Career revision-hint source. `career.observe()` throws CareerObservationUnavailableError when omitted. */
   careerObserver?: CareerObserver;
 }
 

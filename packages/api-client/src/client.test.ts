@@ -189,6 +189,45 @@ test('production Career client forwards the configured revision observer to its 
   assert.equal(received, true);
 });
 
+test('ordinary production client fails observation explicitly when no revision provider is configured', async () => {
+  const { createCareerDesk } = await import('../../career-core/src/index.ts');
+  const { CareerObservationUnavailableError } = await import('./career/index.ts');
+  const scope = { deploymentOrigin: 'https://api.example.test', tenantId: 'tenant-1', actorId: 'actor-1' };
+  const client = createWeKnoraClient({ baseURL: scope.deploymentOrigin, transport: { send: async () => { throw new Error('must not fetch'); } } });
+  const desk = createCareerDesk({ remote: client.career, initialScope: scope, intentStore: { save: async () => undefined, list: async () => [], remove: async () => undefined } });
+  assert.throws(() => desk.observe(), (error: unknown) => error instanceof CareerObservationUnavailableError);
+});
+
+test('configured production observer hints trigger authoritative decoded refresh and Desk dispose unsubscribes', async () => {
+  const { createCareerDesk } = await import('../../career-core/src/index.ts');
+  const scope = { deploymentOrigin: 'https://api.example.test', tenantId: 'tenant-1', actorId: 'actor-1' };
+  let listener: ((revision: number) => void) | undefined;
+  let unsubscribed = false;
+  let reads = 0;
+  const client = createWeKnoraClient({
+    baseURL: scope.deploymentOrigin,
+    transport: { send: async request => {
+      reads++;
+      const revision = reads === 1 ? 1 : 2;
+      return { status: 200, headers: {}, body: { success: true, data: { revision, value: { opportunities: [], applications: [] } } } };
+    } },
+    careerObserver: (_scope, onRevision) => { listener = onRevision; return () => { unsubscribed = true; listener = undefined; }; },
+  });
+  const desk = createCareerDesk({ remote: client.career, initialScope: scope, intentStore: { save: async () => undefined, list: async () => [], remove: async () => undefined } });
+  await desk.open();
+  desk.observe();
+  listener!(99);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(reads, 2);
+  assert.equal(desk.snapshot()?.revision, 2);
+  desk.dispose();
+  assert.equal(unsubscribed, true);
+  listener?.(100);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(reads, 2);
+  assert.equal(desk.snapshot(), undefined);
+});
+
 test('preserves numeric backend error codes for structured lifecycle errors', async () => {
   const client = createWeKnoraClient({
     baseURL: 'https://api.example.test',

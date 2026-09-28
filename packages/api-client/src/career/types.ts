@@ -6,6 +6,7 @@ import type {
 
 export interface CareerRequest { method: string; path: string; scope: CareerScope; requestId?: string; headers?: Record<string, string>; body?: unknown; signal?: AbortSignal }
 export type CareerRequester = (input: CareerRequest) => Promise<unknown>;
+/** Runtime-provided revision-hint source. The Desk refetches and decodes authority after each hint. */
 export type CareerObserver = (scope: CareerScope, onRevision: (revision: number) => void) => () => void;
 export interface CareerWrite { requestId: string; expectedRevision: number }
 export interface CareerApi extends CareerRemote<CareerWorkspace, CareerCommand> {
