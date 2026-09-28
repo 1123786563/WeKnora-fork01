@@ -1,4 +1,4 @@
-package service
+package evaluation
 
 import (
 	"context"
@@ -24,6 +24,12 @@ qrels: qid -> pid
 arels: qid -> aid
 */
 
+// DeleteReferencedKnowledgeFunc 镜像宿主清理助手（internal/application/service/
+// knowledge_delete_plan.go:36，K4 推迟批未导出）。由宿主 compat 构造器注入；
+// 模块不 import 宿主包。K4 补迁窗导出后，Brief (b) 切换接线源，seam 形态不变。
+type DeleteReferencedKnowledgeFunc func(ctx context.Context, svc interfaces.KnowledgeService,
+	expectedKB string, ids []string) error
+
 // EvaluationService handles evaluation tasks for knowledge base and chat models
 type EvaluationService struct {
 	config               *config.Config                  // Application configuration
@@ -32,6 +38,8 @@ type EvaluationService struct {
 	knowledgeService     interfaces.KnowledgeService     // Service for knowledge operations
 	sessionService       interfaces.SessionService       // Service for chat sessions
 	modelService         interfaces.ModelService         // Service for model operations
+
+	deleteReferencedKnowledge DeleteReferencedKnowledgeFunc // Cleanup seam (host-injected)
 
 	evaluationMemoryStorage *evaluationMemoryStorage // In-memory storage for evaluation tasks
 }
@@ -43,16 +51,18 @@ func NewEvaluationService(
 	knowledgeService interfaces.KnowledgeService,
 	sessionService interfaces.SessionService,
 	modelService interfaces.ModelService,
+	cleanup DeleteReferencedKnowledgeFunc,
 ) interfaces.EvaluationService {
 	evaluationMemoryStorage := newEvaluationMemoryStorage()
 	return &EvaluationService{
-		config:                  config,
-		dataset:                 dataset,
-		knowledgeBaseService:    knowledgeBaseService,
-		knowledgeService:        knowledgeService,
-		sessionService:          sessionService,
-		modelService:            modelService,
-		evaluationMemoryStorage: evaluationMemoryStorage,
+		config:                    config,
+		dataset:                   dataset,
+		knowledgeBaseService:      knowledgeBaseService,
+		knowledgeService:          knowledgeService,
+		sessionService:            sessionService,
+		modelService:              modelService,
+		deleteReferencedKnowledge: cleanup,
+		evaluationMemoryStorage:   evaluationMemoryStorage,
 	}
 }
 
@@ -363,7 +373,7 @@ func (e *EvaluationService) EvalDataset(ctx context.Context, detail *types.Evalu
 	// Setup cleanup of temporary resources
 	defer func() {
 		logger.Infof(ctx, "Cleaning up resources - deleting knowledge: %s", knowledge.ID)
-		if err := deleteReferencedKnowledge(ctx,
+		if err := e.deleteReferencedKnowledge(ctx,
 			e.knowledgeService,
 			knowledgeBaseID,
 			[]string{knowledge.ID}); err != nil {

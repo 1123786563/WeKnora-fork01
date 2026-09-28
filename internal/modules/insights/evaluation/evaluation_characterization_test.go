@@ -1,4 +1,4 @@
-package service
+package evaluation
 
 // B3-IN.2 特征化测试（characterization，37-insights §4）：锚定 evaluation 面
 // （evaluation.go / metric_hook.go）迁移前的现行为，供 B3-IN.4 迁移后同用例

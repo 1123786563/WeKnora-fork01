@@ -779,12 +779,6 @@ legacy_files:
     destination: internal/modules/agentcatalog/service
     integration_owner: ib2
     delete_barrier: ib2
-  - path: internal/application/service/dataset.go
-    module: insights
-    plan: 37-insights
-    destination: internal/modules/insights/evaluation
-    integration_owner: ib3
-    delete_barrier: ib3
   - path: internal/application/service/datasource_passb_compat.go
     module: datasource
     plan: 26-datasource
@@ -807,12 +801,6 @@ legacy_files:
     module: channels
     plan: 36-channels
     destination: internal/modules/channels/service
-    integration_owner: ib3
-    delete_barrier: ib3
-  - path: internal/application/service/evaluation.go
-    module: insights
-    plan: 37-insights
-    destination: internal/modules/insights/evaluation
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/expert_market_source.go
@@ -843,6 +831,12 @@ legacy_files:
     module: conversation
     plan: 35-conversation-program
     destination: internal/modules/conversation/service
+    integration_owner: ib3
+    delete_barrier: ib3
+  - path: internal/application/service/insights_passb_compat.go
+    module: insights
+    plan: 37-insights
+    destination: internal/modules/insights/evaluation
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/kbshare.go
@@ -1029,12 +1023,6 @@ legacy_files:
     module: conversation
     plan: 35-conversation-program
     destination: internal/modules/conversation/service
-    integration_owner: ib3
-    delete_barrier: ib3
-  - path: internal/application/service/metric_hook.go
-    module: insights
-    plan: 37-insights
-    destination: internal/modules/insights/evaluation
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/application/service/model.go
@@ -1545,12 +1533,6 @@ legacy_files:
     module: channels
     plan: 36-channels
     destination: internal/modules/channels/handler
-    integration_owner: ib3
-    delete_barrier: ib3
-  - path: internal/handler/evaluation.go
-    module: insights
-    plan: 37-insights
-    destination: internal/modules/insights/evaluation
     integration_owner: ib3
     delete_barrier: ib3
   - path: internal/handler/execution_registration.go

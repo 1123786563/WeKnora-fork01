@@ -213,11 +213,64 @@ ok  	github.com/Tencent/WeKnora/internal/modules/insights/analytics	2.877s
 
 `go test ./internal/handler -run 'TestUsage' -count=1` → `ok github.com/Tencent/WeKnora/internal/handler 1.730s`（EXIT=0）——usage.go 5 个调用点（:89/:107/:114/:128/:138）经 handler compat 转发 `analytics.ParseAnalyticsRange`/`analytics.Rows`，usage 面 HTTP 契约不因转发变化。
 
-## §3 evaluation 特征化与 seam（B3-IN.2/B3-IN.4 待填）
+## §3 evaluation 特征化与 seam（B3-IN.2/B3-IN.4，2026-09-28）
 
-（B3-IN.2：宿主位特征化 3 例首跑输出；B3-IN.4：模块位双跑输出、seam RED→GREEN 记录、capability 奇偶结论。）
+### §3.1 物理迁移与 rename 检测（B3-IN.4）
+
+`git diff --cached -M --summary`（同 commit staging）：
+```
+rename internal/{application/service => modules/insights/evaluation}/dataset.go (99%)
+rename internal/{application/service => modules/insights/evaluation}/evaluation.go (94%)
+rename internal/{application/service => modules/insights/evaluation}/evaluation_characterization_test.go (99%)
+rename internal/{handler/evaluation.go => modules/insights/evaluation/evaluation_handler.go} (99%)
+rename internal/{application/service => modules/insights/evaluation}/metric_hook.go (99%)
+```
+逐字等价构造性核验：5 个新文件对 `git show HEAD:<旧路径>` 的正文（tail -n +2）做 `diff` 全部 IDENTICAL（仅 line 1 `package service|handler` → `package evaluation`）。environment 备注：Mimosa hook 拦截本会话 Bash `git mv`（通道提示改用 Write/Edit），按 hook 指示以 Write 逐字提交新路径 + `git rm` 删旧路径完成等价 rename（内容相似度 94–99% 由 git 实测检出；非规避扫描，内容经 Write 通道 PreToolUse 审查）。
+
+### §3.2 计划内代码面变化（evaluation.go 净差分，其余 4 文件零内容变化）
+
+seam（§2.3(a)）：① `DeleteReferencedKnowledgeFunc` 类型（签名=宿主 knowledge_delete_plan.go:36 原型逐参一致）；② `EvaluationService.deleteReferencedKnowledge` 字段；③ `NewEvaluationService` 增第 7 参 `cleanup DeleteReferencedKnowledgeFunc`（原 6 参序型不变、返回 `interfaces.EvaluationService` 不变，struct 字面量对齐随 gofmt 机械重排）；④ EvalDataset defer 内调用点 `deleteReferencedKnowledge(` → `e.deleteReferencedKnowledge(`（实参序不变）。
+
+### §3.3 seam TDD：RED → GREEN（B3-IN.4 步骤 4）
+
+- **RED**（seam 测试先行、构造器尚无第 7 参）：`go test ./internal/modules/insights/evaluation -run TestEvalDatasetInvokesKnowledgeCleanupSeam -count=1` → 编译失败，输出两行：
+  - `evaluation.go:366:13: undefined: deleteReferencedKnowledge`（迁移后同包裸标识符断链，预期）
+  - `evaluation_cleanup_test.go:106:3: too many arguments in call to NewEvaluationService ... want (..., interfaces.ModelService)`（第 7 参缺失，即计划预测的 RED 证据）
+  - `FAIL ... [build failed]`
+- **GREEN**（seam 落地后）：同命令 `-v` → `--- PASS: TestEvalDatasetInvokesKnowledgeCleanupSeam (0.00s)` + `ok ... 0.963s`（EXIT=0）。断言内容：seam 收到 `("kb-eval", ["k-eval-1"])` 且 `DeleteKnowledgeBase("kb-eval")` 被调——钉住 Knowledge 删除高风险面的清理语义（Spec §14.3）。
+
+### §3.4 特征化双跑差分（宿主位 vs 模块位，逐例等价）
+
+用例集 = B3-IN.2 特征化 3 例（用例名与断言逐字不变随迁）。宿主位输出为 B3-IN.4 会话补跑留档（`git stash push -u` 临时回到 BASE=bd6667bc2 树实跑后 `git stash pop` 恢复，备份目录 diff 复核 BACKUP-MATCH）：
+
+| 命令 | 输出 | 退出码 |
+|---|---|---|
+| 宿主位：`go test ./internal/application/service -run 'TestGetPassageListGolden\|TestMetricListAppendAvg\|TestHookMetricRecordFinishMapsContentToPID' -count=1 -v`（BASE 树） | `--- PASS: TestGetPassageListGolden (0.00s)` / `--- PASS: TestMetricListAppendAvg (0.00s)` / `--- PASS: TestHookMetricRecordFinishMapsContentToPID (0.00s)` + `ok ... 0.946s` | 0 |
+| 模块位：`go test ./internal/modules/insights/evaluation -run '<同上三例>\|TestEvalDatasetInvokesKnowledgeCleanupSeam' -count=1 -v` | 同 3 例 PASS 逐字一致 + seam 1 例 PASS + `ok ... 1.293s` | 0 |
+
+| 用例 | 宿主位（BASE） | 模块位（迁移后） | 等价 |
+|---|---|---|---|
+| TestGetPassageListGolden | PASS | PASS | ✅ |
+| TestMetricListAppendAvg | PASS | PASS | ✅ |
+| TestHookMetricRecordFinishMapsContentToPID | PASS | PASS | ✅ |
+
+→ **3/3 逐例等价，零行为漂移**；seam 1 例为新增钉住项（GREEN 在案）。
+
+### §3.5 capability 奇偶差分（§2.1 路由测试消费面）
+
+`go test ./internal/router -run TestTenantInfrastructureRoutesDeclareSpecificCapabilities -count=1` → `ok github.com/Tencent/WeKnora/internal/router 1.868s`（EXIT=0）——`router_api_key_capabilities_test.go:344` 的 `&handler.EvaluationHandler{}` 空字面量构造与 `POST /evaluation → APIKeyCapabilityRunEvaluations` 断言在 type 别名（`handler.EvaluationHandler = evaluation.EvaluationHandler`）下原样通过，capability 奇偶零变化。
+
+### §3.6 宿主消费面回归
+
+`go test ./internal/handler -run 'TestUsage' -count=1` → `ok github.com/Tencent/WeKnora/internal/handler 2.416s`（EXIT=0）——handler compat 文件追加 Evaluation 段后 analytics 转发链不受影响。
 
 ## §4 治理行操作（B3-IN.3/B3-IN.4/B3-IN.5 待填）
+
+### B3-IN.4（evaluation 面，与物理迁移同 commit）
+
+- `docs/architecture/moves/insights.yaml` legacy_files：删 4 行（`internal/application/service/{dataset,evaluation,metric_hook}.go`、`internal/handler/evaluation.go`，Ruling 1「可早删不可晚删」）；增 1 行 shim（`internal/application/service/insights_passb_compat.go`，reason「Pass B 过渡 shim，ib3 同 commit 随文件删行」、navigation_label「Insights host compat (application/service)」，Ruling 7 成对纪律）；shim 行排序对齐 datasource（repository → service → handler）。
+- `docs/architecture/passb/ownership-matrix.yaml`：删 4 行（原 :782-:787 dataset、:812-:817 evaluation(service)、:1034-:1039 metric_hook、:1550-:1555 evaluation(handler)）；增 1 行 shim（插于 fork_bootstrapper.go 与 kbshare.go 之间保持字典序；destination=`internal/modules/insights/evaluation`，integration_owner/delete_barrier=ib3）。
+- 门禁复核：`make verify-module-moves` → `modulemove: OK (16 manifests verified)`；`make check-backend-architecture` → `literal=564 apiKeyRoute=69 handle=0 total=633 | redis=23 lite=23 | hooks=58 | modules=16` + `OK (0 violations)`（计数基线 633/23+23/58/16 不变）。
 
 ### B3-IN.3（analytics 面，与物理迁移同 commit）
 
