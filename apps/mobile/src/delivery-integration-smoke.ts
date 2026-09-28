@@ -21,6 +21,7 @@ export interface DeliveryIntegrationEvidence {
   recoveryState?: string;
   recoveryRunId?: string;
   recoveryDeliveryId?: string;
+  failureRunId?: string;
   commitSha?: string;
   prUrl?: string;
   approver?: string;
@@ -32,6 +33,10 @@ export interface DeliveryIntegrationEvidence {
 interface RecoveryCandidate {
   id: string;
   state: string;
+  commitSha?: string;
+  prUrl?: string;
+  approver?: string;
+  remoteLogin?: string;
 }
 
 export interface DeliveryRecoveryEvidenceResult<T extends RecoveryCandidate> {
@@ -39,7 +44,9 @@ export interface DeliveryRecoveryEvidenceResult<T extends RecoveryCandidate> {
   recoveryState?: string;
   recoveryRunId?: string;
   recoveryDeliveryId?: string;
+  failureRunId?: string;
   firstDelivery?: { runId: string; delivery: T };
+  evidenceDelivery?: { runId: string; delivery: T };
   failure?: string;
 }
 
@@ -60,17 +67,22 @@ export async function runDeliveryRecoveryEvidence<T extends RecoveryCandidate>(p
     } catch (error) {
       result.recovery = 'failed';
       result.failure = error instanceof Error ? error.message : String(error);
-      result.recoveryState = attemptedState ?? lastReadState;
+      result.failureRunId = runId;
+      result.recoveryRunId = undefined;
+      result.recoveryDeliveryId = undefined;
+      result.recoveryState = undefined;
       return result;
     }
     if (delivery === null) continue;
 
     result.firstDelivery ??= { runId, delivery };
+    result.evidenceDelivery ??= { runId, delivery };
     lastReadState = delivery.state;
     if (delivery.state !== 'pushed' && delivery.state !== 'unknown') continue;
 
     result.recoveryRunId = runId;
     result.recoveryDeliveryId = delivery.id;
+    result.evidenceDelivery = { runId, delivery };
     attemptedState = delivery.state;
     try {
       const recovered = await ports.recover({ runId, deliveryId: delivery.id });
@@ -90,6 +102,32 @@ export async function runDeliveryRecoveryEvidence<T extends RecoveryCandidate>(p
 
   result.recoveryState = attemptedState ?? lastReadState;
   return result;
+}
+
+/** Apply the selected delivery and recovery outcome to the integration report row. */
+export function applyDeliveryRecoveryEvidence<T extends RecoveryCandidate>(
+  evidence: DeliveryIntegrationEvidence,
+  result: DeliveryRecoveryEvidenceResult<T>,
+): DeliveryIntegrationEvidence {
+  const next = { ...evidence };
+  const receipt = result.evidenceDelivery ?? result.firstDelivery;
+  if (receipt !== undefined) {
+    next.deliveryRead = 'read';
+    next.deliveryState = receipt.delivery.state;
+    next.commitSha = receipt.delivery.commitSha;
+    next.prUrl = receipt.delivery.prUrl;
+    next.approver = receipt.delivery.approver;
+    next.remoteLogin = receipt.delivery.remoteLogin;
+  } else {
+    next.deliveryRead = result.failure ? 'failed' : 'absent';
+  }
+  next.recovery = result.recovery;
+  next.recoveryState = result.recoveryState;
+  next.recoveryRunId = result.recoveryRunId;
+  next.recoveryDeliveryId = result.recoveryDeliveryId;
+  next.failureRunId = result.failureRunId;
+  if (result.failure) next.failure = next.failure ? `${next.failure}; ${result.failure}` : result.failure;
+  return next;
 }
 
 /** 与 T04/T05/T16 相同的 opt-in 语义（自包含，不跨计划 import 凭据逻辑）。 */
@@ -161,25 +199,7 @@ export async function runDeliveryIntegration(config: Extract<DeliveryIntegration
         readDelivery: (runId) => remote.delivery(runId),
         recover: (input) => recovery.recover(input),
       });
-      const first = recoveryEvidence.firstDelivery;
-      if (first !== undefined) {
-        evidence.deliveryRead = 'read';
-        evidence.deliveryState = first.delivery.state;
-        evidence.commitSha = first.delivery.commitSha;
-        evidence.prUrl = first.delivery.prUrl;
-        evidence.approver = first.delivery.approver;
-        evidence.remoteLogin = first.delivery.remoteLogin;
-      } else {
-        evidence.deliveryRead = recoveryEvidence.failure ? 'failed' : 'absent';
-      }
-      evidence.recovery = recoveryEvidence.recovery;
-      evidence.recoveryState = recoveryEvidence.recoveryState;
-      evidence.recoveryRunId = recoveryEvidence.recoveryRunId;
-      evidence.recoveryDeliveryId = recoveryEvidence.recoveryDeliveryId;
-      if (recoveryEvidence.failure) {
-        evidence.failure = evidence.failure ? `${evidence.failure}; ${recoveryEvidence.failure}` : recoveryEvidence.failure;
-      }
-      return evidence;
+      return applyDeliveryRecoveryEvidence(evidence, recoveryEvidence);
     }
 
     for (const item of page.items) {

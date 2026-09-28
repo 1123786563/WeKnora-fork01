@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DeliveryRecoveryError } from '@weknora/mobile-core';
-import { deliveryIntegrationConfig, runDeliveryRecoveryEvidence } from './delivery-integration-smoke.ts';
+import { applyDeliveryRecoveryEvidence, deliveryIntegrationConfig, runDeliveryRecoveryEvidence, type DeliveryIntegrationEvidence } from './delivery-integration-smoke.ts';
 
 test('config is skipped without env and rejected on private hosts', () => {
   assert.deepEqual(deliveryIntegrationConfig({}), { enabled: false, disposition: 'skip', reason: 'missing WEKNORA_MOBILE_TEST_DEPLOYMENT_URL/EMAIL/PASSWORD' });
@@ -47,8 +47,8 @@ test('recovery skips delivered records and recovers a later pushed or unknown re
         runIds: ['run-delivered', `run-${state}`],
         async readDelivery(runId) {
           return runId === 'run-delivered'
-            ? { id: 'delivery-done', state: 'delivered' }
-            : { id: `delivery-${state}`, state };
+            ? { id: 'delivery-done', state: 'delivered', commitSha: 'commit-done', prUrl: 'https://example.com/done', approver: 'done-owner', remoteLogin: 'done-user' }
+            : { id: `delivery-${state}`, state, commitSha: `commit-${state}`, prUrl: `https://example.com/${state}`, approver: `${state}-owner`, remoteLogin: `${state}-user` };
         },
         async recover(input) {
           calls.push(input);
@@ -61,7 +61,17 @@ test('recovery skips delivered records and recovers a later pushed or unknown re
       assert.equal(result.recoveryRunId, `run-${state}`);
       assert.equal(result.recoveryDeliveryId, `delivery-${state}`);
       assert.equal(result.recoveryState, 'delivered');
-      assert.deepEqual(result.firstDelivery, { runId: 'run-delivered', delivery: { id: 'delivery-done', state: 'delivered' } });
+      assert.deepEqual(result.firstDelivery, { runId: 'run-delivered', delivery: { id: 'delivery-done', state: 'delivered', commitSha: 'commit-done', prUrl: 'https://example.com/done', approver: 'done-owner', remoteLogin: 'done-user' } });
+      assert.equal(result.evidenceDelivery?.runId, `run-${state}`);
+      assert.equal(result.evidenceDelivery?.delivery.commitSha, `commit-${state}`);
+
+      const finalEvidence = applyDeliveryRecoveryEvidence(emptyEvidence(), result);
+      assert.equal(finalEvidence.deliveryState, state);
+      assert.equal(finalEvidence.commitSha, `commit-${state}`);
+      assert.equal(finalEvidence.prUrl, `https://example.com/${state}`);
+      assert.equal(finalEvidence.approver, `${state}-owner`);
+      assert.equal(finalEvidence.remoteLogin, `${state}-user`);
+      assert.equal(finalEvidence.recoveryRunId, `run-${state}`);
     });
   }
 });
@@ -138,3 +148,43 @@ test('backend and scope failures stop scanning after one attempted write', async
     });
   }
 });
+
+test('a read failure after a state conflict reports its run without stale recovery IDs', async () => {
+  const result = await runDeliveryRecoveryEvidence({
+    runIds: ['run-conflict', 'run-read-failed'],
+    async readDelivery(runId) {
+      if (runId === 'run-read-failed') throw new Error('delivery read unavailable');
+      return { id: 'delivery-conflict', state: 'pushed', commitSha: 'commit-conflict' };
+    },
+    async recover() {
+      throw new DeliveryRecoveryError('DELIVERY_STATE_CONFLICT', 'state changed before recovery');
+    },
+  });
+
+  assert.equal(result.recovery, 'failed');
+  assert.equal(result.failure, 'delivery read unavailable');
+  assert.equal(result.failureRunId, 'run-read-failed');
+  assert.equal(result.recoveryRunId, undefined);
+  assert.equal(result.recoveryDeliveryId, undefined);
+  assert.equal(result.recoveryState, undefined);
+  assert.equal(result.evidenceDelivery?.runId, 'run-conflict');
+
+  const finalEvidence = applyDeliveryRecoveryEvidence(emptyEvidence(), result);
+  assert.equal(finalEvidence.deliveryState, 'pushed');
+  assert.equal(finalEvidence.commitSha, 'commit-conflict');
+  assert.equal(finalEvidence.recoveryRunId, undefined);
+  assert.equal(finalEvidence.recoveryDeliveryId, undefined);
+  assert.equal(finalEvidence.failureRunId, 'run-read-failed');
+  assert.equal(finalEvidence.failure, 'delivery read unavailable');
+});
+
+function emptyEvidence(): DeliveryIntegrationEvidence {
+  return {
+    deploymentOrigin: 'https://weknora.example.com',
+    login: 'ok',
+    executionListed: 'listed',
+    deliveryRead: 'failed',
+    recovery: 'skipped',
+    commandTimestamp: '2026-09-28T00:00:00.000Z',
+  };
+}
