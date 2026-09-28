@@ -10,7 +10,7 @@ import type { NativeFileSource } from '@weknora/api-client';
 import { requestId as newRequestId } from '../core/intent.ts';
 import { storage } from '../platform/storage.ts';
 import type { ScopeStamp } from '../core/scope.ts';
-import { CAREER_STORE_PREFIX, createControlledStore, recoverableWrite, retryRecoverable, readStoredIntent, intentKeyFor, ambiguousOutcome, definiteLocalFailure, decodeAs, abandonRecoverable, type StoredIntent } from './career-intent.ts';
+import { CAREER_STORE_PREFIX, createControlledStore, recoverableWrite, retryRecoverable, readStoredIntent, intentKeyFor, ambiguousOutcome, definiteLocalFailure, decodeAs, abandonRecoverable, isRecoveryActive, withActiveRecovery, type StoredIntent } from './career-intent.ts';
 import { type SharedImportDraft, openExportedDocument, EXPORT_GRANT_EXPIRED, type ExportDownloadGrant, type ExportOpenRecord } from '../adapters/career-platform.ts';
 
 export { prepareSharedImport, careerPlatform, CAREER_STORE_PREFIX } from '../adapters/career-platform.ts';
@@ -263,6 +263,7 @@ export function abandonPendingProgressWrite(): void { abandonRecoverable(store, 
 export function abandonPendingPreparationWrite(): void { abandonRecoverable(store, 'preparation'); }
 export function abandonPendingSpaceExport(expectedRequestId: string): boolean { return abandonRecoverable(store, 'spaceExport', expectedRequestId); }
 export function abandonPendingSpaceDeletion(expectedRequestId: string): boolean { return abandonRecoverable(store, 'spaceDeletion', expectedRequestId); }
+export function spaceDeletionRecoveryActive(requestId: string): boolean { return isRecoveryActive('spaceDeletion', auth.scope.capture(), requestId); }
 
 // —— 申请（T14 合同）：一岗一批一申请；硬条件不符必须显式继续 ——
 export async function createApplication(input: ApplicationIntentInput): Promise<ApplicationReceipt> {
@@ -602,6 +603,8 @@ export async function deleteWholeSpace(): Promise<CareerDeletionReceipt> {
   if (pending) throw Object.assign(new Error(`有一次未完成的删除（${pending.requestId.slice(0, 10)}…）：请先用原请求对账或重试，或明确放弃本机恢复记录`), { code: 'unresolved_action', requestId: pending.requestId });
   const id = newRequestId();
   const expected = revision();
+  if (isRecoveryActive('spaceDeletion', stamp, 'starting')) throw Object.assign(new Error('有一次删除正在进行：请等待结果后再恢复'), { code: 'unresolved_action', requestId: id });
+  return withActiveRecovery('spaceDeletion', stamp, 'starting', async () => {
   try {
     const receipt = decodeAs(decodeCareerDeletionReceipt, await client.request({ method: 'POST', path: '/api/v1/career/deletions', body: { requestId: id, expectedRevision: expected } }));
     if (receipt.status !== 'deleted') store.write(key, { requestId: id, input: {}, expectedRevision: expected });
@@ -617,14 +620,18 @@ export async function deleteWholeSpace(): Promise<CareerDeletionReceipt> {
     }
     throw error;
   }
+  });
 }
 export function pendingSpaceDeletion(): StoredIntent<Record<string, unknown>> | null { return readIntent<Record<string, unknown>>(intentKey('spaceDeletion')); }
 export async function reconcilePendingSpaceDeletion(): Promise<CareerDeletionReceipt> {
+  const stamp = auth.scope.capture();
   const pending = pendingSpaceDeletion();
   if (!pending) throw new Error('没有待对账的删除');
-  const receipt = decodeCareerDeletionReceipt(await client.request({ method: 'GET', path: `/api/v1/career/deletions/receipt?requestId=${encodeURIComponent(pending.requestId)}` }));
-  if (receipt.status === 'deleted') store.remove(intentKey('spaceDeletion'));
-  return receipt;
+  return withActiveRecovery('spaceDeletion', stamp, pending.requestId, async () => {
+    const receipt = decodeCareerDeletionReceipt(await client.request({ method: 'GET', path: `/api/v1/career/deletions/receipt?requestId=${encodeURIComponent(pending.requestId)}` }));
+    if (receipt.status === 'deleted') store.remove(intentKeyFor('spaceDeletion', stamp));
+    return receipt;
+  });
 }
 export async function retryPendingSpaceDeletion(): Promise<CareerDeletionReceipt> {
   const stamp = auth.scope.capture();
@@ -632,6 +639,7 @@ export async function retryPendingSpaceDeletion(): Promise<CareerDeletionReceipt
   const pending = readIntent<Record<string, unknown>>(key);
   if (!pending) throw new Error('没有待恢复的删除');
   const expected = pending.expectedRevision ?? revision();
+  return withActiveRecovery('spaceDeletion', stamp, pending.requestId, async () => {
   try {
     const receipt = decodeAs(decodeCareerDeletionReceipt, await client.request({ method: 'POST', path: '/api/v1/career/deletions', body: { requestId: pending.requestId, expectedRevision: expected } }));
     if (receipt.status === 'deleted') store.remove(key);
@@ -641,6 +649,7 @@ export async function retryPendingSpaceDeletion(): Promise<CareerDeletionReceipt
     if (ambiguousOutcome(error)) throw Object.assign(new Error('删除结果未知：请用原请求对账后再试', { cause: error }), { code: 'outcome_unknown', requestId: pending.requestId });
     throw error;
   }
+  });
 }
 
 /** 删除完成后的本机缓存清理：只清 wk:career:* 键并重置共享 desk；登录凭据与其他键不动。 */

@@ -26,6 +26,25 @@ export function createControlledStore(store: ValueStore = storage): ControlledCa
 }
 
 export interface StoredIntent<T> { requestId: string; input: T; expectedRevision?: number }
+const activeRecoveries = new Map<string, number>();
+function recoveryKey(kind: string, stamp: ScopeStamp, requestId: string): string {
+  return `${kind}:${scopeKey(stamp)}:${requestId}`;
+}
+/** Mark recovery active for its full asynchronous lifetime; abandonment uses the same key. */
+export function withActiveRecovery<T>(kind: string, stamp: ScopeStamp, requestId: string, work: () => Promise<T>): Promise<T> {
+  const key = recoveryKey(kind, stamp, requestId);
+  activeRecoveries.set(key, (activeRecoveries.get(key) ?? 0) + 1);
+  const release = () => {
+    const count = activeRecoveries.get(key) ?? 0;
+    if (count <= 1) activeRecoveries.delete(key);
+    else activeRecoveries.set(key, count - 1);
+  };
+  try { return work().finally(release); }
+  catch (error) { release(); return Promise.reject(error); }
+}
+export function isRecoveryActive(kind: string, stamp: ScopeStamp, requestId: string): boolean {
+  return (activeRecoveries.get(recoveryKey(kind, stamp, requestId)) ?? 0) > 0;
+}
 /** intent 键 = 前缀 + kind + 作用域。写入侧传发送时刻 stamp（预铸）；读取侧传当前 capture()。 */
 export function intentKeyFor(kind: string, stamp: ScopeStamp): string { return `${CAREER_STORE_PREFIX}${kind}:${scopeKey(stamp)}`; }
 
@@ -133,8 +152,12 @@ export async function retryRecoverable<T>(store: ControlledCareerStore, kind: st
  *  不动任何服务端事实——若原写入实际已落地，以服务端记录为准（回执/列表可对账找回）。
  *  未对账封锁（recoverableWrite 的 unresolved_action）把用户挡在门外时，这是唯一解除出口。 */
 export function abandonRecoverable(store: ControlledCareerStore, kind: string, expectedRequestId?: string): boolean {
-  const key = intentKeyFor(kind, auth.scope.capture());
-  if (expectedRequestId !== undefined && readStoredIntent(store, key)?.requestId !== expectedRequestId) return false;
+  const stamp = auth.scope.capture();
+  const key = intentKeyFor(kind, stamp);
+  const current = readStoredIntent(store, key);
+  const requestId = expectedRequestId ?? current?.requestId;
+  if (requestId && isRecoveryActive(kind, stamp, requestId)) return false;
+  if (expectedRequestId !== undefined && current?.requestId !== expectedRequestId) return false;
   store.remove(key);
   return true;
 }

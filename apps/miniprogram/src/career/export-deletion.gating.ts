@@ -59,6 +59,24 @@ export function deletionRecoveryUnresolvedAfter(kind: 'reconcile' | 'retry', err
   return (error as { code?: unknown } | null | undefined)?.code === 'outcome_unknown';
 }
 
+/** Stateful page transition seam. The page and behavior tests share the same receipt/unknown rules. */
+export function createDeletionPageController() {
+  let inMemoryStatus: string | undefined;
+  let recoveryUnresolved = false;
+  return {
+    accept(status: string): void { inMemoryStatus = status; recoveryUnresolved = false; },
+    clear(): void { inMemoryStatus = undefined; recoveryUnresolved = false; },
+    initialOutcomeUnknown(): void { recoveryUnresolved = true; },
+    recoveryFailed(kind: 'reconcile' | 'retry', error: unknown, intentStillPresent: boolean): void {
+      recoveryUnresolved = deletionRecoveryUnresolvedAfter(kind, error, intentStillPresent);
+    },
+    isUnknown(intentPresent: boolean): boolean {
+      return deletionOutcomeUnknown({ intentPresent, inMemoryStatus, recoveryUnresolved });
+    },
+    isRecoveryUnresolved(): boolean { return recoveryUnresolved; },
+  };
+}
+
 /**
  * Confirm abandonment against the request shown when the modal opened. The
  * async modal can outlive that intent, so re-read identity and activity after
@@ -74,5 +92,6 @@ export async function confirmAbandonIntent(requestId: string, options: {
   if (!await options.confirm()) return 'cancelled';
   if (options.currentRequestId() !== requestId) return 'changed';
   if (options.isBusy()) return 'busy';
-  return options.abandon(requestId) ? 'abandoned' : 'changed';
+  if (options.abandon(requestId)) return 'abandoned';
+  return options.isBusy() ? 'busy' : 'changed';
 }

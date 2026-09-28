@@ -4,7 +4,7 @@ import { Text, View } from '@tarojs/components';
 import { Screen, Card, Action, Notice, Badge, DataBoundary, useData, useAction, useSession, confirmAction } from '../components/ui.tsx';
 import * as career from '../services/career.ts';
 import { spaceExportPayload, saveSpaceExportPackage, copySpaceExportToClipboard, type SpaceExportSaveRecord } from '../adapters/career-platform.ts';
-import { lifecycleGating, deletionOutcomeUnknown, deletionRecoveryUnresolvedAfter, confirmAbandonIntent } from './export-deletion.gating.ts';
+import { lifecycleGating, createDeletionPageController, confirmAbandonIntent } from './export-deletion.gating.ts';
 import type { CareerExportReceipt, CareerDeletionBoundaryView, CareerDeletionReceipt } from '../../../../packages/api-client/src/career.ts';
 import { formatTime, formatBytes } from '../core/format.ts';
 import { logout } from '../services/runtime.ts';
@@ -51,7 +51,8 @@ export default function ExportDeletionPage() {
   // 修复轮 2 F1：partial 确定回执后的恢复尝试（对账/重试）以未决告终时，旧 partial 回执
   // 不再代表当前结果——置位后删除主按钮与知悉回到 unknown 封锁，防止换新 requestId 重复
   // 发起删除（Web runDeletion/lookupDeletionReceipt 失败 → phase='unknown'）。
-  const [delRecoveryUnresolved, setDelRecoveryUnresolved] = useState(false);
+  const [, setDelRecoveryUnresolved] = useState(false);
+  const deletionController = useRef(createDeletionPageController()).current;
   // 终态化处理只做一次（同一删除 requestId 的收尾不重复执行）。
   const finalizedFor = useRef<string | undefined>(undefined);
   const exportAbandonInFlight = useRef(false);
@@ -74,7 +75,7 @@ export default function ExportDeletionPage() {
     exportBusy: exportBusy.busy || recExportBusy.busy || retryExportBusy.busy,
     exportUnknown: pendingExport !== null,
     deletionBusy: deletionBusy.busy || recDelBusy.busy || retryDelBusy.busy,
-    deletionUnknown: deletionOutcomeUnknown({ intentPresent: pendingDeletion !== null, inMemoryStatus: deletion?.status, recoveryUnresolved: delRecoveryUnresolved }),
+    deletionUnknown: deletionController.isUnknown(pendingDeletion !== null),
     revisionLoaded: revision !== undefined,
     boundaryShown: boundary !== undefined,
     acknowledged,
@@ -111,6 +112,7 @@ export default function ExportDeletionPage() {
   };
 
   const acceptDeletion = (receipt: CareerDeletionReceipt): void => {
+    deletionController.accept(receipt.status);
     setDeletion(receipt);
     setAcknowledged(false);
     setDelRecoveryUnresolved(false); // 确定回执落定上次恢复尝试的未决（Web acceptDeletion）
@@ -124,7 +126,7 @@ export default function ExportDeletionPage() {
     deletionOperationInFlight.current = true;
     void recDelBusy.run(async () => {
       try { acceptDeletion(await career.reconcilePendingSpaceDeletion()); }
-      catch (error) { setDelRecoveryUnresolved(deletionRecoveryUnresolvedAfter('reconcile', error, career.pendingSpaceDeletion() !== null)); throw error; }
+      catch (error) { deletionController.recoveryFailed('reconcile', error, career.pendingSpaceDeletion() !== null); setDelRecoveryUnresolved(deletionController.isRecoveryUnresolved()); throw error; }
       finally { deletionOperationInFlight.current = false; }
     });
   };
@@ -133,7 +135,7 @@ export default function ExportDeletionPage() {
     deletionOperationInFlight.current = true;
     void retryDelBusy.run(async () => {
       try { acceptDeletion(await career.retryPendingSpaceDeletion()); }
-      catch (error) { setDelRecoveryUnresolved(deletionRecoveryUnresolvedAfter('retry', error, career.pendingSpaceDeletion() !== null)); throw error; }
+      catch (error) { deletionController.recoveryFailed('retry', error, career.pendingSpaceDeletion() !== null); setDelRecoveryUnresolved(deletionController.isRecoveryUnresolved()); throw error; }
       finally { deletionOperationInFlight.current = false; }
     });
   };
@@ -182,10 +184,11 @@ export default function ExportDeletionPage() {
       const result = await confirmAbandonIntent(expectedRequestId, {
         confirm: () => confirmAction('放弃删除恢复？', '这只会清除本机恢复记录；原删除操作可能已经在服务端生效。清除后本机不再保留原请求编号。'),
         currentRequestId: () => career.pendingSpaceDeletion()?.requestId,
-        isBusy: () => deletionOperationInFlight.current,
+        isBusy: () => deletionOperationInFlight.current || career.spaceDeletionRecoveryActive(expectedRequestId),
         abandon: id => career.abandonPendingSpaceDeletion(id),
       });
       if (result === 'abandoned') {
+        deletionController.clear();
         setDeletion(undefined);
         setDelRecoveryUnresolved(false);
         setAcknowledged(false);
@@ -318,7 +321,7 @@ export default function ExportDeletionPage() {
                 setDelErrCode(undefined);
               } catch (error) {
                 setDelErrCode(typedCode(error));
-                if (typedCode(error) === 'outcome_unknown') setDelRecoveryUnresolved(true);
+                if (typedCode(error) === 'outcome_unknown') { deletionController.initialOutcomeUnknown(); setDelRecoveryUnresolved(true); }
                 throw error;
               }
             } finally { deletionOperationInFlight.current = false; }
