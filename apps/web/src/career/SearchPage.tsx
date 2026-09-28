@@ -255,6 +255,10 @@ export function CareerSearchPage({ client, scopeController }: { client: WeKnoraC
   try {
    const imported = await client.career.importUrl({ requestId, url: row.link }, requestScope.signal)
    if (!scopeController.isCurrent(requestScope.scope)) return
+   if (imported.requestId !== requestId) {
+    setImports((current) => ({ ...current, [row.resultId]: { ...current[row.resultId], requestId: undefined, receipt: undefined, busy: false, uncertain: undefined, error: '服务返回的请求编号与本次导入不匹配，已放弃本次结果。请重新导入。' } }))
+    return
+   }
    setImports((current) => ({ ...current, [row.resultId]: { ...current[row.resultId], busy: false, receipt: imported } }))
   } catch (cause) {
    if (!scopeController.isCurrent(requestScope.scope)) return

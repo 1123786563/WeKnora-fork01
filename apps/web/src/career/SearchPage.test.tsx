@@ -294,7 +294,7 @@ test('importing a result row opens the existing fixed evidence page without auto
   const { container } = await mountSearch({
     open: async () => view(2),
     searchOnce: async (input: SearchCall) => ({ ...completedReceipt, requestId: input.requestId }),
-    importUrl: async (input: { requestId: string; url: string }) => { imports.push(input); return importReceipt },
+    importUrl: async (input: { requestId: string; url: string }) => { imports.push(input); return { ...importReceipt, requestId: input.requestId } },
   })
   await submitQuery(container, '上海 前端 实习')
   assert.equal(imports.length, 0)
@@ -303,6 +303,27 @@ test('importing a result row opens the existing fixed evidence page without auto
   assert.equal(imports[0]?.url, 'https://jobs.example.test/1')
   const evidence = byLabel(container, 'a', '查看岗位证据') as HTMLAnchorElement
   assert.equal(evidence.getAttribute('href'), '/platform/career/opportunities/opp-9?snapshotId=snap%20%3F9')
+})
+
+test('a mismatched URL import receipt is rejected visibly and cannot create an evidence link', async () => {
+  const imports: Array<{ requestId: string; url: string }> = []
+  const { container } = await mountSearch({
+    open: async () => view(2),
+    searchOnce: async (input: SearchCall) => ({ ...completedReceipt, requestId: input.requestId }),
+    importUrl: async (input: { requestId: string; url: string }) => {
+      imports.push(input)
+      return { ...importReceipt, requestId: 'alien-request' }
+    },
+  })
+  await submitQuery(container, '上海 前端 实习')
+  await act(async () => { byLabel(container, 'button', '导入为岗位证据').click(); await settle() })
+
+  assert.equal(imports.length, 1)
+  const resultRow = container.querySelector('[aria-label="找岗结果"] li')!
+  assert.match(resultRow.querySelector('[role="alert"]')?.textContent ?? '', /请求编号与本次导入不匹配/)
+  assert.equal(container.querySelector('a[href^="/platform/career/opportunities/"]'), null)
+  assert.equal(container.querySelector('[role="status"]'), null)
+  assert.equal(byLabelOrNull(container, 'button', '用原请求编号重试导入'), undefined)
 })
 
 test('offers no continuous-search control of any kind', async () => {
@@ -396,7 +417,7 @@ test('an uncertain result-row import keeps one request ID per row and retries un
     importUrl: async (input: { requestId: string; url: string }) => {
       imports.push(input)
       if (failOnce) { failOnce = false; throw new TypeError('fetch dropped') }
-      return importReceipt
+      return { ...importReceipt, requestId: input.requestId }
     },
   })
   await submitQuery(container, '上海 前端 实习')
