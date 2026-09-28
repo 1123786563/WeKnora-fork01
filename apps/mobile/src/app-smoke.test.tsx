@@ -21,11 +21,11 @@ const moduleWithHooks = nodeModule as typeof nodeModule & {
 
 const NATIVE_MODULE_STUBS: Record<string, string> = {
   'expo-linking': 'module.exports = { useLinkingURL() { return null; } }',
-  'expo-router': "module.exports = { Stack: function Stack() { return null; }, router: { replace() {}, push() {} }, useLocalSearchParams() { return {}; } }",
+  'expo-router': "const focusEffects = []; module.exports = { Stack: function Stack() { return null; }, router: { replace() {}, push() {} }, useLocalSearchParams() { return {}; }, useFocusEffect(effect) { focusEffects.push(effect); }, __focusEffects: focusEffects }",
   'expo-secure-store': "module.exports = { getItemAsync: async () => null, setItemAsync: async () => {}, deleteItemAsync: async () => {} }",
   'expo-web-browser': "module.exports = { openAuthSessionAsync: async () => ({ type: 'dismiss' }) }",
   'react-native': "module.exports = { View: 'View', Text: 'Text', TextInput: 'TextInput', Button: 'Button', ScrollView: 'ScrollView', Image: 'Image', Switch: 'Switch' }",
-  react: "let values = []; let cursor = 0; let pendingEffects = []; let effectCleanups = []; module.exports = { __beginRender() { cursor = 0; }, __reset() { values = []; cursor = 0; pendingEffects = []; effectCleanups = []; }, useState(initial) { const index = cursor++; if (!(index in values)) values[index] = initial; return [values[index], (next) => { values[index] = typeof next === 'function' ? next(values[index]) : next; }]; }, useRef(value) { const index = cursor++; if (!(index in values)) values[index] = { current: value }; return values[index]; }, useEffect(setup) { pendingEffects.push(setup); }, __mount() { for (const setup of pendingEffects.splice(0)) effectCleanups.push(setup()); }, __unmount() { for (const cleanup of effectCleanups.splice(0)) { if (typeof cleanup === 'function') cleanup(); } }, useSyncExternalStore(_subscribe, getSnapshot) { return getSnapshot(); }, createElement(type, props, ...children) { return { type, props: { ...(props || {}), ...(children.length === 0 ? {} : { children: children.length === 1 ? children[0] : children }) } }; } };",
+  react: "let values = []; let cursor = 0; let pendingEffects = []; let effectCleanups = []; module.exports = { __beginRender() { cursor = 0; }, __reset() { values = []; cursor = 0; pendingEffects = []; effectCleanups = []; }, __values() { return values; }, __snapshot() { return { values: [...values], cursor, pendingEffects: [...pendingEffects], effectCleanups: [...effectCleanups] }; }, __restore(snapshot) { values = [...snapshot.values]; cursor = snapshot.cursor; pendingEffects = [...snapshot.pendingEffects]; effectCleanups = [...snapshot.effectCleanups]; }, useState(initial) { const index = cursor++; if (!(index in values)) values[index] = initial; return [values[index], (next) => { values[index] = typeof next === 'function' ? next(values[index]) : next; }]; }, useRef(value) { const index = cursor++; if (!(index in values)) values[index] = { current: value }; return values[index]; }, useEffect(setup) { pendingEffects.push(setup); }, useCallback(callback) { cursor++; return callback; }, __mount() { for (const setup of pendingEffects.splice(0)) effectCleanups.push(setup()); }, __unmount() { for (const cleanup of effectCleanups.splice(0)) { if (typeof cleanup === 'function') cleanup(); } }, useSyncExternalStore(_subscribe, getSnapshot) { return getSnapshot(); }, createElement(type, props, ...children) { return { type, props: { ...(props || {}), ...(children.length === 0 ? {} : { children: children.length === 1 ? children[0] : children }) } }; } };",
 };
 const stubDir = mkdtempSync(join(tmpdir(), 'weknora-mobile-stub-'));
 const stubPath = (name: string): string => join(stubDir, `${name.replaceAll('/', '+')}.cjs`);
@@ -50,8 +50,8 @@ const workspaceRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..
 const require = createRequire(import.meta.url);
 (globalThis as typeof globalThis & { React?: unknown }).React = require('react');
 
-function hooks(): { __beginRender(): void; __reset(): void; __mount(): void; __unmount(): void } {
-  return require('react') as { __beginRender(): void; __reset(): void; __mount(): void; __unmount(): void };
+function hooks(): { __beginRender(): void; __reset(): void; __mount(): void; __unmount(): void; __values(): unknown[]; __snapshot(): any; __restore(snapshot: any): void } {
+  return require('react') as { __beginRender(): void; __reset(): void; __mount(): void; __unmount(): void; __values(): unknown[]; __snapshot(): any; __restore(snapshot: any): void };
 }
 
 function render(component: (props: any) => unknown, props: any): unknown {
@@ -855,6 +855,105 @@ test('a route re-entry gets a new generation so stale A reads and recoveries can
   currentSuccess.resolve(currentDeliveredA);
   await currentPending;
   assert.deepEqual(receipts.slice(), [currentDeliveredA], 'the current A entry can still update its receipt');
+});
+
+test('the mounted detail route invalidates deferred work across focus blur and refocus with unchanged A params', async () => {
+  const { TaskDetailRouteLifecycle, createRouteBoundDeliveryReadHandler, createRouteBoundDeliveryRecoveryHandler } = await import('./app/tasks/detail.tsx');
+  type Identity = { taskId: string; runId: string };
+  type Entry = { identity: Identity; generation: number };
+  type Receipt = import('@weknora/mobile-core').DeliveryReceiptView;
+  type FocusEffect = () => void | (() => void);
+  const expoRouter = require('expo-router') as { __focusEffects: FocusEffect[] };
+  const a: Identity = { taskId: 'task-a', runId: 'run-a' };
+  const b: Identity = { taskId: 'task-b', runId: 'run-b' };
+  const receiptA: Receipt = {
+    deliveryId: 'dlv-a', taskId: a.taskId, runId: a.runId, state: 'pushed', repo: 'octocat/hello',
+    branch: 'weknora/task/a', baselineSha: 'a'.repeat(40), attention: true, updatedAt: '2026-09-24T00:00:30Z',
+  };
+  const deliveredA: Receipt = { ...receiptA, state: 'delivered' };
+  function deferred<T>() {
+    let resolve!: (value: T) => void;
+    let reject!: (error: unknown) => void;
+    const promise = new Promise<T>((resolvePromise, rejectPromise) => { resolve = resolvePromise; reject = rejectPromise; });
+    return { promise, resolve, reject };
+  }
+  function routeEntryRef(): { current: Entry } {
+    const found = hooks().__values().find((value) => typeof value === 'object' && value !== null
+      && 'current' in value && typeof (value as { current?: unknown }).current === 'object'
+      && (value as { current: Record<string, unknown> }).current !== null
+      && 'identity' in (value as { current: Record<string, unknown> }).current
+      && 'generation' in (value as { current: Record<string, unknown> }).current);
+    assert.ok(found, 'the real lifecycle owns its route-entry ref');
+    return found as { current: Entry };
+  }
+
+  hooks().__reset();
+  expoRouter.__focusEffects.length = 0;
+  render(TaskDetailRouteLifecycle, { ...a });
+  const aFocus = expoRouter.__focusEffects.at(-1);
+  assert.ok(aFocus, 'TaskDetailRouteLifecycle registers the public useFocusEffect callback');
+  const blurA = aFocus!();
+  assert.equal(typeof blurA, 'function', 'the focused A entry registers a blur invalidation cleanup');
+  const firstA = { ...routeEntryRef().current };
+
+  const reads: Receipt[] = [];
+  const recoveries: Receipt[] = [];
+  const errors: Array<string | undefined> = [];
+  const oldRead = deferred<Receipt>();
+  const applyOldRead = createRouteBoundDeliveryReadHandler({ entry: firstA, currentEntry: () => routeEntryRef().current, setDelivery: (receipt) => { reads.push(receipt); } });
+  const readPending = oldRead.promise.then(applyOldRead);
+  const oldSuccess = deferred<Receipt>();
+  const oldSuccessHandler = createRouteBoundDeliveryRecoveryHandler({
+    entry: firstA, receipt: receiptA, currentEntry: () => routeEntryRef().current, recover: () => oldSuccess.promise,
+    setDelivery: (receipt) => { recoveries.push(receipt); }, setRecoveryError: (error) => { errors.push(error); }, errorCopy: String,
+  });
+  const oldSuccessPending = oldSuccessHandler({ runId: a.runId, deliveryId: receiptA.deliveryId });
+  const oldFailure = deferred<Receipt>();
+  const oldFailureHandler = createRouteBoundDeliveryRecoveryHandler({
+    entry: firstA, receipt: receiptA, currentEntry: () => routeEntryRef().current, recover: () => oldFailure.promise,
+    setDelivery: (receipt) => { recoveries.push(receipt); }, setRecoveryError: (error) => { errors.push(error); }, errorCopy: String,
+  });
+  const oldFailurePending = oldFailureHandler({ runId: a.runId, deliveryId: receiptA.deliveryId });
+
+  // Save A's mounted hook state, then render/focus/blur B as the route pushed over it.
+  const retainedA = hooks().__snapshot();
+  (blurA as () => void)();
+  hooks().__reset();
+  expoRouter.__focusEffects.length = 0;
+  render(TaskDetailRouteLifecycle, { ...b });
+  const bFocus = expoRouter.__focusEffects.at(-1);
+  assert.ok(bFocus, 'the pushed B route also registers its focus callback');
+  const blurB = bFocus!();
+  assert.equal(typeof blurB, 'function');
+  (blurB as () => void)();
+
+  // Restore the retained A instance and invoke its registered focus callback with identical params.
+  hooks().__restore(retainedA);
+  const aRefocusCleanup = aFocus!();
+  const currentA = { ...routeEntryRef().current };
+  assert.deepEqual(currentA.identity, a, 'the retained instance keeps the same taskId/runId');
+  assert.notEqual(currentA.generation, firstA.generation, 'focus creates a fresh route entry without a prop change');
+  errors.splice(0, errors.length, 'new focused A error');
+  oldRead.resolve(receiptA);
+  oldSuccess.resolve(deliveredA);
+  oldFailure.reject(new Error('old focused A failure'));
+  await readPending;
+  await oldSuccessPending;
+  await assert.rejects(oldFailurePending, /old focused A failure/);
+  assert.deepEqual(reads.slice(), [], 'old A read does not populate the refocused A entry');
+  assert.deepEqual(recoveries.slice(), [], 'old A recovery success does not replace the refocused A receipt');
+  assert.deepEqual(errors.slice(), ['new focused A error'], 'old A error does not overwrite the refocused A error');
+
+  const newRecovery = deferred<Receipt>();
+  const newHandler = createRouteBoundDeliveryRecoveryHandler({
+    entry: currentA, receipt: receiptA, currentEntry: () => routeEntryRef().current, recover: () => newRecovery.promise,
+    setDelivery: (receipt) => { recoveries.push(receipt); }, setRecoveryError: (error) => { errors.push(error); }, errorCopy: String,
+  });
+  const newPending = newHandler({ runId: a.runId, deliveryId: receiptA.deliveryId });
+  newRecovery.resolve(deliveredA);
+  await newPending;
+  assert.deepEqual(recoveries.slice(), [deliveredA], 'new focused A recovery still updates normally');
+  (aRefocusCleanup as () => void)();
 });
 
 test('RuntimeSurface passes other registered deployments to the home screen and the full list to login', async () => {

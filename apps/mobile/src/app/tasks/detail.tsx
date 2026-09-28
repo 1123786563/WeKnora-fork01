@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { router, useLocalSearchParams } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { DeliveryRecoveryError, TaskOfficeError, type DeliveryReceiptView } from '@weknora/mobile-core';
 import { activeDeliveryReader, activeDeliveryRecovery, activeTaskOffice } from '../../composition.ts';
 import { createTaskDetailController, TASK_OFFICE_ERROR_COPY, type TaskDetailController, type TaskDetailViewState } from '../../task-detail-view.ts';
@@ -90,24 +90,37 @@ export function TaskDetailRouteLifecycle({ taskId, runId, onOpenMaterials, onOpe
   }
   const routeEntry = routeEntryRef.current;
   const controllerRef = useRef<TaskDetailController | undefined>(undefined);
-  // 交付回执读一次（不阻塞详情渲染；失败静默——交付区块缺失是合法空态）。
-  // 刷新路径 onRefresh 不拉交付：回执不因刷新而变，重进页面即重读。
-  useEffect(() => {
+  // Stack may retain this route while another screen is pushed. Every focus gets
+  // a distinct entry; blur invalidates it synchronously before stale promises settle.
+  const onFocus = useCallback(() => {
+    const focusedIdentity: DeliveryRouteIdentity = { taskId, runId };
+    const focusedEntry: DeliveryRouteEntry = {
+      identity: focusedIdentity,
+      generation: routeEntryRef.current.generation + 1,
+    };
+    routeEntryRef.current = focusedEntry;
     setDeliveryState(undefined);
     setRecoveryErrorState(undefined);
-    const reader = activeDeliveryReader();
-    if (reader === undefined) return;
     let cancelled = false;
-    const applyRead = createRouteBoundDeliveryReadHandler({
-      entry: routeEntry,
-      currentEntry: () => routeEntryRef.current,
-      setDelivery: (receipt) => setDeliveryState({ entry: routeEntry, receipt }),
-    });
-    reader.read(runId)
-      .then((receipt) => { if (!cancelled) applyRead(receipt); })
-      .catch(() => { /* 交付区块缺失是合法空态（无交付/未登录），不阻塞详情 */ });
-    return () => { cancelled = true; };
+    const reader = activeDeliveryReader();
+    if (reader !== undefined) {
+      const applyRead = createRouteBoundDeliveryReadHandler({
+        entry: focusedEntry,
+        currentEntry: () => routeEntryRef.current,
+        setDelivery: (receipt) => setDeliveryState({ entry: focusedEntry, receipt }),
+      });
+      reader.read(runId)
+        .then((receipt) => { if (!cancelled) applyRead(receipt); })
+        .catch(() => { /* 交付区块缺失是合法空态（无交付/未登录），不阻塞详情 */ });
+    }
+    return () => {
+      cancelled = true;
+      if (sameDeliveryRouteEntry(routeEntryRef.current, focusedEntry)) {
+        routeEntryRef.current = { identity: focusedIdentity, generation: focusedEntry.generation + 1 };
+      }
+    };
   }, [taskId, runId]);
+  useFocusEffect(onFocus);
   useEffect(() => {
     let controller: TaskDetailController | undefined;
     try {
