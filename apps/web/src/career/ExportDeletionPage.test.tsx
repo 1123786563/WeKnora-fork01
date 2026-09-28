@@ -358,3 +358,58 @@ test('mismatched deletion receipt lookup is deterministic and clears the recover
  assert.equal([...container.querySelectorAll('button')].some((button) => button.textContent?.trim() === '查询删除回执'), false)
  assert.equal([...container.querySelectorAll('button')].some((button) => button.textContent?.trim() === '用原请求编号重试'), false)
 })
+
+test('a mismatched lookup after deleting keeps the original request quarantined for requery', async () => {
+ const ids: string[] = []
+ let lookup = 0
+ const career: CareerStub = {
+  open: async () => ({ revision: 4 }),
+  careerDeletionBoundary: async () => boundaryView(),
+  deleteCareer: async (input: Record<string, unknown>) => { ids.push(input.requestId as string); return deletionReceipt({ requestId: input.requestId as string, status: 'deleting', completedAt: undefined, steps: deletionSteps().map((step) => ({ ...step, status: 'pending' as const })) }) },
+  careerDeletionReceipt: async (requestId: string) => {
+   ids.push(requestId)
+   if (++lookup === 1) return deletionReceipt({ requestId: 'alien-delete-request' })
+   return deletionReceipt({ requestId })
+  },
+ }
+ const { container } = await mountLifecycle(career)
+ await act(async () => { click(byLabel(container, 'button', '查看删除边界')); await settle(); await settle() })
+ await act(async () => { toggle(container.querySelector<HTMLInputElement>('input[type="checkbox"]')!); await settle() })
+ await act(async () => { click(byLabel(container, 'button', '发起完整删除')); await settle(); await settle() })
+ const originalId = ids[0]
+ assert.ok(originalId)
+ await act(async () => { click(byLabel(container, 'button', '查询删除回执')); await settle(); await settle() })
+ assert.match(container.textContent ?? '', /删除回执与本次请求不匹配/)
+ assert.equal(byLabel(container, 'button', '发起完整删除').hasAttribute('disabled'), true, 'mismatch cannot unlock a new deletion')
+ assert.ok(container.querySelector('[aria-label="恢复删除写入"]'), 'original attempt remains available only for reconciliation')
+ await act(async () => { click(byLabel(container, 'button', '查询删除回执')); await settle(); await settle() })
+ assert.deepEqual(ids, [originalId, originalId, originalId], 'the write and every lookup use the quarantined original ID')
+ assert.match(container.textContent ?? '', /已完全删除/)
+})
+
+test('a late automatic same-scope revision read cannot overwrite recovery or the next export revision', async () => {
+ let resolveInitialNewScope!: (value: { revision: number }) => void
+ let opened = 0
+ const exports: Array<Record<string, unknown>> = []
+ const career: CareerStub = {
+  open: async () => {
+   opened++
+   if (opened === 1) return { revision: 4 }
+   if (opened === 2) return await new Promise((resolve) => { resolveInitialNewScope = resolve })
+   return { revision: 9 }
+  },
+  careerDeletionBoundary: async () => boundaryView(),
+  exportCareer: async (input: Record<string, unknown>) => { exports.push(input); return exportReceipt({ requestId: input.requestId as string }) },
+ }
+ const scopeController = createScopeController({ origin: 'https://weknora.test', userId: 'owner-1', tenantId: 't' })
+ const container = render(React.createElement(ExportDeletionPage, { client: { career } as unknown as WeKnoraClient, scopeController }))
+ await act(async () => { await settle(); await settle() })
+ await act(async () => { scopeController.switchScope('https://weknora.test', 'owner-2', 'tenant-2'); await settle() })
+ await act(async () => { click(byLabel(container, 'button', '重新加载当前空间')); await settle(); await settle() })
+ assert.match(container.textContent ?? '', /当前档案修订 9/)
+ await act(async () => { resolveInitialNewScope({ revision: 8 }); await settle(); await settle() })
+ assert.match(container.textContent ?? '', /当前档案修订 9/, 'late older same-scope read is ignored')
+ await act(async () => { click(byLabel(container, 'button', '发起导出')); await settle(); await settle() })
+ assert.equal(exports.length, 1)
+ assert.equal(exports[0]?.expectedRevision, 9, 'export uses the recovered revision')
+})

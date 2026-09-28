@@ -65,11 +65,13 @@ export function ExportDeletionPage({ client, scopeController, onCareerDeleted }:
  const [deletionConflict, setDeletionConflict] = useState<number>()
  const [verifyMessage, setVerifyMessage] = useState('')
  const lastExportRequest = useRef<string | undefined>(undefined)
+ const revisionReadSequence = useRef(0)
  const exportInFlight = useRef(false)
  const deletionInFlight = useRef(false)
  const deletedAnnounced = useRef(false)
 
  const clearPrivate = useCallback((notice: string, nextState: 'forbidden' | 'scope-changed' = 'forbidden') => {
+  revisionReadSequence.current++
   setRevision(undefined); setRevisionState('loading'); setVerifyMessage('')
   setExported(undefined); setExportAttempt(undefined); setExportPhase('idle'); setExportMessage(''); setExportConflict(undefined)
   setBoundary(undefined); setBoundaryState(nextState); setBoundaryMessage(notice); setAcknowledged(false)
@@ -85,14 +87,15 @@ export function ExportDeletionPage({ client, scopeController, onCareerDeleted }:
  }, [clearPrivate, scopeController, scope.scope.generation])
 
  const readRevision = useCallback(async (): Promise<void> => {
+  const operation = ++revisionReadSequence.current
   const requestScope = scopeController.current()
   setRevisionState('loading')
   try {
    const view = await client.career.open(requestScope.signal)
-   if (!scopeController.isCurrent(requestScope.scope)) return
+   if (!scopeController.isCurrent(requestScope.scope) || operation !== revisionReadSequence.current) return
    setRevision(view.revision); setRevisionState('ready')
   } catch {
-   if (!scopeController.isCurrent(requestScope.scope)) return
+   if (!scopeController.isCurrent(requestScope.scope) || operation !== revisionReadSequence.current) return
    setRevision(undefined); setRevisionState('error')
   }
  }, [client, scopeController, scope.scope.generation])
@@ -211,6 +214,7 @@ export function ExportDeletionPage({ client, scopeController, onCareerDeleted }:
 
  const recoverCurrentScope = async (): Promise<void> => {
   if (scopeRecoveryLoading) return
+  const operation = ++revisionReadSequence.current
   const requestScope = scopeController.current()
   setScopeRecoveryLoading(true)
   setBoundaryMessage('正在重新读取当前空间的档案修订与删除边界…')
@@ -219,18 +223,18 @@ export function ExportDeletionPage({ client, scopeController, onCareerDeleted }:
     client.career.open(requestScope.signal),
     client.career.careerDeletionBoundary(requestScope.signal),
    ])
-   if (!scopeController.isCurrent(requestScope.scope)) return
+   if (!scopeController.isCurrent(requestScope.scope) || operation !== revisionReadSequence.current) return
    setRevision(view.revision); setRevisionState('ready')
    setBoundary(nextBoundary); setBoundaryState('ready'); setBoundaryMessage('')
   } catch (cause) {
-   if (!scopeController.isCurrent(requestScope.scope)) return
+   if (!scopeController.isCurrent(requestScope.scope) || operation !== revisionReadSequence.current) return
    const parsed = errorDetails(cause)
    if (parsed.code === 'forbidden') { clearPrivate('当前空间不可访问导出与删除。'); return }
    setRevision(undefined); setRevisionState('error')
    setBoundary(undefined); setBoundaryState('scope-changed')
    setBoundaryMessage('当前空间信息暂时无法完整读取。导出与删除仍不可用，可重试重新加载。')
   } finally {
-   setScopeRecoveryLoading(false)
+   if (scopeController.isCurrent(requestScope.scope) && operation === revisionReadSequence.current) setScopeRecoveryLoading(false)
   }
  }
 
@@ -283,7 +287,13 @@ export function ExportDeletionPage({ client, scopeController, onCareerDeleted }:
     setDeletionMessage(parsed.code === 'idempotency_conflict' ? '请求编号已对应其他内容，服务器拒绝了本次删除。请重新发起删除（将使用新请求编号）。' : `删除未被接受：${parsed.message}`)
     return
    }
-   if (cause instanceof ReceiptMismatchError) { setDeletionAttempt(undefined); setDeletionPhase('error'); setDeletionMessage(`删除未完成：${cause.message}`); return }
+   if (cause instanceof ReceiptMismatchError) {
+    // Once the server has confirmed deletion is in progress, retain the trusted
+    // request ID in a quarantined state. Only re-querying that ID can resolve it;
+    // a receipt carrying a different ID is never accepted and cannot unlock a new delete.
+    if (deletion?.status !== 'deleting') setDeletionAttempt(undefined)
+    setDeletionPhase('error'); setDeletionMessage(`删除未完成：${cause.message}`); return
+   }
    if (!isUncertainWrite(cause)) { setDeletionAttempt(undefined); setDeletionPhase('error'); setDeletionMessage(`删除未完成：${parsed.message}`); return }
    setDeletionPhase('unknown')
    setDeletionMessage(`暂时无法确认删除是否完成（原请求编号 ${current.requestId}）。请先用原请求编号查询回执，或用同一编号重试；不会自动更换请求编号。`)
@@ -303,7 +313,10 @@ export function ExportDeletionPage({ client, scopeController, onCareerDeleted }:
    if (!scopeController.isCurrent(requestScope.scope)) return
    const parsed = errorDetails(cause)
    if (parsed.code === 'forbidden') { clearPrivate('当前空间不可访问导出与删除。'); return }
-   if (cause instanceof ReceiptMismatchError) { setDeletionAttempt(undefined); setDeletionPhase('error'); setDeletionMessage(`删除未完成：${cause.message}`); return }
+   if (cause instanceof ReceiptMismatchError) {
+    if (deletion?.status !== 'deleting') setDeletionAttempt(undefined)
+    setDeletionPhase('error'); setDeletionMessage(`删除未完成：${cause.message}`); return
+   }
    setDeletionPhase('unknown')
    setDeletionMessage(parsed.code === 'not_found' ? `尚未找到删除回执（原请求编号 ${current.requestId}）。可以继续查询，或使用原请求编号重试。` : '删除回执暂时无法读取。原请求编号已保留，可稍后重试查询。')
   }
