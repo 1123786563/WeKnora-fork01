@@ -35,13 +35,20 @@ const (
 const AgentUpgradeSystemResolvedBy = "system:adoption-advanced"
 
 type AgentUpgradeService struct {
-	repo repository.AgentUpgradeRepository
+	repo                repository.AgentUpgradeRepository
+	releaseSecurityGate ReleaseSecurityGate
 }
 
 var _ interfaces.AgentUpgradeService = (*AgentUpgradeService)(nil)
 
 func NewAgentUpgradeService(repo repository.AgentUpgradeRepository) *AgentUpgradeService {
 	return &AgentUpgradeService{repo: repo}
+}
+
+// SetReleaseSecurityGate installs the optional security admission check used
+// before an upgrade proposal can create a local variant.
+func (s *AgentUpgradeService) SetReleaseSecurityGate(gate ReleaseSecurityGate) {
+	s.releaseSecurityGate = gate
 }
 
 func (s *AgentUpgradeService) ListUpgradeProposals(ctx context.Context, tenantID uint64) ([]interfaces.UpgradeProposalView, error) {
@@ -123,6 +130,11 @@ func (s *AgentUpgradeService) AcceptUpgradeProposal(ctx context.Context, tenantI
 	if toRelease == nil || toRelease.ListingID != row.ListingID {
 		return interfaces.AdoptionVariantView{}, interfaces.UpgradeProposalView{},
 			fmt.Errorf("%w: proposed release does not belong to the listing", ErrAgentUpgradeInvalidInput)
+	}
+	if s.releaseSecurityGate != nil {
+		if err := s.releaseSecurityGate.ReleaseAdmission(ctx, tenantID, row.ToReleaseID); err != nil {
+			return interfaces.AdoptionVariantView{}, interfaces.UpgradeProposalView{}, err
+		}
 	}
 	if toRelease.DeprecatedAt != nil {
 		return interfaces.AdoptionVariantView{}, interfaces.UpgradeProposalView{}, fmt.Errorf("%w: %w: release %s is deprecated; successor: %s", ErrAgentReleaseDeprecated, ErrAgentUpgradeStateConflict, toRelease.ID, successorHint(toRelease.SuccessorReleaseID))

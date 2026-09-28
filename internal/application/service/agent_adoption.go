@@ -46,16 +46,23 @@ type AdoptionAgentSource interface {
 }
 
 type AgentAdoptionService struct {
-	repo     repository.AgentAdoptionRepository
-	agents   AdoptionAgentSource
-	versions interfaces.AgentVersionService
-	now      func() time.Time
+	repo                repository.AgentAdoptionRepository
+	agents              AdoptionAgentSource
+	versions            interfaces.AgentVersionService
+	releaseSecurityGate ReleaseSecurityGate
+	now                 func() time.Time
 }
 
 var _ interfaces.AgentAdoptionService = (*AgentAdoptionService)(nil)
 
 func NewAgentAdoptionService(repo repository.AgentAdoptionRepository, agents AdoptionAgentSource, versions interfaces.AgentVersionService) *AgentAdoptionService {
 	return &AgentAdoptionService{repo: repo, agents: agents, versions: versions, now: time.Now}
+}
+
+// SetReleaseSecurityGate installs the optional security admission check used
+// before a release is newly adopted or materialized as a local variant.
+func (s *AgentAdoptionService) SetReleaseSecurityGate(gate ReleaseSecurityGate) {
+	s.releaseSecurityGate = gate
 }
 
 func (s *AgentAdoptionService) Adopt(ctx context.Context, tenantID uint64, actorID string, input interfaces.AdoptInput) (interfaces.AdoptionView, bool, error) {
@@ -77,6 +84,11 @@ func (s *AgentAdoptionService) Adopt(ctx context.Context, tenantID uint64, actor
 	releaseID := input.ReleaseID
 	if releaseID == "" {
 		releaseID = *listing.CurrentReleaseID
+	}
+	if s.releaseSecurityGate != nil {
+		if err := s.releaseSecurityGate.ReleaseAdmission(ctx, tenantID, releaseID); err != nil {
+			return interfaces.AdoptionView{}, false, err
+		}
 	}
 	release, err := s.repo.GetRelease(ctx, tenantID, releaseID)
 	if err != nil {
@@ -137,6 +149,11 @@ func (s *AgentAdoptionService) CreateVariant(ctx context.Context, tenantID uint6
 	releaseID := input.ReleaseID
 	if releaseID == "" {
 		releaseID = adoption.AcceptedReleaseID
+	}
+	if s.releaseSecurityGate != nil {
+		if err := s.releaseSecurityGate.ReleaseAdmission(ctx, tenantID, releaseID); err != nil {
+			return interfaces.AdoptionVariantView{}, err
+		}
 	}
 	release, err := s.repo.GetRelease(ctx, tenantID, releaseID)
 	if err != nil {
@@ -261,6 +278,11 @@ func (s *AgentAdoptionService) PublishVariant(ctx context.Context, tenantID uint
 	}
 	if variant == nil {
 		return interfaces.PublishVariantResult{}, ErrAgentAdoptionNotFound
+	}
+	if s.releaseSecurityGate != nil {
+		if err := s.releaseSecurityGate.ReleaseAdmission(ctx, tenantID, variant.ReleaseID); err != nil {
+			return interfaces.PublishVariantResult{}, err
+		}
 	}
 	if len(missing) > 0 {
 		return interfaces.PublishVariantResult{}, notRunnable(missing)
