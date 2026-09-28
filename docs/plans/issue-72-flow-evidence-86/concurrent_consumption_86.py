@@ -78,12 +78,10 @@ def capture_stdout(capture):
 
 
 def bounded_error(exc):
-    message = str(exc)
-    for secret in (os.environ.get("LAGO_API_KEY", ""),):
-        if secret:
-            message = message.replace(secret, "[REDACTED]")
-    message = message[:300]
-    return {"type": type(exc).__name__[:80], "message": message}
+    error = {"type": type(exc).__name__[:80], "message": "operation failed"}
+    if isinstance(exc, WalletHTTPError) and type(exc.http_status) is int:
+        error["http_status"] = exc.http_status
+    return error
 
 
 def _flush_facts_file(file_handle):

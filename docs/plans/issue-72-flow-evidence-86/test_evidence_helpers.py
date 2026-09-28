@@ -637,7 +637,51 @@ class EvidenceHelpersTest(unittest.TestCase):
     def test_runner_replay_request_failure_has_accurate_stage(self):
         self._run_failed_probe("replay-request-failure", checks_expected=0)
 
-    def _run_failed_probe(self, mode, checks_expected):
+    def test_concurrent_failure_paths_redact_arbitrary_exception_text(self):
+        markers = ("https://private.example/path", "X-Private-Header", "PRIVATE_BODY", "PRIVATE_CREDENTIAL")
+        for mode, stage in (("replay-request-failure", "duplicate_replay_request"),
+                            ("observer-failure", "duplicate_replay_observation")):
+            with self.subTest(mode=mode):
+                message = " ".join(markers) + " " + mode
+                stderr, facts = self._run_failed_probe(mode, checks_expected=0,
+                                                       error_message=message)
+                serialized = json.dumps(facts)
+                for marker in markers:
+                    self.assertNotIn(marker, stderr)
+                    self.assertNotIn(marker, serialized)
+                self.assertEqual(facts["verdict"], "FAIL")
+                self.assertEqual(facts["failed_stage"], stage)
+                self.assertEqual(facts["error"]["type"], "RuntimeError")
+                self.assertEqual(facts["error"]["message"], "operation failed")
+
+    def test_concurrent_secondary_artifact_failure_redacts_arbitrary_text(self):
+        marker = "PRIVATE_SECONDARY_ARTIFACT_FAILURE"
+        import io
+        stderr = io.StringIO()
+        with tempfile.TemporaryDirectory() as root:
+            out = Path(root) / "run"
+            with mock.patch.object(cc, "run_probe", side_effect=RuntimeError("primary failure")), \
+                 mock.patch.object(cc, "write_facts_atomic", side_effect=OSError(marker)), \
+                 mock.patch.object(sys, "stderr", stderr), \
+                 mock.patch.object(sys, "argv", ["runner", "--output-dir", str(out)]):
+                result = cc.main()
+        self.assertNotEqual(result, 0)
+        self.assertNotIn(marker, stderr.getvalue())
+
+    def test_concurrent_wallet_http_error_keeps_only_numeric_status(self):
+        with tempfile.TemporaryDirectory() as root:
+            out = Path(root) / "run"
+            with mock.patch.object(cc, "run_probe", side_effect=cc.WalletHTTPError(503)), \
+                 mock.patch.object(sys, "argv", ["runner", "--output-dir", str(out)]):
+                result = cc.main()
+            self.assertNotEqual(result, 0)
+            facts_text = (out / "facts.json").read_text()
+            facts = json.loads(facts_text)
+        self.assertEqual(facts["error"]["http_status"], 503)
+        self.assertEqual(facts["error"]["message"], "operation failed")
+        self.assertNotIn("HTTP 503", facts_text)
+
+    def _run_failed_probe(self, mode, checks_expected, error_message=None):
         with tempfile.TemporaryDirectory() as root:
             out = Path(root) / "run"
             responses = [(201, {"billable_metric": {"lago_id": "metric"}}),
@@ -657,7 +701,7 @@ class EvidenceHelpersTest(unittest.TestCase):
                     event_posts += 1
                     calls.append("event_replay" if event_posts == 6 else "event_post")
                     if mode == "replay-request-failure" and event_posts == 6:
-                        raise RuntimeError("unit-test-only replay failure")
+                        raise RuntimeError(error_message or "unit-test-only replay failure")
                     if event_posts == 6:
                         return 422, {"message": "sensitive response body"}
                 if not path.endswith("/events"):
@@ -681,8 +725,10 @@ class EvidenceHelpersTest(unittest.TestCase):
                 return {"wallet-a": 500, "wallet-b": 100} if mode == "rank-change" else {"wallet": 20}
             observer = mock.Mock(return_value=(True, {"wallet": 20}, 300.0))
             if mode == "observer-failure":
-                observer.side_effect = RuntimeError("unit-test-only observer failure")
+                observer.side_effect = RuntimeError(error_message or "unit-test-only observer failure")
             original_stdout = sys.stdout
+            import io
+            stderr = io.StringIO()
             def stop_before_checks(*args, **kwargs):
                 raise SystemExit("unit-test-only precheck")
             with mock.patch.object(cc, "call", side_effect=fake_call), \
@@ -693,6 +739,7 @@ class EvidenceHelpersTest(unittest.TestCase):
                  mock.patch.object(cc, "draw_order_ok", wraps=cc.draw_order_ok), \
                  mock.patch.object(cc, "replay_response_ok", return_value=False), \
                  mock.patch.object(cc.os, "replace", side_effect=track_facts_publish), \
+                 mock.patch.object(sys, "stderr", stderr), \
                  mock.patch.object(sys, "argv", ["runner", "--output-dir", str(out)]):
                 if mode == "precheck":
                     with mock.patch.object(cc, "run_probe", side_effect=SystemExit("unit-test-only precheck")):
@@ -728,6 +775,7 @@ class EvidenceHelpersTest(unittest.TestCase):
                     self.assertNotIn(os.environ["LAGO_API_KEY"], json.dumps(facts))
                 if mode == "replay-request-failure":
                     self.assertEqual(facts["failed_stage"], "duplicate_replay_request")
+            return stderr.getvalue(), facts
 
     def test_capture_stdout_restores_and_closes_when_body_raises(self):
         import io
