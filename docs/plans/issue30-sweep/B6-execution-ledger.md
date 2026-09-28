@@ -54,9 +54,27 @@ graph LR
 
 | Node | Status | Checkpoint / review |
 |---|---|---|
-| #55 T25 | ready | Plan `plans/plan-t55.md`; no execution checkpoint |
-| #63 T33 | ready | Plan `plans/plan-t63.md`; no execution checkpoint |
-| #64 T34 | ready | Plan `plans/plan-t64.md`; migration IDs amended in this planning branch; no execution checkpoint |
+| #55 T25 | running | T1 `3a0a7467b` approved; T2 initial `82505197e` had review findings, round1 fix `d83ff539b` had two follow-up findings, round2 `cecd8d5a9` Spec/Quality PASS; T3 `90580a2fa` had a medium assertion flaw, fixed `a2f7675a2` and PASS; T4 `a625ab308` PASS; T5 `a07ac18da` had medium revoked-lease error race, fixed `45c8531ff` and PASS; T7 `4c1ce1b81` had three medium findings, fixed `d4e6d6d2d` and PASS, real-provider path remains blocked-env. T6/T8 pending. |
+| #63 T33 | running / blocked downstream | T1 `4385f6d678` Review PASS with one low migration metadata/down/versioned verification gap deferred; T2 `a4ab413a3` Review found HIGH EndAdoption/CreateVariant race; dedicated repair plan `plans/plan-t63-task2-race-fix.md`, repair active. T64 T2 and #65 remain blocked until repair is reviewed/integrated. |
+| #64 T34 | running / waiting on #63 T2 | T1 `6db98f0f1` Spec/Quality PASS; low migration metadata/PG/down coverage limitation recorded. T2 must wait for stable reviewed #63 adoption repository interface; IDs are SQLite 000125/versioned 000204. |
+
+### Completed task review rulings
+
+- #55 Task 1 `3a0a7467b90036c0384a6fd149d8b491253422f6`: independent Spec/Quality review approved; no findings.
+- #63 Task 1 `4385f6d6787e2094a46fc0b83f71c9167e62544c`: independent Spec/Quality review passed. One minor gap: migration alignment test checks SQLite column names but not null/default/type, versioned application, or rollback. Reviewer found SQL itself matches the plan. Defer this coverage strengthening to final review; no production correctness issue was reported.
+- #55 Task 2 initial `82505197e150074b89447452a692252c3b3fd93c`: first run passed (no RED); initial Review found lost-PR-ack, remote-read/write evidence, route/auth claim and credential-surface gaps. Round1 repair `d83ff539b` was reviewed and found incomplete: unknown→resolve→dispatch lacked PR-only write proof, write counters covered only known paths, and credential response state checks could be vacuous. Round2 repair `cecd8d5a9d2b9d5515049290604857ea1a007b40` was independently PASS for spec and quality; full ingress write trace, resolve no-write, PR-only subsequent dispatch and response-state gating are now covered. Production router/auth remains explicitly outside this repository test fixture.
+- #55 Task 3 `90580a2fa`: Review found in-place map mutation invalidated the whitelist assertion; repair `a2f7675a213589b8b1694b26063cc63dda155076` independently PASS.
+- #55 Task 4 `a625ab30812268723092fbfc6749c01854021dcd`: independent Spec/Quality PASS; note 409 test models `body.code`, not separately top-level ApiError code; no production conversion exists and Task5 handles both.
+- #55 Task 5 `a07ac18da9c8432b6cd202c344c52a49f5ca1823`: Review found revoked lease followed by rejected read/write exposed stale backend/conflict errors. Round2 repair `45c8531ffe73c507aacbd9da67a272e1fb778255` independently PASS; deterministic tests cover read rejection and write 409 after revoke.
+- #55 Task 7 `4c1ce1b81`: Review found draft not asserted, unchanged SHA insufficient for zero writes, and README-only fixture could delete other baseline files. Repair `d4e6d6d2d` independently PASS; test is fail-closed on README-only tree, checks draft state twice and transport write counters. Real GitHub invocation is blocked-env and is not counted as live verification.
+- #63 Task 2 `a4ab413a3e40f3f2bee4309cebc9d6c33f7f8ac1`: independent Review FAIL with one HIGH concurrency flaw. Do not integrate or unblock T64 Task2/#65 until repair and review pass.
+- #64 Task 1 `6db98f0f1544dd4978e1657f98f5f692694365f1`: independent Spec/Quality PASS, low coverage gap only (SQLite column existence, no null/default/type, PostgreSQL execution or down test).
+
+### Parallel execution checkpoints
+
+- T55 independent streams use isolated worktrees: Task3 original and repair branches; Task4/T5 separately based on reviewed predecessor commits; Task7 original and repair branch; Task2 HTTP fixture remains in primary T55 worktree. No active streams share code files.
+- #63 Task2 review-fix owns adoption lifecycle repository/service and focused tests in the existing T63 worktree. T64 Task2 is paused because of shared adoption interface/state semantics.
+- #64 Task1 migration/entity/audit file set is disjoint from #63 Task2 lifecycle repository/service repair.
 
 ## Rulings
 
