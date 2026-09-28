@@ -37,6 +37,14 @@ func newAgentUpgradeServiceForTest(t *testing.T) (*AgentUpgradeService, *gorm.DB
 	return NewAgentUpgradeService(repository.NewAgentUpgradeRepository(db)), db
 }
 
+type transitionRejectingUpgradeRepository struct {
+	repository.AgentUpgradeRepository
+}
+
+func (r transitionRejectingUpgradeRepository) CreateVariant(context.Context, *types.AgentAdoptionVariantEntity) (*types.AgentAdoptionVariantEntity, error) {
+	return nil, repository.ErrAgentAdoptionTransition
+}
+
 // publishUpgradeServiceRelease publishes ONE release on the agent-a listing
 // through the real repository path (CreateSubmission + ReviewAndPublishTx —
 // the same shape seedAdoptionServiceRelease uses). The listing is
@@ -211,6 +219,21 @@ func TestAgentUpgradeServiceResolvesAndRefusesOutOfStateOperations(t *testing.T)
 		require.NotEqual(t, AgentUpgradeProposalStateOpen, row.State)
 	}
 	_, err = svc.DismissUpgradeProposal(ctx, 1, "admin", openID)
+	require.ErrorIs(t, err, ErrAgentUpgradeStateConflict)
+}
+
+func TestAgentUpgradeServiceMapsRepositoryParentStateConflict(t *testing.T) {
+	svc, db := newAgentUpgradeServiceForTest(t)
+	listingID, v1 := publishUpgradeServiceRelease(t, db, 1, "1.0.0", upgradeManifestV1, upgradeLockV1, upgradeBundleV1)
+	adoptUpgradeRelease(t, db, listingID, v1)
+	_, _ = publishUpgradeServiceRelease(t, db, 2, "1.1.0", upgradeManifestV2, upgradeLockV2, upgradeBundleV2)
+	proposals, err := svc.ListUpgradeProposals(context.Background(), 1)
+	require.NoError(t, err)
+	require.Len(t, proposals, 1)
+	svc = NewAgentUpgradeService(transitionRejectingUpgradeRepository{
+		AgentUpgradeRepository: repository.NewAgentUpgradeRepository(db),
+	})
+	_, _, err = svc.AcceptUpgradeProposal(context.Background(), 1, "admin", proposals[0].ID, interfaces.UpgradeVariantInput{Name: "stale upgrade"})
 	require.ErrorIs(t, err, ErrAgentUpgradeStateConflict)
 }
 

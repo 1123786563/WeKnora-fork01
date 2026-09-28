@@ -53,6 +53,14 @@ func newAgentAdoptionServiceForTest(t *testing.T) (*AgentAdoptionService, *gorm.
 	return svc, db, agents
 }
 
+type transitionRejectingAdoptionRepository struct {
+	repository.AgentAdoptionRepository
+}
+
+func (r transitionRejectingAdoptionRepository) CreateVariant(context.Context, *types.AgentAdoptionVariantEntity) (*types.AgentAdoptionVariantEntity, error) {
+	return nil, repository.ErrAgentAdoptionTransition
+}
+
 // seedAdoptionServiceRelease publishes a real Release whose Manifest
 // requires the capabilities "model" and "knowledge".
 func seedAdoptionServiceRelease(t *testing.T, db *gorm.DB) (listingID, releaseID string) {
@@ -198,6 +206,23 @@ func TestAgentAdoptionServiceRejectsUnknownAndDuplicateCapabilities(t *testing.T
 	require.NoError(t, err)
 	require.Equal(t, []string{"knowledge", "model"}, variant.MissingCapabilities, "an empty binding leaves the capability missing")
 	require.Equal(t, "draft", variant.State)
+}
+
+func TestAgentAdoptionServiceMapsRepositoryParentStateConflict(t *testing.T) {
+	db := openAgentVersionServiceTestDB(t)
+	listingID, releaseID := seedAdoptionServiceRelease(t, db)
+	baseRepo := repository.NewAgentAdoptionRepository(db)
+	adoption, _, err := baseRepo.AdoptListing(context.Background(), &types.AgentAdoptionEntity{
+		TenantID: 1, ListingID: listingID, AcceptedReleaseID: releaseID, State: "active", CreatedBy: "admin",
+	})
+	require.NoError(t, err)
+	svc := NewAgentAdoptionService(
+		transitionRejectingAdoptionRepository{AgentAdoptionRepository: baseRepo},
+		&fakeAdoptionAgentSource{db: db},
+		fakeAdoptionVersions{},
+	)
+	_, err = svc.CreateVariant(context.Background(), 1, "admin", adoption.ID, interfaces.VariantDraftInput{Name: "stale draft"})
+	require.ErrorIs(t, err, ErrAgentAdoptionStateConflict)
 }
 
 func TestAgentAdoptionServicePublishRefusesTamperedRelease(t *testing.T) {

@@ -144,6 +144,9 @@ func (s *AgentAdoptionService) CreateVariant(ctx context.Context, tenantID uint6
 		Name: input.Name, State: AgentVariantStateDraft, CreatedBy: actorID,
 	})
 	if err != nil {
+		if errors.Is(err, repository.ErrAgentAdoptionTransition) {
+			return interfaces.AdoptionVariantView{}, fmt.Errorf("%w: adoption state changed before variant creation", ErrAgentAdoptionStateConflict)
+		}
 		return interfaces.AdoptionVariantView{}, err
 	}
 	return s.variantView(ctx, tenantID, created)

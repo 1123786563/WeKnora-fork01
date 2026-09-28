@@ -5,9 +5,13 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"path/filepath"
 	"runtime"
+	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/golang-migrate/migrate/v4"
@@ -17,6 +21,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // openLifecycleMigrationDB applies the REAL sqlite migration stream so the
@@ -39,6 +44,236 @@ func openLifecycleMigrationDB(t *testing.T) *gorm.DB {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = sqlDB.Close() })
 	return db
+}
+
+type lifecycleLockTestContextKey struct{}
+
+type lifecycleCallbackBarrier struct {
+	reached     chan struct{}
+	release     chan struct{}
+	reachedOnce sync.Once
+	releaseOnce sync.Once
+}
+
+func newLifecycleCallbackBarrier() *lifecycleCallbackBarrier {
+	return &lifecycleCallbackBarrier{reached: make(chan struct{}), release: make(chan struct{})}
+}
+
+func (b *lifecycleCallbackBarrier) arrive(hold bool) {
+	b.reachedOnce.Do(func() { close(b.reached) })
+	if hold {
+		<-b.release
+	}
+}
+
+func (b *lifecycleCallbackBarrier) unblock() {
+	b.releaseOnce.Do(func() { close(b.release) })
+}
+
+func registerLifecycleGuardBarrier(t *testing.T, db *gorm.DB, operation string, afterWrite, hold bool) *lifecycleCallbackBarrier {
+	t.Helper()
+	barrier := newLifecycleCallbackBarrier()
+	name := "test:lifecycle-guard:" + operation + ":" + fmt.Sprintf("%p", barrier)
+	callback := func(tx *gorm.DB) {
+		if tx.Statement.Schema == nil || tx.Statement.Schema.Table != "agent_adoptions" || tx.Statement.Context.Value(lifecycleLockTestContextKey{}) != operation || !isLifecycleNoOpParentWrite(tx.Statement) {
+			return
+		}
+		barrier.arrive(hold)
+	}
+	var err error
+	if afterWrite {
+		err = db.Callback().Update().After("gorm:update").Before("gorm:after_update").Register(name, callback)
+		t.Cleanup(func() { _ = db.Callback().Update().Remove(name) })
+	} else {
+		err = db.Callback().Update().Before("gorm:update").Register(name, callback)
+		t.Cleanup(func() { _ = db.Callback().Update().Remove(name) })
+	}
+	require.NoError(t, err)
+	t.Cleanup(barrier.unblock)
+	return barrier
+}
+
+func isLifecycleNoOpParentWrite(statement *gorm.Statement) bool {
+	set, ok := statement.Dest.(map[string]any)
+	if !ok || len(set) != 1 {
+		return false
+	}
+	expression, ok := set["state"].(clause.Expr)
+	if !ok || strings.TrimSpace(strings.ToLower(expression.SQL)) != "state" {
+		return false
+	}
+	whereClause, ok := statement.Clauses["WHERE"].Expression.(clause.Where)
+	if !ok {
+		return false
+	}
+	columns := map[string]bool{}
+	for _, expression := range whereClause.Exprs {
+		if raw, ok := expression.(clause.Expr); ok {
+			normalized := strings.ToLower(strings.Join(strings.Fields(raw.SQL), " "))
+			if strings.Contains(normalized, "tenant_id = ?") && strings.Contains(normalized, "id = ?") && strings.Contains(normalized, "state = ?") {
+				return true
+			}
+		}
+		equality, ok := expression.(clause.Eq)
+		if !ok {
+			continue
+		}
+		column, ok := equality.Column.(clause.Column)
+		if ok {
+			columns[column.Name] = true
+		}
+	}
+	return columns["tenant_id"] && columns["id"] && columns["state"]
+}
+
+func waitForLifecycleBarrier(t *testing.T, barrier *lifecycleCallbackBarrier, completed <-chan error, operation string) {
+	t.Helper()
+	timer := time.NewTimer(4 * time.Second)
+	defer timer.Stop()
+	select {
+	case <-barrier.reached:
+	case err := <-completed:
+		t.Fatalf("%s completed before acquiring the guarded adoption write (err=%v)", operation, err)
+	case <-timer.C:
+		t.Fatalf("timed out waiting for %s guarded adoption write", operation)
+	}
+}
+
+func awaitLifecycleOperation(t *testing.T, completed <-chan error, operation string) error {
+	t.Helper()
+	timer := time.NewTimer(4 * time.Second)
+	defer timer.Stop()
+	select {
+	case err := <-completed:
+		return err
+	case <-timer.C:
+		t.Fatalf("timed out waiting for %s completion", operation)
+		return nil
+	}
+}
+
+func openLifecycleRaceDB(t *testing.T) *gorm.DB {
+	t.Helper()
+	db := openLifecycleMigrationDB(t)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	sqlDB.SetMaxOpenConns(4)
+	sqlDB.SetMaxIdleConns(4)
+	return db
+}
+
+func seedLifecycleRaceAdoption(t *testing.T, db *gorm.DB) {
+	t.Helper()
+	require.NoError(t, db.Create(&types.AgentMarketplaceListingEntity{TenantID: 1, ID: "race-listing", SourceAgentID: "race-agent", DisplayName: "Race", State: "listed"}).Error)
+	require.NoError(t, db.Create(&types.AgentAdoptionEntity{TenantID: 1, ID: "race-adoption", ListingID: "race-listing", AcceptedReleaseID: "race-release", State: "active"}).Error)
+}
+
+func TestSQLiteNoOpAdoptionGuardReportsMatchedRow(t *testing.T) {
+	db := openLifecycleRaceDB(t)
+	seedLifecycleRaceAdoption(t, db)
+	tx := db.Begin()
+	require.NoError(t, tx.Error)
+	defer tx.Rollback()
+	result := tx.Model(&types.AgentAdoptionEntity{}).
+		Where("tenant_id = ? AND id = ? AND state = ?", 1, "race-adoption", "active").
+		UpdateColumn("state", gorm.Expr("state"))
+	require.NoError(t, result.Error)
+	require.EqualValues(t, 1, result.RowsAffected, "sqlite must report the matched adoption row for a no-op UPDATE")
+}
+
+func TestEndAdoptionLockWinsAgainstCreateVariant(t *testing.T) {
+	db := openLifecycleRaceDB(t)
+	seedLifecycleRaceAdoption(t, db)
+	repo := NewAgentAdoptionRepository(db)
+	endBarrier := registerLifecycleGuardBarrier(t, db, "end", true, true)
+	createBarrier := registerLifecycleGuardBarrier(t, db, "create", false, false)
+	endDone := make(chan error, 1)
+	go func() {
+		_, err := repo.EndAdoption(context.WithValue(context.Background(), lifecycleLockTestContextKey{}, "end"), 1, "race-adoption", "active", "ended", map[string]any{"ended_by": "admin"})
+		endDone <- err
+	}()
+	waitForLifecycleBarrier(t, endBarrier, endDone, "EndAdoption")
+	createDone := make(chan error, 1)
+	go func() {
+		_, err := repo.CreateVariant(context.WithValue(context.Background(), lifecycleLockTestContextKey{}, "create"), &types.AgentAdoptionVariantEntity{
+			TenantID: 1, AdoptionID: "race-adoption", ReleaseID: "race-release", Name: "late draft", State: "draft",
+		})
+		createDone <- err
+	}()
+	waitForLifecycleBarrier(t, createBarrier, createDone, "CreateVariant")
+	// This callback returns before driver execution. The state and row-count
+	// assertions below prove fail-closed outcomes; this pre-write callback is
+	// not treated as a signal that SQLite has entered its busy wait.
+	select {
+	case err := <-createDone:
+		t.Fatalf("CreateVariant completed while EndAdoption held the parent lock: %v", err)
+	default:
+	}
+	endBarrier.unblock()
+	require.NoError(t, awaitLifecycleOperation(t, endDone, "EndAdoption"))
+	createBarrier.unblock()
+	require.ErrorIs(t, awaitLifecycleOperation(t, createDone, "CreateVariant"), ErrAgentAdoptionTransition)
+	var count int64
+	require.NoError(t, db.Model(&types.AgentAdoptionVariantEntity{}).Where("tenant_id = ? AND adoption_id = ?", 1, "race-adoption").Count(&count).Error)
+	require.Zero(t, count)
+}
+
+func TestCreateVariantLockWinsAgainstEndAdoption(t *testing.T) {
+	db := openLifecycleRaceDB(t)
+	seedLifecycleRaceAdoption(t, db)
+	repo := NewAgentAdoptionRepository(db)
+	createBarrier := registerLifecycleGuardBarrier(t, db, "create", true, true)
+	endBarrier := registerLifecycleGuardBarrier(t, db, "end", false, false)
+	createDone := make(chan error, 1)
+	go func() {
+		_, err := repo.CreateVariant(context.WithValue(context.Background(), lifecycleLockTestContextKey{}, "create"), &types.AgentAdoptionVariantEntity{
+			TenantID: 1, AdoptionID: "race-adoption", ReleaseID: "race-release", Name: "winning draft", State: "draft",
+		})
+		createDone <- err
+	}()
+	waitForLifecycleBarrier(t, createBarrier, createDone, "CreateVariant")
+	endDone := make(chan error, 1)
+	go func() {
+		_, err := repo.EndAdoption(context.WithValue(context.Background(), lifecycleLockTestContextKey{}, "end"), 1, "race-adoption", "active", "ended", map[string]any{"ended_by": "admin"})
+		endDone <- err
+	}()
+	waitForLifecycleBarrier(t, endBarrier, endDone, "EndAdoption")
+	// The callback signals before driver execution and returns immediately; the
+	// final state/precondition assertions below are the behavioral evidence.
+	select {
+	case err := <-endDone:
+		t.Fatalf("EndAdoption completed while CreateVariant held the parent lock: %v", err)
+	default:
+	}
+	createBarrier.unblock()
+	require.NoError(t, awaitLifecycleOperation(t, createDone, "CreateVariant"))
+	endBarrier.unblock()
+	require.ErrorIs(t, awaitLifecycleOperation(t, endDone, "EndAdoption"), ErrAgentAdoptionEndPrecondition)
+	var adoption types.AgentAdoptionEntity
+	require.NoError(t, db.Where("tenant_id = ? AND id = ?", 1, "race-adoption").First(&adoption).Error)
+	require.Equal(t, "active", adoption.State)
+	var count int64
+	require.NoError(t, db.Model(&types.AgentAdoptionVariantEntity{}).Where("tenant_id = ? AND adoption_id = ? AND state <> ?", 1, "race-adoption", "retired").Count(&count).Error)
+	require.EqualValues(t, 1, count)
+}
+
+func TestStaleAdoptionReadCannotCreateVariantAfterEnd(t *testing.T) {
+	db := openLifecycleRaceDB(t)
+	seedLifecycleRaceAdoption(t, db)
+	repo := NewAgentAdoptionRepository(db)
+	staleAdoption, err := repo.GetAdoption(context.Background(), 1, "race-adoption")
+	require.NoError(t, err)
+	require.NotNil(t, staleAdoption)
+	require.Equal(t, "active", staleAdoption.State)
+	_, err = repo.EndAdoption(context.Background(), 1, staleAdoption.ID, "active", "ended", map[string]any{"ended_by": "admin"})
+	require.NoError(t, err)
+	_, err = repo.CreateVariant(context.Background(), &types.AgentAdoptionVariantEntity{
+		TenantID: 1, AdoptionID: staleAdoption.ID, ReleaseID: staleAdoption.AcceptedReleaseID, Name: "stale draft", State: "draft",
+	})
+	require.ErrorIs(t, err, ErrAgentAdoptionTransition)
+	var count int64
+	require.NoError(t, db.Model(&types.AgentAdoptionVariantEntity{}).Where("tenant_id = ? AND adoption_id = ?", 1, staleAdoption.ID).Count(&count).Error)
+	require.Zero(t, count)
 }
 
 func TestEndAdoptionRequiresAllVariantsRetiredAndIsTransactional(t *testing.T) {

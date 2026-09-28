@@ -24,15 +24,8 @@ var (
 func (r *agentAdoptionRepository) EndAdoption(ctx context.Context, tenantID uint64, adoptionID string, expectedFrom, nextState string, updates map[string]any) (*types.AgentAdoptionEntity, error) {
 	var result types.AgentAdoptionEntity
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var adoption types.AgentAdoptionEntity
-		if err := tx.Where("tenant_id = ? AND id = ?", tenantID, adoptionID).First(&adoption).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return ErrAgentAdoptionNotFound
-			}
+		if err := guardAdoptionState(tx, tenantID, adoptionID, expectedFrom); err != nil {
 			return err
-		}
-		if adoption.State != expectedFrom {
-			return fmt.Errorf("%w: state is %q, expected %q", ErrAgentAdoptionTransition, adoption.State, expectedFrom)
 		}
 
 		var remaining int64
@@ -73,6 +66,33 @@ func (r *agentAdoptionRepository) EndAdoption(ctx context.Context, tenantID uint
 		return nil, err
 	}
 	return &result, nil
+}
+
+// guardAdoptionState is the shared lock-first write used by every operation
+// that can add a Variant or end its parent Adoption. The guarded no-op UPDATE
+// is deliberately the first SQL in the transaction: it locks the parent row
+// on PostgreSQL and obtains SQLite's writer reservation before either caller
+// reads child rows or inserts a child.
+func guardAdoptionState(tx *gorm.DB, tenantID uint64, adoptionID, expectedState string) error {
+	guard := tx.Model(&types.AgentAdoptionEntity{}).
+		Where("tenant_id = ? AND id = ? AND state = ?", tenantID, adoptionID, expectedState).
+		UpdateColumn("state", gorm.Expr("state"))
+	if guard.Error != nil {
+		return guard.Error
+	}
+	if guard.RowsAffected == 1 {
+		return nil
+	}
+
+	var current types.AgentAdoptionEntity
+	err := tx.Where("tenant_id = ? AND id = ?", tenantID, adoptionID).First(&current).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return ErrAgentAdoptionNotFound
+	}
+	if err != nil {
+		return err
+	}
+	return fmt.Errorf("%w: state is %q, expected %q", ErrAgentAdoptionTransition, current.State, expectedState)
 }
 
 // RetiredVariantAgentExists checks for retired ownership within one Tenant.
