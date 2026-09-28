@@ -1,6 +1,6 @@
 # Issue #140 Career 移植到当前 main 架构
 
-状态：待用户审阅。该设计承接已批准的产品规格 `docs/specs/2026-09-23-weknora-job-search-design.md`，只定义将其能力移植到当前 `main` 架构的技术边界，不改变产品行为。
+状态：已批准（用户于 2026-09-28 确认）。该设计承接已批准的产品规格 `docs/specs/2026-09-23-weknora-job-search-design.md`，只定义将其能力移植到当前 `main` 架构的技术边界，不改变产品行为。
 
 ## 目标
 
