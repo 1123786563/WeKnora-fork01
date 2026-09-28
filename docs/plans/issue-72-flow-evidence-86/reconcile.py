@@ -52,16 +52,6 @@ def lago_wallets(fetch_page=None):
     return read_wallet_pages(fetch_page or fetch)
 
 
-def unique_by_expiry(rows, label):
-    result = {}
-    for row in rows:
-        key = row.get("expires_at", row.get("expiration_at"))
-        if not key or key in result:
-            raise ValueError("%s has missing or duplicate expiry key" % label)
-        result[key] = row
-    return result
-
-
 def assert_no_terminated_residuals(wallets):
     if any(w.get("status") == "terminated" and _integer(w.get("balance_cents"), "wallet balance") != 0
            for w in wallets):
@@ -219,7 +209,7 @@ def reconcile_batches(page_batches, active_wallets):
         try:
             _period_end(period)
             if _integer(row.get("balance_micro"), "page balance") != 0:
-                errors.append("positive page-only monthly orphan")
+                errors.append("nonzero page-only monthly orphan")
         except (TypeError, ValueError):
             errors.append("monthly orphan is malformed")
 
@@ -277,10 +267,12 @@ def _emit_text(text, stream):
     """Best-effort text reporting; the artifact and return code are canonical."""
     try:
         print(text, file=stream, flush=True)
-    except (OSError, ValueError, UnicodeError):
+    except Exception:
         if stream is sys.stdout:
-            _isolate_failed_stdout(stream)
-        pass
+            try:
+                _isolate_failed_stdout(stream)
+            except Exception:
+                pass
 
 
 def _isolate_failed_stdout(stream):

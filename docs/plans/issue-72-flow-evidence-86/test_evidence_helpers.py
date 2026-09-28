@@ -674,12 +674,6 @@ class EvidenceHelpersTest(unittest.TestCase):
         self.assertFalse(cc.draw_order_ok(dict(a=100), dict(a=0), 101, {"a":("1","1","a")})[0])
         self.assertFalse(cc.draw_order_ok(dict(a=100), dict(a=0), 100, {"a":("","1","a")})[0])
 
-    def test_identity_map_rejects_duplicate_expiry_fallback(self):
-        with self.assertRaises(ValueError):
-            reconcile.unique_by_expiry([{"expiration_at":"x"},{"expiration_at":"x"}], "wallet")
-        with self.assertRaises(ValueError):
-            reconcile.unique_by_expiry([{"expires_at":"x"},{"expires_at":"x"}], "page batches")
-
     def test_terminated_residual_wallets_fail_closed(self):
         with self.assertRaises(ValueError):
             reconcile.assert_no_terminated_residuals([{"status":"terminated", "balance_cents":1}])
@@ -830,6 +824,14 @@ class ReconcileTask2Test(unittest.TestCase):
                 ok, errors = reconcile.reconcile_batches([dict(orphan, balance_micro=balance)], [])
                 self.assertFalse(ok)
                 self.assertTrue(errors)
+
+    def test_reconcile_labels_negative_monthly_orphan_as_nonzero(self):
+        orphan = self.monthly_page(period="2026-08", balance_micro=-1,
+                                   expires_at="2026-09-01T00:00:00Z")
+        ok, errors = reconcile.reconcile_batches([orphan], [])
+        self.assertFalse(ok)
+        self.assertIn("nonzero page-only monthly orphan", errors)
+        self.assertNotIn("positive page-only monthly orphan", errors)
 
     def test_integer_accepts_ascii_signed_decimal_strings_and_rejects_other_shapes(self):
         for value, expected in (("4000000", 4000000), (12, 12), ("-1", -1), (-1, -1)):
@@ -1091,6 +1093,43 @@ class ReconcileTask2Test(unittest.TestCase):
             self.assertEqual(final, stdout.artifact_at_failure)
             self.assertIn("RECONCILE PASS", final.decode())
             self.assertEqual(result, 0)
+
+    def test_published_pass_survives_stdout_attribute_and_isolation_errors(self):
+        with tempfile.TemporaryDirectory() as root:
+            out = Path(root) / "run"
+            account = Path(root) / "account.json"
+            account.write_text(json.dumps({"data": {"benefits": {"credits": {
+                "batches": [], "balance_micro": 0, "available_micro": 0,
+                "held_micro": 0, "refund_locked_micro": 0}}}}))
+            class NoWriteOrFlush:
+                pass
+
+            class WriteFailure:
+                def write(self, value):
+                    raise OSError("stdout write failed")
+
+            for index, (stream, isolate) in enumerate(((NoWriteOrFlush(), False), (WriteFailure(), True))):
+                out = Path(root) / ("run-%d" % index)
+                artifact_path = out / "reconcile-output.txt"
+                with self.subTest(isolation_failure=isolate), \
+                     mock.patch.dict(os.environ, {"WK_ACCOUNT_JSON": str(account)}), \
+                     mock.patch.object(reconcile, "lago_wallets", return_value=[]), \
+                     mock.patch.object(sys, "argv", ["runner", "--output-dir", str(out)]), \
+                     mock.patch.object(sys, "stdout", stream):
+                    if isolate:
+                        with mock.patch.object(reconcile, "_isolate_failed_stdout",
+                                               side_effect=RuntimeError("isolation failed")):
+                            result = reconcile.main()
+                    else:
+                        result = reconcile.main()
+                    isolated_stdout = sys.stdout
+                    published = artifact_path.read_bytes()
+                if isolated_stdout is not stream:
+                    isolated_stdout.close()
+                self.assertEqual(result, 0)
+                self.assertIn(b"RECONCILE PASS", published)
+                self.assertNotIn(b"RECONCILE FAIL", published)
+                self.assertEqual(artifact_path.read_bytes(), published)
 
     def test_broken_stdout_pipe_does_not_change_subprocess_success_status(self):
         import time
