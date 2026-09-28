@@ -146,9 +146,9 @@ export default function ApplicationMaterialPage() {
       </View>}
       <Field label='招聘批次标识（同一岗位不同批次可分别申请）' value={batchIdentity} onChange={setBatchIdentity} placeholder='例如：2026 秋招 A 批' />
       <View className='wk-between'><View className='wk-tdesign-scope'>
-        <t-button block size='large' theme='primary' ariaLabel='创建求职申请' customStyle={tdesignButtonStyle} loading={applyBusy.busy} disabled={pendingApplication !== null} onTap={() => void applyBusy.run(async () => {
+        <t-button block size='large' theme='primary' ariaLabel='创建求职申请' customStyle={tdesignButtonStyle} loading={applyBusy.busy} disabled={pendingApplication !== null || (ineligible && !acknowledged)} onTap={() => void applyBusy.run(async () => {
           try {
-            const receipt = await career.createApplication({ opportunityId, snapshotId, evaluationId: evaluation.evaluationId, batchIdentity, continueDespiteHardFailure: ineligible });
+            const receipt = await career.createApplication({ opportunityId, snapshotId, evaluationId: evaluation.evaluationId, batchIdentity, continueDespiteHardFailure: ineligible && acknowledged });
             setApplication(receipt);
             setAppErrCode(undefined);
             setMaterialId('');

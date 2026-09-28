@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { registerHooks } from 'node:module';
 import { pathToFileURL } from 'node:url';
+import { readFile } from 'node:fs/promises';
 
 // T26 小程序 申请/材料/投递的可观察行为：真实 transport + AuthCoordinator 装配（T24
 // career-discovery 同款），假后端按 method+pathname 路由。career 端点是裸 JSON，
@@ -118,6 +119,14 @@ test('A2: application creation posts the frozen CreateApplicationInput against t
   assert.deepEqual(Object.keys(call.options.data).sort(), ['batchIdentity', 'continueDespiteHardFailure', 'evaluationId', 'expectedRevision', 'opportunityId', 'requestId', 'snapshotId'], 'the body must match the frozen contract (DisallowUnknownFields)');
   assert.equal(call.options.data.expectedRevision, 3, 'expected revision comes from the shared desk snapshot');
   assert.equal(call.options.header.Authorization, 'Bearer t1');
+});
+
+test('UI gate: hard-ineligible applications require acknowledgement before enabling or submitting', async () => {
+  const source = await readFile(new URL('../src/career/application-material.tsx', import.meta.url), 'utf8');
+  assert.match(source, /disabled=\{pendingApplication !== null \|\| \(ineligible && !acknowledged\)\}/,
+    'the create button stays disabled until an ineligible result is acknowledged');
+  assert.match(source, /continueDespiteHardFailure: ineligible && acknowledged/,
+    'the request only opts into continuation after explicit acknowledgement');
 });
 
 test('A3: material edits confirm a new immutable version and never overwrite the old one', async () => {

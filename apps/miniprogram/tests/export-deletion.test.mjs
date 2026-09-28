@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { registerHooks } from 'node:module';
 import { pathToFileURL } from 'node:url';
+import { readFile } from 'node:fs/promises';
 
 // T32 小程序 全空间导出与完整删除的可观察行为：真实 transport + AuthCoordinator 装配
 // （T24/T26 同款），假后端按 method+pathname 路由。五路由与 Web ExportDeletionPage
@@ -457,6 +458,51 @@ test('F1: a partial receipt followed by an ambiguous retry re-blocks the deletio
   assert.equal(settled, false);
   const recovered = lifecycleGating({ exportBusy: false, exportUnknown: false, deletionBusy: false, deletionUnknown: settled, revisionLoaded: true, boundaryShown: true, acknowledged: true, deleted: false });
   assert.equal(recovered.deletionDisabled, false, 'a definite receipt settles the unknown and reopens the main action');
+});
+
+test('N3/N2: a new ambiguous deletion re-locks stale partial UI and both recovery blocks offer confirmed abandon', async () => {
+  const source = await readFile(new URL('../src/career/export-deletion.tsx', import.meta.url), 'utf8');
+  assert.match(source, /catch \(error\) \{\s*setDelErrCode\(typedCode\(error\)\);\s*if \(typedCode\(error\) === 'outcome_unknown'\) setDelRecoveryUnresolved\(true\);\s*throw error;\s*\}/,
+    'an outcome_unknown from the initial delete must invalidate the prior partial receipt for gating');
+  assert.match(source, /career\.abandonPendingSpaceExport\(\)/, 'the pending export intent has an exit action');
+  assert.match(source, /career\.abandonPendingSpaceDeletion\(\)/, 'the pending deletion intent has an exit action');
+  assert.match(source, /disabled=\{recExportBusy\.busy \|\| retryExportBusy\.busy\}/,
+    'export recovery cannot be cleared while reconciliation or retry is running');
+  assert.match(source, /disabled=\{recDelBusy\.busy \|\| retryDelBusy\.busy \|\| deletionBusy\.busy\}/,
+    'deletion recovery cannot be cleared while a deletion operation is running');
+  assert.equal((source.match(/await confirmAction\(/g) ?? []).length >= 3, true,
+    'export/deletion abandonment requires a separate explicit confirmation from the destructive request');
+  assert.match(source, /只会清除本机恢复记录/,
+    'the confirmation explains that abandoning only clears local recovery and the original operation may have taken effect');
+});
+
+test('N3: after a partial receipt, an ambiguous new deletion retains its intent and must remain gated', async () => {
+  let posts = 0;
+  await freshLogin({
+    'POST /api/v1/career/deletions': call => {
+      posts++;
+      if (posts === 1) stub.succeed(call, { data: partialReceipt({ requestId: 'srv-old-partial' }) });
+      else stub.fail(call, 'request:fail timeout');
+    },
+  });
+  await career.loadCareer();
+  const partial = await career.deleteWholeSpace();
+  assert.equal(partial.status, 'partial');
+  const oldIntentId = career.pendingSpaceDeletion()?.requestId;
+  const uncertain = await career.deleteWholeSpace().catch(error => error);
+  assert.equal(errorCode(uncertain), 'outcome_unknown');
+  const pending = career.pendingSpaceDeletion();
+  assert.ok(pending, 'the unknown deletion remains recoverable');
+  assert.notEqual(pending.requestId, oldIntentId, 'the request that just became unknown is now the recovery target');
+
+  const { deletionOutcomeUnknown, lifecycleGating } = await import('../src/career/export-deletion.gating.ts');
+  const unresolved = uncertain.code === 'outcome_unknown';
+  const unknown = deletionOutcomeUnknown({ intentPresent: true, inMemoryStatus: partial.status, recoveryUnresolved: unresolved });
+  assert.equal(unknown, true, 'the stale partial receipt cannot unlock a new full deletion after ambiguity');
+  const gating = lifecycleGating({ exportBusy: false, exportUnknown: false, deletionBusy: false, deletionUnknown: unknown, revisionLoaded: true, boundaryShown: true, acknowledged: true, deleted: false });
+  assert.equal(gating.deletionDisabled, true);
+  assert.equal(posts, 2, 'a gated page cannot start another deletion with a third request id');
+  assert.equal(career.pendingSpaceDeletion()?.requestId, pending.requestId, 'the unresolved request id remains available for recovery');
 });
 
 test('F1: a failed reconcile keeps the block until a definite receipt arrives (Web lookup failure → unknown)', async () => {

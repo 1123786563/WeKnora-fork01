@@ -44,6 +44,7 @@ export default function ExportDeletionPage() {
   const [deletion, setDeletion] = useState<CareerDeletionReceipt>();
   const [delErrCode, setDelErrCode] = useState<string>();
   const [verifyNotice, setVerifyNotice] = useState('');
+  const [recoveryNotice, setRecoveryNotice] = useState('');
   const [clearedKeys, setClearedKeys] = useState<string[]>();
   // 修复轮 2 F1：partial 确定回执后的恢复尝试（对账/重试）以未决告终时，旧 partial 回执
   // 不再代表当前结果——置位后删除主按钮与知悉回到 unknown 封锁，防止换新 requestId 重复
@@ -119,6 +120,23 @@ export default function ExportDeletionPage() {
     catch (error) { setDelRecoveryUnresolved(deletionRecoveryUnresolvedAfter('retry', error, career.pendingSpaceDeletion() !== null)); throw error; }
   });
 
+  const abandonExportRecovery = async (): Promise<void> => {
+    const confirmed = await confirmAction('放弃导出恢复？', '这只会清除本机恢复记录；原导出请求可能已经在服务端生效。清除后本机不再保留原请求编号。');
+    if (!confirmed) return;
+    career.abandonPendingSpaceExport();
+    setRecoveryNotice('已放弃导出恢复：仅清除了本机恢复记录；原导出请求可能已在服务端生效。');
+  };
+
+  const abandonDeletionRecovery = async (): Promise<void> => {
+    const confirmed = await confirmAction('放弃删除恢复？', '这只会清除本机恢复记录；原删除操作可能已经在服务端生效。清除后本机不再保留原请求编号。');
+    if (!confirmed) return;
+    career.abandonPendingSpaceDeletion();
+    setDeletion(undefined);
+    setDelRecoveryUnresolved(false);
+    setAcknowledged(false);
+    setRecoveryNotice('已放弃删除恢复：仅清除了本机恢复记录；原删除操作可能已在服务端生效。');
+  };
+
   const snapshotTotal = exported ? exported.archive.opportunities.reduce((total, item) => total + item.snapshots.length, 0) : 0;
   const eventTotal = exported ? exported.archive.applications.reduce((total, item) => total + item.progressEvents.length, 0) : 0;
   const versionTotal = exported ? exported.archive.materials.reduce((total, item) => total + item.versions.length, 0) : 0;
@@ -134,6 +152,7 @@ export default function ExportDeletionPage() {
       {recExportBusy.error && <Notice tone='danger'>{recExportBusy.error} 对账被拒时说明该请求不存在或不属于当前空间；可再用原编号重试。</Notice>}
       <Action secondary loading={retryExportBusy.busy} onClick={() => void retryExportBusy.run(async () => { acceptExport(await career.retryPendingSpaceExport()); })}>用原请求编号重试导出</Action>
       {retryExportBusy.error && <Notice tone='danger'>{retryExportBusy.error} 重试沿用原请求编号，服务端幂等不会重复执行。</Notice>}
+      <Action secondary disabled={recExportBusy.busy || retryExportBusy.busy} onClick={() => void abandonExportRecovery()}>放弃导出恢复</Action>
     </>}
     {pendingDeletion && !deleted && <>
       <Notice tone='warning'>有一次未到终态的删除（{pendingDeletion.requestId.slice(0, 10)}…）。可用原请求对账最新状态，或用原编号重试恢复；不会发起新的删除。</Notice>
@@ -141,7 +160,9 @@ export default function ExportDeletionPage() {
       {recDelBusy.error && <Notice tone='danger'>{recDelBusy.error} 对账被拒时说明该请求不存在或不属于当前空间；intent 保留，可稍后再试。</Notice>}
       <Action secondary danger loading={retryDelBusy.busy} onClick={retryDeletion}>用原请求编号重试删除</Action>
       {retryDelBusy.error && <Notice tone='danger'>{retryDelBusy.error} 重试沿用原请求编号；服务端按步骤续跑，已完成步骤不会重复执行。</Notice>}
+      <Action secondary disabled={recDelBusy.busy || retryDelBusy.busy || deletionBusy.busy} onClick={() => void abandonDeletionRecovery()}>放弃删除恢复</Action>
     </>}
+    {recoveryNotice && <Notice tone='info'>{recoveryNotice}</Notice>}
 
     <DataBoundary state={desk}>{view => view && <Card>
       <Text className='wk-muted wk-small'>当前档案修订 {view.revision}（导出与删除将按此修订提交）</Text>
@@ -209,7 +230,11 @@ export default function ExportDeletionPage() {
           try {
             acceptDeletion(await career.deleteWholeSpace());
             setDelErrCode(undefined);
-          } catch (error) { setDelErrCode(typedCode(error)); throw error; }
+          } catch (error) {
+            setDelErrCode(typedCode(error));
+            if (typedCode(error) === 'outcome_unknown') setDelRecoveryUnresolved(true);
+            throw error;
+          }
         })}>发起完整删除</t-button>
       </View></View>
       {deletionBusy.error && <Notice tone='danger'>{deletionBusy.error}{delErrCode === 'revision_conflict' ? ' 档案已更新：重新读取修订、确认边界后再次发起（新删除会使用新的请求编号）。' : delErrCode === 'idempotency_conflict' ? ' 请求编号已对应其他内容，服务器拒绝了本次删除。可回到恢复入口用原编号对账。' : ''}</Notice>}
