@@ -44,6 +44,9 @@
 - [ ] Add a GORM SQLite test against the applied Career migration: insert/read Career facts/receipts/evidence under one owner, verify another tenant/owner cannot read them, and verify composite FK/append-only constraints.
 - [ ] Apply SQLite up/down in a temporary migrated DB; run migration pairing/ID uniqueness tests. If a local PostgreSQL service exists, apply PostgreSQL up/down and run the same repository checks; otherwise record the exact missing service and add static migration parse/shape assertions without claiming live PostgreSQL verification.
 - [ ] Run `go test ./internal/modules/career/... ./internal/modules/workbench ./internal/database`; focused auth and migration tests; `git diff --check`; commit Task 2R1.
+- [ ] When live PostgreSQL is unavailable, assert the PostgreSQL migration text includes JSONB payload columns, both composite tenant/owner foreign keys, and the append-only update/delete trigger; the SQLite-only test is not enough to claim static shape validation.
+- [ ] Bind the PostgreSQL shape fallback per table: receipt response JSONB and scoped FK; profile payload JSONB and scoped FK; evidence payload JSONB, scoped FK, and append-only trigger. A correct global count is insufficient if declarations can migrate between tables.
+- [ ] Store and verify version-grant expiry at nanosecond precision so non-millisecond-aligned issue time retains the exact requested TTL; test fractional nanoseconds, one-second and exact maximum TTL boundaries.
 
 ### Task 2R2: Complete #142 issuance and versioned download lifecycle
 
