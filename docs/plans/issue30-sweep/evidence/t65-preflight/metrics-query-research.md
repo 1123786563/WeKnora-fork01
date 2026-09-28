@@ -64,4 +64,3 @@ These support the tenant-local introduction join and date restriction. The exist
 
 - The exact “active Adoption count” and “proposal volume count” definitions above are recommendations derived from the current state machines and T65 fixed-window privacy ruling. The schema itself does not state whether ended Adoptions or dismissed proposals should be excluded from each publisher-facing metric.
 - Safe implementation should expose separate internal measure names if needed (`active_adoptions_created`, `upgrade_proposals_created`, optionally `upgrade_proposals_resolved`) and map each to a documented state/date predicate. Never merge them into one ambiguous count.
-

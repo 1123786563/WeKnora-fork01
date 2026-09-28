@@ -1,10 +1,10 @@
 # T65 Implementation Ledger
 
-Plan: [plan-t65.md](plan-t65.md)  
-Issue source: [issue-65.md](../issues/issue-65.md)  
-Root Issue: #30; see [Issue DAG](../dag.md) and [B6 Ledger](../B6-execution-ledger.md).  
-Coordination branch: codex/issue30-b6-coordination  
-Implementation base: 93706830b78205de0c7d433097e89f33d9726513  
+- Plan: [plan-t65.md](plan-t65.md)
+- Issue source: [issue-65.md](../issues/issue-65.md)
+- Root Issue: #30; see [Issue DAG](../dag.md) and [B6 Ledger](../B6-execution-ledger.md).
+- Coordination branch: `codex/issue30-b6-coordination`
+- Implementation base: `93706830b78205de0c7d433097e89f33d9726513`
 Recorded: 2026-09-28 UTC.
 
 ## Task DAG
