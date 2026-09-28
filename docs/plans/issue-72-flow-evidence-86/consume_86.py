@@ -167,7 +167,12 @@ def write_artifact_atomic(path, payload):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output-dir", required=True)
-    output_dir = prepare_output_dir(parser.parse_args().output_dir)
+    args = parser.parse_args()
+    try:
+        output_dir = prepare_output_dir(args.output_dir)
+    except Exception:
+        print("FAIL: output-dir preflight", file=sys.stderr)
+        return 2
     stage = "initialization"
     observations = {}
     result = {}

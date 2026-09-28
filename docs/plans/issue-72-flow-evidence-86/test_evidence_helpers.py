@@ -22,6 +22,76 @@ reconcile = importlib.util.module_from_spec(rspec)
 rspec.loader.exec_module(reconcile)
 
 class EvidenceHelpersTest(unittest.TestCase):
+    def test_consume_output_preflight_failures_are_bounded_and_do_not_touch_existing_path(self):
+        import io
+        with tempfile.TemporaryDirectory() as root:
+            existing = Path(root) / "existing"
+            existing.mkdir()
+            marker = existing / "keep.txt"
+            marker.write_text("preserve me")
+            missing_parent_target = Path(root) / "missing" / "run"
+            for target in (existing, missing_parent_target):
+                with self.subTest(target=target), mock.patch.object(
+                        sys, "argv", ["runner", "--output-dir", str(target)]), \
+                        mock.patch.object(sys, "stderr", io.StringIO()) as stderr:
+                    result = consume.main()
+                    diagnostic = stderr.getvalue()
+                self.assertNotEqual(result, 0)
+                self.assertIn("FAIL: output-dir preflight", diagnostic)
+                self.assertNotIn(str(target), diagnostic)
+                self.assertNotIn("FileExistsError", diagnostic)
+                self.assertNotIn("FileNotFoundError", diagnostic)
+                self.assertFalse((target / "consume-cny.json").exists())
+                self.assertFalse((target / "reconcile-output.txt").exists())
+            self.assertEqual(marker.read_text(), "preserve me")
+            self.assertFalse(missing_parent_target.parent.exists())
+
+    def test_consume_help_keeps_argparse_success_and_usage(self):
+        result = subprocess.run([sys.executable, str(HERE / "consume_86.py"), "--help"],
+                                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("--output-dir", result.stdout)
+        self.assertNotIn("Traceback", result.stderr)
+
+    def test_reconcile_interrupt_before_publication_writes_bounded_fail(self):
+        import io
+        with tempfile.TemporaryDirectory() as root:
+            out = Path(root) / "run"
+            stderr = io.StringIO()
+            with mock.patch.object(reconcile, "lago_wallets",
+                                   side_effect=KeyboardInterrupt("SECRET_INTERRUPT_TEXT")), \
+                 mock.patch.object(sys, "argv", ["runner", "--output-dir", str(out)]), \
+                 mock.patch.object(sys, "stderr", stderr):
+                result = reconcile.main()
+            artifact = (out / "reconcile-output.txt").read_text()
+        self.assertEqual(result, 130)
+        self.assertIn("RECONCILE FAIL", artifact)
+        self.assertIn("stage=lago_fetch", artifact)
+        self.assertIn("reason=interrupted", artifact)
+        self.assertNotIn("SECRET_INTERRUPT_TEXT", artifact + stderr.getvalue())
+
+    def test_reconcile_interrupt_after_publication_preserves_canonical_verdict(self):
+        with tempfile.TemporaryDirectory() as root:
+            out = Path(root) / "run"
+            account = Path(root) / "account.json"
+            account.write_text(json.dumps({"data": {"benefits": {"credits": {
+                "batches": [], "balance_micro": 0, "available_micro": 0,
+                "held_micro": 0, "refund_locked_micro": 0}}}}))
+            artifact_path = out / "reconcile-output.txt"
+            def interrupt_after_publish(text, stream):
+                self.assertTrue(artifact_path.exists())
+                raise KeyboardInterrupt("SECRET_INTERRUPT_TEXT")
+            with mock.patch.dict(os.environ, {"WK_ACCOUNT_JSON": str(account)}), \
+                 mock.patch.object(reconcile, "lago_wallets", return_value=[]), \
+                 mock.patch.object(sys, "argv", ["runner", "--output-dir", str(out)]), \
+                 mock.patch.object(reconcile, "_emit_text", side_effect=interrupt_after_publish):
+                result = reconcile.main()
+            artifact = artifact_path.read_text()
+        self.assertEqual(result, 0)
+        self.assertIn("RECONCILE PASS", artifact)
+        self.assertNotIn("RECONCILE FAIL", artifact)
+        self.assertNotIn("reason=interrupted", artifact)
+
     def test_consume_wallet_http_error_without_json_preserves_status(self):
         import io
         import urllib.error

@@ -315,6 +315,7 @@ def main():
         _emit_text("RECONCILE FAIL: stage=output_preflight (%s)" % _safe_reason(exc), sys.stderr)
         return 1
     stage = "account_input"
+    canonical_verdict = None
     try:
         src = os.environ.get("WK_ACCOUNT_JSON", "weknora-account-api.json")
         credits = json.loads((HERE / src).read_text(encoding="utf-8"))["data"]["benefits"]["credits"]
@@ -351,10 +352,22 @@ def main():
         lines.append("RECONCILE PASS" if passed else "RECONCILE FAIL")
         stage = "artifact_write"
         _write_artifact(output_dir, lines)
+        canonical_verdict = passed
         # The artifact is canonical. Text-stream failures after publication
         # cannot alter its verdict or the verdict-derived process status.
         _emit_text("\n".join(lines), sys.stdout)
         return 0 if passed else 1
+    except KeyboardInterrupt:
+        if canonical_verdict is not None:
+            return 0 if canonical_verdict else 1
+        lines = ["RECONCILE FAIL", "stage=%s" % stage, "reason=interrupted"]
+        try:
+            _write_artifact(output_dir, lines)
+        except BaseException:
+            _emit_text("RECONCILE FAIL: artifact write failed", sys.stderr)
+        else:
+            _emit_text("\n".join(lines), sys.stderr)
+        return 130
     except (Exception, SystemExit) as exc:
         reason = _safe_reason(exc)
         lines = ["RECONCILE FAIL", "stage=%s" % stage, "reason=%s" % reason]
