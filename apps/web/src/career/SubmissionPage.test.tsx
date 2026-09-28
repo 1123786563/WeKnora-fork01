@@ -294,6 +294,27 @@ test('without submittable exports only the explicit unknown choice is offered', 
  assert.match(container.textContent ?? '', /尚无.*可投递.*版本/)
 })
 
+test('an export-list failure is visible and blocks the irreversible unknown-version choice until retry succeeds', async () => {
+ let exportReads = 0
+ const submissions: unknown[] = []
+ const career: CareerStub = {
+  open: async () => ({ revision: 4 }),
+  applicationSubmissions: async () => ({ submissions: [] }),
+  materialExports: async () => { exportReads += 1; if (exportReads === 1) throw Object.assign(new Error('temporary network failure'), { status: 503 }); return { materialId: 'mat-1', exports: [] } },
+  recordSubmission: async (input: unknown) => { submissions.push(input); return record() },
+ }
+ const container = await mountSubmission(career)
+ assert.match(container.textContent ?? '', /可投递导出版本读取失败/)
+ assert.equal((container.querySelector('[aria-label="投递版本"] option[value="__unknown__"]') as HTMLOptionElement).disabled, true)
+ await act(async () => { click(byLabel(container, 'button', '重试读取导出版本')); await settle(); await settle() })
+ assert.equal(exportReads, 2)
+ assert.equal((container.querySelector('[aria-label="投递版本"] option[value="__unknown__"]') as HTMLOptionElement).disabled, false)
+ await act(async () => { choose(container.querySelector<HTMLSelectElement>('[aria-label="投递渠道"]')!, 'web'); choose(container.querySelector<HTMLSelectElement>('[aria-label="投递版本"]')!, '__unknown__'); await settle() })
+ await act(async () => { click(byLabel(container, 'button', '确认投递')); await settle(); await settle() })
+ assert.equal(submissions.length, 1)
+ assert.equal((submissions[0] as { versionUnknown: boolean }).versionUnknown, true)
+})
+
 test('submission styles keep TDesign light surfaces and the brand green confirm action', () => {
  const css = readFileSync(new URL('./submission.css', import.meta.url), 'utf8')
  assert.match(css, /\.wk-submission \{/)

@@ -240,6 +240,18 @@ test('an unknown write outcome recovers through the original request ID without 
  assert.ok(container.querySelector('[aria-label="规则状态"]'))
 })
 
+test('a mismatched rule receipt ends recovery as a definite error', async () => {
+ const { container } = await mountRules({
+  open: async () => view(5),
+  setRule: async (input: RuleWrite) => { throw Object.assign(new Error('timeout'), { code: 'outcome_unknown', requestId: input.requestId }) },
+  ruleReceipt: async () => ({ ...createdDisabled, requestId: 'different-request' }),
+ })
+ await saveRule(container, '上海 前端 实习', '1440', 'disabled')
+ await act(async () => { byLabel(container, 'button', '查询回执').click(); await settle(); await settle() })
+ assert.match(container.textContent ?? '', /请求编号与本次保存不匹配/)
+ assert.equal([...container.querySelectorAll('button')].some((button) => button.textContent?.includes('查询回执')), false)
+})
+
 test('revision conflict surfaces the current revision and retries the same request refreshed', async () => {
  const writes: RuleWrite[] = []
  let openCalls = 0

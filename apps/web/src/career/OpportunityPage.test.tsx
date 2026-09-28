@@ -703,6 +703,22 @@ test('URL import 403 clears the submitted URL and any pasted draft without stale
  assert.equal(container.querySelector('a[href*="snapshotId="]'), null)
 })
 
+test('not_found URL and text imports are definite errors with no unknown recovery loop', async () => {
+ const urlContainer = await mountImport({ importUrl: async () => { throw Object.assign(new Error('not found'), { code: 'not_found', status: 404 }) } }).then((x) => x.container)
+ await submitURL(urlContainer)
+ assert.match(urlContainer.textContent ?? '', /职位页面不存在/)
+ assert.equal(findButton(urlContainer, '使用原请求编号重试导入'), undefined)
+ assert.equal(findButton(urlContainer, '查询导入回执'), undefined)
+
+ const textContainer = await mountImport({ importOpportunity: async () => { throw Object.assign(new Error('not found'), { code: 'not_found', status: 404 }) } }).then((x) => x.container)
+ await act(async () => { setInput(textContainer.querySelector<HTMLTextAreaElement>('[aria-label="职位描述"]')!, 'keep this JD') })
+ await act(async () => { byLabel(textContainer, 'button', '保存 JD').click(); await settle() })
+ assert.match(textContainer.textContent ?? '', /职位或来源不存在/)
+ assert.equal(findButton(textContainer, '查询导入回执'), undefined)
+ assert.equal(findButton(textContainer, '使用原请求编号重试'), undefined)
+ assert.equal(textContainer.querySelector<HTMLTextAreaElement>('[aria-label="职位描述"]')?.value, 'keep this JD')
+})
+
 test('scope switch during URL import clears the URL and fences a late receipt', async () => {
  let resolveImport!: (value: URLReceiptFixture) => void
  const scope = createScopeController({ origin: 'https://weknora.test', userId: 'u', tenantId: 't' })

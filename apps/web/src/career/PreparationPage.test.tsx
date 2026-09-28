@@ -278,6 +278,24 @@ test('retrying an unknown generation reuses the same request id, and so does a t
  assert.equal(failureSent[1]!.requestId, failureSent[0]!.requestId)
 })
 
+test('a mismatched preparation receipt ends recovery as a definite error', async () => {
+ let requestId = ''
+ const career: CareerStub = {
+  open: async () => ({ revision: 4 }),
+  applicationPreparations: async () => ({ preparations: [] }),
+  preparations: async () => ({ preparations: [] }),
+  generatePreparation: async (input: { requestId: string }) => { requestId = input.requestId; throw Object.assign(new Error('timeout'), { code: 'outcome_unknown', requestId: input.requestId }) },
+  preparationReceipt: async () => draft({ requestId: 'different-request' }),
+ }
+ const container = await mountPreparation(career)
+ await act(async () => { choose(container.querySelector<HTMLSelectElement>('[aria-label="准备焦点"]')!, 'interview_prep'); await settle() })
+ await act(async () => { click(byLabel(container, 'button', '生成准备草稿')); await settle(); await settle() })
+ await act(async () => { click(byLabel(container, 'button', '查询准备回执')); await settle(); await settle() })
+ assert.ok(requestId)
+ assert.match(container.querySelector('[role="alert"]')?.textContent ?? '', /与本次请求不匹配/)
+ assert.equal([...container.querySelectorAll('button')].some((button) => button.textContent?.includes('查询准备回执')), false)
+})
+
 test('a failed preparation row renders its typed failure state without a body', async () => {
  const failed = draft({ status: 'failed', materialId: undefined, body: { sections: [] }, reviewRisks: [], failureCode: 'generation_failed', failureMessage: '模型暂时不可用' })
  const career: CareerStub = {

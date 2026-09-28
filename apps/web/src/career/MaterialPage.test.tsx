@@ -584,3 +584,40 @@ test('a read-back failure after a successful draft save reports saved-with-refre
  assert.doesNotMatch(container.textContent ?? '', /暂时无法确认材料写入是否完成/, 'must NOT be classified as an unknown write')
  assert.doesNotMatch(container.textContent ?? '', /原请求编号/, 'no receipt-recovery guidance for an already-confirmed write')
 })
+
+test('a receipt lookup stays successful when the follow-up material refresh fails', async () => {
+ let writes = 0
+ let receiptReads = 0
+ const career: CareerStub = {
+  open: async () => profileView,
+  editMaterial: async (input: { requestId: string }) => { writes += 1; throw Object.assign(new Error('gateway timeout'), { code: 'outcome_unknown', requestId: input.requestId }) },
+  materialReceipt: async (requestId: string) => { receiptReads += 1; return editedReceipt(requestId) },
+  material: async () => { throw Object.assign(new Error('transient refresh failure'), { status: 500 }) },
+ }
+ const { container } = await mountMaterial(career)
+ await fillFirstSection(container, { factKey: '学历' })
+ await act(async () => { click(byLabel(container, 'button', '保存草稿')); await settle(); await settle() })
+ await act(async () => { click(byLabel(container, 'button', '查询材料回执')); await settle(); await settle() })
+ assert.equal(writes, 1)
+ assert.equal(receiptReads, 1)
+ assert.match(container.textContent ?? '', /草稿已保存（材料编号 mat-1）/)
+ assert.match(container.textContent ?? '', /内容回显暂时失败/)
+ assert.doesNotMatch(container.textContent ?? '', /查询材料回执|用原请求编号重试/)
+})
+
+test('transient URL material restore failure preserves the pointer and offers retry', async () => {
+ window.history.replaceState({}, '', '/platform/career/opportunities/opp%2F1?snapshotId=snapshot%20%3F1&material=mat-1')
+ let reads = 0
+ const career: CareerStub = {
+  open: async () => profileView,
+  material: async () => { reads += 1; if (reads === 1) throw Object.assign(new Error('timeout'), { status: 500 }); return materialView([1]) },
+ }
+ const { container } = await mountMaterial(career)
+ assert.equal(reads, 1)
+ assert.match(window.location.search, /material=mat-1/)
+ assert.match(container.textContent ?? '', /材料暂时无法读取/)
+ await act(async () => { click(byLabel(container, 'button', '重试读取材料')); await settle(); await settle() })
+ assert.equal(reads, 2)
+ assert.match(window.location.search, /material=mat-1/)
+ assert.match(container.textContent ?? '', /不可变版本（1）/)
+})

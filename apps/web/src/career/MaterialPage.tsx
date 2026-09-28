@@ -94,6 +94,7 @@ export function MaterialPage({ client, scopeController, opportunityId, snapshotI
  const [savedBody, setSavedBody] = useState<MaterialBody>()
  const [sections, setSections] = useState<EditableSection[]>([])
  const [attempt, setAttempt] = useState<MaterialAttempt>()
+ const [restoreFailed, setRestoreFailed] = useState(false)
  const [phase, setPhase] = useState<MaterialPhase>('idle')
  const [message, setMessage] = useState('')
  const [revisionConflict, setRevisionConflict] = useState<number>()
@@ -129,7 +130,7 @@ export function MaterialPage({ client, scopeController, opportunityId, snapshotI
  }
 
  const clearPrivate = useCallback((notice: string, nextState: 'forbidden' | 'scope-changed' = 'forbidden') => {
-  setAttempt(undefined); setView(undefined); setSavedBody(undefined); setSections([]); setPhase(nextState); setMessage(notice)
+  setAttempt(undefined); setView(undefined); setSavedBody(undefined); setSections([]); setPhase(nextState); setMessage(notice); setRestoreFailed(false)
   setMaterialId(undefined); setRevisionConflict(undefined); setComparison(undefined); setVersionDetail(undefined)
   setExports(undefined); setExportPhase('idle'); setExportMessage(''); setExportConflict(undefined); setExportAttempt(undefined); setDownloads({})
   const url = materialParamUrl(undefined)
@@ -167,25 +168,30 @@ export function MaterialPage({ client, scopeController, opportunityId, snapshotI
  }, [])
  // A reload keeps the stored material readable straight from the URL: the
  // material ID is the durable pointer, nothing is replayed here.
+ const restoreMaterial = useCallback(async (stored: string): Promise<void> => {
+  const requestScope = scopeController.current()
+  setRestoreFailed(false); setPhase('busy'); setMessage('正在读取材料…')
+  try {
+   const next = await client.career.material(stored, requestScope.signal)
+   if (!scopeController.isCurrent(requestScope.scope)) return
+   if (next.pinnedEvidence.opportunityId !== opportunityId || next.pinnedEvidence.snapshotId !== snapshotId) {
+    setPhase('error'); setRestoreFailed(true); setMessage('此材料与当前职位快照不匹配。请重新读取材料后再继续。')
+    return
+   }
+   acceptView(next); setPhase('idle'); setMessage('')
+  } catch (cause) {
+   if (!scopeController.isCurrent(requestScope.scope)) return
+   if (errorDetails(cause).code === 'forbidden') { clearPrivate('当前空间不可访问此材料，已清除编辑内容。'); return }
+   setMaterialId(stored); setPhase('error'); setRestoreFailed(true)
+   setMessage('材料暂时无法读取，已保留材料编号和页面链接。请重试读取材料。')
+  }
+ }, [acceptView, clearPrivate, client, opportunityId, scopeController, snapshotId])
  useEffect(() => {
   if (restored.current) return
   restored.current = true
   const stored = new URLSearchParams(window.location.search).get('material')?.trim()
-  if (!stored) return
-  const requestScope = scopeController.current()
-  void client.career.material(stored, requestScope.signal).then((next) => {
-   if (!scopeController.isCurrent(requestScope.scope)) return
-   if (next.pinnedEvidence.opportunityId !== opportunityId || next.pinnedEvidence.snapshotId !== snapshotId) {
-    const url = materialParamUrl(undefined)
-    if (url) window.history.replaceState({}, document.title, url)
-    return
-   }
-   acceptView(next); setPhase('idle'); setMessage('')
-  }).catch(() => {
-   if (!scopeController.isCurrent(requestScope.scope)) return
-   clearPrivate('当前空间不可访问此材料，已清除编辑内容。')
-  })
- }, [acceptView, clearPrivate, client, opportunityId, scopeController, snapshotId])
+  if (stored) void restoreMaterial(stored)
+ }, [restoreMaterial])
 
  const reloadView = useCallback(async (id: string): Promise<void> => {
   const requestScope = scopeController.current()
@@ -327,10 +333,16 @@ export function MaterialPage({ client, scopeController, opportunityId, snapshotI
    setMaterialId(receipt.materialId); setSavedBody(receipt.body); setSections(editableFromBody(receipt.body)); syncClaimCounter(receipt.body)
    const url = materialParamUrl(receipt.materialId)
    if (url) window.history.replaceState({}, document.title, url)
-   await reloadView(receipt.materialId)
-   if (!scopeController.isCurrent(requestScope.scope)) return
    setPhase('idle')
-   setMessage(receipt.kind === 'material_confirmed' ? `已发布不可变版本 V${receipt.version ?? ''}` : `草稿已保存（材料编号 ${receipt.materialId}）`)
+   const savedMessage = receipt.kind === 'material_confirmed' ? `已发布不可变版本 V${receipt.version ?? ''}` : `草稿已保存（材料编号 ${receipt.materialId}）`
+   try {
+    await reloadView(receipt.materialId)
+    if (!scopeController.isCurrent(requestScope.scope)) return
+    setMessage(savedMessage)
+   } catch {
+    if (!scopeController.isCurrent(requestScope.scope)) return
+    setMessage(`${savedMessage}；内容回显暂时失败，请刷新后重试。`)
+   }
   } catch (cause) {
    if (!scopeController.isCurrent(requestScope.scope)) return
    if (cause instanceof ReceiptMismatchError) { setAttempt(undefined); setPhase('error'); setMessage('查得的回执与原请求编号不匹配，已退出恢复流程。请用新的请求编号重新保存。'); return }
@@ -557,6 +569,7 @@ export function MaterialPage({ client, scopeController, opportunityId, snapshotI
     <button type="button" className="wk-material__confirm" disabled={confirmBlocked} title={dirty && materialId ? '正文有未保存修改：请先保存草稿再确认发布' : undefined} onClick={() => void confirmDraft()}>确认发布不可变版本</button>
     {phase === 'error' && revisionConflict !== undefined ? <button type="button" onClick={() => void readRevision()}>重新读取档案修订</button> : null}
    </div>}
+   {restoreFailed ? <div className="wk-material__actions"><button type="button" onClick={() => { const stored = new URLSearchParams(window.location.search).get('material')?.trim(); if (stored) void restoreMaterial(stored) }}>重试读取材料</button></div> : null}
    {message ? <p className={phase === 'error' ? 'wk-material__message wk-material__message--error' : 'wk-material__message'} role={phase === 'error' ? 'alert' : 'status'} aria-live="polite">{message}</p> : null}
    {view && view.versions.length ? <section className="wk-material__versions" aria-label="不可变版本列表">
     <h3>不可变版本（{view.versions.length}）</h3>

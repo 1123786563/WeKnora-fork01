@@ -221,6 +221,7 @@ export function PreparationPage({ client, scopeController, applicationId }: { cl
    acceptReceipt(next, current)
   } catch (cause) {
    if (!scopeController.isCurrent(requestScope.scope)) return
+   if (cause instanceof ReceiptMismatchError) { setAttempt(undefined); setWritePhase('error'); setMessage(`准备回执与本次请求不匹配：${cause.message}。已退出恢复流程，请使用新请求重新生成。`); return }
    const parsed = errorDetails(cause)
    if (parsed.code === 'forbidden') { clearPrivate('当前空间不可访问此申请的面试准备，已清除准备内容。'); return }
    if (parsed.code === 'invalid_request') { setAttempt(undefined); setWritePhase('error'); setMessage(`准备回执无法读取：${parsed.message}`); return }

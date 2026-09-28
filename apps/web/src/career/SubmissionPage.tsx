@@ -64,6 +64,7 @@ export function SubmissionPage({ client, scopeController, applicationId, materia
  const [revision, setRevision] = useState<number | undefined>()
  const [revisionState, setRevisionState] = useState<'loading' | 'ready' | 'error'>('loading')
  const [exports, setExports] = useState<MaterialExportReceipt[]>()
+ const [exportsError, setExportsError] = useState('')
  const [channel, setChannel] = useState<SubmissionChannel | ''>('')  // '' 占位由 runWrite 守卫排除，写入载荷收窄为冻结枚举（ocr2-078）
  const [versionChoice, setVersionChoice] = useState('')
  const [occurredAt, setOccurredAt] = useState('')
@@ -131,13 +132,16 @@ export function SubmissionPage({ client, scopeController, applicationId, materia
   let active = true
   const requestScope = scopeController.current()
   setExports(undefined)
+  setExportsError('')
   if (!materialId?.trim()) { if (active) setExports([]); return () => { active = false } }
   void client.career.materialExports(materialId, requestScope.signal).then((list) => {
    if (!active || !scopeController.isCurrent(requestScope.scope)) return
    setExports(deliverableExports(list.exports))
+   setExportsError('')
   }).catch(() => {
    if (!active || !scopeController.isCurrent(requestScope.scope)) return
-   setExports([])
+   setExports(undefined)
+   setExportsError('可投递导出版本读取失败。读取恢复前，请勿选择“未知版本”并提交；可以重试读取。')
   })
   return () => { active = false }
  }, [client, materialId, reload, scopeController, scope.scope.generation])
@@ -152,6 +156,7 @@ export function SubmissionPage({ client, scopeController, applicationId, materia
   if (writeInFlight.current) return
   let current = fixed
   if (!current) {
+   if (exports === undefined) return
    if (writePhase === 'busy' || writePhase === 'unknown') return
    if (revision === undefined || !channel || !versionChoice) return
    const requestId = newRequestId()
@@ -242,7 +247,7 @@ export function SubmissionPage({ client, scopeController, applicationId, materia
 
  const composeBlocked = writePhase === 'busy' || writePhase === 'unknown'
  const confirmed = (records?.length ?? 0) > 0
- const submitBlocked = composeBlocked || revision === undefined || !channel || !versionChoice
+ const submitBlocked = composeBlocked || revision === undefined || exports === undefined || !channel || !versionChoice
  return <section className="wk-submission" aria-labelledby="wk-submission-title">
   <h3 id="wk-submission-title">投递确认（本人确认）</h3>
   <p className="wk-submission__notice">投递由你本人在外部完成（发送邮件、在招聘网站提交等）。系统不代投、不发送邮件、不填写外部表单；点击下载或发布导出不会被视为投递，也不会被用来推断投递。请在完成外部投递后，由你本人在此确认结果。</p>
@@ -262,9 +267,9 @@ export function SubmissionPage({ client, scopeController, applicationId, materia
      <select id="wk-submission-version" aria-label="投递版本" value={versionChoice} disabled={composeBlocked} onChange={(event) => setVersionChoice(event.target.value)}>
       <option value="">请选择投递版本</option>
       {(exports ?? []).map((receipt) => <option key={receipt.exportId} value={receipt.exportId}>{`版本 V${receipt.version}（导出 ${receipt.exportId}）`}</option>)}
-      <option value={UNKNOWN_VERSION_CHOICE}>未知版本（显式未确认，不绑定材料版本）</option>
+      <option value={UNKNOWN_VERSION_CHOICE} disabled={exports === undefined}>未知版本（显式未确认，不绑定材料版本）</option>
      </select>
-     {(exports ?? []).length === 0 ? <p className="wk-submission__hint">尚无可投递版本：请先在材料区发布导出（双格式核验通过），或选择显式未知版本记录“未确认绑定版本”。</p> : null}
+     {exportsError ? <div className="wk-submission__message wk-submission__message--error" role="alert"><p>{exportsError}</p><button type="button" onClick={refresh}>重试读取导出版本</button></div> : exports === undefined ? <p className="wk-submission__hint" role="status" aria-busy="true">正在读取可投递版本…</p> : exports.length === 0 ? <p className="wk-submission__hint">尚无可投递版本：请先在材料区发布导出（双格式核验通过），或选择显式未知版本记录“未确认绑定版本”。</p> : null}
      <label className="wk-submission__label" htmlFor="wk-submission-occurred">声明投递时间（可选；留空按确认时刻记录）</label>
      <input id="wk-submission-occurred" type="datetime-local" aria-label="声明投递时间" value={occurredAt} disabled={composeBlocked} onChange={(event) => setOccurredAt(event.target.value)} />
      <label className="wk-submission__label" htmlFor="wk-submission-note">投递备注（可选）</label>

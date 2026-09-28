@@ -97,10 +97,10 @@ export function OpportunityImportPanel({ client, scopeController }: { client: We
    if (!scopeController.isCurrent(requestScope.scope)) return
    const parsed = errorDetails(cause)
    if (parsed.code === 'forbidden') { clearPrivate('当前空间不可访问，已清除链接和职位描述。'); return }
-   if (['invalid_request', 'idempotency_conflict', 'request_too_large', 'PAYLOAD_TOO_LARGE'].includes(parsed.code ?? '')) {
+   if (['invalid_request', 'idempotency_conflict', 'request_too_large', 'PAYLOAD_TOO_LARGE', 'not_found'].includes(parsed.code ?? '')) {
     setUrlState('error')
     setUrlAttempt(undefined)
-    setUrlMessage(parsed.code === 'PAYLOAD_TOO_LARGE' || parsed.code === 'request_too_large' ? '链接请求超过服务端允许的大小，请缩短后重新导入。' : `链接未被接受：${parsed.message}`)
+    setUrlMessage(parsed.code === 'not_found' ? '职位页面不存在或已不可访问，链接未被导入。请检查链接后重新提交。' : parsed.code === 'PAYLOAD_TOO_LARGE' || parsed.code === 'request_too_large' ? '链接请求超过服务端允许的大小，请缩短后重新导入。' : `链接未被接受：${parsed.message}`)
     return
    }
    // A receipt answering a different request is a definite protocol error; it
@@ -141,10 +141,10 @@ export function OpportunityImportPanel({ client, scopeController }: { client: We
    if (!scopeController.isCurrent(requestScope.scope)) return
    const parsed = errorDetails(cause)
    if (parsed.code === 'forbidden') { clearPrivate('当前空间不可访问，已清除职位描述。'); return }
-   if (['invalid_request', 'idempotency_conflict', 'request_too_large', 'PAYLOAD_TOO_LARGE'].includes(parsed.code ?? '')) {
+   if (['invalid_request', 'idempotency_conflict', 'request_too_large', 'PAYLOAD_TOO_LARGE', 'not_found'].includes(parsed.code ?? '')) {
     setState('error')
     setAttempt(undefined)
-    setMessage(parsed.code === 'idempotency_conflict' ? '请求编号已对应其他内容，服务器拒绝了本次提交。请检查内容后使用新的请求重新保存。' : parsed.code === 'PAYLOAD_TOO_LARGE' || parsed.code === 'request_too_large' ? '职位描述超过服务端允许的大小，请缩短后重新保存。' : `职位描述未被接受：${parsed.message}`)
+    setMessage(parsed.code === 'not_found' ? '职位或来源不存在，职位描述未被导入。请检查来源后重新提交。' : parsed.code === 'idempotency_conflict' ? '请求编号已对应其他内容，服务器拒绝了本次提交。请检查内容后使用新的请求重新保存。' : parsed.code === 'PAYLOAD_TOO_LARGE' || parsed.code === 'request_too_large' ? '职位描述超过服务端允许的大小，请缩短后重新保存。' : `职位描述未被接受：${parsed.message}`)
     return
    }
    // A receipt answering a different request is a definite protocol error; it

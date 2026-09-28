@@ -226,7 +226,7 @@ export function CareerRulePage({ client, scopeController }: { client: WeKnoraCli
   try {
    const stored = await client.career.ruleReceipt(attempt.requestId, requestScope.signal)
    if (!scopeController.isCurrent(requestScope.scope)) return
-   if (stored.requestId !== attempt.requestId) { setPhase('unknown'); setNotice('服务返回的请求编号与本次保存不匹配；保留原内容与请求编号，请重试查询。'); return }
+   if (stored.requestId !== attempt.requestId) { setError({ code: 'invalid_response', text: '服务返回的请求编号与本次保存不匹配；已放弃本次结果，请使用新的请求编号重新保存。' }); setPhase('idle'); setAttempt(undefined); setNotice(''); return }
    acceptReceipt(stored)
   } catch (cause) {
    if (!scopeController.isCurrent(requestScope.scope)) return
