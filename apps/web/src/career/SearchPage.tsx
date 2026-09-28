@@ -207,7 +207,7 @@ export function CareerSearchPage({ client, scopeController }: { client: WeKnoraC
   try {
    const stored = await client.career.searchReceipt(attempt.requestId, requestScope.signal)
    if (!scopeController.isCurrent(requestScope.scope)) return
-   if (stored.requestId !== attempt.requestId) { setPhase('unknown'); setNotice('服务返回的请求编号与本次找岗不匹配；保留原指令与请求编号，请重试查询。'); return }
+   if (stored.requestId !== attempt.requestId) { setError({ code: 'invalid_response', text: '服务返回的请求编号与本次找岗不匹配，已放弃本次结果。请开始一次新的找岗。' }); setPhase('idle'); setAttempt(undefined); setNotice(''); return }
    acceptReceipt(stored, storageKey)
   } catch (cause) {
    if (!scopeController.isCurrent(requestScope.scope)) return

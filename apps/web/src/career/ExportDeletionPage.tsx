@@ -69,9 +69,11 @@ export function ExportDeletionPage({ client, scopeController, onCareerDeleted }:
  const deletedAnnounced = useRef(false)
 
  const clearPrivate = useCallback((notice: string, nextState: 'forbidden' | 'scope-changed' = 'forbidden') => {
+  setRevision(undefined); setRevisionState('loading'); setVerifyMessage('')
   setExported(undefined); setExportAttempt(undefined); setExportPhase('idle'); setExportMessage(''); setExportConflict(undefined)
   setBoundary(undefined); setBoundaryState(nextState); setBoundaryMessage(notice); setAcknowledged(false)
   setDeletion(undefined); setDeletionAttempt(undefined); setDeletionPhase('idle'); setDeletionMessage(''); setDeletionConflict(undefined)
+  lastExportRequest.current = undefined; deletedAnnounced.current = false
  }, [])
  useEffect(() => {
   const requestScope = scopeController.current()
@@ -91,7 +93,7 @@ export function ExportDeletionPage({ client, scopeController, onCareerDeleted }:
    if (!scopeController.isCurrent(requestScope.scope)) return
    setRevision(undefined); setRevisionState('error')
   }
- }, [client, scopeController])
+ }, [client, scopeController, scope.scope.generation])
  useEffect(() => { void readRevision() }, [readRevision])
 
  // After a truthful complete deletion the old export grant must be dead:

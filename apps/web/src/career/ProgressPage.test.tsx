@@ -178,6 +178,21 @@ test('an unknown write recovers through the receipt lookup with the original req
  assert.ok(!byLabelOrNull(container, 'button', '查询进展回执'), 'recovery state cleared after the receipt replay')
 })
 
+test('a mismatched receipt lookup ends recovery with a deterministic error', async () => {
+ const career: CareerStub = {
+  applicationProgress: async () => view('submitted', [event(1, 'submitted', '已投递')]),
+  appendProgress: async (input: { requestId: string }) => { throw Object.assign(new Error('unknown'), { code: 'outcome_unknown', requestId: input.requestId }) },
+  progressReceipt: async () => receipt(2, 'interview', 'other-request', 'interview'),
+ }
+ const { container } = await mountProgress(career)
+ await act(async () => { choose(container.querySelector<HTMLSelectElement>('[aria-label="事件类型"]')!, 'interview'); await settle() })
+ await act(async () => { click(byLabel(container, 'button', '记录进展')); await settle(); await settle() })
+ await act(async () => { click(byLabel(container, 'button', '查询进展回执')); await settle(); await settle() })
+ assert.match(container.querySelector('[role="alert"]')?.textContent ?? '', /回执与本次请求不匹配/)
+ assert.equal(byLabelOrNull(container, 'button', '查询进展回执'), undefined)
+ assert.equal(byLabelOrNull(container, 'button', '用原请求编号重试'), undefined)
+})
+
 function byLabelOrNull(container: HTMLElement, selector: string, label: string): HTMLElement | undefined {
  return [...container.querySelectorAll<HTMLElement>(selector)].find((item) => item.textContent?.trim() === label)
 }

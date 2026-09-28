@@ -26,6 +26,15 @@ test('career API calls authenticated tenant-scoped routes and preserves action b
  assert.deepEqual(JSON.parse(calls[4]!.body!), action)
 })
 
+test('open, list and changes reject malformed career views and change sets', async () => {
+ const malformed = createCareerApi(async (input) => input.path.includes('/changes?')
+  ? { revision: 'bad', changes: [] }
+  : { revision: 'bad', facts: [], proposals: [] })
+ await assert.rejects(malformed.open(), /invalid career view/)
+ await assert.rejects(malformed.list(), /invalid career view/)
+ await assert.rejects(malformed.changes(0), /invalid career change set/)
+})
+
 test('career upload sends a browser multipart body and lists source versions', async () => {
  const calls: Array<{ url: string; headers: Record<string, string>; body: unknown }> = []
  const client = createWeKnoraClient({ baseURL: 'https://example.test', transport: createJsonTransport(async (url, init) => {

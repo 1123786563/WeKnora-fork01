@@ -164,6 +164,7 @@ export function ProgressPage({ client, scopeController, applicationId }: { clien
    if (!scopeController.isCurrent(requestScope.scope)) return
    const parsed = errorDetails(cause)
    if (parsed.code === 'forbidden') { clearPrivate('当前空间不可访问此申请的进展，已清除进展内容。'); return }
+   if (cause instanceof ReceiptMismatchError) { setAttempt(undefined); setWritePhase('error'); setMessage(`进展未完成：${cause.message}`); return }
    setWritePhase('unknown')
    setMessage(parsed.code === 'not_found' ? `尚未找到进展回执（原请求编号 ${current.requestId}）。可以继续查询，或使用原请求编号重试。` : '进展回执暂时无法读取。原请求编号已保留，可稍后重试查询。')
   }

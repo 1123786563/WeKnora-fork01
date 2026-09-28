@@ -257,3 +257,28 @@ test('cross-tenant forbidden responses replace the panel with an access notice',
  assert.equal([...container.querySelectorAll('button')].some((item) => item.textContent?.trim() === '发起导出'), false)
  assert.equal([...container.querySelectorAll('button')].some((item) => item.textContent?.trim() === '发起完整删除'), false)
 })
+
+test('switching scope resets lifecycle private state and re-reads the new scope revision', async () => {
+ let reads = 0
+ const career: CareerStub = {
+  open: async () => ({ revision: ++reads === 1 ? 4 : 9 }),
+  exportCareer: async (input: Record<string, unknown>) => exportReceipt({ requestId: input.requestId as string }),
+  careerExportReceipt: async () => { throw Object.assign(new Error('gone'), { code: 'not_found' }) },
+  careerDeletionBoundary: async () => boundaryView(),
+  deleteCareer: async (input: Record<string, unknown>) => deletionReceipt({ requestId: input.requestId as string }),
+ }
+ const scopeController = createScopeController({ origin: 'https://weknora.test', userId: 'owner-1', tenantId: 't' })
+ const container = render(React.createElement(ExportDeletionPage, { client: { career } as unknown as WeKnoraClient, scopeController }))
+ await act(async () => { await settle(); await settle() })
+ await act(async () => { click(byLabel(container, 'button', '发起导出')); await settle(); await settle() })
+ await act(async () => { click(byLabel(container, 'button', '查看删除边界')); await settle(); await settle() })
+ await act(async () => { toggle(container.querySelector<HTMLInputElement>('input[type="checkbox"]')!); await settle() })
+ await act(async () => { click(byLabel(container, 'button', '发起完整删除')); await settle(); await settle(); await settle() })
+ assert.match(container.textContent ?? '', /旧授权与旧入口已失效/)
+ await act(async () => { scopeController.switchScope('https://weknora.test', 'owner-2', 'tenant-2'); await settle(); await settle() })
+ assert.equal(reads, 2)
+ assert.match(container.textContent ?? '', /空间已切换或登录已失效/)
+ assert.doesNotMatch(container.textContent ?? '', /旧授权与旧入口已失效/)
+ assert.equal(container.querySelector('[aria-label="导出包内容"]'), null)
+ assert.equal(container.querySelector('[aria-label="删除结果"]'), null)
+})

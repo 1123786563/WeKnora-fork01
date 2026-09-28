@@ -75,6 +75,9 @@ function byLabel(container: HTMLElement, selector: string, label: string): HTMLE
   assert.ok(found, `${selector} “${label}” exists`)
   return found
 }
+function byLabelOrNull(container: HTMLElement, selector: string, label: string): HTMLElement | undefined {
+  return [...container.querySelectorAll<HTMLElement>(selector)].find((item) => item.textContent?.trim() === label)
+}
 function setInput(input: HTMLInputElement | HTMLTextAreaElement, value: string) {
   const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(input), 'value')?.set
   setter?.call(input, value)
@@ -165,6 +168,19 @@ test('recovers an unknown outcome through the original request ID without duplic
   assert.equal(searches[1]?.requestId, originalId)
   assert.equal(searches[1]?.query, '上海 前端 实习')
   assert.ok(container.querySelector('[aria-label="找岗结果"]')!.querySelector('a[href="https://jobs.example.test/1"]'))
+})
+
+test('a mismatched stored receipt clears the attempt and surfaces an invalid response', async () => {
+ const { container } = await mountSearch({
+  open: async () => view(2),
+  searchOnce: async (input: SearchCall) => { throw Object.assign(new Error('unknown'), { code: 'outcome_unknown', requestId: input.requestId }) },
+  searchReceipt: async () => ({ ...completedReceipt, requestId: 'another-request' }),
+ })
+ await submitQuery(container, '上海 前端 实习')
+ await act(async () => { byLabel(container, 'button', '查询回执').click(); await settle() })
+ assert.match(container.textContent ?? '', /请求编号与本次找岗不匹配/)
+ assert.equal(byLabelOrNull(container, 'button', '查询回执'), undefined)
+ assert.equal(byLabelOrNull(container, 'button', '用原请求编号重试'), undefined)
 })
 
 test('a terminal search is never duplicated; a fresh attempt gets a fresh request ID', async () => {
