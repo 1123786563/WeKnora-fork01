@@ -105,3 +105,10 @@ graph LR
 - Round 1 checkpoint `da2ce4911ae90c9af1686b1ee6736e88ee377ad5` fixed A→B route leakage, actual rendered-button behavior evidence, and bounded terminal scan scope; independent review then identified a remaining MEDIUM: A→B→A re-entry reuses the same taskId/runId, allowing an earlier A async completion to mutate the later A visit.
 - Narrow repair plan: `plans/plan-t55-task6-review-fix-round2.md`; SDD brief `.superpowers/sdd/plan-t55-task6-review-fix-round2/task-1-brief.md`.
 - Task6 remains unverified until this generation-fence repair is implemented, independently reviewed and validated. T55 Task8 remains blocked.
+
+### Latest parallel execution update (2026-09-28)
+
+- T63 Task2 race repair `512ff27cb5a29863ab26ed8b4d3e8d7aec12efd5` independently reviewed: Spec PASS; quality PASS. Reviewer accepts the guarded first transactional UPDATE and stale-state mappings. Record LOW evidence limitation: GORM callback ordering does not directly observe entry into SQLite driver lock wait; PostgreSQL schedule unavailable (`TRPC_TEST_POSTGRES_DSN` absent). This is disclosed in the task report and is not a blocker.
+- T64 Task2 worktree now contains T64 Task1 plus T63 Task2 original interface commit and reviewed race repair, cherry-picked as `7c5afd541` and `2fc2feaca`. T64 Task2 dispatched to `backend_implementer` on exactly `agent_security.go` and `agent_security_test.go`; no migration/service/router ownership overlap.
+- T55 Task6 repair round1 `da2ce4911` independently reviewed; A→B, button behavior and bounded terminal-scan fixes pass, but a new MEDIUM A→B→A stale-completion race was found. Narrow round2 plan `plans/plan-t55-task6-review-fix-round2.md` is committed (`701e1f879`); ledger finding record `6127253bb`. Same isolated Task6 implementer has been assigned route-entry generation fencing; Task8 stays blocked.
+- Read-only readiness scan found no other safe implementation task at this point. Existing independent execution remains T55 T6 round2 and T64 T2, with T63 review complete.
