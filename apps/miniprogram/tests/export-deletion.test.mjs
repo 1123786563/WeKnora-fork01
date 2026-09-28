@@ -276,6 +276,37 @@ test('R1: space export abandonment is scope-local and only clears the expected r
   assert.equal(career.pendingSpaceExport(), null);
 });
 
+test('F2: export abandonment is refused during a deferred retry and ambiguous result keeps the id', async () => {
+  const { confirmAbandonIntent } = await import('../src/career/export-deletion.gating.ts');
+  let attempts = 0;
+  let finishRetry;
+  await freshLogin({
+    'POST /api/v1/career/exports': call => {
+      attempts++;
+      if (attempts === 1) stub.fail(call, 'request:fail timeout');
+      else finishRetry = () => stub.fail(call, 'request:fail timeout');
+    },
+  });
+  await career.loadCareer();
+  await assert.rejects(career.exportWholeSpace(), error => error.code === 'outcome_unknown');
+  const original = career.pendingSpaceExport();
+  assert.ok(original);
+  const retry = career.retryPendingSpaceExport().catch(error => error);
+  await new Promise(resolve => setImmediate(resolve));
+  const result = await confirmAbandonIntent(original.requestId, {
+    confirm: async () => true,
+    currentRequestId: () => career.pendingSpaceExport()?.requestId,
+    isBusy: () => career.spaceExportRecoveryActive(original.requestId),
+    abandon: id => career.abandonPendingSpaceExport(id),
+  });
+  assert.equal(result, 'busy');
+  assert.equal(career.abandonPendingSpaceExport(original.requestId), false, 'the service CAS also refuses active recovery');
+  finishRetry();
+  const ambiguous = await retry;
+  assert.equal(errorCode(ambiguous), 'outcome_unknown');
+  assert.equal(career.pendingSpaceExport()?.requestId, original.requestId, 'ambiguous retry retains its recoverable request id');
+});
+
 test('N9: a deletion response stores its recoverable intent under the scope captured before send', async () => {
   await freshLogin({ 'POST /api/v1/career/deletions': () => {/* answered after switching scope */} });
   await career.loadCareer();

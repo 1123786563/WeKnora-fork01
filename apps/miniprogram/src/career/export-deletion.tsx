@@ -153,7 +153,7 @@ export default function ExportDeletionPage() {
       const result = await confirmAbandonIntent(expectedRequestId, {
         confirm: () => confirmAction('放弃导出恢复？', '这只会清除本机恢复记录；原导出请求可能已经在服务端生效。清除后本机不再保留原请求编号。'),
         currentRequestId: () => career.pendingSpaceExport()?.requestId,
-        isBusy: () => exportOperationInFlight.current,
+        isBusy: () => exportOperationInFlight.current || career.spaceExportRecoveryActive(expectedRequestId),
         abandon: id => career.abandonPendingSpaceExport(id),
       });
       setRecoveryNotice(result === 'abandoned'

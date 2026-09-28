@@ -241,14 +241,22 @@ async function writeRecoverable<T>(kind: string, describe: string, input: unknow
   return recoverableWrite<T>(store, { kind, describe, input, expected: expectedOverride ?? revision(), send: async (id, expected) => (await send(id, expected)) as T });
 }
 async function reconcileIntent<T>(kind: string, describe: string, fetch: (id: string) => Promise<unknown>): Promise<T> {
-  const pending = readIntent<Record<string, unknown>>(intentKey(kind));
+  const stamp = auth.scope.capture();
+  const key = intentKeyFor(kind, stamp);
+  const pending = readIntent<Record<string, unknown>>(key);
   if (!pending) throw new Error(`没有待对账的${describe}`);
-  const receipt = await fetch(pending.requestId);
-  store.remove(intentKey(kind));
-  return receipt as T;
+  return withActiveRecovery(kind, stamp, pending.requestId, async () => {
+    const receipt = await fetch(pending.requestId);
+    store.remove(key);
+    return receipt as T;
+  });
 }
 async function retryIntent<T>(kind: string, describe: string, resend: (id: string, expected: number) => Promise<unknown>, fallbackExpected?: () => number): Promise<T> {
-  return retryRecoverable<T>(store, kind, describe, async (id, expected) => (await resend(id, expected)) as T, fallbackExpected);
+  const stamp = auth.scope.capture();
+  const pending = readIntent<Record<string, unknown>>(intentKeyFor(kind, stamp));
+  if (!pending) return retryRecoverable<T>(store, kind, describe, async (id, expected) => (await resend(id, expected)) as T, fallbackExpected);
+  return withActiveRecovery(kind, stamp, pending.requestId, () =>
+    retryRecoverable<T>(store, kind, describe, async (id, expected) => (await resend(id, expected)) as T, fallbackExpected));
 }
 
 // —— 显式放弃各 kind 未对账 intent（OCR r3 ocr3-029 统一出口，rule/reminder 先例同语义）：
@@ -262,6 +270,7 @@ export function abandonPendingMaterialPublish(): void { abandonRecoverable(store
 export function abandonPendingProgressWrite(): void { abandonRecoverable(store, 'progress'); }
 export function abandonPendingPreparationWrite(): void { abandonRecoverable(store, 'preparation'); }
 export function abandonPendingSpaceExport(expectedRequestId: string): boolean { return abandonRecoverable(store, 'spaceExport', expectedRequestId); }
+export function spaceExportRecoveryActive(requestId: string): boolean { return isRecoveryActive('spaceExport', auth.scope.capture(), requestId); }
 export function abandonPendingSpaceDeletion(expectedRequestId: string): boolean { return abandonRecoverable(store, 'spaceDeletion', expectedRequestId); }
 export function spaceDeletionRecoveryActive(requestId: string): boolean { return isRecoveryActive('spaceDeletion', auth.scope.capture(), requestId); }
 

@@ -25,3 +25,12 @@ Commands run from `apps/miniprogram/` unless stated otherwise:
 The page now delegates deletion transition state to the controller exercised in tests; the tests also retain a small source assertion that the initial unknown handler invokes it. No rendered Mini Program or device interaction harness is available in this package, so visual/browser behavior was not exercised. Loading, empty and generic error presentation were not changed by this repair.
 
 Unrelated untracked review and plan files were present in the shared worktree and were left untouched.
+
+## Follow-up: export recovery tracking
+
+The independent follow-up review found that the same cross-caller race remained for whole-space export. The shared `reconcileIntent` and `retryIntent` service seams now register active recovery with the captured scope, kind, and original request ID; the export page's confirmation busy check reads that shared state. Conditional abandonment continues to enforce the final synchronous service check.
+
+Additional evidence:
+
+- `node --experimental-strip-types --test tests/export-deletion.test.mjs` — passed: 32 tests, 0 failures. The added deferred export retry test confirms confirmation reports busy, direct service abandonment is refused, and an ambiguous retry leaves the original export request ID recoverable.
+- `pnpm test` and `pnpm build:weapp` are rerun for the follow-up source change; results are recorded in the follow-up task response.
