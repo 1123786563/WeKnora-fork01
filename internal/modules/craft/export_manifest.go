@@ -296,9 +296,12 @@ func ValidateExportBundleMembers(files []File) error {
 		// puts the drive spec mid-path; c:evil is drive-relative) is refused —
 		// Windows resolves both as drive paths or NTFS ADS streams.
 		for _, segment := range strings.Split(member.Path, "/") {
-			if len(segment) >= 2 && segment[1] == ':' &&
-				((segment[0] >= 'a' && segment[0] <= 'z') || (segment[0] >= 'A' && segment[0] <= 'Z')) {
-				return fmt.Errorf("%w: bundle member %q segment %q uses a drive-letter path", ErrInvalidInput, member.Path, segment)
+			// ANY colon in ANY segment (foo/c:evil mid-path, c:evil
+			// drive-relative, report:v2 NTFS ADS) is refused — the comment's
+			// invariant, now the code's: Windows resolves each shape as a
+			// drive path or an alternate-data-stream smuggle.
+			if strings.Contains(segment, ":") {
+				return fmt.Errorf("%w: bundle member %q segment %q contains a colon", ErrInvalidInput, member.Path, segment)
 			}
 		}
 		// Reserved-name collision compares case-insensitively and after the

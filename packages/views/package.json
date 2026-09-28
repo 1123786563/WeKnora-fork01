@@ -5,12 +5,12 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./chat/chat-copy": "./src/chat/chat-copy.ts",
-    "./chat/composer": "./src/chat/composer.tsx",
     "./chat/agent-readiness": "./src/chat/agent-readiness.ts",
     "./chat/agent-selector": "./src/chat/agent-selector.tsx",
-    "./chat/markdown": "./src/chat/markdown.ts",
+    "./chat/chat-copy": "./src/chat/chat-copy.ts",
+    "./chat/composer": "./src/chat/composer.tsx",
     "./chat/live-thinking": "./src/chat/live-thinking.ts",
+    "./chat/markdown": "./src/chat/markdown.ts",
     "./chat/mermaid": "./src/chat/mermaid.ts",
     "./chat/page": "./src/chat/page.tsx",
     "./chat/web-search": "./src/chat/web-search.ts",
@@ -28,6 +28,10 @@
     "./craft/templates": "./src/craft/templates.tsx",
     "./craft/usage": "./src/craft/usage.tsx",
     "./craft/workbench": "./src/craft/workbench.tsx",
+    "./craft/workbench-edit": {
+      "types": "./src/craft/workbench-edit.tsx",
+      "default": "./src/craft/workbench-edit.tsx"
+    },
     "./embed/bridge": "./src/embed/bridge.ts",
     "./guides/contextual-guides": "./src/guides/contextual-guides.ts",
     "./integrations/apiKeys": "./src/integrations/apiKeys.ts",

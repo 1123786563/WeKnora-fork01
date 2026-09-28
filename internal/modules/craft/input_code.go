@@ -329,23 +329,23 @@ func (p *InputExecutionPolicy) Review(req InputExecutionRequest) InputExecutionD
 		// screened: env assignments (env BASH_ENV=<inputs>/x.sh bash gen.sh)
 		// are startup hooks exactly like Environment entries and must not
 		// ride along unscreened just because the interpreter was found.
-	for _, prefix := range req.Command[:offset] {
-		for _, token := range shellTokens(prefix) {
-			for _, segment := range strings.Split(token, ":") {
-				if abs := p.canonical(req.WorkingDir, segment); p.withinInputs(abs) {
+		for _, prefix := range req.Command[:offset] {
+			for _, token := range shellTokens(prefix) {
+				for _, segment := range strings.Split(token, ":") {
+					if abs := p.canonical(req.WorkingDir, segment); p.withinInputs(abs) {
+						return p.deny("input_target", abs, "")
+					}
+				}
+			}
+			// Wrapper long options with attached values (env
+			// --split-string=BASH_ENV=<inputs>/x.sh) are startup hooks exactly
+			// like assignments: the =-attached value is screened too.
+			for _, value := range flagValueCandidates(prefix) {
+				if abs := p.canonical(req.WorkingDir, value); p.withinInputs(abs) {
 					return p.deny("input_target", abs, "")
 				}
 			}
 		}
-		// Wrapper long options with attached values (env
-		// --split-string=BASH_ENV=<inputs>/x.sh) are startup hooks exactly
-		// like assignments: the =-attached value is screened too.
-		for _, value := range flagValueCandidates(prefix) {
-			if abs := p.canonical(req.WorkingDir, value); p.withinInputs(abs) {
-				return p.deny("input_target", abs, "")
-			}
-		}
-	}
 		rest := req.Command[offset:]
 		// An interpreter reading its program from stdin executes whatever
 		// bytes arrive on stdin — deny the marker forms outright; the
@@ -365,6 +365,9 @@ func (p *InputExecutionPolicy) Review(req InputExecutionRequest) InputExecutionD
 		// programFileNext marks that the previous option token was a
 		// separated-form program-file flag whose VALUE operand follows.
 		programFileNext := false
+		// phpSawServer marks that php's -S already appeared: only THEN is a
+		// positional the router script php executes per request.
+		phpSawServer := false
 		for _, arg := range rest {
 			if !scriptSeen {
 				// run subcommands (deno run x.ts, bun run x.js) shift the
@@ -413,6 +416,12 @@ func (p *InputExecutionPolicy) Review(req InputExecutionRequest) InputExecutionD
 							return p.deny("interpreter_input", abs, "")
 						}
 					}
+					if arg == "-S" {
+						// php's router script sits in the post-script operand
+						// region after the -S addr pair — track it from the
+						// prefix region too.
+						phpSawServer = true
+					}
 					continue
 				}
 				scriptSeen = true
@@ -447,6 +456,9 @@ func (p *InputExecutionPolicy) Review(req InputExecutionRequest) InputExecutionD
 						return p.deny("interpreter_input", abs, "")
 					}
 				}
+				if arg == "-S" {
+					phpSawServer = true
+				}
 				programFileNext = programFileFlag(arg)
 				continue
 			}
@@ -459,7 +471,10 @@ func (p *InputExecutionPolicy) Review(req InputExecutionRequest) InputExecutionD
 				}
 				continue
 			}
-			if isPHPFamily(path.Base(req.Command[interpreterOffset(req.Command)])) {
+			if phpSawServer && isPHPFamily(path.Base(req.Command[interpreterOffset(req.Command)])) {
+				// Only a php positional AFTER -S is the router script; a
+				// plain php data read (php gen.php inputs/data.csv) is the
+				// same data read python3 performs.
 				if abs := p.canonical(req.WorkingDir, arg); p.withinInputs(abs) {
 					return p.deny("interpreter_input", abs, "")
 				}

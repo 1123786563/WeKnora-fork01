@@ -67,6 +67,12 @@ export default defineConfig({
       '@weknora/views/craft/presentation': fileURLToPath(new URL('../../packages/views/src/craft/presentation.ts', import.meta.url)),
       '@weknora/views/craft/interaction': fileURLToPath(new URL('../../packages/views/src/craft/interaction.tsx', import.meta.url)),
       '@weknora/views/craft/access': fileURLToPath(new URL('../../packages/views/src/craft/access.tsx', import.meta.url)),
+      '@weknora/views/craft/library': fileURLToPath(new URL('../../packages/views/src/craft/library.tsx', import.meta.url)),
+      '@weknora/views/craft/templates': fileURLToPath(new URL('../../packages/views/src/craft/templates.tsx', import.meta.url)),
+      '@weknora/views/craft/usage': fileURLToPath(new URL('../../packages/views/src/craft/usage.tsx', import.meta.url)),
+      '@weknora/views/craft/input-expand': fileURLToPath(new URL('../../packages/views/src/craft/input-expand.tsx', import.meta.url)),
+      '@weknora/views/craft/workbench-edit': fileURLToPath(new URL('../../packages/views/src/craft/workbench-edit.tsx', import.meta.url)),
+      '@weknora/domain/craft/usage': fileURLToPath(new URL('../../packages/domain/src/craft/usage.ts', import.meta.url)),
       '@weknora/views': fileURLToPath(new URL('../../packages/views/src/index.ts', import.meta.url)),
 
     },

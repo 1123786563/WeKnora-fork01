@@ -267,6 +267,14 @@ func (s *CraftRunCaptureStore) ClaimForDrain(ctx context.Context, receipt CraftR
 		if res.Error != nil {
 			return res.Error
 		}
+		if res.RowsAffected == 0 {
+			// The CAS matched nothing: another path already owns the
+			// receipt (or it moved on). Reporting success here would let
+			// the caller walk the tree anyway — the exact double-capture
+			// (two full sha256 walks, two uploads, one orphaned resource
+			// row) the freshness gate exists to prevent.
+			return fmt.Errorf("%w: capture receipt %s already claimed", craft.ErrConflict, receipt.RunID)
+		}
 		return nil
 	})
 	if err != nil {

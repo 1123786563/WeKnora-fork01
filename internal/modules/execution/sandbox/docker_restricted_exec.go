@@ -135,8 +135,12 @@ func (c *DockerRemoteClient) ObserveOutputlessExec(ctx context.Context, receipt 
 		return unknown, dockerError("RestrictedExecInspect", err)
 	}
 	if inspected.ID != receipt.ExecID || inspected.ContainerID != receipt.ContainerID {
-		// (identity mismatch is an explicit error, not a silent unknown)
-		return unknown, nil
+		// Identity mismatch is an explicit error, not a silent unknown: a
+		// persistent identity anomaly must surface now, not burn the whole
+		// wait window polling (the docker_normal inspectRaw precedent).
+		return unknown, dockerError("RestrictedExecIdentityMismatch",
+			fmt.Errorf("inspected %s/%s does not match receipt %s/%s",
+				inspected.ID, inspected.ContainerID, receipt.ExecID, receipt.ContainerID))
 	}
 	if inspected.Running {
 		return DockerOutputlessExecObservation{State: DockerOutputlessRunning, OutputAvailable: false}, nil

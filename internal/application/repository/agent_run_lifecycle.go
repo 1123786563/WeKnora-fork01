@@ -125,6 +125,14 @@ func (s *AgentRunStore) DeleteSessionRuns(ctx context.Context, tenantID uint64, 
 		}
 		for _, id := range ids {
 			if err := s.cancelRunTx(tx, agentruntime.RunKey{TenantID: tenantID, RunID: id}, "session_deleted"); err != nil {
+				if errors.Is(err, agentruntime.ErrConflict) {
+					// The run settled BETWEEN the pluck and this locked
+					// cancel — exactly the race the comment above names.
+					// Its settlement facts survive by design; skipping (not
+					// aborting the whole delete) keeps a session that merely
+					// completed work deletable.
+					continue
+				}
 				return err
 			}
 		}

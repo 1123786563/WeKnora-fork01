@@ -29,3 +29,4 @@ Open-code-review records for the delivered Craft #107 scope. Per `docs/plans/202
 | 2026-09-27 | T09: fd0f7030e^..790412d1 | clean（第二轮 2 项全修复后干净：时间线幂等去重+单推导缝隙，见报告） | 0 open | 报告: docs/plans/craft-107-ocr-t09.md |
 | 2026-09-27 | T13: fff903f54^..8d302ed83 | clean（第二轮 3 项全修复后干净：冻结契约面对齐扁平 wire+views 复用契约 parse，见报告） | 0 open | 报告: docs/plans/craft-107-ocr-t13.md |
 | 2026-09-27 | T18: 90dcb987e^..9df0fccdb | clean（第二轮 HIGH root 锚点跟踪修复后干净：多洞活锁消除每轮严格前进，见报告） | 0 open | 报告: docs/plans/craft-107-ocr-t18.md |
+| 2026-09-28 | T20: 5854998d5^..f55bd392 | clean（第二轮 4 项 LOW 全修后干净：共享投影/注释修正/改名去遮蔽/共享派生，见报告） | 0 open | 报告: docs/plans/craft-107-ocr-t20.md |

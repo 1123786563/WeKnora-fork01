@@ -212,3 +212,37 @@ test('submitEdit resolves the whole run envelope and shares the submit request b
   await assert.rejects(() => badApi.submitEdit('s1', { request_id: 'req-edit-2', prompt: 'x' }), ApiError);
 });
 
+// Wrap-up OCR F01-F03: the consent endpoints answer a BARE flat body (no
+// success/data envelope) and budgetPause's can_extend rides the ENVELOPE
+// top level — unwrap-style reads would reject every successful response or
+// always answer canExtend=false.
+test('export consent seams resolve the bare flat wire bodies', async () => {
+  const consentBody = {
+    version_id: 'v1', manifest_digest: 'sha256:m', state: 'awaiting',
+    restricted_derived: ['index.html'],
+    files: [{ path: 'index.html', sha256: 'sha256:f', restricted: false, origins: [] }],
+    decision: null,
+  };
+  const { request } = fakeRequest({
+    'GET /api/v1/sessions/s1/craft/versions/v1/export/consent': consentBody,
+    'POST /api/v1/sessions/s1/craft/versions/v1/export/consent/decision': { ...consentBody, state: 'consented' },
+  });
+  const api = createCraftApi(request);
+  const view = await api.exportConsent('s1', 'v1');
+  assert.deepEqual(view, consentBody, 'the bare flat consent body resolves as-is (no envelope rejection)');
+  const decided = await api.decideExportConsent('s1', 'v1', 'approved', 'sha256:m');
+  assert.equal((decided as Record<string, unknown>)['state'], 'consented', 'the decision body resolves after the server persisted it');
+});
+
+test('budgetPause reads can_extend off the envelope top level', async () => {
+  const pause = { run_id: 'r1', reason: 'budget_exhausted', limit: 10, used: 10 };
+  const { request } = fakeRequest({
+    'GET /api/v1/sessions/s1/craft/runs/r1/budget/pause': { success: true, data: pause, can_extend: true },
+  });
+  const api = createCraftApi(request);
+  const view = await api.budgetPause('s1', 'r1');
+  assert.equal(view.canExtend, true, 'envelope-level can_extend projects (reading data-level would answer false)');
+  assert.equal(view.pause.run_id, 'r1');
+  assert.equal(view.pause.used, 10);
+});
+

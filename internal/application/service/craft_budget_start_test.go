@@ -298,3 +298,48 @@ func TestCraftChargeStartCommitFailureNeverInvokesCallback(t *testing.T) {
 	require.Empty(t, craftReservations(t, db, 106), "failed commit rolls back the G4 hold")
 	require.Equal(t, int64(0), craftGrantCalls(t, db, 106, grant.ID), "failed commit rolls back the call intent")
 }
+
+// TestCraftChargeStartDefinitelyUnstartedRestartClearsReservation pins the
+// wrap-up OCR column fix: the clean-restart branch deletes the dispatched
+// reservation by ReservationRow's OWN key column (`key`) — the previous
+// reservation_key predicate matched no column and failed the whole restart
+// transaction, so the "clean restart" never actually worked.
+func TestCraftChargeStartDefinitelyUnstartedRestartClearsReservation(t *testing.T) {
+	db := openCraftBudgetTestDB(t)
+	svc, err := NewCraftBudgetService(db, nil, craftBudgetPolicy())
+	require.NoError(t, err)
+	seedCraftFundedTenant(t, db, 101, 10000)
+	seedCraftBudgetRun(t, db, 101, "run-restart", "task-restart")
+	scope := craft.Scope{TenantID: 101, UserID: "owner", SessionID: "task-restart"}
+	grant, err := svc.Admit(context.Background(), scope, "run-restart")
+	require.NoError(t, err)
+	binding := CraftCallBinding{ModelID: "lead", Funding: commercial.FundingPlatform}
+
+	// Land one started call (journal + call + dispatched reservation), then
+	// mark the journal definitely_unstarted — the durable precondition the
+	// restart branch exists to clean up after.
+	_, err = svc.StartBinding(context.Background(), grant.ID, "activity-restart", binding,
+		func(context.Context) (CraftChargeStartOutcome, error) {
+			return CraftChargeStartStarted, nil
+		})
+	require.NoError(t, err)
+	require.NoError(t, db.Model(&CraftChargeStartJournalRow{}).
+		Where("tenant_id = ? AND run_id = ?", 101, "run-restart").
+		Update("state", "definitely_unstarted").Error)
+	require.Len(t, craftReservations(t, db, 101), 1)
+
+	// The restart clears the stale rows in ONE transaction and re-reserves.
+	outcome, err := svc.StartBinding(context.Background(), grant.ID, "activity-restart", binding,
+		func(context.Context) (CraftChargeStartOutcome, error) {
+			var reservation repocommercial.ReservationRow
+			require.NoError(t, db.Where("tenant_id = ? AND key = ?", 101, CraftCallKey("activity/activity-restart")).Take(&reservation).Error)
+			require.Equal(t, commercial.ReservationStateDispatched, reservation.State, "the restart re-reserves and dispatches")
+			return CraftChargeStartStarted, nil
+		})
+	require.NoError(t, err, "the definitely_unstarted restart must succeed — a wrong column here used to fail the whole transaction")
+	require.Equal(t, CraftChargeStartStarted, outcome)
+	require.Len(t, craftReservations(t, db, 101), 1, "exactly ONE live reservation after the restart")
+	var journal CraftChargeStartJournalRow
+	require.NoError(t, db.Where("tenant_id = ? AND run_id = ?", 101, "run-restart").Take(&journal).Error)
+	require.NotEqual(t, "definitely_unstarted", journal.State)
+}

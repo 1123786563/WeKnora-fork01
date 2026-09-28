@@ -174,9 +174,15 @@ func (s *CraftRunCaptureService) capture(ctx context.Context, receipt repository
 		// fired after BeginCapture, leaving the whole pre-staging phase —
 		// two full sha256 walks plus a full read — unprotected).
 		claimed, claimErr := s.captures.ClaimForDrain(ctx, receipt)
-		if claimErr == nil {
-			receipt = claimed
+		if claimErr != nil {
+			// Losing the claim means another path owns this receipt's
+			// capture: proceeding anyway would walk the tree and upload a
+			// SECOND physical object (the loser leaks as an unreferenced
+			// resource row). Surface a retryable conflict — the periodic
+			// ticker reconciles the winner's outcome.
+			return craft.DraftHead{}, claimErr
 		}
+		receipt = claimed
 		if err := source.VerifyCraftCaptureQuiescent(ctx); err != nil {
 			_ = s.captures.MarkPendingError(ctx, receipt, err)
 			return craft.DraftHead{}, fmt.Errorf("%w: sandbox quiescence is unproven: %v", craft.ErrBusy, err)

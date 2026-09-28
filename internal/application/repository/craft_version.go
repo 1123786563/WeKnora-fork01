@@ -337,11 +337,22 @@ func sameCraftVersionEvidence(a, b craft.VersionEvidence) bool {
 		return false
 	}
 	for i := range a.Sources {
-		if a.Sources[i] != b.Sources[i] {
+		if !sameKnowledgeSourceRecord(a.Sources[i], b.Sources[i]) {
 			return false
 		}
 	}
 	return true
+}
+
+// sameKnowledgeSourceRecord compares one recorded source with the SAME
+// location-representation safety the top-level AcquiredAt uses: KnowledgeSourceRecord
+// carries its own AcquiredAt time.Time, and a bare != compares clock
+// representation — one side serialized in a different offset decodes
+// "unequal" and turns an idempotent replay into a phantom conflict.
+func sameKnowledgeSourceRecord(a, b craft.KnowledgeSourceRecord) bool {
+	return a.ID == b.ID && a.Ref == b.Ref && a.Digest == b.Digest &&
+		a.TenantID == b.TenantID && a.ExcerptBytes == b.ExcerptBytes &&
+		a.AcquiredAt.Equal(b.AcquiredAt)
 }
 
 // adoptCraftVersionEvidence adopts the evidence already pinned to an

@@ -416,8 +416,19 @@ func (s *CraftBudgetService) prepareCraftChargeStartTx(ctx context.Context, row 
 			// Clear the dispatched reservation row in the SAME transaction:
 			// ReserveInTx only replays idempotently in the held state, so a
 			// leftover dispatched row blocks the restart's re-reserve.
-			if err := tx.Where("tenant_id = ? AND reservation_key = ?", row.TenantID, callKey).
+			// ReservationRow's key column is `key` (reservation_key is the
+			// BudgetLotAllocationRow column) — the wrong column made this
+			// DELETE fail on every restart, so the "clean restart" path
+			// never actually worked. The reservation's LOT ALLOCATION row
+			// shares the reservation_key and must go with it, or the
+			// restart's re-reserve collides on the allocation primary key
+			// (and the freed lot would double-count capacity).
+			if err := tx.Where("tenant_id = ? AND `key` = ?", row.TenantID, callKey).
 				Delete(&repocommercial.ReservationRow{}).Error; err != nil {
+				return err
+			}
+			if err := tx.Where("tenant_id = ? AND reservation_key = ?", row.TenantID, callKey).
+				Delete(&repocommercial.BudgetLotAllocationRow{}).Error; err != nil {
 				return err
 			}
 		} else if !errors.Is(previousErr, gorm.ErrRecordNotFound) {
@@ -808,7 +819,7 @@ func (s *CraftBudgetService) AuthorizeCall(ctx context.Context, grantID, callID 
 //
 // Sandbox activities get their own ledger facet: the empty-facet namespace
 // AuthorizeCall's generic fresh branch uses would collide on the
-// (tenant, run, '', '', '', 0) unique tuple at the second distinct activity.
+// (tenant, run, ”, ”, ”, 0) unique tuple at the second distinct activity.
 // The facet plus a per-run monotonic sequence (re-read under the unique
 // index's final arbitration, like AuthorizeBinding) keeps every distinct
 // activity insertable.

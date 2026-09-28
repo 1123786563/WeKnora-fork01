@@ -97,6 +97,13 @@ func TestInputCodePolicyDeniesRound5SmugglingShapes(t *testing.T) {
 			t.Fatalf("round-5 smuggling shape must be denied: %v -> %+v", command, decision)
 		}
 	}
+	// Wrap-up OCR F36: a php positional that is NOT after -S is the same
+	// data read python3 performs — only the -S router script is denied
+	// (covered above).
+	if decision := policy.Review(InputExecutionRequest{Command: []string{"php", "gen.php", script}, WorkingDir: "/workspace"}); !decision.Allowed {
+		t.Fatalf("php gen.php <input> is a data read, not a router script: %+v", decision)
+	}
+
 	// Data operand after a generated script stays a READ (python semantics).
 	data := policy.Review(InputExecutionRequest{Command: []string{"python3", "/workspace/app/main.py", script}, WorkingDir: "/workspace"})
 	if !data.Allowed {

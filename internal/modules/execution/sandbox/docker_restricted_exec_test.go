@@ -103,7 +103,10 @@ func TestDockerRestrictedObserveRequiresSameIDAndPositiveRunningEvidence(t *test
 	require.Equal(t, 0, *obs.ExitCode)
 	engine.inspect.ContainerID = "other-container"
 	obs, err = docker.ObserveOutputlessExec(context.Background(), receipt, true)
-	require.NoError(t, err)
+	// Identity mismatch is an EXPLICIT error (the inspectRaw precedent and
+	// the code comment's own invariant), never a silent unknown that burns
+	// the whole wait window polling.
+	require.ErrorContains(t, err, "RestrictedExecIdentityMismatch")
 	require.Equal(t, DockerOutputlessUnknown, obs.State)
 	engine.inspectErr = errors.New("404 not found")
 	obs, err = docker.ObserveOutputlessExec(context.Background(), receipt, true)

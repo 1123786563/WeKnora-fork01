@@ -58,8 +58,11 @@ type CraftDockerExecCommandFaces struct {
 }
 
 // craftDockerNormalOutputQuota is the per-request durable output quota the
-// normal face enforces on top of any provider-side limit (bytes).
-const craftDockerNormalOutputQuota = 1 << 20
+// normal face enforces on top of any provider-side limit — derived from the
+// SAME validation ceiling the request path accepts
+// (repository.MaxCraftDockerOutputBytes): a quota below the ceiling would
+// silently truncate requests the validation contract called legal.
+const craftDockerNormalOutputQuota = repository.MaxCraftDockerOutputBytes
 
 // The two provider seams below mirror the service constructors' unexported
 // parameter interfaces with exported structural types: the production

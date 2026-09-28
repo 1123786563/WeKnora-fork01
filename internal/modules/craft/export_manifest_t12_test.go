@@ -316,3 +316,18 @@ func t12SHA(seed string) string {
 	sum := sha256.Sum256([]byte(seed))
 	return hex.EncodeToString(sum[:])
 }
+
+// Wrap-up OCR F27: a colon in ANY segment of a bundle member is refused —
+// not only the drive-letter prefix shape. report:v2 smuggles an NTFS ADS
+// entry through zip extraction on Windows exactly like c:evil does.
+func TestCraftT12ExportBundleRefusesAnyColonSegment(t *testing.T) {
+	for _, path := range []string{"report:v2", "docs/report:v2", "c:evil", "foo/c:evil"} {
+		err := ValidateExportBundleMembers([]File{{Path: path, SHA256: t12SHA("x"), MIME: "text/html", Bytes: 4}})
+		if err == nil {
+			t.Fatalf("bundle member %q with a colon segment must be refused", path)
+		}
+	}
+	if err := ValidateExportBundleMembers([]File{{Path: "clean/report-v2.html", SHA256: t12SHA("x"), MIME: "text/html", Bytes: 4}}); err != nil {
+		t.Fatalf("a colon-free member stays acceptable: %v", err)
+	}
+}

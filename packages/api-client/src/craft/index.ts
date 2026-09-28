@@ -296,11 +296,21 @@ export function createCraftApi(request: (input: ClientRequest) => Promise<unknow
      * projection, the same discipline as the run submit seam.
      */
     async exportConsent(sessionId: string, versionId: string, signal?: AbortSignal): Promise<unknown> {
-      return unwrap(await request({
+      // The consent endpoints answer a BARE flat body (version_id,
+      // manifest_digest, state, restricted_derived, files, decision at the
+      // TOP level — no success/data envelope), so unwrap would reject every
+      // successful response. Only the object shape is checked here; the
+      // views layer (projectExportConsentView) holds the fail-closed
+      // projection over exactly this body.
+      const raw = await request({
         method: 'GET',
         path: '/api/v1/sessions/' + encodeURIComponent(sessionId) + '/craft/versions/' + encodeURIComponent(versionId) + '/export/consent',
         signal,
-      }), 'export consent view');
+      });
+      if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+        throw new ApiError({ code: 'INVALID_RESPONSE', message: 'Expected a craft export consent body' });
+      }
+      return raw;
     },
     /**
      * POST .../export/consent/decision — owner-only on the server; the
@@ -315,12 +325,19 @@ export function createCraftApi(request: (input: ClientRequest) => Promise<unknow
       manifestDigest: string,
       signal?: AbortSignal,
     ): Promise<unknown> {
-      return unwrap(await request({
+      // Same bare flat body as exportConsent (the decision endpoint
+      // persists BEFORE answering; a malformed reply must not be mistaken
+      // for a failed decision — the raw body is handed to the projection).
+      const raw = await request({
         method: 'POST',
         path: '/api/v1/sessions/' + encodeURIComponent(sessionId) + '/craft/versions/' + encodeURIComponent(versionId) + '/export/consent/decision',
         body: { decision, manifest_digest: manifestDigest },
         signal,
-      }), 'export consent decision');
+      });
+      if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+        throw new ApiError({ code: 'INVALID_RESPONSE', message: 'Expected a craft export consent body' });
+      }
+      return raw;
     },
     /**
      * GET /sessions/:id/craft/runs/:run_id/budget/pause — the T20 (#139)
@@ -329,13 +346,17 @@ export function createCraftApi(request: (input: ClientRequest) => Promise<unknow
      * the server-projected can_extend; anyone else is refused server-side.
      */
     async budgetPause(sessionId: string, runId: string, signal?: AbortSignal): Promise<{ pause: CraftBudgetPause; canExtend: boolean }> {
-      const data = unwrap(await request({
+      // can_extend rides the ENVELOPE top level (beside data), NOT inside
+      // the pause body — reading it off data would always answer false and
+      // hide the extension entrance.
+      const envelope = await request({
         method: 'GET',
         path: '/api/v1/sessions/' + encodeURIComponent(sessionId) + '/craft/runs/' + encodeURIComponent(runId) + '/budget/pause',
         signal,
-      }), 'budget pause view');
-      const canExtend = typeof (data as Record<string, unknown>)['can_extend'] === 'boolean'
-        ? ((data as Record<string, unknown>)['can_extend'] as boolean)
+      });
+      const data = unwrap(envelope, 'budget pause view');
+      const canExtend = typeof (envelope as Record<string, unknown>)['can_extend'] === 'boolean'
+        ? ((envelope as Record<string, unknown>)['can_extend'] as boolean)
         : false;
       return { pause: parseCraftBudgetPause(data), canExtend };
     },

@@ -844,6 +844,24 @@ func (s *CraftControlService) DelegationStatus(
 		if exec := s.currentExecutor(); err == nil && exec != nil {
 			observation, oerr := exec.Observe(ctx, task)
 			if oerr != nil {
+				// The run row's own terminal fact overtakes a stale unknown:
+				// a run that settled normally (succeeded/failed) AFTER the
+				// unknown was persisted — the result row may not have landed
+				// — must not answer "stopping/unknown" forever (the same
+				// terminal-first principle the superseded branch below pins).
+				if craft.WriterRunTerminal(run.Status) && run.Status != "canceled" {
+					settled := "completed"
+					if run.Status == "failed" {
+						settled = "failed"
+					}
+					return CraftStopStatus{Phase: settled,
+						Outcome: func() craft.StopOutcome {
+							if !stopJourney {
+								return craft.StopOutcome{}
+							}
+							return craft.StopOutcome{RunID: key.RunID, Status: craft.StopRequested}
+						}()}, nil
+				}
 				// A persisted unknown is honest on the poll surface too: the
 				// refresh reads the durable fact instead of an error.
 				if s.currentStopIntents() != nil {
@@ -876,6 +894,13 @@ func (s *CraftControlService) DelegationStatus(
 				if run.Status == "failed" {
 					settled = "failed"
 				}
+				// The zero Outcome for a run that never touched the stop
+				// surface (no intent row, not canceled) — the same evidence
+				// gate projectOutcome applies: a superseded projection is
+				// still a stop projection and must not fabricate an ask.
+				if !stopJourney {
+					return CraftStopStatus{Phase: settled, Outcome: craft.StopOutcome{}}, nil
+				}
 				return CraftStopStatus{Phase: settled,
 					Outcome: craft.StopOutcome{RunID: key.RunID, Status: craft.StopRequested}}, nil
 			}
@@ -899,10 +924,15 @@ func (s *CraftControlService) DelegationStatus(
 	}
 	if craft.WriterRunTerminal(run.Status) {
 		// The superseded tail: the run row settled normally while the stop
-		// never confirmed — same bypass projection as the observe block.
+		// never confirmed — same bypass projection as the observe block,
+		// gated the same way: a run that never touched the stop surface
+		// projects no stop outcome at all.
 		settled := "completed"
 		if run.Status == "failed" {
 			settled = "failed"
+		}
+		if !stopJourney {
+			return CraftStopStatus{Phase: settled, Outcome: craft.StopOutcome{}}, nil
 		}
 		return CraftStopStatus{Phase: settled,
 			Outcome: craft.StopOutcome{RunID: key.RunID, Status: craft.StopRequested}}, nil

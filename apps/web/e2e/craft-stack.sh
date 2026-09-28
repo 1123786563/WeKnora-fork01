@@ -59,7 +59,10 @@ PORT_PREVIEW="${CRAFT_PORT_PREVIEW:-41877}"; PORT_PLAIN="${CRAFT_PORT_PLAIN:-418
 # ([T08] a24d64551 host-only-cookie isolation): localhost vs 127.0.0.1 are
 # distinct names on the same loopback interface, so the e2e stack satisfies
 # the production preview-origin contract without extra hosts-file entries.
-WEB_ORIGIN="http://localhost:$PORT_VITE"
+# Match vite --host 127.0.0.1 exactly: "localhost" can resolve to ::1
+# first (Node>=17 / some Linux resolvers) and the page load + wait_http
+# probe then hit connection-refused on the IPv6 loopback.
+WEB_ORIGIN="http://127.0.0.1:$PORT_VITE"
 API_ORIGIN="http://127.0.0.1:$PORT_API"
 PREVIEW_ORIGIN="https://127.0.0.1:$PORT_PREVIEW"
 
