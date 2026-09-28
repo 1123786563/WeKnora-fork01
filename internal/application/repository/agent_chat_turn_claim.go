@@ -21,8 +21,9 @@ const (
 )
 
 var (
-	ErrAgentChatTurnClaimConflict = errors.New("agent chat turn request conflicts with existing claim")
-	ErrAgentChatTurnClaimFenced   = errors.New("agent chat turn claim lease is fenced")
+	ErrAgentChatTurnClaimConflict           = errors.New("agent chat turn request conflicts with existing claim")
+	ErrAgentChatTurnClaimFenced             = errors.New("agent chat turn claim lease is fenced")
+	ErrAgentChatTurnClaimPlaceholderMissing = errors.New("agent chat turn claim assistant placeholder is missing or mismatched")
 )
 
 const agentChatTurnLease = 30 * time.Second
@@ -109,10 +110,15 @@ func (r *AgentChatTurnClaimRepository) Admit(ctx context.Context, in AgentChatTu
 			return err
 		}
 		for _, old := range expired {
-			if err := tx.Model(&types.Message{}).Where("id = ? AND session_id = ? AND request_id = ? AND role = 'assistant'", old.AssistantMessageID, old.SessionID, old.RequestID).Updates(map[string]any{"is_completed": true, "updated_at": time.Now().UTC()}).Error; err != nil {
-				return err
+			now := time.Now().UTC()
+			transition := tx.Model(&AgentChatTurnClaim{}).Where("id = ? AND source_tenant_id = ? AND state = 'active' AND lease_expires_at <= ?", old.ID, old.SourceTenantID, now).Updates(map[string]any{"state": "failed", "reason": "claim lease expired", "generation": gorm.Expr("generation + 1"), "updated_at": now})
+			if transition.Error != nil {
+				return transition.Error
 			}
-			if err := tx.Model(&AgentChatTurnClaim{}).Where("id = ? AND source_tenant_id = ? AND state = 'active' AND lease_expires_at <= ?", old.ID, old.SourceTenantID, time.Now().UTC()).Updates(map[string]any{"state": "failed", "reason": "claim lease expired", "generation": gorm.Expr("generation + 1"), "updated_at": time.Now().UTC()}).Error; err != nil {
+			if transition.RowsAffected != 1 {
+				continue
+			}
+			if err := terminalizeClaimAssistantPlaceholderTx(tx, old, now); err != nil {
 				return err
 			}
 		}
@@ -198,6 +204,20 @@ func updateClaimMessage(tx *gorm.DB, target *types.Message, source *types.Messag
 	target.IsCompleted, target.IsFallback, target.AgentDurationMs = source.IsCompleted, source.IsFallback, source.AgentDurationMs
 	target.Usage, target.RenderedContent, target.UpdatedAt = source.Usage, source.RenderedContent, time.Now().UTC()
 	return tx.Save(target).Error
+}
+
+func terminalizeClaimAssistantPlaceholderTx(tx *gorm.DB, claim AgentChatTurnClaim, now time.Time) error {
+	result := tx.Model(&types.Message{}).
+		Where("id = ? AND session_id = ? AND request_id = ? AND role = 'assistant' AND EXISTS (SELECT 1 FROM sessions s WHERE s.id = messages.session_id AND s.tenant_id = ? AND s.user_id = ?)",
+			claim.AssistantMessageID, claim.SessionID, claim.RequestID, claim.SessionTenantID, claim.OwnerID).
+		Updates(map[string]any{"is_completed": true, "updated_at": now})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		return ErrAgentChatTurnClaimPlaceholderMissing
+	}
+	return nil
 }
 
 func (r *AgentChatTurnClaimRepository) Finish(ctx context.Context, sourceTenantID uint64, id string, generation uint64, owner string, assistantMessage *types.Message, terminalState, reason string) (bool, error) {
@@ -325,7 +345,10 @@ func (r *AgentChatTurnClaimRepository) CancelByOwner(ctx context.Context, sessio
 			result = row
 			return nil
 		}
-		if err := tx.Model(&types.Message{}).Where("id = ? AND session_id = ? AND request_id = ? AND role = 'assistant'", row.AssistantMessageID, row.SessionID, row.RequestID).Updates(map[string]any{"is_completed": true, "updated_at": time.Now().UTC()}).Error; err != nil {
+		if res.RowsAffected != 1 {
+			return errors.New("agent chat turn claim owner cancellation changed an unexpected row count")
+		}
+		if err := terminalizeClaimAssistantPlaceholderTx(tx, row, time.Now().UTC()); err != nil {
 			return err
 		}
 		row.State, row.Reason, row.Generation = "cancelled", reason, row.Generation+1

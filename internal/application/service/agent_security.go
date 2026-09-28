@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"sort"
 	"strings"
 	"time"
@@ -58,7 +59,7 @@ func revocationAudit(action types.AuditAction, tenantID uint64, actorID, targetT
 func releaseRevocationView(row *types.AgentReleaseRevocationEntity) interfaces.AgentSecurityRevocationView {
 	return interfaces.AgentSecurityRevocationView{ID: row.ID, Kind: interfaces.AgentSecurityRevocationKindRelease,
 		Reason: row.Reason, RevokedBy: row.RevokedBy, RevokedAt: row.RevokedAt,
-		InFlightDisposition: row.InFlightDisposition, CanceledRunCount: row.CanceledRunCount,
+		InFlightDisposition: row.InFlightDisposition, CanceledRunCount: row.CanceledRunCount, RunCancellationState: row.RunCancellationState,
 		ListingID: row.ListingID, ReleaseID: row.ReleaseID, ReplacementReleaseID: row.ReplacementReleaseID}
 }
 
@@ -66,7 +67,7 @@ func dependencyRevocationView(row *types.AgentDependencyRevocationEntity) interf
 	dependency := &types.AgentReleaseDependency{Type: row.DepType, ID: row.DepID, Version: row.DepVersion, Digest: row.DepDigest}
 	return interfaces.AgentSecurityRevocationView{ID: row.ID, Kind: interfaces.AgentSecurityRevocationKindDependency,
 		Reason: row.Reason, RevokedBy: row.RevokedBy, RevokedAt: row.RevokedAt,
-		InFlightDisposition: row.InFlightDisposition, CanceledRunCount: row.CanceledRunCount,
+		InFlightDisposition: row.InFlightDisposition, CanceledRunCount: row.CanceledRunCount, RunCancellationState: row.RunCancellationState,
 		Dependency: dependency, ReplacementVersion: row.ReplacementVersion}
 }
 
@@ -212,6 +213,11 @@ func (s *AgentSecurityService) RevokeRelease(ctx context.Context, tenantID uint6
 		ReplacementReleaseID: input.ReplacementReleaseID, InFlightDisposition: input.InFlightDisposition,
 		RevokedBy: strings.TrimSpace(actorID), RevokedAt: now, CreatedAt: now,
 	}
+	if input.InFlightDisposition == interfaces.AgentSecurityInFlightCancel {
+		row.RunCancellationState = interfaces.AgentSecurityRunCancellationPending
+	} else {
+		row.RunCancellationState = interfaces.AgentSecurityRunCancellationComplete
+	}
 	audit, err := revocationAudit(types.AuditActionAgentReleaseRevoked, tenantID, strings.TrimSpace(actorID), "agent_release", input.ReleaseID,
 		map[string]string{"reason": input.Reason, "replacement": input.ReplacementReleaseID, "in_flight_disposition": input.InFlightDisposition}, now)
 	if err != nil {
@@ -229,9 +235,11 @@ func (s *AgentSecurityService) RevokeRelease(ctx context.Context, tenantID uint6
 	if input.InFlightDisposition == interfaces.AgentSecurityInFlightCancel {
 		count, err := s.runs.ReconcileRunCancellation(ctx, tenantID, row.ID)
 		if err != nil {
-			return interfaces.AgentSecurityRevocationView{}, err
+			log.Printf("[AgentSecurity] immediate release reconciliation failed; revocation %s remains pending: %v", row.ID, err)
+			return releaseRevocationView(row), nil
 		}
 		row.CanceledRunCount = count
+		row.RunCancellationState = interfaces.AgentSecurityRunCancellationComplete
 	}
 	return releaseRevocationView(row), nil
 }
@@ -252,6 +260,11 @@ func (s *AgentSecurityService) RevokeDependency(ctx context.Context, tenantID ui
 		ReplacementVersion: input.ReplacementVersion, InFlightDisposition: input.InFlightDisposition,
 		RevokedBy: strings.TrimSpace(actorID), RevokedAt: now, CreatedAt: now,
 	}
+	if input.InFlightDisposition == interfaces.AgentSecurityInFlightCancel {
+		row.RunCancellationState = interfaces.AgentSecurityRunCancellationPending
+	} else {
+		row.RunCancellationState = interfaces.AgentSecurityRunCancellationComplete
+	}
 	targetID := input.Dependency.Type + "/" + input.Dependency.ID + "@" + input.Dependency.Version
 	audit, err := revocationAudit(types.AuditActionAgentDependencyRevoked, tenantID, strings.TrimSpace(actorID), "agent_dependency", targetID,
 		map[string]string{"reason": input.Reason, "replacement": input.ReplacementVersion, "in_flight_disposition": input.InFlightDisposition}, now)
@@ -270,9 +283,11 @@ func (s *AgentSecurityService) RevokeDependency(ctx context.Context, tenantID ui
 	if input.InFlightDisposition == interfaces.AgentSecurityInFlightCancel {
 		count, err := s.runs.ReconcileRunCancellation(ctx, tenantID, row.ID)
 		if err != nil {
-			return interfaces.AgentSecurityRevocationView{}, err
+			log.Printf("[AgentSecurity] immediate dependency reconciliation failed; revocation %s remains pending: %v", row.ID, err)
+			return dependencyRevocationView(row), nil
 		}
 		row.CanceledRunCount = count
+		row.RunCancellationState = interfaces.AgentSecurityRunCancellationComplete
 	}
 	return dependencyRevocationView(row), nil
 }

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
@@ -173,6 +174,50 @@ func TestRevokeReleaseRecordsAuditScopeAndCancelsRuns(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, list, 1)
 	require.Nil(t, list[0].Scope)
+}
+
+func TestRevokeReleaseReturnsCommittedPendingResultWhenImmediateReconcileFails(t *testing.T) {
+	svc, _, db := newAgentSecurityServiceForTest(t)
+	_, releaseID := publishUpgradeServiceRelease(t, db, 1, "pending-reconcile", securityManifest, lockV123, securityBundleWithLock(lockV123))
+	require.NoError(t, db.Exec(`CREATE TRIGGER reject_reconcile_complete BEFORE UPDATE OF run_cancellation_state ON agent_release_revocations BEGIN SELECT RAISE(ABORT, 'reconcile temporarily unavailable'); END`).Error)
+	view, err := svc.RevokeRelease(context.Background(), 1, "sec-admin", interfaces.ReleaseRevocationInput{ReleaseID: releaseID, Reason: "retry pending reconciliation"})
+	require.NoError(t, err, "a committed revocation must not be reported as uncommitted when immediate reconciliation is retryable")
+	require.NotEmpty(t, view.ID, "the committed revocation identity must be returned")
+	var response map[string]any
+	encoded, err := json.Marshal(view)
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(encoded, &response))
+	require.Equal(t, "pending", response["run_cancellation_state"])
+	var persisted types.AgentReleaseRevocationEntity
+	require.NoError(t, db.Where("tenant_id = ? AND id = ?", 1, view.ID).Take(&persisted).Error)
+	require.Equal(t, "pending", persisted.RunCancellationState)
+	require.NoError(t, db.Exec(`DROP TRIGGER reject_reconcile_complete`).Error)
+	_, err = svc.runs.ReconcileRunCancellation(context.Background(), 1, view.ID)
+	require.NoError(t, err, "durable worker retry remains available after the immediate pass failed")
+	require.NoError(t, db.Where("tenant_id = ? AND id = ?", 1, view.ID).Take(&persisted).Error)
+	require.Equal(t, "complete", persisted.RunCancellationState)
+}
+
+func TestRevokeDependencyReturnsCommittedPendingResultWhenImmediateReconcileFails(t *testing.T) {
+	svc, _, db := newAgentSecurityServiceForTest(t)
+	require.NoError(t, db.Exec(`INSERT OR IGNORE INTO tenants(id,name,business) VALUES(1,'tenant-1','test')`).Error)
+	require.NoError(t, db.Exec(`CREATE TRIGGER reject_reconcile_complete BEFORE UPDATE OF run_cancellation_state ON agent_dependency_revocations BEGIN SELECT RAISE(ABORT, 'reconcile temporarily unavailable'); END`).Error)
+	view, err := svc.RevokeDependency(context.Background(), 1, "sec-admin", interfaces.DependencyRevocationInput{Dependency: types.AgentReleaseDependency{Type: "skill", ID: "locked-skill", Version: "1.2.3", Digest: "digest"}, Reason: "retry pending reconciliation"})
+	require.NoError(t, err, "a committed revocation must not be reported as uncommitted when immediate reconciliation is retryable")
+	require.NotEmpty(t, view.ID, "the committed revocation identity must be returned")
+	var response map[string]any
+	encoded, err := json.Marshal(view)
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(encoded, &response))
+	require.Equal(t, "pending", response["run_cancellation_state"])
+	var persisted types.AgentDependencyRevocationEntity
+	require.NoError(t, db.Where("tenant_id = ? AND id = ?", 1, view.ID).Take(&persisted).Error)
+	require.Equal(t, "pending", persisted.RunCancellationState)
+	require.NoError(t, db.Exec(`DROP TRIGGER reject_reconcile_complete`).Error)
+	_, err = svc.runs.ReconcileRunCancellation(context.Background(), 1, view.ID)
+	require.NoError(t, err, "durable worker retry remains available after the immediate pass failed")
+	require.NoError(t, db.Where("tenant_id = ? AND id = ?", 1, view.ID).Take(&persisted).Error)
+	require.Equal(t, "complete", persisted.RunCancellationState)
 }
 
 func TestRevokeDependencyUsesExactLockIdentityForScopeAndCancellation(t *testing.T) {

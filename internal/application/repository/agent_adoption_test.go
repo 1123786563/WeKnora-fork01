@@ -110,6 +110,11 @@ func TestAgentAdoptionRepositoryLifecycle(t *testing.T) {
 	require.NoError(t, err)
 	_, err = repo.UpdateVariantState(ctx, 1, published.ID, []string{"published"}, "published", map[string]any{"local_agent_version_id": "rewritten-version"})
 	require.ErrorIs(t, err, ErrAgentAdoptionVariantIdentityImmutable)
+	retired, err := repo.UpdateVariantState(ctx, 1, published.ID, []string{"published"}, "retired", nil)
+	require.NoError(t, err)
+	require.NotNil(t, retired.PublishedAt)
+	_, err = repo.UpdateVariantState(ctx, 1, published.ID, []string{"retired"}, "retired", map[string]any{"local_agent_id": "rewritten-agent"})
+	require.ErrorIs(t, err, ErrAgentAdoptionVariantIdentityImmutable)
 
 	adoptions, err := repo.ListAdoptions(ctx, 1)
 	require.NoError(t, err)

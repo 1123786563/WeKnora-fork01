@@ -163,7 +163,10 @@ func cancelActiveClaimsForReleasesTx(tx *gorm.DB, tenantID uint64, releaseIDs []
 		if res.RowsAffected == 0 {
 			continue
 		}
-		if err := tx.Model(&types.Message{}).Where("id=? AND session_id=? AND request_id=? AND role='assistant'", claim.AssistantMessageID, claim.SessionID, claim.RequestID).Updates(map[string]any{"is_completed": true, "updated_at": time.Now().UTC()}).Error; err != nil {
+		if res.RowsAffected != 1 {
+			return errors.New("agent security claim cancellation changed an unexpected row count")
+		}
+		if err := terminalizeClaimAssistantPlaceholderTx(tx, claim, time.Now().UTC()); err != nil {
 			return err
 		}
 	}
