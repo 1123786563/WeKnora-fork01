@@ -468,11 +468,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	}))
 	must(container.Provide(func(upgrade *service.AgentUpgradeService) interfaces.AgentUpgradeService { return upgrade }))
 	must(container.Provide(handler.NewAgentUpgradeHandler))
-	must(container.Provide(repository.NewAgentSecurityStore))
-	must(container.Provide(repository.NewAgentRunStore))
-	must(container.Provide(NewAgentSecurityService))
-	must(container.Provide(NewAgentSecurityHandler))
-	must(container.Invoke(wireAgentSecurityGates))
+	provideAgentSecurity(container)
 	provideAgentMarketplaceLifecycle(container)
 	must(container.Provide(repository.NewPublicMarketplaceRepository))
 	must(container.Provide(func(repo repository.PublicMarketplaceRepository, listings interfaces.AgentMarketplaceRepository) interfaces.PublicMarketplaceService {
@@ -1131,6 +1127,13 @@ func BuildContainer(container *dig.Container) *dig.Container {
 
 	logger.Infof(ctx, "[Container] Container initialization completed successfully")
 	return container
+}
+
+func provideAgentSecurity(container *dig.Container) {
+	must(container.Provide(repository.NewAgentSecurityStore))
+	must(container.Provide(NewAgentSecurityService))
+	must(container.Provide(NewAgentSecurityHandler))
+	must(container.Invoke(wireAgentSecurityGates))
 }
 
 func newUnavailableSemanticModelGateway(
