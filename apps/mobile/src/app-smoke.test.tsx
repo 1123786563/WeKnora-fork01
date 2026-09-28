@@ -634,6 +634,58 @@ test('the home header switches to another registered deployment through the call
   assert.deepEqual(switched, ['https://other.example.test']);
 });
 
+test('the delivery receipt section offers the recovery action for partial and unknown states only (T25 #55 AC1)', async () => {
+  const { TaskDetailScreen } = await import('./screens/TaskDetailScreen.tsx');
+  const view: import('@weknora/mobile-core').TaskDetailView = {
+    taskId: 'task-1', runId: 'run-1', title: '交付', lifecycle: 'active', runStatus: 'running', attention: 'required',
+    executionStatus: 'running', settlementStatus: 'pending', revision: 1, cursor: 2, incomplete: false, connection: 'live',
+    timeline: [], duplicateSeqs: [],
+  };
+  const pushedReceipt: import('@weknora/mobile-core').DeliveryReceiptView = {
+    deliveryId: 'dlv-1', taskId: 'task-1', runId: 'run-1', state: 'pushed',
+    repo: 'octocat/hello', branch: 'weknora/task/s-1', baselineSha: 'b'.repeat(40),
+    commitSha: 'c1', attention: true, updatedAt: '2026-09-24T00:00:30Z',
+  };
+  const withRecovery = render(TaskDetailScreen, {
+    view, loading: false, error: undefined, onRefresh: () => {},
+    delivery: pushedReceipt, onRecoverDelivery: async () => pushedReceipt,
+  });
+  const pushedSection = descendants(withRecovery).find(({ type, props }) => typeof type === 'function' && 'delivery' in props);
+  assert.ok(pushedSection, 'delivery section is present');
+  const pushedJson = JSON.stringify(render(pushedSection!.type as (props: unknown) => unknown, pushedSection!.props));
+  assert.ok(pushedJson.includes('已推送，等待草稿 PR/MR 恢复'), 'the honest partial-completion copy renders');
+  assert.ok(pushedJson.includes('恢复创建草稿 PR/MR'), 'the pushed state offers the recovery action');
+  const failedSection = render(TaskDetailScreen, {
+    view, loading: false, error: undefined, onRefresh: () => {},
+    delivery: pushedReceipt, recoveryError: '当前状态无法恢复：服务端暂不可用', onRecoverDelivery: async () => pushedReceipt,
+  });
+  const failedProps = descendants(failedSection).find(({ type, props }) => typeof type === 'function' && 'delivery' in props);
+  assert.ok(failedProps, 'failed recovery delivery section is present');
+  const failedJson = JSON.stringify(render(failedProps!.type as (props: unknown) => unknown, failedProps!.props));
+  assert.ok(failedJson.includes('当前状态无法恢复：服务端暂不可用'), 'recovery failure copy renders');
+  assert.ok(failedJson.includes('已推送，等待草稿 PR/MR 恢复'), 'recovery failure does not claim delivery completed');
+  const unknownSection = render(TaskDetailScreen, {
+    view, loading: false, error: undefined, onRefresh: () => {},
+    delivery: { ...pushedReceipt, state: 'unknown' }, onRecoverDelivery: async () => pushedReceipt,
+  });
+  const unknownProps = descendants(unknownSection).find(({ type, props }) => typeof type === 'function' && 'delivery' in props);
+  assert.ok(unknownProps, 'unknown delivery section is present');
+  assert.ok(JSON.stringify(render(unknownProps!.type as (props: unknown) => unknown, unknownProps!.props)).includes('核对远端结果'), 'unknown state offers the remote verification action');
+  const recovered: import('@weknora/mobile-core').DeliveryReceiptView = { ...pushedReceipt, state: 'delivered' };
+  const settled = render(TaskDetailScreen, {
+    view, loading: false, error: undefined, onRefresh: () => {}, delivery: recovered,
+  });
+  const settledSection = descendants(settled).find(({ type, props }) => typeof type === 'function' && 'delivery' in props);
+  assert.ok(settledSection, 'delivered delivery section is present');
+  assert.equal(JSON.stringify(render(settledSection!.type as (props: unknown) => unknown, settledSection!.props)).includes('恢复创建草稿 PR/MR'), false, 'a delivered receipt offers no recovery action');
+  const noCallback = render(TaskDetailScreen, {
+    view, loading: false, error: undefined, onRefresh: () => {}, delivery: pushedReceipt,
+  });
+  const noCallbackSection = descendants(noCallback).find(({ type, props }) => typeof type === 'function' && 'delivery' in props);
+  assert.ok(noCallbackSection, 'delivery section without callback is present');
+  assert.equal(JSON.stringify(render(noCallbackSection!.type as (props: unknown) => unknown, noCallbackSection!.props)).includes('恢复创建草稿 PR/MR'), false, 'without the callback the action stays hidden (fail closed)');
+});
+
 test('RuntimeSurface passes other registered deployments to the home screen and the full list to login', async () => {
   const { RuntimeSurface } = await import('./composition.ts');
   const authorized = RuntimeSurface({

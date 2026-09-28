@@ -15,6 +15,9 @@ export interface TaskDetailScreenProps {
   /** T27 语音房入口；未提供时不渲染（组合根未装配或无捕获能力的呈现面）。 */
   onOpenVoiceRoom?: () => void;
   delivery?: DeliveryReceiptView;
+  /** T25 恢复入口；未提供时操作不渲染（通道缺失 fail closed 的呈现面）。 */
+  onRecoverDelivery?: (input: { runId: string; deliveryId: string }) => Promise<DeliveryReceiptView>;
+  recoveryError?: string;
 }
 
 const CONNECTION_LABELS: Record<TaskDetailView['connection'], string> = { syncing: '同步中', live: '已连接', interrupted: '连接中断，可恢复', drained: '已同步' };
@@ -52,12 +55,22 @@ export const DELIVERY_STATE_COPY: Record<DeliveryState, string> = {
   unknown: '远端结果待确认',
 };
 
+/** T25 (#55) 恢复操作文案：按状态给恰一个动作，失败态错误不粉饰。 */
+export const DELIVERY_RECOVERY_COPY = {
+  pushed: '恢复创建草稿 PR/MR',
+  unknown: '核对远端结果',
+  failed: '当前状态无法恢复：请刷新后查看最新交付状态',
+} as const;
+
 /** 交付回执区块：只读呈现服务端落账的追溯字段（仓库/分支/提交/PR·MR/远端身份/批准人）。 */
-function DeliveryReceiptSection({ delivery }: { delivery: DeliveryReceiptView }) {
+function DeliveryReceiptSection({ delivery, onRecover, recoveryError }: { delivery: DeliveryReceiptView; onRecover?: () => void; recoveryError?: string }) {
   return (
     <View style={{ marginTop: 16, padding: 12, borderWidth: 1, borderColor: '#ccc', borderRadius: 8 }}>
       <Text style={{ fontWeight: '600' }}>代码交付</Text>
       <Text>{DELIVERY_STATE_COPY[delivery.state]}</Text>
+      {delivery.state === 'pushed' && onRecover !== undefined ? <Button title={DELIVERY_RECOVERY_COPY.pushed} onPress={onRecover} /> : null}
+      {delivery.state === 'unknown' && onRecover !== undefined ? <Button title={DELIVERY_RECOVERY_COPY.unknown} onPress={onRecover} /> : null}
+      {recoveryError !== undefined ? <Text>{recoveryError}</Text> : null}
       <Text numberOfLines={1}>仓库：{delivery.repo}</Text>
       <Text numberOfLines={1}>分支：{delivery.branch}</Text>
       {delivery.commitSha !== undefined ? <Text numberOfLines={1}>提交：{delivery.commitSha.slice(0, 12)}</Text> : null}
@@ -69,7 +82,7 @@ function DeliveryReceiptSection({ delivery }: { delivery: DeliveryReceiptView })
 }
 
 /** 结果优先详情屏：状态卡 + 三层状态 + attention 横幅在前，干预区随后，时间线事实流在后；原始证据默认折叠、按需展开；预算入口与交付回执在底部操作区。 */
-export function TaskDetailScreen({ view, loading, error, onRefresh, onOpenMaterials, onOpenBudget, onOpenVoiceRoom, onAct, delivery }: TaskDetailScreenProps) {
+export function TaskDetailScreen({ view, loading, error, onRefresh, onOpenMaterials, onOpenBudget, onOpenVoiceRoom, onAct, delivery, onRecoverDelivery, recoveryError }: TaskDetailScreenProps) {
   const [expanded, setExpanded] = useState<ReadonlySet<number>>(new Set());
   const [draft, setDraft] = useState('');
   // B2-F41：expanded 以 runId 隔离——切换任务（组件复用）时不携带上一个任务的展开状态。
@@ -143,7 +156,7 @@ export function TaskDetailScreen({ view, loading, error, onRefresh, onOpenMateri
       {onOpenMaterials !== undefined && <Button title="任务材料" onPress={onOpenMaterials} />}
       {onOpenBudget !== undefined && <Button title="任务预算" onPress={onOpenBudget} />}
       {onOpenVoiceRoom !== undefined && <Button title="语音房" onPress={onOpenVoiceRoom} />}
-      {delivery !== undefined ? <DeliveryReceiptSection delivery={delivery} /> : null}
+      {delivery !== undefined ? <DeliveryReceiptSection delivery={delivery} recoveryError={recoveryError} onRecover={onRecoverDelivery === undefined ? undefined : () => { void onRecoverDelivery({ runId: view.runId, deliveryId: delivery.deliveryId }).catch(() => undefined); }} /> : null}
       <Button title="重新同步快照" onPress={onRefresh} disabled={loading} />
       {error !== undefined && <Text>{error}</Text>}
     </ScrollView>
