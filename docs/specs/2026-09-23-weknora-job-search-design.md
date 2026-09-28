@@ -3,7 +3,7 @@
 状态：已批准。用户于 2026-09-23 确认九轮访谈形成的共同理解；本文件定义产品行为、范围和验收。
 Issue 跟踪：[Spec #140](https://github.com/1123786563/WeKnora-fork01/issues/140)（`ready-for-agent`）。
 日期：2026-09-23
-决策来源：[九轮访谈记录](../design/job-search/2026-09-23-job-search-discovery.md)。领域语言以 [CONTEXT.md](../../CONTEXT.md) 为准；架构边界见 [ADR-0015](../adr/0015-job-search-as-weknora-specialist-agent.md)、[ADR-0016](../adr/0016-one-task-per-job-application.md)、[ADR-0017](../adr/0017-immutable-job-and-application-evidence.md)、[ADR-0018](../adr/0018-expo-tdesign-career-clients.md)。
+决策来源：用户于 2026-09-23 确认的九轮访谈记录（原始记录未包含在本基线中）。领域语言以 [CONTEXT.md](../../CONTEXT.md) 为准；架构边界见 [ADR-0015](../adr/0015-job-search-as-weknora-specialist-agent.md)、[ADR-0016](../adr/0016-one-task-per-job-application.md)、[ADR-0017](../adr/0017-immutable-job-and-application-evidence.md)、[ADR-0018](../adr/0018-expo-tdesign-career-clients.md)。
 
 ## 1. 产品定位
 
