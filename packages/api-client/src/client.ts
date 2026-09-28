@@ -313,12 +313,18 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
   const analytics = createAnalyticsApi(request);
   const usage = createUsageApi(request, requestBinary);
   const queryHistory = createQueryHistoryApi(request, requestBinary);
-  const career = createCareerApi(input => {
+  function assertCareerDeployment(scope: { deploymentOrigin: string }): void {
     let baseOrigin: string;
     try { baseOrigin = new URL(options.baseURL).origin; } catch { throw new Error('Career API requires an absolute deployment base URL'); }
-    if (baseOrigin !== input.scope.deploymentOrigin) throw new Error('Career scope deployment does not match the authenticated API client');
+    if (baseOrigin !== scope.deploymentOrigin) throw new Error('Career scope deployment does not match the authenticated API client');
+  }
+  const career = createCareerApi(input => {
+    assertCareerDeployment(input.scope);
     return request(input);
-  }, options.careerObserver);
+  }, options.careerObserver === undefined ? undefined : (scope, onRevision) => {
+    assertCareerDeployment(scope);
+    return options.careerObserver!(scope, onRevision);
+  });
   const embed = createEmbedApi(request, async (streamRequest, onEvent, signal) => {
     const input = signal === undefined ? streamRequest : { ...streamRequest, signal };
     if (options.transport.sendStream) {

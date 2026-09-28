@@ -189,6 +189,25 @@ test('production Career client forwards the configured revision observer to its 
   assert.equal(received, true);
 });
 
+test('production Career observation rejects a deployment origin outside the authenticated client scope', async () => {
+  const { createCareerDesk } = await import('../../career-core/src/index.ts');
+  const scopeA = { deploymentOrigin: 'https://a.example', tenantId: 'tenant-1', actorId: 'actor-1' };
+  const scopeB = { ...scopeA, deploymentOrigin: 'https://b.example' };
+  let providerCalls = 0;
+  const client = createWeKnoraClient({
+    baseURL: scopeA.deploymentOrigin,
+    transport: { send: async () => ({ status: 200, headers: {}, body: { success: true, data: { revision: 1, value: { opportunities: [], applications: [] } } } }) },
+    careerObserver: () => { providerCalls++; return () => undefined; },
+  });
+  let httpError: unknown;
+  await assert.rejects(client.career.open(scopeB), error => { httpError = error; return error instanceof Error; });
+  const desk = createCareerDesk({ remote: client.career, initialScope: scopeB, intentStore: { save: async () => undefined, list: async () => [], remove: async () => undefined } });
+  assert.throws(() => desk.observe(), (error: unknown) => error instanceof Error
+    && error.constructor === (httpError as Error).constructor
+    && error.message === (httpError as Error).message);
+  assert.equal(providerCalls, 0);
+});
+
 test('ordinary production client fails observation explicitly when no revision provider is configured', async () => {
   const { createCareerDesk } = await import('../../career-core/src/index.ts');
   const { CareerObservationUnavailableError } = await import('./career/index.ts');
