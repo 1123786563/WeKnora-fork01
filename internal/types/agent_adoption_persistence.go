@@ -20,6 +20,8 @@ type AgentAdoptionEntity struct {
 	AcceptedReleaseID string `gorm:"type:varchar(36);not null"`
 	State             string `gorm:"type:varchar(32);not null;default:'active'"`
 	CreatedBy         string `gorm:"type:varchar(255);not null;default:''"`
+	EndedBy           string `gorm:"type:varchar(255);not null;default:''"`
+	EndedAt           *time.Time
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
 }
@@ -44,6 +46,8 @@ type AgentAdoptionVariantEntity struct {
 	TestedAt            *time.Time
 	PublishedBy         string `gorm:"type:varchar(255);not null;default:''"`
 	PublishedAt         *time.Time
+	RetiredBy           string `gorm:"type:varchar(255);not null;default:''"`
+	RetiredAt           *time.Time
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
 }
@@ -66,4 +70,6 @@ type AgentVariantCapabilityMappingEntity struct {
 	UpdatedAt        time.Time
 }
 
-func (AgentVariantCapabilityMappingEntity) TableName() string { return "agent_variant_capability_mappings" }
+func (AgentVariantCapabilityMappingEntity) TableName() string {
+	return "agent_variant_capability_mappings"
+}
