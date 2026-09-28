@@ -22,16 +22,21 @@ func TestWithWorkspaceEnvDefaultsPreservesConfiguredValuesAndAddsNothingElse(t *
 		"PATH":            "/usr/local/bin:/usr/bin",
 		"EXISTING_FLAG":   "1",
 	}
+	configuredKeys := make(map[string]struct{}, len(input))
+	for key := range input {
+		configuredKeys[key] = struct{}{}
+	}
 	got := withWorkspaceEnvDefaults(input)
 	require.Equal(t, "/workspace/custom-out", got[skillOutputEnvVar], "a configured workspace path is never overridden")
 	require.Equal(t, SessionInputRoot, got[sessionInputEnvVar])
 	require.Equal(t, "/usr/local/bin:/usr/bin", got["PATH"])
 	require.Equal(t, "1", got["EXISTING_FLAG"])
-	// 白名单断言：新增键只允许是两个 WEKNORA_ 工作区键。
+	addedKeys := make(map[string]struct{})
 	for key := range got {
-		if _, configured := input[key]; configured {
-			continue
+		if _, configured := configuredKeys[key]; !configured {
+			addedKeys[key] = struct{}{}
 		}
-		require.Equal(t, sessionInputEnvVar, key, "the only key this function may add is %s; anything else is a credential-leak surface (T25)", sessionInputEnvVar)
 	}
+	require.Equal(t, map[string]struct{}{sessionInputEnvVar: {}}, addedKeys, "only the missing approved workspace path may be added (T25)")
+	require.Contains(t, configuredKeys, skillOutputEnvVar, "the output key was configured and must not be counted as added")
 }
