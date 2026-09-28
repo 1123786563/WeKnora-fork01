@@ -95,3 +95,11 @@ No implementation verification or OCR has run for this plan yet. Task 0 first in
 - #144 remains in P7/Task 9 and cannot close until both PH/#143 ruling and verified P145 evidence are integrated. Harmony-specific P7 work alone waits for PH; #145 iOS/Android is never blocked by it.
 - Task 9 consumes Task 0B/#145 before implementing #144; the W0/W2 schedule and 0A/0B ledger statuses reflect this split.
 - Task 0 remains `running` pending the next independent re-review.
+
+### Final-review fix checkpoint
+
+- Correction commit: `2f5014621c7edd6f9d1c67887c174201bbffde68`; tree: `d97b1766a12e6487804f1e17af12917d54adb317`.
+- `P145`/Task 0B owns #145's iOS/Android authenticated Task boundary with `depends_on: —`; it is independent of PH/#143 and P0–P4. The #145 issue snapshot has `Blocked by: None`.
+- `P7`/Task 9 owns #144; it consumes verified P145 and PH/#143 ruling. Its iOS/Android work may proceed without PH, but #144 cannot close until both blockers are resolved; PH gates Harmony-only work and overall #144 closure.
+- Structural dependency assertions and `git diff --check` passed. Full command descriptions, output and checkpoint hash are recorded in the Task 0 fix report.
+- Task 0 remains `running`; awaiting the next independent review.

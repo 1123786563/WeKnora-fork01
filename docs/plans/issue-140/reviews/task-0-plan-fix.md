@@ -57,3 +57,18 @@ Commands and results:
 - `git diff --check d23246a9ba4f8aa91e97ad7610afe125bad133bc..c544e4392f31569a0a390ae5fc54c838462ab9e7` — PASS, exit 0 for the committed correction range.
 - `git diff --check` with the final Ledger/report delta present — PASS, exit 0.
 - No production code changed; no implementation/device tests were run. Task 0 remains `running` until an independent re-review passes.
+
+## Final-review fix: independent #145 native slice
+
+The latest independent final review found that P7 still gated #145 on PH/#143 and Career backend slices. Corrected checkpoint: commit `2f5014621c7edd6f9d1c67887c174201bbffde68`, tree `d97b1766a12e6487804f1e17af12917d54adb317`.
+
+- Added independent P145 / Task 0B for #145; it has no Issue blocker and no DAG dependencies. It consumes only the existing Expo app, Mobile Runtime scope lease and authorized Task public read. It can proceed beside PH/#143 and Career API/backend work.
+- P7 / Task 9 no longer owns #145. It consumes the integrated P145 checkpoint and owns #144. #144 still requires both PH/#143 ruling and verified #145 evidence to close. PH gates Harmony-specific implementation/evidence, not independent #145 iOS/Android work.
+- Updated the Mermaid graph, dependency table, acceptance mapping, Task 9 preconditions, W0/W2 schedule, Task 0 status ledger and this report. Task 0 remains `running` pending the next independent re-review.
+
+Exact dependency assertions run in the fix worktree:
+
+- `python3 - <<'PY'` structural assertions over plan/DAG/issue-145 snapshot — PASS: P145 dependency cell equals `—`; P145 has no PH/P0–P4 prerequisite; P7 depends on P145 with PH conditional; #144 closes only after both; Task 0B has no dependencies; Task 9 waits for P145; the issue snapshot lists no blockers.
+- `git diff --check` — PASS, exit 0 before the correction commit.
+- Correction checkpoint: `git rev-parse HEAD` → `2f5014621c7edd6f9d1c67887c174201bbffde68`; `git rev-parse HEAD^{tree}` → `d97b1766a12e6487804f1e17af12917d54adb317`.
+- Docs-only changes; no implementation/device tests run. Await independent re-review before changing Task 0 from `running`.
