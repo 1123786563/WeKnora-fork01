@@ -86,6 +86,8 @@ func writeWorkbenchAdmissionError(c *gin.Context, err error) {
 		status = http.StatusAccepted
 	case errors.Is(err, workbenchservice.ErrRequestRejected):
 		status = http.StatusConflict
+	case errors.Is(err, workbenchservice.ErrAgentUseDenied):
+		status = http.StatusConflict
 	case strings.Contains(err.Error(), "context is required"):
 		status = http.StatusUnauthorized
 	}

@@ -24,6 +24,7 @@ var (
 	ErrBudgetDenied    = errors.New("budget denied")
 	ErrRequestPending  = errors.New("request admission pending")
 	ErrRequestRejected = errors.New("request rejected")
+	ErrAgentUseDenied  = errors.New("agent use denied")
 )
 
 // TrustedAdmissionBinding is resolved by a server-side policy/target service.
@@ -149,6 +150,10 @@ type AdmissionCoordinator struct {
 	// platform_admission), installed by the container assembly through
 	// SetAdmissionGate. nil keeps admission open (legacy behaviour).
 	admissionGate func(targetID string) error
+	// agentUseGate rejects new work for agents whose lifecycle no longer
+	// permits use. It is installed by the container and consulted before any
+	// durable admission write.
+	agentUseGate func(context.Context, uint64, string) error
 }
 
 // SetAdmissionGate installs the W34 capability gate consulted by Start
@@ -159,6 +164,15 @@ func (a *AdmissionCoordinator) SetAdmissionGate(gate func(targetID string) error
 		return
 	}
 	a.admissionGate = gate
+}
+
+// SetAgentUseGate installs the lifecycle gate for agent-backed admissions.
+// Passing nil removes the gate for compatibility with existing deployments.
+func (a *AdmissionCoordinator) SetAgentUseGate(gate func(context.Context, uint64, string) error) {
+	if a == nil {
+		return
+	}
+	a.agentUseGate = gate
 }
 
 func NewAdmissionCoordinator(db *gorm.DB, runs *repository.AgentRunStore, budget TaskBudgetPort, publish func(context.Context, agentruntime.RunKey) error) *AdmissionCoordinator {
@@ -305,6 +319,14 @@ func (a *AdmissionCoordinator) Start(ctx context.Context, in StartInput) (agentr
 	}
 	if in.TargetID == "" {
 		in.TargetID = "platform"
+	}
+	// T33 #63: a retired variant's local agent stops admitting NEW work. The
+	// gate is consulted before the durable request row so a refusal leaves
+	// zero side effects (mirrors the W34 gate discipline above).
+	if a.agentUseGate != nil && strings.TrimSpace(in.AgentID) != "" {
+		if err := a.agentUseGate(ctx, tenant, in.AgentID); err != nil {
+			return agentruntime.Run{}, err
+		}
 	}
 	hash := requestHash(in)
 	req := repository.WorkbenchRequest{
