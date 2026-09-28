@@ -14,6 +14,8 @@ export interface CodeDeliveryRemoteOptions {
 /** 与 mobile-core DeliveryRemote 结构逐字一致（结构可赋值由 apps/mobile typecheck 证明）。 */
 export interface MobileCodeDeliveryRemote {
   delivery(runId: string): Promise<CodeDeliveryRecord | null>;
+  dispatchDelivery(input: { runId: string; deliveryId: string }): Promise<CodeDeliveryRecord>;
+  resolveDelivery(input: { runId: string; deliveryId: string }): Promise<CodeDeliveryRecord>;
 }
 
 const DELIVERY_NOT_FOUND = 'code_delivery_not_found';
@@ -31,6 +33,16 @@ function isDeliveryNotFound(error: unknown): boolean {
   return shaped.code === DELIVERY_NOT_FOUND || shaped.body?.code === DELIVERY_NOT_FOUND;
 }
 
+function deliveryRecordOf(response: unknown): CodeDeliveryRecord {
+  const envelope = response as { success?: unknown; data?: unknown };
+  if (envelope?.success !== true || typeof envelope.data !== 'object' || envelope.data === null) {
+    throw new Error('code delivery response must be a success envelope');
+  }
+  const delivery = (envelope.data as { delivery?: unknown }).delivery;
+  if (delivery === undefined) throw new Error('code delivery response must carry a delivery row');
+  return parseCodeDeliveryRecord(delivery);
+}
+
 /** GET /workbench/executions/:run_id/delivery —— 交付追溯读面（授权通道）。 */
 export function createMobileCodeDeliveryRemote(options: CodeDeliveryRemoteOptions): MobileCodeDeliveryRemote {
   requireDeploymentOrigin(options.origin);
@@ -42,17 +54,27 @@ export function createMobileCodeDeliveryRemote(options: CodeDeliveryRemoteOption
           method: 'GET',
           path: `/api/v1/workbench/executions/${encodeURIComponent(runId)}/delivery`,
         });
-        const envelope = response as { success?: unknown; data?: unknown };
-        if (envelope?.success !== true || typeof envelope.data !== 'object' || envelope.data === null) {
-          throw new Error('code delivery response must be a success envelope');
-        }
-        const delivery = (envelope.data as { delivery?: unknown }).delivery;
-        if (delivery === undefined) throw new Error('code delivery response must carry a delivery row');
-        return parseCodeDeliveryRecord(delivery);
+        return deliveryRecordOf(response);
       } catch (error) {
         if (isDeliveryNotFound(error)) return null;
         throw error;
       }
+    },
+    async dispatchDelivery({ runId, deliveryId }): Promise<CodeDeliveryRecord> {
+      const response = await request({
+        method: 'POST',
+        path: `/api/v1/workbench/executions/${encodeURIComponent(runId)}/delivery/${encodeURIComponent(deliveryId)}/dispatch`,
+        body: {},
+      });
+      return deliveryRecordOf(response);
+    },
+    async resolveDelivery({ runId, deliveryId }): Promise<CodeDeliveryRecord> {
+      const response = await request({
+        method: 'POST',
+        path: `/api/v1/workbench/executions/${encodeURIComponent(runId)}/delivery/${encodeURIComponent(deliveryId)}/resolve`,
+        body: {},
+      });
+      return deliveryRecordOf(response);
     },
   };
 }
