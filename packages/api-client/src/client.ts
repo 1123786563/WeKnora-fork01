@@ -32,6 +32,7 @@ import { createKnowledgeSettingsApi } from './knowledge/settings.ts';
 import { createAnalyticsApi } from './analytics/index.ts';
 import { createUsageApi } from './usage/index.ts';
 import { createQueryHistoryApi } from './queryHistory/index.ts';
+import { createCareerApi } from './career/index.ts';
 
 export type { KnowledgeBase } from '@weknora/contracts';
 
@@ -309,6 +310,7 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
   const analytics = createAnalyticsApi(request);
   const usage = createUsageApi(request, requestBinary);
   const queryHistory = createQueryHistoryApi(request, requestBinary);
+  const career = createCareerApi(request);
   const embed = createEmbedApi(request, async (streamRequest, onEvent, signal) => {
     const input = signal === undefined ? streamRequest : { ...streamRequest, signal };
     if (options.transport.sendStream) {
@@ -416,6 +418,7 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
     analytics,
     usage,
     queryHistory,
+    career,
     embed,
     sessions,
     sandbox: { issueTicket: sandbox.issueTicket, skills: sandboxSkills },

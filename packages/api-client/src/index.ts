@@ -1,4 +1,6 @@
 export { createWeKnoraClient } from './client.ts';
+export { createCareerApi } from './career/index.ts';
+export type { CareerApi, CareerRequest, CareerRequester } from './career/index.ts';
 export type { WeKnoraClient, WeKnoraClientOptions, ClientRequest, KnowledgeBase, KnowledgeBaseListParams, KnowledgeBaseMutationInput, KnowledgeChunkSearchParams, KnowledgeChunkSearchHit } from './client.ts';
 export { ApiError, createAbortError, isNamedError } from './errors.ts';
 export type { HttpRequest, HttpResult, HttpStreamResult, HttpTransport, NativeFileSource, NativeMultipartFileRequest, UploadProgressEvent } from './ports.ts';
