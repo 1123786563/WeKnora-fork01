@@ -153,6 +153,19 @@ func TestAgentSecurityStoreReleaseFactsCoversLocalAndIntroducedReleases(t *testi
 
 	locks, err := store.ListTenantReleaseLocks(ctx, 1)
 	require.NoError(t, err)
+	require.Len(t, locks, 2, "锁清单只包含预期的本地与引入式 Release")
+	localReleaseCount := 0
+	introducedReleaseCount := 0
+	for _, row := range locks {
+		if row.ReleaseID == releaseID {
+			localReleaseCount++
+		}
+		if row.ReleaseID == introduced.ID {
+			introducedReleaseCount++
+		}
+	}
+	require.Equal(t, 1, localReleaseCount, "本地 Release 恰好出现一次")
+	require.Equal(t, 1, introducedReleaseCount, "引入式 Release 恰好出现一次")
 	byID := map[string]AgentReleaseLockRow{}
 	for _, row := range locks {
 		byID[row.ReleaseID] = row
