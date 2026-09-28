@@ -609,6 +609,26 @@ class EvidenceHelpersTest(unittest.TestCase):
                 rows = list(rows.values())
             self.assertEqual([w["lago_id"] for w in rows], ["w1", "w2"])
 
+    def test_wallet_list_reports_http_status(self):
+        with mock.patch.object(cc, "call", return_value=(503, None)):
+            with self.assertRaisesRegex(RuntimeError, "HTTP 503"):
+                cc.wallet_list()
+
+    def test_wallet_list_rejects_non_2xx_without_response_content(self):
+        body = {"error": "provider-marker SECRET-MARKER"}
+        with mock.patch.object(cc, "call", return_value=(503, body)):
+            with self.assertRaises(RuntimeError) as caught:
+                cc.wallet_list()
+        self.assertNotIn("provider-marker", str(caught.exception))
+        self.assertNotIn("SECRET-MARKER", str(caught.exception))
+
+    def test_wallet_list_accepts_2xx_page(self):
+        wallet = {"lago_id": "w1", "name": "w1", "status": "active", "balance_cents": 1}
+        body = {"wallets": [wallet],
+                "meta": {"current_page": 1, "next_page": None, "total_pages": 1, "total_count": 1}}
+        with mock.patch.object(cc, "call", return_value=(200, body)):
+            self.assertEqual(cc.wallet_list(), [wallet])
+
     def test_all_readers_reject_truncated_or_malformed_pagination(self):
         bad_pages = [
             {"wallets": [{"lago_id": "w1"}], "meta": {"current_page": 1, "next_page": None, "total_pages": 2, "total_count": 2}},

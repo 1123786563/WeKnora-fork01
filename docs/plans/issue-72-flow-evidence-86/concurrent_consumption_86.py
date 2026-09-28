@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
-"""Issue #86 concurrent-consumption leg (stdout only; the operator tees the
-output into the evidence directory).
+"""Issue #86 concurrent-consumption leg.
+
+The required --output-dir receives an automatic stdout tee at
+<output-dir>/concurrent-output.txt and the verdict at <output-dir>/facts.json.
 
 Fires N parallel consumption events against the Lago authority and asserts
 the wallets are drawn exactly once per unit with no double-draw, no negative
@@ -221,7 +223,9 @@ def replay_snapshot_matches(expected, final):
 
 def wallet_list(fetch_page=None):
     def fetch(page):
-        _, body = call("GET", "/api/v1/customers/" + CUSTOMER + "/wallets?per_page=20&page=" + str(page))
+        status, body = call("GET", "/api/v1/customers/" + CUSTOMER + "/wallets?per_page=20&page=" + str(page))
+        if not 200 <= status <= 299:
+            raise RuntimeError("wallet list failed: HTTP %s" % status)
         return body
     return read_wallet_pages(fetch_page or fetch)
 
