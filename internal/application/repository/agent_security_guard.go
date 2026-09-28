@@ -8,6 +8,7 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/types"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 var (
@@ -113,4 +114,55 @@ func checkReleaseAdmissionTx(tx *gorm.DB, tenantID uint64, releaseID string) err
 		}
 	}
 	return nil
+}
+
+// checkLocalAgentReleaseAdmissionTx resolves a published local Variant and its
+// immutable Agent Version under the caller's tenant security guard. All
+// mapping rows for the local identity are locked in deterministic ID order
+// before their state is inspected, so stale or ambiguous lineage fails closed.
+func checkLocalAgentReleaseAdmissionTx(tx *gorm.DB, sourceTenantID uint64, localAgentID, localAgentVersionID string) (releaseID string, adopted bool, err error) {
+	if tx == nil || sourceTenantID == 0 || localAgentID == "" {
+		return "", false, ErrAgentSecurityReleaseUnresolvable
+	}
+	var variants []types.AgentAdoptionVariantEntity
+	query := tx.Where("tenant_id = ? AND local_agent_id = ?", sourceTenantID, localAgentID).
+		Order("id ASC").Clauses(clause.Locking{Strength: "UPDATE"})
+	if err := query.Find(&variants).Error; err != nil {
+		return "", false, err
+	}
+	if len(variants) == 0 {
+		// Non-Marketplace means a live, tenant-owned Agent with no Variant
+		// lineage at all. A client-supplied/stale Version cannot classify it.
+		if localAgentVersionID != "" {
+			return "", false, ErrAgentSecurityReleaseUnresolvable
+		}
+		var count int64
+		if err := tx.Model(&types.CustomAgent{}).Where("tenant_id = ? AND id = ?", sourceTenantID, localAgentID).Count(&count).Error; err != nil {
+			return "", false, err
+		}
+		if count != 1 {
+			return "", false, ErrAgentSecurityReleaseUnresolvable
+		}
+		return "", false, nil
+	}
+	if len(variants) != 1 || localAgentVersionID == "" {
+		return "", false, ErrAgentSecurityReleaseUnresolvable
+	}
+	variant := variants[0]
+	if variant.State != "published" || variant.LocalAgentVersionID != localAgentVersionID || variant.ReleaseID == "" {
+		return "", false, ErrAgentSecurityReleaseUnresolvable
+	}
+	var version types.AgentVersionEntity
+	versionQuery := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+		Where("tenant_id = ? AND id = ? AND agent_id = ?", sourceTenantID, localAgentVersionID, localAgentID)
+	if err := versionQuery.Take(&version).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return "", false, ErrAgentSecurityReleaseUnresolvable
+		}
+		return "", false, err
+	}
+	if err := checkReleaseAdmissionTx(tx, sourceTenantID, variant.ReleaseID); err != nil {
+		return "", false, err
+	}
+	return variant.ReleaseID, true, nil
 }
