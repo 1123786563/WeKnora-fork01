@@ -106,6 +106,7 @@ type RouterParams struct {
 	AgentMarketplaceHandler        *handler.AgentMarketplaceHandler
 	AgentAdoptionHandler           *handler.AgentAdoptionHandler
 	AgentUpgradeHandler            *handler.AgentUpgradeHandler
+	AgentSecurityHandler           *handler.AgentSecurityHandler
 	PublicMarketplaceHandler       *handler.PublicMarketplaceHandler
 	PersonaHandler                 *handler.PersonaHandler
 	ExpertHandler                  *handler.ExpertHandler
@@ -430,6 +431,7 @@ func NewRouter(params RouterParams) *gin.Engine {
 		RegisterAgentMarketplaceRoutes(v1, params.AgentMarketplaceHandler, rbacGuards)
 		RegisterAgentAdoptionRoutes(v1, params.AgentAdoptionHandler, rbacGuards)
 		RegisterAgentUpgradeRoutes(v1, params.AgentUpgradeHandler, rbacGuards)
+		RegisterAgentSecurityRoutes(v1, params.AgentSecurityHandler, rbacGuards)
 		RegisterAgentMarketplaceLifecycleRoutes(v1, params.AgentMarketplaceLifecycleHandler, rbacGuards)
 		RegisterPublicMarketplaceRoutes(v1, params.PublicMarketplaceHandler, rbacGuards)
 		RegisterPersonaRoutes(v1, params.PersonaHandler, rbacGuards)
