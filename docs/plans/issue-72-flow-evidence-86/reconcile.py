@@ -302,8 +302,6 @@ def main():
     args = parser.parse_args()
     try:
         output_dir = prepare_output_dir(args.output_dir)
-    except SystemExit:
-        raise
     except Exception as exc:
         _emit_text("RECONCILE FAIL: stage=output_preflight (%s)" % _safe_reason(exc), sys.stderr)
         return 1
