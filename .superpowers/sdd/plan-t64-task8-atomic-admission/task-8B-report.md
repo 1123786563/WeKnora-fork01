@@ -106,4 +106,6 @@ The intended diff is limited to the corrected Task 8B Owned paths from the Brief
 
 R1 focused tests were run serially. No changes were made outside the 14 R1-owned paths in the Task Brief. The pre-existing PostgreSQL execution limitation still applies (`psql`/`pg_isready` unavailable; no server exercised). The full-suite 8C+ unpinned-Run fixture failures recorded above remain integration follow-up and were not changed in this checkpoint.
 
-- R1 source HEAD/commit: pending final local commit.
+- R1 source HEAD/implementation commit: `17f0006f3de90d549edf4f1e323b3e82ac557ab3` (`fix: close task 8b review findings`).
+
+- R1 evidence-record commit: pending report-only local commit.
