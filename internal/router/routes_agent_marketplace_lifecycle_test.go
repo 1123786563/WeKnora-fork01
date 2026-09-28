@@ -339,6 +339,7 @@ func TestLifecycleExitDeletesNothingAcrossGovernanceRows(t *testing.T) {
 		require.NoError(t, db.Where("tenant_id = ? AND id = ?", 1, release.ID).Take(&releaseAfter).Error)
 		require.Equal(t, listingID, releaseAfter.ListingID)
 		require.Equal(t, release.SubmissionID, releaseAfter.SubmissionID)
+		require.Equal(t, release.AgentVersionID, releaseAfter.AgentVersionID, "release source version must remain unchanged")
 		var submissionAfter types.AgentReleaseSubmissionEntity
 		require.NoError(t, db.Where("tenant_id = ? AND id = ?", 1, releaseAfter.SubmissionID).Take(&submissionAfter).Error)
 		require.Equal(t, releaseAfter.AgentVersionID, submissionAfter.AgentVersionID)
@@ -355,6 +356,7 @@ func TestLifecycleExitDeletesNothingAcrossGovernanceRows(t *testing.T) {
 		var submissionAfter types.AgentReleaseSubmissionEntity
 		require.NoError(t, db.Where("tenant_id = ? AND id = ?", 1, submission.ID).Take(&submissionAfter).Error)
 		require.Equal(t, listingID, submissionAfter.ListingID)
+		require.Equal(t, submission.AgentVersionID, submissionAfter.AgentVersionID, "submission source version must remain unchanged")
 		for _, review := range seededReviews {
 			if review.SubmissionID != submission.ID {
 				continue
