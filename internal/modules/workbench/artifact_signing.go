@@ -62,7 +62,10 @@ func (g VersionArtifactGrant) Canonical() (string, error) {
 // Callers must take all identity and version fields from authenticated context
 // and the authoritative artifact catalog.
 func NewVersionArtifactGrant(tenantID uint64, ownerID, resourceID, versionID, digest string, now time.Time, ttl time.Duration) (VersionArtifactGrant, error) {
-	if ttl <= 0 || ttl > MaxArtifactGrantTTL {
+	if ttl <= 0 || ttl < time.Second {
+		return VersionArtifactGrant{}, errors.New("artifact grant TTL must be at least one second")
+	}
+	if ttl > MaxArtifactGrantTTL {
 		ttl = MaxArtifactGrantTTL
 	}
 	g := VersionArtifactGrant{TenantID: tenantID, OwnerID: ownerID, ResourceID: resourceID, VersionID: versionID, Digest: strings.ToLower(digest), ExpiresAt: now.Add(ttl).Unix()}

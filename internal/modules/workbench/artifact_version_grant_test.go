@@ -74,6 +74,19 @@ func TestNewVersionArtifactGrantCapsExpiry(t *testing.T) {
 	}
 }
 
+func TestNewVersionArtifactGrantRejectsInvalidTTL(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0)
+	for _, ttl := range []time.Duration{0, -time.Second, time.Nanosecond, 999 * time.Millisecond} {
+		if _, err := NewVersionArtifactGrant(1, "u1", "r1", "v1", strings.Repeat("a", 64), now, ttl); err == nil {
+			t.Fatalf("TTL %s accepted; want rejection", ttl)
+		}
+	}
+	grant, err := NewVersionArtifactGrant(1, "u1", "r1", "v1", strings.Repeat("a", 64), now, time.Second)
+	if err != nil || grant.ExpiresAt != now.Add(time.Second).Unix() {
+		t.Fatalf("one-second TTL grant=%+v err=%v", grant, err)
+	}
+}
+
 func TestVersionArtifactGrantAuthorityRechecksAuthorizationAtDownload(t *testing.T) {
 	key := []byte(strings.Repeat("k", 32))
 	check := &versionGrantAuthorizer{}
