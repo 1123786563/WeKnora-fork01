@@ -2,12 +2,88 @@ package repository
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
+
+type tenantGuardBarrierKey struct{}
+type tenantGuardAttemptKey struct{}
+
+type tenantGuardBarrier struct {
+	reached chan struct{}
+	release chan struct{}
+}
+
+func installTenantGuardBarrier(t *testing.T, db *gorm.DB, table string, create bool) *tenantGuardBarrier {
+	t.Helper()
+	barrier := &tenantGuardBarrier{reached: make(chan struct{}), release: make(chan struct{})}
+	name := fmt.Sprintf("test:tenant-security-guard:%p", barrier)
+	hook := func(tx *gorm.DB) {
+		if tx.Statement == nil || tx.Statement.Schema == nil || tx.Statement.Schema.Table != table || tx.Statement.Context.Value(tenantGuardBarrierKey{}) != barrier {
+			return
+		}
+		close(barrier.reached)
+		<-barrier.release
+	}
+	var err error
+	if create {
+		err = db.Callback().Create().Before("gorm:create").Register(name, hook)
+		t.Cleanup(func() { _ = db.Callback().Create().Remove(name) })
+	} else {
+		err = db.Callback().Update().Before("gorm:update").Register(name, hook)
+		t.Cleanup(func() { _ = db.Callback().Update().Remove(name) })
+	}
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		select {
+		case <-barrier.release:
+		default:
+			close(barrier.release)
+		}
+	})
+	return barrier
+}
+
+func installTenantGuardAttemptBarrier(t *testing.T, db *gorm.DB, marker string) *tenantGuardBarrier {
+	t.Helper()
+	barrier := &tenantGuardBarrier{reached: make(chan struct{}), release: make(chan struct{})}
+	name := fmt.Sprintf("test:tenant-security-guard-attempt:%p", barrier)
+	err := db.Callback().Raw().Before("gorm:raw").Register(name, func(tx *gorm.DB) {
+		if tx.Statement == nil || tx.Statement.Context.Value(tenantGuardAttemptKey{}) != marker ||
+			strings.TrimSpace(tx.Statement.SQL.String()) != "UPDATE tenants SET id = id WHERE id = ?" {
+			return
+		}
+		close(barrier.reached)
+		<-barrier.release
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Callback().Raw().Remove(name) })
+	t.Cleanup(func() { releaseTenantGuardBarrier(barrier) })
+	return barrier
+}
+
+func waitTenantGuardBarrier(t *testing.T, barrier *tenantGuardBarrier) {
+	t.Helper()
+	select {
+	case <-barrier.reached:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for guarded decisive write")
+	}
+}
+
+func releaseTenantGuardBarrier(barrier *tenantGuardBarrier) {
+	select {
+	case <-barrier.release:
+	default:
+		close(barrier.release)
+	}
+}
 
 func TestAgentSecurityStoreAppendReleaseAndAuditRollsBackTogether(t *testing.T) {
 	db := openRunTestDB(t)
@@ -24,6 +100,54 @@ func TestAgentSecurityStoreAppendReleaseAndAuditRollsBackTogether(t *testing.T) 
 	require.NoError(t, db.Model(&types.AuditLog{}).Where("tenant_id = ? AND action = ?", 1, types.AuditActionAgentReleaseRevoked).Count(&auditRows).Error)
 	require.Zero(t, ledgerRows, "audit failure rolls back the appended ledger row")
 	require.Zero(t, auditRows)
+}
+
+func TestWithTenantSecurityGuardRejectsMissingTenant(t *testing.T) {
+	db := openRunTestDB(t)
+	err := withTenantSecurityGuard(context.Background(), db, 999, func(*gorm.DB) error {
+		t.Fatal("guard callback ran for missing tenant")
+		return nil
+	})
+	require.ErrorIs(t, err, ErrTenantNotFound)
+}
+
+func TestTenantSecurityGuardDialectLockPlans(t *testing.T) {
+	query, write, err := tenantSecurityLockPlan("postgres")
+	require.NoError(t, err)
+	require.False(t, write)
+	require.Equal(t, "SELECT id FROM tenants WHERE id = ? FOR UPDATE", query)
+	query, write, err = tenantSecurityLockPlan("sqlite")
+	require.NoError(t, err)
+	require.True(t, write)
+	require.Equal(t, "UPDATE tenants SET id = id WHERE id = ?", query)
+	_, _, err = tenantSecurityLockPlan("mysql")
+	require.ErrorIs(t, err, ErrAgentSecurityUnsupportedDialect)
+}
+
+func TestTransactionAdmissionMatchesCompleteDependencyTuple(t *testing.T) {
+	db := openRunTestDB(t)
+	listingID, releaseID := seedAdoptionRelease(t, db, 1, "tuple-agent", "1.0.0")
+	require.NoError(t, db.Model(&types.AgentReleaseEntity{}).
+		Where("tenant_id = ? AND id = ?", 1, releaseID).
+		Update("dependency_lock_json", `{"dependencies":[{"type":"skill","id":"weather","version":"1.2.3","digest":"sha256:abc"}]}`).Error)
+	store := NewAgentSecurityStore(db)
+	for _, mismatch := range []types.AgentDependencyRevocationEntity{
+		{TenantID: 1, DepType: "skill", DepID: "weather", DepVersion: "1.2.4", DepDigest: "sha256:abc", Reason: "other version"},
+		{TenantID: 1, DepType: "skill", DepID: "weather", DepVersion: "1.2.3", DepDigest: "sha256:other", Reason: "other digest"},
+	} {
+		require.NoError(t, store.AppendDependencyRevocation(context.Background(), &mismatch))
+	}
+	_, _, err := NewAgentAdoptionRepository(db).AdoptListing(context.Background(), &types.AgentAdoptionEntity{
+		TenantID: 1, ListingID: listingID, AcceptedReleaseID: releaseID, State: "active", CreatedBy: "admin",
+	})
+	require.NoError(t, err, "a revocation for a different version or digest must not match")
+	require.NoError(t, store.AppendDependencyRevocation(context.Background(), &types.AgentDependencyRevocationEntity{
+		TenantID: 1, DepType: "skill", DepID: "weather", DepVersion: "1.2.3", DepDigest: "sha256:abc", Reason: "exact match",
+	}))
+	_, _, err = NewAgentAdoptionRepository(db).AdoptListing(context.Background(), &types.AgentAdoptionEntity{
+		TenantID: 1, ListingID: listingID, AcceptedReleaseID: releaseID, State: "active", CreatedBy: "admin",
+	})
+	require.ErrorIs(t, err, ErrAgentSecurityReleaseBlocked)
 }
 
 func TestAgentSecurityStoreAppendDependencyAndAuditTogether(t *testing.T) {
@@ -53,6 +177,89 @@ func TestAgentSecurityStoreAppendDependencyAndAuditRollsBackTogether(t *testing.
 	require.NoError(t, db.Model(&types.AuditLog{}).Where("tenant_id = ? AND action = ?", 1, types.AuditActionAgentDependencyRevoked).Count(&auditRows).Error)
 	require.Zero(t, ledgerRows)
 	require.Zero(t, auditRows)
+}
+
+func TestTenantSecurityGuardSerializesDecisiveWriteFamilies(t *testing.T) {
+	for _, family := range []string{"adoption", "variant", "publish", "proposal"} {
+		for _, order := range []string{"admission-first", "revocation-first"} {
+			t.Run(family+"/"+order, func(t *testing.T) {
+				db := openRunTestDB(t)
+				listingID, releaseID := seedAdoptionRelease(t, db, 1, "security-"+family, "1.0.0")
+				guardedListingID, guardedReleaseID := listingID, releaseID
+				if family == "adoption" {
+					guardedListingID, guardedReleaseID = seedAdoptionRelease(t, db, 1, "security-adoption-new", "1.0.0")
+				}
+				adoptions := NewAgentAdoptionRepository(db)
+				ctx := context.Background()
+				adoption, _, err := adoptions.AdoptListing(ctx, &types.AgentAdoptionEntity{
+					TenantID: 1, ListingID: listingID, AcceptedReleaseID: releaseID, State: "active", CreatedBy: "admin",
+				})
+				require.NoError(t, err)
+				variant, err := adoptions.CreateVariant(ctx, &types.AgentAdoptionVariantEntity{
+					TenantID: 1, AdoptionID: adoption.ID, ReleaseID: releaseID, Name: "draft", State: "draft", CreatedBy: "admin",
+				})
+				require.NoError(t, err)
+				proposal := &types.AgentUpgradeProposalEntity{
+					TenantID: 1, ID: "proposal-" + family, AdoptionID: adoption.ID, ListingID: listingID,
+					FromReleaseID: releaseID, ToReleaseID: releaseID, State: "open",
+				}
+				require.NoError(t, db.Create(proposal).Error)
+				if family == "publish" {
+					_, err = adoptions.UpdateVariantState(ctx, 1, variant.ID, []string{"draft"}, "tested", nil)
+					require.NoError(t, err)
+				}
+
+				revoke := func(callCtx context.Context) error {
+					return NewAgentSecurityStore(db).AppendReleaseRevocationWithAudit(callCtx,
+						&types.AgentReleaseRevocationEntity{TenantID: 1, ListingID: guardedListingID, ReleaseID: guardedReleaseID, Reason: "race", RevokedBy: "security-admin"},
+						&types.AuditLog{TenantID: 1, ActorUserID: "security-admin", Action: types.AuditActionAgentReleaseRevoked})
+				}
+				admit := func(callCtx context.Context) error {
+					switch family {
+					case "adoption":
+						_, _, err := adoptions.AdoptListing(callCtx, &types.AgentAdoptionEntity{TenantID: 1, ListingID: guardedListingID, AcceptedReleaseID: guardedReleaseID, State: "active", CreatedBy: "admin"})
+						return err
+					case "variant":
+						_, err := adoptions.CreateVariant(callCtx, &types.AgentAdoptionVariantEntity{TenantID: 1, AdoptionID: adoption.ID, ReleaseID: releaseID, Name: "new", State: "draft", CreatedBy: "admin"})
+						return err
+					case "publish":
+						_, err := adoptions.UpdateVariantState(callCtx, 1, variant.ID, []string{"tested"}, "published", map[string]any{"published_by": "admin"})
+						return err
+					default:
+						_, err := NewAgentUpgradeRepository(db).TransitionProposal(callCtx, 1, proposal.ID, []string{"open"}, "accepted", map[string]any{"accepted_variant_id": variant.ID})
+						return err
+					}
+				}
+
+				if order == "revocation-first" {
+					require.NoError(t, revoke(ctx))
+					require.ErrorIs(t, admit(ctx), ErrAgentSecurityReleaseBlocked)
+					return
+				}
+
+				table, create := "agent_adoptions", true
+				if family == "variant" {
+					table = "agent_adoption_variants"
+				} else if family == "publish" {
+					table, create = "agent_adoption_variants", false
+				} else if family == "proposal" {
+					table, create = "agent_upgrade_proposals", false
+				}
+				barrier := installTenantGuardBarrier(t, db, table, create)
+				admitDone := make(chan error, 1)
+				go func() { admitDone <- admit(context.WithValue(ctx, tenantGuardBarrierKey{}, barrier)) }()
+				waitTenantGuardBarrier(t, barrier)
+				revokeAttempt := installTenantGuardAttemptBarrier(t, db, "revocation")
+				revokeDone := make(chan error, 1)
+				go func() { revokeDone <- revoke(context.WithValue(ctx, tenantGuardAttemptKey{}, "revocation")) }()
+				waitTenantGuardBarrier(t, revokeAttempt)
+				releaseTenantGuardBarrier(barrier)
+				require.NoError(t, <-admitDone)
+				releaseTenantGuardBarrier(revokeAttempt)
+				require.NoError(t, <-revokeDone)
+			})
+		}
+	}
 }
 
 // T34 (#64) Task 1: 迁移↔投影对齐——两张撤回台账表必须由生产迁移轨道

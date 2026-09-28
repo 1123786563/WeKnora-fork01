@@ -69,7 +69,10 @@ func NewAgentAdoptionRepository(db *gorm.DB) AgentAdoptionRepository {
 func (r *agentAdoptionRepository) AdoptListing(ctx context.Context, adoption *types.AgentAdoptionEntity) (*types.AgentAdoptionEntity, bool, error) {
 	var result *types.AgentAdoptionEntity
 	created := false
-	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err := withTenantSecurityGuard(ctx, r.db, adoption.TenantID, func(tx *gorm.DB) error {
+		if err := checkReleaseAdmissionTx(tx, adoption.TenantID, adoption.AcceptedReleaseID); err != nil {
+			return err
+		}
 		var err error
 		result, created, err = adoptListingTx(tx, adoption)
 		return err
@@ -193,7 +196,10 @@ func (r *agentAdoptionRepository) CreateVariant(ctx context.Context, variant *ty
 	}
 	created.CreatedAt = time.Now().UTC()
 	created.UpdatedAt = created.CreatedAt
-	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err := withTenantSecurityGuard(ctx, r.db, created.TenantID, func(tx *gorm.DB) error {
+		if err := checkReleaseAdmissionTx(tx, created.TenantID, created.ReleaseID); err != nil {
+			return err
+		}
 		if err := guardAdoptionState(tx, created.TenantID, created.AdoptionID, "active"); err != nil {
 			return err
 		}
@@ -295,6 +301,23 @@ func (r *agentAdoptionRepository) UpdateVariantState(ctx context.Context, tenant
 			set[at] = time.Now().UTC()
 		}
 	}
+	if nextState == "published" {
+		var updated *types.AgentAdoptionVariantEntity
+		err := withTenantSecurityGuard(ctx, r.db, tenantID, func(tx *gorm.DB) error {
+			var variant types.AgentAdoptionVariantEntity
+			if err := tx.Where("tenant_id = ? AND id = ?", tenantID, strings.TrimSpace(variantID)).Take(&variant).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					return ErrAgentAdoptionNotFound
+				}
+				return err
+			}
+			if err := checkReleaseAdmissionTx(tx, tenantID, variant.ReleaseID); err != nil {
+				return err
+			}
+			return updateVariantStateTx(tx, tenantID, variantID, expectedFrom, nextState, set, &updated)
+		})
+		return updated, err
+	}
 	result := r.db.WithContext(ctx).Model(&types.AgentAdoptionVariantEntity{}).
 		Where("tenant_id = ? AND id = ? AND state IN ?", tenantID, strings.TrimSpace(variantID), expectedFrom).
 		Updates(set)
@@ -313,6 +336,32 @@ func (r *agentAdoptionRepository) UpdateVariantState(ctx context.Context, tenant
 		return nil, fmt.Errorf("%w: variant %s is %q, expected one of %v", ErrAgentAdoptionVariantTransition, variantID, current.State, expectedFrom)
 	}
 	return r.GetVariant(ctx, tenantID, variantID)
+}
+
+func updateVariantStateTx(tx *gorm.DB, tenantID uint64, variantID string, expectedFrom []string, nextState string, set map[string]any, updated **types.AgentAdoptionVariantEntity) error {
+	result := tx.Model(&types.AgentAdoptionVariantEntity{}).
+		Where("tenant_id = ? AND id = ? AND state IN ?", tenantID, strings.TrimSpace(variantID), expectedFrom).
+		Updates(set)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		var current types.AgentAdoptionVariantEntity
+		err := tx.Where("tenant_id = ? AND id = ?", tenantID, strings.TrimSpace(variantID)).First(&current).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrAgentAdoptionNotFound
+		}
+		if err != nil {
+			return err
+		}
+		return fmt.Errorf("%w: variant %s is %q, expected one of %v", ErrAgentAdoptionVariantTransition, variantID, current.State, expectedFrom)
+	}
+	var current types.AgentAdoptionVariantEntity
+	if err := tx.Where("tenant_id = ? AND id = ?", tenantID, strings.TrimSpace(variantID)).Take(&current).Error; err != nil {
+		return err
+	}
+	*updated = &current
+	return nil
 }
 
 // PublishedAvailableAgents returns the adoption-aware available-agent read

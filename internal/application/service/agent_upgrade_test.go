@@ -54,6 +54,7 @@ func (r transitionRejectingUpgradeRepository) CreateVariant(context.Context, *ty
 func publishUpgradeServiceRelease(t *testing.T, db *gorm.DB, versionNumber int, semanticVersion, manifest, lock, bundle string) (listingID, releaseID string) {
 	t.Helper()
 	ctx := context.Background()
+	require.NoError(t, db.Exec(`INSERT INTO tenants (id, name, business) VALUES (1, 'tenant-1', 'test') ON CONFLICT(id) DO NOTHING`).Error)
 	require.NoError(t, db.Exec(
 		`INSERT INTO agent_versions (id, tenant_id, agent_id, version_number, snapshot, source_sha256, frozen_by) VALUES (?, 1, 'agent-a', ?, '{}', 'sha', 'author')`,
 		"version-"+semanticVersion, versionNumber).Error)

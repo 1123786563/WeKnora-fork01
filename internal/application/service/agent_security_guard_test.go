@@ -10,6 +10,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 type stubReleaseSecurityGate struct{ blockedRelease string }
@@ -19,6 +20,82 @@ func (g stubReleaseSecurityGate) ReleaseAdmission(_ context.Context, _ uint64, r
 		return fmt.Errorf("%w: release %s is security-revoked", ErrAgentSecurityReleaseBlocked, releaseID)
 	}
 	return nil
+}
+
+type countingReleaseSecurityGate struct {
+	blockedRelease string
+	calls          []string
+}
+
+func (g *countingReleaseSecurityGate) ReleaseAdmission(_ context.Context, _ uint64, releaseID string) error {
+	g.calls = append(g.calls, releaseID)
+	if releaseID == g.blockedRelease {
+		return fmt.Errorf("%w: release %s is security-revoked", ErrAgentSecurityReleaseBlocked, releaseID)
+	}
+	return nil
+}
+
+func TestAdoptionServiceValidatesReleaseMembershipBeforeSecurityGate(t *testing.T) {
+	svc, db, _ := newAgentAdoptionServiceForTest(t)
+	require.NoError(t, db.Exec(`INSERT INTO tenants (id, name, business) VALUES (1, 'tenant-1', 'test') ON CONFLICT(id) DO NOTHING`).Error)
+	listingID, validRelease := seedAdoptionServiceRelease(t, db)
+	require.NoError(t, db.Create(&types.Tenant{ID: 2, Name: "tenant-2"}).Error)
+	_, foreignRelease := seedScopeTestRelease(t, db, 2, "foreign-agent")
+	_, wrongListingRelease := seedScopeTestRelease(t, db, 1, "other-agent")
+	gate := &countingReleaseSecurityGate{blockedRelease: validRelease}
+	svc.SetReleaseSecurityGate(gate)
+
+	for name, releaseID := range map[string]string{
+		"missing": "missing-release", "foreign tenant": foreignRelease, "wrong listing": wrongListingRelease,
+	} {
+		t.Run("adopt/"+name, func(t *testing.T) {
+			_, _, err := svc.Adopt(context.Background(), 1, "admin", interfaces.AdoptInput{ListingID: listingID, ReleaseID: releaseID})
+			require.ErrorIs(t, err, ErrAgentAdoptionInvalidInput)
+			require.NotErrorIs(t, err, ErrAgentSecurityReleaseBlocked)
+		})
+	}
+	require.Empty(t, gate.calls, "invalid release identifiers must not be adjudicated")
+	_, _, err := svc.Adopt(context.Background(), 1, "admin", interfaces.AdoptInput{ListingID: listingID, ReleaseID: validRelease})
+	require.ErrorIs(t, err, ErrAgentSecurityReleaseBlocked)
+	require.Equal(t, []string{validRelease}, gate.calls)
+
+	svc.SetReleaseSecurityGate(nil)
+	adoption, _, err := svc.Adopt(context.Background(), 1, "admin", interfaces.AdoptInput{ListingID: listingID, ReleaseID: validRelease})
+	require.NoError(t, err)
+	gate.calls = nil
+	svc.SetReleaseSecurityGate(gate)
+	for name, releaseID := range map[string]string{
+		"missing": "missing-release", "foreign tenant": foreignRelease, "wrong listing": wrongListingRelease,
+	} {
+		t.Run("variant/"+name, func(t *testing.T) {
+			_, err := svc.CreateVariant(context.Background(), 1, "admin", adoption.ID, interfaces.VariantDraftInput{Name: "invalid", ReleaseID: releaseID})
+			require.ErrorIs(t, err, ErrAgentAdoptionInvalidInput)
+			require.NotErrorIs(t, err, ErrAgentSecurityReleaseBlocked)
+		})
+	}
+	require.Empty(t, gate.calls, "invalid variant releases must not be adjudicated")
+	_, err = svc.CreateVariant(context.Background(), 1, "admin", adoption.ID, interfaces.VariantDraftInput{Name: "blocked", ReleaseID: validRelease})
+	require.ErrorIs(t, err, ErrAgentSecurityReleaseBlocked)
+	require.Equal(t, []string{validRelease}, gate.calls)
+}
+
+func seedScopeTestRelease(t *testing.T, db *gorm.DB, tenantID uint64, agentID string) (string, string) {
+	t.Helper()
+	ctx := context.Background()
+	versionID := "scope-version-" + agentID
+	require.NoError(t, db.Exec(`INSERT INTO agent_versions (id, tenant_id, agent_id, version_number, snapshot, source_sha256, frozen_by) VALUES (?, ?, ?, 1, '{}', 'sha', 'author')`, versionID, tenantID, agentID).Error)
+	manifest := `{"semantic_version":"1.0.0","display_name":"Scope test","summary":"s","supported_languages":["en"],"use_cases":["u"],"capability_requirements":[],"minimum_weknora_capability":"1","license_id":"MIT","source":{"agent_version_id":"` + versionID + `","version_number":1,"source_sha256":"sha"}}`
+	digest := "digest-" + agentID
+	bundle := []byte(`{"payload":{"system_prompt":"p"},"manifest":` + manifest + `,"dependency_lock":{"dependencies":[]}}`)
+	marketplace := repository.NewAgentMarketplaceRepository(db)
+	submission, err := marketplace.CreateSubmission(ctx,
+		&types.AgentMarketplaceListingEntity{TenantID: tenantID, SourceAgentID: agentID, DisplayName: "Scope test", State: "listed"},
+		&types.AgentReleaseSubmissionEntity{TenantID: tenantID, AgentVersionID: versionID, SourceAgentID: agentID, AuthorID: "author", SemanticVersion: "1.0.0", BundleDigest: digest, ManifestJSON: manifest, DependencyLockJSON: `{"dependencies":[]}`, Bundle: bundle, Status: "submitted"})
+	require.NoError(t, err)
+	_, release, err := marketplace.ReviewAndPublishTx(ctx, tenantID, "", submission.ID, digest, types.AgentReleaseReviewDecision{ReviewerID: "reviewer", Decision: "approved"})
+	require.NoError(t, err)
+	require.NotNil(t, release)
+	return submission.ListingID, release.ID
 }
 
 func TestAdoptionServiceReleaseSecurityGateRefusesAdoptVariantPublish(t *testing.T) {

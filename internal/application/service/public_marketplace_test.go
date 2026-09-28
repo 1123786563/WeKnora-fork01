@@ -148,6 +148,7 @@ func TestPublicMarketplaceServiceAdoptPropagatesPortableReleaseAndFeedsVariantCh
 	require.NoError(t, err)
 
 	// 跨租户引入：tenant 2（无任何本地 listing/release）引入公共 Listing
+	require.NoError(t, db.Exec(`INSERT INTO tenants (id, name, business) VALUES (2, 'tenant-2', 'test')`).Error)
 	adopted, created, err := svc.AdoptPublicListing(ctx, 2, "adopter-admin", result.Release.ListingID, "")
 	require.NoError(t, err)
 	require.True(t, created)

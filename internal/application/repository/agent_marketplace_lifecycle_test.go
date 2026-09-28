@@ -162,15 +162,17 @@ func openLifecycleRaceDB(t *testing.T) *gorm.DB {
 	return db
 }
 
-func seedLifecycleRaceAdoption(t *testing.T, db *gorm.DB) {
+func seedLifecycleRaceAdoption(t *testing.T, db *gorm.DB) (string, string) {
 	t.Helper()
-	require.NoError(t, db.Create(&types.AgentMarketplaceListingEntity{TenantID: 1, ID: "race-listing", SourceAgentID: "race-agent", DisplayName: "Race", State: "listed"}).Error)
-	require.NoError(t, db.Create(&types.AgentAdoptionEntity{TenantID: 1, ID: "race-adoption", ListingID: "race-listing", AcceptedReleaseID: "race-release", State: "active"}).Error)
+	require.NoError(t, db.Create(&types.Tenant{ID: 1, Name: "tenant-1"}).Error)
+	listingID, releaseID := seedAdoptionRelease(t, db, 1, "race-agent", "1.0.0")
+	require.NoError(t, db.Create(&types.AgentAdoptionEntity{TenantID: 1, ID: "race-adoption", ListingID: listingID, AcceptedReleaseID: releaseID, State: "active"}).Error)
+	return listingID, releaseID
 }
 
 func TestSQLiteNoOpAdoptionGuardReportsMatchedRow(t *testing.T) {
 	db := openLifecycleRaceDB(t)
-	seedLifecycleRaceAdoption(t, db)
+	_, _ = seedLifecycleRaceAdoption(t, db)
 	tx := db.Begin()
 	require.NoError(t, tx.Error)
 	defer tx.Rollback()
@@ -183,10 +185,10 @@ func TestSQLiteNoOpAdoptionGuardReportsMatchedRow(t *testing.T) {
 
 func TestEndAdoptionLockWinsAgainstCreateVariant(t *testing.T) {
 	db := openLifecycleRaceDB(t)
-	seedLifecycleRaceAdoption(t, db)
+	_, releaseID := seedLifecycleRaceAdoption(t, db)
 	repo := NewAgentAdoptionRepository(db)
 	endBarrier := registerLifecycleGuardBarrier(t, db, "end", true, true)
-	createBarrier := registerLifecycleGuardBarrier(t, db, "create", false, false)
+	createGuardAttempt := registerTenantLockAttemptBarrier(t, db, "create")
 	endDone := make(chan error, 1)
 	go func() {
 		_, err := repo.EndAdoption(context.WithValue(context.Background(), lifecycleLockTestContextKey{}, "end"), 1, "race-adoption", "active", "ended", map[string]any{"ended_by": "admin"})
@@ -196,38 +198,53 @@ func TestEndAdoptionLockWinsAgainstCreateVariant(t *testing.T) {
 	createDone := make(chan error, 1)
 	go func() {
 		_, err := repo.CreateVariant(context.WithValue(context.Background(), lifecycleLockTestContextKey{}, "create"), &types.AgentAdoptionVariantEntity{
-			TenantID: 1, AdoptionID: "race-adoption", ReleaseID: "race-release", Name: "late draft", State: "draft",
+			TenantID: 1, AdoptionID: "race-adoption", ReleaseID: releaseID, Name: "late draft", State: "draft",
 		})
 		createDone <- err
 	}()
-	waitForLifecycleBarrier(t, createBarrier, createDone, "CreateVariant")
-	// This callback returns before driver execution. The state and row-count
-	// assertions below prove fail-closed outcomes; this pre-write callback is
-	// not treated as a signal that SQLite has entered its busy wait.
-	select {
-	case err := <-createDone:
-		t.Fatalf("CreateVariant completed while EndAdoption held the parent lock: %v", err)
-	default:
-	}
+	waitForLifecycleBarrier(t, createGuardAttempt, createDone, "CreateVariant tenant guard attempt")
+	createGuardAttempt.unblock()
 	endBarrier.unblock()
 	require.NoError(t, awaitLifecycleOperation(t, endDone, "EndAdoption"))
-	createBarrier.unblock()
 	require.ErrorIs(t, awaitLifecycleOperation(t, createDone, "CreateVariant"), ErrAgentAdoptionTransition)
 	var count int64
 	require.NoError(t, db.Model(&types.AgentAdoptionVariantEntity{}).Where("tenant_id = ? AND adoption_id = ?", 1, "race-adoption").Count(&count).Error)
 	require.Zero(t, count)
 }
 
+// registerTenantLockAttemptBarrier signals immediately before SQLite executes
+// the tenant no-op UPDATE. The caller can establish that a competing operation
+// reached the serialization point while the first transaction still held it,
+// without relying on a timing sleep or waiting until after lock acquisition.
+func registerTenantLockAttemptBarrier(t *testing.T, db *gorm.DB, operation string) *lifecycleCallbackBarrier {
+	t.Helper()
+	barrier := newLifecycleCallbackBarrier()
+	name := "test:tenant-lock-attempt:" + fmt.Sprintf("%p", barrier)
+	err := db.Callback().Raw().Before("gorm:raw").Register(name, func(tx *gorm.DB) {
+		if tx.Statement == nil || tx.Statement.Context.Value(lifecycleLockTestContextKey{}) != operation {
+			return
+		}
+		if strings.TrimSpace(tx.Statement.SQL.String()) != "UPDATE tenants SET id = id WHERE id = ?" {
+			return
+		}
+		barrier.arrive(true)
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Callback().Raw().Remove(name) })
+	t.Cleanup(barrier.unblock)
+	return barrier
+}
+
 func TestCreateVariantLockWinsAgainstEndAdoption(t *testing.T) {
 	db := openLifecycleRaceDB(t)
-	seedLifecycleRaceAdoption(t, db)
+	_, releaseID := seedLifecycleRaceAdoption(t, db)
 	repo := NewAgentAdoptionRepository(db)
 	createBarrier := registerLifecycleGuardBarrier(t, db, "create", true, true)
 	endBarrier := registerLifecycleGuardBarrier(t, db, "end", false, false)
 	createDone := make(chan error, 1)
 	go func() {
 		_, err := repo.CreateVariant(context.WithValue(context.Background(), lifecycleLockTestContextKey{}, "create"), &types.AgentAdoptionVariantEntity{
-			TenantID: 1, AdoptionID: "race-adoption", ReleaseID: "race-release", Name: "winning draft", State: "draft",
+			TenantID: 1, AdoptionID: "race-adoption", ReleaseID: releaseID, Name: "winning draft", State: "draft",
 		})
 		createDone <- err
 	}()
@@ -259,7 +276,7 @@ func TestCreateVariantLockWinsAgainstEndAdoption(t *testing.T) {
 
 func TestStaleAdoptionReadCannotCreateVariantAfterEnd(t *testing.T) {
 	db := openLifecycleRaceDB(t)
-	seedLifecycleRaceAdoption(t, db)
+	_, _ = seedLifecycleRaceAdoption(t, db)
 	repo := NewAgentAdoptionRepository(db)
 	staleAdoption, err := repo.GetAdoption(context.Background(), 1, "race-adoption")
 	require.NoError(t, err)

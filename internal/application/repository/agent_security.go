@@ -69,7 +69,7 @@ func (s *AgentSecurityStore) AppendReleaseRevocationWithAudit(ctx context.Contex
 		return errors.New("release revocation and audit entry are required")
 	}
 	prepareReleaseRevocation(row)
-	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	return withTenantSecurityGuard(ctx, s.db, row.TenantID, func(tx *gorm.DB) error {
 		if err := tx.Create(row).Error; err != nil {
 			return err
 		}
@@ -92,7 +92,7 @@ func (s *AgentSecurityStore) AppendDependencyRevocationWithAudit(ctx context.Con
 		return errors.New("dependency revocation and audit entry are required")
 	}
 	prepareDependencyRevocation(row)
-	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	return withTenantSecurityGuard(ctx, s.db, row.TenantID, func(tx *gorm.DB) error {
 		if err := tx.Create(row).Error; err != nil {
 			return err
 		}

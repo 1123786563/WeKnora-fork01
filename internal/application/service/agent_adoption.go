@@ -85,17 +85,17 @@ func (s *AgentAdoptionService) Adopt(ctx context.Context, tenantID uint64, actor
 	if releaseID == "" {
 		releaseID = *listing.CurrentReleaseID
 	}
-	if s.releaseSecurityGate != nil {
-		if err := s.releaseSecurityGate.ReleaseAdmission(ctx, tenantID, releaseID); err != nil {
-			return interfaces.AdoptionView{}, false, err
-		}
-	}
 	release, err := s.repo.GetRelease(ctx, tenantID, releaseID)
 	if err != nil {
 		return interfaces.AdoptionView{}, false, err
 	}
 	if release == nil || release.ListingID != listing.ID {
 		return interfaces.AdoptionView{}, false, fmt.Errorf("%w: release does not belong to listing", ErrAgentAdoptionInvalidInput)
+	}
+	if s.releaseSecurityGate != nil {
+		if err := s.releaseSecurityGate.ReleaseAdmission(ctx, tenantID, releaseID); err != nil {
+			return interfaces.AdoptionView{}, false, err
+		}
 	}
 	if release.DeprecatedAt != nil {
 		return interfaces.AdoptionView{}, false, fmt.Errorf("%w: %w: release %s is deprecated; successor: %s", ErrAgentReleaseDeprecated, ErrAgentAdoptionStateConflict, releaseID, successorHint(release.SuccessorReleaseID))
@@ -150,17 +150,17 @@ func (s *AgentAdoptionService) CreateVariant(ctx context.Context, tenantID uint6
 	if releaseID == "" {
 		releaseID = adoption.AcceptedReleaseID
 	}
-	if s.releaseSecurityGate != nil {
-		if err := s.releaseSecurityGate.ReleaseAdmission(ctx, tenantID, releaseID); err != nil {
-			return interfaces.AdoptionVariantView{}, err
-		}
-	}
 	release, err := s.repo.GetRelease(ctx, tenantID, releaseID)
 	if err != nil {
 		return interfaces.AdoptionVariantView{}, err
 	}
 	if release == nil || release.ListingID != adoption.ListingID {
 		return interfaces.AdoptionVariantView{}, fmt.Errorf("%w: release does not belong to the adopted listing", ErrAgentAdoptionInvalidInput)
+	}
+	if s.releaseSecurityGate != nil {
+		if err := s.releaseSecurityGate.ReleaseAdmission(ctx, tenantID, releaseID); err != nil {
+			return interfaces.AdoptionVariantView{}, err
+		}
 	}
 	if release.DeprecatedAt != nil {
 		return interfaces.AdoptionVariantView{}, fmt.Errorf("%w: %w: release %s is deprecated; successor: %s", ErrAgentReleaseDeprecated, ErrAgentAdoptionStateConflict, releaseID, successorHint(release.SuccessorReleaseID))

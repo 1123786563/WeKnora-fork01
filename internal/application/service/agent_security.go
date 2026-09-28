@@ -18,8 +18,8 @@ import (
 var (
 	ErrAgentSecurityInvalidInput        = errors.New("invalid agent security revocation request")
 	ErrAgentSecurityNotFound            = errors.New("agent security revocation not found")
-	ErrAgentSecurityReleaseUnresolvable = errors.New("release is not resolvable in this tenant")
-	ErrAgentSecurityReleaseBlocked      = errors.New("agent security policy blocked the release")
+	ErrAgentSecurityReleaseUnresolvable = repository.ErrAgentSecurityReleaseUnresolvable
+	ErrAgentSecurityReleaseBlocked      = repository.ErrAgentSecurityReleaseBlocked
 )
 
 // ReleaseSecurityGate is the governance seam consumed by adoption and upgrade

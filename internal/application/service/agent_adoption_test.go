@@ -65,6 +65,7 @@ func (r transitionRejectingAdoptionRepository) CreateVariant(context.Context, *t
 // requires the capabilities "model" and "knowledge".
 func seedAdoptionServiceRelease(t *testing.T, db *gorm.DB) (listingID, releaseID string) {
 	t.Helper()
+	require.NoError(t, db.Exec(`INSERT INTO tenants (id, name, business) VALUES (1, 'tenant-1', 'test') ON CONFLICT(id) DO NOTHING`).Error)
 	require.NoError(t, db.Exec(
 		`INSERT INTO agent_versions (id, tenant_id, agent_id, version_number, snapshot, source_sha256, frozen_by) VALUES ('version-a', 1, 'agent-a', 1, '{}', 'sha', 'author')`,
 	).Error)

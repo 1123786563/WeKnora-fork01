@@ -181,12 +181,12 @@ func TestAgentAdoptionRepositoryConflictLoserRejectsEndedWinner(t *testing.T) {
 
 func TestSQLiteScopeNoOpAdoptionUpdateReportsMatchedRow(t *testing.T) {
 	db := openLifecycleRaceDB(t)
-	seedLifecycleRaceAdoption(t, db)
+	listingID, _ := seedLifecycleRaceAdoption(t, db)
 	tx := db.Begin()
 	require.NoError(t, tx.Error)
 	defer tx.Rollback()
 	result := tx.Model(&types.AgentAdoptionEntity{}).
-		Where("tenant_id = ? AND listing_id = ?", 1, "race-listing").
+		Where("tenant_id = ? AND listing_id = ?", 1, listingID).
 		UpdateColumn("updated_at", gorm.Expr("updated_at"))
 	require.NoError(t, result.Error)
 	require.EqualValues(t, 1, result.RowsAffected, "SQLite must report the matched scope row for the lock-first no-op UPDATE")
@@ -194,14 +194,14 @@ func TestSQLiteScopeNoOpAdoptionUpdateReportsMatchedRow(t *testing.T) {
 
 func TestAdoptListingLockSerializesAgainstEndAdoption(t *testing.T) {
 	db := openLifecycleRaceDB(t)
-	seedLifecycleRaceAdoption(t, db)
+	listingID, releaseID := seedLifecycleRaceAdoption(t, db)
 	repo := NewAgentAdoptionRepository(db)
 	adoptBarrier := registerAdoptionScopeGuardBarrier(t, db, true)
 	endBarrier := registerLifecycleGuardBarrier(t, db, "end", false, false)
 	adoptDone := make(chan error, 1)
 	go func() {
 		_, _, err := repo.AdoptListing(context.WithValue(context.Background(), lifecycleLockTestContextKey{}, "adopt"), &types.AgentAdoptionEntity{
-			TenantID: 1, ListingID: "race-listing", AcceptedReleaseID: "race-release", State: "active", CreatedBy: "admin",
+			TenantID: 1, ListingID: listingID, AcceptedReleaseID: releaseID, State: "active", CreatedBy: "admin",
 		})
 		adoptDone <- err
 	}()
@@ -225,7 +225,7 @@ func TestAdoptListingLockSerializesAgainstEndAdoption(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, stored)
 	require.Equal(t, "ended", stored.State)
-	require.Equal(t, "race-release", stored.AcceptedReleaseID)
+	require.Equal(t, releaseID, stored.AcceptedReleaseID)
 }
 
 func registerAdoptionScopeGuardBarrier(t *testing.T, db *gorm.DB, hold bool) *lifecycleCallbackBarrier {
