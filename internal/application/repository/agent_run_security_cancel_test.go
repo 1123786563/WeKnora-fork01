@@ -1,0 +1,81 @@
+package repository
+
+import (
+	"context"
+	"testing"
+
+	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
+	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
+)
+
+// seedSecurityCancelFixture reuses openRunTestDB's tenant 1 / u1 / s1 / s2,
+// then adds tenant 2 and four runs for scope, status and agent matching.
+func seedSecurityCancelFixture(t *testing.T, db *gorm.DB) {
+	t.Helper()
+	require.NoError(t, db.Exec(`INSERT INTO tenants (id, name, business) VALUES (2, 't2', 'test')`).Error)
+	require.NoError(t, db.Exec(`INSERT INTO users (id, username, email, password_hash, tenant_id) VALUES ('u2','u2','u2@example.test','x',2)`).Error)
+	require.NoError(t, db.Exec(`INSERT INTO sessions (id, tenant_id, title, user_id, engine_type, active_agent_run_id) VALUES
+		('s3', 2, 'task-3', 'u2', 'trpc', 'sec-r4')`).Error)
+	require.NoError(t, db.Exec(`UPDATE sessions SET active_agent_run_id = 'sec-r1' WHERE tenant_id = 1 AND id = 's1'`).Error)
+	blocked := `{"session_id":"s1","agent_id":"local-agent-blocked","request_id":"req-1","text":"hi"}`
+	clean := `{"session_id":"s2","agent_id":"local-agent-clean","request_id":"req-2","text":"hi"}`
+	require.NoError(t, db.Exec(`INSERT INTO agent_runs (tenant_id, run_id, session_id, owner_id, request_id, assistant_message_id, request_hash, engine_type, status, snapshot, deadline) VALUES
+		(1, 'sec-r1', 's1', 'u1', 'req-1', 'm1', 'h1', 'trpc', 'running',  ?, datetime('now','+1 hour')),
+		(1, 'sec-r2', 's1', 'u1', 'req-2', 'm2', 'h2', 'trpc', 'succeeded', ?, datetime('now','+1 hour')),
+		(1, 'sec-r3', 's2', 'u1', 'req-3', 'm3', 'h3', 'trpc', 'running',  ?, datetime('now','+1 hour')),
+		(2, 'sec-r4', 's3', 'u2', 'req-4', 'm4', 'h4', 'trpc', 'running',  ?, datetime('now','+1 hour')),
+		(1, 'sec-r5', 's2', 'u1', 'req-5', 'm5', 'h5', 'trpc', 'running', '{"version":1}', datetime('now','+1 hour'))`,
+		blocked, blocked, clean, blocked).Error)
+	require.NoError(t, db.Exec(`UPDATE agent_runs SET lease_owner = 'worker-1', lease_until = datetime('now','+1 minute'), revision = 3 WHERE tenant_id = 1 AND run_id = 'sec-r1'`).Error)
+}
+
+func TestCancelRunsByAgentsCancelsOnlyMatchingActiveRuns(t *testing.T) {
+	db := openRunTestDB(t)
+	seedSecurityCancelFixture(t, db)
+	runs := NewAgentRunStore(db)
+	ctx := context.Background()
+
+	canceled, err := runs.CancelRunsByAgents(ctx, 1, []string{"local-agent-blocked"}, "agent security revocation: CVE-2026-0001")
+	require.NoError(t, err)
+	require.EqualValues(t, 1, canceled)
+
+	blocked, err := runs.Get(ctx, agentruntime.RunKey{TenantID: 1, RunID: "sec-r1"})
+	require.NoError(t, err)
+	require.Equal(t, "canceled", blocked.Status)
+	require.Equal(t, "agent security revocation: CVE-2026-0001", blocked.WaitReason)
+	require.Empty(t, blocked.Owner)
+	require.True(t, blocked.LeaseUntil.IsZero())
+	require.EqualValues(t, 4, blocked.Revision)
+
+	var events int64
+	require.NoError(t, db.Raw(`SELECT COUNT(*) FROM agent_run_events WHERE tenant_id = 1 AND run_id = 'sec-r1' AND event_type = 'cancellation_requested'`).Scan(&events).Error)
+	require.EqualValues(t, 1, events, "在途处置必须留下 cancellation_requested 时间线事实（#37 语义）")
+
+	var slot *string
+	require.NoError(t, db.Raw(`SELECT active_agent_run_id FROM sessions WHERE tenant_id = 1 AND id = 's1'`).Scan(&slot).Error)
+	require.Nil(t, slot, "会话活动 Run 槽必须释放")
+
+	terminal, err := runs.Get(ctx, agentruntime.RunKey{TenantID: 1, RunID: "sec-r2"})
+	require.NoError(t, err)
+	require.Equal(t, "succeeded", terminal.Status, "终态 Run 不被在途处置触碰")
+	other, err := runs.Get(ctx, agentruntime.RunKey{TenantID: 1, RunID: "sec-r3"})
+	require.NoError(t, err)
+	require.Equal(t, "running", other.Status, "agent 不匹配的 Run 不受影响")
+	foreign, err := runs.Get(ctx, agentruntime.RunKey{TenantID: 2, RunID: "sec-r4"})
+	require.NoError(t, err)
+	require.Equal(t, "running", foreign.Status, "跨租户 Run 不受影响")
+	malformed, err := runs.Get(ctx, agentruntime.RunKey{TenantID: 1, RunID: "sec-r5"})
+	require.NoError(t, err)
+	require.Equal(t, "running", malformed.Status, "无法解析的非 coordinator snapshot 按计划 fail-quiet 跳过")
+
+	noAgents, err := runs.CancelRunsByAgents(ctx, 1, nil, "empty")
+	require.NoError(t, err)
+	require.Zero(t, noAgents)
+	noTenant, err := runs.CancelRunsByAgents(ctx, 0, []string{"local-agent-blocked"}, "empty")
+	require.NoError(t, err)
+	require.Zero(t, noTenant)
+	again, err := runs.CancelRunsByAgents(ctx, 1, []string{"local-agent-blocked"}, "again")
+	require.NoError(t, err)
+	require.EqualValues(t, 0, again, "处置幂等：已终态的行不再计入")
+}
