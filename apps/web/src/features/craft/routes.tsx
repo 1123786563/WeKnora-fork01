@@ -22,7 +22,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CraftAccessMember, CraftGrantableAccessRole, CraftInputDecisionAction, CraftSubmitRunInput, WeKnoraClient } from '@weknora/api-client';
 import { createCraftApi, createServerSentEventParser, craftDownloadPath } from '@weknora/api-client';
 import { submitDraftWithAttachments } from '@weknora/core/craft/command-bridge';
-import type { CraftCapabilitiesView, CraftInputView, CraftSessionKind, CraftSessionSummaryView, CraftVersionView } from '@weknora/contracts';
+import type { CraftCapabilitiesView, CraftInputView, CraftSessionKind, CraftSessionSummaryView, CraftVersionView, CraftWorkspaceView } from '@weknora/contracts';
 import type { ScopeController } from '@weknora/domain/scope';
 import { createCraftWorkbenchController, type CraftEventFrame, type CraftEventTransport, type CraftSyncError } from '@weknora/core/craft/controller';
 import { authorizationHeader, type LegacyPlatformSession } from '../../platform/legacy-session.ts';
@@ -454,9 +454,7 @@ export function CraftRoutes(props: CraftRoutesProps) {
           snapshotVersionId: view.current_version === null ? null : view.current_version.id,
           updatedAt,
           resumed: view.active_run !== null,
-          activeRun: view.active_run === null
-            ? null
-            : { id: view.active_run.run_id, status: view.active_run.status, waitReason: view.active_run.wait_reason },
+          activeRun: toActiveRun(view),
         });
         await loadVersions();
         await controller.load(sessionId);
@@ -473,6 +471,15 @@ export function CraftRoutes(props: CraftRoutesProps) {
   }, [sessionId, craftApi, scopeController, controller, loadVersions, loadHomeList]);
 
   const canWrite = workbenchInfo !== null && currentMeId !== null && workbenchInfo.ownerId === currentMeId;
+
+  // The CURRENT member's access row, derived once per (session, access
+  // view, identity): both the task-access entry and the edit-request entry
+  // consume this same source — one lookup, one matching key, no drift.
+  // undefined means the role is not (yet) confirmed for this view.
+  const currentMember = useMemo(() => {
+    if (currentMeId === null || accessState.sessionId !== sessionId || accessState.status !== 'ready') return undefined;
+    return accessState.members.find((member) => member.user_id === currentMeId);
+  }, [currentMeId, accessState, sessionId]);
 
   // T20 (#139) budget-pause panel mount: when the workspace's active Run is
   // durably parked on the budget wait, the pause view is fetched ONCE per
@@ -507,17 +514,23 @@ export function CraftRoutes(props: CraftRoutesProps) {
   }, [sessionId, activeRun, craftApi, scopeController]);
   // refreshWorkbench re-reads the authoritative workspace projection and
   // merges the active-run facts into the mounted info (the same merge the
-  // initial load performs). Both run-state-changing callers reuse it: the
+  // initial load performs through the same toActiveRun projection — the
+  // initial load replaces the WHOLE info shape, this refresh merges only
+  // the active-run facts). Both run-state-changing callers reuse it: the
   // admitted edit request (best-effort) and the budget extension.
+  // toActiveRun is the ONE workspace active-run projection every merge site
+  // uses — a field change is made exactly once.
+  const toActiveRun = (view: CraftWorkspaceView): { id: string; status: string; waitReason: string } | null =>
+    view.active_run === null
+      ? null
+      : { id: view.active_run.run_id, status: view.active_run.status, waitReason: view.active_run.wait_reason };
   const refreshWorkbench = useCallback(async (targetSessionId: string): Promise<void> => {
     const view = await craftApi.get(targetSessionId, scopeController.current().signal);
     if (activeSessionId.current !== targetSessionId) return;
     setWorkbenchInfo((prev) => prev === null ? prev : {
       ...prev,
       resumed: view.active_run !== null,
-      activeRun: view.active_run === null
-        ? null
-        : { id: view.active_run.run_id, status: view.active_run.status, waitReason: view.active_run.wait_reason },
+      activeRun: toActiveRun(view),
     });
   }, [craftApi, scopeController]);
 
@@ -848,7 +861,6 @@ export function CraftRoutes(props: CraftRoutesProps) {
         if (accessState.status === 'error') {
           return <p role="alert">Task access unavailable: {accessState.error ?? 'Could not load access information.'}</p>;
         }
-        const currentMember = currentMeId === null ? undefined : accessState.members.find((member) => member.user_id === currentMeId);
         if (currentMember === undefined) {
           return <p role="status">Your Task role could not be confirmed. Access controls are unavailable.</p>;
         }
@@ -876,16 +888,15 @@ export function CraftRoutes(props: CraftRoutesProps) {
         // view loads (or failed to load) the panel stays hidden instead of
         // asserting "read-only member" about a possibly-writing member —
         // the task-access entry keeps its dedicated loading/error wording.
-        if (accessState.sessionId !== sessionId || accessState.status !== 'ready') return null;
-        const currentMember = currentMeId === null
-          ? undefined
-          : accessState.members.find((member) => member.user_id === currentMeId);
         if (currentMember === undefined) return null;
-        const canWrite = currentMember.role === 'owner' || currentMember.role === 'collaborator';
+        // owner OR collaborator — the TaskWrite grant. Deliberately NOT the
+        // component-scope canWrite (owner-only upload authority): this
+        // panel's seam is the server-derived serialized-edit grant.
+        const canRequestEdit = currentMember.role === 'owner' || currentMember.role === 'collaborator';
         return <CraftEditRequestPanel
           key={sessionId + '-edit'}
           locale={locale}
-          canWrite={canWrite}
+          canWrite={canRequestEdit}
           runActive={activeRun !== null}
           onRequestEdit={(prompt) => craftApi.submitEdit(sessionId, {
             request_id: crypto.randomUUID(), prompt,
@@ -893,10 +904,11 @@ export function CraftRoutes(props: CraftRoutesProps) {
             // The admitted run occupies the Task's single slot: refresh the
             // authoritative projection (the serialization notice and the
             // budget-pause wiring see it) and RELOAD the controller so the
-            // workbench subscribes to the new run's event stream — the same
-            // pair enrichedSend and the budget extension perform after they
-            // change run state (best-effort: the panel already answered
-            // from the submit envelope).
+            // workbench subscribes to the new run's event stream. Only the
+            // budget extension performs this full pair on its own path;
+            // enrichedSend relies on controller.load alone (its event
+            // stream refreshes the run projection) (best-effort: the panel
+            // already answered from the submit envelope).
             void refreshWorkbench(sessionId).catch(() => {});
             void controller.load(sessionId).catch(() => {});
             return raw;
