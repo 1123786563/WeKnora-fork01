@@ -507,8 +507,8 @@ export function CraftRoutes(props: CraftRoutesProps) {
   }, [sessionId, activeRun, craftApi, scopeController]);
   // refreshWorkbench re-reads the authoritative workspace projection and
   // merges the active-run facts into the mounted info (the same merge the
-  // initial load performs) — callers that just changed run state (an
-  // admitted edit request, a budget extension) reuse it.
+  // initial load performs). Both run-state-changing callers reuse it: the
+  // admitted edit request (best-effort) and the budget extension.
   const refreshWorkbench = useCallback(async (targetSessionId: string): Promise<void> => {
     const view = await craftApi.get(targetSessionId, scopeController.current().signal);
     if (activeSessionId.current !== targetSessionId) return;
@@ -535,21 +535,14 @@ export function CraftRoutes(props: CraftRoutesProps) {
       // The Run left the pause durably: reload the authoritative projection
       // (workspace view drives the panel away) and the controller state.
       try {
-        const view = await craftApi.get(sessionId, scopeController.current().signal);
-        setWorkbenchInfo((prev) => prev === null ? prev : {
-          ...prev,
-          resumed: view.active_run !== null,
-          activeRun: view.active_run === null
-            ? null
-            : { id: view.active_run.run_id, status: view.active_run.status, waitReason: view.active_run.wait_reason },
-        });
+        await refreshWorkbench(sessionId);
       } catch {
         // The controller reload below still reflects the resumed state; the
         // panel stays until the next workspace refresh.
       }
       await controller.load(sessionId);
     },
-    [sessionId, craftApi, scopeController, controller],
+    [sessionId, craftApi, scopeController, controller, refreshWorkbench],
   );
 
   const issuePreview = useCallback(
@@ -879,10 +872,16 @@ export function CraftRoutes(props: CraftRoutesProps) {
       slot: 'aside',
       render: () => {
         if (sessionId === null) return null;
-        const currentMember = currentMeId === null || accessState.sessionId !== sessionId || accessState.status !== 'ready'
+        // An unconfirmed role is NOT a read-only verdict: while the access
+        // view loads (or failed to load) the panel stays hidden instead of
+        // asserting "read-only member" about a possibly-writing member —
+        // the task-access entry keeps its dedicated loading/error wording.
+        if (accessState.sessionId !== sessionId || accessState.status !== 'ready') return null;
+        const currentMember = currentMeId === null
           ? undefined
           : accessState.members.find((member) => member.user_id === currentMeId);
-        const canWrite = currentMember !== undefined && (currentMember.role === 'owner' || currentMember.role === 'collaborator');
+        if (currentMember === undefined) return null;
+        const canWrite = currentMember.role === 'owner' || currentMember.role === 'collaborator';
         return <CraftEditRequestPanel
           key={sessionId + '-edit'}
           locale={locale}
@@ -892,16 +891,20 @@ export function CraftRoutes(props: CraftRoutesProps) {
             request_id: crypto.randomUUID(), prompt,
           }, scopeController.current().signal).then((raw) => {
             // The admitted run occupies the Task's single slot: refresh the
-            // authoritative projection so the serialization notice and the
-            // budget-pause wiring see it (best-effort — the panel already
-            // answered from the submit envelope).
+            // authoritative projection (the serialization notice and the
+            // budget-pause wiring see it) and RELOAD the controller so the
+            // workbench subscribes to the new run's event stream — the same
+            // pair enrichedSend and the budget extension perform after they
+            // change run state (best-effort: the panel already answered
+            // from the submit envelope).
             void refreshWorkbench(sessionId).catch(() => {});
+            void controller.load(sessionId).catch(() => {});
             return raw;
           })}
         />;
       },
     },
-  ]), [sessionId, locale, inputDecisionState, associatedInputs, decideInput, craftApi, scopeController, accessState, currentMeId, grantAccess, revokeAccess, activeRun, locale, refreshWorkbench]);
+  ]), [sessionId, locale, inputDecisionState, associatedInputs, decideInput, craftApi, scopeController, accessState, currentMeId, grantAccess, revokeAccess, activeRun, refreshWorkbench, controller]);
 
   if (route.name === 'home') {
     return (

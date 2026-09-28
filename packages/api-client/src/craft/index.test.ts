@@ -168,3 +168,47 @@ test('input decision rejects a mismatched acknowledgement and preserves forbidde
   });
   await assert.rejects(() => aborted.decideInput('s1', 'opaque://accepted-1', 'continue', controller.signal), (error: unknown) => error instanceof Error && error.name === 'AbortError');
 });
+
+// T20 OCR: the edit panel's seam resolves the WHOLE PostCraftRun envelope —
+// the envelope-level writer_acquisition and initiated_by must survive the
+// api-client (unwrap would strip them down to data), both submit consumers
+// ride ONE shared admission request builder, and a malformed envelope still
+// fails closed.
+test('submitEdit resolves the whole run envelope and shares the submit request builder', async () => {
+  const envelope = {
+    success: true,
+    data: runView,
+    writer_acquisition: { workspace_id: 'w1', status: 'acquired' },
+    initiated_by: 'u-collaborator',
+  };
+  const { request, seen } = fakeRequest({
+    'POST /api/v1/sessions/s1/craft/runs': envelope,
+  });
+  const api = createCraftApi(request);
+
+  const raw = await api.submitEdit('s1', { request_id: 'req-edit-1', prompt: '把标题改成蓝色' });
+  assert.deepEqual(raw, envelope, 'the envelope-level writer_acquisition and initiated_by survive');
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0]?.method, 'POST');
+  assert.equal(seen[0]?.path, '/api/v1/sessions/s1/craft/runs');
+  assert.deepEqual(seen[0]?.body, {
+    request_id: 'req-edit-1',
+    prompt: '把标题改成蓝色',
+    input_refs: [],
+    knowledge_scope: '',
+    base_version_id: '',
+  });
+
+  // The typed submit rides the SAME builder (identical path and body) with
+  // its own RunView projection.
+  const typed = await api.submit('s1', { request_id: 'req-edit-1', prompt: '把标题改成蓝色' });
+  assert.equal(typed.run_id, 'run-1');
+  assert.equal(seen.length, 2);
+  assert.deepEqual(seen[1]?.body, seen[0]?.body, 'one contract, one request builder');
+
+  // A malformed envelope fails closed instead of resolving garbage.
+  const bad = fakeRequest({ 'POST /api/v1/sessions/s1/craft/runs': { success: false, error: { code: 'FORBIDDEN' } } });
+  const badApi = createCraftApi(bad.request);
+  await assert.rejects(() => badApi.submitEdit('s1', { request_id: 'req-edit-2', prompt: 'x' }), ApiError);
+});
+

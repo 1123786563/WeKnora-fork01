@@ -61,7 +61,13 @@ func (s *CraftStopIntentStore) PutStopIntent(ctx context.Context, scope craft.Sc
 	effective := intent
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var current craftStopIntentRow
-		err := tx.Where("tenant_id = ? AND session_id = ? AND run_id = ?",
+		// FOR UPDATE (the craft_draft_head/craft_run_capture precedent): a
+		// replay racing the authoritative confirmation must base the
+		// no-downgrade guard on the CURRENT committed row, not an unlocked
+		// snapshot — under READ COMMITTED an unlocked Take can read
+		// "requested", let the confirmation commit, and then overwrite it.
+		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where(
+			"tenant_id = ? AND session_id = ? AND run_id = ?",
 			scope.TenantID, scope.SessionID, intent.RunID).Take(&current).Error
 		if err == nil && current.Status == craft.StopConfirmed && intent.Status != craft.StopConfirmed {
 			// Never downgrade a confirmed stop.
@@ -78,12 +84,31 @@ func (s *CraftStopIntentStore) PutStopIntent(ctx context.Context, scope craft.Sc
 		if err == nil {
 			row.CreatedAt = current.CreatedAt
 		}
-		return tx.Clauses(clause.OnConflict{
+		// The insert race (both writers saw no row, so the lock guards
+		// nothing): whichever side lands second must still never overwrite
+		// a committed confirmation — the assignment is CONDITIONAL on the
+		// current row's own status, decided atomically inside the upsert.
+		if err := tx.Clauses(clause.OnConflict{
 			Columns: []clause.Column{
 				{Name: "tenant_id"}, {Name: "session_id"}, {Name: "run_id"},
 			},
-			DoUpdates: clause.AssignmentColumns([]string{"status", "updated_at"}),
-		}).Create(&row).Error
+			DoUpdates: clause.Assignments(map[string]interface{}{
+				"status": gorm.Expr(
+					"CASE WHEN craft_stop_intents.status = ? AND excluded.status <> ? THEN craft_stop_intents.status ELSE excluded.status END",
+					craft.StopConfirmed, craft.StopConfirmed),
+				"updated_at": now,
+			}),
+		}).Create(&row).Error; err != nil {
+			return err
+		}
+		// Answer the DURABLE row (a protected confirmation keeps confirmed
+		// even when this writer asked for less).
+		var settled craftStopIntentRow
+		if err := tx.Where("tenant_id = ? AND session_id = ? AND run_id = ?",
+			scope.TenantID, scope.SessionID, intent.RunID).Take(&settled).Error; err == nil {
+			effective = craft.StopIntent{RunID: settled.RunID, Status: settled.Status}
+		}
+		return nil
 	})
 	if err != nil {
 		return craft.StopIntent{}, err

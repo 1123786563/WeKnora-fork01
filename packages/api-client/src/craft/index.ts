@@ -141,6 +141,22 @@ function withQuery(path: string, params: Record<string, string | number | undefi
 }
 
 export function createCraftApi(request: (input: ClientRequest) => Promise<unknown>) {
+  // One admission request builder serves both run-submit consumers (the
+  // typed CraftRunView projection and the T09 raw-envelope edit seam) — a
+  // contract change to POST /craft/runs is made exactly once.
+  const postRunAdmission = (sessionId: string, input: CraftSubmitRunInput, signal?: AbortSignal): Promise<unknown> =>
+    request({
+      method: 'POST',
+      path: '/api/v1/sessions/' + encodeURIComponent(sessionId) + '/craft/runs',
+      body: {
+        request_id: input.request_id,
+        prompt: input.prompt,
+        input_refs: input.input_refs ?? [],
+        knowledge_scope: input.knowledge_scope ?? '',
+        base_version_id: input.base_version_id ?? '',
+      },
+      signal,
+    });
   return {
     /** POST /api/v1/craft/sessions — same request_id replays the same session. */
     async create(input: CraftCreateSessionInput, signal?: AbortSignal): Promise<CraftSessionCreatedView> {
@@ -223,41 +239,22 @@ export function createCraftApi(request: (input: ClientRequest) => Promise<unknow
     },
     /** POST /runs — retries must reuse the same request_id (the server replays admission). */
     async submit(sessionId: string, input: CraftSubmitRunInput, signal?: AbortSignal): Promise<CraftRunView> {
-      return parseCraftRunView(unwrap(await request({
-        method: 'POST',
-        path: '/api/v1/sessions/' + encodeURIComponent(sessionId) + '/craft/runs',
-        body: {
-          request_id: input.request_id,
-          prompt: input.prompt,
-          input_refs: input.input_refs ?? [],
-          knowledge_scope: input.knowledge_scope ?? '',
-          base_version_id: input.base_version_id ?? '',
-        },
-        signal,
-      }), 'run admission'));
+      return parseCraftRunView(unwrap(await postRunAdmission(sessionId, input, signal), 'run admission'));
     },
     /**
      * POST /craft/runs for the T09 (#135) collaborator edit panel — the same
-     * admission seam as submit (each click carries a FRESH request_id; the
-     * server derives the current Task role per request). The resolved value
-     * is the RAW run envelope (data.run_id, writer_acquisition,
-     * initiated_by): the views layer (projectEditOutcome) holds the single
-     * fail-closed projection — the same discipline the export-consent and
+     * admission seam and request body as submit (each click carries a FRESH
+     * request_id; the server derives the current Task role per request). The
+     * resolved value is the WHOLE envelope — data.run_id plus the
+     * envelope-level writer_acquisition and initiated_by: the views layer
+     * (projectEditOutcome) holds the single fail-closed projection over
+     * exactly this shape, the same discipline the export-consent and
      * download seams follow.
      */
     async submitEdit(sessionId: string, input: CraftSubmitRunInput, signal?: AbortSignal): Promise<unknown> {
-      return unwrap(await request({
-        method: 'POST',
-        path: '/api/v1/sessions/' + encodeURIComponent(sessionId) + '/craft/runs',
-        body: {
-          request_id: input.request_id,
-          prompt: input.prompt,
-          input_refs: input.input_refs ?? [],
-          knowledge_scope: input.knowledge_scope ?? '',
-          base_version_id: input.base_version_id ?? '',
-        },
-        signal,
-      }), 'run admission');
+      const envelope = await postRunAdmission(sessionId, input, signal);
+      unwrap(envelope, 'run admission'); // validate the envelope shape; keep every envelope-level field
+      return envelope;
     },
     async versions(sessionId: string, signal?: AbortSignal): Promise<CraftVersionsPageView> {
       const envelope = await request({

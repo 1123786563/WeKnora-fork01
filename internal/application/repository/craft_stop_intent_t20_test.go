@@ -5,6 +5,8 @@ package repository
 // a confirmed stop is never downgraded.
 import (
 	"context"
+	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/Tencent/WeKnora/internal/modules/craft"
@@ -74,4 +76,63 @@ func TestCraftStopIntentStorePersistsAcrossReconstruction(t *testing.T) {
 	require.ErrorIs(t, err, craft.ErrInvalidInput)
 	_, err = NewCraftStopIntentStore(nil).GetStopIntent(ctx, scope, "run-b")
 	require.Error(t, err)
+}
+
+// TestCraftStopIntentStoreConcurrentConfirmNeverDowngrades pins the OCR race
+// hardening: the no-downgrade guard must hold when a replay and the
+// authoritative confirmation race — including the insert race where BOTH
+// writers saw no row (no lock to take) and the conditional upsert assignment
+// is the only defense. The file-backed IMMEDIATE-transaction fixture is the
+// craft_writer_lease_test CAS recipe: racing transactions queue on the busy
+// timeout and the guard itself decides the outcome.
+func TestCraftStopIntentStoreConcurrentConfirmNeverDowngrades(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "craft-stop-intent-race.db")
+	dsn := "file:" + dbPath + "?_foreign_keys=on&_busy_timeout=5000&_txlock=immediate"
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&craftStopIntentRow{}))
+
+	ctx := context.Background()
+	scope := craft.Scope{TenantID: 1, UserID: "u1", SessionID: "s-race"}
+	store := NewCraftStopIntentStore(db)
+	require.NotNil(t, store)
+
+	const writers = 24
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	errs := make([]error, writers)
+	for i := 0; i < writers; i++ {
+		status := craft.StopOutcomeStatus(craft.StopRequested)
+		if i%3 == 0 {
+			status = craft.StopUnknown
+		}
+		wg.Add(1)
+		go func(status craft.StopOutcomeStatus, slot int) {
+			defer wg.Done()
+			<-start
+			if _, err := store.PutStopIntent(ctx, scope, craft.StopIntent{RunID: "run-race", Status: status}); err != nil {
+				errs[slot] = err
+			}
+		}(status, i)
+	}
+	// The authoritative confirmation races the replays from an EMPTY row —
+	// the harshest interleaving for the guard.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		<-start
+		if _, err := store.PutStopIntent(ctx, scope, craft.StopIntent{RunID: "run-race", Status: craft.StopConfirmed}); err != nil {
+			errs[writers-1] = err
+		}
+	}()
+	close(start)
+	wg.Wait()
+	for _, err := range errs {
+		require.NoError(t, err)
+	}
+
+	// However the writers interleaved, the confirmation is durable.
+	got, err := NewCraftStopIntentStore(db).GetStopIntent(ctx, scope, "run-race")
+	require.NoError(t, err)
+	require.Equal(t, craft.StopConfirmed, got.Status, "a raced confirmation must never be downgraded by replays")
 }
