@@ -30,27 +30,27 @@ func NewMarketplaceMetricsRepository(db *gorm.DB) MarketplaceMetricsRepository {
 // resolve adopter-local release ids by both tenant_id and local id.
 func (r *marketplaceMetricsRepository) AggregateForRelease(ctx context.Context, publicReleaseID string, asOf, upgradeSince time.Time) (MarketplaceMetricsAggregate, error) {
 	var result MarketplaceMetricsAggregate
-	if err := r.db.WithContext(ctx).Table("tenant_introduced_releases").
-		Where("public_release_id = ?", publicReleaseID).
-		Distinct("tenant_id").Count(&result.Introductions).Error; err != nil {
-		return result, err
-	}
-	if err := r.db.WithContext(ctx).Table("agent_adoptions AS a").
-		Joins("JOIN tenant_introduced_releases AS i ON i.tenant_id = a.tenant_id AND i.id = a.accepted_release_id").
-		Where("i.public_release_id = ? AND a.state = ?", publicReleaseID, "active").
-		Distinct("a.tenant_id").Count(&result.ActiveAdopters).Error; err != nil {
-		return result, err
-	}
-	proposalQuery := func() *gorm.DB {
-		return r.db.WithContext(ctx).Table("agent_upgrade_proposals AS p").
-			Joins("JOIN tenant_introduced_releases AS i ON i.tenant_id = p.tenant_id AND i.id = p.to_release_id").
-			Where("i.public_release_id = ? AND p.created_at >= ? AND p.created_at < ?", publicReleaseID, upgradeSince.UTC(), asOf.UTC())
-	}
-	if err := proposalQuery().Distinct("p.tenant_id").Count(&result.UpgradeProposals).Error; err != nil {
-		return result, err
-	}
-	if err := proposalQuery().Where("p.state = ?", "accepted").Distinct("p.tenant_id").Count(&result.AcceptedUpgrades).Error; err != nil {
-		return result, err
-	}
-	return result, nil
+	const query = `SELECT
+		(SELECT COUNT(DISTINCT i.tenant_id)
+		 FROM tenant_introduced_releases AS i
+		 WHERE i.public_release_id = ?) AS introductions,
+		(SELECT COUNT(DISTINCT a.tenant_id)
+		 FROM agent_adoptions AS a
+		 JOIN tenant_introduced_releases AS i ON i.tenant_id = a.tenant_id AND i.id = a.accepted_release_id
+		 WHERE i.public_release_id = ? AND a.state = ?) AS active_adopters,
+		(SELECT COUNT(DISTINCT p.tenant_id)
+		 FROM agent_upgrade_proposals AS p
+		 JOIN tenant_introduced_releases AS i ON i.tenant_id = p.tenant_id AND i.id = p.to_release_id
+		 WHERE i.public_release_id = ? AND p.created_at >= ? AND p.created_at < ?) AS upgrade_proposals,
+		(SELECT COUNT(DISTINCT p.tenant_id)
+		 FROM agent_upgrade_proposals AS p
+		 JOIN tenant_introduced_releases AS i ON i.tenant_id = p.tenant_id AND i.id = p.to_release_id
+		 WHERE i.public_release_id = ? AND p.created_at >= ? AND p.created_at < ? AND p.state = ?) AS accepted_upgrades`
+	err := r.db.WithContext(ctx).Raw(query,
+		publicReleaseID,
+		publicReleaseID, "active",
+		publicReleaseID, upgradeSince.UTC(), asOf.UTC(),
+		publicReleaseID, upgradeSince.UTC(), asOf.UTC(), "accepted",
+	).Scan(&result).Error
+	return result, err
 }

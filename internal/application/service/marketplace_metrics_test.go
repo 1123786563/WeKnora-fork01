@@ -7,7 +7,11 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
+	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/stretchr/testify/require"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 type metricsRepoStub struct {
@@ -46,14 +50,29 @@ func TestMarketplaceMetricsBucketingBoundaries(t *testing.T) {
 }
 
 func TestMarketplaceMetricsWireShapeIsClosedAndContainsNoRawValues(t *testing.T) {
-	repo := &metricsRepoStub{result: repository.MarketplaceMetricsAggregate{Introductions: 5, ActiveAdopters: 10, UpgradeProposals: 19, AcceptedUpgrades: 20}}
+	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&types.TenantIntroducedReleaseEntity{}, &types.AgentAdoptionEntity{}, &types.AgentUpgradeProposalEntity{}))
+	conn, _ := db.DB()
+	t.Cleanup(func() { _ = conn.Close() })
+	now := time.Date(2026, 9, 28, 12, 0, 0, 0, time.UTC)
+	for tenantID := uint64(1); tenantID <= 3; tenantID++ {
+		localID := "local-" + string(rune('0'+tenantID))
+		require.NoError(t, db.Create(&types.TenantIntroducedReleaseEntity{ID: localID, TenantID: tenantID, PublicReleaseID: "public-release", PublicListingID: "listing", DisplayName: "PRIVATE_DISPLAY_MARKER", Summary: "PRIVATE_SUMMARY_MARKER", SemanticVersion: "1.0.0", BundleDigest: "digest", ManifestJSON: "{}", DependencyLockJSON: "{}", Bundle: []byte("{}"), IntroducedBy: "PRIVATE_MEMBER_MARKER", IntroducedAt: now}).Error)
+		if tenantID == 1 {
+			require.NoError(t, db.Create(&types.AgentAdoptionEntity{ID: "adoption-1", TenantID: tenantID, ListingID: "listing", AcceptedReleaseID: localID, State: "active"}).Error)
+			require.NoError(t, db.Create(&types.AgentUpgradeProposalEntity{ID: "proposal-1", TenantID: tenantID, AdoptionID: "adoption-1", ListingID: "listing", ToReleaseID: localID, DiffJSON: `{"private":"PRIVATE_DIFF_MARKER"}`, State: "accepted", ResolvedBy: "PRIVATE_RESOLVER_MARKER", CreatedAt: now.Add(-time.Hour), UpdatedAt: now}).Error)
+		}
+	}
+	repo := repository.NewMarketplaceMetricsRepository(db)
 	svc := NewMarketplaceMetricsService(repo)
+	svc.now = func() time.Time { return now }
 	got, err := svc.MetricsForRelease(context.Background(), "public-release")
 	require.NoError(t, err)
 	body, err := json.Marshal(got)
 	require.NoError(t, err)
-	require.JSONEq(t, `{"introductions_bucket":"5-9","active_adopters_bucket":"10-19","upgrade_proposals_bucket":"10-19","accepted_upgrades_bucket":"20+","error_category_availability":"not_collected"}`, string(body))
-	for _, marker := range []string{"tenant-secret", "member-secret", "task-title-secret", "diff-secret", "error-secret", "metadata-secret", "input-secret", "output-secret", "mapping-secret"} {
+	require.JSONEq(t, `{"introductions_bucket":"suppressed","active_adopters_bucket":"suppressed","upgrade_proposals_bucket":"suppressed","accepted_upgrades_bucket":"suppressed","error_category_availability":"not_collected"}`, string(body))
+	for _, marker := range []string{"PRIVATE_DISPLAY_MARKER", "PRIVATE_SUMMARY_MARKER", "PRIVATE_MEMBER_MARKER", "PRIVATE_DIFF_MARKER", "PRIVATE_RESOLVER_MARKER", "1", "3"} {
 		require.NotContains(t, string(body), marker)
 	}
 }
