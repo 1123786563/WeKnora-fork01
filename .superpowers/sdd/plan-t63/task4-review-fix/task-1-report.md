@@ -35,4 +35,5 @@ Added `provideAgentMarketplaceLifecycle`, which registers the concrete lifecycle
 
 ## Commit
 
-- Pending commit at report creation.
+- Implementation commit: `70e2dc784bcfc984624c2201d9234814680d0b00`.
+- The report is recorded in a follow-up documentation commit.
