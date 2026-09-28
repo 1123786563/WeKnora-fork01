@@ -263,25 +263,7 @@ legacy_files:
     destination: internal/modules/agentruntime/repository
     integration_owner: ib3
     delete_barrier: ib3
-  - path: internal/application/repository/memory.go
-    module: agentruntime
-    plan: 31-agentruntime-memory
-    destination: internal/modules/agentruntime/memory
-    integration_owner: ib3
-    delete_barrier: ib3
-  - path: internal/application/repository/memory_extraction.go
-    module: agentruntime
-    plan: 31-agentruntime-memory
-    destination: internal/modules/agentruntime/memory
-    integration_owner: ib3
-    delete_barrier: ib3
-  - path: internal/application/repository/memory_lifecycle.go
-    module: agentruntime
-    plan: 31-agentruntime-memory
-    destination: internal/modules/agentruntime/memory
-    integration_owner: ib3
-    delete_barrier: ib3
-  - path: internal/application/repository/memory_vector.go
+  - path: internal/application/repository/agentruntime_memory_passb_compat.go
     module: agentruntime
     plan: 31-agentruntime-memory
     destination: internal/modules/agentruntime/memory

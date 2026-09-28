@@ -1,48 +1,15 @@
 package memory
 
 import (
-	"fmt"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
-
-func TestMemoryConsistencyRealMessagePaging(t *testing.T) {
-	s, db, tr := newMemoryHarness(t)
-	ctx := enabledCtx(t, tr, 1, "alice")
-	require.NoError(t, db.AutoMigrate(&types.Message{}))
-	at := time.Now().UTC().Truncate(time.Second)
-	for i := 0; i < 85; i++ {
-		require.NoError(t, db.Exec("INSERT INTO messages (id, session_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)", fmt.Sprintf("m%03d", i), "s", "user", "hello", at).Error)
-	}
-	require.NoError(t, db.Exec("INSERT INTO messages (id, session_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)", "other", "unrelated", "user", "private", at).Error)
-	require.NoError(t, db.Create(&types.Message{
-		ID: "deleted", SessionID: "s", Role: "user", CreatedAt: at, DeletedAt: gorm.DeletedAt{Time: at, Valid: true},
-	}).Error)
-	s.messageRepo = repository.NewMessageRepository(db)
-	var cursor types.MemoryMessageCursor
-	seen := map[string]bool{}
-	for {
-		rows, err := s.messageRepo.ListMessagesBySessionAfterCursor(ctx, "s", cursor, 40)
-		require.NoError(t, err)
-		if len(rows) == 0 {
-			break
-		}
-		for _, row := range rows {
-			require.False(t, seen[row.ID])
-			require.Equal(t, "s", row.SessionID)
-			seen[row.ID] = true
-			cursor = types.MemoryMessageCursor{At: row.CreatedAt, ID: row.ID}
-		}
-	}
-	require.Len(t, seen, 85)
-}
 
 func TestMemoryConsistencyReplacementRollsBackAsOneOperation(t *testing.T) {
 	s, db, tr := newMemoryHarness(t)

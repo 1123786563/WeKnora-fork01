@@ -120,21 +120,9 @@ legacy_files:
     reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
     navigation_label: Mcp tool approval repository (application/repository)
     passb_task: B-agentruntime
-  - path: internal/application/repository/memory.go
-    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
-    navigation_label: Memory (application/repository)
-    passb_task: B-agentruntime
-  - path: internal/application/repository/memory_extraction.go
-    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
-    navigation_label: Memory extraction (application/repository)
-    passb_task: B-agentruntime
-  - path: internal/application/repository/memory_lifecycle.go
-    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
-    navigation_label: Memory lifecycle (application/repository)
-    passb_task: B-agentruntime
-  - path: internal/application/repository/memory_vector.go
-    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
-    navigation_label: Memory vector (application/repository)
+  - path: internal/application/repository/agentruntime_memory_passb_compat.go
+    reason: Pass B 过渡 shim，ib3 同 commit 随文件删行
+    navigation_label: Memory host compat (application/repository)
     passb_task: B-agentruntime
   - path: internal/application/repository/native_commit.go
     reason: trapped in horizontal repository package internal/application/repository (Pass B file split)

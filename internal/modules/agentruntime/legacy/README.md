@@ -14,10 +14,7 @@
 | `internal/application/repository/agent_run_snapshot.go` | Agent run snapshot (application/repository) | `B-agentruntime` |
 | `internal/application/repository/agent_run_tools.go` | Agent run tools (application/repository) | `B-agentruntime` |
 | `internal/application/repository/mcp_tool_approval_repository.go` | Mcp tool approval repository (application/repository) | `B-agentruntime` |
-| `internal/application/repository/memory.go` | Memory (application/repository) | `B-agentruntime` |
-| `internal/application/repository/memory_extraction.go` | Memory extraction (application/repository) | `B-agentruntime` |
-| `internal/application/repository/memory_lifecycle.go` | Memory lifecycle (application/repository) | `B-agentruntime` |
-| `internal/application/repository/memory_vector.go` | Memory vector (application/repository) | `B-agentruntime` |
+| `internal/application/repository/agentruntime_memory_passb_compat.go` | Memory host compat (application/repository) | `B-agentruntime` |
 | `internal/application/repository/native_commit.go` | Native commit (application/repository) | `B-agentruntime` |
 | `internal/application/repository/native_events.go` | Native events (application/repository) | `B-agentruntime` |
 | `internal/application/repository/native_lease.go` | Native lease (application/repository) | `B-agentruntime` |
