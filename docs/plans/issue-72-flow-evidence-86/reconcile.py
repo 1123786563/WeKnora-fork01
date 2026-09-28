@@ -370,16 +370,9 @@ def main():
             # it when its contents cannot be inspected safely.
             return 1
         if published_bytes is not None:
-            try:
-                terminal_line = next(
-                    line for line in reversed(published_bytes.decode("utf-8").splitlines())
-                    if line.strip())
-            except (UnicodeDecodeError, StopIteration):
-                return 1
-            if terminal_line == "RECONCILE PASS":
-                return 0
-            if terminal_line == "RECONCILE FAIL":
-                return 1
+            expected_bytes = ("\n".join(lines) + "\n").encode("utf-8") if "lines" in locals() else None
+            if expected_bytes is not None and published_bytes == expected_bytes:
+                return 0 if passed else 1
             return 1
         lines = ["RECONCILE FAIL", "stage=%s" % stage, "reason=interrupted"]
         try:
