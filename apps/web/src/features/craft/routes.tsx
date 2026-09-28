@@ -31,6 +31,7 @@ import { CraftLibrary } from '@weknora/views/craft/library';
 import { CraftTemplates } from '@weknora/views/craft/templates';
 import { CraftWorkbench, createCraftWorkbenchFeatures, type CraftInteractionActionInput } from '@weknora/views/craft/workbench';
 import { CraftAccess } from '@weknora/views/craft/access';
+import { CraftEditRequestPanel } from '@weknora/views/craft/workbench-edit';
 import { CraftInputDecisionPanel } from '@weknora/views/craft/files';
 import { CraftInputExpandPanel } from '@weknora/views/craft/input-expand';
 import { CRAFT_USAGE_STRINGS_ZH, CraftBudgetPauseNotice } from '@weknora/views/craft/usage';
@@ -504,6 +505,22 @@ export function CraftRoutes(props: CraftRoutesProps) {
       cancelled = true;
     };
   }, [sessionId, activeRun, craftApi, scopeController]);
+  // refreshWorkbench re-reads the authoritative workspace projection and
+  // merges the active-run facts into the mounted info (the same merge the
+  // initial load performs) — callers that just changed run state (an
+  // admitted edit request, a budget extension) reuse it.
+  const refreshWorkbench = useCallback(async (targetSessionId: string): Promise<void> => {
+    const view = await craftApi.get(targetSessionId, scopeController.current().signal);
+    if (activeSessionId.current !== targetSessionId) return;
+    setWorkbenchInfo((prev) => prev === null ? prev : {
+      ...prev,
+      resumed: view.active_run !== null,
+      activeRun: view.active_run === null
+        ? null
+        : { id: view.active_run.run_id, status: view.active_run.status, waitReason: view.active_run.wait_reason },
+    });
+  }, [craftApi, scopeController]);
+
   // The extension decision: one click = one idempotency key; the quantum is
   // the deployment default (10 calls at the gateway's 1-credit-per-call
   // upper bound). The server re-runs the owner/billing-admin check itself.
@@ -850,7 +867,41 @@ export function CraftRoutes(props: CraftRoutesProps) {
         />;
       },
     },
-  ]), [sessionId, locale, inputDecisionState, associatedInputs, decideInput, craftApi, scopeController, accessState, currentMeId, grantAccess, revokeAccess]);
+    {
+      // T20/T09 (#135): the collaborator serialized-edit panel. canWrite is
+      // the SERVER-derived current role (owner or collaborator — the access
+      // view's member row, never a client guess); runActive mirrors the
+      // workspace's authoritative active-run projection; each request rides
+      // a fresh request_id through the raw-envelope submit seam and the
+      // panel holds the single fail-closed projection (writer lease
+      // conflict, unknown lease and the recorded initiator included).
+      name: 'edit-request',
+      slot: 'aside',
+      render: () => {
+        if (sessionId === null) return null;
+        const currentMember = currentMeId === null || accessState.sessionId !== sessionId || accessState.status !== 'ready'
+          ? undefined
+          : accessState.members.find((member) => member.user_id === currentMeId);
+        const canWrite = currentMember !== undefined && (currentMember.role === 'owner' || currentMember.role === 'collaborator');
+        return <CraftEditRequestPanel
+          key={sessionId + '-edit'}
+          locale={locale}
+          canWrite={canWrite}
+          runActive={activeRun !== null}
+          onRequestEdit={(prompt) => craftApi.submitEdit(sessionId, {
+            request_id: crypto.randomUUID(), prompt,
+          }, scopeController.current().signal).then((raw) => {
+            // The admitted run occupies the Task's single slot: refresh the
+            // authoritative projection so the serialization notice and the
+            // budget-pause wiring see it (best-effort — the panel already
+            // answered from the submit envelope).
+            void refreshWorkbench(sessionId).catch(() => {});
+            return raw;
+          })}
+        />;
+      },
+    },
+  ]), [sessionId, locale, inputDecisionState, associatedInputs, decideInput, craftApi, scopeController, accessState, currentMeId, grantAccess, revokeAccess, activeRun, locale, refreshWorkbench]);
 
   if (route.name === 'home') {
     return (

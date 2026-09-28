@@ -132,7 +132,13 @@
       "from": "fff903f548f4186dc00a2d47d6cca29aa5e57066^",
       "to": "8d302ed8383551a35f4cbdd66921aae70ddfbaa2",
       "reportPath": "/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/docs/plans/craft-107-ocr-t13.md"
+    },
+    {
+      "tid": "T18",
+      "from": "90dcb987eb4b11e603e3aa0935436b4bd544eaca^",
+      "to": "9df0fccdbce4a733485c79829835cb861dacec4b",
+      "reportPath": "/Users/wuyongjun/.codex/worktrees/craft-107-integration/WeKnora-fork01/docs/plans/craft-107-ocr-t18.md"
     }
   ],
-  "maxCleanHead": "8d302ed8383551a35f4cbdd66921aae70ddfbaa2"
+  "maxCleanHead": "9df0fccdbce4a733485c79829835cb861dacec4b"
 }

@@ -116,6 +116,7 @@ export default defineConfig({
       '@weknora/views/craft/access': fileURLToPath(new URL('../../packages/views/src/craft/access.tsx', import.meta.url)),
       '@weknora/views/craft/usage': fileURLToPath(new URL('../../packages/views/src/craft/usage.tsx', import.meta.url)),
       '@weknora/views/craft/input-expand': fileURLToPath(new URL('../../packages/views/src/craft/input-expand.tsx', import.meta.url)),
+      '@weknora/views/craft/workbench-edit': fileURLToPath(new URL('../../packages/views/src/craft/workbench-edit.tsx', import.meta.url)),
       '@weknora/i18n/runtime': fileURLToPath(new URL('../../packages/i18n/src/runtime.ts', import.meta.url)),
       '@weknora/views': fileURLToPath(new URL('../../packages/views/src/index.ts', import.meta.url)),
     },

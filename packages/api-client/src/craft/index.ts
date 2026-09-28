@@ -236,6 +236,29 @@ export function createCraftApi(request: (input: ClientRequest) => Promise<unknow
         signal,
       }), 'run admission'));
     },
+    /**
+     * POST /craft/runs for the T09 (#135) collaborator edit panel — the same
+     * admission seam as submit (each click carries a FRESH request_id; the
+     * server derives the current Task role per request). The resolved value
+     * is the RAW run envelope (data.run_id, writer_acquisition,
+     * initiated_by): the views layer (projectEditOutcome) holds the single
+     * fail-closed projection — the same discipline the export-consent and
+     * download seams follow.
+     */
+    async submitEdit(sessionId: string, input: CraftSubmitRunInput, signal?: AbortSignal): Promise<unknown> {
+      return unwrap(await request({
+        method: 'POST',
+        path: '/api/v1/sessions/' + encodeURIComponent(sessionId) + '/craft/runs',
+        body: {
+          request_id: input.request_id,
+          prompt: input.prompt,
+          input_refs: input.input_refs ?? [],
+          knowledge_scope: input.knowledge_scope ?? '',
+          base_version_id: input.base_version_id ?? '',
+        },
+        signal,
+      }), 'run admission');
+    },
     async versions(sessionId: string, signal?: AbortSignal): Promise<CraftVersionsPageView> {
       const envelope = await request({
         method: 'GET',
