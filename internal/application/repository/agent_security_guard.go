@@ -130,17 +130,22 @@ func checkLocalAgentReleaseAdmissionTx(tx *gorm.DB, sourceTenantID uint64, local
 	if err := query.Find(&variants).Error; err != nil {
 		return "", false, err
 	}
+	// The local Agent is the tenant-owned runtime identity for both adopted
+	// and ordinary Agents. Lock it after Variant lineage and before Version so
+	// a concurrent delete cannot turn a stale Marketplace mapping into an
+	// admitted identity. GORM's model scope excludes soft-deleted rows.
+	var localAgent types.CustomAgent
+	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+		Where("tenant_id = ? AND id = ?", sourceTenantID, localAgentID).Take(&localAgent).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return "", false, ErrAgentSecurityReleaseUnresolvable
+		}
+		return "", false, err
+	}
 	if len(variants) == 0 {
 		// Non-Marketplace means a live, tenant-owned Agent with no Variant
 		// lineage at all. A client-supplied/stale Version cannot classify it.
 		if localAgentVersionID != "" {
-			return "", false, ErrAgentSecurityReleaseUnresolvable
-		}
-		var count int64
-		if err := tx.Model(&types.CustomAgent{}).Where("tenant_id = ? AND id = ?", sourceTenantID, localAgentID).Count(&count).Error; err != nil {
-			return "", false, err
-		}
-		if count != 1 {
 			return "", false, ErrAgentSecurityReleaseUnresolvable
 		}
 		return "", false, nil
