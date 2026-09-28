@@ -1,4 +1,10 @@
-package handler
+package analytics_test
+
+// 外部测试包（package analytics_test）：本用例组依赖 internal/middleware 的
+// ErrorHandler 渲染生产 envelope，而 middleware → internal/application/
+// repository（kb_access.go）→ internal/modules/insights/analytics（宿主
+// Pass B compat 转发）形成环路，内部测试包（package analytics）无法编译。
+// 外部测试包不参与被测包编译图，环路解除；全部用例与断言保持随迁原样。
 
 import (
 	"context"
@@ -13,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Tencent/WeKnora/internal/middleware"
+	"github.com/Tencent/WeKnora/internal/modules/insights/analytics"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )
@@ -80,7 +87,7 @@ func newAnalyticsTestRouter(t *testing.T, repo interfaces.AnalyticsRepository) *
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	r.Use(middleware.ErrorHandler())
-	h := &AnalyticsHandler{AnalyticsRepo: repo}
+	h := &analytics.AnalyticsHandler{AnalyticsRepo: repo}
 	r.GET("/analytics/queries", h.QueryTrend)
 	r.GET("/analytics/users", h.ActiveUsers)
 	r.GET("/analytics/channels", h.ChannelSessions)

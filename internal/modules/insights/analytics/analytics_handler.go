@@ -1,7 +1,8 @@
-package handler
+package analytics
 
 import (
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -27,7 +28,34 @@ func NewAnalyticsHandler(repo interfaces.AnalyticsRepository) *AnalyticsHandler 
 	return &AnalyticsHandler{AnalyticsRepo: repo}
 }
 
-// parseAnalyticsRange resolves the shared start_time/end_time query filter.
+// parseFilterTime parses a query-string timestamp accepted by the analytics
+// range filter. It accepts the same layouts as the knowledge list filters
+// (parseFilterTime in internal/handler/knowledge.go:2565; duplicated here
+// because that host package cannot be imported by this module — same parity
+// precedent as parseSessionFilterTime in internal/handler/session/handler.go:432):
+// RFC3339 (with or without fractional seconds), "2006-01-02 15:04:05", and
+// the date-only "2006-01-02" form interpreted at start of day in the local
+// timezone. Body is a verbatim copy of the knowledge.go original; behavior
+// is pinned by TestAnalyticsHandler_ExplicitRangePassthrough and
+// TestAnalyticsHandler_InvalidTimeParams.
+func parseFilterTime(raw string) (time.Time, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return time.Time{}, nil
+	}
+	layouts := []string{time.RFC3339Nano, time.RFC3339, "2006-01-02 15:04:05", "2006-01-02"}
+	var lastErr error
+	for _, layout := range layouts {
+		if t, err := time.ParseInLocation(layout, raw, time.Local); err == nil {
+			return t, nil
+		} else {
+			lastErr = err
+		}
+	}
+	return time.Time{}, lastErr
+}
+
+// ParseAnalyticsRange resolves the shared start_time/end_time query filter.
 // Missing values fall back to a 30-day lookback ending at now (UTC); values
 // that parseFilterTime cannot interpret reject the request with 400, with the
 // offending parameter name in the message.
@@ -37,7 +65,7 @@ func NewAnalyticsHandler(repo interfaces.AnalyticsRepository) *AnalyticsHandler 
 // [from, to) SQL predicate covers the whole end day. The dashboard's default
 // window is [today-30, today] with date-only bounds — without this rule every
 // chart would silently exclude the current day's data.
-func parseAnalyticsRange(c *gin.Context) (from, to time.Time, ok bool) {
+func ParseAnalyticsRange(c *gin.Context) (from, to time.Time, ok bool) {
 	now := time.Now().UTC()
 	from = now.AddDate(0, 0, -analyticsDefaultLookbackDays)
 	to = now
@@ -84,10 +112,10 @@ func analyticsIsDateOnly(raw string) bool {
 	return true
 }
 
-// analyticsRows guarantees the envelope's data field is a JSON array: GORM's
+// Rows guarantees the envelope's data field is a JSON array: GORM's
 // Scan leaves a nil slice when a window has no rows, and "data":null breaks
 // the api-client contract (parsers reject non-array data).
-func analyticsRows[T any](rows []T) []T {
+func Rows[T any](rows []T) []T {
 	if rows == nil {
 		return []T{}
 	}
@@ -108,7 +136,7 @@ func (h *AnalyticsHandler) tenantID(c *gin.Context) (uint64, bool) {
 // QueryTrend returns per-day question volume vs like/dislike feedback.
 // GET /api/v1/analytics/queries?start_time&end_time
 func (h *AnalyticsHandler) QueryTrend(c *gin.Context) {
-	from, to, ok := parseAnalyticsRange(c)
+	from, to, ok := ParseAnalyticsRange(c)
 	if !ok {
 		return
 	}
@@ -121,13 +149,13 @@ func (h *AnalyticsHandler) QueryTrend(c *gin.Context) {
 		c.Error(errors.NewInternalServerError("analytics query failed"))
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": analyticsRows(data)})
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": Rows(data)})
 }
 
 // ActiveUsers returns the per-day distinct active session owners.
 // GET /api/v1/analytics/users?start_time&end_time
 func (h *AnalyticsHandler) ActiveUsers(c *gin.Context) {
-	from, to, ok := parseAnalyticsRange(c)
+	from, to, ok := ParseAnalyticsRange(c)
 	if !ok {
 		return
 	}
@@ -140,13 +168,13 @@ func (h *AnalyticsHandler) ActiveUsers(c *gin.Context) {
 		c.Error(errors.NewInternalServerError("analytics query failed"))
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": analyticsRows(data)})
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": Rows(data)})
 }
 
 // ChannelSessions returns per-day new sessions broken down by source bucket.
 // GET /api/v1/analytics/channels?start_time&end_time
 func (h *AnalyticsHandler) ChannelSessions(c *gin.Context) {
-	from, to, ok := parseAnalyticsRange(c)
+	from, to, ok := ParseAnalyticsRange(c)
 	if !ok {
 		return
 	}
@@ -159,14 +187,14 @@ func (h *AnalyticsHandler) ChannelSessions(c *gin.Context) {
 		c.Error(errors.NewInternalServerError("analytics query failed"))
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": analyticsRows(data)})
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": Rows(data)})
 }
 
 // AgentMessages returns one custom agent's per-day usage. The :agent_id path
 // parameter is required — an empty id rejects the request with 400.
 // GET /api/v1/analytics/agents/:agent_id?start_time&end_time
 func (h *AnalyticsHandler) AgentMessages(c *gin.Context) {
-	from, to, ok := parseAnalyticsRange(c)
+	from, to, ok := ParseAnalyticsRange(c)
 	if !ok {
 		return
 	}
@@ -184,5 +212,5 @@ func (h *AnalyticsHandler) AgentMessages(c *gin.Context) {
 		c.Error(errors.NewInternalServerError("analytics query failed"))
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": analyticsRows(data)})
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": Rows(data)})
 }

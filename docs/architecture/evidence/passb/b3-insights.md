@@ -118,9 +118,100 @@ ok  github.com/Tencent/WeKnora/internal/handler 1.565s
 
 → 与计划 §1 随迁测试表所列 10 个顶层用例清单一一对应，零缺漏。
 
-## §2 analytics 差分（B3-IN.3 待填）
+## §2 analytics 差分（B3-IN.3，2026-09-28）
 
-（B3-IN.3：P-6 宿主位基线 vs 模块位同用例实跑，逐用例等价比对结论；postgres blocked-env 移交登记。）
+### §2.1 物理迁移与 rename 检测
+
+4 文件经 Write 通道落位 + `git rm` 删除宿主原件（环境备注：Mimosa 拦截 `git mv` 纯重命名——Bash 写源码通道策略，PreToolUse 指引改用 Write/Edit 提交同一内容；内容逐字等价，未变换写法）。`git status` 对 4 对路径全部识别为 rename（`R`）：
+
+```text
+R  internal/handler/analytics.go -> internal/modules/insights/analytics/analytics_handler.go
+R  internal/handler/analytics_test.go -> internal/modules/insights/analytics/analytics_handler_test.go
+R  internal/application/repository/analytics.go -> internal/modules/insights/analytics/analytics_repository.go
+R  internal/application/repository/analytics_test.go -> internal/modules/insights/analytics/analytics_repository_test.go
+```
+
+`git diff --cached -M --stat -- internal/application/repository/analytics.go internal/modules/insights/analytics/analytics_repository.go`：
+
+```text
+ .../analytics.go => modules/insights/analytics/analytics_repository.go} | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+```
+
+→ repository 侧函数体零变化（唯一 diff 行 = package 子句），rename 以内容相似度成立。
+
+### §2.2 计划内代码面变化清单（§2.3 列明点，其余零改动）
+
+| 变化 | 位置 | 性质 |
+|---|---|---|
+| `package repository`/`package handler` → `package analytics` | 两生产文件 + 两测试文件头 | 包声明 |
+| `parseAnalyticsRange` → `ParseAnalyticsRange` | analytics_handler.go（定义 + 4 调用点） | 仅导出可见性 |
+| `analyticsRows` → `Rows` | analytics_handler.go（定义 + 4 调用点） | 导出改名（§2.3(c) 转发前置） |
+| 新增模块本地 `parseFilterTime` | analytics_handler.go | knowledge.go:2565-2580 逐字副本 + parity 头注（session/handler.go:432 先例），import 增 `strings` |
+| 装置副本 `openRunTestDB`/`seedRunFixtures`/`openPostgresRunTestDB` | analytics_repository_test.go | agent_run_test.go:29-118 逐字，repoRoot 改 `"../../../.."`（Ruling TEST-SUPPORT-SHIM 家族头注） |
+
+### §2.3 计划偏差登记（1 项，非断言变化）
+
+**analytics_handler_test.go 采用外部测试包 `package analytics_test`**（计划原文「package analytics，本体零改动」）：
+
+- 根因：内部测试包编译图含被测包 —— `analytics(test) → internal/middleware（ErrorHandler）→ internal/application/repository（kb_access.go:7 apprepo）→ internal/modules/insights/analytics（本节点宿主 compat 转发）` 成环，`go vet`/`go test` 编译失败（实测报错 `import cycle not allowed in test`）。
+- 处置：改 `package analytics_test` + `&analytics.AnalyticsHandler{...}` 限定（Go 标准机制，外部测试包不参与被测包编译图）。**10 个顶层用例的用例名、路由挂载、请求、断言全部逐字保持**；差分口径不受影响（黑盒 HTTP 行为不变）。
+- 先例核对：其余模块测试（agentcatalog/handler、knowledge/retrieval/app/handler 等）import middleware 无环，因其宿主 compat 指向的模块包不在被测包编译链上；本节点 repository 侧 compat 恰指向被测包 `analytics` 本身，属计划撰写时未覆盖的真实约束。
+
+### §2.4 模块位实跑 vs P-6 宿主位基线逐例比对
+
+`go test -count=1 -v ./internal/modules/insights/analytics/`（2026-09-28 实跑摘录）：
+
+```text
+=== RUN   TestAnalyticsAggregations
+=== RUN   TestAnalyticsAggregations/sqlite
+=== RUN   TestAnalyticsAggregations/postgres
+    analytics_repository_test.go:195: TRPC_TEST_POSTGRES_DSN unset: PostgreSQL recovery acceptance NOT VERIFIED
+--- PASS: TestAnalyticsAggregations (1.79s)
+    --- PASS: TestAnalyticsAggregations/sqlite (1.79s)
+    --- SKIP: TestAnalyticsAggregations/postgres (0.00s)
+--- PASS: TestAnalyticsHandler_DefaultRange30Days (0.00s)
+--- PASS: TestAnalyticsHandler_ExplicitRangePassthrough (0.00s)
+--- PASS: TestAnalyticsHandler_InvalidTimeParams (0.00s)
+    --- PASS: TestAnalyticsHandler_InvalidTimeParams/invalid_start (0.00s)
+    --- PASS: TestAnalyticsHandler_InvalidTimeParams/invalid_end (0.00s)
+--- PASS: TestAnalyticsHandler_TenantRequired (0.00s)
+--- PASS: TestAnalyticsHandler_AgentMessagesPassthrough (0.00s)
+--- PASS: TestAnalyticsHandler_DateOnlyEndCoversWholeDay (0.00s)
+--- PASS: TestAnalyticsHandler_TimestampedEndNotExtended (0.00s)
+--- PASS: TestAnalyticsHandler_EmptyRowsRenderEmptyArray (0.00s)
+    --- PASS: TestAnalyticsHandler_EmptyRowsRenderEmptyArray/queries (0.00s)
+    --- PASS: TestAnalyticsHandler_EmptyRowsRenderEmptyArray/users (0.00s)
+    --- PASS: TestAnalyticsHandler_EmptyRowsRenderEmptyArray/channels (0.00s)
+    --- PASS: TestAnalyticsHandler_EmptyRowsRenderEmptyArray/agents (0.00s)
+--- PASS: TestAnalyticsHandler_AgentMessagesEmptyAgentID (0.00s)
+--- PASS: TestAnalyticsHandler_RepoErrorMapsTo500 (0.00s)
+PASS
+ok  	github.com/Tencent/WeKnora/internal/modules/insights/analytics	2.877s
+```
+
+**逐例等价比对结论**（vs §1 P-6 宿主位基线）：
+
+| 用例 | 宿主位基线（§1） | 模块位（本节） | 等价 |
+|---|---|---|---|
+| TestAnalyticsAggregations/sqlite | PASS | PASS | ✅ |
+| TestAnalyticsAggregations/postgres | SKIP（DSN unset） | SKIP（DSN unset） | ✅（blocked-env 同口径） |
+| TestAnalyticsHandler_DefaultRange30Days | PASS | PASS | ✅ |
+| TestAnalyticsHandler_ExplicitRangePassthrough | PASS | PASS | ✅ |
+| TestAnalyticsHandler_InvalidTimeParams（2 子测试） | PASS | PASS | ✅ |
+| TestAnalyticsHandler_TenantRequired | PASS | PASS | ✅ |
+| TestAnalyticsHandler_AgentMessagesPassthrough | PASS | PASS | ✅ |
+| TestAnalyticsHandler_DateOnlyEndCoversWholeDay | PASS | PASS | ✅ |
+| TestAnalyticsHandler_TimestampedEndNotExtended | PASS | PASS | ✅ |
+| TestAnalyticsHandler_EmptyRowsRenderEmptyArray（4 子测试） | PASS | PASS | ✅ |
+| TestAnalyticsHandler_AgentMessagesEmptyAgentID | PASS | PASS | ✅ |
+| TestAnalyticsHandler_RepoErrorMapsTo500 | PASS | PASS | ✅ |
+
+→ **12/12 组全等价，零行为漂移**。postgres 方言 **blocked-env**（Spec §14.4，不计 PASS）：`TRPC_TEST_POSTGRES_DSN` unset，模块位与宿主位同口径 SKIP——移交 IB3 以 env 复跑 `TestAnalyticsAggregations/postgres`（framework:192 必测；Brief (d)）。
+
+### §2.5 宿主消费面回归（转发链）
+
+`go test ./internal/handler -run 'TestUsage' -count=1` → `ok github.com/Tencent/WeKnora/internal/handler 1.730s`（EXIT=0）——usage.go 5 个调用点（:89/:107/:114/:128/:138）经 handler compat 转发 `analytics.ParseAnalyticsRange`/`analytics.Rows`，usage 面 HTTP 契约不因转发变化。
 
 ## §3 evaluation 特征化与 seam（B3-IN.2/B3-IN.4 待填）
 
@@ -128,7 +219,11 @@ ok  github.com/Tencent/WeKnora/internal/handler 1.565s
 
 ## §4 治理行操作（B3-IN.3/B3-IN.4/B3-IN.5 待填）
 
-（manifest/matrix 行级成对操作记录；alias 义务收口；exception-ledger 属主复核零命中实测。）
+### B3-IN.3（analytics 面，与物理迁移同 commit）
+
+- `docs/architecture/moves/insights.yaml` legacy_files：删 2 行（`internal/application/repository/analytics.go`、`internal/handler/analytics.go`，Ruling 1「可早删不可晚删」）；增 2 行 shim（`insights_passb_compat.go` ×2，reason「Pass B 过渡 shim，ib3 同 commit 随文件删行」，Ruling 7 成对纪律，行格式镜像 datasource.yaml:9-:12）。
+- `docs/architecture/passb/ownership-matrix.yaml`：删 analytics 2 行（原 :98-:103、:1478-:1483）；增 2 行 shim（repository 侧插于 feedback.go 与 kbshare.go 之间、handler 侧插于 initialization.go 与 knowledge.go 之间，保持字典序；destination=`internal/modules/insights/analytics`，integration_owner/delete_barrier=ib3，行格式镜像 datasource_passb_compat.go 行）。
+- 门禁复核：`make verify-module-moves` → `modulemove: OK (16 manifests verified)`；`make check-backend-architecture` → `literal=564 apiKeyRoute=69 handle=0 total=633 | redis=23 lite=23 | hooks=58 | modules=16` + `OK (0 violations)`（计数基线 633/23+23/58/16 三方一致口径不变）。
 
 ## §5 门禁记录（B3-IN.7 待填）
 

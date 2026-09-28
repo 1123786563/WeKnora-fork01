@@ -8,9 +8,13 @@ alias_obligations:
   - old_import_path: internal/application/service/metric
     passb_task: B-insights
 legacy_files:
-  - path: internal/application/repository/analytics.go
-    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
-    navigation_label: Analytics (application/repository)
+  - path: internal/application/repository/insights_passb_compat.go
+    reason: Pass B 过渡 shim，ib3 同 commit 随文件删行
+    navigation_label: Insights host compat (application/repository)
+    passb_task: B-insights
+  - path: internal/handler/insights_passb_compat.go
+    reason: Pass B 过渡 shim，ib3 同 commit 随文件删行
+    navigation_label: Insights host compat (handler)
     passb_task: B-insights
   - path: internal/application/service/dataset.go
     reason: trapped in horizontal service package internal/application/service (Pass B file split)
@@ -23,10 +27,6 @@ legacy_files:
   - path: internal/application/service/metric_hook.go
     reason: trapped in horizontal service package internal/application/service (Pass B file split)
     navigation_label: Metric hook (application/service)
-    passb_task: B-insights
-  - path: internal/handler/analytics.go
-    reason: trapped in horizontal handler package internal/handler (Pass B file split)
-    navigation_label: Analytics (handler)
     passb_task: B-insights
   - path: internal/handler/evaluation.go
     reason: trapped in horizontal handler package internal/handler (Pass B file split)

@@ -1,13 +1,126 @@
-package repository
+package analytics
 
 import (
 	"context"
+	"database/sql"
+	"net/url"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/golang-migrate/migrate/v4"
+	pgmigrate "github.com/golang-migrate/migrate/v4/database/postgres"
+	sqlite3migrate "github.com/golang-migrate/migrate/v4/database/sqlite3"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
+	"gorm.io/driver/postgres"
+	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
+
+// ---- Shared DB test fixtures (module copy) ----
+// Ruling 2026-09-24-TEST-SUPPORT-SHIM 家族：analytics 随迁测试依赖宿主共享测试
+// 装置 openRunTestDB/seedRunFixtures/openPostgresRunTestDB（源 internal/
+// application/repository/agent_run_test.go:29-118，宿主原件随 agent_run 系留
+// 守）。模块侧自带副本，repoRoot 深度按本包位置改为 "../../../.."；
+// postgres 分支保留 TRPC_TEST_POSTGRES_DSN env-skip 语义。remove_at: ib3 后
+// 首次全量复核（副本无独立删除义务，随模块存续——agentcatalog 先例）。
+
+func openRunTestDB(t *testing.T) *gorm.DB {
+	t.Helper()
+	_, filename, _, ok := runtime.Caller(0)
+	require.True(t, ok)
+	repoRoot := filepath.Clean(filepath.Join(filepath.Dir(filename), "../../../.."))
+	if strings.Contains(t.Name(), "/postgres") {
+		return openPostgresRunTestDB(t, repoRoot)
+	}
+	dbPath := filepath.Join(t.TempDir(), "agent-runs.db")
+	dsn := "file:" + dbPath + "?_foreign_keys=on&_busy_timeout=5000"
+
+	sqlDB, err := sql.Open("sqlite3", dsn)
+	require.NoError(t, err)
+	driver, err := sqlite3migrate.WithInstance(sqlDB, &sqlite3migrate.Config{NoTxWrap: true})
+	require.NoError(t, err)
+	migrator, err := migrate.NewWithDatabaseInstance(
+		"file://"+filepath.Join(repoRoot, "migrations/sqlite"), "sqlite3", driver,
+	)
+	require.NoError(t, err)
+	require.NoError(t, migrator.Up())
+	_, _ = migrator.Close()
+
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	require.NoError(t, err)
+	seedRunFixtures(t, db)
+	t.Cleanup(func() {
+		conn, e := db.DB()
+		if e == nil {
+			_ = conn.Close()
+		}
+	})
+	return db
+}
+
+func seedRunFixtures(t *testing.T, db *gorm.DB) {
+	t.Helper()
+	require.NoError(t, db.Exec(
+		`INSERT INTO tenants (id, name, business) VALUES (1, 'tenant-1', 'test')`,
+	).Error)
+	require.NoError(t, db.Exec(
+		`INSERT INTO users (id, username, email, password_hash, tenant_id)
+		 VALUES ('u1', 'u1', 'u1@example.test', 'x', 1)`,
+	).Error)
+	require.NoError(t, db.Exec(
+		`INSERT INTO sessions (id, tenant_id, title, user_id, engine_type) VALUES
+		 ('s1', 1, 'session-1', 'u1', 'trpc'),
+		 ('s2', 1, 'session-2', 'u1', 'trpc')`,
+	).Error)
+}
+
+func openPostgresRunTestDB(t *testing.T, root string) *gorm.DB {
+	t.Helper()
+	dsn := os.Getenv("TRPC_TEST_POSTGRES_DSN")
+	if dsn == "" {
+		t.Skip("TRPC_TEST_POSTGRES_DSN unset: PostgreSQL recovery acceptance NOT VERIFIED")
+	}
+	admin, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	require.NoError(t, err)
+	schema := "trpc_test_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+	require.NoError(t, admin.Exec("CREATE SCHEMA "+schema).Error)
+	t.Cleanup(func() {
+		require.NoError(t, admin.Exec("DROP SCHEMA "+schema+" CASCADE").Error)
+		conn, e := admin.DB()
+		if e == nil {
+			_ = conn.Close()
+		}
+	})
+	if strings.HasPrefix(dsn, "postgres://") || strings.HasPrefix(dsn, "postgresql://") {
+		u, e := url.Parse(dsn)
+		require.NoError(t, e)
+		q := u.Query()
+		q.Set("search_path", schema+",public")
+		u.RawQuery = q.Encode()
+		dsn = u.String()
+	} else {
+		dsn += " search_path=" + schema + ",public"
+	}
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	require.NoError(t, err)
+	conn, err := db.DB()
+	require.NoError(t, err)
+	driver, err := pgmigrate.WithInstance(conn, &pgmigrate.Config{SchemaName: schema})
+	require.NoError(t, err)
+	m, err := migrate.NewWithDatabaseInstance("file://"+filepath.Join(root, "migrations/versioned"), "postgres", driver)
+	require.NoError(t, err)
+	require.NoError(t, m.Up())
+	t.Cleanup(func() { _, _ = m.Close() })
+	seedRunFixtures(t, db)
+	return db
+}
 
 // seedAnalyticsData plants a small cross-day analytics fixture via raw SQL,
 // mirroring the production write shapes. Sessions carry the canonical owner
