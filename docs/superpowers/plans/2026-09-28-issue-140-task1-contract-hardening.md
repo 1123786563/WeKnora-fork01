@@ -61,3 +61,19 @@
 - Coverage: all four high and three medium findings in the Task 1 review have an explicit test/implementation step; the low ADR traceability finding is addressed by restoring ADR 0019.
 - Interfaces: the Desk and API are frozen together through a compile-time assembly test before Tasks 2–9 consume them.
 - Scope: one integrated package-boundary task is necessary because response envelopes, API methods, and Desk outcomes must agree; splitting would let downstream interfaces diverge again.
+
+### Task 1R2: Close transport classification and Desk lifecycle findings
+
+**Dependency:** Task 1R implementation `a1be4d51b1dbf501d14de3c17c9eaa297b86a4a9`; review `.superpowers/sdd/2026-09-28-issue-140-main-port/task-1r-review.md`. Keep Task 1 unverified and downstream blocked.
+
+**Files:** only `packages/api-client/src/career/**`, `packages/api-client/src/client.ts` if required for observer wiring, `packages/career-core/src/**`, tests, this plan/ledger and the Task 1R2 evidence report.
+
+**Interfaces:** `ApiError` from the production shared client; typed `CareerReceipt` outcomes; structured scope and scoped intent store from ADR 0019. Only network/timeouts and undecodable outcomes are unknown; definitive 403 and 409 responses become forbidden/conflict with correlated request ID and decoded revision where supplied.
+
+- [ ] Add an assembled production-client → CareerApi → Desk regression for HTTP 403, 409 with revision envelope, timeout, and malformed response; assert only truly indeterminate cases remain unknown.
+- [ ] Add RED tests for timeout followed by a newer `open()` and attempted `rebase`; the original request ID must remain stored and lookup-able unless an authoritative conflict receipt was observed.
+- [ ] Add reordered same-scope `open`/revision-hint read tests (revision 3 resolves before revision 2); the projection never regresses and a stale command cannot be accepted.
+- [ ] Remove the public non-persisting `submit` bypass, or constrain any recovery-only operation to an ID already present in the active scoped store; every new write must persist before dispatch. Test no dispatch before persistence and timeout recovery afterward.
+- [ ] Handle revision-hint refresh rejections without unhandled promises and wire the production client's observer source if observation is in the published seam; test decoder/network failure and scope switch during refresh.
+- [ ] Run each new regression RED before implementation, then focused Career suites, strict Career/assembly type checks, `pnpm test:shared`, accepted baseline `pnpm typecheck:shared`, and `git diff --check`. Regenerate Task 1R review package and report exact BASE/HEAD/patch hash.
+- [ ] Commit implementation and evidence separately; request fresh independent review. No downstream task starts until clean review.
