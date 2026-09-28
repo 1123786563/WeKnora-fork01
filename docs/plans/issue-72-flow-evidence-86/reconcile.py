@@ -360,6 +360,27 @@ def main():
     except KeyboardInterrupt:
         if canonical_verdict is not None:
             return 0 if canonical_verdict else 1
+        published_artifact = output_dir / "reconcile-output.txt"
+        try:
+            published_bytes = published_artifact.read_bytes()
+        except FileNotFoundError:
+            published_bytes = None
+        except OSError:
+            # A canonical destination may already have been published. Preserve
+            # it when its contents cannot be inspected safely.
+            return 1
+        if published_bytes is not None:
+            try:
+                terminal_line = next(
+                    line for line in reversed(published_bytes.decode("utf-8").splitlines())
+                    if line.strip())
+            except (UnicodeDecodeError, StopIteration):
+                return 1
+            if terminal_line == "RECONCILE PASS":
+                return 0
+            if terminal_line == "RECONCILE FAIL":
+                return 1
+            return 1
         lines = ["RECONCILE FAIL", "stage=%s" % stage, "reason=interrupted"]
         try:
             _write_artifact(output_dir, lines)
