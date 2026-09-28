@@ -231,6 +231,14 @@ func seedLifecycleWorkbenchSessions(t *testing.T, db *gorm.DB, ids ...string) {
 	}
 }
 
+func submissionIDs(rows []types.AgentReleaseSubmissionEntity) []string {
+	ids := make([]string, 0, len(rows))
+	for _, row := range rows {
+		ids = append(ids, row.ID)
+	}
+	return ids
+}
+
 func TestLifecycleExitDeletesNothingAcrossGovernanceRows(t *testing.T) {
 	r, _, db := newLifecycleTestApp(t)
 	listingID, v1 := freezeAndPublishUpgradeRelease(t, r, "1.0.0", lifecycleMetadata())
@@ -247,6 +255,30 @@ func TestLifecycleExitDeletesNothingAcrossGovernanceRows(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, accepted.Key.RunID)
 	require.NoError(t, db.Exec(`INSERT INTO artifact_versions (tenant_id, id, run_id, session_id, digest, object_key, mime, size, scan_state) VALUES (1, 'lifecycle-artifact', ?, 'lifecycle-history', 'digest', 'artifact/lifecycle', 'text/plain', 1, 'ready')`, accepted.Key.RunID).Error)
+
+	// Capture the exact history rows and their links before applying the exits.
+	var seededVariant types.AgentAdoptionVariantEntity
+	require.NoError(t, db.Where("tenant_id = ? AND id = ?", 1, variantID).Take(&seededVariant).Error)
+	var seededReleases []types.AgentReleaseEntity
+	require.NoError(t, db.Where("tenant_id = ? AND id IN ?", 1, []string{v1, v2}).Find(&seededReleases).Error)
+	require.Len(t, seededReleases, 2)
+	var seededSubmissions []types.AgentReleaseSubmissionEntity
+	require.NoError(t, db.Where("tenant_id = ? AND listing_id = ?", 1, listingID).Find(&seededSubmissions).Error)
+	require.NotEmpty(t, seededSubmissions)
+	var seededReviews []types.AgentReleaseReviewEntity
+	require.NoError(t, db.Where("tenant_id = ? AND submission_id IN ?", 1, submissionIDs(seededSubmissions)).Find(&seededReviews).Error)
+	require.NotEmpty(t, seededReviews)
+	require.NoError(t, db.Create(&types.AgentLicenseEntity{ID: "MIT", Name: "MIT", AllowsRedistribution: true, CreatedBy: "admin"}).Error)
+	var seededLicense types.AgentLicenseEntity
+	require.NoError(t, db.Where("id = ?", "MIT").Take(&seededLicense).Error)
+	var seededListing types.AgentMarketplaceListingEntity
+	require.NoError(t, db.Where("tenant_id = ? AND id = ?", 1, listingID).Take(&seededListing).Error)
+	var seededAgent types.CustomAgent
+	require.NoError(t, db.Where("tenant_id = ? AND id = ?", 1, localAgentID).Take(&seededAgent).Error)
+	var seededRun map[string]any
+	require.NoError(t, db.Table("agent_runs").Where("tenant_id = ? AND run_id = ?", 1, accepted.Key.RunID).Take(&seededRun).Error)
+	var seededArtifact map[string]any
+	require.NoError(t, db.Table("artifact_versions").Where("tenant_id = ? AND id = ?", 1, "lifecycle-artifact").Take(&seededArtifact).Error)
 
 	count := func(table string) int64 {
 		t.Helper()
@@ -275,6 +307,50 @@ func TestLifecycleExitDeletesNothingAcrossGovernanceRows(t *testing.T) {
 	for table, n := range before {
 		require.EqualValues(t, n, count(table), "退出不得删除 %s 行", table)
 	}
+	var runAfter map[string]any
+	require.NoError(t, db.Table("agent_runs").Where("tenant_id = ? AND run_id = ?", 1, accepted.Key.RunID).Take(&runAfter).Error)
+	require.Equal(t, "lifecycle-history", runAfter["session_id"])
+	var requestAfter map[string]any
+	require.NoError(t, db.Table("workbench_requests").Where("tenant_id = ? AND request_id = ?", 1, "lifecycle-history-request").Take(&requestAfter).Error)
+	require.Equal(t, accepted.Key.RunID, requestAfter["run_id"])
+	require.Equal(t, localAgentID, requestAfter["agent_id"])
+	var artifactAfter map[string]any
+	require.NoError(t, db.Table("artifact_versions").Where("tenant_id = ? AND id = ?", 1, "lifecycle-artifact").Take(&artifactAfter).Error)
+	require.Equal(t, accepted.Key.RunID, artifactAfter["run_id"])
+	var variantAfter types.AgentAdoptionVariantEntity
+	require.NoError(t, db.Where("tenant_id = ? AND id = ?", 1, seededVariant.ID).Take(&variantAfter).Error)
+	require.Equal(t, adoptionID, variantAfter.AdoptionID)
+	require.Equal(t, localAgentID, variantAfter.LocalAgentID)
+	require.Equal(t, seededVariant.LocalAgentVersionID, variantAfter.LocalAgentVersionID)
+	var versionAfter types.AgentVersionEntity
+	require.NoError(t, db.Where("tenant_id = ? AND id = ?", 1, seededVariant.LocalAgentVersionID).Take(&versionAfter).Error)
+	require.Equal(t, localAgentID, versionAfter.AgentID)
+	for _, release := range seededReleases {
+		var releaseAfter types.AgentReleaseEntity
+		require.NoError(t, db.Where("tenant_id = ? AND id = ?", 1, release.ID).Take(&releaseAfter).Error)
+		require.Equal(t, listingID, releaseAfter.ListingID)
+		require.Equal(t, release.SubmissionID, releaseAfter.SubmissionID)
+	}
+	for _, submission := range seededSubmissions {
+		var submissionAfter types.AgentReleaseSubmissionEntity
+		require.NoError(t, db.Where("tenant_id = ? AND id = ?", 1, submission.ID).Take(&submissionAfter).Error)
+		require.Equal(t, listingID, submissionAfter.ListingID)
+		for _, review := range seededReviews {
+			if review.SubmissionID != submission.ID {
+				continue
+			}
+			var reviewAfter types.AgentReleaseReviewEntity
+			require.NoError(t, db.Where("tenant_id = ? AND id = ?", 1, review.ID).Take(&reviewAfter).Error)
+			require.Equal(t, submission.ID, reviewAfter.SubmissionID)
+		}
+	}
+	var licenseAfter types.AgentLicenseEntity
+	require.NoError(t, db.Where("id = ?", seededLicense.ID).Take(&licenseAfter).Error)
+	require.Equal(t, seededLicense.Name, licenseAfter.Name)
+	var listingAfter types.AgentMarketplaceListingEntity
+	require.NoError(t, db.Where("tenant_id = ? AND id = ?", 1, seededListing.ID).Take(&listingAfter).Error)
+	require.Equal(t, listingID, listingAfter.ID)
+	require.Equal(t, seededListing.SourceAgentID, listingAfter.SourceAgentID)
 	var deletedCount int64
 	require.NoError(t, db.Table("custom_agents").Where("id = ? AND deleted_at IS NOT NULL", localAgentID).Count(&deletedCount).Error)
 	require.Zero(t, deletedCount)
