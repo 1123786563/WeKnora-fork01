@@ -105,6 +105,35 @@ test('a lease revoked while the write was in flight drops the late result — DE
   );
 });
 
+test('a read rejection after lease revocation reports DELIVERY_SCOPE_CHANGED', async () => {
+  const { lease, revoke } = mintLease();
+  const remote: DeliveryRemote & DeliveryRecoveryRemote = {
+    async delivery() { revoke(); throw new Error('network down'); },
+    async dispatchDelivery() { throw new Error('must not be called'); },
+    async resolveDelivery() { throw new Error('must not be called'); },
+  };
+  await assert.rejects(
+    () => createDeliveryRecovery({ remote, lease: () => lease }).recover({ runId: 'run-1', deliveryId: 'dlv-1' }),
+    (error: unknown) => error instanceof DeliveryRecoveryError && error.code === 'DELIVERY_SCOPE_CHANGED',
+  );
+});
+
+test('a write rejection after lease revocation reports DELIVERY_SCOPE_CHANGED before translating API conflict', async () => {
+  const { lease, revoke } = mintLease();
+  const remote: DeliveryRemote & DeliveryRecoveryRemote = {
+    async delivery() { return recordWith('pushed'); },
+    async dispatchDelivery() {
+      revoke();
+      throw Object.assign(new Error('state conflict'), { status: 409 });
+    },
+    async resolveDelivery() { throw new Error('must not be called'); },
+  };
+  await assert.rejects(
+    () => createDeliveryRecovery({ remote, lease: () => lease }).recover({ runId: 'run-1', deliveryId: 'dlv-1' }),
+    (error: unknown) => error instanceof DeliveryRecoveryError && error.code === 'DELIVERY_SCOPE_CHANGED',
+  );
+});
+
 test('a 409 state conflict translates to DELIVERY_STATE_CONFLICT (both ApiError shapes)', async () => {
   for (const shape of [
     Object.assign(new Error('api error 409'), { status: 409 }),

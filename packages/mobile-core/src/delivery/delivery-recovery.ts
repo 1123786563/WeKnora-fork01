@@ -60,6 +60,9 @@ export function createDeliveryRecovery(ports: {
       try {
         current = await ports.remote.delivery(input.runId);
       } catch (error) {
+        if (!leaseActive(lease)) {
+          throw new DeliveryRecoveryError('DELIVERY_SCOPE_CHANGED', 'scope changed while the delivery read was in flight');
+        }
         throw new DeliveryRecoveryError('DELIVERY_BACKEND', errorMessage(error, 'delivery read failed'));
       }
       if (!leaseActive(lease)) {
@@ -83,6 +86,9 @@ export function createDeliveryRecovery(ports: {
           ? await ports.remote.dispatchDelivery(input)
           : await ports.remote.resolveDelivery(input);
       } catch (error) {
+        if (!leaseActive(lease)) {
+          throw new DeliveryRecoveryError('DELIVERY_SCOPE_CHANGED', 'scope changed while delivery recovery was in flight');
+        }
         if (isStateConflict(error)) {
           throw new DeliveryRecoveryError('DELIVERY_STATE_CONFLICT', errorMessage(error, 'delivery state changed during recovery'));
         }
