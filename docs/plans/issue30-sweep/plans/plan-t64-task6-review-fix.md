@@ -22,7 +22,7 @@
 
 ## Review Focus
 
-1. Both lock acquisition orders must serialize across independent DB connections; an in-process mutex is not evidence.
+1. Both lock acquisition orders must serialize across independent DB connections using explicit barriers; an in-process mutex or timing sleep is not evidence.
 2. Tenant guard exists and is acquired in a dialect-correct way; SQLite guard is the first transactional write and verifies the tenant row exists.
 3. Admission decision and decisive repository write share one transaction. Revocation ledger plus audit share a transaction under the same guard.
 4. Adopt/CreateVariant return the established invalid-input error for missing, foreign, or wrong-listing explicit release IDs before any security verdict.
@@ -46,13 +46,13 @@ graph LR
 - `internal/application/service/agent_adoption.go`
 - `internal/application/service/agent_upgrade.go`
 - `internal/application/service/agent_security_guard_test.go`
-- `internal/application/service/agent_adoption_test.go` and `internal/application/service/agent_upgrade_test.go` (minimal shared test-fixture updates only: seed the real tenant row now required by the production guard)
+- `internal/application/service/agent_adoption_test.go` (minimal shared Release fixture update: seed the real tenant row now required by the production guard)
+- `internal/application/service/agent_upgrade_test.go` (minimal shared Release fixture update: seed the real tenant row now required by the production guard)
 - `internal/application/repository/agent_adoption.go` and repository tests
 - `internal/application/repository/agent_marketplace_lifecycle_test.go` (file-backed independent-connection adoption/end/create serialization tests)
 - `internal/application/repository/agent_upgrade.go` and repository tests
 - `internal/application/repository/agent_security.go` and repository tests
-- `internal/application/service/agent_adoption_test.go` (tenant prerequisite in shared Release fixture)
-- `internal/application/service/agent_upgrade_test.go` (tenant prerequisite in shared Release fixture)
+- `internal/application/service/public_marketplace_test.go` (create the tenant identity row before cross-tenant public Adoption while keeping it free of local Listings/Releases)
 - A new shared repository helper file only if needed for the tenant transaction guard.
 
 **Consumes:** existing `ReleaseAdmission` interface and verdict/error definitions from `internal/application/repository/agent_security.go`; existing repository methods `AdoptListing`, `CreateVariant`, `UpdateVariantState`, `TransitionProposal`; existing `TenantEntity` table and `NewAuditLogRepository(tx)`.
@@ -60,7 +60,7 @@ graph LR
 
 **Required behavior and concrete interface constraints:**
 
-- Add a tenant-scoped transactional helper that receives `ctx`, `tenantID`, and a callback receiving the transaction-scoped `*gorm.DB`. PostgreSQL must execute `SELECT id FROM tenants WHERE id=? FOR UPDATE`; SQLite must issue `UPDATE tenants SET id=id WHERE id=?` before any other query/write and require exactly one affected row. Missing tenant returns the existing tenant/not-found error. Other supported dialects must use a safe equivalent or fail closed with a clear unsupported-dialect error.
+- Add a tenant-scoped transactional helper that receives `ctx`, `tenantID`, and a callback receiving the transaction-scoped `*gorm.DB`. PostgreSQL must execute `SELECT id FROM tenants WHERE id=? FOR UPDATE`; SQLite must issue `UPDATE tenants SET id=id WHERE id=?` before any other query/write and require exactly one affected row. Missing tenant returns the existing tenant/not-found error. Other supported dialects must use a safe equivalent or fail closed with a clear unsupported-dialect error. Any service fixture invoking this guard must seed an existing tenant row; cross-tenant Adoption fixtures still contain no local Listings or Releases for the adopting tenant.
 - Add a transaction-scoped security admission query against the same transaction handle, checking the release revocation and every exact dependency-lock tuple. The helper must not use the injected service gate's separately held DB connection for the authoritative decision.
 - `AdoptListing` and `CreateVariant`: in the same guarded transaction, recheck security and perform the decisive insert. Preserve existing errors and tenant predicates.
 - Final local publication state transition: use `UpdateVariantState` (or a purpose-specific repository operation) to recheck security and perform the final transition to `published` under the guard. Earlier Agent/Version creation may remain if revocation wins; do not hold the tenant lock over those calls, and document/test this compensation boundary.
@@ -73,13 +73,15 @@ graph LR
 1. Add file-backed SQLite tests using two independent DB connections and channel-controlled interleavings for each decisive write family. Verify lock-first admission commits, then revocation; revocation-first commits, then admission is rejected. Cover adoption, variant creation, final publish CAS, and proposal acceptance.
 2. Add release-scope tests with a real gate for missing ID, foreign-tenant ID, same-tenant wrong-listing ID, and valid blocked release. Invalid IDs must return the prior invalid-input/not-found result without exposing a revocation reason.
 3. Add tenant-lock tests for missing tenant, and verify audit+ledger rollback still holds under revocation path.
-4. Run RED tests against the current separate-check implementation and observe the race/boundary failure; implement, then rerun to GREEN.
+4. Update `TestPublicMarketplaceServiceAdoptPropagatesPortableReleaseAndFeedsVariantChain` in `internal/application/service/public_marketplace_test.go` to create tenant 2's identity row but no tenant-2 Listing or Release before public Adoption; prove this preserves its stated cross-tenant behavior.
+5. Run the channel-controlled race tests against the separate-check baseline where feasible, then rerun all tests to GREEN. Do not use elapsed-time sleeps to establish the ordering schedule.
 
 **Verification:**
 
 - Targeted repository tests for adoption, upgrade, security and guard races with `-count=10` for deterministic interleavings.
 - Targeted service tests for adoption/upgrade/security guard.
 - `go test ./internal/application/repository/ ./internal/application/service/ -count=1`.
+- The full repository and service package runs must both pass; the service run specifically catches guard-induced stale fixture assumptions.
 - `go build ./...`.
 - `git diff --check`.
 - PostgreSQL runtime is not available in the current local environment; if unavailable, report that explicitly and retain dialect-specific SQL tests or query-construction coverage. Do not claim PostgreSQL concurrency runtime verification.
