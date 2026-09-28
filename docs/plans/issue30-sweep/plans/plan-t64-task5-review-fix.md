@@ -19,3 +19,4 @@
 5. Run focused cancellation/revocation/rollback tests, related repo/service filters, build and diff-check. Commit only owned files and report exact evidence.
 
 **Review focus:** No commit point can leave canceled runs with stale count; all database effects roll back together when final count persistence fails. Audit+ledger remains its earlier transaction; cancellations/count are an explicit subsequent atomic transaction.
+6. Assert `revoked_by` is the requested actor on the ledger row and the audit log's `actor_user_id` is that same revoker for both release and dependency paths (audit schema has no separate revoked_by column).
