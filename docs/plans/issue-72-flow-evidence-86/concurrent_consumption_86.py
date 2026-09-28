@@ -31,6 +31,14 @@ ALLOWED_TARGETS = {"127.0.0.1"}  # the local Lago test stack, nothing else
 CUSTOMER = os.environ.get("LAGO_CUSTOMER", "weknora-tenant-10000")
 
 
+class WalletHTTPError(RuntimeError):
+    def __init__(self, status):
+        if type(status) is not int:
+            raise TypeError("HTTP status must be an integer")
+        self.http_status = status
+        super().__init__("HTTP %d" % status)
+
+
 class _NoRedirect(HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         return None
@@ -189,7 +197,10 @@ def call(method, path, payload=None):
     try:
         with OPENER.open(req, timeout=30) as resp:
             raw = resp.read()
-            return resp.status, json.loads(raw) if raw else None
+            status = resp.status
+            if 200 <= status <= 299:
+                return status, json.loads(raw) if raw else None
+            return status, decode_error_body(raw)
     except urllib.error.HTTPError as err:
         raw = err.read()
         return err.code, decode_error_body(raw)
@@ -225,7 +236,7 @@ def wallet_list(fetch_page=None):
     def fetch(page):
         status, body = call("GET", "/api/v1/customers/" + CUSTOMER + "/wallets?per_page=20&page=" + str(page))
         if not 200 <= status <= 299:
-            raise RuntimeError("wallet list failed: HTTP %s" % status)
+            raise WalletHTTPError(status)
         return body
     return read_wallet_pages(fetch_page or fetch)
 

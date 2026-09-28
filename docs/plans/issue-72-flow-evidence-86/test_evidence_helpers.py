@@ -22,6 +22,162 @@ reconcile = importlib.util.module_from_spec(rspec)
 rspec.loader.exec_module(reconcile)
 
 class EvidenceHelpersTest(unittest.TestCase):
+    def test_consume_wallet_http_error_without_json_preserves_status(self):
+        import io
+        import urllib.error
+        error = urllib.error.HTTPError("http://private.invalid/SECRET_URL", 503,
+                                       "SECRET_HEADER", {"X-Secret": "SECRET_HEADER"},
+                                       io.BytesIO(b"<html>SECRET_BODY</html>"))
+        with mock.patch.object(consume.OPENER, "open", side_effect=error):
+            self.assertEqual(consume.request("GET", "/probe", key="SECRET_KEY"), (503, None))
+        json_error = urllib.error.HTTPError("http://private.invalid", 503, "bad", {},
+                                            io.BytesIO(b'{"detail":"provider"}'))
+        with mock.patch.object(consume.OPENER, "open", side_effect=json_error):
+            self.assertEqual(consume.request("GET", "/probe", key="SECRET_KEY"),
+                             (503, {"detail": "provider"}))
+        response = mock.MagicMock()
+        response.__enter__.return_value.status = 503
+        response.__enter__.return_value.read.return_value = b'{"detail":"returned provider"}'
+        with mock.patch.object(consume.OPENER, "open", return_value=response):
+            self.assertEqual(consume.request("GET", "/probe", key="SECRET_KEY"),
+                             (503, {"detail": "returned provider"}))
+
+    def test_consume_wallet_reader_rejects_json_non_2xx(self):
+        response = mock.MagicMock()
+        response.__enter__.return_value.status = 503
+        response.__enter__.return_value.read.return_value = b"<html>SECRET_BODY</html>"
+        with mock.patch.object(consume.OPENER, "open", return_value=response):
+            with self.assertRaises(consume.WalletHTTPError) as caught:
+                consume.wallets()
+        self.assertEqual(caught.exception.http_status, 503)
+        for marker in ("SECRET_BODY", "SECRET_URL", "SECRET_HEADER"):
+            self.assertNotIn(marker, str(caught.exception))
+
+    def test_consume_wallet_reader_accepts_200_page(self):
+        wallet = {"lago_id": "w", "name": "w", "status": "active"}
+        page = {"wallets": [wallet], "meta": {"current_page": 1, "next_page": None,
+                "total_pages": 1, "total_count": 1}}
+        response = mock.MagicMock()
+        response.__enter__.return_value.status = 200
+        response.__enter__.return_value.read.return_value = json.dumps(page).encode()
+        with mock.patch.object(consume.OPENER, "open", return_value=response):
+            self.assertEqual(consume.wallets(), {"w": wallet})
+
+    def test_concurrent_wallet_reader_rejects_returned_non_2xx_before_decode(self):
+        response = mock.MagicMock()
+        response.__enter__.return_value.status = 503
+        response.__enter__.return_value.read.return_value = b"<html>SECRET_BODY</html>"
+        with mock.patch.object(cc.OPENER, "open", return_value=response):
+            with self.assertRaises(cc.WalletHTTPError) as caught:
+                cc.wallet_list()
+        self.assertEqual(caught.exception.http_status, 503)
+        self.assertNotIn("SECRET_BODY", str(caught.exception))
+
+    def test_reconcile_wallet_http_error_preserves_status(self):
+        import io
+        import urllib.error
+        error = urllib.error.HTTPError("http://private.invalid/SECRET_URL", 503,
+                                       "SECRET_HEADER", {"X-Secret": "SECRET_HEADER"},
+                                       io.BytesIO(b"SECRET_BODY"))
+        opener = mock.Mock()
+        opener.open.side_effect = error
+        with mock.patch.object(reconcile, "build_opener", return_value=opener):
+            with self.assertRaises(reconcile.WalletHTTPError) as caught:
+                reconcile.lago_wallets()
+        self.assertEqual(caught.exception.http_status, 503)
+        for marker in ("SECRET_BODY", "SECRET_URL", "SECRET_HEADER"):
+            self.assertNotIn(marker, str(caught.exception))
+
+    def test_reconcile_wallet_reader_rejects_returned_non_2xx(self):
+        response = mock.MagicMock()
+        response.__enter__.return_value.status = 503
+        response.__enter__.return_value.read.return_value = b"<html>SECRET_BODY</html>"
+        opener = mock.Mock()
+        opener.open.return_value = response
+        with mock.patch.object(reconcile, "build_opener", return_value=opener):
+            with self.assertRaises(reconcile.WalletHTTPError) as caught:
+                reconcile.lago_wallets()
+        self.assertEqual(caught.exception.http_status, 503)
+
+    def test_reconcile_wallet_reader_accepts_200_page(self):
+        wallet = {"lago_id": "w", "name": "w", "status": "active"}
+        page = {"wallets": [wallet], "meta": {"current_page": 1, "next_page": None,
+                "total_pages": 1, "total_count": 1}}
+        response = mock.MagicMock()
+        response.__enter__.return_value.status = 200
+        response.__enter__.return_value.read.return_value = json.dumps(page).encode()
+        opener = mock.Mock()
+        opener.open.return_value = response
+        with mock.patch.object(reconcile, "build_opener", return_value=opener):
+            self.assertEqual(reconcile.lago_wallets(), [wallet])
+
+    def test_consume_wallet_http_status_failure_artifact_is_bounded(self):
+        marker = "SECRET_BODY SECRET_URL SECRET_HEADER SECRET_KEY"
+        with tempfile.TemporaryDirectory() as root:
+            out = Path(root) / "run"
+            err_output = __import__("io").StringIO()
+            def response(status, body):
+                item = mock.MagicMock()
+                item.__enter__.return_value.status = status
+                item.__enter__.return_value.read.return_value = body
+                return item
+            def open_request(req, timeout=30):
+                if "/wallets?" in req.full_url:
+                    self.assertEqual(req.get_header("Authorization"), "Bearer SECRET_CREDENTIAL")
+                if "/billable_metrics" in req.full_url:
+                    return response(201, b'{"billable_metric":{"lago_id":"metric"}}')
+                if "/plans" in req.full_url:
+                    return response(201, b'{"plan":{"lago_id":"plan"}}')
+                if "/subscriptions" in req.full_url:
+                    return response(201, b'{"subscription":{"status":"active"}}')
+                failed = response(503, b"SECRET_BODY")
+                failed.__enter__.return_value.headers = {"X-Secret": "SECRET_HEADER"}
+                return failed
+            with mock.patch.dict(os.environ, {"LAGO_API_KEY": "SECRET_CREDENTIAL"}), \
+                 mock.patch.object(consume, "CUSTOMER", "SECRET_URL"), \
+                 mock.patch.object(consume.OPENER, "open", side_effect=open_request), \
+                 mock.patch.object(sys, "argv", ["runner", "--output-dir", str(out)]), \
+                 mock.patch.object(sys, "stderr", err_output):
+                result = consume.main()
+            artifact = (out / "consume-cny.json").read_text()
+            facts = json.loads(artifact)
+        self.assertNotEqual(result, 0)
+        self.assertEqual(facts["failed_stage"], "before_balance_snapshot")
+        self.assertEqual(facts["error"]["http_status"], 503)
+        for secret in ("SECRET_BODY", "SECRET_URL", "SECRET_HEADER", "SECRET_CREDENTIAL"):
+            self.assertNotIn(secret, artifact + err_output.getvalue())
+
+    def test_reconcile_http_status_failure_artifact_is_bounded(self):
+        marker = "SECRET_BODY SECRET_URL SECRET_HEADER SECRET_KEY"
+        with tempfile.TemporaryDirectory() as root:
+            out = Path(root) / "run"
+            stderr = __import__("io").StringIO()
+            (Path(root) / "account.json").write_text(json.dumps({"data": {"benefits": {"credits": {
+                "batches": [], "balance_micro": 0, "held_micro": 0,
+                "refund_locked_micro": 0, "available_micro": 0}}}}))
+            def open_request(req, timeout=30):
+                self.assertEqual(req.get_header("Authorization"), "Bearer SECRET_CREDENTIAL")
+                response = mock.MagicMock()
+                response.__enter__.return_value.status = 503
+                response.__enter__.return_value.read.return_value = b"SECRET_BODY"
+                response.__enter__.return_value.headers = {"X-Secret": "SECRET_HEADER"}
+                return response
+            opener = mock.Mock()
+            opener.open.side_effect = open_request
+            with mock.patch.object(reconcile, "HERE", Path(root)), \
+                 mock.patch.object(reconcile, "CUSTOMER", "SECRET_URL"), \
+                 mock.patch.dict(os.environ, {"WK_ACCOUNT_JSON": "account.json", "LAGO_API_KEY": "SECRET_CREDENTIAL"}), \
+                 mock.patch.object(reconcile, "build_opener", return_value=opener), \
+                 mock.patch.object(sys, "argv", ["runner", "--output-dir", str(out)]), \
+                 mock.patch.object(sys, "stderr", stderr):
+                result = reconcile.main()
+            artifact = (out / "reconcile-output.txt").read_text()
+        self.assertNotEqual(result, 0)
+        self.assertIn("stage=lago_fetch", artifact)
+        self.assertIn("reason=HTTP 503", artifact)
+        for secret in ("SECRET_BODY", "SECRET_URL", "SECRET_HEADER", "SECRET_CREDENTIAL"):
+            self.assertNotIn(secret, artifact + stderr.getvalue())
+
     def test_consume_help_does_not_discover_credentials_or_call_git(self):
         with tempfile.TemporaryDirectory() as root:
             bin_dir = Path(root) / "bin"

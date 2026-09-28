@@ -27,7 +27,7 @@ import uuid
 from pathlib import Path
 from urllib.parse import urlsplit
 from urllib.request import Request, build_opener, HTTPRedirectHandler
-from concurrent_consumption_86 import read_wallet_pages, prepare_output_dir
+from concurrent_consumption_86 import WalletHTTPError, decode_error_body, read_wallet_pages, prepare_output_dir
 
 ALLOWED_TARGETS = {"127.0.0.1"}  # the local Lago test stack, nothing else
 CUSTOMER = os.environ.get("LAGO_CUSTOMER", "weknora-tenant-10000")
@@ -111,15 +111,20 @@ def request(method, path, payload=None, *, key=None):
     try:
         with OPENER.open(req, timeout=30) as resp:
             raw = resp.read()
-            return resp.status, json.loads(raw) if raw else None
+            status = resp.status
+            if 200 <= status <= 299:
+                return status, json.loads(raw) if raw else None
+            return status, decode_error_body(raw)
     except urllib.error.HTTPError as err:
         raw = err.read()
-        return err.code, json.loads(raw) if raw else None
+        return err.code, decode_error_body(raw)
 
 
 def wallets(fetch_page=None, *, key=None):
     def fetch(page):
-        _, body = request("GET", f"/api/v1/customers/{CUSTOMER}/wallets?per_page=20&page={page}", key=key)
+        status, body = request("GET", f"/api/v1/customers/{CUSTOMER}/wallets?per_page=20&page={page}", key=key)
+        if not 200 <= status <= 299:
+            raise WalletHTTPError(status)
         return body
     return {w["name"]: w for w in read_wallet_pages(fetch_page or fetch)}
 
@@ -264,6 +269,8 @@ def main():
     except (Exception, SystemExit) as exc:
         # Do not serialize provider response bodies or arbitrary exception text.
         safe_error = {"type": type(exc).__name__[:80], "message": "operation failed"}
+        if isinstance(exc, WalletHTTPError):
+            safe_error["http_status"] = exc.http_status
         failed = dict(result)
         failed.update({"verdict": "FAIL", "failed_stage": stage, "error": safe_error,
                        "observations": observations})

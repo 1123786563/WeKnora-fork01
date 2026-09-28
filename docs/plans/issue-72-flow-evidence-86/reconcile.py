@@ -8,11 +8,12 @@ import os
 import re
 import sys
 import tempfile
+import urllib.error
 from pathlib import Path
 from urllib.parse import urlsplit
 from urllib.request import Request, build_opener, HTTPRedirectHandler
 
-from concurrent_consumption_86 import read_wallet_pages, prepare_output_dir
+from concurrent_consumption_86 import WalletHTTPError, read_wallet_pages, prepare_output_dir
 
 ALLOWED_TARGETS = {"127.0.0.1"}
 CUSTOMER = os.environ.get("LAGO_CUSTOMER", "weknora-tenant-10000")
@@ -47,8 +48,14 @@ def lago_wallets(fetch_page=None):
         query = "per_page=20&page=" + str(page)
         url = base_url() + "/api/v1/customers/" + CUSTOMER + "/wallets?" + query
         req = Request(url, headers={"Authorization": "Bearer " + api_key()})
-        with build_opener(_NoRedirect).open(req, timeout=30) as resp:
-            return json.load(resp)
+        try:
+            with build_opener(_NoRedirect).open(req, timeout=30) as resp:
+                status = resp.status
+                if not 200 <= status <= 299:
+                    raise WalletHTTPError(status)
+                return json.load(resp)
+        except urllib.error.HTTPError as exc:
+            raise WalletHTTPError(exc.code) from None
     return read_wallet_pages(fetch_page or fetch)
 
 
@@ -240,6 +247,8 @@ def reconcile_batches(page_batches, active_wallets):
 def _safe_reason(exc):
     # Exception text may contain an authorization header, response body, or
     # provider data. Keep only the exception class as bounded diagnostic data.
+    if isinstance(exc, WalletHTTPError):
+        return "HTTP %d" % exc.http_status
     return type(exc).__name__[:80]
 
 
