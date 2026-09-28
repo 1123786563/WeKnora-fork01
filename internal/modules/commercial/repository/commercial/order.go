@@ -751,7 +751,8 @@ func (s *OrderStore) ConfirmPayment(ctx context.Context, fact domain.PaymentFact
 		if !sameTxn {
 			txn := fact.Transaction
 			claim := tx.Model(&PaymentAttemptRow{}).
-				Where("id = ? AND state = ? AND provider_transaction_id IS NULL", attempt.ID, PaymentAttemptStatePending).
+				Where("id = ? AND state IN ? AND provider_transaction_id IS NULL", attempt.ID,
+					[]string{PaymentAttemptStatePending, PaymentAttemptStateClosed}).
 				Updates(map[string]interface{}{
 					"state":                   PaymentAttemptStateSucceeded,
 					"provider_transaction_id": txn,
