@@ -5,7 +5,7 @@
 - 根 Issue：<https://github.com/1123786563/WeKnora-fork01/issues/140>；认证 GitHub REST API 递归审计于 2026-09-28 完成：#140 + #141–#173 共 34 节点、33 条正式 contains 边、无更深子 Issue；全部 open / ready-for-agent，评论为空，和 2026-09-24 快照无变化。
 - 正文依赖来源：每个子 Issue 的 `Blocked by`。完整 `depends_on` 与拓扑在 `2026-09-28-issue-140-main-port-dag.md`。
 - 起始 BASE：`db234c5eb171f2dde7427d382b55b503a038f879`，来源 `.worktrees/issue30-sweep` 实际分支 `codex/issue30-mobile-office`。复核其 `git status --short` 得到 5 个未跟踪文件：两份 OCR 报告及 T55/T63/T64 计划；全部留在原工作区，未复制、未改动、未纳入。
-- 执行工作区：`/Users/wuyongjun/.codex/worktrees/issue-140-issue30-base/WeKnora-fork01`；分支 `codex/issue-140-issue30-base`。创建时 HEAD 是上述 BASE，当前仅领先一次设计文档 cherry-pick `fa0b882def7e78ff3599cc7bef204ad2398063e5`。
+- 执行工作区：`/Users/wuyongjun/.codex/worktrees/issue-140-issue30-base/WeKnora-fork01`；分支 `codex/issue-140-issue30-base`。BASE `db234c5e` 后依次提交批准设计 `fa0b882d`、计划/DAG/intake `a443dbae`、Task 0 摘要 `37a5af02`、测试命令修正 `79df6990`；当前 HEAD 以 `git rev-parse HEAD` 为准，Task 0 仍在 Review 修复中。
 - 目标架构证据：本 BASE 已有 `internal/modules/*`、Workbench admission / TaskBudget、`packages/contracts`、`packages/api-client`、`packages/mobile-core`、Web TDesign feature shell、Taro platform adapters 和 Expo composition。Read-only `main_arch_delta` 研究指出与当前 main 的目录和 migration track 有差异；因此将目标限制为在此指定 BASE 上使用可复用的当前模块化 seams，不合并旧 `codex/issue-140-integration` 分叉，不声称与 main 完全无差异。后续需在最终报告列出移植边界。
 - Spec/设计：产品规格 `docs/specs/2026-09-23-weknora-job-search-design.md`，ADR 0015–0018、`CONTEXT.md`；技术设计 `docs/superpowers/specs/2026-09-28-issue-140-main-architecture-port-design.md`，用户 2026-09-28 已确认。
 - 旧 `docs/plans/issue-140/2026-09-24-issue-140-dag.md` 与历史实现/Review/OCR 仅作验收/行为参考；旧 verified 状态不适用于本次架构移植。
@@ -39,7 +39,7 @@ All implementation nodes start `pending`; an Issue’s historical implementation
 
 | Task | Status | Checkpoint / evidence | Review / ruling |
 |---|---|---|---|
-| 0 Baseline ledger / DAG | verified | live audit returned 34/34 nodes; source DAG SHA256 `3b95634a…`; full issue snapshots and current DAG committed at `a443dbae230496ceca6b23044d8df79b7a3c031d`; `git diff --check` clean | plan self-review complete; issue-140 reviewer confirmation pending |
+| 0 Baseline ledger / DAG | running | live audit returned 34/34 nodes; source DAG SHA256 `3b95634a…`; full snapshots/current DAG at `a443dbae230496ceca6b23044d8df79b7a3c031d`; command correction `79df699010d887e88b7336bf66365e5902b66121`; Review Package `fa0b882d..79df6990` report `.superpowers/sdd/2026-09-28-issue-140-main-port/task-0-review.md` | Review found 4 high + 2 medium; plan/DAG/ledger correction and scoped re-review required |
 | 1 Career wire contract/API client | pending | — | — |
 | 2 Career module/auth/schema | pending | — | — |
 | 3 Profile/source/opportunity/evaluation | pending | — | — |
@@ -59,4 +59,13 @@ All implementation nodes start `pending`; an Issue’s historical implementation
 
 ## Verification, Review and OCR Record
 
-No implementation verification, SDD review, or OCR has run for this plan yet. Record each command, exact HEAD, exit code, result summary and report path here as it occurs. Final OCR must cover the full selected BASE-to-HEAD delivery range and any uncommitted delivery content.
+No implementation verification or OCR has run for this plan yet. Task 0 first independent review is complete and found 4 high / 2 medium documentation/coverage findings; retain report `.superpowers/sdd/2026-09-28-issue-140-main-port/task-0-review.md` and re-review after fixes. Record each command, exact HEAD, exit code, result summary and report path here as it occurs. Final OCR must cover the full selected BASE-to-HEAD delivery range and any uncommitted delivery content.
+
+- Exact review evidence: `git diff --check fa0b882d 79df6990` returned exit 2 because plan lines used trailing spaces to render Markdown hard breaks; remove these spaces and rerun before marking Task 0 verified.
+
+### Task 1 baseline (before implementation)
+
+- Worktree: `/Users/wuyongjun/.codex/worktrees/issue-140-t01-contracts/WeKnora-fork01`, branch `codex/issue-140-t01-contracts`, BASE `37a5af02d9deddba1292c66f02924182fda38166`.
+- `pnpm install --frozen-lockfile --offline`: PASS; all dependencies reused from cache, install confined to ignored worktree `node_modules`.
+- `pnpm test:shared`: PASS, 1126 tests, 1122 pass, 0 fail, 4 skipped, exit 0.
+- `pnpm typecheck:shared`: FAIL at unchanged `packages/views/src/chat/mermaid.ts` lines 127/158 (dark/light theme literal incompatibility and missing `themeVariables` property), exit 2. This is the clean baseline’s unrelated type error; record and do not modify it in Task 1. Re-run the same gate after the task to confirm it remains unchanged, plus focused Career type checks.
