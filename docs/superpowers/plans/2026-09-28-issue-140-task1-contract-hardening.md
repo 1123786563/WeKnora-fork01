@@ -70,10 +70,21 @@
 
 **Interfaces:** `ApiError` from the production shared client; typed `CareerReceipt` outcomes; structured scope and scoped intent store from ADR 0019. Only network/timeouts and undecodable outcomes are unknown; definitive 403 and 409 responses become forbidden/conflict with correlated request ID and decoded revision where supplied.
 
-- [ ] Add an assembled production-client → CareerApi → Desk regression for HTTP 403, 409 with revision envelope, timeout, and malformed response; assert only truly indeterminate cases remain unknown.
-- [ ] Add RED tests for timeout followed by a newer `open()` and attempted `rebase`; the original request ID must remain stored and lookup-able unless an authoritative conflict receipt was observed.
-- [ ] Add reordered same-scope `open`/revision-hint read tests (revision 3 resolves before revision 2); the projection never regresses and a stale command cannot be accepted.
-- [ ] Remove the public non-persisting `submit` bypass, or constrain any recovery-only operation to an ID already present in the active scoped store; every new write must persist before dispatch. Test no dispatch before persistence and timeout recovery afterward.
-- [ ] Handle revision-hint refresh rejections without unhandled promises and wire the production client's observer source if observation is in the published seam; test decoder/network failure and scope switch during refresh.
-- [ ] Run each new regression RED before implementation, then focused Career suites, strict Career/assembly type checks, `pnpm test:shared`, accepted baseline `pnpm typecheck:shared`, and `git diff --check`. Regenerate Task 1R review package and report exact BASE/HEAD/patch hash.
-- [ ] Commit implementation and evidence separately; request fresh independent review. No downstream task starts until clean review.
+- [x] Add an assembled production-client → CareerApi → Desk regression for HTTP 403, 409 with revision envelope, timeout, and malformed response; assert only truly indeterminate cases remain unknown.
+- [x] Add RED tests for timeout followed by a newer `open()` and attempted `rebase`; the original request ID must remain stored and lookup-able unless an authoritative conflict receipt was observed.
+- [x] Add reordered same-scope `open`/revision-hint read tests (revision 3 resolves before revision 2); the projection never regresses and a stale command cannot be accepted.
+- [x] Remove the public non-persisting `submit` bypass, or constrain any recovery-only operation to an ID already present in the active scoped store; every new write must persist before dispatch. Test no dispatch before persistence and timeout recovery afterward.
+- [x] Handle revision-hint refresh rejections without unhandled promises and wire the production client's observer source if observation is in the published seam; test decoder/network failure and scope switch during refresh.
+- [x] Run each new regression RED before implementation, then focused Career suites, strict Career/assembly type checks, `pnpm test:shared`, accepted baseline `pnpm typecheck:shared`, and `git diff --check`. Regenerate Task 1R review package and report exact BASE/HEAD/patch hash.
+- [x] Commit implementation and evidence separately; request fresh independent review. No downstream task starts until clean review.
+
+### Task 1R3: Make missing observation source explicit
+
+**Dependency:** Task 1R2 implementation `e6a4ce588ddb393956c2bfe24eff6a5dd20c0cc0`; review `.superpowers/sdd/2026-09-28-issue-140-main-port/task-1r2-review.md`.
+
+**Files:** Career observer contract/implementation and API client/Desk tests; update ADR 0019 or assembly documentation only if needed to name the observer-provider contract.
+
+- [ ] Add a regression test that ordinary `createWeKnoraClient`/Career Desk observation without a configured revision source fails immediately with a typed `CareerObservationUnavailableError` (or equivalent explicit unsupported result); it must not return a successful inert subscription.
+- [ ] Add an assembled test with the configured provider: emit a revision hint, fetch the authoritative Desk envelope through CareerApi, decode it, and confirm the Desk publishes only the refreshed decoded projection; verify unsubscribe stops delivery.
+- [ ] State in the public client/assembly contract that the runtime supplies `careerObserver` and consumers handle unsupported observation with an explicit refresh strategy; no event source exists in the present transport.
+- [ ] Run tests RED then GREEN, focused suites, strict Career type check, `pnpm test:shared`, accepted baseline `pnpm typecheck:shared`, and `git diff --check`; save exact report and patch hash. Keep Task 1 and downstream work blocked pending independent review.
