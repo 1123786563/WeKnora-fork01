@@ -69,6 +69,13 @@ graph LR
 - **Ruling:** unmatched legacy active Runs require a named data owner's signed, quiesced-state preflight disposition stored outside Git — the database cannot infer human provenance when no Variant lineage exists. Cost if wrong: deployment waits on manual evidence or classification may require rework, but silently misclassifying could leave a revoked run uncancelled or target unrelated work.
 - **Ruling:** production downgrade refuses retained claim/revocation/pin history; code rollback requires a build that preserves both Run and AgentQA gates, otherwise adopted ingress must be disabled and verified — an older AgentQA handler can bypass new claims even if the schema remains. Cost if wrong: rollback options are narrower and may require ingress downtime.
 
+### T64 Task8B submitted for independent gates (2026-09-29)
+
+- Implementation source commit `43c77e21d8ce514ff922233313cacfbe650cbb61`, report commit `cbdb08e627b3466cc419815e3108fe18bb0b3bfc`, based on integrated 8A source `43100052bbb419ad1dd801a9a76b7570d1a3b28f`. Implementation report is archived at `evidence/t64-task8-8b/implementation-report.md`.
+- Implementer evidence: focused claim/reconciliation/resolver/migration/container tests and `go build ./...` pass; the four ignored migration files were force-added. PostgreSQL DDL was inspected statically only; no PostgreSQL runtime endpoint was available.
+- Full existing repository, service, container, and session test suites report legacy Marketplace Run fixtures missing all four required security pins (`agent_run_security_pin_incomplete`). These failures must be re-evaluated/fixed at 8C, which owns Run admission, then all affected suites rerun. They are not silently accepted as final B6 completion evidence.
+- Independent Task8B Spec/Quality review and backend validation are running on exact HEAD `cbdb08e62`. Do not dispatch 8C until both gates pass and 8B is integrated.
+
 ### Completed task review rulings
 
 - #55 Task 1 `3a0a7467b90036c0384a6fd149d8b491253422f6`: independent Spec/Quality review approved; no findings.
