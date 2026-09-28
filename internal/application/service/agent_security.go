@@ -1,10 +1,12 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
@@ -110,8 +112,8 @@ func (s *AgentSecurityService) verdictForRelease(ctx context.Context, tenantID u
 	if !found {
 		return interfaces.AgentSecurityVerdict{}, ErrAgentSecurityReleaseUnresolvable
 	}
-	var lock types.DependencyLock
-	if err := json.Unmarshal([]byte(lockJSON), &lock); err != nil {
+	lock, err := decodeDependencyLock(lockJSON)
+	if err != nil {
 		return interfaces.AgentSecurityVerdict{}, fmt.Errorf("decode dependency lock for release %s: %w", releaseID, err)
 	}
 	dependencyRevocations, err := s.store.ListDependencyRevocations(ctx, tenantID)
@@ -136,6 +138,29 @@ func (s *AgentSecurityService) verdictForRelease(ctx context.Context, tenantID u
 		}
 	}
 	return okAgentSecurityVerdict(), nil
+}
+
+func decodeDependencyLock(lockJSON string) (types.DependencyLock, error) {
+	trimmed := bytes.TrimSpace([]byte(lockJSON))
+	if len(trimmed) == 0 || trimmed[0] != '{' {
+		return types.DependencyLock{}, errors.New("dependency lock must be a JSON object")
+	}
+	var envelope struct {
+		Dependencies *[]types.AgentReleaseDependency `json:"dependencies"`
+	}
+	if err := json.Unmarshal(trimmed, &envelope); err != nil {
+		return types.DependencyLock{}, err
+	}
+	if envelope.Dependencies == nil {
+		return types.DependencyLock{}, errors.New("dependency lock must contain a non-null dependencies array")
+	}
+	for i, dependency := range *envelope.Dependencies {
+		if strings.TrimSpace(dependency.Type) == "" || strings.TrimSpace(dependency.ID) == "" ||
+			strings.TrimSpace(dependency.Version) == "" || strings.TrimSpace(dependency.Digest) == "" {
+			return types.DependencyLock{}, fmt.Errorf("dependency lock entry %d is missing locked identity fields", i)
+		}
+	}
+	return types.DependencyLock{Dependencies: *envelope.Dependencies}, nil
 }
 
 func dependencyIdentityMatches(dependency types.AgentReleaseDependency, revocation types.AgentDependencyRevocationEntity) bool {

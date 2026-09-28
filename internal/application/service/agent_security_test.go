@@ -165,3 +165,101 @@ func TestAgentSecurityVerdictCoversIntroducedRelease(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, interfaces.AgentSecurityVerdictOK, foreign.State, "跨租户：撤回行不外溢")
 }
+
+func TestAgentSecurityVerdictRejectsStructurallyInvalidLocks(t *testing.T) {
+	invalidLocks := []struct {
+		name string
+		json string
+	}{
+		{name: "null top level", json: `null`},
+		{name: "empty object", json: `{}`},
+		{name: "missing dependencies", json: `{"other":[]}`},
+		{name: "null dependencies", json: `{"dependencies":null}`},
+		{name: "malformed json", json: `{"dependencies":`},
+		{name: "null dependency", json: `{"dependencies":[null]}`},
+		{name: "missing tuple identity", json: `{"dependencies":[{"type":"skill","id":"web-search"}]}`},
+	}
+	for i, testCase := range invalidLocks {
+		t.Run(testCase.name, func(t *testing.T) {
+			svc, _, db := newAgentSecurityServiceForTest(t)
+			listingID, releaseID := publishUpgradeServiceRelease(t, db, 1, "1.0."+string(rune('0'+i)), securityManifest, lockV123, securityBundleWithLock(lockV123))
+			adoption := adoptUpgradeRelease(t, db, listingID, releaseID)
+			publishSecurityVariant(t, db, adoption, releaseID, "Invalid lock", "local-agent-invalid")
+			require.NoError(t, db.Model(&types.AgentReleaseEntity{}).Where("tenant_id = ? AND id = ?", 1, releaseID).Update("dependency_lock_json", testCase.json).Error)
+
+			verdict, err := svc.VerdictForAgent(context.Background(), 1, "local-agent-invalid")
+			require.Error(t, err)
+			require.NotEqual(t, interfaces.AgentSecurityVerdictOK, verdict.State, "a data error must not become an ok verdict")
+			require.Error(t, svc.ReleaseAdmission(context.Background(), 1, releaseID))
+		})
+	}
+}
+
+func TestAgentSecurityVerdictAllowsValidEmptyLock(t *testing.T) {
+	svc, store, db := newAgentSecurityServiceForTest(t)
+	listingID, releaseID := publishUpgradeServiceRelease(t, db, 1, "1.0.0", securityManifest, `{"dependencies":[]}`, securityBundleWithLock(`{"dependencies":[]}`))
+	adoption := adoptUpgradeRelease(t, db, listingID, releaseID)
+	publishSecurityVariant(t, db, adoption, releaseID, "Empty lock", "local-agent-empty")
+	require.NoError(t, store.AppendDependencyRevocation(context.Background(), &types.AgentDependencyRevocationEntity{
+		TenantID: 1, DepType: "skill", DepID: "web-search", DepVersion: "1.2.3", DepDigest: "D1", Reason: "revoked", RevokedBy: "sec-admin",
+	}))
+
+	verdict, err := svc.VerdictForAgent(context.Background(), 1, "local-agent-empty")
+	require.NoError(t, err)
+	require.Equal(t, interfaces.AgentSecurityVerdictOK, verdict.State)
+	require.NoError(t, svc.ReleaseAdmission(context.Background(), 1, releaseID))
+}
+
+func TestAgentSecurityVerdictDependencyTupleMismatchBoundaries(t *testing.T) {
+	mismatches := []struct {
+		name string
+		dep  string
+	}{
+		{name: "type differs", dep: `{"type":"Skill","id":"web-search","version":"1.2.3","digest":"D1","license_id":"MIT"}`},
+		{name: "id differs", dep: `{"type":"skill","id":"Web-search","version":"1.2.3","digest":"D1","license_id":"MIT"}`},
+		{name: "version differs", dep: `{"type":"skill","id":"web-search","version":"V1.2.3","digest":"D1","license_id":"MIT"}`},
+		{name: "digest differs", dep: `{"type":"skill","id":"web-search","version":"1.2.3","digest":"d1","license_id":"MIT"}`},
+	}
+	for i, mismatch := range mismatches {
+		t.Run(mismatch.name, func(t *testing.T) {
+			svc, store, db := newAgentSecurityServiceForTest(t)
+			lock := `{"dependencies":[` + mismatch.dep + `]}`
+			listingID, releaseID := publishUpgradeServiceRelease(t, db, 1, "1.0."+string(rune('0'+i)), securityManifest, lock, securityBundleWithLock(lock))
+			adoption := adoptUpgradeRelease(t, db, listingID, releaseID)
+			publishSecurityVariant(t, db, adoption, releaseID, mismatch.name, "local-agent-mismatch")
+			require.NoError(t, store.AppendDependencyRevocation(context.Background(), &types.AgentDependencyRevocationEntity{
+				TenantID: 1, DepType: "skill", DepID: "web-search", DepVersion: "1.2.3", DepDigest: "D1", Reason: "revoked", RevokedBy: "sec-admin",
+			}))
+
+			verdict, err := svc.VerdictForAgent(context.Background(), 1, "local-agent-mismatch")
+			require.NoError(t, err)
+			require.Equal(t, interfaces.AgentSecurityVerdictOK, verdict.State)
+		})
+	}
+}
+
+func TestAgentSecurityVerdictReleaseRevocationPrecedesDependencyRevocation(t *testing.T) {
+	svc, store, db := newAgentSecurityServiceForTest(t)
+	listingID, releaseID := publishUpgradeServiceRelease(t, db, 1, "1.0.0", securityManifest, lockV123, securityBundleWithLock(lockV123))
+	adoption := adoptUpgradeRelease(t, db, listingID, releaseID)
+	publishSecurityVariant(t, db, adoption, releaseID, "Both revoked", "local-agent-both")
+	require.NoError(t, store.AppendDependencyRevocation(context.Background(), &types.AgentDependencyRevocationEntity{
+		TenantID: 1, DepType: "skill", DepID: "web-search", DepVersion: "1.2.3", DepDigest: "D1", Reason: "dependency reason", RevokedBy: "sec-admin",
+	}))
+	require.NoError(t, store.AppendReleaseRevocation(context.Background(), &types.AgentReleaseRevocationEntity{
+		TenantID: 1, ListingID: listingID, ReleaseID: releaseID, Reason: "release reason", RevokedBy: "sec-admin",
+	}))
+
+	verdict, err := svc.VerdictForAgent(context.Background(), 1, "local-agent-both")
+	require.NoError(t, err)
+	require.Equal(t, interfaces.AgentSecurityVerdictReleaseRevoked, verdict.State)
+	require.Contains(t, verdict.Reason, "release reason")
+	require.Nil(t, verdict.Dependency)
+}
+
+func TestAgentSecurityReleaseAdmissionUnknownAndForeignRelease(t *testing.T) {
+	svc, _, db := newAgentSecurityServiceForTest(t)
+	_, releaseID := publishUpgradeServiceRelease(t, db, 1, "1.0.0", securityManifest, lockV123, securityBundleWithLock(lockV123))
+	require.ErrorIs(t, svc.ReleaseAdmission(context.Background(), 1, "missing-release"), ErrAgentSecurityReleaseUnresolvable)
+	require.ErrorIs(t, svc.ReleaseAdmission(context.Background(), 2, releaseID), ErrAgentSecurityReleaseUnresolvable)
+}
