@@ -107,14 +107,14 @@ export function SubmissionPage({ client, scopeController, applicationId, materia
     if (!active || readGeneration !== privateReadGeneration.current || !scopeController.isCurrent(requestScope.scope)) return
     const parsed = errorDetails(cause)
     setRecords(undefined)
-    if (parsed.code === 'forbidden') { setReadState('forbidden'); setReadMessage('当前空间不可访问此申请的投递确认。'); return }
+    if (parsed.code === 'forbidden') { clearPrivate('当前空间不可访问此申请的投递确认，已清除投递内容。'); return }
     setReadState('error')
     setReadMessage(parsed.code === 'not_found' ? '未找到此申请（可能不属于当前空间）。可刷新重试。' : '投递记录暂时无法读取，可刷新重试。')
    }
   }
   void read()
   return () => { active = false }
- }, [applicationId, client, reload, scopeController, scope.scope.generation])
+ }, [applicationId, clearPrivate, client, reload, scopeController, scope.scope.generation])
 
  // The submission CAS houses against the profile head revision, so the panel
  // reads the same revision the application flow reads.

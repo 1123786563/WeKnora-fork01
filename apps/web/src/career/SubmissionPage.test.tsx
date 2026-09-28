@@ -356,6 +356,69 @@ test('a late submission read cannot restore private timeline after exports becom
  assert.equal(container.querySelector('[aria-label="确认投递表单"]'), null, 'late private data cannot reopen the pane')
 })
 
+test('forbidden submission history clears a reviewed version and form before pane reuse', async () => {
+ let submissionReads = 0
+ let rejectForbiddenHistory!: (cause: unknown) => void
+ const forbiddenHistory = new Promise<{ submissions: SubmissionReceipt[] }>((_resolve, reject) => { rejectForbiddenHistory = reject })
+ const career: CareerStub = {
+  open: async () => ({ revision: 4 }),
+  applicationSubmissions: (applicationId: string) => {
+   submissionReads += 1
+   if (applicationId === 'app-1' && submissionReads === 2) return forbiddenHistory
+   return Promise.resolve({ submissions: [record()] })
+  },
+  materialExports: async () => ({ materialId: 'mat-1', exports: [exportReceipt()] }),
+  materialVersion: async () => versionView(),
+ }
+ const scopeController = createScopeController({ origin: 'https://weknora.test', userId: 'owner-1', tenantId: 't' })
+ const container = render(React.createElement(SubmissionPage, { client: { career } as unknown as WeKnoraClient, scopeController, applicationId: 'app-1', materialId: 'mat-1' }))
+ await act(async () => { await settle(); await settle() })
+
+ await act(async () => { click(container.querySelector<HTMLButtonElement>('[aria-label="回看版本 V3"]')!); await settle() })
+ assert.match(container.textContent ?? '', /某大学/, 'the private version has loaded before history refresh')
+ await act(async () => { choose(container.querySelector<HTMLSelectElement>('[aria-label="投递渠道"]')!, 'web'); setInput(container.querySelector<HTMLTextAreaElement>('[aria-label="投递备注"]')!, 'private note'); await settle() })
+ await act(async () => { click(byLabel(container, 'button', '刷新投递记录')); await settle() })
+ rejectForbiddenHistory(Object.assign(new Error('forbidden'), { code: 'forbidden' }))
+ await act(async () => { await settle(); await settle() })
+ assert.match(container.querySelector('[role="alert"]')?.textContent ?? '', /当前空间不可访问/)
+ assert.equal(container.querySelector('[aria-label="投递版本只读回看"]'), null)
+ assert.equal(container.querySelector('[aria-label="确认投递表单"]'), null)
+ assert.doesNotMatch(container.textContent ?? '', /private note/)
+
+ await act(async () => { root!.render(React.createElement(SubmissionPage, { client: { career } as unknown as WeKnoraClient, scopeController, applicationId: 'app-2', materialId: 'mat-1' })) })
+ await act(async () => { await settle(); await settle() })
+ assert.ok(container.querySelector('[aria-label="投递记录时间线"]'), 'the reused pane loads the next accessible application')
+ assert.equal(container.querySelector('[aria-label="投递版本只读回看"]'), null)
+ assert.equal((container.querySelector('[aria-label="投递渠道"]') as HTMLSelectElement).value, '')
+ assert.equal((container.querySelector('[aria-label="投递备注"]') as HTMLTextAreaElement).value, '')
+ assert.doesNotMatch(container.textContent ?? '', /某大学|private note|回看暂时无法读取/)
+})
+
+test('a late version review cannot restore material after submission history becomes forbidden', async () => {
+ let resolveVersion!: (value: MaterialVersionView) => void
+ let rejectForbiddenHistory!: (cause: unknown) => void
+ let submissionReads = 0
+ const pendingVersion = new Promise<MaterialVersionView>((resolve) => { resolveVersion = resolve })
+ const forbiddenHistory = new Promise<{ submissions: SubmissionReceipt[] }>((_resolve, reject) => { rejectForbiddenHistory = reject })
+ const career: CareerStub = {
+  open: async () => ({ revision: 4 }),
+  applicationSubmissions: () => ++submissionReads === 2 ? forbiddenHistory : Promise.resolve({ submissions: [record()] }),
+  materialExports: async () => ({ materialId: 'mat-1', exports: [exportReceipt()] }),
+  materialVersion: () => pendingVersion,
+ }
+ const scopeController = createScopeController({ origin: 'https://weknora.test', userId: 'owner-1', tenantId: 't' })
+ const container = render(React.createElement(SubmissionPage, { client: { career } as unknown as WeKnoraClient, scopeController, applicationId: 'app-1', materialId: 'mat-1' }))
+ await act(async () => { await settle(); await settle() })
+ await act(async () => { click(container.querySelector<HTMLButtonElement>('[aria-label="回看版本 V3"]')!); await settle() })
+ await act(async () => { click(byLabel(container, 'button', '刷新投递记录')); await settle() })
+ rejectForbiddenHistory(Object.assign(new Error('forbidden'), { code: 'forbidden' }))
+ await act(async () => { await settle(); await settle() })
+ assert.match(container.querySelector('[role="alert"]')?.textContent ?? '', /当前空间不可访问/)
+ resolveVersion(versionView())
+ await act(async () => { await settle(); await settle() })
+ assert.equal(container.querySelector('[aria-label="投递版本只读回看"]'), null, 'late material content stays cleared')
+})
+
 test('refresh restarts a pending profile revision read so confirmation can recover', async () => {
  let resolveFirst!: (value: { revision: number }) => void
  let resolveSecond!: (value: { revision: number }) => void
