@@ -45,6 +45,7 @@ type recoveryGitHubStub struct {
 	prs             []map[string]any
 	prSeq           int64
 	calls           map[string]int
+	writeRequests   []string
 	getFacts        []string
 	refFacts        map[string]string
 	prFactCounts    map[string]int
@@ -81,6 +82,11 @@ func (s *recoveryGitHubStub) snapshotFacts() []string {
 	defer s.mu.Unlock()
 	return append([]string(nil), s.getFacts...)
 }
+func (s *recoveryGitHubStub) snapshotWriteRequests() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.writeRequests...)
+}
 func (s *recoveryGitHubStub) snapshotRemoteFacts() (map[string]string, map[string]int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -104,6 +110,11 @@ func (s *recoveryGitHubStub) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	path := r.URL.Path
+	if r.Method == http.MethodPost || r.Method == http.MethodPatch || r.Method == http.MethodPut || r.Method == http.MethodDelete {
+		s.mu.Lock()
+		s.writeRequests = append(s.writeRequests, r.Method+" "+path)
+		s.mu.Unlock()
+	}
 	if r.Method == http.MethodGet && (strings.HasPrefix(path, "/repos/octocat/hello/git/ref/heads/") || path == "/repos/octocat/hello/pulls") {
 		key := r.Method + " " + path
 		if path == "/repos/octocat/hello/pulls" {
@@ -373,6 +384,7 @@ func TestT25UnknownResolvesFromRemoteFactsOverHTTP(t *testing.T) {
 	beforeCalls := env.github.snapshotCalls()
 	beforeFacts := env.github.snapshotFacts()
 	beforeRefs, beforePRs := env.github.snapshotRemoteFacts()
+	beforeWrites := env.github.snapshotWriteRequests()
 	w := env.do(t, "POST", "/api/v1/workbench/executions/r1/delivery/"+id+"/resolve", "")
 	require.Equal(t, 200, w.Code, w.Body.String())
 	require.NotContains(t, w.Body.String(), t25ProbeToken)
@@ -386,6 +398,7 @@ func TestT25UnknownResolvesFromRemoteFactsOverHTTP(t *testing.T) {
 	afterCalls := env.github.snapshotCalls()
 	afterFacts := env.github.snapshotFacts()
 	afterRefs, afterPRs := env.github.snapshotRemoteFacts()
+	afterWrites := env.github.snapshotWriteRequests()
 	branch := "weknora/task/s1"
 	branchRead := "/repos/octocat/hello/git/ref/heads/" + branch
 	prRead := "/repos/octocat/hello/pulls?head=octocat:" + branch
@@ -396,6 +409,7 @@ func TestT25UnknownResolvesFromRemoteFactsOverHTTP(t *testing.T) {
 	require.Equal(t, 0, afterPRs["octocat:"+branch], "resolver must observe no matching PR")
 	require.Equal(t, beforeRefs, afterRefs, "resolve is read-only for branch facts")
 	require.Equal(t, beforePRs, afterPRs, "resolve is read-only for PR facts")
+	require.Equal(t, beforeWrites, afterWrites, "resolve must not emit any provider write method or path")
 	require.Equal(t, beforeCalls["POST /git/blobs"], afterCalls["POST /git/blobs"])
 	require.Equal(t, beforeCalls["POST /git/trees"], afterCalls["POST /git/trees"])
 	require.Equal(t, beforeCalls["POST /git/commits"], afterCalls["POST /git/commits"])
@@ -405,10 +419,20 @@ func TestT25UnknownResolvesFromRemoteFactsOverHTTP(t *testing.T) {
 	env.github.mu.Lock()
 	env.github.failPRTransport = false
 	env.github.mu.Unlock()
+	beforeRecoveryCalls := env.github.snapshotCalls()
+	beforeRecoveryWrites := env.github.snapshotWriteRequests()
 	code, view = env.dispatchState(t, id)
 	require.Equal(t, 200, code)
 	require.Equal(t, "delivered", view.State)
 	require.NotZero(t, view.PRNumber)
+	afterRecoveryCalls := env.github.snapshotCalls()
+	afterRecoveryWrites := env.github.snapshotWriteRequests()
+	require.Equal(t, beforeRecoveryCalls["POST /pulls"]+1, afterRecoveryCalls["POST /pulls"])
+	for _, key := range []string{"POST /git/blobs", "POST /git/trees", "POST /git/commits", "POST /git/refs", "PATCH /git/refs"} {
+		require.Equal(t, beforeRecoveryCalls[key], afterRecoveryCalls[key], "recovery may not add Git write %s", key)
+	}
+	require.Equal(t, append(beforeRecoveryWrites, "POST /repos/octocat/hello/pulls"), afterRecoveryWrites,
+		"post-resolve recovery dispatch must create only the PR")
 }
 func TestT25CredentialsNeverLeaveTheDispatchBoundary(t *testing.T) {
 	env := newRecoveryEnv(t)
@@ -430,14 +454,37 @@ func TestT25CredentialsNeverLeaveTheDispatchBoundary(t *testing.T) {
 	capture(first)
 	resolve := env.do(t, "POST", "/api/v1/workbench/executions/r1/delivery/"+id+"/resolve", "")
 	require.Equal(t, http.StatusOK, resolve.Code, resolve.Body.String())
+	var resolved struct {
+		Data struct {
+			Delivery codedelivery.DeliveryView `json:"delivery"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(resolve.Body.Bytes(), &resolved))
+	require.Equal(t, "pushed", resolved.Data.Delivery.State)
 	capture(resolve)
 	env.github.mu.Lock()
 	env.github.failPRTransport = false
 	env.github.mu.Unlock()
 	retry := env.do(t, "POST", "/api/v1/workbench/executions/r1/delivery/"+id+"/dispatch", "")
 	require.Equal(t, http.StatusOK, retry.Code, retry.Body.String())
+	var retried struct {
+		Data struct {
+			Delivery codedelivery.DeliveryView `json:"delivery"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(retry.Body.Bytes(), &retried))
+	require.Equal(t, "delivered", retried.Data.Delivery.State)
 	capture(retry)
-	capture(env.do(t, "GET", "/api/v1/workbench/executions/r1/delivery", ""))
+	finalGet := env.do(t, "GET", "/api/v1/workbench/executions/r1/delivery", "")
+	require.Equal(t, http.StatusOK, finalGet.Code, finalGet.Body.String())
+	var final struct {
+		Data struct {
+			Delivery codedelivery.DeliveryView `json:"delivery"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(finalGet.Body.Bytes(), &final))
+	require.Equal(t, "delivered", final.Data.Delivery.State)
+	capture(finalGet)
 	for i, b := range bodies {
 		require.NotContains(t, b, t25ProbeToken, "response %d leaks credential", i)
 	}
