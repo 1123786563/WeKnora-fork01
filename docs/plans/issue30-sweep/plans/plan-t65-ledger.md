@@ -13,16 +13,16 @@ T1 Evaluation store → T4 catalog HTTP acceptance
 T2 Publisher Custody → T4 catalog HTTP acceptance
 T3 privacy Metrics → T4 catalog HTTP acceptance
 
-External verified prerequisites: #60, #63, #64 integrated at base 93706830b. #60/#63 evidence predates this plan in B6 Ledger. #64 Task6 R2 reports are archived under evidence/t64-task6-r2/.
+External prerequisite re-audit: #60 remains evidenced in the earlier B6 ledger. The 93706830b base contains #63/#64 Task6 integration evidence, but the full #63 and #64 Issues are not yet verified: B6 readiness scan reports #63 Task2 race-fix still in review/fix and #64 Task2 blocked on that interface. Therefore #65 remains issue-level blocked and none of its tasks may be marked `verified` or unlock Task4 until both predecessor Issues are complete and their reviewed work is integrated. See the 2026-09-28 gate correction below.
 
 ## Task state
 
 | Task | Status | Worktree / branch | Base | Commit / checkpoint | Review | Validation |
 |---|---|---|---|---|---|---|
-| T1 Release Evaluation persistence | running (integration pending) | /Users/wuyongjun/.codex/worktrees/issue30-t65-eval/WeKnora-fork01, detached at dispatch | 93706830b78205de0c7d433097e89f33d9726513 | bbc2e89c9 | PASS after R1; initial findings resolved | PASS at bbc2e89c9; raw output retained |
-| T2 Publisher Custody and atomic source/adoption gate | running (integration pending) | /Users/wuyongjun/.codex/worktrees/issue30-t65-custody/WeKnora-fork01, detached at dispatch | 93706830b78205de0c7d433097e89f33d9726513 | e7c42c51b | PASS after R1; T2-R1-1 ruled N/A | PASS at e7c42c51b; raw output retained |
-| T3 privacy Adoption/Upgrade Metrics | fixing | /Users/wuyongjun/.codex/worktrees/issue30-t65-metrics/WeKnora-fork01, detached at dispatch | 30a711f4e27c4ad1208dbfcdc03971ad62b30ce8 | 0b0057f78 (R1 pending) | FAIL R1; fix plan active | focused validator PASS at 0b0057f78 |
-| T4 catalog, Evaluation endpoint and end-to-end HTTP proof | pending | not created | depends on verified/integrated T1–T3 | pending | pending | pending |
+| T1 Release Evaluation persistence | blocked by incomplete #63/#64 predecessors (implementation gate passed; do not treat as verified) | /Users/wuyongjun/.codex/worktrees/issue30-t65-eval/WeKnora-fork01, detached at dispatch | 93706830b78205de0c7d433097e89f33d9726513 | source `bbc2e89c9`; coordination integration reverted pending gate; evidence retained | PASS after R1; initial findings resolved | PASS at bbc2e89c; raw output retained |
+| T2 Publisher Custody and atomic source/adoption gate | blocked by incomplete #63/#64 predecessors (implementation gate passed; do not treat as verified) | /Users/wuyongjun/.codex/worktrees/issue30-t65-custody/WeKnora-fork01, detached at dispatch | 93706830b78205de0c7d433097e89f33d9726513 | source `e7c42c51b`; coordination integration reverted pending gate; evidence retained | PASS after R1; T2-R1-1 ruled N/A | PASS at e7c42c51b; raw output retained |
+| T3 privacy Adoption/Upgrade Metrics | blocked by incomplete #63/#64 predecessors (R1 implementation/review done; full-suite validator concern) | /Users/wuyongjun/.codex/worktrees/issue30-t65-metrics/WeKnora-fork01, detached at dispatch | 30a711f4e27c4ad1208dbfcdc03971ad62b30ce8 | source `8ddee8089`, retained pending gate release | PASS after R1; no new findings | Focused tests/build/diff PASS; independent full package run timed out at ~10m; serial diagnostic rerun requested |
+| T4 catalog, Evaluation endpoint and end-to-end HTTP proof | blocked by full #63/#64 predecessors and T1–T3 verification/integration | not created | pending | pending | pending | pending |
 
 ## Ownership and scheduling
 
@@ -64,8 +64,14 @@ Approved Spec §12 requires adopter-level error-category metrics. Research in ev
 
 ## Next actions
 
-1. Complete T1 and T2 in parallel; review and validate each against its own base/head diff.
-2. Integrate only verified source commits into a fresh coordination checkpoint; update both ledgers and plan task status.
-3. Dispatch T3 after T1's exact reviewed interface is integrated; it may overlap T2 validation only after another changed-file/fixture conflict scan.
-4. Dispatch T4 only after T1–T3 are verified/integrated. Run real SQLite migrations through the production router fixture.
+1. Finish already-running T3 R1 validation at its exact source HEAD and archive its review/validation record; do not integrate or dispatch further T65 work before the Issue-level predecessors complete.
+2. Complete and integrate the remaining #63 work, then unblock #64 using the verified #63 interfaces; complete and integrate #64.
+3. Re-audit #60/#63/#64 evidence and current migration/source base. Only then integrate the reviewed T65 T1–T3 source commits and mark those task nodes verified.
+4. Refresh the Task4 brief from the final interfaces and dispatch it only after T1–T3 are verified/integrated. Run real SQLite migrations through the production router fixture.
 5. Keep #65 partial/blocked for the error-category portion even if the planned T1–T4 implementation passes.
+
+## 2026-09-28 issue-level gate correction
+
+The B6 readiness scan found that #65 is still blocked by the full #63/#64 Issues: #63 Task2 race-fix and its independent review remain outstanding, and #64 Task2 depends on the stable #63 Adoption/lifecycle interface. Only specific #63/#64 Task6 slices were integrated at the T65 dispatch base; this does not satisfy the Issue dependencies. T65 T1/T2 had already passed their own task review/validation and were cherry-picked into the private coordination branch before this full-Issue gate was re-audited. Their source worktrees and evidence are preserved; their production commits are being removed from the coordination branch pending gate release. T3 R1 review is PASS; focused checks/build/diff passed, while the independent full-package run hit its 10-minute timeout, so a serialized diagnostic rerun is requested. No production changes are being reverted from source worktrees.
+
+This is a scheduling correction, not a scope change. It keeps the T65 implementation available for later integration while restoring the DAG gate. Cost if this ruling is wrong: unnecessary waiting for full Issues instead of their dependency-providing slices; the Issue DAG and B6 ledger currently require full #63/#64 completion, so the stricter gate is retained.
