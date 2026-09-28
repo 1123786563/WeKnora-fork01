@@ -1,8 +1,8 @@
 # Task 2R2 lockfix validation
 
-**Status: PASS_WITH_LIMITATION**  
-**Validated revision:** `4f0e798b01ddb42e13c347120dc4b0de8200da1c`  
-**Parent revision:** `8ffef51cc30d72af580833fd1dcd357072128ce9`  
+**Status: PASS_WITH_LIMITATION**
+**Validated revision:** `4f0e798b01ddb42e13c347120dc4b0de8200da1c`
+**Parent revision:** `8ffef51cc30d72af580833fd1dcd357072128ce9`
 **Scope:** read-only validation of the SQLite single-connection deadlock and response-held owner lock fixes, including auth/revoke/open/hash ordering and race behavior. No source or test files changed.
 
 ## Evidence

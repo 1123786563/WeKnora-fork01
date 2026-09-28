@@ -1,7 +1,7 @@
 # Task 2R2 review-finding fixes
 
-**Base:** `6075c5ecb863bda60e3af0d1db7a2c0cdcfe2fd2`  
-**Branch:** `codex/issue-140-task2r2-download`  
+**Base:** `6075c5ecb863bda60e3af0d1db7a2c0cdcfe2fd2`
+**Branch:** `codex/issue-140-task2r2-download`
 **Scope:** R2R2-1 and R2R2-2 from `task-2r2-review.md` only.
 
 ## Changes

@@ -1,7 +1,7 @@
 # Task 2R2 reauthorization finding fix
 
-**Base:** `9c3deaa56c8db765955396d616b51482c660e43d`  
-**Branch:** `codex/issue-140-task2r2-download`  
+**Base:** `9c3deaa56c8db765955396d616b51482c660e43d`
+**Branch:** `codex/issue-140-task2r2-download`
 **Scope:** R2R2-F1 only: recheck current Task ownership and deletion for Career artifact grant issuance and redemption.
 
 ## Changes
