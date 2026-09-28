@@ -35,11 +35,11 @@ Plan command correction: inspection of the selected baseline’s workspace manif
 
 ## Task Status
 
-Implementation nodes start `pending`; PH (#143) is a pending early Harmony gate and P145 (#145) is an independently ready iOS/Android Task-boundary slice. An Issue’s historical implementation status cannot make any node `verified`. Task 0 remains `running` pending completion of this correction and an independent re-review.
+Implementation nodes start `pending`; PH (#143) is a pending early Harmony gate and P145 (#145) is an independently ready iOS/Android Task-boundary slice. An Issue’s historical implementation status cannot make any node `verified`.
 
 | Task | Status | Checkpoint / evidence | Review / ruling |
 |---|---|---|---|
-| 0 Baseline ledger / DAG | running | live audit returned 34/34 nodes; source DAG SHA256 `3b95634a…`; full snapshots/current DAG at `a443dbae230496ceca6b23044d8df79b7a3c031d`; command correction `79df699010d887e88b7336bf66365e5902b66121`; Review Package `fa0b882d..79df6990` report `.superpowers/sdd/2026-09-28-issue-140-main-port/task-0-review.md` | Review found 4 high + 2 medium; plan/DAG/ledger correction and scoped re-review required |
+| 0 Baseline ledger / DAG | verified | live audit returned 34/34 nodes; source DAG SHA256 `3b95634a…`; plan/DAG snapshots integrated through `9fd22803021a35da1c12932a0385f669392c8da8`; `git diff --check db234c5e..HEAD` PASS. Baseline `pnpm test:shared` PASS (1122 pass, 4 skipped); `pnpm typecheck:shared` has unrelated unchanged `packages/views/src/chat/mermaid.ts:127,158` errors. | Independent review `.superpowers/sdd/2026-09-28-issue-140-main-port/task-0-final-verified-review.md` PASS for spec and quality at fix-worktree checkpoint `5b43589c4ef88e8c81613554aeea47bdbef650ab`; 46 Markdown files, 34 snapshots, 33 children mapped, acyclic issue DAG, 9 local links resolve. Review covered docs/planning only; no implementation/device/OCR claim. |
 | 0A Harmony feasibility trial (#143) | pending | PH; depends on Task 0 docs baseline | Independent native matrix/trial and ruling required before Harmony claims |
 | 0B Expo iOS/Android Task boundary (#145) | pending | no Issue blockers; independent of PH and Career API/backend | Can proceed in parallel; verify actual iOS/Android authenticated Task boundary before Task 9/#144 |
 | 1 Career wire contract/API client | pending | — | — |
@@ -64,6 +64,12 @@ Implementation nodes start `pending`; PH (#143) is a pending early Harmony gate 
 No implementation verification or OCR has run for this plan yet. Task 0 first independent review is complete and found 4 high / 2 medium documentation/coverage findings; retain report `.superpowers/sdd/2026-09-28-issue-140-main-port/task-0-review.md` and re-review after fixes. Record each command, exact HEAD, exit code, result summary and report path here as it occurs. Final OCR must cover the full selected BASE-to-HEAD delivery range and any uncommitted delivery content.
 
 - Exact review evidence: `git diff --check fa0b882d 79df6990` returned exit 2 because plan lines used trailing spaces to render Markdown hard breaks; remove these spaces and rerun before marking Task 0 verified.
+
+### Task 0 final independent review
+
+- Reviewed checkpoint: `5b43589c4ef88e8c81613554aeea47bdbef650ab` (`c5e4ca25b678f1e310afb546017b8cb4d0593b7` tree); integrated docs checkpoint: `9fd22803021a35da1c12932a0385f669392c8da8`.
+- Report: `.superpowers/sdd/2026-09-28-issue-140-main-port/task-0-final-verified-review.md`; Spec compliance PASS and plan quality PASS, no remaining findings.
+- Reviewer ran `git diff --check fa0b882def7e78ff3599cc7bef204ad2398063e5..HEAD` (exit 0), verified 34 snapshots, 33 mapped children, dependency targets and acyclic topological order, 9 local links. The reviewed diff is docs-only; implementation and device gates remain pending.
 
 ### Task 1 baseline (before implementation)
 
