@@ -132,6 +132,9 @@ func TestSQLiteMigrationsCreateVersionedSchema(t *testing.T) {
 			)
 		}
 	}
+	for _, column := range []string{"id", "release_id", "test_set_id", "test_set_version", "environment_class", "evaluator_id", "evaluated_at", "results_json"} {
+		require.Truef(t, sqliteColumnExists(t, db, "agent_release_evaluations", column), "SQLite migrations must create column agent_release_evaluations.%s", column)
+	}
 
 	assertSQLiteShareLinkInvitationsWork(t, db)
 	assertSQLiteMCPOAuthPrincipalUpsertWorks(t, db)
