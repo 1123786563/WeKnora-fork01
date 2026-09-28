@@ -168,7 +168,12 @@ func writeError(c *gin.Context, e error) {
 		status = http.StatusNotImplemented
 		code = "export_signing_key_missing"
 	}
-	body := gin.H{"code": code, "message": e.Error()}
+	message := e.Error()
+	if status == http.StatusInternalServerError && code == "internal" {
+		slog.Error("unmapped career office error", "error", e)
+		message = "internal career office error"
+	}
+	body := gin.H{"code": code, "message": message}
 	if errors.Is(e, ErrRevisionConflict) {
 		var ce *RevisionConflictError
 		if errors.As(e, &ce) {
@@ -1821,6 +1826,10 @@ func (h *Handler) finishClaimFailure(ctx context.Context, id, token string, fail
 		final := strings.TrimPrefix(source.ErrorCategory, "cleanup_pending_")
 		if e := h.upload.Release(detached, source.ResourceRef, source.ID); e == nil {
 			if e = h.office.ClearSourceResource(detached, source.ID, token, source.ResourceRef, final); e != nil {
+				if errors.Is(e, ErrUploadClaimLost) {
+					latest, readErr := h.office.GetSource(detached, id)
+					return latest, true, readErr
+				}
 				return source, false, e
 			}
 			source, e = h.office.GetSource(detached, id)

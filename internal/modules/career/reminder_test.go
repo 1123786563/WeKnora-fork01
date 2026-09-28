@@ -137,6 +137,34 @@ func TestSameOpportunityAndEventProducesSingleTodo(t *testing.T) {
 	require.Equal(t, ReminderStatusOpen, row.Status)
 }
 
+func TestConcurrentSetReminderDifferentRequestIDsConvergeOnOneTodo(t *testing.T) {
+	o, db, ctx := newProgressOffice(t, "reminder-owner", 921)
+	_, eventID := seedReminderEvent(t, o, ctx, "concurrent-dedupe")
+	head := reminderHead(t, o, ctx)
+	start := make(chan struct{})
+	type result struct {
+		receipt ReminderReceipt
+		err     error
+	}
+	results := make(chan result, 2)
+	for _, requestID := range []string{"concurrent-r1", "concurrent-r2"} {
+		go func(id string) {
+			<-start
+			receipt, err := o.SetReminder(ctx, reminderInput(id, ReminderSourceProgressEvent, eventID, head))
+			results <- result{receipt: receipt, err: err}
+		}(requestID)
+	}
+	close(start)
+	first, second := <-results, <-results
+	require.NoError(t, first.err)
+	require.NoError(t, second.err)
+	require.NotEmpty(t, first.receipt.ReminderID)
+	require.Equal(t, first.receipt.ReminderID, second.receipt.ReminderID)
+	require.True(t, first.receipt.Deduplicated != second.receipt.Deduplicated)
+	require.EqualValues(t, 1, countReminderRows(t, db, "career_reminders"))
+	require.EqualValues(t, 2, countReminderRows(t, db, "career_reminder_receipts"))
+}
+
 // ---- 2. the inbox row is authoritative; push only reminds ---------------------
 
 func TestInboxRecordIsAuthoritativeAndPushOnlyReminds(t *testing.T) {

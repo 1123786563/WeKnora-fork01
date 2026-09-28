@@ -644,6 +644,22 @@ func TestExportCareerArchiveCarriesPreparationsSearchRulesAndReminders(t *testin
 	require.Equal(t, hex.EncodeToString(sum[:]), receipt.Digest)
 }
 
+func TestCareerDeletionBoundaryDoesNotPromiseSearchRunsOrDiscoveryTodosInExport(t *testing.T) {
+	o, _, ctx := newCareerExportOffice(t, "owner-1", 1951)
+	view, err := o.CareerDeletionBoundary(ctx)
+	require.NoError(t, err)
+	var searchRules CareerDeletionSection
+	for _, section := range view.InSpace {
+		if section.Section == "search_rules" {
+			searchRules = section
+			break
+		}
+	}
+	require.NotEmpty(t, searchRules.Section)
+	require.Contains(t, searchRules.Description, "运行与发现待办不随导出携带")
+	require.Contains(t, searchRules.Description, "删除后不可恢复")
+}
+
 // ---- OCR round 2 fixes ---------------------------------------------------
 
 // TestExportCareerWithoutProfileRowSucceedsAtRevisionZero pins ocr2-020: a

@@ -28,6 +28,22 @@ func TestCareerTenantRequiresSingleActiveOwner(t *testing.T) {
 	require.ErrorIs(t, validateOwnerOnlyCareerTenant("u1", 7, nil), ErrUnauthorized)
 }
 
+func TestFinishClaimFailureTreatsCleanupClaimLossAsSuperseded(t *testing.T) {
+	o, db, ctx := newProgressOffice(t, "claim-owner", 923)
+	source, err := o.CreateProcessingSource(ctx, SourceUpload{ID: "cleanup-claim-loss", FileName: "resume.pdf", MIMEType: "application/pdf", Size: 10, Digest: "sha256:claim", ResourceRef: "private://resume"})
+	require.NoError(t, err)
+	require.NoError(t, db.Model(&sourceRevision{}).Where("id = ?", source.ID).Update("claim_token", "original-claim-token").Error)
+	require.NoError(t, db.Exec(`CREATE TRIGGER replace_cleanup_claim AFTER UPDATE OF status ON career_source_revisions
+		WHEN NEW.id = 'cleanup-claim-loss'
+		BEGIN UPDATE career_source_revisions SET claim_token = 'new-owner-token' WHERE id = NEW.id; END;`).Error)
+	h := &Handler{office: o, upload: &UploadAdapter{}}
+	latest, superseded, err := h.finishClaimFailure(ctx, source.ID, "original-claim-token", errors.New("parse failed"))
+	require.NoError(t, err)
+	require.True(t, superseded)
+	require.Equal(t, "new-owner-token", latest.ClaimToken)
+	require.Equal(t, "failed", latest.Status)
+}
+
 func TestCareerActRejectsClientClaimedResumeExtractionSource(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)

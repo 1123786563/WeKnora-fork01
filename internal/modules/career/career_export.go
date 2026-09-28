@@ -640,7 +640,7 @@ func (o *Office) CareerDeletionBoundary(ctx context.Context) (CareerDeletionBoun
 			{Section: "submissions", Description: "你确认的投递记录", Count: sectionCount("career_submissions", "")},
 			{Section: "preparations", Description: "投递准备稿（随完整导出携带后删除）", Count: sectionCount("career_preparations", "")},
 			{Section: "searches", Description: "一次性搜索记录及其搜索结果", Count: sectionCount("career_searches", "")},
-			{Section: "search_rules", Description: "周期搜索规则及其运行与发现待办（随完整导出携带后删除）", Count: sectionCount("career_search_rules", "")},
+			{Section: "search_rules", Description: "周期搜索规则（运行与发现待办不随导出携带；删除后不可恢复）", Count: sectionCount("career_search_rules", "")},
 			{Section: "reminders", Description: "站内待办与提醒回执（推送仅为提醒渠道，不含公司、岗位或面试细节；随完整导出携带后删除）", Count: sectionCount("career_reminders", "")},
 			{Section: "usage_reservations", Description: "搜索额度预占与结算记录（额度账本，删除后随空间一并清空）", Count: sectionCount("career_usage_reservations", "")},
 			{Section: "reconciliations", Description: "岗位去重与合并的决策记录（含合并证据，随删除一并清除）", Count: sectionCount("career_reconciliations", "")},

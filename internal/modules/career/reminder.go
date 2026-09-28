@@ -255,6 +255,28 @@ func (o *Office) SetReminder(ctx context.Context, input SetReminderInput) (Remin
 			if found {
 				return replay, nil
 			}
+			// A different request ID may have won the unique source key. Once
+			// its todo is visible, bind this request to the same todo with a
+			// durable deduplicated receipt of its own.
+			if isSQLiteBusy(txErr) || isReceiptRaceError(txErr) {
+				for reconcileAttempt := 0; reconcileAttempt < 20; reconcileAttempt++ {
+					reconciled, reconciledFound, reconcileErr := o.reconcileReminderSource(operationCtx, s, input, fingerprint)
+					if reconcileErr != nil {
+						if operationCtx.Err() != nil || errors.Is(reconcileErr, context.Canceled) || errors.Is(reconcileErr, context.DeadlineExceeded) {
+							return ReminderReceipt{}, &OutcomeUnknownError{RequestID: input.RequestID}
+						}
+						if !isSQLiteBusy(reconcileErr) && !isReceiptRaceError(reconcileErr) {
+							return ReminderReceipt{}, reconcileErr
+						}
+					} else if reconciledFound {
+						return reconciled, nil
+					}
+					if operationCtx.Err() != nil {
+						return ReminderReceipt{}, &OutcomeUnknownError{RequestID: input.RequestID}
+					}
+					time.Sleep(progressWriteBackoff)
+				}
+			}
 		}
 		if operationCtx.Err() != nil || ctx.Err() != nil {
 			return ReminderReceipt{}, &OutcomeUnknownError{RequestID: input.RequestID}
@@ -273,6 +295,49 @@ func (o *Office) SetReminder(ctx context.Context, input SetReminderInput) (Remin
 type reminderWriteOutcome struct {
 	receipt    ReminderReceipt
 	subscribed bool
+}
+
+func (o *Office) reconcileReminderSource(ctx context.Context, s Scope, input SetReminderInput, fingerprint string) (ReminderReceipt, bool, error) {
+	var receipt ReminderReceipt
+	found := false
+	err := o.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var stored reminderReceiptRecord
+		err := tx.Where("tenant_id=? AND user_id=? AND request_id=?", s.TenantID, s.UserID, input.RequestID).First(&stored).Error
+		if err == nil {
+			if stored.Fingerprint != fingerprint {
+				return ErrIdempotencyConflict
+			}
+			if err = decodeReminderReceipt(stored.Body, &receipt); err == nil {
+				found = true
+			}
+			return err
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		var existing reminderRecord
+		err = tx.Where("tenant_id=? AND user_id=? AND source_kind=? AND source_id=?", s.TenantID, s.UserID, input.SourceKind, input.SourceID).First(&existing).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		receipt = reminderReceiptFromRow(existing, input.RequestID, true)
+		body, err := json.Marshal(receipt)
+		if err != nil {
+			return err
+		}
+		if err = tx.Create(&reminderReceiptRecord{TenantID: s.TenantID, UserID: s.UserID, RequestID: input.RequestID, Fingerprint: fingerprint, Body: string(body), CreatedAt: time.Now().UTC()}).Error; err != nil {
+			return err
+		}
+		found = true
+		return nil
+	})
+	if err != nil {
+		return ReminderReceipt{}, false, err
+	}
+	return receipt, found, nil
 }
 
 // attemptReminderWrite owns the single transaction: replay check, source
@@ -302,15 +367,22 @@ func (o *Office) attemptReminderWrite(ctx context.Context, s Scope, input SetRem
 		if resolveErr != nil {
 			return resolveErr
 		}
-		// Same opportunity event → the same todo. A dedupe hit performs no
-		// write on the todo and therefore needs no revision CAS, but its
-		// answer is receipted like any other so the request ID stays bound
-		// to this content.
+		// House expected-revision CAS against the profile head.
+		var head profile
+		e = tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("tenant_id=? AND user_id=?", s.TenantID, s.UserID).First(&head).Error
+		if errors.Is(e, gorm.ErrRecordNotFound) {
+			head.Revision = 0
+		} else if e != nil {
+			return e
+		}
+		// Serialize same-source requests on the profile row before checking
+		// the unique source key. A dedupe hit remains independent of a stale
+		// profile revision, matching the sequential dedupe contract.
 		var existing reminderRecord
 		e = tx.Where("tenant_id=? AND user_id=? AND source_kind=? AND source_id=?",
 			s.TenantID, s.UserID, input.SourceKind, input.SourceID).First(&existing).Error
 		if e == nil {
-			outcome.subscribed = reminderPushSubscribed(tx, s)
 			outcome.receipt = reminderReceiptFromRow(existing, input.RequestID, true)
 			body, marshalErr := json.Marshal(outcome.receipt)
 			if marshalErr != nil {
@@ -322,15 +394,6 @@ func (o *Office) attemptReminderWrite(ctx context.Context, s Scope, input SetRem
 			}).Error
 		}
 		if !errors.Is(e, gorm.ErrRecordNotFound) {
-			return e
-		}
-		// House expected-revision CAS against the profile head.
-		var head profile
-		e = tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-			Where("tenant_id=? AND user_id=?", s.TenantID, s.UserID).First(&head).Error
-		if errors.Is(e, gorm.ErrRecordNotFound) {
-			head.Revision = 0
-		} else if e != nil {
 			return e
 		}
 		if head.Revision != input.ExpectedRevision {

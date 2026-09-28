@@ -2,6 +2,7 @@ package career
 
 import (
 	"encoding/json"
+	"errors"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"net/http/httptest"
@@ -54,4 +55,16 @@ func TestHTTPErrorBodiesMatchSharedFixtures(t *testing.T) {
 			require.Equal(t, tc.status, w.Code)
 		})
 	}
+}
+
+func TestHTTPUnknownErrorDoesNotExposeInternalDetails(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	writeError(c, errors.New("storage bucket private-prod at internal.example:9000 failed"))
+	require.Equal(t, 500, w.Code)
+	require.Contains(t, w.Body.String(), `"code":"internal"`)
+	require.Contains(t, w.Body.String(), `"message":"internal career office error"`)
+	require.NotContains(t, w.Body.String(), "private-prod")
+	require.NotContains(t, w.Body.String(), "internal.example")
 }
