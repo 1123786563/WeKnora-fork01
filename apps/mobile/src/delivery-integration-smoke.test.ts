@@ -24,3 +24,16 @@ test('config accepts a public https origin and evidence helpers are exported', a
   assert.equal(typeof smoke.emitDeliveryIntegrationEvidence, 'function');
   assert.equal(typeof smoke.runDeliveryIntegration, 'function');
 });
+
+test('the recover flag is opt-in and defaults to off', () => {
+  const base = {
+    WEKNORA_MOBILE_TEST_DEPLOYMENT_URL: 'https://weknora.example.com',
+    WEKNORA_MOBILE_TEST_EMAIL: 'a@b.c',
+    WEKNORA_MOBILE_TEST_PASSWORD: 'pw',
+  };
+  const off = deliveryIntegrationConfig(base);
+  assert.equal(off.enabled === true && off.recover === false, true);
+  const on = deliveryIntegrationConfig({ ...base, WEKNORA_MOBILE_TEST_DELIVERY_RECOVER: '1' });
+  assert.equal(on.enabled === true && on.recover === true, true);
+  assert.equal(deliveryIntegrationConfig({}).enabled, false);
+});

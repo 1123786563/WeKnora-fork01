@@ -4,11 +4,11 @@ import { createTaskOfficeRemote } from '@weknora/api-client/mobile/task-office';
 import { createMobileCodeDeliveryRemote } from '@weknora/api-client/mobile/code-delivery';
 import { createJsonTransport, type FetchLike } from '@weknora/api-client/transport';
 import { CLIENT_PROTOCOL_VERSION } from '@weknora/domain/mobile';
-import { createInMemoryCredentialStore, createMobileRuntime, createTaskOffice } from '@weknora/mobile-core';
+import { createDeliveryRecovery, DeliveryRecoveryError, createInMemoryCredentialStore, createMobileRuntime, createTaskOffice } from '@weknora/mobile-core';
 import { disallowedDeploymentHost } from './runtime-integration-smoke.ts';
 
 export type DeliveryIntegrationConfig =
-  | { enabled: true; deploymentOrigin: string; email: string; password: string }
+  | { enabled: true; deploymentOrigin: string; email: string; password: string; recover: boolean }
   | { enabled: false; disposition: 'skip' | 'invalid'; reason: string };
 
 export interface DeliveryIntegrationEvidence {
@@ -17,6 +17,8 @@ export interface DeliveryIntegrationEvidence {
   executionListed: 'listed' | 'no-tasks' | 'failed';
   deliveryRead: 'read' | 'absent' | 'failed';
   deliveryState?: string;
+  recovery: 'skipped' | 'not-needed' | 'recovered' | 'failed';
+  recoveryState?: string;
   commitSha?: string;
   prUrl?: string;
   approver?: string;
@@ -43,7 +45,13 @@ export function deliveryIntegrationConfig(env: Record<string, string | undefined
   if (disallowedDeploymentHost(parsed.hostname, 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL')) {
     return { enabled: false, disposition: 'invalid', reason: 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL host is disallowed (private/loopback/reserved)' };
   }
-  return { enabled: true, deploymentOrigin, email, password };
+  return {
+    enabled: true,
+    deploymentOrigin,
+    email,
+    password,
+    recover: env.WEKNORA_MOBILE_TEST_DELIVERY_RECOVER === '1',
+  };
 }
 
 /** 真实 transport + Runtime 授权通道 + 交付读面。只读：不发起 prepare/dispatch
@@ -52,6 +60,7 @@ export function deliveryIntegrationConfig(env: Record<string, string | undefined
 export async function runDeliveryIntegration(config: Extract<DeliveryIntegrationConfig, { enabled: true }>): Promise<DeliveryIntegrationEvidence> {
   const evidence: DeliveryIntegrationEvidence = {
     deploymentOrigin: config.deploymentOrigin, login: 'failed', executionListed: 'failed', deliveryRead: 'failed',
+    recovery: 'skipped',
     commandTimestamp: new Date().toISOString(),
   };
   const fetcher: FetchLike = (input, init) => fetch(input, init as RequestInit);
@@ -81,6 +90,9 @@ export async function runDeliveryIntegration(config: Extract<DeliveryIntegration
     evidence.executionListed = 'listed';
 
     const remote = createMobileCodeDeliveryRemote({ origin: config.deploymentOrigin, request: (input) => runtime.authorizedRequest(input) });
+    const recovery = config.recover
+      ? createDeliveryRecovery({ remote, lease: () => runtime.scopeLease() })
+      : undefined;
     for (const item of page.items) {
       const record = await remote.delivery(item.runId);
       if (record !== null) {
@@ -90,6 +102,22 @@ export async function runDeliveryIntegration(config: Extract<DeliveryIntegration
         evidence.prUrl = record.prUrl;
         evidence.approver = record.approver;
         evidence.remoteLogin = record.remoteLogin;
+        if (recovery !== undefined) {
+          try {
+            const recovered = await recovery.recover({ runId: item.runId, deliveryId: record.id });
+            evidence.recovery = 'recovered';
+            evidence.recoveryState = recovered.state;
+          } catch (error) {
+            if (error instanceof DeliveryRecoveryError && (error.code === 'DELIVERY_STATE_CONFLICT' || error.code === 'DELIVERY_INVALID_INPUT')) {
+              evidence.recovery = 'not-needed';
+              evidence.recoveryState = record.state;
+            } else {
+              evidence.recovery = 'failed';
+              const message = error instanceof Error ? error.message : String(error);
+              evidence.failure = evidence.failure ? `${evidence.failure}; ${message}` : message;
+            }
+          }
+        }
         return evidence;
       }
     }
