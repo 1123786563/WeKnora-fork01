@@ -34,3 +34,4 @@ Additional evidence:
 
 - `node --experimental-strip-types --test tests/export-deletion.test.mjs` — passed: 32 tests, 0 failures. The added deferred export retry test confirms confirmation reports busy, direct service abandonment is refused, and an ambiguous retry leaves the original export request ID recoverable.
 - `pnpm test` and `pnpm build:weapp` are rerun for the follow-up source change; results are recorded in the follow-up task response.
+- Independent read-only review of `d5a3c6f57c46f37d0110fef822845a74eda987f3` approved export recovery F2 with no new correctness or security finding. The reviewer confirmed the prior F3 gap in rendered page-handler coverage remains open.
