@@ -31,6 +31,8 @@
 
 The task ordering is acyclic: 0 → 1 → 2 → 3 → 4 → 5 → 6 → {7,8,9} → 10. The plan’s expected test names and commands correspond to the owned paths; package script names are verified by each implementer before dispatch.
 
+Plan command correction: inspection of the selected baseline’s workspace manifests showed `packages/contracts` and `packages/api-client` have no individual `test` scripts. The shared gates are root `pnpm test:shared` and `pnpm typecheck:shared`; Task 1 runs a focused `pnpm exec tsx --test` RED test and then those root gates.
+
 ## Task Status
 
 All implementation nodes start `pending`; an Issue’s historical implementation status cannot make any node `verified`.

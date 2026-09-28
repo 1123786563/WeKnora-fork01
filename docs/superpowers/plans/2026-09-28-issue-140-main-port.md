@@ -86,9 +86,9 @@
 **Produces:** `CareerApi` methods and strict wire DTOs used by server and all clients. Define exported factory `createCareerApi(request: ClientRequest): CareerApi`; response decoders reject malformed object shape, unknown enum, invalid revision/digest, receipt/request ID mismatch, and tenant/owner fields supplied as trusted client authority.
 
 - [ ] Add failing fixture tests for all Career DTO variants, tri-state evaluation, immutable snapshots, material version/digest, expected revision and request receipt mismatch. Check package exports and consumers first; keep fixtures at `packages/contracts/test/career/`.
-- [ ] Run `pnpm --filter @weknora/contracts test` and `pnpm --filter @weknora/api-client test`; verify each fails at the missing Career exports/decoder.
+- [ ] Run targeted existing tests through the root test runner (`pnpm exec tsx --test <new-contract-test> <new-api-client-test>`) and verify they fail because the Career exports/decoder are missing.
 - [ ] Implement DTOs and decoder functions in the listed package paths; keep server-derived actor/tenant out of client request authority.
-- [ ] Run both package test suites and package type checks; expected existing tests and new tests pass.
+- [ ] Run `pnpm test:shared` and `pnpm typecheck:shared`; expected all existing shared tests and type checks plus the new Career tests pass.
 - [ ] Commit `feat: add versioned career wire contracts and api client`.
 
 ### Task 2: Establish Career module ownership, migrations and authorization seam
