@@ -63,7 +63,7 @@ def unique_by_expiry(rows, label):
 
 
 def assert_no_terminated_residuals(wallets):
-    if any(w.get("status") == "terminated" and _integer(w.get("balance_cents", 0), "wallet balance") != 0
+    if any(w.get("status") == "terminated" and _integer(w.get("balance_cents"), "wallet balance") != 0
            for w in wallets):
         raise ValueError("terminated wallet has residual balance")
 
@@ -74,6 +74,10 @@ def _integer(value, label):
     if isinstance(value, str) and re.fullmatch(r"-?[0-9]+", value):
         return int(value, 10)
     raise ValueError("%s must be an integer" % label)
+
+
+def batch_error_summary(errors, limit=8):
+    return "; ".join(errors[:limit])
 
 
 def _instant(value, label):
@@ -330,7 +334,7 @@ def main():
             ("sum(active balance_cents)*10^4 == balance_micro", total_cents * 10_000 == balance,
              "lago cents=%d page micro=%d" % (total_cents, balance)),
             ("active monthly and top-up batch faces reconcile", batches_ok,
-             "; ".join(batch_errors)[:240] if batch_errors else "all active faces matched"),
+             batch_error_summary(batch_errors) if batch_errors else "all active faces matched"),
             ("terminated wallets have zero balance", True, "terminated wallet residual check passed"),
             ("available == balance - held - refund_locked", available == balance - held - locked,
              "%d == %d - %d - %d" % (available, balance, held, locked)),

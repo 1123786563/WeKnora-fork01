@@ -497,7 +497,7 @@ def run_probe(output_dir, state):
     facts["checks"] = [{"name": name, "passed": passed, "evidence": evidence}
                        for name, passed, evidence in checks]
     state["checks"] = facts["checks"]
-    state["observations"].update(facts)
+    state["observations"].update({key: value for key, value in facts.items() if key != "checks"})
     facts["verdict"] = "PASS" if verdict else "FAIL"
     if not verdict:
         print("CONCURRENT CONSUMPTION FAIL")

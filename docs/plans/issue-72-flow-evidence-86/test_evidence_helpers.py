@@ -493,6 +493,9 @@ class EvidenceHelpersTest(unittest.TestCase):
             self.assertLessEqual(len(facts["error"]["message"]), 300)
             self.assertNotIn("unit-test-only", facts["error"]["message"])
             self.assertEqual(len(facts["checks"]), checks_expected)
+            if mode == "assertion":
+                self.assertNotIn("checks", facts.get("observations", {}))
+                self.assertEqual(len(facts["checks"]), 6)
             if mode != "precheck":
                 self.assertIn("before", facts["observations"])
                 self.assertTrue((out / "concurrent-output.txt").read_text())
@@ -851,6 +854,44 @@ class ReconcileTask2Test(unittest.TestCase):
                 result = reconcile.main()
             self.assertEqual(result, 0)
             self.assertIn("RECONCILE PASS", (out / "reconcile-output.txt").read_text())
+
+    def test_reconcile_terminated_wallet_missing_balance_fails_canonically(self):
+        account_data = {"data": {"benefits": {"credits": {
+            "batches": [], "balance_micro": "0", "available_micro": "0",
+            "held_micro": "0", "refund_locked_micro": "0"}}}}
+        with tempfile.TemporaryDirectory() as root:
+            account, out = Path(root) / "account.json", Path(root) / "run"
+            account.write_text(json.dumps(account_data))
+            with mock.patch.dict(os.environ, {"WK_ACCOUNT_JSON": str(account)}), \
+                 mock.patch.object(reconcile, "lago_wallets", return_value=[{"status": "terminated"}]), \
+                 mock.patch.object(sys, "argv", ["runner", "--output-dir", str(out)]):
+                self.assertNotEqual(reconcile.main(), 0)
+            report = (out / "reconcile-output.txt").read_text()
+            self.assertIn("RECONCILE FAIL", report)
+            self.assertIn("stage=validation", report)
+            self.assertIn("ValueError", report)
+            self.assertNotIn("[PASS] terminated wallets", report)
+        reconcile.assert_no_terminated_residuals([{"status": "terminated", "balance_cents": 0}])
+        with self.assertRaises(ValueError):
+            reconcile.assert_no_terminated_residuals([{"status": "terminated", "balance_cents": 1}])
+
+    def test_reconcile_report_preserves_first_eight_complete_batch_errors(self):
+        labels = ["fixed error label %02d" % i for i in range(1, 11)]
+        with tempfile.TemporaryDirectory() as root:
+            account, out = Path(root) / "account.json", Path(root) / "run"
+            account.write_text(json.dumps({"data": {"benefits": {"credits": {
+                "batches": [], "balance_micro": "0", "available_micro": "0",
+                "held_micro": "0", "refund_locked_micro": "0"}}}}))
+            with mock.patch.dict(os.environ, {"WK_ACCOUNT_JSON": str(account)}), \
+                 mock.patch.object(reconcile, "lago_wallets", return_value=[]), \
+                 mock.patch.object(reconcile, "reconcile_batches", return_value=(False, labels)), \
+                 mock.patch.object(sys, "argv", ["runner", "--output-dir", str(out)]):
+                self.assertEqual(reconcile.main(), 1)
+            report = (out / "reconcile-output.txt").read_text()
+        for label in labels[:8]:
+            self.assertIn(label, report)
+        for label in labels[8:]:
+            self.assertNotIn(label, report)
 
     def test_negative_account_and_available_micro_values_are_reconciled(self):
         with tempfile.TemporaryDirectory() as root:
