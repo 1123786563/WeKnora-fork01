@@ -103,3 +103,12 @@ No implementation verification or OCR has run for this plan yet. Task 0 first in
 - `P7`/Task 9 owns #144; it consumes verified P145 and PH/#143 ruling. Its iOS/Android work may proceed without PH, but #144 cannot close until both blockers are resolved; PH gates Harmony-only work and overall #144 closure.
 - Structural dependency assertions and `git diff --check` passed. Full command descriptions, output and checkpoint hash are recorded in the Task 0 fix report.
 - Task 0 remains `running`; awaiting the next independent review.
+
+## Task 0 latest #145 UI acceptance correction
+
+- Latest independent report: `.superpowers/sdd/2026-09-28-issue-140-main-port/task-0-last-review.md`, reviewed checkpoint `3e0552d04772238eef04bad1f662c17a74d9d276`.
+- Plan/DAG correction: `b7ca28a9c00bc43beef9cd2f601ba917c8bc9f60`; tree `83f5c8402a5f27bf7c8b2aade98c6d3c6193fa24`.
+- P145/Task 0B now owns native React Native Task entry mapping to TDesign Mobile React visual tokens and interactions and prohibits mobile Web imports. Named checks: `ExpoTaskOffice_NativeBoundary_UsesReactNativeTDesignTokensAndInteractions` and `ExpoTaskOffice_NativeBoundary_NoMobileWebComponentImports`. iOS/Android visual-interaction evidence is required before P145 may be verified/integrated.
+- Task 9 consumes this full verified P145 checkpoint before #144 implementation.
+- Structural assertions against issue #145 and ADR 0018 and `git diff --check` passed. Exact range, report and outputs are in the fix report.
+- Task 0 remains `running` pending another independent re-review.

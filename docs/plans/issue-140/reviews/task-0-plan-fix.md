@@ -72,3 +72,17 @@ Exact dependency assertions run in the fix worktree:
 - `git diff --check` — PASS, exit 0 before the correction commit.
 - Correction checkpoint: `git rev-parse HEAD` → `2f5014621c7edd6f9d1c67887c174201bbffde68`; `git rev-parse HEAD^{tree}` → `d97b1766a12e6487804f1e17af12917d54adb317`.
 - Docs-only changes; no implementation/device tests run. Await independent re-review before changing Task 0 from `running`.
+
+## Latest #145 native UI acceptance correction
+
+Latest independent source: `.superpowers/sdd/2026-09-28-issue-140-main-port/task-0-last-review.md`, reviewed at `3e0552d04772238eef04bad1f662c17a74d9d276`. Corrected plan/DAG checkpoint: `b7ca28a9c00bc43beef9cd2f601ba917c8bc9f60`, tree `83f5c8402a5f27bf7c8b2aade98c6d3c6193fa24`.
+
+P145/Task 0B now owns #145's native UI implementation and acceptance: React Native components map TDesign Mobile React visual tokens/interactions, and no mobile Web components may be imported. Named checks are `ExpoTaskOffice_NativeBoundary_UsesReactNativeTDesignTokensAndInteractions` and `ExpoTaskOffice_NativeBoundary_NoMobileWebComponentImports`. iOS and Android visual/interaction evidence plus those checks are required before the #145 checkpoint can be marked verified or integrated. Task 9 explicitly consumes all of this evidence before #144 work.
+
+Commands/results:
+
+- `python3 - <<'PY'` structural assertions against plan, DAG, #145 snapshot and ADR 0018 — PASS: acceptance, named tests, pre-verification gate, Task 9 consumption, and P145's no-dependency status.
+- `git diff --check` before commit — PASS, exit 0.
+- `git diff --check 3e0552d04772238eef04bad1f662c17a74d9d276..b7ca28a9c00bc43beef9cd2f601ba917c8bc9f60` — PASS, exit 0 after ledger/report edits.
+- `git diff --check` with the final ledger/report delta — PASS, exit 0.
+- This is documentation-only; no device or implementation tests are claimed. Task 0 stays `running` until the next independent review.
