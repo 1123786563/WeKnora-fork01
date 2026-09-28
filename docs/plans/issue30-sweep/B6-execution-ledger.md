@@ -99,3 +99,9 @@ graph LR
 - Round 1 checkpoint `da2ce4911ae90c9af1686b1ee6736e88ee377ad5` fixed A→B route leakage, actual rendered-button behavior evidence, and bounded terminal scan scope; independent review then identified a remaining MEDIUM: A→B→A re-entry reuses the same taskId/runId, allowing an earlier A async completion to mutate the later A visit.
 - Narrow repair plan: `plans/plan-t55-task6-review-fix-round2.md`; SDD brief `.superpowers/sdd/plan-t55-task6-review-fix-round2/task-1-brief.md`.
 - Task6 remains unverified until this generation-fence repair is implemented, independently reviewed and validated. T55 Task8 remains blocked.
+
+### T55 Task6 review-fix round 2
+
+- Round 1 checkpoint `da2ce4911ae90c9af1686b1ee6736e88ee377ad5` fixed A→B route leakage, actual rendered-button behavior evidence, and bounded terminal scan scope; independent review then identified a remaining MEDIUM: A→B→A re-entry reuses the same taskId/runId, allowing an earlier A async completion to mutate the later A visit.
+- Narrow repair plan: `plans/plan-t55-task6-review-fix-round2.md`; SDD brief `.superpowers/sdd/plan-t55-task6-review-fix-round2/task-1-brief.md`.
+- Task6 remains unverified until this generation-fence repair is implemented, independently reviewed and validated. T55 Task8 remains blocked.
