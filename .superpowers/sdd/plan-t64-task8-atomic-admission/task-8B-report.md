@@ -5,7 +5,7 @@
 - Plan: `docs/plans/issue30-sweep/plans/plan-t64-task8-atomic-admission.md`, Checkpoint 8B.
 - Worktree: `/Users/wuyongjun/.codex/worktrees/t64-task8-8b/WeKnora-fork01`, branch `codex/issue30-t64-task8-8b`.
 - BASE: `43100052bbb419ad1dd801a9a76b7570d1a3b28f`.
-- Source HEAD before the implementation commit: `43100052bbb419ad1dd801a9a76b7570d1a3b28f` (implementation uncommitted at verification time).
+- Source HEAD at verification (implementation commit): `43c77e21d8ce514ff922233313cacfbe650cbb61`. This commit is based directly on the BASE above.
 - Brief SHA256: `f97609e52a6614cf4903c8dc4c2c502424e20fc042409caa29a28b65a96cc726`.
 - Rechecked paired migration heads before authoring migrations: SQLite `000125_agent_security_revocations.up.sql`; versioned/PostgreSQL `000204_agent_security_revocations.up.sql`. Added `000126_agent_chat_turn_claims` and `000205_agent_chat_turn_claims`.
 
@@ -61,7 +61,8 @@ Commands were run serially; no Go package test processes overlapped. Test output
 The intended diff is limited to the corrected Task 8B Owned paths from the Brief: paired migrations (4); claim type/repository/tests; security guard, adoption, Run projection/reconciliation, and security repository/test paths; security service/tests/interface/persistence type; SQLite/PostgreSQL migration-contract tests; reconciler/container/Handler injection paths; and the three preflight/template files. This report is also owned by the Brief. No Task 8A/Task7 implementation or Task 8C AgentRun admission source was changed.
 
 - Owned-path check: `git diff --name-only` plus `git status --short --untracked-files=all` was reviewed against the complete Brief file map; the only ignored untracked files were the four new paired migrations listed above.
-- Commit: to be recorded after the owned-path staging check. The implementation commit and final report commit SHA will be recorded here after commit.
+- Owned-path staged check passed: all 30 committed paths are in the corrected Brief owned-path map; the four ignored migrations were force-added by exact path only. `git diff --cached --check` passed before commit.
+- Implementation commit (all implementation files and this report): `43c77e21d8ce514ff922233313cacfbe650cbb61` (`feat: add durable agent chat turn claims`). No push or remote operation was performed.
 
 ## Remaining risks / integration notes
 
