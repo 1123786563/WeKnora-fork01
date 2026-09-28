@@ -139,6 +139,14 @@ func (tenantReleaseDependencyResolver) Resolve(_ context.Context, _ uint64, vers
 	return types.DependencyLock{Dependencies: []types.AgentReleaseDependency{}}, nil
 }
 
+func provideAgentMarketplaceLifecycle(container *dig.Container) {
+	must(container.Provide(service.NewAgentMarketplaceLifecycleService))
+	must(container.Provide(func(lifecycle *service.AgentMarketplaceLifecycleService) interfaces.AgentMarketplaceLifecycleService {
+		return lifecycle
+	}))
+	must(container.Provide(handler.NewAgentMarketplaceLifecycleHandler))
+}
+
 // BuildContainer constructs the dependency injection container
 // Registers all components, services, repositories and handlers needed by the application
 // Creates a fully configured application container with proper dependency resolution
@@ -458,8 +466,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 		return service.NewAgentUpgradeService(repo)
 	}))
 	must(container.Provide(handler.NewAgentUpgradeHandler))
-	must(container.Provide(service.NewAgentMarketplaceLifecycleService))
-	must(container.Provide(handler.NewAgentMarketplaceLifecycleHandler))
+	provideAgentMarketplaceLifecycle(container)
 	must(container.Provide(repository.NewPublicMarketplaceRepository))
 	must(container.Provide(func(repo repository.PublicMarketplaceRepository, listings interfaces.AgentMarketplaceRepository) interfaces.PublicMarketplaceService {
 		return service.NewPublicMarketplaceService(repo, listings)
