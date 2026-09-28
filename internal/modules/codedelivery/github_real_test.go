@@ -3,8 +3,10 @@ package codedelivery
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -47,6 +49,35 @@ func TestGitHubClientAgainstRealGitHub(t *testing.T) {
 type realLoopConnections struct {
 	db      *gorm.DB
 	members map[string]bool
+}
+
+// realWriteCountingTransport records write methods and escaped paths only;
+// request headers and query values (including credentials) are never retained.
+type realWriteCountingTransport struct {
+	base   http.RoundTripper
+	mu     sync.Mutex
+	writes map[string]int
+}
+
+func (t *realWriteCountingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	switch req.Method {
+	case http.MethodPost, http.MethodPatch, http.MethodPut, http.MethodDelete:
+		key := req.Method + " " + req.URL.EscapedPath()
+		t.mu.Lock()
+		t.writes[key]++
+		t.mu.Unlock()
+	}
+	return t.base.RoundTrip(req)
+}
+
+func (t *realWriteCountingTransport) writeSnapshot() map[string]int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	out := make(map[string]int, len(t.writes))
+	for key, count := range t.writes {
+		out[key] = count
+	}
+	return out
 }
 
 func (s *realLoopConnections) FindConnectionByID(ctx context.Context, id string) (appconnector.Connection, error) {
@@ -129,11 +160,18 @@ func TestGitHubRealRecoveryLoopNoRepeatPush(t *testing.T) {
 	workspace, err := NewLocalWorkspaceSource(root)
 	require.NoError(t, err)
 
-	factory := NewGitHubClientFactory(httpClientDefault(), GitHubAPIBaseURL)
+	writeTransport := &realWriteCountingTransport{base: http.DefaultTransport, writes: map[string]int{}}
+	httpClient := httpClientDefault()
+	httpClient.Transport = writeTransport
+	factory := NewGitHubClientFactory(httpClient, GitHubAPIBaseURL)
 	client := factory(token, repo)
 	baseline := realLoopBaselineSHA(t, client)
 	info, err := client.Repository(context.Background())
 	require.NoError(t, err)
+	baselineTree, err := client.Tree(context.Background(), baseline)
+	require.NoError(t, err)
+	require.Len(t, baselineTree, 1, "dedicated writable test repo baseline must contain only README.md to prevent unrelated file deletions")
+	require.Contains(t, baselineTree, "README.md", "dedicated writable test repo baseline must contain the file mirrored by the fixture")
 
 	actionStore := appconnectorrepo.NewActionStore(db)
 	store := deliveryrepo.NewDeliveryStore(db)
@@ -175,12 +213,17 @@ func TestGitHubRealRecoveryLoopNoRepeatPush(t *testing.T) {
 	require.NotNil(t, remotePR, "the delivered draft PR must be visible remotely")
 	require.Equal(t, view.PRNumber, remotePR.Number)
 	require.Equal(t, view.PRURL, remotePR.URL)
+	require.True(t, remotePR.Draft, "the delivered PR must remain a draft")
 
 	// The duplicate dispatch must be refused by the state machine — no
 	// second push leaves the process. Re-read the branch and PR afterward to
-	// prove the remote receipts stay converged with the delivered record.
+	// prove the remote receipts stay converged with the delivered record. The
+	// transport retains only write method/path counts, never headers or tokens.
+	writesBeforeDuplicate := writeTransport.writeSnapshot()
 	_, err = svc.DispatchDelivery(ctx, DispatchInput{TenantID: 7, CallerID: "u1", RunID: "run-1", DeliveryID: view.ID})
 	require.ErrorIs(t, err, ErrDeliveryState)
+	writesAfterDuplicate := writeTransport.writeSnapshot()
+	require.Equal(t, writesBeforeDuplicate, writesAfterDuplicate, "a rejected duplicate dispatch must emit no provider write request")
 	remoteHeadAfter, exists, err := client.BranchHead(ctx, view.Branch)
 	require.NoError(t, err)
 	require.True(t, exists)
@@ -189,6 +232,8 @@ func TestGitHubRealRecoveryLoopNoRepeatPush(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, remotePRAfter)
 	require.Equal(t, remotePR.Number, remotePRAfter.Number, "duplicate dispatch must not create another PR")
+	require.Equal(t, remotePR.URL, remotePRAfter.URL, "duplicate dispatch must not change the PR URL")
+	require.True(t, remotePRAfter.Draft, "the repeated remote PR read must still report draft")
 	again, err := svc.GetDelivery(ctx, 7, view.ID)
 	require.NoError(t, err)
 	require.Equal(t, string(DeliveryDelivered), again.State, "the read face stays idempotent after the refused duplicate")
