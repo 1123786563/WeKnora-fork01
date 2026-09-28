@@ -108,7 +108,7 @@ func TestSQLiteMigrationsCreateVersionedSchema(t *testing.T) {
 	for _, table := range versionedSQLiteTables {
 		require.Truef(t, sqliteTableExists(t, db, table), "SQLite migrations must create table %s", table)
 	}
-	for _, table := range []string{"career_spaces", "career_idempotency_receipts", "career_profile_facts", "career_evidence"} {
+	for _, table := range []string{"career_spaces", "career_idempotency_receipts", "career_profile_facts", "career_evidence", "career_artifact_bindings"} {
 		require.Truef(t, sqliteTableExists(t, db, table), "SQLite migrations must create Career table %s", table)
 	}
 	_, err := db.Exec(`INSERT INTO career_spaces (tenant_id, owner_id) VALUES (7, 'u1')`)
@@ -180,6 +180,24 @@ func TestCareerMigrationPairsMatchAcrossTracks(t *testing.T) {
 		require.Equal(t, upNames, downNames, "%s up/down migrations must create and drop the same tables", track.name)
 		require.NotEqual(t, [32]byte{}, sha256.Sum256(up))
 		require.NotEqual(t, [32]byte{}, sha256.Sum256(down))
+	}
+}
+
+func TestCareerArtifactBindingMigrationPairAndScopedKeys(t *testing.T) {
+	repoRoot := sqliteRepoRoot(t)
+	for _, track := range []struct{ name, stem string }{
+		{"sqlite", "000125_career_artifact_bindings"},
+		{"versioned", "000204_career_artifact_bindings"},
+	} {
+		up, err := os.ReadFile(filepath.Join(repoRoot, "migrations", track.name, track.stem+".up.sql"))
+		require.NoError(t, err)
+		down, err := os.ReadFile(filepath.Join(repoRoot, "migrations", track.name, track.stem+".down.sql"))
+		require.NoError(t, err)
+		require.Contains(t, string(up), "PRIMARY KEY (tenant_id, owner_id, resource_id, version_id)")
+		require.Contains(t, string(up), "FOREIGN KEY (tenant_id, owner_id) REFERENCES career_spaces (tenant_id, owner_id)")
+		require.Contains(t, string(up), "FOREIGN KEY (tenant_id, version_id) REFERENCES artifact_versions (tenant_id, id)")
+		require.Contains(t, string(up), "career_artifact_binding_version")
+		require.Contains(t, string(down), "DROP TABLE IF EXISTS career_artifact_bindings")
 	}
 }
 

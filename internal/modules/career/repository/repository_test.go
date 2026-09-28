@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/Tencent/WeKnora/internal/types"
@@ -174,5 +175,81 @@ func TestScopeFromContextRejectsMissingAndMismatchedCaller(t *testing.T) {
 	ctx = types.WithCaller(ctx, types.Caller{TenantID: 0, UserID: ""})
 	if _, err := ScopeFromContext(ctx); err != ErrUnauthorized {
 		t.Fatalf("empty caller accepted: %v", err)
+	}
+}
+
+func TestArtifactCatalogSQLiteBindsExactReadyVersionAndRechecksRevocation(t *testing.T) {
+	db, migrationRoot := openCareerSQLite(t)
+	ctx := context.Background()
+	for _, file := range []string{"000124_career_foundation.up.sql"} {
+		sql, err := os.ReadFile(filepath.Join(migrationRoot, file))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := db.Exec(string(sql)).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := db.Exec(`CREATE TABLE artifact_versions (tenant_id INTEGER NOT NULL, id TEXT NOT NULL, run_id TEXT NOT NULL, session_id TEXT NOT NULL, digest TEXT NOT NULL, object_key TEXT NOT NULL, mime TEXT NOT NULL, size INTEGER NOT NULL, scan_state TEXT NOT NULL, UNIQUE(tenant_id,id))`).Error; err != nil {
+		t.Fatal(err)
+	}
+	bindSQL, err := os.ReadFile(filepath.Join(migrationRoot, "000125_career_artifact_bindings.up.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(string(bindSQL)).Error; err != nil {
+		t.Fatal(err)
+	}
+	digest := strings.Repeat("a", 64)
+	if err := db.Exec(`INSERT INTO artifact_versions (tenant_id,id,run_id,session_id,digest,object_key,mime,size,scan_state) VALUES (12,'version-a','run','session',?,'tenant/12/object','application/pdf',3,'ready')`, digest).Error; err != nil {
+		t.Fatal(err)
+	}
+	store := NewArtifactCatalogStore(db)
+	owner := Scope{TenantID: 12, OwnerID: "owner-a"}
+	version, err := store.BindVersion(ctx, owner, "resume", "version-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	grant := ArtifactGrant{TenantID: 12, OwnerID: "owner-a", ResourceID: "resume", VersionID: "version-a", Digest: digest}
+	got, err := store.Resolve(ctx, grant)
+	if err != nil || got.ObjectKey != "tenant/12/object" || got.Size != 3 {
+		t.Fatalf("resolved=%+v err=%v", got, err)
+	}
+	for _, foreign := range []ArtifactGrant{
+		{TenantID: 99, OwnerID: "owner-a", ResourceID: "resume", VersionID: "version-a", Digest: digest},
+		{TenantID: 12, OwnerID: "other-owner", ResourceID: "resume", VersionID: "version-a", Digest: digest},
+		{TenantID: 12, OwnerID: "owner-a", ResourceID: "other-resource", VersionID: "version-a", Digest: digest},
+		{TenantID: 12, OwnerID: "owner-a", ResourceID: "resume", VersionID: "version-a", Digest: strings.Repeat("b", 64)},
+	} {
+		if _, err := store.Resolve(ctx, foreign); !errors.Is(err, ErrNotFound) {
+			t.Fatalf("foreign grant %+v returned err=%v", foreign, err)
+		}
+	}
+	if err := store.Revoke(ctx, owner, "resume", version.VersionID); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AuthorizeArtifactGrant(ctx, grant); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("revoked version err=%v", err)
+	}
+	if _, err := store.BindVersion(ctx, owner, "cover-letter", "version-a"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Delete(ctx, owner, "cover-letter", "version-a"); err != nil {
+		t.Fatal(err)
+	}
+	deletedGrant := grant
+	deletedGrant.ResourceID = "cover-letter"
+	if err := store.AuthorizeArtifactGrant(ctx, deletedGrant); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("deleted version err=%v", err)
+	}
+	down, err := os.ReadFile(filepath.Join(migrationRoot, "000125_career_artifact_bindings.down.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(string(down)).Error; err != nil {
+		t.Fatalf("apply binding down migration: %v", err)
+	}
+	if db.Migrator().HasTable("career_artifact_bindings") {
+		t.Fatal("binding table remains after down migration")
 	}
 }

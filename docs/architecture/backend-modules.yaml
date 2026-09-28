@@ -61,14 +61,20 @@ modules:
     description: 单成员私有求职空间、确认事实、申请证据与求职工作流（Issue #140；ADR 0015–0019）
     packages:
       - internal/modules/career
-    routes: [] # Integration owner mounts Career module routes.
+    routes:
+      - name: RegisterCareerArtifactRoutes
+        source: internal/router/routes_career_artifacts.go
+      - name: RegisterCareerArtifactDownloadRoute
+        source: internal/router/routes_career_artifacts.go
     workers: []
     hooks: []
     migrations:
       sqlite:
         - "migrations/sqlite/000124_career_foundation"
+        - "migrations/sqlite/000125_career_artifact_bindings"
       versioned:
         - "migrations/versioned/000203_career_foundation"
+        - "migrations/versioned/000204_career_artifact_bindings"
 
   identity:
     description: 认证、用户、Tenant、成员、邀请、API Key、Organization、RBAC、审计日志（§5.1/§5.18）

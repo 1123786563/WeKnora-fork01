@@ -66,6 +66,7 @@ type RouterParams struct {
 	// rather than mounting a reader without an authority boundary.
 	NativeArchiveHandler           *session.NativeArchiveHandler           `optional:"true"`
 	WorkbenchArtifactHandler       *session.WorkbenchArtifactHandler       `optional:"true"`
+	CareerArtifactHandler          *session.CareerArtifactHandler          `optional:"true"`
 	WorkbenchOverviewHandler       *session.WorkbenchOverviewHandler       `optional:"true"`
 	WorkbenchTaskStateHandler      *session.WorkbenchTaskStateHandler      `optional:"true"`
 	WorkbenchTaskGrantsHandler     *session.WorkbenchTaskGrantsHandler     `optional:"true"`
@@ -259,6 +260,9 @@ func NewRouter(params RouterParams) *gin.Engine {
 	if params.SessionHandler != nil {
 		r.GET("/api/v1/workbench/artifacts/download", params.SessionHandler.DownloadWorkbenchArtifactGrant)
 	}
+	// Career artifact grants carry their own short-lived HMAC capability and
+	// must be mounted before Auth, alongside the legacy Task grant endpoint.
+	RegisterCareerArtifactDownloadRoute(r, params.CareerArtifactHandler)
 
 	// Local-browser extension gateway (A13): the WebSocket upgrade carries a
 	// device credential in its subprotocol and the authorize/internal
@@ -391,6 +395,7 @@ func NewRouter(params RouterParams) *gin.Engine {
 		RegisterNativeArchiveRoutes(v1, params.NativeArchiveHandler, rbacGuards)
 		RegisterWorkbenchRoutes(v1, params.WorkbenchHandler, params.WorkbenchListHandler, rbacGuards, params.ExecutionTargetHandler)
 		RegisterWorkbenchArtifactRoutes(v1, params.WorkbenchArtifactHandler, params.SessionHandler, rbacGuards)
+		RegisterCareerArtifactRoutes(v1, params.CareerArtifactHandler)
 		RegisterExecutionRegistrationRoutes(v1, params.ExecutionRegistrationHandler, rbacGuards, params.ExecutionTargetHandler)
 		RegisterWorkbenchStartRoutes(v1, params.WorkbenchStartHandler, rbacGuards)
 		RegisterWorkbenchOverviewRoutes(v1, params.WorkbenchOverviewHandler, rbacGuards)

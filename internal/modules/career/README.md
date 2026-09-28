@@ -6,6 +6,10 @@ server-derived tenant and owner scope. HTTP handlers and process registration
 are supplied by the integration layer; this module does not read identity
 authority from request payloads.
 
-The Workbench Artifact version grant authority is consumed through a narrow
-port. Career owns resource authorization and must recheck tenant, owner,
-resource, immutable version, digest, deletion, and revocation at download time.
+The authenticated grant issuer derives tenant and owner from `Caller`. The
+`career_artifact_bindings` catalog binds an owner resource to an exact ready
+Workbench version while taking digest and storage metadata from the immutable
+version row. Every redemption rechecks tenant, owner, resource, version,
+digest, deletion, and revocation before opening bytes; the adapter is provided
+to Workbench signing through an integration-layer authorization port so
+Career persistence has no Workbench import.

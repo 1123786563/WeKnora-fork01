@@ -13,6 +13,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/handler"
 	"github.com/Tencent/WeKnora/internal/handler/session"
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/approval"
+	careerrepo "github.com/Tencent/WeKnora/internal/modules/career/repository"
 	workbenchservice "github.com/Tencent/WeKnora/internal/modules/workbench/service/workbench"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"gorm.io/gorm"
@@ -28,6 +29,12 @@ func NewWorkbenchReadHandler(
 	lists *repository.WorkbenchListStore,
 ) *session.WorkbenchReadHandler {
 	return session.NewWorkbenchReadHandler(runs, snapshots, ingestor).WithTaskFacts(lists).WithGrantedRuns(runs)
+}
+
+// NewCareerArtifactHandler wires Career's owner/resource catalog to the
+// authenticated issuer and credential-free, signed download endpoint.
+func NewCareerArtifactHandler(db *gorm.DB, tenants interfaces.TenantService, files interfaces.FileService, storage interfaces.StorageBackendResolver) *session.CareerArtifactHandler {
+	return session.NewCareerArtifactHandler(careerrepo.NewArtifactCatalogStore(db), tenants, files, storage)
 }
 
 // NewWorkbenchArtifactHandler wires the artifact list + signed-link surfaces
