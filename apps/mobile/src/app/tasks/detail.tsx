@@ -6,53 +6,74 @@ import { createTaskDetailController, TASK_OFFICE_ERROR_COPY, type TaskDetailCont
 import { DELIVERY_RECOVERY_COPY, TaskDetailScreen } from '../../screens/TaskDetailScreen.tsx';
 
 type DeliveryRouteIdentity = Readonly<{ taskId: string; runId: string }>;
+type DeliveryRouteEntry = Readonly<{ identity: DeliveryRouteIdentity; generation: number }>;
 type DeliveryRecoveryInput = { runId: string; deliveryId: string };
 
 function sameDeliveryRoute(left: DeliveryRouteIdentity, right: DeliveryRouteIdentity): boolean {
   return left.taskId === right.taskId && left.runId === right.runId;
 }
 
+function sameDeliveryRouteEntry(left: DeliveryRouteEntry, right: DeliveryRouteEntry): boolean {
+  return left.generation === right.generation && sameDeliveryRoute(left.identity, right.identity);
+}
+
+/** Delivery reads are accepted only for the route entry that initiated them. */
+export function createRouteBoundDeliveryReadHandler(options: {
+  entry: DeliveryRouteEntry;
+  currentEntry(): DeliveryRouteEntry;
+  setDelivery(receipt: DeliveryReceiptView): void;
+}): (receipt: DeliveryReceiptView | undefined) => void {
+  return (receipt) => {
+    const { entry } = options;
+    if (receipt === undefined
+      || !sameDeliveryRouteEntry(options.currentEntry(), entry)
+      || receipt.taskId !== entry.identity.taskId
+      || receipt.runId !== entry.identity.runId) return;
+    options.setDelivery(receipt);
+  };
+}
+
 /** Route-bound async seam: results may update presentation only while their originating route is current. */
 export function createRouteBoundDeliveryRecoveryHandler(options: {
-  identity: DeliveryRouteIdentity;
+  entry: DeliveryRouteEntry;
   receipt: DeliveryReceiptView;
-  currentIdentity(): DeliveryRouteIdentity;
+  currentEntry(): DeliveryRouteEntry;
   recover(input: DeliveryRecoveryInput): Promise<DeliveryReceiptView>;
   setDelivery(receipt: DeliveryReceiptView): void;
   setRecoveryError(error?: string): void;
   errorCopy(error: unknown): string;
 }): (input: DeliveryRecoveryInput) => Promise<DeliveryReceiptView> {
   return (input) => {
-    const { identity, receipt } = options;
-    if (!sameDeliveryRoute(options.currentIdentity(), identity)
-      || receipt.taskId !== identity.taskId
-      || receipt.runId !== identity.runId
-      || input.runId !== identity.runId
+    const { entry, receipt } = options;
+    if (!sameDeliveryRouteEntry(options.currentEntry(), entry)
+      || receipt.taskId !== entry.identity.taskId
+      || receipt.runId !== entry.identity.runId
+      || input.runId !== entry.identity.runId
       || input.deliveryId !== receipt.deliveryId) {
       return Promise.reject(new Error('delivery recovery route changed'));
     }
     options.setRecoveryError(undefined);
     return options.recover(input).then((recovered) => {
-      if (!sameDeliveryRoute(options.currentIdentity(), identity)) return recovered;
-      if (recovered.taskId !== identity.taskId || recovered.runId !== identity.runId) {
+      if (!sameDeliveryRouteEntry(options.currentEntry(), entry)) return recovered;
+      if (recovered.taskId !== entry.identity.taskId || recovered.runId !== entry.identity.runId) {
         throw new Error('delivery recovery response does not match the current route');
       }
       options.setDelivery(recovered);
       return recovered;
     }).catch((error: unknown) => {
-      if (sameDeliveryRoute(options.currentIdentity(), identity)) options.setRecoveryError(options.errorCopy(error));
+      if (sameDeliveryRouteEntry(options.currentEntry(), entry)) options.setRecoveryError(options.errorCopy(error));
       throw error;
     });
   };
 }
 
 interface RouteDeliveryReceipt {
-  identity: DeliveryRouteIdentity;
+  entry: DeliveryRouteEntry;
   receipt: DeliveryReceiptView;
 }
 
 interface RouteDeliveryError {
-  identity: DeliveryRouteIdentity;
+  entry: DeliveryRouteEntry;
   message: string;
 }
 
@@ -62,9 +83,12 @@ export function TaskDetailRouteLifecycle({ taskId, runId, onOpenMaterials, onOpe
   const [deliveryState, setDeliveryState] = useState<RouteDeliveryReceipt | undefined>(undefined);
   const [recoveryErrorState, setRecoveryErrorState] = useState<RouteDeliveryError | undefined>(undefined);
   const identity: DeliveryRouteIdentity = { taskId, runId };
-  const identityRef = useRef(identity);
-  // Update during render so a completion in the render-to-effect interval already sees the new route.
-  identityRef.current = identity;
+  const routeEntryRef = useRef<DeliveryRouteEntry>({ identity, generation: 0 });
+  // A new task/run pair starts a new entry; returning to an old pair increments again.
+  if (!sameDeliveryRoute(routeEntryRef.current.identity, identity)) {
+    routeEntryRef.current = { identity, generation: routeEntryRef.current.generation + 1 };
+  }
+  const routeEntry = routeEntryRef.current;
   const controllerRef = useRef<TaskDetailController | undefined>(undefined);
   // 交付回执读一次（不阻塞详情渲染；失败静默——交付区块缺失是合法空态）。
   // 刷新路径 onRefresh 不拉交付：回执不因刷新而变，重进页面即重读。
@@ -74,13 +98,13 @@ export function TaskDetailRouteLifecycle({ taskId, runId, onOpenMaterials, onOpe
     const reader = activeDeliveryReader();
     if (reader === undefined) return;
     let cancelled = false;
+    const applyRead = createRouteBoundDeliveryReadHandler({
+      entry: routeEntry,
+      currentEntry: () => routeEntryRef.current,
+      setDelivery: (receipt) => setDeliveryState({ entry: routeEntry, receipt }),
+    });
     reader.read(runId)
-      .then((receipt) => {
-        if (cancelled || !sameDeliveryRoute(identityRef.current, identity)) return;
-        if (receipt === undefined) return;
-        if (receipt.taskId !== identity.taskId || receipt.runId !== identity.runId) return;
-        setDeliveryState({ identity, receipt });
-      })
+      .then((receipt) => { if (!cancelled) applyRead(receipt); })
       .catch(() => { /* 交付区块缺失是合法空态（无交付/未登录），不阻塞详情 */ });
     return () => { cancelled = true; };
   }, [taskId, runId]);
@@ -111,22 +135,22 @@ export function TaskDetailRouteLifecycle({ taskId, runId, onOpenMaterials, onOpe
     };
   }, [taskId, runId]);
   const delivery = deliveryState !== undefined
-    && sameDeliveryRoute(deliveryState.identity, identity)
+    && sameDeliveryRouteEntry(deliveryState.entry, routeEntry)
     && deliveryState.receipt.taskId === taskId
     && deliveryState.receipt.runId === runId
     ? deliveryState.receipt
     : undefined;
-  const recoveryError = recoveryErrorState !== undefined && sameDeliveryRoute(recoveryErrorState.identity, identity)
+  const recoveryError = recoveryErrorState !== undefined && sameDeliveryRouteEntry(recoveryErrorState.entry, routeEntry)
     ? recoveryErrorState.message
     : undefined;
   const recovery = delivery === undefined ? undefined : activeDeliveryRecovery();
   const onRecoverDelivery = recovery === undefined || delivery === undefined ? undefined : createRouteBoundDeliveryRecoveryHandler({
-    identity,
+    entry: routeEntry,
     receipt: delivery,
-    currentIdentity: () => identityRef.current,
+    currentEntry: () => routeEntryRef.current,
     recover: (input) => recovery.recover(input),
-    setDelivery: (receipt) => setDeliveryState({ identity, receipt }),
-    setRecoveryError: (message) => setRecoveryErrorState(message === undefined ? undefined : { identity, message }),
+    setDelivery: (receipt) => setDeliveryState({ entry: routeEntry, receipt }),
+    setRecoveryError: (message) => setRecoveryErrorState(message === undefined ? undefined : { entry: routeEntry, message }),
     errorCopy: (error) => error instanceof DeliveryRecoveryError
       ? DELIVERY_RECOVERY_COPY.failed + (error.message ? `（${error.message}）` : '')
       : '恢复请求失败，请稍后重试',
