@@ -30,7 +30,7 @@
 | #91 | Lago19 BYOK 只免模型维度 | OPEN | todo | 语义层已有，Lago 端可观察性待 #88 |
 | #92 | Lago20 用量修正不改写历史 | OPEN | todo | 本地 append-only 已有，补偿/Credit Note 待 #88 |
 | #93 | Lago21 升级补发当月差额 | OPEN | todo | 本地域完整，Lago 切换/匹配待 #82/#86；#92 后串行（调度） |
-| #94 | Lago22 降级/年付月发/到期回 Base | OPEN | **todo** | 上游硬阻塞点已解除，待 #93（共用订阅链切换协调器） |
+| #94 | Lago22 降级/年付月发/到期回 Base | OPEN | **todo** | 上游硬阻塞点已解除，待 #93（可复用切换协调器；Base/paid 订阅身份与价格独立） |
 | #95 | Lago23 充值退款三段式 | OPEN | todo | 骨架完整，P03/Lago void 待 #82/#85/#86；#94 后串行（调度） |
 | #96 | Lago24 套餐退款 Credit Note | OPEN | todo | Credit Note 全链路零实现，待 #92/#93/#95（末者调度） |
 | #97 | Lago25 微信退款对齐支付宝 | OPEN | **todo** | 原 blocked 仅因前置 OPEN（已编码为依赖边），待 #83/#95/#96 |
@@ -47,7 +47,7 @@
 
 状态变更记录（第五次修订，2026-09-26，两组）：
 1. **#81：todo → done（批次 2 实施交付）**。`git log` 实查：12 个 TDD 提交（Task 1-12，`1079a11ad`→`f7c3b3532`）+ 代码审查修复（F1/F2=`69fd9b16d`、F8=`bf01c3d71`）→ merge `e26a90d61` 入集成分支；流程验证=三通道（Playwright 无头真实浏览器真实登录渲染断言 + curl 真实 API 链路 + Lago DB psql 直查），`issue-72-flow-evidence-81/`（20 个 git 跟踪文件）README 9 组断言全 ✅（含过期 quote 409、金额漂移 409 不拉起渠道两组负对照）；增量 OCR r1#2 37 findings → 修复 4 项 → **r2=0 findings passed-r2**（`900041bb0`，台账 `issue-72-ocr-ledger.md`）；编排器结果 JSON 记「已完成」（final report §13）。本会话复验：`service/commercial/purchase.go`+`purchase_test.go` 在 HEAD，`CommandKindCreatePurchaseSubscription` 接线于 `fake.go:644`/`lago.go:170`。残留（不重开验收）：GitHub 关票（编排侧）、终审 OCR 6 项开放 findings 中 #81 收尾面（R-4 已划入 #82 重做范围）。实施依据含 **R-3**（spec L121 付款前 line-item 比对=选项 A 批准偏差：付款前权威订阅面硬校验+付款时 `PurchaseSnapshot.InvoiceFees` 完整复核，四条强制条件见 `issue-72-user-rulings.md`）。
-2. **#82：保持 todo，就绪判定由 #81 移交 #82（R-4 落地）**。第一轮实现（7 个 Task 提交→merge `8cfc91975`）经真实流程验证 3 轮未过——t10 契约探针（`ca04d7da7`，run `6f45ed2f`）证伪其 D2 结算触发链（P1：stuck 3DS 收款使 gating invoice 转 INVISIBLE、payments 查询 200 空列表；P2d：`retry_payment` 对隐藏发票 404），激活后半链不可达 → 按裁定 revert `e0364d196`（34 文件 −3724 行；实现保留分支 `codex/issue-72-lago-82`）。**R-4（2026-09-26）**解除 T02 §5 重议：激活链=**选项 α 双轨道**（渠道收款+WeKnora 收到渠道回调后驱动 Stripe Provider gated 结算扣款，复用 #74 实证 gated flow→finalize→active；与 R-1 内在一致、spec/ADR 零改动），**附带授权 #82 重做**（吸收 flowfix 三缺陷修复〔回调白名单/Provider.MerchantID()/客户绑定 upsert〕与终审 OCR 6 项开放 findings 修复范围）；已披露边界=支付宝渠道证据为本地 RSA stub、真实沙箱钱包付款证据未取得（无 ALIPAY_* 凭据，不得伪造）。前置 #74（done）/#81（done）全满足 → **当前唯一可立即开工节点**。
+2. **#82：保持 todo，就绪判定由 #81 移交 #82（R-4 落地）**。第一轮实现（7 个 Task 提交→merge `8cfc91975`）经真实流程验证 3 轮未过——t10 契约探针（`ca04d7da7`，run `6f45ed2f`）证伪其 D2 结算触发链（P1：stuck 3DS 收款使 gating invoice 转 INVISIBLE、payments 查询 200 空列表；P2d：`retry_payment` 对隐藏发票 404），激活后半链不可达 → 按裁定 revert `e0364d196`（34 文件 −3724 行；实现保留分支 `codex/issue-72-lago-82`）。**R-4（2026-09-26）**解除 T02 §5 重议：激活链=**选项 α 双轨道**（渠道收款+WeKnora 收到渠道回调后驱动 Stripe Provider gated 结算扣款，复用 #74 实证 gated flow→finalize→active；与 R-1 内在一致、spec/ADR 零改动），**附带授权 #82 重做**（吸收 flowfix 三缺陷修复〔回调白名单/Provider.MerchantID()/客户绑定 upsert〕与终审 OCR 6 项开放 findings 修复范围）；已披露边界=支付宝渠道证据为本地 RSA stub、真实沙箱钱包付款证据未取得（无 ALIPAY_* 凭据，不得伪造）。前置 #74（done）/#81（done）全满足 → **当时唯一可立即开工节点（历史快照；当前 ready set 见恢复 overlay）**。
 
 状态变更记录：
 - **第三次修订（2026-09-23）三组**：
@@ -232,11 +232,11 @@
 
 ### issue-94 ｜ [Lago 22] 降级、年付月发和到期回 Base Plan
 - URL: https://github.com/1123786563/WeKnora-fork01/issues/94 ｜ 父节点: #72 ｜ GitHub: OPEN
-- 需求依据：降级在已付周期边界后恰好切换一次、不追回已发当月 Credits；年付 included Credits 每月恰好发放一次；到期未续费经同一 Subscription 链回 Base Plan、不清未到期充值额度与数据；超限只阻新增资源（US10/13/14/30、矩阵 17）。
+- 需求依据：降级在已付周期边界后恰好切换一次、不追回已发当月 Credits；年付 included Credits 每月恰好发放一次；到期未续费时，在独立的 paid Subscription 与 Base Subscription 之间切换、不清未到期充值额度与数据；超限只阻新增资源（US10/13/14/30、矩阵 17）。
 - 实现现状：部分实现（两层）：旧本地模型完整有测试（ScheduledPlanChange、LifecycleService.Tick 周期边界恰一次/逐月幂等/到期投影回 BaseTier、仓储原子守卫；调查会话实跑 ok）但无生产装配且走本地权威；Lago 侧仅 #80 基座。缺口：切换命令 kind、年付月发（EnsureMonthlyCredits 仅 BasePlanSeed 1 credit 不读付费套餐）、LifecycleService 无装配点/tick worker、到期回 Base 的 Lago 链路、真实栈证据。
 - 验收标准：①降级周期边界切换 ②年付月发恰一次 ③到期回 Base 不清数据 ④超限只阻新增（+矩阵 17）。
 - 依赖：前置 #80（done）/#93；下游 #100/#102/**#95（调度边：seam 切换命令与 #95 void 命令同区，#94 先行）**。
-- 处理决定：**todo**（第三次修订由 blocked 改判）——原 blocked 的"上游链停在 #74/#75-a2 硬阻塞点"已解除，剩 #93 前置排队（共用订阅链切换协调器）。
+- 处理决定：**todo**（第三次修订由 blocked 改判）——原 blocked 的"上游链停在 #74/#75-a2 硬阻塞点"已解除，剩 #93 前置排队（可复用切换协调器；Base/paid 订阅身份与价格独立）。
 
 ### issue-95 ｜ [Lago 23] 充值退款先锁定、再退支付宝、最后撤回 Credits
 - URL: https://github.com/1123786563/WeKnora-fork01/issues/95 ｜ 父节点: #72 ｜ GitHub: OPEN
@@ -334,3 +334,7 @@
 - **治理项（不阻塞任何边）**：①#74/#81 GitHub 关票（第五次修订会话 `gh issue list` 复测均仍 OPEN；#82 保持 OPEN）；②终审 OCR 6 项开放 findings（final report §9.4 对账）+批次 1 轮 4 遗留（§9.5）+批次 2 轮 4 low（§9.6）——R-4 已将前者的修复范围划入 #82 重做；③分支 `codex/issue-72-lago-82` 去留（含可回收设计资产，建议保留至 #82 重做复用后由用户决定，final report D7）。
 - **与编排下发指令的一处事实冲突及裁决（留痕）**：第五次修订收到的下发指令仍载「#74 判 todo，剩余交付=用真实密钥重跑 run_lab.py 收集 AC1-AC3 运行时证据」——该前提对应 2026-09-23 调查快照。集成分支证据（第三次修订记录+第五次修订会话复验：`docs/migrations/lago/t02-payment-activation/t02-{gating,activation,retries}.json` root status=pass、ledger-74 AC1-AC4 全 pass、F1 主 Agent 裁决接受、revert `e0364d196` 未触及 #74 契约修复）证明该交付已完成。按构建规则「已有完成证据的节点 status=done，不重新实施」，**维持 #74=done**。
 - gh CLI 可用（第五次修订会话 `gh issue list --state all` 全量复测 72–105 号状态）；`docs/plans/ledgers/` 现存 lago-78/79/80 + 本 worktree 的 issue-72-ledger-74/81（`ls` 实查）。
+
+## 7. Current-state recovery note (2026-09-28)
+
+The earlier status table above is a historical snapshot and is superseded for execution scheduling by [`issue-72-execution-ledger.md`](issue-72-execution-ledger.md) and the recovery overlay in [`issue-72-dag.md`](issue-72-dag.md#8-recovery-overlay--2026-09-28-supersedes-stale-readiness-snapshot-above). Recursive GitHub REST re-fetch found 33 direct descendants (#73–#105), no nested descendants, and complete dependency endpoint coverage in `/tmp/issue72-analysis.md`. Current GitHub status is #73/#75–#80 closed and #74/#81–#105 open. The integration branch has implementation evidence beyond those remote statuses, while #86 has uncommitted OCR repair files. Do not treat #84/#86 as verified or launch downstream implementation until current checkpoint review closes. #85 worktree ownership is unresolved because its branch contains #83 OCR continuation commits.

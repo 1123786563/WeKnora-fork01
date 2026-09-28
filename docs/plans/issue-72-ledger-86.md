@@ -132,3 +132,37 @@ baseSha `aef39bb82d1f6ebe6653d132bbe4a01bd692a129`（计划 r1 提交点）。
 ### 审查轮回归总检
 
 `go test ./internal/modules/commercial/... ./internal/handler/ ./internal/router/ -count=1` → 9 包全 ok；`pnpm typecheck:web`/`typecheck:shared` → 5/2 error（与基线 stash 对照完全一致，零新增）。
+
+## OCR-R1 #86 evidence-script repair checkpoint (2026-09-28)
+
+- Repair plan: `docs/plans/issue-72-ocr86-repair-r1.md`; implementation report: `docs/plans/issue-72-ocr86-repair-report.md`.
+- **Superseded Round 0 checkpoint:** its cursor-page implementation assumption and 3-test verification were replaced after `/tmp/issue72-86-repair-review.md` established the actual Lago response uses numbered pages. This historical checkpoint is not current evidence.
+- Current tooling: cascade draw verification requires stable wallet membership and complete unique `(expiration_at, created_at, lago_id)` ranks; all wallet readers use checked `current_page`/`next_page`/`total_pages`/`total_count` numbered pagination; consumption snapshots include active wallets only; amount values derive from shared event/price constants; reconciliation rejects duplicate expiry keys and terminated residual balances.
+- Current focused verification: see Round 2 below and the repair report SHA-256 manifest.
+- **Live replay not run:** requested isolated ports 48897/48898 were unbound and Lago health returned connection failure. Available 48889/48890 belongs to shared `weknora-lago-82r5-*`, prohibited as a mutation target. No live writes or new replay artifacts were produced. Historical evidence remains unchanged; replay awaits a dedicated isolated test stack/tenant.
+- **Independent repair review round 1 corrections:** Lago pagination uses the observed v1.53 `current_page`/`next_page`/`total_pages`/`total_count` contract; all three readers now share a fail-closed reader and are covered with multi-page/malformed/count tests. Each runner requires a new `--output-dir`; generated files are isolated and historical tracked artifacts remain untouched. Concurrent trigger/replay response shapes are checked and replay balance is monitored for up to 120 seconds. Updated report and hashes are in `docs/plans/issue-72-ocr86-repair-report.md`. Verification: focused unittest 11 PASS; py_compile and `git diff --check` exit 0. Live replay remains pending the parent-provisioned isolated stack.
+- Independent repair review round 1: all runners require new output directories, preserving historical artifacts; setup and replay status are checked. The round 1 replay observer's 120-second aggregate check is superseded by round 2's 300-second per-wallet observer.
+- **Independent repair review round 2:** replay monitoring now compares per-wallet balances for the full 300-second event settlement bound and samples at the bound. `facts.json` stores per-check outcomes and final verdict. Verification: 13 focused tests PASS; py_compile, `git diff --check`, and historical artifact unchanged check exit 0. No live run; parent is coordinating isolated replay.
+- **Independent repair review round 3:** the final post-observer snapshot is also compared by full wallet map with the settled `after` map, closing the same-total redistribution window. A regression test proves a 10-cent two-wallet redistribution fails despite the unchanged aggregate. Updated hashes and exact verification are in the repair report. Live replay remains pending; no requests were made.
+
+## OCR-R2 repair closure update (2026-09-28)
+
+This section supersedes earlier statements that only OCR-R1 was repaired. It records offline tooling checkpoints and does not upgrade #86 to `verified`.
+
+| Repair checkpoint | Plan review | Task review | Verification | Status |
+|---|---|---|---|---|
+| OCR-R2 | plan `/tmp/issue72-86-ocr-r2-plan-review-r3.md` PASS/PASS, SHA `97ca29619998a8d14110704ffac737a8b104a890a360397a24a2870c0ed03845` | Initial task review `/tmp/issue72-86-ocr-r2-task-review.md` FAIL; four medium findings carried into R3 | 20 helper tests; py_compile, diff-check, historical artifact check passed; no live calls | Implemented, initial checkpoint not accepted; repaired by R3 |
+| OCR-R3 | plan `/tmp/issue72-86-ocr-r3-plan-review-r2.md` PASS/PASS, SHA `230f35b9d2719c56a911cc544f0a6660ccdc6ed981d217034e838cf4177fd30d` | `/tmp/issue72-86-ocr-r3-task-review.md` FAIL: replay response lost on later observer error / inaccurate request stage; rank-change test mocked predicate | 27 helper tests; py_compile, diff-check, historical artifact check passed; no live calls | Findings repaired in R4 |
+| OCR-R4 | plan `/tmp/issue72-86-ocr-r4-plan-review-r2.md` PASS/PASS, SHA `bde4b8fe005c671153852f0234bc7effb99ea3104e4fd1c9f3505966486390a3` | `/tmp/issue72-86-ocr-r4-task-review.md` PASS/PASS | 29 helper tests; py_compile four established paths, diff-check, historical artifact unchanged; no API/Docker/credential activity | Verified offline task checkpoint; still uncommitted |
+
+R2–R4 implementation reports and plans: `docs/plans/issue-72-ocr86-repair-r2.md`, `docs/plans/issue-72-ocr86-repair-r3.md`, `docs/plans/issue-72-ocr86-repair-r4.md`, `docs/plans/issue-72-ocr86-repair-r4-task-1-report.md`. R4 checkpoint SHA-256: `concurrent_consumption_86.py=eab46ac5cddba98eead57547d993bb74ea83af2ea6ecafc0c90b5a1582e529e7`; `test_evidence_helpers.py=06a17139ba0aa8e9267c768aa490fb04ab03864868508cd5ff4eceddfb3a0c9e`. R2 `consume_86.py` remains `6f6e6f2b92a7de0858bfc5ba208d079c8417785a0d1760fe0c76e943282c61e5`; R3 did not alter it. Historical `consume-cny.json` and `reconcile-output.txt` were unchanged.
+
+**Outstanding acceptance gate:** The pinned Lago v1.53 API contract exposes no duplicate-specific response field. Generic 200/201/422 replay responses are now fail-closed and cannot produce a passing duplicate-idempotency assertion. This is safer evidence handling, not proof of #86 AC. Issue-level replay acceptance remains `blocked` until an isolated runtime result yields a positively identified duplicate contract and passes with the final reviewed script hash. The dedicated #86 tenant/customer mapping and #85 top-up dependency remain separate blockers already recorded above. No live Lago calls were made in R2–R4.
+
+
+## R5 offline checkpoint and review status (2026-09-28)
+
+- OCR-R5 Task 1 fix round 1: `/tmp/issue72-ocr86-r5-task1-fix1-rereview-20260928.md` PASS/PASS; Task 2 after five fix rounds: `/tmp/issue72-ocr86-r5-task2-fix5-rereview-20260928.md` PASS/PASS; Task 3: `/tmp/issue72-ocr86-r5-task3-review-20260928.md` PASS/PASS with one accepted low observation. Offline focused checks are recorded in `issue-72-execution-ledger.md`.
+- Unsupported-document plan review: `/tmp/issue72-unsupported-docs-plan-review-r2-20260928.md` PASS/PASS. This Task 1 is a documentation-only checkpoint; no live #86 acceptance was performed.
+- The local environment snapshot has been sanitized in place, its exact path is ignored, and verification confirms all retained assignment values are `<REDACTED>`.
+- Full Issue #86 live acceptance remains unverified: exact-hash replay/duplicate contract, stable identity, and tenant/customer mapping remain outstanding.

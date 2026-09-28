@@ -11,7 +11,7 @@
 | WeKnora 前端 | 同 worktree `pnpm --filter @weknora/web dev` | http://localhost:5173（IPv6 [::1]） | /api 代理到 :8080 |
 | 浏览器 | Playwright（MCP 插件，headless 真实渲染） | — | 登录→操作→断言→截图 |
 
-测试数据：全新空间 `flow86@weknora.local`（租户 ID **10000**，customer `weknora-tenant-10000`，Lago customer lago_id `682daaca-…`），不触碰其他 Issue 的租户。凭据只存在 worktree 未跟踪 `.env` 与容器 env；本目录无任何 key 字面量。
+测试数据：全新空间 `flow86@weknora.local`（租户 ID **10000**，customer `weknora-tenant-10000`，Lago customer lago_id `682daaca-…`），不触碰其他 Issue 的租户。后续审计发现本目录的本地环境快照曾包含凭据；快照中的值现已全部 redacted，且快照路径已加入 ignore。本文不复现任何凭据值。
 
 ## 用户流程与断言结果（全部真实验证）
 
@@ -48,7 +48,7 @@
 
 - 浏览器登录 Lago front（:48890，org `weknora-r5`）→ 该 customer wallets 视图：`topup-d Active CN¥5.00 5 credits`、`topup-c Active CN¥4.00 4 credits`、月度 `Terminated CN¥0.00 0 credits`、terminated 批次（A/B）不进页面（05-lago-console-wallets.png）
 - `reconcile.py` 两轮（消费前 9.00 状态 + 终态 4.00 状态）全部 PASS（reconcile-output.txt / reconcile-final-output.txt）：① Σ active balance_cents×10⁴ == 页面 balance_micro；② 每 active 钱包与页面批次 1:1（余额/到期/发放时间）；③ 无 active 钱包对应的页面行余额必为 0（不结转/不复活）；④ available == balance − held − refund_locked
-- 运行：`LAGO_API_KEY=<from .env> python3 reconcile.py`（可用 `WK_ACCOUNT_JSON=` 换输入快照）
+- 运行：`LAGO_API_KEY=$KEY python3 reconcile.py --output-dir "/tmp/weknora-86-reconcile-$(date +%s)"`（可用 `WK_ACCOUNT_JSON=` 换输入快照；目录必须是全新路径）
 
 ### ⑤ 并发消费无重复扣减（consumption-concurrent-run.txt + replay-idempotency.txt）
 
@@ -60,9 +60,11 @@
 
 | 脚本 | 用途 | 运行 |
 |---|---|---|
-| `consume_86.py` | 单笔 2.00 跨月度消费（顺序断言） | `LAGO_API_KEY=$KEY python3 consume_86.py`（key 读 worktree `.env` 的脚本副本从 env 注入；此文件历史版本直接读 .env） |
-| `concurrent_consumption_86.py` | 5 并发消费 + 重放幂等（stdout-only，tee 落盘） | `LAGO_API_KEY=$KEY python3 concurrent_consumption_86.py \| tee out.txt` |
-| `reconcile.py` | WeKnora account API vs Lago wallets 两源对账 | `LAGO_API_KEY=$KEY python3 reconcile.py` |
+| `consume_86.py` | 单笔 2.00 跨月度消费（顺序断言） | `LAGO_API_KEY=$KEY python3 consume_86.py --output-dir "/tmp/weknora-86-consume-$(date +%s)"` |
+| `concurrent_consumption_86.py` | 5 并发消费 + 重放幂等证据（无 pinned duplicate response contract 时 fail-closed） | `LAGO_API_KEY=$KEY python3 concurrent_consumption_86.py --output-dir "/tmp/weknora-86-concurrent-$(date +%s)"` |
+| `reconcile.py` | WeKnora account API vs Lago wallets 两源对账 | `LAGO_API_KEY=$KEY python3 reconcile.py --output-dir "/tmp/weknora-86-reconcile-$(date +%s)"` |
+
+每次运行都必须指定全新的 `--output-dir`；该目录不得已存在。以上路径直接位于已有的 `/tmp` 下。Reconciliation 同样要求非空 `LAGO_API_KEY`，缺失或为空时会在发出任何请求前停止；不读取 `.env`。所有示例使用 loopback Lago API，密钥仅通过环境变量提供。
 
 消费触发器（metric/plan/subscription）按 t03 lab 形状创建，tag 前缀 `weknora-86-*`，Lago 侧留存（不影响 WeKnora commercial 面）。
 
@@ -76,4 +78,4 @@
 
 ## 结论
 
-Issue #86 用户流程五个环节（①余额分解展示 ②到期不结转语义 ③按到期顺序消费 ④Lago 控制台对账 ⑤并发无重复扣减）在真实环境（真实 Lago v1.53.0 栈 + 集成分支 worktree 后端/前端 + Playwright 真实浏览器 + 真实 Postgres）全部验证通过。未发现产品缺陷；两处非阻塞建议（币种示例、#85 命令对齐）见「已知边界」。
+原始 2026-09-28 真实环境运行记录及当时集成 HEAD 的结果属于历史证据，详见上文，不代表当前完整验收。当前集成检查点的 exact-hash replay/duplicate contract 与稳定 identity 仍未验证；因此 Issue #86 完整验收仍未通过。原始运行事实保留为历史记录，后续凭据处理更正见环境说明。

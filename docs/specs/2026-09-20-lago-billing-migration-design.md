@@ -108,7 +108,7 @@ WeKnora 保留空间身份与账单权限、面向用户的 Billing API、付款
 
 - Every published Plan Version receives a distinct Lago plan code. A published version is immutable; price, Charge, Billable Metric, Entitlement, Resource Quota, and included Credits changes require a new version.
 - Base subscription price is monotonic with the product tier. Discounts and promotions do not modify the tier ordering.
-- Subscription continuity uses the same external subscription identity across upgrade, downgrade, and transition to the Base Plan.
+- Paid upgrade and downgrade identity behavior remains unchanged. Under the approved separate-pricing decision, Base and paid subscriptions have separate identities and separate prices; identity behavior for other Base lifecycle transitions remains unresolved.
 - Upgrade becomes effective immediately after successful payment and Lago activation. WeKnora calculates only the approved prorated included-Credits difference and records it as an idempotent granted Wallet transaction in Lago.
 - Downgrade becomes effective at the paid-period boundary. It does not reclaim already issued current-period Credits.
 - Annual subscriptions issue included Credits monthly. Expiry without renewal moves to the Base Plan while preserving existing data and unexpired top-up Credits.
@@ -248,6 +248,14 @@ WeKnora 保留空间身份与账单权限、面向用户的 Billing API、付款
 The feature is complete only when the entire behavior and contract matrix passes against the pinned Lago Community environment; required unit, integration, concurrency, contract, end-to-end, static, performance, security, and restore checks pass; AGPL review is accepted; independent Spec Compliance and code review have no unresolved blockers; the rollback window is closed; and OpenMeter runtime paths are removed.
 
 Mock success, an OpenAPI schema, an event-ingestion response, or a healthy Lago API process is not sufficient completion evidence.
+
+## Approved amendment — Separate Base and paid pricing subscriptions (2026-09-28)
+
+The user resolved the effective-pricing conflict for Issue #87: **Base and paid subscriptions are separate billing subscriptions and retain separate prices.** This pricing decision does not change entitlement-combination rules. A charge must be evaluated against one exact subscription/Plan Version that owns the billable dimension; rates from different subscriptions are never added or blended. If the owning subscription or its published charge is missing, inactive, stale, or cannot be identified unambiguously, paid dispatch fails closed. This amendment supersedes the earlier requirement in Implementation Decisions that one external subscription identity continue across transition to the Base Plan; paid upgrade/downgrade identity behavior remains unchanged.
+
+Whether a paid Plan Version may carry a Lago Usage Charge is subject to the existing approved payment contract: R-3 single-line and Quote/Invoice matching rules still apply. R-3 must be reconciled with separate pricing before changing `PurchaseService.ensureNoCharges`; this amendment alone does not authorize a charge-bearing purchase path. The dimension-to-subscription ownership rule for overlapping dimensions and pending, canceled, stale, or unreadable paid subscriptions requires a deterministic ruling before resolver implementation. Immutable published versions and Lago authority remain unchanged.
+
+**Source:** User answer in the Issue #72 execution conversation on 2026-09-28: “Base 与付费订阅分别定价”. This is an approved requirement amendment, not a claim that existing code already satisfies it.
 
 ## Out of Scope
 

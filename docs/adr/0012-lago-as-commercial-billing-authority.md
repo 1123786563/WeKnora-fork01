@@ -23,6 +23,12 @@ WeKnora 采用自托管 Lago Community 替代 OpenMeter，并让 Lago 成为 Cus
 
 ## 修订记录
 
+### 2026-09-28：Base 与付费订阅分别定价（Issue #72/#87 用户裁决）
+
+**裁决**：Base 订阅与付费订阅是独立的计费订阅，各自保留自己的价格；用户选择“Base 与付费订阅分别定价”不改变既有权益组合规则。一个收费维度不得把不同订阅的费率相加或混合。具体收费维度由哪条订阅计价、重复维度如何裁决，以及付费计划 Usage Charge 是否满足 R-3 Quote/Invoice 单行约束，仍须在实现前明确；无唯一有效价格时 fail closed。此裁决由用户在 Issue #72 执行中明确选择，并由 Spec 同日修订记录。
+
+**取舍与后果**：这取代升级/降级/返回 Base 全部沿用同一外部 subscription identity 的既有要求；付费订阅内部版本转换语义仍维持原规则。后续实现必须为 billable dimension 提供明确的 owning subscription/Plan Version 解析，不能靠“最新订阅”或价格混合猜测。`PurchaseService.ensureNoCharges` 是否与新价格身份相容仍受已批准的 R-3 Invoice 约束限制，须经独立规格审查后再改；不得把“分别定价”扩大解释成新增收费行的批准。
+
 ### 2026-09-23：澄清充值批次（top-up）的钱包写入时机与并发模型（75-a2 裁决）
 
 **背景**：Lago 实验栈（#75/T03）实测发现 Lago Community 对同时活跃的 wallet 批次存在并发保护——直接并发创建第 7 个活跃批次时返回 422（verdict a2 BLOCKED）。该限制若被理解为产品级充值并发上限，将迫使 WeKnora 设置人为闸门（活跃充值批次 ≤5）。

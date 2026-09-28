@@ -106,3 +106,4 @@ docs/plans/**/seed-login-*.json
 # 目录——internal/textconv/data/（被跟踪的简繁词典，CI paths-ignore 引用）下
 # 未来新增文件会被静默忽略，造成提交缺文件且难察觉。
 /data/
+docs/plans/issue-72-flow-evidence-86/ocr-r2-replay/backend.env.snapshot
