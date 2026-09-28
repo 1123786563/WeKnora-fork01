@@ -62,12 +62,42 @@ func (s *AgentSecurityStore) AppendReleaseRevocation(ctx context.Context, row *t
 	return s.db.WithContext(ctx).Create(row).Error
 }
 
+// AppendReleaseRevocationWithAudit records the revocation and its audit fact
+// atomically. Existing append-only callers may continue using AppendReleaseRevocation.
+func (s *AgentSecurityStore) AppendReleaseRevocationWithAudit(ctx context.Context, row *types.AgentReleaseRevocationEntity, audit *types.AuditLog) error {
+	if row == nil || audit == nil {
+		return errors.New("release revocation and audit entry are required")
+	}
+	prepareReleaseRevocation(row)
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(row).Error; err != nil {
+			return err
+		}
+		return NewAuditLogRepository(tx).Create(ctx, audit)
+	})
+}
+
 func (s *AgentSecurityStore) AppendDependencyRevocation(ctx context.Context, row *types.AgentDependencyRevocationEntity) error {
 	if row == nil {
 		return errors.New("dependency revocation is required")
 	}
 	prepareDependencyRevocation(row)
 	return s.db.WithContext(ctx).Create(row).Error
+}
+
+// AppendDependencyRevocationWithAudit records the revocation and its audit
+// fact atomically. Existing append-only callers may continue using AppendDependencyRevocation.
+func (s *AgentSecurityStore) AppendDependencyRevocationWithAudit(ctx context.Context, row *types.AgentDependencyRevocationEntity, audit *types.AuditLog) error {
+	if row == nil || audit == nil {
+		return errors.New("dependency revocation and audit entry are required")
+	}
+	prepareDependencyRevocation(row)
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(row).Error; err != nil {
+			return err
+		}
+		return NewAuditLogRepository(tx).Create(ctx, audit)
+	})
 }
 
 func (s *AgentSecurityStore) ListReleaseRevocations(ctx context.Context, tenantID uint64) ([]types.AgentReleaseRevocationEntity, error) {

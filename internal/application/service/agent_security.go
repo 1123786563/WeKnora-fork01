@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -29,6 +30,117 @@ type ReleaseSecurityGate interface {
 
 var _ interfaces.AgentSecurityService = (*AgentSecurityService)(nil)
 
+const invalidInFlightDisposition = "invalid"
+
+func normalizeInFlightDisposition(disposition string) string {
+	switch strings.TrimSpace(disposition) {
+	case "":
+		return interfaces.AgentSecurityInFlightCancel
+	case interfaces.AgentSecurityInFlightCancel:
+		return interfaces.AgentSecurityInFlightCancel
+	case interfaces.AgentSecurityInFlightAllow:
+		return interfaces.AgentSecurityInFlightAllow
+	default:
+		return invalidInFlightDisposition
+	}
+}
+
+func revocationAudit(action types.AuditAction, tenantID uint64, actorID, targetType, targetID string, details map[string]string, now time.Time) (*types.AuditLog, error) {
+	encoded, err := json.Marshal(details)
+	if err != nil {
+		return nil, err
+	}
+	return &types.AuditLog{TenantID: tenantID, ActorUserID: actorID, Action: action,
+		ScopeType: "marketplace", TargetType: targetType, TargetID: targetID,
+		Details: types.JSON(encoded), CreatedAt: now}, nil
+}
+
+func releaseRevocationView(row *types.AgentReleaseRevocationEntity) interfaces.AgentSecurityRevocationView {
+	return interfaces.AgentSecurityRevocationView{ID: row.ID, Kind: interfaces.AgentSecurityRevocationKindRelease,
+		Reason: row.Reason, RevokedBy: row.RevokedBy, RevokedAt: row.RevokedAt,
+		InFlightDisposition: row.InFlightDisposition, CanceledRunCount: row.CanceledRunCount,
+		ListingID: row.ListingID, ReleaseID: row.ReleaseID, ReplacementReleaseID: row.ReplacementReleaseID}
+}
+
+func dependencyRevocationView(row *types.AgentDependencyRevocationEntity) interfaces.AgentSecurityRevocationView {
+	dependency := &types.AgentReleaseDependency{Type: row.DepType, ID: row.DepID, Version: row.DepVersion, Digest: row.DepDigest}
+	return interfaces.AgentSecurityRevocationView{ID: row.ID, Kind: interfaces.AgentSecurityRevocationKindDependency,
+		Reason: row.Reason, RevokedBy: row.RevokedBy, RevokedAt: row.RevokedAt,
+		InFlightDisposition: row.InFlightDisposition, CanceledRunCount: row.CanceledRunCount,
+		Dependency: dependency, ReplacementVersion: row.ReplacementVersion}
+}
+
+func (s *AgentSecurityService) blockedReleasesForDependency(ctx context.Context, tenantID uint64, dependency types.AgentReleaseDependency) (map[string]string, error) {
+	locks, err := s.store.ListTenantReleaseLocks(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	blocked := make(map[string]string)
+	for _, release := range locks {
+		lock, err := decodeDependencyLock(release.LockJSON)
+		if err != nil {
+			return nil, fmt.Errorf("decode dependency lock for release %s: %w", release.ReleaseID, err)
+		}
+		for _, locked := range lock.Dependencies {
+			if locked.Type == dependency.Type && locked.ID == dependency.ID && locked.Version == dependency.Version && locked.Digest == dependency.Digest {
+				blocked[release.ReleaseID] = release.ListingID
+				break
+			}
+		}
+	}
+	return blocked, nil
+}
+
+func (s *AgentSecurityService) publishedAgentIDsForReleases(ctx context.Context, tenantID uint64, releases map[string]string) ([]string, error) {
+	variants, err := s.store.ListVariants(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	seen := make(map[string]struct{})
+	ids := make([]string, 0)
+	for _, variant := range variants {
+		if variant.State != "published" || variant.LocalAgentID == "" {
+			continue
+		}
+		if _, blocked := releases[variant.ReleaseID]; !blocked {
+			continue
+		}
+		if _, exists := seen[variant.LocalAgentID]; exists {
+			continue
+		}
+		seen[variant.LocalAgentID] = struct{}{}
+		ids = append(ids, variant.LocalAgentID)
+	}
+	sort.Strings(ids)
+	return ids, nil
+}
+
+func (s *AgentSecurityService) revocationScope(ctx context.Context, tenantID uint64, blocked map[string]string, blockedBy string) (interfaces.AgentRevocationScope, error) {
+	scope := interfaces.AgentRevocationScope{BlockedReleases: make([]interfaces.AgentBlockedRelease, 0, len(blocked)), AffectedAdoptionIDs: []string{}, AffectedVariants: []interfaces.AgentBlockedVariant{}}
+	for releaseID, listingID := range blocked {
+		scope.BlockedReleases = append(scope.BlockedReleases, interfaces.AgentBlockedRelease{ReleaseID: releaseID, ListingID: listingID, BlockedBy: blockedBy})
+	}
+	sort.Slice(scope.BlockedReleases, func(i, j int) bool { return scope.BlockedReleases[i].ReleaseID < scope.BlockedReleases[j].ReleaseID })
+	variants, err := s.store.ListVariants(ctx, tenantID)
+	if err != nil {
+		return interfaces.AgentRevocationScope{}, err
+	}
+	adoptions := make(map[string]struct{})
+	for _, variant := range variants {
+		if _, match := blocked[variant.ReleaseID]; !match {
+			continue
+		}
+		scope.AffectedVariants = append(scope.AffectedVariants, interfaces.AgentBlockedVariant{VariantID: variant.ID, AdoptionID: variant.AdoptionID,
+			ReleaseID: variant.ReleaseID, State: variant.State, LocalAgentID: variant.LocalAgentID})
+		if _, exists := adoptions[variant.AdoptionID]; !exists {
+			adoptions[variant.AdoptionID] = struct{}{}
+			scope.AffectedAdoptionIDs = append(scope.AffectedAdoptionIDs, variant.AdoptionID)
+		}
+	}
+	sort.Strings(scope.AffectedAdoptionIDs)
+	return scope, nil
+}
+
 type AgentSecurityService struct {
 	store *repository.AgentSecurityStore
 	runs  *repository.AgentRunStore
@@ -39,20 +151,170 @@ func NewAgentSecurityService(store *repository.AgentSecurityStore, runs *reposit
 	return &AgentSecurityService{store: store, runs: runs, now: func() time.Time { return time.Now().UTC() }}
 }
 
-func (s *AgentSecurityService) RevokeRelease(context.Context, uint64, string, interfaces.ReleaseRevocationInput) (interfaces.AgentSecurityRevocationView, error) {
-	return interfaces.AgentSecurityRevocationView{}, ErrAgentSecurityInvalidInput
+func (s *AgentSecurityService) RevokeRelease(ctx context.Context, tenantID uint64, actorID string, input interfaces.ReleaseRevocationInput) (interfaces.AgentSecurityRevocationView, error) {
+	input.ReleaseID, input.Reason = strings.TrimSpace(input.ReleaseID), strings.TrimSpace(input.Reason)
+	input.ReplacementReleaseID = strings.TrimSpace(input.ReplacementReleaseID)
+	input.InFlightDisposition = normalizeInFlightDisposition(input.InFlightDisposition)
+	if tenantID == 0 || strings.TrimSpace(actorID) == "" || input.ReleaseID == "" || input.Reason == "" || input.InFlightDisposition == "invalid" {
+		return interfaces.AgentSecurityRevocationView{}, ErrAgentSecurityInvalidInput
+	}
+	listingID, _, found, err := s.store.ReleaseFacts(ctx, tenantID, input.ReleaseID)
+	if err != nil {
+		return interfaces.AgentSecurityRevocationView{}, err
+	}
+	if !found {
+		return interfaces.AgentSecurityRevocationView{}, ErrAgentSecurityReleaseUnresolvable
+	}
+	if input.ReplacementReleaseID != "" {
+		replacementListing, _, replacementFound, err := s.store.ReleaseFacts(ctx, tenantID, input.ReplacementReleaseID)
+		if err != nil {
+			return interfaces.AgentSecurityRevocationView{}, err
+		}
+		if !replacementFound || replacementListing != listingID {
+			return interfaces.AgentSecurityRevocationView{}, ErrAgentSecurityInvalidInput
+		}
+	}
+
+	now := s.now().UTC()
+	row := &types.AgentReleaseRevocationEntity{
+		TenantID: tenantID, ListingID: listingID, ReleaseID: input.ReleaseID, Reason: input.Reason,
+		ReplacementReleaseID: input.ReplacementReleaseID, InFlightDisposition: input.InFlightDisposition,
+		RevokedBy: strings.TrimSpace(actorID), RevokedAt: now, CreatedAt: now,
+	}
+	audit, err := revocationAudit(types.AuditActionAgentReleaseRevoked, tenantID, strings.TrimSpace(actorID), "agent_release", input.ReleaseID,
+		map[string]string{"reason": input.Reason, "replacement": input.ReplacementReleaseID, "in_flight_disposition": input.InFlightDisposition}, now)
+	if err != nil {
+		return interfaces.AgentSecurityRevocationView{}, err
+	}
+	if err := s.store.AppendReleaseRevocationWithAudit(ctx, row, audit); err != nil {
+		return interfaces.AgentSecurityRevocationView{}, err
+	}
+	if input.InFlightDisposition == interfaces.AgentSecurityInFlightCancel {
+		agentIDs, err := s.publishedAgentIDsForReleases(ctx, tenantID, map[string]string{input.ReleaseID: listingID})
+		if err != nil {
+			return interfaces.AgentSecurityRevocationView{}, err
+		}
+		count, err := s.runs.CancelRunsByAgents(ctx, tenantID, agentIDs, "agent security revocation: "+input.Reason)
+		if err != nil {
+			return interfaces.AgentSecurityRevocationView{}, err
+		}
+		if err := s.store.UpdateReleaseRevocationCanceled(ctx, tenantID, row.ID, count); err != nil {
+			return interfaces.AgentSecurityRevocationView{}, err
+		}
+		row.CanceledRunCount = count
+	}
+	return releaseRevocationView(row), nil
 }
 
-func (s *AgentSecurityService) RevokeDependency(context.Context, uint64, string, interfaces.DependencyRevocationInput) (interfaces.AgentSecurityRevocationView, error) {
-	return interfaces.AgentSecurityRevocationView{}, ErrAgentSecurityInvalidInput
+func (s *AgentSecurityService) RevokeDependency(ctx context.Context, tenantID uint64, actorID string, input interfaces.DependencyRevocationInput) (interfaces.AgentSecurityRevocationView, error) {
+	input.Dependency.Type, input.Dependency.ID = strings.TrimSpace(input.Dependency.Type), strings.TrimSpace(input.Dependency.ID)
+	input.Dependency.Version, input.Dependency.Digest = strings.TrimSpace(input.Dependency.Version), strings.TrimSpace(input.Dependency.Digest)
+	input.Reason, input.ReplacementVersion = strings.TrimSpace(input.Reason), strings.TrimSpace(input.ReplacementVersion)
+	input.InFlightDisposition = normalizeInFlightDisposition(input.InFlightDisposition)
+	if tenantID == 0 || strings.TrimSpace(actorID) == "" || input.Reason == "" || input.InFlightDisposition == "invalid" ||
+		input.Dependency.Type == "" || input.Dependency.ID == "" || input.Dependency.Version == "" || input.Dependency.Digest == "" {
+		return interfaces.AgentSecurityRevocationView{}, ErrAgentSecurityInvalidInput
+	}
+	now := s.now().UTC()
+	row := &types.AgentDependencyRevocationEntity{
+		TenantID: tenantID, DepType: input.Dependency.Type, DepID: input.Dependency.ID,
+		DepVersion: input.Dependency.Version, DepDigest: input.Dependency.Digest, Reason: input.Reason,
+		ReplacementVersion: input.ReplacementVersion, InFlightDisposition: input.InFlightDisposition,
+		RevokedBy: strings.TrimSpace(actorID), RevokedAt: now, CreatedAt: now,
+	}
+	targetID := input.Dependency.Type + "/" + input.Dependency.ID + "@" + input.Dependency.Version
+	audit, err := revocationAudit(types.AuditActionAgentDependencyRevoked, tenantID, strings.TrimSpace(actorID), "agent_dependency", targetID,
+		map[string]string{"reason": input.Reason, "replacement": input.ReplacementVersion, "in_flight_disposition": input.InFlightDisposition}, now)
+	if err != nil {
+		return interfaces.AgentSecurityRevocationView{}, err
+	}
+	if err := s.store.AppendDependencyRevocationWithAudit(ctx, row, audit); err != nil {
+		return interfaces.AgentSecurityRevocationView{}, err
+	}
+	if input.InFlightDisposition == interfaces.AgentSecurityInFlightCancel {
+		blocked, err := s.blockedReleasesForDependency(ctx, tenantID, input.Dependency)
+		if err != nil {
+			return interfaces.AgentSecurityRevocationView{}, err
+		}
+		agentIDs, err := s.publishedAgentIDsForReleases(ctx, tenantID, blocked)
+		if err != nil {
+			return interfaces.AgentSecurityRevocationView{}, err
+		}
+		count, err := s.runs.CancelRunsByAgents(ctx, tenantID, agentIDs, "agent security revocation: "+input.Reason)
+		if err != nil {
+			return interfaces.AgentSecurityRevocationView{}, err
+		}
+		if err := s.store.UpdateDependencyRevocationCanceled(ctx, tenantID, row.ID, count); err != nil {
+			return interfaces.AgentSecurityRevocationView{}, err
+		}
+		row.CanceledRunCount = count
+	}
+	return dependencyRevocationView(row), nil
 }
 
-func (s *AgentSecurityService) ListRevocations(context.Context, uint64) ([]interfaces.AgentSecurityRevocationView, error) {
-	return nil, ErrAgentSecurityInvalidInput
+func (s *AgentSecurityService) ListRevocations(ctx context.Context, tenantID uint64) ([]interfaces.AgentSecurityRevocationView, error) {
+	if tenantID == 0 {
+		return nil, ErrAgentSecurityInvalidInput
+	}
+	releases, err := s.store.ListReleaseRevocations(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	dependencies, err := s.store.ListDependencyRevocations(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	views := make([]interfaces.AgentSecurityRevocationView, 0, len(releases)+len(dependencies))
+	for i := range releases {
+		views = append(views, releaseRevocationView(&releases[i]))
+	}
+	for i := range dependencies {
+		views = append(views, dependencyRevocationView(&dependencies[i]))
+	}
+	sort.SliceStable(views, func(i, j int) bool {
+		if views[i].RevokedAt.Equal(views[j].RevokedAt) {
+			return views[i].ID < views[j].ID
+		}
+		return views[i].RevokedAt.Before(views[j].RevokedAt)
+	})
+	return views, nil
 }
 
-func (s *AgentSecurityService) GetRevocation(context.Context, uint64, string) (interfaces.AgentSecurityRevocationView, error) {
-	return interfaces.AgentSecurityRevocationView{}, ErrAgentSecurityInvalidInput
+func (s *AgentSecurityService) GetRevocation(ctx context.Context, tenantID uint64, id string) (interfaces.AgentSecurityRevocationView, error) {
+	id = strings.TrimSpace(id)
+	if tenantID == 0 || id == "" {
+		return interfaces.AgentSecurityRevocationView{}, ErrAgentSecurityInvalidInput
+	}
+	if row, err := s.store.GetReleaseRevocation(ctx, tenantID, id); err != nil {
+		return interfaces.AgentSecurityRevocationView{}, err
+	} else if row != nil {
+		view := releaseRevocationView(row)
+		blocked := map[string]string{row.ReleaseID: row.ListingID}
+		scope, err := s.revocationScope(ctx, tenantID, blocked, interfaces.AgentSecurityRevocationKindRelease)
+		if err != nil {
+			return interfaces.AgentSecurityRevocationView{}, err
+		}
+		view.Scope = &scope
+		return view, nil
+	}
+	row, err := s.store.GetDependencyRevocation(ctx, tenantID, id)
+	if err != nil {
+		return interfaces.AgentSecurityRevocationView{}, err
+	}
+	if row == nil {
+		return interfaces.AgentSecurityRevocationView{}, ErrAgentSecurityNotFound
+	}
+	view := dependencyRevocationView(row)
+	blocked, err := s.blockedReleasesForDependency(ctx, tenantID, types.AgentReleaseDependency{Type: row.DepType, ID: row.DepID, Version: row.DepVersion, Digest: row.DepDigest})
+	if err != nil {
+		return interfaces.AgentSecurityRevocationView{}, err
+	}
+	scope, err := s.revocationScope(ctx, tenantID, blocked, interfaces.AgentSecurityRevocationKindDependency)
+	if err != nil {
+		return interfaces.AgentSecurityRevocationView{}, err
+	}
+	view.Scope = &scope
+	return view, nil
 }
 
 func (s *AgentSecurityService) VerdictForAgent(ctx context.Context, tenantID uint64, agentID string) (interfaces.AgentSecurityVerdict, error) {

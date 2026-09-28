@@ -9,6 +9,36 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestAgentSecurityStoreAppendReleaseAndAuditRollsBackTogether(t *testing.T) {
+	db := openRunTestDB(t)
+	store := NewAgentSecurityStore(db)
+	ctx := context.Background()
+	require.NoError(t, db.Exec(`CREATE TRIGGER fail_agent_security_audit BEFORE INSERT ON audit_logs BEGIN SELECT RAISE(ABORT, 'audit unavailable'); END`).Error)
+
+	err := store.AppendReleaseRevocationWithAudit(ctx,
+		&types.AgentReleaseRevocationEntity{TenantID: 1, ReleaseID: "release-atomic", Reason: "reason", RevokedBy: "admin"},
+		&types.AuditLog{TenantID: 1, Action: types.AuditActionAgentReleaseRevoked, ActorUserID: "admin"})
+	require.Error(t, err)
+	var ledgerRows, auditRows int64
+	require.NoError(t, db.Model(&types.AgentReleaseRevocationEntity{}).Where("tenant_id = ?", 1).Count(&ledgerRows).Error)
+	require.NoError(t, db.Model(&types.AuditLog{}).Where("tenant_id = ? AND action = ?", 1, types.AuditActionAgentReleaseRevoked).Count(&auditRows).Error)
+	require.Zero(t, ledgerRows, "audit failure rolls back the appended ledger row")
+	require.Zero(t, auditRows)
+}
+
+func TestAgentSecurityStoreAppendDependencyAndAuditTogether(t *testing.T) {
+	db := openRunTestDB(t)
+	store := NewAgentSecurityStore(db)
+	ctx := context.Background()
+	row := &types.AgentDependencyRevocationEntity{TenantID: 1, DepType: "skill", DepID: "lookup", DepVersion: "1", DepDigest: "D", Reason: "reason", RevokedBy: "admin"}
+	audit := &types.AuditLog{TenantID: 1, Action: types.AuditActionAgentDependencyRevoked, ActorUserID: "admin"}
+	require.NoError(t, store.AppendDependencyRevocationWithAudit(ctx, row, audit))
+	require.NotEmpty(t, row.ID)
+	var count int64
+	require.NoError(t, db.Model(&types.AuditLog{}).Where("tenant_id = ? AND action = ?", 1, types.AuditActionAgentDependencyRevoked).Count(&count).Error)
+	require.EqualValues(t, 1, count)
+}
+
 // T34 (#64) Task 1: 迁移↔投影对齐——两张撤回台账表必须由生产迁移轨道
 // （migrations/sqlite 全量 Up，经 openRunTestDB）创建，列集与
 // types.AgentReleaseRevocationEntity / AgentDependencyRevocationEntity 对齐。

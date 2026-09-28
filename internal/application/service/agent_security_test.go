@@ -85,6 +85,121 @@ func TestAgentSecurityVerdictBlocksRevokedReleaseAndPassesUnaffected(t *testing.
 	_ = blockedVariant
 }
 
+func TestRevokeReleaseRecordsAuditScopeAndCancelsRuns(t *testing.T) {
+	svc, _, db := newAgentSecurityServiceForTest(t)
+	listingID, r1 := publishUpgradeServiceRelease(t, db, 1, "1.0.0", securityManifest, lockV123, securityBundleWithLock(lockV123))
+	_, r2 := publishUpgradeServiceRelease(t, db, 2, "2.0.0", securityManifest, `{"dependencies":[]}`, securityBundleWithLock(`{"dependencies":[]}`))
+	adoption := adoptUpgradeRelease(t, db, listingID, r1)
+	publishSecurityVariant(t, db, adoption, r1, "V1", "local-agent-r1")
+	publishSecurityVariant(t, db, adoption, r2, "V2", "local-agent-r2")
+	require.NoError(t, db.Exec(`INSERT INTO sessions (id, tenant_id, title, user_id, engine_type) VALUES ('s1', 1, 'security test', 'u1', 'trpc')`).Error)
+	require.NoError(t, db.Exec(`UPDATE sessions SET active_agent_run_id = 'sec-live-1' WHERE tenant_id = 1 AND id = 's1'`).Error)
+	require.NoError(t, db.Exec(`INSERT INTO agent_runs (tenant_id, run_id, session_id, owner_id, request_id, assistant_message_id, request_hash, engine_type, status, snapshot, deadline) VALUES
+		(1, 'sec-live-1', 's1', 'u1', 'req-1', 'm1', 'h1', 'trpc', 'running', ?, datetime('now','+1 hour'))`,
+		`{"session_id":"s1","agent_id":"local-agent-r1","request_id":"req-1","text":"hi"}`).Error)
+
+	view, err := svc.RevokeRelease(context.Background(), 1, "sec-admin", interfaces.ReleaseRevocationInput{ReleaseID: r1, Reason: "CVE-2026-0001", ReplacementReleaseID: r2})
+	require.NoError(t, err)
+	require.Equal(t, interfaces.AgentSecurityRevocationKindRelease, view.Kind)
+	require.Equal(t, "cancel", view.InFlightDisposition)
+	require.EqualValues(t, 1, view.CanceledRunCount)
+	require.Equal(t, listingID, view.ListingID)
+	var status string
+	require.NoError(t, db.Raw(`SELECT status FROM agent_runs WHERE tenant_id = 1 AND run_id = 'sec-live-1'`).Scan(&status).Error)
+	require.Equal(t, "canceled", status)
+	var audit types.AuditLog
+	require.NoError(t, db.Where("tenant_id = ? AND action = ?", 1, types.AuditActionAgentReleaseRevoked).Take(&audit).Error)
+	require.Equal(t, "sec-admin", audit.ActorUserID)
+	require.Equal(t, "marketplace", audit.ScopeType)
+	require.Equal(t, "agent_release", audit.TargetType)
+	require.Equal(t, r1, audit.TargetID)
+	require.JSONEq(t, `{"reason":"CVE-2026-0001","replacement":"`+r2+`","in_flight_disposition":"cancel"}`, string(audit.Details))
+
+	detail, err := svc.GetRevocation(context.Background(), 1, view.ID)
+	require.NoError(t, err)
+	require.Len(t, detail.Scope.BlockedReleases, 1)
+	require.Equal(t, r1, detail.Scope.BlockedReleases[0].ReleaseID)
+	require.Equal(t, []string{adoption.ID}, detail.Scope.AffectedAdoptionIDs)
+	require.Len(t, detail.Scope.AffectedVariants, 1)
+	require.Equal(t, "local-agent-r1", detail.Scope.AffectedVariants[0].LocalAgentID)
+	list, err := svc.ListRevocations(context.Background(), 1)
+	require.NoError(t, err)
+	require.Len(t, list, 1)
+	require.Nil(t, list[0].Scope)
+}
+
+func TestRevokeDependencyUsesExactLockIdentityForScopeAndCancellation(t *testing.T) {
+	svc, _, db := newAgentSecurityServiceForTest(t)
+	listingID, r123 := publishUpgradeServiceRelease(t, db, 1, "1.0.0", securityManifest, lockV123, securityBundleWithLock(lockV123))
+	_, r124 := publishUpgradeServiceRelease(t, db, 2, "2.0.0", securityManifest, lockV124, securityBundleWithLock(lockV124))
+	adoption := adoptUpgradeRelease(t, db, listingID, r123)
+	publishSecurityVariant(t, db, adoption, r123, "v123", "local-agent-v123")
+	publishSecurityVariant(t, db, adoption, r124, "v124", "local-agent-v124")
+	view, err := svc.RevokeDependency(context.Background(), 1, "sec-admin", interfaces.DependencyRevocationInput{
+		Dependency: types.AgentReleaseDependency{Type: "skill", ID: "web-search", Version: "1.2.3", Digest: "D1"},
+		Reason:     "supply-chain compromise", ReplacementVersion: "1.2.4", InFlightDisposition: interfaces.AgentSecurityInFlightAllow})
+	require.NoError(t, err)
+	require.Equal(t, interfaces.AgentSecurityRevocationKindDependency, view.Kind)
+	require.Equal(t, "1.2.4", view.ReplacementVersion)
+	detail, err := svc.GetRevocation(context.Background(), 1, view.ID)
+	require.NoError(t, err)
+	require.Len(t, detail.Scope.BlockedReleases, 1)
+	require.Equal(t, r123, detail.Scope.BlockedReleases[0].ReleaseID)
+	require.Equal(t, interfaces.AgentSecurityRevocationKindDependency, detail.Scope.BlockedReleases[0].BlockedBy)
+	require.Len(t, detail.Scope.AffectedVariants, 1)
+	require.ErrorIs(t, svc.ReleaseAdmission(context.Background(), 1, r123), ErrAgentSecurityReleaseBlocked)
+	require.NoError(t, svc.ReleaseAdmission(context.Background(), 1, r124))
+	_, err = svc.GetRevocation(context.Background(), 2, view.ID)
+	require.ErrorIs(t, err, ErrAgentSecurityNotFound)
+}
+
+func TestRevokeRejectsMalformedInputWithoutWrites(t *testing.T) {
+	svc, _, db := newAgentSecurityServiceForTest(t)
+	_, r1 := publishUpgradeServiceRelease(t, db, 1, "1.0.0", securityManifest, lockV123, securityBundleWithLock(lockV123))
+	_, err := svc.RevokeRelease(context.Background(), 1, "admin", interfaces.ReleaseRevocationInput{ReleaseID: r1, Reason: " "})
+	require.ErrorIs(t, err, ErrAgentSecurityInvalidInput)
+	_, err = svc.RevokeRelease(context.Background(), 1, "admin", interfaces.ReleaseRevocationInput{ReleaseID: "missing", Reason: "x"})
+	require.ErrorIs(t, err, ErrAgentSecurityReleaseUnresolvable)
+	_, err = svc.RevokeRelease(context.Background(), 1, "admin", interfaces.ReleaseRevocationInput{ReleaseID: r1, Reason: "x", InFlightDisposition: "maybe"})
+	require.ErrorIs(t, err, ErrAgentSecurityInvalidInput)
+	_, err = svc.RevokeRelease(context.Background(), 1, "admin", interfaces.ReleaseRevocationInput{ReleaseID: r1, Reason: "x", ReplacementReleaseID: "missing"})
+	require.ErrorIs(t, err, ErrAgentSecurityInvalidInput)
+	_, err = svc.RevokeDependency(context.Background(), 1, "admin", interfaces.DependencyRevocationInput{Dependency: types.AgentReleaseDependency{Type: "skill", ID: "x", Version: "1"}, Reason: "x"})
+	require.ErrorIs(t, err, ErrAgentSecurityInvalidInput)
+	var releases, dependencies, audits int64
+	require.NoError(t, db.Model(&types.AgentReleaseRevocationEntity{}).Count(&releases).Error)
+	require.NoError(t, db.Model(&types.AgentDependencyRevocationEntity{}).Count(&dependencies).Error)
+	require.NoError(t, db.Model(&types.AuditLog{}).Where("action LIKE ?", "agent_security.%").Count(&audits).Error)
+	require.Zero(t, releases)
+	require.Zero(t, dependencies)
+	require.Zero(t, audits)
+}
+
+func TestRevokeReleaseAllowLeavesActiveRunsAndDuplicateAppendsHistory(t *testing.T) {
+	svc, _, db := newAgentSecurityServiceForTest(t)
+	listingID, r1 := publishUpgradeServiceRelease(t, db, 1, "1.0.0", securityManifest, lockV123, securityBundleWithLock(lockV123))
+	adoption := adoptUpgradeRelease(t, db, listingID, r1)
+	publishSecurityVariant(t, db, adoption, r1, "V1", "local-agent-r1")
+	require.NoError(t, db.Exec(`INSERT INTO sessions (id, tenant_id, title, user_id, engine_type) VALUES ('s1', 1, 'security test', 'u1', 'trpc')`).Error)
+	require.NoError(t, db.Exec(`UPDATE sessions SET active_agent_run_id = 'sec-live-2' WHERE tenant_id = 1 AND id = 's1'`).Error)
+	require.NoError(t, db.Exec(`INSERT INTO agent_runs (tenant_id, run_id, session_id, owner_id, request_id, assistant_message_id, request_hash, engine_type, status, snapshot, deadline) VALUES
+		(1, 'sec-live-2', 's1', 'u1', 'req-2', 'm2', 'h2', 'trpc', 'running', ?, datetime('now','+1 hour'))`,
+		`{"session_id":"s1","agent_id":"local-agent-r1","request_id":"req-2","text":"hi"}`).Error)
+	first, err := svc.RevokeRelease(context.Background(), 1, "admin", interfaces.ReleaseRevocationInput{ReleaseID: r1, Reason: "reason", InFlightDisposition: interfaces.AgentSecurityInFlightAllow})
+	require.NoError(t, err)
+	require.Zero(t, first.CanceledRunCount)
+	second, err := svc.RevokeRelease(context.Background(), 1, "admin2", interfaces.ReleaseRevocationInput{ReleaseID: r1, Reason: "expanded", InFlightDisposition: interfaces.AgentSecurityInFlightAllow})
+	require.NoError(t, err)
+	history, err := svc.ListRevocations(context.Background(), 1)
+	require.NoError(t, err)
+	require.Len(t, history, 2)
+	require.Equal(t, first.ID, history[0].ID)
+	require.Equal(t, second.ID, history[1].ID)
+	var status string
+	require.NoError(t, db.Raw(`SELECT status FROM agent_runs WHERE tenant_id = 1 AND run_id = 'sec-live-2'`).Scan(&status).Error)
+	require.Equal(t, "running", status)
+}
+
 // AC1 核心断言：依赖撤回的匹配键是 (type,id,version,digest) 四元组，
 // 不是名称——同名不同版本不阻断（不得借同名替换「自愈」），同名同版本
 // 不同 digest 仍阻断（digest 是锁定身份的一部分）。
