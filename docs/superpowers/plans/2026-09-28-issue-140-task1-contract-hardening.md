@@ -84,7 +84,16 @@
 
 **Files:** Career observer contract/implementation and API client/Desk tests; update ADR 0019 or assembly documentation only if needed to name the observer-provider contract.
 
-- [ ] Add a regression test that ordinary `createWeKnoraClient`/Career Desk observation without a configured revision source fails immediately with a typed `CareerObservationUnavailableError` (or equivalent explicit unsupported result); it must not return a successful inert subscription.
-- [ ] Add an assembled test with the configured provider: emit a revision hint, fetch the authoritative Desk envelope through CareerApi, decode it, and confirm the Desk publishes only the refreshed decoded projection; verify unsubscribe stops delivery.
-- [ ] State in the public client/assembly contract that the runtime supplies `careerObserver` and consumers handle unsupported observation with an explicit refresh strategy; no event source exists in the present transport.
-- [ ] Run tests RED then GREEN, focused suites, strict Career type check, `pnpm test:shared`, accepted baseline `pnpm typecheck:shared`, and `git diff --check`; save exact report and patch hash. Keep Task 1 and downstream work blocked pending independent review.
+- [x] Add a regression test that ordinary `createWeKnoraClient`/Career Desk observation without a configured revision source fails immediately with a typed `CareerObservationUnavailableError` (or equivalent explicit unsupported result); it must not return a successful inert subscription.
+- [x] Add an assembled test with the configured provider: emit a revision hint, fetch the authoritative Desk envelope through CareerApi, decode it, and confirm the Desk publishes only the refreshed decoded projection; verify unsubscribe stops delivery.
+- [x] State in the public client/assembly contract that the runtime supplies `careerObserver` and consumers handle unsupported observation with an explicit refresh strategy; no event source exists in the present transport.
+- [x] Run tests RED then GREEN, focused suites, strict Career type check, `pnpm test:shared`, accepted baseline `pnpm typecheck:shared`, and `git diff --check`; save exact report and patch hash. Keep Task 1 and downstream work blocked pending independent review.
+
+### Task 1R4: Bind revision observation to the authenticated deployment
+
+**Dependency:** Task 1R3 implementation `e2040f7703c8234724fc9ad78f0080d3c8430f64`; finding `T1R3-M1` in `.superpowers/sdd/2026-09-28-issue-140-main-port/task-1r3-review.md`.
+
+- [ ] Add an assembled regression: client base URL `https://a.example`, observe scope origin `https://b.example`; expect the same typed deployment-origin error as HTTP calls and assert `careerObserver` was not invoked.
+- [ ] Preserve a positive control: matching origin registers, receives a revision hint, refreshes through CareerApi decoding, and unsubscribes on dispose.
+- [ ] Apply the authenticated client's base-origin guard at the observer adapter boundary before provider invocation; retain provider-owned tenant/actor authorization.
+- [ ] Run the mismatched-origin test RED, then focused Career suite, strict TypeScript, `pnpm test:shared`, accepted baseline shared typecheck and `git diff --check`; record exact BASE/HEAD and separate evidence from implementation. Do not release Task 2 until independent review passes.
