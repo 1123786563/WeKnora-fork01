@@ -4,7 +4,7 @@
 
 **Goal:** 在已合并的 #59（Adoption/Variant）、#60（Public Marketplace 与引入台账）、#61（Upgrade Proposal）之上实现 spec §10/§11 的安全撤回层：治理主体（Admin+，spec §13 `security_revoke_release`）可以按**不可变锁定身份**撤回一个 Agent Release 或一条锁定依赖；撤回记录 append-only 保留历史、原因、影响范围与替代版本；被撤回 Release 与被传递阻断（Dependency Security Block）的 Release 在**新引入 / 新变体发布 / 新 Task/Run** 三类入口被服务端拒绝（新 Task/Run 阻断覆盖 workbench executions 准入、agent-chat 轮次入口与 queue_next 重启派发）；在途执行按撤回请求声明的风险处置（默认 cancel，复用 #37 的全保真撤销语义）；任何路径都**不按名称替换依赖、不删除既有 Release/Variant/Task/审计历史**。
 
-**Architecture:** 全部为 Go 后端新增层，零 TS 改动（spec §2：Marketplace 治理不在移动端执行；移动端消费面属 #65 信任信号）。数据层新增两张 append-only 台账表 `agent_release_revocations` / `agent_dependency_revocations`（双迁移流 versioned 000204 / sqlite 000125；#63 已占用 000203 / 000124）；依赖撤回的匹配键是 `types.AgentReleaseDependency` 的**完整四元组（type, id, version, digest）**——与 `DependencyLock` 已有的不可变版本+digest 锁定（internal/types/agent_marketplace.go:91-118）同一身份口径，天然满足「依赖不按名称自动替换」。仓储层新建 `AgentSecurityStore`（不改动既有 `AgentAdoptionRepository` 接口，传播查询直接覆盖 `agent_releases` 与 `tenant_introduced_releases` 两个 Release 来源）；`AgentRunStore` 新文件方法 `CancelRunsByAgents` 复用 #37 `CancelRun` 的同款事务语义（status=canceled + cancellation_requested 事件 + sessions 槽释放 + revision+1）。服务层新建 `AgentSecurityService`：判定面（`VerdictForAgent` / `ReleaseAdmission`）与操作面（`RevokeRelease` / `RevokeDependency`，撤回行与审计行同一事务写入，在途处置在提交后执行并回写 `canceled_run_count`）。运行入口闸门走两条既有缝：workbench 侧 `AdmissionCoordinator` 新增 `SetAgentSecurityGate`（在 W34 capability gate 同款位置——第一个 durable write 之前 consulted）；agent-chat 侧 `session.Handler` 新增 `SetAgentSecurityGate`（照 `SetTaskDeletionGuard`（internal/handler/session/handler.go:125-130）的 nil-safe 先例，在 SSE/消息行/live-run 槽产生之前拒绝）；治理面（Adopt/CreateVariant/PublishVariant/AcceptUpgradeProposal）经两个既有服务上的 `SetReleaseSecurityGate` 可选注入。端到端证据落在真实迁移流上的 router 级 HTTP 测试（与 #59/#61 同判的最高稳定 Interface）。
+**Architecture:** 全部为 Go 后端新增层，零 TS 改动（spec §2：Marketplace 治理不在移动端执行；移动端消费面属 #65 信任信号）。数据层新增两张 append-only 台账表 `agent_release_revocations` / `agent_dependency_revocations`（双迁移流 versioned 000204 / sqlite 000125；#63 已占用 000203 / 000124）；依赖撤回的匹配键是 `types.AgentReleaseDependency` 的**完整四元组（type, id, version, digest）**——与 `DependencyLock` 已有的不可变版本+digest 锁定（internal/types/agent_marketplace.go:91-118）同一身份口径，满足「依赖不按名称自动替换」。仓储层新建 `AgentSecurityStore`（不改动既有 `AgentAdoptionRepository` 接口，传播查询直接覆盖 `agent_releases` 与 `tenant_introduced_releases` 两个 Release 来源）；`AgentRunStore` 新文件方法 `CancelRunsByAgents` 复用 #37 `CancelRun` 事务语义（status=canceled + cancellation_requested 事件 + sessions 槽释放 + revision+1）。服务层新建 `AgentSecurityService`：判定面（`VerdictForAgent` / `ReleaseAdmission`）与操作面（`RevokeRelease` / `RevokeDependency`，撤回行与审计行同一事务写入，在途处置于提交后执行并回写 `canceled_run_count`）。运行准入使用受审查的事务 seam：Workbench 快速拒绝后仍由 8C `AgentRunStore.Admit` 在同一 tenant guard 事务中完成权威 Version/Release 判定；AgentQA 由 8B durable claim 在消息 placeholder 前原子固定安全判定、Version 和请求幂等身份，8D 仅消费 claim 并以 fencing 原子写消息，不使用旧的 session `SetAgentSecurityGate` 作为判定面。治理面（Adopt/CreateVariant/PublishVariant/AcceptUpgradeProposal）经既有 service 的 `SetReleaseSecurityGate` 注入。最高稳定接口证据位于真实迁移流上的 HTTP 测试，与 #59/#61 的验收方式一致。
 
 **Tech Stack:** Go 1.26（`go.mod` `go 1.26.0`，module `github.com/Tencent/WeKnora`）、gin + gorm + golang-migrate、`github.com/google/uuid`、`github.com/stretchr/testify/require`。测试复用既有真实迁移库 helper：repository 包 `openRunTestDB`（internal/application/repository/agent_run_test.go:29）、service 包 `openAgentVersionServiceTestDB`（internal/application/service/agent_version_test.go）与同包 seeder `publishUpgradeServiceRelease`/`adoptUpgradeRelease`（internal/application/service/agent_upgrade_test.go:46/85）、router 包 `openTenantAgentMarketplaceHTTPTestDB`（internal/router/routes_agent_marketplace_test.go:349）与 `adoptionCall`/`publishAdoptionRelease`（internal/router/routes_agent_adoption_test.go:74/93）、workbench 包 `openAdmissionConcurrencyDB`（internal/modules/workbench/service/workbench/admission_concurrency_test.go:168）。本计划无 TS/移动端改动、无外部凭据依赖、无 blocked-env 验收项（全部验收可在本地 sqlite 真实迁移流上验证）。
 
@@ -40,7 +40,7 @@
 
 Spec 隐含但易咬人的五类输入/失效模式（每行后在所属任务以测试钉死）：
 
-1. **同名依赖误伤/漏伤（AC1 的两个反面）**：撤回 (skill, web-search, 1.2.3, D1) 后，锁定 web-search **1.2.4/D2**（同名不同版本）的 Release 必须照常可用——阻断键是四元组不是名称；锁定 web-search **1.2.3/D2**（同名同版本不同 digest）的 Release 必须仍被阻断——digest 是身份的一部分。运行时任何路径不得借同名替换「自愈」。——Task 4 `TestAgentSecurityVerdictDependencyBlockedKeysOnExactLockedIdentity` + Task 9 e2e AC1 断言组。
+1. **同名依赖误伤/漏伤（AC1 的两个反面）**：撤回 (skill, web-search, 1.2.3, D1) 后，锁定 web-search **1.2.4/D2**（同名不同版本）和 **1.2.3/D2**（同名同版本、不同 digest）的 Release 都必须照常可用；只有精确锁定 `(skill, web-search, 1.2.3, D1)` 的 Release 被阻断。运行时任何路径不得借同名替换「自愈」。——Task 4 `TestAgentSecurityVerdictDependencyBlockedKeysOnExactLockedIdentity` + Task 9 e2e AC1 断言组。
 2. **引入式 Release 漏检**：#60 之后一个 Tenant 的 Release 面横跨 `agent_releases` 与 `tenant_introduced_releases` 两张表；传播与判定只查本地表会把引入面漏成放行。——Task 2 `TestAgentSecurityStoreReleaseFactsCoversLocalAndIntroducedReleases` + Task 4 `TestAgentSecurityVerdictCoversIntroducedRelease`。
 3. **跨租户枚举**：他租户的 revocation id / release / agent 查询必须与不存在同形（404 / 不阻断 / 空列表），不泄漏存在性。——Task 2 tenant-scope 断言 + Task 9 e2e（tenant-2 列表为空、跨租户 GET 404）。
 4. **闸门基础设施故障放行**：安全闸门的 store 查询失败时，新 Task/Run 不得放行——fail closed（500/原错误，绝不 ok-verdict 兜底）。——Task 8 `TestAdmissionAgentSecurityGateFailsClosedOnInfrastructureError` + `TestGuardAgentSecurityFailsClosedOnInfrastructureError`。
@@ -1406,7 +1406,7 @@ The implementation must preserve these ordering invariants:
 3. AgentQA must resolve the applicable custom Agent without writing files or rows, and reject blocked agents before attachment persistence, message writes, live-run allocation, or SSE. Cover quick-answer mode as well as agent mode. Do not keep a tenant lock open across storage extraction or streaming; the implementation must use a durable admission/claim seam whose state participates in revocation ordering and has explicit cleanup on downstream failure.
 4. Task 8 preserves `NewWorkbenchAdmissionCoordinator`'s current `adoptions` parameter and `SetAgentUseGate` retirement guard while adding security wiring.
 
-The repository-level transaction seam and AgentQA turn-claim lifecycle require a separate detailed Task8 plan before any Task8 Brief or implementation dispatch. The architecture evidence and blocking findings are recorded in `evidence/t64-task7-task8-preflight.md` and `B6-execution-ledger.md`. Do not implement the pseudocode below literally. Task8 will be split into serial, independently reviewed checkpoints for transactional Run admission, workbench guard/wiring, and AgentQA side-effect-free resolution plus a guarded turn claim. Each checkpoint needs its own Brief, owned files, Review Package, independent review and validation before the next checkpoint consumes it. Task9 remains downstream of all Task8 checkpoints.
+The repository-level transaction seam and AgentQA turn-claim lifecycle require a separate detailed Task8 plan before any Task8 Brief or implementation dispatch. The architecture evidence and blocking findings are recorded in `evidence/t64-task7-task8-preflight.md` and `B6-execution-ledger.md`. Do not implement the pseudocode below literally. Task 8 follows the reviewed schedule in `plan-t64-task8-atomic-admission.md`: 8A exact Version-aware guarded predicate, then 8B durable claim schema/store plus atomic revocation cancellation; both are serial prerequisites and each requires its own Brief, owned files, Review Package, independent review and validation. After 8B is integrated, 8C Run admission and 8D AgentQA handler claim adoption may run concurrently in separate Worktrees with non-overlapping owned files and isolated test databases. 8E Workbench replay/settlement follows verified 8C. Task9 remains downstream of verified 8C–8E. The initial file/interface sketch below is superseded by the linked detailed plan and must not be dispatched.
 
 **Files:**
 - Modify: `internal/modules/workbench/service/workbench/admission.go`（字段 + setter + Start guard + 哨兵）
@@ -1688,21 +1688,22 @@ git commit -m "feat(security): 新 Task/Run 双入口安全闸门——durable w
 **Files:**
 - Test: `internal/router/routes_agent_security_test.go`（文件 A：治理 wire + workbench 运行入口 + 传播/历史/租户隔离/治理地板）
 - Test: `internal/handler/session/agent_security_e2e_test.go`（文件 B：agent-chat 运行入口——必须在 session 包内，`Handler` 的装配字段是包内未导出字段，router 包无法赋值）
+- **Dependency / test-resource gate:** dispatch only after Task8 checkpoints 8C, 8D, and 8E have passed review/validation and are integrated. Run the session-package Task9 tests only after 8D validation finishes; use per-test `t.TempDir()` databases and no shared fixed port.
 
 **Interfaces:**
 - Consumes: Task 1-8 全部产出；router 包既有 helper `openTenantAgentMarketplaceHTTPTestDB`、`adoptionCall`、`publishAdoptionRelease`（internal/router/routes_agent_marketplace_test.go:349、routes_agent_adoption_test.go:74/93）；`newAgentAdoptionTestApp` 的真实 stack 装配范本（routes_agent_adoption_test.go:26）；workbench 侧 `session.NewWorkbenchStartHandler`（公开构造器）+ `workbenchservice.NewAdmissionCoordinatorWithBinding`；`middleware.ErrorHandler`；session 包内 `#42` 的 stub 判例 `runGateSessions`（task_collaboration_run_test.go:36-45）与 `openCraftHTTPDB`。
 - Produces: AC 级 e2e 证据（供 #65 信任信号与后续移动治理面引用的既有事实源）。
 
 **文件 A 装配**（`newAgentSecurityTestApp(t)`，照 `newAgentAdoptionTestApp` 逐件真实：真实 `CustomAgentService`/`AgentVersionService`/`AgentMarketplaceService`/`AgentAdoptionService`/`AgentSecurityService`/`AgentSecurityStore`/`AgentRunStore`；真实路由注册 `RegisterAgentMarketplaceRoutes` + `RegisterAgentAdoptionRoutes` + `RegisterAgentSecurityRoutes`；另挂 workbench 运行入口：
-- `v1.POST("/workbench/executions", session.NewWorkbenchStartHandler(coordinator).Start)`：`coordinator, err := workbenchservice.NewAdmissionCoordinatorWithBinding(db, runs, workbenchservice.NewDurableTaskBudget(db), nil, workbenchservice.NewDatabaseAdmissionBindingResolver(nil))` 后 `coordinator.SetAgentSecurityGate(security)`；
+- `v1.POST("/workbench/executions", session.NewWorkbenchStartHandler(coordinator).Start)`：按 Task8-E 的生产构造器装配 `AdmissionCoordinator`、真实 `AgentSecurityService` 和 `SetAgentUseGate`；可信 binding resolver 必须通过 `AgentSecurityService.ResolvePublishedAgentVersion(tenantID, agentID)` 将已发布 Variant 的 Version 与 Release 写入 `TrustedAdmissionBinding.LocalAgentVersionID`/`ReleaseID`，再由 8C 的 `AgentRunStore.Admit` 事务复核这两个精确 pin。不得沿用 `NewDatabaseAdmissionBindingResolver(nil)` 并让它返回缺少 Version/Release 的默认 binding；也不得从 HTTP JSON 读取任一 pin。
 - RBAC 上下文中间件照 newAgentAdoptionTestApp（X-Test-Tenant/X-Test-Actor/X-Test-Role 注入 context keys + gin keys）。
-- 种子：`agent-owned`（`Config.AgentMode: "smart-reasoning"`——variant 本地 agent 经 payload 继承）；会话 `s-wb`（tenant 1、owner `contributor`、`engine_type='trpc'`，作 workbench Start 的 session_id）。
+- 种子：`agent-owned`（`Config.AgentMode: "smart-reasoning"`——variant 本地 agent 经 payload 继承）；四个独立会话 `s-wb`、`s-wb-post`、`s-wb-dep-digest`、`s-live`（tenant 1、owner `contributor`、`engine_type='trpc'`）。分别供撤回前准入、撤回后拒绝、同版本不同 digest 的安全准入、在途 Run fixture 使用，避免活动槽互相占用。
 
-agent-chat 轮次入口**不在文件 A 挂载**：其 handler 装配需要设置 `session.Handler` 的未导出字段（`sessionService`/`customAgentService`），只有 session 包内测试可写——归文件 B。
+agent-chat 轮次入口**不在文件 A 挂载**：其 handler 装配需要设置 `session.Handler` 的未导出字段（`sessionService`/`customAgentService`/claim-store/AgentVersion service），只有 session 包内测试可写——归文件 B。生产 DI 已由 Task8-B 单独验证。
 
-**文件 B 装配**（`newAgentChatSecurityE2E(t)`）：真实全量迁移 sqlite（`openCraftHTTPDB`）；真实 `AgentSecurityStore`/`AgentRunStore`/`AgentSecurityService`/`AgentAdoptionRepository`/`AgentMarketplaceRepository`/`CustomAgentService`；handler 直接用包内结构体字面量 `&Handler{sessionService: sqlBackedChatSessions{db}, customAgentService: customAgents}`（`sqlBackedChatSessions` 为本文件内嵌 `interfaces.SessionService` 的最小 stub，`GetOwnedSession` 委托 `repository.NewSessionRepository(db)`——#42 runGateSessions 判例）+ `SetAgentSecurityGate(security)`；gin 引擎挂 `middleware.ErrorHandler()` + 同款 context 注入中间件 + `r.POST("/agent-chat/:session_id", h.AgentQA)` + 治理端点 `r.POST("/api/v1/marketplace/tenant/security-revocations/releases", handler.NewAgentSecurityHandler(security).RevokeRelease)` 与 `.../dependencies`（直挂 handler 方法，撤回也走 HTTP）。种子：`tenants`/`users`（`u1`）行、会话 `s-chat`（owner `u1`、`engine_type='trpc'`）、真实仓储播种带锁 Release + adoption + published variant（`UpdateVariantState` 挂 `local_agent_id`，镜像 Task 4 测试 seeder）、本地 agent 行 `db.Create(&types.CustomAgent{ID: "local-agent-e2e", TenantID: 1, Config: types.CustomAgentConfig{AgentMode: "smart-reasoning"}})`。
+**文件 B 装配**（`newAgentChatSecurityE2E(t)`）：真实全量迁移 sqlite（`openCraftHTTPDB`）；真实 `AgentSecurityStore`/`AgentRunStore`/`AgentSecurityService`/`AgentAdoptionRepository`/`AgentMarketplaceRepository`/`CustomAgentService`/`AgentVersionService`/`AgentChatTurnClaimStore` 和消息仓储/服务；handler 经真实 Gin route 执行 `AgentQA`，装配真实 claim/version services 与 tenant/session/message persistence。`sqlBackedChatSessions` 对 `GetOwnedSession` 委托 `repository.NewSessionRepository(db)`，只把外部 AgentQA 执行器换成一个可控 barrier adapter：调用进入后等 ctx cancel 或 test release channel。这个 adapter 只模拟外部模型/执行端口；claim admission、fencing watcher、消息持久化、revocation service/store、HTTP 路由、RequestID 和 SSE 均为真实实现。**不要**调用旧 `SetAgentSecurityGate` 作为 AgentQA 判定路径；claim-store admission 才是 8A/8B 原子判定面。Gin 引擎挂 `middleware.RequestID()`、`middleware.ErrorHandler()`、context 注入、`r.POST("/agent-chat/:session_id", h.AgentQA)`，以及真实 release/dependency 撤回端点。文件 B 不挂版本发布或 Adoption 治理 routes；`seedPublishedVariant` 通过真实 DB repositories 创建 Adoption、Variant、本地 Agent 与冻结 Version，固定非空 `local_agent_version_id` 并校验 tenant/Release/Agent 关联。每次 AgentQA 测试显式设置可复用的 `X-Request-ID`；服务端生成的助手 ID 不从请求构造。种子：`tenants`/`users`（`u1`）行、会话 `s-chat`（owner `u1`、`engine_type='trpc'`），本地 agent 行和真实仓储播种带锁 Release/adoption/published variant。
 
-**文件 B 只断言 blocked 方向**（409，guard 在 SSE/消息行/live-run 槽之前返回，深管线零触达——stub 不实现 `AgentQA`/`streamManager` 也不会被调用）；「放行方向不回归」由 #42 既有 `TestAgentQARunGateStaysOwnerScopedForGrantHolders`（无闸门装配）与文件 A 的 workbench 202 对照共同证明——放行路径进入深管线的全链验证属会话服务既有测试域，不在本 Issue。
+**文件 B 覆盖三条 HTTP 行为**：新安全拒绝返回 409、不启动 SSE 且无 claim/message 写入；真实 claim 已准入后 `cancel` 撤回持久化 cancelled 状态并中断 barrier adapter 的 context，助手 placeholder 进入终态且历史保留；真实 claim 已准入后 `allow` 撤回不取消 context，barrier 释放后 turn 正常完成、claim/message 历史保留。后两条都先等待 adapter 的 entered channel 再通过真实治理 HTTP 发起撤回，避免依赖计时 sleep。不要依赖错误 body 的具体句子；外部模型执行使用确定性 adapter，其余 handler、session ownership、claim/消息 repository、revocation 和 HTTP 路由保持真实。
 
 带锁 Release 的播种（HTTP 链恒空锁，见差异记录第 7 条）：文件 A/B 各自的 helper `publishSecurityReleaseWithLock(t, db, semanticVersion, lock)`——镜像 service 包 `publishUpgradeServiceRelease` 的仓储路径（`agent_versions` 插行 + `repository.NewAgentMarketplaceRepository(db).CreateSubmission`（带 `DependencyLockJSON: lock`）+ `ReviewAndPublishTx`），返回 (listingID, releaseID)。这是 fixture 播种，被测行为（撤回/阻断/处置）全部走真实 HTTP。
 
@@ -1727,7 +1728,7 @@ package router
 
 import (...)
 
-func newAgentSecurityTestApp(t *testing.T) (*gin.Engine, *gorm.DB) { /* 按 Interfaces 装配块实现；返回 engine/db（会话 id 常量 's-wb'） */ }
+func newAgentSecurityTestApp(t *testing.T) (*gin.Engine, *gorm.DB) { /* 按 Interfaces 装配块实现；返回 engine/db（fixtures 创建 s-wb、s-wb-post、s-wb-dep-digest 与 s-live） */ }
 
 // publishVariantOverHTTP 走真实治理 HTTP：adopt → create variant →
 // capability-mapping（manifest 要求 model/knowledge 时给齐）→ test → publish，
@@ -1738,12 +1739,21 @@ func TestAgentSecurityE2EReleaseRevocationBlocksNewTaskRunAndDisposesInFlight(t 
 	r, db := newAgentSecurityTestApp(t)
 	listingID, releaseID := publishAdoptionRelease(t, r)
 	localAgentID := publishVariantOverHTTP(t, r, listingID, releaseID, "Sales")
+	var pinnedVariant types.AgentAdoptionVariantEntity
+	require.NoError(t, db.Where("tenant_id = ? AND local_agent_id = ?", 1, localAgentID).Take(&pinnedVariant).Error)
 
 	// 在途 Run：真实 agent_runs 行 + 会话活动槽（fixture，镜像 #34/#35 形态）。
-	require.NoError(t, db.Exec(`UPDATE sessions SET active_agent_run_id = 'e2e-live-1' WHERE tenant_id = 1 AND id = 's-wb'`).Error)
-	require.NoError(t, db.Exec(`INSERT INTO agent_runs (tenant_id, run_id, session_id, owner_id, request_id, assistant_message_id, request_hash, engine_type, status, snapshot, deadline) VALUES
-		(1, 'e2e-live-1', 's-wb', 'contributor', 'req-e2e-1', 'me1', 'he1', 'trpc', 'running', ?, datetime('now','+1 hour'))`,
-		`{"session_id":"s-wb","agent_id":"`+localAgentID+`","request_id":"req-e2e-1","text":"hi"}`).Error)
+	require.NoError(t, db.Exec(`UPDATE sessions SET active_agent_run_id = 'e2e-live-1' WHERE tenant_id = 1 AND id = 's-live'`).Error)
+	require.NoError(t, db.Exec(`INSERT INTO agent_runs (tenant_id, run_id, session_id, owner_id, request_id, assistant_message_id, request_hash, engine_type, status, snapshot, security_agent_id, security_local_agent_version_id, security_release_id, security_pin_source, deadline) VALUES
+		(1, 'e2e-live-1', 's-live', 'contributor', 'req-e2e-1', 'me1', 'he1', 'trpc', 'running', ?, ?, ?, ?, 'admission', datetime('now','+1 hour'))`,
+		`{"session_id":"s-live","agent_id":"`+localAgentID+`","local_agent_version_id":"`+pinnedVariant.LocalAgentVersionID+`","release_id":"`+releaseID+`","request_id":"req-e2e-1","text":"hi"}`,
+		localAgentID, pinnedVariant.LocalAgentVersionID, releaseID).Error)
+	var livePin struct { AgentID string `gorm:"column:security_agent_id"`; VersionID string `gorm:"column:security_local_agent_version_id"`; ReleaseID string `gorm:"column:security_release_id"`; Source string `gorm:"column:security_pin_source"` }
+	require.NoError(t, db.Raw(`SELECT security_agent_id, security_local_agent_version_id, security_release_id, security_pin_source FROM agent_runs WHERE tenant_id = 1 AND run_id = 'e2e-live-1'`).Scan(&livePin).Error)
+	require.Equal(t, localAgentID, livePin.AgentID)
+	require.Equal(t, pinnedVariant.LocalAgentVersionID, livePin.VersionID)
+	require.Equal(t, releaseID, livePin.ReleaseID)
+	require.Equal(t, "admission", livePin.Source)
 
 	// 撤回前：workbench 新 Run 入口照常（202）。
 	preWorkbench := adoptionCall(r, 1, http.MethodPost, "/api/v1/workbench/executions", "contributor", "contributor",
@@ -1757,7 +1767,7 @@ func TestAgentSecurityE2EReleaseRevocationBlocksNewTaskRunAndDisposesInFlight(t 
 
 	// 撤回后：workbench 新 Run 被拒（409，零 durable write）。
 	postWorkbench := adoptionCall(r, 1, http.MethodPost, "/api/v1/workbench/executions", "contributor", "contributor",
-		map[string]any{"session_id": "s-wb", "request_id": "req-e2e-post", "text": "hi", "agent_id": localAgentID})
+		map[string]any{"session_id": "s-wb-post", "request_id": "req-e2e-post", "text": "hi", "agent_id": localAgentID})
 	require.Equal(t, http.StatusConflict, postWorkbench.Code)
 	require.Contains(t, postWorkbench.Body.String(), "agent security policy refused the admission")
 
@@ -1771,7 +1781,7 @@ func TestAgentSecurityE2EReleaseRevocationBlocksNewTaskRunAndDisposesInFlight(t 
 	require.NoError(t, db.Raw(`SELECT COUNT(*) FROM agent_run_events WHERE tenant_id = 1 AND run_id = 'e2e-live-1' AND event_type = 'cancellation_requested'`).Scan(&events).Error)
 	require.EqualValues(t, 1, events)
 	var slot *string
-	require.NoError(t, db.Raw(`SELECT active_agent_run_id FROM sessions WHERE tenant_id = 1 AND id = 's-wb'`).Scan(&slot).Error)
+	require.NoError(t, db.Raw(`SELECT active_agent_run_id FROM sessions WHERE tenant_id = 1 AND id = 's-live'`).Scan(&slot).Error)
 	require.Nil(t, slot)
 
 	// 治理面同步收紧：新 Variant 草稿（默认 accepted release）被拒。
@@ -1789,12 +1799,14 @@ func TestAgentSecurityE2EReleaseRevocationBlocksNewTaskRunAndDisposesInFlight(t 
 }
 
 func TestAgentSecurityE2EDependencyRevocationNeverSubstitutesByName(t *testing.T) {
-	r, db, _ := newAgentSecurityTestApp(t)
+	r, db := newAgentSecurityTestApp(t)
 	// 带锁 Release 经真实仓储播种（HTTP 链恒空锁，差异记录第 7 条）。
 	listingV123, rLockV123 := publishSecurityReleaseWithLock(t, db, "1.0.0", `{"dependencies":[{"type":"skill","id":"web-search","version":"1.2.3","digest":"D1","license_id":"MIT"}]}`)
 	listingV124, rLockV124 := publishSecurityReleaseWithLock(t, db, "1.1.0", `{"dependencies":[{"type":"skill","id":"web-search","version":"1.2.4","digest":"D2","license_id":"MIT"}]}`)
+	listingV123D2, rLockV123D2 := publishSecurityReleaseWithLock(t, db, "1.2.0", `{"dependencies":[{"type":"skill","id":"web-search","version":"1.2.3","digest":"D2","license_id":"MIT"}]}`)
 	agentV123 := publishVariantOverHTTP(t, r, listingV123, rLockV123, "On v123")
 	agentV124 := publishVariantOverHTTP(t, r, listingV124, rLockV124, "On v124")
+	agentV123D2 := publishVariantOverHTTP(t, r, listingV123D2, rLockV123D2, "On v123 D2")
 
 	revoked := adoptionCall(r, 1, http.MethodPost, "/api/v1/marketplace/tenant/security-revocations/dependencies", "admin", "sec-admin",
 		map[string]any{"dependency": map[string]string{"type": "skill", "id": "web-search", "version": "1.2.3", "digest": "D1"},
@@ -1807,10 +1819,13 @@ func TestAgentSecurityE2EDependencyRevocationNeverSubstitutesByName(t *testing.T
 	require.Equal(t, http.StatusConflict, blockedRun.Code)
 	require.Contains(t, blockedRun.Body.String(), "agent security policy refused the admission")
 
-	// AC1 反面：同名不同版本（1.2.4/D2）不受牵连、也不被顶替——照常可启动（202）。
+	// AC1 反面：版本不同或仅 digest 不同的依赖都不受牵连——照常可启动（202）。
 	cleanRun := adoptionCall(r, 1, http.MethodPost, "/api/v1/workbench/executions", "contributor", "contributor",
-		map[string]any{"session_id": "s-wb", "request_id": "req-e2e-dep-clean", "text": "hi", "agent_id": agentV124})
+		map[string]any{"session_id": "s-wb-post", "request_id": "req-e2e-dep-clean", "text": "hi", "agent_id": agentV124})
 	require.Equal(t, http.StatusAccepted, cleanRun.Code, "同名不同版本不被阻断（不按名称替换/不误伤），也未被静默换绑")
+	cleanDigestRun := adoptionCall(r, 1, http.MethodPost, "/api/v1/workbench/executions", "contributor", "contributor",
+		map[string]any{"session_id": "s-wb-dep-digest", "request_id": "req-e2e-dep-clean-digest", "text": "hi", "agent_id": agentV123D2})
+	require.Equal(t, http.StatusAccepted, cleanDigestRun.Code, "相同依赖版本但不同 digest 不匹配被撤回的精确锁")
 
 	// 全链无任何「自动换依赖」痕迹：被阻断 variant 的本地 agent 行未被改写。
 	var cfgAgent string
@@ -1821,7 +1836,8 @@ func TestAgentSecurityE2EDependencyRevocationNeverSubstitutesByName(t *testing.T
 func TestAgentSecurityE2ERevocationKeepsHistoryReasonScopeReplacement(t *testing.T) {
 	r, db := newAgentSecurityTestApp(t)
 	listingID, r1 := publishAdoptionRelease(t, r)
-	_, r2 := publishAdoptionRelease(t, r) // 第二个 release（同 listing 前移）
+	listingID2, r2 := publishAdoptionRelease(t, r) // 同一 source agent 的后续提交应复用 Listing。
+	require.Equal(t, listingID, listingID2, "replacement Release must belong to the original Listing")
 	agentR1 := publishVariantOverHTTP(t, r, listingID, r1, "On r1")
 
 	revoked := adoptionCall(r, 1, http.MethodPost, "/api/v1/marketplace/tenant/security-revocations/releases", "admin", "sec-admin",
@@ -1873,7 +1889,14 @@ func TestAgentSecurityE2ERevocationKeepsHistoryReasonScopeReplacement(t *testing
 }
 
 func TestAgentSecurityE2EGovernanceFloorAndTenantIsolation(t *testing.T) {
-	r, _, _ := newAgentSecurityTestApp(t)
+	r, _ := newAgentSecurityTestApp(t)
+	_, releaseID := publishAdoptionRelease(t, r)
+	revoked := adoptionCall(r, 1, http.MethodPost, "/api/v1/marketplace/tenant/security-revocations/releases", "admin", "sec-admin",
+		map[string]any{"release_id": releaseID, "reason": "tenant-isolation-fixture"})
+	require.Equal(t, http.StatusCreated, revoked.Code, revoked.Body.String())
+	var createdRevocation struct { Data struct { ID string `json:"id"` } `json:"data"` }
+	require.NoError(t, json.Unmarshal(revoked.Body.Bytes(), &createdRevocation))
+	require.NotEmpty(t, createdRevocation.Data.ID)
 	// Admin+ full-access 地板（#61 治理路由同款断言面）。	g := &rbacGuards{}
 	v1 := gin.New().Group("/api/v1")
 	RegisterAgentSecurityRoutes(v1, handler.NewAgentSecurityHandler(nil), g)
@@ -1898,8 +1921,10 @@ func TestAgentSecurityE2EGovernanceFloorAndTenantIsolation(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(list2.Body.Bytes(), &empty))
 	require.Empty(t, empty.Data)
-	foreign := adoptionCall(r, 2, http.MethodGet, "/api/v1/marketplace/tenant/security-revocations/whatever", "admin", "admin", nil)
+	foreign := adoptionCall(r, 2, http.MethodGet, "/api/v1/marketplace/tenant/security-revocations/"+createdRevocation.Data.ID, "admin", "admin", nil)
 	require.Equal(t, http.StatusNotFound, foreign.Code)
+	unknown := adoptionCall(r, 2, http.MethodGet, "/api/v1/marketplace/tenant/security-revocations/unknown", "admin", "admin", nil)
+	require.Equal(t, foreign.Code, unknown.Code, "foreign and unknown revocation IDs are indistinguishable")
 }
 ```
 
@@ -1914,23 +1939,23 @@ package session
 
 // T34 (#64) end-to-end evidence (file B) — agent-chat 轮次入口：真实全量迁移
 // sqlite（openCraftHTTPDB）+ 真实 AgentSecurityService/Store + 真实治理 HTTP
-// 撤回端点 + 真实 AgentQA handler（包内装配 SetAgentSecurityGate）。只断言
-// blocked 方向——guard 在 SSE/消息行/live-run 槽之前返回，深管线零触达；
-// 放行方向由 #42 TestAgentQARunGateStaysOwnerScopedForGrantHolders（无闸门
-// 装配不回归）与文件 A 的 workbench 202 对照共同证明。
+// 撤回端点 + 真实 AgentQA handler（包内装配 claim store 与 AgentVersion 服务；
+// 不将旧 SetAgentSecurityGate 当作原子判定面）。覆盖 blocked 新轮次（409、非 SSE、零 claim/message）以及真实 claim 准入后的 cancel/allow HTTP 行为；唯一测试 adapter 是可控外部 AgentQA 执行端口，数据库、claim、消息、撤回服务与 Gin route 均真实。
 
 import (...)
 
-func newAgentChatSecurityE2E(t *testing.T) (*gin.Engine, *gorm.DB) { /* 按 Interfaces「文件 B 装配」块实现 */ }
+func newAgentChatSecurityE2E(t *testing.T) (*gin.Engine, *gorm.DB, *blockingAgentQA) { /* 按 Interfaces「文件 B 装配」块实现 */ }
 
 func TestAgentSecurityE2EAgentChatTurnRefusedForRevokedRelease(t *testing.T) {
-	r, db := newAgentChatSecurityE2E(t)
-	_, rLocked := publishSecurityReleaseWithLock(t, db, "1.0.0",
+	r, db, _ := newAgentChatSecurityE2E(t)
+	listingID, releaseID := publishSecurityReleaseWithLock(t, db, "1.0.0",
 		`{"dependencies":[{"type":"skill","id":"web-search","version":"1.2.3","digest":"D1","license_id":"MIT"}]}`)
+	agentID := seedPublishedVariant(t, db, listingID, releaseID, "Revoked Agent")
 
 	chat := func(agentID string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(http.MethodPost, "/agent-chat/s-chat", strings.NewReader(`{"query":"hi","agent_id":"`+agentID+`","agent_enabled":true}`))
 		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Request-ID", "t64-e2e-"+agentID)
 		ctx := context.WithValue(req.Context(), types.TenantIDContextKey, uint64(1))
 		ctx = context.WithValue(ctx, types.UserIDContextKey, "u1")
 		req = req.WithContext(ctx)
@@ -1939,11 +1964,8 @@ func TestAgentSecurityE2EAgentChatTurnRefusedForRevokedRelease(t *testing.T) {
 		return w
 	}
 
-	// 本测试不发起「撤回前」的 chat 请求：无撤回行时 guard 放行，请求会进入
-	// executeQA 深管线（本装配的 stub sessionService 未带深管线依赖）。
-	// 放行方向由文件 A 的 workbench 202 对照 + #42 既有 run-gate 测试证明。
 	// Release 撤回 → 新轮次 409（SSE 之前）。
-	revoked := httptest.NewRequest(http.MethodPost, "/api/v1/marketplace/tenant/security-revocations/releases", strings.NewReader(`{"release_id":"`+rLocked+`","reason":"CVE-2026-7777"}`))
+	revoked := httptest.NewRequest(http.MethodPost, "/api/v1/marketplace/tenant/security-revocations/releases", strings.NewReader(`{"release_id":"`+releaseID+`","reason":"CVE-2026-7777"}`))
 	revoked.Header.Set("Content-Type", "application/json")
 	rctx := context.WithValue(revoked.Context(), types.TenantIDContextKey, uint64(1))
 	rctx = context.WithValue(rctx, types.UserIDContextKey, "sec-admin")
@@ -1952,19 +1974,57 @@ func TestAgentSecurityE2EAgentChatTurnRefusedForRevokedRelease(t *testing.T) {
 	r.ServeHTTP(rw, revoked)
 	require.Equal(t, http.StatusCreated, rw.Code, rw.Body.String())
 
-	blocked := chat("local-agent-e2e")
+	blocked := chat(agentID)
 	require.Equal(t, http.StatusConflict, blocked.Code)
-	require.Contains(t, blocked.Body.String(), "agent security policy refused this agent")
+	require.NotContains(t, blocked.Header().Get("Content-Type"), "text/event-stream")
+	var claims, messages int64
+	require.NoError(t, db.Model(&types.AgentChatTurnClaimEntity{}).Where("request_id = ?", "t64-e2e-"+agentID).Count(&claims).Error)
+	require.NoError(t, db.Model(&types.Message{}).Where("session_id = ?", "s-chat").Count(&messages).Error)
+	require.Zero(t, claims, "blocked admission must not persist a claim")
+	require.Zero(t, messages, "blocked admission must not create user or assistant messages")
 }
 ```
+
+已准入 AgentQA 的在途处置测试必须完整走同一个 `/agent-chat/:session_id` handler 与真实撤回 HTTP route：
+
+```go
+func TestAgentSecurityE2EAgentChatInFlightCancelAndAllow(t *testing.T) {
+	for _, disposition := range []string{"cancel", "allow"} {
+		t.Run(disposition, func(t *testing.T) {
+			r, db, executor := newAgentChatSecurityE2E(t)
+			listingID, releaseID := publishSecurityReleaseWithLock(t, db, "1.0.0", `{"dependencies":[]}`)
+		agentID := seedPublishedVariant(t, db, listingID, releaseID, "Live Agent")
+		response := make(chan *httptest.ResponseRecorder, 1)
+		go func() { response <- postAgentQA(r, "s-chat", agentID, "live-"+disposition) }()
+		t.Cleanup(executor.Release) // Never leak a blocked handler if any assertion fails.
+		select { case <-executor.Entered(): case <-time.After(time.Second): t.Fatal("AgentQA did not reach the blocked external executor") }
+			result := revokeReleaseHTTP(r, releaseID, disposition)
+			require.Equal(t, http.StatusCreated, result.Code)
+			if disposition == "cancel" {
+				select { case <-executor.ContextDone(): case <-time.After(time.Second): t.Fatal("cancel did not fence the live handler") }
+			} else {
+				select { case <-executor.ContextDone(): t.Fatal("allow cancelled an admitted turn"); default: }
+				executor.Release()
+			}
+			var rw *httptest.ResponseRecorder
+			select { case rw = <-response: case <-time.After(time.Second): t.Fatal("AgentQA handler did not finish after disposition") }
+			require.Equal(t, http.StatusOK, rw.Code)
+			assertClaimAndMessagesForDisposition(t, db, disposition, "live-"+disposition, agentID)
+		})
+	}
+}
+```
+
+`blockingAgentQA` is only a deterministic external execution adapter. `newAgentChatSecurityE2E`, `seedPublishedVariant`, `postAgentQA`, `revokeReleaseHTTP`, and the assertions keep the real migrated SQLite DB, `AgentChatTurnClaimStore`, message repository/service, `AgentSecurityService`, Gin routes and handler. `seedPublishedVariant` creates a published Variant through real repositories because file B intentionally does not mount publication routes. The assertion checks the claim's exact Version/Release pin and state, plus retained user/assistant rows and terminal assistant status (`cancelled` or `completed`). Use bounded one-second waits for executor entry/context cancellation/handler completion and release all adapter channels in `t.Cleanup`.
 
 依赖撤回（四元组命中锁）方向的第二个测试：
 
 ```go
 func TestAgentSecurityE2EAgentChatTurnRefusedForRevokedDependency(t *testing.T) {
-	r, db := newAgentChatSecurityE2E(t)
-	_, rLocked := publishSecurityReleaseWithLock(t, db, "1.0.0",
+	r, db, _ := newAgentChatSecurityE2E(t)
+	listingID, releaseID := publishSecurityReleaseWithLock(t, db, "1.0.0",
 		`{"dependencies":[{"type":"skill","id":"web-search","version":"1.2.3","digest":"D1","license_id":"MIT"}]}`)
+	agentID := seedPublishedVariant(t, db, listingID, releaseID, "Dependency-blocked Agent")
 
 	dep := httptest.NewRequest(http.MethodPost, "/api/v1/marketplace/tenant/security-revocations/dependencies",
 		strings.NewReader(`{"dependency":{"type":"skill","id":"web-search","version":"1.2.3","digest":"D1"},"reason":"supply-chain"}`))
@@ -1976,15 +2036,21 @@ func TestAgentSecurityE2EAgentChatTurnRefusedForRevokedDependency(t *testing.T) 
 	r.ServeHTTP(dw, dep)
 	require.Equal(t, http.StatusCreated, dw.Code, dw.Body.String())
 
-	req := httptest.NewRequest(http.MethodPost, "/agent-chat/s-chat", strings.NewReader(`{"query":"hi","agent_id":"local-agent-e2e","agent_enabled":true}`))
+	req := httptest.NewRequest(http.MethodPost, "/agent-chat/s-chat", strings.NewReader(`{"query":"hi","agent_id":"`+agentID+`","agent_enabled":true}`))
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Request-ID", "t64-e2e-dependency-agent-chat")
 	qctx := context.WithValue(req.Context(), types.TenantIDContextKey, uint64(1))
 	qctx = context.WithValue(qctx, types.UserIDContextKey, "u1")
 	req = req.WithContext(qctx)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 	require.Equal(t, http.StatusConflict, w.Code, "锁定被撤回依赖的 variant 新轮次被拒")
-	require.Contains(t, w.Body.String(), "security-revoked")
+	require.NotContains(t, w.Header().Get("Content-Type"), "text/event-stream")
+	var claimRows, messageRows int64
+	require.NoError(t, db.Model(&types.AgentChatTurnClaimEntity{}).Where("request_id = ?", "t64-e2e-dependency-agent-chat").Count(&claimRows).Error)
+	require.NoError(t, db.Model(&types.Message{}).Where("session_id = ?", "s-chat").Count(&messageRows).Error)
+	require.Zero(t, claimRows)
+	require.Zero(t, messageRows)
 }
 ```
 
@@ -1995,12 +2061,12 @@ Expected: FAIL——两文件的装配 helper 尚未实现（编译失败）或�
 
 - [ ] **Step 4: 实现装配与 helper**
 
-文件 A：`newAgentSecurityTestApp`、`publishSecurityReleaseWithLock`、`publishVariantOverHTTP`；文件 B：`newAgentChatSecurityE2E`、`publishSecurityReleaseWithLock`（session 包内独立副本，镜像 service 包 `publishUpgradeServiceRelease` 仓储路径）、`sqlBackedChatSessions`。
+文件 A：`newAgentSecurityTestApp`、`publishSecurityReleaseWithLock`、`publishVariantOverHTTP`；文件 B：`newAgentChatSecurityE2E`、`publishSecurityReleaseWithLock`（session 包内独立副本，镜像 service 包 `publishUpgradeServiceRelease` 仓储路径）、`seedPublishedVariant`（仅 fixture setup；真实 Adoption/Variant/Agent/Version repositories，无发布 HTTP routes）、`blockingAgentQA`、`postAgentQA`、`revokeReleaseHTTP`、`assertClaimAndMessagesForDisposition`、`sqlBackedChatSessions`。
 
 - [ ] **Step 5: 运行确认通过**
 
 Run: `go test ./internal/router/ -run 'TestAgentSecurityE2E' -count=1 && go test ./internal/handler/session/ -run 'TestAgentSecurityE2EAgentChat' -count=1`
-Expected: 文件 A 4 个测试 + 文件 B 2 个测试 PASS。
+Expected: 文件 A 4 个测试 + 文件 B 3 个测试 PASS。
 
 - [ ] **Step 6: Commit**
 
@@ -2033,6 +2099,6 @@ go build ./... && go test ./internal/database/ -run TestMigrationVersionsUniqueP
 
 1. **Spec 覆盖**：AC1（不按名称替换）→ Task 4 四元组判定 + Task 9 `TestAgentSecurityE2EDependencyRevocationNeverSubstitutesByName`；AC2（历史/原因/范围/替代版本）→ Task 1 append-only 表 + Task 5 `TestRevokeReleaseRecordsHistoryReasonScopeReplacementAndDisposesInFlight` + Task 9 `TestAgentSecurityE2ERevocationKeepsHistoryReasonScopeReplacement`；AC3（最高稳定 Interface）→ Task 9 两个文件六测试（router 侧真实迁移+真实 stack+真实治理 HTTP+真实 workbench 准入；session 侧真实 AgentQA handler wire）；「新 Task/Run 阻断」→ Task 8 双入口 + queue_next 经 `admission.Start` 自动覆盖（command_queue_next.go:96-100 委证实）；「在途按风险处置」→ Task 3 + Task 5 + e2e；「禁止新引入/新变体」→ Task 6。「运行中按风险暂停或终止」的「暂停」选项：本计划实现「终止（cancel）」与「保留（allow）」两个显式处置（spec 允许二选一，处置由治理主体声明）；「暂停」粒度（park 等待人工）未实现——如需要属后续增强，非 AC 要求。
 2. **步骤扫描**：每个 RED 步骤含完整测试代码；每个 GREEN 步骤是签名+不变式（实现纪律写死处均已标注「写死」）；无 TBD/占位（`import (...)` 省略号仅出现于 Task 9 两个 e2e 骨架文件，其符号集由测试体与 Interfaces 装配块完全确定）。
-3. **类型一致性**：`AgentSecurityStore` 方法名在 Task 2 定义、Task 4/5 消费处逐一核对；`interfaces.AgentSecurityVerdict`/`AgentSecurityRevocationView` 字段在 Task 4 定义、Task 7 handler 体与 Task 9 断言逐字一致；`SetAgentSecurityGate`（AdmissionCoordinator 与 session.Handler 各一）与 `SetReleaseSecurityGate`（两个 service）命名不冲突；哨兵 `ErrAgentSecurityBlocked`（workbenchservice）与 `ErrAgentSecurityReleaseBlocked`（service）各归其位、错误映射 case 与之一致。
+3. **类型一致性（Task8 amendment）**：Task7 `AgentSecurityStore` 方法名与 Task 4/5 的消费逐一核对；`interfaces.AgentSecurityVerdict`/`AgentSecurityRevocationView` 在 handler 与 Task9 断言中一致；Workbench `SetAgentSecurityGate` 与治理面的 `SetReleaseSecurityGate` 保持分层。AgentQA `Handler` 注入 `SetAgentChatTurnClaimStore` 与 `SetAgentVersionService`（由 8B 定义并装配），8D 仅实现 claim 生命周期；哨兵 `ErrAgentSecurityBlocked`（workbenchservice）与 `ErrAgentSecurityReleaseBlocked`（service）分别映射 Workbench/AgentQA 的 409，基础设施错误映射 500。
 4. **Review Focus**：五条各有所属测试（见节内映射）；第六条畸形输入并入 Task 5 测试。
 5. **比例**：计划长度与 plan-t61 同量级（仓库既定风格）；测试代码占比高是「测试代码完整写入计划」写作要求的直接结果，实现描述均为签名+纪律而非代码誊写。
