@@ -67,7 +67,17 @@ func NewAgentAdoptionRepository(db *gorm.DB) AgentAdoptionRepository {
 // reconciles the accepted pointer, so both callers get an idempotent result
 // instead of a unique-index error.
 func (r *agentAdoptionRepository) AdoptListing(ctx context.Context, adoption *types.AgentAdoptionEntity) (*types.AgentAdoptionEntity, bool, error) {
-	return adoptListingTx(r.db.WithContext(ctx), adoption)
+	var result *types.AgentAdoptionEntity
+	created := false
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var err error
+		result, created, err = adoptListingTx(tx, adoption)
+		return err
+	})
+	if err != nil {
+		return nil, false, err
+	}
+	return result, created, nil
 }
 
 // adoptListingTx is the transaction-bound adopt upsert, shared with the
@@ -76,6 +86,18 @@ func (r *agentAdoptionRepository) AdoptListing(ctx context.Context, adoption *ty
 // listing) row reconciles its accepted pointer; a first insert races on
 // uq_agent_adoptions_scope and converges to the winner.
 func adoptListingTx(tx *gorm.DB, adoption *types.AgentAdoptionEntity) (*types.AgentAdoptionEntity, bool, error) {
+	// Lock an existing scope row before reading it. This serializes accepted-
+	// pointer reconciliation with EndAdoption: a caller arriving after the
+	// terminal transition waits, then observes ended instead of reviving it.
+	// When no Adoption exists yet there is no row to lock; the unique index
+	// remains the first-adopt serialization point and the conflict loser below
+	// re-reads the committed winner before deciding.
+	locked := tx.Model(&types.AgentAdoptionEntity{}).
+		Where("tenant_id = ? AND listing_id = ?", adoption.TenantID, adoption.ListingID).
+		UpdateColumn("updated_at", gorm.Expr("updated_at"))
+	if locked.Error != nil {
+		return nil, false, locked.Error
+	}
 	var existing types.AgentAdoptionEntity
 	err := tx.Where("tenant_id = ? AND listing_id = ?", adoption.TenantID, adoption.ListingID).First(&existing).Error
 	if err == nil {
@@ -111,6 +133,9 @@ func adoptListingTx(tx *gorm.DB, adoption *types.AgentAdoptionEntity) (*types.Ag
 // the same Release returns as-is; a different Release advances the accepted
 // pointer (last write wins, matching sequential adopt semantics).
 func reconcileAdoptionTx(tx *gorm.DB, existing *types.AgentAdoptionEntity, acceptedReleaseID string) (*types.AgentAdoptionEntity, bool, error) {
+	if existing.State != "active" {
+		return nil, false, fmt.Errorf("%w: state is %q", ErrAgentAdoptionTransition, existing.State)
+	}
 	if existing.AcceptedReleaseID == acceptedReleaseID {
 		return existing, false, nil
 	}

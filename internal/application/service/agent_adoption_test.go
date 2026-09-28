@@ -225,6 +225,18 @@ func TestAgentAdoptionServiceMapsRepositoryParentStateConflict(t *testing.T) {
 	require.ErrorIs(t, err, ErrAgentAdoptionStateConflict)
 }
 
+func TestAgentAdoptionServiceMapsEndedAdoptionConflict(t *testing.T) {
+	svc, db, _ := newAgentAdoptionServiceForTest(t)
+	listingID, releaseID := seedAdoptionServiceRelease(t, db)
+	ctx := context.Background()
+	adoption, _, err := svc.Adopt(ctx, 1, "admin", interfaces.AdoptInput{ListingID: listingID, ReleaseID: releaseID})
+	require.NoError(t, err)
+	_, err = repository.NewAgentAdoptionRepository(db).EndAdoption(ctx, 1, adoption.ID, "active", "ended", map[string]any{"ended_by": "admin"})
+	require.NoError(t, err)
+	_, _, err = svc.Adopt(ctx, 1, "admin", interfaces.AdoptInput{ListingID: listingID, ReleaseID: releaseID})
+	require.ErrorIs(t, err, ErrAgentAdoptionStateConflict)
+}
+
 func TestAgentAdoptionServicePublishRefusesTamperedRelease(t *testing.T) {
 	svc, db, _ := newAgentAdoptionServiceForTest(t)
 	listingID, releaseID := seedAdoptionServiceRelease(t, db)

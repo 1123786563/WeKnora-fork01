@@ -93,6 +93,9 @@ func (s *AgentAdoptionService) Adopt(ctx context.Context, tenantID uint64, actor
 		State: AgentAdoptionStateActive, CreatedBy: actorID,
 	})
 	if err != nil {
+		if errors.Is(err, repository.ErrAgentAdoptionTransition) {
+			return interfaces.AdoptionView{}, false, fmt.Errorf("%w: adoption is no longer active", ErrAgentAdoptionStateConflict)
+		}
 		return interfaces.AdoptionView{}, false, err
 	}
 	view, err := s.adoptionView(ctx, tenantID, row)

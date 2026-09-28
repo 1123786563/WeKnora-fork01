@@ -266,3 +266,37 @@ func TestPublicMarketplaceRepositoryIntroduceReleaseCopiesPortableBundleAndAdopt
 	db.Table("tenant_introduced_releases").Where("tenant_id = ?", 3).Count(&count)
 	require.Zero(t, count)
 }
+
+func TestPublicMarketplaceIntroduceReleaseAgainstEndedAdoptionRollsBack(t *testing.T) {
+	db := openPublicMarketplaceDB(t)
+	repo := NewPublicMarketplaceRepository(db)
+	ctx := context.Background()
+	listing, firstRelease := seedApprovedPublicRelease(t, db, "1.0.0")
+	introduced, adoption, created, err := repo.IntroduceRelease(ctx, 2, "adopter-admin", &listing, firstRelease)
+	require.NoError(t, err)
+	require.True(t, created)
+	_, err = NewAgentAdoptionRepository(db).EndAdoption(ctx, 2, adoption.ID, "active", "ended", map[string]any{"ended_by": "adopter-admin"})
+	require.NoError(t, err)
+
+	// A new public Release creates a fresh tenant introduction before calling
+	// the shared adoption upsert; the enclosing transaction must roll it back.
+	listing2, secondRelease := seedApprovedPublicRelease(t, db, "2.0.0")
+	require.Equal(t, listing.ID, listing2.ID)
+	createdIntroduction, _, created, err := repo.IntroduceRelease(ctx, 2, "adopter-admin", &listing2, secondRelease)
+	require.ErrorIs(t, err, ErrAgentAdoptionTransition)
+	require.Nil(t, createdIntroduction)
+	require.False(t, created)
+	var introductionCount int64
+	require.NoError(t, db.Model(&types.TenantIntroducedReleaseEntity{}).Where("tenant_id = ? AND public_listing_id = ?", 2, listing.ID).Count(&introductionCount).Error)
+	require.EqualValues(t, 1, introductionCount, "the failed introduction must not leave a partial row")
+	stored, err := NewAgentAdoptionRepository(db).GetAdoption(ctx, 2, adoption.ID)
+	require.NoError(t, err)
+	require.NotNil(t, stored)
+	require.Equal(t, "ended", stored.State)
+	require.Equal(t, introduced.ID, stored.AcceptedReleaseID)
+
+	// An already introduced Release also cannot make the ended Adoption look
+	// successful when the requested accepted pointer is unchanged.
+	_, _, _, err = repo.IntroduceRelease(ctx, 2, "adopter-admin", &listing, firstRelease)
+	require.ErrorIs(t, err, ErrAgentAdoptionTransition)
+}
