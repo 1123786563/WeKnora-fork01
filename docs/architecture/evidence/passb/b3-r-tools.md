@@ -117,3 +117,31 @@ Ledger（`.worktrees/passb-int/docs/architecture/passb/exception-ledger.yaml`）
 | gofmt/vet | `gofmt -l internal/modules/agentruntime/agent/tools/`；`go vet ./internal/modules/agentruntime/agent/tools/` | 空输出 / EXIT=0 |
 
 **符号勘误落点（§1.4 登记 → 本窗口执行）：** seam 实补 `RemoteEntryFile`/`RemoteEntryDir` 两常量（remote_client.go:382/:383）；`RemoteDirEntryType` 类型经 `RemoteDirEntry.Type` 字段透明传递，tools 包（生产+测试）零直接书写（grep 实证），无需独立别名。seam 终集 = 12 类型别名 + 6 常量别名 + 1 变量别名 + 9 薄委托函数（计划 §0.8-A 的 4 常量 + 勘误 2 常量）。
+
+### 8.3 R2.3 窗口（2026-09-28）：exceptions 135→133（−5+3）
+
+**变更：** Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY + conventions §8 三方一致。
+
+- **−5**（tools 消费侧 seam 收敛，guard importExceptions 与 exception-ledger 同窗同 commit 删除）：exc-0033（knowledge_search.go→airesource/models/rerank）、exc-0036（mcp_exposure.go→airesource/models/chat）、exc-0037（mcp_oauth.go→airesource/mcp）、exc-0038（mcp_tool.go→airesource/mcp）、exc-0043（sanitize_messages.go→airesource/models/chat）。
+- **+3**（seam 登记行，续号 exc-0145/0146/0147，remove_at=ib3，reason="R2 消费侧 seam 收敛（32 计划 §0.4/§0.5），ib3 门面合法化后随 seam 文件消除（Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY）"）：exc-0145（airesource_seams.go→airesource/mcp）、exc-0146（airesource_seams.go→airesource/models/rerank）、exc-0147（airesource_seams.go→airesource/models/chat）。ledger 头注同窗机械计数修正 135→133 并追加 R2.3 增量行。
+
+**三方一致复核（本窗口实跑）：**
+
+| 口径 | 命令 | 实测 |
+|---|---|---|
+| guard 实测 | `make check-backend-architecture` | `architectureguard: literal=564 apiKeyRoute=69 handle=0 total=633 \| redis=23 lite=23 \| hooks=58 \| modules=16` + `OK (0 violations)`（路由/任务/挂点计数不变） |
+| passbguard 实测 | `make check-passb-readiness` | `pass-b readiness: legacy=358 aliases=69 exceptions=133 contracts=125 events=29 overlaps=0 missing=0` |
+| ledger 行数 | `grep -c '^  - id:' docs/architecture/passb/exception-ledger.yaml` | `133`（plan=32 名下 13→11 行：−5+3） |
+
+### 8.4 R2.3 边核验与 GREEN 证据（§6 差分前拍见 §1，后拍归 R2.6）
+
+| 检查 | 命令 | 结果 |
+|---|---|---|
+| tools 生产代码 airesource 边归零 | `grep -rn "modules/airesource" internal/modules/agentruntime/agent/tools/*.go \| grep -v _test \| grep -v airesource_seams.go` | 空输出（EXIT=1） |
+| seam 文件仅持 3 条 import 边 | `grep -c "airesource/mcp\|airesource/models/rerank\|airesource/models/chat" internal/modules/agentruntime/agent/tools/airesource_seams.go` | `3` |
+| GREEN：tools 包 | `go test ./internal/modules/agentruntime/agent/tools/ -count=1` | `ok github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/tools 16.387s`（EXIT=0；含 R2.1 四快照 = 外部契约零变化机器证明；重点观察 mcp_catalog/mcp_tool/sanitize_messages 既有测试无 FAIL） |
+| GREEN：全量构建 | `go build ./...` | EXIT=0（仅既有 `-lc++` 链接警告） |
+| 模块迁移校验 | `make verify-module-moves` | `modulemove: OK (16 manifests verified)` |
+| gofmt/vet | `gofmt -l internal/modules/agentruntime/agent/tools/`；`go vet ./internal/modules/agentruntime/agent/tools/` | 空输出 / EXIT=0 |
+
+**seam 终集（§0.8-B 全量，无勘误）：** 8 类型别名 = mcp 5（MCPManager/MCPClient/ContentItem/CallToolResult/OAuthReauthorizationRequiredError）+ rerank 2（Reranker/RankResult）+ chat 1（Message）。符号消费实证（`grep -o` 逐文件）：mcp_oauth.go 用 MCPManager/MCPClient/OAuthReauthorizationRequiredError；mcp_tool.go 用 MCPManager/CallToolResult/ContentItem；mcp_exposure.go+sanitize_messages.go 用 chat.Message；knowledge_search.go 用 Reranker/RankResult——8 符号与 §0.8-B 清单零差异（无 R2.1 式勘误补入）。knowledge_search.go 的 searchutil 边（exc-0034）按计划留 R2.4。

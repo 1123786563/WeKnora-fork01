@@ -11,7 +11,6 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/logger"
-	"github.com/Tencent/WeKnora/internal/modules/airesource/models/rerank"
 	"github.com/Tencent/WeKnora/internal/modules/knowledge/searchutil"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
@@ -125,7 +124,7 @@ type KnowledgeSearchTool struct {
 	knowledgeService     interfaces.KnowledgeService
 	chunkService         interfaces.ChunkService
 	searchTargets        types.SearchTargets // Pre-computed unified search targets
-	rerankModel          rerank.Reranker
+	rerankModel          Reranker
 	config               *config.Config // Global config for fallback values
 
 	seenMu     sync.Mutex
@@ -138,7 +137,7 @@ func NewKnowledgeSearchTool(
 	knowledgeService interfaces.KnowledgeService,
 	chunkService interfaces.ChunkService,
 	searchTargets types.SearchTargets,
-	rerankModel rerank.Reranker,
+	rerankModel Reranker,
 	cfg *config.Config,
 ) *KnowledgeSearchTool {
 	return &KnowledgeSearchTool{
@@ -684,7 +683,7 @@ func (t *KnowledgeSearchTool) rerankScores(
 	ctx context.Context,
 	query string,
 	results []*searchResultWithMeta,
-) ([]rerank.RankResult, error) {
+) ([]RankResult, error) {
 	passages := make([]string, len(results))
 	for i, result := range results {
 		passages[i] = t.getEnrichedPassage(ctx, result.SearchResult)
@@ -707,14 +706,14 @@ func (t *KnowledgeSearchTool) rerankThreshold() float64 {
 const agentRerankFallbackMinScore = 0.15
 
 func filterRerankRankResults(
-	rankResults []rerank.RankResult,
+	rankResults []RankResult,
 	threshold float64,
 	preserveTop bool,
-) []rerank.RankResult {
+) []RankResult {
 	if len(rankResults) == 0 {
 		return nil
 	}
-	filtered := make([]rerank.RankResult, 0, len(rankResults))
+	filtered := make([]RankResult, 0, len(rankResults))
 	for _, r := range rankResults {
 		if r.RelevanceScore >= threshold {
 			filtered = append(filtered, r)
@@ -728,7 +727,7 @@ func filterRerankRankResults(
 			}
 		}
 		if preserveTop || top.RelevanceScore >= agentRerankFallbackMinScore {
-			return []rerank.RankResult{top}
+			return []RankResult{top}
 		}
 	}
 	return filtered
@@ -736,7 +735,7 @@ func filterRerankRankResults(
 
 func (t *KnowledgeSearchTool) applyModelRerankScores(
 	originals []*searchResultWithMeta,
-	rankResults []rerank.RankResult,
+	rankResults []RankResult,
 	threshold float64,
 	preserveTop bool,
 ) []*searchResultWithMeta {

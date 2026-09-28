@@ -12,7 +12,6 @@ import (
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/approval"
 	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
-	"github.com/Tencent/WeKnora/internal/modules/airesource/mcp"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
@@ -23,7 +22,7 @@ type MCPInput = map[string]any
 type MCPTool struct {
 	service    *types.MCPService
 	mcpTool    *types.MCPTool
-	mcpManager *mcp.MCPManager
+	mcpManager *MCPManager
 	gate       approval.MCPApproval // optional human approval before CallTool (issue #1173)
 	// authWaitTimeoutSeconds carries the agent-level, user-configured OAuth wait
 	// timeout (seconds) applied when a tool call triggers in-conversation auth.
@@ -40,7 +39,7 @@ type MCPTool struct {
 // agent-level OAuth wait timeout applied when a tool call triggers in-conversation auth.
 func NewMCPTool(
 	service *types.MCPService, mcpTool *types.MCPTool,
-	mcpManager *mcp.MCPManager, gate approval.MCPApproval, authWaitTimeoutSeconds int,
+	mcpManager *MCPManager, gate approval.MCPApproval, authWaitTimeoutSeconds int,
 ) *MCPTool {
 	return &MCPTool{
 		service:                service,
@@ -244,7 +243,7 @@ func (t *MCPTool) Execute(ctx context.Context, args json.RawMessage) (*types.Too
 		toolCallID = meta.ToolCallID
 	}
 
-	connectAndCall := func(callCtx context.Context) (*mcp.CallToolResult, error) {
+	connectAndCall := func(callCtx context.Context) (*CallToolResult, error) {
 		client, err := getOrCreateMCPClientWithOAuthRetry(
 			callCtx, t.mcpManager, t.service, t.gate, oauthSess, t.mcpTool.Name, toolCallID,
 		)
@@ -354,7 +353,7 @@ var allowedImageMIMEs = map[string]bool{
 // size limit, count limit) and converted to base64 data URIs for downstream VLM processing.
 // A text placeholder [Image: mime] is always included in the output regardless of whether
 // the image data is collected, so non-vision models still get structural context.
-func extractContentAndImages(content []mcp.ContentItem) (text string, images []string, skippedImages int) {
+func extractContentAndImages(content []ContentItem) (text string, images []string, skippedImages int) {
 	var textParts []string
 
 	for _, item := range content {
@@ -401,8 +400,8 @@ func extractContentAndImages(content []mcp.ContentItem) (text string, images []s
 // redactImageData returns a copy of content items with image Data fields replaced
 // by a size indicator. This prevents large base64 strings from being stored in the
 // Data map (which may be serialized to logs or SSE events).
-func redactImageData(content []mcp.ContentItem) []mcp.ContentItem {
-	redacted := make([]mcp.ContentItem, len(content))
+func redactImageData(content []ContentItem) []ContentItem {
+	redacted := make([]ContentItem, len(content))
 	for i, item := range content {
 		redacted[i] = item
 		if item.Type == "image" && item.Data != "" {
@@ -414,7 +413,7 @@ func redactImageData(content []mcp.ContentItem) []mcp.ContentItem {
 
 // extractContentText extracts text content from MCP content items.
 // Used for error paths where image extraction is not needed.
-func extractContentText(content []mcp.ContentItem) string {
+func extractContentText(content []ContentItem) string {
 	var textParts []string
 
 	for _, item := range content {
@@ -492,7 +491,7 @@ type MCPMetadataIO struct {
 func loadMCPDirectory(
 	loadCtx context.Context,
 	service *types.MCPService,
-	mcpManager *mcp.MCPManager,
+	mcpManager *MCPManager,
 	gate approval.MCPApproval,
 	oauthSess *MCPOAuthSession,
 	metadata *MCPMetadataIO,
@@ -540,7 +539,7 @@ func RegisterMCPTools(
 	ctx context.Context,
 	registry *ToolRegistry,
 	services []*types.MCPService,
-	mcpManager *mcp.MCPManager,
+	mcpManager *MCPManager,
 	gate approval.MCPApproval,
 	authWaitTimeoutSeconds int,
 	lookup MCPServiceLookup,
@@ -593,7 +592,7 @@ func RegisterMCPTools(
 func loadMCPServiceTools(
 	ctx context.Context,
 	service *types.MCPService,
-	mcpManager *mcp.MCPManager,
+	mcpManager *MCPManager,
 	gate approval.MCPApproval,
 	regOAuth *MCPOAuthSession,
 ) ([]*types.MCPTool, string, error) {
@@ -687,7 +686,7 @@ func MCPToolNamesByServiceID(registry *ToolRegistry) map[string][]string {
 func GetMCPToolsInfo(
 	ctx context.Context,
 	services []*types.MCPService,
-	mcpManager *mcp.MCPManager,
+	mcpManager *MCPManager,
 ) (map[string][]string, error) {
 	result := make(map[string][]string)
 
