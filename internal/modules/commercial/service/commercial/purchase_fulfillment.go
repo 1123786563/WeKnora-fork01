@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/logger"
@@ -86,13 +87,20 @@ func NewPurchaseFulfiller(db *gorm.DB, platform domain.CommercialPlatform, _ *Bi
 func (p *PurchaseFulfiller) Fulfill(ctx context.Context, ev repocommercial.OutboxEvent) error {
 	var payload fulfillEventPayload
 	if err := json.Unmarshal([]byte(ev.PayloadJSON), &payload); err != nil {
-		return fmt.Errorf("decode payload: %w", err)
+		return nil
 	}
-	row, err := p.orders.GetOrder(ctx, payload.OrderID)
+	orderID, ok := strings.CutPrefix(ev.EventKey, repocommercial.OutboxKindFulfill+":")
+	if !ok || orderID == "" || payload.OrderID != orderID {
+		return nil
+	}
+	row, err := p.orders.GetOrder(ctx, orderID)
 	if err != nil {
 		return err
 	}
 	order := row.Domain()
+	if payload.TenantID != order.TenantID || payload.AmountFen != int64(order.Amount) || payload.Currency != order.Currency || (payload.QuoteID != "" && payload.QuoteID != row.QuoteID) {
+		return p.markActivationState(ctx, order.ID, order.TenantID, domain.FulfillmentStateAttention)
+	}
 	switch order.State {
 	case domain.OrderStateFulfilled:
 		return nil // replay after completion: nothing to do
@@ -110,7 +118,7 @@ func (p *PurchaseFulfiller) Fulfill(ctx context.Context, ev repocommercial.Outbo
 	// deterministic shape re-fails every pass forever); a TRANSIENT DB
 	// failure returns nil keeping the event pending for the next pass.
 	var q repocommercial.QuoteRow
-	if err := p.db.WithContext(ctx).Where("id = ?", row.QuoteID).First(&q).Error; err != nil {
+	if err := p.db.WithContext(ctx).Where("id = ? AND tenant_id = ?", row.QuoteID, order.TenantID).First(&q).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return p.markActivationState(ctx, order.ID, order.TenantID, domain.FulfillmentStateAttention)
 		}
@@ -133,6 +141,21 @@ func (p *PurchaseFulfiller) Fulfill(ctx context.Context, ev repocommercial.Outbo
 			// The publication row the frozen snapshot points at is gone
 			// (migration gap, plan purge): deterministic — attention, never
 			// an abort of the shared drain batch.
+			return p.markActivationState(ctx, order.ID, order.TenantID, domain.FulfillmentStateAttention)
+		}
+		return nil
+	}
+
+	// Validate immutable payment identity before any authority snapshot probe.
+	// A transient attempt-store failure remains retryable; deterministic
+	// missing/contradictory identity must surface attention even when the
+	// authority is currently unreachable.
+	attempt, err := p.winningAttempt(ctx, order, payload)
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return err
+		}
+		if errors.Is(err, gorm.ErrRecordNotFound) || errors.Is(err, errInvalidWinningAttempt) {
 			return p.markActivationState(ctx, order.ID, order.TenantID, domain.FulfillmentStateAttention)
 		}
 		return nil
@@ -166,28 +189,9 @@ func (p *PurchaseFulfiller) Fulfill(ctx context.Context, ev repocommercial.Outbo
 		// immediately and the grant path proceeds.
 	}
 
-	// The verified channel transaction is the settle idempotency anchor.
-	// (OCR84-R1-14) The attempt read's failure is CLASSIFIED like the quote
-	// and snapshot reads above (the r2:119/A-32 discipline): the file's own
-	// comment names a raw return here "the most expensive silent failure" —
-	// it aborts the whole shared drain batch (fulfillment.go Recover stops
-	// at the first error), so a deterministic shape re-failed EVERY pass
-	// forever and a transient DB blip starved the batch's later events
-	// (ordinary top-ups and over_payment disposes) one drain cycle.
-	attempt, err := p.succeededAttempt(ctx, order.ID)
-	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return err // the drain pass itself is ending: propagate
-		}
-		if errors.Is(err, errNoSucceededAttempt) || errors.Is(err, errAttemptWithoutChannelTransaction) {
-			// Deterministic data gap on a PAID purchase order — attention
-			// (the operations face), never a grant and never a batch abort.
-			return p.markActivationState(ctx, order.ID, order.TenantID, domain.FulfillmentStateAttention)
-		}
-		logger.Warnf(ctx, "[CommercialFulfillment] purchase %s succeeded attempt read failed (event stays pending): %v", order.ID, err)
-		return nil // transient DB failure: the event stays pending
-	}
-
+	// The outer fulfillment dispatcher validates the immutable winner before
+	// quote routing; this direct-call defense above revalidates the same exact
+	// attempt and transaction before any settle or grant operation.
 	// ② The settle rail (provider rails only; activation is the built-in
 	// webhook chain's, D2').
 	if _, err := p.platform.SubmitCommand(ctx, domain.Command{
@@ -335,34 +339,30 @@ func (p *PurchaseFulfiller) Fulfill(ctx context.Context, ev repocommercial.Outbo
 	return p.orders.MarkFulfilled(ctx, order.ID)
 }
 
-// Deterministic succeeded-attempt data-gap shapes (OCR84-R1-14): they land
-// attention (the operations face) instead of aborting the shared drain
-// batch; every other read failure stays a transient pending.
-var (
-	errNoSucceededAttempt               = errors.New("purchase order has no succeeded attempt")
-	errAttemptWithoutChannelTransaction = errors.New("succeeded attempt carries no channel transaction")
-)
+// errInvalidWinningAttempt marks a missing or contradictory immutable payment
+// identity. The order CAS and its fulfill event identify the sole winner.
+var errInvalidWinningAttempt = errors.New("invalid winning payment attempt")
 
-// succeededAttempt reads the order's one succeeded channel transaction (the
-// settle idempotency anchor; ConfirmPayment recorded it). Deterministic
-// data gaps wrap the package sentinels (classified by the caller); any
-// other read failure propagates as a TRANSIENT error the caller keeps
-// pending.
-func (p *PurchaseFulfiller) succeededAttempt(ctx context.Context, orderID string) (string, error) {
-	var att repocommercial.PaymentAttemptRow
-	err := p.db.WithContext(ctx).
-		Where("order_id = ? AND state = ?", orderID, repocommercial.PaymentAttemptStateSucceeded).
-		Order("id").First(&att).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return "", fmt.Errorf("%w: %s", errNoSucceededAttempt, orderID)
+func (p *PurchaseFulfiller) winningAttempt(ctx context.Context, order domain.Order, payload fulfillEventPayload) (string, error) {
+	return winningPaymentTransaction(ctx, p.db, order, payload)
+}
+
+// winningPaymentTransaction validates the immutable payment identity before
+// any paid purchase route can produce an external benefit.
+func winningPaymentTransaction(ctx context.Context, db *gorm.DB, order domain.Order, payload fulfillEventPayload) (string, error) {
+	if payload.AttemptID == "" || payload.Provider == "" || payload.Merchant == "" || payload.Transaction == "" {
+		return "", errInvalidWinningAttempt
 	}
+	var att repocommercial.PaymentAttemptRow
+	err := db.WithContext(ctx).
+		Where("id = ? AND order_id = ? AND tenant_id = ?", payload.AttemptID, order.ID, order.TenantID).First(&att).Error
 	if err != nil {
 		return "", err
 	}
-	if att.ProviderTransactionID == nil || *att.ProviderTransactionID == "" {
-		return "", fmt.Errorf("%w: %s", errAttemptWithoutChannelTransaction, orderID)
+	if att.State != repocommercial.PaymentAttemptStateSucceeded || att.Provider != payload.Provider || att.Merchant != payload.Merchant || att.AmountFen != int64(order.Amount) || att.Currency != order.Currency || att.ProviderTransactionID == nil || *att.ProviderTransactionID != payload.Transaction {
+		return "", errInvalidWinningAttempt
 	}
-	return *att.ProviderTransactionID, nil
+	return payload.Transaction, nil
 }
 
 // overBudget reports whether the event's cumulative drain passes have
@@ -442,6 +442,13 @@ func (p *PurchaseFulfiller) settleSnapshotFailure(ctx context.Context, order dom
 // would emit the same line ~2880×/day per stuck order. The record itself
 // still stays exactly-once — only the log is gated.
 func (p *PurchaseFulfiller) markActivationState(ctx context.Context, orderID string, tenantID uint64, state string) error {
+	return persistPurchaseActivationState(ctx, p.db, p.now(), orderID, tenantID, state)
+}
+
+// persistPurchaseActivationState is shared by the configured purchaser and
+// the pre-route worker guard. It durably records the same unique operator
+// Attention fact without requiring a PurchaseFulfiller to be wired.
+func persistPurchaseActivationState(ctx context.Context, db *gorm.DB, now time.Time, orderID string, tenantID uint64, state string) error {
 	rec := FulfillmentRecord{
 		Key:         domain.FulfillmentKey(orderID, benefitKindPurchaseActivation),
 		TenantID:    tenantID,
@@ -449,12 +456,12 @@ func (p *PurchaseFulfiller) markActivationState(ctx context.Context, orderID str
 		LineID:      benefitKindPurchaseActivation,
 		Kind:        benefitKindPurchaseActivation,
 		CustomerID:  OrderCustomerID(tenantID),
-		EffectiveAt: domain.FirstEffectiveAt(time.Time{}, p.now()),
-		ExpiresAt:   p.now(),
+		EffectiveAt: domain.FirstEffectiveAt(time.Time{}, now),
+		ExpiresAt:   now,
 		State:       state,
-		LeaseUntil:  p.now(),
+		LeaseUntil:  now,
 	}
-	res := p.db.WithContext(ctx).Clauses(clause.OnConflict{
+	res := db.WithContext(ctx).Clauses(clause.OnConflict{
 		DoNothing: true,
 	}).Create(&rec)
 	if res.Error != nil {

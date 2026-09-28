@@ -13,15 +13,15 @@ import (
 	"encoding/hex"
 	"errors"
 	"strconv"
-	"strings"
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // Payment anomaly kinds — the closed classification of a retained abnormal
-// fact. over_payment is written by the outbox consumer (the second success
-// of a multiple-success payment), never by ClassifyPaymentAnomaly.
+// fact. over_payment is written atomically by ConfirmPayment for a later
+// successful collection, never by ClassifyPaymentAnomaly.
 const (
 	PaymentAnomalyKindPartial  = "partial_payment"   // actual < expected
 	PaymentAnomalyKindAmount   = "amount_mismatch"   // actual ≠ expected (single-payment wrong amount)
@@ -43,6 +43,9 @@ var (
 	// expected_version no longer matches the stored row (the anomaly
 	// changed since the operator read it).
 	ErrPaymentAnomalyVersionConflict = errors.New("payment_anomaly_version_conflict")
+	// ErrPaymentAnomalyConflict means an idempotency-key collision names a
+	// different immutable payment fact; callers must not treat it as replay.
+	ErrPaymentAnomalyConflict = errors.New("payment_anomaly_fact_conflict")
 )
 
 // PaymentAnomalyRow retains one abnormal payment fact. The unique index
@@ -73,8 +76,8 @@ func (PaymentAnomalyRow) TableName() string { return "commercial_payment_anomali
 // mismatch: currency first (a wrong currency is never an amount judgement),
 // then partial (actual < expected), everything else is a wrong amount
 // (including a single over-payment of the expected face). over_payment —
-// the multiple-success second payment — is assigned by its consumer and
-// never passes through here.
+// the later successful collection — is written atomically with its outbox event
+// by ConfirmPayment; its consumer validates the saved immutable fact.
 func ClassifyPaymentAnomaly(expectedFen, actualFen int64, expectedCurrency, actualCurrency string) string {
 	if expectedCurrency != actualCurrency {
 		return PaymentAnomalyKindCurrency
@@ -85,10 +88,9 @@ func ClassifyPaymentAnomaly(expectedFen, actualFen int64, expectedCurrency, actu
 	return PaymentAnomalyKindAmount
 }
 
-// newAnomalyToken mints the random hex suffix of an anomaly id. Generated
-// INSIDE RecordPaymentAnomaly (at insert time, outside any rolled-back
-// transaction) so a retried retention after a rollback does not switch
-// identities.
+// newAnomalyToken mints the random hex suffix of an anomaly id when a row is
+// first inserted. A rolled-back transaction also rolls back this private ID;
+// a later retry gets a fresh one.
 func newAnomalyToken() string {
 	var b [8]byte
 	if _, err := rand.Read(b[:]); err != nil {
@@ -97,25 +99,21 @@ func newAnomalyToken() string {
 	return hex.EncodeToString(b[:])
 }
 
-// isPaymentAnomalyUniqueConflict matches the (provider, merchant,
-// transaction) unique index violation across the two supported drivers:
-// SQLite reports the column face, PostgreSQL names the index.
-func isPaymentAnomalyUniqueConflict(err error) bool {
-	if err == nil {
-		return false
-	}
-	msg := err.Error()
-	if strings.Contains(msg, "uq_payment_anomaly_txn") {
-		return true
-	}
-	return strings.Contains(msg, "UNIQUE constraint failed") && strings.Contains(msg, "commercial_payment_anomalies")
+// RecordPaymentAnomaly idempotently retains one abnormal fact in its own
+// transaction, requiring an exact immutable-fact match on replay. The row's
+// ID and defaults are filled here so callers pass the bare snapshot.
+func (s *OrderStore) RecordPaymentAnomaly(ctx context.Context, row PaymentAnomalyRow) error {
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return recordPaymentAnomalyTx(tx, row)
+	})
 }
 
-// RecordPaymentAnomaly idempotently retains one abnormal fact in its own
-// transaction: a unique-index conflict means the fact is already recorded
-// (channel redelivery / outbox replay) and answers nil. The row's ID and
-// defaults are filled here so callers pass the bare snapshot.
-func (s *OrderStore) RecordPaymentAnomaly(ctx context.Context, row PaymentAnomalyRow) error {
+// recordPaymentAnomalyTx idempotently inserts a payment fact using its
+// provider/merchant/transaction identity. A uniqueness collision is only a
+// replay when every immutable fact field matches the already stored row.
+// Keep this helper transaction-local so ConfirmPayment can commit the
+// anomaly and its outbox event atomically.
+func recordPaymentAnomalyTx(tx *gorm.DB, row PaymentAnomalyRow) error {
 	if row.ID == "" {
 		row.ID = "anom_" + newAnomalyToken()
 	}
@@ -125,13 +123,29 @@ func (s *OrderStore) RecordPaymentAnomaly(ctx context.Context, row PaymentAnomal
 	if row.CreatedAt.IsZero() {
 		row.CreatedAt = time.Now().UTC()
 	}
-	if err := s.db.WithContext(ctx).Create(&row).Error; err != nil {
-		if isPaymentAnomalyUniqueConflict(err) {
-			return nil
-		}
+	res := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&row)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 1 {
+		return nil
+	}
+	var existing PaymentAnomalyRow
+	if err := tx.Where("provider = ? AND merchant = ? AND `transaction` = ?", row.Provider, row.Merchant, row.Transaction).
+		First(&existing).Error; err != nil {
 		return err
 	}
+	if !samePaymentAnomalyFact(existing, row) {
+		return ErrPaymentAnomalyConflict
+	}
 	return nil
+}
+
+func samePaymentAnomalyFact(a, b PaymentAnomalyRow) bool {
+	return a.TenantID == b.TenantID && a.OrderID == b.OrderID && a.AttemptID == b.AttemptID &&
+		a.Provider == b.Provider && a.Merchant == b.Merchant && a.Transaction == b.Transaction && a.Kind == b.Kind &&
+		a.ExpectedAmountFen == b.ExpectedAmountFen && a.ActualAmountFen == b.ActualAmountFen &&
+		a.ExpectedCurrency == b.ExpectedCurrency && a.ActualCurrency == b.ActualCurrency
 }
 
 // HasUnresolvedPaymentAnomaly reports whether an order still carries an

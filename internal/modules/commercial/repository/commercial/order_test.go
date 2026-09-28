@@ -3,6 +3,7 @@ package commercial
 import (
 	"context"
 	"errors"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -199,6 +200,159 @@ func TestPaymentConfirmReplayAfterResponseLossKeepsSingleEvent(t *testing.T) {
 	}
 }
 
+func TestPaymentSecondSuccessfulTransactionOnSameAttemptPreservesOriginal(t *testing.T) {
+	s, db := testOrderStore(t)
+	ctx := context.Background()
+	mustCreateOrder(t, s, "o1", "q1")
+	first := mustRegisterAttempt(t, s, "a1", "o1", "wechat", "wxm", "m1")
+	first.Transaction = "txn_first"
+	second := first
+	second.Transaction = "txn_second"
+	for _, fact := range []domain.PaymentFact{first, second, first, second} {
+		if err := s.ConfirmPayment(ctx, fact); err != nil {
+			t.Fatal(err)
+		}
+	}
+	attempt := getAttempt(t, db, "a1")
+	if attempt.ProviderTransactionID == nil || *attempt.ProviderTransactionID != first.Transaction {
+		t.Fatalf("winner changed: %+v", attempt)
+	}
+	order, err := s.GetOrder(ctx, "o1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if order.State != domain.OrderStatePaid || order.Version != 2 {
+		t.Fatalf("order: %+v", order)
+	}
+	if n := countOutbox(t, db, OutboxKindFulfill); n != 1 {
+		t.Fatalf("fulfill=%d", n)
+	}
+	if n := countOutbox(t, db, OutboxKindOverPaid); n != 1 {
+		t.Fatalf("overpaid=%d", n)
+	}
+	var audits []OutboxEvent
+	if err := db.Where("kind = ?", OutboxKindOverPaid).Find(&audits).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(audits) != 1 || !strings.Contains(audits[0].PayloadJSON, second.Transaction) || strings.Contains(audits[0].PayloadJSON, first.Transaction) {
+		t.Fatalf("wrong audit: %+v", audits)
+	}
+	var anomalies []PaymentAnomalyRow
+	if err := db.Where("order_id = ?", "o1").Find(&anomalies).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(anomalies) != 1 {
+		t.Fatalf("later same-attempt collection must have one durable anomaly binding, got %+v", anomalies)
+	}
+	anomaly := anomalies[0]
+	if anomaly.TenantID != 7 || anomaly.AttemptID != "m1" || anomaly.Provider != "wechat" || anomaly.Merchant != "wxm" ||
+		anomaly.Transaction != second.Transaction || anomaly.Kind != PaymentAnomalyKindOverPaid ||
+		anomaly.ExpectedAmountFen != 0 || anomaly.ActualAmountFen != int64(second.Amount) ||
+		anomaly.ExpectedCurrency != second.Currency || anomaly.ActualCurrency != second.Currency || anomaly.State != PaymentAnomalyStateAwaiting {
+		t.Fatalf("later same-attempt fact not bound exactly: %+v", anomaly)
+	}
+}
+
+func TestPaymentAnomalyUniqueConflictRequiresExactImmutableFact(t *testing.T) {
+	s, db := testOrderStore(t)
+	ctx := context.Background()
+	row := PaymentAnomalyRow{
+		TenantID: 7, OrderID: "o1", AttemptID: "m1", Provider: "wechat", Merchant: "wxm", Transaction: "txn_second",
+		Kind: PaymentAnomalyKindOverPaid, ExpectedAmountFen: 0, ActualAmountFen: 100,
+		ExpectedCurrency: "CNY", ActualCurrency: "CNY", State: PaymentAnomalyStateAwaiting,
+	}
+	if err := s.RecordPaymentAnomaly(ctx, row); err != nil {
+		t.Fatal(err)
+	}
+	contradiction := row
+	contradiction.OrderID = "o2"
+	if err := s.RecordPaymentAnomaly(ctx, contradiction); err == nil {
+		t.Fatal("same provider/merchant/transaction with a contradictory fact must not be treated as idempotent success")
+	}
+	var anomalies []PaymentAnomalyRow
+	if err := db.Where("provider = ? AND merchant = ? AND `transaction` = ?", row.Provider, row.Merchant, row.Transaction).Find(&anomalies).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(anomalies) != 1 || anomalies[0].OrderID != row.OrderID {
+		t.Fatalf("conflicting duplicate changed the durable fact: %+v", anomalies)
+	}
+}
+
+func TestPaymentSecondSameAttemptConfirmationRollsBackAnomalyWhenOutboxWriteFails(t *testing.T) {
+	s, db := testOrderStore(t)
+	ctx := context.Background()
+	mustCreateOrder(t, s, "o1", "q1")
+	winner := mustRegisterAttempt(t, s, "a1", "o1", "wechat", "wxm", "m1")
+	winner.Transaction = "txn_first"
+	if err := s.ConfirmPayment(ctx, winner); err != nil {
+		t.Fatal(err)
+	}
+	callback := "test:reject_overpayment_outbox"
+	if err := db.Callback().Create().Before("gorm:create").Register(callback, func(tx *gorm.DB) {
+		if tx.Statement.Table == "commercial_outbox_events" {
+			if ev, ok := tx.Statement.Dest.(*OutboxEvent); ok && ev.Kind == OutboxKindOverPaid {
+				tx.AddError(errors.New("injected outbox insert failure"))
+			}
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	defer db.Callback().Create().Remove(callback)
+	later := winner
+	later.Transaction = "txn_second"
+	if err := s.ConfirmPayment(ctx, later); err == nil {
+		t.Fatal("expected injected over-payment event write failure")
+	}
+	if attempt := getAttempt(t, db, "a1"); attempt.ProviderTransactionID == nil || *attempt.ProviderTransactionID != winner.Transaction {
+		t.Fatalf("failed later confirmation changed winner attempt: %+v", attempt)
+	}
+	if n := countOutbox(t, db, OutboxKindOverPaid); n != 0 {
+		t.Fatalf("failed outbox write persisted %d over-payment events", n)
+	}
+	var anomalies []PaymentAnomalyRow
+	if err := db.Where("`transaction` = ?", later.Transaction).Find(&anomalies).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(anomalies) != 0 {
+		t.Fatalf("failed transaction left an anomaly without its event: %+v", anomalies)
+	}
+}
+
+func TestPaymentTransactionUniqueConflictDoesNotMutateAttemptOrOrder(t *testing.T) {
+	s, db := testOrderStore(t)
+	ctx := context.Background()
+	mustCreateOrder(t, s, "o1", "q1")
+	mustCreateOrder(t, s, "o2", "q2")
+	first := mustRegisterAttempt(t, s, "a1", "o1", "wechat", "wxm", "m1")
+	second := mustRegisterAttempt(t, s, "a2", "o2", "wechat", "wxm", "m2")
+	first.Transaction = "txn_shared"
+	second.Transaction = first.Transaction
+	if err := s.ConfirmPayment(ctx, first); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ConfirmPayment(ctx, second); err == nil {
+		t.Fatal("expected unique transaction conflict")
+	}
+	attempt := getAttempt(t, db, "a2")
+	if attempt.State != PaymentAttemptStatePending || attempt.ProviderTransactionID != nil {
+		t.Fatalf("attempt mutated: %+v", attempt)
+	}
+	order, err := s.GetOrder(ctx, "o2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if order.State != domain.OrderStatePending || order.Version != 1 {
+		t.Fatalf("order mutated: %+v", order)
+	}
+	var n int64
+	if err := db.Model(&OutboxEvent{}).Where("event_key = ? OR event_key LIKE ?", OutboxKindFulfill+":o2", OutboxKindOverPaid+":o2:%").Count(&n).Error; err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Fatalf("order B events=%d", n)
+	}
+}
+
 func TestPaymentConcurrentChannelsYieldSingleFulfillmentPlusAudit(t *testing.T) {
 	s, db := testOrderStore(t)
 	mustCreateOrder(t, s, "o1", "q1")
@@ -318,7 +472,7 @@ func TestCurrentPurchaseOrderPrefersNewestByCreatedAt(t *testing.T) {
 
 // TestCurrentPurchaseOrderSkipsLinklessPendingDegradedRow（OCR84-R1-03 high）：
 // CurrentPurchaseOrder 的 pending 偏好谓词必须与注释声明的
-// CurrentPendingPurchaseOrder「同一可付谓词」一致——含 checkout_url <> ''。
+// CurrentPendingPurchaseOrder 的可支付谓词也要求 checkout_url 非空。
 // 持久化降级行（渠道 Create 成功但 SetCheckoutURL 失败且不标 channel_failed，
 // R2-27 形态）不携带支付入口：若它赢得偏好，purchase.go 的 orderViewFromRow
 // 投影出无支付入口的永久 pending 订单，并遮蔽同价位已支付订单、错过
@@ -532,6 +686,13 @@ func TestPaymentConfirmRejectsUnregisteredOrMismatchedMerchant(t *testing.T) {
 	if got := countOutbox(t, db, ""); got != 0 {
 		t.Fatalf("outbox events=%d, want 0", got)
 	}
+	var beforeConflict []PaymentAnomalyRow
+	if err := db.Order("id ASC").Find(&beforeConflict).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(beforeConflict) != 1 {
+		t.Fatalf("mismatch anomaly rows=%d, want 1", len(beforeConflict))
+	}
 	if _, err := s.GetOrder(ctx, "missing"); !errors.Is(err, ErrOrderNotFound) {
 		t.Fatalf("missing order: %v", err)
 	}
@@ -540,8 +701,15 @@ func TestPaymentConfirmRejectsUnregisteredOrMismatchedMerchant(t *testing.T) {
 		f.OrderID = "missing"
 		f.AttemptID = "m1"
 		return f
-	}()); !errors.Is(err, ErrOrderNotFound) && !errors.Is(err, domain.ErrPaymentMismatch) {
+	}()); !errors.Is(err, ErrOrderNotFound) && !errors.Is(err, domain.ErrPaymentMismatch) && !errors.Is(err, ErrPaymentAnomalyConflict) {
 		t.Fatalf("fact on missing order: %v", err)
+	}
+	var afterConflict []PaymentAnomalyRow
+	if err := db.Order("id ASC").Find(&afterConflict).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(afterConflict, beforeConflict) {
+		t.Fatalf("conflicting replay mutated anomaly facts: before=%+v after=%+v", beforeConflict, afterConflict)
 	}
 }
 
