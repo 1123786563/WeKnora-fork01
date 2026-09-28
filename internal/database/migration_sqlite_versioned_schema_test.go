@@ -159,6 +159,11 @@ func TestTask8ClaimMigrationEmptyDownUpAndPopulatedDownRefusal(t *testing.T) {
 	t.Cleanup(func() { _, _ = m.Close() })
 	require.NoError(t, m.Steps(-1), "empty-state rollback remains available")
 	require.NoError(t, m.Steps(1), "empty-state up/down round trip restores Task8 schema")
+	assertSQLiteClaimIndex(t, sqlDB, "agent_chat_turn_claims", true, "id", "source_tenant_id")
+	assertSQLiteNamedIndex(t, sqlDB, "uq_agent_chat_turn_claim_request", true, "session_tenant_id", "session_id", "owner_id", "request_id")
+	assertSQLiteNamedIndex(t, sqlDB, "uq_agent_chat_turn_claim_session_assistant", true, "session_tenant_id", "assistant_message_id")
+	assertSQLiteNamedIndex(t, sqlDB, "uq_agent_chat_turn_claim_session_user", true, "session_tenant_id", "user_message_id")
+	assertSQLiteNamedIndex(t, sqlDB, "idx_agent_chat_turn_claim_source_state_release", false, "source_tenant_id", "state", "release_id")
 	_, err = sqlDB.Exec(`INSERT INTO agent_chat_turn_claims(id,source_tenant_id,session_tenant_id,session_id,owner_id,request_id,request_hash,assistant_message_id,agent_id,state,lease_owner,lease_expires_at,generation) VALUES('claim',1,1,'session','owner','request','hash','assistant','agent','active','worker',CURRENT_TIMESTAMP,1)`)
 	require.NoError(t, err)
 	require.Error(t, m.Steps(-1), "populated claim history must refuse schema rollback")
@@ -196,6 +201,10 @@ func TestTask8RunPinsAndPublishedVariantIdentityAreImmutable(t *testing.T) {
 	require.Error(t, insertRun("old-writer", `{"agent_id":"agent-old"}`, "", "", "", ""), "old application writers cannot create a Marketplace Run without pins")
 	_, err = db.Exec(`UPDATE agent_adoption_variants SET local_agent_version_id='version-changed' WHERE id='v1'`)
 	require.Error(t, err, "published Variant identity is immutable")
+	_, err = db.Exec(`UPDATE agent_adoption_variants SET state='retired' WHERE id='v1'`)
+	require.NoError(t, err)
+	_, err = db.Exec(`UPDATE agent_adoption_variants SET local_agent_id='agent-retired-rewrite' WHERE id='v1'`)
+	require.Error(t, err, "retired Variants preserve identity after publication")
 	var snapshot string
 	require.NoError(t, db.QueryRow(`SELECT snapshot FROM agent_runs WHERE run_id='pinned'`).Scan(&snapshot))
 	require.Equal(t, `{"agent_id":"agent-a"}`, snapshot, "pin enforcement never rewrites the frozen snapshot")
@@ -215,12 +224,76 @@ func TestTask8PostgresMigrationDeclaresTransactionalSecurityGuards(t *testing.T)
 		"trg_agent_runs_marketplace_pin_required", "trg_agent_adoption_variant_published_identity_immutable",
 		"agent_run_security_duplicate_variant_mapping", "agent_run_security_timestamp_conflict", "agent_run_security_stale_variant_version",
 		"security_pin_source='legacy_backfill'", "create table agent_chat_turn_claims",
+		"primary key(id,source_tenant_id)", "uq_agent_chat_turn_claim_request",
+		"create unique index uq_agent_chat_turn_claim_request on agent_chat_turn_claims(session_tenant_id,session_id,owner_id,request_id)",
+		"create unique index uq_agent_chat_turn_claim_session_assistant on agent_chat_turn_claims(session_tenant_id,assistant_message_id)",
+		"create unique index uq_agent_chat_turn_claim_session_user on agent_chat_turn_claims(session_tenant_id,user_message_id)",
+		"create index idx_agent_chat_turn_claim_source_state_release on agent_chat_turn_claims(source_tenant_id,state,release_id)", "old.published_at is not null",
 	} {
 		require.Contains(t, up, fragment, "PostgreSQL migration must preserve its reviewed atomic guard contract")
 	}
 	for _, fragment := range []string{"begin;", "commit;", "agent_security_history_prevents_down", "run_cancellation_state"} {
 		require.Contains(t, down, fragment, "PostgreSQL down migration must refuse populated history transactionally")
 	}
+}
+
+func assertSQLiteClaimIndex(t *testing.T, db *sql.DB, table string, primary bool, want ...string) {
+	t.Helper()
+	rows, err := db.Query("PRAGMA index_list(" + table + ")")
+	require.NoError(t, err)
+	defer rows.Close()
+	var observed []string
+	for rows.Next() {
+		var seq, unique, partial int
+		var name, origin string
+		require.NoError(t, rows.Scan(&seq, &name, &unique, &origin, &partial))
+		if unique != 1 || (primary && origin != "pk") || (!primary && origin == "pk") {
+			continue
+		}
+		cols := sqliteIndexColumns(t, db, name)
+		observed = append(observed, name+"="+strings.Join(cols, ","))
+		if equalStrings(cols, want) {
+			return
+		}
+	}
+	require.NoError(t, rows.Err())
+	require.Failf(t, "missing tenant-scoped unique index", "%s unique index on %s was not found (observed %v)", want, table, observed)
+}
+
+func assertSQLiteNamedIndex(t *testing.T, db *sql.DB, name string, unique bool, want ...string) {
+	t.Helper()
+	var indexUnique int
+	require.NoError(t, db.QueryRow("SELECT \"unique\" FROM pragma_index_list('agent_chat_turn_claims') WHERE name = ?", name).Scan(&indexUnique))
+	require.Equal(t, unique, indexUnique == 1)
+	require.Equal(t, want, sqliteIndexColumns(t, db, name))
+}
+
+func sqliteIndexColumns(t *testing.T, db *sql.DB, name string) []string {
+	t.Helper()
+	rows, err := db.Query("PRAGMA index_info(" + name + ")")
+	require.NoError(t, err)
+	defer rows.Close()
+	columns := make([]string, 0)
+	for rows.Next() {
+		var seq, cid int
+		var column string
+		require.NoError(t, rows.Scan(&seq, &cid, &column))
+		columns = append(columns, column)
+	}
+	require.NoError(t, rows.Err())
+	return columns
+}
+
+func equalStrings(got, want []string) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func TestSQLiteMigrationsUpgradeV4PreservesData(t *testing.T) {

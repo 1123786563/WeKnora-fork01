@@ -69,3 +69,41 @@ The intended diff is limited to the corrected Task 8B Owned paths from the Brief
 1. Full owning package suites are not green because existing Run consumers/fixtures do not provide the exact pin sidecars required by the new migration guard. 8C must inject exact identity pins for new Marketplace Run rows, and downstream fixture suites must be updated accordingly before full integration verification.
 2. PostgreSQL behavior is statically inspected only. Run the versioned migrations and relevant backfill/down/trigger tests against the supported PostgreSQL version before rollout.
 3. The deployment-time signed unmatched-Run disposition remains an operator responsibility and is intentionally not represented as complete by these code artifacts.
+
+## Review-fix round 1 — F1–F4
+
+- Fix-plan Brief: `.worktrees/issue30-sweep/.worktrees/issue30-b6-coordination/.superpowers/sdd/plan-t64-task8b-review-fix-r1/task-1-brief.md`.
+- Independent review range: `43100052bbb419ad1dd801a9a76b7570d1a3b28f..cbdb08e627b3466cc419815e3108fe18bb0b3bfc`.
+- R1 source base: `cbdb08e627b3466cc419815e3108fe18bb0b3bfc`.
+
+### Corrections
+
+- **F1:** app-side Variant identity updates now lock/re-read and refuse when `published_at` is set, including retired state; SQLite and PostgreSQL triggers use `OLD.published_at IS NOT NULL`. Added retired mutation tests for repository behavior and SQLite direct SQL.
+- **F2:** claim cancellation, owner cancellation, and expiry cleanup now require one tenant/session/owner/request-bound assistant placeholder update after a successful claim state transition. Any missing/mismatched row returns an error and rolls back the enclosing transaction. Added missing/mismatched placeholder rollback tests for all three paths.
+- **F3:** claim entity and both migration dialects now use composite primary key `(id, source_tenant_id)`, named unique indexes for request replay, `(session_tenant_id, assistant_message_id)`, `(session_tenant_id, user_message_id)`, and the source/state/release lookup index. GORM index metadata and SQLite/PostgreSQL migration source contract are asserted.
+- **F4:** revocation views expose `run_cancellation_state`. The service returns the committed revocation ID with `pending` when immediate reconciliation errors, logs the reconciliation error, and retains the existing durable worker retry. Successful immediate reconciliation returns `complete`; `allow` also persists/returns `complete`.
+
+### R1 RED evidence
+
+| Command | Exit | Captured failure |
+|---|---:|---|
+| `go test ./internal/application/repository -run '^(TestAgentAdoptionRepositoryLifecycle|TestAgentChatTurnClaimMissingPlaceholder.*|TestAgentChatTurnClaimRevocationMissingPlaceholderRollsBackTogether)$' -count=1` | 1 | Before fixes: retired repository identity mutation, owner cancellation with missing placeholder, and revocation with missing placeholder each unexpectedly returned nil. |
+| `go test ./internal/application/repository -run '^(TestAgentChatTurnClaimMissingPlaceholder.*|TestAgentChatTurnClaimMissingExpiredPlaceholderRollsBackAdmission|TestAgentChatTurnClaimRevocationMissingPlaceholderRollsBackTogether|TestAgentAdoptionRepositoryLifecycle)$' -count=1` | 1 | Before fixes: same three failures plus expiry cleanup/new admission unexpectedly returned nil with the expired placeholder missing. |
+| `go test ./internal/database -run '^(TestTask8ClaimMigrationEmptyDownUpAndPopulatedDownRefusal|TestTask8RunPinsAndPublishedVariantIdentityAreImmutable|TestTask8PostgresMigrationDeclaresTransactionalSecurityGuards)$' -count=1` | 1 | Before fixes: composite PK assertion failed (`[id source_tenant_id]` absent); retired direct SQL identity mutation unexpectedly succeeded; PostgreSQL source contract lacked composite key/required indexes. |
+| `go test ./internal/application/service -run '^(TestRevokeReleaseReturnsCommittedPendingResultWhenImmediateReconcileFails|TestRevokeDependencyReturnsCommittedPendingResultWhenImmediateReconcileFails)$' -count=1` against the original service implementation at R1 base | 1 | Both tests failed with `reconcile temporarily unavailable` returned to the caller, despite the revocation having committed. |
+
+### R1 GREEN and verification evidence
+
+| Command | Exit | Output/result |
+|---|---:|---|
+| `go test ./internal/application/repository -run '^(TestAgentChatTurnClaimEntityUsesTenantScopedKeysAndRevocationIndex|TestAgentAdoptionRepositoryLifecycle|TestAgentChatTurnClaimMissingPlaceholder.*|TestAgentChatTurnClaimMissingExpiredPlaceholderRollsBackAdmission|TestAgentChatTurnClaimRevocationMissingPlaceholderRollsBackTogether)$' -count=1` | 0 | `ok github.com/Tencent/WeKnora/internal/application/repository 6.272s` |
+| `go test ./internal/application/repository -run '^(TestAgentChatTurnClaim|TestRunCancellationReconciliation|TestCancelRunsBySecurityPins|TestAgentAdoption.*Variant|TestAgentSecurityStoreAppendReleaseAndAuditRollsBackTogether)' -count=1` | 0 | `ok github.com/Tencent/WeKnora/internal/application/repository 16.406s` |
+| `go test ./internal/application/service -run '^(TestRevokeReleaseReturnsCommittedPendingResultWhenImmediateReconcileFails|TestRevokeDependencyReturnsCommittedPendingResultWhenImmediateReconcileFails)$' -count=1` | 0 | `ok github.com/Tencent/WeKnora/internal/application/service 3.635s`; both pending responses preserve ID and durable retry changes state to complete. |
+| `go test ./internal/application/service -run '^(TestResolvePublishedAgentVersion|TestAgentSecurity.*)$' -count=1` | 0 | `ok github.com/Tencent/WeKnora/internal/application/service 18.737s` |
+| `go test ./internal/database -run '^(TestSQLiteMigrationsCreateVersionedSchema|TestTask8ClaimMigrationEmptyDownUpAndPopulatedDownRefusal|TestTask8RunPinsAndPublishedVariantIdentityAreImmutable|TestTask8PostgresMigrationDeclaresTransactionalSecurityGuards)$' -count=1` | 0 | `ok github.com/Tencent/WeKnora/internal/database 4.305s`; SQLite assertions passed and PostgreSQL SQL source contract passed. |
+| `go build ./...` | 0 | Passed; macOS linker emitted `ignoring duplicate libraries: '-lc++'` for `cmd/desktop` and `cmd/server`. |
+| `git diff --check` and `git diff --cached --check` | 0 | No whitespace errors before R1 staging. |
+
+R1 focused tests were run serially. No changes were made outside the 14 R1-owned paths in the Task Brief. The pre-existing PostgreSQL execution limitation still applies (`psql`/`pg_isready` unavailable; no server exercised). The full-suite 8C+ unpinned-Run fixture failures recorded above remain integration follow-up and were not changed in this checkpoint.
+
+- R1 source HEAD/commit: pending final local commit.
