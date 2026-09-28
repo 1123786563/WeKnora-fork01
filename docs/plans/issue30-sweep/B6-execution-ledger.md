@@ -78,6 +78,8 @@ graph LR
 - Task7 opt-in provider repair `d4e6d6d2d` independently PASS; no live GitHub credential/write opt-in available, so its actual provider leg remains blocked-env. Report `.superpowers/sdd/plan-t55-review-fix/task-3-report.md` in the Task7 worktree.
 - T55 Task6 mobile UI/composition is running on an isolated worktree based on verified T55 Task5 fix `45c8531ffe73c507aacbd9da67a272e1fb778255`; T8 depends on its exported `activeDeliveryRecovery` checkpoint.
 - T63 Task2 HIGH finding repair plan: `plans/plan-t63-task2-race-fix.md`. Architecture ruling: both repository writers must begin their transaction with the same tenant/id/state-guarded parent no-op UPDATE; SQLite's first write obtains writer reservation while PostgreSQL row updates serialize. Deterministic tests must use file-backed SQLite, separate connections and channel/callback barriers; no sleeps. Repair is active in `codex/issue30-t63` at `a4ab413a3e40f3f2bee4309cebc9d6c33f7f8ac1`.
+- T64 Task2 read-only preflight confirmed its code files (`agent_security.go` and `agent_security_test.go`) are disjoint from the T63 race repair, but its release/variant reads consume the lifecycle schema and CreateVariant state contract. T64 Task2 stays unstarted until the T63 race repair is reviewed and integrated; its `ReleaseFacts` must include both local and tenant-introduced releases, deduplicating by ID with local rows winning.
+- T55 Task6 review-fix plan: `plans/plan-t55-task6-review-fix.md`, active in the same isolated Task6 worktree. Review found stale task-route state/in-flight results and missing action invocation evidence; Task8 is blocked pending the repair's independent pass.
 
 ### Parallel execution checkpoints
 
