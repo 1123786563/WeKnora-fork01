@@ -19,12 +19,77 @@ export interface DeliveryIntegrationEvidence {
   deliveryState?: string;
   recovery: 'skipped' | 'not-needed' | 'recovered' | 'failed';
   recoveryState?: string;
+  recoveryRunId?: string;
+  recoveryDeliveryId?: string;
   commitSha?: string;
   prUrl?: string;
   approver?: string;
   remoteLogin?: string;
   failure?: string;
   commandTimestamp: string;
+}
+
+interface RecoveryCandidate {
+  id: string;
+  state: string;
+}
+
+export interface DeliveryRecoveryEvidenceResult<T extends RecoveryCandidate> {
+  recovery: 'not-needed' | 'recovered' | 'failed';
+  recoveryState?: string;
+  recoveryRunId?: string;
+  recoveryDeliveryId?: string;
+  firstDelivery?: { runId: string; delivery: T };
+  failure?: string;
+}
+
+/** Scan delivery rows in task order and attempt at most one ambiguous recovery write. */
+export async function runDeliveryRecoveryEvidence<T extends RecoveryCandidate>(ports: {
+  runIds: string[];
+  readDelivery(runId: string): Promise<T | null>;
+  recover(input: { runId: string; deliveryId: string }): Promise<{ state: string }>;
+}): Promise<DeliveryRecoveryEvidenceResult<T>> {
+  const result: DeliveryRecoveryEvidenceResult<T> = { recovery: 'not-needed' };
+  let lastReadState: string | undefined;
+  let attemptedState: string | undefined;
+
+  for (const runId of ports.runIds) {
+    let delivery: T | null;
+    try {
+      delivery = await ports.readDelivery(runId);
+    } catch (error) {
+      result.recovery = 'failed';
+      result.failure = error instanceof Error ? error.message : String(error);
+      result.recoveryState = attemptedState ?? lastReadState;
+      return result;
+    }
+    if (delivery === null) continue;
+
+    result.firstDelivery ??= { runId, delivery };
+    lastReadState = delivery.state;
+    if (delivery.state !== 'pushed' && delivery.state !== 'unknown') continue;
+
+    result.recoveryRunId = runId;
+    result.recoveryDeliveryId = delivery.id;
+    attemptedState = delivery.state;
+    try {
+      const recovered = await ports.recover({ runId, deliveryId: delivery.id });
+      result.recovery = 'recovered';
+      result.recoveryState = recovered.state;
+      return result;
+    } catch (error) {
+      if (error instanceof DeliveryRecoveryError && (error.code === 'DELIVERY_STATE_CONFLICT' || error.code === 'DELIVERY_INVALID_INPUT')) {
+        continue;
+      }
+      result.recovery = 'failed';
+      result.recoveryState = delivery.state;
+      result.failure = error instanceof Error ? error.message : String(error);
+      return result;
+    }
+  }
+
+  result.recoveryState = attemptedState ?? lastReadState;
+  return result;
 }
 
 /** 与 T04/T05/T16 相同的 opt-in 语义（自包含，不跨计划 import 凭据逻辑）。 */
@@ -54,9 +119,8 @@ export function deliveryIntegrationConfig(env: Record<string, string | undefined
   };
 }
 
-/** 真实 transport + Runtime 授权通道 + 交付读面。只读：不发起 prepare/dispatch
- * （真实交付链证据由 Go 侧 blocked-env 测试承载）。装配与 material-integration-smoke.ts
- * 的 runMaterialIntegration 同构。 */
+/** 真实 transport + Runtime 授权通道 + 交付读面。默认只读；opt-in recovery 可通过
+ * 授权测试部署 resolve/dispatch。真实交付链证据由 Go 侧 blocked-env 测试承载。 */
 export async function runDeliveryIntegration(config: Extract<DeliveryIntegrationConfig, { enabled: true }>): Promise<DeliveryIntegrationEvidence> {
   const evidence: DeliveryIntegrationEvidence = {
     deploymentOrigin: config.deploymentOrigin, login: 'failed', executionListed: 'failed', deliveryRead: 'failed',
@@ -90,9 +154,34 @@ export async function runDeliveryIntegration(config: Extract<DeliveryIntegration
     evidence.executionListed = 'listed';
 
     const remote = createMobileCodeDeliveryRemote({ origin: config.deploymentOrigin, request: (input) => runtime.authorizedRequest(input) });
-    const recovery = config.recover
-      ? createDeliveryRecovery({ remote, lease: () => runtime.scopeLease() })
-      : undefined;
+    if (config.recover) {
+      const recovery = createDeliveryRecovery({ remote, lease: () => runtime.scopeLease() });
+      const recoveryEvidence = await runDeliveryRecoveryEvidence({
+        runIds: page.items.map((item) => item.runId),
+        readDelivery: (runId) => remote.delivery(runId),
+        recover: (input) => recovery.recover(input),
+      });
+      const first = recoveryEvidence.firstDelivery;
+      if (first !== undefined) {
+        evidence.deliveryRead = 'read';
+        evidence.deliveryState = first.delivery.state;
+        evidence.commitSha = first.delivery.commitSha;
+        evidence.prUrl = first.delivery.prUrl;
+        evidence.approver = first.delivery.approver;
+        evidence.remoteLogin = first.delivery.remoteLogin;
+      } else {
+        evidence.deliveryRead = recoveryEvidence.failure ? 'failed' : 'absent';
+      }
+      evidence.recovery = recoveryEvidence.recovery;
+      evidence.recoveryState = recoveryEvidence.recoveryState;
+      evidence.recoveryRunId = recoveryEvidence.recoveryRunId;
+      evidence.recoveryDeliveryId = recoveryEvidence.recoveryDeliveryId;
+      if (recoveryEvidence.failure) {
+        evidence.failure = evidence.failure ? `${evidence.failure}; ${recoveryEvidence.failure}` : recoveryEvidence.failure;
+      }
+      return evidence;
+    }
+
     for (const item of page.items) {
       const record = await remote.delivery(item.runId);
       if (record !== null) {
@@ -102,22 +191,6 @@ export async function runDeliveryIntegration(config: Extract<DeliveryIntegration
         evidence.prUrl = record.prUrl;
         evidence.approver = record.approver;
         evidence.remoteLogin = record.remoteLogin;
-        if (recovery !== undefined) {
-          try {
-            const recovered = await recovery.recover({ runId: item.runId, deliveryId: record.id });
-            evidence.recovery = 'recovered';
-            evidence.recoveryState = recovered.state;
-          } catch (error) {
-            if (error instanceof DeliveryRecoveryError && (error.code === 'DELIVERY_STATE_CONFLICT' || error.code === 'DELIVERY_INVALID_INPUT')) {
-              evidence.recovery = 'not-needed';
-              evidence.recoveryState = record.state;
-            } else {
-              evidence.recovery = 'failed';
-              const message = error instanceof Error ? error.message : String(error);
-              evidence.failure = evidence.failure ? `${evidence.failure}; ${message}` : message;
-            }
-          }
-        }
         return evidence;
       }
     }
