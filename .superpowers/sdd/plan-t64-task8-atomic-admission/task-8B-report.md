@@ -108,4 +108,4 @@ R1 focused tests were run serially. No changes were made outside the 14 R1-owned
 
 - R1 source HEAD/implementation commit: `17f0006f3de90d549edf4f1e323b3e82ac557ab3` (`fix: close task 8b review findings`).
 
-- R1 evidence-record commit: pending report-only local commit.
+- R1 evidence-record commit: 16f770f39f5c0dac39b568a2be9b0863e27838a8 (this commit contains the R1 evidence report).
