@@ -35,11 +35,13 @@ Plan command correction: inspection of the selected baseline’s workspace manif
 
 ## Task Status
 
-All implementation nodes start `pending`; an Issue’s historical implementation status cannot make any node `verified`.
+Implementation nodes start `pending`; PH (#143) is a pending early Harmony gate and P145 (#145) is an independently ready iOS/Android Task-boundary slice. An Issue’s historical implementation status cannot make any node `verified`. Task 0 remains `running` pending completion of this correction and an independent re-review.
 
 | Task | Status | Checkpoint / evidence | Review / ruling |
 |---|---|---|---|
 | 0 Baseline ledger / DAG | running | live audit returned 34/34 nodes; source DAG SHA256 `3b95634a…`; full snapshots/current DAG at `a443dbae230496ceca6b23044d8df79b7a3c031d`; command correction `79df699010d887e88b7336bf66365e5902b66121`; Review Package `fa0b882d..79df6990` report `.superpowers/sdd/2026-09-28-issue-140-main-port/task-0-review.md` | Review found 4 high + 2 medium; plan/DAG/ledger correction and scoped re-review required |
+| 0A Harmony feasibility trial (#143) | pending | PH; depends on Task 0 docs baseline | Independent native matrix/trial and ruling required before Harmony claims |
+| 0B Expo iOS/Android Task boundary (#145) | pending | no Issue blockers; independent of PH and Career API/backend | Can proceed in parallel; verify actual iOS/Android authenticated Task boundary before Task 9/#144 |
 | 1 Career wire contract/API client | pending | — | — |
 | 2 Career module/auth/schema | pending | — | — |
 | 3 Profile/source/opportunity/evaluation | pending | — | — |
@@ -86,3 +88,10 @@ No implementation verification or OCR has run for this plan yet. Task 0 first in
 - Web and Expo briefs explicitly consume the ADR 0019 Career Desk and provide named assembly tests. The dangling discovery-record link was removed from the approved spec; the wording now states the historical raw notes are not in this baseline, without inventing a replacement source.
 - Verification commands/results: inline `python3` structural assertions — PASS for #144/#169/#156 task ownership, prereqs/tests, Web/Expo Desk consumption, and the repaired link; owned-Markdown relative-link check — PASS; `git diff --check` — PASS (exit 0). Exact final report and range checks are recorded in `docs/plans/issue-140/reviews/task-0-plan-fix.md`.
 - Task 0 stays `running` pending the controller's next independent re-review.
+
+## Task 0 final-review dependency correction
+
+- Final-review finding: P7 had inadvertently gated the independent #145 iOS/Android thin slice on PH/#143 and P0–P4. Corrected plan/DAG now give #145 its own P145 node with no dependencies; it can proceed beside PH and Career API/backend work.
+- #144 remains in P7/Task 9 and cannot close until both PH/#143 ruling and verified P145 evidence are integrated. Harmony-specific P7 work alone waits for PH; #145 iOS/Android is never blocked by it.
+- Task 9 consumes Task 0B/#145 before implementing #144; the W0/W2 schedule and 0A/0B ledger statuses reflect this split.
+- Task 0 remains `running` pending the next independent re-review.

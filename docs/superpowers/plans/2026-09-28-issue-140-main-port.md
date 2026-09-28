@@ -89,6 +89,22 @@
 - [ ] Produce either viable-path capability evidence or a reproducible failure plus options/ruling; absence of a toolchain/device is recorded as an unresolved prerequisite only after documenting the attempted trial and evidence gathered.
 - [ ] Independent validator checks the evidence and ruling before Harmony-inclusive work is released.
 
+### Task 0B: Expo iOS/Android authenticated Task boundary (#145)
+
+**Depends on:** none; #145 has no Issue blocker. Start independently of PH/#143, Career API and Career backend tasks using the existing Expo app, Mobile Runtime and authorized Task read.
+**Owner / validator:** `frontend_implementer` / `frontend_validator`
+**Concurrency:** early isolated Expo native slice; may run alongside Task 0A and Tasks 1–6. Keep device/build output isolated from other Mobile work.
+
+**Files:**
+- Create/modify: `packages/mobile-core/src/task-office/**` for the public Task Office seam and focused tests; `apps/mobile/src/task-office/native-boundary/**` for Expo composition/adapters and acceptance probes. Shared public exports remain integration-owner reviewed.
+
+**Consumes:** current Expo app, Mobile Runtime scope lease, authenticated Task public read, and #145 acceptance. It does not consume Career API or wait for the Harmony trial.
+**Produces:** reusable authorized existing-Task boundary on iOS and Android, including login/tenant rejection, space-switch invalidation, navigation, file select/download, share, notification and secure-storage capability adapter evidence. This checkpoint is the #145 prerequisite consumed by Task 9; Harmony is outside #145 scope.
+
+- [ ] Add `MobileTaskOffice_PublicSeam_RejectsCrossTenantAndRestoresSameTask` and capability-probe tests for scope revocation/late reads, file, share, notification and secure storage.
+- [ ] Run real iOS and Android development builds with the existing Expo SDK. Record commands, SDK/dependency versions, device/simulator, authorized existing Task read and all probe results; absent device/build environment stays explicitly blocked for that platform.
+- [ ] Independently review and integrate the #145 checkpoint before Task 9 implements #144.
+
 ### Task 1: Define versioned Career contracts, Career Desk and API client
 
 **Depends on:** Task 0
@@ -259,25 +275,25 @@
 
 ### Task 9: Expo iOS/Android Career workflow and native capability adapters
 
-**Depends on:** Tasks 1–6 reviewed and integrated; complete the #145 authenticated Task boundary before #144 Task Office delivery. #144 is formally blocked by #143 and #145: its Harmony acceptance requires PH/#143 ruling; iOS/Android may proceed only after #145 evidence is integrated, and no Harmony completion is inferred from those targets.
+**Depends on:** Tasks 1–6 and Task 0B/#145 reviewed and integrated. iOS/Android Career work can proceed without PH/#143. #144 is formally blocked by both #143 and #145: its overall closure requires the PH/#143 ruling and verified #145 evidence; only Harmony-specific implementation/evidence waits for PH, while iOS/Android #144 work may proceed once #145 is integrated.
 **Owner / validator:** `frontend_implementer` / `frontend_validator`
 **Concurrency:** independent Mobile worktree; may run alongside Tasks 7 and 8; record missing physical/native environments as blocked.
 
 **Files:**
-- Create: `apps/mobile/src/career/**`, `apps/mobile/src/task-office/**`, screens/controllers and Career tests.
-- Modify: `packages/mobile-core/src/task-office/**` only for the public Task Office seam extensions and scoped recovery tests owned by #145/#144; shared exports remain integration-owner reviewed.
+- Create: `apps/mobile/src/career/**`, `apps/mobile/src/task-office/career-entry/**`, screens/controllers and Career tests.
+- Consume Task 0B `packages/mobile-core/src/task-office/**` public seam; Task 9 does not re-own the #145 native-boundary files.
 - Modify via integration owner: `apps/mobile/src/composition.ts`, mobile route/screen registries.
 - Modify owned Career adapters only for document share/download, notification, secure cache and app lifecycle behavior.
 - Reuse `packages/mobile-core` runtime/task-office/material/vault ports; no copy of domain rules into screens.
 
 **Consumes:** decoded DTOs via canonical CareerApi and shared `@weknora/career-core` Career Desk for Career `open/list/act/observe/reconcilePending`, revision and scope recovery. Expo supplies scope-lease mapping, durable intent-store, `packages/mobile-core` TaskOffice/runtime/file/share/notification/secure-storage adapters, and presentation; it does not reimplement Career Desk semantics.
-**Produces:** first verify #145 native authenticated Task/runtime boundary. Then #144 adds a governed Task Office entry that opens an authorized existing Task, restores that same Task on refresh/restart without creating another, invalidates prior Task data and late responses on scope switch, and shows a governed offline cache or explicit unavailability. Career screens also use the shared Desk. Harmony-specific #144 claims remain gated by Task 0A/#143 evidence.
+**Produces:** consumes the already verified #145 native authenticated Task/runtime boundary from Task 0B. Then #144 adds a governed Task Office entry that opens an authorized existing Task, restores that same Task on refresh/restart without creating another, invalidates prior Task data and late responses on scope switch, and shows a governed offline cache or explicit unavailability. Career screens also use the shared Desk. #144 cannot close until both Task 0A/#143 ruling and verified #145 evidence are recorded; only its Harmony-specific implementation waits for PH.
 
 - [ ] Add public seam and app tests: `MobileTaskOffice_PublicSeam_RejectsCrossTenantAndRestoresSameTask`, `ExpoTaskOffice_EntryOpensAuthorizedExistingTask`, `ExpoTaskOffice_RestartRestoresSameTaskWithoutCreatingTask`, `ExpoTaskOffice_ScopeSwitchDiscardsTaskAndLateResponses`, and `ExpoTaskOffice_OfflineShowsGovernedCacheOrUnavailable`; verify no success state is inferred offline.
 - [ ] Add Career Desk controller test `ExpoCareerDesk_Assembly_UsesSharedDeskForReconcileAndScopeInvalidation` plus tenant/deployment switch, permission revocation, material digest/version unknown, preparation source/recovery behavior, and deletion cache invalidation tests.
 - [ ] Implement routed UI and adapters with mobile domain logic kept behind feature/controller seam.
 - [ ] Run mobile unit tests, TypeScript/lint and iOS/Android build gates available in repository; save exact logs.
-- [ ] Run actual iOS and Android workflows: #145 opens the authorized Task, then #144 demonstrates entry/restart/offline/scope behavior on both targets; record build, SDK, device, authorization and each probe. Record missing physical capability as `blocked` with the exact environment requirement. Harmony remains separate under PH.
+- [ ] Run actual iOS and Android workflows: consume Task 0B/#145 authorized Task evidence, then #144 demonstrates entry/restart/offline/scope behavior on both targets; record build, SDK, device, authorization and each probe. Record missing physical capability as `blocked` with the exact environment requirement. Harmony remains separate under PH.
 - [ ] Commit `feat: add career office expo mobile workflow` in the Mobile worktree; produce BASE/HEAD Review Package and evidence report.
 
 ### Task 10: Cross-client integration, post-trial Harmony gates and complete issue verification
@@ -296,7 +312,7 @@
 - [ ] Integrate only task-reviewed commits in dependency order; verify each source SHA and owned path before cherry-pick; rerun affected tests after conflicts.
 - [ ] Run Go module/migrations/router/container tests and repository Go suite; contracts/API-client suites; Web full test/typecheck/build; Mini test/typecheck/tokens/build; Mobile test/typecheck/platform builds available.
 - [ ] Verify tenant/owner authorization, cross-client event/snapshot versions, same request ID recovery, old Task/Artifact invalidation and no sensitive notification payload using integrated tests.
-- [ ] For #143, cite Task 0A trial, matrix and independent ruling. Do not mark #143 blocked solely because a toolchain/device is unavailable without the attempted trial, available evidence and ruling. If a technically supported path still lacks a specific device/build prerequisite, mark only the affected native verification blocked and identify that prerequisite; if the trial rules out a maintainable path, block Harmony-dependent tickets (#144, #145, #163, #165, #167, #168, #171, #172) with the ruling. Run real Harmony native build/device workflow when the trial supports it; Android compatibility and WebView do not qualify.
+- [ ] For #143, cite Task 0A trial, matrix and independent ruling. Do not mark #143 blocked solely because a toolchain/device is unavailable without the attempted trial, available evidence and ruling. If a technically supported path still lacks a specific device/build prerequisite, mark only the affected native verification blocked and identify that prerequisite; if the trial rules out a maintainable path, block only affected Harmony acceptance for #144 and Harmony-dependent tickets (#163, #165, #167, #168, #171, #172) with the ruling; #145 iOS/Android remains independently verifiable. Run real Harmony native build/device workflow when the trial supports it; Android compatibility and WebView do not qualify.
 - [ ] Map all 43 root stories and #141–#173 to verified evidence or an explicit environment block; no silent inheritance from historical OCR reports.
 - [ ] Run final independent branch review and OCR `--audience agent` across the complete allowed delivery range plus workspace changes; save reports and all rulings in the issue plan directory.
 - [ ] Commit final verification/ledger update only after all local reviews and gates have explicit outcomes.
@@ -305,17 +321,17 @@
 
 | Wave | Ready work | Parallel rule | Shared-state guard |
 |---|---|---|---|
-| W0 | Task 0, then Task 1 | Sequential | Issue docs and contract indexes are integration-critical. |
+| W0 | Task 0, Task 0A (#143), Task 0B (#145), then Task 1 | Task 0A follows the documentation baseline; Task 0B has no issue blocker and may run independently alongside Task 0A and Tasks 1–6. | Keep Harmony and iOS/Android native builds/devices isolated; client API indexes remain integration-critical. |
 | W1 | Tasks 2–6 | Sequential | Shared Go module, migration sequences, router/container/Workbench seams, and shared DB tests. |
-| W2 | Tasks 7, 8, 9 | Parallel after Tasks 1–6 commit and review | Separate managed worktrees, disjoint client files, isolated node_modules/build output/device/report dirs. Shared API/route/config indexes are integration-owner only. |
+| W2 | Tasks 7, 8, 9 | Tasks 7/8 after Tasks 1–6; Task 9 after Tasks 1–6 + Task 0B #145. PH gates only Harmony parts/#144 closure. Task 0B may run in parallel with Task 0A and Tasks 1–6. | Separate managed worktrees, disjoint client files, isolated node_modules/build output/device/report dirs. Shared API/route/config indexes are integration-owner only. |
 | W3 | Task 10 | Sequential integration; optional parallel device validation | One integration worktree; no shared DevTools port or build cache while validators run. |
 
 The old branch’s implemented behavior can guide expectations and fixtures, but every task must pass fresh TDD, validator, independent Spec-compliance/code-quality review and current-baseline verification. No old `verified` status is carried forward.
 
 ## Consistency Self-Review
 
-- **Coverage:** all 33 child Issues map to P0–P8 plus PH in the companion DAG. The #140 43-story acceptance matrix is included there. Tasks 2–6 cover Career server truth and Task coordination; 7–9 cover the three clients; Task 8 owns #169 Mini timeline/preparation; Task 9 owns #145 then #144 Expo Task Office; Task 10 covers platform evidence and cross-client integration.
+- **Coverage:** all 33 child Issues map to P0–P8 plus independent PH/#143 and P145/#145 nodes in the companion DAG. The #140 43-story acceptance matrix is included there. Tasks 2–6 cover Career server truth and Task coordination; 7–9 cover the three clients; Task 8 owns #169 Mini timeline/preparation; Task 0B independently owns #145; Task 9 consumes that evidence and owns #144 Expo Task Office; Task 10 covers platform evidence and cross-client integration.
 - **Interfaces:** Task 1 creates the contract before module/client implementation; Workbench admission comes only from existing `AdmissionCoordinator.Start`/`TaskBudgetPort`; Task/Application identity is one-to-one; Artifact refs are not client URLs. Shared registries remain integrator-owned.
-- **Dependencies/cycles:** Task order is 0→1→2→3→4→5→6→(7,8,9)→10. No cycles. The Issue-level DAG preserves separate `contains` and `depends_on` edges.
+- **Dependencies/cycles:** Task 0B/#145 is independently ready without PH or P0–P4; Task 0A/#143 follows the Task 0 docs baseline. Core order is 0→1→2→3→4→5→6→(7,8,9)→10; Task 9 additionally consumes verified Task 0B. PH gates only Harmony-specific work and #144 closure. No cycles. The Issue-level DAG preserves separate `contains` and `depends_on` edges.
 - **Review focus coverage:** confirmation/injection in Task 3/5; ownership and scope in Task 2/4/7/8/9; idempotency in Task 4/5/6; source completeness and tri-state in Task 3; material version and unknown submission in Task 5/7/8/9.
 - **Safety and proportion:** no external release or auto-submission is introduced; device gate remains evidence-bound. This plan fixes seams and behavior tests without copying the legacy implementation wholesale.
