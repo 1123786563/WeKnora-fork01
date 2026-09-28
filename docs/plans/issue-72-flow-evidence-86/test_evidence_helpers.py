@@ -74,6 +74,65 @@ class EvidenceHelpersTest(unittest.TestCase):
             self.assertEqual(request.get_header("Authorization"), "Bearer fallback-secret")
             self.assertNotIn("fallback-secret", str(request.full_url))
 
+    def test_consume_request_explicit_key_skips_lazy_lookup(self):
+        response = mock.MagicMock()
+        response.__enter__.return_value.status = 200
+        response.__enter__.return_value.read.return_value = b"{}"
+        with mock.patch.object(consume, "api_key", side_effect=AssertionError("lookup")), \
+             mock.patch.object(consume.OPENER, "open", return_value=response) as open_call:
+            self.assertEqual(consume.request("GET", "/probe", key="explicit-key"), (200, {}))
+        request = open_call.call_args.args[0]
+        self.assertEqual(request.get_header("Authorization"), "Bearer explicit-key")
+
+    def test_consume_direct_requests_resolve_current_key_each_time(self):
+        response = mock.MagicMock()
+        response.__enter__.return_value.status = 200
+        response.__enter__.return_value.read.return_value = b"{}"
+        with mock.patch.dict(os.environ, {"LAGO_API_KEY": "first-current-key"}), \
+             mock.patch.object(consume.OPENER, "open", return_value=response) as open_call:
+            consume.request("GET", "/first")
+            os.environ["LAGO_API_KEY"] = "second-current-key"
+            consume.request("GET", "/second")
+        self.assertEqual([call.args[0].get_header("Authorization") for call in open_call.call_args_list],
+                         ["Bearer first-current-key", "Bearer second-current-key"])
+
+    def test_consume_main_resolves_key_once_and_reuses_for_all_requests(self):
+        with tempfile.TemporaryDirectory() as root:
+            out = Path(root) / "run"
+            key_values = iter(("initial-run-key", "rotated-run-key"))
+            captured = []
+            def fake_request(method, path, payload=None, *, key=None):
+                captured.append((path, key))
+                if path.endswith("billable_metrics"):
+                    return 201, {"billable_metric": {"lago_id": "metric"}}
+                if path.endswith("/plans"):
+                    return 201, {"plan": {"lago_id": "plan"}}
+                if path.endswith("/subscriptions") or path.endswith("/events"):
+                    return 201, {"subscription": {"status": "active"}}
+                rows = ([{"lago_id": "m", "name": "weknora-2026-09", "status": "active", "balance_cents": 100},
+                         {"lago_id": "c", "name": "weknora-topup-c", "status": "active", "balance_cents": 500},
+                         {"lago_id": "d", "name": "weknora-topup-d", "status": "active", "balance_cents": 500}]
+                        if len([p for p, _ in captured if "/wallets?" in p]) <= 2 else
+                        [{"lago_id": "m", "name": "weknora-2026-09", "status": "active", "balance_cents": 0},
+                         {"lago_id": "c", "name": "weknora-topup-c", "status": "active", "balance_cents": 400},
+                         {"lago_id": "d", "name": "weknora-topup-d", "status": "active", "balance_cents": 500}])
+                return 200, {"wallets": rows, "meta": {"current_page": 1, "next_page": None,
+                    "total_pages": 1, "total_count": len(rows)}}
+            def poll(predicate, timeout_seconds, interval=3.0):
+                predicate()
+                return True, 0.1
+            with mock.patch.dict(os.environ, {}, clear=True), \
+                 mock.patch.object(consume, "api_key", side_effect=lambda: next(key_values)) as resolver, \
+                 mock.patch.object(consume, "request", side_effect=fake_request), \
+                 mock.patch.object(consume, "wait_until", side_effect=poll), \
+                 mock.patch.object(sys, "argv", ["runner", "--output-dir", str(out)]):
+                result = consume.main()
+            self.assertEqual(result, 0)
+            self.assertEqual(resolver.call_count, 1)
+            self.assertGreaterEqual(sum("/wallets?" in path for path, _ in captured), 3)
+            self.assertTrue(captured)
+            self.assertEqual({key for _, key in captured}, {"initial-run-key"})
+
     def test_consume_missing_key_does_not_open_network(self):
         with tempfile.TemporaryDirectory() as root, \
              mock.patch.dict(os.environ, {}, clear=True), \
@@ -109,7 +168,7 @@ class EvidenceHelpersTest(unittest.TestCase):
                 elif mode == "duplicate_seed":
                     before["other-2026-09"] = 100
                     after = dict(before)
-                def fake_request(method, path, payload=None):
+                def fake_request(method, path, payload=None, *, key=None):
                     if path.endswith("/events") and mode == "event_failure":
                         return 500, {"detail": "RAW_RESPONSE_SENTINEL", "key": os.environ["LAGO_API_KEY"]}
                     if path.endswith("/events"):
@@ -164,7 +223,7 @@ class EvidenceHelpersTest(unittest.TestCase):
             out = Path(root) / "run"
             before = {"x-2026-09": 100, "topup-c": 500, "topup-d": 500}
             after = {"x-2026-09": 0, "topup-c": 400, "topup-d": 500}
-            def fake_request(method, path, payload=None):
+            def fake_request(method, path, payload=None, *, key=None):
                 if path.endswith("billable_metrics"):
                     return 201, {"billable_metric": {"lago_id": "metric"}}
                 if path.endswith("/plans"):
@@ -685,7 +744,7 @@ class EvidenceHelpersTest(unittest.TestCase):
                     "subscription_create": (201, {"subscription": {"status": "active"}}),
                     "event_post": (201, {}),
                 }
-                def fake_request(method, path, payload=None):
+                def fake_request(method, path, payload=None, *, key=None):
                     stage = {"billable_metrics": "metric_create", "/plans": "plan_create",
                              "/subscriptions": "subscription_create", "/events": "event_post"}
                     current = next(name for suffix, name in stage.items() if path.endswith(suffix))

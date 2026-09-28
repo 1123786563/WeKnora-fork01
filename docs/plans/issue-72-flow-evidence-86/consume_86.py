@@ -99,14 +99,14 @@ def api_key():
                      "the worktree-root .env)")
 
 
-def request(method, path, payload=None):
+def request(method, path, payload=None, *, key=None):
     url = f"{base_url()}{path}"
     body = None
     headers = {"Accept": "application/json"}
     if payload is not None:
         body = json.dumps(payload).encode("utf-8")
         headers["Content-Type"] = "application/json"
-    headers["Authorization"] = f"Bearer {api_key()}"
+    headers["Authorization"] = f"Bearer {api_key() if key is None else key}"
     req = Request(url, data=body, headers=headers, method=method)
     try:
         with OPENER.open(req, timeout=30) as resp:
@@ -117,15 +117,15 @@ def request(method, path, payload=None):
         return err.code, json.loads(raw) if raw else None
 
 
-def wallets(fetch_page=None):
+def wallets(fetch_page=None, *, key=None):
     def fetch(page):
-        _, body = request("GET", f"/api/v1/customers/{CUSTOMER}/wallets?per_page=20&page={page}")
+        _, body = request("GET", f"/api/v1/customers/{CUSTOMER}/wallets?per_page=20&page={page}", key=key)
         return body
     return {w["name"]: w for w in read_wallet_pages(fetch_page or fetch)}
 
 
-def balance_snapshot():
-    return {name: w.get("balance_cents") for name, w in wallets().items()
+def balance_snapshot(*, key=None):
+    return {name: w.get("balance_cents") for name, w in wallets(key=key).items()
             if w.get("status") == "active"}
 
 
@@ -168,6 +168,7 @@ def main():
     result = {}
     out = output_dir / "consume-cny.json"
     try:
+        key = api_key()
         tag = uuid.uuid4().hex[:8]
         metric_code = f"weknora-86-metric-{tag}"
         plan_code = f"weknora-86-plan-{tag}"
@@ -177,7 +178,7 @@ def main():
         status, body = request("POST", "/api/v1/billable_metrics", payload={
             "billable_metric": {"code": metric_code, "name": f"WeKnora 86 consume {tag}",
                 "description": "Issue 86 flow consumption metric", "aggregation_type": "sum_agg",
-                "field_name": "units"}})
+                "field_name": "units"}}, key=key)
         if status not in (200, 201) or not isinstance(body, dict) or "billable_metric" not in body:
             raise RuntimeError("metric create failed")
         result["resource_codes"] = {"metric_code": metric_code}
@@ -188,7 +189,7 @@ def main():
             "code": plan_code, "name": f"WeKnora 86 plan {tag}", "interval": "weekly",
             "pay_in_advance": False, "amount_cents": 0, "amount_currency": "CNY",
             "charges": [{"billable_metric_id": metric_id, "charge_model": "standard",
-                "pay_in_advance": True, "invoiceable": True, "properties": {"amount": UNIT_PRICE_CNY}}]}})
+                "pay_in_advance": True, "invoiceable": True, "properties": {"amount": UNIT_PRICE_CNY}}]}}, key=key)
         if status not in (200, 201) or not isinstance(body, dict) or "plan" not in body:
             raise RuntimeError("plan create failed")
         result["resource_codes"]["plan_code"] = plan_code
@@ -196,13 +197,13 @@ def main():
         stage = "subscription_create"
         status, body = request("POST", "/api/v1/subscriptions", payload={"subscription": {
             "external_customer_id": CUSTOMER, "plan_code": plan_code, "external_id": sub_ext,
-            "name": f"weknora-86 consumption trigger {tag}"}})
+            "name": f"weknora-86 consumption trigger {tag}"}}, key=key)
         if status not in (200, 201) or not isinstance(body, dict) or "subscription" not in body:
             raise RuntimeError("subscription create failed")
         result["resource_codes"]["subscription_code"] = sub_ext
 
         stage = "before_balance_snapshot"
-        before = balance_snapshot()
+        before = balance_snapshot(key=key)
         observations["before"] = before
         print("balances before:", before)
 
@@ -211,15 +212,15 @@ def main():
         status, body = request("POST", "/api/v1/events", payload={"event": {
             "transaction_id": txn_id, "external_customer_id": CUSTOMER,
             "external_subscription_id": sub_ext, "code": metric_code,
-            "properties": {"units": EVENT_UNITS}}})
+            "properties": {"units": EVENT_UNITS}}}, key=key)
         if status not in (200, 201):
             raise RuntimeError("event post failed")
         result["resource_codes"]["event_transaction_id"] = txn_id
 
         stage = "settlement"
         total_before = sum(before.values())
-        ok, elapsed = wait_until(lambda: sum(balance_snapshot().values()) == total_before - CONSUME_CENTS, 300)
-        after = balance_snapshot()
+        ok, elapsed = wait_until(lambda: sum(balance_snapshot(key=key).values()) == total_before - CONSUME_CENTS, 300)
+        after = balance_snapshot(key=key)
         observations["after"] = after
         observations["settled"] = ok
         observations["settle_seconds"] = round(elapsed)
