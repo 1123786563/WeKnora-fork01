@@ -457,15 +457,22 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(handler.NewAgentVersionHandler))
 	must(container.Provide(handler.NewAgentMarketplaceHandler))
 	must(container.Provide(repository.NewAgentAdoptionRepository))
-	must(container.Provide(func(repo repository.AgentAdoptionRepository, agents interfaces.CustomAgentService, versions interfaces.AgentVersionService) interfaces.AgentAdoptionService {
+	must(container.Provide(func(repo repository.AgentAdoptionRepository, agents interfaces.CustomAgentService, versions interfaces.AgentVersionService) *service.AgentAdoptionService {
 		return service.NewAgentAdoptionService(repo, agents, versions)
 	}))
+	must(container.Provide(func(adoption *service.AgentAdoptionService) interfaces.AgentAdoptionService { return adoption }))
 	must(container.Provide(handler.NewAgentAdoptionHandler))
 	must(container.Provide(repository.NewAgentUpgradeRepository))
-	must(container.Provide(func(repo repository.AgentUpgradeRepository) interfaces.AgentUpgradeService {
+	must(container.Provide(func(repo repository.AgentUpgradeRepository) *service.AgentUpgradeService {
 		return service.NewAgentUpgradeService(repo)
 	}))
+	must(container.Provide(func(upgrade *service.AgentUpgradeService) interfaces.AgentUpgradeService { return upgrade }))
 	must(container.Provide(handler.NewAgentUpgradeHandler))
+	must(container.Provide(repository.NewAgentSecurityStore))
+	must(container.Provide(repository.NewAgentRunStore))
+	must(container.Provide(NewAgentSecurityService))
+	must(container.Provide(NewAgentSecurityHandler))
+	must(container.Invoke(wireAgentSecurityGates))
 	provideAgentMarketplaceLifecycle(container)
 	must(container.Provide(repository.NewPublicMarketplaceRepository))
 	must(container.Provide(func(repo repository.PublicMarketplaceRepository, listings interfaces.AgentMarketplaceRepository) interfaces.PublicMarketplaceService {
