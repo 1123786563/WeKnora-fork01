@@ -3,7 +3,7 @@
 - Assigned findings: `CWEB-R4-01`, `CWEB-R4-02`, `CWEB-R4-03` from `task-career-web-ocr-r4-review.md`.
 - Worktree: `/Users/wuyongjun/.codex/worktrees/issue-140-integration/WeKnora-fork01`.
 - Starting BASE: `bc19b9fd36d473ce3e3afd8a0c11f0067634a2af` (verified with `git rev-parse HEAD`). This is the allowed integrated state after `f35ed2427`.
-- Commit: `58ad424191d5d04c74cc3fc90afd2806612bb475` (`codex: fix export deletion OCR r4 recovery`).
+- Implementation commit: `1a4acb662bb6e0484c6c86c2c230b1e3f35ea885` (`codex: fix export deletion OCR r4 recovery`); the final report update follows in a documentation-only commit.
 - Scope: `ExportDeletionPage.tsx`, its focused test, and this report only. Concurrent edits in other files were preserved.
 
 ## Changes and evidence
