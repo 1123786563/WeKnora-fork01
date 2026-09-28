@@ -92,6 +92,32 @@ class EvidenceHelpersTest(unittest.TestCase):
         self.assertNotIn("RECONCILE FAIL", artifact)
         self.assertNotIn("reason=interrupted", artifact)
 
+    def test_reconcile_interrupt_after_atomic_replace_preserves_published_bytes(self):
+        with tempfile.TemporaryDirectory() as root:
+            out = Path(root) / "run"
+            account = Path(root) / "account.json"
+            account.write_text(json.dumps({"data": {"benefits": {"credits": {
+                "batches": [], "balance_micro": 0, "available_micro": 0,
+                "held_micro": 0, "refund_locked_micro": 0}}}}))
+            artifact_path = out / "reconcile-output.txt"
+            real_replace = reconcile.os.replace
+            published = {}
+            def replace_then_interrupt(source, destination):
+                real_replace(source, destination)
+                published["bytes"] = artifact_path.read_bytes()
+                raise KeyboardInterrupt("SECRET_INTERRUPT_TEXT")
+            with mock.patch.dict(os.environ, {"WK_ACCOUNT_JSON": str(account)}), \
+                 mock.patch.object(reconcile, "lago_wallets", return_value=[]), \
+                 mock.patch.object(sys, "argv", ["runner", "--output-dir", str(out)]), \
+                 mock.patch.object(reconcile.os, "replace", side_effect=replace_then_interrupt):
+                result = reconcile.main()
+            artifact = artifact_path.read_bytes()
+        self.assertEqual(result, 0)
+        self.assertEqual(artifact, published["bytes"])
+        self.assertIn(b"RECONCILE PASS", artifact)
+        self.assertNotIn(b"RECONCILE FAIL", artifact)
+        self.assertNotIn(b"reason=interrupted", artifact)
+
     def test_consume_wallet_http_error_without_json_preserves_status(self):
         import io
         import urllib.error
