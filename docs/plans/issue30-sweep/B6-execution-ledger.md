@@ -11,7 +11,7 @@
 
 - #55 T25 is open; #52 and #54 have local task/evidence verification integrated in B5, with live provider legs blocked-env. Its local implementation is ready.
 - #63 T33 is open; #59 and #61 have local task/evidence verification integrated in B5. Its local acceptance tasks are verified; PostgreSQL runtime remains untested.
-- #64 T34 is open; #60 and #61 have local task/evidence verification integrated in B5. Tasks 1–7 are verified/integrated; Task 8's detailed plan is independently approved and ready for 8A; 8A–8E implementation and Task 9 remain required.
+- #64 T34 is open; #60 and #61 have local task/evidence verification integrated in B5. Tasks 1–7 are verified/integrated; Task8 plan is independently approved. Checkpoint 8A is now implemented, reviewed, validated, and integrated; 8B–8E and Task9 remain required.
 - #65 T35 is downstream of #63 and #64 and stays pending.
 - #71 T41 is downstream of #55 and #65 (among its other prerequisites); it stays pending. #51's exclusion-set TOCTOU repair `1c6779c7c` is integrated and has a mutation-test proof in `plans/plan-t51.md-report.md` §R5; prior final report's “not independently reviewed” statement is superseded by that report, but full historical final review/OCR limitations remain as written.
 
@@ -56,7 +56,7 @@ graph LR
 |---|---|---|
 | #55 T25 | verified | All implementation tasks T1–T8 integrated and task-reviewed/validated. T6 R3 and T8 R3 PASS; mobile suite/typecheck pass as recorded below. T7's live-provider leg remains blocked-env for lack of provider credentials; local opt-in path and tests pass. |
 | #63 T33 | verified | T1–T6 integrated; concurrency repair and admission work reviewed/validated. Task6 chain integrated as `b687f539e`, `25bbaf6bf`, `85af2df6c`, `761093da8`, `1838eefdd`; history and production-composition reviews/validation pass. SQLite FK prevented one attempted RED mutation from reaching the assertion; duplicate `-lc++` warnings only. |
-| #64 T34 | partial; blocks #65 | Tasks 1–7 are reviewed, validated and integrated. T7 R1 repair source `9114a843b` is integrated as `2265e0c9b`, `44b202187`, `ca1416639`; focused Dig/wiring tests, handler revoke tests, `go build ./...` and diff checks passed at the source checkpoint. Task8 plan `plan-t64-task8-atomic-admission.md` and ADR-0015 passed independent Spec/dispatch review R6 (`evidence/t64-task8-plan-review-r6.md`) and interface audit R4 (`evidence/t64-task8-interface-audit-r4.md`), integrated by `f1afb5194`. 8A implementation is running in `/Users/wuyongjun/.codex/worktrees/t64-task8-8a/WeKnora-fork01` on `codex/issue30-t64-task8-8a`, BASE `283022dd3`; baseline guard test passed before dispatch. 8B–8E and Task9 remain pending, and #65 stays blocked. PostgreSQL runtime for completed earlier tasks remains untested. |
+| #64 T34 | partial; blocks #65 | Tasks 1–7 are reviewed, validated and integrated. T7 R1 repair source `9114a843b` is integrated as `2265e0c9b`, `44b202187`, `ca1416639`; focused Dig/wiring tests, handler revoke tests, `go build ./...` and diff checks passed at the source checkpoint. Task8 plan `plan-t64-task8-atomic-admission.md` and ADR-0015 passed independent Spec/dispatch review R6 (`evidence/t64-task8-plan-review-r6.md`) and interface audit R4 (`evidence/t64-task8-interface-audit-r4.md`), integrated by `f1afb5194`. 8A is verified/integrated by `6d2ea7998` + fix `43100052b` (worker commits `ffd4bc10f` + `8090adb3c`); Spec/Quality re-review PASS, both required repository tests and integrated checks pass. Evidence: `evidence/t64-task8-8a/`. 8B–8E and Task9 remain pending, and #65 stays blocked. PostgreSQL runtime for 8A remains untested; focused fixtures use SQLite. |
 
 ### T64 Task7 R1 integration and Task8 plan gate (2026-09-29)
 
@@ -97,6 +97,15 @@ graph LR
 - #64 Task1 migration/entity/audit file set is disjoint from #63 Task2 lifecycle repository/service repair.
 
 ## Rulings
+
+### T64 Task8A integration checkpoint (2026-09-29)
+
+- Worker worktree `/Users/wuyongjun/.codex/worktrees/t64-task8-8a/WeKnora-fork01`, BASE `283022dd30ba9fa5f73a238d1d6c5e6a5d4fa1e9`, source commits `ffd4bc10f7aaf226b7f3272b91b41212ddde8ac8` and review fix `8090adb3c46431f3c706dca3d557a928db6baa04`.
+- Initial task review found T64-8A-R1-1 (adopted Agent mapping could outlive a missing/soft-deleted local CustomAgent) and T64-8A-R1-2 (error categories were not asserted). Fix round 1 added a live tenant-scoped CustomAgent lock and exact sentinel assertions. Independent re-review: Spec Compliance PASS, Code Quality PASS; both findings resolved.
+- Exact fixed HEAD validation passed `go test ./internal/application/repository -run '^TestCheckLocalAgentReleaseAdmissionTx$' -count=1` (14.949s), `go test ./internal/application/repository -run '^TestTenantSecurityGuardSerializesDecisiveWriteFamilies$' -count=1` (8.106s), and base-to-head `git diff --check`.
+- Integration commits on `codex/issue30-b6-coordination`: `6d2ea7998` (initial helper) and `43100052b` (review repair). Both focused tests rerun on integrated code and passed (14.913s; 9.600s); `git diff --check` passed.
+- Full task reports and the superseded initial review/validation are preserved under `evidence/t64-task8-8a/`; only fix-r1 review/validation authorize the current code. SQLite fixture evidence does not verify PostgreSQL row-lock execution; no production migration/rollout was performed.
+- Next checkpoint 8B uses migration heads sqlite `000125` and versioned `000204`, creating `000126`/`000205`, and owns migration, claim-store, revocation reconciliation, DI and handler injection paths. 8B is dispatched from integrated source HEAD `43100052b`; 8C–8E and Task9 remain gated by the reviewed Task8 DAG.
 
 1. **Ruling:** use `timeline.cross-referenced` + each descendant's explicit `## Parent #30` statement as the scope evidence because the native `sub_issues` REST endpoint returns no children and its absence conflicts with 41 real descendant references; do not infer “no descendants.” Cost if wrong: a descendant omitted from timeline/Parent evidence would need a scope correction and implementation before #30 can close.
 2. **Ruling:** serialize #63/#64 tasks that touch shared Marketplace types, migration tracks, service guard seams, route/container wiring and admission seams; parallelize #55 with isolated ownership and parallelize disjoint #63/#64 tasks only after stable reviewed interfaces. Cost if wrong: serialization costs time; premature parallel edits can produce incompatible lifecycle/security checks or duplicate migrations.
