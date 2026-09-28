@@ -76,8 +76,10 @@ export function SubmissionPage({ client, scopeController, applicationId, materia
  const [versionDetail, setVersionDetail] = useState<MaterialVersionView>()
  const [versionMessage, setVersionMessage] = useState('')
  const writeInFlight = useRef(false)
+ const privateReadGeneration = useRef(0)
 
  const clearPrivate = useCallback((notice: string, nextState: 'forbidden' | 'scope-changed' = 'forbidden') => {
+  privateReadGeneration.current += 1
   setRecords(undefined); setReadState(nextState); setReadMessage(notice)
   setRevision(undefined); setRevisionState('error'); setExports(undefined); setExportsError('')
   setAttempt(undefined); setWritePhase('idle'); setMessage('')
@@ -93,15 +95,16 @@ export function SubmissionPage({ client, scopeController, applicationId, materia
  useEffect(() => {
   let active = true
   const requestScope = scopeController.current()
+  const readGeneration = privateReadGeneration.current
   setRecords(undefined); setReadState('loading'); setReadMessage('')
   if (!applicationId.trim()) { setReadState('error'); setReadMessage('缺少申请编号，无法读取投递记录。'); return () => { active = false } }
   const read = async (): Promise<void> => {
    try {
     const next = await client.career.applicationSubmissions(applicationId, requestScope.signal)
-    if (!active || !scopeController.isCurrent(requestScope.scope)) return
+    if (!active || readGeneration !== privateReadGeneration.current || !scopeController.isCurrent(requestScope.scope)) return
     setRecords(next.submissions); setReadState('ready')
    } catch (cause) {
-    if (!active || !scopeController.isCurrent(requestScope.scope)) return
+    if (!active || readGeneration !== privateReadGeneration.current || !scopeController.isCurrent(requestScope.scope)) return
     const parsed = errorDetails(cause)
     setRecords(undefined)
     if (parsed.code === 'forbidden') { setReadState('forbidden'); setReadMessage('当前空间不可访问此申请的投递确认。'); return }
@@ -117,13 +120,14 @@ export function SubmissionPage({ client, scopeController, applicationId, materia
  // reads the same revision the application flow reads.
  const readRevision = useCallback(async (): Promise<void> => {
   const requestScope = scopeController.current()
+  const readGeneration = privateReadGeneration.current
   setRevisionState('loading')
   try {
    const view = await client.career.open(requestScope.signal)
-   if (!scopeController.isCurrent(requestScope.scope)) return
+   if (readGeneration !== privateReadGeneration.current || !scopeController.isCurrent(requestScope.scope)) return
    setRevision(view.revision); setRevisionState('ready')
   } catch {
-   if (!scopeController.isCurrent(requestScope.scope)) return
+   if (readGeneration !== privateReadGeneration.current || !scopeController.isCurrent(requestScope.scope)) return
    setRevision(undefined); setRevisionState('error')
   }
  }, [client, scopeController])
@@ -132,17 +136,18 @@ export function SubmissionPage({ client, scopeController, applicationId, materia
  useEffect(() => {
   let active = true
   const requestScope = scopeController.current()
+  const readGeneration = privateReadGeneration.current
   setExports(undefined)
   setExportsError('')
   if (!materialId?.trim()) { if (active) setExports([]); return () => { active = false } }
   void client.career.materialExports(materialId, requestScope.signal).then((list) => {
-   if (!active || !scopeController.isCurrent(requestScope.scope)) return
+   if (!active || readGeneration !== privateReadGeneration.current || !scopeController.isCurrent(requestScope.scope)) return
    const nextExports = deliverableExports(list.exports)
    setExports(nextExports)
    setVersionChoice((current) => current === UNKNOWN_VERSION_CHOICE || nextExports.some((receipt) => receipt.exportId === current) ? current : '')
    setExportsError('')
   }).catch((cause) => {
-   if (!active || !scopeController.isCurrent(requestScope.scope)) return
+   if (!active || readGeneration !== privateReadGeneration.current || !scopeController.isCurrent(requestScope.scope)) return
    if (errorDetails(cause).code === 'forbidden') { clearPrivate('当前空间不可访问此材料的投递信息，已清除投递内容。'); return }
    setExports(undefined)
    setExportsError('可投递导出版本读取失败。读取恢复前，请勿选择“未知版本”并提交；可以重试读取。')
@@ -150,7 +155,7 @@ export function SubmissionPage({ client, scopeController, applicationId, materia
   return () => { active = false }
  }, [clearPrivate, client, materialId, reload, scopeController, scope.scope.generation])
 
- const refresh = (): void => setReload((value) => value + 1)
+ const refresh = (): void => { privateReadGeneration.current += 1; setReload((value) => value + 1) }
  const resetCompose = (): void => { setChannel(''); setVersionChoice(''); setOccurredAt(''); setNote('') }
  const acceptReceipt = (next: SubmissionReceipt, expected: WriteAttempt): void => {
   if (next.requestId !== expected.requestId || next.applicationId !== applicationId) throw new ReceiptMismatchError('投递回执与本次请求不匹配')

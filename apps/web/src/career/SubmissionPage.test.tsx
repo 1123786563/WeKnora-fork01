@@ -332,6 +332,30 @@ test('a forbidden export refresh clears the loaded submission and composed priva
  assert.doesNotMatch(container.textContent ?? '', /private note|重试读取导出版本/)
 })
 
+test('a late submission read cannot restore private timeline after exports become forbidden', async () => {
+ let resolveSubmissions!: (value: { submissions: SubmissionReceipt[] }) => void
+ let rejectExports!: (cause: unknown) => void
+ const pendingSubmissions = new Promise<{ submissions: SubmissionReceipt[] }>((resolve) => { resolveSubmissions = resolve })
+ const pendingExports = new Promise<{ materialId: string; exports: MaterialExportReceipt[] }>((_resolve, reject) => { rejectExports = reject })
+ const career: CareerStub = {
+  open: async () => ({ revision: 4 }),
+  applicationSubmissions: () => pendingSubmissions,
+  materialExports: () => pendingExports,
+ }
+ const scopeController = createScopeController({ origin: 'https://weknora.test', userId: 'owner-1', tenantId: 't' })
+ const container = render(React.createElement(SubmissionPage, { client: { career } as unknown as WeKnoraClient, scopeController, applicationId: 'app-1', materialId: 'mat-1' }))
+ await act(async () => { await settle() })
+ rejectExports(Object.assign(new Error('forbidden'), { code: 'forbidden' }))
+ await act(async () => { await settle(); await settle() })
+ assert.match(container.querySelector('[role="alert"]')?.textContent ?? '', /当前空间不可访问/)
+ assert.equal(container.querySelector('[aria-label="投递记录时间线"]'), null)
+ resolveSubmissions({ submissions: [record()] })
+ await act(async () => { await settle(); await settle() })
+ assert.match(container.querySelector('[role="alert"]')?.textContent ?? '', /当前空间不可访问/)
+ assert.equal(container.querySelector('[aria-label="投递记录时间线"]'), null, 'late private records stay cleared')
+ assert.equal(container.querySelector('[aria-label="确认投递表单"]'), null, 'late private data cannot reopen the pane')
+})
+
 test('a refresh that removes the selected export clears the choice and blocks submission', async () => {
  let exportReads = 0
  const submissions: unknown[] = []
