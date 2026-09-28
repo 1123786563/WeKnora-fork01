@@ -148,6 +148,8 @@ type RouterParams struct {
 	// receipt) — its own handler so the frozen action lifecycle handlers
 	// stay untouched.
 	AppNotionPublishHandler *handler.AppNotionPublishHandler
+
+	AgentMarketplaceLifecycleHandler *handler.AgentMarketplaceLifecycleHandler
 	// T19 (#49): the Feishu publish closed loop — the structural twin of
 	// the notion publish handler over the same provider-neutral service.
 	AppFeishuPublishHandler *handler.AppFeishuPublishHandler
@@ -428,6 +430,7 @@ func NewRouter(params RouterParams) *gin.Engine {
 		RegisterAgentMarketplaceRoutes(v1, params.AgentMarketplaceHandler, rbacGuards)
 		RegisterAgentAdoptionRoutes(v1, params.AgentAdoptionHandler, rbacGuards)
 		RegisterAgentUpgradeRoutes(v1, params.AgentUpgradeHandler, rbacGuards)
+		RegisterAgentMarketplaceLifecycleRoutes(v1, params.AgentMarketplaceLifecycleHandler, rbacGuards)
 		RegisterPublicMarketplaceRoutes(v1, params.PublicMarketplaceHandler, rbacGuards)
 		RegisterPersonaRoutes(v1, params.PersonaHandler, rbacGuards)
 		RegisterExpertRoutes(v1, params.ExpertHandler, rbacGuards)
