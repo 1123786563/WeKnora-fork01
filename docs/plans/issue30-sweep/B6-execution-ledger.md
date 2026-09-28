@@ -54,7 +54,7 @@ graph LR
 
 | Node | Status | Checkpoint / review |
 |---|---|---|
-| #55 T25 | running | T1 `3a0a7467b` approved; T2 initial `82505197e` had review findings, round1 fix `d83ff539b` had two follow-up findings, round2 `cecd8d5a9` Spec/Quality PASS; T3 `90580a2fa` had a medium assertion flaw, fixed `a2f7675a2` and PASS; T4 `a625ab308` PASS; T5 `a07ac18da` had medium revoked-lease error race, fixed `45c8531ff` and PASS; T7 `4c1ce1b81` had three medium findings, fixed `d4e6d6d2d` and PASS, real-provider path remains blocked-env. T6/T8 pending. |
+| #55 T25 | running | T1 `3a0a7467b` approved; T2 round2 `cecd8d5a9` Spec/Quality PASS; T3 repair `a2f7675a2` PASS; T4 `a625ab308` PASS; T5 repair `45c8531ff` PASS; T7 repair `d4e6d6d2d` PASS (real-provider path blocked-env); T6 `fd119c0ad` independent Review found two MEDIUMs (stale route state and uninvoked behavior test) and one LOW terminal scan scope gap. Repair plan `plans/plan-t55-task6-review-fix.md` active. T8 waits for T6 repair Review. |
 | #63 T33 | running / blocked downstream | T1 `4385f6d678` Review PASS with one low migration metadata/down/versioned verification gap deferred; T2 `a4ab413a3` Review found HIGH EndAdoption/CreateVariant race; dedicated repair plan `plans/plan-t63-task2-race-fix.md`, repair active. T64 T2 and #65 remain blocked until repair is reviewed/integrated. |
 | #64 T34 | running / waiting on #63 T2 | T1 `6db98f0f1` Spec/Quality PASS; low migration metadata/PG/down coverage limitation recorded. T2 must wait for stable reviewed #63 adoption repository interface; IDs are SQLite 000125/versioned 000204. |
 
