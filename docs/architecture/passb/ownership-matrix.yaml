@@ -2247,9 +2247,6 @@ aliases:
   - old_import_path: internal/application/service/memory
     plan: 30-agentruntime-program
     delete_barrier: ib3
-  - old_import_path: internal/application/service/metric
-    plan: 37-insights
-    delete_barrier: ib3
   - old_import_path: internal/application/service/workbench
     plan: 40-workbench
     delete_barrier: ib4

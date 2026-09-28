@@ -2,11 +2,9 @@
 module: insights
 description: Analytics、Evaluation、运营指标、报表、可重建分析投影（§5.14/§5.18）
 move_packages:
-  - from: internal/application/service/metric
-    to: internal/modules/insights/metric
+  []
 alias_obligations:
-  - old_import_path: internal/application/service/metric
-    passb_task: B-insights
+  []
 legacy_files:
   - path: internal/application/repository/insights_passb_compat.go
     reason: Pass B 过渡 shim，ib3 同 commit 随文件删行
@@ -22,13 +20,13 @@ legacy_files:
     passb_task: B-insights
 owned_files:
   move_sources:
-  - internal/application/service/metric
+    []
   move_targets:
-    - internal/modules/insights/metric
-    # alias (no-logic forwarding) packages left at the old paths above, deleted in Pass B:
-    - internal/application/service/metric
+    []
   importers:
+  - internal/application/repository
   - internal/application/service
+  - internal/handler
   module_files:
     - internal/modules/insights/README.md
     - internal/modules/insights/module.go
