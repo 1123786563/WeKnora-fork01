@@ -300,11 +300,20 @@ func (r *publicMarketplaceRepository) GetPublicListing(ctx context.Context, list
 
 func (r *publicMarketplaceRepository) IsPublicListingDiscoverable(ctx context.Context, listingID string) (bool, error) {
 	var count int64
-	err := r.db.WithContext(ctx).Table("public_marketplace_listings AS l").
+	err := publicListingEligibilityQuery(r.db.WithContext(ctx)).
+		Where("l.id = ?", strings.TrimSpace(listingID)).Count(&count).Error
+	return count == 1, err
+}
+
+// publicListingEligibilityQuery is the one custody/discovery predicate for a
+// public Listing. Callers add identity or ordering constraints to the query
+// while keeping Publisher, source Listing, catalog state, and Release pointer
+// eligibility in lockstep across read and transactional write paths.
+func publicListingEligibilityQuery(db *gorm.DB) *gorm.DB {
+	return db.Table("public_marketplace_listings AS l").
 		Joins("JOIN public_marketplace_verified_publishers AS p ON p.tenant_id = l.publisher_tenant_id AND p.state = ?", "verified").
 		Joins("JOIN agent_marketplace_listings AS source ON source.tenant_id = l.publisher_tenant_id AND source.id = l.source_listing_id AND source.state = ?", "listed").
-		Where("l.id = ? AND l.state = ? AND l.current_release_id IS NOT NULL", strings.TrimSpace(listingID), "listed").Count(&count).Error
-	return count == 1, err
+		Where("l.state = ? AND l.current_release_id IS NOT NULL", "listed")
 }
 
 func (r *publicMarketplaceRepository) GetPublicRelease(ctx context.Context, releaseID string) (*types.PublicAgentReleaseEntity, error) {
@@ -395,10 +404,8 @@ func (r *publicMarketplaceRepository) ReviewAndPublishPublicTx(ctx context.Conte
 
 func (r *publicMarketplaceRepository) ListPublicCatalog(ctx context.Context) ([]PublicCatalogRow, error) {
 	rows := []types.PublicMarketplaceListingEntity{}
-	if err := r.db.WithContext(ctx).Table("public_marketplace_listings AS l").Select("l.*").
-		Joins("JOIN public_marketplace_verified_publishers AS p ON p.tenant_id = l.publisher_tenant_id AND p.state = ?", "verified").
-		Joins("JOIN agent_marketplace_listings AS source ON source.tenant_id = l.publisher_tenant_id AND source.id = l.source_listing_id AND source.state = ?", "listed").
-		Where("l.state = ? AND l.current_release_id IS NOT NULL", "listed").Order("l.created_at ASC, l.id ASC").Find(&rows).Error; err != nil {
+	if err := publicListingEligibilityQuery(r.db.WithContext(ctx)).Select("l.*").
+		Order("l.created_at ASC, l.id ASC").Find(&rows).Error; err != nil {
 		return nil, err
 	}
 	out := make([]PublicCatalogRow, 0, len(rows))
@@ -452,9 +459,9 @@ func (r *publicMarketplaceRepository) IntroduceRelease(ctx context.Context, adop
 		// Custody recheck inside the guarded transaction: the Publisher must
 		// still be verified and the source tenant Listing must still be listed.
 		var visible int64
-		if err := tx.Table("public_marketplace_listings AS l").Joins("JOIN public_marketplace_verified_publishers AS p ON p.tenant_id = l.publisher_tenant_id AND p.state = ?", "verified").
-			Joins("JOIN agent_marketplace_listings AS source ON source.tenant_id = l.publisher_tenant_id AND source.id = l.source_listing_id AND source.state = ?", "listed").
-			Where("l.id = ? AND l.publisher_tenant_id = ? AND l.state = ? AND l.current_release_id IS NOT NULL", listing.ID, listing.PublisherTenantID, "listed").Count(&visible).Error; err != nil {
+		if err := publicListingEligibilityQuery(tx).
+			Where("l.id = ? AND l.publisher_tenant_id = ?", listing.ID, listing.PublisherTenantID).
+			Count(&visible).Error; err != nil {
 			return err
 		}
 		if visible != 1 {

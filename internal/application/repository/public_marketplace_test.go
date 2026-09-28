@@ -317,8 +317,10 @@ func TestPublicMarketplaceCustodyDeniesNewIntroductionAfterPublisherRevocation(t
 	repo := NewPublicMarketplaceRepository(db)
 	ctx := context.Background()
 	listing, release := seedApprovedPublicRelease(t, db, "3.0.0")
-	previous, _, _, err := repo.IntroduceRelease(ctx, 2, "adopter-admin", &listing, release)
+	previous, adoption, _, err := repo.IntroduceRelease(ctx, 2, "adopter-admin", &listing, release)
 	require.NoError(t, err)
+	require.Equal(t, "active", adoption.State)
+	require.Equal(t, previous.ID, adoption.AcceptedReleaseID)
 	require.NoError(t, repo.RevokePublisher(ctx, 1))
 	_, _, _, err = repo.IntroduceRelease(ctx, 3, "adopter-admin", &listing, release)
 	require.ErrorIs(t, err, ErrPublicMarketplaceNotFound)
@@ -334,8 +336,14 @@ func TestPublicMarketplaceCustodyDeniesNewIntroductionAfterPublisherRevocation(t
 	var preserved types.TenantIntroducedReleaseEntity
 	require.NoError(t, db.First(&preserved, "tenant_id = ? AND public_release_id = ?", 2, release.ID).Error)
 	require.Equal(t, previous.ID, preserved.ID)
+	require.Equal(t, listing.ID, preserved.PublicListingID)
+	require.Equal(t, release.ID, preserved.PublicReleaseID)
 	require.Equal(t, release.Bundle, preserved.Bundle)
 	require.Equal(t, release.BundleDigest, preserved.BundleDigest)
+	var storedAdoption types.AgentAdoptionEntity
+	require.NoError(t, db.First(&storedAdoption, "tenant_id = ? AND id = ?", 2, adoption.ID).Error)
+	require.Equal(t, "active", storedAdoption.State)
+	require.Equal(t, previous.ID, storedAdoption.AcceptedReleaseID)
 	var stored types.PublicAgentReleaseEntity
 	require.NoError(t, db.First(&stored, "id = ?", release.ID).Error)
 	require.Equal(t, uint64(1), stored.PublisherTenantID)
@@ -347,8 +355,10 @@ func TestPublicMarketplaceCustodyDeniesNewIntroductionAfterSourceUnlist(t *testi
 	ctx := context.Background()
 	repo := NewPublicMarketplaceRepository(db)
 	listing, release := seedApprovedPublicRelease(t, db, "4.0.0")
-	previous, _, _, err := repo.IntroduceRelease(ctx, 2, "adopter-admin", &listing, release)
+	previous, adoption, _, err := repo.IntroduceRelease(ctx, 2, "adopter-admin", &listing, release)
 	require.NoError(t, err)
+	require.Equal(t, "active", adoption.State)
+	require.Equal(t, previous.ID, adoption.AcceptedReleaseID)
 	_, err = NewAgentMarketplaceRepository(db).TransitionListingState(ctx, 1, "tenant-listing-1", "listed", "unlisted", map[string]any{"unlisted_by": "publisher-admin"})
 	require.NoError(t, err)
 	_, _, _, err = repo.IntroduceRelease(ctx, 3, "adopter-admin", &listing, release)
@@ -362,7 +372,57 @@ func TestPublicMarketplaceCustodyDeniesNewIntroductionAfterSourceUnlist(t *testi
 	var preserved types.TenantIntroducedReleaseEntity
 	require.NoError(t, db.First(&preserved, "tenant_id = ? AND public_release_id = ?", 2, release.ID).Error)
 	require.Equal(t, previous.ID, preserved.ID)
+	require.Equal(t, listing.ID, preserved.PublicListingID)
+	require.Equal(t, release.ID, preserved.PublicReleaseID)
+	require.Equal(t, release.BundleDigest, preserved.BundleDigest)
 	require.Equal(t, release.Bundle, preserved.Bundle)
+	var storedAdoption types.AgentAdoptionEntity
+	require.NoError(t, db.First(&storedAdoption, "tenant_id = ? AND id = ?", 2, adoption.ID).Error)
+	require.Equal(t, "active", storedAdoption.State)
+	require.Equal(t, previous.ID, storedAdoption.AcceptedReleaseID)
+	var stored types.PublicAgentReleaseEntity
+	require.NoError(t, db.First(&stored, "id = ?", release.ID).Error)
+	require.Equal(t, uint64(1), stored.PublisherTenantID)
+	require.Equal(t, release.SubmissionID, stored.SubmissionID)
+}
+
+func TestPublicMarketplaceEligibilityPredicatesStayConsistent(t *testing.T) {
+	db := openPublicMarketplaceDB(t)
+	repo := NewPublicMarketplaceRepository(db)
+	ctx := context.Background()
+	listing, release := seedApprovedPublicRelease(t, db, "7.0.0")
+	assertIneligible := func() {
+		t.Helper()
+		discoverable, err := repo.IsPublicListingDiscoverable(ctx, listing.ID)
+		require.NoError(t, err)
+		require.False(t, discoverable)
+		catalog, err := repo.ListPublicCatalog(ctx)
+		require.NoError(t, err)
+		require.Empty(t, catalog)
+		_, _, _, err = repo.IntroduceRelease(ctx, 2, "adopter-admin", &listing, release)
+		require.ErrorIs(t, err, ErrPublicMarketplaceNotFound)
+	}
+	discoverable, err := repo.IsPublicListingDiscoverable(ctx, listing.ID)
+	require.NoError(t, err)
+	require.True(t, discoverable)
+	catalog, err := repo.ListPublicCatalog(ctx)
+	require.NoError(t, err)
+	require.Len(t, catalog, 1)
+
+	_, _, err = repo.VerifyPublisher(ctx, &types.VerifiedPublisherEntity{TenantID: 1, State: "verified", VerifiedBy: "publisher-admin"})
+	require.NoError(t, err)
+	require.NoError(t, repo.RevokePublisher(ctx, 1))
+	assertIneligible()
+	_, _, err = repo.VerifyPublisher(ctx, &types.VerifiedPublisherEntity{TenantID: 1, State: "verified", VerifiedBy: "publisher-admin"})
+	require.NoError(t, err)
+	require.NoError(t, db.Model(&types.AgentMarketplaceListingEntity{}).Where("tenant_id = ? AND id = ?", 1, "tenant-listing-1").Update("state", "unlisted").Error)
+	assertIneligible()
+	require.NoError(t, db.Model(&types.AgentMarketplaceListingEntity{}).Where("tenant_id = ? AND id = ?", 1, "tenant-listing-1").Update("state", "listed").Error)
+	require.NoError(t, db.Model(&types.PublicMarketplaceListingEntity{}).Where("id = ?", listing.ID).Update("state", "unlisted").Error)
+	assertIneligible()
+	require.NoError(t, db.Model(&types.PublicMarketplaceListingEntity{}).Where("id = ?", listing.ID).Update("state", "listed").Error)
+	require.NoError(t, db.Model(&types.PublicMarketplaceListingEntity{}).Where("id = ?", listing.ID).Update("current_release_id", nil).Error)
+	assertIneligible()
 }
 
 func TestPublicMarketplaceRevocationGuardSerializesIntroduction(t *testing.T) {
