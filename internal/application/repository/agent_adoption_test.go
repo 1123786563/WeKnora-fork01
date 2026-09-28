@@ -148,6 +148,37 @@ func TestAgentAdoptionRepositoryReAdoptCannotReviveEndedAdoption(t *testing.T) {
 	require.Equal(t, releaseID, stored.AcceptedReleaseID, "re-adoption must not mutate the archived accepted pointer")
 }
 
+func TestAgentAdoptionRepositoryConflictLoserRejectsEndedWinner(t *testing.T) {
+	db := openRunTestDB(t)
+	listingID, releaseID := seedAdoptionRelease(t, db, 1, "agent-ended-winner", "1.0.0")
+	repo := NewAgentAdoptionRepository(db)
+	var injected bool
+	var injectErr error
+	callbackName := "test:inject_ended_adoption_winner:" + t.Name()
+	require.NoError(t, db.Callback().Query().After("gorm:query").Register(callbackName, func(tx *gorm.DB) {
+		if injected || tx.Statement == nil || tx.Statement.Table != "agent_adoptions" {
+			return
+		}
+		injected = true
+		_, injectErr = tx.Statement.ConnPool.ExecContext(tx.Statement.Context,
+			`INSERT INTO agent_adoptions (id, tenant_id, listing_id, accepted_release_id, state, created_by) VALUES ('ended-winner', 1, ?, ?, 'ended', 'prior-admin')`,
+			listingID, releaseID,
+		)
+	}))
+	t.Cleanup(func() { _ = db.Callback().Query().Remove(callbackName) })
+
+	_, created, err := repo.AdoptListing(context.Background(), &types.AgentAdoptionEntity{
+		TenantID: 1, ListingID: listingID, AcceptedReleaseID: releaseID, State: "active", CreatedBy: "new-admin",
+	})
+	require.True(t, injected)
+	require.NoError(t, injectErr)
+	require.ErrorIs(t, err, ErrAgentAdoptionTransition, "the unique-index loser must not report an ended winner as idempotent success")
+	require.False(t, created)
+	var count int64
+	require.NoError(t, db.Model(&types.AgentAdoptionEntity{}).Where("tenant_id = ? AND listing_id = ?", 1, listingID).Count(&count).Error)
+	require.Zero(t, count, "the simulated winner and losing request share a transaction; refusal rolls both back")
+}
+
 func TestSQLiteScopeNoOpAdoptionUpdateReportsMatchedRow(t *testing.T) {
 	db := openLifecycleRaceDB(t)
 	seedLifecycleRaceAdoption(t, db)

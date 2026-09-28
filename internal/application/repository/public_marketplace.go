@@ -325,9 +325,12 @@ func (r *publicMarketplaceRepository) IntroduceRelease(ctx context.Context, adop
 	var adoption *types.AgentAdoptionEntity
 	created := false
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := guardAdoptionListingScopeTx(tx, adopterTenantID, listing.ID); err != nil {
+			return err
+		}
 		err := tx.Where("tenant_id = ? AND public_release_id = ?", adopterTenantID, release.ID).First(&introduced).Error
 		if err == nil {
-			adoption, _, err = adoptListingTx(tx, &types.AgentAdoptionEntity{
+			adoption, _, err = adoptListingAfterScopeGuardTx(tx, &types.AgentAdoptionEntity{
 				TenantID: adopterTenantID, ListingID: listing.ID, AcceptedReleaseID: introduced.ID,
 				State: "active", CreatedBy: actorID,
 			})
@@ -356,7 +359,7 @@ func (r *publicMarketplaceRepository) IntroduceRelease(ctx context.Context, adop
 			}
 			introduced = winner
 		}
-		adoption, _, err = adoptListingTx(tx, &types.AgentAdoptionEntity{
+		adoption, _, err = adoptListingAfterScopeGuardTx(tx, &types.AgentAdoptionEntity{
 			TenantID: adopterTenantID, ListingID: listing.ID, AcceptedReleaseID: introduced.ID,
 			State: "active", CreatedBy: actorID,
 		})

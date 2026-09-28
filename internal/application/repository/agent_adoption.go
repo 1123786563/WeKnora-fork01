@@ -81,23 +81,37 @@ func (r *agentAdoptionRepository) AdoptListing(ctx context.Context, adoption *ty
 }
 
 // adoptListingTx is the transaction-bound adopt upsert, shared with the
-// public-marketplace IntroduceRelease transaction (T30 #60). Semantics are
-// identical to the pre-refactor AdoptListing: an existing (tenant,
-// listing) row reconciles its accepted pointer; a first insert races on
-// uq_agent_adoptions_scope and converges to the winner.
+// public-marketplace IntroduceRelease transaction (T30 #60). Active existing
+// rows reconcile their accepted pointer; terminal rows refuse re-adoption.
+// A first insert races on uq_agent_adoptions_scope and converges to the winner.
 func adoptListingTx(tx *gorm.DB, adoption *types.AgentAdoptionEntity) (*types.AgentAdoptionEntity, bool, error) {
+	if err := guardAdoptionListingScopeTx(tx, adoption.TenantID, adoption.ListingID); err != nil {
+		return nil, false, err
+	}
+	return adoptListingAfterScopeGuardTx(tx, adoption)
+}
+
+// guardAdoptionListingScopeTx takes the writer guard for one tenant/listing
+// scope before any introduction/adoption reads. Existing adoption rows are
+// locked against EndAdoption; on SQLite, even a no-match UPDATE obtains the
+// transaction's writer reservation before public introduction ledger access.
+func guardAdoptionListingScopeTx(tx *gorm.DB, tenantID uint64, listingID string) error {
+	locked := tx.Model(&types.AgentAdoptionEntity{}).
+		Where("tenant_id = ? AND listing_id = ?", tenantID, listingID).
+		UpdateColumn("updated_at", gorm.Expr("updated_at"))
+	return locked.Error
+}
+
+// adoptListingAfterScopeGuardTx resolves/reconciles the unique Adoption row.
+// The caller must already have acquired guardAdoptionListingScopeTx in this
+// same transaction.
+func adoptListingAfterScopeGuardTx(tx *gorm.DB, adoption *types.AgentAdoptionEntity) (*types.AgentAdoptionEntity, bool, error) {
 	// Lock an existing scope row before reading it. This serializes accepted-
 	// pointer reconciliation with EndAdoption: a caller arriving after the
 	// terminal transition waits, then observes ended instead of reviving it.
 	// When no Adoption exists yet there is no row to lock; the unique index
-	// remains the first-adopt serialization point and the conflict loser below
-	// re-reads the committed winner before deciding.
-	locked := tx.Model(&types.AgentAdoptionEntity{}).
-		Where("tenant_id = ? AND listing_id = ?", adoption.TenantID, adoption.ListingID).
-		UpdateColumn("updated_at", gorm.Expr("updated_at"))
-	if locked.Error != nil {
-		return nil, false, locked.Error
-	}
+	// remains the first-adopt arbiter and the conflict loser below re-reads the
+	// winner before deciding.
 	var existing types.AgentAdoptionEntity
 	err := tx.Where("tenant_id = ? AND listing_id = ?", adoption.TenantID, adoption.ListingID).First(&existing).Error
 	if err == nil {

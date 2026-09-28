@@ -282,8 +282,33 @@ func TestPublicMarketplaceIntroduceReleaseAgainstEndedAdoptionRollsBack(t *testi
 	// the shared adoption upsert; the enclosing transaction must roll it back.
 	listing2, secondRelease := seedApprovedPublicRelease(t, db, "2.0.0")
 	require.Equal(t, listing.ID, listing2.ID)
+	ctx = context.WithValue(ctx, publicIntroductionOrderContextKey{}, true)
+	var events []string
+	guardName := "test:public-intro-order-guard:" + t.Name()
+	readName := "test:public-intro-order-read:" + t.Name()
+	createName := "test:public-intro-order-create:" + t.Name()
+	require.NoError(t, db.Callback().Update().After("gorm:update").Before("gorm:after_update").Register(guardName, func(tx *gorm.DB) {
+		if tx.Statement != nil && tx.Statement.Schema != nil && tx.Statement.Schema.Table == "agent_adoptions" && tx.Statement.Context.Value(publicIntroductionOrderContextKey{}) == true {
+			events = append(events, "tenant-listing-guard")
+		}
+	}))
+	require.NoError(t, db.Callback().Query().Before("gorm:query").Register(readName, func(tx *gorm.DB) {
+		if tx.Statement != nil && tx.Statement.Table == "tenant_introduced_releases" && tx.Statement.Context.Value(publicIntroductionOrderContextKey{}) == true {
+			events = append(events, "introduction-read")
+		}
+	}))
+	require.NoError(t, db.Callback().Create().Before("gorm:create").Register(createName, func(tx *gorm.DB) {
+		if tx.Statement != nil && tx.Statement.Schema != nil && tx.Statement.Schema.Table == "tenant_introduced_releases" && tx.Statement.Context.Value(publicIntroductionOrderContextKey{}) == true {
+			events = append(events, "introduction-write")
+		}
+	}))
+	t.Cleanup(func() { _ = db.Callback().Update().Remove(guardName) })
+	t.Cleanup(func() { _ = db.Callback().Query().Remove(readName) })
+	t.Cleanup(func() { _ = db.Callback().Create().Remove(createName) })
 	createdIntroduction, _, created, err := repo.IntroduceRelease(ctx, 2, "adopter-admin", &listing2, secondRelease)
 	require.ErrorIs(t, err, ErrAgentAdoptionTransition)
+	require.Equal(t, []string{"tenant-listing-guard", "introduction-read", "introduction-write"}, events,
+		"tenant/listing writer guard must be acquired before introduction ledger reads or writes")
 	require.Nil(t, createdIntroduction)
 	require.False(t, created)
 	var introductionCount int64
@@ -297,6 +322,11 @@ func TestPublicMarketplaceIntroduceReleaseAgainstEndedAdoptionRollsBack(t *testi
 
 	// An already introduced Release also cannot make the ended Adoption look
 	// successful when the requested accepted pointer is unchanged.
+	events = nil
 	_, _, _, err = repo.IntroduceRelease(ctx, 2, "adopter-admin", &listing, firstRelease)
 	require.ErrorIs(t, err, ErrAgentAdoptionTransition)
+	require.Equal(t, []string{"tenant-listing-guard", "introduction-read"}, events,
+		"the existing-introduction branch must also take the guard before reading the ledger")
 }
+
+type publicIntroductionOrderContextKey struct{}
