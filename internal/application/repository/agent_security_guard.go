@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 
 	"github.com/Tencent/WeKnora/internal/types"
 	"gorm.io/gorm"
@@ -53,6 +54,53 @@ func withTenantSecurityGuard(ctx context.Context, db *gorm.DB, tenantID uint64, 
 				return err
 			}
 			if id != tenantID {
+				return ErrTenantNotFound
+			}
+		}
+		return callback(tx)
+	})
+}
+
+// withTenantSecurityGuards acquires each distinct tenant guard in ascending
+// numeric order inside one transaction. Callers must perform all protected
+// reads and writes in callback using the supplied transaction.
+func withTenantSecurityGuards(ctx context.Context, db *gorm.DB, tenantIDs []uint64, callback func(*gorm.DB) error) error {
+	ids := make([]uint64, 0, len(tenantIDs))
+	seen := make(map[uint64]struct{}, len(tenantIDs))
+	for _, id := range tenantIDs {
+		if id == 0 {
+			return ErrTenantNotFound
+		}
+		if _, ok := seen[id]; !ok {
+			seen[id] = struct{}{}
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) == 0 {
+		return ErrTenantNotFound
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		query, write, err := tenantSecurityLockPlan(tx.Dialector.Name())
+		if err != nil {
+			return err
+		}
+		for _, id := range ids {
+			if write {
+				locked := tx.Exec(query, id)
+				if locked.Error != nil {
+					return locked.Error
+				}
+				if locked.RowsAffected != 1 {
+					return ErrTenantNotFound
+				}
+				continue
+			}
+			var lockedID uint64
+			if err := tx.Raw(query, id).Scan(&lockedID).Error; err != nil {
+				return err
+			}
+			if lockedID != id {
 				return ErrTenantNotFound
 			}
 		}

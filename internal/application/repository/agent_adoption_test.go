@@ -106,6 +106,10 @@ func TestAgentAdoptionRepositoryLifecycle(t *testing.T) {
 	require.ErrorIs(t, err, ErrAgentAdoptionVariantTransition, "a stale from-state must refuse the transition")
 	_, err = repo.UpdateVariantState(ctx, 1, "missing-variant", []string{"mapped"}, "tested", nil)
 	require.ErrorIs(t, err, ErrAgentAdoptionNotFound)
+	published, err := repo.UpdateVariantState(ctx, 1, variant.ID, []string{"tested"}, "published", map[string]any{"local_agent_id": "published-agent", "local_agent_version_id": "published-version", "published_by": "admin"})
+	require.NoError(t, err)
+	_, err = repo.UpdateVariantState(ctx, 1, published.ID, []string{"published"}, "published", map[string]any{"local_agent_version_id": "rewritten-version"})
+	require.ErrorIs(t, err, ErrAgentAdoptionVariantIdentityImmutable)
 
 	adoptions, err := repo.ListAdoptions(ctx, 1)
 	require.NoError(t, err)
