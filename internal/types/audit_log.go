@@ -206,6 +206,15 @@ const (
 	AuditActionTaskPurged                AuditAction = "task.purged"
 )
 
+// T34 (#64) agent security revocation actions. release_revoked /
+// dependency_revoked record the governance act (who, why, replacement,
+// in-flight disposition) alongside the append-only revocation ledgers; the
+// rows are written in the SAME transaction as the ledger insert.
+const (
+	AuditActionAgentReleaseRevoked    AuditAction = "agent_security.release_revoked"
+	AuditActionAgentDependencyRevoked AuditAction = "agent_security.dependency_revoked"
+)
+
 // AuditOutcome separates asynchronous acceptance from terminal business
 // results and middleware-level rejections. The UI can therefore avoid
 // presenting a queued operation as already completed.
