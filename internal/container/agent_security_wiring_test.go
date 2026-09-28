@@ -1,6 +1,7 @@
 package container
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -37,12 +38,20 @@ func TestAgentSecurityProvidersResolveWithExistingRunStore(t *testing.T) {
 	container := dig.New()
 	require.NoError(t, container.Provide(func() *gorm.DB { return &gorm.DB{} }))
 	require.NoError(t, container.Provide(repository.NewAgentRunStore))
-	require.NoError(t, container.Provide(func() *service.AgentAdoptionService { return nil }))
-	require.NoError(t, container.Provide(func() *service.AgentUpgradeService { return nil }))
+	require.NoError(t, container.Provide(func() *service.AgentAdoptionService { return service.NewAgentAdoptionService(nil, nil, nil) }))
+	require.NoError(t, container.Provide(func() *service.AgentUpgradeService { return service.NewAgentUpgradeService(nil) }))
 
 	provideAgentSecurity(container)
 
 	var resolved *handler.AgentSecurityHandler
-	require.NoError(t, container.Invoke(func(h *handler.AgentSecurityHandler) { resolved = h }))
+	var adoption *service.AgentAdoptionService
+	var upgrade *service.AgentUpgradeService
+	require.NoError(t, container.Invoke(func(h *handler.AgentSecurityHandler, a *service.AgentAdoptionService, u *service.AgentUpgradeService) {
+		resolved, adoption, upgrade = h, a, u
+	}))
 	require.NotNil(t, resolved)
+	require.NotNil(t, adoption)
+	require.NotNil(t, upgrade)
+	require.False(t, reflect.ValueOf(adoption).Elem().FieldByName("releaseSecurityGate").IsNil())
+	require.False(t, reflect.ValueOf(upgrade).Elem().FieldByName("releaseSecurityGate").IsNil())
 }
