@@ -334,7 +334,10 @@ func (a *AdmissionCoordinator) Start(ctx context.Context, in StartInput) (agentr
 			return a.resumeExisting(ctx, existing, in)
 		}
 		if err := a.checkAgentUse(ctx, tenant, in.AgentID); err != nil {
-			return a.settleDeniedPending(ctx, tenant, actor, in, hash, err)
+			if errors.Is(err, ErrAgentUseDenied) {
+				return a.settleDeniedPending(ctx, tenant, actor, in, hash, err)
+			}
+			return agentruntime.Run{}, err
 		}
 		return a.resumeExisting(ctx, existing, in)
 	}
@@ -342,7 +345,10 @@ func (a *AdmissionCoordinator) Start(ctx context.Context, in StartInput) (agentr
 		return agentruntime.Run{}, lookupErr
 	}
 	if err := a.checkAgentUse(ctx, tenant, in.AgentID); err != nil {
-		return a.settleDeniedPending(ctx, tenant, actor, in, hash, err)
+		if errors.Is(err, ErrAgentUseDenied) {
+			return a.settleDeniedPending(ctx, tenant, actor, in, hash, err)
+		}
+		return agentruntime.Run{}, err
 	}
 	if err := a.requests.CreatePending(ctx, req); err != nil {
 		existing, getErr := a.requests.Get(ctx, tenant, actor, in.RequestID)
@@ -359,7 +365,10 @@ func (a *AdmissionCoordinator) Start(ctx context.Context, in StartInput) (agentr
 			return a.resumeExisting(ctx, existing, in)
 		}
 		if gateErr := a.checkAgentUse(ctx, tenant, in.AgentID); gateErr != nil {
-			return a.settleDeniedPending(ctx, tenant, actor, in, hash, gateErr)
+			if errors.Is(gateErr, ErrAgentUseDenied) {
+				return a.settleDeniedPending(ctx, tenant, actor, in, hash, gateErr)
+			}
+			return agentruntime.Run{}, gateErr
 		}
 		return a.resumeExisting(ctx, existing, in)
 	}

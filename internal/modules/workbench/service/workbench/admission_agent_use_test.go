@@ -7,6 +7,8 @@ package workbench
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -206,6 +208,44 @@ func TestAdmissionReplaysCommittedRunAfterRetirementButGatesPendingRetry(t *test
 		require.NoError(t, err)
 		require.Equal(t, "admitted", stored.State)
 	})
+}
+
+func TestAdmissionTransientAgentGateErrorKeepsPendingForRetry(t *testing.T) {
+	db := openAdmissionConcurrencyDB(t)
+	seedAdmissionVariant(t, db, "published")
+	budget := &releaseTrackingBudget{}
+	coordinator := NewAdmissionCoordinator(db, repository.NewAgentRunStore(db), budget, nil)
+	transient := errors.New("temporary lifecycle lookup failure")
+	calls := 0
+	coordinator.SetAgentUseGate(func(context.Context, uint64, string) error {
+		calls++
+		if calls == 1 {
+			return transient
+		}
+		return fmt.Errorf("retirement lookup: %w", ErrAgentUseDenied)
+	})
+	ctx := context.WithValue(context.WithValue(context.Background(), types.TenantIDContextKey, uint64(1)), types.UserIDContextKey, "u1")
+	in := StartInput{SessionID: "s1", AgentID: "agent-retired", TargetID: "platform", RequestID: "transient-gate-retry", Text: "hello", BudgetUpper: 1}
+	request := repository.WorkbenchRequest{TenantID: 1, ActorID: "u1", RequestID: in.RequestID, RequestHash: requestHash(in), SessionID: in.SessionID, AgentID: in.AgentID, TargetID: in.TargetID, Text: in.Text, BudgetUpper: in.BudgetUpper}
+	requests := repository.NewWorkbenchRequestRepository(db)
+	require.NoError(t, requests.CreatePending(ctx, request))
+	request.ReservationRef = "reservation/transient-gate"
+	request.RunID = "transient-gate-run"
+	require.NoError(t, requests.UpdatePending(ctx, request, "pending", request.ReservationRef, request.RunID, ""))
+
+	_, err := coordinator.Start(ctx, in)
+	require.ErrorIs(t, err, transient)
+	stored, err := requests.Get(ctx, 1, "u1", in.RequestID)
+	require.NoError(t, err)
+	require.Equal(t, "pending", stored.State)
+	require.EqualValues(t, 0, budget.releases.Load())
+
+	_, err = coordinator.Start(ctx, in)
+	require.ErrorIs(t, err, ErrAgentUseDenied, "wrapped retirement sentinel remains classifiable")
+	stored, err = requests.Get(ctx, 1, "u1", in.RequestID)
+	require.NoError(t, err)
+	require.Equal(t, "rejected", stored.State)
+	require.EqualValues(t, 1, budget.releases.Load())
 }
 
 func seedAdmissionVariant(t *testing.T, db interface{ Create(value any) *gorm.DB }, state string) {
