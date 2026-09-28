@@ -935,7 +935,7 @@ export function decodePreparationReceipt(value: unknown): PreparationReceipt {
  // it does carry must still be a well-formed digest.
  if (draft && (!validIdentifier(snapshotRecord.opportunityId) || !validIdentifier(snapshotRecord.snapshotId)
   || typeof snapshotRecord.snapshotSha256 !== 'string' || !sha256Hex.test(snapshotRecord.snapshotSha256))) throw new TypeError('invalid preparation sources')
- if (!draft && (validIdentifier(snapshotRecord.opportunityId) || validIdentifier(snapshotRecord.snapshotId))
+ if (!draft && (snapshotRecord.opportunityId !== undefined || snapshotRecord.snapshotId !== undefined || snapshotRecord.snapshotSha256 !== undefined)
   && (typeof snapshotRecord.snapshotSha256 !== 'string' || !sha256Hex.test(snapshotRecord.snapshotSha256))) throw new TypeError('invalid preparation sources')
  // Fact keys are the confirmed citations of the draft; an interrupted row
  // has none yet. Anything that is not a clean identifier list is invented.

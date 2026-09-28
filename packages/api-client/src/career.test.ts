@@ -981,6 +981,8 @@ test('preparation decoder rejects blank products that disagree with their status
   preparationReceipt({ anchor: { ...preparationAnchor, contentDigest: 'not-a-digest' } }),
   preparationReceipt({ sources: { submittedVersion: { ...preparationAnchor }, snapshot: { opportunityId: '', snapshotId: 'snap-1', snapshotSha256: 'a'.repeat(64) }, factKeys: ['学历'], profileRevision: 5 } }),
   preparationReceipt({ sources: { submittedVersion: { ...preparationAnchor }, snapshot: { opportunityId: 'opp /1', snapshotId: 'snap-1', snapshotSha256: 'zz' }, factKeys: ['学历'], profileRevision: 5 } }),
+  // An interrupted preparation may omit snapshot identity, but any supplied snapshot field requires a valid digest.
+  failedPreparation({ sources: { submittedVersion: { ...preparationAnchor }, snapshot: { snapshotSha256: 'garbage' }, factKeys: [], profileRevision: 5 } }),
   preparationReceipt({ sources: { submittedVersion: { ...preparationAnchor }, snapshot: { opportunityId: 'opp /1', snapshotId: 'snap-1', snapshotSha256: 'a'.repeat(64) }, factKeys: [' '], profileRevision: 5 } }),
   preparationReceipt({ revision: -1 }),
   preparationReceipt({ createdAt: 'yesterday' }),
