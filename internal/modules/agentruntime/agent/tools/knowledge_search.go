@@ -11,7 +11,6 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/logger"
-	"github.com/Tencent/WeKnora/internal/modules/knowledge/searchutil"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )
@@ -380,7 +379,7 @@ func (t *KnowledgeSearchTool) Execute(ctx context.Context, args json.RawMessage)
 			byTenant[tid] = append(byTenant[tid], r.SearchResult)
 		}
 		for tid, batch := range byTenant {
-			searchutil.EnrichSearchResultsImageInfo(ctx, t.chunkService.GetRepository(), tid, batch)
+			EnrichSearchResultsImageInfo(ctx, t.chunkService.GetRepository(), tid, batch)
 		}
 	}
 
@@ -828,7 +827,7 @@ func (t *KnowledgeSearchTool) deduplicateResults(results []*searchResultWithMeta
 
 // buildContentSignature creates a normalized signature for content to detect near-duplicates
 func (t *KnowledgeSearchTool) buildContentSignature(content string) string {
-	return searchutil.BuildContentSignature(content)
+	return BuildContentSignature(content)
 }
 
 // writeKnowledgeMetadataHeader emits document-scoped metadata once per
@@ -1044,7 +1043,7 @@ func (t *KnowledgeSearchTool) formatOutput(
 				var imageInfos []types.ImageInfo
 				if err := json.Unmarshal([]byte(result.ImageInfo), &imageInfos); err == nil && len(imageInfos) > 0 {
 					for _, img := range imageInfos {
-						if imageMarkdown := searchutil.BuildImageInfoMarkdownWithURL(img.URL, &img); imageMarkdown != "" {
+						if imageMarkdown := BuildImageInfoMarkdownWithURL(img.URL, &img); imageMarkdown != "" {
 							ob.WriteString(imageMarkdown)
 							ob.WriteString("\n")
 						}
@@ -1241,7 +1240,7 @@ func (t *KnowledgeSearchTool) compositeScore(
 
 // clampFloat clamps a float value to the specified range
 func (t *KnowledgeSearchTool) clampFloat(v, minV, maxV float64) float64 {
-	return searchutil.ClampFloat(v, minV, maxV)
+	return ClampFloat(v, minV, maxV)
 }
 
 // applyMMR applies Maximal Marginal Relevance algorithm to reduce redundancy
@@ -1327,7 +1326,7 @@ func (t *KnowledgeSearchTool) applyMMR(
 
 // tokenizeSimple tokenizes text into a set of words (simple whitespace-based)
 func (t *KnowledgeSearchTool) tokenizeSimple(text string) map[string]struct{} {
-	return searchutil.TokenizeSimple(text)
+	return TokenizeSimple(text)
 }
 
 // extractSnippetForQueries tries to produce a short contextual snippet around
@@ -1390,5 +1389,5 @@ func extractSnippetForQueries(content string, queries []string) string {
 
 // jaccard calculates Jaccard similarity between two token sets
 func (t *KnowledgeSearchTool) jaccard(a, b map[string]struct{}) float64 {
-	return searchutil.Jaccard(a, b)
+	return Jaccard(a, b)
 }

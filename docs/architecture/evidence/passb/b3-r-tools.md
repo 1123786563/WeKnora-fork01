@@ -145,3 +145,34 @@ Ledger（`.worktrees/passb-int/docs/architecture/passb/exception-ledger.yaml`）
 | gofmt/vet | `gofmt -l internal/modules/agentruntime/agent/tools/`；`go vet ./internal/modules/agentruntime/agent/tools/` | 空输出 / EXIT=0 |
 
 **seam 终集（§0.8-B 全量，无勘误）：** 8 类型别名 = mcp 5（MCPManager/MCPClient/ContentItem/CallToolResult/OAuthReauthorizationRequiredError）+ rerank 2（Reranker/RankResult）+ chat 1（Message）。符号消费实证（`grep -o` 逐文件）：mcp_oauth.go 用 MCPManager/MCPClient/OAuthReauthorizationRequiredError；mcp_tool.go 用 MCPManager/CallToolResult/ContentItem；mcp_exposure.go+sanitize_messages.go 用 chat.Message；knowledge_search.go 用 Reranker/RankResult——8 符号与 §0.8-B 清单零差异（无 R2.1 式勘误补入）。knowledge_search.go 的 searchutil 边（exc-0034）按计划留 R2.4。
+
+### 8.5 R2.4 窗口（2026-09-29）：exceptions 133→130（−4+1）
+
+**变更：** Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY + conventions §8 三方一致。
+
+- **−4**（tools 消费侧 seam 收敛，guard importExceptions 与 exception-ledger 同窗同 commit 删除）：exc-0032（grep_chunks.go→knowledge/searchutil）、exc-0034（knowledge_search.go→knowledge/searchutil）、exc-0035（list_knowledge_chunks.go→knowledge/searchutil）、exc-0046（wiki_read_source_doc.go→knowledge/searchutil）。
+- **+1**（seam 登记行，续号 exc-0148，remove_at=ib3，reason="R2 消费侧 seam 收敛（32 计划 §0.4/§0.5），ib3 门面合法化后随 seam 文件消除（Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY）"）：exc-0148（knowledge_seams.go→knowledge/searchutil）。ledger 头注同窗机械计数修正 133→130 并追加 R2.4 增量行。
+
+**三方一致复核（本窗口实跑）：**
+
+| 口径 | 命令 | 实测 |
+|---|---|---|
+| guard 实测 | `make check-backend-architecture` | `architectureguard: literal=564 apiKeyRoute=69 handle=0 total=633 \| redis=23 lite=23 \| hooks=58 \| modules=16` + `OK (0 violations)`（路由/任务/挂点计数不变） |
+| passbguard 实测 | `make check-passb-readiness` | `pass-b readiness: legacy=358 aliases=69 exceptions=130 contracts=125 events=29 overlaps=0 missing=0` |
+| ledger 行数 | `grep -c '^  - id:' docs/architecture/passb/exception-ledger.yaml` | `130`（plan=32 名下 11→8 行：−4+1，**终态** = exc-0028/0031 保留 + exc-0143..0148 六 seam 行） |
+
+### 8.6 R2.4 边核验与 GREEN 证据（§6 差分前拍见 §1，后拍归 R2.6）
+
+| 检查 | 命令 | 结果 |
+|---|---|---|
+| tools 生产代码 knowledge 边归零 | `grep -rn "modules/knowledge" internal/modules/agentruntime/agent/tools/*.go \| grep -v _test \| grep -v knowledge_seams.go` | 空输出（EXIT=1） |
+| seam 文件仅持 1 条 import 边 | `grep -c "knowledge/searchutil" internal/modules/agentruntime/agent/tools/knowledge_seams.go` | `1` |
+| 残留 searchutil. 引用（seam 外） | `grep -rn "searchutil\." internal/modules/agentruntime/agent/tools/*.go \| grep -v _test \| grep -v knowledge_seams.go` | 空输出（EXIT=1） |
+| GREEN：tools 包 | `go test ./internal/modules/agentruntime/agent/tools/ -count=1` | `ok github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/tools 55.758s`（EXIT=0；含 R2.1 四快照 = 外部契约零变化机器证明） |
+| GREEN：全量构建 | `go build ./...` | EXIT=0（仅既有 `-lc++` 链接警告） |
+| 模块迁移校验 | `make verify-module-moves` | `modulemove: OK (16 manifests verified)` |
+| gofmt/vet | `gofmt -l internal/modules/agentruntime/agent/tools/`；`go vet ./internal/modules/agentruntime/agent/tools/` | 空输出 / EXIT=0 |
+
+**首跑负载抖动记录（如实登记）：** 本窗口第一次全量 `go test ./internal/modules/agentruntime/agent/tools/ -count=1`（与并发 go build 同机竞争时）FAIL（196.473s）：`TestToolJournalMCPApprovalOutlivesToolTimeout`（registry_journal_test.go:216 "sql: transaction has already been committed or rolled back"，0.75s）与 `TestSkillPythonPackageRecoveryInstallsWithoutPip/ensurepip`（skill_runtime_guard_test.go:69 "signal: killed"，150.38s，真实 python 子进程撞 1 分钟 CommandContext 死线）。归因复核（2×2）：同两用例在**改动树**单跑 `go test ... -run 'TestToolJournalMCPApprovalOutlivesToolTimeout|TestSkillPythonPackageRecoveryInstallsWithoutPip' -count=1` → `ok 54.206s`；在 **BASE 临时 worktree**（8777e026c，已清理）同命令 → `ok 22.173s`；随后串行重跑全量 → `ok 55.758s`。两用例均与 searchutil 7 符号零代码路径交集（MCP journal 事务 + skill venv 子进程），判定为负载敏感环境抖动而非本任务回归。
+
+**seam 终集（§0.8-C 全量，无勘误）：** 7 个薄委托函数 = textutil 4（BuildContentSignature/TokenizeSimple/Jaccard/ClampFloat）+ imageinfo 3（CollectImageInfoByChunkIDs/EnrichSearchResultsImageInfo/BuildImageInfoMarkdownWithURL）。符号消费实证（`grep -n "searchutil\."` 逐文件）：grep_chunks.go 用 3（BuildContentSignature/TokenizeSimple/Jaccard）、knowledge_search.go 用 6（EnrichSearchResultsImageInfo/BuildContentSignature/BuildImageInfoMarkdownWithURL/ClampFloat/TokenizeSimple/Jaccard）、list_knowledge_chunks.go 用 2（CollectImageInfoByChunkIDs/BuildImageInfoMarkdownWithURL）、wiki_read_source_doc.go 用 2（CollectImageInfoByChunkIDs/BuildImageInfoMarkdownWithURL）——7 符号与 §0.8-C 清单零差异（无 R2.1/R2.2 式勘误补入）。签名中 `internal/types` 与 `internal/types/interfaces` 为宿主共享包（tools 四文件既有 import，非模块跨边），seam 引入不产生新模块深 import 边。**R2.2–R2.4 终态达成：§4 验收 3 的 grep 口径** `grep -rn "modules/\(execution\|airesource\|knowledge\)" internal/modules/agentruntime/agent/tools/*.go | grep -v _test | grep -v "_seams.go"` 空输出（3 seam 文件 + app_connector.go/craft_delegate.go 两条保留根边为仅存跨模块 import 持有点）。

@@ -11,7 +11,6 @@ import (
 	"sync"
 
 	"github.com/Tencent/WeKnora/internal/logger"
-	"github.com/Tencent/WeKnora/internal/modules/knowledge/searchutil"
 	"github.com/Tencent/WeKnora/internal/types"
 	"gorm.io/gorm"
 )
@@ -882,7 +881,7 @@ func (t *GrepChunksTool) deduplicateChunks(ctx context.Context, results []chunkW
 
 // buildContentSignature creates a normalized signature for content to detect near-duplicates
 func (t *GrepChunksTool) buildContentSignature(content string) string {
-	return searchutil.BuildContentSignature(content)
+	return BuildContentSignature(content)
 }
 
 // scoreChunks calculates match scores for chunks based on regex matches.
@@ -1012,10 +1011,10 @@ func (t *GrepChunksTool) applyMMR(
 
 // tokenizeSimple tokenizes text into a set of words (simple whitespace-based)
 func (t *GrepChunksTool) tokenizeSimple(text string) map[string]struct{} {
-	return searchutil.TokenizeSimple(text)
+	return TokenizeSimple(text)
 }
 
 // jaccard calculates Jaccard similarity between two token sets
 func (t *GrepChunksTool) jaccard(a, b map[string]struct{}) float64 {
-	return searchutil.Jaccard(a, b)
+	return Jaccard(a, b)
 }
