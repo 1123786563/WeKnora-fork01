@@ -102,6 +102,21 @@ func TestCareerArtifactHTTPIssueDownloadDigestAndRevoke(t *testing.T) {
 	if files.opens != 1 {
 		t.Fatalf("blob opens=%d, want 1", files.opens)
 	}
+	for _, mutation := range []string{
+		`UPDATE sessions SET user_id='owner-b' WHERE tenant_id=12 AND id='session'`,
+		`UPDATE sessions SET user_id='owner-a', deleted_at=CURRENT_TIMESTAMP WHERE tenant_id=12 AND id='session'`,
+	} {
+		if err := db.Exec(mutation).Error; err != nil {
+			t.Fatal(err)
+		}
+		deniedDownload := httptest.NewRecorder()
+		r.ServeHTTP(deniedDownload, httptest.NewRequest(http.MethodGet, u, nil))
+		deniedIssue := httptest.NewRecorder()
+		r.ServeHTTP(deniedIssue, httptest.NewRequest(http.MethodPost, "/api/v1/career/resources/resume/versions/version-a/signed-url", nil))
+		if deniedDownload.Code != http.StatusNotFound || deniedDownload.Body.Len() != 0 || deniedIssue.Code != http.StatusNotFound || deniedIssue.Body.Len() != 0 || files.opens != 1 {
+			t.Fatalf("inactive Task accepted grant: download=%d/%q issue=%d/%q blob opens=%d", deniedDownload.Code, deniedDownload.Body.String(), deniedIssue.Code, deniedIssue.Body.String(), files.opens)
+		}
+	}
 	issuedURL, err := url.Parse(response.Data.URL)
 	if err != nil {
 		t.Fatal(err)

@@ -79,7 +79,7 @@ func (s *ArtifactCatalogStore) BindVersion(ctx context.Context, scope Scope, res
 			return err
 		}
 		var ownedSession struct{ ID string }
-		if err := tx.Table("sessions").Select("id").Where("tenant_id = ? AND id = ? AND user_id = ? AND deleted_at IS NULL", scope.TenantID, version.SessionID, scope.OwnerID).Take(&ownedSession).Error; err != nil {
+		if err := tx.Table("sessions").Clauses(clause.Locking{Strength: "UPDATE"}).Select("id").Where("tenant_id = ? AND id = ? AND user_id = ? AND deleted_at IS NULL", scope.TenantID, version.SessionID, scope.OwnerID).Take(&ownedSession).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return ErrNotFound
 			}
@@ -98,23 +98,53 @@ func (s *ArtifactCatalogStore) BindVersion(ctx context.Context, scope Scope, res
 }
 
 func (s *ArtifactCatalogStore) Resolve(ctx context.Context, grant ArtifactGrant) (ArtifactVersion, error) {
-	if s == nil || s.db == nil || grant.TenantID == 0 || strings.TrimSpace(grant.OwnerID) == "" || strings.TrimSpace(grant.ResourceID) == "" || strings.TrimSpace(grant.VersionID) == "" {
-		return ArtifactVersion{}, ErrNotFound
-	}
-	var binding artifactBindingRow
-	err := s.db.WithContext(ctx).Where("tenant_id = ? AND owner_id = ? AND resource_id = ? AND version_id = ? AND revoked_at IS NULL AND deleted_at IS NULL", grant.TenantID, grant.OwnerID, grant.ResourceID, grant.VersionID).Take(&binding).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return ArtifactVersion{}, ErrNotFound
-	}
+	var version ArtifactVersion
+	err := s.WithResolved(ctx, grant, func(resolved ArtifactVersion) error {
+		version = resolved
+		return nil
+	})
 	if err != nil {
 		return ArtifactVersion{}, err
 	}
-	version, err := s.readReadyVersion(ctx, grant.TenantID, grant.VersionID, grant.Digest)
-	if err != nil {
-		return ArtifactVersion{}, err
-	}
-	version.OwnerID, version.ResourceID = grant.OwnerID, grant.ResourceID
 	return version, nil
+}
+
+// WithResolved keeps the session authorization lock until use has completed.
+// Callers that open version bytes should use this to serialize that work with
+// Task owner changes and soft deletion.
+func (s *ArtifactCatalogStore) WithResolved(ctx context.Context, grant ArtifactGrant, use func(ArtifactVersion) error) error {
+	if s == nil || s.db == nil || grant.TenantID == 0 || strings.TrimSpace(grant.OwnerID) == "" || strings.TrimSpace(grant.ResourceID) == "" || strings.TrimSpace(grant.VersionID) == "" {
+		return ErrNotFound
+	}
+	if use == nil {
+		return ErrNotFound
+	}
+	var version ArtifactVersion
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var binding artifactBindingRow
+		if err := tx.Where("tenant_id = ? AND owner_id = ? AND resource_id = ? AND version_id = ? AND revoked_at IS NULL AND deleted_at IS NULL", grant.TenantID, grant.OwnerID, grant.ResourceID, grant.VersionID).Take(&binding).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrNotFound
+			}
+			return err
+		}
+		var err error
+		version, err = readReadyVersion(ctx, tx, grant.TenantID, grant.VersionID, grant.Digest)
+		if err != nil {
+			return err
+		}
+		// Serialize authorization with Task ownership changes and soft deletion.
+		// PostgreSQL holds this row lock until the catalog transaction commits.
+		var owner struct{ ID string }
+		if err := tx.WithContext(ctx).Table("sessions").Clauses(clause.Locking{Strength: "UPDATE"}).Select("id").Where("tenant_id = ? AND id = ? AND user_id = ? AND deleted_at IS NULL", grant.TenantID, version.SessionID, grant.OwnerID).Take(&owner).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrNotFound
+			}
+			return err
+		}
+		version.OwnerID, version.ResourceID = grant.OwnerID, grant.ResourceID
+		return use(version)
+	})
 }
 
 func (s *ArtifactCatalogStore) AuthorizeArtifactGrant(ctx context.Context, grant ArtifactGrant) error {

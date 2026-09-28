@@ -230,6 +230,24 @@ func TestArtifactCatalogSQLiteBindsExactReadyVersionAndRechecksRevocation(t *tes
 	if err != nil || got.ObjectKey != "tenant/12/object" || got.Size != 3 {
 		t.Fatalf("resolved=%+v err=%v", got, err)
 	}
+	if err := db.Exec(`UPDATE sessions SET user_id='owner-b' WHERE tenant_id=12 AND id='session'`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Resolve(ctx, grant); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("grant resolved after Task ownership changed: err=%v", err)
+	}
+	if err := db.Exec(`UPDATE sessions SET user_id='owner-a' WHERE tenant_id=12 AND id='session'`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(`UPDATE sessions SET deleted_at=CURRENT_TIMESTAMP WHERE tenant_id=12 AND id='session'`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Resolve(ctx, grant); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("grant resolved after Task soft delete: err=%v", err)
+	}
+	if err := db.Exec(`UPDATE sessions SET deleted_at=NULL WHERE tenant_id=12 AND id='session'`).Error; err != nil {
+		t.Fatal(err)
+	}
 	for _, foreign := range []ArtifactGrant{
 		{TenantID: 99, OwnerID: "owner-a", ResourceID: "resume", VersionID: "version-a", Digest: digest},
 		{TenantID: 12, OwnerID: "other-owner", ResourceID: "resume", VersionID: "version-a", Digest: digest},

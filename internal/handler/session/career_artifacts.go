@@ -26,6 +26,7 @@ import (
 type CareerArtifactCatalog interface {
 	AuthorizeArtifactGrant(context.Context, careerrepo.ArtifactGrant) error
 	Resolve(context.Context, careerrepo.ArtifactGrant) (careerrepo.ArtifactVersion, error)
+	WithResolved(context.Context, careerrepo.ArtifactGrant, func(careerrepo.ArtifactVersion) error) error
 }
 
 type careerGrantAuthorizer struct{ catalog CareerArtifactCatalog }
@@ -137,26 +138,31 @@ func (h *CareerArtifactHandler) Download(c *gin.Context) {
 		c.AbortWithStatus(http.StatusNotFound)
 		return
 	}
-	if err := (workbench.VersionArtifactGrantAuthority{Secret: key, Authorizer: careerGrantAuthorizer{catalog: h.catalog}}).Authorize(c.Request.Context(), grant, signature, h.now()); err != nil {
+	if err := workbench.VerifyVersionArtifactGrantAt(key, grant, signature, h.now()); err != nil {
 		c.AbortWithStatus(http.StatusNotFound)
 		return
 	}
-	version, err := h.catalog.Resolve(c.Request.Context(), careerrepo.ArtifactGrant{TenantID: grant.TenantID, OwnerID: grant.OwnerID, ResourceID: grant.ResourceID, VersionID: grant.VersionID, Digest: grant.Digest})
-	if err != nil || version.TenantID != grant.TenantID || version.OwnerID != grant.OwnerID || version.ResourceID != grant.ResourceID || version.VersionID != grant.VersionID || version.Digest != grant.Digest || version.Size <= 0 || version.Size > careerArtifactMaxSize {
+	err = h.catalog.WithResolved(c.Request.Context(), careerrepo.ArtifactGrant{TenantID: grant.TenantID, OwnerID: grant.OwnerID, ResourceID: grant.ResourceID, VersionID: grant.VersionID, Digest: grant.Digest}, func(version careerrepo.ArtifactVersion) error {
+		return h.downloadResolved(c, grant, version)
+	})
+	if err != nil && !c.Writer.Written() {
 		c.AbortWithStatus(http.StatusNotFound)
-		return
+	}
+}
+
+func (h *CareerArtifactHandler) downloadResolved(c *gin.Context, grant workbench.VersionArtifactGrant, version careerrepo.ArtifactVersion) error {
+	if version.TenantID != grant.TenantID || version.OwnerID != grant.OwnerID || version.ResourceID != grant.ResourceID || version.VersionID != grant.VersionID || version.Digest != grant.Digest || version.Size <= 0 || version.Size > careerArtifactMaxSize {
+		return careerrepo.ErrNotFound
 	}
 	releaseStage, reserved := h.stageBudget.TryReserve(version.Size)
 	if !reserved {
-		c.AbortWithStatus(http.StatusNotFound)
-		return
+		return careerrepo.ErrNotFound
 	}
 	defer releaseStage()
 	ctx := types.WithExecutionTenant(c.Request.Context(), grant.TenantID)
 	tenant, err := h.tenants.GetTenantByID(ctx, grant.TenantID)
 	if err != nil || tenant == nil {
-		c.AbortWithStatus(http.StatusNotFound)
-		return
+		return careerrepo.ErrNotFound
 	}
 	backendID, providerPath, scoped := types.ParseStorageBackendPath(version.ObjectKey)
 	if !scoped {
@@ -164,41 +170,36 @@ func (h *CareerArtifactHandler) Download(c *gin.Context) {
 	}
 	fileService, _, ok := filesvc.ResolveTenantFileServiceWithFallback(ctx, "career artifact download", tenant, backendID, types.ParseProviderScheme(providerPath), storageurl.LocalStorageBaseDir(), h.storage, h.files)
 	if !ok || fileService == nil {
-		c.AbortWithStatus(http.StatusNotFound)
-		return
+		return careerrepo.ErrNotFound
 	}
 	reader, err := fileService.GetFile(ctx, version.ObjectKey)
 	if err != nil {
-		c.AbortWithStatus(http.StatusNotFound)
-		return
+		return careerrepo.ErrNotFound
 	}
 	defer reader.Close()
 	tmp, err := os.CreateTemp("", "weknora-career-artifact-*")
 	if err != nil {
-		c.AbortWithStatus(http.StatusNotFound)
-		return
+		return err
 	}
 	name := tmp.Name()
 	defer os.Remove(name)
 	defer tmp.Close()
 	if err := tmp.Chmod(0600); err != nil {
-		c.AbortWithStatus(http.StatusNotFound)
-		return
+		return err
 	}
 	hasher := sha256.New()
 	n, err := io.Copy(io.MultiWriter(tmp, hasher), io.LimitReader(contextReader{ctx: ctx, reader: reader}, version.Size+1))
 	if err != nil || n != version.Size || hex.EncodeToString(hasher.Sum(nil)) != strings.ToLower(version.Digest) {
-		c.AbortWithStatus(http.StatusNotFound)
-		return
+		return careerrepo.ErrNotFound
 	}
 	if _, err := tmp.Seek(0, io.SeekStart); err != nil {
-		c.AbortWithStatus(http.StatusNotFound)
-		return
+		return err
 	}
 	c.Header("Cache-Control", "private, no-store")
 	if err := filetransport.Serve(c.Writer, c.Request, tmp, filetransport.Options{Filename: versionFilename(version.MIME), Download: true, ContentType: version.MIME, Size: version.Size, CacheControl: "private, no-store"}); err != nil {
-		return
+		return err
 	}
+	return nil
 }
 
 func parseCareerArtifactGrant(q url.Values) (workbench.VersionArtifactGrant, string, bool) {
