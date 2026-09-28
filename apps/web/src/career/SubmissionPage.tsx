@@ -79,6 +79,7 @@ export function SubmissionPage({ client, scopeController, applicationId, materia
 
  const clearPrivate = useCallback((notice: string, nextState: 'forbidden' | 'scope-changed' = 'forbidden') => {
   setRecords(undefined); setReadState(nextState); setReadMessage(notice)
+  setRevision(undefined); setRevisionState('error'); setExports(undefined); setExportsError('')
   setAttempt(undefined); setWritePhase('idle'); setMessage('')
   setChannel(''); setVersionChoice(''); setOccurredAt(''); setNote(''); setVersionDetail(undefined); setVersionMessage('')
  }, [])
@@ -136,15 +137,18 @@ export function SubmissionPage({ client, scopeController, applicationId, materia
   if (!materialId?.trim()) { if (active) setExports([]); return () => { active = false } }
   void client.career.materialExports(materialId, requestScope.signal).then((list) => {
    if (!active || !scopeController.isCurrent(requestScope.scope)) return
-   setExports(deliverableExports(list.exports))
+   const nextExports = deliverableExports(list.exports)
+   setExports(nextExports)
+   setVersionChoice((current) => current === UNKNOWN_VERSION_CHOICE || nextExports.some((receipt) => receipt.exportId === current) ? current : '')
    setExportsError('')
-  }).catch(() => {
+  }).catch((cause) => {
    if (!active || !scopeController.isCurrent(requestScope.scope)) return
+   if (errorDetails(cause).code === 'forbidden') { clearPrivate('当前空间不可访问此材料的投递信息，已清除投递内容。'); return }
    setExports(undefined)
    setExportsError('可投递导出版本读取失败。读取恢复前，请勿选择“未知版本”并提交；可以重试读取。')
   })
   return () => { active = false }
- }, [client, materialId, reload, scopeController, scope.scope.generation])
+ }, [clearPrivate, client, materialId, reload, scopeController, scope.scope.generation])
 
  const refresh = (): void => setReload((value) => value + 1)
  const resetCompose = (): void => { setChannel(''); setVersionChoice(''); setOccurredAt(''); setNote('') }
@@ -159,12 +163,14 @@ export function SubmissionPage({ client, scopeController, applicationId, materia
    if (exports === undefined) return
    if (writePhase === 'busy' || writePhase === 'unknown') return
    if (revision === undefined || !channel || !versionChoice) return
+   const selectedExport = exports.find((receipt) => receipt.exportId === versionChoice)
+   if (versionChoice !== UNKNOWN_VERSION_CHOICE && !selectedExport) return
    const requestId = newRequestId()
    // OCR ocr2-078：直接构造 RecordSubmissionInput 类型化对象（编译期校验
    // 字段名），不再经 Record<string, unknown> + as 强转。
    const input: RecordSubmissionInput = versionChoice === UNKNOWN_VERSION_CHOICE
     ? { requestId, applicationId, channel, versionUnknown: true, expectedRevision: revision, ...(occurredAtFromInput(occurredAt) ? { occurredAt: occurredAtFromInput(occurredAt) } : {}), ...(note.trim() ? { note: note.trim() } : {}) }
-    : { requestId, applicationId, channel, versionUnknown: false, materialId: exports?.find((receipt) => receipt.exportId === versionChoice)?.materialId, exportId: versionChoice, expectedRevision: revision, ...(occurredAtFromInput(occurredAt) ? { occurredAt: occurredAtFromInput(occurredAt) } : {}), ...(note.trim() ? { note: note.trim() } : {}) }
+    : { requestId, applicationId, channel, versionUnknown: false, materialId: selectedExport!.materialId, exportId: versionChoice, expectedRevision: revision, ...(occurredAtFromInput(occurredAt) ? { occurredAt: occurredAtFromInput(occurredAt) } : {}), ...(note.trim() ? { note: note.trim() } : {}) }
    current = { requestId, input }
   }
   writeInFlight.current = true
@@ -247,7 +253,8 @@ export function SubmissionPage({ client, scopeController, applicationId, materia
 
  const composeBlocked = writePhase === 'busy' || writePhase === 'unknown'
  const confirmed = (records?.length ?? 0) > 0
- const submitBlocked = composeBlocked || revision === undefined || exports === undefined || !channel || !versionChoice
+ const selectedExportAvailable = versionChoice === UNKNOWN_VERSION_CHOICE || exports?.some((receipt) => receipt.exportId === versionChoice) === true
+ const submitBlocked = composeBlocked || revision === undefined || exports === undefined || !channel || !versionChoice || !selectedExportAvailable
  return <section className="wk-submission" aria-labelledby="wk-submission-title">
   <h3 id="wk-submission-title">投递确认（本人确认）</h3>
   <p className="wk-submission__notice">投递由你本人在外部完成（发送邮件、在招聘网站提交等）。系统不代投、不发送邮件、不填写外部表单；点击下载或发布导出不会被视为投递，也不会被用来推断投递。请在完成外部投递后，由你本人在此确认结果。</p>

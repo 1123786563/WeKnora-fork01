@@ -315,6 +315,41 @@ test('an export-list failure is visible and blocks the irreversible unknown-vers
  assert.equal((submissions[0] as { versionUnknown: boolean }).versionUnknown, true)
 })
 
+test('a forbidden export refresh clears the loaded submission and composed private form', async () => {
+ let exportReads = 0
+ const career: CareerStub = {
+  open: async () => ({ revision: 4 }),
+  applicationSubmissions: async () => ({ submissions: [record()] }),
+  materialExports: async () => { exportReads += 1; if (exportReads > 1) throw Object.assign(new Error('forbidden'), { code: 'forbidden' }); return { materialId: 'mat-1', exports: [exportReceipt()] } },
+ }
+ const container = await mountSubmission(career)
+ await act(async () => { choose(container.querySelector<HTMLSelectElement>('[aria-label="投递渠道"]')!, 'web'); choose(container.querySelector<HTMLSelectElement>('[aria-label="投递版本"]')!, 'exp-1'); setInput(container.querySelector<HTMLTextAreaElement>('[aria-label="投递备注"]')!, 'private note'); await settle() })
+ assert.match(container.textContent ?? '', /投递记录时间线|官网已投/)
+ await act(async () => { click(byLabel(container, 'button', '刷新投递记录')); await settle(); await settle() })
+ assert.match(container.querySelector('[role="alert"]')?.textContent ?? '', /当前空间不可访问/)
+ assert.equal(container.querySelector('[aria-label="确认投递表单"]'), null)
+ assert.equal(container.querySelector('[aria-label="投递记录时间线"]'), null)
+ assert.doesNotMatch(container.textContent ?? '', /private note|重试读取导出版本/)
+})
+
+test('a refresh that removes the selected export clears the choice and blocks submission', async () => {
+ let exportReads = 0
+ const submissions: unknown[] = []
+ const career: CareerStub = {
+  open: async () => ({ revision: 4 }),
+  applicationSubmissions: async () => ({ submissions: [] }),
+  materialExports: async () => ({ materialId: 'mat-1', exports: ++exportReads === 1 ? [exportReceipt()] : [] }),
+  recordSubmission: async (input: unknown) => { submissions.push(input); return record() },
+ }
+ const container = await mountSubmission(career)
+ await act(async () => { choose(container.querySelector<HTMLSelectElement>('[aria-label="投递渠道"]')!, 'web'); choose(container.querySelector<HTMLSelectElement>('[aria-label="投递版本"]')!, 'exp-1'); await settle() })
+ await act(async () => { click(byLabel(container, 'button', '刷新投递记录')); await settle(); await settle() })
+ assert.equal(container.querySelector<HTMLSelectElement>('[aria-label="投递版本"]')?.value, '')
+ assert.equal((byLabel(container, 'button', '确认投递') as HTMLButtonElement).disabled, true)
+ await act(async () => { click(byLabel(container, 'button', '确认投递')); await settle(); await settle() })
+ assert.equal(submissions.length, 0)
+})
+
 test('submission styles keep TDesign light surfaces and the brand green confirm action', () => {
  const css = readFileSync(new URL('./submission.css', import.meta.url), 'utf8')
  assert.match(css, /\.wk-submission \{/)

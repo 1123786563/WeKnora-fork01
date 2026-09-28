@@ -621,3 +621,26 @@ test('transient URL material restore failure preserves the pointer and offers re
  assert.match(window.location.search, /material=mat-1/)
  assert.match(container.textContent ?? '', /不可变版本（1）/)
 })
+
+test('a failed URL restore keeps the draft editor and save action locked until retry succeeds', async () => {
+ window.history.replaceState({}, '', '/platform/career/opportunities/opp%2F1?snapshotId=snapshot%20%3F1&material=mat-1')
+ let reads = 0
+ const writes: unknown[] = []
+ const career: CareerStub = {
+  open: async () => profileView,
+  material: async () => { reads += 1; if (reads === 1) throw Object.assign(new Error('temporary read failure'), { status: 503 }); return materialView([1]) },
+  editMaterial: async (input: unknown) => { writes.push(input); return editedReceipt('edit-1') },
+ }
+ const { container } = await mountMaterial(career)
+ const add = container.querySelector<HTMLButtonElement>('[aria-label="新增章节"]')!
+ const save = byLabel(container, 'button', '保存草稿') as HTMLButtonElement
+ assert.equal(add.disabled, true)
+ assert.equal(save.disabled, true)
+ await act(async () => { click(add); click(save); await settle() })
+ assert.equal(writes.length, 0, 'an unread draft is never replaced with locally empty content')
+ assert.match(window.location.search, /material=mat-1/)
+ assert.equal(reads, 1)
+ await act(async () => { click(byLabel(container, 'button', '重试读取材料')); await settle(); await settle() })
+ assert.equal(reads, 2)
+ assert.equal(container.querySelector<HTMLButtonElement>('[aria-label="新增章节"]')?.disabled, false)
+})

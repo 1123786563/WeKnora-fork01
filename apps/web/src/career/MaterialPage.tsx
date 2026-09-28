@@ -521,8 +521,8 @@ export function MaterialPage({ client, scopeController, opportunityId, snapshotI
   }
  }, [clearPrivate, client, materialId, scopeController])
 
- const locked = phase === 'busy' || phase === 'unknown'
- const canSubmit = phase === 'idle' || phase === 'error'
+ const locked = phase === 'busy' || phase === 'unknown' || restoreFailed
+ const canSubmit = (phase === 'idle' || phase === 'error') && !restoreFailed
  const saveBlocked = !canSubmit || revision === undefined || sections.length === 0
  const confirmBlocked = !canSubmit || revision === undefined || !materialId || view === undefined || dirty
  const retryAttempt = (): void => {
