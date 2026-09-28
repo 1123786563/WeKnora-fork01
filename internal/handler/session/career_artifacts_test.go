@@ -53,6 +53,9 @@ func TestCareerArtifactHTTPIssueDownloadDigestAndRevoke(t *testing.T) {
 	if err := db.Exec(`INSERT INTO artifact_versions (tenant_id,id,run_id,session_id,digest,object_key,mime,size,scan_state) VALUES (12,'version-a','run','session',?,'local://tenant/12/object','text/plain',?,'ready')`, digest, len(body)).Error; err != nil {
 		t.Fatal(err)
 	}
+	if err := db.Exec(`INSERT INTO sessions (id,tenant_id,user_id) VALUES ('session',12,'owner-a')`).Error; err != nil {
+		t.Fatal(err)
+	}
 	scope := careerrepo.Scope{TenantID: 12, OwnerID: "owner-a"}
 	if _, err := store.BindVersion(ctx, scope, "resume", "version-a"); err != nil {
 		t.Fatal(err)
@@ -174,6 +177,9 @@ func TestCareerArtifactDownloadRejectsCorruptBytesBeforeSuccess(t *testing.T) {
 	if err := db.Exec(`INSERT INTO artifact_versions (tenant_id,id,run_id,session_id,digest,object_key,mime,size,scan_state) VALUES (12,'v','r','s',?,'local://tenant/12/o','text/plain',?,'ready')`, digest, len(good)).Error; err != nil {
 		t.Fatal(err)
 	}
+	if err := db.Exec(`INSERT INTO sessions (id,tenant_id,user_id) VALUES ('s',12,'owner-a')`).Error; err != nil {
+		t.Fatal(err)
+	}
 	if _, err := store.BindVersion(ctx, careerrepo.Scope{TenantID: 12, OwnerID: "owner-a"}, "resume", "v"); err != nil {
 		t.Fatal(err)
 	}
@@ -194,6 +200,48 @@ func TestCareerArtifactDownloadRejectsCorruptBytesBeforeSuccess(t *testing.T) {
 	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/download?"+values.Encode(), nil))
 	if rec.Code != http.StatusNotFound || rec.Body.Len() != 0 {
 		t.Fatalf("corrupt bytes response status=%d body=%q", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCareerArtifactDownloadRejectsWhenStageBudgetIsFullBeforeBlobOpen(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db, store := careerArtifactDB(t)
+	body := []byte("budgeted bytes")
+	hash := sha256.Sum256(body)
+	digest := hex.EncodeToString(hash[:])
+	if err := db.Exec(`INSERT INTO artifact_versions (tenant_id,id,run_id,session_id,digest,object_key,mime,size,scan_state) VALUES (12,'budget-v','r','s',?,'local://tenant/12/o','text/plain',?,'ready')`, digest, len(body)).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(`INSERT INTO sessions (id,tenant_id,user_id) VALUES ('s',12,'owner-a')`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.BindVersion(context.Background(), careerrepo.Scope{TenantID: 12, OwnerID: "owner-a"}, "resume", "budget-v"); err != nil {
+		t.Fatal(err)
+	}
+	files := &careerArtifactTestFiles{bytes: body}
+	h := NewCareerArtifactHandler(store, careerArtifactTestTenant{}, files, nil)
+	secret := []byte(strings.Repeat("b", 32))
+	h.key = func() ([]byte, error) { return secret, nil }
+	h.now = func() time.Time { return time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC) }
+	h.stageBudget = newCareerArtifactStageBudget(int64(len(body)))
+	grant := workbench.VersionArtifactGrant{TenantID: 12, OwnerID: "owner-a", ResourceID: "resume", VersionID: "budget-v", Digest: digest, ExpiresAt: h.now().Add(time.Minute).UnixNano()}
+	sig, err := workbench.SignVersionArtifactGrant(secret, grant)
+	if err != nil {
+		t.Fatal(err)
+	}
+	values := url.Values{"tenant_id": {"12"}, "owner_id": {grant.OwnerID}, "resource_id": {grant.ResourceID}, "version_id": {grant.VersionID}, "digest": {digest}, "expires_at": {strconv.FormatInt(grant.ExpiresAt, 10)}, "signature": {sig}}
+	// Simulate another authorized request holding the only staging capacity.
+	release, ok := h.stageBudget.TryReserve(int64(len(body)))
+	if !ok {
+		t.Fatal("could not reserve test staging capacity")
+	}
+	r := gin.New()
+	r.GET("/download", h.Download)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/download?"+values.Encode(), nil))
+	release()
+	if rec.Code != http.StatusNotFound || rec.Body.Len() != 0 || files.opens != 0 {
+		t.Fatalf("capacity denial status=%d body=%q blob opens=%d", rec.Code, rec.Body.String(), files.opens)
 	}
 }
 
@@ -218,6 +266,9 @@ func careerArtifactDB(t *testing.T) (*gorm.DB, *careerrepo.ArtifactCatalogStore)
 		if err := db.Exec(string(raw)).Error; err != nil {
 			t.Fatalf("apply %s: %v", file, err)
 		}
+	}
+	if err := db.Exec(`CREATE TABLE sessions (id TEXT NOT NULL, tenant_id INTEGER NOT NULL, user_id TEXT, deleted_at DATETIME, PRIMARY KEY (tenant_id,id))`).Error; err != nil {
+		t.Fatal(err)
 	}
 	return db, careerrepo.NewArtifactCatalogStore(db)
 }

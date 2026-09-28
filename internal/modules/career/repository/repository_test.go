@@ -204,8 +204,23 @@ func TestArtifactCatalogSQLiteBindsExactReadyVersionAndRechecksRevocation(t *tes
 	if err := db.Exec(`INSERT INTO artifact_versions (tenant_id,id,run_id,session_id,digest,object_key,mime,size,scan_state) VALUES (12,'version-a','run','session',?,'tenant/12/object','application/pdf',3,'ready')`, digest).Error; err != nil {
 		t.Fatal(err)
 	}
+	if err := db.Exec(`CREATE TABLE sessions (id TEXT NOT NULL, tenant_id INTEGER NOT NULL, user_id TEXT, deleted_at DATETIME, PRIMARY KEY (tenant_id,id))`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(`INSERT INTO sessions (id,tenant_id,user_id) VALUES ('session',12,'owner-a'),('foreign-session',12,'owner-b')`).Error; err != nil {
+		t.Fatal(err)
+	}
 	store := NewArtifactCatalogStore(db)
 	owner := Scope{TenantID: 12, OwnerID: "owner-a"}
+	if err := db.Exec(`UPDATE artifact_versions SET session_id='foreign-session' WHERE id='version-a'`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.BindVersion(ctx, owner, "foreign", "version-a"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("foreign owner's artifact session was bound: err=%v", err)
+	}
+	if err := db.Exec(`UPDATE artifact_versions SET session_id='session' WHERE id='version-a'`).Error; err != nil {
+		t.Fatal(err)
+	}
 	version, err := store.BindVersion(ctx, owner, "resume", "version-a")
 	if err != nil {
 		t.Fatal(err)

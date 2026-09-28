@@ -10,6 +10,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	filesvc "github.com/Tencent/WeKnora/internal/application/service/file"
@@ -37,16 +38,49 @@ func (a careerGrantAuthorizer) AuthorizeVersionGrant(ctx context.Context, grant 
 // rechecking the authoritative catalog. Blob bytes are staged and verified
 // before an HTTP success response can begin.
 type CareerArtifactHandler struct {
-	catalog CareerArtifactCatalog
-	tenants interfaces.TenantService
-	files   interfaces.FileService
-	storage interfaces.StorageBackendResolver
-	key     func() ([]byte, error)
-	now     func() time.Time
+	catalog     CareerArtifactCatalog
+	tenants     interfaces.TenantService
+	files       interfaces.FileService
+	storage     interfaces.StorageBackendResolver
+	key         func() ([]byte, error)
+	now         func() time.Time
+	stageBudget *careerArtifactStageBudget
+}
+
+const (
+	careerArtifactMaxSize       = int64(256 << 20)
+	careerArtifactStageCapacity = int64(512 << 20)
+)
+
+var sharedCareerArtifactStageBudget = newCareerArtifactStageBudget(careerArtifactStageCapacity)
+
+type careerArtifactStageBudget struct {
+	mu       sync.Mutex
+	capacity int64
+	used     int64
+}
+
+func newCareerArtifactStageBudget(capacity int64) *careerArtifactStageBudget {
+	return &careerArtifactStageBudget{capacity: capacity}
+}
+
+func (b *careerArtifactStageBudget) TryReserve(size int64) (func(), bool) {
+	if b == nil || size <= 0 || size > b.capacity {
+		return nil, false
+	}
+	b.mu.Lock()
+	if size > b.capacity-b.used {
+		b.mu.Unlock()
+		return nil, false
+	}
+	b.used += size
+	b.mu.Unlock()
+	var once sync.Once
+	return func() { once.Do(func() { b.mu.Lock(); b.used -= size; b.mu.Unlock() }) }, true
 }
 
 func NewCareerArtifactHandler(catalog CareerArtifactCatalog, tenants interfaces.TenantService, files interfaces.FileService, storage interfaces.StorageBackendResolver) *CareerArtifactHandler {
-	return &CareerArtifactHandler{catalog: catalog, tenants: tenants, files: files, storage: storage, key: workbench.ArtifactSigningKeyFromEnv, now: time.Now}
+	return &CareerArtifactHandler{catalog: catalog, tenants: tenants, files: files, storage: storage, key: workbench.ArtifactSigningKeyFromEnv, now: time.Now, stageBudget: sharedCareerArtifactStageBudget}
 }
 
 func (h *CareerArtifactHandler) Issue(c *gin.Context) {
@@ -108,10 +142,16 @@ func (h *CareerArtifactHandler) Download(c *gin.Context) {
 		return
 	}
 	version, err := h.catalog.Resolve(c.Request.Context(), careerrepo.ArtifactGrant{TenantID: grant.TenantID, OwnerID: grant.OwnerID, ResourceID: grant.ResourceID, VersionID: grant.VersionID, Digest: grant.Digest})
-	if err != nil || version.TenantID != grant.TenantID || version.OwnerID != grant.OwnerID || version.ResourceID != grant.ResourceID || version.VersionID != grant.VersionID || version.Digest != grant.Digest || version.Size <= 0 || version.Size > (8<<30) {
+	if err != nil || version.TenantID != grant.TenantID || version.OwnerID != grant.OwnerID || version.ResourceID != grant.ResourceID || version.VersionID != grant.VersionID || version.Digest != grant.Digest || version.Size <= 0 || version.Size > careerArtifactMaxSize {
 		c.AbortWithStatus(http.StatusNotFound)
 		return
 	}
+	releaseStage, reserved := h.stageBudget.TryReserve(version.Size)
+	if !reserved {
+		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+	defer releaseStage()
 	ctx := types.WithExecutionTenant(c.Request.Context(), grant.TenantID)
 	tenant, err := h.tenants.GetTenantByID(ctx, grant.TenantID)
 	if err != nil || tenant == nil {

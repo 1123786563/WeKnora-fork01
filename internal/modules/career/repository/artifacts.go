@@ -71,11 +71,20 @@ func (s *ArtifactCatalogStore) BindVersion(ctx context.Context, scope Scope, res
 	if s == nil || s.db == nil || resourceID == "" || versionID == "" {
 		return ArtifactVersion{}, ErrNotFound
 	}
-	version, err := s.readReadyVersion(ctx, scope.TenantID, versionID, "")
-	if err != nil {
-		return ArtifactVersion{}, err
-	}
-	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	var version ArtifactVersion
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var err error
+		version, err = readReadyVersion(ctx, tx, scope.TenantID, versionID, "")
+		if err != nil {
+			return err
+		}
+		var ownedSession struct{ ID string }
+		if err := tx.Table("sessions").Select("id").Where("tenant_id = ? AND id = ? AND user_id = ? AND deleted_at IS NULL", scope.TenantID, version.SessionID, scope.OwnerID).Take(&ownedSession).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrNotFound
+			}
+			return err
+		}
 		if err := tx.Table("career_spaces").Clauses(clause.OnConflict{DoNothing: true}).Create(map[string]any{"tenant_id": scope.TenantID, "owner_id": scope.OwnerID}).Error; err != nil {
 			return err
 		}
@@ -148,8 +157,12 @@ func (s *ArtifactCatalogStore) Delete(ctx context.Context, scope Scope, resource
 }
 
 func (s *ArtifactCatalogStore) readReadyVersion(ctx context.Context, tenantID uint64, versionID, digest string) (ArtifactVersion, error) {
+	return readReadyVersion(ctx, s.db, tenantID, versionID, digest)
+}
+
+func readReadyVersion(ctx context.Context, db *gorm.DB, tenantID uint64, versionID, digest string) (ArtifactVersion, error) {
 	var row artifactVersionRow
-	query := s.db.WithContext(ctx).Where("tenant_id = ? AND id = ? AND scan_state = ?", tenantID, versionID, "ready")
+	query := db.WithContext(ctx).Where("tenant_id = ? AND id = ? AND scan_state = ?", tenantID, versionID, "ready")
 	if digest != "" {
 		query = query.Where("digest = ?", digest)
 	}
